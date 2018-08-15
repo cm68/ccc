@@ -11,6 +11,13 @@ extern int verbose;
 #define	V_IO	(1 << 1)
 #endif
 
+enum keyword {
+	ASM = 0x80, AUTO, BOOLEAN, BREAK, CASE, CHAR, CONST, CONTINUE,
+	DEFAULT, DO, DOUBLE, ELSE, ENUM, EXTERN, FLOAT, FOR, GOTO,
+	IF, INT, LONG, REGISTER, RETURN, SIZEOF, SHORT, STATIC,
+	STRUCT, TYPEDEF, UNION, UNSIGNED, VOID, VOLATILE, WHILE
+};
+
 extern void lossage(char *message);
 extern char errmsg[];
 

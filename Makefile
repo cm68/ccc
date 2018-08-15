@@ -1,7 +1,7 @@
 #
 # makefile for native and cross z80 compiler
 #
-OBJECTS = parse.o type.o main.o lex.o io.o macro.o
+OBJECTS = parse.o type.o main.o lex.o io.o macro.o kw.o
 HEADERS = lex.h type.h
 
 ccc: $(OBJECTS)
@@ -18,3 +18,4 @@ type.o: type.c
 main.o: main.c
 io.o: io.c
 macro.o: macro.c
+kw.o: kw.c
