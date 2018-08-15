@@ -20,3 +20,13 @@ extern void insert_macro(char *name);
 extern char getchar();
 extern char readchar();
 
+/* main.c */
+extern void err(char errcode);
+extern void fatal(char errcode);
+extern void recover(char errcode, char skipto);
+extern void need(char check, char skipto, char errcode);
+extern void err(char errcode);
+void sprintf(char *s, char *fmt, ...);
+int main(int argc, char **argv);
+void process(char *f);
+void usage(char *complaint, char *p);

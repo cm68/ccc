@@ -7,6 +7,41 @@
 char errmsg[80];
 
 void
+err(char errcode)
+{
+    printf("file: %s line: %d error code %d %s\n",
+        tbtop->name, lineno, errcode errmsg[errcode]);
+    error = errcode;
+}
+
+void
+fatal(char errcode)
+{
+    err(errcode);
+    printf("too severe to recover\n");
+    exit(-errcode);
+}
+
+void
+recover(char errcode, char skipto)
+{
+    err(errcode);
+    while (curtok != skipto && curtok != EOF) {
+        gettoken();
+    }
+}
+
+void 
+need(char check, char skipto, char errcode)
+{
+    if (curtok == check) {
+        gettoken();
+        return;
+    }
+    recover(errcode, skipto);
+}
+
+void
 sprintf(char *s, char *fmt) {
     char *ap;
     char c;
@@ -97,12 +132,6 @@ sprintf(char *s, char *fmt) {
     }
 }
 
-void
-lossage(char *m)
-{
-    printf("error: %s at line %d\n", m, lineno);
-}
-
 #ifdef DEBUG
 int verbose;
 
@@ -130,6 +159,7 @@ usage(char *complaint, char *p)
     exit(1);
 }
 
+void
 process(char *f)
 {
     char *s;
