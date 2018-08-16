@@ -1,16 +1,23 @@
 #include "ccc.h"
-#include "lex.h"
 
-#include <stdio.h>
 #include <fcntl.h>
+#undef sprintf
 
-char errmsg[80];
+#define MAXERR  0
+char *errmsg[] = {
+    "unknown error",
+};
+int error;
 
 void
 err(char errcode)
 {
+    int i;
+
+    i = errcode;
+    if (i > MAXERR) i = 0;
     printf("file: %s line: %d error code %d %s\n",
-        tbtop->name, lineno, errcode errmsg[errcode]);
+        filename, lineno, errcode, errmsg[i]);
     error = errcode;
 }
 
@@ -42,19 +49,22 @@ need(char check, char skipto, char errcode)
 }
 
 void
-sprintf(char *s, char *fmt) {
-    char *ap;
+sprintf(char *d, char *fmt) {
+    char **ap;
     char c;
     char zpad;
     char width;
     char base;
-    char *s;
     char i;
     char rpad;
     int v;
     char b[8];
+    char *s;
 
-    while (c = *fmt++) {
+    ap = &fmt;
+    ap++;
+
+    while ((c = *fmt++)) {
         if (c != '%') {
             *d++ = c;
             continue;
@@ -84,7 +94,8 @@ sprintf(char *s, char *fmt) {
         else if (c == 'b') base = 2;
 
         if ((c == 'd') || (c == 'x') || (c == 'b')) {
-            v = *(((int *)ap)++);
+            v = *((int *)ap);
+            ap++;
             i--;
             while (v) {
                 c = v % base;
@@ -111,7 +122,8 @@ sprintf(char *s, char *fmt) {
             continue;
         }
         if (c == 's') {
-            s = *(((char *)ap)++);
+            s = *ap;
+            ap++;
             i = strlen(s);
             if (!rpad) {
                 i = width - i;
@@ -168,6 +180,10 @@ process(char *f)
 
     printf("process %s\n", f);
     pushfile(f);
+    nexttok = curtok = SEMI;
+    while (curtok) {
+        gettoken();
+    }
 }
 
 char *progname;

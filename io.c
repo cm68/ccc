@@ -3,8 +3,17 @@
  * and source file buffering.  these are stacked, so we can push
  * include files and save our position at each level
  */
-
+#include "ccc.h"
 #include <fcntl.h>
+
+/*
+ * the incoming character stream interface
+ * a zero is EOF
+ */
+char prevchar;
+char curchar;
+char nextchar;
+int lineno;
 
 #define	TBSIZE	1024		/* text buffer size */
 struct textbuf {
@@ -34,20 +43,29 @@ pushfile(char *name)
         perror(name);
         return;
     }
-	f->name = strdup(name);
+	t->name = strdup(name);
 	t->lineno = t->offset = t->valid = 0;
 	t->storage = malloc(TBSIZE);
 	t->prev = tbtop;
 	tbtop = t;
+    filename = name;
 }
 
 /*
  * we could save pushing and memory allocation if macbuf is smaller than
  * t_offset.  then we'd just copy it in and adjust t_offset backwards.
- * probably not worth it.
+ * probably not worth it, unless there are large numbers of small macros.
+ *
+ * XXX - since some sources DO have a large number of macros, this is
+ * probably worth it.
+ *
+ * when we encounter a macro invocation FOO(x,y) in the input stream, 
+ * we replace it with the definition of FOO with parameter substitution
+ * effectively pushing this text into the stream.  if that expansion in
+ * turn has macro invocations, that causes another push.
  */
 void
-insert_macro(char *name)
+insert_macro(char *name, char *macbuf)
 {
 	struct textbuf *t;
 
@@ -59,29 +77,19 @@ insert_macro(char *name)
 
 	t = malloc(sizeof(*t));
 	t->fd = -1;
-	f->name = strdup(name);
+	t->name = strdup(name);
 	t->lineno = lineno;
 	t->offset = 0;
 	t->storage = strdup(macbuf);
 	t->valid = strlen(t->storage);
 	t->prev = tbtop;
 	tbtop = t;
+    filename = name;
 }
 
-char
-getchar()
-{
-	prevchar = curchar;
-	if (prevchar == '\n') lineno++;
-	curchar = nextchar;
-	if (curchar == EOF) {
-		nextchar = EOF;
-	} else {
-		nextchar = readchar();
-	}
-	return curchar;
-}
-
+/*
+ * grab a character from the input machinery
+ */
 char
 readchar()
 {
@@ -100,7 +108,6 @@ readchar()
                 printf("read file %s for %d\n", t->name, t->valid);
             }
 #endif
-
             if (t->valid)
                 continue;
             close(t->fd);
@@ -110,11 +117,32 @@ readchar()
         free(t->name);
         free(t);
         lineno = tbtop->lineno;
+        filename = tbtop->name;
 	}
-	return EOF;
+	return 0;
+}
+
+/*
+ * advance the current character.
+ * this updates curchar, lineno, nextchar and prevchar
+ */
+char
+getnext()
+{
+	prevchar = curchar;
+	if (prevchar == '\n') lineno++;
+	curchar = nextchar;
+	if (curchar == 0) {
+		nextchar = 0;
+	} else {
+		nextchar = readchar();
+        if (nextchar == '\t') {
+            nextchar = ' ';
+        }
+	}
+	return curchar;
 }
 
 /*
  * vim: tabstop=4 shiftwidth=4 expandtab:
  */
-

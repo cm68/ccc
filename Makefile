@@ -1,7 +1,9 @@
 #
 # makefile for native and cross z80 compiler
 #
+CFLAGS = -Wno-implicit-function-declaration
 OBJECTS = parse.o type.o main.o lex.o io.o macro.o kw.o
+OBJECTS = main.o lex.o io.o kw.o
 HEADERS = lex.h type.h
 
 ccc: $(OBJECTS)

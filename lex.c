@@ -5,284 +5,242 @@
  */
 
 #include "ccc.h"
-#include "lex.h"
+#include "expr.h"
+
 #include <stdio.h>
 
-int lineno;
-char *fname;
-
-char *inptr;
-char literal[MAXLIT];
-int litlen;
-int value;
-char token;
+enum token curtok;
+enum token nexttok;
+long curval;        /* numeric data */
+long nextval;
+char *curstr;       /* name or string data */
+char *nextstr;
 
 /*
- * read an integer in a given base from ascii
- * inptr is pointing at the first character, and should be left
- * pointing at the first non-numeric
+ * cpp conditional
  */
+struct cond {
+    int flags;
+#define C_TRUE      0x01
+#define C_ELSESEEN  0x02
+#define C_TRUESEEN  0x04
+    struct cond *next;
+};
+struct cond *cond;
+
+char tflags;
+#define ONELINE     0x01
+#define CPPFUNCS    0x02
+
+/*
+ * skip over any whitespace
+ */
+static void
+skipwhite()
+{
+    while ((curchar == ' ') || (curchar == '\n')) {
+        getnext();
+    }
+}
+
+/*
+ * skip over any whitespace other than newline
+ */
+static void
+skipwhite1()
+{
+    while (curchar == ' ') {
+        getnext();
+    }
+}
+
+/*
+ * skip to end of line
+ */
+static void
+skiptoeol()
+{
+    while (curchar && (curchar != '\n')) {
+        getnext();
+    }
+}
+
+/*
+ * read an integer in a given base from the input stream
+ * the base marker [bxd] has been consumed
+ */
+static
 int
 getint(char base)
 {
     int i;
     char c;
+    int len = 0;
 
     while (1) {
-        c = *inptr;
+        c = curchar;
         c = (c > '9') ? (c | 0x20) - 'a' + 10 : c - '0';
         if ((c < 0) || ((c+1) > base)) {
             break;
         }
         i *= base;
-        i += digit;
-        inptr++;
+        i += c;
+        getnext();
+        len++;
+    }
+    /* if no characters are consumed, note the error if base 2 or 16 */
+    if ((len == 0) && ((base == 2) || (base == 16))) {
+        err(ER_C_NX);
     }
     return i;
 }
 
 /*
  * do character literal processing, handling the C escape codes
+ * extended with decimal and binary constants
  */
-char
+static char
 getlit()
 {
-    char c;
- 
 top:
-    c = *inptr++;
-    if (c != '\\') {
-        return c;
+    if (curchar != '\\') {
+        if ((curchar < 0x20) || (curchar > 0x7e)) {
+            err(ER_C_BC);
+            curchar = ' ';
+        }
+        return curchar;
     }
-    c = *inptr++;
-    switch (c) {
+    getnext();          // eat the backslash
+    switch (curchar) {
     case '\n':          /* backslash at end of line */
         lineno++;
         goto top;
     case 'b':
         return '\b';
+    case 'e':
+        return '\x1b';
+    case 'f':
+        return '\f';
     case 'n':
         return '\n';
     case 'r':
         return '\r';
-    case '\'':
-        return '\'';
-    case '\"':
-        return '\"';
-    case '\\':
-        return '\\';
-    case '0': case '1': case '2': case '3':
+    case 't':
+        return '\t';
+    case 'v':
+        return '\v';
+    case '0': case '1': case '2': case '3':     // octal
     case '4': case '5': case '6': case '7':
-        inptr--;
         return (getint(8));
-    case 'x':
+    case 'x': case 'X':                         // hex
+        getnext();
         return (getint(16));
+    case 'B':                                   // binary
+        getnext();
+        return (getint(2));
+    case 'D':                                   // decimal
+        getnext();
+        return (getint(10));
     default:
-        return c;
+        return curchar;                         // literal next
     }
 }
 
 /*
- * we need and expect a character
+ * if we have a constant number, then return 1 and assign nextval
  */
-void
-require(char c)
+char
+isnumber()
 {
-    if (*inptr != c) {
-        sprintf(errmsg, "character %c(%d) expected\n", c, c);
-        lossage(errmsg);
-    } 
-    inptr++;
+    char base;
+
+    if (curchar == '\'') {
+        getnext();
+        nextval = getlit();
+        if (curchar == '\'') {
+            err(ER_C_CD);
+        }
+        getnext();
+        return 1;
+    }
+
+    if ((curchar < '0') || (curchar > '9')) {
+        return 0;
+    }
+
+    base = 10;
+    if (curchar == '0') {
+        getnext();
+        if ((curchar | 0x20) == 'x') {
+            base = 16;
+            getnext();
+        } else if ((curchar | 0x20) == 'b') {
+            base = 2;
+            getnext();
+        } else if ((curchar | 0x20) == 'd') {
+            base = 10;
+            getnext();
+        } else {
+            base = 8;
+            getnext();
+        }
+    }
+    nextval = getint(base);
+    return 1;
 }
 
+char strbuf[128];
+
 /*
- * the lexer 
+ * does the next hunk of characters look like a C symbol or keyword
+ * specifically, does it look like [A-Za-z_][A-Za-z0-9_]*
+ * if it does, copy it to the string buffer
+ *
+ * there is a little hair here, since the cpp has the ## operator,
+ * which does glomming:  _ ## xx ## yy  is identical to _xxyy
  */
-void
-advance()
+char
+issym()
 {
-    token = 0;
+    char *s;
+    char c;
 
-	while (1) {
+    s = strbuf;
 
-        printf("advance: %d %c\n", *inptr, *inptr);
-        token = *inptr;
-        inptr++;
-
-        switch (token) {
-        case '\n':
-        lineno++;
-        case ' ':           /* whitespace */
-        case '\t':
-            continue;
-        case '/':           /* comment */
-            if (*inptr == '*') {
-                inptr++;
-                while (inptr[0] != '*' && inptr[1] != '/') {
-                    inptr++;
+    c = curchar | 0x20;
+    if (!((c >= 'a') && (c <= 'z')) || (curchar == '_')) {
+        return 0;
+    }
+    *s++ = curchar;
+    while (1) {
+        /* handle glommer operator */
+        if (curchar == ' ') {
+            while (curchar == ' ') {
+                getnext();
+            }
+            if (curchar == '#' && nextchar == '#') {
+                getnext();
+                getnext();
+                while (curchar == ' ') {
+                    getnext();
                 }
-                inptr += 2;
-                continue;
-            } else if (*inptr == '/') {
-                inptr++;
-                while (*inptr++ != '\n')
-                    ;
-                continue;
-            }
-            if (*inptr == '=') {
-                inptr++;
-                token = DIVEQ;
-            }
-            return;
-        case '\'':
-            litlen = 1;
-            literal[0] = getlit();
-            require('\'');
-            token = CHARACTER;
-            return;
-        case '\"':
-            litlen = 0;
-            while (*inptr != '\"') {
-                literal[litlen++] = getlit();
-            }
-            require('\"');
-            token = STRING;
-            return;
-        case '0':
-            if ((*inptr == 'x') || (*inptr == 'X')) {
-                inptr++;
-                value = getint(16);    
             } else {
-                value = getint(8);    
+                break;
             }
-            token = INTEGER;
-            return;
-        case '1': case '2': case '3': case '4': case '5':
-        case '6': case '7': case '8': case '9':
-            inptr--;
-            value = getint(10);    
-            token = INTEGER;
-            return;
-        default:
-            sprintf(errmsg, "fung wha %c\n", token);
-            lossage(errmsg);
+        }
+
+        c = curchar | 0x20;
+        if (((c >= 'a') && (c <= 'z')) || 
+            ((c >= '0') && (c <= '9')) || 
+             (curchar == '_')) {
+            *s++ = curchar;
+            getnext();
+        } else {
             break;
         }
     }
-}
-
-
-char
-gettoken()
-{
-    char *s;
-    char t;
-
-    curtok = nexttok;
-    numbervalue = nextnumber;
-    s = symbuf;
-    symbuf = nsymbuf;
-    nsymbuf = s;
-
-    while (1) {
-        if (curchar == '#' && prevchar == '\n') {
-            getchar();
-            eatwhite1();
-            if (issym(nsymbuf)) {
-                t = kwlook(nsymbuf, cpptab);
-                if (t) {
-                    do_cpp(t);
-                    skiptoeol();
-                    continue;
-                }
-                err(ER_C_BD);
-            }
-            if (isnumber()) {
-                lineno = nextnumber;
-                skiptoeol();
-                continue;
-            }
-        }
-        if (curchar == '\n' && (tflags & ONELINE)) {
-            nexttok = ';';
-            getchar();
-            return 1;
-        }
-        if (prevchar == '\n' && cond && !(cond->flags & C_TRUE)) {
-            skiptoeol();
-            continue;
-        }
-        if ((curchar == '/') && (nextchar == '*') && !incomment) {
-            incomment = 1;
-            getchar();
-            getchar();
-            continue;
-        }
-        if ((curchar == '/') && (nextchar == '/')) {
-            skiptoeol();
-            continue;
-        }
-        if ((incomment) && (curchar == '*') && (nextchar == '/')) {
-            incomment = 0;
-            getchar();
-            getchar();
-            continue;
-        }
-        if (incomment) {
-            getchar();
-            continue;
-        }
-        if ((curchar == ' ') || (curchar == '\t') || (curchar == '\n')) {
-            getchar();
-            continue;
-        }
-        if (issym(nsymbuf)) {
-            if (macexpand(nsymbuf)) {
-                continue;
-            }
-            t = kwlook(nsymbuf, kwtab);
-            if (t) {
-                nexttok = t;
-                return 1;
-            }
-            nexttok = SYM;
-            return 1;
-        }
-        if (isnumber()) {
-            nexttok = NUMBER;
-            return 1;
-        }
-        if (isstring(nsymbuf)) {
-            nexttok = STRING;
-            return 1;
-        }
-        t = locate(curchar, "+-*/%=><|&~!^.?:;{}()[]");
-        if (t == -1) {
-            err(ER_C_UT);
-            curchar= ';';
-        }
-        nexttok = curchar;
-        getchar();
-        if (curchar == nexttok) {
-            t - index(curchar("+-|&=><");
-            if (t != -1) {
-                nexttok = dbltok[t];
-                getchar();
-            }
-        }
-        if (curchar == '=') {
-            t = index(nexttok, eq_able);
-            if (t != -1) {
-                nexttok = eqtok[t];
-                getchar();
-            }
-        }
-        if ((nexttok == '-') && (curchar == '>')) {
-            nexttok == PMEMBER;
-            getchar();
-        }
-        return 1;
-    }
+    *s = 0;
+    return 1;
 }
 
 void
@@ -291,6 +249,7 @@ do_cpp(char t)
     char *s;
     char k;
     struct cond *c;
+    int v;
 
     switch (t) {
     case 'F':   // if
@@ -339,23 +298,23 @@ do_cpp(char t)
         }
         return;
     case 'D':   // define
-        eatwhite1();
-        if (!issym(nsymbuf)) {
+        skipwhite1();
+        if (!issym()) {
             err(ER_C_MN);
             return;
         }
-        macdefine(nsymbuf);
+        macdefine(strbuf);
         return;
     case 'U':
-        eatwhite1();
-        if (!issym(nsymbuf)) {
+        skipwhite1();
+        if (!issym()) {
             err(ER_C_MN);
             return;
         }
-        macundefine(nsymbuf);
+        macundefine(strbuf);
         return;
     case 'I':
-        eatwhite1();
+        skipwhite1();
         if (curchar == '<') {
             k = '>';
         } else if (curchar == '\"') {
@@ -363,73 +322,229 @@ do_cpp(char t)
         } else {
             err(ER_C_ID);
         }
-        getchar();
-        s = nsymbuf;
+        getnext();
+        s = strbuf;
         while ((curchar != '\n') && (curchar != ' ') && (curchar != k)) {
             *s++ = curchar;
-            getchar();
+            getnext();
         }
         if (curchar != k) {
             err(ER_C_IT);
         }
-        insertfile(nsymbuf, k == '>'); 
+        insertfile(strbuf, k == '>'); 
         return;
     }
 }
 
+/*
+ * check if we have a literal string
+ */
 char 
 isstring(char *s)
 {
-    eatwhite1();
+#ifdef notdef
+    XXX - fixme
+    /*
+     * stringify #xxx into "<value of xxx>" if it's a cpp macro
+     * this is quite gnarly - if there is a literal string inside, then
+     * the quotes and backslashes in the string are escaped. as this
+     * can get ugly recursive, and it does not interact well with the
+     * method I use to do macros, this might not work.
+     */
     if ((prevchar != '\n') && (curchar == '#')) {
-        getchar();
-        eatwhite1();
+        getnext();
         while ((curchar > ' ') && (curchar <= 0x7f)) {
             *s++ = curchar;
-            getchar();
+            getnext();
         }
         *s = 0;
         return 1;
     }
+#endif
     if (curchar != '\"') {
         return 0;
     }
-    getchar();
+    getnext();
     while (curchar != '\"') {
-        *s++ = getliteralchar();
+        *s++ = getlit();
+        getnext();
     }
     *s = 0;
+    getnext();
     return 1;
 }
 
+/*
+ * character to token translation for single char tokens
+ * these are subject to the identity function
+ */
+char simple[] = {
+    OPEN, CLOSE, LBRACK, RBRACK, LPAR, RPAR, SEMI, COMMA,
+    ASSIGN, DOT, PLUS, MINUS, DIV, MOD, AND, OR, XOR,
+    LT, GT, NOT, COMP, QUES, OTHER, 0
+};
+
+/*
+ * list of tokens that can be doubled, and the resulting token
+ */
+char dbl_able[] = {
+    PLUS, MINUS, OR, AND, ASSIGN, GT, LT, 0
+};
 char dbltok[] = {
-    INCR, DECR, LOR, LAND, EQ, RSHIFT, LSHIFT
+    INC, DEC, LOR, LAND, EQ, RSHIFT, LSHIFT
 };
 
+/*
+ * list of tokens that can have '=' appended 
+ * and then, what token that turns them into
+ */ 
 char eq_able[] = {
-    '+', '-', '/', '%', '&', '|', '^', '>', '<', '!', LOR, LAND, RSHIFT, LSHIFT
+    PLUS, MINUS, STAR, DIV, MOD, AND, OR, XOR, 
+    GT, LT, NOT, LOR, LAND, RSHIFT, LSHIFT, 0
+};
+char eqtok[] = {
+    PLUSEQ, SUBEQ, MULTEQ, DIVEQ, MODEQ, ANDEQ, OREQ, XOREQ, 
+    GE, LE, NEQ, LOREQ, LANDEQ, RSHIFTEQ, LSHIFTEQ, 0
 };
 
-char eqtok[] = {
-    PLUSEQ, SUBEQ, MULTEQ, DIVEQ, MODEQ, ANDEQ, OREQ, XOREQ, GE, LE, NEQ,
-    LOREQ, LANDEQ, RSHIFTEQ, LSHIFTEQ
-};
+/*
+ * we want a stream of lexemes to be placed into 
+ * curtok and nexttok respectively.  
+ * we need 1 token of lookahead to do a recursive descent parse of C
+ *
+ * all the comment and preprocessor stuff is invisible above here
+ * as is string and character escaping, and number bases
+ */
+char
+gettoken()
+{
+    char *s;
+    char t;
+    int incomment = 0;
+
+    /* advance */
+    curtok = nexttok;
+    curval = nextval;
+    curstr = nextstr;
+
+    while (1) {
+        if (curchar == '#' && prevchar == '\n') {   // cpp directive
+            getnext();
+            skipwhite1();
+            if (issym()) {
+                t = kwlook(strbuf, cppkw);
+                if (t) {
+                    do_cpp(t);
+                    skiptoeol();
+                    continue;
+                }
+                err(ER_C_BD);
+            }
+            if (isnumber()) {
+                lineno = nextval;
+                skiptoeol();
+                continue;
+            }
+        }
+        if (curchar == '\n' && (tflags & ONELINE)) {
+            nexttok = ';';
+            getnext();
+            return 1;
+        }
+        if (prevchar == '\n' && cond && !(cond->flags & C_TRUE)) {
+            skiptoeol();
+            continue;
+        }
+        if ((curchar == '/') && (nextchar == '*') && !incomment) {
+            incomment = 1;
+            getnext();
+            getnext();
+            continue;
+        }
+        if ((curchar == '/') && (nextchar == '/')) {
+            skiptoeol();
+            continue;
+        }
+        if ((incomment) && (curchar == '*') && (nextchar == '/')) {
+            incomment = 0;
+            getnext();
+            getnext();
+            continue;
+        }
+        if (incomment) {
+            getnext();
+            continue;
+        }
+        if ((curchar == ' ') || (curchar == '\n')) {
+            getnext();
+            continue;
+        }
+        if (issym()) {
+            if (macexpand(strbuf)) {
+                continue;
+            }
+            t = kwlook(strbuf, ckw);
+            if (t) {
+                nexttok = t;
+                return 1;
+            }
+            nexttok = SYM;
+            return 1;
+        }
+        if (isnumber()) {
+            nexttok = NUMBER;
+            return 1;
+        }
+        if (isstring(strbuf)) {
+            nexttok = STRING;
+            return 1;
+        }
+        t = locate(curchar, simple);
+        if (t == -1) {
+            err(ER_C_UT);
+            curchar= ';';
+        }
+        nexttok = curchar;
+        getnext();
+        if (curchar == nexttok) {
+            t = locate(curchar, dbl_able);
+            if (t != -1) {
+                nexttok = dbltok[t];
+                getnext();
+            }
+        }
+        if (curchar == '=') {
+            t = locate(nexttok, eq_able);
+            if (t != -1) {
+                nexttok = eqtok[t];
+                getnext();
+            }
+        }
+        if ((nexttok == '-') && (curchar == '>')) {
+            nexttok = DEREF;
+            getnext();
+        }
+        return 1;
+    }
+}
 
 char
 cpppseudofunc()
 {
-    if ((strcmp("defined", nsymbuf) == 0) && (tflags & CPPFUNCS)) {
-        while ((curchar == '\t') || (curchar == ' ')) getchar();
+    int r = 0;
+
+    if ((strcmp("defined", strbuf) == 0) && (tflags & CPPFUNCS)) {
+        while ((curchar == '\t') || (curchar == ' ')) getnext();
         if (curchar != '(') {
             err(ER_C_DP);
             curchar = '0';
             return 1;
         }
-        getchar();
-        if (issym(nsymbuf)) {
-            if (maclookup(nsymbuf)) r = 1;
+        getnext();
+        if (issym()) {
+            if (maclookup(strbuf)) r = 1;
         }
-        while ((curchar == '\t') || (curchar == ' ')) getchar();
+        while ((curchar == '\t') || (curchar == ' ')) getnext();
         if (curchar != ')') {
             err(ER_C_DP);
             r = 0;
@@ -440,51 +555,11 @@ cpppseudofunc()
     return 0;
 }
 
-char
-issym(char *s)
-{
-    char c;
-
-    c = curchar | 0x20;
-    if (!((c >= 'a') && (c <= 'z')) || (curchar == '_')) {
-        return 0;
-    }
-    *s++ = curchar;
-    while (1) {
-        if ((curchar == ' ') || (curchar == '\t')) {
-            while ((curchar == ' ') || (curchar == '\t')) {
-                getchar();
-            }
-            if (curchar == '#' && nextchar == '#') {
-                getchar();
-                getchar();
-                while ((curchar == ' ') || (curchar == '\t')) {
-                    getchar();
-                }
-            } else {
-                break;
-            }
-        }
-
-        c = curchar | 0x20;
-        if (((c >= 'a') && (c <= 'z')) || 
-            ((c >= '0') && (c <= '9')) || 
-             (curchar == '_')) {
-            *s++ = curchar;
-            getchar();
-        } else {
-            break;
-        }
-    }
-    *s = 0;
-    return 1;
-}
-
 /*
  * this code straddles the cpp, the lexer and the expression parser
  * so much happense via global variable side effects, so recursive
  * calls could happen that need repair.
- * ex:  expr->gettoken->do_cpp->readconst->expr->gettoken->getchar
+ * ex:  expr->gettoken->do_cpp->readconst->expr->gettoken->getnext
  * if we hit an #if in the middle of an expression
  */
 int
@@ -492,14 +567,14 @@ readcppconst()
 {
     long val;
     struct expr *e;
-    char savedflags = tflags;
-    long savenum = numbervalue;
+    char savedtflags = tflags;
+    long savenum = curval;
     char savetok = curtok;
     char *savesym;
 
     if (curtok == SYM) {
-        savesym = alloca(strlen(symbuf));
-        strcpy(savesym, symbuf);
+        savesym = alloca(strlen(strbuf));
+        strcpy(savesym, strbuf);
     }
 
     /*
@@ -516,139 +591,10 @@ readcppconst()
     val = e->v;
     freeexpr(e);
     tflags = savedtflags;
-    numbervalue = savenum;
+    curval = savenum;
     curtok = savetok;
-    if (curtok == SYM) strcpy(savesym, symbuf);
+    if (curtok == SYM) strcpy(savesym, strbuf);
     return val;
-}
-
-char
-isnumber()
-{
-    char len = 0;
-    char base = 10;
-    char a;
-
-    nextnumber = 0;
-    if (curchar == '\'') {
-        getchar();
-        nextnumber = getliteralchar();
-        if (curchar == '\'') {
-            err(ER_C_CD);
-        }
-        getchar();
-        return 1;
-    }
-
-    if (curchar == '0') {
-        getchar();
-        if ((curchar | 0x20) == 'x') {
-            base = 16;
-            getchar();
-        } else if ((curchar | 0x20) == 'b') {
-            base = 2;
-            getchar();
-        } else {
-            base = 8;
-            len++;
-            getchar();
-        }
-    }
-    while (1) {
-        c = curchar;
-        c = (c > '9') ? (c | 0x20) - 'a' + 10 : c - '0';
-        if ((c < 0) || ((c+1) > base)) {
-            break;
-        }
-        nextnumber = nextnumber * base + c;
-        len++;
-        getchar();
-    }
-    if (len) {
-        return 1;
-    }
-    if ((base == 16) || (base == 2)) {
-        err(ER_C_NX);
-    }
-    return 0;
-}
-
-char
-getliteralchar()
-{
-    char c;
-    char base = 0;
-    short r = 0;
-    char len = 0;
-
-    if (curchar < ' ') {
-        err(ER_C_BC);
-        getchar();
-        return ' ';
-    }
-    if (curchar != '\\') {
-        r = curchar;
-        getchar();
-        return r;
-    }
-    getchar();
-    if (curchar == '0') {
-        getchar();
-        if ((curchar | 0x20) == 'x') {
-            base = 16;
-            getchar();
-        } else if ((curchar | 0x20) == 'b') {
-            base = 2;
-            getchar();
-        } else {
-            base = 8;
-            len++;
-            getchar();
-        }
-    } else if ((curchar >= '0') && (curchar <= '9')) {
-        base = 10;
-    }
-    if (base != 0) {
-        while (1) {
-            c = curchar;
-            c = (c > '9') ? (c | 0x20) - 'a' + 10 : c - '0';
-            if ((c < 0) || ((c+1) > base)) {
-                break;
-            }
-            r = r * base + c;
-            len++;
-            getchar();
-            if (r > 0xff) {
-                err(ER_C_NR);
-            }
-        }
-        if ((len == 0) && ((base == 16) || (base == 2)) {
-            err(ER_C_NX);
-        }
-        return r;
-    }
-    switch (curchar) {
-    case 'n':
-        r = '\n';
-        break;
-    case 't':
-        r = '\t';
-        break;
-    case 'r':
-        r = '\r';
-        break;
-    case 'b':
-        r = '\n';
-        break;
-    default:
-        if (curchar < ' ') {
-            err(ER_C_BC)
-            curchar = ' ';
-        }
-        r = curchar;
-        break;
-    }
-    return r;
 }
 
 /*

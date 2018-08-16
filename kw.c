@@ -18,6 +18,31 @@
 
 #define	HI	0x80
 
+/*
+ * the Z80 assembler
+ */
+char asmkw[] = {
+    0xff, 0
+};
+
+/*
+ * the C pre-processor
+ */
+char cppkw[] = {
+    'd'|HI, 7, 'e', 'f', 'i', 'n', 'e', 0xff, DEFINE,
+    'i'|HI, 'f'|HI, 7, 0xfe, IF,
+        'd', 'e', 'f', 0xff, IFDEF,
+        'n', 'c', 'l', 'u', 'd', 'e', 0xff, INCLUDE,
+    'e'|HI, 13, 'l'|HI, 9, 's'|HI, 3, 'e', 0xff, ELSE,
+            'i', 'f', 0xff, ELIF,
+        'n', 'd', 'i', 'f', 0xff, ENDIF,
+    'u', 'n', 'd', 'e', 'f', 0xff, UNDEF,
+    0xff, 0
+};
+
+/*
+ * the C language
+ */
 char ckw[] = {
 	'a'|HI, 10, 's'|HI, 3, 'm', 0xff, ASM,
 		'u', 't', 'o', 0xff, AUTO,
