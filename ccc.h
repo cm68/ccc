@@ -65,9 +65,9 @@ enum token {
 };
 
 /* kw.c */
-extern char *cppkw;
-extern char *ckw;
-extern char *asmkw;
+extern char cppkw[];
+extern char ckw[];
+extern char asmkw[];
 extern char kwlook(char *str, char *table);
 
 /* lex.c */
@@ -77,6 +77,7 @@ extern long curval;
 extern long nextval;
 extern char *curstr;
 extern char *nextstr;
+extern char strbuf[];
 
 /* io.c */
 extern void pushfile(char *name);
@@ -99,6 +100,17 @@ extern void err(char errcode);
 int main(int argc, char **argv);
 void process(char *f);
 void usage(char *complaint, char *p);
+
+/* macro.c */
+struct macro {
+	char parmcount;
+	char *name;
+	char **parms;
+	char *mactext;
+	struct macro *next;
+};
+extern struct macro *macros;
+char *macbuffer;
 
 /* error numbers for formatting */
 enum errors {

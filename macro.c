@@ -1,6 +1,23 @@
 #include "ccc.h"
-#include "lex.h"
 #define MAXPARMS    10
+
+struct macro *macros;
+
+/*
+ * look up a macro in the macro table
+ */
+struct macro *
+maclookup(char *name)
+{
+    struct macro *m;
+
+    for (m = macros; m; m = m->next) {
+        if (strcmp(m->name, name) == 0) {
+            return m;
+        }
+    }
+    return 0;
+}
 
 /*
  * read the macro definition and parse out the parameter names
@@ -10,11 +27,11 @@ macdefine(char *s)
 {
     int i;
     struct macro *m = malloc(sizeof(*m));
-    char *parm[MAXPARMS];
+    char *parms[MAXPARMS];
 
-    m->macnam = strdup(s);
+    m->name = strdup(s);
     m->parmcount = 0;
-    eatwhite1();
+    skipwhite1();
 
     /*
      * get the parameter names from the (<a>,<b>,...) list
@@ -22,11 +39,11 @@ macdefine(char *s)
     if (curchar == '(') {
         getchar();
         while (1) {
-            eatwhite1();
+            skipwhite1();
             if (issym(s)) {
-                parm[m->parmcount++] = strdup(s);
+                parms[m->parmcount++] = strdup(s);
                 getchar();
-                eatwhite1();
+                skipwhite1();
                 if (curchar == ',') {
                     getchar();
                     continue;
@@ -44,7 +61,7 @@ macdefine(char *s)
             m->parms[i] = parms[i];
         }
         getchar();
-        eatwhite1();
+        skipwhite1();
     }
     s = macbuffer;
     while (curchar != '\n') {
@@ -72,25 +89,28 @@ macexpand(char *s)
     char plevel;
     char *d;
     char args;
-    char *parm[MAXPARMS];
+    char *parms[MAXPARMS];
+    char c;
+    char *n;
+    int i;
 
     for (m = macros; m; m = m->next) {
-        if (strcmp(m, s) == 0) {
+        if (strcmp(m->name, s) == 0) {
             break;
         }
     }
     if (!m) {
-        return 0;
+        return;
     }
     args = 0;
     d = macbuffer;
-    eatwhite();
+    skipwhite();
     /*
      * read the arguments
      */
     if (curchar == '(') {
         getchar();
-        eatwhite();
+        skipwhite();
         while (1) {
             shrinkwhite();
             /*
@@ -120,7 +140,7 @@ macexpand(char *s)
              */
             if ((plevel == 0) && ((curchar == ',') || (curchar == ')'))) {
                 *d++ = '\0';
-                parm[args++] = strdup(macbuffer);
+                parms[args++] = strdup(macbuffer);
                 if (curchar == ')') {
                     break;
                 }
@@ -154,17 +174,17 @@ macexpand(char *s)
             continue;
         }
         if (((c >= 'A') && (c <= 'z')) || ((c >= '_') && (c <= 'z'))) {
-            n = nsymbuf;
+            n = strbuf;
             while (((c >= 'A') && (c <= 'z')) || 
                     ((c >= '_') && (c <= 'z')) ||
                     ((c >= '0') && (c <= '9'))) {
                 *n++ = *s++;
             }
             *n++ = 0;
-            n = nsymbuf;
+            n = strbuf;
             for (i = 0; i < args; i++) {
-                if (strcmp(m->parm, nsymbuf) == 0) {
-                    n = a[i];
+                if (strcmp(m->parms[i], strbuf) == 0) {
+                    n = parms[i];
                     break;
                 }
             }
@@ -176,7 +196,7 @@ macexpand(char *s)
         *d++ = *s++;
     }
     *d = 0;
-    insertmacro(m->macnam);
+    insertmacro(m->name);
 }
 
 /*

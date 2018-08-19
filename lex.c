@@ -35,7 +35,7 @@ char tflags;
 /*
  * skip over any whitespace
  */
-static void
+void
 skipwhite()
 {
     while ((curchar == ' ') || (curchar == '\n')) {
@@ -46,7 +46,7 @@ skipwhite()
 /*
  * skip over any whitespace other than newline
  */
-static void
+void
 skipwhite1()
 {
     while (curchar == ' ') {
@@ -57,7 +57,7 @@ skipwhite1()
 /*
  * skip to end of line
  */
-static void
+void
 skiptoeol()
 {
     while (curchar && (curchar != '\n')) {
@@ -338,6 +338,8 @@ do_cpp(char t)
 
 /*
  * check if we have a literal string
+ * this needs to handle both the stringify operator and the string concat:
+ *   "foo" <whitespace> "bar"   -> "foobar"
  */
 char 
 isstring(char *s)
