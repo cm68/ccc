@@ -1,9 +1,7 @@
 /*
- * this is the a brute force slow lexer
- * note that this is the portable lexer.   a much faster, assembly lexer
- * using the exact same external interface is easily coded - XXX
+ * this is a brute force lexer that uses a tight keyword lookup in kw.c
+ * we do cpp conditionals in here
  */
-
 #include "ccc.h"
 #include "expr.h"
 
@@ -329,7 +327,7 @@ do_cpp(char t)
             getnext();
         }
         if (curchar != k) {
-            err(ER_C_IT);
+            err(ER_C_ID);
         }
         insertfile(strbuf, k == '>'); 
         return;
@@ -339,6 +337,8 @@ do_cpp(char t)
 /*
  * check if we have a literal string
  * this needs to handle both the stringify operator and the string concat:
+ *   #FOO   -> "FOO":q
+ *
  *   "foo" <whitespace> "bar"   -> "foobar"
  */
 char 
@@ -378,12 +378,13 @@ isstring(char *s)
 
 /*
  * character to token translation for single char tokens
- * these are subject to the identity function
+ * the enum for these is the actual character seen.  
+ * no need to translate, just recognize.
  */
 char simple[] = {
     OPEN, CLOSE, LBRACK, RBRACK, LPAR, RPAR, SEMI, COMMA,
     ASSIGN, DOT, PLUS, MINUS, DIV, MOD, AND, OR, XOR,
-    LT, GT, NOT, COMP, QUES, OTHER, 0
+    LT, GT, BANG, TWIDDLE, QUES, OTHER, 0
 };
 
 /*
@@ -393,7 +394,7 @@ char dbl_able[] = {
     PLUS, MINUS, OR, AND, ASSIGN, GT, LT, 0
 };
 char dbltok[] = {
-    INC, DEC, LOR, LAND, EQ, RSHIFT, LSHIFT
+    INC, DEC, LOR, LAND, EQ, RSHIFT, LSHIFT, 0
 };
 
 /*
@@ -402,7 +403,7 @@ char dbltok[] = {
  */ 
 char eq_able[] = {
     PLUS, MINUS, STAR, DIV, MOD, AND, OR, XOR, 
-    GT, LT, NOT, LOR, LAND, RSHIFT, LSHIFT, 0
+    GT, LT, BANG, LOR, LAND, RSHIFT, LSHIFT, 0
 };
 char eqtok[] = {
     PLUSEQ, SUBEQ, MULTEQ, DIVEQ, MODEQ, ANDEQ, OREQ, XOREQ, 
@@ -415,7 +416,7 @@ char eqtok[] = {
  * we need 1 token of lookahead to do a recursive descent parse of C
  *
  * all the comment and preprocessor stuff is invisible above here
- * as is string and character escaping, and number bases
+ * as is string, character escaping, and number bases
  */
 char
 gettoken()
@@ -501,7 +502,7 @@ gettoken()
             nexttok = STRING;
             return 1;
         }
-        t = locate(curchar, simple);
+        t = lookupc(simple, curchar);
         if (t == -1) {
             err(ER_C_UT);
             curchar= ';';
@@ -509,14 +510,14 @@ gettoken()
         nexttok = curchar;
         getnext();
         if (curchar == nexttok) {
-            t = locate(curchar, dbl_able);
+            t = lookupc(dbl_able, curchar);
             if (t != -1) {
                 nexttok = dbltok[t];
                 getnext();
             }
         }
         if (curchar == '=') {
-            t = locate(nexttok, eq_able);
+            t = lookupc(eq_able, nextchar);
             if (t != -1) {
                 nexttok = eqtok[t];
                 getnext();
@@ -559,7 +560,7 @@ cpppseudofunc()
 
 /*
  * this code straddles the cpp, the lexer and the expression parser
- * so much happense via global variable side effects, so recursive
+ * so much happens via global variable side effects, so recursive
  * calls could happen that need repair.
  * ex:  expr->gettoken->do_cpp->readconst->expr->gettoken->getnext
  * if we hit an #if in the middle of an expression

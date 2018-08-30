@@ -2,6 +2,10 @@
  * this i/o machinery is a unification of macro expansion, include files
  * and source file buffering.  these are stacked, so we can push
  * include files and save our position at each level
+ *
+ * we don't do any character processing at all at this level.
+ * if there are nasty control characters, etc, we pass them up.
+ * not our job; except nulls.  those are dirty; the first null is eof.
  */
 #include "ccc.h"
 #include <fcntl.h>
@@ -14,6 +18,7 @@ char prevchar;
 char curchar;
 char nextchar;
 int lineno;
+char *filename;
 
 #define	TBSIZE	1024		/* text buffer size */
 struct textbuf {
@@ -27,7 +32,7 @@ struct textbuf {
 } *tbtop;
 
 void
-pushfile(char *name)
+insertfile(char *name)
 {
 	struct textbuf *t;
 
@@ -65,7 +70,7 @@ pushfile(char *name)
  * turn has macro invocations, that causes another push.
  */
 void
-insert_macro(char *name, char *macbuf)
+insertmacro(char *name, char *macbuf)
 {
 	struct textbuf *t;
 
@@ -89,6 +94,8 @@ insert_macro(char *name, char *macbuf)
 
 /*
  * grab a character from the input machinery
+ * if an input file has a null before EOF, then bizarre stuff happens.
+ * handling this case is not worth it. - XXX
  */
 char
 readchar()

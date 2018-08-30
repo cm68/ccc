@@ -1,0 +1,5 @@
+verify that nested macros work.
+
+#define	FOO(x,y)	bar(x,y)
+#define	XYZZY(a,b)	FOO(a,FOO(b,a))
+

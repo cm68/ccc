@@ -49,6 +49,9 @@ lookup_tag(char *name, struct type *t)
 	return 0;
 }
 
+/*
+ * what's in a name
+ */
 void
 dump_name(struct name *n)
 {
@@ -62,6 +65,9 @@ dump_name(struct name *n)
 		n->type->typename->name);
 }
 
+/*
+ * add a name to a scope, tagged with attributes
+ */
 struct name *
 new_name(char *name, struct scope *scope, struct type *t, enum namekind k)
 {
@@ -86,6 +92,7 @@ new_scope(struct scope *parent, char *name)
 	s->parent = parent;
 	s->names = 0;
 	s->scopename = strdup(name);
+    return (s);
 }
 
 /*
@@ -94,10 +101,19 @@ new_scope(struct scope *parent, char *name)
 void
 destroy_scope(struct scope *s)
 {
+	struct name *n;
+
+	while ((n = s->names)) {
+        s->names = n->next;
+		free(n->name);
+        free(n);
+	}
+    free(s->scopename);
+    free(s);
 }
 
 /*
- * 
+ * print out a scope's names
  */
 void
 dump_scope(struct scope *s)

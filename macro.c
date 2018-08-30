@@ -1,4 +1,5 @@
 #include "ccc.h"
+
 #define MAXPARMS    10
 
 struct macro *macros;
@@ -18,6 +19,38 @@ maclookup(char *name)
     }
     return 0;
 }
+
+/*
+ * remove a name from the macro list
+ */
+void
+macundefine(char *s)
+{
+    int i;
+    struct macro *m, *p;
+    p = 0;
+
+    for (m = macros; m; m = m->next) {
+        if (strcmp(m->name, s) == 0) {
+            break;
+        }
+        p = m;
+    }
+    if (m) {
+        if (!p) {
+            macros = m->next;
+        } else {
+            p->next = m->next;
+        }
+        for (i = 0; i < m->parmcount; i++) {
+            free(m->parms[i]);
+        }
+        free(m->parms); 
+        free(m->name);
+        free(m);
+    }
+}
+
 
 /*
  * read the macro definition and parse out the parameter names
@@ -52,7 +85,7 @@ macdefine(char *s)
             if (curchar == ')') {
                 break;
             }
-            lose("busted macro param list");
+            err(ER_C_DP);
         }
         if (m->parmcount) {
             m->parms = malloc(sizeof(char *) * m->parmcount);
@@ -64,16 +97,16 @@ macdefine(char *s)
         skipwhite1();
     }
     s = macbuffer;
+    /* we copy to the macbuffer the entire logical line, spaces and tabs included */
     while (curchar != '\n') {
         if ((curchar == '\\') && (nextchar == '\n')) {
             getchar();
             curchar = ' ';
         }
-        shrinkwhite1();
         *s++ = curchar;
     }
     *s = 0;
-    getchar();
+    getchar();  /* eat the newline */
     m->mactext = strdup(macbuffer);
     m->next = macros;
     macros = m;
@@ -110,9 +143,8 @@ macexpand(char *s)
      */
     if (curchar == '(') {
         getchar();
-        skipwhite();
         while (1) {
-            shrinkwhite();
+            skipwhite();
             /*
              * copy literals literally
              */
@@ -154,7 +186,7 @@ macexpand(char *s)
         getchar();
     }
     if (args != m->parmcount) {
-        lose("macro arg count mismatch");
+        err(ER_C_DP);
     }
 
     d = macbuffer;

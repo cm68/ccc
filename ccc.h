@@ -19,20 +19,20 @@ extern int verbose;
 enum token {
 	EOF = 0,
 	/* C keywords */
-	ASM = 'a', AUTO = 'A', 
+	ASM = 'A', AUTO = 'o', 
 	BOOLEAN = 'b' , BREAK = 'B', 
-	CASE = 'C', CHAR = 'c', CONST = '9', CONTINUE = 'g',
-	DEFAULT = 'o', DO = 'D', DOUBLE = 'd', 
+	CASE = 'C', CHAR = 'c', CONST = 'k', CONTINUE = 'N',
+	DEFAULT = 'O', DO = 'D', DOUBLE = 'd', 
 	ELSE = 'E', ENUM = 'e', EXTERN = 'x', 
 	FLOAT = 'f', FOR = 'F', 
-	GOTO = 'J',
+	GOTO = 'G',
 	IF = 'I', INT = 'i', 
 	LONG = 'l', 
 	REGISTER = 'r', RETURN = 'R', 
-	SIZEOF = 'z', SHORT = 's', STATIC = 'L', STRUCT = 'X', 
-	TYPEDEF = 't', 
-	UNION = 'U', UNSIGNED = 'u', 
-	VOID = 'v', VOLATILE = 'V', 
+	SIZEOF = 'z', SHORT = 's', STATIC = 'p', STRUCT = 'a', SWITCH = 'S',
+	TYPEDEF = 't',
+	UNION = 'm', UNSIGNED = 'u', 
+	VOID = 'v', VOLATILE = '4', 
 	WHILE = 'W',
 
 	/* syntactic cogs */
@@ -40,28 +40,30 @@ enum token {
  	LBRACK = '[', RBRACK = ']',
 	LPAR = '(', RPAR = ')', 
 	SEMI = ';', COMMA = ',',
+	LABEL = '3',
 
 	/* terminals */
-	SYM = '7', NUMBER = '8', STRING = '9',
+	SYM = '5', NUMBER = '9', STRING = '\"',
 
 	/* operators */
 	ASSIGN = '=', DOT = '.', DEREF = 'M',
 	PLUS = '+', MINUS = '-', STAR = '*', DIV = '/', MOD = '%',
 	AND = '&', OR = '|', XOR = '^',
-	LT = '<', GT = '>', NOT = '!', COMP = '~',
+	LT = '<', GT = '>', BANG = '!', TWIDDLE = '~',
 	QUES = '?', OTHER = ':',
-	INC = 'p', DEC = 'm',
-	LSHIFT = 'K' , RSHIFT = 'k',
-	LOR = 'n', LAND = 'N',
-	EQ = 'Q', NEQ = 'q', LE = 'x', GE = 'X',
-	PLUSEQ, SUBEQ, MULTEQ, DIVEQ, MODEQ, 
-	ANDEQ, OREQ, XOREQ,
-	LANDEQ, LOREQ, 
-	RSHIFTEQ, LSHIFTEQ,
-	/* CPP */	
-	INCLUDE = '0',
-	DEFINE = '1', UNDEF = '2', 
-	IFDEF = '3', ENDIF = '4', ELIF = '5'
+	INC = 'U', DEC = 'V',
+	LSHIFT = 'y' , RSHIFT = 'w',
+	LOR = 'h', LAND = 'j',
+	EQ = 'Q', NEQ = 'n', LE = 'L', GE = 'g',
+	PLUSEQ = 'P', SUBEQ = '_', MULTEQ = 'T', DIVEQ = '2', MODEQ = '7',
+	ANDEQ = '@', OREQ = '1', XOREQ = 'X',
+	LANDEQ = 'J', LOREQ = 'H', 
+	RSHIFTEQ = '6', LSHIFTEQ = '0',
+
+	/* CPP */
+	INCLUDE = '#',
+	DEFINE = '$', UNDEF = 'K', 
+	IFDEF = 'Y', ENDIF = 'Z', ELIF = '8'
 };
 
 /* kw.c */
@@ -112,6 +114,13 @@ struct macro {
 extern struct macro *macros;
 char *macbuffer;
 
+/* util.c */
+extern char lookupc(char *s, char c);
+
+/* type.c */
+extern struct scope *global;
+extern struct scopt *new_scope(struct scope *parent, char *name);
+
 /* error numbers for formatting */
 enum errors {
 	ER_C_NX,	// number format error
@@ -122,10 +131,8 @@ enum errors {
 	ER_C_ME,	// too many elses
 	ER_C_MN,	// no macro name
 	ER_C_ID,	// bad include name format
-	ER_C_IT,	// unterminated include name
 	ER_C_DP,	// bad macro param list
 	ER_C_CE,	// cpp const required
 	ER_C_BD,	// unknown cpp operation
 	ER_C_END	// last error
 };
-

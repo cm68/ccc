@@ -3,8 +3,8 @@
  */
 
 #include "ccc.h"
-#include "lex.h"
 
+#ifdef notdef
 void
 eat(char match)
 {
@@ -31,6 +31,102 @@ decl(struct type *base)
 {
 }
 
+struct stmt *
+stmt(struct var *f, struct stmt *parent)
+{
+    struct stmt *st, **pst;
+    pst = 0;
+
+    while (1) {
+        switch (curtok) {
+        case OPEN:
+            gettoken();
+            st = statement(f, parent);
+            need(CLOSE, CLOSE, ER_S_CC);
+            break;
+        case IF:
+            gettoken();
+            need(LPAR, LPAR, ER_S_NP);
+            st = makestmt(IF, expr(PRI_PAREN, parent));
+            need(RPAR, RPAR, ER_S_NP);
+            st->chain = stmt(f, st);
+            if (curtok == ELSE) {
+                gettoken();
+                st->otherwise = stmt(f, st);
+            } 
+            break;
+        case BREAK;
+            gettoken();
+            need(SEMI, SEMI, ER_S_SN);
+            st = makestmt(BREAK, 0);
+            break;
+        case DEFAULT;
+            gettoken();
+            need(SEMI, SEMI, ER_S_SN);
+            break;
+        case RETURN:
+            gettoken();
+            st = makestmt(RETURN, 0);
+            if (curtok != SEMI) {
+                st->left = expr(PRI_ALL, parent);
+            }
+            need(SEMI, SEMI, ER_S_SN);
+            break;
+        case SYM:
+            if (nexttok == COLON) {
+                st = makestmt(LABEL, 0);
+                st->label = strdup(symbuf);
+                st->flags |= S_LABEL;
+                gettoken();
+                gettoken();
+                break;
+            }
+            /* fall through */
+        case LPAR:
+        case STAR:
+        case INCR:
+        case DECR:
+            st = makestmt(EXPR, expr(PRI_ALL, parent));
+            need(SEMI, SEMI, ER_S_SN);
+            break;
+        case FOR: 
+}
+
+struct stmt *
+makestmt(char op, struct expr *left)
+{
+    struct stmt *st;
+
+    st = malloc(sizeof(*st));
+    st->op = op;
+    st->left = left;
+    return st;
+}
+
+void
+parsefunc(struct var *v)
+{
+    v->body = stmt(v, 0);
+    v->body->flags = S_FUNC;
+}
+
+char
+getsclass(char toplevel)
+{
+    char sc = curtok;
+
+    if ((sc == CONST) || (sc == EXTERN) || (sc == STATIC) || (sc == VOLATILE)) {
+        gettoken();
+    } else {
+        if ((sc == AUTO) || (sc == REGISTER)) {
+            if (toplevel) {
+                err(ER_E_TA);
+            }
+            gettoken();
+    }
+    return sc;
+}
+
 void
 declaration(struct scope *sc)
 {
@@ -39,17 +135,35 @@ declaration(struct scope *sc)
     struct initial *i;
 
     while (1) {
-        base = basetype();
-        name = decl(base);
-        addname(sc, name);
+        sclass = getsclass(1);
+        basetype = 0;
 
-        if (token_p('=')) {
-            initializer();
+        v = declare(&basetype);
+        if (v->type & T_FUNC) {
+            if (curtok == OPEN) {
+                parsefunc(v);
+                if (sclass == 'p') {
+                    v->flags |= V_STATIC;
+                }
+                v->flags |= V_GLOBAL;
+                v->next = globals;
+                globals = v;
+                break;
+            }
         }
-        if (token_p(';')) {
+        if (sclass == 'p') {
+            v->flags |= V_STATIC;
+        }
+        if (curtok == ASSIGN) {
+            do_initializar();
+        }
+        if (curtok == COMMA) {
+            gettoken();
+            continue;
+        }
+        if (curtok == SEMI) {
             break;
         }
-        need(',');
     }  
 }
 
@@ -57,6 +171,7 @@ void
 block()
 {
 }
+#endif
 
 /*
  * global level parse
@@ -65,7 +180,7 @@ void
 parse()
 {
     global = new_scope((struct scope *)0, "global");
-    while (*inptr) {
+    while (curtok != EOF) {
         declaration(global);
     }
     destroy_scope(global);
