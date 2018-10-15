@@ -1,6 +1,7 @@
 /*
  * global defs for curt's c compiler
  */
+#include "type.h"
 
 #define	DEBUG
 
@@ -16,8 +17,8 @@ extern int verbose;
  * they all have values that are printable for debug 
  * purposes and for cheap serializing into intermediate files
  */
-enum token {
-	EOF = 0,
+typedef enum token {
+	E_O_F = 0,
 	/* C keywords */
 	ASM = 'A', AUTO = 'o', 
 	BOOLEAN = 'b' , BREAK = 'B', 
@@ -36,7 +37,7 @@ enum token {
 	WHILE = 'W',
 
 	/* syntactic cogs */
-	OPEN = '{', CLOSE = '}',
+	BEGIN = '{', END = '}',
  	LBRACK = '[', RBRACK = ']',
 	LPAR = '(', RPAR = ')', 
 	SEMI = ';', COMMA = ',',
@@ -64,7 +65,7 @@ enum token {
 	INCLUDE = '#',
 	DEFINE = '$', UNDEF = 'K', 
 	IFDEF = 'Y', ENDIF = 'Z', ELIF = '8'
-};
+} token_t;
 
 /* kw.c */
 extern char cppkw[];
@@ -73,13 +74,14 @@ extern char asmkw[];
 extern char kwlook(char *str, char *table);
 
 /* lex.c */
-extern enum token curtok;
-extern enum token nexttok;
+extern token_t curtok;
+extern token_t nexttok;
 extern long curval;
 extern long nextval;
 extern char *curstr;
 extern char *nextstr;
 extern char strbuf[];
+extern char match(token_t t);
 
 /* io.c */
 extern void pushfile(char *name);
@@ -118,11 +120,16 @@ char *macbuffer;
 extern char lookupc(char *s, char c);
 
 /* type.c */
-extern struct scope *global;
-extern struct scopt *new_scope(struct scope *parent, char *name);
+extern struct scope *scope;
+void push_scope(char *name);
+void pop_scope();
+struct type *findtype(char *name, kind_t kind);
 
-/* error numbers for formatting */
-enum errors {
+/*
+ * error numbers for formatting
+ * these should match the indexes for the errmsg array
+ */
+typedef enum errors {
 	ER_C_NX,	// number format error
 	ER_C_BC, 	// bad character
 	ER_C_CD,	// bad literal 
@@ -135,4 +142,8 @@ enum errors {
 	ER_C_CE,	// cpp const required
 	ER_C_BD,	// unknown cpp operation
 	ER_C_END	// last error
-};
+} error_t;
+
+/*
+ * vim: tabstop=4 shiftwidth=4 expandtab:
+ */

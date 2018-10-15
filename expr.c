@@ -201,7 +201,7 @@ expr(char pri, struct stmt *st)
                 e->left->up = e;
                 e->type = e->left->type->sub;
                 e->cost = e->left->cost;
-                while (curtok != EOF) {
+                while (curtok != E_O_F) {
                     e1 = expr(PRI_PAREN, st);
                     e->up = e;
                     if (e->next) {

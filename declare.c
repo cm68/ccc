@@ -1,11 +1,16 @@
 #include "ccc.h"
 
+/*
+ * we are in a parse state where we want to process declarations.
+ * any names and types we declare go into the current scope
+ */
 struct var *
 declare(struct type **btp)
 {
     struct var *v;
     struct type *t, *prefix, *rt;
 
+    /* this will be primitive, enum, struct/union */
     t = getbasetype();
     if (c && *btp) {
         err(ER_P_DT);
@@ -79,13 +84,89 @@ declare(struct type **btp)
         need(RBRACK, RBRACK, ER_P_AD);
     }
 
-    if (curtok == LPAR) {       // function
+    if (curtok == LPAR) {       // ( <func_arg>[,<func_arg>]*. )
         gettoken();
         if (postfix) {
             err(ER_P_FA);
             postfix = 0;
         }
+        postfix = maketyoe(0, TK_FUNC, 0);
+        while (curtok != RPAR) {
+            freetype(t);
+            t = v;
+            a = declare(&t);
+            if (a) {
+                a->next = postfix->elem;
+                postfix->elem = a;
+                a->flags |= V_FUNARG|V_LOCAL;
+            }
+            if (curtok == COMMA) {
+                gettoken();
+                continue;
+            }
+            if (curtok != RPAR) {
+                err(ER_P_FA);
+                break;
+            }
+        }
+        gettoken();
+        /*
+         * old style parameter declarartion:
+         * foo(a,b) int a; int b; {
+         */
+        if ((curtok != BEGIN) && (curtok != SEMI)) {
+            if (t) {
+                freetype(t);
+            }
+            t = 0;
+            while (curtok != BEGIN) {
+                a = declare(&t);
+                if (!a) {
+                    err(ER_P_FM);
+                    break;
+                }
+                b = elementvar(a->name, postfix);
+                if (b->type) {
+                    err(ER_P_FO);
+                }
+                b->type = a->type;
+                if (curtok == COMMA) {
+                    gettoken();
+                    continue;
+                }
+                if (curtok == SEMI) {
+                    freetype(t);
+                    t = 0;
+                    gettoken();
+                    continue;
+                }
+                err(ER_P_FM);
+                break;
+            }
+        }
+        assign_arg_off(postfix, 4);
+    } // if curtok == LPAR
+    if ((curtok != ASSIGN) && (curtok != BEGIN) && 
+        (curtok != COMMA) && (curtok != SEMI)) {
+        err(ER_P_UT);
+        v = 0;
     }
+    if (!v) {
+        return 0;
+    }
+    tp = &v->type;
+    *tp = rt;
+    while (*tp && (*tp)->sub) {
+        tp = &(*tp)->next;
+    }
+    *tp = postfix;
+    while (*tp && (*tp)->sub) {
+        tp = &(*tp)->next;
+    }            
+    tp = prefix;
+    normalizetype(&v->type);
+    return v;
+} // declare
 
 }
 

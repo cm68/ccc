@@ -1,3 +1,6 @@
+/*
+ * errors, messages, and recovery
+ */
 #include "ccc.h"
 
 #undef sprintf
@@ -18,8 +21,12 @@ char *errmsg[] = {
 };
 int error;
 
+/*
+ * print a message for an error code and emit an error location
+ * continue
+ */
 void
-err(char errcode)
+err(error_t errcode)
 {
     int i;
 
@@ -30,25 +37,35 @@ err(char errcode)
     error = errcode;
 }
 
+/*
+ * some errors are too nasty to fix
+ */
 void
-fatal(char errcode)
+fatal(error_t errcode)
 {
     err(errcode);
     printf("too severe to recover\n");
     exit(-errcode);
 }
 
+/*
+ * throw an error message and discard tokens until we see the token we specify
+ */
 void
-recover(char errcode, char skipto)
+recover(error_t errcode, token_t skipto)
 {
     err(errcode);
-    while (curtok != skipto && curtok != EOF) {
+    while ((curtok != skipto) && (curtok != EOF)) {
         gettoken();
     }
 }
 
+/*
+ * the next token must be 'check'.  if it isn't, gripe about it and skip
+ * until we find 'skipto'
+ */
 void 
-need(char check, char skipto, char errcode)
+need(token_t check, token_t skipto, error_t errcode)
 {
     if (curtok == check) {
         gettoken();
@@ -57,6 +74,18 @@ need(char check, char skipto, char errcode)
     recover(errcode, skipto);
 }
 
+/*
+ * a variant sprintf with support for formats: 
+ * %[<precision>]<format>
+ * where precision is [-][0][0-9]*
+ *    if -, right pad
+ *    if leading 0, zero pad
+ * formats:
+ *    b - binary
+ *    d - decimal
+ *    x - hex
+ *    s - string     
+ */
 void
 sprintf(char *d, char *fmt) {
     char **ap;
@@ -152,6 +181,7 @@ sprintf(char *d, char *fmt) {
         }
     }
 }
+
 /*
  * vim: tabstop=4 shiftwidth=4 expandtab:
  */

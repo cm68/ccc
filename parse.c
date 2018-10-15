@@ -4,53 +4,43 @@
 
 #include "ccc.h"
 
-#ifdef notdef
-void
-eat(char match)
-{
-    if (token != match) {
-        lossage("} expected");
-    }
-}
-
-int
-token_p(char match)
-{
-	if (token == match) {
-		advance();
-        return 1;
-	}
-    return 0;
-}
-
 /*
- * given a base type, parse a declaration and return the name
+ * parse a statement - this is really the heart of the compiler frontend
+ * it recursively calls itself
+ * there is some hair here having to do with
  */
-struct name *
-decl(struct type *base)
-{
-}
-
 struct stmt *
-stmt(struct var *f, struct stmt *parent)
+statement(struct var *f, struct stmt *parent)
 {
     struct stmt *st, **pst;
     pst = 0;
+    int block = 1;
+    struct scope *sc;
 
-    while (1) {
+    while (block) {
         switch (curtok) {
-        case OPEN:
-            gettoken();
-            st = statement(f, parent);
-            need(CLOSE, CLOSE, ER_S_CC);
+
+        case END:   // end a block
+            block = 0;
             break;
-        case IF:
+
+        case BEGIN: // begin a block
+            gettoken();
+            cur_block = new_scope(cur_block, blockname()); 
+            st = statement(f, parent);
+            sc = cur_block;
+            cur_block = sc->parent;
+            destroy_scope(sc);
+            need(END, END, ER_S_CC);
+            break;
+
+        case IF:    // if <condition> <statement>
             gettoken();
             need(LPAR, LPAR, ER_S_NP);
             st = makestmt(IF, expr(PRI_PAREN, parent));
             need(RPAR, RPAR, ER_S_NP);
             st->chain = stmt(f, st);
-            if (curtok == ELSE) {
+            if (curtok == ELSE) {   // else <statement>
                 gettoken();
                 st->otherwise = stmt(f, st);
             } 
@@ -89,7 +79,106 @@ stmt(struct var *f, struct stmt *parent)
             st = makestmt(EXPR, expr(PRI_ALL, parent));
             need(SEMI, SEMI, ER_S_SN);
             break;
-        case FOR: 
+
+        case FOR:   // for (<expr>; <expr>; <expr>) <statement> ;
+            gettoken();
+            need('(','(', ER_S_NP);
+            st = makestmt(FOR, expr(PRI_ALL, parent));
+            need(';', ';', EN_S_SN);
+            st->middle = expr(PRI_ALL, parent);
+            need(';', ';', EN_S_SN);
+            st->right = expr(PRI_ALL, parent);
+            need(')',')', ER_S_NP);
+            st->chain = stmt(f, st);
+            break;
+
+        case WHILE:     // while <condition> <statement> ;
+            gettoken();
+            need('(','(', ER_S_NP);
+            st = makestmt(WHILE, expr(PRI_ALL, parent));
+            need(')',')', ER_S_NP);
+            st->chain = stmt(f, st);
+            break;
+
+        case 'E':
+            recover(';', ER_S_OE);
+            break;
+
+        case SWITCH:    // switch (<expr>) <block> ;
+            gettoken();
+            need('(','(', ER_S_NP);
+            st = makestmt(SWITCH, expr(PRI_ALL, parent));
+            need(')',')', ER_S_NP);
+            need('{','{', ER_S_SB);
+            st->chain = stmt(f, st);
+            need('}', '}', ER_S_CC);
+            break;
+
+        case CASE:
+            gettoken();
+            st = newstmt(CASE, expr(PRI_ALL, parent));
+            if (!(st->left->flags & E_CONST) || (st->left->type->size != 1)) {
+                err(ER_S_NC);
+            }
+            need(':', ':', ER_S_NL);
+            break;
+
+        case GOTO:
+            gettoken();
+            st = makestmt(GOTO, 0);
+            if (curtok != SYM) {
+                recover(ER_S_GL, ';');
+                break;
+            } 
+            st->label = strdup(symbuf);
+            gettoken();
+            need(';',';', ER_S_SN);
+            break;
+
+        case DEFAULT:
+            gettoken();
+            need(':', ':', ER_S_NL);
+            st = makestmt(DEFAULT, 0);
+
+        case ';':
+            gettoken();
+            st = makestmt(';', 0);
+            break;
+
+        case DO:    // do <statement> while <condition> ;
+            gettoken();
+            need('{',';', ER_S_CC);
+            st = makestmt(DO, 0);
+            st->chain = stmt(f, st);
+            if ((curtok != '}') || nexttok != WHILE) {
+                err(ER_S_DO);
+                break;
+            }
+            if (curtok != '(') {
+                err(ER_S_NP);
+            }
+            st->left = expr(PRI_ALL, parent);
+            need(')',';', ER_S_NP);
+            need(';', ';', E_S_SN);
+            break;
+
+        case ASM:
+            st->chain = asmblock();
+            break;
+
+        default:
+            lose();
+        }
+        if (!pst) {
+            if (!st) {
+                continue;
+            }
+            st->flags |= S_PARENT;
+        }
+        pst = &st->next;
+        st->function = v;
+        st->parent = parent;
+    } // while
 }
 
 struct stmt *
@@ -140,7 +229,7 @@ declaration(struct scope *sc)
 
         v = declare(&basetype);
         if (v->type & T_FUNC) {
-            if (curtok == OPEN) {
+            if (curtok == BEGIN) {
                 parsefunc(v);
                 if (sclass == 'p') {
                     v->flags |= V_STATIC;

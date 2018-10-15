@@ -1,14 +1,16 @@
 /*
  * this is a brute force lexer that uses a tight keyword lookup in kw.c
  * we do cpp conditionals in here
+ * it handles different keyword tables for cpp, c, and asm
  */
 #include "ccc.h"
 #include "expr.h"
 
 #include <stdio.h>
 
-enum token curtok;
-enum token nexttok;
+token_t curtok;
+token_t nexttok;
+
 long curval;        /* numeric data */
 long nextval;
 char *curstr;       /* name or string data */
@@ -29,6 +31,21 @@ struct cond *cond;
 char tflags;
 #define ONELINE     0x01
 #define CPPFUNCS    0x02
+
+/*
+ * return true if the current token matches
+ * also, consume the token.  
+ * this is a code size optimization, since this path is common
+ */
+char
+match(token_t t)
+{
+    if (curtok == t) {
+        gettoken();
+        return 1;
+    }
+    return 0;
+}
 
 /*
  * skip over any whitespace
@@ -382,7 +399,7 @@ isstring(char *s)
  * no need to translate, just recognize.
  */
 char simple[] = {
-    OPEN, CLOSE, LBRACK, RBRACK, LPAR, RPAR, SEMI, COMMA,
+    BEGIN, END, LBRACK, RBRACK, LPAR, RPAR, SEMI, COMMA,
     ASSIGN, DOT, PLUS, MINUS, DIV, MOD, AND, OR, XOR,
     LT, GT, BANG, TWIDDLE, QUES, OTHER, 0
 };
