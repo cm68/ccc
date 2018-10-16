@@ -1,6 +1,7 @@
 /*
  * errors, messages, and recovery
  */
+#include <string.h>
 #include "ccc.h"
 
 #undef sprintf
@@ -55,7 +56,7 @@ void
 recover(error_t errcode, token_t skipto)
 {
     err(errcode);
-    while ((curtok != skipto) && (curtok != EOF)) {
+    while ((curtok != skipto) && (curtok != E_O_F)) {
         gettoken();
     }
 }

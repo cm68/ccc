@@ -95,12 +95,31 @@ extern char nextchar;
 extern int lineno;
 extern char *filename;
 
+/*
+ * error numbers for formatting
+ * these should match the indexes for the errmsg array
+ */
+typedef enum error {
+	ER_C_NX,	// number format error
+	ER_C_BC, 	// bad character
+	ER_C_CD,	// bad literal 
+	ER_C_UT,	// unknown character
+	ER_C_CU,	// endif without if
+	ER_C_ME,	// too many elses
+	ER_C_MN,	// no macro name
+	ER_C_ID,	// bad include name format
+	ER_C_DP,	// bad macro param list
+	ER_C_CE,	// cpp const required
+	ER_C_BD,	// unknown cpp operation
+	ER_C_END	// last error
+} error_t;
+
 /* main.c */
-extern void err(char errcode);
-extern void fatal(char errcode);
-extern void recover(char errcode, char skipto);
-extern void need(char check, char skipto, char errcode);
-extern void err(char errcode);
+extern void err(error_t errcode);
+extern void fatal(error_t errcode);
+extern void recover(error_t errcode, token_t skipto);
+extern void need(token_t check, token_t skipto, error_t errcode);
+extern void err(error_t errcode);
 int main(int argc, char **argv);
 void process(char *f);
 void usage(char *complaint, char *p);
@@ -124,25 +143,6 @@ extern struct scope *scope;
 void push_scope(char *name);
 void pop_scope();
 struct type *findtype(char *name, kind_t kind);
-
-/*
- * error numbers for formatting
- * these should match the indexes for the errmsg array
- */
-typedef enum errors {
-	ER_C_NX,	// number format error
-	ER_C_BC, 	// bad character
-	ER_C_CD,	// bad literal 
-	ER_C_UT,	// unknown character
-	ER_C_CU,	// endif without if
-	ER_C_ME,	// too many elses
-	ER_C_MN,	// no macro name
-	ER_C_ID,	// bad include name format
-	ER_C_DP,	// bad macro param list
-	ER_C_CE,	// cpp const required
-	ER_C_BD,	// unknown cpp operation
-	ER_C_END	// last error
-} error_t;
 
 /*
  * vim: tabstop=4 shiftwidth=4 expandtab:
