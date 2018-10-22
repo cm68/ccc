@@ -99,20 +99,8 @@ extern char *filename;
  * error numbers for formatting
  * these should match the indexes for the errmsg array
  */
-typedef enum error {
-	ER_C_NX,	// number format error
-	ER_C_BC, 	// bad character
-	ER_C_CD,	// bad literal 
-	ER_C_UT,	// unknown character
-	ER_C_CU,	// endif without if
-	ER_C_ME,	// too many elses
-	ER_C_MN,	// no macro name
-	ER_C_ID,	// bad include name format
-	ER_C_DP,	// bad macro param list
-	ER_C_CE,	// cpp const required
-	ER_C_BD,	// unknown cpp operation
-	ER_C_END	// last error
-} error_t;
+#undef DEF_ERRMSG
+#include "error.h"
 
 /* main.c */
 extern void err(error_t errcode);
@@ -139,7 +127,7 @@ char *macbuffer;
 extern char lookupc(char *s, char c);
 
 /* type.c */
-extern struct scope *scope;
+extern struct scope *cur_block;
 void push_scope(char *name);
 void pop_scope();
 struct type *findtype(char *name, kind_t kind);

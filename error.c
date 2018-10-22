@@ -4,22 +4,9 @@
 #include <string.h>
 #include "ccc.h"
 
-#undef sprintf
+#define DEF_ERRMSG
+#include "error.h"
 
-#define MAXERR  0
-char *errmsg[] = {
-    "number format error",
-    "bad character",
-    "bad literal",
-    "unknown operator"
-    "endif without if",
-    "too many elses",
-    "macro name missing",
-    "bad include format",
-    "bad macro param",
-    "cpp const required", 
-    "unknown error",
-};
 int error;
 
 /*
@@ -32,7 +19,7 @@ err(error_t errcode)
     int i;
 
     i = errcode;
-    if (i > MAXERR) i = 0;
+    if (i > ER_WTF) i = ER_WTF;
     printf("file: %s line: %d error code %d %s\n",
         filename, lineno, errcode, errmsg[i]);
     error = errcode;
@@ -75,6 +62,7 @@ need(token_t check, token_t skipto, error_t errcode)
     recover(errcode, skipto);
 }
 
+#ifdef notdef
 /*
  * a variant sprintf with support for formats: 
  * %[<precision>]<format>
@@ -182,6 +170,7 @@ sprintf(char *d, char *fmt) {
         }
     }
 }
+#endif
 
 /*
  * vim: tabstop=4 shiftwidth=4 expandtab:
