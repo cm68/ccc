@@ -1,0 +1,60 @@
+# type errors
+ER_T_PT		broken primitive type decl
+ER_T_TD		busted typedef definition
+ER_T_ED		busted enum definition
+ER_T_ET		busted enum tag
+ER_T_SA		duplicate aggregate definition
+ER_T_GB		get base type failed
+ER_T_SB		huge struct
+ER_T_UB		union bitfield
+ER_T_SE		bad aggregate element list
+ER_T_SD		no struct def or ref
+ER_T_DT		more than one basetype
+
+# decl errors
+ER_D_DP		declaration paren balance
+ER_D_MV		multiple variables in decl
+ER_D_BD		bitfield dimension not number
+ER_D_BM		bitfield too big
+ER_D_AD		array dimension problem
+ER_D_FA		function array meaningless
+ER_D_FM		old style arg defs
+ER_D_FO		multiple types for funarg
+ER_D_UT		unexpected token in decl
+
+# parse errors
+ER_P_TA		toplevel reg or auto
+
+# statement errors
+ER_S_CC		close curly for block
+ER_S_NP		conditional parens
+ER_S_SN		need semicolon
+ER_S_OE		orphan else
+ER_S_NC		non constant case label
+ER_S_NL		need colon for label
+
+# lexer or cpp errors
+ER_C_BD		unknown cpp operation
+ER_C_CU		endif without if
+ER_C_ME		too many elses
+ER_C_MN		no macro name
+ER_C_ID		bad include name format
+ER_C_DP		bad macro param list
+ER_C_CE		cpp const required
+ER_C_CD		bad literal 
+ER_C_BC		bad character
+ER_C_NR		numeric range of char exceeded
+ER_C_NX		number format error
+ER_C_UT		unknown character
+
+# expression errors
+ER_E_LV		need lvalue
+ER_E_DP		bad dereference
+ER_E_SC		scalar only operator
+ER_E_CP		cast paren needed
+ER_E_SP		subexpression paren missing
+ER_E_IT		bad type to index
+ER_E_IB		need close bracket for index
+ER_E_FN		function pointer needed
+ER_E_FA		broken function arg list
+ER_E_UO		unknown operator
