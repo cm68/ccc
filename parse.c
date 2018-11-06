@@ -7,10 +7,10 @@
 /*
  * parse a statement - this is really the heart of the compiler frontend
  * it recursively calls itself
- * there is some hair here having to do with
+ * there is some hair here having to do with scope
  */
 struct stmt *
-statement(struct var *f, struct stmt *parent)
+statement(struct stmt *parent)
 {
     struct stmt *st, **pst;
     pst = 0;
@@ -27,7 +27,7 @@ statement(struct var *f, struct stmt *parent)
         case BEGIN: // begin a block
             gettoken();
             cur_block = new_scope(cur_block, blockname()); 
-            st = statement(f, parent);
+            st = statement(parent);     /* recurse */
             sc = cur_block;
             cur_block = sc->parent;
             destroy_scope(sc);
@@ -39,10 +39,10 @@ statement(struct var *f, struct stmt *parent)
             need(LPAR, LPAR, ER_S_NP);
             st = makestmt(IF, expr(PRI_PAREN, parent));
             need(RPAR, RPAR, ER_S_NP);
-            st->chain = stmt(f, st);
+            st->chain = statement(st);
             if (curtok == ELSE) {   // else <statement>
                 gettoken();
-                st->otherwise = stmt(f, st);
+                st->otherwise = statement(st);
             } 
             break;
         case BREAK;
@@ -89,7 +89,7 @@ statement(struct var *f, struct stmt *parent)
             need(';', ';', EN_S_SN);
             st->right = expr(PRI_ALL, parent);
             need(')',')', ER_S_NP);
-            st->chain = stmt(f, st);
+            st->chain = statement(st);
             break;
 
         case WHILE:     // while <condition> <statement> ;
@@ -97,7 +97,7 @@ statement(struct var *f, struct stmt *parent)
             need('(','(', ER_S_NP);
             st = makestmt(WHILE, expr(PRI_ALL, parent));
             need(')',')', ER_S_NP);
-            st->chain = stmt(f, st);
+            st->chain = statement(st);
             break;
 
         case 'E':
@@ -110,13 +110,13 @@ statement(struct var *f, struct stmt *parent)
             st = makestmt(SWITCH, expr(PRI_ALL, parent));
             need(')',')', ER_S_NP);
             need('{','{', ER_S_SB);
-            st->chain = stmt(f, st);
+            st->chain = statement(st);
             need('}', '}', ER_S_CC);
             break;
 
         case CASE:
             gettoken();
-            st = newstmt(CASE, expr(PRI_ALL, parent));
+            st = makestmt(CASE, expr(PRI_ALL, parent));
             if (!(st->left->flags & E_CONST) || (st->left->type->size != 1)) {
                 err(ER_S_NC);
             }
@@ -149,7 +149,7 @@ statement(struct var *f, struct stmt *parent)
             gettoken();
             need('{',';', ER_S_CC);
             st = makestmt(DO, 0);
-            st->chain = stmt(f, st);
+            st->chain = statement(st);
             if ((curtok != '}') || nexttok != WHILE) {
                 err(ER_S_DO);
                 break;

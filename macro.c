@@ -1,3 +1,8 @@
+/*
+ * macros are done in a unified way with include file processing:
+ *
+ *
+ */
 #include "ccc.h"
 
 #define MAXPARMS    10

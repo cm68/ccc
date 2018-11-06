@@ -82,6 +82,7 @@ extern char *curstr;
 extern char *nextstr;
 extern char strbuf[];
 extern char match(token_t t);
+extern void gettoken();
 
 /* io.c */
 extern void pushfile(char *name);

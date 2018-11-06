@@ -6,16 +6,18 @@ CFLAGS = -Wno-implicit-function-declaration -g
 OBJECTS = error.o parse.o type.o main.o lex.o io.o macro.o kw.o util.o
 HEADERS = ccc.h error.h expr.h type.h
 GENERATED = enumlist.h
-BINS = enumcheck cc1 cc2
+BINS = enumcheck cc1 cc2 lextest
 
+lextest: lex.o lextest.o kw.o io.o macro.o util.o error.o
+	cc -g -o lextest lextest.o lex.o kw.o io.o macro.o util.o error.o
 
 ccc: $(OBJECTS)
 	cc -o ccc $(OBJECTS)
 
 $(OBJECTS): $(HEADERS)
 
-test: ccc testfile.c
-	./ccc -v -1 testfile.c
+test: lextest testfile.c
+	./lextest -v -1 testfile.c
 	
 #
 # process the ccc.h file, extracting the enum tags for the tokens
@@ -39,7 +41,7 @@ enumcheck: enumlist.h enumcheck.c
 	./enumcheck
 
 clean:
-	rm -f $(OBJECTS) enumlist.h
+	rm -f $(OBJECTS) enumlist.h lextest.o
 
 clobber: clean
 	rm -f $(BINS)

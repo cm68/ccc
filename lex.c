@@ -227,6 +227,8 @@ issym()
         return 0;
     }
     *s++ = curchar;
+    *s = 0;
+    getnext();
     while (1) {
         /* handle glommer operator */
         if (curchar == ' ') {
@@ -249,12 +251,12 @@ issym()
             ((c >= '0') && (c <= '9')) || 
              (curchar == '_')) {
             *s++ = curchar;
+            *s = 0;
             getnext();
         } else {
             break;
         }
     }
-    *s = 0;
     return 1;
 }
 
@@ -268,7 +270,7 @@ do_cpp(char t)
 
     switch (t) {
     case 'F':   // if
-        v = readconst();
+        v = readcppconst();
         c = malloc(sizeof(*c));
         c->next = cond;
         cond = c;
@@ -301,7 +303,7 @@ do_cpp(char t)
             err(ER_C_CU);
             return;
         }
-        v = readconst();
+        v = readcppconst();
         if (cond->flags & C_ELSESEEN) {
             err(ER_C_ME);
             return;
@@ -401,7 +403,7 @@ isstring(char *s)
 char simple[] = {
     BEGIN, END, LBRACK, RBRACK, LPAR, RPAR, SEMI, COMMA,
     ASSIGN, DOT, PLUS, MINUS, DIV, MOD, AND, OR, XOR,
-    LT, GT, BANG, TWIDDLE, QUES, OTHER, 0
+    LT, GT, BANG, TWIDDLE, QUES, OTHER, STAR, 0
 };
 
 /*
@@ -435,7 +437,7 @@ char eqtok[] = {
  * all the comment and preprocessor stuff is invisible above here
  * as is string, character escaping, and number bases
  */
-char
+void
 gettoken()
 {
     char *s;
@@ -469,7 +471,7 @@ gettoken()
         if (curchar == '\n' && (tflags & ONELINE)) {
             nexttok = ';';
             getnext();
-            return 1;
+            return;
         }
         if (prevchar == '\n' && cond && !(cond->flags & C_TRUE)) {
             skiptoeol();
@@ -506,18 +508,18 @@ gettoken()
             t = kwlook(strbuf, ckw);
             if (t) {
                 nexttok = t;
-                return 1;
+                return;
             }
             nexttok = SYM;
-            return 1;
+            return;
         }
         if (isnumber()) {
             nexttok = NUMBER;
-            return 1;
+            return;
         }
         if (isstring(strbuf)) {
             nexttok = STRING;
-            return 1;
+            return;
         }
         t = lookupc(simple, curchar);
         if (t == -1) {
@@ -544,7 +546,7 @@ gettoken()
             nexttok = DEREF;
             getnext();
         }
-        return 1;
+        return;
     }
 }
 
@@ -579,7 +581,7 @@ cpppseudofunc()
  * this code straddles the cpp, the lexer and the expression parser
  * so much happens via global variable side effects, so recursive
  * calls could happen that need repair.
- * ex:  expr->gettoken->do_cpp->readconst->expr->gettoken->getnext
+ * ex:  expr->gettoken->do_cpp->readcppconst->expr->gettoken->getnext
  * if we hit an #if in the middle of an expression
  */
 int
