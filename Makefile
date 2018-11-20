@@ -5,7 +5,8 @@ CC = gcc
 CFLAGS = -Wno-implicit-function-declaration -g
 OBJECTS = error.o parse.o type.o main.o lex.o io.o macro.o kw.o util.o
 HEADERS = ccc.h error.h expr.h type.h
-GENERATED = enumlist.h
+GENERATED = enumlist.h tokenlist.c error.h
+
 BINS = enumcheck cc1 cc2 lextest
 
 lextest: lex.o lextest.o kw.o io.o macro.o util.o error.o
@@ -28,6 +29,13 @@ enumlist.h: ccc.h
 	awk '/enum token/ { t=1;next } /;$$/ {t=0} {if (t) print}' | \
 	tr -d '[:blank:]' | \
 	awk '/[A-Z]+/ {printf("check(%s);\n", $$1);}' >enumlist.h
+
+#
+# generate token names from the enumlist.h file
+#
+tokenlist.c: enumlist.h maketokens.c
+	cc -o maketokens maketokens.c
+	./maketokens >tokenlist.c
 
 #
 # process the errorcodes file, which generates error.h, containing the

@@ -68,10 +68,10 @@ typedef enum token {
 } token_t;
 
 /* kw.c */
-extern char cppkw[];
-extern char ckw[];
-extern char asmkw[];
-extern char kwlook(char *str, char *table);
+extern unsigned char cppkw[];
+extern unsigned char ckw[];
+extern unsigned char asmkw[];
+extern char kwlook(unsigned char *str, unsigned char *table);
 
 /* lex.c */
 extern token_t curtok;

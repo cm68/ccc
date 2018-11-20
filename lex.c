@@ -430,6 +430,21 @@ char eqtok[] = {
 };
 
 /*
+ * string memory allocation
+ */
+char *
+stralloc(char *s)
+{
+    return strdup(s);
+}
+
+void
+strfree(char *s)
+{
+    free(s);
+}
+
+/*
  * we want a stream of lexemes to be placed into 
  * curtok and nexttok respectively.  
  * we need 1 token of lookahead to do a recursive descent parse of C
@@ -445,9 +460,13 @@ gettoken()
     int incomment = 0;
 
     /* advance */
+    if (curstr) {
+        strfree(curstr);
+    }
     curtok = nexttok;
     curval = nextval;
     curstr = nextstr;
+    nextstr = 0;
 
     while (1) {
         if (curchar == '#' && prevchar == '\n') {   // cpp directive
@@ -511,6 +530,7 @@ gettoken()
                 return;
             }
             nexttok = SYM;
+            nextstr = stralloc(strbuf);
             return;
         }
         if (isnumber()) {
@@ -519,6 +539,7 @@ gettoken()
         }
         if (isstring(strbuf)) {
             nexttok = STRING;
+            nextstr = stralloc(strbuf);
             return;
         }
         t = lookupc(simple, curchar);

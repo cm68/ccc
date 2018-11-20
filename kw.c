@@ -21,14 +21,14 @@
 /*
  * the Z80 assembler
  */
-char asmkw[] = {
+unsigned char asmkw[] = {
     0xff, 0
 };
 
 /*
  * the C pre-processor
  */
-char cppkw[] = {
+unsigned char cppkw[] = {
     'd'|HI, 7, 'e', 'f', 'i', 'n', 'e', 0xff, DEFINE,
     'i'|HI, 'f'|HI, 7, 0xfe, IF,
         'd', 'e', 'f', 0xff, IFDEF,
@@ -43,25 +43,25 @@ char cppkw[] = {
 /*
  * the C language
  */
-char ckw[] = {
+unsigned char ckw[] = {
 	'a'|HI, 10, 's'|HI, 3, 'm', 0xff, ASM,
 		'u', 't', 'o', 0xff, AUTO,
 	'b'|HI, 15, 'o'|HI, 7, 'o','l','e','a','n', 0xff, BOOLEAN,
 		'r', 'e', 'a', 'k', 0xff, BREAK,
-	'c'|HI, 26, 'a'|HI, 4, 's', 'e', 0xff, CASE,
+	'c'|HI, 27, 'a'|HI, 4, 's', 'e', 0xff, CASE,
 		'h'|HI, 4, 'a', 'r', 0xff, CHAR,
 		'o', 'n', 's'|HI, 3, 's', 't', 0xff, CONST,
 			't', 'i', 'n', 'u', 'e', 0xff, CONTINUE,
-	'd'|HI, 18, 'e', 'f', 'a', 'u', 'l', 't', 0xff, DEFAULT,
+	'd'|HI, 17, 'e', 'f', 'a', 'u', 'l', 't', 0xff, DEFAULT,
 		'o', 0xfe, DO,
 		'u', 'b', 'l', 'e', 0xff, DOUBLE,
-	'e'|HI, 19, 'l'|HI, 7, 's', 'e', 0xff, ELSE,
+	'e'|HI, 18, 'l'|HI, 7, 's', 'e', 0xff, ELSE,
 			'n'|HI, 'u', 'm', 0xff, ENUM,
 		'x', 't', 'e', 'r', 'n', 0xff, EXTERN,
 	'f'|HI, 11, 'l'|HI, 5, 'o', 'a', 't', 0xff, FLOAT,
 			'o', 'r', 0xff, FOR,
 	'g'|HI, 5, 'o', 't', 'o', 0xff, GOTO,
-	'i'|HI, 8, 'f'|80, 1, 0xff, IF,
+	'i'|HI, 8, 'f'|HI, 2, 0xff, IF,
 		'n', 't', 0xff, INT,
 	'l'|HI, 5, 'o', 'n', 'g', 0xff, LONG,
 	'r'|HI, 17, 'e'|HI, 8, 'g', 'i', 's', 't', 'e', 'r', 0xff, REGISTER,
@@ -122,18 +122,16 @@ kwlook(char *str, char *table)
 }
 #else
 char
-kwlook(char *str, char *table)
+kwlook(unsigned char *str, unsigned char *table)
 {
 	unsigned char c;
 
 	while (*str) {
 		c = *table;
 		if (c == 0xff) {
-			if (!*str) return table[1];
             return 0;
 		}
         if (c == 0xfe) {
-            if (!*str) return table[1];
             table += 2;
             continue;
         }
@@ -152,6 +150,9 @@ kwlook(char *str, char *table)
         str++;
         table++;
 	}
+    if (*table == 0xff || *table == 0xfe) {
+        return table[1];
+    }
     return 0;
 }
 #endif

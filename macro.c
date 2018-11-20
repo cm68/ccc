@@ -120,7 +120,7 @@ macdefine(char *s)
 /*
  * if our symbol is a macro, expand it
  */
-void
+int
 macexpand(char *s)
 {
     struct macro *m;
@@ -138,7 +138,7 @@ macexpand(char *s)
         }
     }
     if (!m) {
-        return;
+        return 0;
     }
     args = 0;
     d = macbuffer;
@@ -234,6 +234,7 @@ macexpand(char *s)
     }
     *d = 0;
     insertmacro(m->name);
+    return 1;
 }
 
 /*
