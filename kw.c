@@ -64,7 +64,7 @@ unsigned char ckw[] = {
 	'i'|HI, 8, 'f'|HI, 2, 0xff, IF,
 		'n', 't', 0xff, INT,
 	'l'|HI, 5, 'o', 'n', 'g', 0xff, LONG,
-	'r'|HI, 17, 'e'|HI, 8, 'g', 'i', 's', 't', 'e', 'r', 0xff, REGISTER,
+	'r'|HI, 16, 'e'|HI, 8, 'g', 'i', 's', 't', 'e', 'r', 0xff, REGISTER,
 		't', 'u', 'r', 'n', 0xff, RETURN,
 	's'|HI, 29, 'i'|HI, 6, 'z', 'e', 'o', 'f', 0xff, SIZEOF,
 		'h'|HI, 5, 'o', 'r', 't', 0xff, SHORT,
@@ -73,7 +73,7 @@ unsigned char ckw[] = {
 	't'|HI, 8, 'y', 'p', 'e', 'd', 'e', 'f', 0xff, TYPEDEF,
 	'u'|HI, 15, 'n', 'i'|HI, 4, 'o', 'n', 0xff, UNION,
 			's', 'i', 'g', 'n', 'e', 'd', 0xff, UNSIGNED,
-	'v'|HI, 'o', 'i'|HI, 3, 'd', 0xff, VOID,
+	'v'|HI, 14, 'o', 'i'|HI, 3, 'd', 0xff, VOID,
 			'l', 'a', 't', 'i', 'l', 'e', 0xff, VOLATILE,
 	'w', 'h', 'i', 'l', 'e', 0xff, WHILE,
 	0xff, 0
@@ -126,8 +126,10 @@ kwlook(unsigned char *str, unsigned char *table)
 {
 	unsigned char c;
 
+//    printf("kwlook(%s)\n", str);
 	while (*str) {
 		c = *table;
+//       printf("table %c %x\n", c & 0x7f, c);
 		if (c == 0xff) {
             return 0;
 		}
