@@ -7,9 +7,9 @@ OBJECTS = error.o parse.o type.o main.o lex.o io.o macro.o kw.o util.o
 HEADERS = ccc.h error.h expr.h type.h
 GENERATED = enumlist.h tokenlist.c error.h
 
-BINS = enumcheck cc1 cc2 lextest
+BINS = enumcheck cc1 cc2 lextest maketokens
 
-lextest: lex.o lextest.o kw.o io.o macro.o util.o error.o
+lextest: lex.o lextest.o kw.o io.o macro.o util.o error.o tokenlist.c
 	cc -g -o lextest lextest.o lex.o kw.o io.o macro.o util.o error.o
 
 ccc: $(OBJECTS)
@@ -49,10 +49,12 @@ enumcheck: enumlist.h enumcheck.c
 	./enumcheck
 
 clean:
-	rm -f $(OBJECTS) enumlist.h lextest.o
+	rm -f $(OBJECTS) lextest.o $(GENERATED)
 
 clobber: clean
 	rm -f $(BINS)
+
+lextest.o: tokenlist.c lextest.c
 
 parse.o: parse.c
 type.o: type.c
