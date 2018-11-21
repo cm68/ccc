@@ -123,8 +123,10 @@ readchar()
         free(t->storage);
         free(t->name);
         free(t);
-        lineno = tbtop->lineno;
-        filename = tbtop->name;
+        if (tbtop) {
+            lineno = tbtop->lineno;
+            filename = tbtop->name;
+        }
 	}
 	return 0;
 }

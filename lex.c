@@ -194,10 +194,8 @@ isnumber()
             getnext();
         } else if ((curchar | 0x20) == 'd') {
             base = 10;
-            getnext();
         } else {
             base = 8;
-            getnext();
         }
     }
     nextval = getint(base);
@@ -469,6 +467,10 @@ gettoken()
     nextstr = 0;
 
     while (1) {
+        if (curchar == 0) {
+            nexttok = E_O_F;
+            return;
+        }
         if (curchar == '#' && prevchar == '\n') {   // cpp directive
             getnext();
             skipwhite1();
