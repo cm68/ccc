@@ -7,7 +7,7 @@ char *tokenname[128];
 
 #define check(a) tokenname[a] = strdup(#a);
 	
-main()
+main(int argc, char **argv)
 {
 	int i;
 
