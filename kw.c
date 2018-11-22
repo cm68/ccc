@@ -30,7 +30,7 @@ unsigned char asmkw[] = {
  */
 unsigned char cppkw[] = {
     'd'|HI, 7, 'e', 'f', 'i', 'n', 'e', 0xff, DEFINE,
-    'i'|HI, 'f'|HI, 7, 0xfe, IF,
+    'i'|HI, 17, 'f'|HI, 7, 0xfe, IF,
         'd', 'e', 'f', 0xff, IFDEF,
         'n', 'c', 'l', 'u', 'd', 'e', 0xff, INCLUDE,
     'e'|HI, 13, 'l'|HI, 9, 's'|HI, 3, 'e', 0xff, ELSE,
