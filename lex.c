@@ -267,14 +267,16 @@ do_cpp(char t)
     int v;
 
     switch (t) {
-    case 'F':   // if
+    case IF:
         v = readcppconst();
         c = malloc(sizeof(*c));
         c->next = cond;
         cond = c;
         cond->flags = (v ? (C_TRUE|C_TRUESEEN) : 0);
+        skiptoeol();
         return;
-    case 'X':   // endif
+    case ENDIF:
+        skiptoeol();
         if (!cond) {
             err(ER_C_CU);
             return;
@@ -283,7 +285,8 @@ do_cpp(char t)
         cond = c->next;
         free(c);
         return;
-    case 'E':    // else
+    case ELSE:
+        skiptoeol();
         if (!cond) {
             err(ER_C_CU);
             return;
@@ -296,8 +299,9 @@ do_cpp(char t)
         if (cond->flags & C_TRUE) {
             cond->flags |= C_TRUESEEN;
         }
-    case 'L':   // elseif
+    case ELIF:
         if (!cond) {
+            skiptoeol();
             err(ER_C_CU);
             return;
         }
@@ -311,8 +315,9 @@ do_cpp(char t)
         } else {
             cond->flags |= (v ? (C_TRUE | C_TRUESEEN) : 0);
         }
+        skiptoeol();
         return;
-    case 'D':   // define
+    case DEFINE:
         skipwhite1();
         if (!issym()) {
             err(ER_C_MN);
@@ -320,7 +325,7 @@ do_cpp(char t)
         }
         macdefine(strbuf);
         return;
-    case 'U':
+    case UNDEF:
         skipwhite1();
         if (!issym()) {
             err(ER_C_MN);
@@ -328,7 +333,7 @@ do_cpp(char t)
         }
         macundefine(strbuf);
         return;
-    case 'I':
+    case INCLUDE:
         skipwhite1();
         if (curchar == '<') {
             k = '>';
@@ -346,6 +351,7 @@ do_cpp(char t)
         if (curchar != k) {
             err(ER_C_ID);
         }
+        skiptoeol();
         insertfile(strbuf, k == '>'); 
         return;
     }
@@ -478,7 +484,6 @@ gettoken()
                 t = kwlook(strbuf, cppkw);
                 if (t) {
                     do_cpp(t);
-                    skiptoeol();
                     continue;
                 }
                 err(ER_C_BD);
