@@ -29,7 +29,7 @@ process(char *f)
     int ret;
 
     printf("process %s\n", f);
-    insertfile(f);
+    insertfile(f, 0);
     ioinit();
     nexttok = curtok = SEMI;
     while (curtok) {
