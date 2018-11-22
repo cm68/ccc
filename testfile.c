@@ -1,6 +1,11 @@
 int i;
 int j = 8;
 
+#include "test1.h"
+#define	m y
+#define	z(a,b) a = #b
+#define	j
+
 struct test_s {
 	int i;
 	int k;
@@ -13,6 +18,8 @@ foo(int a, char **b)
 	bar.i = a;
 
 	printf("%s: %d\n", b[0], bar.i);
+	z(a, test);
+	m;
 }
 
 int
