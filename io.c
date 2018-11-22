@@ -31,14 +31,17 @@ struct textbuf {
 	struct textbuf *prev;	// a stack
 } *tbtop;
 
+/*
+ * if sys is true, then file was included using <> filename delimiters
+ */
 void
-insertfile(char *name)
+insertfile(char *name, int sys)
 {
 	struct textbuf *t;
 
 #ifdef DEBUG
     if (verbose & V_IO) {
-        printf("pushfile: %s\n", name);
+        printf("insertfile: %s\n", name);
     }
 #endif
 
@@ -46,6 +49,7 @@ insertfile(char *name)
 	t->fd = open(name, O_RDONLY);
     if (t->fd < 0) {
         perror(name);
+        free(t);
         return;
     }
 	t->name = strdup(name);
