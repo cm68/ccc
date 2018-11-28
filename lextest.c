@@ -6,7 +6,7 @@
  * does not have this limitation.
  */
 #include "ccc.h"
-#include "tokenlist.c"
+#include <fcntl.h>
 
 int verbose;
 
@@ -21,14 +21,36 @@ char *vopts[] = {
 
 char *progname;
 
+int write_cpp_file = 0;
+int cpp_file;
+char *cpp_file_name;
+
 void
 process(char *f)
 {
     char *s;
-    int fd;
-    int ret;
+    int i;
 
     printf("process %s\n", f);
+    if (write_cpp_file) {
+        if (cpp_file) {
+            close(cpp_file);
+            cpp_file = 0;
+            free(cpp_file_name);
+        }
+        i = strlen(f);
+        if (f[i-2] == '.' && f[i-1] == 'c') {
+            i -= 2;
+        }
+        cpp_file_name = malloc(i+2);
+        strncpy(cpp_file_name, f, i);
+        strcat(cpp_file_name, ".i");
+        cpp_file = creat(cpp_file_name, 0777);
+        if (cpp_file == -1) {
+            perror(cpp_file_name);
+        }
+    }
+    
     insertfile(f, 0);
     ioinit();
     nexttok = curtok = SEMI;
@@ -56,6 +78,7 @@ usage(char *complaint, char *p)
     printf("\t-D<variable>[=<definition>]\n");
 #ifdef DEBUG
     printf("\t-v <verbosity>\n");
+    printf("\t-E\n");
     for (i = 0; vopts[i]; i++) {
         printf("\t%x %s\n", 1 << i, vopts[i]);
     }
@@ -93,6 +116,9 @@ main(int argc, char **argv)
                 break;
             case 'D':
                 // XXX - add_define(++s);
+                break;
+            case 'E':
+                write_cpp_file++;
                 break;
 #ifdef DEBUG
             case 'v':

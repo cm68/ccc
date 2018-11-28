@@ -135,6 +135,7 @@ macexpand(char *s)
     char c;
     char *n;
     int i;
+    int stringify = 0;
 
     if (!macbuffer) {
         macbuffer = malloc(1024);
@@ -227,6 +228,11 @@ macexpand(char *s)
             *d++ = *s++;
             continue;
         }
+        /* if the 'stringify' operator is present */
+        if (c == '#' && s[1] != '#') {
+            stringify = 1;
+        }
+
         /* if macro text has something that looks like an arg */
         if (((c >= 'A') && (c <= 'z')) || ((c >= '_') && (c <= 'z'))) {
             n = strbuf;

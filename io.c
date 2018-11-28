@@ -9,6 +9,7 @@
  */
 #include "ccc.h"
 #include <fcntl.h>
+extern int cpp_file;
 
 /*
  * the incoming character stream interface
@@ -161,6 +162,18 @@ ioinit()
 {
     nextchar = readchar();
     getnext();
+}
+
+/*
+ * write to the cpp output file if requested
+ *  */
+void
+cpp_out(char *s)
+{
+    if (s && cpp_file) {
+        write(cpp_file, s, strlen(s));
+        write(cpp_file, " ", 1);
+    }
 }
 
 /*

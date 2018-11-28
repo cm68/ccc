@@ -462,6 +462,7 @@ gettoken()
     char *s;
     char t;
     int incomment = 0;
+    char nbuf[20];
 
     /* advance */
     if (curstr) {
@@ -471,6 +472,19 @@ gettoken()
     curval = nextval;
     curstr = nextstr;
     nextstr = 0;
+
+    if (curtok == SYM) {
+        cpp_out(curstr);
+    } else if (curtok == NUMBER) {
+        sprintf(nbuf, "%d", curval);
+        cpp_out(nbuf);
+    } else {
+        if (detoken[curtok]) {
+            cpp_out(detoken[curtok]);
+        } else {
+            cpp_out(tokenname[curtok]);
+        }
+    }
 
     while (1) {
         if (curchar == 0) {
@@ -493,6 +507,9 @@ gettoken()
                 skiptoeol();
                 continue;
             }
+        }
+        if (curchar == '\n') {
+            cpp_out("\n");
         }
         if (curchar == '\n' && (tflags & ONELINE)) {
             nexttok = ';';

@@ -133,6 +133,10 @@ void push_scope(char *name);
 void pop_scope();
 struct type *findtype(char *name, kind_t kind);
 
+/* tokenlist.c */
+char *tokenname[];
+char *detoken[];
+
 /*
  * vim: tabstop=4 shiftwidth=4 expandtab:
  */

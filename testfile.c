@@ -5,6 +5,7 @@ int j = 8;
 #define	m y
 #define	z(a,b) a = #b
 #define	j
+#define	glom(a,b) a ## b
 
 struct test_s {
 	int i;
@@ -20,6 +21,7 @@ foo(int a, char **b)
 	printf("%s: %d\n", b[0], bar.i);
 	z(a, test);
 	m;
+	glom(xy,zzy);
 }
 
 int

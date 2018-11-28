@@ -9,8 +9,8 @@ GENERATED = enumlist.h tokenlist.c error.h
 
 BINS = enumcheck cc1 cc2 lextest maketokens
 
-lextest: lex.o lextest.o kw.o io.o macro.o util.o error.o tokenlist.c
-	cc -g -o lextest lextest.o lex.o kw.o io.o macro.o util.o error.o
+lextest: lex.o lextest.o kw.o io.o macro.o util.o error.o tokenlist.o
+	cc -g -o lextest tokenlist.o lextest.o lex.o kw.o io.o macro.o util.o error.o
 
 ccc: $(OBJECTS)
 	cc -o ccc $(OBJECTS)
@@ -64,3 +64,4 @@ macro.o: macro.c
 kw.o: kw.c
 error.o: error.c
 util.o: util.c
+tokenlist.o: tokenlist.c
