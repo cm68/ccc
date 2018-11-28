@@ -67,6 +67,10 @@ macdefine(char *s)
     struct macro *m = malloc(sizeof(*m));
     char *parms[MAXPARMS];
 
+    if (!macbuffer) {
+        macbuffer = malloc(1024);
+    }
+
     m->name = strdup(s);
     m->parmcount = 0;
     skipwhite1();
@@ -75,15 +79,14 @@ macdefine(char *s)
      * get the parameter names from the (<a>,<b>,...) list
      */
     if (curchar == '(') {
-        getchar();
+        getnext();
         while (1) {
             skipwhite1();
             if (issym(s)) {
                 parms[m->parmcount++] = strdup(s);
-                getchar();
                 skipwhite1();
                 if (curchar == ',') {
-                    getchar();
+                    getnext();
                     continue;
                 }
             }
@@ -98,20 +101,21 @@ macdefine(char *s)
         for (i = 0; i < m->parmcount; i++) {
             m->parms[i] = parms[i];
         }
-        getchar();
+        getnext();
         skipwhite1();
     }
     s = macbuffer;
     /* we copy to the macbuffer the entire logical line, spaces and tabs included */
     while (curchar != '\n') {
-        if ((curchar == '\\') && (nextchar == '\n')) {
-            getchar();
+        if ((curchar == '\\') && (getnext == '\n')) {
+            getnext();
             curchar = ' ';
         }
         *s++ = curchar;
+        getnext();
     }
     *s = 0;
-    getchar();  /* eat the newline */
+    getnext();  /* eat the newline */
     m->mactext = strdup(macbuffer);
     m->next = macros;
     macros = m;
@@ -132,6 +136,10 @@ macexpand(char *s)
     char *n;
     int i;
 
+    if (!macbuffer) {
+        macbuffer = malloc(1024);
+    }
+
     for (m = macros; m; m = m->next) {
         if (strcmp(m->name, s) == 0) {
             break;
@@ -147,23 +155,24 @@ macexpand(char *s)
      * read the arguments
      */
     if (curchar == '(') {
-        getchar();
+        plevel = 1;
+        getnext();
+        skipwhite();
         while (1) {
-            skipwhite();
             /*
              * copy literals literally
              */
             if (curchar == '\'' || curchar == '\"') {
                 c = curchar;
-                getchar();
+                getnext();
                 *d++ = c;
                 while (curchar != c) {
                     *d++ = curchar;
                     if (curchar == '\\') {
-                        getchar();
+                        getnext();
                         *d++ = curchar;
                     }
-                    getchar();
+                    getnext();
                 }
             }
             if (curchar == '(') {
@@ -175,34 +184,42 @@ macexpand(char *s)
             /*
              * only advance when we have a non-parenthesized comma
              */
-            if ((plevel == 0) && ((curchar == ',') || (curchar == ')'))) {
+            if (((plevel == 1) && (curchar == ',')) || 
+                ((plevel == 0) && (curchar == ')'))) {
                 *d++ = '\0';
                 parms[args++] = strdup(macbuffer);
                 if (curchar == ')') {
                     break;
                 }
                 d = macbuffer;
-                getchar();
+                getnext();
+                skipwhite();
                 continue;
             }
             *d++ = curchar;
-            getchar();
+            getnext();
         }
-        getchar();
+        getnext();
     }
     if (args != m->parmcount) {
         err(ER_C_DP);
     }
 
+    /*
+     * now we copy the macro text to the macbuffer, expanding
+     * the parameters whereever we find them
+     */
     d = macbuffer;
     s = m->mactext;
 
     while (*s) {
         c = *s;
+        /* literals go straight across */
         if ((c == '\'') || (c == '\"')) {
             *d++ = *s++;
             while (*s != c) {
-                if (*s == '\\') {
+                /* don't notice literal next quote */
+                if (*s == '\\' && s[1] == c) {
                     *d++ = *s++;
                 }
                 *d++ = *s++;
@@ -210,15 +227,18 @@ macexpand(char *s)
             *d++ = *s++;
             continue;
         }
+        /* if macro text has something that looks like an arg */
         if (((c >= 'A') && (c <= 'z')) || ((c >= '_') && (c <= 'z'))) {
             n = strbuf;
-            while (((c >= 'A') && (c <= 'z')) || 
+            while ((c = *s) && 
+                   (((c >= 'A') && (c <= 'z')) || 
                     ((c >= '_') && (c <= 'z')) ||
-                    ((c >= '0') && (c <= '9'))) {
+                    ((c >= '0') && (c <= '9')))) {
                 *n++ = *s++;
             }
             *n++ = 0;
             n = strbuf;
+            /* if it matches our declared arg name */
             for (i = 0; i < args; i++) {
                 if (strcmp(m->parms[i], strbuf) == 0) {
                     n = parms[i];
