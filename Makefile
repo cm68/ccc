@@ -1,6 +1,8 @@
 #
 # makefile for native and cross z80 compiler
 #
+# embedded tests are for incremental development
+#
 CC = gcc
 CFLAGS = -Wno-implicit-function-declaration -g
 OBJECTS = error.o parse.o type.o main.o lex.o io.o macro.o kw.o util.o
