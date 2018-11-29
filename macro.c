@@ -208,7 +208,7 @@ macexpand(char *s)
 
     /*
      * now we copy the macro text to the macbuffer, expanding
-     * the parameters whereever we find them
+     * the parameters where ever we find them
      */
     d = macbuffer;
     s = m->mactext;
@@ -228,7 +228,7 @@ macexpand(char *s)
             *d++ = *s++;
             continue;
         }
-        /* if the 'stringify' operator is present */
+        /* if the 'glom' operator is present */
         if (c == '#' && s[1] != '#') {
             stringify = 1;
         }
