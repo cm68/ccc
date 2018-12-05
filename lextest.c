@@ -15,6 +15,7 @@ int verbose;
 
 char *vopts[] = {
     "V_LEX",
+    "V_IO",
     0
 };
 #endif
@@ -53,7 +54,7 @@ process(char *f)
     
     insertfile(f, 0);
     ioinit();
-    nexttok = curtok = SEMI;
+    nexttok = curtok = NONE;
     while (curtok) {
         switch (curtok) {
         case SYM:

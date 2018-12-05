@@ -1,11 +1,13 @@
 int i;
 int j = 8;
+char moo[] = "this is a test";
+char *m1 = "this is another";
 
 #include "test1.h"
 #define	m y
 #define	z(a,b) a = #b
 #define	j
-#define	glom(a,b) a ## b
+#define	glom(a,b) a##b
 
 struct test_s {
 	int i;

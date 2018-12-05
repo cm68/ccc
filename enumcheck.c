@@ -9,7 +9,8 @@ int coll;
 #define check(a) \
 	if (ar[a]) { coll++; printf("duplicate value %s %d %c\n", #a, a, a); } ar[a] = 1
 	
-main()
+int
+main(int argc, char **argv)
 {
 	int i;
 

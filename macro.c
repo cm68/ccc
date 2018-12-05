@@ -1,7 +1,15 @@
 /*
  * macros are done in a unified way with include file processing:
  *
+ * I think this implementation is a little more restrictive than normal
+ * cpp, in that the values to substitute need to be single tokens
+ * this can probably be relaxed at some point, but I need to get a good
+ * handle on what the actual standard says
  *
+ * these are the canonical examples:
+ * #define k(a,b) a##b
+ * #define k(a,b) if (a) b=0
+ * #define k(a,b) if (a) s=#b
  */
 #include "ccc.h"
 
@@ -105,7 +113,8 @@ macdefine(char *s)
         skipwhite1();
     }
     s = macbuffer;
-    /* we copy to the macbuffer the entire logical line, spaces and tabs included */
+    /* we copy to the macbuffer the entire logical line, 
+     * spaces and tabs included */
     while (curchar != '\n') {
         if ((curchar == '\\') && (getnext == '\n')) {
             getnext();
@@ -119,13 +128,35 @@ macdefine(char *s)
     m->mactext = strdup(macbuffer);
     m->next = macros;
     macros = m;
+    printf("macro %s defined\n", m->name);
 }
 
 /*
  * if our symbol is a macro, expand it
+ * the arguments are processed as follows:
+ * we have attached to the macro structure the array of formal
+ * parameters, and when in our invocation, we have the values to
+ * substitute for them.  these formal parameters look like c symbol names,
+ * and the substitution values are single comma delimited tokens.
+ * so, when we hit, we'll consume the macro call of foo(x,y) in the input
+ * stream, build the expansion into a buffer, and insert that buffer into
+ * the input stream.   when that input stream is in turn processed, we'll
+ * check that for macros just like file content.  in this way, macro calls
+ * inside of macro calls just work, and we process them outside-in.
+ * there are some cases that will be kinda bizarre, given this architecture.
+ * also, there are two operators that only work inside a macro expansion:
+ * stringify (#) and glom(##).
+ * stringify must immediately precede a formal parameter name, and simply
+ * will stringify the actual parameter.
+ * #define baz(a) #a
+ * glom, when encountered in a macro expansion, simply turns into nothing,
+ * while allowing keyword expansion of any adjacent identifiers
+ * #define foo(a,b) a##b
+ * #define bar(c,d) c##d
+ * foo(b,ar(xy,zzy)) generates xyzzy
  */
 int
-macexpand(char *s)
+macexpand(char *s)	/* the symbol we are looking up as a macro */
 {
     struct macro *m;
     char plevel;
@@ -149,6 +180,7 @@ macexpand(char *s)
     if (!m) {
         return 0;
     }
+    printf("macro %s called\n", m->name);
     args = 0;
     d = macbuffer;
     skipwhite();
@@ -185,8 +217,8 @@ macexpand(char *s)
             /*
              * only advance when we have a non-parenthesized comma
              */
-            if (((plevel == 1) && (curchar == ',')) || 
-                ((plevel == 0) && (curchar == ')'))) {
+            if (((plevel == 1) && (nextchar == ',')) || 
+                ((plevel == 0) && (nextchar == ')'))) {
                 *d++ = '\0';
                 parms[args++] = strdup(macbuffer);
                 if (curchar == ')') {
@@ -228,9 +260,11 @@ macexpand(char *s)
             *d++ = *s++;
             continue;
         }
-        /* if the 'glom' operator is present */
+        /* if the 'stringify' operator is present */
         if (c == '#' && s[1] != '#') {
             stringify = 1;
+            s++;
+            continue;
         }
 
         /* if macro text has something that looks like an arg */
@@ -251,15 +285,21 @@ macexpand(char *s)
                     break;
                 }
             }
+            if (stringify) {
+                *d++ = '\"';
+            }
             while (*n) {
                 *d++ = *n++;
+            }
+            if (stringify) {
+                *d++ = '\"';
             }
             continue;
         }
         *d++ = *s++;
     }
     *d = 0;
-    insertmacro(m->name);
+    insertmacro(m->name, macbuffer);
     return 1;
 }
 

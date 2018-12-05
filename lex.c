@@ -88,7 +88,7 @@ static
 int
 getint(char base)
 {
-    int i;
+    int i = 0;
     char c;
     int len = 0;
 
@@ -208,9 +208,6 @@ char strbuf[128];
  * does the next hunk of characters look like a C symbol or keyword
  * specifically, does it look like [A-Za-z_][A-Za-z0-9_]*
  * if it does, copy it to the string buffer
- *
- * there is a little hair here, since the cpp has the ## operator,
- * which does glomming:  _ ## xx ## yy  is identical to _xxyy
  */
 char
 issym()
@@ -359,38 +356,15 @@ do_cpp(char t)
 
 /*
  * check if we have a literal string
- * this needs to handle both the stringify operator and the string concat:
- *   #FOO   -> "FOO":q
- *
- *   "foo" <whitespace> "bar"   -> "foobar"
  */
 char 
 isstring(char *s)
 {
-#ifdef notdef
-    XXX - fixme
-    /*
-     * stringify #xxx into "<value of xxx>" if it's a cpp macro
-     * this is quite gnarly - if there is a literal string inside, then
-     * the quotes and backslashes in the string are escaped. as this
-     * can get ugly recursive, and it does not interact well with the
-     * method I use to do macros, this might not work.
-     */
-    if ((prevchar != '\n') && (curchar == '#')) {
-        getnext();
-        while ((curchar > ' ') && (curchar <= 0x7f)) {
-            *s++ = curchar;
-            getnext();
-        }
-        *s = 0;
-        return 1;
-    }
-#endif
     if (curchar != '\"') {
         return 0;
     }
     getnext();
-    while (curchar != '\"') {
+    while (nextchar != '\"') {
         *s++ = getlit();
         getnext();
     }
@@ -464,6 +438,7 @@ gettoken()
     int incomment = 0;
     char nbuf[20];
 
+top:
     /* advance */
     if (curstr) {
         strfree(curstr);
@@ -477,6 +452,9 @@ gettoken()
         cpp_out(curstr);
     } else if (curtok == NUMBER) {
         sprintf(nbuf, "%d", curval);
+        cpp_out(nbuf);
+    } else if (curtok == STRING) {
+        sprintf(nbuf, "\"%s\"", curstr);
         cpp_out(nbuf);
     } else {
         if (detoken[curtok]) {
@@ -546,7 +524,7 @@ gettoken()
         }
         if (issym()) {
             if (macexpand(strbuf)) {
-                continue;
+                goto top;
             }
             t = kwlook(strbuf, ckw);
             if (t) {
@@ -595,6 +573,9 @@ gettoken()
     }
 }
 
+/*
+ * it's not k&r, but #if defined(foo) should return 1 or 0.
+ */
 char
 cpppseudofunc()
 {

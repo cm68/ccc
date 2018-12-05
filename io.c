@@ -9,26 +9,33 @@
  */
 #include "ccc.h"
 #include <fcntl.h>
-extern int cpp_file;
 
 /*
  * the incoming character stream interface
  * a zero is EOF
  */
-char prevchar;
-char curchar;
-char nextchar;
-int lineno;
-char *filename;
+char curchar;               // the current character
+char peek;                  // the next character
+int lineno;                 // line number for error messages
+char *filename;             // current file name
+int col;                    // this is reset to 0 when we see a newline
 
+/*
+ * the formal definition of offset is the first unread character.
+ * this is effectively the lookahead character.  if we have not read anything
+ * from this buffer yet, it is zero.  advance() places this character into
+ * curchar and bumps the cursor.  if this means that we exhaust the buffer,
+ * we need to read more, so that peek is valid.  we need peek to be valid to
+ * give the lexer the character of lookahead that it requires.
+ */
 #define	TBSIZE	1024		/* text buffer size */
 struct textbuf {
-	char fd;		// if == -1, macro buffer
-	char *name;		// filename or macro name
-	char *storage;		// data - free when done
-	short offset;		// cursor
-	short valid;		// total valid in buffer
-	short lineno;		// current line # in file
+	char fd;                // if == -1, macro buffer
+	char *name;             // filename or macro name
+	char *storage;          // data - free when done
+	short offset;           // cursor
+	short valid;            // total valid in buffer
+	short lineno;           // current line # in file
 	struct textbuf *prev;	// a stack
 } *tbtop;
 
@@ -62,29 +69,36 @@ insertfile(char *name, int sys)
 }
 
 /*
- * we could save pushing and memory allocation if macbuf is smaller than
- * t_offset.  then we'd just copy it in and adjust t_offset backwards.
- * probably not worth it, unless there are large numbers of small macros.
- *
- * XXX - since some sources DO have a large number of macros, this is
- * probably worth it.
- *
  * when we encounter a macro invocation FOO(x,y) in the input stream, 
  * we replace it with the definition of FOO with parameter substitution
  * effectively pushing this text into the stream.  if that expansion in
  * turn has macro invocations, that causes another push.
+ * there's an easy and effective optimization that checks to see if a macro
+ * will fit in the portion of the buffer that we have read already.  if
+ * so, we copy the macro before the current cursor and back up to the
+ * start of the macro expansion.
+ * important:  we push BETWEEN curchar and peek.
  */
 void
 insertmacro(char *name, char *macbuf)
 {
 	struct textbuf *t;
+    int l;
 
-#ifdef DEBUG
-    if (verbose & V_IO) {
-        printf("insert_macro: %s = \"%s\"\n", name, macbuf);
+    l = strlen(macbuf);         // our macro without the terminating null
+    t = tbtop;
+
+    /* does it fit */
+    if (t->offset > l) {
+        hexdump(t->storage, t->valid);
+        t->offset -= l;
+        strncpy(&t->storage[t->offset], macbuf, l);
+        peek = t->storage[t->offset];
+        hexdump(t->storage, t->valid);
+        return;
     }
-#endif
-
+ 
+    /* if it does not */
 	t = malloc(sizeof(*t));
 	t->fd = -1;
 	t->name = strdup(name);
@@ -98,82 +112,61 @@ insertmacro(char *name, char *macbuf)
 }
 
 /*
- * grab a character from the input machinery
- * if an input file has a null before EOF, then bizarre stuff happens.
- * handling this case is not worth it. - XXX
+ * ensure that curchar and peek are valid.
+ * side effects: updating line and col
  */
-char
-readchar()
+void
+advance()
 {
-	struct textbuf *t;
+	struct textbuf *t = tbtop;
 
-	while ((t = tbtop) != 0) {
-		if (t->offset < t->valid) {
-			return t->storage[t->offset++];
-		}
-        if (t->fd != -1) {
-            t->valid = read(t->fd, t->storage, TBSIZE);
-            t->offset = 0;
-
-#ifdef DEBUG
-            if (verbose & V_IO) {
-                printf("read file %s for %d\n", t->name, t->valid);
-            }
-#endif
-            if (t->valid)
-                continue;
-            close(t->fd);
-        }
-        tbtop = t->prev;
-        free(t->storage);
-        free(t->name);
-        free(t);
-        if (tbtop) {
-            lineno = tbtop->lineno;
-            filename = tbtop->name;
-        }
+    curchar = peek;
+more:
+    if (!t) {
+        peek = 0;
+        return;
+    }
+    /* do we have a valid next peek? */
+	if (t->offset < t->valid) {
+            peek = t->storage[t->offset++];
+            goto done;
 	}
-	return 0;
-}
 
-/*
- * advance the current character.
- * this updates curchar, lineno, nextchar and prevchar
- */
-char
-getnext()
-{
-	prevchar = curchar;
-	if (prevchar == '\n') lineno++;
-	curchar = nextchar;
-	if (curchar == 0) {
-		nextchar = 0;
-	} else {
-		nextchar = readchar();
-        if (nextchar == '\t') {
-            nextchar = ' ';
+    /* if we have a file open, read some more of it */
+    if (t->fd != -1) {
+        t->valid = read(t->fd, t->storage, TBSIZE);
+        t->offset = 0;
+        if (t->valid > 0) { // read worked
+            goto more;
         }
+        close(t->fd);
+    }
+    /* closed file or empty macro buffer - pop */
+    tbtop = t->prev;
+    free(t->storage);
+    free(t->name);
+    free(t);
+    if (tbtop) {
+        lineno = tbtop->lineno;
+        filename = tbtop->name;
 	}
-	return curchar;
+done:
+    if (curchar == '\n') {
+        col = 0;
+        lineno++;
+    } else {
+        col++;
+    }
+    if (peek == '\t') peek = ' ';
 }
 
 void
 ioinit()
 {
-    nextchar = readchar();
-    getnext();
-}
-
-/*
- * write to the cpp output file if requested
- *  */
-void
-cpp_out(char *s)
-{
-    if (s && cpp_file) {
-        write(cpp_file, s, strlen(s));
-        write(cpp_file, " ", 1);
-    }
+    lineno = 1;
+    advance();
+    advance();
+    col = 0;
 }
 
 /*

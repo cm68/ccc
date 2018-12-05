@@ -19,6 +19,7 @@ extern int verbose;
  */
 typedef enum token {
 	E_O_F = 0,
+    NONE = ' ',
 	/* C keywords */
 	ASM = 'A', AUTO = 'o', 
 	BOOLEAN = 'b' , BREAK = 'B', 
@@ -87,14 +88,13 @@ extern void gettoken();
 /* io.c */
 extern void pushfile(char *name);
 extern void insert_macro(char *name, char *macbuf);
-extern char getnext();
-extern char readchar();
+extern void advance();
 
-extern char prevchar;
 extern char curchar;
-extern char nextchar;
+extern char peek;
 extern int lineno;
 extern char *filename;
+extern int col;
 
 /*
  * error numbers for formatting
@@ -126,6 +126,7 @@ char *macbuffer;
 
 /* util.c */
 extern char lookupc(char *s, char c);
+extern void hexdump(char *s, int len);
 
 /* type.c */
 extern struct scope *cur_block;

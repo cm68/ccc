@@ -38,7 +38,7 @@ process(char *f)
 
     printf("process %s\n", f);
     insertfile(f, 0);
-    nexttok = curtok = SEMI;
+    nexttok = curtok = NONE;
     while (curtok) {
         gettoken();
     }

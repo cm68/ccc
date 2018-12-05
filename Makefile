@@ -8,19 +8,24 @@ CFLAGS = -Wno-implicit-function-declaration -g
 OBJECTS = error.o parse.o type.o main.o lex.o io.o macro.o kw.o util.o
 HEADERS = ccc.h error.h expr.h type.h
 GENERATED = enumlist.h tokenlist.c error.h
+CFILES = iotest.c lextest.c kw.c io.c macro.c util.c error.c
 
-BINS = enumcheck cc1 cc2 lextest maketokens
+BINS = enumcheck cc1 cc2 lextest maketokens iotest
 
 lextest: lex.o lextest.o kw.o io.o macro.o util.o error.o tokenlist.o
 	cc -g -o lextest tokenlist.o lextest.o lex.o kw.o io.o macro.o util.o error.o
+
+iotest: io.o util.o iotest.o
+	cc -g -o iotest io.o iotest.o util.o
 
 ccc: $(OBJECTS)
 	cc -o ccc $(OBJECTS)
 
 $(OBJECTS): $(HEADERS)
 
-test: lextest testfile.c
-	./lextest -v -1 testfile.c
+test: iotest lextest testfile.c
+	./iotest -v 2 testfile.c
+	./lextest -v 2 -E testfile.c
 	
 #
 # process the ccc.h file, extracting the enum tags for the tokens
@@ -67,3 +72,5 @@ kw.o: kw.c
 error.o: error.c
 util.o: util.c
 tokenlist.o: tokenlist.c
+lextest.o: lextest.c
+iotest.o: iotest.c
