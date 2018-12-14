@@ -27,6 +27,8 @@ int col;                    // this is reset to 0 when we see a newline
  * curchar and bumps the cursor.  if this means that we exhaust the buffer,
  * we need to read more, so that peek is valid.  we need peek to be valid to
  * give the lexer the character of lookahead that it requires.
+ * 
+ * specifically, if we do a macro insertion, it is between curchar and peek
  */
 #define	TBSIZE	1024		/* text buffer size */
 struct textbuf {
