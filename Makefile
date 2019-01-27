@@ -23,9 +23,12 @@ ccc: $(OBJECTS)
 
 $(OBJECTS): $(HEADERS)
 
-test: iotest lextest testfile.c
-	./iotest -v 2 testfile.c
-	./lextest -v 2 -E testfile.c
+test: iotest lextest
+	for t in tests/*.c ; do \
+		echo testing against $$t ; \
+		# ./iotest -v 3 $$t > $$t.io ; cat $$t.io ; \
+		./lextest -v 3 -E $$t ; \
+	done
 	
 #
 # process the ccc.h file, extracting the enum tags for the tokens

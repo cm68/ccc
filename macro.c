@@ -87,14 +87,14 @@ macdefine(char *s)
      * get the parameter names from the (<a>,<b>,...) list
      */
     if (curchar == '(') {
-        getnext();
+        advance();
         while (1) {
             skipwhite1();
             if (issym(s)) {
                 parms[m->parmcount++] = strdup(s);
                 skipwhite1();
                 if (curchar == ',') {
-                    getnext();
+                    advance();
                     continue;
                 }
             }
@@ -109,22 +109,22 @@ macdefine(char *s)
         for (i = 0; i < m->parmcount; i++) {
             m->parms[i] = parms[i];
         }
-        getnext();
+        advance();
         skipwhite1();
     }
     s = macbuffer;
     /* we copy to the macbuffer the entire logical line, 
      * spaces and tabs included */
     while (curchar != '\n') {
-        if ((curchar == '\\') && (getnext == '\n')) {
-            getnext();
+        if ((curchar == '\\') && (nextchar == '\n')) {
+            advance();
             curchar = ' ';
         }
         *s++ = curchar;
-        getnext();
+        advance();
     }
     *s = 0;
-    getnext();  /* eat the newline */
+    advance();  /* eat the newline */
     m->mactext = strdup(macbuffer);
     m->next = macros;
     macros = m;
@@ -189,7 +189,7 @@ macexpand(char *s)	/* the symbol we are looking up as a macro */
      */
     if (curchar == '(') {
         plevel = 1;
-        getnext();
+        advance();
         skipwhite();
         while (1) {
             /*
@@ -197,15 +197,15 @@ macexpand(char *s)	/* the symbol we are looking up as a macro */
              */
             if (curchar == '\'' || curchar == '\"') {
                 c = curchar;
-                getnext();
+                advance();
                 *d++ = c;
                 while (curchar != c) {
                     *d++ = curchar;
                     if (curchar == '\\') {
-                        getnext();
+                        advance();
                         *d++ = curchar;
                     }
-                    getnext();
+                    advance();
                 }
             }
             if (curchar == '(') {
@@ -225,14 +225,14 @@ macexpand(char *s)	/* the symbol we are looking up as a macro */
                     break;
                 }
                 d = macbuffer;
-                getnext();
+                advance();
                 skipwhite();
                 continue;
             }
             *d++ = curchar;
-            getnext();
+            advance();
         }
-        getnext();
+        advance();
     }
     if (args != m->parmcount) {
         err(ER_C_DP);

@@ -54,7 +54,7 @@ void
 skipwhite()
 {
     while ((curchar == ' ') || (curchar == '\n')) {
-        getnext();
+        advance();
     }
 }
 
@@ -65,7 +65,7 @@ void
 skipwhite1()
 {
     while (curchar == ' ') {
-        getnext();
+        advance();
     }
 }
 
@@ -76,7 +76,7 @@ void
 skiptoeol()
 {
     while (curchar && (curchar != '\n')) {
-        getnext();
+        advance();
     }
 }
 
@@ -100,7 +100,7 @@ getint(char base)
         }
         i *= base;
         i += c;
-        getnext();
+        advance();
         len++;
     }
     /* if no characters are consumed, note the error if base 2 or 16 */
@@ -125,7 +125,7 @@ top:
         }
         return curchar;
     }
-    getnext();          // eat the backslash
+    advance();          // eat the backslash
     switch (curchar) {
     case '\n':          /* backslash at end of line */
         lineno++;
@@ -148,13 +148,13 @@ top:
     case '4': case '5': case '6': case '7':
         return (getint(8));
     case 'x': case 'X':                         // hex
-        getnext();
+        advance();
         return (getint(16));
     case 'B':                                   // binary
-        getnext();
+        advance();
         return (getint(2));
     case 'D':                                   // decimal
-        getnext();
+        advance();
         return (getint(10));
     default:
         return curchar;                         // literal next
@@ -170,12 +170,12 @@ isnumber()
     char base;
 
     if (curchar == '\'') {
-        getnext();
+        advance();
         nextval = getlit();
         if (curchar == '\'') {
             err(ER_C_CD);
         }
-        getnext();
+        advance();
         return 1;
     }
 
@@ -185,13 +185,13 @@ isnumber()
 
     base = 10;
     if (curchar == '0') {
-        getnext();
+        advance();
         if ((curchar | 0x20) == 'x') {
             base = 16;
-            getnext();
+            advance();
         } else if ((curchar | 0x20) == 'b') {
             base = 2;
-            getnext();
+            advance();
         } else if ((curchar | 0x20) == 'd') {
             base = 10;
         } else {
@@ -223,18 +223,18 @@ issym()
     }
     *s++ = curchar;
     *s = 0;
-    getnext();
+    advance();
     while (1) {
         /* handle glommer operator */
         if (curchar == ' ') {
             while (curchar == ' ') {
-                getnext();
+                advance();
             }
             if (curchar == '#' && nextchar == '#') {
-                getnext();
-                getnext();
+                advance();
+                advance();
                 while (curchar == ' ') {
-                    getnext();
+                    advance();
                 }
             } else {
                 break;
@@ -247,7 +247,7 @@ issym()
              (curchar == '_')) {
             *s++ = curchar;
             *s = 0;
-            getnext();
+            advance();
         } else {
             break;
         }
@@ -339,12 +339,13 @@ do_cpp(char t)
         } else {
             err(ER_C_ID);
         }
-        getnext();
+        advance();
         s = strbuf;
         while ((curchar != '\n') && (curchar != ' ') && (curchar != k)) {
             *s++ = curchar;
-            getnext();
+            advance();
         }
+        *s = 0;
         if (curchar != k) {
             err(ER_C_ID);
         }
@@ -363,13 +364,13 @@ isstring(char *s)
     if (curchar != '\"') {
         return 0;
     }
-    getnext();
-    while (nextchar != '\"') {
+    advance();
+    while (curchar != '\"') {
         *s++ = getlit();
-        getnext();
+        advance();
     }
     *s = 0;
-    getnext();
+    advance();
     return 1;
 }
 
@@ -469,8 +470,8 @@ top:
             nexttok = E_O_F;
             return;
         }
-        if (curchar == '#' && prevchar == '\n') {   // cpp directive
-            getnext();
+        if (curchar == '#' && column == 0) {   // cpp directive
+            advance();
             skipwhite1();
             if (issym()) {
                 t = kwlook(strbuf, cppkw);
@@ -491,17 +492,17 @@ top:
         }
         if (curchar == '\n' && (tflags & ONELINE)) {
             nexttok = ';';
-            getnext();
+            advance();
             return;
         }
-        if (prevchar == '\n' && cond && !(cond->flags & C_TRUE)) {
+        if ((column == 0) && cond && !(cond->flags & C_TRUE)) {
             skiptoeol();
             continue;
         }
         if ((curchar == '/') && (nextchar == '*') && !incomment) {
             incomment = 1;
-            getnext();
-            getnext();
+            advance();
+            advance();
             continue;
         }
         if ((curchar == '/') && (nextchar == '/')) {
@@ -510,16 +511,16 @@ top:
         }
         if ((incomment) && (curchar == '*') && (nextchar == '/')) {
             incomment = 0;
-            getnext();
-            getnext();
+            advance();
+            advance();
             continue;
         }
         if (incomment) {
-            getnext();
+            advance();
             continue;
         }
         if ((curchar == ' ') || (curchar == '\n')) {
-            getnext();
+            advance();
             continue;
         }
         if (issym()) {
@@ -550,24 +551,24 @@ top:
             curchar= ';';
         }
         nexttok = curchar;
-        getnext();
+        advance();
         if (curchar == nexttok) {
             t = lookupc(dbl_able, curchar);
             if (t != -1) {
                 nexttok = dbltok[t];
-                getnext();
+                advance();
             }
         }
         if (curchar == '=') {
             t = lookupc(eq_able, nextchar);
             if (t != -1) {
                 nexttok = eqtok[t];
-                getnext();
+                advance();
             }
         }
         if ((nexttok == '-') && (curchar == '>')) {
             nexttok = DEREF;
-            getnext();
+            advance();
         }
         return;
     }
@@ -582,17 +583,17 @@ cpppseudofunc()
     int r = 0;
 
     if ((strcmp("defined", strbuf) == 0) && (tflags & CPPFUNCS)) {
-        while ((curchar == '\t') || (curchar == ' ')) getnext();
+        while ((curchar == '\t') || (curchar == ' ')) advance();
         if (curchar != '(') {
             err(ER_C_DP);
             curchar = '0';
             return 1;
         }
-        getnext();
+        advance();
         if (issym()) {
             if (maclookup(strbuf)) r = 1;
         }
-        while ((curchar == '\t') || (curchar == ' ')) getnext();
+        while ((curchar == '\t') || (curchar == ' ')) advance();
         if (curchar != ')') {
             err(ER_C_DP);
             r = 0;
@@ -607,7 +608,7 @@ cpppseudofunc()
  * this code straddles the cpp, the lexer and the expression parser
  * so much happens via global variable side effects, so recursive
  * calls could happen that need repair.
- * ex:  expr->gettoken->do_cpp->readcppconst->expr->gettoken->getnext
+ * ex:  expr->gettoken->do_cpp->readcppconst->expr->gettoken->advance
  * if we hit an #if in the middle of an expression
  */
 int

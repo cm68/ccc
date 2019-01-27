@@ -15,27 +15,25 @@
  * a zero is EOF
  */
 char curchar;               // the current character
-char peek;                  // the next character
+char nextchar;              // the next char - can change if macro
 int lineno;                 // line number for error messages
 char *filename;             // current file name
-int col;                    // this is reset to 0 when we see a newline
+int column;                 // this is reset to 0 when we see a newline
+int nextcol = 0;
 
 /*
  * the formal definition of offset is the first unread character.
  * this is effectively the lookahead character.  if we have not read anything
  * from this buffer yet, it is zero.  advance() places this character into
- * curchar and bumps the cursor.  if this means that we exhaust the buffer,
- * we need to read more, so that peek is valid.  we need peek to be valid to
- * give the lexer the character of lookahead that it requires.
- * 
- * specifically, if we do a macro insertion, it is between curchar and peek
+ * curchar.
+ * if we do a macro insertion, it is after curchar
  */
 #define	TBSIZE	1024		/* text buffer size */
 struct textbuf {
 	char fd;                // if == -1, macro buffer
 	char *name;             // filename or macro name
 	char *storage;          // data - free when done
-	short offset;           // cursor
+	short offset;           // always points at nextchar.
 	short valid;            // total valid in buffer
 	short lineno;           // current line # in file
 	struct textbuf *prev;	// a stack
@@ -79,7 +77,7 @@ insertfile(char *name, int sys)
  * will fit in the portion of the buffer that we have read already.  if
  * so, we copy the macro before the current cursor and back up to the
  * start of the macro expansion.
- * important:  we push BETWEEN curchar and peek.
+ * important:  we push BETWEEN curchar and nextchar.
  */
 void
 insertmacro(char *name, char *macbuf)
@@ -95,7 +93,7 @@ insertmacro(char *name, char *macbuf)
         hexdump(t->storage, t->valid);
         t->offset -= l;
         strncpy(&t->storage[t->offset], macbuf, l);
-        peek = t->storage[t->offset];
+        nextchar = t->storage[t->offset];
         hexdump(t->storage, t->valid);
         return;
     }
@@ -113,24 +111,43 @@ insertmacro(char *name, char *macbuf)
     filename = name;
 }
 
+void
+tbdump(struct textbuf *t)
+{
+    printf("textbuf: %s fd: %d data: %x offset: %d valid: %d lineno %d\n", 
+        t->name, t->fd, t->storage, t->offset, t->valid, t->lineno);
+}
+
+void
+iodump()
+{
+    struct textbuf *t = tbtop;
+    while (t) {
+        tbdump(t);
+        t = t->prev;
+    }
+}
+
 /*
- * ensure that curchar and peek are valid.
- * side effects: updating line and col
+ * read the next character into curchar
+ * side effects: updating line and column
  */
 void
 advance()
 {
 	struct textbuf *t = tbtop;
 
-    curchar = peek;
+    curchar = nextchar;
 more:
+    /* if no textbuf, are at eof */
     if (!t) {
-        peek = 0;
+        nextchar = 0;
         return;
     }
-    /* do we have a valid next peek? */
+
+    /* do we have a valid nextchar? */
 	if (t->offset < t->valid) {
-            peek = t->storage[t->offset++];
+            nextchar = t->storage[t->offset++];
             goto done;
 	}
 
@@ -153,13 +170,14 @@ more:
         filename = tbtop->name;
 	}
 done:
+    column = nextcol;
     if (curchar == '\n') {
-        col = 0;
+        nextcol = 0;
         lineno++;
     } else {
-        col++;
+        nextcol++;
     }
-    if (peek == '\t') peek = ' ';
+    if (nextchar == '\t') nextchar = ' ';
 }
 
 void
@@ -168,7 +186,7 @@ ioinit()
     lineno = 1;
     advance();
     advance();
-    col = 0;
+    column = 0;
 }
 
 /*

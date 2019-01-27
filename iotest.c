@@ -32,9 +32,11 @@ process(char *f)
          * this needs to expand to xtestingy
          */
         if (curchar == 'M') {
-            insertmacro("M", "testing");
+            iodump();
+            insertmacro("M", "test");
+            iodump();
         }
-        printf("curchar %d %c peek %d %c col %d line %d\n", curchar, curchar, peek, peek, col, lineno);
+        printf("curchar %d %c nextchar %d %c column %d line %d\n", curchar, curchar, nextchar, nextchar, column, lineno);
         advance();
     }
 }

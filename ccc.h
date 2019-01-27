@@ -91,10 +91,10 @@ extern void insert_macro(char *name, char *macbuf);
 extern void advance();
 
 extern char curchar;
-extern char peek;
+extern char nextchar;
 extern int lineno;
 extern char *filename;
-extern int col;
+extern int column;
 
 /*
  * error numbers for formatting
