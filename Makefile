@@ -5,7 +5,8 @@
 #
 CC = gcc
 CFLAGS = -Wno-implicit-function-declaration -g
-OBJECTS = error.o parse.o type.o main.o lex.o io.o macro.o kw.o util.o
+OBJECTS = error.o parse.o type.o main.o lex.o io.o macro.o kw.o util.o tokenlist.o \
+	lextest.o iotest.o
 HEADERS = ccc.h error.h expr.h type.h
 GENERATED = enumlist.h tokenlist.c error.h
 CFILES = iotest.c lextest.c kw.c io.c macro.c util.c error.c
@@ -59,7 +60,7 @@ enumcheck: enumlist.h enumcheck.c
 	./enumcheck
 
 clean:
-	rm -f $(OBJECTS) lextest.o $(GENERATED)
+	rm -f $(OBJECTS) lextest.o $(GENERATED) *.i
 
 clobber: clean
 	rm -f $(BINS)
