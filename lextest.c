@@ -154,7 +154,7 @@ main(int argc, char **argv)
 }
 
 struct expr *
-expr()
+expr(char priority, struct stmt *parent)
 {
     struct expr *e;
 

@@ -2,6 +2,8 @@
  * global defs for curt's c compiler
  */
 #include "type.h"
+#include "expr.h"
+#include "stmt.h"
 
 #define	DEBUG
 
@@ -87,7 +89,8 @@ extern void gettoken();
 
 /* io.c */
 extern void pushfile(char *name);
-extern void insert_macro(char *name, char *macbuf);
+extern void insertmacro(char *name, char *macbuf);
+extern void insertfile(char *name, int sysdirs);
 extern void advance();
 
 extern char curchar;
@@ -102,6 +105,10 @@ extern int column;
  */
 #undef DEF_ERRMSG
 #include "error.h"
+
+/* expr.c */
+struct expr *expr(char priority, struct stmt *st);
+void freeexpr(struct expr *e);
 
 /* main.c */
 extern void err(error_t errcode);
@@ -123,10 +130,15 @@ struct macro {
 };
 extern struct macro *macros;
 char *macbuffer;
+void macdefine(char *s);
+void macundefine(char *s);
+int macexpand(char *s);
+struct macro *maclookup(char *s);
 
 /* util.c */
 extern char lookupc(char *s, char c);
 extern void hexdump(char *s, int len);
+void cpp_out(char *s);
 
 /* type.c */
 extern struct scope *cur_block;
@@ -137,6 +149,10 @@ struct type *findtype(char *name, kind_t kind);
 /* tokenlist.c */
 char *tokenname[];
 char *detoken[];
+
+/* libc functions */
+#include <malloc.h>
+#include <string.h>
 
 /*
  * vim: tabstop=4 shiftwidth=4 expandtab:

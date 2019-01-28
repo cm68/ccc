@@ -4,7 +4,6 @@
  * it handles different keyword tables for cpp, c, and asm
  */
 #include "ccc.h"
-#include "expr.h"
 
 #include <stdio.h>
 
@@ -15,6 +14,8 @@ long curval;        /* numeric data */
 long nextval;
 char *curstr;       /* name or string data */
 char *nextstr;
+
+int readcppconst();
 
 /*
  * cpp conditional
@@ -45,6 +46,20 @@ match(token_t t)
         return 1;
     }
     return 0;
+}
+
+/*
+ * this happens a fair amount too, and we want to save code
+ */
+int
+charmatch(int c)
+{
+    if (curchar == c) {
+        advance();
+        return 1;
+    } else {
+        return 0;
+    }
 }
 
 /*
@@ -169,8 +184,7 @@ isnumber()
 {
     char base;
 
-    if (curchar == '\'') {
-        advance();
+    if (charmatch('\'')) {
         nextval = getlit();
         if (curchar == '\'') {
             err(ER_C_CD);
@@ -184,8 +198,7 @@ isnumber()
     }
 
     base = 10;
-    if (curchar == '0') {
-        advance();
+    if (charmatch('0')) {
         if ((curchar | 0x20) == 'x') {
             base = 16;
             advance();
@@ -361,7 +374,7 @@ do_cpp(char t)
 char 
 isstring(char *s)
 {
-    if (curchar != '\"') {
+    if (!charmatch('\"')) {
         return 0;
     }
     advance();
@@ -470,8 +483,7 @@ top:
             nexttok = E_O_F;
             return;
         }
-        if (curchar == '#' && column == 0) {   // cpp directive
-            advance();
+        if (column == 0 && charmatch('#')) {   // cpp directive
             skipwhite1();
             if (issym()) {
                 t = kwlook(strbuf, cppkw);
@@ -490,9 +502,8 @@ top:
         if (curchar == '\n') {
             cpp_out("\n");
         }
-        if (curchar == '\n' && (tflags & ONELINE)) {
+        if ((tflags & ONELINE) && charmatch('\n')) {
             nexttok = ';';
-            advance();
             return;
         }
         if ((column == 0) && cond && !(cond->flags & C_TRUE)) {
@@ -545,6 +556,7 @@ top:
             nextstr = stralloc(strbuf);
             return;
         }
+        /* see if it is an operator character */
         t = lookupc(simple, curchar);
         if (t == -1) {
             err(ER_C_UT);
@@ -552,6 +564,7 @@ top:
         }
         nexttok = curchar;
         advance();
+        /* see if the character is doubled.  this can be an operator */
         if (curchar == nexttok) {
             t = lookupc(dbl_able, curchar);
             if (t != -1) {
@@ -559,6 +572,7 @@ top:
                 advance();
             }
         }
+        /* see if the character has an '=' appended.  this can be an operator */
         if (curchar == '=') {
             t = lookupc(eq_able, nextchar);
             if (t != -1) {

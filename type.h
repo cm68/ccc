@@ -116,6 +116,7 @@ struct name {
  * otherwise, it's just code.
  */
 struct initial {
+    int i;
     /* just a placeholder - XXX */
 };
 

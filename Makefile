@@ -3,8 +3,15 @@
 #
 # embedded tests are for incremental development
 #
+# this following is only to get an idea of size
+# the idea eventual is that it is both cross and native.
+#
+CC = sdcc
+CFLAGS = -mz80 --fomit-frame-pointer
+
 CC = gcc
 CFLAGS = -Wno-implicit-function-declaration -g
+
 OBJECTS = error.o parse.o type.o main.o lex.o io.o macro.o kw.o util.o tokenlist.o \
 	lextest.o iotest.o
 HEADERS = ccc.h error.h expr.h type.h

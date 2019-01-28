@@ -172,20 +172,18 @@ macexpand(char *s)	/* the symbol we are looking up as a macro */
         macbuffer = malloc(1024);
     }
 
-    for (m = macros; m; m = m->next) {
-        if (strcmp(m->name, s) == 0) {
-            break;
-        }
-    }
+    m = maclookup(s);
     if (!m) {
         return 0;
     }
     printf("macro %s called\n", m->name);
+
     args = 0;
     d = macbuffer;
     skipwhite();
+    plevel = 0;
     /*
-     * read the arguments
+     * read the arguments from the invocation
      */
     if (curchar == '(') {
         plevel = 1;
