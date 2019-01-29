@@ -90,11 +90,21 @@ insertmacro(char *name, char *macbuf)
 
     /* does it fit */
     if (t->offset > l) {
+#ifdef DEBUG
+    if (verbose & V_IO) {
+        printf("offset=%x curchar = %c nextchar = %c\n", t->offset, curchar, nextchar);
         hexdump(t->storage, t->valid);
+    }
+#endif
         t->offset -= l;
         strncpy(&t->storage[t->offset], macbuf, l);
         nextchar = t->storage[t->offset];
+#ifdef DEBUG
+    if (verbose & V_IO) {
+        printf("offset=%x curchar = %c nextchar = %c\n", t->offset, curchar, nextchar);
         hexdump(t->storage, t->valid);
+    }
+#endif
         return;
     }
  

@@ -218,9 +218,12 @@ isnumber()
 char strbuf[128];
 
 /*
+ * XXX - rewrite this, using nextchar effectively
+ * it breaks macro expansion as written I think.
  * does the next hunk of characters look like a C symbol or keyword
  * specifically, does it look like [A-Za-z_][A-Za-z0-9_]*
  * if it does, copy it to the string buffer
+ * important: don't advance. leave curchar being the last character of sym
  */
 char
 issym()
@@ -265,6 +268,7 @@ issym()
             break;
         }
     }
+printf("issym = 1 curchar = %c nextchar = %c\n", curchar, nextchar);
     return 1;
 }
 
