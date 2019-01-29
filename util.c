@@ -16,15 +16,17 @@ hexdump(char *h, int l)
     for (i = 0; i < l; i++) {
         c = *h++;
         if ((i % 16) == 0) {
-            printf(" %s\n%02x  ", z, i);
+            printf(" %s\n%04x  ", z, i);
             z[0] = 0;
         }
         printf("%02x ", c);
+        if ((i % 4) == 3) printf(" ");
         if ((c < ' ') || (c > 0x7e)) c = '.';
         z[i % 16] = c;
         z[(i % 16) + 1] = 0;
     }
     while ((i++ % 16) != 0) {
+        if ((i % 4) == 3) printf(" ");
         printf("   ");
     }
     printf(" %s\n", z);
