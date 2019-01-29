@@ -215,8 +215,8 @@ macexpand(char *s)	/* the symbol we are looking up as a macro */
             /*
              * only advance when we have a non-parenthesized comma
              */
-            if (((plevel == 1) && (nextchar == ',')) || 
-                ((plevel == 0) && (nextchar == ')'))) {
+            if (((plevel == 1) && (curchar == ',')) || 
+                ((plevel == 0) && (curchar == ')'))) {
                 *d++ = '\0';
                 parms[args++] = strdup(macbuffer);
                 if (curchar == ')') {
@@ -258,20 +258,24 @@ macexpand(char *s)	/* the symbol we are looking up as a macro */
             *d++ = *s++;
             continue;
         }
+
         /* if the 'stringify' operator is present */
+        stringify = 0;
         if (c == '#' && s[1] != '#') {
             stringify = 1;
-            s++;
-            continue;
+            c = *++s;
         }
 
         /* if macro text has something that looks like an arg */
-        if (((c >= 'A') && (c <= 'z')) || ((c >= '_') && (c <= 'z'))) {
+        if (((c >= 'A') && (c <= 'Z')) || 
+            ((c >= 'a') && (c <= 'z')) ||
+            (c == '_')) {
             n = strbuf;
             while ((c = *s) && 
-                   (((c >= 'A') && (c <= 'z')) || 
-                    ((c >= '_') && (c <= 'z')) ||
-                    ((c >= '0') && (c <= '9')))) {
+                   (((c >= 'A') && (c <= 'Z')) || 
+                    ((c >= 'a') && (c <= 'z')) ||
+                    ((c >= '0') && (c <= '9')) ||
+                    (c == '_'))) {
                 *n++ = *s++;
             }
             *n++ = 0;
