@@ -3,3 +3,12 @@ verify that nested macros work.
 #define	FOO(x,y)	bar(x,y)
 #define	XYZZY(a,b)	FOO(a,FOO(b,a))
 
+to maybe to shrink the lexer a bit
+make a bitmap with 128 entries:
+0x01 - is a character that may start a symbol name
+0x02 - is a character internal to a symbol name
+0x04 - is whitespace
+0x10 - is an operator
+0x20 - is an += kind of operator
+0x40 - is an ++ kind of operator
+

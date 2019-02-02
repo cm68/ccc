@@ -2,6 +2,8 @@
  * this is a brute force lexer that uses a tight keyword lookup in kw.c
  * we do cpp conditionals in here
  * it handles different keyword tables for cpp, c, and asm
+ *
+ * XXX - maybe use character type bitmask
  */
 #include "ccc.h"
 
@@ -218,57 +220,38 @@ isnumber()
 char strbuf[128];
 
 /*
- * XXX - rewrite this, using nextchar effectively
- * it breaks macro expansion as written I think.
  * does the next hunk of characters look like a C symbol or keyword
  * specifically, does it look like [A-Za-z_][A-Za-z0-9_]*
  * if it does, copy it to the string buffer
  * important: don't advance. leave curchar being the last character of sym
+ * and nextchar being the character that detected the end of the name
  */
 char
 issym()
 {
-    char *s;
-    char c;
+    char *s = strbuf;
 
-    s = strbuf;
-
-    c = curchar | 0x20;
-    if (!((c >= 'a') && (c <= 'z')) || (curchar == '_')) {
+    /* if not a symbol starter */
+    if (!(((curchar >= 'a') && (curchar <= 'z')) || 
+          ((curchar >= 'A') && (curchar <= 'Z')) ||
+          (curchar == '_'))) {
         return 0;
     }
-    *s++ = curchar;
-    *s = 0;
-    advance();
-    while (1) {
-        /* handle glommer operator */
-        if (curchar == ' ') {
-            while (curchar == ' ') {
-                advance();
-            }
-            if (curchar == '#' && nextchar == '#') {
-                advance();
-                advance();
-                while (curchar == ' ') {
-                    advance();
-                }
-            } else {
-                break;
-            }
-        }
 
-        c = curchar | 0x20;
-        if (((c >= 'a') && (c <= 'z')) || 
-            ((c >= '0') && (c <= '9')) || 
-             (curchar == '_')) {
-            *s++ = curchar;
-            *s = 0;
-            advance();
-        } else {
+    /* XXX - do glom operator a ## b  becomes ab */
+    while (1) {
+        *s++ = curchar;
+        *s = 0;
+
+        if (!((nextchar >= 'A' && nextchar <= 'Z') ||
+            (nextchar >= 'a' && nextchar <= 'z') ||
+            (nextchar >= '0' && nextchar <= '9') ||
+            (nextchar == '_'))) {
             break;
         }
+        advance();
     }
-printf("issym = 1 curchar = %c nextchar = %c\n", curchar, nextchar);
+    printf("issym: %s\n", strbuf);
     return 1;
 }
 
@@ -280,6 +263,7 @@ do_cpp(char t)
     struct cond *c;
     int v;
 
+    printf("do_cpp\n");
     switch (t) {
     case IF:
         v = readcppconst();
@@ -337,6 +321,7 @@ do_cpp(char t)
             err(ER_C_MN);
             return;
         }
+        advance();
         macdefine(strbuf);
         return;
     case UNDEF:
@@ -345,6 +330,7 @@ do_cpp(char t)
             err(ER_C_MN);
             return;
         }
+        advance();
         macundefine(strbuf);
         return;
     case INCLUDE:
@@ -492,6 +478,7 @@ top:
             if (issym()) {
                 t = kwlook(strbuf, cppkw);
                 if (t) {
+                    advance();
                     do_cpp(t);
                     continue;
                 }
@@ -542,6 +529,7 @@ top:
             if (macexpand(strbuf)) {
                 goto top;
             }
+            advance();
             t = kwlook(strbuf, ckw);
             if (t) {
                 nexttok = t;

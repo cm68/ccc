@@ -91,6 +91,7 @@ macdefine(char *s)
         while (1) {
             skipwhite1();
             if (issym(s)) {
+                advance();
                 parms[m->parmcount++] = strdup(s);
                 skipwhite1();
                 if (curchar == ',') {
@@ -180,12 +181,17 @@ macexpand(char *s)	/* the symbol we are looking up as a macro */
 
     args = 0;
     d = macbuffer;
-    skipwhite();
+    while (iswhite(nextchar)) {
+        advance();
+    }
+    printf("1\n");
     plevel = 0;
     /*
      * read the arguments from the invocation
      */
-    if (curchar == '(') {
+    if (nextchar == '(') {
+        advance();
+        printf("2\n");
         plevel = 1;
         advance();
         skipwhite();
@@ -193,11 +199,14 @@ macexpand(char *s)	/* the symbol we are looking up as a macro */
             /*
              * copy literals literally
              */
+        printf("3\n");
             if (curchar == '\'' || curchar == '\"') {
+        printf("4\n");
                 c = curchar;
                 advance();
                 *d++ = c;
                 while (curchar != c) {
+        printf("5\n");
                     *d++ = curchar;
                     if (curchar == '\\') {
                         advance();
@@ -231,6 +240,7 @@ macexpand(char *s)	/* the symbol we are looking up as a macro */
             advance();
         }
         advance();
+        printf("6\n");
     }
     if (args != m->parmcount) {
         err(ER_C_DP);

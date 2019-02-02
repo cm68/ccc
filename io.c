@@ -23,9 +23,9 @@ int nextcol = 0;
 
 /*
  * the formal definition of offset is the first unread character.
- * this is effectively the lookahead character.  if we have not read anything
- * from this buffer yet, it is zero.  advance() places this character into
- * curchar.
+ * this is effectively the lookahead character, nextchar.  
+ * if we have not read anything from this buffer yet, it is zero.  
+ * advance() places this character into curchar.
  * if we do a macro insertion, it is after curchar
  */
 #define	TBSIZE	1024		/* text buffer size */
@@ -38,6 +38,41 @@ struct textbuf {
 	short lineno;           // current line # in file
 	struct textbuf *prev;	// a stack
 } *tbtop;
+
+#ifdef DEBUG
+int
+high(int i)
+{
+    if (i >= tbtop->offset) return 1;
+    return 0;
+}
+
+void
+cdump()
+{
+    struct textbuf *t = tbtop;
+    char cs[20];
+    char ns[20];
+
+    if (curchar <= ' ') {
+        sprintf(cs, "0x%x", curchar);
+    } else {
+        sprintf(cs, "%c", curchar);
+    }
+    if (nextchar <= ' ') {
+        sprintf(ns, "0x%x", nextchar);
+    } else {
+        sprintf(ns, "%c", nextchar);
+    }
+    if (verbose & V_IO) {
+        printf("\noffset=%x column=%d curchar=%s nextchar=%s", t->offset, column, cs, ns);
+        hexdump(t->storage, t->valid, &high);
+    }
+    
+} 
+#else
+#define cdump()
+#endif
 
 /*
  * if sys is true, then file was included using <> filename delimiters
@@ -90,21 +125,12 @@ insertmacro(char *name, char *macbuf)
 
     /* does it fit */
     if (t->offset > l) {
-#ifdef DEBUG
-    if (verbose & V_IO) {
-        printf("offset=%x curchar = %c nextchar = %c\n", t->offset, curchar, nextchar);
-        hexdump(t->storage, t->valid);
-    }
-#endif
+        cdump();
         t->offset -= l;
         strncpy(&t->storage[t->offset], macbuf, l);
-        nextchar = t->storage[t->offset];
-#ifdef DEBUG
-    if (verbose & V_IO) {
-        printf("offset=%x curchar = %c nextchar = %c\n", t->offset, curchar, nextchar);
-        hexdump(t->storage, t->valid);
-    }
-#endif
+        curchar = t->storage[t->offset];
+        nextchar = t->storage[t->offset+1];
+        cdump();
         return;
     }
  
@@ -148,16 +174,16 @@ advance()
 	struct textbuf *t = tbtop;
 
     curchar = nextchar;
-more:
+
     /* if no textbuf, are at eof */
     if (!t) {
         nextchar = 0;
-        return;
+        goto done;
     }
 
     /* do we have a valid nextchar? */
 	if (t->offset < t->valid) {
-            nextchar = t->storage[t->offset++];
+            nextchar = t->storage[++t->offset];
             goto done;
 	}
 
@@ -166,7 +192,8 @@ more:
         t->valid = read(t->fd, t->storage, TBSIZE);
         t->offset = 0;
         if (t->valid > 0) { // read worked
-            goto more;
+            nextchar = t->storage[0];
+            goto done;
         }
         close(t->fd);
     }
@@ -181,13 +208,16 @@ more:
 	}
 done:
     column = nextcol;
-    if (curchar == '\n') {
+    if (curchar == 0) {
+        nextcol = 0;
+    } else if (curchar == '\n') {
         nextcol = 0;
         lineno++;
     } else {
         nextcol++;
     }
     if (nextchar == '\t') nextchar = ' ';
+    cdump();
 }
 
 void

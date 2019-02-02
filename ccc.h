@@ -137,8 +137,9 @@ struct macro *maclookup(char *s);
 
 /* util.c */
 extern char lookupc(char *s, char c);
-extern void hexdump(char *s, int len);
+extern void hexdump(char *s, int len, int (*high)(i));
 void cpp_out(char *s);
+int iswhite(char c);
 
 /* type.c */
 extern struct scope *cur_block;
