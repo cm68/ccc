@@ -58,10 +58,10 @@ process(char *f)
     while (curtok) {
         switch (curtok) {
         case SYM:
-            printf("token SYM %s\n", curstr);
+            printf("%s", curstr);
             break;
         default:
-            printf("token %c %s\n", curtok, tokenname[curtok]);
+            printf(" %s ", detoken[curtok]);
             break;
         }
         gettoken();
@@ -138,12 +138,17 @@ main(int argc, char **argv)
 
 #ifdef DEBUG
     if (verbose) {
+        int j = verbose;
+        printf("verbose: %x (", verbose);
         for (i = 0; vopts[i]; i++) {
-            printf("verbose: ");
             if (verbose & (1 << i)) 
-                printf(" %s", vopts[i]);
+                printf("%s", vopts[i]);
+            j ^= (1 << i);
+            if (j) {
+                printf(" ", vopts[i]);
+            }
         }
-        printf("\n");
+        printf(")\n");
     }
 #endif
 

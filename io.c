@@ -65,8 +65,9 @@ cdump()
         sprintf(ns, "%c", nextchar);
     }
     if (verbose & V_IO) {
-        printf("\noffset=%x column=%d curchar=%s nextchar=%s", t->offset, column, cs, ns);
-        hexdump(t->storage, t->valid, &high);
+        if (t) {
+            hexdump(t->storage, t->valid, &high);
+        }
     }
     
 } 
@@ -131,6 +132,9 @@ insertmacro(char *name, char *macbuf)
         curchar = t->storage[t->offset];
         nextchar = t->storage[t->offset+1];
         cdump();
+        t->offset -= l;
+        strncpy(&t->storage[t->offset], macbuf, l);
+        nextchar = t->storage[t->offset];
         return;
     }
  
@@ -155,7 +159,7 @@ tbdump(struct textbuf *t)
 }
 
 void
-iodump()
+dump()
 {
     struct textbuf *t = tbtop;
     while (t) {

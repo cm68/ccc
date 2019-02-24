@@ -129,7 +129,7 @@ macdefine(char *s)
     m->mactext = strdup(macbuffer);
     m->next = macros;
     macros = m;
-    printf("macro %s defined\n", m->name);
+    // printf("macro %s defined\n", m->name);
 }
 
 /*
@@ -177,7 +177,7 @@ macexpand(char *s)	/* the symbol we are looking up as a macro */
     if (!m) {
         return 0;
     }
-    printf("macro %s called\n", m->name);
+    // printf("macro %s called\n", m->name);
 
     args = 0;
     d = macbuffer;
@@ -187,43 +187,37 @@ macexpand(char *s)	/* the symbol we are looking up as a macro */
     printf("1\n");
     plevel = 0;
     /*
-     * read the arguments from the invocation
+     * read the arguments from the invocation - there is some hair here as parentheses are
+     * part of the argument, we don't just swallow them.
      */
     if (nextchar == '(') {
-        advance();
-        printf("2\n");
+        advance();      // curchar now '('
+        advance();      // curchar now real
         plevel = 1;
-        advance();
-        skipwhite();
-        while (1) {
-            /*
-             * copy literals literally
-             */
-        printf("3\n");
+        while (!(plevel == 1) && (nextchar == ')')) {
+
+            /* handle literal */
             if (curchar == '\'' || curchar == '\"') {
-        printf("4\n");
-                c = curchar;
+                c = curchar;                            // delimiter
                 advance();
                 *d++ = c;
-                while (curchar != c) {
-        printf("5\n");
+                while (curchar != c) {                  // look for end delimiter
                     *d++ = curchar;
-                    if (curchar == '\\') {
+                    if (curchar == '\\') {              // do not delimit if escaped
                         advance();
                         *d++ = curchar;
                     }
                     advance();
                 }
             }
+
             if (curchar == '(') {
                 plevel++;
             }
             if (curchar == ')') {
                 plevel--;
             }
-            /*
-             * only advance when we have a non-parenthesized comma
-             */
+            /* only advance when we have a non-parenthesized comma */
             if (((plevel == 1) && (curchar == ',')) || 
                 ((plevel == 0) && (curchar == ')'))) {
                 *d++ = '\0';
@@ -240,7 +234,6 @@ macexpand(char *s)	/* the symbol we are looking up as a macro */
             advance();
         }
         advance();
-        printf("6\n");
     }
     if (args != m->parmcount) {
         err(ER_C_DP);

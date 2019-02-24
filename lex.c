@@ -251,7 +251,7 @@ issym()
         }
         advance();
     }
-    printf("issym: %s\n", strbuf);
+// printf("issym = 1 curchar = %c nextchar = %c\n", curchar, nextchar);
     return 1;
 }
 

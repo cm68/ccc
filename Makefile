@@ -31,11 +31,20 @@ ccc: $(OBJECTS)
 
 $(OBJECTS): $(HEADERS)
 
+TESTS=tests/m1.c
+
 test: iotest lextest
-	for t in tests/*.c ; do \
+	for t in $(TESTS) ; do \
 		echo testing against $$t ; \
+		echo "======= source ========" ; \
+		cat $$t ; \
+		echo "======== run ========" ; \
 		# ./iotest -v 3 $$t > $$t.io ; cat $$t.io ; \
 		./lextest -v 3 -E $$t ; \
+		echo "" ; \
+		echo "========= object =========" ; \
+		cat $$(echo $${t%.c}.i) ; \
+		echo "" ; \
 	done
 	
 #

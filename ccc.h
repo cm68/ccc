@@ -92,6 +92,7 @@ extern void pushfile(char *name);
 extern void insertmacro(char *name, char *macbuf);
 extern void insertfile(char *name, int sysdirs);
 extern void advance();
+void iodump();
 
 extern char curchar;
 extern char nextchar;
