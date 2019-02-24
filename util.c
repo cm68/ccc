@@ -17,18 +17,35 @@ iswhite(char c)
 
 char xxbuf[200];
 
+char *hion = "\033[7m";
+char *hioff = "\033[0m";
+
+char *append(char *z, char *s)
+{
+    while (*s) {
+        *z++ = *s++;
+    }
+    *z = 0;
+    return z;
+}
+
 void
 hexdump(char *h, int l, int (*highlight)(int index))
 {
     int i;
     char *z = xxbuf;
     char c;
+    int highlit = 0;
 
     *z = 0;
 
     for (i = 0; i < l; i++) {
         c = h[i];
         if ((i % 16) == 0) {
+            if (highlit) {
+                z = append(z, hioff);
+                highlit = 0;
+            }
             printf(" %s\n%04x  ", xxbuf, i);
             z = xxbuf;
             *z = 0;
@@ -37,19 +54,20 @@ hexdump(char *h, int l, int (*highlight)(int index))
         if ((i % 4) == 3) printf(" ");
         if ((c < ' ') || (c > 0x7e)) c = '.';
         if (high(i)) {
-            *z++ = 0x1b;
-            *z++ = '[';
-            *z++ = '7';
-            *z++ = 'm';
+            if (!highlit) { 
+                z = append(z, hion);
+                highlit = 1;
+            }
+        } else if (highlit) {
+            z = append(z, hioff);
+            highlit = 0;
         }
         *z++ = c;
-        if (high(i)) {
-            *z++ = 0x1b;
-            *z++ = '[';
-            *z++ = '0';
-            *z++ = 'm';
-        }
         *z = 0;
+    }
+    if (highlit) {
+        z = append(z, hioff);
+        highlit = 0;
     }
     while ((i++ % 16) != 0) {
         if ((i % 4) == 3) printf(" ");
