@@ -32,9 +32,9 @@ process(char *f)
          * this needs to expand to xtestingy
          */
         if (curchar == 'M') {
-            iodump();
+            cdump();
             insertmacro("M", "test");
-            iodump();
+            cdump();
         }
         printf("curchar %d %c nextchar %d %c column %d line %d\n", curchar, curchar, nextchar, nextchar, column, lineno);
         advance();
