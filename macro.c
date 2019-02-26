@@ -129,7 +129,7 @@ macdefine(char *s)
     m->mactext = strdup(macbuffer);
     m->next = macros;
     macros = m;
-    // printf("macro %s defined\n", m->name);
+    printf("macro %s defined\n", m->name);
 }
 
 /*
@@ -155,6 +155,8 @@ macdefine(char *s)
  * #define foo(a,b) a##b
  * #define bar(c,d) c##d
  * foo(b,ar(xy,zzy)) generates xyzzy
+ * 
+ * when we are called, curchar is the last character of the macro name
  */
 int
 macexpand(char *s)	/* the symbol we are looking up as a macro */
@@ -177,50 +179,57 @@ macexpand(char *s)	/* the symbol we are looking up as a macro */
     if (!m) {
         return 0;
     }
-    // printf("macro %s called\n", m->name);
+    printf("macro %s called\n", m->name);
 
     args = 0;
     d = macbuffer;
+    /* this will stop after nextchar is not white space */
     while (iswhite(nextchar)) {
         advance();
     }
     printf("1\n");
     plevel = 0;
     /*
-     * read the arguments from the invocation - there is some hair here as parentheses are
-     * part of the argument, we don't just swallow them.
+     * read the arguments from the invocation
      */
     if (nextchar == '(') {
-        advance();      // curchar now '('
-        advance();      // curchar now real
+        advance();
+        printf("2\n");
         plevel = 1;
-        while (!(plevel == 1) && (nextchar == ')')) {
-
-            /* handle literal */
+        advance();
+        skipwhite();
+        while (1) {
+            /*
+             * copy literals literally
+             */
+        printf("3\n");
             if (curchar == '\'' || curchar == '\"') {
-                c = curchar;                            // delimiter
+        printf("4\n");
+                c = curchar;
                 advance();
                 *d++ = c;
-                while (curchar != c) {                  // look for end delimiter
+                while (curchar != c) {
+        printf("5\n");
                     *d++ = curchar;
-                    if (curchar == '\\') {              // do not delimit if escaped
+                    if (curchar == '\\') {
                         advance();
                         *d++ = curchar;
                     }
                     advance();
                 }
             }
-
             if (curchar == '(') {
                 plevel++;
             }
             if (curchar == ')') {
                 plevel--;
             }
-            /* only advance when we have a non-parenthesized comma */
+            /*
+             * only advance when we have a non-parenthesized comma
+             */
             if (((plevel == 1) && (curchar == ',')) || 
                 ((plevel == 0) && (curchar == ')'))) {
-                *d++ = '\0';
+                *d++ = 0;
                 parms[args++] = strdup(macbuffer);
                 if (curchar == ')') {
                     break;
@@ -231,10 +240,12 @@ macexpand(char *s)	/* the symbol we are looking up as a macro */
                 continue;
             }
             *d++ = curchar;
+            *d = 0;
             advance();
         }
-        advance();
-    }
+        printf("6\n");
+    } // curchar should be ')'
+
     if (args != m->parmcount) {
         err(ER_C_DP);
     }
@@ -304,6 +315,7 @@ macexpand(char *s)	/* the symbol we are looking up as a macro */
         *d++ = *s++;
     }
     *d = 0;
+    printf("insertmacro: %s %s\n", m->name, macbuffer);
     insertmacro(m->name, macbuffer);
     return 1;
 }
