@@ -1,0 +1,2 @@
+we don't avance right.   = = and quote quote
+the macro expansion foo() does not work because the parsing of the arg list advances all the way to the ';'.  this code needs use nextchar.
