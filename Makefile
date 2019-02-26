@@ -6,6 +6,8 @@
 # this following is only to get an idea of size
 # the idea eventual is that it is both cross and native.
 #
+# we self-generate some of the files to keep things consistent
+#
 CC = sdcc
 CFLAGS = -mz80 --fomit-frame-pointer
 VERBOSE = 0
