@@ -60,6 +60,11 @@ process(char *f)
         case SYM:
             printf("%s", curstr);
             break;
+        case STRING:
+            printf("\"%s\"", curstr);
+            break;
+        case NONE:
+            break;
         default:
             printf(" %s ", detoken[curtok]);
             break;

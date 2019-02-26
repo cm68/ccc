@@ -263,7 +263,6 @@ do_cpp(char t)
     struct cond *c;
     int v;
 
-    printf("do_cpp\n");
     switch (t) {
     case IF:
         v = readcppconst();

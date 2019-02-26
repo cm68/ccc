@@ -8,7 +8,7 @@
 #
 CC = sdcc
 CFLAGS = -mz80 --fomit-frame-pointer
-
+VERBOSE = 0
 CC = gcc
 CFLAGS = -Wno-implicit-function-declaration -g
 
@@ -31,7 +31,7 @@ ccc: $(OBJECTS)
 
 $(OBJECTS): $(HEADERS)
 
-TESTS=tests/m1.c
+TESTS=tests/*.c
 
 test: iotest lextest
 	for t in $(TESTS) ; do \
@@ -40,7 +40,7 @@ test: iotest lextest
 		cat $$t ; \
 		echo "======== run ========" ; \
 		# ./iotest -v 3 $$t > $$t.io ; cat $$t.io ; \
-		./lextest -v 3 -E $$t ; \
+		./lextest -v $(VERBOSE) -E $$t ; \
 		echo "" ; \
 		echo "========= object =========" ; \
 		cat $$(echo $${t%.c}.i) ; \

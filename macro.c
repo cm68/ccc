@@ -129,7 +129,6 @@ macdefine(char *s)
     m->mactext = strdup(macbuffer);
     m->next = macros;
     macros = m;
-    printf("macro %s defined\n", m->name);
 }
 
 /*
@@ -179,7 +178,6 @@ macexpand(char *s)	/* the symbol we are looking up as a macro */
     if (!m) {
         return 0;
     }
-    printf("macro %s called\n", m->name);
 
     args = 0;
     d = macbuffer;
@@ -187,14 +185,12 @@ macexpand(char *s)	/* the symbol we are looking up as a macro */
     while (iswhite(nextchar)) {
         advance();
     }
-    printf("1\n");
     plevel = 0;
     /*
      * read the arguments from the invocation
      */
     if (nextchar == '(') {
         advance();
-        printf("2\n");
         plevel = 1;
         advance();
         skipwhite();
@@ -202,14 +198,11 @@ macexpand(char *s)	/* the symbol we are looking up as a macro */
             /*
              * copy literals literally
              */
-        printf("3\n");
             if (curchar == '\'' || curchar == '\"') {
-        printf("4\n");
                 c = curchar;
                 advance();
                 *d++ = c;
                 while (curchar != c) {
-        printf("5\n");
                     *d++ = curchar;
                     if (curchar == '\\') {
                         advance();
@@ -243,7 +236,6 @@ macexpand(char *s)	/* the symbol we are looking up as a macro */
             *d = 0;
             advance();
         }
-        printf("6\n");
     } // curchar should be ')'
 
     if (args != m->parmcount) {
@@ -315,7 +307,6 @@ macexpand(char *s)	/* the symbol we are looking up as a macro */
         *d++ = *s++;
     }
     *d = 0;
-    printf("insertmacro: %s %s\n", m->name, macbuffer);
     insertmacro(m->name, macbuffer);
     return 1;
 }
