@@ -138,7 +138,7 @@ struct macro *maclookup(char *s);
 
 /* util.c */
 extern char lookupc(char *s, char c);
-extern void hexdump(char *s, int len, int (*high)(i));
+extern void hexdump(char *s, int len, int (*high)());
 void cpp_out(char *s);
 int iswhite(char c);
 
@@ -153,7 +153,9 @@ char *tokenname[];
 char *detoken[];
 
 /* libc functions */
+#ifndef __APPLE__
 #include <malloc.h>
+#endif
 #include <string.h>
 
 /*
