@@ -1,7 +1,20 @@
 #!/bin/bash
 cd $(dirname $0)
 
-if [ $# -gt 0 ] ; then
+while getopts :v:h flag; do
+	case $flag in
+	v)
+		VERBOSE=$OPTARG
+		;;
+	*)
+		echo "unknown option $OPTARG"
+		exit
+		;;
+	esac
+done
+shift $((OPTIND-1))
+
+if [ $# -ne 0 ] ; then
 	TESTS=($*)
 else
 	TESTS=(*.c)
@@ -12,7 +25,7 @@ for t in ${TESTS[*]} ; do
 	echo "======= source ========"
 	cat $t
         echo "======== run ========"
-	../lextest -v 0 -E $t
+	../lextest -v $VERBOSE -E $t
 	echo ""
 	echo "========= object ========="
 	cat $(echo ${t%.c}.i)
