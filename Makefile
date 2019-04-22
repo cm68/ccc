@@ -10,7 +10,6 @@
 #
 CC = sdcc
 CFLAGS = -mz80 --fomit-frame-pointer
-VERBOSE = 0
 CC = gcc
 CFLAGS = -Wno-implicit-function-declaration -g
 
@@ -33,22 +32,9 @@ ccc: $(OBJECTS)
 
 $(OBJECTS): $(HEADERS)
 
-TESTS=tests/*.c
+test: iotest lextest tests/runtest.sh
+	tests/runtest.sh
 
-test: iotest lextest
-	for t in $(TESTS) ; do \
-		echo testing against $$t ; \
-		echo "======= source ========" ; \
-		cat $$t ; \
-		echo "======== run ========" ; \
-		# ./iotest -v 3 $$t > $$t.io ; cat $$t.io ; \
-		./lextest -v $(VERBOSE) -E $$t ; \
-		echo "" ; \
-		echo "========= object =========" ; \
-		cat $$(echo $${t%.c}.i) ; \
-		echo "" ; \
-	done
-	
 #
 # process the ccc.h file, extracting the enum tags for the tokens
 #
