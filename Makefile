@@ -36,8 +36,8 @@ ccc: $(OBJECTS)
 $(OBJECTS): $(HEADERS)
 
 .PHONY: test
-test: iotest lextest tests/runtest.sh
-	tests/runtest.sh $(TESTS)
+test: iotest lextest runtest.sh
+	./runtest.sh $(TESTS)
 
 #
 # process the ccc.h file, extracting the enum tags for the tokens

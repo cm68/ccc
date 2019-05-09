@@ -1,6 +1,8 @@
 #!/bin/bash
 cd $(dirname $0)/tests
 
+VERBOSE=0
+
 while getopts :v:h flag; do
 	case $flag in
 	v)
