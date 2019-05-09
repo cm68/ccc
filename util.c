@@ -30,14 +30,14 @@ char *append(char *z, char *s)
 }
 
 void
-hexdump(char *h, int l, int (*highlight)(int index))
+hexdump(char *tag, char *h, int l, int (*highlight)(int index))
 {
     int i;
     char *z = xxbuf;
     char c;
     int highlit = 0;
 
-    *z = 0;
+    strcpy(xxbuf, tag);
 
     for (i = 0; i < l; i++) {
         c = h[i];
@@ -96,7 +96,7 @@ lookupc(char *s, char c)
 int cpp_file;
 /*
  * write to the cpp output file if requested
- *  */
+ */
 void
 cpp_out(char *s)
 {
