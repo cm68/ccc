@@ -20,6 +20,9 @@ GENERATED = enumlist.h tokenlist.c error.h
 CFILES = iotest.c lextest.c kw.c io.c macro.c util.c error.c
 
 BINS = enumcheck cc1 cc2 lextest maketokens iotest
+TESTS = -v 3 m1.c
+
+all: lextest iotest
 
 lextest: lex.o lextest.o kw.o io.o macro.o util.o error.o tokenlist.o
 	cc -g -o lextest tokenlist.o lextest.o lex.o kw.o io.o macro.o util.o error.o
@@ -32,8 +35,9 @@ ccc: $(OBJECTS)
 
 $(OBJECTS): $(HEADERS)
 
+.PHONY: test
 test: iotest lextest tests/runtest.sh
-	tests/runtest.sh
+	tests/runtest.sh $(TESTS)
 
 #
 # process the ccc.h file, extracting the enum tags for the tokens

@@ -138,7 +138,7 @@ struct macro *maclookup(char *s);
 
 /* util.c */
 extern char lookupc(char *s, char c);
-extern void hexdump(char *s, int len, int (*high)());
+extern void hexdump(char *tag, char *s, int len, int (*high)());
 void cpp_out(char *s);
 int iswhite(char c);
 

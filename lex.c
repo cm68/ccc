@@ -130,52 +130,66 @@ getint(char base)
 /*
  * do character literal processing, handling the C escape codes
  * extended with decimal and binary constants
+ * this function consumes the input, returning the character value
  */
 static char
 getlit()
 {
+    char c;
 top:
     if (curchar != '\\') {
         if ((curchar < 0x20) || (curchar > 0x7e)) {
             err(ER_C_BC);
             curchar = ' ';
         }
-        return curchar;
+        c = curchar;
+    } else {
+        advance();          // eat the backslash
+        switch (curchar) {
+        case '\n':          /* backslash at end of line */
+            lineno++;
+            goto top;
+        case 'b':
+            c = '\b';
+            break;
+        case 'e':
+            c = '\x1b';
+            break;
+        case 'f':
+            c = '\f';
+            break;
+        case 'n':
+            c = '\n';
+            break;
+        case 'r':
+            c = '\r';
+            break;
+        case 't':
+            c = '\t';
+            break;
+        case 'v':
+            c = '\v';
+            break;
+        case '0': case '1': case '2': case '3':     // octal
+        case '4': case '5': case '6': case '7':
+            return (getint(8));
+        case 'x': case 'X':                         // hex
+            advance();
+            return (getint(16));
+        /* extension */
+        case 'B':                                   // binary
+            advance();
+            return (getint(2));
+        case 'D':                                   // decimal
+            advance();
+            return (getint(10));
+        default:
+            c = curchar;
+            break;                                   // literal next
+        }
     }
-    advance();          // eat the backslash
-    switch (curchar) {
-    case '\n':          /* backslash at end of line */
-        lineno++;
-        goto top;
-    case 'b':
-        return '\b';
-    case 'e':
-        return '\x1b';
-    case 'f':
-        return '\f';
-    case 'n':
-        return '\n';
-    case 'r':
-        return '\r';
-    case 't':
-        return '\t';
-    case 'v':
-        return '\v';
-    case '0': case '1': case '2': case '3':     // octal
-    case '4': case '5': case '6': case '7':
-        return (getint(8));
-    case 'x': case 'X':                         // hex
-        advance();
-        return (getint(16));
-    case 'B':                                   // binary
-        advance();
-        return (getint(2));
-    case 'D':                                   // decimal
-        advance();
-        return (getint(10));
-    default:
-        return curchar;                         // literal next
-    }
+    advance();
+    return c;
 }
 
 /*
@@ -366,13 +380,12 @@ isstring(char *s)
     if (!charmatch('\"')) {
         return 0;
     }
-    advance();
     while (curchar != '\"') {
         *s++ = getlit();
-        advance();
     }
     *s = 0;
     advance();
+    //    printf("isstring: %s\n", strbuf);
     return 1;
 }
 
@@ -441,7 +454,6 @@ gettoken()
     int incomment = 0;
     char nbuf[20];
 
-top:
     /* advance */
     if (curstr) {
         strfree(curstr);
@@ -451,23 +463,8 @@ top:
     curstr = nextstr;
     nextstr = 0;
 
-    if (curtok == SYM) {
-        cpp_out(curstr);
-    } else if (curtok == NUMBER) {
-        sprintf(nbuf, "%d", curval);
-        cpp_out(nbuf);
-    } else if (curtok == STRING) {
-        sprintf(nbuf, "\"%s\"", curstr);
-        cpp_out(nbuf);
-    } else {
-        if (detoken[curtok]) {
-            cpp_out(detoken[curtok]);
-        } else {
-            cpp_out(tokenname[curtok]);
-        }
-    }
-
     while (1) {
+top:
         if (curchar == 0) {
             nexttok = E_O_F;
             return;

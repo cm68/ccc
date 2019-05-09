@@ -102,6 +102,7 @@ main(int argc, char **argv)
         }
         printf("\n");
     }
+    setvbuf(stdout, 0, _IONBF, 0);
 #endif
 
     while (argc--) {

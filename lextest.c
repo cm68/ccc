@@ -31,6 +31,7 @@ process(char *f)
 {
     char *s;
     int i;
+    char nbuf[100];
 
     printf("process %s\n", f);
     if (write_cpp_file) {
@@ -58,14 +59,26 @@ process(char *f)
     while (curtok) {
         switch (curtok) {
         case SYM:
+            cpp_out(curstr);
             printf("%s", curstr);
             break;
         case STRING:
+            sprintf(nbuf, "\"%s\"", curstr);
+            cpp_out(nbuf);
             printf("\"%s\"", curstr);
+            break;
+        case NUMBER:
+            sprintf(nbuf, "%d", curval);
+            cpp_out(nbuf);
             break;
         case NONE:
             break;
         default:
+            if (detoken[curtok]) {
+                cpp_out(detoken[curtok]);
+            } else {
+                cpp_out(tokenname[curtok]);
+            }
             printf(" %s ", detoken[curtok]);
             break;
         }
@@ -155,6 +168,7 @@ main(int argc, char **argv)
         }
         printf(")\n");
     }
+    setvbuf(stdout, 0, _IONBF, 0);
 #endif
 
     while (argc--) {

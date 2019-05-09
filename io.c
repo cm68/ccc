@@ -48,11 +48,12 @@ high(int i)
 }
 
 void
-cdump()
+cdump(char *tag)
 {
     struct textbuf *t = tbtop;
     char cs[20];
     char ns[20];
+    char tbuf[100];
 
     if (curchar <= ' ') {
         sprintf(cs, "0x%x", curchar);
@@ -66,13 +67,15 @@ cdump()
     }
     if (verbose & V_IO) {
         if (t) {
-            hexdump(t->storage, t->valid, &high);
+            sprintf(tbuf, "%s %x %x %s %s", 
+                tag, tbtop->offset, tbtop->valid, cs, ns); 
+            hexdump(tbuf, t->storage, t->valid, &high);
         }
     }
     
 } 
 #else
-#define cdump()
+#define cdump(k)
 #endif
 
 /*
@@ -122,19 +125,18 @@ insertmacro(char *name, char *macbuf)
     int l;
 
     l = strlen(macbuf);         // our macro without the terminating null
+    printf("insert macro %s %d \$%s\$\n", name, l, macbuf);
     t = tbtop;
 
     /* does it fit */
     if (t->offset > l) {
-        cdump();
+        cdump("pre");
         t->offset -= l;
         strncpy(&t->storage[t->offset], macbuf, l);
         curchar = t->storage[t->offset];
-        nextchar = t->storage[t->offset+1];
-        cdump();
-        t->offset -= l;
-        strncpy(&t->storage[t->offset], macbuf, l);
+        t->offset++;
         nextchar = t->storage[t->offset];
+        cdump("post");
         return;
     }
  
@@ -221,7 +223,7 @@ done:
         nextcol++;
     }
     if (nextchar == '\t') nextchar = ' ';
-    cdump();
+    cdump("advance");
 }
 
 void
