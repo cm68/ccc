@@ -68,7 +68,7 @@ enumcheck: enumlist.h enumcheck.c
 	./enumcheck
 
 clean:
-	rm -f $(OBJECTS) lextest.o $(GENERATED) *.i
+	rm -f $(OBJECTS) lextest.o $(GENERATED) tests/*.i
 
 clobber: clean
 	rm -f $(BINS)
