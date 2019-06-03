@@ -13,10 +13,10 @@ CFLAGS = -mz80 --fomit-frame-pointer
 CC = gcc
 CFLAGS = -Wno-implicit-function-declaration -g
 
-OBJECTS = error.o parse.o type.o main.o lex.o io.o macro.o kw.o util.o tokenlist.o \
+OBJECTS = ccc.o error.o parse.o type.o main.o lex.o io.o macro.o kw.o util.o tokenlist.o \
 	lextest.o iotest.o
 HEADERS = ccc.h error.h expr.h type.h
-GENERATED = enumlist.h tokenlist.c error.h
+GENERATED = enumlist.h tokenlist.c error.h debug.h debugtags.c
 CFILES = iotest.c lextest.c kw.c io.c macro.c util.c error.c
 
 BINS = enumcheck cc1 cc2 lextest maketokens iotest
@@ -24,8 +24,9 @@ TESTS = -v 3 m1.c
 
 all: lextest iotest
 
-lextest: lex.o lextest.o kw.o io.o macro.o util.o error.o tokenlist.o
-	cc -g -o lextest tokenlist.o lextest.o lex.o kw.o io.o macro.o util.o error.o
+cc1: cc1.o lex.o kw.o io.o macro.o util.o error.o tokenlist.o
+lextest: lex.o cc1.o kw.o io.o macro.o util.o error.o tokenlist.o nullexpr.o
+	cc -g -o lextest tokenlist.o cc1.o lex.o kw.o io.o macro.o util.o error.o nullexpr.o
 
 iotest: io.o util.o iotest.o
 	cc -g -o iotest io.o iotest.o util.o
@@ -35,9 +36,12 @@ ccc: $(OBJECTS)
 
 $(OBJECTS): $(HEADERS)
 
-.PHONY: test
+.PHONY: test tests
 test: iotest lextest runtest.sh
 	./runtest.sh $(TESTS)
+
+tests: iotest lextest runtest.sh
+	./runtest.sh
 
 #
 # process the ccc.h file, extracting the enum tags for the tokens
@@ -55,6 +59,12 @@ enumlist.h: ccc.h
 tokenlist.c: enumlist.h maketokens.c
 	cc -o maketokens maketokens.c
 	./maketokens >tokenlist.c
+#
+# generate the debug.h file from the shell script makedebug.sh
+# which grunges through all the c sources looking for VERBOSE(tag)
+#
+debug.h debugtags.c: ./makedebug.sh
+	./makedebug.sh
 
 #
 # process the errorcodes file, which generates error.h, containing the

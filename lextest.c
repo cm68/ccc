@@ -8,83 +8,9 @@
 #include "ccc.h"
 #include <fcntl.h>
 
-int verbose;
-
-#ifdef DEBUG
-int verbose;
-
-char *vopts[] = {
-    "V_LEX",
-    "V_IO",
-    0
-};
-#endif
+#include "debugtags.c"
 
 char *progname;
-
-int write_cpp_file = 0;
-int cpp_file;
-char *cpp_file_name;
-
-void
-process(char *f)
-{
-    char *s;
-    int i;
-    char nbuf[100];
-
-    printf("process %s\n", f);
-    if (write_cpp_file) {
-        if (cpp_file) {
-            close(cpp_file);
-            cpp_file = 0;
-            free(cpp_file_name);
-        }
-        i = strlen(f);
-        if (f[i-2] == '.' && f[i-1] == 'c') {
-            i -= 2;
-        }
-        cpp_file_name = malloc(i+2);
-        strncpy(cpp_file_name, f, i);
-        strcat(cpp_file_name, ".i");
-        cpp_file = creat(cpp_file_name, 0777);
-        if (cpp_file == -1) {
-            perror(cpp_file_name);
-        }
-    }
-    
-    insertfile(f, 0);
-    ioinit();
-    nexttok = curtok = NONE;
-    while (curtok) {
-        switch (curtok) {
-        case SYM:
-            cpp_out(curstr);
-            printf("%s", curstr);
-            break;
-        case STRING:
-            sprintf(nbuf, "\"%s\"", curstr);
-            cpp_out(nbuf);
-            printf("\"%s\"", curstr);
-            break;
-        case NUMBER:
-            sprintf(nbuf, "%d", curval);
-            cpp_out(nbuf);
-            break;
-        case NONE:
-            break;
-        default:
-            if (detoken[curtok]) {
-                cpp_out(detoken[curtok]);
-            } else {
-                cpp_out(tokenname[curtok]);
-            }
-            printf(" %s ", detoken[curtok]);
-            break;
-        }
-        gettoken();
-    }
-}
 
 void
 usage(char *complaint, char *p)
@@ -98,8 +24,8 @@ usage(char *complaint, char *p)
 #ifdef DEBUG
     printf("\t-v <verbosity>\n");
     printf("\t-E\n");
-    for (i = 0; vopts[i]; i++) {
-        printf("\t%x %s\n", 1 << i, vopts[i]);
+    for (i = 0; debugtag[i]; i++) {
+        printf("\t%x %s\n", 1 << i, debugtag[i]);
     }
 #endif
     exit(1);
@@ -131,10 +57,10 @@ main(int argc, char **argv)
                 usage("", progname);
                 break;
             case 'I':
-                // XXX - add_include(++s);
+                add_include(++s);
                 break;
             case 'D':
-                // XXX - add_define(++s);
+                add_define(++s);
                 break;
             case 'E':
                 write_cpp_file++;
@@ -158,12 +84,12 @@ main(int argc, char **argv)
     if (verbose) {
         int j = verbose;
         printf("verbose: %x (", verbose);
-        for (i = 0; vopts[i]; i++) {
+        for (i = 0; debugtag[i]; i++) {
             if (verbose & (1 << i)) 
-                printf("%s", vopts[i]);
+                printf("%s", debugtag[i]);
             j ^= (1 << i);
             if (j) {
-                printf(" ", vopts[i]);
+                printf(" ", debugtag[i]);
             }
         }
         printf(")\n");

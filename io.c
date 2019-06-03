@@ -65,7 +65,7 @@ cdump(char *tag)
     } else {
         sprintf(ns, "%c", nextchar);
     }
-    if (verbose & V_IO) {
+    if (VERBOSE(V_IO)) {
         if (t) {
             sprintf(tbuf, "%s %x %x %s %s", 
                 tag, tbtop->offset, tbtop->valid, cs, ns); 
@@ -87,7 +87,7 @@ insertfile(char *name, int sys)
 	struct textbuf *t;
 
 #ifdef DEBUG
-    if (verbose & V_IO) {
+    if (VERBOSE(V_IO)) {
         printf("insertfile: %s\n", name);
     }
 #endif

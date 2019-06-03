@@ -77,6 +77,9 @@ extern unsigned char asmkw[];
 extern char kwlook(unsigned char *str, unsigned char *table);
 
 /* lex.c */
+extern int write_cpp_file;
+extern int cpp_file;
+extern char *cpp_file_name;
 extern token_t curtok;
 extern token_t nexttok;
 extern long curval;
@@ -151,6 +154,10 @@ struct type *findtype(char *name, kind_t kind);
 /* tokenlist.c */
 char *tokenname[];
 char *detoken[];
+
+/* debug options */
+#define VERBOSE(x) (verbose & (x))
+int verbose;
 
 /* libc functions */
 #ifndef __APPLE__

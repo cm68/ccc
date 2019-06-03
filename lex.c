@@ -9,6 +9,10 @@
 
 #include <stdio.h>
 
+int write_cpp_file = 0;
+int cpp_file;
+char *cpp_file_name;
+
 token_t curtok;
 token_t nexttok;
 
@@ -646,6 +650,66 @@ readcppconst()
     curtok = savetok;
     if (curtok == SYM) strcpy(savesym, strbuf);
     return val;
+}
+
+void
+process(char *f)
+{   
+    char *s;
+    int i;
+    char nbuf[100];
+    
+    printf("process %s\n", f);
+    if (write_cpp_file) {
+        if (cpp_file) {
+            close(cpp_file);
+            cpp_file = 0;
+            free(cpp_file_name);
+        } 
+        i = strlen(f);
+        if (f[i-2] == '.' && f[i-1] == 'c') {
+            i -= 2;
+        }
+        cpp_file_name = malloc(i+2);
+        strncpy(cpp_file_name, f, i);
+        strcat(cpp_file_name, ".i");
+        cpp_file = creat(cpp_file_name, 0777);
+        if (cpp_file == -1) {
+            perror(cpp_file_name);
+        }
+    }
+    
+    insertfile(f, 0);
+    ioinit(); 
+    nexttok = curtok = NONE;
+    while (curtok) {
+        switch (curtok) {
+        case SYM:
+            cpp_out(curstr);
+            printf("%s", curstr);
+            break;
+        case STRING:
+            sprintf(nbuf, "\"%s\"", curstr);
+            cpp_out(nbuf);
+            printf("\"%s\"", curstr);
+            break;
+        case NUMBER:
+            sprintf(nbuf, "%d", curval);
+            cpp_out(nbuf);
+            break;
+        case NONE:
+            break;
+        default:
+            if (detoken[curtok]) {
+                cpp_out(detoken[curtok]);
+            } else {
+                cpp_out(tokenname[curtok]);
+            }
+            printf(" %s ", detoken[curtok]);
+            break;
+        }
+        gettoken();
+    }
 }
 
 /*
