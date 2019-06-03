@@ -14,7 +14,7 @@ CC = gcc
 CFLAGS = -Wno-implicit-function-declaration -g
 
 OBJECTS = ccc.o error.o parse.o type.o main.o lex.o io.o macro.o kw.o util.o tokenlist.o \
-	lextest.o iotest.o
+	lextest.o iotest.o cc1.o nullexpr.o
 HEADERS = ccc.h error.h expr.h type.h
 GENERATED = enumlist.h tokenlist.c error.h debug.h debugtags.c
 CFILES = iotest.c lextest.c kw.c io.c macro.c util.c error.c
@@ -30,9 +30,6 @@ lextest: lex.o cc1.o kw.o io.o macro.o util.o error.o tokenlist.o nullexpr.o
 
 iotest: io.o util.o iotest.o
 	cc -g -o iotest io.o iotest.o util.o
-
-ccc: $(OBJECTS)
-	cc -o ccc $(OBJECTS)
 
 $(OBJECTS): $(HEADERS)
 
@@ -83,8 +80,8 @@ clean:
 clobber: clean
 	rm -f $(BINS)
 
+cc1.o: debugtags.c
 lextest.o: tokenlist.c lextest.c
-
 parse.o: parse.c
 type.o: type.c
 main.o: main.c
