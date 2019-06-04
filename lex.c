@@ -13,9 +13,7 @@
 
 int write_cpp_file = 0;
 char *cpp_file_name;
-/*
 int cpp_file;
-*/
 
 token_t curtok;
 token_t nexttok;
@@ -120,7 +118,16 @@ getint(char base)
     while (1) {
         c = curchar;
         if (c < '0') break;
-        c = (c > '9') ? (c | 0x20) - 'a' + 10 : c - '0';
+        if (c > '9') {
+            c |= 0x20;
+            if (c >= 'a' && c <= 'f') {
+                c = 10 + c - 'a';
+            } else {
+                break;
+            }
+        } else {
+            c -= '0';
+        }
         if ((c+1) > base) {
             break;
         }
@@ -563,6 +570,10 @@ gettoken()
             err(ER_C_UT);
             curchar= ';';
         }
+        /*
+         * this is a little bit of a hack - nexttok is temporarily used
+         * to hold the current character when checking composite operators
+         */
         nexttok = curchar;
         advance();
         /* see if the character is doubled.  this can be an operator */

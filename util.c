@@ -95,19 +95,6 @@ lookupc(char *s, char c)
     return 0xff;
 }
 
-int cpp_file;
-/*
- * write to the cpp output file if requested
- */
-void
-cpp_out(char *s)
-{
-    if (s && cpp_file) {
-        write(cpp_file, s, strlen(s));
-        write(cpp_file, " ", 1);
-    }
-}
-
 /*
  * vim: tabstop=4 shiftwidth=4 expandtab:
  */

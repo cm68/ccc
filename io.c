@@ -286,6 +286,44 @@ ioinit()
     column = 0;
 }
 
+struct textbuf *cpp;
+
+#define CPP_BUF 256
+
+cpp_out(char *s)
+{
+    int i;
+
+    if (!cpp) {
+        cpp = malloc(sizeof(*cpp));
+        cpp->storage = malloc(256);
+        cpp->fd = cpp_file;
+        cpp->name = cpp_file_name;
+        cpp->offset = 0;
+        cpp->valid = 0;
+        cpp->prev = 0;
+    }
+
+    if (!s)
+        return;
+
+    i = strlen(s);
+
+    if ((cpp->offset + i) > CPP_BUF) {
+        write(cpp_file, cpp->storage, cpp->offset);
+        cpp->offset = 0;
+    }
+
+    strcpy(&cpp->storage[cpp->offset], s);
+    cpp->offset += i;
+}
+
+cpp_flush()
+{
+    write(cpp_file, cpp->storage, cpp->offset);
+    cpp->offset = 0;
+}
+
 /*
  * vim: tabstop=4 shiftwidth=4 expandtab:
  */

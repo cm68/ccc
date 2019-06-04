@@ -40,6 +40,7 @@ process(char *f)
         if (cpp_file == -1) {
             perror(cpp_file_name);
         }
+        cpp_out("/* preprocessed file */");
     }
 
     insertfile(f, 0);
@@ -53,6 +54,9 @@ process(char *f)
 #else
     parse();
 #endif
+    if (write_cpp_file) {
+        cpp_flush();
+    }
 }
 
 void

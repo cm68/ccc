@@ -48,6 +48,8 @@ main(int argc, char **argv)
 		case RPAR: s = ")"; break;
 		case LBRACK: s = "["; break;
 		case RBRACK: s = "]"; break;
+		case PLUS: s = "+"; break;
+		case MINUS: s = "-"; break;
 		default:
 			break;
 		}
