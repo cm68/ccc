@@ -5,70 +5,8 @@
 #include "expr.h"
 #include "stmt.h"
 
-#define	DEBUG
-
-#ifdef DEBUG
-extern int verbose;
-
-#define V_LEX   (1 << 0)
-#define	V_IO	(1 << 1)
-#endif
-
-/*
- * these are keywords that are recognized by the lexer.
- * they all have values that are printable for debug 
- * purposes and for cheap serializing into intermediate files
- */
-typedef enum token {
-	E_O_F = 0,
-    NONE = ' ',
-	/* C keywords */
-	ASM = 'A', AUTO = 'o', 
-	BOOLEAN = 'b' , BREAK = 'B', 
-	CASE = 'C', CHAR = 'c', CONST = 'k', CONTINUE = 'N',
-	DEFAULT = 'O', DO = 'D', DOUBLE = 'd', 
-	ELSE = 'E', ENUM = 'e', EXTERN = 'x', 
-	FLOAT = 'f', FOR = 'F', 
-	GOTO = 'G',
-	IF = 'I', INT = 'i', 
-	LONG = 'l', 
-	REGISTER = 'r', RETURN = 'R', 
-	SIZEOF = 'z', SHORT = 's', STATIC = 'p', STRUCT = 'a', SWITCH = 'S',
-	TYPEDEF = 't',
-	UNION = 'm', UNSIGNED = 'u', 
-	VOID = 'v', VOLATILE = '4', 
-	WHILE = 'W',
-
-	/* syntactic cogs */
-	BEGIN = '{', END = '}',
- 	LBRACK = '[', RBRACK = ']',
-	LPAR = '(', RPAR = ')', 
-	SEMI = ';', COMMA = ',',
-	LABEL = '3',
-
-	/* terminals */
-	SYM = '5', NUMBER = '9', STRING = '\"',
-
-	/* operators */
-	ASSIGN = '=', DOT = '.', DEREF = 'M',
-	PLUS = '+', MINUS = '-', STAR = '*', DIV = '/', MOD = '%',
-	AND = '&', OR = '|', XOR = '^',
-	LT = '<', GT = '>', BANG = '!', TWIDDLE = '~',
-	QUES = '?', OTHER = ':',
-	INC = 'U', DEC = 'V',
-	LSHIFT = 'y' , RSHIFT = 'w',
-	LOR = 'h', LAND = 'j',
-	EQ = 'Q', NEQ = 'n', LE = 'L', GE = 'g',
-	PLUSEQ = 'P', SUBEQ = '_', MULTEQ = 'T', DIVEQ = '2', MODEQ = '7',
-	ANDEQ = '@', OREQ = '1', XOREQ = 'X',
-	LANDEQ = 'J', LOREQ = 'H', 
-	RSHIFTEQ = '6', LSHIFTEQ = '0',
-
-	/* CPP */
-	INCLUDE = '#',
-	DEFINE = '$', UNDEF = 'K', 
-	IFDEF = 'Y', ENDIF = 'Z', ELIF = '8'
-} token_t;
+#include "token.h"
+#include "debug.h"
 
 /* kw.c */
 extern unsigned char cppkw[];
@@ -89,6 +27,9 @@ extern char *nextstr;
 extern char strbuf[];
 extern char match(token_t t);
 extern void gettoken();
+extern void skipwhite1();
+extern void skipwhite();
+extern char issym();
 
 /* io.c */
 extern void pushfile(char *name);
@@ -96,6 +37,8 @@ extern void insertmacro(char *name, char *macbuf);
 extern void insertfile(char *name, int sysdirs);
 extern void advance();
 void iodump();
+void ioinit();
+void add_include(char *name);
 
 extern char curchar;
 extern char nextchar;
@@ -133,15 +76,16 @@ struct macro {
 	struct macro *next;
 };
 extern struct macro *macros;
-char *macbuffer;
+extern char *macbuffer;
 void macdefine(char *s);
 void macundefine(char *s);
 int macexpand(char *s);
 struct macro *maclookup(char *s);
+void add_define(char *s);
 
 /* util.c */
 extern char lookupc(char *s, char c);
-extern void hexdump(char *tag, char *s, int len, int (*high)());
+extern void hexdump(char *tag, char *s, int len, int (*high)(int i));
 void cpp_out(char *s);
 int iswhite(char c);
 
@@ -152,18 +96,21 @@ void pop_scope();
 struct type *findtype(char *name, kind_t kind);
 
 /* tokenlist.c */
-char *tokenname[];
-char *detoken[];
+extern char *tokenname[];
+extern char *detoken[];
 
 /* debug options */
 #define VERBOSE(x) (verbose & (x))
-int verbose;
+extern int verbose;
 
 /* libc functions */
-#ifndef __APPLE__
-#include <malloc.h>
-#endif
+#include <stdlib.h>
+#include <stdio.h>
 #include <string.h>
+
+#ifdef __SDCC
+#include "unixlib.h"
+#endif
 
 /*
  * vim: tabstop=4 shiftwidth=4 expandtab:

@@ -15,7 +15,16 @@
 
 #define MAXPARMS    10
 
+char *macbuffer;
 struct macro *macros;
+
+/*
+ * add a definition from the command line args
+ */
+void
+add_define(char *s)
+{
+}
 
 /*
  * look up a macro in the macro table
@@ -90,7 +99,7 @@ macdefine(char *s)
         advance();
         while (1) {
             skipwhite1();
-            if (issym(s)) {
+            if (issym()) {
                 advance();
                 parms[m->parmcount++] = strdup(s);
                 skipwhite1();

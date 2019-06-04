@@ -8,10 +8,14 @@
 #include "ccc.h"
 
 #include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
 
 int write_cpp_file = 0;
-int cpp_file;
 char *cpp_file_name;
+/*
+int cpp_file;
+*/
 
 token_t curtok;
 token_t nexttok;
@@ -115,8 +119,9 @@ getint(char base)
 
     while (1) {
         c = curchar;
+        if (c < '0') break;
         c = (c > '9') ? (c | 0x20) - 'a' + 10 : c - '0';
-        if ((c < 0) || ((c+1) > base)) {
+        if ((c+1) > base) {
             break;
         }
         i *= base;
@@ -269,7 +274,9 @@ issym()
         }
         advance();
     }
-// printf("issym = 1 curchar = %c nextchar = %c\n", curchar, nextchar);
+    if (VERBOSE(V_SYM)) {
+        printf("issym = 1 curchar = %c nextchar = %c\n", curchar, nextchar);
+    }
     return 1;
 }
 
@@ -358,6 +365,7 @@ do_cpp(char t)
             k = '\"';
         } else {
             err(ER_C_ID);
+            return;
         }
         advance();
         s = strbuf;
@@ -389,7 +397,9 @@ isstring(char *s)
     }
     *s = 0;
     advance();
-    //    printf("isstring: %s\n", strbuf);
+    if (VERBOSE(V_STR)) {
+        printf("isstring: %s\n", strbuf);
+    }
     return 1;
 }
 
@@ -442,6 +452,8 @@ strfree(char *s)
     free(s);
 }
 
+char nbuf[100];
+
 /*
  * we want a stream of lexemes to be placed into 
  * curtok and nexttok respectively.  
@@ -453,10 +465,8 @@ strfree(char *s)
 void
 gettoken()
 {
-    char *s;
     char t;
     int incomment = 0;
-    char nbuf[20];
 
     /* advance */
     if (curstr) {
@@ -468,10 +478,9 @@ gettoken()
     nextstr = 0;
 
     while (1) {
-top:
         if (curchar == 0) {
             nexttok = E_O_F;
-            return;
+            break;
         }
         if (column == 0 && charmatch('#')) {   // cpp directive
             skipwhite1();
@@ -495,7 +504,7 @@ top:
         }
         if ((tflags & ONELINE) && charmatch('\n')) {
             nexttok = ';';
-            return;
+            break;
         }
         if ((column == 0) && cond && !(cond->flags & C_TRUE)) {
             skiptoeol();
@@ -527,30 +536,30 @@ top:
         }
         if (issym()) {
             if (macexpand(strbuf)) {
-                goto top;
+                continue;
             }
             advance();
             t = kwlook(strbuf, ckw);
             if (t) {
                 nexttok = t;
-                return;
+                break;
             }
             nexttok = SYM;
             nextstr = stralloc(strbuf);
-            return;
+            break;
         }
         if (isnumber()) {
             nexttok = NUMBER;
-            return;
+            break;
         }
         if (isstring(strbuf)) {
             nexttok = STRING;
             nextstr = stralloc(strbuf);
-            return;
+            break;
         }
         /* see if it is an operator character */
         t = lookupc(simple, curchar);
-        if (t == -1) {
+        if (t == 0xff) {
             err(ER_C_UT);
             curchar= ';';
         }
@@ -559,7 +568,7 @@ top:
         /* see if the character is doubled.  this can be an operator */
         if (curchar == nexttok) {
             t = lookupc(dbl_able, curchar);
-            if (t != -1) {
+            if (t != 0xff) {
                 nexttok = dbltok[t];
                 advance();
             }
@@ -567,7 +576,7 @@ top:
         /* see if the character has an '=' appended.  this can be an operator */
         if (curchar == '=') {
             t = lookupc(eq_able, nextchar);
-            if (t != -1) {
+            if (t != 0xff) {
                 nexttok = eqtok[t];
                 advance();
             }
@@ -576,8 +585,35 @@ top:
             nexttok = DEREF;
             advance();
         }
-        return;
+        break;
     }
+
+    /*
+     * detokenize for cpp output
+     */
+    switch (curtok) {
+    case SYM:
+        cpp_out(curstr);
+        break; 
+    case STRING: 
+        sprintf(nbuf, "\"%s\"", curstr);
+        cpp_out(nbuf);
+        break;
+    case NUMBER:
+        sprintf(nbuf, "%d", curval);
+        cpp_out(nbuf);
+        break;
+    case NONE: 
+        break;
+    default:
+        if (detoken[curtok]) {
+            cpp_out(detoken[curtok]);
+        } else {
+            cpp_out(tokenname[curtok]);
+        }
+        break;
+    }
+    return;
 }
 
 /*
@@ -628,8 +664,7 @@ readcppconst()
     char *savesym;
 
     if (curtok == SYM) {
-        savesym = alloca(strlen(strbuf));
-        strcpy(savesym, strbuf);
+        savesym = strdup(strbuf);
     }
 
     /*
@@ -648,68 +683,11 @@ readcppconst()
     tflags = savedtflags;
     curval = savenum;
     curtok = savetok;
-    if (curtok == SYM) strcpy(savesym, strbuf);
+    if (curtok == SYM) {
+        strcpy(strbuf, savesym);
+        free(savesym);
+    }
     return val;
-}
-
-void
-process(char *f)
-{   
-    char *s;
-    int i;
-    char nbuf[100];
-    
-    printf("process %s\n", f);
-    if (write_cpp_file) {
-        if (cpp_file) {
-            close(cpp_file);
-            cpp_file = 0;
-            free(cpp_file_name);
-        } 
-        i = strlen(f);
-        if (f[i-2] == '.' && f[i-1] == 'c') {
-            i -= 2;
-        }
-        cpp_file_name = malloc(i+2);
-        strncpy(cpp_file_name, f, i);
-        strcat(cpp_file_name, ".i");
-        cpp_file = creat(cpp_file_name, 0777);
-        if (cpp_file == -1) {
-            perror(cpp_file_name);
-        }
-    }
-    
-    insertfile(f, 0);
-    ioinit(); 
-    nexttok = curtok = NONE;
-    while (curtok) {
-        switch (curtok) {
-        case SYM:
-            cpp_out(curstr);
-            printf("%s", curstr);
-            break;
-        case STRING:
-            sprintf(nbuf, "\"%s\"", curstr);
-            cpp_out(nbuf);
-            printf("\"%s\"", curstr);
-            break;
-        case NUMBER:
-            sprintf(nbuf, "%d", curval);
-            cpp_out(nbuf);
-            break;
-        case NONE:
-            break;
-        default:
-            if (detoken[curtok]) {
-                cpp_out(detoken[curtok]);
-            } else {
-                cpp_out(tokenname[curtok]);
-            }
-            printf(" %s ", detoken[curtok]);
-            break;
-        }
-        gettoken();
-    }
 }
 
 /*

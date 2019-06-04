@@ -2,7 +2,7 @@
  * dirty little program generate token names
  * and normalized values
  */ 
-#include "ccc.h"
+#include "token.h"
 
 char *tokenname[128];
 

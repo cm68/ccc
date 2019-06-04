@@ -8,7 +8,7 @@
  * not our job; except nulls.  those are dirty; the first null is eof.
  */
 #include "ccc.h"
-#include <fcntl.h>
+// #include <fcntl.h>
 
 /*
  * the incoming character stream interface
@@ -20,6 +20,7 @@ int lineno;                 // line number for error messages
 char *filename;             // current file name
 int column;                 // this is reset to 0 when we see a newline
 int nextcol = 0;
+char namebuf[128];
 
 /*
  * the formal definition of offset is the first unread character.
@@ -30,7 +31,7 @@ int nextcol = 0;
  */
 #define	TBSIZE	1024		/* text buffer size */
 struct textbuf {
-	char fd;                // if == -1, macro buffer
+	int fd;                 // if == -1, macro buffer
 	char *name;             // filename or macro name
 	char *storage;          // data - free when done
 	short offset;           // always points at nextchar.
@@ -78,6 +79,35 @@ cdump(char *tag)
 #define cdump(k)
 #endif
 
+struct include {
+    char *path;
+    struct include *next;
+} *includes;
+
+/*
+ * add a path to the include search list
+ */
+void
+add_include(char *s)
+{
+    struct include *i, *ip;
+    i = malloc(sizeof(*i));
+    i->path = strdup(s);
+    i->next = 0;
+    if (includes) {
+        ip = includes;
+        while (ip->next) {
+            ip = ip->next;
+        }
+        ip->next = i;
+    } else {
+        includes = i;
+    }
+    if (VERBOSE(V_CPP)) {
+        printf("add_include: %s\n", s);
+    }
+}
+
 /*
  * if sys is true, then file was included using <> filename delimiters
  */
@@ -85,6 +115,7 @@ void
 insertfile(char *name, int sys)
 {
 	struct textbuf *t;
+    struct include *i;
 
 #ifdef DEBUG
     if (VERBOSE(V_IO)) {
@@ -92,14 +123,29 @@ insertfile(char *name, int sys)
     }
 #endif
 
+    if (!includes) {
+        add_include(".");
+    }
+
 	t = malloc(sizeof(*t));
-	t->fd = open(name, O_RDONLY);
-    if (t->fd < 0) {
-        perror(name);
+    /*
+     * try the filename in all the include path entries. first hit wins
+     */
+    for (i = includes; i; i = i->next) {
+        strcpy(namebuf, i->path);
+        strcat(namebuf, "/");
+        strcat(namebuf, name);
+        t->fd = open(namebuf, 0);
+        if (t->fd > 0) {
+            break;
+        }
+    }
+    if (t->fd == -1) {
+        perror(namebuf);
         free(t);
         return;
     }
-	t->name = strdup(name);
+	t->name = strdup(namebuf);
 	t->lineno = t->offset = t->valid = 0;
 	t->storage = malloc(TBSIZE);
 	t->prev = tbtop;
@@ -125,7 +171,9 @@ insertmacro(char *name, char *macbuf)
     int l;
 
     l = strlen(macbuf);         // our macro without the terminating null
-    printf("insert macro %s %d \$%s\$\n", name, l, macbuf);
+    if (VERBOSE(V_MACRO)) {
+        printf("insert macro %s %d \$%s\$\n", name, l, macbuf);
+    }
     t = tbtop;
 
     /* does it fit */
@@ -226,6 +274,9 @@ done:
     cdump("advance");
 }
 
+/*
+ * prime the pump
+ */
 void
 ioinit()
 {

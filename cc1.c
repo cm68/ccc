@@ -6,11 +6,54 @@
  * and type resolution
  */
 #include "ccc.h"
-#include <fcntl.h>
+// #include <fcntl.h>
 
 #include "debugtags.c"
 
 char *progname;
+
+/*
+ * each file on the command line gets this treatment
+ */
+void
+process(char *f)
+{
+    int i;
+
+    if (VERBOSE(V_TRACE)) {
+        printf("process %s\n", f);
+    }
+    if (write_cpp_file) {
+        if (cpp_file) {
+            close(cpp_file);
+            cpp_file = 0;
+            free(cpp_file_name);
+        }
+        i = strlen(f);
+        if (f[i-2] == '.' && f[i-1] == 'c') {
+            i -= 2;
+        }
+        cpp_file_name = malloc(i+2);
+        strncpy(cpp_file_name, f, i);
+        strcat(cpp_file_name, ".i");
+        cpp_file = creat(cpp_file_name, 0777);
+        if (cpp_file == -1) {
+            perror(cpp_file_name);
+        }
+    }
+
+    insertfile(f, 0);
+    ioinit();
+    nexttok = curtok = NONE;
+
+#ifdef LEXTEST
+    while (curtok) {
+        gettoken();
+    }
+#else
+    parse();
+#endif
+}
 
 void
 usage(char *complaint, char *p)
@@ -57,10 +100,12 @@ main(int argc, char **argv)
                 usage("", progname);
                 break;
             case 'I':
-                // XXX - add_include(++s);
+                add_include(s);
+                s="";
                 break;
             case 'D':
-                // XXX - add_define(++s);
+                add_define(s);
+                s="";
                 break;
             case 'E':
                 write_cpp_file++;
@@ -94,9 +139,14 @@ main(int argc, char **argv)
         }
         printf(")\n");
     }
+#ifdef __UNIX__
     setvbuf(stdout, 0, _IONBF, 0);
 #endif
+#endif
 
+    /*
+     * handle each source file on the command line
+     */
     while (argc--) {
         process(*argv++);
     }

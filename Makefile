@@ -8,36 +8,52 @@
 #
 # we self-generate some of the files to keep things consistent
 #
+DEFINES= -DLEXTEST -DDEBUG
+
 CC = sdcc
 CFLAGS = -mz80 --fomit-frame-pointer
-CC = gcc
-CFLAGS = -Wno-implicit-function-declaration -g
+LD = sdldz80
+LDFLAGS= -l /usr/share/sdcc/lib/z80/z80.lib -m -w -i -y
 
-OBJECTS = ccc.o error.o parse.o type.o main.o lex.o io.o macro.o kw.o util.o tokenlist.o \
-	lextest.o iotest.o cc1.o nullexpr.o
+CC = gcc
+CFLAGS = $(DEFINES) -Wno-implicit-function-declaration -g
+LDFLAGS= -g -o
+LD= gcc
+
+CC1OBJECTS = \
+cc1.o \
+error.o \
+lex.o \
+io.o \
+macro.o \
+kw.o \
+util.o \
+tokenlist.o \
+nullexpr.o
+NOFILES= \
+main.o \
+type.o \
+parse.o \
+foo.o
+
 HEADERS = ccc.h error.h expr.h type.h
 GENERATED = enumlist.h tokenlist.c error.h debug.h debugtags.c
-CFILES = iotest.c lextest.c kw.c io.c macro.c util.c error.c
+CFILES = kw.c io.c macro.c util.c error.c
 
-BINS = enumcheck cc1 cc2 lextest maketokens iotest
-TESTS = -v 3 m1.c
+BINS = enumcheck cc1 cc2 maketokens
 
-all: lextest iotest
+all: cc1
 
-cc1: cc1.o lex.o kw.o io.o macro.o util.o error.o tokenlist.o
-lextest: lex.o cc1.o kw.o io.o macro.o util.o error.o tokenlist.o nullexpr.o
-	cc -g -o lextest tokenlist.o cc1.o lex.o kw.o io.o macro.o util.o error.o nullexpr.o
+cc1: $(CC1OBJECTS)
+	$(LD) $(LDFLAGS) cc1 $(CC1OBJECTS)
 
-iotest: io.o util.o iotest.o
-	cc -g -o iotest io.o iotest.o util.o
-
-$(OBJECTS): $(HEADERS)
+$(CC1OBJECTS): $(HEADERS)
 
 .PHONY: test tests
-test: iotest lextest runtest.sh
+test: cc1 runtest.sh
 	./runtest.sh $(TESTS)
 
-tests: iotest lextest runtest.sh
+tests: cc1 runtest.sh
 	./runtest.sh
 
 #
@@ -53,9 +69,12 @@ enumlist.h: ccc.h
 #
 # generate token names from the enumlist.h file
 #
-tokenlist.c: enumlist.h maketokens.c
-	cc -o maketokens maketokens.c
+tokenlist.c: enumlist.h maketokens
 	./maketokens >tokenlist.c
+	
+maketokens: maketokens.c token.h
+	cc -o maketokens maketokens.c
+
 #
 # generate the debug.h file from the shell script makedebug.sh
 # which grunges through all the c sources looking for VERBOSE(tag)
@@ -74,14 +93,21 @@ enumcheck: enumlist.h enumcheck.c
 	cc -o enumcheck enumcheck.c
 	./enumcheck
 
+regen:
+	rm -f $(GENERATED)
+	make $(GENERATED)
+
+tags:
+	ctags *.c
+
 clean:
-	rm -f $(OBJECTS) lextest.o $(GENERATED) tests/*.i
+	rm -f $(CC1OBJECTS) $(GENERATED) tests/*.i \
+		*.asm *.lst *.sym *.map *.cdb *.ihx
 
 clobber: clean
 	rm -f $(BINS)
 
 cc1.o: debugtags.c
-lextest.o: tokenlist.c lextest.c
 parse.o: parse.c
 type.o: type.c
 main.o: main.c
@@ -91,5 +117,3 @@ kw.o: kw.c
 error.o: error.c
 util.o: util.c
 tokenlist.o: tokenlist.c
-lextest.o: lextest.c
-iotest.o: iotest.c
