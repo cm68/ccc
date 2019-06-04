@@ -1,0 +1,17 @@
+cc1
+cc1.o
+debug.h
+debugtags.c
+enumlist.h
+error.h
+error.o
+io.o
+kw.o
+lex.o
+macro.o
+maketokens
+nullexpr.o
+tokenlist.c
+tokenlist.o
+unixlib.o
+util.o
