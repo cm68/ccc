@@ -29,6 +29,7 @@ macro.o \
 kw.o \
 util.o \
 tokenlist.o \
+unixlib.o \
 nullexpr.o
 NOFILES= \
 main.o \
@@ -105,7 +106,7 @@ clean:
 		*.asm *.lst *.sym *.map *.cdb *.ihx
 
 clobber: clean
-	rm -f $(BINS)
+	rm -f $(BINS) tags
 
 cc1.o: debugtags.c
 parse.o: parse.c
