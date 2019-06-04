@@ -27,7 +27,7 @@ for t in ${TESTS[*]} ; do
 	echo "======= source ========"
 	cat $t
         echo "======== run ========"
-	echo ../lextest -v $VERBOSE -E $t
+	echo ../cc1 -v $VERBOSE -E $t
 	../cc1 -DTEST=$t -I. -v $VERBOSE -E $t
 	echo ""
 	echo "========= object ========="
