@@ -566,7 +566,7 @@ gettoken()
         }
         /* see if it is an operator character */
         t = lookupc(simple, curchar);
-        if (t == 0xff) {
+        if (t == -1) {
             err(ER_C_UT);
             curchar= ';';
         }
@@ -579,7 +579,7 @@ gettoken()
         /* see if the character is doubled.  this can be an operator */
         if (curchar == nexttok) {
             t = lookupc(dbl_able, curchar);
-            if (t != 0xff) {
+            if (t != -1) {
                 nexttok = dbltok[t];
                 advance();
             }
@@ -587,7 +587,7 @@ gettoken()
         /* see if the character has an '=' appended.  this can be an operator */
         if (curchar == '=') {
             t = lookupc(eq_able, nextchar);
-            if (t != 0xff) {
+            if (t != -1) {
                 nexttok = eqtok[t];
                 advance();
             }

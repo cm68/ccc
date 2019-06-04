@@ -84,7 +84,7 @@ struct macro *maclookup(char *s);
 void add_define(char *s);
 
 /* util.c */
-extern char lookupc(char *s, char c);
+extern int lookupc(char *s, char c);
 extern void hexdump(char *tag, char *s, int len, int (*high)(int i));
 void cpp_out(char *s);
 int iswhite(char c);

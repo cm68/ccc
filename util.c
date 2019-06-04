@@ -83,16 +83,16 @@ hexdump(char *tag, char *h, int l, int (*high)(int index))
  * return 0xff for miss
  * this is a prime candidate for assembly
  */
-char
+int
 lookupc(char *s, char c)
 {
-    char i;
+    int i;
     for (i = 0; s[i]; i++) {
         if (c == s[i]) {
             return i;
         }
     }
-    return 0xff;
+    return -1;
 }
 
 /*
