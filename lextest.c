@@ -56,14 +56,7 @@ process(char *f)
     ioinit();
     nexttok = curtok = NONE;
     while (curtok) {
-        switch (curtok) {
-        case SYM:
-            printf("%s", curstr);
-            break;
-        default:
-            printf(" %s ", detoken[curtok]);
-            break;
-        }
+        outcpp();
         gettoken();
     }
 }
