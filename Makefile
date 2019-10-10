@@ -31,7 +31,7 @@ ccc: $(OBJECTS)
 
 $(OBJECTS): $(HEADERS)
 
-TESTS=tests/m1.c
+TESTS=tests/*.c
 
 test: iotest lextest
 	for t in $(TESTS) ; do \
