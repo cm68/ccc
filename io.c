@@ -48,12 +48,14 @@ high(int i)
 }
 
 void
-cdump()
+cdump(char *tag)
 {
     struct textbuf *t = tbtop;
     char cs[20];
     char ns[20];
-
+    if (tag) {
+        printf("%s:\n", tag);
+    }
     if (curchar <= ' ') {
         sprintf(cs, "0x%x", curchar);
     } else {
@@ -72,7 +74,7 @@ cdump()
     
 } 
 #else
-#define cdump()
+#define cdump(x)
 #endif
 
 /*
@@ -126,15 +128,12 @@ insertmacro(char *name, char *macbuf)
 
     /* does it fit */
     if (t->offset > l) {
-        cdump();
+        cdump("before");
         t->offset -= l;
         strncpy(&t->storage[t->offset], macbuf, l);
         curchar = t->storage[t->offset];
         nextchar = t->storage[t->offset+1];
-        cdump();
-        t->offset -= l;
-        strncpy(&t->storage[t->offset], macbuf, l);
-        nextchar = t->storage[t->offset];
+        cdump("after");
         return;
     }
  
@@ -221,7 +220,7 @@ done:
         nextcol++;
     }
     if (nextchar == '\t') nextchar = ' ';
-    cdump();
+    cdump("advance");
 }
 
 void
