@@ -263,7 +263,6 @@ do_cpp(char t)
     struct cond *c;
     int v;
 
-    printf("do_cpp\n");
     switch (t) {
     case IF:
         v = readcppconst();
@@ -426,32 +425,10 @@ strfree(char *s)
     free(s);
 }
 
-/*
- * we want a stream of lexemes to be placed into 
- * curtok and nexttok respectively.  
- * we need 1 token of lookahead to do a recursive descent parse of C
- *
- * all the comment and preprocessor stuff is invisible above here
- * as is string, character escaping, and number bases
- */
 void
-gettoken()
+outcpp()
 {
-    char *s;
-    char t;
-    int incomment = 0;
     char nbuf[20];
-
-top:
-    /* advance */
-    if (curstr) {
-        strfree(curstr);
-    }
-    curtok = nexttok;
-    curval = nextval;
-    curstr = nextstr;
-    nextstr = 0;
-
     if (curtok == SYM) {
         cpp_out(curstr);
     } else if (curtok == NUMBER) {
@@ -467,7 +444,35 @@ top:
             cpp_out(tokenname[curtok]);
         }
     }
+}
 
+/*
+ * we want a stream of lexemes to be placed into 
+ * curtok and nexttok respectively.  
+ * we need 1 token of lookahead to do a recursive descent parse of C
+ *
+ * all the comment and preprocessor stuff is invisible above here
+ * as is string, character escaping, and number bases
+ */
+void
+gettoken()
+{
+    char *s;
+    char t;
+    int incomment = 0;
+
+    /* advance */
+    if (curstr) {
+        strfree(curstr);
+    }
+    curtok = nexttok;
+    curval = nextval;
+    curstr = nextstr;
+    nextstr = 0;
+
+    printf("gettoken: 0x%02x %d %c %s\n", curtok, curtok, curtok, detoken[curtok]);
+
+top:
     while (1) {
         if (curchar == 0) {
             nexttok = E_O_F;
