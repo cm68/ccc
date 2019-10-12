@@ -488,6 +488,7 @@ gettoken()
 {
     char t;
     int incomment = 0;
+    int lineend;
 
     /* advance */
     if (curstr) {
@@ -497,6 +498,7 @@ gettoken()
     curval = nextval;
     curstr = nextstr;
     nextstr = 0;
+    lineend = 0;
 
     // printf("gettoken: 0x%02x %d %c %s %s\n", curtok, curtok, curtok, detoken[curtok], detail());
 
@@ -523,7 +525,7 @@ gettoken()
             }
         }
         if (curchar == '\n') {
-            cpp_out("\n");
+            lineend = 1;
         }
         if ((tflags & ONELINE) && charmatch('\n')) {
             nexttok = ';';
@@ -639,6 +641,9 @@ gettoken()
             cpp_out(tokenname[curtok]);
         }
         break;
+    }
+    if (lineend) {
+        cpp_out("\n");
     }
     return;
 }
