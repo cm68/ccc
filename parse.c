@@ -26,11 +26,9 @@ statement(struct stmt *parent)
 
         case BEGIN: // begin a block
             gettoken();
-            cur_block = new_scope(cur_block, blockname()); 
+            push_scope(blockname());
             st = statement(parent);     /* recurse */
-            sc = cur_block;
-            cur_block = sc->parent;
-            destroy_scope(sc);
+            pop_scope();
             need(END, END, ER_S_CC);
             break;
 
@@ -84,9 +82,9 @@ statement(struct stmt *parent)
             gettoken();
             need('(','(', ER_S_NP);
             st = makestmt(FOR, expr(PRI_ALL, parent));
-            need(';', ';', EN_S_SN);
+            need(';', ';', ER_S_SN);
             st->middle = expr(PRI_ALL, parent);
-            need(';', ';', EN_S_SN);
+            need(';', ';', ER_S_SN);
             st->right = expr(PRI_ALL, parent);
             need(')',')', ER_S_NP);
             st->chain = statement(st);
@@ -159,7 +157,7 @@ statement(struct stmt *parent)
             }
             st->left = expr(PRI_ALL, parent);
             need(')',';', ER_S_NP);
-            need(';', ';', E_S_SN);
+            need(';', ';', ER_S_SN);
             break;
 
         case ASM:
@@ -199,6 +197,9 @@ parsefunc(struct var *v)
     v->body->flags = S_FUNC;
 }
 
+/*
+ * read a storage class
+ */
 char
 getsclass(char toplevel)
 {
@@ -209,7 +210,7 @@ getsclass(char toplevel)
     } else {
         if ((sc == AUTO) || (sc == REGISTER)) {
             if (toplevel) {
-                err(ER_E_TA);
+                err(ER_D_TL);
             }
             gettoken();
     }
@@ -222,6 +223,8 @@ declaration(struct scope *sc)
     struct type *base;
     struct name *n;
     struct initial *i;
+    char sclass;
+    struct type *basetype;
 
     while (1) {
         sclass = getsclass(1);
@@ -268,11 +271,11 @@ block()
 void
 parse()
 {
-    global = new_scope((struct scope *)0, "global");
+    push_scope("global");
     while (curtok != EOF) {
         declaration(global);
     }
-    destroy_scope(global);
+    pop_scope(global);
 }
 
 /*

@@ -124,7 +124,7 @@ push_scope(char *name)
 	s = malloc(sizeof(*s));
 	s->names = 0;
 	s->scopename = strdup(name);
-	s->next =scope;
+	s->next = scope;
     scope = s;
 }
 

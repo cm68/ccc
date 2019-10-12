@@ -1,3 +1,6 @@
+.settings
+.cproject
+.project
 iotest
 lextest
 maketokens

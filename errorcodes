@@ -21,6 +21,7 @@ ER_D_FA		function array meaningless
 ER_D_FM		old style arg defs
 ER_D_FO		multiple types for funarg
 ER_D_UT		unexpected token in decl
+ER_D_TL		illegal toplevel storage class
 
 # parse errors
 ER_P_TA		toplevel reg or auto
@@ -32,6 +33,9 @@ ER_S_SN		need semicolon
 ER_S_OE		orphan else
 ER_S_NC		non constant case label
 ER_S_NL		need colon for label
+ER_S_DO		malformed do statement
+ER_S_GL		goto label expected
+ER_S_SB		switch statement bracked expected
 
 # lexer or cpp errors
 ER_C_BD		unknown cpp operation

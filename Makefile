@@ -12,13 +12,15 @@ CFLAGS = -mz80 --fomit-frame-pointer
 CC = gcc
 CFLAGS = -Wno-implicit-function-declaration -g
 
-OBJECTS = error.o parse.o type.o main.o lex.o io.o macro.o kw.o util.o tokenlist.o \
-	lextest.o iotest.o
+OBJECTS = error.o parse.o type.o main.o lex.o io.o macro.o kw.o util.o tokenlist.o
+TESTOBJS =	lextest.o iotest.o
 HEADERS = ccc.h error.h expr.h type.h
 GENERATED = enumlist.h tokenlist.c error.h
 CFILES = iotest.c lextest.c kw.c io.c macro.c util.c error.c
 
 BINS = enumcheck cc1 cc2 lextest maketokens iotest
+
+all: ccc
 
 lextest: lex.o lextest.o kw.o io.o macro.o util.o error.o tokenlist.o
 	cc -g -o lextest tokenlist.o lextest.o lex.o kw.o io.o macro.o util.o error.o
@@ -78,7 +80,7 @@ enumcheck: enumlist.h enumcheck.c
 	./enumcheck
 
 clean:
-	rm -f $(OBJECTS) lextest.o $(GENERATED) *.i
+	rm -f $(TESTOBJS) $(OBJECTS) $(GENERATED) *.i
 
 clobber: clean
 	rm -f $(BINS)

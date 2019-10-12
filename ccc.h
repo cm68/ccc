@@ -20,8 +20,11 @@ extern int verbose;
  * purposes and for cheap serializing into intermediate files
  */
 typedef enum token {
+	/* pseudo-keywords */
 	E_O_F = 0,
     NONE = ' ',
+	EXPR = 0x1,
+
 	/* C keywords */
 	ASM = 'A', AUTO = 'o', 
 	BOOLEAN = 'b' , BREAK = 'B', 
@@ -54,8 +57,8 @@ typedef enum token {
 	PLUS = '+', MINUS = '-', STAR = '*', DIV = '/', MOD = '%',
 	AND = '&', OR = '|', XOR = '^',
 	LT = '<', GT = '>', BANG = '!', TWIDDLE = '~',
-	QUES = '?', OTHER = ':',
-	INC = 'U', DEC = 'V',
+	QUES = '?', COLON = ':',
+	INCR = 'U', DECR = 'V',
 	LSHIFT = 'y' , RSHIFT = 'w',
 	LOR = 'h', LAND = 'j',
 	EQ = 'Q', NEQ = 'n', LE = 'L', GE = 'g',
@@ -138,7 +141,7 @@ struct macro *maclookup(char *s);
 
 /* util.c */
 extern char lookupc(char *s, char c);
-extern void hexdump(char *s, int len, int (*high)(i));
+extern void hexdump(char *s, int len, int (*high)(int i));
 void cpp_out(char *s);
 int iswhite(char c);
 

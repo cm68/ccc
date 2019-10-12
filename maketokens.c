@@ -17,6 +17,7 @@ main(int argc, char **argv)
 
 	printf("char *tokenname[] = {\n");
 	for (i = 0; i < 128; i++) {
+		printf("/* %d 0x%x \'%c\' */ ", i, i, (i > ' ') && (i < 0x7f) ? i : ' ');
 		if (tokenname[i]) {
 			printf("\"%s\"", tokenname[i]);
 		} else {
