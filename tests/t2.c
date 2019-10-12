@@ -20,5 +20,7 @@ assign(a,b);
 
 assignstringify(c,d);
 
-k = glom(a,b)
+k = glom(a,b);
+
+k = glom(fu,bar);
 

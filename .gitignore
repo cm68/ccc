@@ -1,1 +1,8 @@
-iotest lextest maketokens
+iotest
+lextest
+maketokens
+tests/*.i
+*.o
+enumlist.h
+tokenlist.c
+error.h
