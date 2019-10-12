@@ -2,24 +2,23 @@ char foo[] = "this is a test string";
 
 #define nullmacro
 
-#define macro1(x) x
+#define identity(x) x
 
-#define macro2(x,y)  x = y
+#define assign(x,y)  x = y
 
-#define macros2(x,y) x = #y
+#define assignstringify(x,y) x = #y
 
-#define macroc2(x,y) x##y
+#define glom(x,y) x##y
+
+#define	ab xyzzy
 
 vv = nullmacro yy;
 
-vv = macro1(k);
+vv = identity(k);
 
-macro2(a,b);
+assign(a,b);
 
-macros2(c,d);
+assignstringify(c,d);
 
-k = macroc2(a,b);
+k = glom(a,b)
 
-xMy
-
-;

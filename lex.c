@@ -52,6 +52,7 @@ match(token_t t)
 
 /*
  * this happens a fair amount too, and we want to save code
+ * if curchar is this, then true and eat the character
  */
 int
 charmatch(int c)
@@ -238,7 +239,6 @@ issym()
         return 0;
     }
 
-    /* XXX - do glom operator a ## b  becomes ab */
     while (1) {
         *s++ = curchar;
         *s = 0;
@@ -251,7 +251,6 @@ issym()
         }
         advance();
     }
-// printf("issym = 1 curchar = %c nextchar = %c\n", curchar, nextchar);
     return 1;
 }
 
@@ -366,13 +365,11 @@ isstring(char *s)
     if (!charmatch('\"')) {
         return 0;
     }
-    advance();
-    while (curchar != '\"') {
+    while (!charmatch('\"')) {
         *s++ = getlit();
         advance();
     }
     *s = 0;
-    advance();
     return 1;
 }
 
@@ -446,6 +443,21 @@ outcpp()
     }
 }
 
+#ifdef notdef
+char *
+detail()
+{
+    switch (curtok) {
+    case SYM:
+        return curstr;
+    case STRING:
+        return curstr;
+    default:
+        return ""; 
+    }
+}
+#endif
+
 /*
  * we want a stream of lexemes to be placed into 
  * curtok and nexttok respectively.  
@@ -470,7 +482,9 @@ gettoken()
     curstr = nextstr;
     nextstr = 0;
 
-    printf("gettoken: 0x%02x %d %c %s\n", curtok, curtok, curtok, detoken[curtok]);
+#ifdef notdef
+    printf("gettoken: 0x%02x %d %c %s %s\n", curtok, curtok, curtok, detoken[curtok], detail());
+#endif
 
 top:
     while (1) {

@@ -129,7 +129,9 @@ macdefine(char *s)
     m->mactext = strdup(macbuffer);
     m->next = macros;
     macros = m;
+
     // printf("macro %s defined\n", m->name);
+
 }
 
 /*
@@ -179,7 +181,8 @@ macexpand(char *s)	/* the symbol we are looking up as a macro */
     if (!m) {
         return 0;
     }
-    printf("macro %s called\n", m->name);
+
+    // printf("macro %s called\n", m->name);
 
     args = 0;
     d = macbuffer;
@@ -187,14 +190,12 @@ macexpand(char *s)	/* the symbol we are looking up as a macro */
     while (iswhite(nextchar)) {
         advance();
     }
-    // printf("1\n");
     plevel = 0;
     /*
      * read the arguments from the invocation
      */
     if (nextchar == '(') {
         advance();
-        // printf("2\n");
         plevel = 1;
         advance();
         skipwhite();
@@ -202,14 +203,11 @@ macexpand(char *s)	/* the symbol we are looking up as a macro */
             /*
              * copy literals literally
              */
-        // printf("3\n");
             if (curchar == '\'' || curchar == '\"') {
-        // printf("4\n");
                 c = curchar;
                 advance();
                 *d++ = c;
                 while (curchar != c) {
-        // printf("5\n");
                     *d++ = curchar;
                     if (curchar == '\\') {
                         advance();
@@ -243,7 +241,6 @@ macexpand(char *s)	/* the symbol we are looking up as a macro */
             *d = 0;
             advance();
         }
-        // printf("6\n");
     } // curchar should be ')'
 
     if (args != m->parmcount) {
@@ -255,6 +252,7 @@ macexpand(char *s)	/* the symbol we are looking up as a macro */
      * the parameters where ever we find them
      */
     d = macbuffer;
+    *d = '\0';
     s = m->mactext;
 
     while (*s) {
@@ -273,11 +271,15 @@ macexpand(char *s)	/* the symbol we are looking up as a macro */
             continue;
         }
 
-        /* if the 'stringify' operator is present */
+        /* is it a glom or stringify */
         stringify = 0;
-        if (c == '#' && s[1] != '#') {
-            stringify = 1;
+        if (c == '#') {
             c = *++s;
+            if (c == '#') {
+                c = *++s;
+            } else {
+                stringify = 1;
+            }
         }
 
         /* if macro text has something that looks like an arg */
@@ -315,7 +317,9 @@ macexpand(char *s)	/* the symbol we are looking up as a macro */
         *d++ = *s++;
     }
     *d = 0;
-    printf("insertmacro: %s %s\n", m->name, macbuffer);
+
+    // printf("insertmacro: %s %s\n", m->name, macbuffer);
+
     insertmacro(m->name, macbuffer);
     return 1;
 }

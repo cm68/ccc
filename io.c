@@ -53,6 +53,11 @@ cdump(char *tag)
     struct textbuf *t = tbtop;
     char cs[20];
     char ns[20];
+
+    if (!(verbose & V_IO)) {
+        return;
+    }
+
     if (tag) {
         printf("%s:\n", tag);
     }
@@ -66,10 +71,8 @@ cdump(char *tag)
     } else {
         sprintf(ns, "%c", nextchar);
     }
-    if (verbose & V_IO) {
-        if (t) {
-            hexdump(t->storage, t->valid, &high);
-        }
+    if (t) {
+        hexdump(t->storage, t->valid, &high);
     }
     
 } 
@@ -131,8 +134,8 @@ insertmacro(char *name, char *macbuf)
         cdump("before");
         t->offset -= l;
         strncpy(&t->storage[t->offset], macbuf, l);
-        curchar = t->storage[t->offset];
-        nextchar = t->storage[t->offset+1];
+        curchar = t->storage[t->offset++];
+        nextchar = t->storage[t->offset];
         cdump("after");
         return;
     }
