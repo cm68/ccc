@@ -32,6 +32,9 @@ ccc: $(OBJECTS)
 $(OBJECTS): $(HEADERS)
 
 TESTS=tests/*.c
+#TESTS=tests/glom.c
+
+#VERBOSE=-v 3
 
 test: iotest lextest
 	for t in $(TESTS) ; do \
@@ -39,8 +42,7 @@ test: iotest lextest
 		echo "======= source ========" ; \
 		cat $$t ; \
 		echo "======== run ========" ; \
-		# ./iotest -v 3 $$t > $$t.io ; cat $$t.io ; \
-		./lextest -v 3 -E $$t ; \
+		./lextest $(VERBOSE) -E $$t ; \
 		echo "" ; \
 		echo "========= object =========" ; \
 		cat $$(echo $${t%.c}.i) ; \
