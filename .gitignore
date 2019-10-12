@@ -9,3 +9,12 @@ tests/*.i
 enumlist.h
 tokenlist.c
 error.h
+tags
+*.i
+cc1
+debug.h
+debugtags.c
+enumlist.h
+error.h
+maketokens
+tokenlist.c

@@ -8,6 +8,12 @@
 #include "ccc.h"
 
 #include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+
+int write_cpp_file = 0;
+char *cpp_file_name;
+int cpp_file;
 
 token_t curtok;
 token_t nexttok;
@@ -112,8 +118,18 @@ getint(char base)
 
     while (1) {
         c = curchar;
-        c = (c > '9') ? (c | 0x20) - 'a' + 10 : c - '0';
-        if ((c < 0) || ((c+1) > base)) {
+        if (c < '0') break;
+        if (c > '9') {
+            c |= 0x20;
+            if (c >= 'a' && c <= 'f') {
+                c = 10 + c - 'a';
+            } else {
+                break;
+            }
+        } else {
+            c -= '0';
+        }
+        if ((c+1) > base) {
             break;
         }
         i *= base;
@@ -131,52 +147,66 @@ getint(char base)
 /*
  * do character literal processing, handling the C escape codes
  * extended with decimal and binary constants
+ * this function consumes the input, returning the character value
  */
 static char
 getlit()
 {
+    char c;
 top:
     if (curchar != '\\') {
         if ((curchar < 0x20) || (curchar > 0x7e)) {
             err(ER_C_BC);
             curchar = ' ';
         }
-        return curchar;
+        c = curchar;
+    } else {
+        advance();          // eat the backslash
+        switch (curchar) {
+        case '\n':          /* backslash at end of line */
+            lineno++;
+            goto top;
+        case 'b':
+            c = '\b';
+            break;
+        case 'e':
+            c = '\x1b';
+            break;
+        case 'f':
+            c = '\f';
+            break;
+        case 'n':
+            c = '\n';
+            break;
+        case 'r':
+            c = '\r';
+            break;
+        case 't':
+            c = '\t';
+            break;
+        case 'v':
+            c = '\v';
+            break;
+        case '0': case '1': case '2': case '3':     // octal
+        case '4': case '5': case '6': case '7':
+            return (getint(8));
+        case 'x': case 'X':                         // hex
+            advance();
+            return (getint(16));
+        /* extension */
+        case 'B':                                   // binary
+            advance();
+            return (getint(2));
+        case 'D':                                   // decimal
+            advance();
+            return (getint(10));
+        default:
+            c = curchar;
+            break;                                   // literal next
+        }
     }
-    advance();          // eat the backslash
-    switch (curchar) {
-    case '\n':          /* backslash at end of line */
-        lineno++;
-        goto top;
-    case 'b':
-        return '\b';
-    case 'e':
-        return '\x1b';
-    case 'f':
-        return '\f';
-    case 'n':
-        return '\n';
-    case 'r':
-        return '\r';
-    case 't':
-        return '\t';
-    case 'v':
-        return '\v';
-    case '0': case '1': case '2': case '3':     // octal
-    case '4': case '5': case '6': case '7':
-        return (getint(8));
-    case 'x': case 'X':                         // hex
-        advance();
-        return (getint(16));
-    case 'B':                                   // binary
-        advance();
-        return (getint(2));
-    case 'D':                                   // decimal
-        advance();
-        return (getint(10));
-    default:
-        return curchar;                         // literal next
-    }
+    advance();
+    return c;
 }
 
 /*
@@ -250,6 +280,9 @@ issym()
             break;
         }
         advance();
+    }
+    if (VERBOSE(V_SYM)) {
+        printf("issym = 1 curchar = %c nextchar = %c\n", curchar, nextchar);
     }
     return 1;
 }
@@ -339,6 +372,7 @@ do_cpp(char t)
             k = '\"';
         } else {
             err(ER_C_ID);
+            return;
         }
         advance();
         s = strbuf;
@@ -367,9 +401,11 @@ isstring(char *s)
     }
     while (!charmatch('\"')) {
         *s++ = getlit();
-        advance();
     }
     *s = 0;
+    if (VERBOSE(V_STR)) {
+        printf("isstring: %s\n", strbuf);
+    }
     return 1;
 }
 
@@ -381,7 +417,7 @@ isstring(char *s)
 char simple[] = {
     BEGIN, END, LBRACK, RBRACK, LPAR, RPAR, SEMI, COMMA,
     ASSIGN, DOT, PLUS, MINUS, DIV, MOD, AND, OR, XOR,
-    LT, GT, BANG, TWIDDLE, QUES, OTHER, STAR, 0
+    LT, GT, BANG, TWIDDLE, QUES, COLON, STAR, 0
 };
 
 /*
@@ -391,7 +427,7 @@ char dbl_able[] = {
     PLUS, MINUS, OR, AND, ASSIGN, GT, LT, 0
 };
 char dbltok[] = {
-    INC, DEC, LOR, LAND, EQ, RSHIFT, LSHIFT, 0
+    INCR, DECR, LOR, LAND, EQ, RSHIFT, LSHIFT, 0
 };
 
 /*
@@ -422,27 +458,6 @@ strfree(char *s)
     free(s);
 }
 
-void
-outcpp()
-{
-    char nbuf[20];
-    if (curtok == SYM) {
-        cpp_out(curstr);
-    } else if (curtok == NUMBER) {
-        sprintf(nbuf, "%d", curval);
-        cpp_out(nbuf);
-    } else if (curtok == STRING) {
-        sprintf(nbuf, "\"%s\"", curstr);
-        cpp_out(nbuf);
-    } else {
-        if (detoken[curtok]) {
-            cpp_out(detoken[curtok]);
-        } else {
-            cpp_out(tokenname[curtok]);
-        }
-    }
-}
-
 #ifdef notdef
 char *
 detail()
@@ -458,6 +473,8 @@ detail()
 }
 #endif
 
+char nbuf[100];
+
 /*
  * we want a stream of lexemes to be placed into 
  * curtok and nexttok respectively.  
@@ -469,7 +486,6 @@ detail()
 void
 gettoken()
 {
-    char *s;
     char t;
     int incomment = 0;
 
@@ -482,15 +498,12 @@ gettoken()
     curstr = nextstr;
     nextstr = 0;
 
-#ifdef notdef
-    printf("gettoken: 0x%02x %d %c %s %s\n", curtok, curtok, curtok, detoken[curtok], detail());
-#endif
+    // printf("gettoken: 0x%02x %d %c %s %s\n", curtok, curtok, curtok, detoken[curtok], detail());
 
-top:
     while (1) {
         if (curchar == 0) {
             nexttok = E_O_F;
-            return;
+            break;
         }
         if (column == 0 && charmatch('#')) {   // cpp directive
             skipwhite1();
@@ -514,7 +527,7 @@ top:
         }
         if ((tflags & ONELINE) && charmatch('\n')) {
             nexttok = ';';
-            return;
+            break;
         }
         if ((column == 0) && cond && !(cond->flags & C_TRUE)) {
             skiptoeol();
@@ -546,26 +559,26 @@ top:
         }
         if (issym()) {
             if (macexpand(strbuf)) {
-                goto top;
+                continue;
             }
             advance();
             t = kwlook(strbuf, ckw);
             if (t) {
                 nexttok = t;
-                return;
+                break;
             }
             nexttok = SYM;
             nextstr = stralloc(strbuf);
-            return;
+            break;
         }
         if (isnumber()) {
             nexttok = NUMBER;
-            return;
+            break;
         }
         if (isstring(strbuf)) {
             nexttok = STRING;
             nextstr = stralloc(strbuf);
-            return;
+            break;
         }
         /* see if it is an operator character */
         t = lookupc(simple, curchar);
@@ -573,6 +586,10 @@ top:
             err(ER_C_UT);
             curchar= ';';
         }
+        /*
+         * this is a little bit of a hack - nexttok is temporarily used
+         * to hold the current character when checking composite operators
+         */
         nexttok = curchar;
         advance();
         /* see if the character is doubled.  this can be an operator */
@@ -595,8 +612,35 @@ top:
             nexttok = DEREF;
             advance();
         }
-        return;
+        break;
     }
+
+    /*
+     * detokenize for cpp output
+     */
+    switch (curtok) {
+    case SYM:
+        cpp_out(curstr);
+        break; 
+    case STRING: 
+        sprintf(nbuf, "\"%s\"", curstr);
+        cpp_out(nbuf);
+        break;
+    case NUMBER:
+        sprintf(nbuf, "%d", curval);
+        cpp_out(nbuf);
+        break;
+    case NONE: 
+        break;
+    default:
+        if (detoken[curtok]) {
+            cpp_out(detoken[curtok]);
+        } else {
+            cpp_out(tokenname[curtok]);
+        }
+        break;
+    }
+    return;
 }
 
 /*
@@ -647,8 +691,7 @@ readcppconst()
     char *savesym;
 
     if (curtok == SYM) {
-        savesym = alloca(strlen(strbuf));
-        strcpy(savesym, strbuf);
+        savesym = strdup(strbuf);
     }
 
     /*
@@ -658,7 +701,7 @@ readcppconst()
     tflags = ONELINE | CPPFUNCS;
 
     e = expr(PRI_ALL, 0);
-    if (!(e->flags & ECONST)) {
+    if (!(e->flags & E_CONST)) {
         err (ER_C_CE);
         return 0;
     }
@@ -667,7 +710,10 @@ readcppconst()
     tflags = savedtflags;
     curval = savenum;
     curtok = savetok;
-    if (curtok == SYM) strcpy(savesym, strbuf);
+    if (curtok == SYM) {
+        strcpy(strbuf, savesym);
+        free(savesym);
+    }
     return val;
 }
 

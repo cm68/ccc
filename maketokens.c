@@ -2,7 +2,7 @@
  * dirty little program generate token names
  * and normalized values
  */ 
-#include "ccc.h"
+#include "token.h"
 
 char *tokenname[128];
 
@@ -49,6 +49,8 @@ main(int argc, char **argv)
 		case RPAR: s = ")"; break;
 		case LBRACK: s = "["; break;
 		case RBRACK: s = "]"; break;
+		case PLUS: s = "+"; break;
+		case MINUS: s = "-"; break;
 		default:
 			break;
 		}

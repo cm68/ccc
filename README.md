@@ -1,4 +1,5 @@
 ccc - full native C compiler
+-------- this is very far from working ----------
 
 i wrote this about a dozen years ago and lost the source.  I am typing
 it in from a paper printout with a few missing chunks, so it will be a

@@ -1,38 +1,28 @@
 /*
- * this file is a test harness for the lexer.  it subsumes much of
- * the cpp function, only having the restriction that the only kind of
- * expression that is handled by the cpp is literal integers or names
- * that directly expand into literal integers.  the full compiler of course
- * does not have this limitation.
+ * this file is the compiler first pass.
+ * it takes source code consisting of unpreprocessed c, include files,
+ * and command line defines and outputs parse trees and static data
+ * it does basically all of the semantic processing, like operator precedence
+ * and type resolution
  */
 #include "ccc.h"
-#include <fcntl.h>
+// #include <fcntl.h>
 
-int verbose;
-
-#ifdef DEBUG
-int verbose;
-
-char *vopts[] = {
-    "V_LEX",
-    "V_IO",
-    0
-};
-#endif
+#include "debugtags.c"
 
 char *progname;
 
-int write_cpp_file = 0;
-int cpp_file;
-char *cpp_file_name;
-
+/*
+ * each file on the command line gets this treatment
+ */
 void
 process(char *f)
 {
-    char *s;
     int i;
 
-    printf("process %s\n", f);
+    if (VERBOSE(V_TRACE)) {
+        printf("process %s\n", f);
+    }
     if (write_cpp_file) {
         if (cpp_file) {
             close(cpp_file);
@@ -50,14 +40,22 @@ process(char *f)
         if (cpp_file == -1) {
             perror(cpp_file_name);
         }
+        cpp_out("/* preprocessed file */");
     }
-    
+
     insertfile(f, 0);
     ioinit();
     nexttok = curtok = NONE;
+
+#ifdef LEXTEST
     while (curtok) {
-        outcpp();
         gettoken();
+    }
+#else
+    parse();
+#endif
+    if (write_cpp_file) {
+        cpp_flush();
     }
 }
 
@@ -106,10 +104,12 @@ main(int argc, char **argv)
                 usage("", progname);
                 break;
             case 'I':
-                // XXX - add_include(++s);
+                add_include(s);
+                s="";
                 break;
             case 'D':
-                // XXX - add_define(++s);
+                add_define(s);
+                s="";
                 break;
             case 'E':
                 write_cpp_file++;
@@ -143,26 +143,18 @@ main(int argc, char **argv)
         }
         printf(")\n");
     }
+#ifdef __UNIX__
+    setvbuf(stdout, 0, _IONBF, 0);
+#endif
 #endif
 
+    /*
+     * handle each source file on the command line
+     */
     while (argc--) {
         process(*argv++);
     }
 
-}
-
-struct expr *
-expr(char priority, struct stmt *parent)
-{
-    struct expr *e;
-
-    return e;
-}
-
-void
-freeexpr(struct expr *e)
-{
-    free(e);
 }
 
 /*

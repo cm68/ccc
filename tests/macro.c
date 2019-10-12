@@ -1,13 +1,11 @@
+#define add(a,b) a+b
+#define stringify(a) #a
+
 int i;
 int j = 8;
 char moo[] = "this is a test";
-char *m1 = "this is another";
 
-#include "test1.h"
-#define	m y
-#define	z(a,b) a = #b
-#define	j
-#define	glom(a,b) a##b
+char *m1 = stringify(this is another);
 
 struct test_s {
 	int i;
@@ -20,10 +18,10 @@ foo(int a, char **b)
 
 	bar.i = a;
 
+	char k = add(2,4);
+
 	printf("%s: %d\n", b[0], bar.i);
 	z(a, test);
-	m;
-	glom(xy,zzy);
 }
 
 int

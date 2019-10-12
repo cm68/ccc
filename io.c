@@ -8,7 +8,7 @@
  * not our job; except nulls.  those are dirty; the first null is eof.
  */
 #include "ccc.h"
-#include <fcntl.h>
+// #include <fcntl.h>
 
 /*
  * the incoming character stream interface
@@ -20,6 +20,7 @@ int lineno;                 // line number for error messages
 char *filename;             // current file name
 int column;                 // this is reset to 0 when we see a newline
 int nextcol = 0;
+char namebuf[128];
 
 /*
  * the formal definition of offset is the first unread character.
@@ -30,7 +31,7 @@ int nextcol = 0;
  */
 #define	TBSIZE	1024		/* text buffer size */
 struct textbuf {
-	char fd;                // if == -1, macro buffer
+	int fd;                 // if == -1, macro buffer
 	char *name;             // filename or macro name
 	char *storage;          // data - free when done
 	short offset;           // always points at nextchar.
@@ -53,8 +54,9 @@ cdump(char *tag)
     struct textbuf *t = tbtop;
     char cs[20];
     char ns[20];
+    char tbuf[100];
 
-    if (!(verbose & V_IO)) {
+    if (!(VERBOSE(V_IO))) {
         return;
     }
 
@@ -71,14 +73,47 @@ cdump(char *tag)
     } else {
         sprintf(ns, "%c", nextchar);
     }
-    if (t) {
-        hexdump(t->storage, t->valid, &high);
+    if (VERBOSE(V_IO)) {
+        if (t) {
+            sprintf(tbuf, "%s %x %x %s %s", 
+                tag, tbtop->offset, tbtop->valid, cs, ns); 
+            hexdump(tbuf, t->storage, t->valid, &high);
+        }
     }
     
 } 
 #else
 #define cdump(x)
 #endif
+
+struct include {
+    char *path;
+    struct include *next;
+} *includes;
+
+/*
+ * add a path to the include search list
+ */
+void
+add_include(char *s)
+{
+    struct include *i, *ip;
+    i = malloc(sizeof(*i));
+    i->path = strdup(s);
+    i->next = 0;
+    if (includes) {
+        ip = includes;
+        while (ip->next) {
+            ip = ip->next;
+        }
+        ip->next = i;
+    } else {
+        includes = i;
+    }
+    if (VERBOSE(V_CPP)) {
+        printf("add_include: %s\n", s);
+    }
+}
 
 /*
  * if sys is true, then file was included using <> filename delimiters
@@ -87,21 +122,37 @@ void
 insertfile(char *name, int sys)
 {
 	struct textbuf *t;
+    struct include *i;
 
 #ifdef DEBUG
-    if (verbose & V_IO) {
+    if (VERBOSE(V_IO)) {
         printf("insertfile: %s\n", name);
     }
 #endif
 
+    if (!includes) {
+        add_include(".");
+    }
+
 	t = malloc(sizeof(*t));
-	t->fd = open(name, O_RDONLY);
-    if (t->fd < 0) {
-        perror(name);
+    /*
+     * try the filename in all the include path entries. first hit wins
+     */
+    for (i = includes; i; i = i->next) {
+        strcpy(namebuf, i->path);
+        strcat(namebuf, "/");
+        strcat(namebuf, name);
+        t->fd = open(namebuf, 0);
+        if (t->fd > 0) {
+            break;
+        }
+    }
+    if (t->fd == -1) {
+        perror(namebuf);
         free(t);
         return;
     }
-	t->name = strdup(name);
+	t->name = strdup(namebuf);
 	t->lineno = t->offset = t->valid = 0;
 	t->storage = malloc(TBSIZE);
 	t->prev = tbtop;
@@ -127,6 +178,9 @@ insertmacro(char *name, char *macbuf)
     int l;
 
     l = strlen(macbuf);         // our macro without the terminating null
+    if (VERBOSE(V_MACRO)) {
+        printf("insert macro %s %d \$%s\$\n", name, l, macbuf);
+    }
     t = tbtop;
 
     /* does it fit */
@@ -226,6 +280,9 @@ done:
     cdump("advance");
 }
 
+/*
+ * prime the pump
+ */
 void
 ioinit()
 {
@@ -233,6 +290,44 @@ ioinit()
     advance();
     advance();
     column = 0;
+}
+
+struct textbuf *cpp;
+
+#define CPP_BUF 256
+
+cpp_flush()
+{
+    if (cpp->offset) {
+        write(cpp_file, cpp->storage, cpp->offset);
+    }
+    cpp->offset = 0;
+}
+
+cpp_out(char *s)
+{
+    int i;
+
+    if (!cpp) {
+        cpp = malloc(sizeof(*cpp));
+        cpp->storage = malloc(CPP_BUF);
+        cpp->fd = cpp_file;
+        cpp->name = cpp_file_name;
+        cpp->offset = 0;
+        cpp->valid = 0;
+        cpp->prev = 0;
+    }
+
+    if (!s)
+        return;
+
+    i = strlen(s);
+
+    if ((cpp->offset + i) > CPP_BUF) {
+        cpp_flush();
+    }
+    strcpy(&cpp->storage[cpp->offset], s);
+    cpp->offset += i;
 }
 
 /*

@@ -6,51 +6,67 @@
 # this following is only to get an idea of size
 # the idea eventual is that it is both cross and native.
 #
+# we self-generate some of the files to keep things consistent
+#
+DEFINES= -DLEXTEST -DDEBUG
+
 CC = sdcc
 CFLAGS = -mz80 --fomit-frame-pointer
+LD = sdldz80
+LDFLAGS= -l /usr/share/sdcc/lib/z80/z80.lib -m -w -i -y
 
 CC = gcc
-CFLAGS = -Wno-implicit-function-declaration -g
+CFLAGS = $(DEFINES) -Wno-implicit-function-declaration -g
+LDFLAGS= -g -o
+LD= gcc
+
+CC1OBJECTS = \
+	cc1.o \
+	error.o \
+	lex.o \
+	io.o \
+	macro.o \
+	kw.o \
+	util.o \
+	tokenlist.o \
+	unixlib.o \
+	nullexpr.o
+
+NOFILES= \
+	main.o \
+	type.o \
+	parse.o \
+	foo.o
 
 OBJECTS = error.o parse.o type.o main.o lex.o io.o macro.o kw.o util.o tokenlist.o
 TESTOBJS =	lextest.o iotest.o
 HEADERS = ccc.h error.h expr.h type.h
-GENERATED = enumlist.h tokenlist.c error.h
-CFILES = iotest.c lextest.c kw.c io.c macro.c util.c error.c
+GENERATED = enumlist.h tokenlist.c error.h debug.h debugtags.c
+CFILES = kw.c io.c macro.c util.c error.c
 
-BINS = enumcheck cc1 cc2 lextest maketokens iotest
+BINS = enumcheck cc1 cc2 maketokens
+
+TESTS=tests/*.c
+#TESTS=tests/glom.c
+#VERBOSE=-v 3
 
 all: ccc
 
 lextest: lex.o lextest.o kw.o io.o macro.o util.o error.o tokenlist.o
 	cc -g -o lextest tokenlist.o lextest.o lex.o kw.o io.o macro.o util.o error.o
 
-iotest: io.o util.o iotest.o
-	cc -g -o iotest io.o iotest.o util.o
+ccc: $(CC1OBJECTS)
+	$(LD) $(LDFLAGS) cc1 $(CC1OBJECTS)
 
-ccc: $(OBJECTS)
-	cc -o ccc $(OBJECTS)
+$(CC1OBJECTS): $(HEADERS)
 
-$(OBJECTS): $(HEADERS)
+.PHONY: test tests
+test: cc1 runtest.sh
+	./runtest.sh $(TESTS)
 
-TESTS=tests/*.c
-#TESTS=tests/glom.c
+tests: cc1 runtest.sh
+	./runtest.sh
 
-#VERBOSE=-v 3
-
-test: iotest lextest
-	for t in $(TESTS) ; do \
-		echo testing against $$t ; \
-		echo "======= source ========" ; \
-		cat $$t ; \
-		echo "======== run ========" ; \
-		./lextest $(VERBOSE) -E $$t ; \
-		echo "" ; \
-		echo "========= object =========" ; \
-		cat $$(echo $${t%.c}.i) ; \
-		echo "" ; \
-	done
-	
 #
 # process the ccc.h file, extracting the enum tags for the tokens
 #
@@ -64,9 +80,18 @@ enumlist.h: ccc.h
 #
 # generate token names from the enumlist.h file
 #
-tokenlist.c: enumlist.h maketokens.c
-	cc -o maketokens maketokens.c
+tokenlist.c: enumlist.h maketokens
 	./maketokens >tokenlist.c
+	
+maketokens: maketokens.c token.h
+	cc -o maketokens maketokens.c
+
+#
+# generate the debug.h file from the shell script makedebug.sh
+# which grunges through all the c sources looking for VERBOSE(tag)
+#
+debug.h debugtags.c: ./makedebug.sh
+	./makedebug.sh
 
 #
 # process the errorcodes file, which generates error.h, containing the
@@ -79,14 +104,21 @@ enumcheck: enumlist.h enumcheck.c
 	cc -o enumcheck enumcheck.c
 	./enumcheck
 
+regen:
+	rm -f $(GENERATED)
+	make $(GENERATED)
+
+tags:
+	ctags *.c
+
 clean:
-	rm -f $(TESTOBJS) $(OBJECTS) $(GENERATED) *.i
+	rm -f $(CC1OBJECTS) $(GENERATED) tests/*.i \
+		*.asm *.lst *.sym *.map *.cdb *.ihx
 
 clobber: clean
-	rm -f $(BINS)
+	rm -f $(BINS) tags
 
-lextest.o: tokenlist.c lextest.c
-
+cc1.o: debugtags.c
 parse.o: parse.c
 type.o: type.c
 main.o: main.c
@@ -96,5 +128,3 @@ kw.o: kw.c
 error.o: error.c
 util.o: util.c
 tokenlist.o: tokenlist.c
-lextest.o: lextest.c
-iotest.o: iotest.c

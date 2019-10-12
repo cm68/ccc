@@ -4,6 +4,8 @@
 
 #include "ccc.h"
 
+int verbose;
+
 int
 iswhite(char c)
 {
@@ -30,14 +32,14 @@ char *append(char *z, char *s)
 }
 
 void
-hexdump(char *h, int l, int (*highlight)(int index))
+hexdump(char *tag, char *h, int l, int (*high)(int index))
 {
     int i;
     char *z = xxbuf;
     char c;
     int highlit = 0;
 
-    *z = 0;
+    strcpy(xxbuf, tag);
 
     for (i = 0; i < l; i++) {
         c = h[i];
@@ -78,32 +80,19 @@ hexdump(char *h, int l, int (*highlight)(int index))
 
 /*
  * return the index in an array of the first occurrance of a char
- * return -1 for miss
+ * return 0xff for miss
  * this is a prime candidate for assembly
  */
-char
+int
 lookupc(char *s, char c)
 {
-    char i;
+    int i;
     for (i = 0; s[i]; i++) {
         if (c == s[i]) {
             return i;
         }
     }
     return -1;
-}
-
-int cpp_file;
-/*
- * write to the cpp output file if requested
- *  */
-void
-cpp_out(char *s)
-{
-    if (s && cpp_file) {
-        write(cpp_file, s, strlen(s));
-        write(cpp_file, " ", 1);
-    }
 }
 
 /*
