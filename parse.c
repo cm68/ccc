@@ -18,7 +18,7 @@ statement(struct stmt *parent)
     struct scope *sc;
 
     while (block) {
-        switch (curtok) {
+        switch (cur.type) {
 
         case END:   // end a block
             block = 0;
@@ -38,7 +38,7 @@ statement(struct stmt *parent)
             st = makestmt(IF, expr(PRI_PAREN, parent));
             need(RPAR, RPAR, ER_S_NP);
             st->chain = statement(st);
-            if (curtok == ELSE) {   // else <statement>
+            if (cur.type == ELSE) {   // else <statement>
                 gettoken();
                 st->otherwise = statement(st);
             } 
@@ -55,7 +55,7 @@ statement(struct stmt *parent)
         case RETURN:
             gettoken();
             st = makestmt(RETURN, 0);
-            if (curtok != SEMI) {
+            if (cur.type != SEMI) {
                 st->left = expr(PRI_ALL, parent);
             }
             need(SEMI, SEMI, ER_S_SN);
@@ -124,7 +124,7 @@ statement(struct stmt *parent)
         case GOTO:
             gettoken();
             st = makestmt(GOTO, 0);
-            if (curtok != SYM) {
+            if (cur.type != SYM) {
                 recover(ER_S_GL, ';');
                 break;
             } 
@@ -137,6 +137,7 @@ statement(struct stmt *parent)
             gettoken();
             need(':', ':', ER_S_NL);
             st = makestmt(DEFAULT, 0);
+            break;
 
         case ';':
             gettoken();
@@ -148,11 +149,11 @@ statement(struct stmt *parent)
             need('{',';', ER_S_CC);
             st = makestmt(DO, 0);
             st->chain = statement(st);
-            if ((curtok != '}') || nexttok != WHILE) {
+            if ((cur.type != '}') || nexttok != WHILE) {
                 err(ER_S_DO);
                 break;
             }
-            if (curtok != '(') {
+            if (cur.type != '(') {
                 err(ER_S_NP);
             }
             st->left = expr(PRI_ALL, parent);
@@ -203,7 +204,7 @@ parsefunc(struct var *v)
 char
 getsclass(char toplevel)
 {
-    char sc = curtok;
+    char sc = cur.type;
 
     if ((sc == CONST) || (sc == EXTERN) || (sc == STATIC) || (sc == VOLATILE)) {
         gettoken();
@@ -213,10 +214,14 @@ getsclass(char toplevel)
                 err(ER_D_TL);
             }
             gettoken();
+        }
     }
     return sc;
 }
 
+/*
+ * read a declaration
+ */
 void
 declaration(struct scope *sc)
 {
@@ -232,7 +237,7 @@ declaration(struct scope *sc)
 
         v = declare(&basetype);
         if (v->type & T_FUNC) {
-            if (curtok == BEGIN) {
+            if (cur.type == BEGIN) {
                 parsefunc(v);
                 if (sclass == 'p') {
                     v->flags |= V_STATIC;
@@ -246,14 +251,14 @@ declaration(struct scope *sc)
         if (sclass == 'p') {
             v->flags |= V_STATIC;
         }
-        if (curtok == ASSIGN) {
+        if (cur.type == ASSIGN) {
             do_initializar();
         }
-        if (curtok == COMMA) {
+        if (cur.type == COMMA) {
             gettoken();
             continue;
         }
-        if (curtok == SEMI) {
+        if (cur.type == SEMI) {
             break;
         }
     }  
@@ -272,7 +277,7 @@ void
 parse()
 {
     push_scope("global");
-    while (curtok != EOF) {
+    while (cur.type != EOF) {
         declaration(global);
     }
     pop_scope(global);

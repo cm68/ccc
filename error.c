@@ -43,7 +43,7 @@ void
 recover(error_t errcode, token_t skipto)
 {
     err(errcode);
-    while ((curtok != skipto) && (curtok != E_O_F)) {
+    while ((cur.type != skipto) && (cur.type != E_O_F)) {
         gettoken();
     }
 }
@@ -55,7 +55,7 @@ recover(error_t errcode, token_t skipto)
 void 
 need(token_t check, token_t skipto, error_t errcode)
 {
-    if (curtok == check) {
+    if (cur.type == check) {
         gettoken();
         return;
     }

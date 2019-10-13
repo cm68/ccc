@@ -8,6 +8,12 @@
 #include "debug.h"
 #include "token.h"
 
+/*
+ * we use counted strings in places to handle the somewhat gnarly case of
+ * literal strings with embedded nulls - it also means we don't need to do strlen
+ */
+typedef char *cstring;
+
 /* kw.c */
 extern unsigned char cppkw[];
 extern unsigned char ckw[];
@@ -15,15 +21,21 @@ extern unsigned char asmkw[];
 extern char kwlook(unsigned char *str, unsigned char *table);
 
 /* lex.c */
+extern cstring nextstr;
+
+struct token {				// lexeme
+	token_t type;
+	union {
+		long numeric;		// char, short, int, long
+		char *name;			// if we have a symbol
+		cstring str;		// counted literal string
+	} v;
+} cur, next;
+
+extern void lexinit();
 extern int write_cpp_file;
 extern int cpp_file;
 extern char *cpp_file_name;
-extern token_t curtok;
-extern token_t nexttok;
-extern long curval;
-extern long nextval;
-extern char *curstr;
-extern char *nextstr;
 extern char strbuf[];
 extern char match(token_t t);
 extern void gettoken();
@@ -39,6 +51,8 @@ extern void advance();
 void iodump();
 void ioinit();
 void add_include(char *name);
+void cpp_flush();
+void cpp_out(char *s, int len);
 
 extern char curchar;
 extern char nextchar;
@@ -85,8 +99,7 @@ void add_define(char *s);
 
 /* util.c */
 extern int lookupc(char *s, char c);
-extern void hexdump(char *tag, char *s, int len, int (*high)(int i));
-void cpp_out(char *s);
+extern void hexdump(char *tag, char *s, int len);
 int iswhite(char c);
 
 /* type.c */

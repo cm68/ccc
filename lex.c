@@ -15,13 +15,11 @@ int write_cpp_file = 0;
 char *cpp_file_name;
 int cpp_file;
 
-token_t curtok;
-token_t nexttok;
-
-long curval;        /* numeric data */
-long nextval;
-char *curstr;       /* name or string data */
-char *nextstr;
+/*
+ * this is the place we build filenames, symbols and literal strings
+ * no overflow checking or anything, we ain't got time for that shit
+ */
+char strbuf[128];
 
 int readcppconst();
 
@@ -41,6 +39,12 @@ char tflags;
 #define ONELINE     0x01
 #define CPPFUNCS    0x02
 
+void
+lexinit()
+{
+	cur.type = next.type = NONE;
+}
+
 /*
  * return true if the current token matches
  * also, consume the token.  
@@ -49,7 +53,7 @@ char tflags;
 char
 match(token_t t)
 {
-    if (curtok == t) {
+    if (cur.type == t) {
         gettoken();
         return 1;
     }
@@ -218,7 +222,7 @@ isnumber()
     char base;
 
     if (charmatch('\'')) {
-        nextval = getlit();
+        next.v.numeric = getlit();
         if (curchar == '\'') {
             err(ER_C_CD);
         }
@@ -244,11 +248,9 @@ isnumber()
             base = 8;
         }
     }
-    nextval = getint(base);
+    next.v.numeric = getint(base);
     return 1;
 }
-
-char strbuf[128];
 
 /*
  * does the next hunk of characters look like a C symbol or keyword
@@ -282,7 +284,7 @@ issym()
         advance();
     }
     if (VERBOSE(V_SYM)) {
-        printf("issym = 1 curchar = %c nextchar = %c\n", curchar, nextchar);
+        printf("issym = %s curchar = %c nextchar = %c\n", strbuf, curchar, nextchar);
     }
     return 1;
 }
@@ -328,6 +330,7 @@ do_cpp(char t)
         if (cond->flags & C_TRUE) {
             cond->flags |= C_TRUESEEN;
         }
+        return;
     case ELIF:
         if (!cond) {
             skiptoeol();
@@ -391,20 +394,25 @@ do_cpp(char t)
 }
 
 /*
- * check if we have a literal string
+ * check if we have a literal string - hair here, since embedded nulls
+ * return the value into strbuf, and maintain the count
  */
 char 
-isstring(char *s)
+isstring()
 {
+	char *s = strbuf;
+
     if (!charmatch('\"')) {
         return 0;
     }
+	*s++ = 0;
     while (!charmatch('\"')) {
+    	strbuf[0]++;
         *s++ = getlit();
     }
     *s = 0;
     if (VERBOSE(V_STR)) {
-        printf("isstring: %s\n", strbuf);
+        printf("isstring: %s(%d)\n", &strbuf[1], strbuf[0]);
     }
     return 1;
 }
@@ -444,67 +452,52 @@ char eqtok[] = {
 };
 
 /*
- * string memory allocation
+ * when we bump over our current token, we may need to free any
+ * memory we allocated
  */
-char *
-stralloc(char *s)
-{
-    return strdup(s);
-}
-
 void
-strfree(char *s)
+freetoken()
 {
-    free(s);
-}
-
-#ifdef notdef
-char *
-detail()
-{
-    switch (curtok) {
-    case SYM:
-        return curstr;
-    case STRING:
-        return curstr;
-    default:
-        return ""; 
+    if (cur.type == SYM) {
+    	free(cur.v.name);
+    } else if (cur.type == STRING) {
+    	free(cur.v.str);
     }
 }
-#endif
 
 char nbuf[100];
 
 /*
  * we want a stream of lexemes to be placed into 
- * curtok and nexttok respectively.  
+ * cur and next respectively.
  * we need 1 token of lookahead to do a recursive descent parse of C
  *
  * all the comment and preprocessor stuff is invisible above here
  * as is string, character escaping, and number bases
+ *
  */
 void
 gettoken()
 {
-    char t;
+    token_t t;
     int incomment = 0;
     int lineend;
+    char c;
+    int i;
+    char *s;
 
-    /* advance */
-    if (curstr) {
-        strfree(curstr);
-    }
-    curtok = nexttok;
-    curval = nextval;
-    curstr = nextstr;
-    nextstr = 0;
+    freetoken();
+
+    cur = next;
+
+    next.v.str = 0;
+    next.type = NONE;
+
     lineend = 0;
-
-    // printf("gettoken: 0x%02x %d %c %s %s\n", curtok, curtok, curtok, detoken[curtok], detail());
 
     while (1) {
         if (curchar == 0) {
-            nexttok = E_O_F;
+            next.type = E_O_F;
             break;
         }
         if (column == 0 && charmatch('#')) {   // cpp directive
@@ -519,7 +512,7 @@ gettoken()
                 err(ER_C_BD);
             }
             if (isnumber()) {
-                lineno = nextval;
+                lineno = next.v.numeric;
                 skiptoeol();
                 continue;
             }
@@ -528,7 +521,7 @@ gettoken()
             lineend = 1;
         }
         if ((tflags & ONELINE) && charmatch('\n')) {
-            nexttok = ';';
+            next.type = ';';
             break;
         }
         if ((column == 0) && cond && !(cond->flags & C_TRUE)) {
@@ -566,52 +559,54 @@ gettoken()
             advance();
             t = kwlook(strbuf, ckw);
             if (t) {
-                nexttok = t;
+                next.type = t;
                 break;
             }
-            nexttok = SYM;
-            nextstr = stralloc(strbuf);
+            next.type = SYM;
+            next.v.name = strdup(strbuf);
             break;
         }
         if (isnumber()) {
-            nexttok = NUMBER;
+            next.type = NUMBER;
             break;
         }
-        if (isstring(strbuf)) {
-            nexttok = STRING;
-            nextstr = stralloc(strbuf);
+        if (isstring()) {
+            next.type = STRING;
+            next.v.str = malloc(strbuf[0]);
+            bcopy(strbuf, next.v.str, strbuf[0] + 1);
             break;
         }
-        /* see if it is an operator character */
+
+        /* from here, it had better be an operator */
         t = lookupc(simple, curchar);
         if (t == -1) {
             err(ER_C_UT);
             curchar= ';';
         }
-        /*
-         * this is a little bit of a hack - nexttok is temporarily used
-         * to hold the current character when checking composite operators
-         */
-        nexttok = curchar;
+
+        next.type = simple[t];
+        c = curchar;	// save what we saw
         advance();
+
         /* see if the character is doubled.  this can be an operator */
-        if (curchar == nexttok) {
-            t = lookupc(dbl_able, curchar);
+        if (curchar == c) {
+            t = lookupc(dbl_able, c);
             if (t != -1) {
-                nexttok = dbltok[t];
+                next.type = dbltok[t];
                 advance();
             }
         }
+
         /* see if the character has an '=' appended.  this can be an operator */
         if (curchar == '=') {
-            t = lookupc(eq_able, nextchar);
+            t = lookupc(eq_able, c);
             if (t != -1) {
-                nexttok = eqtok[t];
+                next.type = eqtok[t];
                 advance();
             }
         }
-        if ((nexttok == '-') && (curchar == '>')) {
-            nexttok = DEREF;
+        if ((c == '-') && (curchar == '>')) {
+            next.type = DEREF;
             advance();
         }
         break;
@@ -620,30 +615,31 @@ gettoken()
     /*
      * detokenize for cpp output
      */
-    switch (curtok) {
+    switch (cur.type) {
     case SYM:
-        cpp_out(curstr);
+        cpp_out(cur.v.name, strlen(cur.v.name));
         break; 
     case STRING: 
-        sprintf(nbuf, "\"%s\"", curstr);
-        cpp_out(nbuf);
+    	i = quoted_string(nbuf, cur.v.str);
+        cpp_out(nbuf, i);
         break;
     case NUMBER:
-        sprintf(nbuf, "%d", curval);
-        cpp_out(nbuf);
+        i = longout(nbuf, cur.v.numeric);
+        cpp_out(nbuf, i);
         break;
     case NONE: 
         break;
     default:
-        if (detoken[curtok]) {
-            cpp_out(detoken[curtok]);
+        if (detoken[cur.type]) {
+        	s = detoken[cur.type];
         } else {
-            cpp_out(tokenname[curtok]);
+        	s = tokenname[cur.type];
         }
+        cpp_out(s, strlen(s));
         break;
     }
     if (lineend) {
-        cpp_out("\n");
+        cpp_out("\n", 2);
     }
     return;
 }
@@ -691,13 +687,8 @@ readcppconst()
     long val;
     struct expr *e;
     char savedtflags = tflags;
-    long savenum = curval;
-    char savetok = curtok;
-    char *savesym;
-
-    if (curtok == SYM) {
-        savesym = strdup(strbuf);
-    }
+    struct token save;
+    save = cur;
 
     /*
      * hack to make lexer translate newlines to ';', so that expressions
@@ -713,12 +704,7 @@ readcppconst()
     val = e->v;
     freeexpr(e);
     tflags = savedtflags;
-    curval = savenum;
-    curtok = savetok;
-    if (curtok == SYM) {
-        strcpy(strbuf, savesym);
-        free(savesym);
-    }
+    cur = save;
     return val;
 }
 

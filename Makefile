@@ -30,12 +30,12 @@ CC1OBJECTS = \
 	util.o \
 	tokenlist.o \
 	unixlib.o \
-	nullexpr.o
+	nullexpr.o \
+	parse.o \
+	type.o
 
 NOFILES= \
 	main.o \
-	type.o \
-	parse.o \
 	foo.o
 
 OBJECTS = error.o parse.o type.o main.o lex.o io.o macro.o kw.o util.o tokenlist.o

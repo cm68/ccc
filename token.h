@@ -3,7 +3,7 @@
  * they all have values that are printable for debug 
  * purposes and for cheap serializing into intermediate files
  */
-typedef enum token {
+typedef enum {
 	/* pseudo-keywords */
     E_O_F = 0,
 	EXPR = 0x01,

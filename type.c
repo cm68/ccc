@@ -291,6 +291,7 @@ gettype()
         break;
     case LONG:  // o = BYTES_4;
         o++;
+        // fall through
     case SHORT: // o = BYTES_2;
         o++;
         if (p) {
@@ -307,16 +308,20 @@ gettype()
         break;
     case DOUBLE:
         o++;
+        // fall through
     case FLOAT:
         o++;
+        // fall through
     case BOOLEAN:
         o++;
+        // fall through
     case VOID:
         gettoken();
         o += OTHERS;
         if (s + p) {
             err(ER_P_PT);
         }
+        // fall through
     default:
         if ((p + s) == 0) { // no type, no prefixes
             return 0;

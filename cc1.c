@@ -11,6 +11,7 @@
 #include "debugtags.c"
 
 char *progname;
+int verbose;
 
 /*
  * each file on the command line gets this treatment
@@ -19,6 +20,7 @@ void
 process(char *f)
 {
     int i;
+    char *s;
 
     if (VERBOSE(V_TRACE)) {
         printf("process %s\n", f);
@@ -40,15 +42,16 @@ process(char *f)
         if (cpp_file == -1) {
             perror(cpp_file_name);
         }
-        cpp_out("/* preprocessed file */");
+        s = "/* preprocessed file */\n";
+        cpp_out(s, strlen(s));
     }
 
     insertfile(f, 0);
     ioinit();
-    nexttok = curtok = NONE;
+    lexinit();
 
 #ifdef LEXTEST
-    while (curtok) {
+    while (cur.type) {
         gettoken();
     }
 #else
@@ -131,14 +134,23 @@ main(int argc, char **argv)
 
 #ifdef DEBUG
     if (verbose) {
-        int j = verbose;
-        printf("verbose: %x (", verbose);
-        for (i = 0; vopts[i]; i++) {
-            if (verbose & (1 << i)) 
+        int j = 0;
+
+        for (i = 0; i < 32; i++) {
+        	if (!vopts[i])
+        		break;
+        	if (verbose & (1 << i))
+        		j |= (1 <<i);
+        }
+
+        printf("verbose: %x (", j);
+        for (i = 0; i < vopts[i]; i++) {
+            if (j & (1 << i)) {
                 printf("%s", vopts[i]);
-            j ^= (1 << i);
-            if (j) {
-                printf(" ", vopts[i]);
+				j ^= (1 << i);
+				if (j) {
+					printf(" ");
+				}
             }
         }
         printf(")\n");

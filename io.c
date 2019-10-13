@@ -41,12 +41,6 @@ struct textbuf {
 } *tbtop;
 
 #ifdef DEBUG
-int
-high(int i)
-{
-    if (i >= tbtop->offset) return 1;
-    return 0;
-}
 
 void
 cdump(char *tag)
@@ -73,12 +67,10 @@ cdump(char *tag)
     } else {
         sprintf(ns, "%c", nextchar);
     }
-    if (VERBOSE(V_IO)) {
-        if (t) {
-            sprintf(tbuf, "%s %x %x %s %s", 
-                tag, tbtop->offset, tbtop->valid, cs, ns); 
-            hexdump(tbuf, t->storage, t->valid, &high);
-        }
+    if (t) {
+    	sprintf(tbuf, "%s %x %x %s %s",
+    			tag, tbtop->offset, tbtop->valid, cs, ns);
+    	hexdump(tbuf, t->storage, t->valid);
     }
     
 } 
@@ -179,7 +171,7 @@ insertmacro(char *name, char *macbuf)
 
     l = strlen(macbuf);         // our macro without the terminating null
     if (VERBOSE(V_MACRO)) {
-        printf("insert macro %s %d \$%s\$\n", name, l, macbuf);
+        printf("insert macro %s %d $%s$\n", name, l, macbuf);
     }
     t = tbtop;
 
@@ -296,6 +288,7 @@ struct textbuf *cpp;
 
 #define CPP_BUF 256
 
+void
 cpp_flush()
 {
     if (cpp->offset) {
@@ -304,10 +297,9 @@ cpp_flush()
     cpp->offset = 0;
 }
 
-cpp_out(char *s)
+void
+cpp_out(char *s, int len)
 {
-    int i;
-
     if (!cpp) {
         cpp = malloc(sizeof(*cpp));
         cpp->storage = malloc(CPP_BUF);
@@ -321,13 +313,11 @@ cpp_out(char *s)
     if (!s)
         return;
 
-    i = strlen(s);
-
-    if ((cpp->offset + i) > CPP_BUF) {
+    if ((cpp->offset + len) > CPP_BUF) {
         cpp_flush();
     }
-    strcpy(&cpp->storage[cpp->offset], s);
-    cpp->offset += i;
+    bcopy(s, &cpp->storage[cpp->offset], len);
+    cpp->offset += len;
 }
 
 /*
