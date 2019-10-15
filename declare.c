@@ -1,3 +1,5 @@
+#ifdef notdef
+
 #include "ccc.h"
 
 /*
@@ -169,7 +171,7 @@ declare(struct type **btp)
 } // declare
 
 }
-
+#endif
 
 /*
  * vim: tabstop=4 shiftwidth=4 expandtab:

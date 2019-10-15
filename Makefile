@@ -20,29 +20,11 @@ CFLAGS = $(DEFINES) -Wno-implicit-function-declaration -g
 LDFLAGS= -g -o
 LD= gcc
 
-CC1OBJECTS = \
-	cc1.o \
-	error.o \
-	lex.o \
-	io.o \
-	macro.o \
-	kw.o \
-	util.o \
-	tokenlist.o \
-	unixlib.o \
-	nullexpr.o \
-	type.o
+CC1OBJECTS = cc1.o error.o lex.o io.o macro.o kw.o util.o tokenlist.o unixlib.o \
+	expr.o parse.o declare.o type.o
 
-NOFILES= \
-	parse.o \
-	main.o \
-	foo.o
-
-OBJECTS = error.o parse.o type.o main.o lex.o io.o macro.o kw.o util.o tokenlist.o
-TESTOBJS =	lextest.o iotest.o
 HEADERS = ccc.h error.h
 GENERATED = enumlist.h tokenlist.c error.h debug.h debugtags.c
-CFILES = kw.c io.c macro.c util.c error.c
 
 BINS = enumcheck cc1 cc2 maketokens
 
@@ -50,12 +32,12 @@ TESTS=tests/*.c
 #TESTS=tests/glom.c
 #VERBOSE=-v 3
 
-all: ccc
+all: cc1
 
 lextest: lex.o lextest.o kw.o io.o macro.o util.o error.o tokenlist.o
 	cc -g -o lextest tokenlist.o lextest.o lex.o kw.o io.o macro.o util.o error.o
 
-ccc: $(CC1OBJECTS)
+cc1: $(CC1OBJECTS)
 	$(LD) $(LDFLAGS) cc1 $(CC1OBJECTS)
 
 $(CC1OBJECTS): $(HEADERS)

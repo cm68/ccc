@@ -1,3 +1,4 @@
+#ifdef notdef
 /*
  * generate expression trees
  */
@@ -384,6 +385,7 @@ cfold(struct expr *e) {
     e = xreplace(e, e->left);
     return e;
 }
+#endif
 
 /*
  * vim: tabstop=4 shiftwidth=4 expandtab:

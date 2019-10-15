@@ -12,6 +12,7 @@
 struct stmt *
 statement(struct stmt *parent)
 {
+#ifdef notdef
     struct stmt *st, **pst;
     pst = 0;
     int block = 1;
@@ -20,7 +21,6 @@ statement(struct stmt *parent)
     while (block) {
         switch (cur.type) {
 
-#ifdef notdef
         case END:   // end a block
             block = 0;
             break;
@@ -180,10 +180,11 @@ statement(struct stmt *parent)
         pst = &st->next;
         st->function = v;
         st->parent = parent;
-#endif
     } // while
+#endif
 }
 
+#ifdef notdef
 struct stmt *
 makestmt(char op, struct expr *left)
 {
@@ -201,6 +202,7 @@ parsefunc(struct var *v)
     v->body = stmt(v, 0);
     v->body->flags = S_FUNC;
 }
+#endif
 
 /*
  * read a storage class - return bitmask of relevant flags
@@ -215,22 +217,22 @@ getsclass()
     while (1) {
 		switch (cur.type) {
 		case EXTERN:
-			bit = V_EXTERN;
+			bit = SC_EXTERN;
 			break;
 		case REGISTER:
-			bit = V_REGISTER;
+			bit = SC_REGISTER;
 			break;
 		case STATIC:
-			bit = V_STATIC;
+			bit = SC_STATIC;
 			break;
 		case CONST:
-			bit = V_CONST;
+			bit = SC_CONST;
 			break;
 		case VOLATILE:
-			bit = V_VOLATILE;
+			bit = SC_VOLATILE;
 			break;
 		case AUTO:
-			bit = V_LOCAL;
+			bit = SC_LOCAL;
 			break;
 		default:
 			bit = 0;
@@ -247,16 +249,16 @@ getsclass()
 		}
     }
     // bogosity checks
-    if ((ret & V_EXTERN) & (ret & (V_CONST|V_STATIC|V_LOCAL|V_REGISTER))) {
+    if ((ret & SC_EXTERN) & (ret & (SC_CONST|SC_STATIC|SC_LOCAL|SC_REGISTER))) {
     	error(ER_P_SC);
     }
-    if ((ret & V_REGISTER) & (ret & (V_CONST|V_STATIC))) {
+    if ((ret & SC_REGISTER) & (ret & (SC_CONST|SC_STATIC))) {
     	error(ER_P_SC);
     }
-    if ((ret & V_STATIC) & (ret & (V_CONST|V_LOCAL))) {
+    if ((ret & SC_STATIC) & (ret & (SC_CONST|SC_LOCAL))) {
     	error(ER_P_SC);
     }
-    if ((ret & V_CONST) & (ret & (V_VOLATILE))) {
+    if ((ret & SC_CONST) & (ret & (SC_VOLATILE))) {
     	error(ER_P_SC);
     }
     return ret;
@@ -280,6 +282,7 @@ declaration(struct scope *sc)
         basetype = 0;
 
         v = declare(&basetype);
+#ifdef notdef
         if (v->type & T_FUNC) {
             if (cur.type == BEGIN) {
                 parsefunc(v);
@@ -292,12 +295,10 @@ declaration(struct scope *sc)
                 break;
             }
         }
-        if (sclass == 'p') {
-            v->flags |= V_STATIC;
-        }
         if (cur.type == ASSIGN) {
             do_initializar();
         }
+#endif
         if (cur.type == COMMA) {
             gettoken();
             continue;
@@ -322,7 +323,6 @@ void
 block()
 {
 }
-#endif
 
 /*
  * global level parse

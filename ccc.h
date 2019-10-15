@@ -24,7 +24,6 @@
  * expressions hold computations
  */
 struct expr {
-	int v;
 	int flags;
 #define	E_CONST     0x01
 #define E_RESOLVED 0x02
@@ -35,15 +34,16 @@ struct expr {
 	struct expr *up;
 	struct expr *prev;
 	struct expr *next;
+
 	struct type *type;
 	struct var *var;
+
 	unsigned long v;
 	char location;
 	char cost;
 	char regs;
 	struct stmt *stmt;
 	struct inst *inst;
-#define	E_CONST	0x01
 };
 #define	PRI_ALL	0
 
@@ -87,7 +87,7 @@ extern struct scope	*local;
  */
 typedef enum namespace {
 	SYMBOL,
-	TYPEDEF,
+	TYPE_DEF,
 	ENUMTAG,
 	ENUMELEMENT, // only found in sub-types of ENUMTAB
 	AGGTAG,
@@ -240,14 +240,14 @@ void add_define(char *s);
 extern int lookupc(char *s, char c);
 extern void hexdump(char *tag, char *s, int len);
 int iswhite(char c);
-char *bitdef(unsigned char v, char **defs)
+char *bitdef(unsigned char v, char **defs);
 
 /* type.c */
 extern char *blockname();
 extern struct scope *cur_block;
 void push_scope(char *name);
 void pop_scope();
-struct type *findtype(char *name, kind_t kind);
+// struct type *findtype(char *name);
 
 /* tokenlist.c */
 extern char *tokenname[];

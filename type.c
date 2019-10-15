@@ -1,3 +1,4 @@
+#ifdef notdef
 /*
  * we want a squeaky-clean type system
  *
@@ -32,7 +33,7 @@ lookup_name(char *name, namespace_t space)
 }
 
 /*
- * a more restrictive name lookup.
+ * a more restrictive name lookup that looks through the elements of a type
  * used for struct, union, and enum tag lookups
  */
 struct name *
@@ -56,6 +57,7 @@ char *sclass_bitdefs[] = {
 char *namespace_name[] = {
 		"SYMBOL", "TYPEDEF", "ENUMTAG", "ENUMELEMENT", "AGGTAG", "AGGELEMENT"
 };
+
 /*
  * what's in a name
  */
@@ -66,35 +68,10 @@ dump_name(struct name *n)
 
 	printf("dump_name: ");
 	if (!n) { printf("null\n"); return; }
-    if (n->kind & NK_TYPE) {
-        switch (n->kind & TK_TMASK) {
-        case TK_STRUCT:
-            k = "struct";
-            break;
-        case TK_UNION:
-            k = "union";
-            break;
-        case TK_ENUM:
-            k = "enum";
-            break;
-        case TK_FUNC:
-            k = "func";
-            break;
-        default:
-            k = "wtftype";
-            break;
-        }
-    } else if (n->kind & NK_SYMBOL) {
-        k = "symbol";
-    } else if (n->kind & NK_TDEF) {
-        k = "typedef";
-    } else {
-        k = "wtfname";
-    }
-	printf("%s is %s inside %s type %s\n", 
-		n->name, k, 
-		n->scope->scopename, 
-		n->type->name->name);
+    printf(" namespace: %s  ", namespace_name[n->space]);
+    printf(" type: %s ", n->type->name);
+    printf(" offset: %d bitoff: %d width: %d sclass: %s\n", 
+        n->offset, n->bitoff, n->width, bitdef(n->sclass, sclass_bitdefs));
 }
 
 /*
@@ -187,7 +164,7 @@ maketype(char *name, char kind, struct type *sub)
 {
     struct type *t;
 
-    t = findtype(name, kind);
+//    t = findtype(name, kind);
     if (t && (t->flags T_AGGREGATE)) {
         return t;
     }
@@ -545,6 +522,7 @@ getbasetype()
             
     } // STRUCT || UNION
 }
+#endif
 
 /*
  * vim: tabstop=4 shiftwidth=4 expandtab:
