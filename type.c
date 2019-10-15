@@ -9,9 +9,6 @@
  * destroy_<thing>(thing)
  */
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
 #include "ccc.h"
 
 /*

@@ -40,7 +40,7 @@ NOFILES= \
 
 OBJECTS = error.o parse.o type.o main.o lex.o io.o macro.o kw.o util.o tokenlist.o
 TESTOBJS =	lextest.o iotest.o
-HEADERS = ccc.h error.h expr.h type.h
+HEADERS = ccc.h error.h
 GENERATED = enumlist.h tokenlist.c error.h debug.h debugtags.c
 CFILES = kw.c io.c macro.c util.c error.c
 

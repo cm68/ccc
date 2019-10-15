@@ -7,10 +7,6 @@
  */
 #include "ccc.h"
 
-#include <stdio.h>
-#include <string.h>
-#include <stdlib.h>
-
 int write_cpp_file = 0;
 char *cpp_file_name;
 int cpp_file;

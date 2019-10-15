@@ -2,8 +2,7 @@
  * this is a minimal unix library
  */
 
-#include <stdlib.h>
-#include <string.h>
+#include "ccc.h"
 
 #ifdef __SDCC
 char *

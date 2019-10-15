@@ -20,6 +20,7 @@ statement(struct stmt *parent)
     while (block) {
         switch (cur.type) {
 
+#ifdef notdef
         case END:   // end a block
             block = 0;
             break;
@@ -27,7 +28,9 @@ statement(struct stmt *parent)
         case BEGIN: // begin a block
             gettoken();
             push_scope(blockname());
-            st = statement(parent);     /* recurse */
+            st = makestmt(BEGIN, 0);
+            st->parent = parent;
+            statement(parent);
             pop_scope();
             need(END, END, ER_S_CC);
             break;
@@ -177,6 +180,7 @@ statement(struct stmt *parent)
         pst = &st->next;
         st->function = v;
         st->parent = parent;
+#endif
     } // while
 }
 
@@ -302,6 +306,16 @@ declaration(struct scope *sc)
             break;
         }
     }  
+}
+
+char bnbuf[20];
+
+char *
+blockname()
+{
+    static int blockid = 0;
+    sprintf(bnbuf, "block %d", blockid++);
+    return strdup(bnbuf);
 }
 
 void
