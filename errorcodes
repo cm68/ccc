@@ -24,7 +24,7 @@ ER_D_UT		unexpected token in decl
 ER_D_TL		illegal toplevel storage class
 
 # parse errors
-ER_P_TA		toplevel reg or auto
+ER_P_SC		bogus storage class
 
 # statement errors
 ER_S_CC		close curly for block

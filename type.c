@@ -15,23 +15,18 @@
 #include "ccc.h"
 
 /*
- * at our current scope, look up the name.   this means that we need to
- * search back through all the scopes, to the global scope.
- * namespace should be one of:
- * NK_SYMBOL
- * NK_TYPE | (TK_STRUCT | TK_UNION | TK_ENUM | TK_FUNC)
- * NK_TDEF
+ * at our current scope, look up the name and namespace
  */
 struct name *
-lookup_name(char *name, kind_t namespace)
+lookup_name(char *name, namespace_t space)
 {
 	struct name *n;
 	struct scope *s;
 
-    /* start at the top scope and go to higher levels until we hit */
-	for (s = scope; s; s = s->next) {
+    // search from current scope going up
+	for (s = local; s; s = s->prev) {
 		for (n = s->names; n; n = n->next) {
-			if ((n->kind == namespace) && (strcmp(name, n->name)) == 0) {
+			if ((n->space == space) && (strcmp(name, n->name)) == 0) {
 				return (n);
 			}
 		}
@@ -44,7 +39,7 @@ lookup_name(char *name, kind_t namespace)
  * used for struct, union, and enum tag lookups
  */
 struct name *
-lookup_tag(char *name, struct type *t)
+lookup_element(char *name, struct type *t)
 {
 	struct name *n;
 	for (n = t->elem; n; n = n->next) {
@@ -55,6 +50,15 @@ lookup_tag(char *name, struct type *t)
 	return 0;
 }
 
+char *type_bitdefs[] = {
+		"AGGREGATE", "INCOMPLETE", "UNSIGNED", "NORMALIZED", "POINTER", "ARRAY", "FLOAT"
+};
+char *sclass_bitdefs[] = {
+		"GLOBAL", "STATIC", "LOCAL", "REGISTER", "VOLATILE", "CONST", "EXTERN"
+};
+char *namespace_name[] = {
+		"SYMBOL", "TYPEDEF", "ENUMTAG", "ENUMELEMENT", "AGGTAG", "AGGELEMENT"
+};
 /*
  * what's in a name
  */
@@ -187,7 +191,7 @@ maketype(char *name, char kind, struct type *sub)
     struct type *t;
 
     t = findtype(name, kind);
-    if (t && ((t->flags & T_AGGMASK) == T_AGGMASK)) {
+    if (t && (t->flags T_AGGREGATE)) {
         return t;
     }
     if (t) return 0;

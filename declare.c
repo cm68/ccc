@@ -21,12 +21,12 @@ declare(struct type **btp)
     }
     prefix = *btp;
 
-    while (curtok == STAR) {
+    while (cur.type == STAR) {
         gettoken();
         prefix = maketype(0, TK_PTR, prefix);
     }
 
-    if (curtok == LPAR) {
+    if (cur.type == LPAR) {
         gettoken();
         rt = 0;
         v = declare(&rt);       // recurse
@@ -39,7 +39,7 @@ declare(struct type **btp)
             *btp = rt;
         }
     }
-    if (curtok == RPAR) {
+    if (cur.type == RPAR) {
         if (!v) {
             for (t = prefix; t && t->sub; t = t->sub) {
                 if (t) {
@@ -51,15 +51,15 @@ declare(struct type **btp)
         return v;
     }
 
-    if (curtok == SYM) {       // symbol name
+    if (cur.type == SYM) {       // symbol name
         if (c) {
             err(ER_P_MV);
         }
         v = makevar(strdup(symbuf, prefix, 0));
         gettoken();
-        if (curtok == COLON) {
+        if (cur.type == COLON) {
             gettoken();
-            if (curtok != NUMBER) {
+            if (cur.type != NUMBER) {
                 err(ER_P_BD);
             } else if (numbervalue > MAXBITS) {
                 err(ER_P_BM);
@@ -71,11 +71,11 @@ declare(struct type **btp)
         }
     }
 
-    while curtok == LBRACK) {   // array
+    while (cur.type == LBRACK) {   // array
         gettoken();
         postfix = maketype(0, TK_ARRAY, t);
         t = postfix;
-        if (curtok == RBRACK) {
+        if (cur.type == RBRACK) {
             t->len = -1;
             t->flags |= T_INCOMPLETE;
         } else {
@@ -84,14 +84,14 @@ declare(struct type **btp)
         need(RBRACK, RBRACK, ER_P_AD);
     }
 
-    if (curtok == LPAR) {       // ( <func_arg>[,<func_arg>]*. )
+    if (cur.type == LPAR) {       // ( <func_arg>[,<func_arg>]*. )
         gettoken();
         if (postfix) {
             err(ER_P_FA);
             postfix = 0;
         }
         postfix = maketyoe(0, TK_FUNC, 0);
-        while (curtok != RPAR) {
+        while (cur.type != RPAR) {
             freetype(t);
             t = v;
             a = declare(&t);
@@ -100,11 +100,11 @@ declare(struct type **btp)
                 postfix->elem = a;
                 a->flags |= V_FUNARG|V_LOCAL;
             }
-            if (curtok == COMMA) {
+            if (cur.type == COMMA) {
                 gettoken();
                 continue;
             }
-            if (curtok != RPAR) {
+            if (cur.type != RPAR) {
                 err(ER_P_FA);
                 break;
             }
@@ -114,12 +114,12 @@ declare(struct type **btp)
          * old style parameter declarartion:
          * foo(a,b) int a; int b; {
          */
-        if ((curtok != BEGIN) && (curtok != SEMI)) {
+        if ((cur.type != BEGIN) && (cur.type != SEMI)) {
             if (t) {
                 freetype(t);
             }
             t = 0;
-            while (curtok != BEGIN) {
+            while (cur.type != BEGIN) {
                 a = declare(&t);
                 if (!a) {
                     err(ER_P_FM);
@@ -130,11 +130,11 @@ declare(struct type **btp)
                     err(ER_P_FO);
                 }
                 b->type = a->type;
-                if (curtok == COMMA) {
+                if (cur.type == COMMA) {
                     gettoken();
                     continue;
                 }
-                if (curtok == SEMI) {
+                if (cur.type == SEMI) {
                     freetype(t);
                     t = 0;
                     gettoken();
@@ -145,9 +145,9 @@ declare(struct type **btp)
             }
         }
         assign_arg_off(postfix, 4);
-    } // if curtok == LPAR
-    if ((curtok != ASSIGN) && (curtok != BEGIN) && 
-        (curtok != COMMA) && (curtok != SEMI)) {
+    } // if cur.type == LPAR
+    if ((cur.type != ASSIGN) && (cur.type != BEGIN) &&
+        (cur.type != COMMA) && (cur.type != SEMI)) {
         err(ER_P_UT);
         v = 0;
     }

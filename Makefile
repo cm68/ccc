@@ -31,10 +31,10 @@ CC1OBJECTS = \
 	tokenlist.o \
 	unixlib.o \
 	nullexpr.o \
-	parse.o \
 	type.o
 
 NOFILES= \
+	parse.o \
 	main.o \
 	foo.o
 
@@ -70,10 +70,10 @@ tests: cc1 runtest.sh
 #
 # process the ccc.h file, extracting the enum tags for the tokens
 #
-enumlist.h: ccc.h
-	tr ',' '\n' < ccc.h | \
+enumlist.h: ccc.h Makefile
+	tr ',' '\n' < token.h | \
 	sed -e '/\/\*/d' -e 's/=.*$$//' | \
-	awk '/enum token/ { t=1;next } /;$$/ {t=0} {if (t) print}' | \
+	awk '/enum / { t=1;next } /;$$/ {t=0} {if (t) print}' | \
 	tr -d '[:blank:]' | \
 	awk '/[A-Z]+/ {printf("check(%s);\n", $$1);}' >enumlist.h
 
@@ -83,7 +83,7 @@ enumlist.h: ccc.h
 tokenlist.c: enumlist.h maketokens
 	./maketokens >tokenlist.c
 	
-maketokens: maketokens.c token.h
+maketokens: maketokens.c token.h enumlist.h
 	cc -o maketokens maketokens.c
 
 #

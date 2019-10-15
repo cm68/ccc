@@ -202,8 +202,8 @@ insertmacro(char *name, char *macbuf)
 void
 tbdump(struct textbuf *t)
 {
-    printf("textbuf: %s fd: %d data: %x offset: %d valid: %d lineno %d\n", 
-        t->name, t->fd, t->storage, t->offset, t->valid, t->lineno);
+    printf("textbuf: %s fd: %d offset: %d valid: %d lineno %d\n",
+        t->name, t->fd, t->offset, t->valid, t->lineno);
 }
 
 void

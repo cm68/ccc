@@ -61,7 +61,7 @@ statement(struct stmt *parent)
             need(SEMI, SEMI, ER_S_SN);
             break;
         case SYM:
-            if (nexttok == COLON) {
+            if (next.type == COLON) {
                 st = makestmt(LABEL, 0);
                 st->label = strdup(symbuf);
                 st->flags |= S_LABEL;
@@ -80,36 +80,36 @@ statement(struct stmt *parent)
 
         case FOR:   // for (<expr>; <expr>; <expr>) <statement> ;
             gettoken();
-            need('(','(', ER_S_NP);
+            need(LPAR, LPAR, ER_S_NP);
             st = makestmt(FOR, expr(PRI_ALL, parent));
-            need(';', ';', ER_S_SN);
+            need(SEMI, SEMI, ER_S_SN);
             st->middle = expr(PRI_ALL, parent);
-            need(';', ';', ER_S_SN);
+            need(SEMI, SEMI, ER_S_SN);
             st->right = expr(PRI_ALL, parent);
-            need(')',')', ER_S_NP);
+            need(RPAR, RPAR, ER_S_NP);
             st->chain = statement(st);
             break;
 
         case WHILE:     // while <condition> <statement> ;
             gettoken();
-            need('(','(', ER_S_NP);
+            need(LPAR, LPAR, ER_S_NP);
             st = makestmt(WHILE, expr(PRI_ALL, parent));
-            need(')',')', ER_S_NP);
+            need(RPAR, RPAR, ER_S_NP);
             st->chain = statement(st);
             break;
 
         case 'E':
-            recover(';', ER_S_OE);
+            recover(SEMI, ER_S_OE);
             break;
 
         case SWITCH:    // switch (<expr>) <block> ;
             gettoken();
-            need('(','(', ER_S_NP);
+            need(LPAR, LPAR, ER_S_NP);
             st = makestmt(SWITCH, expr(PRI_ALL, parent));
-            need(')',')', ER_S_NP);
-            need('{','{', ER_S_SB);
+            need(RPAR, RPAR, ER_S_NP);
+            need(BEGIN, BEGIN, ER_S_SB);
             st->chain = statement(st);
-            need('}', '}', ER_S_CC);
+            need(END, END, ER_S_CC);
             break;
 
         case CASE:
@@ -118,24 +118,24 @@ statement(struct stmt *parent)
             if (!(st->left->flags & E_CONST) || (st->left->type->size != 1)) {
                 err(ER_S_NC);
             }
-            need(':', ':', ER_S_NL);
+            need(COLON, COLON, ER_S_NL);
             break;
 
         case GOTO:
             gettoken();
             st = makestmt(GOTO, 0);
             if (cur.type != SYM) {
-                recover(ER_S_GL, ';');
+                recover(ER_S_GL, SEMI);
                 break;
             } 
             st->label = strdup(symbuf);
             gettoken();
-            need(';',';', ER_S_SN);
+            need(SEMI, SEMI, ER_S_SN);
             break;
 
         case DEFAULT:
             gettoken();
-            need(':', ':', ER_S_NL);
+            need(COLON, COLON, ER_S_NL);
             st = makestmt(DEFAULT, 0);
             break;
 
@@ -146,19 +146,19 @@ statement(struct stmt *parent)
 
         case DO:    // do <statement> while <condition> ;
             gettoken();
-            need('{',';', ER_S_CC);
+            need(BEGIN, SEMI, ER_S_CC);
             st = makestmt(DO, 0);
             st->chain = statement(st);
-            if ((cur.type != '}') || nexttok != WHILE) {
+            if ((cur.type != END || next.type != WHILE) {
                 err(ER_S_DO);
                 break;
             }
-            if (cur.type != '(') {
+            if (cur.type != LPAR) {
                 err(ER_S_NP);
             }
             st->left = expr(PRI_ALL, parent);
-            need(')',';', ER_S_NP);
-            need(';', ';', ER_S_SN);
+            need(RPAR, SEMI, ER_S_NP);
+            need(SEMI, SEMI, ER_S_SN);
             break;
 
         case ASM:
@@ -199,24 +199,63 @@ parsefunc(struct var *v)
 }
 
 /*
- * read a storage class
+ * read a storage class - return bitmask of relevant flags
+ * can have several terms
  */
 char
-getsclass(char toplevel)
+getsclass()
 {
-    char sc = cur.type;
+    int ret = 0;
+    int bit;
 
-    if ((sc == CONST) || (sc == EXTERN) || (sc == STATIC) || (sc == VOLATILE)) {
-        gettoken();
-    } else {
-        if ((sc == AUTO) || (sc == REGISTER)) {
-            if (toplevel) {
-                err(ER_D_TL);
-            }
-            gettoken();
-        }
+    while (1) {
+		switch (cur.type) {
+		case EXTERN:
+			bit = V_EXTERN;
+			break;
+		case REGISTER:
+			bit = V_REGISTER;
+			break;
+		case STATIC:
+			bit = V_STATIC;
+			break;
+		case CONST:
+			bit = V_CONST;
+			break;
+		case VOLATILE:
+			bit = V_VOLATILE;
+			break;
+		case AUTO:
+			bit = V_LOCAL;
+			break;
+		default:
+			bit = 0;
+			break;
+		}
+		if (bit) {
+			if (ret & bit) {
+				error(ER_P_SC);
+			}
+			ret |= bit;
+			gettoken();
+		} else {
+			break;
+		}
     }
-    return sc;
+    // bogosity checks
+    if ((ret & V_EXTERN) & (ret & (V_CONST|V_STATIC|V_LOCAL|V_REGISTER))) {
+    	error(ER_P_SC);
+    }
+    if ((ret & V_REGISTER) & (ret & (V_CONST|V_STATIC))) {
+    	error(ER_P_SC);
+    }
+    if ((ret & V_STATIC) & (ret & (V_CONST|V_LOCAL))) {
+    	error(ER_P_SC);
+    }
+    if ((ret & V_CONST) & (ret & (V_VOLATILE))) {
+    	error(ER_P_SC);
+    }
+    return ret;
 }
 
 /*
@@ -230,21 +269,22 @@ declaration(struct scope *sc)
     struct initial *i;
     char sclass;
     struct type *basetype;
+    struct name *v;
 
     while (1) {
-        sclass = getsclass(1);
+        sclass = getsclass();
         basetype = 0;
 
         v = declare(&basetype);
         if (v->type & T_FUNC) {
             if (cur.type == BEGIN) {
                 parsefunc(v);
-                if (sclass == 'p') {
+                if (sclass == STATIC) {
                     v->flags |= V_STATIC;
                 }
                 v->flags |= V_GLOBAL;
-                v->next = globals;
-                globals = v;
+                v->next = global;
+                global = v;
                 break;
             }
         }

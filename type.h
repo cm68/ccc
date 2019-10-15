@@ -1,81 +1,35 @@
 /*
- * this defines a nested name space.
- * scope is essentially a stack, with the global scope at the bottom.
- * we add/subtract names and types to the scope top, and when we create
- * a block, we push one, and when we end the block, we pop one
- *
- * examples:
- * struct foo { int i; } bar;
- * typedef struct foo footype;
- * footype *baz;
- * footype boop[3];
- * struct { int i; } xyzzy;
-
- * (name "foo" TYPE 
- *  (type STRUCT "foo" 2 0 0 
- *   (name "i" SYMBOL 
- *    (type INT 2 0 0)
- *   )
- *  )
- * )
- * (name "bar" SYMBOL
- *  (type STRUCT "foo")
- * )
- * (name "footype" TYPEDEF
- *  (type STRUCT "foo")
- * )
- * (name "baz" SYMBOL
- *  (type PTR 2 0 0
- *   (type STRUCT "foo")
- *  )
- * )
- * (name "boop" SYMBOL
- *  (type ARRAY 6 3 0
- *   (type STRUCT "foo")
- *  )
- * )
- * (name "xyzzy" SYMBOL 
- *  (type STRUCT "__anonymous0" 2 0 0 
- *   (name "i" SYMBOL 
- *    (type INT 2 0 0)
- *   )
- *  )
- * )
- *
  * synthetic type information like enum, struct, union, etc goes away as soon
  * as the scope does.  that means that by the time we get to expression trees
  * we only have references to primitive types, sizes and offsets.
+ *
+ * there are dialects of C that have polluted the lexical scope, for example
+ * where struct elements or tags leak upwards.  this isn't one of them.
+ *
+ * if you have a c source that depends on this kind of thing, fix the source.
  */
 extern struct scope *scope;
 
 struct scope {
 	char *scopename;
-	struct name *names;     
-	struct scope *next;
+	struct name *names;
+	struct scope *prev;			// all the way up to and including global
 };
 
 extern struct scope *global;
-
-/*
- * C data types
- */
-#define TK_INT      0
-#define TK_PTR      1
-#define TK_ARRAY    2
-#define TK_STRUCT   3
-#define TK_UNION    4
-#define TK_ENUM     5
-#define TK_FUNC     6
-#define TK_TMASK    0x0f
+extern struct scope	*local;
 
 /*
  * namespaces
  */
-#define NK_TDEF     0x10
-#define NK_SYMBOL   0x20
-#define NK_TYPE     0x40
-
-typedef unsigned char kind_t;
+typedef enum namespace {
+	SYMBOL,
+	TYPEDEF,
+	ENUMTAG,
+	ENUMELEMENT, // only found in sub-types of ENUMTAB
+	AGGTAG,
+	AGGELEMENT // only found in sub-types of AGGTAG
+} namespace_t;
 
 /*
  * how big a pointer is 
@@ -84,31 +38,48 @@ typedef unsigned char kind_t;
 
 /*
  * this is a handle for types. types are scoped just like names
- * this gets a little gnarly with sub-structures, since they have
- * the same scope as the contained struct.
  */
 struct type {
-    struct name *name;  // if a named struct/union/enum - not always present
-	kind_t kind;
-	int size;		    // how big is one of me
-	int count;		    // if we are an array, how many
-	int offset;
-	struct name *elem;
-    int flags;
-    struct type *sub;   // it's made of wood
+    struct name *name;  	// if a named struct/union/enum - not always present
+	namespace_t space;
+	int size;		    	// how big is one of me
+	int count;		    	// if we are an array, how many
+	int offset;				// if inside a struct
+	struct name *elem;		// element list
+    struct type *sub;		// pointer to what, array of what, etc.
+    unsigned char flags;
 };
-#define T_AGGREGATE     0x01
-#define T_INCOMPLETE    0x02
-#define T_UNSIGNED      0x04
-#define T_NORMALIZED    0x08
+#define TF_AGGREGATE	0x01
+#define TF_INCOMPLETE	0x02
+#define TF_UNSIGNED		0x04
+#define TF_NORMALIZED	0x08
+#define	TF_POINTER		0x10
+#define	TF_ARRAY		0x20
+#define	TF_FLOAT		0x40
 
+/*
+ * this is an instance of a type with a name.
+ * a variable.  note that at the same scope, you can have
+ * multiple instances of the same name with different namespaces.
+ */
 struct name {
-	char *name;             // strdup'ed symbol
-	kind_t kind;            // different namespaces for each kind
-    struct scope *scope;    // where defined
-	struct type *type;      // if this is a type
-	struct name *next;      // next name in scope/aggregate/enum
+	namespace_t space;
+	char *name;
+	struct name *next;		// all names in same container
+	struct type *type;
+	unsigned char sclass;
 };
+
+/*
+ * storage classes - many combinations are illogical
+ */
+#define	SC_GLOBAL	0x01
+#define	SC_STATIC	0x02
+#define	SC_LOCAL	0x04
+#define	SC_REGISTER	0x08
+#define	SC_VOLATILE	0x10
+#define	SC_CONST	0x20
+#define	SC_EXTERN	0x40
 
 /*
  * a declaration can have an initializer.

@@ -71,20 +71,18 @@ usage(char *complaint, char *p)
     printf("usage: %s [<options>] [program [<program options>]]\n", p);
     printf("\t-I<include dir>\n");
     printf("\t-D<variable>[=<definition>]\n");
-#ifdef DEBUG
     printf("\t-v <verbosity>\n");
     printf("\t-E\n");
     for (i = 0; vopts[i]; i++) {
         printf("\t%x %s\n", 1 << i, vopts[i]);
     }
-#endif
     exit(1);
 }
 
 int
 main(int argc, char **argv)
 {
-        char *s;
+	char *s;
     int i;
 
     progname = *argv++;
@@ -117,14 +115,12 @@ main(int argc, char **argv)
             case 'E':
                 write_cpp_file++;
                 break;
-#ifdef DEBUG
             case 'v':
                 if (!argc--) {
                     usage("verbosity not specified \n", progname);
                 }
                 verbose = strtol(*argv++, 0, 0);
                 break;
-#endif
             default:
                 printf("bad flag %c\n", (*s));
                 break;
@@ -132,7 +128,6 @@ main(int argc, char **argv)
         }
     }
 
-#ifdef DEBUG
     if (verbose) {
         int j = 0;
 
@@ -144,7 +139,7 @@ main(int argc, char **argv)
         }
 
         printf("verbose: %x (", j);
-        for (i = 0; i < vopts[i]; i++) {
+        for (i = 0; vopts[i]; i++) {
             if (j & (1 << i)) {
                 printf("%s", vopts[i]);
 				j ^= (1 << i);
@@ -157,7 +152,6 @@ main(int argc, char **argv)
     }
 #ifdef __UNIX__
     setvbuf(stdout, 0, _IONBF, 0);
-#endif
 #endif
 
     /*

@@ -101,6 +101,7 @@ void add_define(char *s);
 extern int lookupc(char *s, char c);
 extern void hexdump(char *tag, char *s, int len);
 int iswhite(char c);
+char *bitdef(unsigned char v, char **defs)
 
 /* type.c */
 extern struct scope *cur_block;
