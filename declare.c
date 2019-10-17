@@ -1,6 +1,6 @@
-#ifdef notdef
-
 #include "ccc.h"
+
+#ifdef notdef
 
 /*
  * we are in a parse state where we want to process declarations.

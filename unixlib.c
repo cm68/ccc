@@ -52,12 +52,6 @@ perror(char *msg)
 }
 
 void
-putchar(int c)
-{
-    return;
-}
-
-void
 exit(int exitcode)
 {
     return;

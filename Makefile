@@ -15,10 +15,10 @@ CFLAGS = -mz80 --fomit-frame-pointer
 LD = sdldz80
 LDFLAGS= -l /usr/share/sdcc/lib/z80/z80.lib -m -w -i -y
 
-CC = gcc
-CFLAGS = $(DEFINES) -Wno-implicit-function-declaration -g
-LDFLAGS= -g -o
-LD= gcc
+#CC = gcc
+#CFLAGS = $(DEFINES) -Wno-implicit-function-declaration -g
+#LDFLAGS= -g -o
+#LD= gcc
 
 CC1OBJECTS = cc1.o error.o lex.o io.o macro.o kw.o util.o tokenlist.o unixlib.o \
 	expr.o parse.o declare.o type.o

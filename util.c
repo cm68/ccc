@@ -68,7 +68,7 @@ controlify(char *d, char c)
 		append(d, "\\");
 		ret = 2;
 	} else if ((c < ' ') || (c >= 0x7f)) {
-		char shift;
+		int shift;
 		*d++ = '\\';
 		*d++ = '0';
 		ret = 2;
@@ -175,7 +175,7 @@ hexdump(char *tag, char *h, int l)
  * return the index in an array of the first occurrance of a char
  * return 0xff for miss
  */
-int
+unsigned char
 lookupc(char *s, char c)
 {
     int i;
@@ -184,7 +184,7 @@ lookupc(char *s, char c)
             return i;
         }
     }
-    return -1;
+    return 0xff;
 }
 
 /*

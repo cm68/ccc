@@ -280,7 +280,8 @@ issym()
         advance();
     }
     if (VERBOSE(V_SYM)) {
-        printf("issym = %s curchar = %c nextchar = %c\n", strbuf, curchar, nextchar);
+        printf("issym = %s curchar = %c nextchar = %c\n", 
+            strbuf, curchar, nextchar);
     }
     return 1;
 }
@@ -484,7 +485,7 @@ gettoken()
 
     freetoken();
 
-    cur = next;
+    bcopy(&next, &cur, sizeof(cur));
 
     next.v.str = 0;
     next.type = NONE;
@@ -575,7 +576,7 @@ gettoken()
 
         /* from here, it had better be an operator */
         t = lookupc(simple, curchar);
-        if (t == -1) {
+        if (t == 0xff) {
             err(ER_C_UT);
             curchar= ';';
         }
@@ -587,7 +588,7 @@ gettoken()
         /* see if the character is doubled.  this can be an operator */
         if (curchar == c) {
             t = lookupc(dbl_able, c);
-            if (t != -1) {
+            if (t != 0xff) {
                 next.type = dbltok[t];
                 advance();
             }
@@ -596,7 +597,7 @@ gettoken()
         /* see if the character has an '=' appended.  this can be an operator */
         if (curchar == '=') {
             t = lookupc(eq_able, c);
-            if (t != -1) {
+            if (t != 0xff1) {
                 next.type = eqtok[t];
                 advance();
             }
@@ -684,7 +685,8 @@ readcppconst()
     struct expr *e;
     char savedtflags = tflags;
     struct token save;
-    save = cur;
+
+    bcopy(&cur, &save, sizeof(cur));
 
     /*
      * hack to make lexer translate newlines to ';', so that expressions
@@ -700,7 +702,7 @@ readcppconst()
     val = e->v;
     freeexpr(e);
     tflags = savedtflags;
-    cur = save;
+    bcopy(&save, &cur, sizeof(cur));
     return val;
 }
 

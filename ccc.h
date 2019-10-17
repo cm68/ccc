@@ -230,14 +230,19 @@ struct macro *maclookup(char *s);
 void add_define(char *s);
 
 /* util.c */
-extern int lookupc(char *s, char c);
+extern unsigned char lookupc(char *s, char c);
 extern void hexdump(char *tag, char *s, int len);
 int iswhite(char c);
 char *bitdef(unsigned char v, char **defs);
+int quoted_string(char *d, char *s);
+int longout(char *d, long v);
 
 /* type.c */
 extern char *blockname();
 // struct type *findtype(char *name);
+
+/* declare.c */
+extern struct symbol *declare(struct type **btp);
 
 /* tokenlist.c */
 extern char *tokenname[];
@@ -260,6 +265,8 @@ void perror(char *msg);
 void exit(int exitcode);
 int read(int fd, char *buf, int len);
 int write(int fd, char *buf, int len);
+long strtol(char *str, char **endptr, int base);
+void bcopy(void *src, void *dst, int len);
 #endif
 
 /*
