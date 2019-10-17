@@ -1,4 +1,3 @@
-#ifdef notdef
 /*
  * generate expression trees
  */
@@ -18,6 +17,22 @@ makeexpr(char op, struct expr *left)
 		e->cost = 1;
 	}
 	return e;
+}
+
+/*
+ * deallocate an expression tree
+ * this needs to not leak memory
+ */
+void
+freeexpr(struct expr *e)
+{
+	if (e->left) {
+		freeexpr(e->left);
+	}
+	if (e->right) {
+		freeexpr(e->left);
+	}
+	free(e);
 }
 
 char
@@ -47,15 +62,17 @@ struct expr *
 expr(char pri, struct stmt *st)
 {
 	char op;
+	struct expr *e;
 
-	switch (curtok) {   // prefix
+#ifdef notdef
+	switch (cur.type) {   // prefix
 
 	case SYM:
 		e = makeexpr(DEREF, makeexpr(VAR, 0));
-		e->left->var = findvar(symbuf, st);
+		e->left->var = findvar(strbuf, st);
 		/* never seen the name and function call */
-		if ((!(e->left->var)) && (nexttok == '('))
-			e->left->var = makevar(strdup(symbuf),
+		if ((!(e->left->var)) && (next.type == LPAR)) {
+			e->left->var = makevar(strdup(strbuf),
                 maketype(0, TK_FUNC, ptype[PT_INT]));
 			e->left->var->flags |= V_GLOBAL;
 			e->left->var->type->flags |= T_INCOMPLETE;
@@ -74,10 +91,10 @@ expr(char pri, struct stmt *st)
         e->var = makevar(makelabel('S', (int)e),
             maketype(0, TK_ARRAY, ptype[PTYPE_CHAR]),
             V_STATIC|V_CONST|V_GLOBAL);
-        e->var->type->len = strlen(symbuf);
+        e->var->type->len = strlen(strbuf);
         e->var->type->flags &= ~T_INCOMPLETE;
         e->var->init = makeexpr(BYTES,
-            (struct expr *)strdup(symbuf));
+            (struct expr *)strdup(strbuf));
         e->var->init->v = e->var->type->len;
         e->type = e->var->type;
         break;
@@ -111,7 +128,7 @@ expr(char pri, struct stmt *st)
         break;
     case INCR:
     case DECR:
-        op = curtok();
+        op = cur.type;
         gettoken();
         e = makeexpr(op, expr(pri, st));
         if (!lvalue(e->left)) {
@@ -147,10 +164,10 @@ expr(char pri, struct stmt *st)
         e = cfold(e);
         break;
     case MINUS:
-        curtok = NEG;
+        cur.type = NEG;
         /* fall through */
     case TWIDDLE:
-        op = curtok;
+        op = cur.type;
         gettoken();
         e = makeexpr(op, expr(pri, st));
         if (e->left->type->kind != TK_SCALAR) {
@@ -166,7 +183,7 @@ expr(char pri, struct stmt *st)
      * and binary operators to deal with
      */
     while (1) { // operators
-        switch (curtok) {
+        switch (cur.type) {
         case INCR:
             if (!lvalue(e)) {
                 err(ER_E_LV);
@@ -202,7 +219,7 @@ expr(char pri, struct stmt *st)
                 e->left->up = e;
                 e->type = e->left->type->sub;
                 e->cost = e->left->cost;
-                while (curtok != E_O_F) {
+                while (cur.type != E_O_F) {
                     e1 = expr(PRI_PAREN, st);
                     e->up = e;
                     if (e->next) {
@@ -210,11 +227,11 @@ expr(char pri, struct stmt *st)
                     }
                     e1->next = e->next;
                     e->next = e1;
-                    if (curtok == COMMA) {
+                    if (cur.type == COMMA) {
                         gettoken();
                         continue;
                     }
-                    if (curtok == RPAR) {
+                    if (cur.type == RPAR) {
                         break;
                     }
                 }
@@ -225,12 +242,12 @@ expr(char pri, struct stmt *st)
             continue;
         case DOT:
             gettoken();
-            if ((curtok != SYM) || (e->type->kind != TK_PTR) || 
+            if ((cur.type != SYM) || (e->type->kind != TK_PTR) ||
                 (!e->type->sub->flags & T_AGGREGATE)) {
                 err(ER_E_SM);
                 continue;
             }
-            v = varonlist(symbuf, e->type->sub->elem);
+            v = varonlist(strbuf, e->type->sub->elem);
             if (!v) {
                 err(ER_E_NT);
             }
@@ -245,13 +262,13 @@ expr(char pri, struct stmt *st)
             continue;
         case DEREF:             // ->
             gettoken();
-            if ((curtok != SYM) || (e->type->kind != TK_PTR) ||
+            if ((cur.type != SYM) || (e->type->kind != TK_PTR) ||
                 (e->type->sub->kind != TK_PTR) ||
                 (e->type->sub->sub->flags & T_AGGREGATE)) {
                 err(ER_E_SM);
                 continue;
             }
-            v = varonlist(symbuf, e->type->sub->sub->elem);
+            v = varonlist(strbuf, e->type->sub->sub->elem);
             if (!v) {
                 err(ER_E_NT);
             }
@@ -266,7 +283,7 @@ expr(char pri, struct stmt *st)
         default:
             printf("bzzt");
         } 
-        p = binop_pri(curtok);
+        p = binop_pri(cur.type);
         if (p == 0) {
             err(ER_E_U0);
             return 0;
@@ -275,7 +292,7 @@ expr(char pri, struct stmt *st)
             break;
         }
 
-        e = makeexpr(curtok, e);
+        e = makeexpr(cur.type, e);
         e->left->up = e;
         gettoken();
         e->right = expr(p, st);
@@ -292,6 +309,7 @@ expr(char pri, struct stmt *st)
         e->cost = e->left->cost + e->right->cost;
         e = cfold(e);
     }
+#endif
     return e;
 }
 
@@ -301,6 +319,7 @@ binop_pri(char t)
     char po;
     char v;
 
+#ifdef notdef
     po = t - MIN_OP;
     if ((po < 0) || (t > MAX_OP)) {
         return 0;
@@ -310,13 +329,16 @@ binop_pri(char t)
         v >>= 4;
     }
     v &= 0xf;
+#endif
     return v;
 }
 
+#ifdef notdef
 #define PP(l,h) ((h << 4) | l)
 char pritab[] = {
     PP(x,y),
 };
+#endif
 
 struct expr *
 xreplace(struct expr *out, struct expr *in)
@@ -339,6 +361,9 @@ xreplace(struct expr *out, struct expr *in)
 
 struct expr *
 cfold(struct expr *e) {
+	long val;
+	long vl, vr;
+
     switch (e->op) {
     case NEG:
         if (e->left->op == CONST) {
@@ -385,7 +410,6 @@ cfold(struct expr *e) {
     e = xreplace(e, e->left);
     return e;
 }
-#endif
 
 /*
  * vim: tabstop=4 shiftwidth=4 expandtab:

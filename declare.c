@@ -6,7 +6,7 @@
  * we are in a parse state where we want to process declarations.
  * any names and types we declare go into the current scope
  */
-struct var *
+struct name *
 declare(struct type **btp)
 {
     struct var *v;

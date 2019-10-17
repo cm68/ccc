@@ -12,3 +12,7 @@ make a bitmap with 128 entries:
 0x20 - is an += kind of operator
 0x40 - is an ++ kind of operator
 
+
+single bit bitfields in a struct should be efficient ways to handle flags.
+for example, symbol visibility: if (sym->visible) { emit("extern "); }:
+ld iy, sym ; bit 4, (iy+9) ; jr foo

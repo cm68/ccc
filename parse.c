@@ -205,11 +205,29 @@ parsefunc(struct var *v)
 #endif
 
 /*
- * read a storage class - return bitmask of relevant flags
- * can have several terms
+ * storage class clauses - many combinations are illogical
  */
-char
-getsclass()
+#define	SC_EXTERN	0x01
+#define	SC_REGISTER	0x02
+#define	SC_STATIC	0x04
+#define	SC_CONST	0x88
+#define	SC_VOLATILE	0x10
+#define	SC_AUTO		0x20
+
+char *sclass_bitdefs[] = { "EXTERN", "REGISTER", "STATIC", "CONST", "VOLATILE", "AUTO" };
+_
+/*
+ * parse the storage class on a declaration.  this is actually a little muddy a concept, since
+ * we've got visibility and storage lumped together, and context also contributes into where our
+ * thing actually will reside.  we're just interested in the parse part.
+ * so, let's just eat extern, auto, register, volatile, static and const
+ * in other compilers, bizarre stuff like fortran, far and pascal show up here.
+ * gripe about bogus combinations.
+ *
+ * how this actually resolves into a storage space is a code generator issue
+ */
+unsigned char
+parse_sclass()
 {
     int ret = 0;
     int bit;
@@ -232,7 +250,7 @@ getsclass()
 			bit = SC_VOLATILE;
 			break;
 		case AUTO:
-			bit = SC_LOCAL;
+			bit = SC_AUTO;
 			break;
 		default:
 			bit = 0;
@@ -249,13 +267,13 @@ getsclass()
 		}
     }
     // bogosity checks
-    if ((ret & SC_EXTERN) & (ret & (SC_CONST|SC_STATIC|SC_LOCAL|SC_REGISTER))) {
+    if ((ret & SC_EXTERN) & (ret & (SC_CONST|SC_STATIC|SC_AUTO|SC_REGISTER))) {
     	error(ER_P_SC);
     }
     if ((ret & SC_REGISTER) & (ret & (SC_CONST|SC_STATIC))) {
     	error(ER_P_SC);
     }
-    if ((ret & SC_STATIC) & (ret & (SC_CONST|SC_LOCAL))) {
+    if ((ret & SC_STATIC) & (ret & (SC_CONST|SC_AUTO))) {
     	error(ER_P_SC);
     }
     if ((ret & SC_CONST) & (ret & (SC_VOLATILE))) {
@@ -268,17 +286,17 @@ getsclass()
  * read a declaration
  */
 void
-declaration(struct scope *sc)
+declaration()
 {
     struct type *base;
-    struct name *n;
+    struct symbol *n;
     struct initial *i;
     char sclass;
     struct type *basetype;
-    struct name *v;
+    struct symbol *v;
 
     while (1) {
-        sclass = getsclass();
+        sclass = parse_sclass();
         basetype = 0;
 
         v = declare(&basetype);
@@ -306,7 +324,7 @@ declaration(struct scope *sc)
         if (cur.type == SEMI) {
             break;
         }
-    }  
+    }
 }
 
 char bnbuf[20];
@@ -332,9 +350,9 @@ parse()
 {
     push_scope("global");
     while (cur.type != EOF) {
-        declaration(global);
+        declaration();
     }
-    pop_scope(global);
+    pop_scope();
 }
 
 /*

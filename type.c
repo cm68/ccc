@@ -1,24 +1,75 @@
-#ifdef notdef
 /*
  * we want a squeaky-clean type system
- *
- * this file contains constructors, destructors, lookups and dumpers 
- * for all the compiler types. the pattern is something like:
- * new_<thing>(args)
- * lookup_<thing>(args)
- * dump_thing(args)
- * destroy_<thing>(thing)
  */
 
 #include "ccc.h"
 
+struct scope *global;
+struct scope *local;
+
 /*
- * at our current scope, look up the name and namespace
+ * a scope is a container for names of identifiers and types
+ * a declarator like struct foo { int bar; } baz
+ * defines 2 names at this scope:  foo and baz.
  */
-struct name *
+void
+push_scope(char *name)
+{
+	struct scope *s;
+	s = malloc(sizeof(*s));
+	s->names = 0;
+	s->name = strdup(name);
+	s->next = scope;
+    scope = s;
+}
+
+/*
+ * destroy a scope.
+ * deallocate all the symbols and types we defined
+ * freeing the global scope is done for each file, discarding everything
+ */
+void
+pop_scope()
+{
+	struct symbol *n;
+    struct scope *s = local;
+
+	while ((n = s->names)) {
+        s->names = n->next;
+        destroy_name(n);
+	}
+    free(s->name);
+    if (local == global) {
+    	local = global = 0;
+    } else {
+		local = s->prev;
+    }
+    free(s);
+}
+
+/*
+ * print out a scope's names
+ */
+void
+dump_scope(struct scope *s)
+{
+	struct symbol *n;
+
+	printf("dump_scope: ");
+	if (!s) { printf("null\n"); return; }
+	printf("%s\n", s->name);
+	for (n = s->names; n; n = n->next) {
+		dump_symbol(n);
+	}
+}
+
+/*
+ * resolve this name into a symbol, applying scope and namespace rules
+ */
+struct symbol *
 lookup_name(char *name, namespace_t space)
 {
-	struct name *n;
+	struct symbol *n;
 	struct scope *s;
 
     // search from current scope going up
@@ -36,10 +87,10 @@ lookup_name(char *name, namespace_t space)
  * a more restrictive name lookup that looks through the elements of a type
  * used for struct, union, and enum tag lookups
  */
-struct name *
+struct symbol *
 lookup_element(char *name, struct type *t)
 {
-	struct name *n;
+	struct symbol *n;
 	for (n = t->elem; n; n = n->next) {
 		if (strcmp(name, n->name) == 0) {
 			return (n);
@@ -51,9 +102,7 @@ lookup_element(char *name, struct type *t)
 char *type_bitdefs[] = {
 		"AGGREGATE", "INCOMPLETE", "UNSIGNED", "NORMALIZED", "POINTER", "ARRAY", "FLOAT"
 };
-char *sclass_bitdefs[] = {
-		"GLOBAL", "STATIC", "LOCAL", "REGISTER", "VOLATILE", "CONST", "EXTERN"
-};
+
 char *namespace_name[] = {
 		"SYMBOL", "TYPEDEF", "ENUMTAG", "ENUMELEMENT", "AGGTAG", "AGGELEMENT"
 };
@@ -62,81 +111,34 @@ char *namespace_name[] = {
  * what's in a name
  */
 void
-dump_name(struct name *n)
+dump_symbol(struct symbol *n)
 {
 	char *k;
 
-	printf("dump_name: ");
+	printf("dump_symbol: ");
 	if (!n) { printf("null\n"); return; }
-    printf(" namespace: %s  ", namespace_name[n->space]);
-    printf(" type: %s ", n->type->name);
-    printf(" offset: %d bitoff: %d width: %d sclass: %s\n", 
+	printf("%s (%s)\n", n->name, namespace_name[n->space]);
+	if (n->type) {
+		printf("\ttype: %s\n", n->type->name);
+	}
+    printf("\toffset: %d bitoff: %d width: %d sclass: %s\n",
         n->offset, n->bitoff, n->width, bitdef(n->sclass, sclass_bitdefs));
 }
 
 /*
  * add a name to the current scope, tagged with attributes
  */
-struct name *
-new_name(char *name, struct type *t, kind_t k)
+struct symbol *
+new_symbol(char *name, struct type *t, namespace_t space)
 {
-	struct name *n;
+	struct symbol *n;
 	n = malloc(sizeof(*n));
 	n->name = strdup(name);
-	n->kind = k;
+	n->space = k;
 	n->type = t;	
 	n->next = scope->names;
 	scope->names = n;
 	return (n);
-}
-
-/*
- * a scope is a container for names of identifiers and types
- * a declarator like struct foo { int bar; } baz
- * defines 2 names at this scope:  foo and baz.
- */
-void
-push_scope(char *name)
-{
-	struct scope *s;
-	s = malloc(sizeof(*s));
-	s->names = 0;
-	s->scopename = strdup(name);
-	s->next = scope;
-    scope = s;
-}
-
-/*
- * when we destroy the scope, both names and types go away
- */
-void
-pop_scope()
-{
-	struct name *n;
-    struct scope *s = scope;
-
-	while ((n = s->names)) {
-        s->names = n->next;
-		free(n->name);
-        free(n);
-	}
-    free(s->scopename);
-    scope = s->next;
-    free(s);
-}
-
-/*
- * print out a scope's names
- */
-void
-dump_scope(struct scope *s)
-{
-	struct name *n;
-
-	printf("dump_scope: ");
-	for (n = s->names; n; n = n->next) {
-		dump_name(n);
-	}
 }
 
 /*
@@ -230,7 +232,7 @@ initptype()
     struct type *t;
 
     for (i = 0; i < sizeof(pi/sizeof(pi[0]); i++) {
-        t = maketype(pi->name, TK_SCALAR, 0);
+        t = maketype(pi->symbol, TK_SCALAR, 0);
         t->flags = pi[i].flags;
         t->size = pi[i].size;
         regtype(t);
@@ -259,7 +261,7 @@ gettype()
         p = BYTES_4;
     }
 
-    switch (curtok) {
+    switch (cur.type) {
     case CHAR:
         if (p) {        // can't have (short|long) char
             err(ER_P_PT);
@@ -320,7 +322,7 @@ do_typedef()
     struct var *v;
     t = maketype(0, TYPEDEF, 0);
     v = declare(&bt);
-    if (curtok == SYM) {
+    if (cur.type == SYM) {
         t->name = strdup(symbuf);
         gettoken();
         if (!v) {
@@ -329,7 +331,7 @@ do_typedef()
             t->sub = v->type;
         }
     } else if (v) {
-        t->name = v->name;
+        t->name = v->symbol;
         t->sub = v->type;
     }
     if (t->name && t->sub) {
@@ -368,7 +370,7 @@ void freetype(struct type *t)
 {
     if (!t || t->flags & T_NORMALIZED) return;
     freetype(t->sub);
-    if (t->name)
+    if (t->symbol)
         free(t->name)
     free(t);
 }
@@ -439,7 +441,7 @@ getbasetype()
     struct var *lastp, *tg;
 
     /* a typedef? */
-    if (curtok == SYM) {
+    if (cur.type == SYM) {
         t = findtype(symbuf, 't');
         if (t) {
             gettoken();
@@ -450,17 +452,17 @@ getbasetype()
     if (t) {
         return t;
     }
-    if ((curtok != ENUM) && (curtok != STRUCT) && (curtok != UNION)) {
+    if ((cur.type != ENUM) && (cur.type != STRUCT) && (cur.type != UNION)) {
         return 0;
     }
     /*
      * enum [name] [ { tag [= const], ... } ]
      */
     if (match(ENUM)) {
-        if (curtok == SYM) {    // had better be an enum or undefined
+        if (cur.type == SYM) {    // had better be an enum or undefined
             t = findtype(symbuf, 'e');
             if (t) {
-                if (nexttok == '{') { // if the enum is defined already
+                if (next.type == '{') { // if the enum is defined already
                     recover(ER_P_ED, '}');
                     gettoken();
                 } 
@@ -480,7 +482,7 @@ getbasetype()
         }
         lastp = &t->elem;
         while (!match(RBRACK)) {
-            if (curtok != SYM) {
+            if (cur.type != SYM) {
                 recover(ER_P_ET);
                 continue;
             }
@@ -506,7 +508,7 @@ getbasetype()
             off++;
             /* a trailing comma with a close next is an error */
             if (match(COMMA)) {
-                if (curtok == RBRACK) {
+                if (cur.type == RBRACK) {
                     err(ER_P_ED);
                 }
             }
@@ -515,14 +517,13 @@ getbasetype()
         return t;
     } // ENUM
 
-    if (curtok == STRUCT || curtok == UNION) {
-        off = curtok;
+    if (cur.type == STRUCT || cur.type == UNION) {
+        off = cur.type;
         s = 0;
         gettoken();
             
     } // STRUCT || UNION
 }
-#endif
 
 /*
  * vim: tabstop=4 shiftwidth=4 expandtab:

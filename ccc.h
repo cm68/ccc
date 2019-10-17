@@ -71,28 +71,32 @@ struct stmt {
  *
  * if you have a c source that depends on this kind of thing, fix the source.
  */
-extern struct scope *scope;
-
 struct scope {
-	char *scopename;
-	struct name *names;
+	char *name;
+	struct symbol *names;
 	struct scope *prev;			// all the way up to and including global
 };
 
-extern struct scope *global;
-extern struct scope	*local;
+extern struct scope *global;	// file level
+extern struct scope	*local;		// our current block
+
+extern void push_scope(char *name);
+extern void pop_scope();
 
 /*
- * namespaces
+ * namespaces - symbols of the same name can exist at the same scope if they
+ * are in different namespaces
  */
 typedef enum namespace {
 	SYMBOL,
 	TYPE_DEF,
 	ENUMTAG,
-	ENUMELEMENT, // only found in sub-types of ENUMTAB
+	ENUMELEMENT,	// only found in sub-types of ENUMTAB
 	AGGTAG,
-	AGGELEMENT // only found in sub-types of AGGTAG
+	AGGELEMENT		// only found in sub-types of AGGTAG
 } namespace_t;
+
+extern char *namespace_name[];
 
 /*
  * how big a pointer is 
@@ -103,11 +107,11 @@ typedef enum namespace {
  * this is a handle for types. types are scoped just like names
  */
 struct type {
-    struct name *name;  	// if a named struct/union/enum - not always present
+    char *name;				// always present. if not in source, invented
 	namespace_t space;
 	int size;		    	// how big is one of me
 	int count;		    	// if we are an array, how many
-	struct name *elem;		// element list
+	struct symbol *elem;	// element list
     struct type *sub;		// pointer to what, array of what, etc.
     unsigned char flags;
 };
@@ -125,31 +129,19 @@ struct type {
  * multiple instances of the same name with different namespaces.
  * this is a container for functions, variables, constants, and fields
  */
-struct name {
+struct symbol {
 	namespace_t space;
 	char *name;
-	struct name *next;		// all names in same container
+	struct symbol *next;	// all names in same container
 	struct type *type;
-	unsigned char sclass;
+	char visibility;
+	char sclass;
 	int offset;				// if inside a struct
     int bitoff;
     int width;
     struct expr *init;      // value of constant or initializer
     struct stmt *body;      // function body
 };
-
-/*
- * storage classes - many combinations are illogical
- */
-#define	SC_LOCAL	0x04
-#define	SC_GLOBAL	0x01
-#define SC_FUNARG   0x80
-#define	SC_CONST	0x20
-#define	SC_STATIC	0x02
-#define	SC_REGISTER	0x08
-#define	SC_VOLATILE	0x10
-#define	SC_EXTERN	0x40
-#define SC_BITFIELD 0x99
 
 /*
  * we use counted strings in places to handle the somewhat gnarly case of
@@ -207,10 +199,11 @@ extern char *filename;
 extern int column;
 
 /* expr.c */
+struct symbol *declare(struct type **btp);
 struct expr *expr(char priority, struct stmt *st);
 void freeexpr(struct expr *e);
 
-/* main.c */
+/* cc1.c */
 extern void err(error_t errcode);
 extern void fatal(error_t errcode);
 extern void recover(error_t errcode, token_t skipto);
@@ -244,9 +237,6 @@ char *bitdef(unsigned char v, char **defs);
 
 /* type.c */
 extern char *blockname();
-extern struct scope *cur_block;
-void push_scope(char *name);
-void pop_scope();
 // struct type *findtype(char *name);
 
 /* tokenlist.c */
@@ -263,9 +253,9 @@ extern int verbose;
  * that don't have unixlike libraries and includes
  */
 char *strdup(char *s);
-int open(char *name, int mode);
+int open(char *filename, int mode);
 int close(int fd);
-int creat(char *name, int mode);
+int creat(char *filename, int mode);
 void perror(char *msg);
 void exit(int exitcode);
 int read(int fd, char *buf, int len);

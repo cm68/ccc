@@ -2,12 +2,14 @@
  * dirty little program generate token names
  * and normalized values
  */ 
+#include <stdio.h>
 #include "token.h"
 
 char *tokenname[128];
 
 #define check(a) tokenname[a] = #a;
 	
+int
 main(int argc, char **argv)
 {
 	int i;
@@ -63,5 +65,5 @@ main(int argc, char **argv)
 	}
 	printf("};\n");
 
-	exit(0);
+	return 0;
 };

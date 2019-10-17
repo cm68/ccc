@@ -4,9 +4,11 @@
  * purposes and for cheap serializing into intermediate files
  */
 typedef enum {
-	/* pseudo-keywords */
+	/* pseudo-keywords, and expression operators */
     E_O_F = 0,
 	EXPR = 0x01,
+	NEG = 0x02,
+	NOT = 0x03,
     NONE = ' ',
 
     /* C keywords */

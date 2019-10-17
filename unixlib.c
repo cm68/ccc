@@ -1,5 +1,6 @@
 /*
  * this is a minimal unix library
+ * it exists only initially to size the compiler in cross
  */
 
 #include "ccc.h"
