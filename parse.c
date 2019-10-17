@@ -258,7 +258,7 @@ parse_sclass()
 		}
 		if (bit) {
 			if (ret & bit) {
-				error(ER_P_SC);
+				err(ER_P_SC);
 			}
 			ret |= bit;
 			gettoken();
@@ -268,16 +268,16 @@ parse_sclass()
     }
     // bogosity checks
     if ((ret & SC_EXTERN) & (ret & (SC_CONST|SC_STATIC|SC_AUTO|SC_REGISTER))) {
-    	error(ER_P_SC);
+    	err(ER_P_SC);
     }
     if ((ret & SC_REGISTER) & (ret & (SC_CONST|SC_STATIC))) {
-    	error(ER_P_SC);
+    	err(ER_P_SC);
     }
     if ((ret & SC_STATIC) & (ret & (SC_CONST|SC_AUTO))) {
-    	error(ER_P_SC);
+    	err(ER_P_SC);
     }
     if ((ret & SC_CONST) & (ret & (SC_VOLATILE))) {
-    	error(ER_P_SC);
+    	err(ER_P_SC);
     }
     return ret;
 }
@@ -349,8 +349,13 @@ void
 parse()
 {
     push_scope("global");
+<<<<<<< HEAD
     while (cur.type != EOF) {
         declaration();
+=======
+    while (cur.type != E_O_F) {
+        declaration(global);
+>>>>>>> sdcc cleanups
     }
     pop_scope();
 }
