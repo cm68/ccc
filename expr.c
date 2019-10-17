@@ -3,8 +3,6 @@
  */
 #include "ccc.h"
 
-#ifdef notdef
-
 struct expr *
 makeexpr(char op, struct expr *left)
 {
