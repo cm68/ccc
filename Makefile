@@ -10,15 +10,19 @@
 #
 DEFINES= -DLEXTEST -DDEBUG
 
-CC = sdcc
+CC = gcc
+#CC = sdcc
+ifeq ($(CC),sdcc)
 CFLAGS = -mz80 --fomit-frame-pointer
 LD = sdldz80
 LDFLAGS= -l /usr/share/sdcc/lib/z80/z80.lib -m -w -i -y
+endif
 
-#CC = gcc
-#CFLAGS = $(DEFINES) -Wno-implicit-function-declaration -g
-#LDFLAGS= -g -o
-#LD= gcc
+ifeq ($(CC),gcc)
+CFLAGS = $(DEFINES) -Wno-implicit-function-declaration -g
+LDFLAGS= -g -o
+LD= gcc
+endif
 
 CC1OBJECTS = cc1.o error.o lex.o io.o macro.o kw.o util.o tokenlist.o unixlib.o \
 	expr.o parse.o declare.o type.o
