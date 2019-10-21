@@ -694,7 +694,7 @@ readcppconst()
      */
     tflags = ONELINE | CPPFUNCS;
 
-    e = expr(PRI_ALL, 0);
+    e = parse_expr(PRI_ALL, 0);
     if (!(e->flags & E_CONST)) {
         err (ER_C_CE);
         return 0;

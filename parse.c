@@ -9,19 +9,17 @@
  * it recursively calls itself
  * there is some hair here having to do with scope
  */
-struct stmt *
-statement(struct stmt *parent)
-{
+struct stmt*
+statement(struct stmt *parent) {
 #ifdef notdef
-    struct stmt *st, **pst;
-    pst = 0;
+    struct stmt *st, **pst = 0;
     int block = 1;
     struct scope *sc;
 
     while (block) {
-        switch (cur.type) {
+    	switch (cur.type) {
 
-        case END:   // end a block
+    	case END:   // end a block
             block = 0;
             break;
 
@@ -46,12 +44,12 @@ statement(struct stmt *parent)
                 st->otherwise = statement(st);
             } 
             break;
-        case BREAK;
+        case BREAK:
             gettoken();
             need(SEMI, SEMI, ER_S_SN);
             st = makestmt(BREAK, 0);
             break;
-        case DEFAULT;
+        case DEFAULT:
             gettoken();
             need(SEMI, SEMI, ER_S_SN);
             break;
@@ -181,28 +179,25 @@ statement(struct stmt *parent)
         st->function = v;
         st->parent = parent;
     } // while
+#else
+	return (struct stmt*) 0;
 #endif
 }
 
-#ifdef notdef
-struct stmt *
-makestmt(char op, struct expr *left)
-{
-    struct stmt *st;
+struct stmt*
+makestmt(char op, struct expr *left) {
+	struct stmt *st;
 
-    st = malloc(sizeof(*st));
-    st->op = op;
-    st->left = left;
-    return st;
+	st = malloc(sizeof(*st));
+	st->op = op;
+	st->left = left;
+	return st;
 }
 
-void
-parsefunc(struct var *v)
-{
-    v->body = stmt(v, 0);
-    v->body->flags = S_FUNC;
+void parsefunc(struct name *f) {
+	// v->body = statement(0);
+	// v->body->flags = S_FUNC;
 }
-#endif
 
 /*
  * storage class clauses - many combinations are illogical
@@ -214,10 +209,11 @@ parsefunc(struct var *v)
 #define	SC_VOLATILE	0x10
 #define	SC_AUTO		0x20
 
-char *sclass_bitdefs[] = { "EXTERN", "REGISTER", "STATIC", "CONST", "VOLATILE", "AUTO" };
-_
+char *sclass_bitdefs[] = { "EXTERN", "REGISTER", "STATIC", "CONST", "VOLATILE",
+		"AUTO"
+};
 /*
- * parse the storage class on a declaration.  this is actually a little muddy a concept, since
+ * parse the storage class on a declaration.  this is a muddy concept, since
  * we've got visibility and storage lumped together, and context also contributes into where our
  * thing actually will reside.  we're just interested in the parse part.
  * so, let's just eat extern, auto, register, volatile, static and const
@@ -226,13 +222,11 @@ _
  *
  * how this actually resolves into a storage space is a code generator issue
  */
-unsigned char
-parse_sclass()
-{
-    int ret = 0;
-    int bit;
+unsigned char parse_sclass() {
+	int ret = 0;
+	int bit;
 
-    while (1) {
+	while (1) {
 		switch (cur.type) {
 		case EXTERN:
 			bit = SC_EXTERN;
@@ -265,41 +259,40 @@ parse_sclass()
 		} else {
 			break;
 		}
-    }
-    // bogosity checks
-    if ((ret & SC_EXTERN) & (ret & (SC_CONST|SC_STATIC|SC_AUTO|SC_REGISTER))) {
-    	err(ER_P_SC);
-    }
-    if ((ret & SC_REGISTER) & (ret & (SC_CONST|SC_STATIC))) {
-    	err(ER_P_SC);
-    }
-    if ((ret & SC_STATIC) & (ret & (SC_CONST|SC_AUTO))) {
-    	err(ER_P_SC);
-    }
-    if ((ret & SC_CONST) & (ret & (SC_VOLATILE))) {
-    	err(ER_P_SC);
-    }
-    return ret;
+	}
+	// bogosity checks
+	if ((ret & SC_EXTERN)
+			& (ret & (SC_CONST | SC_STATIC | SC_AUTO | SC_REGISTER))) {
+		err(ER_P_SC);
+	}
+	if ((ret & SC_REGISTER) & (ret & (SC_CONST | SC_STATIC))) {
+		err(ER_P_SC);
+	}
+	if ((ret & SC_STATIC) & (ret & (SC_CONST | SC_AUTO))) {
+		err(ER_P_SC);
+	}
+	if ((ret & SC_CONST) & (ret & (SC_VOLATILE))) {
+		err(ER_P_SC);
+	}
+	return ret;
 }
 
 /*
  * read a declaration
  */
-void
-declaration()
-{
-    struct type *base;
-    struct symbol *n;
-    struct initial *i;
-    char sclass;
-    struct type *basetype;
-    struct symbol *v;
+void declaration() {
+	struct type *base;
+	struct name *n;
+	struct initial *i;
+	char sclass;
+	struct type *basetype;
+	struct name *v;
 
-    while (1) {
-        sclass = parse_sclass();
-        basetype = 0;
+	while (1) {
+		sclass = parse_sclass();
+		basetype = 0;
 
-        v = declare(&basetype);
+		v = declare(&basetype);
 #ifdef notdef
         if (v->type & T_FUNC) {
             if (cur.type == BEGIN) {
@@ -317,47 +310,37 @@ declaration()
             do_initializar();
         }
 #endif
-        if (cur.type == COMMA) {
-            gettoken();
-            continue;
-        }
-        if (cur.type == SEMI) {
-            break;
-        }
-    }
+		if (cur.type == COMMA) {
+			gettoken();
+			continue;
+		}
+		if (cur.type == SEMI) {
+			break;
+		}
+	}
 }
 
 char bnbuf[20];
 
-char *
-blockname()
-{
-    static int blockid = 0;
-    sprintf(bnbuf, "block %d", blockid++);
-    return strdup(bnbuf);
+char*
+blockname() {
+	static int blockid = 0;
+	sprintf(bnbuf, "block %d", blockid++);
+	return strdup(bnbuf);
 }
 
-void
-block()
-{
+void block() {
 }
 
 /*
  * global level parse
  */
-void
-parse()
-{
-    push_scope("global");
-<<<<<<< HEAD
-    while (cur.type != EOF) {
-        declaration();
-=======
-    while (cur.type != E_O_F) {
-        declaration(global);
->>>>>>> sdcc cleanups
-    }
-    pop_scope();
+void parse() {
+	push_scope("global");
+	while (cur.type != E_O_F) {
+		declaration();
+	}
+	pop_scope();
 }
 
 /*

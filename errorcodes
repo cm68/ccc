@@ -10,6 +10,9 @@ ER_T_UB		union bitfield
 ER_T_SE		bad aggregate element list
 ER_T_SD		no struct def or ref
 ER_T_DT		more than one basetype
+ER_T_RT		duplicate type definition
+ER_T_PA		strange type non-def
+ER_T_UT		unknown type
 
 # decl errors
 ER_D_DP		declaration paren balance

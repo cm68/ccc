@@ -59,7 +59,7 @@ unop_set(struct expr *e)
  * parse an expression
  */
 struct expr *
-expr(char pri, struct stmt *st)
+parse_expr(char pri, struct stmt *st)
 {
 	char op;
 	struct expr *e;

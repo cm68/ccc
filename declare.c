@@ -1,7 +1,5 @@
 #include "ccc.h"
 
-#ifdef notdef
-
 /*
  * we are in a parse state where we want to process declarations.
  * any names and types we declare go into the current scope
@@ -12,7 +10,9 @@ declare(struct type **btp)
     struct var *v;
     struct type *t, *prefix, *rt;
 
-    /* this will be primitive, enum, struct/union */
+    /*
+     * this will be primitive, enum, struct/union 
+     */
     t = getbasetype();
     if (c && *btp) {
         err(ER_P_DT);
@@ -35,7 +35,7 @@ declare(struct type **btp)
         need(RPAR, RPAR, ER_P_DP);
         if (*btp && rt) {
             err(ER_P_DT);
-            rt = 0; 
+            rt = 0;
         }
         if (rt && !v) {
             *btp = rt;
@@ -53,7 +53,7 @@ declare(struct type **btp)
         return v;
     }
 
-    if (cur.type == SYM) {       // symbol name
+    if (cur.type == SYM) {      // symbol name
         if (c) {
             err(ER_P_MV);
         }
@@ -73,7 +73,7 @@ declare(struct type **btp)
         }
     }
 
-    while (cur.type == LBRACK) {   // array
+    while (cur.type == LBRACK) {        // array
         gettoken();
         postfix = maketype(0, TK_ARRAY, t);
         t = postfix;
@@ -86,7 +86,8 @@ declare(struct type **btp)
         need(RBRACK, RBRACK, ER_P_AD);
     }
 
-    if (cur.type == LPAR) {       // ( <func_arg>[,<func_arg>]*. )
+#ifdef notdef
+    if (cur.type == LPAR) {     // ( <func_arg>[,<func_arg>]*. )
         gettoken();
         if (postfix) {
             err(ER_P_FA);
@@ -100,7 +101,7 @@ declare(struct type **btp)
             if (a) {
                 a->next = postfix->elem;
                 postfix->elem = a;
-                a->flags |= V_FUNARG|V_LOCAL;
+                a->flags |= V_FUNARG | V_LOCAL;
             }
             if (cur.type == COMMA) {
                 gettoken();
@@ -114,7 +115,7 @@ declare(struct type **btp)
         gettoken();
         /*
          * old style parameter declarartion:
-         * foo(a,b) int a; int b; {
+         * foo(a,b) int a; int b;
          */
         if ((cur.type != BEGIN) && (cur.type != SEMI)) {
             if (t) {
@@ -147,7 +148,9 @@ declare(struct type **btp)
             }
         }
         assign_arg_off(postfix, 4);
-    } // if cur.type == LPAR
+    }                           // if cur.type == LPAR
+#endif
+
     if ((cur.type != ASSIGN) && (cur.type != BEGIN) &&
         (cur.type != COMMA) && (cur.type != SEMI)) {
         err(ER_P_UT);
@@ -164,16 +167,12 @@ declare(struct type **btp)
     *tp = postfix;
     while (*tp && (*tp)->sub) {
         tp = &(*tp)->next;
-    }            
+    }
     tp = prefix;
     normalizetype(&v->type);
     return v;
-} // declare
-
-}
-#endif
+}                               // declare
 
 /*
  * vim: tabstop=4 shiftwidth=4 expandtab:
  */
-

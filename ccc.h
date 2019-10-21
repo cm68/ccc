@@ -1,8 +1,9 @@
 /*
- * global defs for curt's c compiler
+ * data structures for the compiler.  we don't have any other non-generated includes.
+ * so, everything is right here
  */
 
-/* libc functions */
+/* nested includes are a bit ugly, but it means that i can just include ccc.h */
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -14,8 +15,16 @@
 #include "token.h"
 
 /*
- * error numbers for formatting
- * these should match the indexes for the errmsg array
+ * basic types - everything externally visible has one of these
+ */
+typedef char *cstring;		// counted string - first char is length
+typedef unsigned char byte;
+typedef unsigned short word;
+typedef unsigned long dword;
+
+/*
+ * we just want the error symbols
+ * error.h is generated, and contains actual error strings if DEF_ERRMSG.
  */
 #undef DEF_ERRMSG
 #include "error.h"
@@ -26,7 +35,7 @@
 struct expr {
 	int flags;
 #define	E_CONST     0x01
-#define E_RESOLVED 0x02
+#define E_RESOLVED	0x02
 #define	E_FUNARG    0x04
 	char op;
 	struct expr *left;
@@ -45,7 +54,16 @@ struct expr {
 	struct stmt *stmt;
 	struct inst *inst;
 };
+
+// expression priority - used to control the precedence
 #define	PRI_ALL	0
+
+extern struct expr *parse_expr(char priority, struct stmt *);
+extern struct expr *new_expr(char op);
+extern void destroy_expr(struct expr *e);
+#ifdef DEBUG
+extern void dump_expr(struct expr *e);
+#endif
 
 /*
  * a statement is the basic execution unit that is managed by the compiler
@@ -59,7 +77,14 @@ struct stmt {
 	struct expr *right;
 	char op;
 	int flags;
+	char *label;
 };
+
+extern struct stmt *new_stmt(char op, struct expr *left);
+extern void destroy_stmt(struct stmt *s);
+#ifdef DEBUG
+extern void dump_stmt(struct stmt *s);
+#endif
 
 /*
  * synthetic type information like enum, struct, union, etc goes away as soon
@@ -73,7 +98,7 @@ struct stmt {
  */
 struct scope {
 	char *name;
-	struct symbol *names;
+	struct name *names;
 	struct scope *prev;			// all the way up to and including global
 };
 
@@ -104,14 +129,14 @@ extern char *namespace_name[];
 #define TS_PTR  2
 
 /*
- * this is a handle for types. types are scoped just like names
+ * this is a handle for types. types are scoped just like names, so their handles
+ * are linked to a name
  */
 struct type {
-    char *name;				// always present. if not in source, invented
-	namespace_t space;
+	struct name *name;		// the type name
 	int size;		    	// how big is one of me
 	int count;		    	// if we are an array, how many
-	struct symbol *elem;	// element list
+	struct name *elem;		// element list
     struct type *sub;		// pointer to what, array of what, etc.
     unsigned char flags;
 };
@@ -123,16 +148,22 @@ struct type {
 #define	TF_ARRAY		0x20
 #define	TF_FLOAT		0x40
 
+extern struct type *new_type(char *name, namespace_t space, struct type *sub);
+extern void destroy_type(struct type *t);
+extern struct type *lookup_type(char *name, namespace_t space);
+#ifdef DEBUG
+extern void dump_type(struct type *t);
+#endif
+
 /*
- * this is an instance of a type with a name.
- * a variable.  note that at the same scope, you can have
+ * note that at the same scope, you can have
  * multiple instances of the same name with different namespaces.
- * this is a container for functions, variables, constants, and fields
+ * this is a container for types, functions, variables, constants, and fields
  */
-struct symbol {
-	namespace_t space;
+struct name {
 	char *name;
-	struct symbol *next;	// all names in same container
+	namespace_t space;
+	struct name *next;		// all names in same container
 	struct type *type;
 	char visibility;
 	char sclass;
@@ -143,11 +174,13 @@ struct symbol {
     struct stmt *body;      // function body
 };
 
-/*
- * we use counted strings in places to handle the somewhat gnarly case of
- * literal strings with embedded nulls - it also means we don't need to do strlen
- */
-typedef char *cstring;
+extern struct name *new_name(char *name, struct type *t, namespace_t space);
+extern void destroy_name(struct name *s);
+extern struct name *lookup_name(char *name, namespace_t space);
+extern struct name *lookup_element(char *name, struct type *t);
+#ifdef DEBUG
+extern void dump_name(struct name *s);
+#endif
 
 /* kw.c */
 extern unsigned char cppkw[];
@@ -178,9 +211,6 @@ extern void skipwhite1();
 extern void skipwhite();
 extern char issym();
 
-/* parse.c */
-extern struct stmt *makestmt(char op, struct expr *left);
-
 /* io.c */
 extern void pushfile(char *name);
 extern void insertmacro(char *name, char *macbuf);
@@ -197,11 +227,6 @@ extern char nextchar;
 extern int lineno;
 extern char *filename;
 extern int column;
-
-/* expr.c */
-struct symbol *declare(struct type **btp);
-struct expr *expr(char priority, struct stmt *st);
-void freeexpr(struct expr *e);
 
 /* cc1.c */
 extern void err(error_t errcode);
@@ -237,12 +262,8 @@ char *bitdef(unsigned char v, char **defs);
 int quoted_string(char *d, char *s);
 int longout(char *d, long v);
 
-/* type.c */
-extern char *blockname();
-// struct type *findtype(char *name);
-
 /* declare.c */
-extern struct symbol *declare(struct type **btp);
+extern struct name *declare(struct type **btp);
 
 /* tokenlist.c */
 extern char *tokenname[];
