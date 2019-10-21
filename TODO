@@ -1,3 +1,6 @@
+the 'signed' keyword is an abomination added by ansi. fuck 'em.
+anonymous enums do what exactly? right now, they break.
+
 verify that nested macros work.
 
 #define	FOO(x,y)	bar(x,y)
