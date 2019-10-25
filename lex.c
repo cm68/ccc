@@ -597,7 +597,7 @@ gettoken()
         /* see if the character has an '=' appended.  this can be an operator */
         if (curchar == '=') {
             t = lookupc(eq_able, c);
-            if (t != 0xff1) {
+            if (t != 0xff) {
                 next.type = eqtok[t];
                 advance();
             }
@@ -682,7 +682,6 @@ int
 readcppconst()
 {
     long val;
-    struct expr *e;
     char savedtflags = tflags;
     struct token save;
 
@@ -694,13 +693,7 @@ readcppconst()
      */
     tflags = ONELINE | CPPFUNCS;
 
-    e = parse_expr(PRI_ALL, 0);
-    if (!(e->flags & E_CONST)) {
-        err (ER_C_CE);
-        return 0;
-    }
-    val = e->v;
-    freeexpr(e);
+    val = parse_const();
     tflags = savedtflags;
     bcopy(&save, &cur, sizeof(cur));
     return val;

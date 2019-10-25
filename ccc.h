@@ -61,6 +61,7 @@ struct expr {
 extern struct expr *parse_expr(char priority, struct stmt *);
 extern struct expr *new_expr(char op);
 extern void destroy_expr(struct expr *e);
+extern int parse_const();
 #ifdef DEBUG
 extern void dump_expr(struct expr *e);
 #endif
@@ -148,6 +149,7 @@ struct type {
 #define	TF_ARRAY		0x20
 #define	TF_FLOAT		0x40
 
+extern struct type *getbasetype();
 extern struct type *new_type(char *name, namespace_t space, struct type *sub);
 extern void destroy_type(struct type *t);
 extern struct type *lookup_type(char *name, namespace_t space);
@@ -181,6 +183,8 @@ extern struct name *lookup_element(char *name, struct type *t);
 #ifdef DEBUG
 extern void dump_name(struct name *s);
 #endif
+
+void parse();
 
 /* kw.c */
 extern unsigned char cppkw[];

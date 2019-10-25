@@ -160,7 +160,7 @@ main(int argc, char **argv)
     while (argc--) {
         process(*argv++);
     }
-
+    return 0;
 }
 
 /*

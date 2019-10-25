@@ -412,5 +412,25 @@ cfold(struct expr *e) {
 }
 
 /*
+ * parse an expression that must yeild a constant. 
+ * used for array declarations and CPP stuff
+ */
+int
+parseconst()
+{
+    struct expr *e;
+    int val;
+
+    e = parse_expr(PRI_ALL, 0);
+    if (!(e->flags & E_CONST)) {
+        err (ER_C_CE);
+        return 0;
+    }
+    val = e->v;
+    destroy_expr(e);
+    return val;
+}
+
+/*
  * vim: tabstop=4 shiftwidth=4 expandtab:
  */

@@ -7,15 +7,15 @@
 struct name *
 declare(struct type **btp)
 {
-    struct var *v;
+    struct name *v;
     struct type *t, *prefix, *rt;
 
     /*
      * this will be primitive, enum, struct/union 
      */
     t = getbasetype();
-    if (c && *btp) {
-        err(ER_P_DT);
+    if (t && *btp) {
+        err(ER_T_DT);
         t = 0;
     }
     if (t) {
@@ -25,16 +25,17 @@ declare(struct type **btp)
 
     while (cur.type == STAR) {
         gettoken();
-        prefix = maketype(0, TK_PTR, prefix);
+        prefix = new_type(0, TYPE_DEF, prefix);
+        prefix->flags = TF_POINTER;
     }
 
     if (cur.type == LPAR) {
         gettoken();
         rt = 0;
         v = declare(&rt);       // recurse
-        need(RPAR, RPAR, ER_P_DP);
+        need(RPAR, RPAR, ER_D_DP);
         if (*btp && rt) {
-            err(ER_P_DT);
+            err(ER_T_DT);
             rt = 0;
         }
         if (rt && !v) {
@@ -55,16 +56,16 @@ declare(struct type **btp)
 
     if (cur.type == SYM) {      // symbol name
         if (c) {
-            err(ER_P_MV);
+            err(ER_D_MV);
         }
-        v = makevar(strdup(symbuf, prefix, 0));
+        v = new_name(strdup(strbuf, prefix, SYMBOL));
         gettoken();
         if (cur.type == COLON) {
             gettoken();
             if (cur.type != NUMBER) {
-                err(ER_P_BD);
+                err(ER_D_BD);
             } else if (numbervalue > MAXBITS) {
-                err(ER_P_BM);
+                err(ER_D_BM);
             } else {
                 v->flags |= V_BITFIELD;
                 v->width = numbervalue;
@@ -75,13 +76,13 @@ declare(struct type **btp)
 
     while (cur.type == LBRACK) {        // array
         gettoken();
-        postfix = maketype(0, TK_ARRAY, t);
-        t = postfix;
+        t = new_type(0, TYPE_DEF, t);
+        t->flags = T_ARRAY;
         if (cur.type == RBRACK) {
             t->len = -1;
             t->flags |= T_INCOMPLETE;
         } else {
-            t->len = getconst();
+            t->len = parse_const();
         }
         need(RBRACK, RBRACK, ER_P_AD);
     }
@@ -93,7 +94,7 @@ declare(struct type **btp)
             err(ER_P_FA);
             postfix = 0;
         }
-        postfix = maketyoe(0, TK_FUNC, 0);
+        postfix = new_type(0, SYMBOL, 0);
         while (cur.type != RPAR) {
             freetype(t);
             t = v;
@@ -169,7 +170,6 @@ declare(struct type **btp)
         tp = &(*tp)->next;
     }
     tp = prefix;
-    normalizetype(&v->type);
     return v;
 }                               // declare
 

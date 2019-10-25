@@ -194,7 +194,8 @@ makestmt(char op, struct expr *left) {
 	return st;
 }
 
-void parsefunc(struct name *f) {
+void 
+parsefunc(struct name *f) {
 	// v->body = statement(0);
 	// v->body->flags = S_FUNC;
 }
@@ -222,7 +223,8 @@ char *sclass_bitdefs[] = { "EXTERN", "REGISTER", "STATIC", "CONST", "VOLATILE",
  *
  * how this actually resolves into a storage space is a code generator issue
  */
-unsigned char parse_sclass() {
+unsigned char 
+parse_sclass() {
 	int ret = 0;
 	int bit;
 
@@ -280,7 +282,8 @@ unsigned char parse_sclass() {
 /*
  * read a declaration
  */
-void declaration() {
+void 
+declaration() {
 	struct type *base;
 	struct name *n;
 	struct initial *i;
@@ -329,13 +332,15 @@ blockname() {
 	return strdup(bnbuf);
 }
 
-void block() {
+void 
+block() {
 }
 
 /*
  * global level parse
  */
-void parse() {
+void 
+parse() {
 	push_scope("global");
 	while (cur.type != E_O_F) {
 		declaration();
