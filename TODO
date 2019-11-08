@@ -19,3 +19,26 @@ make a bitmap with 128 entries:
 single bit bitfields in a struct should be efficient ways to handle flags.
 for example, symbol visibility: if (sym->visible) { emit("extern "); }:
 ld iy, sym ; bit 4, (iy+9) ; jr foo
+
+faster/smaller, new scope/symbol space management:
+
+symbols are stored in an array, and are marked not by a pointer, but by a index.
+index 0 is the first global, which grows up.  locals are negative, and grow down.
+each symbol has a scope level.  when a block is opened, the level is incremented,
+and when the block is closed, the level is decremented.
+lookups start from the most recent local and go to the last global.
+
+names are stored as fixed length strings, and start with a hash, length, and data.
+only N (12? 10?) bytes of name data are stored, in an attempt to get the symbol
+table down to 16 bytes.
+
+statics are global in storage, but lexically scoped.
+so, when they go out of scope, they become unreachable.
+they get synthetic global names.
+
+struct symbol {
+	char hash;
+	char length;
+	char name[NAMELEN];
+	type_t *type;
+	char level;

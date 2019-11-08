@@ -55,10 +55,10 @@ declare(struct type **btp)
     }
 
     if (cur.type == SYM) {      // symbol name
-        if (c) {
+        if (v) {
             err(ER_D_MV);
         }
-        v = new_name(strdup(strbuf, prefix, SYMBOL));
+        v = new_name(strdup(strbuf), prefix, SYMBOL);
         gettoken();
         if (cur.type == COLON) {
             gettoken();
