@@ -174,7 +174,11 @@ struct name {
     int width;
     struct expr *init;      // value of constant or initializer
     struct stmt *body;      // function body
+    int flags;
+#define V_BITFIELD  0x01
 };
+
+#define MAXBITS 32          // maximum size of bitfield
 
 extern struct name *new_name(char *name, struct type *t, namespace_t space);
 extern void destroy_name(struct name *s);

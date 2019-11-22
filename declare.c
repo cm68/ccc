@@ -8,7 +8,7 @@ struct name *
 declare(struct type **btp)
 {
     struct name *v;
-    struct type *t, *prefix, *rt;
+    struct type *t, *prefix, *postfix, *rt;
 
     /*
      * this will be primitive, enum, struct/union 
@@ -64,11 +64,11 @@ declare(struct type **btp)
             gettoken();
             if (cur.type != NUMBER) {
                 err(ER_D_BD);
-            } else if (numbervalue > MAXBITS) {
+            } else if (cur.v.numeric > MAXBITS) {
                 err(ER_D_BM);
             } else {
                 v->flags |= V_BITFIELD;
-                v->width = numbervalue;
+                v->width = cur.v.numeric;
             }
             gettoken();
         }
@@ -77,14 +77,14 @@ declare(struct type **btp)
     while (cur.type == LBRACK) {        // array
         gettoken();
         t = new_type(0, TYPE_DEF, t);
-        t->flags = T_ARRAY;
+        t->flags = TF_ARRAY;
         if (cur.type == RBRACK) {
-            t->len = -1;
-            t->flags |= T_INCOMPLETE;
+            t->count = -1;
+            t->flags |= TF_INCOMPLETE;
         } else {
-            t->len = parse_const();
+            t->count = parse_const();
         }
-        need(RBRACK, RBRACK, ER_P_AD);
+        need(RBRACK, RBRACK, ER_D_AD);
     }
 
 #ifdef notdef
@@ -154,22 +154,27 @@ declare(struct type **btp)
 
     if ((cur.type != ASSIGN) && (cur.type != BEGIN) &&
         (cur.type != COMMA) && (cur.type != SEMI)) {
-        err(ER_P_UT);
+        printf("token: %d 0x%x '%c'\n", cur.type, cur.type, cur.type);
+        err(ER_D_UT);
         v = 0;
     }
     if (!v) {
         return 0;
     }
-    tp = &v->type;
-    *tp = rt;
-    while (*tp && (*tp)->sub) {
-        tp = &(*tp)->next;
+
+    /*
+     * prepend the prefix and append the postfix
+     */
+    t = v->type;
+    t = rt;
+    while (t && t->sub) {
+        t = t->sub;
     }
-    *tp = postfix;
-    while (*tp && (*tp)->sub) {
-        tp = &(*tp)->next;
+    t = postfix;
+    while (t && t->sub) {
+        t = t->sub;
     }
-    tp = prefix;
+    t = prefix;
     return v;
 }                               // declare
 

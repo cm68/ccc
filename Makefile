@@ -9,6 +9,7 @@
 # we self-generate some of the files to keep things consistent
 #
 DEFINES= -DLEXTEST -DDEBUG
+DEFINES= -DDEBUG
 
 CC = gcc
 #CC = sdcc

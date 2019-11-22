@@ -24,13 +24,13 @@ makeexpr(char op, struct expr *left)
  * this needs to not leak memory
  */
 void
-freeexpr(struct expr *e)
+destroy_expr(struct expr *e)
 {
 	if (e->left) {
-		freeexpr(e->left);
+		destroy_expr(e->left);
 	}
 	if (e->right) {
-		freeexpr(e->left);
+		destroy_expr(e->left);
 	}
 	free(e);
 }
@@ -416,7 +416,7 @@ cfold(struct expr *e) {
  * used for array declarations and CPP stuff
  */
 int
-parseconst()
+parse_const()
 {
     struct expr *e;
     int val;

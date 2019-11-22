@@ -107,14 +107,6 @@ lookup_element(char *name, struct type *t)
 	return 0;
 }
 
-/*
- * add an enum element or a structure element to a type
- */
-struct name *
-new_element(char *name, struct type *t)
-{
-}
-
 char *type_bitdefs[] = {
 		"AGGREGATE", "INCOMPLETE", "UNSIGNED", "NORMALIZED", "POINTER", "ARRAY", "FLOAT"
 };
@@ -145,14 +137,26 @@ dump_name(struct name *n)
 #endif
 
 /*
+ * add an enum element or a structure element to a type
+ * just allocate. the caller needs to fill out struct
+ */
+struct name *
+alloc_name(char *name)
+{
+	struct name *n;
+	n = malloc(sizeof(*n));
+	n->name = strdup(name);
+	return (n);
+}
+
+/*
  * add a name to the current scope, tagged with attributes
  */
 struct name *
 new_name(char *name, struct type *t, namespace_t space)
 {
 	struct name *n;
-	n = malloc(sizeof(*n));
-	n->name = strdup(name);
+    n = alloc_name(name);
 	n->space = space;
 	n->type = t;	
 	n->next = local->names;
@@ -232,6 +236,8 @@ new_type(char *name, namespace_t space, struct type *sub)
     case ENUMTAG:
         t->flags = TF_UNSIGNED;
         t->size = 1;
+        break;
+    default:
         break;
     }
     return t;
@@ -487,7 +493,7 @@ getbasetype()
                 recover(ER_P_ET, END);
                 continue;
             }
-            n = new_element(strdup(strbuf), t);
+            n = alloc_name(strbuf);
             n->type = lookup_type(ENUM_TYPE, TYPE_DEF)->type;
             n->space = ENUMELEMENT;
             n->next = t->elem;
