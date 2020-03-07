@@ -545,7 +545,7 @@ gettoken()
             advance();
             continue;
         }
-        if ((curchar == ' ') || (curchar == '\n')) {
+        if ((curchar == ' ') || (curchar == '\t') || (curchar == '\n')) {
             advance();
             continue;
         }

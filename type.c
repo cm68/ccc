@@ -254,13 +254,13 @@ static struct {
         short size;
         char flags;
 } basictype[] = {
-	{ "_char_", 1, 0 },
-	{ "_short_", 2, 0 },
+	{ "_char_", 1, 0 },						// 0
+	{ "_short_", 2, 0 },					
 	{ "_long_", 4, 0 },
-	{ "_uchar_", 1, TF_UNSIGNED },
+	{ "_uchar_", 1, TF_UNSIGNED },			// 3
 	{ "_ushort_", 2, TF_UNSIGNED },
 	{ "_ulong_", 4, TF_UNSIGNED },
-	{ "_void_", 0, 0 },
+	{ "_void_", 0, 0 },						// 6
 	{ "_boolean_", 1, TF_UNSIGNED },
 	{ "_float_", 4, TF_FLOAT },
 	{ "_double_", 8, TF_FLOAT },
@@ -279,7 +279,7 @@ initbasictype()
     }
 }
 
-#define UN_SIGNED   4
+#define UN_SIGNED   3
 #define OTHERS      6
 #define BYTES_1     0
 #define BYTES_2     1
@@ -342,7 +342,6 @@ parsebasic()
 		case BOOLEAN:
 			misc++;
 		case VOID:
-			misc++;
 			gettoken();
 			if (length + unsignedness) {
 				err(ER_T_PT);

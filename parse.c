@@ -343,6 +343,9 @@ void
 parse() {
 	push_scope("global");
 	while (cur.type != E_O_F) {
+		while (cur.type == NONE) {
+			gettoken();
+		}
 		declaration();
 	}
 	pop_scope();
