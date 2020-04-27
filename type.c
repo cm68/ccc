@@ -206,7 +206,7 @@ struct type *
 new_type(char *name, namespace_t space, struct type *sub)
 {
     struct type *t;
-    struct name *n;
+    struct name *n = 0;
 
     if (name) {
 		n = lookup_name(name, space);
@@ -240,6 +240,10 @@ new_type(char *name, namespace_t space, struct type *sub)
     default:
         break;
     }
+	if (n) {
+		n->type = t;
+		t->name = n;
+	}
     return t;
 }
 
@@ -267,7 +271,7 @@ static struct {
 };
 
 void
-initbasictype()
+inittypes()
 {
     char i;
     struct type *t;

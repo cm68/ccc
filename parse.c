@@ -310,7 +310,7 @@ declaration() {
             }
         }
         if (cur.type == ASSIGN) {
-            do_initializar();
+            do_initializer();
         }
 #endif
 		if (cur.type == COMMA) {
@@ -342,6 +342,7 @@ block() {
 void 
 parse() {
 	push_scope("global");
+	inittypes();
 	while (cur.type != E_O_F) {
 		while (cur.type == NONE) {
 			gettoken();
