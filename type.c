@@ -129,7 +129,7 @@ dump_name(struct name *n)
 	if (!n) { printf("null\n"); return; }
 	printf("%s (%s)\n", n->name, namespace_name[n->space]);
 	if (n->type) {
-		printf("\ttype: %s\n", n->type->name->name);
+		printf("\ttype: %s %s\n", n->type->name->name, n->type->typename);
 	}
     printf("\toffset: %d bitoff: %d width: %d sclass: %s\n",
         n->offset, n->bitoff, n->width, bitdef(n->sclass, sclass_bitdefs));
@@ -243,6 +243,7 @@ new_type(char *name, namespace_t space, struct type *sub)
 	if (n) {
 		n->type = t;
 		t->name = n;
+        t->typename = n->name;
 	}
     return t;
 }

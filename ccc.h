@@ -135,6 +135,7 @@ extern char *namespace_name[];
  */
 struct type {
 	struct name *name;		// the type name
+    char *typename;         // just a copy - XXX
 	int size;		    	// how big is one of me
 	int count;		    	// if we are an array, how many
 	struct name *elem;		// element list
@@ -163,13 +164,13 @@ extern void dump_type(struct type *t);
  * this is a container for types, functions, variables, constants, and fields
  */
 struct name {
-	char *name;
-	namespace_t space;
-	struct name *next;		// all names in same container
-	struct type *type;
-	char visibility;
-	char sclass;
-	int offset;				// if inside a struct
+    char *name;
+    namespace_t space;
+    struct name *next;		// all names in same container
+    struct type *type;
+    char visibility;
+    char sclass;
+    int offset;				// if inside a struct
     int bitoff;
     int width;
     struct expr *init;      // value of constant or initializer

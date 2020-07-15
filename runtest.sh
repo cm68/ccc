@@ -27,8 +27,12 @@ for t in ${TESTS[*]} ; do
 	cat $t
         echo "======== run ========"
 	echo ./cc1 -v $VERBOSE -E $t
-	./cc1 -DTEST=$t -I. -v $VERBOSE -E $t
-	echo ""
+	if ! ./cc1 -DTEST=$t -I. -v $VERBOSE -E $t ; then
+		echo "file ./cc1" > .gdbargs
+		echo "set args -DTEST=$t -I. -V $verbose -E $t" >> .gdbargs
+		echo "exited code $?"
+		exit
+	fi
 	echo "========= object ========="
 	cat $(echo ${t%.c}.i)
 	echo ""

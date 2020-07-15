@@ -3,79 +3,96 @@
 /*
  * we are in a parse state where we want to process declarations.
  * any names and types we declare go into the current scope
+ *
+ * the grammar handled:
+ * declaration: basetype decl
+ * declarations: declaration , declarations
+ * decl: ( decl )
+ * decl: * decl
+ * decl: decl [ bounds ]
+ * decl: decl [ ]
+ * decl: name
+ * decl: name : fieldwidth
+ * decl: decl ( declarations )
+ *
+ * what we end up with is a name with an attached type inside this scope.
+ * an example
+ * char **foo[20] ->
+ * foo -> array [20] -> pointer to -> pointer to -> char
  */
 struct name *
-declare(struct type **btp)
+declare(struct type **basetype)
 {
-    struct name *v;
-    struct type *t, *prefix, *postfix, *rt;
+    struct name *symbol;
+    struct type *prefix = 0;
+    struct type *postfix = 0;
+    struct type *t;
 
     /*
-     * this will be primitive, enum, struct/union 
+     * this will be primitive, enum, struct/union or a typedef
      */
-    t = getbasetype();
-    if (t && *btp) {
-        err(ER_T_DT);
-        t = 0;
+    if (!*basetype) {
+        *basetype = getbasetype();
     }
-    if (t) {
-        *btp = t;
-    }
-    prefix = *btp;
+    prefix = *basetype;
 
-    while (cur.type == STAR) {
-        gettoken();
+    // decl: * decl
+    // the pointer denotation binds less tightly than others
+    while (match(STAR)) {
         prefix = new_type(0, TYPE_DEF, prefix);
         prefix->flags = TF_POINTER;
     }
 
-    if (cur.type == LPAR) {
-        gettoken();
-        rt = 0;
-        v = declare(&rt);       // recurse
+    // decl: ( decl )
+    if (match(LPAR)) {
+        t = 0;
+        symbol = declare(&t);       // recurse
         need(RPAR, RPAR, ER_D_DP);
-        if (*btp && rt) {
+        if (*basetype && t) {
             err(ER_T_DT);
-            rt = 0;
+            t = 0;
         }
-        if (rt && !v) {
-            *btp = rt;
+        if (t && !symbol) {
+            *basetype = t;
         }
     }
+#ifdef notdef // not sure what this code is for
     if (cur.type == RPAR) {
-        if (!v) {
+        if (!symbol) {
             for (t = prefix; t && t->sub; t = t->sub) {
                 if (t) {
-                    t->sub = *btp;
-                    *btp = prefix;
+                    t->sub = *basetype;
+                    *basetype = prefix;
                 }
             }
         }
         return v;
     }
+#endif
 
+    // decl: name
     if (cur.type == SYM) {      // symbol name
-        if (v) {
+        if (symbol) {           // there can only be one
             err(ER_D_MV);
         }
-        v = new_name(strdup(strbuf), prefix, SYMBOL);
+        symbol = new_name(strdup(strbuf), prefix, SYMBOL);
         gettoken();
-        if (cur.type == COLON) {
-            gettoken();
+        // decl: name : fieldwidth
+        if (match(COLON)) {
             if (cur.type != NUMBER) {
                 err(ER_D_BD);
             } else if (cur.v.numeric > MAXBITS) {
                 err(ER_D_BM);
             } else {
-                v->flags |= V_BITFIELD;
-                v->width = cur.v.numeric;
+                symbol->flags |= V_BITFIELD;
+                symbol->width = cur.v.numeric;
             }
             gettoken();
         }
     }
 
-    while (cur.type == LBRACK) {        // array
-        gettoken();
+    // decl: decl [ bounds ]
+    while (match(LBRACK)) {
         t = new_type(0, TYPE_DEF, t);
         t->flags = TF_ARRAY;
         if (cur.type == RBRACK) {
@@ -152,21 +169,27 @@ declare(struct type **btp)
     }                           // if cur.type == LPAR
 #endif
 
-    if ((cur.type != ASSIGN) && (cur.type != BEGIN) &&
-        (cur.type != COMMA) && (cur.type != SEMI)) {
+    /* declaration terminators */
+    switch (cur.type) {
+    case ASSIGN:
+    case BEGIN:
+    case COMMA:
+    case SEMI:
+        break;
+    default: 
         printf("token: %d 0x%x '%c'\n", cur.type, cur.type, cur.type);
         err(ER_D_UT);
-        v = 0;
+        symbol = 0;
     }
-    if (!v) {
+
+    if (!symbol) {  // we just had a type specifier, but no symbol
         return 0;
     }
 
     /*
      * prepend the prefix and append the postfix
      */
-    t = v->type;
-    t = rt;
+    t = symbol->type;
     while (t && t->sub) {
         t = t->sub;
     }
@@ -175,7 +198,7 @@ declare(struct type **btp)
         t = t->sub;
     }
     t = prefix;
-    return v;
+    return symbol;
 }                               // declare
 
 /*
