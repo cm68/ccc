@@ -3,122 +3,107 @@
 /*
  * we are in a parse state where we want to process declarations.
  * any names and types we declare go into the current scope
- *
- * the grammar handled:
- * declaration: basetype decl
- * declarations: declaration , declarations
- * decl: ( decl )
- * decl: * decl
- * decl: decl [ bounds ]
- * decl: decl [ ]
- * decl: name
- * decl: name : fieldwidth
- * decl: decl ( declarations )
- *
- * what we end up with is a name with an attached type inside this scope.
- * an example
- * char **foo[20] ->
- * foo -> array [20] -> pointer to -> pointer to -> char
  */
 struct name *
-declare(struct type **basetype)
+declare(struct type **btp)
 {
-    struct name *symbol;
-    struct type *prefix = 0;
-    struct type *postfix = 0;
-    struct type *t;
+    struct name *nm, *arg;
+    struct type *t, *prefix, *suffix, *rt;
+    int i;
+
+    nm = 0;
 
     /*
-     * this will be primitive, enum, struct/union or a typedef
+     * this will be primitive, enum, struct/union 
      */
-    if (!*basetype) {
-        *basetype = getbasetype();
-    }
-    prefix = *basetype;
-
-    // decl: * decl
-    // the pointer denotation binds less tightly than others
-    while (match(STAR)) {
-        prefix = new_type(0, TYPE_DEF, prefix);
-        prefix->flags = TF_POINTER;
-    }
-
-    // decl: ( decl )
-    if (match(LPAR)) {
+    t = getbasetype();
+    if (t && *btp) {
+        err(ER_T_DT);
         t = 0;
-        symbol = declare(&t);       // recurse
+    }
+    if (t) {
+        *btp = t;
+    }
+    prefix = *btp;
+
+    while (cur.type == STAR) {
+        gettoken();
+        prefix = get_type(TF_POINTER, prefix, 0, 0);
+    }
+
+    // parenthesed type definition does precedence
+    if (cur.type == LPAR) {
+        gettoken();
+        rt = 0;
+        nm = declare(&rt);       // recurse
         need(RPAR, RPAR, ER_D_DP);
-        if (*basetype && t) {
+        if (*btp && rt) {
             err(ER_T_DT);
-            t = 0;
+            rt = 0;
         }
-        if (t && !symbol) {
-            *basetype = t;
+        if (rt && !nm) {
+            *btp = rt;
         }
     }
-#ifdef notdef // not sure what this code is for
     if (cur.type == RPAR) {
-        if (!symbol) {
+        if (!nm) {
             for (t = prefix; t && t->sub; t = t->sub) {
                 if (t) {
-                    t->sub = *basetype;
-                    *basetype = prefix;
+                    t->sub = *btp;
+                    *btp = prefix;
                 }
             }
         }
-        return v;
+        return nm;
     }
-#endif
-
-    // decl: name
     if (cur.type == SYM) {      // symbol name
-        if (symbol) {           // there can only be one
+        if (nm) {
             err(ER_D_MV);
         }
-        symbol = new_name(strdup(strbuf), prefix, SYMBOL);
+        nm = new_name(strdup(strbuf), var, prefix, 0);
         gettoken();
-        // decl: name : fieldwidth
-        if (match(COLON)) {
+        if (cur.type == COLON) {
+            gettoken();
             if (cur.type != NUMBER) {
                 err(ER_D_BD);
             } else if (cur.v.numeric > MAXBITS) {
                 err(ER_D_BM);
             } else {
-                symbol->flags |= V_BITFIELD;
-                symbol->width = cur.v.numeric;
+                nm->flags |= V_BITFIELD;
+                nm->width = cur.v.numeric;
             }
             gettoken();
         }
     }
 
-    // decl: decl [ bounds ]
-    while (match(LBRACK)) {
-        t = new_type(0, TYPE_DEF, t);
-        t->flags = TF_ARRAY;
+    while (cur.type == LBRACK) {        // array
+        gettoken();
         if (cur.type == RBRACK) {
-            t->count = -1;
-            t->flags |= TF_INCOMPLETE;
+            i = -1;
         } else {
-            t->count = parse_const();
+            i = parse_const();
         }
+        t = get_type(TF_ARRAY, t, 0, i);
         need(RBRACK, RBRACK, ER_D_AD);
     }
 
-#ifdef notdef
     if (cur.type == LPAR) {     // ( <func_arg>[,<func_arg>]*. )
         gettoken();
-        if (postfix) {
-            err(ER_P_FA);
-            postfix = 0;
+        if (suffix) {
+            err(ER_D_FA);
+            suffix = 0;
         }
-        postfix = new_type(0, SYMBOL, 0);
+
+        suffix = get_type(0, func, 0);
         while (cur.type != RPAR) {
+#ifdef notdef
             freetype(t);
             t = v;
+#endif
             a = declare(&t);
             if (a) {
-                a->next = postfix->elem;
-                postfix->elem = a;
+                a->next = suffix->elem;
+                suffix->elem = a;
                 a->flags |= V_FUNARG | V_LOCAL;
             }
             if (cur.type == COMMA) {
@@ -131,6 +116,7 @@ declare(struct type **basetype)
             }
         }
         gettoken();
+#ifdef notdef
         /*
          * old style parameter declarartion:
          * foo(a,b) int a; int b;
@@ -146,7 +132,7 @@ declare(struct type **basetype)
                     err(ER_P_FM);
                     break;
                 }
-                b = elementvar(a->name, postfix);
+                b = elementvar(a->name, suffix);
                 if (b->type) {
                     err(ER_P_FO);
                 }
@@ -165,40 +151,34 @@ declare(struct type **basetype)
                 break;
             }
         }
-        assign_arg_off(postfix, 4);
-    }                           // if cur.type == LPAR
+        assign_arg_off(suffix, 4);
 #endif
+    }                           // if cur.type == LPAR
 
-    /* declaration terminators */
-    switch (cur.type) {
-    case ASSIGN:
-    case BEGIN:
-    case COMMA:
-    case SEMI:
-        break;
-    default: 
+    if ((cur.type != ASSIGN) && (cur.type != BEGIN) &&
+        (cur.type != COMMA) && (cur.type != SEMI)) {
         printf("token: %d 0x%x '%c'\n", cur.type, cur.type, cur.type);
         err(ER_D_UT);
-        symbol = 0;
+        nm = 0;
     }
-
-    if (!symbol) {  // we just had a type specifier, but no symbol
+    if (!v) {
         return 0;
     }
 
     /*
-     * prepend the prefix and append the postfix
+     * prepend the prefix and append the suffix
      */
-    t = symbol->type;
+    t = v->type;
+    t = rt;
     while (t && t->sub) {
         t = t->sub;
     }
-    t = postfix;
+    t = suffix;
     while (t && t->sub) {
         t = t->sub;
     }
     t = prefix;
-    return symbol;
+    return v;
 }                               // declare
 
 /*

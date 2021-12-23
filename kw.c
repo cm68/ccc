@@ -126,11 +126,10 @@ kwlook(unsigned char *str, unsigned char *table)
 {
 	unsigned char c;
 
-    if (VERBOSE(V_KW)) {
-        printf("kwlook(%s)\n", str);
-    }
+//    printf("kwlook(%s)\n", str);
 	while (*str) {
 		c = *table;
+//       printf("table %c %x\n", c & 0x7f, c);
 		if (c == 0xff) {
             return 0;
 		}

@@ -1,91 +1,292 @@
 /*
  * we want a squeaky-clean type system
- * this compiler has an agenda to do operations in as small an integer as possible.
- * this means that we might even get the wrong answer sometimes.  we don't do the standard
- * thing of doing word arithmetic on bytes just so we don't get overflows.
- * that's slow and big.  don't be slow and big.
+ * this compiler has an agenda to do operations in as small an integer as 
+ * possible. this means that we might even get the wrong answer sometimes.  
+ * we don't do the standard thing of doing word arithmetic on bytes just 
+ * so we don't get overflows. that's slow and big.  don't be slow and big.
+ *
+ * there is no redundancy in the type tree, so two variables of the same
+ * type have identical type pointers, even if one of them was declared 
+ * with a typedef.
+ *
+ * names go out of scope, but types don't, so we don't need a ref count.
+ *
+ * we to add the primitive types to the global scope.
+ *
+ * the purpose of this is to unify basic type and typedef handling
+ * example: typedef unsigned char byte 
+ *          gets a name entry that points at the primitive
+ * 
+ * scope is handled by pushing names onto the name stack for open, 
+ * and popping for close.  very simple and fast
+ *
+ * some example types:
+ * int f          - short
+ * int *f         - pointer -> short
+ * int *f[4]      - array(4) -> pointer -> short
+ * int f()        - function -> short
+ * int *f()       - function -> pointer -> short
+ * int (*f)()     - pointer -> function -> short
+ * int (*f[4])()  - array(4) -> pointer -> function -> short
+ * int *(*f)()    - pointer -> function -> pointer -> short
+ *
+ * some other interesting cases:
+ * int *pi, i;
+ * typedef int *pi;  pi *ppi, pi; 
  */
+
 
 #include "ccc.h"
 
+char *kindname[] = { 
+    "prim", "etag", "stag", "utag", "vari", "elem", "tdef"
+};
+struct type *types;
+
+/*
+ * we are in a parse state where we want to process declarations.
+ * any names and types we declare go into the current scope
+ */
+struct name *
+declare(struct type **btp)
+{
+    struct name *nm, *arg;
+    struct type *t, *prefix, *suffix, *rt;
+    int i;
+
+    nm = 0;
+
+    /*
+     * this will be primitive, enum, struct/union 
+     */
+    t = getbasetype();
+    if (t && *btp) {
+        err(ER_T_DT);
+        t = 0;
+    }
+    if (t) {
+        *btp = t;
+    }
+    prefix = *btp;
+
+    while (cur.type == STAR) {
+        gettoken();
+        prefix = get_type(TF_POINTER, prefix, 0, 0);
+    }
+
+    // parenthesed type definition does precedence
+    if (cur.type == LPAR) {
+        gettoken();
+        rt = 0;
+        nm = declare(&rt);       // recurse
+        need(RPAR, RPAR, ER_D_DP);
+        if (*btp && rt) {
+            err(ER_T_DT);
+            rt = 0;
+        }
+        if (rt && !nm) {
+            *btp = rt;
+        }
+    }
+    if (cur.type == RPAR) {
+        if (!nm) {
+            for (t = prefix; t && t->sub; t = t->sub) {
+                if (t) {
+                    t->sub = *btp;
+                    *btp = prefix;
+                }
+            }
+        }
+        return nm;
+    }
+    if (cur.type == SYM) {      // symbol name
+        if (nm) {
+            err(ER_D_MV);
+        }
+        nm = new_name(strdup(strbuf), var, prefix, 0);
+        gettoken();
+        if (cur.type == COLON) {
+            gettoken();
+            if (cur.type != NUMBER) {
+                err(ER_D_BD);
+            } else if (cur.v.numeric > MAXBITS) {
+                err(ER_D_BM);
+            } else {
+                nm->flags |= V_BITFIELD;
+                nm->width = cur.v.numeric;
+            }
+            gettoken();
+        }
+    }
+
+    while (cur.type == LBRACK) {        // array
+        gettoken();
+        if (cur.type == RBRACK) {
+            i = -1;
+        } else {
+            i = parse_const();
+        }
+        t = get_type(TF_ARRAY, t, 0, i);
+        need(RBRACK, RBRACK, ER_D_AD);
+    }
+
+    if (cur.type == LPAR) {     // ( <func_arg>[,<func_arg>]*. )
+        gettoken();
+        if (suffix) {
+            err(ER_D_FA);
+            suffix = 0;
+        }
+        suffix = get_type(0, prefix, 0);
+        while (cur.type != RPAR) {
+#ifdef notdef
+            freetype(t);
+            t = v;
+#endif
+            a = declare(&t);
+            if (a) {
+                a->next = suffix->elem;
+                suffix->elem = a;
+                a->flags |= V_FUNARG | V_LOCAL;
+            }
+            if (cur.type == COMMA) {
+                gettoken();
+                continue;
+            }
+            if (cur.type != RPAR) {
+                err(ER_P_FA);
+                break;
+            }
+        }
+        gettoken();
+#ifdef notdef
+        /*
+         * old style parameter declarartion:
+         * foo(a,b) int a; int b;
+         */
+        if ((cur.type != BEGIN) && (cur.type != SEMI)) {
+            if (t) {
+                freetype(t);
+            }
+            t = 0;
+            while (cur.type != BEGIN) {
+                a = declare(&t);
+                if (!a) {
+                    err(ER_P_FM);
+                    break;
+                }
+                b = elementvar(a->name, suffix);
+                if (b->type) {
+                    err(ER_P_FO);
+                }
+                b->type = a->type;
+                if (cur.type == COMMA) {
+                    gettoken();
+                    continue;
+                }
+                if (cur.type == SEMI) {
+                    freetype(t);
+                    t = 0;
+                    gettoken();
+                    continue;
+                }
+                err(ER_P_FM);
+                break;
+            }
+        }
+        assign_arg_off(suffix, 4);
+#endif
+    }                           // if cur.type == LPAR
+
+    if ((cur.type != ASSIGN) && (cur.type != BEGIN) &&
+        (cur.type != COMMA) && (cur.type != SEMI)) {
+        printf("token: %d 0x%x '%c'\n", cur.type, cur.type, cur.type);
+        err(ER_D_UT);
+        nm = 0;
+    }
+    if (!v) {
+        return 0;
+    }
+
+    /*
+     * prepend the prefix and append the suffix
+     */
+    t = v->type;
+    t = rt;
+    while (t && t->sub) {
+        t = t->sub;
+    }
+    t = suffix;
+    while (t && t->sub) {
+        t = t->sub;
+    }
+    t = prefix;
+    return v;
+}                               // declare
+
+/*
+ * vim: tabstop=4 shiftwidth=4 expandtab:
+ */
 #define ENUM_TYPE   "_uchar_"
 
-struct scope *global;
-struct scope *local;
-
 /*
- * a scope is a container for names of identifiers and types
- * a declarator like struct foo { int bar; } baz
- * defines 2 names at this scope:  foo and baz.
+ * basic types = 0
+ * global = 1
+ * inner blocks > 1
  */
-void
-push_scope(char *name)
-{
-	struct scope *s;
-	s = malloc(sizeof(*s));
-	s->names = 0;
-	s->name = strdup(name);
-	s->prev = local;
-    local = s;
-}
+int lexlevel;
+
+int lastname;
+int maxnames = 100;
+struct name **names;
 
 /*
- * destroy a scope.
- * deallocate all the symbols and types we defined
- * freeing the global scope is done for each file, discarding everything
+ * free up all the names at a higher scope than here
  */
 void
 pop_scope()
 {
 	struct name *n;
-    struct scope *s = local;
 
-	while ((n = s->names)) {
-        s->names = n->next;
-        destroy_name(n);
-	}
-    free(s->name);
-    if (local == global) {
-    	local = global = 0;
-    } else {
-		local = s->prev;
-    }
-    free(s);
-}
+    lexlevel--;
 
-#ifdef DEBUG
-/*
- * print out a scope's names
- */
-void
-dump_scope(struct scope *s)
-{
-	struct name *n;
+    for (n = names[lastname]; lastname >= 0; lastname--) {
+        if (n->level <= lexlevel)
+            break;
+        names[lastname] = 0;
 
-	printf("dump_scope: ");
-	if (!s) { printf("null\n"); return; }
-	printf("%s\n", s->name);
-	for (n = s->names; n; n = n->next) {
-		dump_name(n);
-	}
-}
+        printf("pop_scope: delete %s%s", 
+            n->is_tag ? "tag:":"", n->name);
+
+        free(n->name);
+#ifdef notdef
+        destroy_expr(n->init);
+        destroy_stmt(n->body);
 #endif
+        free(n);
+    }
+}
+
+void
+push_scope(char *n)
+{
+    lexlevel++;
+}
 
 /*
- * resolve this name into a name struct, applying scope and namespace rules
+ * resolve this name into a name struct
  */
 struct name *
-lookup_name(char *name, namespace_t space)
+lookup_name(char *name, boolean is_tag)
 {
 	struct name *n;
-	struct scope *s;
+    int i;
 
-    // search from current scope going up
-	for (s = local; s; s = s->prev) {
-		for (n = s->names; n; n = n->next) {
-			if ((n->space == space) && (strcmp(name, n->name)) == 0) {
-				return (n);
-			}
+    for (i = lastname; i >= 0; i--) {
+        n = names[i];
+        if ((n->is_tag == is_tag) && 
+            (name[0] == n->name[0]) && 
+            (strcmp(name, n->name) == 0)) {
+	        return (n);
 		}
 	}
 	return 0;
@@ -108,14 +309,10 @@ lookup_element(char *name, struct type *t)
 }
 
 char *type_bitdefs[] = {
-		"AGGREGATE", "INCOMPLETE", "UNSIGNED", "NORMALIZED", "POINTER", "ARRAY", "FLOAT"
+		"AGGREGATE", "INCOMPLETE", "UNSIGNED", 
+        "NORMALIZED", "POINTER", "ARRAY", "FLOAT"
 };
 
-char *namespace_name[] = {
-		"SYMBOL", "TYPEDEF", "ENUMTAG", "ENUMELEMENT", "AGGTAG", "AGGELEMENT"
-};
-
-#ifdef DEBUG
 /*
  * what's in a name
  */
@@ -127,133 +324,60 @@ dump_name(struct name *n)
 
 	printf("dump_name: ");
 	if (!n) { printf("null\n"); return; }
-	printf("%s (%s)\n", n->name, namespace_name[n->space]);
+	printf("%s (%s)\n", n->name, n->is_tag ? "tag" : "decl");
 	if (n->type) {
-		printf("\ttype: %s %s\n", n->type->name->name, n->type->typename);
+		printf("\ttype: %s\n", n->type->name);
 	}
     printf("\toffset: %d bitoff: %d width: %d sclass: %s\n",
         n->offset, n->bitoff, n->width, bitdef(n->sclass, sclass_bitdefs));
 }
-#endif
 
 /*
- * add an enum element or a structure element to a type
- * just allocate. the caller needs to fill out struct
+ * push a name on the symbol list at lexlevel
  */
 struct name *
-alloc_name(char *name)
+new_name(char *name, kind k, struct type *t, boolean is_tag)
 {
 	struct name *n;
+    int i;
+ 
+    if (!names) {
+        names = malloc(sizeof(n) * maxnames); 
+        lastname = -1;
+    }
+    if (lastname == maxnames) {
+        err(ER_D_OF);
+        return (0);
+    }
+
+    // if there already is one of the same space, lose
+    for (i = lastname; i >= 0; i--) {
+        if (names[i]->level < lexlevel) {
+            break;
+        }
+        n = names[i];
+        if ((n->is_tag == is_tag) && 
+            (name[0] == n->name[0]) && 
+            (strcmp(name, n->name) == 0)) {
+            err(ER_D_DN);
+	        return (0);
+		}
+    }
 	n = malloc(sizeof(*n));
 	n->name = strdup(name);
-	return (n);
-}
-
-/*
- * add a name to the current scope, tagged with attributes
- */
-struct name *
-new_name(char *name, struct type *t, namespace_t space)
-{
-	struct name *n;
-    n = alloc_name(name);
-	n->space = space;
 	n->type = t;	
-	n->next = local->names;
-	local->names = n;
+    n->level = lexlevel;
+    n->is_tag = is_tag;
+    n->kind = k;
+    names[++lastname] = n;
+    printf("new_name: level:%d index:%3d %s %s%s\n", 
+        lexlevel, lastname, 
+        k < sizeof(kindname)/sizeof(kindname[0]) ? kindname[k] : "unkn", 
+        is_tag ? "tag:":"", name);
+
 	return (n);
 }
 
-/*
- * destructors go deep.
- */
-void
-destroy_name(struct name *s)
-{
-	if (!s)
-		return;
-	free(s->name);
-#ifdef notdef
-	destroy_expr(s->init);
-	destroy_stmt(s->body);
-#endif
-}
-
-/*
- * synthetic name creator - return a static buffer that we need to strdup
- * to actually use
- * we'll either pass s or i, never both.
- */
-char *
-makename(char *parent, char *s, int i)
-{
-	static char namebuf[100];
-
-	if (s) {
-		sprintf(namebuf, "%s.%s", parent, s);
-	} else if (i >= 0) {
-		sprintf(namebuf, "%s.%d", parent, i);
-	} else {
-		strcpy(namebuf, "bogus");
-	}
-	return (namebuf);
-}
-
-/*
- * define a new type.
- */
-struct type *
-new_type(char *name, namespace_t space, struct type *sub)
-{
-    struct type *t;
-    struct name *n = 0;
-
-    if (name) {
-		n = lookup_name(name, space);
-		if (n) {
-			t = n->type;
-			if (t) {
-				// could be fleshing out an incomplete structure
-				if (t->flags & TF_AGGREGATE) {
-					return t;
-				}
-				err(ER_T_RT);
-			}
-			// we asked for a type, and got a naked name with no type struct. lose.
-			err(ER_T_PA);
-			return 0;
-		}
-		n = new_name(name, 0, space);
-    }
-    t = malloc(sizeof(*t));
-    t->sub = sub;
-    t->flags = 0;
-
-    switch (space) {
-    case AGGTAG:
-        t->flags = TF_AGGREGATE | TF_INCOMPLETE;
-        break;
-    case ENUMTAG:
-        t->flags = TF_UNSIGNED;
-        t->size = 1;
-        break;
-    default:
-        break;
-    }
-	if (n) {
-		n->type = t;
-		t->name = n;
-        t->typename = n->name;
-	}
-    return t;
-}
-
-/*
- * initially, we don't have any types defined at all.
- * we to add the primitive types to the global scope
- * this is only callable at global scope
- * the bogus name is used so that typedef won't get confused
- */
 static struct {
         char *name;
         short size;
@@ -271,16 +395,57 @@ static struct {
 	{ "_double_", 8, TF_FLOAT },
 };
 
+/*
+ * find this type, or if it does not exist, create it
+ * this is a search of all defined types.
+ * open question:  how should incomplete types be handled
+ *   for structs, it's clear that it gets updated in place.
+ *   for arrays, when it becomes concrete, it should be updated
+ *   typedefs for arrays can't be incomplete
+ */
+struct type *
+get_type(int flags, struct type *sub, struct type *args, int count)
+{
+    struct type *t;
+
+    /* 
+     * search through types to see if we have a permissive match
+     */
+    for (types; t; t = t->next) {
+        if ((t->flags == flags) && (t->sub == sub) && (t->args == args)) {
+            printf("type hit\n");
+            return t;
+        }
+    }
+
+    printf("type miss\n");
+    t = malloc(sizeof(*t));
+    t->sub = sub;
+    t->flags = flags;
+    t->count = count;
+    if (t->count == -1) {
+        t->flags |= TF_INCOMPLETE;
+    }
+    t->next = types;
+    types = t;
+    return t;
+}
+
 void
-inittypes()
+initbasictype()
 {
     char i;
+    struct name *n;
     struct type *t;
 
     for (i = 0; i < sizeof(basictype)/sizeof(basictype[0]); i++) {
-        t = new_type(basictype[i].name, TYPE_DEF, 0);
+        t = malloc(sizeof(*t));
+        t->name = basictype[i].name;
         t->flags = basictype[i].flags;
         t->size = basictype[i].size;
+        t->next = types;
+        types = t;
+        n = new_name(basictype[i].name, prim, t, 0);
     }
 }
 
@@ -368,10 +533,7 @@ done:
         length = BYTES_2 + 1;
     }
     if (length) length--;
-	n = lookup_name(basictype[unsignedness + length + misc].name, TYPE_DEF);
-	if (!n) {
-		err(ER_T_PT);
-	}
+    n = names[unsignedness + length + misc];
 	return n->type;
 }
 
@@ -448,8 +610,8 @@ getbasetype()
 
     /* a typedef? */
     if (cur.type == SYM) {
-        n = lookup_name(strbuf, TYPE_DEF);
-        if (n) {
+        n = lookup_name(strbuf, 0);
+        if (n && (n->kind == tdef)) {
             gettoken();
             return n->type;
         }

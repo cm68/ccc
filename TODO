@@ -32,10 +32,7 @@ names are stored as fixed length strings, and start with a hash, length, and dat
 only N (12? 10?) bytes of name data are stored, in an attempt to get the symbol
 table down to 16 bytes.
 
-statics are global in storage, but lexically scoped.
-so, when they go out of scope, they become unreachable.
-they get synthetic global names.
-
+statics are global in storage, but lexica
 struct symbol {
 	char hash;
 	char length;

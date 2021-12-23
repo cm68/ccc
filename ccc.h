@@ -21,6 +21,7 @@ typedef char *cstring;		// counted string - first char is length
 typedef unsigned char byte;
 typedef unsigned short word;
 typedef unsigned long dword;
+typedef unsigned char boolean;
 
 /*
  * we just want the error symbols
@@ -97,32 +98,6 @@ extern void dump_stmt(struct stmt *s);
  *
  * if you have a c source that depends on this kind of thing, fix the source.
  */
-struct scope {
-	char *name;
-	struct name *names;
-	struct scope *prev;			// all the way up to and including global
-};
-
-extern struct scope *global;	// file level
-extern struct scope	*local;		// our current block
-
-extern void push_scope(char *name);
-extern void pop_scope();
-
-/*
- * namespaces - symbols of the same name can exist at the same scope if they
- * are in different namespaces
- */
-typedef enum namespace {
-	SYMBOL,
-	TYPE_DEF,
-	ENUMTAG,
-	ENUMELEMENT,	// only found in sub-types of ENUMTAB
-	AGGTAG,
-	AGGELEMENT		// only found in sub-types of AGGTAG
-} namespace_t;
-
-extern char *namespace_name[];
 
 /*
  * how big a pointer is 
@@ -130,64 +105,80 @@ extern char *namespace_name[];
 #define TS_PTR  2
 
 /*
- * this is a handle for types. types are scoped just like names, so their handles
- * are linked to a name
+ * a function is an odd type, since it has a return type and argument types,
+ * so there needs to be a collection of the latter.  also, a declaration of
+ * an instance of a function type can and will have the arguments with different
+ * names than a prototype or forward reference.  old style forward function 
+ * declarations don't have argument types.
+ */
+
+/*
+ * this is a handle for types.
  */
 struct type {
-	struct name *name;		// the type name
-    char *typename;         // just a copy - XXX
+	char *name;     		// the type name
 	int size;		    	// how big is one of me
 	int count;		    	// if we are an array, how many
 	struct name *elem;		// element list
     struct type *sub;		// pointer to what, array of what, etc.
     unsigned char flags;
+    struct arglist *args;   // if a function
+    struct type *next;
 };
 #define TF_AGGREGATE	0x01
 #define TF_INCOMPLETE	0x02
 #define TF_UNSIGNED		0x04
-#define TF_NORMALIZED	0x08
+#define TF_FUNC         0x08
 #define	TF_POINTER		0x10
 #define	TF_ARRAY		0x20
 #define	TF_FLOAT		0x40
+#define TF_OLD          0x80    // no argument list
 
 extern struct type *getbasetype();
-extern struct type *new_type(char *name, namespace_t space, struct type *sub);
-extern void destroy_type(struct type *t);
-extern struct type *lookup_type(char *name, namespace_t space);
-#ifdef DEBUG
 extern void dump_type(struct type *t);
-#endif
+struct type *get_type(int flags, struct type *sub, struct type *list, int count);
 
+/*
+ * this structure is a unique ordered list of function argument types
+ */
+struct arglist {
+    struct type *type;
+    struct arglist *next;
+};
+
+typedef enum { prim, etag, stag, utag, var, elem, tdef } kind;
 /*
  * note that at the same scope, you can have
  * multiple instances of the same name with different namespaces.
  * this is a container for types, functions, variables, constants, and fields
  */
 struct name {
-    char *name;
-    namespace_t space;
-    struct name *next;		// all names in same container
-    struct type *type;
-    char visibility;
-    char sclass;
-    int offset;				// if inside a struct
+	char *name;
+    boolean is_tag;         // true if (enum, struct, union), 
+                            // else false for var,enum elem,typedef
+    int level;              // lexical level
+	struct name *next;		// all names in same container
+	struct type *type;
+	char visibility;
+	char sclass;
+	int offset;				// if inside a struct
     int bitoff;
     int width;
     struct expr *init;      // value of constant or initializer
     struct stmt *body;      // function body
+    kind kind;
     int flags;
 #define V_BITFIELD  0x01
+#define V_FUNARG    0x02
+#define V_LOCAL     0x04
 };
 
 #define MAXBITS 32          // maximum size of bitfield
 
-extern struct name *new_name(char *name, struct type *t, namespace_t space);
-extern void destroy_name(struct name *s);
-extern struct name *lookup_name(char *name, namespace_t space);
+extern struct name *new_name(char *name, kind k, struct type *t, boolean is_tag);
+extern struct name *lookup_name(char *name, boolean is_tag);
 extern struct name *lookup_element(char *name, struct type *t);
-#ifdef DEBUG
 extern void dump_name(struct name *s);
-#endif
 
 void parse();
 

@@ -10,6 +10,7 @@
 #
 DEFINES= -DLEXTEST -DDEBUG
 DEFINES= -DDEBUG
+DEBUG= -ggdb3 -O
 
 CC = gcc
 #CC = sdcc
@@ -20,13 +21,13 @@ LDFLAGS= -l /usr/share/sdcc/lib/z80/z80.lib -m -w -i -y
 endif
 
 ifeq ($(CC),gcc)
-CFLAGS = $(DEFINES) -Wno-implicit-function-declaration -g
-LDFLAGS= -g -o
+CFLAGS = $(DEBUG) $(DEFINES) -Wno-implicit-function-declaration
+LDFLAGS= $(DEBUG) -o
 LD= gcc
 endif
 
 CC1OBJECTS = cc1.o error.o lex.o io.o macro.o kw.o util.o tokenlist.o unixlib.o \
-	expr.o parse.o declare.o type.o
+	expr.o parse.o type.o
 
 HEADERS = ccc.h error.h
 GENERATED = enumlist.h tokenlist.c error.h debug.h debugtags.c
