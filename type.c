@@ -130,6 +130,7 @@ declare(struct type **btp)
         need(RBRACK, RBRACK, ER_D_AD);
     }
 
+#ifdef notdef
     if (cur.type == LPAR) {     // ( <func_arg>[,<func_arg>]*. )
         gettoken();
         if (suffix) {
@@ -196,6 +197,7 @@ declare(struct type **btp)
         assign_arg_off(suffix, 4);
 #endif
     }                           // if cur.type == LPAR
+#endif
 
     if ((cur.type != ASSIGN) && (cur.type != BEGIN) &&
         (cur.type != COMMA) && (cur.type != SEMI)) {
@@ -203,14 +205,14 @@ declare(struct type **btp)
         err(ER_D_UT);
         nm = 0;
     }
-    if (!v) {
+    if (!nm) {
         return 0;
     }
 
     /*
      * prepend the prefix and append the suffix
      */
-    t = v->type;
+    t = nm->type;
     t = rt;
     while (t && t->sub) {
         t = t->sub;
@@ -220,7 +222,7 @@ declare(struct type **btp)
         t = t->sub;
     }
     t = prefix;
-    return v;
+    return nm;
 }                               // declare
 
 /*
@@ -378,6 +380,10 @@ new_name(char *name, kind k, struct type *t, boolean is_tag)
 	return (n);
 }
 
+/*
+ * all the basic types are pre-loaded, and there is some
+ * sensitivity to index in this table.
+ */
 static struct {
         char *name;
         short size;
@@ -404,7 +410,11 @@ static struct {
  *   typedefs for arrays can't be incomplete
  */
 struct type *
-get_type(int flags, struct type *sub, struct type *args, int count)
+get_type(
+    int flags,              // TF_whatever
+    struct type *sub,       // subtype
+    struct arglist *args,   // if function, what arguments
+    int count)              // if array, length
 {
     struct type *t;
 
@@ -421,6 +431,7 @@ get_type(int flags, struct type *sub, struct type *args, int count)
     printf("type miss\n");
     t = malloc(sizeof(*t));
     t->sub = sub;
+    t->args = args;
     t->flags = flags;
     t->count = count;
     if (t->count == -1) {

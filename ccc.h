@@ -132,11 +132,11 @@ struct type {
 #define	TF_POINTER		0x10
 #define	TF_ARRAY		0x20
 #define	TF_FLOAT		0x40
-#define TF_OLD          0x80    // no argument list
+#define TF_OLD          0x80    // no argument list - K&R
 
 extern struct type *getbasetype();
 extern void dump_type(struct type *t);
-struct type *get_type(int flags, struct type *sub, struct type *list, int count);
+struct type *get_type(int flags, struct type *sub, struct arglist *args, int count);
 
 /*
  * this structure is a unique ordered list of function argument types
@@ -198,7 +198,9 @@ struct token {				// lexeme
 		char *name;			// if we have a symbol
 		cstring str;		// counted literal string
 	} v;
-} cur, next;
+};
+
+extern struct token cur, next;
 
 extern void lexinit();
 extern int write_cpp_file;

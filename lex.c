@@ -11,6 +11,8 @@ int write_cpp_file = 0;
 char *cpp_file_name;
 int cpp_file;
 
+struct token cur, next;
+
 /*
  * this is the place we build filenames, symbols and literal strings
  * no overflow checking or anything, we ain't got time for that shit

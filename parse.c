@@ -213,6 +213,7 @@ parsefunc(struct name *f) {
 char *sclass_bitdefs[] = { "EXTERN", "REGISTER", "STATIC", "CONST", "VOLATILE",
 		"AUTO"
 };
+
 /*
  * parse the storage class on a declaration.  this is a muddy concept, since
  * we've got visibility and storage lumped together, and context also contributes into where our
@@ -342,7 +343,7 @@ block() {
 void 
 parse() {
 	push_scope("global");
-	inittypes();
+	initbasictype();
 	while (cur.type != E_O_F) {
 		while (cur.type == NONE) {
 			gettoken();

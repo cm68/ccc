@@ -25,6 +25,8 @@ ER_D_FM		old style arg defs
 ER_D_FO		multiple types for funarg
 ER_D_UT		unexpected token in decl
 ER_D_TL		illegal toplevel storage class
+ER_D_OF		too many local names
+ER_D_DN		duplicate local name
 
 # parse errors
 ER_P_SC		bogus storage class
