@@ -62,7 +62,8 @@ declare(struct type **btp)
         }
         nm = new_name(strdup(strbuf), var, prefix, 0);
         gettoken();
-        if (cur.type == COLON) {
+        
+        if (cur.type == COLON) {    // check for bitfield
             gettoken();
             if (cur.type != NUMBER) {
                 err(ER_D_BD);

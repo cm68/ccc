@@ -1,9 +1,12 @@
 /*
- * data structures for the compiler.  we don't have any other non-generated includes.
+ * data structures for the compiler.  
+ *
+ * we don't have any other non-generated includes.
  * so, everything is right here
+ *
+ * nested includes are a bit ugly, but it means that i can just include ccc.h
  */
 
-/* nested includes are a bit ugly, but it means that i can just include ccc.h */
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -59,6 +62,7 @@ struct expr {
 // expression priority - used to control the precedence
 #define	PRI_ALL	0
 
+extern struct expr *cfold(struct expr *e);
 extern struct expr *parse_expr(char priority, struct stmt *);
 extern struct expr *new_expr(char op);
 extern void destroy_expr(struct expr *e);
@@ -135,7 +139,7 @@ struct type {
 #define TF_OLD          0x80    // no argument list - K&R
 
 extern struct type *getbasetype();
-extern void dump_type(struct type *t);
+extern void dump_type(struct type *t, int lv);
 struct type *get_type(int flags, struct type *sub, struct arglist *args, int count);
 
 /*
@@ -179,6 +183,8 @@ extern struct name *new_name(char *name, kind k, struct type *t, boolean is_tag)
 extern struct name *lookup_name(char *name, boolean is_tag);
 extern struct name *lookup_element(char *name, struct type *t);
 extern void dump_name(struct name *s);
+
+extern struct type *inttype;
 
 void parse();
 

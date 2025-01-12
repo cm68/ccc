@@ -319,6 +319,7 @@ declaration() {
 			continue;
 		}
 		if (cur.type == SEMI) {
+			gettoken();
 			break;
 		}
 	}

@@ -10,7 +10,7 @@
 #
 DEFINES= -DLEXTEST -DDEBUG
 DEFINES= -DDEBUG
-DEBUG= -ggdb3 -O
+DEBUG= -ggdb3 -O0
 
 CC = gcc
 #CC = sdcc
@@ -50,10 +50,10 @@ $(CC1OBJECTS): $(HEADERS)
 
 .PHONY: test tests
 test: cc1 runtest.sh
-	./runtest.sh $(TESTS)
+	./runtest.sh $(VERBOSE) $(TESTS)
 
 tests: cc1 runtest.sh
-	./runtest.sh
+	./runtest.sh $(VERBOSE)
 
 #
 # process the ccc.h file, extracting the enum tags for the tokens

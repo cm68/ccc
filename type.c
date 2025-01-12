@@ -55,13 +55,14 @@ declare(struct type **btp)
     int i;
 
     nm = 0;
+    suffix = 0;
 
     /*
      * this will be primitive, enum, struct/union 
      */
     t = getbasetype();
     if (t && *btp) {
-        err(ER_T_DT);
+        err(ER_T_DT);   // multiple base types named
         t = 0;
     }
     if (t) {
@@ -213,7 +214,6 @@ declare(struct type **btp)
      * prepend the prefix and append the suffix
      */
     t = nm->type;
-    t = rt;
     while (t && t->sub) {
         t = t->sub;
     }
@@ -225,9 +225,6 @@ declare(struct type **btp)
     return nm;
 }                               // declare
 
-/*
- * vim: tabstop=4 shiftwidth=4 expandtab:
- */
 #define ENUM_TYPE   "_uchar_"
 
 /*
@@ -328,7 +325,7 @@ dump_name(struct name *n)
 	if (!n) { printf("null\n"); return; }
 	printf("%s (%s)\n", n->name, n->is_tag ? "tag" : "decl");
 	if (n->type) {
-		printf("\ttype: %s\n", n->type->name);
+		dump_type(n->type, 0);
 	}
     printf("\toffset: %d bitoff: %d width: %d sclass: %s\n",
         n->offset, n->bitoff, n->width, bitdef(n->sclass, sclass_bitdefs));
@@ -380,6 +377,32 @@ new_name(char *name, kind k, struct type *t, boolean is_tag)
 	return (n);
 }
 
+void
+dump_type(struct type *t, int lv)
+{
+    if (!t) return;
+    if (lv) {
+        int i = lv;
+        while (i--) {
+            printf("\t");
+        }
+    }
+    printf("name %s flags %x (%s) args %x count %x\n", 
+        t->name ? t->name : "unnamed", 
+        t->flags, bitdef(t->flags, type_bitdefs), t->args, t->count);
+    dump_type(t->sub, ++lv);
+}
+
+/*
+ * indexes into the basic type table
+ */
+#define UN_SIGNED   3
+#define OTHERS      6
+#define BYTES_1     0
+#define BYTES_2     1
+#define BYTES_4     2
+#define	MISC_BASIC	6
+
 /*
  * all the basic types are pre-loaded, and there is some
  * sensitivity to index in this table.
@@ -421,14 +444,13 @@ get_type(
     /* 
      * search through types to see if we have a permissive match
      */
-    for (types; t; t = t->next) {
+    for (t = types; t; t = t->next) {
         if ((t->flags == flags) && (t->sub == sub) && (t->args == args)) {
             printf("type hit\n");
             return t;
         }
     }
 
-    printf("type miss\n");
     t = malloc(sizeof(*t));
     t->sub = sub;
     t->args = args;
@@ -439,9 +461,16 @@ get_type(
     }
     t->next = types;
     types = t;
+
+    printf("new type\n");
+    dump_type(t, 0);
+
     return t;
 }
 
+/*
+ * we create table of the basic types which we then can parse into.
+ */
 void
 initbasictype()
 {
@@ -457,15 +486,9 @@ initbasictype()
         t->next = types;
         types = t;
         n = new_name(basictype[i].name, prim, t, 0);
+        if (i == 2) inttype = t;
     }
 }
-
-#define UN_SIGNED   3
-#define OTHERS      6
-#define BYTES_1     0
-#define BYTES_2     1
-#define BYTES_4     2
-#define	MISC_BASIC	6
 
 /*
  * parse the basic type
@@ -608,7 +631,9 @@ sametype(struct type *a, struct type *b)
 #endif
 
 /*
- * return a base type - this is either a primitive, struct/union or enum
+ * return a base type
+ * this is either a primitive, typedef, struct/union or enum
+ * the parse stops when we see a complete type.
  */
 struct type *
 getbasetype()

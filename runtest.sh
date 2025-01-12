@@ -1,11 +1,11 @@
 #!/bin/bash
 
-VERBOSE=0
+VERBOSE=""
 
 while getopts :v:h flag; do
 	case $flag in
 	v)
-		VERBOSE=$OPTARG
+		VERBOSE="-v $OPTARG"
 		;;
 	*)
 		echo "unknown option $OPTARG"
@@ -26,10 +26,10 @@ for t in ${TESTS[*]} ; do
 	echo "======= source ========"
 	cat $t
         echo "======== run ========"
-	echo ./cc1 -v $VERBOSE -E $t
-	if ! ./cc1 -DTEST=$t -I. -v $VERBOSE -E $t ; then
+	echo ./cc1 $VERBOSE -E $t
+	if ! ./cc1 -DTEST=$t -I. $VERBOSE -E $t ; then
 		echo "file ./cc1" > .gdbargs
-		echo "set args -DTEST=$t -I. -V $verbose -E $t" >> .gdbargs
+		echo "set args -DTEST=$t -I. $VERBOSE -E $t" >> .gdbargs
 		echo "exited code $?"
 		exit
 	fi

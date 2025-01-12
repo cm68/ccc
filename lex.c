@@ -640,6 +640,9 @@ gettoken()
     if (lineend) {
         cpp_out("\n", 2);
     }
+    if (VERBOSE(V_TOKEN)) {
+        printf("cur.type = %d %c\n", cur.type, cur.type > ' ' ? cur.type : ' '); 
+    }
     return;
 }
 

@@ -56,6 +56,37 @@ unop_set(struct expr *e)
 }
 
 /*
+ * not sure how this priority stuff is supposed to work.
+ * XXX - write this up here.
+ */
+char
+binop_pri(char t)
+{
+    char po;
+    char v;
+
+#ifdef notdef
+    po = t - MIN_OP;
+    if ((po < 0) || (t > MAX_OP)) {
+        return 0;
+    }
+    v = pritab[po / 2];
+    if (po & 1) {
+        v >>= 4;
+    }
+    v &= 0xf;
+#endif
+    return v;
+}
+
+#ifdef notdef
+#define PP(l,h) ((h << 4) | l)
+char pritab[] = {
+    PP(x,y),
+};
+#endif
+
+/*
  * parse an expression
  */
 struct expr *
@@ -63,10 +94,11 @@ parse_expr(char pri, struct stmt *st)
 {
 	char op;
 	struct expr *e;
+    char p;
 
-#ifdef notdef
 	switch (cur.type) {   // prefix
 
+#ifdef notdef
 	case SYM:
 		e = makeexpr(DEREF, makeexpr(VAR, 0));
 		e->left->var = findvar(strbuf, st);
@@ -80,12 +112,14 @@ parse_expr(char pri, struct stmt *st)
         unop_set(e);
         e->left->type = normalizetype(maketype(0, TK_PTR, e->left->var->type));
         break;
+#endif
     case NUMBER:
         e = makeexpr(CONST, 0);
-        e->type = ptype[PTYPE_INT];
-        e->v = numbervalue;
+        e->type = inttype;
+        e->v = cur.v.numeric;
         gettoken();
         break;
+#ifdef notdef
     case STRING:
         e = makeexpr(VAR, 0);
         e->var = makevar(makelabel('S', (int)e),
@@ -108,7 +142,7 @@ parse_expr(char pri, struct stmt *st)
             if (v) {
                 err(ER_E_CS);
             }
-            e = makeexpr(CAST, expr(pri, st));
+            e = makeexpr(CAST, parse_expr(pri, st));
             unop_set();
             e->type = t;
             e = cfold(e);
@@ -130,7 +164,7 @@ parse_expr(char pri, struct stmt *st)
     case DECR:
         op = cur.type;
         gettoken();
-        e = makeexpr(op, expr(pri, st));
+        e = makeexpr(op, parse_expr(pri, st));
         if (!lvalue(e->left)) {
             err(ER_E_LV);
         }
@@ -138,7 +172,7 @@ parse_expr(char pri, struct stmt *st)
         break;
     case STAR:      // deref
         gettoken();
-        e = makeexpr(DEREF, expr(pri, st));
+        e = makeexpr(DEREF, parse_expr(pri, st));
         if (e->left->type->kind == TK_PTR) {
             unop_set(e);
             e->type = e->left->type->sub;
@@ -148,7 +182,7 @@ parse_expr(char pri, struct stmt *st)
         break;
     case AND:       // addrof
         gettoken();
-        e1 = expr(pri, st)
+        e1 = parse_expr(pri, st)
         if (!lvalue(e->left)) {
             err(ER_E_LV);
         }
@@ -158,7 +192,7 @@ parse_expr(char pri, struct stmt *st)
         break;
     case BANG:      // unary not
         gettoken();
-        e = makeexpr(NOT, expr(pri, st));
+        e = makeexpr(NOT, parse_expr(pri, st));
         unop_set();
         e->type = ptype[PT_BOOL];
         e = cfold(e);
@@ -169,13 +203,14 @@ parse_expr(char pri, struct stmt *st)
     case TWIDDLE:
         op = cur.type;
         gettoken();
-        e = makeexpr(op, expr(pri, st));
+        e = makeexpr(op, parse_expr(pri, st));
         if (e->left->type->kind != TK_SCALAR) {
             err(ER_E_SC);
         }
         unop_set(e);
         e = cfold(e);
         break;
+#endif
     }
     /*
      * the recursive nature of this expression parser will have exhausted
@@ -184,6 +219,7 @@ parse_expr(char pri, struct stmt *st)
      */
     while (1) { // operators
         switch (cur.type) {
+#ifdef notdef
         case INCR:
             if (!lvalue(e)) {
                 err(ER_E_LV);
@@ -280,12 +316,13 @@ parse_expr(char pri, struct stmt *st)
             e->type = v->type;
             e = cfold(e);
             continue;
+#endif
         default:
             printf("bzzt");
         } 
         p = binop_pri(cur.type);
         if (p == 0) {
-            err(ER_E_U0);
+            err(ER_E_UO);
             return 0;
         }
         if (p > pri) {
@@ -295,7 +332,7 @@ parse_expr(char pri, struct stmt *st)
         e = makeexpr(cur.type, e);
         e->left->up = e;
         gettoken();
-        e->right = expr(p, st);
+        e->right = parse_expr(p, st);
         e->right->up = e;
         e->type = opresult(e->op, e->left, e->right);
 
@@ -309,36 +346,8 @@ parse_expr(char pri, struct stmt *st)
         e->cost = e->left->cost + e->right->cost;
         e = cfold(e);
     }
-#endif
     return e;
 }
-
-char
-binop_pri(char t)
-{
-    char po;
-    char v;
-
-#ifdef notdef
-    po = t - MIN_OP;
-    if ((po < 0) || (t > MAX_OP)) {
-        return 0;
-    }
-    v = pritab[po / 2];
-    if (po & 1) {
-        v >>= 4;
-    }
-    v &= 0xf;
-#endif
-    return v;
-}
-
-#ifdef notdef
-#define PP(l,h) ((h << 4) | l)
-char pritab[] = {
-    PP(x,y),
-};
-#endif
 
 struct expr *
 xreplace(struct expr *out, struct expr *in)
