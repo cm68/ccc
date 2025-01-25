@@ -1,6 +1,13 @@
 /*
  * look up a keyword in a table
- * we have 2 different tables to use, one for C and one for asm.
+ *
+ * the architecture of this is to have a brutally fast, tight lexer
+ * that does minimal searching and uses little memory. 
+ * building the lexer table is manual and critical, so adding keywords
+ * needs to be carefully done.
+ *
+ * we have 3 different tables to use, one for C, one for cpp, and one for asm.
+ *
  * each table is an array of characters, with the following grammar:
  * byte:
  * 0xff <token number>		if the input string is at null,
@@ -42,7 +49,10 @@ unsigned char cppkw[] = {
 
 /*
  * the C language
+ * XXX - strictly speaking, the lexer table should be ordered by use frequency, so you'll hit quickly.
+ *   perhaps they should be ordered i, c, s, u, b, v, w, f
  */
+
 unsigned char ckw[] = {
 	'a'|HI, 10, 's'|HI, 3, 'm', 0xff, ASM,
 		'u', 't', 'o', 0xff, AUTO,

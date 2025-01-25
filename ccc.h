@@ -64,9 +64,9 @@ struct expr {
 
 extern struct expr *cfold(struct expr *e);
 extern struct expr *parse_expr(char priority, struct stmt *);
+int parse_const(char priority);
 extern struct expr *new_expr(char op);
 extern void destroy_expr(struct expr *e);
-extern int parse_const();
 #ifdef DEBUG
 extern void dump_expr(struct expr *e);
 #endif

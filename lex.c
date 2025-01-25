@@ -663,7 +663,7 @@ cpppseudofunc()
         }
         advance();
         if (issym()) {
-            if (maclookup(strbuf)) r = 1;
+            
         }
         while ((curchar == '\t') || (curchar == ' ')) advance();
         if (curchar != ')') {
@@ -698,10 +698,16 @@ readcppconst()
      */
     tflags = ONELINE | CPPFUNCS;
 
-    val = parse_const();
+    val = parse_const(SEMI);
     tflags = savedtflags;
     bcopy(&save, &cur, sizeof(cur));
     return val;
+}
+
+void
+tdump(char c)
+{
+	printf("%s ", tokenname[c]);
 }
 
 /*

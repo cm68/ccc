@@ -82,7 +82,7 @@ declare(struct type **btp)
         if (cur.type == RBRACK) {
             i = -1;
         } else {
-            i = parse_const();
+            i = parse_const(RBRACK);
         }
         t = get_type(TF_ARRAY, t, 0, i);
         need(RBRACK, RBRACK, ER_D_AD);

@@ -59,3 +59,13 @@ typedef enum {
     IFDEF = 'Y', ENDIF = 'Z', ELIF = '8'
 } token_t;
 
+/*
+ * these are the operator priority levels.
+ * when parsing an expression at priority level N, and you encounter an operator of priority < N,
+ * stop parsing.
+ */
+#define	PRI_SEMI	0
+#define	PRI_PAREN	1
+#define	PRI_EQ		2
+#define	PRI_MULT	3
+#define	PRI_ADD		4

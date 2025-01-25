@@ -3,6 +3,8 @@
  */
 #include "ccc.h"
 
+#include "op_pri.h"
+
 struct expr *
 makeexpr(char op, struct expr *left)
 {
@@ -56,8 +58,8 @@ unop_set(struct expr *e)
 }
 
 /*
- * not sure how this priority stuff is supposed to work.
- * XXX - write this up here.
+ * the operator priority table is indexed from OP_MIN to OP_MAX, and contains the encoded priority of the
+ * binary operator.  zero values mean not an operator.
  */
 char
 binop_pri(char t)
@@ -65,26 +67,15 @@ binop_pri(char t)
     char po;
     char v;
 
-#ifdef notdef
-    po = t - MIN_OP;
-    if ((po < 0) || (t > MAX_OP)) {
-        return 0;
-    }
-    v = pritab[po / 2];
-    if (po & 1) {
-        v >>= 4;
-    }
-    v &= 0xf;
-#endif
+    po = t - OP_MIN;
+    if ((po < 0) || (t > OP_MAX)) {
+        v = 0;
+    } else {
+	    v = op_pri[po];
+	}
+	printf("binop_pri %d %c -> %d\n", t, t > ' ' ? t : ' ', v);
     return v;
 }
-
-#ifdef notdef
-#define PP(l,h) ((h << 4) | l)
-char pritab[] = {
-    PP(x,y),
-};
-#endif
 
 /*
  * parse an expression
@@ -96,6 +87,7 @@ parse_expr(char pri, struct stmt *st)
 	struct expr *e;
     char p;
 
+	tdump(cur.type);
 	switch (cur.type) {   // prefix
 
 #ifdef notdef
@@ -211,6 +203,8 @@ parse_expr(char pri, struct stmt *st)
         e = cfold(e);
         break;
 #endif
+default:
+	printf("unop default\n");
     }
     /*
      * the recursive nature of this expression parser will have exhausted
@@ -218,6 +212,7 @@ parse_expr(char pri, struct stmt *st)
      * and binary operators to deal with
      */
     while (1) { // operators
+	tdump(cur.type);
         switch (cur.type) {
 #ifdef notdef
         case INCR:
@@ -318,7 +313,7 @@ parse_expr(char pri, struct stmt *st)
             continue;
 #endif
         default:
-            printf("bzzt");
+            printf("expr default\n");
         } 
         p = binop_pri(cur.type);
         if (p == 0) {
@@ -334,8 +329,9 @@ parse_expr(char pri, struct stmt *st)
         gettoken();
         e->right = parse_expr(p, st);
         e->right->up = e;
-        e->type = opresult(e->op, e->left, e->right);
+        e->type = 0; // XXX opresult(e->op, e->left, e->right);
 
+#ifdef notdef
         if (lookupc(symops, e->op) != -1) {
             if (e->left->cost < e->right->cost) {
                 e1 = e->left;
@@ -343,6 +339,7 @@ parse_expr(char pri, struct stmt *st)
                 e->right = e1;
             }
         }
+#endif
         e->cost = e->left->cost + e->right->cost;
         e = cfold(e);
     }
@@ -425,7 +422,7 @@ cfold(struct expr *e) {
  * used for array declarations and CPP stuff
  */
 int
-parse_const()
+parse_const(char token)
 {
     struct expr *e;
     int val;

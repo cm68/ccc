@@ -30,9 +30,9 @@ CC1OBJECTS = cc1.o error.o lex.o io.o macro.o kw.o util.o tokenlist.o unixlib.o 
 	expr.o parse.o type.o
 
 HEADERS = ccc.h error.h
-GENERATED = enumlist.h tokenlist.c error.h debug.h debugtags.c
+GENERATED = enumlist.h tokenlist.c error.h debug.h debugtags.c op_pri.h
 
-BINS = enumcheck cc1 cc2 maketokens
+BINS = enumcheck cc1 cc2 maketokens genop_pri
 
 TESTS=tests/*.c
 #TESTS=tests/glom.c
@@ -64,6 +64,15 @@ enumlist.h: ccc.h Makefile
 	awk '/enum / { t=1;next } /;$$/ {t=0} {if (t) print}' | \
 	tr -d '[:blank:]' | \
 	awk '/[A-Z]+/ {printf("check(%s);\n", $$1);}' >enumlist.h
+
+#
+# generate the operator priority table
+#
+op_pri.h: ./genop_pri
+	./genop_pri
+
+genop_pri: genop_pri.c
+	cc -o genop_pri genop_pri.c
 
 #
 # generate token names from the enumlist.h file
@@ -116,3 +125,4 @@ kw.o: kw.c
 error.o: error.c
 util.o: util.c
 tokenlist.o: tokenlist.c
+expr.o: expr.c op_pri.h
