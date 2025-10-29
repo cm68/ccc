@@ -113,6 +113,19 @@ The type system is designed to be "squeaky-clean" with zero redundancy:
 - Basic types are pre-loaded at initialization (char, short, long, unsigned variants, void, boolean, float, double)
 - Primitive type indices: 0-2 are signed char/short/long, 3-5 are unsigned, 6+ are void/bool/float/double
 - Type construction: pointers, arrays, functions are composed from subtypes
+- Function types store argument list in type->elem as a linked list of names
+
+**Currently working**:
+- Primitive type parsing (char, short, int, long, unsigned, void, boolean, float, double)
+- Pointer types (int *p)
+- Array types with sizes (int a[10])
+- Function declarations with typed arguments (int foo(int a, char b))
+- Bitfield support in declarations
+
+**Not yet implemented**:
+- enum, struct, union types
+- typedef
+- Type compatibility checking (sametype)
 
 ### Scope Management
 
@@ -168,10 +181,12 @@ Verbose debugging uses bitmask flags defined by VERBOSE() macro calls:
 
 ### Current State
 
-The compiler is incomplete and non-functional. Large sections are wrapped in `#ifdef notdef` blocks:
-- Most of parse.c statement parsing is disabled
-- Much of expr.c expression parsing is disabled
-- Struct/union/enum handling in type.c is disabled
+The compiler is incomplete and non-functional:
+- Most of parse.c statement parsing is disabled (#ifdef notdef blocks)
+- expr.c has been cleaned up - basic expression parsing now works
+- type.c has been cleaned up - function declarations with arguments now parse
+- Struct/union/enum handling not yet implemented (needs more infrastructure)
+- typedef not yet implemented
 - Function body parsing is stubbed out
 
 ### Known Issues (from TODO)
