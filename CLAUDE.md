@@ -121,9 +121,13 @@ The type system is designed to be "squeaky-clean" with zero redundancy:
 - Array types with sizes (int a[10])
 - Function declarations with typed arguments (int foo(int a, char b))
 - Bitfield support in declarations
+- Enum types with optional tag names (enum { A, B=5, C })
+- Struct types with member lists (struct foo { int x; char y; })
+- Union types (union bar { int i; float f; })
+- Forward references for struct/union/enum tags
+- Tag namespace separate from variable namespace
 
 **Not yet implemented**:
-- enum, struct, union types
 - typedef
 - Type compatibility checking (sametype)
 
@@ -184,8 +188,9 @@ Verbose debugging uses bitmask flags defined by VERBOSE() macro calls:
 The compiler is incomplete and non-functional:
 - Most of parse.c statement parsing is disabled (#ifdef notdef blocks)
 - expr.c has been cleaned up - basic expression parsing now works
-- type.c has been cleaned up - function declarations with arguments now parse
-- Struct/union/enum handling not yet implemented (needs more infrastructure)
+- type.c has been cleaned up and now supports:
+  - Function declarations with arguments
+  - Enum, struct, and union types with full parsing
 - typedef not yet implemented
 - Function body parsing is stubbed out
 
