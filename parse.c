@@ -394,7 +394,7 @@ declaration() {
             }
         }
         if (cur.type == ASSIGN) {
-            do_initializer();
+            v->init = do_initializer();
         }
 		if (cur.type == COMMA) {
 			gettoken();
