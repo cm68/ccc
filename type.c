@@ -568,10 +568,178 @@ getbasetype()
     }
 
     /*
-     * enum, struct, and union parsing would go here
-     * These require more infrastructure (match, new_type, alloc_name, etc.)
-     * that doesn't exist yet, so report as unsupported type for now.
+     * enum [name] [ { tag [= const], ... } ]
      */
+    if (cur.type == ENUM) {
+        gettoken();
+        n = 0;
+        s = 0;
+
+        // optional enum tag name
+        if (cur.type == SYM) {
+            s = strdup(strbuf);
+            n = lookup_name(s, 1);  // look for existing enum tag
+            gettoken();
+
+            // if found and already complete, return it
+            if (n && !(n->type->flags & TF_INCOMPLETE)) {
+                free(s);
+                return n->type;
+            }
+        }
+
+        // must have a definition if no tag or if forward reference
+        if (cur.type != BEGIN) {
+            if (n) {
+                return n->type;  // forward reference
+            }
+            err(ER_T_ED);
+            return 0;
+        }
+
+        // create the enum type (all enums are unsigned char)
+        t = get_type(TF_UNSIGNED, 0, 0, 0);
+        t->size = 1;  // enums are byte-sized
+
+        if (s) {
+            // create or update the tag
+            if (!n) {
+                n = new_name(s, etag, t, 1);
+            } else {
+                n->type = t;
+            }
+        }
+
+        // parse enum elements: { name [= value], ... }
+        match(BEGIN);
+        off = 0;
+        while (cur.type != END && cur.type != E_O_F) {
+            if (cur.type != SYM) {
+                err(ER_T_ET);
+                break;
+            }
+
+            // create enum element (use 'e' to avoid variable name collision)
+            struct name *e = new_name(strdup(strbuf), elem, t, 0);
+            e->next = t->elem;
+            t->elem = e;
+            gettoken();
+
+            // optional = value
+            if (cur.type == ASSIGN) {
+                gettoken();
+                off = parse_const(PRI_ALL);
+            }
+            e->offset = off;  // store enum value in offset field
+            off++;
+
+            if (cur.type == COMMA) {
+                gettoken();
+                continue;
+            }
+            if (cur.type != END) {
+                err(ER_T_ED);
+                break;
+            }
+        }
+        match(END);
+        return t;
+    }
+
+    /*
+     * struct or union [name] [ { members } ]
+     */
+    if (cur.type == STRUCT || cur.type == UNION) {
+        int is_union = (cur.type == UNION);
+        gettoken();
+        n = 0;
+        s = 0;
+
+        // optional struct/union tag name
+        if (cur.type == SYM) {
+            s = strdup(strbuf);
+            n = lookup_name(s, 1);  // look for existing tag
+            gettoken();
+
+            // if found and already complete, return it
+            if (n && !(n->type->flags & TF_INCOMPLETE)) {
+                free(s);
+                return n->type;
+            }
+        }
+
+        // must have a definition if no tag or if forward reference
+        if (cur.type != BEGIN) {
+            if (n) {
+                return n->type;  // forward reference
+            }
+            err(ER_T_ED);
+            return 0;
+        }
+
+        // create the struct/union type
+        t = get_type(TF_AGGREGATE, 0, 0, 0);
+        t->size = 0;
+
+        if (s) {
+            // create or update the tag
+            if (!n) {
+                n = new_name(s, is_union ? utag : stag, t, 1);
+            } else {
+                n->type = t;
+            }
+        }
+
+        // parse member list: { type name; ... }
+        match(BEGIN);
+        off = 0;  // offset for struct members
+        while (cur.type != END && cur.type != E_O_F) {
+            struct type *member_type = 0;
+
+            // parse member declaration
+            struct name *member = declare(&member_type);
+            if (!member) {
+                // skip to semicolon or end
+                while (cur.type != SEMI && cur.type != END && cur.type != E_O_F) {
+                    gettoken();
+                }
+                if (cur.type == SEMI) gettoken();
+                continue;
+            }
+
+            // add to member list
+            member->next = t->elem;
+            t->elem = member;
+            member->kind = elem;
+
+            // calculate offset and size
+            if (is_union) {
+                member->offset = 0;
+                if (member->type && member->type->size > t->size) {
+                    t->size = member->type->size;
+                }
+            } else {
+                member->offset = off;
+                if (member->type) {
+                    off += member->type->size;
+                    t->size = off;
+                }
+            }
+
+            // expect semicolon after member
+            if (cur.type == SEMI) {
+                gettoken();
+            } else if (cur.type != END) {
+                err(ER_T_ED);
+            }
+        }
+        match(END);
+
+        // mark as complete
+        t->flags &= ~TF_INCOMPLETE;
+        return t;
+    }
+
     err(ER_T_UT);
     return 0;
 }
