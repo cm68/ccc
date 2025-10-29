@@ -255,11 +255,11 @@ static struct expr *parse_initializer_list(void)
     return head;
 }
 
-void
+struct expr *
 do_initializer(void)
 {
     struct expr *init;
-    
+
     gettoken(); /* consume = token */
 
     if (cur.type == BEGIN) {
@@ -272,10 +272,10 @@ do_initializer(void)
 
     if (init == NULL) {
         err(ER_E_IT); /* Invalid initializer term */
-        return;
+        return NULL;
     }
 
-    current->init = init;
+    return init;
 }
 
 void 

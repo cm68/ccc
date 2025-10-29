@@ -88,9 +88,14 @@ The build system auto-generates several files from source code and data files. T
 - Type information, variable reference, constant value
 - Flags: E_CONST (constant expression), E_RESOLVED, E_FUNARG
 
-**struct stmt** (ccc.h:79-87): Statement nodes
+**struct stmt** (ccc.h:79-95): Statement nodes
 - Parent/next linkage, left/right expressions
-- Used for if/while/for/switch/return/etc
+- chain: child/body statement
+- otherwise: else branch for if statements
+- middle: middle expression for for-loops
+- function: owning function reference
+- Flags: S_PARENT, S_LABEL
+- Used for if/else/while/for/switch/case/return/goto/labels/blocks
 
 **struct type** (ccc.h:122-131): Type descriptors
 - name, size, count (for arrays)
@@ -185,14 +190,18 @@ Verbose debugging uses bitmask flags defined by VERBOSE() macro calls:
 
 ### Current State
 
-The compiler is incomplete and non-functional:
-- Most of parse.c statement parsing is disabled (#ifdef notdef blocks)
+The compiler is making progress:
+- parse.c has been significantly improved with statement parsing enabled:
+  - Control flow: if/else, for, while, do-while, switch/case/default
+  - Jump statements: break, continue, return, goto/labels
+  - Block statements with scope management
+  - Initializer expressions and lists (array/struct initializers)
 - expr.c has been cleaned up - basic expression parsing now works
 - type.c has been cleaned up and now supports:
   - Function declarations with arguments
   - Enum, struct, and union types with full parsing
 - typedef not yet implemented
-- Function body parsing is stubbed out
+- Function body parsing is stubbed out (parsefunc)
 
 ### Known Issues (from TODO)
 
