@@ -130,8 +130,25 @@ Expression parsing uses precedence climbing:
 - Lower priority numbers bind tighter (higher precedence)
 - op_pri[] table maps operators to priorities (auto-generated in op_pri.h)
 - Constant folding (cfold) is performed during parsing for compile-time evaluation
+- Precedence comparison: `p >= pri` stops parsing when encountering same/lower precedence
+- Recursive call uses `parse_expr(p, st)` for right operand, ensuring left-associativity
 
-**INCOMPLETE**: The precedence handling at expr.c:330 is broken. It calls `parse_expr(p, st)` for the right operand, passing the same priority. For proper left-associative operators, it should pass a modified priority (likely `p - 1` or `p + 1` depending on whether lower or higher numbers represent tighter binding). This will cause incorrect parsing of expressions like `a + b + c` or `a * b + c`. The op_pri.h generation and the recursive call need to be implemented correctly together.
+**Currently working**:
+- Numeric literals
+- Parenthesized expressions
+- Unary operators: - (NEG), ~ (TWIDDLE), ! (BANG), * (DEREF), & (address-of)
+- Binary operators with proper precedence and left-associativity
+- Constant folding for basic arithmetic
+
+**Not yet implemented**:
+- Symbol/variable references (SYM case)
+- String literals
+- Type casts
+- sizeof operator
+- Prefix/postfix increment/decrement (++/--)
+- Array indexing ([])
+- Function calls
+- Struct member access (. and ->)
 
 ### Token System
 
