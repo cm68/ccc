@@ -132,74 +132,36 @@ declare(struct type **btp)
         need(RBRACK, RBRACK, ER_D_AD);
     }
 
-#ifdef notdef
-    if (cur.type == LPAR) {     // ( <func_arg>[,<func_arg>]*. )
+    // function argument list: ( <type> <name>[, <type> <name>]* )
+    if (cur.type == LPAR) {
         gettoken();
         if (suffix) {
             err(ER_D_FA);
             suffix = 0;
         }
-        suffix = get_type(0, prefix, 0);
-        while (cur.type != RPAR) {
-#ifdef notdef
-            freetype(t);
-            t = v;
-#endif
-            a = declare(&t);
-            if (a) {
-                a->next = suffix->elem;
-                suffix->elem = a;
-                a->flags |= V_FUNARG | V_LOCAL;
+        // create function type with prefix as return type
+        suffix = get_type(TF_FUNC, prefix, 0, 0);
+
+        // parse argument list
+        while (cur.type != RPAR && cur.type != E_O_F) {
+            struct type *argtype = 0;
+            arg = declare(&argtype);
+            if (arg) {
+                arg->next = suffix->elem;
+                suffix->elem = arg;
+                arg->flags |= V_FUNARG | V_LOCAL;
             }
             if (cur.type == COMMA) {
                 gettoken();
                 continue;
             }
             if (cur.type != RPAR) {
-                err(ER_P_FA);
+                err(ER_E_FA);
                 break;
             }
         }
-        gettoken();
-#ifdef notdef
-        /*
-         * old style parameter declarartion:
-         * foo(a,b) int a; int b;
-         */
-        if ((cur.type != BEGIN) && (cur.type != SEMI)) {
-            if (t) {
-                freetype(t);
-            }
-            t = 0;
-            while (cur.type != BEGIN) {
-                a = declare(&t);
-                if (!a) {
-                    err(ER_P_FM);
-                    break;
-                }
-                b = elementvar(a->name, suffix);
-                if (b->type) {
-                    err(ER_P_FO);
-                }
-                b->type = a->type;
-                if (cur.type == COMMA) {
-                    gettoken();
-                    continue;
-                }
-                if (cur.type == SEMI) {
-                    freetype(t);
-                    t = 0;
-                    gettoken();
-                    continue;
-                }
-                err(ER_P_FM);
-                break;
-            }
-        }
-        assign_arg_off(suffix, 4);
-#endif
-    }                           // if cur.type == LPAR
-#endif
+        need(RPAR, RPAR, ER_E_FA);
+    }
 
     if ((cur.type != ASSIGN) && (cur.type != BEGIN) &&
         (cur.type != COMMA) && (cur.type != SEMI)) {
@@ -254,14 +216,11 @@ pop_scope()
             break;
         names[lastname] = 0;
 
-        printf("pop_scope: delete %s%s", 
+        printf("pop_scope: delete %s%s\n",
             n->is_tag ? "tag:":"", n->name);
 
         free(n->name);
-#ifdef notdef
-        destroy_expr(n->init);
-        destroy_stmt(n->body);
-#endif
+        // Note: n->init and n->body cleanup would go here if those are implemented
         free(n);
     }
 }
@@ -572,64 +531,11 @@ done:
 	return n->type;
 }
 
-#ifdef notdef
 /*
- * typedef <type> <name>
- * like:   int (*foo)() pfi;
+ * typedef handling and sametype() would go here
+ * These require more infrastructure (new_type, normalizetype, etc.)
+ * that doesn't exist yet, so they're removed for now.
  */
-void
-do_typedef()
-{
-    struct type *bt, *t;
-    struct name *n;
-    t = new_type(0, TYPE_DEF, 0);
-    n = declare(&bt);
-    if (cur.type == SYM) {
-        t->name = strdup(strbuf);
-        gettoken();
-        if (!v) {
-            t->sub = bt;
-        } else {
-            t->sub = v->type;
-        }
-    } else if (v) {
-        t->name = v->symbol;
-        t->sub = v->type;
-    }
-    if (t->name && t->sub) {
-        t = normalizetype(t);
-    }
-    need(';', ';', ER_P_TD);
-}
-#endif
-
-#ifdef notdef
-boolean
-sametype(struct type *a, struct type *b)
-{
-    struct var *va, *vb;
-
-    if (a == b) return 1;
-    if (a->kind != b->kind) return 0;
-    if (a->kind == TK_PTR || a->kind == TK_ARRAY || a->kind == TK_FUNC) {
-        if (!sametype(a->sub, b->sub)) return 0;
-    }
-
-    if (a->kind == TK_FUNC) {
-        va = a->elem;
-        vb = b->elem;
-        while (va && vb) {
-            if (!sametype(va->type, vb->type)) return 0;
-            va = va->next;
-            vb = vb->next;
-        }
-        if (va || vb) return 0;
-    }
-    if (a->size !- b->size) return 0;
-    if ((a->flags ^ b->flags) & T_UNSIGNED) return 0;
-    return 1;
-}
-#endif
 
 /*
  * return a base type
@@ -661,86 +567,11 @@ getbasetype()
         return 0;
     }
 
-#ifdef notdef
     /*
-     * enum [name] [ { tag [= const], ... } ]
+     * enum, struct, and union parsing would go here
+     * These require more infrastructure (match, new_type, alloc_name, etc.)
+     * that doesn't exist yet, so report as unsupported type for now.
      */
-    if (match(ENUM)) {
-        if (cur.type == SYM) {    // had better be an enum or undefined
-            n = lookup_name(strbuf, ENUMTAG);
-            if (n) {
-                if (next.type == BEGIN) { // if the enum is defined already
-                    recover(ER_P_ED, END);
-                    gettoken();
-                } 
-                gettoken();
-                return n->type;
-            }
-            s = strdup(strbuf);
-            gettoken();
-        } else {                // anonymous enum
-            recover(ER_T_AE, END);
-            gettoken();
-            return lookup_type(ENUM_TYPE, TYPE_DEF)->type;
-        } 
-
-        /* a new enum, which must have a definition */
-        t = new_type(s, ENUMTAG, 0);
-
-        if (!match(BEGIN)) {
-            err(ER_P_ED);
-            return lookup_type(ENUM_TYPE, TYPE_DEF)->type;
-        }
-        while (!match(END)) {
-            if (cur.type != SYM) {
-                recover(ER_P_ET, END);
-                continue;
-            }
-            n = alloc_name(strbuf);
-            n->type = lookup_type(ENUM_TYPE, TYPE_DEF)->type;
-            n->space = ENUMELEMENT;
-            n->next = t->elem;
-            t->elem = n;
-            gettoken();
-
-            // handle tag = const
-            if (match(ASSIGN)) {
-                n->init = expr(PRI_ASSIGN, 0);
-                if (!n->flags & E_CONST) {
-                    n->init = 0;
-                    err(ER_P_ET);
-                } else {
-                    off = n->init->v;
-                }
-            }
-            if (!n->init) {
-                n->init = makeexpr(CONST, 0, 0, E_CONST);
-                n->init->v = off;
-            }
-            off++;
-
-            /* a trailing comma with a close next is an error */
-            if (match(COMMA)) {
-                if (cur.type == RBRACK) {
-                    err(ER_P_ED);
-                }
-            }
-        } // while
-        return t;
-    } // ENUM
-#endif
-
-#ifdef notdef
-    /*
-     * define struct or union
-     */ 
-    if (cur.type == STRUCT || cur.type == UNION) {
-        off = cur.type;
-        s = 0;
-        gettoken();
-            
-    } // STRUCT || UNION
-#endif
     err(ER_T_UT);
     return 0;
 }
