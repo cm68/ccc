@@ -641,7 +641,7 @@ gettoken()
         cpp_out("\n", 2);
     }
     if (VERBOSE(V_TOKEN)) {
-        printf("cur.type = %d %c\n", cur.type, cur.type > ' ' ? cur.type : ' '); 
+        printf("cur.type = 0x%02x \'%c\'\n", cur.type, cur.type > ' ' ? cur.type : ' '); 
     }
     return;
 }

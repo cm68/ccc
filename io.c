@@ -60,15 +60,15 @@ cdump(char *tag)
     if (curchar <= ' ') {
         sprintf(cs, "0x%x", curchar);
     } else {
-        sprintf(cs, "%c", curchar);
+        sprintf(cs, "\'%c\'", curchar);
     }
     if (nextchar <= ' ') {
         sprintf(ns, "0x%x", nextchar);
     } else {
-        sprintf(ns, "%c", nextchar);
+        sprintf(ns, "\'%c\'", nextchar);
     }
     if (t) {
-    	sprintf(tbuf, "%s %x %x %s %s",
+    	sprintf(tbuf, "%s offset: 0x%x valid: 0x%x cs: %s ns: %s",
     			tag, tbtop->offset, tbtop->valid, cs, ns);
     	hexdump(tbuf, t->storage, t->valid);
     }

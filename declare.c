@@ -119,7 +119,7 @@ declare(struct type **btp)
         gettoken();
 #ifdef notdef
         /*
-         * old style parameter declarartion:
+         * old style parameter declaration:
          * foo(a,b) int a; int b;
          */
         if ((cur.type != BEGIN) && (cur.type != SEMI)) {

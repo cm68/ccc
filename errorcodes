@@ -41,6 +41,7 @@ ER_S_NL		need colon for label
 ER_S_DO		malformed do statement
 ER_S_GL		goto label expected
 ER_S_SB		switch statement bracked expected
+ER_S_UK     unkown statement
 
 # lexer or cpp errors
 ER_C_BD		unknown cpp operation

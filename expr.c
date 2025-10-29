@@ -83,7 +83,7 @@ binop_pri(char t)
     } else {
 	    v = op_pri[po];
 	}
-	printf("binop_pri %d %c -> %d\n", t, t > ' ' ? t : ' ', v);
+	printf("binop_pri 0x%02x %c -> %d\n", t, t > ' ' ? t : ' ', v);
     return v;
 }
 
@@ -179,7 +179,7 @@ parse_expr(char pri, struct stmt *st)
         break;
 
 	default:
-		printf("unop default for token %d\n", cur.type);
+		printf("unop default for token 0x%02x\n", cur.type);
 		err(ER_E_UO);
 		return 0;
     }

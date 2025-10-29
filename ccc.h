@@ -84,6 +84,11 @@ struct stmt {
 	char op;
 	int flags;
 	char *label;
+	/* extended fields used by parser */
+	struct stmt *chain;     /* child / body statement */
+	struct stmt *otherwise; /* else branch */
+	struct expr *middle;    /* for for-loop middle expression */
+	struct name *function;  /* owning function */
 };
 
 extern struct stmt *new_stmt(char op, struct expr *left);
@@ -91,6 +96,10 @@ extern void destroy_stmt(struct stmt *s);
 #ifdef DEBUG
 extern void dump_stmt(struct stmt *s);
 #endif
+
+/* statement flags used in parse.c */
+#define S_PARENT 0x01
+#define S_LABEL  0x02
 
 /*
  * synthetic type information like enum, struct, union, etc goes away as soon
@@ -137,6 +146,13 @@ struct type {
 #define	TF_ARRAY		0x20
 #define	TF_FLOAT		0x40
 #define TF_OLD          0x80    // no argument list - K&R
+
+/* legacy aliases used by older parser code */
+#define T_FUNC TF_FUNC
+
+/* name flags (some code expects these) */
+#define V_STATIC 0x08
+#define V_GLOBAL 0x10
 
 extern struct type *getbasetype();
 extern void dump_type(struct type *t, int lv);

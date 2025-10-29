@@ -4,6 +4,12 @@
 
 #include "ccc.h"
 
+/* file-scope globals/forward declarations expected by legacy parser code */
+static struct name *global = 0;
+struct stmt *makestmt(char op, struct expr *left);
+char *blockname(void);
+struct stmt *asmblock(void);
+
 /*
  * parse a statement - this is really the heart of the compiler frontend
  * it recursively calls itself
@@ -11,8 +17,11 @@
  */
 struct stmt*
 statement(struct stmt *parent) {
-#ifdef notdef
     struct stmt *st, **pst = 0;
+    struct stmt *head = 0;
+    // struct name *v = 0;
+    static struct name *global = 0; /* symbol list head used by older parser code */
+    struct stmt *makestmt(char op, struct expr *left);
     int block = 1;
     struct scope *sc;
 
@@ -36,7 +45,7 @@ statement(struct stmt *parent) {
         case IF:    // if <condition> <statement>
             gettoken();
             need(LPAR, LPAR, ER_S_NP);
-            st = makestmt(IF, expr(PRI_PAREN, parent));
+            st = makestmt(IF, parse_expr(PRI_PAREN, parent));
             need(RPAR, RPAR, ER_S_NP);
             st->chain = statement(st);
             if (cur.type == ELSE) {   // else <statement>
@@ -49,7 +58,7 @@ statement(struct stmt *parent) {
             need(SEMI, SEMI, ER_S_SN);
             st = makestmt(BREAK, 0);
             break;
-        case DEFAULT:
+        case CONTINUE:
             gettoken();
             need(SEMI, SEMI, ER_S_SN);
             break;
@@ -57,14 +66,14 @@ statement(struct stmt *parent) {
             gettoken();
             st = makestmt(RETURN, 0);
             if (cur.type != SEMI) {
-                st->left = expr(PRI_ALL, parent);
+                st->left = parse_expr(PRI_ALL, parent);
             }
             need(SEMI, SEMI, ER_S_SN);
             break;
         case SYM:
             if (next.type == COLON) {
                 st = makestmt(LABEL, 0);
-                st->label = strdup(symbuf);
+                st->label = strdup(strbuf);
                 st->flags |= S_LABEL;
                 gettoken();
                 gettoken();
@@ -75,18 +84,18 @@ statement(struct stmt *parent) {
         case STAR:
         case INCR:
         case DECR:
-            st = makestmt(EXPR, expr(PRI_ALL, parent));
+            st = makestmt(EXPR, parse_expr(PRI_ALL, parent));
             need(SEMI, SEMI, ER_S_SN);
             break;
 
         case FOR:   // for (<expr>; <expr>; <expr>) <statement> ;
             gettoken();
             need(LPAR, LPAR, ER_S_NP);
-            st = makestmt(FOR, expr(PRI_ALL, parent));
+            st = makestmt(FOR, parse_expr(PRI_ALL, parent));
             need(SEMI, SEMI, ER_S_SN);
-            st->middle = expr(PRI_ALL, parent);
+            st->middle = parse_expr(PRI_ALL, parent);
             need(SEMI, SEMI, ER_S_SN);
-            st->right = expr(PRI_ALL, parent);
+            st->right = parse_expr(PRI_ALL, parent);
             need(RPAR, RPAR, ER_S_NP);
             st->chain = statement(st);
             break;
@@ -94,7 +103,7 @@ statement(struct stmt *parent) {
         case WHILE:     // while <condition> <statement> ;
             gettoken();
             need(LPAR, LPAR, ER_S_NP);
-            st = makestmt(WHILE, expr(PRI_ALL, parent));
+            st = makestmt(WHILE, parse_expr(PRI_ALL, parent));
             need(RPAR, RPAR, ER_S_NP);
             st->chain = statement(st);
             break;
@@ -106,7 +115,7 @@ statement(struct stmt *parent) {
         case SWITCH:    // switch (<expr>) <block> ;
             gettoken();
             need(LPAR, LPAR, ER_S_NP);
-            st = makestmt(SWITCH, expr(PRI_ALL, parent));
+            st = makestmt(SWITCH, parse_expr(PRI_ALL, parent));
             need(RPAR, RPAR, ER_S_NP);
             need(BEGIN, BEGIN, ER_S_SB);
             st->chain = statement(st);
@@ -115,7 +124,7 @@ statement(struct stmt *parent) {
 
         case CASE:
             gettoken();
-            st = makestmt(CASE, expr(PRI_ALL, parent));
+            st = makestmt(CASE, parse_expr(PRI_ALL, parent));
             if (!(st->left->flags & E_CONST) || (st->left->type->size != 1)) {
                 err(ER_S_NC);
             }
@@ -129,7 +138,7 @@ statement(struct stmt *parent) {
                 recover(ER_S_GL, SEMI);
                 break;
             } 
-            st->label = strdup(symbuf);
+                st->label = strdup(strbuf);
             gettoken();
             need(SEMI, SEMI, ER_S_SN);
             break;
@@ -150,14 +159,14 @@ statement(struct stmt *parent) {
             need(BEGIN, SEMI, ER_S_CC);
             st = makestmt(DO, 0);
             st->chain = statement(st);
-            if ((cur.type != END || next.type != WHILE) {
+            if (cur.type != END || next.type != WHILE) {
                 err(ER_S_DO);
                 break;
             }
             if (cur.type != LPAR) {
                 err(ER_S_NP);
             }
-            st->left = expr(PRI_ALL, parent);
+            st->left = parse_expr(PRI_ALL, parent);
             need(RPAR, SEMI, ER_S_NP);
             need(SEMI, SEMI, ER_S_SN);
             break;
@@ -167,21 +176,21 @@ statement(struct stmt *parent) {
             break;
 
         default:
-            lose();
+            err(ER_E_UO);
+            break;
         }
         if (!pst) {
             if (!st) {
                 continue;
             }
+            head = st;
             st->flags |= S_PARENT;
         }
         pst = &st->next;
-        st->function = v;
+        // st->function = v;
         st->parent = parent;
     } // while
-#else
-	return (struct stmt*) 0;
-#endif
+    return head;
 }
 
 struct stmt*
@@ -192,6 +201,81 @@ makestmt(char op, struct expr *left) {
 	st->op = op;
 	st->left = left;
 	return st;
+}
+
+/* stubs for missing legacy functions */
+struct stmt *
+asmblock(void)
+{
+    return (struct stmt *)0;
+}
+
+
+
+static struct expr *parse_initializer_list(void)
+{
+    struct expr *head = NULL;
+    struct expr *tail = NULL;
+    struct expr *item;
+
+    gettoken(); /* consume { */
+
+    while (cur.type != END) {
+        if (cur.type == BEGIN) {
+            /* Nested initializer for struct/array member */
+            item = parse_initializer_list();
+        } else {
+            item = parse_expr(0, NULL);
+        }
+
+        if (item == NULL) {
+            err(ER_E_IT); /* Invalid initializer term */
+            return NULL;
+        }
+
+        /* Link initializer expressions together */
+        if (head == NULL) {
+            head = item;
+            tail = item;
+        } else {
+            tail->next = item;
+            tail = item;
+        }
+
+        if (cur.type == END) {
+            break;
+        } else if (cur.type != COMMA) {
+            err(ER_S_SN); /* need semicolon/separator */
+            return NULL;
+        }
+        gettoken(); /* consume , */
+    }
+    
+    gettoken(); /* consume } */
+    return head;
+}
+
+void
+do_initializer(void)
+{
+    struct expr *init;
+    
+    gettoken(); /* consume = token */
+
+    if (cur.type == BEGIN) {
+        /* Handle {...} style initializer list */
+        init = parse_initializer_list();
+    } else {
+        /* Handle simple expression initializer */
+        init = parse_expr(0, NULL);
+    }
+
+    if (init == NULL) {
+        err(ER_E_IT); /* Invalid initializer term */
+        return;
+    }
+
+    current->init = init;
 }
 
 void 
@@ -296,9 +380,8 @@ declaration() {
 		sclass = parse_sclass();
 		basetype = 0;
 
-		v = declare(&basetype);
-#ifdef notdef
-        if (v->type & T_FUNC) {
+        v = declare(&basetype);
+        if (v && v->type && (v->type->flags & TF_FUNC)) {
             if (cur.type == BEGIN) {
                 parsefunc(v);
                 if (sclass == STATIC) {
@@ -313,7 +396,6 @@ declaration() {
         if (cur.type == ASSIGN) {
             do_initializer();
         }
-#endif
 		if (cur.type == COMMA) {
 			gettoken();
 			continue;
@@ -332,10 +414,6 @@ blockname() {
 	static int blockid = 0;
 	sprintf(bnbuf, "block %d", blockid++);
 	return strdup(bnbuf);
-}
-
-void 
-block() {
 }
 
 /*
