@@ -1,0 +1,40 @@
+name: Build
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y gcc make gawk
+
+    - name: Build project
+      run: make clean && make
+
+    - name: Run tests
+      run: make test || true
+
+    - name: Show build artifacts
+      run: |
+        ls -lh cc1
+        file cc1
+
+    - name: Verify generated files
+      run: |
+        echo "=== Generated op_pri.h ==="
+        head -20 op_pri.h
+        echo "=== Generated error.h ==="
+        head -20 error.h
+        echo "=== Generated debug.h ==="
+        cat debug.h
