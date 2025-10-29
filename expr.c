@@ -5,6 +5,16 @@
 
 #include "op_pri.h"
 
+/*
+ * operator precedence levels used in parse_expr
+ * (from genop_pri.c - keep in sync)
+ */
+#define OP_PRI_PRIMARY     1   /* postfix/member access */
+#define OP_PRI_MULT        3   /* * / % */
+#define OP_PRI_ADD         4   /* + - */
+
+/* PRI_ALL is defined in ccc.h as 0 - that's correct for "parse all operators" */
+
 struct expr *
 makeexpr(char op, struct expr *left)
 {
@@ -88,259 +98,134 @@ parse_expr(char pri, struct stmt *st)
     char p;
 
 	tdump(cur.type);
+	e = 0;  // initialize to avoid uninitialized use
+
 	switch (cur.type) {   // prefix
 
-#ifdef notdef
-	case SYM:
-		e = makeexpr(DEREF, makeexpr(VAR, 0));
-		e->left->var = findvar(strbuf, st);
-		/* never seen the name and function call */
-		if ((!(e->left->var)) && (next.type == LPAR)) {
-			e->left->var = makevar(strdup(strbuf),
-                maketype(0, TK_FUNC, ptype[PT_INT]));
-			e->left->var->flags |= V_GLOBAL;
-			e->left->var->type->flags |= T_INCOMPLETE;
-        }
-        unop_set(e);
-        e->left->type = normalizetype(maketype(0, TK_PTR, e->left->var->type));
-        break;
-#endif
     case NUMBER:
         e = makeexpr(CONST, 0);
         e->type = inttype;
         e->v = cur.v.numeric;
+        e->flags = E_CONST;
         gettoken();
-        break;
-#ifdef notdef
-    case STRING:
-        e = makeexpr(VAR, 0);
-        e->var = makevar(makelabel('S', (int)e),
-            maketype(0, TK_ARRAY, ptype[PTYPE_CHAR]),
-            V_STATIC|V_CONST|V_GLOBAL);
-        e->var->type->len = strlen(strbuf);
-        e->var->type->flags &= ~T_INCOMPLETE;
-        e->var->init = makeexpr(BYTES,
-            (struct expr *)strdup(strbuf));
-        e->var->init->v = e->var->type->len;
-        e->type = e->var->type;
         break;
 
-    /* unary */
-    case LPAR:
+    /* unary operators */
+    case LPAR:      // parenthesized expression
         gettoken();
-        t = getbasetype();      // type cast
-        if (t) {
-            v = declare(&t);
-            if (v) {
-                err(ER_E_CS);
+        e = parse_expr(0, st);  // parse inner expression with lowest precedence
+        need(RPAR, RPAR, ER_E_SP);
+        break;
+
+    case MINUS:     // unary minus
+        gettoken();
+        e = makeexpr(NEG, parse_expr(OP_PRI_MULT - 1, st));  // higher precedence than mult
+        if (e->left) {
+            e->type = e->left->type;
+            e->cost = e->left->cost;
+            e->left->up = e;
+        }
+        e = cfold(e);
+        break;
+
+    case TWIDDLE:   // bitwise not
+        gettoken();
+        e = makeexpr(TWIDDLE, parse_expr(OP_PRI_MULT - 1, st));
+        if (e->left) {
+            e->type = e->left->type;
+            e->cost = e->left->cost;
+            e->left->up = e;
+        }
+        e = cfold(e);
+        break;
+
+    case BANG:      // logical not
+        gettoken();
+        e = makeexpr(NOT, parse_expr(OP_PRI_MULT - 1, st));
+        if (e->left) {
+            e->type = e->left->type;
+            e->cost = e->left->cost;
+            e->left->up = e;
+        }
+        e = cfold(e);
+        break;
+
+    case STAR:      // dereference (unary)
+        gettoken();
+        e = makeexpr(DEREF, parse_expr(OP_PRI_MULT - 1, st));
+        if (e->left) {
+            e->cost = e->left->cost;
+            e->left->up = e;
+            // type will be determined later when we have full type info
+            if (e->left->type && (e->left->type->flags & TF_POINTER) && e->left->type->sub) {
+                e->type = e->left->type->sub;
+            } else {
+                e->type = e->left->type;
             }
-            e = makeexpr(CAST, parse_expr(pri, st));
-            unop_set();
-            e->type = t;
-            e = cfold(e);
-            need(RPAR, RPAR, ER_E_CP);
-            break;
-        }
-        e = expr(PRI_PAREN, st);
-        need(RPAR, RPAR, ER_E_SP);
-        unop_set();
-        e = cfold(e);
-        break;
-    case SIZEOF:
-        gettoken();
-        need(LPAR, LPAR, ER_E_SP);
-        /* XXX - get a declaration */
-        need(RPAR, RPAR, ER_E_SP);
-        break;
-    case INCR:
-    case DECR:
-        op = cur.type;
-        gettoken();
-        e = makeexpr(op, parse_expr(pri, st));
-        if (!lvalue(e->left)) {
-            err(ER_E_LV);
-        }
-        unop_set(e);
-        break;
-    case STAR:      // deref
-        gettoken();
-        e = makeexpr(DEREF, parse_expr(pri, st));
-        if (e->left->type->kind == TK_PTR) {
-            unop_set(e);
-            e->type = e->left->type->sub;
-        } else {
-            err(ER_E_DP);
         }
         break;
-    case AND:       // addrof
+
+    case AND:       // address-of (unary)
         gettoken();
-        e1 = parse_expr(pri, st)
-        if (!lvalue(e->left)) {
-            err(ER_E_LV);
+        e = makeexpr(AND, parse_expr(OP_PRI_MULT - 1, st));
+        if (e->left) {
+            e->cost = e->left->cost;
+            e->left->up = e;
+            // create pointer type to operand's type
+            if (e->left->type) {
+                e->type = get_type(TF_POINTER, e->left->type, 0, 0);
+            }
         }
-        e = e1->left;
-        free(e1);
-        e->left->up = c;
         break;
-    case BANG:      // unary not
-        gettoken();
-        e = makeexpr(NOT, parse_expr(pri, st));
-        unop_set();
-        e->type = ptype[PT_BOOL];
-        e = cfold(e);
-        break;
-    case MINUS:
-        cur.type = NEG;
-        /* fall through */
-    case TWIDDLE:
-        op = cur.type;
-        gettoken();
-        e = makeexpr(op, parse_expr(pri, st));
-        if (e->left->type->kind != TK_SCALAR) {
-            err(ER_E_SC);
-        }
-        unop_set(e);
-        e = cfold(e);
-        break;
-#endif
-default:
-	printf("unop default\n");
+
+	default:
+		printf("unop default for token %d\n", cur.type);
+		err(ER_E_UO);
+		return 0;
     }
     /*
      * the recursive nature of this expression parser will have exhausted
      * the unary operators and terminals by this point. now we have postfix
      * and binary operators to deal with
      */
-    while (1) { // operators
-	tdump(cur.type);
-        switch (cur.type) {
-#ifdef notdef
-        case INCR:
-            if (!lvalue(e)) {
-                err(ER_E_LV);
-            }
-            e = makeexpr(POSTINC, e);
-            unop_set(e);
-            continue;
-        case DECR:
-            if (!lvalue(e)) {
-                err(ER_E_LV);
-            }
-            e = makeexpr(POSTDEC, e);
-            unop_set(e);
-            continue;
-        case LBRACK:        // array reference
-            gettoken();
-            if (e->type->kind != TK_PTR) {
-                err(ER_E_IT);
-            }
-            e = makeexpr(INDEX, e);
-            e->right = expr(PRI_INDEX, st);
-            e->type = e->left->type->sub;
-            e->left->up = e->right->up = e;
-            e->cost = e->left->cost + e->right->cost;
-            need(RBRACK, RBRACK, ER_E_IB);
-            e = cfold(e);
-            continue;
-        case LPAR:          // function call
-            gettoken();
-            if ((e->type->kind == TK_PTR) &&
-                (e->left->type->kind == TK_FUNC)) {
-                e = makeexpr(CALL, e);
-                e->left->up = e;
-                e->type = e->left->type->sub;
-                e->cost = e->left->cost;
-                while (cur.type != E_O_F) {
-                    e1 = expr(PRI_PAREN, st);
-                    e->up = e;
-                    if (e->next) {
-                        e->next->prev = e1;
-                    }
-                    e1->next = e->next;
-                    e->next = e1;
-                    if (cur.type == COMMA) {
-                        gettoken();
-                        continue;
-                    }
-                    if (cur.type == RPAR) {
-                        break;
-                    }
-                }
-            } else {
-                recover(RPAR, ER_E_NF);
-            }
-            need(RPAR, RPAR, ER_E_FA);
-            continue;
-        case DOT:
-            gettoken();
-            if ((cur.type != SYM) || (e->type->kind != TK_PTR) ||
-                (!e->type->sub->flags & T_AGGREGATE)) {
-                err(ER_E_SM);
-                continue;
-            }
-            v = varonlist(strbuf, e->type->sub->elem);
-            if (!v) {
-                err(ER_E_NT);
-            }
-            e = makeexpr(ADD, e);
-            e->left->up = e;
-            e->right = makeexpr(CONST, 0);
-            e->right->up = e;
-            e->right->type = ptype[PT_CHAR];
-            e->type = v->type;
-            e->right->v = v->offset;
-            e = cfold(e);
-            continue;
-        case DEREF:             // ->
-            gettoken();
-            if ((cur.type != SYM) || (e->type->kind != TK_PTR) ||
-                (e->type->sub->kind != TK_PTR) ||
-                (e->type->sub->sub->flags & T_AGGREGATE)) {
-                err(ER_E_SM);
-                continue;
-            }
-            v = varonlist(strbuf, e->type->sub->sub->elem);
-            if (!v) {
-                err(ER_E_NT);
-            }
-            e = makeexpr(ADD, e);
-            e->left->up = e;
-            e->right = makeexpr(CONST, 0);
-            e->right->up = e;
-            e->right->type = ptype[PT_CHAR];
-            e->type = v->type;
-            e = cfold(e);
-            continue;
-#endif
-        default:
-            printf("expr default\n");
-        } 
+    while (1) { // binary operators
+        tdump(cur.type);
+
         p = binop_pri(cur.type);
         if (p == 0) {
-            err(ER_E_UO);
-            return 0;
+            // not a binary operator, we're done
+            break;
         }
-        if (p > pri) {
+        if (p >= pri) {
+            // operator has same or lower precedence, stop parsing at this level
             break;
         }
 
-        e = makeexpr(cur.type, e);
-        e->left->up = e;
+        // we have a binary operator with higher precedence (lower p value)
+        op = cur.type;
         gettoken();
-        e->right = parse_expr(p, st);
-        e->right->up = e;
-        e->type = 0; // XXX opresult(e->op, e->left, e->right);
 
-#ifdef notdef
-        if (lookupc(symops, e->op) != -1) {
-            if (e->left->cost < e->right->cost) {
-                e1 = e->left;
-                e->left = e->right;
-                e->right = e1;
-            }
+        // for left-associative operators (most C operators), parse right side
+        // with precedence p, which prevents same-precedence operators from
+        // being pulled into the right subtree
+        e = makeexpr(op, e);
+        e->left->up = e;
+        e->right = parse_expr(p, st);
+        if (e->right) {
+            e->right->up = e;
         }
-#endif
-        e->cost = e->left->cost + e->right->cost;
+
+        // compute cost and try to determine result type
+        if (e->left && e->right) {
+            e->cost = e->left->cost + e->right->cost;
+            // for now, use left operand's type as result type
+            // proper type resolution would go here
+            e->type = e->left->type;
+        } else if (e->left) {
+            e->cost = e->left->cost;
+            e->type = e->left->type;
+        }
+
         e = cfold(e);
     }
     return e;
