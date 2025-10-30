@@ -278,8 +278,22 @@ do_initializer(void)
     return init;
 }
 
-void 
+void
 parsefunc(struct name *f) {
+	// For now, just consume the function body by skipping the braced block
+	// Full implementation would parse statements
+	if (cur.type == BEGIN) {
+		int depth = 1;
+		gettoken(); // consume {
+		while (depth > 0 && cur.type != E_O_F) {
+			if (cur.type == BEGIN) {
+				depth++;
+			} else if (cur.type == END) {
+				depth--;
+			}
+			gettoken();
+		}
+	}
 	// v->body = statement(0);
 	// v->body->flags = S_FUNC;
 }

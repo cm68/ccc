@@ -46,6 +46,18 @@ struct type *inttype;
 struct type *chartype;
 
 /*
+ * Check if current token is a type keyword
+ */
+static int
+is_type_token(char t)
+{
+    return (t == CHAR || t == SHORT || t == INT || t == LONG ||
+            t == FLOAT || t == DOUBLE || t == VOID || t == UNSIGNED ||
+            t == STRUCT || t == UNION || t == ENUM ||
+            t == CONST || t == VOLATILE || t == TYPEDEF);
+}
+
+/*
  * basic types = 0
  * global = 1
  * inner blocks > 1
@@ -173,6 +185,7 @@ declare_internal(struct type **btp, boolean struct_elem)
     }
 
     // function argument list: ( <type> <name>[, <type> <name>]* )
+    // or K&R style: ( <name>[, <name>]* ) <type> <name>; ...
     if (cur.type == LPAR) {
         gettoken();
         if (suffix) {
@@ -182,25 +195,90 @@ declare_internal(struct type **btp, boolean struct_elem)
         // create function type with prefix as return type
         suffix = get_type(TF_FUNC, prefix, 0, 0);
 
-        // parse argument list
-        while (cur.type != RPAR && cur.type != E_O_F) {
-            struct type *argtype = 0;
-            arg = declare_internal(&argtype, 0);  /* function args are normal names, not struct elems */
-            if (arg) {
+        // Check if this is K&R style (identifier without type) or ANSI style
+        int kr_style = 0;
+        if (cur.type == SYM) {
+            // K&R style: collect parameter names only
+            kr_style = 1;
+            while (cur.type == SYM && cur.type != E_O_F) {
+                // Create parameter with no type yet (will be filled in later)
+                arg = malloc(sizeof(*arg));
+                arg->name = strdup(strbuf);
+                arg->type = 0;  // Type will be set later from declarations
+                arg->level = lexlevel + 1;
+                arg->is_tag = 0;
+                arg->kind = var;
+                arg->flags = V_FUNARG | V_LOCAL;
                 arg->next = suffix->elem;
                 suffix->elem = arg;
-                arg->flags |= V_FUNARG | V_LOCAL;
-            }
-            if (cur.type == COMMA) {
+
                 gettoken();
-                continue;
+
+                if (cur.type == COMMA) {
+                    gettoken();
+                    continue;
+                }
+                if (cur.type == RPAR) {
+                    break;
+                }
             }
-            if (cur.type != RPAR) {
-                err(ER_E_FA);
-                break;
+        } else if (is_type_token(cur.type) || cur.type == RPAR) {
+            // ANSI style: parse typed parameters
+            while (cur.type != RPAR && cur.type != E_O_F) {
+                struct type *argtype = 0;
+                arg = declare_internal(&argtype, 0);  /* function args are normal names, not struct elems */
+                if (arg) {
+                    arg->next = suffix->elem;
+                    suffix->elem = arg;
+                    arg->flags |= V_FUNARG | V_LOCAL;
+                }
+                if (cur.type == COMMA) {
+                    gettoken();
+                    continue;
+                }
+                if (cur.type != RPAR) {
+                    err(ER_E_FA);
+                    break;
+                }
             }
         }
         need(RPAR, RPAR, ER_E_FA);
+
+        // If K&R style, parse the parameter type declarations after )
+        // Stop when we hit the function body { or run out of declarations
+        if (kr_style && is_type_token(cur.type)) {
+            while (is_type_token(cur.type) && cur.type != E_O_F && cur.type != BEGIN) {
+                struct type *paramtype = 0;
+                struct name *paramdecl = declare_internal(&paramtype, 0);
+
+                if (paramdecl) {
+                    // Find the matching parameter in suffix->elem and update its type
+                    struct name *p;
+                    for (p = suffix->elem; p; p = p->next) {
+                        if (strcmp(p->name, paramdecl->name) == 0) {
+                            p->type = paramdecl->type;
+                            break;
+                        }
+                    }
+                    if (!p) {
+                        err(ER_D_FM);  // old style arg defs error - parameter declared but not in list
+                    }
+                    // paramdecl is in names[] array and will be cleaned up by pop_scope
+                    // Don't free it here
+                }
+
+                // Check if we should continue or stop
+                if (cur.type == SEMI) {
+                    gettoken();
+                    // Stop if next token is BEGIN (function body) or not a type keyword
+                    if (cur.type == BEGIN || !is_type_token(cur.type)) {
+                        break;
+                    }
+                } else {
+                    break;
+                }
+            }
+        }
     }
 
     if ((cur.type != ASSIGN) && (cur.type != BEGIN) &&

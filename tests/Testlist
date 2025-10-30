@@ -2,6 +2,7 @@ cfold.c
 complex_types.c
 decl.c
 include.c
+kr_funcs.c
 macro.c
 multistr.c
 simpleexpr.c
