@@ -217,6 +217,14 @@ declare_internal(struct type **btp, boolean struct_elem)
                     break;
                 }
             }
+
+            // Default any undeclared K&R parameters to int
+            struct name *p;
+            for (p = suffix->elem; p; p = p->next) {
+                if (p->type == 0) {
+                    p->type = inttype;
+                }
+            }
         }
     }                           // if cur.type == LPAR
 

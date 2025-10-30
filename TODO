@@ -32,10 +32,6 @@ names are stored as fixed length strings, and start with a hash, length, and dat
 only N (12? 10?) bytes of name data are stored, in an attempt to get the symbol
 table down to 16 bytes.
 
-statics are global in storage, but lexica
-struct symbol {
-	char hash;
-	char length;
-	char name[NAMELEN];
-	type_t *type;
-	char level;
+statics are global in storage, but scoped using the scope level.
+in practice, they have a 'scoped name', and a synthetic 'global name' so they go into
+the global symbol table with a handle.
