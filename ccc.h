@@ -100,6 +100,7 @@ extern void dump_stmt(struct stmt *s);
 /* statement flags used in parse.c */
 #define S_PARENT 0x01
 #define S_LABEL  0x02
+#define S_FUNC   0x04
 
 /*
  * synthetic type information like enum, struct, union, etc goes away as soon

@@ -37,9 +37,13 @@ statement(struct stmt *parent) {
             push_scope(blockname());
             st = makestmt(BEGIN, 0);
             st->parent = parent;
-            statement(parent);
+            st->chain = statement(st);
             pop_scope();
             need(END, END, ER_S_CC);
+            // If this is a top-level block (function body), return immediately
+            if (parent == NULL) {
+                return st;
+            }
             break;
 
         case IF:    // if <condition> <statement>
@@ -280,22 +284,10 @@ do_initializer(void)
 
 void
 parsefunc(struct name *f) {
-	// For now, just consume the function body by skipping the braced block
-	// Full implementation would parse statements
-	if (cur.type == BEGIN) {
-		int depth = 1;
-		gettoken(); // consume {
-		while (depth > 0 && cur.type != E_O_F) {
-			if (cur.type == BEGIN) {
-				depth++;
-			} else if (cur.type == END) {
-				depth--;
-			}
-			gettoken();
-		}
+	f->body = statement(0);
+	if (f->body) {
+		f->body->flags |= S_FUNC;
 	}
-	// v->body = statement(0);
-	// v->body->flags = S_FUNC;
 }
 
 /*
