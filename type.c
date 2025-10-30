@@ -460,9 +460,11 @@ getbasetype()
         // must have a definition if no tag or if forward reference
         if (cur.type != BEGIN) {
             if (n) {
+                if (s) free(s);
                 return n->type;  // forward reference
             }
             err(ER_T_ED);
+            if (s) free(s);
             return 0;
         }
 
@@ -477,6 +479,7 @@ getbasetype()
             } else {
                 n->type = t;
             }
+            free(s);  // new_name() makes its own copy
         }
 
         // parse enum elements: { name [= value], ... }
@@ -489,7 +492,7 @@ getbasetype()
             }
 
             // create enum element (use 'e' to avoid variable name collision)
-            struct name *e = new_name(strdup(strbuf), elem, t, 0);
+            struct name *e = new_name(strbuf, elem, t, 0);
             e->next = t->elem;
             t->elem = e;
             gettoken();
@@ -540,9 +543,11 @@ getbasetype()
         // must have a definition if no tag or if forward reference
         if (cur.type != BEGIN) {
             if (n) {
+                if (s) free(s);
                 return n->type;  // forward reference
             }
             err(ER_T_ED);
+            if (s) free(s);
             return 0;
         }
 
@@ -557,6 +562,7 @@ getbasetype()
             } else {
                 n->type = t;
             }
+            free(s);  // new_name() makes its own copy
         }
 
         // parse member list: { type name; ... }

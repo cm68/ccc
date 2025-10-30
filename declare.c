@@ -96,7 +96,7 @@ declare_internal(struct type **btp, boolean struct_elem)
             printf("struct_elem: %s (not added to names[])\n", nm->name);
         } else {
             /* normal variable: add to global names[] array */
-            nm = new_name(strdup(strbuf), var, prefix, 0);
+            nm = new_name(strbuf, var, prefix, 0);
         }
         gettoken();
 
