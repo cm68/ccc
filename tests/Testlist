@@ -1,5 +1,11 @@
 decl.c
-macro.c
-string.c
 include.c
+macro.c
 multistr.c
+simpleexpr.c
+string.c
+t2.c
+test_no_collision.c
+test_stringify.c
+test_up_to_struct.c
+test_with_add.c
