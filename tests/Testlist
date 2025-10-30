@@ -12,3 +12,5 @@ test_no_collision.c
 test_stringify.c
 test_up_to_struct.c
 test_with_add.c
+simple_statements.c
+statements_kr.c
