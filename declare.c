@@ -1,6 +1,18 @@
 #include "ccc.h"
 
 /*
+ * Check if current token is a type keyword
+ */
+static int
+is_type_token(char t)
+{
+    return (t == CHAR || t == SHORT || t == INT || t == LONG ||
+            t == FLOAT || t == DOUBLE || t == VOID || t == UNSIGNED ||
+            t == STRUCT || t == UNION || t == ENUM ||
+            t == CONST || t == VOLATILE || t == TYPEDEF);
+}
+
+/*
  * we are in a parse state where we want to process declarations.
  * any names and types we declare go into the current scope
  *
@@ -120,65 +132,92 @@ declare_internal(struct type **btp, boolean struct_elem)
             suffix = 0;
         }
 
-        suffix = get_type(0, func, 0);
-        while (cur.type != RPAR) {
-#ifdef notdef
-            freetype(t);
-            t = v;
-#endif
-            arg = declare_internal(&t, 0);  /* function args are normal names, not struct elems */
-            if (arg) {
+        suffix = get_type(TF_FUNC, prefix, 0, 0);
+
+        // Check if this is K&R style (identifier without type) or ANSI style
+        int kr_style = 0;
+        if (cur.type == SYM) {
+            // K&R style: collect parameter names only
+            kr_style = 1;
+            while (cur.type == SYM && cur.type != E_O_F) {
+                // Create parameter with no type yet (will be filled in later)
+                arg = malloc(sizeof(*arg));
+                arg->name = strdup(strbuf);
+                arg->type = 0;  // Type will be set later from declarations
+                arg->level = lexlevel + 1;
+                arg->is_tag = 0;
+                arg->kind = var;
+                arg->flags = V_FUNARG | V_LOCAL;
                 arg->next = suffix->elem;
                 suffix->elem = arg;
-                arg->flags |= V_FUNARG | V_LOCAL;
-            }
-            if (cur.type == COMMA) {
+
                 gettoken();
-                continue;
-            }
-            if (cur.type != RPAR) {
-                err(ER_P_FA);
-                break;
-            }
-        }
-        gettoken();
-#ifdef notdef
-        /*
-         * old style parameter declaration:
-         * foo(a,b) int a; int b;
-         */
-        if ((cur.type != BEGIN) && (cur.type != SEMI)) {
-            if (t) {
-                freetype(t);
-            }
-            t = 0;
-            while (cur.type != BEGIN) {
-                a = declare(&t);
-                if (!a) {
-                    err(ER_P_FM);
-                    break;
-                }
-                b = elementvar(a->name, suffix);
-                if (b->type) {
-                    err(ER_P_FO);
-                }
-                b->type = a->type;
+
                 if (cur.type == COMMA) {
                     gettoken();
                     continue;
                 }
-                if (cur.type == SEMI) {
-                    freetype(t);
-                    t = 0;
+                if (cur.type == RPAR) {
+                    break;
+                }
+            }
+        } else {
+            // ANSI style: parse typed parameters
+            while (cur.type != RPAR && cur.type != E_O_F) {
+                arg = declare_internal(&t, 0);  /* function args are normal names, not struct elems */
+                if (arg) {
+                    arg->next = suffix->elem;
+                    suffix->elem = arg;
+                    arg->flags |= V_FUNARG | V_LOCAL;
+                }
+                if (cur.type == COMMA) {
                     gettoken();
                     continue;
                 }
-                err(ER_P_FM);
-                break;
+                if (cur.type != RPAR) {
+                    err(ER_D_FA);
+                    break;
+                }
             }
         }
-        assign_arg_off(suffix, 4);
-#endif
+
+        need(RPAR, RPAR, ER_D_FA);
+
+        // If K&R style, parse the parameter type declarations after )
+        // Stop when we hit the function body { or run out of declarations
+        if (kr_style && is_type_token(cur.type)) {
+            while (is_type_token(cur.type) && cur.type != E_O_F && cur.type != BEGIN) {
+                struct type *paramtype = 0;
+                struct name *paramdecl = declare_internal(&paramtype, 0);
+
+                if (paramdecl) {
+                    // Find the matching parameter in suffix->elem and update its type
+                    struct name *p;
+                    for (p = suffix->elem; p; p = p->next) {
+                        if (strcmp(p->name, paramdecl->name) == 0) {
+                            p->type = paramdecl->type;
+                            break;
+                        }
+                    }
+                    if (!p) {
+                        err(ER_D_FM);  // old style arg defs error - parameter declared but not in list
+                    }
+                    // paramdecl is in names[] array and will be cleaned up by pop_scope
+                    // Don't free it here
+                }
+
+                // Check if we should continue or stop
+                if (cur.type == SEMI) {
+                    gettoken();
+                    // Stop if next token is BEGIN (function body) or not a type keyword
+                    if (cur.type == BEGIN || !is_type_token(cur.type)) {
+                        break;
+                    }
+                } else {
+                    break;
+                }
+            }
+        }
     }                           // if cur.type == LPAR
 
     if ((cur.type != ASSIGN) && (cur.type != BEGIN) &&
