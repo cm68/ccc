@@ -49,7 +49,7 @@ struct expr {
 	struct expr *next;
 
 	struct type *type;
-	struct var *var;
+	struct var *var;      /* for STRING expressions, cast to (struct name *) to get synthetic name */
 
 	unsigned long v;
 	char location;
@@ -201,6 +201,7 @@ extern struct name *lookup_element(char *name, struct type *t);
 extern void dump_name(struct name *s);
 
 extern struct type *inttype;
+extern struct type *chartype;
 
 void parse();
 
@@ -286,7 +287,7 @@ char *bitdef(unsigned char v, char **defs);
 int quoted_string(char *d, char *s);
 int longout(char *d, long v);
 
-/* declare.c */
+/* declare.c / type.c */
 extern struct name *declare(struct type **btp);
 
 /* tokenlist.c */

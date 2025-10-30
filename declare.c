@@ -3,13 +3,18 @@
 /*
  * we are in a parse state where we want to process declarations.
  * any names and types we declare go into the current scope
+ *
+ * struct_elem: if true, this is a struct member and should NOT be added
+ *              to the global names[] array (to avoid namespace pollution)
  */
 struct name *
-declare(struct type **btp)
+declare_internal(struct type **btp, boolean struct_elem)
 {
     struct name *nm, *arg;
     struct type *t, *prefix, *suffix, *rt;
     int i;
+
+    suffix = 0;
 
     nm = 0;
 
@@ -35,7 +40,7 @@ declare(struct type **btp)
     if (cur.type == LPAR) {
         gettoken();
         rt = 0;
-        nm = declare(&rt);       // recurse
+        nm = declare_internal(&rt, struct_elem);       // recurse
         need(RPAR, RPAR, ER_D_DP);
         if (*btp && rt) {
             err(ER_T_DT);
@@ -60,9 +65,29 @@ declare(struct type **btp)
         if (nm) {
             err(ER_D_MV);
         }
-        nm = new_name(strdup(strbuf), var, prefix, 0);
+
+        if (struct_elem) {
+            /* struct members: create name but DON'T add to global names[] array */
+            nm = malloc(sizeof(*nm));
+            nm->name = strdup(strbuf);
+            nm->type = prefix;
+            nm->level = lexlevel;
+            nm->is_tag = 0;
+            nm->kind = elem;  /* will be struct/union member */
+            nm->flags = 0;
+            nm->offset = 0;
+            nm->width = 0;
+            nm->bitoff = 0;
+            nm->next = 0;
+            nm->init = 0;
+            nm->body = 0;
+            printf("struct_elem: %s (not added to names[])\n", nm->name);
+        } else {
+            /* normal variable: add to global names[] array */
+            nm = new_name(strdup(strbuf), var, prefix, 0);
+        }
         gettoken();
-        
+
         if (cur.type == COLON) {    // check for bitfield
             gettoken();
             if (cur.type != NUMBER) {
@@ -101,11 +126,11 @@ declare(struct type **btp)
             freetype(t);
             t = v;
 #endif
-            a = declare(&t);
-            if (a) {
-                a->next = suffix->elem;
-                suffix->elem = a;
-                a->flags |= V_FUNARG | V_LOCAL;
+            arg = declare_internal(&t, 0);  /* function args are normal names, not struct elems */
+            if (arg) {
+                arg->next = suffix->elem;
+                suffix->elem = arg;
+                arg->flags |= V_FUNARG | V_LOCAL;
             }
             if (cur.type == COMMA) {
                 gettoken();
@@ -162,14 +187,14 @@ declare(struct type **btp)
         err(ER_D_UT);
         nm = 0;
     }
-    if (!v) {
+    if (!nm) {
         return 0;
     }
 
     /*
      * prepend the prefix and append the suffix
      */
-    t = v->type;
+    t = nm->type;
     t = rt;
     while (t && t->sub) {
         t = t->sub;
@@ -179,8 +204,18 @@ declare(struct type **btp)
         t = t->sub;
     }
     t = prefix;
-    return v;
-}                               // declare
+    return nm;
+}                               // declare_internal
+
+/*
+ * Public wrapper for declare_internal.
+ * Normal variables are added to the global names[] array.
+ */
+struct name *
+declare(struct type **btp)
+{
+    return declare_internal(btp, 0);
+}
 
 /*
  * vim: tabstop=4 shiftwidth=4 expandtab:

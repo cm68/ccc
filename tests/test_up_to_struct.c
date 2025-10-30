@@ -11,9 +11,3 @@ struct test_s {
 	int i;
 	int k;
 } instance;
-
-int k = add(3,5);
-
-
-
-

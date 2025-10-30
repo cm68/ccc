@@ -7,13 +7,5 @@ char moo[] = "this is a test";
 
 char *m1 = stringify(this is another);
 
-struct test_s {
-	int i;
-	int k;
-} instance;
-
 int k = add(3,5);
-
-
-
 

@@ -381,7 +381,25 @@ declaration() {
 		basetype = 0;
 
         v = declare(&basetype);
-        if (v && v->type && (v->type->flags & TF_FUNC)) {
+
+        /* error recovery: if declare failed, skip to next ; or , */
+        if (!v) {
+            while (cur.type != SEMI && cur.type != COMMA && cur.type != E_O_F) {
+                gettoken();
+            }
+            if (cur.type == SEMI) {
+                gettoken();
+                break;
+            }
+            if (cur.type == COMMA) {
+                gettoken();
+                continue;
+            }
+            /* E_O_F */
+            break;
+        }
+
+        if (v->type && (v->type->flags & TF_FUNC)) {
             if (cur.type == BEGIN) {
                 parsefunc(v);
                 if (sclass == STATIC) {

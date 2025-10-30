@@ -38,18 +38,32 @@
 
 #include "ccc.h"
 
-char *kindname[] = { 
+char *kindname[] = {
     "prim", "etag", "stag", "utag", "vari", "elem", "tdef"
 };
 struct type *types;
 struct type *inttype;
+struct type *chartype;
+
+/*
+ * basic types = 0
+ * global = 1
+ * inner blocks > 1
+ */
+int lexlevel;
+int lastname;
+int maxnames = 100;
+struct name **names;
 
 /*
  * we are in a parse state where we want to process declarations.
  * any names and types we declare go into the current scope
+ *
+ * struct_elem: if true, this is a struct member and should NOT be added
+ *              to the global names[] array (to avoid namespace pollution)
  */
-struct name *
-declare(struct type **btp)
+static struct name *
+declare_internal(struct type **btp, boolean struct_elem)
 {
     struct name *nm, *arg;
     struct type *t, *prefix, *suffix, *rt;
@@ -80,7 +94,7 @@ declare(struct type **btp)
     if (cur.type == LPAR) {
         gettoken();
         rt = 0;
-        nm = declare(&rt);       // recurse
+        nm = declare_internal(&rt, struct_elem);       // recurse
         need(RPAR, RPAR, ER_D_DP);
         if (*btp && rt) {
             err(ER_T_DT);
@@ -105,7 +119,27 @@ declare(struct type **btp)
         if (nm) {
             err(ER_D_MV);
         }
-        nm = new_name(strdup(strbuf), var, prefix, 0);
+
+        if (struct_elem) {
+            /* struct members: create name but DON'T add to global names[] array */
+            nm = malloc(sizeof(*nm));
+            nm->name = strdup(strbuf);
+            nm->type = prefix;
+            nm->level = lexlevel;
+            nm->is_tag = 0;
+            nm->kind = elem;  /* will be struct/union member */
+            nm->flags = 0;
+            nm->offset = 0;
+            nm->width = 0;
+            nm->bitoff = 0;
+            nm->next = 0;
+            nm->init = 0;
+            nm->body = 0;
+            printf("struct_elem: %s (not added to names[])\n", nm->name);
+        } else {
+            /* normal variable: add to global names[] array */
+            nm = new_name(strdup(strbuf), var, prefix, 0);
+        }
         gettoken();
         if (cur.type == COLON) {
             gettoken();
@@ -145,7 +179,7 @@ declare(struct type **btp)
         // parse argument list
         while (cur.type != RPAR && cur.type != E_O_F) {
             struct type *argtype = 0;
-            arg = declare(&argtype);
+            arg = declare_internal(&argtype, 0);  /* function args are normal names, not struct elems */
             if (arg) {
                 arg->next = suffix->elem;
                 suffix->elem = arg;
@@ -186,20 +220,19 @@ declare(struct type **btp)
     }
     t = prefix;
     return nm;
-}                               // declare
-
-#define ENUM_TYPE   "_uchar_"
+}                               // declare_internal
 
 /*
- * basic types = 0
- * global = 1
- * inner blocks > 1
+ * Public wrapper for declare_internal.
+ * Normal variables are added to the global names[] array.
  */
-int lexlevel;
+struct name *
+declare(struct type **btp)
+{
+    return declare_internal(btp, 0);
+}
 
-int lastname;
-int maxnames = 100;
-struct name **names;
+#define ENUM_TYPE   "_uchar_"
 
 /*
  * free up all the names at a higher scope than here
@@ -211,7 +244,8 @@ pop_scope()
 
     lexlevel--;
 
-    for (n = names[lastname]; lastname >= 0; lastname--) {
+    while (lastname >= 0) {
+        n = names[lastname];
         if (n->level <= lexlevel)
             break;
         names[lastname] = 0;
@@ -222,6 +256,7 @@ pop_scope()
         free(n->name);
         // Note: n->init and n->body cleanup would go here if those are implemented
         free(n);
+        lastname--;
     }
 }
 
@@ -446,6 +481,7 @@ initbasictype()
         t->next = types;
         types = t;
         n = new_name(basictype[i].name, prim, t, 0);
+        if (i == 0) chartype = t;
         if (i == 2) inttype = t;
     }
 }
@@ -696,8 +732,8 @@ getbasetype()
         while (cur.type != END && cur.type != E_O_F) {
             struct type *member_type = 0;
 
-            // parse member declaration
-            struct name *member = declare(&member_type);
+            // parse member declaration (struct_elem=true to avoid global namespace pollution)
+            struct name *member = declare_internal(&member_type, 1);
             if (!member) {
                 // skip to semicolon or end
                 while (cur.type != SEMI && cur.type != END && cur.type != E_O_F) {

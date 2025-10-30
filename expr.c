@@ -15,6 +15,11 @@
 
 /* PRI_ALL is defined in ccc.h as 0 - that's correct for "parse all operators" */
 
+/*
+ * counter for generating synthetic string literal names
+ */
+static int string_counter = 0;
+
 struct expr *
 makeexpr(char op, struct expr *left)
 {
@@ -110,6 +115,33 @@ parse_expr(char pri, struct stmt *st)
         gettoken();
         break;
 
+    case STRING: {
+        struct name *strname;
+        char namebuf[32];
+
+        e = makeexpr(STRING, 0);
+        /* string literals have type char* (pointer to char) */
+        e->type = get_type(TF_POINTER, chartype, 0, 0);
+
+        /* generate synthetic name for this string literal */
+        sprintf(namebuf, "_str%d", string_counter++);
+
+        /* create a name entry for this string literal at global scope (level 1) */
+        strname = new_name(namebuf, var, e->type, 0);
+        if (strname) {
+            /* store pointer to counted string in the name's init field */
+            strname->init = makeexpr(STRING, 0);
+            strname->init->v = (unsigned long)cur.v.str;
+            /* also store in expression for immediate use */
+            e->v = (unsigned long)cur.v.str;
+            /* store reference to the named string in the expression */
+            e->var = (struct var *)strname;
+        }
+        e->flags = E_CONST;
+        gettoken();
+        break;
+    }
+
     /* unary operators */
     case LPAR:      // parenthesized expression
         gettoken();
@@ -196,8 +228,9 @@ parse_expr(char pri, struct stmt *st)
             // not a binary operator, we're done
             break;
         }
-        if (p >= pri) {
+        if (pri != 0 && p >= pri) {
             // operator has same or lower precedence, stop parsing at this level
+            // (pri == 0 means PRI_ALL, so we parse all operators regardless of precedence)
             break;
         }
 
