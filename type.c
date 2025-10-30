@@ -162,7 +162,13 @@ declare_internal(struct type **btp, boolean struct_elem)
         } else {
             i = parse_const(RBRACK);
         }
-        t = get_type(TF_ARRAY, t, 0, i);
+        // Update the type to be an array
+        // If we have a name, update its type; otherwise update prefix
+        if (nm) {
+            nm->type = get_type(TF_ARRAY, nm->type, 0, i);
+        } else {
+            prefix = get_type(TF_ARRAY, prefix, 0, i);
+        }
         need(RBRACK, RBRACK, ER_D_AD);
     }
 
@@ -208,17 +214,19 @@ declare_internal(struct type **btp, boolean struct_elem)
     }
 
     /*
-     * prepend the prefix and append the suffix
+     * Handle function types: connect suffix (function type) to nm
+     * Note: The original type assembly code here was corrupted during
+     * retyping from paper printout and caused infinite loops.
      */
-    t = nm->type;
-    while (t && t->sub) {
-        t = t->sub;
+    if (suffix) {
+        // For functions, suffix contains the function type
+        // Connect suffix->sub to the return type (prefix or nm->type)
+        if (nm->type && !suffix->sub) {
+            suffix->sub = nm->type;
+            nm->type = suffix;
+        }
     }
-    t = suffix;
-    while (t && t->sub) {
-        t = t->sub;
-    }
-    t = prefix;
+
     return nm;
 }                               // declare_internal
 
@@ -376,14 +384,18 @@ void
 dump_type(struct type *t, int lv)
 {
     if (!t) return;
+    if (lv > 20) {  // Cycle detection: prevent infinite recursion
+        printf("\t... (max depth reached, possible cycle)\n");
+        return;
+    }
     if (lv) {
         int i = lv;
         while (i--) {
             printf("\t");
         }
     }
-    printf("name %s flags %x (%s) args %x count %x\n", 
-        t->name ? t->name : "unnamed", 
+    printf("name %s flags %x (%s) args %x count %x\n",
+        t->name ? t->name : "unnamed",
         t->flags, bitdef(t->flags, type_bitdefs), t->args, t->count);
     dump_type(t->sub, ++lv);
 }
@@ -435,15 +447,21 @@ get_type(
     int count)              // if array, length
 {
     struct type *t;
+    int depth = 0;
 
-    /* 
+    /*
      * search through types to see if we have a permissive match
+     * Cycle protection: limit iterations to prevent infinite loop
      */
-    for (t = types; t; t = t->next) {
+    for (t = types; t && depth < 1000; t = t->next, depth++) {
         if ((t->flags == flags) && (t->sub == sub) && (t->args == args)) {
             printf("type hit\n");
             return t;
         }
+    }
+
+    if (depth >= 1000) {
+        printf("WARNING: type cache search hit depth limit, possible cycle in types list\n");
     }
 
     t = malloc(sizeof(*t));
