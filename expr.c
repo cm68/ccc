@@ -291,21 +291,21 @@ cfold(struct expr *e) {
     switch (e->op) {
     case NEG:
         if (e->left->op == CONST) {
-            val = -e->v;
+            val = -e->left->v;
             e = xreplace(e, e->left);
             e->v = val;
         }
         return e;
     case TWIDDLE:
         if (e->left->op == CONST) {
-            val = ~e->v;
+            val = ~e->left->v;
             e = xreplace(e, e->left);
             e->v = val;
         }
         return e;
     case NOT:
         if (e->left->op == CONST) {
-            val = e->v ? 0 : 1;
+            val = e->left->v ? 0 : 1;
             e = xreplace(e, e->left);
             e->v = val;
         }
@@ -327,6 +327,38 @@ cfold(struct expr *e) {
         break;
     case MINUS:
         val = vl - vr;
+        break;
+    case STAR:  // multiplication
+        val = vl * vr;
+        break;
+    case DIV:   // division
+        if (vr == 0) {
+            err(ER_E_CF);  // divide by zero - constant wont fold
+            return e;
+        }
+        val = vl / vr;
+        break;
+    case MOD:   // modulo
+        if (vr == 0) {
+            err(ER_E_CF);  // modulo by zero - constant wont fold
+            return e;
+        }
+        val = vl % vr;
+        break;
+    case AND:   // bitwise AND
+        val = vl & vr;
+        break;
+    case OR:    // bitwise OR
+        val = vl | vr;
+        break;
+    case XOR:   // bitwise XOR
+        val = vl ^ vr;
+        break;
+    case LSHIFT:  // left shift
+        val = vl << vr;
+        break;
+    case RSHIFT:  // right shift
+        val = vl >> vr;
         break;
     default:
         return e;

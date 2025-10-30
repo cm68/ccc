@@ -1,3 +1,4 @@
+cfold.c
 decl.c
 include.c
 macro.c
