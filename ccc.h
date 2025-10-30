@@ -200,6 +200,11 @@ extern struct name *lookup_name(char *name, boolean is_tag);
 extern struct name *lookup_element(char *name, struct type *t);
 extern void dump_name(struct name *s);
 
+/* declare.c */
+extern int lexlevel;
+extern struct name *declare_internal(struct type **btp, boolean struct_elem);
+extern struct name *declare(struct type **btp);
+
 extern struct type *inttype;
 extern struct type *chartype;
 

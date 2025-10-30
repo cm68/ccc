@@ -231,18 +231,19 @@ declare_internal(struct type **btp, boolean struct_elem)
     }
 
     /*
-     * prepend the prefix and append the suffix
+     * Handle function types: connect suffix (function type) to nm
+     * Note: The original type assembly code here was corrupted during
+     * retyping from paper printout and caused infinite loops.
      */
-    t = nm->type;
-    t = rt;
-    while (t && t->sub) {
-        t = t->sub;
+    if (suffix) {
+        // For functions, suffix contains the function type
+        // Connect suffix->sub to the return type (prefix or nm->type)
+        if (nm->type && !suffix->sub) {
+            suffix->sub = nm->type;
+            nm->type = suffix;
+        }
     }
-    t = suffix;
-    while (t && t->sub) {
-        t = t->sub;
-    }
-    t = prefix;
+
     return nm;
 }                               // declare_internal
 
