@@ -1,4 +1,5 @@
 cfold.c
+complex_types.c
 decl.c
 include.c
 macro.c
