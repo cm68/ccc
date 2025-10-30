@@ -34,8 +34,8 @@ GENERATED = enumlist.h tokenlist.c error.h debug.h debugtags.c op_pri.h
 
 BINS = enumcheck cc1 cc2 maketokens genop_pri
 
-TESTS=tests/*.c
-#TESTS=tests/glom.c
+# Read test list from tests/Testlist file
+TESTS=$(addprefix tests/,$(shell grep -v '^$$' tests/Testlist))
 #VERBOSE=-v 3
 
 all: cc1
