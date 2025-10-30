@@ -332,6 +332,7 @@ cfold(struct expr *e) {
         return e;
     }
     e = xreplace(e, e->left);
+    e->v = val;  // Store the computed constant value
     return e;
 }
 
