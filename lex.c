@@ -559,6 +559,7 @@ gettoken()
             t = kwlook(strbuf, ckw);
             if (t) {
                 next.type = t;
+                next.v.name = 0;  // keywords don't have names
                 break;
             }
             next.type = SYM;
@@ -591,7 +592,7 @@ gettoken()
         if (curchar == c) {
             t = lookupc(dbl_able, c);
             if (t != 0xff) {
-                next.type = dbltok[t];
+                c = next.type = dbltok[t];
                 advance();
             }
         }
@@ -617,14 +618,17 @@ gettoken()
     switch (cur.type) {
     case SYM:
         cpp_out(cur.v.name, strlen(cur.v.name));
+        cpp_out(" ", 1);
         break; 
     case STRING: 
     	i = quoted_string(nbuf, cur.v.str);
         cpp_out(nbuf, i);
+        cpp_out(" ", 1);
         break;
     case NUMBER:
         i = longout(nbuf, cur.v.numeric);
         cpp_out(nbuf, i);
+        cpp_out(" ", 1);
         break;
     case NONE: 
         break;
@@ -635,6 +639,7 @@ gettoken()
         	s = tokenname[cur.type];
         }
         cpp_out(s, strlen(s));
+        cpp_out(" ", 1);
         break;
     }
     if (lineend) {

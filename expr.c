@@ -6,16 +6,6 @@
 #include "op_pri.h"
 
 /*
- * operator precedence levels used in parse_expr
- * (from genop_pri.c - keep in sync)
- */
-#define OP_PRI_PRIMARY     1   /* postfix/member access */
-#define OP_PRI_MULT        3   /* * / % */
-#define OP_PRI_ADD         4   /* + - */
-
-/* PRI_ALL is defined in ccc.h as 0 - that's correct for "parse all operators" */
-
-/*
  * counter for generating synthetic string literal names
  */
 static int string_counter = 0;

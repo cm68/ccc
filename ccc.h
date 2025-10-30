@@ -59,8 +59,28 @@ struct expr {
 	struct inst *inst;
 };
 
-// expression priority - used to control the precedence
-#define	PRI_ALL	0
+/*
+ * Operator precedence levels for expression parsing
+ * Lower numbers bind tighter (higher precedence)
+ * When parse_expr(N) encounters operator with priority >= N, it stops
+ */
+#define	PRI_ALL        0   /* parse all operators regardless of precedence */
+
+#define OP_PRI_NONE    0   /* not an operator */
+#define OP_PRI_PRIMARY 1   /* postfix/member access: . -> [] () */
+#define OP_PRI_MULT    3   /* multiplicative: * / % */
+#define OP_PRI_ADD     4   /* additive: + - */
+#define OP_PRI_SHIFT   5   /* bitwise shift: << >> */
+#define OP_PRI_REL     6   /* relational: < <= > >= */
+#define OP_PRI_EQUAL   7   /* equality: == != */
+#define OP_PRI_BITAND  8   /* bitwise AND: & */
+#define OP_PRI_BITXOR  9   /* bitwise XOR: ^ */
+#define OP_PRI_BITOR   10  /* bitwise OR: | */
+#define OP_PRI_LOGAND  11  /* logical AND: && */
+#define OP_PRI_LOGOR   12  /* logical OR: || */
+#define OP_PRI_COND    13  /* conditional: ?: */
+#define OP_PRI_ASSIGN  14  /* assignment: = += -= *= /= %= &= |= ^= <<= >>= */
+#define OP_PRI_COMMA   15  /* comma: , */
 
 extern struct expr *cfold(struct expr *e);
 extern struct expr *parse_expr(char priority, struct stmt *);

@@ -11,28 +11,7 @@
  */
 
 #include <stdio.h>
-#include "token.h"
-
-/*
- * operator precedence levels (lower = tighter binding)
- * based on standard C operator precedence
- * use OP_ prefix to avoid conflicts with PRI_ defines in token.h
- */
-#define OP_PRI_PRIMARY     1   /* postfix/member access */
-#define OP_PRI_MULT        3   /* * / % */
-#define OP_PRI_ADD         4   /* + - */
-#define OP_PRI_SHIFT       5   /* << >> */
-#define OP_PRI_REL         6   /* < <= > >= */
-#define OP_PRI_EQUAL       7   /* == != */
-#define OP_PRI_BITAND      8   /* & */
-#define OP_PRI_BITXOR      9   /* ^ */
-#define OP_PRI_BITOR       10  /* | */
-#define OP_PRI_LOGAND      11  /* && */
-#define OP_PRI_LOGOR       12  /* || */
-#define OP_PRI_COND        13  /* ?: */
-#define OP_PRI_ASSIGN      14  /* = += -= etc */
-#define OP_PRI_COMMA       15  /* , */
-#define OP_PRI_NONE        0   /* not an operator */
+#include "ccc.h"
 
 struct oppri {
     int token;

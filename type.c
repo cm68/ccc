@@ -422,7 +422,7 @@ getbasetype()
 
     /* a typedef? */
     if (cur.type == SYM) {
-        n = lookup_name(strbuf, 0);
+        n = lookup_name(cur.v.name, 0);
         if (n && (n->kind == tdef)) {
             gettoken();
             return n->type;
@@ -446,7 +446,7 @@ getbasetype()
 
         // optional enum tag name
         if (cur.type == SYM) {
-            s = strdup(strbuf);
+            s = strdup(cur.v.name);
             n = lookup_name(s, 1);  // look for existing enum tag
             gettoken();
 
@@ -492,7 +492,7 @@ getbasetype()
             }
 
             // create enum element (use 'e' to avoid variable name collision)
-            struct name *e = new_name(strbuf, elem, t, 0);
+            struct name *e = new_name(cur.v.name, elem, t, 0);
             e->next = t->elem;
             t->elem = e;
             gettoken();
@@ -529,7 +529,7 @@ getbasetype()
 
         // optional struct/union tag name
         if (cur.type == SYM) {
-            s = strdup(strbuf);
+            s = strdup(cur.v.name);
             n = lookup_name(s, 1);  // look for existing tag
             gettoken();
 

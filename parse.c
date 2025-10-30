@@ -10,6 +10,8 @@ struct stmt *makestmt(char op, struct expr *left);
 char *blockname(void);
 struct stmt *asmblock(void);
 
+void declaration();
+
 /*
  * parse a statement - this is really the heart of the compiler frontend
  * it recursively calls itself
@@ -49,7 +51,7 @@ statement(struct stmt *parent) {
         case IF:    // if <condition> <statement>
             gettoken();
             need(LPAR, LPAR, ER_S_NP);
-            st = makestmt(IF, parse_expr(PRI_PAREN, parent));
+            st = makestmt(IF, parse_expr(PRI_ALL, parent));
             need(RPAR, RPAR, ER_S_NP);
             st->chain = statement(st);
             if (cur.type == ELSE) {   // else <statement>
@@ -74,10 +76,33 @@ statement(struct stmt *parent) {
             }
             need(SEMI, SEMI, ER_S_SN);
             break;
+        
+        /* Local declarations - type keywords */
+        case INT:
+        case CHAR:
+        case SHORT:
+        case LONG:
+        case FLOAT:
+        case DOUBLE:
+        case VOID:
+        case STRUCT:
+        case UNION:
+        case ENUM:
+        case UNSIGNED:
+        case CONST:
+        case VOLATILE:
+        case STATIC:
+        case REGISTER:
+        case AUTO:
+        case EXTERN:
+            declaration();
+            st = NULL;  /* declaration() doesn't return a statement */
+            break;
+        
         case SYM:
             if (next.type == COLON) {
                 st = makestmt(LABEL, 0);
-                st->label = strdup(strbuf);
+                st->label = strdup(cur.v.name);
                 st->flags |= S_LABEL;
                 gettoken();
                 gettoken();
@@ -142,7 +167,7 @@ statement(struct stmt *parent) {
                 recover(ER_S_GL, SEMI);
                 break;
             } 
-                st->label = strdup(strbuf);
+                st->label = strdup(cur.v.name);
             gettoken();
             need(SEMI, SEMI, ER_S_SN);
             break;
@@ -299,9 +324,10 @@ parsefunc(struct name *f) {
 #define	SC_CONST	0x88
 #define	SC_VOLATILE	0x10
 #define	SC_AUTO		0x20
+#define	SC_TYPEDEF	0x40
 
 char *sclass_bitdefs[] = { "EXTERN", "REGISTER", "STATIC", "CONST", "VOLATILE",
-		"AUTO"
+		"AUTO", "TYPEDEF"
 };
 
 /*
@@ -339,6 +365,9 @@ parse_sclass() {
 		case AUTO:
 			bit = SC_AUTO;
 			break;
+		case TYPEDEF:
+			bit = SC_TYPEDEF;
+			break;
 		default:
 			bit = 0;
 			break;
@@ -365,6 +394,9 @@ parse_sclass() {
 		err(ER_P_SC);
 	}
 	if ((ret & SC_CONST) & (ret & (SC_VOLATILE))) {
+		err(ER_P_SC);
+	}
+	if ((ret & SC_TYPEDEF) & (ret & (SC_EXTERN | SC_STATIC | SC_AUTO | SC_REGISTER))) {
 		err(ER_P_SC);
 	}
 	return ret;
@@ -402,6 +434,31 @@ declaration() {
                 continue;
             }
             /* E_O_F */
+            break;
+        }
+
+        /* handle typedef declarations */
+        if (sclass & SC_TYPEDEF) {
+            /* change the name kind from var to tdef */
+            v->kind = tdef;
+            /* typedefs cannot have initializers or function bodies */
+            if (cur.type == ASSIGN) {
+                err(ER_T_TD);
+                /* skip the initializer */
+                while (cur.type != SEMI && cur.type != COMMA && cur.type != E_O_F) {
+                    gettoken();
+                }
+            }
+            /* continue to next declarator or end of statement */
+            if (cur.type == COMMA) {
+                gettoken();
+                continue;
+            }
+            if (cur.type == SEMI) {
+                gettoken();
+                break;
+            }
+            /* unexpected token */
             break;
         }
 

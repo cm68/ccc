@@ -81,7 +81,7 @@ declare_internal(struct type **btp, boolean struct_elem)
         if (struct_elem) {
             /* struct members: create name but DON'T add to global names[] array */
             nm = malloc(sizeof(*nm));
-            nm->name = strdup(strbuf);
+            nm->name = strdup(cur.v.name);
             nm->type = prefix;
             nm->level = lexlevel;
             nm->is_tag = 0;
@@ -96,7 +96,7 @@ declare_internal(struct type **btp, boolean struct_elem)
             printf("struct_elem: %s (not added to names[])\n", nm->name);
         } else {
             /* normal variable: add to global names[] array */
-            nm = new_name(strbuf, var, prefix, 0);
+            nm = new_name(cur.v.name, var, prefix, 0);
         }
         gettoken();
 
@@ -142,7 +142,7 @@ declare_internal(struct type **btp, boolean struct_elem)
             while (cur.type == SYM && cur.type != E_O_F) {
                 // Create parameter with no type yet (will be filled in later)
                 arg = malloc(sizeof(*arg));
-                arg->name = strdup(strbuf);
+                arg->name = strdup(cur.v.name);
                 arg->type = 0;  // Type will be set later from declarations
                 arg->level = lexlevel + 1;
                 arg->is_tag = 0;
@@ -230,7 +230,6 @@ declare_internal(struct type **btp, boolean struct_elem)
 
     if ((cur.type != ASSIGN) && (cur.type != BEGIN) &&
         (cur.type != COMMA) && (cur.type != SEMI)) {
-        printf("token: %d 0x%x '%c'\n", cur.type, cur.type, cur.type);
         err(ER_D_UT);
         nm = 0;
     }
