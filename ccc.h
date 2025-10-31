@@ -217,9 +217,12 @@ struct name {
 #define MAXBITS 32          // maximum size of bitfield
 
 extern struct name *new_name(char *name, kind k, struct type *t, boolean is_tag);
+extern void add_name(struct name *n);
 extern struct name *lookup_name(char *name, boolean is_tag);
 extern struct name *lookup_element(char *name, struct type *t);
 extern void dump_name(struct name *s);
+extern void push_scope(char *name);
+extern void pop_scope(void);
 
 /* declare.c */
 extern int lexlevel;

@@ -75,8 +75,8 @@ unsigned char ckw[] = {
 	'i'|HI, 8, 'f'|HI, 2, 0xff, IF,
 		'n', 't', 0xff, INT,
 	'l'|HI, 5, 'o', 'n', 'g', 0xff, LONG,
-	'r'|HI, 16, 'e'|HI, 8, 'g', 'i', 's', 't', 'e', 'r', 0xff, REGISTER,
-		't', 'u', 'r', 'n', 0xff, RETURN,
+	'r'|HI, 16, 'e', 't'|HI, 8, 'u', 'r', 'n', 0xff, RETURN,
+			'g', 'i', 's', 't', 'e', 'r', 0xff, REGISTER,
 	's'|HI, 29, 'i'|HI, 6, 'z', 'e', 'o', 'f', 0xff, SIZEOF,
 		'h'|HI, 5, 'o', 'r', 't', 0xff, SHORT,
 		't', 'a'|HI, 5, 't', 'i', 'c', 0xff, STATIC,
@@ -140,7 +140,7 @@ kwlook(unsigned char *str, unsigned char *table)
 //    printf("kwlook(%s)\n", str);
 	while (*str) {
 		c = *table;
-//        printf("table %c %x\n", c & 0x7f, c);
+//        printf("  *str='%c' table[0]='%c' (0x%02x)\n", *str, c & 0x7f, c);
 		if (c == 0xff) {
             return 0;
 		}

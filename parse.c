@@ -218,6 +218,13 @@ statement(struct stmt *parent) {
         pst = &st->next;
         // st->function = v;
         st->parent = parent;
+
+        // If we're parsing a single-statement body for a control structure
+        // (if/while/for/etc), return after parsing one statement.
+        // Don't return for block statements or top-level (parent == NULL/function body)
+        if (parent && parent->op != BEGIN && st) {
+            block = 0;  // Exit the while loop
+        }
     } // while
     return head;
 }
@@ -309,10 +316,27 @@ do_initializer(void)
 
 void
 parsefunc(struct name *f) {
+	struct name *param;
+
+	// Push a new scope for the function body
+	push_scope(f->name);
+
+	// Install function parameters into the scope
+	// Just iterate through them directly - order doesn't matter for installation
+	if (f->type && (f->type->flags & TF_FUNC)) {
+		for (param = f->type->elem; param; param = param->next) {
+			add_name(param);
+		}
+	}
+
+	// Parse the function body
 	f->body = statement(0);
 	if (f->body) {
 		f->body->flags |= S_FUNC;
 	}
+
+	// Pop the function scope
+	pop_scope();
 }
 
 /*

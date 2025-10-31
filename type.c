@@ -78,9 +78,12 @@ pop_scope()
                 n->is_tag ? "tag:":"", n->name);
         }
 
-        free(n->name);
-        // Note: n->init and n->body cleanup would go here if those are implemented
-        free(n);
+        // Don't free function parameters - they're owned by the function type
+        if (!(n->flags & V_FUNARG)) {
+            free(n->name);
+            // Note: n->init and n->body cleanup would go here if those are implemented
+            free(n);
+        }
         lastname--;
     }
 }
@@ -159,9 +162,9 @@ new_name(char *name, kind k, struct type *t, boolean is_tag)
 {
 	struct name *n;
     int i;
- 
+
     if (!names) {
-        names = malloc(sizeof(n) * maxnames); 
+        names = malloc(sizeof(n) * maxnames);
         lastname = -1;
     }
     if (lastname == maxnames) {
@@ -175,8 +178,8 @@ new_name(char *name, kind k, struct type *t, boolean is_tag)
             break;
         }
         n = names[i];
-        if ((n->is_tag == is_tag) && 
-            (name[0] == n->name[0]) && 
+        if ((n->is_tag == is_tag) &&
+            (name[0] == n->name[0]) &&
             (strcmp(name, n->name) == 0)) {
             err(ER_D_DN);
 	        return (0);
@@ -197,6 +200,49 @@ new_name(char *name, kind k, struct type *t, boolean is_tag)
     }
 
 	return (n);
+}
+
+/*
+ * add an existing name struct to the symbol table
+ * used for installing function parameters into scope
+ */
+void
+add_name(struct name *n)
+{
+    int i;
+
+    if (!names) {
+        names = malloc(sizeof(struct name *) * maxnames);
+        lastname = -1;
+    }
+    if (lastname == maxnames) {
+        err(ER_D_OF);
+        return;
+    }
+
+    // Check for duplicate names at current level
+    for (i = lastname; i >= 0; i--) {
+        if (names[i]->level < lexlevel) {
+            break;
+        }
+        if ((names[i]->is_tag == n->is_tag) &&
+            (n->name[0] == names[i]->name[0]) &&
+            (strcmp(n->name, names[i]->name) == 0)) {
+            err(ER_D_DN);
+            return;
+        }
+    }
+
+    // Update the name's level to match current scope
+    n->level = lexlevel;
+    names[++lastname] = n;
+
+    if (VERBOSE(V_SYM)) {
+        printf("add_name: level:%d index:%3d %s %s%s\n",
+            lexlevel, lastname,
+            n->kind < sizeof(kindname)/sizeof(kindname[0]) ? kindname[n->kind] : "unkn",
+            n->is_tag ? "tag:":"", n->name);
+    }
 }
 
 void
@@ -274,7 +320,6 @@ get_type(
      */
     for (t = types; t && depth < 1000; t = t->next, depth++) {
         if ((t->flags == flags) && (t->sub == sub) && (t->args == args)) {
-            printf("type hit\n");
             return t;
         }
     }
@@ -293,9 +338,6 @@ get_type(
     }
     t->next = types;
     types = t;
-
-    printf("new type\n");
-    dump_type(t, 0);
 
     return t;
 }

@@ -313,12 +313,10 @@ declare_internal(struct type **btp, boolean struct_elem)
      * retyping from paper printout and caused infinite loops.
      */
     if (suffix) {
-        // For functions, suffix contains the function type
-        // Connect suffix->sub to the return type (prefix or nm->type)
-        if (nm->type && !suffix->sub) {
-            suffix->sub = nm->type;
-            nm->type = suffix;
-        }
+        // For functions/pointers/arrays, suffix contains the derived type
+        // suffix->sub should already point to the return/base type from get_type()
+        // Just need to make suffix the final type
+        nm->type = suffix;
     }
 
     return nm;
