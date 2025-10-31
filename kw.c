@@ -37,8 +37,9 @@ unsigned char asmkw[] = {
  */
 unsigned char cppkw[] = {
     'd'|HI, 7, 'e', 'f', 'i', 'n', 'e', 0xff, DEFINE,
-    'i'|HI, 17, 'f'|HI, 7, 0xfe, IF,
-        'd', 'e', 'f', 0xff, IFDEF,
+    'i'|HI, 25, 'f'|HI, 15, 0xfe, IF,
+            'd'|HI, 4, 'e', 'f', 0xff, IFDEF,
+            'n'|HI, 5, 'd', 'e', 'f', 0xff, IFNDEF,
         'n', 'c', 'l', 'u', 'd', 'e', 0xff, INCLUDE,
     'e'|HI, 13, 'l'|HI, 9, 's'|HI, 3, 'e', 0xff, ELSE,
             'i', 'f', 0xff, ELIF,
@@ -139,7 +140,7 @@ kwlook(unsigned char *str, unsigned char *table)
 //    printf("kwlook(%s)\n", str);
 	while (*str) {
 		c = *table;
-//       printf("table %c %x\n", c & 0x7f, c);
+//        printf("table %c %x\n", c & 0x7f, c);
 		if (c == 0xff) {
             return 0;
 		}

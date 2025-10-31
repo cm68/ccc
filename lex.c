@@ -305,6 +305,36 @@ do_cpp(char t)
         cond->flags = (v ? (C_TRUE|C_TRUESEEN) : 0);
         skiptoeol();
         return;
+    case IFDEF:
+        skipwhite1();
+        if (!issym()) {
+            err(ER_C_MN);
+            skiptoeol();
+            return;
+        }
+        advance();
+        v = (maclookup(strbuf) != 0);  // true if macro is defined
+        c = malloc(sizeof(*c));
+        c->next = cond;
+        cond = c;
+        cond->flags = (v ? (C_TRUE|C_TRUESEEN) : 0);
+        skiptoeol();
+        return;
+    case IFNDEF:
+        skipwhite1();
+        if (!issym()) {
+            err(ER_C_MN);
+            skiptoeol();
+            return;
+        }
+        advance();
+        v = (maclookup(strbuf) == 0);  // true if macro is NOT defined
+        c = malloc(sizeof(*c));
+        c->next = cond;
+        cond = c;
+        cond->flags = (v ? (C_TRUE|C_TRUESEEN) : 0);
+        skiptoeol();
+        return;
     case ENDIF:
         skiptoeol();
         if (!cond) {

@@ -55,6 +55,6 @@ typedef enum {
 
     /* CPP */
     INCLUDE = '#',
-    DEFINE = '$', UNDEF = 'K', 
-    IFDEF = 'Y', ENDIF = 'Z', ELIF = '8'
+    DEFINE = '$', UNDEF = 'K',
+    IFDEF = 'Y', IFNDEF = '7', ENDIF = 'Z', ELIF = '8'
 } token_t;
