@@ -20,6 +20,7 @@ struct token cur, next;
 char strbuf[128];
 
 int readcppconst();
+char cpppseudofunc();
 
 /*
  * cpp conditional
@@ -303,7 +304,7 @@ do_cpp(char t)
         c->next = cond;
         cond = c;
         cond->flags = (v ? (C_TRUE|C_TRUESEEN) : 0);
-        skiptoeol();
+        // Don't call skiptoeol() - readcppconst() already consumed the line
         return;
     case IFDEF:
         skipwhite1();
@@ -376,7 +377,7 @@ do_cpp(char t)
         } else {
             cond->flags |= (v ? (C_TRUE | C_TRUESEEN) : 0);
         }
-        skiptoeol();
+        // Don't call skiptoeol() - readcppconst() already consumed the line
         return;
     case DEFINE:
         skipwhite1();
@@ -579,9 +580,19 @@ gettoken()
         }
         if ((curchar == ' ') || (curchar == '\t') || (curchar == '\n')) {
             advance();
+            // After advancing past newline, check if we should skip this line
+            if ((column == 0) && cond && curchar != '#' && curchar != 0) {
+                if (!(cond->flags & C_TRUE)) {
+                    skiptoeol();
+                }
+            }
             continue;
         }
         if (issym()) {
+            /* Check for defined() pseudofunction in #if expressions */
+            if (cpppseudofunc()) {
+                continue;  /* cpppseudofunc() replaced the function with '0' or '1' */
+            }
             if (macexpand(strbuf)) {
                 continue;
             }
@@ -692,6 +703,8 @@ cpppseudofunc()
     int r = 0;
 
     if ((strcmp("defined", strbuf) == 0) && (tflags & CPPFUNCS)) {
+        /* Skip past the "defined" identifier */
+        advance();
         while ((curchar == '\t') || (curchar == ' ')) advance();
         if (curchar != '(') {
             err(ER_C_DP);
@@ -699,13 +712,18 @@ cpppseudofunc()
             return 1;
         }
         advance();
+        while ((curchar == '\t') || (curchar == ' ')) advance();
         if (issym()) {
-            
+            /* Check if the macro name in strbuf is defined */
+            r = (maclookup(strbuf) != 0);
+            advance();  /* Move past the macro name */
         }
         while ((curchar == '\t') || (curchar == ' ')) advance();
         if (curchar != ')') {
             err(ER_C_DP);
             r = 0;
+        } else {
+            advance();  /* Move past the ')' */
         }
         curchar = r ? '1' : '0';
         return 1;

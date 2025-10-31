@@ -350,6 +350,12 @@ cfold(struct expr *e) {
     case RSHIFT:  // right shift
         val = vl >> vr;
         break;
+    case LAND:  // logical AND (&&)
+        val = (vl && vr);
+        break;
+    case LOR:   // logical OR (||)
+        val = (vl || vr);
+        break;
     default:
         return e;
     }
