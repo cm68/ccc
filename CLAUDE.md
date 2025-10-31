@@ -19,7 +19,6 @@ make
 
 # Build specific targets
 make cc1          # Main compiler executable
-make lextest      # Lexer testing binary
 
 # Run tests
 make test         # Run all 16 tests in tests/

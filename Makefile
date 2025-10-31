@@ -39,9 +39,6 @@ TESTS=$(addprefix tests/,$(shell grep -v '^$$' tests/Testlist))
 
 all: cc1
 
-lextest: lex.o lextest.o kw.o io.o macro.o util.o error.o tokenlist.o
-	cc -g -o lextest tokenlist.o lextest.o lex.o kw.o io.o macro.o util.o error.o
-
 cc1: $(CC1OBJECTS)
 	$(LD) $(LDFLAGS) cc1 $(CC1OBJECTS)
 
