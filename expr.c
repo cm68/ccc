@@ -15,7 +15,7 @@ makeexpr(char op, struct expr *left)
 {
 	struct expr *e;
 
-	e = malloc(sizeof(*e));
+	e = calloc(1, sizeof(*e));  // Zero-initialize all fields
 	e->op = op;
 	e->left = left;
 	if (left) {
@@ -369,6 +369,10 @@ parse_const(char token)
     int val;
 
     e = parse_expr(PRI_ALL, 0);
+    if (!e) {
+        err(ER_C_CE);
+        return 0;
+    }
     if (!(e->flags & E_CONST)) {
         err (ER_C_CE);
         return 0;

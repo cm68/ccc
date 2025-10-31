@@ -63,10 +63,10 @@ controlify(char *d, char c)
 
 	if (c == '\n') {
 		append(d, "\\n");
-		ret = 3;
+		ret = 2;  // Wrote 2 chars: \ and n (null terminator will be overwritten)
 	} else if (c == '\\') {
-		append(d, "\\");
-		ret = 2;
+		append(d, "\\\\");  // Need to escape backslash as two backslashes
+		ret = 2;  // Wrote 2 chars: \ and \
 	} else if ((c < ' ') || (c >= 0x7f)) {
 		int shift;
 		*d++ = '\\';

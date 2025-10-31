@@ -464,7 +464,7 @@ freetoken()
     }
 }
 
-char nbuf[100];
+char nbuf[1024];  // Large enough for escaped string: 1 + 255*4 + 1 = 1022 bytes
 
 /*
  * we want a stream of lexemes to be placed into 
@@ -519,7 +519,7 @@ gettoken()
         if (curchar == '\n') {
             lineend = 1;
         }
-        if ((tflags & ONELINE) && charmatch('\n')) {
+        if ((tflags & ONELINE) && (curchar == '\n')) {
             next.type = ';';
             break;
         }
@@ -572,7 +572,7 @@ gettoken()
         }
         if (isstring()) {
             next.type = STRING;
-            next.v.str = malloc(strbuf[0]);
+            next.v.str = malloc(strbuf[0] + 1);  // +1 for length byte
             bcopy(strbuf, next.v.str, strbuf[0] + 1);
             break;
         }
@@ -615,35 +615,37 @@ gettoken()
     /*
      * detokenize for cpp output
      */
-    switch (cur.type) {
-    case SYM:
-        cpp_out(cur.v.name, strlen(cur.v.name));
-        cpp_out(" ", 1);
-        break; 
-    case STRING: 
-    	i = quoted_string(nbuf, cur.v.str);
-        cpp_out(nbuf, i);
-        cpp_out(" ", 1);
-        break;
-    case NUMBER:
-        i = longout(nbuf, cur.v.numeric);
-        cpp_out(nbuf, i);
-        cpp_out(" ", 1);
-        break;
-    case NONE: 
-        break;
-    default:
-        if (detoken[cur.type]) {
-        	s = detoken[cur.type];
-        } else {
-        	s = tokenname[cur.type];
+    if (write_cpp_file) {
+        switch (cur.type) {
+        case SYM:
+            cpp_out(cur.v.name, strlen(cur.v.name));
+            cpp_out(" ", 1);
+            break;
+        case STRING:
+            i = quoted_string(nbuf, cur.v.str);
+            cpp_out(nbuf, i);
+            cpp_out(" ", 1);
+            break;
+        case NUMBER:
+            i = longout(nbuf, cur.v.numeric);
+            cpp_out(nbuf, i);
+            cpp_out(" ", 1);
+            break;
+        case NONE:
+            break;
+        default:
+            if (detoken[cur.type]) {
+                s = detoken[cur.type];
+            } else {
+                s = tokenname[cur.type];
+            }
+            cpp_out(s, strlen(s));
+            cpp_out(" ", 1);
+            break;
         }
-        cpp_out(s, strlen(s));
-        cpp_out(" ", 1);
-        break;
-    }
-    if (lineend) {
-        cpp_out("\n", 2);
+        if (lineend) {
+            cpp_out("\n", 2);
+        }
     }
     if (VERBOSE(V_TOKEN)) {
         printf("cur.type = 0x%02x \'%c\'\n", cur.type, cur.type > ' ' ? cur.type : ' '); 
@@ -693,9 +695,16 @@ readcppconst()
 {
     long val;
     char savedtflags = tflags;
-    struct token save;
+    int saved_write_cpp = write_cpp_file;
+    struct token savecur, savenext;
 
-    bcopy(&cur, &save, sizeof(cur));
+    /* Save both cur and next tokens */
+    bcopy(&cur, &savecur, sizeof(cur));
+    bcopy(&next, &savenext, sizeof(next));
+
+    /* Reset next so gettoken() doesn't copy stale NONE value to cur */
+    next.type = E_O_F;
+    next.v.str = 0;
 
     /*
      * hack to make lexer translate newlines to ';', so that expressions
@@ -703,9 +712,24 @@ readcppconst()
      */
     tflags = ONELINE | CPPFUNCS;
 
+    /* Disable cpp output while evaluating the #if expression */
+    write_cpp_file = 0;
+
+    /* Skip whitespace before reading the first token */
+    skipwhite1();
+
+    /* Get the first token of the expression
+     * Call gettoken() twice: first call reads into next, second moves to cur */
+    gettoken();
+    gettoken();
+
     val = parse_const(SEMI);
     tflags = savedtflags;
-    bcopy(&save, &cur, sizeof(cur));
+    write_cpp_file = saved_write_cpp;
+
+    /* Restore both tokens */
+    bcopy(&savecur, &cur, sizeof(cur));
+    bcopy(&savenext, &next, sizeof(next));
     return val;
 }
 

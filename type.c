@@ -180,9 +180,9 @@ new_name(char *name, kind k, struct type *t, boolean is_tag)
 	        return (0);
 		}
     }
-	n = malloc(sizeof(*n));
+	n = calloc(1, sizeof(*n));  // Zero-initialize all fields
 	n->name = strdup(name);
-	n->type = t;	
+	n->type = t;
     n->level = lexlevel;
     n->is_tag = is_tag;
     n->kind = k;
@@ -279,7 +279,7 @@ get_type(
         printf("WARNING: type cache search hit depth limit, possible cycle in types list\n");
     }
 
-    t = malloc(sizeof(*t));
+    t = calloc(1, sizeof(*t));  // Zero-initialize all fields
     t->sub = sub;
     t->args = args;
     t->flags = flags;
@@ -307,7 +307,7 @@ initbasictype()
     struct type *t;
 
     for (i = 0; i < sizeof(basictype)/sizeof(basictype[0]); i++) {
-        t = malloc(sizeof(*t));
+        t = calloc(1, sizeof(*t));  // Zero-initialize all fields
         t->name = basictype[i].name;
         t->flags = basictype[i].flags;
         t->size = basictype[i].size;

@@ -35,8 +35,9 @@ process(char *f)
         if (f[i-2] == '.' && f[i-1] == 'c') {
             i -= 2;
         }
-        cpp_file_name = malloc(i+2);
+        cpp_file_name = malloc(i+3);  // +2 for ".i", +1 for null terminator
         strncpy(cpp_file_name, f, i);
+        cpp_file_name[i] = '\0';  // Ensure null termination
         strcat(cpp_file_name, ".i");
         cpp_file = creat(cpp_file_name, 0777);
         if (cpp_file == -1) {

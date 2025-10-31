@@ -4,10 +4,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is **ccc** - a native C compiler written in C, currently under reconstruction. The source was retyped from a paper printout with missing chunks, so it's very far from working. This is a 2-pass compiler:
+This is **ccc** - a native C compiler written in C, currently under reconstruction. The source was retyped from a paper printout with missing chunks. This is a 2-pass compiler:
 
-1. **Pass 1** (cc1): Recursive descent parser with embedded C preprocessor (CPP) - writes ASCII parse tree file
+1. **Pass 1** (cc1): Recursive descent parser with embedded C preprocessor (CPP) - parses and validates C code
 2. **Pass 2** (cc2): Code generator and assembler - writes object file (not yet implemented)
+
+**Current Status**: Pass 1 is substantially complete with ~4,600 lines of C code. The compiler successfully parses C code including preprocessor directives, declarations, types, expressions, and statements.
 
 ## Build Commands
 
@@ -20,7 +22,7 @@ make cc1          # Main compiler executable
 make lextest      # Lexer testing binary
 
 # Run tests
-make test         # Run all tests in tests/
+make test         # Run all 16 tests in tests/
 make tests        # Same as 'make test'
 
 # Run single test
@@ -63,7 +65,7 @@ make tags
 - **parse.c**: Recursive descent parser for statements and declarations
 - **expr.c**: Expression parsing with operator precedence and constant folding
 - **type.c**: Type system - manages primitive types, pointers, arrays, functions, structs/unions/enums
-- **declare.c**: Declaration parsing (variables, functions, types)
+- **declare.c**: Declaration parsing (variables, functions, types) including K&R style support
 - **kw.c**: Keyword lookup tables (C keywords, CPP keywords, asm keywords)
 - **io.c**: Character-level I/O, file stack management, macro expansion buffer
 - **macro.c**: CPP macro definition and expansion
@@ -94,19 +96,20 @@ The build system auto-generates several files from source code and data files. T
 - otherwise: else branch for if statements
 - middle: middle expression for for-loops
 - function: owning function reference
-- Flags: S_PARENT, S_LABEL
+- Flags: S_PARENT, S_LABEL, S_FUNC
 - Used for if/else/while/for/switch/case/return/goto/labels/blocks
 
 **struct type** (ccc.h:122-131): Type descriptors
 - name, size, count (for arrays)
-- elem list (for struct/union members)
+- elem list (for struct/union members, function parameters)
 - sub (for pointers, arrays, function return types)
 - args (for function parameter types)
-- Flags: TF_AGGREGATE, TF_INCOMPLETE, TF_UNSIGNED, TF_FUNC, TF_POINTER, TF_ARRAY, TF_FLOAT, TF_OLD
+- Flags: TF_AGGREGATE, TF_INCOMPLETE, TF_UNSIGNED, TF_FUNC, TF_POINTER, TF_ARRAY, TF_FLOAT, TF_NORMALIZED
 
 **struct name** (ccc.h:159-178): Symbol table entries
 - Represents variables, typedefs, function names, struct/union/enum tags
 - Contains type pointer, visibility, storage class, offset (for struct members)
+- body: function body statement tree
 - kind enum: prim, etag, stag, utag, var, elem, tdef
 - Scope management via lexical level
 
@@ -118,19 +121,21 @@ The type system is designed to be "squeaky-clean" with zero redundancy:
 - Basic types are pre-loaded at initialization (char, short, long, unsigned variants, void, boolean, float, double)
 - Primitive type indices: 0-2 are signed char/short/long, 3-5 are unsigned, 6+ are void/bool/float/double
 - Type construction: pointers, arrays, functions are composed from subtypes
-- Function types store argument list in type->elem as a linked list of names
+- Function types store parameter list in type->elem as a linked list of names
 
 **Currently working**:
 - Primitive type parsing (char, short, int, long, unsigned, void, boolean, float, double)
 - Pointer types (int *p)
-- Array types with sizes (int a[10])
+- Array types with sizes (int a[10]), including multi-dimensional arrays
 - Function declarations with typed arguments (int foo(int a, char b))
+- K&R style function declarations with parameter type defaulting to int
 - Bitfield support in declarations
 - Enum types with optional tag names (enum { A, B=5, C })
 - Struct types with member lists (struct foo { int x; char y; })
 - Union types (union bar { int i; float f; })
 - Forward references for struct/union/enum tags
 - Tag namespace separate from variable namespace
+- Struct member namespace separation from global namespace
 
 **Not yet implemented**:
 - typedef
@@ -159,18 +164,43 @@ Expression parsing uses precedence climbing:
 - Numeric literals
 - Parenthesized expressions
 - Unary operators: - (NEG), ~ (TWIDDLE), ! (BANG), * (DEREF), & (address-of)
-- Binary operators with proper precedence and left-associativity
-- Constant folding for basic arithmetic
+- Binary operators: +, -, *, /, %, &, |, ^, <<, >> with proper precedence and left-associativity
+- Constant folding for all unary and binary operators
+- Operator precedence correctly implemented
 
 **Not yet implemented**:
 - Symbol/variable references (SYM case)
-- String literals
+- String literals (recognized but not fully integrated)
 - Type casts
 - sizeof operator
 - Prefix/postfix increment/decrement (++/--)
 - Array indexing ([])
 - Function calls
 - Struct member access (. and ->)
+- Ternary operator (?:)
+
+### Statement Parsing
+
+Statement parsing is now active in parse.c:
+- parsefunc() calls statement() to parse function bodies
+- statement() processes statements recursively until END token
+- Returns complete statement tree attached to function's body field
+
+**Currently working**:
+- Empty function bodies
+- Block statements with scope management
+- if/else statements
+- while, do-while, for loops
+- switch/case/default statements
+- break, continue statements
+- return statements (with and without expressions)
+- goto and labels
+- Expression statements
+
+**Known limitations**:
+- Local variable declarations inside function bodies have parser conflicts with statement parsing
+- ANSI-style function definitions don't work: `int foo(int x) { }` causes "more than one basetype" error
+- Use K&R style instead: `int foo(x) int x; { }`
 
 ### Token System
 
@@ -190,30 +220,99 @@ Verbose debugging uses bitmask flags defined by VERBOSE() macro calls:
 
 ### Current State
 
-The compiler is making progress:
-- parse.c has been significantly improved with statement parsing enabled:
-  - Control flow: if/else, for, while, do-while, switch/case/default
-  - Jump statements: break, continue, return, goto/labels
-  - Block statements with scope management
-  - Initializer expressions and lists (array/struct initializers)
-- expr.c has been cleaned up - basic expression parsing now works
-- type.c has been cleaned up and now supports:
-  - Function declarations with arguments
-  - Enum, struct, and union types with full parsing
-- typedef not yet implemented
-- Function body parsing is stubbed out (parsefunc)
+The compiler has made substantial progress:
 
-### Known Issues (from TODO)
+**Preprocessor (Complete)**:
+- Macro definition and expansion
+- #include directive handling
+- Stringify (#) and token pasting (##) operators
+- Conditional compilation (#if, #ifdef, #ifndef, #else, #endif)
+- Macro expansion with argument substitution
+
+**Lexer (Complete)**:
+- Tokenization of all C keywords and operators
+- Numeric literal parsing
+- String literal handling
+- Character constants
+- Embedded preprocessor integration
+
+**Type System (Substantially Complete)**:
+- Primitive type parsing with all modifiers
+- Pointer types (multi-level)
+- Array types (multi-dimensional)
+- Function types with parameter lists
+- Struct, union, enum declarations
+- Forward references and incomplete types
+- Tag namespace separation
+- Struct member namespace separation
+
+**Declaration Parsing (Substantially Complete)**:
+- Variable declarations
+- Function declarations (ANSI style for prototypes)
+- K&R style function definitions with parameter type declarations
+- Undeclared K&R parameters default to int
+- Bitfield declarations
+- Storage class specifiers
+- Initializer expressions (basic support)
+
+**Expression Parsing (Functional)**:
+- All unary operators with constant folding
+- All binary operators with constant folding
+- Proper operator precedence and associativity
+- Parenthesized expressions
+- Numeric constant expressions
+
+**Statement Parsing (Active)**:
+- Function body parsing enabled
+- All control flow statements (if/else, while, do-while, for, switch/case)
+- Jump statements (break, continue, return, goto/labels)
+- Block statements with proper scoping
+- Statement trees attached to function bodies
+
+**Memory Management**:
+- Fixed major memory leaks in declaration parsing
+- Proper cleanup in pop_scope()
+- Valgrind clean on basic tests (no definite leaks)
+
+**Not yet implemented**:
+- typedef support
+- Local variable declarations inside function bodies (conflicts with statement parsing)
+- ANSI-style function definitions (parameters treated as global declarations)
+- Symbol table integration for expression evaluation
+- Type checking and validation
+- Code generation (pass 2)
+
+### Known Issues
 
 - The 'signed' keyword is not supported (deliberate omission)
-- Anonymous enums don't work
-- Nested macro expansion needs verification
+- Anonymous struct/union declarations don't work properly
+- ANSI-style function definitions: `int foo(int x) { }` fails with "more than one basetype"
+  - Workaround: Use K&R style: `int foo(x) int x; { }`
+- Local variable declarations inside functions conflict with statement parsing
 - Single-bit bitfields in structs could be optimized better
 
 ### Testing
 
-Tests are in tests/ directory:
-- Tests are C source files
-- runtest.sh runs cc1 with -E flag (preprocessor mode)
-- Outputs .i file (preprocessed source)
-- Currently only tests lexer/preprocessor, not full compilation
+Tests are in tests/ directory (16 tests total):
+- **Preprocessor tests**: macro.c, include.c, test_stringify.c, multistr.c
+- **Type system tests**: decl.c, complex_types.c, test_up_to_struct.c, test_no_collision.c
+- **Expression tests**: simpleexpr.c, cfold.c, test_with_add.c
+- **Function tests**: kr_funcs.c, simple_statements.c, statements_kr.c
+- **String tests**: string.c, t2.c
+
+See tests/README.md for detailed test documentation.
+
+Tests run with:
+- `make test` - Run all tests
+- `./runtest.sh tests/name.c` - Run single test
+- Tests pass if cc1 completes without crashing
+
+### Recent Improvements
+
+1. **Declaration parsing separated into declare.c** - cleaner code organization
+2. **Memory leak fixes** - eliminated double-strdup bugs, proper tag name cleanup
+3. **Statement parsing enabled** - function bodies now parsed into statement trees
+4. **K&R function support** - single and no-parameter K&R functions work
+5. **Constant folding** - all operators supported with proper precedence
+6. **Comprehensive test suite** - 16 tests covering all major subsystems
+7. **Default K&R parameters to int** - undeclared parameters get int type

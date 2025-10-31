@@ -234,7 +234,7 @@ advance()
     }
 
     /* do we have a valid nextchar? */
-	if (t->offset < t->valid) {
+	if (t->offset + 1 < t->valid) {
             nextchar = t->storage[++t->offset];
             goto done;
 	}

@@ -80,7 +80,7 @@ declare_internal(struct type **btp, boolean struct_elem)
 
         if (struct_elem) {
             /* struct members: create name but DON'T add to global names[] array */
-            nm = malloc(sizeof(*nm));
+            nm = calloc(1, sizeof(*nm));  // Zero-initialize all fields
             nm->name = strdup(cur.v.name);
             nm->type = prefix;
             nm->level = lexlevel;
@@ -141,7 +141,7 @@ declare_internal(struct type **btp, boolean struct_elem)
             kr_style = 1;
             while (cur.type == SYM && cur.type != E_O_F) {
                 // Create parameter with no type yet (will be filled in later)
-                arg = malloc(sizeof(*arg));
+                arg = calloc(1, sizeof(*arg));  // Zero-initialize all fields
                 arg->name = strdup(cur.v.name);
                 arg->type = 0;  // Type will be set later from declarations
                 arg->level = lexlevel + 1;
