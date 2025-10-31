@@ -14,3 +14,4 @@ test_up_to_struct.c
 test_with_add.c
 simple_statements.c
 statements_kr.c
+statements.c
