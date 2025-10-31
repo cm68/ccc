@@ -200,6 +200,67 @@ parse_expr(char pri, struct stmt *st)
         }
         break;
 
+    case SIZEOF:    // sizeof operator
+        gettoken();
+        // Check if it's sizeof(type) or sizeof expr
+        if (cur.type == LPAR) {
+            // Could be sizeof(type) or sizeof(expr)
+            // Try to parse as type first
+            struct type *t;
+            gettoken();  // consume '('
+
+            t = getbasetype();
+            if (t) {
+                // It's sizeof(type)
+                // TODO: handle pointer/array modifiers here for complete type parsing
+                need(RPAR, RPAR, ER_E_SP);
+
+                // Create constant expression with the size
+                e = makeexpr(CONST, 0);
+                e->type = inttype;
+                e->v = t->size;
+                e->flags = E_CONST;
+            } else {
+                // It's sizeof(expr) - parse as expression
+                e = parse_expr(0, st);
+                need(RPAR, RPAR, ER_E_SP);
+
+                // Create constant expression with the size of the expression's type
+                if (e && e->type) {
+                    int size = e->type->size;
+                    destroy_expr(e);  // we only needed it for the type
+                    e = makeexpr(CONST, 0);
+                    e->type = inttype;
+                    e->v = size;
+                    e->flags = E_CONST;
+                } else {
+                    err(ER_E_UO);  // couldn't determine type
+                    e = makeexpr(CONST, 0);
+                    e->type = inttype;
+                    e->v = 0;
+                    e->flags = E_CONST;
+                }
+            }
+        } else {
+            // sizeof expr (without parentheses)
+            struct expr *operand = parse_expr(OP_PRI_MULT - 1, st);
+            if (operand && operand->type) {
+                int size = operand->type->size;
+                destroy_expr(operand);
+                e = makeexpr(CONST, 0);
+                e->type = inttype;
+                e->v = size;
+                e->flags = E_CONST;
+            } else {
+                err(ER_E_UO);
+                e = makeexpr(CONST, 0);
+                e->type = inttype;
+                e->v = 0;
+                e->flags = E_CONST;
+            }
+        }
+        break;
+
 	default:
 		printf("unop default for token 0x%02x\n", cur.type);
 		err(ER_E_UO);

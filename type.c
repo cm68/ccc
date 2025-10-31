@@ -385,10 +385,10 @@ parsebasic()
 
 		default:
             // no type, no prefixes, unrecognized keyword. stop parsing type.
-			if ((length + unsignedness) == 0) { 
+			if ((length + unsignedness) == 0) {
 				return 0;
 			}
-			break;
+			goto done;
 		}
 	}
 done:
