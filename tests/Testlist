@@ -4,7 +4,9 @@ decl.c
 include.c
 kr_funcs.c
 macro.c
+modern_func.c
 multistr.c
+scopes.c
 simpleexpr.c
 string.c
 t2.c
