@@ -28,9 +28,11 @@ statement(struct stmt *parent) {
     struct scope *sc;
 
     while (block) {
+        st = NULL;  // Initialize st to NULL for each iteration
     	switch (cur.type) {
 
     	case END:   // end a block
+    	case E_O_F: // end of file
             block = 0;
             break;
 
@@ -208,10 +210,11 @@ statement(struct stmt *parent) {
             err(ER_E_UO);
             break;
         }
+        // Skip if no statement was created (e.g., default case, EOF)
+        if (!st) {
+            continue;
+        }
         if (!pst) {
-            if (!st) {
-                continue;
-            }
             head = st;
             st->flags |= S_PARENT;
         }
