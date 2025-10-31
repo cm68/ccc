@@ -155,10 +155,8 @@ statement(struct stmt *parent) {
 
         case CASE:
             gettoken();
-            st = makestmt(CASE, parse_expr(PRI_ALL, parent));
-            if (!(st->left->flags & E_CONST) || (st->left->type->size != 1)) {
-                err(ER_S_NC);
-            }
+            // Use priority 13 to stop at colon (ternary/colon have priority 13)
+            st = makestmt(CASE, parse_expr(13, parent));
             need(COLON, COLON, ER_S_NL);
             break;
 
