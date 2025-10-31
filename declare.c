@@ -166,7 +166,8 @@ declare_internal(struct type **btp, boolean struct_elem)
         } else {
             // ANSI style: parse typed parameters
             while (cur.type != RPAR && cur.type != E_O_F) {
-                arg = declare_internal(&t, 0);  /* function args are normal names, not struct elems */
+                struct type *param_type = 0;  // Local variable for each parameter type
+                arg = declare_internal(&param_type, 0);  /* function args are normal names, not struct elems */
                 if (arg) {
                     arg->next = suffix->elem;
                     suffix->elem = arg;
@@ -231,7 +232,7 @@ declare_internal(struct type **btp, boolean struct_elem)
     }                           // if cur.type == LPAR
 
     if ((cur.type != ASSIGN) && (cur.type != BEGIN) &&
-        (cur.type != COMMA) && (cur.type != SEMI)) {
+        (cur.type != COMMA) && (cur.type != SEMI) && (cur.type != RPAR)) {
         err(ER_D_UT);
         nm = 0;
     }
