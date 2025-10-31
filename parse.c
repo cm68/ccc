@@ -221,8 +221,9 @@ statement(struct stmt *parent) {
 
         // If we're parsing a single-statement body for a control structure
         // (if/while/for/etc), return after parsing one statement.
-        // Don't return for block statements or top-level (parent == NULL/function body)
-        if (parent && parent->op != BEGIN && st) {
+        // Don't return for block statements (BEGIN), switch statements (SWITCH),
+        // or top-level (parent == NULL/function body)
+        if (parent && parent->op != BEGIN && parent->op != 'S' && st) {
             block = 0;  // Exit the while loop
         }
     } // while
