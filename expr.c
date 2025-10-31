@@ -161,9 +161,7 @@ parse_expr(char pri, struct stmt *st)
         gettoken();
         e = makeexpr(NEG, parse_expr(OP_PRI_MULT - 1, st));  // higher precedence than mult
         if (e->left) {
-            e->type = e->left->type;
-            e->cost = e->left->cost;
-            e->left->up = e;
+            unop_set(e);
         }
         e = cfold(e);
         break;
@@ -172,9 +170,7 @@ parse_expr(char pri, struct stmt *st)
         gettoken();
         e = makeexpr(TWIDDLE, parse_expr(OP_PRI_MULT - 1, st));
         if (e->left) {
-            e->type = e->left->type;
-            e->cost = e->left->cost;
-            e->left->up = e;
+            unop_set(e);
         }
         e = cfold(e);
         break;
@@ -183,9 +179,7 @@ parse_expr(char pri, struct stmt *st)
         gettoken();
         e = makeexpr(NOT, parse_expr(OP_PRI_MULT - 1, st));
         if (e->left) {
-            e->type = e->left->type;
-            e->cost = e->left->cost;
-            e->left->up = e;
+            unop_set(e);
         }
         e = cfold(e);
         break;

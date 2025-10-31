@@ -13,6 +13,52 @@ is_type_token(char t)
 }
 
 /*
+ * Parse pointer prefix (zero or more '*' tokens)
+ * Returns a pointer type wrapping the given base type
+ */
+static struct type *
+parse_pointer_prefix(struct type *basetype)
+{
+    struct type *t = basetype;
+    while (cur.type == STAR) {
+        gettoken();
+        t = get_type(TF_POINTER, t, 0, 0);
+    }
+    return t;
+}
+
+/*
+ * Parse optional parameter name
+ * Returns strdup'd name or empty string for anonymous parameters
+ */
+static char *
+parse_param_name(boolean allow_anonymous)
+{
+    if (cur.type == SYM) {
+        char *name = strdup(cur.v.name);
+        gettoken();
+        return name;
+    }
+    return allow_anonymous ? strdup("") : NULL;
+}
+
+/*
+ * Create a new function parameter name entry
+ */
+static struct name *
+create_param_entry(char *name, struct type *type)
+{
+    struct name *arg = calloc(1, sizeof(*arg));
+    arg->name = name;
+    arg->type = type;
+    arg->level = lexlevel + 1;
+    arg->is_tag = 0;
+    arg->kind = var;
+    arg->flags = V_FUNARG | V_LOCAL;
+    return arg;
+}
+
+/*
  * we are in a parse state where we want to process declarations.
  * any names and types we declare go into the current scope
  *
@@ -43,10 +89,7 @@ declare_internal(struct type **btp, boolean struct_elem)
     }
     prefix = *btp;
 
-    while (cur.type == STAR) {
-        gettoken();
-        prefix = get_type(TF_POINTER, prefix, 0, 0);
-    }
+    prefix = parse_pointer_prefix(prefix);
 
     // parenthesed type definition does precedence
     if (cur.type == LPAR) {
@@ -150,10 +193,8 @@ declare_internal(struct type **btp, boolean struct_elem)
 
             if (kr_style) {
                 // K&R style: just collect names (types come later)
-                if (cur.type == SYM) {
-                    param_name = strdup(cur.v.name);
-                    gettoken();
-                } else {
+                param_name = parse_param_name(0);
+                if (!param_name) {
                     err(ER_D_FA);
                     break;
                 }
@@ -166,19 +207,10 @@ declare_internal(struct type **btp, boolean struct_elem)
                 }
 
                 // Parse pointer prefix
-                param_type = basetype;
-                while (cur.type == STAR) {
-                    gettoken();
-                    param_type = get_type(TF_POINTER, param_type, 0, 0);
-                }
+                param_type = parse_pointer_prefix(basetype);
 
                 // Get parameter name (optional for ANSI declarations)
-                if (cur.type == SYM) {
-                    param_name = strdup(cur.v.name);
-                    gettoken();
-                } else {
-                    param_name = strdup("");  // Anonymous parameter
-                }
+                param_name = parse_param_name(1);  // Allow anonymous
 
                 // Handle array suffix (converts to pointer)
                 if (cur.type == LBRACK) {
@@ -192,13 +224,7 @@ declare_internal(struct type **btp, boolean struct_elem)
             }
 
             // Create parameter entry
-            arg = calloc(1, sizeof(*arg));
-            arg->name = param_name;
-            arg->type = param_type;  // NULL for K&R (filled in later)
-            arg->level = lexlevel + 1;
-            arg->is_tag = 0;
-            arg->kind = var;
-            arg->flags = V_FUNARG | V_LOCAL;
+            arg = create_param_entry(param_name, param_type);
             arg->next = suffix->elem;
             suffix->elem = arg;
 
@@ -224,18 +250,11 @@ declare_internal(struct type **btp, boolean struct_elem)
                 }
 
                 // Parse declarator
-                struct type *param_type = basetype;
-                while (cur.type == STAR) {
-                    gettoken();
-                    param_type = get_type(TF_POINTER, param_type, 0, 0);
-                }
+                struct type *param_type = parse_pointer_prefix(basetype);
 
-                // Get parameter name
-                char *param_name = NULL;
-                if (cur.type == SYM) {
-                    param_name = strdup(cur.v.name);
-                    gettoken();
-                } else {
+                // Get parameter name (required for K&R declarations)
+                char *param_name = parse_param_name(0);
+                if (!param_name) {
                     err(ER_D_FM);
                     break;
                 }
