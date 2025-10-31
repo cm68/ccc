@@ -51,13 +51,8 @@ process(char *f)
     ioinit();
     lexinit();
 
-#ifdef LEXTEST
-    while (cur.type) {
-        gettoken();
-    }
-#else
     parse();
-#endif
+
     if (write_cpp_file) {
         cpp_flush();
     }

@@ -8,7 +8,6 @@
 #
 # we self-generate some of the files to keep things consistent
 #
-DEFINES= -DLEXTEST -DDEBUG
 DEFINES= -DDEBUG
 DEBUG= -ggdb3 -O0
 
