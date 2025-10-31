@@ -31,7 +31,7 @@ CC1OBJECTS = cc1.o error.o lex.o io.o macro.o kw.o util.o tokenlist.o unixlib.o 
 HEADERS = ccc.h error.h
 GENERATED = enumlist.h tokenlist.c error.h debug.h debugtags.c op_pri.h
 
-BINS = enumcheck cc1 cc2 maketokens genop_pri
+BINS = enumcheck cc1 cc2 maketokens genop_pri kwtest
 
 # Read test list from tests/Testlist file
 TESTS=$(addprefix tests/,$(shell grep -v '^$$' tests/Testlist))
@@ -53,6 +53,13 @@ test: cc1 runtest.sh
 
 tests: cc1 runtest.sh
 	./runtest.sh $(VERBOSE)
+
+kwtest: test_kw.c kw.o
+	$(CC) $(CFLAGS) -o kwtest test_kw.c kw.o
+
+.PHONY: test_kw
+test_kw: kwtest
+	./kwtest
 
 #
 # process the ccc.h file, extracting the enum tags for the tokens
