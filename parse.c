@@ -508,7 +508,18 @@ parse() {
 		while (cur.type == NONE) {
 			gettoken();
 		}
-		declaration();
+		/* Check if current token looks like start of a declaration */
+		if (cur.type == INT || cur.type == CHAR || cur.type == SHORT ||
+			cur.type == LONG || cur.type == FLOAT || cur.type == DOUBLE ||
+			cur.type == VOID || cur.type == UNSIGNED || cur.type == STRUCT ||
+			cur.type == UNION || cur.type == ENUM || cur.type == CONST ||
+			cur.type == VOLATILE || cur.type == TYPEDEF || cur.type == STATIC ||
+			cur.type == REGISTER || cur.type == AUTO || cur.type == EXTERN) {
+			declaration();
+		} else {
+			/* Not a declaration - skip this token to avoid getting stuck */
+			gettoken();
+		}
 	}
 	pop_scope();
 }
