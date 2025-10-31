@@ -132,6 +132,25 @@ parse_expr(char pri, struct stmt *st)
         break;
     }
 
+    case SYM: {
+        /* Variable reference */
+        struct name *n;
+
+        n = lookup_name(cur.v.name, 0);
+        if (!n) {
+            err(ER_E_UO);  // undefined name - use unknown operator error for now
+            e = makeexpr(CONST, 0);
+            e->type = inttype;
+            e->v = 0;
+        } else {
+            e = makeexpr(SYM, 0);
+            e->var = (struct var *)n;
+            e->type = n->type;
+        }
+        gettoken();
+        break;
+    }
+
     /* unary operators */
     case LPAR:      // parenthesized expression
         gettoken();
