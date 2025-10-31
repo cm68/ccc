@@ -165,14 +165,61 @@ declare_internal(struct type **btp, boolean struct_elem)
             }
         } else {
             // ANSI style: parse typed parameters
+            // Don't use declare_internal here because it adds params to names[] array
+            // at global scope, causing "duplicate local name" errors.
+            // Instead, parse type and name manually, similar to K&R style.
             while (cur.type != RPAR && cur.type != E_O_F) {
-                struct type *param_type = 0;  // Local variable for each parameter type
-                arg = declare_internal(&param_type, 0);  /* function args are normal names, not struct elems */
-                if (arg) {
-                    arg->next = suffix->elem;
-                    suffix->elem = arg;
-                    arg->flags |= V_FUNARG | V_LOCAL;
+                struct type *param_type = 0;
+                struct type *basetype = 0;
+                char *param_name = 0;
+
+                // Parse the parameter declaration without adding to names[]
+                basetype = getbasetype();
+                if (!basetype) {
+                    err(ER_D_FA);
+                    break;
                 }
+
+                // Parse declarator (pointers, arrays, name)
+                param_type = basetype;
+                while (cur.type == STAR) {
+                    gettoken();
+                    param_type = get_type(TF_POINTER, param_type, 0, 0);
+                }
+
+                // Get parameter name
+                if (cur.type == SYM) {
+                    param_name = strdup(cur.v.name);
+                    gettoken();
+                } else {
+                    // Anonymous parameter (allowed in function declarations)
+                    param_name = strdup("");
+                }
+
+                // Handle array suffix (converts to pointer)
+                if (cur.type == LBRACK) {
+                    gettoken();
+                    if (cur.type != RBRACK) {
+                        // Array size specified, but ignored for parameters
+                        parse_expr(0, NULL);
+                    }
+                    need(RBRACK, RBRACK, ER_D_FA);
+                    param_type = get_type(TF_POINTER, param_type->sub ? param_type->sub : param_type, 0, 0);
+                }
+
+                // Create parameter struct (don't add to names[] yet)
+                arg = calloc(1, sizeof(*arg));
+                arg->name = param_name;
+                arg->type = param_type;
+                arg->level = lexlevel + 1;  // Parameters are at function body scope
+                arg->is_tag = 0;
+                arg->kind = var;
+                arg->flags = V_FUNARG | V_LOCAL;
+
+                // Add to function's parameter list
+                arg->next = suffix->elem;
+                suffix->elem = arg;
+
                 if (cur.type == COMMA) {
                     gettoken();
                     continue;
@@ -191,23 +238,43 @@ declare_internal(struct type **btp, boolean struct_elem)
         if (kr_style && is_type_token(cur.type)) {
             while (is_type_token(cur.type) && cur.type != E_O_F && cur.type != BEGIN) {
                 struct type *paramtype = 0;
-                struct name *paramdecl = declare_internal(&paramtype, 0);
+                struct type *basetype = 0;
+                char *param_name = 0;
 
-                if (paramdecl) {
-                    // Find the matching parameter in suffix->elem and update its type
-                    struct name *p;
-                    for (p = suffix->elem; p; p = p->next) {
-                        if (strcmp(p->name, paramdecl->name) == 0) {
-                            p->type = paramdecl->type;
-                            break;
-                        }
-                    }
-                    if (!p) {
-                        err(ER_D_FM);  // old style arg defs error - parameter declared but not in list
-                    }
-                    // paramdecl is in names[] array and will be cleaned up by pop_scope
-                    // Don't free it here
+                // Parse the K&R parameter type declaration without adding to names[]
+                basetype = getbasetype();
+                if (!basetype) {
+                    break;
                 }
+
+                // Parse declarator (pointers, name)
+                paramtype = basetype;
+                while (cur.type == STAR) {
+                    gettoken();
+                    paramtype = get_type(TF_POINTER, paramtype, 0, 0);
+                }
+
+                // Get parameter name
+                if (cur.type == SYM) {
+                    param_name = strdup(cur.v.name);
+                    gettoken();
+                } else {
+                    err(ER_D_FM);
+                    break;
+                }
+
+                // Find the matching parameter in suffix->elem and update its type
+                struct name *p;
+                for (p = suffix->elem; p; p = p->next) {
+                    if (strcmp(p->name, param_name) == 0) {
+                        p->type = paramtype;
+                        break;
+                    }
+                }
+                if (!p) {
+                    err(ER_D_FM);  // old style arg defs error - parameter declared but not in list
+                }
+                free(param_name);
 
                 // Check if we should continue or stop
                 if (cur.type == SEMI) {
