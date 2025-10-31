@@ -93,7 +93,9 @@ declare_internal(struct type **btp, boolean struct_elem)
             nm->next = 0;
             nm->init = 0;
             nm->body = 0;
-            printf("struct_elem: %s (not added to names[])\n", nm->name);
+            if (VERBOSE(V_SYM)) {
+                printf("struct_elem: %s (not added to names[])\n", nm->name);
+            }
         } else {
             /* normal variable: add to global names[] array */
             nm = new_name(cur.v.name, var, prefix, 0);

@@ -73,8 +73,10 @@ pop_scope()
             break;
         names[lastname] = 0;
 
-        printf("pop_scope: delete %s%s\n",
-            n->is_tag ? "tag:":"", n->name);
+        if (VERBOSE(V_SYM)) {
+            printf("pop_scope: delete %s%s\n",
+                n->is_tag ? "tag:":"", n->name);
+        }
 
         free(n->name);
         // Note: n->init and n->body cleanup would go here if those are implemented
@@ -187,10 +189,12 @@ new_name(char *name, kind k, struct type *t, boolean is_tag)
     n->is_tag = is_tag;
     n->kind = k;
     names[++lastname] = n;
-    printf("new_name: level:%d index:%3d %s %s%s\n", 
-        lexlevel, lastname, 
-        k < sizeof(kindname)/sizeof(kindname[0]) ? kindname[k] : "unkn", 
-        is_tag ? "tag:":"", name);
+    if (VERBOSE(V_SYM)) {
+        printf("new_name: level:%d index:%3d %s %s%s\n",
+            lexlevel, lastname,
+            k < sizeof(kindname)/sizeof(kindname[0]) ? kindname[k] : "unkn",
+            is_tag ? "tag:":"", name);
+    }
 
 	return (n);
 }
