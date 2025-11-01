@@ -116,7 +116,7 @@ tags:
 
 clean:
 	rm -f $(CC1OBJECTS) $(GENERATED) tests/*.i \
-		*.asm *.lst *.sym *.map *.cdb *.ihx
+		*.asm *.lst *.sym *.map *.cdb *.ihx test_kw.o
 
 clobber: clean
 	rm -f $(BINS) tags
