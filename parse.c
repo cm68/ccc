@@ -193,9 +193,9 @@ statement(struct stmt *parent)
                 err(ER_S_DO);
                 break;
             }
-            if (cur.type != LPAR) {
-                err(ER_S_NP);
-            }
+            gettoken();  // advance past END (closing brace)
+            gettoken();  // advance past WHILE keyword
+            need(LPAR, LPAR, ER_S_NP);
             st->left = parse_expr(PRI_ALL, parent);
             need(RPAR, SEMI, ER_S_NP);
             need(SEMI, SEMI, ER_S_SN);
