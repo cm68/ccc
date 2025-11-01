@@ -194,6 +194,31 @@ dump_stmt(struct stmt *st)
 	dump_stmt_tree(st, 0);
 }
 
+/*
+ * Dump a function's name structure and statement tree
+ */
+void
+dump_function(struct name *func)
+{
+	if (!func) {
+		printf("(null function)\n");
+		return;
+	}
+
+	printf("\n=== Function: %s ===\n", func->name);
+
+	/* Dump the function name structure details */
+	dump_name(func);
+
+	/* Dump the statement tree */
+	if (func->body) {
+		printf("\nStatement tree:\n");
+		dump_stmt(func->body);
+	} else {
+		printf("\nNo function body (forward declaration)\n");
+	}
+}
+
 #endif /* DEBUG */
 
 /*

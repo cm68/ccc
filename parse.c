@@ -497,10 +497,9 @@ declaration()
             if (cur.type == BEGIN) {
                 parsefunc(v);
 
-                /* Dump and free the statement tree */
+                /* Dump function and free the statement tree */
                 if (v->body) {
-                    printf("\n=== Function: %s ===\n", v->name);
-                    dump_stmt(v->body);
+                    dump_function(v);
                     free_stmt(v->body);
                     v->body = 0;  /* Mark as freed */
                 }
