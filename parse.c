@@ -235,7 +235,7 @@ struct stmt*
 makestmt(char op, struct expr *left) {
 	struct stmt *st;
 
-	st = malloc(sizeof(*st));
+	st = calloc(1, sizeof(*st));  // Zero-initialize all fields
 	st->op = op;
 	st->left = left;
 	return st;
@@ -520,7 +520,7 @@ char*
 blockname() {
 	static int blockid = 0;
 	sprintf(bnbuf, "block %d", blockid++);
-	return strdup(bnbuf);
+	return bnbuf;
 }
 
 /*
@@ -548,6 +548,68 @@ parse() {
 		}
 	}
 	pop_scope();
+}
+
+/*
+ * Free a statement tree recursively
+ */
+void
+free_stmt(struct stmt *st)
+{
+	if (!st)
+		return;
+
+	/* Free child statements */
+	if (st->chain)
+		free_stmt(st->chain);
+	if (st->otherwise)
+		free_stmt(st->otherwise);
+	if (st->next)
+		free_stmt(st->next);
+
+	/* Free label string if present */
+	if (st->label)
+		free(st->label);
+
+	/* Note: Don't free st->left, st->right, st->middle (expressions)
+	 * as they may be shared or owned elsewhere.
+	 * A full implementation would need expression reference counting. */
+
+	free(st);
+}
+
+/*
+ * Clean up all allocated memory after parsing
+ */
+void
+cleanup_parser(void)
+{
+	int i;
+	struct name *n;
+	extern struct name **names;
+	extern int lastname;
+
+	/* Free all names and their statement trees */
+	for (i = 0; i <= lastname; i++) {
+		n = names[i];
+		if (n) {
+			/* Free function body if present */
+			if (n->body)
+				free_stmt(n->body);
+
+			/* Free name string (except for function parameters which are owned by type) */
+			if (!(n->flags & V_FUNARG) && n->name)
+				free(n->name);
+
+			/* Free the name structure itself (except function parameters) */
+			if (!(n->flags & V_FUNARG))
+				free(n);
+		}
+	}
+
+	/* Free the names array itself */
+	if (names)
+		free(names);
 }
 
 /*

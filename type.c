@@ -80,8 +80,12 @@ pop_scope()
 
         // Don't free function parameters - they're owned by the function type
         if (!(n->flags & V_FUNARG)) {
+            /* Free function body statement tree if present */
+            if (n->body)
+                free_stmt(n->body);
+
             free(n->name);
-            // Note: n->init and n->body cleanup would go here if those are implemented
+            // Note: n->init cleanup would go here if implemented
             free(n);
         }
         lastname--;
