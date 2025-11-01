@@ -41,10 +41,10 @@ unsigned char cppkw[] = {
             'd'|HI, 4, 'e', 'f', 0xff, IFDEF,
             'n'|HI, 5, 'd', 'e', 'f', 0xff, IFNDEF,
         'n', 'c', 'l', 'u', 'd', 'e', 0xff, INCLUDE,
-    'e'|HI, 13, 'l'|HI, 9, 's'|HI, 3, 'e', 0xff, ELSE,
+    'e'|HI, 17, 'l'|HI, 9, 's'|HI, 3, 'e', 0xff, ELSE,
             'i', 'f', 0xff, ELIF,
         'n', 'd', 'i', 'f', 0xff, ENDIF,
-    'u', 'n', 'd', 'e', 'f', 0xff, UNDEF,
+    'u'|HI, 6, 'n', 'd', 'e', 'f', 0xff, UNDEF,
     0xff, 0
 };
 

@@ -18,6 +18,17 @@ struct test_s {
 
 int k = add(3,5);
 
+/* Test #undef */
+#define TESTMACRO 100
+int before_undef = TESTMACRO;
+
+#undef TESTMACRO
+int after_undef = TESTMACRO;  /* Should not expand */
+
+/* Test redefine after undef */
+#define TESTMACRO 200
+int after_redefine = TESTMACRO;
+
 
 
 
