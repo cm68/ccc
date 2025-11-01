@@ -37,19 +37,9 @@ dump_expr_tree(struct expr *e, int indent)
 		break;
 	case SYM:
 		if (e->var) {
-			struct name *sym = (struct name *)e->var;
 			/* Note: the name structure might have been freed by pop_scope */
-			/* Display what we can safely, but be defensive */
-			printf("SYM");
-			if (sym->name) {
-				printf(" '%s'", sym->name);
-			}
-			if (sym->type && sym->type->name) {
-				printf(" (%s)", sym->type->name);
-			}
-			printf(" [level=%d]", sym->level);
-			/* Also show the pointer for debugging */
-			printf(" @%p", e->var);
+			/* so we just print the pointer address to avoid crashes */
+			printf("SYM @%p", e->var);
 		} else {
 			printf("SYM (null)");
 		}
