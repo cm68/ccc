@@ -26,7 +26,7 @@ LD= gcc
 endif
 
 CC1OBJECTS = cc1.o error.o lex.o io.o macro.o kw.o util.o tokenlist.o unixlib.o \
-	expr.o parse.o type.o declare.o
+	expr.o parse.o type.o declare.o outast.o
 
 HEADERS = ccc.h error.h
 GENERATED = enumlist.h tokenlist.c error.h debug.h debugtags.c op_pri.h
@@ -44,12 +44,15 @@ cc1: $(CC1OBJECTS)
 
 $(CC1OBJECTS): $(HEADERS)
 
-.PHONY: test tests
+.PHONY: test tests valgrind
 test: cc1 runtest.sh
 	./runtest.sh $(VERBOSE) $(TESTS)
 
 tests: cc1 runtest.sh
 	./runtest.sh $(VERBOSE)
+
+valgrind: cc1 runvalgrind.sh
+	./runvalgrind.sh $(TESTS)
 
 kwtest: test_kw.c kw.o
 	$(CC) $(CFLAGS) -o kwtest test_kw.c kw.o
@@ -129,3 +132,4 @@ error.o: error.c
 util.o: util.c
 tokenlist.o: tokenlist.c
 expr.o: expr.c op_pri.h
+outast.o: outast.c

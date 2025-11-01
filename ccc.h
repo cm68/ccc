@@ -89,6 +89,7 @@ extern struct expr *new_expr(char op);
 extern void destroy_expr(struct expr *e);
 #ifdef DEBUG
 extern void dump_expr(struct expr *e);
+extern void dump_expr_indent(struct expr *e, int indent);
 #endif
 
 /*

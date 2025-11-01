@@ -91,7 +91,6 @@ parse_expr(char pri, struct stmt *st)
 	struct expr *e;
     char p;
 
-	tdump(cur.type);
 	e = 0;  // initialize to avoid uninitialized use
 
 	switch (cur.type) {   // prefix
@@ -283,8 +282,6 @@ parse_expr(char pri, struct stmt *st)
      * and binary operators to deal with
      */
     while (1) { // binary operators
-        tdump(cur.type);
-
         p = binop_pri(cur.type);
         if (p == 0) {
             // not a binary operator, we're done
