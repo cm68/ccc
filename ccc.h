@@ -114,9 +114,7 @@ struct stmt {
 extern struct stmt *new_stmt(char op, struct expr *left);
 extern void destroy_stmt(struct stmt *s);
 extern void free_stmt(struct stmt *s);
-#ifdef DEBUG
 extern void dump_stmt(struct stmt *s);
-#endif
 
 /* statement flags used in parse.c */
 #define S_PARENT 0x01
