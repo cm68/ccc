@@ -1,4 +1,6 @@
-// Statement tests using K&R function style (which works)
+/*
+ * Statement tests using K&R function style (which works)
+ */
 
 // Empty function
 int empty()

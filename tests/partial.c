@@ -1,3 +1,7 @@
+/*
+ * Tests partial statement parsing (incomplete version of full statement test suite)
+ */
+
 // Test statement parsing - if/else, loops, switch, break, continue, return, goto
 
 // Simple if statement

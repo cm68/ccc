@@ -1,3 +1,7 @@
+/*
+ * Tests K&R style functions with forward declarations and basic statements
+ */
+
 // Simpler statement test - forward declarations and K&R style
 
 // Forward declarations (these work)

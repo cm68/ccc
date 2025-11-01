@@ -1,3 +1,7 @@
+/*
+ * Tests statement parsing without switch statement (all other control flow)
+ */
+
 // Test statement parsing - if/else, loops, switch, break, continue, return, goto
 
 // Simple if statement

@@ -1,3 +1,7 @@
+/*
+ * Tests ANSI-style functions with if and while statements
+ */
+
 // Test statement parsing
 
 int test_if(int x) {

@@ -1,3 +1,7 @@
+/*
+ * Tests macro expansion with add macro and struct declaration
+ */
+
 #define add(a,b) a+b
 #define stringify(a) #a
 

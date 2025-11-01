@@ -1,3 +1,7 @@
+/*
+ * Tests typedef declarations for various types
+ */
+
 typedef int myint;
 typedef unsigned char byte;
 typedef int *intptr;

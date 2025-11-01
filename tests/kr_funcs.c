@@ -1,3 +1,7 @@
+/*
+ * Tests K&R style (old-style) function declarations with various parameter configurations
+ */
+
 // Test K&R style (old-style) function declarations
 
 // K&R style with single parameter (WORKS)

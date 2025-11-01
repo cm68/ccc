@@ -1,3 +1,7 @@
+/*
+ * Tests K&R style functions with progressive complexity (empty, return, locals, if, if-else)
+ */
+
 // Statement tests using K&R function style (which works)
 
 // Empty function

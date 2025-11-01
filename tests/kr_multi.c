@@ -1,3 +1,7 @@
+/*
+ * Tests multiple K&R style functions with minimal implementations
+ */
+
 int test_if(n)
 int n;
 {

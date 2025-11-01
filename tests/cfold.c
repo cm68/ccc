@@ -1,3 +1,7 @@
+/*
+ * Tests constant folding for arithmetic, bitwise, and logical operators with proper precedence
+ */
+
 // Test constant folding for all binary operators
 
 int add = 10 + 5;        // 15

@@ -1,3 +1,7 @@
+/*
+ * Tests preprocessor macros including stringify and token pasting operators
+ */
+
 char foo[] = "this is a test string";
 char bar[] = "this is a another, uglier\0 one\n";
 

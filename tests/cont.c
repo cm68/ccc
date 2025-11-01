@@ -1,3 +1,7 @@
+/*
+ * Tests continue statement in while loop
+ */
+
 int test_continue(int n) {
     int i = 0;
     int count = 0;

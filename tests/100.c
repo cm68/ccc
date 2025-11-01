@@ -1,3 +1,7 @@
+/*
+ * Tests comprehensive statement parsing including control flow and jump statements
+ */
+
 // Test statement parsing - if/else, loops, switch, break, continue, return, goto
 
 // Simple if statement

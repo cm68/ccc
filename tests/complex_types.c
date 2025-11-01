@@ -1,3 +1,7 @@
+/*
+ * Tests complex type declarations including multi-level pointers, arrays, and combinations
+ */
+
 // Test complex type declarations
 
 // Multi-level pointers

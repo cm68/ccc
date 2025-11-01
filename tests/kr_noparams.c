@@ -1,3 +1,7 @@
+/*
+ * Tests K&R style functions with no parameters
+ */
+
 int empty()
 {
 }

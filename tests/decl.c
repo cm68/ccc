@@ -1,3 +1,7 @@
+/*
+ * Tests basic variable declarations with primitive types, pointers, and arrays
+ */
+
 int i;
 int *ip;
 

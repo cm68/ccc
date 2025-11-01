@@ -1,3 +1,7 @@
+/*
+ * Tests extended statement parsing (expanded version of basic statement tests)
+ */
+
 // Test statement parsing - if/else, loops, switch, break, continue, return, goto
 
 // Simple if statement

@@ -1,3 +1,7 @@
+/*
+ * Tests declarations up to and including struct definitions with macros
+ */
+
 #define add(a,b) a+b
 #define stringify(a) #a
 

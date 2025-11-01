@@ -1,3 +1,7 @@
+/*
+ * Tests that struct member names don't collide with global namespace
+ */
+
 #define add(a,b) a+b
 
 struct test_s {

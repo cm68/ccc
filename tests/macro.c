@@ -1,3 +1,7 @@
+/*
+ * Tests preprocessor macro definition and expansion with stringify operator
+ */
+
 #define add(a,b) a+b
 #define stringify(a) #a
 

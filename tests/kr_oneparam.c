@@ -1,3 +1,7 @@
+/*
+ * Tests K&R style function with one parameter and local variables
+ */
+
 int locals()
 {
     int x;

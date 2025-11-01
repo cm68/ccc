@@ -1,3 +1,7 @@
+/*
+ * Tests switch statement with multiple cases and default
+ */
+
 int test_switch(int x) {
     switch (x) {
         case 0:

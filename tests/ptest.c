@@ -1,3 +1,7 @@
+/*
+ * Tests struct declarations with bitfields and arrays
+ */
+
 int i;
 char *k;
 
