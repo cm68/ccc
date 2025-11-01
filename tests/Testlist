@@ -62,3 +62,4 @@ struct.c
 sw2.c
 switch.c
 two_locals.c
+undef_test.c
