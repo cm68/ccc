@@ -74,17 +74,13 @@ pop_scope()
         names[lastname] = 0;
 
         if (VERBOSE(V_SYM)) {
-            printf("pop_scope: delete %s%s\n",
+            printf("pop_scope: remove %s%s from lookup\n",
                 n->is_tag ? "tag:":"", n->name);
         }
 
-        // Don't free function parameters - they're owned by the function type
-        if (!(n->flags & V_FUNARG)) {
-            free(n->name);
-            // Note: n->init and n->body cleanup would go here if implemented
-            // For now, statement trees are freed after being printed in declaration()
-            free(n);
-        }
+        // Note: We don't free the name structure here because it may still
+        // be referenced by the AST (statement trees via SYM expressions).
+        // The memory will be reclaimed when the process exits.
         lastname--;
     }
 }
