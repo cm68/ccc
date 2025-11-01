@@ -8,48 +8,63 @@
 
 extern char kwlook(unsigned char *str, unsigned char *table);
 extern unsigned char ckw[];
+extern unsigned char cppkw[];
 
 struct test_case {
     char *keyword;
     char expected_token;
     char *description;
+    unsigned char *table;
 };
 
 struct test_case tests[] = {
-    {"asm", ASM, "ASM"},
-    {"auto", AUTO, "AUTO"},
-    {"boolean", BOOLEAN, "BOOLEAN"},
-    {"break", BREAK, "BREAK"},
-    {"case", CASE, "CASE"},
-    {"char", CHAR, "CHAR"},
-    {"const", CONST, "CONST"},
-    {"continue", CONTINUE, "CONTINUE"},
-    {"default", DEFAULT, "DEFAULT"},
-    {"do", DO, "DO"},
-    {"double", DOUBLE, "DOUBLE"},
-    {"else", ELSE, "ELSE"},
-    {"enum", ENUM, "ENUM"},
-    {"extern", EXTERN, "EXTERN"},
-    {"float", FLOAT, "FLOAT"},
-    {"for", FOR, "FOR"},
-    {"goto", GOTO, "GOTO"},
-    {"if", IF, "IF"},
-    {"int", INT, "INT"},
-    {"long", LONG, "LONG"},
-    {"return", RETURN, "RETURN"},
-    {"register", REGISTER, "REGISTER"},
-    {"sizeof", SIZEOF, "SIZEOF"},
-    {"short", SHORT, "SHORT"},
-    {"static", STATIC, "STATIC"},
-    {"struct", STRUCT, "STRUCT"},
-    {"switch", SWITCH, "SWITCH (NOT IN TABLE YET)"},
-    {"typedef", TYPEDEF, "TYPEDEF"},
-    {"union", UNION, "UNION"},
-    {"unsigned", UNSIGNED, "UNSIGNED"},
-    {"void", VOID, "VOID"},
-    {"volatile", VOLATILE, "VOLATILE"},
-    {"while", WHILE, "WHILE"},
-    {NULL, 0, NULL}
+    /* C keywords */
+    {"asm", ASM, "ASM", ckw},
+    {"auto", AUTO, "AUTO", ckw},
+    {"boolean", BOOLEAN, "BOOLEAN", ckw},
+    {"break", BREAK, "BREAK", ckw},
+    {"case", CASE, "CASE", ckw},
+    {"char", CHAR, "CHAR", ckw},
+    {"const", CONST, "CONST", ckw},
+    {"continue", CONTINUE, "CONTINUE", ckw},
+    {"default", DEFAULT, "DEFAULT", ckw},
+    {"do", DO, "DO", ckw},
+    {"double", DOUBLE, "DOUBLE", ckw},
+    {"else", ELSE, "ELSE", ckw},
+    {"enum", ENUM, "ENUM", ckw},
+    {"extern", EXTERN, "EXTERN", ckw},
+    {"float", FLOAT, "FLOAT", ckw},
+    {"for", FOR, "FOR", ckw},
+    {"goto", GOTO, "GOTO", ckw},
+    {"if", IF, "IF", ckw},
+    {"int", INT, "INT", ckw},
+    {"long", LONG, "LONG", ckw},
+    {"return", RETURN, "RETURN", ckw},
+    {"register", REGISTER, "REGISTER", ckw},
+    {"sizeof", SIZEOF, "SIZEOF", ckw},
+    {"short", SHORT, "SHORT", ckw},
+    {"static", STATIC, "STATIC", ckw},
+    {"struct", STRUCT, "STRUCT", ckw},
+    {"switch", SWITCH, "SWITCH", ckw},
+    {"typedef", TYPEDEF, "TYPEDEF", ckw},
+    {"union", UNION, "UNION", ckw},
+    {"unsigned", UNSIGNED, "UNSIGNED", ckw},
+    {"void", VOID, "VOID", ckw},
+    {"volatile", VOLATILE, "VOLATILE", ckw},
+    {"while", WHILE, "WHILE", ckw},
+
+    /* CPP keywords */
+    {"define", DEFINE, "CPP DEFINE", cppkw},
+    {"undef", UNDEF, "CPP UNDEF", cppkw},
+    {"include", INCLUDE, "CPP INCLUDE", cppkw},
+    {"if", IF, "CPP IF", cppkw},
+    {"ifdef", IFDEF, "CPP IFDEF", cppkw},
+    {"ifndef", IFNDEF, "CPP IFNDEF", cppkw},
+    {"else", ELSE, "CPP ELSE", cppkw},
+    {"elif", ELIF, "CPP ELIF", cppkw},
+    {"endif", ENDIF, "CPP ENDIF", cppkw},
+
+    {NULL, 0, NULL, NULL}
 };
 
 int main() {
@@ -62,7 +77,7 @@ int main() {
     printf("==============================\n\n");
 
     for (t = tests; t->keyword != NULL; t++) {
-        result = kwlook((unsigned char *)t->keyword, ckw);
+        result = kwlook((unsigned char *)t->keyword, t->table);
 
         if (result == t->expected_token) {
             printf("✓ %-12s -> '%c' (0x%02x) %s\n",
