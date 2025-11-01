@@ -346,7 +346,8 @@ xreplace(struct expr *out, struct expr *in)
 }
 
 struct expr *
-cfold(struct expr *e) {
+cfold(struct expr *e)
+{
 	long val;
 	long vl, vr;
 

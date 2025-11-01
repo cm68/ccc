@@ -75,7 +75,8 @@ need(token_t check, token_t skipto, error_t errcode)
  *    s - string     
  */
 void
-sprintf(char *d, char *fmt) {
+sprintf(char *d, char *fmt)
+{
     char **ap;
     char c;
     char zpad;

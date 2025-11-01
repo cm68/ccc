@@ -18,7 +18,8 @@ void declaration();
  * there is some hair here having to do with scope
  */
 struct stmt*
-statement(struct stmt *parent) {
+statement(struct stmt *parent)
+{
     struct stmt *st, **pst = 0;
     struct stmt *head = 0;
     // struct name *v = 0;
@@ -232,7 +233,8 @@ statement(struct stmt *parent) {
 }
 
 struct stmt*
-makestmt(char op, struct expr *left) {
+makestmt(char op, struct expr *left)
+{
 	struct stmt *st;
 
 	st = calloc(1, sizeof(*st));  // Zero-initialize all fields
@@ -317,7 +319,8 @@ do_initializer(void)
 }
 
 void
-parsefunc(struct name *f) {
+parsefunc(struct name *f) 
+{
 	struct name *param;
 
 	// Push a new scope for the function body
@@ -366,8 +369,9 @@ char *sclass_bitdefs[] = { "EXTERN", "REGISTER", "STATIC", "CONST", "VOLATILE",
  *
  * how this actually resolves into a storage space is a code generator issue
  */
-unsigned char 
-parse_sclass() {
+unsigned char
+parse_sclass()
+{
 	int ret = 0;
 	int bit;
 
@@ -431,8 +435,9 @@ parse_sclass() {
 /*
  * read a declaration
  */
-void 
-declaration() {
+void
+declaration()
+{
 	struct type *base;
 	struct name *n;
 	struct initial *i;
@@ -517,7 +522,8 @@ declaration() {
 char bnbuf[20];
 
 char*
-blockname() {
+blockname()
+{
 	static int blockid = 0;
 	sprintf(bnbuf, "block %d", blockid++);
 	return bnbuf;
@@ -526,8 +532,9 @@ blockname() {
 /*
  * global level parse
  */
-void 
-parse() {
+void
+parse()
+{
 	push_scope("global");
 	initbasictype();
 	while (cur.type != E_O_F) {
