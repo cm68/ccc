@@ -20,7 +20,7 @@ usage(void)
 {
     printf("usage: %s [<options>] <source.c>\n", progname);
     printf("  -o <output>    Output file (default: a.out)\n");
-    printf("  -keep-ast      Keep intermediate AST file\n");
+    printf("  -k             Keep intermediate AST file\n");
     printf("  -v <level>     Verbosity level (passed to cc1)\n");
     printf("  -I<dir>        Include directory (passed to cc1)\n");
     printf("  -D<var>[=val]  Define macro (passed to cc1)\n");
@@ -180,7 +180,7 @@ main(int argc, char **argv)
             output_file = argv[0];
             argc--;
             argv++;
-        } else if (strcmp(argv[0], "-keep-ast") == 0) {
+        } else if (strcmp(argv[0], "-k") == 0) {
             keep_ast = 1;
             argc--;
             argv++;
