@@ -7,7 +7,7 @@ The compiler outputs a parseable AST format in S-expression notation for consump
 Each function is emitted as:
 ```
 ; Function: function_name
-(func name (param1:type param2:type ...) return_type
+(f name (param1:type param2:type ...) return_type
   statement)
 ```
 
@@ -65,7 +65,7 @@ int add(int x, int y) {
 ```
 Emits:
 ```
-(func add (y:_short_ x:_short_) _short_
+(f add (y:_short_ x:_short_) _short_
   (B (R (+ $Ax $Ay))))
 ```
 Note: `$Ax` and `$Ay` have the `A` prefix because they are function arguments.
@@ -81,7 +81,7 @@ int factorial(int n) {
 ```
 Emits:
 ```
-(func factorial (n:_short_) _short_
+(f factorial (n:_short_) _short_
   (B (I (< $An 2) (B (R 1))) (R (* $An $_factorial)) (;)))
 ```
 Note: `$An` has the `A` prefix (function argument), `$_factorial` has the `_` prefix (global function).
@@ -101,7 +101,7 @@ int loop_test(int n) {
 ```
 Emits:
 ```
-(func loop_test (n:_short_) _short_
+(f loop_test (n:_short_) _short_
   (B (E (= $sum 0)) (E (= $i 0))
      (W (< $i $An)
         (B (E (= $sum (+ $sum $i))) (E (= $i (+ $i 1)))))
@@ -119,7 +119,7 @@ int test_simple_call() {
 ```
 Emits:
 ```
-(func test_simple_call () _short_
+(f test_simple_call () _short_
   (B (R (@ $_add 1 2))))
 ```
 Note: `$_add` has the `_` prefix because it's a global function.
@@ -132,7 +132,7 @@ int test_nested_call() {
 ```
 Emits:
 ```
-(func test_nested_call () _short_
+(f test_nested_call () _short_
   (B (R (@ $_add (@ $_multiply 2 3) (@ $_multiply 4 5)))))
 ```
 
@@ -144,7 +144,7 @@ int test_expr_in_call(int n) {
 ```
 Emits:
 ```
-(func test_expr_in_call (n:_short_) _short_
+(f test_expr_in_call (n:_short_) _short_
   (B (R (@ $_add (+ $An 1) (* $An 2)))))
 ```
 Note: `$An` has the `A` prefix (function argument), `$_add` has the `_` prefix (global function).
@@ -195,7 +195,7 @@ int test_all_scopes(int x, int y) {
 ```
 Emits:
 ```
-(func test_all_scopes (y:_short_ x:_short_) _short_
+(f test_all_scopes (y:_short_ x:_short_) _short_
   (B (E (= $local1 (+ $Ax $Ay)))
      (R (+ (+ $local1 $_global_var) $Stest_scopes_test_all_scopes_static_local_0))))
 ```

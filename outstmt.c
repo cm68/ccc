@@ -293,7 +293,7 @@ emit_function(struct name *func)
 		return;
 
 	fprintf(ast_output, "\n; Function: %s\n", func->name);
-	fprintf(ast_output, "(func %s ", func->name);
+	fprintf(ast_output, "(f %s ", func->name);
 
 	/* Output parameter list */
 	if (func->type) {
