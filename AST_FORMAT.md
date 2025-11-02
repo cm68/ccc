@@ -4,12 +4,23 @@ The compiler outputs a parseable AST format in S-expression notation for consump
 
 ## Format Overview
 
+Global variables are emitted as:
+```
+; Global variable: var_name
+(g $varname type [init-expr])
+```
+
 Each function is emitted as:
 ```
 ; Function: function_name
 (f name (param1:type param2:type ...) return_type
+  (d param1 type) (d param2 type) ...
   statement)
 ```
+
+Declarations `(d varname type)` are emitted for:
+- Function parameters (at function level, before the body)
+- Local variables (inside each block where they're declared)
 
 ## Expression Format
 
@@ -66,9 +77,12 @@ int add(int x, int y) {
 Emits:
 ```
 (f add (y:_short_ x:_short_) _short_
+  (d y _short_) (d x _short_)
   (B (R (+ $Ax $Ay))))
 ```
-Note: `$Ax` and `$Ay` have the `A` prefix because they are function arguments.
+Note:
+- Parameters are declared with `(d y _short_) (d x _short_)`
+- `$Ax` and `$Ay` have the `A` prefix in expressions because they are function arguments
 
 ### Factorial with Recursion
 ```c
@@ -86,7 +100,7 @@ Emits:
 ```
 Note: `$An` has the `A` prefix (function argument), `$_factorial` has the `_` prefix (global function).
 
-### Loop Example
+### Loop Example with Local Variables
 ```c
 int loop_test(int n) {
     int i, sum;
@@ -102,12 +116,47 @@ int loop_test(int n) {
 Emits:
 ```
 (f loop_test (n:_short_) _short_
-  (B (E (= $sum 0)) (E (= $i 0))
+  (d n _short_)
+  (B (d i _short_) (d sum _short_) (E (= $sum 0)) (E (= $i 0))
      (W (< $i $An)
         (B (E (= $sum (+ $sum $i))) (E (= $i (+ $i 1)))))
      (R $sum)))
 ```
-Note: `$An` has the `A` prefix (function argument), `$sum` and `$i` have no prefix (local variables).
+Note:
+- Parameter `n` declared with `(d n _short_)`
+- Local variables `i` and `sum` declared with `(d i _short_) (d sum _short_)`
+- `$An` has the `A` prefix in expressions (function argument)
+- `$sum` and `$i` have no prefix in expressions (local variables)
+
+### Global Variables
+```c
+int global_a = 10;
+int global_b;
+static int file_static = 42;
+
+int test() {
+    return global_a + global_b;
+}
+```
+Emits:
+```
+; Global variable: global_a
+(g $_global_a _short_ 10)
+
+; Global variable: global_b
+(g $_global_b _short_)
+
+; Global variable: file_static
+(g $Sfile_file_static _short_ 42)
+
+; Function: test
+(f test () _short_
+  (B (R (+ $_global_a $_global_b))))
+```
+Note:
+- Global variables with initializers: `(g $_global_a _short_ 10)`
+- Global variables without initializers: `(g $_global_b _short_)`
+- Static global variables use mangled names: `$Sfile_file_static`
 
 ### Function Call Examples
 

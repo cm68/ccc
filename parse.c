@@ -48,6 +48,56 @@ struct stmt *makestmt(char op, struct expr *left);
 char *blockname(void);
 struct stmt *asmblock(void);
 
+/*
+ * Capture local variables from the current scope level
+ * Returns a linked list of name structures (shallow copies)
+ * Called before pop_scope() to preserve variable info
+ */
+static struct name *
+capture_locals(void)
+{
+	extern struct name **names;
+	extern int lastname;
+	extern int lexlevel;
+	struct name *locals_list = NULL;
+	struct name *tail = NULL;
+	struct name *n, *copy;
+	int i;
+
+	/* Iterate through names array looking for variables at current level */
+	for (i = 0; i <= lastname; i++) {
+		n = names[i];
+		if (!n)
+			continue;
+
+		/* Only capture variables at current lexical level */
+		if (n->level != lexlevel)
+			continue;
+
+		/* Skip tags, typedefs, and functions */
+		if (n->is_tag || n->kind == tdef || n->kind == fdef)
+			continue;
+
+		/* Capture this variable (shallow copy) */
+		if (n->kind == var || n->kind == local || n->kind == funarg) {
+			copy = malloc(sizeof(struct name));
+			memcpy(copy, n, sizeof(struct name));
+			copy->next = NULL;
+
+			/* Add to linked list */
+			if (!locals_list) {
+				locals_list = copy;
+				tail = copy;
+			} else {
+				tail->next = copy;
+				tail = copy;
+			}
+		}
+	}
+
+	return locals_list;
+}
+
 void declaration();
 
 /*
@@ -79,6 +129,10 @@ statement(struct stmt *parent)
             st = makestmt(BEGIN, 0);
             st->parent = parent;
             st->chain = statement(st);
+
+            /* Capture local variables before popping scope */
+            st->locals = capture_locals();
+
             pop_scope();
             need(END, END, ER_S_CC);
             // If this is a top-level block (function body), return immediately
@@ -714,6 +768,10 @@ parse()
 			gettoken();
 		}
 	}
+
+	/* Emit global variable declarations before popping scope */
+	emit_global_vars();
+
 	pop_scope();
 }
 

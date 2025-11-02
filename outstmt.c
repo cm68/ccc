@@ -113,6 +113,19 @@ emit_stmt(struct stmt *st)
 	switch (st->op) {
 	case BEGIN:
 		fprintf(ast_output, "(B");  /* Block */
+
+		/* Emit declarations for local variables in this scope */
+		if (st->locals) {
+			struct name *local;
+			for (local = st->locals; local; local = local->next) {
+				fprintf(ast_output, " (d %s", local->name);
+				if (local->type && local->type->name) {
+					fprintf(ast_output, " %s", local->type->name);
+				}
+				fprintf(ast_output, ")");
+			}
+		}
+
 		if (st->chain) {
 			fprintf(ast_output, " ");
 			emit_stmt(st->chain);
@@ -284,6 +297,50 @@ emit_params(struct type *functype)
 }
 
 /*
+ * Output declaration nodes for function parameters and local variables
+ * Called while variables are still in scope (before pop_scope)
+ */
+static void
+emit_declarations(struct name *func)
+{
+	extern struct name **names;
+	extern int lastname;
+	struct name *n;
+	int i;
+	int has_decls = 0;
+
+	/* Iterate through names array looking for parameters and locals */
+	for (i = 0; i <= lastname; i++) {
+		n = names[i];
+		if (!n)
+			continue;
+
+		/* Skip if not at function scope or deeper */
+		if (n->level < 2)
+			continue;
+
+		/* Skip tags, typedefs, and function definitions */
+		if (n->is_tag || n->kind == tdef || n->kind == fdef)
+			continue;
+
+		/* Emit declaration node: (d varname type) */
+		if (n->kind == funarg || n->kind == var || n->kind == local) {
+			if (!has_decls) {
+				fprintf(ast_output, "\n  ");
+				has_decls = 1;
+			} else {
+				fprintf(ast_output, " ");
+			}
+			fprintf(ast_output, "(d %s", n->name);
+			if (n->type && n->type->name) {
+				fprintf(ast_output, " %s", n->type->name);
+			}
+			fprintf(ast_output, ")");
+		}
+	}
+}
+
+/*
  * Output a function in AST format
  */
 void
@@ -309,10 +366,88 @@ emit_function(struct name *func)
 		fprintf(ast_output, "() void");
 	}
 
+	/* Output declarations for parameters and local variables */
+	emit_declarations(func);
+
 	/* Output function body */
 	fprintf(ast_output, "\n  ");
 	emit_stmt(func->body);
 	fprintf(ast_output, ")\n");
+}
+
+/*
+ * Output a global variable declaration with optional initializer
+ * Format: (g varname type [init-expr])
+ */
+void
+emit_global_var(struct name *var)
+{
+	if (!var || !var->type)
+		return;
+
+	fprintf(ast_output, "\n; Global variable: %s\n", var->name);
+	fprintf(ast_output, "(g ");
+
+	/* Output variable name with scope prefix */
+	if (var->sclass & SC_STATIC) {
+		/* Use mangled name for statics */
+		if (var->mangled_name) {
+			fprintf(ast_output, "$S%s", var->mangled_name);
+		} else {
+			fprintf(ast_output, "$S%s", var->name);
+		}
+	} else if (var->sclass & SC_EXTERN) {
+		fprintf(ast_output, "$_%s", var->name);
+	} else {
+		/* Global variable (not extern, not static) */
+		fprintf(ast_output, "$_%s", var->name);
+	}
+
+	/* Output type */
+	if (var->type && var->type->name) {
+		fprintf(ast_output, " %s", var->type->name);
+	}
+
+	/* Output initializer if present */
+	if (var->init) {
+		fprintf(ast_output, " ");
+		emit_expr(var->init);
+	}
+
+	fprintf(ast_output, ")\n");
+}
+
+/*
+ * Emit all global variables
+ * Called after parsing completes with all names still in scope
+ */
+void
+emit_global_vars(void)
+{
+	extern struct name **names;
+	extern int lastname;
+	struct name *n;
+	int i;
+
+	/* Iterate through names array looking for global variables */
+	for (i = 0; i <= lastname; i++) {
+		n = names[i];
+		if (!n)
+			continue;
+
+		/* Only emit variables at global scope (level 1) */
+		if (n->level != 1)
+			continue;
+
+		/* Skip tags, typedefs, and functions */
+		if (n->is_tag || n->kind == tdef || n->kind == fdef)
+			continue;
+
+		/* Emit global variable declaration */
+		if (n->kind == var) {
+			emit_global_var(n);
+		}
+	}
 }
 
 /*
