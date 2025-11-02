@@ -31,7 +31,7 @@ CC1OBJECTS = cc1.o error.o lex.o io.o macro.o kw.o util.o tokenlist.o unixlib.o 
 HEADERS = cc1.h error.h
 GENERATED = enumlist.h tokenlist.c error.h debug.h debugtags.c op_pri.h
 
-BINS = enumcheck cc1 cc2 maketokens genop_pri
+BINS = enumcheck cc1 cc2 ccc maketokens genop_pri
 
 #VERBOSE=-v 3
 
@@ -43,8 +43,8 @@ cc1: $(CC1OBJECTS)
 cc2: cc2.o
 	$(LD) $(LDFLAGS) cc2 cc2.o
 
-ccc: cc1 cc2
-	chmod +x ccc
+ccc: ccc.o
+	$(LD) $(LDFLAGS) ccc ccc.o
 
 $(CC1OBJECTS): $(HEADERS)
 
@@ -116,7 +116,7 @@ tags:
 	ctags *.c
 
 clean:
-	rm -f $(CC1OBJECTS) cc2.o $(GENERATED) tests/*.i *.ast.* \
+	rm -f $(CC1OBJECTS) cc2.o ccc.o $(GENERATED) tests/*.i *.ast.* \
 		*.asm *.lst *.sym *.map *.cdb *.ihx
 	$(MAKE) -C unit_test clean
 
