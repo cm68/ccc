@@ -90,6 +90,9 @@ void
 add_include(char *s)
 {
     struct include *i, *ip;
+#ifdef MAXTRACE
+    fprintf(stderr, "TRACE IO: add_include('%s')\n", s ? s : "(null)");
+#endif
     i = malloc(sizeof(*i));
     i->path = strdup(s);
     i->next = 0;
@@ -102,6 +105,9 @@ add_include(char *s)
     } else {
         includes = i;
     }
+#ifdef MAXTRACE
+    fprintf(stderr, "TRACE IO: add_include done\n");
+#endif
     if (VERBOSE(V_CPP)) {
         printf("add_include: %s\n", s);
     }
@@ -115,6 +121,10 @@ insertfile(char *name, int sys)
 {
 	struct textbuf *t;
     struct include *i;
+
+#ifdef MAXTRACE
+    fprintf(stderr, "TRACE IO: insertfile('%s', %d)\n", name ? name : "(null)", sys);
+#endif
 
 #ifdef DEBUG
     if (VERBOSE(V_IO)) {
@@ -169,6 +179,10 @@ insertmacro(char *name, char *macbuf)
 	struct textbuf *t;
     int l;
 
+#ifdef MAXTRACE
+    fprintf(stderr, "TRACE IO: insertmacro('%s', '%s')\n", name ? name : "(null)", macbuf ? macbuf : "(null)");
+#endif
+
     l = strlen(macbuf);         // our macro without the terminating null
     if (VERBOSE(V_MACRO)) {
         printf("insert macro %s %d $%s$\n", name, l, macbuf);
@@ -202,6 +216,9 @@ insertmacro(char *name, char *macbuf)
 void
 tbdump(struct textbuf *t)
 {
+#ifdef MAXTRACE
+    fprintf(stderr, "TRACE IO: tbdump(%p)\n", (void*)t);
+#endif
     printf("textbuf: %s fd: %d offset: %d valid: %d lineno %d\n",
         t->name, t->fd, t->offset, t->valid, t->lineno);
 }
@@ -210,6 +227,9 @@ void
 dump()
 {
     struct textbuf *t = tbtop;
+#ifdef MAXTRACE
+    fprintf(stderr, "TRACE IO: dump()\n");
+#endif
     while (t) {
         tbdump(t);
         t = t->prev;
@@ -224,6 +244,12 @@ void
 advance()
 {
 	struct textbuf *t = tbtop;
+
+#ifdef MAXTRACE
+    fprintf(stderr, "TRACE IO: advance() curchar='%c'(0x%x) nextchar='%c'(0x%x)\n",
+            curchar > 32 ? curchar : '.', curchar,
+            nextchar > 32 ? nextchar : '.', nextchar);
+#endif
 
     curchar = nextchar;
 
@@ -278,10 +304,16 @@ done:
 void
 ioinit()
 {
+#ifdef MAXTRACE
+    fprintf(stderr, "TRACE IO: ioinit()\n");
+#endif
     lineno = 1;
     advance();
     advance();
     column = 0;
+#ifdef MAXTRACE
+    fprintf(stderr, "TRACE IO: ioinit() done\n");
+#endif
 }
 
 struct textbuf *cpp;
@@ -291,6 +323,9 @@ struct textbuf *cpp;
 void
 cpp_flush()
 {
+#ifdef MAXTRACE
+    fprintf(stderr, "TRACE IO: cpp_flush()\n");
+#endif
     if (cpp->offset) {
         write(cpp_file, cpp->storage, cpp->offset);
     }
@@ -300,6 +335,9 @@ cpp_flush()
 void
 cpp_out(char *s, int len)
 {
+#ifdef MAXTRACE
+    fprintf(stderr, "TRACE IO: cpp_out('%s', %d)\n", s ? s : "(null)", len);
+#endif
     if (!cpp) {
         cpp = malloc(sizeof(*cpp));
         cpp->storage = malloc(CPP_BUF);
