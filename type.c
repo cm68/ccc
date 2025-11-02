@@ -39,7 +39,7 @@
 #include "ccc.h"
 
 char *kindname[] = {
-    "prim", "etag", "stag", "utag", "vari", "elem", "tdef"
+    "prim", "etag", "stag", "utag", "vari", "elem", "tdef", "fdef"
 };
 struct type *types;
 struct type *inttype;

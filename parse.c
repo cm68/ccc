@@ -381,6 +381,8 @@ parsefunc(struct name *f)
 	f->body = statement(0);
 	if (f->body) {
 		f->body->flags |= S_FUNC;
+		// Mark this as a function definition (not just a prototype)
+		f->kind = fdef;
 	}
 
 	// Dump function while parameters are still in scope (level 2)

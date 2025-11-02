@@ -180,7 +180,7 @@ extern void dump_type(struct type *t, int lv);
 struct type *get_type(int flags, struct type *sub, int count);
 extern int compatible_function_types(struct type *t1, struct type *t2);
 
-typedef enum { prim, etag, stag, utag, var, elem, tdef } kind;
+typedef enum { prim, etag, stag, utag, var, elem, tdef, fdef } kind;
 /*
  * note that at the same scope, you can have
  * multiple instances of the same name with different namespaces.
@@ -198,8 +198,10 @@ struct name {
 	int offset;				// if inside a struct
     int bitoff;
     int width;
-    struct expr *init;      // value of constant or initializer
-    struct stmt *body;      // function body
+    union {
+        struct expr *init;  // value of constant or initializer (for var)
+        struct stmt *body;  // function body (for fdef)
+    };
     kind kind;
     int flags;
 #define V_BITFIELD  0x01
