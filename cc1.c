@@ -61,12 +61,13 @@ process(char *f)
             cpp_file = 0;
             free(cpp_file_name);
         }
-        i = strlen(f);
-        if (f[i-2] == '.' && f[i-1] == 'c') {
+        /* Use basename only - put .i file in current directory */
+        i = strlen(basename_start);
+        if (i >= 2 && basename_start[i-2] == '.' && basename_start[i-1] == 'c') {
             i -= 2;
         }
         cpp_file_name = malloc(i+3);  // +2 for ".i", +1 for null terminator
-        strncpy(cpp_file_name, f, i);
+        strncpy(cpp_file_name, basename_start, i);
         cpp_file_name[i] = '\0';  // Ensure null termination
         strcat(cpp_file_name, ".i");
         cpp_file = creat(cpp_file_name, 0777);
