@@ -81,6 +81,8 @@ main(int argc, char **argv)
 	char *s;
     int i;
 
+    add_include("");    // the null include prefix
+
     progname = *argv++;
     argc--;
 

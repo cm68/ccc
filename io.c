@@ -132,17 +132,15 @@ insertfile(char *name, int sys)
     }
 #endif
 
-    if (!includes) {
-        add_include(".");
-    }
-
 	t = malloc(sizeof(*t));
     /*
      * try the filename in all the include path entries. first hit wins
      */
     for (i = includes; i; i = i->next) {
-        strcpy(namebuf, i->path);
-        strcat(namebuf, "/");
+        if (i->path[0]) {
+            strcpy(namebuf, i->path);
+            strcat(namebuf, "/");
+        }
         strcat(namebuf, name);
         t->fd = open(namebuf, 0);
         if (t->fd > 0) {

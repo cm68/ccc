@@ -31,10 +31,8 @@ CC1OBJECTS = cc1.o error.o lex.o io.o macro.o kw.o util.o tokenlist.o unixlib.o 
 HEADERS = ccc.h error.h
 GENERATED = enumlist.h tokenlist.c error.h debug.h debugtags.c op_pri.h
 
-BINS = enumcheck cc1 cc2 maketokens genop_pri kwtest
+BINS = enumcheck cc1 cc2 maketokens genop_pri
 
-# Read test list from tests/Testlist file
-TESTS=$(addprefix tests/,$(shell grep -v '^$$' tests/Testlist))
 #VERBOSE=-v 3
 
 all: cc1
@@ -45,21 +43,18 @@ cc1: $(CC1OBJECTS)
 $(CC1OBJECTS): $(HEADERS)
 
 .PHONY: test tests valgrind
-test: cc1 runtest.sh
-	./runtest.sh $(VERBOSE) $(TESTS)
+test: cc1 tests/runtest.sh
+	$(MAKE) -C tests test
 
-tests: cc1 runtest.sh
-	./runtest.sh $(VERBOSE)
+tests: cc1 tests/runtest.sh
+	$(MAKE) -C tests tests
 
-valgrind: cc1 runvalgrind.sh
-	./runvalgrind.sh $(TESTS)
+valgrind: cc1 tests/runvalgrind.sh
+	$(MAKE) -C tests valgrind
 
-kwtest: test_kw.c kw.o
-	$(CC) $(CFLAGS) -o kwtest test_kw.c kw.o
-
-.PHONY: test_kw
-test_kw: kwtest
-	./kwtest
+.PHONY: unit-tests
+unit-tests: $(GENERATED)
+	$(MAKE) -C unit_test tests
 
 #
 # process the ccc.h file, extracting the enum tags for the tokens
@@ -116,7 +111,8 @@ tags:
 
 clean:
 	rm -f $(CC1OBJECTS) $(GENERATED) tests/*.i \
-		*.asm *.lst *.sym *.map *.cdb *.ihx test_kw.o
+		*.asm *.lst *.sym *.map *.cdb *.ihx
+	$(MAKE) -C unit_test clean
 
 clobber: clean
 	rm -f $(BINS) tags

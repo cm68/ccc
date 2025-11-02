@@ -300,14 +300,29 @@ do_initializer(void)
 {
     struct expr *init;
 
+#ifdef MAXTRACE
+    fprintf(stderr, "TRACE INIT: do_initializer() entry\n");
+#endif
     gettoken(); /* consume = token */
+#ifdef MAXTRACE
+    fprintf(stderr, "TRACE INIT: after gettoken(), cur.type=%d\n", cur.type);
+#endif
 
     if (cur.type == BEGIN) {
         /* Handle {...} style initializer list */
+#ifdef MAXTRACE
+        fprintf(stderr, "TRACE INIT: calling parse_initializer_list()\n");
+#endif
         init = parse_initializer_list();
     } else {
         /* Handle simple expression initializer */
+#ifdef MAXTRACE
+        fprintf(stderr, "TRACE INIT: calling parse_expr()\n");
+#endif
         init = parse_expr(0, NULL);
+#ifdef MAXTRACE
+        fprintf(stderr, "TRACE INIT: parse_expr() returned %p\n", (void*)init);
+#endif
     }
 
     if (init == NULL) {
@@ -315,6 +330,9 @@ do_initializer(void)
         return NULL;
     }
 
+#ifdef MAXTRACE
+    fprintf(stderr, "TRACE INIT: do_initializer() returning %p\n", (void*)init);
+#endif
     return init;
 }
 
@@ -445,11 +463,27 @@ declaration()
 	struct type *basetype;
 	struct name *v;
 
+#ifdef MAXTRACE
+	fprintf(stderr, "TRACE DECL: declaration() entry\n");
+#endif
 	while (1) {
+#ifdef MAXTRACE
+		fprintf(stderr, "TRACE DECL: top of while loop, calling parse_sclass()\n");
+#endif
 		sclass = parse_sclass();
+#ifdef MAXTRACE
+		fprintf(stderr, "TRACE DECL: parse_sclass() returned %d\n", sclass);
+		fprintf(stderr, "TRACE DECL: setting basetype = 0\n");
+#endif
 		basetype = 0;
+#ifdef MAXTRACE
+		fprintf(stderr, "TRACE DECL: calling declare(&basetype)\n");
+#endif
 
         v = declare(&basetype);
+#ifdef MAXTRACE
+		fprintf(stderr, "TRACE DECL: declare() returned %p\n", (void*)v);
+#endif
 
         /* error recovery: if declare failed, skip to next ; or , */
         if (!v) {
@@ -493,7 +527,18 @@ declaration()
             break;
         }
 
+#ifdef MAXTRACE
+        fprintf(stderr, "TRACE DECL: checking v->type, v=%p, v->name='%s', v->type=%p\n", (void*)v, (v && v->name ? v->name : "(null)"), (v ? (void*)v->type : NULL));
+#endif
+        if (v->type) {
+#ifdef MAXTRACE
+            fprintf(stderr, "TRACE DECL: v->type->flags=0x%x\n", v->type->flags);
+#endif
+        }
         if (v->type && (v->type->flags & TF_FUNC)) {
+#ifdef MAXTRACE
+            fprintf(stderr, "TRACE DECL: v->type->flags & TF_FUNC is true\n");
+#endif
             if (cur.type == BEGIN) {
                 parsefunc(v);
 
@@ -513,9 +558,21 @@ declaration()
                 break;
             }
         }
+#ifdef MAXTRACE
+        fprintf(stderr, "TRACE DECL: checking cur.type, cur.type=%d\n", cur.type);
+#endif
         if (cur.type == ASSIGN) {
+#ifdef MAXTRACE
+            fprintf(stderr, "TRACE DECL: calling do_initializer()\n");
+#endif
             v->init = do_initializer();
+#ifdef MAXTRACE
+            fprintf(stderr, "TRACE DECL: do_initializer() returned\n");
+#endif
         }
+#ifdef MAXTRACE
+		fprintf(stderr, "TRACE DECL: checking for COMMA/SEMI\n");
+#endif
 		if (cur.type == COMMA) {
 			gettoken();
 			continue;
@@ -524,6 +581,9 @@ declaration()
 			gettoken();
 			break;
 		}
+#ifdef MAXTRACE
+		fprintf(stderr, "TRACE DECL: end of while loop, continuing\n");
+#endif
 	}
 }
 
@@ -549,15 +609,34 @@ parse()
 		while (cur.type == NONE) {
 			gettoken();
 		}
+#ifdef MAXTRACE
+		fprintf(stderr, "TRACE PARSE: cur.type=%d\n", cur.type);
+#endif
 		/* Check if current token looks like start of a declaration */
+		/* Also check if it's a typedef name (SYM that's a typedef) */
+		struct name *possible_typedef = NULL;
+		if (cur.type == SYM) {
+			possible_typedef = lookup_name(cur.v.name, 0);
+		}
+
 		if (cur.type == INT || cur.type == CHAR || cur.type == SHORT ||
 			cur.type == LONG || cur.type == FLOAT || cur.type == DOUBLE ||
 			cur.type == VOID || cur.type == UNSIGNED || cur.type == STRUCT ||
 			cur.type == UNION || cur.type == ENUM || cur.type == CONST ||
 			cur.type == VOLATILE || cur.type == TYPEDEF || cur.type == STATIC ||
-			cur.type == REGISTER || cur.type == AUTO || cur.type == EXTERN) {
+			cur.type == REGISTER || cur.type == AUTO || cur.type == EXTERN ||
+			(possible_typedef && possible_typedef->kind == tdef)) {
+#ifdef MAXTRACE
+			fprintf(stderr, "TRACE PARSE: calling declaration()\n");
+#endif
 			declaration();
+#ifdef MAXTRACE
+			fprintf(stderr, "TRACE PARSE: declaration() returned\n");
+#endif
 		} else {
+#ifdef MAXTRACE
+			fprintf(stderr, "TRACE PARSE: skipping token type=%d\n", cur.type);
+#endif
 			/* Not a declaration - skip this token to avoid getting stuck */
 			gettoken();
 		}

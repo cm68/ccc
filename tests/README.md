@@ -1,16 +1,29 @@
 # ccc Compiler Tests
 
-This directory contains 64 test files for the ccc C compiler (pass 1: preprocessor and parser).
+This directory contains 65 test files for the ccc C compiler (pass 1: preprocessor and parser).
 
 All test files have descriptive header comments explaining what they test. Each test validates a specific aspect of the compiler's functionality.
 
 ## Test Organization
 
-Tests are listed in `Testlist` and run via:
-- `make test` - Run all tests
+Tests are organized in `tests/Makefile` by category and run via:
+- `make test` - Run all tests (from project root)
+- `make -C tests test` - Run all tests (from project root, explicit)
 - `make valgrind` - Run all tests with memory leak detection
-- `./runtest.sh tests/filename.c` - Run a single test
-- `./runtest.sh -v 3 tests/filename.c` - Run with verbosity level 3
+- `./runtest.sh filename.c` - Run a single test (from tests/ directory)
+- `./runtest.sh -v 3 filename.c` - Run with verbosity level 3
+
+### Category-Specific Test Targets
+
+You can run specific test categories using these make targets:
+- `make -C tests test-expr` - Expression and constant folding tests
+- `make -C tests test-decl` - Declaration and type tests
+- `make -C tests test-cpp` - Preprocessor tests
+- `make -C tests test-kr` - K&R style function tests
+- `make -C tests test-func` - Modern function tests
+- `make -C tests test-stmt` - Statement tests
+- `make -C tests test-sizeof` - sizeof operator tests
+- `make -C tests test-typedef` - Typedef tests
 
 ## Test Categories
 
@@ -142,21 +155,34 @@ Tests are listed in `Testlist` and run via:
 ## Running Tests
 
 ```bash
-# Build compiler
+# Build compiler (from project root)
 make cc1
 
-# Run all tests
+# Run all tests (from project root)
 make test
 
-# Run memory leak tests
+# Run memory leak tests (from project root)
 make valgrind
 
-# Run single test
-./runtest.sh tests/decl.c
+# Run category-specific tests (from project root)
+make -C tests test-expr      # Expression tests
+make -C tests test-cpp       # Preprocessor tests
+make -C tests test-sizeof    # sizeof operator tests
+make -C tests test-typedef   # Typedef tests
+
+# Run single test (from tests/ directory)
+cd tests
+./runtest.sh decl.c
+
+# Run single test with path prefix (works from anywhere)
+tests/runtest.sh tests/decl.c
 
 # Run with verbosity (hex bitmask for debug flags)
-./runtest.sh -v 3 tests/macro.c
-./runtest.sh -v 0x3f tests/decl.c  # Maximum verbosity
+./runtest.sh -v 3 macro.c
+./runtest.sh -v 0x3f decl.c  # Maximum verbosity
+
+# Run valgrind on specific tests (from tests/ directory)
+./runvalgrind.sh sizeof_basic.c typedef.c
 ```
 
 ### Test Result Interpretation
@@ -186,6 +212,29 @@ Test files follow these naming conventions:
 To add a new test:
 1. Create test file in `tests/` directory
 2. Add descriptive header comment explaining what it tests
-3. Add filename to `tests/Testlist`
+3. Add filename to appropriate category in `tests/Makefile`:
+   - Add to `EXPR_TESTS` for expression/constant folding tests
+   - Add to `DECL_TESTS` for declaration/type tests
+   - Add to `CPP_TESTS` for preprocessor tests
+   - Add to `KR_FUNC_TESTS` for K&R style function tests
+   - Add to `FUNC_TESTS` for modern function tests
+   - Add to `STMT_TESTS` for statement parsing tests
+   - Add to `SIZEOF_TESTS` for sizeof operator tests
+   - Add to `TYPEDEF_TESTS` for typedef tests
+   - Add to `LOCAL_TESTS` for local variable tests
+   - Add to `SCOPE_TESTS` for scope tests
+   - Add to `STRUCT_TESTS` for struct tests
+   - Add to `MINIMAL_TESTS` for minimal/smoke tests
+   - Add to `MISC_TESTS` for miscellaneous/regression tests
 4. Run `make test` to verify
 5. Run `make valgrind` to check for memory leaks
+
+## Test Infrastructure
+
+The test infrastructure consists of:
+- **tests/Makefile** - Organizes tests by category, defines test targets
+- **tests/runtest.sh** - Executes individual tests, displays source and output
+- **tests/runvalgrind.sh** - Runs tests with valgrind memory leak detection
+- **Makefile** (root) - Top-level targets that invoke tests/Makefile recursively
+
+All test scripts automatically handle path prefixes and work from any directory.

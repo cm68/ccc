@@ -33,11 +33,14 @@ makeexpr(char op, struct expr *left)
 void
 destroy_expr(struct expr *e)
 {
+	if (!e) {
+		return;
+	}
 	if (e->left) {
 		destroy_expr(e->left);
 	}
 	if (e->right) {
-		destroy_expr(e->left);
+		destroy_expr(e->right);
 	}
 	free(e);
 }
@@ -223,7 +226,12 @@ parse_expr(char pri, struct stmt *st)
             t = getbasetype();
             if (t) {
                 // It's sizeof(type)
-                // TODO: handle pointer/array modifiers here for complete type parsing
+                // Handle pointer modifiers (e.g., sizeof(int *))
+                while (cur.type == STAR) {
+                    gettoken();
+                    t = get_type(TF_POINTER, t, 0, 0);
+                }
+
                 need(RPAR, RPAR, ER_E_SP);
 
                 // Create constant expression with the size

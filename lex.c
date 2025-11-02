@@ -488,10 +488,12 @@ char eqtok[] = {
 void
 freetoken()
 {
-    if (cur.type == SYM) {
+    if (cur.type == SYM && cur.v.name) {
     	free(cur.v.name);
-    } else if (cur.type == STRING) {
+    	cur.v.name = NULL;  /* Prevent double-free */
+    } else if (cur.type == STRING && cur.v.str) {
     	free(cur.v.str);
+    	cur.v.str = NULL;  /* Prevent double-free */
     }
 }
 
@@ -593,18 +595,39 @@ gettoken()
             if (cpppseudofunc()) {
                 continue;  /* cpppseudofunc() replaced the function with '0' or '1' */
             }
+#ifdef MAXTRACE
+            fprintf(stderr, "TRACE LEX: before macexpand, strbuf='%s'\n", strbuf);
+#endif
             if (macexpand(strbuf)) {
+#ifdef MAXTRACE
+                fprintf(stderr, "TRACE LEX: macexpand returned non-zero, continuing\n");
+#endif
                 continue;
             }
+#ifdef MAXTRACE
+            fprintf(stderr, "TRACE LEX: macexpand returned 0, calling advance()\n");
+#endif
             advance();
+#ifdef MAXTRACE
+            fprintf(stderr, "TRACE LEX: after advance(), calling kwlook\n");
+#endif
             t = kwlook(strbuf, ckw);
             if (t) {
+#ifdef MAXTRACE
+                fprintf(stderr, "TRACE LEX: kwlook found keyword %d\n", t);
+#endif
                 next.type = t;
                 next.v.name = 0;  // keywords don't have names
                 break;
             }
+#ifdef MAXTRACE
+            fprintf(stderr, "TRACE LEX: setting next.type=SYM, strdup('%s')\n", strbuf);
+#endif
             next.type = SYM;
             next.v.name = strdup(strbuf);
+#ifdef MAXTRACE
+            fprintf(stderr, "TRACE LEX: strdup done, breaking\n");
+#endif
             break;
         }
         if (isnumber()) {
@@ -614,7 +637,7 @@ gettoken()
         if (isstring()) {
             next.type = STRING;
             next.v.str = malloc(strbuf[0] + 1);  // +1 for length byte
-            memcpy(strbuf, next.v.str, strbuf[0] + 1);
+            memcpy(next.v.str, strbuf, strbuf[0] + 1);
             break;
         }
 
