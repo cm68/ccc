@@ -112,7 +112,7 @@ parse_expr(char pri, struct stmt *st)
 
         e = makeexpr(STRING, 0);
         /* string literals have type char* (pointer to char) */
-        e->type = get_type(TF_POINTER, chartype, 0, 0);
+        e->type = get_type(TF_POINTER, chartype, 0);
 
         /* generate synthetic name for this string literal */
         sprintf(namebuf, "_str%d", string_counter++);
@@ -209,7 +209,7 @@ parse_expr(char pri, struct stmt *st)
             e->left->up = e;
             // create pointer type to operand's type
             if (e->left->type) {
-                e->type = get_type(TF_POINTER, e->left->type, 0, 0);
+                e->type = get_type(TF_POINTER, e->left->type, 0);
             }
         }
         break;
@@ -229,7 +229,7 @@ parse_expr(char pri, struct stmt *st)
                 // Handle pointer modifiers (e.g., sizeof(int *))
                 while (cur.type == STAR) {
                     gettoken();
-                    t = get_type(TF_POINTER, t, 0, 0);
+                    t = get_type(TF_POINTER, t, 0);
                 }
 
                 need(RPAR, RPAR, ER_E_SP);

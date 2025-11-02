@@ -22,7 +22,7 @@ parse_pointer_prefix(struct type *basetype)
     struct type *t = basetype;
     while (cur.type == STAR) {
         gettoken();
-        t = get_type(TF_POINTER, t, 0, 0);
+        t = get_type(TF_POINTER, t, 0);
     }
     return t;
 }
@@ -49,7 +49,8 @@ static struct name *
 create_param_entry(char *name, struct type *type)
 {
     struct name *arg = calloc(1, sizeof(*arg));
-    arg->name = name;
+    // Always strdup the name to avoid dangling pointers
+    arg->name = name ? strdup(name) : strdup("");
     arg->type = type;
     arg->level = lexlevel + 1;
     arg->is_tag = 0;
@@ -71,6 +72,8 @@ declare_internal(struct type **btp, boolean struct_elem)
     struct name *nm, *arg;
     struct type *t, *prefix, *suffix, *rt;
     int i;
+    struct name *actual_params_head = NULL;  // For function parameter names
+    struct name *actual_params_tail = NULL;
 
     suffix = 0;
 
@@ -141,7 +144,23 @@ declare_internal(struct type **btp, boolean struct_elem)
             }
         } else {
             /* normal variable: add to global names[] array */
-            nm = new_name(cur.v.name, var, prefix, 0);
+            /* Check if this name already exists at this scope */
+            struct name *existing = lookup_name(cur.v.name, 0);
+            if (existing && existing->level == lexlevel) {
+                /* Name exists at current scope - check if it's a function prototype */
+                if ((existing->type->flags & TF_FUNC) && !existing->body) {
+                    /* Reuse existing function declaration (prototype) */
+                    nm = existing;
+                    /* Update type to the new one (definition may have full param list) */
+                    /* But keep the existing name structure */
+                } else {
+                    /* Not a function prototype - error on redeclaration */
+                    nm = new_name(cur.v.name, var, prefix, 0);
+                }
+            } else {
+                /* New name - create it */
+                nm = new_name(cur.v.name, var, prefix, 0);
+            }
         }
         gettoken();
 
@@ -166,7 +185,7 @@ declare_internal(struct type **btp, boolean struct_elem)
         } else {
             i = parse_const(RBRACK);
         }
-        t = get_type(TF_ARRAY, t, 0, i);
+        t = get_type(TF_ARRAY, t, i);
         need(RBRACK, RBRACK, ER_D_AD);
     }
 
@@ -198,6 +217,17 @@ declare_internal(struct type **btp, boolean struct_elem)
                     err(ER_D_FA);
                     break;
                 }
+                // Create entry for actual_params with name, no type yet
+                struct name *actual_param = create_param_entry(param_name, NULL);
+                if (!actual_params_head) {
+                    actual_params_head = actual_param;
+                    actual_params_tail = actual_param;
+                } else {
+                    actual_params_tail->next = actual_param;
+                    actual_params_tail = actual_param;
+                }
+                free(param_name);
+                param_name = NULL;
             } else {
                 // ANSI style: parse full type + declarator
                 struct type *basetype = getbasetype();
@@ -219,14 +249,29 @@ declare_internal(struct type **btp, boolean struct_elem)
                         parse_expr(0, NULL);  // Array size (ignored for parameters)
                     }
                     need(RBRACK, RBRACK, ER_D_FA);
-                    param_type = get_type(TF_POINTER, param_type->sub ? param_type->sub : param_type, 0, 0);
+                    param_type = get_type(TF_POINTER, param_type->sub ? param_type->sub : param_type, 0);
                 }
             }
 
-            // Create parameter entry
-            arg = create_param_entry(param_name, param_type);
+            // Create parameter entry for type->elem (with anonymous name for type normalization)
+            arg = create_param_entry(NULL, param_type);  // NULL creates anonymous param
             arg->next = suffix->elem;
             suffix->elem = arg;
+
+            // If parameter has an actual name, create separate entry for symbol table
+            if (param_name && param_name[0] != '\0') {
+                struct name *actual_param = create_param_entry(param_name, param_type);
+                if (!actual_params_head) {
+                    actual_params_head = actual_param;
+                    actual_params_tail = actual_param;
+                } else {
+                    actual_params_tail->next = actual_param;
+                    actual_params_tail = actual_param;
+                }
+            }
+            if (param_name) {
+                free(param_name);
+            }
 
             // Handle comma or end of list
             if (cur.type == COMMA) {
@@ -259,9 +304,9 @@ declare_internal(struct type **btp, boolean struct_elem)
                     break;
                 }
 
-                // Find matching parameter and update its type
+                // Find matching parameter in actual_params and update its type
                 struct name *p;
-                for (p = suffix->elem; p; p = p->next) {
+                for (p = actual_params_head; p; p = p->next) {
                     if (strcmp(p->name, param_name) == 0) {
                         p->type = param_type;
                         break;
@@ -284,9 +329,18 @@ declare_internal(struct type **btp, boolean struct_elem)
             }
 
             // Default undeclared K&R parameters to int
-            for (arg = suffix->elem; arg; arg = arg->next) {
+            for (arg = actual_params_head; arg; arg = arg->next) {
                 if (arg->type == NULL) {
                     arg->type = inttype;
+                }
+            }
+
+            // Now copy types from actual_params to suffix->elem (with anonymous names)
+            struct name *actual = actual_params_head;
+            for (arg = suffix->elem; arg; arg = arg->next) {
+                if (actual) {
+                    arg->type = actual->type;
+                    actual = actual->next;
                 }
             }
         }
@@ -311,6 +365,11 @@ declare_internal(struct type **btp, boolean struct_elem)
         // suffix->sub should already point to the return/base type from get_type()
         // Just need to make suffix the final type
         nm->type = suffix;
+
+        // If it's a function, store actual parameter names for symbol table
+        if (suffix->flags & TF_FUNC) {
+            nm->params = actual_params_head;
+        }
     }
 
     return nm;

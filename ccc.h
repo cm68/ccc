@@ -154,10 +154,9 @@ struct type {
 	char *name;     		// the type name
 	int size;		    	// how big is one of me
 	int count;		    	// if we are an array, how many
-	struct name *elem;		// element list
-    struct type *sub;		// pointer to what, array of what, etc.
+	struct name *elem;		// element list (struct members, function parameters)
+    struct type *sub;		// pointer to what, array of what, function return type
     unsigned char flags;
-    struct arglist *args;   // if a function
     struct type *next;
 };
 #define TF_AGGREGATE	0x01
@@ -178,15 +177,8 @@ struct type {
 
 extern struct type *getbasetype();
 extern void dump_type(struct type *t, int lv);
-struct type *get_type(int flags, struct type *sub, struct arglist *args, int count);
-
-/*
- * this structure is a unique ordered list of function argument types
- */
-struct arglist {
-    struct type *type;
-    struct arglist *next;
-};
+struct type *get_type(int flags, struct type *sub, int count);
+extern int compatible_function_types(struct type *t1, struct type *t2);
 
 typedef enum { prim, etag, stag, utag, var, elem, tdef } kind;
 /*
@@ -196,7 +188,7 @@ typedef enum { prim, etag, stag, utag, var, elem, tdef } kind;
  */
 struct name {
 	char *name;
-    boolean is_tag;         // true if (enum, struct, union), 
+    boolean is_tag;         // true if (enum, struct, union),
                             // else false for var,enum elem,typedef
     int level;              // lexical level
 	struct name *next;		// all names in same container
@@ -208,6 +200,7 @@ struct name {
     int width;
     struct expr *init;      // value of constant or initializer
     struct stmt *body;      // function body
+    struct name *params;    // for functions: actual parameter names (separate from type->elem)
     kind kind;
     int flags;
 #define V_BITFIELD  0x01

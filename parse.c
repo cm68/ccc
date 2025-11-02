@@ -232,6 +232,8 @@ statement(struct stmt *parent)
         if (!pst) {
             head = st;
             st->flags |= S_PARENT;
+        } else {
+            *pst = st;  // Link previous statement to this one
         }
         pst = &st->next;
         // st->function = v;
@@ -353,17 +355,18 @@ do_initializer(void)
 }
 
 void
-parsefunc(struct name *f) 
+parsefunc(struct name *f)
 {
 	struct name *param;
 
 	// Push a new scope for the function body
 	push_scope(f->name);
 
-	// Install function parameters into the scope
-	// Just iterate through them directly - order doesn't matter for installation
-	if (f->type && (f->type->flags & TF_FUNC)) {
-		for (param = f->type->elem; param; param = param->next) {
+	// Install function parameters into the scope using actual parameter names
+	// f->params contains the actual parameter names (not anonymous)
+	// f->type->elem contains anonymous names for type comparison
+	if (f->params) {
+		for (param = f->params; param; param = param->next) {
 			add_name(param);
 		}
 	}

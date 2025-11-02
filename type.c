@@ -128,8 +128,8 @@ lookup_element(char *name, struct type *t)
 }
 
 char *type_bitdefs[] = {
-		"AGGREGATE", "INCOMPLETE", "UNSIGNED", 
-        "NORMALIZED", "POINTER", "ARRAY", "FLOAT"
+		"AGGREGATE", "INCOMPLETE", "UNSIGNED",
+        "FUNC", "POINTER", "ARRAY", "FLOAT", "OLD"
 };
 
 /*
@@ -245,6 +245,9 @@ add_name(struct name *n)
 void
 dump_type(struct type *t, int lv)
 {
+    struct name *param;
+    int param_count = 0;
+
     if (!t) return;
     if (lv > 20) {  // Cycle detection: prevent infinite recursion
         printf("\t... (max depth reached, possible cycle)\n");
@@ -256,10 +259,51 @@ dump_type(struct type *t, int lv)
             printf("\t");
         }
     }
-    printf("name %s flags %x (%s) args %x count %x\n",
-        t->name ? t->name : "unnamed",
-        t->flags, bitdef(t->flags, type_bitdefs), t->args, t->count);
-    dump_type(t->sub, ++lv);
+
+    // Count parameters for functions
+    if (t->flags & TF_FUNC) {
+        for (param = t->elem; param; param = param->next) {
+            param_count++;
+        }
+    }
+
+    // Display type info - format depends on whether it's a function
+    if (t->flags & TF_FUNC) {
+        printf("function type: flags %x (%s) params %d\n",
+            t->flags, bitdef(t->flags, type_bitdefs), param_count);
+
+        // Show parameter details with numbering
+        if (param_count > 0) {
+            int arg_num = 0;
+            for (param = t->elem; param; param = param->next) {
+                // Print indentation
+                int i;
+                for (i = 0; i <= lv; i++)
+                    printf("\t");
+                printf("arg %d: %s", arg_num, param->name ? param->name : "?");
+                if (param->type && param->type->name) {
+                    printf(" (%s)", param->type->name);
+                }
+                printf("\n");
+                arg_num++;
+            }
+        }
+
+        // Show return type
+        if (t->sub) {
+            int i;
+            for (i = 0; i <= lv; i++)
+                printf("\t");
+            printf("returntype:\n");
+            dump_type(t->sub, lv + 2);
+        }
+    } else {
+        // Non-function types
+        printf("name %s flags %x (%s) count %x\n",
+            t->name ? t->name : "unnamed",
+            t->flags, bitdef(t->flags, type_bitdefs), t->count);
+        dump_type(t->sub, ++lv);
+    }
 }
 
 /*
@@ -294,6 +338,44 @@ static struct {
 };
 
 /*
+ * Compare two function parameter lists for type equality
+ * Returns 1 if equal, 0 if different
+ * Parameter names are ignored - only types matter
+ */
+static int
+compare_param_lists(struct name *p1, struct name *p2)
+{
+    while (p1 && p2) {
+        // Compare parameter types, not names
+        if (p1->type != p2->type) {
+            return 0;
+        }
+        p1 = p1->next;
+        p2 = p2->next;
+    }
+    // Both lists must end at the same time
+    return (p1 == NULL && p2 == NULL);
+}
+
+/*
+ * Compare two function types for compatibility
+ * Returns 1 if compatible, 0 if different
+ * Checks return type and parameter types, ignoring parameter names
+ */
+int
+compatible_function_types(struct type *t1, struct type *t2)
+{
+    if (!t1 || !t2) return 0;
+    if (!(t1->flags & TF_FUNC) || !(t2->flags & TF_FUNC)) return 0;
+
+    // Compare return types
+    if (t1->sub != t2->sub) return 0;
+
+    // Compare parameter lists
+    return compare_param_lists(t1->elem, t2->elem);
+}
+
+/*
  * find this type, or if it does not exist, create it
  * this is a search of all defined types.
  * open question:  how should incomplete types be handled
@@ -304,8 +386,7 @@ static struct {
 struct type *
 get_type(
     int flags,              // TF_whatever
-    struct type *sub,       // subtype
-    struct arglist *args,   // if function, what arguments
+    struct type *sub,       // subtype (return type for functions)
     int count)              // if array, length
 {
     struct type *t;
@@ -316,7 +397,7 @@ get_type(
      * Cycle protection: limit iterations to prevent infinite loop
      */
     for (t = types; t && depth < 1000; t = t->next, depth++) {
-        if ((t->flags == flags) && (t->sub == sub) && (t->args == args)) {
+        if ((t->flags == flags) && (t->sub == sub)) {
             return t;
         }
     }
@@ -327,7 +408,6 @@ get_type(
 
     t = calloc(1, sizeof(*t));  // Zero-initialize all fields
     t->sub = sub;
-    t->args = args;
     t->flags = flags;
     t->count = count;
     if (t->count == -1) {
@@ -512,7 +592,7 @@ getbasetype()
         }
 
         // create the enum type (all enums are unsigned char)
-        t = get_type(TF_UNSIGNED, 0, 0, 0);
+        t = get_type(TF_UNSIGNED, 0, 0);
         t->size = 1;  // enums are byte-sized
 
         if (s) {
@@ -592,7 +672,7 @@ getbasetype()
             // Forward declaration of a new tag (e.g., typedef struct S S_t;)
             // Create an incomplete type
             if (s) {
-                t = get_type(TF_AGGREGATE | TF_INCOMPLETE, 0, 0, 0);
+                t = get_type(TF_AGGREGATE | TF_INCOMPLETE, 0, 0);
                 t->size = 0;
                 n = new_name(s, is_union ? utag : stag, t, 1);
                 free(s);
@@ -605,7 +685,7 @@ getbasetype()
         }
 
         // create the struct/union type
-        t = get_type(TF_AGGREGATE, 0, 0, 0);
+        t = get_type(TF_AGGREGATE, 0, 0);
         t->size = 0;
 
         if (s) {

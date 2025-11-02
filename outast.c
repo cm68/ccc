@@ -197,13 +197,12 @@ dump_stmt(struct stmt *st)
 /*
  * Dump a function's name structure and statement tree
  *
- * NOTE: The function name structure does not currently track the argument
- * symbols in the elem list. The args field shows 0 even for functions with
- * parameters. The parameter types are stored in func->type->elem, but the
- * actual parameter name symbols are only in the local scope and are removed
- * when pop_scope() is called after parsing the function body.
+ * NOTE: Function parameter information is displayed from func->type->elem
+ * which contains the parameter names and types as a linked list. The
+ * parameter symbols are added to the local scope during parsing and
+ * removed when pop_scope() is called after parsing the function body.
  *
- * Example: test_if(n) shows "args 0 count 0" even though it has parameter 'n'.
+ * Example: test_do_while(n) shows "params 1" with "arg 0: n (_short_)".
  */
 void
 dump_function(struct name *func)
