@@ -237,6 +237,9 @@ extern char *source_file_root;      // basename of current source file (without 
 extern struct name *current_function; // current function being parsed
 extern int static_counter;          // counter for statics in current function
 
+/* AST output control */
+extern FILE *ast_output;            // where to write AST output (default stdout)
+
 /* kw.c */
 extern unsigned char cppkw[];
 extern unsigned char ckw[];

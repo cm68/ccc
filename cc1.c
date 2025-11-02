@@ -18,6 +18,9 @@ char *source_file_root = NULL;
 struct name *current_function = NULL;
 int static_counter = 0;
 
+/* AST output control */
+FILE *ast_output = NULL;  // NULL means use stdout
+
 /*
  * each file on the command line gets this treatment
  */
@@ -95,6 +98,7 @@ usage(char *complaint, char *p)
     printf("\t-I<include dir>\n");
     printf("\t-D<variable>[=<definition>]\n");
     printf("\t-v <verbosity>\n");
+    printf("\t-o <output file> (AST output, default stdout)\n");
     printf("\t-E\n");
     for (i = 0; vopts[i]; i++) {
         printf("\t%x %s\n", 1 << i, vopts[i]);
@@ -146,6 +150,19 @@ main(int argc, char **argv)
                 }
                 verbose = strtol(*argv++, 0, 0);
                 break;
+            case 'o':
+                if (!argc--) {
+                    usage("output file not specified \n", progname);
+                }
+                if (ast_output && ast_output != stdout) {
+                    fclose(ast_output);
+                }
+                ast_output = fopen(*argv++, "w");
+                if (!ast_output) {
+                    perror("cannot open output file");
+                    exit(1);
+                }
+                break;
             default:
                 printf("bad flag %c\n", (*s));
                 break;
@@ -185,6 +202,13 @@ main(int argc, char **argv)
     while (argc--) {
         process(*argv++);
     }
+
+    /* Close AST output file if opened */
+    if (ast_output && ast_output != stdout) {
+        fclose(ast_output);
+        ast_output = NULL;
+    }
+
     return 0;
 }
 
