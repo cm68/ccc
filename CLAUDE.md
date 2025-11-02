@@ -21,12 +21,21 @@ make
 make cc1          # Main compiler executable
 
 # Run tests
-make test         # Run all 16 tests in tests/
+make test         # Run all 95+ tests in tests/
 make tests        # Same as 'make test'
 
+# Run test categories
+make test-typedef # Run typedef tests only
+make test-sizeof  # Run sizeof tests only
+make test-cpp     # Run preprocessor tests only
+# (See tests/Makefile for all categories)
+
 # Run single test
-./runtest.sh tests/decl.c
-./runtest.sh -v 3 tests/decl.c  # With verbosity level 3
+cd tests && ./runtest.sh decl.c
+cd tests && ./runtest.sh -v 3 decl.c  # With verbosity level 3
+
+# Run unit tests
+make unit-tests   # Run component-level unit tests
 
 # Regenerate auto-generated files
 make regen
@@ -132,12 +141,13 @@ The type system is designed to be "squeaky-clean" with zero redundancy:
 - Enum types with optional tag names (enum { A, B=5, C })
 - Struct types with member lists (struct foo { int x; char y; })
 - Union types (union bar { int i; float f; })
-- Forward references for struct/union/enum tags
+- Forward references for struct/union/enum tags (including typedef struct S S_t;)
 - Tag namespace separate from variable namespace
 - Struct member namespace separation from global namespace
+- Typedef declarations (global and scoped inside functions)
+- Typedef shadowing in nested scopes
 
 **Not yet implemented**:
-- typedef
 - Type compatibility checking (sametype)
 
 ### Scope Management
@@ -195,9 +205,10 @@ Statement parsing is now active in parse.c:
 - return statements (with and without expressions)
 - goto and labels
 - Expression statements
+- Local variable declarations inside function bodies
+- Typedef declarations inside function bodies (scoped)
 
 **Known limitations**:
-- Local variable declarations inside function bodies have parser conflicts with statement parsing
 - ANSI-style function definitions don't work: `int foo(int x) { }` causes "more than one basetype" error
 - Use K&R style instead: `int foo(x) int x; { }`
 
@@ -246,10 +257,11 @@ The compiler has made substantial progress:
 - Struct member namespace separation
 
 **Declaration Parsing (Substantially Complete)**:
-- Variable declarations
+- Variable declarations (global and local)
 - Function declarations (ANSI style for prototypes)
 - K&R style function definitions with parameter type declarations
 - Undeclared K&R parameters default to int
+- Typedef declarations (global and scoped inside functions)
 - Bitfield declarations
 - Storage class specifiers
 - Initializer expressions (basic support)
@@ -261,11 +273,12 @@ The compiler has made substantial progress:
 - Parenthesized expressions
 - Numeric constant expressions
 
-**Statement Parsing (Active)**:
+**Statement Parsing (Complete)**:
 - Function body parsing enabled
 - All control flow statements (if/else, while, do-while, for, switch/case)
 - Jump statements (break, continue, return, goto/labels)
 - Block statements with proper scoping
+- Local variable and typedef declarations inside function bodies
 - Statement trees attached to function bodies
 
 **Memory Management**:
@@ -274,11 +287,9 @@ The compiler has made substantial progress:
 - Valgrind clean on basic tests (no definite leaks)
 
 **Not yet implemented**:
-- typedef support
-- Local variable declarations inside function bodies (conflicts with statement parsing)
 - ANSI-style function definitions (parameters treated as global declarations)
 - Symbol table integration for expression evaluation
-- Type checking and validation
+- Type checking and validation (sametype function)
 - Code generation (pass 2)
 
 ### Known Issues
@@ -287,31 +298,47 @@ The compiler has made substantial progress:
 - Anonymous struct/union declarations don't work properly
 - ANSI-style function definitions: `int foo(int x) { }` fails with "more than one basetype"
   - Workaround: Use K&R style: `int foo(x) int x; { }`
-- Local variable declarations inside functions conflict with statement parsing
 - Single-bit bitfields in structs could be optimized better
 
 ### Testing
 
-Tests are in tests/ directory (16 tests total):
-- **Preprocessor tests**: macro.c, include.c, test_stringify.c, multistr.c
-- **Type system tests**: decl.c, complex_types.c, test_up_to_struct.c, test_no_collision.c
-- **Expression tests**: simpleexpr.c, cfold.c, test_with_add.c
-- **Function tests**: kr_funcs.c, simple_statements.c, statements_kr.c
-- **String tests**: string.c, t2.c
+Tests are in tests/ directory (95+ tests organized by category):
+- **Expression tests** (EXPR_TESTS): Constant folding, simple expressions
+- **Declaration tests** (DECL_TESTS): Variable and type declarations
+- **Preprocessor tests** (CPP_TESTS): Macros, includes, conditional compilation, stringify
+- **K&R function tests** (KR_FUNC_TESTS): K&R style function definitions
+- **Modern function tests** (FUNC_TESTS): ANSI-style prototypes
+- **Statement tests** (STMT_TESTS): All control flow statements
+- **sizeof tests** (SIZEOF_TESTS): sizeof operator with various types
+- **Typedef tests** (TYPEDEF_TESTS): Global and scoped typedefs, forward declarations
+- **Local variable tests** (LOCAL_TESTS): Local declarations in functions
+- **Scope tests** (SCOPE_TESTS): Lexical scoping
+- **Struct tests** (STRUCT_TESTS): Struct declarations
+- **Minimal/smoke tests**: Basic compiler functionality
+- **Miscellaneous tests**: Regression tests
 
-See tests/README.md for detailed test documentation.
+Unit tests are in unit_test/ directory:
+- **test_kw**: Keyword lookup table testing
+- **test_insertmacro**: Macro text insertion testing
+
+See tests/Makefile for complete test organization and tests/README.md for documentation.
 
 Tests run with:
-- `make test` - Run all tests
-- `./runtest.sh tests/name.c` - Run single test
+- `make test` - Run all integration tests
+- `make test-typedef` - Run typedef tests only (see Makefile for all categories)
+- `make unit-tests` - Run unit tests
+- `cd tests && ./runtest.sh name.c` - Run single test
 - Tests pass if cc1 completes without crashing
 
 ### Recent Improvements
 
-1. **Declaration parsing separated into declare.c** - cleaner code organization
-2. **Memory leak fixes** - eliminated double-strdup bugs, proper tag name cleanup
-3. **Statement parsing enabled** - function bodies now parsed into statement trees
-4. **K&R function support** - single and no-parameter K&R functions work
-5. **Constant folding** - all operators supported with proper precedence
-6. **Comprehensive test suite** - 16 tests covering all major subsystems
-7. **Default K&R parameters to int** - undeclared parameters get int type
+1. **Typedef support** - Global and scoped typedefs inside functions with proper shadowing
+2. **Forward struct declarations** - typedef struct S S_t; works before struct definition
+3. **Local variable declarations** - Full support for declarations inside function bodies
+4. **Test infrastructure reorganization** - 95+ tests organized into 12 categories in tests/Makefile
+5. **Unit test framework** - Dedicated unit_test/ directory with component tests
+6. **Memory leak fixes** - Valgrind clean on all tests
+7. **Statement parsing complete** - All control flow statements working
+8. **K&R function support** - Full K&R style function definitions
+9. **Constant folding** - All operators with proper precedence
+10. **Comprehensive preprocessor** - Macros, includes, conditional compilation, stringify, token pasting
