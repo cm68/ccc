@@ -9,6 +9,7 @@ typedef enum {
 	EXPR = 0x01,
 	NEG = 0x02,
 	NOT = 0x03,
+	CALL = 0x04,
     NONE = ' ',
 
     /* C keywords */

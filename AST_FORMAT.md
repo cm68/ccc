@@ -29,6 +29,7 @@ All C operators are represented by their token character:
 - Bitwise: `&`, `|`, `^`, `~`, `y` (<<), `w` (>>)
 - Logical: `j` (&&), `h` (||), `!`
 - Assignment: `=`
+- Function call: `@` - `(@ function arg1 arg2 ...)`
 
 ## Statement Format
 
@@ -99,6 +100,44 @@ Emits:
      (W (< $i $n)
         (B (E (= $sum (+ $sum $i))) (E (= $i (+ $i 1)))))
      (R $sum)))
+```
+
+### Function Call Examples
+
+**Simple function call:**
+```c
+int test_simple_call() {
+    return add(1, 2);
+}
+```
+Emits:
+```
+(func test_simple_call () _short_
+  (B (R (@ $add 1 2))))
+```
+
+**Nested function calls:**
+```c
+int test_nested_call() {
+    return add(multiply(2, 3), multiply(4, 5));
+}
+```
+Emits:
+```
+(func test_nested_call () _short_
+  (B (R (@ $add (@ $multiply 2 3) (@ $multiply 4 5)))))
+```
+
+**Function call with expressions as arguments:**
+```c
+int test_expr_in_call(int n) {
+    return add(n + 1, n * 2);
+}
+```
+Emits:
+```
+(func test_expr_in_call (n:_short_) _short_
+  (B (R (@ $add (+ $n 1) (* $n 2)))))
 ```
 
 ## Parser Implementation Notes

@@ -40,6 +40,24 @@ emit_expr(struct expr *e)
 		printf("S%ld", e->v);
 		break;
 
+	case CALL:
+		/* Function call: (@ func arg1 arg2 ...) */
+		printf("(@");
+		if (e->left) {
+			printf(" ");
+			emit_expr(e->left);
+		}
+		/* Arguments are in e->right and linked via next */
+		if (e->right) {
+			struct expr *arg;
+			for (arg = e->right; arg; arg = arg->next) {
+				printf(" ");
+				emit_expr(arg);
+			}
+		}
+		printf(")");
+		break;
+
 	default:
 		/* Operator - output in prefix notation */
 		printf("(%c", e->op);

@@ -284,6 +284,54 @@ parse_expr(char pri, struct stmt *st)
 		err(ER_E_UO);
 		return 0;
     }
+
+    /*
+     * Handle postfix operators: function calls, array subscripts, etc.
+     */
+    while (cur.type == LPAR) {
+        // Function call: expr(arg1, arg2, ...)
+        struct expr *call, *arg, *lastarg;
+
+        gettoken();  // consume '('
+
+        // Create CALL node with function expression as left operand
+        call = makeexpr(CALL, e);
+        call->left->up = call;
+
+        // Parse argument list
+        lastarg = NULL;
+        if (cur.type != RPAR) {
+            // Parse first argument
+            arg = parse_expr(OP_PRI_COMMA, st);
+            if (arg) {
+                arg->flags |= E_FUNARG;
+                call->right = arg;
+                arg->up = call;
+                lastarg = arg;
+            }
+
+            // Parse remaining arguments
+            while (cur.type == COMMA) {
+                gettoken();
+                arg = parse_expr(OP_PRI_COMMA, st);
+                if (arg) {
+                    arg->flags |= E_FUNARG;
+                    if (lastarg) {
+                        lastarg->next = arg;
+                        arg->prev = lastarg;
+                    }
+                    lastarg = arg;
+                }
+            }
+        }
+
+        need(RPAR, RPAR, ER_E_SP);
+
+        // Result type will be determined later from function signature
+        call->cost = call->left->cost + 1;
+        e = call;
+    }
+
     /*
      * the recursive nature of this expression parser will have exhausted
      * the unary operators and terminals by this point. now we have postfix

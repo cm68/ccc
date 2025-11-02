@@ -48,6 +48,9 @@ dump_expr_tree(struct expr *e, int indent)
 			printf("SYM (null)");
 		}
 		break;
+	case CALL:
+		printf("CALL");
+		break;
 	default:
 		/* Use tokenname for operator display */
 		if (e->op >= 0 && e->op < 256) {
@@ -74,8 +77,20 @@ dump_expr_tree(struct expr *e, int indent)
 	if (e->right) {
 		for (i = 0; i < indent; i++)
 			printf("  ");
-		printf("right:\n");
-		dump_expr_tree(e->right, indent + 1);
+		/* For CALL nodes, show arguments */
+		if (e->op == CALL) {
+			struct expr *arg;
+			int argnum = 0;
+			for (arg = e->right; arg; arg = arg->next) {
+				for (i = 0; i < indent; i++)
+					printf("  ");
+				printf("arg%d:\n", argnum++);
+				dump_expr_tree(arg, indent + 1);
+			}
+		} else {
+			printf("right:\n");
+			dump_expr_tree(e->right, indent + 1);
+		}
 	}
 }
 
