@@ -81,6 +81,7 @@ TYPEDEF_TESTS = \
 	typedef.c \
 	typedefs.c \
 	simple_typedef_decl.c \
+	struct_forward_test.c \
 	typedef_array.c \
 	typedef_array_only.c \
 	typedef_array_use.c \

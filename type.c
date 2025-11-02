@@ -587,8 +587,18 @@ getbasetype()
         if (cur.type != BEGIN) {
             if (n) {
                 if (s) free(s);
-                return n->type;  // forward reference
+                return n->type;  // forward reference - tag already exists
             }
+            // Forward declaration of a new tag (e.g., typedef struct S S_t;)
+            // Create an incomplete type
+            if (s) {
+                t = get_type(TF_AGGREGATE | TF_INCOMPLETE, 0, 0, 0);
+                t->size = 0;
+                n = new_name(s, is_union ? utag : stag, t, 1);
+                free(s);
+                return t;
+            }
+            // No tag name and no definition - error
             err(ER_T_ED);
             if (s) free(s);
             return 0;
