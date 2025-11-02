@@ -26,7 +26,7 @@ LD= gcc
 endif
 
 CC1OBJECTS = cc1.o error.o lex.o io.o macro.o kw.o util.o tokenlist.o unixlib.o \
-	expr.o parse.o type.o declare.o outast.o
+	expr.o parse.o type.o declare.o outast.o outstmt.o
 
 HEADERS = ccc.h error.h
 GENERATED = enumlist.h tokenlist.c error.h debug.h debugtags.c op_pri.h

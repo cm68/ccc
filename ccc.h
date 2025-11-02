@@ -117,6 +117,7 @@ extern void destroy_stmt(struct stmt *s);
 extern void free_stmt(struct stmt *s);
 extern void dump_stmt(struct stmt *s);
 extern void dump_function(struct name *func);
+extern void emit_function(struct name *func);
 
 /* statement flags used in parse.c */
 #define S_PARENT 0x01

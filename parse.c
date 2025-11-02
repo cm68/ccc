@@ -383,6 +383,9 @@ parsefunc(struct name *f)
 	// Dump function while parameters are still in scope (level 2)
 	dump_function(f);
 
+	// Emit AST for second pass
+	emit_function(f);
+
 	// Pop the function scope
 	pop_scope();
 }
