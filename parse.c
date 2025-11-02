@@ -101,6 +101,19 @@ statement(struct stmt *parent)
             declaration();
             st = NULL;  /* declaration() doesn't return a statement */
             break;
+
+        case TYPEDEF:
+            /* typedef inside function body not yet supported */
+            err(ER_D_UT);  /* unexpected token */
+            /* Skip to semicolon to avoid infinite loop */
+            while (cur.type != SEMI && cur.type != END && cur.type != E_O_F) {
+                gettoken();
+            }
+            if (cur.type == SEMI) {
+                gettoken();
+            }
+            st = NULL;
+            break;
         
         case SYM:
             if (next.type == COLON) {
