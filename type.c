@@ -143,7 +143,21 @@ dump_name(struct name *n)
 
 	printf("dump_name: ");
 	if (!n) { printf("null\n"); return; }
-	printf("%s (%s)\n", n->name, n->is_tag ? "tag" : "decl");
+	printf("%s (%s)", n->name, n->is_tag ? "tag" : "decl");
+
+	/* Show storage class if set */
+	if (n->sclass) {
+		printf(" sclass=");
+		if (n->sclass & SC_EXTERN) printf("extern ");
+		if (n->sclass & SC_STATIC) printf("static ");
+		if (n->sclass & SC_REGISTER) printf("register ");
+		if (n->sclass & SC_AUTO) printf("auto ");
+		if (n->sclass & SC_CONST) printf("const ");
+		if (n->sclass & SC_VOLATILE) printf("volatile ");
+		if (n->sclass & SC_TYPEDEF) printf("typedef ");
+	}
+	printf("\n");
+
 	if (n->type) {
 		dump_type(n->type, 0);
 	}

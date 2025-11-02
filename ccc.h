@@ -202,6 +202,15 @@ struct name {
 
 #define MAXBITS 32          // maximum size of bitfield
 
+/* Storage class specifiers (used in struct name sclass field) */
+#define	SC_EXTERN	0x01
+#define	SC_REGISTER	0x02
+#define	SC_STATIC	0x04
+#define	SC_CONST	0x88
+#define	SC_VOLATILE	0x10
+#define	SC_AUTO		0x20
+#define	SC_TYPEDEF	0x40
+
 extern struct name *new_name(char *name, kind k, struct type *t, boolean is_tag);
 extern void add_name(struct name *n);
 extern struct name *lookup_name(char *name, boolean is_tag);

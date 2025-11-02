@@ -392,14 +392,6 @@ parsefunc(struct name *f)
 /*
  * storage class clauses - many combinations are illogical
  */
-#define	SC_EXTERN	0x01
-#define	SC_REGISTER	0x02
-#define	SC_STATIC	0x04
-#define	SC_CONST	0x88
-#define	SC_VOLATILE	0x10
-#define	SC_AUTO		0x20
-#define	SC_TYPEDEF	0x40
-
 char *sclass_bitdefs[] = { "EXTERN", "REGISTER", "STATIC", "CONST", "VOLATILE",
 		"AUTO", "TYPEDEF"
 };
@@ -575,14 +567,25 @@ declaration()
                     v->body = 0;  /* Mark as freed */
                 }
 
+                /* Assign storage class */
                 if (sclass & SC_STATIC) {
                     v->sclass = SC_STATIC;
+                } else if (sclass & SC_EXTERN) {
+                    v->sclass = SC_EXTERN;
                 }
                 v->next = global;
                 global = v;
                 break;
             }
         }
+
+        /* Assign storage class for variables (non-functions or function prototypes) */
+        if (sclass & SC_STATIC) {
+            v->sclass = SC_STATIC;
+        } else if (sclass & SC_EXTERN) {
+            v->sclass = SC_EXTERN;
+        }
+
 #ifdef MAXTRACE
         fprintf(stderr, "TRACE DECL: checking cur.type, cur.type=%d\n", cur.type);
 #endif
