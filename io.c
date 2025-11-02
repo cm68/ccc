@@ -7,7 +7,7 @@
  * if there are nasty control characters, etc, we pass them up.
  * not our job; except nulls.  those are dirty; the first null is eof.
  */
-#include "ccc.h"
+#include "cc1.h"
 // #include <fcntl.h>
 
 /*

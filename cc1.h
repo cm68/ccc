@@ -1,10 +1,10 @@
 /*
- * data structures for the compiler.  
+ * data structures for the compiler (pass 1).
  *
  * we don't have any other non-generated includes.
  * so, everything is right here
  *
- * nested includes are a bit ugly, but it means that i can just include ccc.h
+ * nested includes are a bit ugly, but it means that i can just include cc1.h
  */
 
 #include <stdlib.h>

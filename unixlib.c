@@ -3,7 +3,7 @@
  * it exists only initially to size the compiler in cross
  */
 
-#include "ccc.h"
+#include "cc1.h"
 
 #ifdef __SDCC
 char *

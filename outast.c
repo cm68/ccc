@@ -2,7 +2,7 @@
  * AST (Abstract Syntax Tree) output functions
  * Dump statement and expression trees for debugging
  */
-#include "ccc.h"
+#include "cc1.h"
 
 #ifdef DEBUG
 

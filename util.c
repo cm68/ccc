@@ -3,7 +3,7 @@
  * these are mostly prime candidates for assembly code
  */
 
-#include "ccc.h"
+#include "cc1.h"
 
 #define PSIZE   80          // max string containing bitdefs
 #define NPATS   2           // and 2 per printf

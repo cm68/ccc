@@ -28,7 +28,7 @@ endif
 CC1OBJECTS = cc1.o error.o lex.o io.o macro.o kw.o util.o tokenlist.o unixlib.o \
 	expr.o parse.o type.o declare.o outast.o outstmt.o
 
-HEADERS = ccc.h error.h
+HEADERS = cc1.h error.h
 GENERATED = enumlist.h tokenlist.c error.h debug.h debugtags.c op_pri.h
 
 BINS = enumcheck cc1 cc2 maketokens genop_pri
@@ -57,9 +57,9 @@ unit-tests: $(GENERATED)
 	$(MAKE) -C unit_test tests
 
 #
-# process the ccc.h file, extracting the enum tags for the tokens
+# process the cc1.h file, extracting the enum tags for the tokens
 #
-enumlist.h: ccc.h Makefile
+enumlist.h: cc1.h Makefile
 	tr ',' '\n' < token.h | \
 	sed -e '/\/\*/d' -e 's/=.*$$//' | \
 	awk '/enum / { t=1;next } /;$$/ {t=0} {if (t) print}' | \

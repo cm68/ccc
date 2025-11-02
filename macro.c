@@ -11,7 +11,7 @@
  * #define k(a,b) if (a) b=0
  * #define k(a,b) if (a) s=#b
  */
-#include "ccc.h"
+#include "cc1.h"
 
 #define MAXPARMS    10
 

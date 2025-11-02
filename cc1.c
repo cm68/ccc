@@ -5,7 +5,7 @@
  * it does basically all of the semantic processing, like operator precedence
  * and type resolution
  */
-#include "ccc.h"
+#include "cc1.h"
 // #include <fcntl.h>
 
 #include "debugtags.c"

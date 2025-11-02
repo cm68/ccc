@@ -1,7 +1,7 @@
 /*
  * generate expression trees
  */
-#include "ccc.h"
+#include "cc1.h"
 
 #include "op_pri.h"
 

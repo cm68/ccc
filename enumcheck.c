@@ -1,7 +1,7 @@
 /*
  * dirty little program to validate that we don't reuse token values
  */ 
-#include "ccc.h"
+#include "cc1.h"
 
 char ar[128];
 int coll;

@@ -2,7 +2,7 @@
  * this is the a brute force recursive descent parser
  */
 
-#include "ccc.h"
+#include "cc1.h"
 
 /* file-scope globals/forward declarations expected by legacy parser code */
 static struct name *global = 0;

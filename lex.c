@@ -5,7 +5,7 @@
  *
  * XXX - maybe use character type bitmask
  */
-#include "ccc.h"
+#include "cc1.h"
 
 int write_cpp_file = 0;
 char *cpp_file_name;

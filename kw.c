@@ -21,7 +21,7 @@
  *				string by 1 and pattern by 2. if not,
  *				advance pattern by skip
  */
-#include "ccc.h"
+#include "cc1.h"
 
 #define	HI	0x80
 

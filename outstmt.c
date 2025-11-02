@@ -2,7 +2,7 @@
  * AST serialization for second pass
  * Outputs statements and expressions in a parseable S-expression format
  */
-#include "ccc.h"
+#include "cc1.h"
 
 /*
  * Output an expression in S-expression format

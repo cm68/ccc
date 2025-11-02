@@ -1,7 +1,7 @@
 /*
  * errors, messages, and recovery
  */
-#include "ccc.h"
+#include "cc1.h"
 
 #define DEF_ERRMSG
 #include "error.h"

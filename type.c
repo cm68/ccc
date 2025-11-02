@@ -36,7 +36,7 @@
  */
 
 
-#include "ccc.h"
+#include "cc1.h"
 
 char *kindname[] = {
     "prim", "etag", "stag", "utag", "vari", "elem", "tdef", "fdef",

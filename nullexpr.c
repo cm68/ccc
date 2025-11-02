@@ -1,4 +1,4 @@
-#include "ccc.h"
+#include "cc1.h"
 
 struct expr *
 expr(char priority, struct stmt *parent)

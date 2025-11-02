@@ -1,4 +1,4 @@
-#include "ccc.h"
+#include "cc1.h"
 
 /*
  * Check if current token is a type keyword

@@ -11,7 +11,7 @@
  */
 
 #include <stdio.h>
-#include "ccc.h"
+#include "cc1.h"
 
 struct oppri {
     int token;
