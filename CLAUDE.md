@@ -107,12 +107,11 @@ The build system auto-generates several files from source code and data files. T
 - Flags: S_PARENT, S_LABEL, S_FUNC
 - Used for if/else/while/for/switch/case/return/goto/labels/blocks
 
-**struct type** (ccc.h:122-131): Type descriptors
+**struct type** (ccc.h:153-161): Type descriptors
 - name, size, count (for arrays)
-- elem list (for struct/union members, function parameters)
+- elem list (for struct/union members, function parameter types)
 - sub (for pointers, arrays, function return types)
-- args (for function parameter types)
-- Flags: TF_AGGREGATE, TF_INCOMPLETE, TF_UNSIGNED, TF_FUNC, TF_POINTER, TF_ARRAY, TF_FLOAT, TF_NORMALIZED
+- Flags: TF_AGGREGATE, TF_INCOMPLETE, TF_UNSIGNED, TF_FUNC, TF_POINTER, TF_ARRAY, TF_FLOAT, TF_OLD
 
 **struct name** (ccc.h:159-178): Symbol table entries
 - Represents variables, typedefs, function names, struct/union/enum tags
@@ -149,6 +148,38 @@ The type system is designed to be "squeaky-clean" with zero redundancy:
 
 **Not yet implemented**:
 - Type compatibility checking (sametype)
+
+### Function Parameter Architecture
+
+Function parameters are handled with proper separation between type signatures and actual parameter symbols:
+
+**Function Type Signature** (type->elem):
+- Contains parameter types (stored as name entries with types)
+- Parameter names are kept in type->elem for K&R type matching convenience
+- Function type comparison uses `compatible_function_types()` which ignores names
+- Two functions with same parameter types but different names have same type signature
+
+**Function Parameter Symbols** (namespace at level 2):
+- When parsefunc() processes a function body, it:
+  1. Pushes a new scope (lexlevel becomes 2)
+  2. Reads parameter info from type->elem
+  3. Creates NEW name entries at level 2 with V_FUNARG flag
+  4. Function body references parameters from level 2 namespace
+  5. Dumps function output while params are still visible
+  6. Pops scope (removes parameters from names[])
+
+**Benefits of this design**:
+- Function types properly normalized (names don't affect type compatibility)
+- Parameters are regular symbols at level 2 in namespace (no special cases)
+- Forward declarations with different parameter names work correctly
+- dump_function() shows both type signature (types only) and actual parameters (with names)
+
+**Example**:
+```c
+int foo(int x);           // Forward declaration
+int foo(int y) { }        // Definition with different name - works!
+```
+Both have same function type (int -> int), but function body sees parameter as 'y' at level 2.
 
 ### Scope Management
 
@@ -208,9 +239,7 @@ Statement parsing is now active in parse.c:
 - Local variable declarations inside function bodies
 - Typedef declarations inside function bodies (scoped)
 
-**Known limitations**:
-- ANSI-style function definitions don't work: `int foo(int x) { }` causes "more than one basetype" error
-- Use K&R style instead: `int foo(x) int x; { }`
+**All statement types working**
 
 ### Token System
 
@@ -256,11 +285,14 @@ The compiler has made substantial progress:
 - Tag namespace separation
 - Struct member namespace separation
 
-**Declaration Parsing (Substantially Complete)**:
+**Declaration Parsing (Complete)**:
 - Variable declarations (global and local)
-- Function declarations (ANSI style for prototypes)
+- Function declarations (both ANSI and K&R style)
+- ANSI-style function definitions: `int foo(int x) { }` works correctly
 - K&R style function definitions with parameter type declarations
 - Undeclared K&R parameters default to int
+- Forward declarations with different parameter names supported
+- Function type normalization: parameter names don't affect type compatibility
 - Typedef declarations (global and scoped inside functions)
 - Bitfield declarations
 - Storage class specifiers
@@ -287,17 +319,14 @@ The compiler has made substantial progress:
 - Valgrind clean on basic tests (no definite leaks)
 
 **Not yet implemented**:
-- ANSI-style function definitions (parameters treated as global declarations)
 - Symbol table integration for expression evaluation
-- Type checking and validation (sametype function)
+- Type checking and validation
 - Code generation (pass 2)
 
 ### Known Issues
 
 - The 'signed' keyword is not supported (deliberate omission)
 - Anonymous struct/union declarations don't work properly
-- ANSI-style function definitions: `int foo(int x) { }` fails with "more than one basetype"
-  - Workaround: Use K&R style: `int foo(x) int x; { }`
 - Single-bit bitfields in structs could be optimized better
 
 ### Testing
@@ -307,7 +336,7 @@ Tests are in tests/ directory (95+ tests organized by category):
 - **Declaration tests** (DECL_TESTS): Variable and type declarations
 - **Preprocessor tests** (CPP_TESTS): Macros, includes, conditional compilation, stringify
 - **K&R function tests** (KR_FUNC_TESTS): K&R style function definitions
-- **Modern function tests** (FUNC_TESTS): ANSI-style prototypes
+- **Modern function tests** (FUNC_TESTS): ANSI-style definitions and prototypes, forward declarations
 - **Statement tests** (STMT_TESTS): All control flow statements
 - **sizeof tests** (SIZEOF_TESTS): sizeof operator with various types
 - **Typedef tests** (TYPEDEF_TESTS): Global and scoped typedefs, forward declarations

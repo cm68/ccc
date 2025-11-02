@@ -4,29 +4,29 @@
 - ✓ Nested macro expansion works correctly
 - ✓ Complete lexical analysis
 - ✓ Type system (primitives, pointers, arrays, functions, structs, unions, enums)
-- ✓ Declaration parsing (K&R and ANSI-style prototypes)
+- ✓ Declaration parsing (K&R and ANSI-style functions)
+- ✓ ANSI-style function definitions: `int foo(int x) { }` works correctly
+- ✓ Function type normalization: parameter names don't affect type compatibility
+- ✓ Forward declarations with different parameter names
+- ✓ Function parameters stored in namespace at level 2 with V_FUNARG flag
 - ✓ Expression parsing with constant folding
 - ✓ Statement parsing (all control flow)
 - ✓ Typedef support including scoped typedefs inside functions
 - ✓ Forward struct/union declarations
 - ✓ Bitfield support in struct declarations
+- ✓ Local variable declarations inside functions
 - ✓ Comprehensive test suite (95+ tests)
 
 ## Known Limitations (Pass 1)
 
 - The 'signed' keyword is deliberately not supported
 - Anonymous enums may have issues (needs verification)
-- ANSI-style function definitions with parameters need K&R workaround:
-  Use: int foo(x) int x; { }
-  Not: int foo(int x) { }
-- Local variable declarations inside functions work but may have edge cases
 
 ## TODO (Pass 1 Remaining Work)
 
-- Fix ANSI-style function definitions to parse parameters correctly
 - Test and fix anonymous enum declarations if broken
 - Improve error messages and recovery
-- Type checking and compatibility validation (sametype function)
+- Type checking and compatibility validation
 - Symbol table integration for expression type checking
 
 ## TODO (Pass 2 - Code Generation)

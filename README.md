@@ -12,7 +12,10 @@ The compiler successfully parses C code including:
 - Full C preprocessor (CPP) with macros, includes, conditional compilation
 - Complete lexical analysis (tokenization)
 - Type system: primitives, pointers, arrays, functions, structs, unions, enums
-- Declaration parsing: variables, functions (K&R and ANSI-style prototypes), typedefs
+- Declaration parsing: variables, functions (K&R and ANSI-style), typedefs
+- Function type normalization: parameter names don't affect type compatibility
+- ANSI-style function definitions: `int foo(int x) { }` now works correctly
+- Forward declarations with different parameter names supported
 - Expression parsing with constant folding and proper operator precedence
 - Statement parsing: all control flow, function bodies, scoped blocks
 - Forward declarations and incomplete types
