@@ -16,7 +16,11 @@ Each function is emitted as:
 All expressions use prefix notation (Polish notation):
 
 - **Constants**: Just the numeric value (e.g., `42`, `0`, `-1`)
-- **Symbols/Variables**: Prefixed with `$` (e.g., `$x`, `$sum`)
+- **Symbols/Variables**: Prefixed with `$` plus scope indicator:
+  - **Extern/Global variables**: `$_name` (underscore prefix)
+  - **Static variables**: `$Sname` (S prefix)
+  - **Function arguments**: `$Aname` (A prefix)
+  - **Local variables**: `$name` (no additional prefix)
 - **String literals**: `S` followed by string table index (e.g., `S0`, `S1`)
 - **Binary operators**: `(op left right)` (e.g., `(+ $x $y)`)
 - **Unary operators**: `(op operand)` (e.g., `(NEG $x)`)
@@ -62,8 +66,9 @@ int add(int x, int y) {
 Emits:
 ```
 (func add (y:_short_ x:_short_) _short_
-  (B (R (+ $x $y))))
+  (B (R (+ $Ax $Ay))))
 ```
+Note: `$Ax` and `$Ay` have the `A` prefix because they are function arguments.
 
 ### Factorial with Recursion
 ```c
@@ -77,8 +82,9 @@ int factorial(int n) {
 Emits:
 ```
 (func factorial (n:_short_) _short_
-  (B (I (< $n 2) (B (R 1))) (R (* $n $factorial)) (;)))
+  (B (I (< $An 2) (B (R 1))) (R (* $An $_factorial)) (;)))
 ```
+Note: `$An` has the `A` prefix (function argument), `$_factorial` has the `_` prefix (global function).
 
 ### Loop Example
 ```c
@@ -97,10 +103,11 @@ Emits:
 ```
 (func loop_test (n:_short_) _short_
   (B (E (= $sum 0)) (E (= $i 0))
-     (W (< $i $n)
+     (W (< $i $An)
         (B (E (= $sum (+ $sum $i))) (E (= $i (+ $i 1)))))
      (R $sum)))
 ```
+Note: `$An` has the `A` prefix (function argument), `$sum` and `$i` have no prefix (local variables).
 
 ### Function Call Examples
 
@@ -113,8 +120,9 @@ int test_simple_call() {
 Emits:
 ```
 (func test_simple_call () _short_
-  (B (R (@ $add 1 2))))
+  (B (R (@ $_add 1 2))))
 ```
+Note: `$_add` has the `_` prefix because it's a global function.
 
 **Nested function calls:**
 ```c
@@ -125,7 +133,7 @@ int test_nested_call() {
 Emits:
 ```
 (func test_nested_call () _short_
-  (B (R (@ $add (@ $multiply 2 3) (@ $multiply 4 5)))))
+  (B (R (@ $_add (@ $_multiply 2 3) (@ $_multiply 4 5)))))
 ```
 
 **Function call with expressions as arguments:**
@@ -137,7 +145,41 @@ int test_expr_in_call(int n) {
 Emits:
 ```
 (func test_expr_in_call (n:_short_) _short_
-  (B (R (@ $add (+ $n 1) (* $n 2)))))
+  (B (R (@ $_add (+ $An 1) (* $An 2)))))
+```
+Note: `$An` has the `A` prefix (function argument), `$_add` has the `_` prefix (global function).
+
+### Variable Scope Prefixes
+
+All variables are prefixed with `$` followed by a scope indicator:
+
+| Scope/Storage Class | Prefix | Example | Description |
+|---------------------|--------|---------|-------------|
+| Extern variable     | `$_`   | `$_external_var` | Variable declared with `extern` keyword |
+| Global variable     | `$_`   | `$_global_var` | Variable at file scope (level 1) |
+| Static variable     | `$S`   | `$Sstatic_local` | Variable declared with `static` keyword |
+| Function argument   | `$A`   | `$Ax` | Function parameter |
+| Local variable      | `$`    | `$sum` | Local variable inside function |
+
+**Complete example:**
+```c
+int global_var;              // $_global_var
+extern int extern_var;       // $_extern_var
+static int static_global;    // $Sstatic_global
+
+int test_all_scopes(int x, int y) {
+    int local1;              // $local1
+    static int static_local; // $Sstatic_local
+
+    local1 = x + y;          // $local1 = $Ax + $Ay
+    return local1 + global_var + static_local;
+}
+```
+Emits:
+```
+(func test_all_scopes (y:_short_ x:_short_) _short_
+  (B (E (= $local1 (+ $Ax $Ay)))
+     (R (+ (+ $local1 $_global_var) $Sstatic_local))))
 ```
 
 ## Parser Implementation Notes

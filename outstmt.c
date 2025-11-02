@@ -29,7 +29,26 @@ emit_expr(struct expr *e)
 	case SYM:
 		if (e->var) {
 			sym = (struct name *)e->var;
-			printf("$%s", sym->name);
+			/* Add prefix based on scope/storage class:
+			 * - extern/global (level 1): prefix with underscore
+			 * - static: prefix with S
+			 * - function arguments: prefix with A
+			 * - local variables: no prefix
+			 */
+			if (sym->sclass & SC_STATIC) {
+				printf("$S%s", sym->name);
+			} else if (sym->sclass & SC_EXTERN) {
+				printf("$_%s", sym->name);
+			} else if (sym->level == 1) {
+				/* Global variable (not extern, not static) */
+				printf("$_%s", sym->name);
+			} else if (sym->kind == funarg) {
+				/* Function argument */
+				printf("$A%s", sym->name);
+			} else {
+				/* Local variable */
+				printf("$%s", sym->name);
+			}
 		} else {
 			printf("$?");
 		}
