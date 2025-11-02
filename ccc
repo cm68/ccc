@@ -1,0 +1,139 @@
+#!/bin/bash
+#
+# ccc - Two-pass C compiler driver
+#
+# Pass 1 (cc1): Parse and generate AST
+# Pass 2 (cc2): Generate code from AST
+#
+
+# Get the directory where this script lives
+SCRIPTDIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CC1="$SCRIPTDIR/cc1"
+CC2="$SCRIPTDIR/cc2"
+
+# Default options
+AST_FILE=""
+KEEP_AST=0
+OUTPUT_FILE=""
+VERBOSE=0
+
+usage() {
+    echo "usage: ccc [<options>] <source.c>"
+    echo "  -o <output>    Output file (default: a.out)"
+    echo "  -keep-ast      Keep intermediate AST file"
+    echo "  -v <level>     Verbosity level (passed to cc1)"
+    echo "  -I<dir>        Include directory (passed to cc1)"
+    echo "  -D<var>[=val]  Define macro (passed to cc1)"
+    echo "  -E             Preprocess only (passed to cc1)"
+    exit 1
+}
+
+# Parse arguments
+CC1_ARGS=()
+SOURCE_FILE=""
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -h|--help)
+            usage
+            ;;
+        -o)
+            shift
+            OUTPUT_FILE="$1"
+            shift
+            ;;
+        -keep-ast)
+            KEEP_AST=1
+            shift
+            ;;
+        -v)
+            # Pass verbosity to cc1
+            CC1_ARGS+=("-v")
+            shift
+            CC1_ARGS+=("$1")
+            shift
+            ;;
+        -I*|-D*|-E)
+            # Pass these directly to cc1
+            CC1_ARGS+=("$1")
+            shift
+            ;;
+        -*)
+            echo "Unknown option: $1"
+            usage
+            ;;
+        *)
+            # Source file
+            if [[ -n "$SOURCE_FILE" ]]; then
+                echo "Error: multiple source files not supported yet"
+                exit 1
+            fi
+            SOURCE_FILE="$1"
+            shift
+            ;;
+    esac
+done
+
+# Check for source file
+if [[ -z "$SOURCE_FILE" ]]; then
+    echo "Error: no source file specified"
+    usage
+fi
+
+if [[ ! -f "$SOURCE_FILE" ]]; then
+    echo "Error: source file '$SOURCE_FILE' not found"
+    exit 1
+fi
+
+# Set default output file if not specified
+if [[ -z "$OUTPUT_FILE" ]]; then
+    OUTPUT_FILE="a.out"
+fi
+
+# Generate AST filename
+BASENAME=$(basename "$SOURCE_FILE" .c)
+if [[ $KEEP_AST -eq 1 ]]; then
+    AST_FILE="${BASENAME}.ast"
+else
+    AST_FILE=$(mktemp "${BASENAME}.ast.XXXXXX")
+fi
+
+echo "=== Pass 1: Parsing $SOURCE_FILE ==="
+
+# Run cc1 to generate AST
+"$CC1" "${CC1_ARGS[@]}" -o "$AST_FILE" "$SOURCE_FILE"
+CC1_STATUS=$?
+
+if [[ $CC1_STATUS -ne 0 ]]; then
+    echo "Error: cc1 failed with status $CC1_STATUS"
+    # Clean up temp AST file if created
+    if [[ $KEEP_AST -eq 0 && -f "$AST_FILE" ]]; then
+        rm -f "$AST_FILE"
+    fi
+    exit $CC1_STATUS
+fi
+
+echo "=== Pass 2: Generating code from $AST_FILE ==="
+
+# Run cc2 to generate code
+"$CC2" -o "$OUTPUT_FILE" "$AST_FILE"
+CC2_STATUS=$?
+
+if [[ $CC2_STATUS -ne 0 ]]; then
+    echo "Error: cc2 failed with status $CC2_STATUS"
+    # Clean up temp AST file if created
+    if [[ $KEEP_AST -eq 0 && -f "$AST_FILE" ]]; then
+        rm -f "$AST_FILE"
+    fi
+    exit $CC2_STATUS
+fi
+
+# Clean up temporary AST file if not keeping
+if [[ $KEEP_AST -eq 0 ]]; then
+    rm -f "$AST_FILE"
+else
+    echo "AST saved to: $AST_FILE"
+fi
+
+echo "=== Compilation successful: $OUTPUT_FILE ==="
+exit 0

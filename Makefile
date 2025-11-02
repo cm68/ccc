@@ -35,10 +35,16 @@ BINS = enumcheck cc1 cc2 maketokens genop_pri
 
 #VERBOSE=-v 3
 
-all: cc1
+all: cc1 cc2 ccc
 
 cc1: $(CC1OBJECTS)
 	$(LD) $(LDFLAGS) cc1 $(CC1OBJECTS)
+
+cc2: cc2.o
+	$(LD) $(LDFLAGS) cc2 cc2.o
+
+ccc: cc1 cc2
+	chmod +x ccc
 
 $(CC1OBJECTS): $(HEADERS)
 
@@ -110,7 +116,7 @@ tags:
 	ctags *.c
 
 clean:
-	rm -f $(CC1OBJECTS) $(GENERATED) tests/*.i \
+	rm -f $(CC1OBJECTS) cc2.o $(GENERATED) tests/*.i *.ast.* \
 		*.asm *.lst *.sym *.map *.cdb *.ihx
 	$(MAKE) -C unit_test clean
 

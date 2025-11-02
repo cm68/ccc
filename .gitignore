@@ -27,3 +27,4 @@ chatgpt-expr.c*
 unit_test/test_kw
 unit_test/test_insertmacro
 test_kw_real
+*.ast.*
