@@ -1,37 +1,62 @@
-the 'signed' keyword is an abomination added by ansi. fuck 'em.
-anonymous enums do what exactly? right now, they break.
+## Completed Features (Pass 1)
 
-verify that nested macros work.
+- ✓ Full C preprocessor (macros, includes, conditional compilation, stringify, token pasting)
+- ✓ Nested macro expansion works correctly
+- ✓ Complete lexical analysis
+- ✓ Type system (primitives, pointers, arrays, functions, structs, unions, enums)
+- ✓ Declaration parsing (K&R and ANSI-style prototypes)
+- ✓ Expression parsing with constant folding
+- ✓ Statement parsing (all control flow)
+- ✓ Typedef support including scoped typedefs inside functions
+- ✓ Forward struct/union declarations
+- ✓ Bitfield support in struct declarations
+- ✓ Comprehensive test suite (95+ tests)
 
-#define	FOO(x,y)	bar(x,y)
-#define	XYZZY(a,b)	FOO(a,FOO(b,a))
+## Known Limitations (Pass 1)
 
-to maybe to shrink the lexer a bit
-make a bitmap with 128 entries:
-0x01 - is a character that may start a symbol name
-0x02 - is a character internal to a symbol name
-0x04 - is whitespace
-0x10 - is an operator
-0x20 - is an += kind of operator
-0x40 - is an ++ kind of operator
+- The 'signed' keyword is deliberately not supported
+- Anonymous enums may have issues (needs verification)
+- ANSI-style function definitions with parameters need K&R workaround:
+  Use: int foo(x) int x; { }
+  Not: int foo(int x) { }
+- Local variable declarations inside functions work but may have edge cases
 
+## TODO (Pass 1 Remaining Work)
 
-single bit bitfields in a struct should be efficient ways to handle flags.
-for example, symbol visibility: if (sym->visible) { emit("extern "); }:
-ld iy, sym ; bit 4, (iy+9) ; jr foo
+- Fix ANSI-style function definitions to parse parameters correctly
+- Test and fix anonymous enum declarations if broken
+- Improve error messages and recovery
+- Type checking and compatibility validation (sametype function)
+- Symbol table integration for expression type checking
 
-faster/smaller, new scope/symbol space management:
+## TODO (Pass 2 - Code Generation)
 
-symbols are stored in an array, and are marked not by a pointer, but by a index.
-index 0 is the first global, which grows up.  locals are negative, and grow down.
-each symbol has a scope level.  when a block is opened, the level is incremented,
-and when the block is closed, the level is decremented.
-lookups start from the most recent local and go to the last global.
+- Implement code generator
+- Implement assembler output
+- Object file generation
 
-names are stored as fixed length strings, and start with a hash, length, and data.
-only N (12? 10?) bytes of name data are stored, in an attempt to get the symbol
-table down to 16 bytes.
+## Future Optimizations (Ideas for Later)
 
-statics are global in storage, but scoped using the scope level.
-in practice, they have a 'scoped name', and a synthetic 'global name' so they go into
-the global symbol table with a handle.
+### Lexer Optimization
+Make a bitmap with 128 entries for character classification:
+- 0x01 - character that may start a symbol name
+- 0x02 - character internal to a symbol name
+- 0x04 - whitespace
+- 0x10 - operator
+- 0x20 - += kind of operator
+- 0x40 - ++ kind of operator
+
+### Code Generation Optimization
+Single-bit bitfields in structs for efficient flag handling.
+Example: if (sym->visible) { emit("extern "); }
+Could generate: ld iy, sym ; bit 4, (iy+9) ; jr foo
+
+### Symbol Table Optimization
+Faster/smaller scope and symbol space management:
+- Store symbols in array indexed by number instead of pointers
+- Index 0 is first global (grows up), locals are negative (grow down)
+- Each symbol has scope level (increment on block open, decrement on close)
+- Lookups start from most recent local to last global
+- Store names as fixed-length strings with hash, length, and data
+- Limit name storage to ~12 bytes to get symbol table down to 16 bytes per entry
+- Statics: global storage but scoped, with synthetic global name for symbol table
