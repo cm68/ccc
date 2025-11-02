@@ -13,7 +13,6 @@ static void
 dump_expr_tree(struct expr *e, int indent)
 {
 	int i;
-	struct name *n;
 
 	if (!e)
 		return;
@@ -29,7 +28,6 @@ dump_expr_tree(struct expr *e, int indent)
 		break;
 	case STRING:
 		if (e->var) {
-			n = (struct name *)e->var;
 			printf("STRING \"%s\"", (char *)(e->v + 1));  /* skip length byte */
 		} else {
 			printf("STRING (no name)");

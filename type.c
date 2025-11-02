@@ -439,8 +439,7 @@ get_type(
 void
 initbasictype()
 {
-    char i;
-    struct name *n;
+    int i;
     struct type *t;
 
     for (i = 0; i < sizeof(basictype)/sizeof(basictype[0]); i++) {
@@ -450,7 +449,7 @@ initbasictype()
         t->size = basictype[i].size;
         t->next = types;
         types = t;
-        n = new_name(basictype[i].name, prim, t, 0);
+        new_name(basictype[i].name, prim, t, 0);
         if (i == 0) chartype = t;
         if (i == 2) inttype = t;
     }
