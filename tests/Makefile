@@ -87,11 +87,13 @@ TYPEDEF_TESTS = \
 	typedef_copy.c \
 	typedef_debug.c \
 	typedef_enum_test.c \
+	typedef_in_func_test.c \
 	typedef_local.c \
 	typedef_minimal.c \
 	typedef_minimal2.c \
 	typedef_ptr_only.c \
 	typedef_ptr_use.c \
+	typedef_scope_test.c \
 	typedef_separate.c \
 	typedef_simple.c \
 	typedef_struct_test.c \

@@ -103,19 +103,13 @@ statement(struct stmt *parent)
             break;
 
         case TYPEDEF:
-            /* typedef inside function body not yet supported */
-            err(ER_D_UT);  /* unexpected token */
-            /* Skip to semicolon to avoid infinite loop */
-            while (cur.type != SEMI && cur.type != END && cur.type != E_O_F) {
-                gettoken();
-            }
-            if (cur.type == SEMI) {
-                gettoken();
-            }
-            st = NULL;
+            /* typedef inside function body - scoped to current block */
+            declaration();
+            st = NULL;  /* declaration() doesn't return a statement */
             break;
         
         case SYM:
+            /* Check if it's a label */
             if (next.type == COLON) {
                 st = makestmt(LABEL, 0);
                 st->label = strdup(cur.v.name);
@@ -124,7 +118,16 @@ statement(struct stmt *parent)
                 gettoken();
                 break;
             }
-            /* fall through */
+            /* Check if it's a typedef name used in a declaration */
+            {
+                struct name *possible_typedef = lookup_name(cur.v.name, 0);
+                if (possible_typedef && possible_typedef->kind == tdef) {
+                    declaration();
+                    st = NULL;  /* declaration() doesn't return a statement */
+                    break;
+                }
+            }
+            /* fall through to expression */
         case LPAR:
         case STAR:
         case INCR:
