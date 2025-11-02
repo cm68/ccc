@@ -708,7 +708,7 @@ gettoken()
             break;
         }
         if (lineend) {
-            cpp_out("\n", 2);
+            cpp_out("\n", 1);
         }
     }
     if (VERBOSE(V_TOKEN)) {
