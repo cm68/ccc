@@ -518,7 +518,7 @@ gettoken()
 
     freetoken();
 
-    bcopy(&next, &cur, sizeof(cur));
+    memcpy(&cur, &next, sizeof(cur));
 
     next.v.str = 0;
     next.type = NONE;
@@ -614,7 +614,7 @@ gettoken()
         if (isstring()) {
             next.type = STRING;
             next.v.str = malloc(strbuf[0] + 1);  // +1 for length byte
-            bcopy(strbuf, next.v.str, strbuf[0] + 1);
+            memcpy(strbuf, next.v.str, strbuf[0] + 1);
             break;
         }
 
@@ -747,8 +747,8 @@ readcppconst()
     struct token savecur, savenext;
 
     /* Save both cur and next tokens */
-    bcopy(&cur, &savecur, sizeof(cur));
-    bcopy(&next, &savenext, sizeof(next));
+    memcpy(&savecur, &cur, sizeof(cur));
+    memcpy(&savenext, &cur, sizeof(next));
 
     /* Reset next so gettoken() doesn't copy stale NONE value to cur */
     next.type = E_O_F;
@@ -776,8 +776,8 @@ readcppconst()
     write_cpp_file = saved_write_cpp;
 
     /* Restore both tokens */
-    bcopy(&savecur, &cur, sizeof(cur));
-    bcopy(&savenext, &next, sizeof(next));
+    memcpy(&cur, &savecur, sizeof(cur));
+    memcpy(&next, &savenext, sizeof(next));
     return val;
 }
 

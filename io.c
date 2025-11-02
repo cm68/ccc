@@ -316,7 +316,7 @@ cpp_out(char *s, int len)
     if ((cpp->offset + len) > CPP_BUF) {
         cpp_flush();
     }
-    bcopy(s, &cpp->storage[cpp->offset], len);
+    memcpy(&cpp->storage[cpp->offset], s, len);
     cpp->offset += len;
 }
 

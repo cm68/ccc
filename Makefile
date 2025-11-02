@@ -14,13 +14,13 @@ DEBUG= -ggdb3 -O0
 CC = gcc
 #CC = sdcc
 ifeq ($(CC),sdcc)
-CFLAGS = -mz80 --fomit-frame-pointer
+CFLAGS = $(DEFINES) -mz80 --oldralloc
 LD = sdldz80
 LDFLAGS= -l /usr/share/sdcc/lib/z80/z80.lib -m -w -i -y
 endif
 
 ifeq ($(CC),gcc)
-CFLAGS = $(DEBUG) $(DEFINES) -Wno-implicit-function-declaration
+CFLAGS = $(DEBUG) $(DEFINES) -Wno-implicit-function-declaration -Wall
 LDFLAGS= $(DEBUG) -o
 LD= gcc
 endif

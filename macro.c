@@ -20,10 +20,41 @@ struct macro *macros;
 
 /*
  * add a definition from the command line args
+ * Format: "NAME=value" or just "NAME" (for empty macros)
  */
 void
 add_define(char *s)
 {
+    struct macro *m;
+    char *eq;
+    int namelen;
+
+    if (!s || !*s) {
+        return;
+    }
+
+    m = malloc(sizeof(*m));
+
+    /* Find '=' to separate name from value */
+    eq = strchr(s, '=');
+
+    if (eq) {
+        /* NAME=value format */
+        namelen = eq - s;
+        m->name = malloc(namelen + 1);
+        memcpy(m->name, s, namelen);
+        m->name[namelen] = '\0';
+        m->mactext = strdup(eq + 1);  /* value after '=' */
+    } else {
+        /* Just NAME with no value (like -DDEBUG) */
+        m->name = strdup(s);
+        m->mactext = strdup("1");  /* default to "1" */
+    }
+
+    m->parmcount = 0;
+    m->parms = 0;
+    m->next = macros;
+    macros = m;
 }
 
 /*
@@ -67,8 +98,9 @@ macundefine(char *s)
         for (i = 0; i < m->parmcount; i++) {
             free(m->parms[i]);
         }
-        free(m->parms); 
+        free(m->parms);
         free(m->name);
+        free(m->mactext);
         free(m);
     }
 }
