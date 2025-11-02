@@ -72,8 +72,6 @@ declare_internal(struct type **btp, boolean struct_elem)
     struct name *nm, *arg;
     struct type *t, *prefix, *suffix, *rt;
     int i;
-    struct name *actual_params_head = NULL;  // For function parameter names
-    struct name *actual_params_tail = NULL;
 
     suffix = 0;
 
@@ -217,17 +215,6 @@ declare_internal(struct type **btp, boolean struct_elem)
                     err(ER_D_FA);
                     break;
                 }
-                // Create entry for actual_params with name, no type yet
-                struct name *actual_param = create_param_entry(param_name, NULL);
-                if (!actual_params_head) {
-                    actual_params_head = actual_param;
-                    actual_params_tail = actual_param;
-                } else {
-                    actual_params_tail->next = actual_param;
-                    actual_params_tail = actual_param;
-                }
-                free(param_name);
-                param_name = NULL;
             } else {
                 // ANSI style: parse full type + declarator
                 struct type *basetype = getbasetype();
@@ -253,22 +240,14 @@ declare_internal(struct type **btp, boolean struct_elem)
                 }
             }
 
-            // Create parameter entry for type->elem (with anonymous name for type normalization)
-            arg = create_param_entry(NULL, param_type);  // NULL creates anonymous param
+            // Create parameter entry for type->elem with actual name
+            // For K&R: name without type (type filled in later)
+            // For ANSI: name with type
+            // For anonymous: empty string name
+            arg = create_param_entry(param_name, param_type);
             arg->next = suffix->elem;
             suffix->elem = arg;
 
-            // If parameter has an actual name, create separate entry for symbol table
-            if (param_name && param_name[0] != '\0') {
-                struct name *actual_param = create_param_entry(param_name, param_type);
-                if (!actual_params_head) {
-                    actual_params_head = actual_param;
-                    actual_params_tail = actual_param;
-                } else {
-                    actual_params_tail->next = actual_param;
-                    actual_params_tail = actual_param;
-                }
-            }
             if (param_name) {
                 free(param_name);
             }
@@ -304,9 +283,9 @@ declare_internal(struct type **btp, boolean struct_elem)
                     break;
                 }
 
-                // Find matching parameter in actual_params and update its type
+                // Find matching parameter in suffix->elem and update its type
                 struct name *p;
-                for (p = actual_params_head; p; p = p->next) {
+                for (p = suffix->elem; p; p = p->next) {
                     if (strcmp(p->name, param_name) == 0) {
                         p->type = param_type;
                         break;
@@ -329,18 +308,9 @@ declare_internal(struct type **btp, boolean struct_elem)
             }
 
             // Default undeclared K&R parameters to int
-            for (arg = actual_params_head; arg; arg = arg->next) {
+            for (arg = suffix->elem; arg; arg = arg->next) {
                 if (arg->type == NULL) {
                     arg->type = inttype;
-                }
-            }
-
-            // Now copy types from actual_params to suffix->elem (with anonymous names)
-            struct name *actual = actual_params_head;
-            for (arg = suffix->elem; arg; arg = arg->next) {
-                if (actual) {
-                    arg->type = actual->type;
-                    actual = actual->next;
                 }
             }
         }
@@ -365,11 +335,6 @@ declare_internal(struct type **btp, boolean struct_elem)
         // suffix->sub should already point to the return/base type from get_type()
         // Just need to make suffix the final type
         nm->type = suffix;
-
-        // If it's a function, store actual parameter names for symbol table
-        if (suffix->flags & TF_FUNC) {
-            nm->params = actual_params_head;
-        }
     }
 
     return nm;

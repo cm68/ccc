@@ -200,7 +200,6 @@ struct name {
     int width;
     struct expr *init;      // value of constant or initializer
     struct stmt *body;      // function body
-    struct name *params;    // for functions: actual parameter names (separate from type->elem)
     kind kind;
     int flags;
 #define V_BITFIELD  0x01

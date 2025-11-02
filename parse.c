@@ -362,12 +362,14 @@ parsefunc(struct name *f)
 	// Push a new scope for the function body
 	push_scope(f->name);
 
-	// Install function parameters into the scope using actual parameter names
-	// f->params contains the actual parameter names (not anonymous)
-	// f->type->elem contains anonymous names for type comparison
-	if (f->params) {
-		for (param = f->params; param; param = param->next) {
-			add_name(param);
+	// Install function parameters into the scope
+	// Parameters are stored in f->type->elem with actual names
+	if (f->type && (f->type->flags & TF_FUNC)) {
+		for (param = f->type->elem; param; param = param->next) {
+			// Only add parameters with actual names (skip anonymous ones)
+			if (param->name && param->name[0] != '\0') {
+				add_name(param);
+			}
 		}
 	}
 
