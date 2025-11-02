@@ -241,9 +241,8 @@ declare_internal(struct type **btp, boolean struct_elem)
             }
 
             // Create parameter entry for type->elem with actual name
-            // For K&R: name without type (type filled in later)
-            // For ANSI: name with type
-            // For anonymous: empty string name
+            // (Names are kept for K&R matching and for parsefunc() to add to namespace)
+            // Type comparison uses compatible_function_types() which ignores names
             arg = create_param_entry(param_name, param_type);
             arg->next = suffix->elem;
             suffix->elem = arg;

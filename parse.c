@@ -362,13 +362,17 @@ parsefunc(struct name *f)
 	// Push a new scope for the function body
 	push_scope(f->name);
 
-	// Install function parameters into the scope
-	// Parameters are stored in f->type->elem with actual names
+	// Install function parameters into the scope at level 2
+	// Read parameter info from f->type->elem but create NEW entries at level 2
 	if (f->type && (f->type->flags & TF_FUNC)) {
 		for (param = f->type->elem; param; param = param->next) {
 			// Only add parameters with actual names (skip anonymous ones)
 			if (param->name && param->name[0] != '\0') {
-				add_name(param);
+				// Create a NEW name entry at level 2 (don't reuse type->elem entry)
+				struct name *param_entry = new_name(param->name, var, param->type, 0);
+				if (param_entry) {
+					param_entry->flags |= V_FUNARG | V_LOCAL;
+				}
 			}
 		}
 	}
@@ -378,6 +382,9 @@ parsefunc(struct name *f)
 	if (f->body) {
 		f->body->flags |= S_FUNC;
 	}
+
+	// Dump function while parameters are still in scope (level 2)
+	dump_function(f);
 
 	// Pop the function scope
 	pop_scope();
@@ -563,9 +570,8 @@ declaration()
             if (cur.type == BEGIN) {
                 parsefunc(v);
 
-                /* Dump function and free the statement tree */
+                /* Free the statement tree (dumping now happens in parsefunc) */
                 if (v->body) {
-                    dump_function(v);
                     free_stmt(v->body);
                     v->body = 0;  /* Mark as freed */
                 }

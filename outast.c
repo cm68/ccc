@@ -217,6 +217,29 @@ dump_function(struct name *func)
 	/* Dump the function name structure details */
 	dump_name(func);
 
+	/* Dump function parameters from namespace (level 2, V_FUNARG) */
+	printf("\nFunction parameters from namespace:\n");
+	extern struct name **names;
+	extern int lastname;
+	int i;
+	int param_count = 0;
+	for (i = lastname; i >= 0; i--) {
+		struct name *n = names[i];
+		if (n->level == 2 && (n->flags & V_FUNARG)) {
+			printf("  param %d: %s", param_count, n->name ? n->name : "(anonymous)");
+			if (n->type && n->type->name) {
+				printf(" (%s)", n->type->name);
+			}
+			printf("\n");
+			param_count++;
+		} else if (n->level < 2) {
+			break;  /* No more function parameters */
+		}
+	}
+	if (param_count == 0) {
+		printf("  (no parameters)\n");
+	}
+
 	/* Dump the statement tree */
 	if (func->body) {
 		printf("\nStatement tree:\n");
