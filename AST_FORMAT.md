@@ -157,19 +157,37 @@ All variables are prefixed with `$` followed by a scope indicator:
 |---------------------|--------|---------|-------------|
 | Extern variable     | `$_`   | `$_external_var` | Variable declared with `extern` keyword |
 | Global variable     | `$_`   | `$_global_var` | Variable at file scope (level 1) |
-| Static variable     | `$S`   | `$Sstatic_local` | Variable declared with `static` keyword |
+| Static variable     | `$S`   | `$Sfile_funcname_varname_0` | Variable declared with `static` keyword (mangled name) |
 | Function argument   | `$A`   | `$Ax` | Function parameter |
 | Local variable      | `$`    | `$sum` | Local variable inside function |
 
+**Static Variable Name Mangling:**
+
+Static variables have global storage but lexical scope, requiring unique mangled names:
+
+- **File-scoped static**: `$S<file_root>_<varname>`
+  - Example: `static int counter;` in `test.c` → `$Stest_counter`
+
+- **Function-scoped static**: `$S<file_root>_<funcname>_<varname>_<counter>`
+  - Example: `static int local;` in function `foo()` in `test.c` → `$Stest_foo_local_0`
+  - The counter increments for each static in the same function (0, 1, 2, ...)
+  - Counter resets to 0 for each new function
+
+This ensures that:
+- Multiple files can have statics with the same name without collision
+- Multiple functions can have statics with the same name without collision
+- Multiple statics within one function each get unique names
+
 **Complete example:**
 ```c
+/* File: test_scopes.c */
 int global_var;              // $_global_var
 extern int extern_var;       // $_extern_var
-static int static_global;    // $Sstatic_global
+static int static_global;    // $Stest_scopes_static_global
 
 int test_all_scopes(int x, int y) {
     int local1;              // $local1
-    static int static_local; // $Sstatic_local
+    static int static_local; // $Stest_scopes_test_all_scopes_static_local_0
 
     local1 = x + y;          // $local1 = $Ax + $Ay
     return local1 + global_var + static_local;
@@ -179,7 +197,7 @@ Emits:
 ```
 (func test_all_scopes (y:_short_ x:_short_) _short_
   (B (E (= $local1 (+ $Ax $Ay)))
-     (R (+ (+ $local1 $_global_var) $Sstatic_local))))
+     (R (+ (+ $local1 $_global_var) $Stest_scopes_test_all_scopes_static_local_0))))
 ```
 
 ## Parser Implementation Notes

@@ -194,6 +194,7 @@ struct name {
 	int offset;				// if inside a struct
     int bitoff;
     int width;
+    char *mangled_name;     // mangled name for static variables (NULL for others)
     union {
         struct expr *init;  // value of constant or initializer (for var)
         struct stmt *body;  // function body (for fdef)
@@ -230,6 +231,11 @@ extern struct type *chartype;
 
 void parse();
 void cleanup_parser();
+
+/* Global context for static variable name mangling */
+extern char *source_file_root;      // basename of current source file (without .c)
+extern struct name *current_function; // current function being parsed
+extern int static_counter;          // counter for statics in current function
 
 /* kw.c */
 extern unsigned char cppkw[];

@@ -13,18 +13,45 @@
 char *progname;
 int verbose;
 
+/* Global context for static variable name mangling */
+char *source_file_root = NULL;
+struct name *current_function = NULL;
+int static_counter = 0;
+
 /*
  * each file on the command line gets this treatment
  */
 void
 process(char *f)
 {
-    int i;
-    char *s;
+    int i, len;
+    char *s, *basename_start, *dot;
 
     if (VERBOSE(V_TRACE)) {
         printf("process %s\n", f);
     }
+
+    /* Extract source file root for static name mangling */
+    if (source_file_root) {
+        free(source_file_root);
+    }
+    /* Find last slash (if any) to get basename */
+    basename_start = strrchr(f, '/');
+    if (basename_start) {
+        basename_start++;  /* skip the slash */
+    } else {
+        basename_start = f;
+    }
+    /* Find .c extension and copy everything before it */
+    dot = strrchr(basename_start, '.');
+    if (dot && strcmp(dot, ".c") == 0) {
+        len = dot - basename_start;
+    } else {
+        len = strlen(basename_start);
+    }
+    source_file_root = malloc(len + 1);
+    strncpy(source_file_root, basename_start, len);
+    source_file_root[len] = '\0';
     if (write_cpp_file) {
         if (cpp_file) {
             close(cpp_file);

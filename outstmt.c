@@ -31,12 +31,18 @@ emit_expr(struct expr *e)
 			sym = (struct name *)e->var;
 			/* Add prefix based on scope/storage class:
 			 * - extern/global (level 1): prefix with underscore
-			 * - static: prefix with S
+			 * - static: use mangled name with S prefix
 			 * - function arguments: prefix with A
 			 * - local variables: no prefix
 			 */
 			if (sym->sclass & SC_STATIC) {
-				printf("$S%s", sym->name);
+				/* Use mangled name for statics */
+				if (sym->mangled_name) {
+					printf("$S%s", sym->mangled_name);
+				} else {
+					/* Fallback if mangled name not set */
+					printf("$S%s", sym->name);
+				}
 			} else if (sym->sclass & SC_EXTERN) {
 				printf("$_%s", sym->name);
 			} else if (sym->level == 1) {

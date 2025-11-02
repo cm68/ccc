@@ -6,6 +6,44 @@
 
 /* file-scope globals/forward declarations expected by legacy parser code */
 static struct name *global = 0;
+
+/*
+ * Generate mangled name for static variables
+ * File-scoped statics: <file_root>_<varname>
+ * Function-scoped statics: <file_root>_<funcname>_<varname>_<counter>
+ */
+static char *
+mangle_static_name(struct name *var)
+{
+	char *mangled;
+	int len;
+
+	if (!source_file_root) {
+		/* Fallback if no source file set */
+		return strdup(var->name);
+	}
+
+	if (var->level == 1) {
+		/* File-scoped static: <file_root>_<varname> */
+		len = strlen(source_file_root) + 1 + strlen(var->name) + 1;
+		mangled = malloc(len);
+		sprintf(mangled, "%s_%s", source_file_root, var->name);
+	} else if (current_function) {
+		/* Function-scoped static: <file_root>_<funcname>_<varname>_<counter> */
+		len = strlen(source_file_root) + 1 + strlen(current_function->name) +
+		      1 + strlen(var->name) + 1 + 10 + 1;  /* 10 digits for counter */
+		mangled = malloc(len);
+		sprintf(mangled, "%s_%s_%s_%d", source_file_root, current_function->name,
+		        var->name, static_counter++);
+	} else {
+		/* Shouldn't happen, but handle gracefully */
+		len = strlen(source_file_root) + 1 + strlen(var->name) + 1;
+		mangled = malloc(len);
+		sprintf(mangled, "%s_%s", source_file_root, var->name);
+	}
+
+	return mangled;
+}
 struct stmt *makestmt(char op, struct expr *left);
 char *blockname(void);
 struct stmt *asmblock(void);
@@ -357,6 +395,10 @@ parsefunc(struct name *f)
 {
 	struct name *param;
 
+	// Set current function context for static variable name mangling
+	current_function = f;
+	static_counter = 0;
+
 	// Push a new scope for the function body
 	push_scope(f->name);
 
@@ -388,6 +430,9 @@ parsefunc(struct name *f)
 
 	// Pop the function scope
 	pop_scope();
+
+	// Clear current function context
+	current_function = NULL;
 }
 
 /*
@@ -568,6 +613,7 @@ declaration()
                 /* Assign storage class */
                 if (sclass & SC_STATIC) {
                     v->sclass = SC_STATIC;
+                    v->mangled_name = mangle_static_name(v);
                 } else if (sclass & SC_EXTERN) {
                     v->sclass = SC_EXTERN;
                 }
@@ -580,6 +626,7 @@ declaration()
         /* Assign storage class for variables (non-functions or function prototypes) */
         if (sclass & SC_STATIC) {
             v->sclass = SC_STATIC;
+            v->mangled_name = mangle_static_name(v);
         } else if (sclass & SC_EXTERN) {
             v->sclass = SC_EXTERN;
         }
