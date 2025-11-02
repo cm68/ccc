@@ -23,10 +23,8 @@ statement(struct stmt *parent)
     struct stmt *st, **pst = 0;
     struct stmt *head = 0;
     // struct name *v = 0;
-    static struct name *global = 0; /* symbol list head used by older parser code */
     struct stmt *makestmt(char op, struct expr *left);
     int block = 1;
-    struct scope *sc;
 
     while (block) {
         st = NULL;  // Initialize st to NULL for each iteration
@@ -369,7 +367,7 @@ parsefunc(struct name *f)
 			// Only add parameters with actual names (skip anonymous ones)
 			if (param->name && param->name[0] != '\0') {
 				// Create a NEW name entry at level 2 (don't reuse type->elem entry)
-				struct name *param_entry = new_name(param->name, funarg, param->type, 0);
+				new_name(param->name, funarg, param->type, 0);
 			}
 		}
 	}
@@ -475,9 +473,6 @@ parse_sclass()
 void
 declaration()
 {
-	struct type *base;
-	struct name *n;
-	struct initial *i;
 	char sclass;
 	struct type *basetype;
 	struct name *v;

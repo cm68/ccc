@@ -139,8 +139,6 @@ char *type_bitdefs[] = {
 void
 dump_name(struct name *n)
 {
-	char *k;
-
 	printf("dump_name: ");
 	if (!n) { printf("null\n"); return; }
 	printf("%s (%s)", n->name, n->is_tag ? "tag" : "decl");
@@ -556,7 +554,6 @@ getbasetype()
     struct type *t;
     struct name *n;
     char off = 0;
-    char i;
     char *s;
 
     /* a typedef? */
