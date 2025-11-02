@@ -54,8 +54,7 @@ create_param_entry(char *name, struct type *type)
     arg->type = type;
     arg->level = lexlevel + 1;
     arg->is_tag = 0;
-    arg->kind = var;
-    arg->flags = V_FUNARG | V_LOCAL;
+    arg->kind = funarg;
     return arg;
 }
 
@@ -130,7 +129,6 @@ declare_internal(struct type **btp, boolean struct_elem)
             nm->level = lexlevel;
             nm->is_tag = 0;
             nm->kind = elem;  /* will be struct/union member */
-            nm->flags = 0;
             nm->offset = 0;
             nm->width = 0;
             nm->bitoff = 0;
@@ -169,7 +167,7 @@ declare_internal(struct type **btp, boolean struct_elem)
             } else if (cur.v.numeric > MAXBITS) {
                 err(ER_D_BM);
             } else {
-                nm->flags |= V_BITFIELD;
+                nm->kind = bitfield;
                 nm->width = cur.v.numeric;
             }
             gettoken();

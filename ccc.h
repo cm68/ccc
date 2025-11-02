@@ -171,16 +171,12 @@ struct type {
 /* legacy aliases used by older parser code */
 #define T_FUNC TF_FUNC
 
-/* name flags (some code expects these) */
-#define V_STATIC 0x08
-#define V_GLOBAL 0x10
-
 extern struct type *getbasetype();
 extern void dump_type(struct type *t, int lv);
 struct type *get_type(int flags, struct type *sub, int count);
 extern int compatible_function_types(struct type *t1, struct type *t2);
 
-typedef enum { prim, etag, stag, utag, var, elem, tdef, fdef } kind;
+typedef enum { prim, etag, stag, utag, var, elem, tdef, fdef, bitfield, funarg, local } kind;
 /*
  * note that at the same scope, you can have
  * multiple instances of the same name with different namespaces.
@@ -193,8 +189,7 @@ struct name {
     int level;              // lexical level
 	struct name *next;		// all names in same container
 	struct type *type;
-	char visibility;
-	char sclass;
+	char sclass;            // storage class (SC_STATIC, SC_EXTERN, etc.)
 	int offset;				// if inside a struct
     int bitoff;
     int width;
@@ -203,10 +198,6 @@ struct name {
         struct stmt *body;  // function body (for fdef)
     };
     kind kind;
-    int flags;
-#define V_BITFIELD  0x01
-#define V_FUNARG    0x02
-#define V_LOCAL     0x04
 };
 
 #define MAXBITS 32          // maximum size of bitfield

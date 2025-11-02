@@ -39,7 +39,8 @@
 #include "ccc.h"
 
 char *kindname[] = {
-    "prim", "etag", "stag", "utag", "vari", "elem", "tdef", "fdef"
+    "prim", "etag", "stag", "utag", "vari", "elem", "tdef", "fdef",
+    "bitf", "farg", "locl"
 };
 struct type *types;
 struct type *inttype;
@@ -139,7 +140,6 @@ void
 dump_name(struct name *n)
 {
 	char *k;
-    extern char *sclass_bitdefs[];
 
 	printf("dump_name: ");
 	if (!n) { printf("null\n"); return; }
@@ -147,8 +147,8 @@ dump_name(struct name *n)
 	if (n->type) {
 		dump_type(n->type, 0);
 	}
-    printf("\toffset: %d bitoff: %d width: %d sclass: %s\n",
-        n->offset, n->bitoff, n->width, bitdef(n->sclass, sclass_bitdefs));
+    printf("\toffset: %d bitoff: %d width: %d\n",
+        n->offset, n->bitoff, n->width);
 }
 
 /*

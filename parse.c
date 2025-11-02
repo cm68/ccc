@@ -369,10 +369,7 @@ parsefunc(struct name *f)
 			// Only add parameters with actual names (skip anonymous ones)
 			if (param->name && param->name[0] != '\0') {
 				// Create a NEW name entry at level 2 (don't reuse type->elem entry)
-				struct name *param_entry = new_name(param->name, var, param->type, 0);
-				if (param_entry) {
-					param_entry->flags |= V_FUNARG | V_LOCAL;
-				}
+				struct name *param_entry = new_name(param->name, funarg, param->type, 0);
 			}
 		}
 	}
@@ -578,10 +575,9 @@ declaration()
                     v->body = 0;  /* Mark as freed */
                 }
 
-                if (sclass == STATIC) {
-                    v->flags |= V_STATIC;
+                if (sclass & SC_STATIC) {
+                    v->sclass = SC_STATIC;
                 }
-                v->flags |= V_GLOBAL;
                 v->next = global;
                 global = v;
                 break;
@@ -721,11 +717,11 @@ cleanup_parser(void)
 				free_stmt(n->body);
 
 			/* Free name string (except for function parameters which are owned by type) */
-			if (!(n->flags & V_FUNARG) && n->name)
+			if (n->kind != funarg && n->name)
 				free(n->name);
 
 			/* Free the name structure itself (except function parameters) */
-			if (!(n->flags & V_FUNARG))
+			if (n->kind != funarg)
 				free(n);
 		}
 	}
