@@ -4,9 +4,6 @@
  */
 #include "cc1.h"
 
-/* Helper macro to output to ast_output or stdout */
-#define OUT (ast_output ? ast_output : stdout)
-
 /*
  * Output an expression in S-expression format
  * Constants: just the value (decimal)
@@ -20,13 +17,13 @@ emit_expr(struct expr *e)
 	struct name *sym;
 
 	if (!e) {
-		fprintf(OUT, "()");
+		fprintf(ast_output, "()");
 		return;
 	}
 
 	switch (e->op) {
 	case CONST:
-		fprintf(OUT, "%ld", e->v);
+		fprintf(ast_output, "%ld", e->v);
 		break;
 
 	case SYM:
@@ -41,63 +38,63 @@ emit_expr(struct expr *e)
 			if (sym->sclass & SC_STATIC) {
 				/* Use mangled name for statics */
 				if (sym->mangled_name) {
-					fprintf(OUT, "$S%s", sym->mangled_name);
+					fprintf(ast_output, "$S%s", sym->mangled_name);
 				} else {
 					/* Fallback if mangled name not set */
-					fprintf(OUT, "$S%s", sym->name);
+					fprintf(ast_output, "$S%s", sym->name);
 				}
 			} else if (sym->sclass & SC_EXTERN) {
-				fprintf(OUT, "$_%s", sym->name);
+				fprintf(ast_output, "$_%s", sym->name);
 			} else if (sym->level == 1) {
 				/* Global variable (not extern, not static) */
-				fprintf(OUT, "$_%s", sym->name);
+				fprintf(ast_output, "$_%s", sym->name);
 			} else if (sym->kind == funarg) {
 				/* Function argument */
-				fprintf(OUT, "$A%s", sym->name);
+				fprintf(ast_output, "$A%s", sym->name);
 			} else {
 				/* Local variable */
-				fprintf(OUT, "$%s", sym->name);
+				fprintf(ast_output, "$%s", sym->name);
 			}
 		} else {
-			fprintf(OUT, "$?");
+			fprintf(ast_output, "$?");
 		}
 		break;
 
 	case STRING:
 		/* String literals - output as string index */
-		fprintf(OUT, "S%ld", e->v);
+		fprintf(ast_output, "S%ld", e->v);
 		break;
 
 	case CALL:
 		/* Function call: (@ func arg1 arg2 ...) */
-		fprintf(OUT, "(@");
+		fprintf(ast_output, "(@");
 		if (e->left) {
-			fprintf(OUT, " ");
+			fprintf(ast_output, " ");
 			emit_expr(e->left);
 		}
 		/* Arguments are in e->right and linked via next */
 		if (e->right) {
 			struct expr *arg;
 			for (arg = e->right; arg; arg = arg->next) {
-				fprintf(OUT, " ");
+				fprintf(ast_output, " ");
 				emit_expr(arg);
 			}
 		}
-		fprintf(OUT, ")");
+		fprintf(ast_output, ")");
 		break;
 
 	default:
 		/* Operator - output in prefix notation */
-		fprintf(OUT, "(%c", e->op);
+		fprintf(ast_output, "(%c", e->op);
 		if (e->left) {
-			fprintf(OUT, " ");
+			fprintf(ast_output, " ");
 			emit_expr(e->left);
 		}
 		if (e->right) {
-			fprintf(OUT, " ");
+			fprintf(ast_output, " ");
 			emit_expr(e->right);
 		}
-		fprintf(OUT, ")");
+		fprintf(ast_output, ")");
 		break;
 	}
 }
@@ -115,146 +112,146 @@ emit_stmt(struct stmt *st)
 	/* Output this statement */
 	switch (st->op) {
 	case BEGIN:
-		fprintf(OUT, "(B");  /* Block */
+		fprintf(ast_output, "(B");  /* Block */
 		if (st->chain) {
-			fprintf(OUT, " ");
+			fprintf(ast_output, " ");
 			emit_stmt(st->chain);
 		}
-		fprintf(OUT, ")");
+		fprintf(ast_output, ")");
 		break;
 
 	case IF:
-		fprintf(OUT, "(I ");  /* If */
+		fprintf(ast_output, "(I ");  /* If */
 		emit_expr(st->left);
-		fprintf(OUT, " ");
+		fprintf(ast_output, " ");
 		if (st->chain) {
 			emit_stmt(st->chain);
 		} else {
-			fprintf(OUT, "()");
+			fprintf(ast_output, "()");
 		}
 		if (st->otherwise) {
-			fprintf(OUT, " ");
+			fprintf(ast_output, " ");
 			emit_stmt(st->otherwise);
 		}
-		fprintf(OUT, ")");
+		fprintf(ast_output, ")");
 		break;
 
 	case WHILE:
-		fprintf(OUT, "(W ");  /* While */
+		fprintf(ast_output, "(W ");  /* While */
 		emit_expr(st->left);
-		fprintf(OUT, " ");
+		fprintf(ast_output, " ");
 		if (st->chain) {
 			emit_stmt(st->chain);
 		} else {
-			fprintf(OUT, "()");
+			fprintf(ast_output, "()");
 		}
-		fprintf(OUT, ")");
+		fprintf(ast_output, ")");
 		break;
 
 	case DO:
-		fprintf(OUT, "(D ");  /* Do-while */
+		fprintf(ast_output, "(D ");  /* Do-while */
 		if (st->chain) {
 			emit_stmt(st->chain);
 		} else {
-			fprintf(OUT, "()");
+			fprintf(ast_output, "()");
 		}
-		fprintf(OUT, " ");
+		fprintf(ast_output, " ");
 		emit_expr(st->left);
-		fprintf(OUT, ")");
+		fprintf(ast_output, ")");
 		break;
 
 	case FOR:
-		fprintf(OUT, "(F ");  /* For */
+		fprintf(ast_output, "(F ");  /* For */
 		emit_expr(st->left);    /* init */
-		fprintf(OUT, " ");
+		fprintf(ast_output, " ");
 		emit_expr(st->middle);  /* condition */
-		fprintf(OUT, " ");
+		fprintf(ast_output, " ");
 		emit_expr(st->right);   /* increment */
-		fprintf(OUT, " ");
+		fprintf(ast_output, " ");
 		if (st->chain) {
 			emit_stmt(st->chain);
 		} else {
-			fprintf(OUT, "()");
+			fprintf(ast_output, "()");
 		}
-		fprintf(OUT, ")");
+		fprintf(ast_output, ")");
 		break;
 
 	case SWITCH:
-		fprintf(OUT, "(S ");  /* Switch */
+		fprintf(ast_output, "(S ");  /* Switch */
 		emit_expr(st->left);
-		fprintf(OUT, " ");
+		fprintf(ast_output, " ");
 		if (st->chain) {
 			emit_stmt(st->chain);
 		} else {
-			fprintf(OUT, "()");
+			fprintf(ast_output, "()");
 		}
-		fprintf(OUT, ")");
+		fprintf(ast_output, ")");
 		break;
 
 	case CASE:
-		fprintf(OUT, "(C ");  /* Case */
+		fprintf(ast_output, "(C ");  /* Case */
 		emit_expr(st->left);
-		fprintf(OUT, " ");
+		fprintf(ast_output, " ");
 		if (st->chain) {
 			emit_stmt(st->chain);
 		} else {
-			fprintf(OUT, "()");
+			fprintf(ast_output, "()");
 		}
-		fprintf(OUT, ")");
+		fprintf(ast_output, ")");
 		break;
 
 	case DEFAULT:
-		fprintf(OUT, "(O ");  /* Default (O for default) */
+		fprintf(ast_output, "(O ");  /* Default (O for default) */
 		if (st->chain) {
 			emit_stmt(st->chain);
 		} else {
-			fprintf(OUT, "()");
+			fprintf(ast_output, "()");
 		}
-		fprintf(OUT, ")");
+		fprintf(ast_output, ")");
 		break;
 
 	case RETURN:
-		fprintf(OUT, "(R ");  /* Return */
+		fprintf(ast_output, "(R ");  /* Return */
 		if (st->left) {
 			emit_expr(st->left);
 		}
-		fprintf(OUT, ")");
+		fprintf(ast_output, ")");
 		break;
 
 	case BREAK:
-		fprintf(OUT, "(K)");  /* Break (K for breaK) */
+		fprintf(ast_output, "(K)");  /* Break (K for breaK) */
 		break;
 
 	case CONTINUE:
-		fprintf(OUT, "(N)");  /* Continue (N from CONTINUE token) */
+		fprintf(ast_output, "(N)");  /* Continue (N from CONTINUE token) */
 		break;
 
 	case GOTO:
-		fprintf(OUT, "(G %s)", st->label ? st->label : "?");
+		fprintf(ast_output, "(G %s)", st->label ? st->label : "?");
 		break;
 
 	case LABEL:
-		fprintf(OUT, "(L %s)", st->label ? st->label : "?");
+		fprintf(ast_output, "(L %s)", st->label ? st->label : "?");
 		break;
 
 	case EXPR:
-		fprintf(OUT, "(E ");  /* Expression statement */
+		fprintf(ast_output, "(E ");  /* Expression statement */
 		emit_expr(st->left);
-		fprintf(OUT, ")");
+		fprintf(ast_output, ")");
 		break;
 
 	case ';':
-		fprintf(OUT, "(;)");  /* Empty statement */
+		fprintf(ast_output, "(;)");  /* Empty statement */
 		break;
 
 	default:
-		fprintf(OUT, "(?%d)", st->op);
+		fprintf(ast_output, "(?%d)", st->op);
 		break;
 	}
 
 	/* Output sibling statements */
 	if (st->next) {
-		fprintf(OUT, " ");
+		fprintf(ast_output, " ");
 		emit_stmt(st->next);
 	}
 }
@@ -268,22 +265,22 @@ emit_params(struct type *functype)
 	struct name *param;
 	int first = 1;
 
-	fprintf(OUT, "(");
+	fprintf(ast_output, "(");
 	if (functype && (functype->flags & TF_FUNC)) {
 		for (param = functype->elem; param; param = param->next) {
-			if (!first) fprintf(OUT, " ");
+			if (!first) fprintf(ast_output, " ");
 			first = 0;
 			if (param->name && param->name[0] != '\0') {
-				fprintf(OUT, "%s", param->name);
+				fprintf(ast_output, "%s", param->name);
 			} else {
-				fprintf(OUT, "_");  /* anonymous parameter */
+				fprintf(ast_output, "_");  /* anonymous parameter */
 			}
 			if (param->type && param->type->name) {
-				fprintf(OUT, ":%s", param->type->name);
+				fprintf(ast_output, ":%s", param->type->name);
 			}
 		}
 	}
-	fprintf(OUT, ")");
+	fprintf(ast_output, ")");
 }
 
 /*
@@ -295,27 +292,27 @@ emit_function(struct name *func)
 	if (!func || !func->body)
 		return;
 
-	fprintf(OUT, "\n; Function: %s\n", func->name);
-	fprintf(OUT, "(func %s ", func->name);
+	fprintf(ast_output, "\n; Function: %s\n", func->name);
+	fprintf(ast_output, "(func %s ", func->name);
 
 	/* Output parameter list */
 	if (func->type) {
 		emit_params(func->type);
 		/* Output return type */
-		fprintf(OUT, " ");
+		fprintf(ast_output, " ");
 		if (func->type->sub && func->type->sub->name) {
-			fprintf(OUT, "%s", func->type->sub->name);
+			fprintf(ast_output, "%s", func->type->sub->name);
 		} else {
-			fprintf(OUT, "void");
+			fprintf(ast_output, "void");
 		}
 	} else {
-		fprintf(OUT, "() void");
+		fprintf(ast_output, "() void");
 	}
 
 	/* Output function body */
-	fprintf(OUT, "\n  ");
+	fprintf(ast_output, "\n  ");
 	emit_stmt(func->body);
-	fprintf(OUT, ")\n");
+	fprintf(ast_output, ")\n");
 }
 
 /*

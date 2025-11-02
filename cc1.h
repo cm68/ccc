@@ -238,7 +238,7 @@ extern struct name *current_function; // current function being parsed
 extern int static_counter;          // counter for statics in current function
 
 /* AST output control */
-extern FILE *ast_output;            // where to write AST output (default stdout)
+extern FILE *ast_output;            // where to write AST output (stdout or -o file)
 
 /* kw.c */
 extern unsigned char cppkw[];

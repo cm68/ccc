@@ -19,7 +19,7 @@ struct name *current_function = NULL;
 int static_counter = 0;
 
 /* AST output control */
-FILE *ast_output = NULL;  // NULL means use stdout
+FILE *ast_output;  // defaults to stdout, can be overridden with -o
 
 /*
  * each file on the command line gets this treatment
@@ -112,6 +112,7 @@ main(int argc, char **argv)
 	char *s;
     int i;
 
+    ast_output = stdout;  // default AST output to stdout
     add_include("");    // the null include prefix
 
     progname = *argv++;
@@ -153,9 +154,6 @@ main(int argc, char **argv)
             case 'o':
                 if (!argc--) {
                     usage("output file not specified \n", progname);
-                }
-                if (ast_output && ast_output != stdout) {
-                    fclose(ast_output);
                 }
                 ast_output = fopen(*argv++, "w");
                 if (!ast_output) {
@@ -203,10 +201,9 @@ main(int argc, char **argv)
         process(*argv++);
     }
 
-    /* Close AST output file if opened */
-    if (ast_output && ast_output != stdout) {
+    /* Close AST output file if not stdout */
+    if (ast_output != stdout) {
         fclose(ast_output);
-        ast_output = NULL;
     }
 
     return 0;
