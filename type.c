@@ -272,7 +272,7 @@ dump_type(struct type *t, int lv)
         printf("function type: flags %x (%s) params %d\n",
             t->flags, bitdef(t->flags, type_bitdefs), param_count);
 
-        // Show parameter details with numbering
+        // Show parameter types (without names - function type signature)
         if (param_count > 0) {
             int arg_num = 0;
             for (param = t->elem; param; param = param->next) {
@@ -280,9 +280,11 @@ dump_type(struct type *t, int lv)
                 int i;
                 for (i = 0; i <= lv; i++)
                     printf("\t");
-                printf("arg %d: %s", arg_num, param->name ? param->name : "?");
+                printf("arg %d:", arg_num);
                 if (param->type && param->type->name) {
-                    printf(" (%s)", param->type->name);
+                    printf(" %s", param->type->name);
+                } else {
+                    printf(" ?");
                 }
                 printf("\n");
                 arg_num++;
