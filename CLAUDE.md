@@ -74,11 +74,12 @@ make tags
 - **expr.c**: Expression parsing with operator precedence and constant folding
 - **type.c**: Type system - manages primitive types, pointers, arrays, functions, structs/unions/enums
 - **declare.c**: Declaration parsing (variables, functions, types) including K&R style support
+- **outast.c**: AST emission in S-expression format for pass 2
 - **kw.c**: Keyword lookup tables (C keywords, CPP keywords, asm keywords)
 - **io.c**: Character-level I/O, file stack management, macro expansion buffer
 - **macro.c**: CPP macro definition and expansion
 - **error.c**: Error reporting
-- **util.c**: Utility functions (string ops, bit manipulation, hex dump)
+- **util.c**: Utility functions (string ops, bit manipulation, fdprintf for Unix syscalls)
 
 ### Auto-Generated Files
 
@@ -361,13 +362,17 @@ Tests run with:
 
 ### Recent Improvements
 
-1. **Typedef support** - Global and scoped typedefs inside functions with proper shadowing
-2. **Forward struct declarations** - typedef struct S S_t; works before struct definition
-3. **Local variable declarations** - Full support for declarations inside function bodies
-4. **Test infrastructure reorganization** - 95+ tests organized into 12 categories in tests/Makefile
-5. **Unit test framework** - Dedicated unit_test/ directory with component tests
-6. **Memory leak fixes** - Valgrind clean on all tests
-7. **Statement parsing complete** - All control flow statements working
-8. **K&R function support** - Full K&R style function definitions
-9. **Constant folding** - All operators with proper precedence
+1. **AST emission for pass 2** - Complete S-expression output with single-char operators
+2. **Global variable initializers** - Arrays, structs, scalar initializers in AST
+3. **Unix syscall migration** - fdprintf() replaces fprintf(), uses write() instead of stdio
+4. **Removed MAXTRACE debug code** - Eliminated 192 lines of stderr debug traces
+5. **Typedef support** - Global and scoped typedefs inside functions with proper shadowing
+6. **Local variable declarations** - Full support for declarations inside function bodies
+7. **Test infrastructure** - 95+ tests organized into 12 categories in tests/Makefile
+8. **Memory leak fixes** - Valgrind clean on all tests
+9. **K&R function support** - Full K&R style function definitions
 10. **Comprehensive preprocessor** - Macros, includes, conditional compilation, stringify, token pasting
+
+### Code Style
+
+- Minimize code size, even at some cost to clarity

@@ -258,6 +258,30 @@ The format is designed for easy parsing:
 4. All symbols prefixed with `$` for easy identification
 5. Comments start with `;` (ignored by parser)
 
+## Initializers
+
+Global variables can have initializers:
+
+**Scalar initializers:**
+```c
+int a = 42;
+```
+Emits: `(g $_a _short_ 42)`
+
+**Array initializers:**
+```c
+int nums[3] = { 10, 20, 30 };
+```
+Emits: `(g $_nums :array:3 (list 10 20 30))`
+
+**Struct array initializers:**
+```c
+struct point coords[2] = { {10, 20}, {30, 40} };
+```
+Emits: `(g $_coords :array:2 (list (, 10 20) (, 30 40)))`
+
+Note: The `(list ...)` form is used for multi-element initializers that are linked via expr->next pointers.
+
 ## Type Names
 
 Type names from the compiler's type system:
@@ -271,4 +295,8 @@ Type names from the compiler's type system:
 - `_float_` - float type
 - `_double_` - double type
 
-Pointer and array types are represented with modifiers.
+Type information for variables includes:
+- Primitive types: type name (e.g., `_short_`)
+- Pointers: `:ptr`
+- Arrays: `:array:count` (e.g., `:array:10`)
+- Structs: `:struct:size` (e.g., `:struct:8`)

@@ -6,25 +6,22 @@ yet implemented.
 
 ## Project Status
 
-**Pass 1 (cc1) - Substantially Complete**
+**Pass 1 (cc1) - Complete**
 
-The compiler successfully parses C code including:
+The compiler successfully parses C code and outputs AST in S-expression format:
 - Full C preprocessor (CPP) with macros, includes, conditional compilation
 - Complete lexical analysis (tokenization)
 - Type system: primitives, pointers, arrays, functions, structs, unions, enums
 - Declaration parsing: variables, functions (K&R and ANSI-style), typedefs
-- Function type normalization: parameter names don't affect type compatibility
-- ANSI-style function definitions: `int foo(int x) { }` now works correctly
-- Forward declarations with different parameter names supported
 - Expression parsing with constant folding and proper operator precedence
 - Statement parsing: all control flow, function bodies, scoped blocks
-- Forward declarations and incomplete types
-- Typedef support including scoped typedefs inside functions
+- AST emission: S-expression output with global vars, functions, initializers
+- Unix syscall I/O: fdprintf() instead of stdio for AST output
 - Comprehensive test suite (95+ tests organized by category)
 
 **Pass 2 (cc2) - Not Yet Implemented**
 
-Code generation and assembler output are planned but not yet started.
+Code generation planned. AST format ready for consumption.
 
 ## Architecture
 
@@ -32,10 +29,11 @@ This is a 2-pass compiler:
 
 **Pass 1 (cc1)**: Recursive descent parser with embedded C preprocessor
 - Parses and validates C source code
-- Outputs preprocessed intermediate file (.i)
-- ~4,600 lines of C code
+- Outputs AST in S-expression format (single-char operators)
+- Uses Unix syscalls (write) instead of stdio for output
+- ~4,800 lines of C code
 
 **Pass 2 (cc2)**: Code generator and assembler
-- Reads parse tree from pass 1
+- Reads AST from pass 1 (S-expression format)
 - Generates object file
 - Not yet implemented
