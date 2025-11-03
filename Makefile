@@ -41,8 +41,8 @@ all: cc1 cc2 ccc
 cc1: $(CC1OBJECTS)
 	$(LD) $(LDFLAGS) cc1 $(CC1OBJECTS)
 
-cc2: cc2.o
-	$(LD) $(LDFLAGS) cc2 cc2.o
+cc2: cc2.o util.o
+	$(LD) $(LDFLAGS) cc2 cc2.o util.o
 
 ccc: ccc.o
 	$(LD) $(LDFLAGS) ccc ccc.o
