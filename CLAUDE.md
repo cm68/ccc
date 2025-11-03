@@ -74,7 +74,7 @@ make tags
 - **expr.c**: Expression parsing with operator precedence and constant folding
 - **type.c**: Type system - manages primitive types, pointers, arrays, functions, structs/unions/enums
 - **declare.c**: Declaration parsing (variables, functions, types) including K&R style support
-- **outast.c**: AST emission in S-expression format for pass 2
+- **outast.c**: AST emission in S-expression format for pass 2 with memory width annotations
 - **kw.c**: Keyword lookup tables (C keywords, CPP keywords, asm keywords)
 - **io.c**: Character-level I/O, file stack management, macro expansion buffer
 - **macro.c**: CPP macro definition and expansion
@@ -317,6 +317,69 @@ result = (*funcs[i+1])(5, 3);   // index expression evaluated and scaled
 ```
 
 Both implicit and explicit syntaxes are supported and generate correct AST. The explicit syntax `(*funcs[x])(args)` is preferred and more clearly shows the dereference operation.
+
+### Memory Width Annotations
+
+The AST output includes memory width annotations on DEREF (M) and ASSIGN (=) operators to provide size information for code generation. This architectural decision enables several important benefits:
+
+**Annotation Format**:
+Size suffixes are appended to memory operations based on the type being accessed:
+- `:b` - byte (1 byte: char)
+- `:s` - short (2 bytes: short, int)
+- `:l` - long (4 bytes: long)
+- `:p` - pointer (2 bytes: any pointer type)
+- `:f` - float (4 bytes: float)
+- `:d` - double (8 bytes: double)
+
+**Examples**:
+```c
+char c;
+int i;
+long l;
+
+c = 10;              // (=:b $_c 10)
+i = c;               // (=:s $_i (M:b $_c))
+l = i;               // (=:l $_l (M:s $_i))
+```
+
+**Benefit 1: Deferred Type Checking to Pass 2**:
+Size annotations allow pass 1 (cc1) to remain simple and focused on parsing, while pass 2 (cc2) handles all type width mismatches and conversions:
+
+- Pass 1 just annotates the source and destination widths
+- Pass 2 sees complete information: `(=:s $_i (M:b $a))` shows int←byte assignment
+- Type conversions, sign extensions, and warnings are deferred to code generation time
+- Pass 1 doesn't need complex type checking logic
+- Pass 2 has full context to generate optimal conversion code
+
+This separation of concerns keeps the parser clean and moves complexity to where it's needed (code generation).
+
+**Benefit 2: Byte Arithmetic Optimization**:
+Size annotations enable the code generator to use native byte arithmetic for byte-sized variables instead of promoting to word size:
+
+```c
+char a, b, c;
+a = b + c;           // (=:b $a (+:b (M:b $b) (M:b $c)))
+```
+
+Without annotations, the code generator would need to:
+1. Load b as byte, promote to word
+2. Load c as byte, promote to word
+3. Add words
+4. Truncate result to byte
+5. Store byte
+
+With annotations, the code generator can:
+1. Load b as byte
+2. Add c as byte (native byte arithmetic)
+3. Store a as byte
+
+This generates smaller, faster code and preserves correct overflow semantics for byte-sized operations. On Z80 architecture, this is particularly important as many instructions operate directly on 8-bit values.
+
+**Implementation**:
+The `get_size_suffix()` function in outast.c examines type flags and size fields:
+- Checks `TF_POINTER` flag for pointers
+- Checks `TF_FLOAT` flag for float vs long disambiguation
+- Uses `type->size` to determine width for other types
 
 ### Statement Parsing
 
