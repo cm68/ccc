@@ -134,7 +134,10 @@ parse_expr(char pri, struct stmt *st)
     }
 
     case SYM: {
-        /* Variable reference - SYM = address, wrap in DEREF to get value */
+        /* Symbol reference - SYM = address
+         * For variables: wrap in DEREF to get value
+         * For functions: return address (decay to function pointer)
+         */
         struct name *n;
         struct expr *sym;
 
@@ -148,9 +151,21 @@ parse_expr(char pri, struct stmt *st)
             sym = makeexpr(SYM, 0);
             sym->var = (struct var *)n;
             sym->type = n->type;
-            e = makeexpr(DEREF, 0);
-            e->left = sym;
-            e->type = n->type;
+
+            // Functions and arrays decay to pointers (addresses)
+            // Only wrap non-functions in DEREF to get their value
+            if (n->type && (n->type->flags & TF_FUNC)) {
+                // Function name: return address (decay to function pointer)
+                e = sym;
+            } else if (n->type && (n->type->flags & TF_ARRAY)) {
+                // Array name: decays to pointer to first element
+                e = sym;
+            } else {
+                // Variable: wrap in DEREF to get value
+                e = makeexpr(DEREF, 0);
+                e->left = sym;
+                e->type = n->type;
+            }
         }
         gettoken();
         break;
