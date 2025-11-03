@@ -28,3 +28,6 @@ unit_test/test_kw
 unit_test/test_insertmacro
 test_kw_real
 *.ast.*
+*.ast
+a.out
+do.ast
