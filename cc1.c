@@ -6,7 +6,7 @@
  * and type resolution
  */
 #include "cc1.h"
-// #include <fcntl.h>
+#include <fcntl.h>
 
 #include "debugtags.c"
 
@@ -19,7 +19,7 @@ struct name *current_function = NULL;
 int static_counter = 0;
 
 /* AST output control */
-FILE *ast_output;  // defaults to stdout, can be overridden with -o
+int ast_fd;  // defaults to 1 (stdout), can be overridden with -o
 
 /*
  * each file on the command line gets this treatment
@@ -113,7 +113,7 @@ main(int argc, char **argv)
 	char *s;
     int i;
 
-    ast_output = stdout;  // default AST output to stdout
+    ast_fd = 1;  // default AST output to stdout (fd 1)
     add_include("");    // the null include prefix
 
     progname = *argv++;
@@ -156,8 +156,8 @@ main(int argc, char **argv)
                 if (!argc--) {
                     usage("output file not specified \n", progname);
                 }
-                ast_output = fopen(*argv++, "w");
-                if (!ast_output) {
+                ast_fd = open(*argv++, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+                if (ast_fd < 0) {
                     perror("cannot open output file");
                     exit(1);
                 }
@@ -203,8 +203,8 @@ main(int argc, char **argv)
     }
 
     /* Close AST output file if not stdout */
-    if (ast_output != stdout) {
-        fclose(ast_output);
+    if (ast_fd > 1) {
+        close(ast_fd);
     }
 
     return 0;

@@ -17,13 +17,13 @@ emit_expr(struct expr *e)
 	struct name *sym;
 
 	if (!e) {
-		fprintf(ast_output, "()");
+		fdprintf(ast_fd, "()");
 		return;
 	}
 
 	switch (e->op) {
 	case CONST:
-		fprintf(ast_output, "%ld", e->v);
+		fdprintf(ast_fd, "%ld", e->v);
 		break;
 
 	case SYM:
@@ -38,63 +38,63 @@ emit_expr(struct expr *e)
 			if (sym->sclass & SC_STATIC) {
 				/* Use mangled name for statics */
 				if (sym->mangled_name) {
-					fprintf(ast_output, "$S%s", sym->mangled_name);
+					fdprintf(ast_fd, "$S%s", sym->mangled_name);
 				} else {
 					/* Fallback if mangled name not set */
-					fprintf(ast_output, "$S%s", sym->name);
+					fdprintf(ast_fd, "$S%s", sym->name);
 				}
 			} else if (sym->sclass & SC_EXTERN) {
-				fprintf(ast_output, "$_%s", sym->name);
+				fdprintf(ast_fd, "$_%s", sym->name);
 			} else if (sym->level == 1) {
 				/* Global variable (not extern, not static) */
-				fprintf(ast_output, "$_%s", sym->name);
+				fdprintf(ast_fd, "$_%s", sym->name);
 			} else if (sym->kind == funarg) {
 				/* Function argument */
-				fprintf(ast_output, "$A%s", sym->name);
+				fdprintf(ast_fd, "$A%s", sym->name);
 			} else {
 				/* Local variable */
-				fprintf(ast_output, "$%s", sym->name);
+				fdprintf(ast_fd, "$%s", sym->name);
 			}
 		} else {
-			fprintf(ast_output, "$?");
+			fdprintf(ast_fd, "$?");
 		}
 		break;
 
 	case STRING:
 		/* String literals - output as string index */
-		fprintf(ast_output, "S%ld", e->v);
+		fdprintf(ast_fd, "S%ld", e->v);
 		break;
 
 	case CALL:
 		/* Function call: (@ func arg1 arg2 ...) */
-		fprintf(ast_output, "(@");
+		fdprintf(ast_fd, "(@");
 		if (e->left) {
-			fprintf(ast_output, " ");
+			fdprintf(ast_fd, " ");
 			emit_expr(e->left);
 		}
 		/* Arguments are in e->right and linked via next */
 		if (e->right) {
 			struct expr *arg;
 			for (arg = e->right; arg; arg = arg->next) {
-				fprintf(ast_output, " ");
+				fdprintf(ast_fd, " ");
 				emit_expr(arg);
 			}
 		}
-		fprintf(ast_output, ")");
+		fdprintf(ast_fd, ")");
 		break;
 
 	default:
 		/* Operator - output in prefix notation */
-		fprintf(ast_output, "(%c", e->op);
+		fdprintf(ast_fd, "(%c", e->op);
 		if (e->left) {
-			fprintf(ast_output, " ");
+			fdprintf(ast_fd, " ");
 			emit_expr(e->left);
 		}
 		if (e->right) {
-			fprintf(ast_output, " ");
+			fdprintf(ast_fd, " ");
 			emit_expr(e->right);
 		}
-		fprintf(ast_output, ")");
+		fdprintf(ast_fd, ")");
 		break;
 	}
 }
@@ -112,17 +112,17 @@ emit_type_info(struct type *type)
 
 	if (type->name && type->name[0]) {
 		/* Primitive or named type */
-		fprintf(ast_output, " %s", type->name);
+		fdprintf(ast_fd, " %s", type->name);
 	} else if (type->flags & TF_AGGREGATE) {
 		/* Struct/union without type name - output size */
-		fprintf(ast_output, " :struct:%d", type->size);
+		fdprintf(ast_fd, " :struct:%d", type->size);
 	} else if (type->flags & TF_POINTER) {
-		fprintf(ast_output, " :ptr");
+		fdprintf(ast_fd, " :ptr");
 	} else if (type->flags & TF_ARRAY) {
-		fprintf(ast_output, " :array:%d", type->count);
+		fdprintf(ast_fd, " :array:%d", type->count);
 	} else {
 		/* Unknown type - output size */
-		fprintf(ast_output, " :size:%d", type->size);
+		fdprintf(ast_fd, " :size:%d", type->size);
 	}
 }
 
@@ -139,157 +139,157 @@ emit_stmt(struct stmt *st)
 	/* Output this statement */
 	switch (st->op) {
 	case BEGIN:
-		fprintf(ast_output, "(B");  /* Block */
+		fdprintf(ast_fd, "(B");  /* Block */
 
 		/* Emit declarations for local variables in this scope */
 		if (st->locals) {
 			struct name *local;
 			for (local = st->locals; local; local = local->next) {
-				fprintf(ast_output, " (d %s", local->name);
+				fdprintf(ast_fd, " (d %s", local->name);
 				emit_type_info(local->type);
-				fprintf(ast_output, ")");
+				fdprintf(ast_fd, ")");
 			}
 		}
 
 		if (st->chain) {
-			fprintf(ast_output, " ");
+			fdprintf(ast_fd, " ");
 			emit_stmt(st->chain);
 		}
-		fprintf(ast_output, ")");
+		fdprintf(ast_fd, ")");
 		break;
 
 	case IF:
-		fprintf(ast_output, "(I ");  /* If */
+		fdprintf(ast_fd, "(I ");  /* If */
 		emit_expr(st->left);
-		fprintf(ast_output, " ");
+		fdprintf(ast_fd, " ");
 		if (st->chain) {
 			emit_stmt(st->chain);
 		} else {
-			fprintf(ast_output, "()");
+			fdprintf(ast_fd, "()");
 		}
 		if (st->otherwise) {
-			fprintf(ast_output, " ");
+			fdprintf(ast_fd, " ");
 			emit_stmt(st->otherwise);
 		}
-		fprintf(ast_output, ")");
+		fdprintf(ast_fd, ")");
 		break;
 
 	case WHILE:
-		fprintf(ast_output, "(W ");  /* While */
+		fdprintf(ast_fd, "(W ");  /* While */
 		emit_expr(st->left);
-		fprintf(ast_output, " ");
+		fdprintf(ast_fd, " ");
 		if (st->chain) {
 			emit_stmt(st->chain);
 		} else {
-			fprintf(ast_output, "()");
+			fdprintf(ast_fd, "()");
 		}
-		fprintf(ast_output, ")");
+		fdprintf(ast_fd, ")");
 		break;
 
 	case DO:
-		fprintf(ast_output, "(D ");  /* Do-while */
+		fdprintf(ast_fd, "(D ");  /* Do-while */
 		if (st->chain) {
 			emit_stmt(st->chain);
 		} else {
-			fprintf(ast_output, "()");
+			fdprintf(ast_fd, "()");
 		}
-		fprintf(ast_output, " ");
+		fdprintf(ast_fd, " ");
 		emit_expr(st->left);
-		fprintf(ast_output, ")");
+		fdprintf(ast_fd, ")");
 		break;
 
 	case FOR:
-		fprintf(ast_output, "(F ");  /* For */
+		fdprintf(ast_fd, "(F ");  /* For */
 		emit_expr(st->left);    /* init */
-		fprintf(ast_output, " ");
+		fdprintf(ast_fd, " ");
 		emit_expr(st->middle);  /* condition */
-		fprintf(ast_output, " ");
+		fdprintf(ast_fd, " ");
 		emit_expr(st->right);   /* increment */
-		fprintf(ast_output, " ");
+		fdprintf(ast_fd, " ");
 		if (st->chain) {
 			emit_stmt(st->chain);
 		} else {
-			fprintf(ast_output, "()");
+			fdprintf(ast_fd, "()");
 		}
-		fprintf(ast_output, ")");
+		fdprintf(ast_fd, ")");
 		break;
 
 	case SWITCH:
-		fprintf(ast_output, "(S ");  /* Switch */
+		fdprintf(ast_fd, "(S ");  /* Switch */
 		emit_expr(st->left);
-		fprintf(ast_output, " ");
+		fdprintf(ast_fd, " ");
 		if (st->chain) {
 			emit_stmt(st->chain);
 		} else {
-			fprintf(ast_output, "()");
+			fdprintf(ast_fd, "()");
 		}
-		fprintf(ast_output, ")");
+		fdprintf(ast_fd, ")");
 		break;
 
 	case CASE:
-		fprintf(ast_output, "(C ");  /* Case */
+		fdprintf(ast_fd, "(C ");  /* Case */
 		emit_expr(st->left);
-		fprintf(ast_output, " ");
+		fdprintf(ast_fd, " ");
 		if (st->chain) {
 			emit_stmt(st->chain);
 		} else {
-			fprintf(ast_output, "()");
+			fdprintf(ast_fd, "()");
 		}
-		fprintf(ast_output, ")");
+		fdprintf(ast_fd, ")");
 		break;
 
 	case DEFAULT:
-		fprintf(ast_output, "(O ");  /* Default (O for default) */
+		fdprintf(ast_fd, "(O ");  /* Default (O for default) */
 		if (st->chain) {
 			emit_stmt(st->chain);
 		} else {
-			fprintf(ast_output, "()");
+			fdprintf(ast_fd, "()");
 		}
-		fprintf(ast_output, ")");
+		fdprintf(ast_fd, ")");
 		break;
 
 	case RETURN:
-		fprintf(ast_output, "(R ");  /* Return */
+		fdprintf(ast_fd, "(R ");  /* Return */
 		if (st->left) {
 			emit_expr(st->left);
 		}
-		fprintf(ast_output, ")");
+		fdprintf(ast_fd, ")");
 		break;
 
 	case BREAK:
-		fprintf(ast_output, "(K)");  /* Break (K for breaK) */
+		fdprintf(ast_fd, "(K)");  /* Break (K for breaK) */
 		break;
 
 	case CONTINUE:
-		fprintf(ast_output, "(N)");  /* Continue (N from CONTINUE token) */
+		fdprintf(ast_fd, "(N)");  /* Continue (N from CONTINUE token) */
 		break;
 
 	case GOTO:
-		fprintf(ast_output, "(G %s)", st->label ? st->label : "?");
+		fdprintf(ast_fd, "(G %s)", st->label ? st->label : "?");
 		break;
 
 	case LABEL:
-		fprintf(ast_output, "(L %s)", st->label ? st->label : "?");
+		fdprintf(ast_fd, "(L %s)", st->label ? st->label : "?");
 		break;
 
 	case EXPR:
-		fprintf(ast_output, "(E ");  /* Expression statement */
+		fdprintf(ast_fd, "(E ");  /* Expression statement */
 		emit_expr(st->left);
-		fprintf(ast_output, ")");
+		fdprintf(ast_fd, ")");
 		break;
 
 	case ';':
-		fprintf(ast_output, "(;)");  /* Empty statement */
+		fdprintf(ast_fd, "(;)");  /* Empty statement */
 		break;
 
 	default:
-		fprintf(ast_output, "(?%d)", st->op);
+		fdprintf(ast_fd, "(?%d)", st->op);
 		break;
 	}
 
 	/* Output sibling statements */
 	if (st->next) {
-		fprintf(ast_output, " ");
+		fdprintf(ast_fd, " ");
 		emit_stmt(st->next);
 	}
 }
@@ -303,22 +303,22 @@ emit_params(struct type *functype)
 	struct name *param;
 	int first = 1;
 
-	fprintf(ast_output, "(");
+	fdprintf(ast_fd, "(");
 	if (functype && (functype->flags & TF_FUNC)) {
 		for (param = functype->elem; param; param = param->next) {
-			if (!first) fprintf(ast_output, " ");
+			if (!first) fdprintf(ast_fd, " ");
 			first = 0;
 			if (param->name && param->name[0] != '\0') {
-				fprintf(ast_output, "%s", param->name);
+				fdprintf(ast_fd, "%s", param->name);
 			} else {
-				fprintf(ast_output, "_");  /* anonymous parameter */
+				fdprintf(ast_fd, "_");  /* anonymous parameter */
 			}
 			if (param->type && param->type->name) {
-				fprintf(ast_output, ":%s", param->type->name);
+				fdprintf(ast_fd, ":%s", param->type->name);
 			}
 		}
 	}
-	fprintf(ast_output, ")");
+	fdprintf(ast_fd, ")");
 }
 
 /*
@@ -351,14 +351,14 @@ emit_declarations(struct name *func)
 		/* Emit declaration node: (d varname type) */
 		if (n->kind == funarg || n->kind == var || n->kind == local) {
 			if (!has_decls) {
-				fprintf(ast_output, "\n  ");
+				fdprintf(ast_fd, "\n  ");
 				has_decls = 1;
 			} else {
-				fprintf(ast_output, " ");
+				fdprintf(ast_fd, " ");
 			}
-			fprintf(ast_output, "(d %s", n->name);
+			fdprintf(ast_fd, "(d %s", n->name);
 			emit_type_info(n->type);
-			fprintf(ast_output, ")");
+			fdprintf(ast_fd, ")");
 		}
 	}
 }
@@ -372,30 +372,30 @@ emit_function(struct name *func)
 	if (!func || !func->body)
 		return;
 
-	fprintf(ast_output, "\n; Function: %s\n", func->name);
-	fprintf(ast_output, "(f %s ", func->name);
+	fdprintf(ast_fd, "\n; Function: %s\n", func->name);
+	fdprintf(ast_fd, "(f %s ", func->name);
 
 	/* Output parameter list */
 	if (func->type) {
 		emit_params(func->type);
 		/* Output return type */
-		fprintf(ast_output, " ");
+		fdprintf(ast_fd, " ");
 		if (func->type->sub && func->type->sub->name) {
-			fprintf(ast_output, "%s", func->type->sub->name);
+			fdprintf(ast_fd, "%s", func->type->sub->name);
 		} else {
-			fprintf(ast_output, "void");
+			fdprintf(ast_fd, "void");
 		}
 	} else {
-		fprintf(ast_output, "() void");
+		fdprintf(ast_fd, "() void");
 	}
 
 	/* Output declarations for parameters and local variables */
 	emit_declarations(func);
 
 	/* Output function body */
-	fprintf(ast_output, "\n  ");
+	fdprintf(ast_fd, "\n  ");
 	emit_stmt(func->body);
-	fprintf(ast_output, ")\n");
+	fdprintf(ast_fd, ")\n");
 }
 
 /*
@@ -407,12 +407,12 @@ emit_initializer_list(struct expr *init)
 {
 	struct expr *item;
 
-	fprintf(ast_output, "(list");
+	fdprintf(ast_fd, "(list");
 	for (item = init; item; item = item->next) {
-		fprintf(ast_output, " ");
+		fdprintf(ast_fd, " ");
 		emit_expr(item);
 	}
-	fprintf(ast_output, ")");
+	fdprintf(ast_fd, ")");
 }
 
 /*
@@ -425,22 +425,22 @@ emit_global_var(struct name *var)
 	if (!var || !var->type)
 		return;
 
-	fprintf(ast_output, "\n; Global variable: %s\n", var->name);
-	fprintf(ast_output, "(g ");
+	fdprintf(ast_fd, "\n; Global variable: %s\n", var->name);
+	fdprintf(ast_fd, "(g ");
 
 	/* Output variable name with scope prefix */
 	if (var->sclass & SC_STATIC) {
 		/* Use mangled name for statics */
 		if (var->mangled_name) {
-			fprintf(ast_output, "$S%s", var->mangled_name);
+			fdprintf(ast_fd, "$S%s", var->mangled_name);
 		} else {
-			fprintf(ast_output, "$S%s", var->name);
+			fdprintf(ast_fd, "$S%s", var->name);
 		}
 	} else if (var->sclass & SC_EXTERN) {
-		fprintf(ast_output, "$_%s", var->name);
+		fdprintf(ast_fd, "$_%s", var->name);
 	} else {
 		/* Global variable (not extern, not static) */
-		fprintf(ast_output, "$_%s", var->name);
+		fdprintf(ast_fd, "$_%s", var->name);
 	}
 
 	/* Output type */
@@ -448,7 +448,7 @@ emit_global_var(struct name *var)
 
 	/* Output initializer if present */
 	if (var->init) {
-		fprintf(ast_output, " ");
+		fdprintf(ast_fd, " ");
 		/* Check if this is an initializer list (has next pointers) */
 		if (var->init->next) {
 			emit_initializer_list(var->init);
@@ -457,7 +457,7 @@ emit_global_var(struct name *var)
 		}
 	}
 
-	fprintf(ast_output, ")\n");
+	fdprintf(ast_fd, ")\n");
 }
 
 /*
