@@ -14,7 +14,8 @@ DEBUG= -ggdb3 -O0
 CC = gcc
 #CC = sdcc
 ifeq ($(CC),sdcc)
-CFLAGS = $(DEFINES) -mz80 --oldralloc
+DEFINES=
+CFLAGS = -DSDCC $(DEFINES) -mz80
 LD = sdldz80
 LDFLAGS= -l /usr/share/sdcc/lib/z80/z80.lib -m -w -i -y
 endif

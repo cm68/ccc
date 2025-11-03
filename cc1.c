@@ -6,7 +6,9 @@
  * and type resolution
  */
 #include "cc1.h"
+#ifndef SDCC
 #include <fcntl.h>
+#endif
 
 #include "debugtags.c"
 
@@ -156,7 +158,11 @@ main(int argc, char **argv)
                 if (!argc--) {
                     usage("output file not specified \n", progname);
                 }
+#ifdef SDCC
+                ast_fd = creat(*argv++, 0644);
+#else
                 ast_fd = open(*argv++, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+#endif
                 if (ast_fd < 0) {
                     perror("cannot open output file");
                     exit(1);

@@ -5,7 +5,6 @@
 
 #include "cc1.h"
 #include <stdarg.h>
-#include <unistd.h>
 
 #define PSIZE   80          // max string containing bitdefs
 #define NPATS   2           // and 2 per printf
