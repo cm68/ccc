@@ -183,6 +183,7 @@ declare_internal(struct type **btp, boolean struct_elem)
         }
         t = get_type(TF_ARRAY, t, i);
         need(RBRACK, RBRACK, ER_D_AD);
+        suffix = t;  // Store array type in suffix so it gets assigned to nm->type
     }
 
     if (cur.type == LPAR) {     // ( <func_arg>[,<func_arg>]*. )

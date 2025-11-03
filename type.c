@@ -409,15 +409,21 @@ get_type(
     /*
      * search through types to see if we have a permissive match
      * Cycle protection: limit iterations to prevent infinite loop
+     *
+     * NOTE: Aggregate types (struct/union) are NOT shared because each
+     * struct/union definition is unique with its own member list and size.
+     * Only share non-aggregate types (pointers, arrays, functions, primitives).
      */
-    for (t = types; t && depth < 1000; t = t->next, depth++) {
-        if ((t->flags == flags) && (t->sub == sub)) {
-            return t;
+    if (!(flags & TF_AGGREGATE)) {
+        for (t = types; t && depth < 1000; t = t->next, depth++) {
+            if ((t->flags == flags) && (t->sub == sub)) {
+                return t;
+            }
         }
-    }
 
-    if (depth >= 1000) {
-        printf("WARNING: type cache search hit depth limit, possible cycle in types list\n");
+        if (depth >= 1000) {
+            printf("WARNING: type cache search hit depth limit, possible cycle in types list\n");
+        }
     }
 
     t = calloc(1, sizeof(*t));  // Zero-initialize all fields
@@ -427,6 +433,18 @@ get_type(
     if (t->count == -1) {
         t->flags |= TF_INCOMPLETE;
     }
+
+    /* Calculate size for arrays and pointers */
+    if (flags & TF_ARRAY) {
+        if (sub && count > 0) {
+            t->size = sub->size * count;
+        } else {
+            t->size = 0;  // incomplete array
+        }
+    } else if (flags & TF_POINTER) {
+        t->size = TS_PTR;  // pointer size constant
+    }
+
     t->next = types;
     types = t;
 
