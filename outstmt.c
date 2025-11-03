@@ -399,6 +399,23 @@ emit_function(struct name *func)
 }
 
 /*
+ * Emit an initializer list (linked via next pointers)
+ * Used for array/struct initializers like {1, 2, 3}
+ */
+static void
+emit_initializer_list(struct expr *init)
+{
+	struct expr *item;
+
+	fprintf(ast_output, "(list");
+	for (item = init; item; item = item->next) {
+		fprintf(ast_output, " ");
+		emit_expr(item);
+	}
+	fprintf(ast_output, ")");
+}
+
+/*
  * Output a global variable declaration with optional initializer
  * Format: (g varname type [init-expr])
  */
@@ -432,7 +449,12 @@ emit_global_var(struct name *var)
 	/* Output initializer if present */
 	if (var->init) {
 		fprintf(ast_output, " ");
-		emit_expr(var->init);
+		/* Check if this is an initializer list (has next pointers) */
+		if (var->init->next) {
+			emit_initializer_list(var->init);
+		} else {
+			emit_expr(var->init);
+		}
 	}
 
 	fprintf(ast_output, ")\n");
