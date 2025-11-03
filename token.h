@@ -40,7 +40,7 @@ typedef enum {
     SYM = '5', NUMBER = '9', STRING = '\"',
 
     /* operators */
-    ASSIGN = '=', DOT = '.', DEREF = 'M',
+    ASSIGN = '=', DOT = '.', ARROW = 'q', DEREF = 'M',
     PLUS = '+', MINUS = '-', STAR = '*', DIV = '/', MOD = '%',
     AND = '&', OR = '|', XOR = '^',
     LT = '<', GT = '>', BANG = '!', TWIDDLE = '~',

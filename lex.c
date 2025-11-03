@@ -649,7 +649,7 @@ gettoken()
             }
         }
         if ((c == '-') && (curchar == '>')) {
-            next.type = DEREF;
+            next.type = ARROW;
             advance();
         }
         break;

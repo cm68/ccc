@@ -296,50 +296,119 @@ parse_expr(char pri, struct stmt *st)
     }
 
     /*
-     * Handle postfix operators: function calls, array subscripts, etc.
+     * Handle postfix operators: function calls, array subscripts, struct access
      */
-    while (cur.type == LPAR) {
-        // Function call: expr(arg1, arg2, ...)
-        struct expr *call, *arg, *lastarg;
+    while (cur.type == LPAR || cur.type == DOT || cur.type == ARROW) {
+        if (cur.type == LPAR) {
+            // Function call: expr(arg1, arg2, ...)
+            struct expr *call, *arg, *lastarg;
 
-        gettoken();  // consume '('
+            gettoken();  // consume '('
 
-        // Create CALL node with function expression as left operand
-        call = makeexpr(CALL, e);
-        call->left->up = call;
+            // Create CALL node with function expression as left operand
+            call = makeexpr(CALL, e);
+            call->left->up = call;
 
-        // Parse argument list
-        lastarg = NULL;
-        if (cur.type != RPAR) {
-            // Parse first argument
-            arg = parse_expr(OP_PRI_COMMA, st);
-            if (arg) {
-                arg->flags |= E_FUNARG;
-                call->right = arg;
-                arg->up = call;
-                lastarg = arg;
-            }
-
-            // Parse remaining arguments
-            while (cur.type == COMMA) {
-                gettoken();
+            // Parse argument list
+            lastarg = NULL;
+            if (cur.type != RPAR) {
+                // Parse first argument
                 arg = parse_expr(OP_PRI_COMMA, st);
                 if (arg) {
                     arg->flags |= E_FUNARG;
-                    if (lastarg) {
-                        lastarg->next = arg;
-                        arg->prev = lastarg;
-                    }
+                    call->right = arg;
+                    arg->up = call;
                     lastarg = arg;
                 }
+
+                // Parse remaining arguments
+                while (cur.type == COMMA) {
+                    gettoken();
+                    arg = parse_expr(OP_PRI_COMMA, st);
+                    if (arg) {
+                        arg->flags |= E_FUNARG;
+                        if (lastarg) {
+                            lastarg->next = arg;
+                            arg->prev = lastarg;
+                        }
+                        lastarg = arg;
+                    }
+                }
             }
+
+            need(RPAR, RPAR, ER_E_SP);
+
+            // Result type will be determined later from function signature
+            call->cost = call->left->cost + 1;
+            e = call;
+        } else if (cur.type == DOT || cur.type == ARROW) {
+            // Struct member access: s.x or p->x
+            struct expr *base, *offset_expr, *addr;
+            struct name *member;
+            int is_arrow = (cur.type == ARROW);
+
+            gettoken();  // consume '.' or '->'
+
+            if (cur.type != SYM) {
+                err(ER_E_UO);
+                break;
+            }
+
+            // For s.x: e is DEREF(SYM s), unwrap to get SYM s
+            // For p->x: e is DEREF(SYM p), keep as-is (pointer value)
+            if (is_arrow) {
+                base = e;  // pointer value
+            } else {
+                // Unwrap DEREF to get address
+                if (e && e->op == DEREF) {
+                    base = e->left;
+                } else {
+                    base = e;
+                }
+            }
+
+            // Look up member in struct/union
+            member = NULL;
+            if (base && base->type) {
+                struct type *t = base->type;
+                if (is_arrow && (t->flags & TF_POINTER)) {
+                    t = t->sub;
+                }
+                if (t && (t->flags & TF_AGGREGATE) && t->elem) {
+                    for (member = t->elem; member; member = member->next) {
+                        if (strcmp(member->name, cur.v.name) == 0) {
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if (!member) {
+                err(ER_E_UO);
+                gettoken();
+                e = makeexpr(CONST, 0);
+                e->v = 0;
+                break;
+            }
+
+            // Generate: DEREF(ADD(base, offset))
+            offset_expr = makeexpr(CONST, 0);
+            offset_expr->v = member->offset;
+            offset_expr->type = inttype;
+            offset_expr->flags = E_CONST;
+
+            addr = makeexpr(PLUS, base);
+            addr->right = offset_expr;
+            addr->left->up = addr;
+            addr->right->up = addr;
+            addr->type = base->type;
+
+            e = makeexpr(DEREF, addr);
+            e->left->up = e;
+            e->type = member->type;
+
+            gettoken();
         }
-
-        need(RPAR, RPAR, ER_E_SP);
-
-        // Result type will be determined later from function signature
-        call->cost = call->left->cost + 1;
-        e = call;
     }
 
     /*
