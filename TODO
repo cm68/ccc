@@ -21,6 +21,7 @@
   - ✓ Function calls with argument lists
   - ✓ sizeof operator
   - ✓ Proper lvalue/rvalue handling
+  - ✓ Ternary conditional operator (? :) with right-associativity and constant folding
 - ✓ Statement parsing (all control flow)
 - ✓ Typedef support including scoped typedefs inside functions
 - ✓ Forward struct/union declarations
@@ -59,11 +60,6 @@
 - Implement: +=, -=, *=, /=, %=, &=, |=, ^=, <<=, >>=
 - Desugar to: a op= b → a = a op b
 - Handle lvalue semantics correctly
-
-**Ternary Conditional Operator**
-- Implement ? : operator
-- Requires special handling for control flow
-- May need short-circuit evaluation
 
 **Validation**
 - Add type checking validation for all operators

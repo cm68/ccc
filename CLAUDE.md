@@ -202,23 +202,68 @@ Expression parsing uses precedence climbing:
 - Recursive call uses `parse_expr(p, st)` for right operand, ensuring left-associativity
 
 **Currently working**:
-- Numeric literals
+- Numeric literals and constants
+- String literals (stored in string table)
 - Parenthesized expressions
+- Variable and symbol references (SYM wrapped in DEREF for address semantics)
 - Unary operators: - (NEG), ~ (TWIDDLE), ! (BANG), * (DEREF), & (address-of)
 - Binary operators: +, -, *, /, %, &, |, ^, <<, >> with proper precedence and left-associativity
-- Constant folding for all unary and binary operators
+- Logical operators: && (LAND), || (LOR)
+- Assignment operator: = (with proper lvalue handling)
+- Array subscript: [] with scaled address arithmetic
+- Struct member access: . (DOT) and -> (ARROW) with offset addition
+- Function calls with argument lists
+- sizeof operator (for types and expressions)
+- Ternary conditional operator: ?: with right-associativity
+- Constant folding for all operators including ternary
 - Operator precedence correctly implemented
+- Address semantics: SYM nodes represent addresses, DEREF accesses values
 
 **Not yet implemented**:
-- Symbol/variable references (SYM case)
-- String literals (recognized but not fully integrated)
+- Comparison operators in constant folding (<, >, <=, >=, ==, !=)
 - Type casts
-- sizeof operator
 - Prefix/postfix increment/decrement (++/--)
-- Array indexing ([])
-- Function calls
-- Struct member access (. and ->)
-- Ternary operator (?:)
+- Compound assignment operators (+=, -=, etc.)
+
+### Ternary Conditional Operator
+
+The ternary conditional operator (? :) is fully implemented with proper right-associativity and constant folding:
+
+**AST Structure**:
+- Tree: `QUES(condition, COLON(true_expr, false_expr))`
+- COLON is not a binary operator, only used as part of ternary
+- COLON removed from operator priority table to prevent standalone use
+
+**Parsing**:
+- Triggered by QUES token in binary operator loop
+- Parse true expression: `parse_expr(0)` allows any expression
+- Expect and consume COLON token
+- Parse false expression: `parse_expr(0)` for right-associativity
+- Nested ternary operators allowed
+
+**Right-Associativity**:
+- `a ? b : c ? d : e` parses as `a ? b : (c ? d : e)`
+- False branch can contain another ternary at same precedence level
+- Example: `1 ? 2 : 0 ? 3 : 4` → `2` (not `3`)
+
+**Constant Folding**:
+- If condition is constant, fold to selected branch
+- `1 ? 100 : 200` → `100`
+- `0 ? 100 : 200` → `200`
+- Handles nested constant ternary expressions
+
+**Examples**:
+```c
+x > 0 ? 1 : -1          // (? (> x 0) (: 1 -1))
+1 ? 10 : 20             // 10 (folded)
+a ? b : c ? d : e       // (? a (: b (? c (: d e))))
+```
+
+**Label Compatibility**:
+- Labels (`identifier:`) still work correctly
+- Parsed at statement level by parse.c, not expression level
+- Statement parser uses lookahead to detect label patterns
+- Independent from expression operator handling
 
 ### Statement Parsing
 
