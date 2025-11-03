@@ -19,9 +19,16 @@ The compiler successfully parses C code and outputs AST in S-expression format:
 - Unix syscall I/O: fdprintf() instead of stdio for AST output
 - Comprehensive test suite (95+ tests organized by category)
 
-**Pass 2 (cc2) - Not Yet Implemented**
+**Pass 2 (cc2) - Work In Progress**
 
-Code generation planned. AST format ready for consumption.
+AST parser foundation in place, code generation planned:
+- Table-driven S-expression parser in parseast.c
+- Unix syscall I/O (read/write) instead of stdio
+- Handler functions for all AST node types
+- Memory width annotation support (:b :s :l :p :f :d)
+- Successfully parses simple AST constructs
+- Complex nested structures need debugging
+- Code generation not yet started
 
 ## Architecture
 
@@ -33,7 +40,54 @@ This is a 2-pass compiler:
 - Uses Unix syscalls (write) instead of stdio for output
 - ~4,800 lines of C code
 
-**Pass 2 (cc2)**: Code generator and assembler
+**Pass 2 (cc2)**: Code generator and assembler (WIP)
 - Reads AST from pass 1 (S-expression format)
-- Generates object file
-- Not yet implemented
+- Table-driven parser with handler functions for each operation
+- Uses Unix syscalls (read/write) instead of stdio
+- parseast.c: ~730 lines of parser infrastructure
+- Handles memory width annotations (:b :s :l :p :f :d)
+- Code generation not yet implemented
+
+## File Organization
+
+**Pass 1 (cc1) files:**
+- cc1.c - Main entry point, orchestration
+- lex.c - Lexical analyzer (tokenizer)
+- parse.c - Statement and declaration parsing
+- expr.c - Expression parsing with precedence
+- type.c - Type system management
+- declare.c - Declaration processing
+- outast.c - AST emission in S-expression format
+- macro.c - CPP macro definition and expansion
+- io.c - Character I/O and file stack management
+- error.c - Error reporting
+- util.c - Utilities (fdprintf, bitdef, etc.)
+- kw.c - Keyword lookup tables
+
+**Pass 2 (cc2) files:**
+- cc2.c - Main entry point, command-line processing
+- parseast.c - Table-driven AST parser
+- util.c - Shared utilities (fdprintf)
+
+**Auto-generated files:**
+- tokenlist.c, enumlist.h - Token definitions
+- error.h - Error code definitions
+- debug.h, debugtags.c - Debug/verbose infrastructure
+- op_pri.h - Operator priority table
+
+## Usage
+
+**Pass 1 - Parse and output AST:**
+```bash
+./cc1 -E source.c > output.i
+```
+
+**Pass 2 - Parse AST (code generation not yet implemented):**
+```bash
+./cc2 output.i -o executable
+```
+
+**Full pipeline (when complete):**
+```bash
+./cc1 -E source.c | ./cc2 -o executable
+```
