@@ -43,8 +43,45 @@ All C operators are represented by their token character:
 - Comparison: `<`, `>`, `L` (<=), `g` (>=), `Q` (==), `n` (!=)
 - Bitwise: `&`, `|`, `^`, `~`, `y` (<<), `w` (>>)
 - Logical: `j` (&&), `h` (||), `!`
-- Assignment: `=`
+- Memory access: `M` (dereference) - `(M:width expr)` with width annotation
+- Assignment: `=` - `(=:width lvalue rvalue)` with width annotation
+- Address-of: `&` - `(& expr)`
 - Function call: `@` - `(@ function arg1 arg2 ...)`
+- Ternary conditional: `?` - `(? condition (: true_expr false_expr))`
+
+### Memory Width Annotations
+
+Memory operations (DEREF `M` and ASSIGN `=`) include width annotations showing the size of data being accessed:
+
+**Width Suffixes:**
+- `:b` - byte (1 byte: char)
+- `:s` - short (2 bytes: short, int)
+- `:l` - long (4 bytes: long)
+- `:p` - pointer (2 bytes: any pointer type)
+- `:f` - float (4 bytes: float)
+- `:d` - double (8 bytes: double)
+
+**Format:**
+- `(M:width expr)` - Dereference (memory read) with width
+- `(=:width lvalue rvalue)` - Assignment (memory write) with width
+
+**Examples:**
+```c
+char c;
+int i;
+long l;
+char *p;
+
+c = 10;              // (=:b $_c 10)
+i = c;               // (=:s $_i (M:b $_c))
+l = i;               // (=:l $_l (M:s $_i))
+p = &c;              // (=:p $_p (& $_c))
+*p = 5;              // (=:b (M:p $_p) 5)
+```
+
+The width annotations enable:
+1. **Type checking in pass 2** - Width mismatches visible in AST (e.g., `(=:s $_i (M:b $_c))` shows int←byte)
+2. **Optimization** - Code generator can use native byte arithmetic instead of promoting to word size
 
 ## Statement Format
 
@@ -78,11 +115,12 @@ Emits:
 ```
 (f add (y:_short_ x:_short_) _short_
   (d y _short_) (d x _short_)
-  (B (R (+ $Ax $Ay))))
+  (B (R (+ (M:s $Ax) (M:s $Ay)))))
 ```
 Note:
 - Parameters are declared with `(d y _short_) (d x _short_)`
 - `$Ax` and `$Ay` have the `A` prefix in expressions because they are function arguments
+- Variables are wrapped in `(M:s ...)` to dereference (read) their values
 
 ### Factorial with Recursion
 ```c
@@ -96,9 +134,12 @@ int factorial(int n) {
 Emits:
 ```
 (f factorial (n:_short_) _short_
-  (B (I (< $An 2) (B (R 1))) (R (* $An $_factorial)) (;)))
+  (d n _short_)
+  (B (I (< (M:s $An) 2) (B (R 1))) (R (* (M:s $An) (@ $_factorial (- (M:s $An) 1)))) (;)))
 ```
-Note: `$An` has the `A` prefix (function argument), `$_factorial` has the `_` prefix (global function).
+Note:
+- `$An` has the `A` prefix (function argument), wrapped in `(M:s ...)` to read its value
+- `$_factorial` has the `_` prefix (global function name, not wrapped in M)
 
 ### Loop Example with Local Variables
 ```c
@@ -117,16 +158,18 @@ Emits:
 ```
 (f loop_test (n:_short_) _short_
   (d n _short_)
-  (B (d i _short_) (d sum _short_) (E (= $sum 0)) (E (= $i 0))
-     (W (< $i $An)
-        (B (E (= $sum (+ $sum $i))) (E (= $i (+ $i 1)))))
-     (R $sum)))
+  (B (d i _short_) (d sum _short_) (E (=:s $sum 0)) (E (=:s $i 0))
+     (W (< (M:s $i) (M:s $An))
+        (B (E (=:s $sum (+ (M:s $sum) (M:s $i)))) (E (=:s $i (+ (M:s $i) 1)))))
+     (R (M:s $sum))))
 ```
 Note:
 - Parameter `n` declared with `(d n _short_)`
 - Local variables `i` and `sum` declared with `(d i _short_) (d sum _short_)`
 - `$An` has the `A` prefix in expressions (function argument)
 - `$sum` and `$i` have no prefix in expressions (local variables)
+- All assignments use `:s` width (short/int): `(=:s $sum 0)`
+- Variables wrapped in `(M:s ...)` to read their values
 
 ### Global Variables
 ```c
@@ -151,12 +194,13 @@ Emits:
 
 ; Function: test
 (f test () _short_
-  (B (R (+ $_global_a $_global_b))))
+  (B (R (+ (M:s $_global_a) (M:s $_global_b)))))
 ```
 Note:
 - Global variables with initializers: `(g $_global_a _short_ 10)`
 - Global variables without initializers: `(g $_global_b _short_)`
 - Static global variables use mangled names: `$Sfile_file_static`
+- Global variables wrapped in `(M:s ...)` to read their values
 
 ### Function Call Examples
 
@@ -194,9 +238,10 @@ int test_expr_in_call(int n) {
 Emits:
 ```
 (f test_expr_in_call (n:_short_) _short_
-  (B (R (@ $_add (+ $An 1) (* $An 2)))))
+  (d n _short_)
+  (B (R (@ $_add (+ (M:s $An) 1) (* (M:s $An) 2)))))
 ```
-Note: `$An` has the `A` prefix (function argument), `$_add` has the `_` prefix (global function).
+Note: `$An` has the `A` prefix (function argument), wrapped in `(M:s ...)` to read value. `$_add` has the `_` prefix (global function name, not wrapped in M).
 
 ### Variable Scope Prefixes
 
@@ -238,15 +283,16 @@ int test_all_scopes(int x, int y) {
     int local1;              // $local1
     static int static_local; // $Stest_scopes_test_all_scopes_static_local_0
 
-    local1 = x + y;          // $local1 = $Ax + $Ay
+    local1 = x + y;          // (=:s $local1 (+ (M:s $Ax) (M:s $Ay)))
     return local1 + global_var + static_local;
 }
 ```
 Emits:
 ```
 (f test_all_scopes (y:_short_ x:_short_) _short_
-  (B (E (= $local1 (+ $Ax $Ay)))
-     (R (+ (+ $local1 $_global_var) $Stest_scopes_test_all_scopes_static_local_0))))
+  (d y _short_) (d x _short_)
+  (B (d local1 _short_) (E (=:s $local1 (+ (M:s $Ax) (M:s $Ay))))
+     (R (+ (+ (M:s $local1) (M:s $_global_var)) (M:s $Stest_scopes_test_all_scopes_static_local_0)))))
 ```
 
 ## Parser Implementation Notes
