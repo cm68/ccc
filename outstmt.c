@@ -100,6 +100,33 @@ emit_expr(struct expr *e)
 }
 
 /*
+ * Output type information for AST
+ * For primitive types, outputs the type name
+ * For aggregates (struct/union), outputs size
+ */
+static void
+emit_type_info(struct type *type)
+{
+	if (!type)
+		return;
+
+	if (type->name && type->name[0]) {
+		/* Primitive or named type */
+		fprintf(ast_output, " %s", type->name);
+	} else if (type->flags & TF_AGGREGATE) {
+		/* Struct/union without type name - output size */
+		fprintf(ast_output, " :struct:%d", type->size);
+	} else if (type->flags & TF_POINTER) {
+		fprintf(ast_output, " :ptr");
+	} else if (type->flags & TF_ARRAY) {
+		fprintf(ast_output, " :array:%d", type->count);
+	} else {
+		/* Unknown type - output size */
+		fprintf(ast_output, " :size:%d", type->size);
+	}
+}
+
+/*
  * Output a statement in S-expression format
  * Each statement type has its own format
  */
@@ -119,9 +146,7 @@ emit_stmt(struct stmt *st)
 			struct name *local;
 			for (local = st->locals; local; local = local->next) {
 				fprintf(ast_output, " (d %s", local->name);
-				if (local->type && local->type->name) {
-					fprintf(ast_output, " %s", local->type->name);
-				}
+				emit_type_info(local->type);
 				fprintf(ast_output, ")");
 			}
 		}
@@ -332,9 +357,7 @@ emit_declarations(struct name *func)
 				fprintf(ast_output, " ");
 			}
 			fprintf(ast_output, "(d %s", n->name);
-			if (n->type && n->type->name) {
-				fprintf(ast_output, " %s", n->type->name);
-			}
+			emit_type_info(n->type);
 			fprintf(ast_output, ")");
 		}
 	}
@@ -404,9 +427,7 @@ emit_global_var(struct name *var)
 	}
 
 	/* Output type */
-	if (var->type && var->type->name) {
-		fprintf(ast_output, " %s", var->type->name);
-	}
+	emit_type_info(var->type);
 
 	/* Output initializer if present */
 	if (var->init) {
