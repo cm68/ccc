@@ -16,6 +16,8 @@ error.h
 tags
 *.i
 cc1
+cc2
+ccc
 debug.h
 debugtags.c
 enumlist.h
