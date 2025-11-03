@@ -59,9 +59,8 @@ struct oppri {
     /* logical or */
     { LOR,      OP_PRI_LOGOR },
 
-    /* conditional - special handling needed for : */
+    /* conditional - COLON is not a binary operator, only part of ?: */
     { QUES,     OP_PRI_COND },
-    { COLON,    OP_PRI_COND },
 
     /* assignment operators */
     { ASSIGN,   OP_PRI_ASSIGN },

@@ -499,6 +499,41 @@ parse_expr(char pri, struct stmt *st)
         op = cur.type;
         gettoken();
 
+        // Special handling for ternary conditional operator: condition ? true : false
+        if (op == QUES) {
+            struct expr *condition = e;
+            struct expr *true_expr, *false_expr, *colon_node;
+
+            // Parse the true expression
+            true_expr = parse_expr(0, st);
+
+            // Expect and consume COLON
+            need(COLON, COLON, ER_E_SP);
+
+            // Parse the false expression (right-associative, allow another ?: at same level)
+            // Use priority 0 to parse everything, including nested ?: operators
+            false_expr = parse_expr(0, st);
+
+            // Build tree: QUES(condition, COLON(true_expr, false_expr))
+            colon_node = makeexpr(COLON, true_expr);
+            colon_node->right = false_expr;
+            if (colon_node->left) colon_node->left->up = colon_node;
+            if (colon_node->right) colon_node->right->up = colon_node;
+
+            e = makeexpr(QUES, condition);
+            e->right = colon_node;
+            if (e->left) e->left->up = e;
+            if (e->right) e->right->up = e;
+
+            // Type is the type of the result expressions (should check compatibility)
+            if (true_expr && true_expr->type) {
+                e->type = true_expr->type;
+            }
+
+            e = cfold(e);
+            continue;  // Skip the rest of the loop and continue with next operator
+        }
+
         // for assignment, unwrap DEREF from left side to get lvalue address
         if (op == ASSIGN && e && e->op == DEREF) {
             e = e->left;  // unwrap to get address
@@ -575,6 +610,23 @@ cfold(struct expr *e)
             val = e->left->v ? 0 : 1;
             e = xreplace(e, e->left);
             e->v = val;
+        }
+        return e;
+    case QUES:
+        // Ternary conditional: condition ? true : false
+        // Structure: QUES(condition, COLON(true_expr, false_expr))
+        if (e->left && e->left->op == CONST && e->right && e->right->op == COLON) {
+            struct expr *result;
+            if (e->left->v) {
+                // Condition is true, use true branch
+                result = e->right->left;
+            } else {
+                // Condition is false, use false branch
+                result = e->right->right;
+            }
+            if (result) {
+                e = xreplace(e, result);
+            }
         }
         return e;
     }
