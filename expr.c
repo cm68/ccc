@@ -432,6 +432,11 @@ parse_expr(char pri, struct stmt *st)
         op = cur.type;
         gettoken();
 
+        // for assignment, unwrap DEREF from left side to get lvalue address
+        if (op == ASSIGN && e && e->op == DEREF) {
+            e = e->left;  // unwrap to get address
+        }
+
         // for left-associative operators (most C operators), parse right side
         // with precedence p, which prevents same-precedence operators from
         // being pulled into the right subtree
