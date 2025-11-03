@@ -4,6 +4,8 @@
  */
 
 #include "cc1.h"
+#include <stdarg.h>
+#include <unistd.h>
 
 #define PSIZE   80          // max string containing bitdefs
 #define NPATS   2           // and 2 per printf
@@ -185,6 +187,30 @@ lookupc(char *s, char c)
         }
     }
     return 0xff;
+}
+
+/*
+ * fdprintf - printf-like function that writes to a Unix file descriptor
+ * Uses sprintf to format to a static buffer, then writes via write() syscall
+ */
+int
+fdprintf(int fd, const char *fmt, ...)
+{
+    static char buf[4096];
+    va_list args;
+    int len;
+    int result;
+
+    va_start(args, fmt);
+    len = vsprintf(buf, fmt, args);
+    va_end(args);
+
+    if (len > 0) {
+        result = write(fd, buf, len);
+        return result;
+    }
+
+    return len;
 }
 
 /*

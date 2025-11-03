@@ -315,6 +315,7 @@ extern unsigned char lookupc(char *s, char c);
 extern void hexdump(char *tag, char *s, int len);
 int iswhite(char c);
 char *bitdef(unsigned char v, char **defs);
+int fdprintf(int fd, const char *fmt, ...);
 int quoted_string(char *d, char *s);
 int longout(char *d, long v);
 
