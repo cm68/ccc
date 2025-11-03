@@ -476,9 +476,6 @@ parsefunc(struct name *f)
 		f->kind = fdef;
 	}
 
-	// Dump function while parameters are still in scope (level 2)
-	dump_function(f);
-
 	// Emit AST for second pass
 	emit_function(f);
 

@@ -87,10 +87,6 @@ extern struct expr *parse_expr(char priority, struct stmt *);
 int parse_const(char priority);
 extern struct expr *new_expr(char op);
 extern void destroy_expr(struct expr *e);
-#ifdef DEBUG
-extern void dump_expr(struct expr *e);
-extern void dump_expr_indent(struct expr *e, int indent);
-#endif
 
 /*
  * a statement is the basic execution unit that is managed by the compiler
@@ -116,8 +112,6 @@ struct stmt {
 extern struct stmt *new_stmt(char op, struct expr *left);
 extern void destroy_stmt(struct stmt *s);
 extern void free_stmt(struct stmt *s);
-extern void dump_stmt(struct stmt *s);
-extern void dump_function(struct name *func);
 extern void emit_function(struct name *func);
 extern void emit_global_vars(void);
 
