@@ -5,11 +5,40 @@
 #include "cc1.h"
 
 /*
+ * Get size suffix for memory operations based on type
+ * Returns: 'b' (byte), 's' (short/int), 'l' (long), 'p' (pointer), 'f' (float), 'd' (double)
+ */
+static char
+get_size_suffix(struct type *t)
+{
+	if (!t)
+		return 's';  // default to short
+
+	if (t->flags & TF_POINTER)
+		return 'p';
+
+	// Check primitive types by size
+	if (t->size == 1)
+		return 'b';  // char/byte
+	else if (t->size == 2)
+		return 's';  // short/int
+	else if (t->size == 4) {
+		if (t->flags & TF_FLOAT)
+			return 'f';  // float
+		return 'l';  // long
+	} else if (t->size == 8)
+		return 'd';  // double
+
+	return 's';  // default to short
+}
+
+/*
  * Output an expression in S-expression format
  * Constants: just the value (decimal)
  * Symbols: $name
  * Binary ops: (op left right)
  * Unary ops: (op operand)
+ * Memory ops annotated with size: (M:b expr) (=:l lvalue rvalue)
  */
 static void
 emit_expr(struct expr *e)
@@ -85,7 +114,13 @@ emit_expr(struct expr *e)
 
 	default:
 		/* Operator - output in prefix notation */
-		fdprintf(ast_fd, "(%c", e->op);
+		/* For DEREF (M) and ASSIGN (=), add size annotation */
+		if (e->op == DEREF || e->op == ASSIGN) {
+			char size_suffix = get_size_suffix(e->type);
+			fdprintf(ast_fd, "(%c:%c", e->op, size_suffix);
+		} else {
+			fdprintf(ast_fd, "(%c", e->op);
+		}
 		if (e->left) {
 			fdprintf(ast_fd, " ");
 			emit_expr(e->left);
