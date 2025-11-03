@@ -205,7 +205,8 @@ Expression parsing uses precedence climbing:
 - Numeric literals and constants
 - String literals (stored in string table)
 - Parenthesized expressions
-- Variable and symbol references (SYM wrapped in DEREF for address semantics)
+- Variable references (SYM wrapped in DEREF for address semantics)
+- Function and array name decay to pointers (correct C semantics)
 - Unary operators: - (NEG), ~ (TWIDDLE), ! (BANG), * (DEREF), & (address-of)
 - Binary operators: +, -, *, /, %, &, |, ^, <<, >> with proper precedence and left-associativity
 - Logical operators: && (LAND), || (LOR)
@@ -264,6 +265,58 @@ a ? b : c ? d : e       // (? a (: b (? c (: d e))))
 - Parsed at statement level by parse.c, not expression level
 - Statement parser uses lookahead to detect label patterns
 - Independent from expression operator handling
+
+### Function and Array Decay
+
+Functions and arrays automatically decay to pointers when used as values, following standard C semantics:
+
+**Function Decay**:
+- Function names represent addresses (function pointers)
+- Function names are NOT wrapped in DEREF (unlike variables)
+- Direct use: `funcname` → `$_funcname` (address)
+- Assignment: `fptr = add;` → `(= $_fptr $_add)`
+- Call through pointer: `fptr(5, 3);` → `(@ $_fptr 5 3)`
+- Explicit address-of is redundant but allowed: `&add` → `(& $_add)`
+
+**Array Decay**:
+- Array names decay to pointer to first element
+- Array names are NOT wrapped in DEREF (unlike variables)
+- Direct use: `arr` → `$_arr` (address of first element)
+- Assignment: `p = arr;` → `(= $_p $_arr)`
+- Array subscript: `arr[5]` → `(M (+ $_arr 10))` (scaled offset, then deref)
+
+**Variable Semantics (for comparison)**:
+- Variables represent storage locations
+- Variables ARE wrapped in DEREF to get their value
+- Direct use: `x` → `(M $_x)` (dereference to get value)
+- Assignment: `x = 10;` → `(= $_x 10)` (unwraps DEREF for lvalue)
+
+**Implementation Details**:
+The SYM case in expression parser checks type flags:
+- If `TF_FUNC`: return SYM directly (function address)
+- If `TF_ARRAY`: return SYM directly (array base address)
+- Otherwise: wrap in DEREF (variable value)
+
+**Function Pointer Arrays**:
+Arrays of function pointers work with both syntaxes:
+
+```c
+int (*funcs[10])(int, int);
+
+// Implicit syntax
+result = funcs[0](5, 3);        // (@ (M (+ $_funcs 0)) 5 3)
+
+// Explicit/preferred syntax
+result = (*funcs[0])(5, 3);     // (@ (M (M (+ $_funcs 0))) 5 3)
+
+// Variable index
+result = (*funcs[i])(5, 3);     // (@ (M (M (+ $_funcs (* (M $i) 2)))) 5 3)
+
+// Expression index
+result = (*funcs[i+1])(5, 3);   // index expression evaluated and scaled
+```
+
+Both implicit and explicit syntaxes are supported and generate correct AST. The explicit syntax `(*funcs[x])(args)` is preferred and more clearly shows the dereference operation.
 
 ### Statement Parsing
 

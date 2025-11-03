@@ -16,9 +16,11 @@
   - ✓ Unary operators: -, ~, !, *, &
   - ✓ Assignment operator: =
   - ✓ Address semantics: SYM nodes represent addresses, DEREF accesses values
+  - ✓ Function and array names decay to pointers (correct C semantics)
   - ✓ Array subscript with scaled addition: arr[i] → DEREF(ADD(arr, i * sizeof))
   - ✓ Struct member access: . and -> operators with offset addition
   - ✓ Function calls with argument lists
+  - ✓ Function pointers: assignment, calls, arrays of function pointers
   - ✓ sizeof operator
   - ✓ Proper lvalue/rvalue handling
   - ✓ Ternary conditional operator (? :) with right-associativity and constant folding
