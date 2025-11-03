@@ -298,8 +298,62 @@ parse_expr(char pri, struct stmt *st)
     /*
      * Handle postfix operators: function calls, array subscripts, struct access
      */
-    while (cur.type == LPAR || cur.type == DOT || cur.type == ARROW) {
-        if (cur.type == LPAR) {
+    while (cur.type == LPAR || cur.type == LBRACK || cur.type == DOT || cur.type == ARROW) {
+        if (cur.type == LBRACK) {
+            // Array subscript: arr[idx] = DEREF(ADD(base, idx * sizeof))
+            struct expr *index, *scaled, *addr, *size_expr;
+            int elem_size;
+
+            gettoken();  // consume '['
+            index = parse_expr(0, st);
+            need(RBRACK, RBRACK, ER_E_SP);
+
+            // Unwrap DEREF to get base address
+            if (e && e->op == DEREF) {
+                e = e->left;
+            }
+
+            // Get element size from type
+            elem_size = 2;  // default to short/int size
+            if (e && e->type) {
+                if (e->type->flags & TF_POINTER && e->type->sub) {
+                    elem_size = e->type->sub->size;
+                } else if (e->type->flags & TF_ARRAY && e->type->sub) {
+                    elem_size = e->type->sub->size;
+                }
+            }
+
+            // Scale index by element size: idx * sizeof(elem)
+            if (elem_size == 1) {
+                scaled = index;
+            } else {
+                size_expr = makeexpr(CONST, 0);
+                size_expr->v = elem_size;
+                size_expr->type = inttype;
+                size_expr->flags = E_CONST;
+
+                scaled = makeexpr(STAR, index);
+                scaled->right = size_expr;
+                scaled->left->up = scaled;
+                scaled->right->up = scaled;
+                scaled->type = inttype;
+                scaled = cfold(scaled);
+            }
+
+            // Add scaled offset to base: base + (idx * sizeof)
+            addr = makeexpr(PLUS, e);
+            addr->right = scaled;
+            addr->left->up = addr;
+            addr->right->up = addr;
+            addr->type = e->type;
+
+            // Dereference to get element value
+            e = makeexpr(DEREF, addr);
+            e->left->up = e;
+            if (e->left->type && (e->left->type->flags & TF_POINTER) && e->left->type->sub) {
+                e->type = e->left->type->sub;
+            }
+        } else if (cur.type == LPAR) {
             // Function call: expr(arg1, arg2, ...)
             struct expr *call, *arg, *lastarg;
 
