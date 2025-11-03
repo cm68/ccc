@@ -345,13 +345,24 @@ parse_expr(char pri, struct stmt *st)
             addr->right = scaled;
             addr->left->up = addr;
             addr->right->up = addr;
-            addr->type = e->type;
+            // The ADD result is a pointer to the element type
+            if (e->type && (e->type->flags & TF_ARRAY) && e->type->sub) {
+                addr->type = get_type(TF_POINTER, e->type->sub, 0);
+            } else if (e->type && (e->type->flags & TF_POINTER)) {
+                addr->type = e->type;  // pointer + offset = same pointer type
+            } else {
+                addr->type = e->type;
+            }
 
             // Dereference to get element value
             e = makeexpr(DEREF, addr);
             e->left->up = e;
-            if (e->left->type && (e->left->type->flags & TF_POINTER) && e->left->type->sub) {
-                e->type = e->left->type->sub;
+            if (e->left->type) {
+                if ((e->left->type->flags & TF_POINTER) && e->left->type->sub) {
+                    e->type = e->left->type->sub;
+                } else if ((e->left->type->flags & TF_ARRAY) && e->left->type->sub) {
+                    e->type = e->left->type->sub;
+                }
             }
         } else if (cur.type == LPAR) {
             // Function call: expr(arg1, arg2, ...)
@@ -425,7 +436,9 @@ parse_expr(char pri, struct stmt *st)
             member = NULL;
             if (base && base->type) {
                 struct type *t = base->type;
-                if (is_arrow && (t->flags & TF_POINTER)) {
+                // For both DOT and ARROW, if base type is pointer, get the pointed-to type
+                // (DOT after array subscript produces pointer type)
+                if (t->flags & TF_POINTER) {
                     t = t->sub;
                 }
                 if (t && (t->flags & TF_AGGREGATE) && t->elem) {
