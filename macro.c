@@ -29,21 +29,12 @@ add_define(char *s)
     char *eq;
     int namelen;
 
-#ifdef MAXTRACE
-    fprintf(stderr, "TRACE: add_define('%s')\n", s ? s : "(null)");
-#endif
 
     if (!s || !*s) {
-#ifdef MAXTRACE
-        fprintf(stderr, "TRACE: add_define early return\n");
-#endif
         return;
     }
 
     m = malloc(sizeof(*m));
-#ifdef MAXTRACE
-    fprintf(stderr, "TRACE: add_define allocated macro at %p\n", (void*)m);
-#endif
 
     /* Find '=' to separate name from value */
     eq = strchr(s, '=');
@@ -65,9 +56,6 @@ add_define(char *s)
     m->parms = 0;
     m->next = macros;
     macros = m;
-#ifdef MAXTRACE
-    fprintf(stderr, "TRACE: add_define done, added macro '%s' = '%s'\n", m->name, m->mactext);
-#endif
 }
 
 /*
@@ -78,21 +66,12 @@ maclookup(char *name)
 {
     struct macro *m;
 
-#ifdef MAXTRACE
-    fprintf(stderr, "TRACE: maclookup('%s')\n", name ? name : "(null)");
-#endif
 
     for (m = macros; m; m = m->next) {
         if (strcmp(m->name, name) == 0) {
-#ifdef MAXTRACE
-            fprintf(stderr, "TRACE: maclookup found '%s' at %p\n", name, (void*)m);
-#endif
             return m;
         }
     }
-#ifdef MAXTRACE
-    fprintf(stderr, "TRACE: maclookup '%s' not found\n", name);
-#endif
     return 0;
 }
 
@@ -106,9 +85,6 @@ macundefine(char *s)
     struct macro *m, *p;
     p = 0;
 
-#ifdef MAXTRACE
-    fprintf(stderr, "TRACE: macundefine('%s')\n", s ? s : "(null)");
-#endif
 
     for (m = macros; m; m = m->next) {
         if (strcmp(m->name, s) == 0) {
@@ -117,46 +93,19 @@ macundefine(char *s)
         p = m;
     }
     if (m) {
-#ifdef MAXTRACE
-        fprintf(stderr, "TRACE: macundefine found '%s' at %p, unlinking\n", s, (void*)m);
-#endif
         if (!p) {
             macros = m->next;
         } else {
             p->next = m->next;
         }
-#ifdef MAXTRACE
-        fprintf(stderr, "TRACE: macundefine freeing %d parms\n", m->parmcount);
-#endif
         for (i = 0; i < m->parmcount; i++) {
-#ifdef MAXTRACE
-            fprintf(stderr, "TRACE: macundefine free parms[%d] at %p\n", i, (void*)m->parms[i]);
-#endif
             free(m->parms[i]);
         }
-#ifdef MAXTRACE
-        fprintf(stderr, "TRACE: macundefine free m->parms at %p\n", (void*)m->parms);
-#endif
         free(m->parms);
-#ifdef MAXTRACE
-        fprintf(stderr, "TRACE: macundefine free m->name at %p ('%s')\n", (void*)m->name, m->name);
-#endif
         free(m->name);
-#ifdef MAXTRACE
-        fprintf(stderr, "TRACE: macundefine free m->mactext at %p ('%s')\n", (void*)m->mactext, m->mactext);
-#endif
         free(m->mactext);
-#ifdef MAXTRACE
-        fprintf(stderr, "TRACE: macundefine free m at %p\n", (void*)m);
-#endif
         free(m);
-#ifdef MAXTRACE
-        fprintf(stderr, "TRACE: macundefine done\n");
-#endif
     } else {
-#ifdef MAXTRACE
-        fprintf(stderr, "TRACE: macundefine '%s' not found\n", s);
-#endif
     }
 }
 
@@ -171,18 +120,12 @@ macdefine(char *s)
     struct macro *m = malloc(sizeof(*m));
     char *parms[MAXPARMS];
 
-#ifdef MAXTRACE
-    fprintf(stderr, "TRACE: macdefine('%s') at %p\n", s ? s : "(null)", (void*)m);
-#endif
 
     if (!macbuffer) {
         macbuffer = malloc(1024);
     }
 
     m->name = strdup(s);
-#ifdef MAXTRACE
-    fprintf(stderr, "TRACE: macdefine macro name='%s'\n", m->name);
-#endif
     m->parmcount = 0;
     skipwhite1();
 
@@ -276,9 +219,6 @@ macexpand(char *s)	/* the symbol we are looking up as a macro */
     int i;
     int stringify = 0;
 
-#ifdef MAXTRACE
-    fprintf(stderr, "TRACE: macexpand('%s')\n", s ? s : "(null)");
-#endif
 
     if (!macbuffer) {
         macbuffer = malloc(1024);
@@ -286,15 +226,9 @@ macexpand(char *s)	/* the symbol we are looking up as a macro */
 
     m = maclookup(s);
     if (!m) {
-#ifdef MAXTRACE
-        fprintf(stderr, "TRACE: macexpand no macro found, returning 0\n");
-#endif
         return 0;
     }
 
-#ifdef MAXTRACE
-    fprintf(stderr, "TRACE: macexpand found macro '%s' with %d parms\n", m->name, m->parmcount);
-#endif
 
     // printf("macro %s called\n", m->name);
 

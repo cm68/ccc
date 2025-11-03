@@ -595,39 +595,18 @@ gettoken()
             if (cpppseudofunc()) {
                 continue;  /* cpppseudofunc() replaced the function with '0' or '1' */
             }
-#ifdef MAXTRACE
-            fprintf(stderr, "TRACE LEX: before macexpand, strbuf='%s'\n", strbuf);
-#endif
             if (macexpand(strbuf)) {
-#ifdef MAXTRACE
-                fprintf(stderr, "TRACE LEX: macexpand returned non-zero, continuing\n");
-#endif
                 continue;
             }
-#ifdef MAXTRACE
-            fprintf(stderr, "TRACE LEX: macexpand returned 0, calling advance()\n");
-#endif
             advance();
-#ifdef MAXTRACE
-            fprintf(stderr, "TRACE LEX: after advance(), calling kwlook\n");
-#endif
             t = kwlook(strbuf, ckw);
             if (t) {
-#ifdef MAXTRACE
-                fprintf(stderr, "TRACE LEX: kwlook found keyword %d\n", t);
-#endif
                 next.type = t;
                 next.v.name = 0;  // keywords don't have names
                 break;
             }
-#ifdef MAXTRACE
-            fprintf(stderr, "TRACE LEX: setting next.type=SYM, strdup('%s')\n", strbuf);
-#endif
             next.type = SYM;
             next.v.name = strdup(strbuf);
-#ifdef MAXTRACE
-            fprintf(stderr, "TRACE LEX: strdup done, breaking\n");
-#endif
             break;
         }
         if (isnumber()) {
