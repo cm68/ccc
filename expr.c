@@ -134,18 +134,22 @@ parse_expr(char pri, struct stmt *st)
     }
 
     case SYM: {
-        /* Variable reference */
+        /* Variable reference - SYM = address, wrap in DEREF to get value */
         struct name *n;
+        struct expr *sym;
 
         n = lookup_name(cur.v.name, 0);
         if (!n) {
-            err(ER_E_UO);  // undefined name - use unknown operator error for now
+            err(ER_E_UO);
             e = makeexpr(CONST, 0);
             e->type = inttype;
             e->v = 0;
         } else {
-            e = makeexpr(SYM, 0);
-            e->var = (struct var *)n;
+            sym = makeexpr(SYM, 0);
+            sym->var = (struct var *)n;
+            sym->type = n->type;
+            e = makeexpr(DEREF, 0);
+            e->left = sym;
             e->type = n->type;
         }
         gettoken();
@@ -203,14 +207,20 @@ parse_expr(char pri, struct stmt *st)
 
     case AND:       // address-of (unary)
         gettoken();
-        e = makeexpr(AND, parse_expr(OP_PRI_MULT - 1, st));
-        if (e->left) {
-            e->cost = e->left->cost;
-            e->left->up = e;
-            // create pointer type to operand's type
-            if (e->left->type) {
-                e->type = get_type(TF_POINTER, e->left->type, 0);
+        e = parse_expr(OP_PRI_MULT - 1, st);
+        /* Optimize: &(DEREF x) = x, since SYM already gives address */
+        if (e && e->op == DEREF) {
+            e = e->left;
+        } else {
+            struct expr *addr = makeexpr(AND, e);
+            if (e) {
+                addr->cost = e->cost;
+                e->up = addr;
+                if (e->type) {
+                    addr->type = get_type(TF_POINTER, e->type, 0);
+                }
             }
+            e = addr;
         }
         break;
 
