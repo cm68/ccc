@@ -109,6 +109,8 @@ parse_expr(char pri, struct stmt *st)
     case STRING: {
         struct name *strname;
         char namebuf[32];
+        extern int lexlevel;
+        int saved_level;
 
         e = makeexpr(STRING, 0);
         /* string literals have type char* (pointer to char) */
@@ -118,7 +120,11 @@ parse_expr(char pri, struct stmt *st)
         sprintf(namebuf, "_str%d", string_counter++);
 
         /* create a name entry for this string literal at global scope (level 1) */
+        /* temporarily set lexlevel to 1 to force global scope */
+        saved_level = lexlevel;
+        lexlevel = 1;
         strname = new_name(namebuf, var, e->type, 0);
+        lexlevel = saved_level;
         if (strname) {
             /* store pointer to counted string in the name's init field */
             strname->init = makeexpr(STRING, 0);

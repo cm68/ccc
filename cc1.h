@@ -113,6 +113,7 @@ extern struct stmt *new_stmt(char op, struct expr *left);
 extern void destroy_stmt(struct stmt *s);
 extern void free_stmt(struct stmt *s);
 extern void emit_function(struct name *func);
+extern void emit_literals(void);
 extern void emit_global_vars(void);
 
 /* statement flags used in parse.c */

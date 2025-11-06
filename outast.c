@@ -470,6 +470,84 @@ emit_initializer_list(struct expr *init)
 }
 
 /*
+ * Emit string literals section
+ * Outputs all string literal data for pass 2 to generate
+ * Format: (literals (str addr "data")...)
+ */
+void
+emit_literals(void)
+{
+	extern struct name **names;
+	extern int lastname;
+	struct name *n;
+	int i;
+	int found_any = 0;
+
+	/* First pass: check if we have any string literals */
+	for (i = 0; i <= lastname; i++) {
+		n = names[i];
+		if (!n)
+			continue;
+
+		/* Look for synthetic string literal names (_str0, _str1, etc.) at any level */
+		if (n->kind == var && n->init && n->init->op == STRING &&
+		    n->name && strncmp(n->name, "_str", 4) == 0) {
+			found_any = 1;
+			break;
+		}
+	}
+
+	if (!found_any)
+		return;
+
+	/* Output literals section header */
+	fdprintf(ast_fd, "\n; String literals\n");
+	fdprintf(ast_fd, "(literals\n");
+
+	/* Second pass: output each string literal */
+	for (i = 0; i <= lastname; i++) {
+		n = names[i];
+		if (!n)
+			continue;
+
+		/* Output string literal data (only synthetic _str names at any level) */
+		if (n->kind == var && n->init && n->init->op == STRING &&
+		    n->name && strncmp(n->name, "_str", 4) == 0) {
+			cstring str = (cstring)n->init->v;
+			if (str) {
+				unsigned char len = (unsigned char)str[0];
+				unsigned char *data = (unsigned char *)str + 1;
+				int j;
+
+				/* Output: (str index "literal_data") */
+				fdprintf(ast_fd, "  (str S%ld \"", (unsigned long)str);
+				for (j = 0; j < len; j++) {
+					unsigned char c = data[j];
+					if (c == '"') {
+						fdprintf(ast_fd, "\\\"");
+					} else if (c == '\\') {
+						fdprintf(ast_fd, "\\\\");
+					} else if (c == '\n') {
+						fdprintf(ast_fd, "\\n");
+					} else if (c == '\t') {
+						fdprintf(ast_fd, "\\t");
+					} else if (c == '\r') {
+						fdprintf(ast_fd, "\\r");
+					} else if (c >= ' ' && c < 0x7f) {
+						fdprintf(ast_fd, "%c", c);
+					} else {
+						fdprintf(ast_fd, "\\x%02x", c);
+					}
+				}
+				fdprintf(ast_fd, "\")\n");
+			}
+		}
+	}
+
+	fdprintf(ast_fd, ")\n");
+}
+
+/*
  * Output a global variable declaration with optional initializer
  * Format: (g varname type [init-expr])
  */

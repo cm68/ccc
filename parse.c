@@ -696,7 +696,8 @@ parse()
 		}
 	}
 
-	/* Emit global variable declarations before popping scope */
+	/* Emit string literals and global variables before popping scope */
+	emit_literals();
 	emit_global_vars();
 
 	pop_scope();

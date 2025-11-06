@@ -491,10 +491,9 @@ freetoken()
     if (cur.type == SYM && cur.v.name) {
     	free(cur.v.name);
     	cur.v.name = NULL;  /* Prevent double-free */
-    } else if (cur.type == STRING && cur.v.str) {
-    	free(cur.v.str);
-    	cur.v.str = NULL;  /* Prevent double-free */
     }
+    /* Do not free STRING tokens - they are referenced in expressions and
+     * global variable initializers throughout compilation */
 }
 
 char nbuf[1024];  // Large enough for escaped string: 1 + 255*4 + 1 = 1022 bytes
