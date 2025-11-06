@@ -493,7 +493,7 @@ The compiler has made substantial progress:
 
 ### Testing
 
-Tests are in tests/ directory (95+ tests organized by category):
+Tests are in tests/ directory (108 tests organized by category):
 - **Expression tests** (EXPR_TESTS): Constant folding, simple expressions
 - **Declaration tests** (DECL_TESTS): Variable and type declarations
 - **Preprocessor tests** (CPP_TESTS): Macros, includes, conditional compilation, stringify
@@ -505,6 +505,7 @@ Tests are in tests/ directory (95+ tests organized by category):
 - **Local variable tests** (LOCAL_TESTS): Local declarations in functions
 - **Scope tests** (SCOPE_TESTS): Lexical scoping
 - **Struct tests** (STRUCT_TESTS): Struct declarations
+- **Type cast tests** (CAST_TESTS): Pointer-to-pointer, scalar, and mixed casts with typedef support
 - **Minimal/smoke tests**: Basic compiler functionality
 - **Miscellaneous tests**: Regression tests
 
@@ -516,7 +517,9 @@ See tests/Makefile for complete test organization and tests/README.md for docume
 
 Tests run with:
 - `make test` - Run all integration tests
-- `make test-typedef` - Run typedef tests only (see Makefile for all categories)
+- `make test-typedef` - Run typedef tests only
+- `make test-cast` - Run type cast tests only
+- See tests/Makefile for all test categories
 - `make unit-tests` - Run unit tests
 - `cd tests && ./runtest.sh name.c` - Run single test
 - Tests pass if cc1 completes without crashing
