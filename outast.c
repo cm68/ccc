@@ -116,42 +116,19 @@ emit_expr(struct expr *e)
 		break;
 
 	case NARROW:
-		/* Narrowing cast: truncate to smaller type */
-		fdprintf(ast_fd, "(narrow");
-		if (e->type) {
-			emit_type_info(e->type);
-		}
-		if (e->left) {
-			fdprintf(ast_fd, " ");
-			emit_expr(e->left);
-		}
-		fdprintf(ast_fd, ")");
-		break;
-
 	case WIDEN:
-		/* Widening cast: zero-extend to larger type */
-		fdprintf(ast_fd, "(widen");
-		if (e->type) {
-			emit_type_info(e->type);
-		}
-		if (e->left) {
-			fdprintf(ast_fd, " ");
-			emit_expr(e->left);
-		}
-		fdprintf(ast_fd, ")");
-		break;
-
 	case SEXT:
-		/* Sign-extending cast: sign-extend to larger type */
-		fdprintf(ast_fd, "(sext");
-		if (e->type) {
-			emit_type_info(e->type);
+		/* Cast operators with destination width annotation */
+		{
+			char size_suffix = get_size_suffix(e->type);
+			char op_char = (e->op == NARROW) ? 'N' : (e->op == WIDEN) ? 'W' : 'X';
+			fdprintf(ast_fd, "(%c:%c", op_char, size_suffix);
+			if (e->left) {
+				fdprintf(ast_fd, " ");
+				emit_expr(e->left);
+			}
+			fdprintf(ast_fd, ")");
 		}
-		if (e->left) {
-			fdprintf(ast_fd, " ");
-			emit_expr(e->left);
-		}
-		fdprintf(ast_fd, ")");
 		break;
 
 	default:
