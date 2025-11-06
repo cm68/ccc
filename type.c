@@ -417,6 +417,10 @@ get_type(
     if (!(flags & TF_AGGREGATE)) {
         for (t = types; t && depth < 1000; t = t->next, depth++) {
             if ((t->flags == flags) && (t->sub == sub)) {
+                /* For arrays, also check count to distinguish different array sizes */
+                if ((flags & TF_ARRAY) && (t->count != count)) {
+                    continue;
+                }
                 return t;
             }
         }

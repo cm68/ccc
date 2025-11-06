@@ -132,7 +132,8 @@ CAST_TESTS = \
 
 # String literal tests
 STRING_TESTS = \
-	string_literals.c
+	string_literals.c \
+	array_init.c
 
 # Miscellaneous/regression tests
 MISC_TESTS = \
