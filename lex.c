@@ -677,10 +677,10 @@ gettoken()
         case NONE:
             break;
         default:
-            if (detoken[cur.type]) {
-                s = detoken[cur.type];
+            if (detoken[(unsigned char)cur.type]) {
+                s = detoken[(unsigned char)cur.type];
             } else {
-                s = tokenname[cur.type];
+                s = tokenname[(unsigned char)cur.type];
             }
             cpp_out(s, strlen(s));
             cpp_out(" ", 1);
