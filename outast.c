@@ -93,8 +93,14 @@ emit_expr(struct expr *e)
 		break;
 
 	case STRING:
-		/* String literals - output as string index */
-		fdprintf(ast_fd, "S%ld", e->v);
+		/* String literals - output synthetic name */
+		if (e->var) {
+			struct name *strname = (struct name *)e->var;
+			fdprintf(ast_fd, "$__%s", strname->name);
+		} else {
+			/* Fallback to address if name not available */
+			fdprintf(ast_fd, "S%ld", e->v);
+		}
 		break;
 
 	case CALL:
@@ -616,6 +622,10 @@ emit_global_vars(void)
 
 		/* Skip tags, typedefs, and functions */
 		if (n->is_tag || n->kind == tdef || n->kind == fdef)
+			continue;
+
+		/* Skip synthetic string literal names - they're in literals section */
+		if (n->name && strncmp(n->name, "_str", 4) == 0)
 			continue;
 
 		/* Emit global variable declaration */
