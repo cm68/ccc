@@ -32,7 +32,7 @@ All expressions use prefix notation (Polish notation):
   - **Static variables**: `$Sname` (S prefix)
   - **Function arguments**: `$Aname` (A prefix)
   - **Local variables**: `$name` (no additional prefix)
-- **String literals**: `S` followed by string table index (e.g., `S0`, `S1`)
+- **String literals**: `$__name` - reference to synthetic string name (e.g., `$___str0`, `$___str1`)
 - **Binary operators**: `(op left right)` (e.g., `(+ $x $y)`)
 - **Unary operators**: `(op operand)` (e.g., `(NEG $x)`)
 
@@ -363,6 +363,66 @@ struct point coords[2] = { {10, 20}, {30, 40} };
 Emits: `(g $_coords :array:2 (list (, 10 20) (, 30 40)))`
 
 Note: The `(list ...)` form is used for multi-element initializers that are linked via expr->next pointers.
+
+## String Literals Section
+
+String literals are output in a dedicated literals section before global variables and functions:
+
+**Format:**
+```
+(literals
+  (str name "escaped_string_data")
+  ...
+)
+```
+
+**Example:**
+```c
+char *s1 = "hello";
+char *s2 = "world\n";
+char foo[] = "test";
+```
+
+Emits:
+```
+; String literals
+(literals
+  (str _str0 "hello")
+  (str _str1 "world\n")
+  (str _str2 "test")
+)
+
+; Global variable: s1
+(g $_s1 :ptr $___str0)
+
+; Global variable: s2
+(g $_s2 :ptr $___str1)
+
+; Global variable: foo
+(g $_foo :array:5 $___str2)
+```
+
+**Escaping:**
+Special characters in strings are properly escaped:
+- `\n` - newline
+- `\t` - tab
+- `\"` - quote
+- `\\` - backslash
+- `\r` - carriage return
+- `\xNN` - hex escape for non-printable characters
+
+**String References:**
+- String literals are referenced by synthetic names: `$___str0`, `$___str1`, etc.
+- The synthetic names are defined in the literals section
+- They are NOT emitted as separate global variables (only in literals section)
+
+**Array Initialization:**
+Arrays initialized with string literals automatically get the correct size (string length + 1 for null terminator):
+```c
+char foo[] = "string";  // :array:7 (6 chars + null)
+char bar[] = "test";    // :array:5 (4 chars + null)
+char empty[] = "";      // :array:1 (0 chars + null)
+```
 
 ## Type Names
 

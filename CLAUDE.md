@@ -21,13 +21,14 @@ make
 make cc1          # Main compiler executable
 
 # Run tests
-make test         # Run all 95+ tests in tests/
+make test         # Run all 110 tests in tests/
 make tests        # Same as 'make test'
 
 # Run test categories
 make test-typedef # Run typedef tests only
 make test-sizeof  # Run sizeof tests only
 make test-cpp     # Run preprocessor tests only
+make test-string  # Run string literal tests only
 # (See tests/Makefile for all categories)
 
 # Run single test
@@ -203,7 +204,8 @@ Expression parsing uses precedence climbing:
 
 **Currently working**:
 - Numeric literals and constants
-- String literals (stored in string table)
+- String literals with proper escaping (output to literals section in AST)
+- Array initialization from string literals: char[] = "string" with automatic size inference
 - Parenthesized expressions
 - Variable references (SYM wrapped in DEREF for address semantics)
 - Function and array name decay to pointers (correct C semantics)
@@ -317,6 +319,59 @@ Type cast operator `(type)expr` is fully implemented with disambiguation from pa
 - `parse_type_name()`: Parses type in cast (base type + pointers)
 - Logic in expr.c selects appropriate operator based on type sizes and signedness
 - outast.c emits single-char operator with width annotation
+
+### String Literals
+
+String literals are handled with proper escaping and output to a dedicated literals section in the AST:
+
+**Storage**:
+- Stored as counted strings (cstring): first byte is length, followed by string data
+- Not freed during tokenization to persist throughout compilation
+- Each string gets a synthetic global name (_str0, _str1, etc.)
+
+**Synthetic Names**:
+- Created at global scope (level 1) to survive function scope cleanup
+- Format: `_str0`, `_str1`, `_str2`, etc. (sequential counter)
+- Stored in name table with STRING initializer expression
+
+**AST Output Format**:
+```
+(literals
+  (str _str0 "hello world")
+  (str _str1 "test\n")
+  (str _str2 "quote\"and\\backslash")
+)
+```
+
+**Escaping**:
+Special characters are properly escaped in output:
+- `\n` - newline
+- `\t` - tab
+- `\"` - quote
+- `\\` - backslash
+- `\r` - carriage return
+- `\xNN` - hex escape for non-printable characters
+
+**References**:
+String literals in expressions reference synthetic names:
+```c
+char *s = "hello";      // (g $_s :ptr $___str0)
+```
+
+**Array Initialization**:
+Arrays initialized with string literals automatically infer size:
+```c
+char foo[] = "string";  // :array:7 (6 chars + null terminator)
+char bar[] = "test";    // :array:5 (4 chars + null)
+char empty[] = "";      // :array:1 (0 chars + null)
+```
+
+**Implementation**:
+- expr.c: Creates synthetic name at level 1 when STRING token encountered
+- parse.c: After initializer parsed, checks for array[-1] with STRING init, sets correct size
+- outast.c: emit_literals() outputs all synthetic _str* names to literals section
+- outast.c: emit_global_vars() skips _str* names (already in literals)
+- type.c: get_type() compares array count to distinguish different array sizes
 
 ### Function and Array Decay
 
@@ -545,7 +600,7 @@ The compiler has made substantial progress:
 
 ### Testing
 
-Tests are in tests/ directory (108 tests organized by category):
+Tests are in tests/ directory (110 tests organized by category):
 - **Expression tests** (EXPR_TESTS): Constant folding, simple expressions
 - **Declaration tests** (DECL_TESTS): Variable and type declarations
 - **Preprocessor tests** (CPP_TESTS): Macros, includes, conditional compilation, stringify
@@ -558,6 +613,7 @@ Tests are in tests/ directory (108 tests organized by category):
 - **Scope tests** (SCOPE_TESTS): Lexical scoping
 - **Struct tests** (STRUCT_TESTS): Struct declarations
 - **Type cast tests** (CAST_TESTS): Pointer-to-pointer, scalar, and mixed casts with typedef support
+- **String literal tests** (STRING_TESTS): String literals with escaping, array initialization (char[] = "string")
 - **Minimal/smoke tests**: Basic compiler functionality
 - **Miscellaneous tests**: Regression tests
 
@@ -578,18 +634,20 @@ Tests run with:
 
 ### Recent Improvements
 
-1. **Type cast operators** - Three specific cast operators (N/W/X) with width annotations for narrowing, widening, and sign-extension
-2. **Ternary conditional operator** - Full ?: support with right-associativity and constant folding
-3. **AST emission for pass 2** - Complete S-expression output with single-char operators
-4. **Global variable initializers** - Arrays, structs, scalar initializers in AST
-5. **Unix syscall migration** - fdprintf() replaces fprintf(), uses write() instead of stdio
-6. **Removed MAXTRACE debug code** - Eliminated 192 lines of stderr debug traces
-7. **Typedef support** - Global and scoped typedefs inside functions with proper shadowing
-8. **Local variable declarations** - Full support for declarations inside function bodies
-9. **Test infrastructure** - 108 tests organized into 13 categories in tests/Makefile
-10. **Memory leak fixes** - Valgrind clean on all tests
-11. **K&R function support** - Full K&R style function definitions
-12. **Comprehensive preprocessor** - Macros, includes, conditional compilation, stringify, token pasting
+1. **String literals in AST** - Literals section with escaped string data, synthetic names (_str0, _str1, etc.)
+2. **Array initialization** - char[] = "string" syntax with automatic size inference from string length
+3. **Type cast operators** - Three specific cast operators (N/W/X) with width annotations for narrowing, widening, and sign-extension
+4. **Ternary conditional operator** - Full ?: support with right-associativity and constant folding
+5. **AST emission for pass 2** - Complete S-expression output with single-char operators
+6. **Global variable initializers** - Arrays, structs, scalar initializers in AST
+7. **Unix syscall migration** - fdprintf() replaces fprintf(), uses write() instead of stdio
+8. **Removed MAXTRACE debug code** - Eliminated 192 lines of stderr debug traces
+9. **Typedef support** - Global and scoped typedefs inside functions with proper shadowing
+10. **Local variable declarations** - Full support for declarations inside function bodies
+11. **Test infrastructure** - 110 tests organized into 14 categories in tests/Makefile
+12. **Memory leak fixes** - Valgrind clean on all tests
+13. **K&R function support** - Full K&R style function definitions
+14. **Comprehensive preprocessor** - Macros, includes, conditional compilation, stringify, token pasting
 
 ### Code Style
 

@@ -16,9 +16,11 @@ The compiler successfully parses C code and outputs AST in S-expression format:
 - Expression parsing with constant folding and proper operator precedence
 - Type cast operators with typedef disambiguation (N/W/X operators with width annotations)
 - Statement parsing: all control flow, function bodies, scoped blocks
-- AST emission: S-expression output with global vars, functions, initializers
+- String literals: output to AST with proper escaping and synthetic names
+- Array initialization: char[] = "string" with automatic size inference
+- AST emission: S-expression output with literals section, global vars, functions, initializers
 - Unix syscall I/O: fdprintf() instead of stdio for AST output
-- Comprehensive test suite (108 tests organized by category)
+- Comprehensive test suite (110 tests organized by category)
 
 **Pass 2 (cc2) - Work In Progress**
 
