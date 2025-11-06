@@ -172,10 +172,28 @@ parse_expr(char pri, struct stmt *st)
     }
 
     /* unary operators */
-    case LPAR:      // parenthesized expression
+    case LPAR:      // parenthesized expression or type cast
         gettoken();
-        e = parse_expr(0, st);  // parse inner expression with lowest precedence
-        need(RPAR, RPAR, ER_E_SP);
+
+        /* Check if this is a type cast: (type)expr */
+        if (is_cast_start()) {
+            struct type *cast_type;
+
+            /* Parse the type name */
+            cast_type = parse_type_name();
+            need(RPAR, RPAR, ER_E_SP);
+
+            /* Create CAST expression node */
+            e = makeexpr(CAST, 0);
+            e->type = cast_type;
+            e->left = parse_expr(OP_PRI_MULT - 1, st);  // Cast has unary precedence (same as unary minus)
+
+            /* Note: no constant folding for casts - type conversions need runtime handling */
+        } else {
+            /* Parenthesized expression: (expr) */
+            e = parse_expr(0, st);  // parse inner expression with lowest precedence
+            need(RPAR, RPAR, ER_E_SP);
+        }
         break;
 
     case MINUS:     // unary minus

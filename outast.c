@@ -4,6 +4,9 @@
  */
 #include "cc1.h"
 
+/* Forward declarations */
+static void emit_type_info(struct type *type);
+
 /*
  * Get size suffix for memory operations based on type
  * Returns: 'b' (byte), 's' (short/int), 'l' (long), 'p' (pointer), 'f' (float), 'd' (double)
@@ -108,6 +111,21 @@ emit_expr(struct expr *e)
 				fdprintf(ast_fd, " ");
 				emit_expr(arg);
 			}
+		}
+		fdprintf(ast_fd, ")");
+		break;
+
+	case CAST:
+		/* Type cast: (cast type expr) */
+		fdprintf(ast_fd, "(cast");
+		/* Emit type name */
+		if (e->type) {
+			emit_type_info(e->type);
+		}
+		/* Emit expression being cast */
+		if (e->left) {
+			fdprintf(ast_fd, " ");
+			emit_expr(e->left);
 		}
 		fdprintf(ast_fd, ")");
 		break;

@@ -349,5 +349,67 @@ declare(struct type **btp)
 }
 
 /*
+ * Check if current token could start a type cast
+ * Returns 1 if it's a type keyword or typedef name
+ */
+int
+is_cast_start(void)
+{
+    struct name *n;
+
+    /* Check for type keywords */
+    if (is_type_token(cur.type)) {
+        return 1;
+    }
+
+    /* Check if it's a typedef name */
+    if (cur.type == SYM) {
+        n = lookup_name(cur.v.name, 0);
+        if (n && n->kind == tdef) {
+            return 1;
+        }
+    }
+
+    return 0;
+}
+
+/*
+ * Parse a type name for a cast: (type)
+ * This parses type specifiers and abstract declarator (pointers, arrays)
+ * but does NOT require a variable name (unlike normal declarations)
+ *
+ * Examples:
+ *   int
+ *   char *
+ *   int **
+ *   int *[]
+ *   int (*)[10]
+ */
+struct type *
+parse_type_name(void)
+{
+    struct type *base_type, *result_type;
+
+    /* Parse base type (int, char, struct foo, typedef, etc.) */
+    base_type = getbasetype();
+    if (!base_type) {
+        /* No type specified - default to int (K&R style) */
+        base_type = inttype;
+    }
+
+    /* Parse pointer prefix (*, **, etc.) */
+    result_type = parse_pointer_prefix(base_type);
+
+    /* TODO: Parse abstract declarator for arrays/function pointers
+     * For now, we handle simple types and pointers
+     * Full support would parse things like:
+     *   (*)[10]  - pointer to array
+     *   (*)()    - pointer to function
+     */
+
+    return result_type;
+}
+
+/*
  * vim: tabstop=4 shiftwidth=4 expandtab:
  */

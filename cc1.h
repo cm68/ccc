@@ -221,6 +221,8 @@ extern void pop_scope(void);
 extern int lexlevel;
 extern struct name *declare_internal(struct type **btp, boolean struct_elem);
 extern struct name *declare(struct type **btp);
+extern int is_cast_start(void);
+extern struct type *parse_type_name(void);
 
 extern struct type *inttype;
 extern struct type *chartype;

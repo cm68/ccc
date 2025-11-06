@@ -10,6 +10,7 @@ typedef enum {
 	NEG = 0x02,
 	NOT = 0x03,
 	CALL = 0x04,
+	CAST = 0x05,
     NONE = ' ',
 
     /* C keywords */
