@@ -1,9 +1,11 @@
 /*
  * these are keywords that are recognized by the lexer.
- * they all have values that are printable for debug 
+ * they all have values that are printable for debug
  * purposes and for cheap serializing into intermediate files
  */
-typedef enum {
+typedef unsigned char token_t;
+
+enum {
     E_O_F = 0,
     NONE = ' ',
 
@@ -55,4 +57,4 @@ typedef enum {
     INCLUDE = '#',
     DEFINE = '$', UNDEF = 'K',
     IFDEF = 'Y', IFNDEF = '7', ENDIF = 'Z', ELIF = '8'
-} token_t;
+};
