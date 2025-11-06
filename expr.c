@@ -187,15 +187,58 @@ parse_expr(char pri, struct stmt *st)
             /* Parse the expression being cast */
             inner = parse_expr(OP_PRI_MULT - 1, st);  // Cast has unary precedence
 
-            /* Pointer-to-pointer casts are just type reinterpretation - no runtime op needed */
-            if (cast_type && inner && inner->type &&
-                (cast_type->flags & TF_POINTER) && (inner->type->flags & TF_POINTER)) {
-                /* Just change the type - no CAST node needed */
-                inner->type = cast_type;
-                e = inner;
+            /* Determine if cast needs runtime operation */
+            if (cast_type && inner && inner->type) {
+                /* Pointer-to-pointer casts are just type reinterpretation */
+                if ((cast_type->flags & TF_POINTER) && (inner->type->flags & TF_POINTER)) {
+                    inner->type = cast_type;
+                    e = inner;
+                }
+                /* Scalar casts: determine which operation needed */
+                else if (!(cast_type->flags & (TF_POINTER|TF_ARRAY|TF_FUNC)) &&
+                         !(inner->type->flags & (TF_POINTER|TF_ARRAY|TF_FUNC))) {
+                    int src_size = inner->type->size;
+                    int tgt_size = cast_type->size;
+                    int src_unsigned = inner->type->flags & TF_UNSIGNED;
+
+                    if (tgt_size == src_size) {
+                        /* Same size: just reinterpret (e.g., int ↔ unsigned int) */
+                        inner->type = cast_type;
+                        e = inner;
+                    } else {
+                        token_t cast_op;
+
+                        if (tgt_size < src_size) {
+                            /* Narrowing: truncate to smaller type */
+                            cast_op = NARROW;
+                        } else {
+                            /* Widening: extend to larger type */
+                            if (src_unsigned) {
+                                cast_op = WIDEN;  /* zero extend unsigned */
+                            } else {
+                                cast_op = SEXT;   /* sign extend signed */
+                            }
+                        }
+
+                        e = makeexpr(cast_op, 0);
+                        e->type = cast_type;
+                        e->left = inner;
+                    }
+                }
+                /* Mixed pointer/scalar casts: need conversion */
+                else {
+                    /* For pointer↔scalar, use NARROW or WIDEN based on sizes */
+                    int src_size = inner->type->size;
+                    int tgt_size = cast_type->size;
+                    token_t cast_op = (tgt_size < src_size) ? NARROW : WIDEN;
+
+                    e = makeexpr(cast_op, 0);
+                    e->type = cast_type;
+                    e->left = inner;
+                }
             } else {
-                /* Other casts need runtime conversion - create CAST node */
-                e = makeexpr(CAST, 0);
+                /* Shouldn't happen, but create NARROW as fallback */
+                e = makeexpr(NARROW, 0);
                 e->type = cast_type;
                 e->left = inner;
             }

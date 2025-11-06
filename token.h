@@ -48,7 +48,8 @@ typedef enum {
     ANDEQ = 0xb1, OREQ = '1', XOREQ = 'X',
     LANDEQ = 'J', LOREQ = 'H',
     RSHIFTEQ = '6', LSHIFTEQ = '0',
-    EXPR = '`', NEG = '\\', NOT = '\'', CALL = '@', CAST = '_',
+    EXPR = '`', NEG = '\\', NOT = '\'', CALL = '@',
+    NARROW = '_', WIDEN = 0xb3, SEXT = 0xb4,
 
     /* CPP */
     INCLUDE = '#',

@@ -115,14 +115,38 @@ emit_expr(struct expr *e)
 		fdprintf(ast_fd, ")");
 		break;
 
-	case CAST:
-		/* Type cast: (cast type expr) */
-		fdprintf(ast_fd, "(cast");
-		/* Emit type name */
+	case NARROW:
+		/* Narrowing cast: truncate to smaller type */
+		fdprintf(ast_fd, "(narrow");
 		if (e->type) {
 			emit_type_info(e->type);
 		}
-		/* Emit expression being cast */
+		if (e->left) {
+			fdprintf(ast_fd, " ");
+			emit_expr(e->left);
+		}
+		fdprintf(ast_fd, ")");
+		break;
+
+	case WIDEN:
+		/* Widening cast: zero-extend to larger type */
+		fdprintf(ast_fd, "(widen");
+		if (e->type) {
+			emit_type_info(e->type);
+		}
+		if (e->left) {
+			fdprintf(ast_fd, " ");
+			emit_expr(e->left);
+		}
+		fdprintf(ast_fd, ")");
+		break;
+
+	case SEXT:
+		/* Sign-extending cast: sign-extend to larger type */
+		fdprintf(ast_fd, "(sext");
+		if (e->type) {
+			emit_type_info(e->type);
+		}
 		if (e->left) {
 			fdprintf(ast_fd, " ");
 			emit_expr(e->left);
