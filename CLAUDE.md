@@ -216,13 +216,13 @@ Expression parsing uses precedence climbing:
 - Function calls with argument lists
 - sizeof operator (for types and expressions)
 - Ternary conditional operator: ?: with right-associativity
+- Type cast operator: (type)expr with typedef disambiguation
 - Constant folding for all operators including ternary
 - Operator precedence correctly implemented
 - Address semantics: SYM nodes represent addresses, DEREF accesses values
 
 **Not yet implemented**:
 - Comparison operators in constant folding (<, >, <=, >=, ==, !=)
-- Type casts
 - Prefix/postfix increment/decrement (++/--)
 - Compound assignment operators (+=, -=, etc.)
 
@@ -265,6 +265,58 @@ a ? b : c ? d : e       // (? a (: b (? c (: d e))))
 - Parsed at statement level by parse.c, not expression level
 - Statement parser uses lookahead to detect label patterns
 - Independent from expression operator handling
+
+### Type Cast Operators
+
+Type cast operator `(type)expr` is fully implemented with disambiguation from parenthesized expressions:
+
+**Disambiguation**:
+- After `(`, check if next token is type keyword or typedef name
+- If yes: parse as cast, otherwise parse as parenthesized expression
+- `is_cast_start()` checks for type keywords (int, char, etc.) or typedef names
+
+**Three Cast Operators** (only emit when runtime operation needed):
+- **N** (NARROW): Truncate to smaller type (e.g., `long → int`, `int → char`)
+- **W** (WIDEN): Zero-extend unsigned type to larger size
+- **X** (SEXT): Sign-extend signed type to larger size
+
+**AST Format**: `(op:width expr)` where width is destination type
+- Width suffixes: `:b` (byte), `:s` (short), `:l` (long), `:p` (pointer)
+- Same format as memory operations (M:width, =:width)
+
+**Cast Selection Logic**:
+- **Pointer → Pointer**: No cast node (just type reinterpretation)
+- **Same size**: No cast node (e.g., `int ↔ unsigned int`)
+- **Narrowing** (tgt < src): NARROW operator
+- **Widening unsigned**: WIDEN operator (zero extend)
+- **Widening signed**: SEXT operator (sign extend)
+- **Pointer ↔ Scalar**: NARROW or WIDEN based on size comparison
+
+**Examples**:
+```c
+// Narrowing casts
+(char) int_val      → (N:b ...)      // truncate int to byte
+(int) long_val      → (N:s ...)      // truncate long to short
+
+// Sign-extending casts
+(int) signed_char   → (X:s ...)      // sign-extend byte to short
+(long) signed_int   → (X:l ...)      // sign-extend short to long
+
+// Zero-extending casts
+(int) unsigned_char → (W:s ...)      // zero-extend byte to short
+
+// Pointer-to-pointer (no cast node)
+(char *) int_ptr    → Just type change in AST
+
+// Mixed pointer/scalar
+(int) ptr           → (W:s ...)      // widen pointer to int
+(char *) int_val    → (W:p ...)      // widen int to pointer
+```
+
+**Implementation**:
+- `parse_type_name()`: Parses type in cast (base type + pointers)
+- Logic in expr.c selects appropriate operator based on type sizes and signedness
+- outast.c emits single-char operator with width annotation
 
 ### Function and Array Decay
 
@@ -526,16 +578,18 @@ Tests run with:
 
 ### Recent Improvements
 
-1. **AST emission for pass 2** - Complete S-expression output with single-char operators
-2. **Global variable initializers** - Arrays, structs, scalar initializers in AST
-3. **Unix syscall migration** - fdprintf() replaces fprintf(), uses write() instead of stdio
-4. **Removed MAXTRACE debug code** - Eliminated 192 lines of stderr debug traces
-5. **Typedef support** - Global and scoped typedefs inside functions with proper shadowing
-6. **Local variable declarations** - Full support for declarations inside function bodies
-7. **Test infrastructure** - 95+ tests organized into 12 categories in tests/Makefile
-8. **Memory leak fixes** - Valgrind clean on all tests
-9. **K&R function support** - Full K&R style function definitions
-10. **Comprehensive preprocessor** - Macros, includes, conditional compilation, stringify, token pasting
+1. **Type cast operators** - Three specific cast operators (N/W/X) with width annotations for narrowing, widening, and sign-extension
+2. **Ternary conditional operator** - Full ?: support with right-associativity and constant folding
+3. **AST emission for pass 2** - Complete S-expression output with single-char operators
+4. **Global variable initializers** - Arrays, structs, scalar initializers in AST
+5. **Unix syscall migration** - fdprintf() replaces fprintf(), uses write() instead of stdio
+6. **Removed MAXTRACE debug code** - Eliminated 192 lines of stderr debug traces
+7. **Typedef support** - Global and scoped typedefs inside functions with proper shadowing
+8. **Local variable declarations** - Full support for declarations inside function bodies
+9. **Test infrastructure** - 108 tests organized into 13 categories in tests/Makefile
+10. **Memory leak fixes** - Valgrind clean on all tests
+11. **K&R function support** - Full K&R style function definitions
+12. **Comprehensive preprocessor** - Macros, includes, conditional compilation, stringify, token pasting
 
 ### Code Style
 

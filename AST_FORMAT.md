@@ -48,6 +48,42 @@ All C operators are represented by their token character:
 - Address-of: `&` - `(& expr)`
 - Function call: `@` - `(@ function arg1 arg2 ...)`
 - Ternary conditional: `?` - `(? condition (: true_expr false_expr))`
+- Type casts: `N` (narrow), `W` (widen), `X` (sign-extend) - `(op:width expr)` with width annotation
+
+### Type Cast Operators
+
+Type conversions that require runtime operations emit specific cast operators with destination width annotations:
+
+**Cast Operators:**
+- `N` - **Narrow**: Truncate to smaller type (e.g., `long → int`, `int → char`)
+- `W` - **Widen**: Zero-extend unsigned type to larger size
+- `X` - **Sign-extend**: Sign-extend signed type to larger size
+
+**Format:** `(op:width expr)` where width is the destination type width
+
+**Width Suffixes** (same as memory operations):
+- `:b` - byte (char)
+- `:s` - short (int)
+- `:l` - long
+- `:p` - pointer
+
+**Examples:**
+```c
+char c;
+int i;
+long l;
+unsigned char uc;
+
+c = (char) i;        // (=:b $_c (N:b (M:s $_i)))      - narrow int to char
+i = (int) l;         // (=:s $_i (N:s (M:l $_l)))      - narrow long to int
+i = (int) c;         // (=:s $_i (X:s (M:b $_c)))      - sign-extend char to int
+l = (long) i;        // (=:l $_l (X:l (M:s $_i)))      - sign-extend int to long
+i = (int) uc;        // (=:s $_i (W:s (M:b $_uc)))     - zero-extend unsigned char
+```
+
+**No cast operator needed for:**
+- Pointer-to-pointer casts: Just type reinterpretation
+- Same-size conversions: e.g., `int ↔ unsigned int`
 
 ### Memory Width Annotations
 
