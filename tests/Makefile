@@ -130,6 +130,10 @@ CAST_TESTS = \
 	typecast.c \
 	typecast_typedef.c
 
+# String literal tests
+STRING_TESTS = \
+	string_literals.c
+
 # Miscellaneous/regression tests
 MISC_TESTS = \
 	hang.c \
@@ -154,6 +158,7 @@ ALL_TESTS = \
 	$(SCOPE_TESTS) \
 	$(STRUCT_TESTS) \
 	$(CAST_TESTS) \
+	$(STRING_TESTS) \
 	$(MINIMAL_TESTS) \
 	$(MISC_TESTS)
 
@@ -166,7 +171,7 @@ tests:
 	./runtest.sh $(VERBOSE)
 
 # Test groups for selective testing
-.PHONY: test-expr test-decl test-cpp test-kr test-func test-stmt test-sizeof test-typedef test-cast
+.PHONY: test-expr test-decl test-cpp test-kr test-func test-stmt test-sizeof test-typedef test-cast test-string
 test-expr:
 	./runtest.sh $(VERBOSE) $(EXPR_TESTS)
 
@@ -193,6 +198,9 @@ test-typedef:
 
 test-cast:
 	./runtest.sh $(VERBOSE) $(CAST_TESTS)
+
+test-string:
+	./runtest.sh $(VERBOSE) $(STRING_TESTS)
 
 # Valgrind testing
 .PHONY: valgrind

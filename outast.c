@@ -519,8 +519,8 @@ emit_literals(void)
 				unsigned char *data = (unsigned char *)str + 1;
 				int j;
 
-				/* Output: (str index "literal_data") */
-				fdprintf(ast_fd, "  (str S%ld \"", (unsigned long)str);
+				/* Output: (str name "literal_data") */
+				fdprintf(ast_fd, "  (str %s \"", n->name);
 				for (j = 0; j < len; j++) {
 					unsigned char c = data[j];
 					if (c == '"') {
