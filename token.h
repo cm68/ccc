@@ -4,13 +4,7 @@
  * purposes and for cheap serializing into intermediate files
  */
 typedef enum {
-	/* pseudo-keywords, and expression operators */
     E_O_F = 0,
-	EXPR = 0x01,
-	NEG = 0x02,
-	NOT = 0x03,
-	CALL = 0x04,
-	CAST = 0x05,
     NONE = ' ',
 
     /* C keywords */
@@ -50,10 +44,11 @@ typedef enum {
     LSHIFT = 'y' , RSHIFT = 'w',
     LOR = 'h', LAND = 'j',
     EQ = 'Q', NEQ = 'n', LE = 'L', GE = 'g',
-    PLUSEQ = 'P', SUBEQ = '_', MULTEQ = 'T', DIVEQ = '2', MODEQ = '7',
-    ANDEQ = '@', OREQ = '1', XOREQ = 'X',
-    LANDEQ = 'J', LOREQ = 'H', 
+    PLUSEQ = 'P', SUBEQ = 0xb0, MULTEQ = 'T', DIVEQ = '2', MODEQ = 0xb2,
+    ANDEQ = 0xb1, OREQ = '1', XOREQ = 'X',
+    LANDEQ = 'J', LOREQ = 'H',
     RSHIFTEQ = '6', LSHIFTEQ = '0',
+    EXPR = '`', NEG = '\\', NOT = '\'', CALL = '@', CAST = '_',
 
     /* CPP */
     INCLUDE = '#',

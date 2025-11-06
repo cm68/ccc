@@ -5,10 +5,10 @@
 #include <stdio.h>
 #include "token.h"
 
-char *tokenname[128];
+char *tokenname[256];
 
 #define check(a) tokenname[a] = #a;
-	
+
 int
 main(int argc, char **argv)
 {
@@ -18,18 +18,18 @@ main(int argc, char **argv)
 #include "enumlist.h"
 
 	printf("char *tokenname[] = {\n");
-	for (i = 0; i < 128; i++) {
+	for (i = 0; i < 256; i++) {
 		printf("/* %d 0x%x \'%c\' */ ", i, i, (i > ' ') && (i < 0x7f) ? i : ' ');
 		if (tokenname[i]) {
 			printf("\"%s\"", tokenname[i]);
 		} else {
 			printf("0");
 		}
-		if (i < 128) printf(",\n");
+		if (i < 256) printf(",\n");
 	}
 	printf("};\n");
 	printf("char *detoken[] = {\n");
-	for (i = 0; i < 128; i++) {
+	for (i = 0; i < 256; i++) {
 		s = 0;
 		switch(i) {
 		case E_O_F: s = ""; break;	
@@ -147,7 +147,7 @@ main(int argc, char **argv)
 		} else {
 			printf("0");
 		}
-		if (i < 128) printf(",\n");
+		if (i < 256) printf(",\n");
 	}
 	printf("};\n");
 
