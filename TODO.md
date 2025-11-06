@@ -23,6 +23,10 @@
 - [ ] Add type checking validation for all operators
 - [ ] Add lvalue validation for assignments and operators
 
+### String Handling
+
+- [ ] Simplify local char array initialization: `char ca[] = "s2"` should create ca as a constant char* pointer to the string literal (s2 is the array, ca is just a pointer)
+
 ## Future Enhancements
 
 - [ ] Implement pass 2 (code generator)

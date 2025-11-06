@@ -98,6 +98,25 @@ capture_locals(void)
 	return locals_list;
 }
 
+/* Track variables declared with initializers for local scope */
+#define MAX_DECL_INITS 32
+static struct name *decl_inits[MAX_DECL_INITS];
+static int decl_init_count = 0;
+
+void
+add_decl_init(struct name *v)
+{
+	if (decl_init_count < MAX_DECL_INITS) {
+		decl_inits[decl_init_count++] = v;
+	}
+}
+
+void
+clear_decl_inits()
+{
+	decl_init_count = 0;
+}
+
 void declaration();
 
 /*
@@ -112,6 +131,7 @@ statement(struct stmt *parent)
     struct stmt *head = 0;
     // struct name *v = 0;
     struct stmt *makestmt(char op, struct expr *left);
+    struct expr *makeexpr(char op, struct expr *left);
     int block = 1;
 
     while (block) {
@@ -188,8 +208,43 @@ statement(struct stmt *parent)
         case REGISTER:
         case AUTO:
         case EXTERN:
+            clear_decl_inits();
             declaration();
-            st = NULL;  /* declaration() doesn't return a statement */
+            /* Convert local variable initializers to assignment statements */
+            if (decl_init_count > 0) {
+                int i;
+                for (i = 0; i < decl_init_count; i++) {
+                    struct name *v = decl_inits[i];
+                    struct expr *lhs, *assign_expr;
+                    struct stmt *assign_st;
+
+                    /* Create lvalue: just the variable symbol */
+                    lhs = makeexpr(SYM, 0);
+                    lhs->var = (struct var *)v;  /* Cast name* to var* (field is overloaded) */
+                    lhs->type = v->type;
+
+                    /* Create assignment: lhs = initializer */
+                    assign_expr = makeexpr(ASSIGN, lhs);
+                    assign_expr->right = v->init;
+                    assign_expr->type = v->type;
+                    v->init = NULL;  /* Clear so it's not output in declaration */
+
+                    /* Create expression statement */
+                    assign_st = makestmt(EXPR, assign_expr);
+
+                    /* Link this statement into the list */
+                    if (!pst) {
+                        head = assign_st;
+                        assign_st->flags |= S_PARENT;
+                    } else {
+                        *pst = assign_st;
+                    }
+                    pst = &assign_st->next;
+                    assign_st->parent = parent;
+                }
+                clear_decl_inits();
+            }
+            st = NULL;  /* Don't create another statement */
             break;
 
         case TYPEDEF:
@@ -212,7 +267,42 @@ statement(struct stmt *parent)
             {
                 struct name *possible_typedef = lookup_name(cur.v.name, 0);
                 if (possible_typedef && possible_typedef->kind == tdef) {
+                    clear_decl_inits();
                     declaration();
+                    /* Convert local variable initializers to assignment statements */
+                    if (decl_init_count > 0) {
+                        int i;
+                        for (i = 0; i < decl_init_count; i++) {
+                            struct name *v = decl_inits[i];
+                            struct expr *lhs, *assign_expr;
+                            struct stmt *assign_st;
+
+                            /* Create lvalue: just the variable symbol */
+                            lhs = makeexpr(SYM, 0);
+                            lhs->var = (struct var *)v;  /* Cast name* to var* (field is overloaded) */
+                            lhs->type = v->type;
+
+                            /* Create assignment: lhs = initializer */
+                            assign_expr = makeexpr(ASSIGN, lhs);
+                            assign_expr->right = v->init;
+                            assign_expr->type = v->type;
+                            v->init = NULL;  /* Clear so it's not output in declaration */
+
+                            /* Create expression statement */
+                            assign_st = makestmt(EXPR, assign_expr);
+
+                            /* Link this statement into the list */
+                            if (!pst) {
+                                head = assign_st;
+                                assign_st->flags |= S_PARENT;
+                            } else {
+                                *pst = assign_st;
+                            }
+                            pst = &assign_st->next;
+                            assign_st->parent = parent;
+                        }
+                        clear_decl_inits();
+                    }
                     st = NULL;  /* declaration() doesn't return a statement */
                     break;
                 }
@@ -652,6 +742,12 @@ declaration()
                     /* Create new array type with correct size (length + 1 for null terminator) */
                     v->type = get_type(TF_ARRAY, v->type->sub, len + 1);
                 }
+            }
+
+            /* Track local variable initializers for conversion to assignments */
+            extern int lexlevel;
+            if (lexlevel > 1 && v->init && !(sclass & SC_STATIC)) {
+                add_decl_init(v);
             }
         }
 		if (cur.type == COMMA) {

@@ -117,7 +117,7 @@ parse_expr(char pri, struct stmt *st)
         e->type = get_type(TF_POINTER, chartype, 0);
 
         /* generate synthetic name for this string literal */
-        sprintf(namebuf, "_str%d", string_counter++);
+        sprintf(namebuf, "str%d", string_counter++);
 
         /* create a name entry for this string literal at global scope (level 1) */
         /* temporarily set lexlevel to 1 to force global scope */

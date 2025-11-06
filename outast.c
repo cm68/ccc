@@ -93,10 +93,11 @@ emit_expr(struct expr *e)
 		break;
 
 	case STRING:
-		/* String literals - output synthetic name */
+		/* String literals - output as reference to global synthetic name */
 		if (e->var) {
 			struct name *strname = (struct name *)e->var;
-			fdprintf(ast_fd, "$__%s", strname->name);
+			/* Synthetic string names are global variables, use $_ prefix */
+			fdprintf(ast_fd, "$_%s", strname->name);
 		} else {
 			/* Fallback to address if name not available */
 			fdprintf(ast_fd, "S%ld", e->v);
@@ -408,8 +409,9 @@ emit_declarations(struct name *func)
 		if (n->is_tag || n->kind == tdef || n->kind == fdef)
 			continue;
 
-		/* Emit declaration node: (d varname type) */
-		if (n->kind == funarg || n->kind == var || n->kind == local) {
+		/* Emit declaration node: (d varname type) - only for function parameters */
+		/* Local variables are emitted in their containing blocks, not at function level */
+		if (n->kind == funarg) {
 			if (!has_decls) {
 				fdprintf(ast_fd, "\n  ");
 				has_decls = 1;
@@ -495,9 +497,9 @@ emit_literals(void)
 		if (!n)
 			continue;
 
-		/* Look for synthetic string literal names (_str0, _str1, etc.) at any level */
+		/* Look for synthetic string literal names (str0, str1, etc.) at any level */
 		if (n->kind == var && n->init && n->init->op == STRING &&
-		    n->name && strncmp(n->name, "_str", 4) == 0) {
+		    n->name && strncmp(n->name, "str", 3) == 0 && n->name[3] >= '0' && n->name[3] <= '9') {
 			found_any = 1;
 			break;
 		}
@@ -516,9 +518,9 @@ emit_literals(void)
 		if (!n)
 			continue;
 
-		/* Output string literal data (only synthetic _str names at any level) */
+		/* Output string literal data (only synthetic str names at any level) */
 		if (n->kind == var && n->init && n->init->op == STRING &&
-		    n->name && strncmp(n->name, "_str", 4) == 0) {
+		    n->name && strncmp(n->name, "str", 3) == 0 && n->name[3] >= '0' && n->name[3] <= '9') {
 			cstring str = (cstring)n->init->v;
 			if (str) {
 				unsigned char len = (unsigned char)str[0];
@@ -625,7 +627,7 @@ emit_global_vars(void)
 			continue;
 
 		/* Skip synthetic string literal names - they're in literals section */
-		if (n->name && strncmp(n->name, "_str", 4) == 0)
+		if (n->name && strncmp(n->name, "str", 3) == 0 && n->name[3] >= '0' && n->name[3] <= '9')
 			continue;
 
 		/* Emit global variable declaration */
