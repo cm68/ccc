@@ -508,7 +508,7 @@ emit_literals(void)
 
 	/* Output literals section header */
 	fdprintf(ast_fd, "\n; String literals\n");
-	fdprintf(ast_fd, "(literals\n");
+	fdprintf(ast_fd, "(L\n");
 
 	/* Second pass: output each string literal */
 	for (i = 0; i <= lastname; i++) {
@@ -525,8 +525,8 @@ emit_literals(void)
 				unsigned char *data = (unsigned char *)str + 1;
 				int j;
 
-				/* Output: (str name "literal_data") */
-				fdprintf(ast_fd, "  (str %s \"", n->name);
+				/* Output: (s name "literal_data") */
+				fdprintf(ast_fd, "  (s %s \"", n->name);
 				for (j = 0; j < len; j++) {
 					unsigned char c = data[j];
 					if (c == '"') {

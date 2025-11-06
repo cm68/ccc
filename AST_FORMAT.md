@@ -370,8 +370,8 @@ String literals are output in a dedicated literals section before global variabl
 
 **Format:**
 ```
-(literals
-  (str name "escaped_string_data")
+(L
+  (s name "escaped_string_data")
   ...
 )
 ```
@@ -386,10 +386,10 @@ char foo[] = "test";
 Emits:
 ```
 ; String literals
-(literals
-  (str _str0 "hello")
-  (str _str1 "world\n")
-  (str _str2 "test")
+(L
+  (s _str0 "hello")
+  (s _str1 "world\n")
+  (s _str2 "test")
 )
 
 ; Global variable: s1

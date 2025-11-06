@@ -336,10 +336,10 @@ String literals are handled with proper escaping and output to a dedicated liter
 
 **AST Output Format**:
 ```
-(literals
-  (str _str0 "hello world")
-  (str _str1 "test\n")
-  (str _str2 "quote\"and\\backslash")
+(L
+  (s _str0 "hello world")
+  (s _str1 "test\n")
+  (s _str2 "quote\"and\\backslash")
 )
 ```
 
