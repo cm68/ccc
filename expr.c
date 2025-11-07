@@ -813,6 +813,24 @@ cfold(struct expr *e)
     case LOR:   // logical OR (||)
         val = (vl || vr);
         break;
+    case LT:    // less than (<)
+        val = (vl < vr);
+        break;
+    case GT:    // greater than (>)
+        val = (vl > vr);
+        break;
+    case LE:    // less than or equal (<=)
+        val = (vl <= vr);
+        break;
+    case GE:    // greater than or equal (>=)
+        val = (vl >= vr);
+        break;
+    case EQ:    // equal (==)
+        val = (vl == vr);
+        break;
+    case NEQ:   // not equal (!=)
+        val = (vl != vr);
+        break;
     default:
         return e;
     }
