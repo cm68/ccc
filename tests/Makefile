@@ -135,6 +135,12 @@ STRING_TESTS = \
 	string_literals.c \
 	array_init.c
 
+# Increment and decrement operator tests
+INCR_DECR_TESTS = \
+	incr_decr_basic.c \
+	incr_decr_expr.c \
+	incr_decr_ptr.c
+
 # Miscellaneous/regression tests
 MISC_TESTS = \
 	hang.c \
@@ -160,6 +166,7 @@ ALL_TESTS = \
 	$(STRUCT_TESTS) \
 	$(CAST_TESTS) \
 	$(STRING_TESTS) \
+	$(INCR_DECR_TESTS) \
 	$(MINIMAL_TESTS) \
 	$(MISC_TESTS)
 
@@ -172,7 +179,7 @@ tests:
 	./runtest.sh $(VERBOSE)
 
 # Test groups for selective testing
-.PHONY: test-expr test-decl test-cpp test-kr test-func test-stmt test-sizeof test-typedef test-cast test-string
+.PHONY: test-expr test-decl test-cpp test-kr test-func test-stmt test-sizeof test-typedef test-cast test-string test-incr-decr
 test-expr:
 	./runtest.sh $(VERBOSE) $(EXPR_TESTS)
 
@@ -202,6 +209,9 @@ test-cast:
 
 test-string:
 	./runtest.sh $(VERBOSE) $(STRING_TESTS)
+
+test-incr-decr:
+	./runtest.sh $(VERBOSE) $(INCR_DECR_TESTS)
 
 # Valgrind testing
 .PHONY: valgrind
