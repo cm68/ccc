@@ -184,8 +184,7 @@ parse_expr(char pri, struct stmt *st)
                 e = sym;
             } else {
                 // Variable: wrap in DEREF to get value
-                e = makeexpr(DEREF, 0);
-                e->left = sym;
+                e = makeexpr(DEREF, sym);
                 e->type = n->type;
             }
         }
@@ -242,9 +241,8 @@ parse_expr(char pri, struct stmt *st)
                             }
                         }
 
-                        e = makeexpr(cast_op, 0);
+                        e = makeexpr(cast_op, inner);
                         e->type = cast_type;
-                        e->left = inner;
                     }
                 }
                 /* Mixed pointer/scalar casts: need conversion */
@@ -254,15 +252,13 @@ parse_expr(char pri, struct stmt *st)
                     int tgt_size = cast_type->size;
                     token_t cast_op = (tgt_size < src_size) ? NARROW : WIDEN;
 
-                    e = makeexpr(cast_op, 0);
+                    e = makeexpr(cast_op, inner);
                     e->type = cast_type;
-                    e->left = inner;
                 }
             } else {
                 /* Shouldn't happen, but create NARROW as fallback */
-                e = makeexpr(NARROW, 0);
+                e = makeexpr(NARROW, inner);
                 e->type = cast_type;
-                e->left = inner;
             }
         } else {
             /* Parenthesized expression: (expr) */
