@@ -375,6 +375,10 @@ parse_expr(unsigned char pri, struct stmt *st)
         // Unwrap DEREF to get lvalue address (similar to ASSIGN)
         if (operand && operand->op == DEREF) {
             operand = operand->left;
+        } else {
+            // Increment/decrement requires an lvalue
+            lose(ER_E_LV);
+            operand = NULL;
         }
 
         // Create increment/decrement node
@@ -574,12 +578,18 @@ parse_expr(unsigned char pri, struct stmt *st)
             // Unwrap DEREF to get lvalue address (similar to ASSIGN)
             if (e && e->op == DEREF) {
                 e = e->left;
+            } else {
+                // Increment/decrement requires an lvalue
+                lose(ER_E_LV);
+                e = NULL;
             }
 
             // Create increment/decrement node
             inc_node = makeexpr(inc_op, e);
-            inc_node->left->up = inc_node;
-            inc_node->type = inc_node->left->type;
+            if (inc_node->left) {
+                inc_node->left->up = inc_node;
+                inc_node->type = inc_node->left->type;
+            }
             inc_node->flags |= E_POSTFIX;  // Mark as postfix form
             e = inc_node;
         }
@@ -648,9 +658,17 @@ parse_expr(unsigned char pri, struct stmt *st)
                             op == XOREQ || op == LSHIFTEQ || op == RSHIFTEQ ||
                             op == LANDEQ || op == LOREQ);
 
-        if (is_assignment && e && e->op == DEREF) {
-            assign_type = e->type;  // Save the type before unwrapping
-            e = e->left;  // unwrap to get address
+        if (is_assignment) {
+            if (e && e->op == DEREF) {
+                assign_type = e->type;  // Save the type before unwrapping
+                e = e->left;  // unwrap to get address
+            } else {
+                // Assignment requires an lvalue (dereference)
+                lose(ER_E_LV);
+                // Skip this operator: parse and discard right side, then return left side
+                parse_expr(p, st);  // Parse and discard right side
+                return e;  // Return left side unchanged
+            }
         }
 
         // Check if this is a struct/array assignment requiring memory copy

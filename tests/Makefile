@@ -149,6 +149,13 @@ PTR_COMPAT_TESTS = \
 	ptr_compat_ok.c \
 	ptr_compat.c
 
+# Lvalue validation tests
+LVALUE_TESTS = \
+	lvalue_simple.c \
+	lvalue_bad.c \
+	lvalue_const.c \
+	lvalue_errors.c
+
 # Miscellaneous/regression tests
 MISC_TESTS = \
 	hang.c \
@@ -176,6 +183,7 @@ ALL_TESTS = \
 	$(STRING_TESTS) \
 	$(INCR_DECR_TESTS) \
 	$(PTR_COMPAT_TESTS) \
+	$(LVALUE_TESTS) \
 	$(MINIMAL_TESTS) \
 	$(MISC_TESTS)
 
@@ -188,7 +196,7 @@ tests:
 	./runtest.sh -k $(VERBOSE)
 
 # Test groups for selective testing
-.PHONY: test-expr test-decl test-cpp test-kr test-func test-stmt test-sizeof test-typedef test-cast test-string test-incr-decr test-ptr-compat
+.PHONY: test-expr test-decl test-cpp test-kr test-func test-stmt test-sizeof test-typedef test-cast test-string test-incr-decr test-ptr-compat test-lvalue
 test-expr:
 	./runtest.sh -k $(VERBOSE) $(EXPR_TESTS)
 
@@ -224,6 +232,9 @@ test-incr-decr:
 
 test-ptr-compat:
 	./runtest.sh -k $(VERBOSE) $(PTR_COMPAT_TESTS)
+
+test-lvalue:
+	./runtest.sh -k $(VERBOSE) $(LVALUE_TESTS)
 
 # Valgrind testing
 .PHONY: valgrind

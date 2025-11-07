@@ -206,6 +206,13 @@ The type system is designed to be "squeaky-clean" with zero redundancy:
 - Result type is the larger of the two operand types
 - Works recursively in chained operations (e.g., char + int + long)
 
+**Lvalue validation**:
+- Assignments require lvalue (DEREF node) on left side
+- Validates for simple assignment (=) and all compound assignments (+=, -=, etc.)
+- Validates for prefix and postfix increment/decrement (++/--)
+- Reports ER_E_LV error for invalid lvalues (constants, expression results)
+- Expression statements can now start with numeric literals and strings (for error detection)
+
 **Not yet implemented**:
 - Full type compatibility checking (sametype) for all contexts
 
@@ -729,9 +736,14 @@ The compiler has made substantial progress:
 - Proper cleanup in pop_scope()
 - Valgrind clean on basic tests (no definite leaks)
 
+**Type checking and validation** (partially implemented):
+- Automatic type conversions in assignments (NARROW/SEXT/WIDEN)
+- Automatic operand widening in binary expressions
+- Pointer type compatibility validation
+- Lvalue validation for assignments and increment/decrement operators
+
 **Not yet implemented**:
-- Symbol table integration for expression evaluation
-- Type checking and validation
+- Full type compatibility checking (sametype) for all contexts
 - Code generation (pass 2)
 
 ### Known Issues
@@ -742,7 +754,7 @@ The compiler has made substantial progress:
 
 ### Testing
 
-Tests are in tests/ directory (110 tests organized by category):
+Tests are in tests/ directory (122 tests organized by category):
 - **Expression tests** (EXPR_TESTS): Constant folding, simple expressions
 - **Declaration tests** (DECL_TESTS): Variable and type declarations
 - **Preprocessor tests** (CPP_TESTS): Macros, includes, conditional compilation, stringify
@@ -756,6 +768,9 @@ Tests are in tests/ directory (110 tests organized by category):
 - **Struct tests** (STRUCT_TESTS): Struct declarations
 - **Type cast tests** (CAST_TESTS): Pointer-to-pointer, scalar, and mixed casts with typedef support
 - **String literal tests** (STRING_TESTS): String literals with escaping, array initialization (char[] = "string")
+- **Increment/decrement tests** (INCR_DECR_TESTS): Prefix/postfix ++/-- on variables, pointers, expressions
+- **Pointer compatibility tests** (PTR_COMPAT_TESTS): Pointer type checking and compatibility validation
+- **Lvalue validation tests** (LVALUE_TESTS): Invalid lvalue detection for assignments and operators
 - **Minimal/smoke tests**: Basic compiler functionality
 - **Miscellaneous tests**: Regression tests
 

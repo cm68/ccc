@@ -319,6 +319,8 @@ statement(struct stmt *parent)
                 }
             }
             /* fall through to expression */
+        case NUMBER:    // numeric literals can start expression statements
+        case STRING:    // string literals can start expression statements
         case LPAR:
         case STAR:
         case INCR:
