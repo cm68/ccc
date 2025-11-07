@@ -139,8 +139,8 @@ emit_expr(struct expr *e)
 		break;
 
 	case COPY:
-		/* Memory copy operator: (copy:length dest src) */
-		fdprintf(ast_fd, "(copy:%ld", e->v);  /* v field contains byte count */
+		/* Memory copy operator: (Y:length dest src) */
+		fdprintf(ast_fd, "(Y:%ld", e->v);  /* v field contains byte count */
 		if (e->left) {
 			fdprintf(ast_fd, " ");
 			emit_expr(e->left);
