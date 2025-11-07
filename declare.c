@@ -135,9 +135,11 @@ declare_internal(struct type **btp, boolean struct_elem)
             nm->next = 0;
             nm->init = 0;
             nm->body = 0;
+#ifdef DEBUG
             if (VERBOSE(V_SYM)) {
                 printf("struct_elem: %s (not added to names[])\n", nm->name);
             }
+#endif
         } else {
             /* normal variable: add to global names[] array */
             /* Check if this name already exists at this scope */

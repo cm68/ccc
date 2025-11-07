@@ -102,9 +102,11 @@ add_include(char *s)
     } else {
         includes = i;
     }
+#ifdef DEBUG
     if (VERBOSE(V_CPP)) {
         printf("add_include: %s\n", s);
     }
+#endif
 }
 
 /*
@@ -170,9 +172,11 @@ insertmacro(char *name, char *macbuf)
 
 
     l = strlen(macbuf);         // our macro without the terminating null
+#ifdef DEBUG
     if (VERBOSE(V_MACRO)) {
         printf("insert macro %s %d $%s$\n", name, l, macbuf);
     }
+#endif
     t = tbtop;
 
     /* does it fit */

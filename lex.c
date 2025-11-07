@@ -282,10 +282,12 @@ issym()
         }
         advance();
     }
+#ifdef DEBUG
     if (VERBOSE(V_SYM)) {
-        printf("issym = %s curchar = %c nextchar = %c\n", 
+        printf("issym = %s curchar = %c nextchar = %c\n",
             strbuf, curchar, nextchar);
     }
+#endif
     return 1;
 }
 
@@ -441,9 +443,11 @@ isstring()
         *s++ = getlit();
     }
     *s = 0;
+#ifdef DEBUG
     if (VERBOSE(V_STR)) {
         printf("isstring: %s(%d)\n", &strbuf[1], strbuf[0]);
     }
+#endif
     return 1;
 }
 
@@ -689,9 +693,11 @@ gettoken()
             cpp_out("\n", 1);
         }
     }
+#ifdef DEBUG
     if (VERBOSE(V_TOKEN)) {
-        printf("cur.type = 0x%02x \'%c\'\n", cur.type, cur.type > ' ' ? cur.type : ' '); 
+        printf("cur.type = 0x%02x \'%c\'\n", cur.type, cur.type > ' ' ? cur.type : ' ');
     }
+#endif
     return;
 }
 

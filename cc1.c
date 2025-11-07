@@ -32,9 +32,11 @@ process(char *f)
     int i, len;
     char *s, *basename_start, *dot;
 
+#ifdef DEBUG
     if (VERBOSE(V_TRACE)) {
         printf("process %s\n", f);
     }
+#endif
 
     /* Extract source file root for static name mangling */
     if (source_file_root) {

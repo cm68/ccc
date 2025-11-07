@@ -75,10 +75,12 @@ pop_scope()
             break;
         names[lastname] = 0;
 
+#ifdef DEBUG
         if (VERBOSE(V_SYM)) {
             printf("pop_scope: remove %s%s from lookup\n",
                 n->is_tag ? "tag:":"", n->name);
         }
+#endif
 
         // Note: We don't free the name structure here because it may still
         // be referenced by the AST (statement trees via SYM expressions).
@@ -202,12 +204,14 @@ new_name(char *name, kind k, struct type *t, boolean is_tag)
     n->is_tag = is_tag;
     n->kind = k;
     names[++lastname] = n;
+#ifdef DEBUG
     if (VERBOSE(V_SYM)) {
         printf("new_name: level:%d index:%3d %s %s%s\n",
             lexlevel, lastname,
             k < sizeof(kindname)/sizeof(kindname[0]) ? kindname[k] : "unkn",
             is_tag ? "tag:":"", name);
     }
+#endif
 
 	return (n);
 }
@@ -247,12 +251,14 @@ add_name(struct name *n)
     n->level = lexlevel;
     names[++lastname] = n;
 
+#ifdef DEBUG
     if (VERBOSE(V_SYM)) {
         printf("add_name: level:%d index:%3d %s %s%s\n",
             lexlevel, lastname,
             n->kind < sizeof(kindname)/sizeof(kindname[0]) ? kindname[n->kind] : "unkn",
             n->is_tag ? "tag:":"", n->name);
     }
+#endif
 }
 
 void
