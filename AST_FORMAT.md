@@ -73,6 +73,66 @@ All C operators are represented by their token character:
 
 **Important**: Compound assignments evaluate the lvalue ONCE (not desugared). This ensures correct semantics when the lvalue has side effects (e.g., `*(foo()) += 1` calls `foo()` only once).
 
+### Automatic Type Conversions
+
+The compiler automatically inserts type conversion operators when assigning between different-sized scalar types. This applies to both simple assignments (`=`) and compound assignments (`+=`, `-=`, etc.).
+
+**Conversion Rules:**
+- **NARROW** (`N`): Used when assigning larger type to smaller type (e.g., `int -> char`, `long -> int`)
+- **SEXT** (`X`): Sign extension for signed types (e.g., `char -> int`, `int -> long`)
+- **WIDEN** (`W`): Zero extension for unsigned types (e.g., `unsigned char -> unsigned int`)
+
+**Examples:**
+```c
+char c;
+int i;
+long l;
+unsigned char uc;
+unsigned int ui;
+
+// Narrowing conversions
+c = i;              // (=:b $_c (N:b (M:s $_i)))      - int to char
+i = l;              // (=:s $_i (N:s (M:l $_l)))      - long to int
+
+// Sign extension (signed types)
+i = c;              // (=:s $_i (X:s (M:b $_c)))      - char to int
+l = i;              // (=:l $_l (X:l (M:s $_i)))      - int to long
+
+// Zero extension (unsigned types)
+ui = uc;            // (=:s $_ui (W:s (M:b $_uc)))    - unsigned char to unsigned int
+
+// Compound assignments with conversion
+c += i;             // (P:b $_c (N:b (M:s $_i)))      - NARROW applied to rvalue
+```
+
+**Notes:**
+- Only applies to scalar types (not pointers, arrays, functions, or aggregates)
+- Conversions are based on type size and signedness
+- Same conversions apply to both `=` and compound operators (`+=`, `-=`, etc.)
+- Pointer assignments are checked for compatibility but don't insert conversions
+
+### Pointer Type Compatibility
+
+The compiler validates pointer type compatibility during assignments and reports error ER_E_PT ("incompatible pointer types") when incompatible pointers are assigned.
+
+**Compatible Pointer Assignments:**
+- Same base type: `int *p1 = p2;` (both point to int)
+- Array decay: `char *p = arr;` (char[] decays to char*)
+- Same struct type: `struct foo *fp1 = fp2;` (same struct)
+
+**Incompatible Assignments (Error):**
+- Different base types: `char *cp = int_ptr;` ❌
+- Different struct types: `struct foo *fp = bar_ptr;` ❌
+- Signed/unsigned mismatch: `unsigned int *up = signed_ptr;` ❌
+
+**Checking Rules:**
+1. Both pointers must have base types (type->sub)
+2. For aggregates (structs/unions): Base types must be identical (pointer equality due to type unification)
+3. For primitives: Must have same size and signedness
+4. Arrays and pointers are considered compatible (array decays to pointer)
+
+**Note:** Type casts can override compatibility checking. Use explicit casts for intentional type reinterpretation.
+
 ### Type Cast Operators
 
 Type conversions that require runtime operations emit specific cast operators with destination width annotations:

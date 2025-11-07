@@ -6,7 +6,7 @@
 - + Full C preprocessor (macros, includes, conditional compilation, stringify, token pasting)
 - + Nested macro expansion works correctly
 - + Complete lexical analysis
-- + Comprehensive test suite (95+ tests organized in 14 categories)
+- + Comprehensive test suite (110+ tests organized in 15 categories)
 
 ### Type System
 - + Primitive types: char, short, int, long, unsigned variants, void, boolean, float, double
@@ -21,6 +21,8 @@
 - + Bitfield support in struct declarations
 - + Tag namespace separate from variable namespace
 - + Struct member namespace separation
+- + Pointer type compatibility checking (validates assignments, reports ER_E_PT)
+- + Automatic type conversions in assignments (NARROW/SEXT/WIDEN)
 
 ### Declarations
 - + Variable declarations (global and local)
@@ -41,6 +43,8 @@
 - + Comparison operators: <, >, <=, >=, ==, != with constant folding
 - + Unary operators: -, ~, !, *, &
 - + Assignment operator: = with proper lvalue handling
+- + Increment/decrement operators: ++, -- (prefix and postfix with distinct AST operators)
+- + Compound assignment operators: +=, -=, *=, /=, %=, &=, |=, ^=, <<=, >>= (single lvalue evaluation)
 - + Ternary conditional operator (? :) with right-associativity and constant folding
 - + Type cast operator: (type)expr with typedef disambiguation
 - + Address semantics: SYM nodes represent addresses, DEREF accesses values
@@ -75,26 +79,15 @@
 
 ## Pending Tasks (Pass 1)
 
-### High Priority - Expression Operators
-
-**Increment/Decrement Operators**
-- [ ] Implement ++ and -- (prefix and postfix)
-- [ ] Desugar to assignment + add/subtract
-- [ ] Postfix requires temporary for old value
-
-**Compound Assignment Operators**
-- [ ] Implement: +=, -=, *=, /=, %=, &=, |=, ^=, <<=, >>=
-- [ ] Desugar to: a op= b -> a = a op b
-- [ ] Handle lvalue semantics correctly
-
 ### High Priority - Type System Improvements
 
-- [ ] Add type compatibility checking (sametype function)
-- [ ] Implement type conversions and promotions in expressions
+- [ ] Add full type compatibility checking (sametype function for all contexts)
+- [ ] Implement type conversions and promotions in general expressions (not just assignments)
 - [ ] Fix operator type propagation (currently copies left operand incorrectly)
 - [ ] Add type checking validation for all operators
 - [ ] Add lvalue validation for assignments and operators
 - [ ] Function signature checking at call sites
+- [ ] Pointer arithmetic type checking
 
 ### Lower Priority
 
