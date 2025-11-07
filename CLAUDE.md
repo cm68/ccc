@@ -129,7 +129,6 @@ Expression trees are built using two helper functions in expr.c:
 **makeexpr(op, left)**: Basic expression node allocator
 - Allocates and zero-initializes an expr structure
 - Sets operator and left child pointer
-- Calculates cost based on left child (or 1 if no left child)
 - Returns pointer to new expression node
 
 **makeexpr_init(op, left, type, v, flags)**: Convenience wrapper

@@ -53,7 +53,6 @@ struct expr {
 
 	unsigned long v;
 	char location;
-	char cost;
 	char regs;
 	struct stmt *stmt;
 	struct inst *inst;

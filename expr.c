@@ -18,11 +18,6 @@ makeexpr(char op, struct expr *left)
 	e = calloc(1, sizeof(*e));  // Zero-initialize all fields
 	e->op = op;
 	e->left = left;
-	if (left) {
-		e->cost = left->cost + 1;
-	} else {
-		e->cost = 1;
-	}
 	return e;
 }
 
@@ -79,7 +74,6 @@ void
 unop_set(struct expr *e)
 {
     e->type = e->left->type;
-    e->cost = e->left->cost;
     e->left->up = e;
 }
 
@@ -298,7 +292,6 @@ parse_expr(char pri, struct stmt *st)
         gettoken();
         e = makeexpr(DEREF, parse_expr(OP_PRI_MULT - 1, st));
         if (e->left) {
-            e->cost = e->left->cost;
             e->left->up = e;
             // type will be determined later when we have full type info
             if (e->left->type && (e->left->type->flags & TF_POINTER) && e->left->type->sub) {
@@ -318,7 +311,6 @@ parse_expr(char pri, struct stmt *st)
         } else {
             struct expr *addr = makeexpr(AND, e);
             if (e) {
-                addr->cost = e->cost;
                 e->up = addr;
                 if (e->type) {
                     addr->type = get_type(TF_POINTER, e->type, 0);
@@ -490,7 +482,6 @@ parse_expr(char pri, struct stmt *st)
             need(RPAR, RPAR, ER_E_SP);
 
             // Result type will be determined later from function signature
-            call->cost = call->left->cost + 1;
             e = call;
         } else if (cur.type == DOT || cur.type == ARROW) {
             // Struct member access: s.x or p->x
@@ -651,9 +642,8 @@ parse_expr(char pri, struct stmt *st)
             e->right = e->right->left;  // unwrap to get address
         }
 
-        // compute cost and try to determine result type
+        // try to determine result type
         if (e->left && e->right) {
-            e->cost = e->left->cost + e->right->cost;
             // for now, use left operand's type as result type
             // proper type resolution would go here
             e->type = e->left->type;
@@ -668,7 +658,6 @@ parse_expr(char pri, struct stmt *st)
                 }
             }
         } else if (e->left) {
-            e->cost = e->left->cost;
             e->type = e->left->type;
         }
 
