@@ -116,7 +116,7 @@ main(int argc, char **argv)
     fprintf(fp, "#define OP_MAX %d\n", max);
     fprintf(fp, "\n");
 
-    fprintf(fp, "static char op_pri[] = {\n");
+    fprintf(fp, "static unsigned char op_pri[] = {\n");
 
     /* generate array indexed by (token - OP_MIN) */
     for (op = min; op <= max; op++) {

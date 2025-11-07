@@ -81,11 +81,11 @@ unop_set(struct expr *e)
  * the operator priority table is indexed from OP_MIN to OP_MAX, and contains the encoded priority of the
  * binary operator.  zero values mean not an operator.
  */
-char
+unsigned char
 binop_pri(char t)
 {
-    char po;
-    char v;
+    unsigned char po;
+    unsigned char v;
 
     po = t - OP_MIN;
     if ((po < 0) || (t > OP_MAX)) {
@@ -104,7 +104,7 @@ parse_expr(char pri, struct stmt *st)
 {
 	char op;
 	struct expr *e;
-    char p;
+    unsigned char p;
 
 	e = 0;  // initialize to avoid uninitialized use
 
