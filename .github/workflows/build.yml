@@ -17,7 +17,7 @@ jobs:
     - name: Install dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y gcc make gawk
+        sudo apt-get install -y gcc make gawk pandoc enscript ghostscript
 
     - name: Build project
       run: make clean && make
@@ -25,10 +25,20 @@ jobs:
     - name: Run tests
       run: make test || true
 
+    - name: Generate documentation PDF
+      run: make doc.pdf
+
+    - name: Upload documentation PDF
+      uses: actions/upload-artifact@v4
+      with:
+        name: documentation
+        path: doc.pdf
+        retention-days: 90
+
     - name: Show build artifacts
       run: |
-        ls -lh cc1
-        file cc1
+        ls -lh cc1 doc.pdf
+        file cc1 doc.pdf
 
     - name: Verify generated files
       run: |
