@@ -138,6 +138,20 @@ emit_expr(struct expr *e)
 		}
 		break;
 
+	case COPY:
+		/* Memory copy operator: (copy:length dest src) */
+		fdprintf(ast_fd, "(copy:%ld", e->v);  /* v field contains byte count */
+		if (e->left) {
+			fdprintf(ast_fd, " ");
+			emit_expr(e->left);
+		}
+		if (e->right) {
+			fdprintf(ast_fd, " ");
+			emit_expr(e->right);
+		}
+		fdprintf(ast_fd, ")");
+		break;
+
 	default:
 		/* Operator - output in prefix notation */
 		/* For DEREF (M) and ASSIGN (=), add size annotation */

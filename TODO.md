@@ -6,6 +6,7 @@
 - [x] Implement type cast operator (type)expr with disambiguation
 - [x] String literals output to AST
 - [x] Array initialization with string literals (char[] = "string")
+- [x] Memory copy operator (copy) for local array initialization
 
 ## Pending Tasks
 
@@ -23,9 +24,6 @@
 - [ ] Add type checking validation for all operators
 - [ ] Add lvalue validation for assignments and operators
 
-### String Handling
-
-- [ ] Simplify local char array initialization: `char ca[] = "s2"` should create ca as a constant char* pointer to the string literal (s2 is the array, ca is just a pointer)
 
 ## Future Enhancements
 

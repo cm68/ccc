@@ -223,11 +223,22 @@ statement(struct stmt *parent)
                     lhs->var = (struct var *)v;  /* Cast name* to var* (field is overloaded) */
                     lhs->type = v->type;
 
-                    /* Create assignment: lhs = initializer */
-                    assign_expr = makeexpr(ASSIGN, lhs);
-                    assign_expr->right = v->init;
-                    assign_expr->type = v->type;
-                    v->init = NULL;  /* Clear so it's not output in declaration */
+                    /* Check if this is an array initialization requiring memory copy */
+                    if (v->type && (v->type->flags & TF_ARRAY) && v->init) {
+                        /* Create memory copy: COPY dest src length */
+                        assign_expr = makeexpr(COPY, lhs);
+                        assign_expr->right = v->init;
+                        assign_expr->type = v->type;
+                        /* Store byte count in v field for pass 2 */
+                        assign_expr->v = v->type->count;  /* Array element count = byte count for char[] */
+                        v->init = NULL;  /* Clear so it's not output in declaration */
+                    } else {
+                        /* Regular scalar assignment: lhs = initializer */
+                        assign_expr = makeexpr(ASSIGN, lhs);
+                        assign_expr->right = v->init;
+                        assign_expr->type = v->type;
+                        v->init = NULL;  /* Clear so it's not output in declaration */
+                    }
 
                     /* Create expression statement */
                     assign_st = makestmt(EXPR, assign_expr);
@@ -282,11 +293,22 @@ statement(struct stmt *parent)
                             lhs->var = (struct var *)v;  /* Cast name* to var* (field is overloaded) */
                             lhs->type = v->type;
 
-                            /* Create assignment: lhs = initializer */
-                            assign_expr = makeexpr(ASSIGN, lhs);
-                            assign_expr->right = v->init;
-                            assign_expr->type = v->type;
-                            v->init = NULL;  /* Clear so it's not output in declaration */
+                            /* Check if this is an array initialization requiring memory copy */
+                            if (v->type && (v->type->flags & TF_ARRAY) && v->init) {
+                                /* Create memory copy: COPY dest src length */
+                                assign_expr = makeexpr(COPY, lhs);
+                                assign_expr->right = v->init;
+                                assign_expr->type = v->type;
+                                /* Store byte count in v field for pass 2 */
+                                assign_expr->v = v->type->count;  /* Array element count = byte count for char[] */
+                                v->init = NULL;  /* Clear so it's not output in declaration */
+                            } else {
+                                /* Regular scalar assignment: lhs = initializer */
+                                assign_expr = makeexpr(ASSIGN, lhs);
+                                assign_expr->right = v->init;
+                                assign_expr->type = v->type;
+                                v->init = NULL;  /* Clear so it's not output in declaration */
+                            }
 
                             /* Create expression statement */
                             assign_st = makestmt(EXPR, assign_expr);

@@ -51,7 +51,7 @@ enum {
     LANDEQ = 'J', LOREQ = 'H',
     RSHIFTEQ = '6', LSHIFTEQ = '0',
     EXPR = '`', NEG = '\\', NOT = '\'', CALL = '@',
-    NARROW = '_', WIDEN = 0xb3, SEXT = 0xb4,
+    NARROW = '_', WIDEN = 0xb3, SEXT = 0xb4, COPY = 0xb5,
 
     /* CPP */
     INCLUDE = '#',

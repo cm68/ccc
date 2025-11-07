@@ -45,6 +45,7 @@ All C operators are represented by their token character:
 - Logical: `j` (&&), `h` (||), `!`
 - Memory access: `M` (dereference) - `(M:width expr)` with width annotation
 - Assignment: `=` - `(=:width lvalue rvalue)` with width annotation
+- Memory copy: `copy` - `(copy:length dest src)` with byte count annotation
 - Address-of: `&` - `(& expr)`
 - Function call: `@` - `(@ function arg1 arg2 ...)`
 - Ternary conditional: `?` - `(? condition (: true_expr false_expr))`
@@ -84,6 +85,31 @@ i = (int) uc;        // (=:s $_i (W:s (M:b $_uc)))     - zero-extend unsigned ch
 **No cast operator needed for:**
 - Pointer-to-pointer casts: Just type reinterpretation
 - Same-size conversions: e.g., `int ↔ unsigned int`
+
+### Memory Copy Operator
+
+Block memory copies emit the `copy` operator with a byte count annotation:
+
+**Format:** `(copy:length dest src)` where length is the number of bytes to copy
+
+**Usage:**
+- Local array initialization from string literals
+- Structure assignment (future)
+- Array-to-array copies (future)
+
+**Examples:**
+```c
+char a[] = "hello";     // (d a :array:6) (E (copy:6 $a $_str0))
+char b[] = "test";      // (d b :array:5) (E (copy:5 $b $_str1))
+```
+
+**Comparison with scalar assignment:**
+```c
+char *p = "hello";      // (d p :ptr) (E (=:p $p $_str0))        - pointer assignment
+char a[] = "hello";     // (d a :array:6) (E (copy:6 $a $_str0)) - memory copy
+```
+
+The `copy` operator generates a block memory copy (like `memcpy`) rather than a scalar assignment. The destination remains a local array with proper `sizeof()` semantics, while the initialization copies bytes from the string literal.
 
 ### Memory Width Annotations
 
