@@ -81,7 +81,7 @@ declare_internal(struct type **btp, boolean struct_elem)
      */
     t = getbasetype();
     if (t && *btp) {
-        err(ER_T_DT);
+        lose(ER_T_DT);
         t = 0;
     }
     if (t) {
@@ -98,7 +98,7 @@ declare_internal(struct type **btp, boolean struct_elem)
         nm = declare_internal(&rt, struct_elem);       // recurse
         need(RPAR, RPAR, ER_D_DP);
         if (*btp && rt) {
-            err(ER_T_DT);
+            lose(ER_T_DT);
             rt = 0;
         }
         if (rt && !nm) {
@@ -118,7 +118,7 @@ declare_internal(struct type **btp, boolean struct_elem)
     }
     if (cur.type == SYM) {      // symbol name
         if (nm) {
-            err(ER_D_MV);
+            lose(ER_D_MV);
         }
 
         if (struct_elem) {
@@ -165,9 +165,9 @@ declare_internal(struct type **btp, boolean struct_elem)
         if (cur.type == COLON) {    // check for bitfield
             gettoken();
             if (cur.type != NUMBER) {
-                err(ER_D_BD);
+                lose(ER_D_BD);
             } else if (cur.v.numeric > MAXBITS) {
-                err(ER_D_BM);
+                lose(ER_D_BM);
             } else {
                 nm->kind = bitfield;
                 nm->width = cur.v.numeric;
@@ -191,7 +191,7 @@ declare_internal(struct type **btp, boolean struct_elem)
     if (cur.type == LPAR) {     // ( <func_arg>[,<func_arg>]*. )
         gettoken();
         if (suffix) {
-            err(ER_D_FA);
+            lose(ER_D_FA);
             suffix = 0;
         }
 
@@ -213,14 +213,14 @@ declare_internal(struct type **btp, boolean struct_elem)
                 // K&R style: just collect names (types come later)
                 param_name = parse_param_name(0);
                 if (!param_name) {
-                    err(ER_D_FA);
+                    lose(ER_D_FA);
                     break;
                 }
             } else {
                 // ANSI style: parse full type + declarator
                 struct type *basetype = getbasetype();
                 if (!basetype) {
-                    err(ER_D_FA);
+                    lose(ER_D_FA);
                     break;
                 }
 
@@ -258,7 +258,7 @@ declare_internal(struct type **btp, boolean struct_elem)
                 continue;
             }
             if (cur.type != RPAR) {
-                err(ER_D_FA);
+                lose(ER_D_FA);
                 break;
             }
         }
@@ -279,7 +279,7 @@ declare_internal(struct type **btp, boolean struct_elem)
                 // Get parameter name (required for K&R declarations)
                 char *param_name = parse_param_name(0);
                 if (!param_name) {
-                    err(ER_D_FM);
+                    lose(ER_D_FM);
                     break;
                 }
 
@@ -292,7 +292,7 @@ declare_internal(struct type **btp, boolean struct_elem)
                     }
                 }
                 if (!p) {
-                    err(ER_D_FM);  // Parameter declared but not in list
+                    lose(ER_D_FM);  // Parameter declared but not in list
                 }
                 free(param_name);
 
@@ -318,7 +318,7 @@ declare_internal(struct type **btp, boolean struct_elem)
 
     if ((cur.type != ASSIGN) && (cur.type != BEGIN) &&
         (cur.type != COMMA) && (cur.type != SEMI) && (cur.type != RPAR)) {
-        err(ER_D_UT);
+        lose(ER_D_UT);
         nm = 0;
     }
     if (!nm) {

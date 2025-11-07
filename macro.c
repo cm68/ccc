@@ -148,7 +148,7 @@ macdefine(char *s)
             if (curchar == ')') {
                 break;
             }
-            err(ER_C_DP);
+            lose(ER_C_DP);
         }
         if (m->parmcount) {
             m->parms = malloc(sizeof(char *) * m->parmcount);
@@ -292,7 +292,7 @@ macexpand(char *s)	/* the symbol we are looking up as a macro */
     } // curchar should be ')'
 
     if (args != m->parmcount) {
-        err(ER_C_DP);
+        lose(ER_C_DP);
     }
 
     /*

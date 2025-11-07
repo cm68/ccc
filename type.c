@@ -180,7 +180,7 @@ new_name(char *name, kind k, struct type *t, boolean is_tag)
         lastname = -1;
     }
     if (lastname == maxnames) {
-        err(ER_D_OF);
+        lose(ER_D_OF);
         return (0);
     }
 
@@ -193,7 +193,7 @@ new_name(char *name, kind k, struct type *t, boolean is_tag)
         if ((n->is_tag == is_tag) &&
             (name[0] == n->name[0]) &&
             (strcmp(name, n->name) == 0)) {
-            err(ER_D_DN);
+            lose(ER_D_DN);
 	        return (0);
 		}
     }
@@ -230,7 +230,7 @@ add_name(struct name *n)
         lastname = -1;
     }
     if (lastname == maxnames) {
-        err(ER_D_OF);
+        lose(ER_D_OF);
         return;
     }
 
@@ -242,7 +242,7 @@ add_name(struct name *n)
         if ((names[i]->is_tag == n->is_tag) &&
             (n->name[0] == names[i]->name[0]) &&
             (strcmp(n->name, names[i]->name) == 0)) {
-            err(ER_D_DN);
+            lose(ER_D_DN);
             return;
         }
     }
@@ -509,7 +509,7 @@ parsebasic()
 		case LONG:
 			gettoken();
 			if (length) {
-				err(ER_T_PT);
+				lose(ER_T_PT);
 			}
 			length = BYTES_4 + 1;
 			continue;
@@ -517,7 +517,7 @@ parsebasic()
 		case SHORT:
 			gettoken();
 			if (length) {
-				err(ER_T_PT);
+				lose(ER_T_PT);
 			}
 			length = BYTES_2 + 1;
 			continue;
@@ -543,7 +543,7 @@ parsebasic()
 		case VOID:
 			gettoken();
 			if (length + unsignedness) {
-				err(ER_T_PT);
+				lose(ER_T_PT);
 				length = 0;
 			}
 			misc += MISC_BASIC;
@@ -626,7 +626,7 @@ getbasetype()
         off = 0;
         while (cur.type != END && cur.type != E_O_F) {
             if (cur.type != SYM) {
-                err(ER_T_ET);
+                lose(ER_T_ET);
                 break;
             }
 
@@ -647,7 +647,7 @@ getbasetype()
                 continue;
             }
             if (cur.type != END) {
-                err(ER_T_ED);
+                lose(ER_T_ED);
                 break;
             }
         }
@@ -693,7 +693,7 @@ getbasetype()
                 return t;
             }
             // No tag name and no definition - error
-            err(ER_T_ED);
+            lose(ER_T_ED);
             if (s) free(s);
             return 0;
         }
@@ -752,7 +752,7 @@ getbasetype()
             if (cur.type == SEMI) {
                 gettoken();
             } else if (cur.type != END) {
-                err(ER_T_ED);
+                lose(ER_T_ED);
             }
         }
         match(END);
@@ -762,7 +762,7 @@ getbasetype()
         return t;
     }
 
-    err(ER_T_UT);
+    lose(ER_T_UT);
     return 0;
 }
 

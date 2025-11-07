@@ -13,7 +13,7 @@ int error;
  * continue
  */
 void
-err(error_t errcode)
+lose(error_t errcode)
 {
     int i;
 
@@ -30,7 +30,7 @@ err(error_t errcode)
 void
 fatal(error_t errcode)
 {
-    err(errcode);
+    lose(errcode);
     printf("too severe to recover\n");
     exit(-errcode);
 }
@@ -41,7 +41,7 @@ fatal(error_t errcode)
 void
 recover(error_t errcode, token_t skipto)
 {
-    err(errcode);
+    lose(errcode);
     while ((cur.type != skipto) && (cur.type != E_O_F)) {
         gettoken();
     }

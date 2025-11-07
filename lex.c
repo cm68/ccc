@@ -142,7 +142,7 @@ getint(unsigned char base)
     }
     /* if no characters are consumed, note the error if base 2 or 16 */
     if ((len == 0) && ((base == 2) || (base == 16))) {
-        err(ER_C_NX);
+        lose(ER_C_NX);
     }
     return i;
 }
@@ -159,7 +159,7 @@ getlit()
 top:
     if (curchar != '\\') {
         if ((curchar < 0x20) || (curchar > 0x7e)) {
-            err(ER_C_BC);
+            lose(ER_C_BC);
             curchar = ' ';
         }
         c = curchar;
@@ -223,7 +223,7 @@ isnumber()
     if (charmatch('\'')) {
         next.v.numeric = getlit();
         if (curchar == '\'') {
-            err(ER_C_CD);
+            lose(ER_C_CD);
         }
         advance();
         return 1;
@@ -311,7 +311,7 @@ do_cpp(unsigned char t)
     case IFDEF:
         skipwhite1();
         if (!issym()) {
-            err(ER_C_MN);
+            lose(ER_C_MN);
             skiptoeol();
             return;
         }
@@ -326,7 +326,7 @@ do_cpp(unsigned char t)
     case IFNDEF:
         skipwhite1();
         if (!issym()) {
-            err(ER_C_MN);
+            lose(ER_C_MN);
             skiptoeol();
             return;
         }
@@ -341,7 +341,7 @@ do_cpp(unsigned char t)
     case ENDIF:
         skiptoeol();
         if (!cond) {
-            err(ER_C_CU);
+            lose(ER_C_CU);
             return;
         }
         c = cond;
@@ -351,11 +351,11 @@ do_cpp(unsigned char t)
     case ELSE:
         skiptoeol();
         if (!cond) {
-            err(ER_C_CU);
+            lose(ER_C_CU);
             return;
         }
         if (cond->flags & C_ELSESEEN) {
-            err(ER_C_ME);
+            lose(ER_C_ME);
             return;
         }
         cond->flags ^= (C_TRUE | C_ELSESEEN);
@@ -366,12 +366,12 @@ do_cpp(unsigned char t)
     case ELIF:
         if (!cond) {
             skiptoeol();
-            err(ER_C_CU);
+            lose(ER_C_CU);
             return;
         }
         v = readcppconst();
         if (cond->flags & C_ELSESEEN) {
-            err(ER_C_ME);
+            lose(ER_C_ME);
             return;
         } 
         if (cond->flags & C_TRUESEEN) {
@@ -384,7 +384,7 @@ do_cpp(unsigned char t)
     case DEFINE:
         skipwhite1();
         if (!issym()) {
-            err(ER_C_MN);
+            lose(ER_C_MN);
             return;
         }
         advance();
@@ -393,7 +393,7 @@ do_cpp(unsigned char t)
     case UNDEF:
         skipwhite1();
         if (!issym()) {
-            err(ER_C_MN);
+            lose(ER_C_MN);
             return;
         }
         advance();
@@ -406,7 +406,7 @@ do_cpp(unsigned char t)
         } else if (curchar == '\"') {
             k = '\"';
         } else {
-            err(ER_C_ID);
+            lose(ER_C_ID);
             return;
         }
         advance();
@@ -417,7 +417,7 @@ do_cpp(unsigned char t)
         }
         *s = 0;
         if (curchar != k) {
-            err(ER_C_ID);
+            lose(ER_C_ID);
         }
         skiptoeol();
         insertfile(strbuf, k == '>'); 
@@ -544,7 +544,7 @@ gettoken()
                     do_cpp(t);
                     continue;
                 }
-                err(ER_C_BD);
+                lose(ER_C_BD);
             }
             if (isnumber()) {
                 lineno = next.v.numeric;
@@ -626,7 +626,7 @@ gettoken()
         /* from here, it had better be an operator */
         t = lookupc(simple, curchar);
         if (t == 0xff) {
-            err(ER_C_UT);
+            lose(ER_C_UT);
             curchar= ';';
         }
 
@@ -714,7 +714,7 @@ cpppseudofunc()
         advance();
         while ((curchar == '\t') || (curchar == ' ')) advance();
         if (curchar != '(') {
-            err(ER_C_DP);
+            lose(ER_C_DP);
             curchar = '0';
             return 1;
         }
@@ -727,7 +727,7 @@ cpppseudofunc()
         }
         while ((curchar == '\t') || (curchar == ' ')) advance();
         if (curchar != ')') {
-            err(ER_C_DP);
+            lose(ER_C_DP);
             r = 0;
         } else {
             advance();  /* Move past the ')' */
