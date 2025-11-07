@@ -101,7 +101,7 @@ capture_locals(void)
 /* Track variables declared with initializers for local scope */
 #define MAX_DECL_INITS 32
 static struct name *decl_inits[MAX_DECL_INITS];
-static int decl_init_count = 0;
+static unsigned char decl_init_count = 0;
 
 void
 add_decl_init(struct name *v)

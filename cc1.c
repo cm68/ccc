@@ -18,7 +18,7 @@ int verbose;
 /* Global context for static variable name mangling */
 char *source_file_root = NULL;
 struct name *current_function = NULL;
-int static_counter = 0;
+unsigned char static_counter = 0;
 
 /* AST output control */
 int ast_fd;  // defaults to 1 (stdout), can be overridden with -o

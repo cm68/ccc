@@ -236,7 +236,7 @@ void cleanup_parser();
 /* Global context for static variable name mangling */
 extern char *source_file_root;      // basename of current source file (without .c)
 extern struct name *current_function; // current function being parsed
-extern int static_counter;          // counter for statics in current function
+extern unsigned char static_counter;          // counter for statics in current function
 
 /* AST output control */
 extern int ast_fd;                  // where to write AST output (1=stdout or -o file)

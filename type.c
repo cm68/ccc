@@ -259,7 +259,7 @@ void
 dump_type(struct type *t, int lv)
 {
     struct name *param;
-    int param_count = 0;
+    unsigned char param_count = 0;
 
     if (!t) return;
     if (lv > 20) {  // Cycle detection: prevent infinite recursion
