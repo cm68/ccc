@@ -133,9 +133,9 @@ tags:
 
 doc.pdf: $(SOURCES) $(DOCFILES) Makefile
 	{ for f in $(DOCFILES); do \
-	    cat "$$f" | enscript -2r -B --title="$$f" -p -; \
+	    pandoc -f gfm -t plain "$$f" | iconv -f utf-8 -t Latin1//TRANSLIT | enscript -2rG --title="$$f" -p -; \
 	  done; \
-	  enscript -2r -p - Makefile $(CFILES) $(HFILES); } | ps2pdf - doc.pdf
+	  enscript -2rG -p - Makefile $(CFILES) $(HFILES); } | ps2pdf - doc.pdf
 
 clean:
 	rm -f $(CC1OBJECTS) cc2.o ccc.o $(GENERATED) tests/*.i *.ast.* \
