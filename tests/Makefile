@@ -143,6 +143,10 @@ INCR_DECR_TESTS = \
 	incr_decr_expr.c \
 	incr_decr_ptr.c
 
+# Pointer type compatibility tests
+PTR_COMPAT_TESTS = \
+	ptr_compat_ok.c
+
 # Miscellaneous/regression tests
 MISC_TESTS = \
 	hang.c \
@@ -169,6 +173,7 @@ ALL_TESTS = \
 	$(CAST_TESTS) \
 	$(STRING_TESTS) \
 	$(INCR_DECR_TESTS) \
+	$(PTR_COMPAT_TESTS) \
 	$(MINIMAL_TESTS) \
 	$(MISC_TESTS)
 
@@ -181,7 +186,7 @@ tests:
 	./runtest.sh -k $(VERBOSE)
 
 # Test groups for selective testing
-.PHONY: test-expr test-decl test-cpp test-kr test-func test-stmt test-sizeof test-typedef test-cast test-string test-incr-decr
+.PHONY: test-expr test-decl test-cpp test-kr test-func test-stmt test-sizeof test-typedef test-cast test-string test-incr-decr test-ptr-compat
 test-expr:
 	./runtest.sh -k $(VERBOSE) $(EXPR_TESTS)
 
@@ -214,6 +219,9 @@ test-string:
 
 test-incr-decr:
 	./runtest.sh -k $(VERBOSE) $(INCR_DECR_TESTS)
+
+test-ptr-compat:
+	./runtest.sh -k $(VERBOSE) $(PTR_COMPAT_TESTS)
 
 # Valgrind testing
 .PHONY: valgrind

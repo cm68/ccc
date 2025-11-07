@@ -156,7 +156,7 @@ parse_expr(unsigned char pri, struct stmt *st)
 
         n = lookup_name(cur.v.name, 0);
         if (!n) {
-            err(ER_E_UO);
+            lose(ER_E_UO);
             e = makeexpr_init(CONST, 0, inttype, 0, 0);
         } else if (n->kind == elem) {
             // Enum constant: treat as integer constant
@@ -346,7 +346,7 @@ parse_expr(unsigned char pri, struct stmt *st)
                     destroy_expr(e);  // we only needed it for the type
                     e = makeexpr_init(CONST, 0, inttype, size, E_CONST);
                 } else {
-                    err(ER_E_UO);  // couldn't determine type
+                    lose(ER_E_UO);  // couldn't determine type
                     e = makeexpr_init(CONST, 0, inttype, 0, E_CONST);
                 }
             }
@@ -358,7 +358,7 @@ parse_expr(unsigned char pri, struct stmt *st)
                 destroy_expr(operand);
                 e = makeexpr_init(CONST, 0, inttype, size, E_CONST);
             } else {
-                err(ER_E_UO);
+                lose(ER_E_UO);
                 e = makeexpr_init(CONST, 0, inttype, 0, E_CONST);
             }
         }
@@ -388,7 +388,7 @@ parse_expr(unsigned char pri, struct stmt *st)
     }
 
 	default:
-		err(ER_E_UO);
+		lose(ER_E_UO);
 		return 0;
     }
 
@@ -509,7 +509,7 @@ parse_expr(unsigned char pri, struct stmt *st)
             gettoken();  // consume '.' or '->'
 
             if (cur.type != SYM) {
-                err(ER_E_UO);
+                lose(ER_E_UO);
                 break;
             }
 
@@ -545,7 +545,7 @@ parse_expr(unsigned char pri, struct stmt *st)
             }
 
             if (!member) {
-                err(ER_E_UO);
+                lose(ER_E_UO);
                 gettoken();
                 e = makeexpr_init(CONST, 0, NULL, 0, 0);
                 break;
@@ -712,6 +712,42 @@ parse_expr(unsigned char pri, struct stmt *st)
                 e->right = conv;
                 e->right->up = e;
             }
+
+            // Check pointer type compatibility
+            int l_ptr = (ltype->flags & (TF_POINTER|TF_ARRAY));
+            int r_ptr = (rtype->flags & (TF_POINTER|TF_ARRAY));
+
+            if (l_ptr && r_ptr) {
+                struct type *l_base = ltype->sub;
+                struct type *r_base = rtype->sub;
+
+                // Both must have base types
+                if (l_base && r_base) {
+                    int compatible = 0;
+
+                    // Check if base types are compatible
+                    if (l_base == r_base) {
+                        // Same type pointer - always compatible
+                        compatible = 1;
+                    } else if ((l_base->flags & TF_AGGREGATE) && (r_base->flags & TF_AGGREGATE)) {
+                        // Both point to struct/union - must be same type
+                        // For now, just check if pointers are equal (type unification)
+                        compatible = (l_base == r_base);
+                    } else if (!(l_base->flags & TF_AGGREGATE) && !(r_base->flags & TF_AGGREGATE)) {
+                        // Both point to non-aggregate types
+                        // Check if they have same size and signedness
+                        if (l_base->size == r_base->size) {
+                            int l_unsigned = (l_base->flags & TF_UNSIGNED);
+                            int r_unsigned = (r_base->flags & TF_UNSIGNED);
+                            compatible = (l_unsigned == r_unsigned);
+                        }
+                    }
+
+                    if (!compatible) {
+                        lose(ER_E_PT);  // incompatible pointer types
+                    }
+                }
+            }
         }
 
         // try to determine result type
@@ -804,7 +840,7 @@ cfold(struct expr *e)
         return e;
     }
     if (!e->right) {
-        err(ER_E_CF);
+        lose(ER_E_CF);
         return e;
     }
     if ((e->left->op != CONST) || (e->right->op != CONST)) {
@@ -825,14 +861,14 @@ cfold(struct expr *e)
         break;
     case DIV:   // division
         if (vr == 0) {
-            err(ER_E_CF);  // divide by zero - constant wont fold
+            lose(ER_E_CF);  // divide by zero - constant wont fold
             return e;
         }
         val = vl / vr;
         break;
     case MOD:   // modulo
         if (vr == 0) {
-            err(ER_E_CF);  // modulo by zero - constant wont fold
+            lose(ER_E_CF);  // modulo by zero - constant wont fold
             return e;
         }
         val = vl % vr;
@@ -899,11 +935,11 @@ parse_const(unsigned char token)
     // where we want to stop at the comma
     e = parse_expr(15, 0);
     if (!e) {
-        err(ER_C_CE);
+        lose(ER_C_CE);
         return 0;
     }
     if (!(e->flags & E_CONST)) {
-        err (ER_C_CE);
+        lose(ER_C_CE);
         return 0;
     }
     val = e->v;
