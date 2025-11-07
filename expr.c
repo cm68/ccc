@@ -121,9 +121,8 @@ parse_expr(char pri, struct stmt *st)
         extern int lexlevel;
         int saved_level;
 
-        e = makeexpr(STRING, 0);
         /* string literals have type char* (pointer to char) */
-        e->type = get_type(TF_POINTER, chartype, 0);
+        e = makeexpr_init(STRING, 0, get_type(TF_POINTER, chartype, 0), 0, 0);
 
         /* generate synthetic name for this string literal */
         sprintf(namebuf, "str%d", string_counter++);
@@ -136,8 +135,7 @@ parse_expr(char pri, struct stmt *st)
         lexlevel = saved_level;
         if (strname) {
             /* store pointer to counted string in the name's init field */
-            strname->init = makeexpr(STRING, 0);
-            strname->init->v = (unsigned long)cur.v.str;
+            strname->init = makeexpr_init(STRING, 0, NULL, (unsigned long)cur.v.str, 0);
             /* also store in expression for immediate use */
             e->v = (unsigned long)cur.v.str;
             /* store reference to the named string in the expression */
@@ -164,9 +162,8 @@ parse_expr(char pri, struct stmt *st)
             // Enum constant: treat as integer constant
             e = makeexpr_init(CONST, 0, inttype, n->offset, E_CONST);
         } else {
-            sym = makeexpr(SYM, 0);
+            sym = makeexpr_init(SYM, 0, n->type, 0, 0);
             sym->var = (struct var *)n;
-            sym->type = n->type;
 
             // Functions and arrays decay to pointers (addresses)
             // Only wrap non-functions in DEREF to get their value
@@ -178,8 +175,7 @@ parse_expr(char pri, struct stmt *st)
                 e = sym;
             } else {
                 // Variable: wrap in DEREF to get value
-                e = makeexpr(DEREF, sym);
-                e->type = n->type;
+                e = makeexpr_init(DEREF, sym, n->type, 0, 0);
             }
         }
         gettoken();
@@ -235,8 +231,7 @@ parse_expr(char pri, struct stmt *st)
                             }
                         }
 
-                        e = makeexpr(cast_op, inner);
-                        e->type = cast_type;
+                        e = makeexpr_init(cast_op, inner, cast_type, 0, 0);
                     }
                 }
                 /* Mixed pointer/scalar casts: need conversion */
@@ -246,13 +241,11 @@ parse_expr(char pri, struct stmt *st)
                     int tgt_size = cast_type->size;
                     token_t cast_op = (tgt_size < src_size) ? NARROW : WIDEN;
 
-                    e = makeexpr(cast_op, inner);
-                    e->type = cast_type;
+                    e = makeexpr_init(cast_op, inner, cast_type, 0, 0);
                 }
             } else {
                 /* Shouldn't happen, but create NARROW as fallback */
-                e = makeexpr(NARROW, inner);
-                e->type = cast_type;
+                e = makeexpr_init(NARROW, inner, cast_type, 0, 0);
             }
         } else {
             /* Parenthesized expression: (expr) */
@@ -543,9 +536,8 @@ parse_expr(char pri, struct stmt *st)
             addr->right->up = addr;
             addr->type = base->type;
 
-            e = makeexpr(DEREF, addr);
+            e = makeexpr_init(DEREF, addr, member->type, 0, 0);
             e->left->up = e;
-            e->type = member->type;
 
             gettoken();
         }
