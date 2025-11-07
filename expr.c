@@ -681,6 +681,39 @@ parse_expr(unsigned char pri, struct stmt *st)
             e->right = e->right->left;  // unwrap to get address
         }
 
+        // For assignments, insert type conversion if needed
+        if (is_assignment && e->left && e->right && e->left->type && e->right->type) {
+            struct type *ltype = assign_type ? assign_type : e->left->type;
+            struct type *rtype = e->right->type;
+
+            // Only convert scalar types (not pointers, arrays, functions, aggregates)
+            int l_scalar = !(ltype->flags & (TF_POINTER|TF_ARRAY|TF_FUNC|TF_AGGREGATE));
+            int r_scalar = !(rtype->flags & (TF_POINTER|TF_ARRAY|TF_FUNC|TF_AGGREGATE));
+
+            if (l_scalar && r_scalar && ltype->size != rtype->size) {
+                token_t conv_op;
+                struct expr *conv;
+
+                if (ltype->size < rtype->size) {
+                    // Narrowing conversion
+                    conv_op = NARROW;
+                } else {
+                    // Widening conversion
+                    if (rtype->flags & TF_UNSIGNED) {
+                        conv_op = WIDEN;  // Zero extend unsigned
+                    } else {
+                        conv_op = SEXT;   // Sign extend signed
+                    }
+                }
+
+                // Create conversion node
+                conv = makeexpr_init(conv_op, e->right, ltype, 0, 0);
+                conv->left->up = conv;
+                e->right = conv;
+                e->right->up = e;
+            }
+        }
+
         // try to determine result type
         if (e->left && e->right) {
             // for now, use left operand's type as result type

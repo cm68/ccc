@@ -5,7 +5,8 @@
 EXPR_TESTS = \
 	cfold.c \
 	simpleexpr.c \
-	with_add.c
+	with_add.c \
+	type_conversions.c
 
 # Declaration and type tests
 DECL_TESTS = \
