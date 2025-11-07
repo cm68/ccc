@@ -82,6 +82,8 @@ struct expr {
 #define OP_PRI_ASSIGN  14  /* assignment: = += -= *= /= %= &= |= ^= <<= >>= */
 #define OP_PRI_COMMA   15  /* comma: , */
 
+extern struct expr *makeexpr(char op, struct expr *left);
+extern struct expr *makeexpr_init(char op, struct expr *left, struct type *type, unsigned long v, int flags);
 extern struct expr *cfold(struct expr *e);
 extern struct expr *parse_expr(char priority, struct stmt *);
 int parse_const(char priority);

@@ -27,6 +27,24 @@ makeexpr(char op, struct expr *left)
 }
 
 /*
+ * makeexpr wrapper that also sets type, value, and flags
+ * pass NULL for type to skip setting it
+ */
+struct expr *
+makeexpr_init(char op, struct expr *left, struct type *type, unsigned long v, int flags)
+{
+	struct expr *e;
+
+	e = makeexpr(op, left);
+	if (type) {
+		e->type = type;
+	}
+	e->v = v;
+	e->flags = flags;
+	return e;
+}
+
+/*
  * deallocate an expression tree
  * this needs to not leak memory
  */
@@ -99,10 +117,7 @@ parse_expr(char pri, struct stmt *st)
 	switch (cur.type) {   // prefix
 
     case NUMBER:
-        e = makeexpr(CONST, 0);
-        e->type = inttype;
-        e->v = cur.v.numeric;
-        e->flags = E_CONST;
+        e = makeexpr_init(CONST, 0, inttype, cur.v.numeric, E_CONST);
         gettoken();
         break;
 
@@ -150,15 +165,10 @@ parse_expr(char pri, struct stmt *st)
         n = lookup_name(cur.v.name, 0);
         if (!n) {
             err(ER_E_UO);
-            e = makeexpr(CONST, 0);
-            e->type = inttype;
-            e->v = 0;
+            e = makeexpr_init(CONST, 0, inttype, 0, 0);
         } else if (n->kind == elem) {
             // Enum constant: treat as integer constant
-            e = makeexpr(CONST, 0);
-            e->type = inttype;
-            e->v = n->offset;  // enum value stored in offset field
-            e->flags = E_CONST;
+            e = makeexpr_init(CONST, 0, inttype, n->offset, E_CONST);
         } else {
             sym = makeexpr(SYM, 0);
             sym->var = (struct var *)n;
@@ -343,10 +353,7 @@ parse_expr(char pri, struct stmt *st)
                 need(RPAR, RPAR, ER_E_SP);
 
                 // Create constant expression with the size
-                e = makeexpr(CONST, 0);
-                e->type = inttype;
-                e->v = t->size;
-                e->flags = E_CONST;
+                e = makeexpr_init(CONST, 0, inttype, t->size, E_CONST);
             } else {
                 // It's sizeof(expr) - parse as expression
                 e = parse_expr(0, st);
@@ -356,16 +363,10 @@ parse_expr(char pri, struct stmt *st)
                 if (e && e->type) {
                     int size = e->type->size;
                     destroy_expr(e);  // we only needed it for the type
-                    e = makeexpr(CONST, 0);
-                    e->type = inttype;
-                    e->v = size;
-                    e->flags = E_CONST;
+                    e = makeexpr_init(CONST, 0, inttype, size, E_CONST);
                 } else {
                     err(ER_E_UO);  // couldn't determine type
-                    e = makeexpr(CONST, 0);
-                    e->type = inttype;
-                    e->v = 0;
-                    e->flags = E_CONST;
+                    e = makeexpr_init(CONST, 0, inttype, 0, E_CONST);
                 }
             }
         } else {
@@ -374,16 +375,10 @@ parse_expr(char pri, struct stmt *st)
             if (operand && operand->type) {
                 int size = operand->type->size;
                 destroy_expr(operand);
-                e = makeexpr(CONST, 0);
-                e->type = inttype;
-                e->v = size;
-                e->flags = E_CONST;
+                e = makeexpr_init(CONST, 0, inttype, size, E_CONST);
             } else {
                 err(ER_E_UO);
-                e = makeexpr(CONST, 0);
-                e->type = inttype;
-                e->v = 0;
-                e->flags = E_CONST;
+                e = makeexpr_init(CONST, 0, inttype, 0, E_CONST);
             }
         }
         break;
@@ -425,10 +420,7 @@ parse_expr(char pri, struct stmt *st)
             if (elem_size == 1) {
                 scaled = index;
             } else {
-                size_expr = makeexpr(CONST, 0);
-                size_expr->v = elem_size;
-                size_expr->type = inttype;
-                size_expr->flags = E_CONST;
+                size_expr = makeexpr_init(CONST, 0, inttype, elem_size, E_CONST);
 
                 scaled = makeexpr(STAR, index);
                 scaled->right = size_expr;
@@ -551,16 +543,12 @@ parse_expr(char pri, struct stmt *st)
             if (!member) {
                 err(ER_E_UO);
                 gettoken();
-                e = makeexpr(CONST, 0);
-                e->v = 0;
+                e = makeexpr_init(CONST, 0, NULL, 0, 0);
                 break;
             }
 
             // Generate: DEREF(ADD(base, offset))
-            offset_expr = makeexpr(CONST, 0);
-            offset_expr->v = member->offset;
-            offset_expr->type = inttype;
-            offset_expr->flags = E_CONST;
+            offset_expr = makeexpr_init(CONST, 0, inttype, member->offset, E_CONST);
 
             addr = makeexpr(PLUS, base);
             addr->right = offset_expr;

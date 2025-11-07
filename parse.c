@@ -131,7 +131,6 @@ statement(struct stmt *parent)
     struct stmt *head = 0;
     // struct name *v = 0;
     struct stmt *makestmt(char op, struct expr *left);
-    struct expr *makeexpr(char op, struct expr *left);
     int block = 1;
 
     while (block) {
