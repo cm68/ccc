@@ -29,8 +29,20 @@ endif
 CC1OBJECTS = cc1.o error.o lex.o io.o macro.o kw.o util.o tokenlist.o unixlib.o \
 	expr.o parse.o type.o declare.o outast.o
 
-HEADERS = cc1.h error.h
+HEADERS = cc1.h token.h
 GENERATED = enumlist.h tokenlist.c error.h debug.h debugtags.c op_pri.h
+
+# All C source files (generated + corresponding to .o files)
+CFILES = cc1.c error.c lex.c io.c macro.c kw.c util.c unixlib.c \
+	expr.c parse.c type.c declare.c outast.c \
+	cc2.c parseast.c ccc.c \
+	tokenlist.c debugtags.c
+
+# All header files (manually written + generated)
+HFILES = $(HEADERS) enumlist.h error.h debug.h op_pri.h
+
+# All source files
+SOURCES = $(CFILES) $(HFILES)
 
 BINS = enumcheck cc1 cc2 ccc maketokens genop_pri
 
@@ -47,7 +59,7 @@ cc2: cc2.o util.o parseast.o
 ccc: ccc.o
 	$(LD) $(LDFLAGS) ccc ccc.o
 
-$(CC1OBJECTS): $(HEADERS)
+$(CC1OBJECTS): $(HFILES)
 
 .PHONY: test tests valgrind
 test: cc1 tests/runtest.sh
@@ -116,13 +128,16 @@ regen:
 tags:
 	ctags *.c
 
+doc.pdf: $(SOURCES)
+	enscript -2r -p - $(CFILES) $(HFILES) | ps2pdf - doc.pdf
+
 clean:
 	rm -f $(CC1OBJECTS) cc2.o ccc.o $(GENERATED) tests/*.i *.ast.* \
 		*.asm *.lst *.sym *.map *.cdb *.ihx
 	$(MAKE) -C unit_test clean
 
 clobber: clean
-	rm -f $(BINS) tags
+	rm -f $(BINS) tags doc.pdf
 
 cc1.o: debugtags.c
 parse.o: parse.c

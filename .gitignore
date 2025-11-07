@@ -33,3 +33,4 @@ test_kw_real
 *.ast
 a.out
 do.ast
+*.pdf
