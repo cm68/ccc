@@ -129,7 +129,7 @@ tags:
 	ctags *.c
 
 doc.pdf: $(SOURCES) Makefile *.md
-	enscript -2r -p - Makefile *.md $(CFILES) $(HFILES) | ps2pdf - doc.pdf
+	enscript -2r -p - *.md Makefile $(CFILES) $(HFILES) | ps2pdf - doc.pdf
 
 clean:
 	rm -f $(CC1OBJECTS) cc2.o ccc.o $(GENERATED) tests/*.i *.ast.* \
