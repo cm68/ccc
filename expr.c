@@ -214,7 +214,7 @@ parse_expr(char pri, struct stmt *st)
                     int src_unsigned = inner->type->flags & TF_UNSIGNED;
 
                     if (tgt_size == src_size) {
-                        /* Same size: just reinterpret (e.g., int ↔ unsigned int) */
+                        /* Same size: just reinterpret (e.g., int <-> unsigned int) */
                         inner->type = cast_type;
                         e = inner;
                     } else {
@@ -239,7 +239,7 @@ parse_expr(char pri, struct stmt *st)
                 }
                 /* Mixed pointer/scalar casts: need conversion */
                 else {
-                    /* For pointer↔scalar, use NARROW or WIDEN based on sizes */
+                    /* For pointer<->scalar, use NARROW or WIDEN based on sizes */
                     int src_size = inner->type->size;
                     int tgt_size = cast_type->size;
                     token_t cast_op = (tgt_size < src_size) ? NARROW : WIDEN;
