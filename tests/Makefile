@@ -146,7 +146,8 @@ INCR_DECR_TESTS = \
 
 # Pointer type compatibility tests
 PTR_COMPAT_TESTS = \
-	ptr_compat_ok.c
+	ptr_compat_ok.c \
+	ptr_compat.c
 
 # Miscellaneous/regression tests
 MISC_TESTS = \
