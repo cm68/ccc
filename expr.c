@@ -627,8 +627,23 @@ parse_expr(char pri, struct stmt *st)
         }
 
         // for assignment, unwrap DEREF from left side to get lvalue address
+        struct type *assign_type = NULL;  // Track the actual type being assigned
         if (op == ASSIGN && e && e->op == DEREF) {
+            assign_type = e->type;  // Save the type before unwrapping
             e = e->left;  // unwrap to get address
+        }
+
+        // Check if this is a struct/array assignment requiring memory copy
+        // For aggregates (structs, arrays), use COPY instead of ASSIGN
+        // Check both direct aggregate type and dereferenced pointer to aggregate
+        if (op == ASSIGN && assign_type && (assign_type->flags & TF_AGGREGATE)) {
+            op = COPY;  // Change to memory copy operator
+        } else if (op == ASSIGN && e && e->type) {
+            // Direct aggregate (not dereferenced)
+            if (e->type->flags & TF_AGGREGATE) {
+                assign_type = e->type;
+                op = COPY;
+            }
         }
 
         // for left-associative operators (most C operators), parse right side
@@ -641,12 +656,27 @@ parse_expr(char pri, struct stmt *st)
             e->right->up = e;
         }
 
+        // For COPY operator, unwrap DEREF from right side to get address
+        if (e->op == COPY && e->right && e->right->op == DEREF) {
+            e->right = e->right->left;  // unwrap to get address
+        }
+
         // compute cost and try to determine result type
         if (e->left && e->right) {
             e->cost = e->left->cost + e->right->cost;
             // for now, use left operand's type as result type
             // proper type resolution would go here
             e->type = e->left->type;
+
+            // For COPY operator, store byte count in v field
+            if (e->op == COPY) {
+                if (assign_type) {
+                    e->v = assign_type->size;
+                    e->type = assign_type;  // Use the aggregate type
+                } else if (e->type) {
+                    e->v = e->type->size;
+                }
+            }
         } else if (e->left) {
             e->cost = e->left->cost;
             e->type = e->left->type;
