@@ -6,13 +6,16 @@
 - [x] Implement type cast operator (type)expr with disambiguation
 - [x] String literals output to AST
 - [x] Array initialization with string literals (char[] = "string")
-- [x] Memory copy operator (copy) for local array initialization
+- [x] Memory copy operator (Y) for local array initialization
+- [x] Struct assignment using COPY operator with block memory copy
+- [x] Static local variables emitted in global data section
+- [x] Enum implementation - constants in global namespace, variables are unsigned char
+- [x] Implement comparison operators in cfold() (<, >, <=, >=, ==, !=)
 
 ## Pending Tasks
 
 ### Expression Operators
 
-- [ ] Implement comparison operators in cfold() (<, >, <=, >=, ==, !=)
 - [ ] Implement increment/decrement operators (++, --) prefix and postfix
 - [ ] Implement compound assignment operators (+=, -=, *=, /=, %=, &=, |=, ^=, <<=, >>=)
 

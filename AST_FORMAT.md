@@ -94,13 +94,21 @@ Block memory copies emit the `Y` operator with a byte count annotation:
 
 **Usage:**
 - Local array initialization from string literals
-- Structure assignment (future)
-- Array-to-array copies (future)
+- Structure assignment (both direct and dereferenced pointers)
+- Static local array initialization (emitted in global data section)
 
 **Examples:**
 ```c
+// Array initialization
 char a[] = "hello";     // (d a :array:6) (E (Y:6 $a $_str0))
 char b[] = "test";      // (d b :array:5) (E (Y:5 $b $_str1))
+
+// Struct assignment
+struct point p1, p2;
+p1 = p2;                // (E (Y:4 $p1 $p2))  - direct struct assignment
+
+struct point *pp1, *pp2;
+*pp1 = *pp2;            // (E (Y:4 (M:p $pp1) (M:p $pp2)))  - dereferenced pointer assignment
 ```
 
 **Comparison with scalar assignment:**
@@ -109,7 +117,7 @@ char *p = "hello";      // (d p :ptr) (E (=:p $p $_str0))     - pointer assignme
 char a[] = "hello";     // (d a :array:6) (E (Y:6 $a $_str0)) - memory copy
 ```
 
-The `Y` operator generates a block memory copy (like `memcpy`) rather than a scalar assignment. The destination remains a local array with proper `sizeof()` semantics, while the initialization copies bytes from the string literal.
+The `Y` operator generates a block memory copy (like `memcpy`) rather than a scalar assignment. The destination remains a local array with proper `sizeof()` semantics, while the initialization copies bytes from the source. For struct assignments, the compiler automatically converts `=` to `Y` when the type has the TF_AGGREGATE flag.
 
 ### Memory Width Annotations
 
