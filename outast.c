@@ -632,8 +632,8 @@ emit_global_vars(void)
 		if (!n)
 			continue;
 
-		/* Only emit variables at global scope (level 1) */
-		if (n->level != 1)
+		/* Emit global scope variables (level 1) and static locals (level > 1 with SC_STATIC) */
+		if (n->level != 1 && n->sclass != SC_STATIC)
 			continue;
 
 		/* Skip tags, typedefs, and functions */
