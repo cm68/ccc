@@ -116,7 +116,7 @@ int
 getint(unsigned char base)
 {
     int i = 0;
-    char c;
+    unsigned char c;
     int len = 0;
 
     while (1) {
@@ -152,10 +152,10 @@ getint(unsigned char base)
  * extended with decimal and binary constants
  * this function consumes the input, returning the character value
  */
-static char
+static unsigned char
 getlit()
 {
-    char c;
+    unsigned char c;
 top:
     if (curchar != '\\') {
         if ((curchar < 0x20) || (curchar > 0x7e)) {
@@ -293,7 +293,7 @@ void
 do_cpp(unsigned char t)
 {
     char *s;
-    char k;
+    unsigned char k;
     struct cond *c;
     int v;
 
@@ -513,7 +513,7 @@ gettoken()
     token_t t;
     int incomment = 0;
     int lineend;
-    char c;
+    unsigned char c;
     int i;
     char *s;
 
@@ -783,7 +783,7 @@ readcppconst()
 }
 
 void
-tdump(char c)
+tdump(unsigned char c)
 {
 	printf("%s ", tokenname[c]);
 }

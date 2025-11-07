@@ -14,8 +14,8 @@
  * the incoming character stream interface
  * a zero is EOF
  */
-char curchar;               // the current character
-char nextchar;              // the next char - can change if macro
+unsigned char curchar;               // the current character
+unsigned char nextchar;              // the next char - can change if macro
 int lineno;                 // line number for error messages
 char *filename;             // current file name
 int column;                 // this is reset to 0 when we see a newline

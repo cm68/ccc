@@ -57,7 +57,7 @@ append(char *d, char *s)
  * change a binary character into a form we can print
  */
 static int
-controlify(char *d, char c)
+controlify(char *d, unsigned char c)
 {
 	int ret = 0;
 	unsigned char digit;
@@ -131,7 +131,7 @@ quoted_string(char *d, char *s)
 }
 
 int
-iswhite(char c)
+iswhite(unsigned char c)
 {
     switch (c) {
     case ' ': case '\t': case '\n':
@@ -148,7 +148,7 @@ hexdump(char *tag, char *h, int l)
 {
     int i;
     char *z = xxbuf;
-    char c;
+    unsigned char c;
 
     strcpy(xxbuf, tag);
 

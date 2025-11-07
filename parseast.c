@@ -20,13 +20,13 @@ static char buf[BUFSIZE];
 static int buf_pos;
 static int buf_valid;
 static int line_num = 1;
-static char curchar;
+static unsigned char curchar;
 
 /*
  * Read next character from input
  * Returns 0 on EOF
  */
-static char
+static unsigned char
 nextchar(void)
 {
     if (buf_pos >= buf_valid) {
@@ -91,7 +91,7 @@ skip(void)
  * Expect and consume a specific character
  */
 static int
-expect(char c)
+expect(unsigned char c)
 {
     skip();
     if (curchar != c) {
@@ -223,7 +223,7 @@ handle_string(void)
 }
 
 static void
-handle_binary_op(char op)
+handle_binary_op(unsigned char op)
 {
     fdprintf(1, "BINOP %c (", op);
     skip();
@@ -236,7 +236,7 @@ handle_binary_op(char op)
 }
 
 static void
-handle_unary_op(char op)
+handle_unary_op(unsigned char op)
 {
     fdprintf(1, "UNOP %c (", op);
     skip();

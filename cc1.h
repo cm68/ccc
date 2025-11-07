@@ -283,8 +283,8 @@ void add_include(char *name);
 void cpp_flush();
 void cpp_out(char *s, int len);
 
-extern char curchar;
-extern char nextchar;
+extern unsigned char curchar;
+extern unsigned char nextchar;
 extern int lineno;
 extern char *filename;
 extern int column;
@@ -318,7 +318,7 @@ void add_define(char *s);
 /* util.c */
 extern unsigned char lookupc(char *s, char c);
 extern void hexdump(char *tag, char *s, int len);
-int iswhite(char c);
+int iswhite(unsigned char c);
 char *bitdef(unsigned char v, char **defs);
 int fdprintf(int fd, const char *fmt, ...);
 int quoted_string(char *d, char *s);

@@ -214,7 +214,7 @@ macexpand(char *s)	/* the symbol we are looking up as a macro */
     char *d;
     unsigned char args;
     char *parms[MAXPARMS];
-    char c;
+    unsigned char c;
     char *n;
     int i;
     int stringify = 0;
