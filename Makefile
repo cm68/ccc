@@ -140,7 +140,7 @@ doc.pdf: $(SOURCES) $(DOCFILES) Makefile
 
 clean:
 	rm -f $(CC1OBJECTS) cc2.o ccc.o $(GENERATED) tests/*.i *.ast.* \
-		*.asm *.lst *.sym *.map *.cdb *.ihx
+		*.asm *.lst *.sym *.map *.cdb *.ihx *.i
 	$(MAKE) -C unit_test clean
 
 clobber: clean
