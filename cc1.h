@@ -350,6 +350,9 @@ int read(int fd, char *buf, int len);
 int write(int fd, char *buf, int len);
 long strtol(char *str, char **endptr, int base);
 void bcopy(void *src, void *dst, int len);
+#define ASMFUNC __naked
+#define ASMSTART __asm
+#define ASMEND __asmend;
 #endif
 
 /*

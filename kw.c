@@ -94,6 +94,7 @@ unsigned char ckw[] = {
 #ifdef ASMKWLOOK
 char
 kwlook(char *str, char *table)
+ASMFUNC
 {
     static char *s;
     static char *t;
@@ -101,16 +102,16 @@ kwlook(char *str, char *table)
     s = str;        // de
     t = table;      // hl
 
-    asm {
+    ASMSTART
         ld hl,(t) ; ld de,(s) ; jr done_p;
     top:
         ld a,(hl); 
-        cp a,0xff; jr nz,not_term;
+        cp a,#ff; jr nz,not_term;
         inc hl; ld a,(de); or a,a; ld a,0; jr nz,fin;
     ret_tok:
         ld a,(hl); jr fin;
     not_term:
-        cp a,0xfe; jr nz,cond;
+        cp a,#fe; jr nz,cond;
         inc hl; ld a,(de); or a,a; jr z,ret_tok;
         inc hl; jr lp;
     cond:
@@ -119,8 +120,8 @@ kwlook(char *str, char *table)
         inc hl; jr next;
     skip:
         inc hl; ld a,(hl);
-        add a,2; add a,l; ld l,a;
-        ld a,0; adc a,h; ld h,a;
+        add a,#2; add a,l; ld l,a;
+        ld a,#0; adc a,h; ld h,a;
         jr lp;
     liter:
         cp a,(hl); ld a,0; jr nz,fin;
@@ -130,7 +131,7 @@ kwlook(char *str, char *table)
         ld a,(de); or a,a; jr nz, top;
     fin:
         ld l,a; ld h,0;
-    }
+    ASMEND
 }
 #else
 char
