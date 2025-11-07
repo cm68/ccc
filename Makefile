@@ -44,6 +44,9 @@ HFILES = $(HEADERS) enumlist.h error.h debug.h op_pri.h
 # All source files
 SOURCES = $(CFILES) $(HFILES)
 
+# Documentation files (in reading order)
+DOCFILES = README.md TODO.md CLAUDE.md AST_FORMAT.md
+
 BINS = enumcheck cc1 cc2 ccc maketokens genop_pri
 
 #VERBOSE=-v 3
@@ -128,8 +131,8 @@ regen:
 tags:
 	ctags *.c
 
-doc.pdf: $(SOURCES) Makefile *.md
-	enscript -2r -p - *.md Makefile $(CFILES) $(HFILES) | ps2pdf - doc.pdf
+doc.pdf: $(SOURCES) $(DOCFILES) Makefile
+	enscript -2r -p - $(DOCFILES) Makefile $(CFILES) $(HFILES) | ps2pdf - doc.pdf
 
 clean:
 	rm -f $(CC1OBJECTS) cc2.o ccc.o $(GENERATED) tests/*.i *.ast.* \
