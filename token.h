@@ -52,6 +52,7 @@ enum {
     RSHIFTEQ = '6', LSHIFTEQ = '0',
     EXPR = '`', NEG = '\\', NOT = '\'', CALL = '@',
     NARROW = '_', WIDEN = 0xb3, SEXT = 0xb4, COPY = 0xb5,
+    PREINC = 0xc0, POSTINC = 0xc1, PREDEC = 0xc8, POSTDEC = 0xc9,
 
     /* CPP */
     INCLUDE = '#',

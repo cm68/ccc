@@ -154,19 +154,21 @@ emit_expr(struct expr *e)
 
 	case INCR:
 	case DECR:
-		/* Increment/decrement operators: distinguish prefix vs postfix */
-		if (e->flags & E_POSTFIX) {
-			/* Postfix: i++ or i-- */
-			fdprintf(ast_fd, "(%c+", e->op);
-		} else {
-			/* Prefix: ++i or --i */
-			fdprintf(ast_fd, "(+%c", e->op);
+		/* Increment/decrement operators: map to single-character tokens */
+		{
+			unsigned char op_char;
+			if (e->op == INCR) {
+				op_char = (e->flags & E_POSTFIX) ? POSTINC : PREINC;
+			} else {
+				op_char = (e->flags & E_POSTFIX) ? POSTDEC : PREDEC;
+			}
+			fdprintf(ast_fd, "(%c", op_char);
+			if (e->left) {
+				fdprintf(ast_fd, " ");
+				emit_expr(e->left);
+			}
+			fdprintf(ast_fd, ")");
 		}
-		if (e->left) {
-			fdprintf(ast_fd, " ");
-			emit_expr(e->left);
-		}
-		fdprintf(ast_fd, ")");
 		break;
 
 	default:
