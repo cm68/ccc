@@ -45,11 +45,33 @@ All C operators are represented by their token character:
 - Logical: `j` (&&), `h` (||), `!`
 - Memory access: `M` (dereference) - `(M:width expr)` with width annotation
 - Assignment: `=` - `(=:width lvalue rvalue)` with width annotation
-- Memory copy: `Y` - `(Y:length dest src)` with byte count annotation
+- Memory copy: `Y` (0xbb «) - `(Y:length dest src)` with byte count annotation
 - Address-of: `&` - `(& expr)`
 - Function call: `@` - `(@ function arg1 arg2 ...)`
 - Ternary conditional: `?` - `(? condition (: true_expr false_expr))`
-- Type casts: `N` (narrow), `W` (widen), `X` (sign-extend) - `(op:width expr)` with width annotation
+- Type casts: `N` (narrow), `W` (0xb6 ¶ widen), `X` (0xab « sign-extend) - `(op:width expr)` with width annotation
+
+**Increment/Decrement Operators** (single-character tokens):
+- Prefix increment: `0xcf` (Ï) - `(0xcf lvalue)` - increments lvalue, returns new value
+- Postfix increment: `0xef` (ï) - `(0xef lvalue)` - increments lvalue, returns old value
+- Prefix decrement: `0xd6` (Ö) - `(0xd6 lvalue)` - decrements lvalue, returns new value
+- Postfix decrement: `0xf6` (ö) - `(0xf6 lvalue)` - decrements lvalue, returns old value
+
+**Compound Assignment Operators** (with width annotations):
+- `P` (+=) - `(P:width lvalue rvalue)` - add and assign
+- `0xdf` (ß -=) - `(0xdf:width lvalue rvalue)` - subtract and assign
+- `T` (*=) - `(T:width lvalue rvalue)` - multiply and assign
+- `2` (/=) - `(2:width lvalue rvalue)` - divide and assign
+- `0xfe` (þ %=) - `(0xfe:width lvalue rvalue)` - modulo and assign
+- `0xc6` (Æ &=) - `(0xc6:width lvalue rvalue)` - bitwise AND and assign
+- `1` (|=) - `(1:width lvalue rvalue)` - bitwise OR and assign
+- `X` (^=) - `(X:width lvalue rvalue)` - bitwise XOR and assign
+- `0` (<<=) - `(0:width lvalue rvalue)` - left shift and assign
+- `6` (>>=) - `(6:width lvalue rvalue)` - right shift and assign
+- `J` (&&=) - `(J:width lvalue rvalue)` - logical AND and assign
+- `H` (||=) - `(H:width lvalue rvalue)` - logical OR and assign
+
+**Important**: Compound assignments evaluate the lvalue ONCE (not desugared). This ensures correct semantics when the lvalue has side effects (e.g., `*(foo()) += 1` calls `foo()` only once).
 
 ### Type Cast Operators
 

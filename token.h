@@ -46,13 +46,13 @@ enum {
     LSHIFT = 'y' , RSHIFT = 'w',
     LOR = 'h', LAND = 'j',
     EQ = 'Q', NEQ = 'n', LE = 'L', GE = 'g',
-    PLUSEQ = 'P', SUBEQ = 0xb0, MULTEQ = 'T', DIVEQ = '2', MODEQ = 0xb2,
-    ANDEQ = 0xb1, OREQ = '1', XOREQ = 'X',
+    PLUSEQ = 'P', SUBEQ = 0xdf, MULTEQ = 'T', DIVEQ = '2', MODEQ = 0xfe,
+    ANDEQ = 0xc6, OREQ = '1', XOREQ = 'X',
     LANDEQ = 'J', LOREQ = 'H',
     RSHIFTEQ = '6', LSHIFTEQ = '0',
     EXPR = '`', NEG = '\\', NOT = '\'', CALL = '@',
-    NARROW = '_', WIDEN = 0xb3, SEXT = 0xb4, COPY = 0xb5,
-    PREINC = 0xc0, POSTINC = 0xc1, PREDEC = 0xc8, POSTDEC = 0xc9,
+    NARROW = '_', WIDEN = 0xb6, SEXT = 0xab, COPY = 0xbb,
+    PREINC = 0xcf, POSTINC = 0xef, PREDEC = 0xd6, POSTDEC = 0xf6,
 
     /* CPP */
     INCLUDE = '#',
