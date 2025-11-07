@@ -252,12 +252,12 @@ The ternary conditional operator (? :) is fully implemented with proper right-as
 **Right-Associativity**:
 - `a ? b : c ? d : e` parses as `a ? b : (c ? d : e)`
 - False branch can contain another ternary at same precedence level
-- Example: `1 ? 2 : 0 ? 3 : 4` → `2` (not `3`)
+- Example: `1 ? 2 : 0 ? 3 : 4` -> `2` (not `3`)
 
 **Constant Folding**:
 - If condition is constant, fold to selected branch
-- `1 ? 100 : 200` → `100`
-- `0 ? 100 : 200` → `200`
+- `1 ? 100 : 200` -> `100`
+- `0 ? 100 : 200` -> `200`
 - Handles nested constant ternary expressions
 
 **Examples**:
@@ -283,7 +283,7 @@ Type cast operator `(type)expr` is fully implemented with disambiguation from pa
 - `is_cast_start()` checks for type keywords (int, char, etc.) or typedef names
 
 **Three Cast Operators** (only emit when runtime operation needed):
-- **N** (NARROW): Truncate to smaller type (e.g., `long → int`, `int → char`)
+- **N** (NARROW): Truncate to smaller type (e.g., `long -> int`, `int -> char`)
 - **W** (WIDEN): Zero-extend unsigned type to larger size
 - **X** (SEXT): Sign-extend signed type to larger size
 
@@ -292,32 +292,32 @@ Type cast operator `(type)expr` is fully implemented with disambiguation from pa
 - Same format as memory operations (M:width, =:width)
 
 **Cast Selection Logic**:
-- **Pointer → Pointer**: No cast node (just type reinterpretation)
-- **Same size**: No cast node (e.g., `int ↔ unsigned int`)
+- **Pointer -> Pointer**: No cast node (just type reinterpretation)
+- **Same size**: No cast node (e.g., `int <-> unsigned int`)
 - **Narrowing** (tgt < src): NARROW operator
 - **Widening unsigned**: WIDEN operator (zero extend)
 - **Widening signed**: SEXT operator (sign extend)
-- **Pointer ↔ Scalar**: NARROW or WIDEN based on size comparison
+- **Pointer <-> Scalar**: NARROW or WIDEN based on size comparison
 
 **Examples**:
 ```c
 // Narrowing casts
-(char) int_val      → (N:b ...)      // truncate int to byte
-(int) long_val      → (N:s ...)      // truncate long to short
+(char) int_val      -> (N:b ...)      // truncate int to byte
+(int) long_val      -> (N:s ...)      // truncate long to short
 
 // Sign-extending casts
-(int) signed_char   → (X:s ...)      // sign-extend byte to short
-(long) signed_int   → (X:l ...)      // sign-extend short to long
+(int) signed_char   -> (X:s ...)      // sign-extend byte to short
+(long) signed_int   -> (X:l ...)      // sign-extend short to long
 
 // Zero-extending casts
-(int) unsigned_char → (W:s ...)      // zero-extend byte to short
+(int) unsigned_char -> (W:s ...)      // zero-extend byte to short
 
 // Pointer-to-pointer (no cast node)
-(char *) int_ptr    → Just type change in AST
+(char *) int_ptr    -> Just type change in AST
 
 // Mixed pointer/scalar
-(int) ptr           → (W:s ...)      // widen pointer to int
-(char *) int_val    → (W:p ...)      // widen int to pointer
+(int) ptr           -> (W:s ...)      // widen pointer to int
+(char *) int_val    -> (W:p ...)      // widen int to pointer
 ```
 
 **Implementation**:
@@ -385,23 +385,23 @@ Functions and arrays automatically decay to pointers when used as values, follow
 **Function Decay**:
 - Function names represent addresses (function pointers)
 - Function names are NOT wrapped in DEREF (unlike variables)
-- Direct use: `funcname` → `$_funcname` (address)
-- Assignment: `fptr = add;` → `(= $_fptr $_add)`
-- Call through pointer: `fptr(5, 3);` → `(@ $_fptr 5 3)`
-- Explicit address-of is redundant but allowed: `&add` → `(& $_add)`
+- Direct use: `funcname` -> `$_funcname` (address)
+- Assignment: `fptr = add;` -> `(= $_fptr $_add)`
+- Call through pointer: `fptr(5, 3);` -> `(@ $_fptr 5 3)`
+- Explicit address-of is redundant but allowed: `&add` -> `(& $_add)`
 
 **Array Decay**:
 - Array names decay to pointer to first element
 - Array names are NOT wrapped in DEREF (unlike variables)
-- Direct use: `arr` → `$_arr` (address of first element)
-- Assignment: `p = arr;` → `(= $_p $_arr)`
-- Array subscript: `arr[5]` → `(M (+ $_arr 10))` (scaled offset, then deref)
+- Direct use: `arr` -> `$_arr` (address of first element)
+- Assignment: `p = arr;` -> `(= $_p $_arr)`
+- Array subscript: `arr[5]` -> `(M (+ $_arr 10))` (scaled offset, then deref)
 
 **Variable Semantics (for comparison)**:
 - Variables represent storage locations
 - Variables ARE wrapped in DEREF to get their value
-- Direct use: `x` → `(M $_x)` (dereference to get value)
-- Assignment: `x = 10;` → `(= $_x 10)` (unwraps DEREF for lvalue)
+- Direct use: `x` -> `(M $_x)` (dereference to get value)
+- Assignment: `x = 10;` -> `(= $_x 10)` (unwraps DEREF for lvalue)
 
 **Implementation Details**:
 The SYM case in expression parser checks type flags:
@@ -458,7 +458,7 @@ l = i;               // (=:l $_l (M:s $_i))
 Size annotations allow pass 1 (cc1) to remain simple and focused on parsing, while pass 2 (cc2) handles all type width mismatches and conversions:
 
 - Pass 1 just annotates the source and destination widths
-- Pass 2 sees complete information: `(=:s $_i (M:b $a))` shows int←byte assignment
+- Pass 2 sees complete information: `(=:s $_i (M:b $a))` shows int<-byte assignment
 - Type conversions, sign extensions, and warnings are deferred to code generation time
 - Pass 1 doesn't need complex type checking logic
 - Pass 2 has full context to generate optimal conversion code

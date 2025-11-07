@@ -56,7 +56,7 @@ All C operators are represented by their token character:
 Type conversions that require runtime operations emit specific cast operators with destination width annotations:
 
 **Cast Operators:**
-- `N` - **Narrow**: Truncate to smaller type (e.g., `long → int`, `int → char`)
+- `N` - **Narrow**: Truncate to smaller type (e.g., `long -> int`, `int -> char`)
 - `W` - **Widen**: Zero-extend unsigned type to larger size
 - `X` - **Sign-extend**: Sign-extend signed type to larger size
 
@@ -84,7 +84,7 @@ i = (int) uc;        // (=:s $_i (W:s (M:b $_uc)))     - zero-extend unsigned ch
 
 **No cast operator needed for:**
 - Pointer-to-pointer casts: Just type reinterpretation
-- Same-size conversions: e.g., `int ↔ unsigned int`
+- Same-size conversions: e.g., `int <-> unsigned int`
 
 ### Memory Copy Operator
 
@@ -150,7 +150,7 @@ p = &c;              // (=:p $_p (& $_c))
 ```
 
 The width annotations enable:
-1. **Type checking in pass 2** - Width mismatches visible in AST (e.g., `(=:s $_i (M:b $_c))` shows int←byte)
+1. **Type checking in pass 2** - Width mismatches visible in AST (e.g., `(=:s $_i (M:b $_c))` shows int<-byte)
 2. **Optimization** - Code generator can use native byte arithmetic instead of promoting to word size
 
 ## Statement Format
@@ -330,10 +330,10 @@ All variables are prefixed with `$` followed by a scope indicator:
 Static variables have global storage but lexical scope, requiring unique mangled names:
 
 - **File-scoped static**: `$S<file_root>_<varname>`
-  - Example: `static int counter;` in `test.c` → `$Stest_counter`
+  - Example: `static int counter;` in `test.c` -> `$Stest_counter`
 
 - **Function-scoped static**: `$S<file_root>_<funcname>_<varname>_<counter>`
-  - Example: `static int local;` in function `foo()` in `test.c` → `$Stest_foo_local_0`
+  - Example: `static int local;` in function `foo()` in `test.c` -> `$Stest_foo_local_0`
   - The counter increments for each static in the same function (0, 1, 2, ...)
   - Counter resets to 0 for each new function
 
