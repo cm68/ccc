@@ -4,7 +4,7 @@
  * Check if current token is a type keyword
  */
 static int
-is_type_token(char t)
+is_type_token(unsigned char t)
 {
     return (t == CHAR || t == SHORT || t == INT || t == LONG ||
             t == FLOAT || t == DOUBLE || t == VOID || t == UNSIGNED ||

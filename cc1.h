@@ -52,8 +52,8 @@ struct expr {
 	struct var *var;      /* for STRING expressions, cast to (struct name *) to get synthetic name */
 
 	unsigned long v;
-	char location;
-	char regs;
+	unsigned char location;
+	unsigned char regs;
 	struct stmt *stmt;
 	struct inst *inst;
 };
@@ -81,12 +81,12 @@ struct expr {
 #define OP_PRI_ASSIGN  14  /* assignment: = += -= *= /= %= &= |= ^= <<= >>= */
 #define OP_PRI_COMMA   15  /* comma: , */
 
-extern struct expr *makeexpr(char op, struct expr *left);
-extern struct expr *makeexpr_init(char op, struct expr *left, struct type *type, unsigned long v, int flags);
+extern struct expr *makeexpr(unsigned char op, struct expr *left);
+extern struct expr *makeexpr_init(unsigned char op, struct expr *left, struct type *type, unsigned long v, int flags);
 extern struct expr *cfold(struct expr *e);
-extern struct expr *parse_expr(char priority, struct stmt *);
-int parse_const(char priority);
-extern struct expr *new_expr(char op);
+extern struct expr *parse_expr(unsigned char priority, struct stmt *);
+int parse_const(unsigned char priority);
+extern struct expr *new_expr(unsigned char op);
 extern void destroy_expr(struct expr *e);
 
 /*
@@ -99,7 +99,7 @@ struct stmt {
 	struct stmt *next;
 	struct expr *left;
 	struct expr *right;
-	char op;
+	unsigned char op;
 	int flags;
 	char *label;
 	/* extended fields used by parser */
@@ -110,7 +110,7 @@ struct stmt {
 	struct name *locals;    /* linked list of local variables declared in this scope */
 };
 
-extern struct stmt *new_stmt(char op, struct expr *left);
+extern struct stmt *new_stmt(unsigned char op, struct expr *left);
 extern void destroy_stmt(struct stmt *s);
 extern void free_stmt(struct stmt *s);
 extern void emit_function(struct name *func);
@@ -188,7 +188,7 @@ struct name {
     int level;              // lexical level
 	struct name *next;		// all names in same container
 	struct type *type;
-	char sclass;            // storage class (SC_STATIC, SC_EXTERN, etc.)
+	unsigned char sclass;            // storage class (SC_STATIC, SC_EXTERN, etc.)
 	int offset;				// if inside a struct
     int bitoff;
     int width;

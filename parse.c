@@ -44,7 +44,7 @@ mangle_static_name(struct name *var)
 
 	return mangled;
 }
-struct stmt *makestmt(char op, struct expr *left);
+struct stmt *makestmt(unsigned char op, struct expr *left);
 char *blockname(void);
 struct stmt *asmblock(void);
 
@@ -130,7 +130,7 @@ statement(struct stmt *parent)
     struct stmt *st, **pst = 0;
     struct stmt *head = 0;
     // struct name *v = 0;
-    struct stmt *makestmt(char op, struct expr *left);
+    struct stmt *makestmt(unsigned char op, struct expr *left);
     int block = 1;
 
     while (block) {
@@ -442,7 +442,7 @@ statement(struct stmt *parent)
 }
 
 struct stmt*
-makestmt(char op, struct expr *left)
+makestmt(unsigned char op, struct expr *left)
 {
 	struct stmt *st;
 
@@ -655,7 +655,7 @@ parse_sclass()
 void
 declaration()
 {
-	char sclass;
+	unsigned char sclass;
 	struct type *basetype;
 	struct name *v;
 

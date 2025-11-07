@@ -11,7 +11,7 @@
 static int string_counter = 0;
 
 struct expr *
-makeexpr(char op, struct expr *left)
+makeexpr(unsigned char op, struct expr *left)
 {
 	struct expr *e;
 
@@ -26,7 +26,7 @@ makeexpr(char op, struct expr *left)
  * pass NULL for type to skip setting it
  */
 struct expr *
-makeexpr_init(char op, struct expr *left, struct type *type, unsigned long v, int flags)
+makeexpr_init(unsigned char op, struct expr *left, struct type *type, unsigned long v, int flags)
 {
 	struct expr *e;
 
@@ -82,7 +82,7 @@ unop_set(struct expr *e)
  * binary operator.  zero values mean not an operator.
  */
 unsigned char
-binop_pri(char t)
+binop_pri(unsigned char t)
 {
     unsigned char po;
     unsigned char v;
@@ -100,9 +100,9 @@ binop_pri(char t)
  * parse an expression
  */
 struct expr *
-parse_expr(char pri, struct stmt *st)
+parse_expr(unsigned char pri, struct stmt *st)
 {
-	char op;
+	unsigned char op;
 	struct expr *e;
     unsigned char p;
 
@@ -809,7 +809,7 @@ cfold(struct expr *e)
  * used for array declarations and CPP stuff
  */
 int
-parse_const(char token)
+parse_const(unsigned char token)
 {
     struct expr *e;
     int val;

@@ -338,7 +338,7 @@ dump_type(struct type *t, int lv)
 static struct {
         char *name;
         short size;
-        char flags;
+        unsigned char flags;
 } basictype[] = {
 	{ "_char_", 1, 0 },						// 0
 	{ "_short_", 2, 0 },					

@@ -210,9 +210,9 @@ int
 macexpand(char *s)	/* the symbol we are looking up as a macro */
 {
     struct macro *m;
-    char plevel;
+    unsigned char plevel;
     char *d;
-    char args;
+    unsigned char args;
     char *parms[MAXPARMS];
     char c;
     char *n;

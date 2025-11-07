@@ -9,7 +9,7 @@
 #define PSIZE   80          // max string containing bitdefs
 #define NPATS   2           // and 2 per printf
 char patspace[PSIZE * NPATS];
-char patoff;
+unsigned char patoff;
 
 /*
  * byte bitoff formatter.
@@ -60,7 +60,7 @@ static int
 controlify(char *d, char c)
 {
 	int ret = 0;
-	char digit;
+	unsigned char digit;
 
 	if (c == '\n') {
 		append(d, "\\n");

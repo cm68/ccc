@@ -34,7 +34,7 @@ struct cond {
 };
 struct cond *cond;
 
-char tflags;
+unsigned char tflags;
 #define ONELINE     0x01
 #define CPPFUNCS    0x02
 
@@ -113,7 +113,7 @@ skiptoeol()
  */
 static
 int
-getint(char base)
+getint(unsigned char base)
 {
     int i = 0;
     char c;
@@ -218,7 +218,7 @@ top:
 char
 isnumber()
 {
-    char base;
+    unsigned char base;
 
     if (charmatch('\'')) {
         next.v.numeric = getlit();
@@ -290,7 +290,7 @@ issym()
 }
 
 void
-do_cpp(char t)
+do_cpp(unsigned char t)
 {
     char *s;
     char k;

@@ -79,11 +79,11 @@ sprintf(char *d, char *fmt)
 {
     char **ap;
     char c;
-    char zpad;
-    char width;
-    char base;
-    char i;
-    char rpad;
+    unsigned char zpad;
+    unsigned char width;
+    unsigned char base;
+    unsigned char i;
+    unsigned char rpad;
     int v;
     char b[8];
     char *s;
