@@ -659,7 +659,7 @@ getbasetype()
      * struct or union [name] [ { members } ]
      */
     if (cur.type == STRUCT || cur.type == UNION) {
-        int is_union = (cur.type == UNION);
+        unsigned char is_union = (cur.type == UNION);
         gettoken();
         n = 0;
         s = 0;

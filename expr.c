@@ -508,7 +508,7 @@ parse_expr(unsigned char pri, struct stmt *st)
             // Struct member access: s.x or p->x
             struct expr *base, *offset_expr, *addr;
             struct name *member;
-            int is_arrow = (cur.type == ARROW);
+            unsigned char is_arrow = (cur.type == ARROW);
 
             gettoken();  // consume '.' or '->'
 
@@ -653,7 +653,7 @@ parse_expr(unsigned char pri, struct stmt *st)
 
         // for assignment and compound assignments, unwrap DEREF from left side to get lvalue address
         struct type *assign_type = NULL;  // Track the actual type being assigned
-        int is_assignment = (op == ASSIGN || op == PLUSEQ || op == SUBEQ || op == MULTEQ ||
+        unsigned char is_assignment = (op == ASSIGN || op == PLUSEQ || op == SUBEQ || op == MULTEQ ||
                             op == DIVEQ || op == MODEQ || op == ANDEQ || op == OREQ ||
                             op == XOREQ || op == LSHIFTEQ || op == RSHIFTEQ ||
                             op == LANDEQ || op == LOREQ);
@@ -741,7 +741,7 @@ parse_expr(unsigned char pri, struct stmt *st)
 
                 // Both must have base types
                 if (l_base && r_base) {
-                    int compatible = 0;
+                    unsigned char compatible = 0;
 
                     // Check if base types are compatible
                     if (l_base == r_base) {
@@ -755,8 +755,8 @@ parse_expr(unsigned char pri, struct stmt *st)
                         // Both point to non-aggregate types
                         // Check if they have same size and signedness
                         if (l_base->size == r_base->size) {
-                            int l_unsigned = (l_base->flags & TF_UNSIGNED);
-                            int r_unsigned = (r_base->flags & TF_UNSIGNED);
+                            unsigned char l_unsigned = (l_base->flags & TF_UNSIGNED);
+                            unsigned char r_unsigned = (r_base->flags & TF_UNSIGNED);
                             compatible = (l_unsigned == r_unsigned);
                         }
                     }
@@ -770,7 +770,7 @@ parse_expr(unsigned char pri, struct stmt *st)
 
         // Widen operands of binary expressions if sizes mismatch
         // Apply to arithmetic, bitwise, and comparison operators
-        int is_binary_op = (op == PLUS || op == MINUS || op == STAR || op == DIV || op == MOD ||
+        unsigned char is_binary_op = (op == PLUS || op == MINUS || op == STAR || op == DIV || op == MOD ||
                            op == AND || op == OR || op == XOR || op == LSHIFT || op == RSHIFT ||
                            op == LT || op == GT || op == LE || op == GE || op == EQ || op == NEQ);
 

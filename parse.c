@@ -131,7 +131,7 @@ statement(struct stmt *parent)
     struct stmt *head = 0;
     // struct name *v = 0;
     struct stmt *makestmt(unsigned char op, struct expr *left);
-    int block = 1;
+    unsigned char block = 1;
 
     while (block) {
         st = NULL;  // Initialize st to NULL for each iteration
@@ -591,8 +591,8 @@ char *sclass_bitdefs[] = { "EXTERN", "REGISTER", "STATIC", "CONST", "VOLATILE",
 unsigned char
 parse_sclass()
 {
-	int ret = 0;
-	int bit;
+	unsigned char ret = 0;
+	unsigned char bit;
 
 	while (1) {
 		switch (cur.type) {

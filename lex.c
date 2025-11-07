@@ -515,8 +515,8 @@ void
 gettoken()
 {
     token_t t;
-    int incomment = 0;
-    int lineend;
+    unsigned char incomment = 0;
+    unsigned char lineend;
     unsigned char c;
     int i;
     char *s;
