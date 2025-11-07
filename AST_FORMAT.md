@@ -133,6 +133,57 @@ The compiler validates pointer type compatibility during assignments and reports
 
 **Note:** Type casts can override compatibility checking. Use explicit casts for intentional type reinterpretation.
 
+### Automatic Operand Widening in Binary Expressions
+
+The compiler implements C's usual arithmetic conversions by automatically widening operands of binary expressions when their types have different sizes. This ensures both operands are the same size before the operation.
+
+**Applies to these operators:**
+- Arithmetic: `+`, `-`, `*`, `/`, `%`
+- Bitwise: `&`, `|`, `^`, `<<`, `>>`
+- Comparison: `<`, `>`, `<=`, `>=`, `==`, `!=`
+
+**Conversion Rules:**
+- The smaller operand is widened to match the larger operand's type
+- **SEXT** (`X`) for signed types (sign extension)
+- **WIDEN** (`W`) for unsigned types (zero extension)
+- Result type is the larger of the two operand types
+
+**Examples:**
+```c
+char c;
+int i;
+long l;
+unsigned char uc;
+unsigned int ui;
+
+// Arithmetic with mixed sizes
+c + i;      // (+ (X:s (M:b $_c)) (M:s $_i))     - char widened to int
+i + l;      // (+ (X:l (M:s $_i)) (M:l $_l))     - int widened to long
+c * l;      // (* (X:l (M:b $_c)) (M:l $_l))     - char widened to long
+
+// Bitwise operations
+c & i;      // (& (X:s (M:b $_c)) (M:s $_i))     - char widened to int
+c | i;      // (| (X:s (M:b $_c)) (M:s $_i))     - char widened to int
+
+// Comparison operations
+c < i;      // (< (X:s (M:b $_c)) (M:s $_i))     - char widened to int
+c == l;     // (Q (X:l (M:b $_c)) (M:l $_l))     - char widened to long
+
+// Unsigned promotions use WIDEN (zero extend)
+uc + ui;    // (+ (W:s (M:b $_uc)) (M:s $_ui))   - unsigned char widened
+
+// Chained operations widen at each step
+c + i + l;  // (+ (X:l (+ (X:s (M:b $_c)) (M:s $_i))) (M:l $_l))
+            // First: char→int for (c+i), result is int
+            // Then: int→long for (result+l)
+```
+
+**Notes:**
+- Only applies to scalar types (not pointers, arrays, functions, or aggregates)
+- Widening happens before the operation, ensuring correct semantics
+- Works recursively in chained expressions
+- Different from assignment conversions (which may narrow)
+
 ### Type Cast Operators
 
 Type conversions that require runtime operations emit specific cast operators with destination width annotations:

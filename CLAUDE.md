@@ -196,9 +196,18 @@ The type system is designed to be "squeaky-clean" with zero redundancy:
 - Conversions inserted automatically for scalar types with different sizes
 - Applied to both simple and compound assignments
 
+**Automatic operand widening in binary expressions**:
+- Implements C's usual arithmetic conversions
+- Applies to arithmetic operators: +, -, *, /, %
+- Applies to bitwise operators: &, |, ^, <<, >>
+- Applies to comparison operators: <, >, <=, >=, ==, !=
+- Smaller operand automatically widened to match larger operand
+- Uses SEXT for signed types, WIDEN for unsigned types
+- Result type is the larger of the two operand types
+- Works recursively in chained operations (e.g., char + int + long)
+
 **Not yet implemented**:
 - Full type compatibility checking (sametype) for all contexts
-- Type conversions in general expressions (only in assignments currently)
 
 ### Function Parameter Architecture
 
@@ -767,31 +776,32 @@ Tests run with:
 
 ### Recent Improvements
 
-1. **Pointer type compatibility checking** - Validates pointer assignments, reports ER_E_PT for incompatible types
-2. **Automatic type conversions** - NARROW/SEXT/WIDEN operators inserted automatically in assignments
-3. **Compound assignment operators** - +=, -=, *=, /=, %=, &=, |=, ^=, <<=, >>= with single lvalue evaluation
-4. **Increment/decrement operators** - Prefix and postfix ++/-- with distinct AST operators
-5. **Error function rename** - Renamed err() to lose() for better semantic clarity
-6. **makeexpr_init wrapper** - Convenience function reduces code duplication for expression node creation
-7. **String literals in AST** - Literals section with escaped string data, synthetic names (_str0, _str1, etc.)
-8. **Array initialization** - char[] = "string" syntax with automatic size inference from string length
-9. **Type cast operators** - Three specific cast operators (N/W/X) with width annotations for narrowing, widening, and sign-extension
-10. **Ternary conditional operator** - Full ?: support with right-associativity and constant folding
-11. **Memory copy operator (Y)** - Block memory copy for array/struct initialization and assignment
-12. **Struct assignment** - Automatic conversion to COPY operator for aggregate types, including dereferenced pointers
-13. **Static local variables** - Correctly emitted in global data section with local scope visibility
-14. **Simplified enum implementation** - Enum constants as named integers, enum variables as unsigned char
-15. **Comparison operator folding** - All six comparison operators (<, >, <=, >=, ==, !=) fold at compile time
-16. **AST emission for pass 2** - Complete S-expression output with single-char operators
-17. **Global variable initializers** - Arrays, structs, scalar initializers in AST
-18. **Unix syscall migration** - fdprintf() replaces fprintf(), uses write() instead of stdio
-19. **Removed MAXTRACE debug code** - Eliminated 192 lines of stderr debug traces
-20. **Typedef support** - Global and scoped typedefs inside functions with proper shadowing
-21. **Local variable declarations** - Full support for declarations inside function bodies
-22. **Test infrastructure** - 110+ tests organized into 15 categories in tests/Makefile
-23. **Memory leak fixes** - Valgrind clean on all tests
-24. **K&R function support** - Full K&R style function definitions
-25. **Comprehensive preprocessor** - Macros, includes, conditional compilation, stringify, token pasting
+1. **Automatic operand widening** - Binary expressions auto-widen smaller operand to match larger (usual arithmetic conversions)
+2. **Pointer type compatibility checking** - Validates pointer assignments, reports ER_E_PT for incompatible types
+3. **Automatic type conversions** - NARROW/SEXT/WIDEN operators inserted automatically in assignments
+4. **Compound assignment operators** - +=, -=, *=, /=, %=, &=, |=, ^=, <<=, >>= with single lvalue evaluation
+5. **Increment/decrement operators** - Prefix and postfix ++/-- with distinct AST operators
+6. **Error function rename** - Renamed err() to lose() for better semantic clarity
+7. **makeexpr_init wrapper** - Convenience function reduces code duplication for expression node creation
+8. **String literals in AST** - Literals section with escaped string data, synthetic names (_str0, _str1, etc.)
+9. **Array initialization** - char[] = "string" syntax with automatic size inference from string length
+10. **Type cast operators** - Three specific cast operators (N/W/X) with width annotations for narrowing, widening, and sign-extension
+11. **Ternary conditional operator** - Full ?: support with right-associativity and constant folding
+12. **Memory copy operator (Y)** - Block memory copy for array/struct initialization and assignment
+13. **Struct assignment** - Automatic conversion to COPY operator for aggregate types, including dereferenced pointers
+14. **Static local variables** - Correctly emitted in global data section with local scope visibility
+15. **Simplified enum implementation** - Enum constants as named integers, enum variables as unsigned char
+16. **Comparison operator folding** - All six comparison operators (<, >, <=, >=, ==, !=) fold at compile time
+17. **AST emission for pass 2** - Complete S-expression output with single-char operators
+18. **Global variable initializers** - Arrays, structs, scalar initializers in AST
+19. **Unix syscall migration** - fdprintf() replaces fprintf(), uses write() instead of stdio
+20. **Removed MAXTRACE debug code** - Eliminated 192 lines of stderr debug traces
+21. **Typedef support** - Global and scoped typedefs inside functions with proper shadowing
+22. **Local variable declarations** - Full support for declarations inside function bodies
+23. **Test infrastructure** - 110+ tests organized into 15 categories in tests/Makefile
+24. **Memory leak fixes** - Valgrind clean on all tests
+25. **K&R function support** - Full K&R style function definitions
+26. **Comprehensive preprocessor** - Macros, includes, conditional compilation, stringify, token pasting
 
 ### Code Style
 

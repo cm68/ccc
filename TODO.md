@@ -82,8 +82,8 @@
 ### High Priority - Type System Improvements
 
 - [ ] Add full type compatibility checking (sametype function for all contexts)
-- [ ] Implement type conversions and promotions in general expressions (not just assignments)
-- [ ] Fix operator type propagation (currently copies left operand incorrectly)
+- [x] Implement type conversions and promotions in binary expressions (automatic operand widening)
+- [x] Fix operator type propagation (result type now uses larger operand type)
 - [ ] Add type checking validation for all operators
 - [ ] Add lvalue validation for assignments and operators
 - [ ] Function signature checking at call sites
