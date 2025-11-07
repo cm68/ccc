@@ -173,45 +173,45 @@ ALL_TESTS = \
 # Main test targets
 .PHONY: test tests
 test:
-	./runtest.sh $(VERBOSE) $(ALL_TESTS)
+	./runtest.sh -k $(VERBOSE) $(ALL_TESTS)
 
 tests:
-	./runtest.sh $(VERBOSE)
+	./runtest.sh -k $(VERBOSE)
 
 # Test groups for selective testing
 .PHONY: test-expr test-decl test-cpp test-kr test-func test-stmt test-sizeof test-typedef test-cast test-string test-incr-decr
 test-expr:
-	./runtest.sh $(VERBOSE) $(EXPR_TESTS)
+	./runtest.sh -k $(VERBOSE) $(EXPR_TESTS)
 
 test-decl:
-	./runtest.sh $(VERBOSE) $(DECL_TESTS)
+	./runtest.sh -k $(VERBOSE) $(DECL_TESTS)
 
 test-cpp:
-	./runtest.sh $(VERBOSE) $(CPP_TESTS)
+	./runtest.sh -k $(VERBOSE) $(CPP_TESTS)
 
 test-kr:
-	./runtest.sh $(VERBOSE) $(KR_FUNC_TESTS)
+	./runtest.sh -k $(VERBOSE) $(KR_FUNC_TESTS)
 
 test-func:
-	./runtest.sh $(VERBOSE) $(FUNC_TESTS)
+	./runtest.sh -k $(VERBOSE) $(FUNC_TESTS)
 
 test-stmt:
-	./runtest.sh $(VERBOSE) $(STMT_TESTS)
+	./runtest.sh -k $(VERBOSE) $(STMT_TESTS)
 
 test-sizeof:
-	./runtest.sh $(VERBOSE) $(SIZEOF_TESTS)
+	./runtest.sh -k $(VERBOSE) $(SIZEOF_TESTS)
 
 test-typedef:
-	./runtest.sh $(VERBOSE) $(TYPEDEF_TESTS)
+	./runtest.sh -k $(VERBOSE) $(TYPEDEF_TESTS)
 
 test-cast:
-	./runtest.sh $(VERBOSE) $(CAST_TESTS)
+	./runtest.sh -k $(VERBOSE) $(CAST_TESTS)
 
 test-string:
-	./runtest.sh $(VERBOSE) $(STRING_TESTS)
+	./runtest.sh -k $(VERBOSE) $(STRING_TESTS)
 
 test-incr-decr:
-	./runtest.sh $(VERBOSE) $(INCR_DECR_TESTS)
+	./runtest.sh -k $(VERBOSE) $(INCR_DECR_TESTS)
 
 # Valgrind testing
 .PHONY: valgrind
