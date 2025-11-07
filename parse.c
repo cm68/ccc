@@ -218,24 +218,19 @@ statement(struct stmt *parent)
                     struct stmt *assign_st;
 
                     /* Create lvalue: just the variable symbol */
-                    lhs = makeexpr(SYM, 0);
+                    lhs = makeexpr_init(SYM, 0, v->type, 0, 0);
                     lhs->var = (struct var *)v;  /* Cast name* to var* (field is overloaded) */
-                    lhs->type = v->type;
 
                     /* Check if this is an array initialization requiring memory copy */
                     if (v->type && (v->type->flags & TF_ARRAY) && v->init) {
                         /* Create memory copy: COPY dest src length */
-                        assign_expr = makeexpr(COPY, lhs);
+                        assign_expr = makeexpr_init(COPY, lhs, v->type, v->type->count, 0);
                         assign_expr->right = v->init;
-                        assign_expr->type = v->type;
-                        /* Store byte count in v field for pass 2 */
-                        assign_expr->v = v->type->count;  /* Array element count = byte count for char[] */
                         v->init = NULL;  /* Clear so it's not output in declaration */
                     } else {
                         /* Regular scalar assignment: lhs = initializer */
-                        assign_expr = makeexpr(ASSIGN, lhs);
+                        assign_expr = makeexpr_init(ASSIGN, lhs, v->type, 0, 0);
                         assign_expr->right = v->init;
-                        assign_expr->type = v->type;
                         v->init = NULL;  /* Clear so it's not output in declaration */
                     }
 
@@ -288,24 +283,19 @@ statement(struct stmt *parent)
                             struct stmt *assign_st;
 
                             /* Create lvalue: just the variable symbol */
-                            lhs = makeexpr(SYM, 0);
+                            lhs = makeexpr_init(SYM, 0, v->type, 0, 0);
                             lhs->var = (struct var *)v;  /* Cast name* to var* (field is overloaded) */
-                            lhs->type = v->type;
 
                             /* Check if this is an array initialization requiring memory copy */
                             if (v->type && (v->type->flags & TF_ARRAY) && v->init) {
                                 /* Create memory copy: COPY dest src length */
-                                assign_expr = makeexpr(COPY, lhs);
+                                assign_expr = makeexpr_init(COPY, lhs, v->type, v->type->count, 0);
                                 assign_expr->right = v->init;
-                                assign_expr->type = v->type;
-                                /* Store byte count in v field for pass 2 */
-                                assign_expr->v = v->type->count;  /* Array element count = byte count for char[] */
                                 v->init = NULL;  /* Clear so it's not output in declaration */
                             } else {
                                 /* Regular scalar assignment: lhs = initializer */
-                                assign_expr = makeexpr(ASSIGN, lhs);
+                                assign_expr = makeexpr_init(ASSIGN, lhs, v->type, 0, 0);
                                 assign_expr->right = v->init;
-                                assign_expr->type = v->type;
                                 v->init = NULL;  /* Clear so it's not output in declaration */
                             }
 
