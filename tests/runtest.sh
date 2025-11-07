@@ -47,7 +47,7 @@ for t in "${TESTS[@]}" ; do
 	cat "$t"
 	echo "======== run ========"
 	echo ../cc1 $VERBOSE -E $t
-	if ../cc1 -DTEST=$t -I.. $VERBOSE -E "$t" | grep "^file.*error code" ; then
+	if ../cc1 -DTEST=$t -I.. $VERBOSE -E "$t" 2> >(grep "^file.*error code") ; then
 		echo "file ../cc1" > .gdbargs
 		echo "set args -DTEST=$t -I.. $VERBOSE -E $t" >> .gdbargs
 		echo "exited code $?"
