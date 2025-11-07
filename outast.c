@@ -171,8 +171,12 @@ emit_expr(struct expr *e)
 
 	default:
 		/* Operator - output in prefix notation */
-		/* For DEREF (M) and ASSIGN (=), add size annotation */
-		if (e->op == DEREF || e->op == ASSIGN) {
+		/* For DEREF (M), ASSIGN (=), and compound assignments, add size annotation */
+		if (e->op == DEREF || e->op == ASSIGN ||
+		    e->op == PLUSEQ || e->op == SUBEQ || e->op == MULTEQ ||
+		    e->op == DIVEQ || e->op == MODEQ || e->op == ANDEQ ||
+		    e->op == OREQ || e->op == XOREQ || e->op == LSHIFTEQ ||
+		    e->op == RSHIFTEQ || e->op == LANDEQ || e->op == LOREQ) {
 			char size_suffix = get_size_suffix(e->type);
 			fdprintf(ast_fd, "(%c:%c", e->op, size_suffix);
 		} else {

@@ -52,6 +52,7 @@ STMT_TESTS = \
 	conditional_simple.c \
 	compound_ops.c \
 	compound_precedence.c \
+	compound_lvalue.c \
 	do.c \
 	cont.c \
 	no_switch.c \

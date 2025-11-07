@@ -641,9 +641,14 @@ parse_expr(unsigned char pri, struct stmt *st)
             continue;  // Skip the rest of the loop and continue with next operator
         }
 
-        // for assignment, unwrap DEREF from left side to get lvalue address
+        // for assignment and compound assignments, unwrap DEREF from left side to get lvalue address
         struct type *assign_type = NULL;  // Track the actual type being assigned
-        if (op == ASSIGN && e && e->op == DEREF) {
+        int is_assignment = (op == ASSIGN || op == PLUSEQ || op == SUBEQ || op == MULTEQ ||
+                            op == DIVEQ || op == MODEQ || op == ANDEQ || op == OREQ ||
+                            op == XOREQ || op == LSHIFTEQ || op == RSHIFTEQ ||
+                            op == LANDEQ || op == LOREQ);
+
+        if (is_assignment && e && e->op == DEREF) {
             assign_type = e->type;  // Save the type before unwrapping
             e = e->left;  // unwrap to get address
         }
