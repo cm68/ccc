@@ -153,6 +153,12 @@ parse_expr(char pri, struct stmt *st)
             e = makeexpr(CONST, 0);
             e->type = inttype;
             e->v = 0;
+        } else if (n->kind == elem) {
+            // Enum constant: treat as integer constant
+            e = makeexpr(CONST, 0);
+            e->type = inttype;
+            e->v = n->offset;  // enum value stored in offset field
+            e->flags = E_CONST;
         } else {
             sym = makeexpr(SYM, 0);
             sym->var = (struct var *)n;
@@ -825,7 +831,10 @@ parse_const(char token)
     struct expr *e;
     int val;
 
-    e = parse_expr(PRI_ALL, 0);
+    // Parse constant expression, stopping before comma operator (priority 15)
+    // This allows constants in contexts like enum { A = 10, B = 20 }
+    // where we want to stop at the comma
+    e = parse_expr(15, 0);
     if (!e) {
         err(ER_C_CE);
         return 0;

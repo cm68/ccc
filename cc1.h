@@ -227,6 +227,7 @@ extern struct type *parse_type_name(void);
 
 extern struct type *inttype;
 extern struct type *chartype;
+extern struct type *uchartype;
 
 void parse();
 void cleanup_parser();

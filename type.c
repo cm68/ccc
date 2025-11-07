@@ -45,6 +45,7 @@ char *kindname[] = {
 struct type *types;
 struct type *inttype;
 struct type *chartype;
+struct type *uchartype;
 
 /*
  * basic types = 0
@@ -474,6 +475,7 @@ initbasictype()
         new_name(basictype[i].name, prim, t, 0);
         if (i == 0) chartype = t;
         if (i == 2) inttype = t;
+        if (i == 3) uchartype = t;
     }
 }
 
@@ -594,52 +596,26 @@ getbasetype()
     }
 
     /*
-     * enum [name] [ { tag [= const], ... } ]
+     * enum [name] { tag [= const], ... }
+     *
+     * Enums are just a way to define named integer constants in the global namespace.
+     * All enum variables are simply unsigned char.
+     * The tag name (if present) is ignored - it's just for documentation.
      */
     if (cur.type == ENUM) {
         gettoken();
-        n = 0;
-        s = 0;
 
-        // optional enum tag name
+        // optional enum tag name (ignored)
         if (cur.type == SYM) {
-            s = strdup(cur.v.name);
-            n = lookup_name(s, 1);  // look for existing enum tag
             gettoken();
-
-            // if found and already complete, return it
-            if (n && !(n->type->flags & TF_INCOMPLETE)) {
-                free(s);
-                return n->type;
-            }
         }
 
-        // must have a definition if no tag or if forward reference
+        // If no definition follows, just return unsigned char type
         if (cur.type != BEGIN) {
-            if (n) {
-                if (s) free(s);
-                return n->type;  // forward reference
-            }
-            err(ER_T_ED);
-            if (s) free(s);
-            return 0;
+            return uchartype;
         }
 
-        // create the enum type (all enums are unsigned char)
-        t = get_type(TF_UNSIGNED, 0, 0);
-        t->size = 1;  // enums are byte-sized
-
-        if (s) {
-            // create or update the tag
-            if (!n) {
-                n = new_name(s, etag, t, 1);
-            } else {
-                n->type = t;
-            }
-            free(s);  // new_name() makes its own copy
-        }
-
-        // parse enum elements: { name [= value], ... }
+        // parse enum constants: { name [= value], ... }
         match(BEGIN);
         off = 0;
         while (cur.type != END && cur.type != E_O_F) {
@@ -648,10 +624,8 @@ getbasetype()
                 break;
             }
 
-            // create enum element (use 'e' to avoid variable name collision)
-            struct name *e = new_name(cur.v.name, elem, t, 0);
-            e->next = t->elem;
-            t->elem = e;
+            // create enum constant as a global name with elem kind
+            struct name *e = new_name(cur.v.name, elem, uchartype, 0);
             gettoken();
 
             // optional = value
@@ -672,7 +646,7 @@ getbasetype()
             }
         }
         match(END);
-        return t;
+        return uchartype;
     }
 
     /*
