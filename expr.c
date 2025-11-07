@@ -750,11 +750,68 @@ parse_expr(unsigned char pri, struct stmt *st)
             }
         }
 
+        // Widen operands of binary expressions if sizes mismatch
+        // Apply to arithmetic, bitwise, and comparison operators
+        int is_binary_op = (op == PLUS || op == MINUS || op == STAR || op == DIV || op == MOD ||
+                           op == AND || op == OR || op == XOR || op == LSHIFT || op == RSHIFT ||
+                           op == LT || op == GT || op == LE || op == GE || op == EQ || op == NEQ);
+
+        if (is_binary_op && e->left && e->right && e->left->type && e->right->type) {
+            struct type *ltype = e->left->type;
+            struct type *rtype = e->right->type;
+
+            // Only widen scalar types (not pointers, arrays, functions, aggregates)
+            int l_scalar = !(ltype->flags & (TF_POINTER|TF_ARRAY|TF_FUNC|TF_AGGREGATE));
+            int r_scalar = !(rtype->flags & (TF_POINTER|TF_ARRAY|TF_FUNC|TF_AGGREGATE));
+
+            if (l_scalar && r_scalar && ltype->size != rtype->size) {
+                token_t conv_op;
+                struct expr *conv;
+                struct type *target_type;
+
+                // Widen smaller operand to match larger operand
+                if (ltype->size < rtype->size) {
+                    // Widen left operand to right's size
+                    target_type = rtype;
+                    if (ltype->flags & TF_UNSIGNED) {
+                        conv_op = WIDEN;  // Zero extend unsigned
+                    } else {
+                        conv_op = SEXT;   // Sign extend signed
+                    }
+                    conv = makeexpr_init(conv_op, e->left, target_type, 0, 0);
+                    conv->left->up = conv;
+                    e->left = conv;
+                    e->left->up = e;
+                } else {
+                    // Widen right operand to left's size
+                    target_type = ltype;
+                    if (rtype->flags & TF_UNSIGNED) {
+                        conv_op = WIDEN;  // Zero extend unsigned
+                    } else {
+                        conv_op = SEXT;   // Sign extend signed
+                    }
+                    conv = makeexpr_init(conv_op, e->right, target_type, 0, 0);
+                    conv->left->up = conv;
+                    e->right = conv;
+                    e->right->up = e;
+                }
+            }
+        }
+
         // try to determine result type
         if (e->left && e->right) {
-            // for now, use left operand's type as result type
-            // proper type resolution would go here
-            e->type = e->left->type;
+            // Use the larger type as result type
+            if (e->left->type && e->right->type) {
+                if (e->left->type->size >= e->right->type->size) {
+                    e->type = e->left->type;
+                } else {
+                    e->type = e->right->type;
+                }
+            } else if (e->left->type) {
+                e->type = e->left->type;
+            } else if (e->right->type) {
+                e->type = e->right->type;
+            }
 
             // For COPY operator, store byte count in v field
             if (e->op == COPY) {
