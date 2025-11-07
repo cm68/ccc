@@ -34,3 +34,4 @@ test_kw_real
 a.out
 do.ast
 *.pdf
+*.ps
