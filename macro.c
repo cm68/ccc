@@ -81,7 +81,7 @@ maclookup(char *name)
 void
 macundefine(char *s)
 {
-    int i;
+    unsigned char i;
     struct macro *m, *p;
     p = 0;
 
@@ -116,7 +116,7 @@ macundefine(char *s)
 void
 macdefine(char *s)
 {
-    int i;
+    unsigned char i;
     struct macro *m = malloc(sizeof(*m));
     char *parms[MAXPARMS];
 
@@ -216,7 +216,7 @@ macexpand(char *s)	/* the symbol we are looking up as a macro */
     char *parms[MAXPARMS];
     unsigned char c;
     char *n;
-    int i;
+    unsigned char i;
     int stringify = 0;
 
 

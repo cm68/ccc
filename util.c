@@ -20,7 +20,7 @@ unsigned char patoff;
 char *
 bitdef(unsigned char v, char **defs)
 {
-	int i;
+	unsigned char i;
 	char *patptr;
 	int sep = 0;
 
@@ -179,7 +179,7 @@ hexdump(char *tag, char *h, int l)
 unsigned char
 lookupc(char *s, char c)
 {
-    int i;
+    unsigned char i;
     for (i = 0; s[i]; i++) {
         if (c == s[i]) {
             return i;

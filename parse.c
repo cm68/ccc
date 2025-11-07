@@ -211,7 +211,7 @@ statement(struct stmt *parent)
             declaration();
             /* Convert local variable initializers to assignment statements */
             if (decl_init_count > 0) {
-                int i;
+                unsigned char i;
                 for (i = 0; i < decl_init_count; i++) {
                     struct name *v = decl_inits[i];
                     struct expr *lhs, *assign_expr;
@@ -276,7 +276,7 @@ statement(struct stmt *parent)
                     declaration();
                     /* Convert local variable initializers to assignment statements */
                     if (decl_init_count > 0) {
-                        int i;
+                        unsigned char i;
                         for (i = 0; i < decl_init_count; i++) {
                             struct name *v = decl_inits[i];
                             struct expr *lhs, *assign_expr;

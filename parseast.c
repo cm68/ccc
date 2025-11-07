@@ -111,7 +111,7 @@ static char symbuf[256];
 static char *
 read_symbol(void)
 {
-    int i = 0;
+    unsigned char i = 0;
 
     skip();
 
@@ -168,7 +168,7 @@ static char typebuf[256];
 static char *
 read_type(void)
 {
-    int i = 0;
+    unsigned char i = 0;
 
     skip();
 
