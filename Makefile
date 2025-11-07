@@ -51,7 +51,7 @@ BINS = enumcheck cc1 cc2 ccc maketokens genop_pri
 
 #VERBOSE=-v 3
 
-all: cc1 cc2 ccc
+all: cc1 cc2 ccc doc.pdf
 
 cc1: $(CC1OBJECTS)
 	$(LD) $(LDFLAGS) cc1 $(CC1OBJECTS)
