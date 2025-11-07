@@ -79,7 +79,7 @@ make tags
 - **kw.c**: Keyword lookup tables (C keywords, CPP keywords, asm keywords)
 - **io.c**: Character-level I/O, file stack management, macro expansion buffer
 - **macro.c**: CPP macro definition and expansion
-- **error.c**: Error reporting
+- **error.c**: Error reporting (lose() for recoverable errors, fatal() for critical errors)
 - **util.c**: Utility functions (string ops, bit manipulation, fdprintf for Unix syscalls)
 
 ### Auto-Generated Files
@@ -182,8 +182,23 @@ The type system is designed to be "squeaky-clean" with zero redundancy:
 - Struct/array assignment using COPY operator for block memory copies
 - Static local variables emitted in global data section with proper scoping
 
+**Pointer type compatibility checking**:
+- Validates pointer assignments: same base types are compatible
+- Arrays decay to pointers (char[] and char* compatible)
+- Struct pointers must point to same struct type
+- Reports ER_E_PT error for incompatible pointer types
+- Checks size and signedness for primitive type pointers
+
+**Automatic type conversions in assignments**:
+- NARROW: Conversion from larger to smaller type (int→char, long→int)
+- SEXT: Sign extension for signed types (char→int, int→long)
+- WIDEN: Zero extension for unsigned types (unsigned char→unsigned int)
+- Conversions inserted automatically for scalar types with different sizes
+- Applied to both simple and compound assignments
+
 **Not yet implemented**:
-- Type compatibility checking (sametype)
+- Full type compatibility checking (sametype) for all contexts
+- Type conversions in general expressions (only in assignments currently)
 
 ### Function Parameter Architecture
 
@@ -255,13 +270,13 @@ Expression parsing uses precedence climbing:
 - Ternary conditional operator: ?: with right-associativity and constant folding
 - Type cast operator: (type)expr with typedef disambiguation
 - Memory copy operator: Y (COPY) for struct/array assignments
+- Prefix/postfix increment/decrement: ++/-- with single-character AST operators (PREINC/POSTINC/PREDEC/POSTDEC)
+- Compound assignment operators: +=, -=, *=, /=, %=, &=, |=, ^=, <<=, >>= with single lvalue evaluation
 - Constant folding for all operators including comparisons and ternary
 - Operator precedence correctly implemented
 - Address semantics: SYM nodes represent addresses, DEREF accesses values
-
-**Not yet implemented**:
-- Prefix/postfix increment/decrement (++/--)
-- Compound assignment operators (+=, -=, etc.)
+- Automatic type conversion insertion for assignments (NARROW/SEXT/WIDEN)
+- Pointer type compatibility validation
 
 ### Ternary Conditional Operator
 
@@ -354,6 +369,89 @@ Type cast operator `(type)expr` is fully implemented with disambiguation from pa
 - `parse_type_name()`: Parses type in cast (base type + pointers)
 - Logic in expr.c selects appropriate operator based on type sizes and signedness
 - outast.c emits single-char operator with width annotation
+
+### Increment and Decrement Operators
+
+Prefix and postfix increment/decrement operators (++, --) are fully implemented with proper semantics:
+
+**AST Operators** (single-character tokens):
+- **PREINC** (0xcf, Ï): Prefix increment `++x` - increments lvalue, returns new value
+- **POSTINC** (0xef, ï): Postfix increment `x++` - increments lvalue, returns old value
+- **PREDEC** (0xd6, Ö): Prefix decrement `--x` - decrements lvalue, returns new value
+- **POSTDEC** (0xf6, ö): Postfix decrement `x--` - decrements lvalue, returns old value
+
+**Parsing**:
+- Prefix forms: Parsed in prefix operator switch (unary precedence)
+- Postfix forms: Parsed in postfix operator loop (highest precedence)
+- E_POSTFIX flag distinguishes postfix from prefix in expression tree
+- Lvalue unwrapping: DEREF is unwrapped to get address (like assignments)
+
+**AST Format**: `(operator lvalue_address)`
+```c
+int x;
+++x;        // (0xcf $_x)    - PREINC
+x++;        // (0xef $_x)    - POSTINC
+--x;        // (0xd6 $_x)    - PREDEC
+x--;        // (0xf6 $_x)    - POSTDEC
+```
+
+**Pointer Arithmetic**:
+```c
+int *p;
+*p++;       // (M:s (0xef $_p))         - post-increment p, then deref
+*++p;       // (M:s (0xcf $_p))         - pre-increment p, then deref
+++*p;       // (0xcf (M:s $_p))         - deref p, then increment value
+(*p)++;     // (0xef (M:s $_p))         - deref p, then post-increment value
+```
+
+**Implementation Details**:
+- Both forms unwrap DEREF to access lvalue address
+- Postfix sets E_POSTFIX flag on expression node
+- outast.c maps INCR/DECR + E_POSTFIX flag to single-char tokens
+- Correct semantics: prefix returns new value, postfix returns old value
+
+### Compound Assignment Operators
+
+Compound assignment operators (+=, -=, etc.) are implemented with single lvalue evaluation:
+
+**Operators** (single-character tokens with width annotations):
+- **PLUSEQ** ('P'): `x += y` - add and assign
+- **SUBEQ** (0xdf, ß): `x -= y` - subtract and assign
+- **MULTEQ** ('T'): `x *= y` - multiply and assign
+- **DIVEQ** ('2'): `x /= y` - divide and assign
+- **MODEQ** (0xfe, þ): `x %= y` - modulo and assign
+- **ANDEQ** (0xc6, Æ): `x &= y` - bitwise AND and assign
+- **OREQ** ('1'): `x |= y` - bitwise OR and assign
+- **XOREQ** ('X'): `x ^= y` - bitwise XOR and assign
+- **LSHIFTEQ** ('0'): `x <<= y` - left shift and assign
+- **RSHIFTEQ** ('6'): `x >>= y` - right shift and assign
+
+**Single Lvalue Evaluation**:
+- Critical: lvalue is evaluated exactly once, not twice
+- `*(foo()) += 1` calls `foo()` once, not twice
+- Implementation keeps compound operators distinct (no desugaring to `x = x + y`)
+
+**AST Format**: `(operator:width lvalue_address rvalue)`
+```c
+int i;
+i += 5;         // (P:s $_i 5)
+i -= 3;         // (0xdf:s $_i 3)
+i *= 2;         // (T:s $_i 2)
+```
+
+**Automatic Type Conversion**:
+- Compound assignments trigger automatic type conversion on rvalue
+- Same conversions as simple assignment: NARROW/SEXT/WIDEN
+```c
+char c; int i;
+c += i;         // (P:b $_c (N:b (M:s $_i)))  - NARROW int to char
+```
+
+**Implementation**:
+- Lvalue unwrapping: DEREF is unwrapped to get address (like ASSIGN)
+- `assign_type` variable tracks actual type being assigned
+- Width annotation from lvalue type
+- Type conversions inserted before compound operation
 
 ### String Literals
 
@@ -669,26 +767,31 @@ Tests run with:
 
 ### Recent Improvements
 
-1. **makeexpr_init wrapper** - Convenience function reduces code duplication for expression node creation
-2. **String literals in AST** - Literals section with escaped string data, synthetic names (_str0, _str1, etc.)
-3. **Array initialization** - char[] = "string" syntax with automatic size inference from string length
-4. **Type cast operators** - Three specific cast operators (N/W/X) with width annotations for narrowing, widening, and sign-extension
-5. **Ternary conditional operator** - Full ?: support with right-associativity and constant folding
-6. **Memory copy operator (Y)** - Block memory copy for array/struct initialization and assignment
-7. **Struct assignment** - Automatic conversion to COPY operator for aggregate types, including dereferenced pointers
-8. **Static local variables** - Correctly emitted in global data section with local scope visibility
-9. **Simplified enum implementation** - Enum constants as named integers, enum variables as unsigned char
-10. **Comparison operator folding** - All six comparison operators (<, >, <=, >=, ==, !=) fold at compile time
-11. **AST emission for pass 2** - Complete S-expression output with single-char operators
-12. **Global variable initializers** - Arrays, structs, scalar initializers in AST
-13. **Unix syscall migration** - fdprintf() replaces fprintf(), uses write() instead of stdio
-14. **Removed MAXTRACE debug code** - Eliminated 192 lines of stderr debug traces
-15. **Typedef support** - Global and scoped typedefs inside functions with proper shadowing
-16. **Local variable declarations** - Full support for declarations inside function bodies
-17. **Test infrastructure** - 110 tests organized into 14 categories in tests/Makefile
-18. **Memory leak fixes** - Valgrind clean on all tests
-19. **K&R function support** - Full K&R style function definitions
-20. **Comprehensive preprocessor** - Macros, includes, conditional compilation, stringify, token pasting
+1. **Pointer type compatibility checking** - Validates pointer assignments, reports ER_E_PT for incompatible types
+2. **Automatic type conversions** - NARROW/SEXT/WIDEN operators inserted automatically in assignments
+3. **Compound assignment operators** - +=, -=, *=, /=, %=, &=, |=, ^=, <<=, >>= with single lvalue evaluation
+4. **Increment/decrement operators** - Prefix and postfix ++/-- with distinct AST operators
+5. **Error function rename** - Renamed err() to lose() for better semantic clarity
+6. **makeexpr_init wrapper** - Convenience function reduces code duplication for expression node creation
+7. **String literals in AST** - Literals section with escaped string data, synthetic names (_str0, _str1, etc.)
+8. **Array initialization** - char[] = "string" syntax with automatic size inference from string length
+9. **Type cast operators** - Three specific cast operators (N/W/X) with width annotations for narrowing, widening, and sign-extension
+10. **Ternary conditional operator** - Full ?: support with right-associativity and constant folding
+11. **Memory copy operator (Y)** - Block memory copy for array/struct initialization and assignment
+12. **Struct assignment** - Automatic conversion to COPY operator for aggregate types, including dereferenced pointers
+13. **Static local variables** - Correctly emitted in global data section with local scope visibility
+14. **Simplified enum implementation** - Enum constants as named integers, enum variables as unsigned char
+15. **Comparison operator folding** - All six comparison operators (<, >, <=, >=, ==, !=) fold at compile time
+16. **AST emission for pass 2** - Complete S-expression output with single-char operators
+17. **Global variable initializers** - Arrays, structs, scalar initializers in AST
+18. **Unix syscall migration** - fdprintf() replaces fprintf(), uses write() instead of stdio
+19. **Removed MAXTRACE debug code** - Eliminated 192 lines of stderr debug traces
+20. **Typedef support** - Global and scoped typedefs inside functions with proper shadowing
+21. **Local variable declarations** - Full support for declarations inside function bodies
+22. **Test infrastructure** - 110+ tests organized into 15 categories in tests/Makefile
+23. **Memory leak fixes** - Valgrind clean on all tests
+24. **K&R function support** - Full K&R style function definitions
+25. **Comprehensive preprocessor** - Macros, includes, conditional compilation, stringify, token pasting
 
 ### Code Style
 
