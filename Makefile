@@ -82,11 +82,12 @@ unit-tests: $(GENERATED)
 # process the cc1.h file, extracting the enum tags for the tokens
 #
 enumlist.h: cc1.h Makefile
+	@echo '/* generated from token.h - DO NOT EDIT */' >enumlist.h
 	tr ',' '\n' < token.h | \
 	sed -e '/\/\*/d' -e 's/=.*$$//' | \
 	awk '/enum / { t=1;next } /;$$/ {t=0} {if (t) print}' | \
 	tr -d '[:blank:]' | \
-	awk '/[A-Z]+/ {printf("check(%s);\n", $$1);}' >enumlist.h
+	awk '/[A-Z]+/ {printf("check(%s);\n", $$1);}' >>enumlist.h
 
 #
 # generate the operator priority table
