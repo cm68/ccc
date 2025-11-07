@@ -6,9 +6,17 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 VERBOSE=""
-
-while getopts :v:h flag; do
+not_k=true
+while getopts hkv: flag; do
 	case $flag in
+	h)
+		echo -v verbosity 
+		echo -k continue after failure
+		exit
+		;;
+	k)
+		not_k=false
+		;;
 	v)
 		VERBOSE="-v $OPTARG"
 		;;
@@ -39,11 +47,11 @@ for t in "${TESTS[@]}" ; do
 	cat "$t"
 	echo "======== run ========"
 	echo ../cc1 $VERBOSE -E $t
-	if ! ../cc1 -DTEST=$t -I.. $VERBOSE -E "$t" ; then
+	if ../cc1 -DTEST=$t -I.. $VERBOSE -E "$t" | grep "^file.*error code" ; then
 		echo "file ../cc1" > .gdbargs
 		echo "set args -DTEST=$t -I.. $VERBOSE -E $t" >> .gdbargs
 		echo "exited code $?"
-		exit
+		if $not_k ; then exit ; fi
 	fi
 	echo "========= object ========="
 	cat "${t%.c}.i"
