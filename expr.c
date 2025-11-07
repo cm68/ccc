@@ -364,15 +364,39 @@ parse_expr(unsigned char pri, struct stmt *st)
         }
         break;
 
+    case INCR:      // prefix increment: ++i
+    case DECR: {    // prefix decrement: --i
+        unsigned char inc_op = cur.type;
+        struct expr *operand;
+
+        gettoken();
+        operand = parse_expr(OP_PRI_MULT - 1, st);  // unary precedence
+
+        // Unwrap DEREF to get lvalue address (similar to ASSIGN)
+        if (operand && operand->op == DEREF) {
+            operand = operand->left;
+        }
+
+        // Create increment/decrement node
+        e = makeexpr(inc_op, operand);
+        if (e->left) {
+            e->left->up = e;
+            e->type = e->left->type;
+        }
+        // Note: Do NOT set E_POSTFIX flag for prefix form
+        break;
+    }
+
 	default:
 		err(ER_E_UO);
 		return 0;
     }
 
     /*
-     * Handle postfix operators: function calls, array subscripts, struct access
+     * Handle postfix operators: function calls, array subscripts, struct access, increment/decrement
      */
-    while (cur.type == LPAR || cur.type == LBRACK || cur.type == DOT || cur.type == ARROW) {
+    while (cur.type == LPAR || cur.type == LBRACK || cur.type == DOT || cur.type == ARROW ||
+           cur.type == INCR || cur.type == DECR) {
         if (cur.type == LBRACK) {
             // Array subscript: arr[idx] = DEREF(ADD(base, idx * sizeof))
             struct expr *index, *scaled, *addr, *size_expr;
@@ -540,6 +564,24 @@ parse_expr(unsigned char pri, struct stmt *st)
             e->left->up = e;
 
             gettoken();
+        } else if (cur.type == INCR || cur.type == DECR) {
+            // Postfix increment/decrement: i++ or i--
+            unsigned char inc_op = cur.type;
+            struct expr *inc_node;
+
+            gettoken();
+
+            // Unwrap DEREF to get lvalue address (similar to ASSIGN)
+            if (e && e->op == DEREF) {
+                e = e->left;
+            }
+
+            // Create increment/decrement node
+            inc_node = makeexpr(inc_op, e);
+            inc_node->left->up = inc_node;
+            inc_node->type = inc_node->left->type;
+            inc_node->flags |= E_POSTFIX;  // Mark as postfix form
+            e = inc_node;
         }
     }
 

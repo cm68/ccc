@@ -41,6 +41,7 @@ struct expr {
 #define	E_CONST     0x01
 #define E_RESOLVED	0x02
 #define	E_FUNARG    0x04
+#define E_POSTFIX   0x08
 	unsigned char op;
 	struct expr *left;
 	struct expr *right;

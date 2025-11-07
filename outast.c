@@ -152,6 +152,23 @@ emit_expr(struct expr *e)
 		fdprintf(ast_fd, ")");
 		break;
 
+	case INCR:
+	case DECR:
+		/* Increment/decrement operators: distinguish prefix vs postfix */
+		if (e->flags & E_POSTFIX) {
+			/* Postfix: i++ or i-- */
+			fdprintf(ast_fd, "(%c+", e->op);
+		} else {
+			/* Prefix: ++i or --i */
+			fdprintf(ast_fd, "(+%c", e->op);
+		}
+		if (e->left) {
+			fdprintf(ast_fd, " ");
+			emit_expr(e->left);
+		}
+		fdprintf(ast_fd, ")");
+		break;
+
 	default:
 		/* Operator - output in prefix notation */
 		/* For DEREF (M) and ASSIGN (=), add size annotation */
