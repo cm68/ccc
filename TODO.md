@@ -6,7 +6,7 @@
 - + Full C preprocessor (macros, includes, conditional compilation, stringify, token pasting)
 - + Nested macro expansion works correctly
 - + Complete lexical analysis
-- + Comprehensive test suite (110+ tests organized in 15 categories)
+- + Comprehensive test suite (122 tests organized in 18 categories)
 
 ### Type System
 - + Primitive types: char, short, int, long, unsigned variants, void, boolean, float, double
@@ -23,6 +23,7 @@
 - + Struct member namespace separation
 - + Pointer type compatibility checking (validates assignments, reports ER_E_PT)
 - + Automatic type conversions in assignments (NARROW/SEXT/WIDEN)
+- + Automatic operand widening in binary expressions (implements C's usual arithmetic conversions)
 
 ### Declarations
 - + Variable declarations (global and local)
@@ -55,6 +56,7 @@
 - + Function pointers: assignment, calls, arrays of function pointers
 - + sizeof operator (for types and expressions)
 - + Proper operator precedence and associativity
+- + Lvalue validation for assignments and increment/decrement operators
 
 ### Statements
 - + Complete statement parsing (all control flow)
@@ -84,8 +86,8 @@
 - [ ] Add full type compatibility checking (sametype function for all contexts)
 - [x] Implement type conversions and promotions in binary expressions (automatic operand widening)
 - [x] Fix operator type propagation (result type now uses larger operand type)
+- [x] Add lvalue validation for assignments and operators
 - [ ] Add type checking validation for all operators
-- [ ] Add lvalue validation for assignments and operators
 - [ ] Function signature checking at call sites
 - [ ] Pointer arithmetic type checking
 

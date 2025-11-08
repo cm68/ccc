@@ -14,6 +14,7 @@ The compiler successfully parses C code and outputs AST in S-expression format:
 - Type system: primitives, pointers, arrays, functions, structs, unions, enums
 - Declaration parsing: variables, functions (K&R and ANSI-style), typedefs
 - Expression parsing with constant folding and proper operator precedence
+- Type checking: automatic conversions, operand widening, pointer compatibility, lvalue validation
 - Type cast operators with typedef disambiguation (N/W/X operators with width annotations)
 - Memory copy operator (copy) for array initialization and block copies
 - Statement parsing: all control flow, function bodies, scoped blocks
@@ -22,7 +23,7 @@ The compiler successfully parses C code and outputs AST in S-expression format:
 - Local array initialization generates proper memory copy operations
 - AST emission: S-expression output with literals section, global vars, functions, initializers
 - Unix syscall I/O: fdprintf() instead of stdio for AST output
-- Comprehensive test suite (110 tests organized by category)
+- Comprehensive test suite (122 tests organized by category)
 
 **Pass 2 (cc2) - Work In Progress**
 

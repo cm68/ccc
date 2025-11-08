@@ -184,6 +184,30 @@ c + i + l;  // (+ (X:l (+ (X:s (M:b $_c)) (M:s $_i))) (M:l $_l))
 - Works recursively in chained expressions
 - Different from assignment conversions (which may narrow)
 
+### Lvalue Validation
+
+The compiler validates that assignments and increment/decrement operators receive valid lvalues (addressable memory locations). An lvalue in the AST is represented as a DEREF node.
+
+**Valid lvalues:**
+- Variables: `x = 5;` ✓
+- Pointer dereferences: `*p = 5;` ✓
+- Array elements: `arr[i] = 5;` ✓
+- Struct members: `s.x = 5;` ✓
+
+**Invalid lvalues (error ER_E_LV):**
+- Constants: `5 = x;` ❌
+- Expression results: `(x + 5) = 10;` ❌
+- Function calls: `foo() = 5;` ❌
+
+**Operators requiring lvalues:**
+- Simple assignment: `=`
+- Compound assignments: `+=`, `-=`, `*=`, `/=`, `%=`, `&=`, `|=`, `^=`, `<<=`, `>>=`
+- Prefix increment/decrement: `++x`, `--x`
+- Postfix increment/decrement: `x++`, `x--`
+
+**Implementation:**
+The compiler checks that the left operand of assignments and operand of increment/decrement is a DEREF node before unwrapping it to get the address. If not, it reports error ER_E_LV ("need lvalue").
+
 ### Type Cast Operators
 
 Type conversions that require runtime operations emit specific cast operators with destination width annotations:

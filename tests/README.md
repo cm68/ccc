@@ -1,6 +1,6 @@
 # ccc Compiler Tests
 
-This directory contains 65 test files for the ccc C compiler (pass 1: preprocessor and parser).
+This directory contains 122 test files for the ccc C compiler (pass 1: preprocessor and parser).
 
 All test files have descriptive header comments explaining what they test. Each test validates a specific aspect of the compiler's functionality.
 
@@ -24,6 +24,11 @@ You can run specific test categories using these make targets:
 - `make -C tests test-stmt` - Statement tests
 - `make -C tests test-sizeof` - sizeof operator tests
 - `make -C tests test-typedef` - Typedef tests
+- `make -C tests test-cast` - Type cast operator tests
+- `make -C tests test-string` - String literal tests
+- `make -C tests test-incr-decr` - Increment/decrement operator tests
+- `make -C tests test-ptr-compat` - Pointer compatibility tests
+- `make -C tests test-lvalue` - Lvalue validation tests
 
 ## Test Categories
 
@@ -114,37 +119,48 @@ You can run specific test categories using these make targets:
   - Forward references and incomplete types
   - Tag namespace separation
   - Bitfield support
+  - Typedef support (global and scoped inside functions)
 
-✅ **Expression Parsing** - Functional
+✅ **Expression Parsing** - Complete
   - All unary operators with constant folding
   - All binary operators with constant folding
   - Proper operator precedence and associativity
-  - sizeof operator
+  - sizeof operator (types and expressions)
+  - Type cast operator with typedef disambiguation
+  - Increment/decrement operators (prefix and postfix)
+  - Compound assignment operators (+=, -=, etc.)
+  - Ternary conditional operator (? :)
+  - Function calls and function pointers
+  - Array subscripting with scaled arithmetic
+  - Struct member access (. and ->)
 
-✅ **Statement Parsing** - Active
+✅ **Type Checking** - Partially implemented
+  - Automatic type conversions in assignments (NARROW/SEXT/WIDEN)
+  - Automatic operand widening in binary expressions
+  - Pointer type compatibility validation
+  - Lvalue validation for assignments and increment/decrement
+
+✅ **Statement Parsing** - Complete
   - All control flow statements (if/else, while, do-while, for, switch/case)
   - Jump statements (break, continue, return, goto/labels)
   - Block statements with proper scoping
   - Statement trees attached to function bodies
+  - Local variable declarations inside function bodies
+  - Typedef declarations inside function bodies
 
-✅ **Function Declarations**
+✅ **Function Declarations** - Complete
   - ANSI-style function prototypes
+  - ANSI-style function definitions: `int foo(int x) { }` ✅
   - K&R style function definitions
   - Undeclared K&R parameters default to int
+  - Forward declarations with different parameter names
+  - Function type normalization (parameter names don't affect type)
 
 ### Current Limitations
 
-⚠️ **Function Definitions**
-- **ANSI-style function definitions don't work**: `int foo(int x) { }`
-  - Parser treats parameters as global declarations
-  - Error: "more than one basetype"
-- **Workaround**: Use K&R style: `int foo(x) int x; { }`
-- **ANSI-style forward declarations work**: `int foo(int x);`
-
 ⚠️ **Not Yet Implemented**
-- typedef (partially implemented)
-- Local variable declarations inside function bodies (conflicts with statement parsing)
-- Type checking and validation
+- Full type compatibility checking (sametype for all contexts)
+- Function signature checking at call sites
 - Code generation (pass 2)
 
 ### Memory Management
@@ -224,6 +240,11 @@ To add a new test:
    - Add to `LOCAL_TESTS` for local variable tests
    - Add to `SCOPE_TESTS` for scope tests
    - Add to `STRUCT_TESTS` for struct tests
+   - Add to `CAST_TESTS` for type cast operator tests
+   - Add to `STRING_TESTS` for string literal tests
+   - Add to `INCR_DECR_TESTS` for increment/decrement operator tests
+   - Add to `PTR_COMPAT_TESTS` for pointer compatibility tests
+   - Add to `LVALUE_TESTS` for lvalue validation tests
    - Add to `MINIMAL_TESTS` for minimal/smoke tests
    - Add to `MISC_TESTS` for miscellaneous/regression tests
 4. Run `make test` to verify
