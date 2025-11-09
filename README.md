@@ -25,6 +25,15 @@ The compiler successfully parses C code and outputs AST in S-expression format:
 - Unix syscall I/O: fdprintf() instead of stdio for AST output
 - Comprehensive test suite (122 tests organized by category)
 
+**Debugging Tools - Complete**
+
+Two complementary tools for validating parser output without needing code generation:
+- **AST Interpreter** (interp.lisp): Executes AST directly, validates parser semantics
+- **AST Pretty Printer** (astpp.lisp): Formats AST for human inspection or reformatting
+- Full control flow support: if/else, loops, switch, break/continue
+- Comprehensive test coverage: 11 tests pass with interpreter
+- Raw mode for pretty printer outputs valid AST that can be read back
+
 **Pass 2 (cc2) - Work In Progress**
 
 AST parser foundation in place, code generation planned:
