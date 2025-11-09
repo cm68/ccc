@@ -167,18 +167,18 @@ insertfile(char *name, int sys)
         }
     }
     if (t->fd == -1) {
-        perror(namebuf);
-        free(t);
-        return;
+        fatal(ER_C_IF);
     }
 found:
 	t->name = strdup(namebuf);
-	t->lineno = t->offset = t->valid = 0;
+	t->offset = t->valid = 0;
+	t->lineno = 1;  /* New file starts at line 1 */
 	t->storage = malloc(TBSIZE);
 	t->saved_column = column;  /* Save parent's column */
 	t->prev = tbtop;
 	tbtop = t;
-    filename = name;
+    filename = t->name;  /* Use resolved path */
+    lineno = 1;  /* Start at line 1 for new file */
 }
 
 /*
@@ -345,6 +345,9 @@ done:
     } else if (curchar == '\n') {
         nextcol = 0;
         lineno++;
+        if (tbtop) {
+            tbtop->lineno = lineno;  /* Keep textbuf lineno in sync */
+        }
     } else {
         nextcol++;
     }

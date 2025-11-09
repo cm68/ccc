@@ -192,6 +192,12 @@ new_name(char *name, kind k, struct type *t, boolean is_tag)
         if ((n->is_tag == is_tag) &&
             (name[0] == n->name[0]) &&
             (strcmp(name, n->name) == 0)) {
+            // Allow extern declaration followed by definition (or vice versa)
+            // This is valid C: extern int x; ... int x = 0;
+            if (n->sclass & SC_EXTERN) {
+                // Existing is extern - return it to be updated with new definition
+                return n;
+            }
             lose(ER_D_DN);
 	        return (0);
 		}
@@ -241,6 +247,17 @@ add_name(struct name *n)
         if ((names[i]->is_tag == n->is_tag) &&
             (n->name[0] == names[i]->name[0]) &&
             (strcmp(n->name, names[i]->name) == 0)) {
+            // Allow extern declaration followed by definition
+            if (names[i]->sclass & SC_EXTERN) {
+                // Existing is extern - update it instead of adding duplicate
+                // Update storage class to remove extern flag
+                names[i]->sclass = n->sclass;
+                if (n->init) {
+                    names[i]->init = n->init;
+                }
+                free(n);  // Don't need the new one
+                return;
+            }
             lose(ER_D_DN);
             return;
         }

@@ -49,6 +49,7 @@ ER_C_CU		endif without if
 ER_C_ME		too many elses
 ER_C_MN		no macro name
 ER_C_ID		bad include name format
+ER_C_IF		include file not found
 ER_C_DP		bad macro param list
 ER_C_CE		cpp const required
 ER_C_CD		bad literal 
