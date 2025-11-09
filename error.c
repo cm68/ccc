@@ -16,11 +16,28 @@ void
 gripe(error_t errcode)
 {
     int i;
+    struct textbuf *t;
 
     i = errcode;
     if (i > ER_WTF) i = ER_WTF;
     printf("file: %s line: %d error code %d %s\n",
         filename, lineno, errcode, errmsg[i]);
+
+    /* Print include chain traceback */
+    if (tbtop) {
+        /* Start from current file and walk backwards */
+        for (t = tbtop; t; t = t->prev) {
+            /* Skip macro buffers, only show files */
+            if (t->fd != -1 && t->name) {
+                /* Don't print the current file (already shown in main error message) */
+                if (t != tbtop || (filename && strcmp(filename, t->name) != 0)) {
+                    printf("  included from: %s line: %d\n",
+                        t->name, t->lineno);
+                }
+            }
+        }
+    }
+
     error = errcode;
 }
 

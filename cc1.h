@@ -287,6 +287,17 @@ extern void skipwhite();
 extern char issym();
 
 /* io.c */
+struct textbuf {
+	int fd;                 // if == -1, macro buffer
+	char *name;             // filename or macro name
+	char *storage;          // data - free when done
+	short offset;           // always points at nextchar.
+	short valid;            // total valid in buffer
+	short lineno;           // current line # in file
+	short saved_column;     // saved column position for parent file
+	struct textbuf *prev;	// a stack
+};
+
 extern void pushfile(char *name);
 extern void insertmacro(char *name, char *macbuf);
 extern void insertfile(char *name, int sysdirs);
@@ -303,6 +314,7 @@ extern int lineno;
 extern char *filename;
 extern int column;
 extern char *sys_include_path;
+extern struct textbuf *tbtop;
 
 /* cc1.c */
 extern void gripe(error_t errcode);

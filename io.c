@@ -24,21 +24,12 @@ char namebuf[128];
 
 /*
  * the formal definition of offset is the first unread character.
- * this is effectively the lookahead character, nextchar.  
- * if we have not read anything from this buffer yet, it is zero.  
+ * this is effectively the lookahead character, nextchar.
+ * if we have not read anything from this buffer yet, it is zero.
  * advance() places this character into curchar.
  * if we do a macro insertion, it is after curchar
  */
-struct textbuf {
-	int fd;                 // if == -1, macro buffer
-	char *name;             // filename or macro name
-	char *storage;          // data - free when done
-	short offset;           // always points at nextchar.
-	short valid;            // total valid in buffer
-	short lineno;           // current line # in file
-	short saved_column;     // saved column position for parent file
-	struct textbuf *prev;	// a stack
-} *tbtop;
+struct textbuf *tbtop;
 
 #ifdef DEBUG
 
