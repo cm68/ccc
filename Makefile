@@ -78,6 +78,23 @@ valgrind: cc1 tests/runvalgrind.sh
 unit-tests: $(GENERATED)
 	$(MAKE) -C unit_test tests
 
+.PHONY: testself
+testself: cc1
+	@echo "Testing compiler on its own sources..."
+	@echo "(Using gcc for preprocessing, cc1 for parsing)"
+	@for f in $(CFILES); do \
+	  if [ -f "$$f" ]; then \
+	    printf "%-30s" "$$f: "; \
+	    gcc -I./include -E "$$f" > /tmp/testself.$$$$.i 2>/dev/null && \
+	    if timeout 5 ./cc1 /tmp/testself.$$$$.i > /dev/null 2>&1; then \
+	      echo "PASS"; \
+	    else \
+	      echo "FAIL"; \
+	    fi; \
+	    rm -f /tmp/testself.$$$$.i; \
+	  fi; \
+	done
+
 #
 # process the cc1.h file, extracting the enum tags for the tokens
 #
