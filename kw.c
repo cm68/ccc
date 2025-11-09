@@ -57,8 +57,7 @@ unsigned char cppkw[] = {
 unsigned char ckw[] = {
 	'a'|HI, 10, 's'|HI, 3, 'm', 0xff, ASM,
 		'u', 't', 'o', 0xff, AUTO,
-	'b'|HI, 15, 'o'|HI, 7, 'o','l','e','a','n', 0xff, BOOLEAN,
-		'r', 'e', 'a', 'k', 0xff, BREAK,
+	'b'|HI, 6, 'r', 'e', 'a', 'k', 0xff, BREAK,
 	'c'|HI, 26, 'a'|HI, 4, 's', 'e', 0xff, CASE,
 		'h'|HI, 4, 'a', 'r', 0xff, CHAR,
 		'o', 'n', 's'|HI, 3, 't', 0xff, CONST,

@@ -121,8 +121,7 @@ main(int argc, char **argv)
 		case EXTERN: s = "extern"; break;
 		case REGISTER: s = "register"; break;
 		case AUTO: s = "auto"; break;
-		case BOOLEAN: s = "_Bool"; break;
-		
+			
 		/* Control flow keywords */
 		case IF: s = "if"; break;
 		case ELSE: s = "else"; break;

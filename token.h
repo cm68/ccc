@@ -10,8 +10,8 @@ enum {
     NONE = ' ',
 
     /* C keywords */
-    ASM = 'A', AUTO = 'o', 
-    BOOLEAN = 'b' , BREAK = 'B', 
+    ASM = 'A', AUTO = 'o',
+    BREAK = 'B', 
     CASE = 'C', CHAR = 'c', CONST = 'k', CONTINUE = 'N',
     DEFAULT = 'O', DO = 'D', DOUBLE = 'd', 
     ELSE = 'E', ENUM = 'e', EXTERN = 'x', 

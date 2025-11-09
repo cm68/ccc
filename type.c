@@ -542,8 +542,6 @@ parsebasic()
 			misc++;
 		case FLOAT:
 			misc++;
-		case BOOLEAN:
-			misc++;
 		case VOID:
 			gettoken();
 			if (length + unsignedness) {

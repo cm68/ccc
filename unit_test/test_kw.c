@@ -21,7 +21,6 @@ struct test_case tests[] = {
     /* C keywords */
     {"asm", ASM, "ASM", ckw},
     {"auto", AUTO, "AUTO", ckw},
-    {"boolean", BOOLEAN, "BOOLEAN", ckw},
     {"break", BREAK, "BREAK", ckw},
     {"case", CASE, "CASE", ckw},
     {"char", CHAR, "CHAR", ckw},
