@@ -219,31 +219,81 @@
             str))
       (string param-spec)))
 
+(defun process-escape-sequences (str)
+  "Process C escape sequences in a string"
+  (let ((result (make-array (length str) :element-type 'character :fill-pointer 0))
+        (i 0))
+    (loop while (< i (length str))
+          do (let ((ch (char str i)))
+               (cond
+                 ((and (char= ch #\\) (< (1+ i) (length str)))
+                  (let ((next (char str (1+ i))))
+                    (case next
+                      (#\n (vector-push-extend #\Newline result))
+                      (#\t (vector-push-extend #\Tab result))
+                      (#\r (vector-push-extend #\Return result))
+                      (#\\ (vector-push-extend #\\ result))
+                      (#\" (vector-push-extend #\" result))
+                      (t (vector-push-extend next result)))
+                    (incf i 2)))
+                 (t
+                  (vector-push-extend ch result)
+                  (incf i)))))
+    result))
+
+(defun builtin-printf (args)
+  "Builtin printf implementation - prints first argument as string"
+  (let ((fmt-arg (first args)))
+    (cond
+      ;; String literal reference
+      ((and (symbolp fmt-arg)
+            (gethash (symbol-name-only fmt-arg) *strings*))
+       (let ((str (gethash (symbol-name-only fmt-arg) *strings*)))
+         ;; Escape sequences were processed when loading
+         (format t "~A" str)
+         (length str)))
+      ;; Direct string value
+      ((stringp fmt-arg)
+       (format t "~A" fmt-arg)
+       (length fmt-arg))
+      ;; Number
+      (t
+       (format t "~A" (eval-expr fmt-arg))
+       1))))
+
 (defun funcall-ast (func-expr args)
   "Call a function with arguments"
   (let* ((func-name (string-downcase (symbol-name-only func-expr)))
          (func-def (gethash func-name *functions*)))
-    (if func-def
-        (let* ((params (second func-def))
-               (body (car (last func-def)))
-               (new-frame (make-hash-table :test 'equal)))
+    (cond
+      ;; Check for builtin functions
+      ((string= func-name "printf")
+       (builtin-printf args))
 
-          ;; Bind parameters
-          (loop for param in params
-                for arg in args
-                do (setf (gethash (extract-param-name param) new-frame)
-                        (eval-expr arg)))
+      ;; User-defined function
+      (func-def
+       (let* ((params (second func-def))
+              (body (car (last func-def)))
+              (new-frame (make-hash-table :test 'equal)))
 
-          ;; Push frame and execute
-          (push new-frame *locals*)
-          (setf *return-value* nil)
-          (eval-statement body)
-          (pop *locals*)
+         ;; Bind parameters
+         (loop for param in params
+               for arg in args
+               do (setf (gethash (extract-param-name param) new-frame)
+                       (eval-expr arg)))
 
-          (or *return-value* 0))
-        (progn
-          (format t "Warning: undefined function ~A~%" func-name)
-          0))))
+         ;; Push frame and execute
+         (push new-frame *locals*)
+         (setf *return-value* nil)
+         (eval-statement body)
+         (pop *locals*)
+
+         (or *return-value* 0)))
+
+      ;; Undefined function
+      (t
+       (format t "Warning: undefined function ~A~%" func-name)
+       0))))
 
 ;;; Statement execution
 (defun eval-statement (stmt)
@@ -364,11 +414,21 @@
                        (eval-expr (fourth item))
                        0))))
 
-          ;; String literal
+          ;; String literal (s name "value")
           ((or (eq tag 's) (eq tag '|s|))
            (let ((name (symbol-name-only (second item)))
                  (value (third item)))
-             (setf (gethash name *strings*) value)))
+             (setf (gethash name *strings*) (process-escape-sequences value))))
+
+          ;; Literals section (L (s name "value") ...)
+          ((or (eq tag '|L|) (eq tag 'L))
+           (dolist (lit (rest item))
+             (when (and (listp lit)
+                        (or (eq (first lit) 's) (eq (first lit) '|s|)))
+               (let* ((name (symbol-name-only (second lit)))
+                      (value (third lit))
+                      (processed (process-escape-sequences value)))
+                 (setf (gethash name *strings*) processed)))))
 
           ;; Function definition
           ((or (eq tag 'f) (eq tag '|f|))
@@ -389,6 +449,27 @@
                 (let ((content (make-string (file-length stream))))
                   (read-sequence content stream)
                   content))))
+
+    ;; Escape backslashes in strings so the Lisp reader doesn't process them
+    ;; We need \\ to become \\\\ so that the reader produces \\, which our
+    ;; process-escape-sequences function can then handle
+    (setf text (loop with result = (make-array (length text) :element-type 'character
+                                                :fill-pointer 0 :adjustable t)
+                     with in-string = nil
+                     for ch across text
+                     do (cond
+                          ((and (char= ch #\") (or (zerop (fill-pointer result))
+                                                    (char/= (char result (1- (fill-pointer result))) #\\)))
+                           ;; Quote that's not escaped - toggle in-string
+                           (vector-push-extend ch result)
+                           (setf in-string (not in-string)))
+                          ((and in-string (char= ch #\\))
+                           ;; Backslash inside string - double it
+                           (vector-push-extend ch result)
+                           (vector-push-extend ch result))
+                          (t
+                           (vector-push-extend ch result)))
+                     finally (return result)))
 
     ;; Simple replacement: change param:type to param_type
     ;; This avoids package qualification issues
