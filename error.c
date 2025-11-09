@@ -38,25 +38,35 @@ dump_symbols()
     printf("lexlevel=%d lastname=%d\n\n", lexlevel, lastname);
 
     printf("--- NAMES TABLE ---\n");
-    for (i = 0; i <= lastname; i++) {
-        n = names[i];
-        if (n) {
-            printf("[%d] %s%s kind=%s level=%d sclass=0x%x",
-                i, n->is_tag ? "tag:" : "", n->name,
-                kindname[n->kind], n->level, n->sclass);
-            if (n->type) {
-                printf(" type=");
-                dump_type(n->type, 0);
+    if (names && lastname >= 0) {
+        for (i = 0; i <= lastname; i++) {
+            n = names[i];
+            if (n) {
+                printf("[%d] %s%s kind=%s level=%d sclass=0x%x",
+                    i, n->is_tag ? "tag:" : "",
+                    n->name ? n->name : "(null)",
+                    (n->kind >= 0 && n->kind <= 10) ? kindname[n->kind] : "???",
+                    n->level, n->sclass);
+                if (n->type) {
+                    printf(" type=");
+                    dump_type(n->type, 0);
+                }
+                printf("\n");
             }
-            printf("\n");
         }
+    } else {
+        printf("(names table not initialized)\n");
     }
 
     printf("\n--- TYPES TABLE ---\n");
-    for (t = types; t; t = t->next) {
-        printf("type @%p: ", (void*)t);
-        dump_type(t, 0);
-        printf("\n");
+    if (types) {
+        for (t = types; t; t = t->next) {
+            printf("type @%p: ", (void*)t);
+            dump_type(t, 0);
+            printf("\n");
+        }
+    } else {
+        printf("(types table not initialized)\n");
     }
     printf("=== END SYMBOL TABLE DUMP ===\n\n");
 }
