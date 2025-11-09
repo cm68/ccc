@@ -121,48 +121,49 @@
      (let* ((op-with-width (first expr))
             (parsed (parse-width-annotation op-with-width))
             (op (car parsed))
+            (op-str (string op))
             (width (cdr parsed)))
 
-       (case op
-         ;; Memory operations
-         ((:M)  ; Dereference - for now just return the value
+       (cond
+         ;; Use string comparison to avoid case sensitivity issues
+         ((string= op-str "M")  ; Dereference
           (eval-expr (second expr)))
 
          ;; Arithmetic
-         ((:+) (+ (eval-expr (second expr)) (eval-expr (third expr))))
-         ((:-) (- (eval-expr (second expr)) (eval-expr (third expr))))
-         ((:*) (* (eval-expr (second expr)) (eval-expr (third expr))))
-         ((:/) (floor (eval-expr (second expr)) (max 1 (eval-expr (third expr)))))
-         ((:%) (mod (eval-expr (second expr)) (max 1 (eval-expr (third expr)))))
+         ((string= op-str "+") (+ (eval-expr (second expr)) (eval-expr (third expr))))
+         ((string= op-str "-") (- (eval-expr (second expr)) (eval-expr (third expr))))
+         ((string= op-str "*") (* (eval-expr (second expr)) (eval-expr (third expr))))
+         ((string= op-str "/") (floor (eval-expr (second expr)) (max 1 (eval-expr (third expr)))))
+         ((string= op-str "%") (mod (eval-expr (second expr)) (max 1 (eval-expr (third expr)))))
 
          ;; Bitwise
-         ((:&) (logand (eval-expr (second expr)) (eval-expr (third expr))))
-         ((:|\||) (logior (eval-expr (second expr)) (eval-expr (third expr))))
-         ((:^) (logxor (eval-expr (second expr)) (eval-expr (third expr))))
-         ((:~) (lognot (eval-expr (second expr))))
-         ((:y) (ash (eval-expr (second expr)) (eval-expr (third expr))))  ; <<
-         ((:w) (ash (eval-expr (second expr)) (- (eval-expr (third expr)))))  ; >>
+         ((string= op-str "&") (logand (eval-expr (second expr)) (eval-expr (third expr))))
+         ((string= op-str "|") (logior (eval-expr (second expr)) (eval-expr (third expr))))
+         ((string= op-str "^") (logxor (eval-expr (second expr)) (eval-expr (third expr))))
+         ((string= op-str "~") (lognot (eval-expr (second expr))))
+         ((string= op-str "y") (ash (eval-expr (second expr)) (eval-expr (third expr))))
+         ((string= op-str "w") (ash (eval-expr (second expr)) (- (eval-expr (third expr)))))
 
          ;; Comparison
-         ((:<) (if (< (eval-expr (second expr)) (eval-expr (third expr))) 1 0))
-         ((:>) (if (> (eval-expr (second expr)) (eval-expr (third expr))) 1 0))
-         ((:L) (if (<= (eval-expr (second expr)) (eval-expr (third expr))) 1 0))  ; <=
-         ((:g) (if (>= (eval-expr (second expr)) (eval-expr (third expr))) 1 0))  ; >=
-         ((:Q) (if (= (eval-expr (second expr)) (eval-expr (third expr))) 1 0))   ; ==
-         ((:n) (if (/= (eval-expr (second expr)) (eval-expr (third expr))) 1 0))  ; !=
+         ((string= op-str "<") (if (< (eval-expr (second expr)) (eval-expr (third expr))) 1 0))
+         ((string= op-str ">") (if (> (eval-expr (second expr)) (eval-expr (third expr))) 1 0))
+         ((string= op-str "L") (if (<= (eval-expr (second expr)) (eval-expr (third expr))) 1 0))
+         ((string= op-str "g") (if (>= (eval-expr (second expr)) (eval-expr (third expr))) 1 0))
+         ((string= op-str "Q") (if (= (eval-expr (second expr)) (eval-expr (third expr))) 1 0))
+         ((string= op-str "n") (if (/= (eval-expr (second expr)) (eval-expr (third expr))) 1 0))
 
          ;; Logical
-         ((:j) (if (and (not (zerop (eval-expr (second expr))))  ; &&
-                        (not (zerop (eval-expr (third expr))))) 1 0))
-         ((:h) (if (or (not (zerop (eval-expr (second expr))))   ; ||
-                       (not (zerop (eval-expr (third expr))))) 1 0))
-         ((:!) (if (zerop (eval-expr (second expr))) 1 0))
+         ((string= op-str "j") (if (and (not (zerop (eval-expr (second expr))))
+                                        (not (zerop (eval-expr (third expr))))) 1 0))
+         ((string= op-str "h") (if (or (not (zerop (eval-expr (second expr))))
+                                       (not (zerop (eval-expr (third expr))))) 1 0))
+         ((string= op-str "!") (if (zerop (eval-expr (second expr))) 1 0))
 
          ;; Unary operators
-         ((:|NEG|) (- (eval-expr (second expr))))
+         ((string= op-str "NEG") (- (eval-expr (second expr))))
 
          ;; Assignment
-         ((:=)
+         ((string= op-str "=")
           (let ((lval (second expr))
                 (rval (eval-expr (third expr))))
             (if (and (listp lval) (eq (car lval) '$))
@@ -171,40 +172,28 @@
             rval))
 
          ;; Type conversions
-         ((:N) (narrow (eval-expr (second expr)) width))  ; NARROW
-         ((:X) (sign-extend (eval-expr (second expr)) width width))  ; SEXT
-         ((:W) (zero-extend (eval-expr (second expr)) width width))  ; WIDEN
+         ((string= op-str "N") (eval-expr (second expr)))
+         ((string= op-str "X") (eval-expr (second expr)))
+         ((string= op-str "W") (eval-expr (second expr)))
 
-         ;; Address-of (for now, just return a fake address)
-         ((:&) (eval-expr (second expr)))
+         ;; Address-of
+         ((string= op-str "&") (eval-expr (second expr)))
 
          ;; Ternary conditional
-         ((:?) (if (not (zerop (eval-expr (second expr))))
-                   (eval-expr (second (third expr)))   ; true branch
-                   (eval-expr (third (third expr)))))   ; false branch (COLON node)
+         ((string= op-str "?") (if (not (zerop (eval-expr (second expr))))
+                                   (eval-expr (second (third expr)))
+                                   (eval-expr (third (third expr)))))
 
          ;; Compound assignments
-         ((:P) (let* ((lval (second expr))    ; +=
-                      (old (eval-expr lval))
-                      (new (+ old (eval-expr (third expr)))))
-                 (set-variable lval new)))
-
-         ;; Increment/decrement (simplified)
-         ((:|0xcf| :|0xef| :|0xd6| :|0xf6|)  ; ++, --
-          (let* ((lval (second expr))
-                 (old (eval-expr lval))
-                 (new (if (member op '(:|0xcf| :|0xef|))
-                          (1+ old)
-                          (1- old))))
-            (set-variable lval new)
-            (if (member op '(:|0xcf| :|0xd6|))
-                new    ; prefix: return new value
-                old))) ; postfix: return old value
+         ((string= op-str "P") (let* ((lval (second expr))
+                                      (old (eval-expr lval))
+                                      (new (+ old (eval-expr (third expr)))))
+                                 (set-variable lval new)))
 
          ;; Function call
-         ((:@) (funcall-ast (second expr) (cddr expr)))
+         ((string= op-str "@") (funcall-ast (second expr) (cddr expr)))
 
-         (t (format t "Unknown operator: ~A~%" op)
+         (t (format t "Unknown operator: ~S (string ~S)~%" op op-str)
             0))))
 
     (t 0)))
@@ -450,9 +439,9 @@
                   (read-sequence content stream)
                   content))))
 
-    ;; Escape backslashes in strings so the Lisp reader doesn't process them
-    ;; We need \\ to become \\\\ so that the reader produces \\, which our
-    ;; process-escape-sequences function can then handle
+    ;; Escape special characters for the Lisp reader
+    ;; 1. Backslashes in strings: \\ becomes \\\\ so reader produces \\
+    ;; 2. Vertical bars outside strings: | becomes \| so reader produces symbol |
     (setf text (loop with result = (make-array (length text) :element-type 'character
                                                 :fill-pointer 0 :adjustable t)
                      with in-string = nil
@@ -466,6 +455,10 @@
                           ((and in-string (char= ch #\\))
                            ;; Backslash inside string - double it
                            (vector-push-extend ch result)
+                           (vector-push-extend ch result))
+                          ((and (not in-string) (char= ch #\|))
+                           ;; Vertical bar outside string - escape it
+                           (vector-push-extend #\\ result)
                            (vector-push-extend ch result))
                           (t
                            (vector-push-extend ch result)))
