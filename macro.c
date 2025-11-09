@@ -127,10 +127,11 @@ macdefine(char *s)
 
     m->name = strdup(s);
     m->parmcount = 0;
-    skipwhite1();
 
     /*
-     * get the parameter names from the (<a>,<b>,...) list
+     * Check for function-like macro: '(' must be IMMEDIATELY after name
+     * with NO whitespace (C standard requirement)
+     * If there's whitespace before '(', it's part of the replacement text
      */
     if (curchar == '(') {
         advance();
@@ -158,6 +159,9 @@ macdefine(char *s)
             m->parms[i] = parms[i];
         }
         advance();
+        skipwhite1();
+    } else {
+        /* Object-like macro: skip whitespace before replacement text */
         skipwhite1();
     }
     s = macbuffer;

@@ -201,8 +201,16 @@ declare_internal(struct type **btp, boolean struct_elem)
         suffix->flags = TF_FUNC;
         suffix->sub = prefix;  // Return type
 
-        // Detect style: K&R if starts with SYM (not a type keyword), ANSI otherwise
-        boolean kr_style = (cur.type == SYM && !is_type_token(cur.type));
+        // Detect style: K&R if starts with SYM that's not a typedef, ANSI otherwise
+        // Check if current symbol is a typedef name
+        boolean is_typedef_name = 0;
+        if (cur.type == SYM) {
+            struct name *n = lookup_name(cur.v.name, 0);
+            if (n && n->kind == tdef) {
+                is_typedef_name = 1;
+            }
+        }
+        boolean kr_style = (cur.type == SYM && !is_type_token(cur.type) && !is_typedef_name);
 
         // Parse parameter list
         while (cur.type != RPAR && cur.type != E_O_F) {
