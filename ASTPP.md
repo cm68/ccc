@@ -42,6 +42,26 @@ The script is already executable and ready to use.
 ./astpp.lisp program.ast
 ```
 
+### Filter Mode (Reading from stdin)
+
+The pretty printer can act as a Unix filter, reading from stdin if no filename is provided:
+
+```bash
+# Use as filter in a pipeline
+./cc1 -E program.c | ./astpp.lisp
+
+# Combine with stderr (cc1 outputs AST to stdout, diagnostics to stderr)
+./cc1 -E program.c 2>&1 | ./astpp.lisp
+
+# Raw mode in a pipeline
+./cc1 -E program.c | ./astpp.lisp --raw
+```
+
+This is particularly useful for:
+- **Quick inspection**: No intermediate file needed
+- **One-liners**: Compile and view AST in a single command
+- **Debugging**: Immediately see the AST without managing temporary files
+
 ### With ccc Driver
 
 ```bash

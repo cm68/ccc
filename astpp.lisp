@@ -402,64 +402,81 @@
   "Configure the Lisp reader to handle AST symbols"
   (setf (readtable-case *readtable*) :preserve))
 
+(defun preprocess-ast-text (text)
+  "Preprocess AST text, handling special characters"
+  ;; Escape special characters for the Lisp reader
+  (setf text (loop with result = (make-array (length text) :element-type 'character
+                                              :fill-pointer 0 :adjustable t)
+                   with in-string = nil
+                   for i from 0 below (length text)
+                   for ch = (char text i)
+                   for next-ch = (if (< (1+ i) (length text)) (char text (1+ i)) nil)
+                   do (cond
+                        ;; Track string state
+                        ((and (char= ch #\")
+                              (or (= i 0)
+                                  (char/= (char text (1- i)) #\\)))
+                         (vector-push-extend ch result)
+                         (setf in-string (not in-string)))
+                        ;; Backslash in string NOT followed by quote - double it
+                        ((and in-string (char= ch #\\)
+                              (not (and next-ch (char= next-ch #\"))))
+                         (vector-push-extend ch result)
+                         (vector-push-extend ch result))
+                        ;; Vertical bar outside string - escape it
+                        ((and (not in-string) (char= ch #\|))
+                         (vector-push-extend #\\ result)
+                         (vector-push-extend ch result))
+                        ;; Everything else
+                        (t
+                         (vector-push-extend ch result)))
+                   finally (return result)))
+
+  ;; Replace colons with underscores (for width annotations like =:s -> =_s)
+  (setf text (substitute #\_ #\: text))
+
+  ;; Read all forms
+  (with-input-from-string (stream text)
+    (loop for form = (read stream nil :eof)
+          until (eq form :eof)
+          collect form)))
+
 (defun preprocess-ast-file (filename)
   "Read and preprocess AST file, handling special characters"
   (let ((text (with-open-file (stream filename)
                 (let ((content (make-string (file-length stream))))
                   (read-sequence content stream)
                   content))))
+    (preprocess-ast-text text)))
 
-    ;; Escape special characters for the Lisp reader
-    (setf text (loop with result = (make-array (length text) :element-type 'character
-                                                :fill-pointer 0 :adjustable t)
-                     with in-string = nil
-                     for i from 0 below (length text)
-                     for ch = (char text i)
-                     for next-ch = (if (< (1+ i) (length text)) (char text (1+ i)) nil)
-                     do (cond
-                          ;; Track string state
-                          ((and (char= ch #\")
-                                (or (= i 0)
-                                    (char/= (char text (1- i)) #\\)))
-                           (vector-push-extend ch result)
-                           (setf in-string (not in-string)))
-                          ;; Backslash in string NOT followed by quote - double it
-                          ((and in-string (char= ch #\\)
-                                (not (and next-ch (char= next-ch #\"))))
-                           (vector-push-extend ch result)
-                           (vector-push-extend ch result))
-                          ;; Vertical bar outside string - escape it
-                          ((and (not in-string) (char= ch #\|))
-                           (vector-push-extend #\\ result)
-                           (vector-push-extend ch result))
-                          ;; Everything else
-                          (t
-                           (vector-push-extend ch result)))
-                     finally (return result)))
-
-    ;; Replace colons with underscores (for width annotations like =:s -> =_s)
-    (setf text (substitute #\_ #\: text))
-
-    ;; Read all forms
-    (with-input-from-string (stream text)
-      (loop for form = (read stream nil :eof)
-            until (eq form :eof)
-            collect form))))
+(defun preprocess-ast-stdin ()
+  "Read and preprocess AST from stdin"
+  (let ((text (with-output-to-string (str)
+                (loop for line = (read-line *standard-input* nil nil)
+                      while line
+                      do (write-line line str)))))
+    (preprocess-ast-text text)))
 
 (defun usage ()
   "Print usage message"
-  (format t "Usage: astpp.lisp [options] <ast-file>~%")
+  (format t "Usage: astpp.lisp [options] [<ast-file>]~%")
   (format t "~%")
   (format t "Pretty print ccc compiler AST in human-readable format.~%")
+  (format t "If no file is specified, reads from stdin (acts as a filter).~%")
   (format t "~%")
   (format t "Options:~%")
   (format t "  -r, --raw       Raw mode: keep original operators (M, =, +, etc.)~%")
   (format t "                  Only reindent, don't translate to readable names~%")
   (format t "  -h, --help      Show this help message~%")
   (format t "~%")
-  (format t "Example:~%")
+  (format t "Examples:~%")
+  (format t "  # Read from file:~%")
   (format t "  ./cc1 -E program.c > program.ast~%")
   (format t "  ./astpp.lisp program.ast~%")
+  (format t "~%")
+  (format t "  # Use as filter (read from stdin):~%")
+  (format t "  ./cc1 -E program.c | ./astpp.lisp~%")
+  (format t "  ./cc1 -E program.c 2>&1 | ./astpp.lisp --raw~%")
   (format t "~%")
   (format t "Raw mode example:~%")
   (format t "  ./astpp.lisp --raw program.ast~%")
@@ -471,9 +488,11 @@
   (sb-ext:exit :code 1))
 
 (defun main (filename)
-  "Main entry point"
+  "Main entry point - if filename is nil, read from stdin"
   (setup-reader)
-  (let ((ast (preprocess-ast-file filename)))
+  (let ((ast (if filename
+                 (preprocess-ast-file filename)
+                 (preprocess-ast-stdin))))
     (pp-ast ast))
   (unless *raw-mode*
     (format t "~%========================================~%")))
@@ -494,13 +513,11 @@
                (t
                 (format t "Unknown option: ~A~%" arg)
                 (usage))))
-    (unless filename
-      (format t "Error: No AST file specified~%~%")
-      (usage))
+    ;; filename can be nil - means read from stdin
     (cons filename raw-mode)))
 
 ;; Run if called as script
-(when (and *posix-argv* (>= (length *posix-argv*) 2))
+(when (and *posix-argv* (>= (length *posix-argv*) 1))
   (let* ((parsed (parse-args (cdr *posix-argv*)))
          (filename (car parsed))
          (raw-mode (cdr parsed)))
