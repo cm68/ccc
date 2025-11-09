@@ -258,7 +258,18 @@
   (let* ((name (first func-def))
          (params (second func-def))
          (return-type (third func-def))
-         (body (fourth func-def)))
+         (rest-items (nthcdr 3 func-def))
+         (declarations nil)
+         (body nil))
+
+    ;; Separate declarations (d ...) from body
+    ;; Declarations are (d name type) forms
+    ;; Body is everything else (typically a (B ...) block)
+    (dolist (item rest-items)
+      (if (and (listp item)
+               (or (eq (first item) 'd) (eq (first item) '|d|)))
+          (push item declarations)
+          (setf body item)))
 
     (format t "~%FUNCTION ~A(" name)
     (loop for param in params
@@ -267,7 +278,20 @@
              (format t "~A" param))
     (format t ") -> ~A~%" return-type)
     (format t "{~%")
-    (pp-statement body 1)
+
+    ;; Print declarations if any (at indent level 1)
+    (when declarations
+      (let ((*indent-level* 1))
+        (dolist (decl (reverse declarations))
+          (format t "~ADECL ~A" (indent) (symbol-name-only (second decl)))
+          (when (third decl)
+            (format t " : ~A" (third decl)))
+          (format t "~%"))))
+
+    ;; Print body
+    (when body
+      (pp-statement body 1))
+
     (format t "}~%")))
 
 (defun pp-global (name type init)
