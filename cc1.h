@@ -231,6 +231,10 @@ extern void pop_scope(void);
 
 /* declare.c */
 extern int lexlevel;
+extern int lastname;
+extern struct name **names;
+extern struct type *types;
+extern char *kindname[];
 extern struct name *declare_internal(struct type **btp, boolean struct_elem);
 extern struct name *declare(struct type **btp);
 extern int is_cast_start(void);
@@ -301,7 +305,7 @@ extern int column;
 extern char *sys_include_path;
 
 /* cc1.c */
-extern void lose(error_t errcode);
+extern void gripe(error_t errcode);
 extern void fatal(error_t errcode);
 extern void recover(error_t errcode, token_t skipto);
 extern void need(token_t check, token_t skipto, error_t errcode);

@@ -471,7 +471,7 @@ statement(struct stmt *parent)
             st->parent = parent;  /* Set parent before recursive call */
             st->chain = statement(st);
             if (cur.type != WHILE) {
-                lose(ER_S_DO);
+                gripe(ER_S_DO);
                 break;
             }
             gettoken();  // advance past WHILE keyword
@@ -486,7 +486,7 @@ statement(struct stmt *parent)
             break;
 
         default:
-            lose(ER_E_UO);
+            gripe(ER_E_UO);
             break;
         }
         // Skip if no statement was created (e.g., default case, EOF)
@@ -553,7 +553,7 @@ static struct expr *parse_initializer_list(void)
         }
 
         if (item == NULL) {
-            lose(ER_E_IT); /* Invalid initializer term */
+            gripe(ER_E_IT); /* Invalid initializer term */
             return NULL;
         }
 
@@ -569,7 +569,7 @@ static struct expr *parse_initializer_list(void)
         if (cur.type == END) {
             break;
         } else if (cur.type != COMMA) {
-            lose(ER_S_SN); /* need semicolon/separator */
+            gripe(ER_S_SN); /* need semicolon/separator */
             return NULL;
         }
         gettoken(); /* consume , */
@@ -595,7 +595,7 @@ do_initializer(void)
     }
 
     if (init == NULL) {
-        lose(ER_E_IT); /* Invalid initializer term */
+        gripe(ER_E_IT); /* Invalid initializer term */
         return NULL;
     }
 
@@ -706,7 +706,7 @@ parse_sclass()
 		}
 		if (bit) {
 			if (ret & bit) {
-				lose(ER_P_SC);
+				gripe(ER_P_SC);
 			}
 			ret |= bit;
 			gettoken();
@@ -717,19 +717,19 @@ parse_sclass()
 	// bogosity checks
 	if ((ret & SC_EXTERN)
 			& (ret & (SC_CONST | SC_STATIC | SC_AUTO | SC_REGISTER))) {
-		lose(ER_P_SC);
+		gripe(ER_P_SC);
 	}
 	if ((ret & SC_REGISTER) & (ret & (SC_CONST | SC_STATIC))) {
-		lose(ER_P_SC);
+		gripe(ER_P_SC);
 	}
 	if ((ret & SC_STATIC) & (ret & (SC_CONST | SC_AUTO))) {
-		lose(ER_P_SC);
+		gripe(ER_P_SC);
 	}
 	if ((ret & SC_CONST) & (ret & (SC_VOLATILE))) {
-		lose(ER_P_SC);
+		gripe(ER_P_SC);
 	}
 	if ((ret & SC_TYPEDEF) & (ret & (SC_EXTERN | SC_STATIC | SC_AUTO | SC_REGISTER))) {
-		lose(ER_P_SC);
+		gripe(ER_P_SC);
 	}
 	return ret;
 }
@@ -778,7 +778,7 @@ declaration()
             v->kind = tdef;
             /* typedefs cannot have initializers or function bodies */
             if (cur.type == ASSIGN) {
-                lose(ER_T_TD);
+                gripe(ER_T_TD);
                 /* skip the initializer */
                 while (cur.type != SEMI && cur.type != COMMA && cur.type != E_O_F) {
                     gettoken();

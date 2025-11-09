@@ -179,7 +179,7 @@ new_name(char *name, kind k, struct type *t, boolean is_tag)
         lastname = -1;
     }
     if (lastname == MAXNAMES) {
-        lose(ER_D_OF);
+        gripe(ER_D_OF);
         return (0);
     }
 
@@ -198,7 +198,7 @@ new_name(char *name, kind k, struct type *t, boolean is_tag)
                 // Existing is extern - return it to be updated with new definition
                 return n;
             }
-            lose(ER_D_DN);
+            gripe(ER_D_DN);
 	        return (0);
 		}
     }
@@ -235,7 +235,7 @@ add_name(struct name *n)
         lastname = -1;
     }
     if (lastname == MAXNAMES) {
-        lose(ER_D_OF);
+        gripe(ER_D_OF);
         return;
     }
 
@@ -258,7 +258,7 @@ add_name(struct name *n)
                 free(n);  // Don't need the new one
                 return;
             }
-            lose(ER_D_DN);
+            gripe(ER_D_DN);
             return;
         }
     }
@@ -529,7 +529,7 @@ parsebasic()
 		case LONG:
 			gettoken();
 			if (length) {
-				lose(ER_T_PT);
+				gripe(ER_T_PT);
 			}
 			length = BYTES_4 + 1;
 			continue;
@@ -537,7 +537,7 @@ parsebasic()
 		case SHORT:
 			gettoken();
 			if (length) {
-				lose(ER_T_PT);
+				gripe(ER_T_PT);
 			}
 			length = BYTES_2 + 1;
 			continue;
@@ -566,7 +566,7 @@ parsebasic()
 		case VOID:
 			gettoken();
 			if (length + unsignedness) {
-				lose(ER_T_PT);
+				gripe(ER_T_PT);
 				length = 0;
 			}
 			misc += MISC_BASIC;
@@ -649,7 +649,7 @@ getbasetype()
         off = 0;
         while (cur.type != END && cur.type != E_O_F) {
             if (cur.type != SYM) {
-                lose(ER_T_ET);
+                gripe(ER_T_ET);
                 break;
             }
 
@@ -674,7 +674,7 @@ getbasetype()
                 continue;
             }
             if (cur.type != END) {
-                lose(ER_T_ED);
+                gripe(ER_T_ED);
                 break;
             }
         }
@@ -720,7 +720,7 @@ getbasetype()
                 return t;
             }
             // No tag name and no definition - error
-            lose(ER_T_ED);
+            gripe(ER_T_ED);
             if (s) free(s);
             return 0;
         }
@@ -779,7 +779,7 @@ getbasetype()
             if (cur.type == SEMI) {
                 gettoken();
             } else if (cur.type != END) {
-                lose(ER_T_ED);
+                gripe(ER_T_ED);
             }
         }
         match(END);
@@ -789,7 +789,7 @@ getbasetype()
         return t;
     }
 
-    lose(ER_T_UT);
+    gripe(ER_T_UT);
     return 0;
 }
 

@@ -142,7 +142,7 @@ getint(unsigned char base)
     }
     /* if no characters are consumed, note the error if base 2 or 16 */
     if ((len == 0) && ((base == 2) || (base == 16))) {
-        lose(ER_C_NX);
+        gripe(ER_C_NX);
     }
     return i;
 }
@@ -159,7 +159,7 @@ getlit()
 top:
     if (curchar != '\\') {
         if ((curchar < 0x20) || (curchar > 0x7e)) {
-            lose(ER_C_BC);
+            gripe(ER_C_BC);
             curchar = ' ';
         }
         c = curchar;
@@ -223,7 +223,7 @@ isnumber()
     if (charmatch('\'')) {
         next.v.numeric = getlit();
         if (curchar != '\'') {
-            lose(ER_C_CD);
+            gripe(ER_C_CD);
         }
         advance();
         return 1;
@@ -311,7 +311,7 @@ do_cpp(unsigned char t)
     case IFDEF:
         skipwhite1();
         if (!issym()) {
-            lose(ER_C_MN);
+            gripe(ER_C_MN);
             skiptoeol();
             return;
         }
@@ -326,7 +326,7 @@ do_cpp(unsigned char t)
     case IFNDEF:
         skipwhite1();
         if (!issym()) {
-            lose(ER_C_MN);
+            gripe(ER_C_MN);
             skiptoeol();
             return;
         }
@@ -341,7 +341,7 @@ do_cpp(unsigned char t)
     case ENDIF:
         skiptoeol();
         if (!cond) {
-            lose(ER_C_CU);
+            gripe(ER_C_CU);
             return;
         }
         c = cond;
@@ -351,11 +351,11 @@ do_cpp(unsigned char t)
     case ELSE:
         skiptoeol();
         if (!cond) {
-            lose(ER_C_CU);
+            gripe(ER_C_CU);
             return;
         }
         if (cond->flags & C_ELSESEEN) {
-            lose(ER_C_ME);
+            gripe(ER_C_ME);
             return;
         }
         cond->flags ^= (C_TRUE | C_ELSESEEN);
@@ -366,12 +366,12 @@ do_cpp(unsigned char t)
     case ELIF:
         if (!cond) {
             skiptoeol();
-            lose(ER_C_CU);
+            gripe(ER_C_CU);
             return;
         }
         v = readcppconst();
         if (cond->flags & C_ELSESEEN) {
-            lose(ER_C_ME);
+            gripe(ER_C_ME);
             return;
         } 
         if (cond->flags & C_TRUESEEN) {
@@ -384,7 +384,7 @@ do_cpp(unsigned char t)
     case DEFINE:
         skipwhite1();
         if (!issym()) {
-            lose(ER_C_MN);
+            gripe(ER_C_MN);
             return;
         }
         advance();
@@ -393,7 +393,7 @@ do_cpp(unsigned char t)
     case UNDEF:
         skipwhite1();
         if (!issym()) {
-            lose(ER_C_MN);
+            gripe(ER_C_MN);
             return;
         }
         advance();
@@ -411,7 +411,7 @@ do_cpp(unsigned char t)
         } else if (curchar == '\"') {
             k = '\"';
         } else {
-            lose(ER_C_ID);
+            gripe(ER_C_ID);
             return;
         }
         advance();
@@ -422,7 +422,7 @@ do_cpp(unsigned char t)
         }
         *s = 0;
         if (curchar != k) {
-            lose(ER_C_ID);
+            gripe(ER_C_ID);
         }
         skiptoeol();
 #ifdef DEBUG
@@ -595,7 +595,7 @@ gettoken()
                     do_cpp(t);
                     continue;
                 }
-                lose(ER_C_BD);
+                gripe(ER_C_BD);
             }
             if (isnumber()) {
                 lineno = next.v.numeric;
@@ -663,7 +663,7 @@ gettoken()
         /* from here, it had better be an operator */
         t = lookupc(simple, curchar);
         if (t == 0xff) {
-            lose(ER_C_UT);
+            gripe(ER_C_UT);
             curchar= ';';
         }
 
@@ -751,7 +751,7 @@ cpppseudofunc()
         advance();
         while ((curchar == '\t') || (curchar == ' ')) advance();
         if (curchar != '(') {
-            lose(ER_C_DP);
+            gripe(ER_C_DP);
             curchar = '0';
             return 1;
         }
@@ -764,7 +764,7 @@ cpppseudofunc()
         }
         while ((curchar == '\t') || (curchar == ' ')) advance();
         if (curchar != ')') {
-            lose(ER_C_DP);
+            gripe(ER_C_DP);
             r = 0;
         } else {
             advance();  /* Move past the ')' */

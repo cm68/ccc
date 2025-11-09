@@ -147,7 +147,7 @@ macdefine(char *s)
             if (curchar == ')') {
                 break;
             }
-            lose(ER_C_DP);
+            gripe(ER_C_DP);
             break;  /* Exit loop on error to avoid infinite loop */
         }
         if (m->parmcount) {
@@ -295,7 +295,7 @@ macexpand(char *s)	/* the symbol we are looking up as a macro */
     } // curchar should be ')'
 
     if (args != m->parmcount) {
-        lose(ER_C_DP);
+        gripe(ER_C_DP);
     }
 
     /*

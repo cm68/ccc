@@ -156,7 +156,7 @@ parse_expr(unsigned char pri, struct stmt *st)
 
         n = lookup_name(cur.v.name, 0);
         if (!n) {
-            lose(ER_E_UO);
+            gripe(ER_E_UO);
             e = makeexpr_init(CONST, 0, inttype, 0, 0);
         } else if (n->kind == elem) {
             // Enum constant: treat as integer constant
@@ -346,7 +346,7 @@ parse_expr(unsigned char pri, struct stmt *st)
                     destroy_expr(e);  // we only needed it for the type
                     e = makeexpr_init(CONST, 0, inttype, size, E_CONST);
                 } else {
-                    lose(ER_E_UO);  // couldn't determine type
+                    gripe(ER_E_UO);  // couldn't determine type
                     e = makeexpr_init(CONST, 0, inttype, 0, E_CONST);
                 }
             }
@@ -358,7 +358,7 @@ parse_expr(unsigned char pri, struct stmt *st)
                 destroy_expr(operand);
                 e = makeexpr_init(CONST, 0, inttype, size, E_CONST);
             } else {
-                lose(ER_E_UO);
+                gripe(ER_E_UO);
                 e = makeexpr_init(CONST, 0, inttype, 0, E_CONST);
             }
         }
@@ -377,7 +377,7 @@ parse_expr(unsigned char pri, struct stmt *st)
             operand = operand->left;
         } else {
             // Increment/decrement requires an lvalue
-            lose(ER_E_LV);
+            gripe(ER_E_LV);
             operand = NULL;
         }
 
@@ -392,7 +392,7 @@ parse_expr(unsigned char pri, struct stmt *st)
     }
 
 	default:
-		lose(ER_E_UO);
+		gripe(ER_E_UO);
 		return 0;
     }
 
@@ -513,7 +513,7 @@ parse_expr(unsigned char pri, struct stmt *st)
             gettoken();  // consume '.' or '->'
 
             if (cur.type != SYM) {
-                lose(ER_E_UO);
+                gripe(ER_E_UO);
                 break;
             }
 
@@ -549,7 +549,7 @@ parse_expr(unsigned char pri, struct stmt *st)
             }
 
             if (!member) {
-                lose(ER_E_UO);
+                gripe(ER_E_UO);
                 gettoken();
                 e = makeexpr_init(CONST, 0, NULL, 0, 0);
                 break;
@@ -580,7 +580,7 @@ parse_expr(unsigned char pri, struct stmt *st)
                 e = e->left;
             } else {
                 // Increment/decrement requires an lvalue
-                lose(ER_E_LV);
+                gripe(ER_E_LV);
                 e = NULL;
             }
 
@@ -664,7 +664,7 @@ parse_expr(unsigned char pri, struct stmt *st)
                 e = e->left;  // unwrap to get address
             } else {
                 // Assignment requires an lvalue (dereference)
-                lose(ER_E_LV);
+                gripe(ER_E_LV);
                 // Skip this operator: parse and discard right side, then return left side
                 parse_expr(p, st);  // Parse and discard right side
                 return e;  // Return left side unchanged
@@ -762,7 +762,7 @@ parse_expr(unsigned char pri, struct stmt *st)
                     }
 
                     if (!compatible) {
-                        lose(ER_E_PT);  // incompatible pointer types
+                        gripe(ER_E_PT);  // incompatible pointer types
                     }
                 }
             }
@@ -915,7 +915,7 @@ cfold(struct expr *e)
         return e;
     }
     if (!e->right) {
-        lose(ER_E_CF);
+        gripe(ER_E_CF);
         return e;
     }
     if ((e->left->op != CONST) || (e->right->op != CONST)) {
@@ -936,14 +936,14 @@ cfold(struct expr *e)
         break;
     case DIV:   // division
         if (vr == 0) {
-            lose(ER_E_CF);  // divide by zero - constant wont fold
+            gripe(ER_E_CF);  // divide by zero - constant wont fold
             return e;
         }
         val = vl / vr;
         break;
     case MOD:   // modulo
         if (vr == 0) {
-            lose(ER_E_CF);  // modulo by zero - constant wont fold
+            gripe(ER_E_CF);  // modulo by zero - constant wont fold
             return e;
         }
         val = vl % vr;
@@ -1010,11 +1010,11 @@ parse_const(unsigned char token)
     // where we want to stop at the comma
     e = parse_expr(15, 0);
     if (!e) {
-        lose(ER_C_CE);
+        gripe(ER_C_CE);
         return 0;
     }
     if (!(e->flags & E_CONST)) {
-        lose(ER_C_CE);
+        gripe(ER_C_CE);
         return 0;
     }
     val = e->v;

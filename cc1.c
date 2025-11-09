@@ -8,9 +8,20 @@
 #include "cc1.h"
 #ifndef SDCC
 #include <fcntl.h>
+#include <signal.h>
 #endif
 
 #include "debugtags.c"
+
+/*
+ * timeout handler - catch infinite loops during parsing
+ */
+void
+timeout_handler(int sig)
+{
+    printf("\n\n*** TIMEOUT after 20 seconds ***\n");
+    fatal(ER_WTF);
+}
 
 char *progname;
 int verbose;
@@ -117,6 +128,12 @@ main(int argc, char **argv)
 {
 	char *s;
     int i;
+
+#ifndef SDCC
+    /* Set up timeout handler to catch infinite loops */
+    signal(SIGALRM, timeout_handler);
+    alarm(20);  /* 20 second timeout */
+#endif
 
     ast_fd = 1;  // default AST output to stdout (fd 1)
     add_include("");    // the null include prefix
