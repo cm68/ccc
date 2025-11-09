@@ -20,8 +20,8 @@ gripe(error_t errcode)
 
     i = errcode;
     if (i > ER_WTF) i = ER_WTF;
-    printf("file: %s line: %d error code %d %s\n",
-        filename, lineno, errcode, errmsg[i]);
+    printf("file: %s line: %d col: %d error code %d %s\n",
+        filename, lineno, column, errcode, errmsg[i]);
 
     /* Print include chain traceback */
     if (tbtop) {
