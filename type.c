@@ -538,6 +538,11 @@ parsebasic()
             unsignedness = UN_SIGNED;
             continue;
 
+		case CONST:
+		case VOLATILE:
+			gettoken();
+			continue;
+
 		case DOUBLE:
 			misc++;
 		case FLOAT:
