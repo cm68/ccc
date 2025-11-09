@@ -19,7 +19,7 @@
 void
 timeout_handler(int sig)
 {
-    printf("\n\n*** TIMEOUT after 20 seconds ***\n");
+    printf("\n\n*** TIMEOUT after 5 seconds ***\n");
     fatal(ER_WTF);
 }
 
@@ -132,7 +132,7 @@ main(int argc, char **argv)
 #ifndef SDCC
     /* Set up timeout handler to catch infinite loops */
     signal(SIGALRM, timeout_handler);
-    alarm(20);  /* 20 second timeout */
+    alarm(5);  /* 5 second timeout */
 #endif
 
     ast_fd = 1;  // default AST output to stdout (fd 1)
