@@ -1,7 +1,8 @@
-#!/usr/bin/env clisp
+#!/usr/bin/sbcl --script
 ;;;; AST Interpreter for ccc compiler output
 ;;;; Reads S-expression AST and executes it as a virtual machine
-;;;; Works with both SBCL and CLISP
+;;;; Primary: SBCL (Steel Bank Common Lisp)
+;;;; Also works with CLISP
 
 (defpackage :ccc-interp
   (:use :cl)

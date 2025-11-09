@@ -17,22 +17,25 @@ The interpreter is primarily a **debugging and validation tool** for the parser 
 
 ## Requirements
 
-- CLISP or SBCL (Common Lisp implementation)
+- SBCL (Steel Bank Common Lisp) - recommended
 - The ccc compiler (cc1) to generate AST
+
+Note: Also works with CLISP, but SBCL is the primary supported implementation.
 
 ## Installation
 
-CLISP/SBCL are available on most systems:
+SBCL is available on most systems:
 ```bash
 # Debian/Ubuntu
-sudo apt-get install clisp
-# or
 sudo apt-get install sbcl
 
 # macOS
-brew install clisp
-# or
 brew install sbcl
+
+# Arch Linux
+sudo pacman -S sbcl
+
+# Or download from http://www.sbcl.org/
 ```
 
 ## Usage
@@ -69,12 +72,18 @@ If you want more control:
 
 2. Run the interpreter:
 ```bash
-clisp interp.lisp test_interp.ast
+sbcl --script interp.lisp test_interp.ast
 ```
 
-Or with SBCL:
+Or make it executable:
 ```bash
-sbcl --script interp.lisp test_interp.ast
+chmod +x interp.lisp
+./interp.lisp test_interp.ast
+```
+
+Note: Also works with CLISP if you prefer:
+```bash
+clisp interp.lisp test_interp.ast
 ```
 
 ### Debugging Workflow Example

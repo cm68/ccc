@@ -293,12 +293,13 @@ main(int argc, char **argv)
 
         printf("\n=== Executing AST with interpreter ===\n");
 
-        interp_args[interp_argc++] = "clisp";
+        interp_args[interp_argc++] = "sbcl";
+        interp_args[interp_argc++] = "--script";
         interp_args[interp_argc++] = interp_path;
         interp_args[interp_argc++] = ast_file;
         interp_args[interp_argc] = NULL;
 
-        status = exec_command("/usr/bin/clisp", interp_args);
+        status = exec_command("/usr/bin/sbcl", interp_args);
 
         printf("\nAST saved to: %s\n", ast_file);
 
