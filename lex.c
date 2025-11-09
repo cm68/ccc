@@ -559,8 +559,11 @@ gettoken()
             next.type = ';';
             break;
         }
-        if ((column == 0) && cond && !(cond->flags & C_TRUE)) {
+        if (cond && !(cond->flags & C_TRUE) && curchar != '#') {
             skiptoeol();
+            if (curchar == '\n') {
+                advance();  // consume the newline
+            }
             continue;
         }
         if ((curchar == '/') && (nextchar == '*') && !incomment) {
@@ -585,10 +588,13 @@ gettoken()
         }
         if ((curchar == ' ') || (curchar == '\t') || (curchar == '\n')) {
             advance();
-            // After advancing past newline, check if we should skip this line
-            if ((column == 0) && cond && curchar != '#' && curchar != 0) {
+            // After advancing past whitespace, check if we should skip rest of line
+            if (cond && curchar != '#' && curchar != 0) {
                 if (!(cond->flags & C_TRUE)) {
                     skiptoeol();
+                    if (curchar == '\n') {
+                        advance();  // consume the newline
+                    }
                 }
             }
             continue;
