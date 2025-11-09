@@ -975,6 +975,9 @@ cleanup_parser(void)
 	/* Free all type structures */
 	{
 		extern struct type *types;
+		extern struct type *chartype;
+		extern struct type *inttype;
+		extern struct type *uchartype;
 		struct type *t = types;
 		struct type *next;
 		while (t) {
@@ -984,6 +987,10 @@ cleanup_parser(void)
 			free(t);
 			t = next;
 		}
+		types = NULL;  /* Reset to NULL after freeing all types */
+		chartype = NULL;
+		inttype = NULL;
+		uchartype = NULL;
 	}
 }
 
