@@ -273,55 +273,170 @@ emit_stmt(struct stmt *st)
 		break;
 
 	case WHILE:
-		fdprintf(ast_fd, "(W ");  /* While */
-		emit_expr(st->left);
-		fdprintf(ast_fd, " ");
-		if (st->chain) {
-			emit_stmt(st->chain);
+		/* Emit as labeled sequence:
+		 * Lxxx_top: (test condition) (body) Lxxx_continue: Lxxx_break: */
+		if (st->label) {
+			/* Top label */
+			fdprintf(ast_fd, "(L %s_top) ", st->label);
+			/* Test condition (if false, goto break) */
+			fdprintf(ast_fd, "(I ");
+			emit_expr(st->left);
+			fdprintf(ast_fd, " ");
+			/* Body */
+			if (st->chain) {
+				emit_stmt(st->chain);
+			} else {
+				fdprintf(ast_fd, "()");
+			}
+			fdprintf(ast_fd, " ()) ");  /* close IF */
+			/* Continue label (for continue statements) */
+			fdprintf(ast_fd, "(L %s_continue) ", st->label);
+			/* Goto top to loop */
+			fdprintf(ast_fd, "(G %s_top) ", st->label);
+			/* Break label */
+			fdprintf(ast_fd, "(L %s_break)", st->label);
 		} else {
-			fdprintf(ast_fd, "()");
+			/* Fallback: emit original WHILE format */
+			fdprintf(ast_fd, "(W ");
+			emit_expr(st->left);
+			fdprintf(ast_fd, " ");
+			if (st->chain) {
+				emit_stmt(st->chain);
+			} else {
+				fdprintf(ast_fd, "()");
+			}
+			fdprintf(ast_fd, ")");
 		}
-		fdprintf(ast_fd, ")");
 		break;
 
 	case DO:
-		fdprintf(ast_fd, "(D ");  /* Do-while */
-		if (st->chain) {
-			emit_stmt(st->chain);
+		/* Emit as labeled sequence:
+		 * Dxxx_top: (body) Dxxx_test: (if condition goto top) Dxxx_break: */
+		if (st->label) {
+			/* Top label */
+			fdprintf(ast_fd, "(L %s_top) ", st->label);
+			/* Body */
+			if (st->chain) {
+				emit_stmt(st->chain);
+			} else {
+				fdprintf(ast_fd, "()");
+			}
+			fdprintf(ast_fd, " ");
+			/* Test label (continue target) */
+			fdprintf(ast_fd, "(L %s_test) ", st->label);
+			/* Test condition and loop back */
+			fdprintf(ast_fd, "(I ");
+			emit_expr(st->left);
+			fdprintf(ast_fd, " (G %s_top) ()) ", st->label);
+			/* Break label */
+			fdprintf(ast_fd, "(L %s_break)", st->label);
 		} else {
-			fdprintf(ast_fd, "()");
+			/* Fallback: emit original DO format */
+			fdprintf(ast_fd, "(D ");
+			if (st->chain) {
+				emit_stmt(st->chain);
+			} else {
+				fdprintf(ast_fd, "()");
+			}
+			fdprintf(ast_fd, " ");
+			emit_expr(st->left);
+			fdprintf(ast_fd, ")");
 		}
-		fdprintf(ast_fd, " ");
-		emit_expr(st->left);
-		fdprintf(ast_fd, ")");
 		break;
 
 	case FOR:
-		fdprintf(ast_fd, "(F ");  /* For */
-		emit_expr(st->left);    /* init */
-		fdprintf(ast_fd, " ");
-		emit_expr(st->middle);  /* condition */
-		fdprintf(ast_fd, " ");
-		emit_expr(st->right);   /* increment */
-		fdprintf(ast_fd, " ");
-		if (st->chain) {
-			emit_stmt(st->chain);
+		/* Emit as labeled sequence:
+		 * (init) Lxxx_top: (if !cond goto break) (body) Lxxx_continue: (increment) (goto top) Lxxx_break: */
+		if (st->label) {
+			/* Init expression */
+			if (st->left) {
+				fdprintf(ast_fd, "(E ");
+				emit_expr(st->left);
+				fdprintf(ast_fd, ") ");
+			}
+			/* Top label */
+			fdprintf(ast_fd, "(L %s_top) ", st->label);
+			/* Test condition */
+			if (st->middle) {
+				fdprintf(ast_fd, "(I ");
+				emit_expr(st->middle);
+				fdprintf(ast_fd, " ");
+				/* Body */
+				if (st->chain) {
+					emit_stmt(st->chain);
+				} else {
+					fdprintf(ast_fd, "()");
+				}
+				fdprintf(ast_fd, " ()) ");  /* close IF */
+			} else {
+				/* No condition - always execute body */
+				if (st->chain) {
+					emit_stmt(st->chain);
+				} else {
+					fdprintf(ast_fd, "()");
+				}
+				fdprintf(ast_fd, " ");
+			}
+			/* Continue label */
+			fdprintf(ast_fd, "(L %s_continue) ", st->label);
+			/* Increment expression */
+			if (st->right) {
+				fdprintf(ast_fd, "(E ");
+				emit_expr(st->right);
+				fdprintf(ast_fd, ") ");
+			}
+			/* Goto top */
+			fdprintf(ast_fd, "(G %s_top) ", st->label);
+			/* Break label */
+			fdprintf(ast_fd, "(L %s_break)", st->label);
 		} else {
-			fdprintf(ast_fd, "()");
+			/* Fallback: emit original FOR format */
+			fdprintf(ast_fd, "(F ");
+			emit_expr(st->left);
+			fdprintf(ast_fd, " ");
+			emit_expr(st->middle);
+			fdprintf(ast_fd, " ");
+			emit_expr(st->right);
+			fdprintf(ast_fd, " ");
+			if (st->chain) {
+				emit_stmt(st->chain);
+			} else {
+				fdprintf(ast_fd, "()");
+			}
+			fdprintf(ast_fd, ")");
 		}
-		fdprintf(ast_fd, ")");
 		break;
 
 	case SWITCH:
-		fdprintf(ast_fd, "(S ");  /* Switch */
-		emit_expr(st->left);
-		fdprintf(ast_fd, " ");
-		if (st->chain) {
-			emit_stmt(st->chain);
+		/* Emit as labeled sequence with break label:
+		 * Sxxx_top: (switch expr body) Sxxx_break: */
+		if (st->label) {
+			/* Top label */
+			fdprintf(ast_fd, "(L %s_top) ", st->label);
+			/* Original switch structure */
+			fdprintf(ast_fd, "(S ");
+			emit_expr(st->left);
+			fdprintf(ast_fd, " ");
+			if (st->chain) {
+				emit_stmt(st->chain);
+			} else {
+				fdprintf(ast_fd, "()");
+			}
+			fdprintf(ast_fd, ") ");
+			/* Break label */
+			fdprintf(ast_fd, "(L %s_break)", st->label);
 		} else {
-			fdprintf(ast_fd, "()");
+			/* Fallback: emit original SWITCH format */
+			fdprintf(ast_fd, "(S ");
+			emit_expr(st->left);
+			fdprintf(ast_fd, " ");
+			if (st->chain) {
+				emit_stmt(st->chain);
+			} else {
+				fdprintf(ast_fd, "()");
+			}
+			fdprintf(ast_fd, ")");
 		}
-		fdprintf(ast_fd, ")");
 		break;
 
 	case CASE:

@@ -7,6 +7,42 @@
 /* file-scope globals/forward declarations expected by legacy parser code */
 static struct name *global = 0;
 
+/* Loop label generation for control flow transformation */
+static int loop_label_counter = 0;
+
+/*
+ * Generate unique synthetic labels for loops and switch statements
+ * Prefix indicates statement type: L=loop (while/for), D=do-while, S=switch
+ */
+static char *
+generate_loop_label(const char *prefix)
+{
+	char *label = malloc(32);
+	sprintf(label, "%s%d", prefix, loop_label_counter++);
+	return label;
+}
+
+/*
+ * Find the enclosing loop or switch statement
+ * Used by break/continue to find their target
+ * For break: returns nearest WHILE/FOR/DO/SWITCH
+ * For continue: returns nearest WHILE/FOR/DO (not SWITCH)
+ */
+static struct stmt *
+find_enclosing_loop(struct stmt *parent, int is_continue)
+{
+	while (parent) {
+		if (parent->op == WHILE || parent->op == FOR || parent->op == DO) {
+			return parent;
+		}
+		if (parent->op == SWITCH && !is_continue) {
+			return parent;
+		}
+		parent = parent->parent;
+	}
+	return NULL;
+}
+
 /*
  * Generate mangled name for static variables
  * File-scoped statics: <file_root>_<varname>
@@ -164,22 +200,51 @@ statement(struct stmt *parent)
             gettoken();
             need(LPAR, LPAR, ER_S_NP);
             st = makestmt(IF, parse_expr(PRI_ALL, parent));
+            st->parent = parent;  /* Set parent before recursive call */
             need(RPAR, RPAR, ER_S_NP);
             st->chain = statement(st);
             if (cur.type == ELSE) {   // else <statement>
                 gettoken();
                 st->otherwise = statement(st);
-            } 
+            }
             break;
         case BREAK:
             gettoken();
             need(SEMI, SEMI, ER_S_SN);
-            st = makestmt(BREAK, 0);
+            /* Transform break into goto to enclosing loop's break label */
+            {
+                struct stmt *loop = find_enclosing_loop(parent, 0);
+                if (loop && loop->label) {
+                    st = makestmt(GOTO, 0);
+                    st->label = malloc(strlen(loop->label) + 10);
+                    sprintf(st->label, "%s_break", loop->label);
+                } else {
+                    /* No enclosing loop - keep as BREAK (will be an error) */
+                    st = makestmt(BREAK, 0);
+                }
+            }
             break;
         case CONTINUE:
             gettoken();
             need(SEMI, SEMI, ER_S_SN);
-            st = makestmt(CONTINUE, 0);
+            /* Transform continue into goto to enclosing loop's continue label */
+            {
+                struct stmt *loop = find_enclosing_loop(parent, 1);
+                if (loop && loop->label) {
+                    st = makestmt(GOTO, 0);
+                    /* For DO-WHILE, continue goes to test label, for others go to top */
+                    if (loop->op == DO) {
+                        st->label = malloc(strlen(loop->label) + 10);
+                        sprintf(st->label, "%s_test", loop->label);
+                    } else {
+                        st->label = malloc(strlen(loop->label) + 15);
+                        sprintf(st->label, "%s_continue", loop->label);
+                    }
+                } else {
+                    /* No enclosing loop - keep as CONTINUE (will be an error) */
+                    st = makestmt(CONTINUE, 0);
+                }
+            }
             break;
         case RETURN:
             gettoken();
@@ -334,6 +399,8 @@ statement(struct stmt *parent)
             gettoken();
             need(LPAR, LPAR, ER_S_NP);
             st = makestmt(FOR, parse_expr(PRI_ALL, parent));
+            st->label = generate_loop_label("L");  /* Generate synthetic label */
+            st->parent = parent;  /* Set parent before recursive call */
             need(SEMI, SEMI, ER_S_SN);
             st->middle = parse_expr(PRI_ALL, parent);
             need(SEMI, SEMI, ER_S_SN);
@@ -346,6 +413,8 @@ statement(struct stmt *parent)
             gettoken();
             need(LPAR, LPAR, ER_S_NP);
             st = makestmt(WHILE, parse_expr(PRI_ALL, parent));
+            st->label = generate_loop_label("L");  /* Generate synthetic label */
+            st->parent = parent;  /* Set parent before recursive call */
             need(RPAR, RPAR, ER_S_NP);
             st->chain = statement(st);
             break;
@@ -358,6 +427,8 @@ statement(struct stmt *parent)
             gettoken();
             need(LPAR, LPAR, ER_S_NP);
             st = makestmt(SWITCH, parse_expr(PRI_ALL, parent));
+            st->label = generate_loop_label("S");  /* Generate synthetic label */
+            st->parent = parent;  /* Set parent before recursive call */
             need(RPAR, RPAR, ER_S_NP);
             need(BEGIN, BEGIN, ER_S_SB);
             st->chain = statement(st);
@@ -397,6 +468,8 @@ statement(struct stmt *parent)
         case DO:    // do <statement> while <condition> ;
             gettoken();
             st = makestmt(DO, 0);
+            st->label = generate_loop_label("D");  /* Generate synthetic label */
+            st->parent = parent;  /* Set parent before recursive call */
             st->chain = statement(st);
             if (cur.type != WHILE) {
                 lose(ER_S_DO);
