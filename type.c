@@ -54,7 +54,7 @@ struct type *uchartype;
  */
 int lexlevel;
 int lastname;
-int maxnames = 100;
+int maxnames = 1000;  // Increased for self-hosting (error.h has 62 enum values alone)
 struct name **names;
 
 #define ENUM_TYPE   "_uchar_"
@@ -643,7 +643,11 @@ getbasetype()
                 gettoken();
                 off = parse_const(PRI_ALL);
             }
-            e->offset = off;  // store enum value in offset field
+
+            // new_name() can return NULL if symbol table full or duplicate name
+            if (e) {
+                e->offset = off;  // store enum value in offset field
+            }
             off++;
 
             if (cur.type == COMMA) {

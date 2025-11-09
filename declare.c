@@ -146,7 +146,7 @@ declare_internal(struct type **btp, boolean struct_elem)
             struct name *existing = lookup_name(cur.v.name, 0);
             if (existing && existing->level == lexlevel) {
                 /* Name exists at current scope - check if it's a function prototype */
-                if ((existing->type->flags & TF_FUNC) && !existing->body) {
+                if (existing->type && (existing->type->flags & TF_FUNC) && !existing->body) {
                     /* Reuse existing function declaration (prototype) */
                     nm = existing;
                     /* Update type to the new one (definition may have full param list) */
