@@ -54,7 +54,7 @@ struct type *uchartype;
  */
 int lexlevel;
 int lastname;
-int maxnames = 1000;  // Increased for self-hosting (error.h has 62 enum values alone)
+int maxnames = 10000;  // Increased 10x for self-hosting (error.h has 62 enum values alone)
 struct name **names;
 
 #define ENUM_TYPE   "_uchar_"

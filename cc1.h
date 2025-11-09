@@ -201,7 +201,7 @@ struct name {
     kind kind;
 };
 
-#define MAXBITS 32          // maximum size of bitfield
+#define MAXBITS 320          // maximum size of bitfield
 
 /* Storage class specifiers (used in struct name sclass field) */
 #define	SC_EXTERN	0x01

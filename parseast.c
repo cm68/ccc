@@ -12,7 +12,7 @@
 /* Forward declaration from util.c */
 int fdprintf(int fd, const char *fmt, ...);
 
-#define BUFSIZE 4096
+#define BUFSIZE 40960
 
 /* Parser state */
 static int in_fd;

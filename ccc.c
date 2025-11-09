@@ -10,7 +10,7 @@
 #include <sys/wait.h>
 #include <libgen.h>
 
-#define MAX_ARGS 256
+#define MAX_ARGS 2560
 
 char *progname;
 char *scriptdir;

@@ -29,7 +29,7 @@ char namebuf[128];
  * advance() places this character into curchar.
  * if we do a macro insertion, it is after curchar
  */
-#define	TBSIZE	1024		/* text buffer size */
+#define	TBSIZE	10240		/* text buffer size */
 struct textbuf {
 	int fd;                 // if == -1, macro buffer
 	char *name;             // filename or macro name

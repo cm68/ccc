@@ -17,7 +17,7 @@ struct token cur, next;
  * this is the place we build filenames, symbols and literal strings
  * no overflow checking or anything, we ain't got time for that shit
  */
-char strbuf[128];
+char strbuf[1280];
 
 int readcppconst();
 char cpppseudofunc();
