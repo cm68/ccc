@@ -921,6 +921,17 @@ free_stmt(struct stmt *st)
 	if (st->label)
 		free(st->label);
 
+	/* Free locals list */
+	if (st->locals) {
+		struct name *local = st->locals;
+		struct name *next;
+		while (local) {
+			next = local->next;
+			free(local);
+			local = next;
+		}
+	}
+
 	/* Note: Don't free st->left, st->right, st->middle (expressions)
 	 * as they may be shared or owned elsewhere.
 	 * A full implementation would need expression reference counting. */
@@ -960,6 +971,20 @@ cleanup_parser(void)
 	/* Free the names array itself */
 	if (names)
 		free(names);
+
+	/* Free all type structures */
+	{
+		extern struct type *types;
+		struct type *t = types;
+		struct type *next;
+		while (t) {
+			next = t->next;
+			/* Note: Don't free t->elem (function parameters) as they're
+			 * name structures that were freed above */
+			free(t);
+			t = next;
+		}
+	}
 }
 
 /*

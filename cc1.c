@@ -220,6 +220,9 @@ main(int argc, char **argv)
         close(ast_fd);
     }
 
+    /* Clean up allocated memory */
+    cleanup_parser();
+
     return 0;
 }
 
