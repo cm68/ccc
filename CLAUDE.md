@@ -52,7 +52,12 @@ make tags
 ## Running the Compiler
 
 ```bash
-# Basic usage
+# Using the ccc driver (recommended)
+./ccc -x source.c              # Compile and execute with interpreter
+./ccc -k source.c              # Compile with cc2, keep AST file
+./ccc -o program source.c      # Full compilation (when cc2 is complete)
+
+# Direct cc1 usage
 ./cc1 [options] <source.c>
 
 # Common options
@@ -64,6 +69,169 @@ make tags
 # Debug with verbosity
 ./cc1 -v 0x3f -E tests/decl.c  # Maximum verbosity
 ```
+
+## Debugging the Parser with the Interpreter
+
+The `-x` option is a critical debugging tool that validates parser correctness without
+needing a working code generator. This allows development of pass 1 independently of pass 2.
+
+### Quick Validation Workflow
+
+When making parser changes, validate them immediately:
+
+```bash
+# Make parser changes to expr.c, parse.c, etc.
+make cc1
+
+# Test with interpreter
+./ccc -x tests/arith_widths.c
+# Expected: Program exited with code: 3622
+
+# If it works, the parser is correct!
+```
+
+### Debugging Workflow
+
+**Step 1**: Create a minimal test case for the feature you're working on:
+```c
+// test_feature.c
+int main() {
+    int x = 10;
+    int y = x + 5;  // Testing addition
+    return y;       // Should return 15
+}
+```
+
+**Step 2**: Compile and execute:
+```bash
+./ccc -x test_feature.c
+```
+
+**Step 3**: Check the result:
+- ✓ Correct exit code (15) → Parser works!
+- ✗ Wrong exit code → Parser bug, inspect AST
+
+**Step 4**: If wrong, inspect the generated AST:
+```bash
+cat test_feature.ast
+```
+
+Look for:
+- Missing operators
+- Wrong operator precedence
+- Type mismatches
+- Missing declarations
+- Incorrect control flow
+
+**Step 5**: Add debug output to parser if needed:
+```c
+// In expr.c
+VERBOSE(V_PARSE) {
+    fdprintf(2, "Parsing expression, op=%d\n", op);
+}
+```
+
+**Step 6**: Run with verbose mode:
+```bash
+./cc1 -v 0x20 -E test_feature.c > test_feature.ast
+```
+
+### Common Debugging Scenarios
+
+**Scenario 1: Parser crashes**
+```bash
+# Isolate the crashing feature
+./ccc -x minimal_test.c
+# Use gdb if needed
+gdb --args ./cc1 -E minimal_test.c
+```
+
+**Scenario 2: Wrong result**
+```bash
+# Compare AST with expected structure
+./ccc -x test.c              # Returns wrong value
+cat test.ast                 # Inspect AST
+# Compare against working test
+cat tests/simple_arith.ast   # Known-good AST
+```
+
+**Scenario 3: Type conversion issues**
+```c
+// Create test showing problem
+int main() {
+    char c = 10;
+    int i = c;    // Should widen char to int
+    return i;     // Should return 10
+}
+```
+
+```bash
+./ccc -x test_conv.c
+# Check AST for WIDEN/SEXT operators
+```
+
+### Interpreter Limitations (Important!)
+
+The interpreter has simplified semantics - it validates AST structure but not all
+runtime behaviors:
+
+- **Memory model**: Simplified, no real addresses
+- **Type conversions**: Pass-through (no actual narrowing)
+- **Pointer arithmetic**: Symbolic, not validated
+- **Undefined behavior**: May differ from real execution
+
+**What the interpreter DOES validate:**
+- ✓ Parser produces syntactically correct AST
+- ✓ Control flow (loops, conditionals, function calls)
+- ✓ Expression evaluation order
+- ✓ Variable scoping
+- ✓ Function parameter passing
+- ✓ Return values
+
+**What it DOESN'T validate:**
+- ✗ Memory layout and alignment
+- ✗ Pointer arithmetic correctness
+- ✗ Actual type width conversions
+- ✗ Platform-specific behavior
+
+### Best Practices
+
+1. **Test incrementally**: After each parser change, run interpreter tests
+2. **Start simple**: Test basic cases before complex ones
+3. **Build test suite**: Create .c files in tests/ for regression testing
+4. **Check exit codes**: Use return values to validate computations
+5. **Inspect AST**: When in doubt, look at the generated S-expressions
+6. **Use -k flag**: Keep AST files for later inspection: `./ccc -k -x test.c`
+
+### Example: Adding a New Operator
+
+When adding a new operator to the parser:
+
+1. Implement parsing in expr.c
+2. Add AST emission in outast.c
+3. Create test case:
+```c
+int main() {
+    int a = 5;
+    int b = 3;
+    return a NEW_OP b;  // Expected result: <value>
+}
+```
+4. Test with interpreter: `./ccc -x test_newop.c`
+5. Verify exit code matches expected result
+6. If wrong, check AST structure
+7. Add to test suite once working
+
+### Interpreter Implementation
+
+The interpreter (interp.lisp) is a Common Lisp program that:
+- Reads S-expression AST from cc1
+- Executes it as a virtual machine
+- Supports all major C operations
+- Uses hash tables for variables and functions
+- Implements stack frames for function calls
+
+See INTERP.md for complete documentation.
 
 ## Architecture
 

@@ -4,33 +4,63 @@ This is a Common Lisp interpreter that executes the S-expression AST output from
 
 ## Purpose
 
-The interpreter allows you to:
-- Test C programs without implementing the code generator
-- Verify that the AST is correctly formed
-- Debug the parser by seeing actual execution results
-- Prototype and test compiler features quickly
+The interpreter is primarily a **debugging and validation tool** for the parser and AST generator:
+
+- **Validate parser correctness**: If your C program executes correctly through the interpreter, the parser is producing valid AST
+- **Debug AST issues**: Compare expected behavior with actual execution to identify parser bugs
+- **Test parser changes**: Quick feedback loop when modifying the parser
+- **Verify type conversions**: See if promotions and conversions are happening as expected
+- **Check control flow**: Ensure loops, conditionals, and function calls work correctly
+- **Prototype features**: Test new language features before implementing code generation
+
+**Key benefit**: You can develop and test pass 1 (parser) completely independently of pass 2 (code generator).
 
 ## Requirements
 
-- SBCL (Steel Bank Common Lisp) or another Common Lisp implementation
+- CLISP or SBCL (Common Lisp implementation)
 - The ccc compiler (cc1) to generate AST
 
 ## Installation
 
-SBCL is available on most systems:
+CLISP/SBCL are available on most systems:
 ```bash
 # Debian/Ubuntu
+sudo apt-get install clisp
+# or
 sudo apt-get install sbcl
 
 # macOS
+brew install clisp
+# or
 brew install sbcl
-
-# Or download from http://www.sbcl.org/
 ```
 
 ## Usage
 
-### Basic Usage
+### Quick Start (Recommended)
+
+Use the `ccc` driver with the `-x` flag:
+
+```bash
+# Compile and execute with interpreter
+./ccc -x myprogram.c
+
+# Output shows:
+# === Pass 1: Parsing myprogram.c ===
+# === Executing AST with interpreter ===
+# Program exited with code: <exit_code>
+# AST saved to: myprogram.ast
+```
+
+This automatically:
+1. Runs cc1 to generate AST
+2. Executes the AST with the interpreter
+3. Reports the exit code
+4. Saves the AST file for inspection
+
+### Manual Usage
+
+If you want more control:
 
 1. Compile a C program to AST:
 ```bash
@@ -39,24 +69,74 @@ brew install sbcl
 
 2. Run the interpreter:
 ```bash
+clisp interp.lisp test_interp.ast
+```
+
+Or with SBCL:
+```bash
 sbcl --script interp.lisp test_interp.ast
 ```
 
-Or make it executable:
-```bash
-chmod +x interp.lisp
-./interp.lisp test_interp.ast
+### Debugging Workflow Example
+
+**Step 1**: Write a test with known expected behavior:
+```c
+// test_add.c
+int main() {
+    int a = 5;
+    int b = 10;
+    return a + b;  // Should return 15
+}
 ```
+
+**Step 2**: Execute with interpreter:
+```bash
+$ ./ccc -x test_add.c
+=== Pass 1: Parsing test_add.c ===
+
+=== Executing AST with interpreter ===
+Program exited with code: 15
+
+AST saved to: test_add.ast
+```
+
+**Step 3**: If result is wrong, inspect the AST:
+```bash
+$ cat test_add.ast
+; Function: main
+(f main () _short_
+  (B (d a _short_) (d b _short_)
+     (E (=:s $a (N:s 5)))
+     (E (=:s $b (N:s 10)))
+     (R (+ (M:s $a) (M:s $b)))))
+```
+
+**Step 4**: Verify the AST structure matches your expectations:
+- Declarations for `a` and `b`? ✓
+- Assignments with correct values? ✓
+- Return statement with addition? ✓
+
+**Real-world debugging example**:
+
+If the program returns 0 instead of 15:
+1. Check if return statement is present in AST
+2. Check if addition operator is correct
+3. Check if variables are being dereferenced (M operator)
+4. Add debug prints to interpreter to trace execution
 
 ### Example Session
 
 ```bash
-# Compile test program
-./cc1 -E test_interp.c > test_interp.ast
+# Test factorial recursion
+$ ./ccc -x test_interp.c
+=== Pass 1: Parsing test_interp.c ===
 
-# Run interpreter
-./interp.lisp test_interp.ast
+=== Executing AST with interpreter ===
 Program exited with code: 120
+
+AST saved to: test_interp.ast
+
+# Verify it's correct: 5! = 120 ✓
 ```
 
 ## Features

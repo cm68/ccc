@@ -83,17 +83,96 @@ This is a 2-pass compiler:
 
 ## Usage
 
+**Using the ccc driver (recommended):**
+```bash
+# Full compilation (when cc2 is complete)
+./ccc -o program source.c
+
+# Execute with interpreter (debugging/testing)
+./ccc -x source.c
+
+# Keep intermediate AST file
+./ccc -k -o program source.c
+```
+
 **Pass 1 - Parse and output AST:**
 ```bash
-./cc1 -E source.c > output.i
+./cc1 -E source.c > output.ast
 ```
 
 **Pass 2 - Parse AST (code generation not yet implemented):**
 ```bash
-./cc2 output.i -o executable
+./cc2 output.ast -o executable
 ```
 
 **Full pipeline (when complete):**
 ```bash
 ./cc1 -E source.c | ./cc2 -o executable
 ```
+
+## Debugging the Parser and AST
+
+The `-x` option executes the generated AST with a Common Lisp interpreter, providing
+a way to validate that the parser is producing correct AST without needing a working
+code generator.
+
+**Quick validation:**
+```bash
+./ccc -x tests/arith_widths.c
+```
+
+This compiles the source to AST, then executes it with the interpreter. If the program
+runs and produces the expected result, the parser is working correctly.
+
+**Debugging workflow:**
+
+1. Write a test program with known expected behavior
+2. Compile and execute with `-x`:
+   ```bash
+   ./ccc -x mytest.c
+   ```
+3. Check the exit code and output match expectations
+4. If incorrect, inspect the AST file (automatically saved as `mytest.ast`)
+5. Compare AST structure against expected operations
+
+**Example - verify arithmetic:**
+```c
+// test.c
+int main() {
+    int a = 10;
+    int b = 20;
+    int c = a + b;
+    return c;  // Should return 30
+}
+```
+
+```bash
+$ ./ccc -x test.c
+=== Pass 1: Parsing test.c ===
+
+=== Executing AST with interpreter ===
+Program exited with code: 30
+
+AST saved to: test.ast
+```
+
+The exit code of 30 confirms the parser correctly:
+- Parsed declarations
+- Generated assignment operations
+- Performed arithmetic
+- Returned the result
+
+**Benefits of interpreter-based debugging:**
+- Test parser without implementing code generator
+- Validate type conversions and promotions
+- Verify control flow (loops, conditionals, function calls)
+- Confirm expression evaluation and constant folding
+- Quick iteration on parser changes
+
+**Interpreter limitations:**
+- Simplified memory model (doesn't simulate real memory addresses)
+- No pointer arithmetic validation
+- Type conversions are pass-through (no actual narrowing/widening)
+- Some operations simplified for interpretation
+
+See INTERP.md for complete interpreter documentation.
