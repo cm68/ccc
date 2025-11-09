@@ -180,7 +180,7 @@ AST saved to: test_interp.ast
 - Local variables
 - Function definitions
 - Function parameters
-- String literals (partial support)
+- String literals with full escape sequence support
 
 ### Limitations
 
@@ -223,6 +223,32 @@ The interpreter recognizes width annotations:
 - `:d` - double (8 bytes)
 
 Type conversions (NARROW, SEXT, WIDEN) are implemented but simplified.
+
+### Escape Sequence Preprocessing
+
+C string literals in the AST contain escape sequences (`\n`, `\t`, `\"`, `\\`, etc.) that must be processed correctly by the Lisp reader. The interpreter preprocesses the AST text before passing it to the reader:
+
+**Strategy:**
+- Backslashes inside strings (except `\"`) are doubled: `\n` → `\\n`
+- Escaped quotes stay as-is: `\"` → `\"` (reader produces quote in string)
+- Vertical bars outside strings are escaped: `|` → `\|` (prevents Lisp multiple-escape interpretation)
+
+**Example transformation:**
+```
+Input AST:  (s str0 "line1\nline2\ttab\"quote\\backslash")
+After preprocessing: (s str0 "line1\\nline2\\ttab\"quote\\\\backslash")
+Lisp reader produces: "line1\nline2\ttab"quote\\backslash"
+process-escape-sequences converts: actual newline, tab, quote, backslash
+```
+
+**Why this works:**
+1. AST contains C escape sequences as written in source
+2. Preprocessing doubles backslashes (except before quotes) for Lisp reader
+3. Lisp reader interprets `\"` as quote, `\\` as single backslash
+4. `process-escape-sequences` converts `\n`, `\t`, etc. to actual characters
+5. Final string has correct C semantics
+
+**Implementation:** See preprocessing loop in `interpret-file` function (interp.lisp:443-473).
 
 ### Function Calls
 
@@ -267,8 +293,25 @@ Then try more complex features:
 - Recursion (factorial, fibonacci)
 - Loops and conditionals
 - Local variables
+- String literals with escape sequences
 
-The included `test_interp.c` tests recursion with factorial.
+### Current Test Results
+
+The following tests in `tests/` pass with the interpreter:
+- **arith_widths.c** - Multi-width arithmetic (char, short, long)
+- **array_init.c** - Array initialization
+- **simple_arith.c** - Basic arithmetic operations
+- **string_literals.c** - String literals with complex escape sequences
+
+Run all interpreter tests:
+```bash
+bash /tmp/run_interp_tests.sh
+```
+
+Or test individual files:
+```bash
+./ccc -x tests/arith_widths.c
+```
 
 ## Interactive REPL
 
