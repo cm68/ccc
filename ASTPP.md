@@ -52,11 +52,60 @@ The script is already executable and ready to use.
 ./astpp.lisp program.ast
 ```
 
+### Raw Mode (No Translation)
+
+Use `--raw` or `-r` to keep original operators while still getting proper indentation:
+
+```bash
+# Pretty print with raw operators (M, =, +, etc.)
+./astpp.lisp --raw program.ast
+
+# Or short form
+./astpp.lisp -r program.ast
+```
+
+**When to use raw mode:**
+- **Reformatting AST files**: Output is valid S-expression AST that can be read back
+- You're familiar with the AST format and don't need translation
+- You want to minimize differences when comparing ASTs
+- You're writing code that parses the output
+- You want the most compact representation
+
+**Raw mode outputs valid AST:**
+```bash
+# Reformat an AST file (canonicalize spacing/indentation)
+./astpp.lisp --raw messy.ast > clean.ast
+
+# The output can be fed back to the compiler/interpreter
+sbcl --script interp.lisp clean.ast
+```
+
+**Comparison:**
+
+Normal mode:
+```
+EXPR:
+  (ASSIGN:short $a (NARROW:short 10))
+IF ((GT (SEXT:long (DEREF:short $a)) 5))
+  BLOCK {
+```
+
+Raw mode:
+```
+E:
+  (=:short $a (N:short 10))
+I ((> (X:long (M:short $a)) 5))
+  B {
+```
+
 ### One-Line Pipeline
 
 ```bash
 # Generate and immediately view
 ./cc1 -E program.c | sbcl --script astpp.lisp /dev/stdin
+
+# With raw mode
+./cc1 -E program.c | sbcl --script astpp.lisp /dev/stdin --raw
 ```
 
 ## Output Format
@@ -349,11 +398,18 @@ For complex expressions, focus on specific parts:
 ### Compare ASTs
 
 ```bash
-# Compare two versions
+# Compare two versions (normal mode)
 ./astpp.lisp old.ast > /tmp/old.txt
 ./astpp.lisp new.ast > /tmp/new.txt
 diff -u /tmp/old.txt /tmp/new.txt
+
+# For minimal diff noise, use raw mode
+./astpp.lisp --raw old.ast > /tmp/old_raw.txt
+./astpp.lisp --raw new.ast > /tmp/new_raw.txt
+diff -u /tmp/old_raw.txt /tmp/new_raw.txt
 ```
+
+**Tip:** Raw mode produces more compact output with fewer long words to diff, making it easier to spot actual structural changes versus just reformatting.
 
 ### Pipe to Editor
 

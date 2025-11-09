@@ -4,6 +4,7 @@
 
 (defvar *indent-level* 0)
 (defvar *indent-string* "  ")
+(defvar *raw-mode* nil)  ; When true, don't translate operators
 
 (defun indent ()
   "Return current indentation string"
@@ -33,59 +34,63 @@
         (t width-str)))))
 
 (defun operator-name (op)
-  "Get human-readable name for operator"
+  "Get human-readable name for operator (or raw operator if *raw-mode*)"
   (let ((op-str (string op)))
-    (cond
-      ((string= op-str "M") "DEREF")
-      ((string= op-str "=") "ASSIGN")
-      ((string= op-str "+") "ADD")
-      ((string= op-str "-") "SUB")
-      ((string= op-str "*") "MUL")
-      ((string= op-str "/") "DIV")
-      ((string= op-str "%") "MOD")
-      ((string= op-str "&") "AND")
-      ((string= op-str "|") "OR")
-      ((string= op-str "^") "XOR")
-      ((string= op-str "~") "NOT")
-      ((string= op-str "y") "LSHIFT")
-      ((string= op-str "w") "RSHIFT")
-      ((string= op-str "<") "LT")
-      ((string= op-str ">") "GT")
-      ((string= op-str "L") "LE")
-      ((string= op-str "g") "GE")
-      ((string= op-str "Q") "EQ")
-      ((string= op-str "n") "NE")
-      ((string= op-str "j") "LAND")
-      ((string= op-str "h") "LOR")
-      ((string= op-str "!") "LNOT")
-      ((string= op-str "N") "NARROW")
-      ((string= op-str "X") "SEXT")
-      ((string= op-str "W") "WIDEN")
-      ((string= op-str "?") "TERNARY")
-      ((string= op-str "@") "CALL")
-      ((string= op-str "NEG") "NEGATE")
-      (t op-str))))
+    (if *raw-mode*
+        op-str
+        (cond
+          ((string= op-str "M") "DEREF")
+          ((string= op-str "=") "ASSIGN")
+          ((string= op-str "+") "ADD")
+          ((string= op-str "-") "SUB")
+          ((string= op-str "*") "MUL")
+          ((string= op-str "/") "DIV")
+          ((string= op-str "%") "MOD")
+          ((string= op-str "&") "AND")
+          ((string= op-str "|") "OR")
+          ((string= op-str "^") "XOR")
+          ((string= op-str "~") "NOT")
+          ((string= op-str "y") "LSHIFT")
+          ((string= op-str "w") "RSHIFT")
+          ((string= op-str "<") "LT")
+          ((string= op-str ">") "GT")
+          ((string= op-str "L") "LE")
+          ((string= op-str "g") "GE")
+          ((string= op-str "Q") "EQ")
+          ((string= op-str "n") "NE")
+          ((string= op-str "j") "LAND")
+          ((string= op-str "h") "LOR")
+          ((string= op-str "!") "LNOT")
+          ((string= op-str "N") "NARROW")
+          ((string= op-str "X") "SEXT")
+          ((string= op-str "W") "WIDEN")
+          ((string= op-str "?") "TERNARY")
+          ((string= op-str "@") "CALL")
+          ((string= op-str "NEG") "NEGATE")
+          (t op-str)))))
 
 (defun statement-name (stmt)
-  "Get human-readable name for statement type"
+  "Get human-readable name for statement type (or raw statement if *raw-mode*)"
   (let ((stmt-str (string stmt)))
-    (cond
-      ((string= stmt-str "B") "BLOCK")
-      ((string= stmt-str "E") "EXPR")
-      ((string= stmt-str "R") "RETURN")
-      ((string= stmt-str "I") "IF")
-      ((string= stmt-str "W") "WHILE")
-      ((string= stmt-str "F") "FOR")
-      ((string= stmt-str "D") "DO-WHILE")
-      ((string= stmt-str "S") "SWITCH")
-      ((string= stmt-str "C") "CASE")
-      ((string= stmt-str "O") "DEFAULT")
-      ((string= stmt-str "K") "BREAK")
-      ((string= stmt-str "N") "CONTINUE")
-      ((string= stmt-str "G") "GOTO")
-      ((string= stmt-str "L") "LABEL")
-      ((string= stmt-str "d") "DECL")
-      (t stmt-str))))
+    (if *raw-mode*
+        stmt-str
+        (cond
+          ((string= stmt-str "B") "BLOCK")
+          ((string= stmt-str "E") "EXPR")
+          ((string= stmt-str "R") "RETURN")
+          ((string= stmt-str "I") "IF")
+          ((string= stmt-str "W") "WHILE")
+          ((string= stmt-str "F") "FOR")
+          ((string= stmt-str "D") "DO-WHILE")
+          ((string= stmt-str "S") "SWITCH")
+          ((string= stmt-str "C") "CASE")
+          ((string= stmt-str "O") "DEFAULT")
+          ((string= stmt-str "K") "BREAK")
+          ((string= stmt-str "N") "CONTINUE")
+          ((string= stmt-str "G") "GOTO")
+          ((string= stmt-str "L") "LABEL")
+          ((string= stmt-str "d") "DECL")
+          (t stmt-str)))))
 
 (defun pp-expr (expr &optional (inline nil))
   "Pretty print an expression"
@@ -283,13 +288,85 @@
           (subseq name (1+ colon-pos))
           name))))
 
+;;; Raw mode - output valid S-expressions
+(defun pp-sexp (sexp depth)
+  "Pretty print S-expression with indentation (valid AST output)"
+  (cond
+    ;; String - print with quotes
+    ((stringp sexp)
+     (format t "~S" sexp))
+
+    ;; Other atoms (number, symbol)
+    ((atom sexp)
+     (format t "~A" sexp))
+
+    ;; Empty list
+    ((null sexp)
+     (format t "()"))
+
+    ;; List
+    (t
+     (let ((first-elem (first sexp)))
+       ;; Check if this is a comment
+       (when (and (symbolp first-elem)
+                  (char= (char (symbol-name first-elem) 0) #\;))
+         (format t "~%; ~A~%" (subseq (symbol-name first-elem) 1))
+         (return-from pp-sexp))
+
+       ;; Regular list
+       (format t "(~A" first-elem)
+       (dolist (elem (rest sexp))
+         (cond
+           ;; If element is a string, print with quotes
+           ((stringp elem)
+            (format t " ~S" elem))
+
+           ;; If element is a simple atom, print on same line
+           ((atom elem)
+            (format t " ~A" elem))
+
+           ;; If element is a small list, print on same line
+           ((and (listp elem) (< (length elem) 4) (every #'atom elem))
+            (format t " ")
+            (pp-sexp elem depth))
+
+           ;; Otherwise, put on new line with indentation
+           (t
+            (format t "~%~A  " (make-string (* depth 2) :initial-element #\Space))
+            (pp-sexp elem (1+ depth)))))
+       (format t ")")))))
+
+(defun pp-ast-raw (ast)
+  "Pretty print AST in raw mode (valid S-expressions)"
+  (dolist (item ast)
+    (cond
+      ;; Handle comments
+      ((and (listp item) (symbolp (first item))
+            (> (length (symbol-name (first item))) 0)
+            (char= (char (symbol-name (first item)) 0) #\;))
+       (format t "~%~A~%" (symbol-name (first item))))
+
+      ;; Regular AST nodes
+      ((listp item)
+       (format t "~%")
+       (pp-sexp item 0)
+       (format t "~%"))
+
+      ;; Atoms (shouldn't happen at top level, but handle it)
+      (t
+       (format t "~A~%" item))))
+  (format t "~%"))
+
 (defun pp-ast (ast)
   "Pretty print complete AST"
-  (format t "========================================~%")
-  (format t "AST Pretty Printer Output~%")
-  (format t "========================================~%")
+  (if *raw-mode*
+      (pp-ast-raw ast)
+      (progn
+        (format t "========================================~%")
+        (format t "AST Pretty Printer Output~%")
+        (format t "========================================~%")
 
-  (dolist (item ast)
+        (dolist (item ast)
     (when (listp item)
       (let ((tag (first item)))
         (cond
@@ -315,7 +392,7 @@
 
           ;; Function definition (f <name> <params> <type> <body>)
           ((or (eq tag 'f) (eq tag '|f|))
-           (pp-function (rest item))))))))
+           (pp-function (rest item)))))))))) ; cond, let, when, dolist, progn, if, defun
 
 (defun setup-reader ()
   "Configure the Lisp reader to handle AST symbols"
@@ -367,13 +444,22 @@
 
 (defun usage ()
   "Print usage message"
-  (format t "Usage: astpp.lisp <ast-file>~%")
+  (format t "Usage: astpp.lisp [options] <ast-file>~%")
   (format t "~%")
   (format t "Pretty print ccc compiler AST in human-readable format.~%")
+  (format t "~%")
+  (format t "Options:~%")
+  (format t "  -r, --raw       Raw mode: keep original operators (M, =, +, etc.)~%")
+  (format t "                  Only reindent, don't translate to readable names~%")
+  (format t "  -h, --help      Show this help message~%")
   (format t "~%")
   (format t "Example:~%")
   (format t "  ./cc1 -E program.c > program.ast~%")
   (format t "  ./astpp.lisp program.ast~%")
+  (format t "~%")
+  (format t "Raw mode example:~%")
+  (format t "  ./astpp.lisp --raw program.ast~%")
+  (format t "  # Shows 'M' instead of 'DEREF', '=' instead of 'ASSIGN', etc.~%")
   (format t "~%")
   (format t "Or use with ccc driver:~%")
   (format t "  ./ccc -E program.c  # generates program.ast~%")
@@ -385,15 +471,34 @@
   (setup-reader)
   (let ((ast (preprocess-ast-file filename)))
     (pp-ast ast))
-  (format t "~%========================================~%"))
+  (unless *raw-mode*
+    (format t "~%========================================~%")))
+
+;; Parse command-line arguments
+(defun parse-args (args)
+  "Parse command-line arguments, return (filename . raw-mode-flag)"
+  (let ((filename nil)
+        (raw-mode nil))
+    (loop for arg in args
+          do (cond
+               ((or (string= arg "-h") (string= arg "--help") (string= arg "help"))
+                (usage))
+               ((or (string= arg "-r") (string= arg "--raw"))
+                (setf raw-mode t))
+               ((and (not filename) (not (char= (char arg 0) #\-)))
+                (setf filename arg))
+               (t
+                (format t "Unknown option: ~A~%" arg)
+                (usage))))
+    (unless filename
+      (format t "Error: No AST file specified~%~%")
+      (usage))
+    (cons filename raw-mode)))
 
 ;; Run if called as script
-(cond
-  ((not *posix-argv*)
-   (usage))
-  ((< (length *posix-argv*) 2)
-   (usage))
-  ((member (second *posix-argv*) '("-h" "--help" "help") :test #'string=)
-   (usage))
-  (t
-   (main (second *posix-argv*))))
+(when (and *posix-argv* (>= (length *posix-argv*) 2))
+  (let* ((parsed (parse-args (cdr *posix-argv*)))
+         (filename (car parsed))
+         (raw-mode (cdr parsed)))
+    (setf *raw-mode* raw-mode)
+    (main filename)))
