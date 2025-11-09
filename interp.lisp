@@ -441,26 +441,33 @@
                   content))))
 
     ;; Escape special characters for the Lisp reader
-    ;; 1. Backslashes in strings: \\ becomes \\\\ so reader produces \\
-    ;; 2. Vertical bars outside strings: | becomes \| so reader produces symbol |
+    ;; Strategy: Double backslashes EXCEPT when escaping a quote
+    ;; - \n becomes \\n (reader produces \n, then process-escape-sequences makes newline)
+    ;; - \" stays as \" (reader produces quote in the string)
+    ;; - \\ becomes \\\\ (reader produces \\, then process-escape-sequences makes \)
+    ;; - | outside strings becomes \| (reader produces symbol |)
     (setf text (loop with result = (make-array (length text) :element-type 'character
                                                 :fill-pointer 0 :adjustable t)
                      with in-string = nil
-                     for ch across text
+                     for i from 0 below (length text)
+                     for ch = (char text i)
+                     for next-ch = (if (< (1+ i) (length text)) (char text (1+ i)) nil)
                      do (cond
-                          ((and (char= ch #\") (or (zerop (fill-pointer result))
-                                                    (char/= (char result (1- (fill-pointer result))) #\\)))
-                           ;; Quote that's not escaped - toggle in-string
+                          ;; Track string state (quote toggles unless escaped)
+                          ((and (char= ch #\")
+                                (or (= i 0)
+                                    (char/= (char text (1- i)) #\\)))
                            (vector-push-extend ch result)
                            (setf in-string (not in-string)))
-                          ((and in-string (char= ch #\\))
-                           ;; Backslash inside string - double it
+                          ;; Backslash in string NOT followed by quote - double it
+                          ((and in-string (char= ch #\\) (not (and next-ch (char= next-ch #\"))))
                            (vector-push-extend ch result)
                            (vector-push-extend ch result))
+                          ;; Vertical bar outside string - escape it
                           ((and (not in-string) (char= ch #\|))
-                           ;; Vertical bar outside string - escape it
                            (vector-push-extend #\\ result)
                            (vector-push-extend ch result))
+                          ;; Everything else passes through unchanged
                           (t
                            (vector-push-extend ch result)))
                      finally (return result)))
