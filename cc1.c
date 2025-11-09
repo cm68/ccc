@@ -213,15 +213,14 @@ main(int argc, char **argv)
      */
     while (argc--) {
         process(*argv++);
+        /* Clean up allocated memory after each file */
+        cleanup_parser();
     }
 
     /* Close AST output file if not stdout */
     if (ast_fd > 1) {
         close(ast_fd);
     }
-
-    /* Clean up allocated memory */
-    cleanup_parser();
 
     return 0;
 }
