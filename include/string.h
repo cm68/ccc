@@ -2,7 +2,10 @@
 #ifndef _STRING_H
 #define _STRING_H
 
+#ifndef _SIZE_T_DEFINED
+#define _SIZE_T_DEFINED
 typedef unsigned long size_t;
+#endif
 
 #define NULL ((void *)0)
 

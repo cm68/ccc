@@ -2,8 +2,11 @@
 #ifndef _STDIO_H
 #define _STDIO_H
 
+#ifndef _SIZE_T_DEFINED
+#define _SIZE_T_DEFINED
 typedef unsigned long size_t;
 typedef long ssize_t;
+#endif
 
 typedef struct {
     int fd;
