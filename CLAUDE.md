@@ -910,6 +910,13 @@ The compiler has made substantial progress:
 - Pointer type compatibility validation
 - Lvalue validation for assignments and increment/decrement operators
 
+**Self-hosting capability** (14/18 files passing - 78%):
+- Compiler successfully parses 14 of its own 18 source files
+- Stub system headers in `include/` avoid GNU libc advanced preprocessor features
+- Failing files use complex typedef patterns or syntax not yet supported
+- 5-second timeout handler catches infinite loops and dumps symbol tables
+- Run `make testself` to verify self-hosting progress
+
 **Not yet implemented**:
 - Full type compatibility checking (sametype) for all contexts
 - Code generation (pass 2)
@@ -985,6 +992,10 @@ Tests run with:
 24. **Memory leak fixes** - Valgrind clean on all tests
 25. **K&R function support** - Full K&R style function definitions
 26. **Comprehensive preprocessor** - Macros, includes, conditional compilation, stringify, token pasting
+27. **Self-hosting improvements** - Fixed include file processing, extern/definition handling, comment preprocessing
+28. **Stub system headers** - include/ directory with stubs to avoid GNU libc advanced features
+29. **Debugging infrastructure** - Renamed lose() to gripe(), added dump_symbols() to fatal(), 5-second timeout handler
+30. **Self-hosting status** - 14/18 (78%) of compiler source files successfully parse themselves
 
 ### Code Style
 

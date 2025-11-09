@@ -34,6 +34,15 @@ Two complementary tools for validating parser output without needing code genera
 - Comprehensive test coverage: 11 tests pass with interpreter
 - Raw mode for pretty printer outputs valid AST that can be read back
 
+**Self-Hosting Progress - 14/18 files passing (78%)**
+
+The compiler can now parse 14 of its own 18 source files:
+- **Stub system headers** in `include/` avoid GNU libc advanced features
+- **5-second timeout handler** catches infinite loops and dumps symbol tables
+- **Passing**: cc1.c, error.c, lex.c, io.c, macro.c, kw.c, util.c, unixlib.c, expr.c, type.c, cc2.c, parseast.c, tokenlist.c, debugtags.c
+- **Failing**: parse.c, declare.c, outast.c, ccc.c (complex typedefs or syntax patterns)
+- Run `make testself` to verify self-hosting capability
+
 **Pass 2 (cc2) - Work In Progress**
 
 AST parser foundation in place, code generation planned:
@@ -89,6 +98,13 @@ This is a 2-pass compiler:
 - error.h - Error code definitions
 - debug.h, debugtags.c - Debug/verbose infrastructure
 - op_pri.h - Operator priority table
+
+**Stub system headers (include/):**
+- stdio.h, stdlib.h, string.h, stdarg.h - C standard library stubs
+- fcntl.h, unistd.h, signal.h - POSIX system call stubs
+- libgen.h - Path manipulation stubs
+- sys/stat.h, sys/wait.h - System header stubs
+- Minimal declarations to avoid GNU libc advanced preprocessor features
 
 ## Usage
 
