@@ -77,10 +77,16 @@ dump_symbols()
 
     printf("\n--- TYPES TABLE ---\n");
     if (types) {
-        for (t = types; t; t = t->next) {
+        int type_count = 0;
+        int max_types = 1000;  /* Prevent infinite loops from cycles */
+        for (t = types; t && type_count < max_types; t = t->next) {
             printf("type @%p: ", (void*)t);
             dump_type(t, 0);
             printf("\n");
+            type_count++;
+        }
+        if (t) {
+            printf("... (stopped after %d types, possible cycle)\n", max_types);
         }
     } else {
         printf("(types table not initialized)\n");

@@ -836,12 +836,14 @@ declaration()
             /* Fix array size for char[] = "string" syntax */
             if (v->type && (v->type->flags & TF_ARRAY) && v->type->count == -1 &&
                 v->init && v->init->op == STRING) {
-                /* Get string length from counted string */
-                cstring str = (cstring)v->init->v;
-                if (str) {
-                    int len = (unsigned char)str[0];  /* First byte is length */
-                    /* Create new array type with correct size (length + 1 for null terminator) */
-                    v->type = get_type(TF_ARRAY, v->type->sub, len + 1);
+                {
+                    /* Get string length from counted string */
+                    cstring str = (cstring)v->init->v;
+                    if (str) {
+                        int len = (unsigned char)str[0];  /* First byte is length */
+                        /* Create new array type with correct size (length + 1 for null terminator) */
+                        v->type = get_type(TF_ARRAY, v->type->sub, len + 1);
+                    }
                 }
             }
 
