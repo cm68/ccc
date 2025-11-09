@@ -548,6 +548,28 @@ gettoken()
             next.type = E_O_F;
             break;
         }
+        /* Handle comments before checking for preprocessor directives */
+        if ((curchar == '/') && (nextchar == '*') && !incomment) {
+            incomment = 1;
+            advance();
+            advance();
+            continue;
+        }
+        if ((curchar == '/') && (nextchar == '/')) {
+            skiptoeol();
+            continue;
+        }
+        if ((incomment) && (curchar == '*') && (nextchar == '/')) {
+            incomment = 0;
+            advance();
+            advance();
+            continue;
+        }
+        if (incomment) {
+            advance();
+            continue;
+        }
+        /* Now safe to check for # - we know we're not in a comment */
         if (charmatch('#')) {
 #ifdef DEBUG
             if (VERBOSE(V_CPP)) {
@@ -593,26 +615,6 @@ gettoken()
             if (curchar == '\n') {
                 advance();  // consume the newline
             }
-            continue;
-        }
-        if ((curchar == '/') && (nextchar == '*') && !incomment) {
-            incomment = 1;
-            advance();
-            advance();
-            continue;
-        }
-        if ((curchar == '/') && (nextchar == '/')) {
-            skiptoeol();
-            continue;
-        }
-        if ((incomment) && (curchar == '*') && (nextchar == '/')) {
-            incomment = 0;
-            advance();
-            advance();
-            continue;
-        }
-        if (incomment) {
-            advance();
             continue;
         }
         if ((curchar == ' ') || (curchar == '\t') || (curchar == '\n')) {
