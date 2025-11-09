@@ -167,6 +167,8 @@ insertfile(char *name, int sys)
         }
     }
     if (t->fd == -1) {
+        filename = name;  /* Set filename for error message */
+        lineno = 1;
         fatal(ER_C_IF);
     }
 found:
