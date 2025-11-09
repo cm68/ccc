@@ -392,6 +392,9 @@ compatible_function_types(struct type *t1, struct type *t2)
     // Compare return types
     if (t1->sub != t2->sub) return 0;
 
+    // Compare variadic flag
+    if ((t1->flags & TF_VARIADIC) != (t2->flags & TF_VARIADIC)) return 0;
+
     // Compare parameter lists
     return compare_param_lists(t1->elem, t2->elem);
 }
@@ -428,6 +431,7 @@ get_type(
                 if ((flags & TF_ARRAY) && (t->count != count)) {
                     continue;
                 }
+                /* For functions, variadic is part of flags so it matches automatically */
                 return t;
             }
         }

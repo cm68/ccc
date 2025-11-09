@@ -209,6 +209,23 @@ declare_internal(struct type **btp, boolean struct_elem)
             struct type *param_type = NULL;
             char *param_name = NULL;
 
+            // Check for variadic ... (three DOT tokens)
+            if (cur.type == DOT && next.type == DOT) {
+                gettoken();  // consume first DOT
+                if (cur.type == DOT && next.type == DOT) {
+                    gettoken();  // consume second DOT
+                    if (cur.type == DOT) {
+                        gettoken();  // consume third DOT
+                        suffix->flags |= TF_VARIADIC;
+                        // ... must be last parameter
+                        if (cur.type == COMMA) {
+                            lose(ER_D_FA);  // ... must be last
+                        }
+                        break;  // exit parameter loop
+                    }
+                }
+            }
+
             if (kr_style) {
                 // K&R style: just collect names (types come later)
                 param_name = parse_param_name(0);

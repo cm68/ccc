@@ -11,9 +11,9 @@ void *realloc(void *ptr, size_t size);
 void free(void *ptr);
 
 void exit(int status);
-int atoi(const char *nptr);
-long atol(const char *nptr);
+int atoi(char *nptr);
+long atol(char *nptr);
 
-char *getenv(const char *name);
+char *getenv(char *name);
 
 #endif /* _STDLIB_H */
