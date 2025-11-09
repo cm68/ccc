@@ -22,8 +22,6 @@ unsigned char static_counter = 0;
 
 /* AST output control */
 int ast_fd;  // defaults to 1 (stdout), can be overridden with -o
-char *ast_filename = NULL;  // filename for AST output (for -x option)
-int execute_ast = 0;  // execute AST with interpreter after compilation
 
 /*
  * each file on the command line gets this treatment
@@ -107,7 +105,6 @@ usage(char *complaint, char *p)
     printf("\t-v <verbosity>\n");
     printf("\t-o <output file> (AST output, default stdout)\n");
     printf("\t-E (write preprocessed .i file)\n");
-    printf("\t-x (execute AST with interpreter, requires -o)\n");
     for (i = 0; vopts[i]; i++) {
         printf("\t%x %s\n", 1 << i, vopts[i]);
     }
@@ -153,9 +150,6 @@ main(int argc, char **argv)
             case 'E':
                 write_cpp_file++;
                 break;
-            case 'x':
-                execute_ast = 1;
-                break;
             case 'v':
                 if (!argc--) {
                     usage("verbosity not specified \n", progname);
@@ -166,7 +160,6 @@ main(int argc, char **argv)
                 if (!argc--) {
                     usage("output file not specified \n", progname);
                 }
-                ast_filename = *argv;
 #ifdef SDCC
                 ast_fd = creat(*argv++, 0644);
 #else
@@ -220,24 +213,6 @@ main(int argc, char **argv)
     /* Close AST output file if not stdout */
     if (ast_fd > 1) {
         close(ast_fd);
-    }
-
-    /* Execute AST with interpreter if requested */
-    if (execute_ast) {
-        char cmd[512];
-        int ret;
-
-        if (!ast_filename) {
-            fprintf(stderr, "Error: -x requires -o <output file>\n");
-            return 1;
-        }
-
-        snprintf(cmd, sizeof(cmd), "clisp interp.lisp %s", ast_filename);
-        ret = system(cmd);
-        if (ret != 0) {
-            fprintf(stderr, "Error: interpreter returned %d\n", ret);
-            return 1;
-        }
     }
 
     return 0;

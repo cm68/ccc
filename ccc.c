@@ -25,6 +25,7 @@ usage(void)
     printf("  -I<dir>        Include directory (passed to cc1)\n");
     printf("  -D<var>[=val]  Define macro (passed to cc1)\n");
     printf("  -E             Preprocess only (passed to cc1)\n");
+    printf("  -x             Execute AST with interpreter (skip code generation)\n");
     exit(1);
 }
 
@@ -140,6 +141,7 @@ main(int argc, char **argv)
     char *output_file = NULL;
     char *ast_file = NULL;
     int keep_ast = 0;
+    int execute_ast = 0;
 
     char *cc1_args[MAX_ARGS];
     char *cc2_args[MAX_ARGS];
@@ -148,6 +150,7 @@ main(int argc, char **argv)
 
     char cc1_path[1024];
     char cc2_path[1024];
+    char interp_path[1024];
 
     char *basename_no_ext;
     int status;
@@ -155,9 +158,10 @@ main(int argc, char **argv)
     progname = argv[0];
     scriptdir = get_script_dir(argv[0]);
 
-    /* Build paths to cc1 and cc2 */
+    /* Build paths to cc1, cc2, and interpreter */
     snprintf(cc1_path, sizeof(cc1_path), "%s/cc1", scriptdir);
     snprintf(cc2_path, sizeof(cc2_path), "%s/cc2", scriptdir);
+    snprintf(interp_path, sizeof(interp_path), "%s/interp.lisp", scriptdir);
 
     /* Initialize argument arrays with program names */
     cc1_args[cc1_argc++] = cc1_path;
@@ -182,6 +186,11 @@ main(int argc, char **argv)
             argv++;
         } else if (strcmp(argv[0], "-k") == 0) {
             keep_ast = 1;
+            argc--;
+            argv++;
+        } else if (strcmp(argv[0], "-x") == 0) {
+            execute_ast = 1;
+            keep_ast = 1;  /* Must keep AST to execute it */
             argc--;
             argv++;
         } else if (strcmp(argv[0], "-v") == 0) {
@@ -274,6 +283,29 @@ main(int argc, char **argv)
         if (!keep_ast) {
             unlink(ast_file);
         }
+        exit(status);
+    }
+
+    /* If -x specified, execute AST with interpreter instead of code generation */
+    if (execute_ast) {
+        char *interp_args[MAX_ARGS];
+        int interp_argc = 0;
+
+        printf("\n=== Executing AST with interpreter ===\n");
+
+        interp_args[interp_argc++] = "clisp";
+        interp_args[interp_argc++] = interp_path;
+        interp_args[interp_argc++] = ast_file;
+        interp_args[interp_argc] = NULL;
+
+        status = exec_command("/usr/bin/clisp", interp_args);
+
+        printf("\nAST saved to: %s\n", ast_file);
+
+        free(ast_file);
+        free(basename_no_ext);
+        free(scriptdir);
+
         exit(status);
     }
 
