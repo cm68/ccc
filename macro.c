@@ -149,6 +149,7 @@ macdefine(char *s)
                 break;
             }
             lose(ER_C_DP);
+            break;  /* Exit loop on error to avoid infinite loop */
         }
         if (m->parmcount) {
             m->parms = malloc(sizeof(char *) * m->parmcount);

@@ -129,6 +129,8 @@ insertfile(char *name, int sys)
 #endif
 
 	t = malloc(sizeof(*t));
+    t->fd = -1;  /* Initialize to indicate "not opened yet" */
+
     /*
      * For system includes (<foo.h>), try system include path first
      */
@@ -149,8 +151,11 @@ insertfile(char *name, int sys)
         if (i->path[0]) {
             strcpy(namebuf, i->path);
             strcat(namebuf, "/");
+            strcat(namebuf, name);
+        } else {
+            /* Empty path means current directory - use name as-is */
+            strcpy(namebuf, name);
         }
-        strcat(namebuf, name);
         t->fd = open(namebuf, 0);
         if (t->fd > 0) {
             break;
@@ -244,8 +249,10 @@ dump()
 void
 advance()
 {
-	struct textbuf *t = tbtop;
+	struct textbuf *t;
 
+again:
+    t = tbtop;
 
     curchar = nextchar;
 
@@ -279,7 +286,11 @@ advance()
     if (tbtop) {
         lineno = tbtop->lineno;
         filename = tbtop->name;
+        /* After popping, loop back to read nextchar from parent textbuf */
+        goto again;
 	}
+    /* No parent textbuf, we're at EOF */
+    nextchar = 0;
 done:
     column = nextcol;
     if (curchar == 0) {
