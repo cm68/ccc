@@ -222,7 +222,7 @@ isnumber()
 
     if (charmatch('\'')) {
         next.v.numeric = getlit();
-        if (curchar == '\'') {
+        if (curchar != '\'') {
             lose(ER_C_CD);
         }
         advance();

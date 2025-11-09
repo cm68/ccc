@@ -843,6 +843,8 @@ declaration()
 			gettoken();
 			break;
 		}
+		/* Error recovery: unexpected token, break out of loop */
+		break;
 	}
 }
 
