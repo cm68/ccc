@@ -317,8 +317,8 @@
          (eval-statement s))
        (pop *locals*)))
 
-    ;; Declaration
-    ((and (listp stmt) (eq (first stmt) 'd))
+    ;; Declaration (d <name> <type>)
+    ((and (listp stmt) (eq (first stmt) '|d|))
      (let ((var-name (symbol-name-only (second stmt))))
        (setf (gethash var-name (first *locals*)) 0)))
 
@@ -349,33 +349,59 @@
          (return))
        (when (and (third stmt) (zerop (eval-expr (third stmt))))  ; condition
          (return))
-       (setf *continue-flag* nil)
        (eval-statement (fifth stmt))  ; body
-       (when (fourth stmt)
+       (when *continue-flag*
+         (setf *continue-flag* nil))
+       (when (and (not *return-value*) (not *break-flag*) (fourth stmt))
          (eval-expr (fourth stmt)))))  ; increment
 
-    ;; Break
-    ((and (listp stmt) (eq (first stmt) '|b|))
+    ;; Break (K)
+    ((and (listp stmt) (eq (first stmt) '|K|))
      (setf *break-flag* t))
 
-    ;; Continue
+    ;; Continue (N)
     ((and (listp stmt) (eq (first stmt) '|N|))
      (setf *continue-flag* t))
 
-    ;; Do-while loop
+    ;; Do-while loop (D <body> <condition>)
     ((and (listp stmt) (eq (first stmt) '|D|))
      (loop
        (setf *continue-flag* nil)
-       (eval-statement (third stmt))  ; body
+       (eval-statement (second stmt))  ; body
        (when (or *return-value* *break-flag*)
          (setf *break-flag* nil)
          (return))
-       (when (zerop (eval-expr (second stmt)))  ; condition
+       (when (zerop (eval-expr (third stmt)))  ; condition
          (return))))
 
-    ;; Switch statement (simplified - just execute body for now)
+    ;; Switch statement
     ((and (listp stmt) (eq (first stmt) '|S|))
-     (eval-statement (third stmt)))
+     (let ((switch-value (eval-expr (second stmt)))
+           (cases (cddr stmt))
+           (matched nil)
+           (default-index nil))
+
+       ;; Find matching case or default
+       (loop for i from 0 below (length cases)
+             for item = (nth i cases)
+             do (when (and (listp item) (eq (first item) '|C|))
+                  (when (= (eval-expr (second item)) switch-value)
+                    (setf matched i)))
+                (when (and (listp item) (eq (first item) '|O|))
+                  (setf default-index i)))
+
+       ;; Execute from matched case or default
+       (when (or matched default-index)
+         (let ((start-index (or matched default-index)))
+           (loop for i from start-index below (length cases)
+                 for item = (nth i cases)
+                 do (when (or *return-value* *break-flag*)
+                      (setf *break-flag* nil)
+                      (return))
+                    ;; Skip case/default markers
+                    (unless (or (and (listp item) (eq (first item) '|C|))
+                                (and (listp item) (eq (first item) '|O|)))
+                      (eval-statement item)))))))
 
     (t nil)))
 

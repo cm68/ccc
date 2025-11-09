@@ -179,6 +179,7 @@ statement(struct stmt *parent)
         case CONTINUE:
             gettoken();
             need(SEMI, SEMI, ER_S_SN);
+            st = makestmt(CONTINUE, 0);
             break;
         case RETURN:
             gettoken();
@@ -395,14 +396,12 @@ statement(struct stmt *parent)
 
         case DO:    // do <statement> while <condition> ;
             gettoken();
-            need(BEGIN, SEMI, ER_S_CC);
             st = makestmt(DO, 0);
             st->chain = statement(st);
-            if (cur.type != END || next.type != WHILE) {
+            if (cur.type != WHILE) {
                 lose(ER_S_DO);
                 break;
             }
-            gettoken();  // advance past END (closing brace)
             gettoken();  // advance past WHILE keyword
             need(LPAR, LPAR, ER_S_NP);
             st->left = parse_expr(PRI_ALL, parent);
