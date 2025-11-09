@@ -400,6 +400,11 @@ do_cpp(unsigned char t)
         macundefine(strbuf);
         return;
     case INCLUDE:
+#ifdef DEBUG
+        if (VERBOSE(V_CPP)) {
+            printf("Processing INCLUDE directive\n");
+        }
+#endif
         skipwhite1();
         if (curchar == '<') {
             k = '>';
@@ -420,7 +425,15 @@ do_cpp(unsigned char t)
             lose(ER_C_ID);
         }
         skiptoeol();
-        insertfile(strbuf, k == '>'); 
+#ifdef DEBUG
+        if (VERBOSE(V_CPP)) {
+            printf("After skiptoeol: curchar='%c'(0x%x) nextchar='%c'(0x%x)\n",
+                   curchar >= 32 ? curchar : '?', curchar,
+                   nextchar >= 32 ? nextchar : '?', nextchar);
+            printf("About to insertfile: '%s' sys=%d\n", strbuf, k == '>');
+        }
+#endif
+        insertfile(strbuf, k == '>');
         return;
     }
 }
@@ -535,10 +548,26 @@ gettoken()
             next.type = E_O_F;
             break;
         }
-        if (column == 0 && charmatch('#')) {   // cpp directive
+        if (charmatch('#')) {
+#ifdef DEBUG
+            if (VERBOSE(V_CPP)) {
+                printf("Found # at column=%d (will%s process)\n", column, (column == 1) ? "" : " NOT");
+            }
+#endif
+            if (column != 1) {
+                /* Not a CPP directive, treat as token */
+                next.type = '#';
+                break;
+            }
+            /* CPP directive at column 0 */
             skipwhite1();
             if (issym()) {
                 t = kwlook(strbuf, cppkw);
+#ifdef DEBUG
+                if (VERBOSE(V_CPP)) {
+                    printf("CPP keyword: '%s' -> %d\n", strbuf, t);
+                }
+#endif
                 if (t) {
                     advance();
                     do_cpp(t);

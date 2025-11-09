@@ -666,6 +666,11 @@ parse_sclass()
 {
 	unsigned char ret = 0;
 	unsigned char bit;
+#ifdef DEBUG
+	if (VERBOSE(V_SYM)) {
+		printf("parse_sclass: starting, cur.type=0x%02x\n", cur.type);
+	}
+#endif
 
 	while (1) {
 		switch (cur.type) {
@@ -689,6 +694,11 @@ parse_sclass()
 			break;
 		case TYPEDEF:
 			bit = SC_TYPEDEF;
+#ifdef DEBUG
+			if (VERBOSE(V_SYM)) {
+				printf("parse_sclass: FOUND TYPEDEF token!\n");
+			}
+#endif
 			break;
 		default:
 			bit = 0;
@@ -760,6 +770,11 @@ declaration()
         /* handle typedef declarations */
         if (sclass & SC_TYPEDEF) {
             /* change the name kind from var to tdef */
+#ifdef DEBUG
+            if (VERBOSE(V_SYM)) {
+                printf("CONVERTING %s from var to tdef (sclass=0x%02x)\n", v->name, sclass);
+            }
+#endif
             v->kind = tdef;
             /* typedefs cannot have initializers or function bodies */
             if (cur.type == ASSIGN) {

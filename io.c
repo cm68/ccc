@@ -36,6 +36,7 @@ struct textbuf {
 	short offset;           // always points at nextchar.
 	short valid;            // total valid in buffer
 	short lineno;           // current line # in file
+	short saved_column;     // saved column position for parent file
 	struct textbuf *prev;	// a stack
 } *tbtop;
 
@@ -123,7 +124,12 @@ insertfile(char *name, int sys)
 
 #ifdef DEBUG
     if (VERBOSE(V_IO)) {
-        printf("insertfile: %s sys=%d\n", name, sys);
+        printf("insertfile: %s sys=%d curchar='%c'(0x%x) nextchar='%c'(0x%x) column=%d offset=%d\n",
+               name, sys,
+               curchar >= 32 ? curchar : '?', curchar,
+               nextchar >= 32 ? nextchar : '?', nextchar,
+               column,
+               tbtop ? tbtop->offset : -1);
     }
 #endif
 
@@ -169,6 +175,7 @@ found:
 	t->name = strdup(namebuf);
 	t->lineno = t->offset = t->valid = 0;
 	t->storage = malloc(TBSIZE);
+	t->saved_column = column;  /* Save parent's column */
 	t->prev = tbtop;
 	tbtop = t;
     filename = name;
@@ -219,6 +226,7 @@ insertmacro(char *name, char *macbuf)
 	t->offset = 0;
 	t->storage = strdup(macbuf);
 	t->valid = strlen(t->storage);
+	t->saved_column = column;  /* Save parent's column */
 	t->prev = tbtop;
 	tbtop = t;
     filename = name;
@@ -253,6 +261,15 @@ advance()
 again:
     t = tbtop;
 
+#ifdef DEBUG
+    if (VERBOSE(V_IO)) {
+        printf("Top of again: curchar='%c'(0x%x) nextchar='%c'(0x%x) offset=%d\n",
+               curchar >= 32 ? curchar : '?', curchar,
+               nextchar >= 32 ? nextchar : '?', nextchar,
+               t ? t->offset : -1);
+    }
+#endif
+
     curchar = nextchar;
 
     /* if no textbuf, are at eof */
@@ -264,6 +281,12 @@ again:
     /* do we have a valid nextchar? */
 	if (t->offset + 1 < t->valid) {
             nextchar = t->storage[++t->offset];
+#ifdef DEBUG
+            if (VERBOSE(V_IO)) {
+                printf("Read nextchar from buffer: '%c'(0x%x) at offset %d\n",
+                       nextchar >= 32 ? nextchar : '?', nextchar, t->offset);
+            }
+#endif
             goto done;
 	}
 
@@ -279,17 +302,42 @@ again:
     }
     /* closed file or empty macro buffer - pop */
     tbtop = t->prev;
+    if (tbtop) {
+#ifdef DEBUG
+        if (VERBOSE(V_IO)) {
+            printf("Popping from %s, restoring column from %d to %d\n",
+                   t->name, column, t->saved_column);
+        }
+#endif
+        /* Restore parent's state */
+        column = t->saved_column;
+        nextcol = t->saved_column;  /* nextcol must match restored column */
+        lineno = tbtop->lineno;
+        filename = tbtop->name;
+
+        /* Read nextchar from parent buffer WITHOUT doing curchar=nextchar again */
+        if (tbtop->offset < tbtop->valid) {
+            nextchar = tbtop->storage[tbtop->offset];
+        } else if (tbtop->fd != -1) {
+            /* Need to read more from parent file */
+            tbtop->valid = read(tbtop->fd, tbtop->storage, TBSIZE);
+            tbtop->offset = 0;
+            if (tbtop->valid > 0) {
+                nextchar = tbtop->storage[0];
+            } else {
+                nextchar = 0;
+            }
+        } else {
+            nextchar = 0;
+        }
+    }
     free(t->storage);
     free(t->name);
     free(t);
-    if (tbtop) {
-        lineno = tbtop->lineno;
-        filename = tbtop->name;
-        /* After popping, loop back to read nextchar from parent textbuf */
-        goto again;
-	}
-    /* No parent textbuf, we're at EOF */
-    nextchar = 0;
+    if (!tbtop) {
+        /* No parent textbuf, we're at EOF */
+        nextchar = 0;
+    }
 done:
     column = nextcol;
     if (curchar == 0) {
@@ -301,6 +349,14 @@ done:
         nextcol++;
     }
     if (nextchar == '\t') nextchar = ' ';
+#ifdef DEBUG
+    if (VERBOSE(V_IO)) {
+        printf("After done: curchar='%c'(0x%x) nextchar='%c'(0x%x) column=%d nextcol=%d\n",
+               curchar >= 32 ? curchar : '?', curchar,
+               nextchar >= 32 ? nextchar : '?', nextchar,
+               column, nextcol);
+    }
+#endif
     cdump("advance");
 }
 
