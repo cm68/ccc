@@ -160,7 +160,47 @@ The exit code of 30 confirms the parser correctly:
 - Parsed declarations
 - Generated assignment operations
 - Performed arithmetic
-- Returned the result
+
+### AST Pretty Printer
+
+For visual inspection of AST structure, use the standalone pretty printer:
+
+```bash
+# Generate AST
+./cc1 -E test.c > test.ast
+
+# Pretty print with human-readable formatting
+./astpp.lisp test.ast
+```
+
+**Output:**
+```
+FUNCTION main() -> _short_
+{
+  BLOCK {
+    DECL a : _short_
+    DECL b : _short_
+    DECL c : _short_
+    EXPR:
+      (ASSIGN:short $a (NARROW:short 10))
+    EXPR:
+      (ASSIGN:short $b (NARROW:short 20))
+    EXPR:
+      (ASSIGN:short $c (ADD (DEREF:short $a) (DEREF:short $b)))
+    RETURN (DEREF:short $c)
+  }
+}
+```
+
+The pretty printer translates single-char operators to readable names (M→DEREF, =→ASSIGN, +→ADD, etc.) and shows type width annotations, making it easy to verify the AST structure at a glance.
+
+**Use cases:**
+- Debug parser output by visual inspection
+- Understand AST structure for complex constructs
+- Compare AST between different versions
+- Learn the AST format
+
+See [ASTPP.md](ASTPP.md) for complete documentation.
 
 **Benefits of interpreter-based debugging:**
 - Test parser without implementing code generator
