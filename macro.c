@@ -13,8 +13,6 @@
  */
 #include "cc1.h"
 
-#define MAXPARMS    100
-
 char *macbuffer;
 struct macro *macros;
 

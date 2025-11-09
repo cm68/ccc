@@ -10,7 +10,7 @@
 #include <sys/wait.h>
 #include <libgen.h>
 
-#define MAX_ARGS 2560
+#define MAX_ARGS 2560  // command-line arguments (original: 256, tested: 2560)
 
 char *progname;
 char *scriptdir;

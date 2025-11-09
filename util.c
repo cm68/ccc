@@ -6,7 +6,6 @@
 #include "cc1.h"
 #include <stdarg.h>
 
-#define PSIZE   800          // max string containing bitdefs
 #define NPATS   2           // and 2 per printf
 char patspace[PSIZE * NPATS];
 unsigned char patoff;

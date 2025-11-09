@@ -54,7 +54,6 @@ struct type *uchartype;
  */
 int lexlevel;
 int lastname;
-int maxnames = 10000;  // Increased 10x for self-hosting (error.h has 62 enum values alone)
 struct name **names;
 
 #define ENUM_TYPE   "_uchar_"
@@ -176,10 +175,10 @@ new_name(char *name, kind k, struct type *t, boolean is_tag)
     int i;
 
     if (!names) {
-        names = malloc(sizeof(n) * maxnames);
+        names = malloc(sizeof(n) * MAXNAMES);
         lastname = -1;
     }
-    if (lastname == maxnames) {
+    if (lastname == MAXNAMES) {
         lose(ER_D_OF);
         return (0);
     }
@@ -226,10 +225,10 @@ add_name(struct name *n)
     int i;
 
     if (!names) {
-        names = malloc(sizeof(struct name *) * maxnames);
+        names = malloc(sizeof(struct name *) * MAXNAMES);
         lastname = -1;
     }
-    if (lastname == maxnames) {
+    if (lastname == MAXNAMES) {
         lose(ER_D_OF);
         return;
     }

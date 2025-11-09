@@ -27,6 +27,17 @@ typedef unsigned long dword;
 typedef unsigned char boolean;
 
 /*
+ * Compiler limits - adjust these for larger files
+ */
+#define MAXNAMES 10000         // symbol table entries (original: 1000, tested: 10000)
+#define MAXPARMS 100           // macro parameters (original: 10, tested: 100)
+#define TBSIZE 10240           // text buffer size for includes/macros (original: 1024, tested: 10240)
+#define STRBUFSIZE 1280        // string/symbol/identifier buffer (original: 128, tested: 1280)
+#define PSIZE 800              // max string containing bitdefs (original: 80, tested: 800)
+#define MAX_DECL_INITS 320     // local variable initializers (original: 32, tested: 320)
+#define MAXBITS 320            // maximum size of bitfield (original: 32, tested: 320)
+
+/*
  * we just want the error symbols
  * error.h is generated, and contains actual error strings if DEF_ERRMSG.
  */
@@ -200,8 +211,6 @@ struct name {
     };
     kind kind;
 };
-
-#define MAXBITS 320          // maximum size of bitfield
 
 /* Storage class specifiers (used in struct name sclass field) */
 #define	SC_EXTERN	0x01

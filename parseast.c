@@ -12,7 +12,7 @@
 /* Forward declaration from util.c */
 int fdprintf(int fd, const char *fmt, ...);
 
-#define BUFSIZE 40960
+#define BUFSIZE 40960  // AST parser read buffer (original: 4096, tested: 40960)
 
 /* Parser state */
 static int in_fd;
