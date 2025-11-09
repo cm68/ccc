@@ -292,6 +292,10 @@
 (defun pp-sexp (sexp depth)
   "Pretty print S-expression with indentation (valid AST output)"
   (cond
+    ;; Empty list - must check before atom since NIL is both
+    ((null sexp)
+     (format t "()"))
+
     ;; String - print with quotes
     ((stringp sexp)
      (format t "~S" sexp))
@@ -299,10 +303,6 @@
     ;; Other atoms (number, symbol)
     ((atom sexp)
      (format t "~A" sexp))
-
-    ;; Empty list
-    ((null sexp)
-     (format t "()"))
 
     ;; List
     (t
@@ -317,6 +317,10 @@
        (format t "(~A" first-elem)
        (dolist (elem (rest sexp))
          (cond
+           ;; If element is empty list, print () - must check before atom
+           ((null elem)
+            (format t " ()"))
+
            ;; If element is a string, print with quotes
            ((stringp elem)
             (format t " ~S" elem))
