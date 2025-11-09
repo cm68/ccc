@@ -548,7 +548,9 @@ static struct expr *parse_initializer_list(void)
             /* Nested initializer for struct/array member */
             item = parse_initializer_list();
         } else {
-            item = parse_expr(0, NULL);
+            /* Parse expression but stop before comma operator (priority 15)
+             * so that comma is treated as element separator, not an operator */
+            item = parse_expr(OP_PRI_COMMA, NULL);
         }
 
         if (item == NULL) {
