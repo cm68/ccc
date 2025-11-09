@@ -778,6 +778,10 @@ emit_global_vars(void)
 		if (n->is_tag || n->kind == tdef || n->kind == fdef)
 			continue;
 
+		/* Skip function declarations (they have function type but kind == var) */
+		if (n->type && (n->type->flags & TF_FUNC))
+			continue;
+
 		/* Skip synthetic string literal names - they're in literals section */
 		if (n->name && strncmp(n->name, "str", 3) == 0 && n->name[3] >= '0' && n->name[3] <= '9')
 			continue;
