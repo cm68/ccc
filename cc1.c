@@ -101,6 +101,7 @@ usage(char *complaint, char *p)
     printf("%s", complaint);
     printf("usage: %s [<options>] [program [<program options>]]\n", p);
     printf("\t-I<include dir>\n");
+    printf("\t-i<system include dir> (default /usr/include)\n");
     printf("\t-D<variable>[=<definition>]\n");
     printf("\t-v <verbosity>\n");
     printf("\t-o <output file> (AST output, default stdout)\n");
@@ -141,6 +142,10 @@ main(int argc, char **argv)
                 break;
             case 'I':
                 add_include(s);
+                s="";
+                break;
+            case 'i':
+                sys_include_path = s;
                 s="";
                 break;
             case 'D':

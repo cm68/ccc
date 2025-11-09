@@ -23,6 +23,7 @@ usage(void)
     printf("  -k             Keep intermediate AST file\n");
     printf("  -v <level>     Verbosity level (passed to cc1)\n");
     printf("  -I<dir>        Include directory (passed to cc1)\n");
+    printf("  -i<dir>        System include directory (passed to cc1, default /usr/include)\n");
     printf("  -D<var>[=val]  Define macro (passed to cc1)\n");
     printf("  -E             Preprocess only (passed to cc1)\n");
     printf("  -x             Execute AST with interpreter (skip code generation)\n");
@@ -209,8 +210,8 @@ main(int argc, char **argv)
             cc1_args[cc1_argc++] = argv[0];
             argc--;
             argv++;
-        } else if (argv[0][0] == '-' && (argv[0][1] == 'I' || argv[0][1] == 'D')) {
-            /* Pass -I or -D options to cc1 */
+        } else if (argv[0][0] == '-' && (argv[0][1] == 'I' || argv[0][1] == 'i' || argv[0][1] == 'D')) {
+            /* Pass -I, -i, or -D options to cc1 */
             if (cc1_argc >= MAX_ARGS) {
                 fprintf(stderr, "Error: too many arguments\n");
                 exit(1);

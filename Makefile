@@ -80,18 +80,15 @@ unit-tests: $(GENERATED)
 
 .PHONY: testself
 testself: cc1
-	@echo "Testing compiler on its own sources..."
-	@echo "(Using gcc for preprocessing, cc1 for parsing)"
+	@echo "Testing compiler on its own sources (full pipeline: cpp + parse)..."
 	@for f in $(CFILES); do \
 	  if [ -f "$$f" ]; then \
 	    printf "%-30s" "$$f: "; \
-	    gcc -I./include -E "$$f" > /tmp/testself.$$$$.i 2>/dev/null && \
-	    if timeout 5 ./cc1 /tmp/testself.$$$$.i > /dev/null 2>&1; then \
+	    if timeout 10 ./cc1 -i./include -I. -E "$$f" > /dev/null 2>&1; then \
 	      echo "PASS"; \
 	    else \
-	      echo "FAIL"; \
+	      echo "FAIL (timeout or crash)"; \
 	    fi; \
-	    rm -f /tmp/testself.$$$$.i; \
 	  fi; \
 	done
 

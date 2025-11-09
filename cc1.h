@@ -289,6 +289,7 @@ extern unsigned char nextchar;
 extern int lineno;
 extern char *filename;
 extern int column;
+extern char *sys_include_path;
 
 /* cc1.c */
 extern void lose(error_t errcode);

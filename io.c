@@ -83,6 +83,9 @@ struct include {
     struct include *next;
 } *includes;
 
+/* System include path for #include <foo.h> */
+char *sys_include_path = "/usr/include";
+
 /*
  * add a path to the include search list
  */
@@ -121,11 +124,24 @@ insertfile(char *name, int sys)
 
 #ifdef DEBUG
     if (VERBOSE(V_IO)) {
-        printf("insertfile: %s\n", name);
+        printf("insertfile: %s sys=%d\n", name, sys);
     }
 #endif
 
 	t = malloc(sizeof(*t));
+    /*
+     * For system includes (<foo.h>), try system include path first
+     */
+    if (sys && sys_include_path) {
+        strcpy(namebuf, sys_include_path);
+        strcat(namebuf, "/");
+        strcat(namebuf, name);
+        t->fd = open(namebuf, 0);
+        if (t->fd > 0) {
+            goto found;
+        }
+    }
+
     /*
      * try the filename in all the include path entries. first hit wins
      */
@@ -145,6 +161,7 @@ insertfile(char *name, int sys)
         free(t);
         return;
     }
+found:
 	t->name = strdup(namebuf);
 	t->lineno = t->offset = t->valid = 0;
 	t->storage = malloc(TBSIZE);
