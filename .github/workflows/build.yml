@@ -3,6 +3,8 @@ name: Build
 on:
   push:
     branches: [ master ]
+    tags:
+      - '*'
   pull_request:
     branches: [ master ]
 
@@ -48,3 +50,18 @@ jobs:
         head -20 error.h
         echo "=== Generated debug.h ==="
         cat debug.h
+
+    - name: Create Release and Upload Documentation
+      if: startsWith(github.ref, 'refs/tags/')
+      uses: softprops/action-gh-release@v1
+      with:
+        files: doc.pdf
+        body: |
+          Compiler documentation for ${{ github.ref_name }}
+
+          This release includes:
+          - Complete source code documentation (doc.pdf)
+          - All source files and tests
+        fail_on_unmatched_files: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
