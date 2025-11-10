@@ -99,7 +99,7 @@ main(int argc, char **argv)
 		case DECR: s = "--"; break;
 		
 		/* Member access */
-		case DEREF: s = "->"; break;
+		case ARROW: s = "->"; break;
 		
 		/* Keywords */
 		case INT: s = "int"; break;

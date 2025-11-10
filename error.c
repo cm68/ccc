@@ -17,6 +17,19 @@ gripe(error_t errcode)
 {
     int i;
     struct textbuf *t;
+    static int last_lineno = -1;
+    static error_t last_errcode = 0;
+    static int in_fatal = 0;
+
+    /* Detect error loops: same error on same line twice in a row */
+    if (!in_fatal && lineno == last_lineno && errcode == last_errcode) {
+        printf("ERROR LOOP DETECTED: same error repeated on line %d\n", lineno);
+        in_fatal = 1;  /* Prevent recursive loop detection */
+        fatal(errcode);
+    }
+
+    last_lineno = lineno;
+    last_errcode = errcode;
 
     i = errcode;
     if (i > ER_WTF) i = ER_WTF;
