@@ -39,4 +39,6 @@ long ftell(FILE *stream);
 int getchar(void);
 char *fgets(char *s, int size, FILE *stream);
 
+void perror(char *s);
+
 #endif /* _STDIO_H */

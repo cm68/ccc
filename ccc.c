@@ -105,7 +105,7 @@ get_basename_no_ext(char *filename)
 int
 exec_command(char *cmd, char **args)
 {
-    pid_t pid;
+    int pid;
     int status;
 
     pid = fork();
