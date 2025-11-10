@@ -531,12 +531,9 @@ struct stmt *
 asmblock(void)
 {
     struct stmt *st;
-    char *buf;
-    char tmpbuf[1024];
-    int bufsize = 256;
-    int len = 0;
     int depth = 0;
-    int i;
+    char *captured_text = NULL;
+    int captured_len = 0;
 
     /* Expect opening brace */
     if (cur.type != BEGIN) {
@@ -544,17 +541,13 @@ asmblock(void)
         return NULL;
     }
 
-    /* Allocate buffer for assembly text */
-    buf = malloc(bufsize);
-    if (!buf) {
-        return NULL;  /* Out of memory - silent failure */
-    }
-    buf[0] = 0;
+    /* Initialize asm capture buffer */
+    asm_capture_buf = malloc(256);
+    asm_capture_size = 256;
+    asm_capture_len = 0;
+    asm_capture_buf[0] = 0;
 
-    /* Enable ONELINE mode - lexer will convert newlines to semicolons */
-    tflags |= ONELINE;
-
-    /* Consume { and start reading tokens */
+    /* Consume { and start capturing tokens */
     gettoken();
     depth = 1;
 
@@ -565,57 +558,25 @@ asmblock(void)
         } else if (cur.type == END) {
             depth--;
             if (depth == 0) {
-                /* Found matching closing brace - clear ONELINE before breaking */
-                tflags &= ~ONELINE;
+                /* Found matching closing brace - save captured text and stop */
+                captured_text = asm_capture_buf;
+                captured_len = asm_capture_len;
+                asm_capture_buf = NULL;
+                asm_capture_size = 0;
+                asm_capture_len = 0;
                 break;
             }
         }
 
-        /* Convert current token to text */
-        tmpbuf[0] = 0;
-        if (cur.type == SYM && cur.v.name) {
-            strcpy(tmpbuf, cur.v.name);
-            strcat(tmpbuf, " ");
-        } else if (cur.type == STRING) {
-            i = quoted_string(tmpbuf, cur.v.str);
-            tmpbuf[i++] = ' ';
-            tmpbuf[i] = 0;
-        } else if (cur.type == NUMBER) {
-            i = longout(tmpbuf, cur.v.numeric);
-            tmpbuf[i++] = ' ';
-            tmpbuf[i] = 0;
-        } else {
-            /* Use single-char representation for operators/keywords */
-            tmpbuf[0] = cur.type;
-            tmpbuf[1] = ' ';
-            tmpbuf[2] = 0;
-        }
-
-        /* Append to buffer */
-        i = strlen(tmpbuf);
-        if (len + i + 1 >= bufsize) {
-            bufsize = (len + i + 1) * 2;
-            buf = realloc(buf, bufsize);
-            if (!buf) {
-                /* Restore lexer flags before returning */
-                tflags &= ~ONELINE;
-                return NULL;  /* Out of memory - silent failure */
-            }
-        }
-        strcat(buf, tmpbuf);
-        len += i;
-
-        /* Next token */
+        /* Get next token (will be captured by lexer if asm_capture_buf is set) */
         gettoken();
     }
 
-    /* Trim trailing space */
-    if (len > 0 && buf[len-1] == ' ') {
-        buf[len-1] = 0;
+    /* Trim trailing space from captured text */
+    if (captured_len > 0 && captured_text[captured_len-1] == ' ') {
+        captured_text[captured_len-1] = 0;
+        captured_len--;
     }
-
-    /* Restore lexer flags BEFORE consuming closing brace */
-    tflags &= ~ONELINE;
 
     /* Consume the closing } */
     if (cur.type == END) {
@@ -624,7 +585,7 @@ asmblock(void)
 
     /* Create statement with assembly text */
     st = makestmt(ASM, NULL);
-    st->label = buf;  /* Store the assembly text in label field */
+    st->label = captured_text;  /* Transfer ownership to statement */
 
     return st;
 }

@@ -370,6 +370,11 @@ extern int verbose;
 extern unsigned char tflags;
 #define ONELINE     0x01
 
+/* ASM block capture */
+extern char *asm_capture_buf;
+extern int asm_capture_size;
+extern int asm_capture_len;
+
 #ifdef __SDCC
 /*
  * this is a minimal unix library header file for use on compilers

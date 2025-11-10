@@ -43,6 +43,34 @@ unsigned char tflags;
 #define ONELINE     0x01
 #define CPPFUNCS    0x02
 
+/* ASM block capture */
+char *asm_capture_buf = NULL;
+int asm_capture_size = 0;
+int asm_capture_len = 0;
+
+void
+asm_out(char *s, int len)
+{
+    if (!s || !asm_capture_buf)
+        return;
+
+    /* Skip braces - they're for parsing only, not part of asm text */
+    if (len == 2 && s[0] == '{' && s[1] == ' ')
+        return;
+    if (len == 2 && s[0] == '}' && s[1] == ' ')
+        return;
+
+    /* Grow buffer if needed */
+    while (asm_capture_len + len >= asm_capture_size) {
+        asm_capture_size *= 2;
+        asm_capture_buf = realloc(asm_capture_buf, asm_capture_size);
+    }
+
+    memcpy(&asm_capture_buf[asm_capture_len], s, len);
+    asm_capture_len += len;
+    asm_capture_buf[asm_capture_len] = 0;  /* Null terminate */
+}
+
 void
 lexinit()
 {
@@ -617,7 +645,6 @@ gettoken()
         }
         if ((tflags & ONELINE) && (curchar == '\n')) {
             next.type = ';';
-            advance();  /* Consume the newline */
             break;
         }
         if (cond && !(cond->flags & C_TRUE) && curchar != '#') {
@@ -706,23 +733,41 @@ gettoken()
     }
 
     /*
-     * detokenize for cpp output
+     * detokenize for cpp output or asm capture
      */
-    if (write_cpp_file) {
+    if (write_cpp_file || asm_capture_buf) {
         switch (cur.type) {
         case SYM:
-            cpp_out(cur.v.name, strlen(cur.v.name));
-            cpp_out(" ", 1);
+            if (write_cpp_file) {
+                cpp_out(cur.v.name, strlen(cur.v.name));
+                cpp_out(" ", 1);
+            }
+            if (asm_capture_buf) {
+                asm_out(cur.v.name, strlen(cur.v.name));
+                asm_out(" ", 1);
+            }
             break;
         case STRING:
             i = quoted_string(nbuf, cur.v.str);
-            cpp_out(nbuf, i);
-            cpp_out(" ", 1);
+            if (write_cpp_file) {
+                cpp_out(nbuf, i);
+                cpp_out(" ", 1);
+            }
+            if (asm_capture_buf) {
+                asm_out(nbuf, i);
+                asm_out(" ", 1);
+            }
             break;
         case NUMBER:
             i = longout(nbuf, cur.v.numeric);
-            cpp_out(nbuf, i);
-            cpp_out(" ", 1);
+            if (write_cpp_file) {
+                cpp_out(nbuf, i);
+                cpp_out(" ", 1);
+            }
+            if (asm_capture_buf) {
+                asm_out(nbuf, i);
+                asm_out(" ", 1);
+            }
             break;
         case NONE:
             break;
@@ -732,12 +777,24 @@ gettoken()
             } else {
                 s = tokenname[cur.type];
             }
-            cpp_out(s, strlen(s));
-            cpp_out(" ", 1);
+            if (write_cpp_file) {
+                cpp_out(s, strlen(s));
+                cpp_out(" ", 1);
+            }
+            if (asm_capture_buf) {
+                asm_out(s, strlen(s));
+                asm_out(" ", 1);
+            }
             break;
         }
         if (lineend) {
-            cpp_out("\n", 1);
+            if (write_cpp_file) {
+                cpp_out("\n", 1);
+            }
+            if (asm_capture_buf) {
+                asm_out(";", 1);  /* Convert newline to semicolon for asm */
+                asm_out(" ", 1);
+            }
         }
     }
 #ifdef DEBUG
