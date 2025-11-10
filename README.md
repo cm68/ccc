@@ -34,14 +34,15 @@ Two complementary tools for validating parser output without needing code genera
 - Comprehensive test coverage: 11 tests pass with interpreter
 - Raw mode for pretty printer outputs valid AST that can be read back
 
-**Self-Hosting Progress - 14/18 files passing (78%)**
+**Self-Hosting - 100% Complete! (18/18 files)**
 
-The compiler can now parse 14 of its own 18 source files:
+The compiler is now fully self-hosting for pass 1 (parsing and AST generation):
+- **All 18 source files** parse without errors and generate correct AST
 - **Stub system headers** in `include/` avoid GNU libc advanced features
-- **5-second timeout handler** catches infinite loops and dumps symbol tables
-- **Passing**: cc1.c, error.c, lex.c, io.c, macro.c, kw.c, util.c, unixlib.c, expr.c, type.c, cc2.c, parseast.c, tokenlist.c, debugtags.c
-- **Failing**: parse.c, declare.c, outast.c, ccc.c (complex typedefs or syntax patterns)
+- **Zero parse errors** - every source file successfully preprocesses, lexes, parses, and emits AST
+- **Passing**: cc1.c, error.c, lex.c, io.c, macro.c, kw.c, util.c, unixlib.c, expr.c, parse.c, type.c, declare.c, outast.c, cc2.c, parseast.c, ccc.c, tokenlist.c, debugtags.c
 - Run `make testself` to verify self-hosting capability
+- Tagged as **self-parse** milestone
 
 **Pass 2 (cc2) - Work In Progress**
 
