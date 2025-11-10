@@ -369,13 +369,25 @@ extern int verbose;
 /* lexer flags */
 extern unsigned char tflags;
 #define ONELINE     0x01
+#define CPPFUNCS    0x02
+#define ASM_BLOCK   0x04  /* Special mode for asm blocks */
+
+/* Track newlines for asm semicolon insertion */
+extern unsigned char lineend;
 
 /* ASM block capture */
 extern char *asm_capture_buf;
 extern int asm_capture_size;
 extern int asm_capture_len;
 
-#ifdef __SDCC
+#ifdef ASMKWLOOK
+/* Test inline assembly with asm { } syntax */
+#define ASMFUNC
+#define ASMSTART asm {
+#define ASMEND }
+#endif
+
+#if defined(__SDCC) || defined(CCC)
 /*
  * this is a minimal unix library header file for use on compilers
  * that don't have unixlike libraries and includes
@@ -390,9 +402,15 @@ int read(int fd, char *buf, int len);
 int write(int fd, char *buf, int len);
 long strtol(char *str, char **endptr, int base);
 void bcopy(void *src, void *dst, int len);
+#ifdef CCC
 #define ASMFUNC __naked
 #define ASMSTART __asm
-#define ASMEND __asmend;
+#define ASMEND __asmend;  
+#else
+#define ASMFUNC 
+#define ASMSTART asm {
+#define ASMEND }
+#endif
 #endif
 
 /*

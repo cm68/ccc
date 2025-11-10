@@ -547,6 +547,13 @@ asmblock(void)
     asm_capture_len = 0;
     asm_capture_buf[0] = 0;
 
+    /* Set ASM_BLOCK flag for special asm processing */
+    tflags |= ASM_BLOCK;
+
+    /* Clear lineend flag from any newline after the opening brace */
+    extern unsigned char lineend;
+    lineend = 0;
+
     /* Consume { and start capturing tokens */
     gettoken();
     depth = 1;
@@ -564,6 +571,7 @@ asmblock(void)
                 asm_capture_buf = NULL;
                 asm_capture_size = 0;
                 asm_capture_len = 0;
+                tflags &= ~ASM_BLOCK;  /* Clear ASM_BLOCK flag */
                 break;
             }
         }
@@ -572,8 +580,13 @@ asmblock(void)
         gettoken();
     }
 
-    /* Trim trailing space from captured text */
-    if (captured_len > 0 && captured_text[captured_len-1] == ' ') {
+    /* Clear ASM_BLOCK flag in case we exited loop due to EOF */
+    tflags &= ~ASM_BLOCK;
+
+    /* Trim trailing space and semicolon from captured text */
+    while (captured_len > 0 &&
+           (captured_text[captured_len-1] == ' ' ||
+            captured_text[captured_len-1] == ';')) {
         captured_text[captured_len-1] = 0;
         captured_len--;
     }

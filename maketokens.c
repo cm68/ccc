@@ -138,7 +138,10 @@ main(int argc, char **argv)
 		
 		/* Other keywords */
 		case ASM: s = "asm"; break;
-		
+
+		/* Preprocessor */
+		case INCLUDE: s = "#"; break;
+
 		default:
 			break;
 		}

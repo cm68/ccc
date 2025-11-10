@@ -84,7 +84,7 @@ testself: cc1
 	@for f in $(CFILES); do \
 	  if [ -f "$$f" ]; then \
 	    printf "%-30s" "$$f: "; \
-	    if timeout 10 ./cc1 -i./include -I. -E "$$f" > /dev/null 2>&1; then \
+	    if timeout 10 ./cc1 -DCCC -i./include -I. -E "$$f" > /dev/null 2>&1; then \
 	      echo "PASS"; \
 	    else \
 	      echo "FAIL (timeout or crash)"; \

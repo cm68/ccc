@@ -40,8 +40,6 @@ struct cond {
 struct cond *cond;
 
 unsigned char tflags;
-#define ONELINE     0x01
-#define CPPFUNCS    0x02
 
 /* ASM block capture */
 char *asm_capture_buf = NULL;
@@ -557,12 +555,14 @@ char nbuf[1024];  // Large enough for escaped string: 1 + 255*4 + 1 = 1022 bytes
  * as is string, character escaping, and number bases
  *
  */
+/* Track when newline encountered for asm capture semicolon insertion */
+unsigned char lineend = 0;
+
 void
 gettoken()
 {
     token_t t;
     unsigned char incomment = 0;
-    unsigned char lineend;
     unsigned char c;
     int i;
     char *s;
@@ -577,8 +577,6 @@ gettoken()
 
     next.v.str = 0;
     next.type = NONE;
-
-    lineend = 0;
 
     while (1) {
         if (curchar == 0) {
@@ -645,6 +643,7 @@ gettoken()
         }
         if ((tflags & ONELINE) && (curchar == '\n')) {
             next.type = ';';
+            advance();  /* Consume the newline */
             break;
         }
         if (cond && !(cond->flags & C_TRUE) && curchar != '#') {
@@ -791,10 +790,14 @@ gettoken()
             if (write_cpp_file) {
                 cpp_out("\n", 1);
             }
-            if (asm_capture_buf) {
+            /* For asm blocks, convert newlines to semicolons */
+            /* (macexpand() handles its own newlines directly) */
+            /* Don't output semicolon for braces - they mark boundaries of asm block */
+            if (asm_capture_buf && cur.type != BEGIN && cur.type != END) {
                 asm_out(";", 1);  /* Convert newline to semicolon for asm */
                 asm_out(" ", 1);
             }
+            lineend = 0;  /* Clear after using it */
         }
     }
 #ifdef DEBUG

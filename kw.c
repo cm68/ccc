@@ -103,8 +103,9 @@ ASMFUNC
 
     ASMSTART
         ld hl,(t) ; ld de,(s) ; jr done_p;
+    lp:
     top:
-        ld a,(hl); 
+        ld a,(hl);
         cp a,#ff; jr nz,not_term;
         inc hl; ld a,(de); or a,a; ld a,0; jr nz,fin;
     ret_tok:
@@ -131,6 +132,7 @@ ASMFUNC
     fin:
         ld l,a; ld h,0;
     ASMEND
+    return 0;  // Never reached - assembly does its own return
 }
 #else
 char
