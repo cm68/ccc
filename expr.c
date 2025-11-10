@@ -819,8 +819,12 @@ parse_expr(unsigned char pri, struct stmt *st)
 
         // try to determine result type
         if (e->left && e->right) {
-            // Use the larger type as result type
-            if (e->left->type && e->right->type) {
+            // For ASSIGN and compound assignments, use the saved assign_type
+            if (is_assignment && assign_type) {
+                e->type = assign_type;
+            }
+            // For other operators, use the larger type as result type
+            else if (e->left->type && e->right->type) {
                 if (e->left->type->size >= e->right->type->size) {
                     e->type = e->left->type;
                 } else {

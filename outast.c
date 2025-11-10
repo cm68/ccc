@@ -593,14 +593,13 @@ emit_function(struct name *func)
 	if (func->type) {
 		emit_params(func->type);
 		/* Output return type */
-		fdprintf(ast_fd, " ");
-		if (func->type->sub && func->type->sub->name) {
-			fdprintf(ast_fd, "%s", func->type->sub->name);
+		if (func->type->sub) {
+			emit_type_info(func->type->sub);
 		} else {
-			fdprintf(ast_fd, "void");
+			fdprintf(ast_fd, " _void_");
 		}
 	} else {
-		fdprintf(ast_fd, "() void");
+		fdprintf(ast_fd, "() _void_");
 	}
 
 	/* Output declarations for parameters and local variables */
