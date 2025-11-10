@@ -105,8 +105,9 @@ lookup_name(char *name, boolean is_tag)
 
     for (i = lastname; i >= 0; i--) {
         n = names[i];
-        if ((n->is_tag == is_tag) && 
-            (name[0] == n->name[0]) && 
+        if (!n) continue;  /* Skip NULL entries from popped scopes */
+        if ((n->is_tag == is_tag) &&
+            (name[0] == n->name[0]) &&
             (strcmp(name, n->name) == 0)) {
 	        return (n);
 		}

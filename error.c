@@ -51,6 +51,38 @@ gripe(error_t errcode)
         }
     }
 
+    /* Print last N tokens for debugging */
+    printf("  Last %d tokens: ", TOKEN_HISTORY_SIZE);
+    for (i = 0; i < TOKEN_HISTORY_SIZE; i++) {
+        int idx = (token_history_index + i) % TOKEN_HISTORY_SIZE;
+        if (token_history[idx].type) {
+            if (tokenname[token_history[idx].type]) {
+                printf("%s ", tokenname[token_history[idx].type]);
+            } else {
+                printf("'%c' ", token_history[idx].type);
+            }
+        }
+    }
+    printf("\n");
+
+    /* Print next token */
+    printf("  Next token: ");
+    if (next.type) {
+        if (tokenname[next.type]) {
+            printf("%s", tokenname[next.type]);
+        } else {
+            printf("'%c'", next.type);
+        }
+        if (next.type == SYM && next.v.name) {
+            printf(" (%s)", next.v.name);
+        } else if (next.type == NUMBER) {
+            printf(" (%ld)", next.v.numeric);
+        }
+    } else {
+        printf("(none)");
+    }
+    printf("\n");
+
     error = errcode;
 }
 

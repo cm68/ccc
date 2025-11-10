@@ -13,6 +13,11 @@ int cpp_file;
 
 struct token cur, next;
 
+/* Token history for debugging */
+#define TOKEN_HISTORY_SIZE 10
+struct token token_history[TOKEN_HISTORY_SIZE];
+int token_history_index = 0;
+
 /*
  * this is the place we build filenames, symbols and literal strings
  * no overflow checking or anything, we ain't got time for that shit
@@ -537,6 +542,10 @@ gettoken()
     freetoken();
 
     memcpy(&cur, &next, sizeof(cur));
+
+    /* Save current token to history for debugging */
+    memcpy(&token_history[token_history_index], &cur, sizeof(cur));
+    token_history_index = (token_history_index + 1) % TOKEN_HISTORY_SIZE;
 
     next.v.str = 0;
     next.type = NONE;

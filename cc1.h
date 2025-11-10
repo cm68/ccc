@@ -275,6 +275,11 @@ struct token {				// lexeme
 
 extern struct token cur, next;
 
+/* Token history for debugging */
+#define TOKEN_HISTORY_SIZE 10
+extern struct token token_history[TOKEN_HISTORY_SIZE];
+extern int token_history_index;
+
 extern void lexinit();
 extern int write_cpp_file;
 extern int cpp_file;
