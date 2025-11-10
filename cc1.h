@@ -273,8 +273,7 @@ struct token {				// lexeme
 	} v;
 };
 
-extern struct token cur;
-extern struct token next;
+extern struct token cur, next;
 
 /* Token history for debugging */
 #define TOKEN_HISTORY_SIZE 10

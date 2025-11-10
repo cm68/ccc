@@ -744,10 +744,11 @@ declaration()
 	struct type *basetype;
 	struct name *v;
 
-	while (1) {
-		sclass = parse_sclass();
-		basetype = 0;
+	/* Parse storage class and base type once at the beginning */
+	sclass = parse_sclass();
+	basetype = 0;  /* Initialize once, then shared across comma-separated declarators */
 
+	while (1) {
         v = declare(&basetype);
 
         /* error recovery: if declare failed, skip to next ; or , */
