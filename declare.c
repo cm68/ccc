@@ -22,6 +22,10 @@ parse_pointer_prefix(struct type *basetype)
     struct type *t = basetype;
     while (cur.type == STAR) {
         gettoken();
+        // Skip const/volatile qualifiers after * (e.g., char *const)
+        while (cur.type == CONST || cur.type == VOLATILE) {
+            gettoken();
+        }
         t = get_type(TF_POINTER, t, 0);
     }
     return t;
