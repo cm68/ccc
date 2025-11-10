@@ -562,7 +562,8 @@ parse_expr(unsigned char pri, struct stmt *st)
             addr->right = offset_expr;
             addr->left->up = addr;
             addr->right->up = addr;
-            addr->type = base->type;
+            // addr is pointer to member, not pointer to base struct
+            addr->type = get_type(TF_POINTER, member->type, 0);
 
             e = makeexpr_init(DEREF, addr, member->type, 0, 0);
             e->left->up = e;
