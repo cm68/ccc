@@ -495,6 +495,43 @@ emit_stmt(struct stmt *st)
 		fdprintf(ast_fd, "(;)");  /* Empty statement */
 		break;
 
+	case ASM:
+		fdprintf(ast_fd, "(A ");  /* Assembly block */
+		if (st->label) {
+			/* Emit the assembly text as a quoted, escaped string */
+			char escaped[8192];  /* Large buffer for escaped text */
+			int i, j = 0;
+			escaped[j++] = '\"';
+			for (i = 0; st->label[i] && j < sizeof(escaped) - 4; i++) {
+				unsigned char c = st->label[i];
+				if (c == '\"' || c == '\\') {
+					escaped[j++] = '\\';
+					escaped[j++] = c;
+				} else if (c == '\n') {
+					escaped[j++] = '\\';
+					escaped[j++] = 'n';
+				} else if (c == '\t') {
+					escaped[j++] = '\\';
+					escaped[j++] = 't';
+				} else if (c < 0x20 || c >= 0x7f) {
+					/* Octal escape for non-printable characters */
+					escaped[j++] = '\\';
+					escaped[j++] = '0' + ((c >> 6) & 7);
+					escaped[j++] = '0' + ((c >> 3) & 7);
+					escaped[j++] = '0' + (c & 7);
+				} else {
+					escaped[j++] = c;
+				}
+			}
+			escaped[j++] = '\"';
+			escaped[j] = 0;
+			fdprintf(ast_fd, "%s", escaped);
+		} else {
+			fdprintf(ast_fd, "\"\"");
+		}
+		fdprintf(ast_fd, ")");
+		break;
+
 	default:
 		fdprintf(ast_fd, "(?%d)", st->op);
 		break;

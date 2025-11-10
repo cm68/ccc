@@ -482,7 +482,8 @@ statement(struct stmt *parent)
             break;
 
         case ASM:
-            st->chain = asmblock();
+            gettoken();
+            st = asmblock();
             break;
 
         default:
@@ -529,7 +530,94 @@ makestmt(unsigned char op, struct expr *left)
 struct stmt *
 asmblock(void)
 {
-    return (struct stmt *)0;
+    struct stmt *st;
+    char *buf;
+    char tmpbuf[1024];
+    int bufsize = 256;
+    int len = 0;
+    int depth = 0;
+    int i;
+
+    /* Expect opening brace */
+    if (cur.type != BEGIN) {
+        gripe(ER_S_SB);  /* Expected { (brace) */
+        return NULL;
+    }
+
+    /* Allocate buffer for assembly text */
+    buf = malloc(bufsize);
+    if (!buf) {
+        return NULL;  /* Out of memory - silent failure */
+    }
+    buf[0] = 0;
+
+    /* Consume { and start reading tokens */
+    gettoken();
+    depth = 1;
+
+    while (depth > 0 && cur.type != E_O_F) {
+        /* Check for nested braces */
+        if (cur.type == BEGIN) {
+            depth++;
+        } else if (cur.type == END) {
+            depth--;
+            if (depth == 0) {
+                /* Found matching closing brace */
+                break;
+            }
+        }
+
+        /* Convert current token to text */
+        tmpbuf[0] = 0;
+        if (cur.type == SYM && cur.v.name) {
+            strcpy(tmpbuf, cur.v.name);
+            strcat(tmpbuf, " ");
+        } else if (cur.type == STRING) {
+            i = quoted_string(tmpbuf, cur.v.str);
+            tmpbuf[i++] = ' ';
+            tmpbuf[i] = 0;
+        } else if (cur.type == NUMBER) {
+            i = longout(tmpbuf, cur.v.numeric);
+            tmpbuf[i++] = ' ';
+            tmpbuf[i] = 0;
+        } else {
+            /* Use single-char representation for operators/keywords */
+            tmpbuf[0] = cur.type;
+            tmpbuf[1] = ' ';
+            tmpbuf[2] = 0;
+        }
+
+        /* Append to buffer with space separator */
+        i = strlen(tmpbuf);
+        if (len + i + 1 >= bufsize) {
+            bufsize = (len + i + 1) * 2;
+            buf = realloc(buf, bufsize);
+            if (!buf) {
+                return NULL;  /* Out of memory - silent failure */
+            }
+        }
+        strcat(buf, tmpbuf);
+        len += i;
+
+        /* Next token */
+        gettoken();
+    }
+
+    /* Trim trailing space */
+    if (len > 0 && buf[len-1] == ' ') {
+        buf[len-1] = 0;
+    }
+
+    /* Consume the closing } */
+    if (cur.type == END) {
+        gettoken();
+    }
+
+    /* Create statement with assembly text */
+    st = makestmt(ASM, NULL);
+    st->label = buf;  /* Store the assembly text in label field */
+
+    return st;
 }
 
 
