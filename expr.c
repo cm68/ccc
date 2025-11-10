@@ -565,6 +565,9 @@ parse_expr(unsigned char pri, struct stmt *st)
             // addr is pointer to member, not pointer to base struct
             addr->type = get_type(TF_POINTER, member->type, 0);
 
+            // Fold constant offset (e.g., x + 0 becomes x)
+            addr = cfold(addr);
+
             e = makeexpr_init(DEREF, addr, member->type, 0, 0);
             e->left->up = e;
 
@@ -923,6 +926,72 @@ cfold(struct expr *e)
         gripe(ER_E_CF);
         return e;
     }
+
+    // Algebraic simplifications for identity operations
+    // These work even when one operand is not constant
+    if (e->right->op == CONST) {
+        long vr = e->right->v;
+        switch (e->op) {
+        case PLUS:
+            // x + 0 = x
+            if (vr == 0) {
+                return xreplace(e, e->left);
+            }
+            break;
+        case MINUS:
+            // x - 0 = x
+            if (vr == 0) {
+                return xreplace(e, e->left);
+            }
+            break;
+        case STAR:
+            // x * 1 = x
+            if (vr == 1) {
+                return xreplace(e, e->left);
+            }
+            // x * 0 = 0
+            if (vr == 0) {
+                return xreplace(e, e->right);
+            }
+            break;
+        case DIV:
+        case MOD:
+            // x / 1 = x
+            if (vr == 1 && e->op == DIV) {
+                return xreplace(e, e->left);
+            }
+            break;
+        case LSHIFT:
+        case RSHIFT:
+            // x << 0 = x, x >> 0 = x
+            if (vr == 0) {
+                return xreplace(e, e->left);
+            }
+            break;
+        }
+    }
+    if (e->left->op == CONST) {
+        long vl = e->left->v;
+        switch (e->op) {
+        case PLUS:
+            // 0 + x = x
+            if (vl == 0) {
+                return xreplace(e, e->right);
+            }
+            break;
+        case STAR:
+            // 1 * x = x
+            if (vl == 1) {
+                return xreplace(e, e->right);
+            }
+            // 0 * x = 0
+            if (vl == 0) {
+                return xreplace(e, e->left);
+            }
+            break;
+        }
+    }
+
     if ((e->left->op != CONST) || (e->right->op != CONST)) {
         return e;
     }
