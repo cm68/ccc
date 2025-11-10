@@ -208,7 +208,7 @@ struct name {
     union {
         struct expr *init;  // value of constant or initializer (for var)
         struct stmt *body;  // function body (for fdef)
-    };
+    } u;
     kind kind;
 };
 

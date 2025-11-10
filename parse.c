@@ -287,16 +287,16 @@ statement(struct stmt *parent)
                     lhs->var = (struct var *)v;  /* Cast name* to var* (field is overloaded) */
 
                     /* Check if this is an array initialization requiring memory copy */
-                    if (v->type && (v->type->flags & TF_ARRAY) && v->init) {
+                    if (v->type && (v->type->flags & TF_ARRAY) && v->u.init) {
                         /* Create memory copy: COPY dest src length */
                         assign_expr = makeexpr_init(COPY, lhs, v->type, v->type->count, 0);
-                        assign_expr->right = v->init;
-                        v->init = NULL;  /* Clear so it's not output in declaration */
+                        assign_expr->right = v->u.init;
+                        v->u.init = NULL;  /* Clear so it's not output in declaration */
                     } else {
                         /* Regular scalar assignment: lhs = initializer */
                         assign_expr = makeexpr_init(ASSIGN, lhs, v->type, 0, 0);
-                        assign_expr->right = v->init;
-                        v->init = NULL;  /* Clear so it's not output in declaration */
+                        assign_expr->right = v->u.init;
+                        v->u.init = NULL;  /* Clear so it's not output in declaration */
                     }
 
                     /* Create expression statement */
@@ -352,16 +352,16 @@ statement(struct stmt *parent)
                             lhs->var = (struct var *)v;  /* Cast name* to var* (field is overloaded) */
 
                             /* Check if this is an array initialization requiring memory copy */
-                            if (v->type && (v->type->flags & TF_ARRAY) && v->init) {
+                            if (v->type && (v->type->flags & TF_ARRAY) && v->u.init) {
                                 /* Create memory copy: COPY dest src length */
                                 assign_expr = makeexpr_init(COPY, lhs, v->type, v->type->count, 0);
-                                assign_expr->right = v->init;
-                                v->init = NULL;  /* Clear so it's not output in declaration */
+                                assign_expr->right = v->u.init;
+                                v->u.init = NULL;  /* Clear so it's not output in declaration */
                             } else {
                                 /* Regular scalar assignment: lhs = initializer */
                                 assign_expr = makeexpr_init(ASSIGN, lhs, v->type, 0, 0);
-                                assign_expr->right = v->init;
-                                v->init = NULL;  /* Clear so it's not output in declaration */
+                                assign_expr->right = v->u.init;
+                                v->u.init = NULL;  /* Clear so it's not output in declaration */
                             }
 
                             /* Create expression statement */
@@ -627,9 +627,9 @@ parsefunc(struct name *f)
 	}
 
 	// Parse the function body
-	f->body = statement(0);
-	if (f->body) {
-		f->body->flags |= S_FUNC;
+	f->u.body = statement(0);
+	if (f->u.body) {
+		f->u.body->flags |= S_FUNC;
 		// Mark this as a function definition (not just a prototype)
 		f->kind = fdef;
 	}
@@ -804,9 +804,9 @@ declaration()
                 parsefunc(v);
 
                 /* Free the statement tree (dumping now happens in parsefunc) */
-                if (v->body) {
-                    free_stmt(v->body);
-                    v->body = 0;  /* Mark as freed */
+                if (v->u.body) {
+                    free_stmt(v->u.body);
+                    v->u.body = 0;  /* Mark as freed */
                 }
 
                 /* Assign storage class */
@@ -834,13 +834,13 @@ declaration()
             cstring str;
             int len;
 
-            v->init = do_initializer();
+            v->u.init = do_initializer();
 
             /* Fix array size for char[] = "string" syntax */
             if (v->type && (v->type->flags & TF_ARRAY) && v->type->count == -1 &&
-                v->init && v->init->op == STRING) {
+                v->u.init && v->u.init->op == STRING) {
                 /* Get string length from counted string */
-                str = (cstring)v->init->v;
+                str = (cstring)v->u.init->v;
                 if (str) {
                     len = (unsigned char)str[0];  /* First byte is length */
                     /* Create new array type with correct size (length + 1 for null terminator) */
@@ -850,7 +850,7 @@ declaration()
 
             /* Track local variable initializers for conversion to assignments */
             extern int lexlevel;
-            if (lexlevel > 1 && v->init && !(sclass & SC_STATIC)) {
+            if (lexlevel > 1 && v->u.init && !(sclass & SC_STATIC)) {
                 add_decl_init(v);
             }
         }
@@ -972,8 +972,8 @@ cleanup_parser(void)
 		n = names[i];
 		if (n) {
 			/* Free function body if present */
-			if (n->body)
-				free_stmt(n->body);
+			if (n->u.body)
+				free_stmt(n->u.body);
 
 			/* Free name string (except for function parameters which are owned by type) */
 			if (n->kind != funarg && n->name)

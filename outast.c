@@ -583,7 +583,7 @@ emit_declarations(struct name *func)
 void
 emit_function(struct name *func)
 {
-	if (!func || !func->body)
+	if (!func || !func->u.body)
 		return;
 
 	fdprintf(ast_fd, "\n; Function: %s\n", func->name);
@@ -608,7 +608,7 @@ emit_function(struct name *func)
 
 	/* Output function body */
 	fdprintf(ast_fd, "\n  ");
-	emit_stmt(func->body);
+	emit_stmt(func->u.body);
 	fdprintf(ast_fd, ")\n");
 }
 
@@ -650,7 +650,7 @@ emit_literals(void)
 			continue;
 
 		/* Look for synthetic string literal names (str0, str1, etc.) at any level */
-		if (n->kind == var && n->init && n->init->op == STRING &&
+		if (n->kind == var && n->u.init && n->u.init->op == STRING &&
 		    n->name && strncmp(n->name, "str", 3) == 0 && n->name[3] >= '0' && n->name[3] <= '9') {
 			found_any = 1;
 			break;
@@ -671,9 +671,9 @@ emit_literals(void)
 			continue;
 
 		/* Output string literal data (only synthetic str names at any level) */
-		if (n->kind == var && n->init && n->init->op == STRING &&
+		if (n->kind == var && n->u.init && n->u.init->op == STRING &&
 		    n->name && strncmp(n->name, "str", 3) == 0 && n->name[3] >= '0' && n->name[3] <= '9') {
-			cstring str = (cstring)n->init->v;
+			cstring str = (cstring)n->u.init->v;
 			if (str) {
 				unsigned char len = (unsigned char)str[0];
 				unsigned char *data = (unsigned char *)str + 1;
@@ -739,13 +739,13 @@ emit_global_var(struct name *var)
 	emit_type_info(var->type);
 
 	/* Output initializer if present */
-	if (var->init) {
+	if (var->u.init) {
 		fdprintf(ast_fd, " ");
 		/* Check if this is an initializer list (has next pointers) */
-		if (var->init->next) {
-			emit_initializer_list(var->init);
+		if (var->u.init->next) {
+			emit_initializer_list(var->u.init);
 		} else {
-			emit_expr(var->init);
+			emit_expr(var->u.init);
 		}
 	}
 

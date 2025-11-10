@@ -252,8 +252,8 @@ add_name(struct name *n)
                 // Existing is extern - update it instead of adding duplicate
                 // Update storage class to remove extern flag
                 names[i]->sclass = n->sclass;
-                if (n->init) {
-                    names[i]->init = n->init;
+                if (n->u.init) {
+                    names[i]->u.init = n->u.init;
                 }
                 free(n);  // Don't need the new one
                 return;

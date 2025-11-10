@@ -135,7 +135,7 @@ parse_expr(unsigned char pri, struct stmt *st)
         lexlevel = saved_level;
         if (strname) {
             /* store pointer to counted string in the name's init field */
-            strname->init = makeexpr_init(STRING, 0, NULL, (unsigned long)cur.v.str, 0);
+            strname->u.init = makeexpr_init(STRING, 0, NULL, (unsigned long)cur.v.str, 0);
             /* also store in expression for immediate use */
             e->v = (unsigned long)cur.v.str;
             /* store reference to the named string in the expression */

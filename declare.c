@@ -133,8 +133,8 @@ declare_internal(struct type **btp, boolean struct_elem)
             nm->width = 0;
             nm->bitoff = 0;
             nm->next = 0;
-            nm->init = 0;
-            nm->body = 0;
+            nm->u.init = 0;
+            nm->u.body = 0;
 #ifdef DEBUG
             if (VERBOSE(V_SYM)) {
                 printf("struct_elem: %s (not added to names[])\n", nm->name);
@@ -146,7 +146,7 @@ declare_internal(struct type **btp, boolean struct_elem)
             struct name *existing = lookup_name(cur.v.name, 0);
             if (existing && existing->level == lexlevel) {
                 /* Name exists at current scope - check if it's a function prototype */
-                if (existing->type && (existing->type->flags & TF_FUNC) && !existing->body) {
+                if (existing->type && (existing->type->flags & TF_FUNC) && !existing->u.body) {
                     /* Reuse existing function declaration (prototype) */
                     nm = existing;
                     /* Update type to the new one (definition may have full param list) */
