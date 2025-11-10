@@ -163,9 +163,17 @@ macdefine(char *s)
         skipwhite1();
     }
     s = macbuffer;
-    /* we copy to the macbuffer the entire logical line, 
-     * spaces and tabs included */
+    /* we copy to the macbuffer the entire logical line,
+     * spaces and tabs included, but stop at // comments */
     while (curchar != '\n') {
+        /* Check for C++ style comment */
+        if (curchar == '/' && nextchar == '/') {
+            /* Skip rest of line - treat // as end of macro text */
+            while (curchar != '\n') {
+                advance();
+            }
+            break;
+        }
         if ((curchar == '\\') && (nextchar == '\n')) {
             advance();
             curchar = ' ';
@@ -174,6 +182,13 @@ macdefine(char *s)
         advance();
     }
     *s = 0;
+
+    /* Trim trailing whitespace from macro text */
+    while (s > macbuffer && (s[-1] == ' ' || s[-1] == '\t')) {
+        s--;
+        *s = 0;
+    }
+
     advance();  /* eat the newline */
     m->mactext = strdup(macbuffer);
     m->next = macros;
