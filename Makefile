@@ -8,19 +8,29 @@
 #
 # we self-generate some of the files to keep things consistent
 #
-DEFINES= -DDEBUG
-DEBUG= -ggdb3 -O0
-
 CC = gcc
 #CC = sdcc
+#CC = ccc
+
+ifeq ($(CC),cc)
+DEFINES= -DCCC
+DEBUG=
+CFLAGS = $(DEBUG) $(DEFINES)
+LD = echo
+LDFLAGS= 
+endif
+
 ifeq ($(CC),sdcc)
-DEFINES=
-CFLAGS = -DSDCC $(DEFINES) -mz80
+DEFINES= -DSDCC
+DEBUG=
+CFLAGS = $(DEBUG) $(DEFINES) -mz80
 LD = sdldz80
 LDFLAGS= -l /usr/share/sdcc/lib/z80/z80.lib -m -w -i -y
 endif
 
 ifeq ($(CC),gcc)
+DEFINES= -DDEBUG
+DEBUG= -ggdb3 -O0
 CFLAGS = $(DEBUG) $(DEFINES) -Wno-implicit-function-declaration -Wall
 LDFLAGS= $(DEBUG) -o
 LD= gcc
@@ -78,8 +88,12 @@ valgrind: cc1 tests/runvalgrind.sh
 unit-tests: $(GENERATED)
 	$(MAKE) -C unit_test tests
 
-.PHONY: testself
-testself: cc1
+.PHONY: sizecheck
+sizecheck: clean clobber
+	$(MAKE) CC=sdcc cc1
+
+.PHONY: selfcheck
+selfcheck: cc1
 	@echo "Testing compiler on its own sources (full pipeline: cpp + parse)..."
 	@for f in $(CFILES); do \
 	  if [ -f "$$f" ]; then \
