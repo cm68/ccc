@@ -551,6 +551,9 @@ asmblock(void)
     }
     buf[0] = 0;
 
+    /* Enable ONELINE mode - lexer will convert newlines to semicolons */
+    tflags |= ONELINE;
+
     /* Consume { and start reading tokens */
     gettoken();
     depth = 1;
@@ -562,7 +565,8 @@ asmblock(void)
         } else if (cur.type == END) {
             depth--;
             if (depth == 0) {
-                /* Found matching closing brace */
+                /* Found matching closing brace - clear ONELINE before breaking */
+                tflags &= ~ONELINE;
                 break;
             }
         }
@@ -587,12 +591,14 @@ asmblock(void)
             tmpbuf[2] = 0;
         }
 
-        /* Append to buffer with space separator */
+        /* Append to buffer */
         i = strlen(tmpbuf);
         if (len + i + 1 >= bufsize) {
             bufsize = (len + i + 1) * 2;
             buf = realloc(buf, bufsize);
             if (!buf) {
+                /* Restore lexer flags before returning */
+                tflags &= ~ONELINE;
                 return NULL;  /* Out of memory - silent failure */
             }
         }
@@ -607,6 +613,9 @@ asmblock(void)
     if (len > 0 && buf[len-1] == ' ') {
         buf[len-1] = 0;
     }
+
+    /* Restore lexer flags BEFORE consuming closing brace */
+    tflags &= ~ONELINE;
 
     /* Consume the closing } */
     if (cur.type == END) {

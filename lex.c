@@ -617,6 +617,7 @@ gettoken()
         }
         if ((tflags & ONELINE) && (curchar == '\n')) {
             next.type = ';';
+            advance();  /* Consume the newline */
             break;
         }
         if (cond && !(cond->flags & C_TRUE) && curchar != '#') {

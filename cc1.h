@@ -366,6 +366,10 @@ extern char *detoken[];
 #define VERBOSE(x) (verbose & (x))
 extern int verbose;
 
+/* lexer flags */
+extern unsigned char tflags;
+#define ONELINE     0x01
+
 #ifdef __SDCC
 /*
  * this is a minimal unix library header file for use on compilers
