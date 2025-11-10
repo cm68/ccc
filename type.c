@@ -726,15 +726,24 @@ getbasetype()
             return 0;
         }
 
-        // create the struct/union type
-        t = get_type(TF_AGGREGATE, 0, 0);
-        t->size = 0;
+        // create or reuse the struct/union type
+        if (n && (n->type->flags & TF_INCOMPLETE)) {
+            // Reuse existing incomplete type to maintain pointer identity
+            t = n->type;
+            t->flags &= ~TF_INCOMPLETE;  // will be completed below
+            t->size = 0;
+        } else {
+            // Create new type
+            t = get_type(TF_AGGREGATE, 0, 0);
+            t->size = 0;
+        }
 
         if (s) {
             // create or update the tag
             if (!n) {
                 n = new_name(s, is_union ? utag : stag, t, 1);
-            } else {
+            } else if (n->type != t) {
+                // Only update if we created a new type (shouldn't happen now)
                 n->type = t;
             }
             free(s);  // new_name() makes its own copy
