@@ -36,3 +36,9 @@ do.ast
 *.pdf
 *.ps
 *.swp
+*.lst
+*.sym
+*.ihx
+*.cdb
+*.map
+*.asm
