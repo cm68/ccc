@@ -193,7 +193,7 @@ parse_expr(unsigned char pri, struct stmt *st)
 
             /* Parse the type name */
             cast_type = parse_type_name();
-            need(RPAR, RPAR, ER_E_SP);
+            expect(RPAR, ER_E_SP);
 
             /* Parse the expression being cast */
             inner = parse_expr(OP_PRI_MULT - 1, st);  // Cast has unary precedence
@@ -250,7 +250,7 @@ parse_expr(unsigned char pri, struct stmt *st)
         } else {
             /* Parenthesized expression: (expr) */
             e = parse_expr(0, st);  // parse inner expression with lowest precedence
-            need(RPAR, RPAR, ER_E_SP);
+            expect(RPAR, ER_E_SP);
         }
         break;
 
@@ -331,14 +331,14 @@ parse_expr(unsigned char pri, struct stmt *st)
                     t = get_type(TF_POINTER, t, 0);
                 }
 
-                need(RPAR, RPAR, ER_E_SP);
+                expect(RPAR, ER_E_SP);
 
                 // Create constant expression with the size
                 e = makeexpr_init(CONST, 0, inttype, t->size, E_CONST);
             } else {
                 // It's sizeof(expr) - parse as expression
                 e = parse_expr(0, st);
-                need(RPAR, RPAR, ER_E_SP);
+                expect(RPAR, ER_E_SP);
 
                 // Create constant expression with the size of the expression's type
                 if (e && e->type) {
@@ -408,7 +408,7 @@ parse_expr(unsigned char pri, struct stmt *st)
 
             gettoken();  // consume '['
             index = parse_expr(0, st);
-            need(RBRACK, RBRACK, ER_E_SP);
+            expect(RBRACK, ER_E_SP);
 
             // Unwrap DEREF to get base address
             if (e && e->op == DEREF) {
@@ -500,7 +500,7 @@ parse_expr(unsigned char pri, struct stmt *st)
                 }
             }
 
-            need(RPAR, RPAR, ER_E_SP);
+            expect(RPAR, ER_E_SP);
 
             // Result type will be determined later from function signature
             e = call;
@@ -629,7 +629,7 @@ parse_expr(unsigned char pri, struct stmt *st)
             true_expr = parse_expr(0, st);
 
             // Expect and consume COLON
-            need(COLON, COLON, ER_E_SP);
+            expect(COLON, ER_E_SP);
 
             // Parse the false expression (right-associative, allow another ?: at same level)
             // Use priority 0 to parse everything, including nested ?: operators

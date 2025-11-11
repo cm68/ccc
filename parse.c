@@ -188,7 +188,7 @@ statement(struct stmt *parent)
             st->locals = capture_locals();
 
             pop_scope();
-            need(END, END, ER_S_CC);
+            expect(END, ER_S_CC);
             // If this is a top-level block (function body), return immediately
             if (parent == NULL) {
                 return st;
@@ -197,10 +197,10 @@ statement(struct stmt *parent)
 
         case IF:    // if <condition> <statement>
             gettoken();
-            need(LPAR, LPAR, ER_S_NP);
+            expect(LPAR, ER_S_NP);
             st = makestmt(IF, parse_expr(PRI_ALL, parent));
             st->parent = parent;  /* Set parent before recursive call */
-            need(RPAR, RPAR, ER_S_NP);
+            expect(RPAR, ER_S_NP);
             st->chain = statement(st);
             if (cur.type == ELSE) {   // else <statement>
                 gettoken();
@@ -209,7 +209,7 @@ statement(struct stmt *parent)
             break;
         case BREAK:
             gettoken();
-            need(SEMI, SEMI, ER_S_SN);
+            expect(SEMI, ER_S_SN);
             /* Transform break into goto to enclosing loop's break label */
             {
                 struct stmt *loop = find_enclosing_loop(parent, 0);
@@ -225,7 +225,7 @@ statement(struct stmt *parent)
             break;
         case CONTINUE:
             gettoken();
-            need(SEMI, SEMI, ER_S_SN);
+            expect(SEMI, ER_S_SN);
             /* Transform continue into goto to enclosing loop's continue label */
             {
                 struct stmt *loop = find_enclosing_loop(parent, 1);
@@ -251,7 +251,7 @@ statement(struct stmt *parent)
             if (cur.type != SEMI) {
                 st->left = parse_expr(PRI_ALL, parent);
             }
-            need(SEMI, SEMI, ER_S_SN);
+            expect(SEMI, ER_S_SN);
             break;
         
         /* Local declarations - type keywords */
@@ -391,12 +391,12 @@ statement(struct stmt *parent)
         case INCR:
         case DECR:
             st = makestmt(EXPR, parse_expr(PRI_ALL, parent));
-            need(SEMI, SEMI, ER_S_SN);
+            expect(SEMI, ER_S_SN);
             break;
 
         case FOR:   // for (<expr>; <expr>; <expr>) <statement> ;
             gettoken();
-            need(LPAR, LPAR, ER_S_NP);
+            expect(LPAR, ER_S_NP);
             /* Init expression - optional */
             if (cur.type == SEMI) {
                 st = makestmt(FOR, NULL);
@@ -405,31 +405,31 @@ statement(struct stmt *parent)
             }
             st->label = generate_loop_label("L");  /* Generate synthetic label */
             st->parent = parent;  /* Set parent before recursive call */
-            need(SEMI, SEMI, ER_S_SN);
+            expect(SEMI, ER_S_SN);
             /* Condition expression - optional */
             if (cur.type == SEMI) {
                 st->middle = NULL;
             } else {
                 st->middle = parse_expr(PRI_ALL, parent);
             }
-            need(SEMI, SEMI, ER_S_SN);
+            expect(SEMI, ER_S_SN);
             /* Increment expression - optional */
             if (cur.type == RPAR) {
                 st->right = NULL;
             } else {
                 st->right = parse_expr(PRI_ALL, parent);
             }
-            need(RPAR, RPAR, ER_S_NP);
+            expect(RPAR, ER_S_NP);
             st->chain = statement(st);
             break;
 
         case WHILE:     // while <condition> <statement> ;
             gettoken();
-            need(LPAR, LPAR, ER_S_NP);
+            expect(LPAR, ER_S_NP);
             st = makestmt(WHILE, parse_expr(PRI_ALL, parent));
             st->label = generate_loop_label("L");  /* Generate synthetic label */
             st->parent = parent;  /* Set parent before recursive call */
-            need(RPAR, RPAR, ER_S_NP);
+            expect(RPAR, ER_S_NP);
             st->chain = statement(st);
             break;
 
@@ -439,21 +439,21 @@ statement(struct stmt *parent)
 
         case SWITCH:    // switch (<expr>) <block> ;
             gettoken();
-            need(LPAR, LPAR, ER_S_NP);
+            expect(LPAR, ER_S_NP);
             st = makestmt(SWITCH, parse_expr(PRI_ALL, parent));
             st->label = generate_loop_label("S");  /* Generate synthetic label */
             st->parent = parent;  /* Set parent before recursive call */
-            need(RPAR, RPAR, ER_S_NP);
-            need(BEGIN, BEGIN, ER_S_SB);
+            expect(RPAR, ER_S_NP);
+            expect(BEGIN, ER_S_SB);
             st->chain = statement(st);
-            need(END, END, ER_S_CC);
+            expect(END, ER_S_CC);
             break;
 
         case CASE:
             gettoken();
             // Use priority 13 to stop at colon (ternary/colon have priority 13)
             st = makestmt(CASE, parse_expr(13, parent));
-            need(COLON, COLON, ER_S_NL);
+            expect(COLON, ER_S_NL);
             break;
 
         case GOTO:
@@ -465,12 +465,12 @@ statement(struct stmt *parent)
             } 
                 st->label = strdup(cur.v.name);
             gettoken();
-            need(SEMI, SEMI, ER_S_SN);
+            expect(SEMI, ER_S_SN);
             break;
 
         case DEFAULT:
             gettoken();
-            need(COLON, COLON, ER_S_NL);
+            expect(COLON, ER_S_NL);
             st = makestmt(DEFAULT, 0);
             break;
 
@@ -490,10 +490,10 @@ statement(struct stmt *parent)
                 break;
             }
             gettoken();  // advance past WHILE keyword
-            need(LPAR, LPAR, ER_S_NP);
+            expect(LPAR, ER_S_NP);
             st->left = parse_expr(PRI_ALL, parent);
             need(RPAR, SEMI, ER_S_NP);
-            need(SEMI, SEMI, ER_S_SN);
+            expect(SEMI, ER_S_SN);
             break;
 
         case ASM:

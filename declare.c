@@ -100,7 +100,7 @@ declare_internal(struct type **btp, boolean struct_elem)
         gettoken();
         rt = 0;
         nm = declare_internal(&rt, struct_elem);       // recurse
-        need(RPAR, RPAR, ER_D_DP);
+        expect(RPAR, ER_D_DP);
         if (*btp && rt) {
             gripe(ER_T_DT);
             rt = 0;
@@ -188,7 +188,7 @@ declare_internal(struct type **btp, boolean struct_elem)
             i = parse_const(RBRACK);
         }
         t = get_type(TF_ARRAY, t, i);
-        need(RBRACK, RBRACK, ER_D_AD);
+        expect(RBRACK, ER_D_AD);
         suffix = t;  // Store array type in suffix so it gets assigned to nm->type
     }
 
@@ -265,7 +265,7 @@ declare_internal(struct type **btp, boolean struct_elem)
                     if (cur.type != RBRACK) {
                         parse_expr(0, NULL);  // Array size (ignored for parameters)
                     }
-                    need(RBRACK, RBRACK, ER_D_FA);
+                    expect(RBRACK, ER_D_FA);
                     param_type = get_type(TF_POINTER, param_type->sub ? param_type->sub : param_type, 0);
                 }
             }
@@ -292,7 +292,7 @@ declare_internal(struct type **btp, boolean struct_elem)
             }
         }
 
-        need(RPAR, RPAR, ER_D_FA);
+        expect(RPAR, ER_D_FA);
 
         // K&R style: parse type declarations after )
         if (kr_style && is_type_token(cur.type)) {

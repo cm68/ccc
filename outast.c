@@ -36,6 +36,21 @@ get_size_suffix(struct type *t)
 }
 
 /*
+ * Helper: emit space followed by child expression (if non-null)
+ * Used for AST tree serialization to reduce code duplication
+ */
+static void emit_expr(struct expr *e);  /* forward declaration */
+
+static void
+emit_child(struct expr *e)
+{
+	if (e) {
+		fdprintf(ast_fd, " ");
+		emit_expr(e);
+	}
+}
+
+/*
  * Output an expression in S-expression format
  * Constants: just the value (decimal)
  * Symbols: $name
@@ -107,16 +122,12 @@ emit_expr(struct expr *e)
 	case CALL:
 		/* Function call: (@ func arg1 arg2 ...) */
 		fdprintf(ast_fd, "(@");
-		if (e->left) {
-			fdprintf(ast_fd, " ");
-			emit_expr(e->left);
-		}
+		emit_child(e->left);
 		/* Arguments are in e->right and linked via next */
 		if (e->right) {
 			struct expr *arg;
 			for (arg = e->right; arg; arg = arg->next) {
-				fdprintf(ast_fd, " ");
-				emit_expr(arg);
+				emit_child(arg);
 			}
 		}
 		fdprintf(ast_fd, ")");
@@ -130,10 +141,7 @@ emit_expr(struct expr *e)
 			char size_suffix = get_size_suffix(e->type);
 			char op_char = (e->op == NARROW) ? 'N' : (e->op == WIDEN) ? 'W' : 'X';
 			fdprintf(ast_fd, "(%c:%c", op_char, size_suffix);
-			if (e->left) {
-				fdprintf(ast_fd, " ");
-				emit_expr(e->left);
-			}
+			emit_child(e->left);
 			fdprintf(ast_fd, ")");
 		}
 		break;
@@ -141,14 +149,8 @@ emit_expr(struct expr *e)
 	case COPY:
 		/* Memory copy operator: (Y:length dest src) */
 		fdprintf(ast_fd, "(Y:%ld", e->v);  /* v field contains byte count */
-		if (e->left) {
-			fdprintf(ast_fd, " ");
-			emit_expr(e->left);
-		}
-		if (e->right) {
-			fdprintf(ast_fd, " ");
-			emit_expr(e->right);
-		}
+		emit_child(e->left);
+		emit_child(e->right);
 		fdprintf(ast_fd, ")");
 		break;
 
@@ -163,10 +165,7 @@ emit_expr(struct expr *e)
 				op_char = (e->flags & E_POSTFIX) ? POSTDEC : PREDEC;
 			}
 			fdprintf(ast_fd, "(%c", op_char);
-			if (e->left) {
-				fdprintf(ast_fd, " ");
-				emit_expr(e->left);
-			}
+			emit_child(e->left);
 			fdprintf(ast_fd, ")");
 		}
 		break;
@@ -184,14 +183,8 @@ emit_expr(struct expr *e)
 		} else {
 			fdprintf(ast_fd, "(%c", e->op);
 		}
-		if (e->left) {
-			fdprintf(ast_fd, " ");
-			emit_expr(e->left);
-		}
-		if (e->right) {
-			fdprintf(ast_fd, " ");
-			emit_expr(e->right);
-		}
+		emit_child(e->left);
+		emit_child(e->right);
 		fdprintf(ast_fd, ")");
 		break;
 	}

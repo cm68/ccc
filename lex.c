@@ -337,6 +337,17 @@ cpp_asm_out(char *s, int len)
 }
 
 /*
+ * Helper: output string followed by space
+ * Reduces code duplication in token output
+ */
+void
+cpp_asm_out_with_space(char *s, int len)
+{
+    cpp_asm_out(s, len);
+    cpp_asm_out(" ", 1);
+}
+
+/*
  * Output a token to cpp file and/or asm buffer
  */
 void
@@ -352,8 +363,7 @@ output_token(struct token *tok)
 
     switch (tok->type) {
     case SYM:
-        cpp_asm_out(tok->v.name, strlen(tok->v.name));
-        cpp_asm_out(" ", 1);
+        cpp_asm_out_with_space(tok->v.name, strlen(tok->v.name));
         break;
     case STRING:
         i = quoted_string(nbuf, tok->v.str);
@@ -379,8 +389,7 @@ output_token(struct token *tok)
                 s, write_cpp_file);
         }
 #endif
-        cpp_asm_out(s, strlen(s));
-        cpp_asm_out(" ", 1);
+        cpp_asm_out_with_space(s, strlen(s));
         break;
     }
 }

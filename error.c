@@ -177,6 +177,19 @@ need(token_t check, token_t skipto, error_t errcode)
     recover(errcode, skipto);
 }
 
+/*
+ * expect: simplified token checking - gripe if wrong, advance regardless
+ * Used to reduce code duplication where error recovery isn't needed
+ */
+void
+expect(token_t check, error_t errcode)
+{
+    if (cur.type != check) {
+        gripe(errcode);
+    }
+    gettoken();
+}
+
 #ifdef notdef
 /*
  * a variant sprintf with support for formats: 

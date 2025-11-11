@@ -326,6 +326,7 @@ extern void gripe(error_t errcode);
 extern void fatal(error_t errcode);
 extern void recover(error_t errcode, token_t skipto);
 extern void need(token_t check, token_t skipto, error_t errcode);
+extern void expect(token_t check, error_t errcode);
 int main(int argc, char **argv);
 void process(char *f);
 void usage(char *complaint, char *p);
