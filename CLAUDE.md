@@ -11,6 +11,26 @@ This is **ccc** - a native C compiler written in C, currently under reconstructi
 
 **Current Status**: Pass 1 is complete (~7,150 lines of C code). Tagged as **cc1_complete**. The compiler successfully parses C code including full preprocessor support with conditional directives, declarations, types, expressions, and statements. All 134 tests pass.
 
+## CRITICAL: Memory Footprint Constraint
+
+**IMPORTANT**: This compiler must fit in **<64KB total (code + data)** when compiled natively for the target platform. Memory efficiency is a PRIMARY GOAL throughout development.
+
+**Optimization Guidelines**:
+- **Minimize code duplication**: Find symmetry and reuse code patterns
+- **Consolidate function calls**: Multiple consecutive output calls should be combined
+  - Example: `fdprintf(fd, "x"); fdprintf(fd, "y");` → `fdprintf(fd, "xy");`
+  - Example: `cpp_out("text", 4); cpp_out(" ", 1);` → combine into single call
+- **Avoid redundant operations**: Each function call has overhead (call instruction, parameter setup, stack frame)
+- **Prefer single-pass algorithms**: Multiple passes over data cost memory and cycles
+- **Use compact data structures**: Every byte counts
+
+**Known Optimization Opportunities**:
+- outast.c: 54 single-character fdprintf() calls (28 spaces, 20 parens)
+- lex.c output_token(): 4 pairs of consecutive cpp_asm_out() calls appending single space
+- Symbol prefix logic (outast.c:70-92): Multiple branches with similar fdprintf patterns could share code
+
+When implementing new features or refactoring, always consider: "How can this use less memory?"
+
 ## Build Commands
 
 ```bash

@@ -357,13 +357,13 @@ output_token(struct token *tok)
         break;
     case STRING:
         i = quoted_string(nbuf, tok->v.str);
+        nbuf[i++] = ' ';
         cpp_asm_out(nbuf, i);
-        cpp_asm_out(" ", 1);
         break;
     case NUMBER:
         i = longout(nbuf, tok->v.numeric);
+        nbuf[i++] = ' ';
         cpp_asm_out(nbuf, i);
-        cpp_asm_out(" ", 1);
         break;
     case NONE:
         break;

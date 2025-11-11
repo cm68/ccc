@@ -67,26 +67,26 @@ emit_expr(struct expr *e)
 			 * - function arguments: prefix with A
 			 * - local variables: no prefix
 			 */
+			char *prefix;
+			char *name;
 			if (sym->sclass & SC_STATIC) {
 				/* Use mangled name for statics */
-				if (sym->mangled_name) {
-					fdprintf(ast_fd, "$S%s", sym->mangled_name);
-				} else {
-					/* Fallback if mangled name not set */
-					fdprintf(ast_fd, "$S%s", sym->name);
-				}
-			} else if (sym->sclass & SC_EXTERN) {
-				fdprintf(ast_fd, "$_%s", sym->name);
-			} else if (sym->level == 1) {
-				/* Global variable (not extern, not static) */
-				fdprintf(ast_fd, "$_%s", sym->name);
+				prefix = "$S";
+				name = sym->mangled_name ? sym->mangled_name : sym->name;
+			} else if ((sym->sclass & SC_EXTERN) || sym->level == 1) {
+				/* Global variable (extern or level 1) */
+				prefix = "$_";
+				name = sym->name;
 			} else if (sym->kind == funarg) {
 				/* Function argument */
-				fdprintf(ast_fd, "$A%s", sym->name);
+				prefix = "$A";
+				name = sym->name;
 			} else {
 				/* Local variable */
-				fdprintf(ast_fd, "$%s", sym->name);
+				prefix = "$";
+				name = sym->name;
 			}
+			fdprintf(ast_fd, "%s%s", prefix, name);
 		} else {
 			fdprintf(ast_fd, "$?");
 		}
