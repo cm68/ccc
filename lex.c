@@ -322,6 +322,63 @@ issym()
     return 1;
 }
 
+/*
+ * Output to both cpp file and asm buffer
+ */
+void
+cpp_asm_out(char *s, int len)
+{
+    if (write_cpp_file) {
+        cpp_out(s, len);
+    }
+    if (asm_capture_buf) {
+        asm_out(s, len);
+    }
+}
+
+/*
+ * Output a token to cpp file and/or asm buffer
+ */
+void
+output_token(struct token *tok)
+{
+    char nbuf[32];
+    int i;
+    char *s;
+
+    if (!write_cpp_file && !asm_capture_buf) {
+        return;
+    }
+
+    switch (tok->type) {
+    case SYM:
+        cpp_asm_out(tok->v.name, strlen(tok->v.name));
+        cpp_asm_out(" ", 1);
+        break;
+    case STRING:
+        i = quoted_string(nbuf, tok->v.str);
+        cpp_asm_out(nbuf, i);
+        cpp_asm_out(" ", 1);
+        break;
+    case NUMBER:
+        i = longout(nbuf, tok->v.numeric);
+        cpp_asm_out(nbuf, i);
+        cpp_asm_out(" ", 1);
+        break;
+    case NONE:
+        break;
+    default:
+        if (detoken[tok->type]) {
+            s = detoken[tok->type];
+        } else {
+            s = tokenname[tok->type];
+        }
+        cpp_asm_out(s, strlen(s));
+        cpp_asm_out(" ", 1);
+        break;
+    }
+}
+
 void
 do_cpp(unsigned char t)
 {
@@ -557,6 +614,8 @@ char nbuf[1024];  // Large enough for escaped string: 1 + 255*4 + 1 = 1022 bytes
  */
 /* Track when newline encountered for asm capture semicolon insertion */
 unsigned char lineend = 0;
+/* Track when next token was already output (from readcppconst) */
+unsigned char next_already_output = 0;
 
 void
 gettoken()
@@ -575,8 +634,14 @@ gettoken()
     memcpy(&token_history[token_history_index], &cur, sizeof(cur));
     token_history_index = (token_history_index + 1) % TOKEN_HISTORY_SIZE;
 
+    /* Check if this token was already output */
+    unsigned char skip_output = next_already_output;
+    next_already_output = 0;
+
     next.v.str = 0;
     next.type = NONE;
+
+    unsigned char skip_cur_output = 0;  /* Set to 1 to skip outputting cur */
 
     while (1) {
         if (curchar == 0) {
@@ -628,6 +693,11 @@ gettoken()
                 if (t) {
                     advance();
                     do_cpp(t);
+                    /* If next contains a token, break; otherwise continue to read one */
+                    if (next.type != NONE) {
+                        skip_cur_output = 1;  /* Don't output cur (the #if line's semicolon) */
+                        break;
+                    }
                     continue;
                 }
                 gripe(ER_C_BD);
@@ -734,71 +804,33 @@ gettoken()
     /*
      * detokenize for cpp output or asm capture
      */
-    if (write_cpp_file || asm_capture_buf) {
-        switch (cur.type) {
-        case SYM:
-            if (write_cpp_file) {
-                cpp_out(cur.v.name, strlen(cur.v.name));
-                cpp_out(" ", 1);
-            }
-            if (asm_capture_buf) {
-                asm_out(cur.v.name, strlen(cur.v.name));
-                asm_out(" ", 1);
-            }
-            break;
-        case STRING:
-            i = quoted_string(nbuf, cur.v.str);
-            if (write_cpp_file) {
-                cpp_out(nbuf, i);
-                cpp_out(" ", 1);
-            }
-            if (asm_capture_buf) {
-                asm_out(nbuf, i);
-                asm_out(" ", 1);
-            }
-            break;
-        case NUMBER:
-            i = longout(nbuf, cur.v.numeric);
-            if (write_cpp_file) {
-                cpp_out(nbuf, i);
-                cpp_out(" ", 1);
-            }
-            if (asm_capture_buf) {
-                asm_out(nbuf, i);
-                asm_out(" ", 1);
-            }
-            break;
-        case NONE:
-            break;
-        default:
-            if (detoken[cur.type]) {
-                s = detoken[cur.type];
-            } else {
-                s = tokenname[cur.type];
-            }
-            if (write_cpp_file) {
-                cpp_out(s, strlen(s));
-                cpp_out(" ", 1);
-            }
-            if (asm_capture_buf) {
-                asm_out(s, strlen(s));
-                asm_out(" ", 1);
-            }
-            break;
+    if (!skip_output && !skip_cur_output) {
+#ifdef DEBUG
+        if (VERBOSE(V_TOKEN) && cur.type == INT) {
+            fdprintf(2,"OUTPUT INT TOKEN: write_cpp_file=%d skip_output=%d\n", write_cpp_file, skip_output);
         }
-        if (lineend) {
-            if (write_cpp_file) {
-                cpp_out("\n", 1);
-            }
-            /* For asm blocks, convert newlines to semicolons */
-            /* (macexpand() handles its own newlines directly) */
-            /* Don't output semicolon for braces - they mark boundaries of asm block */
-            if (asm_capture_buf && cur.type != BEGIN && cur.type != END) {
-                asm_out(";", 1);  /* Convert newline to semicolon for asm */
-                asm_out(" ", 1);
-            }
-            lineend = 0;  /* Clear after using it */
+#endif
+        output_token(&cur);
+    } else {
+#ifdef DEBUG
+        if (VERBOSE(V_TOKEN)) {
+            fdprintf(2,"SKIP OUTPUT: skip_output=%d skip_cur_output=%d\n", skip_output, skip_cur_output);
         }
+#endif
+    }
+
+    if ((write_cpp_file || asm_capture_buf) && lineend) {
+        if (write_cpp_file) {
+            cpp_out("\n", 1);
+        }
+        /* For asm blocks, convert newlines to semicolons */
+        /* (macexpand() handles its own newlines directly) */
+        /* Don't output semicolon for braces - they mark boundaries of asm block */
+        if (asm_capture_buf && cur.type != BEGIN && cur.type != END) {
+            asm_out(";", 1);  /* Convert newline to semicolon for asm */
+            asm_out(" ", 1);
+        }
+        lineend = 0;  /* Clear after using it */
     }
 #ifdef DEBUG
     if (VERBOSE(V_TOKEN)) {
@@ -877,9 +909,29 @@ readcppconst()
 
     val = parse_const(SEMI);
 
-    /* Restore flags */
+#ifdef DEBUG
+    if (VERBOSE(V_CPP)) {
+        fdprintf(2,"After parse_const: cur.type=0x%02x next.type=0x%02x\n", cur.type, next.type);
+    }
+#endif
+
+    /* At this point cur=SEMI, next=first token of next line */
+    /* BUT: next was read while write_cpp_file=0, so it wasn't output */
+
+    /* Restore flags first */
     tflags = savedtflags;
     write_cpp_file = saved_write_cpp;
+
+    /* Now manually output the next token and mark it as already-output */
+    if (write_cpp_file && next.type != NONE) {
+#ifdef DEBUG
+        if (VERBOSE(V_CPP)) {
+            fdprintf(2,"Manually outputting next token after #if: type=0x%02x\n", next.type);
+        }
+#endif
+        output_token(&next);
+        next_already_output = 1;  /* Prevent double-output */
+    }
 
     /* Clear lineend flag */
     lineend = 0;
