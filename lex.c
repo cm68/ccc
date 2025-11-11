@@ -393,6 +393,7 @@ do_cpp(unsigned char t)
     struct cond *c;
     int v;
 
+
     switch (t) {
     case IF:
         v = readcppconst();
@@ -438,7 +439,18 @@ do_cpp(unsigned char t)
         skiptoeol();
         return;
     case ENDIF:
-        skiptoeol();
+        if (!(tflags & ONELINE)) {
+            skiptoeol();
+        }
+#ifdef DEBUG
+        if (VERBOSE(V_CPP)) {
+            fdprintf(2,"#endif: cond=%p", cond);
+            if (cond) {
+                fdprintf(2," flags=0x%02x (C_TRUE=%d)", cond->flags, !!(cond->flags & C_TRUE));
+            }
+            fdprintf(2,"\n");
+        }
+#endif
         if (!cond) {
             gripe(ER_C_CU);
             return;
@@ -446,9 +458,20 @@ do_cpp(unsigned char t)
         c = cond;
         cond = c->next;
         free(c);
+#ifdef DEBUG
+        if (VERBOSE(V_CPP)) {
+            fdprintf(2,"After pop: cond=%p", cond);
+            if (cond) {
+                fdprintf(2," flags=0x%02x (C_TRUE=%d)", cond->flags, !!(cond->flags & C_TRUE));
+            }
+            fdprintf(2,"\n");
+        }
+#endif
         return;
     case ELSE:
-        skiptoeol();
+        if (!(tflags & ONELINE)) {
+            skiptoeol();
+        }
         if (!cond) {
             gripe(ER_C_CU);
             return;
@@ -649,6 +672,15 @@ gettoken()
     while (1) {
         if (curchar == 0) {
             next.type = E_O_F;
+#ifdef DEBUG
+            if (VERBOSE(V_CPP)) {
+                fdprintf(2,"Reached EOF: cond=%p\n", cond);
+                if (cond) {
+                    fdprintf(2,"  cond->flags=0x%02x (C_TRUE=%d)\n",
+                        cond->flags, !!(cond->flags & C_TRUE));
+                }
+            }
+#endif
             break;
         }
         /* Handle comments before checking for preprocessor directives */
@@ -676,26 +708,17 @@ gettoken()
         if (charmatch('#')) {
 #ifdef DEBUG
             if (VERBOSE(V_CPP)) {
-                fdprintf(2,"Found # at column=%d (will%s process)\n", column, (column == 1) ? "" : " NOT");
+                fdprintf(2,"Found # at column=%d (will%s process) cond=%p", column, (column == 1) ? "" : " NOT", cond);
+                if (cond) {
+                    fdprintf(2," C_TRUE=%d", !!(cond->flags & C_TRUE));
+                }
+                fdprintf(2,"\n");
             }
 #endif
             if (column != 1) {
                 /* Not a CPP directive, treat as token */
                 next.type = '#';
                 break;
-            }
-            if (tflags & ONELINE) {
-                /* We're in ONELINE mode (inside readcppconst), skip the directive line */
-#ifdef DEBUG
-                if (VERBOSE(V_CPP)) {
-                    fdprintf(2,"Skipping # directive in ONELINE mode\n");
-                }
-#endif
-                skiptoeol();
-                if (curchar == '\n') {
-                    advance();
-                }
-                continue;
             }
             /* CPP directive at column 0 */
             skipwhite1();
@@ -747,10 +770,16 @@ gettoken()
         }
         if ((tflags & ONELINE) && (curchar == '\n')) {
             next.type = ';';
-            advance();  /* Consume the newline */
+            /* Don't advance - leave curchar at newline so next gettoken() stops */
             break;
         }
-        if (cond && !(cond->flags & C_TRUE) && curchar != '#') {
+        if (!(tflags & ONELINE) && cond && !(cond->flags & C_TRUE) && curchar != '#') {
+#ifdef DEBUG
+            if (VERBOSE(V_CPP)) {
+                fdprintf(2,"Skipping line in false block: curchar=0x%02x ('%c')\n",
+                    curchar, (curchar >= ' ' && curchar < 127) ? curchar : '?');
+            }
+#endif
             skiptoeol();
             if (curchar == '\n') {
                 advance();  // consume the newline
@@ -952,9 +981,27 @@ readcppconst()
 
     /* Get the first token of the expression */
     gettoken();
+#ifdef DEBUG
+    if (VERBOSE(V_CPP)) {
+        fdprintf(2,"After 1st gettoken: cur.type=0x%02x next.type=0x%02x curchar=0x%02x\n",
+            cur.type, next.type, curchar);
+    }
+#endif
     gettoken();
+#ifdef DEBUG
+    if (VERBOSE(V_CPP)) {
+        fdprintf(2,"After 2nd gettoken: cur.type=0x%02x next.type=0x%02x curchar=0x%02x\n",
+            cur.type, next.type, curchar);
+    }
+#endif
 
     val = parse_const(SEMI);
+
+#ifdef DEBUG
+    if (VERBOSE(V_CPP)) {
+        fdprintf(2,"After parse_const: curchar=0x%02x\n", curchar);
+    }
+#endif
 
     /* Restore cur so outer gettoken() sees original cur */
     memcpy(&cur, &saved_cur, sizeof(cur));
@@ -968,6 +1015,13 @@ readcppconst()
 
     /* Clear lineend flag */
     lineend = 0;
+
+#ifdef DEBUG
+    if (VERBOSE(V_CPP)) {
+        fdprintf(2,"readcppconst returning: val=%d curchar=0x%02x next.type=0x%02x\n",
+            val, curchar, next.type);
+    }
+#endif
 
     return val;
 }
