@@ -199,6 +199,40 @@ static void parse_stmt(void);
  * Each handler consumes the entire s-expression including closing paren
  */
 
+/* Forward declarations for expression handlers */
+static void parse_expr(void);
+static void parse_stmt(void);
+static void handle_deref(void);
+static void handle_assign(void);
+static void handle_call(void);
+static void handle_ternary(void);
+
+/* Handler function type */
+typedef void (*handler_fn)(unsigned char op);
+
+/* Generic handler that skips the operator expression */
+static void
+handle_generic(unsigned char op)
+{
+    fdprintf(2, "OP_%02x", op);
+    skip();
+
+    /* Skip to closing paren - recursively handle any nested expressions */
+    int depth = 1;
+    while (curchar && depth > 0) {
+        if (curchar == '(') {
+            depth++;
+        } else if (curchar == ')') {
+            depth--;
+            if (depth == 0) {
+                nextchar();  /* consume closing paren */
+                return;
+            }
+        }
+        nextchar();
+    }
+}
+
 /* Expression handlers */
 
 static void
@@ -257,6 +291,28 @@ handle_unary_op(unsigned char op)
     fdprintf(2, ")");
     expect(')');
 }
+
+/* Wrappers to match handler_fn signature */
+static void handle_deref_dispatch(unsigned char op) { handle_deref(); }
+static void handle_assign_dispatch(unsigned char op) { handle_assign(); }
+static void handle_call_dispatch(unsigned char op) { handle_call(); }
+static void handle_ternary_dispatch(unsigned char op) { handle_ternary(); }
+
+/* COLON is only used as part of ternary, but handle it gracefully if standalone */
+static void
+handle_colon(unsigned char op)
+{
+    fdprintf(2, "COLON (");
+    skip();
+    parse_expr();  /* left */
+    fdprintf(2, ", ");
+    skip();
+    parse_expr();  /* right */
+    fdprintf(2, ")");
+    expect(')');
+}
+
+static void handle_colon_dispatch(unsigned char op) { handle_colon(op); }
 
 static void
 handle_deref(void)
@@ -717,29 +773,66 @@ handle_switch(void)
             nextchar();
 
             if (clause_type == 'C') {
-                /* Case clause: (C value body) */
+                /* Case clause: (C value ()) - body placeholder is always empty */
                 fdprintf(2, "\n  CASE ");
                 skip();
                 parse_expr();  /* case value */
-                fdprintf(2, ":");
+                fdprintf(2, ": ");
                 skip();
-                /* Body is a nested statement or expression */
+                /* Skip empty body placeholder () */
                 if (curchar == '(') {
-                    fdprintf(2, " ");
-                    parse_stmt();
+                    nextchar();
+                    skip();
+                    if (curchar == ')') {
+                        nextchar();
+                    }
                 }
+                expect(')');
             } else if (clause_type == 'O') {
-                /* Default clause: (O body) */
-                fdprintf(2, "\n  DEFAULT:");
+                /* Default clause: (O ()) - body placeholder is always empty */
+                fdprintf(2, "\n  DEFAULT: ");
                 skip();
-                /* Body is a nested statement */
+                /* Skip empty body placeholder () */
                 if (curchar == '(') {
-                    fdprintf(2, " ");
-                    parse_stmt();
+                    nextchar();
+                    skip();
+                    if (curchar == ')') {
+                        nextchar();
+                    }
+                }
+                expect(')');
+            } else if (clause_type == 'R' || clause_type == 'G' ||
+                       clause_type == 'B' || clause_type == 'E') {
+                /* Statements inside switch body (between cases) */
+                /* Back up - we need to reparse this as a statement */
+                /* Unfortunately we already consumed the '(' and type char */
+                /* For now, just handle common ones inline */
+                fdprintf(2, "\n");
+                if (clause_type == 'R') {
+                    handle_return();
+                } else if (clause_type == 'G') {
+                    skip();
+                    char *label = read_symbol();
+                    fdprintf(2, "GOTO %s", label);
+                    expect(')');
+                } else if (clause_type == 'B') {
+                    /* BREAK statement */
+                    fdprintf(2, "BREAK");
+                    expect(')');
+                } else if (clause_type == 'E') {
+                    /* Expression statement */
+                    handle_expr_stmt();
+                }
+            } else {
+                /* Unknown - skip it */
+                fdprintf(2, "\n  UNKNOWN_%c ", clause_type);
+                while (curchar && curchar != ')') {
+                    nextchar();
+                }
+                if (curchar == ')') {
+                    nextchar();
                 }
             }
-
-            expect(')');
         }
         skip();
     }
@@ -946,6 +1039,82 @@ handle_global(void)
 }
 
 /*
+ * Operator lookup table
+ * Maps each operator character to its handler function
+ * Table is sparse - only operators that need handling are listed
+ */
+static handler_fn expr_handlers[256];
+
+static void
+init_expr_handlers(void)
+{
+    int i;
+
+    /* Initialize all to generic handler */
+    for (i = 0; i < 256; i++) {
+        expr_handlers[i] = handle_generic;
+    }
+
+    /* Register specific handlers */
+    expr_handlers['M'] = handle_deref_dispatch;     /* DEREF */
+    expr_handlers['='] = handle_assign_dispatch;    /* ASSIGN */
+    expr_handlers['@'] = handle_call_dispatch;      /* CALL */
+    expr_handlers['?'] = handle_ternary_dispatch;   /* TERNARY */
+    expr_handlers[':'] = handle_colon_dispatch;     /* COLON */
+
+    /* Binary operators */
+    expr_handlers['+'] = handle_binary_op;
+    expr_handlers['-'] = handle_binary_op;
+    expr_handlers['*'] = handle_binary_op;
+    expr_handlers['/'] = handle_binary_op;
+    expr_handlers['%'] = handle_binary_op;
+    expr_handlers['&'] = handle_binary_op;
+    expr_handlers['|'] = handle_binary_op;
+    expr_handlers['^'] = handle_binary_op;
+    expr_handlers['<'] = handle_binary_op;
+    expr_handlers['>'] = handle_binary_op;
+    expr_handlers['Q'] = handle_binary_op;  /* EQ == */
+    expr_handlers['n'] = handle_binary_op;  /* NEQ != */
+    expr_handlers['L'] = handle_binary_op;  /* LE <= */
+    expr_handlers['g'] = handle_binary_op;  /* GE >= */
+    expr_handlers['y'] = handle_binary_op;  /* LSHIFT << */
+    expr_handlers['w'] = handle_binary_op;  /* RSHIFT >> */
+    expr_handlers['h'] = handle_binary_op;  /* LOR || */
+    expr_handlers['j'] = handle_binary_op;  /* LAND && */
+
+    /* Compound assignment operators */
+    expr_handlers['P'] = handle_binary_op;  /* PLUSEQ += */
+    expr_handlers[0xdf] = handle_binary_op; /* SUBEQ -= */
+    expr_handlers['T'] = handle_binary_op;  /* MULTEQ *= */
+    expr_handlers['2'] = handle_binary_op;  /* DIVEQ /= */
+    expr_handlers[0xfe] = handle_binary_op; /* MODEQ %= */
+    expr_handlers[0xc6] = handle_binary_op; /* ANDEQ &= */
+    expr_handlers['1'] = handle_binary_op;  /* OREQ |= */
+    expr_handlers['0'] = handle_binary_op;  /* LSHIFTEQ <<= */
+    expr_handlers['6'] = handle_binary_op;  /* RSHIFTEQ >>= */
+
+    /* Unary operators */
+    expr_handlers['!'] = handle_unary_op;
+    expr_handlers['~'] = handle_unary_op;
+    expr_handlers['\\'] = handle_unary_op; /* NEG */
+    expr_handlers['\''] = handle_unary_op; /* NOT */
+
+    /* Type conversion operators */
+    expr_handlers['N'] = handle_unary_op;  /* NARROW */
+    expr_handlers['W'] = handle_unary_op;  /* WIDEN */
+    expr_handlers['X'] = handle_unary_op;  /* SEXT (also XOREQ, but context differs) */
+
+    /* Increment/decrement */
+    expr_handlers[0xcf] = handle_unary_op; /* PREINC */
+    expr_handlers[0xef] = handle_unary_op; /* POSTINC */
+    expr_handlers[0xd6] = handle_unary_op; /* PREDEC */
+    expr_handlers[0xf6] = handle_unary_op; /* POSTDEC */
+
+    /* COPY operator */
+    expr_handlers[0xbb] = handle_binary_op; /* COPY */
+}
+
+/*
  * Parse an expression (recursive)
  */
 static void
@@ -957,42 +1126,12 @@ parse_expr(void)
         nextchar();
         skip();
 
-        char op = curchar;
+        unsigned char op = curchar;
         nextchar();
 
-        switch (op) {
-        case 'M':  /* DEREF */
-            handle_deref();
-            break;
-        case '=':  /* ASSIGN */
-            handle_assign();
-            break;
-        case '@':  /* CALL */
-            handle_call();
-            break;
-        case '?':  /* TERNARY */
-            handle_ternary();
-            break;
-        case '+': case '-': case '*': case '/': case '%':
-        case '&': case '|': case '^':
-        case '<': case '>':
-            handle_binary_op(op);
-            break;
-        case '!': case '~':
-        case 'N': case 'W': case 'X':  /* NARROW, WIDEN, SEXT */
-            handle_unary_op(op);
-            break;
-        default:
-            fdprintf(2, "parseast: line %d: unknown expr op '%c'\n", line_num, op);
-            /* Skip to closing paren */
-            while (curchar && curchar != ')') {
-                nextchar();
-            }
-            if (curchar == ')') {
-                nextchar();
-            }
-            break;
-        }
+        /* Use lookup table to dispatch to handler */
+        expr_handlers[op](op);
+
     } else if (curchar == '$') {
         /* Symbol */
         handle_symbol();
@@ -1134,6 +1273,9 @@ parse_ast_file(int in, int out)
     buf_pos = 0;
     buf_valid = 0;
     line_num = 1;
+
+    /* Initialize expression handler lookup table */
+    init_expr_handlers();
 
     /* Prime the input */
     nextchar();
