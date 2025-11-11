@@ -772,6 +772,9 @@ handle_block(void)
 static void
 handle_if(void)
 {
+    int if_label = label_counter++;
+    int else_label;
+
     fdprintf(2, "IF (");
     skip();
     parse_expr();  /* condition */
@@ -782,8 +785,23 @@ handle_if(void)
 
     skip();
     if (curchar != ')') {
+        /* Has else branch - need second label for end of else */
+        else_label = label_counter++;
+
+        /* Jump over else branch after then completes */
+        fdprintf(out_fd, "\tjp _if_end_%d\n", else_label);
+
+        /* Emit label for else branch (jump here if condition is false) */
+        fdprintf(out_fd, "_if_%d:\n", if_label);
+
         fdprintf(2, " ELSE ");
         parse_stmt();  /* else branch */
+
+        /* Emit end label after else branch */
+        fdprintf(out_fd, "_if_end_%d:\n", else_label);
+    } else {
+        /* No else branch - just emit label after then branch */
+        fdprintf(out_fd, "_if_%d:\n", if_label);
     }
 
     expect(')');
