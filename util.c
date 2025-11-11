@@ -55,7 +55,7 @@ append(char *d, char *s)
 /*
  * change a binary character into a form we can print
  */
-static int
+int
 controlify(char *d, unsigned char c)
 {
 	int ret = 0;

@@ -353,7 +353,8 @@ cpp_asm_out_with_space(char *s, int len)
 void
 output_token(struct token *tok)
 {
-    char nbuf[32];
+    /* Small buffer for chunked string output (16 chars * 5 bytes max expansion) */
+    char nbuf[128];
     int i;
     char *s;
 
@@ -369,9 +370,29 @@ output_token(struct token *tok)
         if (!tok->v.str) {
             break;
         }
-        i = quoted_string(nbuf, tok->v.str);
-        nbuf[i++] = ' ';
-        cpp_asm_out(nbuf, i);
+        /* Output string in chunks to avoid large stack buffer */
+        {
+            char *src = tok->v.str;
+            int len = *src++;  /* First byte is length */
+            int chunk_size = 16;  /* Process this many source chars at a time */
+            int pos = 0;
+
+            /* Opening quote */
+            cpp_asm_out("\"", 1);
+
+            /* Output string content in chunks */
+            while (len > 0) {
+                int todo = (len > chunk_size) ? chunk_size : len;
+                for (i = 0; i < todo; i++) {
+                    int n = controlify(nbuf, *src++);
+                    cpp_asm_out(nbuf, n);
+                }
+                len -= todo;
+            }
+
+            /* Closing quote and space */
+            cpp_asm_out("\" ", 2);
+        }
         break;
     case NUMBER:
         i = longout(nbuf, tok->v.numeric);

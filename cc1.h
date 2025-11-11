@@ -355,6 +355,7 @@ char *bitdef(unsigned char v, char **defs);
 int fdprintf(int fd, const char *fmt, ...);
 int quoted_string(char *d, char *s);
 int longout(char *d, long v);
+int controlify(char *d, unsigned char c);
 
 /* declare.c / type.c */
 extern struct name *declare(struct type **btp);
