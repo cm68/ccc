@@ -154,11 +154,11 @@ hexdump(char *tag, char *h, int l)
     for (i = 0; i < l; i++) {
         c = h[i];
         if ((i % 16) == 0) {
-            printf(" %s\n%04x  ", xxbuf, i);
+            fdprintf(2," %s\n%04x  ", xxbuf, i);
             z = xxbuf;
             *z = 0;
         }
-        printf("%02x ", c);
+        fdprintf(2,"%02x ", c);
         if ((i % 4) == 3) printf(" ");
         if ((c < ' ') || (c > 0x7e)) c = '.';
         *z++ = c;
@@ -166,7 +166,7 @@ hexdump(char *tag, char *h, int l)
     }
     while ((i++ % 16) != 0) {
         if ((i % 4) == 3) printf(" ");
-        printf("   ");
+        fdprintf(2,"   ");
     }
     printf(" %s\n", xxbuf);
 }

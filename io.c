@@ -46,7 +46,7 @@ cdump(char *tag)
     }
 
     if (tag) {
-        printf("%s:\n", tag);
+        fdprintf(2,"%s:\n", tag);
     }
     if (curchar <= ' ') {
         sprintf(cs, "0x%x", curchar);
@@ -98,7 +98,7 @@ add_include(char *s)
     }
 #ifdef DEBUG
     if (VERBOSE(V_CPP)) {
-        printf("add_include: %s\n", s);
+        fdprintf(2,"add_include: %s\n", s);
     }
 #endif
 }
@@ -115,7 +115,7 @@ insertfile(char *name, int sys)
 
 #ifdef DEBUG
     if (VERBOSE(V_IO)) {
-        printf("insertfile: %s sys=%d curchar='%c'(0x%x) nextchar='%c'(0x%x) column=%d offset=%d\n",
+        fdprintf(2,"insertfile: %s sys=%d curchar='%c'(0x%x) nextchar='%c'(0x%x) column=%d offset=%d\n",
                name, sys,
                curchar >= 32 ? curchar : '?', curchar,
                nextchar >= 32 ? nextchar : '?', nextchar,
@@ -195,7 +195,7 @@ insertmacro(char *name, char *macbuf)
     l = strlen(macbuf);         // our macro without the terminating null
 #ifdef DEBUG
     if (VERBOSE(V_MACRO)) {
-        printf("insert macro %s %d $%s$\n", name, l, macbuf);
+        fdprintf(2,"insert macro %s %d $%s$\n", name, l, macbuf);
     }
 #endif
     t = tbtop;
@@ -228,7 +228,7 @@ insertmacro(char *name, char *macbuf)
 void
 tbdump(struct textbuf *t)
 {
-    printf("textbuf: %s fd: %d offset: %d valid: %d lineno %d\n",
+    fdprintf(2,"textbuf: %s fd: %d offset: %d valid: %d lineno %d\n",
         t->name, t->fd, t->offset, t->valid, t->lineno);
 }
 
@@ -256,7 +256,7 @@ again:
 
 #ifdef DEBUG
     if (VERBOSE(V_IO)) {
-        printf("Top of again: curchar='%c'(0x%x) nextchar='%c'(0x%x) offset=%d\n",
+        fdprintf(2,"Top of again: curchar='%c'(0x%x) nextchar='%c'(0x%x) offset=%d\n",
                curchar >= 32 ? curchar : '?', curchar,
                nextchar >= 32 ? nextchar : '?', nextchar,
                t ? t->offset : -1);
@@ -276,7 +276,7 @@ again:
             nextchar = t->storage[++t->offset];
 #ifdef DEBUG
             if (VERBOSE(V_IO)) {
-                printf("Read nextchar from buffer: '%c'(0x%x) at offset %d\n",
+                fdprintf(2,"Read nextchar from buffer: '%c'(0x%x) at offset %d\n",
                        nextchar >= 32 ? nextchar : '?', nextchar, t->offset);
             }
 #endif
@@ -298,7 +298,7 @@ again:
     if (tbtop) {
 #ifdef DEBUG
         if (VERBOSE(V_IO)) {
-            printf("Popping from %s, restoring column from %d to %d\n",
+            fdprintf(2,"Popping from %s, restoring column from %d to %d\n",
                    t->name, column, t->saved_column);
         }
 #endif
@@ -347,7 +347,7 @@ done:
     if (nextchar == '\t') nextchar = ' ';
 #ifdef DEBUG
     if (VERBOSE(V_IO)) {
-        printf("After done: curchar='%c'(0x%x) nextchar='%c'(0x%x) column=%d nextcol=%d\n",
+        fdprintf(2,"After done: curchar='%c'(0x%x) nextchar='%c'(0x%x) column=%d nextcol=%d\n",
                curchar >= 32 ? curchar : '?', curchar,
                nextchar >= 32 ? nextchar : '?', nextchar,
                column, nextcol);

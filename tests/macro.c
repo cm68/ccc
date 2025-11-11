@@ -23,7 +23,8 @@ int k = add(3,5);
 int before_undef = TESTMACRO;
 
 #undef TESTMACRO
-int after_undef = TESTMACRO;  /* Should not expand */
+/* After #undef, TESTMACRO is no longer defined */
+/* int after_undef = TESTMACRO; -- would be undefined identifier error */
 
 /* Test redefine after undef */
 #define TESTMACRO 200

@@ -19,7 +19,7 @@
 void
 timeout_handler(int sig)
 {
-    printf("\n\n*** TIMEOUT after 5 seconds ***\n");
+    fdprintf(2,"\n\n*** TIMEOUT after 5 seconds ***\n");
     fatal(ER_WTF);
 }
 
@@ -45,7 +45,7 @@ process(char *f)
 
 #ifdef DEBUG
     if (VERBOSE(V_TRACE)) {
-        printf("process %s\n", f);
+        fdprintf(2,"process %s\n", f);
     }
 #endif
 
@@ -109,16 +109,16 @@ usage(char *complaint, char *p)
 {
     int i;
 
-    printf("%s", complaint);
-    printf("usage: %s [<options>] [program [<program options>]]\n", p);
-    printf("\t-I<include dir>\n");
-    printf("\t-i<system include dir> (default /usr/include)\n");
-    printf("\t-D<variable>[=<definition>]\n");
-    printf("\t-v <verbosity>\n");
-    printf("\t-o <output file> (AST output, default stdout)\n");
-    printf("\t-E (write preprocessed .i file)\n");
+    fdprintf(2,"%s", complaint);
+    fdprintf(2,"usage: %s [<options>] [program [<program options>]]\n", p);
+    fdprintf(2,"\t-I<include dir>\n");
+    fdprintf(2,"\t-i<system include dir> (default /usr/include)\n");
+    fdprintf(2,"\t-D<variable>[=<definition>]\n");
+    fdprintf(2,"\t-v <verbosity>\n");
+    fdprintf(2,"\t-o <output file> (AST output, default stdout)\n");
+    fdprintf(2,"\t-E (write preprocessed .i file)\n");
     for (i = 0; vopts[i]; i++) {
-        printf("\t%x %s\n", 1 << i, vopts[i]);
+        fdprintf(2,"\t%x %s\n", 1 << i, vopts[i]);
     }
     exit(1);
 }
@@ -193,7 +193,7 @@ main(int argc, char **argv)
                 }
                 break;
             default:
-                printf("bad flag %c\n", (*s));
+                fdprintf(2,"bad flag %c\n", (*s));
                 break;
             }
         }
@@ -209,17 +209,17 @@ main(int argc, char **argv)
         		j |= (1 <<i);
         }
 
-        printf("verbose: %x (", j);
+        fdprintf(2,"verbose: %x (", j);
         for (i = 0; vopts[i]; i++) {
             if (j & (1 << i)) {
-                printf("%s", vopts[i]);
+                fdprintf(2,"%s", vopts[i]);
 				j ^= (1 << i);
 				if (j) {
-					printf(" ");
+					fdprintf(2," ");
 				}
             }
         }
-        printf(")\n");
+        fdprintf(2,")\n");
     }
 #ifdef __UNIX__
     setvbuf(stdout, 0, _IONBF, 0);

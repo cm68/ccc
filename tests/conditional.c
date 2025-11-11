@@ -1,6 +1,6 @@
 /*
- * Test CPP conditional directives: #if, #else, #endif
- * Note: #ifdef, #ifndef are not implemented in this compiler - only #if is supported
+ * Test CPP conditional directives: #if, #elif, #else, #endif
+ * Note: This file tests #if/#elif/#else/#endif. See ifdef_test.c and ifndef_test.c for #ifdef/#ifndef tests.
  */
 
 /* Test 1: Basic #if 1 (always true) */

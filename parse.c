@@ -397,13 +397,28 @@ statement(struct stmt *parent)
         case FOR:   // for (<expr>; <expr>; <expr>) <statement> ;
             gettoken();
             need(LPAR, LPAR, ER_S_NP);
-            st = makestmt(FOR, parse_expr(PRI_ALL, parent));
+            /* Init expression - optional */
+            if (cur.type == SEMI) {
+                st = makestmt(FOR, NULL);
+            } else {
+                st = makestmt(FOR, parse_expr(PRI_ALL, parent));
+            }
             st->label = generate_loop_label("L");  /* Generate synthetic label */
             st->parent = parent;  /* Set parent before recursive call */
             need(SEMI, SEMI, ER_S_SN);
-            st->middle = parse_expr(PRI_ALL, parent);
+            /* Condition expression - optional */
+            if (cur.type == SEMI) {
+                st->middle = NULL;
+            } else {
+                st->middle = parse_expr(PRI_ALL, parent);
+            }
             need(SEMI, SEMI, ER_S_SN);
-            st->right = parse_expr(PRI_ALL, parent);
+            /* Increment expression - optional */
+            if (cur.type == RPAR) {
+                st->right = NULL;
+            } else {
+                st->right = parse_expr(PRI_ALL, parent);
+            }
             need(RPAR, RPAR, ER_S_NP);
             st->chain = statement(st);
             break;
@@ -739,7 +754,7 @@ parse_sclass()
 	unsigned char bit;
 #ifdef DEBUG
 	if (VERBOSE(V_SYM)) {
-		printf("parse_sclass: starting, cur.type=0x%02x\n", cur.type);
+		fdprintf(2,"parse_sclass: starting, cur.type=0x%02x\n", cur.type);
 	}
 #endif
 
@@ -767,7 +782,7 @@ parse_sclass()
 			bit = SC_TYPEDEF;
 #ifdef DEBUG
 			if (VERBOSE(V_SYM)) {
-				printf("parse_sclass: FOUND TYPEDEF token!\n");
+				fdprintf(2,"parse_sclass: FOUND TYPEDEF token!\n");
 			}
 #endif
 			break;
@@ -844,7 +859,7 @@ declaration()
             /* change the name kind from var to tdef */
 #ifdef DEBUG
             if (VERBOSE(V_SYM)) {
-                printf("CONVERTING %s from var to tdef (sclass=0x%02x)\n", v->name, sclass);
+                fdprintf(2,"CONVERTING %s from var to tdef (sclass=0x%02x)\n", v->name, sclass);
             }
 #endif
             v->kind = tdef;

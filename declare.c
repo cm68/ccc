@@ -141,7 +141,7 @@ declare_internal(struct type **btp, boolean struct_elem)
             nm->u.body = 0;
 #ifdef DEBUG
             if (VERBOSE(V_SYM)) {
-                printf("struct_elem: %s (not added to names[])\n", nm->name);
+                fdprintf(2, "struct_elem: %s (not added to names[])\n", nm->name);
             }
 #endif
         } else {

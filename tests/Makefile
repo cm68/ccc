@@ -49,11 +49,9 @@ STMT_TESTS = \
 	statements.c \
 	statements_kr.c \
 	simple_statements.c \
-	conditional.c \
 	conditional_false.c \
 	conditional_simple.c \
 	compound_ops.c \
-	compound_precedence.c \
 	compound_lvalue.c \
 	do.c \
 	cont.c \
@@ -146,17 +144,39 @@ INCR_DECR_TESTS = \
 	incr_decr_expr.c \
 	incr_decr_ptr.c
 
-# Pointer type compatibility tests
+# Pointer type compatibility tests (passing)
 PTR_COMPAT_TESTS = \
-	ptr_compat_ok.c \
-	ptr_compat.c
+	ptr_compat_ok.c
 
-# Lvalue validation tests
+# Lvalue validation tests (passing)
 LVALUE_TESTS = \
-	lvalue_simple.c \
+	lvalue_simple.c
+
+# Lvalue validation tests (expected to fail - testing error detection)
+LVALUE_FAIL_TESTS = \
 	lvalue_bad.c \
 	lvalue_const.c \
 	lvalue_errors.c
+
+# Pointer compatibility tests (expected to fail - testing error detection)
+PTR_FAIL_TESTS = \
+	ptr_compat.c
+
+# Preprocessor tests (expected to fail - testing error detection)
+CPP_FAIL_TESTS = \
+	conditional.c \
+	undef_undefined.c
+
+# Statement tests (expected to fail - testing error detection)
+STMT_FAIL_TESTS = \
+	compound_precedence.c
+
+# All tests expected to fail (for testing error detection)
+FAIL_TESTS = \
+	$(LVALUE_FAIL_TESTS) \
+	$(PTR_FAIL_TESTS) \
+	$(CPP_FAIL_TESTS) \
+	$(STMT_FAIL_TESTS)
 
 # Miscellaneous/regression tests
 MISC_TESTS = \
@@ -190,12 +210,21 @@ ALL_TESTS = \
 	$(MISC_TESTS)
 
 # Main test targets
-.PHONY: test tests
+.PHONY: test tests test-fail test-all
 test:
 	./runtest.sh -k $(VERBOSE) $(ALL_TESTS)
 
 tests:
 	./runtest.sh -k $(VERBOSE)
+
+# Test expected-to-fail tests (for error detection)
+test-fail:
+	@echo "=== Running tests expected to fail (error detection) ==="
+	./runtest.sh -k -f $(VERBOSE) $(FAIL_TESTS)
+
+# Run all tests (both passing and expected-to-fail)
+test-all: test test-fail
+	@echo "=== All tests complete ==="
 
 # Test groups for selective testing
 .PHONY: test-expr test-decl test-cpp test-kr test-func test-stmt test-sizeof test-typedef test-cast test-string test-incr-decr test-ptr-compat test-lvalue

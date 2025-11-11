@@ -76,7 +76,7 @@ pop_scope()
 
 #ifdef DEBUG
         if (VERBOSE(V_SYM)) {
-            printf("pop_scope: remove %s%s from lookup\n",
+            fdprintf(2,"pop_scope: remove %s%s from lookup\n",
                 n->is_tag ? "tag:":"", n->name);
         }
 #endif
@@ -142,13 +142,13 @@ char *type_bitdefs[] = {
 void
 dump_name(struct name *n)
 {
-	printf("dump_name: ");
+	fdprintf(2,"dump_name: ");
 	if (!n) { printf("null\n"); return; }
-	printf("%s (%s)", n->name, n->is_tag ? "tag" : "decl");
+	fdprintf(2,"%s (%s)", n->name, n->is_tag ? "tag" : "decl");
 
 	/* Show storage class if set */
 	if (n->sclass) {
-		printf(" sclass=");
+		fdprintf(2," sclass=");
 		if (n->sclass & SC_EXTERN) printf("extern ");
 		if (n->sclass & SC_STATIC) printf("static ");
 		if (n->sclass & SC_REGISTER) printf("register ");
@@ -157,12 +157,12 @@ dump_name(struct name *n)
 		if (n->sclass & SC_VOLATILE) printf("volatile ");
 		if (n->sclass & SC_TYPEDEF) printf("typedef ");
 	}
-	printf("\n");
+	fdprintf(2,"\n");
 
 	if (n->type) {
 		dump_type(n->type, 0);
 	}
-    printf("\toffset: %d bitoff: %d width: %d\n",
+    fdprintf(2,"\toffset: %d bitoff: %d width: %d\n",
         n->offset, n->bitoff, n->width);
 }
 
@@ -212,7 +212,7 @@ new_name(char *name, kind k, struct type *t, boolean is_tag)
     names[++lastname] = n;
 #ifdef DEBUG
     if (VERBOSE(V_SYM)) {
-        printf("new_name: level:%d index:%3d %s %s%s\n",
+        fdprintf(2,"new_name: level:%d index:%3d %s %s%s\n",
             lexlevel, lastname,
             k < sizeof(kindname)/sizeof(kindname[0]) ? kindname[k] : "unkn",
             is_tag ? "tag:":"", name);
@@ -270,7 +270,7 @@ add_name(struct name *n)
 
 #ifdef DEBUG
     if (VERBOSE(V_SYM)) {
-        printf("add_name: level:%d index:%3d %s %s%s\n",
+        fdprintf(2,"add_name: level:%d index:%3d %s %s%s\n",
             lexlevel, lastname,
             n->kind < sizeof(kindname)/sizeof(kindname[0]) ? kindname[n->kind] : "unkn",
             n->is_tag ? "tag:":"", n->name);
@@ -286,13 +286,13 @@ dump_type(struct type *t, int lv)
 
     if (!t) return;
     if (lv > 20) {  // Cycle detection: prevent infinite recursion
-        printf("\t... (max depth reached, possible cycle)\n");
+        fdprintf(2,"\t... (max depth reached, possible cycle)\n");
         return;
     }
     if (lv) {
         int i = lv;
         while (i--) {
-            printf("\t");
+            fdprintf(2,"\t");
         }
     }
 
@@ -305,7 +305,7 @@ dump_type(struct type *t, int lv)
 
     // Display type info - format depends on whether it's a function
     if (t->flags & TF_FUNC) {
-        printf("function type: flags %x (%s) params %d\n",
+        fdprintf(2,"function type: flags %x (%s) params %d\n",
             t->flags, bitdef(t->flags, type_bitdefs), param_count);
 
         // Show parameter types (without names - function type signature)
@@ -315,14 +315,14 @@ dump_type(struct type *t, int lv)
                 // Print indentation
                 int i;
                 for (i = 0; i <= lv; i++)
-                    printf("\t");
-                printf("arg %d:", arg_num);
+                    fdprintf(2,"\t");
+                fdprintf(2,"arg %d:", arg_num);
                 if (param->type && param->type->name) {
-                    printf(" %s", param->type->name);
+                    fdprintf(2," %s", param->type->name);
                 } else {
-                    printf(" ?");
+                    fdprintf(2," ?");
                 }
-                printf("\n");
+                fdprintf(2,"\n");
                 arg_num++;
             }
         }
@@ -331,13 +331,13 @@ dump_type(struct type *t, int lv)
         if (t->sub) {
             int i;
             for (i = 0; i <= lv; i++)
-                printf("\t");
-            printf("returntype:\n");
+                fdprintf(2,"\t");
+            fdprintf(2,"returntype:\n");
             dump_type(t->sub, lv + 2);
         }
     } else {
         // Non-function types
-        printf("name %s flags %x (%s) count %x\n",
+        fdprintf(2,"name %s flags %x (%s) count %x\n",
             t->name ? t->name : "unnamed",
             t->flags, bitdef(t->flags, type_bitdefs), t->count);
         dump_type(t->sub, ++lv);
@@ -454,7 +454,7 @@ get_type(
         }
 
         if (depth >= 1000) {
-            printf("WARNING: type cache search hit depth limit, possible cycle in types list\n");
+            fdprintf(2,"WARNING: type cache search hit depth limit, possible cycle in types list\n");
         }
     }
 

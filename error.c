@@ -23,7 +23,7 @@ gripe(error_t errcode)
 
     /* Detect error loops: same error on same line twice in a row */
     if (!in_fatal && lineno == last_lineno && errcode == last_errcode) {
-        printf("ERROR LOOP DETECTED: same error repeated on line %d\n", lineno);
+        fdprintf(2, "ERROR LOOP DETECTED: same error repeated on line %d\n", lineno);
         in_fatal = 1;  /* Prevent recursive loop detection */
         fatal(errcode);
     }
@@ -33,7 +33,7 @@ gripe(error_t errcode)
 
     i = errcode;
     if (i > ER_WTF) i = ER_WTF;
-    printf("file: %s line: %d col: %d error code %d %s\n",
+    fdprintf(2, "file: %s line: %d col: %d error code %d %s\n",
         filename, lineno, column, errcode, errmsg[i]);
 
     /* Print include chain traceback */
@@ -44,7 +44,7 @@ gripe(error_t errcode)
             if (t->fd != -1 && t->name) {
                 /* Don't print the current file (already shown in main error message) */
                 if (t != tbtop || (filename && strcmp(filename, t->name) != 0)) {
-                    printf("  included from: %s line: %d\n",
+                    fdprintf(2, "  included from: %s line: %d\n",
                         t->name, t->lineno);
                 }
             }
@@ -52,36 +52,36 @@ gripe(error_t errcode)
     }
 
     /* Print last N tokens for debugging */
-    printf("  Last %d tokens: ", TOKEN_HISTORY_SIZE);
+    fdprintf(2, "  Last %d tokens: ", TOKEN_HISTORY_SIZE);
     for (i = 0; i < TOKEN_HISTORY_SIZE; i++) {
         int idx = (token_history_index + i) % TOKEN_HISTORY_SIZE;
         if (token_history[idx].type) {
             if (tokenname[token_history[idx].type]) {
-                printf("%s ", tokenname[token_history[idx].type]);
+                fdprintf(2, "%s ", tokenname[token_history[idx].type]);
             } else {
-                printf("'%c' ", token_history[idx].type);
+                fdprintf(2, "'%c' ", token_history[idx].type);
             }
         }
     }
-    printf("\n");
+    fdprintf(2, "\n");
 
     /* Print next token */
-    printf("  Next token: ");
+    fdprintf(2, "  Next token: ");
     if (next.type) {
         if (tokenname[next.type]) {
-            printf("%s", tokenname[next.type]);
+            fdprintf(2, "%s", tokenname[next.type]);
         } else {
-            printf("'%c'", next.type);
+            fdprintf(2, "'%c'", next.type);
         }
         if (next.type == SYM && next.v.name) {
-            printf(" (%s)", next.v.name);
+            fdprintf(2, " (%s)", next.v.name);
         } else if (next.type == NUMBER) {
-            printf(" (%ld)", next.v.numeric);
+            fdprintf(2, " (%ld)", next.v.numeric);
         }
     } else {
-        printf("(none)");
+        fdprintf(2, "(none)");
     }
-    printf("\n");
+    fdprintf(2, "\n");
 
     error = errcode;
 }
@@ -96,47 +96,47 @@ dump_symbols()
     struct name *n;
     struct type *t;
 
-    printf("\n=== SYMBOL TABLE DUMP ===\n");
-    printf("lexlevel=%d lastname=%d\n\n", lexlevel, lastname);
+    fdprintf(2, "\n=== SYMBOL TABLE DUMP ===\n");
+    fdprintf(2, "lexlevel=%d lastname=%d\n\n", lexlevel, lastname);
 
-    printf("--- NAMES TABLE ---\n");
+    fdprintf(2, "--- NAMES TABLE ---\n");
     if (names && lastname >= 0) {
         for (i = 0; i <= lastname; i++) {
             n = names[i];
             if (n) {
-                printf("[%d] %s%s kind=%s level=%d sclass=0x%x",
+                fdprintf(2, "[%d] %s%s kind=%s level=%d sclass=0x%x",
                     i, n->is_tag ? "tag:" : "",
                     n->name ? n->name : "(null)",
                     (n->kind >= 0 && n->kind <= 10) ? kindname[n->kind] : "???",
                     n->level, n->sclass);
                 if (n->type) {
-                    printf(" type=");
+                    fdprintf(2, " type=");
                     dump_type(n->type, 0);
                 }
-                printf("\n");
+                fdprintf(2, "\n");
             }
         }
     } else {
-        printf("(names table not initialized)\n");
+        fdprintf(2, "(names table not initialized)\n");
     }
 
-    printf("\n--- TYPES TABLE ---\n");
+    fdprintf(2, "\n--- TYPES TABLE ---\n");
     if (types) {
         int type_count = 0;
         int max_types = 1000;  /* Prevent infinite loops from cycles */
         for (t = types; t && type_count < max_types; t = t->next) {
-            printf("type @%p: ", (void*)t);
+            fdprintf(2, "type @%p: ", (void*)t);
             dump_type(t, 0);
-            printf("\n");
+            fdprintf(2, "\n");
             type_count++;
         }
         if (t) {
-            printf("... (stopped after %d types, possible cycle)\n", max_types);
+            fdprintf(2, "... (stopped after %d types, possible cycle)\n", max_types);
         }
     } else {
-        printf("(types table not initialized)\n");
+        fdprintf(2, "(types table not initialized)\n");
     }
-    printf("=== END SYMBOL TABLE DUMP ===\n\n");
+    fdprintf(2, "=== END SYMBOL TABLE DUMP ===\n\n");
 }
 
 /*
@@ -146,7 +146,7 @@ void
 fatal(error_t errcode)
 {
     gripe(errcode);
-    printf("too severe to recover\n");
+    fdprintf(2, "too severe to recover\n");
     dump_symbols();
     exit(-errcode);
 }

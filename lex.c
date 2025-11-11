@@ -315,7 +315,7 @@ issym()
     }
 #ifdef DEBUG
     if (VERBOSE(V_SYM)) {
-        printf("issym = %s curchar = %c nextchar = %c\n",
+        fdprintf(2,"issym = %s curchar = %c nextchar = %c\n",
             strbuf, curchar, nextchar);
     }
 #endif
@@ -433,7 +433,7 @@ do_cpp(unsigned char t)
     case INCLUDE:
 #ifdef DEBUG
         if (VERBOSE(V_CPP)) {
-            printf("Processing INCLUDE directive\n");
+            fdprintf(2,"Processing INCLUDE directive\n");
         }
 #endif
         skipwhite1();
@@ -458,10 +458,10 @@ do_cpp(unsigned char t)
         skiptoeol();
 #ifdef DEBUG
         if (VERBOSE(V_CPP)) {
-            printf("After skiptoeol: curchar='%c'(0x%x) nextchar='%c'(0x%x)\n",
+            fdprintf(2,"After skiptoeol: curchar='%c'(0x%x) nextchar='%c'(0x%x)\n",
                    curchar >= 32 ? curchar : '?', curchar,
                    nextchar >= 32 ? nextchar : '?', nextchar);
-            printf("About to insertfile: '%s' sys=%d\n", strbuf, k == '>');
+            fdprintf(2,"About to insertfile: '%s' sys=%d\n", strbuf, k == '>');
         }
 #endif
         insertfile(strbuf, k == '>');
@@ -489,7 +489,7 @@ isstring()
     *s = 0;
 #ifdef DEBUG
     if (VERBOSE(V_STR)) {
-        printf("isstring: %s(%d)\n", &strbuf[1], strbuf[0]);
+        fdprintf(2,"isstring: %s(%d)\n", &strbuf[1], strbuf[0]);
     }
 #endif
     return 1;
@@ -608,7 +608,7 @@ gettoken()
         if (charmatch('#')) {
 #ifdef DEBUG
             if (VERBOSE(V_CPP)) {
-                printf("Found # at column=%d (will%s process)\n", column, (column == 1) ? "" : " NOT");
+                fdprintf(2,"Found # at column=%d (will%s process)\n", column, (column == 1) ? "" : " NOT");
             }
 #endif
             if (column != 1) {
@@ -622,7 +622,7 @@ gettoken()
                 t = kwlook(strbuf, cppkw);
 #ifdef DEBUG
                 if (VERBOSE(V_CPP)) {
-                    printf("CPP keyword: '%s' -> %d\n", strbuf, t);
+                    fdprintf(2,"CPP keyword: '%s' -> %d\n", strbuf, t);
                 }
 #endif
                 if (t) {
@@ -802,7 +802,7 @@ gettoken()
     }
 #ifdef DEBUG
     if (VERBOSE(V_TOKEN)) {
-        printf("cur.type = 0x%02x \'%c\'\n", cur.type, cur.type > ' ' ? cur.type : ' ');
+        fdprintf(2,"cur.type = 0x%02x \'%c\'\n", cur.type, cur.type > ' ' ? cur.type : ' ');
     }
 #endif
     return;
@@ -858,15 +858,6 @@ readcppconst()
     long val;
     char savedtflags = tflags;
     int saved_write_cpp = write_cpp_file;
-    struct token savecur, savenext;
-
-    /* Save both cur and next tokens */
-    memcpy(&savecur, &cur, sizeof(cur));
-    memcpy(&savenext, &cur, sizeof(next));
-
-    /* Reset next so gettoken() doesn't copy stale NONE value to cur */
-    next.type = E_O_F;
-    next.v.str = 0;
 
     /*
      * hack to make lexer translate newlines to ';', so that expressions
@@ -880,25 +871,26 @@ readcppconst()
     /* Skip whitespace before reading the first token */
     skipwhite1();
 
-    /* Get the first token of the expression
-     * Call gettoken() twice: first call reads into next, second moves to cur */
+    /* Get the first token of the expression */
     gettoken();
     gettoken();
 
     val = parse_const(SEMI);
+
+    /* Restore flags */
     tflags = savedtflags;
     write_cpp_file = saved_write_cpp;
 
-    /* Restore both tokens */
-    memcpy(&cur, &savecur, sizeof(cur));
-    memcpy(&next, &savenext, sizeof(next));
+    /* Clear lineend flag */
+    lineend = 0;
+
     return val;
 }
 
 void
 tdump(unsigned char c)
 {
-	printf("%s ", tokenname[c]);
+	fdprintf(2,"%s ", tokenname[c]);
 }
 
 /*
