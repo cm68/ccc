@@ -480,9 +480,13 @@ do_cpp(unsigned char t)
             gripe(ER_C_ME);
             return;
         }
-        cond->flags ^= (C_TRUE | C_ELSESEEN);
-        if (cond->flags & C_TRUE) {
-            cond->flags |= C_TRUESEEN;
+        cond->flags |= C_ELSESEEN;  // Mark that we've seen #else
+        if (cond->flags & C_TRUESEEN) {
+            // Already had a true condition, #else block should be false
+            cond->flags &= ~C_TRUE;
+        } else {
+            // Haven't had a true condition yet, #else block should be true
+            cond->flags |= (C_TRUE | C_TRUESEEN);
         }
         return;
     case ELIF:
