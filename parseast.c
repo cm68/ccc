@@ -22,6 +22,7 @@ static int buf_pos;
 static int buf_valid;
 static int line_num = 1;
 static unsigned char curchar;
+static int label_counter = 0;  /* For generating unique labels */
 
 /*
  * Read next character from input
@@ -267,6 +268,56 @@ handle_binary_op(unsigned char op)
     skip();
     parse_expr();  /* right operand */
     fdprintf(2, ")");
+    expect(')');
+}
+
+/*
+ * Short-circuit evaluation for && (LAND)
+ * If left operand is false, skip right operand evaluation
+ */
+static void
+handle_land(unsigned char op)
+{
+    int label = label_counter++;
+
+    fdprintf(2, "LAND_%d (", label);
+    skip();
+    parse_expr();  /* left operand */
+    fdprintf(2, " ? ");
+
+    /* Emit conditional jump: if false, jump to skip_label */
+    fdprintf(2, "JZ skip_%d : ", label);
+
+    skip();
+    parse_expr();  /* right operand */
+
+    /* Emit skip label */
+    fdprintf(2, " : skip_%d)", label);
+    expect(')');
+}
+
+/*
+ * Short-circuit evaluation for || (LOR)
+ * If left operand is true, skip right operand evaluation
+ */
+static void
+handle_lor(unsigned char op)
+{
+    int label = label_counter++;
+
+    fdprintf(2, "LOR_%d (", label);
+    skip();
+    parse_expr();  /* left operand */
+    fdprintf(2, " ? ");
+
+    /* Emit conditional jump: if true, jump to skip_label */
+    fdprintf(2, "JNZ skip_%d : ", label);
+
+    skip();
+    parse_expr();  /* right operand */
+
+    /* Emit skip label */
+    fdprintf(2, " : skip_%d)", label);
     expect(')');
 }
 
@@ -1295,8 +1346,8 @@ init_expr_handlers(void)
     expr_handlers['g'] = handle_binary_op;  /* GE >= */
     expr_handlers['y'] = handle_binary_op;  /* LSHIFT << */
     expr_handlers['w'] = handle_binary_op;  /* RSHIFT >> */
-    expr_handlers['h'] = handle_binary_op;  /* LOR || */
-    expr_handlers['j'] = handle_binary_op;  /* LAND && */
+    expr_handlers['h'] = handle_lor;        /* LOR || */
+    expr_handlers['j'] = handle_land;       /* LAND && */
 
     /* Compound assignment operators */
     expr_handlers['P'] = handle_binary_op;  /* PLUSEQ += */
