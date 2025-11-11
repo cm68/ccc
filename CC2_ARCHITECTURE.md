@@ -102,14 +102,48 @@ Walk the tree with ASM blocks and output:
 
 ### Implementation Strategy
 
-1. **Keep existing parseast.c as reference**
-2. **Create new codegen.c module** for tree-based approach
+1. **Reuse parsing machinery from parseast.c**:
+   - Keep all low-level parsing: nextchar(), skip(), expect(), read_symbol(), read_number(), etc.
+   - Keep buffer management and S-expression parsing infrastructure
+   - These functions are solid and well-tested
+
+2. **Modify handlers to return parse nodes**:
+   - Change `parse_expr()` from `void` to `struct expr*`
+   - Change `parse_stmt()` from `void` to `struct stmt*`
+   - Handler functions return allocated tree nodes instead of printing
+   - Assign label numbers during parsing
+
 3. **Implement incrementally**:
-   - Phase 1: Parse function AST into trees with label assignment
-   - Phase 2: Convert operation nodes to ASM blocks
-   - Phase 3: Emit assembly by walking ASM-annotated trees
+   - Phase 1: Modify parseast.c handlers to build trees
+   - Phase 2: Add code generation pass (trees → ASM blocks)
+   - Phase 3: Add emission pass (ASM blocks → stdout)
 4. **Test with simple programs** at each phase
 5. **Add optimizations** once basic generation works
+
+### Handler Signature Changes
+
+**Current (parseast.c):**
+```c
+static void parse_expr(void);           // Prints diagnostics, no return value
+static void parse_stmt(void);           // Prints diagnostics, no return value
+static void handle_if(void);            // Prints diagnostics
+static void handle_binary_op(unsigned char op);  // Prints diagnostics
+```
+
+**New (modified parseast.c):**
+```c
+static struct expr* parse_expr(void);   // Returns allocated expr tree
+static struct stmt* parse_stmt(void);   // Returns allocated stmt tree
+static struct stmt* handle_if(void);    // Returns if statement node with label
+static struct expr* handle_binary_op(unsigned char op);  // Returns binary op node
+```
+
+**Key changes:**
+- Allocate nodes with `malloc(sizeof(struct expr))` or `malloc(sizeof(struct stmt))`
+- Build tree by setting left/right/then_branch/else_branch pointers
+- Assign label numbers from global label_counter during parsing
+- Return root of subtree instead of printing
+- Diagnostic output (fdprintf to stderr) can remain for debugging
 
 ### Function Context Structure
 
@@ -121,6 +155,65 @@ struct function_context {
 };
 ```
 
+### Example: Handler Transformation
+
+**Current handle_if() (void return, prints diagnostics):**
+```c
+static void handle_if(void) {
+    int if_label = label_counter++;
+    int else_label;
+
+    fdprintf(2, "IF (");
+    skip();
+    parse_expr();  /* condition - just prints */
+    fdprintf(2, ") ");
+
+    skip();
+    parse_stmt();  /* then branch - just prints */
+
+    skip();
+    if (curchar != ')') {
+        else_label = label_counter++;
+        fdprintf(out_fd, "\tjp _if_end_%d\n", else_label);
+        fdprintf(out_fd, "_if_%d:\n", if_label);
+        fdprintf(2, " ELSE ");
+        parse_stmt();  /* else branch - just prints */
+        fdprintf(out_fd, "_if_end_%d:\n", else_label);
+    } else {
+        fdprintf(out_fd, "_if_%d:\n", if_label);
+    }
+    expect(')');
+}
+```
+
+**New handle_if() (returns struct stmt*):**
+```c
+static struct stmt* handle_if(void) {
+    struct stmt *s = malloc(sizeof(struct stmt));
+    s->type = 'I';
+    s->label = label_counter++;
+    s->label2 = 0;
+    s->asm_block = NULL;
+
+    skip();
+    s->expr = parse_expr();  /* condition - returns expr tree */
+
+    skip();
+    s->then_branch = parse_stmt();  /* then branch - returns stmt tree */
+
+    skip();
+    if (curchar != ')') {
+        s->label2 = label_counter++;  /* Need second label for else */
+        s->else_branch = parse_stmt();  /* else branch - returns stmt tree */
+    } else {
+        s->else_branch = NULL;
+    }
+    expect(')');
+
+    return s;  /* Return the if statement node */
+}
+```
+
 ### Example: If Statement Processing
 
 **Input AST:**
@@ -129,7 +222,7 @@ struct function_context {
    (B (E (=:s $x (+ (M:s $x) 1)))))
 ```
 
-**After Phase 1 (Parse with labels):**
+**After Phase 1 (Parse with labels - handle_if returns this tree):**
 ```
 stmt (type='I', label=0):
   expr (op='>', ...)
