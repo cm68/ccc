@@ -9,7 +9,7 @@ This is **ccc** - a native C compiler written in C, currently under reconstructi
 1. **Pass 1** (cc1): Recursive descent parser with embedded C preprocessor (CPP) - parses and validates C code
 2. **Pass 2** (cc2): Code generator and assembler - writes object file (not yet implemented)
 
-**Current Status**: Pass 1 is substantially complete with ~4,600 lines of C code. The compiler successfully parses C code including preprocessor directives, declarations, types, expressions, and statements.
+**Current Status**: Pass 1 is complete (~7,150 lines of C code). Tagged as **cc1_complete**. The compiler successfully parses C code including full preprocessor support with conditional directives, declarations, types, expressions, and statements. All 134 tests pass.
 
 ## Build Commands
 
@@ -851,8 +851,12 @@ The compiler has made substantial progress:
 - Macro definition and expansion
 - #include directive handling
 - Stringify (#) and token pasting (##) operators
-- Conditional compilation (#if, #ifdef, #ifndef, #else, #endif)
+- Conditional compilation (#if, #elif, #else, #endif, #ifdef, #ifndef)
+- defined() pseudofunction in #if expressions
+- #undef directive
 - Macro expansion with argument substitution
+- Proper C_TRUESEEN tracking for #else block activation
+- ONELINE mode for #if expression evaluation
 
 **Lexer (Complete)**:
 - Tokenization of all C keywords and operators
@@ -884,12 +888,18 @@ The compiler has made substantial progress:
 - Storage class specifiers
 - Initializer expressions (basic support)
 
-**Expression Parsing (Functional)**:
+**Expression Parsing (Complete)**:
 - All unary operators with constant folding
 - All binary operators with constant folding
+- Ternary conditional operator (? :)
+- Type cast operators
+- Increment/decrement operators (++/--, prefix and postfix)
+- Compound assignment operators (+=, -=, *=, /=, %=, &=, |=, ^=, <<=, >>=)
+- sizeof operator
+- Function calls and function pointers
+- Array subscripting and struct member access (. and ->)
 - Proper operator precedence and associativity
-- Parenthesized expressions
-- Numeric constant expressions
+- Constant folding for all operators
 
 **Statement Parsing (Complete)**:
 - Function body parsing enabled
@@ -910,12 +920,12 @@ The compiler has made substantial progress:
 - Pointer type compatibility validation
 - Lvalue validation for assignments and increment/decrement operators
 
-**Self-hosting capability** (14/18 files passing - 78%):
-- Compiler successfully parses 14 of its own 18 source files
+**Self-hosting capability** (18/18 files passing - 100% Complete!) ✓ Tagged as **self-parse**:
+- Compiler successfully parses all 18 of its own source files
 - Stub system headers in `include/` avoid GNU libc advanced preprocessor features
-- Failing files use complex typedef patterns or syntax not yet supported
-- 5-second timeout handler catches infinite loops and dumps symbol tables
-- Run `make testself` to verify self-hosting progress
+- Zero parse errors - every source file successfully preprocesses, lexes, parses, and emits AST
+- All cc1 source files: cc1.c, error.c, lex.c, io.c, macro.c, kw.c, util.c, unixlib.c, expr.c, parse.c, type.c, declare.c, outast.c, cc2.c, parseast.c, ccc.c, tokenlist.c, debugtags.c
+- Run `make testself` to verify self-hosting capability
 
 **Not yet implemented**:
 - Full type compatibility checking (sametype) for all contexts
@@ -988,14 +998,17 @@ Tests run with:
 20. **Removed MAXTRACE debug code** - Eliminated 192 lines of stderr debug traces
 21. **Typedef support** - Global and scoped typedefs inside functions with proper shadowing
 22. **Local variable declarations** - Full support for declarations inside function bodies
-23. **Test infrastructure** - 110+ tests organized into 15 categories in tests/Makefile
+23. **Test infrastructure** - 134 tests organized by category in tests/Makefile, all passing
 24. **Memory leak fixes** - Valgrind clean on all tests
 25. **K&R function support** - Full K&R style function definitions
 26. **Comprehensive preprocessor** - Macros, includes, conditional compilation, stringify, token pasting
 27. **Self-hosting improvements** - Fixed include file processing, extern/definition handling, comment preprocessing
 28. **Stub system headers** - include/ directory with stubs to avoid GNU libc advanced features
 29. **Debugging infrastructure** - Renamed lose() to gripe(), added dump_symbols() to fatal(), 5-second timeout handler
-30. **Self-hosting status** - 14/18 (78%) of compiler source files successfully parse themselves
+30. **Self-hosting complete** - 18/18 (100%) of compiler source files successfully parse themselves
+31. **CPP conditional directives complete** - #if/#elif/#else/#endif fully working with proper C_TRUESEEN tracking
+32. **ONELINE mode fix** - Fixed #if expression evaluation to not advance past newlines during parse_const()
+33. **#else block fix** - Fixed #else incorrectly activating after true #if condition, preventing duplicate declarations
 
 ### Code Style
 
