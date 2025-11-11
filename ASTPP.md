@@ -310,93 +310,15 @@ The pretty printer is implemented in Common Lisp and:
 
 ## Debugging with Pretty Printer
 
-### Workflow
-
-1. **Write C code** with specific construct to test
-2. **Generate AST** with `./cc1 -E test.c > test.ast`
-3. **Pretty print** with `./astpp.lisp test.ast`
-4. **Verify structure** matches expected AST
-5. **Compare** with known-good examples
-
-### Example Debugging Session
-
-```bash
-# Test if ternary operator works correctly
-echo 'int main() { return 1 ? 10 : 20; }' > /tmp/test.c
-./cc1 -E /tmp/test.c > /tmp/test.ast
-./astpp.lisp /tmp/test.ast
-
-# Look for TERNARY operator in output
-# Verify condition, true branch, false branch are correct
-```
-
-### Common Debugging Patterns
-
-**Check operator precedence:**
-```bash
-echo 'int main() { return 1 + 2 * 3; }' > /tmp/test.c
-./astpp.lisp <(./cc1 -E /tmp/test.c)
-# Should show MUL nested inside ADD
-```
-
-**Check type conversions:**
-```bash
-echo 'int main() { char c = 5; int i = c; return i; }' > /tmp/test.c
-./astpp.lisp <(./cc1 -E /tmp/test.c)
-# Look for SEXT (sign extend) from byte to short
-```
-
-**Check control flow:**
-```bash
-./cc1 -E tests/test_switch.c > /tmp/switch.ast
-./astpp.lisp /tmp/switch.ast
-# Verify case labels, fallthrough, default case
-```
+1. Generate AST: `./cc1 -E test.c > test.ast`
+2. Pretty print: `./astpp.lisp test.ast`
+3. Verify structure matches expected AST
 
 ## Comparison with Interpreter
 
-The AST pretty printer and interpreter (`interp.lisp`) serve different purposes:
-
-| Tool | Purpose | Output |
-|------|---------|--------|
-| `astpp.lisp` | Format AST for reading | Human-readable structure |
-| `interp.lisp` | Execute AST | Program exit code |
-
-**Use pretty printer when:**
-- You want to see AST structure
-- Debugging parser output
-- Learning the AST format
-- Creating documentation
-
-**Use interpreter when:**
-- You want to test program behavior
-- Validating parser produces correct semantics
-- Testing without code generator
-
-**Use both when:**
-- AST looks correct but interpreter gives wrong result
-- Pretty print to verify structure, then interpret to verify semantics
-
-## Performance
-
-The pretty printer is fast enough for interactive use:
-
-- Small programs (<100 lines): Instant
-- Medium programs (<1000 lines): <1 second
-- Large programs (>1000 lines): Few seconds
-
-For very large ASTs, you can pipe through `less` for paging:
-
-```bash
-./astpp.lisp large_program.ast | less
-```
-
-## Limitations
-
-- **No expression simplification**: Shows AST as-is without folding constants
-- **No type checking**: Displays types but doesn't validate correctness
-- **No semantic analysis**: Only shows structure, not meaning
-- **Verbose for complex expressions**: Deeply nested expressions may be hard to read
+- **astpp.lisp**: Format AST for visual inspection (structure)
+- **interp.lisp**: Execute AST to verify semantics (behavior)
+- Use both together when debugging: pretty print to verify structure, interpret to verify semantics
 
 ## Tips
 

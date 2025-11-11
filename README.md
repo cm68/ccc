@@ -6,53 +6,18 @@ yet implemented.
 
 ## Project Status
 
-**Pass 1 (cc1) - Complete** ✓ Tagged as **cc1_complete**
+**Pass 1 (cc1) - Complete** ✓ Tagged as **cc1_complete** and **self-parse**
+- Full C preprocessor, type system, expression/statement parsing, AST emission
+- 134 tests passing, 18/18 source files self-host
+- See CLAUDE.md for detailed architecture and features
 
-The compiler successfully parses C code and outputs AST in S-expression format:
-- **Full C preprocessor (CPP)**: macros, includes, conditional compilation (#if/#elif/#else/#endif, #ifdef/#ifndef), defined() operator, stringify (#), token pasting (##), #undef
-- Complete lexical analysis (tokenization)
-- Type system: primitives, pointers, arrays, functions, structs, unions, enums
-- Declaration parsing: variables, functions (K&R and ANSI-style), typedefs
-- Expression parsing with constant folding and proper operator precedence
-- Type checking: automatic conversions, operand widening, pointer compatibility, lvalue validation
-- Type cast operators with typedef disambiguation (N/W/X operators with width annotations)
-- Memory copy operator (copy) for array initialization and block copies
-- Statement parsing: all control flow, function bodies, scoped blocks
-- String literals: output to AST with proper escaping and synthetic names
-- Array initialization: char[] = "string" with automatic size inference
-- Local array initialization generates proper memory copy operations
-- AST emission: S-expression output with literals section, global vars, functions, initializers
-- Unix syscall I/O: fdprintf() instead of stdio for AST output
-- Comprehensive test suite (134 tests organized by category, all passing)
-
-**Debugging Tools - Complete**
-
-Two complementary tools for validating parser output without needing code generation:
-- **AST Interpreter** (interp.lisp): Executes AST directly, validates parser semantics
-- **AST Pretty Printer** (astpp.lisp): Formats AST for human inspection or reformatting
-- Full control flow support: if/else, loops, switch, break/continue
-- Comprehensive test coverage: 11 tests pass with interpreter
-- Raw mode for pretty printer outputs valid AST that can be read back
-
-**Self-Hosting - 100% Complete! (18/18 files)**
-
-The compiler is now fully self-hosting for pass 1 (parsing and AST generation):
-- **All 18 source files** parse without errors and generate correct AST
-- **Stub system headers** in `include/` avoid GNU libc advanced features
-- **Zero parse errors** - every source file successfully preprocesses, lexes, parses, and emits AST
-- **Passing**: cc1.c, error.c, lex.c, io.c, macro.c, kw.c, util.c, unixlib.c, expr.c, parse.c, type.c, declare.c, outast.c, cc2.c, parseast.c, ccc.c, tokenlist.c, debugtags.c
-- Run `make testself` to verify self-hosting capability
-- Tagged as **self-parse** milestone
+**Debugging Tools**
+- **AST Interpreter** (interp.lisp): Execute AST without code generation
+- **AST Pretty Printer** (astpp.lisp): Format AST for human inspection
+- See INTERP.md and ASTPP.md for details
 
 **Pass 2 (cc2) - Work In Progress**
-
-AST parser foundation in place, code generation planned:
-- Table-driven S-expression parser in parseast.c
-- Unix syscall I/O (read/write) instead of stdio
-- Handler functions for all AST node types
-- Memory width annotation support (:b :s :l :p :f :d)
-- Successfully parses simple AST constructs
-- Complex nested structures need debugging
+- AST parser foundation in parseast.c
 - Code generation not yet started
 
 ## Architecture

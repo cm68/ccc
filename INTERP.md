@@ -86,67 +86,13 @@ Note: Also works with CLISP if you prefer:
 clisp interp.lisp test_interp.ast
 ```
 
-### Debugging Workflow Example
+### Debugging Workflow
 
-**Step 1**: Write a test with known expected behavior:
-```c
-// test_add.c
-int main() {
-    int a = 5;
-    int b = 10;
-    return a + b;  // Should return 15
-}
-```
-
-**Step 2**: Execute with interpreter:
-```bash
-$ ./ccc -x test_add.c
-=== Pass 1: Parsing test_add.c ===
-
-=== Executing AST with interpreter ===
-Program exited with code: 15
-
-AST saved to: test_add.ast
-```
-
-**Step 3**: If result is wrong, inspect the AST:
-```bash
-$ cat test_add.ast
-; Function: main
-(f main () _short_
-  (B (d a _short_) (d b _short_)
-     (E (=:s $a (N:s 5)))
-     (E (=:s $b (N:s 10)))
-     (R (+ (M:s $a) (M:s $b)))))
-```
-
-**Step 4**: Verify the AST structure matches your expectations:
-- Declarations for `a` and `b`? ✓
-- Assignments with correct values? ✓
-- Return statement with addition? ✓
-
-**Real-world debugging example**:
-
-If the program returns 0 instead of 15:
-1. Check if return statement is present in AST
-2. Check if addition operator is correct
-3. Check if variables are being dereferenced (M operator)
-4. Add debug prints to interpreter to trace execution
-
-### Example Session
-
-```bash
-# Test factorial recursion
-$ ./ccc -x test_interp.c
-=== Pass 1: Parsing test_interp.c ===
-
-=== Executing AST with interpreter ===
-Program exited with code: 120
-
-AST saved to: test_interp.ast
-
-# Verify it's correct: 5! = 120 ✓
-```
+1. Write test program with known expected output
+2. Execute: `./ccc -x test.c`
+3. Check exit code against expected value
+4. If wrong, inspect saved AST file: `cat test.ast`
+5. Verify AST structure matches expectations
 
 ## Features
 

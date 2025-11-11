@@ -109,77 +109,9 @@ You can run specific test categories using these make targets:
 - **simple_int.c** - Simple integer declarations
 - **hang.c** - Test for parser hanging issues
 
-## Current Compiler Status
+## Current Status
 
-### What Works
-✅ **Preprocessor** - Complete implementation ✓ cc1_complete milestone
-  - Macro definition and expansion
-  - #include directive handling
-  - Stringify (#) and token pasting (##) operators
-  - Conditional compilation (#if, #elif, #else, #endif, #ifdef, #ifndef)
-  - defined() pseudofunction in #if expressions
-  - #undef directive
-  - Proper C_TRUESEEN tracking for #else block activation
-  - Expression evaluation in #if with full operator precedence
-  - Nested conditional directives
-
-✅ **Type System** - Substantially complete
-  - Primitive types (char, short, int, long, unsigned variants, void, float, double)
-  - Pointer types (multi-level)
-  - Array types (multi-dimensional)
-  - Function types with parameter lists
-  - Struct, union, enum declarations
-  - Forward references and incomplete types
-  - Tag namespace separation
-  - Bitfield support
-  - Typedef support (global and scoped inside functions)
-
-✅ **Expression Parsing** - Complete
-  - All unary operators with constant folding
-  - All binary operators with constant folding
-  - Proper operator precedence and associativity
-  - sizeof operator (types and expressions)
-  - Type cast operator with typedef disambiguation
-  - Increment/decrement operators (prefix and postfix)
-  - Compound assignment operators (+=, -=, etc.)
-  - Ternary conditional operator (? :)
-  - Function calls and function pointers
-  - Array subscripting with scaled arithmetic
-  - Struct member access (. and ->)
-
-✅ **Type Checking** - Partially implemented
-  - Automatic type conversions in assignments (NARROW/SEXT/WIDEN)
-  - Automatic operand widening in binary expressions
-  - Pointer type compatibility validation
-  - Lvalue validation for assignments and increment/decrement
-
-✅ **Statement Parsing** - Complete
-  - All control flow statements (if/else, while, do-while, for, switch/case)
-  - Jump statements (break, continue, return, goto/labels)
-  - Block statements with proper scoping
-  - Statement trees attached to function bodies
-  - Local variable declarations inside function bodies
-  - Typedef declarations inside function bodies
-
-✅ **Function Declarations** - Complete
-  - ANSI-style function prototypes
-  - ANSI-style function definitions: `int foo(int x) { }` ✅
-  - K&R style function definitions
-  - Undeclared K&R parameters default to int
-  - Forward declarations with different parameter names
-  - Function type normalization (parameter names don't affect type)
-
-### Current Limitations
-
-⚠️ **Not Yet Implemented**
-- Full type compatibility checking (sametype for all contexts)
-- Function signature checking at call sites
-- Code generation (pass 2)
-
-### Memory Management
-- Valgrind clean on basic tests (no definite leaks)
-- Fixed major memory leaks in declaration parsing
-- Proper cleanup in pop_scope()
+Pass 1 (cc1) complete: Full preprocessor, type system, expression/statement parsing, AST emission. All 134 tests passing. See ../CLAUDE.md for detailed status.
 
 ## Running Tests
 

@@ -1,84 +1,10 @@
 # TODO List
 
-## Completed Features (Pass 1)
+## Pass 1 Status
 
-### Core Infrastructure
-- + Full C preprocessor (macros, includes, conditional compilation, stringify, token pasting)
-- + CPP conditional directives fully working (#if/#elif/#else/#endif, #ifdef/#ifndef, defined())
-- + Proper C_TRUESEEN tracking for #else block activation
-- + ONELINE mode for #if expression evaluation without advancing past newlines
-- + Nested macro expansion works correctly
-- + Complete lexical analysis
-- + Comprehensive test suite (134 tests organized by category, all passing)
+**Complete**: Full preprocessor, type system, expression/statement parsing, AST emission. All 134 tests passing. See CLAUDE.md and README.md for details.
 
-### Type System
-- + Primitive types: char, short, int, long, unsigned variants, void, boolean, float, double
-- + Pointer types (multi-level)
-- + Array types (multi-dimensional)
-- + Function types with parameter lists
-- + Struct types with member lists
-- + Union types
-- + Enum constants as named integers in global namespace
-- + Enum variables are simply unsigned char (_uchar_)
-- + Forward struct/union declarations
-- + Bitfield support in struct declarations
-- + Tag namespace separate from variable namespace
-- + Struct member namespace separation
-- + Pointer type compatibility checking (validates assignments, reports ER_E_PT)
-- + Automatic type conversions in assignments (NARROW/SEXT/WIDEN)
-- + Automatic operand widening in binary expressions (implements C's usual arithmetic conversions)
-
-### Declarations
-- + Variable declarations (global and local)
-- + Function declarations (both ANSI and K&R style)
-- + ANSI-style function definitions: `int foo(int x) { }` works correctly
-- + Function type normalization: parameter names don't affect type compatibility
-- + Forward declarations with different parameter names
-- + Function parameters stored in namespace at level 2 with V_FUNARG flag
-- + Typedef support including scoped typedefs inside functions
-- + Local variable declarations inside functions
-- + Static local variables emitted in global data section
-
-### Expression Parsing
-- + Constant folding for compile-time evaluation
-- + Arithmetic operators: +, -, *, /, % with constant folding
-- + Bitwise operators: &, |, ^, <<, >> with constant folding
-- + Logical operators: &&, ||, ! with constant folding
-- + Comparison operators: <, >, <=, >=, ==, != with constant folding
-- + Unary operators: -, ~, !, *, &
-- + Assignment operator: = with proper lvalue handling
-- + Increment/decrement operators: ++, -- (prefix and postfix with distinct AST operators)
-- + Compound assignment operators: +=, -=, *=, /=, %=, &=, |=, ^=, <<=, >>= (single lvalue evaluation)
-- + Ternary conditional operator (? :) with right-associativity and constant folding
-- + Type cast operator: (type)expr with typedef disambiguation
-- + Address semantics: SYM nodes represent addresses, DEREF accesses values
-- + Function and array names decay to pointers (correct C semantics)
-- + Array subscript with scaled addition: arr[i] -> DEREF(ADD(arr, i * sizeof))
-- + Struct member access: . and -> operators with offset addition
-- + Function calls with argument lists
-- + Function pointers: assignment, calls, arrays of function pointers
-- + sizeof operator (for types and expressions)
-- + Proper operator precedence and associativity
-- + Lvalue validation for assignments and increment/decrement operators
-
-### Statements
-- + Complete statement parsing (all control flow)
-- + if/else statements
-- + while, do-while, for loops
-- + switch/case/default statements
-- + break, continue, return statements
-- + goto and labels
-- + Block statements with proper scoping
-
-### Memory Operations
-- + String literals output to AST with escaped data
-- + Array initialization with string literals (char[] = "string")
-- + Memory copy operator (Y) for array/struct initialization
-- + Struct assignment using COPY operator with block memory copy
-- + Memory width annotations on DEREF and ASSIGN operators
-
-## Known Limitations (Pass 1)
-
+**Known Limitations**:
 - The 'signed' keyword is deliberately not supported
 - Anonymous struct/union declarations don't work properly
 
