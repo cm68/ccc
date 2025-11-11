@@ -41,8 +41,8 @@ struct expr {
     int flags;                  // E_CONST, E_RESOLVED, etc.
 
     // Code generation fields
-    struct code_emit *code;     // Generated code for this node
-    int reg_hint;              // Register allocation hint
+    char *asm_block;           // Assembly code for this node (or NULL)
+    int label;                 // Label number (if needed for this node)
 };
 ```
 
@@ -57,29 +57,9 @@ struct stmt {
     struct stmt *next;          // Next statement in sequence
 
     // Code generation fields
-    int label;                  // Label number for jumps
-    struct code_emit *code;     // Generated code for this statement
-};
-```
-
-#### Code Emission Nodes
-```c
-struct code_emit {
-    enum {
-        CODE_LABEL,             // Label definition
-        CODE_JUMP,              // Unconditional jump
-        CODE_COND_JUMP,         // Conditional jump
-        CODE_LOAD,              // Load value to register
-        CODE_STORE,             // Store register to memory
-        CODE_ALU_OP,            // ALU operation
-        CODE_CALL,              // Function call
-        CODE_RETURN,            // Return from function
-        CODE_COMMENT,           // Assembly comment
-    } type;
-
-    char *asm_text;             // Assembly instruction text
-    int label;                  // Label number (for jumps)
-    struct code_emit *next;     // Next instruction
+    int label;                  // Label number for this statement (if needed)
+    int label2;                 // Second label (for if/else end label)
+    char *asm_block;           // Assembly code for this statement (or NULL)
 };
 ```
 
@@ -87,43 +67,47 @@ struct code_emit {
 
 #### Phase 1: Parse AST into Memory Trees
 
-Replace current streaming parser with tree builder:
-- `parse_function_ast()`: Read entire function into stmt/expr trees
+Parse entire function from S-expression AST into memory:
+- `parse_function_ast()`: Read entire (f ...) form into stmt/expr trees
+- Assign label numbers to nodes during parsing:
+  - If statements get `label` (and `label2` for if/else)
+  - While/for loops get `label` for loop start
+  - Switch statements get labels for cases
 - Build complete tree before any code generation
 - Store in function context structure
 
-#### Phase 2: Analysis and Annotation
+**Key point**: Label numbers are stored IN the tree nodes themselves
 
-Walk the tree and annotate:
-- Type propagation (already done by cc1, verify)
-- Register hints based on expression structure
-- Label assignment for control flow
-- Variable liveness analysis (future)
+#### Phase 2: Code Generation
 
-#### Phase 3: Code Generation
+Walk the tree and replace operation nodes with ASM blocks:
+- Visit each stmt/expr node
+- Generate assembly text for the operation
+- Store assembly text in `asm_block` field
+- Use label numbers from nodes to emit jumps/labels
+- After this phase, every node has its `asm_block` set
 
-Walk tree and convert to code emission nodes:
-- Replace operation nodes with instruction sequences
-- Generate labels for control flow
-- Allocate registers (simple scheme initially)
-- Build linked list of code_emit nodes
+**Key point**: Nodes are transformed from operation descriptions to ASM blocks
 
-#### Phase 4: Emit Assembly
+#### Phase 3: Emit Assembly
 
-Walk code emission list and output:
-- Format instructions with proper indentation
-- Emit labels at correct positions
+Walk the tree with ASM blocks and output:
+- Traverse stmt/expr trees
+- Emit each node's `asm_block` text
+- Emit labels using the label numbers in nodes
+- Format with proper indentation
 - Add comments for readability
+
+**Key point**: This is a simple tree walk that outputs the prepared ASM blocks
 
 ### Implementation Strategy
 
 1. **Keep existing parseast.c as reference**
 2. **Create new codegen.c module** for tree-based approach
 3. **Implement incrementally**:
-   - Phase 1: Parse expressions into trees
-   - Phase 2: Parse statements into trees
-   - Phase 3: Simple code generation (no optimization)
-   - Phase 4: Emit assembly
+   - Phase 1: Parse function AST into trees with label assignment
+   - Phase 2: Convert operation nodes to ASM blocks
+   - Phase 3: Emit assembly by walking ASM-annotated trees
 4. **Test with simple programs** at each phase
 5. **Add optimizations** once basic generation works
 
@@ -134,36 +118,92 @@ struct function_context {
     char *name;                 // Function name
     struct stmt *body;          // Function body statement tree
     int label_counter;          // For generating unique labels
-    int temp_counter;           // For temporary variables
-    struct code_emit *code;     // Generated code list
 };
+```
+
+### Example: If Statement Processing
+
+**Input AST:**
+```lisp
+(I (> (M:s $x) 0)
+   (B (E (=:s $x (+ (M:s $x) 1)))))
+```
+
+**After Phase 1 (Parse with labels):**
+```
+stmt (type='I', label=0):
+  expr (op='>', ...)
+  then_branch:
+    stmt (type='B', ...):
+      stmt (type='E', ...):
+        expr (op='=', ...):
+          ...
+```
+
+**After Phase 2 (Generate ASM blocks):**
+```
+stmt (type='I', label=0, asm_block=""):
+  expr (op='>', asm_block="ld hl,($x); ld de,0; ..."):
+    ...
+  then_branch:
+    stmt (asm_block=""):
+      stmt (asm_block=""):
+        expr (op='=', asm_block="ld hl,($x); inc hl; ld ($x),hl"):
+          ...
+```
+
+**Phase 3 (Emit Assembly):**
+```asm
+    ; Evaluate condition
+    ld hl,($x)
+    ld de,0
+    or a
+    sbc hl,de
+    jp z,_if_0
+    ; Then branch
+    ld hl,($x)
+    inc hl
+    ld ($x),hl
+_if_0:
 ```
 
 ### Migration Path
 
 1. **Commit current streaming implementation** ✓
-2. **Document new architecture** (this file)
+2. **Document new architecture** (this file) ✓
 3. **Create new codegen.c with tree builders**
-4. **Implement phase 1: AST → trees**
-5. **Implement phase 3: trees → code_emit**
-6. **Implement phase 4: code_emit → assembly**
+4. **Implement phase 1: Parse AST into stmt/expr trees with label assignment**
+5. **Implement phase 2: Walk trees and generate ASM blocks**
+6. **Implement phase 3: Walk ASM-annotated trees and emit assembly**
 7. **Test and validate**
 8. **Replace parseast.c usage in cc2.c**
+
+## Key Architectural Insight
+
+**Emit nodes ARE asm blocks** - they're just strings of assembly code stored in the tree nodes. The tree structure itself defines the control flow and emission order. No need for a separate linked list of code emission structures.
+
+**Label numbers live in operator nodes** - during parsing, we assign label numbers to statement nodes that need them (if, while, etc.). During code generation, we use these label numbers to emit jumps and labels.
+
+**Three simple phases**:
+1. Parse → trees with labels
+2. Trees → trees with ASM blocks
+3. Trees with ASM blocks → assembly text
 
 ## Future Enhancements
 
 With tree-based approach, these become possible:
-- Constant folding and propagation
-- Dead code elimination
-- Common subexpression elimination
-- Register allocation with graph coloring
-- Instruction scheduling
-- Peephole optimization
+- Constant folding and propagation (at tree level)
+- Dead code elimination (tree pruning)
+- Common subexpression elimination (tree manipulation)
+- Register allocation improvements (multi-pass analysis)
+- Instruction scheduling (ASM block reordering)
+- Peephole optimization (ASM block analysis)
 
 ## Notes
 
-- This is a significant re-architecture
-- Current streaming approach works but limits optimization
-- Tree-based approach is standard for modern compilers
-- Enables future optimization passes
+- Simpler than complex code_emit structures
+- ASM blocks are just strings in tree nodes
+- Label numbers stored directly in tree nodes
+- Tree walk for emission is straightforward
 - Memory usage increases but manageable for typical functions
+- Enables optimization at tree level before ASM generation
