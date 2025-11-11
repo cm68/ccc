@@ -357,20 +357,181 @@ handle_assign(void)
     expect(')');
 }
 
+/*
+ * Parser state for nested parsing
+ */
+struct parser_state {
+    char saved_buf[BUFSIZE];
+    int saved_buf_pos;
+    int saved_buf_valid;
+    int saved_line_num;
+    unsigned char saved_curchar;
+    int saved_in_fd;
+};
+
+/*
+ * Save current parser state
+ */
+static void
+save_parser_state(struct parser_state *state)
+{
+    memcpy(state->saved_buf, buf, buf_valid);
+    state->saved_buf_pos = buf_pos;
+    state->saved_buf_valid = buf_valid;
+    state->saved_line_num = line_num;
+    state->saved_curchar = curchar;
+    state->saved_in_fd = in_fd;
+}
+
+/*
+ * Restore parser state
+ */
+static void
+restore_parser_state(struct parser_state *state)
+{
+    memcpy(buf, state->saved_buf, state->saved_buf_valid);
+    buf_pos = state->saved_buf_pos;
+    buf_valid = state->saved_buf_valid;
+    line_num = state->saved_line_num;
+    curchar = state->saved_curchar;
+    in_fd = state->saved_in_fd;
+}
+
+/*
+ * Set up parser to read from a string buffer
+ */
+static void
+setup_string_input(char *str, int len)
+{
+    /* Copy string to main buffer */
+    if (len > BUFSIZE - 1) {
+        len = BUFSIZE - 1;
+    }
+    memcpy(buf, str, len);
+    buf[len] = 0;
+    buf_pos = 0;
+    buf_valid = len;
+    in_fd = -1;  /* Mark as string input */
+
+    /* Initialize curchar */
+    if (len > 0) {
+        curchar = buf[0];
+        buf_pos = 1;
+    } else {
+        curchar = 0;
+    }
+}
+
 static void
 handle_call(void)
 {
-    fdprintf(2, "CALL (");
-    skip();
-    parse_expr();  /* function */
+    char arg_buf[4096];  /* Buffer to capture argument expressions */
+    int arg_start[32];  /* Start position of each argument */
+    int arg_len[32];    /* Length of each argument */
+    int arg_count = 0;
+    int arg_buf_pos = 0;
+    int i;
+    char func_buf[512];
+    int func_len = 0;
 
-    /* Arguments */
+    fdprintf(2, "CALL (");
+
     skip();
-    while (curchar != ')') {
-        fdprintf(2, ", ");
-        parse_expr();
-        skip();
+
+    /* Collect function expression into func_buf */
+    int depth = 0;
+
+    while (1) {
+        if (curchar == 0) break;
+
+        if (curchar == '(') {
+            depth++;
+        } else if (curchar == ')') {
+            if (depth == 0) {
+                /* End of function expr, no args */
+                break;
+            }
+            depth--;
+        } else if (depth == 0 && (curchar == ' ' || curchar == '\t' || curchar == '\n')) {
+            /* Whitespace at depth 0 = separator between function and first arg */
+            skip();
+            break;
+        }
+
+        if (func_len < sizeof(func_buf) - 1) {
+            func_buf[func_len++] = curchar;
+        }
+        nextchar();
     }
+    func_buf[func_len] = 0;
+
+    /* Collect arguments into arg_buf */
+    while (curchar != ')' && curchar != 0) {
+        skip();
+        if (curchar == ')') break;
+
+        arg_start[arg_count] = arg_buf_pos;
+        depth = 0;
+
+        /* Copy one argument expression */
+        while (1) {
+            if (curchar == 0) break;
+
+            if (curchar == '(') {
+                depth++;
+            } else if (curchar == ')') {
+                if (depth == 0) {
+                    /* End of arguments */
+                    break;
+                }
+                depth--;
+            } else if (depth == 0 && (curchar == ' ' || curchar == '\t' || curchar == '\n')) {
+                /* Whitespace at depth 0 = end of this arg */
+                skip();
+                break;
+            }
+
+            if (arg_buf_pos < sizeof(arg_buf) - 1) {
+                arg_buf[arg_buf_pos++] = curchar;
+            }
+            nextchar();
+        }
+
+        arg_len[arg_count] = arg_buf_pos - arg_start[arg_count];
+        arg_count++;
+
+        if (arg_count >= 32) break;  /* Max 32 arguments */
+    }
+
+    /* Now recursively parse: arguments in reverse order, then function */
+    struct parser_state saved_state;
+    save_parser_state(&saved_state);
+
+    /* Arguments in reverse (so first arg ends up on top of stack) */
+    for (i = arg_count - 1; i >= 0; i--) {
+        fdprintf(2, "\n  PUSH_ARG%d: ", i);
+
+        /* Set up parser to read from this argument string */
+        setup_string_input(&arg_buf[arg_start[i]], arg_len[i]);
+
+        /* Recursively parse this argument expression */
+        parse_expr();
+
+        /* Restore parser state for next argument */
+        restore_parser_state(&saved_state);
+    }
+
+    /* Function address last */
+    fdprintf(2, "\n  CALL_FUNC: ");
+
+    /* Set up parser to read from function string */
+    setup_string_input(func_buf, func_len);
+
+    /* Recursively parse function expression */
+    parse_expr();
+
+    /* Restore parser state */
+    restore_parser_state(&saved_state);
 
     fdprintf(2, ")");
     expect(')');
