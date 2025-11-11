@@ -12,7 +12,7 @@
 int fdprintf(int fd, const char *fmt, ...);
 
 /* Forward declaration from parseast.c */
-int parse_ast_file(int fd);
+int parse_ast_file(int in_fd, int out_fd);
 
 char *progname;
 
@@ -126,23 +126,35 @@ main(int argc, char **argv)
         in_fd = 0;  /* stdin */
     }
 
-    /* Parse AST file */
-    fdprintf(2, "cc2: Parsing AST...\n");
-    if (parse_ast_file(in_fd) != 0) {
+    /* Open output: file or stdout */
+    int out_fd;
+    if (output_file) {
+        fdprintf(2, "cc2: Writing assembly to %s\n", output_file);
+        out_fd = open(output_file, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+        if (out_fd < 0) {
+            fdprintf(2, "cc2: cannot create %s\n", output_file);
+            if (in_fd != 0) close(in_fd);
+            exit(1);
+        }
+    } else {
+        fdprintf(2, "cc2: Writing assembly to stdout\n");
+        out_fd = 1;  /* stdout */
+    }
+
+    /* Parse AST file and generate code */
+    fdprintf(2, "cc2: Parsing AST and generating code...\n");
+    if (parse_ast_file(in_fd, out_fd) != 0) {
         fdprintf(2, "cc2: failed to parse AST\n");
-        if (in_fd != 0) close(in_fd);  /* Don't close stdin */
+        if (in_fd != 0) close(in_fd);
+        if (out_fd != 1) close(out_fd);
         exit(1);
     }
-    if (in_fd != 0) close(in_fd);  /* Don't close stdin */
 
-    fdprintf(2, "\ncc2: Parse complete\n");
-    if (output_file) {
-        fdprintf(2, "cc2: Code generation stub - would write to: %s\n", output_file);
-    } else {
-        fdprintf(2, "cc2: Code generation stub - would write to stdout\n");
-    }
+    /* Close files */
+    if (in_fd != 0) close(in_fd);
+    if (out_fd != 1) close(out_fd);
 
-    /* TODO: Code generation will be implemented here */
+    fdprintf(2, "\ncc2: Generation complete\n");
 
     return 0;
 }

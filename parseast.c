@@ -16,6 +16,7 @@ int fdprintf(int fd, const char *fmt, ...);
 
 /* Parser state */
 static int in_fd;
+static int out_fd = 1;  /* Assembly output (default: stdout) */
 static char buf[BUFSIZE];
 static int buf_pos;
 static int buf_valid;
@@ -749,37 +750,101 @@ handle_switch(void)
 
 /* Top-level handlers */
 
+/*
+ * Emit function prologue
+ * Outputs assembly comment describing function and function label
+ */
+static void
+emit_function_prologue(char *name, char *params, char *rettype)
+{
+    /* Assembly comment with function signature */
+    fdprintf(out_fd, "; Function: %s", name);
+
+    if (params && params[0]) {
+        fdprintf(out_fd, "(%s)", params);
+    } else {
+        fdprintf(out_fd, "()");
+    }
+
+    if (rettype && rettype[0]) {
+        fdprintf(out_fd, " -> %s", rettype);
+    }
+
+    fdprintf(out_fd, "\n");
+
+    /* Function label (standard C naming with underscore prefix) */
+    fdprintf(out_fd, "_%s:\n", name);
+}
+
 static void
 handle_function(void)
 {
+    char name_buf[64];  /* Stack buffer for function name */
     char *name;
+    char params_buf[256];
+    char *p;
+    int first_param;
 
     /* (f name (params) return_type declarations body) */
-    name = read_symbol();
+    /* Copy function name to stack buffer before reading parameters */
+    strncpy(name_buf, read_symbol(), sizeof(name_buf) - 1);
+    name_buf[sizeof(name_buf) - 1] = '\0';
+    name = name_buf;
     fdprintf(2, "\nFUNCTION %s\n", name);
 
-    /* Parameters */
+    /* Parameters - collect into buffer for prologue */
     skip();
     expect('(');
     fdprintf(2, "  PARAMS: ");
+    p = params_buf;
+    params_buf[0] = '\0';
+    first_param = 1;
     skip();
     while (curchar != ')') {
         char *param = read_symbol();
+        char *ptype = NULL;
+
         fdprintf(2, "%s ", param);
+
+        /* Add to params buffer */
+        if (!first_param) {
+            if (p < params_buf + sizeof(params_buf) - 2) {
+                *p++ = ',';
+                *p++ = ' ';
+            }
+        }
+        first_param = 0;
+
+        /* Copy parameter name */
+        while (*param && p < params_buf + sizeof(params_buf) - 20) {
+            *p++ = *param++;
+        }
+
         skip();
-        /* Skip type annotation if present (format: name:type) */
+        /* Read type annotation if present (format: name:type) */
         if (curchar == ':') {
             nextchar();
-            read_type();  /* Consume but ignore type */
+            ptype = read_type();  /* Get type */
+            /* Add type to params buffer */
+            if (ptype && p < params_buf + sizeof(params_buf) - 20) {
+                *p++ = ':';
+                while (*ptype && p < params_buf + sizeof(params_buf) - 1) {
+                    *p++ = *ptype++;
+                }
+            }
             skip();
         }
     }
+    *p = '\0';
     expect(')');
     fdprintf(2, "\n");
 
     /* Return type */
     char *rettype = read_type();
     fdprintf(2, "  RETURNS: %s\n", rettype);
+
+    /* Emit assembly function prologue */
+    emit_function_prologue(name, params_buf, rettype);
 
     /* Declarations and body */
     skip();
@@ -1062,9 +1127,10 @@ parse_toplevel(void)
  * Initialize parser and read AST file
  */
 int
-parse_ast_file(int fd)
+parse_ast_file(int in, int out)
 {
-    in_fd = fd;
+    in_fd = in;
+    out_fd = out;
     buf_pos = 0;
     buf_valid = 0;
     line_num = 1;
