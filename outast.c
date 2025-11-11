@@ -170,6 +170,35 @@ emit_expr(struct expr *e)
 		}
 		break;
 
+	case BFEXTRACT:
+		/* Bitfield extract: (0xa7:offset:width addr) */
+		{
+			struct name *member = (struct name *)e->var;
+			if (member) {
+				fdprintf(ast_fd, "(%c:%d:%d", BFEXTRACT, member->bitoff, member->width);
+			} else {
+				fdprintf(ast_fd, "(%c:0:0", BFEXTRACT);  /* fallback */
+			}
+			emit_child(e->left);
+			fdprintf(ast_fd, ")");
+		}
+		break;
+
+	case BFASSIGN:
+		/* Bitfield assign: (0xdd:offset:width addr value) */
+		{
+			struct name *member = (struct name *)e->var;
+			if (member) {
+				fdprintf(ast_fd, "(%c:%d:%d", BFASSIGN, member->bitoff, member->width);
+			} else {
+				fdprintf(ast_fd, "(%c:0:0", BFASSIGN);  /* fallback */
+			}
+			emit_child(e->left);
+			emit_child(e->right);
+			fdprintf(ast_fd, ")");
+		}
+		break;
+
 	default:
 		/* Operator - output in prefix notation */
 		/* For DEREF (M), ASSIGN (=), and compound assignments, add size annotation */

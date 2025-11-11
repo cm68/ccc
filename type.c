@@ -752,6 +752,7 @@ getbasetype()
         // parse member list: { type name; ... }
         match(BEGIN);
         off = 0;  // offset for struct members
+        int bitoff_accumulator = 0;  // bit offset within current word for bitfield packing
         while (cur.type != END && cur.type != E_O_F) {
             struct type *member_type = 0;
 
@@ -769,7 +770,11 @@ getbasetype()
             // add to member list
             member->next = t->elem;
             t->elem = member;
-            member->kind = elem;
+
+            // Set kind if not already set (bitfields are already marked)
+            if (member->kind != bitfield) {
+                member->kind = elem;
+            }
 
             // calculate offset and size
             if (is_union) {
@@ -778,10 +783,37 @@ getbasetype()
                     t->size = member->type->size;
                 }
             } else {
-                member->offset = off;
-                if (member->type) {
-                    off += member->type->size;
-                    t->size = off;
+                // Handle bitfield packing
+                if (member->kind == bitfield) {
+                    // Bitfield - pack into current word
+                    // Check if bitfield fits in current word (assume 16-bit words for now)
+                    if (bitoff_accumulator + member->width > 16) {
+                        // Move to next word
+                        off += 2;  // Advance to next word (2 bytes)
+                        bitoff_accumulator = 0;
+                    }
+
+                    member->offset = off;
+                    member->bitoff = bitoff_accumulator;
+                    bitoff_accumulator += member->width;
+
+                    // Update struct size if we're using a new word
+                    if (off + 2 > t->size) {
+                        t->size = off + 2;
+                    }
+                } else {
+                    // Regular member - reset bitfield accumulator
+                    if (bitoff_accumulator > 0) {
+                        // Finish current bitfield word before adding regular member
+                        off += 2;
+                        bitoff_accumulator = 0;
+                    }
+
+                    member->offset = off;
+                    if (member->type) {
+                        off += member->type->size;
+                        t->size = off;
+                    }
                 }
             }
 

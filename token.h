@@ -53,6 +53,7 @@ enum {
     EXPR = '`', NEG = '\\', NOT = '\'', CALL = '@',
     NARROW = '_', WIDEN = 0xb6, SEXT = 0xab, COPY = 0xbb,
     PREINC = 0xcf, POSTINC = 0xef, PREDEC = 0xd6, POSTDEC = 0xf6,
+    BFEXTRACT = 0xa7, BFASSIGN = 0xdd,
 
     /* CPP */
     INCLUDE = '#',

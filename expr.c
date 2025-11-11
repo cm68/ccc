@@ -549,7 +549,7 @@ parse_expr(unsigned char pri, struct stmt *st)
                 break;
             }
 
-            // Generate: DEREF(ADD(base, offset))
+            // Generate: DEREF(ADD(base, offset)) or BFEXTRACT for bitfields
             offset_expr = makeexpr_init(CONST, 0, inttype, member->offset, E_CONST);
 
             addr = makeexpr(PLUS, base);
@@ -562,8 +562,18 @@ parse_expr(unsigned char pri, struct stmt *st)
             // Fold constant offset (e.g., x + 0 becomes x)
             addr = cfold(addr);
 
-            e = makeexpr_init(DEREF, addr, member->type, 0, 0);
-            e->left->up = e;
+            // Check if this is a bitfield access
+            if (member->kind == bitfield) {
+                // Use BFEXTRACT operator with bitoff and width stored in expr
+                e = makeexpr_init(BFEXTRACT, addr, member->type, 0, 0);
+                e->left->up = e;
+                // Store bitfield info in the var field (repurpose it)
+                // We'll encode bitoff and width for the code generator
+                e->var = (struct var *)member;  // Keep reference to member for bitoff/width
+            } else {
+                e = makeexpr_init(DEREF, addr, member->type, 0, 0);
+                e->left->up = e;
+            }
 
             gettoken();
         } else if (cur.type == INCR || cur.type == DECR) {
@@ -660,8 +670,20 @@ parse_expr(unsigned char pri, struct stmt *st)
             if (e && e->op == DEREF) {
                 assign_type = e->type;  // Save the type before unwrapping
                 e = e->left;  // unwrap to get address
+            } else if (e && e->op == BFEXTRACT) {
+                // Bitfield assignment - change to BFASSIGN
+                assign_type = e->type;  // Save the type before unwrapping
+                // Keep the var field which has the member info (bitoff, width)
+                struct var *member_info = e->var;
+                e = e->left;  // unwrap to get address
+                // Store member info temporarily - we'll use it when creating BFASSIGN
+                e->var = member_info;  // Pass through member info
+                // Flag that we need BFASSIGN
+                if (op == ASSIGN) {
+                    op = BFASSIGN;
+                }
             } else {
-                // Assignment requires an lvalue (dereference)
+                // Assignment requires an lvalue (dereference or bitfield)
                 gripe(ER_E_LV);
                 // Skip this operator: parse and discard right side, then return left side
                 parse_expr(p, st);  // Parse and discard right side
@@ -685,11 +707,17 @@ parse_expr(unsigned char pri, struct stmt *st)
         // for left-associative operators (most C operators), parse right side
         // with precedence p, which prevents same-precedence operators from
         // being pulled into the right subtree
+        struct var *saved_member_info = (e && e->var) ? e->var : NULL;
         e = makeexpr(op, e);
         e->left->up = e;
         e->right = parse_expr(p, st);
         if (e->right) {
             e->right->up = e;
+        }
+
+        // For BFASSIGN, restore member info (bitoff, width)
+        if (op == BFASSIGN && saved_member_info) {
+            e->var = saved_member_info;
         }
 
         // For COPY operator, unwrap DEREF from right side to get address

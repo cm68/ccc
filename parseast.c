@@ -292,11 +292,66 @@ handle_unary_op(unsigned char op)
     expect(')');
 }
 
+static void
+handle_bfextract(unsigned char op)
+{
+    /* Bitfield extract: (0xa7:offset:width addr) */
+    int offset = 0, width = 0;
+
+    /* Parse offset:width */
+    skip();
+    if (curchar == ':') {
+        nextchar();
+        offset = (int)read_number();
+        skip();
+        if (curchar == ':') {
+            nextchar();
+            width = (int)read_number();
+        }
+    }
+
+    fdprintf(2, "BFEXTRACT<%d:%d> (", offset, width);
+    skip();
+    parse_expr();  /* address */
+    fdprintf(2, ")");
+    expect(')');
+}
+
+static void
+handle_bfassign(unsigned char op)
+{
+    /* Bitfield assign: (0xdd:offset:width addr value) */
+    int offset = 0, width = 0;
+
+    /* Parse offset:width */
+    skip();
+    if (curchar == ':') {
+        nextchar();
+        offset = (int)read_number();
+        skip();
+        if (curchar == ':') {
+            nextchar();
+            width = (int)read_number();
+        }
+    }
+
+    fdprintf(2, "BFASSIGN<%d:%d> (", offset, width);
+    skip();
+    parse_expr();  /* address */
+    fdprintf(2, ", ");
+    skip();
+    parse_expr();  /* value */
+    fdprintf(2, ")");
+    expect(')');
+}
+
 /* Wrappers to match handler_fn signature */
 static void handle_deref_dispatch(unsigned char op) { handle_deref(); }
 static void handle_assign_dispatch(unsigned char op) { handle_assign(); }
 static void handle_call_dispatch(unsigned char op) { handle_call(); }
 static void handle_ternary_dispatch(unsigned char op) { handle_ternary(); }
+static void handle_bfextract_dispatch(unsigned char op) { handle_bfextract(op); }
+static void handle_bfassign_dispatch(unsigned char op) { handle_bfassign(op); }
 
 /* COLON is only used as part of ternary, but handle it gracefully if standalone */
 static void
@@ -1273,6 +1328,10 @@ init_expr_handlers(void)
 
     /* COPY operator */
     expr_handlers[0xbb] = handle_binary_op; /* COPY */
+
+    /* Bitfield operators */
+    expr_handlers[0xa7] = handle_bfextract_dispatch;  /* BFEXTRACT */
+    expr_handlers[0xdd] = handle_bfassign_dispatch;   /* BFASSIGN */
 }
 
 /*
