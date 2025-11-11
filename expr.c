@@ -78,22 +78,16 @@ unop_set(struct expr *e)
 }
 
 /*
- * the operator priority table is indexed from OP_MIN to OP_MAX, and contains the encoded priority of the
- * binary operator.  zero values mean not an operator.
+ * the operator priority table is indexed from OP_MIN to OP_MAX, 
+ * and contains the encoded priority of the binary operator.  
+ * zero values mean not an operator.
  */
 unsigned char
 binop_pri(unsigned char t)
 {
-    unsigned char po;
-    unsigned char v;
-
-    po = t - OP_MIN;
-    if ((po < 0) || (t > OP_MAX)) {
-        v = 0;
-    } else {
-	    v = op_pri[po];
-	}
-    return v;
+    if ((t < OP_MIN) || (t > OP_MAX))
+        return 0;
+	return (op_pri[t - OP_MIN]);
 }
 
 /*
