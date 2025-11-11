@@ -607,6 +607,7 @@ getbasetype()
     struct type *t;
     struct name *n;
     char off = 0;
+    char s_buf[64];  /* Stack buffer for tag names */
     char *s;
 
     /* a typedef? */
@@ -694,13 +695,15 @@ getbasetype()
 
         // optional struct/union tag name
         if (cur.type == SYM) {
-            s = strdup(cur.v.name);
+            /* Copy tag name to stack buffer */
+            strncpy(s_buf, cur.v.name, sizeof(s_buf) - 1);
+            s_buf[sizeof(s_buf) - 1] = '\0';
+            s = s_buf;
             n = lookup_name(s, 1);  // look for existing tag
             gettoken();
 
             // if found and already complete, return it
             if (n && !(n->type->flags & TF_INCOMPLETE)) {
-                free(s);
                 return n->type;
             }
         }
@@ -708,7 +711,6 @@ getbasetype()
         // must have a definition if no tag or if forward reference
         if (cur.type != BEGIN) {
             if (n) {
-                if (s) free(s);
                 return n->type;  // forward reference - tag already exists
             }
             // Forward declaration of a new tag (e.g., typedef struct S S_t;)
@@ -717,12 +719,10 @@ getbasetype()
                 t = get_type(TF_AGGREGATE | TF_INCOMPLETE, 0, 0);
                 t->size = 0;
                 n = new_name(s, is_union ? utag : stag, t, 1);
-                free(s);
                 return t;
             }
             // No tag name and no definition - error
             gripe(ER_T_ED);
-            if (s) free(s);
             return 0;
         }
 
@@ -746,7 +746,7 @@ getbasetype()
                 // Only update if we created a new type (shouldn't happen now)
                 n->type = t;
             }
-            free(s);  // new_name() makes its own copy
+            /* Stack buffer automatically freed */
         }
 
         // parse member list: { type name; ... }

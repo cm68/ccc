@@ -32,18 +32,23 @@ parse_pointer_prefix(struct type *basetype)
 }
 
 /*
- * Parse optional parameter name
- * Returns strdup'd name or empty string for anonymous parameters
+ * Parse optional parameter name into provided buffer
+ * Returns pointer to buffer (or "" for anonymous) or NULL if error
  */
 static char *
-parse_param_name(boolean allow_anonymous)
+parse_param_name(boolean allow_anonymous, char *buf, int bufsize)
 {
     if (cur.type == SYM) {
-        char *name = strdup(cur.v.name);
+        strncpy(buf, cur.v.name, bufsize - 1);
+        buf[bufsize - 1] = '\0';
         gettoken();
-        return name;
+        return buf;
     }
-    return allow_anonymous ? strdup("") : NULL;
+    if (allow_anonymous) {
+        buf[0] = '\0';
+        return buf;
+    }
+    return NULL;
 }
 
 /*
@@ -219,6 +224,7 @@ declare_internal(struct type **btp, boolean struct_elem)
         // Parse parameter list
         while (cur.type != RPAR && cur.type != E_O_F) {
             struct type *param_type = NULL;
+            char param_name_buf[64];  /* Stack buffer for parameter names */
             char *param_name = NULL;
 
             // Check for variadic ... (three DOT tokens)
@@ -240,7 +246,7 @@ declare_internal(struct type **btp, boolean struct_elem)
 
             if (kr_style) {
                 // K&R style: just collect names (types come later)
-                param_name = parse_param_name(0);
+                param_name = parse_param_name(0, param_name_buf, sizeof(param_name_buf));
                 if (!param_name) {
                     gripe(ER_D_FA);
                     break;
@@ -257,7 +263,7 @@ declare_internal(struct type **btp, boolean struct_elem)
                 param_type = parse_pointer_prefix(basetype);
 
                 // Get parameter name (optional for ANSI declarations)
-                param_name = parse_param_name(1);  // Allow anonymous
+                param_name = parse_param_name(1, param_name_buf, sizeof(param_name_buf));  // Allow anonymous
 
                 // Handle array suffix (converts to pointer)
                 if (cur.type == LBRACK) {
@@ -277,9 +283,7 @@ declare_internal(struct type **btp, boolean struct_elem)
             arg->next = suffix->elem;
             suffix->elem = arg;
 
-            if (param_name) {
-                free(param_name);
-            }
+            /* Stack buffer automatically freed */
 
             // Handle comma or end of list
             if (cur.type == COMMA) {
@@ -297,6 +301,7 @@ declare_internal(struct type **btp, boolean struct_elem)
         // K&R style: parse type declarations after )
         if (kr_style && is_type_token(cur.type)) {
             while (is_type_token(cur.type) && cur.type != E_O_F && cur.type != BEGIN) {
+                char param_name_buf[64];  /* Stack buffer for parameter names */
                 struct type *basetype = getbasetype();
                 if (!basetype) {
                     break;
@@ -306,7 +311,7 @@ declare_internal(struct type **btp, boolean struct_elem)
                 struct type *param_type = parse_pointer_prefix(basetype);
 
                 // Get parameter name (required for K&R declarations)
-                char *param_name = parse_param_name(0);
+                char *param_name = parse_param_name(0, param_name_buf, sizeof(param_name_buf));
                 if (!param_name) {
                     gripe(ER_D_FM);
                     break;
@@ -323,7 +328,7 @@ declare_internal(struct type **btp, boolean struct_elem)
                 if (!p) {
                     gripe(ER_D_FM);  // Parameter declared but not in list
                 }
-                free(param_name);
+                /* Stack buffer automatically freed */
 
                 // Continue or stop
                 if (cur.type == SEMI) {
