@@ -366,6 +366,9 @@ output_token(struct token *tok)
         cpp_asm_out_with_space(tok->v.name, strlen(tok->v.name));
         break;
     case STRING:
+        if (!tok->v.str) {
+            break;
+        }
         i = quoted_string(nbuf, tok->v.str);
         nbuf[i++] = ' ';
         cpp_asm_out(nbuf, i);
