@@ -7,6 +7,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/stat.h>
+#include <signal.h>
 
 /* Forward declaration from util.c */
 int fdprintf(int fd, const char *fmt, ...);
@@ -15,6 +16,17 @@ int fdprintf(int fd, const char *fmt, ...);
 int parse_ast_file(int in_fd, int out_fd);
 
 char *progname;
+
+/*
+ * timeout handler - catch infinite loops during code generation
+ */
+void
+timeout_handler(int sig)
+{
+    fdprintf(2, "\n\n*** TIMEOUT after 5 seconds ***\n");
+    fdprintf(2, "cc2: code generation took too long (possible infinite loop)\n");
+    exit(1);
+}
 
 void
 usage(char *complaint)
@@ -76,6 +88,10 @@ main(int argc, char **argv)
     progname = argv[0];
     argc--;
     argv++;
+
+    /* Set up timeout handler to catch infinite loops */
+    signal(SIGALRM, timeout_handler);
+    alarm(5);  /* 5 second timeout */
 
     /* Parse arguments */
     while (argc > 0) {
