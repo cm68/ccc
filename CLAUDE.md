@@ -21,7 +21,7 @@ make
 make cc1          # Main compiler executable
 
 # Run tests
-make test         # Run all 110 tests in tests/
+make test         # Run all 134 tests in tests/
 make tests        # Same as 'make test'
 
 # Run test categories
@@ -929,7 +929,7 @@ The compiler has made substantial progress:
 
 ### Testing
 
-Tests are in tests/ directory (122 tests organized by category):
+Tests are in tests/ directory (134 tests organized by category, all passing):
 - **Expression tests** (EXPR_TESTS): Constant folding, simple expressions
 - **Declaration tests** (DECL_TESTS): Variable and type declarations
 - **Preprocessor tests** (CPP_TESTS): Macros, includes, conditional compilation, stringify

@@ -1,8 +1,10 @@
 # ccc Compiler Tests
 
-This directory contains 122 test files for the ccc C compiler (pass 1: preprocessor and parser).
+This directory contains 134 test files for the ccc C compiler (pass 1: preprocessor and parser).
 
 All test files have descriptive header comments explaining what they test. Each test validates a specific aspect of the compiler's functionality.
+
+**Current Status**: All 134 tests pass with exit code 0. ✅
 
 ## Test Organization
 
@@ -32,14 +34,20 @@ You can run specific test categories using these make targets:
 
 ## Test Categories
 
-### Preprocessor Tests (8 tests)
+### Preprocessor Tests (9 tests)
 - **macro.c** - Macro definition and expansion with stringify operator
 - **include.c** - #include directive handling
 - **stringify.c** - Stringify operator (#)
 - **multistr.c** - Multiple string literals
 - **t2.c** - Preprocessor macros including stringify and token pasting
-- **conditional.c**, **conditional_false.c**, **conditional_simple.c** - Conditional compilation
-- **defined_test.c**, **ifdef_test.c**, **ifndef_test.c** - Preprocessor conditionals
+- **conditional.c** - Comprehensive conditional compilation (23 test cases: #if, #elif, #else, #endif, nested)
+- **conditional_false.c** - False conditional blocks
+- **conditional_simple.c** - Simple conditional compilation
+- **test_conditionals.c** - Additional conditional directive tests
+- **defined_test.c** - defined() pseudofunction in #if expressions
+- **ifdef_test.c** - #ifdef directive
+- **ifndef_test.c** - #ifndef directive
+- **undef_test.c** - #undef directive and interaction with #ifdef/#ifndef
 
 ### Type System Tests (15 tests)
 - **decl.c** - Basic variable declarations (int, char, pointers, arrays)
@@ -104,11 +112,16 @@ You can run specific test categories using these make targets:
 ## Current Compiler Status
 
 ### What Works
-✅ **Preprocessor** - Complete implementation
+✅ **Preprocessor** - Complete implementation ✓ cc1_complete milestone
   - Macro definition and expansion
   - #include directive handling
   - Stringify (#) and token pasting (##) operators
-  - Conditional compilation (#if, #ifdef, #ifndef, #else, #endif)
+  - Conditional compilation (#if, #elif, #else, #endif, #ifdef, #ifndef)
+  - defined() pseudofunction in #if expressions
+  - #undef directive
+  - Proper C_TRUESEEN tracking for #else block activation
+  - Expression evaluation in #if with full operator precedence
+  - Nested conditional directives
 
 ✅ **Type System** - Substantially complete
   - Primitive types (char, short, int, long, unsigned variants, void, float, double)

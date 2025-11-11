@@ -4,9 +4,12 @@
 
 ### Core Infrastructure
 - + Full C preprocessor (macros, includes, conditional compilation, stringify, token pasting)
+- + CPP conditional directives fully working (#if/#elif/#else/#endif, #ifdef/#ifndef, defined())
+- + Proper C_TRUESEEN tracking for #else block activation
+- + ONELINE mode for #if expression evaluation without advancing past newlines
 - + Nested macro expansion works correctly
 - + Complete lexical analysis
-- + Comprehensive test suite (122 tests organized in 18 categories)
+- + Comprehensive test suite (134 tests organized by category, all passing)
 
 ### Type System
 - + Primitive types: char, short, int, long, unsigned variants, void, boolean, float, double

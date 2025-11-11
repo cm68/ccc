@@ -6,10 +6,10 @@ yet implemented.
 
 ## Project Status
 
-**Pass 1 (cc1) - Complete**
+**Pass 1 (cc1) - Complete** ✓ Tagged as **cc1_complete**
 
 The compiler successfully parses C code and outputs AST in S-expression format:
-- Full C preprocessor (CPP) with macros, includes, conditional compilation
+- **Full C preprocessor (CPP)**: macros, includes, conditional compilation (#if/#elif/#else/#endif, #ifdef/#ifndef), defined() operator, stringify (#), token pasting (##), #undef
 - Complete lexical analysis (tokenization)
 - Type system: primitives, pointers, arrays, functions, structs, unions, enums
 - Declaration parsing: variables, functions (K&R and ANSI-style), typedefs
@@ -23,7 +23,7 @@ The compiler successfully parses C code and outputs AST in S-expression format:
 - Local array initialization generates proper memory copy operations
 - AST emission: S-expression output with literals section, global vars, functions, initializers
 - Unix syscall I/O: fdprintf() instead of stdio for AST output
-- Comprehensive test suite (122 tests organized by category)
+- Comprehensive test suite (134 tests organized by category, all passing)
 
 **Debugging Tools - Complete**
 
