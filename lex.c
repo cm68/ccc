@@ -614,8 +614,6 @@ char nbuf[1024];  // Large enough for escaped string: 1 + 255*4 + 1 = 1022 bytes
  */
 /* Track when newline encountered for asm capture semicolon insertion */
 unsigned char lineend = 0;
-/* Track when next token was already output (from readcppconst) */
-unsigned char next_already_output = 0;
 
 void
 gettoken()
@@ -634,14 +632,8 @@ gettoken()
     memcpy(&token_history[token_history_index], &cur, sizeof(cur));
     token_history_index = (token_history_index + 1) % TOKEN_HISTORY_SIZE;
 
-    /* Check if this token was already output */
-    unsigned char skip_output = next_already_output;
-    next_already_output = 0;
-
     next.v.str = 0;
     next.type = NONE;
-
-    unsigned char skip_cur_output = 0;  /* Set to 1 to skip outputting cur */
 
     while (1) {
         if (curchar == 0) {
@@ -693,11 +685,14 @@ gettoken()
                 if (t) {
                     advance();
                     do_cpp(t);
-                    /* If next contains a token, break; otherwise continue to read one */
+                    /* After do_cpp returns, check if next was filled by readcppconst() */
                     if (next.type != NONE) {
-                        skip_cur_output = 1;  /* Don't output cur (the #if line's semicolon) */
+                        /* readcppconst() left cur=SEMI (EOL), next=first token of next line */
+                        /* Don't output the SEMI - set cur to NONE and break */
+                        cur.type = NONE;
                         break;
                     }
+                    /* Otherwise continue to read next token normally */
                     continue;
                 }
                 gripe(ER_C_BD);
@@ -804,20 +799,12 @@ gettoken()
     /*
      * detokenize for cpp output or asm capture
      */
-    if (!skip_output && !skip_cur_output) {
 #ifdef DEBUG
-        if (VERBOSE(V_TOKEN) && cur.type == INT) {
-            fdprintf(2,"OUTPUT INT TOKEN: write_cpp_file=%d skip_output=%d\n", write_cpp_file, skip_output);
-        }
-#endif
-        output_token(&cur);
-    } else {
-#ifdef DEBUG
-        if (VERBOSE(V_TOKEN)) {
-            fdprintf(2,"SKIP OUTPUT: skip_output=%d skip_cur_output=%d\n", skip_output, skip_cur_output);
-        }
-#endif
+    if (VERBOSE(V_TOKEN) && cur.type == INT) {
+        fdprintf(2,"Outputting INT: write_cpp_file=%d\n", write_cpp_file);
     }
+#endif
+    output_token(&cur);
 
     if ((write_cpp_file || asm_capture_buf) && lineend) {
         if (write_cpp_file) {
@@ -909,29 +896,23 @@ readcppconst()
 
     val = parse_const(SEMI);
 
+    /* After parse_const, we should be at SEMI (the converted newline) */
+    /* Consume the SEMI so cur points at EOL */
+    if (cur.type != SEMI) {
+        gettoken();  /* Move SEMI from next to cur */
+    }
+
 #ifdef DEBUG
     if (VERBOSE(V_CPP)) {
         fdprintf(2,"After parse_const: cur.type=0x%02x next.type=0x%02x\n", cur.type, next.type);
     }
 #endif
 
-    /* At this point cur=SEMI, next=first token of next line */
-    /* BUT: next was read while write_cpp_file=0, so it wasn't output */
-
-    /* Restore flags first */
+    /* Now cur=SEMI (EOL) */
+    /* next may contain a token that was read while write_cpp_file=0 */
+    /* Restore flags - when next becomes cur, it will be output with write_cpp enabled */
     tflags = savedtflags;
     write_cpp_file = saved_write_cpp;
-
-    /* Now manually output the next token and mark it as already-output */
-    if (write_cpp_file && next.type != NONE) {
-#ifdef DEBUG
-        if (VERBOSE(V_CPP)) {
-            fdprintf(2,"Manually outputting next token after #if: type=0x%02x\n", next.type);
-        }
-#endif
-        output_token(&next);
-        next_already_output = 1;  /* Prevent double-output */
-    }
 
     /* Clear lineend flag */
     lineend = 0;
