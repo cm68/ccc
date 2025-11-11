@@ -373,6 +373,12 @@ output_token(struct token *tok)
         } else {
             s = tokenname[tok->type];
         }
+#ifdef DEBUG
+        if (VERBOSE(V_CPP) && tok->type == INT) {
+            fdprintf(2,"output_token(INT): s='%s' write_cpp_file=%d\n",
+                s, write_cpp_file);
+        }
+#endif
         cpp_asm_out(s, strlen(s));
         cpp_asm_out(" ", 1);
         break;
@@ -394,7 +400,12 @@ do_cpp(unsigned char t)
         c->next = cond;
         cond = c;
         cond->flags = (v ? (C_TRUE|C_TRUESEEN) : 0);
-        // Don't call skiptoeol() - readcppconst() already consumed the line
+#ifdef DEBUG
+        if (VERBOSE(V_CPP)) {
+            fdprintf(2,"#if %d: cond->flags = 0x%02x (C_TRUE=%d)\n", v, cond->flags, !!(cond->flags & C_TRUE));
+        }
+#endif
+        // Don't call skiptoeol() - readcppconst() in ONELINE mode already advanced past the line
         return;
     case IFDEF:
         skipwhite1();
@@ -467,7 +478,7 @@ do_cpp(unsigned char t)
         } else {
             cond->flags |= (v ? (C_TRUE | C_TRUESEEN) : 0);
         }
-        // Don't call skiptoeol() - readcppconst() already consumed the line
+        // Don't call skiptoeol() - readcppconst() in ONELINE mode already advanced past the line
         return;
     case DEFINE:
         skipwhite1();
@@ -673,6 +684,19 @@ gettoken()
                 next.type = '#';
                 break;
             }
+            if (tflags & ONELINE) {
+                /* We're in ONELINE mode (inside readcppconst), skip the directive line */
+#ifdef DEBUG
+                if (VERBOSE(V_CPP)) {
+                    fdprintf(2,"Skipping # directive in ONELINE mode\n");
+                }
+#endif
+                skiptoeol();
+                if (curchar == '\n') {
+                    advance();
+                }
+                continue;
+            }
             /* CPP directive at column 0 */
             skipwhite1();
             if (issym()) {
@@ -684,15 +708,30 @@ gettoken()
 #endif
                 if (t) {
                     advance();
+#ifdef DEBUG
+                    if (VERBOSE(V_CPP) && (t == IF || t == ELIF)) {
+                        fdprintf(2,"Before do_cpp(%s): cur.type=0x%02x next.type=0x%02x\n",
+                            t == IF ? "IF" : "ELIF", cur.type, next.type);
+                    }
+#endif
                     do_cpp(t);
-                    /* After do_cpp returns, check if next was filled by readcppconst() */
-                    if (next.type != NONE) {
-                        /* readcppconst() left cur=SEMI (EOL), next=first token of next line */
-                        /* Don't output the SEMI - set cur to NONE and break */
-                        cur.type = NONE;
+#ifdef DEBUG
+                    if (VERBOSE(V_CPP) && (t == IF || t == ELIF)) {
+                        fdprintf(2,"After do_cpp(%s): cur.type=0x%02x next.type=0x%02x cond=%p\n",
+                            t == IF ? "IF" : "ELIF", cur.type, next.type, cond);
+                        if (cond) {
+                            fdprintf(2,"  cond->flags=0x%02x (C_TRUE=%d)\n",
+                                cond->flags, !!(cond->flags & C_TRUE));
+                        }
+                    }
+#endif
+                    /* After processing #if/#elif with a TRUE condition, break to return the token in next */
+                    /* For FALSE conditions, the token in next should be discarded by continuing to loop */
+                    if ((t == IF || t == ELIF) && cond && (cond->flags & C_TRUE)) {
+                        /* True block - next contains the first token, return it */
                         break;
                     }
-                    /* Otherwise continue to read next token normally */
+                    /* False block - continue looping, token skipping will handle it */
                     continue;
                 }
                 gripe(ER_C_BD);
@@ -720,6 +759,11 @@ gettoken()
         }
         if ((curchar == ' ') || (curchar == '\t') || (curchar == '\n')) {
             advance();
+#ifdef DEBUG
+            if (VERBOSE(V_CPP) && cond) {
+                fdprintf(2,"After advance past whitespace: curchar=0x%02x ('%c') column=%d\n", curchar, (curchar >= ' ' && curchar < 127) ? curchar : '?', column);
+            }
+#endif
             // After advancing past whitespace, check if we should skip rest of line
             if (cond && curchar != '#' && curchar != 0) {
                 if (!(cond->flags & C_TRUE)) {
@@ -800,8 +844,14 @@ gettoken()
      * detokenize for cpp output or asm capture
      */
 #ifdef DEBUG
-    if (VERBOSE(V_TOKEN) && cur.type == INT) {
-        fdprintf(2,"Outputting INT: write_cpp_file=%d\n", write_cpp_file);
+    if (VERBOSE(V_CPP) && (cur.type == INT || cur.type == SYM)) {
+        fdprintf(2,"About to output cur.type=0x%02x", cur.type);
+        if (cur.type == SYM && cur.v.name) {
+            fdprintf(2," (SYM: %s)", cur.v.name);
+        } else if (cur.type == INT) {
+            fdprintf(2," (INT)");
+        }
+        fdprintf(2," write_cpp_file=%d\n", write_cpp_file);
     }
 #endif
     output_token(&cur);
@@ -877,6 +927,10 @@ readcppconst()
     long val;
     char savedtflags = tflags;
     int saved_write_cpp = write_cpp_file;
+    struct token saved_cur;
+
+    /* Save cur because recursive gettoken() calls will modify it */
+    memcpy(&saved_cur, &cur, sizeof(cur));
 
     /*
      * hack to make lexer translate newlines to ';', so that expressions
@@ -890,29 +944,27 @@ readcppconst()
     /* Skip whitespace before reading the first token */
     skipwhite1();
 
+#ifdef DEBUG
+    if (VERBOSE(V_CPP)) {
+        fdprintf(2,"readcppconst: before gettoken: curchar=0x%02x ('%c')\n", curchar, (curchar >= ' ' && curchar < 127) ? curchar : '?');
+    }
+#endif
+
     /* Get the first token of the expression */
     gettoken();
     gettoken();
 
     val = parse_const(SEMI);
 
-    /* After parse_const, we should be at SEMI (the converted newline) */
-    /* Consume the SEMI so cur points at EOL */
-    if (cur.type != SEMI) {
-        gettoken();  /* Move SEMI from next to cur */
-    }
+    /* Restore cur so outer gettoken() sees original cur */
+    memcpy(&cur, &saved_cur, sizeof(cur));
 
-#ifdef DEBUG
-    if (VERBOSE(V_CPP)) {
-        fdprintf(2,"After parse_const: cur.type=0x%02x next.type=0x%02x\n", cur.type, next.type);
-    }
-#endif
-
-    /* Now cur=SEMI (EOL) */
-    /* next may contain a token that was read while write_cpp_file=0 */
-    /* Restore flags - when next becomes cur, it will be output with write_cpp enabled */
+    /* Restore flags */
     tflags = savedtflags;
     write_cpp_file = saved_write_cpp;
+
+    /* Leave next with whatever was read - it contains the INT token */
+    /* The caller will handle discarding it if in a false block */
 
     /* Clear lineend flag */
     lineend = 0;
