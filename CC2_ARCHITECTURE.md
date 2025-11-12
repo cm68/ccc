@@ -292,6 +292,182 @@ With tree-based approach, these become possible:
 - Instruction scheduling (ASM block reordering)
 - Peephole optimization (ASM block analysis)
 
+## Stack Frame Layout and Calling Convention
+
+### Stack Frame Structure
+
+The compiler uses a frame pointer (FP) based calling convention. Each function has a stack frame with the following layout:
+
+```
+Higher addresses
+    +----------------+
+    | Last parameter |  FP + (4 + sum of earlier param sizes)
+    +----------------+
+    | ...            |
+    +----------------+
+    | Param 2        |  FP + 6 (if 2-byte param)
+    +----------------+
+    | Param 1        |  FP + 4 (first parameter, pushed last)
+    +----------------+
+    | Return address |  FP + 2 (2 bytes)
+    +----------------+
+    | Saved FP       |  FP + 0 ← Frame Pointer points here
+    +----------------+
+    | Local 1        |  FP - 2 (first local, size depends on type)
+    +----------------+
+    | Local 2        |  FP - (2 + size1)
+    +----------------+
+    | ...            |
+    +----------------+
+    | Last local     |  FP - frame_size
+    +----------------+
+Lower addresses (stack grows downward)
+```
+
+### Parameter Layout
+
+Parameters are pushed in **reverse order** (right-to-left):
+- For `func(a, b, c)`: push c, push b, push a
+- This makes the first parameter closest to the frame pointer
+- Parameters have **positive offsets** from FP
+
+**Example: `add(int x, int y)`**
+```
+FP + 6: y (second parameter, pushed first)
+FP + 4: x (first parameter, pushed last)
+FP + 2: return address
+FP + 0: saved FP
+FP - 2: result (local variable)
+```
+
+**Example: `test_multi(char a, int b, long c)`**
+```
+FP + 10: a (1 byte, third parameter)
+FP + 8:  b (2 bytes, second parameter)
+FP + 4:  c (4 bytes, first parameter)
+FP + 2:  return address
+FP + 0:  saved FP
+FP - 1:  local_a (1 byte)
+FP - 3:  local_b (2 bytes)
+```
+
+### Local Variable Layout
+
+Local variables have **negative offsets** from FP:
+- Stack grows downward
+- First local at FP - size1
+- Second local at FP - (size1 + size2)
+- etc.
+
+### Frame Allocation
+
+Every function with parameters or locals calls `framealloc` and `framefree`:
+
+**Prologue:**
+```asm
+_funcname:
+    ld a, <frame_size>    ; Size in bytes (locals only)
+    call framealloc       ; Sets up frame pointer
+```
+
+**Epilogue:**
+```asm
+    call framefree        ; Restores frame pointer
+    ret
+```
+
+**Frame allocation rules:**
+- Emit `framealloc`/`framefree` if: `frame_size > 0` OR function has parameters
+- Functions with no parameters and no locals omit frame setup
+- Frame size passed in register A is the **local variable space only** (not parameters)
+
+**Examples:**
+
+Function with parameters and locals: `add(int x, int y)` with local `result`
+```asm
+_add:
+    ld a, 2           ; 2 bytes for local 'result'
+    call framealloc   ; FP needed for params at FP+4, FP+6
+    ...
+    call framefree
+    ret
+```
+
+Function with parameters but no locals: `identity(int x)`
+```asm
+_identity:
+    ld a, 0           ; 0 bytes for locals
+    call framealloc   ; FP still needed to access param at FP+4
+    ...
+    call framefree
+    ret
+```
+
+Function with no parameters or locals: `empty()`
+```asm
+_empty:
+    ...               ; No frame setup needed
+    ret
+```
+
+### Runtime Library Functions
+
+**framealloc** (implemented in runtime library):
+- Input: A register = frame size (local variable space)
+- Saves current frame pointer to stack
+- Allocates stack space for locals
+- Sets up new frame pointer
+- Returns with FP pointing to saved FP location
+
+**framefree** (implemented in runtime library):
+- Restores previous frame pointer
+- Deallocates local variable stack space
+- Leaves return address at top of stack for ret instruction
+
+### Variable Access
+
+All variable access is frame-relative:
+
+**Parameters:** Use positive offsets
+```asm
+; Access first parameter (int x) at FP+4
+ld hl, (ix+4)    ; Assuming IX is frame pointer
+```
+
+**Locals:** Use negative offsets
+```asm
+; Access first local (int result) at FP-2
+ld (ix-2), hl    ; Assuming IX is frame pointer
+```
+
+### Type Sizes
+
+Variables are allocated based on their type:
+- `char`: 1 byte
+- `short`, `int`, pointers: 2 bytes
+- `long`, `float`: 4 bytes
+- `double`: 8 bytes
+
+### Current Implementation Status
+
+**Implemented:**
+- Stack frame offset assignment for parameters (Phase 1.5)
+- Stack frame offset assignment for local variables (Phase 1.5)
+- Frame size calculation
+- `framealloc`/`framefree` emission in prologue/epilogue
+- Proper handling of functions with/without parameters/locals
+- Helper function calls for all arithmetic operations
+- Width and signedness tracking for code generation
+
+**In Progress:**
+- Actual variable address calculation using frame offsets
+- Code emission using frame-relative addressing
+
+**Next Steps:**
+- Implement variable lookup by name to get frame offset
+- Generate frame-relative addressing (IX+offset or IX-offset)
+- Complete memory operation code generation (load/store)
+
 ## Notes
 
 - Simpler than complex code_emit structures
