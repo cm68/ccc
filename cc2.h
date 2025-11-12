@@ -21,6 +21,7 @@ struct expr {
     char *type_str;             // Type annotation from AST (":s", ":b", ":l", ":p", etc.)
     long value;                 // Constant value (for numeric constants)
     char *symbol;               // Symbol name (for SYM nodes)
+    unsigned char size;         // Result size in bytes (1=byte, 2=short/ptr, 4=long/float, 8=double)
 
     /* Code generation fields */
     char *asm_block;            // Generated assembly code (or NULL)
@@ -69,6 +70,9 @@ struct expr *new_expr(unsigned char op);
 struct stmt *new_stmt(unsigned char type);
 void free_expr(struct expr *e);
 void free_stmt(struct stmt *s);
+
+/* Size extraction from type annotations */
+unsigned char get_size_from_type_str(const char *type_str);
 
 /* Code generation functions */
 void generate_code(struct function_ctx *ctx);

@@ -40,6 +40,7 @@ new_expr(unsigned char op)
     e->type_str = NULL;
     e->value = 0;
     e->symbol = NULL;
+    e->size = 2;  /* Default to short size */
     e->asm_block = NULL;
     e->label = 0;
     return e;
@@ -66,6 +67,35 @@ new_stmt(unsigned char type)
     s->label2 = 0;
     s->asm_block = NULL;
     return s;
+}
+
+/*
+ * Extract size in bytes from type annotation string
+ * Type strings: ":b" (byte/1), ":s" (short/2), ":l" (long/4), ":p" (pointer/2),
+ *               ":f" (float/4), ":d" (double/8)
+ * Returns: size in bytes, or 2 (default short size) if no annotation
+ */
+unsigned char
+get_size_from_type_str(const char *type_str)
+{
+    if (!type_str || *type_str != ':') {
+        return 2;  /* Default to short size */
+    }
+
+    switch (type_str[1]) {
+    case 'b':  /* byte/char */
+        return 1;
+    case 's':  /* short/int */
+    case 'p':  /* pointer */
+        return 2;
+    case 'l':  /* long */
+    case 'f':  /* float */
+        return 4;
+    case 'd':  /* double */
+        return 8;
+    default:
+        return 2;  /* Default to short size */
+    }
 }
 
 /*
@@ -389,6 +419,16 @@ handle_binary_op(unsigned char op)
     e->right = parse_expr();  /* right operand - now returns tree */
     fdprintf(2, ")");
     expect(')');
+
+    /* Result size is the larger of the two operand sizes */
+    if (e->left && e->right) {
+        e->size = (e->left->size > e->right->size) ? e->left->size : e->right->size;
+    } else if (e->left) {
+        e->size = e->left->size;
+    } else if (e->right) {
+        e->size = e->right->size;
+    }
+
     return e;
 }
 
@@ -461,6 +501,7 @@ handle_unary_op(unsigned char op)
         /* Store width annotation */
         char width_str[3] = {':', width, '\0'};
         e->type_str = strdup(width_str);
+        e->size = get_size_from_type_str(e->type_str);
         fdprintf(2, "UNOP %c:%c (", op, width);
     } else {
         fdprintf(2, "UNOP %c (", op);
@@ -470,6 +511,12 @@ handle_unary_op(unsigned char op)
     e->left = parse_expr();  /* operand */
     fdprintf(2, ")");
     expect(')');
+
+    /* If no type annotation, inherit size from operand */
+    if (width == ' ' && e->left) {
+        e->size = e->left->size;
+    }
+
     return e;
 }
 
@@ -578,6 +625,7 @@ handle_deref(void)
         /* Store width annotation */
         char width_str[3] = {':', width, '\0'};
         e->type_str = strdup(width_str);
+        e->size = get_size_from_type_str(e->type_str);
     }
 
     fdprintf(2, "DEREF:%c (", width);
@@ -603,6 +651,7 @@ handle_assign(void)
         /* Store width annotation */
         char width_str[3] = {':', width, '\0'};
         e->type_str = strdup(width_str);
+        e->size = get_size_from_type_str(e->type_str);
     }
 
     fdprintf(2, "ASSIGN:%c (", width);
