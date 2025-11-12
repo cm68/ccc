@@ -950,14 +950,17 @@ handle_block(void)
                 fdprintf(2, "\n");
             }
 
-            /* Add child to linked list */
+            /* Add child to linked list and update tail pointer */
             if (child) {
                 if (!first_child) {
                     first_child = child;
-                    last_child = child;
                 } else {
                     last_child->next = child;
-                    last_child = child;
+                }
+                /* Update last_child to point to the actual end of the chain */
+                last_child = child;
+                while (last_child->next) {
+                    last_child = last_child->next;
                 }
             }
         }
@@ -1374,14 +1377,17 @@ handle_switch(void)
                 child = NULL;
             }
 
-            /* Add child to linked list */
+            /* Add child to linked list and update tail pointer */
             if (child) {
                 if (!first_child) {
                     first_child = child;
-                    last_child = child;
                 } else {
                     last_child->next = child;
-                    last_child = child;
+                }
+                /* Update last_child to point to the actual end of the chain */
+                last_child = child;
+                while (last_child->next) {
+                    last_child = last_child->next;
                 }
             }
         }
@@ -1576,14 +1582,17 @@ handle_function(void)
                 fdprintf(2, "\n");
             }
 
-            /* Add child to linked list */
+            /* Add child to linked list and update tail pointer */
             if (child) {
                 if (!first_child) {
                     first_child = child;
-                    last_child = child;
                 } else {
                     last_child->next = child;
-                    last_child = child;
+                }
+                /* Update last_child to point to the actual end of the chain */
+                last_child = child;
+                while (last_child->next) {
+                    last_child = last_child->next;
                 }
             }
         }
@@ -1937,6 +1946,11 @@ static void emit_stmt(struct stmt *s)
 {
     if (!s) return;
 
+    /* For ASM nodes, emit the assembly block directly */
+    if (s->type == 'A' && s->asm_block) {
+        fdprintf(out_fd, "%s\n", s->asm_block);
+    }
+
     /* Emit expressions (this frees them) */
     if (s->expr) emit_expr(s->expr);
     if (s->expr2) emit_expr(s->expr2);
@@ -1945,9 +1959,6 @@ static void emit_stmt(struct stmt *s)
     /* Emit child statements (this frees them) */
     if (s->then_branch) emit_stmt(s->then_branch);
     if (s->else_branch) emit_stmt(s->else_branch);
-
-    /* TODO: Emit assembly block for this statement */
-    /* if (s->asm_block) fdprintf(out_fd, "%s", s->asm_block); */
 
     /* Emit next statement in chain (this frees it) */
     if (s->next) emit_stmt(s->next);
