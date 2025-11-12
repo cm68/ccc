@@ -799,25 +799,34 @@ handle_ternary(void)
     return e;
 }
 
+/* Forward declarations for recursive parsing */
+static struct expr *parse_expr(void);
+static struct stmt *parse_stmt(void);
+
 /* Statement handlers */
 
 /* Forward declarations */
-static void handle_block(void);
-static void handle_if(void);
-static void handle_while(void);
-static void handle_do(void);
-static void handle_for(void);
-static void handle_return(void);
-static void handle_expr_stmt(void);
-static void handle_empty_stmt(void);
-static void handle_asm(void);
-static void handle_label(void);
-static void handle_goto(void);
-static void handle_switch(void);
+static struct stmt *handle_block(void);
+static struct stmt *handle_if(void);
+static struct stmt *handle_while(void);
+static struct stmt *handle_do(void);
+static struct stmt *handle_for(void);
+static struct stmt *handle_return(void);
+static struct stmt *handle_expr_stmt(void);
+static struct stmt *handle_empty_stmt(void);
+static struct stmt *handle_asm(void);
+static struct stmt *handle_label(void);
+static struct stmt *handle_goto(void);
+static struct stmt *handle_switch(void);
 
-static void
+static struct stmt *
 handle_block(void)
 {
+    struct stmt *s = new_stmt('B');
+    struct stmt *first_child = NULL;
+    struct stmt *last_child = NULL;
+    struct stmt *child;
+
     fdprintf(2, "BLOCK {\n");
 
     skip();
@@ -833,6 +842,12 @@ handle_block(void)
                 char *name = read_symbol();
                 char *type = read_type();
                 fdprintf(2, "  DECL %s %s\n", name, type);
+
+                /* Create declaration statement node */
+                child = new_stmt('d');
+                child->symbol = name;
+                child->type_str = type;
+
                 expect(')');
             } else {
                 /* Statement - dispatch based on operator */
@@ -841,40 +856,40 @@ handle_block(void)
 
                 switch (op) {
                 case 'B':  /* Block */
-                    handle_block();
+                    child = handle_block();
                     break;
                 case 'I':  /* If */
-                    handle_if();
+                    child = handle_if();
                     break;
                 case 'W':  /* While */
-                    handle_while();
+                    child = handle_while();
                     break;
                 case 'D':  /* Do-while */
-                    handle_do();
+                    child = handle_do();
                     break;
                 case 'F':  /* For */
-                    handle_for();
+                    child = handle_for();
                     break;
                 case 'R':  /* Return */
-                    handle_return();
+                    child = handle_return();
                     break;
                 case 'E':  /* Expression statement */
-                    handle_expr_stmt();
+                    child = handle_expr_stmt();
                     break;
                 case ';':  /* Empty statement */
-                    handle_empty_stmt();
+                    child = handle_empty_stmt();
                     break;
                 case 'A':  /* Asm block */
-                    handle_asm();
+                    child = handle_asm();
                     break;
                 case 'L':  /* Label */
-                    handle_label();
+                    child = handle_label();
                     break;
                 case 'G':  /* Goto */
-                    handle_goto();
+                    child = handle_goto();
                     break;
                 case 'S':  /* Switch */
-                    handle_switch();
+                    child = handle_switch();
                     break;
                 default:
                     fdprintf(2, "parseast: line %d: unknown stmt op '%c' in block\n", line_num, op);
@@ -885,9 +900,21 @@ handle_block(void)
                     if (curchar == ')') {
                         nextchar();
                     }
+                    child = NULL;
                     break;
                 }
                 fdprintf(2, "\n");
+            }
+
+            /* Add child to linked list */
+            if (child) {
+                if (!first_child) {
+                    first_child = child;
+                    last_child = child;
+                } else {
+                    last_child->next = child;
+                    last_child = child;
+                }
             }
         }
         skip();
@@ -895,122 +922,139 @@ handle_block(void)
 
     fdprintf(2, "}");
     expect(')');
+
+    s->then_branch = first_child;  /* Use then_branch for block's child list */
+    return s;
 }
 
-static void
+static struct stmt *
 handle_if(void)
 {
-    int if_label = label_counter++;
-    int else_label;
+    struct stmt *s = new_stmt('I');
+    s->label = label_counter++;
 
     fdprintf(2, "IF (");
     skip();
-    parse_expr();  /* condition */
+    s->expr = parse_expr();  /* condition */
     fdprintf(2, ") ");
 
     skip();
-    parse_stmt();  /* then branch */
+    s->then_branch = parse_stmt();  /* then branch */
 
     skip();
     if (curchar != ')') {
         /* Has else branch - need second label for end of else */
-        else_label = label_counter++;
-
-        /* Jump over else branch after then completes */
-        fdprintf(out_fd, "\tjp _if_end_%d\n", else_label);
-
-        /* Emit label for else branch (jump here if condition is false) */
-        fdprintf(out_fd, "_if_%d:\n", if_label);
+        s->label2 = label_counter++;
 
         fdprintf(2, " ELSE ");
-        parse_stmt();  /* else branch */
-
-        /* Emit end label after else branch */
-        fdprintf(out_fd, "_if_end_%d:\n", else_label);
+        s->else_branch = parse_stmt();  /* else branch */
     } else {
-        /* No else branch - just emit label after then branch */
-        fdprintf(out_fd, "_if_%d:\n", if_label);
+        s->else_branch = NULL;
     }
 
     expect(')');
+    return s;
 }
 
-static void
+static struct stmt *
 handle_while(void)
 {
+    struct stmt *s = new_stmt('W');
+    s->label = label_counter++;  /* Loop start label */
+
     fdprintf(2, "WHILE (");
     skip();
-    parse_expr();  /* condition */
+    s->expr = parse_expr();  /* condition */
     fdprintf(2, ") ");
 
     skip();
-    parse_stmt();  /* body */
+    s->then_branch = parse_stmt();  /* body */
 
     expect(')');
+    return s;
 }
 
-static void
+static struct stmt *
 handle_do(void)
 {
+    struct stmt *s = new_stmt('D');
+    s->label = label_counter++;  /* Loop start label */
+
     fdprintf(2, "DO ");
     skip();
-    parse_stmt();  /* body */
+    s->then_branch = parse_stmt();  /* body */
 
     fdprintf(2, " WHILE (");
     skip();
-    parse_expr();  /* condition */
+    s->expr = parse_expr();  /* condition */
     fdprintf(2, ")");
 
     expect(')');
+    return s;
 }
 
-static void
+static struct stmt *
 handle_for(void)
 {
+    struct stmt *s = new_stmt('F');
+    s->label = label_counter++;  /* Loop start label */
+
     fdprintf(2, "FOR (");
     skip();
-    parse_expr();  /* init */
+    s->expr = parse_expr();  /* init */
     fdprintf(2, "; ");
     skip();
-    parse_expr();  /* condition */
+    s->expr2 = parse_expr();  /* condition */
     fdprintf(2, "; ");
     skip();
-    parse_expr();  /* increment */
+    s->expr3 = parse_expr();  /* increment */
     fdprintf(2, ") ");
 
     skip();
-    parse_stmt();  /* body */
+    s->then_branch = parse_stmt();  /* body */
 
     expect(')');
+    return s;
 }
 
-static void
+static struct stmt *
 handle_return(void)
 {
+    struct stmt *s = new_stmt('R');
+
     fdprintf(2, "RETURN");
     skip();
     if (curchar != ')') {
         fdprintf(2, " ");
-        parse_expr();
+        s->expr = parse_expr();
+    } else {
+        s->expr = NULL;
     }
     expect(')');
+    return s;
 }
 
-static void
+static struct stmt *
 handle_expr_stmt(void)
 {
+    struct stmt *s = new_stmt('E');
+
     fdprintf(2, "EXPR (");
     skip();
-    parse_expr();
+    s->expr = parse_expr();
     fdprintf(2, ")");
     expect(')');
+    return s;
 }
 
-static void
+static struct stmt *
 handle_empty_stmt(void)
 {
+    struct stmt *s = new_stmt(';');
+
     fdprintf(2, ";");
     expect(')');
+    return s;
 }
 
 /*
@@ -1073,14 +1117,12 @@ trim_line(char *line)
     return line;
 }
 
-static void
+static struct stmt *
 handle_asm(void)
 {
+    struct stmt *s = new_stmt('A');
     char asm_buf[4096];
     char *p;
-    char *line_start;
-    char *trimmed;
-    int i;
 
     /* ASM statement: (A "assembly text") */
     skip();
@@ -1101,39 +1143,18 @@ handle_asm(void)
         /* Diagnostic output to stderr */
         fdprintf(2, "ASM \"%s\"\n", asm_buf);
 
-        /* Process and emit assembly to stdout */
-        /* Split on semicolons and output each line */
-        line_start = asm_buf;
-        for (i = 0; asm_buf[i]; i++) {
-            if (asm_buf[i] == ';') {
-                asm_buf[i] = '\0';  /* Terminate this segment */
-                trimmed = trim_line(line_start);
-                if (*trimmed) {  /* Skip empty lines */
-                    if (is_label(trimmed)) {
-                        fdprintf(1, "%s\n", trimmed);
-                    } else {
-                        fdprintf(1, "\t%s\n", trimmed);
-                    }
-                }
-                line_start = &asm_buf[i + 1];
-            }
-        }
-        /* Handle last segment (no trailing semicolon) */
-        trimmed = trim_line(line_start);
-        if (*trimmed) {
-            if (is_label(trimmed)) {
-                fdprintf(1, "%s\n", trimmed);
-            } else {
-                fdprintf(1, "\t%s\n", trimmed);
-            }
-        }
+        /* Store assembly text in statement node */
+        s->asm_block = malloc(strlen(asm_buf) + 1);
+        strcpy(s->asm_block, asm_buf);
     }
     expect(')');
+    return s;
 }
 
-static void
+static struct stmt *
 handle_label(void)
 {
+    struct stmt *s = new_stmt('L');
     char *label_name;
 
     /* Label statement: (L label_name) */
@@ -1143,15 +1164,17 @@ handle_label(void)
     /* Diagnostic output to stderr */
     fdprintf(2, "LABEL %s", label_name);
 
-    /* Emit label to stdout with trailing colon */
-    fdprintf(1, "%s:\n", label_name);
+    /* Store label name in statement node */
+    s->symbol = label_name;
 
     expect(')');
+    return s;
 }
 
-static void
+static struct stmt *
 handle_goto(void)
 {
+    struct stmt *s = new_stmt('G');
     char *label_name;
 
     /* Goto statement: (G label_name) */
@@ -1161,18 +1184,25 @@ handle_goto(void)
     /* Diagnostic output to stderr */
     fdprintf(2, "GOTO %s", label_name);
 
-    /* TODO: Emit goto instruction when we have code generation */
+    /* Store label name in statement node */
+    s->symbol = label_name;
 
     expect(')');
+    return s;
 }
 
-static void
+static struct stmt *
 handle_switch(void)
 {
+    struct stmt *s = new_stmt('S');
+    struct stmt *first_child = NULL;
+    struct stmt *last_child = NULL;
+    struct stmt *child;
+
     /* Switch statement: (S expr (C val ...) (C val ...) (O ...) ) */
     fdprintf(2, "SWITCH (");
     skip();
-    parse_expr();  /* switch expression */
+    s->expr = parse_expr();  /* switch expression */
     fdprintf(2, ") {");
 
     /* Parse case and default clauses */
@@ -1188,8 +1218,9 @@ handle_switch(void)
             if (clause_type == 'C') {
                 /* Case clause: (C value ()) - body placeholder is always empty */
                 fdprintf(2, "\n  CASE ");
+                child = new_stmt('C');
                 skip();
-                parse_expr();  /* case value */
+                child->expr = parse_expr();  /* case value */
                 fdprintf(2, ": ");
                 skip();
                 /* Skip empty body placeholder () */
@@ -1204,6 +1235,7 @@ handle_switch(void)
             } else if (clause_type == 'O') {
                 /* Default clause: (O ()) - body placeholder is always empty */
                 fdprintf(2, "\n  DEFAULT: ");
+                child = new_stmt('O');
                 skip();
                 /* Skip empty body placeholder () */
                 if (curchar == '(') {
@@ -1222,19 +1254,22 @@ handle_switch(void)
                 /* For now, just handle common ones inline */
                 fdprintf(2, "\n");
                 if (clause_type == 'R') {
-                    handle_return();
+                    child = handle_return();
                 } else if (clause_type == 'G') {
+                    child = new_stmt('G');
                     skip();
-                    char *label = read_symbol();
-                    fdprintf(2, "GOTO %s", label);
+                    child->symbol = read_symbol();
+                    fdprintf(2, "GOTO %s", child->symbol);
                     expect(')');
                 } else if (clause_type == 'B') {
                     /* BREAK statement */
                     fdprintf(2, "BREAK");
+                    child = new_stmt('B');
                     expect(')');
                 } else if (clause_type == 'E') {
-                    /* Expression statement */
-                    handle_expr_stmt();
+                    child = handle_expr_stmt();
+                } else {
+                    child = NULL;
                 }
             } else {
                 /* Unknown - skip it */
@@ -1245,6 +1280,18 @@ handle_switch(void)
                 if (curchar == ')') {
                     nextchar();
                 }
+                child = NULL;
+            }
+
+            /* Add child to linked list */
+            if (child) {
+                if (!first_child) {
+                    first_child = child;
+                    last_child = child;
+                } else {
+                    last_child->next = child;
+                    last_child = child;
+                }
             }
         }
         skip();
@@ -1252,6 +1299,9 @@ handle_switch(void)
 
     fdprintf(2, "\n}");
     expect(')');
+
+    s->then_branch = first_child;  /* Use then_branch for switch body */
+    return s;
 }
 
 /* Top-level handlers */
@@ -1285,18 +1335,21 @@ emit_function_prologue(char *name, char *params, char *rettype)
 static void
 handle_function(void)
 {
+    struct function_ctx ctx;
     char name_buf[64];  /* Stack buffer for function name */
-    char *name;
     char params_buf[256];
     char *p;
     int first_param;
+    struct stmt *first_child = NULL;
+    struct stmt *last_child = NULL;
+    struct stmt *child;
 
     /* (f name (params) return_type declarations body) */
     /* Copy function name to stack buffer before reading parameters */
     strncpy(name_buf, read_symbol(), sizeof(name_buf) - 1);
     name_buf[sizeof(name_buf) - 1] = '\0';
-    name = name_buf;
-    fdprintf(2, "\nFUNCTION %s\n", name);
+    ctx.name = name_buf;
+    fdprintf(2, "\nFUNCTION %s\n", ctx.name);
 
     /* Parameters - collect into buffer for prologue */
     skip();
@@ -1342,17 +1395,18 @@ handle_function(void)
         }
     }
     *p = '\0';
+    ctx.params = params_buf;
     expect(')');
     fdprintf(2, "\n");
 
     /* Return type */
-    char *rettype = read_type();
-    fdprintf(2, "  RETURNS: %s\n", rettype);
+    ctx.rettype = read_type();
+    fdprintf(2, "  RETURNS: %s\n", ctx.rettype);
 
     /* Emit assembly function prologue */
-    emit_function_prologue(name, params_buf, rettype);
+    emit_function_prologue(ctx.name, ctx.params, ctx.rettype);
 
-    /* Declarations and body */
+    /* Declarations and body - collect into statement tree */
     skip();
     while (curchar != ')') {
         skip();
@@ -1366,6 +1420,12 @@ handle_function(void)
                 char *dname = read_symbol();
                 char *dtype = read_type();
                 fdprintf(2, "  DECL %s %s\n", dname, dtype);
+
+                /* Create declaration statement node */
+                child = new_stmt('d');
+                child->symbol = dname;
+                child->type_str = dtype;
+
                 expect(')');
             } else {
                 /* Body statement - we've already consumed '(', now consume operator */
@@ -1375,40 +1435,40 @@ handle_function(void)
                 fdprintf(2, "  BODY: ");
                 switch (op) {
                 case 'B':  /* Block */
-                    handle_block();
+                    child = handle_block();
                     break;
                 case 'I':  /* If */
-                    handle_if();
+                    child = handle_if();
                     break;
                 case 'W':  /* While */
-                    handle_while();
+                    child = handle_while();
                     break;
                 case 'D':  /* Do-while */
-                    handle_do();
+                    child = handle_do();
                     break;
                 case 'F':  /* For */
-                    handle_for();
+                    child = handle_for();
                     break;
                 case 'R':  /* Return */
-                    handle_return();
+                    child = handle_return();
                     break;
                 case 'E':  /* Expression statement */
-                    handle_expr_stmt();
+                    child = handle_expr_stmt();
                     break;
                 case ';':  /* Empty statement */
-                    handle_empty_stmt();
+                    child = handle_empty_stmt();
                     break;
                 case 'A':  /* Asm block */
-                    handle_asm();
+                    child = handle_asm();
                     break;
                 case 'L':  /* Label */
-                    handle_label();
+                    child = handle_label();
                     break;
                 case 'G':  /* Goto */
-                    handle_goto();
+                    child = handle_goto();
                     break;
                 case 'S':  /* Switch */
-                    handle_switch();
+                    child = handle_switch();
                     break;
                 default:
                     fdprintf(2, "parseast: line %d: unknown stmt op '%c'\n", line_num, op);
@@ -1419,15 +1479,33 @@ handle_function(void)
                     if (curchar == ')') {
                         nextchar();
                     }
+                    child = NULL;
                     break;
                 }
                 fdprintf(2, "\n");
+            }
+
+            /* Add child to linked list */
+            if (child) {
+                if (!first_child) {
+                    first_child = child;
+                    last_child = child;
+                } else {
+                    last_child->next = child;
+                    last_child = child;
+                }
             }
         }
         skip();
     }
 
+    /* Store body tree in context */
+    ctx.body = first_child;
+    ctx.label_counter = label_counter;  /* Save current label counter */
+
     expect(')');
+
+    /* TODO: Eventually call generate_code(&ctx) and emit_assembly(&ctx, out_fd) here */
 }
 
 static void
@@ -1534,9 +1612,11 @@ init_expr_handlers(void)
 /*
  * Parse an expression (recursive)
  */
-static void
+static struct expr *
 parse_expr(void)
 {
+    struct expr *e;
+
     skip();
 
     if (curchar == '(') {
@@ -1547,36 +1627,41 @@ parse_expr(void)
         nextchar();
 
         /* Use lookup table to dispatch to handler */
-        expr_handlers[op](op);
+        e = expr_handlers[op](op);
 
     } else if (curchar == '$') {
         /* Symbol */
-        handle_symbol();
+        e = handle_symbol();
     } else if (curchar == 'S') {
         /* String literal */
         nextchar();
-        handle_string();
+        e = handle_string();
     } else if ((curchar >= '0' && curchar <= '9') || curchar == '-') {
         /* Constant */
-        handle_const();
+        e = handle_const();
     } else {
         fdprintf(2, "parseast: line %d: unexpected char '%c' in expr\n",
                  line_num, curchar);
         nextchar();
+        e = NULL;
     }
+
+    return e;
 }
 
 /*
  * Parse a statement (recursive)
  */
-static void
+static struct stmt *
 parse_stmt(void)
 {
+    struct stmt *s;
+
     skip();
 
     if (curchar != '(') {
         fdprintf(2, "parseast: line %d: expected '(' at start of statement\n", line_num);
-        return;
+        return NULL;
     }
 
     nextchar();
@@ -1585,7 +1670,7 @@ parse_stmt(void)
     /* Handle empty statement: () */
     if (curchar == ')') {
         nextchar();
-        return;
+        return NULL;
     }
 
     char op = curchar;
@@ -1593,40 +1678,40 @@ parse_stmt(void)
 
     switch (op) {
     case 'B':  /* Block */
-        handle_block();
+        s = handle_block();
         break;
     case 'I':  /* If */
-        handle_if();
+        s = handle_if();
         break;
     case 'W':  /* While */
-        handle_while();
+        s = handle_while();
         break;
     case 'D':  /* Do-while */
-        handle_do();
+        s = handle_do();
         break;
     case 'F':  /* For */
-        handle_for();
+        s = handle_for();
         break;
     case 'R':  /* Return */
-        handle_return();
+        s = handle_return();
         break;
     case 'E':  /* Expression statement */
-        handle_expr_stmt();
+        s = handle_expr_stmt();
         break;
     case ';':  /* Empty statement */
-        handle_empty_stmt();
+        s = handle_empty_stmt();
         break;
     case 'A':  /* Asm block */
-        handle_asm();
+        s = handle_asm();
         break;
     case 'L':  /* Label */
-        handle_label();
+        s = handle_label();
         break;
     case 'G':  /* Goto */
-        handle_goto();
+        s = handle_goto();
         break;
     case 'S':  /* Switch */
-        handle_switch();
+        s = handle_switch();
         break;
     default:
         fdprintf(2, "parseast: line %d: unknown stmt op '%c'\n", line_num, op);
@@ -1637,8 +1722,11 @@ parse_stmt(void)
         if (curchar == ')') {
             nextchar();
         }
+        s = NULL;
         break;
     }
+
+    return s;
 }
 
 /*
