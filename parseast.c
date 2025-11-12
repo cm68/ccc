@@ -1974,14 +1974,103 @@ parse_toplevel(void)
  */
 static void generate_expr(struct expr *e)
 {
+    char buf[256];
     if (!e) return;
 
-    /* Recursively generate code for children */
+    /* Recursively generate code for children (postorder traversal) */
     if (e->left) generate_expr(e->left);
     if (e->right) generate_expr(e->right);
 
-    /* TODO: Generate assembly code for this node */
-    /* e->asm_block = malloc(...); strcpy(e->asm_block, "..."); */
+    /* Generate assembly code for this node based on operator */
+    switch (e->op) {
+    case 'C':  /* CONST - load immediate value */
+        if (e->size == 1) {
+            snprintf(buf, sizeof(buf), "\tld a, %ld", e->value);
+        } else if (e->size == 2) {
+            snprintf(buf, sizeof(buf), "\tld hl, %ld", e->value);
+        } else {  /* size == 4 */
+            snprintf(buf, sizeof(buf), "\t; TODO: load long %ld", e->value);
+        }
+        e->asm_block = strdup(buf);
+        break;
+
+    case 'M':  /* DEREF - load from memory */
+        if (e->size == 1) {
+            snprintf(buf, sizeof(buf), "\t; load byte from address");
+        } else if (e->size == 2) {
+            snprintf(buf, sizeof(buf), "\t; load word from address");
+        } else {
+            snprintf(buf, sizeof(buf), "\t; load long from address");
+        }
+        e->asm_block = strdup(buf);
+        break;
+
+    case '=':  /* ASSIGN - store to memory */
+        if (e->size == 1) {
+            snprintf(buf, sizeof(buf), "\t; store byte to address");
+        } else if (e->size == 2) {
+            snprintf(buf, sizeof(buf), "\t; store word to address");
+        } else {
+            snprintf(buf, sizeof(buf), "\t; store long to address");
+        }
+        e->asm_block = strdup(buf);
+        break;
+
+    case '+':  /* ADD */
+        if (e->size == 1) {
+            snprintf(buf, sizeof(buf), "\t; add byte");
+        } else if (e->size == 2) {
+            snprintf(buf, sizeof(buf), "\tadd hl, de");
+        } else {
+            snprintf(buf, sizeof(buf), "\t; add long");
+        }
+        e->asm_block = strdup(buf);
+        break;
+
+    case '-':  /* SUB */
+        if (e->size == 1) {
+            snprintf(buf, sizeof(buf), "\t; sub byte");
+        } else if (e->size == 2) {
+            snprintf(buf, sizeof(buf), "\t; sub word");
+        } else {
+            snprintf(buf, sizeof(buf), "\t; sub long");
+        }
+        e->asm_block = strdup(buf);
+        break;
+
+    case '>':  /* GT - greater than comparison */
+        if (e->flags & E_UNSIGNED) {
+            snprintf(buf, sizeof(buf), "\t; compare unsigned >");
+        } else {
+            snprintf(buf, sizeof(buf), "\t; compare signed >");
+        }
+        e->asm_block = strdup(buf);
+        break;
+
+    case 0xab:  /* SEXT - sign extend */
+        snprintf(buf, sizeof(buf), "\t; sign extend to size %d", e->size);
+        e->asm_block = strdup(buf);
+        break;
+
+    case 0xb6:  /* WIDEN - zero extend */
+        snprintf(buf, sizeof(buf), "\t; zero extend to size %d", e->size);
+        e->asm_block = strdup(buf);
+        break;
+
+    case '$':  /* SYM - symbol reference (address) */
+        snprintf(buf, sizeof(buf), "\t; load address of %s", e->symbol ? e->symbol : "?");
+        e->asm_block = strdup(buf);
+        break;
+
+    default:
+        /* For now, generate placeholder comment for other operators */
+        snprintf(buf, sizeof(buf), "\t; op %c (0x%02x) size=%d%s",
+                 e->op >= ' ' && e->op <= '~' ? e->op : '?',
+                 e->op, e->size,
+                 (e->flags & E_UNSIGNED) ? " unsigned" : "");
+        e->asm_block = strdup(buf);
+        break;
+    }
 }
 
 /*
@@ -2028,8 +2117,10 @@ static void emit_expr(struct expr *e)
     if (e->left) emit_expr(e->left);
     if (e->right) emit_expr(e->right);
 
-    /* TODO: Emit assembly block for this node */
-    /* if (e->asm_block) fdprintf(out_fd, "%s", e->asm_block); */
+    /* Emit assembly block for this node */
+    if (e->asm_block) {
+        fdprintf(out_fd, "%s\n", e->asm_block);
+    }
 
     /* Free this node (children already freed by recursive emit calls above) */
     if (e->asm_block) free(e->asm_block);
