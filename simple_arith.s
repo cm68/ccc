@@ -13,7 +13,7 @@ _main:
 	; load word from address
 	; load address of $b
 	; load word from address
-	add hl, de
+	call add1616
 	; store word to address
 	; load address of $c
 	; load word from address

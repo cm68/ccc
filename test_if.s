@@ -4,7 +4,7 @@ _test_if:
 	; load word from address
 	; op X (0x58) size=4
 	ld hl, 0
-	; compare signed >
+	call gt1616
 	ld hl, 1
 _if_0:
 	ld hl, 0

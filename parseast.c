@@ -1969,6 +1969,61 @@ parse_toplevel(void)
 }
 
 /*
+ * Helper: Get the original operand size, looking through SEXT/WIDEN conversions
+ */
+static int
+get_original_size(struct expr *e)
+{
+    if (!e) return 2;  /* default to 16-bit */
+
+    /* Look through SEXT ('X') and WIDEN ('W') to find original size */
+    if ((e->op == 'X' || e->op == 'W') && e->left) {
+        return e->left->size;
+    }
+
+    /* Also check for NARROW ('N') which truncates to smaller size */
+    if (e->op == 'N' && e->left) {
+        return e->left->size;
+    }
+
+    return e->size;
+}
+
+/*
+ * Helper: Check if operand is unsigned (look through conversions)
+ */
+static int
+is_operand_unsigned(struct expr *e)
+{
+    if (!e) return 0;
+
+    /* WIDEN ('W') means unsigned (zero extend) */
+    if (e->op == 'W') return 1;
+
+    /* Otherwise check the expression's flags */
+    return (e->flags & E_UNSIGNED) ? 1 : 0;
+}
+
+/*
+ * Helper: Generate function name for binary arithmetic operations
+ * Format: [u]<op><leftwidth><rightwidth>
+ * Examples: mul88, umul816, div1616, add168
+ */
+static void
+make_binop_funcname(char *buf, size_t bufsize, const char *opname,
+                    struct expr *e)
+{
+    int left_bits = get_original_size(e->left) * 8;
+    int right_bits = get_original_size(e->right) * 8;
+
+    /* Operation is unsigned if either operand is unsigned */
+    int is_unsigned = is_operand_unsigned(e->left) || is_operand_unsigned(e->right);
+    const char *prefix = is_unsigned ? "u" : "";
+
+    snprintf(buf, bufsize, "%s%s%d%d", prefix, opname, left_bits, right_bits);
+}
+
+/*
  * Code generation phase (Phase 2)
  * Walk expression tree and generate assembly code blocks
  */
@@ -2017,34 +2072,147 @@ static void generate_expr(struct expr *e)
         break;
 
     case '+':  /* ADD */
-        if (e->size == 1) {
-            snprintf(buf, sizeof(buf), "\t; add byte");
-        } else if (e->size == 2) {
-            snprintf(buf, sizeof(buf), "\tadd hl, de");
-        } else {
-            snprintf(buf, sizeof(buf), "\t; add long");
+        {
+            char funcname[32];
+            make_binop_funcname(funcname, sizeof(funcname), "add", e);
+            snprintf(buf, sizeof(buf), "\tcall %s", funcname);
+            e->asm_block = strdup(buf);
         }
-        e->asm_block = strdup(buf);
         break;
 
     case '-':  /* SUB */
-        if (e->size == 1) {
-            snprintf(buf, sizeof(buf), "\t; sub byte");
-        } else if (e->size == 2) {
-            snprintf(buf, sizeof(buf), "\t; sub word");
-        } else {
-            snprintf(buf, sizeof(buf), "\t; sub long");
+        {
+            char funcname[32];
+            make_binop_funcname(funcname, sizeof(funcname), "sub", e);
+            snprintf(buf, sizeof(buf), "\tcall %s", funcname);
+            e->asm_block = strdup(buf);
         }
-        e->asm_block = strdup(buf);
+        break;
+
+    case '*':  /* MUL */
+        {
+            char funcname[32];
+            make_binop_funcname(funcname, sizeof(funcname), "mul", e);
+            snprintf(buf, sizeof(buf), "\tcall %s", funcname);
+            e->asm_block = strdup(buf);
+        }
+        break;
+
+    case '/':  /* DIV */
+        {
+            char funcname[32];
+            make_binop_funcname(funcname, sizeof(funcname), "div", e);
+            snprintf(buf, sizeof(buf), "\tcall %s", funcname);
+            e->asm_block = strdup(buf);
+        }
+        break;
+
+    case '%':  /* MOD */
+        {
+            char funcname[32];
+            make_binop_funcname(funcname, sizeof(funcname), "mod", e);
+            snprintf(buf, sizeof(buf), "\tcall %s", funcname);
+            e->asm_block = strdup(buf);
+        }
+        break;
+
+    case '&':  /* AND */
+        {
+            char funcname[32];
+            make_binop_funcname(funcname, sizeof(funcname), "and", e);
+            snprintf(buf, sizeof(buf), "\tcall %s", funcname);
+            e->asm_block = strdup(buf);
+        }
+        break;
+
+    case '|':  /* OR */
+        {
+            char funcname[32];
+            make_binop_funcname(funcname, sizeof(funcname), "or", e);
+            snprintf(buf, sizeof(buf), "\tcall %s", funcname);
+            e->asm_block = strdup(buf);
+        }
+        break;
+
+    case '^':  /* XOR */
+        {
+            char funcname[32];
+            make_binop_funcname(funcname, sizeof(funcname), "xor", e);
+            snprintf(buf, sizeof(buf), "\tcall %s", funcname);
+            e->asm_block = strdup(buf);
+        }
+        break;
+
+    case 'y':  /* LSHIFT */
+        {
+            char funcname[32];
+            make_binop_funcname(funcname, sizeof(funcname), "shl", e);
+            snprintf(buf, sizeof(buf), "\tcall %s", funcname);
+            e->asm_block = strdup(buf);
+        }
+        break;
+
+    case 'w':  /* RSHIFT */
+        {
+            char funcname[32];
+            make_binop_funcname(funcname, sizeof(funcname), "shr", e);
+            snprintf(buf, sizeof(buf), "\tcall %s", funcname);
+            e->asm_block = strdup(buf);
+        }
         break;
 
     case '>':  /* GT - greater than comparison */
-        if (e->flags & E_UNSIGNED) {
-            snprintf(buf, sizeof(buf), "\t; compare unsigned >");
-        } else {
-            snprintf(buf, sizeof(buf), "\t; compare signed >");
+        {
+            char funcname[32];
+            make_binop_funcname(funcname, sizeof(funcname), "gt", e);
+            snprintf(buf, sizeof(buf), "\tcall %s", funcname);
+            e->asm_block = strdup(buf);
         }
-        e->asm_block = strdup(buf);
+        break;
+
+    case '<':  /* LT - less than comparison */
+        {
+            char funcname[32];
+            make_binop_funcname(funcname, sizeof(funcname), "lt", e);
+            snprintf(buf, sizeof(buf), "\tcall %s", funcname);
+            e->asm_block = strdup(buf);
+        }
+        break;
+
+    case 'g':  /* GE - greater or equal comparison */
+        {
+            char funcname[32];
+            make_binop_funcname(funcname, sizeof(funcname), "ge", e);
+            snprintf(buf, sizeof(buf), "\tcall %s", funcname);
+            e->asm_block = strdup(buf);
+        }
+        break;
+
+    case 'L':  /* LE - less or equal comparison */
+        {
+            char funcname[32];
+            make_binop_funcname(funcname, sizeof(funcname), "le", e);
+            snprintf(buf, sizeof(buf), "\tcall %s", funcname);
+            e->asm_block = strdup(buf);
+        }
+        break;
+
+    case 'Q':  /* EQ - equality comparison */
+        {
+            char funcname[32];
+            make_binop_funcname(funcname, sizeof(funcname), "eq", e);
+            snprintf(buf, sizeof(buf), "\tcall %s", funcname);
+            e->asm_block = strdup(buf);
+        }
+        break;
+
+    case 'n':  /* NEQ - not equal comparison */
+        {
+            char funcname[32];
+            make_binop_funcname(funcname, sizeof(funcname), "ne", e);
+            snprintf(buf, sizeof(buf), "\tcall %s", funcname);
+            e->asm_block = strdup(buf);
+        }
         break;
 
     case 0xab:  /* SEXT - sign extend */
