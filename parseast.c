@@ -1533,10 +1533,12 @@ handle_switch(void)
 static void
 emit_function_prologue(char *name, char *params, char *rettype, int frame_size)
 {
+    int has_params = (params && params[0]);
+
     /* Assembly comment with function signature */
     fdprintf(out_fd, "; Function: %s", name);
 
-    if (params && params[0]) {
+    if (has_params) {
         fdprintf(out_fd, "(%s)", params);
     } else {
         fdprintf(out_fd, "()");
@@ -1551,8 +1553,8 @@ emit_function_prologue(char *name, char *params, char *rettype, int frame_size)
     /* Function label (standard C naming with underscore prefix) */
     fdprintf(out_fd, "_%s:\n", name);
 
-    /* Emit frame allocation call */
-    if (frame_size > 0) {
+    /* Emit frame allocation call if we have locals or parameters */
+    if (frame_size > 0 || has_params) {
         fdprintf(out_fd, "\tld a, %d\n", frame_size);
         fdprintf(out_fd, "\tcall framealloc\n");
     }
@@ -2511,10 +2513,14 @@ static void emit_stmt(struct stmt *s)
 void emit_assembly(struct function_ctx *ctx, int fd)
 {
     struct local_var *var, *next;
+    int has_params;
 
     if (!ctx || !ctx->body) return;
 
     fdprintf(2, "=== Phase 3: Emitting assembly and freeing tree ===\n");
+
+    /* Check if function has parameters */
+    has_params = (ctx->params && ctx->params[0]);
 
     /* Emit function prologue with frame allocation */
     emit_function_prologue(ctx->name, ctx->params, ctx->rettype, ctx->frame_size);
@@ -2523,7 +2529,8 @@ void emit_assembly(struct function_ctx *ctx, int fd)
     emit_stmt(ctx->body);
 
     /* Emit function epilogue with frame deallocation */
-    if (ctx->frame_size > 0) {
+    /* Emit framefree if we have locals or parameters */
+    if (ctx->frame_size > 0 || has_params) {
         fdprintf(out_fd, "\tcall framefree\n");
     }
 
