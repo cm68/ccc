@@ -2055,7 +2055,32 @@ make_binop_funcname(char *buf, size_t bufsize, const char *opname,
 }
 
 /*
+ * Helper: Add a parameter to the function context
+ * Parameters have positive offsets (above frame pointer)
+ */
+static void
+add_param(struct function_ctx *ctx, const char *name, unsigned char size, int offset)
+{
+    struct local_var *var = malloc(sizeof(struct local_var));
+    if (!var) {
+        fdprintf(2, "parseast: out of memory allocating local_var\n");
+        exit(1);
+    }
+
+    var->name = strdup(name);
+    var->size = size;
+    var->offset = offset;
+    var->is_param = 1;
+    var->next = ctx->locals;
+
+    ctx->locals = var;
+
+    fdprintf(2, "  Parameter: %s, size=%d, offset=+%d\n", name, size, offset);
+}
+
+/*
  * Helper: Add a local variable to the function context
+ * Local variables have negative offsets (below frame pointer)
  */
 static void
 add_local_var(struct function_ctx *ctx, const char *name, unsigned char size)
@@ -2070,12 +2095,28 @@ add_local_var(struct function_ctx *ctx, const char *name, unsigned char size)
     var->size = size;
     /* Stack grows downward - assign negative offset from frame pointer */
     var->offset = -(ctx->frame_size + size);
+    var->is_param = 0;
     var->next = ctx->locals;
 
     ctx->locals = var;
     ctx->frame_size += size;
 
     fdprintf(2, "  Local var: %s, size=%d, offset=%d\n", name, size, var->offset);
+}
+
+/*
+ * Helper: Check if a name is a parameter
+ */
+static int
+is_parameter(struct function_ctx *ctx, const char *name)
+{
+    struct local_var *var;
+    for (var = ctx->locals; var; var = var->next) {
+        if (var->is_param && strcmp(var->name, name) == 0) {
+            return 1;
+        }
+    }
+    return 0;
 }
 
 /*
@@ -2086,10 +2127,13 @@ walk_for_locals(struct function_ctx *ctx, struct stmt *s)
 {
     if (!s) return;
 
-    /* If this is a declaration, add it to locals list */
+    /* If this is a declaration, add it to locals list (unless it's a parameter) */
     if (s->type == 'd' && s->symbol) {
-        unsigned char size = get_size_from_typename(s->type_str);
-        add_local_var(ctx, s->symbol, size);
+        /* Skip parameter declarations - they already have offsets */
+        if (!is_parameter(ctx, s->symbol)) {
+            unsigned char size = get_size_from_typename(s->type_str);
+            add_local_var(ctx, s->symbol, size);
+        }
     }
 
     /* Recursively walk child statements */
@@ -2099,14 +2143,60 @@ walk_for_locals(struct function_ctx *ctx, struct stmt *s)
 }
 
 /*
- * Phase 1.5: Assign stack frame offsets to all local variables
+ * Phase 1.5: Assign stack frame offsets to all local variables and parameters
  */
 static void
 assign_frame_offsets(struct function_ctx *ctx)
 {
+    char *p;
+    char name_buf[64];
+    char type_buf[64];
+    int param_offset;
+    int i;
+
     if (!ctx || !ctx->body) return;
 
     fdprintf(2, "  Assigning stack frame offsets:\n");
+
+    /* First, assign offsets to parameters (positive offsets above FP) */
+    /* Stack layout: FP+0=saved FP, FP+2=return addr, FP+4=first param */
+    param_offset = 4;  /* Skip saved FP (2 bytes) + return address (2 bytes) */
+
+    if (ctx->params && ctx->params[0]) {
+        p = ctx->params;
+        while (*p) {
+            /* Skip whitespace and commas */
+            while (*p == ' ' || *p == ',') p++;
+            if (!*p) break;
+
+            /* Read parameter name */
+            i = 0;
+            while (*p && *p != ':' && *p != ',' && *p != ' ' && i < sizeof(name_buf) - 1) {
+                name_buf[i++] = *p++;
+            }
+            name_buf[i] = '\0';
+
+            /* Read parameter type if present */
+            type_buf[0] = '\0';
+            if (*p == ':') {
+                p++;  /* Skip ':' */
+                i = 0;
+                while (*p && *p != ',' && *p != ' ' && i < sizeof(type_buf) - 1) {
+                    type_buf[i++] = *p++;
+                }
+                type_buf[i] = '\0';
+            }
+
+            /* Add parameter with positive offset */
+            if (name_buf[0]) {
+                unsigned char size = type_buf[0] ? get_size_from_typename(type_buf) : 2;
+                add_param(ctx, name_buf, size, param_offset);
+                param_offset += size;
+            }
+        }
+    }
+
+    /* Then, assign offsets to local variables (negative offsets below FP) */
     walk_for_locals(ctx, ctx->body);
     fdprintf(2, "  Total frame size: %d bytes\n", ctx->frame_size);
 }

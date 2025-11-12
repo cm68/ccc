@@ -58,12 +58,13 @@ struct stmt {
 };
 
 /*
- * Local variable entry - tracks automatic variables in stack frame
+ * Local variable entry - tracks automatic variables and parameters in stack frame
  */
 struct local_var {
     char *name;                 // Variable name
-    int offset;                 // Offset in stack frame (negative from frame pointer)
+    int offset;                 // Offset in stack frame (negative for locals, positive for params)
     unsigned char size;         // Size in bytes
+    unsigned char is_param;     // 1 if parameter, 0 if local variable
     struct local_var *next;     // Next in linked list
 };
 
