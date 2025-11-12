@@ -74,8 +74,8 @@ free_expr(struct expr *e)
     if (!e) return;
     free_expr(e->left);
     free_expr(e->right);
-    if (e->type_str) free(e->type_str);
-    if (e->symbol) free(e->symbol);
+    /* NOTE: type_str and symbol point to static buffers from read_type()/read_symbol()
+     * They should NOT be freed. Only asm_block is dynamically allocated. */
     if (e->asm_block) free(e->asm_block);
     free(e);
 }
@@ -90,8 +90,8 @@ free_stmt(struct stmt *s)
     free_stmt(s->then_branch);
     free_stmt(s->else_branch);
     free_stmt(s->next);
-    if (s->symbol) free(s->symbol);
-    if (s->type_str) free(s->type_str);
+    /* NOTE: symbol and type_str point to static buffers from read_symbol()/read_type()
+     * They should NOT be freed. Only asm_block is dynamically allocated. */
     if (s->asm_block) free(s->asm_block);
     free(s);
 }
@@ -1840,8 +1840,9 @@ static void emit_expr(struct expr *e)
     /* TODO: Emit assembly block for this node */
     /* if (e->asm_block) fdprintf(out_fd, "%s", e->asm_block); */
 
-    /* Free this node */
-    free_expr(e);
+    /* Free this node (children already freed by recursive emit calls above) */
+    if (e->asm_block) free(e->asm_block);
+    free(e);
 }
 
 /*
@@ -1851,23 +1852,24 @@ static void emit_stmt(struct stmt *s)
 {
     if (!s) return;
 
-    /* Emit expressions */
+    /* Emit expressions (this frees them) */
     if (s->expr) emit_expr(s->expr);
     if (s->expr2) emit_expr(s->expr2);
     if (s->expr3) emit_expr(s->expr3);
 
-    /* Emit child statements */
+    /* Emit child statements (this frees them) */
     if (s->then_branch) emit_stmt(s->then_branch);
     if (s->else_branch) emit_stmt(s->else_branch);
 
     /* TODO: Emit assembly block for this statement */
     /* if (s->asm_block) fdprintf(out_fd, "%s", s->asm_block); */
 
-    /* Emit next statement in chain */
+    /* Emit next statement in chain (this frees it) */
     if (s->next) emit_stmt(s->next);
 
-    /* Free this node */
-    free_stmt(s);
+    /* Free this node only (children already freed by recursive emit calls above) */
+    if (s->asm_block) free(s->asm_block);
+    free(s);
 }
 
 /*
