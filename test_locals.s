@@ -1,5 +1,7 @@
 ; Function: test_multiple_locals() -> _short_
 _test_multiple_locals:
+	ld a, 10
+	call framealloc
 	; load address of $a
 	ld hl, 10
 	; op N (0x4e) size=1
@@ -24,3 +26,4 @@ _test_multiple_locals:
 	; load address of $e
 	; load word from address
 	call add1616
+	call framefree

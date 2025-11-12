@@ -1531,7 +1531,7 @@ handle_switch(void)
  * Outputs assembly comment describing function and function label
  */
 static void
-emit_function_prologue(char *name, char *params, char *rettype)
+emit_function_prologue(char *name, char *params, char *rettype, int frame_size)
 {
     /* Assembly comment with function signature */
     fdprintf(out_fd, "; Function: %s", name);
@@ -1550,6 +1550,12 @@ emit_function_prologue(char *name, char *params, char *rettype)
 
     /* Function label (standard C naming with underscore prefix) */
     fdprintf(out_fd, "_%s:\n", name);
+
+    /* Emit frame allocation call */
+    if (frame_size > 0) {
+        fdprintf(out_fd, "\tld a, %d\n", frame_size);
+        fdprintf(out_fd, "\tcall framealloc\n");
+    }
 }
 
 static void
@@ -1622,9 +1628,6 @@ handle_function(void)
     /* Return type */
     ctx.rettype = read_type();
     fdprintf(2, "  RETURNS: %s\n", ctx.rettype);
-
-    /* Emit assembly function prologue */
-    emit_function_prologue(ctx.name, ctx.params, ctx.rettype);
 
     /* Declarations and body - collect into statement tree */
     skip();
@@ -2512,7 +2515,17 @@ void emit_assembly(struct function_ctx *ctx, int fd)
     if (!ctx || !ctx->body) return;
 
     fdprintf(2, "=== Phase 3: Emitting assembly and freeing tree ===\n");
+
+    /* Emit function prologue with frame allocation */
+    emit_function_prologue(ctx->name, ctx->params, ctx->rettype, ctx->frame_size);
+
+    /* Emit function body */
     emit_stmt(ctx->body);
+
+    /* Emit function epilogue with frame deallocation */
+    if (ctx->frame_size > 0) {
+        fdprintf(out_fd, "\tcall framefree\n");
+    }
 
     /* Free local variables list */
     var = ctx->locals;
