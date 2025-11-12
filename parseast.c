@@ -439,9 +439,10 @@ handle_unary_op(unsigned char op)
     return e;
 }
 
-static void
+static struct expr *
 handle_bfextract(unsigned char op)
 {
+    struct expr *e = new_expr(op);
     /* Bitfield extract: (0xa7:offset:width addr) */
     int offset = 0, width = 0;
 
@@ -457,16 +458,21 @@ handle_bfextract(unsigned char op)
         }
     }
 
+    /* Store offset and width in value field (pack into long) */
+    e->value = (offset << 16) | width;
+
     fdprintf(2, "BFEXTRACT<%d:%d> (", offset, width);
     skip();
-    parse_expr();  /* address */
+    e->left = parse_expr();  /* address */
     fdprintf(2, ")");
     expect(')');
+    return e;
 }
 
-static void
+static struct expr *
 handle_bfassign(unsigned char op)
 {
+    struct expr *e = new_expr(op);
     /* Bitfield assign: (0xdd:offset:width addr value) */
     int offset = 0, width = 0;
 
@@ -482,43 +488,51 @@ handle_bfassign(unsigned char op)
         }
     }
 
+    /* Store offset and width in value field (pack into long) */
+    e->value = (offset << 16) | width;
+
     fdprintf(2, "BFASSIGN<%d:%d> (", offset, width);
     skip();
-    parse_expr();  /* address */
+    e->left = parse_expr();  /* address */
     fdprintf(2, ", ");
     skip();
-    parse_expr();  /* value */
+    e->right = parse_expr();  /* value */
     fdprintf(2, ")");
     expect(')');
+    return e;
 }
 
 /* Wrappers to match handler_fn signature */
-static void handle_deref_dispatch(unsigned char op) { handle_deref(); }
-static void handle_assign_dispatch(unsigned char op) { handle_assign(); }
-static void handle_call_dispatch(unsigned char op) { handle_call(); }
-static void handle_ternary_dispatch(unsigned char op) { handle_ternary(); }
-static void handle_bfextract_dispatch(unsigned char op) { handle_bfextract(op); }
-static void handle_bfassign_dispatch(unsigned char op) { handle_bfassign(op); }
+static struct expr *handle_deref_dispatch(unsigned char op) { return handle_deref(); }
+static struct expr *handle_assign_dispatch(unsigned char op) { return handle_assign(); }
+static struct expr *handle_call_dispatch(unsigned char op) { return handle_call(); }
+static struct expr *handle_ternary_dispatch(unsigned char op) { return handle_ternary(); }
+static struct expr *handle_bfextract_dispatch(unsigned char op) { return handle_bfextract(op); }
+static struct expr *handle_bfassign_dispatch(unsigned char op) { return handle_bfassign(op); }
 
 /* COLON is only used as part of ternary, but handle it gracefully if standalone */
-static void
+static struct expr *
 handle_colon(unsigned char op)
 {
+    struct expr *e = new_expr(op);
+
     fdprintf(2, "COLON (");
     skip();
-    parse_expr();  /* left */
+    e->left = parse_expr();  /* left */
     fdprintf(2, ", ");
     skip();
-    parse_expr();  /* right */
+    e->right = parse_expr();  /* right */
     fdprintf(2, ")");
     expect(')');
+    return e;
 }
 
-static void handle_colon_dispatch(unsigned char op) { handle_colon(op); }
+static struct expr *handle_colon_dispatch(unsigned char op) { return handle_colon(op); }
 
-static void
+static struct expr *
 handle_deref(void)
 {
+    struct expr *e = new_expr('M');  // 'M' for memory/deref
     char width = 's';  /* default */
 
     /* Check for width annotation :b :s :l :p :f :d */
@@ -527,18 +541,23 @@ handle_deref(void)
         nextchar();
         width = curchar;
         nextchar();
+        /* Store width annotation */
+        char width_str[3] = {':', width, '\0'};
+        e->type_str = strdup(width_str);
     }
 
     fdprintf(2, "DEREF:%c (", width);
     skip();
-    parse_expr();  /* address expression */
+    e->left = parse_expr();  /* address expression */
     fdprintf(2, ")");
     expect(')');
+    return e;
 }
 
-static void
+static struct expr *
 handle_assign(void)
 {
+    struct expr *e = new_expr('=');  // '=' for assignment
     char width = 's';  /* default */
 
     /* Check for width annotation */
@@ -547,16 +566,20 @@ handle_assign(void)
         nextchar();
         width = curchar;
         nextchar();
+        /* Store width annotation */
+        char width_str[3] = {':', width, '\0'};
+        e->type_str = strdup(width_str);
     }
 
     fdprintf(2, "ASSIGN:%c (", width);
     skip();
-    parse_expr();  /* lvalue */
+    e->left = parse_expr();  /* lvalue */
     fdprintf(2, ", ");
     skip();
-    parse_expr();  /* rvalue */
+    e->right = parse_expr();  /* rvalue */
     fdprintf(2, ")");
     expect(')');
+    return e;
 }
 
 /*
@@ -624,12 +647,14 @@ setup_string_input(char *str, int len)
     }
 }
 
-static void
+static struct expr *
 handle_call(void)
 {
+    struct expr *e = new_expr('@');  // '@' for call
     char arg_buf[4096];  /* Buffer to capture argument expressions */
     int arg_start[32];  /* Start position of each argument */
     int arg_len[32];    /* Length of each argument */
+    struct expr *args[32];  /* Parsed argument trees */
     int arg_count = 0;
     int arg_buf_pos = 0;
     int i;
@@ -705,66 +730,73 @@ handle_call(void)
         if (arg_count >= 32) break;  /* Max 32 arguments */
     }
 
-    /* Now recursively parse: arguments in reverse order, then function */
+    /* Now recursively parse: function and arguments */
     struct parser_state saved_state;
     save_parser_state(&saved_state);
 
-    /* Arguments in reverse (so first arg ends up on top of stack) */
-    for (i = arg_count - 1; i >= 0; i--) {
-        fdprintf(2, "\n  PUSH_ARG%d: ", i);
+    /* Parse function expression */
+    fdprintf(2, "\n  CALL_FUNC: ");
+    setup_string_input(func_buf, func_len);
+    e->left = parse_expr();  /* function address */
+    restore_parser_state(&saved_state);
 
-        /* Set up parser to read from this argument string */
+    /* Parse arguments */
+    for (i = 0; i < arg_count; i++) {
+        fdprintf(2, "\n  ARG%d: ", i);
         setup_string_input(&arg_buf[arg_start[i]], arg_len[i]);
-
-        /* Recursively parse this argument expression */
-        parse_expr();
-
-        /* Restore parser state for next argument */
+        args[i] = parse_expr();
         restore_parser_state(&saved_state);
     }
 
-    /* Function address last */
-    fdprintf(2, "\n  CALL_FUNC: ");
-
-    /* Set up parser to read from function string */
-    setup_string_input(func_buf, func_len);
-
-    /* Recursively parse function expression */
-    parse_expr();
-
-    /* Restore parser state */
-    restore_parser_state(&saved_state);
+    /* Build argument chain using right pointers */
+    /* Store arg_count in value field */
+    e->value = arg_count;
+    if (arg_count > 0) {
+        e->right = args[0];
+        struct expr *prev = args[0];
+        for (i = 1; i < arg_count; i++) {
+            prev->right = args[i];
+            prev = args[i];
+        }
+    }
 
     fdprintf(2, ")");
     expect(')');
+    return e;
 }
 
-static void
+static struct expr *
 handle_ternary(void)
 {
+    struct expr *e = new_expr('?');  // '?' for ternary
+
     fdprintf(2, "TERNARY (");
     skip();
-    parse_expr();  /* condition */
+    e->left = parse_expr();  /* condition */
     fdprintf(2, " ? ");
     skip();
 
-    /* Expect COLON node */
+    /* Expect COLON node - this becomes the right child */
     if (curchar == '(') {
         nextchar();
         skip();
         if (curchar == ':') {
             nextchar();
             skip();
-            parse_expr();  /* true expr */
+            /* Build COLON node with true/false branches */
+            struct expr *colon = new_expr(':');
+            colon->left = parse_expr();  /* true expr */
             fdprintf(2, " : ");
             skip();
-            parse_expr();  /* false expr */
+            colon->right = parse_expr();  /* false expr */
             expect(')');
+            e->right = colon;
         }
     }
 
     fdprintf(2, ")");
     expect(')');
+    return e;
 }
 
 /* Statement handlers */
