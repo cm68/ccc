@@ -1,16 +1,15 @@
 /*
  * parseast.c - Table-driven parser for AST S-expressions
  *
- * Reads AST output from cc1 and dispatches to handler functions.
- * Each handler consumes the entire s-expression for its operation.
+ * Reads AST output from cc1 and builds parse trees for code generation.
+ * Modified to return tree nodes instead of printing directly.
  */
 #include <stdlib.h>
 #include <string.h>
 #include <fcntl.h>
 #include <unistd.h>
 
-/* Forward declaration from util.c */
-int fdprintf(int fd, const char *fmt, ...);
+#include "cc2.h"
 
 #define BUFSIZE 40960  // AST parser read buffer (original: 4096, tested: 40960)
 
@@ -23,6 +22,79 @@ static int buf_valid;
 static int line_num = 1;
 static unsigned char curchar;
 static int label_counter = 0;  /* For generating unique labels */
+
+/*
+ * Tree node allocation helpers
+ */
+struct expr *
+new_expr(unsigned char op)
+{
+    struct expr *e = malloc(sizeof(struct expr));
+    if (!e) {
+        fdprintf(2, "parseast: out of memory allocating expr\n");
+        exit(1);
+    }
+    e->op = op;
+    e->left = NULL;
+    e->right = NULL;
+    e->type_str = NULL;
+    e->value = 0;
+    e->symbol = NULL;
+    e->asm_block = NULL;
+    e->label = 0;
+    return e;
+}
+
+struct stmt *
+new_stmt(unsigned char type)
+{
+    struct stmt *s = malloc(sizeof(struct stmt));
+    if (!s) {
+        fdprintf(2, "parseast: out of memory allocating stmt\n");
+        exit(1);
+    }
+    s->type = type;
+    s->expr = NULL;
+    s->expr2 = NULL;
+    s->expr3 = NULL;
+    s->then_branch = NULL;
+    s->else_branch = NULL;
+    s->next = NULL;
+    s->symbol = NULL;
+    s->type_str = NULL;
+    s->label = 0;
+    s->label2 = 0;
+    s->asm_block = NULL;
+    return s;
+}
+
+void
+free_expr(struct expr *e)
+{
+    if (!e) return;
+    free_expr(e->left);
+    free_expr(e->right);
+    if (e->type_str) free(e->type_str);
+    if (e->symbol) free(e->symbol);
+    if (e->asm_block) free(e->asm_block);
+    free(e);
+}
+
+void
+free_stmt(struct stmt *s)
+{
+    if (!s) return;
+    free_expr(s->expr);
+    free_expr(s->expr2);
+    free_expr(s->expr3);
+    free_stmt(s->then_branch);
+    free_stmt(s->else_branch);
+    free_stmt(s->next);
+    if (s->symbol) free(s->symbol);
+    if (s->type_str) free(s->type_str);
+    if (s->asm_block) free(s->asm_block);
+    free(s);
+}
 
 /*
  * Read next character from input
@@ -192,8 +264,8 @@ read_type(void)
 }
 
 /* Forward declarations for handlers */
-static void parse_expr(void);
-static void parse_stmt(void);
+static struct expr *parse_expr(void);
+static struct stmt *parse_stmt(void);
 
 /*
  * Handler functions for each operation
@@ -201,20 +273,24 @@ static void parse_stmt(void);
  */
 
 /* Forward declarations for expression handlers */
-static void parse_expr(void);
-static void parse_stmt(void);
-static void handle_deref(void);
-static void handle_assign(void);
-static void handle_call(void);
-static void handle_ternary(void);
+static struct expr *handle_deref(void);
+static struct expr *handle_assign(void);
+static struct expr *handle_call(void);
+static struct expr *handle_ternary(void);
+static struct expr *handle_const(void);
+static struct expr *handle_symbol(void);
+static struct expr *handle_binary_op(unsigned char op);
+static struct expr *handle_unary_op(unsigned char op);
 
-/* Handler function type */
-typedef void (*handler_fn)(unsigned char op);
+/* Handler function type - now returns expr* */
+typedef struct expr* (*handler_fn)(unsigned char op);
 
-/* Generic handler that skips the operator expression */
-static void
+/* Generic handler that builds a generic expr node */
+static struct expr *
 handle_generic(unsigned char op)
 {
+    struct expr *e = new_expr(op);
+
     fdprintf(2, "OP_%02x", op);
     skip();
 
@@ -227,103 +303,119 @@ handle_generic(unsigned char op)
             depth--;
             if (depth == 0) {
                 nextchar();  /* consume closing paren */
-                return;
+                return e;
             }
         }
         nextchar();
     }
+    return e;
 }
 
 /* Expression handlers */
 
-static void
+static struct expr *
 handle_const(void)
 {
-    long val = read_number();
-    fdprintf(2, "CONST %ld", val);
+    struct expr *e = new_expr('C');  // 'C' for constant
+    e->value = read_number();
+    fdprintf(2, "CONST %ld", e->value);
+    return e;
 }
 
-static void
+static struct expr *
 handle_symbol(void)
 {
+    struct expr *e = new_expr('$');  // '$' for symbol
     char *sym = read_symbol();
-    fdprintf(2, "SYM %s", sym);
+    e->symbol = strdup(sym);
+    fdprintf(2, "SYM %s", e->symbol);
+    return e;
 }
 
-static void
+static struct expr *
 handle_string(void)
 {
+    struct expr *e = new_expr('S');  // 'S' for string
     /* String literal: S followed by index */
-    long idx = read_number();
-    fdprintf(2, "STRING S%ld", idx);
+    e->value = read_number();
+    fdprintf(2, "STRING S%ld", e->value);
+    return e;
 }
 
-static void
+static struct expr *
 handle_binary_op(unsigned char op)
 {
+    struct expr *e = new_expr(op);
+
     fdprintf(2, "BINOP %c (", op);
     skip();
-    parse_expr();  /* left operand */
+    e->left = parse_expr();  /* left operand - now returns tree */
     fdprintf(2, ", ");
     skip();
-    parse_expr();  /* right operand */
+    e->right = parse_expr();  /* right operand - now returns tree */
     fdprintf(2, ")");
     expect(')');
+    return e;
 }
 
 /*
  * Short-circuit evaluation for && (LAND)
  * If left operand is false, skip right operand evaluation
  */
-static void
+static struct expr *
 handle_land(unsigned char op)
 {
-    int label = label_counter++;
+    struct expr *e = new_expr(op);
+    e->label = label_counter++;
 
-    fdprintf(2, "LAND_%d (", label);
+    fdprintf(2, "LAND_%d (", e->label);
     skip();
-    parse_expr();  /* left operand */
+    e->left = parse_expr();  /* left operand */
     fdprintf(2, " ? ");
 
-    /* Emit conditional jump: if false, jump to skip_label */
-    fdprintf(2, "JZ skip_%d : ", label);
+    /* Will emit conditional jump during code generation */
+    fdprintf(2, "JZ skip_%d : ", e->label);
 
     skip();
-    parse_expr();  /* right operand */
+    e->right = parse_expr();  /* right operand */
 
-    /* Emit skip label */
-    fdprintf(2, " : skip_%d)", label);
+    /* Will emit skip label during code generation */
+    fdprintf(2, " : skip_%d)", e->label);
     expect(')');
+    return e;
 }
 
 /*
  * Short-circuit evaluation for || (LOR)
  * If left operand is true, skip right operand evaluation
  */
-static void
+static struct expr *
 handle_lor(unsigned char op)
 {
-    int label = label_counter++;
+    struct expr *e = new_expr(op);
+    e->label = label_counter++;
 
-    fdprintf(2, "LOR_%d (", label);
+    fdprintf(2, "LOR_%d (", e->label);
     skip();
-    parse_expr();  /* left operand */
+    e->left = parse_expr();  /* left operand */
     fdprintf(2, " ? ");
 
-    /* Emit conditional jump: if true, jump to skip_label */
-    fdprintf(2, "JNZ skip_%d : ", label);
+    /* Will emit conditional jump during code generation */
+    fdprintf(2, "JNZ skip_%d : ", e->label);
 
     skip();
-    parse_expr();  /* right operand */
+    e->right = parse_expr();  /* right operand */
 
-    /* Emit skip label */
-    fdprintf(2, " : skip_%d)", label);
+    /* Will emit skip label during code generation */
+    fdprintf(2, " : skip_%d)", e->label);
     expect(')');
+    return e;
 }
 
-static void
+static struct expr *
 handle_unary_op(unsigned char op)
 {
+    struct expr *e = new_expr(op);
     char width = ' ';
 
     /* Check for width annotation :b :s :l :p (for type conversion ops) */
@@ -332,15 +424,19 @@ handle_unary_op(unsigned char op)
         nextchar();
         width = curchar;
         nextchar();
+        /* Store width annotation */
+        char width_str[3] = {':', width, '\0'};
+        e->type_str = strdup(width_str);
         fdprintf(2, "UNOP %c:%c (", op, width);
     } else {
         fdprintf(2, "UNOP %c (", op);
     }
 
     skip();
-    parse_expr();  /* operand */
+    e->left = parse_expr();  /* operand */
     fdprintf(2, ")");
     expect(')');
+    return e;
 }
 
 static void
