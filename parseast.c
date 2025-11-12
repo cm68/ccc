@@ -803,6 +803,12 @@ handle_ternary(void)
 static struct expr *parse_expr(void);
 static struct stmt *parse_stmt(void);
 
+/* Forward declarations for code generation and emission */
+static void generate_expr(struct expr *e);
+static void generate_stmt(struct stmt *s);
+static void emit_expr(struct expr *e);
+static void emit_stmt(struct stmt *s);
+
 /* Statement handlers */
 
 /* Forward declarations */
@@ -1505,7 +1511,11 @@ handle_function(void)
 
     expect(')');
 
-    /* TODO: Eventually call generate_code(&ctx) and emit_assembly(&ctx, out_fd) here */
+    /* Phase 2: Generate assembly code blocks for tree nodes */
+    generate_code(&ctx);
+
+    /* Phase 3: Emit assembly and free tree nodes */
+    emit_assembly(&ctx, out_fd);
 }
 
 static void
@@ -1765,6 +1775,110 @@ parse_toplevel(void)
         }
         break;
     }
+}
+
+/*
+ * Code generation phase (Phase 2)
+ * Walk expression tree and generate assembly code blocks
+ */
+static void generate_expr(struct expr *e)
+{
+    if (!e) return;
+
+    /* Recursively generate code for children */
+    if (e->left) generate_expr(e->left);
+    if (e->right) generate_expr(e->right);
+
+    /* TODO: Generate assembly code for this node */
+    /* e->asm_block = malloc(...); strcpy(e->asm_block, "..."); */
+}
+
+/*
+ * Walk statement tree and generate assembly code blocks
+ */
+static void generate_stmt(struct stmt *s)
+{
+    if (!s) return;
+
+    /* Recursively generate code for expressions */
+    if (s->expr) generate_expr(s->expr);
+    if (s->expr2) generate_expr(s->expr2);
+    if (s->expr3) generate_expr(s->expr3);
+
+    /* Recursively generate code for child statements */
+    if (s->then_branch) generate_stmt(s->then_branch);
+    if (s->else_branch) generate_stmt(s->else_branch);
+    if (s->next) generate_stmt(s->next);
+
+    /* TODO: Generate assembly code for this statement */
+    /* s->asm_block = malloc(...); strcpy(s->asm_block, "..."); */
+}
+
+/*
+ * Generate assembly code for entire function
+ */
+void generate_code(struct function_ctx *ctx)
+{
+    if (!ctx || !ctx->body) return;
+
+    fdprintf(2, "=== Phase 2: Generating assembly code blocks ===\n");
+    generate_stmt(ctx->body);
+}
+
+/*
+ * Emission phase (Phase 3)
+ * Walk expression tree, emit assembly, and free nodes
+ */
+static void emit_expr(struct expr *e)
+{
+    if (!e) return;
+
+    /* Emit children first (postorder traversal) */
+    if (e->left) emit_expr(e->left);
+    if (e->right) emit_expr(e->right);
+
+    /* TODO: Emit assembly block for this node */
+    /* if (e->asm_block) fdprintf(out_fd, "%s", e->asm_block); */
+
+    /* Free this node */
+    free_expr(e);
+}
+
+/*
+ * Walk statement tree, emit assembly, and free nodes
+ */
+static void emit_stmt(struct stmt *s)
+{
+    if (!s) return;
+
+    /* Emit expressions */
+    if (s->expr) emit_expr(s->expr);
+    if (s->expr2) emit_expr(s->expr2);
+    if (s->expr3) emit_expr(s->expr3);
+
+    /* Emit child statements */
+    if (s->then_branch) emit_stmt(s->then_branch);
+    if (s->else_branch) emit_stmt(s->else_branch);
+
+    /* TODO: Emit assembly block for this statement */
+    /* if (s->asm_block) fdprintf(out_fd, "%s", s->asm_block); */
+
+    /* Emit next statement in chain */
+    if (s->next) emit_stmt(s->next);
+
+    /* Free this node */
+    free_stmt(s);
+}
+
+/*
+ * Emit assembly for entire function and free tree
+ */
+void emit_assembly(struct function_ctx *ctx, int fd)
+{
+    if (!ctx || !ctx->body) return;
+
+    fdprintf(2, "=== Phase 3: Emitting assembly and freeing tree ===\n");
+    emit_stmt(ctx->body);
 }
 
 /*
