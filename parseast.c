@@ -68,6 +68,40 @@ new_stmt(unsigned char type)
     return s;
 }
 
+/*
+ * Create an ASM statement node for a label
+ * Label format: "label_name:\n"
+ */
+static struct stmt *
+create_label_asm(const char *label_name)
+{
+    struct stmt *s = new_stmt('A');
+    char buf[128];
+
+    snprintf(buf, sizeof(buf), "%s:", label_name);
+    s->asm_block = malloc(strlen(buf) + 1);
+    strcpy(s->asm_block, buf);
+
+    return s;
+}
+
+/*
+ * Create an ASM statement node for an unconditional jump
+ * Jump format: "\tjp label_name\n"
+ */
+static struct stmt *
+create_jump_asm(const char *label_name)
+{
+    struct stmt *s = new_stmt('A');
+    char buf[128];
+
+    snprintf(buf, sizeof(buf), "\tjp %s", label_name);
+    s->asm_block = malloc(strlen(buf) + 1);
+    strcpy(s->asm_block, buf);
+
+    return s;
+}
+
 void
 free_expr(struct expr *e)
 {
@@ -809,6 +843,10 @@ static void generate_stmt(struct stmt *s);
 static void emit_expr(struct expr *e);
 static void emit_stmt(struct stmt *s);
 
+/* Helper functions for creating ASM nodes */
+static struct stmt *create_label_asm(const char *label_name);
+static struct stmt *create_jump_asm(const char *label_name);
+
 /* Statement handlers */
 
 /* Forward declarations */
@@ -937,6 +975,8 @@ static struct stmt *
 handle_if(void)
 {
     struct stmt *s = new_stmt('I');
+    char label_buf[64];
+
     s->label = label_counter++;
 
     fdprintf(2, "IF (");
@@ -954,8 +994,16 @@ handle_if(void)
 
         fdprintf(2, " ELSE ");
         s->else_branch = parse_stmt();  /* else branch */
+
+        /* Insert end label after the IF statement */
+        snprintf(label_buf, sizeof(label_buf), "_if_end_%d", s->label2);
+        s->next = create_label_asm(label_buf);
     } else {
         s->else_branch = NULL;
+
+        /* Insert end label after the IF statement */
+        snprintf(label_buf, sizeof(label_buf), "_if_%d", s->label);
+        s->next = create_label_asm(label_buf);
     }
 
     expect(')');
@@ -966,6 +1014,8 @@ static struct stmt *
 handle_while(void)
 {
     struct stmt *s = new_stmt('W');
+    char label_buf[64];
+
     s->label = label_counter++;  /* Loop start label */
 
     fdprintf(2, "WHILE (");
@@ -977,13 +1027,26 @@ handle_while(void)
     s->then_branch = parse_stmt();  /* body */
 
     expect(')');
-    return s;
+
+    /* Insert loop start label before the while, and end label after */
+    /* Create label for loop start */
+    snprintf(label_buf, sizeof(label_buf), "_while_%d", s->label);
+    struct stmt *start_label = create_label_asm(label_buf);
+    start_label->next = s;
+
+    /* Insert end/break label after the while */
+    snprintf(label_buf, sizeof(label_buf), "_while_end_%d", s->label);
+    s->next = create_label_asm(label_buf);
+
+    return start_label;  /* Return the label, not the while node */
 }
 
 static struct stmt *
 handle_do(void)
 {
     struct stmt *s = new_stmt('D');
+    char label_buf[64];
+
     s->label = label_counter++;  /* Loop start label */
 
     fdprintf(2, "DO ");
@@ -996,13 +1059,25 @@ handle_do(void)
     fdprintf(2, ")");
 
     expect(')');
-    return s;
+
+    /* Insert loop start label before the do, and end label after */
+    snprintf(label_buf, sizeof(label_buf), "_do_%d", s->label);
+    struct stmt *start_label = create_label_asm(label_buf);
+    start_label->next = s;
+
+    /* Insert end/break label after the do-while */
+    snprintf(label_buf, sizeof(label_buf), "_do_end_%d", s->label);
+    s->next = create_label_asm(label_buf);
+
+    return start_label;
 }
 
 static struct stmt *
 handle_for(void)
 {
     struct stmt *s = new_stmt('F');
+    char label_buf[64];
+
     s->label = label_counter++;  /* Loop start label */
 
     fdprintf(2, "FOR (");
@@ -1020,7 +1095,17 @@ handle_for(void)
     s->then_branch = parse_stmt();  /* body */
 
     expect(')');
-    return s;
+
+    /* Insert loop start label before the for, and end label after */
+    snprintf(label_buf, sizeof(label_buf), "_for_%d", s->label);
+    struct stmt *start_label = create_label_asm(label_buf);
+    start_label->next = s;
+
+    /* Insert end/break label after the for */
+    snprintf(label_buf, sizeof(label_buf), "_for_end_%d", s->label);
+    s->next = create_label_asm(label_buf);
+
+    return start_label;
 }
 
 static struct stmt *
