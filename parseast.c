@@ -41,6 +41,7 @@ new_expr(unsigned char op)
     e->value = 0;
     e->symbol = NULL;
     e->size = 2;  /* Default to short size */
+    e->flags = 0; /* Default to signed */
     e->asm_block = NULL;
     e->label = 0;
     return e;
@@ -96,6 +97,29 @@ get_size_from_type_str(const char *type_str)
     default:
         return 2;  /* Default to short size */
     }
+}
+
+/*
+ * Extract signedness from type annotation string
+ * Pointers (:p) are unsigned (addresses)
+ * Other types default to signed (signedness comes from operators like WIDEN/SEXT)
+ * Returns: E_UNSIGNED flag if unsigned, 0 if signed
+ */
+unsigned char
+get_signedness_from_type_str(const char *type_str)
+{
+    if (!type_str || *type_str != ':') {
+        return 0;  /* Default to signed */
+    }
+
+    /* Pointers are unsigned (addresses) */
+    if (type_str[1] == 'p') {
+        return E_UNSIGNED;
+    }
+
+    /* All other types default to signed */
+    /* Actual signedness comes from WIDEN (unsigned) vs SEXT (signed) operators */
+    return 0;
 }
 
 /*
@@ -429,6 +453,15 @@ handle_binary_op(unsigned char op)
         e->size = e->right->size;
     }
 
+    /* Result signedness: if either operand is unsigned, result is unsigned */
+    if (e->left && e->right) {
+        e->flags = (e->left->flags | e->right->flags) & E_UNSIGNED;
+    } else if (e->left) {
+        e->flags = e->left->flags;
+    } else if (e->right) {
+        e->flags = e->right->flags;
+    }
+
     return e;
 }
 
@@ -515,6 +548,19 @@ handle_unary_op(unsigned char op)
     /* If no type annotation, inherit size from operand */
     if (width == ' ' && e->left) {
         e->size = e->left->size;
+    }
+
+    /* Set signedness based on operator */
+    if (op == 0xb6) {  /* WIDEN - unsigned (zero extend) */
+        e->flags = E_UNSIGNED;
+    } else if (op == 0xab) {  /* SEXT - signed (sign extend) */
+        e->flags = 0;  /* explicitly signed */
+    } else if (e->type_str) {
+        /* For other operators with type annotation, use annotation */
+        e->flags = get_signedness_from_type_str(e->type_str);
+    } else if (e->left) {
+        /* Otherwise inherit from operand */
+        e->flags = e->left->flags;
     }
 
     return e;
@@ -626,6 +672,7 @@ handle_deref(void)
         char width_str[3] = {':', width, '\0'};
         e->type_str = strdup(width_str);
         e->size = get_size_from_type_str(e->type_str);
+        e->flags = get_signedness_from_type_str(e->type_str);
     }
 
     fdprintf(2, "DEREF:%c (", width);
@@ -652,6 +699,7 @@ handle_assign(void)
         char width_str[3] = {':', width, '\0'};
         e->type_str = strdup(width_str);
         e->size = get_size_from_type_str(e->type_str);
+        e->flags = get_signedness_from_type_str(e->type_str);
     }
 
     fdprintf(2, "ASSIGN:%c (", width);
