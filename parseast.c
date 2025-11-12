@@ -123,6 +123,30 @@ get_signedness_from_type_str(const char *type_str)
 }
 
 /*
+ * Extract size from full type name (used for declarations)
+ * Type names: "_char_", "_uchar_", "_short_", "_ushort_", "_long_", "_ulong_",
+ *             "_void_", "_boolean_", "_float_", "_double_", "_ptr_"
+ * Returns: size in bytes
+ */
+unsigned char
+get_size_from_typename(const char *typename)
+{
+    if (!typename) return 2;  /* Default to short */
+
+    /* Check for common type names */
+    if (strstr(typename, "char")) return 1;
+    if (strstr(typename, "short")) return 2;
+    if (strstr(typename, "long")) return 4;
+    if (strstr(typename, "ptr")) return 2;
+    if (strstr(typename, "float")) return 4;
+    if (strstr(typename, "double")) return 8;
+    if (strstr(typename, "void")) return 0;
+
+    /* Default to short size */
+    return 2;
+}
+
+/*
  * Create an ASM statement node for a label
  * Label format: "label_name:\n"
  */
@@ -178,8 +202,9 @@ free_stmt(struct stmt *s)
     free_stmt(s->then_branch);
     free_stmt(s->else_branch);
     free_stmt(s->next);
-    /* NOTE: symbol and type_str point to static buffers from read_symbol()/read_type()
-     * They should NOT be freed. Only asm_block is dynamically allocated. */
+    /* Free dynamically allocated fields */
+    if (s->symbol) free(s->symbol);
+    if (s->type_str) free(s->type_str);
     if (s->asm_block) free(s->asm_block);
     free(s);
 }
@@ -935,6 +960,7 @@ static struct expr *parse_expr(void);
 static struct stmt *parse_stmt(void);
 
 /* Forward declarations for code generation and emission */
+static void assign_frame_offsets(struct function_ctx *ctx);
 static void generate_expr(struct expr *e);
 static void generate_stmt(struct stmt *s);
 static void emit_expr(struct expr *e);
@@ -986,8 +1012,8 @@ handle_block(void)
 
                 /* Create declaration statement node */
                 child = new_stmt('d');
-                child->symbol = name;
-                child->type_str = type;
+                child->symbol = strdup(name);  /* Duplicate - symbuf is reused */
+                child->type_str = strdup(type);  /* Duplicate - typebuf is reused */
 
                 expect(')');
             } else {
@@ -1617,8 +1643,8 @@ handle_function(void)
 
                 /* Create declaration statement node */
                 child = new_stmt('d');
-                child->symbol = dname;
-                child->type_str = dtype;
+                child->symbol = strdup(dname);  /* Duplicate - symbuf is reused */
+                child->type_str = strdup(dtype);  /* Duplicate - typebuf is reused */
 
                 expect(')');
             } else {
@@ -1699,8 +1725,13 @@ handle_function(void)
     /* Store body tree in context */
     ctx.body = first_child;
     ctx.label_counter = label_counter;  /* Save current label counter */
+    ctx.locals = NULL;  /* No local variables yet */
+    ctx.frame_size = 0;  /* No frame size yet */
 
     expect(')');
+
+    /* Phase 1.5: Assign stack frame offsets to local variables */
+    assign_frame_offsets(&ctx);
 
     /* Phase 2: Generate assembly code blocks for tree nodes */
     generate_code(&ctx);
@@ -2024,6 +2055,63 @@ make_binop_funcname(char *buf, size_t bufsize, const char *opname,
 }
 
 /*
+ * Helper: Add a local variable to the function context
+ */
+static void
+add_local_var(struct function_ctx *ctx, const char *name, unsigned char size)
+{
+    struct local_var *var = malloc(sizeof(struct local_var));
+    if (!var) {
+        fdprintf(2, "parseast: out of memory allocating local_var\n");
+        exit(1);
+    }
+
+    var->name = strdup(name);
+    var->size = size;
+    /* Stack grows downward - assign negative offset from frame pointer */
+    var->offset = -(ctx->frame_size + size);
+    var->next = ctx->locals;
+
+    ctx->locals = var;
+    ctx->frame_size += size;
+
+    fdprintf(2, "  Local var: %s, size=%d, offset=%d\n", name, size, var->offset);
+}
+
+/*
+ * Walk statement tree and assign stack frame offsets to local variables
+ */
+static void
+walk_for_locals(struct function_ctx *ctx, struct stmt *s)
+{
+    if (!s) return;
+
+    /* If this is a declaration, add it to locals list */
+    if (s->type == 'd' && s->symbol) {
+        unsigned char size = get_size_from_typename(s->type_str);
+        add_local_var(ctx, s->symbol, size);
+    }
+
+    /* Recursively walk child statements */
+    if (s->then_branch) walk_for_locals(ctx, s->then_branch);
+    if (s->else_branch) walk_for_locals(ctx, s->else_branch);
+    if (s->next) walk_for_locals(ctx, s->next);
+}
+
+/*
+ * Phase 1.5: Assign stack frame offsets to all local variables
+ */
+static void
+assign_frame_offsets(struct function_ctx *ctx)
+{
+    if (!ctx || !ctx->body) return;
+
+    fdprintf(2, "  Assigning stack frame offsets:\n");
+    walk_for_locals(ctx, ctx->body);
+    fdprintf(2, "  Total frame size: %d bytes\n", ctx->frame_size);
+}
+
+/*
  * Code generation phase (Phase 2)
  * Walk expression tree and generate assembly code blocks
  */
@@ -2329,10 +2417,21 @@ static void emit_stmt(struct stmt *s)
  */
 void emit_assembly(struct function_ctx *ctx, int fd)
 {
+    struct local_var *var, *next;
+
     if (!ctx || !ctx->body) return;
 
     fdprintf(2, "=== Phase 3: Emitting assembly and freeing tree ===\n");
     emit_stmt(ctx->body);
+
+    /* Free local variables list */
+    var = ctx->locals;
+    while (var) {
+        next = var->next;
+        free(var->name);
+        free(var);
+        var = next;
+    }
 }
 
 /*

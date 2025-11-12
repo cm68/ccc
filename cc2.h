@@ -58,6 +58,16 @@ struct stmt {
 };
 
 /*
+ * Local variable entry - tracks automatic variables in stack frame
+ */
+struct local_var {
+    char *name;                 // Variable name
+    int offset;                 // Offset in stack frame (negative from frame pointer)
+    unsigned char size;         // Size in bytes
+    struct local_var *next;     // Next in linked list
+};
+
+/*
  * Function context - holds parsed function tree and generation state
  */
 struct function_ctx {
@@ -66,6 +76,8 @@ struct function_ctx {
     char *rettype;              // Return type
     struct stmt *body;          // Function body statement tree
     int label_counter;          // For generating unique labels
+    struct local_var *locals;   // List of local variables with stack offsets
+    int frame_size;             // Total stack frame size in bytes
 };
 
 /* Forward declarations from util.c */
