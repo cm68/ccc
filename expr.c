@@ -85,8 +85,9 @@ unop_set(struct expr *e)
 unsigned char
 binop_pri(unsigned char t)
 {
-    if ((t < OP_MIN) || (t > OP_MAX))
+    if ((t < OP_MIN) || (t > OP_MAX)) {
         return 0;
+    }
 	return (op_pri[t - OP_MIN]);
 }
 
@@ -112,28 +113,29 @@ parse_expr(unsigned char pri, struct stmt *st)
     case STRING: {
         struct name *strname;
         char namebuf[32];
-        extern int lexlevel;
-        int saved_level;
-
         /* string literals have type char* (pointer to char) */
         e = makeexpr_init(STRING, 0, get_type(TF_POINTER, chartype, 0), 0, 0);
 
         /* generate synthetic name for this string literal */
         sprintf(namebuf, "str%d", string_counter++);
 
-        /* create a name entry for this string literal at global scope (level 1) */
-        /* temporarily set lexlevel to 1 to force global scope */
-        saved_level = lexlevel;
-        lexlevel = 1;
-        strname = new_name(namebuf, var, e->type, 0);
-        lexlevel = saved_level;
+        /* Allocate name structure directly without adding to names[] lookup table */
+        /* String literal names don't need to be looked up, only emitted to AST */
+        /* Note: We don't free these structures - they're small and process will exit */
+        strname = (struct name *)calloc(1, sizeof(struct name));
         if (strname) {
+            strname->name = strdup(namebuf);
+            strname->kind = var;
+            strname->type = e->type;
+            strname->level = 1;  /* Global scope */
             /* store pointer to counted string in the name's init field */
             strname->u.init = makeexpr_init(STRING, 0, NULL, (unsigned long)cur.v.str, 0);
             /* also store in expression for immediate use */
             e->v = (unsigned long)cur.v.str;
             /* store reference to the named string in the expression */
             e->var = (struct var *)strname;
+            /* Emit string literal immediately (string data freed in emit) */
+            emit_string_literal(strname);
         }
         e->flags = E_CONST;
         gettoken();
@@ -704,13 +706,19 @@ parse_expr(unsigned char pri, struct stmt *st)
             }
         }
 
-        // for left-associative operators (most C operators), parse right side
-        // with precedence p, which prevents same-precedence operators from
-        // being pulled into the right subtree
+        // Parse right side based on associativity:
+        // - For right-associative operators (assignments), use precedence 0 to allow chaining
+        // - For left-associative operators, use precedence p to prevent same-precedence from nesting right
         struct var *saved_member_info = (e && e->var) ? e->var : NULL;
         e = makeexpr(op, e);
         e->left->up = e;
-        e->right = parse_expr(p, st);
+        if (is_assignment) {
+            // Right-associative: parse at lowest precedence to allow a = b = c
+            e->right = parse_expr(0, st);
+        } else {
+            // Left-associative: parse at same precedence to prevent (a + b) + c from becoming a + (b + c)
+            e->right = parse_expr(p, st);
+        }
         if (e->right) {
             e->right->up = e;
         }

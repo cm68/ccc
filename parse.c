@@ -92,9 +92,6 @@ struct stmt *asmblock(void);
 static struct name *
 capture_locals(void)
 {
-	extern struct name **names;
-	extern int lastname;
-	extern int lexlevel;
 	struct name *locals_list = NULL;
 	struct name *tail = NULL;
 	struct name *n, *copy;
@@ -566,7 +563,6 @@ asmblock(void)
     tflags |= ASM_BLOCK;
 
     /* Clear lineend flag from any newline after the opening brace */
-    extern unsigned char lineend;
     lineend = 0;
 
     /* Consume { and start capturing tokens */
@@ -725,6 +721,26 @@ parsefunc(struct name *f)
 
 	// Pop the function scope
 	pop_scope();
+
+	// Debug assertion: verify we're back at global scope and all locals are cleaned up
+#ifdef DEBUG
+	if (lexlevel != 1) {
+		fdprintf(2, "ASSERTION FAILED: lexlevel=%d after parsing function %s (expected 1)\n",
+		         lexlevel, f->name);
+		fatal(0);
+	}
+	/* Verify no local names remain in symbol table */
+	{
+		int i;
+		for (i = 0; i <= lastname; i++) {
+			if (names[i] && names[i]->level > 1) {
+				fdprintf(2, "ASSERTION FAILED: found local name '%s' at level %d after parsing function %s\n",
+				         names[i]->name, names[i]->level, f->name);
+				fatal(0);
+			}
+		}
+	}
+#endif
 
 	// Clear current function context
 	current_function = NULL;
@@ -940,11 +956,20 @@ declaration()
             }
 
             /* Track local variable initializers for conversion to assignments */
-            extern int lexlevel;
             if (lexlevel > 1 && v->u.init && !(sclass & SC_STATIC)) {
                 add_decl_init(v);
             }
         }
+
+		/* Emit global variables and static locals immediately */
+		/* Emit if: (global scope OR static storage) AND not typedef AND not function def */
+		if ((lexlevel == 1 || (sclass & SC_STATIC)) && v->kind != tdef && v->kind != fdef) {
+			/* Skip function declarations - only emit actual variables */
+			if (!(v->type && (v->type->flags & TF_FUNC))) {
+				emit_global_var(v);
+			}
+		}
+
 		if (cur.type == COMMA) {
 			gettoken();
 			continue;
@@ -1001,11 +1026,35 @@ parse()
 		}
 	}
 
-	/* Emit string literals and global variables before popping scope */
-	emit_literals();
+	/* Emit global variables (no-op, already emitted incrementally) */
 	emit_global_vars();
 
 	pop_scope();
+
+	/* Debug assertion: verify all allocations have been freed after parsing file */
+#ifdef DEBUG
+	if (lexlevel != 0) {
+		fdprintf(2, "ASSERTION FAILED: lexlevel=%d after parsing file (expected 0)\n", lexlevel);
+		fatal(0);
+	}
+	/* Verify only basic types remain in symbol table (level 0) */
+	{
+		int i;
+		int non_basic_count = 0;
+		for (i = 0; i <= lastname; i++) {
+			if (names[i] && names[i]->level > 0) {
+				fdprintf(2, "WARNING: name '%s' at level %d still in symbol table after file parse\n",
+				         names[i]->name, names[i]->level);
+				non_basic_count++;
+			}
+		}
+		if (non_basic_count > 0) {
+			fdprintf(2, "ASSERTION FAILED: found %d non-basic names after parsing file\n",
+			         non_basic_count);
+			fatal(0);
+		}
+	}
+#endif
 }
 
 /*
@@ -1055,8 +1104,6 @@ cleanup_parser(void)
 {
 	int i;
 	struct name *n;
-	extern struct name **names;
-	extern int lastname;
 
 	/* Free all names and their statement trees */
 	for (i = 0; i <= lastname; i++) {
@@ -1082,10 +1129,6 @@ cleanup_parser(void)
 
 	/* Free all type structures */
 	{
-		extern struct type *types;
-		extern struct type *chartype;
-		extern struct type *inttype;
-		extern struct type *uchartype;
 		struct type *t = types;
 		struct type *next;
 		while (t) {

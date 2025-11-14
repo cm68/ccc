@@ -187,6 +187,7 @@ lookupc(char *s, char c)
     return 0xff;
 }
 
+#ifndef CCC
 /*
  * fdprintf - printf-like function that writes to a Unix file descriptor
  * Uses sprintf to format to a static buffer, then writes via write() syscall
@@ -210,6 +211,7 @@ fdprintf(int fd, const char *fmt, ...)
 
     return len;
 }
+#endif
 
 /*
  * vim: tabstop=4 shiftwidth=4 expandtab:

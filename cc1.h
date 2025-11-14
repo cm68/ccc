@@ -127,7 +127,9 @@ extern void destroy_stmt(struct stmt *s);
 extern void free_stmt(struct stmt *s);
 extern void emit_function(struct name *func);
 extern void emit_literals(void);
+extern void emit_global_var(struct name *var);
 extern void emit_global_vars(void);
+extern void emit_string_literal(struct name *strname);
 
 /* statement flags used in parse.c */
 #define S_PARENT 0x01
@@ -183,6 +185,7 @@ struct type {
 #define T_FUNC TF_FUNC
 
 extern struct type *getbasetype();
+extern void initbasictype(void);
 extern void dump_type(struct type *t, int lv);
 struct type *get_type(int flags, struct type *sub, int count);
 extern int compatible_function_types(struct type *t1, struct type *t2);

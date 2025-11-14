@@ -5,6 +5,7 @@
  * Modified to return tree nodes instead of printing directly.
  */
 #include <stdlib.h>
+#include <stdio.h>
 #include <string.h>
 #include <fcntl.h>
 #include <unistd.h>
@@ -12,6 +13,15 @@
 #include "cc2.h"
 
 #define BUFSIZE 40960  // AST parser read buffer (original: 4096, tested: 40960)
+
+/* Forward declarations for static helper functions */
+static unsigned char nextchar(void);
+static void skip(void);
+static void skipwhite(void);
+static void skipcomment(void);
+static long read_number(void);
+static void expect(unsigned char c);
+static struct expr *parse_expr(void);
 
 /* Parser state */
 static int in_fd;

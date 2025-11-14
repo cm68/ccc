@@ -688,9 +688,58 @@ emit_initializer_list(struct expr *init)
 }
 
 /*
- * Emit string literals section
- * Outputs all string literal data for pass 2 to generate
- * Format: (literals (str addr "data")...)
+ * Emit a single string literal immediately
+ * Called when string literal is created during parsing
+ */
+void
+emit_string_literal(struct name *strname)
+{
+	cstring str;
+	unsigned char len;
+	unsigned char *data;
+	int j;
+
+	if (!strname || !strname->u.init || strname->u.init->op != STRING)
+		return;
+
+	str = (cstring)strname->u.init->v;
+	if (!str)
+		return;
+
+	len = (unsigned char)str[0];
+	data = (unsigned char *)str + 1;
+
+	/* Output: (s name "literal_data") */
+	fdprintf(ast_fd, "\n; String literal: %s\n", strname->name);
+	fdprintf(ast_fd, "(s %s \"", strname->name);
+	for (j = 0; j < len; j++) {
+		unsigned char c = data[j];
+		if (c == '"') {
+			fdprintf(ast_fd, "\\\"");
+		} else if (c == '\\') {
+			fdprintf(ast_fd, "\\\\");
+		} else if (c == '\n') {
+			fdprintf(ast_fd, "\\n");
+		} else if (c == '\t') {
+			fdprintf(ast_fd, "\\t");
+		} else if (c == '\r') {
+			fdprintf(ast_fd, "\\r");
+		} else if (c >= ' ' && c < 0x7f) {
+			fdprintf(ast_fd, "%c", c);
+		} else {
+			fdprintf(ast_fd, "\\x%02x", c);
+		}
+	}
+	fdprintf(ast_fd, "\")\n");
+
+	/* Free the string data after emitting */
+	free((void*)str);
+	strname->u.init->v = 0;
+}
+
+/*
+ * Emit string literals section (DEPRECATED - kept for compatibility)
+ * Now string literals are emitted incrementally
  */
 void
 emit_literals(void)
@@ -811,44 +860,15 @@ emit_global_var(struct name *var)
 }
 
 /*
- * Emit all global variables
+ * Emit all global variables (DEPRECATED - kept for compatibility)
+ * Global variables are now emitted incrementally during parsing
  * Called after parsing completes with all names still in scope
  */
 void
 emit_global_vars(void)
 {
-	extern struct name **names;
-	extern int lastname;
-	struct name *n;
-	int i;
-
-	/* Iterate through names array looking for global variables */
-	for (i = 0; i <= lastname; i++) {
-		n = names[i];
-		if (!n)
-			continue;
-
-		/* Emit global scope variables (level 1) and static locals (level > 1 with SC_STATIC) */
-		if (n->level != 1 && n->sclass != SC_STATIC)
-			continue;
-
-		/* Skip tags, typedefs, and functions */
-		if (n->is_tag || n->kind == tdef || n->kind == fdef)
-			continue;
-
-		/* Skip function declarations (they have function type but kind == var) */
-		if (n->type && (n->type->flags & TF_FUNC))
-			continue;
-
-		/* Skip synthetic string literal names - they're in literals section */
-		if (n->name && strncmp(n->name, "str", 3) == 0 && n->name[3] >= '0' && n->name[3] <= '9')
-			continue;
-
-		/* Emit global variable declaration */
-		if (n->kind == var) {
-			emit_global_var(n);
-		}
-	}
+	/* No-op: globals are now emitted incrementally in declaration() */
+	/* This function is kept for API compatibility but does nothing */
 }
 
 /*
