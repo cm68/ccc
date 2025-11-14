@@ -106,6 +106,25 @@ selfcheck: cc1
 	  fi; \
 	done
 
+.PHONY: fullcheck
+fullcheck: cc1 cc2
+	@echo "Testing compiler on its own sources (complete pipeline: cpp + parse + codegen)..."
+	@for f in $(CFILES); do \
+	  if [ -f "$$f" ]; then \
+	    printf "%-30s" "$$f: "; \
+	    if timeout 10 ./cc1 -DCCC -i./include -I. -E "$$f" > /tmp/$$f.ast 2>&1; then \
+	      if timeout 10 ./cc2 /tmp/$$f.ast > /dev/null 2>&1; then \
+	        echo "PASS"; \
+	      else \
+	        echo "FAIL (codegen)"; \
+	      fi; \
+	    else \
+	      echo "FAIL (parse)"; \
+	    fi; \
+	    rm -f /tmp/$$f.ast; \
+	  fi; \
+	done
+
 #
 # process the cc1.h file, extracting the enum tags for the tokens
 #
