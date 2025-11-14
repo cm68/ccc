@@ -2277,6 +2277,10 @@ static void generate_expr(struct function_ctx *ctx, struct expr *e)
         if (var_name[0] == '$') {
             var_name++;  /* Skip $ prefix */
         }
+        /* Also skip 'A' prefix for arguments (e.g., $Ax -> x) */
+        if (var_name[0] == 'A') {
+            var_name++;  /* Skip A prefix */
+        }
         update_var_lifetime(ctx, var_name);
     }
 
