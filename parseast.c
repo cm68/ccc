@@ -20,7 +20,7 @@ static void skip(void);
 static void skipwhite(void);
 static void skipcomment(void);
 static long read_number(void);
-static void expect(unsigned char c);
+static int expect(unsigned char c);
 static struct expr *parse_expr(void);
 
 /* Parser state */
