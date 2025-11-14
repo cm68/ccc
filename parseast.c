@@ -961,8 +961,8 @@ static struct stmt *parse_stmt(void);
 
 /* Forward declarations for code generation and emission */
 static void assign_frame_offsets(struct function_ctx *ctx);
-static void generate_expr(struct expr *e);
-static void generate_stmt(struct stmt *s);
+static void generate_expr(struct function_ctx *ctx, struct expr *e);
+static void generate_stmt(struct function_ctx *ctx, struct stmt *s);
 static void emit_expr(struct expr *e);
 static void emit_stmt(struct stmt *s);
 
@@ -1531,9 +1531,11 @@ handle_switch(void)
  * Outputs assembly comment describing function and function label
  */
 static void
-emit_function_prologue(char *name, char *params, char *rettype, int frame_size)
+emit_function_prologue(char *name, char *params, char *rettype, int frame_size,
+                       struct local_var *locals)
 {
     int has_params = (params && params[0]);
+    struct local_var *var;
 
     /* Assembly comment with function signature */
     fdprintf(out_fd, "; Function: %s", name);
@@ -1549,6 +1551,20 @@ emit_function_prologue(char *name, char *params, char *rettype, int frame_size)
     }
 
     fdprintf(out_fd, "\n");
+
+    /* Output variable lifetime information as assembly comments */
+    if (locals) {
+        fdprintf(out_fd, "; Variable lifetimes:\n");
+        for (var = locals; var; var = var->next) {
+            fdprintf(out_fd, ";   %s: ", var->name);
+            if (var->first_label == -1) {
+                fdprintf(out_fd, "unused (0 refs)\n");
+            } else {
+                fdprintf(out_fd, "labels %d-%d (%d refs)\n",
+                         var->first_label, var->last_label, var->ref_count);
+            }
+        }
+    }
 
     /* Function label (standard C naming with underscore prefix) */
     fdprintf(out_fd, "_%s:\n", name);
@@ -2076,6 +2092,9 @@ add_param(struct function_ctx *ctx, const char *name, unsigned char size, int of
     var->size = size;
     var->offset = offset;
     var->is_param = 1;
+    var->first_label = -1;  /* Not used yet */
+    var->last_label = -1;   /* Not used yet */
+    var->ref_count = 0;     /* Not referenced yet */
     var->next = ctx->locals;
 
     ctx->locals = var;
@@ -2101,12 +2120,44 @@ add_local_var(struct function_ctx *ctx, const char *name, unsigned char size)
     /* Stack grows downward - assign negative offset from frame pointer */
     var->offset = -(ctx->frame_size + size);
     var->is_param = 0;
+    var->first_label = -1;  /* Not used yet */
+    var->last_label = -1;   /* Not used yet */
+    var->ref_count = 0;     /* Not referenced yet */
     var->next = ctx->locals;
 
     ctx->locals = var;
     ctx->frame_size += size;
 
     fdprintf(2, "  Local var: %s, size=%d, offset=%d\n", name, size, var->offset);
+}
+
+/*
+ * Helper: Update variable lifetime tracking
+ * Called whenever a variable is used, updates first_label and last_label
+ */
+static void
+update_var_lifetime(struct function_ctx *ctx, const char *name)
+{
+    struct local_var *var;
+
+    if (!ctx || !name) return;
+
+    /* Find the variable in locals list */
+    for (var = ctx->locals; var; var = var->next) {
+        if (strcmp(var->name, name) == 0) {
+            /* Update first use if not set */
+            if (var->first_label == -1) {
+                var->first_label = ctx->current_label;
+            }
+            /* Always update last use (high water mark) */
+            if (ctx->current_label > var->last_label) {
+                var->last_label = ctx->current_label;
+            }
+            /* Increment reference count */
+            var->ref_count++;
+            return;
+        }
+    }
 }
 
 /*
@@ -2210,14 +2261,24 @@ assign_frame_offsets(struct function_ctx *ctx)
  * Code generation phase (Phase 2)
  * Walk expression tree and generate assembly code blocks
  */
-static void generate_expr(struct expr *e)
+static void generate_expr(struct function_ctx *ctx, struct expr *e)
 {
     char buf[256];
     if (!e) return;
 
     /* Recursively generate code for children (postorder traversal) */
-    if (e->left) generate_expr(e->left);
-    if (e->right) generate_expr(e->right);
+    if (e->left) generate_expr(ctx, e->left);
+    if (e->right) generate_expr(ctx, e->right);
+
+    /* Track variable usage for lifetime analysis */
+    if (e->op == '$' && e->symbol) {
+        /* Skip the leading $ to match variable names in locals list */
+        const char *var_name = e->symbol;
+        if (var_name[0] == '$') {
+            var_name++;  /* Skip $ prefix */
+        }
+        update_var_lifetime(ctx, var_name);
+    }
 
     /* Generate assembly code for this node based on operator */
     switch (e->op) {
@@ -2427,19 +2488,25 @@ static void generate_expr(struct expr *e)
 /*
  * Walk statement tree and generate assembly code blocks
  */
-static void generate_stmt(struct stmt *s)
+static void generate_stmt(struct function_ctx *ctx, struct stmt *s)
 {
     if (!s) return;
 
+    /* Update current_label for statements that have labels */
+    /* This tracks the current position in the control flow for lifetime analysis */
+    if (s->label > 0) {
+        ctx->current_label = s->label;
+    }
+
     /* Recursively generate code for expressions */
-    if (s->expr) generate_expr(s->expr);
-    if (s->expr2) generate_expr(s->expr2);
-    if (s->expr3) generate_expr(s->expr3);
+    if (s->expr) generate_expr(ctx, s->expr);
+    if (s->expr2) generate_expr(ctx, s->expr2);
+    if (s->expr3) generate_expr(ctx, s->expr3);
 
     /* Recursively generate code for child statements */
-    if (s->then_branch) generate_stmt(s->then_branch);
-    if (s->else_branch) generate_stmt(s->else_branch);
-    if (s->next) generate_stmt(s->next);
+    if (s->then_branch) generate_stmt(ctx, s->then_branch);
+    if (s->else_branch) generate_stmt(ctx, s->else_branch);
+    if (s->next) generate_stmt(ctx, s->next);
 
     /* TODO: Generate assembly code for this statement */
     /* s->asm_block = malloc(...); strcpy(s->asm_block, "..."); */
@@ -2453,7 +2520,11 @@ void generate_code(struct function_ctx *ctx)
     if (!ctx || !ctx->body) return;
 
     fdprintf(2, "=== Phase 2: Generating assembly code blocks ===\n");
-    generate_stmt(ctx->body);
+
+    /* Initialize lifetime tracking */
+    ctx->current_label = 0;
+
+    generate_stmt(ctx, ctx->body);
 }
 
 /*
@@ -2522,8 +2593,9 @@ void emit_assembly(struct function_ctx *ctx, int fd)
     /* Check if function has parameters */
     has_params = (ctx->params && ctx->params[0]);
 
-    /* Emit function prologue with frame allocation */
-    emit_function_prologue(ctx->name, ctx->params, ctx->rettype, ctx->frame_size);
+    /* Emit function prologue with frame allocation and lifetime info */
+    emit_function_prologue(ctx->name, ctx->params, ctx->rettype, ctx->frame_size,
+                          ctx->locals);
 
     /* Emit function body */
     emit_stmt(ctx->body);

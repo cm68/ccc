@@ -65,6 +65,9 @@ struct local_var {
     int offset;                 // Offset in stack frame (negative for locals, positive for params)
     unsigned char size;         // Size in bytes
     unsigned char is_param;     // 1 if parameter, 0 if local variable
+    int first_label;            // First label where variable is used (-1 if unused)
+    int last_label;             // Last label where variable is used (high water mark)
+    int ref_count;              // Number of times variable is referenced
     struct local_var *next;     // Next in linked list
 };
 
@@ -79,6 +82,7 @@ struct function_ctx {
     int label_counter;          // For generating unique labels
     struct local_var *locals;   // List of local variables with stack offsets
     int frame_size;             // Total stack frame size in bytes
+    int current_label;          // Current label context during code generation (for lifetime tracking)
 };
 
 /* Forward declarations from util.c */

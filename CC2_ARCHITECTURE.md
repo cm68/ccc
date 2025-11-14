@@ -448,6 +448,51 @@ Variables are allocated based on their type:
 - `long`, `float`: 4 bytes
 - `double`: 8 bytes
 
+### Variable Lifetime Tracking and Reference Counting
+
+To enable efficient register allocation, cc2 tracks when variables are used during code generation:
+
+**Lifetime Tracking:**
+- `first_label`: Label number where variable is first referenced (-1 if unused)
+- `last_label`: Label number where variable is last referenced (high water mark)
+- `current_label`: Current label context during code generation (in function_ctx)
+
+**Reference Counting:**
+- `ref_count`: Total number of times variable is referenced in the function
+- Incremented on every symbol reference (SYM nodes)
+- Helps identify frequently-used variables for register allocation
+
+**How It Works:**
+
+1. During parsing (Phase 1), control flow statements are assigned label numbers:
+   - `if` statements: `s->label` for the if-false jump, `s->label2` for else-end
+   - `while` loops: `s->label` for loop start
+   - `do-while` loops: `s->label` for loop start
+   - `for` loops: `s->label` for loop start
+
+2. During code generation (Phase 2):
+   - `ctx->current_label` is updated when processing statements with labels
+   - When a SYM node is encountered, `update_var_lifetime()` is called
+   - First reference sets `first_label`, subsequent refs update `last_label`
+   - Every reference increments `ref_count`
+
+3. After code generation, lifetime info is available for register allocation:
+   - Variables with non-overlapping lifetimes can share registers
+   - Frequently referenced variables should get registers
+   - Rarely used variables can stay in memory
+
+**Example Output:**
+```
+Variable lifetimes:
+  result: labels 0-9 (9 refs)   // Used throughout function, many refs
+  a: labels 0-9 (6 refs)         // Used throughout function
+  b: labels 0-4 (3 refs)         // Only used in first half, fewer refs
+```
+
+This shows that `b` is only used from label 0 to 4, so its register could be reused
+for another variable after label 4. Also, `result` and `a` are referenced more
+frequently, making them better candidates for registers.
+
 ### Current Implementation Status
 
 **Implemented:**
@@ -458,6 +503,8 @@ Variables are allocated based on their type:
 - Proper handling of functions with/without parameters/locals
 - Helper function calls for all arithmetic operations
 - Width and signedness tracking for code generation
+- Variable lifetime tracking (first_label, last_label)
+- Reference counting for variables
 
 **In Progress:**
 - Actual variable address calculation using frame offsets
