@@ -673,7 +673,8 @@ do_initializer(void)
         init = parse_initializer_list();
     } else {
         /* Handle simple expression initializer */
-        init = parse_expr(0, NULL);
+        /* Use precedence 15 to allow assignment (14) but exclude comma operator (15) */
+        init = parse_expr(15, NULL);
     }
 
     if (init == NULL) {
