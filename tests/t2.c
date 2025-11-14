@@ -13,6 +13,8 @@ char bar[] = "this is a another, uglier\0 one\n";
 
 #define assignstringify(x,y) x = #y
 
+#define stringify(y) #y
+
 #define glom(x,y) x##y
 
 #define	ab xyzzy
@@ -26,6 +28,16 @@ assign(a,b);
 assignstringify(c,d);
 
 k = glom(a,b);
-
 k = glom(fu,bar);
+
+#define foo(a,b) a##b
+#define bar(c,d) c##d
+
+stringify(foo(b,ar(xy,zzy)))
+
+/* while allowing keyword expansion of any adjacent identifiers
+ * #define foo(a,b) a##b
+ * #define bar(c,d) c##d
+ * foo(b,ar(xy,zzy)) generates xyzzy
+ */
 

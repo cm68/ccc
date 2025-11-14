@@ -223,6 +223,9 @@ insertmacro(char *name, char *macbuf)
 	t->prev = tbtop;
 	tbtop = t;
     filename = name;
+    /* Set curchar/nextchar to first characters of macro text */
+    curchar = t->storage[t->offset++];
+    nextchar = t->storage[t->offset];
 }
 
 void
