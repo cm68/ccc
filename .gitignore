@@ -42,3 +42,4 @@ do.ast
 *.cdb
 *.map
 *.asm
+*.s
