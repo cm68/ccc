@@ -673,13 +673,18 @@ emit_function(struct name *func)
 /*
  * Emit an initializer list (linked via next pointers)
  * Used for array/struct initializers like {1, 2, 3}
+ * elem_type: type of array elements for width annotation
  */
 static void
-emit_initializer_list(struct expr *init)
+emit_initializer_list(struct expr *init, struct type *elem_type)
 {
 	struct expr *item;
+	char width;
 
-	fdprintf(ast_fd, "(list");
+	/* Get element width for array initializers */
+	width = get_size_suffix(elem_type);
+
+	fdprintf(ast_fd, "([:%c", width);
 	for (item = init; item; item = item->next) {
 		fdprintf(ast_fd, " ");
 		emit_expr(item);
@@ -850,7 +855,9 @@ emit_global_var(struct name *var)
 		fdprintf(ast_fd, " ");
 		/* Check if this is an initializer list (has next pointers) */
 		if (var->u.init->next) {
-			emit_initializer_list(var->u.init);
+			/* For arrays, pass element type (var->type->sub) for width annotation */
+			struct type *elem_type = (var->type && (var->type->flags & TF_ARRAY)) ? var->type->sub : var->type;
+			emit_initializer_list(var->u.init, elem_type);
 		} else {
 			emit_expr(var->u.init);
 		}

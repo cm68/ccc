@@ -305,6 +305,95 @@ expect(unsigned char c)
  * Returns pointer to static buffer
  */
 static char symbuf[256];
+static char strbuf[1024];
+
+/*
+ * Read a quoted string literal with escape sequences
+ * Expects curchar to be on the opening quote
+ * Returns pointer to static buffer with unescaped string data
+ */
+static char *
+read_quoted_string(void)
+{
+    unsigned char i = 0;
+
+    skip();
+
+    /* Expect opening quote */
+    if (curchar != '"') {
+        fdprintf(2, "parseast: line %d: expected '\"' at start of string\n", line_num);
+        strbuf[0] = '\0';
+        return strbuf;
+    }
+
+    nextchar();  /* Skip opening quote */
+
+    /* Read until closing quote */
+    while (curchar && curchar != '"') {
+        if (curchar == '\\') {
+            /* Handle escape sequences */
+            nextchar();
+            switch (curchar) {
+            case 'n':
+                if (i < sizeof(strbuf) - 1) strbuf[i++] = '\n';
+                break;
+            case 't':
+                if (i < sizeof(strbuf) - 1) strbuf[i++] = '\t';
+                break;
+            case 'r':
+                if (i < sizeof(strbuf) - 1) strbuf[i++] = '\r';
+                break;
+            case '\\':
+                if (i < sizeof(strbuf) - 1) strbuf[i++] = '\\';
+                break;
+            case '"':
+                if (i < sizeof(strbuf) - 1) strbuf[i++] = '"';
+                break;
+            case 'x':
+                /* Hex escape: \xNN */
+                nextchar();
+                {
+                    unsigned char hex1 = curchar;
+                    nextchar();
+                    unsigned char hex2 = curchar;
+                    unsigned char val = 0;
+
+                    if (hex1 >= '0' && hex1 <= '9') val = (hex1 - '0') << 4;
+                    else if (hex1 >= 'a' && hex1 <= 'f') val = (hex1 - 'a' + 10) << 4;
+                    else if (hex1 >= 'A' && hex1 <= 'F') val = (hex1 - 'A' + 10) << 4;
+
+                    if (hex2 >= '0' && hex2 <= '9') val |= (hex2 - '0');
+                    else if (hex2 >= 'a' && hex2 <= 'f') val |= (hex2 - 'a' + 10);
+                    else if (hex2 >= 'A' && hex2 <= 'F') val |= (hex2 - 'A' + 10);
+
+                    if (i < sizeof(strbuf) - 1) strbuf[i++] = val;
+                }
+                break;
+            default:
+                /* Unknown escape, just copy the character */
+                if (i < sizeof(strbuf) - 1) strbuf[i++] = curchar;
+                break;
+            }
+            nextchar();
+        } else {
+            /* Regular character */
+            if (i < sizeof(strbuf) - 1) {
+                strbuf[i++] = curchar;
+            }
+            nextchar();
+        }
+    }
+
+    strbuf[i] = '\0';
+
+    /* Expect closing quote */
+    if (curchar == '"') {
+        nextchar();
+    }
+
+    return strbuf;
+}
+
 static char *
 read_symbol(void)
 {
@@ -374,7 +463,7 @@ read_type(void)
         while ((curchar >= 'a' && curchar <= 'z') ||
                (curchar >= 'A' && curchar <= 'Z') ||
                (curchar >= '0' && curchar <= '9') ||
-               curchar == '_' || curchar == ':') {
+               curchar == '_' || curchar == ':' || curchar == '-') {
             if (i < sizeof(typebuf) - 1) {
                 typebuf[i++] = curchar;
             }
@@ -462,6 +551,37 @@ handle_string(void)
     /* String literal: S followed by index */
     e->value = read_number();
     fdprintf(2, "STRING S%ld", e->value);
+    return e;
+}
+
+static struct expr *
+handle_compound_assign(unsigned char op)
+{
+    struct expr *e = new_expr(op);
+    char width = 's';  /* default */
+
+    /* Check for width annotation */
+    skip();
+    if (curchar == ':') {
+        nextchar();
+        width = curchar;
+        nextchar();
+        /* Store width annotation */
+        char width_str[3] = {':', width, '\0'};
+        e->type_str = strdup(width_str);
+        e->size = get_size_from_type_str(e->type_str);
+        e->flags = get_signedness_from_type_str(e->type_str);
+    }
+
+    fdprintf(2, "COMP_ASSIGN_%02x:%c (", op, width);
+    skip();
+    e->left = parse_expr();  /* lvalue */
+    fdprintf(2, ", ");
+    skip();
+    e->right = parse_expr();  /* rvalue */
+    fdprintf(2, ")");
+    expect(')');
+
     return e;
 }
 
@@ -995,6 +1115,54 @@ static struct stmt *handle_asm(void);
 static struct stmt *handle_label(void);
 static struct stmt *handle_goto(void);
 static struct stmt *handle_switch(void);
+static struct stmt *handle_case_in_block(void);
+static struct stmt *handle_default_in_block(void);
+
+/* Handlers for case/default when they appear in block context */
+static struct stmt *
+handle_case_in_block(void)
+{
+    /* Case statement: (C value ()) */
+    struct stmt *child = new_stmt('C');
+
+    fdprintf(2, "CASE ");
+    skip();
+    child->expr = parse_expr();  /* case value */
+    fdprintf(2, ": ");
+    skip();
+    /* Skip empty body placeholder () */
+    if (curchar == '(') {
+        nextchar();
+        skip();
+        if (curchar == ')') {
+            nextchar();
+        }
+    }
+    expect(')');
+
+    return child;
+}
+
+static struct stmt *
+handle_default_in_block(void)
+{
+    /* Default statement: (O ()) */
+    struct stmt *child = new_stmt('O');
+
+    fdprintf(2, "DEFAULT: ");
+    skip();
+    /* Skip empty body placeholder () */
+    if (curchar == '(') {
+        nextchar();
+        skip();
+        if (curchar == ')') {
+            nextchar();
+        }
+    }
+    expect(')');
+
+    return child;
+}
 
 static struct stmt *
 handle_block(void)
@@ -1067,6 +1235,14 @@ handle_block(void)
                     break;
                 case 'S':  /* Switch */
                     child = handle_switch();
+                    break;
+                case 'C':  /* Case (inside switch body) */
+                    /* Case statements only valid inside switch, but may appear in block */
+                    child = handle_case_in_block();
+                    break;
+                case 'O':  /* Default (inside switch body) */
+                    /* Default statements only valid inside switch, but may appear in block */
+                    child = handle_default_in_block();
                     break;
                 default:
                     fdprintf(2, "parseast: line %d: unknown stmt op '%c' in block\n", line_num, op);
@@ -1792,6 +1968,20 @@ handle_global(void)
     expect(')');
 }
 
+static void
+handle_string_literal(void)
+{
+    char *name, *data;
+
+    /* (s name "data") */
+    name = read_symbol();
+    data = read_quoted_string();
+
+    fdprintf(2, "\nSTRING %s \"%s\"\n", name, data);
+
+    expect(')');
+}
+
 /*
  * Operator lookup table
  * Maps each operator character to its handler function
@@ -1837,15 +2027,15 @@ init_expr_handlers(void)
     expr_handlers['j'] = handle_land;       /* LAND && */
 
     /* Compound assignment operators */
-    expr_handlers['P'] = handle_binary_op;  /* PLUSEQ += */
-    expr_handlers[0xdf] = handle_binary_op; /* SUBEQ -= */
-    expr_handlers['T'] = handle_binary_op;  /* MULTEQ *= */
-    expr_handlers['2'] = handle_binary_op;  /* DIVEQ /= */
-    expr_handlers[0xfe] = handle_binary_op; /* MODEQ %= */
-    expr_handlers[0xc6] = handle_binary_op; /* ANDEQ &= */
-    expr_handlers['1'] = handle_binary_op;  /* OREQ |= */
-    expr_handlers['0'] = handle_binary_op;  /* LSHIFTEQ <<= */
-    expr_handlers['6'] = handle_binary_op;  /* RSHIFTEQ >>= */
+    expr_handlers['P'] = handle_compound_assign;  /* PLUSEQ += */
+    expr_handlers[0xdf] = handle_compound_assign; /* SUBEQ -= */
+    expr_handlers['T'] = handle_compound_assign;  /* MULTEQ *= */
+    expr_handlers['2'] = handle_compound_assign;  /* DIVEQ /= */
+    expr_handlers[0xfe] = handle_compound_assign; /* MODEQ %= */
+    expr_handlers[0xc6] = handle_compound_assign; /* ANDEQ &= */
+    expr_handlers['1'] = handle_compound_assign;  /* OREQ |= */
+    expr_handlers['0'] = handle_compound_assign;  /* LSHIFTEQ <<= */
+    expr_handlers['6'] = handle_compound_assign;  /* RSHIFTEQ >>= */
 
     /* Unary operators */
     expr_handlers['!'] = handle_unary_op;
@@ -2016,6 +2206,9 @@ parse_toplevel(void)
         break;
     case 'g':  /* Global variable */
         handle_global();
+        break;
+    case 's':  /* String literal */
+        handle_string_literal();
         break;
     default:
         fdprintf(2, "parseast: line %d: unknown top-level op '%c'\n", line_num, op);

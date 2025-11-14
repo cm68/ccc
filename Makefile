@@ -74,6 +74,10 @@ ccc: ccc.o
 
 $(CC1OBJECTS): $(HFILES)
 
+# Suffix rule to generate .ast files from .c files
+%.ast: %.c cc1
+	./cc1 -DCCC -i./include -I. -E $< > $@ 2>&1
+
 .PHONY: test tests valgrind
 test: cc1 tests/runtest.sh
 	$(MAKE) -C tests test
