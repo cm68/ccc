@@ -731,22 +731,12 @@ parse_expr(unsigned char pri, struct stmt *st)
             struct type *rtype = e->right->type;
 
             // Only convert scalar types (not pointers, arrays, functions, aggregates)
-            int l_nonptr = !(ltype->flags & TF_POINTER);
-            int l_nonarr = !(ltype->flags & TF_ARRAY);
-            int l_nonfunc = !(ltype->flags & TF_FUNC);
-            int l_nonagg = !(ltype->flags & TF_AGGREGATE);
-            int l_scalar = l_nonptr && l_nonarr && l_nonfunc && l_nonagg;
+            int l_scalar = !(ltype->flags & (TF_POINTER|TF_ARRAY|TF_FUNC|TF_AGGREGATE));
+            int r_scalar = !(rtype->flags & (TF_POINTER|TF_ARRAY|TF_FUNC|TF_AGGREGATE));
 
-            int r_nonptr = !(rtype->flags & TF_POINTER);
-            int r_nonarr = !(rtype->flags & TF_ARRAY);
-            int r_nonfunc = !(rtype->flags & TF_FUNC);
-            int r_nonagg = !(rtype->flags & TF_AGGREGATE);
-            int r_scalar = r_nonptr && r_nonarr && r_nonfunc && r_nonagg;
-
-            if (l_scalar && r_scalar) {
-                if (ltype->size != rtype->size) {
-                    token_t conv_op;
-                    struct expr *conv;
+            if (l_scalar && r_scalar && ltype->size != rtype->size) {
+                token_t conv_op;
+                struct expr *conv;
 
                 if (ltype->size < rtype->size) {
                     // Narrowing conversion
@@ -765,7 +755,6 @@ parse_expr(unsigned char pri, struct stmt *st)
                 conv->left->up = conv;
                 e->right = conv;
                 e->right->up = e;
-                }
             }
 
             // Check pointer type compatibility

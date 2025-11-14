@@ -787,11 +787,9 @@ gettoken()
 #endif
                     /* After processing #if/#elif with a TRUE condition, break to return the token in next */
                     /* For FALSE conditions, the token in next should be discarded by continuing to loop */
-                    if (t == IF || t == ELIF) {
-                        if (cond && (cond->flags & C_TRUE)) {
-                            /* True block - next contains the first token, return it */
-                            break;
-                        }
+                    if ((t == IF || t == ELIF) && cond && (cond->flags & C_TRUE)) {
+                        /* True block - next contains the first token, return it */
+                        break;
                     }
                     /* False block - continue looping, token skipping will handle it */
                     continue;
