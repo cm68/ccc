@@ -98,10 +98,14 @@ selfcheck: cc1
 	@for f in $(CFILES); do \
 	  if [ -f "$$f" ]; then \
 	    printf "%-30s" "$$f: "; \
-	    if timeout 10 ./cc1 -DCCC -i./include -I. -E "$$f" > /dev/null 2>&1; then \
-	      echo "PASS"; \
+	    timeout 10 ./cc1 -DCCC -i./include -I. -E "$$f" > /dev/null 2>&1; \
+	    ret=$$?; \
+	    if [ $$ret -eq 124 ]; then \
+	      echo "FAIL (timeout)"; \
+	    elif [ $$ret -ne 0 ]; then \
+	      echo "FAIL (parse error)"; \
 	    else \
-	      echo "FAIL (timeout or crash)"; \
+	      echo "PASS"; \
 	    fi; \
 	  fi; \
 	done
@@ -112,14 +116,22 @@ fullcheck: cc1 cc2
 	@for f in $(CFILES); do \
 	  if [ -f "$$f" ]; then \
 	    printf "%-30s" "$$f: "; \
-	    if timeout 10 ./cc1 -DCCC -i./include -I. -E "$$f" > /tmp/$$f.ast 2>&1; then \
-	      if timeout 10 ./cc2 /tmp/$$f.ast > /dev/null 2>&1; then \
-	        echo "PASS"; \
-	      else \
-	        echo "FAIL (codegen)"; \
-	      fi; \
+	    timeout 10 ./cc1 -DCCC -i./include -I. -E "$$f" > /tmp/$$f.ast 2>&1; \
+	    ret1=$$?; \
+	    if [ $$ret1 -eq 124 ]; then \
+	      echo "FAIL (parse timeout)"; \
+	    elif [ $$ret1 -ne 0 ]; then \
+	      echo "FAIL (parse error)"; \
 	    else \
-	      echo "FAIL (parse)"; \
+	      timeout 10 ./cc2 /tmp/$$f.ast > /dev/null 2>&1; \
+	      ret2=$$?; \
+	      if [ $$ret2 -eq 124 ]; then \
+	        echo "FAIL (codegen timeout)"; \
+	      elif [ $$ret2 -ne 0 ]; then \
+	        echo "FAIL (codegen error)"; \
+	      else \
+	        echo "PASS"; \
+	      fi; \
 	    fi; \
 	    rm -f /tmp/$$f.ast; \
 	  fi; \

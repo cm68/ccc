@@ -7,6 +7,7 @@
 #include "error.h"
 
 int error;
+int exit_code = 0;  /* Global exit code: 0=success, 1=errors occurred */
 
 /*
  * print a message for an error code and emit an error location
@@ -84,6 +85,7 @@ gripe(error_t errcode)
     fdprintf(2, "\n");
 
     error = errcode;
+    exit_code = 1;  /* Set global exit code to indicate errors occurred */
 }
 
 /*

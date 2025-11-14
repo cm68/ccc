@@ -769,8 +769,12 @@ parse_expr(unsigned char pri, struct stmt *st)
                 if (l_base && r_base) {
                     unsigned char compatible = 0;
 
+                    // void* is compatible with any pointer type
+                    if (l_base == voidtype || r_base == voidtype) {
+                        compatible = 1;
+                    }
                     // Check if base types are compatible
-                    if (l_base == r_base) {
+                    else if (l_base == r_base) {
                         // Same type pointer - always compatible
                         compatible = 1;
                     } else if ((l_base->flags & TF_AGGREGATE) && (r_base->flags & TF_AGGREGATE)) {

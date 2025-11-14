@@ -174,6 +174,29 @@ macdefine(char *s)
             }
             break;
         }
+        /* Check for C-style block comment */
+        if (curchar == '/' && nextchar == '*') {
+            /* Skip comment - do not include in macro text */
+            advance();  /* skip '/' */
+            advance();  /* skip '*' */
+            while (1) {
+                if (curchar == '*' && nextchar == '/') {
+                    advance();  /* skip '*' */
+                    advance();  /* skip '/' */
+                    break;
+                }
+                if (curchar == '\n' || curchar == 0) {
+                    /* Unterminated comment in macro - stop at newline */
+                    break;
+                }
+                advance();
+            }
+            /* Replace comment with single space (to separate tokens) */
+            if (s > macbuffer && s[-1] != ' ' && s[-1] != '\t') {
+                *s++ = ' ';
+            }
+            continue;
+        }
         if ((curchar == '\\') && (nextchar == '\n')) {
             advance();
             curchar = ' ';

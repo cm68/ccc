@@ -10,6 +10,7 @@
 int write_cpp_file = 0;
 char *cpp_file_name;
 int cpp_file;
+static unsigned char incomment = 0;  /* Track comment state across gettoken() calls */
 
 struct token cur, next;
 
@@ -593,6 +594,9 @@ do_cpp(unsigned char t)
         }
 #endif
         insertfile(strbuf, k == '>');
+        /* Initialize curchar/nextchar from the new file */
+        advance();
+        advance();
         return;
     }
 }
@@ -690,7 +694,6 @@ void
 gettoken()
 {
     token_t t;
-    unsigned char incomment = 0;
     unsigned char c;
     int i;
     char *s;
@@ -721,17 +724,36 @@ gettoken()
             break;
         }
         /* Handle comments before checking for preprocessor directives */
-        if ((curchar == '/') && (nextchar == '*') && !incomment) {
-            incomment = 1;
-            advance();
-            advance();
-            continue;
+        if (curchar == '/') {
+            if (nextchar == '*') {
+                /* Always enter comment mode, even if already in one (nested comments become single comment) */
+#ifdef DEBUG
+                if (VERBOSE(V_TOKEN)) {
+                    fdprintf(2,"Found comment start at line %d\n", lineno);
+                }
+#endif
+                incomment = 1;
+                advance();
+                advance();
+                continue;
+            }
+#ifdef DEBUG
+            if (VERBOSE(V_TOKEN) && write_cpp_file) {
+                fdprintf(2,"Slash but nextchar='%c'(0x%x) not asterisk at line %d, incomment=%d\n",
+                    nextchar >= 32 ? nextchar : '?', nextchar, lineno, incomment);
+            }
+#endif
         }
         if ((curchar == '/') && (nextchar == '/')) {
             skiptoeol();
             continue;
         }
         if ((incomment) && (curchar == '*') && (nextchar == '/')) {
+#ifdef DEBUG
+            if (VERBOSE(V_TOKEN)) {
+                fdprintf(2,"Found comment end at line %d, advancing past */ \n", lineno);
+            }
+#endif
             incomment = 0;
             advance();
             advance();

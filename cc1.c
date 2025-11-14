@@ -239,7 +239,7 @@ main(int argc, char **argv)
         close(ast_fd);
     }
 
-    return 0;
+    return exit_code;  /* Return 0 if no errors, 1 if errors occurred */
 }
 
 /*

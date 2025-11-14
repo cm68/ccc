@@ -46,6 +46,7 @@ struct type *types;
 struct type *inttype;
 struct type *chartype;
 struct type *uchartype;
+struct type *voidtype;
 
 /*
  * basic types = 0
@@ -503,6 +504,7 @@ initbasictype()
         if (i == 0) chartype = t;
         if (i == 2) inttype = t;
         if (i == 3) uchartype = t;
+        if (i == 6) voidtype = t;
     }
 }
 

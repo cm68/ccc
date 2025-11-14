@@ -243,6 +243,7 @@ extern struct type *parse_type_name(void);
 extern struct type *inttype;
 extern struct type *chartype;
 extern struct type *uchartype;
+extern struct type *voidtype;
 
 void parse();
 void cleanup_parser();
@@ -320,6 +321,7 @@ extern char *filename;
 extern int column;
 extern char *sys_include_path;
 extern struct textbuf *tbtop;
+extern int exit_code;  /* Global exit code: 0=success, 1=errors occurred */
 
 /* cc1.c */
 extern void gripe(error_t errcode);

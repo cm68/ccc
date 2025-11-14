@@ -75,7 +75,7 @@ struct include {
 } *includes;
 
 /* System include path for #include <foo.h> */
-char *sys_include_path = "/usr/include";
+char *sys_include_path = "include";
 
 /*
  * add a path to the include search list

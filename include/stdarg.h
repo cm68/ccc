@@ -7,8 +7,8 @@
 
 typedef char *va_list;
 
-#define va_start(ap, last) ((void)0)
-#define va_arg(ap, type) ((type)0)
-#define va_end(ap) ((void)0)
+#define va_start(ap, last) ap = 0
+#define va_arg(ap, type) 0
+#define va_end(ap) ap = 0
 
 #endif /* _STDARG_H */
