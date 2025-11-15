@@ -24,6 +24,11 @@
  * Total available:
  *   6 byte registers (4 register variables + A primary + E secondary)
  *   5 word registers (3 register variables + HL primary + DE secondary)
+ *
+ * Register Allocation Constraints:
+ *   - Variables whose address is taken (&var) cannot be allocated to registers
+ *   - These variables must reside in memory (stack frame or global data section)
+ *   - Includes variables passed by reference to functions
  */
 #include <stdlib.h>
 #include <string.h>
