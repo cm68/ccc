@@ -185,9 +185,6 @@ declare_internal(struct type **btp, boolean struct_elem)
         }
     }
 
-    // Initialize t from prefix for array/function suffix parsing
-    t = prefix;
-
     while (cur.type == LBRACK) {        // array
         gettoken();
         if (cur.type == RBRACK) {
@@ -368,10 +365,22 @@ declare_internal(struct type **btp, boolean struct_elem)
      * retyping from paper printout and caused infinite loops.
      */
     if (suffix) {
-        // For functions/pointers/arrays, suffix contains the derived type
-        // suffix->sub should already point to the return/base type from get_type()
-        // Just need to make suffix the final type
-        nm->type = suffix;
+        // For arrays, the sub field may be wrong (points to base type before pointer mods)
+        // Fix it by creating a new array type with the correct element type
+        if ((suffix->flags & TF_ARRAY) && prefix != suffix->sub) {
+            // Create new array type with correct element type
+            struct type *fixed_array = calloc(1, sizeof(*fixed_array));
+            *fixed_array = *suffix;  // Copy all fields
+            fixed_array->sub = prefix;  // Fix element type
+            // Recalculate size with correct element size
+            if (prefix && fixed_array->count > 0) {
+                fixed_array->size = prefix->size * fixed_array->count;
+            }
+            nm->type = fixed_array;
+        } else {
+            // For functions/pointers, suffix is correct
+            nm->type = suffix;
+        }
     }
 
     return nm;
