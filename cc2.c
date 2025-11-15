@@ -10,6 +10,7 @@
  * Register Variables (available for allocation):
  *   Byte registers:  B, C, B', C' (4 byte registers)
  *   Word registers:  BC, BC', IX (3 word registers)
+ *   Note: IX preferred for structure pointers (indexed addressing: (IX+offset))
  *
  * Primary Accumulator (expression evaluation):
  *   Byte:  A
@@ -39,6 +40,7 @@
  *      - Exclude address-taken variables
  *      - Prioritize by reference count
  *      - Allocate to available register set based on type (byte/word)
+ *      - Prefer IX for structure pointers (efficient indexed addressing)
  */
 #include <stdlib.h>
 #include <string.h>
