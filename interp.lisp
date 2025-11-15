@@ -174,7 +174,7 @@
 
          ;; Type conversions
          ((string= op-str "N") (eval-expr (second expr)))
-         ((string= op-str "X") (eval-expr (second expr)))
+         ((string= op-str "«") (eval-expr (second expr)))  ; SEXT (0xab)
          ((string= op-str "W") (eval-expr (second expr)))
 
          ;; Address-of
@@ -190,6 +190,10 @@
                                       (old (eval-expr lval))
                                       (new (+ old (eval-expr (third expr)))))
                                  (set-variable lval new)))
+         ((string= op-str "X") (let* ((lval (second expr))
+                                      (old (eval-expr lval))
+                                      (new (logxor old (eval-expr (third expr)))))
+                                 (set-variable lval new)))  ; XOREQ ^=
 
          ;; Function call
          ((string= op-str "@") (funcall-ast (second expr) (cddr expr)))
@@ -461,7 +465,7 @@
   (setf *locals* nil)
 
   ;; Read file as text, preprocess to handle colons in type specs
-  (let ((text (with-open-file (stream filename)
+  (let ((text (with-open-file (stream filename :external-format :latin-1)
                 (let ((content (make-string (file-length stream))))
                   (read-sequence content stream)
                   content))))
