@@ -2786,6 +2786,27 @@ assign_frame_offsets(struct function_ctx *ctx)
  * Code generation phase (Phase 2)
  * Walk expression tree and generate assembly code blocks
  */
+/*
+ * TODO: Accumulator Management for Binary Operators
+ *
+ * Binary operators require operands in specific accumulators:
+ *   - Left operand in PRIMARY accumulator (HL for word, A for byte)
+ *   - Right operand in SECONDARY accumulator (DE for word, E for byte)
+ *   - Operation result goes to PRIMARY
+ *
+ * Current implementation just emits placeholder comments.
+ * Proper implementation needs:
+ *   1. Track which accumulator holds each expression's result
+ *   2. For binary ops: generate left→PRIMARY, move to SECONDARY, generate right→PRIMARY
+ *   3. Emit actual load instructions instead of comments
+ *   4. Handle accumulator spills when both are occupied
+ *
+ * Example for `a + b`:
+ *   ld hl, (a_addr)     ; left to PRIMARY
+ *   ex de, hl           ; move PRIMARY to SECONDARY
+ *   ld hl, (b_addr)     ; right to PRIMARY
+ *   add hl, de          ; PRIMARY = PRIMARY + SECONDARY
+ */
 static void generate_expr(struct function_ctx *ctx, struct expr *e)
 {
     char buf[256];
