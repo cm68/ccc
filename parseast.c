@@ -2470,6 +2470,37 @@ is_operand_unsigned(struct expr *e)
 }
 
 /*
+ * Helper: Look up a variable by symbol name
+ * Strips leading $ and A prefixes from symbol name before lookup
+ * Returns NULL if not found
+ */
+static struct local_var *
+lookup_var(struct function_ctx *ctx, const char *symbol)
+{
+    if (!symbol || !ctx) return NULL;
+
+    /* Strip $ prefix if present */
+    const char *var_name = symbol;
+    if (var_name[0] == '$') {
+        var_name++;
+    }
+    /* Strip A prefix for arguments (e.g., $Ax -> x) */
+    if (var_name[0] == 'A') {
+        var_name++;
+    }
+
+    /* Search locals list */
+    struct local_var *var;
+    for (var = ctx->locals; var; var = var->next) {
+        if (strcmp(var->name, var_name) == 0) {
+            return var;
+        }
+    }
+
+    return NULL;
+}
+
+/*
  * Helper: Generate function name for binary arithmetic operations
  * Format: [u]<op><leftwidth><rightwidth>
  * Examples: mul88, umul816, div1616, add168
@@ -2785,27 +2816,11 @@ assign_frame_offsets(struct function_ctx *ctx)
 /*
  * Code generation phase (Phase 2)
  * Walk expression tree and generate assembly code blocks
- */
-/*
- * TODO: Accumulator Management for Binary Operators
  *
- * Binary operators require operands in specific accumulators:
- *   - Left operand in PRIMARY accumulator (HL for word, A for byte)
- *   - Right operand in SECONDARY accumulator (DE for word, E for byte)
- *   - Operation result goes to PRIMARY
- *
- * Current implementation just emits placeholder comments.
- * Proper implementation needs:
- *   1. Track which accumulator holds each expression's result
- *   2. For binary ops: generate left→PRIMARY, move to SECONDARY, generate right→PRIMARY
- *   3. Emit actual load instructions instead of comments
- *   4. Handle accumulator spills when both are occupied
- *
- * Example for `a + b`:
- *   ld hl, (a_addr)     ; left to PRIMARY
- *   ex de, hl           ; move PRIMARY to SECONDARY
- *   ld hl, (b_addr)     ; right to PRIMARY
- *   add hl, de          ; PRIMARY = PRIMARY + SECONDARY
+ * Accumulator Management:
+ *   - All expressions evaluate to PRIMARY accumulator (HL for word, A for byte)
+ *   - Binary operators: left→PRIMARY, move to SECONDARY, right→PRIMARY, operate
+ *   - M (DEREF) operations generate actual load instructions from memory/registers
  */
 static void generate_expr(struct function_ctx *ctx, struct expr *e)
 {
@@ -2869,12 +2884,68 @@ static void generate_expr(struct function_ctx *ctx, struct expr *e)
                 }
             }
         }
-        if (e->size == 1) {
-            snprintf(buf, sizeof(buf), "\t; load byte from address");
-        } else if (e->size == 2) {
-            snprintf(buf, sizeof(buf), "\t; load word from address");
+
+        /* Generate load instruction to PRIMARY accumulator */
+        /* Check if child is a SYM node for simple variable load */
+        if (e->left && e->left->op == '$' && e->left->symbol) {
+            struct local_var *var = lookup_var(ctx, e->left->symbol);
+            if (var && var->reg != REG_NO) {
+                /* Variable is in a register - move to PRIMARY */
+                if (e->size == 1) {
+                    /* Byte: move register to A */
+                    if (var->reg == REG_B) {
+                        snprintf(buf, sizeof(buf), "\tld a, b");
+                    } else if (var->reg == REG_C) {
+                        snprintf(buf, sizeof(buf), "\tld a, c");
+                    } else {
+                        snprintf(buf, sizeof(buf), "\t; TODO: load byte from reg %d to A", var->reg);
+                    }
+                } else {
+                    /* Word: move register pair to HL */
+                    if (var->reg == REG_BC) {
+                        snprintf(buf, sizeof(buf), "\tld h, b\n\tld l, c");
+                    } else if (var->reg == REG_BCp) {
+                        snprintf(buf, sizeof(buf), "\texx\n\tld h, b\n\tld l, c\n\texx");
+                    } else if (var->reg == REG_IX) {
+                        snprintf(buf, sizeof(buf), "\tpush ix\n\tpop hl");
+                    } else {
+                        snprintf(buf, sizeof(buf), "\t; TODO: load word from reg %d to HL", var->reg);
+                    }
+                }
+            } else if (var) {
+                /* Variable is on stack - load from (iy + offset) */
+                if (e->size == 1) {
+                    /* Byte load */
+                    if (var->offset >= 0) {
+                        snprintf(buf, sizeof(buf), "\tld a, (iy + %d)", var->offset);
+                    } else {
+                        snprintf(buf, sizeof(buf), "\tld a, (iy - %d)", -var->offset);
+                    }
+                } else {
+                    /* Word load */
+                    if (var->offset >= 0) {
+                        snprintf(buf, sizeof(buf), "\tld hl, (iy + %d)", var->offset);
+                    } else {
+                        snprintf(buf, sizeof(buf), "\tld hl, (iy - %d)", -var->offset);
+                    }
+                }
+            } else {
+                /* Variable not found - fallback to placeholder */
+                if (e->size == 1) {
+                    snprintf(buf, sizeof(buf), "\t; load byte from %s (not found)", e->left->symbol);
+                } else {
+                    snprintf(buf, sizeof(buf), "\t; load word from %s (not found)", e->left->symbol);
+                }
+            }
         } else {
-            snprintf(buf, sizeof(buf), "\t; load long from address");
+            /* Complex address expression - placeholder for now */
+            if (e->size == 1) {
+                snprintf(buf, sizeof(buf), "\t; load byte from address");
+            } else if (e->size == 2) {
+                snprintf(buf, sizeof(buf), "\t; load word from address");
+            } else {
+                snprintf(buf, sizeof(buf), "\t; load long from address");
+            }
         }
         e->asm_block = strdup(buf);
         break;
@@ -2894,7 +2965,18 @@ static void generate_expr(struct function_ctx *ctx, struct expr *e)
         {
             char funcname[32];
             make_binop_funcname(funcname, sizeof(funcname), "add", e);
-            snprintf(buf, sizeof(buf), "\tcall %s", funcname);
+
+            /* After left child generated (result in PRIMARY), move to SECONDARY */
+            /* Then right child generates into PRIMARY */
+            /* Binary op function expects: SECONDARY, PRIMARY -> PRIMARY */
+            char *move_inst;
+            if (e->size == 1) {
+                move_inst = "\tld e, a  ; move PRIMARY (A) to SECONDARY (E)";
+            } else {
+                move_inst = "\tex de, hl  ; move PRIMARY (HL) to SECONDARY (DE)";
+            }
+
+            snprintf(buf, sizeof(buf), "%s\n\tcall %s", move_inst, funcname);
             e->asm_block = strdup(buf);
         }
         break;
@@ -2903,7 +2985,12 @@ static void generate_expr(struct function_ctx *ctx, struct expr *e)
         {
             char funcname[32];
             make_binop_funcname(funcname, sizeof(funcname), "sub", e);
-            snprintf(buf, sizeof(buf), "\tcall %s", funcname);
+
+            char *move_inst = (e->size == 1) ?
+                "\tld e, a  ; move PRIMARY to SECONDARY" :
+                "\tex de, hl  ; move PRIMARY to SECONDARY";
+
+            snprintf(buf, sizeof(buf), "%s\n\tcall %s", move_inst, funcname);
             e->asm_block = strdup(buf);
         }
         break;
@@ -2912,7 +2999,12 @@ static void generate_expr(struct function_ctx *ctx, struct expr *e)
         {
             char funcname[32];
             make_binop_funcname(funcname, sizeof(funcname), "mul", e);
-            snprintf(buf, sizeof(buf), "\tcall %s", funcname);
+
+            char *move_inst = (e->size == 1) ?
+                "\tld e, a  ; move PRIMARY to SECONDARY" :
+                "\tex de, hl  ; move PRIMARY to SECONDARY";
+
+            snprintf(buf, sizeof(buf), "%s\n\tcall %s", move_inst, funcname);
             e->asm_block = strdup(buf);
         }
         break;
@@ -2921,7 +3013,12 @@ static void generate_expr(struct function_ctx *ctx, struct expr *e)
         {
             char funcname[32];
             make_binop_funcname(funcname, sizeof(funcname), "div", e);
-            snprintf(buf, sizeof(buf), "\tcall %s", funcname);
+
+            char *move_inst = (e->size == 1) ?
+                "\tld e, a  ; move PRIMARY to SECONDARY" :
+                "\tex de, hl  ; move PRIMARY to SECONDARY";
+
+            snprintf(buf, sizeof(buf), "%s\n\tcall %s", move_inst, funcname);
             e->asm_block = strdup(buf);
         }
         break;
@@ -2930,7 +3027,12 @@ static void generate_expr(struct function_ctx *ctx, struct expr *e)
         {
             char funcname[32];
             make_binop_funcname(funcname, sizeof(funcname), "mod", e);
-            snprintf(buf, sizeof(buf), "\tcall %s", funcname);
+
+            char *move_inst = (e->size == 1) ?
+                "\tld e, a  ; move PRIMARY to SECONDARY" :
+                "\tex de, hl  ; move PRIMARY to SECONDARY";
+
+            snprintf(buf, sizeof(buf), "%s\n\tcall %s", move_inst, funcname);
             e->asm_block = strdup(buf);
         }
         break;
@@ -2939,7 +3041,12 @@ static void generate_expr(struct function_ctx *ctx, struct expr *e)
         {
             char funcname[32];
             make_binop_funcname(funcname, sizeof(funcname), "and", e);
-            snprintf(buf, sizeof(buf), "\tcall %s", funcname);
+
+            char *move_inst = (e->size == 1) ?
+                "\tld e, a  ; move PRIMARY to SECONDARY" :
+                "\tex de, hl  ; move PRIMARY to SECONDARY";
+
+            snprintf(buf, sizeof(buf), "%s\n\tcall %s", move_inst, funcname);
             e->asm_block = strdup(buf);
         }
         break;
@@ -2948,7 +3055,12 @@ static void generate_expr(struct function_ctx *ctx, struct expr *e)
         {
             char funcname[32];
             make_binop_funcname(funcname, sizeof(funcname), "or", e);
-            snprintf(buf, sizeof(buf), "\tcall %s", funcname);
+
+            char *move_inst = (e->size == 1) ?
+                "\tld e, a  ; move PRIMARY to SECONDARY" :
+                "\tex de, hl  ; move PRIMARY to SECONDARY";
+
+            snprintf(buf, sizeof(buf), "%s\n\tcall %s", move_inst, funcname);
             e->asm_block = strdup(buf);
         }
         break;
@@ -2957,7 +3069,12 @@ static void generate_expr(struct function_ctx *ctx, struct expr *e)
         {
             char funcname[32];
             make_binop_funcname(funcname, sizeof(funcname), "xor", e);
-            snprintf(buf, sizeof(buf), "\tcall %s", funcname);
+
+            char *move_inst = (e->size == 1) ?
+                "\tld e, a  ; move PRIMARY to SECONDARY" :
+                "\tex de, hl  ; move PRIMARY to SECONDARY";
+
+            snprintf(buf, sizeof(buf), "%s\n\tcall %s", move_inst, funcname);
             e->asm_block = strdup(buf);
         }
         break;
@@ -3003,7 +3120,12 @@ static void generate_expr(struct function_ctx *ctx, struct expr *e)
         {
             char funcname[32];
             make_binop_funcname(funcname, sizeof(funcname), "shr", e);
-            snprintf(buf, sizeof(buf), "\tcall %s", funcname);
+
+            char *move_inst = (e->size == 1) ?
+                "\tld e, a  ; move PRIMARY to SECONDARY" :
+                "\tex de, hl  ; move PRIMARY to SECONDARY";
+
+            snprintf(buf, sizeof(buf), "%s\n\tcall %s", move_inst, funcname);
             e->asm_block = strdup(buf);
         }
         break;
@@ -3012,7 +3134,12 @@ static void generate_expr(struct function_ctx *ctx, struct expr *e)
         {
             char funcname[32];
             make_binop_funcname(funcname, sizeof(funcname), "gt", e);
-            snprintf(buf, sizeof(buf), "\tcall %s", funcname);
+
+            char *move_inst = (e->size == 1) ?
+                "\tld e, a  ; move PRIMARY to SECONDARY" :
+                "\tex de, hl  ; move PRIMARY to SECONDARY";
+
+            snprintf(buf, sizeof(buf), "%s\n\tcall %s", move_inst, funcname);
             e->asm_block = strdup(buf);
         }
         break;
@@ -3021,7 +3148,12 @@ static void generate_expr(struct function_ctx *ctx, struct expr *e)
         {
             char funcname[32];
             make_binop_funcname(funcname, sizeof(funcname), "lt", e);
-            snprintf(buf, sizeof(buf), "\tcall %s", funcname);
+
+            char *move_inst = (e->size == 1) ?
+                "\tld e, a  ; move PRIMARY to SECONDARY" :
+                "\tex de, hl  ; move PRIMARY to SECONDARY";
+
+            snprintf(buf, sizeof(buf), "%s\n\tcall %s", move_inst, funcname);
             e->asm_block = strdup(buf);
         }
         break;
@@ -3030,7 +3162,12 @@ static void generate_expr(struct function_ctx *ctx, struct expr *e)
         {
             char funcname[32];
             make_binop_funcname(funcname, sizeof(funcname), "ge", e);
-            snprintf(buf, sizeof(buf), "\tcall %s", funcname);
+
+            char *move_inst = (e->size == 1) ?
+                "\tld e, a  ; move PRIMARY to SECONDARY" :
+                "\tex de, hl  ; move PRIMARY to SECONDARY";
+
+            snprintf(buf, sizeof(buf), "%s\n\tcall %s", move_inst, funcname);
             e->asm_block = strdup(buf);
         }
         break;
@@ -3039,7 +3176,12 @@ static void generate_expr(struct function_ctx *ctx, struct expr *e)
         {
             char funcname[32];
             make_binop_funcname(funcname, sizeof(funcname), "le", e);
-            snprintf(buf, sizeof(buf), "\tcall %s", funcname);
+
+            char *move_inst = (e->size == 1) ?
+                "\tld e, a  ; move PRIMARY to SECONDARY" :
+                "\tex de, hl  ; move PRIMARY to SECONDARY";
+
+            snprintf(buf, sizeof(buf), "%s\n\tcall %s", move_inst, funcname);
             e->asm_block = strdup(buf);
         }
         break;
@@ -3048,7 +3190,12 @@ static void generate_expr(struct function_ctx *ctx, struct expr *e)
         {
             char funcname[32];
             make_binop_funcname(funcname, sizeof(funcname), "eq", e);
-            snprintf(buf, sizeof(buf), "\tcall %s", funcname);
+
+            char *move_inst = (e->size == 1) ?
+                "\tld e, a  ; move PRIMARY to SECONDARY" :
+                "\tex de, hl  ; move PRIMARY to SECONDARY";
+
+            snprintf(buf, sizeof(buf), "%s\n\tcall %s", move_inst, funcname);
             e->asm_block = strdup(buf);
         }
         break;
@@ -3057,7 +3204,12 @@ static void generate_expr(struct function_ctx *ctx, struct expr *e)
         {
             char funcname[32];
             make_binop_funcname(funcname, sizeof(funcname), "ne", e);
-            snprintf(buf, sizeof(buf), "\tcall %s", funcname);
+
+            char *move_inst = (e->size == 1) ?
+                "\tld e, a  ; move PRIMARY to SECONDARY" :
+                "\tex de, hl  ; move PRIMARY to SECONDARY";
+
+            snprintf(buf, sizeof(buf), "%s\n\tcall %s", move_inst, funcname);
             e->asm_block = strdup(buf);
         }
         break;
@@ -3073,8 +3225,9 @@ static void generate_expr(struct function_ctx *ctx, struct expr *e)
         break;
 
     case '$':  /* SYM - symbol reference (address) */
-        snprintf(buf, sizeof(buf), "\t; load address of %s", e->symbol ? e->symbol : "?");
-        e->asm_block = strdup(buf);
+        /* SYM nodes don't generate code directly */
+        /* Parent operations (M, =, etc.) will use the symbol information */
+        e->asm_block = strdup("");
         break;
 
     default:
@@ -3131,20 +3284,75 @@ void generate_code(struct function_ctx *ctx)
 }
 
 /*
+ * Helper: Check if operator is a binary operator that needs accumulator management
+ */
+static int
+is_binop_with_accum(unsigned char op)
+{
+    switch (op) {
+    case '+': case '-': case '*': case '/': case '%':  /* Arithmetic */
+    case '&': case '|': case '^': case 'w':            /* Bitwise (w=RSHIFT) */
+    case '>': case '<': case 'g': case 'L':            /* Comparisons */
+    case 'Q': case 'n':                                /* Equality */
+        return 1;
+    default:
+        return 0;
+    }
+}
+
+/*
  * Emission phase (Phase 3)
  * Walk expression tree, emit assembly, and free nodes
+ *
+ * Binary operators need special handling to emit accumulator move between children:
+ *   1. Emit left child (result in PRIMARY)
+ *   2. Emit move instruction (PRIMARY to SECONDARY)
+ *   3. Emit right child (result in PRIMARY)
+ *   4. Emit call instruction (operates on SECONDARY and PRIMARY)
  */
 static void emit_expr(struct expr *e)
 {
     if (!e) return;
 
-    /* Emit children first (postorder traversal) */
-    if (e->left) emit_expr(e->left);
-    if (e->right) emit_expr(e->right);
+    /* Binary operators with accumulator management need special handling */
+    if (is_binop_with_accum(e->op) && e->left && e->right && e->asm_block) {
+        /* Split asm_block into move instruction and call instruction */
+        char *move_inst = NULL;
+        char *call_inst = NULL;
+        char *newline = strchr(e->asm_block, '\n');
 
-    /* Emit assembly block for this node */
-    if (e->asm_block) {
-        fdprintf(out_fd, "%s\n", e->asm_block);
+        if (newline) {
+            /* Extract move instruction (before newline) */
+            size_t move_len = newline - e->asm_block;
+            move_inst = malloc(move_len + 1);
+            if (move_inst) {
+                memcpy(move_inst, e->asm_block, move_len);
+                move_inst[move_len] = '\0';
+            }
+
+            /* Extract call instruction (after newline) */
+            call_inst = strdup(newline + 1);
+        }
+
+        /* Emit in correct order for accumulator management */
+        emit_expr(e->left);                           /* 1. Left operand to PRIMARY */
+        if (move_inst) {
+            fdprintf(out_fd, "%s\n", move_inst);       /* 2. Move PRIMARY to SECONDARY */
+            free(move_inst);
+        }
+        emit_expr(e->right);                          /* 3. Right operand to PRIMARY */
+        if (call_inst) {
+            fdprintf(out_fd, "%s\n", call_inst);       /* 4. Call binary operation */
+            free(call_inst);
+        }
+    } else {
+        /* Normal postorder traversal for other operators */
+        if (e->left) emit_expr(e->left);
+        if (e->right) emit_expr(e->right);
+
+        if (e->asm_block) {
+            fdprintf(out_fd, "%s\n", e->asm_block);
+        }
     }
 
     /* Free this node (children already freed by recursive emit calls above) */
