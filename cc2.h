@@ -9,6 +9,25 @@
 #include <string.h>
 
 /*
+ * Register allocation enumeration
+ * Tracks which Z80 register (if any) a variable is allocated to
+ */
+enum register_id {
+    REG_NO = 0,     /* Not allocated to a register */
+
+    /* Byte registers (4 available) */
+    REG_B,          /* B register */
+    REG_C,          /* C register */
+    REG_Bp,         /* B' (alternate) register */
+    REG_Cp,         /* C' (alternate) register */
+
+    /* Word registers (3 available) */
+    REG_BC,         /* BC register pair */
+    REG_BCp,        /* BC' (alternate) register pair */
+    REG_IX          /* IX index register (preferred for struct pointers) */
+};
+
+/*
  * Expression flags
  */
 #define E_UNSIGNED  0x01        // Value is unsigned
@@ -69,6 +88,7 @@ struct local_var {
     int last_label;             // Last label where variable is used (high water mark)
     int ref_count;              // Number of times variable is referenced
     int agg_refs;               // Number of struct/array member accesses (for IX allocation)
+    enum register_id reg;       // Allocated register (REG_NO if on stack)
     struct local_var *next;     // Next in linked list
 };
 

@@ -2388,6 +2388,7 @@ add_param(struct function_ctx *ctx, const char *name, unsigned char size, int of
     var->last_label = -1;   /* Not used yet */
     var->ref_count = 0;     /* Not referenced yet */
     var->agg_refs = 0;      /* No aggregate member accesses yet */
+    var->reg = REG_NO;      /* Not allocated to register yet */
     var->next = ctx->locals;
 
     ctx->locals = var;
@@ -2417,6 +2418,7 @@ add_local_var(struct function_ctx *ctx, const char *name, unsigned char size)
     var->last_label = -1;   /* Not used yet */
     var->ref_count = 0;     /* Not referenced yet */
     var->agg_refs = 0;      /* No aggregate member accesses yet */
+    var->reg = REG_NO;      /* Not allocated to register yet */
     var->next = ctx->locals;
 
     ctx->locals = var;
