@@ -101,8 +101,9 @@ selfcheck: cc1
 	@echo "Testing compiler on its own sources (full pipeline: cpp + parse)..."
 	@for f in $(CFILES); do \
 	  if [ -f "$$f" ]; then \
+	    b=$$(basename $$f .c) ; \
 	    printf "%-30s" "$$f: "; \
-	    timeout 10 ./cc1 -DCCC -i./include -I. -E -o /tmp/$$f.ast "$$f" 2>/dev/null; \
+	    timeout 10 ./cc1 -DCCC -i./include -I. -E -o $$b.ast "$$f" >/dev/null 2>&1 ; \
 	    ret=$$?; \
 	    if [ $$ret -eq 124 ]; then \
 	      echo "FAIL (timeout)"; \
@@ -110,8 +111,8 @@ selfcheck: cc1
 	      echo "FAIL (parse error)"; \
 	    else \
 	      echo "PASS"; \
+	      rm -f $$b.ast; \
 	    fi; \
-	    rm -f /tmp/$$f.ast; \
 	  fi; \
 	done
 
@@ -120,15 +121,16 @@ fullcheck: cc1 cc2
 	@echo "Testing compiler on its own sources (complete pipeline: cpp + parse + codegen)..."
 	@for f in $(CFILES); do \
 	  if [ -f "$$f" ]; then \
+	    b=$$(basename $$f .c) ; \
 	    printf "%-30s" "$$f: "; \
-	    timeout 10 ./cc1 -DCCC -i./include -I. -E -o /tmp/$$f.ast "$$f" 2>/dev/null; \
+	    timeout 10 ./cc1 -DCCC -i./include -I. -E -o $$b.ast "$$f" >/dev/null 2>&1 ; \
 	    ret1=$$?; \
 	    if [ $$ret1 -eq 124 ]; then \
 	      echo "FAIL (parse timeout)"; \
 	    elif [ $$ret1 -ne 0 ]; then \
 	      echo "FAIL (parse error)"; \
 	    else \
-	      timeout 10 ./cc2 /tmp/$$f.ast > /dev/null 2>&1; \
+	      timeout 10 ./cc2 $$b.ast >/dev/null 2>&1 ; \
 	      ret2=$$?; \
 	      if [ $$ret2 -eq 124 ]; then \
 	        echo "FAIL (codegen timeout)"; \
@@ -136,9 +138,9 @@ fullcheck: cc1 cc2
 	        echo "FAIL (codegen error)"; \
 	      else \
 	        echo "PASS"; \
+	        rm -f $$b.ast $$b.s; \
 	      fi; \
 	    fi; \
-	    rm -f /tmp/$$f.ast; \
 	  fi; \
 	done
 
@@ -203,8 +205,8 @@ doc.pdf: $(SOURCES) $(DOCFILES) Makefile
 	  enscript -2rG -p - Makefile $(CFILES) $(HFILES); } | ps2pdf - doc.pdf
 
 clean:
-	rm -f $(CC1OBJECTS) cc2.o ccc.o $(GENERATED) tests/*.i *.ast \
-		*.asm *.lst *.sym *.map *.cdb *.ihx *.i *.ast
+	rm -f $(CC1OBJECTS) cc2.o ccc.o $(GENERATED) tests/*.i *.ast *.s \
+		*.asm *.lst *.sym *.map *.cdb *.ihx *.i
 	$(MAKE) -C unit_test clean
 
 clobber: clean

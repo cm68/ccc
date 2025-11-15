@@ -187,7 +187,8 @@ MISC_TESTS = \
 	ptest.c \
 	stat.c \
 	init_var.c \
-	init_var2.c
+	init_var2.c \
+	test_interp.c
 
 # All tests combined
 ALL_TESTS = \

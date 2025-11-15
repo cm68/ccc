@@ -1172,7 +1172,7 @@ handle_block(void)
     struct stmt *last_child = NULL;
     struct stmt *child;
 
-    fdprintf(2, "BLOCK {\n");
+    fdprintf(2, "BLOCK { ");
 
     skip();
     while (curchar != ')') {
@@ -1180,10 +1180,13 @@ handle_block(void)
         skip();
         if (curchar == '(') {
             nextchar();
-            skip();
-            if (curchar == 'd') {
+            /* Don't call skip() yet - need to read operator first to avoid ';' being treated as comment */
+            char op = curchar;  /* Read operator immediately after '(' */
+            nextchar();  /* Consume operator */
+            skip();      /* Now safe to skip whitespace */
+
+            if (op == 'd') {
                 /* Declaration */
-                nextchar();
                 char *name = read_symbol();
                 char *type = read_type();
                 fdprintf(2, "  DECL %s %s\n", name, type);
@@ -1196,8 +1199,6 @@ handle_block(void)
                 expect(')');
             } else {
                 /* Statement - dispatch based on operator */
-                char op = curchar;
-                nextchar();
 
                 switch (op) {
                 case 'B':  /* Block */
@@ -1243,6 +1244,16 @@ handle_block(void)
                 case 'O':  /* Default (inside switch body) */
                     /* Default statements only valid inside switch, but may appear in block */
                     child = handle_default_in_block();
+                    break;
+                case 'K':  /* Break */
+                    fdprintf(2, "BREAK");
+                    child = new_stmt('K');
+                    expect(')');
+                    break;
+                case 'N':  /* Continue */
+                    fdprintf(2, "CONTINUE");
+                    child = new_stmt('N');
+                    expect(')');
                     break;
                 default:
                     fdprintf(2, "parseast: line %d: unknown stmt op '%c' in block\n", line_num, op);
@@ -1650,7 +1661,12 @@ handle_switch(void)
                 }
                 expect(')');
             } else if (clause_type == 'R' || clause_type == 'G' ||
-                       clause_type == 'B' || clause_type == 'E') {
+                       clause_type == 'B' || clause_type == 'E' ||
+                       clause_type == 'I' || clause_type == 'W' ||
+                       clause_type == 'D' || clause_type == 'F' ||
+                       clause_type == 'L' || clause_type == 'A' ||
+                       clause_type == 'K' || clause_type == 'N' ||
+                       clause_type == ';') {
                 /* Statements inside switch body (between cases) */
                 /* Back up - we need to reparse this as a statement */
                 /* Unfortunately we already consumed the '(' and type char */
@@ -1665,12 +1681,34 @@ handle_switch(void)
                     fdprintf(2, "GOTO %s", child->symbol);
                     expect(')');
                 } else if (clause_type == 'B') {
+                    /* BLOCK statement */
+                    child = handle_block();
+                } else if (clause_type == 'K') {
                     /* BREAK statement */
                     fdprintf(2, "BREAK");
-                    child = new_stmt('B');
+                    child = new_stmt('K');
                     expect(')');
                 } else if (clause_type == 'E') {
                     child = handle_expr_stmt();
+                } else if (clause_type == 'I') {
+                    child = handle_if();
+                } else if (clause_type == 'W') {
+                    child = handle_while();
+                } else if (clause_type == 'D') {
+                    child = handle_do();
+                } else if (clause_type == 'F') {
+                    child = handle_for();
+                } else if (clause_type == 'L') {
+                    child = handle_label();
+                } else if (clause_type == 'A') {
+                    child = handle_asm();
+                } else if (clause_type == 'N') {
+                    /* CONTINUE statement */
+                    fdprintf(2, "CONTINUE");
+                    child = new_stmt('N');
+                    expect(')');
+                } else if (clause_type == ';') {
+                    child = handle_empty_stmt();
                 } else {
                     child = NULL;
                 }
@@ -2034,6 +2072,7 @@ init_expr_handlers(void)
     expr_handlers[0xfe] = handle_compound_assign; /* MODEQ %= */
     expr_handlers[0xc6] = handle_compound_assign; /* ANDEQ &= */
     expr_handlers['1'] = handle_compound_assign;  /* OREQ |= */
+    expr_handlers['X'] = handle_compound_assign;  /* XOREQ ^= */
     expr_handlers['0'] = handle_compound_assign;  /* LSHIFTEQ <<= */
     expr_handlers['6'] = handle_compound_assign;  /* RSHIFTEQ >>= */
 
@@ -2046,7 +2085,7 @@ init_expr_handlers(void)
     /* Type conversion operators */
     expr_handlers['N'] = handle_unary_op;  /* NARROW */
     expr_handlers['W'] = handle_unary_op;  /* WIDEN */
-    expr_handlers['X'] = handle_unary_op;  /* SEXT (also XOREQ, but context differs) */
+    expr_handlers[0xab] = handle_unary_op;  /* SEXT (sign extend) */
 
     /* Increment/decrement */
     expr_handlers[0xcf] = handle_unary_op; /* PREINC */

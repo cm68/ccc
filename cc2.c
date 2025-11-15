@@ -9,6 +9,8 @@
 #include <sys/stat.h>
 #include <signal.h>
 
+#define	MAXTIME	30  /* 30 second timeout for debugging */
+
 /* Forward declaration from util.c */
 int fdprintf(int fd, const char *fmt, ...);
 
@@ -23,7 +25,7 @@ char *progname;
 void
 timeout_handler(int sig)
 {
-    fdprintf(2, "\n\n*** TIMEOUT after 5 seconds ***\n");
+    fdprintf(2, "\n\n*** TIMEOUT after %d seconds ***\n", MAXTIME);
     fdprintf(2, "cc2: code generation took too long (possible infinite loop)\n");
     exit(1);
 }
@@ -42,37 +44,30 @@ usage(char *complaint)
 
 /*
  * Generate output filename from input filename
- * Changes .ast extension to .s, or appends .s if no extension
+ * Strips .ast extension and appends .s (preserves full path)
+ * Example: /tmp/foo.c.ast -> /tmp/foo.c.s
  */
 char *
 make_output_name(char *input_file)
 {
-    char *basename_start;
-    char *dot;
     char *output;
     int len;
 
-    /* Find basename (skip directory path) */
-    basename_start = strrchr(input_file, '/');
-    if (basename_start) {
-        basename_start++;  /* skip the slash */
-    } else {
-        basename_start = input_file;
-    }
+    len = strlen(input_file);
 
-    /* Find extension */
-    dot = strrchr(basename_start, '.');
-    if (dot) {
-        len = dot - basename_start;
+    /* Check if file ends with ".ast" */
+    if (len >= 4 && strcmp(input_file + len - 4, ".ast") == 0) {
+        /* Strip .ast and append .s */
+        output = malloc(len - 4 + 2 + 1);  /* -4 for .ast, +2 for .s, +1 for null */
+        strncpy(output, input_file, len - 4);
+        output[len - 4] = '\0';
+        strcat(output, ".s");
     } else {
-        len = strlen(basename_start);
+        /* Just append .s */
+        output = malloc(len + 2 + 1);  /* +2 for .s, +1 for null */
+        strcpy(output, input_file);
+        strcat(output, ".s");
     }
-
-    /* Allocate space for basename + ".s" + null */
-    output = malloc(len + 3);
-    strncpy(output, basename_start, len);
-    output[len] = '\0';
-    strcat(output, ".s");
 
     return output;
 }
@@ -91,7 +86,7 @@ main(int argc, char **argv)
 
     /* Set up timeout handler to catch infinite loops */
     signal(SIGALRM, timeout_handler);
-    alarm(5);  /* 5 second timeout */
+    alarm(MAXTIME);
 
     /* Parse arguments */
     while (argc > 0) {

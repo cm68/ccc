@@ -863,6 +863,19 @@ Tests run with:
 
 Pass 1 (cc1) is complete with all major C language features implemented: full preprocessor, type system, expression parsing, statement parsing, and AST emission. The compiler is self-hosting (parses all 18 of its own source files) and passes all 134 tests.
 
+**Pass 2 (cc2) - In Development**:
+- AST parser (parseast.c) implemented with critical bug fixes:
+  - Fixed operator parsing in handle_block() to prevent semicolon consumption
+  - Fixed BREAK statement handling (changed from 'B' to 'K')
+  - Fixed XOREQ vs SEXT operator conflict (XOREQ='X', SEXT=0xab)
+  - Added Break/Continue statement support in blocks and switches
+  - Expanded switch statement handling for nested control flow
+- Output file generation: strips .ast extension and appends .s, preserves directory paths
+- Build system improvements:
+  - selfcheck and fullcheck targets output to current directory
+  - Preserve .ast and .s files on test failures for debugging
+  - Clean target removes .ast and .s files
+
 ### Code Style
 
 - Minimize code size, even at some cost to clarity
