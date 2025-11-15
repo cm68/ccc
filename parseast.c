@@ -157,6 +157,78 @@ get_size_from_typename(const char *typename)
 }
 
 /*
+ * Check if a value is a power of 2 and return the shift amount
+ * Returns: shift amount (0-31) if power of 2, -1 otherwise
+ * Examples: 1->0, 2->1, 4->2, 8->3, 16->4, etc.
+ */
+static int
+is_power_of_2(long value)
+{
+    int shift;
+
+    /* Must be positive */
+    if (value <= 0) {
+        return -1;
+    }
+
+    /* Check if exactly one bit is set */
+    if ((value & (value - 1)) != 0) {
+        return -1;  /* Not a power of 2 */
+    }
+
+    /* Count trailing zeros to get shift amount */
+    shift = 0;
+    while ((value & 1) == 0) {
+        value >>= 1;
+        shift++;
+    }
+
+    return shift;
+}
+
+/*
+ * Recognize multiplication by constant power of 2: (* <expr> <const>)
+ * This pattern can be strength-reduced to left shift: (<< <expr> <shift_amount>)
+ *
+ * Pattern breakdown:
+ *   - *: multiply operator
+ *   - left: any expression
+ *   - right: constant that is a power of 2
+ *
+ * Returns: shift amount (0-31) if pattern matches and constant is power of 2
+ *          -1 if pattern doesn't match or constant is not power of 2
+ * If matches, optionally fills out_expr with the expression to be shifted
+ */
+int
+is_multiply_by_power_of_2(struct expr *e, struct expr **out_expr)
+{
+    int shift;
+
+    /* Check multiply operator */
+    if (!e || e->op != '*') {
+        return -1;
+    }
+
+    /* Check right operand is constant */
+    if (!e->right || e->right->op != 'C') {
+        return -1;
+    }
+
+    /* Check if constant is power of 2 */
+    shift = is_power_of_2(e->right->value);
+    if (shift < 0) {
+        return -1;
+    }
+
+    /* Pattern matches - extract expression if requested */
+    if (out_expr) {
+        *out_expr = e->left;
+    }
+
+    return shift;
+}
+
+/*
  * Recognize structure member access pattern: (M (+ (M:p <var>) <const>))
  * This pattern represents: *((struct_ptr) + offset)
  *

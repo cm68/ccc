@@ -121,6 +121,7 @@ unsigned char get_signedness_from_type_str(const char *type_str);
 
 /* Pattern recognizers */
 int is_struct_member_access(struct expr *e, char **out_var, long *out_offset);
+int is_multiply_by_power_of_2(struct expr *e, struct expr **out_expr);
 
 /* Code generation functions */
 void generate_code(struct function_ctx *ctx);
