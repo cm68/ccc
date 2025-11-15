@@ -573,13 +573,10 @@ handle_compound_assign(unsigned char op)
         e->flags = get_signedness_from_type_str(e->type_str);
     }
 
-    fdprintf(2, "COMP_ASSIGN_%02x:%c (", op, width);
     skip();
     e->left = parse_expr();  /* lvalue */
-    fdprintf(2, ", ");
     skip();
     e->right = parse_expr();  /* rvalue */
-    fdprintf(2, ")");
     expect(')');
 
     return e;
@@ -773,13 +770,10 @@ handle_bfassign(unsigned char op)
     /* Store offset and width in value field (pack into long) */
     e->value = (offset << 16) | width;
 
-    fdprintf(2, "BFASSIGN<%d:%d> (", offset, width);
     skip();
     e->left = parse_expr();  /* address */
-    fdprintf(2, ", ");
     skip();
     e->right = parse_expr();  /* value */
-    fdprintf(2, ")");
     expect(')');
     return e;
 }
@@ -857,13 +851,10 @@ handle_assign(void)
         e->flags = get_signedness_from_type_str(e->type_str);
     }
 
-    fdprintf(2, "ASSIGN:%c (", width);
     skip();
     e->left = parse_expr();  /* lvalue */
-    fdprintf(2, ", ");
     skip();
     e->right = parse_expr();  /* rvalue */
-    fdprintf(2, ")");
     expect(')');
     return e;
 }

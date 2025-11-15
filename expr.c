@@ -270,7 +270,7 @@ parse_expr(unsigned char pri, struct stmt *st)
 
     case BANG:      // logical not
         gettoken();
-        e = makeexpr(NOT, parse_expr(OP_PRI_MULT - 1, st));
+        e = makeexpr(BANG, parse_expr(OP_PRI_MULT - 1, st));
         if (e->left) {
             unop_set(e);
         }
@@ -675,12 +675,14 @@ parse_expr(unsigned char pri, struct stmt *st)
         if (is_assignment) {
             if (e && e->op == DEREF) {
 #ifdef DEBUG
-                if (e->type) {
-                    fdprintf(2, "ASSIGN: unwrapping DEREF, type=%p (flags=0x%x, size=%d)\n",
-                            e->type, e->type->flags, e->type->size);
-                    if (e->type->sub) {
-                        fdprintf(2, "        sub=%p (flags=0x%x, size=%d)\n",
-                                e->type->sub, e->type->sub->flags, e->type->sub->size);
+                if (VERBOSE(V_ASSIGN)) {
+                    if (e->type) {
+                        fdprintf(2, "ASSIGN: unwrapping DEREF, type=%p (flags=0x%x, size=%d)\n",
+                                e->type, e->type->flags, e->type->size);
+                        if (e->type->sub) {
+                            fdprintf(2, "        sub=%p (flags=0x%x, size=%d)\n",
+                                    e->type->sub, e->type->sub->flags, e->type->sub->size);
+                        }
                     }
                 }
 #endif
@@ -960,7 +962,7 @@ cfold(struct expr *e)
             e->v = val;
         }
         return e;
-    case NOT:
+    case BANG:
         if (e->left->op == CONST) {
             val = e->left->v ? 0 : 1;
             e = xreplace(e, e->left);
