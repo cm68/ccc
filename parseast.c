@@ -2491,6 +2491,16 @@ make_binop_funcname(char *buf, size_t bufsize, const char *opname,
 /*
  * Helper: Add a parameter to the function context
  * Parameters have positive offsets (above frame pointer)
+ *
+ * Parameters are eligible for register allocation. If allocated to a register,
+ * the function prologue will load the parameter from the stack into the register.
+ *
+ * Z80 byte parameter stack layout:
+ *   - Byte parameters are pushed using "push AF"
+ *   - A register contains the data (high byte of the word)
+ *   - F register contains flags (low byte of the word)
+ *   - On stack: [flags at offset+0, data at offset+1]
+ *   - Data is at the HIGHER address within the pushed word
  */
 static void
 add_param(struct function_ctx *ctx, const char *name, unsigned char size, int offset)
@@ -2621,8 +2631,21 @@ walk_for_locals(struct function_ctx *ctx, struct stmt *s)
 }
 
 /*
- * Phase 2.5: Allocate registers to local variables based on usage patterns
+ * Phase 2.5: Allocate registers to local variables and parameters
  * Called after code generation (Phase 2) which computes ref_count, agg_refs, lifetimes
+ *
+ * Both function parameters and local variables are candidates for register allocation.
+ * Parameters start on the stack (passed by caller) but can be loaded into registers
+ * in the function prologue for efficiency.
+ *
+ * Allocation priority:
+ *   1. IX register: allocated to struct pointers with aggregate member accesses
+ *   2. Byte/word registers: allocated by reference count (most frequently used first)
+ *
+ * Variables excluded from register allocation:
+ *   - Arrays (must remain on stack)
+ *   - Unused variables (ref_count == 0)
+ *   - Variables whose address is taken (future enhancement)
  */
 static void
 allocate_registers(struct function_ctx *ctx)
