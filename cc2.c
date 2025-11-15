@@ -29,6 +29,16 @@
  *   - Variables whose address is taken (&var) cannot be allocated to registers
  *   - These variables must reside in memory (stack frame or global data section)
  *   - Includes variables passed by reference to functions
+ *
+ * Register Allocation Process:
+ *   1. During parsing, track for each local variable:
+ *      - Address-taken flag (disqualifies from register allocation)
+ *      - Static reference count (prioritize frequently-used variables)
+ *      - Approximate lifetime (scope where variable is live)
+ *   2. After function parse completes, select register candidates:
+ *      - Exclude address-taken variables
+ *      - Prioritize by reference count
+ *      - Allocate to available register set based on type (byte/word)
  */
 #include <stdlib.h>
 #include <string.h>
