@@ -98,6 +98,9 @@ void free_stmt(struct stmt *s);
 unsigned char get_size_from_type_str(const char *type_str);
 unsigned char get_signedness_from_type_str(const char *type_str);
 
+/* Pattern recognizers */
+int is_struct_member_access(struct expr *e, char **out_var, long *out_offset);
+
 /* Code generation functions */
 void generate_code(struct function_ctx *ctx);
 void emit_assembly(struct function_ctx *ctx, int out_fd);

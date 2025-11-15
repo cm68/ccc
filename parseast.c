@@ -157,6 +157,65 @@ get_size_from_typename(const char *typename)
 }
 
 /*
+ * Recognize structure member access pattern: (M (+ (M:p <var>) <const>))
+ * This pattern represents: *((struct_ptr) + offset)
+ *
+ * Pattern breakdown:
+ *   - Outer M: dereference to get member value
+ *   - +: pointer arithmetic (base + offset)
+ *   - Inner M:p: load pointer-sized struct base address from variable
+ *   - const: member offset within struct
+ *
+ * Returns: 1 if pattern matches, 0 otherwise
+ * If matches, optionally fills out_var and out_offset with extracted values
+ */
+int
+is_struct_member_access(struct expr *e, char **out_var, long *out_offset)
+{
+    /* Check outer M (dereference) */
+    if (!e || e->op != 'M') {
+        return 0;
+    }
+
+    /* Check + (addition) */
+    struct expr *add = e->left;
+    if (!add || add->op != '+') {
+        return 0;
+    }
+
+    /* Check inner M:p (pointer dereference) */
+    struct expr *ptr_load = add->left;
+    if (!ptr_load || ptr_load->op != 'M') {
+        return 0;
+    }
+    if (!ptr_load->type_str || strcmp(ptr_load->type_str, ":p") != 0) {
+        return 0;
+    }
+
+    /* Check variable reference */
+    struct expr *var = ptr_load->left;
+    if (!var || var->op != '$' || !var->symbol) {
+        return 0;
+    }
+
+    /* Check constant offset */
+    struct expr *offset = add->right;
+    if (!offset || offset->op != '0') {  /* '0' is CONST operator */
+        return 0;
+    }
+
+    /* Pattern matches - extract values if requested */
+    if (out_var) {
+        *out_var = var->symbol;
+    }
+    if (out_offset) {
+        *out_offset = offset->value;
+    }
+
+    return 1;
+}
+
+/*
  * Create an ASM statement node for a label
  * Label format: "label_name:\n"
  */
