@@ -68,6 +68,7 @@ struct local_var {
     int first_label;            // First label where variable is used (-1 if unused)
     int last_label;             // Last label where variable is used (high water mark)
     int ref_count;              // Number of times variable is referenced
+    int agg_refs;               // Number of struct/array member accesses (for IX allocation)
     struct local_var *next;     // Next in linked list
 };
 

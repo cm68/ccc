@@ -200,7 +200,7 @@ is_struct_member_access(struct expr *e, char **out_var, long *out_offset)
 
     /* Check constant offset */
     struct expr *offset = add->right;
-    if (!offset || offset->op != '0') {  /* '0' is CONST operator */
+    if (!offset || offset->op != 'C') {  /* 'C' is CONST operator */
         return 0;
     }
 
@@ -1832,10 +1832,10 @@ emit_function_prologue(char *name, char *params, char *rettype, int frame_size,
         for (var = locals; var; var = var->next) {
             fdprintf(out_fd, ";   %s: ", var->name);
             if (var->first_label == -1) {
-                fdprintf(out_fd, "unused (0 refs)\n");
+                fdprintf(out_fd, "unused (0 refs, 0 agg_refs)\n");
             } else {
-                fdprintf(out_fd, "labels %d-%d (%d refs)\n",
-                         var->first_label, var->last_label, var->ref_count);
+                fdprintf(out_fd, "labels %d-%d (%d refs, %d agg_refs)\n",
+                         var->first_label, var->last_label, var->ref_count, var->agg_refs);
             }
         }
     }
@@ -2387,6 +2387,7 @@ add_param(struct function_ctx *ctx, const char *name, unsigned char size, int of
     var->first_label = -1;  /* Not used yet */
     var->last_label = -1;   /* Not used yet */
     var->ref_count = 0;     /* Not referenced yet */
+    var->agg_refs = 0;      /* No aggregate member accesses yet */
     var->next = ctx->locals;
 
     ctx->locals = var;
@@ -2415,6 +2416,7 @@ add_local_var(struct function_ctx *ctx, const char *name, unsigned char size)
     var->first_label = -1;  /* Not used yet */
     var->last_label = -1;   /* Not used yet */
     var->ref_count = 0;     /* Not referenced yet */
+    var->agg_refs = 0;      /* No aggregate member accesses yet */
     var->next = ctx->locals;
 
     ctx->locals = var;
@@ -2590,6 +2592,31 @@ static void generate_expr(struct function_ctx *ctx, struct expr *e)
         break;
 
     case 'M':  /* DEREF - load from memory */
+        /* Check if this is a struct member access: (M (+ (M:p <var>) <const>)) */
+        {
+            char *var_symbol = NULL;
+            long offset = 0;
+            if (is_struct_member_access(e, &var_symbol, &offset)) {
+                /* Extract variable name (skip $ and A prefixes) */
+                const char *var_name = var_symbol;
+                if (var_name && var_name[0] == '$') {
+                    var_name++;  /* Skip $ prefix */
+                }
+                if (var_name && var_name[0] == 'A') {
+                    var_name++;  /* Skip A prefix for arguments */
+                }
+                /* Increment aggregate reference count for this variable */
+                if (var_name) {
+                    struct local_var *var;
+                    for (var = ctx->locals; var; var = var->next) {
+                        if (strcmp(var->name, var_name) == 0) {
+                            var->agg_refs++;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
         if (e->size == 1) {
             snprintf(buf, sizeof(buf), "\t; load byte from address");
         } else if (e->size == 2) {
