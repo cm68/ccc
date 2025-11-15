@@ -76,7 +76,7 @@ $(CC1OBJECTS): $(HFILES)
 
 # Suffix rule to generate .ast files from .c files
 %.ast: %.c cc1
-	./cc1 -DCCC -i./include -I. -E $< > $@ 2>&1
+	./cc1 -DCCC -i./include -I. -E -o $@ $<
 
 .PHONY: test tests valgrind
 test: cc1 tests/runtest.sh
@@ -102,7 +102,7 @@ selfcheck: cc1
 	@for f in $(CFILES); do \
 	  if [ -f "$$f" ]; then \
 	    printf "%-30s" "$$f: "; \
-	    timeout 10 ./cc1 -DCCC -i./include -I. -E "$$f" > /dev/null 2>&1; \
+	    timeout 10 ./cc1 -DCCC -i./include -I. -E -o /tmp/$$f.ast "$$f" 2>/dev/null; \
 	    ret=$$?; \
 	    if [ $$ret -eq 124 ]; then \
 	      echo "FAIL (timeout)"; \
@@ -111,6 +111,7 @@ selfcheck: cc1
 	    else \
 	      echo "PASS"; \
 	    fi; \
+	    rm -f /tmp/$$f.ast; \
 	  fi; \
 	done
 
@@ -120,7 +121,7 @@ fullcheck: cc1 cc2
 	@for f in $(CFILES); do \
 	  if [ -f "$$f" ]; then \
 	    printf "%-30s" "$$f: "; \
-	    timeout 10 ./cc1 -DCCC -i./include -I. -E "$$f" > /tmp/$$f.ast 2>&1; \
+	    timeout 10 ./cc1 -DCCC -i./include -I. -E -o /tmp/$$f.ast "$$f" 2>/dev/null; \
 	    ret1=$$?; \
 	    if [ $$ret1 -eq 124 ]; then \
 	      echo "FAIL (parse timeout)"; \
@@ -202,8 +203,8 @@ doc.pdf: $(SOURCES) $(DOCFILES) Makefile
 	  enscript -2rG -p - Makefile $(CFILES) $(HFILES); } | ps2pdf - doc.pdf
 
 clean:
-	rm -f $(CC1OBJECTS) cc2.o ccc.o $(GENERATED) tests/*.i *.ast.* \
-		*.asm *.lst *.sym *.map *.cdb *.ihx *.i
+	rm -f $(CC1OBJECTS) cc2.o ccc.o $(GENERATED) tests/*.i *.ast \
+		*.asm *.lst *.sym *.map *.cdb *.ihx *.i *.ast
 	$(MAKE) -C unit_test clean
 
 clobber: clean
