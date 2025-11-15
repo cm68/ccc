@@ -468,7 +468,7 @@
 
 (defun preprocess-ast-file (filename)
   "Read and preprocess AST file, handling special characters"
-  (let ((text (with-open-file (stream filename)
+  (let ((text (with-open-file (stream filename :external-format :latin-1)
                 (let ((content (make-string (file-length stream))))
                   (read-sequence content stream)
                   content))))
