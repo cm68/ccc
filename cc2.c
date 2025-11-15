@@ -1,6 +1,29 @@
 /*
  * cc2 - Second pass of ccc compiler
- * Code generation stub
+ * Code generation for Z80 target
+ *
+ * Z80 Register Allocation Strategy:
+ *
+ * Frame Pointer:
+ *   IY - frame pointer for local variables and parameters
+ *
+ * Register Variables (available for allocation):
+ *   Byte registers:  B, C, B', C' (4 byte registers)
+ *   Word registers:  BC, BC', IX (3 word registers)
+ *
+ * Primary Accumulator (expression evaluation):
+ *   Byte:  A
+ *   Word:  HL
+ *   Long:  HL' (extended to alternate register set)
+ *
+ * Secondary Accumulator (expression evaluation):
+ *   Byte:  E
+ *   Word:  DE
+ *   Long:  DE' (extended to alternate register set)
+ *
+ * Total available:
+ *   6 byte registers (4 register variables + A primary + E secondary)
+ *   5 word registers (3 register variables + HL primary + DE secondary)
  */
 #include <stdlib.h>
 #include <string.h>
