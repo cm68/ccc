@@ -2701,10 +2701,18 @@ allocate_registers(struct function_ctx *ctx)
             fdprintf(2, "  Allocated byte reg to %s (refs=%d)\n",
                      var->name, var->ref_count);
         }
-        /* Allocate word registers (BC, BC') - IX already allocated above */
-        else if (var->size == 2 && word_regs_used < 2) {
-            enum register_id regs[] = {REG_BC, REG_BCp};
+        /* Allocate word registers (BC, BC', and IX if not used for struct pointer) */
+        else if (var->size == 2 && word_regs_used < 3) {
+            enum register_id regs[] = {REG_BC, REG_BCp, REG_IX};
+            /* If IX already allocated to struct pointer, skip it */
+            if (word_regs_used == 2 && ix_allocated) {
+                /* No more registers available */
+                continue;
+            }
             var->reg = regs[word_regs_used];
+            if (var->reg == REG_IX) {
+                ix_allocated = 1;
+            }
             word_regs_used++;
             fdprintf(2, "  Allocated word reg to %s (refs=%d)\n",
                      var->name, var->ref_count);
