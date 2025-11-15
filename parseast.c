@@ -1232,8 +1232,8 @@ static void assign_frame_offsets(struct function_ctx *ctx);
 static void allocate_registers(struct function_ctx *ctx);
 static void generate_expr(struct function_ctx *ctx, struct expr *e);
 static void generate_stmt(struct function_ctx *ctx, struct stmt *s);
-static void emit_expr(struct expr *e);
-static void emit_stmt(struct stmt *s);
+static void emit_expr(struct function_ctx *ctx, struct expr *e);
+static void emit_stmt(struct function_ctx *ctx, struct stmt *s);
 
 /* Helper functions for creating ASM nodes */
 static struct stmt *create_label_asm(const char *label_name);
@@ -2963,14 +2963,9 @@ static void generate_expr(struct function_ctx *ctx, struct expr *e)
         break;
 
     case '=':  /* ASSIGN - store to memory */
-        if (e->size == 1) {
-            snprintf(buf, sizeof(buf), "\t; store byte to address");
-        } else if (e->size == 2) {
-            snprintf(buf, sizeof(buf), "\t; store word to address");
-        } else {
-            snprintf(buf, sizeof(buf), "\t; store long to address");
-        }
-        e->asm_block = strdup(buf);
+        /* Register allocation happens later, so defer actual instruction to emit phase */
+        /* Just mark this as an assignment - emit_expr will handle register vs stack */
+        e->asm_block = strdup("\t; ASSIGN_PLACEHOLDER");
         break;
 
     case '+':  /* ADD */
@@ -3339,13 +3334,69 @@ is_binop_with_accum(unsigned char op)
  *   2. Emit move instruction (PRIMARY to SECONDARY)
  *   3. Emit right child (result in PRIMARY)
  *   4. Emit call instruction (operates on SECONDARY and PRIMARY)
+ *
+ * Assignment operators need register information from context.
  */
-static void emit_expr(struct expr *e)
+static void emit_expr(struct function_ctx *ctx, struct expr *e)
 {
     if (!e) return;
 
+    /* Handle ASSIGN specially - need to check register allocation */
+    if (e->op == '=' && e->asm_block && strstr(e->asm_block, "ASSIGN_PLACEHOLDER")) {
+        /* Emit right child first (value goes to PRIMARY) */
+        emit_expr(ctx, e->right);
+
+        /* Now emit the store instruction based on current register allocation */
+        if (e->left && e->left->op == '$' && e->left->symbol) {
+            struct local_var *var = lookup_var(ctx, e->left->symbol);
+            char buf[256];
+
+            if (var && var->reg != REG_NO) {
+                /* Variable is in a register - move from PRIMARY to register */
+                if (e->size == 1) {
+                    /* Byte: move A to register */
+                    if (var->reg == REG_B) {
+                        fdprintf(out_fd, "\tld b, a\n");
+                    } else if (var->reg == REG_C) {
+                        fdprintf(out_fd, "\tld c, a\n");
+                    } else if (var->reg == REG_Bp) {
+                        fdprintf(out_fd, "\texx\n\tld b, a\n\texx\n");
+                    } else if (var->reg == REG_Cp) {
+                        fdprintf(out_fd, "\texx\n\tld c, a\n\texx\n");
+                    }
+                } else {
+                    /* Word: move HL to register pair */
+                    if (var->reg == REG_BC) {
+                        fdprintf(out_fd, "\tld b, h\n\tld c, l\n");
+                    } else if (var->reg == REG_BCp) {
+                        fdprintf(out_fd, "\texx\n\tld b, h\n\tld c, l\n\texx\n");
+                    } else if (var->reg == REG_IX) {
+                        fdprintf(out_fd, "\tpush hl\n\tpop ix\n");
+                    }
+                }
+            } else if (var) {
+                /* Variable is on stack - store to (iy + offset) */
+                if (e->size == 1) {
+                    if (var->offset >= 0) {
+                        fdprintf(out_fd, "\tld (iy + %d), a\n", var->offset);
+                    } else {
+                        fdprintf(out_fd, "\tld (iy - %d), a\n", -var->offset);
+                    }
+                } else {
+                    if (var->offset >= 0) {
+                        fdprintf(out_fd, "\tld (iy + %d), hl\n", var->offset);
+                    } else {
+                        fdprintf(out_fd, "\tld (iy - %d), hl\n", -var->offset);
+                    }
+                }
+            }
+        }
+
+        /* Emit left child last (address not needed for simple assignments) */
+        emit_expr(ctx, e->left);
+    }
     /* Binary operators with accumulator management need special handling */
-    if (is_binop_with_accum(e->op) && e->left && e->right && e->asm_block) {
+    else if (is_binop_with_accum(e->op) && e->left && e->right && e->asm_block) {
         /* Split asm_block into move instruction and call instruction */
         char *move_inst = NULL;
         char *call_inst = NULL;
@@ -3365,20 +3416,20 @@ static void emit_expr(struct expr *e)
         }
 
         /* Emit in correct order for accumulator management */
-        emit_expr(e->left);                           /* 1. Left operand to PRIMARY */
+        emit_expr(ctx, e->left);                      /* 1. Left operand to PRIMARY */
         if (move_inst) {
             fdprintf(out_fd, "%s\n", move_inst);       /* 2. Move PRIMARY to SECONDARY */
             free(move_inst);
         }
-        emit_expr(e->right);                          /* 3. Right operand to PRIMARY */
+        emit_expr(ctx, e->right);                     /* 3. Right operand to PRIMARY */
         if (call_inst) {
             fdprintf(out_fd, "%s\n", call_inst);       /* 4. Call binary operation */
             free(call_inst);
         }
     } else {
         /* Normal postorder traversal for other operators */
-        if (e->left) emit_expr(e->left);
-        if (e->right) emit_expr(e->right);
+        if (e->left) emit_expr(ctx, e->left);
+        if (e->right) emit_expr(ctx, e->right);
 
         if (e->asm_block) {
             fdprintf(out_fd, "%s\n", e->asm_block);
@@ -3393,7 +3444,7 @@ static void emit_expr(struct expr *e)
 /*
  * Walk statement tree, emit assembly, and free nodes
  */
-static void emit_stmt(struct stmt *s)
+static void emit_stmt(struct function_ctx *ctx, struct stmt *s)
 {
     if (!s) return;
 
@@ -3403,16 +3454,16 @@ static void emit_stmt(struct stmt *s)
     }
 
     /* Emit expressions (this frees them) */
-    if (s->expr) emit_expr(s->expr);
-    if (s->expr2) emit_expr(s->expr2);
-    if (s->expr3) emit_expr(s->expr3);
+    if (s->expr) emit_expr(ctx, s->expr);
+    if (s->expr2) emit_expr(ctx, s->expr2);
+    if (s->expr3) emit_expr(ctx, s->expr3);
 
     /* Emit child statements (this frees them) */
-    if (s->then_branch) emit_stmt(s->then_branch);
-    if (s->else_branch) emit_stmt(s->else_branch);
+    if (s->then_branch) emit_stmt(ctx, s->then_branch);
+    if (s->else_branch) emit_stmt(ctx, s->else_branch);
 
     /* Emit next statement in chain (this frees it) */
-    if (s->next) emit_stmt(s->next);
+    if (s->next) emit_stmt(ctx, s->next);
 
     /* Free this node only (children already freed by recursive emit calls above) */
     if (s->asm_block) free(s->asm_block);
@@ -3439,7 +3490,7 @@ void emit_assembly(struct function_ctx *ctx, int fd)
                           ctx->locals);
 
     /* Emit function body */
-    emit_stmt(ctx->body);
+    emit_stmt(ctx, ctx->body);
 
     /* Emit function epilogue with frame deallocation */
     /* Emit framefree if we have locals or parameters */
