@@ -1934,25 +1934,37 @@ emit_function_prologue(char *name, char *params, char *rettype, int frame_size,
 
     fdprintf(out_fd, "\n");
 
-    /* Output variable lifetime information as assembly comments */
+    /* Output local variable information as assembly comments */
     if (locals) {
-        fdprintf(out_fd, "; Variable lifetimes:\n");
+        fdprintf(out_fd, "; Local variables:\n");
         for (var = locals; var; var = var->next) {
             const char *regname = get_register_name(var->reg);
+
+            /* Build offset string */
+            char offset_str[32];
+            if (var->offset >= 0) {
+                snprintf(offset_str, sizeof(offset_str), "(iy+%d)", var->offset);
+            } else {
+                snprintf(offset_str, sizeof(offset_str), "(iy%d)", var->offset);
+            }
+
             fdprintf(out_fd, ";   %s: ", var->name);
             if (var->first_label == -1) {
                 if (regname) {
-                    fdprintf(out_fd, "unused (0 refs, 0 agg_refs, reg=%s)\n", regname);
+                    fdprintf(out_fd, "unused (0 refs, 0 agg_refs, %s, reg=%s)\n",
+                             offset_str, regname);
                 } else {
-                    fdprintf(out_fd, "unused (0 refs, 0 agg_refs)\n");
+                    fdprintf(out_fd, "unused (0 refs, 0 agg_refs, %s)\n", offset_str);
                 }
             } else {
                 if (regname) {
-                    fdprintf(out_fd, "labels %d-%d (%d refs, %d agg_refs, reg=%s)\n",
-                             var->first_label, var->last_label, var->ref_count, var->agg_refs, regname);
+                    fdprintf(out_fd, "labels %d-%d (%d refs, %d agg_refs, %s, reg=%s)\n",
+                             var->first_label, var->last_label, var->ref_count, var->agg_refs,
+                             offset_str, regname);
                 } else {
-                    fdprintf(out_fd, "labels %d-%d (%d refs, %d agg_refs)\n",
-                             var->first_label, var->last_label, var->ref_count, var->agg_refs);
+                    fdprintf(out_fd, "labels %d-%d (%d refs, %d agg_refs, %s)\n",
+                             var->first_label, var->last_label, var->ref_count, var->agg_refs,
+                             offset_str);
                 }
             }
         }
@@ -3220,7 +3232,20 @@ static void generate_expr(struct function_ctx *ctx, struct expr *e)
         break;
 
     case 0xab:  /* SEXT - sign extend */
-        snprintf(buf, sizeof(buf), "\t; sign extend to size %d", e->size);
+        /* Sign extend child expression to target size */
+        if (e->size == 2 && e->left && e->left->size == 1) {
+            /* Byte to word: extend sign bit from A into H */
+            /* Child already in A, extend to HL */
+            snprintf(buf, sizeof(buf),
+                     "\tld l, a\n"
+                     "\trlca\n"
+                     "\tsbc a, a\n"
+                     "\tld h, a");
+        } else {
+            /* Other size conversions - placeholder for now */
+            snprintf(buf, sizeof(buf), "\t; sign extend from %d to %d",
+                     e->left ? e->left->size : 0, e->size);
+        }
         e->asm_block = strdup(buf);
         break;
 
