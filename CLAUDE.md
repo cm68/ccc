@@ -663,11 +663,33 @@ Functions and arrays automatically decay to pointers when used as values, follow
 - Direct use: `x` -> `(M $_x)` (dereference to get value)
 - Assignment: `x = 10;` -> `(= $_x 10)` (unwraps DEREF for lvalue)
 
-**Implementation Details**:
+**Implementation Details - Dual Flag Architecture**:
+Arrays use BOTH `TF_ARRAY` and `TF_POINTER` flags to achieve proper decay semantics while preserving array metadata:
+
+- Array types have both flags set: `TF_ARRAY|TF_POINTER`
+- `emit_type_info()` checks `TF_ARRAY` first → emits `:array:count:elemsize` in AST
+- Type compatibility checks `TF_POINTER|TF_ARRAY` → treats arrays as pointers
+- This allows arrays to:
+  1. Emit full metadata (count, element size) for code generation
+  2. Act as pointers in type compatibility and assignment checking
+
 The SYM case in expression parser checks type flags:
 - If `TF_FUNC`: return SYM directly (function address)
-- If `TF_ARRAY`: return SYM directly (array base address)
+- If `TF_ARRAY`: return SYM directly (array base address, but type has both flags)
 - Otherwise: wrap in DEREF (variable value)
+
+**Array Subscripting**:
+When subscripting, the parser saves the dereferenced type before unwrapping to preserve correct element types:
+
+```c
+char *parms[32];    // Type: TF_ARRAY|TF_POINTER, sub=char*, count=32
+parms[i]            // Returns: char* (correctly dereferenced from pointer array)
+
+struct { char **p; } *s;
+s->p[i]             // Returns: char* (saves DEREF type before unwrapping)
+```
+
+This prevents type information loss when subscripting struct members or complex expressions.
 
 **Function Pointer Arrays**:
 Arrays of function pointers work with both syntaxes:

@@ -160,7 +160,8 @@ LVALUE_FAIL_TESTS = \
 
 # Pointer compatibility tests (expected to fail - testing error detection)
 PTR_FAIL_TESTS = \
-	ptr_compat.c
+	ptr_compat.c \
+	array_struct_conflict.c
 
 # Preprocessor tests (expected to fail - testing error detection)
 CPP_FAIL_TESTS = \

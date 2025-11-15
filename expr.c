@@ -401,23 +401,27 @@ parse_expr(unsigned char pri, struct stmt *st)
             // Array subscript: arr[idx] = DEREF(ADD(base, idx * sizeof))
             struct expr *index, *scaled, *addr, *size_expr;
             int elem_size;
+            struct type *base_type = NULL;
 
             gettoken();  // consume '['
             index = parse_expr(0, st);
             expect(RBRACK, ER_E_SP);
 
-            // Unwrap DEREF to get base address
+            // Unwrap DEREF to get base address, but save the dereferenced type
             if (e && e->op == DEREF) {
+                base_type = e->type;  // Save the actual type (not the address type)
                 e = e->left;
+            } else {
+                base_type = e->type;
             }
 
-            // Get element size from type
+            // Get element size from type (use base_type, not e->type which is the address)
             elem_size = 2;  // default to short/int size
-            if (e && e->type) {
-                if (e->type->flags & TF_POINTER && e->type->sub) {
-                    elem_size = e->type->sub->size;
-                } else if (e->type->flags & TF_ARRAY && e->type->sub) {
-                    elem_size = e->type->sub->size;
+            if (base_type) {
+                if (base_type->flags & TF_POINTER && base_type->sub) {
+                    elem_size = base_type->sub->size;
+                } else if (base_type->flags & TF_ARRAY && base_type->sub) {
+                    elem_size = base_type->sub->size;
                 }
             }
 
@@ -441,12 +445,12 @@ parse_expr(unsigned char pri, struct stmt *st)
             addr->left->up = addr;
             addr->right->up = addr;
             // The ADD result is a pointer to the element type
-            if (e->type && (e->type->flags & TF_ARRAY) && e->type->sub) {
-                addr->type = get_type(TF_POINTER, e->type->sub, 0);
-            } else if (e->type && (e->type->flags & TF_POINTER)) {
-                addr->type = e->type;  // pointer + offset = same pointer type
+            if (base_type && (base_type->flags & TF_ARRAY) && base_type->sub) {
+                addr->type = get_type(TF_POINTER, base_type->sub, 0);
+            } else if (base_type && (base_type->flags & TF_POINTER)) {
+                addr->type = base_type;  // pointer + offset = same pointer type
             } else {
-                addr->type = e->type;
+                addr->type = base_type;
             }
 
             // Dereference to get element value
@@ -670,6 +674,16 @@ parse_expr(unsigned char pri, struct stmt *st)
 
         if (is_assignment) {
             if (e && e->op == DEREF) {
+#ifdef DEBUG
+                if (e->type) {
+                    fdprintf(2, "ASSIGN: unwrapping DEREF, type=%p (flags=0x%x, size=%d)\n",
+                            e->type, e->type->flags, e->type->size);
+                    if (e->type->sub) {
+                        fdprintf(2, "        sub=%p (flags=0x%x, size=%d)\n",
+                                e->type->sub, e->type->sub->flags, e->type->sub->size);
+                    }
+                }
+#endif
                 assign_type = e->type;  // Save the type before unwrapping
                 e = e->left;  // unwrap to get address
             } else if (e && e->op == BFEXTRACT) {
@@ -800,6 +814,21 @@ parse_expr(unsigned char pri, struct stmt *st)
                     }
 
                     if (!compatible) {
+#ifdef DEBUG
+                        fdprintf(2, "INCOMPATIBLE POINTERS:\n");
+                        fdprintf(2, "  Left:  ltype=%p (flags=0x%x, size=%d)\n", ltype, ltype->flags, ltype->size);
+                        fdprintf(2, "         l_base=%p (flags=0x%x, size=%d)\n", l_base, l_base->flags, l_base->size);
+                        if (l_base && (l_base->flags & TF_POINTER) && l_base->sub) {
+                            fdprintf(2, "         l_base->sub=%p (flags=0x%x, size=%d)\n",
+                                    l_base->sub, l_base->sub->flags, l_base->sub->size);
+                        }
+                        fdprintf(2, "  Right: rtype=%p (flags=0x%x, size=%d)\n", rtype, rtype->flags, rtype->size);
+                        fdprintf(2, "         r_base=%p (flags=0x%x, size=%d)\n", r_base, r_base->flags, r_base->size);
+                        if (rtype && (rtype->flags & TF_POINTER) && rtype->sub) {
+                            fdprintf(2, "         rtype->sub=%p (flags=0x%x, size=%d)\n",
+                                    rtype->sub, rtype->sub->flags, rtype->sub->size);
+                        }
+#endif
                         gripe(ER_E_PT);  // incompatible pointer types
                     }
                 }

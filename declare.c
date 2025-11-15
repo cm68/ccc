@@ -192,9 +192,10 @@ declare_internal(struct type **btp, boolean struct_elem)
         } else {
             i = parse_const(RBRACK);
         }
-        t = get_type(TF_ARRAY, t, i);
+        // Arrays have both TF_ARRAY and TF_POINTER flags for array decay semantics
+        prefix = get_type(TF_ARRAY|TF_POINTER, prefix, i);
         expect(RBRACK, ER_D_AD);
-        suffix = t;  // Store array type in suffix so it gets assigned to nm->type
+        suffix = prefix;  // Store array type in suffix so it gets assigned to nm->type
     }
 
     if (cur.type == LPAR) {     // ( <func_arg>[,<func_arg>]*. )
@@ -365,22 +366,7 @@ declare_internal(struct type **btp, boolean struct_elem)
      * retyping from paper printout and caused infinite loops.
      */
     if (suffix) {
-        // For arrays, the sub field may be wrong (points to base type before pointer mods)
-        // Fix it by creating a new array type with the correct element type
-        if ((suffix->flags & TF_ARRAY) && prefix != suffix->sub) {
-            // Create new array type with correct element type
-            struct type *fixed_array = calloc(1, sizeof(*fixed_array));
-            *fixed_array = *suffix;  // Copy all fields
-            fixed_array->sub = prefix;  // Fix element type
-            // Recalculate size with correct element size
-            if (prefix && fixed_array->count > 0) {
-                fixed_array->size = prefix->size * fixed_array->count;
-            }
-            nm->type = fixed_array;
-        } else {
-            // For functions/pointers, suffix is correct
-            nm->type = suffix;
-        }
+        nm->type = suffix;
     }
 
     return nm;

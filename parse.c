@@ -952,7 +952,7 @@ declaration()
                 if (str) {
                     len = (unsigned char)str[0];  /* First byte is length */
                     /* Create new array type with correct size (length + 1 for null terminator) */
-                    v->type = get_type(TF_ARRAY, v->type->sub, len + 1);
+                    v->type = get_type(TF_ARRAY|TF_POINTER, v->type->sub, len + 1);
                 }
             }
 
@@ -966,7 +966,7 @@ declaration()
                     count++;
                 }
                 /* Create new array type with correct size */
-                v->type = get_type(TF_ARRAY, v->type->sub, count);
+                v->type = get_type(TF_ARRAY|TF_POINTER, v->type->sub, count);
             }
 
             /* Track local variable initializers for conversion to assignments */
