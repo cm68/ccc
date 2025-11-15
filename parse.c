@@ -944,9 +944,9 @@ declaration()
 
             v->u.init = do_initializer();
 
-            /* Fix array size for char[] = "string" syntax */
+            /* Fix array size for char[] = "string" syntax (single string, not a list) */
             if (v->type && (v->type->flags & TF_ARRAY) && v->type->count == -1 &&
-                v->u.init && v->u.init->op == STRING) {
+                v->u.init && v->u.init->op == STRING && !v->u.init->next) {
                 /* Get string length from counted string */
                 str = (cstring)v->u.init->v;
                 if (str) {
@@ -954,6 +954,19 @@ declaration()
                     /* Create new array type with correct size (length + 1 for null terminator) */
                     v->type = get_type(TF_ARRAY, v->type->sub, len + 1);
                 }
+            }
+
+            /* Fix array size for array[] = { ... } syntax */
+            if (v->type && (v->type->flags & TF_ARRAY) && v->type->count == -1 &&
+                v->u.init && v->u.init->next) {
+                /* Count elements in initializer list */
+                struct expr *item;
+                int count = 0;
+                for (item = v->u.init; item; item = item->next) {
+                    count++;
+                }
+                /* Create new array type with correct size */
+                v->type = get_type(TF_ARRAY, v->type->sub, count);
             }
 
             /* Track local variable initializers for conversion to assignments */

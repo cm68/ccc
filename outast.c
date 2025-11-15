@@ -139,7 +139,7 @@ emit_expr(struct expr *e)
 		/* Cast operators with destination width annotation */
 		{
 			char size_suffix = get_size_suffix(e->type);
-			char op_char = (e->op == NARROW) ? 'N' : (e->op == WIDEN) ? 'W' : 'X';
+			unsigned char op_char = (e->op == NARROW) ? 'N' : (e->op == WIDEN) ? 'W' : 0xab;  /* SEXT = 0xab */
 			fdprintf(ast_fd, "(%c:%c", op_char, size_suffix);
 			emit_child(e->left);
 			fdprintf(ast_fd, ")");
@@ -230,16 +230,25 @@ emit_type_info(struct type *type)
 	if (!type)
 		return;
 
+	/* For arrays, emit array info with element size */
+	if (type->flags & TF_ARRAY) {
+		int elemsize = type->sub ? type->sub->size : 0;
+		fdprintf(ast_fd, " :array:%d:%d", type->count, elemsize);
+		return;
+	}
+
+	/* For pointers, just emit :ptr - all pointers are 2 bytes */
+	if (type->flags & TF_POINTER) {
+		fdprintf(ast_fd, " :ptr");
+		return;
+	}
+
 	if (type->name && type->name[0]) {
 		/* Primitive or named type */
 		fdprintf(ast_fd, " %s", type->name);
 	} else if (type->flags & TF_AGGREGATE) {
 		/* Struct/union without type name - output size */
 		fdprintf(ast_fd, " :struct:%d", type->size);
-	} else if (type->flags & TF_POINTER) {
-		fdprintf(ast_fd, " :ptr");
-	} else if (type->flags & TF_ARRAY) {
-		fdprintf(ast_fd, " :array:%d", type->count);
 	} else {
 		/* Unknown type - output size */
 		fdprintf(ast_fd, " :size:%d", type->size);

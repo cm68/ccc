@@ -185,6 +185,9 @@ declare_internal(struct type **btp, boolean struct_elem)
         }
     }
 
+    // Initialize t from prefix for array/function suffix parsing
+    t = prefix;
+
     while (cur.type == LBRACK) {        // array
         gettoken();
         if (cur.type == RBRACK) {
