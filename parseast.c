@@ -2688,6 +2688,7 @@ walk_for_locals(struct function_ctx *ctx, struct stmt *s)
  * Variables excluded from register allocation:
  *   - Arrays (must remain on stack)
  *   - Unused variables (ref_count == 0)
+ *   - Single-use variables (ref_count == 1) - no benefit to register allocation
  *   - Variables whose address is taken (future enhancement)
  */
 static void
@@ -2733,8 +2734,8 @@ allocate_registers(struct function_ctx *ctx)
         /* Skip arrays (they must stay on stack) */
         if (var->is_array) continue;
 
-        /* Skip unused variables */
-        if (var->ref_count == 0) continue;
+        /* Skip unused or single-use variables (no benefit to register allocation) */
+        if (var->ref_count <= 1) continue;
 
         /* Allocate byte registers (B, C, B', C') */
         if (var->size == 1 && byte_regs_used < 4) {
