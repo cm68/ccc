@@ -1890,6 +1890,25 @@ handle_switch(void)
 /* Top-level handlers */
 
 /*
+ * Helper: Get register name string from register_id enum
+ */
+static const char *
+get_register_name(enum register_id reg)
+{
+    switch (reg) {
+        case REG_NO:  return NULL;
+        case REG_B:   return "B";
+        case REG_C:   return "C";
+        case REG_Bp:  return "B'";
+        case REG_Cp:  return "C'";
+        case REG_BC:  return "BC";
+        case REG_BCp: return "BC'";
+        case REG_IX:  return "IX";
+        default:      return "???";
+    }
+}
+
+/*
  * Emit function prologue
  * Outputs assembly comment describing function and function label
  */
@@ -1919,12 +1938,22 @@ emit_function_prologue(char *name, char *params, char *rettype, int frame_size,
     if (locals) {
         fdprintf(out_fd, "; Variable lifetimes:\n");
         for (var = locals; var; var = var->next) {
+            const char *regname = get_register_name(var->reg);
             fdprintf(out_fd, ";   %s: ", var->name);
             if (var->first_label == -1) {
-                fdprintf(out_fd, "unused (0 refs, 0 agg_refs)\n");
+                if (regname) {
+                    fdprintf(out_fd, "unused (0 refs, 0 agg_refs, reg=%s)\n", regname);
+                } else {
+                    fdprintf(out_fd, "unused (0 refs, 0 agg_refs)\n");
+                }
             } else {
-                fdprintf(out_fd, "labels %d-%d (%d refs, %d agg_refs)\n",
-                         var->first_label, var->last_label, var->ref_count, var->agg_refs);
+                if (regname) {
+                    fdprintf(out_fd, "labels %d-%d (%d refs, %d agg_refs, reg=%s)\n",
+                             var->first_label, var->last_label, var->ref_count, var->agg_refs, regname);
+                } else {
+                    fdprintf(out_fd, "labels %d-%d (%d refs, %d agg_refs)\n",
+                             var->first_label, var->last_label, var->ref_count, var->agg_refs);
+                }
             }
         }
     }
