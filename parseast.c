@@ -2963,20 +2963,25 @@ static void generate_expr(struct function_ctx *ctx, struct expr *e)
 
     case '+':  /* ADD */
         {
-            char funcname[32];
-            make_binop_funcname(funcname, sizeof(funcname), "add", e);
-
             /* After left child generated (result in PRIMARY), move to SECONDARY */
             /* Then right child generates into PRIMARY */
-            /* Binary op function expects: SECONDARY, PRIMARY -> PRIMARY */
+            /* Binary op expects: SECONDARY, PRIMARY -> PRIMARY */
             char *move_inst;
+            char *add_inst;
+
             if (e->size == 1) {
+                /* Byte add - need to call add88 */
+                char funcname[32];
+                make_binop_funcname(funcname, sizeof(funcname), "add", e);
                 move_inst = "\tld e, a  ; move PRIMARY (A) to SECONDARY (E)";
+                snprintf(buf, sizeof(buf), "%s\n\tcall %s", move_inst, funcname);
             } else {
+                /* Word add - use native Z80 add hl,de instruction */
                 move_inst = "\tex de, hl  ; move PRIMARY (HL) to SECONDARY (DE)";
+                add_inst = "\tadd hl, de";
+                snprintf(buf, sizeof(buf), "%s\n%s", move_inst, add_inst);
             }
 
-            snprintf(buf, sizeof(buf), "%s\n\tcall %s", move_inst, funcname);
             e->asm_block = strdup(buf);
         }
         break;
