@@ -209,6 +209,9 @@ emit_expr(struct expr *e)
 		    e->op == RSHIFTEQ || e->op == LANDEQ || e->op == LOREQ) {
 			char size_suffix = get_size_suffix(e->type);
 			fdprintf(ast_fd, "(%c:%c", e->op, size_suffix);
+		} else if (e->op == NOT) {
+			/* NOT operator is single quote - escape it for Lisp reader */
+			fdprintf(ast_fd, "(\\%c", e->op);
 		} else {
 			fdprintf(ast_fd, "(%c", e->op);
 		}

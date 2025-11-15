@@ -159,6 +159,7 @@
          ((string= op-str "h") (if (or (not (zerop (eval-expr (second expr))))
                                        (not (zerop (eval-expr (third expr))))) 1 0))
          ((string= op-str "!") (if (zerop (eval-expr (second expr))) 1 0))
+         ((string= op-str "'") (if (zerop (eval-expr (second expr))) 1 0))  ; NOT (single quote)
 
          ;; Unary operators
          ((string= op-str "NEG") (- (eval-expr (second expr))))

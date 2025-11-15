@@ -61,6 +61,7 @@
           ((string= op-str "j") "LAND")
           ((string= op-str "h") "LOR")
           ((string= op-str "!") "LNOT")
+          ((string= op-str "'") "LNOT")
           ((string= op-str "N") "NARROW")
           ((string= op-str "«") "SEXT")
           ((string= op-str "W") "WIDEN")
