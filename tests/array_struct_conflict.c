@@ -1,6 +1,7 @@
 #define MAXPARMS 32
 
 struct macro {
+    char pad;
     char parmcount;
     char **parms;
 };

@@ -745,6 +745,22 @@ handle_binary_op(unsigned char op)
         e->flags = e->right->flags;
     }
 
+    /* Strength reduction: multiply by power of 2 -> left shift */
+    if (op == '*') {
+        int shift = is_multiply_by_power_of_2(e, NULL);
+        if (shift >= 0) {
+            /* Transform (* expr const_2^n) to (y expr const_n) */
+            e->op = 'y';  /* LSHIFT */
+            /* Replace right operand with shift amount constant */
+            struct expr *old_right = e->right;
+            e->right = new_expr('C');
+            e->right->op = 'C';
+            e->right->value = shift;
+            e->right->size = 1;  /* shift amounts are byte-sized */
+            free_expr(old_right);
+        }
+    }
+
     return e;
 }
 
@@ -2786,10 +2802,38 @@ static void generate_expr(struct function_ctx *ctx, struct expr *e)
 
     case 'y':  /* LSHIFT */
         {
-            char funcname[32];
-            make_binop_funcname(funcname, sizeof(funcname), "shl", e);
-            snprintf(buf, sizeof(buf), "\tcall %s", funcname);
-            e->asm_block = strdup(buf);
+            /* Emit inline shifts using repeated add instructions */
+            /* Right operand should be constant shift amount from strength reduction */
+            int shift_amount = 0;
+            if (e->right && e->right->op == 'C') {
+                shift_amount = (int)e->right->value;
+                /* Suppress code generation for constant - already handled */
+                if (e->right->asm_block) {
+                    free(e->right->asm_block);
+                }
+                e->right->asm_block = strdup("");
+            }
+
+            /* Build assembly: repeated "add a,a" for byte, "add hl,hl" for word */
+            char asm_buf[256] = "";
+            int pos = 0;
+
+            for (int i = 0; i < shift_amount && i < 16; i++) {  /* cap at 16 shifts */
+                if (e->size == 1) {
+                    /* Byte shift: add a,a */
+                    pos += snprintf(asm_buf + pos, sizeof(asm_buf) - pos, "\tadd a,a\n");
+                } else {
+                    /* Word shift: add hl,hl */
+                    pos += snprintf(asm_buf + pos, sizeof(asm_buf) - pos, "\tadd hl,hl\n");
+                }
+            }
+
+            /* Remove trailing newline */
+            if (pos > 0 && asm_buf[pos-1] == '\n') {
+                asm_buf[pos-1] = '\0';
+            }
+
+            e->asm_block = strdup(asm_buf);
         }
         break;
 
