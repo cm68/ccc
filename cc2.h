@@ -84,6 +84,7 @@ struct local_var {
     int offset;                 // Offset in stack frame (negative for locals, positive for params)
     unsigned char size;         // Size in bytes
     unsigned char is_param;     // 1 if parameter, 0 if local variable
+    unsigned char is_array;     // 1 if array, 0 if scalar (arrays can't be in registers)
     int first_label;            // First label where variable is used (-1 if unused)
     int last_label;             // Last label where variable is used (high water mark)
     int ref_count;              // Number of times variable is referenced

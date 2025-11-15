@@ -1229,6 +1229,7 @@ static struct stmt *parse_stmt(void);
 
 /* Forward declarations for code generation and emission */
 static void assign_frame_offsets(struct function_ctx *ctx);
+static void allocate_registers(struct function_ctx *ctx);
 static void generate_expr(struct function_ctx *ctx, struct expr *e);
 static void generate_stmt(struct function_ctx *ctx, struct stmt *s);
 static void emit_expr(struct expr *e);
@@ -2119,6 +2120,9 @@ handle_function(void)
     /* Phase 2: Generate assembly code blocks for tree nodes */
     generate_code(&ctx);
 
+    /* Phase 2.5: Allocate registers based on usage patterns */
+    allocate_registers(&ctx);
+
     /* Phase 3: Emit assembly and free tree nodes */
     emit_assembly(&ctx, out_fd);
 }
@@ -2472,6 +2476,7 @@ add_param(struct function_ctx *ctx, const char *name, unsigned char size, int of
     var->size = size;
     var->offset = offset;
     var->is_param = 1;
+    var->is_array = 0;      /* Parameters are scalar (array parameters are actually pointers) */
     var->first_label = -1;  /* Not used yet */
     var->last_label = -1;   /* Not used yet */
     var->ref_count = 0;     /* Not referenced yet */
@@ -2489,7 +2494,7 @@ add_param(struct function_ctx *ctx, const char *name, unsigned char size, int of
  * Local variables have negative offsets (below frame pointer)
  */
 static void
-add_local_var(struct function_ctx *ctx, const char *name, unsigned char size)
+add_local_var(struct function_ctx *ctx, const char *name, unsigned char size, int is_array)
 {
     struct local_var *var = malloc(sizeof(struct local_var));
     if (!var) {
@@ -2502,6 +2507,7 @@ add_local_var(struct function_ctx *ctx, const char *name, unsigned char size)
     /* Stack grows downward - assign negative offset from frame pointer */
     var->offset = -(ctx->frame_size + size);
     var->is_param = 0;
+    var->is_array = is_array;  /* Arrays cannot be allocated to registers */
     var->first_label = -1;  /* Not used yet */
     var->last_label = -1;   /* Not used yet */
     var->ref_count = 0;     /* Not referenced yet */
@@ -2512,7 +2518,8 @@ add_local_var(struct function_ctx *ctx, const char *name, unsigned char size)
     ctx->locals = var;
     ctx->frame_size += size;
 
-    fdprintf(2, "  Local var: %s, size=%d, offset=%d\n", name, size, var->offset);
+    fdprintf(2, "  Local var: %s, size=%d, offset=%d%s\n", name, size, var->offset,
+             is_array ? " (array)" : "");
 }
 
 /*
@@ -2572,7 +2579,9 @@ walk_for_locals(struct function_ctx *ctx, struct stmt *s)
         /* Skip parameter declarations - they already have offsets */
         if (!is_parameter(ctx, s->symbol)) {
             unsigned char size = get_size_from_typename(s->type_str);
-            add_local_var(ctx, s->symbol, size);
+            /* Detect arrays: type_str contains ":array:" */
+            int is_array = (s->type_str && strstr(s->type_str, ":array:") != NULL) ? 1 : 0;
+            add_local_var(ctx, s->symbol, size, is_array);
         }
     }
 
@@ -2580,6 +2589,78 @@ walk_for_locals(struct function_ctx *ctx, struct stmt *s)
     if (s->then_branch) walk_for_locals(ctx, s->then_branch);
     if (s->else_branch) walk_for_locals(ctx, s->else_branch);
     if (s->next) walk_for_locals(ctx, s->next);
+}
+
+/*
+ * Phase 2.5: Allocate registers to local variables based on usage patterns
+ * Called after code generation (Phase 2) which computes ref_count, agg_refs, lifetimes
+ */
+static void
+allocate_registers(struct function_ctx *ctx)
+{
+    struct local_var *var;
+    int byte_regs_used = 0;  /* Count of byte registers allocated */
+    int word_regs_used = 0;  /* Count of word registers allocated */
+    int ix_allocated = 0;    /* IX register allocated flag */
+
+    if (!ctx) return;
+
+    fdprintf(2, "=== Phase 2.5: Allocating registers ===\n");
+
+    /* First pass: allocate IX to struct pointer with highest agg_refs */
+    {
+        struct local_var *best_ix_candidate = NULL;
+        int best_agg_refs = 0;
+
+        for (var = ctx->locals; var; var = var->next) {
+            /* Skip if not a word/pointer variable */
+            if (var->size != 2) continue;
+            /* Prefer variables with aggregate member accesses */
+            if (var->agg_refs > best_agg_refs) {
+                best_agg_refs = var->agg_refs;
+                best_ix_candidate = var;
+            }
+        }
+
+        if (best_ix_candidate && best_agg_refs > 0) {
+            best_ix_candidate->reg = REG_IX;
+            ix_allocated = 1;
+            fdprintf(2, "  Allocated IX to %s (agg_refs=%d)\n",
+                     best_ix_candidate->name, best_ix_candidate->agg_refs);
+        }
+    }
+
+    /* Second pass: allocate byte and word registers by reference count */
+    for (var = ctx->locals; var; var = var->next) {
+        /* Skip if already allocated */
+        if (var->reg != REG_NO) continue;
+
+        /* Skip arrays (they must stay on stack) */
+        if (var->is_array) continue;
+
+        /* Skip unused variables */
+        if (var->ref_count == 0) continue;
+
+        /* Allocate byte registers (B, C, B', C') */
+        if (var->size == 1 && byte_regs_used < 4) {
+            enum register_id regs[] = {REG_B, REG_C, REG_Bp, REG_Cp};
+            var->reg = regs[byte_regs_used];
+            byte_regs_used++;
+            fdprintf(2, "  Allocated byte reg to %s (refs=%d)\n",
+                     var->name, var->ref_count);
+        }
+        /* Allocate word registers (BC, BC') - IX already allocated above */
+        else if (var->size == 2 && word_regs_used < 2) {
+            enum register_id regs[] = {REG_BC, REG_BCp};
+            var->reg = regs[word_regs_used];
+            word_regs_used++;
+            fdprintf(2, "  Allocated word reg to %s (refs=%d)\n",
+                     var->name, var->ref_count);
+        }
+    }
+
+    fdprintf(2, "  Register allocation complete: %d byte, %d word, %d IX\n",
+             byte_regs_used, word_regs_used, ix_allocated);
 }
 
 /*
