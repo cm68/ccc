@@ -430,31 +430,29 @@
 (defun preprocess-ast-text (text)
   "Preprocess AST text, handling special characters"
   ;; Escape special characters for the Lisp reader
+  ;; C and Lisp use similar string escape conventions, so we mainly need to
+  ;; handle vertical bars which have special meaning in Lisp
   (setf text (loop with result = (make-array (length text) :element-type 'character
                                               :fill-pointer 0 :adjustable t)
                    with in-string = nil
+                   with prev-ch = nil
                    for i from 0 below (length text)
                    for ch = (char text i)
-                   for next-ch = (if (< (1+ i) (length text)) (char text (1+ i)) nil)
                    do (cond
-                        ;; Track string state
+                        ;; Track string state - quote not preceded by backslash
                         ((and (char= ch #\")
-                              (or (= i 0)
-                                  (char/= (char text (1- i)) #\\)))
+                              (not (and prev-ch (char= prev-ch #\\))))
                          (vector-push-extend ch result)
                          (setf in-string (not in-string)))
-                        ;; Backslash in string NOT followed by quote - double it
-                        ((and in-string (char= ch #\\)
-                              (not (and next-ch (char= next-ch #\"))))
-                         (vector-push-extend ch result)
-                         (vector-push-extend ch result))
-                        ;; Vertical bar outside string - escape it
+                        ;; Vertical bar outside string - escape it for Lisp reader
                         ((and (not in-string) (char= ch #\|))
                          (vector-push-extend #\\ result)
                          (vector-push-extend ch result))
-                        ;; Everything else
+                        ;; Everything else - pass through as-is
+                        ;; C and Lisp escape sequences are compatible (\n, \\, \", etc.)
                         (t
                          (vector-push-extend ch result)))
+                      (setf prev-ch ch)
                    finally (return result)))
 
   ;; Replace colons with underscores (for width annotations like =:s -> =_s)
@@ -476,10 +474,17 @@
 
 (defun preprocess-ast-stdin ()
   "Read and preprocess AST from stdin"
+  ;; Read stdin as Latin-1 by wrapping it in a new stream with correct encoding
+  ;; We can't change stdin's encoding, but we can create a new stream from it
   (let ((text (with-output-to-string (str)
-                (loop for line = (read-line *standard-input* nil nil)
-                      while line
-                      do (write-line line str)))))
+                ;; Read all bytes from stdin
+                (let ((bytes (make-array 0 :element-type '(unsigned-byte 8)
+                                          :adjustable t :fill-pointer 0)))
+                  (loop for byte = (read-byte *standard-input* nil nil)
+                        while byte
+                        do (vector-push-extend byte bytes))
+                  ;; Convert bytes to string using Latin-1 encoding
+                  (write-string (sb-ext:octets-to-string bytes :external-format :latin-1) str)))))
     (preprocess-ast-text text)))
 
 (defun usage ()
