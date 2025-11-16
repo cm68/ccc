@@ -69,6 +69,33 @@ make clobber      # Remove all build artifacts including binaries
 make tags
 ```
 
+## CRITICAL: Testing Validation Protocol
+
+**IMPORTANT**: When validating changes to the compiler, ALWAYS use the provided make rules. Never manually run `./cc1 -E *.c` or similar commands.
+
+**Required testing commands after any changes:**
+
+```bash
+# Verify self-hosting (compiler parses its own sources)
+make selfcheck    # Uses correct flags: -DCCC -i./include -I.
+
+# Run full test suite
+make test         # All 135+ tests must pass
+
+# Comprehensive validation (includes selfcheck + tests)
+make fullcheck    # Run this before committing
+```
+
+**Why this matters:**
+- `make selfcheck` includes essential flags (-DCCC -i./include -I.) that are required for parsing the compiler's own sources
+- Manually running `./cc1 -E file.c` without these flags will produce false failures
+- The Makefiles have the correct, tested commands - always use them
+
+**Before any commit:**
+1. Run `make selfcheck` - verify self-hosting works
+2. Run `make test` - verify all tests pass
+3. Or simply run `make fullcheck` - does both
+
 ## Running the Compiler
 
 ```bash
