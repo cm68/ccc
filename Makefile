@@ -78,6 +78,10 @@ $(CC1OBJECTS): $(HFILES)
 %.ast: %.c cc1
 	./cc1 -DCCC -i./include -I. -E -o $@ $<
 
+# Suffix rule to generate .s assembly files from .ast files
+%.s: %.ast cc2
+	./cc2 $<
+
 .PHONY: test tests valgrind
 test: cc1 tests/runtest.sh
 	$(MAKE) -C tests test
