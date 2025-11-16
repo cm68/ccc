@@ -11,26 +11,14 @@
 #include <unistd.h>
 
 #include "cc2.h"
-
-#define BUFSIZE 4096  // AST parser read buffer
+#include "astio.h"
 
 /* Forward declarations for static helper functions */
-static unsigned char nextchar(void);
-static void skip(void);
-static void skipwhite(void);
-static void skipcomment(void);
-static long read_number(void);
-static int expect(unsigned char c);
 static struct expr *parse_expr(void);
+static struct stmt *parse_stmt(void);
 
 /* Parser state */
-static int in_fd;
 int out_fd = 1;  /* Assembly output (default: stdout) */
-static char buf[BUFSIZE];
-static int buf_pos;
-static int buf_valid;
-static int line_num = 1;
-static unsigned char curchar;
 static int label_counter = 0;  /* For generating unique labels */
 
 /*
@@ -245,19 +233,24 @@ is_multiply_by_power_of_2(struct expr *e, struct expr **out_expr)
 int
 is_struct_member_access(struct expr *e, char **out_var, long *out_offset)
 {
+    struct expr *add;
+    struct expr *ptr_load;
+    struct expr *var;
+    struct expr *offset;
+
     /* Check outer M (dereference) */
     if (!e || e->op != 'M') {
         return 0;
     }
 
     /* Check + (addition) */
-    struct expr *add = e->left;
+    add = e->left;
     if (!add || add->op != '+') {
         return 0;
     }
 
     /* Check inner M:p (pointer dereference) */
-    struct expr *ptr_load = add->left;
+    ptr_load = add->left;
     if (!ptr_load || ptr_load->op != 'M') {
         return 0;
     }
@@ -266,13 +259,13 @@ is_struct_member_access(struct expr *e, char **out_var, long *out_offset)
     }
 
     /* Check variable reference */
-    struct expr *var = ptr_load->left;
+    var = ptr_load->left;
     if (!var || var->op != '$' || !var->symbol) {
         return 0;
     }
 
     /* Check constant offset */
-    struct expr *offset = add->right;
+    offset = add->right;
     if (!offset || offset->op != 'C') {  /* 'C' is CONST operator */
         return 0;
     }
@@ -299,23 +292,6 @@ create_label_asm(const char *label_name)
     char buf[128];
 
     snprintf(buf, sizeof(buf), "%s:", label_name);
-    s->asm_block = malloc(strlen(buf) + 1);
-    strcpy(s->asm_block, buf);
-
-    return s;
-}
-
-/*
- * Create an ASM statement node for an unconditional jump
- * Jump format: "\tjp label_name\n"
- */
-static struct stmt *
-create_jump_asm(const char *label_name)
-{
-    struct stmt *s = new_stmt('A');
-    char buf[128];
-
-    snprintf(buf, sizeof(buf), "\tjp %s", label_name);
     s->asm_block = malloc(strlen(buf) + 1);
     strcpy(s->asm_block, buf);
 
@@ -353,286 +329,9 @@ free_stmt(struct stmt *s)
 }
 
 /*
- * Read next character from input
- * Returns 0 on EOF
- */
-static unsigned char
-nextchar(void)
-{
-    if (buf_pos >= buf_valid) {
-        buf_valid = read(in_fd, buf, BUFSIZE);
-        if (buf_valid <= 0) {
-            curchar = 0;
-            return 0;
-        }
-        buf_pos = 0;
-    }
-    curchar = buf[buf_pos++];
-    if (curchar == '\n') {
-        line_num++;
-    }
-    return curchar;
-}
-
-/*
- * Skip whitespace
- */
-static void
-skipwhite(void)
-{
-    while (curchar == ' ' || curchar == '\t' || curchar == '\n') {
-        nextchar();
-    }
-}
-
-/*
- * Skip comments (lines starting with ;)
- */
-static void
-skipcomment(void)
-{
-    if (curchar == ';') {
-        while (curchar && curchar != '\n') {
-            nextchar();
-        }
-        if (curchar == '\n') {
-            nextchar();
-        }
-    }
-}
-
-/*
- * Skip whitespace and comments
- */
-static void
-skip(void)
-{
-    while (1) {
-        skipwhite();
-        if (curchar == ';') {
-            skipcomment();
-        } else {
-            break;
-        }
-    }
-}
-
-/*
- * Expect and consume a specific character
- */
-static int
-expect(unsigned char c)
-{
-    skip();
-    if (curchar != c) {
-        fdprintf(2, "parseast: line %d: expected '%c', got '%c'\n",
-                 line_num, c, curchar);
-        return 0;
-    }
-    nextchar();
-    return 1;
-}
-
-/*
- * Read a symbol name (starting with $ or alphanumeric)
- * Returns pointer to static buffer
- */
-static char symbuf[256];
-static char strbuf[1024];
-
-/*
- * Read a quoted string literal with escape sequences
- * Expects curchar to be on the opening quote
- * Returns pointer to static buffer with unescaped string data
- */
-static char *
-read_quoted_string(void)
-{
-    unsigned char i = 0;
-
-    skip();
-
-    /* Expect opening quote */
-    if (curchar != '"') {
-        fdprintf(2, "parseast: line %d: expected '\"' at start of string\n", 
-            line_num);
-        strbuf[0] = '\0';
-        return strbuf;
-    }
-
-    nextchar();  /* Skip opening quote */
-
-    /* Read until closing quote */
-    while (curchar && curchar != '"') {
-        if (curchar == '\\') {
-            /* Handle escape sequences */
-            nextchar();
-            switch (curchar) {
-            case 'n':
-                if (i < sizeof(strbuf) - 1) strbuf[i++] = '\n';
-                break;
-            case 't':
-                if (i < sizeof(strbuf) - 1) strbuf[i++] = '\t';
-                break;
-            case 'r':
-                if (i < sizeof(strbuf) - 1) strbuf[i++] = '\r';
-                break;
-            case '\\':
-                if (i < sizeof(strbuf) - 1) strbuf[i++] = '\\';
-                break;
-            case '"':
-                if (i < sizeof(strbuf) - 1) strbuf[i++] = '"';
-                break;
-            case 'x':
-                /* Hex escape: \xNN */
-                nextchar();
-                {
-                    unsigned char hex1 = curchar;
-                    nextchar();
-                    unsigned char hex2 = curchar;
-                    unsigned char val = 0;
-
-                    if (hex1 >= '0' && hex1 <= '9') 
-                        val = (hex1 - '0') << 4;
-                    else if (hex1 >= 'a' && hex1 <= 'f') 
-                        val = (hex1 - 'a' + 10) << 4;
-                    else if (hex1 >= 'A' && hex1 <= 'F') 
-                        val = (hex1 - 'A' + 10) << 4;
-
-                    if (hex2 >= '0' && hex2 <= '9') 
-                        val |= (hex2 - '0');
-                    else if (hex2 >= 'a' && hex2 <= 'f') 
-                        val |= (hex2 - 'a' + 10);
-                    else if (hex2 >= 'A' && hex2 <= 'F') 
-                        val |= (hex2 - 'A' + 10);
-
-                    if (i < sizeof(strbuf) - 1) strbuf[i++] = val;
-                }
-                break;
-            default:
-                /* Unknown escape, just copy the character */
-                if (i < sizeof(strbuf) - 1) strbuf[i++] = curchar;
-                break;
-            }
-            nextchar();
-        } else {
-            /* Regular character */
-            if (i < sizeof(strbuf) - 1) {
-                strbuf[i++] = curchar;
-            }
-            nextchar();
-        }
-    }
-
-    strbuf[i] = '\0';
-
-    /* Expect closing quote */
-    if (curchar == '"') {
-        nextchar();
-    }
-
-    return strbuf;
-}
-
-static char *
-read_symbol(void)
-{
-    unsigned char i = 0;
-
-    skip();
-
-    /* Symbol can start with $ or letter */
-    if (curchar == '$' || (curchar >= 'a' && curchar <= 'z') ||
-        (curchar >= 'A' && curchar <= 'Z') || curchar == '_') {
-        symbuf[i++] = curchar;
-        nextchar();
-
-        /* Continue with alphanumeric or underscore */
-        while ((curchar >= 'a' && curchar <= 'z') ||
-               (curchar >= 'A' && curchar <= 'Z') ||
-               (curchar >= '0' && curchar <= '9') ||
-               curchar == '_') {
-            if (i < sizeof(symbuf) - 1) {
-                symbuf[i++] = curchar;
-            }
-            nextchar();
-        }
-    }
-
-    symbuf[i] = '\0';
-    return symbuf;
-}
-
-/*
- * Read a number (decimal integer or constant)
- */
-static long
-read_number(void)
-{
-    long val = 0;
-    int sign = 1;
-
-    skip();
-
-    if (curchar == '-') {
-        sign = -1;
-        nextchar();
-    }
-
-    while (curchar >= '0' && curchar <= '9') {
-        val = val * 10 + (curchar - '0');
-        nextchar();
-    }
-
-    return val * sign;
-}
-
-/*
- * Read a type name (e.g., _short_, _char_, :ptr, :array:10)
- */
-static char typebuf[256];
-static char *
-read_type(void)
-{
-    unsigned char i = 0;
-
-    skip();
-
-    /* Type can start with _ or : */
-    if (curchar == '_' || curchar == ':') {
-        while ((curchar >= 'a' && curchar <= 'z') ||
-               (curchar >= 'A' && curchar <= 'Z') ||
-               (curchar >= '0' && curchar <= '9') ||
-               curchar == '_' || curchar == ':' || curchar == '-') {
-            if (i < sizeof(typebuf) - 1) {
-                typebuf[i++] = curchar;
-            }
-            nextchar();
-        }
-    }
-
-    typebuf[i] = '\0';
-    return typebuf;
-}
-
-/* Forward declarations for handlers */
-static struct expr *parse_expr(void);
-static struct stmt *parse_stmt(void);
-
-/*
  * Handler functions for each operation
  * Each handler consumes the entire s-expression including closing paren
  */
-
-/* Forward declarations for expression handlers */
-static struct expr *handle_deref(unsigned char op);
-static struct expr *handle_assign(unsigned char op);
-static struct expr *handle_call(unsigned char op);
-static struct expr *handle_ternary(unsigned char op);
-static struct expr *handle_const(void);
-static struct expr *handle_symbol(void);
-static struct expr *handle_binary_op(unsigned char op);
-static struct expr *handle_unary_op(unsigned char op);
 
 /* Handler function type - now returns expr* */
 typedef struct expr* (*handler_fn)(unsigned char op);
@@ -641,13 +340,16 @@ typedef struct expr* (*handler_fn)(unsigned char op);
 static struct expr *
 handle_generic(unsigned char op)
 {
-    struct expr *e = new_expr(op);
+    struct expr *e;
+    int depth;
+
+    e = new_expr(op);
 
     fdprintf(2, "OP_%02x", op);
     skip();
 
     /* Skip to closing paren - recursively handle any nested expressions */
-    int depth = 1;
+    depth = 1;
     while (curchar && depth > 0) {
         if (curchar == '(') {
             depth++;
@@ -697,8 +399,12 @@ handle_string(void)
 static struct expr *
 handle_compound_assign(unsigned char op)
 {
-    struct expr *e = new_expr(op);
-    char width = 's';  /* default */
+    struct expr *e;
+    char width;
+    char width_str[3];
+
+    e = new_expr(op);
+    width = 's';  /* default */
 
     /* Check for width annotation */
     skip();
@@ -707,7 +413,9 @@ handle_compound_assign(unsigned char op)
         width = curchar;
         nextchar();
         /* Store width annotation */
-        char width_str[3] = {':', width, '\0'};
+        width_str[0] = ':';
+        width_str[1] = width;
+        width_str[2] = '\0';
         e->type_str = strdup(width_str);
         e->size = get_size_from_type_str(e->type_str);
         e->flags = get_signedness_from_type_str(e->type_str);
@@ -757,12 +465,15 @@ handle_binary_op(unsigned char op)
 
     /* Strength reduction: multiply by power of 2 -> left shift */
     if (op == '*') {
-        int shift = is_multiply_by_power_of_2(e, NULL);
+        int shift;
+        struct expr *old_right;
+
+        shift = is_multiply_by_power_of_2(e, NULL);
         if (shift >= 0) {
             /* Transform (* expr const_2^n) to (y expr const_n) */
             e->op = 'y';  /* LSHIFT */
             /* Replace right operand with shift amount constant */
-            struct expr *old_right = e->right;
+            old_right = e->right;
             e->right = new_expr('C');
             e->right->op = 'C';
             e->right->value = shift;
@@ -831,8 +542,12 @@ handle_lor(unsigned char op)
 static struct expr *
 handle_unary_op(unsigned char op)
 {
-    struct expr *e = new_expr(op);
-    char width = ' ';
+    struct expr *e;
+    char width;
+    char width_str[3];
+
+    e = new_expr(op);
+    width = ' ';
 
     /* Check for width annotation :b :s :l :p (for type conversion ops) */
     skip();
@@ -841,7 +556,9 @@ handle_unary_op(unsigned char op)
         width = curchar;
         nextchar();
         /* Store width annotation */
-        char width_str[3] = {':', width, '\0'};
+        width_str[0] = ':';
+        width_str[1] = width;
+        width_str[2] = '\0';
         e->type_str = strdup(width_str);
         e->size = get_size_from_type_str(e->type_str);
         fdprintf(2, "UNOP %c:%c (", op, width);
@@ -959,8 +676,12 @@ handle_colon(unsigned char op)
 static struct expr *
 handle_deref(unsigned char op)
 {
-    struct expr *e = new_expr('M');  // 'M' for memory/deref
-    char width = 's';  /* default */
+    struct expr *e;
+    char width;
+    char width_str[3];
+
+    e = new_expr('M');  /* 'M' for memory/deref */
+    width = 's';  /* default */
 
     /* Check for width annotation :b :s :l :p :f :d */
     skip();
@@ -969,7 +690,9 @@ handle_deref(unsigned char op)
         width = curchar;
         nextchar();
         /* Store width annotation */
-        char width_str[3] = {':', width, '\0'};
+        width_str[0] = ':';
+        width_str[1] = width;
+        width_str[2] = '\0';
         e->type_str = strdup(width_str);
         e->size = get_size_from_type_str(e->type_str);
         e->flags = get_signedness_from_type_str(e->type_str);
@@ -986,8 +709,12 @@ handle_deref(unsigned char op)
 static struct expr *
 handle_assign(unsigned char op)
 {
-    struct expr *e = new_expr('=');  // '=' for assignment
-    char width = 's';  /* default */
+    struct expr *e;
+    char width;
+    char width_str[3];
+
+    e = new_expr('=');  /* '=' for assignment */
+    width = 's';  /* default */
 
     /* Check for width annotation */
     skip();
@@ -996,7 +723,9 @@ handle_assign(unsigned char op)
         width = curchar;
         nextchar();
         /* Store width annotation */
-        char width_str[3] = {':', width, '\0'};
+        width_str[0] = ':';
+        width_str[1] = width;
+        width_str[2] = '\0';
         e->type_str = strdup(width_str);
         e->size = get_size_from_type_str(e->type_str);
         e->flags = get_signedness_from_type_str(e->type_str);
@@ -1010,91 +739,34 @@ handle_assign(unsigned char op)
     return e;
 }
 
-/*
- * Parser state for nested parsing
- */
-struct parser_state {
-    char saved_buf[BUFSIZE];
-    int saved_buf_pos;
-    int saved_buf_valid;
-    int saved_line_num;
-    unsigned char saved_curchar;
-    int saved_in_fd;
-};
-
-/*
- * Save current parser state
- */
-static void
-save_parser_state(struct parser_state *state)
-{
-    memcpy(state->saved_buf, buf, buf_valid);
-    state->saved_buf_pos = buf_pos;
-    state->saved_buf_valid = buf_valid;
-    state->saved_line_num = line_num;
-    state->saved_curchar = curchar;
-    state->saved_in_fd = in_fd;
-}
-
-/*
- * Restore parser state
- */
-static void
-restore_parser_state(struct parser_state *state)
-{
-    memcpy(buf, state->saved_buf, state->saved_buf_valid);
-    buf_pos = state->saved_buf_pos;
-    buf_valid = state->saved_buf_valid;
-    line_num = state->saved_line_num;
-    curchar = state->saved_curchar;
-    in_fd = state->saved_in_fd;
-}
-
-/*
- * Set up parser to read from a string buffer
- */
-static void
-setup_string_input(char *str, int len)
-{
-    /* Copy string to main buffer */
-    if (len > BUFSIZE - 1) {
-        len = BUFSIZE - 1;
-    }
-    memcpy(buf, str, len);
-    buf[len] = 0;
-    buf_pos = 0;
-    buf_valid = len;
-    in_fd = -1;  /* Mark as string input */
-
-    /* Initialize curchar */
-    if (len > 0) {
-        curchar = buf[0];
-        buf_pos = 1;
-    } else {
-        curchar = 0;
-    }
-}
-
 static struct expr *
 handle_call(unsigned char op)
 {
-    struct expr *e = new_expr('@');  // '@' for call
+    struct expr *e;
     char arg_buf[4096];  /* Buffer to capture argument expressions */
     int arg_start[32];  /* Start position of each argument */
     int arg_len[32];    /* Length of each argument */
     struct expr *args[32];  /* Parsed argument trees */
-    int arg_count = 0;
-    int arg_buf_pos = 0;
+    int arg_count;
+    int arg_buf_pos;
     int i;
     char func_buf[512];
-    int func_len = 0;
+    int func_len;
+    int depth;
+    struct parser_state saved_state;
+    struct expr *prev;
+
+    e = new_expr('@');  /* '@' for call */
+    arg_count = 0;
+    arg_buf_pos = 0;
+    func_len = 0;
 
     fdprintf(2, "CALL (");
 
     skip();
 
     /* Collect function expression into func_buf */
-    int depth = 0;
+    depth = 0;
 
     while (1) {
         if (curchar == 0) break;
@@ -1161,7 +833,6 @@ handle_call(unsigned char op)
     }
 
     /* Now recursively parse: function and arguments */
-    struct parser_state saved_state;
     save_parser_state(&saved_state);
 
     /* Parse function expression */
@@ -1183,7 +854,7 @@ handle_call(unsigned char op)
     e->value = arg_count;
     if (arg_count > 0) {
         e->right = args[0];
-        struct expr *prev = args[0];
+        prev = args[0];
         for (i = 1; i < arg_count; i++) {
             prev->right = args[i];
             prev = args[i];
@@ -1198,7 +869,10 @@ handle_call(unsigned char op)
 static struct expr *
 handle_ternary(unsigned char op)
 {
-    struct expr *e = new_expr('?');  // '?' for ternary
+    struct expr *e;
+    struct expr *colon;
+
+    e = new_expr('?');  /* '?' for ternary */
 
     fdprintf(2, "TERNARY (");
     skip();
@@ -1214,7 +888,7 @@ handle_ternary(unsigned char op)
             nextchar();
             skip();
             /* Build COLON node with true/false branches */
-            struct expr *colon = new_expr(':');
+            colon = new_expr(':');
             colon->left = parse_expr();  /* true expr */
             fdprintf(2, " : ");
             skip();
@@ -1229,19 +903,7 @@ handle_ternary(unsigned char op)
     return e;
 }
 
-/* Forward declarations for recursive parsing */
-static struct expr *parse_expr(void);
-static struct stmt *parse_stmt(void);
-
-/* Forward declarations for code generation and emission */
-
-/* Helper functions for creating ASM nodes */
-static struct stmt *create_label_asm(const char *label_name);
-static struct stmt *create_jump_asm(const char *label_name);
-
-/* Statement handlers */
-
-/* Forward declarations */
+/* Forward declarations for statement handlers (needed for mutual recursion) */
 static struct stmt *handle_block(void);
 static struct stmt *handle_if(void);
 static struct stmt *handle_while(void);
@@ -1306,10 +968,17 @@ handle_default_in_block(void)
 static struct stmt *
 handle_block(void)
 {
-    struct stmt *s = new_stmt('B');
-    struct stmt *first_child = NULL;
-    struct stmt *last_child = NULL;
+    struct stmt *s;
+    struct stmt *first_child;
+    struct stmt *last_child;
     struct stmt *child;
+    char op;
+    char *name;
+    char *type;
+
+    s = new_stmt('B');
+    first_child = NULL;
+    last_child = NULL;
 
     fdprintf(2, "BLOCK { ");
 
@@ -1320,17 +989,17 @@ handle_block(void)
         if (curchar == '(') {
             nextchar();
             /*
-             * Don't call skip() yet - need to read op first to 
+             * Don't call skip() yet - need to read op first to
              * avoid ';' being treated as comment
              */
-            char op = curchar;  /* Read operator immediately after '(' */
+            op = curchar;  /* Read operator immediately after '(' */
             nextchar();  /* Consume operator */
             skip();      /* Now safe to skip whitespace */
 
             if (op == 'd') {
                 /* Declaration */
-                char *name = read_symbol();
-                char *type = read_type();
+                name = read_symbol();
+                type = read_type();
                 fdprintf(2, "  DECL %s %s\n", name, type);
 
                 /* Create declaration statement node */
@@ -1481,9 +1150,11 @@ handle_if(void)
 static struct stmt *
 handle_while(void)
 {
-    struct stmt *s = new_stmt('W');
+    struct stmt *s;
     char label_buf[64];
+    struct stmt *start_label;
 
+    s = new_stmt('W');
     s->label = label_counter++;  /* Loop start label */
 
     fdprintf(2, "WHILE (");
@@ -1499,7 +1170,7 @@ handle_while(void)
     /* Insert loop start label before the while, and end label after */
     /* Create label for loop start */
     snprintf(label_buf, sizeof(label_buf), "_while_%d", s->label);
-    struct stmt *start_label = create_label_asm(label_buf);
+    start_label = create_label_asm(label_buf);
     start_label->next = s;
 
     /* Insert end/break label after the while */
@@ -1512,9 +1183,11 @@ handle_while(void)
 static struct stmt *
 handle_do(void)
 {
-    struct stmt *s = new_stmt('D');
+    struct stmt *s;
     char label_buf[64];
+    struct stmt *start_label;
 
+    s = new_stmt('D');
     s->label = label_counter++;  /* Loop start label */
 
     fdprintf(2, "DO ");
@@ -1530,7 +1203,7 @@ handle_do(void)
 
     /* Insert loop start label before the do, and end label after */
     snprintf(label_buf, sizeof(label_buf), "_do_%d", s->label);
-    struct stmt *start_label = create_label_asm(label_buf);
+    start_label = create_label_asm(label_buf);
     start_label->next = s;
 
     /* Insert end/break label after the do-while */
@@ -1543,9 +1216,11 @@ handle_do(void)
 static struct stmt *
 handle_for(void)
 {
-    struct stmt *s = new_stmt('F');
+    struct stmt *s;
     char label_buf[64];
+    struct stmt *start_label;
 
+    s = new_stmt('F');
     s->label = label_counter++;  /* Loop start label */
 
     fdprintf(2, "FOR (");
@@ -1566,7 +1241,7 @@ handle_for(void)
 
     /* Insert loop start label before the for, and end label after */
     snprintf(label_buf, sizeof(label_buf), "_for_%d", s->label);
-    struct stmt *start_label = create_label_asm(label_buf);
+    start_label = create_label_asm(label_buf);
     start_label->next = s;
 
     /* Insert end/break label after the for */
@@ -1614,66 +1289,6 @@ handle_empty_stmt(void)
     fdprintf(2, ";");
     expect(')');
     return s;
-}
-
-/*
- * Check if a line is a label (ends with ':')
- */
-static int
-is_label(char *line)
-{
-    int len;
-
-    /* Trim trailing whitespace to find actual end */
-    len = strlen(line);
-    while (len > 0 && (line[len-1] == ' ' || line[len-1] == '\t')) {
-        len--;
-    }
-
-    return len > 0 && line[len-1] == ':';
-}
-
-/*
- * Trim leading and trailing whitespace from a line
- * Also collapse multiple consecutive spaces into single spaces
- */
-static char *
-trim_line(char *line)
-{
-    char *end;
-    char *src, *dst;
-    int last_was_space;
-
-    /* Trim leading space */
-    while (*line == ' ' || *line == '\t') {
-        line++;
-    }
-
-    /* Collapse multiple spaces into single spaces */
-    src = dst = line;
-    last_was_space = 0;
-    while (*src) {
-        if (*src == ' ' || *src == '\t') {
-            if (!last_was_space) {
-                *dst++ = ' ';
-                last_was_space = 1;
-            }
-            src++;
-        } else {
-            *dst++ = *src++;
-            last_was_space = 0;
-        }
-    }
-    *dst = '\0';
-
-    /* Trim trailing space */
-    end = line + strlen(line) - 1;
-    while (end >= line && (*end == ' ' || *end == '\t')) {
-        *end = '\0';
-        end--;
-    }
-
-    return line;
 }
 
 static struct stmt *
@@ -1754,10 +1369,15 @@ handle_goto(void)
 static struct stmt *
 handle_switch(void)
 {
-    struct stmt *s = new_stmt('S');
-    struct stmt *first_child = NULL;
-    struct stmt *last_child = NULL;
+    struct stmt *s;
+    struct stmt *first_child;
+    struct stmt *last_child;
     struct stmt *child;
+    char clause_type;
+
+    s = new_stmt('S');
+    first_child = NULL;
+    last_child = NULL;
 
     /* Switch statement: (S expr (C val ...) (C val ...) (O ...) ) */
     fdprintf(2, "SWITCH (");
@@ -1772,7 +1392,7 @@ handle_switch(void)
         if (curchar == '(') {
             nextchar();
             skip();
-            char clause_type = curchar;
+            clause_type = curchar;
             nextchar();
 
             if (clause_type == 'C') {
@@ -1910,6 +1530,8 @@ handle_function(void)
     struct stmt *first_child = NULL;
     struct stmt *last_child = NULL;
     struct stmt *child;
+    char *dname;
+    char *dtype;
 
     /* (f name (params) return_type declarations body) */
     /* Copy function name to stack buffer before reading parameters */
@@ -1981,8 +1603,8 @@ handle_function(void)
             if (curchar == 'd') {
                 /* Declaration - we're already past the '(' */
                 nextchar();
-                char *dname = read_symbol();
-                char *dtype = read_type();
+                dname = read_symbol();
+                dtype = read_type();
                 fdprintf(2, "  DECL %s %s\n", dname, dtype);
 
                 /* Create declaration statement node */
@@ -2212,6 +1834,7 @@ static struct expr *
 parse_expr(void)
 {
     struct expr *e;
+    unsigned char op;
 
     skip();
 
@@ -2219,7 +1842,7 @@ parse_expr(void)
         nextchar();
         skip();
 
-        unsigned char op = curchar;
+        op = curchar;
         nextchar();
 
         /* Use lookup table to dispatch to handler */
@@ -2252,11 +1875,12 @@ static struct stmt *
 parse_stmt(void)
 {
     struct stmt *s;
+    char op;
 
     skip();
 
     if (curchar != '(') {
-        fdprintf(2, "parseast: line %d: expected '(' at start of statement\n", 
+        fdprintf(2, "parseast: line %d: expected '(' at start of statement\n",
             line_num);
         return NULL;
     }
@@ -2270,7 +1894,7 @@ parse_stmt(void)
         return NULL;
     }
 
-    char op = curchar;
+    op = curchar;
     nextchar();
 
     switch (op) {
@@ -2332,6 +1956,8 @@ parse_stmt(void)
 static void
 parse_toplevel(void)
 {
+    char op;
+
     skip();
 
     if (curchar != '(') {
@@ -2341,7 +1967,7 @@ parse_toplevel(void)
     nextchar();
     skip();
 
-    char op = curchar;
+    op = curchar;
     nextchar();
 
     switch (op) {
@@ -2374,11 +2000,9 @@ parse_toplevel(void)
 int
 parse_ast_file(int in, int out)
 {
-    in_fd = in;
+    /* Initialize low-level I/O */
+    init_astio(in);
     out_fd = out;
-    buf_pos = 0;
-    buf_valid = 0;
-    line_num = 1;
 
     /* Initialize expression handler lookup table */
     init_expr_handlers();

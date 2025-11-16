@@ -235,12 +235,54 @@ parse_expr(unsigned char pri, struct stmt *st)
          */
         struct name *n;
         struct expr *sym;
+        char symname_buf[256];
+        char *symname;
 
-        n = lookup_name(cur.v.name, 0);
+        /* Save symbol name before gettoken() overwrites cur.v.name */
+        strncpy(symname_buf, cur.v.name, sizeof(symname_buf) - 1);
+        symname_buf[sizeof(symname_buf) - 1] = '\0';
+        symname = symname_buf;
+
+        n = lookup_name(symname, 0);
+
+        /* Peek at next token to enable implicit function declarations */
+        gettoken();
+
         if (!n) {
-            gripe(ER_E_UO);
-            e = makeexpr_init(CONST, 0, inttype, 0, 0);
-        } else if (n->kind == elem) {
+            /* Undefined symbol */
+            /* K&R extension: if followed by '(', implicitly declare as
+             * function returning int */
+            if (cur.type == LPAR) {
+                struct type *functype;
+
+                /* Create implicit function declaration: int name() */
+                functype = calloc(1, sizeof(struct type));
+                functype->flags = TF_FUNC;
+                functype->sub = inttype;  /* Return type: int */
+                functype->elem = NULL;    /* No parameter info */
+
+                n = calloc(1, sizeof(struct name));
+                n->name = strdup(symname);
+                n->kind = var;
+                n->type = functype;
+                n->level = 1;  /* Global scope */
+                n->sclass = SC_EXTERN;
+                n->is_tag = 0;
+
+                add_name(n);
+
+                if (VERBOSE(V_SYM)) {
+                    fdprintf(2, "Implicit declaration: int %s()\n", symname);
+                }
+            } else {
+                /* Not a function call - report error */
+                gripe(ER_E_UO);
+                e = makeexpr_init(CONST, 0, inttype, 0, 0);
+                break;
+            }
+        }
+
+        if (n->kind == elem) {
             // Enum constant: treat as integer constant
             e = makeexpr_init(CONST, 0, inttype, n->offset, E_CONST);
         } else {
@@ -260,7 +302,7 @@ parse_expr(unsigned char pri, struct stmt *st)
                 e = makeexpr_init(DEREF, sym, n->type, 0, 0);
             }
         }
-        gettoken();
+        /* Note: gettoken() already called above for lookahead */
         break;
     }
 

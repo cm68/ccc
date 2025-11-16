@@ -46,11 +46,11 @@ GENERATED = enumlist.h tokenlist.c error.h debug.h debugtags.c op_pri.h
 # All C source files (generated + corresponding to .o files)
 CFILES = cc1.c error.c lex.c io.c macro.c kw.c util.c unixlib.c \
 	expr.c parse.c type.c declare.c outast.c \
-	cc2.c parseast.c codegen.c emit.c ccc.c \
+	cc2.c astio.c parseast.c codegen.c emit.c ccc.c \
 	tokenlist.c debugtags.c
 
 # All header files (manually written + generated)
-HFILES = $(HEADERS) enumlist.h error.h debug.h op_pri.h
+HFILES = $(HEADERS) astio.h enumlist.h error.h debug.h op_pri.h
 
 # All source files
 SOURCES = $(CFILES) $(HFILES)
@@ -67,8 +67,8 @@ all: cc1 cc2 ccc doc.pdf
 cc1: $(CC1OBJECTS)
 	$(LD) $(LDFLAGS) cc1 $(CC1OBJECTS)
 
-cc2: cc2.o util.o parseast.o codegen.o emit.o
-	$(LD) $(LDFLAGS) cc2 cc2.o util.o parseast.o codegen.o emit.o
+cc2: cc2.o util.o astio.o parseast.o codegen.o emit.o
+	$(LD) $(LDFLAGS) cc2 cc2.o util.o astio.o parseast.o codegen.o emit.o
 
 ccc: ccc.o
 	$(LD) $(LDFLAGS) ccc ccc.o
@@ -238,3 +238,5 @@ util.o: util.c
 tokenlist.o: tokenlist.c
 expr.o: expr.c op_pri.h
 outast.o: outast.c
+astio.o: astio.c astio.h cc2.h
+parseast.o: parseast.c astio.h cc2.h

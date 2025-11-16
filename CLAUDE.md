@@ -322,7 +322,8 @@ See INTERP.md for complete documentation.
   orchestration
 - **lex.c**: Lexical analyzer (tokenizer) with embedded CPP support
 - **parse.c**: Recursive descent parser for statements and declarations
-- **expr.c**: Expression parsing with operator precedence and constant folding
+- **expr.c**: Expression parsing with operator precedence, constant folding, and
+  K&R implicit function declarations
 - **type.c**: Type system - manages primitive types, pointers, arrays,
   functions, structs/unions/enums
 - **declare.c**: Declaration parsing (variables, functions, types) including K&R
@@ -336,6 +337,13 @@ See INTERP.md for complete documentation.
   critical errors)
 - **util.c**: Utility functions (string ops, bit manipulation, fdprintf for Unix
   syscalls)
+
+**Pass 2 (cc2) Code Organization:**
+- **parseast.c**: Semantic AST parser - parses S-expression AST and builds
+  expression/statement trees
+- **astio.c**: Low-level AST I/O - buffered input, whitespace/comment handling,
+  token reading
+- **astio.h**: AST I/O interface declarations
 
 ### Auto-Generated Files
 
@@ -495,6 +503,38 @@ Expression parsing uses precedence climbing:
 assignment, compound assignment, increment/decrement, sizeof, casts), constant
 folding, proper precedence/associativity, function/array decay, automatic type
 conversions. See detailed sections below for specific operator implementations.
+
+### K&R Implicit Function Declarations
+
+The compiler supports K&R-style implicit function declarations as an extension,
+allowing classic K&R C code to compile without explicit forward declarations:
+
+**Feature**: When an undefined symbol is followed by `(`, automatically declare
+it as `int name()`:
+
+```c
+int main() {
+    printf("Hello, World!\n");  /* Implicitly declared as: int printf() */
+    return 0;
+}
+```
+
+**Implementation** (expr.c case SYM):
+- Save symbol name before gettoken() (which overwrites cur.v.name)
+- Peek at next token to check for LPAR
+- If symbol undefined and next token is LPAR, create implicit function:
+  - Return type: int
+  - Parameters: unknown (TF_FUNC with NULL elem)
+  - Storage class: SC_EXTERN
+  - Scope: level 1 (global)
+- VERBOSE(V_SYM) outputs: "Implicit declaration: int name()"
+
+**Benefits**:
+- Allows compilation of K&R code without prototypes
+- Classic "hello world" compiles without stdio.h
+- Matches historical C compiler behavior
+
+**Test**: tests/hello.c demonstrates implicit printf declaration
 
 ### Ternary Conditional Operator
 
@@ -1020,7 +1060,16 @@ preprocessor, type system, expression parsing, statement parsing, and AST
 emission. The compiler is self-hosting (parses all 18 of its own source files)
 and passes all 142 tests.
 
+**Pass 1 (cc1) - Recent Enhancements**:
+- K&R implicit function declarations: Undefined symbols followed by `(` are
+  automatically declared as `int name()` (expr.c)
+- Tests: Added tests/hello.c to demonstrate implicit printf declaration
+
 **Pass 2 (cc2) - In Development**:
+- Code refactoring: Split parseast.c into astio.c for low-level I/O operations
+  - astio.c: Buffered input, whitespace/comment handling, token reading
+  - parseast.c: Semantic AST parsing and tree building
+  - Removed unnecessary forward declarations from parseast.c
 - AST parser (parseast.c) implemented with critical bug fixes:
   - Fixed operator parsing in handle_block() to prevent semicolon consumption
   - Fixed BREAK statement handling (changed from 'B' to 'K')
