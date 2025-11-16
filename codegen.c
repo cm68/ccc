@@ -690,7 +690,7 @@ static void generate_expr(struct function_ctx *ctx, struct expr *e)
              * reduction */
             int shift_amount = 0;
             char asm_buf[256];
-            int pos;
+            int pos = 0;
             int i;
 
             if (e->right && e->right->op == 'C') {
@@ -704,7 +704,6 @@ static void generate_expr(struct function_ctx *ctx, struct expr *e)
 
             /* Build assembly: repeated add */
             asm_buf[0] = '\0';
-            pos = 0;
 
             for (i = 0; i < shift_amount && i < 16; i++) {  /* cap at 16 */
                 if (e->size == 1) {

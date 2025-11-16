@@ -99,28 +99,17 @@ struct expr *
 parse_expr(unsigned char pri, struct stmt *st)
 {
 	unsigned char op;
-	struct expr *e;
+	struct expr *e = 0;
     unsigned char p;
-	struct type *assign_type;
-	unsigned char is_assignment;
-	struct var *member_info;
-	struct var *saved_member_info;
-	int l_ptr;
-	int r_ptr;
-	struct type *l_base;
-	struct type *r_base;
-	unsigned char is_binary_op;
-
-	e = 0;  // initialize to avoid uninitialized use
-	assign_type = NULL;
-	is_assignment = 0;
-	member_info = NULL;
-	saved_member_info = NULL;
-	l_ptr = 0;
-	r_ptr = 0;
-	l_base = NULL;
-	r_base = NULL;
-	is_binary_op = 0;
+	struct type *assign_type = NULL;
+	unsigned char is_assignment = 0;
+	struct var *member_info = NULL;
+	struct var *saved_member_info = NULL;
+	int l_ptr = 0;
+	int r_ptr = 0;
+	struct type *l_base = NULL;
+	struct type *r_base = NULL;
+	unsigned char is_binary_op = 0;
 
 	switch (cur.type) {   // prefix
 
