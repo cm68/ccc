@@ -121,6 +121,7 @@ void free_stmt(struct stmt *s);
 
 /* Width and signedness extraction from type annotations */
 unsigned char get_size_from_type_str(const char *type_str);
+unsigned char get_size_from_typename(const char *typename);
 unsigned char get_signedness_from_type_str(const char *type_str);
 
 /* Pattern recognizers */
