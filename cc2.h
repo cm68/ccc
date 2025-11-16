@@ -105,6 +105,7 @@ struct function_ctx {
     struct local_var *locals;   // List of local variables with stack offsets
     int frame_size;             // Total stack frame size in bytes
     int current_label;          // Current label context during code generation (for lifetime tracking)
+    int de_save_count;          // Counter for nested DE saves (for secondary register preservation)
 };
 
 /* Forward declarations from util.c */

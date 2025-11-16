@@ -1695,6 +1695,7 @@ handle_function(void)
     ctx.label_counter = label_counter;  /* Save current label counter */
     ctx.locals = NULL;  /* No local variables yet */
     ctx.frame_size = 0;  /* No frame size yet */
+    ctx.de_save_count = 0;  /* No nested DE saves yet */
 
     expect(')');
 

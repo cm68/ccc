@@ -8,6 +8,45 @@
  * - emit_assembly(): Main entry point - emit function assembly and free tree
  * - emit_expr()/emit_stmt(): Walk trees, emit assembly, free nodes
  * - emit_function_prologue(): Output function header and variable metadata
+ *
+ * Register Architecture (Stack Machine Model):
+ * ============================================
+ * The code generator implements a stack machine where the top two stack elements
+ * are kept in registers:
+ * - PRIMARY accumulator (HL for words, A for bytes) - top of stack
+ * - SECONDARY accumulator (DE for words, E for bytes) - second element
+ *
+ * For binary operations (a + b):
+ *   1. Evaluate left operand -> PRIMARY
+ *   2. Move PRIMARY to SECONDARY (spill to register)
+ *   3. Evaluate right operand -> PRIMARY
+ *   4. Operate on SECONDARY and PRIMARY
+ *
+ * Nested Binary Operations:
+ * -------------------------
+ * For nested expressions like (a + b) + c, the right operand (c) evaluation may
+ * itself contain binary operations that would clobber SECONDARY (DE). To handle
+ * this, we implement a spilling mechanism:
+ * - Before evaluating right child: if it contains binops, push DE (spill to stack)
+ * - After evaluating right child: pop DE (restore from stack)
+ * - Track spill depth with ctx->de_save_count
+ *
+ * Example: (a + b) + (c + d)
+ *   Left child (a + b):
+ *     eval a -> PRIMARY (HL)
+ *     move PRIMARY to SECONDARY (DE)
+ *     eval b -> PRIMARY (HL)
+ *     add HL, DE -> PRIMARY (HL)
+ *   Main operation:
+ *     move PRIMARY to SECONDARY (DE)
+ *     push DE (save result of a+b)
+ *     Right child (c + d):
+ *       eval c -> PRIMARY (HL)
+ *       move PRIMARY to SECONDARY (DE, clobbering saved a+b)
+ *       eval d -> PRIMARY (HL)
+ *       add HL, DE -> PRIMARY (HL)
+ *     pop DE (restore result of a+b)
+ *     add HL, DE -> PRIMARY (HL)
  */
 #include <stdlib.h>
 #include <stdio.h>
@@ -128,6 +167,25 @@ is_binop_with_accum(unsigned char op)
 }
 
 /*
+ * Helper: Check if expression tree contains any binary operations
+ * Used to determine if we need to save secondary register (DE)
+ */
+static int
+contains_binop(struct expr *e)
+{
+    if (!e) return 0;
+
+    /* Check if this node is a binop */
+    if (is_binop_with_accum(e->op)) return 1;
+
+    /* Recursively check children */
+    if (contains_binop(e->left)) return 1;
+    if (contains_binop(e->right)) return 1;
+
+    return 0;
+}
+
+/*
  * Emission phase (Phase 3)
  * Walk expression tree, emit assembly, and free nodes
  *
@@ -201,12 +259,13 @@ static void emit_expr(struct function_ctx *ctx, struct expr *e)
         emit_expr(ctx, e->left);
     }
     /* Binary operators with accumulator management need special handling */
-    else if (is_binop_with_accum(e->op) && e->left && e->right && 
+    else if (is_binop_with_accum(e->op) && e->left && e->right &&
             e->asm_block) {
         /* Split asm_block into move instruction and call instruction */
         char *move_inst = NULL;
         char *call_inst = NULL;
         char *newline = strchr(e->asm_block, '\n');
+        int saved_de = 0;
 
         if (newline) {
             /* Extract move instruction (before newline) */
@@ -223,14 +282,29 @@ static void emit_expr(struct function_ctx *ctx, struct expr *e)
 
         /* Emit in correct order for accumulator management */
         /* 1. Left operand to PRIMARY */
-        emit_expr(ctx, e->left);    
+        emit_expr(ctx, e->left);
         if (move_inst) {
             /* 2. Move PRIMARY to SECONDARY */
             fdprintf(out_fd, "%s\n", move_inst);
             free(move_inst);
-        }               
+        }
+
+        /* If right child contains binops, save SECONDARY (DE) before evaluation */
+        if (contains_binop(e->right)) {
+            fdprintf(out_fd, "\tpush de  ; save SECONDARY for nested binop\n");
+            ctx->de_save_count++;
+            saved_de = 1;
+        }
+
         /* 3. Right operand to PRIMARY */
-        emit_expr(ctx, e->right);   
+        emit_expr(ctx, e->right);
+
+        /* Restore SECONDARY (DE) if we saved it */
+        if (saved_de) {
+            fdprintf(out_fd, "\tpop de  ; restore SECONDARY\n");
+            ctx->de_save_count--;
+        }
+
         if (call_inst) {
             /* 4. Call binary operation */
             fdprintf(out_fd, "%s\n", call_inst);
