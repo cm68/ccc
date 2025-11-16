@@ -625,10 +625,10 @@ static struct stmt *parse_stmt(void);
  */
 
 /* Forward declarations for expression handlers */
-static struct expr *handle_deref(void);
-static struct expr *handle_assign(void);
-static struct expr *handle_call(void);
-static struct expr *handle_ternary(void);
+static struct expr *handle_deref(unsigned char op);
+static struct expr *handle_assign(unsigned char op);
+static struct expr *handle_call(unsigned char op);
+static struct expr *handle_ternary(unsigned char op);
 static struct expr *handle_const(void);
 static struct expr *handle_symbol(void);
 static struct expr *handle_binary_op(unsigned char op);
@@ -935,25 +935,6 @@ handle_bfassign(unsigned char op)
     return e;
 }
 
-/* Wrappers to match handler_fn signature */
-static struct expr *handle_deref_dispatch(unsigned char op) { 
-    return handle_deref(); 
-}
-static struct expr *handle_assign_dispatch(unsigned char op) { 
-    return handle_assign(); 
-}
-static struct expr *handle_call_dispatch(unsigned char op) { 
-    return handle_call(); 
-}
-static struct expr *handle_ternary_dispatch(unsigned char op) { 
-    return handle_ternary(); 
-}
-static struct expr *handle_bfextract_dispatch(unsigned char op) { 
-    return handle_bfextract(op); 
-}
-static struct expr *handle_bfassign_dispatch(unsigned char op) { 
-    return handle_bfassign(op); 
-}
 
 /*
  * COLON is only used as part of ternary, 
@@ -975,12 +956,8 @@ handle_colon(unsigned char op)
     return e;
 }
 
-static struct expr *handle_colon_dispatch(unsigned char op) { 
-    return handle_colon(op); 
-}
-
 static struct expr *
-handle_deref(void)
+handle_deref(unsigned char op)
 {
     struct expr *e = new_expr('M');  // 'M' for memory/deref
     char width = 's';  /* default */
@@ -1007,7 +984,7 @@ handle_deref(void)
 }
 
 static struct expr *
-handle_assign(void)
+handle_assign(unsigned char op)
 {
     struct expr *e = new_expr('=');  // '=' for assignment
     char width = 's';  /* default */
@@ -1099,7 +1076,7 @@ setup_string_input(char *str, int len)
 }
 
 static struct expr *
-handle_call(void)
+handle_call(unsigned char op)
 {
     struct expr *e = new_expr('@');  // '@' for call
     char arg_buf[4096];  /* Buffer to capture argument expressions */
@@ -1219,7 +1196,7 @@ handle_call(void)
 }
 
 static struct expr *
-handle_ternary(void)
+handle_ternary(unsigned char op)
 {
     struct expr *e = new_expr('?');  // '?' for ternary
 
@@ -2165,11 +2142,11 @@ init_expr_handlers(void)
     }
 
     /* Register specific handlers */
-    expr_handlers['M'] = handle_deref_dispatch;     /* DEREF */
-    expr_handlers['='] = handle_assign_dispatch;    /* ASSIGN */
-    expr_handlers['@'] = handle_call_dispatch;      /* CALL */
-    expr_handlers['?'] = handle_ternary_dispatch;   /* TERNARY */
-    expr_handlers[':'] = handle_colon_dispatch;     /* COLON */
+    expr_handlers['M'] = handle_deref;     /* DEREF */
+    expr_handlers['='] = handle_assign;    /* ASSIGN */
+    expr_handlers['@'] = handle_call;      /* CALL */
+    expr_handlers['?'] = handle_ternary;   /* TERNARY */
+    expr_handlers[':'] = handle_colon;     /* COLON */
 
     /* Binary operators */
     expr_handlers['+'] = handle_binary_op;
@@ -2224,8 +2201,8 @@ init_expr_handlers(void)
     expr_handlers[0xbb] = handle_binary_op; /* COPY */
 
     /* Bitfield operators */
-    expr_handlers[0xa7] = handle_bfextract_dispatch;  /* BFEXTRACT */
-    expr_handlers[0xdd] = handle_bfassign_dispatch;   /* BFASSIGN */
+    expr_handlers[0xa7] = handle_bfextract;  /* BFEXTRACT */
+    expr_handlers[0xdd] = handle_bfassign;   /* BFASSIGN */
 }
 
 /*
