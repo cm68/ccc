@@ -213,7 +213,7 @@ doc.pdf: $(SOURCES) $(DOCFILES) Makefile
 	  enscript -2rG -p - Makefile $(CFILES) $(HFILES); } | ps2pdf - doc.pdf
 
 clean:
-	rm -f $(CC1OBJECTS) cc2.o ccc.o $(GENERATED) tests/*.i *.ast *.s \
+	rm -f $(CC1OBJECTS) cc2.o ccc.o $(GENERATED) tests/*.i *.ast *.s *.pp \
 		*.asm *.lst *.sym *.map *.cdb *.ihx *.i
 	$(MAKE) -C unit_test clean
 
