@@ -200,7 +200,10 @@ new_name(char *name, kind k, struct type *t, boolean is_tag)
             // Allow extern declaration followed by definition (or vice versa)
             // This is valid C: extern int x; ... int x = 0;
             if (n->sclass & SC_EXTERN) {
-                // Existing is extern - return it to be updated with new definition
+                /*
+                 * Existing is extern - return it to be updated with new
+                 * definition
+                 */
                 return n;
             }
             gripe(ER_D_DN);
@@ -276,7 +279,8 @@ add_name(struct name *n)
     if (VERBOSE(V_SYM)) {
         fdprintf(2,"add_name: level:%d index:%3d %s %s%s\n",
             lexlevel, lastname,
-            n->kind < sizeof(kindname)/sizeof(kindname[0]) ? kindname[n->kind] : "unkn",
+            n->kind < sizeof(kindname)/sizeof(kindname[0]) ?
+                kindname[n->kind] : "unkn",
             n->is_tag ? "tag:":"", n->name);
     }
 #endif
@@ -448,17 +452,25 @@ get_type(
     if (!(flags & TF_AGGREGATE)) {
         for (t = types; t && depth < 1000; t = t->next, depth++) {
             if ((t->flags == flags) && (t->sub == sub)) {
-                /* For arrays, also check count to distinguish different array sizes */
+                /*
+                 * For arrays, also check count to distinguish different
+                 * array sizes
+                 */
                 if ((flags & TF_ARRAY) && (t->count != count)) {
                     continue;
                 }
-                /* For functions, variadic is part of flags so it matches automatically */
+                /*
+                 * For functions, variadic is part of flags so it matches
+                 * automatically
+                 */
                 return t;
             }
         }
 
         if (depth >= 1000) {
-            fdprintf(2,"WARNING: type cache search hit depth limit, possible cycle in types list\n");
+            fdprintf(2,
+                "WARNING: type cache search hit depth limit, "
+                "possible cycle in types list\n");
         }
     }
 
@@ -637,8 +649,8 @@ getbasetype()
     /*
      * enum [name] { tag [= const], ... }
      *
-     * Enums are just a way to define named integer constants in the global namespace.
-     * All enum variables are simply unsigned char.
+     * Enums are just a way to define named integer constants in the global
+     * namespace. All enum variables are simply unsigned char.
      * The tag name (if present) is ignored - it's just for documentation.
      */
     if (cur.type == ENUM) {
@@ -760,15 +772,22 @@ getbasetype()
         // parse member list: { type name; ... }
         match(BEGIN);
         off = 0;  // offset for struct members
-        int bitoff_accumulator = 0;  // bit offset within current word for bitfield packing
+        /*
+         * bit offset within current word for bitfield packing
+         */
+        int bitoff_accumulator = 0;
         while (cur.type != END && cur.type != E_O_F) {
             struct type *member_type = 0;
 
-            // parse member declaration (struct_elem=true to avoid global namespace pollution)
+            /*
+             * parse member declaration (struct_elem=true to avoid global
+             * namespace pollution)
+             */
             struct name *member = declare_internal(&member_type, 1);
             if (!member) {
                 // skip to semicolon or end
-                while (cur.type != SEMI && cur.type != END && cur.type != E_O_F) {
+                while (cur.type != SEMI && cur.type != END &&
+                       cur.type != E_O_F) {
                     gettoken();
                 }
                 if (cur.type == SEMI) gettoken();
@@ -794,7 +813,10 @@ getbasetype()
                 // Handle bitfield packing
                 if (member->kind == bitfield) {
                     // Bitfield - pack into current word
-                    // Check if bitfield fits in current word (assume 16-bit words for now)
+                    /*
+                     * Check if bitfield fits in current word (assume
+                     * 16-bit words for now)
+                     */
                     if (bitoff_accumulator + member->width > 16) {
                         // Move to next word
                         off += 2;  // Advance to next word (2 bytes)
@@ -812,7 +834,10 @@ getbasetype()
                 } else {
                     // Regular member - reset bitfield accumulator
                     if (bitoff_accumulator > 0) {
-                        // Finish current bitfield word before adding regular member
+                        /*
+                         * Finish current bitfield word before adding
+                         * regular member
+                         */
                         off += 2;
                         bitoff_accumulator = 0;
                     }

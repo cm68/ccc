@@ -131,7 +131,10 @@ declare_internal(struct type **btp, boolean struct_elem)
         }
 
         if (struct_elem) {
-            /* struct members: create name but DON'T add to global names[] array */
+            /*
+             * struct members: create name but DON'T add to
+             * global names[] array
+             */
             nm = calloc(1, sizeof(*nm));  // Zero-initialize all fields
             nm->name = strdup(cur.v.name);
             nm->type = prefix;
@@ -146,7 +149,8 @@ declare_internal(struct type **btp, boolean struct_elem)
             nm->u.body = 0;
 #ifdef DEBUG
             if (VERBOSE(V_SYM)) {
-                fdprintf(2, "struct_elem: %s (not added to names[])\n", nm->name);
+                fdprintf(2, "struct_elem: %s (not added to names[])\n",
+                         nm->name);
             }
 #endif
         } else {
@@ -154,11 +158,18 @@ declare_internal(struct type **btp, boolean struct_elem)
             /* Check if this name already exists at this scope */
             struct name *existing = lookup_name(cur.v.name, 0);
             if (existing && existing->level == lexlevel) {
-                /* Name exists at current scope - check if it's a function prototype */
-                if (existing->type && (existing->type->flags & TF_FUNC) && !existing->u.body) {
+                /*
+                 * Name exists at current scope - check if it's a
+                 * function prototype
+                 */
+                if (existing->type && (existing->type->flags & TF_FUNC) &&
+                    !existing->u.body) {
                     /* Reuse existing function declaration (prototype) */
                     nm = existing;
-                    /* Update type to the new one (definition may have full param list) */
+                    /*
+                     * Update type to the new one (definition may have
+                     * full param list)
+                     */
                     /* But keep the existing name structure */
                 } else {
                     /* Not a function prototype - error on redeclaration */
@@ -192,10 +203,14 @@ declare_internal(struct type **btp, boolean struct_elem)
         } else {
             i = parse_const(RBRACK);
         }
-        // Arrays have both TF_ARRAY and TF_POINTER flags for array decay semantics
+        /*
+         * Arrays have both TF_ARRAY and TF_POINTER flags for array decay
+         * semantics
+         */
         prefix = get_type(TF_ARRAY|TF_POINTER, prefix, i);
         expect(RBRACK, ER_D_AD);
-        suffix = prefix;  // Store array type in suffix so it gets assigned to nm->type
+        /* Store array type in suffix so it gets assigned to nm->type */
+        suffix = prefix;
     }
 
     if (cur.type == LPAR) {     // ( <func_arg>[,<func_arg>]*. )
@@ -211,7 +226,10 @@ declare_internal(struct type **btp, boolean struct_elem)
         suffix->flags = TF_FUNC;
         suffix->sub = prefix;  // Return type
 
-        // Detect style: K&R if starts with SYM that's not a typedef, ANSI otherwise
+        /*
+         * Detect style: K&R if starts with SYM that's not a typedef,
+         * ANSI otherwise
+         */
         // Check if current symbol is a typedef name
         boolean is_typedef_name = 0;
         if (cur.type == SYM) {
@@ -220,7 +238,9 @@ declare_internal(struct type **btp, boolean struct_elem)
                 is_typedef_name = 1;
             }
         }
-        boolean kr_style = (cur.type == SYM && !is_type_token(cur.type) && !is_typedef_name);
+        boolean kr_style = (cur.type == SYM &&
+                            !is_type_token(cur.type) &&
+                            !is_typedef_name);
 
         // Parse parameter list
         while (cur.type != RPAR && cur.type != E_O_F) {
@@ -247,7 +267,8 @@ declare_internal(struct type **btp, boolean struct_elem)
 
             if (kr_style) {
                 // K&R style: just collect names (types come later)
-                param_name = parse_param_name(0, param_name_buf, sizeof(param_name_buf));
+                param_name = parse_param_name(0, param_name_buf,
+                                              sizeof(param_name_buf));
                 if (!param_name) {
                     gripe(ER_D_FA);
                     break;
@@ -264,22 +285,32 @@ declare_internal(struct type **btp, boolean struct_elem)
                 param_type = parse_pointer_prefix(basetype);
 
                 // Get parameter name (optional for ANSI declarations)
-                param_name = parse_param_name(1, param_name_buf, sizeof(param_name_buf));  // Allow anonymous
+                /* Allow anonymous */
+                param_name = parse_param_name(1, param_name_buf,
+                                              sizeof(param_name_buf));
 
                 // Handle array suffix (converts to pointer)
                 if (cur.type == LBRACK) {
                     gettoken();
                     if (cur.type != RBRACK) {
-                        parse_expr(0, NULL);  // Array size (ignored for parameters)
+                        /* Array size (ignored for parameters) */
+                        parse_expr(0, NULL);
                     }
                     expect(RBRACK, ER_D_FA);
-                    param_type = get_type(TF_POINTER, param_type->sub ? param_type->sub : param_type, 0);
+                    param_type = get_type(TF_POINTER,
+                        param_type->sub ? param_type->sub : param_type, 0);
                 }
             }
 
             // Create parameter entry for type->elem with actual name
-            // (Names are kept for K&R matching and for parsefunc() to add to namespace)
-            // Type comparison uses compatible_function_types() which ignores names
+            /*
+             * Names are kept for K&R matching and for parsefunc() to
+             * add to namespace
+             */
+            /*
+             * Type comparison uses compatible_function_types() which
+             * ignores names
+             */
             arg = create_param_entry(param_name, param_type);
             arg->next = suffix->elem;
             suffix->elem = arg;
@@ -301,7 +332,8 @@ declare_internal(struct type **btp, boolean struct_elem)
 
         // K&R style: parse type declarations after )
         if (kr_style && is_type_token(cur.type)) {
-            while (is_type_token(cur.type) && cur.type != E_O_F && cur.type != BEGIN) {
+            while (is_type_token(cur.type) && cur.type != E_O_F &&
+                   cur.type != BEGIN) {
                 char param_name_buf[64];  /* Stack buffer for parameter names */
                 struct type *basetype = getbasetype();
                 if (!basetype) {
@@ -312,7 +344,8 @@ declare_internal(struct type **btp, boolean struct_elem)
                 struct type *param_type = parse_pointer_prefix(basetype);
 
                 // Get parameter name (required for K&R declarations)
-                char *param_name = parse_param_name(0, param_name_buf, sizeof(param_name_buf));
+                char *param_name = parse_param_name(0, param_name_buf,
+                                                    sizeof(param_name_buf));
                 if (!param_name) {
                     gripe(ER_D_FM);
                     break;

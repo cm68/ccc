@@ -27,8 +27,10 @@
  *   5 word registers (3 register variables + HL primary + DE secondary)
  *
  * Register Allocation Constraints:
- *   - Variables whose address is taken (&var) cannot be allocated to registers
- *   - These variables must reside in memory (stack frame or global data section)
+ *   - Variables whose address is taken (&var) cannot be allocated to
+ *     registers
+ *   - These variables must reside in memory (stack frame or global data
+ *     section)
  *   - Includes variables passed by reference to functions
  *
  * Register Allocation Process:
@@ -66,7 +68,8 @@ void
 timeout_handler(int sig)
 {
     fdprintf(2, "\n\n*** TIMEOUT after %d seconds ***\n", MAXTIME);
-    fdprintf(2, "cc2: code generation took too long (possible infinite loop)\n");
+    fdprintf(2,
+        "cc2: code generation took too long (possible infinite loop)\n");
     exit(1);
 }
 
@@ -77,8 +80,12 @@ usage(char *complaint)
         fdprintf(2, "%s\n", complaint);
     }
     fdprintf(2, "usage: %s [<options>] [<ast_file>]\n", progname);
-    fdprintf(2, "  -o <output>    Output file (default: <input>.s or stdout for stdin)\n");
-    fdprintf(2, "  <ast_file>     Input AST file (default: stdin, for filter mode)\n");
+    fdprintf(2,
+        "  -o <output>    Output file (default: <input>.s or stdout "
+        "for stdin)\n");
+    fdprintf(2,
+        "  <ast_file>     Input AST file (default: stdin, for filter "
+        "mode)\n");
     exit(1);
 }
 
@@ -98,7 +105,8 @@ make_output_name(char *input_file)
     /* Check if file ends with ".ast" */
     if (len >= 4 && strcmp(input_file + len - 4, ".ast") == 0) {
         /* Strip .ast and append .s */
-        output = malloc(len - 4 + 2 + 1);  /* -4 for .ast, +2 for .s, +1 for null */
+        /* -4 for .ast, +2 for .s, +1 for null */
+        output = malloc(len - 4 + 2 + 1);
         strncpy(output, input_file, len - 4);
         output[len - 4] = '\0';
         strcat(output, ".s");
@@ -140,7 +148,8 @@ main(int argc, char **argv)
             explicit_output = 1;
             argc--;
             argv++;
-        } else if (strcmp(argv[0], "-h") == 0 || strcmp(argv[0], "--help") == 0) {
+        } else if (strcmp(argv[0], "-h") == 0 ||
+                   strcmp(argv[0], "--help") == 0) {
             usage(NULL);
         } else if (argv[0][0] == '-') {
             fdprintf(2, "Unknown option: %s\n", argv[0]);

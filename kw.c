@@ -43,8 +43,9 @@ unsigned char cppkw[] = {
 
 /*
  * the C language
- * XXX - strictly speaking, the lexer table should be ordered by use frequency, so you'll hit quickly.
- *   perhaps they should be ordered i, c, s, u, b, v, w, f
+ * XXX - strictly speaking, the lexer table should be ordered by use
+ * frequency, so you'll hit quickly. perhaps they should be ordered
+ * i, c, s, u, b, v, w, f
  */
 
 unsigned char ckw[] = {

@@ -9,7 +9,8 @@ static void emit_type_info(struct type *type);
 
 /*
  * Get size suffix for memory operations based on type
- * Returns: 'b' (byte), 's' (short/int), 'l' (long), 'p' (pointer), 'f' (float), 'd' (double)
+ * Returns: 'b' (byte), 's' (short/int), 'l' (long), 'p' (pointer),
+ * 'f' (float), 'd' (double)
  */
 static char
 get_size_suffix(struct type *t)
@@ -139,7 +140,8 @@ emit_expr(struct expr *e)
 		/* Cast operators with destination width annotation */
 		{
 			char size_suffix = get_size_suffix(e->type);
-			unsigned char op_char = (e->op == NARROW) ? 'N' : (e->op == WIDEN) ? 'W' : 0xab;  /* SEXT = 0xab */
+			unsigned char op_char = (e->op == NARROW) ? 'N' :
+			    (e->op == WIDEN) ? 'W' : 0xab;  /* SEXT = 0xab */
 			fdprintf(ast_fd, "(%c:%c", op_char, size_suffix);
 			emit_child(e->left);
 			fdprintf(ast_fd, ")");
@@ -376,8 +378,11 @@ emit_stmt(struct stmt *st)
 		break;
 
 	case FOR:
-		/* Emit as labeled sequence:
-		 * (init) Lxxx_top: (if !cond goto break) (body) Lxxx_continue: (increment) (goto top) Lxxx_break: */
+		/*
+		 * Emit as labeled sequence:
+		 * (init) Lxxx_top: (if !cond goto break) (body) Lxxx_continue:
+		 * (increment) (goto top) Lxxx_break:
+		 */
 		if (st->label) {
 			/* Init expression */
 			if (st->left) {
@@ -629,8 +634,11 @@ emit_declarations(struct name *func)
 		if (n->is_tag || n->kind == tdef || n->kind == fdef)
 			continue;
 
-		/* Emit declaration node: (d varname type) - only for function parameters */
-		/* Local variables are emitted in their containing blocks, not at function level */
+		/*
+		 * Emit declaration node: (d varname type) - only for function
+		 * parameters. Local variables are emitted in their containing
+		 * blocks, not at function level
+		 */
 		if (n->kind == funarg) {
 			if (!has_decls) {
 				fdprintf(ast_fd, "\n  ");
@@ -770,9 +778,13 @@ emit_literals(void)
 		if (!n)
 			continue;
 
-		/* Look for synthetic string literal names (str0, str1, etc.) at any level */
+		/*
+		 * Look for synthetic string literal names (str0, str1, etc.)
+		 * at any level
+		 */
 		if (n->kind == var && n->u.init && n->u.init->op == STRING &&
-		    n->name && strncmp(n->name, "str", 3) == 0 && n->name[3] >= '0' && n->name[3] <= '9') {
+		    n->name && strncmp(n->name, "str", 3) == 0 &&
+		    n->name[3] >= '0' && n->name[3] <= '9') {
 			found_any = 1;
 			break;
 		}
@@ -791,9 +803,13 @@ emit_literals(void)
 		if (!n)
 			continue;
 
-		/* Output string literal data (only synthetic str names at any level) */
+		/*
+		 * Output string literal data (only synthetic str names at any
+		 * level)
+		 */
 		if (n->kind == var && n->u.init && n->u.init->op == STRING &&
-		    n->name && strncmp(n->name, "str", 3) == 0 && n->name[3] >= '0' && n->name[3] <= '9') {
+		    n->name && strncmp(n->name, "str", 3) == 0 &&
+		    n->name[3] >= '0' && n->name[3] <= '9') {
 			cstring str = (cstring)n->u.init->v;
 			if (str) {
 				unsigned char len = (unsigned char)str[0];
@@ -864,8 +880,13 @@ emit_global_var(struct name *var)
 		fdprintf(ast_fd, " ");
 		/* Check if this is an initializer list (has next pointers) */
 		if (var->u.init->next) {
-			/* For arrays, pass element type (var->type->sub) for width annotation */
-			struct type *elem_type = (var->type && (var->type->flags & TF_ARRAY)) ? var->type->sub : var->type;
+			/*
+			 * For arrays, pass element type (var->type->sub)
+			 * for width annotation
+			 */
+			struct type *elem_type =
+			    (var->type && (var->type->flags & TF_ARRAY)) ?
+			    var->type->sub : var->type;
 			emit_initializer_list(var->u.init, elem_type);
 		} else {
 			emit_expr(var->u.init);

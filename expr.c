@@ -26,7 +26,8 @@ makeexpr(unsigned char op, struct expr *left)
  * pass NULL for type to skip setting it
  */
 struct expr *
-makeexpr_init(unsigned char op, struct expr *left, struct type *type, unsigned long v, int flags)
+makeexpr_init(unsigned char op, struct expr *left, struct type *type,
+		unsigned long v, int flags)
 {
 	struct expr *e;
 
@@ -194,9 +195,12 @@ parse_expr(unsigned char pri, struct stmt *st)
         /* generate synthetic name for this string literal */
         sprintf(namebuf, "str%d", string_counter++);
 
-        /* Allocate name structure directly without adding to names[] lookup table */
-        /* String literal names don't need to be looked up, only emitted to AST */
-        /* Note: We don't free these structures - they're small and process will exit */
+        /*
+         * Allocate name structure directly without adding to
+         * names[] lookup table. String literal names don't need to be
+         * looked up, only emitted to AST. We don't free these - small
+         * and process will exit
+         */
         strname = (struct name *)calloc(1, sizeof(struct name));
         if (strname) {
             strname->name = strdup(namebuf);
@@ -204,7 +208,8 @@ parse_expr(unsigned char pri, struct stmt *st)
             strname->type = e->type;
             strname->level = 1;  /* Global scope */
             /* store pointer to counted string in the name's init field */
-            strname->u.init = makeexpr_init(STRING, 0, NULL, (unsigned long)combined_str, 0);
+            strname->u.init = makeexpr_init(STRING, 0, NULL,
+					(unsigned long)combined_str, 0);
             /* also store in expression for immediate use */
             e->v = (unsigned long)combined_str;
             /* store reference to the named string in the expression */
@@ -266,24 +271,31 @@ parse_expr(unsigned char pri, struct stmt *st)
             expect(RPAR, ER_E_SP);
 
             /* Parse the expression being cast */
-            inner = parse_expr(OP_PRI_MULT - 1, st);  // Cast has unary precedence
+            /* Cast has unary precedence */
+            inner = parse_expr(OP_PRI_MULT - 1, st);
 
             /* Determine if cast needs runtime operation */
             if (cast_type && inner && inner->type) {
                 /* Pointer-to-pointer casts are just type reinterpretation */
-                if ((cast_type->flags & TF_POINTER) && (inner->type->flags & TF_POINTER)) {
+                if ((cast_type->flags & TF_POINTER) &&
+						(inner->type->flags & TF_POINTER)) {
                     inner->type = cast_type;
                     e = inner;
                 }
                 /* Scalar casts: determine which operation needed */
-                else if (!(cast_type->flags & (TF_POINTER|TF_ARRAY|TF_FUNC)) &&
-                         !(inner->type->flags & (TF_POINTER|TF_ARRAY|TF_FUNC))) {
+                else if (!(cast_type->flags &
+						(TF_POINTER|TF_ARRAY|TF_FUNC)) &&
+                         !(inner->type->flags &
+						(TF_POINTER|TF_ARRAY|TF_FUNC))) {
                     int src_size = inner->type->size;
                     int tgt_size = cast_type->size;
                     int src_unsigned = inner->type->flags & TF_UNSIGNED;
 
                     if (tgt_size == src_size) {
-                        /* Same size: just reinterpret (e.g., int <-> unsigned int) */
+                        /*
+                         * Same size: just reinterpret
+                         * (e.g., int <-> unsigned int)
+                         */
                         inner->type = cast_type;
                         e = inner;
                     } else {
@@ -306,7 +318,10 @@ parse_expr(unsigned char pri, struct stmt *st)
                 }
                 /* Mixed pointer/scalar casts: need conversion */
                 else {
-                    /* For pointer<->scalar, use NARROW or WIDEN based on sizes */
+                    /*
+                     * For pointer<->scalar, use NARROW or WIDEN
+                     * based on sizes
+                     */
                     int src_size = inner->type->size;
                     int tgt_size = cast_type->size;
                     token_t cast_op = (tgt_size < src_size) ? NARROW : WIDEN;
@@ -318,15 +333,19 @@ parse_expr(unsigned char pri, struct stmt *st)
                 e = makeexpr_init(NARROW, inner, cast_type, 0, 0);
             }
         } else {
-            /* Parenthesized expression: (expr) */
-            e = parse_expr(0, st);  // parse inner expression with lowest precedence
+            /*
+             * Parenthesized expression: (expr)
+             * parse inner expression with lowest precedence
+             */
+            e = parse_expr(0, st);
             expect(RPAR, ER_E_SP);
         }
         break;
 
     case MINUS:     // unary minus
         gettoken();
-        e = makeexpr(NEG, parse_expr(OP_PRI_MULT - 1, st));  // higher precedence than mult
+        /* higher precedence than mult */
+        e = makeexpr(NEG, parse_expr(OP_PRI_MULT - 1, st));
         if (e->left) {
             unop_set(e);
         }
@@ -357,7 +376,8 @@ parse_expr(unsigned char pri, struct stmt *st)
         if (e->left) {
             e->left->up = e;
             // type will be determined later when we have full type info
-            if (e->left->type && (e->left->type->flags & TF_POINTER) && e->left->type->sub) {
+            if (e->left->type && (e->left->type->flags & TF_POINTER) &&
+					e->left->type->sub) {
                 e->type = e->left->type->sub;
             } else {
                 e->type = e->left->type;
@@ -410,7 +430,8 @@ parse_expr(unsigned char pri, struct stmt *st)
                 e = parse_expr(0, st);
                 expect(RPAR, ER_E_SP);
 
-                // Create constant expression with the size of the expression's type
+                // Create constant expression with the size
+                // of the expression's type
                 if (e && e->type) {
                     int size = e->type->size;
                     destroy_expr(e);  // we only needed it for the type
@@ -467,10 +488,11 @@ parse_expr(unsigned char pri, struct stmt *st)
     }
 
     /*
-     * Handle postfix operators: function calls, array subscripts, struct access, increment/decrement
+     * Handle postfix operators: function calls, array subscripts,
+     * struct access, increment/decrement
      */
-    while (cur.type == LPAR || cur.type == LBRACK || cur.type == DOT || cur.type == ARROW ||
-           cur.type == INCR || cur.type == DECR) {
+    while (cur.type == LPAR || cur.type == LBRACK || cur.type == DOT ||
+			cur.type == ARROW || cur.type == INCR || cur.type == DECR) {
         if (cur.type == LBRACK) {
             // Array subscript: arr[idx] = DEREF(ADD(base, idx * sizeof))
             struct expr *index, *scaled, *addr, *size_expr;
@@ -481,15 +503,22 @@ parse_expr(unsigned char pri, struct stmt *st)
             index = parse_expr(0, st);
             expect(RBRACK, ER_E_SP);
 
-            // Unwrap DEREF to get base address, but save the dereferenced type
+            /*
+             * Unwrap DEREF to get base address,
+             * but save the dereferenced type
+             */
             if (e && e->op == DEREF) {
-                base_type = e->type;  // Save the actual type (not the address type)
+                /* Save the actual type (not the address type) */
+                base_type = e->type;
                 e = e->left;
             } else {
                 base_type = e->type;
             }
 
-            // Get element size from type (use base_type, not e->type which is the address)
+            /*
+             * Get element size from type
+             * (use base_type, not e->type which is the address)
+             */
             elem_size = 2;  // default to short/int size
             if (base_type) {
                 if (base_type->flags & TF_POINTER && base_type->sub) {
@@ -503,7 +532,8 @@ parse_expr(unsigned char pri, struct stmt *st)
             if (elem_size == 1) {
                 scaled = index;
             } else {
-                size_expr = makeexpr_init(CONST, 0, inttype, elem_size, E_CONST);
+                size_expr = makeexpr_init(CONST, 0, inttype,
+						elem_size, E_CONST);
 
                 scaled = makeexpr(STAR, index);
                 scaled->right = size_expr;
@@ -518,8 +548,9 @@ parse_expr(unsigned char pri, struct stmt *st)
             addr->right = scaled;
             addr->left->up = addr;
             addr->right->up = addr;
-            // The ADD result is a pointer to the element type
-            if (base_type && (base_type->flags & TF_ARRAY) && base_type->sub) {
+            /* The ADD result is a pointer to the element type */
+            if (base_type && (base_type->flags & TF_ARRAY) &&
+					base_type->sub) {
                 addr->type = get_type(TF_POINTER, base_type->sub, 0);
             } else if (base_type && (base_type->flags & TF_POINTER)) {
                 addr->type = base_type;  // pointer + offset = same pointer type
@@ -531,9 +562,11 @@ parse_expr(unsigned char pri, struct stmt *st)
             e = makeexpr(DEREF, addr);
             e->left->up = e;
             if (e->left->type) {
-                if ((e->left->type->flags & TF_POINTER) && e->left->type->sub) {
+                if ((e->left->type->flags & TF_POINTER) &&
+						e->left->type->sub) {
                     e->type = e->left->type->sub;
-                } else if ((e->left->type->flags & TF_ARRAY) && e->left->type->sub) {
+                } else if ((e->left->type->flags & TF_ARRAY) &&
+						e->left->type->sub) {
                     e->type = e->left->type->sub;
                 }
             }
@@ -608,8 +641,11 @@ parse_expr(unsigned char pri, struct stmt *st)
             member = NULL;
             if (base && base->type) {
                 struct type *t = base->type;
-                // For both DOT and ARROW, if base type is pointer, get the pointed-to type
-                // (DOT after array subscript produces pointer type)
+                /*
+                 * For both DOT and ARROW, if base type is pointer,
+                 * get the pointed-to type (DOT after array subscript
+                 * produces pointer type)
+                 */
                 if (t->flags & TF_POINTER) {
                     t = t->sub;
                 }
@@ -629,8 +665,12 @@ parse_expr(unsigned char pri, struct stmt *st)
                 break;
             }
 
-            // Generate: DEREF(ADD(base, offset)) or BFEXTRACT for bitfields
-            offset_expr = makeexpr_init(CONST, 0, inttype, member->offset, E_CONST);
+            /*
+             * Generate: DEREF(ADD(base, offset)) or BFEXTRACT
+             * for bitfields
+             */
+            offset_expr = makeexpr_init(CONST, 0, inttype,
+					member->offset, E_CONST);
 
             addr = makeexpr(PLUS, base);
             addr->right = offset_expr;
@@ -644,12 +684,18 @@ parse_expr(unsigned char pri, struct stmt *st)
 
             // Check if this is a bitfield access
             if (member->kind == bitfield) {
-                // Use BFEXTRACT operator with bitoff and width stored in expr
+                /*
+                 * Use BFEXTRACT operator with bitoff and
+                 * width stored in expr
+                 */
                 e = makeexpr_init(BFEXTRACT, addr, member->type, 0, 0);
                 e->left->up = e;
-                // Store bitfield info in the var field (repurpose it)
-                // We'll encode bitoff and width for the code generator
-                e->var = (struct var *)member;  // Keep reference to member for bitoff/width
+                /*
+                 * Store bitfield info in the var field (repurpose it)
+                 * We'll encode bitoff and width for the code generator
+                 * Keep reference to member for bitoff/width
+                 */
+                e->var = (struct var *)member;
             } else {
                 e = makeexpr_init(DEREF, addr, member->type, 0, 0);
                 e->left->up = e;
@@ -695,8 +741,12 @@ parse_expr(unsigned char pri, struct stmt *st)
             break;
         }
         if (pri != 0 && p >= pri) {
-            // operator has same or lower precedence, stop parsing at this level
-            // (pri == 0 means PRI_ALL, so we parse all operators regardless of precedence)
+            /*
+             * operator has same or lower precedence
+             * stop parsing at this level
+             * (pri == 0 means PRI_ALL, so we parse all operators
+             * regardless of precedence)
+             */
             break;
         }
 
@@ -704,7 +754,10 @@ parse_expr(unsigned char pri, struct stmt *st)
         op = cur.type;
         gettoken();
 
-        // Special handling for ternary conditional operator: condition ? true : false
+        /*
+         * Special handling for ternary conditional operator:
+         * condition ? true : false
+         */
         if (op == QUES) {
             struct expr *condition = e;
             struct expr *true_expr, *false_expr, *colon_node;
@@ -715,8 +768,11 @@ parse_expr(unsigned char pri, struct stmt *st)
             // Expect and consume COLON
             expect(COLON, ER_E_SP);
 
-            // Parse the false expression (right-associative, allow another ?: at same level)
-            // Use priority 0 to parse everything, including nested ?: operators
+            /*
+             * Parse the false expression (right-associative,
+             * allow another ?: at same level). Use priority 0 to parse
+             * everything, including nested ?: operators
+             */
             false_expr = parse_expr(0, st);
 
             // Build tree: QUES(condition, COLON(true_expr, false_expr))
@@ -730,63 +786,93 @@ parse_expr(unsigned char pri, struct stmt *st)
             if (e->left) e->left->up = e;
             if (e->right) e->right->up = e;
 
-            // Type is the type of the result expressions (should check compatibility)
+            /*
+             * Type is the type of the result expressions
+             * (should check compatibility)
+             */
             if (true_expr && true_expr->type) {
                 e->type = true_expr->type;
             }
 
             e = cfold(e);
-            continue;  // Skip the rest of the loop and continue with next operator
+            /* Skip the rest of the loop and continue with next operator */
+            continue;
         }
 
-        // for assignment and compound assignments, unwrap DEREF from left side to get lvalue address
-        struct type *assign_type = NULL;  // Track the actual type being assigned
-        unsigned char is_assignment = (op == ASSIGN || op == PLUSEQ || op == SUBEQ || op == MULTEQ ||
-                            op == DIVEQ || op == MODEQ || op == ANDEQ || op == OREQ ||
-                            op == XOREQ || op == LSHIFTEQ || op == RSHIFTEQ ||
-                            op == LANDEQ || op == LOREQ);
+        /*
+         * for assignment and compound assignments, unwrap DEREF
+         * from left side to get lvalue address
+         * Track the actual type being assigned
+         */
+        struct type *assign_type = NULL;
+        unsigned char is_assignment = (op == ASSIGN || op == PLUSEQ ||
+				op == SUBEQ || op == MULTEQ || op == DIVEQ ||
+				op == MODEQ || op == ANDEQ || op == OREQ ||
+				op == XOREQ || op == LSHIFTEQ || op == RSHIFTEQ ||
+				op == LANDEQ || op == LOREQ);
 
         if (is_assignment) {
             if (e && e->op == DEREF) {
 #ifdef DEBUG
                 if (VERBOSE(V_ASSIGN)) {
                     if (e->type) {
-                        fdprintf(2, "ASSIGN: unwrapping DEREF, type=%p (flags=0x%x, size=%d)\n",
+                        fdprintf(2, "ASSIGN: unwrapping DEREF, "
+								"type=%p (flags=0x%x, size=%d)\n",
                                 e->type, e->type->flags, e->type->size);
                         if (e->type->sub) {
-                            fdprintf(2, "        sub=%p (flags=0x%x, size=%d)\n",
-                                    e->type->sub, e->type->sub->flags, e->type->sub->size);
+                            fdprintf(2, "        "
+									"sub=%p (flags=0x%x, size=%d)\n",
+                                    e->type->sub, e->type->sub->flags,
+									e->type->sub->size);
                         }
                     }
                 }
 #endif
-                assign_type = e->type;  // Save the type before unwrapping
+                /* Save the type before unwrapping */
+                assign_type = e->type;
                 e = e->left;  // unwrap to get address
             } else if (e && e->op == BFEXTRACT) {
                 // Bitfield assignment - change to BFASSIGN
-                assign_type = e->type;  // Save the type before unwrapping
-                // Keep the var field which has the member info (bitoff, width)
+                /* Save the type before unwrapping */
+                assign_type = e->type;
+                /*
+                 * Keep the var field which has the member info
+                 * (bitoff, width)
+                 */
                 struct var *member_info = e->var;
                 e = e->left;  // unwrap to get address
-                // Store member info temporarily - we'll use it when creating BFASSIGN
-                e->var = member_info;  // Pass through member info
+                /*
+                 * Store member info temporarily - we'll use it when
+                 * creating BFASSIGN. Pass through member info
+                 */
+                e->var = member_info;
                 // Flag that we need BFASSIGN
                 if (op == ASSIGN) {
                     op = BFASSIGN;
                 }
             } else {
-                // Assignment requires an lvalue (dereference or bitfield)
+                /*
+                 * Assignment requires an lvalue
+                 * (dereference or bitfield)
+                 */
                 gripe(ER_E_LV);
-                // Skip this operator: parse and discard right side, then return left side
+                /*
+                 * Skip this operator: parse and discard right side,
+                 * then return left side
+                 */
                 parse_expr(p, st);  // Parse and discard right side
                 return e;  // Return left side unchanged
             }
         }
 
-        // Check if this is a struct/array assignment requiring memory copy
-        // For aggregates (structs, arrays), use COPY instead of ASSIGN
-        // Check both direct aggregate type and dereferenced pointer to aggregate
-        if (op == ASSIGN && assign_type && (assign_type->flags & TF_AGGREGATE)) {
+        /*
+         * Check if this is a struct/array assignment requiring
+         * memory copy. For aggregates (structs, arrays), use COPY
+         * instead of ASSIGN. Check both direct aggregate type and
+         * dereferenced pointer to aggregate
+         */
+        if (op == ASSIGN && assign_type &&
+				(assign_type->flags & TF_AGGREGATE)) {
             op = COPY;  // Change to memory copy operator
         } else if (op == ASSIGN && e && e->type) {
             // Direct aggregate (not dereferenced)
@@ -796,17 +882,27 @@ parse_expr(unsigned char pri, struct stmt *st)
             }
         }
 
-        // Parse right side based on associativity:
-        // - For right-associative operators (assignments), use precedence 0 to allow chaining
-        // - For left-associative operators, use precedence p to prevent same-precedence from nesting right
+        /*
+         * Parse right side based on associativity:
+         * - For right-associative operators (assignments), use
+         *   precedence 0 to allow chaining
+         * - For left-associative operators, use precedence p to prevent
+         *   same-precedence from nesting right
+         */
         struct var *saved_member_info = (e && e->var) ? e->var : NULL;
         e = makeexpr(op, e);
         e->left->up = e;
         if (is_assignment) {
-            // Right-associative: parse at lowest precedence to allow a = b = c
+            /*
+             * Right-associative: parse at lowest precedence
+             * to allow a = b = c
+             */
             e->right = parse_expr(0, st);
         } else {
-            // Left-associative: parse at same precedence to prevent (a + b) + c from becoming a + (b + c)
+            /*
+             * Left-associative: parse at same precedence to prevent
+             * (a + b) + c from becoming a + (b + c)
+             */
             e->right = parse_expr(p, st);
         }
         if (e->right) {
@@ -823,14 +919,20 @@ parse_expr(unsigned char pri, struct stmt *st)
             e->right = e->right->left;  // unwrap to get address
         }
 
-        // For assignments, insert type conversion if needed
-        if (is_assignment && e->left && e->right && e->left->type && e->right->type) {
+        /* For assignments, insert type conversion if needed */
+        if (is_assignment && e->left && e->right && e->left->type &&
+				e->right->type) {
             struct type *ltype = assign_type ? assign_type : e->left->type;
             struct type *rtype = e->right->type;
 
-            // Only convert scalar types (not pointers, arrays, functions, aggregates)
-            int l_scalar = !(ltype->flags & (TF_POINTER|TF_ARRAY|TF_FUNC|TF_AGGREGATE));
-            int r_scalar = !(rtype->flags & (TF_POINTER|TF_ARRAY|TF_FUNC|TF_AGGREGATE));
+            /*
+             * Only convert scalar types
+             * (not pointers, arrays, functions, aggregates)
+             */
+            int l_scalar = !(ltype->flags &
+					(TF_POINTER|TF_ARRAY|TF_FUNC|TF_AGGREGATE));
+            int r_scalar = !(rtype->flags &
+					(TF_POINTER|TF_ARRAY|TF_FUNC|TF_AGGREGATE));
 
             if (l_scalar && r_scalar && ltype->size != rtype->size) {
                 token_t conv_op;
@@ -875,16 +977,25 @@ parse_expr(unsigned char pri, struct stmt *st)
                     else if (l_base == r_base) {
                         // Same type pointer - always compatible
                         compatible = 1;
-                    } else if ((l_base->flags & TF_AGGREGATE) && (r_base->flags & TF_AGGREGATE)) {
-                        // Both point to struct/union - must be same type
-                        // For now, just check if pointers are equal (type unification)
+                    } else if ((l_base->flags & TF_AGGREGATE) &&
+							(r_base->flags & TF_AGGREGATE)) {
+                        /*
+                         * Both point to struct/union - must be same type
+                         * For now, just check if pointers are equal
+                         * (type unification)
+                         */
                         compatible = (l_base == r_base);
-                    } else if (!(l_base->flags & TF_AGGREGATE) && !(r_base->flags & TF_AGGREGATE)) {
-                        // Both point to non-aggregate types
-                        // Check if they have same size and signedness
+                    } else if (!(l_base->flags & TF_AGGREGATE) &&
+							!(r_base->flags & TF_AGGREGATE)) {
+                        /*
+                         * Both point to non-aggregate types
+                         * Check if they have same size and signedness
+                         */
                         if (l_base->size == r_base->size) {
-                            unsigned char l_unsigned = (l_base->flags & TF_UNSIGNED);
-                            unsigned char r_unsigned = (r_base->flags & TF_UNSIGNED);
+                            unsigned char l_unsigned =
+									(l_base->flags & TF_UNSIGNED);
+                            unsigned char r_unsigned =
+									(r_base->flags & TF_UNSIGNED);
                             compatible = (l_unsigned == r_unsigned);
                         }
                     }
@@ -892,17 +1003,31 @@ parse_expr(unsigned char pri, struct stmt *st)
                     if (!compatible) {
 #ifdef DEBUG
                         fdprintf(2, "INCOMPATIBLE POINTERS:\n");
-                        fdprintf(2, "  Left:  ltype=%p (flags=0x%x, size=%d)\n", ltype, ltype->flags, ltype->size);
-                        fdprintf(2, "         l_base=%p (flags=0x%x, size=%d)\n", l_base, l_base->flags, l_base->size);
-                        if (l_base && (l_base->flags & TF_POINTER) && l_base->sub) {
-                            fdprintf(2, "         l_base->sub=%p (flags=0x%x, size=%d)\n",
-                                    l_base->sub, l_base->sub->flags, l_base->sub->size);
+                        fdprintf(2, "  Left:  ltype=%p "
+								"(flags=0x%x, size=%d)\n",
+								ltype, ltype->flags, ltype->size);
+                        fdprintf(2, "         l_base=%p "
+								"(flags=0x%x, size=%d)\n",
+								l_base, l_base->flags, l_base->size);
+                        if (l_base && (l_base->flags & TF_POINTER) &&
+								l_base->sub) {
+                            fdprintf(2, "         l_base->sub=%p "
+									"(flags=0x%x, size=%d)\n",
+                                    l_base->sub, l_base->sub->flags,
+									l_base->sub->size);
                         }
-                        fdprintf(2, "  Right: rtype=%p (flags=0x%x, size=%d)\n", rtype, rtype->flags, rtype->size);
-                        fdprintf(2, "         r_base=%p (flags=0x%x, size=%d)\n", r_base, r_base->flags, r_base->size);
-                        if (rtype && (rtype->flags & TF_POINTER) && rtype->sub) {
-                            fdprintf(2, "         rtype->sub=%p (flags=0x%x, size=%d)\n",
-                                    rtype->sub, rtype->sub->flags, rtype->sub->size);
+                        fdprintf(2, "  Right: rtype=%p "
+								"(flags=0x%x, size=%d)\n",
+								rtype, rtype->flags, rtype->size);
+                        fdprintf(2, "         r_base=%p "
+								"(flags=0x%x, size=%d)\n",
+								r_base, r_base->flags, r_base->size);
+                        if (rtype && (rtype->flags & TF_POINTER) &&
+								rtype->sub) {
+                            fdprintf(2, "         rtype->sub=%p "
+									"(flags=0x%x, size=%d)\n",
+                                    rtype->sub, rtype->sub->flags,
+									rtype->sub->size);
                         }
 #endif
                         gripe(ER_E_PT);  // incompatible pointer types
@@ -911,19 +1036,29 @@ parse_expr(unsigned char pri, struct stmt *st)
             }
         }
 
-        // Widen operands of binary expressions if sizes mismatch
-        // Apply to arithmetic, bitwise, and comparison operators
-        unsigned char is_binary_op = (op == PLUS || op == MINUS || op == STAR || op == DIV || op == MOD ||
-                           op == AND || op == OR || op == XOR || op == LSHIFT || op == RSHIFT ||
-                           op == LT || op == GT || op == LE || op == GE || op == EQ || op == NEQ);
+        /*
+         * Widen operands of binary expressions if sizes mismatch
+         * Apply to arithmetic, bitwise, and comparison operators
+         */
+        unsigned char is_binary_op = (op == PLUS || op == MINUS ||
+				op == STAR || op == DIV || op == MOD || op == AND ||
+				op == OR || op == XOR || op == LSHIFT || op == RSHIFT ||
+				op == LT || op == GT || op == LE || op == GE ||
+				op == EQ || op == NEQ);
 
-        if (is_binary_op && e->left && e->right && e->left->type && e->right->type) {
+        if (is_binary_op && e->left && e->right && e->left->type &&
+				e->right->type) {
             struct type *ltype = e->left->type;
             struct type *rtype = e->right->type;
 
-            // Only widen scalar types (not pointers, arrays, functions, aggregates)
-            int l_scalar = !(ltype->flags & (TF_POINTER|TF_ARRAY|TF_FUNC|TF_AGGREGATE));
-            int r_scalar = !(rtype->flags & (TF_POINTER|TF_ARRAY|TF_FUNC|TF_AGGREGATE));
+            /*
+             * Only widen scalar types
+             * (not pointers, arrays, functions, aggregates)
+             */
+            int l_scalar = !(ltype->flags &
+					(TF_POINTER|TF_ARRAY|TF_FUNC|TF_AGGREGATE));
+            int r_scalar = !(rtype->flags &
+					(TF_POINTER|TF_ARRAY|TF_FUNC|TF_AGGREGATE));
 
             if (l_scalar && r_scalar && ltype->size != rtype->size) {
                 token_t conv_op;
@@ -1071,9 +1206,12 @@ cfold(struct expr *e)
         }
         return e;
     case QUES:
-        // Ternary conditional: condition ? true : false
-        // Structure: QUES(condition, COLON(true_expr, false_expr))
-        if (e->left && e->left->op == CONST && e->right && e->right->op == COLON) {
+        /*
+         * Ternary conditional: condition ? true : false
+         * Structure: QUES(condition, COLON(true_expr, false_expr))
+         */
+        if (e->left && e->left->op == CONST && e->right &&
+				e->right->op == COLON) {
             struct expr *result;
             if (e->left->v) {
                 // Condition is true, use true branch

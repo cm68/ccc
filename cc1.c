@@ -78,7 +78,8 @@ process(char *f)
         }
         /* Use basename only - put .i file in current directory */
         i = strlen(basename_start);
-        if (i >= 2 && basename_start[i-2] == '.' && basename_start[i-1] == 'c') {
+        if (i >= 2 && basename_start[i-2] == '.' &&
+            basename_start[i-1] == 'c') {
             i -= 2;
         }
         cpp_file_name = malloc(i+3);  // +2 for ".i", +1 for null terminator

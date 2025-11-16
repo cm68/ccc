@@ -24,7 +24,9 @@ gripe(error_t errcode)
 
     /* Detect error loops: same error on same line twice in a row */
     if (!in_fatal && lineno == last_lineno && errcode == last_errcode) {
-        fdprintf(2, "ERROR LOOP DETECTED: same error repeated on line %d\n", lineno);
+        fdprintf(2,
+            "ERROR LOOP DETECTED: same error repeated on line %d\n",
+            lineno);
         in_fatal = 1;  /* Prevent recursive loop detection */
         fatal(errcode);
     }
@@ -43,8 +45,12 @@ gripe(error_t errcode)
         for (t = tbtop; t; t = t->prev) {
             /* Skip macro buffers, only show files */
             if (t->fd != -1 && t->name) {
-                /* Don't print the current file (already shown in main error message) */
-                if (t != tbtop || (filename && strcmp(filename, t->name) != 0)) {
+                /*
+                 * Don't print the current file (already shown in main
+                 * error message)
+                 */
+                if (t != tbtop ||
+                    (filename && strcmp(filename, t->name) != 0)) {
                     fdprintf(2, "  included from: %s line: %d\n",
                         t->name, t->lineno);
                 }
@@ -133,7 +139,9 @@ dump_symbols()
             type_count++;
         }
         if (t) {
-            fdprintf(2, "... (stopped after %d types, possible cycle)\n", max_types);
+            fdprintf(2,
+                "... (stopped after %d types, possible cycle)\n",
+                max_types);
         }
     } else {
         fdprintf(2, "(types table not initialized)\n");

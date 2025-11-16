@@ -223,12 +223,18 @@ statement(struct stmt *parent)
         case CONTINUE:
             gettoken();
             expect(SEMI, ER_S_SN);
-            /* Transform continue into goto to enclosing loop's continue label */
+            /*
+             * Transform continue into goto to enclosing
+             * loop's continue label
+             */
             {
                 struct stmt *loop = find_enclosing_loop(parent, 1);
                 if (loop && loop->label) {
                     st = makestmt(GOTO, 0);
-                    /* For DO-WHILE, continue goes to test label, for others go to top */
+                    /*
+                     * For DO-WHILE, continue goes to test label,
+                     * for others go to top
+                     */
                     if (loop->op == DO) {
                         st->label = malloc(strlen(loop->label) + 10);
                         sprintf(st->label, "%s_test", loop->label);
@@ -237,7 +243,10 @@ statement(struct stmt *parent)
                         sprintf(st->label, "%s_continue", loop->label);
                     }
                 } else {
-                    /* No enclosing loop - keep as CONTINUE (will be an error) */
+                    /*
+                     * No enclosing loop - keep as CONTINUE
+                     * (will be an error)
+                     */
                     st = makestmt(CONTINUE, 0);
                 }
             }
@@ -281,19 +290,27 @@ statement(struct stmt *parent)
 
                     /* Create lvalue: just the variable symbol */
                     lhs = makeexpr_init(SYM, 0, v->type, 0, 0);
-                    lhs->var = (struct var *)v;  /* Cast name* to var* (field is overloaded) */
+                    /* Cast name* to var* (field is overloaded) */
+                    lhs->var = (struct var *)v;
 
-                    /* Check if this is an array initialization requiring memory copy */
+                    /*
+                     * Check if this is an array initialization
+                     * requiring memory copy
+                     */
                     if (v->type && (v->type->flags & TF_ARRAY) && v->u.init) {
                         /* Create memory copy: COPY dest src length */
-                        assign_expr = makeexpr_init(COPY, lhs, v->type, v->type->count, 0);
+                        assign_expr = makeexpr_init(COPY, lhs, v->type,
+                                                     v->type->count, 0);
                         assign_expr->right = v->u.init;
-                        v->u.init = NULL;  /* Clear so it's not output in declaration */
+                        /* Clear so it's not output in declaration */
+                        v->u.init = NULL;
                     } else {
                         /* Regular scalar assignment: lhs = initializer */
-                        assign_expr = makeexpr_init(ASSIGN, lhs, v->type, 0, 0);
+                        assign_expr = makeexpr_init(ASSIGN, lhs, v->type,
+                                                     0, 0);
                         assign_expr->right = v->u.init;
-                        v->u.init = NULL;  /* Clear so it's not output in declaration */
+                        /* Clear so it's not output in declaration */
+                        v->u.init = NULL;
                     }
 
                     /* Create expression statement */
@@ -332,11 +349,15 @@ statement(struct stmt *parent)
             }
             /* Check if it's a typedef name used in a declaration */
             {
-                struct name *possible_typedef = lookup_name(cur.v.name, 0);
+                struct name *possible_typedef =
+                    lookup_name(cur.v.name, 0);
                 if (possible_typedef && possible_typedef->kind == tdef) {
                     clear_decl_inits();
                     declaration();
-                    /* Convert local variable initializers to assignment statements */
+                    /*
+                     * Convert local variable initializers to
+                     * assignment statements
+                     */
                     if (decl_init_count > 0) {
                         unsigned char i;
                         for (i = 0; i < decl_init_count; i++) {
@@ -346,19 +367,31 @@ statement(struct stmt *parent)
 
                             /* Create lvalue: just the variable symbol */
                             lhs = makeexpr_init(SYM, 0, v->type, 0, 0);
-                            lhs->var = (struct var *)v;  /* Cast name* to var* (field is overloaded) */
+                            /* Cast name* to var* (field is overloaded) */
+                            lhs->var = (struct var *)v;
 
-                            /* Check if this is an array initialization requiring memory copy */
-                            if (v->type && (v->type->flags & TF_ARRAY) && v->u.init) {
+                            /*
+                             * Check if this is an array initialization
+                             * requiring memory copy
+                             */
+                            if (v->type && (v->type->flags & TF_ARRAY) &&
+                                v->u.init) {
                                 /* Create memory copy: COPY dest src length */
-                                assign_expr = makeexpr_init(COPY, lhs, v->type, v->type->count, 0);
+                                assign_expr = makeexpr_init(COPY, lhs, v->type,
+                                                             v->type->count, 0);
                                 assign_expr->right = v->u.init;
-                                v->u.init = NULL;  /* Clear so it's not output in declaration */
+                                /* Clear so it's not output in declaration */
+                                v->u.init = NULL;
                             } else {
-                                /* Regular scalar assignment: lhs = initializer */
-                                assign_expr = makeexpr_init(ASSIGN, lhs, v->type, 0, 0);
+                                /*
+                                 * Regular scalar assignment:
+                                 * lhs = initializer
+                                 */
+                                assign_expr = makeexpr_init(ASSIGN, lhs,
+                                                             v->type, 0, 0);
                                 assign_expr->right = v->u.init;
-                                v->u.init = NULL;  /* Clear so it's not output in declaration */
+                                /* Clear so it's not output in declaration */
+                                v->u.init = NULL;
                             }
 
                             /* Create expression statement */
@@ -400,8 +433,10 @@ statement(struct stmt *parent)
             } else {
                 st = makestmt(FOR, parse_expr(PRI_ALL, parent));
             }
-            st->label = generate_loop_label("L");  /* Generate synthetic label */
-            st->parent = parent;  /* Set parent before recursive call */
+            /* Generate synthetic label */
+            st->label = generate_loop_label("L");
+            /* Set parent before recursive call */
+            st->parent = parent;
             expect(SEMI, ER_S_SN);
             /* Condition expression - optional */
             if (cur.type == SEMI) {
@@ -424,8 +459,10 @@ statement(struct stmt *parent)
             gettoken();
             expect(LPAR, ER_S_NP);
             st = makestmt(WHILE, parse_expr(PRI_ALL, parent));
-            st->label = generate_loop_label("L");  /* Generate synthetic label */
-            st->parent = parent;  /* Set parent before recursive call */
+            /* Generate synthetic label */
+            st->label = generate_loop_label("L");
+            /* Set parent before recursive call */
+            st->parent = parent;
             expect(RPAR, ER_S_NP);
             st->chain = statement(st);
             break;
@@ -438,8 +475,10 @@ statement(struct stmt *parent)
             gettoken();
             expect(LPAR, ER_S_NP);
             st = makestmt(SWITCH, parse_expr(PRI_ALL, parent));
-            st->label = generate_loop_label("S");  /* Generate synthetic label */
-            st->parent = parent;  /* Set parent before recursive call */
+            /* Generate synthetic label */
+            st->label = generate_loop_label("S");
+            /* Set parent before recursive call */
+            st->parent = parent;
             expect(RPAR, ER_S_NP);
             expect(BEGIN, ER_S_SB);
             st->chain = statement(st);
@@ -479,8 +518,10 @@ statement(struct stmt *parent)
         case DO:    // do <statement> while <condition> ;
             gettoken();
             st = makestmt(DO, 0);
-            st->label = generate_loop_label("D");  /* Generate synthetic label */
-            st->parent = parent;  /* Set parent before recursive call */
+            /* Generate synthetic label */
+            st->label = generate_loop_label("D");
+            /* Set parent before recursive call */
+            st->parent = parent;
             st->chain = statement(st);
             if (cur.type != WHILE) {
                 gripe(ER_S_DO);
@@ -516,10 +557,13 @@ statement(struct stmt *parent)
         // st->function = v;
         st->parent = parent;
 
-        // If we're parsing a single-statement body for a control structure
-        // (if/while/for/etc), return after parsing one statement.
-        // Don't return for block statements (BEGIN), switch statements (SWITCH),
-        // or top-level (parent == NULL/function body)
+        /*
+         * If we're parsing a single-statement body for a control
+         * structure (if/while/for/etc), return after parsing one
+         * statement. Don't return for block statements (BEGIN),
+         * switch statements (SWITCH), or top-level (parent ==
+         * NULL/function body)
+         */
         if (parent && parent->op != BEGIN && parent->op != 'S' && st) {
             block = 0;  // Exit the while loop
         }
@@ -587,7 +631,10 @@ asmblock(void)
             }
         }
 
-        /* Get next token (will be captured by lexer if asm_capture_buf is set) */
+        /*
+         * Get next token (will be captured by lexer if
+         * asm_capture_buf is set)
+         */
         gettoken();
     }
 
@@ -595,9 +642,8 @@ asmblock(void)
     tflags &= ~ASM_BLOCK;
 
     /* Trim trailing space and semicolon from captured text */
-    while (captured_len > 0 &&
-           (captured_text[captured_len-1] == ' ' ||
-            captured_text[captured_len-1] == ';')) {
+    while (captured_len > 0 && (captured_text[captured_len-1] == ' ' ||
+                                 captured_text[captured_len-1] == ';')) {
         captured_text[captured_len-1] = 0;
         captured_len--;
     }
@@ -672,8 +718,11 @@ do_initializer(void)
         /* Handle {...} style initializer list */
         init = parse_initializer_list();
     } else {
-        /* Handle simple expression initializer */
-        /* Use precedence 15 to allow assignment (14) but exclude comma operator (15) */
+        /*
+         * Handle simple expression initializer
+         * Use precedence 15 to allow assignment (14) but exclude
+         * comma operator (15)
+         */
         init = parse_expr(15, NULL);
     }
 
@@ -723,11 +772,14 @@ parsefunc(struct name *f)
 	// Pop the function scope
 	pop_scope();
 
-	// Debug assertion: verify we're back at global scope and all locals are cleaned up
+	/*
+	 * Debug assertion: verify we're back at global scope and all
+	 * locals are cleaned up
+	 */
 #ifdef DEBUG
 	if (lexlevel != 1) {
-		fdprintf(2, "ASSERTION FAILED: lexlevel=%d after parsing function %s (expected 1)\n",
-		         lexlevel, f->name);
+		fdprintf(2, "ASSERTION FAILED: lexlevel=%d after parsing "
+		         "function %s (expected 1)\n", lexlevel, f->name);
 		fatal(0);
 	}
 	/* Verify no local names remain in symbol table */
@@ -735,7 +787,9 @@ parsefunc(struct name *f)
 		int i;
 		for (i = 0; i <= lastname; i++) {
 			if (names[i] && names[i]->level > 1) {
-				fdprintf(2, "ASSERTION FAILED: found local name '%s' at level %d after parsing function %s\n",
+				fdprintf(2, "ASSERTION FAILED: found local name "
+				         "'%s' at level %d after parsing "
+				         "function %s\n",
 				         names[i]->name, names[i]->level, f->name);
 				fatal(0);
 			}
@@ -750,19 +804,21 @@ parsefunc(struct name *f)
 /*
  * storage class clauses - many combinations are illogical
  */
-char *sclass_bitdefs[] = { "EXTERN", "REGISTER", "STATIC", "CONST", "VOLATILE",
-		"AUTO", "TYPEDEF"
+char *sclass_bitdefs[] = { "EXTERN", "REGISTER", "STATIC", "CONST",
+	"VOLATILE", "AUTO", "TYPEDEF"
 };
 
 /*
- * parse the storage class on a declaration.  this is a muddy concept, since
- * we've got visibility and storage lumped together, and context also contributes into where our
- * thing actually will reside.  we're just interested in the parse part.
- * so, let's just eat extern, auto, register, volatile, static and const
- * in other compilers, bizarre stuff like fortran, far and pascal show up here.
- * gripe about bogus combinations.
+ * parse the storage class on a declaration.  this is a muddy concept,
+ * since we've got visibility and storage lumped together, and context
+ * also contributes into where our thing actually will reside.  we're
+ * just interested in the parse part. so, let's just eat extern, auto,
+ * register, volatile, static and const in other compilers, bizarre stuff
+ * like fortran, far and pascal show up here. gripe about bogus
+ * combinations.
  *
- * how this actually resolves into a storage space is a code generator issue
+ * how this actually resolves into a storage space is a code generator
+ * issue
  */
 unsigned char
 parse_sclass()
@@ -850,7 +906,8 @@ declaration()
 
 	/* Parse storage class and base type once at the beginning */
 	sclass = parse_sclass();
-	basetype = 0;  /* Initialize once, then shared across comma-separated declarators */
+	/* Initialize once, then shared across comma-separated declarators */
+	basetype = 0;
 
 	while (1) {
         v = declare(&basetype);
@@ -877,7 +934,8 @@ declaration()
             /* change the name kind from var to tdef */
 #ifdef DEBUG
             if (VERBOSE(V_SYM)) {
-                fdprintf(2,"CONVERTING %s from var to tdef (sclass=0x%02x)\n", v->name, sclass);
+                fdprintf(2,"CONVERTING %s from var to tdef "
+                         "(sclass=0x%02x)\n", v->name, sclass);
             }
 #endif
             v->kind = tdef;
@@ -885,7 +943,8 @@ declaration()
             if (cur.type == ASSIGN) {
                 gripe(ER_T_TD);
                 /* skip the initializer */
-                while (cur.type != SEMI && cur.type != COMMA && cur.type != E_O_F) {
+                while (cur.type != SEMI && cur.type != COMMA &&
+                       cur.type != E_O_F) {
                     gettoken();
                 }
             }
@@ -927,7 +986,10 @@ declaration()
             }
         }
 
-        /* Assign storage class for variables (non-functions or function prototypes) */
+        /*
+         * Assign storage class for variables (non-functions or
+         * function prototypes)
+         */
         if (sclass & SC_STATIC) {
             v->sclass = SC_STATIC;
             v->mangled_name = mangle_static_name(v);
@@ -941,20 +1003,30 @@ declaration()
 
             v->u.init = do_initializer();
 
-            /* Fix array size for char[] = "string" syntax (single string, not a list) */
-            if (v->type && (v->type->flags & TF_ARRAY) && v->type->count == -1 &&
+            /*
+             * Fix array size for char[] = "string" syntax
+             * (single string, not a list)
+             */
+            if (v->type && (v->type->flags & TF_ARRAY) &&
+                v->type->count == -1 &&
                 v->u.init && v->u.init->op == STRING && !v->u.init->next) {
                 /* Get string length from counted string */
                 str = (cstring)v->u.init->v;
                 if (str) {
-                    len = (unsigned char)str[0];  /* First byte is length */
-                    /* Create new array type with correct size (length + 1 for null terminator) */
-                    v->type = get_type(TF_ARRAY|TF_POINTER, v->type->sub, len + 1);
+                    /* First byte is length */
+                    len = (unsigned char)str[0];
+                    /*
+                     * Create new array type with correct size
+                     * (length + 1 for null terminator)
+                     */
+                    v->type = get_type(TF_ARRAY|TF_POINTER, v->type->sub,
+                                       len + 1);
                 }
             }
 
             /* Fix array size for array[] = { ... } syntax */
-            if (v->type && (v->type->flags & TF_ARRAY) && v->type->count == -1 &&
+            if (v->type && (v->type->flags & TF_ARRAY) &&
+                v->type->count == -1 &&
                 v->u.init && v->u.init->next) {
                 /* Count elements in initializer list */
                 struct expr *item;
@@ -963,18 +1035,26 @@ declaration()
                     count++;
                 }
                 /* Create new array type with correct size */
-                v->type = get_type(TF_ARRAY|TF_POINTER, v->type->sub, count);
+                v->type = get_type(TF_ARRAY|TF_POINTER, v->type->sub,
+                                   count);
             }
 
-            /* Track local variable initializers for conversion to assignments */
+            /*
+             * Track local variable initializers for conversion
+             * to assignments
+             */
             if (lexlevel > 1 && v->u.init && !(sclass & SC_STATIC)) {
                 add_decl_init(v);
             }
         }
 
 		/* Emit global variables and static locals immediately */
-		/* Emit if: (global scope OR static storage) AND not typedef AND not function def */
-		if ((lexlevel == 1 || (sclass & SC_STATIC)) && v->kind != tdef && v->kind != fdef) {
+		/*
+		 * Emit if: (global scope OR static storage) AND not
+		 * typedef AND not function def
+		 */
+		if ((lexlevel == 1 || (sclass & SC_STATIC)) &&
+		    v->kind != tdef && v->kind != fdef) {
 			/* Skip function declarations - only emit actual variables */
 			if (!(v->type && (v->type->flags & TF_FUNC))) {
 				emit_global_var(v);
@@ -1042,10 +1122,14 @@ parse()
 
 	pop_scope();
 
-	/* Debug assertion: verify all allocations have been freed after parsing file */
+	/*
+	 * Debug assertion: verify all allocations have been freed
+	 * after parsing file
+	 */
 #ifdef DEBUG
 	if (lexlevel != 0) {
-		fdprintf(2, "ASSERTION FAILED: lexlevel=%d after parsing file (expected 0)\n", lexlevel);
+		fdprintf(2, "ASSERTION FAILED: lexlevel=%d after parsing "
+		         "file (expected 0)\n", lexlevel);
 		fatal(0);
 	}
 	/* Verify only basic types remain in symbol table (level 0) */
@@ -1054,14 +1138,16 @@ parse()
 		int non_basic_count = 0;
 		for (i = 0; i <= lastname; i++) {
 			if (names[i] && names[i]->level > 0) {
-				fdprintf(2, "WARNING: name '%s' at level %d still in symbol table after file parse\n",
+				fdprintf(2, "WARNING: name '%s' at level %d "
+				         "still in symbol table after "
+				         "file parse\n",
 				         names[i]->name, names[i]->level);
 				non_basic_count++;
 			}
 		}
 		if (non_basic_count > 0) {
-			fdprintf(2, "ASSERTION FAILED: found %d non-basic names after parsing file\n",
-			         non_basic_count);
+			fdprintf(2, "ASSERTION FAILED: found %d non-basic "
+			         "names after parsing file\n", non_basic_count);
 			fatal(0);
 		}
 	}
@@ -1124,7 +1210,10 @@ cleanup_parser(void)
 			if (n->u.body)
 				free_stmt(n->u.body);
 
-			/* Free name string (except for function parameters which are owned by type) */
+			/*
+			 * Free name string (except for function parameters
+			 * which are owned by type)
+			 */
 			if (n->kind != funarg && n->name)
 				free(n->name);
 

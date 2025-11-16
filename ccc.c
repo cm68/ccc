@@ -23,10 +23,12 @@ usage(void)
     printf("  -k             Keep intermediate AST file\n");
     printf("  -v <level>     Verbosity level (passed to cc1)\n");
     printf("  -I<dir>        Include directory (passed to cc1)\n");
-    printf("  -i<dir>        System include directory (passed to cc1, default /usr/include)\n");
+    printf("  -i<dir>        System include directory (passed to cc1, "
+        "default /usr/include)\n");
     printf("  -D<var>[=val]  Define macro (passed to cc1)\n");
     printf("  -E             Preprocess only (passed to cc1)\n");
-    printf("  -x             Execute AST with interpreter (skip code generation)\n");
+    printf("  -x             Execute AST with interpreter (skip code "
+        "generation)\n");
     exit(1);
 }
 
@@ -210,7 +212,9 @@ main(int argc, char **argv)
             cc1_args[cc1_argc++] = argv[0];
             argc--;
             argv++;
-        } else if (argv[0][0] == '-' && (argv[0][1] == 'I' || argv[0][1] == 'i' || argv[0][1] == 'D')) {
+        } else if (argv[0][0] == '-' &&
+                   (argv[0][1] == 'I' || argv[0][1] == 'i' ||
+                    argv[0][1] == 'D')) {
             /* Pass -I, -i, or -D options to cc1 */
             if (cc1_argc >= MAX_ARGS) {
                 fprintf(stderr, "Error: too many arguments\n");
@@ -234,7 +238,8 @@ main(int argc, char **argv)
         } else {
             /* Source file */
             if (source_file) {
-                fprintf(stderr, "Error: multiple source files not supported yet\n");
+                fprintf(stderr,
+                    "Error: multiple source files not supported yet\n");
                 exit(1);
             }
             source_file = argv[0];
@@ -251,7 +256,9 @@ main(int argc, char **argv)
 
     /* Check if source file exists */
     if (access(source_file, R_OK) != 0) {
-        fprintf(stderr, "Error: source file '%s' not found or not readable\n", source_file);
+        fprintf(stderr,
+            "Error: source file '%s' not found or not readable\n",
+            source_file);
         exit(1);
     }
 
@@ -287,7 +294,10 @@ main(int argc, char **argv)
         exit(status);
     }
 
-    /* If -x specified, execute AST with interpreter instead of code generation */
+    /*
+     * If -x specified, execute AST with interpreter instead of code
+     * generation
+     */
     if (execute_ast) {
         char *interp_args[MAX_ARGS];
         int interp_argc = 0;

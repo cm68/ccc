@@ -115,12 +115,14 @@ insertfile(char *name, int sys)
 
 #ifdef DEBUG
     if (VERBOSE(V_IO)) {
-        fdprintf(2,"insertfile: %s sys=%d curchar='%c'(0x%x) nextchar='%c'(0x%x) column=%d offset=%d\n",
-               name, sys,
-               curchar >= 32 ? curchar : '?', curchar,
-               nextchar >= 32 ? nextchar : '?', nextchar,
-               column,
-               tbtop ? tbtop->offset : -1);
+        fdprintf(2,
+            "insertfile: %s sys=%d curchar='%c'(0x%x) "
+            "nextchar='%c'(0x%x) column=%d offset=%d\n",
+            name, sys,
+            curchar >= 32 ? curchar : '?', curchar,
+            nextchar >= 32 ? nextchar : '?', nextchar,
+            column,
+            tbtop ? tbtop->offset : -1);
     }
 #endif
 
@@ -259,10 +261,12 @@ again:
 
 #ifdef DEBUG
     if (VERBOSE(V_IO)) {
-        fdprintf(2,"Top of again: curchar='%c'(0x%x) nextchar='%c'(0x%x) offset=%d\n",
-               curchar >= 32 ? curchar : '?', curchar,
-               nextchar >= 32 ? nextchar : '?', nextchar,
-               t ? t->offset : -1);
+        fdprintf(2,
+            "Top of again: curchar='%c'(0x%x) nextchar='%c'(0x%x) "
+            "offset=%d\n",
+            curchar >= 32 ? curchar : '?', curchar,
+            nextchar >= 32 ? nextchar : '?', nextchar,
+            t ? t->offset : -1);
     }
 #endif
 
@@ -279,8 +283,11 @@ again:
             nextchar = t->storage[++t->offset];
 #ifdef DEBUG
             if (VERBOSE(V_IO)) {
-                fdprintf(2,"Read nextchar from buffer: '%c'(0x%x) at offset %d\n",
-                       nextchar >= 32 ? nextchar : '?', nextchar, t->offset);
+                fdprintf(2,
+                    "Read nextchar from buffer: '%c'(0x%x) at "
+                    "offset %d\n",
+                    nextchar >= 32 ? nextchar : '?', nextchar,
+                    t->offset);
             }
 #endif
             goto done;
@@ -307,11 +314,15 @@ again:
 #endif
         /* Restore parent's state */
         column = t->saved_column;
-        nextcol = t->saved_column;  /* nextcol must match restored column */
+        /* nextcol must match restored column */
+        nextcol = t->saved_column;
         lineno = tbtop->lineno;
         filename = tbtop->name;
 
-        /* Read nextchar from parent buffer WITHOUT doing curchar=nextchar again */
+        /*
+         * Read nextchar from parent buffer WITHOUT doing
+         * curchar=nextchar again
+         */
         if (tbtop->offset < tbtop->valid) {
             nextchar = tbtop->storage[tbtop->offset];
         } else if (tbtop->fd != -1) {
@@ -350,10 +361,12 @@ done:
     if (nextchar == '\t') nextchar = ' ';
 #ifdef DEBUG
     if (VERBOSE(V_IO)) {
-        fdprintf(2,"After done: curchar='%c'(0x%x) nextchar='%c'(0x%x) column=%d nextcol=%d\n",
-               curchar >= 32 ? curchar : '?', curchar,
-               nextchar >= 32 ? nextchar : '?', nextchar,
-               column, nextcol);
+        fdprintf(2,
+            "After done: curchar='%c'(0x%x) nextchar='%c'(0x%x) "
+            "column=%d nextcol=%d\n",
+            curchar >= 32 ? curchar : '?', curchar,
+            nextchar >= 32 ? nextchar : '?', nextchar,
+            column, nextcol);
     }
 #endif
     cdump("advance");

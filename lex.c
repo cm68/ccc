@@ -10,7 +10,8 @@
 int write_cpp_file = 0;
 char *cpp_file_name;
 int cpp_file;
-static unsigned char incomment = 0;  /* Track comment state across gettoken() calls */
+static unsigned char incomment = 0;
+/* Track comment state across gettoken() calls */
 
 struct token cur, next;
 
@@ -360,7 +361,10 @@ cpp_asm_out_with_space(char *s, int len)
 void
 output_token(struct token *tok)
 {
-    /* Small buffer for chunked string output (16 chars * 5 bytes max expansion) */
+    /*
+     * Small buffer for chunked string output
+     * (16 chars * 5 bytes max expansion)
+     */
     char nbuf[128];
     int i;
     char *s;
@@ -443,10 +447,14 @@ do_cpp(unsigned char t)
         cond->flags = (v ? (C_TRUE|C_TRUESEEN) : 0);
 #ifdef DEBUG
         if (VERBOSE(V_CPP)) {
-            fdprintf(2,"#if %d: cond->flags = 0x%02x (C_TRUE=%d)\n", v, cond->flags, !!(cond->flags & C_TRUE));
+            fdprintf(2,"#if %d: cond->flags = 0x%02x (C_TRUE=%d)\n",
+                v, cond->flags, !!(cond->flags & C_TRUE));
         }
 #endif
-        // Don't call skiptoeol() - readcppconst() in ONELINE mode already advanced past the line
+        /*
+         * Don't call skiptoeol() - readcppconst() in ONELINE mode
+         * already advanced past the line
+         */
         return;
     case IFDEF:
         skipwhite1();
@@ -486,7 +494,8 @@ do_cpp(unsigned char t)
         if (VERBOSE(V_CPP)) {
             fdprintf(2,"#endif: cond=%p", cond);
             if (cond) {
-                fdprintf(2," flags=0x%02x (C_TRUE=%d)", cond->flags, !!(cond->flags & C_TRUE));
+                fdprintf(2," flags=0x%02x (C_TRUE=%d)",
+                    cond->flags, !!(cond->flags & C_TRUE));
             }
             fdprintf(2,"\n");
         }
@@ -502,7 +511,8 @@ do_cpp(unsigned char t)
         if (VERBOSE(V_CPP)) {
             fdprintf(2,"After pop: cond=%p", cond);
             if (cond) {
-                fdprintf(2," flags=0x%02x (C_TRUE=%d)", cond->flags, !!(cond->flags & C_TRUE));
+                fdprintf(2," flags=0x%02x (C_TRUE=%d)",
+                    cond->flags, !!(cond->flags & C_TRUE));
             }
             fdprintf(2,"\n");
         }
@@ -539,13 +549,16 @@ do_cpp(unsigned char t)
         if (cond->flags & C_ELSESEEN) {
             gripe(ER_C_ME);
             return;
-        } 
+        }
         if (cond->flags & C_TRUESEEN) {
             cond->flags ^= C_TRUE;
         } else {
             cond->flags |= (v ? (C_TRUE | C_TRUESEEN) : 0);
         }
-        // Don't call skiptoeol() - readcppconst() in ONELINE mode already advanced past the line
+        /*
+         * Don't call skiptoeol() - readcppconst() in ONELINE mode
+         * already advanced past the line
+         */
         return;
     case DEFINE:
         skipwhite1();
@@ -593,9 +606,10 @@ do_cpp(unsigned char t)
         skiptoeol();
 #ifdef DEBUG
         if (VERBOSE(V_CPP)) {
-            fdprintf(2,"After skiptoeol: curchar='%c'(0x%x) nextchar='%c'(0x%x)\n",
-                   curchar >= 32 ? curchar : '?', curchar,
-                   nextchar >= 32 ? nextchar : '?', nextchar);
+            fdprintf(2,"After skiptoeol: curchar='%c'(0x%x) "
+                "nextchar='%c'(0x%x)\n",
+                curchar >= 32 ? curchar : '?', curchar,
+                nextchar >= 32 ? nextchar : '?', nextchar);
             fdprintf(2,"About to insertfile: '%s' sys=%d\n", strbuf, k == '>');
         }
 #endif
@@ -732,7 +746,10 @@ gettoken()
         /* Handle comments before checking for preprocessor directives */
         if (curchar == '/') {
             if (nextchar == '*') {
-                /* Always enter comment mode, even if already in one (nested comments become single comment) */
+                /*
+                 * Always enter comment mode, even if already in one
+                 * (nested comments become single comment)
+                 */
 #ifdef DEBUG
                 if (VERBOSE(V_TOKEN)) {
                     fdprintf(2,"Found comment start at line %d\n", lineno);
@@ -745,8 +762,10 @@ gettoken()
             }
 #ifdef DEBUG
             if (VERBOSE(V_TOKEN) && write_cpp_file) {
-                fdprintf(2,"Slash but nextchar='%c'(0x%x) not asterisk at line %d, incomment=%d\n",
-                    nextchar >= 32 ? nextchar : '?', nextchar, lineno, incomment);
+                fdprintf(2,"Slash but nextchar='%c'(0x%x) "
+                    "not asterisk at line %d, incomment=%d\n",
+                    nextchar >= 32 ? nextchar : '?', nextchar,
+                    lineno, incomment);
             }
 #endif
         }
@@ -757,7 +776,9 @@ gettoken()
         if ((incomment) && (curchar == '*') && (nextchar == '/')) {
 #ifdef DEBUG
             if (VERBOSE(V_TOKEN)) {
-                fdprintf(2,"Found comment end at line %d, advancing past */ \n", lineno);
+                fdprintf(2,
+                    "Found comment end at line %d, advancing past */ \n",
+                    lineno);
             }
 #endif
             incomment = 0;
@@ -773,7 +794,8 @@ gettoken()
         if (charmatch('#')) {
 #ifdef DEBUG
             if (VERBOSE(V_CPP)) {
-                fdprintf(2,"Found # at column=%d (will%s process) cond=%p", column, (column == 1) ? "" : " NOT", cond);
+                fdprintf(2,"Found # at column=%d (will%s process) cond=%p",
+                    column, (column == 1) ? "" : " NOT", cond);
                 if (cond) {
                     fdprintf(2," C_TRUE=%d", !!(cond->flags & C_TRUE));
                 }
@@ -798,28 +820,46 @@ gettoken()
                     advance();
 #ifdef DEBUG
                     if (VERBOSE(V_CPP) && (t == IF || t == ELIF)) {
-                        fdprintf(2,"Before do_cpp(%s): cur.type=0x%02x next.type=0x%02x\n",
+                        fdprintf(2,
+                            "Before do_cpp(%s): cur.type=0x%02x "
+                            "next.type=0x%02x\n",
                             t == IF ? "IF" : "ELIF", cur.type, next.type);
                     }
 #endif
                     do_cpp(t);
 #ifdef DEBUG
                     if (VERBOSE(V_CPP) && (t == IF || t == ELIF)) {
-                        fdprintf(2,"After do_cpp(%s): cur.type=0x%02x next.type=0x%02x cond=%p\n",
-                            t == IF ? "IF" : "ELIF", cur.type, next.type, cond);
+                        fdprintf(2,
+                            "After do_cpp(%s): cur.type=0x%02x "
+                            "next.type=0x%02x cond=%p\n",
+                            t == IF ? "IF" : "ELIF", cur.type, next.type,
+                            cond);
                         if (cond) {
                             fdprintf(2,"  cond->flags=0x%02x (C_TRUE=%d)\n",
                                 cond->flags, !!(cond->flags & C_TRUE));
                         }
                     }
 #endif
-                    /* After processing #if/#elif with a TRUE condition, break to return the token in next */
-                    /* For FALSE conditions, the token in next should be discarded by continuing to loop */
-                    if ((t == IF || t == ELIF) && cond && (cond->flags & C_TRUE)) {
-                        /* True block - next contains the first token, return it */
+                    /*
+                     * After processing #if/#elif with a TRUE condition,
+                     * break to return the token in next
+                     */
+                    /*
+                     * For FALSE conditions, the token in next should be
+                     * discarded by continuing to loop
+                     */
+                    if ((t == IF || t == ELIF) && cond &&
+                        (cond->flags & C_TRUE)) {
+                        /*
+                         * True block - next contains the first token,
+                         * return it
+                         */
                         break;
                     }
-                    /* False block - continue looping, token skipping will handle it */
+                    /*
+                     * False block - continue looping, token skipping
+                     * will handle it
+                     */
                     continue;
                 }
                 gripe(ER_C_BD);
@@ -835,14 +875,20 @@ gettoken()
         }
         if ((tflags & ONELINE) && (curchar == '\n')) {
             next.type = ';';
-            /* Don't advance - leave curchar at newline so next gettoken() stops */
+            /*
+             * Don't advance - leave curchar at newline so next
+             * gettoken() stops
+             */
             break;
         }
-        if (!(tflags & ONELINE) && cond && !(cond->flags & C_TRUE) && curchar != '#') {
+        if (!(tflags & ONELINE) && cond && !(cond->flags & C_TRUE) &&
+            curchar != '#') {
 #ifdef DEBUG
             if (VERBOSE(V_CPP)) {
-                fdprintf(2,"Skipping line in false block: curchar=0x%02x ('%c')\n",
-                    curchar, (curchar >= ' ' && curchar < 127) ? curchar : '?');
+                fdprintf(2,
+                    "Skipping line in false block: curchar=0x%02x ('%c')\n",
+                    curchar,
+                    (curchar >= ' ' && curchar < 127) ? curchar : '?');
             }
 #endif
             skiptoeol();
@@ -855,10 +901,17 @@ gettoken()
             advance();
 #ifdef DEBUG
             if (VERBOSE(V_CPP) && cond) {
-                fdprintf(2,"After advance past whitespace: curchar=0x%02x ('%c') column=%d\n", curchar, (curchar >= ' ' && curchar < 127) ? curchar : '?', column);
+                fdprintf(2,
+                    "After advance past whitespace: curchar=0x%02x "
+                    "('%c') column=%d\n", curchar,
+                    (curchar >= ' ' && curchar < 127) ? curchar : '?',
+                    column);
             }
 #endif
-            // After advancing past whitespace, check if we should skip rest of line
+            /*
+             * After advancing past whitespace, check if we should
+             * skip rest of line
+             */
             if (cond && curchar != '#' && curchar != 0) {
                 if (!(cond->flags & C_TRUE)) {
                     skiptoeol();
@@ -872,7 +925,11 @@ gettoken()
         if (issym()) {
             /* Check for defined() pseudofunction in #if expressions */
             if (cpppseudofunc()) {
-                continue;  /* cpppseudofunc() replaced the function with '0' or '1' */
+                /*
+                 * cpppseudofunc() replaced the function with
+                 * '0' or '1'
+                 */
+                continue;
             }
             if (macexpand(strbuf)) {
                 continue;
@@ -956,7 +1013,10 @@ gettoken()
         }
         /* For asm blocks, convert newlines to semicolons */
         /* (macexpand() handles its own newlines directly) */
-        /* Don't output semicolon for braces - they mark boundaries of asm block */
+        /*
+         * Don't output semicolon for braces - they mark boundaries
+         * of asm block
+         */
         if (asm_capture_buf && cur.type != BEGIN && cur.type != END) {
             asm_out(";", 1);  /* Convert newline to semicolon for asm */
             asm_out(" ", 1);
@@ -965,7 +1025,8 @@ gettoken()
     }
 #ifdef DEBUG
     if (VERBOSE(V_TOKEN)) {
-        fdprintf(2,"cur.type = 0x%02x \'%c\'\n", cur.type, cur.type > ' ' ? cur.type : ' ');
+        fdprintf(2,"cur.type = 0x%02x \'%c\'\n", cur.type,
+            cur.type > ' ' ? cur.type : ' ');
     }
 #endif
     return;
@@ -1040,7 +1101,9 @@ readcppconst()
 
 #ifdef DEBUG
     if (VERBOSE(V_CPP)) {
-        fdprintf(2,"readcppconst: before gettoken: curchar=0x%02x ('%c')\n", curchar, (curchar >= ' ' && curchar < 127) ? curchar : '?');
+        fdprintf(2,
+            "readcppconst: before gettoken: curchar=0x%02x ('%c')\n",
+            curchar, (curchar >= ' ' && curchar < 127) ? curchar : '?');
     }
 #endif
 
@@ -1048,14 +1111,18 @@ readcppconst()
     gettoken();
 #ifdef DEBUG
     if (VERBOSE(V_CPP)) {
-        fdprintf(2,"After 1st gettoken: cur.type=0x%02x next.type=0x%02x curchar=0x%02x\n",
+        fdprintf(2,
+            "After 1st gettoken: cur.type=0x%02x next.type=0x%02x "
+            "curchar=0x%02x\n",
             cur.type, next.type, curchar);
     }
 #endif
     gettoken();
 #ifdef DEBUG
     if (VERBOSE(V_CPP)) {
-        fdprintf(2,"After 2nd gettoken: cur.type=0x%02x next.type=0x%02x curchar=0x%02x\n",
+        fdprintf(2,
+            "After 2nd gettoken: cur.type=0x%02x next.type=0x%02x "
+            "curchar=0x%02x\n",
             cur.type, next.type, curchar);
     }
 #endif
@@ -1083,7 +1150,9 @@ readcppconst()
 
 #ifdef DEBUG
     if (VERBOSE(V_CPP)) {
-        fdprintf(2,"readcppconst returning: val=%d curchar=0x%02x next.type=0x%02x\n",
+        fdprintf(2,
+            "readcppconst returning: val=%d curchar=0x%02x "
+            "next.type=0x%02x\n",
             val, curchar, next.type);
     }
 #endif
