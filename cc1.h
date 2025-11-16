@@ -265,7 +265,6 @@ extern int ast_fd;                  // where to write AST output (1=stdout or -o
 /* kw.c */
 extern unsigned char cppkw[];
 extern unsigned char ckw[];
-extern unsigned char asmkw[];
 extern char kwlook(unsigned char *str, unsigned char *table);
 
 /* lex.c */

@@ -6,7 +6,7 @@
  * building the lexer table is manual and critical, so adding keywords
  * needs to be carefully done.
  *
- * we have 3 different tables to use, one for C, one for cpp, and one for asm.
+ * we have 2 different tables to use, one for C, one for cpp.
  *
  * each table is an array of characters, with the following grammar:
  * byte:
@@ -24,13 +24,6 @@
 #include "cc1.h"
 
 #define	HI	0x80
-
-/*
- * the Z80 assembler
- */
-unsigned char asmkw[] = {
-    0xff, 0
-};
 
 /*
  * the C pre-processor
