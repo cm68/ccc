@@ -105,10 +105,29 @@ parse_expr(unsigned char pri, struct stmt *st)
 
 	switch (cur.type) {   // prefix
 
-    case NUMBER:
-        e = makeexpr_init(CONST, 0, inttype, cur.v.numeric, E_CONST);
+    case NUMBER: {
+        struct type *const_type;
+        unsigned long val = cur.v.numeric;
+
+        /* Strength reduction: assign smallest type that fits the constant */
+        if (val <= 127) {
+            const_type = chartype;  /* fits in signed char */
+        } else if (val <= 255) {
+            const_type = uchartype;  /* fits in unsigned char */
+        } else if (val <= 32767) {
+            const_type = inttype;  /* fits in signed short */
+        } else if (val <= 65535) {
+            const_type = ushorttype;  /* fits in unsigned short */
+        } else if (val <= 2147483647) {
+            const_type = longtype;  /* fits in signed long */
+        } else {
+            const_type = ulongtype;  /* needs unsigned long */
+        }
+
+        e = makeexpr_init(CONST, 0, const_type, val, E_CONST);
         gettoken();
         break;
+    }
 
     case STRING: {
         struct name *strname;

@@ -243,9 +243,12 @@ extern struct name *declare(struct type **btp);
 extern int is_cast_start(void);
 extern struct type *parse_type_name(void);
 
-extern struct type *inttype;
 extern struct type *chartype;
+extern struct type *inttype;
+extern struct type *longtype;
 extern struct type *uchartype;
+extern struct type *ushorttype;
+extern struct type *ulongtype;
 extern struct type *voidtype;
 
 void parse();

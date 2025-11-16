@@ -43,9 +43,12 @@ char *kindname[] = {
     "bitf", "farg", "locl"
 };
 struct type *types;
-struct type *inttype;
 struct type *chartype;
+struct type *inttype;
+struct type *longtype;
 struct type *uchartype;
+struct type *ushorttype;
+struct type *ulongtype;
 struct type *voidtype;
 
 /*
@@ -503,7 +506,10 @@ initbasictype()
         new_name(basictype[i].name, prim, t, 0);
         if (i == 0) chartype = t;
         if (i == 1) inttype = t;  // int is 2 bytes (short), not 4 bytes (long)
+        if (i == 2) longtype = t;
         if (i == 3) uchartype = t;
+        if (i == 4) ushorttype = t;
+        if (i == 5) ulongtype = t;
         if (i == 6) voidtype = t;
     }
 }
