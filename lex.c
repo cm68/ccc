@@ -888,7 +888,7 @@ gettoken()
         }
         if (isstring()) {
             next.type = STRING;
-            next.v.str = malloc(strbuf[0] + 1);  // +1 for length byte
+            next.v.str = malloc(strbuf[0] + 1);
             memcpy(next.v.str, strbuf, strbuf[0] + 1);
             break;
         }

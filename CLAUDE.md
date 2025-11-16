@@ -9,7 +9,7 @@ This is **ccc** - a native C compiler written in C, currently under reconstructi
 1. **Pass 1** (cc1): Recursive descent parser with embedded C preprocessor (CPP) - parses and validates C code
 2. **Pass 2** (cc2): Code generator and assembler - writes object file (not yet implemented)
 
-**Current Status**: Pass 1 is complete (~7,150 lines of C code). Tagged as **cc1_complete**. The compiler successfully parses C code including full preprocessor support with conditional directives, declarations, types, expressions, and statements. All 134 tests pass.
+**Current Status**: Pass 1 is complete (~7,150 lines of C code). Tagged as **cc1_complete**. The compiler successfully parses C code including full preprocessor support with conditional directives, declarations, types, expressions, and statements. All 135 tests pass.
 
 ## CRITICAL: Memory Footprint Constraint
 
@@ -41,7 +41,7 @@ make
 make cc1          # Main compiler executable
 
 # Run tests
-make test         # Run all 134 tests in tests/
+make test         # Run all 135 tests in tests/
 make tests        # Same as 'make test'
 
 # Run test categories
@@ -631,6 +631,21 @@ char bar[] = "test";    // :array:5 (4 chars + null)
 char empty[] = "";      // :array:1 (0 chars + null)
 ```
 
+**String Literal Concatenation**:
+Adjacent string literals are automatically concatenated at parse time (standard C feature):
+```c
+char *s = "Hello" "World";           // "HelloWorld"
+char *msg = "Line1\n"
+            "Line2\n"
+            "Line3\n";               // "Line1\nLine2\nLine3\n"
+char *code = "Before" /* comment */ "After";  // "BeforeAfter"
+```
+
+- Concatenation is handled in expr.c during expression parsing
+- Lexer tokenizes individual strings; parser concatenates adjacent STRING tokens
+- Comments and whitespace between strings are automatically handled by normal lexer processing
+- Enables multi-line string formatting without requiring escape sequences at line ends
+
 **Implementation**:
 - expr.c: Creates synthetic name at level 1 when STRING token encountered
 - parse.c: After initializer parsed, checks for array[-1] with STRING init, sets correct size
@@ -811,7 +826,7 @@ Verbose debugging uses bitmask flags defined by VERBOSE() macro calls:
 - AST Output: S-expression format with memory width annotations for pass 2
 
 **Self-hosting**: 100% complete - parses all 18 of its own source files (tagged as **self-parse**)
-**Tests**: 134 tests organized by category, all passing
+**Tests**: 135 tests organized by category, all passing
 
 **Not yet implemented**:
 - Code generation (pass 2)
@@ -824,7 +839,7 @@ Verbose debugging uses bitmask flags defined by VERBOSE() macro calls:
 
 ### Testing
 
-Tests are in tests/ directory (134 tests organized by category, all passing):
+Tests are in tests/ directory (135 tests organized by category, all passing):
 - **Expression tests** (EXPR_TESTS): Constant folding, simple expressions
 - **Declaration tests** (DECL_TESTS): Variable and type declarations
 - **Preprocessor tests** (CPP_TESTS): Macros, includes, conditional compilation, stringify
@@ -861,7 +876,7 @@ Tests run with:
 
 ### Development History
 
-Pass 1 (cc1) is complete with all major C language features implemented: full preprocessor, type system, expression parsing, statement parsing, and AST emission. The compiler is self-hosting (parses all 18 of its own source files) and passes all 134 tests.
+Pass 1 (cc1) is complete with all major C language features implemented: full preprocessor, type system, expression parsing, statement parsing, and AST emission. The compiler is self-hosting (parses all 18 of its own source files) and passes all 135 tests.
 
 **Pass 2 (cc2) - In Development**:
 - AST parser (parseast.c) implemented with critical bug fixes:

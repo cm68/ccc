@@ -136,7 +136,8 @@ CAST_TESTS = \
 # String literal tests
 STRING_TESTS = \
 	string_literals.c \
-	array_init.c
+	array_init.c \
+	string_concat.c
 
 # Increment and decrement operator tests
 INCR_DECR_TESTS = \

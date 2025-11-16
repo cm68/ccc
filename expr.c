@@ -113,8 +113,52 @@ parse_expr(unsigned char pri, struct stmt *st)
     case STRING: {
         struct name *strname;
         char namebuf[32];
+        unsigned char *combined_str;
+        unsigned char first_len;
+        unsigned char total_len;
+        int i;
+
         /* string literals have type char* (pointer to char) */
         e = makeexpr_init(STRING, 0, get_type(TF_POINTER, chartype, 0), 0, 0);
+
+        /* Concatenate adjacent string literals */
+        combined_str = (unsigned char *)cur.v.str;
+        first_len = combined_str[0];
+        total_len = first_len;
+
+        gettoken();
+
+        /* Check for adjacent string literals and concatenate them */
+        while (cur.type == STRING) {
+            unsigned char *temp;
+            unsigned char next_len;
+
+            next_len = ((unsigned char *)cur.v.str)[0];
+
+            /* Allocate new buffer for concatenated string */
+            temp = (unsigned char *)malloc(total_len + next_len + 1);
+            temp[0] = total_len + next_len;  /* new length */
+
+            /* Copy first string */
+            for (i = 0; i < total_len; i++) {
+                temp[i + 1] = combined_str[i + 1];
+            }
+
+            /* Append next string */
+            for (i = 0; i < next_len; i++) {
+                temp[total_len + i + 1] = ((unsigned char *)cur.v.str)[i + 1];
+            }
+
+            /* Free old combined string if it was allocated */
+            if (total_len != first_len) {
+                free(combined_str);
+            }
+
+            combined_str = temp;
+            total_len = temp[0];
+
+            gettoken();  /* consume the STRING token */
+        }
 
         /* generate synthetic name for this string literal */
         sprintf(namebuf, "str%d", string_counter++);
@@ -129,16 +173,15 @@ parse_expr(unsigned char pri, struct stmt *st)
             strname->type = e->type;
             strname->level = 1;  /* Global scope */
             /* store pointer to counted string in the name's init field */
-            strname->u.init = makeexpr_init(STRING, 0, NULL, (unsigned long)cur.v.str, 0);
+            strname->u.init = makeexpr_init(STRING, 0, NULL, (unsigned long)combined_str, 0);
             /* also store in expression for immediate use */
-            e->v = (unsigned long)cur.v.str;
+            e->v = (unsigned long)combined_str;
             /* store reference to the named string in the expression */
             e->var = (struct var *)strname;
             /* Emit string literal immediately (string data freed in emit) */
             emit_string_literal(strname);
         }
         e->flags = E_CONST;
-        gettoken();
         break;
     }
 

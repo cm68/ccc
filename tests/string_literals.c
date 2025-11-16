@@ -3,6 +3,7 @@
 /* Global string literals */
 char *global1 = "hello world";
 char *global2 = "test";
+char *ugly = "foo\'bar\07\x1e";
 
 /* String with escape sequences */
 char *escaped = "line1\nline2\ttab\"quote\\backslash";

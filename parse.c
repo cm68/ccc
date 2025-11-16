@@ -818,23 +818,20 @@ parse_sclass()
 		}
 	}
 	// bogosity checks
-	if ((ret & SC_EXTERN) && 
-        (ret & (SC_CONST | SC_STATIC | SC_AUTO | SC_REGISTER))) {
+	if ((ret & SC_EXTERN) &&
+        (ret & (SC_STATIC | SC_AUTO | SC_REGISTER))) {
 		gripe(ER_P_SC);
 	}
-	if ((ret & SC_REGISTER) && 
-        (ret & (SC_CONST | SC_STATIC))) {
+	if ((ret & SC_REGISTER) &&
+        (ret & (SC_STATIC))) {
 		gripe(ER_P_SC);
 	}
-	if ((ret & SC_STATIC) && 
-        (ret & (SC_CONST | SC_AUTO))) {
+	if ((ret & SC_STATIC) &&
+        (ret & (SC_AUTO))) {
 		gripe(ER_P_SC);
 	}
-	if ((ret & SC_CONST) && 
-        (ret & (SC_VOLATILE))) {
-		gripe(ER_P_SC);
-	}
-	if ((ret & SC_TYPEDEF) && 
+	/* const and volatile are ignored by this compiler */
+	if ((ret & SC_TYPEDEF) &&
         (ret & (SC_EXTERN | SC_STATIC | SC_AUTO | SC_REGISTER))) {
 		gripe(ER_P_SC);
 	}

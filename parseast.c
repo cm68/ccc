@@ -2827,6 +2827,27 @@ assign_frame_offsets(struct function_ctx *ctx)
 }
 
 /*
+ * Generate standard binary operator code
+ * Common pattern: move PRIMARY to SECONDARY, call runtime function
+ */
+static void
+gen_binop(struct expr *e, const char *op_name)
+{
+    char funcname[32];
+    char buf[256];
+    char *move_inst;
+
+    make_binop_funcname(funcname, sizeof(funcname), op_name, e);
+
+    move_inst = (e->size == 1) ?
+        "\tld e, a  ; move PRIMARY to SECONDARY" :
+        "\tex de, hl  ; move PRIMARY to SECONDARY";
+
+    snprintf(buf, sizeof(buf), "%s\n\tcall %s", move_inst, funcname);
+    e->asm_block = strdup(buf);
+}
+
+/*
  * Code generation phase (Phase 2)
  * Walk expression tree and generate assembly code blocks
  *
@@ -2995,101 +3016,31 @@ static void generate_expr(struct function_ctx *ctx, struct expr *e)
         break;
 
     case '-':  /* SUB */
-        {
-            char funcname[32];
-            make_binop_funcname(funcname, sizeof(funcname), "sub", e);
-
-            char *move_inst = (e->size == 1) ?
-                "\tld e, a  ; move PRIMARY to SECONDARY" :
-                "\tex de, hl  ; move PRIMARY to SECONDARY";
-
-            snprintf(buf, sizeof(buf), "%s\n\tcall %s", move_inst, funcname);
-            e->asm_block = strdup(buf);
-        }
+        gen_binop(e, "sub");
         break;
 
     case '*':  /* MUL */
-        {
-            char funcname[32];
-            make_binop_funcname(funcname, sizeof(funcname), "mul", e);
-
-            char *move_inst = (e->size == 1) ?
-                "\tld e, a  ; move PRIMARY to SECONDARY" :
-                "\tex de, hl  ; move PRIMARY to SECONDARY";
-
-            snprintf(buf, sizeof(buf), "%s\n\tcall %s", move_inst, funcname);
-            e->asm_block = strdup(buf);
-        }
+        gen_binop(e, "mul");
         break;
 
     case '/':  /* DIV */
-        {
-            char funcname[32];
-            make_binop_funcname(funcname, sizeof(funcname), "div", e);
-
-            char *move_inst = (e->size == 1) ?
-                "\tld e, a  ; move PRIMARY to SECONDARY" :
-                "\tex de, hl  ; move PRIMARY to SECONDARY";
-
-            snprintf(buf, sizeof(buf), "%s\n\tcall %s", move_inst, funcname);
-            e->asm_block = strdup(buf);
-        }
+        gen_binop(e, "div");
         break;
 
     case '%':  /* MOD */
-        {
-            char funcname[32];
-            make_binop_funcname(funcname, sizeof(funcname), "mod", e);
-
-            char *move_inst = (e->size == 1) ?
-                "\tld e, a  ; move PRIMARY to SECONDARY" :
-                "\tex de, hl  ; move PRIMARY to SECONDARY";
-
-            snprintf(buf, sizeof(buf), "%s\n\tcall %s", move_inst, funcname);
-            e->asm_block = strdup(buf);
-        }
+        gen_binop(e, "mod");
         break;
 
     case '&':  /* AND */
-        {
-            char funcname[32];
-            make_binop_funcname(funcname, sizeof(funcname), "and", e);
-
-            char *move_inst = (e->size == 1) ?
-                "\tld e, a  ; move PRIMARY to SECONDARY" :
-                "\tex de, hl  ; move PRIMARY to SECONDARY";
-
-            snprintf(buf, sizeof(buf), "%s\n\tcall %s", move_inst, funcname);
-            e->asm_block = strdup(buf);
-        }
+        gen_binop(e, "and");
         break;
 
     case '|':  /* OR */
-        {
-            char funcname[32];
-            make_binop_funcname(funcname, sizeof(funcname), "or", e);
-
-            char *move_inst = (e->size == 1) ?
-                "\tld e, a  ; move PRIMARY to SECONDARY" :
-                "\tex de, hl  ; move PRIMARY to SECONDARY";
-
-            snprintf(buf, sizeof(buf), "%s\n\tcall %s", move_inst, funcname);
-            e->asm_block = strdup(buf);
-        }
+        gen_binop(e, "or");
         break;
 
     case '^':  /* XOR */
-        {
-            char funcname[32];
-            make_binop_funcname(funcname, sizeof(funcname), "xor", e);
-
-            char *move_inst = (e->size == 1) ?
-                "\tld e, a  ; move PRIMARY to SECONDARY" :
-                "\tex de, hl  ; move PRIMARY to SECONDARY";
-
-            snprintf(buf, sizeof(buf), "%s\n\tcall %s", move_inst, funcname);
-            e->asm_block = strdup(buf);
-        }
+        gen_binop(e, "xor");
         break;
 
     case 'y':  /* LSHIFT */
@@ -3109,8 +3060,9 @@ static void generate_expr(struct function_ctx *ctx, struct expr *e)
             /* Build assembly: repeated "add a,a" for byte, "add hl,hl" for word */
             char asm_buf[256] = "";
             int pos = 0;
+            int i;
 
-            for (int i = 0; i < shift_amount && i < 16; i++) {  /* cap at 16 shifts */
+            for (i = 0; i < shift_amount && i < 16; i++) {  /* cap at 16 shifts */
                 if (e->size == 1) {
                     /* Byte shift: add a,a */
                     pos += snprintf(asm_buf + pos, sizeof(asm_buf) - pos, "\tadd a,a\n");
@@ -3130,101 +3082,31 @@ static void generate_expr(struct function_ctx *ctx, struct expr *e)
         break;
 
     case 'w':  /* RSHIFT */
-        {
-            char funcname[32];
-            make_binop_funcname(funcname, sizeof(funcname), "shr", e);
-
-            char *move_inst = (e->size == 1) ?
-                "\tld e, a  ; move PRIMARY to SECONDARY" :
-                "\tex de, hl  ; move PRIMARY to SECONDARY";
-
-            snprintf(buf, sizeof(buf), "%s\n\tcall %s", move_inst, funcname);
-            e->asm_block = strdup(buf);
-        }
+        gen_binop(e, "shr");
         break;
 
     case '>':  /* GT - greater than comparison */
-        {
-            char funcname[32];
-            make_binop_funcname(funcname, sizeof(funcname), "gt", e);
-
-            char *move_inst = (e->size == 1) ?
-                "\tld e, a  ; move PRIMARY to SECONDARY" :
-                "\tex de, hl  ; move PRIMARY to SECONDARY";
-
-            snprintf(buf, sizeof(buf), "%s\n\tcall %s", move_inst, funcname);
-            e->asm_block = strdup(buf);
-        }
+        gen_binop(e, "gt");
         break;
 
     case '<':  /* LT - less than comparison */
-        {
-            char funcname[32];
-            make_binop_funcname(funcname, sizeof(funcname), "lt", e);
-
-            char *move_inst = (e->size == 1) ?
-                "\tld e, a  ; move PRIMARY to SECONDARY" :
-                "\tex de, hl  ; move PRIMARY to SECONDARY";
-
-            snprintf(buf, sizeof(buf), "%s\n\tcall %s", move_inst, funcname);
-            e->asm_block = strdup(buf);
-        }
+        gen_binop(e, "lt");
         break;
 
     case 'g':  /* GE - greater or equal comparison */
-        {
-            char funcname[32];
-            make_binop_funcname(funcname, sizeof(funcname), "ge", e);
-
-            char *move_inst = (e->size == 1) ?
-                "\tld e, a  ; move PRIMARY to SECONDARY" :
-                "\tex de, hl  ; move PRIMARY to SECONDARY";
-
-            snprintf(buf, sizeof(buf), "%s\n\tcall %s", move_inst, funcname);
-            e->asm_block = strdup(buf);
-        }
+        gen_binop(e, "ge");
         break;
 
     case 'L':  /* LE - less or equal comparison */
-        {
-            char funcname[32];
-            make_binop_funcname(funcname, sizeof(funcname), "le", e);
-
-            char *move_inst = (e->size == 1) ?
-                "\tld e, a  ; move PRIMARY to SECONDARY" :
-                "\tex de, hl  ; move PRIMARY to SECONDARY";
-
-            snprintf(buf, sizeof(buf), "%s\n\tcall %s", move_inst, funcname);
-            e->asm_block = strdup(buf);
-        }
+        gen_binop(e, "le");
         break;
 
     case 'Q':  /* EQ - equality comparison */
-        {
-            char funcname[32];
-            make_binop_funcname(funcname, sizeof(funcname), "eq", e);
-
-            char *move_inst = (e->size == 1) ?
-                "\tld e, a  ; move PRIMARY to SECONDARY" :
-                "\tex de, hl  ; move PRIMARY to SECONDARY";
-
-            snprintf(buf, sizeof(buf), "%s\n\tcall %s", move_inst, funcname);
-            e->asm_block = strdup(buf);
-        }
+        gen_binop(e, "eq");
         break;
 
     case 'n':  /* NEQ - not equal comparison */
-        {
-            char funcname[32];
-            make_binop_funcname(funcname, sizeof(funcname), "ne", e);
-
-            char *move_inst = (e->size == 1) ?
-                "\tld e, a  ; move PRIMARY to SECONDARY" :
-                "\tex de, hl  ; move PRIMARY to SECONDARY";
-
-            snprintf(buf, sizeof(buf), "%s\n\tcall %s", move_inst, funcname);
-            e->asm_block = strdup(buf);
-        }
+        gen_binop(e, "ne");
         break;
 
     case 0xab:  /* SEXT - sign extend */
