@@ -71,7 +71,7 @@ make tags
 
 ## CRITICAL: Testing Validation Protocol
 
-**IMPORTANT**: When validating changes to the compiler, ALWAYS use the provided make rules. Never manually run `./cc1 -E *.c` or similar commands.
+**IMPORTANT**: When validating changes to the compiler, ALWAYS use the provided make rules. Never manually run `./cc1 -E file.c` or `./cc2 file.ast` directly.
 
 **Required testing commands after any changes:**
 
@@ -86,9 +86,22 @@ make test         # All 135+ tests must pass
 make fullcheck    # Run this before committing
 ```
 
+**Testing individual files:**
+
+```bash
+# CORRECT: Use make rules with proper flags
+make expr.ast     # Compile expr.c to AST (uses -DCCC -i./include -I.)
+make expr.s       # Compile expr.ast to assembly
+
+# WRONG: Don't run compilers manually
+./cc1 -E expr.c   # Missing required flags, will fail!
+./cc2 expr.ast    # Works but inconsistent with project conventions
+```
+
 **Why this matters:**
-- `make selfcheck` includes essential flags (-DCCC -i./include -I.) that are required for parsing the compiler's own sources
-- Manually running `./cc1 -E file.c` without these flags will produce false failures
+- Make rules include essential flags (-DCCC -i./include -I.) required for parsing the compiler's own sources
+- Suffix rules (%.ast, %.s) have the correct flags baked in
+- Manually running compilers without proper flags produces false failures
 - The Makefiles have the correct, tested commands - always use them
 
 **Before any commit:**
