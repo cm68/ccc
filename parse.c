@@ -1090,6 +1090,8 @@ blockname()
 void
 parse()
 {
+	struct name *possible_typedef;
+
 	push_scope("global");
 	initbasictype();
 	while (cur.type != E_O_F) {
@@ -1098,7 +1100,7 @@ parse()
 		}
 		/* Check if current token looks like start of a declaration */
 		/* Also check if it's a typedef name (SYM that's a typedef) */
-		struct name *possible_typedef = NULL;
+		possible_typedef = NULL;
 		if (cur.type == SYM) {
 			possible_typedef = lookup_name(cur.v.name, 0);
 		}

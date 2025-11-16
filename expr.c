@@ -101,8 +101,26 @@ parse_expr(unsigned char pri, struct stmt *st)
 	unsigned char op;
 	struct expr *e;
     unsigned char p;
+	struct type *assign_type;
+	unsigned char is_assignment;
+	struct var *member_info;
+	struct var *saved_member_info;
+	int l_ptr;
+	int r_ptr;
+	struct type *l_base;
+	struct type *r_base;
+	unsigned char is_binary_op;
 
 	e = 0;  // initialize to avoid uninitialized use
+	assign_type = NULL;
+	is_assignment = 0;
+	member_info = NULL;
+	saved_member_info = NULL;
+	l_ptr = 0;
+	r_ptr = 0;
+	l_base = NULL;
+	r_base = NULL;
+	is_binary_op = 0;
 
 	switch (cur.type) {   // prefix
 
@@ -804,8 +822,8 @@ parse_expr(unsigned char pri, struct stmt *st)
          * from left side to get lvalue address
          * Track the actual type being assigned
          */
-        struct type *assign_type = NULL;
-        unsigned char is_assignment = (op == ASSIGN || op == PLUSEQ ||
+        assign_type = NULL;
+        is_assignment = (op == ASSIGN || op == PLUSEQ ||
 				op == SUBEQ || op == MULTEQ || op == DIVEQ ||
 				op == MODEQ || op == ANDEQ || op == OREQ ||
 				op == XOREQ || op == LSHIFTEQ || op == RSHIFTEQ ||
@@ -839,7 +857,7 @@ parse_expr(unsigned char pri, struct stmt *st)
                  * Keep the var field which has the member info
                  * (bitoff, width)
                  */
-                struct var *member_info = e->var;
+                member_info = e->var;
                 e = e->left;  // unwrap to get address
                 /*
                  * Store member info temporarily - we'll use it when
@@ -889,7 +907,7 @@ parse_expr(unsigned char pri, struct stmt *st)
          * - For left-associative operators, use precedence p to prevent
          *   same-precedence from nesting right
          */
-        struct var *saved_member_info = (e && e->var) ? e->var : NULL;
+        saved_member_info = (e && e->var) ? e->var : NULL;
         e = makeexpr(op, e);
         e->left->up = e;
         if (is_assignment) {
@@ -958,12 +976,12 @@ parse_expr(unsigned char pri, struct stmt *st)
             }
 
             // Check pointer type compatibility
-            int l_ptr = (ltype->flags & (TF_POINTER|TF_ARRAY));
-            int r_ptr = (rtype->flags & (TF_POINTER|TF_ARRAY));
+            l_ptr = (ltype->flags & (TF_POINTER|TF_ARRAY));
+            r_ptr = (rtype->flags & (TF_POINTER|TF_ARRAY));
 
             if (l_ptr && r_ptr) {
-                struct type *l_base = ltype->sub;
-                struct type *r_base = rtype->sub;
+                l_base = ltype->sub;
+                r_base = rtype->sub;
 
                 // Both must have base types
                 if (l_base && r_base) {
@@ -1040,7 +1058,7 @@ parse_expr(unsigned char pri, struct stmt *st)
          * Widen operands of binary expressions if sizes mismatch
          * Apply to arithmetic, bitwise, and comparison operators
          */
-        unsigned char is_binary_op = (op == PLUS || op == MINUS ||
+        is_binary_op = (op == PLUS || op == MINUS ||
 				op == STAR || op == DIV || op == MOD || op == AND ||
 				op == OR || op == XOR || op == LSHIFT || op == RSHIFT ||
 				op == LT || op == GT || op == LE || op == GE ||

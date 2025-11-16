@@ -24,7 +24,6 @@ typedef char *cstring;		// counted string - first char is length
 typedef unsigned char byte;
 typedef unsigned short word;
 typedef unsigned long dword;
-typedef unsigned char boolean;
 
 /*
  * Compiler limits - adjust these for larger files
@@ -203,7 +202,7 @@ typedef enum {
  */
 struct name {
 	char *name;
-    boolean is_tag;         // true if (enum, struct, union),
+    unsigned char is_tag;   // true if (enum, struct, union),
                             // else false for var,enum elem,typedef
     int level;              // lexical level
 	struct name *next;		// all names in same container
@@ -229,10 +228,10 @@ struct name {
 #define	SC_AUTO		0x20
 #define	SC_TYPEDEF	0x40
 
-extern struct name *new_name(char *name, kind k, struct type *t, 
-    boolean is_tag);
+extern struct name *new_name(char *name, kind k, struct type *t,
+    unsigned char is_tag);
 extern void add_name(struct name *n);
-extern struct name *lookup_name(char *name, boolean is_tag);
+extern struct name *lookup_name(char *name, unsigned char is_tag);
 extern struct name *lookup_element(char *name, struct type *t);
 extern void dump_name(struct name *s);
 extern void push_scope(char *name);
@@ -244,7 +243,7 @@ extern int lastname;
 extern struct name **names;
 extern struct type *types;
 extern char *kindname[];
-extern struct name *declare_internal(struct type **btp, boolean struct_elem);
+extern struct name *declare_internal(struct type **btp, unsigned char struct_elem);
 extern struct name *declare(struct type **btp);
 extern int is_cast_start(void);
 extern struct type *parse_type_name(void);

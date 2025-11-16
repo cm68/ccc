@@ -60,10 +60,13 @@ is_operand_unsigned(struct expr *e)
 struct local_var *
 lookup_var(struct function_ctx *ctx, const char *symbol)
 {
+    const char *var_name;
+    struct local_var *var;
+
     if (!symbol || !ctx) return NULL;
 
     /* Strip $ prefix if present */
-    const char *var_name = symbol;
+    var_name = symbol;
     if (var_name[0] == '$') {
         var_name++;
     }
@@ -73,7 +76,6 @@ lookup_var(struct function_ctx *ctx, const char *symbol)
     }
 
     /* Search locals list */
-    struct local_var *var;
     for (var = ctx->locals; var; var = var->next) {
         if (strcmp(var->name, var_name) == 0) {
             return var;
@@ -586,6 +588,8 @@ static void generate_expr(struct function_ctx *ctx, struct expr *e)
             /* Handle both direct constants and type-converted constants */
             struct expr *right_const = NULL;
             long const_val = 0;
+            int op_size;
+            int i;
 
             if (e->right && e->right->op == 'C') {
                 /* Direct constant */
@@ -601,7 +605,7 @@ static void generate_expr(struct function_ctx *ctx, struct expr *e)
             if (right_const) {
                 /* Optimized constant addition */
                 /* Use left operand's size since that's the register being used */
-                int op_size = e->left ? e->left->size : e->size;
+                op_size = e->left ? e->left->size : e->size;
 
                 if (op_size == 1) {
                     /* Byte add with constant - use immediate add */
@@ -611,7 +615,7 @@ static void generate_expr(struct function_ctx *ctx, struct expr *e)
                     /* Word add with constant 1-4 - use repeated inc hl */
                     if (const_val >= 1 && const_val <= 4) {
                         buf[0] = '\0';
-                        for (int i = 0; i < const_val; i++) {
+                        for (i = 0; i < const_val; i++) {
                             if (i > 0) strcat(buf, "\n");
                             strcat(buf, "\tinc hl");
                         }
@@ -685,6 +689,10 @@ static void generate_expr(struct function_ctx *ctx, struct expr *e)
             /* Right operand should be constant shift amount from strength
              * reduction */
             int shift_amount = 0;
+            char asm_buf[256];
+            int pos;
+            int i;
+
             if (e->right && e->right->op == 'C') {
                 shift_amount = (int)e->right->value;
                 /* Suppress code generation for constant - already handled */
@@ -695,9 +703,8 @@ static void generate_expr(struct function_ctx *ctx, struct expr *e)
             }
 
             /* Build assembly: repeated add */
-            char asm_buf[256] = "";
-            int pos = 0;
-            int i;
+            asm_buf[0] = '\0';
+            pos = 0;
 
             for (i = 0; i < shift_amount && i < 16; i++) {  /* cap at 16 */
                 if (e->size == 1) {

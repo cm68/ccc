@@ -63,6 +63,8 @@ static void
 emit_expr(struct expr *e)
 {
 	struct name *sym;
+	char *prefix;
+	char *name;
 
 	if (!e) {
 		fdprintf(ast_fd, "()");
@@ -83,8 +85,6 @@ emit_expr(struct expr *e)
 			 * - function arguments: prefix with A
 			 * - local variables: no prefix
 			 */
-			char *prefix;
-			char *name;
 			if (sym->sclass & SC_STATIC) {
 				/* Use mangled name for statics */
 				prefix = "$S";

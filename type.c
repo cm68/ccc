@@ -102,7 +102,7 @@ push_scope(char *n)
  * resolve this name into a name struct
  */
 struct name *
-lookup_name(char *name, boolean is_tag)
+lookup_name(char *name, unsigned char is_tag)
 {
 	struct name *n;
     int i;
@@ -174,7 +174,7 @@ dump_name(struct name *n)
  * push a name on the symbol list at lexlevel
  */
 struct name *
-new_name(char *name, kind k, struct type *t, boolean is_tag)
+new_name(char *name, kind k, struct type *t, unsigned char is_tag)
 {
 	struct name *n;
     int i;
@@ -378,7 +378,7 @@ static struct {
 	{ "_ushort_", 2, TF_UNSIGNED },
 	{ "_ulong_", 4, TF_UNSIGNED },
 	{ "_void_", 0, 0 },						// 6
-	{ "_boolean_", 1, TF_UNSIGNED },
+	/* { "_boolean_", 1, TF_UNSIGNED }, */  /* Removed - not used */
 	{ "_float_", 4, TF_FLOAT },
 	{ "_double_", 8, TF_FLOAT },
 };
@@ -629,6 +629,11 @@ getbasetype()
     char off = 0;
     char s_buf[64];  /* Stack buffer for tag names */
     char *s;
+    struct name *e;
+    int bitoff_accumulator;
+    struct type *member_type;
+    struct name *member;
+    unsigned char is_union;
 
     /* a typedef? */
     if (cur.type == SYM) {
@@ -676,7 +681,7 @@ getbasetype()
             }
 
             // create enum constant as a global name with elem kind
-            struct name *e = new_name(cur.v.name, elem, uchartype, 0);
+            e = new_name(cur.v.name, elem, uchartype, 0);
             gettoken();
 
             // optional = value
@@ -708,7 +713,7 @@ getbasetype()
      * struct or union [name] [ { members } ]
      */
     if (cur.type == STRUCT || cur.type == UNION) {
-        unsigned char is_union = (cur.type == UNION);
+        is_union = (cur.type == UNION);
         gettoken();
         n = 0;
         s = 0;
@@ -775,15 +780,15 @@ getbasetype()
         /*
          * bit offset within current word for bitfield packing
          */
-        int bitoff_accumulator = 0;
+        bitoff_accumulator = 0;
         while (cur.type != END && cur.type != E_O_F) {
-            struct type *member_type = 0;
+            member_type = 0;
 
             /*
              * parse member declaration (struct_elem=true to avoid global
              * namespace pollution)
              */
-            struct name *member = declare_internal(&member_type, 1);
+            member = declare_internal(&member_type, 1);
             if (!member) {
                 // skip to semicolon or end
                 while (cur.type != SEMI && cur.type != END &&

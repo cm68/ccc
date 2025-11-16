@@ -30,8 +30,9 @@ endif
 
 ifeq ($(CC),gcc)
 DEFINES= -DDEBUG
+WARNS = -Wdeclaration-after-statement -Werror=declaration-after-statement -Wall
 DEBUG= -ggdb3 -O0
-CFLAGS = $(DEBUG) $(DEFINES) -Wno-implicit-function-declaration -Wall
+CFLAGS = $(DEBUG) $(DEFINES) $(WARNS)
 LDFLAGS= $(DEBUG) -o
 LD= gcc
 endif

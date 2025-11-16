@@ -36,7 +36,7 @@ parse_pointer_prefix(struct type *basetype)
  * Returns pointer to buffer (or "" for anonymous) or NULL if error
  */
 static char *
-parse_param_name(boolean allow_anonymous, char *buf, int bufsize)
+parse_param_name(unsigned char allow_anonymous, char *buf, int bufsize)
 {
     if (cur.type == SYM) {
         strncpy(buf, cur.v.name, bufsize - 1);
@@ -75,11 +75,17 @@ create_param_entry(char *name, struct type *type)
  *              to the global names[] array (to avoid namespace pollution)
  */
 struct name *
-declare_internal(struct type **btp, boolean struct_elem)
+declare_internal(struct type **btp, unsigned char struct_elem)
 {
     struct name *nm, *arg;
     struct type *t, *prefix, *suffix, *rt;
     int i;
+    unsigned char is_typedef_name;
+    unsigned char kr_style;
+    struct type *param_type;
+    struct name *p;
+    struct name *n;
+    char *param_name;
 
     suffix = 0;
 
@@ -231,22 +237,23 @@ declare_internal(struct type **btp, boolean struct_elem)
          * ANSI otherwise
          */
         // Check if current symbol is a typedef name
-        boolean is_typedef_name = 0;
+        is_typedef_name = 0;
         if (cur.type == SYM) {
-            struct name *n = lookup_name(cur.v.name, 0);
+            n = lookup_name(cur.v.name, 0);
             if (n && n->kind == tdef) {
                 is_typedef_name = 1;
             }
         }
-        boolean kr_style = (cur.type == SYM &&
-                            !is_type_token(cur.type) &&
-                            !is_typedef_name);
+        kr_style = (cur.type == SYM &&
+                    !is_type_token(cur.type) &&
+                    !is_typedef_name);
 
         // Parse parameter list
+        param_type = NULL;
         while (cur.type != RPAR && cur.type != E_O_F) {
-            struct type *param_type = NULL;
             char param_name_buf[64];  /* Stack buffer for parameter names */
-            char *param_name = NULL;
+            param_name = NULL;
+            param_type = NULL;
 
             // Check for variadic ... (three DOT tokens)
             if (cur.type == DOT && next.type == DOT) {
@@ -341,18 +348,17 @@ declare_internal(struct type **btp, boolean struct_elem)
                 }
 
                 // Parse declarator
-                struct type *param_type = parse_pointer_prefix(basetype);
+                param_type = parse_pointer_prefix(basetype);
 
                 // Get parameter name (required for K&R declarations)
-                char *param_name = parse_param_name(0, param_name_buf,
-                                                    sizeof(param_name_buf));
+                param_name = parse_param_name(0, param_name_buf,
+                                              sizeof(param_name_buf));
                 if (!param_name) {
                     gripe(ER_D_FM);
                     break;
                 }
 
                 // Find matching parameter in suffix->elem and update its type
-                struct name *p;
                 for (p = suffix->elem; p; p = p->next) {
                     if (strcmp(p->name, param_name) == 0) {
                         p->type = param_type;

@@ -259,7 +259,7 @@ macexpand(char *s)	/* the symbol we are looking up as a macro */
     char *n;
     unsigned char i;
     int stringify = 0;
-
+    int saw_newline = 0;
 
     if (!macbuffer) {
         macbuffer = malloc(1024);
@@ -270,15 +270,12 @@ macexpand(char *s)	/* the symbol we are looking up as a macro */
         return 0;
     }
 
-
-
     // printf("macro %s called\n", m->name);
 
     args = 0;
     d = macbuffer;
     /* this will stop after nextchar is not white space */
     /* Track if we see newline when asm capture is active */
-    int saw_newline = 0;
     while (iswhite(nextchar)) {
         if (asm_capture_buf && nextchar == '\n') {
             saw_newline = 1;  /* Remember that we saw a newline */

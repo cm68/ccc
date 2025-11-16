@@ -126,6 +126,7 @@ main(int argc, char **argv)
     char *ast_file = NULL;
     char *output_file = NULL;
     int in_fd;
+    int out_fd;
     int explicit_output = 0;
 
     progname = argv[0];
@@ -187,7 +188,6 @@ main(int argc, char **argv)
     }
 
     /* Open output: file or stdout */
-    int out_fd;
     if (output_file) {
         fdprintf(2, "cc2: Writing assembly to %s\n", output_file);
         out_fd = open(output_file, O_WRONLY | O_CREAT | O_TRUNC, 0644);
