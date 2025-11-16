@@ -3057,27 +3057,72 @@ static void generate_expr(struct function_ctx *ctx, struct expr *e)
 
     case '+':  /* ADD */
         {
-            /* After left generated (result in PRIMARY), move to SECONDARY */
-            /* Then right generates into PRIMARY */
-            /* Binary op expects: SECONDARY, PRIMARY -> PRIMARY */
-            char *move_inst;
-            char *add_inst;
+            /* Check if right operand is a constant for optimization */
+            /* Handle both direct constants and type-converted constants */
+            struct expr *right_const = NULL;
+            long const_val = 0;
 
-            if (e->size == 1) {
-                /* Byte add - need to call add88 */
-                char funcname[32];
-                make_binop_funcname(funcname, sizeof(funcname), "add", e);
-                move_inst = "\tld e, a  ; move PRIMARY (A) to SECONDARY (E)";
-                snprintf(buf, sizeof(buf), "%s\n\tcall %s", 
-                    move_inst, funcname);
-            } else {
-                /* Word add - use native Z80 add hl,de instruction */
-                move_inst = "\tex de, hl  ; move PRIMARY(HL) to SECONDARY(DE)";
-                add_inst = "\tadd hl, de";
-                snprintf(buf, sizeof(buf), "%s\n%s", move_inst, add_inst);
+            if (e->right && e->right->op == 'C') {
+                /* Direct constant */
+                right_const = e->right;
+                const_val = e->right->value;
+            } else if (e->right && e->right->left &&
+                       e->right->left->op == 'C') {
+                /* Constant wrapped in type conversion (NARROW/WIDEN/SEXT) */
+                right_const = e->right->left;
+                const_val = e->right->left->value;
             }
 
-            e->asm_block = strdup(buf);
+            if (right_const) {
+                /* Optimized constant addition */
+                /* Use left operand's size since that's the register being used */
+                int op_size = e->left ? e->left->size : e->size;
+
+                if (op_size == 1) {
+                    /* Byte add with constant - use immediate add */
+                    snprintf(buf, sizeof(buf),
+                        "\tadd a, %ld  ; add constant to byte", const_val);
+                } else {
+                    /* Word add with constant 1-4 - use repeated inc hl */
+                    if (const_val >= 1 && const_val <= 4) {
+                        buf[0] = '\0';
+                        for (int i = 0; i < const_val; i++) {
+                            if (i > 0) strcat(buf, "\n");
+                            strcat(buf, "\tinc hl");
+                        }
+                        strcat(buf, "  ; add small constant");
+                    } else {
+                        /* Word add with larger constant - load and add */
+                        snprintf(buf, sizeof(buf),
+                            "\tld de, %ld\n\tadd hl, de", const_val);
+                    }
+                }
+                e->asm_block = strdup(buf);
+
+                /* Free and clear right operand to prevent emission */
+                free_expr(e->right);
+                e->right = NULL;
+            } else {
+                /* Non-constant addition - use general form */
+                char *move_inst;
+                char *add_inst;
+
+                if (e->size == 1) {
+                    /* Byte add - need to call add88 */
+                    char funcname[32];
+                    make_binop_funcname(funcname, sizeof(funcname), "add", e);
+                    move_inst = "\tld e, a  ; move PRIMARY (A) to SECONDARY (E)";
+                    snprintf(buf, sizeof(buf), "%s\n\tcall %s",
+                        move_inst, funcname);
+                } else {
+                    /* Word add - use native Z80 add hl,de instruction */
+                    move_inst =
+                        "\tex de, hl  ; move PRIMARY(HL) to SECONDARY(DE)";
+                    add_inst = "\tadd hl, de";
+                    snprintf(buf, sizeof(buf), "%s\n%s", move_inst, add_inst);
+                }
+                e->asm_block = strdup(buf);
+            }
         }
         break;
 
