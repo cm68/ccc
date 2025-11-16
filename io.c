@@ -8,7 +8,10 @@
  * not our job; except nulls.  those are dirty; the first null is eof.
  */
 #include "cc1.h"
-// #include <fcntl.h>
+#ifndef SDCC
+#include <fcntl.h>
+#include <unistd.h>
+#endif
 
 /*
  * the incoming character stream interface
