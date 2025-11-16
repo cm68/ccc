@@ -230,9 +230,6 @@ static void emit_expr(struct function_ctx *ctx, struct expr *e)
                     /* Word: move HL to register pair */
                     if (var->reg == REG_BC) {
                         fdprintf(out_fd, "\tld b, h\n\tld c, l\n");
-                    } else if (var->reg == REG_BCp) {
-                        fdprintf(out_fd, 
-                            "\texx\n\tld b, h\n\tld c, l\n\texx\n");
                     } else if (var->reg == REG_IX) {
                         fdprintf(out_fd, "\tpush hl\n\tpop ix\n");
                     }

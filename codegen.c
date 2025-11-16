@@ -325,11 +325,11 @@ allocate_registers(struct function_ctx *ctx)
             fdprintf(2, "  Allocated byte reg to %s (refs=%d)\n",
                      var->name, var->ref_count);
         }
-        /* Allocate word registers (BC, BC', and IX */
-        else if (var->size == 2 && word_regs_used < 3) {
-            enum register_id regs[] = {REG_BC, REG_BCp, REG_IX};
+        /* Allocate word registers (BC and IX only - BC' excluded due to exx complexity) */
+        else if (var->size == 2 && word_regs_used < 2) {
+            enum register_id regs[] = {REG_BC, REG_IX};
             /* If IX already allocated to struct pointer, skip it */
-            if (word_regs_used == 2 && ix_allocated) {
+            if (word_regs_used == 1 && ix_allocated) {
                 /* No more registers available */
                 continue;
             }
@@ -522,13 +522,10 @@ static void generate_expr(struct function_ctx *ctx, struct expr *e)
                     /* Word: move register pair to HL */
                     if (var->reg == REG_BC) {
                         snprintf(buf, sizeof(buf), "\tld h, b\n\tld l, c");
-                    } else if (var->reg == REG_BCp) {
-                        snprintf(buf, sizeof(buf), 
-                            "\texx\n\tld h, b\n\tld l, c\n\texx");
                     } else if (var->reg == REG_IX) {
                         snprintf(buf, sizeof(buf), "\tpush ix\n\tpop hl");
                     } else {
-                        snprintf(buf, sizeof(buf), 
+                        snprintf(buf, sizeof(buf),
                             "\t; TODO: load word from reg %d to HL", var->reg);
                     }
                 }

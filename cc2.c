@@ -9,8 +9,9 @@
  *
  * Register Variables (available for allocation):
  *   Byte registers:  B, C, B', C' (4 byte registers)
- *   Word registers:  BC, BC', IX (3 word registers)
+ *   Word registers:  BC, IX (2 word registers)
  *   Note: IX preferred for structure pointers (indexed addressing: (IX+offset))
+ *   Note: BC' excluded from allocation due to exx instruction complexity
  *
  * Primary Accumulator (expression evaluation):
  *   Byte:  A
