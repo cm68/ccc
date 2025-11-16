@@ -2,7 +2,7 @@
 
 ## Pass 1 Status
 
-**Complete**: Full preprocessor, type system, expression/statement parsing, AST emission. All 134 tests passing. See CLAUDE.md and README.md for details.
+**Complete**: Full preprocessor, type system, expression/statement parsing, AST emission. All 142 tests passing. See CLAUDE.md and README.md for details.
 
 **Known Limitations**:
 - The 'signed' keyword is deliberately not supported
@@ -25,11 +25,22 @@
 - [ ] Improve error messages and recovery
 - [ ] Better handling of edge cases
 
-## TODO (Pass 2 - Code Generation)
+## Pass 2 Status (Code Generation)
 
-- [ ] Implement code generator
-- [ ] Implement assembler output
-- [ ] Object file generation
+**In Progress**: Tree-based code generator targeting Z80 assembly. ~3,400 lines implemented.
+
+**Completed**:
+- [x] Tree-based AST parser (builds complete function trees in memory)
+- [x] Three-phase architecture: parse → codegen → emit
+- [x] Register allocation and stack frame management
+- [x] Z80 assembly emission
+- [x] Basic code generation for simple functions
+
+**TODO**:
+- [ ] Complete code generation for all C constructs
+- [ ] Implement object file generation
+- [ ] Add optimization passes
+- [ ] Linker integration
 
 ## Future Optimizations (Ideas for Later)
 

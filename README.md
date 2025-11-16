@@ -1,14 +1,15 @@
 ccc - full native C compiler
 
 This is a 2-pass C compiler written in C, currently under reconstruction from
-a paper printout. Pass 1 (cc1) is substantially complete; pass 2 (cc2) is not
-yet implemented.
+a paper printout. Pass 1 (cc1) is complete; pass 2 (cc2) is actively being
+developed and generates Z80 assembly code.
 
 ## Project Status
 
 **Pass 1 (cc1) - Complete** ✓ Tagged as **cc1_complete** and **self-parse**
 - Full C preprocessor, type system, expression/statement parsing, AST emission
-- 134 tests passing, 18/18 source files self-host
+- 142 tests passing, 18/18 source files self-host
+- ~7,500 lines of C code
 - See CLAUDE.md for detailed architecture and features
 
 **Debugging Tools**
@@ -16,9 +17,12 @@ yet implemented.
 - **AST Pretty Printer** (astpp.lisp): Format AST for human inspection
 - See INTERP.md and ASTPP.md for details
 
-**Pass 2 (cc2) - Work In Progress**
-- AST parser foundation in parseast.c
-- Code generation not yet started
+**Pass 2 (cc2) - Active Development** ✓ Generating Z80 Assembly
+- Tree-based AST parser with complete function representation (~3,400 lines)
+- Three-phase code generation: parse → codegen → emit
+- Register allocation and stack frame management
+- Generates working Z80 assembly for simple functions
+- See CC2_ARCHITECTURE.md for implementation details
 
 ## Architecture
 
@@ -28,15 +32,17 @@ This is a 2-pass compiler:
 - Parses and validates C source code
 - Outputs AST in S-expression format (single-char operators)
 - Uses Unix syscalls (write) instead of stdio for output
-- ~4,800 lines of C code
+- ~7,500 lines of C code
 
-**Pass 2 (cc2)**: Code generator and assembler (WIP)
+**Pass 2 (cc2)**: Tree-based code generator targeting Z80
 - Reads AST from pass 1 (S-expression format)
-- Table-driven parser with handler functions for each operation
+- Three-phase architecture: parse → codegen → emit
+- Builds complete function trees in memory before code generation
+- Register allocation and stack frame management
 - Uses Unix syscalls (read/write) instead of stdio
-- parseast.c: ~730 lines of parser infrastructure
+- parseast.c: ~3,400 lines (parser, code generation, emission)
 - Handles memory width annotations (:b :s :l :p :f :d)
-- Code generation not yet implemented
+- Generates Z80 assembly code
 
 ## File Organization
 
@@ -91,9 +97,10 @@ This is a 2-pass compiler:
 ./cc1 -E source.c > output.ast
 ```
 
-**Pass 2 - Parse AST (code generation not yet implemented):**
+**Pass 2 - Generate Z80 assembly from AST:**
 ```bash
-./cc2 output.ast -o executable
+./cc2 output.ast              # Generates output.s assembly file
+./cc2 output.ast -o custom.s  # Specify output file
 ```
 
 **Full pipeline (when complete):**

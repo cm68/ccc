@@ -9,7 +9,7 @@ This is **ccc** - a native C compiler written in C, currently under reconstructi
 1. **Pass 1** (cc1): Recursive descent parser with embedded C preprocessor (CPP) - parses and validates C code
 2. **Pass 2** (cc2): Code generator and assembler - writes object file (not yet implemented)
 
-**Current Status**: Pass 1 is complete (~7,150 lines of C code). Tagged as **cc1_complete**. The compiler successfully parses C code including full preprocessor support with conditional directives, declarations, types, expressions, and statements. All 135 tests pass.
+**Current Status**: Pass 1 is complete (~7,500 lines of C code). Tagged as **cc1_complete**. The compiler successfully parses C code including full preprocessor support with conditional directives, declarations, types, expressions, and statements. All 142 tests pass.
 
 ## CRITICAL: Memory Footprint Constraint
 
@@ -41,7 +41,7 @@ make
 make cc1          # Main compiler executable
 
 # Run tests
-make test         # Run all 135 tests in tests/
+make test         # Run all 142 tests in tests/
 make tests        # Same as 'make test'
 
 # Run test categories
@@ -866,7 +866,7 @@ Verbose debugging uses bitmask flags defined by VERBOSE() macro calls:
 - AST Output: S-expression format with memory width annotations for pass 2
 
 **Self-hosting**: 100% complete - parses all 18 of its own source files (tagged as **self-parse**)
-**Tests**: 135 tests organized by category, all passing
+**Tests**: 142 tests organized by category, all passing
 
 **Not yet implemented**:
 - Code generation (pass 2)
@@ -879,7 +879,7 @@ Verbose debugging uses bitmask flags defined by VERBOSE() macro calls:
 
 ### Testing
 
-Tests are in tests/ directory (135 tests organized by category, all passing):
+Tests are in tests/ directory (142 tests organized by category, all passing):
 - **Expression tests** (EXPR_TESTS): Constant folding, simple expressions
 - **Declaration tests** (DECL_TESTS): Variable and type declarations
 - **Preprocessor tests** (CPP_TESTS): Macros, includes, conditional compilation, stringify
@@ -916,7 +916,7 @@ Tests run with:
 
 ### Development History
 
-Pass 1 (cc1) is complete with all major C language features implemented: full preprocessor, type system, expression parsing, statement parsing, and AST emission. The compiler is self-hosting (parses all 18 of its own source files) and passes all 135 tests.
+Pass 1 (cc1) is complete with all major C language features implemented: full preprocessor, type system, expression parsing, statement parsing, and AST emission. The compiler is self-hosting (parses all 18 of its own source files) and passes all 142 tests.
 
 **Pass 2 (cc2) - In Development**:
 - AST parser (parseast.c) implemented with critical bug fixes:
