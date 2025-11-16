@@ -502,7 +502,7 @@ initbasictype()
         types = t;
         new_name(basictype[i].name, prim, t, 0);
         if (i == 0) chartype = t;
-        if (i == 2) inttype = t;
+        if (i == 1) inttype = t;  // int is 2 bytes (short), not 4 bytes (long)
         if (i == 3) uchartype = t;
         if (i == 6) voidtype = t;
     }
