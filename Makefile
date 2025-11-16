@@ -45,7 +45,7 @@ GENERATED = enumlist.h tokenlist.c error.h debug.h debugtags.c op_pri.h
 # All C source files (generated + corresponding to .o files)
 CFILES = cc1.c error.c lex.c io.c macro.c kw.c util.c unixlib.c \
 	expr.c parse.c type.c declare.c outast.c \
-	cc2.c parseast.c ccc.c \
+	cc2.c parseast.c codegen.c emit.c ccc.c \
 	tokenlist.c debugtags.c
 
 # All header files (manually written + generated)
@@ -66,8 +66,8 @@ all: cc1 cc2 ccc doc.pdf
 cc1: $(CC1OBJECTS)
 	$(LD) $(LDFLAGS) cc1 $(CC1OBJECTS)
 
-cc2: cc2.o util.o parseast.o
-	$(LD) $(LDFLAGS) cc2 cc2.o util.o parseast.o
+cc2: cc2.o util.o parseast.o codegen.o emit.o
+	$(LD) $(LDFLAGS) cc2 cc2.o util.o parseast.o codegen.o emit.o
 
 ccc: ccc.o
 	$(LD) $(LDFLAGS) ccc ccc.o
