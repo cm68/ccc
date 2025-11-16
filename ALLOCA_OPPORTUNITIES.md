@@ -28,4 +28,5 @@
 
 **~85 bytes** from eliminating 8 free() calls and simplifying control flow
 
-**Recommendation**: Use fixed-size stack buffers (most portable, sufficient for identifiers and paths)
+**Recommendation**: Use fixed-size stack buffers (most portable, sufficient
+for identifiers and paths)

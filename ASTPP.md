@@ -4,13 +4,18 @@ A standalone tool for formatting ccc compiler AST output in human-readable form.
 
 ## Purpose
 
-The AST pretty printer (`astpp.lisp`) converts the S-expression AST format into a nicely formatted, indented, and annotated representation that's easier to read and understand.
+The AST pretty printer (`astpp.lisp`) converts the S-expression AST format into
+a nicely formatted, indented, and annotated representation that's easier to read
+and understand.
 
 **Use cases:**
-- **Debugging the parser**: Visually inspect the AST structure to verify correct parsing
-- **Understanding code generation**: See exactly what the parser produces before code generation
+- **Debugging the parser**: Visually inspect the AST structure to verify correct
+  parsing
+- **Understanding code generation**: See exactly what the parser produces before
+  code generation
 - **Learning the AST format**: Study examples to understand the AST structure
-- **Documenting compiler behavior**: Generate readable examples for documentation
+- **Documenting compiler behavior**: Generate readable examples for
+  documentation
 - **Comparing ASTs**: Diff pretty-printed output to see changes between versions
 
 ## Installation
@@ -44,7 +49,8 @@ The script is already executable and ready to use.
 
 ### Filter Mode (Reading from stdin)
 
-The pretty printer can act as a Unix filter, reading from stdin if no filename is provided:
+The pretty printer can act as a Unix filter, reading from stdin if no filename
+is provided:
 
 ```bash
 # Use as filter in a pipeline
@@ -74,7 +80,8 @@ This is particularly useful for:
 
 ### Raw Mode (No Translation)
 
-Use `--raw` or `-r` to keep original operators while still getting proper indentation:
+Use `--raw` or `-r` to keep original operators while still getting proper
+indentation:
 
 ```bash
 # Pretty print with raw operators (M, =, +, etc.)
@@ -85,7 +92,8 @@ Use `--raw` or `-r` to keep original operators while still getting proper indent
 ```
 
 **When to use raw mode:**
-- **Reformatting AST files**: Output is valid S-expression AST that can be read back
+- **Reformatting AST files**: Output is valid S-expression AST that can be read
+  back
 - You're familiar with the AST format and don't need translation
 - You want to minimize differences when comparing ASTs
 - You're writing code that parses the output
@@ -318,7 +326,8 @@ The pretty printer is implemented in Common Lisp and:
 
 - **astpp.lisp**: Format AST for visual inspection (structure)
 - **interp.lisp**: Execute AST to verify semantics (behavior)
-- Use both together when debugging: pretty print to verify structure, interpret to verify semantics
+- Use both together when debugging: pretty print to verify structure, interpret
+  to verify semantics
 
 ## Tips
 
@@ -351,7 +360,8 @@ diff -u /tmp/old.txt /tmp/new.txt
 diff -u /tmp/old_raw.txt /tmp/new_raw.txt
 ```
 
-**Tip:** Raw mode produces more compact output with fewer long words to diff, making it easier to spot actual structural changes versus just reformatting.
+**Tip:** Raw mode produces more compact output with fewer long words to diff,
+making it easier to spot actual structural changes versus just reformatting.
 
 ### Pipe to Editor
 

@@ -6,7 +6,8 @@
 
 ### 1. AST Output Helper Functions (outast.c)
 
-**Pattern**: Repeated child expression emission with space prefix (~10 instances)
+**Pattern**: Repeated child expression emission with space prefix (~10
+instances)
 **Solution**: Create `emit_child()` helper function
 **Savings**: ~750 bytes
 

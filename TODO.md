@@ -2,7 +2,8 @@
 
 ## Pass 1 Status
 
-**Complete**: Full preprocessor, type system, expression/statement parsing, AST emission. All 142 tests passing. See CLAUDE.md and README.md for details.
+**Complete**: Full preprocessor, type system, expression/statement parsing,
+AST emission. All 142 tests passing. See CLAUDE.md and README.md for details.
 
 **Known Limitations**:
 - The 'signed' keyword is deliberately not supported
@@ -13,7 +14,8 @@
 ### High Priority - Type System Improvements
 
 - [ ] Add full type compatibility checking (sametype function for all contexts)
-- [x] Implement type conversions and promotions in binary expressions (automatic operand widening)
+- [x] Implement type conversions and promotions in binary expressions
+      (automatic operand widening)
 - [x] Fix operator type propagation (result type now uses larger operand type)
 - [x] Add lvalue validation for assignments and operators
 - [ ] Add type checking validation for all operators
@@ -27,7 +29,8 @@
 
 ## Pass 2 Status (Code Generation)
 
-**In Progress**: Tree-based code generator targeting Z80 assembly. ~3,400 lines implemented.
+**In Progress**: Tree-based code generator targeting Z80 assembly. ~3,400
+lines implemented.
 
 **Completed**:
 - [x] Tree-based AST parser (builds complete function trees in memory)
@@ -66,4 +69,5 @@ Faster/smaller scope and symbol space management:
 - Lookups start from most recent local to last global
 - Store names as fixed-length strings with hash, length, and data
 - Limit name storage to ~12 bytes to get symbol table down to 16 bytes per entry
-- Statics: global storage but scoped, with synthetic global name for symbol table
+- Statics: global storage but scoped, with synthetic global name for symbol
+  table

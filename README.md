@@ -110,17 +110,18 @@ This is a 2-pass compiler:
 
 ## Debugging the Parser and AST
 
-The `-x` option executes the generated AST with a Common Lisp interpreter, providing
-a way to validate that the parser is producing correct AST without needing a working
-code generator.
+The `-x` option executes the generated AST with a Common Lisp interpreter,
+providing a way to validate that the parser is producing correct AST without
+needing a working code generator.
 
 **Quick validation:**
 ```bash
 ./ccc -x tests/arith_widths.c
 ```
 
-This compiles the source to AST, then executes it with the interpreter. If the program
-runs and produces the expected result, the parser is working correctly.
+This compiles the source to AST, then executes it with the interpreter. If the
+program runs and produces the expected result, the parser is working
+correctly.
 
 **Debugging workflow:**
 
@@ -190,7 +191,9 @@ FUNCTION main() -> _short_
 }
 ```
 
-The pretty printer translates single-char operators to readable names (M→DEREF, =→ASSIGN, +→ADD, etc.) and shows type width annotations, making it easy to verify the AST structure at a glance.
+The pretty printer translates single-char operators to readable names
+(M→DEREF, =→ASSIGN, +→ADD, etc.) and shows type width annotations, making
+it easy to verify the AST structure at a glance.
 
 **Use cases:**
 - Debug parser output by visual inspection

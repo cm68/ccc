@@ -103,7 +103,8 @@ Walk the tree with ASM blocks and output:
 ### Implementation Strategy
 
 1. **Reuse parsing machinery from parseast.c**:
-   - Keep all low-level parsing: nextchar(), skip(), expect(), read_symbol(), read_number(), etc.
+   - Keep all low-level parsing: nextchar(), skip(), expect(), read_symbol(),
+     read_number(), etc.
    - Keep buffer management and S-expression parsing infrastructure
    - These functions are solid and well-tested
 
@@ -135,11 +136,13 @@ static void handle_binary_op(unsigned char op);  // Prints diagnostics
 static struct expr* parse_expr(void);   // Returns allocated expr tree
 static struct stmt* parse_stmt(void);   // Returns allocated stmt tree
 static struct stmt* handle_if(void);    // Returns if statement node with label
-static struct expr* handle_binary_op(unsigned char op);  // Returns binary op node
+// Returns binary op node
+static struct expr* handle_binary_op(unsigned char op);
 ```
 
 **Key changes:**
-- Allocate nodes with `malloc(sizeof(struct expr))` or `malloc(sizeof(struct stmt))`
+- Allocate nodes with `malloc(sizeof(struct expr))` or `malloc(sizeof(struct
+  stmt))`
 - Build tree by setting left/right/then_branch/else_branch pointers
 - Assign label numbers from global label_counter during parsing
 - Return root of subtree instead of printing
@@ -273,9 +276,13 @@ _if_0:
 
 ## Key Architectural Insight
 
-**Emit nodes ARE asm blocks** - they're just strings of assembly code stored in the tree nodes. The tree structure itself defines the control flow and emission order. No need for a separate linked list of code emission structures.
+**Emit nodes ARE asm blocks** - they're just strings of assembly code stored in
+the tree nodes. The tree structure itself defines the control flow and emission
+order. No need for a separate linked list of code emission structures.
 
-**Label numbers live in operator nodes** - during parsing, we assign label numbers to statement nodes that need them (if, while, etc.). During code generation, we use these label numbers to emit jumps and labels.
+**Label numbers live in operator nodes** - during parsing, we assign label
+numbers to statement nodes that need them (if, while, etc.). During code
+generation, we use these label numbers to emit jumps and labels.
 
 **Three simple phases**:
 1. Parse → trees with labels
@@ -296,7 +303,8 @@ With tree-based approach, these become possible:
 
 ### Stack Frame Structure
 
-The compiler uses a frame pointer (FP) based calling convention. Each function has a stack frame with the following layout:
+The compiler uses a frame pointer (FP) based calling convention. Each function
+has a stack frame with the following layout:
 
 ```
 Higher addresses
@@ -379,7 +387,8 @@ _funcname:
 **Frame allocation rules:**
 - Emit `framealloc`/`framefree` if: `frame_size > 0` OR function has parameters
 - Functions with no parameters and no locals omit frame setup
-- Frame size passed in register A is the **local variable space only** (not parameters)
+- Frame size passed in register A is the **local variable space only** (not
+  parameters)
 
 **Examples:**
 
@@ -450,12 +459,14 @@ Variables are allocated based on their type:
 
 ### Variable Lifetime Tracking and Reference Counting
 
-To enable efficient register allocation, cc2 tracks when variables are used during code generation:
+To enable efficient register allocation, cc2 tracks when variables are used
+during code generation:
 
 **Lifetime Tracking:**
 - `first_label`: Label number where variable is first referenced (-1 if unused)
 - `last_label`: Label number where variable is last referenced (high water mark)
-- `current_label`: Current label context during code generation (in function_ctx)
+- `current_label`: Current label context during code generation (in
+  function_ctx)
 
 **Reference Counting:**
 - `ref_count`: Total number of times variable is referenced in the function
@@ -489,7 +500,8 @@ Variable lifetimes:
   b: labels 0-4 (3 refs)         // Only used in first half, fewer refs
 ```
 
-This shows that `b` is only used from label 0 to 4, so its register could be reused
+This shows that `b` is only used from label 0 to 4, so its register could be
+reused
 for another variable after label 4. Also, `result` and `a` are referenced more
 frequently, making them better candidates for registers.
 

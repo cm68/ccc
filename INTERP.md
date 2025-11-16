@@ -1,19 +1,27 @@
 # AST Interpreter for ccc
 
-This is a Common Lisp interpreter that executes the S-expression AST output from the ccc compiler (pass 1) without needing pass 2 (code generation).
+This is a Common Lisp interpreter that executes the S-expression AST output
+from the ccc compiler (pass 1) without needing pass 2 (code generation).
 
 ## Purpose
 
-The interpreter is primarily a **debugging and validation tool** for the parser and AST generator:
+The interpreter is primarily a **debugging and validation tool** for the
+parser and AST generator:
 
-- **Validate parser correctness**: If your C program executes correctly through the interpreter, the parser is producing valid AST
-- **Debug AST issues**: Compare expected behavior with actual execution to identify parser bugs
+- **Validate parser correctness**: If your C program executes correctly
+  through the interpreter, the parser is producing valid AST
+- **Debug AST issues**: Compare expected behavior with actual execution to
+  identify parser bugs
 - **Test parser changes**: Quick feedback loop when modifying the parser
-- **Verify type conversions**: See if promotions and conversions are happening as expected
-- **Check control flow**: Ensure loops, conditionals, and function calls work correctly
-- **Prototype features**: Test new language features before implementing code generation
+- **Verify type conversions**: See if promotions and conversions are
+  happening as expected
+- **Check control flow**: Ensure loops, conditionals, and function calls
+  work correctly
+- **Prototype features**: Test new language features before implementing
+  code generation
 
-**Key benefit**: You can develop and test pass 1 (parser) completely independently of pass 2 (code generator).
+**Key benefit**: You can develop and test pass 1 (parser) completely
+independently of pass 2 (code generator).
 
 ## Requirements
 
@@ -172,12 +180,15 @@ Type conversions (NARROW, SEXT, WIDEN) are implemented but simplified.
 
 ### Escape Sequence Preprocessing
 
-C string literals in the AST contain escape sequences (`\n`, `\t`, `\"`, `\\`, etc.) that must be processed correctly by the Lisp reader. The interpreter preprocesses the AST text before passing it to the reader:
+C string literals in the AST contain escape sequences (`\n`, `\t`, `\"`,
+`\\`, etc.) that must be processed correctly by the Lisp reader. The
+interpreter preprocesses the AST text before passing it to the reader:
 
 **Strategy:**
 - Backslashes inside strings (except `\"`) are doubled: `\n` → `\\n`
 - Escaped quotes stay as-is: `\"` → `\"` (reader produces quote in string)
-- Vertical bars outside strings are escaped: `|` → `\|` (prevents Lisp multiple-escape interpretation)
+- Vertical bars outside strings are escaped: `|` → `\|` (prevents Lisp
+  multiple-escape interpretation)
 
 **Example transformation:**
 ```
@@ -194,7 +205,8 @@ process-escape-sequences converts: actual newline, tab, quote, backslash
 4. `process-escape-sequences` converts `\n`, `\t`, etc. to actual characters
 5. Final string has correct C semantics
 
-**Implementation:** See preprocessing loop in `interpret-file` function (interp.lisp:443-473).
+**Implementation:** See preprocessing loop in `interpret-file` function
+(interp.lisp:443-473).
 
 ### Function Calls
 
