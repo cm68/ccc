@@ -107,24 +107,36 @@ parse_expr(unsigned char pri, struct stmt *st)
 
     case NUMBER: {
         struct type *const_type;
-        unsigned long val = cur.v.numeric;
+        long sval = cur.v.numeric;  /* Token stores signed long */
 
         /* Strength reduction: assign smallest type that fits the constant */
-        if (val <= 127) {
-            const_type = chartype;  /* fits in signed char */
-        } else if (val <= 255) {
-            const_type = uchartype;  /* fits in unsigned char */
-        } else if (val <= 32767) {
-            const_type = inttype;  /* fits in signed short */
-        } else if (val <= 65535) {
-            const_type = ushorttype;  /* fits in unsigned short */
-        } else if (val <= 2147483647) {
-            const_type = longtype;  /* fits in signed long */
+        if (sval < 0) {
+            /* Negative values - check signed ranges */
+            if (sval >= -128) {
+                const_type = chartype;  /* fits in signed char */
+            } else if (sval >= -32768) {
+                const_type = inttype;  /* fits in signed short */
+            } else {
+                const_type = longtype;  /* needs signed long */
+            }
         } else {
-            const_type = ulongtype;  /* needs unsigned long */
+            /* Positive values - check both signed and unsigned ranges */
+            if (sval <= 127) {
+                const_type = chartype;  /* fits in signed char */
+            } else if (sval <= 255) {
+                const_type = uchartype;  /* fits in unsigned char */
+            } else if (sval <= 32767) {
+                const_type = inttype;  /* fits in signed short */
+            } else if (sval <= 65535) {
+                const_type = ushorttype;  /* fits in unsigned short */
+            } else if (sval <= 2147483647L) {
+                const_type = longtype;  /* fits in signed long */
+            } else {
+                const_type = ulongtype;  /* needs unsigned long */
+            }
         }
 
-        e = makeexpr_init(CONST, 0, const_type, val, E_CONST);
+        e = makeexpr_init(CONST, 0, const_type, (unsigned long)sval, E_CONST);
         gettoken();
         break;
     }
@@ -1012,9 +1024,36 @@ cfold(struct expr *e)
     switch (e->op) {
     case NEG:
         if (e->left->op == CONST) {
+            long sval;
             val = -e->left->v;
             e = xreplace(e, e->left);
             e->v = val;
+
+            /* Re-type the constant after negation using strength reduction */
+            sval = (long)val;
+            if (sval < 0) {
+                if (sval >= -128) {
+                    e->type = chartype;
+                } else if (sval >= -32768) {
+                    e->type = inttype;
+                } else {
+                    e->type = longtype;
+                }
+            } else {
+                if (sval <= 127) {
+                    e->type = chartype;
+                } else if (sval <= 255) {
+                    e->type = uchartype;
+                } else if (sval <= 32767) {
+                    e->type = inttype;
+                } else if (sval <= 65535) {
+                    e->type = ushorttype;
+                } else if (sval <= 2147483647L) {
+                    e->type = longtype;
+                } else {
+                    e->type = ulongtype;
+                }
+            }
         }
         return e;
     case TWIDDLE:
