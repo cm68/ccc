@@ -280,6 +280,12 @@ isnumber()
         }
     }
     next.v.numeric = getint(base);
+
+    /* Skip optional 'L' or 'l' suffix for long constants */
+    if ((curchar == 'L') || (curchar == 'l')) {
+        advance();
+    }
+
     return 1;
 }
 
