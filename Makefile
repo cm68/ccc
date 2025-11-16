@@ -36,8 +36,8 @@ LDFLAGS= $(DEBUG) -o
 LD= gcc
 endif
 
-CC1OBJECTS = cc1.o error.o lex.o io.o macro.o kw.o util.o tokenlist.o unixlib.o \
-	expr.o parse.o type.o declare.o outast.o
+CC1OBJECTS = cc1.o error.o lex.o io.o macro.o kw.o util.o tokenlist.o \
+	unixlib.o expr.o parse.o type.o declare.o outast.o
 
 HEADERS = cc1.h token.h
 GENERATED = enumlist.h tokenlist.c error.h debug.h debugtags.c op_pri.h
@@ -106,12 +106,13 @@ sizecheck: clean clobber
 
 .PHONY: selfcheck
 selfcheck: cc1
-	@echo "Testing compiler on its own sources (full pipeline: cpp + parse)..."
+	@echo "Testing compiler on its own sources (parse)"
 	@for f in $(CFILES); do \
 	  if [ -f "$$f" ]; then \
 	    b=$$(basename $$f .c) ; \
 	    printf "%-30s" "$$f: "; \
-	    timeout 10 ./cc1 -DCCC -i./include -I. -E -o $$b.ast "$$f" >/dev/null 2>&1 ; \
+	    timeout 10 ./cc1 -DCCC -i./include -I. -E -o $$b.ast "$$f" \
+		>/dev/null 2>&1 ; \
 	    ret=$$?; \
 	    if [ $$ret -eq 124 ]; then \
 	      echo "FAIL (timeout)"; \
@@ -126,12 +127,13 @@ selfcheck: cc1
 
 .PHONY: fullcheck
 fullcheck: cc1 cc2
-	@echo "Testing compiler on its own sources (complete pipeline: cpp + parse + codegen)..."
+	@echo "Testing compiler on its own sources (complete pipeline)"
 	@for f in $(CFILES); do \
 	  if [ -f "$$f" ]; then \
 	    b=$$(basename $$f .c) ; \
 	    printf "%-30s" "$$f: "; \
-	    timeout 10 ./cc1 -DCCC -i./include -I. -E -o $$b.ast "$$f" >/dev/null 2>&1 ; \
+	    timeout 10 ./cc1 -DCCC -i./include -I. -E -o $$b.ast "$$f" \
+		>/dev/null 2>&1 ; \
 	    ret1=$$?; \
 	    if [ $$ret1 -eq 124 ]; then \
 	      echo "FAIL (parse timeout)"; \
@@ -208,13 +210,16 @@ tags:
 
 doc.pdf: $(SOURCES) $(DOCFILES) Makefile
 	{ for f in $(DOCFILES); do \
-	    pandoc -f gfm -t plain "$$f" | iconv -f utf-8 -t Latin1//TRANSLIT | enscript -2rG --title="$$f" -p -; \
+	    pandoc -f gfm -t plain "$$f" | \
+		iconv -f utf-8 -t Latin1//TRANSLIT | \
+		enscript -2rG --title="$$f" -p -; \
 	  done; \
-	  enscript -2rG -p - Makefile $(CFILES) $(HFILES); } | ps2pdf - doc.pdf
+	  enscript -2rG -p - Makefile $(CFILES) $(HFILES); } | \
+		ps2pdf - doc.pdf
 
 clean:
-	rm -f $(CC1OBJECTS) cc2.o ccc.o $(GENERATED) tests/*.i *.ast *.s *.pp \
-		*.asm *.lst *.sym *.map *.cdb *.ihx *.i
+	rm -f $(CC1OBJECTS) cc2.o ccc.o $(GENERATED) tests/*.i \
+		*.ast *.s *.pp *.asm *.lst *.sym *.map *.cdb *.ihx *.i
 	$(MAKE) -C unit_test clean
 
 clobber: clean

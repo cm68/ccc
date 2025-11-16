@@ -12,7 +12,7 @@
 
 #include "cc2.h"
 
-#define BUFSIZE 40960  // AST parser read buffer (original: 4096, tested: 40960)
+#define BUFSIZE 4096  // AST parser read buffer
 
 /* Forward declarations for static helper functions */
 static unsigned char nextchar(void);
@@ -112,7 +112,7 @@ get_size_from_type_str(const char *type_str)
 /*
  * Extract signedness from type annotation string
  * Pointers (:p) are unsigned (addresses)
- * Other types default to signed (signedness comes from operators like WIDEN/SEXT)
+ * Other types default to signed (signedness comes from ops like WIDEN/SEXT)
  * Returns: E_UNSIGNED flag if unsigned, 0 if signed
  */
 unsigned char
@@ -128,7 +128,7 @@ get_signedness_from_type_str(const char *type_str)
     }
 
     /* All other types default to signed */
-    /* Actual signedness comes from WIDEN (unsigned) vs SEXT (signed) operators */
+    /* Actual signedness comes from WIDEN (unsigned) vs SEXT (signed) ops */
     return 0;
 }
 
@@ -187,8 +187,9 @@ is_power_of_2(long value)
 }
 
 /*
- * Recognize multiplication by constant power of 2: (* <expr> <const>)
- * This pattern can be strength-reduced to left shift: (<< <expr> <shift_amount>)
+ * Recognize multiplication by constant power of 2: 
+ * This pattern can be strength-reduced to left shift: 
+ * (* <expr> <const>) becomes (<< <expr> <shift_amount>)
  *
  * Pattern breakdown:
  *   - *: multiply operator
@@ -327,7 +328,8 @@ free_expr(struct expr *e)
     if (!e) return;
     free_expr(e->left);
     free_expr(e->right);
-    /* NOTE: type_str and symbol point to static buffers from read_type()/read_symbol()
+    /* NOTE: type_str and symbol point to static buffers from 
+     * read_type()/read_symbol()
      * They should NOT be freed. Only asm_block is dynamically allocated. */
     if (e->asm_block) free(e->asm_block);
     free(e);
@@ -452,7 +454,8 @@ read_quoted_string(void)
 
     /* Expect opening quote */
     if (curchar != '"') {
-        fdprintf(2, "parseast: line %d: expected '\"' at start of string\n", line_num);
+        fdprintf(2, "parseast: line %d: expected '\"' at start of string\n", 
+            line_num);
         strbuf[0] = '\0';
         return strbuf;
     }
@@ -489,13 +492,19 @@ read_quoted_string(void)
                     unsigned char hex2 = curchar;
                     unsigned char val = 0;
 
-                    if (hex1 >= '0' && hex1 <= '9') val = (hex1 - '0') << 4;
-                    else if (hex1 >= 'a' && hex1 <= 'f') val = (hex1 - 'a' + 10) << 4;
-                    else if (hex1 >= 'A' && hex1 <= 'F') val = (hex1 - 'A' + 10) << 4;
+                    if (hex1 >= '0' && hex1 <= '9') 
+                        val = (hex1 - '0') << 4;
+                    else if (hex1 >= 'a' && hex1 <= 'f') 
+                        val = (hex1 - 'a' + 10) << 4;
+                    else if (hex1 >= 'A' && hex1 <= 'F') 
+                        val = (hex1 - 'A' + 10) << 4;
 
-                    if (hex2 >= '0' && hex2 <= '9') val |= (hex2 - '0');
-                    else if (hex2 >= 'a' && hex2 <= 'f') val |= (hex2 - 'a' + 10);
-                    else if (hex2 >= 'A' && hex2 <= 'F') val |= (hex2 - 'A' + 10);
+                    if (hex2 >= '0' && hex2 <= '9') 
+                        val |= (hex2 - '0');
+                    else if (hex2 >= 'a' && hex2 <= 'f') 
+                        val |= (hex2 - 'a' + 10);
+                    else if (hex2 >= 'A' && hex2 <= 'F') 
+                        val |= (hex2 - 'A' + 10);
 
                     if (i < sizeof(strbuf) - 1) strbuf[i++] = val;
                 }
@@ -729,7 +738,8 @@ handle_binary_op(unsigned char op)
 
     /* Result size is the larger of the two operand sizes */
     if (e->left && e->right) {
-        e->size = (e->left->size > e->right->size) ? e->left->size : e->right->size;
+        e->size = (e->left->size > e->right->size) ? 
+            e->left->size : e->right->size;
     } else if (e->left) {
         e->size = e->left->size;
     } else if (e->right) {
@@ -926,14 +936,29 @@ handle_bfassign(unsigned char op)
 }
 
 /* Wrappers to match handler_fn signature */
-static struct expr *handle_deref_dispatch(unsigned char op) { return handle_deref(); }
-static struct expr *handle_assign_dispatch(unsigned char op) { return handle_assign(); }
-static struct expr *handle_call_dispatch(unsigned char op) { return handle_call(); }
-static struct expr *handle_ternary_dispatch(unsigned char op) { return handle_ternary(); }
-static struct expr *handle_bfextract_dispatch(unsigned char op) { return handle_bfextract(op); }
-static struct expr *handle_bfassign_dispatch(unsigned char op) { return handle_bfassign(op); }
+static struct expr *handle_deref_dispatch(unsigned char op) { 
+    return handle_deref(); 
+}
+static struct expr *handle_assign_dispatch(unsigned char op) { 
+    return handle_assign(); 
+}
+static struct expr *handle_call_dispatch(unsigned char op) { 
+    return handle_call(); 
+}
+static struct expr *handle_ternary_dispatch(unsigned char op) { 
+    return handle_ternary(); 
+}
+static struct expr *handle_bfextract_dispatch(unsigned char op) { 
+    return handle_bfextract(op); 
+}
+static struct expr *handle_bfassign_dispatch(unsigned char op) { 
+    return handle_bfassign(op); 
+}
 
-/* COLON is only used as part of ternary, but handle it gracefully if standalone */
+/*
+ * COLON is only used as part of ternary, 
+ * but handle it gracefully if standalone
+ */
 static struct expr *
 handle_colon(unsigned char op)
 {
@@ -950,7 +975,9 @@ handle_colon(unsigned char op)
     return e;
 }
 
-static struct expr *handle_colon_dispatch(unsigned char op) { return handle_colon(op); }
+static struct expr *handle_colon_dispatch(unsigned char op) { 
+    return handle_colon(op); 
+}
 
 static struct expr *
 handle_deref(void)
@@ -1103,8 +1130,9 @@ handle_call(void)
                 break;
             }
             depth--;
-        } else if (depth == 0 && (curchar == ' ' || curchar == '\t' || curchar == '\n')) {
-            /* Whitespace at depth 0 = separator between function and first arg */
+        } else if (depth == 0 && 
+                (curchar == ' ' || curchar == '\t' || curchar == '\n')) {
+            /* Whitespace at depth 0 = separator between fn and first arg */
             skip();
             break;
         }
@@ -1136,7 +1164,8 @@ handle_call(void)
                     break;
                 }
                 depth--;
-            } else if (depth == 0 && (curchar == ' ' || curchar == '\t' || curchar == '\n')) {
+            } else if (depth == 0 && 
+                    (curchar == ' ' || curchar == '\t' || curchar == '\n')) {
                 /* Whitespace at depth 0 = end of this arg */
                 skip();
                 break;
@@ -1319,7 +1348,10 @@ handle_block(void)
         skip();
         if (curchar == '(') {
             nextchar();
-            /* Don't call skip() yet - need to read operator first to avoid ';' being treated as comment */
+            /*
+             * Don't call skip() yet - need to read op first to 
+             * avoid ';' being treated as comment
+             */
             char op = curchar;  /* Read operator immediately after '(' */
             nextchar();  /* Consume operator */
             skip();      /* Now safe to skip whitespace */
@@ -1332,8 +1364,8 @@ handle_block(void)
 
                 /* Create declaration statement node */
                 child = new_stmt('d');
-                child->symbol = strdup(name);  /* Duplicate - symbuf is reused */
-                child->type_str = strdup(type);  /* Duplicate - typebuf is reused */
+                child->symbol = strdup(name);  // symbuf is reused
+                child->type_str = strdup(type);  // typebuf is reused
 
                 expect(')');
             } else {
@@ -1377,11 +1409,13 @@ handle_block(void)
                     child = handle_switch();
                     break;
                 case 'C':  /* Case (inside switch body) */
-                    /* Case statements only valid inside switch, but may appear in block */
+                    /* Case statements only valid inside switch, 
+                     * but may appear in block */
                     child = handle_case_in_block();
                     break;
                 case 'O':  /* Default (inside switch body) */
-                    /* Default statements only valid inside switch, but may appear in block */
+                    /* Default statements only valid inside switch, 
+                     * but may appear in block */
                     child = handle_default_in_block();
                     break;
                 case 'K':  /* Break */
@@ -1395,7 +1429,8 @@ handle_block(void)
                     expect(')');
                     break;
                 default:
-                    fdprintf(2, "parseast: line %d: unknown stmt op '%c' in block\n", line_num, op);
+                    fdprintf(2, "parseast: line %d: unknown" 
+                        " stmt op '%c' in block\n", line_num, op);
                     /* Skip to closing paren */
                     while (curchar && curchar != ')') {
                         nextchar();
@@ -1683,7 +1718,8 @@ handle_asm(void)
         /* Read the quoted string into buffer */
         nextchar();
         p = asm_buf;
-        while (curchar && curchar != '"' && (p - asm_buf) < sizeof(asm_buf) - 1) {
+        while (curchar && curchar != '"' && 
+                (p - asm_buf) < sizeof(asm_buf) - 1) {
             *p++ = curchar;
             nextchar();
         }
@@ -1769,7 +1805,7 @@ handle_switch(void)
             nextchar();
 
             if (clause_type == 'C') {
-                /* Case clause: (C value ()) - body placeholder is always empty */
+                /* Case clause: (C value ()) - body is always empty */
                 fdprintf(2, "\n  CASE ");
                 child = new_stmt('C');
                 skip();
@@ -1943,28 +1979,34 @@ emit_function_prologue(char *name, char *params, char *rettype, int frame_size,
             /* Build offset string */
             char offset_str[32];
             if (var->offset >= 0) {
-                snprintf(offset_str, sizeof(offset_str), "(iy+%d)", var->offset);
+                snprintf(offset_str, sizeof(offset_str), "(iy+%d)", 
+                    var->offset);
             } else {
-                snprintf(offset_str, sizeof(offset_str), "(iy%d)", var->offset);
+                snprintf(offset_str, sizeof(offset_str), "(iy%d)", 
+                    var->offset);
             }
 
             fdprintf(out_fd, ";   %s: ", var->name);
             if (var->first_label == -1) {
                 if (regname) {
-                    fdprintf(out_fd, "unused (0 refs, 0 agg_refs, %s, reg=%s)\n",
-                             offset_str, regname);
+                    fdprintf(out_fd, 
+                        "unused (0 refs, 0 agg_refs, %s, reg=%s)\n",
+                        offset_str, regname);
                 } else {
-                    fdprintf(out_fd, "unused (0 refs, 0 agg_refs, %s)\n", offset_str);
+                    fdprintf(out_fd, 
+                        "unused (0 refs, 0 agg_refs, %s)\n", offset_str);
                 }
             } else {
                 if (regname) {
-                    fdprintf(out_fd, "labels %d-%d (%d refs, %d agg_refs, %s, reg=%s)\n",
-                             var->first_label, var->last_label, var->ref_count, var->agg_refs,
-                             offset_str, regname);
+                    fdprintf(out_fd, 
+                        "labels %d-%d (%d refs, %d agg_refs, %s, reg=%s)\n",
+                        var->first_label, var->last_label, var->ref_count, 
+                        var->agg_refs, offset_str, regname);
                 } else {
-                    fdprintf(out_fd, "labels %d-%d (%d refs, %d agg_refs, %s)\n",
-                             var->first_label, var->last_label, var->ref_count, var->agg_refs,
-                             offset_str);
+                    fdprintf(out_fd, 
+                        "labels %d-%d (%d refs, %d agg_refs, %s)\n",
+                        var->first_label, var->last_label, var->ref_count, 
+                        var->agg_refs, offset_str);
                 }
             }
         }
@@ -2068,12 +2110,13 @@ handle_function(void)
 
                 /* Create declaration statement node */
                 child = new_stmt('d');
-                child->symbol = strdup(dname);  /* Duplicate - symbuf is reused */
-                child->type_str = strdup(dtype);  /* Duplicate - typebuf is reused */
+                child->symbol = strdup(dname);  /* symbuf is reused */
+                child->type_str = strdup(dtype);  /* typebuf is reused */
 
                 expect(')');
             } else {
-                /* Body statement - we've already consumed '(', now consume operator */
+                /* Body statement - we've already consumed 
+                 * '(', now consume operator */
                 char op = curchar;
                 nextchar();
 
@@ -2116,7 +2159,8 @@ handle_function(void)
                     child = handle_switch();
                     break;
                 default:
-                    fdprintf(2, "parseast: line %d: unknown stmt op '%c'\n", line_num, op);
+                    fdprintf(2, "parseast: line %d: unknown stmt op '%c'\n", 
+                        line_num, op);
                     /* Skip to closing paren */
                     while (curchar && curchar != ')') {
                         nextchar();
@@ -2335,7 +2379,8 @@ parse_stmt(void)
     skip();
 
     if (curchar != '(') {
-        fdprintf(2, "parseast: line %d: expected '(' at start of statement\n", line_num);
+        fdprintf(2, "parseast: line %d: expected '(' at start of statement\n", 
+            line_num);
         return NULL;
     }
 
@@ -2433,7 +2478,8 @@ parse_toplevel(void)
         handle_string_literal();
         break;
     default:
-        fdprintf(2, "parseast: line %d: unknown top-level op '%c'\n", line_num, op);
+        fdprintf(2, "parseast: line %d: unknown top-level op '%c'\n", 
+            line_num, op);
         /* Skip to closing paren */
         while (curchar && curchar != ')') {
             nextchar();
@@ -2525,7 +2571,8 @@ make_binop_funcname(char *buf, size_t bufsize, const char *opname,
     int right_bits = get_original_size(e->right) * 8;
 
     /* Operation is unsigned if either operand is unsigned */
-    int is_unsigned = is_operand_unsigned(e->left) || is_operand_unsigned(e->right);
+    int is_unsigned = is_operand_unsigned(e->left) || 
+        is_operand_unsigned(e->right);
     const char *prefix = is_unsigned ? "u" : "";
 
     snprintf(buf, bufsize, "%s%s%d%d", prefix, opname, left_bits, right_bits);
@@ -2536,7 +2583,8 @@ make_binop_funcname(char *buf, size_t bufsize, const char *opname,
  * Parameters have positive offsets (above frame pointer)
  *
  * Parameters are eligible for register allocation. If allocated to a register,
- * the function prologue will load the parameter from the stack into the register.
+ * the function prologue will load the parameter from the stack into the 
+ * register.
  *
  * Z80 byte parameter stack layout:
  *   - Byte parameters are pushed using "push AF"
@@ -2546,7 +2594,8 @@ make_binop_funcname(char *buf, size_t bufsize, const char *opname,
  *   - Data is at the HIGHER address within the pushed word
  */
 static void
-add_param(struct function_ctx *ctx, const char *name, unsigned char size, int offset)
+add_param(struct function_ctx *ctx, const char *name, unsigned char size, 
+    int offset)
 {
     struct local_var *var = malloc(sizeof(struct local_var));
     if (!var) {
@@ -2558,7 +2607,7 @@ add_param(struct function_ctx *ctx, const char *name, unsigned char size, int of
     var->size = size;
     var->offset = offset;
     var->is_param = 1;
-    var->is_array = 0;      /* Parameters are scalar (array parameters are actually pointers) */
+    var->is_array = 0;      /* Params are scalar (array params are pointers) */
     var->first_label = -1;  /* Not used yet */
     var->last_label = -1;   /* Not used yet */
     var->ref_count = 0;     /* Not referenced yet */
@@ -2576,7 +2625,8 @@ add_param(struct function_ctx *ctx, const char *name, unsigned char size, int of
  * Local variables have negative offsets (below frame pointer)
  */
 static void
-add_local_var(struct function_ctx *ctx, const char *name, unsigned char size, int is_array)
+add_local_var(struct function_ctx *ctx, const char *name, unsigned char size, 
+    int is_array)
 {
     struct local_var *var = malloc(sizeof(struct local_var));
     if (!var) {
@@ -2600,8 +2650,8 @@ add_local_var(struct function_ctx *ctx, const char *name, unsigned char size, in
     ctx->locals = var;
     ctx->frame_size += size;
 
-    fdprintf(2, "  Local var: %s, size=%d, offset=%d%s\n", name, size, var->offset,
-             is_array ? " (array)" : "");
+    fdprintf(2, "  Local var: %s, size=%d, offset=%d%s\n", 
+        name, size, var->offset, is_array ? " (array)" : "");
 }
 
 /*
@@ -2656,13 +2706,14 @@ walk_for_locals(struct function_ctx *ctx, struct stmt *s)
 {
     if (!s) return;
 
-    /* If this is a declaration, add it to locals list (unless it's a parameter) */
+    /* If this is a declaration, add it to locals list (unless it's a param) */
     if (s->type == 'd' && s->symbol) {
         /* Skip parameter declarations - they already have offsets */
         if (!is_parameter(ctx, s->symbol)) {
             unsigned char size = get_size_from_typename(s->type_str);
             /* Detect arrays: type_str contains ":array:" */
-            int is_array = (s->type_str && strstr(s->type_str, ":array:") != NULL) ? 1 : 0;
+            int is_array = (s->type_str && 
+                strstr(s->type_str, ":array:") != NULL) ? 1 : 0;
             add_local_var(ctx, s->symbol, size, is_array);
         }
     }
@@ -2675,15 +2726,17 @@ walk_for_locals(struct function_ctx *ctx, struct stmt *s)
 
 /*
  * Phase 2.5: Allocate registers to local variables and parameters
- * Called after code generation (Phase 2) which computes ref_count, agg_refs, lifetimes
+ * Called after code generation (Phase 2) which computes 
+ * ref_count, agg_refs, lifetimes
  *
- * Both function parameters and local variables are candidates for register allocation.
- * Parameters start on the stack (passed by caller) but can be loaded into registers
- * in the function prologue for efficiency.
+ * Both function parameters and local variables are candidates for 
+ * register allocation.
+ * Parameters start on the stack (passed by caller) but can be loaded into 
+ * registers in the function prologue for efficiency.
  *
  * Allocation priority:
  *   1. IX register: allocated to struct pointers with aggregate member accesses
- *   2. Byte/word registers: allocated by reference count (most frequently used first)
+ *   2. Byte/word registers: allocated by reference count (by frequency)
  *
  * Variables excluded from register allocation:
  *   - Arrays (must remain on stack)
@@ -2734,7 +2787,7 @@ allocate_registers(struct function_ctx *ctx)
         /* Skip arrays (they must stay on stack) */
         if (var->is_array) continue;
 
-        /* Skip unused or single-use variables (no benefit to register allocation) */
+        /* Skip unused or single-use variables */
         if (var->ref_count <= 1) continue;
 
         /* Allocate byte registers (B, C, B', C') */
@@ -2745,7 +2798,7 @@ allocate_registers(struct function_ctx *ctx)
             fdprintf(2, "  Allocated byte reg to %s (refs=%d)\n",
                      var->name, var->ref_count);
         }
-        /* Allocate word registers (BC, BC', and IX if not used for struct pointer) */
+        /* Allocate word registers (BC, BC', and IX */
         else if (var->size == 2 && word_regs_used < 3) {
             enum register_id regs[] = {REG_BC, REG_BCp, REG_IX};
             /* If IX already allocated to struct pointer, skip it */
@@ -2796,7 +2849,8 @@ assign_frame_offsets(struct function_ctx *ctx)
 
             /* Read parameter name */
             i = 0;
-            while (*p && *p != ':' && *p != ',' && *p != ' ' && i < sizeof(name_buf) - 1) {
+            while (*p && *p != ':' && *p != ',' && *p != ' ' && 
+                    i < sizeof(name_buf) - 1) {
                 name_buf[i++] = *p++;
             }
             name_buf[i] = '\0';
@@ -2806,7 +2860,8 @@ assign_frame_offsets(struct function_ctx *ctx)
             if (*p == ':') {
                 p++;  /* Skip ':' */
                 i = 0;
-                while (*p && *p != ',' && *p != ' ' && i < sizeof(type_buf) - 1) {
+                while (*p && *p != ',' && *p != ' ' && 
+                        i < sizeof(type_buf) - 1) {
                     type_buf[i++] = *p++;
                 }
                 type_buf[i] = '\0';
@@ -2814,7 +2869,8 @@ assign_frame_offsets(struct function_ctx *ctx)
 
             /* Add parameter with positive offset */
             if (name_buf[0]) {
-                unsigned char size = type_buf[0] ? get_size_from_typename(type_buf) : 2;
+                unsigned char size = type_buf[0] ? 
+                    get_size_from_typename(type_buf) : 2;
                 add_param(ctx, name_buf, size, param_offset);
                 param_offset += size;
             }
@@ -2853,8 +2909,8 @@ gen_binop(struct expr *e, const char *op_name)
  *
  * Accumulator Management:
  *   - All expressions evaluate to PRIMARY accumulator (HL for word, A for byte)
- *   - Binary operators: left→PRIMARY, move to SECONDARY, right→PRIMARY, operate
- *   - M (DEREF) operations generate actual load instructions from memory/registers
+ *   - Binary operators: left PRIMARY, move to SECONDARY, right PRIMARY, operate
+ *   - M (DEREF) operations generate actual load instructions
  */
 static void generate_expr(struct function_ctx *ctx, struct expr *e)
 {
@@ -2893,7 +2949,7 @@ static void generate_expr(struct function_ctx *ctx, struct expr *e)
         break;
 
     case 'M':  /* DEREF - load from memory */
-        /* Check if this is a struct member access: (M (+ (M:p <var>) <const>)) */
+        /* Check if this is a struct mem access: (M (+ (M:p <var>) <const>)) */
         {
             char *var_symbol = NULL;
             long offset = 0;
@@ -2932,18 +2988,21 @@ static void generate_expr(struct function_ctx *ctx, struct expr *e)
                     } else if (var->reg == REG_C) {
                         snprintf(buf, sizeof(buf), "\tld a, c");
                     } else {
-                        snprintf(buf, sizeof(buf), "\t; TODO: load byte from reg %d to A", var->reg);
+                        snprintf(buf, sizeof(buf), 
+                            "\t; TODO: load byte from reg %d to A", var->reg);
                     }
                 } else {
                     /* Word: move register pair to HL */
                     if (var->reg == REG_BC) {
                         snprintf(buf, sizeof(buf), "\tld h, b\n\tld l, c");
                     } else if (var->reg == REG_BCp) {
-                        snprintf(buf, sizeof(buf), "\texx\n\tld h, b\n\tld l, c\n\texx");
+                        snprintf(buf, sizeof(buf), 
+                            "\texx\n\tld h, b\n\tld l, c\n\texx");
                     } else if (var->reg == REG_IX) {
                         snprintf(buf, sizeof(buf), "\tpush ix\n\tpop hl");
                     } else {
-                        snprintf(buf, sizeof(buf), "\t; TODO: load word from reg %d to HL", var->reg);
+                        snprintf(buf, sizeof(buf), 
+                            "\t; TODO: load word from reg %d to HL", var->reg);
                     }
                 }
             } else if (var) {
@@ -2951,24 +3010,30 @@ static void generate_expr(struct function_ctx *ctx, struct expr *e)
                 if (e->size == 1) {
                     /* Byte load */
                     if (var->offset >= 0) {
-                        snprintf(buf, sizeof(buf), "\tld a, (iy + %d)", var->offset);
+                        snprintf(buf, sizeof(buf), "\tld a, (iy + %d)", 
+                            var->offset);
                     } else {
-                        snprintf(buf, sizeof(buf), "\tld a, (iy - %d)", -var->offset);
+                        snprintf(buf, sizeof(buf), "\tld a, (iy - %d)", 
+                            -var->offset);
                     }
                 } else {
                     /* Word load */
                     if (var->offset >= 0) {
-                        snprintf(buf, sizeof(buf), "\tld hl, (iy + %d)", var->offset);
+                        snprintf(buf, sizeof(buf), "\tld hl, (iy + %d)", 
+                            var->offset);
                     } else {
-                        snprintf(buf, sizeof(buf), "\tld hl, (iy - %d)", -var->offset);
+                        snprintf(buf, sizeof(buf), "\tld hl, (iy - %d)", 
+                            -var->offset);
                     }
                 }
             } else {
                 /* Variable not found - fallback to placeholder */
                 if (e->size == 1) {
-                    snprintf(buf, sizeof(buf), "\t; load byte from %s (not found)", e->left->symbol);
+                    snprintf(buf, sizeof(buf), 
+                        "\t; load byte from %s (not found)", e->left->symbol);
                 } else {
-                    snprintf(buf, sizeof(buf), "\t; load word from %s (not found)", e->left->symbol);
+                    snprintf(buf, sizeof(buf), 
+                        "\t; load word from %s (not found)", e->left->symbol);
                 }
             }
         } else {
@@ -2985,15 +3050,15 @@ static void generate_expr(struct function_ctx *ctx, struct expr *e)
         break;
 
     case '=':  /* ASSIGN - store to memory */
-        /* Register allocation happens later, so defer actual instruction to emit phase */
-        /* Just mark this as an assignment - emit_expr will handle register vs stack */
+        /* Register allocation later, so defer instruction to emit phase */
+        /* Just mark an assignment - emit_expr will handle register vs stack */
         e->asm_block = strdup("\t; ASSIGN_PLACEHOLDER");
         break;
 
     case '+':  /* ADD */
         {
-            /* After left child generated (result in PRIMARY), move to SECONDARY */
-            /* Then right child generates into PRIMARY */
+            /* After left generated (result in PRIMARY), move to SECONDARY */
+            /* Then right generates into PRIMARY */
             /* Binary op expects: SECONDARY, PRIMARY -> PRIMARY */
             char *move_inst;
             char *add_inst;
@@ -3003,10 +3068,11 @@ static void generate_expr(struct function_ctx *ctx, struct expr *e)
                 char funcname[32];
                 make_binop_funcname(funcname, sizeof(funcname), "add", e);
                 move_inst = "\tld e, a  ; move PRIMARY (A) to SECONDARY (E)";
-                snprintf(buf, sizeof(buf), "%s\n\tcall %s", move_inst, funcname);
+                snprintf(buf, sizeof(buf), "%s\n\tcall %s", 
+                    move_inst, funcname);
             } else {
                 /* Word add - use native Z80 add hl,de instruction */
-                move_inst = "\tex de, hl  ; move PRIMARY (HL) to SECONDARY (DE)";
+                move_inst = "\tex de, hl  ; move PRIMARY(HL) to SECONDARY(DE)";
                 add_inst = "\tadd hl, de";
                 snprintf(buf, sizeof(buf), "%s\n%s", move_inst, add_inst);
             }
@@ -3046,7 +3112,8 @@ static void generate_expr(struct function_ctx *ctx, struct expr *e)
     case 'y':  /* LSHIFT */
         {
             /* Emit inline shifts using repeated add instructions */
-            /* Right operand should be constant shift amount from strength reduction */
+            /* Right operand should be constant shift amount from strength
+             * reduction */
             int shift_amount = 0;
             if (e->right && e->right->op == 'C') {
                 shift_amount = (int)e->right->value;
@@ -3057,18 +3124,20 @@ static void generate_expr(struct function_ctx *ctx, struct expr *e)
                 e->right->asm_block = strdup("");
             }
 
-            /* Build assembly: repeated "add a,a" for byte, "add hl,hl" for word */
+            /* Build assembly: repeated add */
             char asm_buf[256] = "";
             int pos = 0;
             int i;
 
-            for (i = 0; i < shift_amount && i < 16; i++) {  /* cap at 16 shifts */
+            for (i = 0; i < shift_amount && i < 16; i++) {  /* cap at 16 */
                 if (e->size == 1) {
                     /* Byte shift: add a,a */
-                    pos += snprintf(asm_buf + pos, sizeof(asm_buf) - pos, "\tadd a,a\n");
+                    pos += snprintf(asm_buf + pos, sizeof(asm_buf) - pos, 
+                        "\tadd a,a\n");
                 } else {
                     /* Word shift: add hl,hl */
-                    pos += snprintf(asm_buf + pos, sizeof(asm_buf) - pos, "\tadd hl,hl\n");
+                    pos += snprintf(asm_buf + pos, sizeof(asm_buf) - pos, 
+                        "\tadd hl,hl\n");
                 }
             }
 
@@ -3157,7 +3226,7 @@ static void generate_stmt(struct function_ctx *ctx, struct stmt *s)
     if (!s) return;
 
     /* Update current_label for statements that have labels */
-    /* This tracks the current position in the control flow for lifetime analysis */
+    /* This tracks the current position in the control flow for life analysis */
     if (s->label > 0) {
         ctx->current_label = s->label;
     }
@@ -3192,7 +3261,8 @@ void generate_code(struct function_ctx *ctx)
 }
 
 /*
- * Helper: Check if operator is a binary operator that needs accumulator management
+ * Helper: Check if operator is a binary operator that needs accumulator
+ * management
  */
 static int
 is_binop_with_accum(unsigned char op)
@@ -3212,7 +3282,8 @@ is_binop_with_accum(unsigned char op)
  * Emission phase (Phase 3)
  * Walk expression tree, emit assembly, and free nodes
  *
- * Binary operators need special handling to emit accumulator move between children:
+ * Binary operators need special handling to emit accumulator move between 
+ * children:
  *   1. Emit left child (result in PRIMARY)
  *   2. Emit move instruction (PRIMARY to SECONDARY)
  *   3. Emit right child (result in PRIMARY)
@@ -3225,11 +3296,12 @@ static void emit_expr(struct function_ctx *ctx, struct expr *e)
     if (!e) return;
 
     /* Handle ASSIGN specially - need to check register allocation */
-    if (e->op == '=' && e->asm_block && strstr(e->asm_block, "ASSIGN_PLACEHOLDER")) {
+    if (e->op == '=' && e->asm_block && 
+            strstr(e->asm_block, "ASSIGN_PLACEHOLDER")) {
         /* Emit right child first (value goes to PRIMARY) */
         emit_expr(ctx, e->right);
 
-        /* Now emit the store instruction based on current register allocation */
+        /* Now emit the store inst based on current register allocation */
         if (e->left && e->left->op == '$' && e->left->symbol) {
             struct local_var *var = lookup_var(ctx, e->left->symbol);
             char buf[256];
@@ -3252,7 +3324,8 @@ static void emit_expr(struct function_ctx *ctx, struct expr *e)
                     if (var->reg == REG_BC) {
                         fdprintf(out_fd, "\tld b, h\n\tld c, l\n");
                     } else if (var->reg == REG_BCp) {
-                        fdprintf(out_fd, "\texx\n\tld b, h\n\tld c, l\n\texx\n");
+                        fdprintf(out_fd, 
+                            "\texx\n\tld b, h\n\tld c, l\n\texx\n");
                     } else if (var->reg == REG_IX) {
                         fdprintf(out_fd, "\tpush hl\n\tpop ix\n");
                     }
@@ -3279,7 +3352,8 @@ static void emit_expr(struct function_ctx *ctx, struct expr *e)
         emit_expr(ctx, e->left);
     }
     /* Binary operators with accumulator management need special handling */
-    else if (is_binop_with_accum(e->op) && e->left && e->right && e->asm_block) {
+    else if (is_binop_with_accum(e->op) && e->left && e->right && 
+            e->asm_block) {
         /* Split asm_block into move instruction and call instruction */
         char *move_inst = NULL;
         char *call_inst = NULL;
@@ -3299,14 +3373,18 @@ static void emit_expr(struct function_ctx *ctx, struct expr *e)
         }
 
         /* Emit in correct order for accumulator management */
-        emit_expr(ctx, e->left);                      /* 1. Left operand to PRIMARY */
+        /* 1. Left operand to PRIMARY */
+        emit_expr(ctx, e->left);    
         if (move_inst) {
-            fdprintf(out_fd, "%s\n", move_inst);       /* 2. Move PRIMARY to SECONDARY */
+            /* 2. Move PRIMARY to SECONDARY */
+            fdprintf(out_fd, "%s\n", move_inst);
             free(move_inst);
-        }
-        emit_expr(ctx, e->right);                     /* 3. Right operand to PRIMARY */
+        }               
+        /* 3. Right operand to PRIMARY */
+        emit_expr(ctx, e->right);   
         if (call_inst) {
-            fdprintf(out_fd, "%s\n", call_inst);       /* 4. Call binary operation */
+            /* 4. Call binary operation */
+            fdprintf(out_fd, "%s\n", call_inst);
             free(call_inst);
         }
     } else {
@@ -3348,7 +3426,7 @@ static void emit_stmt(struct function_ctx *ctx, struct stmt *s)
     /* Emit next statement in chain (this frees it) */
     if (s->next) emit_stmt(ctx, s->next);
 
-    /* Free this node only (children already freed by recursive emit calls above) */
+    /* Free this node only (children already freed by recursive emit calls) */
     if (s->asm_block) free(s->asm_block);
     free(s);
 }
@@ -3369,8 +3447,8 @@ void emit_assembly(struct function_ctx *ctx, int fd)
     has_params = (ctx->params && ctx->params[0]);
 
     /* Emit function prologue with frame allocation and lifetime info */
-    emit_function_prologue(ctx->name, ctx->params, ctx->rettype, ctx->frame_size,
-                          ctx->locals);
+    emit_function_prologue(ctx->name, ctx->params, ctx->rettype, 
+        ctx->frame_size, ctx->locals);
 
     /* Emit function body */
     emit_stmt(ctx, ctx->body);

@@ -177,7 +177,8 @@ emit_expr(struct expr *e)
 		{
 			struct name *member = (struct name *)e->var;
 			if (member) {
-				fdprintf(ast_fd, "(%c:%d:%d", BFEXTRACT, member->bitoff, member->width);
+				fdprintf(ast_fd, "(%c:%d:%d", BFEXTRACT, member->bitoff, 
+                    member->width);
 			} else {
 				fdprintf(ast_fd, "(%c:0:0", BFEXTRACT);  /* fallback */
 			}
@@ -191,7 +192,8 @@ emit_expr(struct expr *e)
 		{
 			struct name *member = (struct name *)e->var;
 			if (member) {
-				fdprintf(ast_fd, "(%c:%d:%d", BFASSIGN, member->bitoff, member->width);
+				fdprintf(ast_fd, "(%c:%d:%d", BFASSIGN, member->bitoff, 
+                    member->width);
 			} else {
 				fdprintf(ast_fd, "(%c:0:0", BFASSIGN);  /* fallback */
 			}
@@ -203,7 +205,7 @@ emit_expr(struct expr *e)
 
 	default:
 		/* Operator - output in prefix notation */
-		/* For DEREF (M), ASSIGN (=), and compound assignments, add size annotation */
+		/* For DEREF (M), ASSIGN (=), add size annotation */
 		if (e->op == DEREF || e->op == ASSIGN ||
 		    e->op == PLUSEQ || e->op == SUBEQ || e->op == MULTEQ ||
 		    e->op == DIVEQ || e->op == MODEQ || e->op == ANDEQ ||

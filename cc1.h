@@ -61,7 +61,8 @@ struct expr {
 	struct expr *next;
 
 	struct type *type;
-	struct var *var;      /* for STRING expressions, cast to (struct name *) to get synthetic name */
+    /* for STRING expressions, cast to (struct name *) to get synthetic name */
+	struct var *var;      
 
 	unsigned long v;
 	unsigned char location;
@@ -94,7 +95,8 @@ struct expr {
 #define OP_PRI_COMMA   15  /* comma: , */
 
 extern struct expr *makeexpr(unsigned char op, struct expr *left);
-extern struct expr *makeexpr_init(unsigned char op, struct expr *left, struct type *type, unsigned long v, int flags);
+extern struct expr *makeexpr_init(unsigned char op, struct expr *left, 
+    struct type *type, unsigned long v, int flags);
 extern struct expr *cfold(struct expr *e);
 extern struct expr *parse_expr(unsigned char priority, struct stmt *);
 int parse_const(unsigned char priority);
@@ -119,7 +121,7 @@ struct stmt {
 	struct stmt *otherwise; /* else branch */
 	struct expr *middle;    /* for for-loop middle expression */
 	struct name *function;  /* owning function */
-	struct name *locals;    /* linked list of local variables declared in this scope */
+	struct name *locals;    /* linked list of local variables in this scope */
 };
 
 extern struct stmt *new_stmt(unsigned char op, struct expr *left);
@@ -168,7 +170,7 @@ struct type {
 	int size;		    	// how big is one of me
 	int count;		    	// if we are an array, how many
 	struct name *elem;		// element list (struct members, function parameters)
-    struct type *sub;		// pointer to what, array of what, function return type
+    struct type *sub;		// pointer to, array of, function return type
     unsigned char flags;
     struct type *next;
 };
@@ -190,7 +192,10 @@ extern void dump_type(struct type *t, int lv);
 struct type *get_type(int flags, struct type *sub, int count);
 extern int compatible_function_types(struct type *t1, struct type *t2);
 
-typedef enum { prim, etag, stag, utag, var, elem, tdef, fdef, bitfield, funarg, local } kind;
+typedef enum { 
+    prim, etag, stag, utag, var, elem, tdef, fdef, bitfield, funarg, local 
+} kind;
+
 /*
  * note that at the same scope, you can have
  * multiple instances of the same name with different namespaces.
@@ -203,11 +208,11 @@ struct name {
     int level;              // lexical level
 	struct name *next;		// all names in same container
 	struct type *type;
-	unsigned char sclass;            // storage class (SC_STATIC, SC_EXTERN, etc.)
+	unsigned char sclass;   // storage class (SC_STATIC, SC_EXTERN, etc.)
 	int offset;				// if inside a struct
     int bitoff;
     int width;
-    char *mangled_name;     // mangled name for static variables (NULL for others)
+    char *mangled_name;     // mangled name for statics (NULL for others)
     union {
         struct expr *init;  // value of constant or initializer (for var)
         struct stmt *body;  // function body (for fdef)
@@ -224,7 +229,8 @@ struct name {
 #define	SC_AUTO		0x20
 #define	SC_TYPEDEF	0x40
 
-extern struct name *new_name(char *name, kind k, struct type *t, boolean is_tag);
+extern struct name *new_name(char *name, kind k, struct type *t, 
+    boolean is_tag);
 extern void add_name(struct name *n);
 extern struct name *lookup_name(char *name, boolean is_tag);
 extern struct name *lookup_element(char *name, struct type *t);
@@ -255,12 +261,12 @@ void parse();
 void cleanup_parser();
 
 /* Global context for static variable name mangling */
-extern char *source_file_root;      // basename of current source file (without .c)
-extern struct name *current_function; // current function being parsed
-extern unsigned char static_counter;          // counter for statics in current function
+extern char *source_file_root;
+extern struct name *current_function;
+extern unsigned char static_counter;  // counter for statics in current function
 
 /* AST output control */
-extern int ast_fd;                  // where to write AST output (1=stdout or -o file)
+extern int ast_fd;                   // where to write AST output
 
 /* kw.c */
 extern unsigned char cppkw[];

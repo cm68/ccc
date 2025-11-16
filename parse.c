@@ -69,8 +69,8 @@ mangle_static_name(struct name *var)
 		len = strlen(source_file_root) + 1 + strlen(current_function->name) +
 		      1 + strlen(var->name) + 1 + 10 + 1;  /* 10 digits for counter */
 		mangled = malloc(len);
-		sprintf(mangled, "%s_%s_%s_%d", source_file_root, current_function->name,
-		        var->name, static_counter++);
+		sprintf(mangled, "%s_%s_%s_%d", source_file_root, 
+                current_function->name, var->name, static_counter++);
 	} else {
 		/* Shouldn't happen, but handle gracefully */
 		len = strlen(source_file_root) + 1 + strlen(var->name) + 1;
@@ -752,7 +752,7 @@ parsefunc(struct name *f)
 		for (param = f->type->elem; param; param = param->next) {
 			// Only add parameters with actual names (skip anonymous ones)
 			if (param->name && param->name[0] != '\0') {
-				// Create a NEW name entry at level 2 (don't reuse type->elem entry)
+				// Create a NEW name entry at level 2 (don't reuse type->elem)
 				new_name(param->name, funarg, param->type, 0);
 			}
 		}
