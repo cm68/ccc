@@ -347,13 +347,10 @@ parseExpr(unsigned char pri, struct stmt *st)
          */
         struct name *n;
         struct expr *sym;
-        char symname_buf[256];
         char *symname;
 
         /* Save symbol name before gettoken() overwrites cur.v.name */
-        strncpy(symname_buf, cur.v.name, sizeof(symname_buf) - 1);
-        symname_buf[sizeof(symname_buf) - 1] = '\0';
-        symname = symname_buf;
+        symname = strdup(cur.v.name);
 
         n = findName(symname, 0);
 
@@ -390,6 +387,7 @@ parseExpr(unsigned char pri, struct stmt *st)
                 /* Not a function call - report error */
                 gripe(ER_E_UO);
                 e = mkexprI(CONST, 0, inttype, 0, 0);
+                free(symname);
                 break;
             }
         }
@@ -414,6 +412,7 @@ parseExpr(unsigned char pri, struct stmt *st)
                 e = mkexprI(DEREF, sym, n->type, 0, 0);
             }
         }
+        free(symname);
         /* Note: gettoken() already called above for lookahead */
         break;
     }

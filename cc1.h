@@ -32,6 +32,7 @@ typedef unsigned long dword;
 #define MAXPARMS 10            // macro parameters
 #define TBSIZE 1024            // text buffer size for includes/macros
 #define STRBUFSIZE 128         // string/symbol/identifier buffer
+#define MAXSYMLEN 32           // maximum symbol/identifier length
 #define PSIZE 80               // max string containing bitdefs
 #define MAX_DECL_INITS 32      // local variable initializers
 #define MAXBITS 32             // maximum size of bitfield

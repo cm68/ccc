@@ -1402,6 +1402,12 @@ gettoken()
                 break;
             }
             next.type = SYM;
+            /* Enforce symbol length limit with warning */
+            if (strlen(strbuf) > MAXSYMLEN) {
+                gripe(ER_W_SYM_TRUNC);
+                fdprintf(2, "  Symbol '%s' truncated to %d characters\n", strbuf, MAXSYMLEN);
+                strbuf[MAXSYMLEN] = '\0';  /* Truncate to max length */
+            }
             next.v.name = strdup(strbuf);
             break;
         }

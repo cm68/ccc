@@ -71,3 +71,6 @@ ER_E_FA		broken function arg list
 ER_E_UO		unknown operator
 ER_E_CF		constant wont fold
 ER_E_PT		incompatible pointer types
+
+# warnings
+ER_W_SYM_TRUNC	symbol name truncated
