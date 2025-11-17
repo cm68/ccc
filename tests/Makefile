@@ -120,7 +120,8 @@ SCOPE_TESTS = \
 
 # Struct tests
 STRUCT_TESTS = \
-	struct.c
+	struct.c \
+	ix_indexed.c
 
 # Minimal/smoke tests
 MINIMAL_TESTS = \
@@ -231,7 +232,7 @@ test-all: test test-fail
 	@echo "=== All tests complete ==="
 
 # Test groups for selective testing
-.PHONY: test-expr test-decl test-cpp test-kr test-func test-stmt test-sizeof test-typedef test-cast test-string test-incr-decr test-ptr-compat test-lvalue
+.PHONY: test-expr test-decl test-cpp test-kr test-func test-stmt test-sizeof test-typedef test-cast test-string test-incr-decr test-ptr-compat test-lvalue test-struct
 test-expr:
 	./runtest.sh -k $(VERBOSE) $(EXPR_TESTS)
 
@@ -270,6 +271,9 @@ test-ptr-compat:
 
 test-lvalue:
 	./runtest.sh -k $(VERBOSE) $(LVALUE_TESTS)
+
+test-struct:
+	./runtest.sh -k $(VERBOSE) $(STRUCT_TESTS)
 
 # Valgrind testing
 .PHONY: valgrind

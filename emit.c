@@ -184,6 +184,49 @@ emitFunctionPrologue(char *name, char *params, char *rettype, int frame_size,
         fdprintf(outFd, "\tld a, %d\n", frame_size);
         fdprintf(outFd, "\tcall framealloc\n");
     }
+
+    /* Load register-allocated parameters from stack into registers
+     *
+     * After framealloc, parameters are accessible via IY-indexed addressing.
+     * Parameters that were allocated to registers during register allocation
+     * must be loaded from their stack locations into those registers.
+     *
+     * This is done after frame setup because:
+     * - Parameters are initially passed on stack
+     * - Register allocation decides which params get registers
+     * - We load them here so rest of function can use register access
+     *
+     * Note: Z80 has no direct "ld IX, (IY+offset)" instruction, so we must
+     * load through HL first using push/pop to transfer to IX.
+     */
+    for (var = locals; var; var = var->next) {
+        if (var->is_param && var->reg != REG_NO) {
+            /* This parameter has been allocated to a register */
+            if (var->size == 2) {
+                /* Word parameter - load from (iy + offset) */
+                if (var->reg == REG_BC) {
+                    fdprintf(outFd, "\tld l, (iy + %d)\n", var->offset);
+                    fdprintf(outFd, "\tld h, (iy + %d)\n", var->offset + 1);
+                    fdprintf(outFd, "\tld b, h\n\tld c, l\n");
+                } else if (var->reg == REG_IX) {
+                    /* No direct ld ix, (iy+offset) - must go through HL */
+                    fdprintf(outFd, "\tld l, (iy + %d)\n", var->offset);
+                    fdprintf(outFd, "\tld h, (iy + %d)\n", var->offset + 1);
+                    fdprintf(outFd, "\tpush hl\n\tpop ix\n");
+                }
+            } else if (var->size == 1) {
+                /* Byte parameter */
+                if (var->reg == REG_B || var->reg == REG_C) {
+                    fdprintf(outFd, "\tld a, (iy + %d)\n", var->offset);
+                    if (var->reg == REG_B) {
+                        fdprintf(outFd, "\tld b, a\n");
+                    } else {
+                        fdprintf(outFd, "\tld c, a\n");
+                    }
+                }
+            }
+        }
+    }
 }
 
 /*
@@ -320,6 +363,75 @@ static void emitExpr(struct function_ctx *ctx, struct expr *e)
         free(e);
         return;
     }
+    /* Handle DEREF with struct member access (marked by flags in codegen) */
+    else if (e->op == 'M' && (e->flags & 2) && e->left && e->left->left &&
+             e->left->left->left && e->left->left->left->op == '$' &&
+             e->left->left->left->symbol) {
+        /* Pattern: (M (+ (M:p $var) const)) where $var is in IX */
+        const char *var_symbol;
+        long offset;
+        const char *var_name;
+        struct local_var *var;
+
+        var_symbol = e->left->left->left->symbol;
+        offset = e->value;  /* Saved by codegen phase */
+        var_name = var_symbol;
+
+        /* Strip $ and A prefixes from symbol */
+        if (var_name[0] == '$') var_name++;
+        if (var_name[0] == 'A') var_name++;
+
+        /* Look up the variable */
+        var = findVar(ctx, var_name);
+
+        if (var && var->reg == REG_IX) {
+            /* Variable is in IX - use IX-indexed addressing */
+            if (e->size == 1) {
+                /* Byte: ld a, (ix+offset) */
+                fdprintf(outFd, "\tld a, (ix + %ld)\n", offset);
+            } else if (e->size == 2) {
+                /* Word: ld l, (ix+offset); ld h, (ix+offset+1) */
+                fdprintf(outFd, "\tld l, (ix + %ld)\n", offset);
+                fdprintf(outFd, "\tld h, (ix + %ld)\n", offset + 1);
+            } else if (e->size == 4) {
+                /* Long (4 bytes) - use IX indexed for all 4 bytes */
+                fdprintf(outFd, "\tld l, (ix + %ld)\n", offset);
+                fdprintf(outFd, "\tld h, (ix + %ld)\n", offset + 1);
+                fdprintf(outFd, "\texx\n");
+                fdprintf(outFd, "\tld l, (ix + %ld)\n", offset + 2);
+                fdprintf(outFd, "\tld h, (ix + %ld)\n", offset + 3);
+                fdprintf(outFd, "\texx\n");
+            }
+
+            /* Free child expression tree without emitting code */
+            freeExpr(e->left);
+
+            /* Free this node */
+            if (e->asm_block) free(e->asm_block);
+            if (e->cleanup_block) free(e->cleanup_block);
+            free(e);
+            return;
+        } else {
+            /* Not IX-allocated - fall back to computing address and dereferencing */
+            /* Emit child expression (computes address to HL) */
+            emitExpr(ctx, e->left);
+
+            /* Emit load from (HL) */
+            if (e->size == 1) {
+                fdprintf(outFd, "\tld a, (hl)\n");
+            } else if (e->size == 2) {
+                fdprintf(outFd, "\tld e, (hl)\n\tinc hl\n\tld d, (hl)\n\tex de, hl\n");
+            } else if (e->size == 4) {
+                fdprintf(outFd, "\tcall load32i\n");
+            }
+
+            /* Free this node */
+            if (e->asm_block) free(e->asm_block);
+            if (e->cleanup_block) free(e->cleanup_block);
+            free(e);
+            return;
+        }
+    }
     /* Handle DEREF_INDIRECT_B - byte load through pointer variable */
     else if (e->op == 'M' && e->asm_block &&
             strstr(e->asm_block, "DEREF_INDIRECT_B:")) {
@@ -390,10 +502,60 @@ static void emitExpr(struct function_ctx *ctx, struct expr *e)
         /* Emit right child first (value goes to PRIMARY) */
         emitExpr(ctx, e->right);
 
+        /* Check for IX-indexed store: marked by flags in codegen */
+        /* Pattern: (= (+ (M:p $var) const) value) where $var is in IX */
+        /* Note: e->left->right may be NULL (freed by codegen ADD optimization) */
+        if ((e->flags & 1) && e->left && e->left->op == '+' &&
+            e->left->left && e->left->left->op == 'M' &&
+            e->left->left->type_str && strcmp(e->left->left->type_str, ":p") == 0 &&
+            e->left->left->left && e->left->left->left->op == '$' &&
+            e->left->left->left->symbol) {
+            /* Extract variable and offset (saved in e->value by codegen) */
+            const char *var_symbol;
+            long offset;
+            const char *var_name;
+            struct local_var *var;
+
+            var_symbol = e->left->left->left->symbol;
+            offset = e->value;
+            var_name = var_symbol;
+
+            /* Strip $ and A prefixes */
+            if (var_name[0] == '$') var_name++;
+            if (var_name[0] == 'A') var_name++;
+
+            var = findVar(ctx, var_name);
+
+            if (var && var->reg == REG_IX) {
+                /* Variable is in IX - use indexed addressing */
+                if (e->size == 1) {
+                    /* Byte: ld (ix+offset), a */
+                    fdprintf(outFd, "\tld (ix + %ld), a\n", offset);
+                } else if (e->size == 2) {
+                    /* Word: ld (ix+offset), l; ld (ix+offset+1), h */
+                    fdprintf(outFd, "\tld (ix + %ld), l\n", offset);
+                    fdprintf(outFd, "\tld (ix + %ld), h\n", offset + 1);
+                } else if (e->size == 4) {
+                    /* Long (4 bytes) - use IX indexed for all 4 bytes */
+                    fdprintf(outFd, "\tld (ix + %ld), l\n", offset);
+                    fdprintf(outFd, "\tld (ix + %ld), h\n", offset + 1);
+                    fdprintf(outFd, "\texx\n");
+                    fdprintf(outFd, "\tld (ix + %ld), l\n", offset + 2);
+                    fdprintf(outFd, "\tld (ix + %ld), h\n", offset + 3);
+                    fdprintf(outFd, "\texx\n");
+                }
+                /* Don't emit left child - we handled the store directly */
+                freeExpr(e->left);
+                if (e->asm_block) free(e->asm_block);
+                if (e->cleanup_block) free(e->cleanup_block);
+                free(e);
+                return;
+            }
+        }
+
         /* Now emit the store inst based on current register allocation */
         if (e->left && e->left->op == '$' && e->left->symbol) {
             struct local_var *var = findVar(ctx, e->left->symbol);
-            char buf[256];
 
             if (var && var->reg != REG_NO) {
                 /* Variable is in a register - move from PRIMARY to register */
@@ -455,8 +617,75 @@ static void emitExpr(struct function_ctx *ctx, struct expr *e)
             }
         }
 
-        /* Emit left child last (address not needed for simple assignments) */
-        emitExpr(ctx, e->left);
+        /* Handle complex lvalue: compute address, then store through it */
+        else if (e->left && e->left->op == 'M') {
+            /* Pointer dereference: (M $var) - store through pointer */
+            /* Value is already in PRIMARY (HL or A) */
+            if (e->size == 1) {
+                /* Byte: value in A, need address in HL */
+                fdprintf(outFd, "\tld e, a  ; save byte value\n");
+                emitExpr(ctx, e->left->left);  /* Load pointer to HL */
+                fdprintf(outFd, "\tld (hl), e\n");
+            } else if (e->size == 2) {
+                /* Word: value in HL, need address in HL - save value first */
+                fdprintf(outFd, "\tex de, hl  ; save word value in DE\n");
+                emitExpr(ctx, e->left->left);  /* Load pointer to HL */
+                fdprintf(outFd, "\tld (hl), e\n");
+                fdprintf(outFd, "\tinc hl\n");
+                fdprintf(outFd, "\tld (hl), d\n");
+            }
+        }
+        else if (e->left && e->left->op == '+') {
+            /* Complex lvalue like (+ (M:p $var) offset) */
+            /* Value is already in PRIMARY (HL or A) */
+            /* Need to: save value, compute address, store through address */
+
+            if (e->size == 1) {
+                /* Byte: value in A */
+                /* Save value to E, compute address to HL, store (HL) <- E */
+                fdprintf(outFd, "\tld e, a  ; save byte value\n");
+                emitExpr(ctx, e->left);  /* Compute address to HL */
+                fdprintf(outFd, "\tld (hl), e\n");
+            } else if (e->size == 2) {
+                /* Word: value in HL */
+                /* Save value to DE, compute address to HL, store */
+                fdprintf(outFd, "\tex de, hl  ; save word value in DE\n");
+                emitExpr(ctx, e->left);  /* Compute address to HL */
+                fdprintf(outFd, "\tld (hl), e\n");
+                fdprintf(outFd, "\tinc hl\n");
+                fdprintf(outFd, "\tld (hl), d\n");
+            } else if (e->size == 4) {
+                /* Long: value in HL'HL */
+                /* This is complex - need to save 4 bytes */
+                fdprintf(outFd, "\tpush hl  ; save lower word\n");
+                fdprintf(outFd, "\texx\n");
+                fdprintf(outFd, "\tpush hl  ; save upper word\n");
+                fdprintf(outFd, "\texx\n");
+                emitExpr(ctx, e->left);  /* Compute address to HL */
+                fdprintf(outFd, "\tex de, hl  ; DE = address\n");
+                fdprintf(outFd, "\tpop hl  ; restore upper word\n");
+                fdprintf(outFd, "\tpush de  ; save address\n");
+                fdprintf(outFd, "\texx\n");
+                fdprintf(outFd, "\tpop de  ; DE = address\n");
+                fdprintf(outFd, "\tpop hl  ; restore lower word\n");
+                /* Store 4 bytes: (DE) <- HL, (DE+2) <- HL' */
+                fdprintf(outFd, "\tld a, l\n");
+                fdprintf(outFd, "\tld (de), a\n");
+                fdprintf(outFd, "\tinc de\n");
+                fdprintf(outFd, "\tld a, h\n");
+                fdprintf(outFd, "\tld (de), a\n");
+                fdprintf(outFd, "\tinc de\n");
+                fdprintf(outFd, "\texx\n");
+                fdprintf(outFd, "\tld a, l\n");
+                fdprintf(outFd, "\tld (de), a\n");
+                fdprintf(outFd, "\tinc de\n");
+                fdprintf(outFd, "\tld a, h\n");
+                fdprintf(outFd, "\tld (de), a\n");
+                fdprintf(outFd, "\texx\n");
+            }
+        }
+        /* Else: left child is neither simple var nor handled pattern */
+        /* This shouldn't happen in well-formed code */
     }
     /* Optimize ADD with constant where left is register-allocated variable */
     else if (e->op == '+' && e->left && e->left->op == 'M' && e->size == 2 &&
@@ -756,7 +985,36 @@ static void emitExpr(struct function_ctx *ctx, struct expr *e)
         /* Free children manually since we didn't call emitExpr on them */
         freeExpr(e->left);
         freeExpr(e->right);
-    } else {
+    }
+    /* Handle SYM - load variable value to PRIMARY */
+    else if (e->op == '$' && e->symbol) {
+        struct local_var *var = findVar(ctx, e->symbol);
+
+        if (var && var->reg != REG_NO) {
+            /* Variable in register - move to PRIMARY (HL) */
+            if (var->reg == REG_BC) {
+                fdprintf(outFd, "\tld h, b\n\tld l, c\n");
+            } else if (var->reg == REG_BCp) {
+                fdprintf(outFd, "\texx\n\tld h, b\n\tld l, c\n\texx\n");
+            } else if (var->reg == REG_IX) {
+                fdprintf(outFd, "\tpush ix\n\tpop hl\n");
+            }
+        } else if (var) {
+            /* Variable on stack - load to HL */
+            if (var->offset >= 0) {
+                fdprintf(outFd, "\tld l, (iy + %d)\n", var->offset);
+                fdprintf(outFd, "\tld h, (iy + %d)\n", var->offset + 1);
+            } else {
+                fdprintf(outFd, "\tld l, (iy - %d)\n", -var->offset);
+                fdprintf(outFd, "\tld h, (iy - %d)\n", -var->offset - 1);
+            }
+        } else {
+            /* Global variable */
+            const char *sym = stripDollar(e->symbol);
+            fdprintf(outFd, "\tld hl, (%s)\n", sym);
+        }
+    }
+    else {
         /* Normal postorder traversal for other operators */
         if (e->left) emitExpr(ctx, e->left);
         if (e->right) emitExpr(ctx, e->right);
@@ -957,8 +1215,6 @@ void emit_assembly(struct function_ctx *ctx, int fd)
     int has_params;
 
     if (!ctx || !ctx->body) return;
-
-    fdprintf(2, "=== Phase 3: Emitting assembly and freeing tree ===\n");
 
     /* Check if function has parameters */
     has_params = (ctx->params && ctx->params[0]);

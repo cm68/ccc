@@ -281,8 +281,6 @@ allocateRegisters(struct function_ctx *ctx)
 
     if (!ctx) return;
 
-    fdprintf(2, "=== Phase 2.5: Allocating registers ===\n");
-
     /* First pass: allocate IX to struct pointer with highest agg_refs */
     {
         struct local_var *best_ix_candidate = NULL;
@@ -575,6 +573,71 @@ static void generate_expr(struct function_ctx *ctx, struct expr *e)
         return;  /* Early return - custom traversal done */
     }
 
+    /* Check for struct member access patterns BEFORE processing children */
+    /* (tree may be modified during processing, e.g., ADD frees constant operands) */
+
+    /* Pattern 1: (= (+ (M:p $var) const) value) - struct member write */
+    if (e->op == '=' && e->left && e->left->op == '+' &&
+        e->left->left && e->left->left->op == 'M' &&
+        e->left->left->type_str && strcmp(e->left->left->type_str, ":p") == 0 &&
+        e->left->left->left && e->left->left->left->op == '$' &&
+        e->left->left->left->symbol &&
+        e->left->right && e->left->right->op == 'C') {
+        /* Increment agg_refs and save info for emit phase */
+        const char *var_symbol = e->left->left->left->symbol;
+        long offset = e->left->right->value;
+        const char *var_name = var_symbol;
+        if (var_name && var_name[0] == '$') {
+            var_name++;  /* Skip $ prefix */
+        }
+        if (var_name && var_name[0] == 'A') {
+            var_name++;  /* Skip A prefix for arguments */
+        }
+        if (var_name) {
+            struct local_var *var;
+            for (var = ctx->locals; var; var = var->next) {
+                if (strcmp(var->name, var_name) == 0) {
+                    var->agg_refs++;
+                    break;
+                }
+            }
+        }
+        /* Mark this ASSIGN for IX-indexed optimization in emit phase */
+        e->flags |= 1;  /* Use flags field to mark struct member assignment */
+        e->value = offset;  /* Store offset in value field */
+    }
+
+    /* Pattern 2: (M (+ (M:p $var) const)) - struct member read */
+    if (e->op == 'M' && e->left && e->left->op == '+' &&
+        e->left->left && e->left->left->op == 'M' &&
+        e->left->left->type_str && strcmp(e->left->left->type_str, ":p") == 0 &&
+        e->left->left->left && e->left->left->left->op == '$' &&
+        e->left->left->left->symbol &&
+        e->left->right && e->left->right->op == 'C') {
+        /* Increment agg_refs and create placeholder for IX-indexed load */
+        const char *var_symbol = e->left->left->left->symbol;
+        long offset = e->left->right->value;
+        const char *var_name = var_symbol;
+        if (var_name && var_name[0] == '$') {
+            var_name++;  /* Skip $ prefix */
+        }
+        if (var_name && var_name[0] == 'A') {
+            var_name++;  /* Skip A prefix for arguments */
+        }
+        if (var_name) {
+            struct local_var *var;
+            for (var = ctx->locals; var; var = var->next) {
+                if (strcmp(var->name, var_name) == 0) {
+                    var->agg_refs++;
+                    break;
+                }
+            }
+        }
+        /* Store placeholder info for emit phase - mark with flags and value */
+        e->flags |= 2;  /* Use bit 2 for DEREF struct member access */
+        e->value = offset;  /* Store offset */
+    }
+
     /* Recursively generate code for children (postorder traversal) */
     if (e->left) generate_expr(ctx, e->left);
     if (e->right) generate_expr(ctx, e->right);
@@ -617,11 +680,15 @@ static void generate_expr(struct function_ctx *ctx, struct expr *e)
     case 'M':  /* DEREF - load from memory */
         /* Check if this is a struct mem access: (M (+ (M:p <var>) <const>)) */
         {
-            char *var_symbol = NULL;
-            long offset = 0;
+            char *var_symbol;
+            long offset;
+            const char *var_name;
+
+            var_symbol = NULL;
+            offset = 0;
             if (isStructMemberAccess(e, &var_symbol, &offset)) {
                 /* Extract variable name (skip $ and A prefixes) */
-                const char *var_name = var_symbol;
+                var_name = var_symbol;
                 if (var_name && var_name[0] == '$') {
                     var_name++;  /* Skip $ prefix */
                 }
@@ -638,6 +705,11 @@ static void generate_expr(struct function_ctx *ctx, struct expr *e)
                         }
                     }
                 }
+
+                /* Create placeholder for emit phase to check IX allocation */
+                snprintf(buf, sizeof(buf), "DEREF_IXOFS:%s:%ld", var_symbol, offset);
+                e->asm_block = strdup(buf);
+                break;
             }
         }
 
@@ -974,8 +1046,6 @@ static void generate_stmt(struct function_ctx *ctx, struct stmt *s)
 void generate_code(struct function_ctx *ctx)
 {
     if (!ctx || !ctx->body) return;
-
-    fdprintf(2, "=== Phase 2: Generating assembly code blocks ===\n");
 
     /* Initialize lifetime tracking */
     ctx->current_label = 0;
