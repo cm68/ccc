@@ -43,3 +43,4 @@ do.ast
 *.map
 *.asm
 *.s
+!lib/*.s
