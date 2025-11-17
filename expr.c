@@ -1423,14 +1423,14 @@ cfold(struct expr *e)
 }
 
 /*
- * parse an expression that must yeild a constant. 
+ * parse an expression that must yeild a constant.
  * used for array declarations and CPP stuff
  */
-int
+unsigned long
 parse_const(unsigned char token)
 {
     struct expr *e;
-    int val;
+    unsigned long val;
 
     // Parse constant expression, stopping before comma operator (priority 15)
     // This allows constants in contexts like enum { A = 10, B = 20 }

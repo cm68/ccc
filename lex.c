@@ -26,7 +26,7 @@ int token_history_index = 0;
  */
 char strbuf[STRBUFSIZE];
 
-int readcppconst();
+unsigned long readcppconst();
 char cpppseudofunc();
 
 /*
@@ -435,7 +435,7 @@ do_cpp(unsigned char t)
     char *s;
     unsigned char k;
     struct cond *c;
-    int v;
+    unsigned long v;
 
 
     switch (t) {
@@ -1076,10 +1076,10 @@ cpppseudofunc()
  * ex:  expr->gettoken->do_cpp->readcppconst->expr->gettoken->advance
  * if we hit an #if in the middle of an expression
  */
-int
+unsigned long
 readcppconst()
 {
-    long val;
+    unsigned long val;
     char savedtflags = tflags;
     int saved_write_cpp = write_cpp_file;
     struct token saved_cur;
@@ -1151,7 +1151,7 @@ readcppconst()
 #ifdef DEBUG
     if (VERBOSE(V_CPP)) {
         fdprintf(2,
-            "readcppconst returning: val=%d curchar=0x%02x "
+            "readcppconst returning: val=%lu curchar=0x%02x "
             "next.type=0x%02x\n",
             val, curchar, next.type);
     }

@@ -47,7 +47,7 @@ typedef unsigned long dword;
  * expressions hold computations
  */
 struct expr {
-	int flags;
+	unsigned char flags;
 #define	E_CONST     0x01
 #define E_RESOLVED	0x02
 #define	E_FUNARG    0x04
@@ -98,7 +98,7 @@ extern struct expr *makeexpr_init(unsigned char op, struct expr *left,
     struct type *type, unsigned long v, int flags);
 extern struct expr *cfold(struct expr *e);
 extern struct expr *parse_expr(unsigned char priority, struct stmt *);
-int parse_const(unsigned char priority);
+unsigned long parse_const(unsigned char priority);
 extern struct expr *new_expr(unsigned char op);
 extern void destroy_expr(struct expr *e);
 

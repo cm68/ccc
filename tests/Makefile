@@ -189,7 +189,8 @@ MISC_TESTS = \
 	stat.c \
 	init_var.c \
 	init_var2.c \
-	test_interp.c
+	test_interp.c \
+	test_load_store.c
 
 # All tests combined
 ALL_TESTS = \

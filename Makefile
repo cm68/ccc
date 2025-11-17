@@ -55,8 +55,10 @@ HFILES = $(HEADERS) astio.h enumlist.h error.h debug.h op_pri.h
 # All source files
 SOURCES = $(CFILES) $(HFILES)
 
+LIBSRCS = lib/Makefile lib/ccclib.s
+
 # Documentation files (in reading order)
-DOCFILES = README.md TODO.md CLAUDE.md AST_FORMAT.md
+DOCFILES = README.md TODO.md CLAUDE.md AST_FORMAT.md lib/README.md
 
 BINS = enumcheck cc1 cc2 ccc maketokens genop_pri
 
@@ -215,7 +217,7 @@ doc.pdf: $(SOURCES) $(DOCFILES) Makefile
 		iconv -f utf-8 -t Latin1//TRANSLIT | \
 		enscript -2rG --title="$$f" -p -; \
 	  done; \
-	  enscript -2rG -p - Makefile $(CFILES) $(HFILES); } | \
+	  enscript -2rG -p - Makefile $(SOURCES) $(LIBSRCS) ; } | \
 		ps2pdf - doc.pdf
 
 clean:

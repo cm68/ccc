@@ -41,6 +41,7 @@ new_expr(unsigned char op)
     e->size = 2;  /* Default to short size */
     e->flags = 0; /* Default to signed */
     e->asm_block = NULL;
+    e->cleanup_block = NULL;
     e->label = 0;
     return e;
 }
@@ -304,10 +305,11 @@ free_expr(struct expr *e)
     if (!e) return;
     free_expr(e->left);
     free_expr(e->right);
-    /* NOTE: type_str and symbol point to static buffers from 
+    /* NOTE: type_str and symbol point to static buffers from
      * read_type()/read_symbol()
-     * They should NOT be freed. Only asm_block is dynamically allocated. */
+     * They should NOT be freed. Only asm_block and cleanup_block are dynamically allocated. */
     if (e->asm_block) free(e->asm_block);
+    if (e->cleanup_block) free(e->cleanup_block);
     free(e);
 }
 
@@ -372,6 +374,15 @@ handle_const(void)
 {
     struct expr *e = new_expr('C');  // 'C' for constant
     e->value = read_number();
+
+    /* Infer size from value magnitude */
+    /* If value fits in 16 bits (signed or unsigned), use size 2, else size 4 */
+    if (e->value >= -32768 && e->value <= 65535) {
+        e->size = 2;  /* Fits in 16 bits */
+    } else {
+        e->size = 4;  /* Requires 32 bits (long) */
+    }
+
     fdprintf(2, "CONST %ld", e->value);
     return e;
 }
@@ -849,16 +860,25 @@ handle_call(unsigned char op)
         restore_parser_state(&saved_state);
     }
 
-    /* Build argument chain using right pointers */
+    /* Build argument chain using wrapper nodes to avoid corrupting argument trees */
     /* Store arg_count in value field */
     e->value = arg_count;
     if (arg_count > 0) {
-        e->right = args[0];
-        prev = args[0];
-        for (i = 1; i < arg_count; i++) {
-            prev->right = args[i];
-            prev = args[i];
+        struct expr *wrappers[32];  /* Wrapper nodes for each argument */
+
+        /* Create wrapper nodes for each argument */
+        for (i = 0; i < arg_count; i++) {
+            wrappers[i] = new_expr(',');  /* ',' represents argument wrapper */
+            wrappers[i]->left = args[i];  /* Actual argument in left */
+            wrappers[i]->right = NULL;    /* Will be set to next wrapper */
         }
+
+        /* Chain wrappers together via right pointers */
+        e->right = wrappers[0];
+        for (i = 0; i < arg_count - 1; i++) {
+            wrappers[i]->right = wrappers[i+1];
+        }
+        /* Last wrapper's right is already NULL */
     }
 
     fdprintf(2, ")");

@@ -626,7 +626,7 @@ getbasetype()
 {
     struct type *t;
     struct name *n;
-    char off = 0;
+    unsigned long off = 0;
     char s_buf[64];  /* Stack buffer for tag names */
     char *s;
     struct name *e;

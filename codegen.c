@@ -306,7 +306,7 @@ allocate_registers(struct function_ctx *ctx)
         }
     }
 
-    /* Second pass: allocate byte and word registers by reference count */
+    /* Second pass: allocate word registers first (BC must be allocated before B/C) */
     for (var = ctx->locals; var; var = var->next) {
         /* Skip if already allocated */
         if (var->reg != REG_NO) continue;
@@ -317,16 +317,11 @@ allocate_registers(struct function_ctx *ctx)
         /* Skip unused or single-use variables */
         if (var->ref_count <= 1) continue;
 
-        /* Allocate byte registers (B, C, B', C') */
-        if (var->size == 1 && byte_regs_used < 4) {
-            enum register_id regs[] = {REG_B, REG_C, REG_Bp, REG_Cp};
-            var->reg = regs[byte_regs_used];
-            byte_regs_used++;
-            fdprintf(2, "  Allocated byte reg to %s (refs=%d)\n",
-                     var->name, var->ref_count);
-        }
-        /* Allocate word registers (BC and IX only - BC' excluded due to exx complexity) */
-        else if (var->size == 2 && word_regs_used < 2) {
+        /* Allocate word registers (BC and IX only)
+         * BC must be allocated before B or C to avoid conflicts
+         * BC' excluded because exx swaps both BC and HL, making HL inaccessible
+         */
+        if (var->size == 2 && word_regs_used < 2) {
             enum register_id regs[] = {REG_BC, REG_IX};
             /* If IX already allocated to struct pointer, skip it */
             if (word_regs_used == 1 && ix_allocated) {
@@ -337,8 +332,37 @@ allocate_registers(struct function_ctx *ctx)
             if (var->reg == REG_IX) {
                 ix_allocated = 1;
             }
+            /* Mark B and C as unavailable if BC is allocated */
+            if (var->reg == REG_BC) {
+                byte_regs_used = 2; /* B and C are now unavailable */
+            }
             word_regs_used++;
             fdprintf(2, "  Allocated word reg to %s (refs=%d)\n",
+                     var->name, var->ref_count);
+        }
+    }
+
+    /* Third pass: allocate byte registers after all word registers are allocated */
+    for (var = ctx->locals; var; var = var->next) {
+        /* Skip if already allocated */
+        if (var->reg != REG_NO) continue;
+
+        /* Skip arrays (they must stay on stack) */
+        if (var->is_array) continue;
+
+        /* Skip unused or single-use variables */
+        if (var->ref_count <= 1) continue;
+
+        /* Allocate byte registers (B, C, B', C')
+         * B' and C' work with A (8-bit primary) since exx doesn't swap A
+         * Cannot allocate B or C if BC is already allocated (they conflict)
+         * B' and C' can always be allocated (no conflicts)
+         */
+        if (var->size == 1 && byte_regs_used < 4) {
+            enum register_id regs[] = {REG_B, REG_C, REG_Bp, REG_Cp};
+            var->reg = regs[byte_regs_used];
+            byte_regs_used++;
+            fdprintf(2, "  Allocated byte reg to %s (refs=%d)\n",
                      var->name, var->ref_count);
         }
     }
@@ -430,6 +454,9 @@ gen_binop(struct expr *e, const char *op_name)
     e->asm_block = strdup(buf);
 }
 
+/* Forward declaration */
+static char *build_stack_cleanup(int bytes);
+
 /*
  * Code generation phase (Phase 2)
  * Walk expression tree and generate assembly code blocks
@@ -458,12 +485,16 @@ static void generate_expr(struct function_ctx *ctx, struct expr *e)
 
         arg_count = e->value;
 
-        /* Collect arguments into array (they're chained via right pointers) */
+        /* Collect arguments from wrapper chain (wrappers chained via right) */
         arg = e->right;
         for (i = 0; i < arg_count && arg; i++) {
-            args[i] = arg;
-            arg = arg->right;
+            /* Unwrap: wrapper node has argument in left, next wrapper in right */
+            args[i] = arg->left;  /* Actual argument expression */
+            arg = arg->right;      /* Next wrapper */
         }
+
+        /* Use actual collected count, not expected (handles AST mismatches) */
+        arg_count = i;
 
         /* Generate code for each child expression first */
         for (i = 0; i < arg_count; i++) {
@@ -484,8 +515,29 @@ static void generate_expr(struct function_ctx *ctx, struct expr *e)
         for (i = arg_count - 1; i >= 0; i--) {
             /* Emit the argument's code (load into PRIMARY) */
             if (args[i]->asm_block && args[i]->asm_block[0]) {
+                /* Check if this is a DEREF_PLACEHOLDER - can't defer these */
+                if (strstr(args[i]->asm_block, "DEREF_PLACEHOLDER:")) {
+                    /* Simple variable load - just note it, will handle below */
+                    /* Don't emit placeholder */
+                } else if (strstr(args[i]->asm_block, "DEREF_INDIRECT_B:")) {
+                    /* Indirect load placeholder - don't emit */
+                } else {
+                    /* Normal asm_block - emit it */
+                    buf_pos += snprintf(call_buf + buf_pos, sizeof(call_buf) - buf_pos,
+                                       "%s%s\n", buf_pos > 0 ? "" : "", args[i]->asm_block);
+                }
+            }
+
+            /* For DEREF of SYM, emit inline load based on register allocation */
+            /* This must be done now, not deferred, since args are baked into call */
+            if (args[i]->op == 'M' && args[i]->left &&
+                args[i]->left->op == '$' && args[i]->left->symbol) {
+                /* This is a simple variable dereference - needs inline code */
+                /* Can't use placeholder since CALL asm_block is emitted verbatim */
+                /* Just emit a comment for now - actual code will be in emit phase */
+                /* Actually, for CALL args we MUST resolve immediately */
                 buf_pos += snprintf(call_buf + buf_pos, sizeof(call_buf) - buf_pos,
-                                   "%s%s\n", buf_pos > 0 ? "" : "", args[i]->asm_block);
+                                   "\t; load arg %d: %s\n", i, args[i]->left->symbol);
             }
 
             /* Push PRIMARY onto stack */
@@ -510,11 +562,10 @@ static void generate_expr(struct function_ctx *ctx, struct expr *e)
                                "\t; TODO: indirect call");
         }
 
-        /* Clean up stack after call (arg_count * 2 bytes per arg) */
+        /* Don't clean up stack here - defer until after result is used */
+        /* Attach cleanup code to expression for later emission */
         if (arg_count > 0) {
-            buf_pos += snprintf(call_buf + buf_pos, sizeof(call_buf) - buf_pos,
-                               "\n\tld hl, %d\n\tadd hl, sp\n\tld sp, hl  ; pop %d args",
-                               arg_count * 2, arg_count);
+            e->cleanup_block = build_stack_cleanup(arg_count * 2);
         }
 
         e->asm_block = strdup(call_buf);
@@ -546,8 +597,16 @@ static void generate_expr(struct function_ctx *ctx, struct expr *e)
             snprintf(buf, sizeof(buf), "\tld a, %ld", e->value);
         } else if (e->size == 2) {
             snprintf(buf, sizeof(buf), "\tld hl, %ld", e->value);
-        } else {  /* size == 4 */
-            snprintf(buf, sizeof(buf), "\t; TODO: load long %ld", e->value);
+        } else {  /* size == 4 - long constant, load into HL',HL */
+            unsigned long uval = (unsigned long)e->value;
+            unsigned short lower = uval & 0xFFFF;
+            unsigned short upper = (uval >> 16) & 0xFFFF;
+            snprintf(buf, sizeof(buf),
+                "\tld hl, %u  ; load lower 16 bits\n"
+                "\texx\n"
+                "\tld hl, %u  ; load upper 16 bits into HL'\n"
+                "\texx",
+                lower, upper);
         }
         e->asm_block = strdup(buf);
         break;
@@ -579,72 +638,32 @@ static void generate_expr(struct function_ctx *ctx, struct expr *e)
             }
         }
 
-        /* Generate load instruction to PRIMARY accumulator */
+        /* Register allocation happens later, so defer instruction to emit phase */
         /* Check if child is a SYM node for simple variable load */
         if (e->left && e->left->op == '$' && e->left->symbol) {
-            struct local_var *var = lookup_var(ctx, e->left->symbol);
-            if (var && var->reg != REG_NO) {
-                /* Variable is in a register - move to PRIMARY */
-                if (e->size == 1) {
-                    /* Byte: move register to A */
-                    if (var->reg == REG_B) {
-                        snprintf(buf, sizeof(buf), "\tld a, b");
-                    } else if (var->reg == REG_C) {
-                        snprintf(buf, sizeof(buf), "\tld a, c");
-                    } else {
-                        snprintf(buf, sizeof(buf), 
-                            "\t; TODO: load byte from reg %d to A", var->reg);
-                    }
-                } else {
-                    /* Word: move register pair to HL */
-                    if (var->reg == REG_BC) {
-                        snprintf(buf, sizeof(buf), "\tld h, b\n\tld l, c");
-                    } else if (var->reg == REG_IX) {
-                        snprintf(buf, sizeof(buf), "\tpush ix\n\tpop hl");
-                    } else {
-                        snprintf(buf, sizeof(buf),
-                            "\t; TODO: load word from reg %d to HL", var->reg);
-                    }
-                }
-            } else if (var) {
-                /* Variable is on stack - load from (iy + offset) */
-                if (e->size == 1) {
-                    /* Byte load */
-                    if (var->offset >= 0) {
-                        snprintf(buf, sizeof(buf), "\tld a, (iy + %d)", 
-                            var->offset);
-                    } else {
-                        snprintf(buf, sizeof(buf), "\tld a, (iy - %d)", 
-                            -var->offset);
-                    }
-                } else {
-                    /* Word load */
-                    if (var->offset >= 0) {
-                        snprintf(buf, sizeof(buf), "\tld hl, (iy + %d)", 
-                            var->offset);
-                    } else {
-                        snprintf(buf, sizeof(buf), "\tld hl, (iy - %d)", 
-                            -var->offset);
-                    }
-                }
-            } else {
-                /* Variable not found - fallback to placeholder */
-                if (e->size == 1) {
-                    snprintf(buf, sizeof(buf), 
-                        "\t; load byte from %s (not found)", e->left->symbol);
-                } else {
-                    snprintf(buf, sizeof(buf), 
-                        "\t; load word from %s (not found)", e->left->symbol);
-                }
-            }
-        } else {
-            /* Complex address expression - placeholder for now */
+            /* Placeholder - emit phase will check register allocation */
+            snprintf(buf, sizeof(buf), "DEREF_PLACEHOLDER:%s", e->left->symbol);
+        }
+        /* Check for pattern M:b(M:p($sym)) - indirect byte load through pointer */
+        else if (e->size == 1 && e->left && e->left->op == 'M' &&
+                 e->left->size == 2 && /* inner is pointer load */
+                 e->left->left && e->left->left->op == '$' &&
+                 e->left->left->symbol) {
+            /* Defer to emit phase - if pointer is register-allocated, use (bc)/(ix) */
+            snprintf(buf, sizeof(buf), "DEREF_INDIRECT_B:%s", e->left->left->symbol);
+        }
+        else {
+            /* Complex address expression - address will be in PRIMARY (HL) */
             if (e->size == 1) {
-                snprintf(buf, sizeof(buf), "\t; load byte from address");
+                /* Load byte from (HL) */
+                snprintf(buf, sizeof(buf), "\tld a, (hl)");
             } else if (e->size == 2) {
-                snprintf(buf, sizeof(buf), "\t; load word from address");
+                /* Load word from (HL) - need sequence to preserve address */
+                snprintf(buf, sizeof(buf),
+                    "\tld e, (hl)\n\tinc hl\n\tld d, (hl)\n\tex de, hl");
             } else {
-                snprintf(buf, sizeof(buf), "\t; load long from address");
+                /* Load long from (HL) - call load32i */
+                snprintf(buf, sizeof(buf), "\tcall load32i");
             }
         }
         e->asm_block = strdup(buf);
@@ -746,15 +765,39 @@ static void generate_expr(struct function_ctx *ctx, struct expr *e)
         break;
 
     case '&':  /* AND */
-        gen_binop(e, "and");
+        /* Optimize byte AND with small constant to inline instruction */
+        if (e->left && e->left->size == 1 && e->right && e->right->op == 'C' &&
+            e->right->value >= 0 && e->right->value <= 255) {
+            /* Byte AND with immediate: use inline "and <imm>" instruction */
+            snprintf(buf, sizeof(buf), "\tand %ld", e->right->value & 0xFF);
+            e->asm_block = strdup(buf);
+        } else {
+            gen_binop(e, "and");
+        }
         break;
 
     case '|':  /* OR */
-        gen_binop(e, "or");
+        /* Optimize byte OR with small constant to inline instruction */
+        if (e->left && e->left->size == 1 && e->right && e->right->op == 'C' &&
+            e->right->value >= 0 && e->right->value <= 255) {
+            /* Byte OR with immediate: use inline "or <imm>" instruction */
+            snprintf(buf, sizeof(buf), "\tor %ld", e->right->value & 0xFF);
+            e->asm_block = strdup(buf);
+        } else {
+            gen_binop(e, "or");
+        }
         break;
 
     case '^':  /* XOR */
-        gen_binop(e, "xor");
+        /* Optimize byte XOR with small constant to inline instruction */
+        if (e->left && e->left->size == 1 && e->right && e->right->op == 'C' &&
+            e->right->value >= 0 && e->right->value <= 255) {
+            /* Byte XOR with immediate: use inline "xor <imm>" instruction */
+            snprintf(buf, sizeof(buf), "\txor %ld", e->right->value & 0xFF);
+            e->asm_block = strdup(buf);
+        } else {
+            gen_binop(e, "xor");
+        }
         break;
 
     case 'y':  /* LSHIFT */
@@ -866,6 +909,33 @@ static void generate_expr(struct function_ctx *ctx, struct expr *e)
         e->asm_block = strdup(buf);
         break;
     }
+}
+
+/*
+ * Build pending stack cleanup asm code (for CALL arguments)
+ * Returns a malloc'd string with the cleanup code
+ */
+static char *build_stack_cleanup(int bytes)
+{
+    char *cleanup;
+    int len = 0;
+    int i;
+
+    if (bytes <= 6) {
+        /* inc sp is 1 byte each, cheaper than ld/add/ld (6 bytes) */
+        cleanup = malloc(bytes * 10);  /* "\tinc sp\n" = ~8 chars each */
+        cleanup[0] = '\0';
+        for (i = 0; i < bytes; i++) {
+            strcat(cleanup, "\tinc sp\n");
+        }
+    } else {
+        /* For larger adjustments, use ld/add/ld */
+        cleanup = malloc(128);
+        snprintf(cleanup, 128,
+                "\tld hl, %d\n\tadd hl, sp\n\tld sp, hl  ; cleanup %d bytes\n",
+                bytes, bytes);
+    }
+    return cleanup;
 }
 
 /*

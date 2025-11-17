@@ -50,6 +50,7 @@ struct expr {
 
     /* Code generation fields */
     char *asm_block;            // Generated assembly code (or NULL)
+    char *cleanup_block;        // Deferred cleanup code (for CALL stack cleanup)
     int label;                  // Label number (if needed for this expression)
 };
 
@@ -107,6 +108,7 @@ struct function_ctx {
     int current_label;          // Current label context during code generation (for lifetime tracking)
     int de_save_count;          // Counter for nested DE saves (for secondary register preservation)
     int d_in_use;               // Flag: D register holds spilled byte secondary (E)
+    int pending_stack_cleanup;  // Bytes to clean up after current expression (for CALL return values)
 };
 
 /* Forward declarations from util.c */

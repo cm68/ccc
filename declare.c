@@ -79,7 +79,7 @@ declare_internal(struct type **btp, unsigned char struct_elem)
 {
     struct name *nm, *arg;
     struct type *t, *prefix, *suffix, *rt;
-    int i;
+    unsigned long i;
     unsigned char is_typedef_name;
     unsigned char kr_style;
     struct type *param_type;
