@@ -285,9 +285,12 @@ static void emitExpr(struct function_ctx *ctx, struct expr *e)
                     }
                 } else if (e->size == 2) {
                     if (var->offset >= 0) {
-                        fdprintf(outFd, "\tld hl, (iy + %d)\n", var->offset);
+                        fdprintf(outFd, "\tld l, (iy + %d)\n", var->offset);
+                        fdprintf(outFd, "\tld h, (iy + %d)\n", var->offset + 1);
                     } else {
-                        fdprintf(outFd, "\tld hl, (iy - %d)\n", -var->offset);
+                        /* Negative offset: high byte is at less negative offset */
+                        fdprintf(outFd, "\tld l, (iy - %d)\n", -var->offset);
+                        fdprintf(outFd, "\tld h, (iy - %d)\n", -var->offset - 1);
                     }
                 } else {
                     /* Long (4 bytes) - use getlong function */
@@ -423,9 +426,12 @@ static void emitExpr(struct function_ctx *ctx, struct expr *e)
                     }
                 } else if (e->size == 2) {
                     if (var->offset >= 0) {
-                        fdprintf(outFd, "\tld (iy + %d), hl\n", var->offset);
+                        fdprintf(outFd, "\tld (iy + %d), l\n", var->offset);
+                        fdprintf(outFd, "\tld (iy + %d), h\n", var->offset + 1);
                     } else {
-                        fdprintf(outFd, "\tld (iy - %d), hl\n", -var->offset);
+                        /* Negative offset: high byte is at less negative offset */
+                        fdprintf(outFd, "\tld (iy - %d), l\n", -var->offset);
+                        fdprintf(outFd, "\tld (iy - %d), h\n", -var->offset - 1);
                     }
                 } else {
                     /* Long (4 bytes) - use putlong function */
@@ -729,9 +735,12 @@ static void emitExpr(struct function_ctx *ctx, struct expr *e)
                     } else if (var) {
                         /* Variable on stack */
                         if (var->offset >= 0) {
-                            fdprintf(outFd, "\tld hl, (iy + %d)\n", var->offset);
+                            fdprintf(outFd, "\tld l, (iy + %d)\n", var->offset);
+                            fdprintf(outFd, "\tld h, (iy + %d)\n", var->offset + 1);
                         } else {
-                            fdprintf(outFd, "\tld hl, (iy - %d)\n", -var->offset);
+                            /* Negative offset: high byte is at less negative offset */
+                            fdprintf(outFd, "\tld l, (iy - %d)\n", -var->offset);
+                            fdprintf(outFd, "\tld h, (iy - %d)\n", -var->offset - 1);
                         }
                     }
                 } else {
