@@ -106,6 +106,7 @@ struct function_ctx {
     int frame_size;             // Total stack frame size in bytes
     int current_label;          // Current label context during code generation (for lifetime tracking)
     int de_save_count;          // Counter for nested DE saves (for secondary register preservation)
+    int d_in_use;               // Flag: D register holds spilled byte secondary (E)
 };
 
 /* Forward declarations from util.c */

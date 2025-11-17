@@ -1696,6 +1696,7 @@ handle_function(void)
     ctx.locals = NULL;  /* No local variables yet */
     ctx.frame_size = 0;  /* No frame size yet */
     ctx.de_save_count = 0;  /* No nested DE saves yet */
+    ctx.d_in_use = 0;  /* D register not in use yet */
 
     expect(')');
 

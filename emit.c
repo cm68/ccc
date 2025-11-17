@@ -22,16 +22,24 @@
  *   3. Evaluate right operand -> PRIMARY
  *   4. Operate on SECONDARY and PRIMARY
  *
- * Nested Binary Operations:
- * -------------------------
+ * Nested Binary Operations - Spilling Strategy:
+ * ----------------------------------------------
  * For nested expressions like (a + b) + c, the right operand (c) evaluation may
- * itself contain binary operations that would clobber SECONDARY (DE). To handle
- * this, we implement a spilling mechanism:
- * - Before evaluating right child: if it contains binops, push DE (spill to stack)
- * - After evaluating right child: pop DE (restore from stack)
- * - Track spill depth with ctx->de_save_count
+ * itself contain binary operations that would clobber SECONDARY. We implement
+ * different spilling strategies for byte vs word operations:
  *
- * Example: (a + b) + (c + d)
+ * BYTE OPERATIONS (8-bit):
+ *   SECONDARY is E register. Spilling hierarchy:
+ *   1. First level: E -> D (use D as temp storage)
+ *   2. Second level: DE -> stack (if D already in use)
+ *   Track: ctx->d_in_use flag
+ *
+ * WORD OPERATIONS (16-bit):
+ *   SECONDARY is DE register pair. Spilling:
+ *   - Always: DE -> stack (can't split the pair)
+ *   Track: ctx->de_save_count counter
+ *
+ * Example (word): (a + b) + (c + d)
  *   Left child (a + b):
  *     eval a -> PRIMARY (HL)
  *     move PRIMARY to SECONDARY (DE)
@@ -39,14 +47,31 @@
  *     add HL, DE -> PRIMARY (HL)
  *   Main operation:
  *     move PRIMARY to SECONDARY (DE)
- *     push DE (save result of a+b)
+ *     push DE (save result of a+b to stack)
  *     Right child (c + d):
  *       eval c -> PRIMARY (HL)
- *       move PRIMARY to SECONDARY (DE, clobbering saved a+b)
+ *       move PRIMARY to SECONDARY (DE, would clobber a+b)
  *       eval d -> PRIMARY (HL)
  *       add HL, DE -> PRIMARY (HL)
- *     pop DE (restore result of a+b)
+ *     pop DE (restore result of a+b from stack)
  *     add HL, DE -> PRIMARY (HL)
+ *
+ * Example (byte): (a + b) + (c + d)
+ *   Left child (a + b):
+ *     eval a -> PRIMARY (A)
+ *     move PRIMARY to SECONDARY (E)
+ *     eval b -> PRIMARY (A)
+ *     add A, E -> PRIMARY (A)
+ *   Main operation:
+ *     move PRIMARY to SECONDARY (E)
+ *     ld D, E (save result of a+b to D register)
+ *     Right child (c + d):
+ *       eval c -> PRIMARY (A)
+ *       move PRIMARY to SECONDARY (E, would clobber a+b)
+ *       eval d -> PRIMARY (A)
+ *       add A, E -> PRIMARY (A)
+ *     ld E, D (restore result of a+b from D register)
+ *     add A, E -> PRIMARY (A)
  */
 #include <stdlib.h>
 #include <stdio.h>
@@ -286,19 +311,40 @@ static void emit_expr(struct function_ctx *ctx, struct expr *e)
             free(move_inst);
         }
 
-        /* If right child contains binops, save SECONDARY (DE) before evaluation */
+        /* If right child contains binops, save SECONDARY before evaluation */
         if (contains_binop(e->right)) {
-            fdprintf(out_fd, "\tpush de  ; save SECONDARY for nested binop\n");
-            ctx->de_save_count++;
-            saved_de = 1;
+            if (e->size == 1) {
+                /* Byte operation: SECONDARY is E, spill to D or stack */
+                if (!ctx->d_in_use) {
+                    /* D is free - use it to save E */
+                    fdprintf(out_fd, "\tld d, e  ; save SECONDARY (E) to D\n");
+                    ctx->d_in_use = 1;
+                    saved_de = 1;
+                } else {
+                    /* D already in use - spill to stack */
+                    fdprintf(out_fd, "\tpush de  ; save D and E to stack\n");
+                    ctx->de_save_count++;
+                    saved_de = 2;
+                }
+            } else {
+                /* Word operation: SECONDARY is DE, spill to stack */
+                fdprintf(out_fd, "\tpush de  ; save SECONDARY (DE) for nested binop\n");
+                ctx->de_save_count++;
+                saved_de = 2;
+            }
         }
 
         /* 3. Right operand to PRIMARY */
         emit_expr(ctx, e->right);
 
-        /* Restore SECONDARY (DE) if we saved it */
-        if (saved_de) {
-            fdprintf(out_fd, "\tpop de  ; restore SECONDARY\n");
+        /* Restore SECONDARY if we saved it */
+        if (saved_de == 1) {
+            /* Restore E from D (byte operation) */
+            fdprintf(out_fd, "\tld e, d  ; restore SECONDARY (E) from D\n");
+            ctx->d_in_use = 0;
+        } else if (saved_de == 2) {
+            /* Restore from stack */
+            fdprintf(out_fd, "\tpop de  ; restore SECONDARY from stack\n");
             ctx->de_save_count--;
         }
 
