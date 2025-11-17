@@ -289,7 +289,7 @@ statement(struct stmt *parent)
                     struct stmt *assign_st;
 
                     /* Create lvalue: just the variable symbol */
-                    lhs = makeexpr_init(SYM, 0, v->type, 0, 0);
+                    lhs = mkexpr_i(SYM, 0, v->type, 0, 0);
                     /* Cast name* to var* (field is overloaded) */
                     lhs->var = (struct var *)v;
 
@@ -299,14 +299,14 @@ statement(struct stmt *parent)
                      */
                     if (v->type && (v->type->flags & TF_ARRAY) && v->u.init) {
                         /* Create memory copy: COPY dest src length */
-                        assign_expr = makeexpr_init(COPY, lhs, v->type,
+                        assign_expr = mkexpr_i(COPY, lhs, v->type,
                                                      v->type->count, 0);
                         assign_expr->right = v->u.init;
                         /* Clear so it's not output in declaration */
                         v->u.init = NULL;
                     } else {
                         /* Regular scalar assignment: lhs = initializer */
-                        assign_expr = makeexpr_init(ASSIGN, lhs, v->type,
+                        assign_expr = mkexpr_i(ASSIGN, lhs, v->type,
                                                      0, 0);
                         assign_expr->right = v->u.init;
                         /* Clear so it's not output in declaration */
@@ -366,7 +366,7 @@ statement(struct stmt *parent)
                             struct stmt *assign_st;
 
                             /* Create lvalue: just the variable symbol */
-                            lhs = makeexpr_init(SYM, 0, v->type, 0, 0);
+                            lhs = mkexpr_i(SYM, 0, v->type, 0, 0);
                             /* Cast name* to var* (field is overloaded) */
                             lhs->var = (struct var *)v;
 
@@ -377,7 +377,7 @@ statement(struct stmt *parent)
                             if (v->type && (v->type->flags & TF_ARRAY) &&
                                 v->u.init) {
                                 /* Create memory copy: COPY dest src length */
-                                assign_expr = makeexpr_init(COPY, lhs, v->type,
+                                assign_expr = mkexpr_i(COPY, lhs, v->type,
                                                              v->type->count, 0);
                                 assign_expr->right = v->u.init;
                                 /* Clear so it's not output in declaration */
@@ -387,7 +387,7 @@ statement(struct stmt *parent)
                                  * Regular scalar assignment:
                                  * lhs = initializer
                                  */
-                                assign_expr = makeexpr_init(ASSIGN, lhs,
+                                assign_expr = mkexpr_i(ASSIGN, lhs,
                                                              v->type, 0, 0);
                                 assign_expr->right = v->u.init;
                                 /* Clear so it's not output in declaration */
@@ -598,10 +598,10 @@ asmblock(void)
     }
 
     /* Initialize asm capture buffer */
-    asm_capture_buf = malloc(256);
-    asm_capture_size = 256;
-    asm_capture_len = 0;
-    asm_capture_buf[0] = 0;
+    asm_cbuf = malloc(256);
+    asm_csiz = 256;
+    asm_clen = 0;
+    asm_cbuf[0] = 0;
 
     /* Set ASM_BLOCK flag for special asm processing */
     tflags |= ASM_BLOCK;
@@ -621,11 +621,11 @@ asmblock(void)
             depth--;
             if (depth == 0) {
                 /* Found matching closing brace - save captured text and stop */
-                captured_text = asm_capture_buf;
-                captured_len = asm_capture_len;
-                asm_capture_buf = NULL;
-                asm_capture_size = 0;
-                asm_capture_len = 0;
+                captured_text = asm_cbuf;
+                captured_len = asm_clen;
+                asm_cbuf = NULL;
+                asm_csiz = 0;
+                asm_clen = 0;
                 tflags &= ~ASM_BLOCK;  /* Clear ASM_BLOCK flag */
                 break;
             }
@@ -633,7 +633,7 @@ asmblock(void)
 
         /*
          * Get next token (will be captured by lexer if
-         * asm_capture_buf is set)
+         * asm_cbuf is set)
          */
         gettoken();
     }
@@ -969,7 +969,7 @@ declaration()
 
                 /* Free the statement tree (dumping now happens in parsefunc) */
                 if (v->u.body) {
-                    free_stmt(v->u.body);
+                    fr_stmt(v->u.body);
                     v->u.body = 0;  /* Mark as freed */
                 }
 
@@ -1057,7 +1057,7 @@ declaration()
 		    v->kind != tdef && v->kind != fdef) {
 			/* Skip function declarations - only emit actual variables */
 			if (!(v->type && (v->type->flags & TF_FUNC))) {
-				emit_global_var(v);
+				emit_gv(v);
 			}
 		}
 
@@ -1120,7 +1120,7 @@ parse()
 	}
 
 	/* Emit global variables (no-op, already emitted incrementally) */
-	emit_global_vars();
+	emit_gvs();
 
 	pop_scope();
 
@@ -1160,18 +1160,18 @@ parse()
  * Free a statement tree recursively
  */
 void
-free_stmt(struct stmt *st)
+fr_stmt(struct stmt *st)
 {
 	if (!st)
 		return;
 
 	/* Free child statements */
 	if (st->chain)
-		free_stmt(st->chain);
+		fr_stmt(st->chain);
 	if (st->otherwise)
-		free_stmt(st->otherwise);
+		fr_stmt(st->otherwise);
 	if (st->next)
-		free_stmt(st->next);
+		fr_stmt(st->next);
 
 	/* Free label string if present */
 	if (st->label)
@@ -1210,7 +1210,7 @@ cleanup_parser(void)
 		if (n) {
 			/* Free function body if present */
 			if (n->u.body)
-				free_stmt(n->u.body);
+				fr_stmt(n->u.body);
 
 			/*
 			 * Free name string (except for function parameters

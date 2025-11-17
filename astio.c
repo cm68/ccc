@@ -67,7 +67,7 @@ nextchar(void)
  * Skip whitespace
  */
 static void
-skipwhite(void)
+skipws(void)
 {
     while (curchar == ' ' || curchar == '\t' || curchar == '\n') {
         nextchar();
@@ -97,7 +97,7 @@ void
 skip(void)
 {
     while (1) {
-        skipwhite();
+        skipws();
         if (curchar == ';') {
             skipcomment();
         } else {

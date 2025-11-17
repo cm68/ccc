@@ -61,12 +61,12 @@ gripe(error_t errcode)
     /* Print last N tokens for debugging */
     fdprintf(2, "  Last %d tokens: ", TOKEN_HISTORY_SIZE);
     for (i = 0; i < TOKEN_HISTORY_SIZE; i++) {
-        int idx = (token_history_index + i) % TOKEN_HISTORY_SIZE;
-        if (token_history[idx].type) {
-            if (tokenname[token_history[idx].type]) {
-                fdprintf(2, "%s ", tokenname[token_history[idx].type]);
+        int idx = (tok_hidx + i) % TOKEN_HISTORY_SIZE;
+        if (tok_hist[idx].type) {
+            if (tokenname[tok_hist[idx].type]) {
+                fdprintf(2, "%s ", tokenname[tok_hist[idx].type]);
             } else {
-                fdprintf(2, "'%c' ", token_history[idx].type);
+                fdprintf(2, "'%c' ", tok_hist[idx].type);
             }
         }
     }

@@ -71,11 +71,11 @@ process(char *f)
     source_file_root = malloc(len + 1);
     strncpy(source_file_root, basename_start, len);
     source_file_root[len] = '\0';
-    if (write_cpp_file) {
-        if (cpp_file) {
-            close(cpp_file);
-            cpp_file = 0;
-            free(cpp_file_name);
+    if (write_cppfile) {
+        if (cppfile) {
+            close(cppfile);
+            cppfile = 0;
+            free(cppfname);
         }
         /* Use basename only - put .i file in current directory */
         i = strlen(basename_start);
@@ -83,13 +83,13 @@ process(char *f)
             basename_start[i-1] == 'c') {
             i -= 2;
         }
-        cpp_file_name = malloc(i+3);  // +2 for ".i", +1 for null terminator
-        strncpy(cpp_file_name, basename_start, i);
-        cpp_file_name[i] = '\0';  // Ensure null termination
-        strcat(cpp_file_name, ".i");
-        cpp_file = creat(cpp_file_name, 0777);
-        if (cpp_file == -1) {
-            perror(cpp_file_name);
+        cppfname = malloc(i+3);  // +2 for ".i", +1 for null terminator
+        strncpy(cppfname, basename_start, i);
+        cppfname[i] = '\0';  // Ensure null termination
+        strcat(cppfname, ".i");
+        cppfile = creat(cppfname, 0777);
+        if (cppfile == -1) {
+            perror(cppfname);
         }
         s = "/* preprocessed file */\n";
         cpp_out(s, strlen(s));
@@ -101,7 +101,7 @@ process(char *f)
 
     parse();
 
-    if (write_cpp_file) {
+    if (write_cppfile) {
         cpp_flush();
     }
 }
@@ -172,7 +172,7 @@ main(int argc, char **argv)
                 s="";
                 break;
             case 'E':
-                write_cpp_file++;
+                write_cppfile++;
                 break;
             case 'v':
                 if (!argc--) {

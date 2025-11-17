@@ -121,7 +121,7 @@ extern int out_fd;  /* Assembly output file descriptor (from parseast.c) */
 struct expr *new_expr(unsigned char op);
 struct stmt *new_stmt(unsigned char type);
 void free_expr(struct expr *e);
-void free_stmt(struct stmt *s);
+void fr_stmt(struct stmt *s);
 
 /* Width and signedness extraction from type annotations */
 unsigned char get_size_from_type_str(const char *type_str);

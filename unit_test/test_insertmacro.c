@@ -46,8 +46,8 @@
 
 /* External dependencies required by io.c */
 int verbose = 0;
-char *cpp_file_name = "test.i";
-int cpp_file = -1;
+char *cppfname = "test.i";
+int cppfile = -1;
 
 /* From io.c - these are the globals we need to access */
 extern char curchar;

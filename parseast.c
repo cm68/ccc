@@ -314,15 +314,15 @@ free_expr(struct expr *e)
 }
 
 void
-free_stmt(struct stmt *s)
+fr_stmt(struct stmt *s)
 {
     if (!s) return;
     free_expr(s->expr);
     free_expr(s->expr2);
     free_expr(s->expr3);
-    free_stmt(s->then_branch);
-    free_stmt(s->else_branch);
-    free_stmt(s->next);
+    fr_stmt(s->then_branch);
+    fr_stmt(s->else_branch);
+    fr_stmt(s->next);
     /* Free dynamically allocated fields */
     if (s->symbol) free(s->symbol);
     if (s->type_str) free(s->type_str);

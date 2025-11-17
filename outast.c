@@ -851,7 +851,7 @@ emit_literals(void)
  * Format: (g varname type [init-expr])
  */
 void
-emit_global_var(struct name *var)
+emit_gv(struct name *var)
 {
 	if (!var || !var->type)
 		return;
@@ -904,7 +904,7 @@ emit_global_var(struct name *var)
  * Called after parsing completes with all names still in scope
  */
 void
-emit_global_vars(void)
+emit_gvs(void)
 {
 	/* No-op: globals are now emitted incrementally in declaration() */
 	/* This function is kept for API compatibility but does nothing */

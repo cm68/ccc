@@ -93,14 +93,14 @@ struct expr {
 #define OP_PRI_ASSIGN  14  /* assignment: = += -= *= /= %= &= |= ^= <<= >>= */
 #define OP_PRI_COMMA   15  /* comma: , */
 
-extern struct expr *makeexpr(unsigned char op, struct expr *left);
-extern struct expr *makeexpr_init(unsigned char op, struct expr *left, 
+extern struct expr *mkexpr(unsigned char op, struct expr *left);
+extern struct expr *mkexpr_i(unsigned char op, struct expr *left,
     struct type *type, unsigned long v, int flags);
 extern struct expr *cfold(struct expr *e);
 extern struct expr *parse_expr(unsigned char priority, struct stmt *);
 unsigned long parse_const(unsigned char priority);
 extern struct expr *new_expr(unsigned char op);
-extern void destroy_expr(struct expr *e);
+extern void fr_exp(struct expr *e);
 
 /*
  * a statement is the basic execution unit that is managed by the compiler
@@ -124,12 +124,12 @@ struct stmt {
 };
 
 extern struct stmt *new_stmt(unsigned char op, struct expr *left);
-extern void destroy_stmt(struct stmt *s);
-extern void free_stmt(struct stmt *s);
+extern void fr_stm(struct stmt *s);
+extern void fr_stmt(struct stmt *s);
 extern void emit_function(struct name *func);
 extern void emit_literals(void);
-extern void emit_global_var(struct name *var);
-extern void emit_global_vars(void);
+extern void emit_gv(struct name *var);
+extern void emit_gvs(void);
 extern void emit_string_literal(struct name *strname);
 
 /* statement flags used in parse.c */
@@ -288,18 +288,18 @@ extern struct token cur, next;
 
 /* Token history for debugging */
 #define TOKEN_HISTORY_SIZE 10
-extern struct token token_history[TOKEN_HISTORY_SIZE];
-extern int token_history_index;
+extern struct token tok_hist[TOKEN_HISTORY_SIZE];
+extern int tok_hidx;
 
 extern void lexinit();
-extern int write_cpp_file;
-extern int cpp_file;
-extern char *cpp_file_name;
+extern int write_cppfile;
+extern int cppfile;
+extern char *cppfname;
 extern char strbuf[];
 extern char match(token_t t);
 extern void gettoken();
-extern void skipwhite1();
-extern void skipwhite();
+extern void skipws1();
+extern void skipws();
 extern char issym();
 
 /* io.c */
@@ -390,9 +390,9 @@ extern unsigned char tflags;
 extern unsigned char lineend;
 
 /* ASM block capture */
-extern char *asm_capture_buf;
-extern int asm_capture_size;
-extern int asm_capture_len;
+extern char *asm_cbuf;
+extern int asm_csiz;
+extern int asm_clen;
 
 #ifdef ASMKWLOOK
 /* Test inline assembly with asm { } syntax */

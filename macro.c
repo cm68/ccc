@@ -134,11 +134,11 @@ macdefine(char *s)
     if (curchar == '(') {
         advance();
         while (1) {
-            skipwhite1();
+            skipws1();
             if (issym()) {
                 advance();
                 parms[m->parmcount++] = strdup(s);
-                skipwhite1();
+                skipws1();
                 if (curchar == ',') {
                     advance();
                     continue;
@@ -157,10 +157,10 @@ macdefine(char *s)
             m->parms[i] = parms[i];
         }
         advance();
-        skipwhite1();
+        skipws1();
     } else {
         /* Object-like macro: skip whitespace before replacement text */
-        skipwhite1();
+        skipws1();
     }
     s = macbuffer;
     /* we copy to the macbuffer the entire logical line,
@@ -277,7 +277,7 @@ macexpand(char *s)	/* the symbol we are looking up as a macro */
     /* this will stop after nextchar is not white space */
     /* Track if we see newline when asm capture is active */
     while (iswhite(nextchar)) {
-        if (asm_capture_buf && nextchar == '\n') {
+        if (asm_cbuf && nextchar == '\n') {
             saw_newline = 1;  /* Remember that we saw a newline */
         }
         advance();
@@ -290,7 +290,7 @@ macexpand(char *s)	/* the symbol we are looking up as a macro */
         advance();
         plevel = 1;
         advance();
-        skipwhite();
+        skipws();
         while (1) {
             /*
              * copy literals literally
@@ -326,7 +326,7 @@ macexpand(char *s)	/* the symbol we are looking up as a macro */
                 }
                 d = macbuffer;
                 advance();
-                skipwhite();
+                skipws();
                 continue;
             }
             *d++ = curchar;
@@ -411,7 +411,7 @@ macexpand(char *s)	/* the symbol we are looking up as a macro */
     *d = 0;
 
     /* If we saw a newline during asm capture, append semicolon to macro text */
-    if (saw_newline && asm_capture_buf) {
+    if (saw_newline && asm_cbuf) {
         *d++ = ';';
         *d++ = ' ';
         *d = 0;

@@ -395,7 +395,7 @@ void
 cpp_flush()
 {
     if (cpp->offset) {
-        write(cpp_file, cpp->storage, cpp->offset);
+        write(cppfile, cpp->storage, cpp->offset);
     }
     cpp->offset = 0;
 }
@@ -406,8 +406,8 @@ cpp_out(char *s, int len)
     if (!cpp) {
         cpp = malloc(sizeof(*cpp));
         cpp->storage = malloc(CPP_BUF);
-        cpp->fd = cpp_file;
-        cpp->name = cpp_file_name;
+        cpp->fd = cppfile;
+        cpp->name = cppfname;
         cpp->offset = 0;
         cpp->valid = 0;
         cpp->prev = 0;

@@ -394,13 +394,13 @@ These should NOT be edited manually:
 
 Expression trees are built using two helper functions in expr.c:
 
-**makeexpr(op, left)**: Basic expression node allocator
+**mkexpr(op, left)**: Basic expression node allocator
 - Allocates and zero-initializes an expr structure
 - Sets operator and left child pointer
 - Returns pointer to new expression node
 
-**makeexpr_init(op, left, type, v, flags)**: Convenience wrapper
-- Calls makeexpr(op, left) to create the node
+**mkexpr_init(op, left, type, v, flags)**: Convenience wrapper
+- Calls mkexpr(op, left) to create the node
 - Also sets type, value (v), and flags fields
 - Reduces code duplication for common patterns
 - Pass NULL for type to skip setting it
@@ -408,13 +408,13 @@ Expression trees are built using two helper functions in expr.c:
 **Usage patterns:**
 ```c
 // Basic node creation
-e = makeexpr(PLUS, left_expr);
+e = mkexpr(PLUS, left_expr);
 
 // Node with type and value (common for constants)
-e = makeexpr_init(CONST, 0, inttype, 42, E_CONST);
+e = mkexpr_init(CONST, 0, inttype, 42, E_CONST);
 
 // Cast operator with inner expression as left child
-e = makeexpr(NARROW, inner);
+e = mkexpr(NARROW, inner);
 e->type = target_type;
 ```
 
