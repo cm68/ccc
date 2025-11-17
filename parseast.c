@@ -1737,6 +1737,9 @@ doFunction(void)
     /* Phase 2: Generate assembly code blocks for tree nodes */
     generate_code(&ctx);
 
+    /* Phase 2.25: Optimize frame layout based on lifetime analysis */
+    optimizeFrameLayout(&ctx);
+
     /* Phase 2.5: Allocate registers based on usage patterns */
     allocateRegisters(&ctx);
 

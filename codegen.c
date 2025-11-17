@@ -373,6 +373,180 @@ allocateRegisters(struct function_ctx *ctx)
 }
 
 /*
+ * Stack slot structure for frame optimization
+ * A slot can hold multiple variables whose lifetimes don't overlap
+ */
+struct stack_slot {
+    int offset;              /* Negative offset from frame pointer */
+    int size;                /* Size of this slot in bytes */
+    struct local_var **vars; /* Array of variables using this slot */
+    int num_vars;            /* Number of variables in this slot */
+    int capacity;            /* Allocated capacity of vars array */
+};
+
+/*
+ * Helper: Check if two variables' lifetimes overlap
+ * Returns 1 if they overlap (cannot share a slot), 0 if they don't overlap
+ */
+static int
+lifetimesOverlap(struct local_var *v1, struct local_var *v2)
+{
+    /* If either variable is never used, they don't conflict */
+    if (v1->first_label == -1 || v2->first_label == -1) {
+        return 0;
+    }
+
+    /* Variables overlap if their ranges [first, last] intersect
+     * Ranges [a1,a2] and [b1,b2] intersect if: a1 <= b2 AND b1 <= a2 */
+    return (v1->first_label <= v2->last_label &&
+            v2->first_label <= v1->last_label);
+}
+
+/*
+ * Helper: Check if a variable can fit in a slot (no lifetime conflicts)
+ * Returns 1 if variable can use this slot, 0 otherwise
+ */
+static int
+canUseSlot(struct stack_slot *slot, struct local_var *var)
+{
+    int i;
+
+    /* Variable must be same size as slot */
+    if (var->size != slot->size) {
+        return 0;
+    }
+
+    /* Check for lifetime conflicts with all variables in this slot */
+    for (i = 0; i < slot->num_vars; i++) {
+        if (lifetimesOverlap(var, slot->vars[i])) {
+            return 0;  /* Conflict - cannot use this slot */
+        }
+    }
+
+    return 1;  /* No conflicts - can use this slot */
+}
+
+/*
+ * Helper: Add a variable to a slot
+ */
+static void
+addVarToSlot(struct stack_slot *slot, struct local_var *var)
+{
+    /* Grow array if needed */
+    if (slot->num_vars >= slot->capacity) {
+        slot->capacity = slot->capacity ? slot->capacity * 2 : 4;
+        slot->vars = realloc(slot->vars,
+                             slot->capacity * sizeof(struct local_var *));
+    }
+
+    slot->vars[slot->num_vars++] = var;
+}
+
+/*
+ * Optimize stack frame by reusing slots for non-overlapping lifetimes
+ * Called after code generation (which computes lifetimes) but before
+ * register allocation.
+ *
+ * Algorithm: Greedy slot packing
+ * - For each local variable, try to find an existing slot where its
+ *   lifetime doesn't overlap with any variable already in that slot
+ * - If found, assign the variable to that slot
+ * - Otherwise, create a new slot
+ * - Finally, reassign offsets based on slot assignments
+ *
+ * This reduces frame size by allowing variables with non-overlapping
+ * lifetimes to share the same stack location.
+ */
+void
+optimizeFrameLayout(struct function_ctx *ctx)
+{
+    struct stack_slot *slots = NULL;
+    int num_slots = 0;
+    int slot_capacity = 0;
+    struct local_var *var;
+    int new_frame_size;
+    int i, j;
+    int slot_idx;
+    int found_slot;
+
+    if (!ctx) return;
+
+    fdprintf(2, "  Optimizing frame layout based on lifetimes:\n");
+
+    /* Build slot assignments for each local variable */
+    for (var = ctx->locals; var; var = var->next) {
+        /* Skip parameters - they have fixed offsets */
+        if (var->is_param) continue;
+
+        /* Skip unused variables (never referenced) */
+        if (var->first_label == -1) {
+            fdprintf(2, "    %s: unused (can be eliminated)\n", var->name);
+            continue;
+        }
+
+        /* Try to find an existing slot this variable can use */
+        found_slot = 0;
+        for (slot_idx = 0; slot_idx < num_slots; slot_idx++) {
+            if (canUseSlot(&slots[slot_idx], var)) {
+                /* Found a compatible slot */
+                addVarToSlot(&slots[slot_idx], var);
+                found_slot = 1;
+                fdprintf(2, "    %s: slot %d (lifetime %d-%d, shares with %d others)\n",
+                         var->name, slot_idx, var->first_label, var->last_label,
+                         slots[slot_idx].num_vars - 1);
+                break;
+            }
+        }
+
+        /* If no compatible slot found, create a new one */
+        if (!found_slot) {
+            /* Grow slots array if needed */
+            if (num_slots >= slot_capacity) {
+                slot_capacity = slot_capacity ? slot_capacity * 2 : 8;
+                slots = realloc(slots, slot_capacity * sizeof(struct stack_slot));
+            }
+
+            /* Initialize new slot */
+            slots[num_slots].offset = 0;  /* Will assign later */
+            slots[num_slots].size = var->size;
+            slots[num_slots].vars = NULL;
+            slots[num_slots].num_vars = 0;
+            slots[num_slots].capacity = 0;
+
+            addVarToSlot(&slots[num_slots], var);
+
+            fdprintf(2, "    %s: slot %d (lifetime %d-%d, new slot)\n",
+                     var->name, num_slots, var->first_label, var->last_label);
+
+            num_slots++;
+        }
+    }
+
+    /* Reassign offsets based on slots */
+    new_frame_size = 0;
+    for (i = 0; i < num_slots; i++) {
+        new_frame_size += slots[i].size;
+        slots[i].offset = -new_frame_size;
+
+        /* Assign this offset to all variables in the slot */
+        for (j = 0; j < slots[i].num_vars; j++) {
+            slots[i].vars[j]->offset = slots[i].offset;
+        }
+    }
+
+    /* Update context frame size */
+    fdprintf(2, "  Frame optimization: %d bytes -> %d bytes (saved %d bytes)\n",
+             ctx->frame_size, new_frame_size, ctx->frame_size - new_frame_size);
+    ctx->frame_size = new_frame_size;
+
+    /* Free slot data structures */
+    for (i = 0; i < num_slots; i++) {
+        free(slots[i].vars);
+    }
+    free(slots);
+}
+
+/*
  * Phase 1.5: Assign stack frame offsets to all local variables and parameters
  */
 void
@@ -431,7 +605,7 @@ assignFrameOffsets(struct function_ctx *ctx)
 
     /* Then, assign offsets to local variables (negative offsets below FP) */
     walkForLocals(ctx, ctx->body);
-    fdprintf(2, "  Total frame size: %d bytes\n", ctx->frame_size);
+    fdprintf(2, "  Initial frame size: %d bytes (before optimization)\n", ctx->frame_size);
 
     /* Check frame size limit - IY-indexed addressing uses signed 8-bit offsets
      * Local variables use negative offsets from IY, range is -1 to -128
@@ -1045,11 +1219,9 @@ static void generate_stmt(struct function_ctx *ctx, struct stmt *s)
 {
     if (!s) return;
 
-    /* Update current_label for statements that have labels */
-    /* This tracks the current position in the control flow for life analysis */
-    if (s->label > 0) {
-        ctx->current_label = s->label;
-    }
+    /* Increment current_label for each statement to track program points
+     * This provides a monotonically increasing sequence for lifetime analysis */
+    ctx->current_label++;
 
     /* Recursively generate code for expressions */
     if (s->expr) generate_expr(ctx, s->expr);

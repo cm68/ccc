@@ -135,6 +135,7 @@ int is_multiply_by_power_of_2(struct expr *e, struct expr **out_expr);
 /* Code generation functions (codegen.c) */
 void assignFrameOffsets(struct function_ctx *ctx);
 void generate_code(struct function_ctx *ctx);
+void optimizeFrameLayout(struct function_ctx *ctx);
 void allocateRegisters(struct function_ctx *ctx);
 struct local_var *findVar(struct function_ctx *ctx, const char *symbol);
 
