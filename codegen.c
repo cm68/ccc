@@ -554,8 +554,11 @@ static void generate_expr(struct function_ctx *ctx, struct expr *e)
 
         /* Generate the call instruction */
         if (e->left && e->left->op == '$' && e->left->symbol) {
+            const char *func_name = e->left->symbol;
+            /* Strip leading $ from function name */
+            if (func_name[0] == '$') func_name++;
             buf_pos += snprintf(call_buf + buf_pos, sizeof(call_buf) - buf_pos,
-                               "\tcall %s", e->left->symbol);
+                               "\tcall %s", func_name);
         } else {
             /* Indirect call through register */
             buf_pos += snprintf(call_buf + buf_pos, sizeof(call_buf) - buf_pos,
