@@ -135,6 +135,19 @@ capture_locals(void)
 static struct name *decl_inits[MAX_DECL_INITS];
 static unsigned char decl_init_count = 0;
 
+/*
+ * Add a variable with an initializer to the deferred initialization list
+ *
+ * Local variables with initializers (e.g., int x = 10;) need special
+ * handling because their initialization must occur as executable code
+ * in the function body, not as data in the variable declaration.
+ *
+ * This function tracks these variables so they can be converted to
+ * assignment statements later by statement().
+ *
+ * Parameters:
+ *   v - Variable name entry with initializer in v->u.init field
+ */
 void
 add_decl_init(struct name *v)
 {
@@ -143,6 +156,12 @@ add_decl_init(struct name *v)
 	}
 }
 
+/*
+ * Clear the deferred initialization list
+ *
+ * Called after processing local variable initializers to reset the
+ * tracking array for the next declaration statement.
+ */
 void
 clear_decl_inits()
 {
@@ -152,9 +171,40 @@ clear_decl_inits()
 void declaration();
 
 /*
- * parse a statement - this is really the heart of the compiler frontend
- * it recursively calls itself
- * there is some hair here having to do with scope
+ * Parse statements recursively - the heart of the compiler frontend
+ *
+ * This function implements the statement parser for C, handling all control
+ * flow structures, expressions, declarations, and blocks. It uses recursive
+ * descent to parse nested statements and builds a statement tree.
+ *
+ * Statement types handled:
+ *   - Blocks: { ... } with lexical scoping
+ *   - Control flow: if/else, while, do-while, for, switch/case/default
+ *   - Jumps: break, continue, return, goto, labels
+ *   - Expressions: function calls, assignments, operators
+ *   - Declarations: local variables, typedefs (scoped to current block)
+ *   - Inline assembly: asm { ... }
+ *
+ * Lexical scoping:
+ *   - Each block pushes a new scope, pops on exit
+ *   - Local variables are captured before scope pop to preserve metadata
+ *   - Nested blocks can shadow outer names
+ *
+ * Local variable initialization:
+ *   - Initializers (e.g., int x = 10;) are converted to assignment statements
+ *   - Arrays use COPY operator for aggregate initialization
+ *   - Static locals are initialized in data section, not converted
+ *
+ * Loop/switch transformation:
+ *   - break/continue are transformed to goto statements
+ *   - Synthetic labels are generated (L0, D1, S2, etc.)
+ *   - Label format: <prefix><number>_<break|continue|test>
+ *
+ * Parameters:
+ *   parent - Enclosing statement (for break/continue target lookup, scope)
+ *
+ * Returns:
+ *   Statement tree head, or NULL if no statements parsed
  */
 struct stmt*
 statement(struct stmt *parent)
@@ -571,6 +621,20 @@ statement(struct stmt *parent)
     return head;
 }
 
+/*
+ * Create a new statement node
+ *
+ * Allocates and zero-initializes a statement structure with the specified
+ * operator and left expression. This is the basic statement node allocator
+ * used throughout the parser.
+ *
+ * Parameters:
+ *   op   - Statement operator (e.g., IF, WHILE, EXPR, BEGIN)
+ *   left - Left expression (condition for IF/WHILE, expression for EXPR, etc.)
+ *
+ * Returns:
+ *   Pointer to newly allocated and initialized statement node
+ */
 struct stmt*
 makestmt(unsigned char op, struct expr *left)
 {
@@ -582,7 +646,25 @@ makestmt(unsigned char op, struct expr *left)
 	return st;
 }
 
-/* stubs for missing legacy functions */
+/*
+ * Parse an inline assembly block
+ *
+ * Handles the asm { ... } syntax for embedding raw assembly code in C
+ * functions. The assembly text is captured verbatim (with proper brace
+ * nesting) and stored in the statement tree for later emission.
+ *
+ * Assembly blocks can contain nested braces, which are tracked to find
+ * the matching closing brace. The lexer's ASM_BLOCK flag enables special
+ * token capture mode where all tokens are appended to asmCbuf.
+ *
+ * Post-processing:
+ *   - Trailing spaces and semicolons are trimmed
+ *   - The captured text is transferred to the statement's label field
+ *   - The ASM_BLOCK flag is cleared to restore normal lexing
+ *
+ * Returns:
+ *   ASM statement node with assembly text in label field, or NULL on error
+ */
 struct stmt *
 asmblock(void)
 {
@@ -660,8 +742,26 @@ asmblock(void)
     return st;
 }
 
-
-
+/*
+ * Parse an initializer list for arrays and structs
+ *
+ * Handles the { expr, expr, ... } syntax for aggregate initializers.
+ * Supports nested initializer lists for multi-dimensional arrays and
+ * nested structs. Commas separate elements, and the list is terminated
+ * by a closing brace.
+ *
+ * The parser stops at comma operator priority (15) to treat commas as
+ * element separators rather than the comma operator.
+ *
+ * Examples:
+ *   int arr[3] = { 1, 2, 3 };
+ *   int matrix[2][2] = { {1, 2}, {3, 4} };
+ *   struct { int x, y; } p = { 10, 20 };
+ *
+ * Returns:
+ *   Linked list of initializer expressions (via next pointers), or
+ *   NULL on error
+ */
 static struct expr *parse_initializer_list(void)
 {
     struct expr *head = NULL;
@@ -707,6 +807,26 @@ static struct expr *parse_initializer_list(void)
     return head;
 }
 
+/*
+ * Parse a variable initializer
+ *
+ * Handles both simple expression initializers and aggregate initializer
+ * lists for variable declarations. Called when an = token is encountered
+ * after a declarator.
+ *
+ * Initializer forms:
+ *   - Simple expression: int x = 10;
+ *   - Initializer list: int arr[] = { 1, 2, 3 };
+ *   - Nested lists: int matrix[][2] = { {1, 2}, {3, 4} };
+ *   - String literals: char str[] = "hello";
+ *
+ * The parser uses precedence 15 for simple expressions to allow
+ * assignment operators (priority 14) but exclude the comma operator
+ * (priority 15), ensuring commas in function-like macros work correctly.
+ *
+ * Returns:
+ *   Expression tree representing the initializer, or NULL on error
+ */
 struct expr *
 do_initializer(void)
 {
@@ -734,6 +854,34 @@ do_initializer(void)
     return init;
 }
 
+/*
+ * Parse a function definition
+ *
+ * Processes the function body following a function declarator. This function:
+ *   1. Sets up function context for static variable mangling
+ *   2. Pushes a new scope for the function body
+ *   3. Installs function parameters into level 2 scope
+ *   4. Parses the function body statement tree
+ *   5. Emits the AST for pass 2 (code generation)
+ *   6. Pops the function scope and cleans up
+ *
+ * Parameter handling:
+ *   - Parameters are read from f->type->elem (function type signature)
+ *   - New name entries are created at level 2 with funarg kind
+ *   - This separates type signature (normalized, name-independent) from
+ *     actual parameter symbols (visible in function body)
+ *
+ * Function-scoped static variables:
+ *   - Mangled name format: <file>_<func>_<var>_<counter>
+ *   - Allocated in global data section with proper scoping
+ *
+ * Debug assertions:
+ *   - Verifies lexlevel returns to 1 (global) after parsing
+ *   - Verifies no local names remain in symbol table
+ *
+ * Parameters:
+ *   f - Function name entry with type signature in f->type
+ */
 void
 parsefunc(struct name *f)
 {
@@ -809,16 +957,33 @@ char *sclass_bitdefs[] = { "EXTERN", "REGISTER", "STATIC", "CONST",
 };
 
 /*
- * parse the storage class on a declaration.  this is a muddy concept,
- * since we've got visibility and storage lumped together, and context
- * also contributes into where our thing actually will reside.  we're
- * just interested in the parse part. so, let's just eat extern, auto,
- * register, volatile, static and const in other compilers, bizarre stuff
- * like fortran, far and pascal show up here. gripe about bogus
- * combinations.
+ * Parse storage class specifiers in a declaration
  *
- * how this actually resolves into a storage space is a code generator
- * issue
+ * Storage class specifiers control visibility, lifetime, and storage
+ * location of variables and functions. This function parses any combination
+ * of storage class keywords and returns them as a bitmask.
+ *
+ * Recognized keywords:
+ *   - extern:   External linkage (defined elsewhere)
+ *   - static:   Internal linkage or persistent local storage
+ *   - auto:     Automatic (stack) storage (default for locals)
+ *   - register: Request register allocation (hint only)
+ *   - const:    Type qualifier (ignored by this compiler)
+ *   - volatile: Type qualifier (ignored by this compiler)
+ *   - typedef:  Type alias declaration
+ *
+ * Invalid combinations detected:
+ *   - extern with static/auto/register (conflicting linkage)
+ *   - register with static (conflicting storage)
+ *   - static with auto (conflicting storage)
+ *   - typedef with any storage class (typedef is not storage)
+ *
+ * Note: This function only handles parsing. The code generator determines
+ * actual storage location based on context (global vs local) and storage
+ * class.
+ *
+ * Returns:
+ *   Bitmask of storage class flags (SC_EXTERN, SC_STATIC, etc.)
  */
 unsigned char
 parse_sclass()
@@ -895,7 +1060,45 @@ parse_sclass()
 }
 
 /*
- * read a declaration
+ * Parse a complete declaration statement
+ *
+ * Handles variable and function declarations at global or local scope.
+ * A declaration consists of a storage class (optional), base type, and
+ * one or more declarators separated by commas.
+ *
+ * Declaration forms:
+ *   - Variables:    int x, *p, arr[10];
+ *   - Functions:    int foo(int x);
+ *   - Typedefs:     typedef int* intptr;
+ *   - Initializers: int x = 10, arr[] = {1, 2, 3};
+ *
+ * Processing:
+ *   1. Parse storage class keywords (extern, static, typedef, etc.)
+ *   2. Parse base type once (shared across all declarators)
+ *   3. For each declarator:
+ *      - Parse declarator (name, pointers, arrays, functions)
+ *      - Handle initializers (= expr or = { ... })
+ *      - Apply storage class
+ *      - Emit to AST if global or static
+ *      - If function body present ({ ... }), parse function
+ *
+ * Typedef handling:
+ *   - Changes name kind from var to tdef
+ *   - Typedefs cannot have initializers or function bodies
+ *   - Creates type alias in current scope
+ *
+ * Function definitions:
+ *   - Detected by BEGIN token after function declarator
+ *   - Calls parsefunc() to parse body
+ *   - Statement tree freed after emission
+ *
+ * Local variable initializers:
+ *   - Added to decl_inits list for conversion to assignments
+ *   - Static locals are initialized in data section, not converted
+ *
+ * Array size inference:
+ *   - char[] = "string" infers size from string length
+ *   - int[] = {1, 2, 3} infers size from initializer count
  */
 void
 declaration()
@@ -1076,6 +1279,18 @@ declaration()
 
 char bnbuf[20];
 
+/*
+ * Generate a unique name for a block scope
+ *
+ * Creates a synthetic name for lexical blocks to track scope in the
+ * symbol table. Each call returns a new name with an incrementing counter.
+ *
+ * Note: The returned pointer is to a static buffer that is overwritten
+ * on each call. Callers must copy the string if persistence is needed.
+ *
+ * Returns:
+ *   Pointer to static buffer containing "block N" where N is sequential
+ */
 char*
 blockname()
 {
@@ -1085,7 +1300,35 @@ blockname()
 }
 
 /*
- * global level parse
+ * Parse a C source file at global scope
+ *
+ * This is the top-level entry point for parsing a translation unit.
+ * It processes all global declarations (variables, functions, typedefs)
+ * until EOF is reached.
+ *
+ * Initialization:
+ *   1. Push global scope (level 1)
+ *   2. Initialize basic types (char, int, long, void, etc.)
+ *   3. Process declarations until EOF
+ *
+ * Declaration recognition:
+ *   - Type keywords: int, char, struct, etc.
+ *   - Storage class: extern, static, typedef, etc.
+ *   - Typedef names: Previously declared type aliases
+ *
+ * Incremental emission:
+ *   - Global variables are emitted to AST as they're parsed
+ *   - Functions are emitted after their body is parsed
+ *   - This avoids buffering entire program in memory
+ *
+ * Cleanup:
+ *   - Pops global scope on completion
+ *   - Debug builds verify all names properly cleaned up
+ *   - Only basic types (level 0) should remain after parsing
+ *
+ * Error recovery:
+ *   - Unrecognized tokens are skipped to prevent infinite loops
+ *   - NONE tokens (from lexer errors) are consumed and ignored
  */
 void
 parse()
@@ -1158,6 +1401,20 @@ parse()
 
 /*
  * Free a statement tree recursively
+ *
+ * Deallocates a statement tree and all its child nodes, including:
+ *   - chain: Child/body statement (e.g., body of if/while/for/block)
+ *   - otherwise: Else branch (for if statements)
+ *   - next: Sibling statement in sequence
+ *   - label: Synthetic labels or captured asm text
+ *   - locals: Captured local variable list (for blocks)
+ *
+ * Note: Expression trees (left, right, middle) are NOT freed here as they
+ * may be shared or owned elsewhere. A full implementation would need
+ * reference counting for expressions.
+ *
+ * Parameters:
+ *   st - Statement tree root to free (NULL-safe)
  */
 void
 frStmt(struct stmt *st)
@@ -1197,6 +1454,24 @@ frStmt(struct stmt *st)
 
 /*
  * Clean up all allocated memory after parsing
+ *
+ * Frees all dynamically allocated parser data structures including:
+ *   - Name entries (symbol table)
+ *   - Statement trees (function bodies)
+ *   - Type structures
+ *   - Names array itself
+ *
+ * Cleanup order:
+ *   1. Free statement trees attached to function definitions
+ *   2. Free name strings (except function parameters owned by types)
+ *   3. Free name structures (except function parameters)
+ *   4. Free names array
+ *   5. Free all types (parameter lists are name structures freed above)
+ *   6. Reset global type pointers to NULL
+ *
+ * Note: This function is typically called on process exit or when
+ * multiple files are compiled in sequence. Function parameters
+ * (funarg kind) are not freed as their names are owned by function types.
  */
 void
 cleanup_parser(void)

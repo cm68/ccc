@@ -63,7 +63,26 @@ struct name **names;
 #define ENUM_TYPE   "_uchar_"
 
 /*
- * free up all the names at a higher scope than here
+ * Pop the current lexical scope
+ *
+ * Removes all names at the current scope level from the symbol table by
+ * clearing their entries in the names array. This implements lexical scoping
+ * where inner block names shadow outer ones and become inaccessible when
+ * the block exits.
+ *
+ * The function decrements the lexical level and then removes all names
+ * with level > new lexlevel by walking backwards through the names array
+ * and clearing entries.
+ *
+ * Note: Name structures are NOT freed here as they may still be referenced
+ * by AST nodes (e.g., SYM expressions in statement trees). Memory will be
+ * reclaimed on process exit or by explicit cleanup_parser() call.
+ *
+ * Scope levels:
+ *   - 0: Basic types (char, int, void, etc.)
+ *   - 1: Global declarations
+ *   - 2: Function parameters
+ *   - 3+: Local blocks (nested)
  */
 void
 popScope()
@@ -92,6 +111,16 @@ popScope()
     }
 }
 
+/*
+ * Push a new lexical scope
+ *
+ * Increments the lexical level counter to begin a new scope. Names added
+ * after this call will be at the new level and will shadow any outer names
+ * with the same identifier.
+ *
+ * Parameters:
+ *   n - Scope name for debugging (currently unused)
+ */
 void
 pushScope(char *n)
 {
@@ -99,7 +128,28 @@ pushScope(char *n)
 }
 
 /*
- * resolve this name into a name struct
+ * Look up a name in the symbol table
+ *
+ * Searches for a name entry by identifier and tag/non-tag namespace.
+ * Searches from most recent (highest index) to oldest (lowest index),
+ * implementing proper shadowing where inner declarations hide outer ones.
+ *
+ * C has two separate namespaces:
+ *   - Tag namespace (is_tag=1): struct/union/enum tags
+ *   - Ordinary namespace (is_tag=0): variables, functions, typedefs, enums
+ *
+ * This allows declarations like: struct foo { int foo; }; where the
+ * struct tag "foo" and member variable "foo" coexist without conflict.
+ *
+ * Optimization: First character is checked before calling strcmp to
+ * quickly reject non-matches.
+ *
+ * Parameters:
+ *   name   - Identifier to search for
+ *   is_tag - 1 for tag namespace, 0 for ordinary namespace
+ *
+ * Returns:
+ *   Pointer to name entry if found, NULL if not found
  */
 struct name *
 findName(char *name, unsigned char is_tag)
@@ -120,8 +170,22 @@ findName(char *name, unsigned char is_tag)
 }
 
 /*
- * a more restrictive name lookup that looks through the elements of a type
- * used for struct, union, and enum tag lookups
+ * Look up a member within a struct/union type
+ *
+ * Searches the element list of a struct or union type for a member with
+ * the specified name. Used for struct member access (s.x) and pointer
+ * member access (p->x).
+ *
+ * Unlike findName(), this function searches only within a specific type's
+ * element list, not the global symbol table. Struct/union members have
+ * their own namespace separate from ordinary names.
+ *
+ * Parameters:
+ *   name - Member name to search for
+ *   t    - Struct/union type to search within
+ *
+ * Returns:
+ *   Pointer to member name entry if found, NULL if not found
  */
 struct name *
 findElement(char *name, struct type *t)
@@ -141,7 +205,18 @@ char *type_bitdefs[] = {
 };
 
 /*
- * what's in a name
+ * Print a name entry for debugging
+ *
+ * Outputs detailed information about a name entry to stderr, including:
+ *   - Name identifier and namespace (tag vs ordinary)
+ *   - Storage class flags (extern, static, register, etc.)
+ *   - Type information (via dump_type)
+ *   - Struct member offset, bitfield position, and width
+ *
+ * Used for debugging symbol table contents and type resolution.
+ *
+ * Parameters:
+ *   n - Name entry to dump (NULL-safe)
  */
 void
 dump_name(struct name *n)
@@ -171,7 +246,31 @@ dump_name(struct name *n)
 }
 
 /*
- * push a name on the symbol list at lexlevel
+ * Create and add a new name entry to the symbol table
+ *
+ * Allocates a new name structure, initializes it with the provided
+ * information, and adds it to the symbol table at the current lexical level.
+ * Performs duplicate name checking within the current scope.
+ *
+ * Duplicate handling:
+ *   - Duplicate declarations at the same level are errors (except extern)
+ *   - If existing entry has SC_EXTERN, it's returned for update with definition
+ *   - Inner declarations shadow outer ones (different levels) - allowed
+ *
+ * Memory management:
+ *   - Name string is duplicated with strdup()
+ *   - Structure is zero-initialized with calloc()
+ *   - Entry persists in names array until scope is popped
+ *
+ * Parameters:
+ *   name   - Identifier string (will be duplicated)
+ *   k      - Name kind (var, tdef, fdef, elem, funarg, etc.)
+ *   t      - Type pointer (can be NULL for incomplete types)
+ *   is_tag - 1 for tag namespace, 0 for ordinary namespace
+ *
+ * Returns:
+ *   Pointer to new name entry, or existing extern entry for update,
+ *   or NULL on error (duplicate name or table full)
  */
 struct name *
 newName(char *name, kind k, struct type *t, unsigned char is_tag)
@@ -230,8 +329,28 @@ newName(char *name, kind k, struct type *t, unsigned char is_tag)
 }
 
 /*
- * add an existing name struct to the symbol table
- * used for installing function parameters into scope
+ * Add an existing name entry to the symbol table
+ *
+ * Inserts a pre-allocated name structure into the symbol table at the
+ * current lexical level. Unlike newName(), this function doesn't allocate
+ * a new structure but uses an existing one.
+ *
+ * Primary use case:
+ *   - Installing function parameters into level 2 scope
+ *   - Parameters are stored in function type's elem list
+ *   - This function makes them visible in function body scope
+ *
+ * Duplicate handling:
+ *   - Checks for duplicates at current level (same as newName)
+ *   - If existing entry has SC_EXTERN, updates it instead of adding duplicate
+ *   - Frees the new name structure if updating existing extern entry
+ *
+ * Level update:
+ *   - Updates n->level to match current lexlevel
+ *   - Allows parameters defined at level 1 to be visible at level 2
+ *
+ * Parameters:
+ *   n - Pre-allocated name entry to add
  */
 void
 addName(struct name *n)
@@ -286,6 +405,27 @@ addName(struct name *n)
 #endif
 }
 
+/*
+ * Print type information recursively for debugging
+ *
+ * Outputs detailed type information to stderr, including flags, sizes,
+ * and subtype relationships. Handles complex recursive types by tracking
+ * depth and detecting cycles.
+ *
+ * Output format:
+ *   - Function types: Shows parameter count, parameter types, return type
+ *   - Other types: Shows name, flags (POINTER, ARRAY, etc.), count (array size)
+ *   - Subtypes are indented proportional to recursion depth
+ *
+ * Special handling:
+ *   - Function parameters are displayed with argument numbers
+ *   - Return types are labeled and indented
+ *   - Cycle detection prevents infinite recursion (max depth 20)
+ *
+ * Parameters:
+ *   t  - Type to dump (NULL-safe)
+ *   lv - Current indentation level (0 for top-level)
+ */
 void
 dump_type(struct type *t, int lv)
 {
@@ -425,12 +565,36 @@ compatible_function_types(struct type *t1, struct type *t2)
 }
 
 /*
- * find this type, or if it does not exist, create it
- * this is a search of all defined types.
- * open question:  how should incomplete types be handled
- *   for structs, it's clear that it gets updated in place.
- *   for arrays, when it becomes concrete, it should be updated
- *   typedefs for arrays can't be incomplete
+ * Find or create a type in the unified type system
+ *
+ * Implements type sharing where two variables of the same type have
+ * identical type pointers. This ensures zero redundancy in the type tree
+ * and enables fast type comparison using pointer equality.
+ *
+ * Type sharing rules:
+ *   - Primitive types (int, char, etc.): Always shared
+ *   - Pointers: Shared if flags and subtype match
+ *   - Arrays: Shared if flags, subtype, and count match
+ *   - Functions: Shared if flags, return type, and parameters match
+ *   - Struct/union: NOT shared (TF_AGGREGATE) - each definition is unique
+ *
+ * Incomplete types:
+ *   - Arrays with count=-1 are marked TF_INCOMPLETE
+ *   - Forward-declared structs are TF_INCOMPLETE until definition parsed
+ *   - Incomplete types may be updated in place when completed
+ *
+ * Size calculation:
+ *   - Arrays: sub->size * count (0 if incomplete)
+ *   - Pointers: TS_PTR constant (2 bytes on this architecture)
+ *   - Other types: Size set during type creation
+ *
+ * Parameters:
+ *   flags - Type flags (TF_POINTER, TF_ARRAY, TF_FUNC, TF_AGGREGATE, etc.)
+ *   sub   - Subtype pointer (element type for array/pointer, return for function)
+ *   count - Array element count (-1 for incomplete arrays)
+ *
+ * Returns:
+ *   Pointer to type (existing if found, new if created)
  */
 struct type *
 getType(
@@ -499,7 +663,29 @@ getType(
 }
 
 /*
- * we create table of the basic types which we then can parse into.
+ * Initialize basic types and add them to the global symbol table
+ *
+ * Creates type structures for all primitive types (char, short, long,
+ * unsigned variants, void, float, double) and installs them at level 0
+ * (basic types level) in the symbol table.
+ *
+ * These types are always available and persist for the entire compilation.
+ * They serve as building blocks for all derived types (pointers, arrays,
+ * functions, structs).
+ *
+ * Type table layout (indices are significant):
+ *   0-2: Signed types (char, short, long)
+ *   3-5: Unsigned types (uchar, ushort, ulong)
+ *   6+:  Special types (void, float, double)
+ *
+ * Global type pointers are initialized:
+ *   - chartype (1 byte signed)
+ *   - inttype (2 bytes signed) - NOTE: int is 2 bytes, not 4!
+ *   - longtype (4 bytes signed)
+ *   - uchartype, ushorttype, ulongtype (unsigned variants)
+ *   - voidtype (0 bytes)
+ *
+ * Called once at start of parse() before processing any declarations.
  */
 void
 initbasictype()
@@ -526,9 +712,35 @@ initbasictype()
 }
 
 /*
- * parse the basic type
- * these are a little bizarre, since the words 'unsigned', 'short' and 'long'
- * can be prefixes or type names, but short and long can't both exist
+ * Parse basic type keywords into a primitive type
+ *
+ * Handles C's complex type keyword syntax where unsigned, short, and long
+ * can be prefixes or standalone type names. Combines multiple keywords to
+ * determine the final primitive type.
+ *
+ * Valid combinations:
+ *   - char, short, int, long: Base types with optional unsigned
+ *   - unsigned alone: Defaults to unsigned int (2 bytes)
+ *   - unsigned char/short/long/int: Unsigned variants
+ *   - float, double: Floating point (unsigned not allowed)
+ *   - void: No size (unsigned not allowed)
+ *
+ * Type resolution:
+ *   - Tracks unsignedness (0 or UN_SIGNED offset)
+ *   - Tracks length (BYTES_1/2/4 for char/short/long)
+ *   - Tracks misc types (void/float/double offset)
+ *   - Computes index into basictype table: unsignedness + length + misc
+ *   - Returns corresponding type from names array (installed by initbasictype)
+ *
+ * Invalid combinations:
+ *   - short long (conflicting length)
+ *   - unsigned void/float/double (type qualifier mismatch)
+ *
+ * Type qualifiers:
+ *   - const, volatile: Recognized but ignored by this compiler
+ *
+ * Returns:
+ *   Primitive type pointer, or NULL if no type keywords found
  */
 struct type *
 parsebasic()
@@ -616,9 +828,39 @@ done:
  */
 
 /*
- * return a base type
- * this is either a primitive, typedef, struct/union or enum
- * the parse stops when we see a complete type.
+ * Parse a base type (primitive, typedef, struct, union, or enum)
+ *
+ * This is the main type parser that handles all base types before
+ * declarators add pointers, arrays, and functions. Returns when a complete
+ * base type has been parsed.
+ *
+ * Type forms handled:
+ *   - Primitive types: int, char, void, etc. (via parsebasic)
+ *   - Typedef names: Previously declared type aliases
+ *   - Struct/union: With or without tag, with or without body
+ *   - Enum: With or without tag, with or without enumerator list
+ *
+ * Struct/union processing:
+ *   - Forward declarations: struct foo; (creates incomplete type)
+ *   - Definitions: struct foo { ... }; (creates complete type)
+ *   - Anonymous: struct { ... } x; (no tag)
+ *   - Member parsing: Calls declareInternal for each member
+ *   - Bitfield packing: Packs bitfields into 16-bit words
+ *   - Size calculation: Sum of member sizes (struct) or max (union)
+ *
+ * Enum processing:
+ *   - All enums are unsigned char (1 byte)
+ *   - Enumerators are named constants in global namespace
+ *   - Values default to sequential (0, 1, 2...) or explicit (= expr)
+ *   - Tag is optional and ignored (just for documentation)
+ *
+ * Incomplete types:
+ *   - Forward-declared struct/union without body
+ *   - Marked TF_INCOMPLETE until definition found
+ *   - Updated in place when body parsed later
+ *
+ * Returns:
+ *   Type pointer for parsed base type, or NULL if no type found
  */
 struct type *
 getbasetype()
