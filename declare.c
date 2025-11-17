@@ -2,6 +2,28 @@
 
 /*
  * Check if current token is a type keyword
+ *
+ * Determines whether a given token represents a C type specifier keyword.
+ * Used throughout declaration parsing to detect the start of type declarations
+ * and to distinguish between K&R and ANSI function parameter styles.
+ *
+ * Type keywords recognized:
+ *   - Basic types: char, short, int, long, float, double, void
+ *   - Modifiers: unsigned
+ *   - Aggregate types: struct, union, enum
+ *   - Qualifiers: const, volatile
+ *   - Storage class: typedef (treated as type in some contexts)
+ *
+ * Usage:
+ *   - K&R style detection: SYM without type keyword indicates K&R parameters
+ *   - Declaration parsing: Determines if token starts a new declaration
+ *   - Type continuation: Checks if more type tokens follow
+ *
+ * Parameters:
+ *   t - Token type to check
+ *
+ * Returns:
+ *   1 if token is a type keyword, 0 otherwise
  */
 static int
 isTypeToken(unsigned char t)
@@ -13,8 +35,34 @@ isTypeToken(unsigned char t)
 }
 
 /*
- * Parse pointer prefix (zero or more '*' tokens)
- * Returns a pointer type wrapping the given base type
+ * Parse pointer prefix and build pointer type chain
+ *
+ * Processes zero or more '*' tokens to construct a chain of pointer types.
+ * Each '*' wraps the previous type in a pointer type, building from right
+ * to left in the type hierarchy.
+ *
+ * Type construction:
+ *   - char **      -> pointer to pointer to char
+ *   - int ***      -> pointer to pointer to pointer to int
+ *   - const char * -> pointer to const char (const consumed but not stored)
+ *
+ * Qualifier handling:
+ *   - Skips const/volatile qualifiers after each '*'
+ *   - Example: char *const volatile * parses correctly
+ *   - Qualifiers are currently ignored (not stored in type system)
+ *
+ * Precedence with arrays/functions:
+ *   - Pointers bind tighter than arrays: int *arr[10] is array of pointers
+ *   - Function pointers need parens: int (*fptr)() is pointer to function
+ *
+ * Parameters:
+ *   basetype - The base type to wrap with pointer(s)
+ *
+ * Returns:
+ *   Type pointer representing the complete pointer chain, or basetype if no '*'
+ *
+ * Side effects:
+ *   - Consumes '*' and qualifier tokens from input stream
  */
 static struct type *
 parsePointerPrefix(struct type *basetype)
@@ -32,8 +80,34 @@ parsePointerPrefix(struct type *basetype)
 }
 
 /*
- * Parse optional parameter name into provided buffer
- * Returns pointer to buffer (or "" for anonymous) or NULL if error
+ * Parse optional parameter name into stack-allocated buffer
+ *
+ * Reads a parameter name from the token stream if present, storing it in
+ * the provided stack buffer. Supports both named and anonymous parameters
+ * depending on context (ANSI declarations allow anonymous, K&R requires names).
+ *
+ * Anonymous parameter handling:
+ *   - ANSI prototypes: int foo(int, char *) - anonymous allowed
+ *   - ANSI definitions: int foo(int x, char *p) - names required for body
+ *   - K&R declarations: int foo(x, p) - names always required
+ *
+ * Buffer usage:
+ *   - Uses caller-provided stack buffer to avoid heap allocation
+ *   - Prevents memory leaks from temporary parameter name storage
+ *   - Typical buffer size: 64 bytes (sufficient for C identifiers)
+ *
+ * Parameters:
+ *   allow_anonymous - 1 to allow anonymous params, 0 to require name
+ *   buf             - Stack buffer to store parameter name
+ *   bufsize         - Size of buffer (prevents overflow)
+ *
+ * Returns:
+ *   Pointer to buf containing name if SYM token found
+ *   Pointer to buf containing "" if anonymous and allowed
+ *   NULL if name required but not found
+ *
+ * Side effects:
+ *   - Consumes SYM token if present
  */
 static char *
 parseParamName(unsigned char allow_anonymous, char *buf, int bufsize)
@@ -52,7 +126,33 @@ parseParamName(unsigned char allow_anonymous, char *buf, int bufsize)
 }
 
 /*
- * Create a new function parameter name entry
+ * Create function parameter name entry for type signature
+ *
+ * Allocates and initializes a name structure to represent a function parameter
+ * in the function type's elem list. These entries serve dual purposes:
+ *   1. Store parameter types in function type signature
+ *   2. Provide names for parsefunc() to create namespace entries
+ *
+ * Parameter name handling:
+ *   - Always duplicates name string to prevent dangling pointers
+ *   - Anonymous parameters get empty string "" (not NULL)
+ *   - K&R style uses names for matching type declarations to parameter list
+ *   - compatible_function_types() ignores names when comparing signatures
+ *
+ * Level and scope:
+ *   - Sets level to lexlevel+1 (function body scope)
+ *   - Parameters become visible when parsefunc() processes function body
+ *   - Temporary entries in type->elem, real namespace entries created later
+ *
+ * Parameters:
+ *   name - Parameter name (can be NULL for anonymous, will be duplicated)
+ *   type - Parameter type
+ *
+ * Returns:
+ *   Newly allocated name entry with funarg kind
+ *
+ * Side effects:
+ *   - Allocates memory for name structure and duplicates name string
  */
 static struct name *
 create_param_entry(char *name, struct type *type)
@@ -68,11 +168,72 @@ create_param_entry(char *name, struct type *type)
 }
 
 /*
- * we are in a parse state where we want to process declarations.
- * any names and types we declare go into the current scope
+ * Parse a complete C declarator and create symbol table entry
  *
- * struct_elem: if true, this is a struct member and should NOT be added
- *              to the global names[] array (to avoid namespace pollution)
+ * This is the core declaration parser that handles all C declarator syntax:
+ * pointers, arrays, functions, and their combinations with proper precedence.
+ * It creates name entries in the symbol table (or struct members) with
+ * complete type information.
+ *
+ * Declarator grammar (simplified):
+ *   declarator = prefix_declarator suffix_declarator*
+ *   prefix_declarator = '*'* ('(' declarator ')' | identifier)
+ *   suffix_declarator = '[' const_expr? ']' | '(' params ')'
+ *
+ * Precedence rules (postfix binds tighter than prefix):
+ *   - int *p[10]    -> array of 10 pointers to int
+ *   - int (*p)[10]  -> pointer to array of 10 ints
+ *   - int *f()      -> function returning pointer to int
+ *   - int (*f)()    -> pointer to function returning int
+ *
+ * Parameter modes:
+ *   btp         - Base type pointer (in/out parameter)
+ *   struct_elem - If true, creates struct member (not added to names[])
+ *
+ * Type assembly:
+ *   - Base type comes from caller (int, char, struct foo, etc.)
+ *   - Prefix modifiers (pointers) wrap base type
+ *   - Suffix modifiers (arrays, functions) become new outer type
+ *   - Final type attached to name entry
+ *
+ * Function parameter handling:
+ *   - Detects K&R vs ANSI style automatically
+ *   - K&R: foo(x, y) followed by int x; char *y;
+ *   - ANSI: foo(int x, char *y)
+ *   - Parameters stored in type->elem as linked list
+ *   - Variadic functions detected (...) and marked with TF_VARIADIC
+ *
+ * Array handling:
+ *   - Size can be omitted: int arr[] (size -1, completed later)
+ *   - Arrays get both TF_ARRAY and TF_POINTER for decay semantics
+ *   - Multi-dimensional arrays supported: int m[10][20]
+ *
+ * Struct member mode:
+ *   - struct_elem=1: Creates name but doesn't add to names[] array
+ *   - Avoids polluting global namespace with member names
+ *   - Members linked via next pointer in struct type's elem list
+ *
+ * Bitfield support:
+ *   - Detected by ':' after identifier: unsigned flags : 3;
+ *   - Width stored in name->width field
+ *   - Kind changed to bitfield
+ *
+ * Redeclaration handling:
+ *   - Function forward declarations: Reuses existing name entry
+ *   - Other redeclarations: Creates new entry (error reported elsewhere)
+ *
+ * Parameters:
+ *   btp         - Pointer to base type (can be NULL, updated if type seen)
+ *   struct_elem - 1 for struct members, 0 for normal variables/functions
+ *
+ * Returns:
+ *   Name entry with complete type, or NULL on error
+ *
+ * Side effects:
+ *   - May update *btp if type keywords encountered
+ *   - Consumes declarator tokens from input stream
+ *   - Creates name entry (added to names[] unless struct_elem=1)
+ *   - For functions: allocates parameter name entries
  */
 struct name *
 declareInternal(struct type **btp, unsigned char struct_elem)
@@ -412,8 +573,28 @@ declareInternal(struct type **btp, unsigned char struct_elem)
 }                               // declareInternal
 
 /*
- * Public wrapper for declareInternal.
- * Normal variables are added to the global names[] array.
+ * Public wrapper for declareInternal - normal variable/function declarations
+ *
+ * Simplified interface for declaring normal variables and functions that
+ * should be added to the global names[] symbol table. Used by parse.c for
+ * all non-struct-member declarations.
+ *
+ * Behavior:
+ *   - Calls declareInternal() with struct_elem=0
+ *   - Name entries are added to names[] array
+ *   - Visible in current lexical scope
+ *
+ * Usage contexts:
+ *   - Global variable declarations
+ *   - Local variable declarations
+ *   - Function declarations and definitions
+ *   - Typedef declarations
+ *
+ * Parameters:
+ *   btp - Pointer to base type (in/out parameter)
+ *
+ * Returns:
+ *   Name entry created by declareInternal(), or NULL on error
  */
 struct name *
 declare(struct type **btp)
@@ -422,8 +603,34 @@ declare(struct type **btp)
 }
 
 /*
- * Check if current token could start a type cast
- * Returns 1 if it's a type keyword or typedef name
+ * Detect if current token starts a type cast expression
+ *
+ * Distinguishes between type casts and parenthesized expressions when
+ * parsing '(' token. This is critical for correctly parsing cast expressions
+ * vs. grouped expressions:
+ *
+ * Disambiguation examples:
+ *   - (int)x      -> type cast (starts with type keyword)
+ *   - (foo)x      -> type cast if foo is typedef, expression otherwise
+ *   - (x + y)     -> parenthesized expression (starts with identifier/expression)
+ *   - (int*)p     -> type cast (starts with type keyword)
+ *
+ * Detection strategy:
+ *   1. Check for C type keywords (int, char, struct, etc.)
+ *   2. Check if SYM token is a typedef name in symbol table
+ *
+ * Typedef handling:
+ *   - Looks up identifier in names[] array
+ *   - Checks if kind is tdef (typedef)
+ *   - Enables casts with user-defined type names: (foo_t)x
+ *
+ * Used by:
+ *   - Expression parser when encountering '(' to decide parse path
+ *   - Cast expression parsing (parseTypeName)
+ *
+ * Returns:
+ *   1 if current token could start a type cast
+ *   0 if current token starts a parenthesized expression
  */
 int
 isCastStart(void)
@@ -447,16 +654,51 @@ isCastStart(void)
 }
 
 /*
- * Parse a type name for a cast: (type)
- * This parses type specifiers and abstract declarator (pointers, arrays)
- * but does NOT require a variable name (unlike normal declarations)
+ * Parse type name in cast expression without requiring identifier
+ *
+ * Parses abstract type names used in cast expressions, sizeof, and other
+ * contexts where a type is specified without a variable name. This is
+ * distinct from normal declarations which require an identifier.
+ *
+ * Abstract declarators supported:
+ *   - Simple types: int, char, struct foo
+ *   - Pointer types: char *, int **, void ***
+ *   - Typedef names: size_t, my_type_t
+ *
+ * Abstract declarators NOT YET supported:
+ *   - Arrays: int[], int[10]
+ *   - Function pointers: int (*)(void), void (*)(int, int)
+ *   - Complex combinations: int (*[])(void)
+ *
+ * TODO: Full abstract declarator support would require:
+ *   - Parsing (*) for pointer-to-array/function
+ *   - Parsing [] and () without identifiers
+ *   - Proper precedence handling
+ *
+ * Current limitations:
+ *   - Only handles base types and pointer prefixes
+ *   - No array dimensions in casts: (int[])x doesn't work
+ *   - No function pointer casts: (int(*)(void))x doesn't work
+ *
+ * K&R default type:
+ *   - If no type specified, defaults to int (K&R C behavior)
+ *   - Enables implicit int casts (rare in practice)
  *
  * Examples:
- *   int
- *   char *
- *   int **
- *   int *[]
- *   int (*)[10]
+ *   (int)x           -> parses "int"
+ *   (char *)p        -> parses "char *" (pointer to char)
+ *   (unsigned long)v -> parses "unsigned long"
+ *   (foo_t)x         -> parses typedef "foo_t"
+ *
+ * Parameters:
+ *   None (reads from current token stream)
+ *
+ * Returns:
+ *   Type structure representing the parsed type name
+ *
+ * Side effects:
+ *   - Consumes type tokens from input stream
+ *   - Does NOT consume closing ')' of cast
  */
 struct type *
 parseTypeName(void)

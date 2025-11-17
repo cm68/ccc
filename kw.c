@@ -85,6 +85,41 @@ unsigned char ckw[] = {
 };
 
 #ifdef ASMKWLOOK
+/*
+ * Look up keyword in compressed table (Z80 assembly implementation)
+ *
+ * Hand-optimized Z80 assembly implementation of keyword table lookup.
+ * This version provides maximum performance and minimum code size for
+ * the Z80 target platform.
+ *
+ * Algorithm:
+ *   - Pattern matching using compressed table grammar
+ *   - Processes HI bit characters (skip pointers) for fast mismatches
+ *   - Follows character sequences for potential matches
+ *   - Returns token number if complete match, 0 otherwise
+ *
+ * Table grammar (defined in file header comments):
+ *   0xff <token> - If string at null, return token, else 0
+ *   0xfe <token> - If string at null, return token, else advance pattern
+ *   <char>       - If matches, advance both, else return 0
+ *   <char|0x80> <skip> - If matches low 7 bits, advance both by 2, else skip
+ *
+ * Register usage:
+ *   HL - Table pointer
+ *   DE - String pointer
+ *   A  - Working register
+ *
+ * Parameters:
+ *   str   - Null-terminated keyword string to search for
+ *   table - Compressed keyword table (cppkw or ckw)
+ *
+ * Returns:
+ *   Token number if found, 0 if not found
+ *
+ * Side effects:
+ *   - Modifies Z80 registers (HL, DE, A, flags)
+ *   - No side effects to memory or global state
+ */
 char
 kwlook(char *str, char *table)
 ASMFUNC
@@ -129,6 +164,43 @@ ASMFUNC
     return 0;  // Never reached - assembly does its own return
 }
 #else
+/*
+ * Look up keyword in compressed table (portable C implementation)
+ *
+ * Searches a compressed keyword table for a given identifier string.
+ * Uses a space-efficient table encoding with skip pointers for fast
+ * mismatch rejection. This is the portable C version used on non-Z80
+ * platforms.
+ *
+ * Table compression:
+ *   - Characters with HI bit set (0x80) include skip distance
+ *   - Skip distance allows jumping past unmatched prefix trees
+ *   - Terminators (0xff, 0xfe) signal end of pattern with token
+ *
+ * Algorithm:
+ *   - Walk pattern and string in parallel
+ *   - HI bit characters: match low 7 bits, advance by 2 or skip
+ *   - Literal characters: must match exactly
+ *   - Terminators: check if string also at end
+ *
+ * Table grammar examples (from header):
+ *   Simple match: 'd', 'o', 0xff, DO
+ *   With skip: 'i'|HI, 7, 'f'|HI, 15, 0xfe, IF, ...
+ *
+ * Used for:
+ *   - C keyword lookup (ckw table): if, while, int, etc.
+ *   - CPP keyword lookup (cppkw table): define, ifdef, include
+ *
+ * Parameters:
+ *   str   - Null-terminated identifier string to search for
+ *   table - Compressed keyword table (cppkw or ckw)
+ *
+ * Returns:
+ *   Token number if keyword found, 0 if not found (identifier)
+ *
+ * Side effects:
+ *   - None (pure function)
+ */
 char
 kwlook(unsigned char *str, unsigned char *table)
 {

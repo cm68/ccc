@@ -48,6 +48,30 @@ char *asmCbuf = NULL;
 int asmCsiz = 0;
 int asmClen = 0;
 
+/*
+ * Output text to assembly capture buffer
+ *
+ * Appends assembly code text to the dynamically growing asm capture buffer.
+ * Used to collect inline assembly blocks during parsing for later output
+ * to the AST. The buffer automatically expands as needed.
+ *
+ * Special character handling:
+ *   - Skips braces "{ " and "} " (parsing markers, not asm text)
+ *   - All other text copied verbatim
+ *
+ * Buffer management:
+ *   - Starts at asmCsiz bytes, doubles when full
+ *   - Always null-terminated after append
+ *   - Allocated with realloc() for dynamic growth
+ *
+ * Parameters:
+ *   s   - Text to append
+ *   len - Length of text in bytes
+ *
+ * Side effects:
+ *   - May reallocate asmCbuf (pointer changes)
+ *   - Updates asmClen to reflect new length
+ */
 void
 asmOut(char *s, int len)
 {
@@ -71,6 +95,15 @@ asmOut(char *s, int len)
     asmCbuf[asmClen] = 0;  /* Null terminate */
 }
 
+/*
+ * Initialize lexer state
+ *
+ * Resets the token stream to initial state. Called at the start of each
+ * source file before parsing begins.
+ *
+ * Side effects:
+ *   - Clears cur and next token types to NONE
+ */
 void
 lexinit()
 {
@@ -78,9 +111,24 @@ lexinit()
 }
 
 /*
- * return true if the current token matches
- * also, consume the token.  
- * this is a code size optimization, since this path is common
+ * Check if current token matches and consume it if so
+ *
+ * Common pattern in parsing: test for token type and consume if matched.
+ * This helper combines both operations to reduce code size throughout
+ * the parser.
+ *
+ * Typical usage:
+ *   if (match(SEMI)) { ... }  // consumes ';' if present
+ *   while (match(COMMA)) { parseNext(); }  // loop over comma-separated list
+ *
+ * Parameters:
+ *   t - Token type to check for
+ *
+ * Returns:
+ *   1 if current token matched (and consumed), 0 otherwise
+ *
+ * Side effects:
+ *   - Advances token stream if match succeeds (calls gettoken())
  */
 char
 match(token_t t)
@@ -93,8 +141,25 @@ match(token_t t)
 }
 
 /*
- * this happens a fair amount too, and we want to save code
- * if curchar is this, then true and eat the character
+ * Check if current character matches and consume it if so
+ *
+ * Similar to match() but operates at character level rather than token level.
+ * Used during low-level tokenization to test and consume single characters
+ * from the input stream.
+ *
+ * Common usages:
+ *   - Testing for specific delimiters: charmatch('\'')
+ *   - Consuming expected characters: charmatch('0')
+ *   - Operator parsing: charmatch('=')
+ *
+ * Parameters:
+ *   c - Character to check for
+ *
+ * Returns:
+ *   1 if curchar matched (and consumed), 0 otherwise
+ *
+ * Side effects:
+ *   - Advances character stream if match succeeds (calls advance())
  */
 int
 charmatch(int c)
@@ -108,7 +173,20 @@ charmatch(int c)
 }
 
 /*
- * skip over any whitespace
+ * Skip whitespace including newlines
+ *
+ * Advances past all space and newline characters. Used when whitespace
+ * (including line breaks) is insignificant in the current context.
+ *
+ * Characters skipped:
+ *   - Space (' ')
+ *   - Newline ('\n')
+ *
+ * Characters NOT skipped:
+ *   - Tab ('\t') - not considered whitespace by this function
+ *
+ * Side effects:
+ *   - Advances character stream until non-whitespace found
  */
 void
 skipws()
@@ -119,7 +197,20 @@ skipws()
 }
 
 /*
- * skip over any whitespace other than newline
+ * Skip whitespace excluding newlines
+ *
+ * Advances past space characters but stops at newlines. Used in contexts
+ * where newline is significant (preprocessor directives, ONELINE mode).
+ *
+ * Characters skipped:
+ *   - Space (' ')
+ *
+ * Characters NOT skipped:
+ *   - Newline ('\n') - significant in CPP directives
+ *   - Tab ('\t') - not considered whitespace by this function
+ *
+ * Side effects:
+ *   - Advances character stream until newline or non-space found
  */
 void
 skipws1()
@@ -130,7 +221,18 @@ skipws1()
 }
 
 /*
- * skip to end of line
+ * Skip to end of current line
+ *
+ * Advances past all characters until newline or EOF. Used to discard
+ * rest of preprocessor directives, comments, or error recovery.
+ *
+ * Stops at:
+ *   - Newline ('\n') - NOT consumed, left as curchar
+ *   - EOF (curchar == 0)
+ *
+ * Side effects:
+ *   - Advances character stream
+ *   - Leaves curchar at newline or 0
  */
 void
 skiptoeol()
@@ -141,8 +243,36 @@ skiptoeol()
 }
 
 /*
- * read an integer in a given base from the input stream
- * the base marker [bxd] has been consumed
+ * Read integer constant in specified base from character stream
+ *
+ * Converts character sequence to integer value. Handles multiple bases
+ * (binary, octal, decimal, hexadecimal) with full digit validation.
+ *
+ * Supported bases:
+ *   - Binary (2):  0b1010
+ *   - Octal (8):   0755, 010
+ *   - Decimal (10): 123, 0d99
+ *   - Hexadecimal (16): 0xABCD, 0xff
+ *
+ * Digit validation:
+ *   - Rejects digits >= base (e.g., '8' in octal)
+ *   - Accepts a-f/A-F for hex (case insensitive)
+ *   - Stops at first invalid character
+ *
+ * Error handling:
+ *   - If no digits consumed for base 2 or 16, reports ER_C_NX error
+ *   - Base 8/10 allow zero-length (return 0)
+ *
+ * Parameters:
+ *   base - Number base (2, 8, 10, or 16)
+ *
+ * Returns:
+ *   Integer value parsed from input stream
+ *
+ * Side effects:
+ *   - Consumes digit characters from input
+ *   - Leaves curchar at first non-digit
+ *   - May report error for empty hex/binary literals
  */
 static
 int
@@ -181,9 +311,42 @@ getint(unsigned char base)
 }
 
 /*
- * do character literal processing, handling the C escape codes
- * extended with decimal and binary constants
- * this function consumes the input, returning the character value
+ * Parse character literal with escape sequence handling
+ *
+ * Processes a single character from a character or string literal, handling
+ * all standard C escape sequences plus custom extensions. This is the core
+ * function for interpreting escape codes in both 'x' and "string" literals.
+ *
+ * Standard C escape sequences:
+ *   \\b - backspace       \\n - newline        \\r - carriage return
+ *   \\t - tab             \\f - form feed      \\v - vertical tab
+ *   \\NNN - octal (up to 3 digits, 0-7)
+ *   \\xNN - hexadecimal (any length, 0-9 a-f A-F)
+ *   \\\\ - backslash      \\' - single quote   \\" - double quote
+ *
+ * Custom extensions:
+ *   \\e - escape (0x1b)
+ *   \\BNN - binary (0b prefix, then digits)
+ *   \\DNN - decimal (0d prefix, then digits)
+ *
+ * Line continuation:
+ *   - Backslash-newline: Increment line number and retry from next line
+ *   - Allows multi-line literals in source code
+ *
+ * Invalid characters:
+ *   - Non-printable ASCII (< 0x20 or > 0x7e) replaced with space
+ *   - Error reported via ER_C_BC
+ *
+ * Parameters:
+ *   None (reads from curchar/nextchar)
+ *
+ * Returns:
+ *   Unsigned char value (0-255) after escape processing
+ *
+ * Side effects:
+ *   - Consumes character(s) from input stream
+ *   - May increment lineno for backslash-newline
+ *   - Reports errors for invalid characters
  */
 static unsigned char
 getlit()
@@ -246,7 +409,41 @@ top:
 }
 
 /*
- * if we have a constant number, then return 1 and assign nextval
+ * Parse numeric constant (character or integer literal)
+ *
+ * Detects and parses character literals ('x') and integer constants
+ * (decimal, octal, hex, binary) from the input stream. Stores result
+ * in next.v.numeric for token processing.
+ *
+ * Character literals:
+ *   - Format: 'x' or '\\n' (with escape sequences)
+ *   - Processes escape codes via getlit()
+ *   - Missing closing quote generates ER_C_CD error
+ *
+ * Integer literals:
+ *   - Decimal: 123, 456
+ *   - Hexadecimal: 0x10, 0xFF
+ *   - Octal: 0755, 010
+ *   - Binary: 0b1010
+ *   - Long suffix: 123L, 0xFFL (suffix consumed but ignored)
+ *
+ * Base detection:
+ *   - 0x/0X prefix -> hexadecimal (base 16)
+ *   - 0b/0B prefix -> binary (base 2)
+ *   - 0d/0D prefix -> decimal (base 10)
+ *   - 0 prefix (no suffix) -> octal (base 8)
+ *   - Otherwise -> decimal (base 10)
+ *
+ * Parameters:
+ *   None (reads from character stream)
+ *
+ * Returns:
+ *   1 if number parsed (value stored in next.v.numeric), 0 if not a number
+ *
+ * Side effects:
+ *   - Consumes numeric characters from input
+ *   - Sets next.v.numeric to parsed value
+ *   - May report error for malformed character literal
  */
 char
 isnumber()
@@ -291,11 +488,40 @@ isnumber()
 }
 
 /*
- * does the next hunk of characters look like a C symbol or keyword
- * specifically, does it look like [A-Za-z_][A-Za-z0-9_]*
- * if it does, copy it to the string buffer
- * important: don't advance. leave curchar being the last character of sym
- * and nextchar being the character that detected the end of the name
+ * Parse C identifier into string buffer
+ *
+ * Detects and extracts C identifiers (keywords and symbols) following the
+ * standard identifier rules: [A-Za-z_][A-Za-z0-9_]*
+ *
+ * Identifier rules:
+ *   - First character: letter (a-z, A-Z) or underscore (_)
+ *   - Subsequent characters: letter, digit (0-9), or underscore
+ *   - No length limit (limited by STRBUFSIZE)
+ *
+ * Lookahead behavior:
+ *   - IMPORTANT: Does NOT advance past last character
+ *   - Leaves curchar at last identifier character
+ *   - Leaves nextchar at first non-identifier character
+ *   - Caller must call advance() to move past identifier
+ *
+ * This unusual convention allows the caller to inspect the character
+ * immediately following the identifier (for macro detection, etc.) before
+ * consuming it.
+ *
+ * Buffer usage:
+ *   - Writes to global strbuf
+ *   - Null-terminates result
+ *   - No overflow checking (assumes STRBUFSIZE sufficient)
+ *
+ * Parameters:
+ *   None (reads from curchar/nextchar, writes to strbuf)
+ *
+ * Returns:
+ *   1 if identifier found (result in strbuf), 0 if curchar not identifier start
+ *
+ * Side effects:
+ *   - Advances curchar to last identifier character (NOT past it)
+ *   - Writes identifier to strbuf with null terminator
  */
 char
 issym()
@@ -331,7 +557,24 @@ issym()
 }
 
 /*
- * Output to both cpp file and asm buffer
+ * Output text to preprocessor file and/or asm capture buffer
+ *
+ * Unified output function that writes text to both preprocessor output
+ * (when -E flag active) and inline assembly capture buffer (when in asm
+ * block). Simplifies caller code by handling both destinations.
+ *
+ * Output destinations:
+ *   - Preprocessor file (.i file) if writeCppfile is set
+ *   - Assembly capture buffer if asmCbuf is allocated
+ *   - Can output to neither, one, or both simultaneously
+ *
+ * Parameters:
+ *   s   - Text to output
+ *   len - Length in bytes
+ *
+ * Side effects:
+ *   - Writes to cppfile if enabled
+ *   - Appends to asmCbuf if enabled
  */
 void
 cppAsmOut(char *s, int len)
@@ -345,8 +588,17 @@ cppAsmOut(char *s, int len)
 }
 
 /*
- * Helper: output string followed by space
- * Reduces code duplication in token output
+ * Output text followed by space - common token output pattern
+ *
+ * Convenience wrapper that appends a space after the text. Most tokens
+ * need spacing in output, so this reduces code duplication in outputToken().
+ *
+ * Parameters:
+ *   s   - Text to output
+ *   len - Length in bytes (not including trailing space)
+ *
+ * Side effects:
+ *   - Writes text + space to cpp file and/or asm buffer
  */
 void
 cppAsmOutWithSpace(char *s, int len)
@@ -356,7 +608,40 @@ cppAsmOutWithSpace(char *s, int len)
 }
 
 /*
- * Output a token to cpp file and/or asm buffer
+ * Output token to preprocessor file and/or asm buffer
+ *
+ * Converts a token structure back to source text representation for
+ * preprocessor output (-E flag) and inline assembly capture. Handles
+ * special formatting for each token type.
+ *
+ * Token types and formatting:
+ *   - SYM: Output identifier name + space
+ *   - STRING: Output with quotes and escape sequences
+ *   - NUMBER: Convert to decimal with space
+ *   - Keywords/operators: Use detoken[] or tokenname[] lookup
+ *
+ * String literal formatting:
+ *   - Outputs opening quote
+ *   - Processes in chunks to avoid large stack buffer
+ *   - Uses controlify() for escape sequences (\\n, \\t, \\", etc.)
+ *   - Outputs closing quote + space
+ *   - Chunk size: 16 source chars at a time
+ *
+ * Memory efficiency:
+ *   - Chunked string processing reduces stack usage
+ *   - Small buffer (128 bytes) for escape expansion
+ *   - Important for compiler size constraints
+ *
+ * Output destinations:
+ *   - Preprocessor .i file if writeCppfile enabled
+ *   - Inline asm buffer if asmCbuf allocated
+ *   - No-op if neither destination active
+ *
+ * Parameters:
+ *   tok - Token to output
+ *
+ * Side effects:
+ *   - Writes to cpp file and/or asm buffer via cppAsmOut()
  */
 void
 outputToken(struct token *tok)
@@ -429,6 +714,60 @@ outputToken(struct token *tok)
     }
 }
 
+/*
+ * Process preprocessor directive
+ *
+ * Handles all C preprocessor directives (#define, #if, #include, etc.)
+ * including conditional compilation with nesting support. This is the
+ * core preprocessor implementation.
+ *
+ * Directives supported:
+ *   #define NAME [value]     - Define macro (object-like or function-like)
+ *   #undef NAME              - Remove macro definition
+ *   #include "file" or <file> - Insert file contents
+ *   #if expr                 - Start conditional block (nests)
+ *   #ifdef NAME              - True if macro defined
+ *   #ifndef NAME             - True if macro NOT defined
+ *   #elif expr               - Else-if in conditional
+ *   #else                    - Else in conditional
+ *   #endif                   - End conditional block
+ *
+ * Conditional compilation stack:
+ *   - Maintains linked list of struct cond
+ *   - Each #if/#ifdef/#ifndef pushes new level
+ *   - #endif pops level
+ *   - Flags track state: C_TRUE (active), C_ELSESEEN, C_TRUESEEN
+ *
+ * State tracking:
+ *   - C_TRUE: Current block is active (output tokens)
+ *   - C_TRUESEEN: At least one branch was true (skips remaining branches)
+ *   - C_ELSESEEN: #else seen (error if another #else encountered)
+ *
+ * Token skipping:
+ *   - False blocks skip tokens via gettoken() loop
+ *   - Nested conditionals handled correctly
+ *   - #if/#elif in true blocks break to return next token
+ *
+ * #include handling:
+ *   - Angle brackets <file> search system include path
+ *   - Quotes "file" search user include paths
+ *   - Calls insertfile() to push file on textbuf stack
+ *   - Primes character stream after insertion
+ *
+ * Expression evaluation:
+ *   - #if and #elif call readcppconst() to eval expression
+ *   - ONELINE mode limits expression to single line
+ *   - defined() pseudofunction supported
+ *
+ * Parameters:
+ *   t - Preprocessor directive token type (IF, IFDEF, DEFINE, etc.)
+ *
+ * Side effects:
+ *   - Modifies cond stack (pushes/pops levels)
+ *   - Consumes tokens from input stream
+ *   - May insert files or macro definitions
+ *   - Updates C_TRUE/C_ELSESEEN/C_TRUESEEN flags
+ */
 void
 do_cpp(unsigned char t)
 {
@@ -622,10 +961,39 @@ do_cpp(unsigned char t)
 }
 
 /*
- * check if we have a literal string - hair here, since embedded nulls
- * return the value into strbuf, and maintain the count
+ * Parse string literal into counted string buffer
+ *
+ * Processes double-quoted string literals with escape sequence handling.
+ * Stores result as counted string (first byte is length, followed by data)
+ * in strbuf, supporting embedded null characters.
+ *
+ * Counted string format:
+ *   - strbuf[0]: Length byte (0-255)
+ *   - strbuf[1..n]: String characters
+ *   - strbuf[n+1]: Null terminator (for convenience, not counted)
+ *
+ * Escape processing:
+ *   - Calls getlit() for each character
+ *   - Handles all C escape sequences: \\n, \\t, \\", \\\, \\xNN, etc.
+ *   - Supports multi-line strings with backslash-newline
+ *
+ * Embedded nulls:
+ *   - Counted format allows embedded \\0 characters
+ *   - Length tracking independent of null terminator
+ *   - Example: "ab\\0cd" has length 5
+ *
+ * Parameters:
+ *   None (reads from character stream, writes to strbuf)
+ *
+ * Returns:
+ *   1 if string parsed (result in strbuf), 0 if curchar not '\"'
+ *
+ * Side effects:
+ *   - Consumes characters from '\"' to closing '\"'
+ *   - Writes counted string to strbuf
+ *   - strbuf[0] contains final length
  */
-char 
+char
 isstring()
 {
 	char *s = strbuf;
@@ -669,21 +1037,42 @@ char dbltok[] = {
 };
 
 /*
- * list of tokens that can have '=' appended 
+ * list of tokens that can have '=' appended
  * and then, what token that turns them into
- */ 
+ */
 char eq_able[] = {
-    PLUS, MINUS, STAR, DIV, MOD, AND, OR, XOR, 
+    PLUS, MINUS, STAR, DIV, MOD, AND, OR, XOR,
     GT, LT, BANG, LOR, LAND, RSHIFT, LSHIFT, 0
 };
 char eqtok[] = {
-    PLUSEQ, SUBEQ, MULTEQ, DIVEQ, MODEQ, ANDEQ, OREQ, XOREQ, 
+    PLUSEQ, SUBEQ, MULTEQ, DIVEQ, MODEQ, ANDEQ, OREQ, XOREQ,
     GE, LE, NEQ, LOREQ, LANDEQ, RSHIFTEQ, LSHIFTEQ, 0
 };
 
 /*
- * when we bump over our current token, we may need to free any
- * memory we allocated
+ * Free memory allocated for current token
+ *
+ * Releases heap-allocated memory associated with the current token before
+ * advancing to the next token. Prevents memory leaks during tokenization.
+ *
+ * Token memory management:
+ *   - SYM tokens: Allocate name string (freed here)
+ *   - STRING tokens: NOT freed (persist throughout compilation)
+ *   - Other tokens: No heap allocation (nothing to free)
+ *
+ * STRING token persistence:
+ *   - String literals referenced in expressions and initializers
+ *   - Must survive entire compilation
+ *   - Stored as synthetic global variables (_str0, _str1, etc.)
+ *   - Freed at end of compilation (not per-token)
+ *
+ * Double-free prevention:
+ *   - Sets cur.v.name to NULL after freeing
+ *   - Prevents crashes if freetoken() called twice
+ *
+ * Side effects:
+ *   - Frees cur.v.name if cur.type == SYM
+ *   - Sets cur.v.name to NULL
  */
 void
 freetoken()
@@ -699,13 +1088,84 @@ freetoken()
 char nbuf[1024];  // Large enough for escaped string: 1 + 255*4 + 1 = 1022 bytes
 
 /*
- * we want a stream of lexemes to be placed into 
- * cur and next respectively.
- * we need 1 token of lookahead to do a recursive descent parse of C
+ * Get next token from input stream
  *
- * all the comment and preprocessor stuff is invisible above here
- * as is string, character escaping, and number bases
+ * This is the main lexer/tokenizer function that implements the complete
+ * C tokenization process including preprocessor integration, comment
+ * handling, and operator recognition. It maintains a two-token lookahead
+ * (cur and next) required for recursive descent parsing.
  *
+ * Token stream management:
+ *   - Shifts next -> cur
+ *   - Parses new token into next
+ *   - Maintains token history for debugging (tok_hist circular buffer)
+ *
+ * Preprocessing integration:
+ *   - Comment stripping (C and C++ style)
+ *   - CPP directive processing (define, if, include, etc.)
+ *   - Macro expansion via macexpand()
+ *   - Conditional compilation (skips false blocks)
+ *
+ * Token types recognized:
+ *   - Identifiers/keywords (via issym() + kwlook())
+ *   - Numbers (via isnumber() - decimal, hex, octal, binary, char)
+ *   - String literals (via isstring())
+ *   - Operators (single-char, doubled, with '=' suffix)
+ *   - Special operators: ->, punctuation
+ *
+ * Operator tokenization:
+ *   - Single-char operators: + - * / % & | ^ < > ! ~ ? : = . , ; braces brackets parens
+ *   - Doubled operators: ++ -- || && == >> << (same char twice)
+ *   - Equals-suffix: += -= *= /= %= &= |= ^= >= <= != >>= <<= ||= &&=
+ *   - Arrow operator: ->
+ *
+ * Preprocessor directive handling:
+ *   - Hash at column 0 triggers CPP processing
+ *   - Non-column-0 hash treated as token (for stringify in macros)
+ *   - Directives processed by do_cpp()
+ *   - False blocks skip all tokens except nested directives
+ *
+ * Comment handling:
+ *   - C-style: block comments (may nest, handled as single comment)
+ *   - C++ style: line comments to end of line
+ *   - Tracked via incomment flag across gettoken() calls
+ *   - Comments invisible to parser
+ *
+ * Macro expansion:
+ *   - Checks identifiers via macexpand()
+ *   - Expands and re-tokenizes replacement text
+ *   - Handles function-like macros with arguments
+ *   - defined() pseudofunction in conditional expressions
+ *
+ * ONELINE mode:
+ *   - Used for conditional expression evaluation
+ *   - Translates newline to ';' to terminate expression
+ *   - Enabled via tflags & ONELINE
+ *
+ * Output for preprocessor (-E flag):
+ *   - Calls outputToken() to emit token text
+ *   - Writes to .i file and/or asm capture buffer
+ *   - Preserves spacing and formatting
+ *
+ * Asm block support:
+ *   - Captures tokens to asmCbuf when active
+ *   - Converts newlines to semicolons for asm statements
+ *   - Skips braces (parsing markers, not asm text)
+ *
+ * EOF handling:
+ *   - Returns E_O_F token when curchar == 0
+ *   - Checks for unclosed conditional directives
+ *
+ * Error recovery:
+ *   - Invalid tokens converted to ';' with ER_C_UT error
+ *   - Continues parsing after errors
+ *
+ * Side effects:
+ *   - Advances cur and next tokens
+ *   - Consumes characters from input stream
+ *   - May expand macros, process directives, include files
+ *   - Updates incomment, lineend, tflags
+ *   - Writes to preprocessor output and/or asm buffer
  */
 /* Track when newline encountered for asm capture semicolon insertion */
 unsigned char lineend = 0;
@@ -1033,7 +1493,49 @@ gettoken()
 }
 
 /*
- * it's not k&r, but #if defined(foo) should return 1 or 0.
+ * Handle defined() pseudofunction in preprocessor expressions
+ *
+ * Implements the defined() operator for #if and #elif directives. This
+ * is a standard C preprocessor feature (though not in original K&R) that
+ * tests if a macro name is currently defined.
+ *
+ * Syntax supported:
+ *   defined(NAME)  - Returns 1 if NAME is defined, 0 otherwise
+ *
+ * Usage contexts:
+ *   - #if defined(DEBUG) || defined(TRACE)
+ *   - #elif defined(__GNUC__)
+ *   - #if !defined(NDEBUG) && defined(CHECKS)
+ *
+ * Processing:
+ *   1. Checks if identifier in strbuf is "defined"
+ *   2. Verifies CPPFUNCS flag enabled (only in #if expressions)
+ *   3. Expects '(' after "defined"
+ *   4. Reads macro name identifier
+ *   5. Expects ')' to close
+ *   6. Looks up macro with maclookup()
+ *   7. Replaces entire "defined(NAME)" with '0' or '1' in curchar
+ *
+ * Replacement mechanism:
+ *   - Sets curchar to '0' or '1' character
+ *   - Lexer continues and parses as number token
+ *   - Expression evaluator sees 0 or 1 constant
+ *
+ * Error handling:
+ *   - Missing '(': Reports ER_C_DP, returns '0'
+ *   - Missing ')': Reports ER_C_DP, returns '0'
+ *   - Not in CPPFUNCS mode: Returns 0 (not recognized)
+ *
+ * Parameters:
+ *   None (reads from strbuf and character stream)
+ *
+ * Returns:
+ *   1 if defined() pseudofunction processed (curchar set to '0' or '1')
+ *   0 if not a defined() call
+ *
+ * Side effects:
+ *   - Consumes "defined(NAME)" from input stream
+ *   - Sets curchar to '0' or '1'
  */
 char
 cpppseudofunc()
@@ -1070,11 +1572,58 @@ cpppseudofunc()
 }
 
 /*
- * this code straddles the cpp, the lexer and the expression parser
- * so much happens via global variable side effects, so recursive
- * calls could happen that need repair.
- * ex:  expr->gettoken->do_cpp->readcppconst->expr->gettoken->advance
- * if we hit an #if in the middle of an expression
+ * Evaluate constant expression for #if/#elif directive
+ *
+ * Parses and evaluates compile-time constant expressions in preprocessor
+ * conditionals. Handles recursive #if nesting during expression evaluation
+ * by carefully saving and restoring global state.
+ *
+ * Recursion challenge:
+ *   - Called from do_cpp() which is called from gettoken()
+ *   - May call gettoken() internally to parse expression
+ *   - Expression parsing may encounter #if and call do_cpp() recursively
+ *   - Must preserve cur/next/tflags across recursion
+ *
+ * State management:
+ *   - Saves cur token (expression parser will modify it)
+ *   - Sets ONELINE mode (newline terminates expression)
+ *   - Enables CPPFUNCS (allows defined() pseudofunction)
+ *   - Disables writeCppfile (don't output #if expression text)
+ *   - Restores all state after evaluation
+ *
+ * ONELINE mode:
+ *   - Translates newline to ';' token
+ *   - Expression parser stops at ';'
+ *   - Prevents #if expression from spanning multiple lines
+ *
+ * Token priming:
+ *   - Calls gettoken() twice to fill cur and next
+ *   - First call loads next
+ *   - Second call shifts next->cur and loads new next
+ *   - parseConst() then has proper two-token lookahead
+ *
+ * Expression evaluation:
+ *   - Calls parseConst(SEMI) to parse until semicolon
+ *   - Supports all C operators: arithmetic, logical, bitwise, relational
+ *   - Constant folding performed during parse
+ *   - Result is compile-time constant (unsigned long)
+ *
+ * defined() support:
+ *   - CPPFUNCS flag enables cpppseudofunc()
+ *   - Allows: #if defined(DEBUG) && !defined(NDEBUG)
+ *
+ * Parameters:
+ *   None (reads from character stream)
+ *
+ * Returns:
+ *   Unsigned long value of evaluated expression
+ *
+ * Side effects:
+ *   - Consumes expression tokens from input
+ *   - Temporarily modifies tflags, writeCppfile
+ *   - Saves and restores cur token
+ *   - Leaves curchar after expression
+ *   - Clears lineend flag
  */
 unsigned long
 readcppconst()
@@ -1160,6 +1709,18 @@ readcppconst()
     return val;
 }
 
+/*
+ * Debug helper - dump token name to stderr
+ *
+ * Outputs human-readable token name for debugging. Used during verbose
+ * mode or error diagnostics.
+ *
+ * Parameters:
+ *   c - Token type to display
+ *
+ * Side effects:
+ *   - Writes to stderr
+ */
 void
 tdump(unsigned char c)
 {
