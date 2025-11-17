@@ -25,7 +25,7 @@ extern unsigned char curchar;
 extern int line_num;
 
 /* Buffer initialization */
-void init_astio(int fd);
+void initAstio(int fd);
 
 /* Character-level I/O */
 unsigned char nextchar(void);
@@ -33,15 +33,15 @@ void skip(void);
 int expect(unsigned char c);
 
 /* Token reading (return pointers to static buffers) */
-char *read_symbol(void);
-long read_number(void);
-char *read_type(void);
-char *read_quoted_string(void);
+char *readSymbol(void);
+long readNumber(void);
+char *readType(void);
+char *readQuotedString(void);
 
 /* Parser state management for nested parsing */
-void save_parser_state(struct parser_state *state);
-void restore_parser_state(struct parser_state *state);
-void setup_string_input(char *str, int len);
+void saveParserState(struct parser_state *state);
+void restoreParserState(struct parser_state *state);
+void setupStringInput(char *str, int len);
 
 /* String utilities */
 int is_label(char *line);

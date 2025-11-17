@@ -18,7 +18,7 @@ static struct expr *parse_expr(void);
 static struct stmt *parse_stmt(void);
 
 /* Parser state */
-int out_fd = 1;  /* Assembly output (default: stdout) */
+int outFd = 1;  /* Assembly output (default: stdout) */
 static int label_counter = 0;  /* For generating unique labels */
 
 /*
@@ -232,7 +232,7 @@ is_multiply_by_power_of_2(struct expr *e, struct expr **out_expr)
  * If matches, optionally fills out_var and out_offset with extracted values
  */
 int
-is_struct_member_access(struct expr *e, char **out_var, long *out_offset)
+isStructMemberAccess(struct expr *e, char **out_var, long *out_offset)
 {
     struct expr *add;
     struct expr *ptr_load;
@@ -300,13 +300,13 @@ create_label_asm(const char *label_name)
 }
 
 void
-free_expr(struct expr *e)
+freeExpr(struct expr *e)
 {
     if (!e) return;
-    free_expr(e->left);
-    free_expr(e->right);
+    freeExpr(e->left);
+    freeExpr(e->right);
     /* NOTE: type_str and symbol point to static buffers from
-     * read_type()/read_symbol()
+     * readType()/readSymbol()
      * They should NOT be freed. Only asm_block and cleanup_block are dynamically allocated. */
     if (e->asm_block) free(e->asm_block);
     if (e->cleanup_block) free(e->cleanup_block);
@@ -314,15 +314,15 @@ free_expr(struct expr *e)
 }
 
 void
-fr_stmt(struct stmt *s)
+frStmt(struct stmt *s)
 {
     if (!s) return;
-    free_expr(s->expr);
-    free_expr(s->expr2);
-    free_expr(s->expr3);
-    fr_stmt(s->then_branch);
-    fr_stmt(s->else_branch);
-    fr_stmt(s->next);
+    freeExpr(s->expr);
+    freeExpr(s->expr2);
+    freeExpr(s->expr3);
+    frStmt(s->then_branch);
+    frStmt(s->else_branch);
+    frStmt(s->next);
     /* Free dynamically allocated fields */
     if (s->symbol) free(s->symbol);
     if (s->type_str) free(s->type_str);
@@ -340,7 +340,7 @@ typedef struct expr* (*handler_fn)(unsigned char op);
 
 /* Generic handler that builds a generic expr node */
 static struct expr *
-handle_generic(unsigned char op)
+doGeneric(unsigned char op)
 {
     struct expr *e;
     int depth;
@@ -370,10 +370,10 @@ handle_generic(unsigned char op)
 /* Expression handlers */
 
 static struct expr *
-handle_const(void)
+doConst(void)
 {
     struct expr *e = new_expr('C');  // 'C' for constant
-    e->value = read_number();
+    e->value = readNumber();
 
     /* Infer size from value magnitude */
     /* If value fits in 16 bits (signed or unsigned), use size 2, else size 4 */
@@ -388,27 +388,27 @@ handle_const(void)
 }
 
 static struct expr *
-handle_symbol(void)
+doSymbol(void)
 {
     struct expr *e = new_expr('$');  // '$' for symbol
-    char *sym = read_symbol();
+    char *sym = readSymbol();
     e->symbol = strdup(sym);
     fdprintf(2, "SYM %s", e->symbol);
     return e;
 }
 
 static struct expr *
-handle_string(void)
+doString(void)
 {
     struct expr *e = new_expr('S');  // 'S' for string
     /* String literal: S followed by index */
-    e->value = read_number();
+    e->value = readNumber();
     fdprintf(2, "STRING S%ld", e->value);
     return e;
 }
 
 static struct expr *
-handle_compound_assign(unsigned char op)
+doCompoundAssign(unsigned char op)
 {
     struct expr *e;
     char width;
@@ -442,7 +442,7 @@ handle_compound_assign(unsigned char op)
 }
 
 static struct expr *
-handle_binary_op(unsigned char op)
+doBinaryOp(unsigned char op)
 {
     struct expr *e = new_expr(op);
 
@@ -489,7 +489,7 @@ handle_binary_op(unsigned char op)
             e->right->op = 'C';
             e->right->value = shift;
             e->right->size = 1;  /* shift amounts are byte-sized */
-            free_expr(old_right);
+            freeExpr(old_right);
         }
     }
 
@@ -501,7 +501,7 @@ handle_binary_op(unsigned char op)
  * If left operand is false, skip right operand evaluation
  */
 static struct expr *
-handle_land(unsigned char op)
+doLand(unsigned char op)
 {
     struct expr *e = new_expr(op);
     e->label = label_counter++;
@@ -528,7 +528,7 @@ handle_land(unsigned char op)
  * If left operand is true, skip right operand evaluation
  */
 static struct expr *
-handle_lor(unsigned char op)
+doLor(unsigned char op)
 {
     struct expr *e = new_expr(op);
     e->label = label_counter++;
@@ -551,7 +551,7 @@ handle_lor(unsigned char op)
 }
 
 static struct expr *
-handle_unary_op(unsigned char op)
+doUnaryOp(unsigned char op)
 {
     struct expr *e;
     char width;
@@ -604,7 +604,7 @@ handle_unary_op(unsigned char op)
 }
 
 static struct expr *
-handle_bfextract(unsigned char op)
+doBfextract(unsigned char op)
 {
     struct expr *e = new_expr(op);
     /* Bitfield extract: (0xa7:offset:width addr) */
@@ -614,11 +614,11 @@ handle_bfextract(unsigned char op)
     skip();
     if (curchar == ':') {
         nextchar();
-        offset = (int)read_number();
+        offset = (int)readNumber();
         skip();
         if (curchar == ':') {
             nextchar();
-            width = (int)read_number();
+            width = (int)readNumber();
         }
     }
 
@@ -634,7 +634,7 @@ handle_bfextract(unsigned char op)
 }
 
 static struct expr *
-handle_bfassign(unsigned char op)
+doBfassign(unsigned char op)
 {
     struct expr *e = new_expr(op);
     /* Bitfield assign: (0xdd:offset:width addr value) */
@@ -644,11 +644,11 @@ handle_bfassign(unsigned char op)
     skip();
     if (curchar == ':') {
         nextchar();
-        offset = (int)read_number();
+        offset = (int)readNumber();
         skip();
         if (curchar == ':') {
             nextchar();
-            width = (int)read_number();
+            width = (int)readNumber();
         }
     }
 
@@ -669,7 +669,7 @@ handle_bfassign(unsigned char op)
  * but handle it gracefully if standalone
  */
 static struct expr *
-handle_colon(unsigned char op)
+doColon(unsigned char op)
 {
     struct expr *e = new_expr(op);
 
@@ -685,7 +685,7 @@ handle_colon(unsigned char op)
 }
 
 static struct expr *
-handle_deref(unsigned char op)
+doDeref(unsigned char op)
 {
     struct expr *e;
     char width;
@@ -718,7 +718,7 @@ handle_deref(unsigned char op)
 }
 
 static struct expr *
-handle_assign(unsigned char op)
+doAssign(unsigned char op)
 {
     struct expr *e;
     char width;
@@ -751,7 +751,7 @@ handle_assign(unsigned char op)
 }
 
 static struct expr *
-handle_call(unsigned char op)
+doCall(unsigned char op)
 {
     struct expr *e;
     char arg_buf[4096];  /* Buffer to capture argument expressions */
@@ -844,20 +844,20 @@ handle_call(unsigned char op)
     }
 
     /* Now recursively parse: function and arguments */
-    save_parser_state(&saved_state);
+    saveParserState(&saved_state);
 
     /* Parse function expression */
     fdprintf(2, "\n  CALL_FUNC: ");
-    setup_string_input(func_buf, func_len);
+    setupStringInput(func_buf, func_len);
     e->left = parse_expr();  /* function address */
-    restore_parser_state(&saved_state);
+    restoreParserState(&saved_state);
 
     /* Parse arguments */
     for (i = 0; i < arg_count; i++) {
         fdprintf(2, "\n  ARG%d: ", i);
-        setup_string_input(&arg_buf[arg_start[i]], arg_len[i]);
+        setupStringInput(&arg_buf[arg_start[i]], arg_len[i]);
         args[i] = parse_expr();
-        restore_parser_state(&saved_state);
+        restoreParserState(&saved_state);
     }
 
     /* Build argument chain using wrapper nodes to avoid corrupting argument trees */
@@ -887,7 +887,7 @@ handle_call(unsigned char op)
 }
 
 static struct expr *
-handle_ternary(unsigned char op)
+doTernary(unsigned char op)
 {
     struct expr *e;
     struct expr *colon;
@@ -924,24 +924,24 @@ handle_ternary(unsigned char op)
 }
 
 /* Forward declarations for statement handlers (needed for mutual recursion) */
-static struct stmt *handle_block(void);
-static struct stmt *handle_if(void);
-static struct stmt *handle_while(void);
-static struct stmt *handle_do(void);
-static struct stmt *handle_for(void);
-static struct stmt *handle_return(void);
-static struct stmt *handle_expr_stmt(void);
-static struct stmt *handle_empty_stmt(void);
-static struct stmt *handle_asm(void);
-static struct stmt *handle_label(void);
-static struct stmt *handle_goto(void);
-static struct stmt *handle_switch(void);
-static struct stmt *handle_case_in_block(void);
-static struct stmt *handle_default_in_block(void);
+static struct stmt *doBlock(void);
+static struct stmt *doIf(void);
+static struct stmt *doWhile(void);
+static struct stmt *doDo(void);
+static struct stmt *doFor(void);
+static struct stmt *doReturn(void);
+static struct stmt *doExprStmt(void);
+static struct stmt *doEmptyStmt(void);
+static struct stmt *doAsm(void);
+static struct stmt *doLabel(void);
+static struct stmt *doGoto(void);
+static struct stmt *doSwitch(void);
+static struct stmt *doCaseInBlock(void);
+static struct stmt *doDefaultInBlock(void);
 
 /* Handlers for case/default when they appear in block context */
 static struct stmt *
-handle_case_in_block(void)
+doCaseInBlock(void)
 {
     /* Case statement: (C value ()) */
     struct stmt *child = new_stmt('C');
@@ -965,7 +965,7 @@ handle_case_in_block(void)
 }
 
 static struct stmt *
-handle_default_in_block(void)
+doDefaultInBlock(void)
 {
     /* Default statement: (O ()) */
     struct stmt *child = new_stmt('O');
@@ -986,7 +986,7 @@ handle_default_in_block(void)
 }
 
 static struct stmt *
-handle_block(void)
+doBlock(void)
 {
     struct stmt *s;
     struct stmt *first_child;
@@ -1018,8 +1018,8 @@ handle_block(void)
 
             if (op == 'd') {
                 /* Declaration */
-                name = read_symbol();
-                type = read_type();
+                name = readSymbol();
+                type = readType();
                 fdprintf(2, "  DECL %s %s\n", name, type);
 
                 /* Create declaration statement node */
@@ -1033,50 +1033,50 @@ handle_block(void)
 
                 switch (op) {
                 case 'B':  /* Block */
-                    child = handle_block();
+                    child = doBlock();
                     break;
                 case 'I':  /* If */
-                    child = handle_if();
+                    child = doIf();
                     break;
                 case 'W':  /* While */
-                    child = handle_while();
+                    child = doWhile();
                     break;
                 case 'D':  /* Do-while */
-                    child = handle_do();
+                    child = doDo();
                     break;
                 case 'F':  /* For */
-                    child = handle_for();
+                    child = doFor();
                     break;
                 case 'R':  /* Return */
-                    child = handle_return();
+                    child = doReturn();
                     break;
                 case 'E':  /* Expression statement */
-                    child = handle_expr_stmt();
+                    child = doExprStmt();
                     break;
                 case ';':  /* Empty statement */
-                    child = handle_empty_stmt();
+                    child = doEmptyStmt();
                     break;
                 case 'A':  /* Asm block */
-                    child = handle_asm();
+                    child = doAsm();
                     break;
                 case 'L':  /* Label */
-                    child = handle_label();
+                    child = doLabel();
                     break;
                 case 'G':  /* Goto */
-                    child = handle_goto();
+                    child = doGoto();
                     break;
                 case 'S':  /* Switch */
-                    child = handle_switch();
+                    child = doSwitch();
                     break;
                 case 'C':  /* Case (inside switch body) */
                     /* Case statements only valid inside switch, 
                      * but may appear in block */
-                    child = handle_case_in_block();
+                    child = doCaseInBlock();
                     break;
                 case 'O':  /* Default (inside switch body) */
                     /* Default statements only valid inside switch, 
                      * but may appear in block */
-                    child = handle_default_in_block();
+                    child = doDefaultInBlock();
                     break;
                 case 'K':  /* Break */
                     fdprintf(2, "BREAK");
@@ -1129,7 +1129,7 @@ handle_block(void)
 }
 
 static struct stmt *
-handle_if(void)
+doIf(void)
 {
     struct stmt *s = new_stmt('I');
     char label_buf[64];
@@ -1168,7 +1168,7 @@ handle_if(void)
 }
 
 static struct stmt *
-handle_while(void)
+doWhile(void)
 {
     struct stmt *s;
     char label_buf[64];
@@ -1201,7 +1201,7 @@ handle_while(void)
 }
 
 static struct stmt *
-handle_do(void)
+doDo(void)
 {
     struct stmt *s;
     char label_buf[64];
@@ -1234,7 +1234,7 @@ handle_do(void)
 }
 
 static struct stmt *
-handle_for(void)
+doFor(void)
 {
     struct stmt *s;
     char label_buf[64];
@@ -1272,7 +1272,7 @@ handle_for(void)
 }
 
 static struct stmt *
-handle_return(void)
+doReturn(void)
 {
     struct stmt *s = new_stmt('R');
 
@@ -1289,7 +1289,7 @@ handle_return(void)
 }
 
 static struct stmt *
-handle_expr_stmt(void)
+doExprStmt(void)
 {
     struct stmt *s = new_stmt('E');
 
@@ -1302,7 +1302,7 @@ handle_expr_stmt(void)
 }
 
 static struct stmt *
-handle_empty_stmt(void)
+doEmptyStmt(void)
 {
     struct stmt *s = new_stmt(';');
 
@@ -1312,7 +1312,7 @@ handle_empty_stmt(void)
 }
 
 static struct stmt *
-handle_asm(void)
+doAsm(void)
 {
     struct stmt *s = new_stmt('A');
     char asm_buf[4096];
@@ -1347,14 +1347,14 @@ handle_asm(void)
 }
 
 static struct stmt *
-handle_label(void)
+doLabel(void)
 {
     struct stmt *s = new_stmt('L');
     char *label_name;
 
     /* Label statement: (L label_name) */
     skip();
-    label_name = read_symbol();
+    label_name = readSymbol();
 
     /* Diagnostic output to stderr */
     fdprintf(2, "LABEL %s", label_name);
@@ -1367,14 +1367,14 @@ handle_label(void)
 }
 
 static struct stmt *
-handle_goto(void)
+doGoto(void)
 {
     struct stmt *s = new_stmt('G');
     char *label_name;
 
     /* Goto statement: (G label_name) */
     skip();
-    label_name = read_symbol();
+    label_name = readSymbol();
 
     /* Diagnostic output to stderr */
     fdprintf(2, "GOTO %s", label_name);
@@ -1387,7 +1387,7 @@ handle_goto(void)
 }
 
 static struct stmt *
-handle_switch(void)
+doSwitch(void)
 {
     struct stmt *s;
     struct stmt *first_child;
@@ -1459,42 +1459,42 @@ handle_switch(void)
                 /* For now, just handle common ones inline */
                 fdprintf(2, "\n");
                 if (clause_type == 'R') {
-                    child = handle_return();
+                    child = doReturn();
                 } else if (clause_type == 'G') {
                     child = new_stmt('G');
                     skip();
-                    child->symbol = read_symbol();
+                    child->symbol = readSymbol();
                     fdprintf(2, "GOTO %s", child->symbol);
                     expect(')');
                 } else if (clause_type == 'B') {
                     /* BLOCK statement */
-                    child = handle_block();
+                    child = doBlock();
                 } else if (clause_type == 'K') {
                     /* BREAK statement */
                     fdprintf(2, "BREAK");
                     child = new_stmt('K');
                     expect(')');
                 } else if (clause_type == 'E') {
-                    child = handle_expr_stmt();
+                    child = doExprStmt();
                 } else if (clause_type == 'I') {
-                    child = handle_if();
+                    child = doIf();
                 } else if (clause_type == 'W') {
-                    child = handle_while();
+                    child = doWhile();
                 } else if (clause_type == 'D') {
-                    child = handle_do();
+                    child = doDo();
                 } else if (clause_type == 'F') {
-                    child = handle_for();
+                    child = doFor();
                 } else if (clause_type == 'L') {
-                    child = handle_label();
+                    child = doLabel();
                 } else if (clause_type == 'A') {
-                    child = handle_asm();
+                    child = doAsm();
                 } else if (clause_type == 'N') {
                     /* CONTINUE statement */
                     fdprintf(2, "CONTINUE");
                     child = new_stmt('N');
                     expect(')');
                 } else if (clause_type == ';') {
-                    child = handle_empty_stmt();
+                    child = doEmptyStmt();
                 } else {
                     child = NULL;
                 }
@@ -1540,7 +1540,7 @@ handle_switch(void)
  * Helper: Get register name string from register_id enum
  */
 static void
-handle_function(void)
+doFunction(void)
 {
     struct function_ctx ctx;
     char name_buf[64];  /* Stack buffer for function name */
@@ -1555,7 +1555,7 @@ handle_function(void)
 
     /* (f name (params) return_type declarations body) */
     /* Copy function name to stack buffer before reading parameters */
-    strncpy(name_buf, read_symbol(), sizeof(name_buf) - 1);
+    strncpy(name_buf, readSymbol(), sizeof(name_buf) - 1);
     name_buf[sizeof(name_buf) - 1] = '\0';
     ctx.name = name_buf;
     fdprintf(2, "\nFUNCTION %s\n", ctx.name);
@@ -1569,7 +1569,7 @@ handle_function(void)
     first_param = 1;
     skip();
     while (curchar != ')') {
-        char *param = read_symbol();
+        char *param = readSymbol();
         char *ptype = NULL;
 
         fdprintf(2, "%s ", param);
@@ -1592,7 +1592,7 @@ handle_function(void)
         /* Read type annotation if present (format: name:type) */
         if (curchar == ':') {
             nextchar();
-            ptype = read_type();  /* Get type */
+            ptype = readType();  /* Get type */
             /* Add type to params buffer */
             if (ptype && p < params_buf + sizeof(params_buf) - 20) {
                 *p++ = ':';
@@ -1609,7 +1609,7 @@ handle_function(void)
     fdprintf(2, "\n");
 
     /* Return type */
-    ctx.rettype = read_type();
+    ctx.rettype = readType();
     fdprintf(2, "  RETURNS: %s\n", ctx.rettype);
 
     /* Declarations and body - collect into statement tree */
@@ -1623,8 +1623,8 @@ handle_function(void)
             if (curchar == 'd') {
                 /* Declaration - we're already past the '(' */
                 nextchar();
-                dname = read_symbol();
-                dtype = read_type();
+                dname = readSymbol();
+                dtype = readType();
                 fdprintf(2, "  DECL %s %s\n", dname, dtype);
 
                 /* Create declaration statement node */
@@ -1642,40 +1642,40 @@ handle_function(void)
                 fdprintf(2, "  BODY: ");
                 switch (op) {
                 case 'B':  /* Block */
-                    child = handle_block();
+                    child = doBlock();
                     break;
                 case 'I':  /* If */
-                    child = handle_if();
+                    child = doIf();
                     break;
                 case 'W':  /* While */
-                    child = handle_while();
+                    child = doWhile();
                     break;
                 case 'D':  /* Do-while */
-                    child = handle_do();
+                    child = doDo();
                     break;
                 case 'F':  /* For */
-                    child = handle_for();
+                    child = doFor();
                     break;
                 case 'R':  /* Return */
-                    child = handle_return();
+                    child = doReturn();
                     break;
                 case 'E':  /* Expression statement */
-                    child = handle_expr_stmt();
+                    child = doExprStmt();
                     break;
                 case ';':  /* Empty statement */
-                    child = handle_empty_stmt();
+                    child = doEmptyStmt();
                     break;
                 case 'A':  /* Asm block */
-                    child = handle_asm();
+                    child = doAsm();
                     break;
                 case 'L':  /* Label */
-                    child = handle_label();
+                    child = doLabel();
                     break;
                 case 'G':  /* Goto */
-                    child = handle_goto();
+                    child = doGoto();
                     break;
                 case 'S':  /* Switch */
-                    child = handle_switch();
+                    child = doSwitch();
                     break;
                 default:
                     fdprintf(2, "parseast: line %d: unknown stmt op '%c'\n", 
@@ -1721,26 +1721,26 @@ handle_function(void)
     expect(')');
 
     /* Phase 1.5: Assign stack frame offsets to local variables */
-    assign_frame_offsets(&ctx);
+    assignFrameOffsets(&ctx);
 
     /* Phase 2: Generate assembly code blocks for tree nodes */
     generate_code(&ctx);
 
     /* Phase 2.5: Allocate registers based on usage patterns */
-    allocate_registers(&ctx);
+    allocateRegisters(&ctx);
 
     /* Phase 3: Emit assembly and free tree nodes */
-    emit_assembly(&ctx, out_fd);
+    emit_assembly(&ctx, outFd);
 }
 
 static void
-handle_global(void)
+doGlobal(void)
 {
     char *name, *type;
 
     /* (g name type [init]) */
-    name = read_symbol();
-    type = read_type();
+    name = readSymbol();
+    type = readType();
 
     fdprintf(2, "\nGLOBAL %s %s", name, type);
 
@@ -1755,13 +1755,13 @@ handle_global(void)
 }
 
 static void
-handle_string_literal(void)
+doStringLiteral(void)
 {
     char *name, *data;
 
     /* (s name "data") */
-    name = read_symbol();
-    data = read_quoted_string();
+    name = readSymbol();
+    data = readQuotedString();
 
     fdprintf(2, "\nSTRING %s \"%s\"\n", name, data);
 
@@ -1776,77 +1776,77 @@ handle_string_literal(void)
 static handler_fn expr_handlers[256];
 
 static void
-init_expr_handlers(void)
+initExprHandlers(void)
 {
     int i;
 
     /* Initialize all to generic handler */
     for (i = 0; i < 256; i++) {
-        expr_handlers[i] = handle_generic;
+        expr_handlers[i] = doGeneric;
     }
 
     /* Register specific handlers */
-    expr_handlers['M'] = handle_deref;     /* DEREF */
-    expr_handlers['='] = handle_assign;    /* ASSIGN */
-    expr_handlers['@'] = handle_call;      /* CALL */
-    expr_handlers['?'] = handle_ternary;   /* TERNARY */
-    expr_handlers[':'] = handle_colon;     /* COLON */
+    expr_handlers['M'] = doDeref;     /* DEREF */
+    expr_handlers['='] = doAssign;    /* ASSIGN */
+    expr_handlers['@'] = doCall;      /* CALL */
+    expr_handlers['?'] = doTernary;   /* TERNARY */
+    expr_handlers[':'] = doColon;     /* COLON */
 
     /* Binary operators */
-    expr_handlers['+'] = handle_binary_op;
-    expr_handlers['-'] = handle_binary_op;
-    expr_handlers['*'] = handle_binary_op;
-    expr_handlers['/'] = handle_binary_op;
-    expr_handlers['%'] = handle_binary_op;
-    expr_handlers['&'] = handle_binary_op;
-    expr_handlers['|'] = handle_binary_op;
-    expr_handlers['^'] = handle_binary_op;
-    expr_handlers['<'] = handle_binary_op;
-    expr_handlers['>'] = handle_binary_op;
-    expr_handlers['Q'] = handle_binary_op;  /* EQ == */
-    expr_handlers['n'] = handle_binary_op;  /* NEQ != */
-    expr_handlers['L'] = handle_binary_op;  /* LE <= */
-    expr_handlers['g'] = handle_binary_op;  /* GE >= */
-    expr_handlers['y'] = handle_binary_op;  /* LSHIFT << */
-    expr_handlers['w'] = handle_binary_op;  /* RSHIFT >> */
-    expr_handlers['h'] = handle_lor;        /* LOR || */
-    expr_handlers['j'] = handle_land;       /* LAND && */
+    expr_handlers['+'] = doBinaryOp;
+    expr_handlers['-'] = doBinaryOp;
+    expr_handlers['*'] = doBinaryOp;
+    expr_handlers['/'] = doBinaryOp;
+    expr_handlers['%'] = doBinaryOp;
+    expr_handlers['&'] = doBinaryOp;
+    expr_handlers['|'] = doBinaryOp;
+    expr_handlers['^'] = doBinaryOp;
+    expr_handlers['<'] = doBinaryOp;
+    expr_handlers['>'] = doBinaryOp;
+    expr_handlers['Q'] = doBinaryOp;  /* EQ == */
+    expr_handlers['n'] = doBinaryOp;  /* NEQ != */
+    expr_handlers['L'] = doBinaryOp;  /* LE <= */
+    expr_handlers['g'] = doBinaryOp;  /* GE >= */
+    expr_handlers['y'] = doBinaryOp;  /* LSHIFT << */
+    expr_handlers['w'] = doBinaryOp;  /* RSHIFT >> */
+    expr_handlers['h'] = doLor;        /* LOR || */
+    expr_handlers['j'] = doLand;       /* LAND && */
 
     /* Compound assignment operators */
-    expr_handlers['P'] = handle_compound_assign;  /* PLUSEQ += */
-    expr_handlers[0xdf] = handle_compound_assign; /* SUBEQ -= */
-    expr_handlers['T'] = handle_compound_assign;  /* MULTEQ *= */
-    expr_handlers['2'] = handle_compound_assign;  /* DIVEQ /= */
-    expr_handlers[0xfe] = handle_compound_assign; /* MODEQ %= */
-    expr_handlers[0xc6] = handle_compound_assign; /* ANDEQ &= */
-    expr_handlers['1'] = handle_compound_assign;  /* OREQ |= */
-    expr_handlers['X'] = handle_compound_assign;  /* XOREQ ^= */
-    expr_handlers['0'] = handle_compound_assign;  /* LSHIFTEQ <<= */
-    expr_handlers['6'] = handle_compound_assign;  /* RSHIFTEQ >>= */
+    expr_handlers['P'] = doCompoundAssign;  /* PLUSEQ += */
+    expr_handlers[0xdf] = doCompoundAssign; /* SUBEQ -= */
+    expr_handlers['T'] = doCompoundAssign;  /* MULTEQ *= */
+    expr_handlers['2'] = doCompoundAssign;  /* DIVEQ /= */
+    expr_handlers[0xfe] = doCompoundAssign; /* MODEQ %= */
+    expr_handlers[0xc6] = doCompoundAssign; /* ANDEQ &= */
+    expr_handlers['1'] = doCompoundAssign;  /* OREQ |= */
+    expr_handlers['X'] = doCompoundAssign;  /* XOREQ ^= */
+    expr_handlers['0'] = doCompoundAssign;  /* LSHIFTEQ <<= */
+    expr_handlers['6'] = doCompoundAssign;  /* RSHIFTEQ >>= */
 
     /* Unary operators */
-    expr_handlers['!'] = handle_unary_op;
-    expr_handlers['~'] = handle_unary_op;
-    expr_handlers['\\'] = handle_unary_op; /* NEG */
-    expr_handlers['\''] = handle_unary_op; /* NOT */
+    expr_handlers['!'] = doUnaryOp;
+    expr_handlers['~'] = doUnaryOp;
+    expr_handlers['\\'] = doUnaryOp; /* NEG */
+    expr_handlers['\''] = doUnaryOp; /* NOT */
 
     /* Type conversion operators */
-    expr_handlers['N'] = handle_unary_op;  /* NARROW */
-    expr_handlers['W'] = handle_unary_op;  /* WIDEN */
-    expr_handlers[0xab] = handle_unary_op;  /* SEXT (sign extend) */
+    expr_handlers['N'] = doUnaryOp;  /* NARROW */
+    expr_handlers['W'] = doUnaryOp;  /* WIDEN */
+    expr_handlers[0xab] = doUnaryOp;  /* SEXT (sign extend) */
 
     /* Increment/decrement */
-    expr_handlers[0xcf] = handle_unary_op; /* PREINC */
-    expr_handlers[0xef] = handle_unary_op; /* POSTINC */
-    expr_handlers[0xd6] = handle_unary_op; /* PREDEC */
-    expr_handlers[0xf6] = handle_unary_op; /* POSTDEC */
+    expr_handlers[0xcf] = doUnaryOp; /* PREINC */
+    expr_handlers[0xef] = doUnaryOp; /* POSTINC */
+    expr_handlers[0xd6] = doUnaryOp; /* PREDEC */
+    expr_handlers[0xf6] = doUnaryOp; /* POSTDEC */
 
     /* COPY operator */
-    expr_handlers[0xbb] = handle_binary_op; /* COPY */
+    expr_handlers[0xbb] = doBinaryOp; /* COPY */
 
     /* Bitfield operators */
-    expr_handlers[0xa7] = handle_bfextract;  /* BFEXTRACT */
-    expr_handlers[0xdd] = handle_bfassign;   /* BFASSIGN */
+    expr_handlers[0xa7] = doBfextract;  /* BFEXTRACT */
+    expr_handlers[0xdd] = doBfassign;   /* BFASSIGN */
 }
 
 /*
@@ -1872,14 +1872,14 @@ parse_expr(void)
 
     } else if (curchar == '$') {
         /* Symbol */
-        e = handle_symbol();
+        e = doSymbol();
     } else if (curchar == 'S') {
         /* String literal */
         nextchar();
-        e = handle_string();
+        e = doString();
     } else if ((curchar >= '0' && curchar <= '9') || curchar == '-') {
         /* Constant */
-        e = handle_const();
+        e = doConst();
     } else {
         fdprintf(2, "parseast: line %d: unexpected char '%c' in expr\n",
                  line_num, curchar);
@@ -1921,40 +1921,40 @@ parse_stmt(void)
 
     switch (op) {
     case 'B':  /* Block */
-        s = handle_block();
+        s = doBlock();
         break;
     case 'I':  /* If */
-        s = handle_if();
+        s = doIf();
         break;
     case 'W':  /* While */
-        s = handle_while();
+        s = doWhile();
         break;
     case 'D':  /* Do-while */
-        s = handle_do();
+        s = doDo();
         break;
     case 'F':  /* For */
-        s = handle_for();
+        s = doFor();
         break;
     case 'R':  /* Return */
-        s = handle_return();
+        s = doReturn();
         break;
     case 'E':  /* Expression statement */
-        s = handle_expr_stmt();
+        s = doExprStmt();
         break;
     case ';':  /* Empty statement */
-        s = handle_empty_stmt();
+        s = doEmptyStmt();
         break;
     case 'A':  /* Asm block */
-        s = handle_asm();
+        s = doAsm();
         break;
     case 'L':  /* Label */
-        s = handle_label();
+        s = doLabel();
         break;
     case 'G':  /* Goto */
-        s = handle_goto();
+        s = doGoto();
         break;
     case 'S':  /* Switch */
-        s = handle_switch();
+        s = doSwitch();
         break;
     default:
         fdprintf(2, "parseast: line %d: unknown stmt op '%c'\n", line_num, op);
@@ -1994,13 +1994,13 @@ parse_toplevel(void)
 
     switch (op) {
     case 'f':  /* Function */
-        handle_function();
+        doFunction();
         break;
     case 'g':  /* Global variable */
-        handle_global();
+        doGlobal();
         break;
     case 's':  /* String literal */
-        handle_string_literal();
+        doStringLiteral();
         break;
     default:
         fdprintf(2, "parseast: line %d: unknown top-level op '%c'\n", 
@@ -2020,14 +2020,14 @@ parse_toplevel(void)
  * Initialize parser and read AST file
  */
 int
-parse_ast_file(int in, int out)
+parseAstFile(int in, int out)
 {
     /* Initialize low-level I/O */
-    init_astio(in);
-    out_fd = out;
+    initAstio(in);
+    outFd = out;
 
     /* Initialize expression handler lookup table */
-    init_expr_handlers();
+    initExprHandlers();
 
     /* Prime the input */
     nextchar();

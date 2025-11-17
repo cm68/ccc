@@ -32,7 +32,7 @@ static char typebuf[256];
  * Initialize I/O subsystem with file descriptor
  */
 void
-init_astio(int fd)
+initAstio(int fd)
 {
     in_fd = fd;
     buf_pos = 0;
@@ -128,7 +128,7 @@ expect(unsigned char c)
  * Returns pointer to static buffer with unescaped string data
  */
 char *
-read_quoted_string(void)
+readQuotedString(void)
 {
     unsigned char i = 0;
 
@@ -222,7 +222,7 @@ read_quoted_string(void)
  * Returns pointer to static buffer
  */
 char *
-read_symbol(void)
+readSymbol(void)
 {
     unsigned char i = 0;
 
@@ -254,7 +254,7 @@ read_symbol(void)
  * Read a number (decimal integer or constant)
  */
 long
-read_number(void)
+readNumber(void)
 {
     long val = 0;
     int sign = 1;
@@ -278,7 +278,7 @@ read_number(void)
  * Read a type name (e.g., _short_, _char_, :ptr, :array:10)
  */
 char *
-read_type(void)
+readType(void)
 {
     unsigned char i = 0;
 
@@ -305,7 +305,7 @@ read_type(void)
  * Save current parser state
  */
 void
-save_parser_state(struct parser_state *state)
+saveParserState(struct parser_state *state)
 {
     memcpy(state->saved_buf, buf, buf_valid);
     state->saved_buf_pos = buf_pos;
@@ -319,7 +319,7 @@ save_parser_state(struct parser_state *state)
  * Restore parser state
  */
 void
-restore_parser_state(struct parser_state *state)
+restoreParserState(struct parser_state *state)
 {
     memcpy(buf, state->saved_buf, state->saved_buf_valid);
     buf_pos = state->saved_buf_pos;
@@ -333,7 +333,7 @@ restore_parser_state(struct parser_state *state)
  * Set up parser to read from a string buffer
  */
 void
-setup_string_input(char *str, int len)
+setupStringInput(char *str, int len)
 {
     /* Copy string to main buffer */
     if (len > BUFSIZE - 1) {

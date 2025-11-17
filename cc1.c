@@ -28,12 +28,12 @@ char *progname;
 int verbose;
 
 /* Global context for static variable name mangling */
-char *source_file_root = NULL;
+char *sourceFileRoot = NULL;
 struct name *current_function = NULL;
 unsigned char static_counter = 0;
 
 /* AST output control */
-int ast_fd;  // defaults to 1 (stdout), can be overridden with -o
+int astFd;  // defaults to 1 (stdout), can be overridden with -o
 
 /*
  * each file on the command line gets this treatment
@@ -51,8 +51,8 @@ process(char *f)
 #endif
 
     /* Extract source file root for static name mangling */
-    if (source_file_root) {
-        free(source_file_root);
+    if (sourceFileRoot) {
+        free(sourceFileRoot);
     }
     /* Find last slash (if any) to get basename */
     basename_start = strrchr(f, '/');
@@ -68,10 +68,10 @@ process(char *f)
     } else {
         len = strlen(basename_start);
     }
-    source_file_root = malloc(len + 1);
-    strncpy(source_file_root, basename_start, len);
-    source_file_root[len] = '\0';
-    if (write_cppfile) {
+    sourceFileRoot = malloc(len + 1);
+    strncpy(sourceFileRoot, basename_start, len);
+    sourceFileRoot[len] = '\0';
+    if (writeCppfile) {
         if (cppfile) {
             close(cppfile);
             cppfile = 0;
@@ -92,7 +92,7 @@ process(char *f)
             perror(cppfname);
         }
         s = "/* preprocessed file */\n";
-        cpp_out(s, strlen(s));
+        cppOut(s, strlen(s));
     }
 
     insertfile(f, 0);
@@ -101,8 +101,8 @@ process(char *f)
 
     parse();
 
-    if (write_cppfile) {
-        cpp_flush();
+    if (writeCppfile) {
+        cppFlush();
     }
 }
 
@@ -137,8 +137,8 @@ main(int argc, char **argv)
     alarm(5);  /* 5 second timeout */
 #endif
 
-    ast_fd = 1;  // default AST output to stdout (fd 1)
-    add_include("");    // the null include prefix
+    astFd = 1;  // default AST output to stdout (fd 1)
+    addInclude("");    // the null include prefix
 
     progname = *argv++;
     argc--;
@@ -160,19 +160,19 @@ main(int argc, char **argv)
                 usage("", progname);
                 break;
             case 'I':
-                add_include(s);
+                addInclude(s);
                 s="";
                 break;
             case 'i':
-                sys_include_path = s;
+                sysIncludePath = s;
                 s="";
                 break;
             case 'D':
-                add_define(s);
+                addDefine(s);
                 s="";
                 break;
             case 'E':
-                write_cppfile++;
+                writeCppfile++;
                 break;
             case 'v':
                 if (!argc--) {
@@ -185,11 +185,11 @@ main(int argc, char **argv)
                     usage("output file not specified \n", progname);
                 }
 #ifdef SDCC
-                ast_fd = creat(*argv++, 0644);
+                astFd = creat(*argv++, 0644);
 #else
-                ast_fd = open(*argv++, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+                astFd = open(*argv++, O_WRONLY | O_CREAT | O_TRUNC, 0644);
 #endif
-                if (ast_fd < 0) {
+                if (astFd < 0) {
                     perror("cannot open output file");
                     exit(1);
                 }
@@ -237,8 +237,8 @@ main(int argc, char **argv)
     }
 
     /* Close AST output file if not stdout */
-    if (ast_fd > 1) {
-        close(ast_fd);
+    if (astFd > 1) {
+        close(astFd);
     }
 
     return exit_code;  /* Return 0 if no errors, 1 if errors occurred */

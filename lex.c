@@ -7,7 +7,7 @@
  */
 #include "cc1.h"
 
-int write_cppfile = 0;
+int writeCppfile = 0;
 char *cppfname;
 int cppfile;
 static unsigned char incomment = 0;
@@ -18,7 +18,7 @@ struct token cur, next;
 /* Token history for debugging */
 #define TOKEN_HISTORY_SIZE 10
 struct token tok_hist[TOKEN_HISTORY_SIZE];
-int tok_hidx = 0;
+int tokHidx = 0;
 
 /*
  * this is the place we build filenames, symbols and literal strings
@@ -44,14 +44,14 @@ struct cond *cond;
 unsigned char tflags;
 
 /* ASM block capture */
-char *asm_cbuf = NULL;
-int asm_csiz = 0;
-int asm_clen = 0;
+char *asmCbuf = NULL;
+int asmCsiz = 0;
+int asmClen = 0;
 
 void
-asm_out(char *s, int len)
+asmOut(char *s, int len)
 {
-    if (!s || !asm_cbuf)
+    if (!s || !asmCbuf)
         return;
 
     /* Skip braces - they're for parsing only, not part of asm text */
@@ -61,14 +61,14 @@ asm_out(char *s, int len)
         return;
 
     /* Grow buffer if needed */
-    while (asm_clen + len >= asm_csiz) {
-        asm_csiz *= 2;
-        asm_cbuf = realloc(asm_cbuf, asm_csiz);
+    while (asmClen + len >= asmCsiz) {
+        asmCsiz *= 2;
+        asmCbuf = realloc(asmCbuf, asmCsiz);
     }
 
-    memcpy(&asm_cbuf[asm_clen], s, len);
-    asm_clen += len;
-    asm_cbuf[asm_clen] = 0;  /* Null terminate */
+    memcpy(&asmCbuf[asmClen], s, len);
+    asmClen += len;
+    asmCbuf[asmClen] = 0;  /* Null terminate */
 }
 
 void
@@ -334,13 +334,13 @@ issym()
  * Output to both cpp file and asm buffer
  */
 void
-cpp_asm_out(char *s, int len)
+cppAsmOut(char *s, int len)
 {
-    if (write_cppfile) {
-        cpp_out(s, len);
+    if (writeCppfile) {
+        cppOut(s, len);
     }
-    if (asm_cbuf) {
-        asm_out(s, len);
+    if (asmCbuf) {
+        asmOut(s, len);
     }
 }
 
@@ -349,17 +349,17 @@ cpp_asm_out(char *s, int len)
  * Reduces code duplication in token output
  */
 void
-cpp_asm_out_with_space(char *s, int len)
+cppAsmOutWithSpace(char *s, int len)
 {
-    cpp_asm_out(s, len);
-    cpp_asm_out(" ", 1);
+    cppAsmOut(s, len);
+    cppAsmOut(" ", 1);
 }
 
 /*
  * Output a token to cpp file and/or asm buffer
  */
 void
-output_token(struct token *tok)
+outputToken(struct token *tok)
 {
     /*
      * Small buffer for chunked string output
@@ -369,13 +369,13 @@ output_token(struct token *tok)
     int i;
     char *s;
 
-    if (!write_cppfile && !asm_cbuf) {
+    if (!writeCppfile && !asmCbuf) {
         return;
     }
 
     switch (tok->type) {
     case SYM:
-        cpp_asm_out_with_space(tok->v.name, strlen(tok->v.name));
+        cppAsmOutWithSpace(tok->v.name, strlen(tok->v.name));
         break;
     case STRING:
         if (!tok->v.str) {
@@ -389,26 +389,26 @@ output_token(struct token *tok)
             int pos = 0;
 
             /* Opening quote */
-            cpp_asm_out("\"", 1);
+            cppAsmOut("\"", 1);
 
             /* Output string content in chunks */
             while (len > 0) {
                 int todo = (len > chunk_size) ? chunk_size : len;
                 for (i = 0; i < todo; i++) {
                     int n = controlify(nbuf, *src++);
-                    cpp_asm_out(nbuf, n);
+                    cppAsmOut(nbuf, n);
                 }
                 len -= todo;
             }
 
             /* Closing quote and space */
-            cpp_asm_out("\" ", 2);
+            cppAsmOut("\" ", 2);
         }
         break;
     case NUMBER:
         i = longout(nbuf, tok->v.numeric);
         nbuf[i++] = ' ';
-        cpp_asm_out(nbuf, i);
+        cppAsmOut(nbuf, i);
         break;
     case NONE:
         break;
@@ -420,11 +420,11 @@ output_token(struct token *tok)
         }
 #ifdef DEBUG
         if (VERBOSE(V_CPP) && tok->type == INT) {
-            fdprintf(2,"output_token(INT): s='%s' write_cppfile=%d\n",
-                s, write_cppfile);
+            fdprintf(2,"outputToken(INT): s='%s' writeCppfile=%d\n",
+                s, writeCppfile);
         }
 #endif
-        cpp_asm_out_with_space(s, strlen(s));
+        cppAsmOutWithSpace(s, strlen(s));
         break;
     }
 }
@@ -723,8 +723,8 @@ gettoken()
     memcpy(&cur, &next, sizeof(cur));
 
     /* Save current token to history for debugging */
-    memcpy(&tok_hist[tok_hidx], &cur, sizeof(cur));
-    tok_hidx = (tok_hidx + 1) % TOKEN_HISTORY_SIZE;
+    memcpy(&tok_hist[tokHidx], &cur, sizeof(cur));
+    tokHidx = (tokHidx + 1) % TOKEN_HISTORY_SIZE;
 
     next.v.str = 0;
     next.type = NONE;
@@ -761,7 +761,7 @@ gettoken()
                 continue;
             }
 #ifdef DEBUG
-            if (VERBOSE(V_TOKEN) && write_cppfile) {
+            if (VERBOSE(V_TOKEN) && writeCppfile) {
                 fdprintf(2,"Slash but nextchar='%c'(0x%x) "
                     "not asterisk at line %d, incomment=%d\n",
                     nextchar >= 32 ? nextchar : '?', nextchar,
@@ -1002,14 +1002,14 @@ gettoken()
         } else if (cur.type == INT) {
             fdprintf(2," (INT)");
         }
-        fdprintf(2," write_cppfile=%d\n", write_cppfile);
+        fdprintf(2," writeCppfile=%d\n", writeCppfile);
     }
 #endif
-    output_token(&cur);
+    outputToken(&cur);
 
-    if ((write_cppfile || asm_cbuf) && lineend) {
-        if (write_cppfile) {
-            cpp_out("\n", 1);
+    if ((writeCppfile || asmCbuf) && lineend) {
+        if (writeCppfile) {
+            cppOut("\n", 1);
         }
         /* For asm blocks, convert newlines to semicolons */
         /* (macexpand() handles its own newlines directly) */
@@ -1017,9 +1017,9 @@ gettoken()
          * Don't output semicolon for braces - they mark boundaries
          * of asm block
          */
-        if (asm_cbuf && cur.type != BEGIN && cur.type != END) {
-            asm_out(";", 1);  /* Convert newline to semicolon for asm */
-            asm_out(" ", 1);
+        if (asmCbuf && cur.type != BEGIN && cur.type != END) {
+            asmOut(";", 1);  /* Convert newline to semicolon for asm */
+            asmOut(" ", 1);
         }
         lineend = 0;  /* Clear after using it */
     }
@@ -1081,7 +1081,7 @@ readcppconst()
 {
     unsigned long val;
     char savedtflags = tflags;
-    int saved_write_cpp = write_cppfile;
+    int saved_write_cpp = writeCppfile;
     struct token saved_cur;
 
     /* Save cur because recursive gettoken() calls will modify it */
@@ -1094,7 +1094,7 @@ readcppconst()
     tflags = ONELINE | CPPFUNCS;
 
     /* Disable cpp output while evaluating the #if expression */
-    write_cppfile = 0;
+    writeCppfile = 0;
 
     /* Skip whitespace before reading the first token */
     skipws1();
@@ -1127,11 +1127,11 @@ readcppconst()
     }
 #endif
 
-    val = parse_const(SEMI);
+    val = parseConst(SEMI);
 
 #ifdef DEBUG
     if (VERBOSE(V_CPP)) {
-        fdprintf(2,"After parse_const: curchar=0x%02x\n", curchar);
+        fdprintf(2,"After parseConst: curchar=0x%02x\n", curchar);
     }
 #endif
 
@@ -1140,7 +1140,7 @@ readcppconst()
 
     /* Restore flags */
     tflags = savedtflags;
-    write_cppfile = saved_write_cpp;
+    writeCppfile = saved_write_cpp;
 
     /* Leave next with whatever was read - it contains the INT token */
     /* The caller will handle discarding it if in a false block */

@@ -78,13 +78,13 @@ struct include {
 } *includes;
 
 /* System include path for #include <foo.h> */
-char *sys_include_path = "include";
+char *sysIncludePath = "include";
 
 /*
  * add a path to the include search list
  */
 void
-add_include(char *s)
+addInclude(char *s)
 {
     struct include *i, *ip;
     i = malloc(sizeof(*i));
@@ -101,7 +101,7 @@ add_include(char *s)
     }
 #ifdef DEBUG
     if (VERBOSE(V_CPP)) {
-        fdprintf(2,"add_include: %s\n", s);
+        fdprintf(2,"addInclude: %s\n", s);
     }
 #endif
 }
@@ -135,8 +135,8 @@ insertfile(char *name, int sys)
     /*
      * For system includes (<foo.h>), try system include path first
      */
-    if (sys && sys_include_path) {
-        strcpy(namebuf, sys_include_path);
+    if (sys && sysIncludePath) {
+        strcpy(namebuf, sysIncludePath);
         strcat(namebuf, "/");
         strcat(namebuf, name);
         t->fd = open(namebuf, 0);
@@ -392,7 +392,7 @@ struct textbuf *cpp;
 #define CPP_BUF 256
 
 void
-cpp_flush()
+cppFlush()
 {
     if (cpp->offset) {
         write(cppfile, cpp->storage, cpp->offset);
@@ -401,7 +401,7 @@ cpp_flush()
 }
 
 void
-cpp_out(char *s, int len)
+cppOut(char *s, int len)
 {
     if (!cpp) {
         cpp = malloc(sizeof(*cpp));
@@ -417,7 +417,7 @@ cpp_out(char *s, int len)
         return;
 
     if ((cpp->offset + len) > CPP_BUF) {
-        cpp_flush();
+        cppFlush();
     }
     memcpy(&cpp->storage[cpp->offset], s, len);
     cpp->offset += len;

@@ -6,9 +6,9 @@
  * emit them - that's done by emit.c.
  *
  * Key responsibilities:
- * - assign_frame_offsets(): Assign stack offsets to local variables and parameters
+ * - assignFrameOffsets(): Assign stack offsets to local variables and parameters
  * - generate_code(): Walk trees and generate assembly code blocks
- * - allocate_registers(): Allocate variables to registers based on usage patterns
+ * - allocateRegisters(): Allocate variables to registers based on usage patterns
  */
 #include <stdlib.h>
 #include <stdio.h>
@@ -58,7 +58,7 @@ is_operand_unsigned(struct expr *e)
  * Returns NULL if not found
  */
 struct local_var *
-lookup_var(struct function_ctx *ctx, const char *symbol)
+findVar(struct function_ctx *ctx, const char *symbol)
 {
     const char *var_name;
     struct local_var *var;
@@ -121,7 +121,7 @@ make_binop_funcname(char *buf, size_t bufsize, const char *opname,
  *   - Data is at the HIGHER address within the pushed word
  */
 static void
-add_param(struct function_ctx *ctx, const char *name, unsigned char size, 
+addParam(struct function_ctx *ctx, const char *name, unsigned char size, 
     int offset)
 {
     struct local_var *var = malloc(sizeof(struct local_var));
@@ -152,7 +152,7 @@ add_param(struct function_ctx *ctx, const char *name, unsigned char size,
  * Local variables have negative offsets (below frame pointer)
  */
 static void
-add_local_var(struct function_ctx *ctx, const char *name, unsigned char size, 
+addLocalVar(struct function_ctx *ctx, const char *name, unsigned char size, 
     int is_array)
 {
     struct local_var *var = malloc(sizeof(struct local_var));
@@ -186,7 +186,7 @@ add_local_var(struct function_ctx *ctx, const char *name, unsigned char size,
  * Called whenever a variable is used, updates first_label and last_label
  */
 static void
-update_var_lifetime(struct function_ctx *ctx, const char *name)
+updateVarLifetime(struct function_ctx *ctx, const char *name)
 {
     struct local_var *var;
 
@@ -214,7 +214,7 @@ update_var_lifetime(struct function_ctx *ctx, const char *name)
  * Helper: Check if a name is a parameter
  */
 static int
-is_parameter(struct function_ctx *ctx, const char *name)
+isParameter(struct function_ctx *ctx, const char *name)
 {
     struct local_var *var;
     for (var = ctx->locals; var; var = var->next) {
@@ -229,26 +229,26 @@ is_parameter(struct function_ctx *ctx, const char *name)
  * Walk statement tree and assign stack frame offsets to local variables
  */
 static void
-walk_for_locals(struct function_ctx *ctx, struct stmt *s)
+walkForLocals(struct function_ctx *ctx, struct stmt *s)
 {
     if (!s) return;
 
     /* If this is a declaration, add it to locals list (unless it's a param) */
     if (s->type == 'd' && s->symbol) {
         /* Skip parameter declarations - they already have offsets */
-        if (!is_parameter(ctx, s->symbol)) {
+        if (!isParameter(ctx, s->symbol)) {
             unsigned char size = get_size_from_typename(s->type_str);
             /* Detect arrays: type_str contains ":array:" */
             int is_array = (s->type_str && 
                 strstr(s->type_str, ":array:") != NULL) ? 1 : 0;
-            add_local_var(ctx, s->symbol, size, is_array);
+            addLocalVar(ctx, s->symbol, size, is_array);
         }
     }
 
     /* Recursively walk child statements */
-    if (s->then_branch) walk_for_locals(ctx, s->then_branch);
-    if (s->else_branch) walk_for_locals(ctx, s->else_branch);
-    if (s->next) walk_for_locals(ctx, s->next);
+    if (s->then_branch) walkForLocals(ctx, s->then_branch);
+    if (s->else_branch) walkForLocals(ctx, s->else_branch);
+    if (s->next) walkForLocals(ctx, s->next);
 }
 
 /*
@@ -272,7 +272,7 @@ walk_for_locals(struct function_ctx *ctx, struct stmt *s)
  *   - Variables whose address is taken (future enhancement)
  */
 void
-allocate_registers(struct function_ctx *ctx)
+allocateRegisters(struct function_ctx *ctx)
 {
     struct local_var *var;
     int byte_regs_used = 0;  /* Count of byte registers allocated */
@@ -375,7 +375,7 @@ allocate_registers(struct function_ctx *ctx)
  * Phase 1.5: Assign stack frame offsets to all local variables and parameters
  */
 void
-assign_frame_offsets(struct function_ctx *ctx)
+assignFrameOffsets(struct function_ctx *ctx)
 {
     char *p;
     char name_buf[64];
@@ -422,14 +422,14 @@ assign_frame_offsets(struct function_ctx *ctx)
             if (name_buf[0]) {
                 unsigned char size = type_buf[0] ? 
                     get_size_from_typename(type_buf) : 2;
-                add_param(ctx, name_buf, size, param_offset);
+                addParam(ctx, name_buf, size, param_offset);
                 param_offset += size;
             }
         }
     }
 
     /* Then, assign offsets to local variables (negative offsets below FP) */
-    walk_for_locals(ctx, ctx->body);
+    walkForLocals(ctx, ctx->body);
     fdprintf(2, "  Total frame size: %d bytes\n", ctx->frame_size);
 }
 
@@ -587,7 +587,7 @@ static void generate_expr(struct function_ctx *ctx, struct expr *e)
         if (var_name[0] == 'A') {
             var_name++;  /* Skip A prefix */
         }
-        update_var_lifetime(ctx, var_name);
+        updateVarLifetime(ctx, var_name);
     }
 
     /* Generate assembly code for this node based on operator */
@@ -616,7 +616,7 @@ static void generate_expr(struct function_ctx *ctx, struct expr *e)
         {
             char *var_symbol = NULL;
             long offset = 0;
-            if (is_struct_member_access(e, &var_symbol, &offset)) {
+            if (isStructMemberAccess(e, &var_symbol, &offset)) {
                 /* Extract variable name (skip $ and A prefixes) */
                 const char *var_name = var_symbol;
                 if (var_name && var_name[0] == '$') {
@@ -671,7 +671,7 @@ static void generate_expr(struct function_ctx *ctx, struct expr *e)
 
     case '=':  /* ASSIGN - store to memory */
         /* Register allocation later, so defer instruction to emit phase */
-        /* Just mark an assignment - emit_expr will handle register vs stack */
+        /* Just mark an assignment - emitExpr will handle register vs stack */
         e->asm_block = strdup("\t; ASSIGN_PLACEHOLDER");
         break;
 
@@ -722,7 +722,7 @@ static void generate_expr(struct function_ctx *ctx, struct expr *e)
                 e->asm_block = strdup(buf);
 
                 /* Free and clear right operand to prevent emission */
-                free_expr(e->right);
+                freeExpr(e->right);
                 e->right = NULL;
             } else {
                 /* Non-constant addition - use general form */

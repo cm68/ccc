@@ -585,7 +585,7 @@ parenthesized expressions:
 **Disambiguation**:
 - After `(`, check if next token is type keyword or typedef name
 - If yes: parse as cast, otherwise parse as parenthesized expression
-- `is_cast_start()` checks for type keywords (int, char, etc.) or typedef names
+- `isCastStart()` checks for type keywords (int, char, etc.) or typedef names
 
 **Three Cast Operators** (only emit when runtime operation needed):
 - **N** (NARROW): Truncate to smaller type (e.g., `long -> int`, `int -> char`)

@@ -21,7 +21,7 @@ struct macro *macros;
  * Format: "NAME=value" or just "NAME" (for empty macros)
  */
 void
-add_define(char *s)
+addDefine(char *s)
 {
     struct macro *m;
     char *eq;
@@ -277,7 +277,7 @@ macexpand(char *s)	/* the symbol we are looking up as a macro */
     /* this will stop after nextchar is not white space */
     /* Track if we see newline when asm capture is active */
     while (iswhite(nextchar)) {
-        if (asm_cbuf && nextchar == '\n') {
+        if (asmCbuf && nextchar == '\n') {
             saw_newline = 1;  /* Remember that we saw a newline */
         }
         advance();
@@ -411,7 +411,7 @@ macexpand(char *s)	/* the symbol we are looking up as a macro */
     *d = 0;
 
     /* If we saw a newline during asm capture, append semicolon to macro text */
-    if (saw_newline && asm_cbuf) {
+    if (saw_newline && asmCbuf) {
         *d++ = ';';
         *d++ = ' ';
         *d = 0;

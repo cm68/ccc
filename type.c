@@ -66,7 +66,7 @@ struct name **names;
  * free up all the names at a higher scope than here
  */
 void
-pop_scope()
+popScope()
 {
 	struct name *n;
 
@@ -80,7 +80,7 @@ pop_scope()
 
 #ifdef DEBUG
         if (VERBOSE(V_SYM)) {
-            fdprintf(2,"pop_scope: remove %s%s from lookup\n",
+            fdprintf(2,"popScope: remove %s%s from lookup\n",
                 n->is_tag ? "tag:":"", n->name);
         }
 #endif
@@ -93,7 +93,7 @@ pop_scope()
 }
 
 void
-push_scope(char *n)
+pushScope(char *n)
 {
     lexlevel++;
 }
@@ -102,7 +102,7 @@ push_scope(char *n)
  * resolve this name into a name struct
  */
 struct name *
-lookup_name(char *name, unsigned char is_tag)
+findName(char *name, unsigned char is_tag)
 {
 	struct name *n;
     int i;
@@ -124,7 +124,7 @@ lookup_name(char *name, unsigned char is_tag)
  * used for struct, union, and enum tag lookups
  */
 struct name *
-lookup_element(char *name, struct type *t)
+findElement(char *name, struct type *t)
 {
 	struct name *n;
 	for (n = t->elem; n; n = n->next) {
@@ -174,7 +174,7 @@ dump_name(struct name *n)
  * push a name on the symbol list at lexlevel
  */
 struct name *
-new_name(char *name, kind k, struct type *t, unsigned char is_tag)
+newName(char *name, kind k, struct type *t, unsigned char is_tag)
 {
 	struct name *n;
     int i;
@@ -219,7 +219,7 @@ new_name(char *name, kind k, struct type *t, unsigned char is_tag)
     names[++lastname] = n;
 #ifdef DEBUG
     if (VERBOSE(V_SYM)) {
-        fdprintf(2,"new_name: level:%d index:%3d %s %s%s\n",
+        fdprintf(2,"newName: level:%d index:%3d %s %s%s\n",
             lexlevel, lastname,
             k < sizeof(kindname)/sizeof(kindname[0]) ? kindname[k] : "unkn",
             is_tag ? "tag:":"", name);
@@ -234,7 +234,7 @@ new_name(char *name, kind k, struct type *t, unsigned char is_tag)
  * used for installing function parameters into scope
  */
 void
-add_name(struct name *n)
+addName(struct name *n)
 {
     int i;
 
@@ -277,7 +277,7 @@ add_name(struct name *n)
 
 #ifdef DEBUG
     if (VERBOSE(V_SYM)) {
-        fdprintf(2,"add_name: level:%d index:%3d %s %s%s\n",
+        fdprintf(2,"addName: level:%d index:%3d %s %s%s\n",
             lexlevel, lastname,
             n->kind < sizeof(kindname)/sizeof(kindname[0]) ?
                 kindname[n->kind] : "unkn",
@@ -389,7 +389,7 @@ static struct {
  * Parameter names are ignored - only types matter
  */
 static int
-compare_param_lists(struct name *p1, struct name *p2)
+compareParamLists(struct name *p1, struct name *p2)
 {
     while (p1 && p2) {
         // Compare parameter types, not names
@@ -421,7 +421,7 @@ compatible_function_types(struct type *t1, struct type *t2)
     if ((t1->flags & TF_VARIADIC) != (t2->flags & TF_VARIADIC)) return 0;
 
     // Compare parameter lists
-    return compare_param_lists(t1->elem, t2->elem);
+    return compareParamLists(t1->elem, t2->elem);
 }
 
 /*
@@ -433,7 +433,7 @@ compatible_function_types(struct type *t1, struct type *t2)
  *   typedefs for arrays can't be incomplete
  */
 struct type *
-get_type(
+getType(
     int flags,              // TF_whatever
     struct type *sub,       // subtype (return type for functions)
     int count)              // if array, length
@@ -468,9 +468,8 @@ get_type(
         }
 
         if (depth >= 1000) {
-            fdprintf(2,
-                "WARNING: type cache search hit depth limit, "
-                "possible cycle in types list\n");
+            fdprintf(2, "WARNING: type cache search hit depth limit,"
+                " possible cycle in types list\n");
         }
     }
 
@@ -515,7 +514,7 @@ initbasictype()
         t->size = basictype[i].size;
         t->next = types;
         types = t;
-        new_name(basictype[i].name, prim, t, 0);
+        newName(basictype[i].name, prim, t, 0);
         if (i == 0) chartype = t;
         if (i == 1) inttype = t;  // int is 2 bytes (short), not 4 bytes (long)
         if (i == 2) longtype = t;
@@ -637,7 +636,7 @@ getbasetype()
 
     /* a typedef? */
     if (cur.type == SYM) {
-        n = lookup_name(cur.v.name, 0);
+        n = findName(cur.v.name, 0);
         if (n && (n->kind == tdef)) {
             gettoken();
             return n->type;
@@ -681,16 +680,16 @@ getbasetype()
             }
 
             // create enum constant as a global name with elem kind
-            e = new_name(cur.v.name, elem, uchartype, 0);
+            e = newName(cur.v.name, elem, uchartype, 0);
             gettoken();
 
             // optional = value
             if (cur.type == ASSIGN) {
                 gettoken();
-                off = parse_const(PRI_ALL);
+                off = parseConst(PRI_ALL);
             }
 
-            // new_name() can return NULL if symbol table full or duplicate name
+            // newName() can return NULL if symbol table full or duplicate name
             if (e) {
                 e->offset = off;  // store enum value in offset field
             }
@@ -724,7 +723,7 @@ getbasetype()
             strncpy(s_buf, cur.v.name, sizeof(s_buf) - 1);
             s_buf[sizeof(s_buf) - 1] = '\0';
             s = s_buf;
-            n = lookup_name(s, 1);  // look for existing tag
+            n = findName(s, 1);  // look for existing tag
             gettoken();
 
             // if found and already complete, return it
@@ -741,9 +740,9 @@ getbasetype()
             // Forward declaration of a new tag (e.g., typedef struct S S_t;)
             // Create an incomplete type
             if (s) {
-                t = get_type(TF_AGGREGATE | TF_INCOMPLETE, 0, 0);
+                t = getType(TF_AGGREGATE | TF_INCOMPLETE, 0, 0);
                 t->size = 0;
-                n = new_name(s, is_union ? utag : stag, t, 1);
+                n = newName(s, is_union ? utag : stag, t, 1);
                 return t;
             }
             // No tag name and no definition - error
@@ -759,14 +758,14 @@ getbasetype()
             t->size = 0;
         } else {
             // Create new type
-            t = get_type(TF_AGGREGATE, 0, 0);
+            t = getType(TF_AGGREGATE, 0, 0);
             t->size = 0;
         }
 
         if (s) {
             // create or update the tag
             if (!n) {
-                n = new_name(s, is_union ? utag : stag, t, 1);
+                n = newName(s, is_union ? utag : stag, t, 1);
             } else if (n->type != t) {
                 // Only update if we created a new type (shouldn't happen now)
                 n->type = t;
@@ -788,7 +787,7 @@ getbasetype()
              * parse member declaration (struct_elem=true to avoid global
              * namespace pollution)
              */
-            member = declare_internal(&member_type, 1);
+            member = declareInternal(&member_type, 1);
             if (!member) {
                 // skip to semicolon or end
                 while (cur.type != SEMI && cur.type != END &&

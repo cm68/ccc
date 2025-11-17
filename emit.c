@@ -6,8 +6,8 @@
  *
  * Key responsibilities:
  * - emit_assembly(): Main entry point - emit function assembly and free tree
- * - emit_expr()/emit_stmt(): Walk trees, emit assembly, free nodes
- * - emit_function_prologue(): Output function header and variable metadata
+ * - emitExpr()/emitStmt(): Walk trees, emit assembly, free nodes
+ * - emitFunctionPrologue(): Output function header and variable metadata
  *
  * Register Architecture (Stack Machine Model):
  * ============================================
@@ -80,7 +80,7 @@
 #include "cc2.h"
 
 static const char *
-get_register_name(enum register_id reg)
+getRegisterName(enum register_id reg)
 {
     switch (reg) {
         case REG_NO:  return NULL;
@@ -100,32 +100,32 @@ get_register_name(enum register_id reg)
  * Outputs assembly comment describing function and function label
  */
 static void
-emit_function_prologue(char *name, char *params, char *rettype, int frame_size,
+emitFunctionPrologue(char *name, char *params, char *rettype, int frame_size,
                        struct local_var *locals)
 {
     int has_params = (params && params[0]);
     struct local_var *var;
 
     /* Assembly comment with function signature */
-    fdprintf(out_fd, "; Function: %s", name);
+    fdprintf(outFd, "; Function: %s", name);
 
     if (has_params) {
-        fdprintf(out_fd, "(%s)", params);
+        fdprintf(outFd, "(%s)", params);
     } else {
-        fdprintf(out_fd, "()");
+        fdprintf(outFd, "()");
     }
 
     if (rettype && rettype[0]) {
-        fdprintf(out_fd, " -> %s", rettype);
+        fdprintf(outFd, " -> %s", rettype);
     }
 
-    fdprintf(out_fd, "\n");
+    fdprintf(outFd, "\n");
 
     /* Output local variable information as assembly comments */
     if (locals) {
-        fdprintf(out_fd, "; Local variables:\n");
+        fdprintf(outFd, "; Local variables:\n");
         for (var = locals; var; var = var->next) {
-            const char *regname = get_register_name(var->reg);
+            const char *regname = getRegisterName(var->reg);
 
             /* Build offset string */
             char offset_str[32];
@@ -137,24 +137,24 @@ emit_function_prologue(char *name, char *params, char *rettype, int frame_size,
                     var->offset);
             }
 
-            fdprintf(out_fd, ";   %s: ", var->name);
+            fdprintf(outFd, ";   %s: ", var->name);
             if (var->first_label == -1) {
                 if (regname) {
-                    fdprintf(out_fd, 
+                    fdprintf(outFd, 
                         "unused (0 refs, 0 agg_refs, %s, reg=%s)\n",
                         offset_str, regname);
                 } else {
-                    fdprintf(out_fd, 
+                    fdprintf(outFd, 
                         "unused (0 refs, 0 agg_refs, %s)\n", offset_str);
                 }
             } else {
                 if (regname) {
-                    fdprintf(out_fd, 
+                    fdprintf(outFd, 
                         "labels %d-%d (%d refs, %d agg_refs, %s, reg=%s)\n",
                         var->first_label, var->last_label, var->ref_count, 
                         var->agg_refs, offset_str, regname);
                 } else {
-                    fdprintf(out_fd, 
+                    fdprintf(outFd, 
                         "labels %d-%d (%d refs, %d agg_refs, %s)\n",
                         var->first_label, var->last_label, var->ref_count, 
                         var->agg_refs, offset_str);
@@ -164,12 +164,12 @@ emit_function_prologue(char *name, char *params, char *rettype, int frame_size,
     }
 
     /* Function label (standard C naming with underscore prefix) */
-    fdprintf(out_fd, "_%s:\n", name);
+    fdprintf(outFd, "_%s:\n", name);
 
     /* Emit frame allocation call if we have locals or parameters */
     if (frame_size > 0 || has_params) {
-        fdprintf(out_fd, "\tld a, %d\n", frame_size);
-        fdprintf(out_fd, "\tcall framealloc\n");
+        fdprintf(outFd, "\tld a, %d\n", frame_size);
+        fdprintf(outFd, "\tcall framealloc\n");
     }
 }
 
@@ -178,7 +178,7 @@ emit_function_prologue(char *name, char *params, char *rettype, int frame_size,
  * management
  */
 static int
-is_binop_with_accum(unsigned char op)
+isBinopWithAccum(unsigned char op)
 {
     switch (op) {
     case '+': case '-': case '*': case '/': case '%':  /* Arithmetic */
@@ -201,7 +201,7 @@ contains_binop(struct expr *e)
     if (!e) return 0;
 
     /* Check if this node is a binop */
-    if (is_binop_with_accum(e->op)) return 1;
+    if (isBinopWithAccum(e->op)) return 1;
 
     /* Recursively check children */
     if (contains_binop(e->left)) return 1;
@@ -223,7 +223,7 @@ contains_binop(struct expr *e)
  *
  * Assignment operators need register information from context.
  */
-static void emit_expr(struct function_ctx *ctx, struct expr *e)
+static void emitExpr(struct function_ctx *ctx, struct expr *e)
 {
     if (!e) return;
 
@@ -233,11 +233,11 @@ static void emit_expr(struct function_ctx *ctx, struct expr *e)
         /* Look up variable BEFORE emitting child (which frees it) */
         struct local_var *var = NULL;
         if (e->left && e->left->op == '$' && e->left->symbol) {
-            var = lookup_var(ctx, e->left->symbol);
+            var = findVar(ctx, e->left->symbol);
         }
 
         /* Emit child expression first (SYM nodes emit nothing and are freed) */
-        emit_expr(ctx, e->left);
+        emitExpr(ctx, e->left);
 
         /* Now emit the load inst based on current register allocation */
         if (var) {
@@ -246,54 +246,54 @@ static void emit_expr(struct function_ctx *ctx, struct expr *e)
                 if (e->size == 1) {
                     /* Byte: move register to A */
                     if (var->reg == REG_B) {
-                        fdprintf(out_fd, "\tld a, b\n");
+                        fdprintf(outFd, "\tld a, b\n");
                     } else if (var->reg == REG_C) {
-                        fdprintf(out_fd, "\tld a, c\n");
+                        fdprintf(outFd, "\tld a, c\n");
                     } else if (var->reg == REG_Bp) {
-                        fdprintf(out_fd, "\texx\n\tld a, b\n\texx\n");
+                        fdprintf(outFd, "\texx\n\tld a, b\n\texx\n");
                     } else if (var->reg == REG_Cp) {
-                        fdprintf(out_fd, "\texx\n\tld a, c\n\texx\n");
+                        fdprintf(outFd, "\texx\n\tld a, c\n\texx\n");
                     }
                 } else {
                     /* Word: move register pair to HL */
                     if (var->reg == REG_BC) {
-                        fdprintf(out_fd, "\tld h, b\n\tld l, c\n");
+                        fdprintf(outFd, "\tld h, b\n\tld l, c\n");
                     } else if (var->reg == REG_IX) {
-                        fdprintf(out_fd, "\tpush ix\n\tpop hl\n");
+                        fdprintf(outFd, "\tpush ix\n\tpop hl\n");
                     }
                 }
             } else {
                 /* Variable is on stack - load from (iy + offset) */
                 if (e->size == 1) {
                     if (var->offset >= 0) {
-                        fdprintf(out_fd, "\tld a, (iy + %d)\n", var->offset);
+                        fdprintf(outFd, "\tld a, (iy + %d)\n", var->offset);
                     } else {
-                        fdprintf(out_fd, "\tld a, (iy - %d)\n", -var->offset);
+                        fdprintf(outFd, "\tld a, (iy - %d)\n", -var->offset);
                     }
                 } else if (e->size == 2) {
                     if (var->offset >= 0) {
-                        fdprintf(out_fd, "\tld hl, (iy + %d)\n", var->offset);
+                        fdprintf(outFd, "\tld hl, (iy + %d)\n", var->offset);
                     } else {
-                        fdprintf(out_fd, "\tld hl, (iy - %d)\n", -var->offset);
+                        fdprintf(outFd, "\tld hl, (iy - %d)\n", -var->offset);
                     }
                 } else {
                     /* Long (4 bytes) - use getlong function */
-                    fdprintf(out_fd, "\tld a, %d\n", var->offset);
-                    fdprintf(out_fd, "\tcall getlong\n");
+                    fdprintf(outFd, "\tld a, %d\n", var->offset);
+                    fdprintf(outFd, "\tcall getlong\n");
                 }
             }
         } else if (e->left && e->left->symbol) {
             /* Global variable - direct memory access */
             if (e->size == 1) {
-                fdprintf(out_fd, "\tld a, (%s)\n", e->left->symbol);
+                fdprintf(outFd, "\tld a, (%s)\n", e->left->symbol);
             } else if (e->size == 2) {
-                fdprintf(out_fd, "\tld hl, (%s)\n", e->left->symbol);
+                fdprintf(outFd, "\tld hl, (%s)\n", e->left->symbol);
             } else if (e->size == 4) {
                 /* Long - load HL'HL from global */
-                fdprintf(out_fd, "\tld hl, (%s)\n", e->left->symbol);
-                fdprintf(out_fd, "\texx\n");
-                fdprintf(out_fd, "\tld hl, (%s+2)\n", e->left->symbol);
-                fdprintf(out_fd, "\texx\n");
+                fdprintf(outFd, "\tld hl, (%s)\n", e->left->symbol);
+                fdprintf(outFd, "\texx\n");
+                fdprintf(outFd, "\tld hl, (%s+2)\n", e->left->symbol);
+                fdprintf(outFd, "\texx\n");
             }
         }
 
@@ -327,31 +327,31 @@ static void emit_expr(struct function_ctx *ctx, struct expr *e)
         if (var_name[0] == 'A') var_name++;
 
         /* Look up the pointer variable */
-        var = lookup_var(ctx, var_name);
+        var = findVar(ctx, var_name);
 
         if (var && var->reg != REG_NO) {
             /* Pointer is register-allocated - use indirect addressing */
             if (var->reg == REG_BC) {
-                fdprintf(out_fd, "\tld a, (bc)\n");
+                fdprintf(outFd, "\tld a, (bc)\n");
             } else if (var->reg == REG_IX) {
-                fdprintf(out_fd, "\tld a, (ix+0)\n");
+                fdprintf(outFd, "\tld a, (ix+0)\n");
             } else {
                 /* Register type can't do indirect addressing - fall back */
                 /* Load pointer to HL first, then indirect load */
                 if (var->reg == REG_B || var->reg == REG_C ||
                     var->reg == REG_Bp || var->reg == REG_Cp) {
                     /* Single byte register shouldn't hold pointer, but handle it */
-                    fdprintf(out_fd, "\t; WARNING: byte reg holds pointer?\n");
+                    fdprintf(outFd, "\t; WARNING: byte reg holds pointer?\n");
                 }
-                fdprintf(out_fd, "\t; fall back to normal indirect\n");
+                fdprintf(outFd, "\t; fall back to normal indirect\n");
                 /* Emit the inner DEREF to load pointer */
-                emit_expr(ctx, e->left);
-                fdprintf(out_fd, "\tld a, (hl)\n");
+                emitExpr(ctx, e->left);
+                fdprintf(outFd, "\tld a, (hl)\n");
             }
         } else {
             /* Pointer not register-allocated - load to HL then indirect */
-            emit_expr(ctx, e->left);
-            fdprintf(out_fd, "\tld a, (hl)\n");
+            emitExpr(ctx, e->left);
+            fdprintf(outFd, "\tld a, (hl)\n");
         }
 
         /* Free outer node (don't free e->left, already freed above if emitted) */
@@ -360,7 +360,7 @@ static void emit_expr(struct function_ctx *ctx, struct expr *e)
             /* e->left was emitted and freed, just free this node */
         } else {
             /* e->left was not emitted, need to free it manually */
-            free_expr(e->left);
+            freeExpr(e->left);
         }
         if (e->asm_block) free(e->asm_block);
         if (e->cleanup_block) free(e->cleanup_block);
@@ -371,11 +371,11 @@ static void emit_expr(struct function_ctx *ctx, struct expr *e)
     else if (e->op == '=' && e->asm_block &&
             strstr(e->asm_block, "ASSIGN_PLACEHOLDER")) {
         /* Emit right child first (value goes to PRIMARY) */
-        emit_expr(ctx, e->right);
+        emitExpr(ctx, e->right);
 
         /* Now emit the store inst based on current register allocation */
         if (e->left && e->left->op == '$' && e->left->symbol) {
-            struct local_var *var = lookup_var(ctx, e->left->symbol);
+            struct local_var *var = findVar(ctx, e->left->symbol);
             char buf[256];
 
             if (var && var->reg != REG_NO) {
@@ -383,59 +383,59 @@ static void emit_expr(struct function_ctx *ctx, struct expr *e)
                 if (e->size == 1) {
                     /* Byte: move A to register */
                     if (var->reg == REG_B) {
-                        fdprintf(out_fd, "\tld b, a\n");
+                        fdprintf(outFd, "\tld b, a\n");
                     } else if (var->reg == REG_C) {
-                        fdprintf(out_fd, "\tld c, a\n");
+                        fdprintf(outFd, "\tld c, a\n");
                     } else if (var->reg == REG_Bp) {
-                        fdprintf(out_fd, "\texx\n\tld b, a\n\texx\n");
+                        fdprintf(outFd, "\texx\n\tld b, a\n\texx\n");
                     } else if (var->reg == REG_Cp) {
-                        fdprintf(out_fd, "\texx\n\tld c, a\n\texx\n");
+                        fdprintf(outFd, "\texx\n\tld c, a\n\texx\n");
                     }
                 } else {
                     /* Word: move HL to register pair */
                     if (var->reg == REG_BC) {
-                        fdprintf(out_fd, "\tld b, h\n\tld c, l\n");
+                        fdprintf(outFd, "\tld b, h\n\tld c, l\n");
                     } else if (var->reg == REG_IX) {
-                        fdprintf(out_fd, "\tpush hl\n\tpop ix\n");
+                        fdprintf(outFd, "\tpush hl\n\tpop ix\n");
                     }
                 }
             } else if (var) {
                 /* Variable is on stack - store to (iy + offset) */
                 if (e->size == 1) {
                     if (var->offset >= 0) {
-                        fdprintf(out_fd, "\tld (iy + %d), a\n", var->offset);
+                        fdprintf(outFd, "\tld (iy + %d), a\n", var->offset);
                     } else {
-                        fdprintf(out_fd, "\tld (iy - %d), a\n", -var->offset);
+                        fdprintf(outFd, "\tld (iy - %d), a\n", -var->offset);
                     }
                 } else if (e->size == 2) {
                     if (var->offset >= 0) {
-                        fdprintf(out_fd, "\tld (iy + %d), hl\n", var->offset);
+                        fdprintf(outFd, "\tld (iy + %d), hl\n", var->offset);
                     } else {
-                        fdprintf(out_fd, "\tld (iy - %d), hl\n", -var->offset);
+                        fdprintf(outFd, "\tld (iy - %d), hl\n", -var->offset);
                     }
                 } else {
                     /* Long (4 bytes) - use putlong function */
-                    fdprintf(out_fd, "\tld a, %d\n", var->offset);
-                    fdprintf(out_fd, "\tcall putlong\n");
+                    fdprintf(outFd, "\tld a, %d\n", var->offset);
+                    fdprintf(outFd, "\tcall putlong\n");
                 }
             } else {
                 /* Global variable - direct memory access */
                 if (e->size == 1) {
-                    fdprintf(out_fd, "\tld (%s), a\n", e->left->symbol);
+                    fdprintf(outFd, "\tld (%s), a\n", e->left->symbol);
                 } else if (e->size == 2) {
-                    fdprintf(out_fd, "\tld (%s), hl\n", e->left->symbol);
+                    fdprintf(outFd, "\tld (%s), hl\n", e->left->symbol);
                 } else if (e->size == 4) {
                     /* Long - store HL'HL to global */
-                    fdprintf(out_fd, "\tld (%s), hl\n", e->left->symbol);
-                    fdprintf(out_fd, "\texx\n");
-                    fdprintf(out_fd, "\tld (%s+2), hl\n", e->left->symbol);
-                    fdprintf(out_fd, "\texx\n");
+                    fdprintf(outFd, "\tld (%s), hl\n", e->left->symbol);
+                    fdprintf(outFd, "\texx\n");
+                    fdprintf(outFd, "\tld (%s+2), hl\n", e->left->symbol);
+                    fdprintf(outFd, "\texx\n");
                 }
             }
         }
 
         /* Emit left child last (address not needed for simple assignments) */
-        emit_expr(ctx, e->left);
+        emitExpr(ctx, e->left);
     }
     /* Optimize ADD with constant where left is register-allocated variable */
     else if (e->op == '+' && e->left && e->left->op == 'M' && e->size == 2 &&
@@ -449,7 +449,7 @@ static void emit_expr(struct function_ctx *ctx, struct expr *e)
 
         if (var_name[0] == '$') var_name++;
         if (var_name[0] == 'A') var_name++;
-        var = lookup_var(ctx, var_name);
+        var = findVar(ctx, var_name);
 
         if (var && (var->reg == REG_BC || var->reg == REG_BCp || var->reg == REG_IX)) {
             /* Variable is in register - emit optimized add */
@@ -474,35 +474,35 @@ static void emit_expr(struct function_ctx *ctx, struct expr *e)
             }
 
             /* Don't emit left child - access register directly */
-            free_expr(e->left);
+            freeExpr(e->left);
 
             /* Emit optimized sequence */
             if (is_small && const_val <= 4) {
                 /* For small constants, can still use inc but on BC first */
                 if (var->reg == REG_BC) {
-                    fdprintf(out_fd, "\tld h, b\n\tld l, c\n");
+                    fdprintf(outFd, "\tld h, b\n\tld l, c\n");
                 } else if (var->reg == REG_BCp) {
-                    fdprintf(out_fd, "\texx\n\tld h, b\n\tld l, c\n\texx\n");
+                    fdprintf(outFd, "\texx\n\tld h, b\n\tld l, c\n\texx\n");
                 } else {  /* REG_IX */
-                    fdprintf(out_fd, "\tpush ix\n\tpop hl\n");
+                    fdprintf(outFd, "\tpush ix\n\tpop hl\n");
                 }
                 /* Now do the inc hl sequence */
-                fdprintf(out_fd, "%s\n", e->asm_block);
+                fdprintf(outFd, "%s\n", e->asm_block);
             } else {
                 /* Use add hl, reg for larger constants */
-                fdprintf(out_fd, "\tld hl, %ld\n", const_val);
+                fdprintf(outFd, "\tld hl, %ld\n", const_val);
                 if (var->reg == REG_BC) {
-                    fdprintf(out_fd, "\tadd hl, bc\n");
+                    fdprintf(outFd, "\tadd hl, bc\n");
                 } else if (var->reg == REG_BCp) {
-                    fdprintf(out_fd, "\texx\n\tadd hl, bc\n\texx\n");
+                    fdprintf(outFd, "\texx\n\tadd hl, bc\n\texx\n");
                 } else {  /* REG_IX */
-                    fdprintf(out_fd, "\tadd hl, ix\n");
+                    fdprintf(outFd, "\tadd hl, ix\n");
                 }
             }
         } else {
             /* Not register-allocated - emit normally */
-            emit_expr(ctx, e->left);
-            fdprintf(out_fd, "%s\n", e->asm_block);
+            emitExpr(ctx, e->left);
+            fdprintf(outFd, "%s\n", e->asm_block);
         }
 
         /* Free this node */
@@ -512,7 +512,7 @@ static void emit_expr(struct function_ctx *ctx, struct expr *e)
         return;
     }
     /* Binary operators with accumulator management need special handling */
-    else if (is_binop_with_accum(e->op) && e->left && e->right &&
+    else if (isBinopWithAccum(e->op) && e->left && e->right &&
             e->asm_block) {
         /* Check for inline byte operations with immediate (and/or/xor) */
         int is_inline_immediate = 0;
@@ -526,10 +526,10 @@ static void emit_expr(struct function_ctx *ctx, struct expr *e)
 
         if (is_inline_immediate) {
             /* Inline immediate: just emit left to A, then inline instruction */
-            emit_expr(ctx, e->left);
+            emitExpr(ctx, e->left);
             /* Don't emit right child - constant is baked into instruction */
-            free_expr(e->right);
-            fdprintf(out_fd, "%s\n", e->asm_block);
+            freeExpr(e->right);
+            fdprintf(outFd, "%s\n", e->asm_block);
         } else {
             /* Standard binop with accumulator management */
             char *move_inst = NULL;
@@ -552,10 +552,10 @@ static void emit_expr(struct function_ctx *ctx, struct expr *e)
 
             /* Emit in correct order for accumulator management */
             /* 1. Left operand to PRIMARY */
-            emit_expr(ctx, e->left);
+            emitExpr(ctx, e->left);
             if (move_inst) {
                 /* 2. Move PRIMARY to SECONDARY */
-                fdprintf(out_fd, "%s\n", move_inst);
+                fdprintf(outFd, "%s\n", move_inst);
                 free(move_inst);
             }
 
@@ -565,40 +565,40 @@ static void emit_expr(struct function_ctx *ctx, struct expr *e)
                     /* Byte operation: SECONDARY is E, spill to D or stack */
                     if (!ctx->d_in_use) {
                         /* D is free - use it to save E */
-                        fdprintf(out_fd, "\tld d, e  ; save SECONDARY (E) to D\n");
+                        fdprintf(outFd, "\tld d, e  ; save SECONDARY (E) to D\n");
                         ctx->d_in_use = 1;
                         saved_de = 1;
                     } else {
                         /* D already in use - spill to stack */
-                        fdprintf(out_fd, "\tpush de  ; save D and E to stack\n");
+                        fdprintf(outFd, "\tpush de  ; save D and E to stack\n");
                         ctx->de_save_count++;
                         saved_de = 2;
                     }
                 } else {
                     /* Word operation: SECONDARY is DE, spill to stack */
-                    fdprintf(out_fd, "\tpush de  ; save SECONDARY (DE) for nested binop\n");
+                    fdprintf(outFd, "\tpush de  ; save SECONDARY (DE) for nested binop\n");
                     ctx->de_save_count++;
                     saved_de = 2;
                 }
             }
 
             /* 3. Right operand to PRIMARY */
-            emit_expr(ctx, e->right);
+            emitExpr(ctx, e->right);
 
             /* Restore SECONDARY if we saved it */
             if (saved_de == 1) {
                 /* Restore E from D (byte operation) */
-                fdprintf(out_fd, "\tld e, d  ; restore SECONDARY (E) from D\n");
+                fdprintf(outFd, "\tld e, d  ; restore SECONDARY (E) from D\n");
                 ctx->d_in_use = 0;
             } else if (saved_de == 2) {
                 /* Restore from stack */
-                fdprintf(out_fd, "\tpop de  ; restore SECONDARY from stack\n");
+                fdprintf(outFd, "\tpop de  ; restore SECONDARY from stack\n");
                 ctx->de_save_count--;
             }
 
             if (call_inst) {
                 /* 4. Call binary operation */
-                fdprintf(out_fd, "%s\n", call_inst);
+                fdprintf(outFd, "%s\n", call_inst);
                 free(call_inst);
             }
         }  /* End of else (standard binop) */
@@ -664,7 +664,7 @@ static void emit_expr(struct function_ctx *ctx, struct expr *e)
                     if (var_name[0] == 'A') var_name++;
 
                     /* Look up variable and check if we can optimize */
-                    var = lookup_var(ctx, var_name);
+                    var = findVar(ctx, var_name);
 
                     /* Look ahead to see if next line is "push hl" */
                     if (var && var->reg != REG_NO && var->size == 2 && line_end) {
@@ -689,11 +689,11 @@ static void emit_expr(struct function_ctx *ctx, struct expr *e)
                         if (strstr(next_buf, "push hl")) {
                             /* Optimize: push register directly */
                             if (var->reg == REG_BC) {
-                                fdprintf(out_fd, "\tpush bc\n");
+                                fdprintf(outFd, "\tpush bc\n");
                             } else if (var->reg == REG_BCp) {
-                                fdprintf(out_fd, "\texx\n\tpush bc\n\texx\n");
+                                fdprintf(outFd, "\texx\n\tpush bc\n\texx\n");
                             } else if (var->reg == REG_IX) {
-                                fdprintf(out_fd, "\tpush ix\n");
+                                fdprintf(outFd, "\tpush ix\n");
                             }
                             /* Skip the push hl line */
                             line_start = next_end ? next_end + 1 : next_line_start + next_len;
@@ -705,45 +705,45 @@ static void emit_expr(struct function_ctx *ctx, struct expr *e)
                     if (var && var->reg != REG_NO) {
                         /* Variable in register - move to HL */
                         if (var->reg == REG_BC) {
-                            fdprintf(out_fd, "\tld h, b\n\tld l, c\n");
+                            fdprintf(outFd, "\tld h, b\n\tld l, c\n");
                         } else if (var->reg == REG_BCp) {
-                            fdprintf(out_fd, "\texx\n\tld h, b\n\tld l, c\n\texx\n");
+                            fdprintf(outFd, "\texx\n\tld h, b\n\tld l, c\n\texx\n");
                         } else if (var->reg == REG_IX) {
-                            fdprintf(out_fd, "\tpush ix\n\tpop hl\n");
+                            fdprintf(outFd, "\tpush ix\n\tpop hl\n");
                         }
                     } else if (var) {
                         /* Variable on stack */
                         if (var->offset >= 0) {
-                            fdprintf(out_fd, "\tld hl, (iy + %d)\n", var->offset);
+                            fdprintf(outFd, "\tld hl, (iy + %d)\n", var->offset);
                         } else {
-                            fdprintf(out_fd, "\tld hl, (iy - %d)\n", -var->offset);
+                            fdprintf(outFd, "\tld hl, (iy - %d)\n", -var->offset);
                         }
                     }
                 } else {
                     /* Normal line - emit it */
-                    fdprintf(out_fd, "%s\n", line_buf);
+                    fdprintf(outFd, "%s\n", line_buf);
                 }
             }
         }
         /* Emit deferred cleanup (for CALL stack cleanup after result used) */
         if (e->cleanup_block) {
-            fdprintf(out_fd, "%s", e->cleanup_block);
+            fdprintf(outFd, "%s", e->cleanup_block);
         }
-        /* Free children manually since we didn't call emit_expr on them */
-        free_expr(e->left);
-        free_expr(e->right);
+        /* Free children manually since we didn't call emitExpr on them */
+        freeExpr(e->left);
+        freeExpr(e->right);
     } else {
         /* Normal postorder traversal for other operators */
-        if (e->left) emit_expr(ctx, e->left);
-        if (e->right) emit_expr(ctx, e->right);
+        if (e->left) emitExpr(ctx, e->left);
+        if (e->right) emitExpr(ctx, e->right);
 
         if (e->asm_block) {
-            fdprintf(out_fd, "%s\n", e->asm_block);
+            fdprintf(outFd, "%s\n", e->asm_block);
         }
 
         /* Emit deferred cleanup (for CALL stack cleanup after result used) */
         if (e->cleanup_block) {
-            fdprintf(out_fd, "%s", e->cleanup_block);
+            fdprintf(outFd, "%s", e->cleanup_block);
         }
     }
 
@@ -756,13 +756,13 @@ static void emit_expr(struct function_ctx *ctx, struct expr *e)
 /*
  * Walk statement tree, emit assembly, and free nodes
  */
-static void emit_stmt(struct function_ctx *ctx, struct stmt *s)
+static void emitStmt(struct function_ctx *ctx, struct stmt *s)
 {
     if (!s) return;
 
     /* For ASM nodes, emit the assembly block directly */
     if (s->type == 'A' && s->asm_block) {
-        fdprintf(out_fd, "%s\n", s->asm_block);
+        fdprintf(outFd, "%s\n", s->asm_block);
     }
 
     /* Handle IF statements specially */
@@ -792,7 +792,7 @@ static void emit_stmt(struct function_ctx *ctx, struct stmt *s)
 
         if (use_direct_jump) {
             /* Emit unwrapped condition expression (leaves Z flag set) */
-            emit_expr(ctx, cond);
+            emitExpr(ctx, cond);
 
             /* If we had a ! wrapper, manually free it (child already freed) */
             if (invert_condition && s->expr != cond) {
@@ -804,19 +804,19 @@ static void emit_stmt(struct function_ctx *ctx, struct stmt *s)
                 /* Has else: jump to else on false, fall through to then on true */
                 if (invert_condition) {
                     /* ! wrapper: jump if nonzero (true) */
-                    fdprintf(out_fd, "\tjp nz, _if_%d\n", s->label);
+                    fdprintf(outFd, "\tjp nz, _if_%d\n", s->label);
                 } else {
                     /* No !: jump if zero (false) */
-                    fdprintf(out_fd, "\tjp z, _if_%d\n", s->label);
+                    fdprintf(outFd, "\tjp z, _if_%d\n", s->label);
                 }
             } else {
                 /* No else: jump to end on false */
                 if (invert_condition) {
                     /* ! wrapper: jump if nonzero (true) */
-                    fdprintf(out_fd, "\tjp nz, _if_%d\n", s->label);
+                    fdprintf(outFd, "\tjp nz, _if_%d\n", s->label);
                 } else {
                     /* No !: jump if zero (false) */
-                    fdprintf(out_fd, "\tjp z, _if_%d\n", s->label);
+                    fdprintf(outFd, "\tjp z, _if_%d\n", s->label);
                 }
             }
         } else {
@@ -829,61 +829,61 @@ static void emit_stmt(struct function_ctx *ctx, struct stmt *s)
                 const char *var_name = cond->left->symbol;
                 if (var_name[0] == '$') var_name++;
                 if (var_name[0] == 'A') var_name++;
-                var = lookup_var(ctx, var_name);
+                var = findVar(ctx, var_name);
             }
 
             if (var && (var->reg == REG_BC || var->reg == REG_BCp)) {
                 /* Word variable in BC or BC' - test directly */
                 if (var->reg == REG_BC) {
-                    fdprintf(out_fd, "\tld a, b\n\tor c\n");
+                    fdprintf(outFd, "\tld a, b\n\tor c\n");
                 } else {  /* REG_BCp */
-                    fdprintf(out_fd, "\texx\n\tld a, b\n\tor c\n\texx\n");
+                    fdprintf(outFd, "\texx\n\tld a, b\n\tor c\n\texx\n");
                 }
                 /* Free the condition expression without emitting it */
-                free_expr(cond);
+                freeExpr(cond);
                 /* If we had ! wrapper, free it too */
                 if (invert_condition && s->expr != cond) {
                     free(s->expr);
                 }
             } else {
                 /* Evaluate to HL and test */
-                emit_expr(ctx, s->expr);
+                emitExpr(ctx, s->expr);
                 /* Test if HL is zero */
-                fdprintf(out_fd, "\tld a, h\n\tor l\n");
+                fdprintf(outFd, "\tld a, h\n\tor l\n");
             }
 
             /* Jump based on test result */
             if (s->else_branch) {
                 if (invert_condition) {
-                    fdprintf(out_fd, "\tjp nz, _if_%d\n", s->label);
+                    fdprintf(outFd, "\tjp nz, _if_%d\n", s->label);
                 } else {
-                    fdprintf(out_fd, "\tjp z, _if_%d\n", s->label);
+                    fdprintf(outFd, "\tjp z, _if_%d\n", s->label);
                 }
             } else {
                 if (invert_condition) {
-                    fdprintf(out_fd, "\tjp nz, _if_%d\n", s->label);
+                    fdprintf(outFd, "\tjp nz, _if_%d\n", s->label);
                 } else {
-                    fdprintf(out_fd, "\tjp z, _if_%d\n", s->label);
+                    fdprintf(outFd, "\tjp z, _if_%d\n", s->label);
                 }
             }
         }
 
         /* Emit then branch */
-        if (s->then_branch) emit_stmt(ctx, s->then_branch);
+        if (s->then_branch) emitStmt(ctx, s->then_branch);
 
         /* Jump over else if we took the then branch */
         if (s->else_branch) {
-            fdprintf(out_fd, "\tjp _if_end_%d\n", s->label2);
+            fdprintf(outFd, "\tjp _if_end_%d\n", s->label2);
         }
 
         /* Emit else branch if present */
         if (s->else_branch) {
-            fdprintf(out_fd, "_if_%d:\n", s->label);
-            emit_stmt(ctx, s->else_branch);
+            fdprintf(outFd, "_if_%d:\n", s->label);
+            emitStmt(ctx, s->else_branch);
         }
 
         /* Emit next statement if any */
-        if (s->next) emit_stmt(ctx, s->next);
+        if (s->next) emitStmt(ctx, s->next);
 
         /* Free this statement node */
         if (s->asm_block) free(s->asm_block);
@@ -894,30 +894,30 @@ static void emit_stmt(struct function_ctx *ctx, struct stmt *s)
     else if (s->type == 'R') {
         /* Emit expression to load return value into HL */
         if (s->expr) {
-            emit_expr(ctx, s->expr);
+            emitExpr(ctx, s->expr);
             /* If function returns long but expression is short, zero-extend to long */
             if (strcmp(ctx->rettype, "_long_") == 0 && s->expr->size == 2) {
-                fdprintf(out_fd, "\t; zero-extend short to long\n");
-                fdprintf(out_fd, "\texx\n");
-                fdprintf(out_fd, "\tld hl, 0  ; upper 16 bits = 0\n");
-                fdprintf(out_fd, "\texx\n");
+                fdprintf(outFd, "\t; zero-extend short to long\n");
+                fdprintf(outFd, "\texx\n");
+                fdprintf(outFd, "\tld hl, 0  ; upper 16 bits = 0\n");
+                fdprintf(outFd, "\texx\n");
             }
         }
         /* Jump to function exit label */
-        fdprintf(out_fd, "\tjp _%s_exit\n", ctx->name);
+        fdprintf(outFd, "\tjp _%s_exit\n", ctx->name);
     } else {
         /* Emit expressions (this frees them) */
-        if (s->expr) emit_expr(ctx, s->expr);
-        if (s->expr2) emit_expr(ctx, s->expr2);
-        if (s->expr3) emit_expr(ctx, s->expr3);
+        if (s->expr) emitExpr(ctx, s->expr);
+        if (s->expr2) emitExpr(ctx, s->expr2);
+        if (s->expr3) emitExpr(ctx, s->expr3);
     }
 
     /* Emit child statements (this frees them) */
-    if (s->then_branch) emit_stmt(ctx, s->then_branch);
-    if (s->else_branch) emit_stmt(ctx, s->else_branch);
+    if (s->then_branch) emitStmt(ctx, s->then_branch);
+    if (s->else_branch) emitStmt(ctx, s->else_branch);
 
     /* Emit next statement in chain (this frees it) */
-    if (s->next) emit_stmt(ctx, s->next);
+    if (s->next) emitStmt(ctx, s->next);
 
     /* Free this node only (children already freed by recursive emit calls) */
     if (s->asm_block) free(s->asm_block);
@@ -940,22 +940,22 @@ void emit_assembly(struct function_ctx *ctx, int fd)
     has_params = (ctx->params && ctx->params[0]);
 
     /* Emit function prologue with frame allocation and lifetime info */
-    emit_function_prologue(ctx->name, ctx->params, ctx->rettype, 
+    emitFunctionPrologue(ctx->name, ctx->params, ctx->rettype, 
         ctx->frame_size, ctx->locals);
 
     /* Emit function body */
-    emit_stmt(ctx, ctx->body);
+    emitStmt(ctx, ctx->body);
 
     /* Emit function exit label (for return statements to jump to) */
-    fdprintf(out_fd, "_%s_exit:\n", ctx->name);
+    fdprintf(outFd, "_%s_exit:\n", ctx->name);
 
     /* Emit function epilogue with frame deallocation */
     /* Jump to framefree if we have locals or parameters (tail call optimization) */
     if (ctx->frame_size > 0 || has_params) {
-        fdprintf(out_fd, "\tjp framefree\n");
+        fdprintf(outFd, "\tjp framefree\n");
     } else {
         /* No frame to free, just return */
-        fdprintf(out_fd, "\tret\n");
+        fdprintf(outFd, "\tret\n");
     }
 
     /* Free local variables list */

@@ -5,7 +5,7 @@
 #include "cc1.h"
 
 /* Forward declarations */
-static void emit_type_info(struct type *type);
+static void emitTypeInfo(struct type *type);
 
 /*
  * Get size suffix for memory operations based on type
@@ -13,7 +13,7 @@ static void emit_type_info(struct type *type);
  * 'f' (float), 'd' (double)
  */
 static char
-get_size_suffix(struct type *t)
+getSizeSuffix(struct type *t)
 {
 	if (!t)
 		return 's';  // default to short
@@ -43,10 +43,10 @@ get_size_suffix(struct type *t)
 static void emit_expr(struct expr *e);  /* forward declaration */
 
 static void
-emit_child(struct expr *e)
+emitChild(struct expr *e)
 {
 	if (e) {
-		fdprintf(ast_fd, " ");
+		fdprintf(astFd, " ");
 		emit_expr(e);
 	}
 }
@@ -67,13 +67,13 @@ emit_expr(struct expr *e)
 	char *name;
 
 	if (!e) {
-		fdprintf(ast_fd, "()");
+		fdprintf(astFd, "()");
 		return;
 	}
 
 	switch (e->op) {
 	case CONST:
-		fdprintf(ast_fd, "%ld", e->v);
+		fdprintf(astFd, "%ld", e->v);
 		break;
 
 	case SYM:
@@ -102,9 +102,9 @@ emit_expr(struct expr *e)
 				prefix = "$";
 				name = sym->name;
 			}
-			fdprintf(ast_fd, "%s%s", prefix, name);
+			fdprintf(astFd, "%s%s", prefix, name);
 		} else {
-			fdprintf(ast_fd, "$?");
+			fdprintf(astFd, "$?");
 		}
 		break;
 
@@ -113,25 +113,25 @@ emit_expr(struct expr *e)
 		if (e->var) {
 			struct name *strname = (struct name *)e->var;
 			/* Synthetic string names are global variables, use $_ prefix */
-			fdprintf(ast_fd, "$_%s", strname->name);
+			fdprintf(astFd, "$_%s", strname->name);
 		} else {
 			/* Fallback to address if name not available */
-			fdprintf(ast_fd, "S%ld", e->v);
+			fdprintf(astFd, "S%ld", e->v);
 		}
 		break;
 
 	case CALL:
 		/* Function call: (@ func arg1 arg2 ...) */
-		fdprintf(ast_fd, "(@");
-		emit_child(e->left);
+		fdprintf(astFd, "(@");
+		emitChild(e->left);
 		/* Arguments are in e->right and linked via next */
 		if (e->right) {
 			struct expr *arg;
 			for (arg = e->right; arg; arg = arg->next) {
-				emit_child(arg);
+				emitChild(arg);
 			}
 		}
-		fdprintf(ast_fd, ")");
+		fdprintf(astFd, ")");
 		break;
 
 	case NARROW:
@@ -139,21 +139,21 @@ emit_expr(struct expr *e)
 	case SEXT:
 		/* Cast operators with destination width annotation */
 		{
-			char size_suffix = get_size_suffix(e->type);
+			char size_suffix = getSizeSuffix(e->type);
 			unsigned char op_char = (e->op == NARROW) ? 'N' :
 			    (e->op == WIDEN) ? 'W' : 0xab;  /* SEXT = 0xab */
-			fdprintf(ast_fd, "(%c:%c", op_char, size_suffix);
-			emit_child(e->left);
-			fdprintf(ast_fd, ")");
+			fdprintf(astFd, "(%c:%c", op_char, size_suffix);
+			emitChild(e->left);
+			fdprintf(astFd, ")");
 		}
 		break;
 
 	case COPY:
 		/* Memory copy operator: (Y:length dest src) */
-		fdprintf(ast_fd, "(Y:%ld", e->v);  /* v field contains byte count */
-		emit_child(e->left);
-		emit_child(e->right);
-		fdprintf(ast_fd, ")");
+		fdprintf(astFd, "(Y:%ld", e->v);  /* v field contains byte count */
+		emitChild(e->left);
+		emitChild(e->right);
+		fdprintf(astFd, ")");
 		break;
 
 	case INCR:
@@ -166,9 +166,9 @@ emit_expr(struct expr *e)
 			} else {
 				op_char = (e->flags & E_POSTFIX) ? POSTDEC : PREDEC;
 			}
-			fdprintf(ast_fd, "(%c", op_char);
-			emit_child(e->left);
-			fdprintf(ast_fd, ")");
+			fdprintf(astFd, "(%c", op_char);
+			emitChild(e->left);
+			fdprintf(astFd, ")");
 		}
 		break;
 
@@ -177,13 +177,13 @@ emit_expr(struct expr *e)
 		{
 			struct name *member = (struct name *)e->var;
 			if (member) {
-				fdprintf(ast_fd, "(%c:%d:%d", BFEXTRACT, member->bitoff, 
+				fdprintf(astFd, "(%c:%d:%d", BFEXTRACT, member->bitoff, 
                     member->width);
 			} else {
-				fdprintf(ast_fd, "(%c:0:0", BFEXTRACT);  /* fallback */
+				fdprintf(astFd, "(%c:0:0", BFEXTRACT);  /* fallback */
 			}
-			emit_child(e->left);
-			fdprintf(ast_fd, ")");
+			emitChild(e->left);
+			fdprintf(astFd, ")");
 		}
 		break;
 
@@ -192,14 +192,14 @@ emit_expr(struct expr *e)
 		{
 			struct name *member = (struct name *)e->var;
 			if (member) {
-				fdprintf(ast_fd, "(%c:%d:%d", BFASSIGN, member->bitoff, 
+				fdprintf(astFd, "(%c:%d:%d", BFASSIGN, member->bitoff, 
                     member->width);
 			} else {
-				fdprintf(ast_fd, "(%c:0:0", BFASSIGN);  /* fallback */
+				fdprintf(astFd, "(%c:0:0", BFASSIGN);  /* fallback */
 			}
-			emit_child(e->left);
-			emit_child(e->right);
-			fdprintf(ast_fd, ")");
+			emitChild(e->left);
+			emitChild(e->right);
+			fdprintf(astFd, ")");
 		}
 		break;
 
@@ -211,14 +211,14 @@ emit_expr(struct expr *e)
 		    e->op == DIVEQ || e->op == MODEQ || e->op == ANDEQ ||
 		    e->op == OREQ || e->op == XOREQ || e->op == LSHIFTEQ ||
 		    e->op == RSHIFTEQ || e->op == LANDEQ || e->op == LOREQ) {
-			char size_suffix = get_size_suffix(e->type);
-			fdprintf(ast_fd, "(%c:%c", e->op, size_suffix);
+			char size_suffix = getSizeSuffix(e->type);
+			fdprintf(astFd, "(%c:%c", e->op, size_suffix);
 		} else {
-			fdprintf(ast_fd, "(%c", e->op);
+			fdprintf(astFd, "(%c", e->op);
 		}
-		emit_child(e->left);
-		emit_child(e->right);
-		fdprintf(ast_fd, ")");
+		emitChild(e->left);
+		emitChild(e->right);
+		fdprintf(astFd, ")");
 		break;
 	}
 }
@@ -229,7 +229,7 @@ emit_expr(struct expr *e)
  * For aggregates (struct/union), outputs size
  */
 static void
-emit_type_info(struct type *type)
+emitTypeInfo(struct type *type)
 {
 	if (!type)
 		return;
@@ -237,25 +237,25 @@ emit_type_info(struct type *type)
 	/* For arrays, emit array info with element size */
 	if (type->flags & TF_ARRAY) {
 		int elemsize = type->sub ? type->sub->size : 0;
-		fdprintf(ast_fd, " :array:%d:%d", type->count, elemsize);
+		fdprintf(astFd, " :array:%d:%d", type->count, elemsize);
 		return;
 	}
 
 	/* For pointers, just emit :ptr - all pointers are 2 bytes */
 	if (type->flags & TF_POINTER) {
-		fdprintf(ast_fd, " :ptr");
+		fdprintf(astFd, " :ptr");
 		return;
 	}
 
 	if (type->name && type->name[0]) {
 		/* Primitive or named type */
-		fdprintf(ast_fd, " %s", type->name);
+		fdprintf(astFd, " %s", type->name);
 	} else if (type->flags & TF_AGGREGATE) {
 		/* Struct/union without type name - output size */
-		fdprintf(ast_fd, " :struct:%d", type->size);
+		fdprintf(astFd, " :struct:%d", type->size);
 	} else {
 		/* Unknown type - output size */
-		fdprintf(ast_fd, " :size:%d", type->size);
+		fdprintf(astFd, " :size:%d", type->size);
 	}
 }
 
@@ -272,39 +272,39 @@ emit_stmt(struct stmt *st)
 	/* Output this statement */
 	switch (st->op) {
 	case BEGIN:
-		fdprintf(ast_fd, "(B");  /* Block */
+		fdprintf(astFd, "(B");  /* Block */
 
 		/* Emit declarations for local variables in this scope */
 		if (st->locals) {
 			struct name *local;
 			for (local = st->locals; local; local = local->next) {
-				fdprintf(ast_fd, " (d %s", local->name);
-				emit_type_info(local->type);
-				fdprintf(ast_fd, ")");
+				fdprintf(astFd, " (d %s", local->name);
+				emitTypeInfo(local->type);
+				fdprintf(astFd, ")");
 			}
 		}
 
 		if (st->chain) {
-			fdprintf(ast_fd, " ");
+			fdprintf(astFd, " ");
 			emit_stmt(st->chain);
 		}
-		fdprintf(ast_fd, ")");
+		fdprintf(astFd, ")");
 		break;
 
 	case IF:
-		fdprintf(ast_fd, "(I ");  /* If */
+		fdprintf(astFd, "(I ");  /* If */
 		emit_expr(st->left);
-		fdprintf(ast_fd, " ");
+		fdprintf(astFd, " ");
 		if (st->chain) {
 			emit_stmt(st->chain);
 		} else {
-			fdprintf(ast_fd, "()");
+			fdprintf(astFd, "()");
 		}
 		if (st->otherwise) {
-			fdprintf(ast_fd, " ");
+			fdprintf(astFd, " ");
 			emit_stmt(st->otherwise);
 		}
-		fdprintf(ast_fd, ")");
+		fdprintf(astFd, ")");
 		break;
 
 	case WHILE:
@@ -312,35 +312,35 @@ emit_stmt(struct stmt *st)
 		 * Lxxx_top: (test condition) (body) Lxxx_continue: Lxxx_break: */
 		if (st->label) {
 			/* Top label */
-			fdprintf(ast_fd, "(L %s_top) ", st->label);
+			fdprintf(astFd, "(L %s_top) ", st->label);
 			/* Test condition (if false, goto break) */
-			fdprintf(ast_fd, "(I ");
+			fdprintf(astFd, "(I ");
 			emit_expr(st->left);
-			fdprintf(ast_fd, " ");
+			fdprintf(astFd, " ");
 			/* Body */
 			if (st->chain) {
 				emit_stmt(st->chain);
 			} else {
-				fdprintf(ast_fd, "()");
+				fdprintf(astFd, "()");
 			}
-			fdprintf(ast_fd, " ()) ");  /* close IF */
+			fdprintf(astFd, " ()) ");  /* close IF */
 			/* Continue label (for continue statements) */
-			fdprintf(ast_fd, "(L %s_continue) ", st->label);
+			fdprintf(astFd, "(L %s_continue) ", st->label);
 			/* Goto top to loop */
-			fdprintf(ast_fd, "(G %s_top) ", st->label);
+			fdprintf(astFd, "(G %s_top) ", st->label);
 			/* Break label */
-			fdprintf(ast_fd, "(L %s_break)", st->label);
+			fdprintf(astFd, "(L %s_break)", st->label);
 		} else {
 			/* Fallback: emit original WHILE format */
-			fdprintf(ast_fd, "(W ");
+			fdprintf(astFd, "(W ");
 			emit_expr(st->left);
-			fdprintf(ast_fd, " ");
+			fdprintf(astFd, " ");
 			if (st->chain) {
 				emit_stmt(st->chain);
 			} else {
-				fdprintf(ast_fd, "()");
+				fdprintf(astFd, "()");
 			}
-			fdprintf(ast_fd, ")");
+			fdprintf(astFd, ")");
 		}
 		break;
 
@@ -349,33 +349,33 @@ emit_stmt(struct stmt *st)
 		 * Dxxx_top: (body) Dxxx_test: (if condition goto top) Dxxx_break: */
 		if (st->label) {
 			/* Top label */
-			fdprintf(ast_fd, "(L %s_top) ", st->label);
+			fdprintf(astFd, "(L %s_top) ", st->label);
 			/* Body */
 			if (st->chain) {
 				emit_stmt(st->chain);
 			} else {
-				fdprintf(ast_fd, "()");
+				fdprintf(astFd, "()");
 			}
-			fdprintf(ast_fd, " ");
+			fdprintf(astFd, " ");
 			/* Test label (continue target) */
-			fdprintf(ast_fd, "(L %s_test) ", st->label);
+			fdprintf(astFd, "(L %s_test) ", st->label);
 			/* Test condition and loop back */
-			fdprintf(ast_fd, "(I ");
+			fdprintf(astFd, "(I ");
 			emit_expr(st->left);
-			fdprintf(ast_fd, " (G %s_top) ()) ", st->label);
+			fdprintf(astFd, " (G %s_top) ()) ", st->label);
 			/* Break label */
-			fdprintf(ast_fd, "(L %s_break)", st->label);
+			fdprintf(astFd, "(L %s_break)", st->label);
 		} else {
 			/* Fallback: emit original DO format */
-			fdprintf(ast_fd, "(D ");
+			fdprintf(astFd, "(D ");
 			if (st->chain) {
 				emit_stmt(st->chain);
 			} else {
-				fdprintf(ast_fd, "()");
+				fdprintf(astFd, "()");
 			}
-			fdprintf(ast_fd, " ");
+			fdprintf(astFd, " ");
 			emit_expr(st->left);
-			fdprintf(ast_fd, ")");
+			fdprintf(astFd, ")");
 		}
 		break;
 
@@ -388,60 +388,60 @@ emit_stmt(struct stmt *st)
 		if (st->label) {
 			/* Init expression */
 			if (st->left) {
-				fdprintf(ast_fd, "(E ");
+				fdprintf(astFd, "(E ");
 				emit_expr(st->left);
-				fdprintf(ast_fd, ") ");
+				fdprintf(astFd, ") ");
 			}
 			/* Top label */
-			fdprintf(ast_fd, "(L %s_top) ", st->label);
+			fdprintf(astFd, "(L %s_top) ", st->label);
 			/* Test condition */
 			if (st->middle) {
-				fdprintf(ast_fd, "(I ");
+				fdprintf(astFd, "(I ");
 				emit_expr(st->middle);
-				fdprintf(ast_fd, " ");
+				fdprintf(astFd, " ");
 				/* Body */
 				if (st->chain) {
 					emit_stmt(st->chain);
 				} else {
-					fdprintf(ast_fd, "()");
+					fdprintf(astFd, "()");
 				}
-				fdprintf(ast_fd, " ()) ");  /* close IF */
+				fdprintf(astFd, " ()) ");  /* close IF */
 			} else {
 				/* No condition - always execute body */
 				if (st->chain) {
 					emit_stmt(st->chain);
 				} else {
-					fdprintf(ast_fd, "()");
+					fdprintf(astFd, "()");
 				}
-				fdprintf(ast_fd, " ");
+				fdprintf(astFd, " ");
 			}
 			/* Continue label */
-			fdprintf(ast_fd, "(L %s_continue) ", st->label);
+			fdprintf(astFd, "(L %s_continue) ", st->label);
 			/* Increment expression */
 			if (st->right) {
-				fdprintf(ast_fd, "(E ");
+				fdprintf(astFd, "(E ");
 				emit_expr(st->right);
-				fdprintf(ast_fd, ") ");
+				fdprintf(astFd, ") ");
 			}
 			/* Goto top */
-			fdprintf(ast_fd, "(G %s_top) ", st->label);
+			fdprintf(astFd, "(G %s_top) ", st->label);
 			/* Break label */
-			fdprintf(ast_fd, "(L %s_break)", st->label);
+			fdprintf(astFd, "(L %s_break)", st->label);
 		} else {
 			/* Fallback: emit original FOR format */
-			fdprintf(ast_fd, "(F ");
+			fdprintf(astFd, "(F ");
 			emit_expr(st->left);
-			fdprintf(ast_fd, " ");
+			fdprintf(astFd, " ");
 			emit_expr(st->middle);
-			fdprintf(ast_fd, " ");
+			fdprintf(astFd, " ");
 			emit_expr(st->right);
-			fdprintf(ast_fd, " ");
+			fdprintf(astFd, " ");
 			if (st->chain) {
 				emit_stmt(st->chain);
 			} else {
-				fdprintf(ast_fd, "()");
+				fdprintf(astFd, "()");
 			}
-			fdprintf(ast_fd, ")");
+			fdprintf(astFd, ")");
 		}
 		break;
 
@@ -450,91 +450,91 @@ emit_stmt(struct stmt *st)
 		 * Sxxx_top: (switch expr body) Sxxx_break: */
 		if (st->label) {
 			/* Top label */
-			fdprintf(ast_fd, "(L %s_top) ", st->label);
+			fdprintf(astFd, "(L %s_top) ", st->label);
 			/* Original switch structure */
-			fdprintf(ast_fd, "(S ");
+			fdprintf(astFd, "(S ");
 			emit_expr(st->left);
-			fdprintf(ast_fd, " ");
+			fdprintf(astFd, " ");
 			if (st->chain) {
 				emit_stmt(st->chain);
 			} else {
-				fdprintf(ast_fd, "()");
+				fdprintf(astFd, "()");
 			}
-			fdprintf(ast_fd, ") ");
+			fdprintf(astFd, ") ");
 			/* Break label */
-			fdprintf(ast_fd, "(L %s_break)", st->label);
+			fdprintf(astFd, "(L %s_break)", st->label);
 		} else {
 			/* Fallback: emit original SWITCH format */
-			fdprintf(ast_fd, "(S ");
+			fdprintf(astFd, "(S ");
 			emit_expr(st->left);
-			fdprintf(ast_fd, " ");
+			fdprintf(astFd, " ");
 			if (st->chain) {
 				emit_stmt(st->chain);
 			} else {
-				fdprintf(ast_fd, "()");
+				fdprintf(astFd, "()");
 			}
-			fdprintf(ast_fd, ")");
+			fdprintf(astFd, ")");
 		}
 		break;
 
 	case CASE:
-		fdprintf(ast_fd, "(C ");  /* Case */
+		fdprintf(astFd, "(C ");  /* Case */
 		emit_expr(st->left);
-		fdprintf(ast_fd, " ");
+		fdprintf(astFd, " ");
 		if (st->chain) {
 			emit_stmt(st->chain);
 		} else {
-			fdprintf(ast_fd, "()");
+			fdprintf(astFd, "()");
 		}
-		fdprintf(ast_fd, ")");
+		fdprintf(astFd, ")");
 		break;
 
 	case DEFAULT:
-		fdprintf(ast_fd, "(O ");  /* Default (O for default) */
+		fdprintf(astFd, "(O ");  /* Default (O for default) */
 		if (st->chain) {
 			emit_stmt(st->chain);
 		} else {
-			fdprintf(ast_fd, "()");
+			fdprintf(astFd, "()");
 		}
-		fdprintf(ast_fd, ")");
+		fdprintf(astFd, ")");
 		break;
 
 	case RETURN:
-		fdprintf(ast_fd, "(R ");  /* Return */
+		fdprintf(astFd, "(R ");  /* Return */
 		if (st->left) {
 			emit_expr(st->left);
 		}
-		fdprintf(ast_fd, ")");
+		fdprintf(astFd, ")");
 		break;
 
 	case BREAK:
-		fdprintf(ast_fd, "(K)");  /* Break (K for breaK) */
+		fdprintf(astFd, "(K)");  /* Break (K for breaK) */
 		break;
 
 	case CONTINUE:
-		fdprintf(ast_fd, "(N)");  /* Continue (N from CONTINUE token) */
+		fdprintf(astFd, "(N)");  /* Continue (N from CONTINUE token) */
 		break;
 
 	case GOTO:
-		fdprintf(ast_fd, "(G %s)", st->label ? st->label : "?");
+		fdprintf(astFd, "(G %s)", st->label ? st->label : "?");
 		break;
 
 	case LABEL:
-		fdprintf(ast_fd, "(L %s)", st->label ? st->label : "?");
+		fdprintf(astFd, "(L %s)", st->label ? st->label : "?");
 		break;
 
 	case EXPR:
-		fdprintf(ast_fd, "(E ");  /* Expression statement */
+		fdprintf(astFd, "(E ");  /* Expression statement */
 		emit_expr(st->left);
-		fdprintf(ast_fd, ")");
+		fdprintf(astFd, ")");
 		break;
 
 	case ';':
-		fdprintf(ast_fd, "(;)");  /* Empty statement */
+		fdprintf(astFd, "(;)");  /* Empty statement */
 		break;
 
 	case ASM:
-		fdprintf(ast_fd, "(A ");  /* Assembly block */
+		fdprintf(astFd, "(A ");  /* Assembly block */
 		if (st->label) {
 			/* Emit the assembly text as a quoted, escaped string */
 			char escaped[8192];  /* Large buffer for escaped text */
@@ -563,21 +563,21 @@ emit_stmt(struct stmt *st)
 			}
 			escaped[j++] = '\"';
 			escaped[j] = 0;
-			fdprintf(ast_fd, "%s", escaped);
+			fdprintf(astFd, "%s", escaped);
 		} else {
-			fdprintf(ast_fd, "\"\"");
+			fdprintf(astFd, "\"\"");
 		}
-		fdprintf(ast_fd, ")");
+		fdprintf(astFd, ")");
 		break;
 
 	default:
-		fdprintf(ast_fd, "(?%d)", st->op);
+		fdprintf(astFd, "(?%d)", st->op);
 		break;
 	}
 
 	/* Output sibling statements */
 	if (st->next) {
-		fdprintf(ast_fd, " ");
+		fdprintf(astFd, " ");
 		emit_stmt(st->next);
 	}
 }
@@ -586,27 +586,27 @@ emit_stmt(struct stmt *st)
  * Output function parameter list
  */
 static void
-emit_params(struct type *functype)
+emitParams(struct type *functype)
 {
 	struct name *param;
 	int first = 1;
 
-	fdprintf(ast_fd, "(");
+	fdprintf(astFd, "(");
 	if (functype && (functype->flags & TF_FUNC)) {
 		for (param = functype->elem; param; param = param->next) {
-			if (!first) fdprintf(ast_fd, " ");
+			if (!first) fdprintf(astFd, " ");
 			first = 0;
 			if (param->name && param->name[0] != '\0') {
-				fdprintf(ast_fd, "%s", param->name);
+				fdprintf(astFd, "%s", param->name);
 			} else {
-				fdprintf(ast_fd, "_");  /* anonymous parameter */
+				fdprintf(astFd, "_");  /* anonymous parameter */
 			}
 			if (param->type && param->type->name) {
-				fdprintf(ast_fd, ":%s", param->type->name);
+				fdprintf(astFd, ":%s", param->type->name);
 			}
 		}
 	}
-	fdprintf(ast_fd, ")");
+	fdprintf(astFd, ")");
 }
 
 /*
@@ -643,14 +643,14 @@ emit_declarations(struct name *func)
 		 */
 		if (n->kind == funarg) {
 			if (!has_decls) {
-				fdprintf(ast_fd, "\n  ");
+				fdprintf(astFd, "\n  ");
 				has_decls = 1;
 			} else {
-				fdprintf(ast_fd, " ");
+				fdprintf(astFd, " ");
 			}
-			fdprintf(ast_fd, "(d %s", n->name);
-			emit_type_info(n->type);
-			fdprintf(ast_fd, ")");
+			fdprintf(astFd, "(d %s", n->name);
+			emitTypeInfo(n->type);
+			fdprintf(astFd, ")");
 		}
 	}
 }
@@ -659,34 +659,34 @@ emit_declarations(struct name *func)
  * Output a function in AST format
  */
 void
-emit_function(struct name *func)
+emitFunction(struct name *func)
 {
 	if (!func || !func->u.body)
 		return;
 
-	fdprintf(ast_fd, "\n; Function: %s\n", func->name);
-	fdprintf(ast_fd, "(f %s ", func->name);
+	fdprintf(astFd, "\n; Function: %s\n", func->name);
+	fdprintf(astFd, "(f %s ", func->name);
 
 	/* Output parameter list */
 	if (func->type) {
-		emit_params(func->type);
+		emitParams(func->type);
 		/* Output return type */
 		if (func->type->sub) {
-			emit_type_info(func->type->sub);
+			emitTypeInfo(func->type->sub);
 		} else {
-			fdprintf(ast_fd, " _void_");
+			fdprintf(astFd, " _void_");
 		}
 	} else {
-		fdprintf(ast_fd, "() _void_");
+		fdprintf(astFd, "() _void_");
 	}
 
 	/* Output declarations for parameters and local variables */
 	emit_declarations(func);
 
 	/* Output function body */
-	fdprintf(ast_fd, "\n  ");
+	fdprintf(astFd, "\n  ");
 	emit_stmt(func->u.body);
-	fdprintf(ast_fd, ")\n");
+	fdprintf(astFd, ")\n");
 }
 
 /*
@@ -695,20 +695,20 @@ emit_function(struct name *func)
  * elem_type: type of array elements for width annotation
  */
 static void
-emit_initializer_list(struct expr *init, struct type *elem_type)
+emitInitializerList(struct expr *init, struct type *elem_type)
 {
 	struct expr *item;
 	char width;
 
 	/* Get element width for array initializers */
-	width = get_size_suffix(elem_type);
+	width = getSizeSuffix(elem_type);
 
-	fdprintf(ast_fd, "([:%c", width);
+	fdprintf(astFd, "([:%c", width);
 	for (item = init; item; item = item->next) {
-		fdprintf(ast_fd, " ");
+		fdprintf(astFd, " ");
 		emit_expr(item);
 	}
-	fdprintf(ast_fd, ")");
+	fdprintf(astFd, ")");
 }
 
 /*
@@ -716,7 +716,7 @@ emit_initializer_list(struct expr *init, struct type *elem_type)
  * Called when string literal is created during parsing
  */
 void
-emit_string_literal(struct name *strname)
+emitStringLiteral(struct name *strname)
 {
 	cstring str;
 	unsigned char len;
@@ -734,27 +734,27 @@ emit_string_literal(struct name *strname)
 	data = (unsigned char *)str + 1;
 
 	/* Output: (s name "literal_data") */
-	fdprintf(ast_fd, "\n; String literal: %s\n", strname->name);
-	fdprintf(ast_fd, "(s %s \"", strname->name);
+	fdprintf(astFd, "\n; String literal: %s\n", strname->name);
+	fdprintf(astFd, "(s %s \"", strname->name);
 	for (j = 0; j < len; j++) {
 		unsigned char c = data[j];
 		if (c == '"') {
-			fdprintf(ast_fd, "\\\"");
+			fdprintf(astFd, "\\\"");
 		} else if (c == '\\') {
-			fdprintf(ast_fd, "\\\\");
+			fdprintf(astFd, "\\\\");
 		} else if (c == '\n') {
-			fdprintf(ast_fd, "\\n");
+			fdprintf(astFd, "\\n");
 		} else if (c == '\t') {
-			fdprintf(ast_fd, "\\t");
+			fdprintf(astFd, "\\t");
 		} else if (c == '\r') {
-			fdprintf(ast_fd, "\\r");
+			fdprintf(astFd, "\\r");
 		} else if (c >= ' ' && c < 0x7f) {
-			fdprintf(ast_fd, "%c", c);
+			fdprintf(astFd, "%c", c);
 		} else {
-			fdprintf(ast_fd, "\\x%02x", c);
+			fdprintf(astFd, "\\x%02x", c);
 		}
 	}
-	fdprintf(ast_fd, "\")\n");
+	fdprintf(astFd, "\")\n");
 
 	/* Free the string data after emitting */
 	free((void*)str);
@@ -766,7 +766,7 @@ emit_string_literal(struct name *strname)
  * Now string literals are emitted incrementally
  */
 void
-emit_literals(void)
+emitLiterals(void)
 {
 	extern struct name **names;
 	extern int lastname;
@@ -796,8 +796,8 @@ emit_literals(void)
 		return;
 
 	/* Output literals section header */
-	fdprintf(ast_fd, "\n; String literals\n");
-	fdprintf(ast_fd, "(L\n");
+	fdprintf(astFd, "\n; String literals\n");
+	fdprintf(astFd, "(L\n");
 
 	/* Second pass: output each string literal */
 	for (i = 0; i <= lastname; i++) {
@@ -819,31 +819,31 @@ emit_literals(void)
 				int j;
 
 				/* Output: (s name "literal_data") */
-				fdprintf(ast_fd, "  (s %s \"", n->name);
+				fdprintf(astFd, "  (s %s \"", n->name);
 				for (j = 0; j < len; j++) {
 					unsigned char c = data[j];
 					if (c == '"') {
-						fdprintf(ast_fd, "\\\"");
+						fdprintf(astFd, "\\\"");
 					} else if (c == '\\') {
-						fdprintf(ast_fd, "\\\\");
+						fdprintf(astFd, "\\\\");
 					} else if (c == '\n') {
-						fdprintf(ast_fd, "\\n");
+						fdprintf(astFd, "\\n");
 					} else if (c == '\t') {
-						fdprintf(ast_fd, "\\t");
+						fdprintf(astFd, "\\t");
 					} else if (c == '\r') {
-						fdprintf(ast_fd, "\\r");
+						fdprintf(astFd, "\\r");
 					} else if (c >= ' ' && c < 0x7f) {
-						fdprintf(ast_fd, "%c", c);
+						fdprintf(astFd, "%c", c);
 					} else {
-						fdprintf(ast_fd, "\\x%02x", c);
+						fdprintf(astFd, "\\x%02x", c);
 					}
 				}
-				fdprintf(ast_fd, "\")\n");
+				fdprintf(astFd, "\")\n");
 			}
 		}
 	}
 
-	fdprintf(ast_fd, ")\n");
+	fdprintf(astFd, ")\n");
 }
 
 /*
@@ -851,35 +851,35 @@ emit_literals(void)
  * Format: (g varname type [init-expr])
  */
 void
-emit_gv(struct name *var)
+emitGv(struct name *var)
 {
 	if (!var || !var->type)
 		return;
 
-	fdprintf(ast_fd, "\n; Global variable: %s\n", var->name);
-	fdprintf(ast_fd, "(g ");
+	fdprintf(astFd, "\n; Global variable: %s\n", var->name);
+	fdprintf(astFd, "(g ");
 
 	/* Output variable name with scope prefix */
 	if (var->sclass & SC_STATIC) {
 		/* Use mangled name for statics */
 		if (var->mangled_name) {
-			fdprintf(ast_fd, "$S%s", var->mangled_name);
+			fdprintf(astFd, "$S%s", var->mangled_name);
 		} else {
-			fdprintf(ast_fd, "$S%s", var->name);
+			fdprintf(astFd, "$S%s", var->name);
 		}
 	} else if (var->sclass & SC_EXTERN) {
-		fdprintf(ast_fd, "$_%s", var->name);
+		fdprintf(astFd, "$_%s", var->name);
 	} else {
 		/* Global variable (not extern, not static) */
-		fdprintf(ast_fd, "$_%s", var->name);
+		fdprintf(astFd, "$_%s", var->name);
 	}
 
 	/* Output type */
-	emit_type_info(var->type);
+	emitTypeInfo(var->type);
 
 	/* Output initializer if present */
 	if (var->u.init) {
-		fdprintf(ast_fd, " ");
+		fdprintf(astFd, " ");
 		/* Check if this is an initializer list (has next pointers) */
 		if (var->u.init->next) {
 			/*
@@ -889,13 +889,13 @@ emit_gv(struct name *var)
 			struct type *elem_type =
 			    (var->type && (var->type->flags & TF_ARRAY)) ?
 			    var->type->sub : var->type;
-			emit_initializer_list(var->u.init, elem_type);
+			emitInitializerList(var->u.init, elem_type);
 		} else {
 			emit_expr(var->u.init);
 		}
 	}
 
-	fdprintf(ast_fd, ")\n");
+	fdprintf(astFd, ")\n");
 }
 
 /*
@@ -904,7 +904,7 @@ emit_gv(struct name *var)
  * Called after parsing completes with all names still in scope
  */
 void
-emit_gvs(void)
+emitGvs(void)
 {
 	/* No-op: globals are now emitted incrementally in declaration() */
 	/* This function is kept for API compatibility but does nothing */

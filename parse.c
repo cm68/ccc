@@ -54,28 +54,28 @@ mangle_static_name(struct name *var)
 	char *mangled;
 	int len;
 
-	if (!source_file_root) {
+	if (!sourceFileRoot) {
 		/* Fallback if no source file set */
 		return strdup(var->name);
 	}
 
 	if (var->level == 1) {
 		/* File-scoped static: <file_root>_<varname> */
-		len = strlen(source_file_root) + 1 + strlen(var->name) + 1;
+		len = strlen(sourceFileRoot) + 1 + strlen(var->name) + 1;
 		mangled = malloc(len);
-		sprintf(mangled, "%s_%s", source_file_root, var->name);
+		sprintf(mangled, "%s_%s", sourceFileRoot, var->name);
 	} else if (current_function) {
 		/* Function-scoped static: <file_root>_<funcname>_<varname>_<counter> */
-		len = strlen(source_file_root) + 1 + strlen(current_function->name) +
+		len = strlen(sourceFileRoot) + 1 + strlen(current_function->name) +
 		      1 + strlen(var->name) + 1 + 10 + 1;  /* 10 digits for counter */
 		mangled = malloc(len);
-		sprintf(mangled, "%s_%s_%s_%d", source_file_root, 
+		sprintf(mangled, "%s_%s_%s_%d", sourceFileRoot, 
                 current_function->name, var->name, static_counter++);
 	} else {
 		/* Shouldn't happen, but handle gracefully */
-		len = strlen(source_file_root) + 1 + strlen(var->name) + 1;
+		len = strlen(sourceFileRoot) + 1 + strlen(var->name) + 1;
 		mangled = malloc(len);
-		sprintf(mangled, "%s_%s", source_file_root, var->name);
+		sprintf(mangled, "%s_%s", sourceFileRoot, var->name);
 	}
 
 	return mangled;
@@ -87,7 +87,7 @@ struct stmt *asmblock(void);
 /*
  * Capture local variables from the current scope level
  * Returns a linked list of name structures (shallow copies)
- * Called before pop_scope() to preserve variable info
+ * Called before popScope() to preserve variable info
  */
 static struct name *
 capture_locals(void)
@@ -176,7 +176,7 @@ statement(struct stmt *parent)
 
         case BEGIN: // begin a block
             gettoken();
-            push_scope(blockname());
+            pushScope(blockname());
             st = makestmt(BEGIN, 0);
             st->parent = parent;
             st->chain = statement(st);
@@ -184,7 +184,7 @@ statement(struct stmt *parent)
             /* Capture local variables before popping scope */
             st->locals = capture_locals();
 
-            pop_scope();
+            popScope();
             expect(END, ER_S_CC);
             // If this is a top-level block (function body), return immediately
             if (parent == NULL) {
@@ -195,7 +195,7 @@ statement(struct stmt *parent)
         case IF:    // if <condition> <statement>
             gettoken();
             expect(LPAR, ER_S_NP);
-            st = makestmt(IF, parse_expr(PRI_ALL, parent));
+            st = makestmt(IF, parseExpr(PRI_ALL, parent));
             st->parent = parent;  /* Set parent before recursive call */
             expect(RPAR, ER_S_NP);
             st->chain = statement(st);
@@ -255,7 +255,7 @@ statement(struct stmt *parent)
             gettoken();
             st = makestmt(RETURN, 0);
             if (cur.type != SEMI) {
-                st->left = parse_expr(PRI_ALL, parent);
+                st->left = parseExpr(PRI_ALL, parent);
             }
             expect(SEMI, ER_S_SN);
             break;
@@ -289,7 +289,7 @@ statement(struct stmt *parent)
                     struct stmt *assign_st;
 
                     /* Create lvalue: just the variable symbol */
-                    lhs = mkexpr_i(SYM, 0, v->type, 0, 0);
+                    lhs = mkexprI(SYM, 0, v->type, 0, 0);
                     /* Cast name* to var* (field is overloaded) */
                     lhs->var = (struct var *)v;
 
@@ -299,14 +299,14 @@ statement(struct stmt *parent)
                      */
                     if (v->type && (v->type->flags & TF_ARRAY) && v->u.init) {
                         /* Create memory copy: COPY dest src length */
-                        assign_expr = mkexpr_i(COPY, lhs, v->type,
+                        assign_expr = mkexprI(COPY, lhs, v->type,
                                                      v->type->count, 0);
                         assign_expr->right = v->u.init;
                         /* Clear so it's not output in declaration */
                         v->u.init = NULL;
                     } else {
                         /* Regular scalar assignment: lhs = initializer */
-                        assign_expr = mkexpr_i(ASSIGN, lhs, v->type,
+                        assign_expr = mkexprI(ASSIGN, lhs, v->type,
                                                      0, 0);
                         assign_expr->right = v->u.init;
                         /* Clear so it's not output in declaration */
@@ -350,7 +350,7 @@ statement(struct stmt *parent)
             /* Check if it's a typedef name used in a declaration */
             {
                 struct name *possible_typedef =
-                    lookup_name(cur.v.name, 0);
+                    findName(cur.v.name, 0);
                 if (possible_typedef && possible_typedef->kind == tdef) {
                     clear_decl_inits();
                     declaration();
@@ -366,7 +366,7 @@ statement(struct stmt *parent)
                             struct stmt *assign_st;
 
                             /* Create lvalue: just the variable symbol */
-                            lhs = mkexpr_i(SYM, 0, v->type, 0, 0);
+                            lhs = mkexprI(SYM, 0, v->type, 0, 0);
                             /* Cast name* to var* (field is overloaded) */
                             lhs->var = (struct var *)v;
 
@@ -377,7 +377,7 @@ statement(struct stmt *parent)
                             if (v->type && (v->type->flags & TF_ARRAY) &&
                                 v->u.init) {
                                 /* Create memory copy: COPY dest src length */
-                                assign_expr = mkexpr_i(COPY, lhs, v->type,
+                                assign_expr = mkexprI(COPY, lhs, v->type,
                                                              v->type->count, 0);
                                 assign_expr->right = v->u.init;
                                 /* Clear so it's not output in declaration */
@@ -387,7 +387,7 @@ statement(struct stmt *parent)
                                  * Regular scalar assignment:
                                  * lhs = initializer
                                  */
-                                assign_expr = mkexpr_i(ASSIGN, lhs,
+                                assign_expr = mkexprI(ASSIGN, lhs,
                                                              v->type, 0, 0);
                                 assign_expr->right = v->u.init;
                                 /* Clear so it's not output in declaration */
@@ -420,7 +420,7 @@ statement(struct stmt *parent)
         case STAR:
         case INCR:
         case DECR:
-            st = makestmt(EXPR, parse_expr(PRI_ALL, parent));
+            st = makestmt(EXPR, parseExpr(PRI_ALL, parent));
             expect(SEMI, ER_S_SN);
             break;
 
@@ -431,7 +431,7 @@ statement(struct stmt *parent)
             if (cur.type == SEMI) {
                 st = makestmt(FOR, NULL);
             } else {
-                st = makestmt(FOR, parse_expr(PRI_ALL, parent));
+                st = makestmt(FOR, parseExpr(PRI_ALL, parent));
             }
             /* Generate synthetic label */
             st->label = generate_loop_label("L");
@@ -442,14 +442,14 @@ statement(struct stmt *parent)
             if (cur.type == SEMI) {
                 st->middle = NULL;
             } else {
-                st->middle = parse_expr(PRI_ALL, parent);
+                st->middle = parseExpr(PRI_ALL, parent);
             }
             expect(SEMI, ER_S_SN);
             /* Increment expression - optional */
             if (cur.type == RPAR) {
                 st->right = NULL;
             } else {
-                st->right = parse_expr(PRI_ALL, parent);
+                st->right = parseExpr(PRI_ALL, parent);
             }
             expect(RPAR, ER_S_NP);
             st->chain = statement(st);
@@ -458,7 +458,7 @@ statement(struct stmt *parent)
         case WHILE:     // while <condition> <statement> ;
             gettoken();
             expect(LPAR, ER_S_NP);
-            st = makestmt(WHILE, parse_expr(PRI_ALL, parent));
+            st = makestmt(WHILE, parseExpr(PRI_ALL, parent));
             /* Generate synthetic label */
             st->label = generate_loop_label("L");
             /* Set parent before recursive call */
@@ -474,7 +474,7 @@ statement(struct stmt *parent)
         case SWITCH:    // switch (<expr>) <block> ;
             gettoken();
             expect(LPAR, ER_S_NP);
-            st = makestmt(SWITCH, parse_expr(PRI_ALL, parent));
+            st = makestmt(SWITCH, parseExpr(PRI_ALL, parent));
             /* Generate synthetic label */
             st->label = generate_loop_label("S");
             /* Set parent before recursive call */
@@ -488,7 +488,7 @@ statement(struct stmt *parent)
         case CASE:
             gettoken();
             // Use priority 13 to stop at colon (ternary/colon have priority 13)
-            st = makestmt(CASE, parse_expr(13, parent));
+            st = makestmt(CASE, parseExpr(13, parent));
             expect(COLON, ER_S_NL);
             break;
 
@@ -529,7 +529,7 @@ statement(struct stmt *parent)
             }
             gettoken();  // advance past WHILE keyword
             expect(LPAR, ER_S_NP);
-            st->left = parse_expr(PRI_ALL, parent);
+            st->left = parseExpr(PRI_ALL, parent);
             need(RPAR, SEMI, ER_S_NP);
             expect(SEMI, ER_S_SN);
             break;
@@ -598,10 +598,10 @@ asmblock(void)
     }
 
     /* Initialize asm capture buffer */
-    asm_cbuf = malloc(256);
-    asm_csiz = 256;
-    asm_clen = 0;
-    asm_cbuf[0] = 0;
+    asmCbuf = malloc(256);
+    asmCsiz = 256;
+    asmClen = 0;
+    asmCbuf[0] = 0;
 
     /* Set ASM_BLOCK flag for special asm processing */
     tflags |= ASM_BLOCK;
@@ -621,11 +621,11 @@ asmblock(void)
             depth--;
             if (depth == 0) {
                 /* Found matching closing brace - save captured text and stop */
-                captured_text = asm_cbuf;
-                captured_len = asm_clen;
-                asm_cbuf = NULL;
-                asm_csiz = 0;
-                asm_clen = 0;
+                captured_text = asmCbuf;
+                captured_len = asmClen;
+                asmCbuf = NULL;
+                asmCsiz = 0;
+                asmClen = 0;
                 tflags &= ~ASM_BLOCK;  /* Clear ASM_BLOCK flag */
                 break;
             }
@@ -633,7 +633,7 @@ asmblock(void)
 
         /*
          * Get next token (will be captured by lexer if
-         * asm_cbuf is set)
+         * asmCbuf is set)
          */
         gettoken();
     }
@@ -677,7 +677,7 @@ static struct expr *parse_initializer_list(void)
         } else {
             /* Parse expression but stop before comma operator (priority 15)
              * so that comma is treated as element separator, not an operator */
-            item = parse_expr(OP_PRI_COMMA, NULL);
+            item = parseExpr(OP_PRI_COMMA, NULL);
         }
 
         if (item == NULL) {
@@ -723,7 +723,7 @@ do_initializer(void)
          * Use precedence 15 to allow assignment (14) but exclude
          * comma operator (15)
          */
-        init = parse_expr(15, NULL);
+        init = parseExpr(15, NULL);
     }
 
     if (init == NULL) {
@@ -744,7 +744,7 @@ parsefunc(struct name *f)
 	static_counter = 0;
 
 	// Push a new scope for the function body
-	push_scope(f->name);
+	pushScope(f->name);
 
 	// Install function parameters into the scope at level 2
 	// Read parameter info from f->type->elem but create NEW entries at level 2
@@ -753,7 +753,7 @@ parsefunc(struct name *f)
 			// Only add parameters with actual names (skip anonymous ones)
 			if (param->name && param->name[0] != '\0') {
 				// Create a NEW name entry at level 2 (don't reuse type->elem)
-				new_name(param->name, funarg, param->type, 0);
+				newName(param->name, funarg, param->type, 0);
 			}
 		}
 	}
@@ -767,10 +767,10 @@ parsefunc(struct name *f)
 	}
 
 	// Emit AST for second pass
-	emit_function(f);
+	emitFunction(f);
 
 	// Pop the function scope
-	pop_scope();
+	popScope();
 
 	/*
 	 * Debug assertion: verify we're back at global scope and all
@@ -969,7 +969,7 @@ declaration()
 
                 /* Free the statement tree (dumping now happens in parsefunc) */
                 if (v->u.body) {
-                    fr_stmt(v->u.body);
+                    frStmt(v->u.body);
                     v->u.body = 0;  /* Mark as freed */
                 }
 
@@ -1019,7 +1019,7 @@ declaration()
                      * Create new array type with correct size
                      * (length + 1 for null terminator)
                      */
-                    v->type = get_type(TF_ARRAY|TF_POINTER, v->type->sub,
+                    v->type = getType(TF_ARRAY|TF_POINTER, v->type->sub,
                                        len + 1);
                 }
             }
@@ -1035,7 +1035,7 @@ declaration()
                     count++;
                 }
                 /* Create new array type with correct size */
-                v->type = get_type(TF_ARRAY|TF_POINTER, v->type->sub,
+                v->type = getType(TF_ARRAY|TF_POINTER, v->type->sub,
                                    count);
             }
 
@@ -1057,7 +1057,7 @@ declaration()
 		    v->kind != tdef && v->kind != fdef) {
 			/* Skip function declarations - only emit actual variables */
 			if (!(v->type && (v->type->flags & TF_FUNC))) {
-				emit_gv(v);
+				emitGv(v);
 			}
 		}
 
@@ -1092,7 +1092,7 @@ parse()
 {
 	struct name *possible_typedef;
 
-	push_scope("global");
+	pushScope("global");
 	initbasictype();
 	while (cur.type != E_O_F) {
 		while (cur.type == NONE) {
@@ -1102,7 +1102,7 @@ parse()
 		/* Also check if it's a typedef name (SYM that's a typedef) */
 		possible_typedef = NULL;
 		if (cur.type == SYM) {
-			possible_typedef = lookup_name(cur.v.name, 0);
+			possible_typedef = findName(cur.v.name, 0);
 		}
 
 		if (cur.type == INT || cur.type == CHAR || cur.type == SHORT ||
@@ -1120,9 +1120,9 @@ parse()
 	}
 
 	/* Emit global variables (no-op, already emitted incrementally) */
-	emit_gvs();
+	emitGvs();
 
-	pop_scope();
+	popScope();
 
 	/*
 	 * Debug assertion: verify all allocations have been freed
@@ -1160,18 +1160,18 @@ parse()
  * Free a statement tree recursively
  */
 void
-fr_stmt(struct stmt *st)
+frStmt(struct stmt *st)
 {
 	if (!st)
 		return;
 
 	/* Free child statements */
 	if (st->chain)
-		fr_stmt(st->chain);
+		frStmt(st->chain);
 	if (st->otherwise)
-		fr_stmt(st->otherwise);
+		frStmt(st->otherwise);
 	if (st->next)
-		fr_stmt(st->next);
+		frStmt(st->next);
 
 	/* Free label string if present */
 	if (st->label)
@@ -1210,7 +1210,7 @@ cleanup_parser(void)
 		if (n) {
 			/* Free function body if present */
 			if (n->u.body)
-				fr_stmt(n->u.body);
+				frStmt(n->u.body);
 
 			/*
 			 * Free name string (except for function parameters

@@ -73,7 +73,7 @@ struct expr {
 /*
  * Operator precedence levels for expression parsing
  * Lower numbers bind tighter (higher precedence)
- * When parse_expr(N) encounters operator with priority >= N, it stops
+ * When parseExpr(N) encounters operator with priority >= N, it stops
  */
 #define	PRI_ALL        0   /* parse all operators regardless of precedence */
 
@@ -94,13 +94,13 @@ struct expr {
 #define OP_PRI_COMMA   15  /* comma: , */
 
 extern struct expr *mkexpr(unsigned char op, struct expr *left);
-extern struct expr *mkexpr_i(unsigned char op, struct expr *left,
+extern struct expr *mkexprI(unsigned char op, struct expr *left,
     struct type *type, unsigned long v, int flags);
 extern struct expr *cfold(struct expr *e);
-extern struct expr *parse_expr(unsigned char priority, struct stmt *);
-unsigned long parse_const(unsigned char priority);
-extern struct expr *new_expr(unsigned char op);
-extern void fr_exp(struct expr *e);
+extern struct expr *parseExpr(unsigned char priority, struct stmt *);
+unsigned long parseConst(unsigned char priority);
+extern struct expr *newExpr(unsigned char op);
+extern void frExp(struct expr *e);
 
 /*
  * a statement is the basic execution unit that is managed by the compiler
@@ -123,14 +123,14 @@ struct stmt {
 	struct name *locals;    /* linked list of local variables in this scope */
 };
 
-extern struct stmt *new_stmt(unsigned char op, struct expr *left);
-extern void fr_stm(struct stmt *s);
-extern void fr_stmt(struct stmt *s);
-extern void emit_function(struct name *func);
-extern void emit_literals(void);
-extern void emit_gv(struct name *var);
-extern void emit_gvs(void);
-extern void emit_string_literal(struct name *strname);
+extern struct stmt *newStmt(unsigned char op, struct expr *left);
+extern void frStm(struct stmt *s);
+extern void frStmt(struct stmt *s);
+extern void emitFunction(struct name *func);
+extern void emitLiterals(void);
+extern void emitGv(struct name *var);
+extern void emitGvs(void);
+extern void emitStringLiteral(struct name *strname);
 
 /* statement flags used in parse.c */
 #define S_PARENT 0x01
@@ -188,7 +188,7 @@ struct type {
 extern struct type *getbasetype();
 extern void initbasictype(void);
 extern void dump_type(struct type *t, int lv);
-struct type *get_type(int flags, struct type *sub, int count);
+struct type *getType(int flags, struct type *sub, int count);
 extern int compatible_function_types(struct type *t1, struct type *t2);
 
 typedef enum { 
@@ -228,14 +228,14 @@ struct name {
 #define	SC_AUTO		0x20
 #define	SC_TYPEDEF	0x40
 
-extern struct name *new_name(char *name, kind k, struct type *t,
+extern struct name *newName(char *name, kind k, struct type *t,
     unsigned char is_tag);
-extern void add_name(struct name *n);
-extern struct name *lookup_name(char *name, unsigned char is_tag);
-extern struct name *lookup_element(char *name, struct type *t);
+extern void addName(struct name *n);
+extern struct name *findName(char *name, unsigned char is_tag);
+extern struct name *findElement(char *name, struct type *t);
 extern void dump_name(struct name *s);
-extern void push_scope(char *name);
-extern void pop_scope(void);
+extern void pushScope(char *name);
+extern void popScope(void);
 
 /* declare.c */
 extern int lexlevel;
@@ -243,10 +243,10 @@ extern int lastname;
 extern struct name **names;
 extern struct type *types;
 extern char *kindname[];
-extern struct name *declare_internal(struct type **btp, unsigned char struct_elem);
+extern struct name *declareInternal(struct type **btp, unsigned char struct_elem);
 extern struct name *declare(struct type **btp);
-extern int is_cast_start(void);
-extern struct type *parse_type_name(void);
+extern int isCastStart(void);
+extern struct type *parseTypeName(void);
 
 extern struct type *chartype;
 extern struct type *inttype;
@@ -260,12 +260,12 @@ void parse();
 void cleanup_parser();
 
 /* Global context for static variable name mangling */
-extern char *source_file_root;
+extern char *sourceFileRoot;
 extern struct name *current_function;
 extern unsigned char static_counter;  // counter for statics in current function
 
 /* AST output control */
-extern int ast_fd;                   // where to write AST output
+extern int astFd;                   // where to write AST output
 
 /* kw.c */
 extern unsigned char cppkw[];
@@ -289,10 +289,10 @@ extern struct token cur, next;
 /* Token history for debugging */
 #define TOKEN_HISTORY_SIZE 10
 extern struct token tok_hist[TOKEN_HISTORY_SIZE];
-extern int tok_hidx;
+extern int tokHidx;
 
 extern void lexinit();
-extern int write_cppfile;
+extern int writeCppfile;
 extern int cppfile;
 extern char *cppfname;
 extern char strbuf[];
@@ -320,16 +320,16 @@ extern void insertfile(char *name, int sysdirs);
 extern void advance();
 void iodump();
 void ioinit();
-void add_include(char *name);
-void cpp_flush();
-void cpp_out(char *s, int len);
+void addInclude(char *name);
+void cppFlush();
+void cppOut(char *s, int len);
 
 extern unsigned char curchar;
 extern unsigned char nextchar;
 extern int lineno;
 extern char *filename;
 extern int column;
-extern char *sys_include_path;
+extern char *sysIncludePath;
 extern struct textbuf *tbtop;
 extern int exit_code;  /* Global exit code: 0=success, 1=errors occurred */
 
@@ -357,7 +357,7 @@ void macdefine(char *s);
 void macundefine(char *s);
 int macexpand(char *s);
 struct macro *maclookup(char *s);
-void add_define(char *s);
+void addDefine(char *s);
 
 /* util.c */
 extern unsigned char lookupc(char *s, char c);
@@ -390,9 +390,9 @@ extern unsigned char tflags;
 extern unsigned char lineend;
 
 /* ASM block capture */
-extern char *asm_cbuf;
-extern int asm_csiz;
-extern int asm_clen;
+extern char *asmCbuf;
+extern int asmCsiz;
+extern int asmClen;
 
 #ifdef ASMKWLOOK
 /* Test inline assembly with asm { } syntax */

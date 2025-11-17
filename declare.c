@@ -4,7 +4,7 @@
  * Check if current token is a type keyword
  */
 static int
-is_type_token(unsigned char t)
+isTypeToken(unsigned char t)
 {
     return (t == CHAR || t == SHORT || t == INT || t == LONG ||
             t == FLOAT || t == DOUBLE || t == VOID || t == UNSIGNED ||
@@ -17,7 +17,7 @@ is_type_token(unsigned char t)
  * Returns a pointer type wrapping the given base type
  */
 static struct type *
-parse_pointer_prefix(struct type *basetype)
+parsePointerPrefix(struct type *basetype)
 {
     struct type *t = basetype;
     while (cur.type == STAR) {
@@ -26,7 +26,7 @@ parse_pointer_prefix(struct type *basetype)
         while (cur.type == CONST || cur.type == VOLATILE) {
             gettoken();
         }
-        t = get_type(TF_POINTER, t, 0);
+        t = getType(TF_POINTER, t, 0);
     }
     return t;
 }
@@ -36,7 +36,7 @@ parse_pointer_prefix(struct type *basetype)
  * Returns pointer to buffer (or "" for anonymous) or NULL if error
  */
 static char *
-parse_param_name(unsigned char allow_anonymous, char *buf, int bufsize)
+parseParamName(unsigned char allow_anonymous, char *buf, int bufsize)
 {
     if (cur.type == SYM) {
         strncpy(buf, cur.v.name, bufsize - 1);
@@ -75,7 +75,7 @@ create_param_entry(char *name, struct type *type)
  *              to the global names[] array (to avoid namespace pollution)
  */
 struct name *
-declare_internal(struct type **btp, unsigned char struct_elem)
+declareInternal(struct type **btp, unsigned char struct_elem)
 {
     struct name *nm, *arg;
     struct type *t, *prefix, *suffix, *rt;
@@ -104,13 +104,13 @@ declare_internal(struct type **btp, unsigned char struct_elem)
     }
     prefix = *btp;
 
-    prefix = parse_pointer_prefix(prefix);
+    prefix = parsePointerPrefix(prefix);
 
     // parenthesed type definition does precedence
     if (cur.type == LPAR) {
         gettoken();
         rt = 0;
-        nm = declare_internal(&rt, struct_elem);       // recurse
+        nm = declareInternal(&rt, struct_elem);       // recurse
         expect(RPAR, ER_D_DP);
         if (*btp && rt) {
             gripe(ER_T_DT);
@@ -162,7 +162,7 @@ declare_internal(struct type **btp, unsigned char struct_elem)
         } else {
             /* normal variable: add to global names[] array */
             /* Check if this name already exists at this scope */
-            struct name *existing = lookup_name(cur.v.name, 0);
+            struct name *existing = findName(cur.v.name, 0);
             if (existing && existing->level == lexlevel) {
                 /*
                  * Name exists at current scope - check if it's a
@@ -179,11 +179,11 @@ declare_internal(struct type **btp, unsigned char struct_elem)
                     /* But keep the existing name structure */
                 } else {
                     /* Not a function prototype - error on redeclaration */
-                    nm = new_name(cur.v.name, var, prefix, 0);
+                    nm = newName(cur.v.name, var, prefix, 0);
                 }
             } else {
                 /* New name - create it */
-                nm = new_name(cur.v.name, var, prefix, 0);
+                nm = newName(cur.v.name, var, prefix, 0);
             }
         }
         gettoken();
@@ -207,13 +207,13 @@ declare_internal(struct type **btp, unsigned char struct_elem)
         if (cur.type == RBRACK) {
             i = -1;
         } else {
-            i = parse_const(RBRACK);
+            i = parseConst(RBRACK);
         }
         /*
          * Arrays have both TF_ARRAY and TF_POINTER flags for array decay
          * semantics
          */
-        prefix = get_type(TF_ARRAY|TF_POINTER, prefix, i);
+        prefix = getType(TF_ARRAY|TF_POINTER, prefix, i);
         expect(RBRACK, ER_D_AD);
         /* Store array type in suffix so it gets assigned to nm->type */
         suffix = prefix;
@@ -226,7 +226,7 @@ declare_internal(struct type **btp, unsigned char struct_elem)
             suffix = 0;
         }
 
-        // Create a new function type (don't use get_type() which caches types)
+        // Create a new function type (don't use getType() which caches types)
         // Function types need unique instances because we modify elem list
         suffix = calloc(1, sizeof(*suffix));
         suffix->flags = TF_FUNC;
@@ -239,13 +239,13 @@ declare_internal(struct type **btp, unsigned char struct_elem)
         // Check if current symbol is a typedef name
         is_typedef_name = 0;
         if (cur.type == SYM) {
-            n = lookup_name(cur.v.name, 0);
+            n = findName(cur.v.name, 0);
             if (n && n->kind == tdef) {
                 is_typedef_name = 1;
             }
         }
         kr_style = (cur.type == SYM &&
-                    !is_type_token(cur.type) &&
+                    !isTypeToken(cur.type) &&
                     !is_typedef_name);
 
         // Parse parameter list
@@ -274,7 +274,7 @@ declare_internal(struct type **btp, unsigned char struct_elem)
 
             if (kr_style) {
                 // K&R style: just collect names (types come later)
-                param_name = parse_param_name(0, param_name_buf,
+                param_name = parseParamName(0, param_name_buf,
                                               sizeof(param_name_buf));
                 if (!param_name) {
                     gripe(ER_D_FA);
@@ -289,11 +289,11 @@ declare_internal(struct type **btp, unsigned char struct_elem)
                 }
 
                 // Parse pointer prefix
-                param_type = parse_pointer_prefix(basetype);
+                param_type = parsePointerPrefix(basetype);
 
                 // Get parameter name (optional for ANSI declarations)
                 /* Allow anonymous */
-                param_name = parse_param_name(1, param_name_buf,
+                param_name = parseParamName(1, param_name_buf,
                                               sizeof(param_name_buf));
 
                 // Handle array suffix (converts to pointer)
@@ -301,10 +301,10 @@ declare_internal(struct type **btp, unsigned char struct_elem)
                     gettoken();
                     if (cur.type != RBRACK) {
                         /* Array size (ignored for parameters) */
-                        parse_expr(0, NULL);
+                        parseExpr(0, NULL);
                     }
                     expect(RBRACK, ER_D_FA);
-                    param_type = get_type(TF_POINTER,
+                    param_type = getType(TF_POINTER,
                         param_type->sub ? param_type->sub : param_type, 0);
                 }
             }
@@ -338,8 +338,8 @@ declare_internal(struct type **btp, unsigned char struct_elem)
         expect(RPAR, ER_D_FA);
 
         // K&R style: parse type declarations after )
-        if (kr_style && is_type_token(cur.type)) {
-            while (is_type_token(cur.type) && cur.type != E_O_F &&
+        if (kr_style && isTypeToken(cur.type)) {
+            while (isTypeToken(cur.type) && cur.type != E_O_F &&
                    cur.type != BEGIN) {
                 char param_name_buf[64];  /* Stack buffer for parameter names */
                 struct type *basetype = getbasetype();
@@ -348,10 +348,10 @@ declare_internal(struct type **btp, unsigned char struct_elem)
                 }
 
                 // Parse declarator
-                param_type = parse_pointer_prefix(basetype);
+                param_type = parsePointerPrefix(basetype);
 
                 // Get parameter name (required for K&R declarations)
-                param_name = parse_param_name(0, param_name_buf,
+                param_name = parseParamName(0, param_name_buf,
                                               sizeof(param_name_buf));
                 if (!param_name) {
                     gripe(ER_D_FM);
@@ -373,7 +373,7 @@ declare_internal(struct type **btp, unsigned char struct_elem)
                 // Continue or stop
                 if (cur.type == SEMI) {
                     gettoken();
-                    if (cur.type == BEGIN || !is_type_token(cur.type)) {
+                    if (cur.type == BEGIN || !isTypeToken(cur.type)) {
                         break;
                     }
                 } else {
@@ -409,16 +409,16 @@ declare_internal(struct type **btp, unsigned char struct_elem)
     }
 
     return nm;
-}                               // declare_internal
+}                               // declareInternal
 
 /*
- * Public wrapper for declare_internal.
+ * Public wrapper for declareInternal.
  * Normal variables are added to the global names[] array.
  */
 struct name *
 declare(struct type **btp)
 {
-    return declare_internal(btp, 0);
+    return declareInternal(btp, 0);
 }
 
 /*
@@ -426,18 +426,18 @@ declare(struct type **btp)
  * Returns 1 if it's a type keyword or typedef name
  */
 int
-is_cast_start(void)
+isCastStart(void)
 {
     struct name *n;
 
     /* Check for type keywords */
-    if (is_type_token(cur.type)) {
+    if (isTypeToken(cur.type)) {
         return 1;
     }
 
     /* Check if it's a typedef name */
     if (cur.type == SYM) {
-        n = lookup_name(cur.v.name, 0);
+        n = findName(cur.v.name, 0);
         if (n && n->kind == tdef) {
             return 1;
         }
@@ -459,7 +459,7 @@ is_cast_start(void)
  *   int (*)[10]
  */
 struct type *
-parse_type_name(void)
+parseTypeName(void)
 {
     struct type *base_type, *result_type;
 
@@ -471,7 +471,7 @@ parse_type_name(void)
     }
 
     /* Parse pointer prefix (*, **, etc.) */
-    result_type = parse_pointer_prefix(base_type);
+    result_type = parsePointerPrefix(base_type);
 
     /* TODO: Parse abstract declarator for arrays/function pointers
      * For now, we handle simple types and pointers

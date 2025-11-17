@@ -58,7 +58,7 @@
 int fdprintf(int fd, const char *fmt, ...);
 
 /* Forward declaration from parseast.c */
-int parse_ast_file(int in_fd, int out_fd);
+int parseAstFile(int in_fd, int out_fd);
 
 char *progname;
 
@@ -96,7 +96,7 @@ usage(char *complaint)
  * Example: /tmp/foo.c.ast -> /tmp/foo.c.s
  */
 char *
-make_output_name(char *input_file)
+makeOutputName(char *input_file)
 {
     char *output;
     int len;
@@ -168,7 +168,7 @@ main(int argc, char **argv)
     if (!explicit_output) {
         if (ast_file) {
             /* Input from file: default to <basename>.s */
-            output_file = make_output_name(ast_file);
+            output_file = makeOutputName(ast_file);
         } else {
             /* Input from stdin: output to stdout (filter mode) */
             output_file = NULL;
@@ -204,7 +204,7 @@ main(int argc, char **argv)
 
     /* Parse AST file and generate code */
     fdprintf(2, "cc2: Parsing AST and generating code...\n");
-    if (parse_ast_file(in_fd, out_fd) != 0) {
+    if (parseAstFile(in_fd, out_fd) != 0) {
         fdprintf(2, "cc2: failed to parse AST\n");
         if (in_fd != 0) close(in_fd);
         if (out_fd != 1) close(out_fd);

@@ -36,7 +36,7 @@ usage(void)
  * Get the directory where this executable lives
  */
 char *
-get_script_dir(char *argv0)
+getScriptDir(char *argv0)
 {
     char *path;
     char *dir;
@@ -58,7 +58,7 @@ get_script_dir(char *argv0)
  * Returns allocated string that must be freed
  */
 char *
-make_temp_ast(char *basename)
+makeTempAst(char *basename)
 {
     char template[256];
     int fd;
@@ -80,7 +80,7 @@ make_temp_ast(char *basename)
  * Returns a newly allocated string
  */
 char *
-get_basename_no_ext(char *filename)
+getBasenameNoExt(char *filename)
 {
     char *temp = strdup(filename);
     char *base = basename(temp);
@@ -105,7 +105,7 @@ get_basename_no_ext(char *filename)
  * Returns exit status of child process
  */
 int
-exec_command(char *cmd, char **args)
+execCommand(char *cmd, char **args)
 {
     int pid;
     int status;
@@ -159,7 +159,7 @@ main(int argc, char **argv)
     int status;
 
     progname = argv[0];
-    scriptdir = get_script_dir(argv[0]);
+    scriptdir = getScriptDir(argv[0]);
 
     /* Build paths to cc1, cc2, and interpreter */
     snprintf(cc1_path, sizeof(cc1_path), "%s/cc1", scriptdir);
@@ -268,12 +268,12 @@ main(int argc, char **argv)
     }
 
     /* Generate AST filename */
-    basename_no_ext = get_basename_no_ext(source_file);
+    basename_no_ext = getBasenameNoExt(source_file);
     if (keep_ast) {
         ast_file = malloc(strlen(basename_no_ext) + 10);
         sprintf(ast_file, "%s.ast", basename_no_ext);
     } else {
-        ast_file = make_temp_ast(basename_no_ext);
+        ast_file = makeTempAst(basename_no_ext);
     }
 
     printf("=== Pass 1: Parsing %s ===\n", source_file);
@@ -285,7 +285,7 @@ main(int argc, char **argv)
     cc1_args[cc1_argc] = NULL;
 
     /* Execute cc1 */
-    status = exec_command(cc1_path, cc1_args);
+    status = execCommand(cc1_path, cc1_args);
     if (status != 0) {
         fprintf(stderr, "Error: cc1 failed with status %d\n", status);
         if (!keep_ast) {
@@ -310,7 +310,7 @@ main(int argc, char **argv)
         interp_args[interp_argc++] = ast_file;
         interp_args[interp_argc] = NULL;
 
-        status = exec_command("/usr/bin/sbcl", interp_args);
+        status = execCommand("/usr/bin/sbcl", interp_args);
 
         printf("\nAST saved to: %s\n", ast_file);
 
@@ -330,7 +330,7 @@ main(int argc, char **argv)
     cc2_args[cc2_argc] = NULL;
 
     /* Execute cc2 */
-    status = exec_command(cc2_path, cc2_args);
+    status = execCommand(cc2_path, cc2_args);
     if (status != 0) {
         fprintf(stderr, "Error: cc2 failed with status %d\n", status);
         if (!keep_ast) {

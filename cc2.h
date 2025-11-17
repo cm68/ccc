@@ -115,13 +115,13 @@ struct function_ctx {
 int fdprintf(int fd, const char *fmt, ...);
 
 /* Global variables */
-extern int out_fd;  /* Assembly output file descriptor (from parseast.c) */
+extern int outFd;  /* Assembly output file descriptor (from parseast.c) */
 
 /* Tree construction functions */
 struct expr *new_expr(unsigned char op);
 struct stmt *new_stmt(unsigned char type);
-void free_expr(struct expr *e);
-void fr_stmt(struct stmt *s);
+void freeExpr(struct expr *e);
+void frStmt(struct stmt *s);
 
 /* Width and signedness extraction from type annotations */
 unsigned char get_size_from_type_str(const char *type_str);
@@ -129,17 +129,17 @@ unsigned char get_size_from_typename(const char *typename);
 unsigned char get_signedness_from_type_str(const char *type_str);
 
 /* Pattern recognizers */
-int is_struct_member_access(struct expr *e, char **out_var, long *out_offset);
+int isStructMemberAccess(struct expr *e, char **out_var, long *out_offset);
 int is_multiply_by_power_of_2(struct expr *e, struct expr **out_expr);
 
 /* Code generation functions (codegen.c) */
-void assign_frame_offsets(struct function_ctx *ctx);
+void assignFrameOffsets(struct function_ctx *ctx);
 void generate_code(struct function_ctx *ctx);
-void allocate_registers(struct function_ctx *ctx);
-struct local_var *lookup_var(struct function_ctx *ctx, const char *symbol);
+void allocateRegisters(struct function_ctx *ctx);
+struct local_var *findVar(struct function_ctx *ctx, const char *symbol);
 
 /* Code emission functions (emit.c) */
-void emit_assembly(struct function_ctx *ctx, int out_fd);
+void emit_assembly(struct function_ctx *ctx, int outFd);
 
 /*
  * vim: tabstop=4 shiftwidth=4 expandtab:
