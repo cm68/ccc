@@ -17,8 +17,30 @@ char *macbuffer;
 struct macro *macros;
 
 /*
- * add a definition from the command line args
- * Format: "NAME=value" or just "NAME" (for empty macros)
+ * Add a macro definition from command-line argument
+ *
+ * Processes -D command-line arguments to define preprocessor macros before
+ * parsing the source file. Supports both simple and value-defined macros.
+ *
+ * Formats accepted:
+ *   - "NAME"       -> defines NAME as 1
+ *   - "NAME=value" -> defines NAME as value
+ *
+ * The macro is added to the front of the macro list and becomes immediately
+ * available for expansion during preprocessing.
+ *
+ * Object-like macros only:
+ *   - No parameters (parmcount=0)
+ *   - Direct text replacement
+ *   - Cannot define function-like macros from command line
+ *
+ * Examples:
+ *   -DDEBUG         -> DEBUG=1
+ *   -DVERSION=2     -> VERSION=2
+ *   -DMAX=100       -> MAX=100
+ *
+ * Parameters:
+ *   s - Definition string in "NAME" or "NAME=value" format
  */
 void
 addDefine(char *s)
@@ -57,7 +79,27 @@ addDefine(char *s)
 }
 
 /*
- * look up a macro in the macro table
+ * Look up a macro by name
+ *
+ * Searches the macro list for a macro with the specified name. The macro
+ * list is a simple linked list with most recently defined macros at the
+ * front.
+ *
+ * Search order:
+ *   - Linear search from front to back
+ *   - First match wins (allows redefinition by prepending)
+ *   - Case-sensitive name matching
+ *
+ * Used by:
+ *   - macexpand() to check if identifier is a macro
+ *   - #ifdef/#ifndef to test macro existence
+ *   - #undef to find macro for removal
+ *
+ * Parameters:
+ *   name - Macro name to search for
+ *
+ * Returns:
+ *   Pointer to macro structure if found, NULL if not found
  */
 struct macro *
 maclookup(char *name)
@@ -74,7 +116,28 @@ maclookup(char *name)
 }
 
 /*
- * remove a name from the macro list
+ * Remove a macro definition (#undef)
+ *
+ * Searches for and removes a macro from the macro list, freeing all
+ * associated memory including parameter names and text. Implements the
+ * #undef preprocessor directive.
+ *
+ * Memory cleanup:
+ *   - Frees parameter name strings (if function-like macro)
+ *   - Frees parameter array
+ *   - Frees macro name string
+ *   - Frees macro text string
+ *   - Frees macro structure itself
+ *
+ * List maintenance:
+ *   - Searches linearly for macro by name
+ *   - Unlinks from list (updates prev->next or list head)
+ *   - Handles both head and middle removal
+ *
+ * Silently succeeds if macro not found (standard C preprocessor behavior).
+ *
+ * Parameters:
+ *   s - Name of macro to undefine
  */
 void
 macundefine(char *s)
@@ -107,9 +170,46 @@ macundefine(char *s)
     }
 }
 
-
 /*
- * read the macro definition and parse out the parameter names
+ * Parse and define a macro from #define directive
+ *
+ * Reads a macro definition from the input stream and creates a macro
+ * structure. Handles both object-like and function-like macros with
+ * parameter parsing.
+ *
+ * Macro forms:
+ *   - Object-like:     #define NAME replacement_text
+ *   - Function-like:   #define NAME(a,b) replacement_text
+ *
+ * Function-like detection:
+ *   - '(' must IMMEDIATELY follow name (no whitespace) per C standard
+ *   - Whitespace before '(' means object-like macro with '(' in text
+ *
+ * Parameter parsing:
+ *   - Comma-separated identifiers: NAME(a,b,c)
+ *   - Whitespace allowed around commas
+ *   - Closing ')' terminates parameter list
+ *   - Parameters stored in macro->parms array
+ *
+ * Replacement text processing:
+ *   - Everything after parameters/whitespace until newline
+ *   - Backslash-newline: Continues macro to next line (replaced with space)
+ *   - C++ comments (//): Terminates macro text (not included)
+ *   - C block comments: Removed, replaced with single space
+ *   - Trailing whitespace: Trimmed
+ *
+ * Special operators in replacement text:
+ *   - Hash (stringify): Must precede parameter name
+ *   - Double-hash (token paste): Glues adjacent tokens together
+ *   - Both handled during expansion, not definition
+ *
+ * Parameters:
+ *   s - Macro name (already parsed from input stream)
+ *
+ * Side effects:
+ *   - Consumes input stream through newline
+ *   - Adds macro to front of macro list
+ *   - Macro immediately available for expansion
  */
 void
 macdefine(char *s)
@@ -222,30 +322,66 @@ macdefine(char *s)
 }
 
 /*
- * if our symbol is a macro, expand it
- * the arguments are processed as follows:
- * we have attached to the macro structure the array of formal
- * parameters, and when in our invocation, we have the values to
- * substitute for them.  these formal parameters look like c symbol names,
- * and the substitution values are single comma delimited tokens.
- * so, when we hit, we'll consume the macro call of foo(x,y) in the input
- * stream, build the expansion into a buffer, and insert that buffer into
- * the input stream.   when that input stream is in turn processed, we'll
- * check that for macros just like file content.  in this way, macro calls
- * inside of macro calls just work, and we process them outside-in.
- * there are some cases that will be kinda bizarre, given this architecture.
- * also, there are two operators that only work inside a macro expansion:
- * stringify (#) and glom(##).
- * stringify must immediately precede a formal parameter name, and simply
- * will stringify the actual parameter.
- * #define baz(a) #a
- * glom, when encountered in a macro expansion, simply turns into nothing,
- * while allowing keyword expansion of any adjacent identifiers
- * #define foo(a,b) a##b
- * #define bar(c,d) c##d
- * foo(b,ar(xy,zzy)) generates xyzzy
- * 
- * when we are called, curchar is the last character of the macro name
+ * Expand a macro invocation
+ *
+ * Checks if an identifier is a macro and expands it if so. Handles both
+ * object-like and function-like macros with parameter substitution,
+ * stringify (#), and token pasting (##) operators.
+ *
+ * Expansion process:
+ *   1. Look up macro by name
+ *   2. For function-like macros: parse argument list from input
+ *   3. Build expansion text with parameter substitution
+ *   4. Insert expansion into input stream via insertmacro()
+ *   5. Recursive expansion happens when inserted text is processed
+ *
+ * Object-like macros:
+ *   - Direct text replacement
+ *   - No arguments parsed
+ *   - Example: #define MAX 100
+ *
+ * Function-like macros:
+ *   - Arguments parsed from (arg1, arg2, ...) in input
+ *   - Parentheses levels tracked (nested calls handled)
+ *   - String/character literals copied verbatim
+ *   - Arguments matched to parameters by position
+ *   - Parameter mismatch generates error
+ *
+ * Parameter substitution:
+ *   - Formal parameters in macro text replaced with actual arguments
+ *   - Identifiers in macro text matched against parameter names
+ *   - Non-matching identifiers passed through unchanged
+ *
+ * Stringify operator (single hash):
+ *   - Converts parameter to string literal
+ *   - Adds quotes around parameter value in expansion
+ *   - Example: STR(x) with "x" -> STR(foo) becomes "foo"
+ *
+ * Token paste operator (double hash):
+ *   - Concatenates adjacent tokens
+ *   - Simply removed during expansion (tokens already adjacent)
+ *   - Example: CONCAT(a,b) with "a" and "b" -> CONCAT(foo,bar) becomes foobar
+ *
+ * Nested macro calls:
+ *   - Arguments can contain macro invocations
+ *   - Processed outside-in (outer expanded first)
+ *   - Example: foo(bar(x)) expands foo first with bar(x) as argument
+ *
+ * Special asm block handling:
+ *   - If newline seen during argument parsing in asm block
+ *   - Appends semicolon to expansion text
+ *   - Maintains asm statement separation
+ *
+ * Parameters:
+ *   s - Identifier name to check and potentially expand
+ *
+ * Returns:
+ *   1 if macro found and expanded, 0 if not a macro
+ *
+ * Side effects:
+ *   - Consumes macro arguments from input stream
+ *   - Inserts expansion text into input stream
+ *   - Advances curchar/nextchar to start of expansion
  */
 int
 macexpand(char *s)	/* the symbol we are looking up as a macro */

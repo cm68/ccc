@@ -36,6 +36,16 @@ struct textbuf *tbtop;
 
 #ifdef DEBUG
 
+/*
+ * Dump current character state for debugging
+ *
+ * Outputs the current and next characters along with the top textbuf
+ * state to stderr for I/O debugging. Non-printable characters are shown
+ * in hex format.
+ *
+ * Parameters:
+ *   tag - Descriptive label for this dump point (e.g., "advance", "before")
+ */
 void
 cdump(char *tag)
 {
@@ -81,7 +91,22 @@ struct include {
 char *sysIncludePath = "include";
 
 /*
- * add a path to the include search list
+ * Add a path to the include file search list
+ *
+ * Appends a directory path to the end of the include search list.
+ * When processing #include directives, these paths are searched in order
+ * to locate header files.
+ *
+ * The include list is searched for:
+ *   - #include "file.h" directives (quoted form)
+ *   - #include <file.h> directives (after trying sysIncludePath)
+ *
+ * Search order:
+ *   1. System path (for <> includes only)
+ *   2. Include list paths in order added (first match wins)
+ *
+ * Parameters:
+ *   s - Directory path to add (string is duplicated)
  */
 void
 addInclude(char *s)
@@ -107,7 +132,36 @@ addInclude(char *s)
 }
 
 /*
- * if sys is true, then file was included using <> filename delimiters
+ * Push an include file onto the input stack
+ *
+ * Opens and pushes a new include file onto the textbuf stack, pausing
+ * processing of the current file. The include file is searched using the
+ * configured include paths.
+ *
+ * Search strategy:
+ *   - sys=1 (<file.h>): Try sysIncludePath first, then include list
+ *   - sys=0 ("file.h"): Try include list paths only
+ *   - Empty path in list means current directory
+ *   - First file found is used (search stops)
+ *
+ * State preservation:
+ *   - Current file position (offset) is saved in textbuf
+ *   - Current column position is saved
+ *   - Parent state restored when include file is exhausted
+ *
+ * New file initialization:
+ *   - Line number starts at 1
+ *   - Filename updated to resolved path
+ *   - Empty buffer allocated (TBSIZE)
+ *   - File descriptor opened for reading
+ *
+ * Error handling:
+ *   - Fatal error if file not found in any search path
+ *   - Sets filename and lineno for error message context
+ *
+ * Parameters:
+ *   name - Include file name (relative or basename)
+ *   sys  - 1 for <file.h> (system), 0 for "file.h" (user)
  */
 void
 insertfile(char *name, int sys)
@@ -180,15 +234,39 @@ found:
 }
 
 /*
- * when we encounter a macro invocation FOO(x,y) in the input stream, 
- * we replace it with the definition of FOO with parameter substitution
- * effectively pushing this text into the stream.  if that expansion in
- * turn has macro invocations, that causes another push.
- * there's an easy and effective optimization that checks to see if a macro
- * will fit in the portion of the buffer that we have read already.  if
- * so, we copy the macro before the current cursor and back up to the
- * start of the macro expansion.
- * important:  we push BETWEEN curchar and nextchar.
+ * Insert macro expansion text into the input stream
+ *
+ * Pushes macro expansion text onto the textbuf stack, effectively inserting
+ * it BETWEEN curchar and nextchar. This allows nested macro expansion where
+ * macros within the expansion text are recursively expanded.
+ *
+ * Optimization:
+ *   If the macro text fits in the already-read portion of the current buffer
+ *   (before offset), the text is copied there and offset is backed up. This
+ *   avoids allocating a new textbuf for short macros.
+ *
+ * Optimization conditions:
+ *   - Current textbuf has space before offset (offset > macro length)
+ *   - Macro text is copied to [offset-length ... offset-1]
+ *   - Offset backed up to start of macro text
+ *   - curchar/nextchar updated to first characters of macro
+ *
+ * New textbuf allocation (if optimization doesn't apply):
+ *   - Allocate new textbuf with fd=-1 (not a file)
+ *   - Duplicate macro text as storage
+ *   - Set valid to text length
+ *   - Push onto textbuf stack
+ *   - Save parent's column position
+ *
+ * Insertion point:
+ *   - Macro text appears BETWEEN curchar and nextchar
+ *   - curchar remains unchanged (already consumed)
+ *   - nextchar becomes first character of macro
+ *   - Parent's nextchar restored after macro exhausted
+ *
+ * Parameters:
+ *   name   - Macro name (for debugging/error context)
+ *   macbuf - Expanded macro text (parameter substitutions already done)
  */
 void
 insertmacro(char *name, char *macbuf)
@@ -233,6 +311,15 @@ insertmacro(char *name, char *macbuf)
     nextchar = t->storage[t->offset];
 }
 
+/*
+ * Dump a single textbuf for debugging
+ *
+ * Outputs textbuf state information to stderr including name, file
+ * descriptor, buffer position, and line number.
+ *
+ * Parameters:
+ *   t - Textbuf to dump
+ */
 void
 tbdump(struct textbuf *t)
 {
@@ -240,6 +327,12 @@ tbdump(struct textbuf *t)
         t->name, t->fd, t->offset, t->valid, t->lineno);
 }
 
+/*
+ * Dump the entire textbuf stack for debugging
+ *
+ * Walks the textbuf stack from top to bottom, printing state of each
+ * textbuf. Shows the nesting of include files and macro expansions.
+ */
 void
 dump()
 {
@@ -251,8 +344,47 @@ dump()
 }
 
 /*
- * read the next character into curchar
- * side effects: updating line and column
+ * Advance to the next character in the input stream
+ *
+ * This is the core I/O function that implements the unified character stream
+ * from files, include files, and macro expansions. It manages the textbuf
+ * stack, handles EOF/buffer exhaustion, and updates line/column tracking.
+ *
+ * Character flow:
+ *   1. Move nextchar -> curchar
+ *   2. Read new nextchar from current textbuf
+ *   3. If buffer exhausted, refill from file or pop textbuf
+ *   4. Update line/column counters
+ *
+ * Textbuf stack management:
+ *   - If current buffer has more data: read next character
+ *   - If buffer exhausted and file open: refill buffer from file
+ *   - If file exhausted or macro empty: pop textbuf, restore parent state
+ *   - If no parent textbuf: nextchar=0 (EOF)
+ *
+ * State restoration when popping:
+ *   - Restore parent's column position
+ *   - Restore parent's line number
+ *   - Restore parent's filename
+ *   - Read nextchar from parent's current position
+ *   - Parent's curchar remains unchanged (important!)
+ *
+ * Line/column tracking:
+ *   - column: Position of curchar (current character)
+ *   - nextcol: Position where nextchar will be (future column)
+ *   - Newline: Increments lineno, resets nextcol to 0
+ *   - Tab: Converted to space in nextchar
+ *
+ * Special handling:
+ *   - Tabs normalized to spaces
+ *   - Null bytes treated as EOF
+ *   - Line numbers synchronized with textbuf
+ *
+ * Side effects:
+ *   - Updates curchar, nextchar
+ *   - Updates column, nextcol, lineno
+ *   - May pop textbufs and free memory
+ *   - Updates filename for error context
  */
 void
 advance()
@@ -376,7 +508,19 @@ done:
 }
 
 /*
- * prime the pump
+ * Initialize the I/O system for a new source file
+ *
+ * "Primes the pump" by calling advance() twice to load curchar and
+ * nextchar with the first two characters from the input. This establishes
+ * the two-character lookahead used throughout the lexer.
+ *
+ * Initialization sequence:
+ *   1. Set line number to 1
+ *   2. First advance(): loads curchar with first character
+ *   3. Second advance(): loads nextchar with second character
+ *   4. Reset column to 0 for start of file
+ *
+ * Called after insertfile() to begin reading the first (or included) file.
  */
 void
 ioinit()
@@ -391,6 +535,17 @@ struct textbuf *cpp;
 
 #define CPP_BUF 256
 
+/*
+ * Flush preprocessor output buffer to file
+ *
+ * Writes any pending data in the CPP output buffer to the preprocessor
+ * output file (cppfile) and resets the buffer offset to 0. Used for
+ * buffered I/O to reduce write() system calls.
+ *
+ * Called by:
+ *   - cppOut() when buffer fills up
+ *   - End of compilation to flush remaining data
+ */
 void
 cppFlush()
 {
@@ -400,6 +555,26 @@ cppFlush()
     cpp->offset = 0;
 }
 
+/*
+ * Write data to preprocessor output (buffered)
+ *
+ * Appends data to the CPP output buffer, flushing when full. This is used
+ * when running in preprocessor-only mode (-E flag) to output the fully
+ * preprocessed source code.
+ *
+ * Lazy initialization:
+ *   - Buffer allocated on first call
+ *   - Uses global cppfile descriptor and cppfname
+ *
+ * Buffering:
+ *   - Data accumulated in CPP_BUF (256 byte) buffer
+ *   - Flush triggered when buffer would overflow
+ *   - Reduces write() system calls for efficiency
+ *
+ * Parameters:
+ *   s   - Data to write (NULL-safe, returns immediately if NULL)
+ *   len - Length of data in bytes
+ */
 void
 cppOut(char *s, int len)
 {
