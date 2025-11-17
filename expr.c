@@ -10,6 +10,20 @@
  */
 static int string_counter = 0;
 
+/*
+ * Create a new expression tree node
+ *
+ * Allocates and zero-initializes an expression structure, setting the
+ * operator and left child pointer. This is the basic expression node
+ * allocator used throughout the parser.
+ *
+ * Parameters:
+ *   op   - Operator token (e.g., PLUS, DEREF, CONST)
+ *   left - Left child expression (can be NULL)
+ *
+ * Returns:
+ *   Pointer to newly allocated and initialized expression node
+ */
 struct expr *
 mkexpr(unsigned char op, struct expr *left)
 {
@@ -22,8 +36,21 @@ mkexpr(unsigned char op, struct expr *left)
 }
 
 /*
- * mkexpr wrapper that also sets type, value, and flags
- * pass NULL for type to skip setting it
+ * Create expression node with type, value, and flags initialized
+ *
+ * Convenience wrapper around mkexpr() that also sets the type, value (v),
+ * and flags fields. This reduces code duplication for common expression
+ * construction patterns, especially for constants and typed operations.
+ *
+ * Parameters:
+ *   op    - Operator token
+ *   left  - Left child expression (can be NULL)
+ *   type  - Type of the expression (pass NULL to skip setting)
+ *   v     - Constant value (for CONST nodes) or other numeric data
+ *   flags - Expression flags (E_CONST, E_RESOLVED, etc.)
+ *
+ * Returns:
+ *   Pointer to newly allocated expression with all fields initialized
  */
 struct expr *
 mkexprI(unsigned char op, struct expr *left, struct type *type,
@@ -41,8 +68,18 @@ mkexprI(unsigned char op, struct expr *left, struct type *type,
 }
 
 /*
- * deallocate an expression tree
- * this needs to not leak memory
+ * Free an expression tree recursively
+ *
+ * Performs a post-order traversal of the expression tree, freeing all
+ * child nodes before freeing the parent. This ensures proper memory
+ * deallocation without leaks.
+ *
+ * Note: Does not free any associated type structures (those are managed
+ * in the global type cache) or symbol name strings (those are managed
+ * by the name table).
+ *
+ * Parameters:
+ *   e - Root of expression tree to free (NULL-safe)
  */
 void
 frExp(struct expr *e)
@@ -59,6 +96,25 @@ frExp(struct expr *e)
 	free(e);
 }
 
+/*
+ * Check if an expression is an lvalue (can appear on left side of assignment)
+ *
+ * An lvalue is an expression that represents a memory location that can be
+ * assigned to. In this compiler, lvalues are represented by DEREF operations,
+ * which represent dereferencing a pointer to access a memory location.
+ *
+ * Examples of lvalues:
+ *   - Variables: x (represented as DEREF of address)
+ *   - Array subscripts: a[i] (DEREF of computed address)
+ *   - Pointer dereferences: *p (DEREF operation)
+ *   - Struct members: s.field (DEREF of member address)
+ *
+ * Parameters:
+ *   e - Expression to check
+ *
+ * Returns:
+ *   1 if expression is an lvalue (DEREF operation), 0 otherwise
+ */
 char
 lvalue(struct expr *e)
 {
@@ -69,7 +125,17 @@ lvalue(struct expr *e)
 }
 
 /*
- * worker function to factor out common expr stuff for unary ops
+ * Set up type and parent linkage for unary operator expressions
+ *
+ * Helper function that factors out common initialization for unary operators.
+ * Propagates the operand's type to the operation (unary ops preserve type)
+ * and establishes the parent link from child to parent.
+ *
+ * Used after creating unary operator nodes (NEG, NOT, BITNOT, etc.) to
+ * ensure proper type propagation and tree connectivity.
+ *
+ * Parameters:
+ *   e - Unary operator expression node (must have e->left set)
  */
 void
 unopSet(struct expr *e)
@@ -79,9 +145,24 @@ unopSet(struct expr *e)
 }
 
 /*
- * the operator priority table is indexed from OP_MIN to OP_MAX, 
- * and contains the encoded priority of the binary operator.  
- * zero values mean not an operator.
+ * Get binary operator precedence priority
+ *
+ * Looks up the precedence priority for a binary operator token in the
+ * auto-generated op_pri[] table. Lower numbers bind tighter (higher
+ * precedence). The table is indexed from OP_MIN to OP_MAX and contains
+ * the encoded priority of each binary operator.
+ *
+ * Priority values:
+ *   0 = not an operator (or invalid token)
+ *   1 = highest precedence (e.g., array subscript, member access)
+ *   ...
+ *   14 = lowest binary precedence (e.g., comma operator)
+ *
+ * Parameters:
+ *   t - Operator token to look up
+ *
+ * Returns:
+ *   Precedence priority (0 if not a binary operator or out of range)
  */
 unsigned char
 binopPri(unsigned char t)
@@ -93,7 +174,38 @@ binopPri(unsigned char t)
 }
 
 /*
- * parse an expression
+ * Parse an expression using precedence climbing algorithm
+ *
+ * Recursive descent parser for C expressions that implements operator
+ * precedence using the precedence climbing method. This function handles:
+ *   - Primary expressions (constants, variables, strings)
+ *   - Prefix operators (unary -, ~, !, *, &, ++, --, sizeof)
+ *   - Binary operators (arithmetic, logical, bitwise, comparison)
+ *   - Postfix operators (++, --, [], (), ., ->)
+ *   - Ternary conditional (? :)
+ *   - Type casts
+ *   - Function calls
+ *   - Constant folding during parsing
+ *   - Type conversions and checking
+ *
+ * The precedence climbing works by:
+ *   1. Parse left operand (primary or prefix expression)
+ *   2. While next token is binary operator with priority >= current priority:
+ *      - Recursively parse right operand with operator's priority
+ *      - Combine into binary expression tree
+ *   3. Handle postfix operators (highest precedence)
+ *
+ * Lower priority numbers bind tighter (higher precedence). Passing priority 0
+ * parses any expression. Passing higher priorities stops at lower-precedence
+ * operators, enabling recursive parsing of right operands.
+ *
+ * Parameters:
+ *   pri - Minimum operator priority to parse (0 = parse any expression,
+ *         higher values stop at lower-precedence operators)
+ *   st  - Containing statement (for context, can be NULL)
+ *
+ * Returns:
+ *   Expression tree root, or NULL on parse error
  */
 struct expr *
 parseExpr(unsigned char pri, struct stmt *st)
@@ -1217,6 +1329,36 @@ xreplace(struct expr *out, struct expr *in)
     return in;
 }
 
+/*
+ * Constant fold an expression tree
+ *
+ * Performs compile-time evaluation of expressions with constant operands,
+ * replacing complex operations with their computed results. This optimization:
+ *   - Reduces code size and runtime overhead
+ *   - Enables further optimizations (e.g., dead code elimination)
+ *   - Implements required constant expression evaluation for:
+ *     * Array sizes: int arr[5+3]
+ *     * Case labels: case 2*3:
+ *     * Enum values: enum { A = 1+2 }
+ *     * Initializers for static/global variables
+ *
+ * Handles folding for:
+ *   - Unary operators: NEG, BITNOT, NOT
+ *   - Binary arithmetic: PLUS, MINUS, STAR, DIV, MOD
+ *   - Binary bitwise: AND, OR, XOR, LSHIFT, RSHIFT
+ *   - Binary logical: LAND, LOR
+ *   - Comparisons: EQ, NE, LT, GT, LE, GE
+ *   - Ternary conditional: QUES/COLON
+ *
+ * Type strength reduction: After folding, re-types constants to the smallest
+ * type that can represent the value (char < short < long, signed/unsigned).
+ *
+ * Parameters:
+ *   e - Expression tree to fold
+ *
+ * Returns:
+ *   Folded expression (may be same node, a replacement, or completely new tree)
+ */
 struct expr *
 cfold(struct expr *e)
 {
@@ -1441,8 +1583,29 @@ cfold(struct expr *e)
 }
 
 /*
- * parse an expression that must yeild a constant.
- * used for array declarations and CPP stuff
+ * Parse and evaluate a constant expression
+ *
+ * Parses an expression that must evaluate to a compile-time constant value.
+ * This is used in contexts that require constant expressions:
+ *   - Array dimensions: int arr[N]
+ *   - Case labels: case N:
+ *   - Enum initializers: enum { A = N }
+ *   - Bitfield widths: unsigned x : N
+ *   - Static initializers (limited cases)
+ *
+ * The parser stops at the comma operator (priority 15) to handle contexts
+ * like enum { A = 10, B = 20 } where commas separate list items rather than
+ * acting as operators.
+ *
+ * Generates an error (ER_C_CE) if:
+ *   - Expression cannot be parsed
+ *   - Expression is not constant (E_CONST flag not set)
+ *
+ * Parameters:
+ *   token - Expected terminating token (used for error context)
+ *
+ * Returns:
+ *   The computed constant value, or 0 on error
  */
 unsigned long
 parseConst(unsigned char token)
