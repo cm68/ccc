@@ -89,6 +89,10 @@ $(CC1OBJECTS): $(HFILES)
 %.pp: %.ast astpp.lisp
 	./astpp.lisp $< > $@
 
+# Suffix rule to generate .pp (pretty-printed) files from .ast files
+%.obj: %.s
+	z80asm --output=$@ $<
+
 .PHONY: test tests valgrind
 test: cc1 tests/runtest.sh
 	$(MAKE) -C tests test

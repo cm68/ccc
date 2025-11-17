@@ -96,6 +96,19 @@ getRegisterName(enum register_id reg)
 }
 
 /*
+ * Strip leading $ from symbol name for assembly output
+ * Returns pointer into the string, skipping the $ if present
+ */
+static const char *
+stripDollar(const char *symbol)
+{
+    if (symbol && symbol[0] == '$') {
+        return symbol + 1;
+    }
+    return symbol;
+}
+
+/*
  * Emit function prologue
  * Outputs assembly comment describing function and function label
  */
@@ -284,15 +297,16 @@ static void emitExpr(struct function_ctx *ctx, struct expr *e)
             }
         } else if (e->left && e->left->symbol) {
             /* Global variable - direct memory access */
+            const char *sym = stripDollar(e->left->symbol);
             if (e->size == 1) {
-                fdprintf(outFd, "\tld a, (%s)\n", e->left->symbol);
+                fdprintf(outFd, "\tld a, (%s)\n", sym);
             } else if (e->size == 2) {
-                fdprintf(outFd, "\tld hl, (%s)\n", e->left->symbol);
+                fdprintf(outFd, "\tld hl, (%s)\n", sym);
             } else if (e->size == 4) {
                 /* Long - load HL'HL from global */
-                fdprintf(outFd, "\tld hl, (%s)\n", e->left->symbol);
+                fdprintf(outFd, "\tld hl, (%s)\n", sym);
                 fdprintf(outFd, "\texx\n");
-                fdprintf(outFd, "\tld hl, (%s+2)\n", e->left->symbol);
+                fdprintf(outFd, "\tld hl, (%s+2)\n", sym);
                 fdprintf(outFd, "\texx\n");
             }
         }
@@ -420,15 +434,16 @@ static void emitExpr(struct function_ctx *ctx, struct expr *e)
                 }
             } else {
                 /* Global variable - direct memory access */
+                const char *sym = stripDollar(e->left->symbol);
                 if (e->size == 1) {
-                    fdprintf(outFd, "\tld (%s), a\n", e->left->symbol);
+                    fdprintf(outFd, "\tld (%s), a\n", sym);
                 } else if (e->size == 2) {
-                    fdprintf(outFd, "\tld (%s), hl\n", e->left->symbol);
+                    fdprintf(outFd, "\tld (%s), hl\n", sym);
                 } else if (e->size == 4) {
                     /* Long - store HL'HL to global */
-                    fdprintf(outFd, "\tld (%s), hl\n", e->left->symbol);
+                    fdprintf(outFd, "\tld (%s), hl\n", sym);
                     fdprintf(outFd, "\texx\n");
-                    fdprintf(outFd, "\tld (%s+2), hl\n", e->left->symbol);
+                    fdprintf(outFd, "\tld (%s+2), hl\n", sym);
                     fdprintf(outFd, "\texx\n");
                 }
             }
