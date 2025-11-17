@@ -1564,8 +1564,12 @@ doFunction(void)
     ctx.name = name_buf;
     fdprintf(2, "\nFUNCTION %s\n", ctx.name);
 
-    /* Track this function as defined */
-    addDefinedSymbol(ctx.name);
+    /* Track this function as defined (prepend "_" for assembly label format) */
+    {
+        char func_label[128];
+        snprintf(func_label, sizeof(func_label), "_%s", ctx.name);
+        addDefinedSymbol(func_label);
+    }
 
     /* Parameters - collect into buffer for prologue */
     skip();
@@ -1744,6 +1748,7 @@ static void
 doGlobal(void)
 {
     char *name, *type;
+    const char *global_label;
 
     /* (g name type [init]) */
     name = readSymbol();
@@ -1751,8 +1756,12 @@ doGlobal(void)
 
     fdprintf(2, "\nGLOBAL %s %s", name, type);
 
-    /* Track this global as defined */
-    addDefinedSymbol(name);
+    /* Track this global as defined (strip "$" prefix for assembly format) */
+    global_label = name;
+    if (global_label[0] == '$') {
+        global_label++;  /* Skip $ to get _varname */
+    }
+    addDefinedSymbol(global_label);
 
     skip();
     if (curchar != ')') {
@@ -2080,14 +2089,27 @@ addReferencedSymbol(const char *name)
 }
 
 /*
- * Emit EXTERN declarations for symbols that are referenced but not defined
+ * Emit GLOBAL and EXTERN declarations
+ * GLOBAL for symbols defined in this file
+ * EXTERN for symbols referenced but not defined
  */
 static void
-emitExternDeclarations(void)
+emitSymbolDeclarations(void)
 {
     int i, j;
     int is_defined;
 
+    /* First emit GLOBAL declarations for all defined symbols */
+    for (i = 0; i < num_defined; i++) {
+        fdprintf(outFd, "GLOBAL %s\n", defined_symbols[i]);
+    }
+
+    /* Blank line after GLOBAL declarations */
+    if (num_defined > 0) {
+        fdprintf(outFd, "\n");
+    }
+
+    /* Then emit EXTERN declarations for undefined references */
     for (i = 0; i < num_referenced; i++) {
         is_defined = 0;
 
@@ -2135,8 +2157,8 @@ parseAstFile(int in, int out)
         }
     }
 
-    /* Emit EXTERN declarations at the end (we know all symbols now) */
-    emitExternDeclarations();
+    /* Emit GLOBAL and EXTERN declarations at the end (we know all symbols now) */
+    emitSymbolDeclarations();
 
     return 0;
 }
