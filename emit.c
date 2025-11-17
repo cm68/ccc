@@ -353,6 +353,16 @@ static void emit_expr(struct function_ctx *ctx, struct expr *e)
             fdprintf(out_fd, "%s\n", call_inst);
             free(call_inst);
         }
+    }
+    /* CALL operator - don't emit children, they're in the asm_block */
+    else if (e->op == '@') {
+        /* Just emit the asm_block which contains the full call sequence */
+        if (e->asm_block) {
+            fdprintf(out_fd, "%s\n", e->asm_block);
+        }
+        /* Free children manually since we didn't call emit_expr on them */
+        free_expr(e->left);
+        free_expr(e->right);
     } else {
         /* Normal postorder traversal for other operators */
         if (e->left) emit_expr(ctx, e->left);

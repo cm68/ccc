@@ -442,7 +442,84 @@ gen_binop(struct expr *e, const char *op_name)
 static void generate_expr(struct function_ctx *ctx, struct expr *e)
 {
     char buf[256];
+    struct expr *arg;
+    struct expr *args[32];
+    int arg_count;
+    int i;
+
     if (!e) return;
+
+    /* Special handling for CALL - need custom code generation */
+    if (e->op == '@') {
+        /* CALL node: left = function, right = argument chain, value = arg count */
+        /* NOTE: Don't do normal traversal - we handle it manually here */
+        char call_buf[4096];
+        int buf_pos = 0;
+
+        arg_count = e->value;
+
+        /* Collect arguments into array (they're chained via right pointers) */
+        arg = e->right;
+        for (i = 0; i < arg_count && arg; i++) {
+            args[i] = arg;
+            arg = arg->right;
+        }
+
+        /* Generate code for each child expression first */
+        for (i = 0; i < arg_count; i++) {
+            generate_expr(ctx, args[i]);
+        }
+        if (e->left) {
+            generate_expr(ctx, e->left);
+        }
+
+        /* Now build the call sequence:
+         * 1. Push arguments in reverse order (right to left)
+         * 2. Call function
+         * 3. Clean up stack
+         */
+        call_buf[0] = '\0';
+
+        /* Push arguments in reverse order */
+        for (i = arg_count - 1; i >= 0; i--) {
+            /* Emit the argument's code (load into PRIMARY) */
+            if (args[i]->asm_block && args[i]->asm_block[0]) {
+                buf_pos += snprintf(call_buf + buf_pos, sizeof(call_buf) - buf_pos,
+                                   "%s%s\n", buf_pos > 0 ? "" : "", args[i]->asm_block);
+            }
+
+            /* Push PRIMARY onto stack */
+            if (args[i]->size == 1) {
+                /* Byte argument - push as word (Z80 only has 16-bit push) */
+                buf_pos += snprintf(call_buf + buf_pos, sizeof(call_buf) - buf_pos,
+                                   "\tld l, a\n\tld h, 0\n\tpush hl  ; push byte arg %d\n", i);
+            } else {
+                /* Word argument */
+                buf_pos += snprintf(call_buf + buf_pos, sizeof(call_buf) - buf_pos,
+                                   "\tpush hl  ; push arg %d\n", i);
+            }
+        }
+
+        /* Generate the call instruction */
+        if (e->left && e->left->op == '$' && e->left->symbol) {
+            buf_pos += snprintf(call_buf + buf_pos, sizeof(call_buf) - buf_pos,
+                               "\tcall %s", e->left->symbol);
+        } else {
+            /* Indirect call through register */
+            buf_pos += snprintf(call_buf + buf_pos, sizeof(call_buf) - buf_pos,
+                               "\t; TODO: indirect call");
+        }
+
+        /* Clean up stack after call (arg_count * 2 bytes per arg) */
+        if (arg_count > 0) {
+            buf_pos += snprintf(call_buf + buf_pos, sizeof(call_buf) - buf_pos,
+                               "\n\tld hl, %d\n\tadd hl, sp\n\tld sp, hl  ; pop %d args",
+                               arg_count * 2, arg_count);
+        }
+
+        e->asm_block = strdup(call_buf);
+        return;  /* Early return - custom traversal done */
+    }
 
     /* Recursively generate code for children (postorder traversal) */
     if (e->left) generate_expr(ctx, e->left);
