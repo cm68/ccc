@@ -17,6 +17,10 @@
 static struct expr *parse_expr(void);
 static struct stmt *parse_stmt(void);
 
+/* Symbol tracking for EXTERN declarations */
+static void addDefinedSymbol(const char *name);
+void addReferencedSymbol(const char *name);
+
 /* Parser state */
 int outFd = 1;  /* Assembly output (default: stdout) */
 static int label_counter = 0;  /* For generating unique labels */
@@ -1560,6 +1564,9 @@ doFunction(void)
     ctx.name = name_buf;
     fdprintf(2, "\nFUNCTION %s\n", ctx.name);
 
+    /* Track this function as defined */
+    addDefinedSymbol(ctx.name);
+
     /* Parameters - collect into buffer for prologue */
     skip();
     expect('(');
@@ -1743,6 +1750,9 @@ doGlobal(void)
     type = readType();
 
     fdprintf(2, "\nGLOBAL %s %s", name, type);
+
+    /* Track this global as defined */
+    addDefinedSymbol(name);
 
     skip();
     if (curchar != ')') {
@@ -2017,6 +2027,91 @@ parse_toplevel(void)
 }
 
 /*
+ * Symbol tracking for EXTERN declarations
+ */
+#define MAX_SYMBOLS 512
+
+static char *defined_symbols[MAX_SYMBOLS];
+static int num_defined = 0;
+
+static char *referenced_symbols[MAX_SYMBOLS];
+static int num_referenced = 0;
+
+/*
+ * Track a symbol definition (function or global variable)
+ */
+static void
+addDefinedSymbol(const char *name)
+{
+    int i;
+
+    if (num_defined >= MAX_SYMBOLS) return;
+
+    /* Check if already recorded */
+    for (i = 0; i < num_defined; i++) {
+        if (strcmp(defined_symbols[i], name) == 0) {
+            return;
+        }
+    }
+
+    /* Add new symbol */
+    defined_symbols[num_defined++] = strdup(name);
+}
+
+/*
+ * Track a symbol reference (function call or variable use)
+ */
+void
+addReferencedSymbol(const char *name)
+{
+    int i;
+
+    if (num_referenced >= MAX_SYMBOLS) return;
+
+    /* Check if already recorded */
+    for (i = 0; i < num_referenced; i++) {
+        if (strcmp(referenced_symbols[i], name) == 0) {
+            return;
+        }
+    }
+
+    /* Add new symbol */
+    referenced_symbols[num_referenced++] = strdup(name);
+}
+
+/*
+ * Emit EXTERN declarations for symbols that are referenced but not defined
+ */
+static void
+emitExternDeclarations(void)
+{
+    int i, j;
+    int is_defined;
+
+    for (i = 0; i < num_referenced; i++) {
+        is_defined = 0;
+
+        /* Check if this symbol is defined in this file */
+        for (j = 0; j < num_defined; j++) {
+            if (strcmp(referenced_symbols[i], defined_symbols[j]) == 0) {
+                is_defined = 1;
+                break;
+            }
+        }
+
+        /* If not defined, emit EXTERN declaration */
+        if (!is_defined) {
+            fdprintf(outFd, "EXTERN %s\n", referenced_symbols[i]);
+        }
+    }
+
+    /* Blank line after EXTERN declarations */
+    if (num_referenced > 0) {
+        fdprintf(outFd, "\n");
+    }
+}
+
+/*
  * Initialize parser and read AST file
  */
 int
@@ -2039,6 +2134,9 @@ parseAstFile(int in, int out)
             parse_toplevel();
         }
     }
+
+    /* Emit EXTERN declarations at the end (we know all symbols now) */
+    emitExternDeclarations();
 
     return 0;
 }

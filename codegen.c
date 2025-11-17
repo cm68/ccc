@@ -16,6 +16,9 @@
 
 #include "cc2.h"
 
+/* Forward declaration from parseast.c for symbol tracking */
+void addReferencedSymbol(const char *name);
+
 /*
  * Helper: Get the original operand size, looking through SEXT/WIDEN conversions
  */
@@ -555,6 +558,10 @@ static void generate_expr(struct function_ctx *ctx, struct expr *e)
             const char *func_name = e->left->symbol;
             /* Strip leading $ from function name */
             if (func_name[0] == '$') func_name++;
+
+            /* Track this function as referenced (for EXTERN declarations) */
+            addReferencedSymbol(func_name);
+
             buf_pos += snprintf(call_buf + buf_pos, sizeof(call_buf) - buf_pos,
                                "\tcall %s", func_name);
         } else {
@@ -972,6 +979,14 @@ static void generate_expr(struct function_ctx *ctx, struct expr *e)
     case '$':  /* SYM - symbol reference (address) */
         /* SYM nodes don't generate code directly */
         /* Parent operations (M, =, etc.) will use the symbol information */
+
+        /* Track global variable references (for EXTERN declarations) */
+        /* Only track if it's a global (starts with $_), not a local (starts with $) */
+        if (e->symbol && e->symbol[0] == '$' && e->symbol[1] == '_') {
+            const char *sym_name = e->symbol + 1;  /* Strip leading $ */
+            addReferencedSymbol(sym_name);
+        }
+
         e->asm_block = strdup("");
         break;
 
