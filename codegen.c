@@ -432,6 +432,16 @@ assignFrameOffsets(struct function_ctx *ctx)
     /* Then, assign offsets to local variables (negative offsets below FP) */
     walkForLocals(ctx, ctx->body);
     fdprintf(2, "  Total frame size: %d bytes\n", ctx->frame_size);
+
+    /* Check frame size limit - IY-indexed addressing uses signed 8-bit offsets
+     * Local variables use negative offsets from IY, range is -1 to -128
+     * Limit to 127 bytes to ensure all locals fit within addressing range */
+    if (ctx->frame_size > 127) {
+        fdprintf(2, "ERROR: Function %s has %d bytes of local variables (max 127)\n",
+                 ctx->name, ctx->frame_size);
+        fdprintf(2, "       Reduce number or size of local variables\n");
+        exit(1);
+    }
 }
 
 /*
