@@ -1180,6 +1180,24 @@ parseExpr(unsigned char pri, struct stmt *st)
     return e;
 }
 
+/*
+ * Replace an expression node in the tree with a different node
+ *
+ * Substitutes 'in' for 'out' in the expression tree, updating all linkages
+ * (next, prev, up) to maintain tree connectivity. Preserves E_FUNARG flag
+ * if it was set on the original node. Frees the old node and returns the
+ * new replacement node.
+ *
+ * This is used during constant folding and optimization passes to replace
+ * complex expressions with simpler ones while maintaining the tree structure.
+ *
+ * Parameters:
+ *   out - Expression node to be replaced (will be freed)
+ *   in  - Replacement expression node
+ *
+ * Returns:
+ *   The replacement node (in) with all linkages updated
+ */
 struct expr *
 xreplace(struct expr *out, struct expr *in)
 {
