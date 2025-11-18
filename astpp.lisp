@@ -448,6 +448,11 @@
                         ((and (not in-string) (char= ch #\|))
                          (vector-push-extend #\\ result)
                          (vector-push-extend ch result))
+                        ;; Comma outside string - escape it for Lisp reader
+                        ;; (comma is the C comma operator in AST, but Lisp unquote operator)
+                        ((and (not in-string) (char= ch #\,))
+                         (vector-push-extend #\\ result)
+                         (vector-push-extend ch result))
                         ;; Everything else - pass through as-is
                         ;; C and Lisp escape sequences are compatible (\n, \\, \", etc.)
                         (t
