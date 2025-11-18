@@ -1082,8 +1082,8 @@ static void emitStmt(struct function_ctx *ctx, struct stmt *s)
             }
 
             /* Jump to fail label if condition is false */
-            if (s->else_branch) {
-                /* Has else: jump to else on false, fall through to then on true */
+            if (s->label2 > 0) {
+                /* Has else (or had empty else): jump to else on false, fall through to then on true */
                 if (invert_condition) {
                     /* ! wrapper: jump if nonzero (true) */
                     fdprintf(outFd, "\tjp nz, _if_%d\n", s->label);
@@ -1095,10 +1095,10 @@ static void emitStmt(struct function_ctx *ctx, struct stmt *s)
                 /* No else: jump to end on false */
                 if (invert_condition) {
                     /* ! wrapper: jump if nonzero (true) */
-                    fdprintf(outFd, "\tjp nz, _if_%d\n", s->label);
+                    fdprintf(outFd, "\tjp nz, _if_end_%d\n", s->label);
                 } else {
                     /* No !: jump if zero (false) */
-                    fdprintf(outFd, "\tjp z, _if_%d\n", s->label);
+                    fdprintf(outFd, "\tjp z, _if_end_%d\n", s->label);
                 }
             }
         } else {
@@ -1135,7 +1135,7 @@ static void emitStmt(struct function_ctx *ctx, struct stmt *s)
             }
 
             /* Jump based on test result */
-            if (s->else_branch) {
+            if (s->label2 > 0) {
                 if (invert_condition) {
                     fdprintf(outFd, "\tjp nz, _if_%d\n", s->label);
                 } else {
@@ -1143,9 +1143,9 @@ static void emitStmt(struct function_ctx *ctx, struct stmt *s)
                 }
             } else {
                 if (invert_condition) {
-                    fdprintf(outFd, "\tjp nz, _if_%d\n", s->label);
+                    fdprintf(outFd, "\tjp nz, _if_end_%d\n", s->label);
                 } else {
-                    fdprintf(outFd, "\tjp z, _if_%d\n", s->label);
+                    fdprintf(outFd, "\tjp z, _if_end_%d\n", s->label);
                 }
             }
         }
@@ -1153,18 +1153,25 @@ static void emitStmt(struct function_ctx *ctx, struct stmt *s)
         /* Emit then branch */
         if (s->then_branch) emitStmt(ctx, s->then_branch);
 
-        /* Jump over else if we took the then branch */
-        if (s->else_branch) {
+        if (s->label2 > 0) {
+            /* Jump over else if we took the then branch */
             fdprintf(outFd, "\tjp _if_end_%d\n", s->label2);
+
+            /* Emit else branch (if it exists) */
+            if (s->else_branch) {
+                fdprintf(outFd, "_if_%d:\n", s->label);
+                emitStmt(ctx, s->else_branch);
+            } else {
+                /* Empty else branch - just emit the label */
+                fdprintf(outFd, "_if_%d:\n", s->label);
+            }
+
+            /* End label is emitted by ASM node in s->next inserted by parseast.c */
+        } else {
+            /* End label is emitted by ASM node in s->next inserted by parseast.c */
         }
 
-        /* Emit else branch if present */
-        if (s->else_branch) {
-            fdprintf(outFd, "_if_%d:\n", s->label);
-            emitStmt(ctx, s->else_branch);
-        }
-
-        /* Emit next statement if any */
+        /* Emit next statement if any (includes end label ASM node) */
         if (s->next) emitStmt(ctx, s->next);
 
         /* Free this statement node */

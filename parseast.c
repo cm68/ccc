@@ -25,6 +25,13 @@ void addReferencedSymbol(const char *name);
 int outFd = 1;  /* Assembly output (default: stdout) */
 static int label_counter = 0;  /* For generating unique labels */
 
+/* Output buffering for symbol declarations */
+static char *output_buffer = NULL;
+static int output_buffer_size = 0;
+static int output_buffer_used = 0;
+static int real_outFd = 1;  /* Real output file descriptor */
+static int buffering_enabled = 0;
+
 /*
  * Tree node allocation helpers
  */
@@ -1163,7 +1170,7 @@ doIf(void)
         s->else_branch = NULL;
 
         /* Insert end label after the IF statement */
-        snprintf(label_buf, sizeof(label_buf), "_if_%d", s->label);
+        snprintf(label_buf, sizeof(label_buf), "_if_end_%d", s->label);
         s->next = create_label_asm(label_buf);
     }
 
@@ -2137,6 +2144,72 @@ emitSymbolDeclarations(void)
 }
 
 /*
+ * Emit EXTERN declarations for runtime helper functions
+ * These are provided by the runtime library (ccclib.s)
+ */
+static void
+emitRuntimeHelpers(void)
+{
+    /* Frame management */
+    fdprintf(outFd, "EXTERN framealloc\n");
+    fdprintf(outFd, "EXTERN framefree\n");
+
+    /* Long (32-bit) operations */
+    fdprintf(outFd, "EXTERN getlong\n");
+    fdprintf(outFd, "EXTERN putlong\n");
+    fdprintf(outFd, "EXTERN load32i\n");
+
+    /* 32-bit arithmetic */
+    fdprintf(outFd, "EXTERN add3232\n");
+    fdprintf(outFd, "EXTERN sub3232\n");
+    fdprintf(outFd, "EXTERN mul3232\n");
+    fdprintf(outFd, "EXTERN div3232\n");
+    fdprintf(outFd, "EXTERN mod3232\n");
+    fdprintf(outFd, "EXTERN shr3232\n");
+
+    /* 32-bit comparisons */
+    fdprintf(outFd, "EXTERN lt3232\n");
+    fdprintf(outFd, "EXTERN gt3232\n");
+    fdprintf(outFd, "EXTERN le3232\n");
+    fdprintf(outFd, "EXTERN ge3232\n");
+    fdprintf(outFd, "EXTERN eq3232\n");
+    fdprintf(outFd, "EXTERN ne3232\n");
+
+    /* 32-bit bitwise */
+    fdprintf(outFd, "EXTERN and3232\n");
+    fdprintf(outFd, "EXTERN or3232\n");
+    fdprintf(outFd, "EXTERN xor3232\n");
+
+    /* 16-bit operations */
+    fdprintf(outFd, "EXTERN lt1616\n");
+    fdprintf(outFd, "EXTERN gt1616\n");
+    fdprintf(outFd, "EXTERN ge1616\n");
+    fdprintf(outFd, "EXTERN eq1616\n");
+    fdprintf(outFd, "EXTERN ne1616\n");
+    fdprintf(outFd, "EXTERN ueq1616\n");
+    fdprintf(outFd, "EXTERN and1616\n");
+
+    /* Mixed size operations */
+    fdprintf(outFd, "EXTERN lt816\n");
+    fdprintf(outFd, "EXTERN gt816\n");
+    fdprintf(outFd, "EXTERN sub816\n");
+    fdprintf(outFd, "EXTERN eq816\n");
+    fdprintf(outFd, "EXTERN ne816\n");
+    fdprintf(outFd, "EXTERN ueq816\n");
+    fdprintf(outFd, "EXTERN ule3216\n");
+    fdprintf(outFd, "EXTERN ult168\n");
+    fdprintf(outFd, "EXTERN une816\n");
+
+    /* 8-bit operations */
+    fdprintf(outFd, "EXTERN add88\n");
+    fdprintf(outFd, "EXTERN eq88\n");
+    fdprintf(outFd, "EXTERN ne88\n");
+    fdprintf(outFd, "EXTERN ge88\n");
+
+    fdprintf(outFd, "\n");
+}
+
+/*
  * Initialize parser and read AST file
  */
 int
@@ -2149,10 +2222,13 @@ parseAstFile(int in, int out)
     /* Initialize expression handler lookup table */
     initExprHandlers();
 
+    /* Emit runtime helper EXTERN declarations at the beginning */
+    emitRuntimeHelpers();
+
     /* Prime the input */
     nextchar();
 
-    /* Parse all top-level constructs */
+    /* Parse all top-level constructs and collect symbols */
     while (curchar) {
         skip();
         if (curchar) {
@@ -2160,7 +2236,7 @@ parseAstFile(int in, int out)
         }
     }
 
-    /* Emit GLOBAL and EXTERN declarations at the end (we know all symbols now) */
+    /* Emit GLOBAL and EXTERN declarations for user symbols at the end */
     emitSymbolDeclarations();
 
     return 0;

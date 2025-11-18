@@ -21,7 +21,7 @@ indexiy:
 
 ;
 ; take address of stack frame variable at offset a
-;
+; leave the result in hl.
 leaiy:
 	push	iy			; 2 save frame pointer
 	call	indexiy		; 3 add a to iy
@@ -29,7 +29,20 @@ leaiy:
 	pop		hl			; 1
 	pop		iy			; 2 restore frame pointer
 	ret					; 1
+
 ;
+; ld ix,(iy+a)
+;
+ldixi:
+	call	leaiy		; 3
+	ld		a,(hl)
+	inc		hl
+	ld		h,(hl)
+	ld		l,a
+	push	hl
+	pop		ix
+	ret
+
 ; write a long word in hl'hl onto the stack frame at offset a
 ;
 putlong:
