@@ -2183,28 +2183,52 @@ emitRuntimeHelpers(void)
     /* 16-bit operations */
     fdprintf(outFd, "EXTERN lt1616\n");
     fdprintf(outFd, "EXTERN gt1616\n");
+    fdprintf(outFd, "EXTERN le1616\n");
     fdprintf(outFd, "EXTERN ge1616\n");
     fdprintf(outFd, "EXTERN eq1616\n");
     fdprintf(outFd, "EXTERN ne1616\n");
     fdprintf(outFd, "EXTERN ueq1616\n");
     fdprintf(outFd, "EXTERN and1616\n");
+    fdprintf(outFd, "EXTERN or1616\n");
+    fdprintf(outFd, "EXTERN sub1616\n");
+    fdprintf(outFd, "EXTERN mul1616\n");
+    fdprintf(outFd, "EXTERN mod1616\n");
+    fdprintf(outFd, "EXTERN shr1616\n");
+    fdprintf(outFd, "EXTERN ult1616\n");
+    fdprintf(outFd, "EXTERN ugt1616\n");
+    fdprintf(outFd, "EXTERN uge1616\n");
+    fdprintf(outFd, "EXTERN une1616\n");
+    fdprintf(outFd, "EXTERN uand1616\n");
+    fdprintf(outFd, "EXTERN usub1616\n");
 
     /* Mixed size operations */
     fdprintf(outFd, "EXTERN lt816\n");
+    fdprintf(outFd, "EXTERN le816\n");
     fdprintf(outFd, "EXTERN gt816\n");
+    fdprintf(outFd, "EXTERN ge816\n");
     fdprintf(outFd, "EXTERN sub816\n");
     fdprintf(outFd, "EXTERN eq816\n");
     fdprintf(outFd, "EXTERN ne816\n");
     fdprintf(outFd, "EXTERN ueq816\n");
     fdprintf(outFd, "EXTERN ule3216\n");
     fdprintf(outFd, "EXTERN ult168\n");
+    fdprintf(outFd, "EXTERN ult816\n");
     fdprintf(outFd, "EXTERN une816\n");
+    fdprintf(outFd, "EXTERN shr816\n");
+    fdprintf(outFd, "EXTERN ushr816\n");
+    fdprintf(outFd, "EXTERN uand3216\n");
+    fdprintf(outFd, "EXTERN and816\n");
+    fdprintf(outFd, "EXTERN gt168\n");
 
     /* 8-bit operations */
     fdprintf(outFd, "EXTERN add88\n");
     fdprintf(outFd, "EXTERN eq88\n");
     fdprintf(outFd, "EXTERN ne88\n");
+    fdprintf(outFd, "EXTERN lt88\n");
+    fdprintf(outFd, "EXTERN gt88\n");
     fdprintf(outFd, "EXTERN ge88\n");
+    fdprintf(outFd, "EXTERN and88\n");
+    fdprintf(outFd, "EXTERN or88\n");
 
     fdprintf(outFd, "\n");
 }

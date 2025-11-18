@@ -93,14 +93,11 @@ make rules. Never manually run `./cc1 -E file.c` or `./cc2 file.ast` directly.
 **Required testing commands after any changes:**
 
 ```bash
-# Verify self-hosting (compiler parses its own sources)
-make selfcheck    # Uses correct flags: -DCCC -i./include -I.
-
 # Run full test suite
-make test         # All 135+ tests must pass
+make test         # All 142+ tests must pass
 
-# Comprehensive validation (includes selfcheck + tests)
-make fullcheck    # Run this before committing
+# Comprehensive validation (complete pipeline: parse -> codegen -> assemble)
+make fullcheck    # Verifies self-hosting through assembly - run before committing
 ```
 
 **Testing individual files:**
@@ -123,9 +120,8 @@ make expr.s       # Compile expr.ast to assembly
 - The Makefiles have the correct, tested commands - always use them
 
 **Before any commit:**
-1. Run `make selfcheck` - verify self-hosting works
+1. Run `make fullcheck` - verify complete pipeline (parse -> codegen -> assemble)
 2. Run `make test` - verify all tests pass
-3. Or simply run `make fullcheck` - does both
 
 ## Running the Compiler
 
@@ -1079,9 +1075,9 @@ and passes all 142 tests.
 - Output file generation: strips .ast extension and appends .s, preserves
   directory paths
 - Build system improvements:
-  - selfcheck and fullcheck targets output to current directory
-  - Preserve .ast and .s files on test failures for debugging
-  - Clean target removes .ast and .s files
+  - fullcheck target validates complete pipeline (parse -> codegen -> assemble)
+  - Preserve .ast, .s, and .o files on test failures for debugging
+  - Clean target removes .ast, .s, and .o files
 
 ### Code Style
 

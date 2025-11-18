@@ -113,27 +113,6 @@ unit-tests: $(GENERATED)
 sizecheck: clean clobber
 	$(MAKE) CC=sdcc cc1
 
-.PHONY: selfcheck
-selfcheck: cc1
-	@echo "Testing compiler on its own sources (parse)"
-	@for f in $(CFILES); do \
-	  if [ -f "$$f" ]; then \
-	    b=$$(basename $$f .c) ; \
-	    printf "%-30s" "$$f: "; \
-	    timeout 10 ./cc1 -DCCC -i./include -I. -E -o $$b.ast "$$f" \
-		>/dev/null 2>&1 ; \
-	    ret=$$?; \
-	    if [ $$ret -eq 124 ]; then \
-	      echo "FAIL (timeout)"; \
-	    elif [ $$ret -ne 0 ]; then \
-	      echo "FAIL (parse error)"; \
-	    else \
-	      echo "PASS"; \
-	      rm -f $$b.ast; \
-	    fi; \
-	  fi; \
-	done
-
 .PHONY: fullcheck
 fullcheck: cc1 cc2
 	@echo "Testing compiler on its own sources (complete pipeline)"
@@ -156,8 +135,16 @@ fullcheck: cc1 cc2
 	      elif [ $$ret2 -ne 0 ]; then \
 	        echo "FAIL (codegen error)"; \
 	      else \
-	        echo "PASS"; \
-	        rm -f $$b.ast $$b.s; \
+	        timeout 10 z80asm --output=$$b.o $$b.s >/dev/null 2>&1 ; \
+	        ret3=$$?; \
+	        if [ $$ret3 -eq 124 ]; then \
+	          echo "FAIL (asm timeout)"; \
+	        elif [ $$ret3 -ne 0 ]; then \
+	          echo "FAIL (asm error)"; \
+	        else \
+	          echo "PASS"; \
+	          rm -f $$b.ast $$b.s $$b.o; \
+	        fi; \
 	      fi; \
 	    fi; \
 	  fi; \
