@@ -10,6 +10,7 @@ maketokens
 genop_pri
 tests/*.i
 *.o
+stage1/
 enumlist.h
 tokenlist.c
 error.h

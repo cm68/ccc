@@ -150,6 +150,40 @@ fullcheck: cc1 cc2
 	  fi; \
 	done
 
+.PHONY: stage1
+stage1: cc1 cc2
+	@echo "Building stage1 compiler binaries"
+	@mkdir -p stage1
+	@for f in $(CFILES); do \
+	  if [ -f "$$f" ]; then \
+	    b=$$(basename $$f .c) ; \
+	    printf "%-30s" "$$f: "; \
+	    ./cc1 -DCCC -i./include -I. -E -o stage1/$$b.ast "$$f" \
+		>stage1/$$b.i 2>stage1/$$b.err ; \
+	    ret1=$$?; \
+	    if [ $$ret1 -ne 0 ]; then \
+	      echo "FAIL (parse error)"; \
+	    else \
+	      ./cc2 stage1/$$b.ast >stage1/$$b.s 2>>stage1/$$b.err ; \
+	      ret2=$$?; \
+	      if [ $$ret2 -ne 0 ]; then \
+	        echo "FAIL (codegen error)"; \
+	      else \
+	        z80asm --output=stage1/$$b.o stage1/$$b.s \
+		    >>stage1/$$b.err 2>&1 ; \
+	        ret3=$$?; \
+	        if [ $$ret3 -ne 0 ]; then \
+	          echo "FAIL (asm error)"; \
+	        else \
+	          echo "PASS"; \
+	          rm -f stage1/$$b.err; \
+	        fi; \
+	      fi; \
+	    fi; \
+	  fi; \
+	done
+	@echo "Stage1 build complete: stage1/*.o files ready for linking"
+
 #
 # process the cc1.h file, extracting the enum tags for the tokens
 #
@@ -216,6 +250,7 @@ doc.pdf: $(SOURCES) $(DOCFILES) Makefile
 clean:
 	rm -f $(CC1OBJECTS) cc2.o ccc.o $(GENERATED) tests/*.i \
 		*.ast *.s *.pp *.asm *.lst *.sym *.map *.cdb *.ihx *.i
+	rm -rf stage1
 	$(MAKE) -C unit_test clean
 
 clobber: clean

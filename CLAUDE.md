@@ -98,6 +98,9 @@ make test         # All 142+ tests must pass
 
 # Comprehensive validation (complete pipeline: parse -> codegen -> assemble)
 make fullcheck    # Verifies self-hosting through assembly - run before committing
+
+# Build native Z80 binaries for bootstrapping
+make stage1       # Builds .ast, .s, .o files in stage1/ directory
 ```
 
 **Testing individual files:**
@@ -1078,6 +1081,18 @@ and passes all 142 tests.
   - fullcheck target validates complete pipeline (parse -> codegen -> assemble)
   - Preserve .ast, .s, and .o files on test failures for debugging
   - Clean target removes .ast, .s, and .o files
+  - stage1 target builds native Z80 binaries in stage1/ directory for bootstrapping
+
+**Bootstrapping Process**:
+The `make stage1` target compiles the compiler's own sources using the host-built
+cc1 and cc2, producing native Z80 object files (.o) in the stage1/ directory. The
+eventual goal is to:
+1. Link stage1/*.o files into a native Z80 executable
+2. Run that executable in a Z80 emulator to compile the sources again (stage2)
+3. Verify that stage1 and stage2 binaries are identical (proving true self-hosting)
+
+This multi-stage bootstrap proves the compiler can compile itself on its target
+platform, not just cross-compile from the host.
 
 ### Code Style
 
