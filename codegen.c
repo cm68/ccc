@@ -832,95 +832,203 @@ static void generate_expr(struct function_ctx *ctx, struct expr *e)
     /* Handle increment/decrement operators BEFORE recursion */
     /* These operators need custom handling - don't process left child normally */
     if (e->op == 0xcf || e->op == 0xef || e->op == 0xd6 || e->op == 0xf6) {
+        char buf[512];
         int is_post = (e->op == 0xef || e->op == 0xf6);
         int is_dec = (e->op == 0xd6 || e->op == 0xf6);
-        const char *op_str = is_dec ? "dec" : "inc";
-        char buf[256];
+        const char *incdec = is_dec ? "dec" : "inc";
 
-        /* Left child is the lvalue (variable address) */
-        /* For now, handle simple variables (SYM nodes) */
-        /* TODO: Handle pointer dereferences and complex lvalues */
-
-        if (!e->left || e->left->op != '$' || !e->left->symbol) {
-            /* Complex lvalue - placeholder for now */
-            snprintf(buf, sizeof(buf), "\t; TODO: %s complex lvalue",
-                     is_post ? (is_dec ? "POSTDEC" : "POSTINC") :
-                               (is_dec ? "PREDEC" : "PREINC"));
-            e->asm_block = strdup(buf);
-            /* Free left child without processing it */
-            freeExpr(e->left);
-            freeExpr(e->right);
-            return;  /* Early return - skip normal traversal */
-        }
+        /* Check for simple variable (SYM node) */
+        if (e->left && e->left->op == '$' && e->left->symbol) {
 
         /* Track variable usage for lifetime analysis */
         {
             const char *var_name = e->left->symbol;
+
             if (var_name && var_name[0] == '$') var_name++;
             if (var_name && var_name[0] == 'A') var_name++;
             updateVarLifetime(ctx, var_name);
         }
 
-        /* Strip leading $ from symbol for assembly output */
-        {
-            const char *sym = e->left->symbol;
-            if (sym && sym[0] == '$') sym++;
+        /* Use placeholder to defer code generation to emit phase */
+        /* This allows register allocation to happen first, so emit.c can */
+        /* generate optimal code based on whether variable is in register */
+        /* Placeholder format: INCDEC_PLACEHOLDER:op:size:symbol */
+        snprintf(buf, sizeof(buf), "INCDEC_PLACEHOLDER:%d:%d:%s",
+                 (int)e->op, e->size, e->left->symbol);
+        e->asm_block = strdup(buf);
+
+            /* Free children manually since we didn't process them normally */
+            /* NULL out pointers so emit phase doesn't try to process freed nodes */
+            freeExpr(e->left);
+            e->left = NULL;
+            freeExpr(e->right);
+            e->right = NULL;
+            return;  /* Early return - skip normal traversal */
+        } else if (e->left && e->left->op == 'M') {
+            /* Complex lvalue: dereferenced pointer, array element, struct member */
+            /* Pattern: (INC/DEC (DEREF addr)) */
+            /* Generate address, load, inc/dec, store */
+
+            generate_expr(ctx, e->left->left);  /* Generate address -> PRIMARY (HL) */
 
             if (e->size == 1) {
                 /* Byte increment/decrement */
                 if (is_post) {
-                    /* x++/x--: load, save old, inc/dec, store, return old */
                     snprintf(buf, sizeof(buf),
-                             "\tld a, (%s)\n"
-                             "\tld b, a  ; save old value\n"
-                             "\t%s a\n"
-                             "\tld (%s), a\n"
-                             "\tld a, b  ; return old value",
-                             sym, op_str, sym);
+                        "\tld e, l\n"
+                        "\tld d, h  ; save address\n"
+                        "\tld a, (hl)  ; load old value\n"
+                        "\tld c, a  ; save old value\n"
+                        "\t%s a\n"
+                        "\tld (de), a  ; store new value\n"
+                        "\tld a, c  ; return old value",
+                        incdec);
                 } else {
-                    /* ++x/--x: load, inc/dec, store, return new */
                     snprintf(buf, sizeof(buf),
-                             "\tld a, (%s)\n"
-                             "\t%s a\n"
-                             "\tld (%s), a",
-                             sym, op_str, sym);
-                }
-            } else if (e->size == 2) {
-                /* Word increment/decrement */
-                if (is_post) {
-                    /* x++/x--: load, save old, inc/dec, store, return old */
-                    snprintf(buf, sizeof(buf),
-                             "\tld hl, (%s)\n"
-                             "\tpush hl  ; save old value\n"
-                             "\t%s hl\n"
-                             "\tld (%s), hl\n"
-                             "\tpop hl  ; return old value",
-                             sym, op_str, sym);
-                } else {
-                    /* ++x/--x: load, inc/dec, store, return new */
-                    snprintf(buf, sizeof(buf),
-                             "\tld hl, (%s)\n"
-                             "\t%s hl\n"
-                             "\tld (%s), hl",
-                             sym, op_str, sym);
+                        "\tld e, l\n"
+                        "\tld d, h  ; save address\n"
+                        "\tld a, (hl)  ; load value\n"
+                        "\t%s a\n"
+                        "\tld (de), a  ; store new value",
+                        incdec);
                 }
             } else {
-                /* Long (4 byte) or other size - placeholder */
-                snprintf(buf, sizeof(buf), "\t; TODO: %s size %d",
-                         is_post ? (is_dec ? "POSTDEC" : "POSTINC") :
-                                   (is_dec ? "PREDEC" : "PREINC"),
-                         e->size);
+                /* Word increment/decrement */
+                if (is_post) {
+                    snprintf(buf, sizeof(buf),
+                        "\tld e, l\n"
+                        "\tld d, h  ; save address\n"
+                        "\tld a, (hl)\n"
+                        "\tld c, a  ; save old low\n"
+                        "\tinc hl\n"
+                        "\tld a, (hl)\n"
+                        "\tld b, a  ; save old high\n"
+                        "\tld h, b\n"
+                        "\tld l, c  ; old value to HL\n"
+                        "\tpush hl  ; save old value\n"
+                        "\t%s hl\n"
+                        "\tex de, hl\n"
+                        "\tld a, l\n"
+                        "\tld (de), a  ; store new low\n"
+                        "\tinc de\n"
+                        "\tld a, h\n"
+                        "\tld (de), a  ; store new high\n"
+                        "\tpop hl  ; return old value",
+                        incdec);
+                } else {
+                    snprintf(buf, sizeof(buf),
+                        "\tld e, l\n"
+                        "\tld d, h  ; save address\n"
+                        "\tld a, (hl)\n"
+                        "\tld c, a\n"
+                        "\tinc hl\n"
+                        "\tld a, (hl)\n"
+                        "\tld b, a\n"
+                        "\tld h, b\n"
+                        "\tld l, c  ; value to HL\n"
+                        "\t%s hl\n"
+                        "\tex de, hl\n"
+                        "\tld a, l\n"
+                        "\tld (de), a  ; store new low\n"
+                        "\tinc de\n"
+                        "\tld a, h\n"
+                        "\tld (de), a  ; store new high",
+                        incdec);
+                }
             }
-        }
-        e->asm_block = strdup(buf);
 
-        /* Free children manually since we didn't process them normally */
-        /* NULL out pointers so emit phase doesn't try to process freed nodes */
-        freeExpr(e->left);
-        e->left = NULL;
-        freeExpr(e->right);
-        e->right = NULL;
-        return;  /* Early return - skip normal traversal */
+            e->asm_block = strdup(buf);
+            /* Don't free left child - already processed */
+            e->left = NULL;
+            freeExpr(e->right);
+            e->right = NULL;
+            return;
+        } else if (e->left && e->left->op == '+') {
+            /* ADD expression: struct member or array element */
+            /* Pattern: (INC/DEC (+ base offset)) */
+            /* This is already an address - just load, inc/dec, store */
+
+            generate_expr(ctx, e->left);  /* Generate address -> PRIMARY (HL) */
+
+            if (e->size == 1) {
+                /* Byte */
+                if (is_post) {
+                    snprintf(buf, sizeof(buf),
+                        "\tld e, l\n"
+                        "\tld d, h\n"
+                        "\tld a, (hl)\n"
+                        "\tld c, a\n"
+                        "\t%s a\n"
+                        "\tld (de), a\n"
+                        "\tld a, c",
+                        incdec);
+                } else {
+                    snprintf(buf, sizeof(buf),
+                        "\tld e, l\n"
+                        "\tld d, h\n"
+                        "\tld a, (hl)\n"
+                        "\t%s a\n"
+                        "\tld (de), a",
+                        incdec);
+                }
+            } else {
+                /* Word */
+                if (is_post) {
+                    snprintf(buf, sizeof(buf),
+                        "\tld e, l\n"
+                        "\tld d, h\n"
+                        "\tld a, (hl)\n"
+                        "\tld c, a\n"
+                        "\tinc hl\n"
+                        "\tld a, (hl)\n"
+                        "\tld b, a\n"
+                        "\tld h, b\n"
+                        "\tld l, c\n"
+                        "\tpush hl\n"
+                        "\t%s hl\n"
+                        "\tex de, hl\n"
+                        "\tld a, l\n"
+                        "\tld (de), a\n"
+                        "\tinc de\n"
+                        "\tld a, h\n"
+                        "\tld (de), a\n"
+                        "\tpop hl",
+                        incdec);
+                } else {
+                    snprintf(buf, sizeof(buf),
+                        "\tld e, l\n"
+                        "\tld d, h\n"
+                        "\tld a, (hl)\n"
+                        "\tld c, a\n"
+                        "\tinc hl\n"
+                        "\tld a, (hl)\n"
+                        "\tld b, a\n"
+                        "\tld h, b\n"
+                        "\tld l, c\n"
+                        "\t%s hl\n"
+                        "\tex de, hl\n"
+                        "\tld a, l\n"
+                        "\tld (de), a\n"
+                        "\tinc de\n"
+                        "\tld a, h\n"
+                        "\tld (de), a",
+                        incdec);
+                }
+            }
+
+            e->asm_block = strdup(buf);
+            e->left = NULL;
+            freeExpr(e->right);
+            e->right = NULL;
+            return;
+        } else {
+            /* Unsupported lvalue type */
+            snprintf(buf, sizeof(buf), "\t; TODO: inc/dec unsupported lvalue");
+            e->asm_block = strdup(buf);
+            freeExpr(e->left);
+            freeExpr(e->right);
+            return;
+        }
     }
 
     /* Recursively generate code for children (postorder traversal) */

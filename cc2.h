@@ -9,6 +9,13 @@
 #include <string.h>
 
 /*
+ * Assembler directive syntax
+ * Different assemblers use different syntax for these directives
+ */
+#define ASM_EXTERN ".extern"
+#define ASM_GLOBAL ".global"
+
+/*
  * Register allocation enumeration
  * Tracks which Z80 register (if any) a variable is allocated to
  */
@@ -113,6 +120,7 @@ struct function_ctx {
 
 /* Forward declarations from util.c */
 int fdprintf(int fd, const char *fmt, ...);
+int fdputs(int fd, const char *s);
 
 /* Global variables */
 extern int outFd;  /* Assembly output file descriptor (from parseast.c) */

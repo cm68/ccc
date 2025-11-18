@@ -496,6 +496,128 @@ static void emitExpr(struct function_ctx *ctx, struct expr *e)
         free(e);
         return;
     }
+    /* Handle increment/decrement placeholders - need to check register allocation */
+    else if (e->asm_block && strstr(e->asm_block, "INCDEC_PLACEHOLDER:")) {
+        /* Parse placeholder format: INCDEC_PLACEHOLDER:op:size:symbol */
+        int op, size;
+        char symbol[256];
+        const char *p;
+        const char *var_name;
+        struct local_var *var;
+        int is_post, is_dec;
+
+        p = strstr(e->asm_block, "INCDEC_PLACEHOLDER:") + 19;
+        if (sscanf(p, "%d:%d:%255s", &op, &size, symbol) != 3) {
+            /* Parse error - emit comment and skip */
+            fdprintf(outFd, "\t; ERROR: failed to parse INCDEC_PLACEHOLDER\n");
+            if (e->asm_block) free(e->asm_block);
+            if (e->cleanup_block) free(e->cleanup_block);
+            free(e);
+            return;
+        }
+
+        is_post = (op == 0xef || op == 0xf6);
+        is_dec = (op == 0xd6 || op == 0xf6);
+
+        /* Strip $ and A prefixes from symbol */
+        var_name = symbol;
+        if (var_name[0] == '$') var_name++;
+        if (var_name[0] == 'A') var_name++;
+
+        /* Look up variable */
+        var = findVar(ctx, var_name);
+
+        if (var && var->reg != REG_NO) {
+            /* Variable is register-allocated */
+            const char *incdec = is_dec ? "dec" : "inc";
+
+            if (size == 1) {
+                /* Byte register */
+                const char *reg_name = (var->reg == REG_B || var->reg == REG_Bp) ? "b" : "c";
+                int use_alt = (var->reg == REG_Bp || var->reg == REG_Cp);
+
+                if (use_alt) fdprintf(outFd, "\texx\n");
+                if (is_post) fdprintf(outFd, "\tld a, %s\n", reg_name);
+                fdprintf(outFd, "\t%s %s\n", incdec, reg_name);
+                if (!is_post) fdprintf(outFd, "\tld a, %s\n", reg_name);
+                if (use_alt) fdprintf(outFd, "\texx\n");
+            } else {
+                /* Word register */
+                const char *reg_pair = (var->reg == REG_IX) ? "ix" : "bc";
+                int use_alt = (var->reg == REG_BCp);
+
+                if (use_alt) fdprintf(outFd, "\texx\n");
+                if (is_post) {
+                    if (var->reg == REG_IX) fdprintf(outFd, "\tpush ix\n\tpop hl\n");
+                    else fdprintf(outFd, "\tld h, b\n\tld l, c\n");
+                }
+                fdprintf(outFd, "\t%s %s\n", incdec, reg_pair);
+                if (!is_post) {
+                    if (var->reg == REG_IX) fdprintf(outFd, "\tpush ix\n\tpop hl\n");
+                    else fdprintf(outFd, "\tld h, b\n\tld l, c\n");
+                }
+                if (use_alt) fdprintf(outFd, "\texx\n");
+            }
+        } else if (var) {
+            /* Variable is on stack */
+            char sign = (var->offset >= 0) ? '+' : '-';
+            int abs_offset = (var->offset >= 0) ? var->offset : -var->offset;
+            const char *incdec = is_dec ? "dec" : "inc";
+
+            if (size == 1) {
+                /* Byte on stack */
+                if (is_post) fdprintf(outFd, "\tld a, (iy %c %d)\n", sign, abs_offset);
+                fdprintf(outFd, "\t%s (iy %c %d)\n", incdec, sign, abs_offset);
+                if (!is_post) fdprintf(outFd, "\tld a, (iy %c %d)\n", sign, abs_offset);
+            } else {
+                /* Word on stack */
+                if (is_post) {
+                    fdprintf(outFd, "\tld l, (iy %c %d)\n", sign, abs_offset);
+                    fdprintf(outFd, "\tld h, (iy %c %d)\n", sign, abs_offset + 1);
+                }
+
+                if (is_dec) {
+                    fdprintf(outFd, "\tld a, (iy %c %d)\n", sign, abs_offset);
+                    fdprintf(outFd, "\tdec (iy %c %d)\n", sign, abs_offset);
+                    fdprintf(outFd, "\tor a\n");
+                    fdprintf(outFd, "\tjr nz, $+3\n");
+                    fdprintf(outFd, "\tdec (iy %c %d)\n", sign, abs_offset + 1);
+                } else {
+                    fdprintf(outFd, "\tinc (iy %c %d)\n", sign, abs_offset);
+                    fdprintf(outFd, "\tjr nz, $+3\n");
+                    fdprintf(outFd, "\tinc (iy %c %d)\n", sign, abs_offset + 1);
+                }
+
+                if (!is_post) {
+                    fdprintf(outFd, "\tld l, (iy %c %d)\n", sign, abs_offset);
+                    fdprintf(outFd, "\tld h, (iy %c %d)\n", sign, abs_offset + 1);
+                }
+            }
+        } else {
+            /* Global variable */
+            const char *sym = stripDollar(symbol);
+            const char *reg = (size == 1) ? "a" : "hl";
+            const char *incdec = is_dec ? "dec" : "inc";
+
+            if (is_post) {
+                fdprintf(outFd, "\tld %s, (%s)\n", reg, sym);
+                fdprintf(outFd, "\tpush %s  ; save old value\n", (size == 1) ? "af" : "hl");
+                fdprintf(outFd, "\t%s %s\n", incdec, reg);
+                fdprintf(outFd, "\tld (%s), %s\n", sym, reg);
+                fdprintf(outFd, "\tpop %s  ; return old value\n", (size == 1) ? "af" : "hl");
+            } else {
+                fdprintf(outFd, "\tld %s, (%s)\n", reg, sym);
+                fdprintf(outFd, "\t%s %s\n", incdec, reg);
+                fdprintf(outFd, "\tld (%s), %s\n", sym, reg);
+            }
+        }
+
+        /* Free this node */
+        if (e->asm_block) free(e->asm_block);
+        if (e->cleanup_block) free(e->cleanup_block);
+        free(e);
+        return;
+    }
     /* Handle ASSIGN specially - need to check register allocation */
     else if (e->op == '=' && e->asm_block &&
             strstr(e->asm_block, "ASSIGN_PLACEHOLDER")) {

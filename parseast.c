@@ -2111,12 +2111,14 @@ emitSymbolDeclarations(void)
 
     /* First emit GLOBAL declarations for all defined symbols */
     for (i = 0; i < num_defined; i++) {
-        fdprintf(outFd, "GLOBAL %s\n", defined_symbols[i]);
+        fdputs(outFd, ASM_GLOBAL " ");
+        fdputs(outFd, defined_symbols[i]);
+        fdputs(outFd, "\n");
     }
 
     /* Blank line after GLOBAL declarations */
     if (num_defined > 0) {
-        fdprintf(outFd, "\n");
+        fdputs(outFd, "\n");
     }
 
     /* Then emit EXTERN declarations for undefined references */
@@ -2133,13 +2135,15 @@ emitSymbolDeclarations(void)
 
         /* If not defined, emit EXTERN declaration */
         if (!is_defined) {
-            fdprintf(outFd, "EXTERN %s\n", referenced_symbols[i]);
+            fdputs(outFd, ASM_EXTERN " ");
+            fdputs(outFd, referenced_symbols[i]);
+            fdputs(outFd, "\n");
         }
     }
 
     /* Blank line after EXTERN declarations */
     if (num_referenced > 0) {
-        fdprintf(outFd, "\n");
+        fdputs(outFd, "\n");
     }
 }
 
@@ -2151,86 +2155,86 @@ static void
 emitRuntimeHelpers(void)
 {
     /* Frame management */
-    fdprintf(outFd, "EXTERN framealloc\n");
-    fdprintf(outFd, "EXTERN framefree\n");
+    fdputs(outFd, ASM_EXTERN " framealloc\n");
+    fdputs(outFd, ASM_EXTERN " framefree\n");
 
     /* Long (32-bit) operations */
-    fdprintf(outFd, "EXTERN getlong\n");
-    fdprintf(outFd, "EXTERN putlong\n");
-    fdprintf(outFd, "EXTERN load32i\n");
+    fdputs(outFd, ASM_EXTERN " getlong\n");
+    fdputs(outFd, ASM_EXTERN " putlong\n");
+    fdputs(outFd, ASM_EXTERN " load32i\n");
 
     /* 32-bit arithmetic */
-    fdprintf(outFd, "EXTERN add3232\n");
-    fdprintf(outFd, "EXTERN sub3232\n");
-    fdprintf(outFd, "EXTERN mul3232\n");
-    fdprintf(outFd, "EXTERN div3232\n");
-    fdprintf(outFd, "EXTERN mod3232\n");
-    fdprintf(outFd, "EXTERN shr3232\n");
+    fdputs(outFd, ASM_EXTERN " add3232\n");
+    fdputs(outFd, ASM_EXTERN " sub3232\n");
+    fdputs(outFd, ASM_EXTERN " mul3232\n");
+    fdputs(outFd, ASM_EXTERN " div3232\n");
+    fdputs(outFd, ASM_EXTERN " mod3232\n");
+    fdputs(outFd, ASM_EXTERN " shr3232\n");
 
     /* 32-bit comparisons */
-    fdprintf(outFd, "EXTERN lt3232\n");
-    fdprintf(outFd, "EXTERN gt3232\n");
-    fdprintf(outFd, "EXTERN le3232\n");
-    fdprintf(outFd, "EXTERN ge3232\n");
-    fdprintf(outFd, "EXTERN eq3232\n");
-    fdprintf(outFd, "EXTERN ne3232\n");
+    fdputs(outFd, ASM_EXTERN " lt3232\n");
+    fdputs(outFd, ASM_EXTERN " gt3232\n");
+    fdputs(outFd, ASM_EXTERN " le3232\n");
+    fdputs(outFd, ASM_EXTERN " ge3232\n");
+    fdputs(outFd, ASM_EXTERN " eq3232\n");
+    fdputs(outFd, ASM_EXTERN " ne3232\n");
 
     /* 32-bit bitwise */
-    fdprintf(outFd, "EXTERN and3232\n");
-    fdprintf(outFd, "EXTERN or3232\n");
-    fdprintf(outFd, "EXTERN xor3232\n");
+    fdputs(outFd, ASM_EXTERN " and3232\n");
+    fdputs(outFd, ASM_EXTERN " or3232\n");
+    fdputs(outFd, ASM_EXTERN " xor3232\n");
 
     /* 16-bit operations */
-    fdprintf(outFd, "EXTERN lt1616\n");
-    fdprintf(outFd, "EXTERN gt1616\n");
-    fdprintf(outFd, "EXTERN le1616\n");
-    fdprintf(outFd, "EXTERN ge1616\n");
-    fdprintf(outFd, "EXTERN eq1616\n");
-    fdprintf(outFd, "EXTERN ne1616\n");
-    fdprintf(outFd, "EXTERN ueq1616\n");
-    fdprintf(outFd, "EXTERN and1616\n");
-    fdprintf(outFd, "EXTERN or1616\n");
-    fdprintf(outFd, "EXTERN sub1616\n");
-    fdprintf(outFd, "EXTERN mul1616\n");
-    fdprintf(outFd, "EXTERN mod1616\n");
-    fdprintf(outFd, "EXTERN shr1616\n");
-    fdprintf(outFd, "EXTERN ult1616\n");
-    fdprintf(outFd, "EXTERN ugt1616\n");
-    fdprintf(outFd, "EXTERN uge1616\n");
-    fdprintf(outFd, "EXTERN une1616\n");
-    fdprintf(outFd, "EXTERN uand1616\n");
-    fdprintf(outFd, "EXTERN usub1616\n");
+    fdputs(outFd, ASM_EXTERN " lt1616\n");
+    fdputs(outFd, ASM_EXTERN " gt1616\n");
+    fdputs(outFd, ASM_EXTERN " le1616\n");
+    fdputs(outFd, ASM_EXTERN " ge1616\n");
+    fdputs(outFd, ASM_EXTERN " eq1616\n");
+    fdputs(outFd, ASM_EXTERN " ne1616\n");
+    fdputs(outFd, ASM_EXTERN " ueq1616\n");
+    fdputs(outFd, ASM_EXTERN " and1616\n");
+    fdputs(outFd, ASM_EXTERN " or1616\n");
+    fdputs(outFd, ASM_EXTERN " sub1616\n");
+    fdputs(outFd, ASM_EXTERN " mul1616\n");
+    fdputs(outFd, ASM_EXTERN " mod1616\n");
+    fdputs(outFd, ASM_EXTERN " shr1616\n");
+    fdputs(outFd, ASM_EXTERN " ult1616\n");
+    fdputs(outFd, ASM_EXTERN " ugt1616\n");
+    fdputs(outFd, ASM_EXTERN " uge1616\n");
+    fdputs(outFd, ASM_EXTERN " une1616\n");
+    fdputs(outFd, ASM_EXTERN " uand1616\n");
+    fdputs(outFd, ASM_EXTERN " usub1616\n");
 
     /* Mixed size operations */
-    fdprintf(outFd, "EXTERN lt816\n");
-    fdprintf(outFd, "EXTERN le816\n");
-    fdprintf(outFd, "EXTERN gt816\n");
-    fdprintf(outFd, "EXTERN ge816\n");
-    fdprintf(outFd, "EXTERN sub816\n");
-    fdprintf(outFd, "EXTERN eq816\n");
-    fdprintf(outFd, "EXTERN ne816\n");
-    fdprintf(outFd, "EXTERN ueq816\n");
-    fdprintf(outFd, "EXTERN ule3216\n");
-    fdprintf(outFd, "EXTERN ult168\n");
-    fdprintf(outFd, "EXTERN ult816\n");
-    fdprintf(outFd, "EXTERN une816\n");
-    fdprintf(outFd, "EXTERN shr816\n");
-    fdprintf(outFd, "EXTERN ushr816\n");
-    fdprintf(outFd, "EXTERN uand3216\n");
-    fdprintf(outFd, "EXTERN and816\n");
-    fdprintf(outFd, "EXTERN gt168\n");
+    fdputs(outFd, ASM_EXTERN " lt816\n");
+    fdputs(outFd, ASM_EXTERN " le816\n");
+    fdputs(outFd, ASM_EXTERN " gt816\n");
+    fdputs(outFd, ASM_EXTERN " ge816\n");
+    fdputs(outFd, ASM_EXTERN " sub816\n");
+    fdputs(outFd, ASM_EXTERN " eq816\n");
+    fdputs(outFd, ASM_EXTERN " ne816\n");
+    fdputs(outFd, ASM_EXTERN " ueq816\n");
+    fdputs(outFd, ASM_EXTERN " ule3216\n");
+    fdputs(outFd, ASM_EXTERN " ult168\n");
+    fdputs(outFd, ASM_EXTERN " ult816\n");
+    fdputs(outFd, ASM_EXTERN " une816\n");
+    fdputs(outFd, ASM_EXTERN " shr816\n");
+    fdputs(outFd, ASM_EXTERN " ushr816\n");
+    fdputs(outFd, ASM_EXTERN " uand3216\n");
+    fdputs(outFd, ASM_EXTERN " and816\n");
+    fdputs(outFd, ASM_EXTERN " gt168\n");
 
     /* 8-bit operations */
-    fdprintf(outFd, "EXTERN add88\n");
-    fdprintf(outFd, "EXTERN eq88\n");
-    fdprintf(outFd, "EXTERN ne88\n");
-    fdprintf(outFd, "EXTERN lt88\n");
-    fdprintf(outFd, "EXTERN gt88\n");
-    fdprintf(outFd, "EXTERN ge88\n");
-    fdprintf(outFd, "EXTERN and88\n");
-    fdprintf(outFd, "EXTERN or88\n");
+    fdputs(outFd, ASM_EXTERN " add88\n");
+    fdputs(outFd, ASM_EXTERN " eq88\n");
+    fdputs(outFd, ASM_EXTERN " ne88\n");
+    fdputs(outFd, ASM_EXTERN " lt88\n");
+    fdputs(outFd, ASM_EXTERN " gt88\n");
+    fdputs(outFd, ASM_EXTERN " ge88\n");
+    fdputs(outFd, ASM_EXTERN " and88\n");
+    fdputs(outFd, ASM_EXTERN " or88\n");
 
-    fdprintf(outFd, "\n");
+    fdputs(outFd, "\n");
 }
 
 /*

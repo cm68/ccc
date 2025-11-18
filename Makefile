@@ -12,6 +12,9 @@ CC = gcc
 #CC = sdcc
 #CC = ccc
 
+ASM = vasm
+ASMOPTS =
+
 ifeq ($(CC),cc)
 DEFINES= -DCCC
 DEBUG=
@@ -89,11 +92,9 @@ $(CC1OBJECTS): $(HFILES)
 %.pp: %.ast astpp.lisp
 	./astpp.lisp $< > $@
 
-# Suffix rule to generate .pp (pretty-printed) files from .ast files
+# Suffix rule to assemble to .obj files
 %.obj: %.s
-	cp $< _$<
-	z80asm _$<
-	mv _$@ $@
+	$(ASM) $(ASMOPTS) -o $@ $<
 	
 .PHONY: test tests valgrind
 test: cc1 tests/runtest.sh
@@ -108,47 +109,6 @@ valgrind: cc1 tests/runvalgrind.sh
 .PHONY: unit-tests
 unit-tests: $(GENERATED)
 	$(MAKE) -C unit_test tests
-
-.PHONY: sizecheck
-sizecheck: clean clobber
-	$(MAKE) CC=sdcc cc1
-
-.PHONY: fullcheck
-fullcheck: cc1 cc2
-	@echo "Testing compiler on its own sources (complete pipeline)"
-	@for f in $(CFILES); do \
-	  if [ -f "$$f" ]; then \
-	    b=$$(basename $$f .c) ; \
-	    printf "%-30s" "$$f: "; \
-	    timeout 10 ./cc1 -DCCC -i./include -I. -E -o $$b.ast "$$f" \
-		>/dev/null 2>&1 ; \
-	    ret1=$$?; \
-	    if [ $$ret1 -eq 124 ]; then \
-	      echo "FAIL (parse timeout)"; \
-	    elif [ $$ret1 -ne 0 ]; then \
-	      echo "FAIL (parse error)"; \
-	    else \
-	      timeout 10 ./cc2 $$b.ast >/dev/null 2>&1 ; \
-	      ret2=$$?; \
-	      if [ $$ret2 -eq 124 ]; then \
-	        echo "FAIL (codegen timeout)"; \
-	      elif [ $$ret2 -ne 0 ]; then \
-	        echo "FAIL (codegen error)"; \
-	      else \
-	        timeout 10 z80asm --output=$$b.o $$b.s >/dev/null 2>&1 ; \
-	        ret3=$$?; \
-	        if [ $$ret3 -eq 124 ]; then \
-	          echo "FAIL (asm timeout)"; \
-	        elif [ $$ret3 -ne 0 ]; then \
-	          echo "FAIL (asm error)"; \
-	        else \
-	          echo "PASS"; \
-	          rm -f $$b.ast $$b.s $$b.o; \
-	        fi; \
-	      fi; \
-	    fi; \
-	  fi; \
-	done
 
 .PHONY: stage1
 stage1: cc1 cc2
@@ -169,7 +129,7 @@ stage1: cc1 cc2
 	      if [ $$ret2 -ne 0 ]; then \
 	        echo "FAIL (codegen error)"; \
 	      else \
-	        z80asm --output=stage1/$$b.o stage1/$$b.s \
+	        $(ASM) $(ASMOPTS) -o stage1/$$b.o stage1/$$b.s \
 		    >>stage1/$$b.err 2>&1 ; \
 	        ret3=$$?; \
 	        if [ $$ret3 -ne 0 ]; then \

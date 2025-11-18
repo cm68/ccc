@@ -97,10 +97,7 @@ make rules. Never manually run `./cc1 -E file.c` or `./cc2 file.ast` directly.
 make test         # All 142+ tests must pass
 
 # Comprehensive validation (complete pipeline: parse -> codegen -> assemble)
-make fullcheck    # Verifies self-hosting through assembly - run before committing
-
-# Build native Z80 binaries for bootstrapping
-make stage1       # Builds .ast, .s, .o files in stage1/ directory
+make stage1       # Verifies self-hosting through assembly - run before committing
 ```
 
 **Testing individual files:**
@@ -123,7 +120,7 @@ make expr.s       # Compile expr.ast to assembly
 - The Makefiles have the correct, tested commands - always use them
 
 **Before any commit:**
-1. Run `make fullcheck` - verify complete pipeline (parse -> codegen -> assemble)
+1. Run `make stage1` - verify complete pipeline (parse -> codegen -> assemble)
 2. Run `make test` - verify all tests pass
 
 ## Running the Compiler
@@ -1078,10 +1075,9 @@ and passes all 142 tests.
 - Output file generation: strips .ast extension and appends .s, preserves
   directory paths
 - Build system improvements:
-  - fullcheck target validates complete pipeline (parse -> codegen -> assemble)
+  - stage1 target validates complete pipeline and builds native Z80 binaries in stage1/ directory
   - Preserve .ast, .s, and .o files on test failures for debugging
   - Clean target removes .ast, .s, and .o files
-  - stage1 target builds native Z80 binaries in stage1/ directory for bootstrapping
 
 **Bootstrapping Process**:
 The `make stage1` target compiles the compiler's own sources using the host-built

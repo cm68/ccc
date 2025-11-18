@@ -214,6 +214,22 @@ fdprintf(int fd, const char *fmt, ...)
 
     return len;
 }
+
+/*
+ * fdputs - write a string to a Unix file descriptor
+ * More efficient than fdprintf for simple string output (no formatting overhead)
+ */
+int
+fdputs(int fd, const char *s)
+{
+    int len;
+
+    len = strlen(s);
+    if (len > 0) {
+        return write(fd, s, len);
+    }
+    return 0;
+}
 #endif
 
 /*
