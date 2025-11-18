@@ -829,6 +829,100 @@ static void generate_expr(struct function_ctx *ctx, struct expr *e)
         e->value = offset;  /* Store offset */
     }
 
+    /* Handle increment/decrement operators BEFORE recursion */
+    /* These operators need custom handling - don't process left child normally */
+    if (e->op == 0xcf || e->op == 0xef || e->op == 0xd6 || e->op == 0xf6) {
+        int is_post = (e->op == 0xef || e->op == 0xf6);
+        int is_dec = (e->op == 0xd6 || e->op == 0xf6);
+        const char *op_str = is_dec ? "dec" : "inc";
+        char buf[256];
+
+        /* Left child is the lvalue (variable address) */
+        /* For now, handle simple variables (SYM nodes) */
+        /* TODO: Handle pointer dereferences and complex lvalues */
+
+        if (!e->left || e->left->op != '$' || !e->left->symbol) {
+            /* Complex lvalue - placeholder for now */
+            snprintf(buf, sizeof(buf), "\t; TODO: %s complex lvalue",
+                     is_post ? (is_dec ? "POSTDEC" : "POSTINC") :
+                               (is_dec ? "PREDEC" : "PREINC"));
+            e->asm_block = strdup(buf);
+            /* Free left child without processing it */
+            freeExpr(e->left);
+            freeExpr(e->right);
+            return;  /* Early return - skip normal traversal */
+        }
+
+        /* Track variable usage for lifetime analysis */
+        {
+            const char *var_name = e->left->symbol;
+            if (var_name && var_name[0] == '$') var_name++;
+            if (var_name && var_name[0] == 'A') var_name++;
+            updateVarLifetime(ctx, var_name);
+        }
+
+        /* Strip leading $ from symbol for assembly output */
+        {
+            const char *sym = e->left->symbol;
+            if (sym && sym[0] == '$') sym++;
+
+            if (e->size == 1) {
+                /* Byte increment/decrement */
+                if (is_post) {
+                    /* x++/x--: load, save old, inc/dec, store, return old */
+                    snprintf(buf, sizeof(buf),
+                             "\tld a, (%s)\n"
+                             "\tld b, a  ; save old value\n"
+                             "\t%s a\n"
+                             "\tld (%s), a\n"
+                             "\tld a, b  ; return old value",
+                             sym, op_str, sym);
+                } else {
+                    /* ++x/--x: load, inc/dec, store, return new */
+                    snprintf(buf, sizeof(buf),
+                             "\tld a, (%s)\n"
+                             "\t%s a\n"
+                             "\tld (%s), a",
+                             sym, op_str, sym);
+                }
+            } else if (e->size == 2) {
+                /* Word increment/decrement */
+                if (is_post) {
+                    /* x++/x--: load, save old, inc/dec, store, return old */
+                    snprintf(buf, sizeof(buf),
+                             "\tld hl, (%s)\n"
+                             "\tpush hl  ; save old value\n"
+                             "\t%s hl\n"
+                             "\tld (%s), hl\n"
+                             "\tpop hl  ; return old value",
+                             sym, op_str, sym);
+                } else {
+                    /* ++x/--x: load, inc/dec, store, return new */
+                    snprintf(buf, sizeof(buf),
+                             "\tld hl, (%s)\n"
+                             "\t%s hl\n"
+                             "\tld (%s), hl",
+                             sym, op_str, sym);
+                }
+            } else {
+                /* Long (4 byte) or other size - placeholder */
+                snprintf(buf, sizeof(buf), "\t; TODO: %s size %d",
+                         is_post ? (is_dec ? "POSTDEC" : "POSTINC") :
+                                   (is_dec ? "PREDEC" : "PREINC"),
+                         e->size);
+            }
+        }
+        e->asm_block = strdup(buf);
+
+        /* Free children manually since we didn't process them normally */
+        /* NULL out pointers so emit phase doesn't try to process freed nodes */
+        freeExpr(e->left);
+        e->left = NULL;
+        freeExpr(e->right);
+        e->right = NULL;
+        return;  /* Early return - skip normal traversal */
+    }
+
     /* Recursively generate code for children (postorder traversal) */
     if (e->left) generate_expr(ctx, e->left);
     if (e->right) generate_expr(ctx, e->right);
