@@ -68,6 +68,11 @@
           ((string= op-str "?") "TERNARY")
           ((string= op-str "@") "CALL")
           ((string= op-str "NEG") "NEGATE")
+          ;; Increment/decrement operators
+          ((string= op-str "Ï") "PREINC")
+          ((string= op-str "ï") "POSTINC")
+          ((string= op-str "Ö") "PREDEC")
+          ((string= op-str "ö") "POSTDEC")
           (t op-str)))))
 
 (defun statement-name (stmt)
