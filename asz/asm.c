@@ -10,7 +10,7 @@
  * 
  * /usr/src/cmd/asz/asm.c 
  *
- * Changed: <2025-11-18 23:05:12 curt>
+ * Changed: <2025-11-19 09:07:31 curt>
  *
  * vim: tabstop=4 shiftwidth=4 noexpandtab:
  */
@@ -1387,10 +1387,10 @@ do_stax(vp)
 struct expval *vp;
 {
 	unsigned char prim, arg, reg, type;
-	unsigned short value;
+	struct expval value;
     
 	need(',');
-	arg = operand(value);
+	arg = operand(&value);
 
 	switch (arg) {
 	case T_HL:					/* ld (nn), hl */
@@ -1900,10 +1900,11 @@ struct instruct *isr;
 		arg = operand(&value);
 
         /* optional condition code */
-        if (arg == 1) arg = T_CR;
+        if (arg == T_C) arg = T_CR;
 		if (arg >= T_NZ && arg <= T_M) {
 			emitbyte(isr->opcode + ((arg - T_NZ) << 3));
 			need(',');
+			arg = operand(&value);
 			emit_exp(2, &value);
 		} else if (arg == T_NUM) {
 			emitbyte(isr->opcode + 1);
@@ -1916,6 +1917,8 @@ struct instruct *isr;
 		} else if (arg == T_IY_I) {
 			emitbyte(0xFD);
 			emitbyte(isr->arg);
+		} else if (arg == T_PLAIN) {
+			emit_exp(2, &value);
 		} else
 			return 1;
 		return 0;
