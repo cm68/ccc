@@ -18,6 +18,10 @@ main.o:	main.c
 asm.o:	asm.c
 	cc -g -c asm.c
 
+test: asz
+	./asz util.s
+	./asz expr.s
+
 clean:
 	rm *.o
 

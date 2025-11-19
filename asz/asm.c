@@ -10,9 +10,9 @@
  * 
  * /usr/src/cmd/asz/asm.c 
  *
- * Changed: <2023-09-21 12:52:17 curt>
+ * Changed: <2025-11-18 23:05:12 curt>
  *
- * vim: tabstop=4 shiftwidth=4 expandtab:
+ * vim: tabstop=4 shiftwidth=4 noexpandtab:
  */
 #ifdef linux
 #include <stdio.h>
@@ -117,23 +117,25 @@ char *tokname[] = {
     /* 39 */ "NAME", "NUM", "STR", "EOF"
 };
 
-#define END         0
-#define BASIC       1   /* 1 byte instruction, no args */
-#define BASIC_EXT   2   /* 2 byte instruction, no arg */
-#define ARITH       3   /* arithmetic operation group */
-#define INCR        4   /* increment / decrement group */
-#define BITSH       5   /* bit / shift instruction */
-#define STACK       6   /* stack pop / push */
-#define RET         7   /* return program flow */
-#define JMP         8   /* jump program flow */
-#define JRL         9   /* jump relative program flow */
-#define CALL        10  /* call program flow */
-#define RST         11  /* rst program flow */
-#define IN          12  /* i/o in instruction */
-#define OUT         13  /* i/o out instruction */
-#define EXCH        14  /* exchange instruction */
-#define INTMODE     15  /* interrupt mode instruction */
-#define LOAD        16  /* load instruction */
+enum type {
+	END=0,
+	BASIC,		/* 1 byte instruction, no args */
+	BASIC_EXT,	/* 2 byte instruction, no arg */
+	ARITH,		/* arithmetic operation group */
+	INCR,		/* increment / decrement group */
+	BITSH,		/* bit / shift instruction */
+	STACK,		/* stack pop / push */
+	RET,		/* return program flow */
+	JMP,		/* jump program flow */
+	JRL,		/* jump relative program flow */
+	CALL,		/* call program flow */
+	RST,		/* rst program flow */
+	IN,			/* i/o in instruction */
+	OUT,		/* i/o out instruction */
+	EXCH,		/* exchange instruction */
+	INTMODE,	/* interrupt mode instruction */
+	LOAD		/* load instruction */
+};
 
 #define UNARY 0
 #define CARRY 1
@@ -184,7 +186,7 @@ struct oprnd op_table[] = {
  * instruction table
  */
 struct instruct {
-	unsigned char type;
+	enum type type;
 	char *mnem;
 	unsigned char opcode;
 	unsigned char arg;
@@ -295,7 +297,7 @@ struct instruct isr_table[] = {
 };
 
 #define TOKLEN 19
-#define SYMLEN 9
+#define SYMLEN 15
 
 /*
  * symbols have a segment, emitted code does too.
@@ -734,7 +736,7 @@ get_token()
         token_buf[i++] = c;
         while (1) {
             c = peekchar();
-            if ((c == ',') || (c == ' ') || 
+            if ((c == ')') || (c == ',') || (c == ' ') || 
                 (c == '\t') || (c == '\n') || (c == T_EOF)) {
                 break;
             }
@@ -1317,33 +1319,41 @@ struct expval *vp;
             } else if (match(token_buf, "de")) {
                 need(')');
                 return T_DE_I;
-            }
-        }
-
-        /* (ix+d) (ix-d) (iy+d) (iy-d) - populate displacement and eat ')' */
-		else if (match(token_buf, "ix") || match(token_buf, "iy")) {
-            ret = token_buf[1] == 'x' ? T_IX_D : T_IY_D;
-            c = peekchar();
-			if ((c == '+') || (c == '-')) {
-				get_token();
-                c = cur_token;
-                get_token();
-                if (cur_token != T_NUM) {
-                    gripe("index displacement missing");
-                }
-                if (c == '-') {
-                    vp->num = -token_val;
-                } else {
-                    vp->num = token_val;
-                }
+            } else if (match(token_buf, "ix") || match(token_buf, "iy")) {
+				/*
+				 * (ix+d) (ix-d) (iy+d) (iy-d) 
+				 * populate displacement and eat ')'
+				 */
+				ret = token_buf[1] == 'x' ? T_IX_D : T_IY_D;
+				while(1) {
+					c = peekchar();
+					if ((c == '\t') || (c == ' ')) {
+						c = nextchar();
+					} else {
+						break;
+					}
+				}
+				if ((c == '+') || (c == '-')) {
+					get_token();
+                	c = cur_token;
+                	get_token();
+                	if (cur_token != T_NUM) {
+                    	gripe("index displacement missing");
+                	}
+                	if (c == '-') {
+                    	vp->num = -token_val;
+                	} else {
+                    	vp->num = token_val;
+                	}
+				} else {
+					ret = (ret - T_IX_D) + T_IX_I;
+				}
+				need(')');
+            	return ret;
 			} else {
-				ret = (ret - T_IX_D) + T_IX_I;
+				indir++;
+				/* fall through */
 			}
-			need(')');
-            return ret;
-		} else {
-			indir++;
-            get_token();
 		}
 	}
 
@@ -1459,7 +1469,6 @@ char reg;
 			emitbyte(0x4B + ((reg - T_BC) << 4));
 		}
 		emit_exp(2, &value);
-		need(')');
 	} else if (reg == T_SP) {
 		/*
 		 * ld sp,hl|ix|iy specials 
@@ -1539,7 +1548,6 @@ struct expval *disp;
 		}
 		if (reg == T_IX_D) {
             has_disp++;
-			need(')');
 		} else if (arg == 4 || arg == 5)
             /* lose on ld [hl], ix[hl] */
 			return 1;
@@ -1579,7 +1587,6 @@ struct expval *disp;
 		case T_INDIR:
 			emitbyte(0x3A);
 			emit_exp(2, &value);
-			need(')');
 			break;
 
 		case T_I:
@@ -1670,7 +1677,7 @@ struct instruct *isr;
 				 */
 				prim = 3;
 				reg = arg;
-			} else if (arg != 7)
+			} else if (arg != T_A)
 				return 1;
 
 			/*
