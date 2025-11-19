@@ -10,7 +10,7 @@
  * 
  * /usr/src/cmd/asz/asm.c 
  *
- * Changed: <2025-11-19 09:07:31 curt>
+ * Changed: <2025-11-19 15:03:36 curt>
  *
  * vim: tabstop=4 shiftwidth=4 noexpandtab:
  */
@@ -25,6 +25,22 @@
 #define INIT = 0
 #endif
 
+#define	CONF_SYMLEN	0x07
+#define	CONF_INT32	0x08
+#define	CONF_LITTLE	0x10
+#define	CONF_ALIGN	0x60
+#define	CONF_NORELO	0x80
+
+#define	CONF_9	(CONF_LITTLE | (4 & CONF_SYMLEN))	/* 9 char syms */
+#define	CONF_15	(CONF_LITTLE | (7 & CONF_SYMLEN))	/* 15 char syms */
+
+#define	SYMLEN	9
+
+#if SYMLEN == 15
+#define	CONF	CONF_15
+#else
+#define	CONF	CONF_9
+#endif
 /*
  * verbosity levels:
  * 1 = file 
@@ -297,7 +313,6 @@ struct instruct isr_table[] = {
 };
 
 #define TOKLEN 19
-#define SYMLEN 15
 
 /*
  * symbols have a segment, emitted code does too.
@@ -308,6 +323,10 @@ struct instruct isr_table[] = {
 #define SEG_BSS     3
 #define SEG_ABS     4
 #define SEG_EXT     5
+
+char *segname[] = {
+	"undef", "text", "data", "bss", "abs", "ext"
+};
 
 /*
  * symbols come in a couple of flavors that are driven by
@@ -728,6 +747,10 @@ get_token()
             }
         }
         token_buf[i++] = '\0';
+        if (i > 16) {  /* >15 chars plus null terminator */
+            printf("%s:%d warning: symbol '%s' longer than 15 characters\n",
+                   infile, line_num, token_buf);
+        }
         c = T_NAME;
     }
 
@@ -737,7 +760,8 @@ get_token()
         while (1) {
             c = peekchar();
             if ((c == ')') || (c == ',') || (c == ' ') || 
-                (c == '\t') || (c == '\n') || (c == T_EOF)) {
+                (c == '\t') || (c == '\n') || (c == T_EOF) ||
+                (c == '+') || (c == '-')) {
                 break;
             }
             token_buf[i++] = nextchar();
@@ -864,11 +888,16 @@ int visible;
 		sym->name[i] = 0;
 	}
 
+	if ((sym->seg != SEG_UNDEF) && (seg == SEG_UNDEF)) {
+		seg = sym->seg;
+	}
+
 	/*
 	 * update the symbol 
 	 */
     if ((sym->seg != SEG_UNDEF) && 
         (sym->seg != seg)) {
+		printf("pass: %d from: %s to: %s\n", pass, segname[sym->seg], segname[seg]);
         gripe2("segment for symbol changed", name);            
     }
 	sym->seg = seg;
@@ -972,13 +1001,13 @@ unsigned short base;
 
 	while (r) {
 		seg = r->sym->seg;
-		if (verbose > 3) {
-			printf("reloc: base: %x addr: %x seg: %d %s\n",
-				   base, r->addr, seg, r->sym->name);
+		if (1 || verbose > 3) {
+			printf("reloc: base: %x addr: %x seg: %s(%d) %s\n",
+				   base, r->addr, segname[seg], seg, r->sym->name);
 		}
 
 		bump = r->addr - last;
-		if (verbose > 4) {
+		if (1 || verbose > 4) {
 			printf("bump: %d\n", bump);
 		}
 		while (bump >= 8223) {
@@ -1010,7 +1039,7 @@ unsigned short base;
 			outbyte(0x4c);
 			break;
 		default:
-			control = r->sym->index;
+			control = r->sym->index + 4;
 			if (control < 47) {
 				outbyte((control + 16) << 2);
 			} else if (control < 175) {
@@ -1024,7 +1053,7 @@ unsigned short base;
 			}
 			break;
 		}
-		last = base + 2;
+		last += bump + 2;
 		r = r->next;
 	}
 	outbyte(0);
@@ -1368,9 +1397,44 @@ struct expval *vp;
 	    }
     } else if (cur_token == T_NUM) {
 		vp->num = token_val;
+    } else if (cur_token == '$') {
+		vp->num = cur_address;
+    } else if (cur_token == '-') {
+		get_token();
+		if (cur_token == T_NUM) {
+			vp->num = -token_val;
+		} else if (cur_token == '$') {
+			vp->num = -cur_address;
+		} else {
+			gripe("expected number or $ after -");
+		}
     } else {
         gripe("need an operand");
     }
+
+	c = peekchar();
+	while ((c == ' ') || (c == '\t')) {
+		nextchar();
+		c = peekchar();
+	}
+
+	if (c == '+') {
+		nextchar();
+		get_token();
+		if (cur_token == T_NUM) {
+			vp->num += token_val;
+		} else {
+			gripe("expected number after +");
+		}
+	} else if (c == '-') {
+		nextchar();
+		get_token();
+		if (cur_token == T_NUM) {
+			vp->num -= token_val;
+		} else {
+			gripe("expected number after -");
+		}
+	}
 
     if (indir) {
 	    need(')');
@@ -1430,7 +1494,7 @@ struct expval *vp;
  */
 int
 do_16i(reg)
-char reg;
+unsigned char reg;
 {
 	unsigned char arg;
 	struct expval value;
@@ -1475,17 +1539,19 @@ char reg;
 		 */
 		switch (arg) {
 		case T_HL:
+			emitbyte(0xF9);
 			break;
 		case T_IX:
 			emitbyte(0xDD);
+			emitbyte(0xF9);
 			break;
 		case T_IY:
 			emitbyte(0xFD);
+			emitbyte(0xF9);
 			break;
 		default:
 			return 1;
 		}
-		emitbyte(0xF9);
 	} else
 		return 1;
 	return 0;
@@ -1607,551 +1673,551 @@ struct expval *disp;
 	return 0;
 }
 
-/*
- * assembles an instructions
- *
- * isr = pointer to instruct
- * returns 0 if successful
- */
-char
-asm_doisr(isr)
+static char
+do_basic(isr)
 struct instruct *isr;
 {
-	unsigned char prim, arg, reg, type;
-    struct expval value;
+	emitbyte(isr->opcode);
+	return 0;
+}
 
-	/*
-	 * primary select to 0 
-	 */
-	prim = 0;
-	if (isr->type == BASIC) {
-		/*
-		 * basic ops 
-		 */
-		emitbyte(isr->opcode);
-		return 0;
-	}
+static char
+do_basic_ext(isr)
+struct instruct *isr;
+{
+	emitbyte(isr->arg);
+	emitbyte(isr->opcode);
+	return 0;
+}
 
-	if (isr->type == BASIC_EXT) {
-		/*
-		 * basic extended ops 
-		 */
-		emitbyte(isr->arg);
-		emitbyte(isr->opcode);
-		return 0;
-	}
+static char
+do_arith(isr)
+struct instruct *isr;
+{
+	unsigned char prim, arg, reg;
+	struct expval value;
 
-	if (isr->type == ARITH) {
-		/*
-		 * arithmetic operations 
-		 */
+	arg = operand(&value);
+
+	if (isr->arg == CARRY) {
+		if (arg == T_HL) {
+			prim = 1;
+		} else if (arg != T_A)
+			return 1;
+
+		need(',');
+		arg = operand(&value);
+	} else if (isr->arg == ADD) {
+		if (arg == T_HL) {
+			prim = 2;
+		} else if (arg == T_IX || arg == T_IY) {
+			prim = 3;
+			reg = arg;
+		} else if (arg != T_A)
+			return 1;
+
+		need(',');
 		arg = operand(&value);
 
-		/*
-		 * detect type of operation 
-		 */
-		if (isr->arg == CARRY) {
-			if (arg == T_HL) {
-				/*
-				 * hl adc/sbc 
-				 */
-				prim = 1;
-			} else if (arg != T_A)
-				return 1;
+		if (prim == 3 && arg == T_HL)
+			return 1;
 
-			/*
-			 * grab next arg 
-			 */
-			need(',');
-			arg = operand(&value);
-		} else if (isr->arg == ADD) {
-			if (arg == T_HL) {
-				/*
-				 * hl add 
-				 */
-				prim = 2;
-
-			} else if (arg == T_IX || arg == T_IY) {
-				/*
-				 * ix/iy add 
-				 */
-				prim = 3;
-				reg = arg;
-			} else if (arg != T_A)
-				return 1;
-
-			/*
-			 * grab next arg 
-			 */
-			need(',');
-			arg = operand(&value);
-
-			/*
-			 * no add i*,hl 
-			 */
-			if (prim == 3 && arg == T_HL)
-				return 1;
-
-			/*
-			 * add i*,i* 
-			 */
-			if (prim == 3 && arg == reg)
-				arg = T_HL;
-		}
-
-		if (prim == 0) {
-			if (arg <= T_A) {
-				/*
-				 * basic from a-(hl) 
-				 */
-				emitbyte(isr->opcode + arg);
-			} else if (arg >= T_IXH && arg <= T_IX_D) {
-				emitbyte(0xDD);
-				emitbyte(isr->opcode + (arg - T_IXH) + 4);
-				if (arg == T_IX_D)
-					emitbyte(value.num & 0xFF);
-			} else if (arg >= T_IYH && arg <= T_IY_D) {
-				emitbyte(0xFD);
-				emitbyte(isr->opcode + (arg - T_IYH) + 4);
-				if (arg == T_IY_D)
-					emitbyte(value.num & 0xFF);
-			} else if (arg == T_PLAIN) {
-				emitbyte(isr->opcode + 0x46);
-				emitbyte(value.num);
-			} else
-				return 1;
-		} else if (prim == 1) {
-			/*
-			 * 16 bit carry ops bc-sp 
-			 */
-			if (arg >= T_BC && arg <= T_SP) {
-				emitbyte(0xED);
-				emitbyte((0x42 + (isr->opcode == 0x88 ? 8 : 0)) +
-						 ((arg - 8) << 4));
-			} else
-				return 1;
-		} else if (prim == 2) {
-			/*
-			 * 16 bit add ops bc-sp 
-			 */
-			if (arg >= T_BC && arg <= T_SP) {
-				emitbyte(0x09 + ((arg - 8) << 4));
-			} else
-				return 1;
-		} else if (prim == 3) {
-			/*
-			 * correct for hl -> ix,iy 
-			 */
-			if (arg == T_HL)
-				arg = reg;
-			if (arg == reg)
-				arg = T_HL;
-
-			/*
-			 * pick ext block 
-			 */
-			if (reg == T_IX)
-				emitbyte(0xDD);
-			else
-				emitbyte(0xFD);
-
-			/*
-			 * 16 bit add ops bc-sp 
-			 */
-			if (arg >= T_BC && arg <= T_SP) {
-				emitbyte(0x09 + ((arg - 8) << 4));
-			} else
-				return 1;
-		}
-		return 0;
+		if (prim == 3 && arg == reg)
+			arg = T_HL;
 	}
 
-	if (isr->type == INCR) {
-		arg = operand(&value);
-
+	if (prim == 0) {
 		if (arg <= T_A) {
-			/* b,c,d,e,h,l,a */
-			emitbyte(isr->opcode + ((arg) << 3));
-		} else if (arg <= T_SP) {
-			/* words bc,de,hl,sp */
-			emitbyte(isr->arg + ((arg - T_BC) << 4));
-		} else if (arg == T_IX) {
-			emitbyte(0xDD);
-			emitbyte(isr->arg + 0x20);
-		} else if (arg == T_IY) {
-			emitbyte(0xFD);
-			emitbyte(isr->arg + 0x20);
+			emitbyte(isr->opcode + arg);
 		} else if (arg >= T_IXH && arg <= T_IX_D) {
-			/*
-			 * ixh-(ix+*) 
-			 */
 			emitbyte(0xDD);
-			emitbyte(isr->opcode + ((arg - 19) << 3));
+			emitbyte(isr->opcode + (arg - T_IXH) + 4);
 			if (arg == T_IX_D)
-				emitbyte(&value);
+				emitbyte(value.num & 0xFF);
 		} else if (arg >= T_IYH && arg <= T_IY_D) {
-			/*
-			 * iyh-(iy+*) 
-			 */
 			emitbyte(0xFD);
-			emitbyte(isr->opcode + ((arg - T_IY) << 3));
+			emitbyte(isr->opcode + (arg - T_IYH) + 4);
 			if (arg == T_IY_D)
-				emitbyte(&value);
+				emitbyte(value.num & 0xFF);
+		} else if (arg == T_PLAIN) {
+			emitbyte(isr->opcode + 0x46);
+			emitbyte(value.num);
 		} else
 			return 1;
-		return 0;
-	}
-
-	if (isr->type == BITSH) {
-		arg = operand(&value);
-
-		/*
-		 * bit instructions have a bit indicator that must be parsed 
-		 */
-		reg = 0;
-		if (isr->arg) {
-			if (arg != T_PLAIN || value.sym)
-				return 1;
-
-			if (value.num > 7)
-				return 1;
-
-			reg = value.num;
-
-			need(',');
-			arg = operand(&value);
-		}
-
-		/*
-		 * check for (ix+*) / (iy+*) 
-		 */
-		if (arg == T_IX_D || arg == T_IY_D) {
-
-			if (arg == T_IX_D)
-				emitbyte(0xDD);
-			else
-				emitbyte(0xFD);
-
-			emitbyte(0xCB);
-
-			/*
-			 * write offset 
-			 */
-			emitbyte(&value);
-
-			arg = T_HL_I;
-			/*
-			 * its an undefined operation 
-			 */
-			if (peekchar() == ',') {
-				need(',');
-				arg = operand(&value);
-
-				/*
-				 * short out for (hl) 
-				 */
-				if (arg == 6)
-					arg = 8;
-			}
+	} else if (prim == 1) {
+		if (arg >= T_BC && arg <= T_SP) {
+			emitbyte(0xED);
+			emitbyte((0x42 + (isr->opcode == 0x88 ? 8 : 0)) +
+					 ((arg - 8) << 4));
 		} else
-			emitbyte(0xCB);
-
-		if (arg > 7)
 			return 1;
+	} else if (prim == 2) {
+		if (arg >= T_BC && arg <= T_SP) {
+			emitbyte(0x09 + ((arg - 8) << 4));
+		} else
+			return 1;
+	} else if (prim == 3) {
+		if (arg == T_HL)
+			arg = reg;
+		if (arg == reg)
+			arg = T_HL;
 
-		emitbyte(isr->opcode + arg + (reg << 3));
-		return 0;
-	}
-
-	if (isr->type == STACK) {
-		arg = operand(&value);
-		/* hack - swap af for sp */
-		if (arg == T_SP)
-			arg = 12;
-		else if (arg == 12)
-			arg = T_SP;
+		if (reg == T_IX)
+			emitbyte(0xDD);
+		else
+			emitbyte(0xFD);
 
 		if (arg >= T_BC && arg <= T_SP) {
-			emitbyte(isr->opcode + ((arg - T_BC) << 4));
-		} else if (arg == T_IX) {
-			emitbyte(0xDD);
-			emitbyte(isr->opcode + 0x20);
-		} else if (arg == T_IY) {
-			emitbyte(0xFD);
-			emitbyte(isr->opcode + 0x20);
+			emitbyte(0x09 + ((arg - 8) << 4));
 		} else
 			return 1;
-		return 0;
 	}
+	return 0;
+}
 
-	if (isr->type == RET) {
-		arg = operand(&value);
+static char
+do_incr(isr)
+struct instruct *isr;
+{
+	unsigned char arg;
+	struct expval value;
 
-		if (arg >= T_NZ && arg <= T_M) {
-			emitbyte(isr->opcode + ((arg - T_NZ) << 3));
-		} else if (arg == 255) {
-			emitbyte(isr->arg);
-		} else
-			return 1;
-		return 0;
-	}
+	arg = operand(&value);
 
-	if (isr->type == JMP) {
-		arg = operand(&value);
-
-        /* optional condition code */
-        if (arg == T_C) arg = T_CR;
-		if (arg >= T_NZ && arg <= T_M) {
-			emitbyte(isr->opcode + ((arg - T_NZ) << 3));
-			need(',');
-			arg = operand(&value);
-			emit_exp(2, &value);
-		} else if (arg == T_NUM) {
-			emitbyte(isr->opcode + 1);
-			emit_exp(2, &value);
-		} else if (arg == T_HL_I) {
-			emitbyte(isr->arg);
-		} else if (arg == T_IX_I) {
-			emitbyte(0xDD);
-			emitbyte(isr->arg);
-		} else if (arg == T_IY_I) {
-			emitbyte(0xFD);
-			emitbyte(isr->arg);
-		} else if (arg == T_PLAIN) {
-			emit_exp(2, &value);
-		} else
-			return 1;
-		return 0;
-	}
-
-	if (isr->type == JRL) {
-		arg = operand(&value);
-
-		reg = 0;
-		if (isr->arg) { /* not djnz */
-            if (arg == 1) arg = T_CR;
-			if (arg >= T_NZ && arg <= T_CR) {
-				reg = (arg - T_NZ) << 3;
-				need(',');
-				arg = operand(&value);
-			} else if (arg != T_NUM)
-				return 1;
-		}
-
-		if (arg != T_PLAIN)
-			return 1;
-
-		emitbyte(isr->opcode + reg);
-		emit_exp(1, &value);
-		return 0;
-	}
-
-	if (isr->type == CALL) {
-		arg = operand(&value);
-
-        if (arg == 1) arg = T_CR;
-		if (arg >= T_NZ && arg <= T_M) {
-			emitbyte(isr->opcode + ((arg - T_NZ) << 3));
-			need(',');
-			emit_exp(2, &value);
-		} else if (arg == T_PLAIN) {
-			emitbyte(isr->arg);
-			emit_exp(2, &value);
-		} else
-			return 1;
-		return 0;
-	}
-
-	if (isr->type == RST) {
-		arg = operand(&value);
-
-		if (arg != T_PLAIN || value.num & 0x7 || value.num > 0x38)
-			return 1;
-
-		emitbyte(isr->opcode + value.num);
-		return 0;
-	}
-
-	if (isr->type == IN) {
-		arg = operand(&value);
-
-		/* in (c) */
-		if (arg == T_C_I) {
-			emitbyte(0xED);
-			emitbyte(0x70);
-			return 0;
-		}
-
-		if (arg == T_HL_I || arg > T_A)
-			return 1;
-
-		reg = arg;
-		need(',');
-		arg = operand(&value);
-
-		if (reg == T_A && arg == T_INDIR) {
-			emitbyte(isr->opcode);
+	if (arg <= T_A) {
+		emitbyte(isr->opcode + ((arg) << 3));
+	} else if (arg <= T_SP) {
+		emitbyte(isr->arg + ((arg - T_BC) << 4));
+	} else if (arg == T_IX) {
+		emitbyte(0xDD);
+		emitbyte(isr->arg + 0x20);
+	} else if (arg == T_IY) {
+		emitbyte(0xFD);
+		emitbyte(isr->arg + 0x20);
+	} else if (arg >= T_IXH && arg <= T_IX_D) {
+		emitbyte(0xDD);
+		emitbyte(isr->opcode + ((arg - 19) << 3));
+		if (arg == T_IX_D)
 			emitbyte(&value);
-		} else if (arg == T_C_I) {
-			emitbyte(0xED);
-			emitbyte(0x40 + (reg << 3));
-		} else
-			return 1;
-		return 0;
-	}
+	} else if (arg >= T_IYH && arg <= T_IY_D) {
+		emitbyte(0xFD);
+		emitbyte(isr->opcode + ((arg - T_IY) << 3));
+		if (arg == T_IY_D)
+			emitbyte(&value);
+	} else
+		return 1;
+	return 0;
+}
 
-	if (isr->type == OUT) {
+static char
+do_bitsh(isr)
+struct instruct *isr;
+{
+	unsigned char arg, reg;
+	struct expval value;
+
+	arg = operand(&value);
+
+	reg = 0;
+	if (isr->arg) {
+		if (arg != T_PLAIN || value.sym)
+			return 1;
+
+		if (value.num > 7)
+			return 1;
+
+		reg = value.num;
+
+		need(',');
 		arg = operand(&value);
+	}
 
-		if (arg == T_INDIR) {
-			reg = value.num;
+	if (arg == T_IX_D || arg == T_IY_D) {
+
+		if (arg == T_IX_D)
+			emitbyte(0xDD);
+		else
+			emitbyte(0xFD);
+
+		emitbyte(0xCB);
+
+		emitbyte(&value);
+
+		arg = T_HL_I;
+		if (peekchar() == ',') {
 			need(',');
 			arg = operand(&value);
 
-			if (arg != T_A)
-				return 1;
+			if (arg == 6)
+				arg = 8;
+		}
+	} else
+		emitbyte(0xCB);
 
-			emitbyte(isr->opcode);
-			emitbyte(reg);
-		} else if (arg == T_C_I) {
+	if (arg > 7)
+		return 1;
+
+	emitbyte(isr->opcode + arg + (reg << 3));
+	return 0;
+}
+
+static char
+do_stack(isr)
+struct instruct *isr;
+{
+	unsigned char arg;
+	struct expval value;
+
+	arg = operand(&value);
+	if (arg == T_SP)
+		arg = 12;
+	else if (arg == 12)
+		arg = T_SP;
+
+	if (arg >= T_BC && arg <= T_SP) {
+		emitbyte(isr->opcode + ((arg - T_BC) << 4));
+	} else if (arg == T_IX) {
+		emitbyte(0xDD);
+		emitbyte(isr->opcode + 0x20);
+	} else if (arg == T_IY) {
+		emitbyte(0xFD);
+		emitbyte(isr->opcode + 0x20);
+	} else
+		return 1;
+	return 0;
+}
+
+static char
+do_ret(isr)
+struct instruct *isr;
+{
+	unsigned char arg;
+	struct expval value;
+
+	arg = operand(&value);
+
+	if (arg >= T_NZ && arg <= T_M) {
+		emitbyte(isr->opcode + ((arg - T_NZ) << 3));
+	} else if (arg == 255) {
+		emitbyte(isr->arg);
+	} else
+		return 1;
+	return 0;
+}
+
+static char
+do_jmp(isr)
+struct instruct *isr;
+{
+	unsigned char arg;
+	struct expval value;
+
+	arg = operand(&value);
+
+	if (arg == T_C) arg = T_CR;
+	if (arg >= T_NZ && arg <= T_M) {
+		emitbyte(isr->opcode + ((arg - T_NZ) << 3));
+		need(',');
+		arg = operand(&value);
+		emit_exp(2, &value);
+	} else if (arg == T_NUM) {
+		emitbyte(isr->opcode + 1);
+		emit_exp(2, &value);
+	} else if (arg == T_HL_I) {
+		emitbyte(isr->arg);
+	} else if (arg == T_IX_I) {
+		emitbyte(0xDD);
+		emitbyte(isr->arg);
+	} else if (arg == T_IY_I) {
+		emitbyte(0xFD);
+		emitbyte(isr->arg);
+	} else if (arg == T_PLAIN) {
+		emit_exp(2, &value);
+	} else
+		return 1;
+	return 0;
+}
+
+static char
+do_jrl(isr)
+struct instruct *isr;
+{
+	unsigned char arg, reg;
+	struct expval value;
+
+	arg = operand(&value);
+
+	reg = 0;
+	if (isr->arg) {
+		if (arg == 1) arg = T_CR;
+		if (arg >= T_NZ && arg <= T_CR) {
+			reg = (arg - T_NZ) << 3;
 			need(',');
 			arg = operand(&value);
-
-			/* special dispensation for out (c),0 */
-			if (arg == T_HL_I)
-				return 1;
-			if (arg == T_PLAIN && !value.num)
-				arg = T_HL_I;
-
-			if (arg > T_A)
-				return 1;
-
-			emitbyte(0xED);
-			emitbyte(0x41 + (arg << 3));
-		} else
+		} else if (arg != T_NUM && arg != T_PLAIN)
 			return 1;
+	}
+
+	if (arg != T_PLAIN)
+		return 1;
+
+	emitbyte(isr->opcode + reg);
+	emit_exp(1, &value);
+	return 0;
+}
+
+static char
+do_call(isr)
+struct instruct *isr;
+{
+	unsigned char arg;
+	struct expval value;
+
+	arg = operand(&value);
+
+	if (arg == 1) arg = T_CR;
+	if (arg >= T_NZ && arg <= T_M) {
+		emitbyte(isr->opcode + ((arg - T_NZ) << 3));
+		need(',');
+		emit_exp(2, &value);
+	} else if (arg == T_PLAIN) {
+		emitbyte(isr->arg);
+		emit_exp(2, &value);
+	} else
+		return 1;
+	return 0;
+}
+
+static char
+do_rst(isr)
+struct instruct *isr;
+{
+	unsigned char arg;
+	struct expval value;
+
+	arg = operand(&value);
+
+	if (arg != T_PLAIN || value.num & 0x7 || value.num > 0x38)
+		return 1;
+
+	emitbyte(isr->opcode + value.num);
+	return 0;
+}
+
+static char
+do_in(isr)
+struct instruct *isr;
+{
+	unsigned char arg, reg;
+	struct expval value;
+
+	arg = operand(&value);
+
+	if (arg == T_C_I) {
+		emitbyte(0xED);
+		emitbyte(0x70);
 		return 0;
 	}
 
-	if (isr->type == EXCH) {
-		reg = operand(&value);
+	if (arg == T_HL_I || arg > T_A)
+		return 1;
+
+	reg = arg;
+	need(',');
+	arg = operand(&value);
+
+	if (reg == T_A && arg == T_INDIR) {
+		emitbyte(isr->opcode);
+		emitbyte(&value);
+	} else if (arg == T_C_I) {
+		emitbyte(0xED);
+		emitbyte(0x40 + (reg << 3));
+	} else
+		return 1;
+	return 0;
+}
+
+static char
+do_out(isr)
+struct instruct *isr;
+{
+	unsigned char arg, reg;
+	struct expval value;
+
+	arg = operand(&value);
+
+	if (arg == T_INDIR) {
+		reg = value.num;
 		need(',');
 		arg = operand(&value);
 
-		if (reg == T_AF) {
-			if (arg == T_AF) {
-				need('\'');
-				emitbyte(isr->arg);
-			} else
-				return 1;
-		}
-		else if (reg == T_DE) {
-			if (arg == T_HL) {
-				emitbyte(isr->opcode + 0x08);
-			} else
-				return 1;
-		}
-		else if (reg == T_SP_I) {
-			switch (arg) {
-			case T_HL:
-				break;
-			case T_IX:
-				emitbyte(0xDD);
-				break;
-			case T_IY:
-				emitbyte(0xFD);
-				break;
-			default:
-				return 1;
-			}
-			emitbyte(isr->opcode);
-		}
-		return 0;
-	}
+		if (arg != T_A)
+			return 1;
 
-	if (isr->type == INTMODE) {
+		emitbyte(isr->opcode);
+		emitbyte(reg);
+	} else if (arg == T_C_I) {
+		need(',');
 		arg = operand(&value);
 
-		/*
-		 * only 0-2 
-		 */
-		if (arg != T_PLAIN)
+		if (arg == T_HL_I)
+			return 1;
+		if (arg == T_PLAIN && !value.num)
+			arg = T_HL_I;
+
+		if (arg > T_A)
 			return 1;
 
 		emitbyte(0xED);
-		switch (value.num) {
-		case 0:
-		case 1:
-			emitbyte(isr->opcode + (value.num << 4));
-			break;
+		emitbyte(0x41 + (arg << 3));
+	} else
+		return 1;
+	return 0;
+}
 
-		case 2:
+static char
+do_exch(isr)
+struct instruct *isr;
+{
+	unsigned char arg, reg;
+	struct expval value;
+
+	reg = operand(&value);
+	need(',');
+	arg = operand(&value);
+
+	if (reg == T_AF) {
+		if (arg == T_AF) {
+			need('\'');
 			emitbyte(isr->arg);
-			break;
-
-		default:
-			return 1;
-		}
-		return 0;
-	}
-
-	if (isr->type == LOAD) {
-		arg = operand(&value);
-
-		/*
-		 * special case for deferred constant 
-		 */
-		if (arg == T_INDIR) {
-			return do_stax(&value);
-		}
-
-		/*
-		 * standard a-(hl) and ixh-(iy+*) 
-		 */
-		if (arg <= T_A || (arg >= T_IXH && arg <= T_IY_D)) {
-			return do_ldr8(arg, &value);
-		}
-
-		/*
-		 * bc-sp, and ix/iy 
-		 */
-		if ((arg >= T_BC && arg <= T_SP) || (arg == T_IX || arg == T_IY)) {
-			return do_16i(arg);
-		}
-
-		/*
-		 * ld (bc)|(de)|i|r, a 
-		 */
-		if (arg >= 35 && arg <= 38) {
-			need(',');
-			reg = operand(&value);
-			if (reg != 7)
-				return 1;
-
-			switch (arg) {
-			case 35:			/* ld (bc),a */
-				emitbyte(0x02);
-				break;
-
-			case 36:			/* ld (de),a */
-				emitbyte(0x12);
-				break;
-
-			case 37:			/* ld i,a */
-				emitbyte(0xED);
-				emitbyte(0x47);
-				break;
-
-			case 38:			/* ld r,a */
-				emitbyte(0xED);
-				emitbyte(0x4F);
-				break;
-			}
 		} else
 			return 1;
 	}
-	return 1;
+	else if (reg == T_DE) {
+		if (arg == T_HL) {
+			emitbyte(isr->opcode + 0x08);
+		} else
+			return 1;
+	}
+	else if (reg == T_SP_I) {
+		switch (arg) {
+		case T_HL:
+			break;
+		case T_IX:
+			emitbyte(0xDD);
+			break;
+		case T_IY:
+			emitbyte(0xFD);
+			break;
+		default:
+			return 1;
+		}
+		emitbyte(isr->opcode);
+	}
+	return 0;
 }
+
+static char
+do_intmode(isr)
+struct instruct *isr;
+{
+	unsigned char arg;
+	struct expval value;
+
+	arg = operand(&value);
+
+	if (arg != T_PLAIN)
+		return 1;
+
+	emitbyte(0xED);
+	switch (value.num) {
+	case 0:
+	case 1:
+		emitbyte(isr->opcode + (value.num << 4));
+		break;
+
+	case 2:
+		emitbyte(isr->arg);
+		break;
+
+	default:
+		return 1;
+	}
+	return 0;
+}
+
+static char
+do_load(isr)
+struct instruct *isr;
+{
+	unsigned char arg, reg;
+	struct expval value;
+
+	arg = operand(&value);
+
+	if (arg == T_INDIR) {
+		return do_stax(&value);
+	}
+
+	if (arg <= T_A || (arg >= T_IXH && arg <= T_IY_D)) {
+		return do_ldr8(arg, &value);
+	}
+
+	if ((arg >= T_BC && arg <= T_SP) || (arg == T_IX || arg == T_IY)) {
+		return do_16i(arg);
+	}
+
+	if (arg >= T_BC_I && arg <= T_R) {
+		need(',');
+		reg = operand(&value);
+		if (reg != T_A)
+			return 1;
+
+		switch (arg) {
+		case T_BC_I:
+			emitbyte(0x02);
+			break;
+
+		case T_DE_I:
+			emitbyte(0x12);
+			break;
+
+		case T_I:
+			emitbyte(0xED);
+			emitbyte(0x47);
+			break;
+
+		case T_R:
+			emitbyte(0xED);
+			emitbyte(0x4F);
+			break;
+		}
+	} else
+		return 1;
+	return 0;
+}
+
+typedef char (*isr_handler)(struct instruct *);
+
+static isr_handler isr_handlers[] = {
+	0,
+	do_basic,
+	do_basic_ext,
+	do_arith,
+	do_incr,
+	do_bitsh,
+	do_stack,
+	do_ret,
+	do_jmp,
+	do_jrl,
+	do_call,
+	do_rst,
+	do_in,
+	do_out,
+	do_exch,
+	do_intmode,
+	do_load
+};
 
 /*
  * attempts to assemble an instruction assuming a symbol has just been tokenized
@@ -2164,15 +2230,14 @@ asm_instr(in)
 char *in;
 {
 	int i;
+	struct instruct *isr;
 
-	/*
-	 * search for and assemble instruction 
-	 */
 	i = 0;
 	while (isr_table[i].type) {
 		if (match(in, isr_table[i].mnem)) {
-			if (asm_doisr(&isr_table[i]))
-				gripe("invalid operand");;
+			isr = &isr_table[i];
+			if (isr->type < END || isr->type > LOAD || isr_handlers[isr->type](isr))
+				gripe("invalid operand");
 			return 1;
 		}
 		i++;
@@ -2298,7 +2363,8 @@ assemble()
 					continue;
 				}
 
-				if (match(token_buf, "globl")) {
+				if (match(token_buf, "globl") ||
+					match(token_buf, "global")) {
 					while (1) {
 						get_token();
 						if (cur_token != T_NAME)
@@ -2451,8 +2517,8 @@ assemble()
                 }
             }
 
-			outbyte(0x99);
-			outbyte(0x14);
+			outbyte(0x99);		/* magic */
+			outbyte(CONF);		/* config byte */
 			outword(next * 12); /* symbol table size */
 			outword(text_size);	/* text */
 			outword(data_size);	/* data */
@@ -2462,9 +2528,10 @@ assemble()
 			outword(text_size);	/* dataoff */
 
             if (verbose)
-                printf("magic %x text:%d data:%d bss:%d heap:%d symbols:%d textoff:%x dataoff:%x\n",
-                     0x9914, text_size, data_size, bss_size, 0,
-                     next * 12, 0, text_size);
+                printf("magic %x text:%d data:%d bss:%d heap:%d "
+                       "symbols:%d textoff:%x dataoff:%x\n",
+                       0x9914, text_size, data_size, bss_size, 0,
+                       next * 12, 0, text_size);
 
 			/*
 			 * reset segment addresses to their final addresses
@@ -2511,15 +2578,15 @@ assemble()
                 default:
                     break;
                 }
-                if (verbose > 3) {
-                    printf("sym: %9s index: %5d seg: %d type: %x\n",
-                        sym->name, sym->index, sym->seg, type);
+                if (1 || verbose > 3) {
+                    printf("sym: %9s index: %5d seg: %s(%d) type: %x\n",
+                        sym->name, sym->index, segname[sym->seg], sym->seg, type);
                 }
                 if (sym->index == 0xffff)
                     continue;
 	            outword(sym->value);
                 outbyte(type);
-                for (next = 0; next < 9; next++) {
+                for (next = 0; next < SYMLEN; next++) {
                     outbyte(sym->name[next]);
                 }
             }
