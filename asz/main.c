@@ -13,7 +13,7 @@
  *
  * now, instead, for a file foo.s, we write foo.o as the gods intended
  *
- * Changed: <2023-07-09 14:20:00 curt>
+ * Changed: <2025-11-19 15:16:08 curt>
  *
  * vim: tabstop=4 shiftwidth=4 expandtab:
  */
@@ -32,7 +32,7 @@
 #include "asm.h"
 
 char verbose INIT;
-char g_flag INIT;
+char m_flag INIT;
 
 char *progname INIT;
 
@@ -158,7 +158,9 @@ appendtmp()
 void
 usage()
 {
-	printf("usage: %s [-vg] source.s ...\n", progname);
+	printf("usage: %s [-vm] source.s ...\n", progname);
+	printf("\t-v\tincrease verbosity\n");
+	printf("\t-m\t9 character name limit\n");
 	exit(1);
 }
 
@@ -184,8 +186,9 @@ char **argv;
  
 	    while (*s) {
             switch (*s++) {
-			case 'g':
-				g_flag++;
+
+			case 'm':
+				m_flag++;
 				break;
 
 			case 'v':

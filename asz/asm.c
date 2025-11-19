@@ -10,7 +10,7 @@
  * 
  * /usr/src/cmd/asz/asm.c 
  *
- * Changed: <2025-11-19 15:03:36 curt>
+ * Changed: <2025-11-19 15:18:32 curt>
  *
  * vim: tabstop=4 shiftwidth=4 noexpandtab:
  */
@@ -34,13 +34,8 @@
 #define	CONF_9	(CONF_LITTLE | (4 & CONF_SYMLEN))	/* 9 char syms */
 #define	CONF_15	(CONF_LITTLE | (7 & CONF_SYMLEN))	/* 15 char syms */
 
-#define	SYMLEN	9
+#define	SYMLEN	15
 
-#if SYMLEN == 15
-#define	CONF	CONF_15
-#else
-#define	CONF	CONF_9
-#endif
 /*
  * verbosity levels:
  * 1 = file 
@@ -54,7 +49,7 @@ extern FILE *input_file;
 extern int line_num;
 extern char *infile;
 extern char verbose;
-extern char g_flag;
+extern char m_flag;
 
 void appendtmp();
 void asm_reset();
@@ -1001,13 +996,13 @@ unsigned short base;
 
 	while (r) {
 		seg = r->sym->seg;
-		if (1 || verbose > 3) {
+		if (verbose > 3) {
 			printf("reloc: base: %x addr: %x seg: %s(%d) %s\n",
 				   base, r->addr, segname[seg], seg, r->sym->name);
 		}
 
 		bump = r->addr - last;
-		if (1 || verbose > 4) {
+		if (verbose > 4) {
 			printf("bump: %d\n", bump);
 		}
 		while (bump >= 8223) {
@@ -2518,7 +2513,7 @@ assemble()
             }
 
 			outbyte(0x99);		/* magic */
-			outbyte(CONF);		/* config byte */
+			outbyte(m_flag ? CONF_9 : CONF_15);		/* config byte */
 			outword(next * 12); /* symbol table size */
 			outword(text_size);	/* text */
 			outword(data_size);	/* data */
@@ -2578,7 +2573,7 @@ assemble()
                 default:
                     break;
                 }
-                if (1 || verbose > 3) {
+                if (verbose > 3) {
                     printf("sym: %9s index: %5d seg: %s(%d) type: %x\n",
                         sym->name, sym->index, segname[sym->seg], sym->seg, type);
                 }
@@ -2586,7 +2581,7 @@ assemble()
                     continue;
 	            outword(sym->value);
                 outbyte(type);
-                for (next = 0; next < SYMLEN; next++) {
+                for (next = 0; next < (m_flag ? 9 : 15); next++) {
                     outbyte(sym->name[next]);
                 }
             }
