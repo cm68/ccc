@@ -1886,32 +1886,113 @@ doGlobal(void)
     strncpy(label_buf, global_label, sizeof(label_buf) - 1);
     label_buf[sizeof(label_buf) - 1] = '\0';
 
-    /* Check if this symbol was already emitted */
-    isDefined = isDefSym(label_buf);
-    addDefSym(label_buf);
-
     skip();
     if (curchar != ')') {
         fdprintf(2, " = ");
-        parseExpr();
         has_init = 1;
+
+        /* Check if initializer is a byte array ([:b ...]) */
+        if (curchar == '(') {
+            expect('(');
+            skip();
+            if (curchar == '[') {
+                expect('[');
+                skip();
+                expect(':');
+                skip();
+                expect('b');
+                skip();
+
+            /* Parse byte array initializer - we're now at first number */
+
+            /*
+             * Skip tentative array definitions - don't emit yet.
+             * The real definition with data comes later.
+             */
+            if (strstr(type, ":array:-1:")) {
+                /* Skip the rest of the array */
+                while (curchar != ')') {
+                    readNumber();
+                    skip();
+                }
+                expect(')');
+                expect(')');
+                return;
+            }
+
+            /* Emit byte array */
+            isDefined = isDefSym(label_buf);
+            if (!isDefined) {
+                addDefSym(label_buf);
+                switchToSeg(SEG_DATA);
+                fdprintf(outFd, "%s:\n", label_buf);
+                fdputs(outFd, "\t.db ");
+
+                /* Emit comma-separated byte values */
+                while (curchar != ')') {
+                    int val = readNumber();
+                    if (curchar == ')') {
+                        fdprintf(outFd, "%d\n", val);
+                    } else {
+                        fdprintf(outFd, "%d, ", val);
+                    }
+                    skip();
+                }
+            } else {
+                /* Already defined, skip the data */
+                while (curchar != ')') {
+                    readNumber();
+                    skip();
+                }
+            }
+                expect(')');  /* Close [:b ...] */
+                expect(')');  /* Close ([:b ...]) */
+                fdprintf(2, "\n");
+                expect(')');  /* Close global declaration */
+                return;  /* Done - byte array was emitted */
+            } else {
+                /* Non-array initializer wrapped in parens - parse as expression */
+                parseExpr();
+                expect(')');
+            }
+        } else {
+            /* Non-array initializer - parse as expression */
+            parseExpr();
+        }
     }
 
     fdprintf(2, "\n");
 
-    /* Emit assembly for global variable only if not already emitted */
-    if (!isDefined) {
-        /* Switch to appropriate segment based on initialization */
-        if (has_init) {
-            /* Initialized data goes in .data segment */
-            switchToSeg(SEG_DATA);
-        } else {
-            /* Uninitialized data goes in .bss segment */
-            switchToSeg(SEG_BSS);
-        }
+    /*
+     * Skip tentative array definitions (array with size -1).
+     * These are forward declarations; the real definition comes later.
+     */
+    if (!has_init && strstr(type, ":array:-1:")) {
+        expect(')');
+        return;
+    }
 
-        fdprintf(outFd, "%s:\n", label_buf);
-        fdprintf(outFd, "\t.dw 0\n");  /* TODO: Handle initializer values and sizes */
+    /* For non-array initializers, emit the data */
+    if (has_init && curchar == ')') {
+        /* Array initializer was already emitted above */
+    } else if (!has_init) {
+        /* Uninitialized data */
+        isDefined = isDefSym(label_buf);
+        if (!isDefined) {
+            addDefSym(label_buf);
+            switchToSeg(SEG_BSS);
+            fdprintf(outFd, "%s:\n", label_buf);
+            fdprintf(outFd, "\t.dw 0\n");
+        }
+    } else {
+        /* Scalar initializer (not yet implemented) */
+        isDefined = isDefSym(label_buf);
+        if (!isDefined) {
+            addDefSym(label_buf);
+            switchToSeg(SEG_DATA);
+            fdprintf(outFd, "%s:\n", label_buf);
+            fdprintf(outFd, "\t.dw 0\n");  /* TODO: Emit actual scalar value */
+        }
     }
 
     expect(')');
