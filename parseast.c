@@ -53,6 +53,39 @@ isMangledName(const char *name)
 int outFd = 1;  /* Assembly output (default: stdout) */
 static int labelCounter = 0;  /* For generating unique labels */
 
+/* Section tracking */
+#define SECTION_NONE 0
+#define SECTION_TEXT 1
+#define SECTION_DATA 2
+#define SECTION_BSS  3
+static int currentSection = SECTION_NONE;
+
+/*
+ * Switch to a different section if needed
+ * Only emits directive if section is different from current
+ */
+static void
+switchToSection(int section)
+{
+    if (section == currentSection) {
+        return;  /* Already in this section */
+    }
+
+    switch (section) {
+    case SECTION_TEXT:
+        fdputs(outFd, "\n.text\n");
+        break;
+    case SECTION_DATA:
+        fdputs(outFd, "\n.data\n");
+        break;
+    case SECTION_BSS:
+        fdputs(outFd, "\n.bss\n");
+        break;
+    }
+
+    currentSection = section;
+}
+
 /* Output buffering for symbol declarations */
 static char *outputBuffer = NULL;
 static int outBufSize = 0;
@@ -1634,6 +1667,9 @@ doFunction(void)
     ctx.name = name_buf;
     fdprintf(2, "\nFUNCTION %s\n", ctx.name);
 
+    /* Switch to .text section for function code */
+    switchToSection(SECTION_TEXT);
+
     /* Track this function as defined (prepend "_" for assembly label format) */
     /* Static functions (mangled names) don't get the underscore prefix */
     {
@@ -1859,11 +1895,18 @@ doGlobal(void)
     fdprintf(2, "\n");
 
     /* Emit assembly for global variable only if not already emitted */
-    /* TODO: For now, just emit label with .dw 0 */
-    /* Full implementation would handle initializers and different sizes */
     if (!isDefined) {
+        /* Switch to appropriate section based on initialization */
+        if (has_init) {
+            /* Initialized data goes in .data section */
+            switchToSection(SECTION_DATA);
+        } else {
+            /* Uninitialized data goes in .bss section */
+            switchToSection(SECTION_BSS);
+        }
+
         fdprintf(outFd, "%s:\n", global_label);
-        fdprintf(outFd, "\t.dw 0\n");
+        fdprintf(outFd, "\t.dw 0\n");  /* TODO: Handle initializer values and sizes */
     }
 
     expect(')');
