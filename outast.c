@@ -671,11 +671,16 @@ emitDecls(struct name *func)
 void
 emitFunction(struct name *func)
 {
+	const char *func_name;
+
 	if (!func || !func->u.body)
 		return;
 
-	fdprintf(astFd, "\n; Function: %s\n", func->name);
-	fdprintf(astFd, "(f %s ", func->name);
+	/* Use mangled name for static functions, otherwise use original name */
+	func_name = func->mangled_name ? func->mangled_name : func->name;
+
+	fdprintf(astFd, "\n; Function: %s\n", func_name);
+	fdprintf(astFd, "(f %s ", func_name);
 
 	/* Output parameter list */
 	if (func->type) {

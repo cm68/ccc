@@ -10,7 +10,7 @@
  * 
  * /usr/src/cmd/asz/asm.c 
  *
- * Changed: <2025-11-19 17:38:06 curt>
+ * Changed: <2025-11-19 21:09:10 curt>
  *
  * vim: tabstop=4 shiftwidth=4 noexpandtab:
  */
@@ -351,7 +351,7 @@ struct symbol {
     unsigned char seg;              /* SEG_* */
     unsigned short index;           /* object file ordinal */
     unsigned short value;           /* segment relative */
-    char name[SYMLEN];              /* zero padded */
+    char name[SYMLEN+1];			/* zero padded */
     struct symbol *next;
 };
 

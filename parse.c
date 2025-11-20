@@ -1202,6 +1202,15 @@ declaration()
         }
         if (v->type && (v->type->flags & TF_FUNC)) {
             if (cur.type == BEGIN) {
+                /* Assign storage class BEFORE parsing function body
+                 * so it's available when emitting the AST */
+                if (sclass & SC_STATIC) {
+                    v->sclass = SC_STATIC;
+                    v->mangled_name = mangleStatNam(v);
+                } else if (sclass & SC_EXTERN) {
+                    v->sclass = SC_EXTERN;
+                }
+
                 parsefunc(v);
 
                 /* Free the statement tree (dumping now happens in parsefunc) */
@@ -1210,13 +1219,6 @@ declaration()
                     v->u.body = 0;  /* Mark as freed */
                 }
 
-                /* Assign storage class */
-                if (sclass & SC_STATIC) {
-                    v->sclass = SC_STATIC;
-                    v->mangled_name = mangleStatNam(v);
-                } else if (sclass & SC_EXTERN) {
-                    v->sclass = SC_EXTERN;
-                }
                 v->next = global;
                 global = v;
                 break;
@@ -1414,19 +1416,19 @@ parse()
 	/* Verify only basic types remain in symbol table (level 0) */
 	{
 		int i;
-		int non_basic_count = 0;
+		int nonBasicCnt = 0;
 		for (i = 0; i <= lastname; i++) {
 			if (names[i] && names[i]->level > 0) {
 				fdprintf(2, "WARNING: name '%s' at level %d "
 				         "still in symbol table after "
 				         "file parse\n",
 				         names[i]->name, names[i]->level);
-				non_basic_count++;
+				nonBasicCnt++;
 			}
 		}
-		if (non_basic_count > 0) {
+		if (nonBasicCnt > 0) {
 			fdprintf(2, "ASSERTION FAILED: found %d non-basic "
-			         "names after parsing file\n", non_basic_count);
+			         "names after parsing file\n", nonBasicCnt);
 			fatal(0);
 		}
 	}

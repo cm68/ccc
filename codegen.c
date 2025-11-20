@@ -464,7 +464,7 @@ optFrmLayout(struct function_ctx *ctx)
     int num_slots = 0;
     int slot_capacity = 0;
     struct local_var *var;
-    int new_frame_size;
+    int newFrameSize;
     int i, j;
     int slot_idx;
     int found_slot;
@@ -523,10 +523,10 @@ optFrmLayout(struct function_ctx *ctx)
     }
 
     /* Reassign offsets based on slots */
-    new_frame_size = 0;
+    newFrameSize = 0;
     for (i = 0; i < num_slots; i++) {
-        new_frame_size += slots[i].size;
-        slots[i].offset = -new_frame_size;
+        newFrameSize += slots[i].size;
+        slots[i].offset = -newFrameSize;
 
         /* Assign this offset to all variables in the slot */
         for (j = 0; j < slots[i].numVars; j++) {
@@ -536,8 +536,8 @@ optFrmLayout(struct function_ctx *ctx)
 
     /* Update context frame size */
     fdprintf(2, "  Frame optimization: %d bytes -> %d bytes (saved %d bytes)\n",
-             ctx->frame_size, new_frame_size, ctx->frame_size - new_frame_size);
-    ctx->frame_size = new_frame_size;
+             ctx->frame_size, newFrameSize, ctx->frame_size - newFrameSize);
+    ctx->frame_size = newFrameSize;
 
     /* Check frame size limit - IY-indexed addressing uses signed 8-bit offsets
      * Local variables use negative offsets from IY, range is -1 to -128

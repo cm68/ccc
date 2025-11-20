@@ -1798,7 +1798,7 @@ doGlobal(void)
     char *name, *type;
     const char *global_label;
     int has_init = 0;
-    int already_defined;
+    int isDefined;
 
     /* (g name type [init]) */
     name = readSymbol();
@@ -1813,7 +1813,7 @@ doGlobal(void)
     }
 
     /* Check if this symbol was already emitted */
-    already_defined = isDefSym(global_label);
+    isDefined = isDefSym(global_label);
     addDefSym(global_label);
 
     skip();
@@ -1828,7 +1828,7 @@ doGlobal(void)
     /* Emit assembly for global variable only if not already emitted */
     /* TODO: For now, just emit label with .dw 0 */
     /* Full implementation would handle initializers and different sizes */
-    if (!already_defined) {
+    if (!isDefined) {
         fdprintf(outFd, "%s:\n", global_label);
         fdprintf(outFd, "\t.dw 0\n");
     }
