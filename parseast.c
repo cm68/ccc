@@ -53,37 +53,37 @@ isMangledName(const char *name)
 int outFd = 1;  /* Assembly output (default: stdout) */
 static int labelCounter = 0;  /* For generating unique labels */
 
-/* Section tracking */
-#define SECTION_NONE 0
-#define SECTION_TEXT 1
-#define SECTION_DATA 2
-#define SECTION_BSS  3
-static int currentSection = SECTION_NONE;
+/* Segment tracking */
+#define SEG_NONE 0
+#define SEG_TEXT 1
+#define SEG_DATA 2
+#define SEG_BSS  3
+static int currentSeg = SEG_NONE;
 
 /*
- * Switch to a different section if needed
- * Only emits directive if section is different from current
+ * Switch to a different segment if needed
+ * Only emits directive if segment is different from current
  */
 static void
-switchToSection(int section)
+switchToSeg(int seg)
 {
-    if (section == currentSection) {
-        return;  /* Already in this section */
+    if (seg == currentSeg) {
+        return;  /* Already in this segment */
     }
 
-    switch (section) {
-    case SECTION_TEXT:
+    switch (seg) {
+    case SEG_TEXT:
         fdputs(outFd, "\n.text\n");
         break;
-    case SECTION_DATA:
+    case SEG_DATA:
         fdputs(outFd, "\n.data\n");
         break;
-    case SECTION_BSS:
+    case SEG_BSS:
         fdputs(outFd, "\n.bss\n");
         break;
     }
 
-    currentSection = section;
+    currentSeg = seg;
 }
 
 /* Output buffering for symbol declarations */
@@ -1667,8 +1667,8 @@ doFunction(void)
     ctx.name = name_buf;
     fdprintf(2, "\nFUNCTION %s\n", ctx.name);
 
-    /* Switch to .text section for function code */
-    switchToSection(SECTION_TEXT);
+    /* Switch to .text segment for function code */
+    switchToSeg(SEG_TEXT);
 
     /* Track this function as defined (prepend "_" for assembly label format) */
     /* Static functions (mangled names) don't get the underscore prefix */
@@ -1896,13 +1896,13 @@ doGlobal(void)
 
     /* Emit assembly for global variable only if not already emitted */
     if (!isDefined) {
-        /* Switch to appropriate section based on initialization */
+        /* Switch to appropriate segment based on initialization */
         if (has_init) {
-            /* Initialized data goes in .data section */
-            switchToSection(SECTION_DATA);
+            /* Initialized data goes in .data segment */
+            switchToSeg(SEG_DATA);
         } else {
-            /* Uninitialized data goes in .bss section */
-            switchToSection(SECTION_BSS);
+            /* Uninitialized data goes in .bss segment */
+            switchToSeg(SEG_BSS);
         }
 
         fdprintf(outFd, "%s:\n", global_label);
