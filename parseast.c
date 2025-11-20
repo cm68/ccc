@@ -1866,6 +1866,7 @@ doGlobal(void)
 {
     char *name, *type;
     const char *global_label;
+    char label_buf[128];
     int has_init = 0;
     int isDefined;
 
@@ -1881,9 +1882,13 @@ doGlobal(void)
         global_label++;  /* Skip $ to get _varname */
     }
 
+    /* Copy label to buffer before parseExpr() modifies input buffer */
+    strncpy(label_buf, global_label, sizeof(label_buf) - 1);
+    label_buf[sizeof(label_buf) - 1] = '\0';
+
     /* Check if this symbol was already emitted */
-    isDefined = isDefSym(global_label);
-    addDefSym(global_label);
+    isDefined = isDefSym(label_buf);
+    addDefSym(label_buf);
 
     skip();
     if (curchar != ')') {
@@ -1905,7 +1910,7 @@ doGlobal(void)
             switchToSeg(SEG_BSS);
         }
 
-        fdprintf(outFd, "%s:\n", global_label);
+        fdprintf(outFd, "%s:\n", label_buf);
         fdprintf(outFd, "\t.dw 0\n");  /* TODO: Handle initializer values and sizes */
     }
 
@@ -1922,6 +1927,20 @@ doStrLiteral(void)
     data = readQuotedStr();
 
     fdprintf(2, "\nSTRING %s \"%s\"\n", name, data);
+
+    /* Switch to .data segment for string literals */
+    switchToSeg(SEG_DATA);
+
+    /* Emit string literal with underscore prefix */
+    fdprintf(outFd, "_%s:\n", name);
+    fdprintf(outFd, "\t.db \"%s\\0\"\n", data);
+
+    /* Track this string as defined to avoid duplicate emission */
+    {
+        char str_label[128];
+        snprintf(str_label, sizeof(str_label), "_%s", name);
+        addDefSym(str_label);
+    }
 
     expect(')');
 }
