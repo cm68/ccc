@@ -25,6 +25,7 @@
 #include <fcntl.h>
 #include <stdio.h>
 #include <string.h>
+#include <signal.h>
 #define INIT
 #else
 #define INIT = 0
@@ -73,6 +74,22 @@ char tmp;
 }
 
 /*
+ * Signal handler for assembly timeout
+ *
+ * Catches SIGALRM to detect infinite loops or hangs during assembly.
+ * The main() function sets a 5-second alarm that triggers this handler
+ * if assembly doesn't complete in time.
+ */
+#ifdef linux
+void
+timeoutHdlr(int sig)
+{
+    fprintf(stderr, "\n\n*** TIMEOUT after 5 seconds ***\n");
+    exit(1);
+}
+#endif
+
+/*
  * print usage message
  */
 void
@@ -100,6 +117,12 @@ char **argv;
     progname = *argv;
     argv++;
     argc--;
+
+#ifdef linux
+    /* Set up timeout handler to catch infinite loops */
+    signal(SIGALRM, timeoutHdlr);
+    alarm(5);  /* 5 second timeout */
+#endif
  
 	while (argc) {
         s = *argv;
