@@ -13,16 +13,18 @@
  *
  * now, instead, for a file foo.s, we write foo.o as the gods intended
  *
- * Changed: <2025-11-19 15:16:08 curt>
+ * Changed: <2025-11-19 17:16:21 curt>
  *
  * vim: tabstop=4 shiftwidth=4 expandtab:
  */
 
-#include <stdio.h>
 
 #ifdef linux
 #include <stdlib.h>
 #include <unistd.h>
+#include <fcntl.h>
+#include <stdio.h>
+#include <string.h>
 #define INIT
 #else
 #define INIT = 0
@@ -38,70 +40,9 @@ char *progname INIT;
 
 int line_num INIT;
 
-FILE *input_file INIT;
-FILE *output_file INIT;
-FILE *temp_file INIT;
-
-char *infile INIT;
-char outfile[32] INIT;
-char tname[32] INIT;
-
-/*
- * given a source file, open it, the output file, and the temp file
- */
-void
-sio_open(filename)
-char *filename;
-{
-    char *d = outfile;
-
-    infile = filename;
-
-    while (*filename) {
-        if ((*d++ = *filename++) == '.') break;
-    }
-    if (!*filename) {
-        *d++ = '.';
-    }
-    *d++ = 'o';
-    *d++ = '\0';
-
-	if (!(input_file = fopen(infile, "r"))) {
-		printf("cannot open source file %s\n", filename);
-		exit(1);
-	}
-    if (verbose) printf("source %s\n", infile);
-    
-	sprintf(tname, "/tmp/atm%d", getpid());
-	if (!(temp_file = fopen(tname, "wb"))) {
-		printf("cannot open tmp file %s\n", tname);
-		exit(1);
-	}
-
-	if (!(output_file = fopen(outfile, "wb"))) {
-		printf("cannot open output %s\n", outfile);
-		exit(1);
-	}
-
-	rewind(input_file);
-}
-
-/*
- * closes source files when done
- */
-void
-sio_close()
-{
-	if (input_file)
-		fclose(input_file);
-	fclose(output_file);
-	fclose(temp_file);
-	input_file = NULL;
-	output_file = NULL;
-	temp_file = NULL;
-
-	remove(tname);
-}
+int outfd;
+int tmpfd;
+int infd;
 
 /*
  * outputs a byte onto output file
@@ -112,7 +53,7 @@ void
 outbyte(out)
 char out;
 {
-	fwrite(&out, 1, 1, output_file);
+	write(outfd, &out, 1);
 }
 
 /*
@@ -124,32 +65,7 @@ void
 outtmp(tmp)
 char tmp;
 {
-	fwrite(&tmp, 1, 1, temp_file);
-}
-
-/*
- * appends contents of tmp file to output file
- */
-void
-appendtmp()
-{
-	char c;
-
-	fclose(temp_file);
-
-	if (!(temp_file = fopen(tname, "rb"))) {
-		printf("cannot open tmp file\n");
-		exit(1);
-	}
-
-	while (0 < fread(&c, 1, 1, temp_file))
-		fwrite(&c, 1, 1, output_file);
-
-	fclose(temp_file);
-	if (!(temp_file = fopen(tname, "wb"))) {
-		printf("cannot open tmp file\n");
-		exit(1);
-	}
+	write(tmpfd, &tmp, 1);
 }
 
 /*
@@ -158,11 +74,15 @@ appendtmp()
 void
 usage()
 {
-	printf("usage: %s [-vm] source.s ...\n", progname);
-	printf("\t-v\tincrease verbosity\n");
-	printf("\t-m\t9 character name limit\n");
+	fprintf(stderr, "usage: %s [-vm] [ -o <objectfile> ] [<sourcefile>]\n", progname);
+	fprintf(stderr, "\t-v\tincrease verbosity\n");
+	fprintf(stderr, "\t-m\t9 character name limit\n");
 	exit(1);
 }
+
+char *infile;
+char *outfile;
+char tmpbuf[256];
 
 int
 main(argc, argv)
@@ -170,6 +90,8 @@ int argc;
 char **argv;
 {
     char *s;
+    char tname[40];
+    int i;
 
     progname = *argv;
     argv++;
@@ -195,23 +117,70 @@ char **argv;
 				verbose++;
 				break;
 
+            case 'o':
+                outfile = *argv++;
+                argc--;
+                break;
+
 			default:
 				usage();
 			}
 		}
 	}
 
-    if (!argc) {
-        usage();
-    }
-
     if (verbose) {
         printf("verbose: %d\n", verbose);
     }
 
-    while (argc--) {
-        sio_open(*argv++);
-        assemble();
-        sio_close();
+    if (argc) {
+        infile = *argv;
+        infd = open(infile, O_RDONLY);
+		if (infd == -1) {
+            printf("cannot open source file %s\n", infile);
+            exit(1);
+        } 
+        if (!outfile) {
+            outfile = malloc(strlen(infile)+2);
+            strcpy(outfile, infile);
+            s = strrchr(outfile, '.');
+            if (!s) {
+                s = &outfile[strlen(outfile)];
+            }
+            strcpy(s, ".o");
+        }
+    } else {
+        /* no filename specified - use stdin */
+        infd = 0;
+        if (!outfile)
+            outfile = "a.out";
     }
+
+	sprintf(tmpbuf, "/tmp/atm%d", getpid());
+    if ((tmpfd = open(tmpbuf, O_CREAT|O_TRUNC|O_RDWR, 0700)) == -1) {
+        printf("cannot open tmp file %s\n", tmpbuf);
+        exit(1);
+    }
+
+    if ((outfd = creat(outfile, 0700)) == -1) {
+        printf("cannot open source file %s\n", outfile);
+        exit(1);
+    }
+
+    assemble();
+
+    lseek(tmpfd, 0, SEEK_SET);
+    do {
+        i = read(tmpfd, tmpbuf, sizeof(tmpbuf));
+        if (i == -1) {
+            perror("cannot read tmp file");
+            exit(1);
+        }
+        if (write(outfd, tmpbuf, i) != i) {
+            perror("cannot write object file");
+            exit(1);
+        }
+    } while (i == sizeof(tmpbuf));
+    close(outfd);
+    close(infd);
+    close(tmpfd);
 }
