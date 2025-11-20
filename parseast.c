@@ -1917,6 +1917,45 @@ doGlobal(void)
     expect(')');
 }
 
+/*
+ * Emit a string with proper escaping for assembly .db directive
+ * Escapes: newline, tab, quote, backslash, and non-printable chars
+ */
+static void
+emitEscStr(int fd, const char *str)
+{
+    unsigned char c;
+
+    while ((c = *str++)) {
+        switch (c) {
+        case '\n':
+            fdputs(fd, "\\n");
+            break;
+        case '\t':
+            fdputs(fd, "\\t");
+            break;
+        case '\r':
+            fdputs(fd, "\\r");
+            break;
+        case '"':
+            fdputs(fd, "\\\"");
+            break;
+        case '\\':
+            fdputs(fd, "\\\\");
+            break;
+        default:
+            if (c >= 32 && c < 127) {
+                /* Printable ASCII */
+                fdprintf(fd, "%c", c);
+            } else {
+                /* Non-printable: use hex escape */
+                fdprintf(fd, "\\x%02x", c);
+            }
+            break;
+        }
+    }
+}
+
 static void
 doStrLiteral(void)
 {
@@ -1933,7 +1972,9 @@ doStrLiteral(void)
 
     /* Emit string literal with underscore prefix */
     fdprintf(outFd, "_%s:\n", name);
-    fdprintf(outFd, "\t.db \"%s\\0\"\n", data);
+    fdputs(outFd, "\t.db \"");
+    emitEscStr(outFd, data);
+    fdputs(outFd, "\\0\"\n");
 
     /* Track this string as defined to avoid duplicate emission */
     {
