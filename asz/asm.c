@@ -10,7 +10,7 @@
  * 
  * /usr/src/cmd/asz/asm.c 
  *
- * Changed: <2025-11-20 07:06:32 curt>
+ * Changed: <2025-11-20 08:09:18 curt>
  *
  * vim: tabstop=4 shiftwidth=4 noexpandtab:
  */
@@ -422,6 +422,47 @@ struct rhead datar = { "data" };
 struct symbol *symbols INIT;
 
 /*
+ * if looking at whitespace, skip it
+ */
+unsigned char
+skipwhite()
+{
+	unsigned char c;
+
+	while(1) {
+		c = peekchar();
+		if ((c == '\t') || (c == ' ')) {
+			c = nextchar();
+		} else {
+			break;
+		}
+	}
+	return c;
+}
+
+/*
+ * convert token to register number
+ * strips T_BIAS and maps IX/IY registers to H-L range
+ */
+unsigned char
+tok2reg(tok)
+unsigned char tok;
+{
+	tok &= ~T_BIAS;  /* Strip 0x80 bit */
+
+	/* Map IX registers (IXH, IXL, (IX+d)) down to H-L range */
+	if (tok >= 23 && tok <= 25) {
+		tok -= 19;  /* 23->4, 24->5, 25->6 */
+	}
+	/* Map IY registers (IYH, IYL, (IY+d)) down to H-L range */
+	else if (tok >= 26 && tok <= 28) {
+		tok -= 22;  /* 26->4, 27->5, 28->6 */
+	}
+
+	return tok;
+}
+
+/*
  * checks if a string is equal
  * string a is read as lower case
  */
@@ -722,14 +763,17 @@ get_token()
 
     /* skip over whitespace and comments */
     while (1) {
-        c = nextchar();
+		/* ensure buffer has content */
+		if (!*inptr) {
+			get_line();
+		}
+
+		c = skipwhite();
 
         if (c == T_EOF) {
             cur_token = T_EOF;
             return;
         }
-
-        if ((c == ' ') || (c == '\t')) continue;
 
         /* a comment */
         if (c == ';') {
@@ -741,7 +785,7 @@ get_token()
 
     /* if it looks like a symbol, fill it */
     if (alpha(c)) {
-        token_buf[i++] = c;
+        token_buf[i++] = nextchar();
         while (1) {
             c = peekchar();
             if (alpha(c) || (c >= '0' && c <= '9')) {
@@ -760,7 +804,7 @@ get_token()
 
     /* numbers can have radix info, so look for a delimiter */
     else if (c >= '0' & c <= '9') {
-        token_buf[i++] = c;
+        token_buf[i++] = nextchar();
         while (1) {
             c = peekchar();
             if ((c == ')') || (c == ',') || (c == ' ') || 
@@ -809,6 +853,15 @@ get_token()
         token_buf[i++] = '\0';
         c = T_STR;
     }
+
+    /*
+     * Single-character token (operators, punctuation, etc.)
+     * Need to consume the character that skipwhite() peeked at
+     */
+    else {
+        c = nextchar();
+    }
+
     cur_token = c;
 
     if (verbose > 5) {
@@ -1199,8 +1252,10 @@ void
 emit_imm(vp)
 struct expval *vp;
 {
-	if (vp->sym && vp->sym->seg != SEG_ABS && (pass == 1))
+	if (vp->sym && vp->sym->seg != SEG_ABS && (pass == 1)) {
+		printf("sym: %s seg: %s\n", vp->sym->name, segname[vp->sym->seg]);
 		gripe("must be absolute");
+	}
 
 	emitbyte(vp->num);
 }
@@ -1219,11 +1274,9 @@ db()
             break;
         if (c == T_EOF)
             break;
-        /* ignore whitespace */
-        if (c == '\t' || c == ' ') {
-            nextchar();
-            continue;
-        }
+
+		c = skipwhite();
+
 		if (c == '"') {
             /* eat the double quote */
             nextchar();
@@ -1358,14 +1411,7 @@ struct expval *vp;
 				 * populate displacement and eat ')'
 				 */
 				ret = token_buf[1] == 'x' ? T_IX_D : T_IY_D;
-				while(1) {
-					c = peekchar();
-					if ((c == '\t') || (c == ' ')) {
-						c = nextchar();
-					} else {
-						break;
-					}
-				}
+				c = skipwhite();
 				if ((c == '+') || (c == '-')) {
 					get_token();
                 	c = cur_token;
@@ -1416,11 +1462,7 @@ struct expval *vp;
         gripe("need an operand");
     }
 
-	c = peekchar();
-	while ((c == ' ') || (c == '\t')) {
-		nextchar();
-		c = peekchar();
-	}
+	c = skipwhite();
 
 	if (c == '+') {
 		nextchar();
@@ -1572,17 +1614,18 @@ do_ldr8(arg, disp)
 unsigned char arg;
 struct expval *disp;
 {
-    unsigned char has_disp;
 	unsigned char reg, type;
     struct symbol *sym;
     struct expval value;
+	struct expval *disp_ptr;
+	unsigned char arg_reg, reg_reg;
     value.sym = 0;
     disp->sym = 0;
 
-	has_disp = 0;
+	disp_ptr = 0;
 
 	if (arg == T_IX_D || arg == T_IY_D) {
-        has_disp++;
+        disp_ptr = disp;
 	}
 	need(',');
 
@@ -1603,9 +1646,7 @@ struct expval *disp;
                 return 1;
             if (arg != T_IY_D && reg == T_IY_D)
                 return 1;
-            arg -= 3;
 		}
-        arg = arg - (T_IXH + T_H);
 	} else if (reg >= T_IXH && reg <= T_IY_D) {
 		if (arg == T_HL_I)
 			return 1;
@@ -1614,32 +1655,34 @@ struct expval *disp;
 			emitbyte(0xDD);
 		} else {
 			emitbyte(0xFD);
-            reg -= 3;
 		}
-		if (reg == T_IX_D) {
-            has_disp++;
-		} else if (arg == 4 || arg == 5)
+		if (reg == T_IX_D || reg == T_IY_D) {
+            disp_ptr = &value;
+		} else if (tok2reg(arg) == 4 || tok2reg(arg) == 5)
             /* lose on ld [hl], ix[hl] */
 			return 1;
-        reg = reg - (T_IXH + T_H);
 	}
 
 	/*
-	 * no (hl),(hl) 
+	 * no (hl),(hl)
 	 */
 	if (arg == T_HL_I && reg == T_HL_I)
 		return 1;
 
-	if (arg <= T_A && reg <= T_A) {
+	/* Convert tokens to register numbers for opcode calculation */
+	arg_reg = tok2reg(arg);
+	reg_reg = tok2reg(reg);
+
+	if (arg_reg <= 7 && reg_reg <= 7) {
 		/* reg8->reg8 */
-		emitbyte(0x40 + (arg << 3) + reg);
-		if (has_disp)
-			emit_imm(&disp);
-	} else if (arg <= T_A && (reg == T_PLAIN)) {
+		emitbyte(0x40 + (arg_reg << 3) + reg_reg);
+		if (disp_ptr)
+			emit_imm(disp_ptr);
+	} else if (arg_reg <= 7 && (reg == T_PLAIN)) {
 		/* ld reg8, n */
-		emitbyte(0x06 + (arg << 3));
-		if (has_disp)
-			emit_imm(&disp);
+		emitbyte(0x06 + (arg_reg << 3));
+		if (disp_ptr)
+			emit_imm(disp_ptr);
 		emit_imm(&value);
 	} else if (arg == T_A) {
 		/*
