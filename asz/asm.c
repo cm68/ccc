@@ -10,7 +10,7 @@
  * 
  * /usr/src/cmd/asz/asm.c 
  *
- * Changed: <2025-11-19 21:09:10 curt>
+ * Changed: <2025-11-20 07:06:32 curt>
  *
  * vim: tabstop=4 shiftwidth=4 noexpandtab:
  */
@@ -887,7 +887,7 @@ int visible;
 		symbols = sym;
         sym->seg = SEG_UNDEF;
         sym->index = 0xffff;
-		for (i = 0; i < SYMLEN - 1 && name[i] != 0; i++)
+		for (i = 0; i < SYMLEN && name[i]; i++)
 			sym->name[i] = name[i];
 		sym->name[i] = 0;
 	}
@@ -1924,7 +1924,7 @@ struct instruct *isr;
 		need(',');
 		arg = operand(&value);
 		emit_exp(2, &value);
-	} else if (arg == T_NUM) {
+	} else if (arg == T_NUM || arg == T_PLAIN) {
 		emitbyte(isr->opcode + 1);
 		emit_exp(2, &value);
 	} else if (arg == T_HL_I) {
@@ -1935,8 +1935,6 @@ struct instruct *isr;
 	} else if (arg == T_IY_I) {
 		emitbyte(0xFD);
 		emitbyte(isr->arg);
-	} else if (arg == T_PLAIN) {
-		emit_exp(2, &value);
 	} else
 		return 1;
 	return 0;
@@ -2236,17 +2234,14 @@ char *in;
 	int i;
 	struct instruct *isr;
 
-	i = 0;
-	while (isr_table[i].type) {
+	for (i = 0; isr_table[i].type != END; i++) {
 		if (match(in, isr_table[i].mnem)) {
 			isr = &isr_table[i];
-			if (isr->type < END || isr->type > LOAD || isr_handlers[isr->type](isr))
+			if (isr_handlers[isr->type](isr))
 				gripe("invalid operand");
 			return 1;
 		}
-		i++;
 	}
-
 	return 0;
 }
 

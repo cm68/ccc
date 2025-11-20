@@ -53,6 +53,8 @@ void
 outbyte(out)
 char out;
 {
+    if (verbose > 4) 
+        printf("outbyte: 0x%x\n", out); 
 	write(outfd, &out, 1);
 }
 
@@ -65,6 +67,8 @@ void
 outtmp(tmp)
 char tmp;
 {
+    if (verbose > 4) 
+        printf("outtmp: 0x%x\n", tmp);
 	write(tmpfd, &tmp, 1);
 }
 
