@@ -7,7 +7,7 @@
 #include "error.h"
 
 int error;
-int exit_code = 0;  /* Global exit code: 0=success, 1=errors occurred */
+int exitCode = 0;  /* Global exit code: 0=success, 1=errors occurred */
 
 /*
  * print a message for an error code and emit an error location
@@ -59,14 +59,14 @@ gripe(error_t errcode)
     }
 
     /* Print last N tokens for debugging */
-    fdprintf(2, "  Last %d tokens: ", TOKEN_HISTORY_SIZE);
-    for (i = 0; i < TOKEN_HISTORY_SIZE; i++) {
-        int idx = (tokHidx + i) % TOKEN_HISTORY_SIZE;
-        if (tok_hist[idx].type) {
-            if (tokenname[tok_hist[idx].type]) {
-                fdprintf(2, "%s ", tokenname[tok_hist[idx].type]);
+    fdprintf(2, "  Last %d tokens: ", TOK_HIST_SIZE);
+    for (i = 0; i < TOK_HIST_SIZE; i++) {
+        int idx = (tokHidx + i) % TOK_HIST_SIZE;
+        if (tokHist[idx].type) {
+            if (tokenname[tokHist[idx].type]) {
+                fdprintf(2, "%s ", tokenname[tokHist[idx].type]);
             } else {
-                fdprintf(2, "'%c' ", tok_hist[idx].type);
+                fdprintf(2, "'%c' ", tokHist[idx].type);
             }
         }
     }
@@ -91,14 +91,14 @@ gripe(error_t errcode)
     fdprintf(2, "\n");
 
     error = errcode;
-    exit_code = 1;  /* Set global exit code to indicate errors occurred */
+    exitCode = 1;  /* Set global exit code to indicate errors occurred */
 }
 
 /*
  * dump the symbol table
  */
 void
-dump_symbols()
+dumpSymbols()
 {
     int i;
     struct name *n;
@@ -119,7 +119,7 @@ dump_symbols()
                     n->level, n->sclass);
                 if (n->type) {
                     fdprintf(2, " type=");
-                    dump_type(n->type, 0);
+                    dumpType(n->type, 0);
                 }
                 fdprintf(2, "\n");
             }
@@ -134,7 +134,7 @@ dump_symbols()
         int max_types = 1000;  /* Prevent infinite loops from cycles */
         for (t = types; t && type_count < max_types; t = t->next) {
             fdprintf(2, "type @%p: ", (void*)t);
-            dump_type(t, 0);
+            dumpType(t, 0);
             fdprintf(2, "\n");
             type_count++;
         }
@@ -157,7 +157,7 @@ fatal(error_t errcode)
 {
     gripe(errcode);
     fdprintf(2, "too severe to recover\n");
-    dump_symbols();
+    dumpSymbols();
     exit(-errcode);
 }
 

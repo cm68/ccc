@@ -65,7 +65,7 @@ isTypeToken(unsigned char t)
  *   - Consumes '*' and qualifier tokens from input stream
  */
 static struct type *
-parsePointerPrefix(struct type *basetype)
+parsePtrPfx(struct type *basetype)
 {
     struct type *t = basetype;
     while (cur.type == STAR) {
@@ -97,7 +97,7 @@ parsePointerPrefix(struct type *basetype)
  *   - Typical buffer size: 64 bytes (sufficient for C identifiers)
  *
  * Parameters:
- *   allow_anonymous - 1 to allow anonymous params, 0 to require name
+ *   allow_anon - 1 to allow anonymous params, 0 to require name
  *   buf             - Stack buffer to store parameter name
  *   bufsize         - Size of buffer (prevents overflow)
  *
@@ -110,7 +110,7 @@ parsePointerPrefix(struct type *basetype)
  *   - Consumes SYM token if present
  */
 static char *
-parseParamName(unsigned char allow_anonymous, char *buf, int bufsize)
+parseParamNm(unsigned char allow_anon, char *buf, int bufsize)
 {
     if (cur.type == SYM) {
         strncpy(buf, cur.v.name, bufsize - 1);
@@ -118,7 +118,7 @@ parseParamName(unsigned char allow_anonymous, char *buf, int bufsize)
         gettoken();
         return buf;
     }
-    if (allow_anonymous) {
+    if (allow_anon) {
         buf[0] = '\0';
         return buf;
     }
@@ -137,7 +137,7 @@ parseParamName(unsigned char allow_anonymous, char *buf, int bufsize)
  *   - Always duplicates name string to prevent dangling pointers
  *   - Anonymous parameters get empty string "" (not NULL)
  *   - K&R style uses names for matching type declarations to parameter list
- *   - compatible_function_types() ignores names when comparing signatures
+ *   - compatFnTyp() ignores names when comparing signatures
  *
  * Level and scope:
  *   - Sets level to lexlevel+1 (function body scope)
@@ -155,7 +155,7 @@ parseParamName(unsigned char allow_anonymous, char *buf, int bufsize)
  *   - Allocates memory for name structure and duplicates name string
  */
 static struct name *
-create_param_entry(char *name, struct type *type)
+createPrmEnt(char *name, struct type *type)
 {
     struct name *arg = calloc(1, sizeof(*arg));
     // Always strdup the name to avoid dangling pointers
@@ -236,12 +236,12 @@ create_param_entry(char *name, struct type *type)
  *   - For functions: allocates parameter name entries
  */
 struct name *
-declareInternal(struct type **btp, unsigned char struct_elem)
+declInternal(struct type **btp, unsigned char struct_elem)
 {
     struct name *nm, *arg;
     struct type *t, *prefix, *suffix, *rt;
     unsigned long i;
-    unsigned char is_typedef_name;
+    unsigned char is_typedef;
     unsigned char kr_style;
     struct type *param_type;
     struct name *p;
@@ -265,13 +265,13 @@ declareInternal(struct type **btp, unsigned char struct_elem)
     }
     prefix = *btp;
 
-    prefix = parsePointerPrefix(prefix);
+    prefix = parsePtrPfx(prefix);
 
     // parenthesed type definition does precedence
     if (cur.type == LPAR) {
         gettoken();
         rt = 0;
-        nm = declareInternal(&rt, struct_elem);       // recurse
+        nm = declInternal(&rt, struct_elem);       // recurse
         expect(RPAR, ER_D_DP);
         if (*btp && rt) {
             gripe(ER_T_DT);
@@ -398,21 +398,21 @@ declareInternal(struct type **btp, unsigned char struct_elem)
          * ANSI otherwise
          */
         // Check if current symbol is a typedef name
-        is_typedef_name = 0;
+        is_typedef = 0;
         if (cur.type == SYM) {
             n = findName(cur.v.name, 0);
             if (n && n->kind == tdef) {
-                is_typedef_name = 1;
+                is_typedef = 1;
             }
         }
         kr_style = (cur.type == SYM &&
                     !isTypeToken(cur.type) &&
-                    !is_typedef_name);
+                    !is_typedef);
 
         // Parse parameter list
         param_type = NULL;
         while (cur.type != RPAR && cur.type != E_O_F) {
-            char param_name_buf[64];  /* Stack buffer for parameter names */
+            char paramNameBuf[64];  /* Stack buffer for parameter names */
             param_name = NULL;
             param_type = NULL;
 
@@ -435,8 +435,8 @@ declareInternal(struct type **btp, unsigned char struct_elem)
 
             if (kr_style) {
                 // K&R style: just collect names (types come later)
-                param_name = parseParamName(0, param_name_buf,
-                                              sizeof(param_name_buf));
+                param_name = parseParamNm(0, paramNameBuf,
+                                              sizeof(paramNameBuf));
                 if (!param_name) {
                     gripe(ER_D_FA);
                     break;
@@ -450,12 +450,12 @@ declareInternal(struct type **btp, unsigned char struct_elem)
                 }
 
                 // Parse pointer prefix
-                param_type = parsePointerPrefix(basetype);
+                param_type = parsePtrPfx(basetype);
 
                 // Get parameter name (optional for ANSI declarations)
                 /* Allow anonymous */
-                param_name = parseParamName(1, param_name_buf,
-                                              sizeof(param_name_buf));
+                param_name = parseParamNm(1, paramNameBuf,
+                                              sizeof(paramNameBuf));
 
                 // Handle array suffix (converts to pointer)
                 if (cur.type == LBRACK) {
@@ -476,10 +476,10 @@ declareInternal(struct type **btp, unsigned char struct_elem)
              * add to namespace
              */
             /*
-             * Type comparison uses compatible_function_types() which
+             * Type comparison uses compatFnTyp() which
              * ignores names
              */
-            arg = create_param_entry(param_name, param_type);
+            arg = createPrmEnt(param_name, param_type);
             arg->next = suffix->elem;
             suffix->elem = arg;
 
@@ -502,18 +502,18 @@ declareInternal(struct type **btp, unsigned char struct_elem)
         if (kr_style && isTypeToken(cur.type)) {
             while (isTypeToken(cur.type) && cur.type != E_O_F &&
                    cur.type != BEGIN) {
-                char param_name_buf[64];  /* Stack buffer for parameter names */
+                char paramNameBuf[64];  /* Stack buffer for parameter names */
                 struct type *basetype = getbasetype();
                 if (!basetype) {
                     break;
                 }
 
                 // Parse declarator
-                param_type = parsePointerPrefix(basetype);
+                param_type = parsePtrPfx(basetype);
 
                 // Get parameter name (required for K&R declarations)
-                param_name = parseParamName(0, param_name_buf,
-                                              sizeof(param_name_buf));
+                param_name = parseParamNm(0, paramNameBuf,
+                                              sizeof(paramNameBuf));
                 if (!param_name) {
                     gripe(ER_D_FM);
                     break;
@@ -570,17 +570,17 @@ declareInternal(struct type **btp, unsigned char struct_elem)
     }
 
     return nm;
-}                               // declareInternal
+}                               // declInternal
 
 /*
- * Public wrapper for declareInternal - normal variable/function declarations
+ * Public wrapper for declInternal - normal variable/function declarations
  *
  * Simplified interface for declaring normal variables and functions that
  * should be added to the global names[] symbol table. Used by parse.c for
  * all non-struct-member declarations.
  *
  * Behavior:
- *   - Calls declareInternal() with struct_elem=0
+ *   - Calls declInternal() with struct_elem=0
  *   - Name entries are added to names[] array
  *   - Visible in current lexical scope
  *
@@ -594,12 +594,12 @@ declareInternal(struct type **btp, unsigned char struct_elem)
  *   btp - Pointer to base type (in/out parameter)
  *
  * Returns:
- *   Name entry created by declareInternal(), or NULL on error
+ *   Name entry created by declInternal(), or NULL on error
  */
 struct name *
 declare(struct type **btp)
 {
-    return declareInternal(btp, 0);
+    return declInternal(btp, 0);
 }
 
 /*
@@ -713,7 +713,7 @@ parseTypeName(void)
     }
 
     /* Parse pointer prefix (*, **, etc.) */
-    result_type = parsePointerPrefix(base_type);
+    result_type = parsePtrPfx(base_type);
 
     /* TODO: Parse abstract declarator for arrays/function pointers
      * For now, we handle simple types and pointers

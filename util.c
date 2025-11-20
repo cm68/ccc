@@ -119,7 +119,7 @@ longout(char *d, long v)
  * this means escaping control characters
  */
 int
-quoted_string(char *d, char *s)
+quotedString(char *d, char *s)
 {
 	int len = *s++;
 	int ret = 1;

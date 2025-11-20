@@ -40,14 +40,14 @@ getSizeSuffix(struct type *t)
  * Helper: emit space followed by child expression (if non-null)
  * Used for AST tree serialization to reduce code duplication
  */
-static void emit_expr(struct expr *e);  /* forward declaration */
+static void emitExpr(struct expr *e);  /* forward declaration */
 
 static void
 emitChild(struct expr *e)
 {
 	if (e) {
 		fdprintf(astFd, " ");
-		emit_expr(e);
+		emitExpr(e);
 	}
 }
 
@@ -60,7 +60,7 @@ emitChild(struct expr *e)
  * Memory ops annotated with size: (M:b expr) (=:l lvalue rvalue)
  */
 static void
-emit_expr(struct expr *e)
+emitExpr(struct expr *e)
 {
 	struct name *sym;
 	char *prefix;
@@ -158,17 +158,27 @@ emit_expr(struct expr *e)
 
 	case INCR:
 	case DECR:
-		/* Increment/decrement operators: map to single-character tokens */
+		/* Increment/decrement operators: emit with increment amount */
+		/* For pointers, amount is size of pointed-to type */
+		/* For scalars, amount is 1 */
 		{
 			unsigned char op_char;
+			int amount = 1;
+
 			if (e->op == INCR) {
 				op_char = (e->flags & E_POSTFIX) ? POSTINC : PREINC;
 			} else {
 				op_char = (e->flags & E_POSTFIX) ? POSTDEC : PREDEC;
 			}
+
+			/* Calculate increment amount based on type */
+			if (e->type && (e->type->flags & TF_POINTER) && e->type->sub) {
+				amount = e->type->sub->size;
+			}
+
 			fdprintf(astFd, "(%c", op_char);
 			emitChild(e->left);
-			fdprintf(astFd, ")");
+			fdprintf(astFd, " %d)", amount);
 		}
 		break;
 
@@ -264,7 +274,7 @@ emitTypeInfo(struct type *type)
  * Each statement type has its own format
  */
 static void
-emit_stmt(struct stmt *st)
+emitStmt(struct stmt *st)
 {
 	if (!st)
 		return;
@@ -286,23 +296,23 @@ emit_stmt(struct stmt *st)
 
 		if (st->chain) {
 			fdprintf(astFd, " ");
-			emit_stmt(st->chain);
+			emitStmt(st->chain);
 		}
 		fdprintf(astFd, ")");
 		break;
 
 	case IF:
 		fdprintf(astFd, "(I ");  /* If */
-		emit_expr(st->left);
+		emitExpr(st->left);
 		fdprintf(astFd, " ");
 		if (st->chain) {
-			emit_stmt(st->chain);
+			emitStmt(st->chain);
 		} else {
 			fdprintf(astFd, "()");
 		}
 		if (st->otherwise) {
 			fdprintf(astFd, " ");
-			emit_stmt(st->otherwise);
+			emitStmt(st->otherwise);
 		}
 		fdprintf(astFd, ")");
 		break;
@@ -315,11 +325,11 @@ emit_stmt(struct stmt *st)
 			fdprintf(astFd, "(L %s_top) ", st->label);
 			/* Test condition (if false, goto break) */
 			fdprintf(astFd, "(I ");
-			emit_expr(st->left);
+			emitExpr(st->left);
 			fdprintf(astFd, " ");
 			/* Body */
 			if (st->chain) {
-				emit_stmt(st->chain);
+				emitStmt(st->chain);
 			} else {
 				fdprintf(astFd, "()");
 			}
@@ -333,10 +343,10 @@ emit_stmt(struct stmt *st)
 		} else {
 			/* Fallback: emit original WHILE format */
 			fdprintf(astFd, "(W ");
-			emit_expr(st->left);
+			emitExpr(st->left);
 			fdprintf(astFd, " ");
 			if (st->chain) {
-				emit_stmt(st->chain);
+				emitStmt(st->chain);
 			} else {
 				fdprintf(astFd, "()");
 			}
@@ -352,7 +362,7 @@ emit_stmt(struct stmt *st)
 			fdprintf(astFd, "(L %s_top) ", st->label);
 			/* Body */
 			if (st->chain) {
-				emit_stmt(st->chain);
+				emitStmt(st->chain);
 			} else {
 				fdprintf(astFd, "()");
 			}
@@ -361,7 +371,7 @@ emit_stmt(struct stmt *st)
 			fdprintf(astFd, "(L %s_test) ", st->label);
 			/* Test condition and loop back */
 			fdprintf(astFd, "(I ");
-			emit_expr(st->left);
+			emitExpr(st->left);
 			fdprintf(astFd, " (G %s_top) ()) ", st->label);
 			/* Break label */
 			fdprintf(astFd, "(L %s_break)", st->label);
@@ -369,12 +379,12 @@ emit_stmt(struct stmt *st)
 			/* Fallback: emit original DO format */
 			fdprintf(astFd, "(D ");
 			if (st->chain) {
-				emit_stmt(st->chain);
+				emitStmt(st->chain);
 			} else {
 				fdprintf(astFd, "()");
 			}
 			fdprintf(astFd, " ");
-			emit_expr(st->left);
+			emitExpr(st->left);
 			fdprintf(astFd, ")");
 		}
 		break;
@@ -389,7 +399,7 @@ emit_stmt(struct stmt *st)
 			/* Init expression */
 			if (st->left) {
 				fdprintf(astFd, "(E ");
-				emit_expr(st->left);
+				emitExpr(st->left);
 				fdprintf(astFd, ") ");
 			}
 			/* Top label */
@@ -397,11 +407,11 @@ emit_stmt(struct stmt *st)
 			/* Test condition */
 			if (st->middle) {
 				fdprintf(astFd, "(I ");
-				emit_expr(st->middle);
+				emitExpr(st->middle);
 				fdprintf(astFd, " ");
 				/* Body */
 				if (st->chain) {
-					emit_stmt(st->chain);
+					emitStmt(st->chain);
 				} else {
 					fdprintf(astFd, "()");
 				}
@@ -409,7 +419,7 @@ emit_stmt(struct stmt *st)
 			} else {
 				/* No condition - always execute body */
 				if (st->chain) {
-					emit_stmt(st->chain);
+					emitStmt(st->chain);
 				} else {
 					fdprintf(astFd, "()");
 				}
@@ -420,7 +430,7 @@ emit_stmt(struct stmt *st)
 			/* Increment expression */
 			if (st->right) {
 				fdprintf(astFd, "(E ");
-				emit_expr(st->right);
+				emitExpr(st->right);
 				fdprintf(astFd, ") ");
 			}
 			/* Goto top */
@@ -430,14 +440,14 @@ emit_stmt(struct stmt *st)
 		} else {
 			/* Fallback: emit original FOR format */
 			fdprintf(astFd, "(F ");
-			emit_expr(st->left);
+			emitExpr(st->left);
 			fdprintf(astFd, " ");
-			emit_expr(st->middle);
+			emitExpr(st->middle);
 			fdprintf(astFd, " ");
-			emit_expr(st->right);
+			emitExpr(st->right);
 			fdprintf(astFd, " ");
 			if (st->chain) {
-				emit_stmt(st->chain);
+				emitStmt(st->chain);
 			} else {
 				fdprintf(astFd, "()");
 			}
@@ -453,10 +463,10 @@ emit_stmt(struct stmt *st)
 			fdprintf(astFd, "(L %s_top) ", st->label);
 			/* Original switch structure */
 			fdprintf(astFd, "(S ");
-			emit_expr(st->left);
+			emitExpr(st->left);
 			fdprintf(astFd, " ");
 			if (st->chain) {
-				emit_stmt(st->chain);
+				emitStmt(st->chain);
 			} else {
 				fdprintf(astFd, "()");
 			}
@@ -466,10 +476,10 @@ emit_stmt(struct stmt *st)
 		} else {
 			/* Fallback: emit original SWITCH format */
 			fdprintf(astFd, "(S ");
-			emit_expr(st->left);
+			emitExpr(st->left);
 			fdprintf(astFd, " ");
 			if (st->chain) {
-				emit_stmt(st->chain);
+				emitStmt(st->chain);
 			} else {
 				fdprintf(astFd, "()");
 			}
@@ -479,10 +489,10 @@ emit_stmt(struct stmt *st)
 
 	case CASE:
 		fdprintf(astFd, "(C ");  /* Case */
-		emit_expr(st->left);
+		emitExpr(st->left);
 		fdprintf(astFd, " ");
 		if (st->chain) {
-			emit_stmt(st->chain);
+			emitStmt(st->chain);
 		} else {
 			fdprintf(astFd, "()");
 		}
@@ -492,7 +502,7 @@ emit_stmt(struct stmt *st)
 	case DEFAULT:
 		fdprintf(astFd, "(O ");  /* Default (O for default) */
 		if (st->chain) {
-			emit_stmt(st->chain);
+			emitStmt(st->chain);
 		} else {
 			fdprintf(astFd, "()");
 		}
@@ -502,7 +512,7 @@ emit_stmt(struct stmt *st)
 	case RETURN:
 		fdprintf(astFd, "(R ");  /* Return */
 		if (st->left) {
-			emit_expr(st->left);
+			emitExpr(st->left);
 		}
 		fdprintf(astFd, ")");
 		break;
@@ -525,7 +535,7 @@ emit_stmt(struct stmt *st)
 
 	case EXPR:
 		fdprintf(astFd, "(E ");  /* Expression statement */
-		emit_expr(st->left);
+		emitExpr(st->left);
 		fdprintf(astFd, ")");
 		break;
 
@@ -578,7 +588,7 @@ emit_stmt(struct stmt *st)
 	/* Output sibling statements */
 	if (st->next) {
 		fdprintf(astFd, " ");
-		emit_stmt(st->next);
+		emitStmt(st->next);
 	}
 }
 
@@ -611,10 +621,10 @@ emitParams(struct type *functype)
 
 /*
  * Output declaration nodes for function parameters and local variables
- * Called while variables are still in scope (before pop_scope)
+ * Called while variables are still in scope (before popScope)
  */
 static void
-emit_declarations(struct name *func)
+emitDecls(struct name *func)
 {
 	extern struct name **names;
 	extern int lastname;
@@ -681,11 +691,11 @@ emitFunction(struct name *func)
 	}
 
 	/* Output declarations for parameters and local variables */
-	emit_declarations(func);
+	emitDecls(func);
 
 	/* Output function body */
 	fdprintf(astFd, "\n  ");
-	emit_stmt(func->u.body);
+	emitStmt(func->u.body);
 	fdprintf(astFd, ")\n");
 }
 
@@ -695,7 +705,7 @@ emitFunction(struct name *func)
  * elem_type: type of array elements for width annotation
  */
 static void
-emitInitializerList(struct expr *init, struct type *elem_type)
+emitInitList(struct expr *init, struct type *elem_type)
 {
 	struct expr *item;
 	char width;
@@ -706,7 +716,7 @@ emitInitializerList(struct expr *init, struct type *elem_type)
 	fdprintf(astFd, "([:%c", width);
 	for (item = init; item; item = item->next) {
 		fdprintf(astFd, " ");
-		emit_expr(item);
+		emitExpr(item);
 	}
 	fdprintf(astFd, ")");
 }
@@ -716,7 +726,7 @@ emitInitializerList(struct expr *init, struct type *elem_type)
  * Called when string literal is created during parsing
  */
 void
-emitStringLiteral(struct name *strname)
+emitStrLit(struct name *strname)
 {
 	cstring str;
 	unsigned char len;
@@ -889,9 +899,9 @@ emitGv(struct name *var)
 			struct type *elem_type =
 			    (var->type && (var->type->flags & TF_ARRAY)) ?
 			    var->type->sub : var->type;
-			emitInitializerList(var->u.init, elem_type);
+			emitInitList(var->u.init, elem_type);
 		} else {
-			emit_expr(var->u.init);
+			emitExpr(var->u.init);
 		}
 	}
 

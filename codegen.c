@@ -6,9 +6,9 @@
  * emit them - that's done by emit.c.
  *
  * Key responsibilities:
- * - assignFrameOffsets(): Assign stack offsets to local variables and parameters
- * - generate_code(): Walk trees and generate assembly code blocks
- * - allocateRegisters(): Allocate variables to registers based on usage patterns
+ * - assignFrmOff(): Assign stack offsets to local variables and parameters
+ * - generateCode(): Walk trees and generate assembly code blocks
+ * - allocRegs(): Allocate variables to registers based on usage patterns
  */
 #include <stdlib.h>
 #include <stdio.h>
@@ -17,13 +17,13 @@
 #include "cc2.h"
 
 /* Forward declaration from parseast.c for symbol tracking */
-void addReferencedSymbol(const char *name);
+void addRefSym(const char *name);
 
 /*
  * Helper: Get the original operand size, looking through SEXT/WIDEN conversions
  */
 static int
-get_original_size(struct expr *e)
+getOrigSize(struct expr *e)
 {
     if (!e) return 2;  /* default to 16-bit */
 
@@ -44,7 +44,7 @@ get_original_size(struct expr *e)
  * Helper: Check if operand is unsigned (look through conversions)
  */
 static int
-is_operand_unsigned(struct expr *e)
+isOpndUnsign(struct expr *e)
 {
     if (!e) return 0;
 
@@ -94,15 +94,15 @@ findVar(struct function_ctx *ctx, const char *symbol)
  * Examples: mul88, umul816, div1616, add168
  */
 static void
-make_binop_funcname(char *buf, size_t bufsize, const char *opname,
+mkBinopFnName(char *buf, size_t bufsize, const char *opname,
                     struct expr *e)
 {
-    int left_bits = get_original_size(e->left) * 8;
-    int right_bits = get_original_size(e->right) * 8;
+    int left_bits = getOrigSize(e->left) * 8;
+    int right_bits = getOrigSize(e->right) * 8;
 
     /* Operation is unsigned if either operand is unsigned */
-    int is_unsigned = is_operand_unsigned(e->left) || 
-        is_operand_unsigned(e->right);
+    int is_unsigned = isOpndUnsign(e->left) || 
+        isOpndUnsign(e->right);
     const char *prefix = is_unsigned ? "u" : "";
 
     snprintf(buf, bufsize, "%s%s%d%d", prefix, opname, left_bits, right_bits);
@@ -189,7 +189,7 @@ addLocalVar(struct function_ctx *ctx, const char *name, unsigned char size,
  * Called whenever a variable is used, updates first_label and last_label
  */
 static void
-updateVarLifetime(struct function_ctx *ctx, const char *name)
+updVarLife(struct function_ctx *ctx, const char *name)
 {
     struct local_var *var;
 
@@ -240,7 +240,7 @@ walkForLocals(struct function_ctx *ctx, struct stmt *s)
     if (s->type == 'd' && s->symbol) {
         /* Skip parameter declarations - they already have offsets */
         if (!isParameter(ctx, s->symbol)) {
-            unsigned char size = get_size_from_typename(s->type_str);
+            unsigned char size = getSizeFromTN(s->type_str);
             /* Detect arrays: type_str contains ":array:" */
             int is_array = (s->type_str && 
                 strstr(s->type_str, ":array:") != NULL) ? 1 : 0;
@@ -275,18 +275,18 @@ walkForLocals(struct function_ctx *ctx, struct stmt *s)
  *   - Variables whose address is taken (future enhancement)
  */
 void
-allocateRegisters(struct function_ctx *ctx)
+allocRegs(struct function_ctx *ctx)
 {
     struct local_var *var;
-    int byte_regs_used = 0;  /* Count of byte registers allocated */
-    int word_regs_used = 0;  /* Count of word registers allocated */
+    int byteRegsUsed = 0;  /* Count of byte registers allocated */
+    int wordRegsUsed = 0;  /* Count of word registers allocated */
     int ix_allocated = 0;    /* IX register allocated flag */
 
     if (!ctx) return;
 
     /* First pass: allocate IX to struct pointer with highest agg_refs */
     {
-        struct local_var *best_ix_candidate = NULL;
+        struct local_var *best_ix_cand = NULL;
         int best_agg_refs = 0;
 
         for (var = ctx->locals; var; var = var->next) {
@@ -295,15 +295,15 @@ allocateRegisters(struct function_ctx *ctx)
             /* Prefer variables with aggregate member accesses */
             if (var->agg_refs > best_agg_refs) {
                 best_agg_refs = var->agg_refs;
-                best_ix_candidate = var;
+                best_ix_cand = var;
             }
         }
 
-        if (best_ix_candidate && best_agg_refs > 0) {
-            best_ix_candidate->reg = REG_IX;
+        if (best_ix_cand && best_agg_refs > 0) {
+            best_ix_cand->reg = REG_IX;
             ix_allocated = 1;
             fdprintf(2, "  Allocated IX to %s (agg_refs=%d)\n",
-                     best_ix_candidate->name, best_ix_candidate->agg_refs);
+                     best_ix_cand->name, best_ix_cand->agg_refs);
         }
     }
 
@@ -322,22 +322,22 @@ allocateRegisters(struct function_ctx *ctx)
          * BC must be allocated before B or C to avoid conflicts
          * BC' excluded because exx swaps both BC and HL, making HL inaccessible
          */
-        if (var->size == 2 && word_regs_used < 2) {
+        if (var->size == 2 && wordRegsUsed < 2) {
             enum register_id regs[] = {REG_BC, REG_IX};
             /* If IX already allocated to struct pointer, skip it */
-            if (word_regs_used == 1 && ix_allocated) {
+            if (wordRegsUsed == 1 && ix_allocated) {
                 /* No more registers available */
                 continue;
             }
-            var->reg = regs[word_regs_used];
+            var->reg = regs[wordRegsUsed];
             if (var->reg == REG_IX) {
                 ix_allocated = 1;
             }
             /* Mark B and C as unavailable if BC is allocated */
             if (var->reg == REG_BC) {
-                byte_regs_used = 2; /* B and C are now unavailable */
+                byteRegsUsed = 2; /* B and C are now unavailable */
             }
-            word_regs_used++;
+            wordRegsUsed++;
             fdprintf(2, "  Allocated word reg to %s (refs=%d)\n",
                      var->name, var->ref_count);
         }
@@ -359,28 +359,28 @@ allocateRegisters(struct function_ctx *ctx)
          * Cannot allocate B or C if BC is already allocated (they conflict)
          * B' and C' can always be allocated (no conflicts)
          */
-        if (var->size == 1 && byte_regs_used < 4) {
+        if (var->size == 1 && byteRegsUsed < 4) {
             enum register_id regs[] = {REG_B, REG_C, REG_Bp, REG_Cp};
-            var->reg = regs[byte_regs_used];
-            byte_regs_used++;
+            var->reg = regs[byteRegsUsed];
+            byteRegsUsed++;
             fdprintf(2, "  Allocated byte reg to %s (refs=%d)\n",
                      var->name, var->ref_count);
         }
     }
 
     fdprintf(2, "  Register allocation complete: %d byte, %d word, %d IX\n",
-             byte_regs_used, word_regs_used, ix_allocated);
+             byteRegsUsed, wordRegsUsed, ix_allocated);
 }
 
 /*
  * Stack slot structure for frame optimization
  * A slot can hold multiple variables whose lifetimes don't overlap
  */
-struct stack_slot {
+struct stackSlot {
     int offset;              /* Negative offset from frame pointer */
     int size;                /* Size of this slot in bytes */
     struct local_var **vars; /* Array of variables using this slot */
-    int num_vars;            /* Number of variables in this slot */
+    int numVars;            /* Number of variables in this slot */
     int capacity;            /* Allocated capacity of vars array */
 };
 
@@ -389,7 +389,7 @@ struct stack_slot {
  * Returns 1 if they overlap (cannot share a slot), 0 if they don't overlap
  */
 static int
-lifetimesOverlap(struct local_var *v1, struct local_var *v2)
+lifeOverlap(struct local_var *v1, struct local_var *v2)
 {
     /* If either variable is never used, they don't conflict */
     if (v1->first_label == -1 || v2->first_label == -1) {
@@ -407,7 +407,7 @@ lifetimesOverlap(struct local_var *v1, struct local_var *v2)
  * Returns 1 if variable can use this slot, 0 otherwise
  */
 static int
-canUseSlot(struct stack_slot *slot, struct local_var *var)
+canUseSlot(struct stackSlot *slot, struct local_var *var)
 {
     int i;
 
@@ -417,8 +417,8 @@ canUseSlot(struct stack_slot *slot, struct local_var *var)
     }
 
     /* Check for lifetime conflicts with all variables in this slot */
-    for (i = 0; i < slot->num_vars; i++) {
-        if (lifetimesOverlap(var, slot->vars[i])) {
+    for (i = 0; i < slot->numVars; i++) {
+        if (lifeOverlap(var, slot->vars[i])) {
             return 0;  /* Conflict - cannot use this slot */
         }
     }
@@ -430,16 +430,16 @@ canUseSlot(struct stack_slot *slot, struct local_var *var)
  * Helper: Add a variable to a slot
  */
 static void
-addVarToSlot(struct stack_slot *slot, struct local_var *var)
+addVarToSlot(struct stackSlot *slot, struct local_var *var)
 {
     /* Grow array if needed */
-    if (slot->num_vars >= slot->capacity) {
+    if (slot->numVars >= slot->capacity) {
         slot->capacity = slot->capacity ? slot->capacity * 2 : 4;
         slot->vars = realloc(slot->vars,
                              slot->capacity * sizeof(struct local_var *));
     }
 
-    slot->vars[slot->num_vars++] = var;
+    slot->vars[slot->numVars++] = var;
 }
 
 /*
@@ -458,9 +458,9 @@ addVarToSlot(struct stack_slot *slot, struct local_var *var)
  * lifetimes to share the same stack location.
  */
 void
-optimizeFrameLayout(struct function_ctx *ctx)
+optFrmLayout(struct function_ctx *ctx)
 {
-    struct stack_slot *slots = NULL;
+    struct stackSlot *slots = NULL;
     int num_slots = 0;
     int slot_capacity = 0;
     struct local_var *var;
@@ -493,7 +493,7 @@ optimizeFrameLayout(struct function_ctx *ctx)
                 found_slot = 1;
                 fdprintf(2, "    %s: slot %d (lifetime %d-%d, shares with %d others)\n",
                          var->name, slot_idx, var->first_label, var->last_label,
-                         slots[slot_idx].num_vars - 1);
+                         slots[slot_idx].numVars - 1);
                 break;
             }
         }
@@ -503,14 +503,14 @@ optimizeFrameLayout(struct function_ctx *ctx)
             /* Grow slots array if needed */
             if (num_slots >= slot_capacity) {
                 slot_capacity = slot_capacity ? slot_capacity * 2 : 8;
-                slots = realloc(slots, slot_capacity * sizeof(struct stack_slot));
+                slots = realloc(slots, slot_capacity * sizeof(struct stackSlot));
             }
 
             /* Initialize new slot */
             slots[num_slots].offset = 0;  /* Will assign later */
             slots[num_slots].size = var->size;
             slots[num_slots].vars = NULL;
-            slots[num_slots].num_vars = 0;
+            slots[num_slots].numVars = 0;
             slots[num_slots].capacity = 0;
 
             addVarToSlot(&slots[num_slots], var);
@@ -529,7 +529,7 @@ optimizeFrameLayout(struct function_ctx *ctx)
         slots[i].offset = -new_frame_size;
 
         /* Assign this offset to all variables in the slot */
-        for (j = 0; j < slots[i].num_vars; j++) {
+        for (j = 0; j < slots[i].numVars; j++) {
             slots[i].vars[j]->offset = slots[i].offset;
         }
     }
@@ -560,7 +560,7 @@ optimizeFrameLayout(struct function_ctx *ctx)
  * Phase 1.5: Assign stack frame offsets to all local variables and parameters
  */
 void
-assignFrameOffsets(struct function_ctx *ctx)
+assignFrmOff(struct function_ctx *ctx)
 {
     char *p;
     char name_buf[64];
@@ -606,7 +606,7 @@ assignFrameOffsets(struct function_ctx *ctx)
             /* Add parameter with positive offset */
             if (name_buf[0]) {
                 unsigned char size = type_buf[0] ? 
-                    get_size_from_typename(type_buf) : 2;
+                    getSizeFromTN(type_buf) : 2;
                 addParam(ctx, name_buf, size, param_offset);
                 param_offset += size;
             }
@@ -623,13 +623,13 @@ assignFrameOffsets(struct function_ctx *ctx)
  * Common pattern: move PRIMARY to SECONDARY, call runtime function
  */
 static void
-gen_binop(struct expr *e, const char *op_name)
+genBinop(struct expr *e, const char *op_name)
 {
     char funcname[32];
     char buf[256];
     char *move_inst;
 
-    make_binop_funcname(funcname, sizeof(funcname), op_name, e);
+    mkBinopFnName(funcname, sizeof(funcname), op_name, e);
 
     move_inst = (e->size == 1) ?
         "\tld e, a  ; move PRIMARY to SECONDARY" :
@@ -640,7 +640,7 @@ gen_binop(struct expr *e, const char *op_name)
 }
 
 /* Forward declaration */
-static char *build_stack_cleanup(int bytes);
+static char *buildStkCln(int bytes);
 
 /*
  * Code generation phase (Phase 2)
@@ -651,7 +651,7 @@ static char *build_stack_cleanup(int bytes);
  *   - Binary operators: left PRIMARY, move to SECONDARY, right PRIMARY, operate
  *   - M (DEREF) operations generate actual load instructions
  */
-static void generate_expr(struct function_ctx *ctx, struct expr *e)
+static void generateExpr(struct function_ctx *ctx, struct expr *e)
 {
     char buf[256];
     struct expr *arg;
@@ -666,7 +666,7 @@ static void generate_expr(struct function_ctx *ctx, struct expr *e)
         /* CALL node: left = function, right = argument chain, value = arg count */
         /* NOTE: Don't do normal traversal - we handle it manually here */
         char call_buf[4096];
-        int buf_pos = 0;
+        int bufPos = 0;
 
         arg_count = e->value;
 
@@ -683,10 +683,10 @@ static void generate_expr(struct function_ctx *ctx, struct expr *e)
 
         /* Generate code for each child expression first */
         for (i = 0; i < arg_count; i++) {
-            generate_expr(ctx, args[i]);
+            generateExpr(ctx, args[i]);
         }
         if (e->left) {
-            generate_expr(ctx, e->left);
+            generateExpr(ctx, e->left);
         }
 
         /* Now build the call sequence:
@@ -708,8 +708,8 @@ static void generate_expr(struct function_ctx *ctx, struct expr *e)
                     /* Indirect load placeholder - don't emit */
                 } else {
                     /* Normal asm_block - emit it */
-                    buf_pos += snprintf(call_buf + buf_pos, sizeof(call_buf) - buf_pos,
-                                       "%s%s\n", buf_pos > 0 ? "" : "", args[i]->asm_block);
+                    bufPos += snprintf(call_buf + bufPos, sizeof(call_buf) - bufPos,
+                                       "%s%s\n", bufPos > 0 ? "" : "", args[i]->asm_block);
                 }
             }
 
@@ -721,18 +721,18 @@ static void generate_expr(struct function_ctx *ctx, struct expr *e)
                 /* Can't use placeholder since CALL asm_block is emitted verbatim */
                 /* Just emit a comment for now - actual code will be in emit phase */
                 /* Actually, for CALL args we MUST resolve immediately */
-                buf_pos += snprintf(call_buf + buf_pos, sizeof(call_buf) - buf_pos,
+                bufPos += snprintf(call_buf + bufPos, sizeof(call_buf) - bufPos,
                                    "\t; load arg %d: %s\n", i, args[i]->left->symbol);
             }
 
             /* Push PRIMARY onto stack */
             if (args[i]->size == 1) {
                 /* Byte argument - push as word (Z80 only has 16-bit push) */
-                buf_pos += snprintf(call_buf + buf_pos, sizeof(call_buf) - buf_pos,
+                bufPos += snprintf(call_buf + bufPos, sizeof(call_buf) - bufPos,
                                    "\tld l, a\n\tld h, 0\n\tpush hl  ; push byte arg %d\n", i);
             } else {
                 /* Word argument */
-                buf_pos += snprintf(call_buf + buf_pos, sizeof(call_buf) - buf_pos,
+                bufPos += snprintf(call_buf + bufPos, sizeof(call_buf) - bufPos,
                                    "\tpush hl  ; push arg %d\n", i);
             }
         }
@@ -744,23 +744,52 @@ static void generate_expr(struct function_ctx *ctx, struct expr *e)
             if (func_name[0] == '$') func_name++;
 
             /* Track this function as referenced (for EXTERN declarations) */
-            addReferencedSymbol(func_name);
+            addRefSym(func_name);
 
-            buf_pos += snprintf(call_buf + buf_pos, sizeof(call_buf) - buf_pos,
+            bufPos += snprintf(call_buf + bufPos, sizeof(call_buf) - bufPos,
                                "\tcall %s", func_name);
         } else {
             /* Indirect call through register */
-            buf_pos += snprintf(call_buf + buf_pos, sizeof(call_buf) - buf_pos,
+            bufPos += snprintf(call_buf + bufPos, sizeof(call_buf) - bufPos,
                                "\t; TODO: indirect call");
         }
 
         /* Don't clean up stack here - defer until after result is used */
         /* Attach cleanup code to expression for later emission */
         if (arg_count > 0) {
-            e->cleanup_block = build_stack_cleanup(arg_count * 2);
+            e->cleanup_block = buildStkCln(arg_count * 2);
         }
 
         e->asm_block = strdup(call_buf);
+        return;  /* Early return - custom traversal done */
+    }
+
+    /* Special handling for ternary operator (? :) */
+    if (e->op == '?') {
+        /* Ternary: condition ? true_expr : false_expr */
+        /* Tree structure: '?' node has condition in left, ':' node in right */
+        /* ':' node has true_expr in left, false_expr in right */
+
+        /* Recursively generate code for all three sub-expressions */
+        if (e->left) generateExpr(ctx, e->left);  /* condition */
+        if (e->right && e->right->left) generateExpr(ctx, e->right->left);   /* true expr */
+        if (e->right && e->right->right) generateExpr(ctx, e->right->right); /* false expr */
+
+        /* Allocate labels for branches */
+        e->label = ctx->labelCounter++;  /* false_label */
+        if (e->right) {
+            e->right->label = ctx->labelCounter++;  /* end_label */
+        }
+
+        /* Create jump nodes that will be resolved during emission */
+        /* Jump from condition evaluation to false branch */
+        e->jump = newJump(JUMP_IF_ZERO, e->label);  /* if cond is zero (false), jump to false_label */
+
+        /* Jump from true branch to end (skip false branch) */
+        if (e->right) {
+            e->right->jump = newJump(JMP_UNCOND, e->right->label);  /* jump to end_label */
+        }
+
         return;  /* Early return - custom traversal done */
     }
 
@@ -846,15 +875,15 @@ static void generate_expr(struct function_ctx *ctx, struct expr *e)
 
             if (var_name && var_name[0] == '$') var_name++;
             if (var_name && var_name[0] == 'A') var_name++;
-            updateVarLifetime(ctx, var_name);
+            updVarLife(ctx, var_name);
         }
 
         /* Use placeholder to defer code generation to emit phase */
         /* This allows register allocation to happen first, so emit.c can */
         /* generate optimal code based on whether variable is in register */
-        /* Placeholder format: INCDEC_PLACEHOLDER:op:size:symbol */
-        snprintf(buf, sizeof(buf), "INCDEC_PLACEHOLDER:%d:%d:%s",
-                 (int)e->op, e->size, e->left->symbol);
+        /* Placeholder format: INCDEC_PLACEHOLDER:op:size:amount:symbol */
+        snprintf(buf, sizeof(buf), "INCDEC_PLACEHOLDER:%d:%d:%ld:%s",
+                 (int)e->op, e->size, e->value, e->left->symbol);
         e->asm_block = strdup(buf);
 
             /* Free children manually since we didn't process them normally */
@@ -867,73 +896,142 @@ static void generate_expr(struct function_ctx *ctx, struct expr *e)
         } else if (e->left && e->left->op == 'M') {
             /* Complex lvalue: dereferenced pointer, array element, struct member */
             /* Pattern: (INC/DEC (DEREF addr)) */
-            /* Generate address, load, inc/dec, store */
+            /* Generate address, load, add/sub amount, store */
+            long amount = e->value;  /* Increment amount from AST */
 
-            generate_expr(ctx, e->left->left);  /* Generate address -> PRIMARY (HL) */
+            generateExpr(ctx, e->left->left);  /* Generate address -> PRIMARY (HL) */
 
             if (e->size == 1) {
                 /* Byte increment/decrement */
                 if (is_post) {
-                    snprintf(buf, sizeof(buf),
-                        "\tld e, l\n"
-                        "\tld d, h  ; save address\n"
-                        "\tld a, (hl)  ; load old value\n"
-                        "\tld c, a  ; save old value\n"
-                        "\t%s a\n"
-                        "\tld (de), a  ; store new value\n"
-                        "\tld a, c  ; return old value",
-                        incdec);
+                    if (amount == 1) {
+                        snprintf(buf, sizeof(buf),
+                            "\tld e, l\n"
+                            "\tld d, h  ; save address\n"
+                            "\tld a, (hl)  ; load old value\n"
+                            "\tld c, a  ; save old value\n"
+                            "\t%s a\n"
+                            "\tld (de), a  ; store new value\n"
+                            "\tld a, c  ; return old value",
+                            incdec);
+                    } else {
+                        snprintf(buf, sizeof(buf),
+                            "\tld e, l\n"
+                            "\tld d, h  ; save address\n"
+                            "\tld a, (hl)  ; load old value\n"
+                            "\tld c, a  ; save old value\n"
+                            "\t%s a, %ld\n"
+                            "\tld (de), a  ; store new value\n"
+                            "\tld a, c  ; return old value",
+                            is_dec ? "sub" : "add", amount);
+                    }
                 } else {
-                    snprintf(buf, sizeof(buf),
-                        "\tld e, l\n"
-                        "\tld d, h  ; save address\n"
-                        "\tld a, (hl)  ; load value\n"
-                        "\t%s a\n"
-                        "\tld (de), a  ; store new value",
-                        incdec);
+                    if (amount == 1) {
+                        snprintf(buf, sizeof(buf),
+                            "\tld e, l\n"
+                            "\tld d, h  ; save address\n"
+                            "\tld a, (hl)  ; load value\n"
+                            "\t%s a\n"
+                            "\tld (de), a  ; store new value",
+                            incdec);
+                    } else {
+                        snprintf(buf, sizeof(buf),
+                            "\tld e, l\n"
+                            "\tld d, h  ; save address\n"
+                            "\tld a, (hl)  ; load value\n"
+                            "\t%s a, %ld\n"
+                            "\tld (de), a  ; store new value",
+                            is_dec ? "sub" : "add", amount);
+                    }
                 }
             } else {
                 /* Word increment/decrement */
                 if (is_post) {
-                    snprintf(buf, sizeof(buf),
-                        "\tld e, l\n"
-                        "\tld d, h  ; save address\n"
-                        "\tld a, (hl)\n"
-                        "\tld c, a  ; save old low\n"
-                        "\tinc hl\n"
-                        "\tld a, (hl)\n"
-                        "\tld b, a  ; save old high\n"
-                        "\tld h, b\n"
-                        "\tld l, c  ; old value to HL\n"
-                        "\tpush hl  ; save old value\n"
-                        "\t%s hl\n"
-                        "\tex de, hl\n"
-                        "\tld a, l\n"
-                        "\tld (de), a  ; store new low\n"
-                        "\tinc de\n"
-                        "\tld a, h\n"
-                        "\tld (de), a  ; store new high\n"
-                        "\tpop hl  ; return old value",
-                        incdec);
+                    if (amount == 1) {
+                        snprintf(buf, sizeof(buf),
+                            "\tld e, l\n"
+                            "\tld d, h  ; save address\n"
+                            "\tld a, (hl)\n"
+                            "\tld c, a  ; save old low\n"
+                            "\tinc hl\n"
+                            "\tld a, (hl)\n"
+                            "\tld b, a  ; save old high\n"
+                            "\tld h, b\n"
+                            "\tld l, c  ; old value to HL\n"
+                            "\tpush hl  ; save old value\n"
+                            "\t%s hl\n"
+                            "\tex de, hl\n"
+                            "\tld a, l\n"
+                            "\tld (de), a  ; store new low\n"
+                            "\tinc de\n"
+                            "\tld a, h\n"
+                            "\tld (de), a  ; store new high\n"
+                            "\tpop hl  ; return old value",
+                            incdec);
+                    } else {
+                        snprintf(buf, sizeof(buf),
+                            "\tld e, l\n"
+                            "\tld d, h  ; save address\n"
+                            "\tld a, (hl)\n"
+                            "\tld c, a  ; save old low\n"
+                            "\tinc hl\n"
+                            "\tld a, (hl)\n"
+                            "\tld b, a  ; save old high\n"
+                            "\tld h, b\n"
+                            "\tld l, c  ; old value to HL\n"
+                            "\tpush hl  ; save old value\n"
+                            "\tld bc, %ld\n"
+                            "\t%s hl, bc\n"
+                            "\tex de, hl\n"
+                            "\tld a, l\n"
+                            "\tld (de), a  ; store new low\n"
+                            "\tinc de\n"
+                            "\tld a, h\n"
+                            "\tld (de), a  ; store new high\n"
+                            "\tpop hl  ; return old value",
+                            amount, is_dec ? "or a\n\tsbc" : "add");
+                    }
                 } else {
-                    snprintf(buf, sizeof(buf),
-                        "\tld e, l\n"
-                        "\tld d, h  ; save address\n"
-                        "\tld a, (hl)\n"
-                        "\tld c, a\n"
-                        "\tinc hl\n"
-                        "\tld a, (hl)\n"
-                        "\tld b, a\n"
-                        "\tld h, b\n"
-                        "\tld l, c  ; value to HL\n"
-                        "\t%s hl\n"
-                        "\tex de, hl\n"
-                        "\tld a, l\n"
-                        "\tld (de), a  ; store new low\n"
-                        "\tinc de\n"
-                        "\tld a, h\n"
-                        "\tld (de), a  ; store new high",
-                        incdec);
+                    if (amount == 1) {
+                        snprintf(buf, sizeof(buf),
+                            "\tld e, l\n"
+                            "\tld d, h  ; save address\n"
+                            "\tld a, (hl)\n"
+                            "\tld c, a\n"
+                            "\tinc hl\n"
+                            "\tld a, (hl)\n"
+                            "\tld b, a\n"
+                            "\tld h, b\n"
+                            "\tld l, c  ; value to HL\n"
+                            "\t%s hl\n"
+                            "\tex de, hl\n"
+                            "\tld a, l\n"
+                            "\tld (de), a  ; store new low\n"
+                            "\tinc de\n"
+                            "\tld a, h\n"
+                            "\tld (de), a  ; store new high",
+                            incdec);
+                    } else {
+                        snprintf(buf, sizeof(buf),
+                            "\tld e, l\n"
+                            "\tld d, h  ; save address\n"
+                            "\tld a, (hl)\n"
+                            "\tld c, a\n"
+                            "\tinc hl\n"
+                            "\tld a, (hl)\n"
+                            "\tld b, a\n"
+                            "\tld h, b\n"
+                            "\tld l, c  ; value to HL\n"
+                            "\tld bc, %ld\n"
+                            "\t%s hl, bc\n"
+                            "\tex de, hl\n"
+                            "\tld a, l\n"
+                            "\tld (de), a  ; store new low\n"
+                            "\tinc de\n"
+                            "\tld a, h\n"
+                            "\tld (de), a  ; store new high",
+                            amount, is_dec ? "or a\n\tsbc" : "add");
+                    }
                 }
             }
 
@@ -946,73 +1044,142 @@ static void generate_expr(struct function_ctx *ctx, struct expr *e)
         } else if (e->left && e->left->op == '+') {
             /* ADD expression: struct member or array element */
             /* Pattern: (INC/DEC (+ base offset)) */
-            /* This is already an address - just load, inc/dec, store */
+            /* This is already an address - just load, add/sub amount, store */
+            long amount = e->value;  /* Increment amount from AST */
 
-            generate_expr(ctx, e->left);  /* Generate address -> PRIMARY (HL) */
+            generateExpr(ctx, e->left);  /* Generate address -> PRIMARY (HL) */
 
             if (e->size == 1) {
                 /* Byte */
                 if (is_post) {
-                    snprintf(buf, sizeof(buf),
-                        "\tld e, l\n"
-                        "\tld d, h\n"
-                        "\tld a, (hl)\n"
-                        "\tld c, a\n"
-                        "\t%s a\n"
-                        "\tld (de), a\n"
-                        "\tld a, c",
-                        incdec);
+                    if (amount == 1) {
+                        snprintf(buf, sizeof(buf),
+                            "\tld e, l\n"
+                            "\tld d, h\n"
+                            "\tld a, (hl)\n"
+                            "\tld c, a\n"
+                            "\t%s a\n"
+                            "\tld (de), a\n"
+                            "\tld a, c",
+                            incdec);
+                    } else {
+                        snprintf(buf, sizeof(buf),
+                            "\tld e, l\n"
+                            "\tld d, h\n"
+                            "\tld a, (hl)\n"
+                            "\tld c, a\n"
+                            "\t%s a, %ld\n"
+                            "\tld (de), a\n"
+                            "\tld a, c",
+                            is_dec ? "sub" : "add", amount);
+                    }
                 } else {
-                    snprintf(buf, sizeof(buf),
-                        "\tld e, l\n"
-                        "\tld d, h\n"
-                        "\tld a, (hl)\n"
-                        "\t%s a\n"
-                        "\tld (de), a",
-                        incdec);
+                    if (amount == 1) {
+                        snprintf(buf, sizeof(buf),
+                            "\tld e, l\n"
+                            "\tld d, h\n"
+                            "\tld a, (hl)\n"
+                            "\t%s a\n"
+                            "\tld (de), a",
+                            incdec);
+                    } else {
+                        snprintf(buf, sizeof(buf),
+                            "\tld e, l\n"
+                            "\tld d, h\n"
+                            "\tld a, (hl)\n"
+                            "\t%s a, %ld\n"
+                            "\tld (de), a",
+                            is_dec ? "sub" : "add", amount);
+                    }
                 }
             } else {
                 /* Word */
                 if (is_post) {
-                    snprintf(buf, sizeof(buf),
-                        "\tld e, l\n"
-                        "\tld d, h\n"
-                        "\tld a, (hl)\n"
-                        "\tld c, a\n"
-                        "\tinc hl\n"
-                        "\tld a, (hl)\n"
-                        "\tld b, a\n"
-                        "\tld h, b\n"
-                        "\tld l, c\n"
-                        "\tpush hl\n"
-                        "\t%s hl\n"
-                        "\tex de, hl\n"
-                        "\tld a, l\n"
-                        "\tld (de), a\n"
-                        "\tinc de\n"
-                        "\tld a, h\n"
-                        "\tld (de), a\n"
-                        "\tpop hl",
-                        incdec);
+                    if (amount == 1) {
+                        snprintf(buf, sizeof(buf),
+                            "\tld e, l\n"
+                            "\tld d, h\n"
+                            "\tld a, (hl)\n"
+                            "\tld c, a\n"
+                            "\tinc hl\n"
+                            "\tld a, (hl)\n"
+                            "\tld b, a\n"
+                            "\tld h, b\n"
+                            "\tld l, c\n"
+                            "\tpush hl\n"
+                            "\t%s hl\n"
+                            "\tex de, hl\n"
+                            "\tld a, l\n"
+                            "\tld (de), a\n"
+                            "\tinc de\n"
+                            "\tld a, h\n"
+                            "\tld (de), a\n"
+                            "\tpop hl",
+                            incdec);
+                    } else {
+                        snprintf(buf, sizeof(buf),
+                            "\tld e, l\n"
+                            "\tld d, h\n"
+                            "\tld a, (hl)\n"
+                            "\tld c, a\n"
+                            "\tinc hl\n"
+                            "\tld a, (hl)\n"
+                            "\tld b, a\n"
+                            "\tld h, b\n"
+                            "\tld l, c\n"
+                            "\tpush hl\n"
+                            "\tld bc, %ld\n"
+                            "\t%s hl, bc\n"
+                            "\tex de, hl\n"
+                            "\tld a, l\n"
+                            "\tld (de), a\n"
+                            "\tinc de\n"
+                            "\tld a, h\n"
+                            "\tld (de), a\n"
+                            "\tpop hl",
+                            amount, is_dec ? "or a\n\tsbc" : "add");
+                    }
                 } else {
-                    snprintf(buf, sizeof(buf),
-                        "\tld e, l\n"
-                        "\tld d, h\n"
-                        "\tld a, (hl)\n"
-                        "\tld c, a\n"
-                        "\tinc hl\n"
-                        "\tld a, (hl)\n"
-                        "\tld b, a\n"
-                        "\tld h, b\n"
-                        "\tld l, c\n"
-                        "\t%s hl\n"
-                        "\tex de, hl\n"
-                        "\tld a, l\n"
-                        "\tld (de), a\n"
-                        "\tinc de\n"
-                        "\tld a, h\n"
-                        "\tld (de), a",
-                        incdec);
+                    if (amount == 1) {
+                        snprintf(buf, sizeof(buf),
+                            "\tld e, l\n"
+                            "\tld d, h\n"
+                            "\tld a, (hl)\n"
+                            "\tld c, a\n"
+                            "\tinc hl\n"
+                            "\tld a, (hl)\n"
+                            "\tld b, a\n"
+                            "\tld h, b\n"
+                            "\tld l, c\n"
+                            "\t%s hl\n"
+                            "\tex de, hl\n"
+                            "\tld a, l\n"
+                            "\tld (de), a\n"
+                            "\tinc de\n"
+                            "\tld a, h\n"
+                            "\tld (de), a",
+                            incdec);
+                    } else {
+                        snprintf(buf, sizeof(buf),
+                            "\tld e, l\n"
+                            "\tld d, h\n"
+                            "\tld a, (hl)\n"
+                            "\tld c, a\n"
+                            "\tinc hl\n"
+                            "\tld a, (hl)\n"
+                            "\tld b, a\n"
+                            "\tld h, b\n"
+                            "\tld l, c\n"
+                            "\tld bc, %ld\n"
+                            "\t%s hl, bc\n"
+                            "\tex de, hl\n"
+                            "\tld a, l\n"
+                            "\tld (de), a\n"
+                            "\tinc de\n"
+                            "\tld a, h\n"
+                            "\tld (de), a",
+                            amount, is_dec ? "or a\n\tsbc" : "add");
+                    }
                 }
             }
 
@@ -1032,8 +1199,8 @@ static void generate_expr(struct function_ctx *ctx, struct expr *e)
     }
 
     /* Recursively generate code for children (postorder traversal) */
-    if (e->left) generate_expr(ctx, e->left);
-    if (e->right) generate_expr(ctx, e->right);
+    if (e->left) generateExpr(ctx, e->left);
+    if (e->right) generateExpr(ctx, e->right);
 
     /* Track variable usage for lifetime analysis */
     if (e->op == '$' && e->symbol) {
@@ -1046,7 +1213,7 @@ static void generate_expr(struct function_ctx *ctx, struct expr *e)
         if (var_name[0] == 'A') {
             var_name++;  /* Skip A prefix */
         }
-        updateVarLifetime(ctx, var_name);
+        updVarLife(ctx, var_name);
     }
 
     /* Generate assembly code for this node based on operator */
@@ -1079,7 +1246,7 @@ static void generate_expr(struct function_ctx *ctx, struct expr *e)
 
             var_symbol = NULL;
             offset = 0;
-            if (isStructMemberAccess(e, &var_symbol, &offset)) {
+            if (isStructMem(e, &var_symbol, &offset)) {
                 /* Extract variable name (skip $ and A prefixes) */
                 var_name = var_symbol;
                 if (var_name && var_name[0] == '$') {
@@ -1200,7 +1367,7 @@ static void generate_expr(struct function_ctx *ctx, struct expr *e)
                 if (e->size == 1) {
                     /* Byte add - need to call add88 */
                     char funcname[32];
-                    make_binop_funcname(funcname, sizeof(funcname), "add", e);
+                    mkBinopFnName(funcname, sizeof(funcname), "add", e);
                     move_inst = "\tld e, a  ; move PRIMARY (A) to SECONDARY (E)";
                     snprintf(buf, sizeof(buf), "%s\n\tcall %s",
                         move_inst, funcname);
@@ -1217,19 +1384,19 @@ static void generate_expr(struct function_ctx *ctx, struct expr *e)
         break;
 
     case '-':  /* SUB */
-        gen_binop(e, "sub");
+        genBinop(e, "sub");
         break;
 
     case '*':  /* MUL */
-        gen_binop(e, "mul");
+        genBinop(e, "mul");
         break;
 
     case '/':  /* DIV */
-        gen_binop(e, "div");
+        genBinop(e, "div");
         break;
 
     case '%':  /* MOD */
-        gen_binop(e, "mod");
+        genBinop(e, "mod");
         break;
 
     case '&':  /* AND */
@@ -1240,7 +1407,7 @@ static void generate_expr(struct function_ctx *ctx, struct expr *e)
             snprintf(buf, sizeof(buf), "\tand %ld", e->right->value & 0xFF);
             e->asm_block = strdup(buf);
         } else {
-            gen_binop(e, "and");
+            genBinop(e, "and");
         }
         break;
 
@@ -1252,7 +1419,7 @@ static void generate_expr(struct function_ctx *ctx, struct expr *e)
             snprintf(buf, sizeof(buf), "\tor %ld", e->right->value & 0xFF);
             e->asm_block = strdup(buf);
         } else {
-            gen_binop(e, "or");
+            genBinop(e, "or");
         }
         break;
 
@@ -1264,7 +1431,7 @@ static void generate_expr(struct function_ctx *ctx, struct expr *e)
             snprintf(buf, sizeof(buf), "\txor %ld", e->right->value & 0xFF);
             e->asm_block = strdup(buf);
         } else {
-            gen_binop(e, "xor");
+            genBinop(e, "xor");
         }
         break;
 
@@ -1312,31 +1479,31 @@ static void generate_expr(struct function_ctx *ctx, struct expr *e)
         break;
 
     case 'w':  /* RSHIFT */
-        gen_binop(e, "shr");
+        genBinop(e, "shr");
         break;
 
     case '>':  /* GT - greater than comparison */
-        gen_binop(e, "gt");
+        genBinop(e, "gt");
         break;
 
     case '<':  /* LT - less than comparison */
-        gen_binop(e, "lt");
+        genBinop(e, "lt");
         break;
 
     case 'g':  /* GE - greater or equal comparison */
-        gen_binop(e, "ge");
+        genBinop(e, "ge");
         break;
 
     case 'L':  /* LE - less or equal comparison */
-        gen_binop(e, "le");
+        genBinop(e, "le");
         break;
 
     case 'Q':  /* EQ - equality comparison */
-        gen_binop(e, "eq");
+        genBinop(e, "eq");
         break;
 
     case 'n':  /* NEQ - not equal comparison */
-        gen_binop(e, "ne");
+        genBinop(e, "ne");
         break;
 
     case 0xab:  /* SEXT - sign extend */
@@ -1370,7 +1537,7 @@ static void generate_expr(struct function_ctx *ctx, struct expr *e)
         /* Only track if it's a global (starts with $_), not a local (starts with $) */
         if (e->symbol && e->symbol[0] == '$' && e->symbol[1] == '_') {
             const char *sym_name = e->symbol + 1;  /* Strip leading $ */
-            addReferencedSymbol(sym_name);
+            addRefSym(sym_name);
         }
 
         e->asm_block = strdup("");
@@ -1391,7 +1558,7 @@ static void generate_expr(struct function_ctx *ctx, struct expr *e)
  * Build pending stack cleanup asm code (for CALL arguments)
  * Returns a malloc'd string with the cleanup code
  */
-static char *build_stack_cleanup(int bytes)
+static char *buildStkCln(int bytes)
 {
     char *cleanup;
     int len = 0;
@@ -1415,9 +1582,44 @@ static char *build_stack_cleanup(int bytes)
 }
 
 /*
+ * Create a new jump instruction node
+ */
+struct jump_instr *
+newJump(enum jump_type type, int target_label)
+{
+    struct jump_instr *j;
+
+    j = (struct jump_instr *)malloc(sizeof(struct jump_instr));
+    if (!j) return NULL;
+
+    j->type = type;
+    j->target_label = target_label;
+    j->condition = NULL;
+    j->next = NULL;
+
+    return j;
+}
+
+/*
+ * Free a jump instruction node (and its chain)
+ */
+void
+freeJump(struct jump_instr *j)
+{
+    struct jump_instr *next;
+
+    while (j) {
+        next = j->next;
+        if (j->condition) free(j->condition);
+        free(j);
+        j = next;
+    }
+}
+
+/*
  * Walk statement tree and generate assembly code blocks
  */
-static void generate_stmt(struct function_ctx *ctx, struct stmt *s)
+static void generateStmt(struct function_ctx *ctx, struct stmt *s)
 {
     if (!s) return;
 
@@ -1426,30 +1628,54 @@ static void generate_stmt(struct function_ctx *ctx, struct stmt *s)
     ctx->current_label++;
 
     /* Recursively generate code for expressions */
-    if (s->expr) generate_expr(ctx, s->expr);
-    if (s->expr2) generate_expr(ctx, s->expr2);
-    if (s->expr3) generate_expr(ctx, s->expr3);
+    if (s->expr) generateExpr(ctx, s->expr);
+    if (s->expr2) generateExpr(ctx, s->expr2);
+    if (s->expr3) generateExpr(ctx, s->expr3);
 
     /* Recursively generate code for child statements */
-    if (s->then_branch) generate_stmt(ctx, s->then_branch);
-    if (s->else_branch) generate_stmt(ctx, s->else_branch);
-    if (s->next) generate_stmt(ctx, s->next);
+    if (s->then_branch) generateStmt(ctx, s->then_branch);
+    if (s->else_branch) generateStmt(ctx, s->else_branch);
+    if (s->next) generateStmt(ctx, s->next);
 
-    /* TODO: Generate assembly code for this statement */
-    /* s->asm_block = malloc(...); strcpy(s->asm_block, "..."); */
+    /* Create jump nodes for control flow statements
+     * These will be resolved and optimized during emission
+     *
+     * Note: For IF statements, the conditional jumps are created during
+     * emission because we need to evaluate the condition first. But we
+     * create the unconditional jump over the else branch here.
+     */
+    switch (s->type) {
+    case 'I':  /* IF statement */
+        if (s->label2 > 0) {
+            /* Has else branch - create unconditional jump over else at end of then */
+            /* This jump will be emitted after the then branch */
+            /* We'll attach it to the statement for now, and emit.c will use it */
+        }
+        /* Conditional jumps are created in emit.c based on condition evaluation */
+        break;
+
+    case 'R':  /* RETURN statement */
+        /* Create unconditional jump to function exit */
+        s->jump = newJump(JMP_UNCOND, -1);  /* -1 = exit label, resolved in emit */
+        break;
+
+    default:
+        /* Other statement types don't generate jumps */
+        break;
+    }
 }
 
 /*
  * Generate assembly code for entire function
  */
-void generate_code(struct function_ctx *ctx)
+void generateCode(struct function_ctx *ctx)
 {
     if (!ctx || !ctx->body) return;
 
     /* Initialize lifetime tracking */
     ctx->current_label = 0;
 
-    generate_stmt(ctx, ctx->body);
+    generateStmt(ctx, ctx->body);
 }
 
 

@@ -10,19 +10,20 @@
 
 /*
  * Parser state for nested parsing (save/restore)
+ * Note: saved_buf is malloc'd to avoid IX offset limit (>127 bytes)
  */
 struct parser_state {
-    char saved_buf[BUFSIZE];
+    char *saved_buf;        /* malloc'd buffer, size BUFSIZE */
     int saved_buf_pos;
-    int saved_buf_valid;
-    int saved_line_num;
+    int saved_bufvld;
+    int savedLineNum;
     unsigned char saved_curchar;
     int saved_in_fd;
 };
 
 /* Global parser state (managed by astio.c, accessible to parser) */
 extern unsigned char curchar;
-extern int line_num;
+extern int lineNum;
 
 /* Buffer initialization */
 void initAstio(int fd);
@@ -36,15 +37,16 @@ int expect(unsigned char c);
 char *readSymbol(void);
 long readNumber(void);
 char *readType(void);
-char *readQuotedString(void);
+char *readQuotedStr(void);
 
 /* Parser state management for nested parsing */
-void saveParserState(struct parser_state *state);
-void restoreParserState(struct parser_state *state);
-void setupStringInput(char *str, int len);
+void saveParseSt(struct parser_state *state);
+void restoreParse(struct parser_state *state);
+void freeParseSt(struct parser_state *state);
+void setupStrInput(char *str, int len);
 
 /* String utilities */
-int is_label(char *line);
-char *trim_line(char *line);
+int isLabel(char *line);
+char *trimLine(char *line);
 
 #endif /* ASTIO_H */

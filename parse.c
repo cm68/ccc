@@ -8,17 +8,17 @@
 static struct name *global = 0;
 
 /* Loop label generation for control flow transformation */
-static int loop_label_counter = 0;
+static int loopLblCnt = 0;
 
 /*
  * Generate unique synthetic labels for loops and switch statements
  * Prefix indicates statement type: L=loop (while/for), D=do-while, S=switch
  */
 static char *
-generate_loop_label(const char *prefix)
+genLoopLabel(const char *prefix)
 {
 	char *label = malloc(32);
-	sprintf(label, "%s%d", prefix, loop_label_counter++);
+	sprintf(label, "%s%d", prefix, loopLblCnt++);
 	return label;
 }
 
@@ -29,7 +29,7 @@ generate_loop_label(const char *prefix)
  * For continue: returns nearest WHILE/FOR/DO (not SWITCH)
  */
 static struct stmt *
-find_enclosing_loop(struct stmt *parent, int is_continue)
+findEnclLoop(struct stmt *parent, int is_continue)
 {
 	while (parent) {
 		if (parent->op == WHILE || parent->op == FOR || parent->op == DO) {
@@ -44,39 +44,73 @@ find_enclosing_loop(struct stmt *parent, int is_continue)
 }
 
 /*
+ * Simple hash function for generating short unique identifiers
+ * Returns a 4-character hex hash string
+ */
+static unsigned short
+hashString(const char *str)
+{
+	unsigned short hash = 0;
+	unsigned char c;
+
+	while ((c = *str++)) {
+		hash = hash * 31 + c;
+		hash = (hash << 5) ^ (hash >> 11);  /* Mix bits */
+	}
+	return hash;
+}
+
+/*
  * Generate mangled name for static variables
- * File-scoped statics: <file_root>_<varname>
- * Function-scoped statics: <file_root>_<funcname>_<varname>_<counter>
+ * Format: <short_name>_<hash> (max 15 chars total)
+ * Hash is based on full context to ensure uniqueness:
+ * - File-scoped: hash(file_root + "_" + varname)
+ * - Function-scoped: hash(file_root + "_" + funcname + "_" + varname + "_" + counter)
  */
 static char *
-mangle_static_name(struct name *var)
+mangleStatNam(struct name *var)
 {
 	char *mangled;
-	int len;
+	char context_buf[256];
+	unsigned short hash;
+	int name_len;
 
-	if (!sourceFileRoot) {
+	if (!srcFileRoot) {
 		/* Fallback if no source file set */
 		return strdup(var->name);
 	}
 
+	/* Build context string for hashing */
 	if (var->level == 1) {
-		/* File-scoped static: <file_root>_<varname> */
-		len = strlen(sourceFileRoot) + 1 + strlen(var->name) + 1;
-		mangled = malloc(len);
-		sprintf(mangled, "%s_%s", sourceFileRoot, var->name);
-	} else if (current_function) {
-		/* Function-scoped static: <file_root>_<funcname>_<varname>_<counter> */
-		len = strlen(sourceFileRoot) + 1 + strlen(current_function->name) +
-		      1 + strlen(var->name) + 1 + 10 + 1;  /* 10 digits for counter */
-		mangled = malloc(len);
-		sprintf(mangled, "%s_%s_%s_%d", sourceFileRoot, 
-                current_function->name, var->name, static_counter++);
+		/* File-scoped static */
+		snprintf(context_buf, sizeof(context_buf), "%s_%s",
+		         srcFileRoot, var->name);
+	} else if (curFunc) {
+		/* Function-scoped static */
+		snprintf(context_buf, sizeof(context_buf), "%s_%s_%s_%d",
+		         srcFileRoot, curFunc->name,
+		         var->name, staticCtr++);
 	} else {
 		/* Shouldn't happen, but handle gracefully */
-		len = strlen(sourceFileRoot) + 1 + strlen(var->name) + 1;
-		mangled = malloc(len);
-		sprintf(mangled, "%s_%s", sourceFileRoot, var->name);
+		snprintf(context_buf, sizeof(context_buf), "%s_%s",
+		         srcFileRoot, var->name);
 	}
+
+	/* Generate hash */
+	hash = hashString(context_buf);
+
+	/* Allocate mangled name: <short_name>_<hash> */
+	/* Format: up to 9 chars of name + "_" + 4 hex digits = 14 chars max */
+	mangled = malloc(15);  /* 14 + null terminator */
+
+	/* Calculate how much of the name we can use (max 9 chars to leave room for _XXXX) */
+	name_len = strlen(var->name);
+	if (name_len > 9) {
+		name_len = 9;
+	}
+
+	/* Copy truncated name and append hash */
+	snprintf(mangled, 15, "%.*s_%04x", name_len, var->name, hash);
 
 	return mangled;
 }
@@ -90,7 +124,7 @@ struct stmt *asmblock(void);
  * Called before popScope() to preserve variable info
  */
 static struct name *
-capture_locals(void)
+capLocals(void)
 {
 	struct name *locals_list = NULL;
 	struct name *tail = NULL;
@@ -132,8 +166,8 @@ capture_locals(void)
 }
 
 /* Track variables declared with initializers for local scope */
-static struct name *decl_inits[MAX_DECL_INITS];
-static unsigned char decl_init_count = 0;
+static struct name *declInits[MAX_DECL_INI];
+static unsigned char declInitCnt = 0;
 
 /*
  * Add a variable with an initializer to the deferred initialization list
@@ -149,10 +183,10 @@ static unsigned char decl_init_count = 0;
  *   v - Variable name entry with initializer in v->u.init field
  */
 void
-add_decl_init(struct name *v)
+addDeclInit(struct name *v)
 {
-	if (decl_init_count < MAX_DECL_INITS) {
-		decl_inits[decl_init_count++] = v;
+	if (declInitCnt < MAX_DECL_INI) {
+		declInits[declInitCnt++] = v;
 	}
 }
 
@@ -163,9 +197,9 @@ add_decl_init(struct name *v)
  * tracking array for the next declaration statement.
  */
 void
-clear_decl_inits()
+clearDeclIni()
 {
-	decl_init_count = 0;
+	declInitCnt = 0;
 }
 
 void declaration();
@@ -232,7 +266,7 @@ statement(struct stmt *parent)
             st->chain = statement(st);
 
             /* Capture local variables before popping scope */
-            st->locals = capture_locals();
+            st->locals = capLocals();
 
             popScope();
             expect(END, ER_S_CC);
@@ -259,7 +293,7 @@ statement(struct stmt *parent)
             expect(SEMI, ER_S_SN);
             /* Transform break into goto to enclosing loop's break label */
             {
-                struct stmt *loop = find_enclosing_loop(parent, 0);
+                struct stmt *loop = findEnclLoop(parent, 0);
                 if (loop && loop->label) {
                     st = makestmt(GOTO, 0);
                     st->label = malloc(strlen(loop->label) + 10);
@@ -278,7 +312,7 @@ statement(struct stmt *parent)
              * loop's continue label
              */
             {
-                struct stmt *loop = find_enclosing_loop(parent, 1);
+                struct stmt *loop = findEnclLoop(parent, 1);
                 if (loop && loop->label) {
                     st = makestmt(GOTO, 0);
                     /*
@@ -328,13 +362,13 @@ statement(struct stmt *parent)
         case REGISTER:
         case AUTO:
         case EXTERN:
-            clear_decl_inits();
+            clearDeclIni();
             declaration();
             /* Convert local variable initializers to assignment statements */
-            if (decl_init_count > 0) {
+            if (declInitCnt > 0) {
                 unsigned char i;
-                for (i = 0; i < decl_init_count; i++) {
-                    struct name *v = decl_inits[i];
+                for (i = 0; i < declInitCnt; i++) {
+                    struct name *v = declInits[i];
                     struct expr *lhs, *assign_expr;
                     struct stmt *assign_st;
 
@@ -376,7 +410,7 @@ statement(struct stmt *parent)
                     pst = &assign_st->next;
                     assign_st->parent = parent;
                 }
-                clear_decl_inits();
+                clearDeclIni();
             }
             st = NULL;  /* Don't create another statement */
             break;
@@ -399,19 +433,19 @@ statement(struct stmt *parent)
             }
             /* Check if it's a typedef name used in a declaration */
             {
-                struct name *possible_typedef =
+                struct name *poss_typedef =
                     findName(cur.v.name, 0);
-                if (possible_typedef && possible_typedef->kind == tdef) {
-                    clear_decl_inits();
+                if (poss_typedef && poss_typedef->kind == tdef) {
+                    clearDeclIni();
                     declaration();
                     /*
                      * Convert local variable initializers to
                      * assignment statements
                      */
-                    if (decl_init_count > 0) {
+                    if (declInitCnt > 0) {
                         unsigned char i;
-                        for (i = 0; i < decl_init_count; i++) {
-                            struct name *v = decl_inits[i];
+                        for (i = 0; i < declInitCnt; i++) {
+                            struct name *v = declInits[i];
                             struct expr *lhs, *assign_expr;
                             struct stmt *assign_st;
 
@@ -457,7 +491,7 @@ statement(struct stmt *parent)
                             pst = &assign_st->next;
                             assign_st->parent = parent;
                         }
-                        clear_decl_inits();
+                        clearDeclIni();
                     }
                     st = NULL;  /* declaration() doesn't return a statement */
                     break;
@@ -484,7 +518,7 @@ statement(struct stmt *parent)
                 st = makestmt(FOR, parseExpr(PRI_ALL, parent));
             }
             /* Generate synthetic label */
-            st->label = generate_loop_label("L");
+            st->label = genLoopLabel("L");
             /* Set parent before recursive call */
             st->parent = parent;
             expect(SEMI, ER_S_SN);
@@ -510,7 +544,7 @@ statement(struct stmt *parent)
             expect(LPAR, ER_S_NP);
             st = makestmt(WHILE, parseExpr(PRI_ALL, parent));
             /* Generate synthetic label */
-            st->label = generate_loop_label("L");
+            st->label = genLoopLabel("L");
             /* Set parent before recursive call */
             st->parent = parent;
             expect(RPAR, ER_S_NP);
@@ -526,7 +560,7 @@ statement(struct stmt *parent)
             expect(LPAR, ER_S_NP);
             st = makestmt(SWITCH, parseExpr(PRI_ALL, parent));
             /* Generate synthetic label */
-            st->label = generate_loop_label("S");
+            st->label = genLoopLabel("S");
             /* Set parent before recursive call */
             st->parent = parent;
             expect(RPAR, ER_S_NP);
@@ -569,7 +603,7 @@ statement(struct stmt *parent)
             gettoken();
             st = makestmt(DO, 0);
             /* Generate synthetic label */
-            st->label = generate_loop_label("D");
+            st->label = genLoopLabel("D");
             /* Set parent before recursive call */
             st->parent = parent;
             st->chain = statement(st);
@@ -762,7 +796,7 @@ asmblock(void)
  *   Linked list of initializer expressions (via next pointers), or
  *   NULL on error
  */
-static struct expr *parse_initializer_list(void)
+static struct expr *parseInitList(void)
 {
     struct expr *head = NULL;
     struct expr *tail = NULL;
@@ -773,7 +807,7 @@ static struct expr *parse_initializer_list(void)
     while (cur.type != END) {
         if (cur.type == BEGIN) {
             /* Nested initializer for struct/array member */
-            item = parse_initializer_list();
+            item = parseInitList();
         } else {
             /* Parse expression but stop before comma operator (priority 15)
              * so that comma is treated as element separator, not an operator */
@@ -828,7 +862,7 @@ static struct expr *parse_initializer_list(void)
  *   Expression tree representing the initializer, or NULL on error
  */
 struct expr *
-do_initializer(void)
+doInitlzr(void)
 {
     struct expr *init;
 
@@ -836,7 +870,7 @@ do_initializer(void)
 
     if (cur.type == BEGIN) {
         /* Handle {...} style initializer list */
-        init = parse_initializer_list();
+        init = parseInitList();
     } else {
         /*
          * Handle simple expression initializer
@@ -888,8 +922,8 @@ parsefunc(struct name *f)
 	struct name *param;
 
 	// Set current function context for static variable name mangling
-	current_function = f;
-	static_counter = 0;
+	curFunc = f;
+	staticCtr = 0;
 
 	// Push a new scope for the function body
 	pushScope(f->name);
@@ -946,13 +980,13 @@ parsefunc(struct name *f)
 #endif
 
 	// Clear current function context
-	current_function = NULL;
+	curFunc = NULL;
 }
 
 /*
  * storage class clauses - many combinations are illogical
  */
-char *sclass_bitdefs[] = { "EXTERN", "REGISTER", "STATIC", "CONST",
+char *sclassBitDef[] = { "EXTERN", "REGISTER", "STATIC", "CONST",
 	"VOLATILE", "AUTO", "TYPEDEF"
 };
 
@@ -986,13 +1020,13 @@ char *sclass_bitdefs[] = { "EXTERN", "REGISTER", "STATIC", "CONST",
  *   Bitmask of storage class flags (SC_EXTERN, SC_STATIC, etc.)
  */
 unsigned char
-parse_sclass()
+parseSclass()
 {
 	unsigned char ret = 0;
 	unsigned char bit;
 #ifdef DEBUG
 	if (VERBOSE(V_SYM)) {
-		fdprintf(2,"parse_sclass: starting, cur.type=0x%02x\n", cur.type);
+		fdprintf(2,"parseSclass: starting, cur.type=0x%02x\n", cur.type);
 	}
 #endif
 
@@ -1020,7 +1054,7 @@ parse_sclass()
 			bit = SC_TYPEDEF;
 #ifdef DEBUG
 			if (VERBOSE(V_SYM)) {
-				fdprintf(2,"parse_sclass: FOUND TYPEDEF token!\n");
+				fdprintf(2,"parseSclass: FOUND TYPEDEF token!\n");
 			}
 #endif
 			break;
@@ -1093,7 +1127,7 @@ parse_sclass()
  *   - Statement tree freed after emission
  *
  * Local variable initializers:
- *   - Added to decl_inits list for conversion to assignments
+ *   - Added to declInits list for conversion to assignments
  *   - Static locals are initialized in data section, not converted
  *
  * Array size inference:
@@ -1108,7 +1142,7 @@ declaration()
 	struct name *v;
 
 	/* Parse storage class and base type once at the beginning */
-	sclass = parse_sclass();
+	sclass = parseSclass();
 	/* Initialize once, then shared across comma-separated declarators */
 	basetype = 0;
 
@@ -1179,7 +1213,7 @@ declaration()
                 /* Assign storage class */
                 if (sclass & SC_STATIC) {
                     v->sclass = SC_STATIC;
-                    v->mangled_name = mangle_static_name(v);
+                    v->mangled_name = mangleStatNam(v);
                 } else if (sclass & SC_EXTERN) {
                     v->sclass = SC_EXTERN;
                 }
@@ -1195,7 +1229,7 @@ declaration()
          */
         if (sclass & SC_STATIC) {
             v->sclass = SC_STATIC;
-            v->mangled_name = mangle_static_name(v);
+            v->mangled_name = mangleStatNam(v);
         } else if (sclass & SC_EXTERN) {
             v->sclass = SC_EXTERN;
         }
@@ -1204,7 +1238,7 @@ declaration()
             cstring str;
             int len;
 
-            v->u.init = do_initializer();
+            v->u.init = doInitlzr();
 
             /*
              * Fix array size for char[] = "string" syntax
@@ -1247,7 +1281,7 @@ declaration()
              * to assignments
              */
             if (lexlevel > 1 && v->u.init && !(sclass & SC_STATIC)) {
-                add_decl_init(v);
+                addDeclInit(v);
             }
         }
 
@@ -1333,7 +1367,7 @@ blockname()
 void
 parse()
 {
-	struct name *possible_typedef;
+	struct name *poss_typedef;
 
 	pushScope("global");
 	initbasictype();
@@ -1343,9 +1377,9 @@ parse()
 		}
 		/* Check if current token looks like start of a declaration */
 		/* Also check if it's a typedef name (SYM that's a typedef) */
-		possible_typedef = NULL;
+		poss_typedef = NULL;
 		if (cur.type == SYM) {
-			possible_typedef = findName(cur.v.name, 0);
+			poss_typedef = findName(cur.v.name, 0);
 		}
 
 		if (cur.type == INT || cur.type == CHAR || cur.type == SHORT ||
@@ -1354,7 +1388,7 @@ parse()
 			cur.type == UNION || cur.type == ENUM || cur.type == CONST ||
 			cur.type == VOLATILE || cur.type == TYPEDEF || cur.type == STATIC ||
 			cur.type == REGISTER || cur.type == AUTO || cur.type == EXTERN ||
-			(possible_typedef && possible_typedef->kind == tdef)) {
+			(poss_typedef && poss_typedef->kind == tdef)) {
 			declaration();
 		} else {
 			/* Not a declaration - skip this token to avoid getting stuck */
@@ -1474,7 +1508,7 @@ frStmt(struct stmt *st)
  * (funarg kind) are not freed as their names are owned by function types.
  */
 void
-cleanup_parser(void)
+cleanupParse(void)
 {
 	int i;
 	struct name *n;

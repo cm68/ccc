@@ -458,6 +458,11 @@
                         ((and (not in-string) (char= ch #\,))
                          (vector-push-extend #\\ result)
                          (vector-push-extend ch result))
+                        ;; Semicolon outside string - escape it for Lisp reader
+                        ;; (semicolon is a statement in AST, but Lisp comment starter)
+                        ((and (not in-string) (char= ch #\;))
+                         (vector-push-extend #\\ result)
+                         (vector-push-extend ch result))
                         ;; Everything else - pass through as-is
                         ;; C and Lisp escape sequences are compatible (\n, \\, \", etc.)
                         (t

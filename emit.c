@@ -5,9 +5,9 @@
  * This phase outputs the actual assembly code that was generated in codegen.c.
  *
  * Key responsibilities:
- * - emit_assembly(): Main entry point - emit function assembly and free tree
+ * - emitAssembly(): Main entry point - emit function assembly and free tree
  * - emitExpr()/emitStmt(): Walk trees, emit assembly, free nodes
- * - emitFunctionPrologue(): Output function header and variable metadata
+ * - emitFnProlog(): Output function header and variable metadata
  *
  * Register Architecture (Stack Machine Model):
  * ============================================
@@ -80,7 +80,7 @@
 #include "cc2.h"
 
 static const char *
-getRegisterName(enum register_id reg)
+getRegName(enum register_id reg)
 {
     switch (reg) {
         case REG_NO:  return NULL;
@@ -109,11 +109,241 @@ stripDollar(const char *symbol)
 }
 
 /*
+ * Label map for jump optimization
+ * Tracks which labels are pure jumps and what they jump to
+ */
+#define MAX_LABELS 1000
+static struct labelMap labelMap[MAX_LABELS];
+static int lblMapCnt = 0;
+
+/*
+ * Add an entry to the label map
+ */
+static void
+addLabelMap(int label, int target, enum jump_type jtype)
+{
+    if (lblMapCnt < MAX_LABELS) {
+        labelMap[lblMapCnt].label = label;
+        labelMap[lblMapCnt].target = target;
+        labelMap[lblMapCnt].jump_type = jtype;
+        lblMapCnt++;
+    }
+}
+
+/*
+ * Resolve a label transitively through the label map
+ * Returns the final target label, avoiding jump-to-jump chains
+ */
+static int
+resolveLabel(int label)
+{
+    int i;
+    int visited[100];  /* Prevent infinite loops */
+    int visited_count = 0;
+    int current = label;
+
+    while (visited_count < 100) {
+        /* Check if we've already visited this label (cycle detection) */
+        for (i = 0; i < visited_count; i++) {
+            if (visited[i] == current) {
+                return current;  /* Cycle detected, stop here */
+            }
+        }
+        visited[visited_count++] = current;
+
+        /* Look up current label in map */
+        for (i = 0; i < lblMapCnt; i++) {
+            if (labelMap[i].label == current &&
+                labelMap[i].jump_type == JMP_UNCOND &&
+                labelMap[i].target != -1) {
+                /* Found a pure unconditional jump, follow it */
+                current = labelMap[i].target;
+                break;
+            }
+        }
+
+        /* If we didn't find a mapping, we're done */
+        if (i == lblMapCnt) {
+            return current;
+        }
+    }
+
+    /* Too many hops, give up */
+    return label;
+}
+
+/*
+ * Extract label number from ASM label string
+ * Returns -1 if not a recognized label format
+ * Handles formats: _if_N:, _if_end_N:, _while_N:, _while_end_N:, _tern_false_N:, _tern_end_N:, etc.
+ */
+static int
+extLabelNum(const char *asm_text)
+{
+    const char *p;
+    int num;
+
+    if (!asm_text) return -1;
+
+    /* Look for _tern_false_, _tern_end_ */
+    if ((p = strstr(asm_text, "_tern_false_")) != NULL) {
+        if (sscanf(p + 12, "%d:", &num) == 1) {
+            return num;
+        }
+    }
+    else if ((p = strstr(asm_text, "_tern_end_")) != NULL) {
+        if (sscanf(p + 10, "%d:", &num) == 1) {
+            return num;
+        }
+    }
+    /* Look for _if_end_, _while_end_, etc. */
+    else if ((p = strstr(asm_text, "_end_")) != NULL) {
+        if (sscanf(p + 5, "%d:", &num) == 1) {
+            return num;
+        }
+    }
+    /* Look for _if_, _while_, etc. (but not _end_) */
+    else if ((p = strstr(asm_text, "_if_")) != NULL) {
+        if (sscanf(p + 4, "%d:", &num) == 1) {
+            return num;
+        }
+    }
+    else if ((p = strstr(asm_text, "_while_")) != NULL && strstr(asm_text, "_end_") == NULL) {
+        if (sscanf(p + 7, "%d:", &num) == 1) {
+            return num;
+        }
+    }
+
+    return -1;
+}
+
+/*
+ * Extract jump target from asm instruction
+ * Returns label number if this is a jp/call to a known label, -1 otherwise
+ */
+static int
+extJumpTarget(const char *asm_text, enum jump_type *jtype)
+{
+    const char *p;
+    int num;
+
+    if (!asm_text) return -1;
+
+    /* Check for unconditional jump: jp _xxx_N */
+    if ((p = strstr(asm_text, "jp ")) != NULL) {
+        *jtype = JMP_UNCOND;
+        /* Try various label formats */
+        if (sscanf(p + 3, "_tern_end_%d", &num) == 1) return num;
+        if (sscanf(p + 3, "_tern_false_%d", &num) == 1) return num;
+        if (sscanf(p + 3, "_if_end_%d", &num) == 1) return num;
+        if (sscanf(p + 3, "_if_%d", &num) == 1) return num;
+        if (sscanf(p + 3, "_while_%d", &num) == 1) return num;
+        if (sscanf(p + 3, "_while_end_%d", &num) == 1) return num;
+    }
+    /* Check for conditional jumps */
+    else if ((p = strstr(asm_text, "jp z,")) != NULL) {
+        *jtype = JUMP_IF_ZERO;
+        if (sscanf(p + 6, "_tern_false_%d", &num) == 1) return num;
+        if (sscanf(p + 6, "_tern_end_%d", &num) == 1) return num;
+        if (sscanf(p + 6, "_if_end_%d", &num) == 1) return num;
+        if (sscanf(p + 6, "_if_%d", &num) == 1) return num;
+    }
+    else if ((p = strstr(asm_text, "jp nz,")) != NULL) {
+        *jtype = JMP_IF_NOT_Z;
+        if (sscanf(p + 7, "_tern_false_%d", &num) == 1) return num;
+        if (sscanf(p + 7, "_tern_end_%d", &num) == 1) return num;
+        if (sscanf(p + 7, "_if_end_%d", &num) == 1) return num;
+        if (sscanf(p + 7, "_if_%d", &num) == 1) return num;
+    }
+
+    return -1;
+}
+
+/*
+ * Scan expression tree for jump nodes
+ */
+static void
+scanExprJumps(struct expr *e)
+{
+    if (!e) return;
+
+    /* Check if this expression has a jump node */
+    if (e->jump && e->label > 0) {
+        addLabelMap(e->label, e->jump->target_label, e->jump->type);
+    }
+
+    /* Recursively scan children */
+    if (e->left) scanExprJumps(e->left);
+    if (e->right) scanExprJumps(e->right);
+}
+
+/*
+ * Scan statement tree to build label map
+ * Identifies which labels are pure jumps to other labels
+ */
+static void
+scanLabJumps(struct stmt *s)
+{
+    if (!s) return;
+
+    /* Check if this is an ASM node with a label */
+    if (s->type == 'A' && s->asm_block) {
+        int label_num = extLabelNum(s->asm_block);
+
+        if (label_num >= 0) {
+            /* This is a label - check if next statement is a jump */
+            if (s->next && s->next->type == 'A' && s->next->asm_block) {
+                enum jump_type jtype;
+                int target = extJumpTarget(s->next->asm_block, &jtype);
+                if (target >= 0) {
+                    /* This label is followed by a jump - record the mapping */
+                    addLabelMap(label_num, target, jtype);
+                }
+            }
+            /* Also check if next is a RETURN statement (jump to exit) */
+            else if (s->next && s->next->type == 'R') {
+                /* Label followed by return - could optimize jumps to this label */
+                /* For now, we don't optimize this case */
+            }
+        }
+    }
+
+    /* Check if this statement has an explicit jump node */
+    if (s->jump) {
+        /* Record this label as jumping to target */
+        if (s->label > 0) {
+            addLabelMap(s->label, s->jump->target_label, s->jump->type);
+        }
+    }
+
+    /* Scan expressions for jump nodes (e.g., ternary operators) */
+    if (s->expr) scanExprJumps(s->expr);
+    if (s->expr2) scanExprJumps(s->expr2);
+    if (s->expr3) scanExprJumps(s->expr3);
+
+    /* Recursively scan all branches */
+    if (s->then_branch) scanLabJumps(s->then_branch);
+    if (s->else_branch) scanLabJumps(s->else_branch);
+    if (s->next) scanLabJumps(s->next);
+}
+
+/*
+ * Emit a jump instruction with label resolution
+ * Resolves the target label transitively to avoid jump-to-jump chains
+ */
+static void
+emitJump(const char *instr, const char *prefix, int label)
+{
+    int resolved = resolveLabel(label);
+    fdprintf(outFd, "\t%s %s%d\n", instr, prefix, resolved);
+}
+
+/*
  * Emit function prologue
  * Outputs assembly comment describing function and function label
  */
 static void
-emitFunctionPrologue(char *name, char *params, char *rettype, int frame_size,
+emitFnProlog(char *name, char *params, char *rettype, int frame_size,
                        struct local_var *locals)
 {
     int has_params = (params && params[0]);
@@ -138,7 +368,7 @@ emitFunctionPrologue(char *name, char *params, char *rettype, int frame_size,
     if (locals) {
         fdprintf(outFd, "; Local variables:\n");
         for (var = locals; var; var = var->next) {
-            const char *regname = getRegisterName(var->reg);
+            const char *regname = getRegName(var->reg);
 
             /* Build offset string */
             char offset_str[32];
@@ -234,7 +464,7 @@ emitFunctionPrologue(char *name, char *params, char *rettype, int frame_size,
  * management
  */
 static int
-isBinopWithAccum(unsigned char op)
+isBinopWAccum(unsigned char op)
 {
     switch (op) {
     case '+': case '-': case '*': case '/': case '%':  /* Arithmetic */
@@ -252,16 +482,16 @@ isBinopWithAccum(unsigned char op)
  * Used to determine if we need to save secondary register (DE)
  */
 static int
-contains_binop(struct expr *e)
+hasBinop(struct expr *e)
 {
     if (!e) return 0;
 
     /* Check if this node is a binop */
-    if (isBinopWithAccum(e->op)) return 1;
+    if (isBinopWAccum(e->op)) return 1;
 
     /* Recursively check children */
-    if (contains_binop(e->left)) return 1;
-    if (contains_binop(e->right)) return 1;
+    if (hasBinop(e->left)) return 1;
+    if (hasBinop(e->right)) return 1;
 
     return 0;
 }
@@ -288,8 +518,14 @@ static void emitExpr(struct function_ctx *ctx, struct expr *e)
             strstr(e->asm_block, "DEREF_PLACEHOLDER")) {
         /* Look up variable BEFORE emitting child (which frees it) */
         struct local_var *var = NULL;
+        const char *global_sym = NULL;
+
         if (e->left && e->left->op == '$' && e->left->symbol) {
             var = findVar(ctx, e->left->symbol);
+            /* If not found as local var, it's a global - save symbol name */
+            if (!var) {
+                global_sym = e->left->symbol;
+            }
         }
 
         /* Emit child expression first (SYM nodes emit nothing and are freed) */
@@ -341,9 +577,9 @@ static void emitExpr(struct function_ctx *ctx, struct expr *e)
                     fdprintf(outFd, "\tcall getlong\n");
                 }
             }
-        } else if (e->left && e->left->symbol) {
+        } else if (global_sym) {
             /* Global variable - direct memory access */
-            const char *sym = stripDollar(e->left->symbol);
+            const char *sym = stripDollar(global_sym);
             if (e->size == 1) {
                 fdprintf(outFd, "\tld a, (%s)\n", sym);
             } else if (e->size == 2) {
@@ -498,8 +734,9 @@ static void emitExpr(struct function_ctx *ctx, struct expr *e)
     }
     /* Handle increment/decrement placeholders - need to check register allocation */
     else if (e->asm_block && strstr(e->asm_block, "INCDEC_PLACEHOLDER:")) {
-        /* Parse placeholder format: INCDEC_PLACEHOLDER:op:size:symbol */
+        /* Parse placeholder format: INCDEC_PLACEHOLDER:op:size:amount:symbol */
         int op, size;
+        long amount;
         char symbol[256];
         const char *p;
         const char *var_name;
@@ -507,7 +744,7 @@ static void emitExpr(struct function_ctx *ctx, struct expr *e)
         int is_post, is_dec;
 
         p = strstr(e->asm_block, "INCDEC_PLACEHOLDER:") + 19;
-        if (sscanf(p, "%d:%d:%255s", &op, &size, symbol) != 3) {
+        if (sscanf(p, "%d:%d:%ld:%255s", &op, &size, &amount, symbol) != 4) {
             /* Parse error - emit comment and skip */
             fdprintf(outFd, "\t; ERROR: failed to parse INCDEC_PLACEHOLDER\n");
             if (e->asm_block) free(e->asm_block);
@@ -529,8 +766,6 @@ static void emitExpr(struct function_ctx *ctx, struct expr *e)
 
         if (var && var->reg != REG_NO) {
             /* Variable is register-allocated */
-            const char *incdec = is_dec ? "dec" : "inc";
-
             if (size == 1) {
                 /* Byte register */
                 const char *reg_name = (var->reg == REG_B || var->reg == REG_Bp) ? "b" : "c";
@@ -538,7 +773,12 @@ static void emitExpr(struct function_ctx *ctx, struct expr *e)
 
                 if (use_alt) fdprintf(outFd, "\texx\n");
                 if (is_post) fdprintf(outFd, "\tld a, %s\n", reg_name);
-                fdprintf(outFd, "\t%s %s\n", incdec, reg_name);
+                if (amount == 1) {
+                    fdprintf(outFd, "\t%s %s\n", is_dec ? "dec" : "inc", reg_name);
+                } else {
+                    fdprintf(outFd, "\t%s a, %ld\n", is_dec ? "sub" : "add", amount);
+                    fdprintf(outFd, "\tld %s, a\n", reg_name);
+                }
                 if (!is_post) fdprintf(outFd, "\tld a, %s\n", reg_name);
                 if (use_alt) fdprintf(outFd, "\texx\n");
             } else {
@@ -551,8 +791,22 @@ static void emitExpr(struct function_ctx *ctx, struct expr *e)
                     if (var->reg == REG_IX) fdprintf(outFd, "\tpush ix\n\tpop hl\n");
                     else fdprintf(outFd, "\tld h, b\n\tld l, c\n");
                 }
-                fdprintf(outFd, "\t%s %s\n", incdec, reg_pair);
-                if (!is_post) {
+                if (amount == 1) {
+                    fdprintf(outFd, "\t%s %s\n", is_dec ? "dec" : "inc", reg_pair);
+                } else {
+                    fdprintf(outFd, "\tpush %s\n", reg_pair);
+                    fdprintf(outFd, "\tld de, %ld\n", amount);
+                    if (is_dec) {
+                        fdprintf(outFd, "\tor a\n\tsbc %s, de\n", reg_pair);
+                    } else {
+                        fdprintf(outFd, "\tadd %s, de\n", reg_pair);
+                    }
+                    fdprintf(outFd, "\tpop hl  ; old value for postfix\n");
+                }
+                if (!is_post && amount != 1) {
+                    if (var->reg == REG_IX) fdprintf(outFd, "\tpush ix\n\tpop hl\n");
+                    else fdprintf(outFd, "\tld h, b\n\tld l, c\n");
+                } else if (!is_post) {
                     if (var->reg == REG_IX) fdprintf(outFd, "\tpush ix\n\tpop hl\n");
                     else fdprintf(outFd, "\tld h, b\n\tld l, c\n");
                 }
@@ -562,12 +816,17 @@ static void emitExpr(struct function_ctx *ctx, struct expr *e)
             /* Variable is on stack */
             char sign = (var->offset >= 0) ? '+' : '-';
             int abs_offset = (var->offset >= 0) ? var->offset : -var->offset;
-            const char *incdec = is_dec ? "dec" : "inc";
 
             if (size == 1) {
                 /* Byte on stack */
                 if (is_post) fdprintf(outFd, "\tld a, (iy %c %d)\n", sign, abs_offset);
-                fdprintf(outFd, "\t%s (iy %c %d)\n", incdec, sign, abs_offset);
+                if (amount == 1) {
+                    fdprintf(outFd, "\t%s (iy %c %d)\n", is_dec ? "dec" : "inc", sign, abs_offset);
+                } else {
+                    fdprintf(outFd, "\tld a, (iy %c %d)\n", sign, abs_offset);
+                    fdprintf(outFd, "\t%s a, %ld\n", is_dec ? "sub" : "add", amount);
+                    fdprintf(outFd, "\tld (iy %c %d), a\n", sign, abs_offset);
+                }
                 if (!is_post) fdprintf(outFd, "\tld a, (iy %c %d)\n", sign, abs_offset);
             } else {
                 /* Word on stack */
@@ -576,16 +835,29 @@ static void emitExpr(struct function_ctx *ctx, struct expr *e)
                     fdprintf(outFd, "\tld h, (iy %c %d)\n", sign, abs_offset + 1);
                 }
 
-                if (is_dec) {
-                    fdprintf(outFd, "\tld a, (iy %c %d)\n", sign, abs_offset);
-                    fdprintf(outFd, "\tdec (iy %c %d)\n", sign, abs_offset);
-                    fdprintf(outFd, "\tor a\n");
-                    fdprintf(outFd, "\tjr nz, $+3\n");
-                    fdprintf(outFd, "\tdec (iy %c %d)\n", sign, abs_offset + 1);
+                if (amount == 1) {
+                    if (is_dec) {
+                        fdprintf(outFd, "\tld a, (iy %c %d)\n", sign, abs_offset);
+                        fdprintf(outFd, "\tdec (iy %c %d)\n", sign, abs_offset);
+                        fdprintf(outFd, "\tor a\n");
+                        fdprintf(outFd, "\tjr nz, $+3\n");
+                        fdprintf(outFd, "\tdec (iy %c %d)\n", sign, abs_offset + 1);
+                    } else {
+                        fdprintf(outFd, "\tinc (iy %c %d)\n", sign, abs_offset);
+                        fdprintf(outFd, "\tjr nz, $+3\n");
+                        fdprintf(outFd, "\tinc (iy %c %d)\n", sign, abs_offset + 1);
+                    }
                 } else {
-                    fdprintf(outFd, "\tinc (iy %c %d)\n", sign, abs_offset);
-                    fdprintf(outFd, "\tjr nz, $+3\n");
-                    fdprintf(outFd, "\tinc (iy %c %d)\n", sign, abs_offset + 1);
+                    fdprintf(outFd, "\tld l, (iy %c %d)\n", sign, abs_offset);
+                    fdprintf(outFd, "\tld h, (iy %c %d)\n", sign, abs_offset + 1);
+                    fdprintf(outFd, "\tld de, %ld\n", amount);
+                    if (is_dec) {
+                        fdprintf(outFd, "\tor a\n\tsbc hl, de\n");
+                    } else {
+                        fdprintf(outFd, "\tadd hl, de\n");
+                    }
+                    fdprintf(outFd, "\tld (iy %c %d), l\n", sign, abs_offset);
+                    fdprintf(outFd, "\tld (iy %c %d), h\n", sign, abs_offset + 1);
                 }
 
                 if (!is_post) {
@@ -596,19 +868,59 @@ static void emitExpr(struct function_ctx *ctx, struct expr *e)
         } else {
             /* Global variable */
             const char *sym = stripDollar(symbol);
-            const char *reg = (size == 1) ? "a" : "hl";
-            const char *incdec = is_dec ? "dec" : "inc";
 
-            if (is_post) {
-                fdprintf(outFd, "\tld %s, (%s)\n", reg, sym);
-                fdprintf(outFd, "\tpush %s  ; save old value\n", (size == 1) ? "af" : "hl");
-                fdprintf(outFd, "\t%s %s\n", incdec, reg);
-                fdprintf(outFd, "\tld (%s), %s\n", sym, reg);
-                fdprintf(outFd, "\tpop %s  ; return old value\n", (size == 1) ? "af" : "hl");
+            if (size == 1) {
+                /* Byte global */
+                if (is_post) {
+                    fdprintf(outFd, "\tld a, (%s)\n", sym);
+                    fdprintf(outFd, "\tpush af  ; save old value\n");
+                    if (amount == 1) {
+                        fdprintf(outFd, "\t%s a\n", is_dec ? "dec" : "inc");
+                    } else {
+                        fdprintf(outFd, "\t%s a, %ld\n", is_dec ? "sub" : "add", amount);
+                    }
+                    fdprintf(outFd, "\tld (%s), a\n", sym);
+                    fdprintf(outFd, "\tpop af  ; return old value\n");
+                } else {
+                    fdprintf(outFd, "\tld a, (%s)\n", sym);
+                    if (amount == 1) {
+                        fdprintf(outFd, "\t%s a\n", is_dec ? "dec" : "inc");
+                    } else {
+                        fdprintf(outFd, "\t%s a, %ld\n", is_dec ? "sub" : "add", amount);
+                    }
+                    fdprintf(outFd, "\tld (%s), a\n", sym);
+                }
             } else {
-                fdprintf(outFd, "\tld %s, (%s)\n", reg, sym);
-                fdprintf(outFd, "\t%s %s\n", incdec, reg);
-                fdprintf(outFd, "\tld (%s), %s\n", sym, reg);
+                /* Word global */
+                if (is_post) {
+                    fdprintf(outFd, "\tld hl, (%s)\n", sym);
+                    fdprintf(outFd, "\tpush hl  ; save old value\n");
+                    if (amount == 1) {
+                        fdprintf(outFd, "\t%s hl\n", is_dec ? "dec" : "inc");
+                    } else {
+                        fdprintf(outFd, "\tld de, %ld\n", amount);
+                        if (is_dec) {
+                            fdprintf(outFd, "\tor a\n\tsbc hl, de\n");
+                        } else {
+                            fdprintf(outFd, "\tadd hl, de\n");
+                        }
+                    }
+                    fdprintf(outFd, "\tld (%s), hl\n", sym);
+                    fdprintf(outFd, "\tpop hl  ; return old value\n");
+                } else {
+                    fdprintf(outFd, "\tld hl, (%s)\n", sym);
+                    if (amount == 1) {
+                        fdprintf(outFd, "\t%s hl\n", is_dec ? "dec" : "inc");
+                    } else {
+                        fdprintf(outFd, "\tld de, %ld\n", amount);
+                        if (is_dec) {
+                            fdprintf(outFd, "\tor a\n\tsbc hl, de\n");
+                        } else {
+                            fdprintf(outFd, "\tadd hl, de\n");
+                        }
+                    }
+                    fdprintf(outFd, "\tld (%s), hl\n", sym);
+                }
             }
         }
 
@@ -854,7 +1166,9 @@ static void emitExpr(struct function_ctx *ctx, struct expr *e)
                 if (var->reg == REG_BC) {
                     fdprintf(outFd, "\tld h, b\n\tld l, c\n");
                 } else if (var->reg == REG_BCp) {
-                    fdprintf(outFd, "\texx\n\tld h, b\n\tld l, c\n\texx\n");
+                    /* Can't use exx - it switches HL too, making result inaccessible */
+                    /* Stage BC' through stack into HL */
+                    fdprintf(outFd, "\texx\n\tpush bc\n\texx\n\tpop hl\n");
                 } else {  /* REG_IX */
                     fdprintf(outFd, "\tpush ix\n\tpop hl\n");
                 }
@@ -866,9 +1180,12 @@ static void emitExpr(struct function_ctx *ctx, struct expr *e)
                 if (var->reg == REG_BC) {
                     fdprintf(outFd, "\tadd hl, bc\n");
                 } else if (var->reg == REG_BCp) {
-                    fdprintf(outFd, "\texx\n\tadd hl, bc\n\texx\n");
+                    /* Can't use exx - it switches HL too */
+                    /* Stage BC' into DE, then add */
+                    fdprintf(outFd, "\texx\n\tpush bc\n\texx\n\tpop de\n\tadd hl, de\n");
                 } else {  /* REG_IX */
-                    fdprintf(outFd, "\tadd hl, ix\n");
+                    /* Z80 doesn't have 'add hl, ix' - stage through DE */
+                    fdprintf(outFd, "\tpush ix\n\tpop de\n\tadd hl, de\n");
                 }
             }
         } else {
@@ -884,19 +1201,19 @@ static void emitExpr(struct function_ctx *ctx, struct expr *e)
         return;
     }
     /* Binary operators with accumulator management need special handling */
-    else if (isBinopWithAccum(e->op) && e->left && e->right &&
+    else if (isBinopWAccum(e->op) && e->left && e->right &&
             e->asm_block) {
         /* Check for inline byte operations with immediate (and/or/xor) */
-        int is_inline_immediate = 0;
+        int isInlineImm = 0;
         if (!strchr(e->asm_block, '\n') &&
             (e->op == '&' || e->op == '|' || e->op == '^') &&
             e->left && e->left->size == 1 && e->right && e->right->op == 'C' &&
             e->right->value >= 0 && e->right->value <= 255) {
             /* Single-line asm_block for byte bitwise op with constant */
-            is_inline_immediate = 1;
+            isInlineImm = 1;
         }
 
-        if (is_inline_immediate) {
+        if (isInlineImm) {
             /* Inline immediate: just emit left to A, then inline instruction */
             emitExpr(ctx, e->left);
             /* Don't emit right child - constant is baked into instruction */
@@ -932,7 +1249,7 @@ static void emitExpr(struct function_ctx *ctx, struct expr *e)
             }
 
             /* If right child contains binops, save SECONDARY before evaluation */
-            if (contains_binop(e->right)) {
+            if (hasBinop(e->right)) {
                 if (e->size == 1) {
                     /* Byte operation: SECONDARY is E, spill to D or stack */
                     if (!ctx->d_in_use) {
@@ -1041,18 +1358,18 @@ static void emitExpr(struct function_ctx *ctx, struct expr *e)
                     /* Look ahead to see if next line is "push hl" */
                     if (var && var->reg != REG_NO && var->size == 2 && line_end) {
                         /* Check if next line is push hl */
-                        char *next_line_start = line_end + 1;
+                        char *next_line_st = line_end + 1;
                         char next_buf[512];
-                        char *next_end = strchr(next_line_start, '\n');
+                        char *next_end = strchr(next_line_st, '\n');
                         int next_len;
 
                         if (next_end) {
-                            next_len = next_end - next_line_start;
+                            next_len = next_end - next_line_st;
                             if (next_len >= sizeof(next_buf)) next_len = sizeof(next_buf) - 1;
-                            memcpy(next_buf, next_line_start, next_len);
+                            memcpy(next_buf, next_line_st, next_len);
                             next_buf[next_len] = '\0';
                         } else {
-                            strncpy(next_buf, next_line_start, sizeof(next_buf) - 1);
+                            strncpy(next_buf, next_line_st, sizeof(next_buf) - 1);
                             next_buf[sizeof(next_buf) - 1] = '\0';
                             next_len = strlen(next_buf);
                         }
@@ -1068,7 +1385,7 @@ static void emitExpr(struct function_ctx *ctx, struct expr *e)
                                 fdprintf(outFd, "\tpush ix\n");
                             }
                             /* Skip the push hl line */
-                            line_start = next_end ? next_end + 1 : next_line_start + next_len;
+                            line_start = next_end ? next_end + 1 : next_line_st + next_len;
                             continue;
                         }
                     }
@@ -1079,7 +1396,8 @@ static void emitExpr(struct function_ctx *ctx, struct expr *e)
                         if (var->reg == REG_BC) {
                             fdprintf(outFd, "\tld h, b\n\tld l, c\n");
                         } else if (var->reg == REG_BCp) {
-                            fdprintf(outFd, "\texx\n\tld h, b\n\tld l, c\n\texx\n");
+                            /* Can't use exx - it switches HL too */
+                            fdprintf(outFd, "\texx\n\tpush bc\n\texx\n\tpop hl\n");
                         } else if (var->reg == REG_IX) {
                             fdprintf(outFd, "\tpush ix\n\tpop hl\n");
                         }
@@ -1117,7 +1435,8 @@ static void emitExpr(struct function_ctx *ctx, struct expr *e)
             if (var->reg == REG_BC) {
                 fdprintf(outFd, "\tld h, b\n\tld l, c\n");
             } else if (var->reg == REG_BCp) {
-                fdprintf(outFd, "\texx\n\tld h, b\n\tld l, c\n\texx\n");
+                /* Can't use exx - it switches HL too */
+                fdprintf(outFd, "\texx\n\tpush bc\n\texx\n\tpop hl\n");
             } else if (var->reg == REG_IX) {
                 fdprintf(outFd, "\tpush ix\n\tpop hl\n");
             }
@@ -1135,6 +1454,69 @@ static void emitExpr(struct function_ctx *ctx, struct expr *e)
             const char *sym = stripDollar(e->symbol);
             fdprintf(outFd, "\tld hl, (%s)\n", sym);
         }
+    }
+    /* Handle ternary operator (? :) */
+    else if (e->op == '?') {
+        /* Ternary: condition ? true_expr : false_expr */
+        /* Tree: '?' has condition in left, ':' node in right */
+        /* ':' has true_expr in left, false_expr in right */
+        unsigned char cond_size;
+
+        /* Save condition size before emitting (emission frees the node) */
+        cond_size = e->left ? e->left->size : 2;
+
+        /* Emit condition evaluation */
+        if (e->left) emitExpr(ctx, e->left);
+
+        /* Test condition result (in PRIMARY - HL for words, A for bytes) */
+        if (cond_size == 1) {
+            /* Byte condition - test A */
+            fdprintf(outFd, "\tor a\n");  /* Set Z flag based on A */
+        } else {
+            /* Word condition - test HL */
+            fdprintf(outFd, "\tld a, h\n\tor l\n");  /* Set Z flag if HL==0 */
+        }
+
+        /* Jump to false branch if condition is zero (using resolved label) */
+        if (e->jump) {
+            emitJump("jp z,", "_tern_false_", e->label);
+        }
+
+        /* Emit true branch */
+        if (e->right && e->right->left) {
+            emitExpr(ctx, e->right->left);
+        }
+
+        /* Jump over false branch (using resolved label) */
+        if (e->right && e->right->jump) {
+            emitJump("jp", "_tern_end_", e->right->label);
+        }
+
+        /* Emit false label */
+        fdprintf(outFd, "_tern_false_%d:\n", e->label);
+
+        /* Emit false branch */
+        if (e->right && e->right->right) {
+            emitExpr(ctx, e->right->right);
+        }
+
+        /* Emit end label */
+        if (e->right) {
+            fdprintf(outFd, "_tern_end_%d:\n", e->right->label);
+        }
+
+        /* Result is in PRIMARY (either from true or false branch) */
+
+        /* Free jump nodes */
+        if (e->jump) freeJump(e->jump);
+        if (e->right && e->right->jump) freeJump(e->right->jump);
+        if (e->right) free(e->right);  /* Free COLON node */
+
+        /* Free this node and return */
+        if (e->asm_block) free(e->asm_block);
+        if (e->cleanup_block) free(e->cleanup_block);
+        free(e);
+        return;
     }
     else {
         /* Normal postorder traversal for other operators */
@@ -1154,6 +1536,7 @@ static void emitExpr(struct function_ctx *ctx, struct expr *e)
     /* Free this node (children already freed by recursive emit calls above) */
     if (e->asm_block) free(e->asm_block);
     if (e->cleanup_block) free(e->cleanup_block);
+    if (e->jump) freeJump(e->jump);
     free(e);
 }
 
@@ -1171,13 +1554,13 @@ static void emitStmt(struct function_ctx *ctx, struct stmt *s)
 
     /* Handle IF statements specially */
     if (s->type == 'I') {
-        int invert_condition = 0;
-        int use_direct_jump = 0;
+        int invertCond = 0;
+        int use_dir_jump = 0;
         struct expr *cond = s->expr;
 
         /* Check if condition has ! wrapper */
         if (cond && cond->op == '!') {
-            invert_condition = 1;
+            invertCond = 1;
             cond = cond->left;  /* unwrap ! */
         }
 
@@ -1187,40 +1570,40 @@ static void emitStmt(struct function_ctx *ctx, struct stmt *s)
             cond->left && cond->left->size == 1 &&
             cond->right && cond->right->op == 'C' &&
             cond->right->value >= 0 && cond->right->value <= 255) {
-            use_direct_jump = 1;
+            use_dir_jump = 1;
         }
         /* Other byte-sized operations */
         else if (cond && cond->size == 1) {
-            use_direct_jump = 1;
+            use_dir_jump = 1;
         }
 
-        if (use_direct_jump) {
+        if (use_dir_jump) {
             /* Emit unwrapped condition expression (leaves Z flag set) */
             emitExpr(ctx, cond);
 
             /* If we had a ! wrapper, manually free it (child already freed) */
-            if (invert_condition && s->expr != cond) {
+            if (invertCond && s->expr != cond) {
                 free(s->expr);
             }
 
-            /* Jump to fail label if condition is false */
+            /* Jump to fail label if condition is false (use optimized jumps) */
             if (s->label2 > 0) {
                 /* Has else (or had empty else): jump to else on false, fall through to then on true */
-                if (invert_condition) {
+                if (invertCond) {
                     /* ! wrapper: jump if nonzero (true) */
-                    fdprintf(outFd, "\tjp nz, _if_%d\n", s->label);
+                    emitJump("jp nz,", "_if_", s->label);
                 } else {
                     /* No !: jump if zero (false) */
-                    fdprintf(outFd, "\tjp z, _if_%d\n", s->label);
+                    emitJump("jp z,", "_if_", s->label);
                 }
             } else {
                 /* No else: jump to end on false */
-                if (invert_condition) {
+                if (invertCond) {
                     /* ! wrapper: jump if nonzero (true) */
-                    fdprintf(outFd, "\tjp nz, _if_end_%d\n", s->label);
+                    emitJump("jp nz,", "_if_end_", s->label);
                 } else {
                     /* No !: jump if zero (false) */
-                    fdprintf(outFd, "\tjp z, _if_end_%d\n", s->label);
+                    emitJump("jp z,", "_if_end_", s->label);
                 }
             }
         } else {
@@ -1246,7 +1629,7 @@ static void emitStmt(struct function_ctx *ctx, struct stmt *s)
                 /* Free the condition expression without emitting it */
                 freeExpr(cond);
                 /* If we had ! wrapper, free it too */
-                if (invert_condition && s->expr != cond) {
+                if (invertCond && s->expr != cond) {
                     free(s->expr);
                 }
             } else {
@@ -1256,18 +1639,20 @@ static void emitStmt(struct function_ctx *ctx, struct stmt *s)
                 fdprintf(outFd, "\tld a, h\n\tor l\n");
             }
 
-            /* Jump based on test result */
+            /* Jump based on test result (use resolved labels to avoid jump-to-jump) */
             if (s->label2 > 0) {
-                if (invert_condition) {
-                    fdprintf(outFd, "\tjp nz, _if_%d\n", s->label);
+                int target = resolveLabel(s->label);
+                if (invertCond) {
+                    fdprintf(outFd, "\tjp nz, _if_%d\n", target);
                 } else {
-                    fdprintf(outFd, "\tjp z, _if_%d\n", s->label);
+                    fdprintf(outFd, "\tjp z, _if_%d\n", target);
                 }
             } else {
-                if (invert_condition) {
-                    fdprintf(outFd, "\tjp nz, _if_end_%d\n", s->label);
+                int target = resolveLabel(s->label);
+                if (invertCond) {
+                    fdprintf(outFd, "\tjp nz, _if_end_%d\n", target);
                 } else {
-                    fdprintf(outFd, "\tjp z, _if_end_%d\n", s->label);
+                    fdprintf(outFd, "\tjp z, _if_end_%d\n", target);
                 }
             }
         }
@@ -1276,8 +1661,9 @@ static void emitStmt(struct function_ctx *ctx, struct stmt *s)
         if (s->then_branch) emitStmt(ctx, s->then_branch);
 
         if (s->label2 > 0) {
-            /* Jump over else if we took the then branch */
-            fdprintf(outFd, "\tjp _if_end_%d\n", s->label2);
+            /* Jump over else if we took the then branch (use resolved label) */
+            int target = resolveLabel(s->label2);
+            fdprintf(outFd, "\tjp _if_end_%d\n", target);
 
             /* Emit else branch (if it exists) */
             if (s->else_branch) {
@@ -1298,6 +1684,7 @@ static void emitStmt(struct function_ctx *ctx, struct stmt *s)
 
         /* Free this statement node */
         if (s->asm_block) free(s->asm_block);
+        if (s->jump) freeJump(s->jump);
         free(s);
         return;
     }
@@ -1315,7 +1702,7 @@ static void emitStmt(struct function_ctx *ctx, struct stmt *s)
             }
         }
         /* Jump to function exit label */
-        fdprintf(outFd, "\tjp _%s_exit\n", ctx->name);
+        fdprintf(outFd, "\tjp %sX\n", ctx->name);
     } else {
         /* Emit expressions (this frees them) */
         if (s->expr) emitExpr(ctx, s->expr);
@@ -1332,31 +1719,40 @@ static void emitStmt(struct function_ctx *ctx, struct stmt *s)
 
     /* Free this node only (children already freed by recursive emit calls) */
     if (s->asm_block) free(s->asm_block);
+    if (s->jump) freeJump(s->jump);
     free(s);
 }
 
 /*
  * Emit assembly for entire function and free tree
  */
-void emit_assembly(struct function_ctx *ctx, int fd)
+void emitAssembly(struct function_ctx *ctx, int fd)
 {
     struct local_var *var, *next;
     int has_params;
 
     if (!ctx || !ctx->body) return;
 
+    /* Initialize label map for jump optimization */
+    lblMapCnt = 0;
+
+    /* Scan statement tree to build label map
+     * This identifies which labels are pure jumps, allowing us to
+     * transitively resolve jump-to-jump chains */
+    scanLabJumps(ctx->body);
+
     /* Check if function has parameters */
     has_params = (ctx->params && ctx->params[0]);
 
     /* Emit function prologue with frame allocation and lifetime info */
-    emitFunctionPrologue(ctx->name, ctx->params, ctx->rettype, 
+    emitFnProlog(ctx->name, ctx->params, ctx->rettype,
         ctx->frame_size, ctx->locals);
 
     /* Emit function body */
     emitStmt(ctx, ctx->body);
 
     /* Emit function exit label (for return statements to jump to) */
-    fdprintf(outFd, "_%s_exit:\n", ctx->name);
+    fdprintf(outFd, "%sX:\n", ctx->name);
 
     /* Emit function epilogue with frame deallocation */
     /* Jump to framefree if we have locals or parameters (tail call optimization) */

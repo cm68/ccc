@@ -52,11 +52,12 @@ ER_C_ID		bad include name format
 ER_C_IF		include file not found
 ER_C_DP		bad macro param list
 ER_C_CE		cpp const required
-ER_C_CD		bad literal 
+ER_C_CD		bad literal
 ER_C_BC		bad character
 ER_C_NR		numeric range of char exceeded
 ER_C_NX		number format error
 ER_C_UT		unknown character
+ER_C_TL		identifier too long
 
 # expression errors
 ER_E_LV		need lvalue
@@ -73,4 +74,4 @@ ER_E_CF		constant wont fold
 ER_E_PT		incompatible pointer types
 
 # warnings
-ER_W_SYM_TRUNC	symbol name truncated
+ER_W_SYMTRUNC	symbol name truncated

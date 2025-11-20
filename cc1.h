@@ -34,7 +34,7 @@ typedef unsigned long dword;
 #define STRBUFSIZE 128         // string/symbol/identifier buffer
 #define MAXSYMLEN 32           // maximum symbol/identifier length
 #define PSIZE 80               // max string containing bitdefs
-#define MAX_DECL_INITS 32      // local variable initializers
+#define MAX_DECL_INI 32      // local variable initializers
 #define MAXBITS 32             // maximum size of bitfield
 
 /*
@@ -79,7 +79,7 @@ struct expr {
 #define	PRI_ALL        0   /* parse all operators regardless of precedence */
 
 #define OP_PRI_NONE    0   /* not an operator */
-#define OP_PRI_PRIMARY 1   /* postfix/member access: . -> [] () */
+#define OP_PRI_PRIM 1   /* postfix/member access: . -> [] () */
 #define OP_PRI_MULT    3   /* multiplicative: * / % */
 #define OP_PRI_ADD     4   /* additive: + - */
 #define OP_PRI_SHIFT   5   /* bitwise shift: << >> */
@@ -131,7 +131,7 @@ extern void emitFunction(struct name *func);
 extern void emitLiterals(void);
 extern void emitGv(struct name *var);
 extern void emitGvs(void);
-extern void emitStringLiteral(struct name *strname);
+extern void emitStrLit(struct name *strname);
 
 /* statement flags used in parse.c */
 #define S_PARENT 0x01
@@ -188,9 +188,9 @@ struct type {
 
 extern struct type *getbasetype();
 extern void initbasictype(void);
-extern void dump_type(struct type *t, int lv);
+extern void dumpType(struct type *t, int lv);
 struct type *getType(int flags, struct type *sub, int count);
-extern int compatible_function_types(struct type *t1, struct type *t2);
+extern int compatFnTyp(struct type *t1, struct type *t2);
 
 typedef enum { 
     prim, etag, stag, utag, var, elem, tdef, fdef, bitfield, funarg, local 
@@ -234,7 +234,7 @@ extern struct name *newName(char *name, kind k, struct type *t,
 extern void addName(struct name *n);
 extern struct name *findName(char *name, unsigned char is_tag);
 extern struct name *findElement(char *name, struct type *t);
-extern void dump_name(struct name *s);
+extern void dumpName(struct name *s);
 extern void pushScope(char *name);
 extern void popScope(void);
 
@@ -244,7 +244,7 @@ extern int lastname;
 extern struct name **names;
 extern struct type *types;
 extern char *kindname[];
-extern struct name *declareInternal(struct type **btp, unsigned char struct_elem);
+extern struct name *declInternal(struct type **btp, unsigned char struct_elem);
 extern struct name *declare(struct type **btp);
 extern int isCastStart(void);
 extern struct type *parseTypeName(void);
@@ -258,12 +258,12 @@ extern struct type *ulongtype;
 extern struct type *voidtype;
 
 void parse();
-void cleanup_parser();
+void cleanupParse();
 
 /* Global context for static variable name mangling */
-extern char *sourceFileRoot;
-extern struct name *current_function;
-extern unsigned char static_counter;  // counter for statics in current function
+extern char *srcFileRoot;
+extern struct name *curFunc;
+extern unsigned char staticCtr;  // counter for statics in current function
 
 /* AST output control */
 extern int astFd;                   // where to write AST output
@@ -288,8 +288,8 @@ struct token {				// lexeme
 extern struct token cur, next;
 
 /* Token history for debugging */
-#define TOKEN_HISTORY_SIZE 10
-extern struct token tok_hist[TOKEN_HISTORY_SIZE];
+#define TOK_HIST_SIZE 10
+extern struct token tokHist[TOK_HIST_SIZE];
 extern int tokHidx;
 
 extern void lexinit();
@@ -330,9 +330,9 @@ extern unsigned char nextchar;
 extern int lineno;
 extern char *filename;
 extern int column;
-extern char *sysIncludePath;
+extern char *sysIncPath;
 extern struct textbuf *tbtop;
-extern int exit_code;  /* Global exit code: 0=success, 1=errors occurred */
+extern int exitCode;  /* Global exit code: 0=success, 1=errors occurred */
 
 /* cc1.c */
 extern void gripe(error_t errcode);
@@ -366,7 +366,7 @@ extern void hexdump(char *tag, char *s, int len);
 int iswhite(unsigned char c);
 char *bitdef(unsigned char v, char **defs);
 int fdprintf(int fd, const char *fmt, ...);
-int quoted_string(char *d, char *s);
+int quotedString(char *d, char *s);
 int longout(char *d, long v);
 int controlify(char *d, unsigned char c);
 

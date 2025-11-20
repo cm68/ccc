@@ -38,7 +38,7 @@ char m_flag INIT;
 
 char *progname INIT;
 
-int line_num INIT;
+int lineNum INIT;
 
 int outfd;
 int tmpfd;

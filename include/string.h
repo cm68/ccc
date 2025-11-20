@@ -2,8 +2,8 @@
 #ifndef _STRING_H
 #define _STRING_H
 
-#ifndef _SIZE_T_DEFINED
-#define _SIZE_T_DEFINED
+#ifndef _SIZE_T_DEF
+#define _SIZE_T_DEF
 typedef unsigned long size_t;
 #endif
 

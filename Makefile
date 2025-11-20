@@ -12,7 +12,7 @@ CC = gcc
 #CC = sdcc
 #CC = ccc
 
-ASM = vasm
+ASM = asz
 ASMOPTS =
 
 ifeq ($(CC),cc)
@@ -119,11 +119,13 @@ stage1: cc1 cc2
 	    b=$$(basename $$f .c) ; \
 	    printf "%-30s" "$$f: "; \
 	    ./cc1 -DCCC -i./include -I. -E -o stage1/$$b.ast "$$f" \
-		>stage1/$$b.i 2>stage1/$$b.err ; \
+		2>stage1/$$b.err ; \
 	    ret1=$$?; \
+	    mv $$b.i stage1/$$b.i; \
 	    if [ $$ret1 -ne 0 ]; then \
 	      echo "FAIL (parse error)"; \
 	    else \
+	      ./astpp.lisp stage1/$$b.ast >stage1/$$b.pp 2>>stage1/$$b.err ; \
 	      ./cc2 stage1/$$b.ast >stage1/$$b.s 2>>stage1/$$b.err ; \
 	      ret2=$$?; \
 	      if [ $$ret2 -ne 0 ]; then \

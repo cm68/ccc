@@ -14,13 +14,13 @@
 #include "cc2.h"
 
 /* Parser state */
-static int in_fd;
+static int inFd;
 static char buf[BUFSIZE];
-static int buf_pos;
-static int buf_valid;
+static int bufPos;
+static int bufValid;
 
 /* Global parser state (accessible to parser) */
-int line_num = 1;
+int lineNum = 1;
 unsigned char curchar;
 
 /* Static buffers for token reading */
@@ -34,10 +34,10 @@ static char typebuf[256];
 void
 initAstio(int fd)
 {
-    in_fd = fd;
-    buf_pos = 0;
-    buf_valid = 0;
-    line_num = 1;
+    inFd = fd;
+    bufPos = 0;
+    bufValid = 0;
+    lineNum = 1;
     curchar = 0;
 }
 
@@ -48,17 +48,17 @@ initAstio(int fd)
 unsigned char
 nextchar(void)
 {
-    if (buf_pos >= buf_valid) {
-        buf_valid = read(in_fd, buf, BUFSIZE);
-        if (buf_valid <= 0) {
+    if (bufPos >= bufValid) {
+        bufValid = read(inFd, buf, BUFSIZE);
+        if (bufValid <= 0) {
             curchar = 0;
             return 0;
         }
-        buf_pos = 0;
+        bufPos = 0;
     }
-    curchar = buf[buf_pos++];
+    curchar = buf[bufPos++];
     if (curchar == '\n') {
-        line_num++;
+        lineNum++;
     }
     return curchar;
 }
@@ -115,7 +115,7 @@ expect(unsigned char c)
     skip();
     if (curchar != c) {
         fdprintf(2, "parseast: line %d: expected '%c', got '%c'\n",
-                 line_num, c, curchar);
+                 lineNum, c, curchar);
         return 0;
     }
     nextchar();
@@ -128,7 +128,7 @@ expect(unsigned char c)
  * Returns pointer to static buffer with unescaped string data
  */
 char *
-readQuotedString(void)
+readQuotedStr(void)
 {
     unsigned char i = 0;
 
@@ -137,7 +137,7 @@ readQuotedString(void)
     /* Expect opening quote */
     if (curchar != '"') {
         fdprintf(2, "parseast: line %d: expected '\"' at start of string\n",
-            line_num);
+            lineNum);
         strbuf[0] = '\0';
         return strbuf;
     }
@@ -305,35 +305,46 @@ readType(void)
  * Save current parser state
  */
 void
-saveParserState(struct parser_state *state)
+saveParseSt(struct parser_state *state)
 {
-    memcpy(state->saved_buf, buf, buf_valid);
-    state->saved_buf_pos = buf_pos;
-    state->saved_buf_valid = buf_valid;
-    state->saved_line_num = line_num;
+    state->saved_buf = malloc(BUFSIZE);
+    memcpy(state->saved_buf, buf, bufValid);
+    state->saved_buf_pos = bufPos;
+    state->saved_bufvld = bufValid;
+    state->savedLineNum = lineNum;
     state->saved_curchar = curchar;
-    state->saved_in_fd = in_fd;
+    state->saved_in_fd = inFd;
 }
 
 /*
- * Restore parser state
+ * Restore parser state (can be called multiple times)
  */
 void
-restoreParserState(struct parser_state *state)
+restoreParse(struct parser_state *state)
 {
-    memcpy(buf, state->saved_buf, state->saved_buf_valid);
-    buf_pos = state->saved_buf_pos;
-    buf_valid = state->saved_buf_valid;
-    line_num = state->saved_line_num;
+    memcpy(buf, state->saved_buf, state->saved_bufvld);
+    bufPos = state->saved_buf_pos;
+    bufValid = state->saved_bufvld;
+    lineNum = state->savedLineNum;
     curchar = state->saved_curchar;
-    in_fd = state->saved_in_fd;
+    inFd = state->saved_in_fd;
+}
+
+/*
+ * Free parser state buffer (call when done with saved state)
+ */
+void
+freeParseSt(struct parser_state *state)
+{
+    free(state->saved_buf);
+    state->saved_buf = 0;
 }
 
 /*
  * Set up parser to read from a string buffer
  */
 void
-setupStringInput(char *str, int len)
+setupStrInput(char *str, int len)
 {
     /* Copy string to main buffer */
     if (len > BUFSIZE - 1) {
@@ -341,14 +352,14 @@ setupStringInput(char *str, int len)
     }
     memcpy(buf, str, len);
     buf[len] = 0;
-    buf_pos = 0;
-    buf_valid = len;
-    in_fd = -1;  /* Mark as string input */
+    bufPos = 0;
+    bufValid = len;
+    inFd = -1;  /* Mark as string input */
 
     /* Initialize curchar */
     if (len > 0) {
         curchar = buf[0];
-        buf_pos = 1;
+        bufPos = 1;
     } else {
         curchar = 0;
     }
@@ -358,7 +369,7 @@ setupStringInput(char *str, int len)
  * Check if a line is a label (ends with ':')
  */
 int
-is_label(char *line)
+isLabel(char *line)
 {
     int len;
 
@@ -376,11 +387,11 @@ is_label(char *line)
  * Also collapse multiple consecutive spaces into single spaces
  */
 char *
-trim_line(char *line)
+trimLine(char *line)
 {
     char *end;
     char *src, *dst;
-    int last_was_space;
+    int lastWasSpace;
 
     /* Trim leading space */
     while (*line == ' ' || *line == '\t') {
@@ -389,17 +400,17 @@ trim_line(char *line)
 
     /* Collapse multiple spaces into single spaces */
     src = dst = line;
-    last_was_space = 0;
+    lastWasSpace = 0;
     while (*src) {
         if (*src == ' ' || *src == '\t') {
-            if (!last_was_space) {
+            if (!lastWasSpace) {
                 *dst++ = ' ';
-                last_was_space = 1;
+                lastWasSpace = 1;
             }
             src++;
         } else {
             *dst++ = *src++;
-            last_was_space = 0;
+            lastWasSpace = 0;
         }
     }
     *dst = '\0';

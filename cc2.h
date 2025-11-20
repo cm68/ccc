@@ -35,6 +35,38 @@ enum register_id {
 };
 
 /*
+ * Jump instruction types
+ */
+enum jump_type {
+    JUMP_NONE = 0,
+    JMP_UNCOND,     /* jp label */
+    JUMP_IF_ZERO,          /* jr z, label or jp z, label */
+    JMP_IF_NOT_Z,      /* jr nz, label or jp nz, label */
+    JUMP_IF_CARRY,         /* jr c, label or jp c, label */
+    JMP_IF_NOT_C,     /* jr nc, label or jp nc, label */
+    JUMP_CALL              /* call label */
+};
+
+/*
+ * Jump instruction node - deferred until emission for optimization
+ */
+struct jump_instr {
+    enum jump_type type;        // Type of jump
+    int target_label;           // Target label number
+    char *condition;            // Condition string (for conditional jumps)
+    struct jump_instr *next;    // Next in list
+};
+
+/*
+ * Label mapping for jump optimization
+ */
+struct labelMap {
+    int label;                  // Label number
+    int target;                 // What this label jumps to (-1 if not a pure jump)
+    enum jump_type jump_type;   // Type of jump at this label
+};
+
+/*
  * Expression flags
  */
 #define E_UNSIGNED  0x01        // Value is unsigned
@@ -59,6 +91,7 @@ struct expr {
     char *asm_block;            // Generated assembly code (or NULL)
     char *cleanup_block;        // Deferred cleanup code (for CALL stack cleanup)
     int label;                  // Label number (if needed for this expression)
+    struct jump_instr *jump;    // Jump instruction (deferred) or NULL
 };
 
 /*
@@ -82,6 +115,7 @@ struct stmt {
     int label;                  // Primary label number for this statement
     int label2;                 // Secondary label (for if/else end)
     char *asm_block;            // Generated assembly code (or NULL)
+    struct jump_instr *jump;    // Jump instruction (deferred) or NULL
 };
 
 /*
@@ -109,13 +143,13 @@ struct function_ctx {
     char *params;               // Parameter list string
     char *rettype;              // Return type
     struct stmt *body;          // Function body statement tree
-    int label_counter;          // For generating unique labels
+    int labelCounter;          // For generating unique labels
     struct local_var *locals;   // List of local variables with stack offsets
     int frame_size;             // Total stack frame size in bytes
     int current_label;          // Current label context during code generation (for lifetime tracking)
     int de_save_count;          // Counter for nested DE saves (for secondary register preservation)
     int d_in_use;               // Flag: D register holds spilled byte secondary (E)
-    int pending_stack_cleanup;  // Bytes to clean up after current expression (for CALL return values)
+    int pendStkClean;  // Bytes to clean up after current expression (for CALL return values)
 };
 
 /* Forward declarations from util.c */
@@ -126,29 +160,33 @@ int fdputs(int fd, const char *s);
 extern int outFd;  /* Assembly output file descriptor (from parseast.c) */
 
 /* Tree construction functions */
-struct expr *new_expr(unsigned char op);
-struct stmt *new_stmt(unsigned char type);
+struct expr *newExpr(unsigned char op);
+struct stmt *newStmt(unsigned char type);
 void freeExpr(struct expr *e);
 void frStmt(struct stmt *s);
 
+/* Jump instruction management */
+struct jump_instr *newJump(enum jump_type type, int target_label);
+void freeJump(struct jump_instr *j);
+
 /* Width and signedness extraction from type annotations */
-unsigned char get_size_from_type_str(const char *type_str);
-unsigned char get_size_from_typename(const char *typename);
-unsigned char get_signedness_from_type_str(const char *type_str);
+unsigned char getSizeFTStr(const char *type_str);
+unsigned char getSizeFromTN(const char *typename);
+unsigned char getSignFTStr(const char *type_str);
 
 /* Pattern recognizers */
-int isStructMemberAccess(struct expr *e, char **out_var, long *out_offset);
-int is_multiply_by_power_of_2(struct expr *e, struct expr **out_expr);
+int isStructMem(struct expr *e, char **out_var, long *out_offset);
+int isMulByPow2(struct expr *e, struct expr **out_expr);
 
 /* Code generation functions (codegen.c) */
-void assignFrameOffsets(struct function_ctx *ctx);
-void generate_code(struct function_ctx *ctx);
-void optimizeFrameLayout(struct function_ctx *ctx);
-void allocateRegisters(struct function_ctx *ctx);
+void assignFrmOff(struct function_ctx *ctx);
+void generateCode(struct function_ctx *ctx);
+void optFrmLayout(struct function_ctx *ctx);
+void allocRegs(struct function_ctx *ctx);
 struct local_var *findVar(struct function_ctx *ctx, const char *symbol);
 
 /* Code emission functions (emit.c) */
-void emit_assembly(struct function_ctx *ctx, int outFd);
+void emitAssembly(struct function_ctx *ctx, int outFd);
 
 /*
  * vim: tabstop=4 shiftwidth=4 expandtab:

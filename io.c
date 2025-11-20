@@ -88,7 +88,7 @@ struct include {
 } *includes;
 
 /* System include path for #include <foo.h> */
-char *sysIncludePath = "include";
+char *sysIncPath = "include";
 
 /*
  * Add a path to the include file search list
@@ -99,7 +99,7 @@ char *sysIncludePath = "include";
  *
  * The include list is searched for:
  *   - #include "file.h" directives (quoted form)
- *   - #include <file.h> directives (after trying sysIncludePath)
+ *   - #include <file.h> directives (after trying sysIncPath)
  *
  * Search order:
  *   1. System path (for <> includes only)
@@ -139,7 +139,7 @@ addInclude(char *s)
  * configured include paths.
  *
  * Search strategy:
- *   - sys=1 (<file.h>): Try sysIncludePath first, then include list
+ *   - sys=1 (<file.h>): Try sysIncPath first, then include list
  *   - sys=0 ("file.h"): Try include list paths only
  *   - Empty path in list means current directory
  *   - First file found is used (search stops)
@@ -189,8 +189,8 @@ insertfile(char *name, int sys)
     /*
      * For system includes (<foo.h>), try system include path first
      */
-    if (sys && sysIncludePath) {
-        strcpy(namebuf, sysIncludePath);
+    if (sys && sysIncPath) {
+        strcpy(namebuf, sysIncPath);
         strcat(namebuf, "/");
         strcat(namebuf, name);
         t->fd = open(namebuf, 0);

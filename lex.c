@@ -16,8 +16,8 @@ static unsigned char incomment = 0;
 struct token cur, next;
 
 /* Token history for debugging */
-#define TOKEN_HISTORY_SIZE 10
-struct token tok_hist[TOKEN_HISTORY_SIZE];
+#define TOK_HIST_SIZE 10
+struct token tokHist[TOK_HIST_SIZE];
 int tokHidx = 0;
 
 /*
@@ -547,6 +547,13 @@ issym()
         }
         advance();
     }
+
+    /* Check identifier length limit (13 chars + 1 for asm underscore = 14 total) */
+    if ((s - strbuf) > 13) {
+        gripe(ER_C_TL);
+        fdprintf(2, "  Identifier '%s' exceeds 13 character limit\n", strbuf);
+    }
+
 #ifdef DEBUG
     if (VERBOSE(V_SYM)) {
         fdprintf(2,"issym = %s curchar = %c nextchar = %c\n",
@@ -601,7 +608,7 @@ cppAsmOut(char *s, int len)
  *   - Writes text + space to cpp file and/or asm buffer
  */
 void
-cppAsmOutWithSpace(char *s, int len)
+cppAsmOutSpc(char *s, int len)
 {
     cppAsmOut(s, len);
     cppAsmOut(" ", 1);
@@ -660,7 +667,7 @@ outputToken(struct token *tok)
 
     switch (tok->type) {
     case SYM:
-        cppAsmOutWithSpace(tok->v.name, strlen(tok->v.name));
+        cppAsmOutSpc(tok->v.name, strlen(tok->v.name));
         break;
     case STRING:
         if (!tok->v.str) {
@@ -709,7 +716,7 @@ outputToken(struct token *tok)
                 s, writeCppfile);
         }
 #endif
-        cppAsmOutWithSpace(s, strlen(s));
+        cppAsmOutSpc(s, strlen(s));
         break;
     }
 }
@@ -769,7 +776,7 @@ outputToken(struct token *tok)
  *   - Updates C_TRUE/C_ELSESEEN/C_TRUESEEN flags
  */
 void
-do_cpp(unsigned char t)
+doCpp(unsigned char t)
 {
     char *s;
     unsigned char k;
@@ -1029,7 +1036,7 @@ char simple[] = {
 /*
  * list of tokens that can be doubled, and the resulting token
  */
-char dbl_able[] = {
+char dblAble[] = {
     PLUS, MINUS, OR, AND, ASSIGN, GT, LT, 0
 };
 char dbltok[] = {
@@ -1040,7 +1047,7 @@ char dbltok[] = {
  * list of tokens that can have '=' appended
  * and then, what token that turns them into
  */
-char eq_able[] = {
+char eqAble[] = {
     PLUS, MINUS, STAR, DIV, MOD, AND, OR, XOR,
     GT, LT, BANG, LOR, LAND, RSHIFT, LSHIFT, 0
 };
@@ -1098,7 +1105,7 @@ char nbuf[1024];  // Large enough for escaped string: 1 + 255*4 + 1 = 1022 bytes
  * Token stream management:
  *   - Shifts next -> cur
  *   - Parses new token into next
- *   - Maintains token history for debugging (tok_hist circular buffer)
+ *   - Maintains token history for debugging (tokHist circular buffer)
  *
  * Preprocessing integration:
  *   - Comment stripping (C and C++ style)
@@ -1122,7 +1129,7 @@ char nbuf[1024];  // Large enough for escaped string: 1 + 255*4 + 1 = 1022 bytes
  * Preprocessor directive handling:
  *   - Hash at column 0 triggers CPP processing
  *   - Non-column-0 hash treated as token (for stringify in macros)
- *   - Directives processed by do_cpp()
+ *   - Directives processed by doCpp()
  *   - False blocks skip all tokens except nested directives
  *
  * Comment handling:
@@ -1183,8 +1190,8 @@ gettoken()
     memcpy(&cur, &next, sizeof(cur));
 
     /* Save current token to history for debugging */
-    memcpy(&tok_hist[tokHidx], &cur, sizeof(cur));
-    tokHidx = (tokHidx + 1) % TOKEN_HISTORY_SIZE;
+    memcpy(&tokHist[tokHidx], &cur, sizeof(cur));
+    tokHidx = (tokHidx + 1) % TOK_HIST_SIZE;
 
     next.v.str = 0;
     next.type = NONE;
@@ -1281,16 +1288,16 @@ gettoken()
 #ifdef DEBUG
                     if (VERBOSE(V_CPP) && (t == IF || t == ELIF)) {
                         fdprintf(2,
-                            "Before do_cpp(%s): cur.type=0x%02x "
+                            "Before doCpp(%s): cur.type=0x%02x "
                             "next.type=0x%02x\n",
                             t == IF ? "IF" : "ELIF", cur.type, next.type);
                     }
 #endif
-                    do_cpp(t);
+                    doCpp(t);
 #ifdef DEBUG
                     if (VERBOSE(V_CPP) && (t == IF || t == ELIF)) {
                         fdprintf(2,
-                            "After do_cpp(%s): cur.type=0x%02x "
+                            "After doCpp(%s): cur.type=0x%02x "
                             "next.type=0x%02x cond=%p\n",
                             t == IF ? "IF" : "ELIF", cur.type, next.type,
                             cond);
@@ -1404,7 +1411,7 @@ gettoken()
             next.type = SYM;
             /* Enforce symbol length limit with warning */
             if (strlen(strbuf) > MAXSYMLEN) {
-                gripe(ER_W_SYM_TRUNC);
+                gripe(ER_W_SYMTRUNC);
                 fdprintf(2, "  Symbol '%s' truncated to %d characters\n", strbuf, MAXSYMLEN);
                 strbuf[MAXSYMLEN] = '\0';  /* Truncate to max length */
             }
@@ -1435,7 +1442,7 @@ gettoken()
 
         /* see if the character is doubled.  this can be an operator */
         if (curchar == c) {
-            t = lookupc(dbl_able, c);
+            t = lookupc(dblAble, c);
             if (t != 0xff) {
                 c = next.type = dbltok[t];
                 advance();
@@ -1444,7 +1451,7 @@ gettoken()
 
         /* see if the character has an '=' appended.  this can be an operator */
         if (curchar == '=') {
-            t = lookupc(eq_able, c);
+            t = lookupc(eqAble, c);
             if (t != 0xff) {
                 next.type = eqtok[t];
                 advance();
@@ -1585,9 +1592,9 @@ cpppseudofunc()
  * by carefully saving and restoring global state.
  *
  * Recursion challenge:
- *   - Called from do_cpp() which is called from gettoken()
+ *   - Called from doCpp() which is called from gettoken()
  *   - May call gettoken() internally to parse expression
- *   - Expression parsing may encounter #if and call do_cpp() recursively
+ *   - Expression parsing may encounter #if and call doCpp() recursively
  *   - Must preserve cur/next/tflags across recursion
  *
  * State management:
@@ -1636,7 +1643,7 @@ readcppconst()
 {
     unsigned long val;
     char savedtflags = tflags;
-    int saved_write_cpp = writeCppfile;
+    int saved_wrt_cpp = writeCppfile;
     struct token saved_cur;
 
     /* Save cur because recursive gettoken() calls will modify it */
@@ -1695,7 +1702,7 @@ readcppconst()
 
     /* Restore flags */
     tflags = savedtflags;
-    writeCppfile = saved_write_cpp;
+    writeCppfile = saved_wrt_cpp;
 
     /* Leave next with whatever was read - it contains the INT token */
     /* The caller will handle discarding it if in a false block */

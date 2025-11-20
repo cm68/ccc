@@ -80,7 +80,7 @@ makeTempAst(char *basename)
  * Returns a newly allocated string
  */
 char *
-getBasenameNoExt(char *filename)
+getBaseNoExt(char *filename)
 {
     char *temp = strdup(filename);
     char *base = basename(temp);
@@ -155,7 +155,7 @@ main(int argc, char **argv)
     char cc2_path[1024];
     char interp_path[1024];
 
-    char *basename_no_ext;
+    char *basenameNoExt;
     int status;
 
     progname = argv[0];
@@ -268,12 +268,12 @@ main(int argc, char **argv)
     }
 
     /* Generate AST filename */
-    basename_no_ext = getBasenameNoExt(source_file);
+    basenameNoExt = getBaseNoExt(source_file);
     if (keep_ast) {
-        ast_file = malloc(strlen(basename_no_ext) + 10);
-        sprintf(ast_file, "%s.ast", basename_no_ext);
+        ast_file = malloc(strlen(basenameNoExt) + 10);
+        sprintf(ast_file, "%s.ast", basenameNoExt);
     } else {
-        ast_file = makeTempAst(basename_no_ext);
+        ast_file = makeTempAst(basenameNoExt);
     }
 
     printf("=== Pass 1: Parsing %s ===\n", source_file);
@@ -315,7 +315,7 @@ main(int argc, char **argv)
         printf("\nAST saved to: %s\n", ast_file);
 
         free(ast_file);
-        free(basename_no_ext);
+        free(basenameNoExt);
         free(scriptdir);
 
         exit(status);
@@ -349,7 +349,7 @@ main(int argc, char **argv)
     printf("\n=== Compilation successful: %s ===\n", output_file);
 
     free(ast_file);
-    free(basename_no_ext);
+    free(basenameNoExt);
     free(scriptdir);
 
     return 0;

@@ -58,7 +58,7 @@
 int fdprintf(int fd, const char *fmt, ...);
 
 /* Forward declaration from parseast.c */
-int parseAstFile(int in_fd, int out_fd);
+int parseAstFile(int inFd, int outFd);
 
 char *progname;
 
@@ -66,7 +66,7 @@ char *progname;
  * timeout handler - catch infinite loops during code generation
  */
 void
-timeout_handler(int sig)
+timeoutHdlr(int sig)
 {
     fdprintf(2, "\n\n*** TIMEOUT after %d seconds ***\n", MAXTIME);
     fdprintf(2,
@@ -96,7 +96,7 @@ usage(char *complaint)
  * Example: /tmp/foo.c.ast -> /tmp/foo.c.s
  */
 char *
-makeOutputName(char *input_file)
+makeOutName(char *input_file)
 {
     char *output;
     int len;
@@ -126,16 +126,16 @@ main(int argc, char **argv)
 {
     char *ast_file = NULL;
     char *output_file = NULL;
-    int in_fd;
-    int out_fd;
-    int explicit_output = 0;
+    int inFd;
+    int outFd;
+    int explicit_out = 0;
 
     progname = argv[0];
     argc--;
     argv++;
 
     /* Set up timeout handler to catch infinite loops */
-    signal(SIGALRM, timeout_handler);
+    signal(SIGALRM, timeoutHdlr);
     alarm(MAXTIME);
 
     /* Parse arguments */
@@ -147,7 +147,7 @@ main(int argc, char **argv)
                 usage("output file not specified");
             }
             output_file = argv[0];
-            explicit_output = 1;
+            explicit_out = 1;
             argc--;
             argv++;
         } else if (strcmp(argv[0], "-h") == 0 ||
@@ -165,10 +165,10 @@ main(int argc, char **argv)
     }
 
     /* Determine output file name */
-    if (!explicit_output) {
+    if (!explicit_out) {
         if (ast_file) {
             /* Input from file: default to <basename>.s */
-            output_file = makeOutputName(ast_file);
+            output_file = makeOutName(ast_file);
         } else {
             /* Input from stdin: output to stdout (filter mode) */
             output_file = NULL;
@@ -178,42 +178,42 @@ main(int argc, char **argv)
     /* Open input: file or stdin */
     if (ast_file) {
         fdprintf(2, "cc2: Reading AST from %s\n", ast_file);
-        in_fd = open(ast_file, O_RDONLY);
-        if (in_fd < 0) {
+        inFd = open(ast_file, O_RDONLY);
+        if (inFd < 0) {
             fdprintf(2, "cc2: cannot open %s\n", ast_file);
             exit(1);
         }
     } else {
         fdprintf(2, "cc2: Reading AST from stdin\n");
-        in_fd = 0;  /* stdin */
+        inFd = 0;  /* stdin */
     }
 
     /* Open output: file or stdout */
     if (output_file) {
         fdprintf(2, "cc2: Writing assembly to %s\n", output_file);
-        out_fd = open(output_file, O_WRONLY | O_CREAT | O_TRUNC, 0644);
-        if (out_fd < 0) {
+        outFd = open(output_file, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+        if (outFd < 0) {
             fdprintf(2, "cc2: cannot create %s\n", output_file);
-            if (in_fd != 0) close(in_fd);
+            if (inFd != 0) close(inFd);
             exit(1);
         }
     } else {
         fdprintf(2, "cc2: Writing assembly to stdout\n");
-        out_fd = 1;  /* stdout */
+        outFd = 1;  /* stdout */
     }
 
     /* Parse AST file and generate code */
     fdprintf(2, "cc2: Parsing AST and generating code...\n");
-    if (parseAstFile(in_fd, out_fd) != 0) {
+    if (parseAstFile(inFd, outFd) != 0) {
         fdprintf(2, "cc2: failed to parse AST\n");
-        if (in_fd != 0) close(in_fd);
-        if (out_fd != 1) close(out_fd);
+        if (inFd != 0) close(inFd);
+        if (outFd != 1) close(outFd);
         exit(1);
     }
 
     /* Close files */
-    if (in_fd != 0) close(in_fd);
-    if (out_fd != 1) close(out_fd);
+    if (inFd != 0) close(inFd);
+    if (outFd != 1) close(outFd);
 
     fdprintf(2, "\ncc2: Generation complete\n");
 

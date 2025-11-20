@@ -35,7 +35,7 @@
  *   - Calls fatal() which exits the process
  */
 void
-timeout_handler(int sig)
+timeoutHdlr(int sig)
 {
     fdprintf(2,"\n\n*** TIMEOUT after 5 seconds ***\n");
     fatal(ER_WTF);
@@ -45,9 +45,9 @@ char *progname;
 int verbose;
 
 /* Global context for static variable name mangling */
-char *sourceFileRoot = NULL;
-struct name *current_function = NULL;
-unsigned char static_counter = 0;
+char *srcFileRoot = NULL;
+struct name *curFunc = NULL;
+unsigned char staticCtr = 0;
 
 /* AST output control */
 int astFd;  // defaults to 1 (stdout), can be overridden with -o
@@ -83,7 +83,7 @@ int astFd;  // defaults to 1 (stdout), can be overridden with -o
  *   f - Source file path (can include directory components)
  *
  * Side effects:
- *   - Updates global sourceFileRoot
+ *   - Updates global srcFileRoot
  *   - Creates and writes .i file if -E specified
  *   - Outputs AST to astFd (stdout or -o file)
  *   - Consumes entire source file from disk
@@ -92,7 +92,7 @@ void
 process(char *f)
 {
     int i, len;
-    char *s, *basename_start, *dot;
+    char *s, *basenameStart, *dot;
 
 #ifdef DEBUG
     if (VERBOSE(V_TRACE)) {
@@ -101,26 +101,26 @@ process(char *f)
 #endif
 
     /* Extract source file root for static name mangling */
-    if (sourceFileRoot) {
-        free(sourceFileRoot);
+    if (srcFileRoot) {
+        free(srcFileRoot);
     }
     /* Find last slash (if any) to get basename */
-    basename_start = strrchr(f, '/');
-    if (basename_start) {
-        basename_start++;  /* skip the slash */
+    basenameStart = strrchr(f, '/');
+    if (basenameStart) {
+        basenameStart++;  /* skip the slash */
     } else {
-        basename_start = f;
+        basenameStart = f;
     }
     /* Find .c extension and copy everything before it */
-    dot = strrchr(basename_start, '.');
+    dot = strrchr(basenameStart, '.');
     if (dot && strcmp(dot, ".c") == 0) {
-        len = dot - basename_start;
+        len = dot - basenameStart;
     } else {
-        len = strlen(basename_start);
+        len = strlen(basenameStart);
     }
-    sourceFileRoot = malloc(len + 1);
-    strncpy(sourceFileRoot, basename_start, len);
-    sourceFileRoot[len] = '\0';
+    srcFileRoot = malloc(len + 1);
+    strncpy(srcFileRoot, basenameStart, len);
+    srcFileRoot[len] = '\0';
     if (writeCppfile) {
         if (cppfile) {
             close(cppfile);
@@ -128,13 +128,13 @@ process(char *f)
             free(cppfname);
         }
         /* Use basename only - put .i file in current directory */
-        i = strlen(basename_start);
-        if (i >= 2 && basename_start[i-2] == '.' &&
-            basename_start[i-1] == 'c') {
+        i = strlen(basenameStart);
+        if (i >= 2 && basenameStart[i-2] == '.' &&
+            basenameStart[i-1] == 'c') {
             i -= 2;
         }
         cppfname = malloc(i+3);  // +2 for ".i", +1 for null terminator
-        strncpy(cppfname, basename_start, i);
+        strncpy(cppfname, basenameStart, i);
         cppfname[i] = '\0';  // Ensure null termination
         strcat(cppfname, ".i");
         cppfile = creat(cppfname, 0777);
@@ -224,11 +224,11 @@ usage(char *complaint, char *p)
  * Per-file processing:
  *   - Calls process() for each source file on command line
  *   - Each file is parsed independently
- *   - Calls cleanup_parser() after each file to free memory
+ *   - Calls cleanupParse() after each file to free memory
  *   - Continues to next file even if previous had errors
  *
  * Exit behavior:
- *   - Returns exit_code (0 if no errors, 1 if errors occurred)
+ *   - Returns exitCode (0 if no errors, 1 if errors occurred)
  *   - Closes AST output file if not stdout
  *   - Timeout kills process if compilation hangs (no cleanup)
  *
@@ -242,7 +242,7 @@ usage(char *complaint, char *p)
  *   argv - Argument vector (program name, flags, source files)
  *
  * Returns:
- *   exit_code - 0 if successful, 1 if errors occurred during compilation
+ *   exitCode - 0 if successful, 1 if errors occurred during compilation
  *
  * Side effects:
  *   - Sets global verbose, astFd variables
@@ -259,7 +259,7 @@ main(int argc, char **argv)
 
 #ifndef SDCC
     /* Set up timeout handler to catch infinite loops */
-    signal(SIGALRM, timeout_handler);
+    signal(SIGALRM, timeoutHdlr);
     alarm(5);  /* 5 second timeout */
 #endif
 
@@ -290,7 +290,7 @@ main(int argc, char **argv)
                 s="";
                 break;
             case 'i':
-                sysIncludePath = s;
+                sysIncPath = s;
                 s="";
                 break;
             case 'D':
@@ -359,7 +359,7 @@ main(int argc, char **argv)
     while (argc--) {
         process(*argv++);
         /* Clean up allocated memory after each file */
-        cleanup_parser();
+        cleanupParse();
     }
 
     /* Close AST output file if not stdout */
@@ -367,7 +367,7 @@ main(int argc, char **argv)
         close(astFd);
     }
 
-    return exit_code;  /* Return 0 if no errors, 1 if errors occurred */
+    return exitCode;  /* Return 0 if no errors, 1 if errors occurred */
 }
 
 /*

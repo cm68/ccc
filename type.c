@@ -76,7 +76,7 @@ struct name **names;
  *
  * Note: Name structures are NOT freed here as they may still be referenced
  * by AST nodes (e.g., SYM expressions in statement trees). Memory will be
- * reclaimed on process exit or by explicit cleanup_parser() call.
+ * reclaimed on process exit or by explicit cleanupParse() call.
  *
  * Scope levels:
  *   - 0: Basic types (char, int, void, etc.)
@@ -199,7 +199,7 @@ findElement(char *name, struct type *t)
 	return 0;
 }
 
-char *type_bitdefs[] = {
+char *typeBitdefs[] = {
 		"AGGREGATE", "INCOMPLETE", "UNSIGNED",
         "FUNC", "POINTER", "ARRAY", "FLOAT", "OLD"
 };
@@ -210,7 +210,7 @@ char *type_bitdefs[] = {
  * Outputs detailed information about a name entry to stderr, including:
  *   - Name identifier and namespace (tag vs ordinary)
  *   - Storage class flags (extern, static, register, etc.)
- *   - Type information (via dump_type)
+ *   - Type information (via dumpType)
  *   - Struct member offset, bitfield position, and width
  *
  * Used for debugging symbol table contents and type resolution.
@@ -219,9 +219,9 @@ char *type_bitdefs[] = {
  *   n - Name entry to dump (NULL-safe)
  */
 void
-dump_name(struct name *n)
+dumpName(struct name *n)
 {
-	fdprintf(2,"dump_name: ");
+	fdprintf(2,"dumpName: ");
 	if (!n) { printf("null\n"); return; }
 	fdprintf(2,"%s (%s)", n->name, n->is_tag ? "tag" : "decl");
 
@@ -239,7 +239,7 @@ dump_name(struct name *n)
 	fdprintf(2,"\n");
 
 	if (n->type) {
-		dump_type(n->type, 0);
+		dumpType(n->type, 0);
 	}
     fdprintf(2,"\toffset: %d bitoff: %d width: %d\n",
         n->offset, n->bitoff, n->width);
@@ -427,7 +427,7 @@ addName(struct name *n)
  *   lv - Current indentation level (0 for top-level)
  */
 void
-dump_type(struct type *t, int lv)
+dumpType(struct type *t, int lv)
 {
     struct name *param;
     unsigned char param_count = 0;
@@ -454,7 +454,7 @@ dump_type(struct type *t, int lv)
     // Display type info - format depends on whether it's a function
     if (t->flags & TF_FUNC) {
         fdprintf(2,"function type: flags %x (%s) params %d\n",
-            t->flags, bitdef(t->flags, type_bitdefs), param_count);
+            t->flags, bitdef(t->flags, typeBitdefs), param_count);
 
         // Show parameter types (without names - function type signature)
         if (param_count > 0) {
@@ -481,14 +481,14 @@ dump_type(struct type *t, int lv)
             for (i = 0; i <= lv; i++)
                 fdprintf(2,"\t");
             fdprintf(2,"returntype:\n");
-            dump_type(t->sub, lv + 2);
+            dumpType(t->sub, lv + 2);
         }
     } else {
         // Non-function types
         fdprintf(2,"name %s flags %x (%s) count %x\n",
             t->name ? t->name : "unnamed",
-            t->flags, bitdef(t->flags, type_bitdefs), t->count);
-        dump_type(t->sub, ++lv);
+            t->flags, bitdef(t->flags, typeBitdefs), t->count);
+        dumpType(t->sub, ++lv);
     }
 }
 
@@ -497,9 +497,9 @@ dump_type(struct type *t, int lv)
  */
 #define UN_SIGNED   3
 #define OTHERS      6
-#define BYTES_1     0
-#define BYTES_2     1
-#define BYTES_4     2
+#define BYTES1     0
+#define BYTES2     1
+#define BYTES4     2
 #define	MISC_BASIC	6
 
 /*
@@ -529,7 +529,7 @@ static struct {
  * Parameter names are ignored - only types matter
  */
 static int
-compareParamLists(struct name *p1, struct name *p2)
+cmpParamLists(struct name *p1, struct name *p2)
 {
     while (p1 && p2) {
         // Compare parameter types, not names
@@ -549,7 +549,7 @@ compareParamLists(struct name *p1, struct name *p2)
  * Checks return type and parameter types, ignoring parameter names
  */
 int
-compatible_function_types(struct type *t1, struct type *t2)
+compatFnTyp(struct type *t1, struct type *t2)
 {
     if (!t1 || !t2) return 0;
     if (!(t1->flags & TF_FUNC) || !(t2->flags & TF_FUNC)) return 0;
@@ -561,7 +561,7 @@ compatible_function_types(struct type *t1, struct type *t2)
     if ((t1->flags & TF_VARIADIC) != (t2->flags & TF_VARIADIC)) return 0;
 
     // Compare parameter lists
-    return compareParamLists(t1->elem, t2->elem);
+    return cmpParamLists(t1->elem, t2->elem);
 }
 
 /*
@@ -727,7 +727,7 @@ initbasictype()
  *
  * Type resolution:
  *   - Tracks unsignedness (0 or UN_SIGNED offset)
- *   - Tracks length (BYTES_1/2/4 for char/short/long)
+ *   - Tracks length (BYTES1/2/4 for char/short/long)
  *   - Tracks misc types (void/float/double offset)
  *   - Computes index into basictype table: unsignedness + length + misc
  *   - Returns corresponding type from names array (installed by initbasictype)
@@ -755,7 +755,7 @@ parsebasic()
 
 		case CHAR:
 			gettoken();
-			length = BYTES_1 + 1;
+			length = BYTES1 + 1;
 			goto done;
 
 		case LONG:
@@ -763,7 +763,7 @@ parsebasic()
 			if (length) {
 				gripe(ER_T_PT);
 			}
-			length = BYTES_4 + 1;
+			length = BYTES4 + 1;
 			continue;
 
 		case SHORT:
@@ -771,13 +771,13 @@ parsebasic()
 			if (length) {
 				gripe(ER_T_PT);
 			}
-			length = BYTES_2 + 1;
+			length = BYTES2 + 1;
 			continue;
 
 		case INT:
 			gettoken();
 			if (!length) {
-				length = BYTES_2 + 1;
+				length = BYTES2 + 1;
 			}
 			goto done;
 
@@ -814,7 +814,7 @@ parsebasic()
 	}
 done:
     if (unsignedness && (length == 0)) {    // naked unsigned
-        length = BYTES_2 + 1;
+        length = BYTES2 + 1;
     }
     if (length) length--;
     n = names[unsignedness + length + misc];
@@ -844,7 +844,7 @@ done:
  *   - Forward declarations: struct foo; (creates incomplete type)
  *   - Definitions: struct foo { ... }; (creates complete type)
  *   - Anonymous: struct { ... } x; (no tag)
- *   - Member parsing: Calls declareInternal for each member
+ *   - Member parsing: Calls declInternal for each member
  *   - Bitfield packing: Packs bitfields into 16-bit words
  *   - Size calculation: Sum of member sizes (struct) or max (union)
  *
@@ -871,7 +871,7 @@ getbasetype()
     char s_buf[64];  /* Stack buffer for tag names */
     char *s;
     struct name *e;
-    int bitoff_accumulator;
+    int bitoff_accum;
     struct type *member_type;
     struct name *member;
     unsigned char is_union;
@@ -1021,7 +1021,7 @@ getbasetype()
         /*
          * bit offset within current word for bitfield packing
          */
-        bitoff_accumulator = 0;
+        bitoff_accum = 0;
         while (cur.type != END && cur.type != E_O_F) {
             member_type = 0;
 
@@ -1029,7 +1029,7 @@ getbasetype()
              * parse member declaration (struct_elem=true to avoid global
              * namespace pollution)
              */
-            member = declareInternal(&member_type, 1);
+            member = declInternal(&member_type, 1);
             if (!member) {
                 // skip to semicolon or end
                 while (cur.type != SEMI && cur.type != END &&
@@ -1063,15 +1063,15 @@ getbasetype()
                      * Check if bitfield fits in current word (assume
                      * 16-bit words for now)
                      */
-                    if (bitoff_accumulator + member->width > 16) {
+                    if (bitoff_accum + member->width > 16) {
                         // Move to next word
                         off += 2;  // Advance to next word (2 bytes)
-                        bitoff_accumulator = 0;
+                        bitoff_accum = 0;
                     }
 
                     member->offset = off;
-                    member->bitoff = bitoff_accumulator;
-                    bitoff_accumulator += member->width;
+                    member->bitoff = bitoff_accum;
+                    bitoff_accum += member->width;
 
                     // Update struct size if we're using a new word
                     if (off + 2 > t->size) {
@@ -1079,13 +1079,13 @@ getbasetype()
                     }
                 } else {
                     // Regular member - reset bitfield accumulator
-                    if (bitoff_accumulator > 0) {
+                    if (bitoff_accum > 0) {
                         /*
                          * Finish current bitfield word before adding
                          * regular member
                          */
                         off += 2;
-                        bitoff_accumulator = 0;
+                        bitoff_accum = 0;
                     }
 
                     member->offset = off;
@@ -1107,6 +1107,14 @@ getbasetype()
 
         // mark as complete
         t->flags &= ~TF_INCOMPLETE;
+
+        // warn if struct exceeds Z80 IX offset limit
+        if (t->size > 127) {
+            gripe(ER_T_SB);
+            fdprintf(2, "  Struct '%s' size %d exceeds IX offset limit (127 bytes)\n",
+                     n ? n->name : "(anonymous)", t->size);
+        }
+
         return t;
     }
 

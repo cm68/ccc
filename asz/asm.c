@@ -10,7 +10,7 @@
  * 
  * /usr/src/cmd/asz/asm.c 
  *
- * Changed: <2025-11-19 15:18:32 curt>
+ * Changed: <2025-11-19 17:38:06 curt>
  *
  * vim: tabstop=4 shiftwidth=4 noexpandtab:
  */
@@ -18,6 +18,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 #define INIT
 #else
 #include <stdio.h>
@@ -45,13 +46,12 @@
  * 5 - tokens
  */
 
-extern FILE *input_file;
-extern int line_num;
+extern int infd;
+extern int lineNum;
 extern char *infile;
 extern char verbose;
 extern char m_flag;
 
-void appendtmp();
 void asm_reset();
 void assemble();
 unsigned char peekchar();
@@ -457,7 +457,7 @@ gripe(msg)
 char *msg;
 {
 	printf("%s:%d %s\n%s", 
-        infile, line_num, msg, inbuf);
+        infile, lineNum, msg, inbuf);
 	exit(1);
 }
 
@@ -467,7 +467,7 @@ char *msg;
 char *arg;
 {
 	printf("%s:%d %s%s\n%s", 
-        infile, line_num, msg, arg, inbuf);
+        infile, lineNum, msg, arg, inbuf);
 	exit(1);
 }
 
@@ -603,11 +603,19 @@ get_line()
     int i;
 
     inptr = inbuf;
-    if (!fgets(inbuf, sizeof(inbuf), input_file)) {
-        inbuf[0] = T_EOF;
-        inbuf[1] = 0;
-    }
-    line_num++;
+	for (i = 0; i < sizeof(inbuf); i++) {
+		if (read(infd, inptr, 1) == 0) {
+        	*inptr++ = T_EOF;
+			break;		
+		}
+		if (*inptr == '\n') {
+			inptr++;
+			break;
+		}
+		inptr++;
+	}
+	*inptr = '\0';
+    lineNum++;
     i = strlen(inbuf);
     /* 
      * we normalize the line to not do the cr-lf thing.
@@ -617,6 +625,7 @@ get_line()
         inbuf[i - 2] = '\n';
         inbuf[i - 1] = 0;
     }
+	inptr = inbuf;
 }
 
 /*
@@ -744,7 +753,7 @@ get_token()
         token_buf[i++] = '\0';
         if (i > 16) {  /* >15 chars plus null terminator */
             printf("%s:%d warning: symbol '%s' longer than 15 characters\n",
-                   infile, line_num, token_buf);
+                   infile, lineNum, token_buf);
         }
         c = T_NAME;
     }
@@ -1006,52 +1015,52 @@ unsigned short base;
 			printf("bump: %d\n", bump);
 		}
 		while (bump >= 8223) {
-			outbyte(0x3f);
-			outbyte(0xff);
+			outtmp(0x3f);
+			outtmp(0xff);
 			bump -= 8223;
 		}
 		if (bump >= 32) {
 			bump -= 32;
-			outbyte((bump >> 8) + 32);
-			outbyte(bump & 0xff);
+			outtmp((bump >> 8) + 32);
+			outtmp(bump & 0xff);
 		} else if (bump) {
-			outbyte(bump);
+			outtmp(bump);
 		}
 		switch (seg) {
 		case SEG_UNDEF:
 			printf("reloc for undef\n");
 			break;
 		case SEG_ABS:
-			outbyte(0x40);
+			outtmp(0x40);
 			break;
 		case SEG_TEXT:
-			outbyte(0x44);
+			outtmp(0x44);
 			break;
 		case SEG_DATA:
-			outbyte(0x48);
+			outtmp(0x48);
 			break;
 		case SEG_BSS:
-			outbyte(0x4c);
+			outtmp(0x4c);
 			break;
 		default:
 			control = r->sym->index + 4;
 			if (control < 47) {
-				outbyte((control + 16) << 2);
+				outtmp((control + 16) << 2);
 			} else if (control < 175) {
-				outbyte(0xfc);
-				outbyte(control - 47);
+				outtmp(0xfc);
+				outtmp(control - 47);
 			} else {
 				control -= 175;
-				outbyte(0xfc);
-				outbyte((control >> 8) + 0x80);
-				outbyte(control);
+				outtmp(0xfc);
+				outtmp((control >> 8) + 0x80);
+				outtmp(control);
 			}
 			break;
 		}
 		last += bump + 2;
 		r = r->next;
 	}
-	outbyte(0);
+	outtmp(0);
 }
 
 /*
@@ -2329,7 +2338,7 @@ assemble()
             }            
 
 			if (verbose > 4)
-				printf("line %d: %s", line_num, inbuf);
+				printf("line %d: %s", lineNum, inbuf);
 
 			/*
 			 * command read 
@@ -2536,10 +2545,10 @@ assemble()
 			bss_top = data_top + data_size;
 			cur_address = 0;
 
-            line_num = 0;
+            lineNum = 0;
 
             *inptr = '\0';
-			rewind(input_file);
+			lseek(infd, 0, SEEK_SET);
 
 			continue;
 		}
@@ -2548,8 +2557,6 @@ assemble()
 		 * pass 2 is to output the code, data, symbols and reloc
 		 */
 		if (pass == 2) {
-			appendtmp();
-
             for (sym = symbols; sym; sym = sym->next) {
                 switch (sym->seg) {
                 case SEG_UNDEF:
@@ -2579,10 +2586,11 @@ assemble()
                 }
                 if (sym->index == 0xffff)
                     continue;
-	            outword(sym->value);
-                outbyte(type);
+	            outtmp(sym->value & 0xff);
+	            outtmp(sym->value >> 8);
+                outtmp(type);
                 for (next = 0; next < (m_flag ? 9 : 15); next++) {
-                    outbyte(sym->name[next]);
+                    outtmp(sym->name[next]);
                 }
             }
 

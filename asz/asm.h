@@ -11,7 +11,7 @@
 #define ASM_H
 
 extern FILE *input_file;
-extern int line_num;
+extern int lineNum;
 extern char *infile;
 extern char verbose;
 extern char g_flag;

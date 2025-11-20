@@ -8,7 +8,7 @@
 /*
  * counter for generating synthetic string literal names
  */
-static int string_counter = 0;
+static int stringCtr = 0;
 
 /*
  * Create a new expression tree node
@@ -216,7 +216,7 @@ parseExpr(unsigned char pri, struct stmt *st)
 	struct type *assign_type = NULL;
 	unsigned char is_assignment = 0;
 	struct var *member_info = NULL;
-	struct var *saved_member_info = NULL;
+	struct var *savMemberInf = NULL;
 	int l_ptr = 0;
 	int r_ptr = 0;
 	struct type *l_base = NULL;
@@ -312,7 +312,7 @@ parseExpr(unsigned char pri, struct stmt *st)
         }
 
         /* generate synthetic name for this string literal */
-        sprintf(namebuf, "str%d", string_counter++);
+        sprintf(namebuf, "str%d", stringCtr++);
 
         /*
          * Allocate name structure directly without adding to
@@ -334,7 +334,7 @@ parseExpr(unsigned char pri, struct stmt *st)
             /* store reference to the named string in the expression */
             e->var = (struct var *)strname;
             /* Emit string literal immediately (string data freed in emit) */
-            emitStringLiteral(strname);
+            emitStrLit(strname);
         }
         e->flags = E_CONST;
         break;
@@ -619,9 +619,13 @@ parseExpr(unsigned char pri, struct stmt *st)
     case DECR: {    // prefix decrement: --i
         unsigned char inc_op = cur.type;
         struct expr *operand;
+        struct type *value_type;
 
         gettoken();
         operand = parseExpr(OP_PRI_MULT - 1, st);  // unary precedence
+
+        // Save the value type before unwrapping DEREF
+        value_type = operand ? operand->type : NULL;
 
         // Unwrap DEREF to get lvalue address (similar to ASSIGN)
         if (operand && operand->op == DEREF) {
@@ -636,7 +640,7 @@ parseExpr(unsigned char pri, struct stmt *st)
         e = mkexpr(inc_op, operand);
         if (e->left) {
             e->left->up = e;
-            e->type = e->left->type;
+            e->type = value_type;  // Use saved value type, not lvalue type
         }
         // Note: Do NOT set E_POSTFIX flag for prefix form
         break;
@@ -856,7 +860,16 @@ parseExpr(unsigned char pri, struct stmt *st)
                  * Keep reference to member for bitoff/width
                  */
                 e->var = (struct var *)member;
+            } else if (member->type && (member->type->flags & TF_ARRAY)) {
+                /*
+                 * Array member: return address without DEREF
+                 * Arrays decay to pointers but are not lvalues
+                 * This prevents arr++ while allowing p = arr
+                 */
+                e = addr;
+                e->type = member->type;  /* Keep array type for proper semantics */
             } else {
+                /* Non-array member: wrap in DEREF to get value */
                 e = mkexprI(DEREF, addr, member->type, 0, 0);
                 e->left->up = e;
             }
@@ -866,8 +879,12 @@ parseExpr(unsigned char pri, struct stmt *st)
             // Postfix increment/decrement: i++ or i--
             unsigned char inc_op = cur.type;
             struct expr *inc_node;
+            struct type *value_type;
 
             gettoken();
+
+            // Save the value type before unwrapping DEREF
+            value_type = e ? e->type : NULL;
 
             // Unwrap DEREF to get lvalue address (similar to ASSIGN)
             if (e && e->op == DEREF) {
@@ -882,7 +899,7 @@ parseExpr(unsigned char pri, struct stmt *st)
             inc_node = mkexpr(inc_op, e);
             if (inc_node->left) {
                 inc_node->left->up = inc_node;
-                inc_node->type = inc_node->left->type;
+                inc_node->type = value_type;  // Use saved value type, not lvalue type
             }
             inc_node->flags |= E_POSTFIX;  // Mark as postfix form
             e = inc_node;
@@ -1049,7 +1066,7 @@ parseExpr(unsigned char pri, struct stmt *st)
          * - For left-associative operators, use precedence p to prevent
          *   same-precedence from nesting right
          */
-        saved_member_info = (e && e->var) ? e->var : NULL;
+        savMemberInf = (e && e->var) ? e->var : NULL;
         e = mkexpr(op, e);
         e->left->up = e;
         if (is_assignment) {
@@ -1070,8 +1087,8 @@ parseExpr(unsigned char pri, struct stmt *st)
         }
 
         // For BFASSIGN, restore member info (bitoff, width)
-        if (op == BFASSIGN && saved_member_info) {
-            e->var = saved_member_info;
+        if (op == BFASSIGN && savMemberInf) {
+            e->var = savMemberInf;
         }
 
         // For COPY operator, unwrap DEREF from right side to get address

@@ -14,29 +14,29 @@
 #include "astio.h"
 
 /* Forward declarations for static helper functions */
-static struct expr *parse_expr(void);
-static struct stmt *parse_stmt(void);
+static struct expr *parseExpr(void);
+static struct stmt *parseStmt(void);
 
 /* Symbol tracking for EXTERN declarations */
-static void addDefinedSymbol(const char *name);
-void addReferencedSymbol(const char *name);
+static void addDefSym(const char *name);
+void addRefSym(const char *name);
 
 /* Parser state */
 int outFd = 1;  /* Assembly output (default: stdout) */
-static int label_counter = 0;  /* For generating unique labels */
+static int labelCounter = 0;  /* For generating unique labels */
 
 /* Output buffering for symbol declarations */
-static char *output_buffer = NULL;
-static int output_buffer_size = 0;
-static int output_buffer_used = 0;
-static int real_outFd = 1;  /* Real output file descriptor */
-static int buffering_enabled = 0;
+static char *outputBuffer = NULL;
+static int outBufSize = 0;
+static int outBufUsed = 0;
+static int realOutFd = 1;  /* Real output file descriptor */
+static int bufEnabled = 0;
 
 /*
  * Tree node allocation helpers
  */
 struct expr *
-new_expr(unsigned char op)
+newExpr(unsigned char op)
 {
     struct expr *e = malloc(sizeof(struct expr));
     if (!e) {
@@ -54,11 +54,12 @@ new_expr(unsigned char op)
     e->asm_block = NULL;
     e->cleanup_block = NULL;
     e->label = 0;
+    e->jump = NULL;
     return e;
 }
 
 struct stmt *
-new_stmt(unsigned char type)
+newStmt(unsigned char type)
 {
     struct stmt *s = malloc(sizeof(struct stmt));
     if (!s) {
@@ -77,6 +78,7 @@ new_stmt(unsigned char type)
     s->label = 0;
     s->label2 = 0;
     s->asm_block = NULL;
+    s->jump = NULL;
     return s;
 }
 
@@ -87,7 +89,7 @@ new_stmt(unsigned char type)
  * Returns: size in bytes, or 2 (default short size) if no annotation
  */
 unsigned char
-get_size_from_type_str(const char *type_str)
+getSizeFTStr(const char *type_str)
 {
     if (!type_str || *type_str != ':') {
         return 2;  /* Default to short size */
@@ -116,7 +118,7 @@ get_size_from_type_str(const char *type_str)
  * Returns: E_UNSIGNED flag if unsigned, 0 if signed
  */
 unsigned char
-get_signedness_from_type_str(const char *type_str)
+getSignFTStr(const char *type_str)
 {
     if (!type_str || *type_str != ':') {
         return 0;  /* Default to signed */
@@ -139,7 +141,7 @@ get_signedness_from_type_str(const char *type_str)
  * Returns: size in bytes
  */
 unsigned char
-get_size_from_typename(const char *typename)
+getSizeFromTN(const char *typename)
 {
     if (!typename) return 2;  /* Default to short */
 
@@ -162,7 +164,7 @@ get_size_from_typename(const char *typename)
  * Examples: 1->0, 2->1, 4->2, 8->3, 16->4, etc.
  */
 static int
-is_power_of_2(long value)
+isPowerOf2(long value)
 {
     int shift;
 
@@ -201,7 +203,7 @@ is_power_of_2(long value)
  * If matches, optionally fills out_expr with the expression to be shifted
  */
 int
-is_multiply_by_power_of_2(struct expr *e, struct expr **out_expr)
+isMulByPow2(struct expr *e, struct expr **out_expr)
 {
     int shift;
 
@@ -216,7 +218,7 @@ is_multiply_by_power_of_2(struct expr *e, struct expr **out_expr)
     }
 
     /* Check if constant is power of 2 */
-    shift = is_power_of_2(e->right->value);
+    shift = isPowerOf2(e->right->value);
     if (shift < 0) {
         return -1;
     }
@@ -243,7 +245,7 @@ is_multiply_by_power_of_2(struct expr *e, struct expr **out_expr)
  * If matches, optionally fills out_var and out_offset with extracted values
  */
 int
-isStructMemberAccess(struct expr *e, char **out_var, long *out_offset)
+isStructMem(struct expr *e, char **out_var, long *out_offset)
 {
     struct expr *add;
     struct expr *ptr_load;
@@ -298,9 +300,9 @@ isStructMemberAccess(struct expr *e, char **out_var, long *out_offset)
  * Label format: "label_name:\n"
  */
 static struct stmt *
-create_label_asm(const char *label_name)
+createLblAsm(const char *label_name)
 {
-    struct stmt *s = new_stmt('A');
+    struct stmt *s = newStmt('A');
     char buf[128];
 
     snprintf(buf, sizeof(buf), "%s:", label_name);
@@ -347,7 +349,7 @@ frStmt(struct stmt *s)
  */
 
 /* Handler function type - now returns expr* */
-typedef struct expr* (*handler_fn)(unsigned char op);
+typedef struct expr* (*handlerFn)(unsigned char op);
 
 /* Generic handler that builds a generic expr node */
 static struct expr *
@@ -356,7 +358,7 @@ doGeneric(unsigned char op)
     struct expr *e;
     int depth;
 
-    e = new_expr(op);
+    e = newExpr(op);
 
     fdprintf(2, "OP_%02x", op);
     skip();
@@ -383,7 +385,7 @@ doGeneric(unsigned char op)
 static struct expr *
 doConst(void)
 {
-    struct expr *e = new_expr('C');  // 'C' for constant
+    struct expr *e = newExpr('C');  // 'C' for constant
     e->value = readNumber();
 
     /* Infer size from value magnitude */
@@ -401,7 +403,7 @@ doConst(void)
 static struct expr *
 doSymbol(void)
 {
-    struct expr *e = new_expr('$');  // '$' for symbol
+    struct expr *e = newExpr('$');  // '$' for symbol
     char *sym = readSymbol();
     e->symbol = strdup(sym);
     fdprintf(2, "SYM %s", e->symbol);
@@ -411,7 +413,7 @@ doSymbol(void)
 static struct expr *
 doString(void)
 {
-    struct expr *e = new_expr('S');  // 'S' for string
+    struct expr *e = newExpr('S');  // 'S' for string
     /* String literal: S followed by index */
     e->value = readNumber();
     fdprintf(2, "STRING S%ld", e->value);
@@ -419,13 +421,13 @@ doString(void)
 }
 
 static struct expr *
-doCompoundAssign(unsigned char op)
+handleCmpAsn(unsigned char op)
 {
     struct expr *e;
     char width;
     char width_str[3];
 
-    e = new_expr(op);
+    e = newExpr(op);
     width = 's';  /* default */
 
     /* Check for width annotation */
@@ -439,14 +441,14 @@ doCompoundAssign(unsigned char op)
         width_str[1] = width;
         width_str[2] = '\0';
         e->type_str = strdup(width_str);
-        e->size = get_size_from_type_str(e->type_str);
-        e->flags = get_signedness_from_type_str(e->type_str);
+        e->size = getSizeFTStr(e->type_str);
+        e->flags = getSignFTStr(e->type_str);
     }
 
     skip();
-    e->left = parse_expr();  /* lvalue */
+    e->left = parseExpr();  /* lvalue */
     skip();
-    e->right = parse_expr();  /* rvalue */
+    e->right = parseExpr();  /* rvalue */
     expect(')');
 
     return e;
@@ -455,14 +457,14 @@ doCompoundAssign(unsigned char op)
 static struct expr *
 doBinaryOp(unsigned char op)
 {
-    struct expr *e = new_expr(op);
+    struct expr *e = newExpr(op);
 
     fdprintf(2, "BINOP %c (", op);
     skip();
-    e->left = parse_expr();  /* left operand - now returns tree */
+    e->left = parseExpr();  /* left operand - now returns tree */
     fdprintf(2, ", ");
     skip();
-    e->right = parse_expr();  /* right operand - now returns tree */
+    e->right = parseExpr();  /* right operand - now returns tree */
     fdprintf(2, ")");
     expect(')');
 
@@ -490,13 +492,13 @@ doBinaryOp(unsigned char op)
         int shift;
         struct expr *old_right;
 
-        shift = is_multiply_by_power_of_2(e, NULL);
+        shift = isMulByPow2(e, NULL);
         if (shift >= 0) {
             /* Transform (* expr const_2^n) to (y expr const_n) */
             e->op = 'y';  /* LSHIFT */
             /* Replace right operand with shift amount constant */
             old_right = e->right;
-            e->right = new_expr('C');
+            e->right = newExpr('C');
             e->right->op = 'C';
             e->right->value = shift;
             e->right->size = 1;  /* shift amounts are byte-sized */
@@ -514,19 +516,19 @@ doBinaryOp(unsigned char op)
 static struct expr *
 doLand(unsigned char op)
 {
-    struct expr *e = new_expr(op);
-    e->label = label_counter++;
+    struct expr *e = newExpr(op);
+    e->label = labelCounter++;
 
     fdprintf(2, "LAND_%d (", e->label);
     skip();
-    e->left = parse_expr();  /* left operand */
+    e->left = parseExpr();  /* left operand */
     fdprintf(2, " ? ");
 
     /* Will emit conditional jump during code generation */
     fdprintf(2, "JZ skip_%d : ", e->label);
 
     skip();
-    e->right = parse_expr();  /* right operand */
+    e->right = parseExpr();  /* right operand */
 
     /* Will emit skip label during code generation */
     fdprintf(2, " : skip_%d)", e->label);
@@ -541,19 +543,19 @@ doLand(unsigned char op)
 static struct expr *
 doLor(unsigned char op)
 {
-    struct expr *e = new_expr(op);
-    e->label = label_counter++;
+    struct expr *e = newExpr(op);
+    e->label = labelCounter++;
 
     fdprintf(2, "LOR_%d (", e->label);
     skip();
-    e->left = parse_expr();  /* left operand */
+    e->left = parseExpr();  /* left operand */
     fdprintf(2, " ? ");
 
     /* Will emit conditional jump during code generation */
     fdprintf(2, "JNZ skip_%d : ", e->label);
 
     skip();
-    e->right = parse_expr();  /* right operand */
+    e->right = parseExpr();  /* right operand */
 
     /* Will emit skip label during code generation */
     fdprintf(2, " : skip_%d)", e->label);
@@ -568,7 +570,7 @@ doUnaryOp(unsigned char op)
     char width;
     char width_str[3];
 
-    e = new_expr(op);
+    e = newExpr(op);
     width = ' ';
 
     /* Check for width annotation :b :s :l :p (for type conversion ops) */
@@ -582,14 +584,14 @@ doUnaryOp(unsigned char op)
         width_str[1] = width;
         width_str[2] = '\0';
         e->type_str = strdup(width_str);
-        e->size = get_size_from_type_str(e->type_str);
+        e->size = getSizeFTStr(e->type_str);
         fdprintf(2, "UNOP %c:%c (", op, width);
     } else {
         fdprintf(2, "UNOP %c (", op);
     }
 
     skip();
-    e->left = parse_expr();  /* operand */
+    e->left = parseExpr();  /* operand */
     fdprintf(2, ")");
     expect(')');
 
@@ -605,7 +607,7 @@ doUnaryOp(unsigned char op)
         e->flags = 0;  /* explicitly signed */
     } else if (e->type_str) {
         /* For other operators with type annotation, use annotation */
-        e->flags = get_signedness_from_type_str(e->type_str);
+        e->flags = getSignFTStr(e->type_str);
     } else if (e->left) {
         /* Otherwise inherit from operand */
         e->flags = e->left->flags;
@@ -615,9 +617,39 @@ doUnaryOp(unsigned char op)
 }
 
 static struct expr *
+doIncDec(unsigned char op)
+{
+    struct expr *e;
+    long amount;
+
+    e = newExpr(op);
+
+    fdprintf(2, "INCDEC %c (", op);
+
+    skip();
+    e->left = parseExpr();  /* lvalue */
+
+    /* Parse increment amount */
+    skip();
+    amount = readNumber();
+    e->value = amount;  /* Store increment amount in value field */
+
+    fdprintf(2, " %ld)", amount);
+    expect(')');
+
+    /* Inherit size from operand */
+    if (e->left) {
+        e->size = e->left->size;
+        e->flags = e->left->flags;
+    }
+
+    return e;
+}
+
+static struct expr *
 doBfextract(unsigned char op)
 {
-    struct expr *e = new_expr(op);
+    struct expr *e = newExpr(op);
     /* Bitfield extract: (0xa7:offset:width addr) */
     int offset = 0, width = 0;
 
@@ -638,7 +670,7 @@ doBfextract(unsigned char op)
 
     fdprintf(2, "BFEXTRACT<%d:%d> (", offset, width);
     skip();
-    e->left = parse_expr();  /* address */
+    e->left = parseExpr();  /* address */
     fdprintf(2, ")");
     expect(')');
     return e;
@@ -647,7 +679,7 @@ doBfextract(unsigned char op)
 static struct expr *
 doBfassign(unsigned char op)
 {
-    struct expr *e = new_expr(op);
+    struct expr *e = newExpr(op);
     /* Bitfield assign: (0xdd:offset:width addr value) */
     int offset = 0, width = 0;
 
@@ -667,9 +699,9 @@ doBfassign(unsigned char op)
     e->value = (offset << 16) | width;
 
     skip();
-    e->left = parse_expr();  /* address */
+    e->left = parseExpr();  /* address */
     skip();
-    e->right = parse_expr();  /* value */
+    e->right = parseExpr();  /* value */
     expect(')');
     return e;
 }
@@ -682,14 +714,14 @@ doBfassign(unsigned char op)
 static struct expr *
 doColon(unsigned char op)
 {
-    struct expr *e = new_expr(op);
+    struct expr *e = newExpr(op);
 
     fdprintf(2, "COLON (");
     skip();
-    e->left = parse_expr();  /* left */
+    e->left = parseExpr();  /* left */
     fdprintf(2, ", ");
     skip();
-    e->right = parse_expr();  /* right */
+    e->right = parseExpr();  /* right */
     fdprintf(2, ")");
     expect(')');
     return e;
@@ -702,7 +734,7 @@ doDeref(unsigned char op)
     char width;
     char width_str[3];
 
-    e = new_expr('M');  /* 'M' for memory/deref */
+    e = newExpr('M');  /* 'M' for memory/deref */
     width = 's';  /* default */
 
     /* Check for width annotation :b :s :l :p :f :d */
@@ -716,13 +748,13 @@ doDeref(unsigned char op)
         width_str[1] = width;
         width_str[2] = '\0';
         e->type_str = strdup(width_str);
-        e->size = get_size_from_type_str(e->type_str);
-        e->flags = get_signedness_from_type_str(e->type_str);
+        e->size = getSizeFTStr(e->type_str);
+        e->flags = getSignFTStr(e->type_str);
     }
 
     fdprintf(2, "DEREF:%c (", width);
     skip();
-    e->left = parse_expr();  /* address expression */
+    e->left = parseExpr();  /* address expression */
     fdprintf(2, ")");
     expect(')');
     return e;
@@ -735,7 +767,7 @@ doAssign(unsigned char op)
     char width;
     char width_str[3];
 
-    e = new_expr('=');  /* '=' for assignment */
+    e = newExpr('=');  /* '=' for assignment */
     width = 's';  /* default */
 
     /* Check for width annotation */
@@ -749,14 +781,14 @@ doAssign(unsigned char op)
         width_str[1] = width;
         width_str[2] = '\0';
         e->type_str = strdup(width_str);
-        e->size = get_size_from_type_str(e->type_str);
-        e->flags = get_signedness_from_type_str(e->type_str);
+        e->size = getSizeFTStr(e->type_str);
+        e->flags = getSignFTStr(e->type_str);
     }
 
     skip();
-    e->left = parse_expr();  /* lvalue */
+    e->left = parseExpr();  /* lvalue */
     skip();
-    e->right = parse_expr();  /* rvalue */
+    e->right = parseExpr();  /* rvalue */
     expect(')');
     return e;
 }
@@ -778,7 +810,7 @@ doCall(unsigned char op)
     struct parser_state saved_state;
     struct expr *prev;
 
-    e = new_expr('@');  /* '@' for call */
+    e = newExpr('@');  /* '@' for call */
     arg_count = 0;
     arg_buf_pos = 0;
     func_len = 0;
@@ -855,21 +887,24 @@ doCall(unsigned char op)
     }
 
     /* Now recursively parse: function and arguments */
-    saveParserState(&saved_state);
+    saveParseSt(&saved_state);
 
     /* Parse function expression */
     fdprintf(2, "\n  CALL_FUNC: ");
-    setupStringInput(func_buf, func_len);
-    e->left = parse_expr();  /* function address */
-    restoreParserState(&saved_state);
+    setupStrInput(func_buf, func_len);
+    e->left = parseExpr();  /* function address */
+    restoreParse(&saved_state);
 
     /* Parse arguments */
     for (i = 0; i < arg_count; i++) {
         fdprintf(2, "\n  ARG%d: ", i);
-        setupStringInput(&arg_buf[arg_start[i]], arg_len[i]);
-        args[i] = parse_expr();
-        restoreParserState(&saved_state);
+        setupStrInput(&arg_buf[arg_start[i]], arg_len[i]);
+        args[i] = parseExpr();
+        restoreParse(&saved_state);
     }
+
+    /* Done with saved state */
+    freeParseSt(&saved_state);
 
     /* Build argument chain using wrapper nodes to avoid corrupting argument trees */
     /* Store arg_count in value field */
@@ -879,7 +914,7 @@ doCall(unsigned char op)
 
         /* Create wrapper nodes for each argument */
         for (i = 0; i < arg_count; i++) {
-            wrappers[i] = new_expr(',');  /* ',' represents argument wrapper */
+            wrappers[i] = newExpr(',');  /* ',' represents argument wrapper */
             wrappers[i]->left = args[i];  /* Actual argument in left */
             wrappers[i]->right = NULL;    /* Will be set to next wrapper */
         }
@@ -903,11 +938,11 @@ doTernary(unsigned char op)
     struct expr *e;
     struct expr *colon;
 
-    e = new_expr('?');  /* '?' for ternary */
+    e = newExpr('?');  /* '?' for ternary */
 
     fdprintf(2, "TERNARY (");
     skip();
-    e->left = parse_expr();  /* condition */
+    e->left = parseExpr();  /* condition */
     fdprintf(2, " ? ");
     skip();
 
@@ -919,11 +954,11 @@ doTernary(unsigned char op)
             nextchar();
             skip();
             /* Build COLON node with true/false branches */
-            colon = new_expr(':');
-            colon->left = parse_expr();  /* true expr */
+            colon = newExpr(':');
+            colon->left = parseExpr();  /* true expr */
             fdprintf(2, " : ");
             skip();
-            colon->right = parse_expr();  /* false expr */
+            colon->right = parseExpr();  /* false expr */
             expect(')');
             e->right = colon;
         }
@@ -948,18 +983,18 @@ static struct stmt *doLabel(void);
 static struct stmt *doGoto(void);
 static struct stmt *doSwitch(void);
 static struct stmt *doCaseInBlock(void);
-static struct stmt *doDefaultInBlock(void);
+static struct stmt *doDefInBlock(void);
 
 /* Handlers for case/default when they appear in block context */
 static struct stmt *
 doCaseInBlock(void)
 {
     /* Case statement: (C value ()) */
-    struct stmt *child = new_stmt('C');
+    struct stmt *child = newStmt('C');
 
     fdprintf(2, "CASE ");
     skip();
-    child->expr = parse_expr();  /* case value */
+    child->expr = parseExpr();  /* case value */
     fdprintf(2, ": ");
     skip();
     /* Skip empty body placeholder () */
@@ -976,10 +1011,10 @@ doCaseInBlock(void)
 }
 
 static struct stmt *
-doDefaultInBlock(void)
+doDefInBlock(void)
 {
     /* Default statement: (O ()) */
-    struct stmt *child = new_stmt('O');
+    struct stmt *child = newStmt('O');
 
     fdprintf(2, "DEFAULT: ");
     skip();
@@ -1007,7 +1042,7 @@ doBlock(void)
     char *name;
     char *type;
 
-    s = new_stmt('B');
+    s = newStmt('B');
     first_child = NULL;
     last_child = NULL;
 
@@ -1034,7 +1069,7 @@ doBlock(void)
                 fdprintf(2, "  DECL %s %s\n", name, type);
 
                 /* Create declaration statement node */
-                child = new_stmt('d');
+                child = newStmt('d');
                 child->symbol = strdup(name);  // symbuf is reused
                 child->type_str = strdup(type);  // typebuf is reused
 
@@ -1087,21 +1122,21 @@ doBlock(void)
                 case 'O':  /* Default (inside switch body) */
                     /* Default statements only valid inside switch, 
                      * but may appear in block */
-                    child = doDefaultInBlock();
+                    child = doDefInBlock();
                     break;
                 case 'K':  /* Break */
                     fdprintf(2, "BREAK");
-                    child = new_stmt('K');
+                    child = newStmt('K');
                     expect(')');
                     break;
                 case 'N':  /* Continue */
                     fdprintf(2, "CONTINUE");
-                    child = new_stmt('N');
+                    child = newStmt('N');
                     expect(')');
                     break;
                 default:
                     fdprintf(2, "parseast: line %d: unknown" 
-                        " stmt op '%c' in block\n", line_num, op);
+                        " stmt op '%c' in block\n", lineNum, op);
                     /* Skip to closing paren */
                     while (curchar && curchar != ')') {
                         nextchar();
@@ -1142,36 +1177,36 @@ doBlock(void)
 static struct stmt *
 doIf(void)
 {
-    struct stmt *s = new_stmt('I');
+    struct stmt *s = newStmt('I');
     char label_buf[64];
 
-    s->label = label_counter++;
+    s->label = labelCounter++;
 
     fdprintf(2, "IF (");
     skip();
-    s->expr = parse_expr();  /* condition */
+    s->expr = parseExpr();  /* condition */
     fdprintf(2, ") ");
 
     skip();
-    s->then_branch = parse_stmt();  /* then branch */
+    s->then_branch = parseStmt();  /* then branch */
 
     skip();
     if (curchar != ')') {
         /* Has else branch - need second label for end of else */
-        s->label2 = label_counter++;
+        s->label2 = labelCounter++;
 
         fdprintf(2, " ELSE ");
-        s->else_branch = parse_stmt();  /* else branch */
+        s->else_branch = parseStmt();  /* else branch */
 
         /* Insert end label after the IF statement */
         snprintf(label_buf, sizeof(label_buf), "_if_end_%d", s->label2);
-        s->next = create_label_asm(label_buf);
+        s->next = createLblAsm(label_buf);
     } else {
         s->else_branch = NULL;
 
         /* Insert end label after the IF statement */
         snprintf(label_buf, sizeof(label_buf), "_if_end_%d", s->label);
-        s->next = create_label_asm(label_buf);
+        s->next = createLblAsm(label_buf);
     }
 
     expect(')');
@@ -1185,28 +1220,28 @@ doWhile(void)
     char label_buf[64];
     struct stmt *start_label;
 
-    s = new_stmt('W');
-    s->label = label_counter++;  /* Loop start label */
+    s = newStmt('W');
+    s->label = labelCounter++;  /* Loop start label */
 
     fdprintf(2, "WHILE (");
     skip();
-    s->expr = parse_expr();  /* condition */
+    s->expr = parseExpr();  /* condition */
     fdprintf(2, ") ");
 
     skip();
-    s->then_branch = parse_stmt();  /* body */
+    s->then_branch = parseStmt();  /* body */
 
     expect(')');
 
     /* Insert loop start label before the while, and end label after */
     /* Create label for loop start */
     snprintf(label_buf, sizeof(label_buf), "_while_%d", s->label);
-    start_label = create_label_asm(label_buf);
+    start_label = createLblAsm(label_buf);
     start_label->next = s;
 
     /* Insert end/break label after the while */
     snprintf(label_buf, sizeof(label_buf), "_while_end_%d", s->label);
-    s->next = create_label_asm(label_buf);
+    s->next = createLblAsm(label_buf);
 
     return start_label;  /* Return the label, not the while node */
 }
@@ -1218,28 +1253,28 @@ doDo(void)
     char label_buf[64];
     struct stmt *start_label;
 
-    s = new_stmt('D');
-    s->label = label_counter++;  /* Loop start label */
+    s = newStmt('D');
+    s->label = labelCounter++;  /* Loop start label */
 
     fdprintf(2, "DO ");
     skip();
-    s->then_branch = parse_stmt();  /* body */
+    s->then_branch = parseStmt();  /* body */
 
     fdprintf(2, " WHILE (");
     skip();
-    s->expr = parse_expr();  /* condition */
+    s->expr = parseExpr();  /* condition */
     fdprintf(2, ")");
 
     expect(')');
 
     /* Insert loop start label before the do, and end label after */
     snprintf(label_buf, sizeof(label_buf), "_do_%d", s->label);
-    start_label = create_label_asm(label_buf);
+    start_label = createLblAsm(label_buf);
     start_label->next = s;
 
     /* Insert end/break label after the do-while */
     snprintf(label_buf, sizeof(label_buf), "_do_end_%d", s->label);
-    s->next = create_label_asm(label_buf);
+    s->next = createLblAsm(label_buf);
 
     return start_label;
 }
@@ -1251,33 +1286,33 @@ doFor(void)
     char label_buf[64];
     struct stmt *start_label;
 
-    s = new_stmt('F');
-    s->label = label_counter++;  /* Loop start label */
+    s = newStmt('F');
+    s->label = labelCounter++;  /* Loop start label */
 
     fdprintf(2, "FOR (");
     skip();
-    s->expr = parse_expr();  /* init */
+    s->expr = parseExpr();  /* init */
     fdprintf(2, "; ");
     skip();
-    s->expr2 = parse_expr();  /* condition */
+    s->expr2 = parseExpr();  /* condition */
     fdprintf(2, "; ");
     skip();
-    s->expr3 = parse_expr();  /* increment */
+    s->expr3 = parseExpr();  /* increment */
     fdprintf(2, ") ");
 
     skip();
-    s->then_branch = parse_stmt();  /* body */
+    s->then_branch = parseStmt();  /* body */
 
     expect(')');
 
     /* Insert loop start label before the for, and end label after */
     snprintf(label_buf, sizeof(label_buf), "_for_%d", s->label);
-    start_label = create_label_asm(label_buf);
+    start_label = createLblAsm(label_buf);
     start_label->next = s;
 
     /* Insert end/break label after the for */
     snprintf(label_buf, sizeof(label_buf), "_for_end_%d", s->label);
-    s->next = create_label_asm(label_buf);
+    s->next = createLblAsm(label_buf);
 
     return start_label;
 }
@@ -1285,13 +1320,13 @@ doFor(void)
 static struct stmt *
 doReturn(void)
 {
-    struct stmt *s = new_stmt('R');
+    struct stmt *s = newStmt('R');
 
     fdprintf(2, "RETURN");
     skip();
     if (curchar != ')') {
         fdprintf(2, " ");
-        s->expr = parse_expr();
+        s->expr = parseExpr();
     } else {
         s->expr = NULL;
     }
@@ -1302,11 +1337,11 @@ doReturn(void)
 static struct stmt *
 doExprStmt(void)
 {
-    struct stmt *s = new_stmt('E');
+    struct stmt *s = newStmt('E');
 
     fdprintf(2, "EXPR (");
     skip();
-    s->expr = parse_expr();
+    s->expr = parseExpr();
     fdprintf(2, ")");
     expect(')');
     return s;
@@ -1315,7 +1350,7 @@ doExprStmt(void)
 static struct stmt *
 doEmptyStmt(void)
 {
-    struct stmt *s = new_stmt(';');
+    struct stmt *s = newStmt(';');
 
     fdprintf(2, ";");
     expect(')');
@@ -1325,7 +1360,7 @@ doEmptyStmt(void)
 static struct stmt *
 doAsm(void)
 {
-    struct stmt *s = new_stmt('A');
+    struct stmt *s = newStmt('A');
     char asm_buf[4096];
     char *p;
 
@@ -1360,7 +1395,7 @@ doAsm(void)
 static struct stmt *
 doLabel(void)
 {
-    struct stmt *s = new_stmt('L');
+    struct stmt *s = newStmt('L');
     char *label_name;
 
     /* Label statement: (L label_name) */
@@ -1380,7 +1415,7 @@ doLabel(void)
 static struct stmt *
 doGoto(void)
 {
-    struct stmt *s = new_stmt('G');
+    struct stmt *s = newStmt('G');
     char *label_name;
 
     /* Goto statement: (G label_name) */
@@ -1406,14 +1441,14 @@ doSwitch(void)
     struct stmt *child;
     char clause_type;
 
-    s = new_stmt('S');
+    s = newStmt('S');
     first_child = NULL;
     last_child = NULL;
 
     /* Switch statement: (S expr (C val ...) (C val ...) (O ...) ) */
     fdprintf(2, "SWITCH (");
     skip();
-    s->expr = parse_expr();  /* switch expression */
+    s->expr = parseExpr();  /* switch expression */
     fdprintf(2, ") {");
 
     /* Parse case and default clauses */
@@ -1429,9 +1464,9 @@ doSwitch(void)
             if (clause_type == 'C') {
                 /* Case clause: (C value ()) - body is always empty */
                 fdprintf(2, "\n  CASE ");
-                child = new_stmt('C');
+                child = newStmt('C');
                 skip();
-                child->expr = parse_expr();  /* case value */
+                child->expr = parseExpr();  /* case value */
                 fdprintf(2, ": ");
                 skip();
                 /* Skip empty body placeholder () */
@@ -1446,7 +1481,7 @@ doSwitch(void)
             } else if (clause_type == 'O') {
                 /* Default clause: (O ()) - body placeholder is always empty */
                 fdprintf(2, "\n  DEFAULT: ");
-                child = new_stmt('O');
+                child = newStmt('O');
                 skip();
                 /* Skip empty body placeholder () */
                 if (curchar == '(') {
@@ -1472,7 +1507,7 @@ doSwitch(void)
                 if (clause_type == 'R') {
                     child = doReturn();
                 } else if (clause_type == 'G') {
-                    child = new_stmt('G');
+                    child = newStmt('G');
                     skip();
                     child->symbol = readSymbol();
                     fdprintf(2, "GOTO %s", child->symbol);
@@ -1483,7 +1518,7 @@ doSwitch(void)
                 } else if (clause_type == 'K') {
                     /* BREAK statement */
                     fdprintf(2, "BREAK");
-                    child = new_stmt('K');
+                    child = newStmt('K');
                     expect(')');
                 } else if (clause_type == 'E') {
                     child = doExprStmt();
@@ -1502,7 +1537,7 @@ doSwitch(void)
                 } else if (clause_type == 'N') {
                     /* CONTINUE statement */
                     fdprintf(2, "CONTINUE");
-                    child = new_stmt('N');
+                    child = newStmt('N');
                     expect(')');
                 } else if (clause_type == ';') {
                     child = doEmptyStmt();
@@ -1575,7 +1610,7 @@ doFunction(void)
     {
         char func_label[128];
         snprintf(func_label, sizeof(func_label), "_%s", ctx.name);
-        addDefinedSymbol(func_label);
+        addDefSym(func_label);
     }
 
     /* Parameters - collect into buffer for prologue */
@@ -1646,7 +1681,7 @@ doFunction(void)
                 fdprintf(2, "  DECL %s %s\n", dname, dtype);
 
                 /* Create declaration statement node */
-                child = new_stmt('d');
+                child = newStmt('d');
                 child->symbol = strdup(dname);  /* symbuf is reused */
                 child->type_str = strdup(dtype);  /* typebuf is reused */
 
@@ -1697,7 +1732,7 @@ doFunction(void)
                     break;
                 default:
                     fdprintf(2, "parseast: line %d: unknown stmt op '%c'\n", 
-                        line_num, op);
+                        lineNum, op);
                     /* Skip to closing paren */
                     while (curchar && curchar != ')') {
                         nextchar();
@@ -1730,7 +1765,7 @@ doFunction(void)
 
     /* Store body tree in context */
     ctx.body = first_child;
-    ctx.label_counter = label_counter;  /* Save current label counter */
+    ctx.labelCounter = labelCounter;  /* Save current label counter */
     ctx.locals = NULL;  /* No local variables yet */
     ctx.frame_size = 0;  /* No frame size yet */
     ctx.de_save_count = 0;  /* No nested DE saves yet */
@@ -1739,26 +1774,31 @@ doFunction(void)
     expect(')');
 
     /* Phase 1.5: Assign stack frame offsets to local variables */
-    assignFrameOffsets(&ctx);
+    assignFrmOff(&ctx);
 
     /* Phase 2: Generate assembly code blocks for tree nodes */
-    generate_code(&ctx);
+    generateCode(&ctx);
 
     /* Phase 2.25: Optimize frame layout based on lifetime analysis */
-    optimizeFrameLayout(&ctx);
+    optFrmLayout(&ctx);
 
     /* Phase 2.5: Allocate registers based on usage patterns */
-    allocateRegisters(&ctx);
+    allocRegs(&ctx);
 
     /* Phase 3: Emit assembly and free tree nodes */
-    emit_assembly(&ctx, outFd);
+    emitAssembly(&ctx, outFd);
 }
+
+/* Forward declaration for symbol tracking */
+static int isDefSym(const char *name);
 
 static void
 doGlobal(void)
 {
     char *name, *type;
     const char *global_label;
+    int has_init = 0;
+    int already_defined;
 
     /* (g name type [init]) */
     name = readSymbol();
@@ -1771,26 +1811,39 @@ doGlobal(void)
     if (global_label[0] == '$') {
         global_label++;  /* Skip $ to get _varname */
     }
-    addDefinedSymbol(global_label);
+
+    /* Check if this symbol was already emitted */
+    already_defined = isDefSym(global_label);
+    addDefSym(global_label);
 
     skip();
     if (curchar != ')') {
         fdprintf(2, " = ");
-        parse_expr();
+        parseExpr();
+        has_init = 1;
     }
 
     fdprintf(2, "\n");
+
+    /* Emit assembly for global variable only if not already emitted */
+    /* TODO: For now, just emit label with .dw 0 */
+    /* Full implementation would handle initializers and different sizes */
+    if (!already_defined) {
+        fdprintf(outFd, "%s:\n", global_label);
+        fdprintf(outFd, "\t.dw 0\n");
+    }
+
     expect(')');
 }
 
 static void
-doStringLiteral(void)
+doStrLiteral(void)
 {
     char *name, *data;
 
     /* (s name "data") */
     name = readSymbol();
-    data = readQuotedString();
+    data = readQuotedStr();
 
     fdprintf(2, "\nSTRING %s \"%s\"\n", name, data);
 
@@ -1802,87 +1855,87 @@ doStringLiteral(void)
  * Maps each operator character to its handler function
  * Table is sparse - only operators that need handling are listed
  */
-static handler_fn expr_handlers[256];
+static handlerFn exprHandlers[256];
 
 static void
-initExprHandlers(void)
+initExprHndl(void)
 {
     int i;
 
     /* Initialize all to generic handler */
     for (i = 0; i < 256; i++) {
-        expr_handlers[i] = doGeneric;
+        exprHandlers[i] = doGeneric;
     }
 
     /* Register specific handlers */
-    expr_handlers['M'] = doDeref;     /* DEREF */
-    expr_handlers['='] = doAssign;    /* ASSIGN */
-    expr_handlers['@'] = doCall;      /* CALL */
-    expr_handlers['?'] = doTernary;   /* TERNARY */
-    expr_handlers[':'] = doColon;     /* COLON */
+    exprHandlers['M'] = doDeref;     /* DEREF */
+    exprHandlers['='] = doAssign;    /* ASSIGN */
+    exprHandlers['@'] = doCall;      /* CALL */
+    exprHandlers['?'] = doTernary;   /* TERNARY */
+    exprHandlers[':'] = doColon;     /* COLON */
 
     /* Binary operators */
-    expr_handlers['+'] = doBinaryOp;
-    expr_handlers['-'] = doBinaryOp;
-    expr_handlers['*'] = doBinaryOp;
-    expr_handlers['/'] = doBinaryOp;
-    expr_handlers['%'] = doBinaryOp;
-    expr_handlers['&'] = doBinaryOp;
-    expr_handlers['|'] = doBinaryOp;
-    expr_handlers['^'] = doBinaryOp;
-    expr_handlers['<'] = doBinaryOp;
-    expr_handlers['>'] = doBinaryOp;
-    expr_handlers['Q'] = doBinaryOp;  /* EQ == */
-    expr_handlers['n'] = doBinaryOp;  /* NEQ != */
-    expr_handlers['L'] = doBinaryOp;  /* LE <= */
-    expr_handlers['g'] = doBinaryOp;  /* GE >= */
-    expr_handlers['y'] = doBinaryOp;  /* LSHIFT << */
-    expr_handlers['w'] = doBinaryOp;  /* RSHIFT >> */
-    expr_handlers['h'] = doLor;        /* LOR || */
-    expr_handlers['j'] = doLand;       /* LAND && */
+    exprHandlers['+'] = doBinaryOp;
+    exprHandlers['-'] = doBinaryOp;
+    exprHandlers['*'] = doBinaryOp;
+    exprHandlers['/'] = doBinaryOp;
+    exprHandlers['%'] = doBinaryOp;
+    exprHandlers['&'] = doBinaryOp;
+    exprHandlers['|'] = doBinaryOp;
+    exprHandlers['^'] = doBinaryOp;
+    exprHandlers['<'] = doBinaryOp;
+    exprHandlers['>'] = doBinaryOp;
+    exprHandlers['Q'] = doBinaryOp;  /* EQ == */
+    exprHandlers['n'] = doBinaryOp;  /* NEQ != */
+    exprHandlers['L'] = doBinaryOp;  /* LE <= */
+    exprHandlers['g'] = doBinaryOp;  /* GE >= */
+    exprHandlers['y'] = doBinaryOp;  /* LSHIFT << */
+    exprHandlers['w'] = doBinaryOp;  /* RSHIFT >> */
+    exprHandlers['h'] = doLor;        /* LOR || */
+    exprHandlers['j'] = doLand;       /* LAND && */
 
     /* Compound assignment operators */
-    expr_handlers['P'] = doCompoundAssign;  /* PLUSEQ += */
-    expr_handlers[0xdf] = doCompoundAssign; /* SUBEQ -= */
-    expr_handlers['T'] = doCompoundAssign;  /* MULTEQ *= */
-    expr_handlers['2'] = doCompoundAssign;  /* DIVEQ /= */
-    expr_handlers[0xfe] = doCompoundAssign; /* MODEQ %= */
-    expr_handlers[0xc6] = doCompoundAssign; /* ANDEQ &= */
-    expr_handlers['1'] = doCompoundAssign;  /* OREQ |= */
-    expr_handlers['X'] = doCompoundAssign;  /* XOREQ ^= */
-    expr_handlers['0'] = doCompoundAssign;  /* LSHIFTEQ <<= */
-    expr_handlers['6'] = doCompoundAssign;  /* RSHIFTEQ >>= */
+    exprHandlers['P'] = handleCmpAsn;  /* PLUSEQ += */
+    exprHandlers[0xdf] = handleCmpAsn; /* SUBEQ -= */
+    exprHandlers['T'] = handleCmpAsn;  /* MULTEQ *= */
+    exprHandlers['2'] = handleCmpAsn;  /* DIVEQ /= */
+    exprHandlers[0xfe] = handleCmpAsn; /* MODEQ %= */
+    exprHandlers[0xc6] = handleCmpAsn; /* ANDEQ &= */
+    exprHandlers['1'] = handleCmpAsn;  /* OREQ |= */
+    exprHandlers['X'] = handleCmpAsn;  /* XOREQ ^= */
+    exprHandlers['0'] = handleCmpAsn;  /* LSHIFTEQ <<= */
+    exprHandlers['6'] = handleCmpAsn;  /* RSHIFTEQ >>= */
 
     /* Unary operators */
-    expr_handlers['!'] = doUnaryOp;
-    expr_handlers['~'] = doUnaryOp;
-    expr_handlers['\\'] = doUnaryOp; /* NEG */
-    expr_handlers['\''] = doUnaryOp; /* NOT */
+    exprHandlers['!'] = doUnaryOp;
+    exprHandlers['~'] = doUnaryOp;
+    exprHandlers['\\'] = doUnaryOp; /* NEG */
+    exprHandlers['\''] = doUnaryOp; /* NOT */
 
     /* Type conversion operators */
-    expr_handlers['N'] = doUnaryOp;  /* NARROW */
-    expr_handlers['W'] = doUnaryOp;  /* WIDEN */
-    expr_handlers[0xab] = doUnaryOp;  /* SEXT (sign extend) */
+    exprHandlers['N'] = doUnaryOp;  /* NARROW */
+    exprHandlers['W'] = doUnaryOp;  /* WIDEN */
+    exprHandlers[0xab] = doUnaryOp;  /* SEXT (sign extend) */
 
     /* Increment/decrement */
-    expr_handlers[0xcf] = doUnaryOp; /* PREINC */
-    expr_handlers[0xef] = doUnaryOp; /* POSTINC */
-    expr_handlers[0xd6] = doUnaryOp; /* PREDEC */
-    expr_handlers[0xf6] = doUnaryOp; /* POSTDEC */
+    exprHandlers[0xcf] = doIncDec; /* PREINC */
+    exprHandlers[0xef] = doIncDec; /* POSTINC */
+    exprHandlers[0xd6] = doIncDec; /* PREDEC */
+    exprHandlers[0xf6] = doIncDec; /* POSTDEC */
 
     /* COPY operator */
-    expr_handlers[0xbb] = doBinaryOp; /* COPY */
+    exprHandlers[0xbb] = doBinaryOp; /* COPY */
 
     /* Bitfield operators */
-    expr_handlers[0xa7] = doBfextract;  /* BFEXTRACT */
-    expr_handlers[0xdd] = doBfassign;   /* BFASSIGN */
+    exprHandlers[0xa7] = doBfextract;  /* BFEXTRACT */
+    exprHandlers[0xdd] = doBfassign;   /* BFASSIGN */
 }
 
 /*
  * Parse an expression (recursive)
  */
 static struct expr *
-parse_expr(void)
+parseExpr(void)
 {
     struct expr *e;
     unsigned char op;
@@ -1897,7 +1950,7 @@ parse_expr(void)
         nextchar();
 
         /* Use lookup table to dispatch to handler */
-        e = expr_handlers[op](op);
+        e = exprHandlers[op](op);
 
     } else if (curchar == '$') {
         /* Symbol */
@@ -1911,7 +1964,7 @@ parse_expr(void)
         e = doConst();
     } else {
         fdprintf(2, "parseast: line %d: unexpected char '%c' in expr\n",
-                 line_num, curchar);
+                 lineNum, curchar);
         nextchar();
         e = NULL;
     }
@@ -1923,7 +1976,7 @@ parse_expr(void)
  * Parse a statement (recursive)
  */
 static struct stmt *
-parse_stmt(void)
+parseStmt(void)
 {
     struct stmt *s;
     char op;
@@ -1932,7 +1985,7 @@ parse_stmt(void)
 
     if (curchar != '(') {
         fdprintf(2, "parseast: line %d: expected '(' at start of statement\n",
-            line_num);
+            lineNum);
         return NULL;
     }
 
@@ -1986,7 +2039,7 @@ parse_stmt(void)
         s = doSwitch();
         break;
     default:
-        fdprintf(2, "parseast: line %d: unknown stmt op '%c'\n", line_num, op);
+        fdprintf(2, "parseast: line %d: unknown stmt op '%c'\n", lineNum, op);
         /* Skip to closing paren */
         while (curchar && curchar != ')') {
             nextchar();
@@ -2005,7 +2058,7 @@ parse_stmt(void)
  * Parse top-level constructs
  */
 static void
-parse_toplevel(void)
+parseToplvl(void)
 {
     char op;
 
@@ -2029,11 +2082,11 @@ parse_toplevel(void)
         doGlobal();
         break;
     case 's':  /* String literal */
-        doStringLiteral();
+        doStrLiteral();
         break;
     default:
         fdprintf(2, "parseast: line %d: unknown top-level op '%c'\n", 
-            line_num, op);
+            lineNum, op);
         /* Skip to closing paren */
         while (curchar && curchar != ')') {
             nextchar();
@@ -2050,52 +2103,67 @@ parse_toplevel(void)
  */
 #define MAX_SYMBOLS 512
 
-static char *defined_symbols[MAX_SYMBOLS];
-static int num_defined = 0;
+static char *defSymbols[MAX_SYMBOLS];
+static int numDefined = 0;
 
-static char *referenced_symbols[MAX_SYMBOLS];
-static int num_referenced = 0;
+static char *refSymbols[MAX_SYMBOLS];
+static int numReferenced = 0;
+
+/*
+ * Check if a symbol has already been defined
+ */
+static int
+isDefSym(const char *name)
+{
+    int i;
+    for (i = 0; i < numDefined; i++) {
+        if (strcmp(defSymbols[i], name) == 0) {
+            return 1;
+        }
+    }
+    return 0;
+}
 
 /*
  * Track a symbol definition (function or global variable)
  */
 static void
-addDefinedSymbol(const char *name)
+addDefSym(const char *name)
 {
     int i;
 
-    if (num_defined >= MAX_SYMBOLS) return;
+    if (numDefined >= MAX_SYMBOLS) return;
 
     /* Check if already recorded */
-    for (i = 0; i < num_defined; i++) {
-        if (strcmp(defined_symbols[i], name) == 0) {
+    for (i = 0; i < numDefined; i++) {
+        if (strcmp(defSymbols[i], name) == 0) {
             return;
         }
     }
 
     /* Add new symbol */
-    defined_symbols[num_defined++] = strdup(name);
+    defSymbols[numDefined++] = strdup(name);
 }
 
 /*
  * Track a symbol reference (function call or variable use)
  */
 void
-addReferencedSymbol(const char *name)
+addRefSym(const char *name)
 {
     int i;
 
-    if (num_referenced >= MAX_SYMBOLS) return;
+    if (numReferenced >= MAX_SYMBOLS) return;
 
     /* Check if already recorded */
-    for (i = 0; i < num_referenced; i++) {
-        if (strcmp(referenced_symbols[i], name) == 0) {
+    for (i = 0; i < numReferenced; i++) {
+        if (strcmp(refSymbols[i], name) == 0) {
             return;
         }
     }
 
     /* Add new symbol */
-    referenced_symbols[num_referenced++] = strdup(name);
+    refSymbols[numReferenced++] = strdup(name);
 }
 
 /*
@@ -2104,30 +2172,30 @@ addReferencedSymbol(const char *name)
  * EXTERN for symbols referenced but not defined
  */
 static void
-emitSymbolDeclarations(void)
+emitSymDecls(void)
 {
     int i, j;
     int is_defined;
 
     /* First emit GLOBAL declarations for all defined symbols */
-    for (i = 0; i < num_defined; i++) {
+    for (i = 0; i < numDefined; i++) {
         fdputs(outFd, ASM_GLOBAL " ");
-        fdputs(outFd, defined_symbols[i]);
+        fdputs(outFd, defSymbols[i]);
         fdputs(outFd, "\n");
     }
 
     /* Blank line after GLOBAL declarations */
-    if (num_defined > 0) {
+    if (numDefined > 0) {
         fdputs(outFd, "\n");
     }
 
     /* Then emit EXTERN declarations for undefined references */
-    for (i = 0; i < num_referenced; i++) {
+    for (i = 0; i < numReferenced; i++) {
         is_defined = 0;
 
         /* Check if this symbol is defined in this file */
-        for (j = 0; j < num_defined; j++) {
-            if (strcmp(referenced_symbols[i], defined_symbols[j]) == 0) {
+        for (j = 0; j < numDefined; j++) {
+            if (strcmp(refSymbols[i], defSymbols[j]) == 0) {
                 is_defined = 1;
                 break;
             }
@@ -2136,13 +2204,13 @@ emitSymbolDeclarations(void)
         /* If not defined, emit EXTERN declaration */
         if (!is_defined) {
             fdputs(outFd, ASM_EXTERN " ");
-            fdputs(outFd, referenced_symbols[i]);
+            fdputs(outFd, refSymbols[i]);
             fdputs(outFd, "\n");
         }
     }
 
     /* Blank line after EXTERN declarations */
-    if (num_referenced > 0) {
+    if (numReferenced > 0) {
         fdputs(outFd, "\n");
     }
 }
@@ -2152,7 +2220,7 @@ emitSymbolDeclarations(void)
  * These are provided by the runtime library (ccclib.s)
  */
 static void
-emitRuntimeHelpers(void)
+emitRtHelpers(void)
 {
     /* Frame management */
     fdputs(outFd, ASM_EXTERN " framealloc\n");
@@ -2248,10 +2316,10 @@ parseAstFile(int in, int out)
     outFd = out;
 
     /* Initialize expression handler lookup table */
-    initExprHandlers();
+    initExprHndl();
 
     /* Emit runtime helper EXTERN declarations at the beginning */
-    emitRuntimeHelpers();
+    emitRtHelpers();
 
     /* Prime the input */
     nextchar();
@@ -2260,12 +2328,12 @@ parseAstFile(int in, int out)
     while (curchar) {
         skip();
         if (curchar) {
-            parse_toplevel();
+            parseToplvl();
         }
     }
 
     /* Emit GLOBAL and EXTERN declarations for user symbols at the end */
-    emitSymbolDeclarations();
+    emitSymDecls();
 
     return 0;
 }
