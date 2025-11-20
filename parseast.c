@@ -21,6 +21,34 @@ static struct stmt *parseStmt(void);
 static void addDefSym(const char *name);
 void addRefSym(const char *name);
 
+/*
+ * Check if a name is a mangled static function name
+ * Mangled names end with 4 hex digits
+ */
+static int
+isMangledName(const char *name)
+{
+    int len;
+    int i;
+
+    if (!name)
+        return 0;
+
+    len = strlen(name);
+    if (len < 4)
+        return 0;
+
+    /* Check if last 4 characters are hex digits */
+    for (i = len - 4; i < len; i++) {
+        char c = name[i];
+        if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F'))) {
+            return 0;
+        }
+    }
+
+    return 1;
+}
+
 /* Parser state */
 int outFd = 1;  /* Assembly output (default: stdout) */
 static int labelCounter = 0;  /* For generating unique labels */
@@ -1607,9 +1635,14 @@ doFunction(void)
     fdprintf(2, "\nFUNCTION %s\n", ctx.name);
 
     /* Track this function as defined (prepend "_" for assembly label format) */
+    /* Static functions (mangled names) don't get the underscore prefix */
     {
         char func_label[128];
-        snprintf(func_label, sizeof(func_label), "_%s", ctx.name);
+        if (isMangledName(ctx.name)) {
+            snprintf(func_label, sizeof(func_label), "%s", ctx.name);
+        } else {
+            snprintf(func_label, sizeof(func_label), "_%s", ctx.name);
+        }
         addDefSym(func_label);
     }
 
@@ -2262,6 +2295,7 @@ emitRtHelpers(void)
     fdputs(outFd, ASM_EXTERN " ueq1616\n");
     fdputs(outFd, ASM_EXTERN " and1616\n");
     fdputs(outFd, ASM_EXTERN " or1616\n");
+    fdputs(outFd, ASM_EXTERN " xor1616\n");
     fdputs(outFd, ASM_EXTERN " sub1616\n");
     fdputs(outFd, ASM_EXTERN " mul1616\n");
     fdputs(outFd, ASM_EXTERN " mod1616\n");

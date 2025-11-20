@@ -43,6 +43,8 @@ endif
 CC1OBJECTS = cc1.o error.o lex.o io.o macro.o kw.o util.o tokenlist.o \
 	unixlib.o expr.o parse.o type.o declare.o outast.o
 
+CC2OBJECTS = cc2.o util.o astio.o parseast.o codegen.o emit.o
+
 HEADERS = cc1.h token.h
 GENERATED = enumlist.h tokenlist.c error.h debug.h debugtags.c op_pri.h
 
@@ -72,8 +74,8 @@ all: cc1 cc2 ccc doc.pdf
 cc1: $(CC1OBJECTS)
 	$(LD) $(LDFLAGS) cc1 $(CC1OBJECTS)
 
-cc2: cc2.o util.o astio.o parseast.o codegen.o emit.o
-	$(LD) $(LDFLAGS) cc2 cc2.o util.o astio.o parseast.o codegen.o emit.o
+cc2: $(CC2OBJECTS)
+	$(LD) $(LDFLAGS) cc2 $(CC2OBJECTS)
 
 ccc: ccc.o
 	$(LD) $(LDFLAGS) ccc ccc.o
@@ -145,6 +147,19 @@ stage1: cc1 cc2
 	  fi; \
 	done
 	@echo "Stage1 build complete: stage1/*.o files ready for linking"
+
+#
+# check size of compiled objects
+#
+sizecheck: stage1
+	@echo cc1 size 
+	@for o in $(CC1OBJECTS) ; do wssize stage1/$$o ; done | \
+		tr ':' ' ' | \
+	awk 'NF!=1{text+=$$6 ; data+=$$8;bss+=$$10}END{print text, data, bss}'
+	@echo cc2 size 
+	@for o in $(CC2OBJECTS) ; do wssize stage1/$$o ; done | \
+		tr ':' ' ' | \
+	awk 'NF!=1{text+=$$6 ; data+=$$8;bss+=$$10}END{print text, data, bss}'
 
 #
 # process the cc1.h file, extracting the enum tags for the tokens

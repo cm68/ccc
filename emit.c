@@ -109,6 +109,34 @@ stripDollar(const char *symbol)
 }
 
 /*
+ * Check if a name is a mangled static function name
+ * Mangled names end with 4 hex digits
+ */
+static int
+isMangledName(const char *name)
+{
+    int len;
+    int i;
+
+    if (!name)
+        return 0;
+
+    len = strlen(name);
+    if (len < 4)
+        return 0;
+
+    /* Check if last 4 characters are hex digits */
+    for (i = len - 4; i < len; i++) {
+        char c = name[i];
+        if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F'))) {
+            return 0;
+        }
+    }
+
+    return 1;
+}
+
+/*
  * Label map for jump optimization
  * Tracks which labels are pure jumps and what they jump to
  */
@@ -406,8 +434,12 @@ emitFnProlog(char *name, char *params, char *rettype, int frame_size,
         }
     }
 
-    /* Function label (standard C naming with underscore prefix) */
-    fdprintf(outFd, "_%s:\n", name);
+    /* Function label - static functions (mangled names) have no prefix */
+    if (isMangledName(name)) {
+        fdprintf(outFd, "%s:\n", name);
+    } else {
+        fdprintf(outFd, "_%s:\n", name);
+    }
 
     /* Emit frame allocation call if we have locals or parameters */
     if (frame_size > 0 || has_params) {

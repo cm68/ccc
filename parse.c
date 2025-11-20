@@ -99,18 +99,20 @@ mangleStatNam(struct name *var)
 	/* Generate hash */
 	hash = hashString(context_buf);
 
-	/* Allocate mangled name: <short_name>_<hash> */
-	/* Format: up to 9 chars of name + "_" + 4 hex digits = 14 chars max */
+	/* Allocate mangled name: <short_name><hash> (no prefix) */
+	/* Format: up to 10 chars of name + 4 hex digits = 14 chars max */
+	/* No 'S' prefix, no '_' - static functions don't get global symbol prefix */
 	mangled = malloc(15);  /* 14 + null terminator */
 
-	/* Calculate how much of the name we can use (max 9 chars to leave room for _XXXX) */
+	/* Calculate how much of the name we can use (max 10 chars to leave room for XXXX) */
 	name_len = strlen(var->name);
-	if (name_len > 9) {
-		name_len = 9;
+	if (name_len > 10) {
+		name_len = 10;
 	}
 
 	/* Copy truncated name and append hash */
-	snprintf(mangled, 15, "%.*s_%04x", name_len, var->name, hash);
+	/* Example: "doBfassign" (10 chars) + "4286" = "doBfassign4286" (14 chars) */
+	snprintf(mangled, 15, "%.*s%04x", name_len, var->name, hash);
 
 	return mangled;
 }

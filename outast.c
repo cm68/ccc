@@ -87,7 +87,7 @@ emitExpr(struct expr *e)
 			 */
 			if (sym->sclass & SC_STATIC) {
 				/* Use mangled name for statics */
-				prefix = "$S";
+				prefix = "$";
 				name = sym->mangled_name ? sym->mangled_name : sym->name;
 			} else if ((sym->sclass & SC_EXTERN) || sym->level == 1) {
 				/* Global variable (extern or level 1) */
@@ -876,11 +876,11 @@ emitGv(struct name *var)
 
 	/* Output variable name with scope prefix */
 	if (var->sclass & SC_STATIC) {
-		/* Use mangled name for statics */
+		/* Use mangled name for statics (no S prefix - mangled name is already unique) */
 		if (var->mangled_name) {
-			fdprintf(astFd, "$S%s", var->mangled_name);
+			fdprintf(astFd, "$%s", var->mangled_name);
 		} else {
-			fdprintf(astFd, "$S%s", var->name);
+			fdprintf(astFd, "$%s", var->name);
 		}
 	} else if (var->sclass & SC_EXTERN) {
 		fdprintf(astFd, "$_%s", var->name);
