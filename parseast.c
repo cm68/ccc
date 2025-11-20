@@ -1896,13 +1896,17 @@ doGlobal(void)
             expect('(');
             skip();
             if (curchar == '[') {
+                int array_type;
                 expect('[');
                 skip();
                 expect(':');
                 skip();
-                expect('b');
+                array_type = curchar;  /* Save type: 'b' for bytes, 'p' for pointers, etc */
+                expect(array_type);
                 skip();
 
+            /* Only handle byte arrays - skip other types */
+            if (array_type == 'b') {
             /* Parse byte array initializer - we're now at first number */
 
             /*
@@ -1923,21 +1927,59 @@ doGlobal(void)
             /* Emit byte array */
             isDefined = isDefSym(label_buf);
             if (!isDefined) {
+                int col = 0;
+                int first = 1;
+
                 addDefSym(label_buf);
                 switchToSeg(SEG_DATA);
                 fdprintf(outFd, "%s:\n", label_buf);
-                fdputs(outFd, "\t.db ");
 
-                /* Emit comma-separated byte values */
+                /* Emit byte values, breaking lines at ~80 columns */
                 while (curchar != ')') {
                     int val = readNumber();
-                    if (curchar == ')') {
-                        fdprintf(outFd, "%d\n", val);
-                    } else {
-                        fdprintf(outFd, "%d, ", val);
-                    }
+                    int len;
+                    int is_last;
+
                     skip();
+                    is_last = (curchar == ')');
+
+                    /* Calculate length of this value (1-3 digits) */
+                    if (val < 10) len = 1;
+                    else if (val < 100) len = 2;
+                    else len = 3;
+
+                    /* Check if we need to break before this value */
+                    if (!first && col + len + (is_last ? 0 : 2) > 80) {
+                        /* This value (+comma if not last) would exceed 80, start new line */
+                        fdputs(outFd, "\n");
+                        col = 0;
+                    }
+
+                    /* Start new line if needed */
+                    if (first || col == 0) {
+                        fdputs(outFd, "\t.db ");
+                        col = 12;  /* Tab to column 8 + ".db " is 4 more */
+                        first = 0;
+                    }
+
+                    /* Emit the value */
+                    fdprintf(outFd, "%d", val);
+                    col += len;
+
+                    if (!is_last) {
+                        /* Check if comma + max next value (3 digits) would fit within 75 cols */
+                        if (col + 2 + 3 < 75) {
+                            /* Comma and next value can fit, emit comma */
+                            fdputs(outFd, ", ");
+                            col += 2;
+                        } else {
+                            /* Line is getting full, break now without comma */
+                            fdputs(outFd, "\n");
+                            col = 0;
+                        }
+                    }
                 }
+                fdputs(outFd, "\n");  /* Close last line */
             } else {
                 /* Already defined, skip the data */
                 while (curchar != ')') {
@@ -1945,19 +1987,132 @@ doGlobal(void)
                     skip();
                 }
             }
-                expect(')');  /* Close [:b ...] */
-                expect(')');  /* Close ([:b ...]) */
+                /* After loop, curchar is ')' that closes value list */
+                expect(')');  /* Close ([:b values...) */
+                skip();
+                expect(')');  /* Close (([:b values...)) */
                 fdprintf(2, "\n");
                 expect(')');  /* Close global declaration */
                 return;  /* Done - byte array was emitted */
+            } else if (array_type == 'p') {
+                /* Pointer array - emit as .dw directives */
+                isDefined = isDefSym(label_buf);
+                if (!isDefined) {
+                    addDefSym(label_buf);
+                    switchToSeg(SEG_DATA);
+                    fdprintf(outFd, "%s:\n", label_buf);
+
+                    /* Emit pointer values */
+                    while (curchar != ')') {
+                        skip();
+                        if (curchar == ')') break;
+
+                        if (curchar == '$') {
+                            /* Symbol reference - skip $ and read name */
+                            char sym[256];
+                            int i = 0;
+                            nextchar();  /* Skip $ */
+                            while (curchar != ' ' && curchar != ')' && curchar != '\n' && i < 255) {
+                                sym[i++] = curchar;
+                                nextchar();
+                            }
+                            sym[i] = '\0';
+                            fdprintf(outFd, "\t.dw %s\n", sym);
+                        } else if (curchar >= '0' && curchar <= '9') {
+                            /* Numeric value (e.g., 0 for NULL) */
+                            int val = readNumber();
+                            fdprintf(outFd, "\t.dw %d\n", val);
+                        }
+                        skip();
+                    }
+                } else {
+                    /* Already defined, skip the data */
+                    while (curchar != ')') {
+                        nextchar();
+                    }
+                }
+                /* After loop, curchar is ')' that closes value list */
+                expect(')');  /* Close ([:p values...) */
+                skip();
+                expect(')');  /* Close (([:p values...)) */
+                fdprintf(2, "\n");
+                expect(')');  /* Close global declaration */
+                return;
+            } else if (array_type == 's') {
+                /* Struct array - emit as .dw directives with padding */
+                isDefined = isDefSym(label_buf);
+                if (!isDefined) {
+                    addDefSym(label_buf);
+                    switchToSeg(SEG_DATA);
+                    fdprintf(outFd, "%s:\n", label_buf);
+
+                    /* Emit struct values - each element gets 2 bytes + 3 bytes padding */
+                    while (curchar != ')') {
+                        skip();
+                        if (curchar == ')') break;
+
+                        if (curchar == '$') {
+                            /* Symbol reference - skip $ and read name */
+                            char sym[256];
+                            int i = 0;
+                            nextchar();  /* Skip $ */
+                            while (curchar != ' ' && curchar != ')' && curchar != '\n' && i < 255) {
+                                sym[i++] = curchar;
+                                nextchar();
+                            }
+                            sym[i] = '\0';
+                            fdprintf(outFd, "\t.dw %s\n", sym);
+                            fdprintf(outFd, "\t.db 0, 0, 0\n");  /* Pad to 5 bytes */
+                        } else if (curchar >= '0' && curchar <= '9') {
+                            /* Numeric value */
+                            int val = readNumber();
+                            fdprintf(outFd, "\t.dw %d\n", val);
+                            fdprintf(outFd, "\t.db 0, 0, 0\n");  /* Pad to 5 bytes */
+                        }
+                        skip();
+                    }
+                } else {
+                    /* Already defined, skip the data */
+                    while (curchar != ')') {
+                        nextchar();
+                    }
+                }
+                /* After loop, curchar is ')' that closes value list */
+                expect(')');  /* Close ([:s values...) */
+                skip();
+                expect(')');  /* Close (([:s values...)) */
+                fdprintf(2, "\n");
+                expect(')');  /* Close global declaration */
+                return;
             } else {
-                /* Non-array initializer wrapped in parens - parse as expression */
-                parseExpr();
-                expect(')');
+                /* Other array types - skip the initializer */
+                int depth = 1;
+                while (depth > 0) {
+                    if (curchar == '(') depth++;
+                    else if (curchar == ')') depth--;
+                    else if (curchar == EOF) break;
+                    nextchar();
+                }
+                skip();
+                expect(')');  /* Close outer paren */
+                expect(')');  /* Close global declaration */
+                return;
+            }
+            } else {
+                /* Non-array initializer wrapped in parens - skip it */
+                int depth = 1;
+                while (depth > 0) {
+                    if (curchar == '(') depth++;
+                    else if (curchar == ')') depth--;
+                    else if (curchar == EOF) break;
+                    nextchar();
+                }
             }
         } else {
-            /* Non-array initializer - parse as expression */
-            parseExpr();
+            /* Non-array initializer - skip to end of line or next global */
+            while (curchar != '\n' && curchar != '(' && curchar != EOF) {
+                nextchar();
+            }
         }
     }
 

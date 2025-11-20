@@ -97,7 +97,18 @@ $(CC1OBJECTS): $(HFILES)
 # Suffix rule to assemble to .obj files
 %.obj: %.s
 	$(ASM) $(ASMOPTS) -o $@ $<
-	
+
+# Pattern rules for stage1 directory
+stage1/%.ast: %.c cc1
+	@mkdir -p stage1
+	./cc1 -DCCC -i./include -I. -E -o $@ $<
+
+stage1/%.s: stage1/%.ast cc2
+	./cc2 -o $@ $<
+
+stage1/%.o: stage1/%.s
+	asz/asz $(ASMOPTS) -o $@ $<
+
 .PHONY: test tests valgrind
 test: cc1 tests/runtest.sh
 	$(MAKE) -C tests test
@@ -155,11 +166,11 @@ sizecheck: stage1
 	@echo cc1 size 
 	@for o in $(CC1OBJECTS) ; do wssize stage1/$$o ; done | \
 		tr ':' ' ' | \
-	awk 'NF!=1{text+=$$6 ; data+=$$8;bss+=$$10}END{print text, data, bss}'
+	awk 'NF==1{fname=$$1} NF!=1{print fname, $$6, $$8, $$10; text+=$$6;data+=$$8;bss+=$$10}END{print text, data, bss}'
 	@echo cc2 size 
 	@for o in $(CC2OBJECTS) ; do wssize stage1/$$o ; done | \
 		tr ':' ' ' | \
-	awk 'NF!=1{text+=$$6 ; data+=$$8;bss+=$$10}END{print text, data, bss}'
+	awk 'NF==1{fname=$$1} NF!=1{print fname, $$6, $$8, $$10; text+=$$6;data+=$$8;bss+=$$10}END{print text, data, bss}'
 
 #
 # process the cc1.h file, extracting the enum tags for the tokens
