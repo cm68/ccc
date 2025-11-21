@@ -520,67 +520,42 @@ static int isCmpFunc(const char *fname) {
 }
 
 /*
- * Check if expression is a simple dereference suitable for caching
- * Simple derefs: (M $var) or (M (+ (M $var) const))
+ * Stack machine model: HL = TOS (top of stack), DE = 2nd entry
+ * Push HL onto stack (move to DE, spilling DE if needed)
  */
-static int isSimpleDeref(struct expr *e) {
-    if (!e) return 0;
-    if (e->op == 'M' && e->left && e->left->op == '$' && e->left->symbol) return 1;
-    if (e->op == 'M' && e->left && e->left->op == '+' && e->left->left && e->left->left->op == 'M' &&
-        e->left->left->left && e->left->left->left->op == '$' && e->left->left->left->symbol) return 1;
-    return 0;
-}
-
-static int matchesCache(struct expr *e1, struct expr *e2) {
-    if (!e1 || !e2) return 0;
-    if (e1->op != e2->op) return 0;
-    if (e1->op == '$') {
-        if (!e1->symbol || !e2->symbol) return 0;
-        return strcmp(e1->symbol, e2->symbol) == 0;
-    }
-    if (e1->op == 'M') return matchesCache(e1->left, e2->left);
-    if (e1->op == '+') {
-        if (e1->right && e2->right && e1->right->op == 'C' && e2->right->op == 'C') {
-            if (e1->right->value != e2->right->value) return 0;
-        }
-        return matchesCache(e1->left, e2->left);
-    }
-    return 0;
-}
-
-static struct expr *shallowCopy(struct expr *e) {
-    struct expr *copy;
-    if (!e) return NULL;
-    copy = malloc(sizeof(struct expr));
-    if (!copy) return NULL;
-    memcpy(copy, e, sizeof(struct expr));
-    copy->asm_block = NULL;
-    copy->cleanup_block = NULL;
-    return copy;
-}
-
-static void freeShallow(struct expr *e) {
-    if (!e) return;
-    free(e);
-}
-
-static void savePrimary(struct function_ctx *ctx, struct expr *e) {
+static void pushStack(struct function_ctx *ctx) {
     if (!ctx) return;
-    if (ctx->primary_cache) {
-        freeShallow(ctx->primary_cache);
-        ctx->primary_cache = NULL;
+
+    if (ctx->de_valid) {
+        /* DE already holds a value - spill it to real stack */
+        fdprintf(outFd, "\tpush de  ; spill 2nd stack entry\n");
+        ctx->de_save_count++;
     }
-    if (!isSimpleDeref(e)) return;
-    ctx->primary_cache = shallowCopy(e);
+
+    /* Move HL (TOS) to DE (2nd entry) */
+    fdprintf(outFd, "\tex de, hl  ; push TOS to 2nd entry\n");
+    ctx->de_valid = 1;
+
+    /* HL is now free for new TOS */
+    /* Most operations that modify HL also clobber Z flag */
+    ctx->zflag_valid = 0;
 }
 
-static void clearPrimary(struct function_ctx *ctx) {
+/*
+ * Pop stack: mark DE as consumed (no actual code gen needed)
+ */
+static void popStack(struct function_ctx *ctx) {
     if (!ctx) return;
-    if (ctx->primary_cache) {
-        freeShallow(ctx->primary_cache);
-        ctx->primary_cache = NULL;
-    }
-    /* Most operations that modify PRIMARY also clobber Z flag */
+    ctx->de_valid = 0;
+    ctx->zflag_valid = 0;
+}
+
+/*
+ * Invalidate stack state (for operations that clobber registers)
+ */
+static void invalStack(struct function_ctx *ctx) {
+    if (!ctx) return;
+    ctx->de_valid = 0;
     ctx->zflag_valid = 0;
 }
 
@@ -600,25 +575,6 @@ isBinopWAccum(unsigned char op)
     default:
         return 0;
     }
-}
-
-/*
- * Helper: Check if expression tree contains any binary operations
- * Used to determine if we need to save secondary register (DE)
- */
-static int
-hasBinop(struct expr *e)
-{
-    if (!e) return 0;
-
-    /* Check if this node is a binop */
-    if (isBinopWAccum(e->op)) return 1;
-
-    /* Recursively check children */
-    if (hasBinop(e->left)) return 1;
-    if (hasBinop(e->right)) return 1;
-
-    return 0;
 }
 
 /*
@@ -644,18 +600,6 @@ static void emitExpr(struct function_ctx *ctx, struct expr *e)
         struct local_var *var = NULL;
         const char *global_sym = NULL;
 
-        /* Check if this value is already in PRIMARY cache */
-        if (ctx->primary_cache && matchesCache(e, ctx->primary_cache)) {
-            /* Value already in PRIMARY - no need to load */
-            /* Free child without emitting */
-            freeExpr(e->left);
-            /* Free this node and return */
-            if (e->asm_block) free(e->asm_block);
-            if (e->cleanup_block) free(e->cleanup_block);
-            free(e);
-            return;
-        }
-
         /* Look up variable BEFORE emitting child (which frees it) */
 
         if (e->left && e->left->op == '$' && e->left->symbol) {
@@ -666,8 +610,8 @@ static void emitExpr(struct function_ctx *ctx, struct expr *e)
             }
         }
 
-        /* Emit child expression first (SYM nodes emit nothing and are freed) */
-        emitExpr(ctx, e->left);
+        /* Free child without emitting (we'll emit the load ourselves) */
+        freeExpr(e->left);
 
         /* Now emit the load inst based on current register allocation */
         if (var) {
@@ -731,8 +675,8 @@ static void emitExpr(struct function_ctx *ctx, struct expr *e)
             }
         }
 
-        /* Save to PRIMARY cache before freeing */
-        savePrimary(ctx, e);
+        /* Value now in HL (TOS) - Z flag may be invalid */
+        ctx->zflag_valid = 0;
 
         /* Free this node and return */
         if (e->asm_block) free(e->asm_block);
@@ -1364,73 +1308,34 @@ static void emitExpr(struct function_ctx *ctx, struct expr *e)
             freeExpr(e->right);
             fdprintf(outFd, "%s\n", e->asm_block);
         } else {
-            /* Standard binop with accumulator management */
-            char *move_inst = NULL;
+            /* Stack machine binop: left → TOS, push, right → TOS, operate */
             char *call_inst = NULL;
             char *newline = strchr(e->asm_block, '\n');
-            int saved_de = 0;
+            int init_saves = ctx->de_save_count;
 
+            /* Extract call instruction (skip move instruction - we do it explicitly) */
             if (newline) {
-                /* Extract move instruction (before newline) */
-                size_t move_len = newline - e->asm_block;
-                move_inst = malloc(move_len + 1);
-                if (move_inst) {
-                    memcpy(move_inst, e->asm_block, move_len);
-                    move_inst[move_len] = '\0';
-                }
-
-                /* Extract call instruction (after newline) */
                 call_inst = strdup(newline + 1);
             }
 
-            /* Emit in correct order for accumulator management */
-            /* 1. Left operand to PRIMARY */
+            /* 1. Evaluate left operand → HL (TOS) */
             emitExpr(ctx, e->left);
-            if (move_inst) {
-                /* 2. Move PRIMARY to SECONDARY */
-                fdprintf(outFd, "%s\n", move_inst);
-                free(move_inst);
-            }
 
-            /* If right child contains binops, save SECONDARY before evaluation */
-            if (hasBinop(e->right)) {
-                if (e->size == 1) {
-                    /* Byte operation: SECONDARY is E, spill to D or stack */
-                    if (!ctx->d_in_use) {
-                        /* D is free - use it to save E */
-                        fdprintf(outFd, "\tld d, e  ; save SECONDARY (E) to D\n");
-                        ctx->d_in_use = 1;
-                        saved_de = 1;
-                    } else {
-                        /* D already in use - spill to stack */
-                        fdprintf(outFd, "\tpush de  ; save D and E to stack\n");
-                        ctx->de_save_count++;
-                        saved_de = 2;
-                    }
-                } else {
-                    /* Word operation: SECONDARY is DE, spill to stack */
-                    fdprintf(outFd, "\tpush de  ; save SECONDARY (DE) for nested binop\n");
-                    ctx->de_save_count++;
-                    saved_de = 2;
-                }
-            }
+            /* 2. Push HL onto stack (move to DE, spilling if needed) */
+            pushStack(ctx);
 
-            /* 3. Right operand to PRIMARY */
+            /* 3. Evaluate right operand → HL (TOS) */
+            /* Right's evaluation may itself use the stack machine */
             emitExpr(ctx, e->right);
 
-            /* Restore SECONDARY if we saved it */
-            if (saved_de == 1) {
-                /* Restore E from D (byte operation) */
-                fdprintf(outFd, "\tld e, d  ; restore SECONDARY (E) from D\n");
-                ctx->d_in_use = 0;
-            } else if (saved_de == 2) {
-                /* Restore from stack */
-                fdprintf(outFd, "\tpop de  ; restore SECONDARY from stack\n");
+            /* 4. Restore saved DE values from nested operations */
+            while (ctx->de_save_count > init_saves) {
+                fdprintf(outFd, "\tpop de  ; restore from nested op\n");
                 ctx->de_save_count--;
             }
 
+            /* 5. Call binary operation (DE, HL) → HL */
             if (call_inst) {
-                /* 4. Call binary operation */
                 fdprintf(outFd, "%s\n", call_inst);
 
                 /* Check if this is a comparison function that sets Z flag */
@@ -1447,10 +1352,10 @@ static void emitExpr(struct function_ctx *ctx, struct expr *e)
             }
         }  /* End of else (standard binop) */
 
-        /* Binary op modifies PRIMARY - invalidate cache, but preserve zflag if set */
+        /* Binary op consumed DE and produced result in HL - pop stack, preserve zflag if set */
         {
             int zflag_saved = ctx->zflag_valid;
-            clearPrimary(ctx);
+            popStack(ctx);
             ctx->zflag_valid = zflag_saved;
         }
     }
@@ -1596,11 +1501,11 @@ static void emitExpr(struct function_ctx *ctx, struct expr *e)
             fdprintf(outFd, "%s", e->cleanup_block);
         }
 
-        /* Save zflag_valid before clearing PRIMARY */
+        /* Save zflag_valid before invalidating stack */
         {
             int zflag_saved = ctx->zflag_valid;
-            /* Function call modifies PRIMARY with return value - invalidate cache */
-            clearPrimary(ctx);
+            /* Function call clobbers registers - invalidate stack state */
+            invalStack(ctx);
             /* Restore zflag_valid for comparison functions */
             ctx->zflag_valid = zflag_saved;
         }
@@ -1710,7 +1615,10 @@ static void emitExpr(struct function_ctx *ctx, struct expr *e)
         if (e->right) emitExpr(ctx, e->right);
 
         if (e->asm_block) {
-            fdprintf(outFd, "%s\n", e->asm_block);
+            if (e->asm_block[0]) {  /* Only if non-empty */
+                fdprintf(outFd, "%s\n", e->asm_block);
+            }
+            /* Empty asm_block - don't emit anything */
 
             /* Check if this is a call to a comparison function that sets Z flag */
             if (strstr(e->asm_block, "call")) {
@@ -1973,12 +1881,6 @@ void emitAssembly(struct function_ctx *ctx, int fd)
         free(var->name);
         free(var);
         var = next;
-    }
-
-    /* Free primary cache if any */
-    if (ctx->primary_cache) {
-        freeShallow(ctx->primary_cache);
-        ctx->primary_cache = NULL;
     }
 }
 

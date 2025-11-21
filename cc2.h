@@ -152,7 +152,7 @@ struct function_ctx {
     int d_in_use;               // Flag: D register holds spilled byte secondary (E)
     int pendStkClean;  // Bytes to clean up after current expression (for CALL return values)
     int loop_depth;             // Nesting depth of loops (0=not in loop, >0=in loop)
-    struct expr *primary_cache; // Shallow copy of expr currently in PRIMARY (NULL if invalid)
+    int de_valid;               // Stack machine: 1 if DE holds valid value (2nd stack entry), 0 if empty
     int zflag_valid;            // 1 if Z flag is valid for HL test (comparison functions)
 };
 

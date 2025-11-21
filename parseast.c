@@ -1840,7 +1840,7 @@ doFunction(void)
     ctx.de_save_count = 0;  /* No nested DE saves yet */
     ctx.d_in_use = 0;  /* D register not in use yet */
     ctx.loop_depth = 0;  /* Not in a loop initially */
-    ctx.primary_cache = NULL;  /* PRIMARY cache empty initially */
+    ctx.de_valid = 0;  /* Stack machine: DE empty initially (only HL = TOS) */
     ctx.zflag_valid = 0;  /* Z flag not valid initially */
 
     expect(')');
