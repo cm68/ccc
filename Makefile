@@ -163,14 +163,12 @@ stage1: cc1 cc2
 # check size of compiled objects
 #
 sizecheck: stage1
-	@echo cc1 size 
 	@for o in $(CC1OBJECTS) ; do wssize stage1/$$o ; done | \
 		tr ':' ' ' | \
-	awk 'NF==1{fname=$$1} NF!=1{print fname, $$6, $$8, $$10; text+=$$6;data+=$$8;bss+=$$10}END{print text, data, bss, "=", text+data+bss}'
-	@echo cc2 size 
+	awk 'NF==1{fname=$$1} NF!=1{print fname, $$6, $$8, $$10; text+=$$6;data+=$$8;bss+=$$10}END{print "cc1 size: ", text, data, bss, "=", text+data+bss}'
 	@for o in $(CC2OBJECTS) ; do wssize stage1/$$o ; done | \
 		tr ':' ' ' | \
-	awk 'NF==1{fname=$$1} NF!=1{print fname, $$6, $$8, $$10; text+=$$6;data+=$$8;bss+=$$10}END{print text, data, bss, "=", text+data+bss}'
+	awk 'NF==1{fname=$$1} NF!=1{print fname, $$6, $$8, $$10; text+=$$6;data+=$$8;bss+=$$10}END{print "cc2 size: ", text, data, bss, "=", text+data+bss}'
 
 #
 # process the cc1.h file, extracting the enum tags for the tokens
