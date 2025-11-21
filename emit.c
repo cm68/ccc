@@ -115,6 +115,44 @@
 #define S_EXXLDAC 32
 #define S_EXXLDBA 33
 #define S_EXXLDCA 34
+#define S_ADDHLBC 35
+#define S_CALLFA 36
+#define S_CALLGL 37
+#define S_CALLL32I 38
+#define S_CALLPL 39
+#define S_ERRPARS 40
+#define S_CACHESWP 41
+#define S_DEADR 42
+#define S_PUSHTOS 43
+#define S_EXXABCORC 44
+#define S_EXXBCPOPHL 45
+#define S_FBKNORM 46
+#define S_JPFF 47
+#define S_ABCORC 48
+#define S_LDEDHLSWP 49
+#define S_HLZERO 50
+#define S_POPAFRET 51
+#define S_POPDEADR 52
+#define S_POPDERES 53
+#define S_POPHPOST 54
+#define S_POPHLLOW 55
+#define S_POPHLUPP 56
+#define S_POPHLRET 57
+#define S_PUSHAFSV 58
+#define S_PUSHBC 59
+#define S_PUSHDESV 60
+#define S_PUSHDESP 61
+#define S_PUSHHLLOW 62
+#define S_PUSHHLOV 63
+#define S_PUSHHLUPP 64
+#define S_PUSHIX 65
+#define S_IXSWPHL 66
+#define S_RET 67
+#define S_WARNBPTR 68
+#define S_ZEXTSL 69
+#define S_LOCVAR 70
+#define S_EMPTY 71
+#define S_NEWLINE 72
 
 static const char *asmstr[] = {
     "\texx\n",                          /* S_EXX */
@@ -151,7 +189,45 @@ static const char *asmstr[] = {
     "\texx\n\tld a, b\n\texx\n",        /* S_EXXLDAB */
     "\texx\n\tld a, c\n\texx\n",        /* S_EXXLDAC */
     "\texx\n\tld b, a\n\texx\n",        /* S_EXXLDBA */
-    "\texx\n\tld c, a\n\texx\n"         /* S_EXXLDCA */
+    "\texx\n\tld c, a\n\texx\n",        /* S_EXXLDCA */
+    "\tadd hl, bc\n",                   /* S_ADDHLBC */
+    "\tcall framealloc\n",              /* S_CALLFA */
+    "\tcall getlong\n",                 /* S_CALLGL */
+    "\tcall load32i\n",                 /* S_CALLL32I */
+    "\tcall putlong\n",                 /* S_CALLPL */
+    "\t; ERROR: failed to parse INCDEC_PLACEHOLDER\n", /* S_ERRPARS */
+    "\tex de, hl  ; cached value in DE, swap to HL\n", /* S_CACHESWP */
+    "\tex de, hl  ; DE = address\n",    /* S_DEADR */
+    "\tex de, hl  ; push TOS to 2nd entry\n", /* S_PUSHTOS */
+    "\texx\n\tld a, b\n\tor c\n\texx\n", /* S_EXXABCORC */
+    "\texx\n\tpush bc\n\texx\n\tpop de\n\tadd hl, de\n", /* S_EXXBCPOPHL */
+    "\t; fall back to normal indirect\n", /* S_FBKNORM */
+    "\tjp framefree\n",                 /* S_JPFF */
+    "\tld a, b\n\tor c\n",              /* S_ABCORC */
+    "\tld e, (hl)\n\tinc hl\n\tld d, (hl)\n\tex de, hl\n", /* S_LDEDHLSWP */
+    "\tld hl, 0  ; upper 16 bits = 0\n", /* S_HLZERO */
+    "\tpop af  ; return old value\n",  /* S_POPAFRET */
+    "\tpop de  ; DE = address\n",      /* S_POPDEADR */
+    "\tpop de  ; restore from nested op\n", /* S_POPDERES */
+    "\tpop hl  ; old value for postfix\n", /* S_POPHPOST */
+    "\tpop hl  ; restore lower word\n", /* S_POPHLLOW */
+    "\tpop hl  ; restore upper word\n", /* S_POPHLUPP */
+    "\tpop hl  ; return old value\n",  /* S_POPHLRET */
+    "\tpush af  ; save old value\n",   /* S_PUSHAFSV */
+    "\tpush bc\n",                      /* S_PUSHBC */
+    "\tpush de  ; save address\n",     /* S_PUSHDESV */
+    "\tpush de  ; spill 2nd stack entry\n", /* S_PUSHDESP */
+    "\tpush hl  ; save lower word\n",  /* S_PUSHHLLOW */
+    "\tpush hl  ; save old value\n",   /* S_PUSHHLOV */
+    "\tpush hl  ; save upper word\n",  /* S_PUSHHLUPP */
+    "\tpush ix\n",                      /* S_PUSHIX */
+    "\tpush ix\n\tpop de\n\tadd hl, de\n", /* S_IXSWPHL */
+    "\tret\n",                          /* S_RET */
+    "\t; WARNING: byte reg holds pointer?\n", /* S_WARNBPTR */
+    "\t; zero-extend short to long\n", /* S_ZEXTSL */
+    "; Local variables:\n",             /* S_LOCVAR */
+    "",                                 /* S_EMPTY */
+    "\n"                                /* S_NEWLINE */
 };
 
 static void emit(int idx) {
@@ -469,11 +545,11 @@ emitFnProlog(char *name, char *params, char *rettype, int frame_size,
         fdprintf(outFd, " -> %s", rettype);
     }
 
-    fdprintf(outFd, "\n");
+    emit(S_NEWLINE);
 
     /* Output local variable information as assembly comments */
     if (locals) {
-        fdprintf(outFd, "; Local variables:\n");
+        emit(S_LOCVAR);
         for (var = locals; var; var = var->next) {
             const char *regname = getRegName(var->reg);
 
@@ -523,7 +599,7 @@ emitFnProlog(char *name, char *params, char *rettype, int frame_size,
     /* Emit frame allocation call if we have locals or parameters */
     if (frame_size > 0 || has_params) {
         fdprintf(outFd, "\tld a, %d\n", frame_size);
-        fdprintf(outFd, "\tcall framealloc\n");
+        emit(S_CALLFA);
     }
 
     /* Load register-allocated parameters from stack into registers
@@ -741,13 +817,13 @@ static void pushStack(struct function_ctx *ctx) {
 
     if (ctx->de_valid) {
         /* DE already holds a value - spill it to real stack */
-        fdprintf(outFd, "\tpush de  ; spill 2nd stack entry\n");
+        emit(S_PUSHDESP);
         ctx->de_save_count++;
         clearDE(ctx);  /* Cache is now invalid */
     }
 
     /* Move HL (TOS) to DE (2nd entry) */
-    fdprintf(outFd, "\tex de, hl  ; push TOS to 2nd entry\n");
+    emit(S_PUSHTOS);
     ctx->de_valid = 1;
 
     /* Copy HL cache to DE cache */
@@ -839,7 +915,7 @@ static void emitExpr(struct function_ctx *ctx, struct expr *e)
         /* Check if value is in DE - swap if so */
         if (ctx->de_cache && matchesCache(e, ctx->de_cache)) {
             /* Value in DE - swap DE and HL */
-            fdprintf(outFd, "\tex de, hl  ; cached value in DE, swap to HL\n");
+            emit(S_CACHESWP);
 
             /* Swap caches */
             temp = ctx->hl_cache;
@@ -904,7 +980,7 @@ static void emitExpr(struct function_ctx *ctx, struct expr *e)
                 } else {
                     /* Long (4 bytes) - use getlong function */
                     fdprintf(outFd, "\tld a, %d\n", var->offset);
-                    fdprintf(outFd, "\tcall getlong\n");
+                    emit(S_CALLGL);
                 }
             }
         } else if (global_sym) {
@@ -993,9 +1069,9 @@ static void emitExpr(struct function_ctx *ctx, struct expr *e)
             if (e->size == 1) {
                 emit(S_AHL);
             } else if (e->size == 2) {
-                fdprintf(outFd, "\tld e, (hl)\n\tinc hl\n\tld d, (hl)\n\tex de, hl\n");
+                emit(S_LDEDHLSWP);
             } else if (e->size == 4) {
-                fdprintf(outFd, "\tcall load32i\n");
+                emit(S_CALLL32I);
             }
 
             /* Free this node */
@@ -1043,9 +1119,9 @@ static void emitExpr(struct function_ctx *ctx, struct expr *e)
                 if (var->reg == REG_B || var->reg == REG_C ||
                     var->reg == REG_Bp || var->reg == REG_Cp) {
                     /* Single byte register shouldn't hold pointer, but handle it */
-                    fdprintf(outFd, "\t; WARNING: byte reg holds pointer?\n");
+                    emit(S_WARNBPTR);
                 }
-                fdprintf(outFd, "\t; fall back to normal indirect\n");
+                emit(S_FBKNORM);
                 /* Emit the inner DEREF to load pointer */
                 emitExpr(ctx, e->left);
                 emit(S_AHL);
@@ -1083,7 +1159,7 @@ static void emitExpr(struct function_ctx *ctx, struct expr *e)
         p = strstr(e->asm_block, "INCDEC_PLACEHOLDER:") + 19;
         if (sscanf(p, "%d:%d:%ld:%d:%255s", &op, &size, &amount, &unused, symbol) != 5) {
             /* Parse error - emit comment and skip */
-            fdprintf(outFd, "\t; ERROR: failed to parse INCDEC_PLACEHOLDER\n");
+            emit(S_ERRPARS);
             if (e->asm_block) free(e->asm_block);
             if (e->cleanup_block) free(e->cleanup_block);
             free(e);
@@ -1141,7 +1217,7 @@ static void emitExpr(struct function_ctx *ctx, struct expr *e)
                     } else {
                         fdprintf(outFd, "\tadd %s, de\n", reg_pair);
                     }
-                    fdprintf(outFd, "\tpop hl  ; old value for postfix\n");
+                    emit(S_POPHPOST);
                 }
                 if (!is_post && amount != 1) {
                     if (var->reg == REG_IX) emit(S_IXHL);
@@ -1213,14 +1289,14 @@ static void emitExpr(struct function_ctx *ctx, struct expr *e)
                 /* Byte global */
                 if (is_post) {
                     fdprintf(outFd, "\tld a, (%s)\n", sym);
-                    fdprintf(outFd, "\tpush af  ; save old value\n");
+                    emit(S_PUSHAFSV);
                     if (amount == 1) {
                         fdprintf(outFd, "\t%s a\n", is_dec ? "dec" : "inc");
                     } else {
                         fdprintf(outFd, "\t%s a, %ld\n", is_dec ? "sub" : "add", amount);
                     }
                     fdprintf(outFd, "\tld (%s), a\n", sym);
-                    fdprintf(outFd, "\tpop af  ; return old value\n");
+                    emit(S_POPAFRET);
                 } else {
                     fdprintf(outFd, "\tld a, (%s)\n", sym);
                     if (amount == 1) {
@@ -1234,7 +1310,7 @@ static void emitExpr(struct function_ctx *ctx, struct expr *e)
                 /* Word global */
                 if (is_post) {
                     fdprintf(outFd, "\tld hl, (%s)\n", sym);
-                    fdprintf(outFd, "\tpush hl  ; save old value\n");
+                    emit(S_PUSHHLOV);
                     if (amount == 1) {
                         fdprintf(outFd, "\t%s hl\n", is_dec ? "dec" : "inc");
                     } else {
@@ -1246,7 +1322,7 @@ static void emitExpr(struct function_ctx *ctx, struct expr *e)
                         }
                     }
                     fdprintf(outFd, "\tld (%s), hl\n", sym);
-                    fdprintf(outFd, "\tpop hl  ; return old value\n");
+                    emit(S_POPHLRET);
                 } else {
                     fdprintf(outFd, "\tld hl, (%s)\n", sym);
                     if (amount == 1) {
@@ -1373,7 +1449,7 @@ static void emitExpr(struct function_ctx *ctx, struct expr *e)
                 } else {
                     /* Long (4 bytes) - use putlong function */
                     fdprintf(outFd, "\tld a, %d\n", var->offset);
-                    fdprintf(outFd, "\tcall putlong\n");
+                    emit(S_CALLPL);
                 }
             } else {
                 /* Global variable - direct memory access */
@@ -1432,17 +1508,17 @@ static void emitExpr(struct function_ctx *ctx, struct expr *e)
             } else if (e->size == 4) {
                 /* Long: value in HL'HL */
                 /* This is complex - need to save 4 bytes */
-                fdprintf(outFd, "\tpush hl  ; save lower word\n");
+                emit(S_PUSHHLLOW);
                 emit(S_EXX);
-                fdprintf(outFd, "\tpush hl  ; save upper word\n");
+                emit(S_PUSHHLUPP);
                 emit(S_EXX);
                 emitExpr(ctx, e->left);  /* Compute address to HL */
-                fdprintf(outFd, "\tex de, hl  ; DE = address\n");
-                fdprintf(outFd, "\tpop hl  ; restore upper word\n");
-                fdprintf(outFd, "\tpush de  ; save address\n");
+                emit(S_DEADR);
+                emit(S_POPHLUPP);
+                emit(S_PUSHDESV);
                 emit(S_EXX);
-                fdprintf(outFd, "\tpop de  ; DE = address\n");
-                fdprintf(outFd, "\tpop hl  ; restore lower word\n");
+                emit(S_POPDEADR);
+                emit(S_POPHLLOW);
                 /* Store 4 bytes: (DE) <- HL, (DE+2) <- HL' */
                 emit(S_AL);
                 emit(S_DEA);
@@ -1519,14 +1595,14 @@ static void emitExpr(struct function_ctx *ctx, struct expr *e)
                 /* Use add hl, reg for larger constants */
                 fdprintf(outFd, "\tld hl, %ld\n", const_val);
                 if (var->reg == REG_BC) {
-                    fdprintf(outFd, "\tadd hl, bc\n");
+                    emit(S_ADDHLBC);
                 } else if (var->reg == REG_BCp) {
                     /* Can't use exx - it switches HL too */
                     /* Stage BC' into DE, then add */
-                    fdprintf(outFd, "\texx\n\tpush bc\n\texx\n\tpop de\n\tadd hl, de\n");
+                    emit(S_EXXBCPOPHL);
                 } else {  /* REG_IX */
                     /* Z80 doesn't have 'add hl, ix' - stage through DE */
-                    fdprintf(outFd, "\tpush ix\n\tpop de\n\tadd hl, de\n");
+                    emit(S_IXSWPHL);
                 }
             }
         } else {
@@ -1583,7 +1659,7 @@ static void emitExpr(struct function_ctx *ctx, struct expr *e)
 
             /* 4. Restore saved DE values from nested operations */
             while (ctx->de_save_count > init_saves) {
-                fdprintf(outFd, "\tpop de  ; restore from nested op\n");
+                emit(S_POPDERES);
                 ctx->de_save_count--;
             }
 
@@ -1698,11 +1774,11 @@ static void emitExpr(struct function_ctx *ctx, struct expr *e)
                         if (strstr(next_buf, "push hl")) {
                             /* Optimize: push register directly */
                             if (var->reg == REG_BC) {
-                                fdprintf(outFd, "\tpush bc\n");
+                                emit(S_PUSHBC);
                             } else if (var->reg == REG_BCp) {
                                 emit(S_EXXBC);
                             } else if (var->reg == REG_IX) {
-                                fdprintf(outFd, "\tpush ix\n");
+                                emit(S_PUSHIX);
                             }
                             /* Skip the push hl line */
                             line_start = next_end ? next_end + 1 : next_line_st + next_len;
@@ -1983,9 +2059,9 @@ static void emitStmt(struct function_ctx *ctx, struct stmt *s)
             if (var && (var->reg == REG_BC || var->reg == REG_BCp)) {
                 /* Word variable in BC or BC' - test directly */
                 if (var->reg == REG_BC) {
-                    fdprintf(outFd, "\tld a, b\n\tor c\n");
+                    emit(S_ABCORC);
                 } else {  /* REG_BCp */
-                    fdprintf(outFd, "\texx\n\tld a, b\n\tor c\n\texx\n");
+                    emit(S_EXXABCORC);
                 }
                 /* Free the condition expression without emitting it */
                 freeExpr(cond);
@@ -2059,9 +2135,9 @@ static void emitStmt(struct function_ctx *ctx, struct stmt *s)
             emitExpr(ctx, s->expr);
             /* If function returns long but expression is short, zero-extend to long */
             if (strcmp(ctx->rettype, "_long_") == 0 && s->expr->size == 2) {
-                fdprintf(outFd, "\t; zero-extend short to long\n");
+                emit(S_ZEXTSL);
                 emit(S_EXX);
-                fdprintf(outFd, "\tld hl, 0  ; upper 16 bits = 0\n");
+                emit(S_HLZERO);
                 emit(S_EXX);
             }
         }
@@ -2121,10 +2197,10 @@ void emitAssembly(struct function_ctx *ctx, int fd)
     /* Emit function epilogue with frame deallocation */
     /* Jump to framefree if we have locals or parameters (tail call optimization) */
     if (ctx->frame_size > 0 || has_params) {
-        fdprintf(outFd, "\tjp framefree\n");
+        emit(S_JPFF);
     } else {
         /* No frame to free, just return */
-        fdprintf(outFd, "\tret\n");
+        emit(S_RET);
     }
 
     /* Free local variables list */
