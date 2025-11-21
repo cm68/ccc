@@ -543,6 +543,46 @@ static struct expr *shallowCopy(struct expr *e) {
 }
 
 /*
+ * Create cache node for variable: DEREF(SYM(symbol))
+ * Returns DEREF node on success, NULL on failure
+ */
+static struct expr *mkVarCache(const char *symbol, unsigned char size) {
+    struct expr *sym_node;
+    struct expr *deref_node;
+
+    sym_node = malloc(sizeof(struct expr));
+    if (!sym_node) return NULL;
+
+    sym_node->op = '$';
+    sym_node->symbol = (char *)symbol;  /* Cast: we don't modify the string */
+    sym_node->size = size;
+    sym_node->left = NULL;
+    sym_node->right = NULL;
+    sym_node->asm_block = NULL;
+    sym_node->cleanup_block = NULL;
+    sym_node->jump = NULL;
+    sym_node->flags = 0;
+
+    deref_node = malloc(sizeof(struct expr));
+    if (!deref_node) {
+        free(sym_node);
+        return NULL;
+    }
+
+    deref_node->op = 'M';
+    deref_node->size = size;
+    deref_node->left = sym_node;
+    deref_node->right = NULL;
+    deref_node->symbol = NULL;
+    deref_node->asm_block = NULL;
+    deref_node->cleanup_block = NULL;
+    deref_node->jump = NULL;
+    deref_node->flags = 0;
+
+    return deref_node;
+}
+
+/*
  * Check if two expressions match (for cache lookup)
  * Only checks SYM and DEREF patterns for now
  */
@@ -563,6 +603,32 @@ static int matchesCache(struct expr *e1, struct expr *e2) {
     }
 
     return 0;
+}
+
+/*
+ * Emit: load word from (iy+offset) into HL
+ */
+static void loadWordIY(int offset) {
+    if (offset >= 0) {
+        fdprintf(outFd, "\tld l, (iy + %d)\n", offset);
+        fdprintf(outFd, "\tld h, (iy + %d)\n", offset + 1);
+    } else {
+        fdprintf(outFd, "\tld l, (iy - %d)\n", -offset);
+        fdprintf(outFd, "\tld h, (iy - %d)\n", -offset - 1);
+    }
+}
+
+/*
+ * Emit: store word from HL to (iy+offset)
+ */
+static void storeWordIY(int offset) {
+    if (offset >= 0) {
+        fdprintf(outFd, "\tld (iy + %d), l\n", offset);
+        fdprintf(outFd, "\tld (iy + %d), h\n", offset + 1);
+    } else {
+        fdprintf(outFd, "\tld (iy - %d), l\n", -offset);
+        fdprintf(outFd, "\tld (iy - %d), h\n", -offset - 1);
+    }
 }
 
 /*
@@ -755,14 +821,7 @@ static void emitExpr(struct function_ctx *ctx, struct expr *e)
                         fdprintf(outFd, "\tld a, (iy - %d)\n", -var->offset);
                     }
                 } else if (e->size == 2) {
-                    if (var->offset >= 0) {
-                        fdprintf(outFd, "\tld l, (iy + %d)\n", var->offset);
-                        fdprintf(outFd, "\tld h, (iy + %d)\n", var->offset + 1);
-                    } else {
-                        /* Negative offset: high byte is at less negative offset */
-                        fdprintf(outFd, "\tld l, (iy - %d)\n", -var->offset);
-                        fdprintf(outFd, "\tld h, (iy - %d)\n", -var->offset - 1);
-                    }
+                    loadWordIY(var->offset);
                 } else {
                     /* Long (4 bytes) - use getlong function */
                     fdprintf(outFd, "\tld a, %d\n", var->offset);
@@ -1209,9 +1268,6 @@ static void emitExpr(struct function_ctx *ctx, struct expr *e)
                 } else {
                     /* Word: move HL to register pair */
                     if (var->reg == REG_BC || var->reg == REG_IX) {
-                        struct expr *sym_node;
-                        struct expr *deref_node;
-
                         if (var->reg == REG_BC) {
                             fdprintf(outFd, "\tld b, h\n\tld c, l\n");
                         } else {
@@ -1222,37 +1278,7 @@ static void emitExpr(struct function_ctx *ctx, struct expr *e)
                          * HL still contains the value
                          * Update cache to reflect HL now represents the variable */
                         clearHL(ctx);
-
-                        /* Create SYM node - use e->left->symbol to get prefixed name */
-                        sym_node = malloc(sizeof(struct expr));
-                        if (sym_node) {
-                            sym_node->op = '$';
-                            sym_node->symbol = e->left->symbol;  /* Use prefixed symbol */
-                            sym_node->size = e->size;
-                            sym_node->left = NULL;
-                            sym_node->right = NULL;
-                            sym_node->asm_block = NULL;
-                            sym_node->cleanup_block = NULL;
-                            sym_node->jump = NULL;
-                            sym_node->flags = 0;
-
-                            /* Create DEREF node with SYM as child */
-                            deref_node = malloc(sizeof(struct expr));
-                            if (deref_node) {
-                                deref_node->op = 'M';
-                                deref_node->size = e->size;
-                                deref_node->left = sym_node;
-                                deref_node->right = NULL;
-                                deref_node->symbol = NULL;
-                                deref_node->asm_block = NULL;
-                                deref_node->cleanup_block = NULL;
-                                deref_node->jump = NULL;
-                                deref_node->flags = 0;
-                                ctx->hl_cache = deref_node;
-                            } else {
-                                free(sym_node);
-                            }
-                        }
+                        ctx->hl_cache = mkVarCache(e->left->symbol, e->size);
                     }
                 }
             } else if (var) {
@@ -1264,14 +1290,7 @@ static void emitExpr(struct function_ctx *ctx, struct expr *e)
                         fdprintf(outFd, "\tld (iy - %d), a\n", -var->offset);
                     }
                 } else if (e->size == 2) {
-                    if (var->offset >= 0) {
-                        fdprintf(outFd, "\tld (iy + %d), l\n", var->offset);
-                        fdprintf(outFd, "\tld (iy + %d), h\n", var->offset + 1);
-                    } else {
-                        /* Negative offset: high byte is at less negative offset */
-                        fdprintf(outFd, "\tld (iy - %d), l\n", -var->offset);
-                        fdprintf(outFd, "\tld (iy - %d), h\n", -var->offset - 1);
-                    }
+                    storeWordIY(var->offset);
                 } else {
                     /* Long (4 bytes) - use putlong function */
                     fdprintf(outFd, "\tld a, %d\n", var->offset);
