@@ -675,6 +675,13 @@ static void generateExpr(struct function_ctx *ctx, struct expr *e)
         /* Use actual collected count, not expected (handles AST mismatches) */
         arg_count = i;
 
+        /* Optimize constant arguments: if constant fits in byte, generate as byte */
+        for (i = 0; i < arg_count; i++) {
+            if (args[i]->op == 'C' && args[i]->value >= 0 && args[i]->value <= 255) {
+                args[i]->size = 1;  /* Force byte size for small constants */
+            }
+        }
+
         /* Generate code for each child expression first */
         for (i = 0; i < arg_count; i++) {
             generateExpr(ctx, args[i]);
@@ -738,9 +745,9 @@ static void generateExpr(struct function_ctx *ctx, struct expr *e)
 
             /* Push PRIMARY onto stack */
             if (args[i]->size == 1) {
-                /* Byte argument - push as word (Z80 only has 16-bit push) */
+                /* Byte argument - push AF (data in A, flags in F) */
                 bufPos += snprintf(call_buf + bufPos, sizeof(call_buf) - bufPos,
-                                   "\tld l, a\n\tld h, 0\n\tpush hl  ; push byte arg %d\n", i);
+                                   "\tpush af  ; push byte arg %d\n", i);
             } else {
                 /* Word argument */
                 bufPos += snprintf(call_buf + bufPos, sizeof(call_buf) - bufPos,

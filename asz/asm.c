@@ -1916,9 +1916,7 @@ struct instruct *isr;
 	struct expval value;
 
 	arg = operand(&value);
-	if (arg == T_SP)
-		arg = 12;
-	else if (arg == 12)
+	if (arg == T_AF)
 		arg = T_SP;
 
 	if (arg >= T_BC && arg <= T_SP) {

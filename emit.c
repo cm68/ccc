@@ -230,7 +230,7 @@ static const char *asmstr[] = {
     "\n"                                /* S_NEWLINE */
 };
 
-static void emit(int idx) {
+static void emit(char idx) {
     fdprintf(outFd, "%s", asmstr[idx]);
 }
 
@@ -632,9 +632,9 @@ emitFnProlog(char *name, char *params, char *rettype, int frame_size,
                     emit(S_HLPIX);
                 }
             } else if (var->size == 1) {
-                /* Byte parameter */
+                /* Byte parameter - data is at offset+1 (pushed as AF) */
                 if (var->reg == REG_B || var->reg == REG_C) {
-                    fdprintf(outFd, "\tld a, (iy + %d)\n", var->offset);
+                    fdprintf(outFd, "\tld a, (iy + %d)\n", var->offset + 1);
                     if (var->reg == REG_B) {
                         emit(S_BA);
                     } else {
@@ -971,8 +971,10 @@ static void emitExpr(struct function_ctx *ctx, struct expr *e)
                 /* Variable is on stack - load from (iy + offset) */
                 if (e->size == 1) {
                     if (var->offset >= 0) {
-                        fdprintf(outFd, "\tld a, (iy + %d)\n", var->offset);
+                        /* Parameter: byte is at offset+1 (pushed as AF) */
+                        fdprintf(outFd, "\tld a, (iy + %d)\n", var->offset + 1);
                     } else {
+                        /* Local variable: byte is at offset */
                         fdprintf(outFd, "\tld a, (iy - %d)\n", -var->offset);
                     }
                 } else if (e->size == 2) {
@@ -1232,18 +1234,20 @@ static void emitExpr(struct function_ctx *ctx, struct expr *e)
             /* Variable is on stack */
             char sign = (var->offset >= 0) ? '+' : '-';
             int abs_offset = (var->offset >= 0) ? var->offset : -var->offset;
+            /* For byte parameters (offset >= 0), data is at offset+1 (pushed as AF) */
+            int byte_adj = (size == 1 && var->offset >= 0) ? 1 : 0;
 
             if (size == 1) {
                 /* Byte on stack */
-                if (is_post) fdprintf(outFd, "\tld a, (iy %c %d)\n", sign, abs_offset);
+                if (is_post) fdprintf(outFd, "\tld a, (iy %c %d)\n", sign, abs_offset + byte_adj);
                 if (amount == 1) {
-                    fdprintf(outFd, "\t%s (iy %c %d)\n", is_dec ? "dec" : "inc", sign, abs_offset);
+                    fdprintf(outFd, "\t%s (iy %c %d)\n", is_dec ? "dec" : "inc", sign, abs_offset + byte_adj);
                 } else {
-                    fdprintf(outFd, "\tld a, (iy %c %d)\n", sign, abs_offset);
+                    fdprintf(outFd, "\tld a, (iy %c %d)\n", sign, abs_offset + byte_adj);
                     fdprintf(outFd, "\t%s a, %ld\n", is_dec ? "sub" : "add", amount);
-                    fdprintf(outFd, "\tld (iy %c %d), a\n", sign, abs_offset);
+                    fdprintf(outFd, "\tld (iy %c %d), a\n", sign, abs_offset + byte_adj);
                 }
-                if (!is_post) fdprintf(outFd, "\tld a, (iy %c %d)\n", sign, abs_offset);
+                if (!is_post) fdprintf(outFd, "\tld a, (iy %c %d)\n", sign, abs_offset + byte_adj);
             } else {
                 /* Word on stack */
                 if (is_post) {
@@ -1440,8 +1444,10 @@ static void emitExpr(struct function_ctx *ctx, struct expr *e)
                 /* Variable is on stack - store to (iy + offset) */
                 if (e->size == 1) {
                     if (var->offset >= 0) {
-                        fdprintf(outFd, "\tld (iy + %d), a\n", var->offset);
+                        /* Parameter: byte is at offset+1 (pushed as AF) */
+                        fdprintf(outFd, "\tld (iy + %d), a\n", var->offset + 1);
                     } else {
+                        /* Local variable: byte is at offset */
                         fdprintf(outFd, "\tld (iy - %d), a\n", -var->offset);
                     }
                 } else if (e->size == 2) {
