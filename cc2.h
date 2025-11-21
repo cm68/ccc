@@ -71,6 +71,7 @@ struct labelMap {
  */
 #define E_UNSIGNED  0x01        // Value is unsigned
 #define E_UNUSED    0x02        // Value is not used (result discarded)
+#define E_GENERATED 0x04        // Node has been code-generated (asm_block emitted)
 
 /*
  * Expression tree node for code generation
@@ -154,6 +155,8 @@ struct function_ctx {
     int loop_depth;             // Nesting depth of loops (0=not in loop, >0=in loop)
     int de_valid;               // Stack machine: 1 if DE holds valid value (2nd stack entry), 0 if empty
     int zflag_valid;            // 1 if Z flag is valid for HL test (comparison functions)
+    struct expr *hl_cache;      // Shallow copy of expr in HL (TOS), NULL if invalid
+    struct expr *de_cache;      // Shallow copy of expr in DE (2nd entry), NULL if invalid
 };
 
 /* Forward declarations from util.c */

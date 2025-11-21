@@ -520,6 +520,74 @@ static int isCmpFunc(const char *fname) {
 }
 
 /*
+ * Expression cache helpers
+ * Create shallow copy of expression for caching (no asm_block, no children)
+ */
+static struct expr *shallowCopy(struct expr *e) {
+    struct expr *copy;
+    if (!e) return NULL;
+
+    copy = malloc(sizeof(struct expr));
+    if (!copy) return NULL;
+
+    memcpy(copy, e, sizeof(struct expr));
+
+    /* Clear pointers - this is a shallow copy for caching */
+    copy->left = NULL;
+    copy->right = NULL;
+    copy->asm_block = NULL;
+    copy->cleanup_block = NULL;
+    copy->jump = NULL;
+
+    return copy;
+}
+
+/*
+ * Check if two expressions match (for cache lookup)
+ * Only checks SYM and DEREF patterns for now
+ */
+static int matchesCache(struct expr *e1, struct expr *e2) {
+    if (!e1 || !e2) return 0;
+    if (e1->op != e2->op) return 0;
+    if (e1->size != e2->size) return 0;
+
+    if (e1->op == '$') {
+        /* Symbol: compare names */
+        if (!e1->symbol || !e2->symbol) return 0;
+        return strcmp(e1->symbol, e2->symbol) == 0;
+    }
+
+    if (e1->op == 'M') {
+        /* DEREF: recursively check child */
+        return matchesCache(e1->left, e2->left);
+    }
+
+    return 0;
+}
+
+/*
+ * Clear HL cache
+ */
+static void clearHL(struct function_ctx *ctx) {
+    if (!ctx) return;
+    if (ctx->hl_cache) {
+        freeExpr(ctx->hl_cache);
+        ctx->hl_cache = NULL;
+    }
+}
+
+/*
+ * Clear DE cache
+ */
+static void clearDE(struct function_ctx *ctx) {
+    if (!ctx) return;
+    if (ctx->de_cache) {
+        freeExpr(ctx->de_cache);
+        ctx->de_cache = NULL;
+    }
+}
+
+/*
  * Stack machine model: HL = TOS (top of stack), DE = 2nd entry
  * Push HL onto stack (move to DE, spilling DE if needed)
  */
@@ -530,11 +598,19 @@ static void pushStack(struct function_ctx *ctx) {
         /* DE already holds a value - spill it to real stack */
         fdprintf(outFd, "\tpush de  ; spill 2nd stack entry\n");
         ctx->de_save_count++;
+        clearDE(ctx);  /* Cache is now invalid */
     }
 
     /* Move HL (TOS) to DE (2nd entry) */
     fdprintf(outFd, "\tex de, hl  ; push TOS to 2nd entry\n");
     ctx->de_valid = 1;
+
+    /* Copy HL cache to DE cache */
+    if (ctx->de_cache) {
+        freeExpr(ctx->de_cache);
+    }
+    ctx->de_cache = ctx->hl_cache;
+    ctx->hl_cache = NULL;
 
     /* HL is now free for new TOS */
     /* Most operations that modify HL also clobber Z flag */
@@ -548,6 +624,7 @@ static void popStack(struct function_ctx *ctx) {
     if (!ctx) return;
     ctx->de_valid = 0;
     ctx->zflag_valid = 0;
+    clearDE(ctx);
 }
 
 /*
@@ -557,6 +634,8 @@ static void invalStack(struct function_ctx *ctx) {
     if (!ctx) return;
     ctx->de_valid = 0;
     ctx->zflag_valid = 0;
+    clearHL(ctx);
+    clearDE(ctx);
 }
 
 /*
@@ -599,6 +678,37 @@ static void emitExpr(struct function_ctx *ctx, struct expr *e)
             strstr(e->asm_block, "DEREF_PLACEHOLDER")) {
         struct local_var *var = NULL;
         const char *global_sym = NULL;
+        struct expr *temp;
+
+        /* Check cache first - if value already in HL, no code needed */
+        if (ctx->hl_cache && matchesCache(e, ctx->hl_cache)) {
+            /* Value already in HL - mark as generated and return */
+            e->flags |= E_GENERATED;
+            freeExpr(e->left);
+            if (e->asm_block) free(e->asm_block);
+            if (e->cleanup_block) free(e->cleanup_block);
+            free(e);
+            return;
+        }
+
+        /* Check if value is in DE - swap if so */
+        if (ctx->de_cache && matchesCache(e, ctx->de_cache)) {
+            /* Value in DE - swap DE and HL */
+            fdprintf(outFd, "\tex de, hl  ; cached value in DE, swap to HL\n");
+
+            /* Swap caches */
+            temp = ctx->hl_cache;
+            ctx->hl_cache = ctx->de_cache;
+            ctx->de_cache = temp;
+
+            /* Mark as generated and return */
+            e->flags |= E_GENERATED;
+            freeExpr(e->left);
+            if (e->asm_block) free(e->asm_block);
+            if (e->cleanup_block) free(e->cleanup_block);
+            free(e);
+            return;
+        }
 
         /* Look up variable BEFORE emitting child (which frees it) */
 
@@ -677,6 +787,10 @@ static void emitExpr(struct function_ctx *ctx, struct expr *e)
 
         /* Value now in HL (TOS) - Z flag may be invalid */
         ctx->zflag_valid = 0;
+
+        /* Save expression to cache */
+        clearHL(ctx);
+        ctx->hl_cache = shallowCopy(e);
 
         /* Free this node and return */
         if (e->asm_block) free(e->asm_block);
@@ -1094,10 +1208,51 @@ static void emitExpr(struct function_ctx *ctx, struct expr *e)
                     }
                 } else {
                     /* Word: move HL to register pair */
-                    if (var->reg == REG_BC) {
-                        fdprintf(outFd, "\tld b, h\n\tld c, l\n");
-                    } else if (var->reg == REG_IX) {
-                        fdprintf(outFd, "\tpush hl\n\tpop ix\n");
+                    if (var->reg == REG_BC || var->reg == REG_IX) {
+                        struct expr *sym_node;
+                        struct expr *deref_node;
+
+                        if (var->reg == REG_BC) {
+                            fdprintf(outFd, "\tld b, h\n\tld c, l\n");
+                        } else {
+                            fdprintf(outFd, "\tpush hl\n\tpop ix\n");
+                        }
+
+                        /* After ld b,h; ld c,l OR push hl; pop ix,
+                         * HL still contains the value
+                         * Update cache to reflect HL now represents the variable */
+                        clearHL(ctx);
+
+                        /* Create SYM node - use e->left->symbol to get prefixed name */
+                        sym_node = malloc(sizeof(struct expr));
+                        if (sym_node) {
+                            sym_node->op = '$';
+                            sym_node->symbol = e->left->symbol;  /* Use prefixed symbol */
+                            sym_node->size = e->size;
+                            sym_node->left = NULL;
+                            sym_node->right = NULL;
+                            sym_node->asm_block = NULL;
+                            sym_node->cleanup_block = NULL;
+                            sym_node->jump = NULL;
+                            sym_node->flags = 0;
+
+                            /* Create DEREF node with SYM as child */
+                            deref_node = malloc(sizeof(struct expr));
+                            if (deref_node) {
+                                deref_node->op = 'M';
+                                deref_node->size = e->size;
+                                deref_node->left = sym_node;
+                                deref_node->right = NULL;
+                                deref_node->symbol = NULL;
+                                deref_node->asm_block = NULL;
+                                deref_node->cleanup_block = NULL;
+                                deref_node->jump = NULL;
+                                deref_node->flags = 0;
+                                ctx->hl_cache = deref_node;
+                            } else {
+                                free(sym_node);
+                            }
+                        }
                     }
                 }
             } else if (var) {

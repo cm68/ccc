@@ -1842,6 +1842,8 @@ doFunction(void)
     ctx.loop_depth = 0;  /* Not in a loop initially */
     ctx.de_valid = 0;  /* Stack machine: DE empty initially (only HL = TOS) */
     ctx.zflag_valid = 0;  /* Z flag not valid initially */
+    ctx.hl_cache = NULL;  /* No expression cached in HL */
+    ctx.de_cache = NULL;  /* No expression cached in DE */
 
     expect(')');
 

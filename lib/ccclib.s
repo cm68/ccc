@@ -72,17 +72,76 @@ getlong:
 	pop		iy			; restore fp
 	ret					; 1	
 
+;
+; add de'de to hl'hl
+;
 add32:
-		ret
+	add	hl,de
+	exx
+	adc	hl,de
+	exx
+	ret
+
+;
+; subtract de'de from hl'hl
+;
 sub32:
-		ret
+	sub	hl,de
+	exx
+	sbc	hl,de
+	exx	
+	ret
+
+;
+; and de'de into hl'hl
+; return z if all zero
+;
 and32:
-		ret
+	ld	a,h
+	and	a,d
+	ld	h,a
+	ld	a,l
+	and	a,e
+	exx
+	ld	h,a
+	ld	a,h
+	and	a,d
+	ld	h,a
+	ld	a,h
+	and	a,d
+	ld	h,a
+	ret
+
 or32:
-		ret
+	ret
 
 xor32:
-		ret
+	ret
+
+eq3232:
+	exx
+	ld	a,d
+	cp	h
+	jr	nz,eqlose
+	ld	a,e
+	cp	l
+	exx
+	ret	nz
+	jr	eq1616
+eqlose:
+	exx
+	ret
+; falls into:
+;
+; compare de, hl. return z if equal
+;
+eq1616:
+	ld	a,d
+	cp	h
+	ret	nz
+	ld	a,e
+	cp	l
+	ret
 
 ;
 ; vim: tabstop=4 shiftwidth=4 noexpandtab:
