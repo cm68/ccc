@@ -16,6 +16,9 @@
 
 #include "cc2.h"
 
+/* Global loop depth for tracking whether we're inside a loop */
+static int g_loop_depth = 0;
+
 /* Forward declaration from parseast.c for symbol tracking */
 void addRefSym(const char *name);
 
@@ -713,10 +716,27 @@ static void generateExpr(struct function_ctx *ctx, struct expr *e)
                 }
             }
 
+            /* For plain SYM (address), load symbol address into hl */
+            /* Only handle global symbols ($_xxx), not local variables ($xxx) */
+            if (args[i]->op == '$' && args[i]->symbol &&
+                args[i]->symbol[0] == '$' && args[i]->symbol[1] == '_') {
+                const char *sym_name = args[i]->symbol;
+                /* Strip leading $ from symbol name */
+                if (sym_name[0] == '$') sym_name++;
+                bufPos += snprintf(call_buf + bufPos, sizeof(call_buf) - bufPos,
+                                   "\tld hl, %s  ; symbol address for arg %d\n", sym_name, i);
+            }
+            /* For local variable addresses, emit a placeholder comment */
+            else if (args[i]->op == '$' && args[i]->symbol &&
+                     args[i]->symbol[0] == '$' && args[i]->symbol[1] != '_') {
+                /* Local variable - need to compute address relative to IY */
+                bufPos += snprintf(call_buf + bufPos, sizeof(call_buf) - bufPos,
+                                   "\t; local addr arg %d: %s\n", i, args[i]->symbol);
+            }
             /* For DEREF of SYM, emit inline load based on register allocation */
             /* This must be done now, not deferred, since args are baked into call */
-            if (args[i]->op == 'M' && args[i]->left &&
-                args[i]->left->op == '$' && args[i]->left->symbol) {
+            else if (args[i]->op == 'M' && args[i]->left &&
+                     args[i]->left->op == '$' && args[i]->left->symbol) {
                 /* This is a simple variable dereference - needs inline code */
                 /* Can't use placeholder since CALL asm_block is emitted verbatim */
                 /* Just emit a comment for now - actual code will be in emit phase */
@@ -756,7 +776,8 @@ static void generateExpr(struct function_ctx *ctx, struct expr *e)
 
         /* Don't clean up stack here - defer until after result is used */
         /* Attach cleanup code to expression for later emission */
-        if (arg_count > 0) {
+        /* Optimization: only clean up if we're in a loop - otherwise framefree does it */
+        if (arg_count > 0 && g_loop_depth > 0) {
             e->cleanup_block = buildStkCln(arg_count * 2);
         }
 
@@ -865,6 +886,7 @@ static void generateExpr(struct function_ctx *ctx, struct expr *e)
         int is_post = (e->op == 0xef || e->op == 0xf6);
         int is_dec = (e->op == 0xd6 || e->op == 0xf6);
         const char *incdec = is_dec ? "dec" : "inc";
+        int unused = (e->flags & E_UNUSED) ? 1 : 0;
 
         /* Check for simple variable (SYM node) */
         if (e->left && e->left->op == '$' && e->left->symbol) {
@@ -881,9 +903,9 @@ static void generateExpr(struct function_ctx *ctx, struct expr *e)
         /* Use placeholder to defer code generation to emit phase */
         /* This allows register allocation to happen first, so emit.c can */
         /* generate optimal code based on whether variable is in register */
-        /* Placeholder format: INCDEC_PLACEHOLDER:op:size:amount:symbol */
-        snprintf(buf, sizeof(buf), "INCDEC_PLACEHOLDER:%d:%d:%ld:%s",
-                 (int)e->op, e->size, e->value, e->left->symbol);
+        /* Placeholder format: INCDEC_PLACEHOLDER:op:size:amount:unused:symbol */
+        snprintf(buf, sizeof(buf), "INCDEC_PLACEHOLDER:%d:%d:%ld:%d:%s",
+                 (int)e->op, e->size, e->value, unused, e->left->symbol);
         e->asm_block = strdup(buf);
 
             /* Free children manually since we didn't process them normally */
@@ -903,7 +925,8 @@ static void generateExpr(struct function_ctx *ctx, struct expr *e)
 
             if (e->size == 1) {
                 /* Byte increment/decrement */
-                if (is_post) {
+                if (is_post && !(e->flags & E_UNUSED)) {
+                    /* Postfix with used result - need to save old value */
                     if (amount == 1) {
                         snprintf(buf, sizeof(buf),
                             "\tld e, l\n"
@@ -926,6 +949,7 @@ static void generateExpr(struct function_ctx *ctx, struct expr *e)
                             is_dec ? "sub" : "add", amount);
                     }
                 } else {
+                    /* Prefix, or postfix with unused result - simple increment */
                     if (amount == 1) {
                         snprintf(buf, sizeof(buf),
                             "\tld e, l\n"
@@ -946,7 +970,8 @@ static void generateExpr(struct function_ctx *ctx, struct expr *e)
                 }
             } else {
                 /* Word increment/decrement */
-                if (is_post) {
+                if (is_post && !(e->flags & E_UNUSED)) {
+                    /* Postfix with used result - need to save old value */
                     if (amount == 1) {
                         snprintf(buf, sizeof(buf),
                             "\tld e, l\n"
@@ -992,6 +1017,7 @@ static void generateExpr(struct function_ctx *ctx, struct expr *e)
                             amount, is_dec ? "or a\n\tsbc" : "add");
                     }
                 } else {
+                    /* Prefix, or postfix with unused result - simple increment */
                     if (amount == 1) {
                         snprintf(buf, sizeof(buf),
                             "\tld e, l\n"
@@ -1627,6 +1653,15 @@ static void generateStmt(struct function_ctx *ctx, struct stmt *s)
      * This provides a monotonically increasing sequence for lifetime analysis */
     ctx->current_label++;
 
+    /* Track loop depth globally for call cleanup optimization */
+    if (s->type == 'L' && s->symbol) {
+        if (strstr(s->symbol, "_top")) {
+            g_loop_depth++;
+        } else if (strstr(s->symbol, "_break")) {
+            g_loop_depth--;
+        }
+    }
+
     /* Recursively generate code for expressions */
     if (s->expr) generateExpr(ctx, s->expr);
     if (s->expr2) generateExpr(ctx, s->expr2);
@@ -1674,6 +1709,9 @@ void generateCode(struct function_ctx *ctx)
 
     /* Initialize lifetime tracking */
     ctx->current_label = 0;
+
+    /* Reset global loop depth at start of each function */
+    g_loop_depth = 0;
 
     generateStmt(ctx, ctx->body);
 }

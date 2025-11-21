@@ -492,6 +492,99 @@ emitFnProlog(char *name, char *params, char *rettype, int frame_size,
 }
 
 /*
+ * Check if function name is a comparison that sets Z flag
+ * These functions return 0/1 in HL and set Z flag to match
+ */
+static int isCmpFunc(const char *fname) {
+    if (!fname) return 0;
+
+    /* Check for comparison function patterns */
+    if (strstr(fname, "eq16") || strstr(fname, "eq32") || strstr(fname, "eq88"))
+        return 1;
+    if (strstr(fname, "ne16") || strstr(fname, "ne32") || strstr(fname, "ne88"))
+        return 1;
+    if (strstr(fname, "lt16") || strstr(fname, "lt32") || strstr(fname, "lt88"))
+        return 1;
+    if (strstr(fname, "gt16") || strstr(fname, "gt32") || strstr(fname, "gt88"))
+        return 1;
+    if (strstr(fname, "le16") || strstr(fname, "le32") || strstr(fname, "le88"))
+        return 1;
+    if (strstr(fname, "ge16") || strstr(fname, "ge32") || strstr(fname, "ge88"))
+        return 1;
+    if (strstr(fname, "and16") || strstr(fname, "and32") || strstr(fname, "and88"))
+        return 1;
+    if (strstr(fname, "or16") || strstr(fname, "or32") || strstr(fname, "or88"))
+        return 1;
+
+    return 0;
+}
+
+/*
+ * Check if expression is a simple dereference suitable for caching
+ * Simple derefs: (M $var) or (M (+ (M $var) const))
+ */
+static int isSimpleDeref(struct expr *e) {
+    if (!e) return 0;
+    if (e->op == 'M' && e->left && e->left->op == '$' && e->left->symbol) return 1;
+    if (e->op == 'M' && e->left && e->left->op == '+' && e->left->left && e->left->left->op == 'M' &&
+        e->left->left->left && e->left->left->left->op == '$' && e->left->left->left->symbol) return 1;
+    return 0;
+}
+
+static int matchesCache(struct expr *e1, struct expr *e2) {
+    if (!e1 || !e2) return 0;
+    if (e1->op != e2->op) return 0;
+    if (e1->op == '$') {
+        if (!e1->symbol || !e2->symbol) return 0;
+        return strcmp(e1->symbol, e2->symbol) == 0;
+    }
+    if (e1->op == 'M') return matchesCache(e1->left, e2->left);
+    if (e1->op == '+') {
+        if (e1->right && e2->right && e1->right->op == 'C' && e2->right->op == 'C') {
+            if (e1->right->value != e2->right->value) return 0;
+        }
+        return matchesCache(e1->left, e2->left);
+    }
+    return 0;
+}
+
+static struct expr *shallowCopy(struct expr *e) {
+    struct expr *copy;
+    if (!e) return NULL;
+    copy = malloc(sizeof(struct expr));
+    if (!copy) return NULL;
+    memcpy(copy, e, sizeof(struct expr));
+    copy->asm_block = NULL;
+    copy->cleanup_block = NULL;
+    return copy;
+}
+
+static void freeShallow(struct expr *e) {
+    if (!e) return;
+    free(e);
+}
+
+static void savePrimary(struct function_ctx *ctx, struct expr *e) {
+    if (!ctx) return;
+    if (ctx->primary_cache) {
+        freeShallow(ctx->primary_cache);
+        ctx->primary_cache = NULL;
+    }
+    if (!isSimpleDeref(e)) return;
+    ctx->primary_cache = shallowCopy(e);
+}
+
+static void clearPrimary(struct function_ctx *ctx) {
+    if (!ctx) return;
+    if (ctx->primary_cache) {
+        freeShallow(ctx->primary_cache);
+        ctx->primary_cache = NULL;
+    }
+    /* Most operations that modify PRIMARY also clobber Z flag */
+    ctx->zflag_valid = 0;
+}
+
+/*
  * Helper: Check if operator is a binary operator that needs accumulator
  * management
  */
@@ -548,9 +641,22 @@ static void emitExpr(struct function_ctx *ctx, struct expr *e)
     /* Handle DEREF specially - need to check register allocation */
     if (e->op == 'M' && e->asm_block &&
             strstr(e->asm_block, "DEREF_PLACEHOLDER")) {
-        /* Look up variable BEFORE emitting child (which frees it) */
         struct local_var *var = NULL;
         const char *global_sym = NULL;
+
+        /* Check if this value is already in PRIMARY cache */
+        if (ctx->primary_cache && matchesCache(e, ctx->primary_cache)) {
+            /* Value already in PRIMARY - no need to load */
+            /* Free child without emitting */
+            freeExpr(e->left);
+            /* Free this node and return */
+            if (e->asm_block) free(e->asm_block);
+            if (e->cleanup_block) free(e->cleanup_block);
+            free(e);
+            return;
+        }
+
+        /* Look up variable BEFORE emitting child (which frees it) */
 
         if (e->left && e->left->op == '$' && e->left->symbol) {
             var = findVar(ctx, e->left->symbol);
@@ -624,6 +730,9 @@ static void emitExpr(struct function_ctx *ctx, struct expr *e)
                 fdprintf(outFd, "\texx\n");
             }
         }
+
+        /* Save to PRIMARY cache before freeing */
+        savePrimary(ctx, e);
 
         /* Free this node and return */
         if (e->asm_block) free(e->asm_block);
@@ -766,8 +875,8 @@ static void emitExpr(struct function_ctx *ctx, struct expr *e)
     }
     /* Handle increment/decrement placeholders - need to check register allocation */
     else if (e->asm_block && strstr(e->asm_block, "INCDEC_PLACEHOLDER:")) {
-        /* Parse placeholder format: INCDEC_PLACEHOLDER:op:size:amount:symbol */
-        int op, size;
+        /* Parse placeholder format: INCDEC_PLACEHOLDER:op:size:amount:unused:symbol */
+        int op, size, unused;
         long amount;
         char symbol[256];
         const char *p;
@@ -776,7 +885,7 @@ static void emitExpr(struct function_ctx *ctx, struct expr *e)
         int is_post, is_dec;
 
         p = strstr(e->asm_block, "INCDEC_PLACEHOLDER:") + 19;
-        if (sscanf(p, "%d:%d:%ld:%255s", &op, &size, &amount, symbol) != 4) {
+        if (sscanf(p, "%d:%d:%ld:%d:%255s", &op, &size, &amount, &unused, symbol) != 5) {
             /* Parse error - emit comment and skip */
             fdprintf(outFd, "\t; ERROR: failed to parse INCDEC_PLACEHOLDER\n");
             if (e->asm_block) free(e->asm_block);
@@ -787,6 +896,9 @@ static void emitExpr(struct function_ctx *ctx, struct expr *e)
 
         is_post = (op == 0xef || op == 0xf6);
         is_dec = (op == 0xd6 || op == 0xf6);
+
+        /* If result is unused, treat postfix like prefix (simpler code) */
+        if (unused && is_post) is_post = 0;
 
         /* Strip $ and A prefixes from symbol */
         var_name = symbol;
@@ -1320,9 +1432,27 @@ static void emitExpr(struct function_ctx *ctx, struct expr *e)
             if (call_inst) {
                 /* 4. Call binary operation */
                 fdprintf(outFd, "%s\n", call_inst);
+
+                /* Check if this is a comparison function that sets Z flag */
+                if (strstr(call_inst, "call")) {
+                    char *call_pos = strstr(call_inst, "call");
+                    call_pos += 4;  /* Skip "call" */
+                    while (*call_pos && (*call_pos == ' ' || *call_pos == '\t')) call_pos++;
+                    if (*call_pos && isCmpFunc(call_pos)) {
+                        ctx->zflag_valid = 1;
+                    }
+                }
+
                 free(call_inst);
             }
         }  /* End of else (standard binop) */
+
+        /* Binary op modifies PRIMARY - invalidate cache, but preserve zflag if set */
+        {
+            int zflag_saved = ctx->zflag_valid;
+            clearPrimary(ctx);
+            ctx->zflag_valid = zflag_saved;
+        }
     }
     /* CALL operator - don't emit children, they're in the asm_block */
     else if (e->op == '@') {
@@ -1447,6 +1577,17 @@ static void emitExpr(struct function_ctx *ctx, struct expr *e)
                 } else {
                     /* Normal line - emit it */
                     fdprintf(outFd, "%s\n", line_buf);
+
+                    /* Check if this is a call to a comparison function that sets Z flag */
+                    if (strstr(line_buf, "call")) {
+                        char *call_pos = strstr(line_buf, "call");
+                        /* Skip "call " and any whitespace to get function name */
+                        call_pos += 4;  /* Skip "call" */
+                        while (*call_pos == ' ' || *call_pos == '\t') call_pos++;
+                        if (isCmpFunc(call_pos)) {
+                            ctx->zflag_valid = 1;
+                        }
+                    }
                 }
             }
         }
@@ -1454,6 +1595,16 @@ static void emitExpr(struct function_ctx *ctx, struct expr *e)
         if (e->cleanup_block) {
             fdprintf(outFd, "%s", e->cleanup_block);
         }
+
+        /* Save zflag_valid before clearing PRIMARY */
+        {
+            int zflag_saved = ctx->zflag_valid;
+            /* Function call modifies PRIMARY with return value - invalidate cache */
+            clearPrimary(ctx);
+            /* Restore zflag_valid for comparison functions */
+            ctx->zflag_valid = zflag_saved;
+        }
+
         /* Free children manually since we didn't call emitExpr on them */
         freeExpr(e->left);
         freeExpr(e->right);
@@ -1506,8 +1657,11 @@ static void emitExpr(struct function_ctx *ctx, struct expr *e)
             fdprintf(outFd, "\tor a\n");  /* Set Z flag based on A */
         } else {
             /* Word condition - test HL */
-            fdprintf(outFd, "\tld a, h\n\tor l\n");  /* Set Z flag if HL==0 */
+            if (!ctx->zflag_valid) {
+                fdprintf(outFd, "\tld a, h\n\tor l\n");  /* Set Z flag if HL==0 */
+            }
         }
+        ctx->zflag_valid = 0;  /* Z flag consumed */
 
         /* Jump to false branch if condition is zero (using resolved label) */
         if (e->jump) {
@@ -1557,6 +1711,20 @@ static void emitExpr(struct function_ctx *ctx, struct expr *e)
 
         if (e->asm_block) {
             fdprintf(outFd, "%s\n", e->asm_block);
+
+            /* Check if this is a call to a comparison function that sets Z flag */
+            if (strstr(e->asm_block, "call")) {
+                char *call_pos;
+                call_pos = strstr(e->asm_block, "call");
+                /* Skip "call" and any whitespace/newlines to get function name */
+                call_pos += 4;  /* Skip "call" */
+                while (*call_pos && (*call_pos == ' ' || *call_pos == '\t' || *call_pos == '\n' || *call_pos == '\r')) {
+                    call_pos++;
+                }
+                if (*call_pos && isCmpFunc(call_pos)) {
+                    ctx->zflag_valid = 1;
+                }
+            }
         }
 
         /* Emit deferred cleanup (for CALL stack cleanup after result used) */
@@ -1668,7 +1836,10 @@ static void emitStmt(struct function_ctx *ctx, struct stmt *s)
                 /* Evaluate to HL and test */
                 emitExpr(ctx, s->expr);
                 /* Test if HL is zero */
-                fdprintf(outFd, "\tld a, h\n\tor l\n");
+                if (!ctx->zflag_valid) {
+                    fdprintf(outFd, "\tld a, h\n\tor l\n");
+                }
+                ctx->zflag_valid = 0;  /* Z flag consumed */
             }
 
             /* Jump based on test result (use resolved labels to avoid jump-to-jump) */
@@ -1802,6 +1973,12 @@ void emitAssembly(struct function_ctx *ctx, int fd)
         free(var->name);
         free(var);
         var = next;
+    }
+
+    /* Free primary cache if any */
+    if (ctx->primary_cache) {
+        freeShallow(ctx->primary_cache);
+        ctx->primary_cache = NULL;
     }
 }
 

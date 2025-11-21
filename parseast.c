@@ -1839,6 +1839,9 @@ doFunction(void)
     ctx.frame_size = 0;  /* No frame size yet */
     ctx.de_save_count = 0;  /* No nested DE saves yet */
     ctx.d_in_use = 0;  /* D register not in use yet */
+    ctx.loop_depth = 0;  /* Not in a loop initially */
+    ctx.primary_cache = NULL;  /* PRIMARY cache empty initially */
+    ctx.zflag_valid = 0;  /* Z flag not valid initially */
 
     expect(')');
 

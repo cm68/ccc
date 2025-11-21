@@ -70,6 +70,7 @@ struct labelMap {
  * Expression flags
  */
 #define E_UNSIGNED  0x01        // Value is unsigned
+#define E_UNUSED    0x02        // Value is not used (result discarded)
 
 /*
  * Expression tree node for code generation
@@ -150,6 +151,9 @@ struct function_ctx {
     int de_save_count;          // Counter for nested DE saves (for secondary register preservation)
     int d_in_use;               // Flag: D register holds spilled byte secondary (E)
     int pendStkClean;  // Bytes to clean up after current expression (for CALL return values)
+    int loop_depth;             // Nesting depth of loops (0=not in loop, >0=in loop)
+    struct expr *primary_cache; // Shallow copy of expr currently in PRIMARY (NULL if invalid)
+    int zflag_valid;            // 1 if Z flag is valid for HL test (comparison functions)
 };
 
 /* Forward declarations from util.c */
