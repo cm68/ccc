@@ -83,11 +83,75 @@
 #define S_EXX 0
 #define S_IXHL 1
 #define S_BCHL 2
+#define S_HLDE 3
+#define S_DEA 4
+#define S_SBCHLDE 5
+#define S_AHL 6
+#define S_INCDE 7
+#define S_EXXBCHL 8
+#define S_ADDHLDE 9
+#define S_HLPIX 10
+#define S_ORA 11
+#define S_HLD 12
+#define S_ESAVE 13
+#define S_CA 14
+#define S_BCHLX 15
+#define S_BA 16
+#define S_AL 17
+#define S_AHORL 18
+#define S_AH 19
+#define S_JRNZ3 20
+#define S_INCHL 21
+#define S_DESAVE 22
+#define S_EXBCHL 23
+#define S_EXXBC 24
+#define S_LDABC 25
+#define S_LDAIXZ 26
+#define S_LDAB 27
+#define S_LDAC 28
+#define S_LDBA 29
+#define S_LDCA 30
+#define S_EXXLDAB 31
+#define S_EXXLDAC 32
+#define S_EXXLDBA 33
+#define S_EXXLDCA 34
 
 static const char *asmstr[] = {
-    "\texx\n",                  /* S_EXX */
-    "\tpush ix\n\tpop hl\n",    /* S_IXHL */
-    "\tld h, b\n\tld l, c\n"    /* S_BCHL */
+    "\texx\n",                          /* S_EXX */
+    "\tpush ix\n\tpop hl\n",            /* S_IXHL */
+    "\tld h, b\n\tld l, c\n",           /* S_BCHL */
+    "\tld (hl), e\n",                   /* S_HLDE */
+    "\tld (de), a\n",                   /* S_DEA */
+    "\tor a\n\tsbc hl, de\n",           /* S_SBCHLDE */
+    "\tld a, (hl)\n",                   /* S_AHL */
+    "\tinc de\n",                       /* S_INCDE */
+    "\texx\n\tpush bc\n\texx\n\tpop hl\n", /* S_EXXBCHL */
+    "\tadd hl, de\n",                   /* S_ADDHLDE */
+    "\tpush hl\n\tpop ix\n",            /* S_HLPIX */
+    "\tor a\n",                         /* S_ORA */
+    "\tld (hl), d\n",                   /* S_HLD */
+    "\tld e, a  ; save byte value\n",  /* S_ESAVE */
+    "\tld c, a\n",                      /* S_CA */
+    "\tld b, h\n\tld c, l\n",           /* S_BCHLX */
+    "\tld b, a\n",                      /* S_BA */
+    "\tld a, l\n",                      /* S_AL */
+    "\tld a, h\n\tor l\n",              /* S_AHORL */
+    "\tld a, h\n",                      /* S_AH */
+    "\tjr nz, $+3\n",                   /* S_JRNZ3 */
+    "\tinc hl\n",                       /* S_INCHL */
+    "\tex de, hl  ; save word value in DE\n", /* S_DESAVE */
+    "\tex de, hl\n",                    /* S_EXBCHL */
+    "\texx\n\tpush bc\n\texx\n",        /* S_EXXBC */
+    "\tld a, (bc)\n",                   /* S_LDABC */
+    "\tld a, (ix+0)\n",                 /* S_LDAIXZ */
+    "\tld a, b\n",                      /* S_LDAB */
+    "\tld a, c\n",                      /* S_LDAC */
+    "\tld b, a\n",                      /* S_LDBA */
+    "\tld c, a\n",                      /* S_LDCA */
+    "\texx\n\tld a, b\n\texx\n",        /* S_EXXLDAB */
+    "\texx\n\tld a, c\n\texx\n",        /* S_EXXLDAC */
+    "\texx\n\tld b, a\n\texx\n",        /* S_EXXLDBA */
+    "\texx\n\tld c, a\n\texx\n"         /* S_EXXLDCA */
 };
 
 static void emit(int idx) {
@@ -484,21 +548,21 @@ emitFnProlog(char *name, char *params, char *rettype, int frame_size,
                 if (var->reg == REG_BC) {
                     fdprintf(outFd, "\tld l, (iy + %d)\n", var->offset);
                     fdprintf(outFd, "\tld h, (iy + %d)\n", var->offset + 1);
-                    fdprintf(outFd, "\tld b, h\n\tld c, l\n");
+                    emit(S_BCHLX);
                 } else if (var->reg == REG_IX) {
                     /* No direct ld ix, (iy+offset) - must go through HL */
                     fdprintf(outFd, "\tld l, (iy + %d)\n", var->offset);
                     fdprintf(outFd, "\tld h, (iy + %d)\n", var->offset + 1);
-                    fdprintf(outFd, "\tpush hl\n\tpop ix\n");
+                    emit(S_HLPIX);
                 }
             } else if (var->size == 1) {
                 /* Byte parameter */
                 if (var->reg == REG_B || var->reg == REG_C) {
                     fdprintf(outFd, "\tld a, (iy + %d)\n", var->offset);
                     if (var->reg == REG_B) {
-                        fdprintf(outFd, "\tld b, a\n");
+                        emit(S_BA);
                     } else {
-                        fdprintf(outFd, "\tld c, a\n");
+                        emit(S_CA);
                     }
                 }
             }
@@ -811,13 +875,13 @@ static void emitExpr(struct function_ctx *ctx, struct expr *e)
                 if (e->size == 1) {
                     /* Byte: move register to A */
                     if (var->reg == REG_B) {
-                        fdprintf(outFd, "\tld a, b\n");
+                        emit(S_LDAB);
                     } else if (var->reg == REG_C) {
-                        fdprintf(outFd, "\tld a, c\n");
+                        emit(S_LDAC);
                     } else if (var->reg == REG_Bp) {
-                        fdprintf(outFd, "\texx\n\tld a, b\n\texx\n");
+                        emit(S_EXXLDAB);
                     } else if (var->reg == REG_Cp) {
-                        fdprintf(outFd, "\texx\n\tld a, c\n\texx\n");
+                        emit(S_EXXLDAC);
                     }
                 } else {
                     /* Word: move register pair to HL */
@@ -927,7 +991,7 @@ static void emitExpr(struct function_ctx *ctx, struct expr *e)
 
             /* Emit load from (HL) */
             if (e->size == 1) {
-                fdprintf(outFd, "\tld a, (hl)\n");
+                emit(S_AHL);
             } else if (e->size == 2) {
                 fdprintf(outFd, "\tld e, (hl)\n\tinc hl\n\tld d, (hl)\n\tex de, hl\n");
             } else if (e->size == 4) {
@@ -970,9 +1034,9 @@ static void emitExpr(struct function_ctx *ctx, struct expr *e)
         if (var && var->reg != REG_NO) {
             /* Pointer is register-allocated - use indirect addressing */
             if (var->reg == REG_BC) {
-                fdprintf(outFd, "\tld a, (bc)\n");
+                emit(S_LDABC);
             } else if (var->reg == REG_IX) {
-                fdprintf(outFd, "\tld a, (ix+0)\n");
+                emit(S_LDAIXZ);
             } else {
                 /* Register type can't do indirect addressing - fall back */
                 /* Load pointer to HL first, then indirect load */
@@ -984,12 +1048,12 @@ static void emitExpr(struct function_ctx *ctx, struct expr *e)
                 fdprintf(outFd, "\t; fall back to normal indirect\n");
                 /* Emit the inner DEREF to load pointer */
                 emitExpr(ctx, e->left);
-                fdprintf(outFd, "\tld a, (hl)\n");
+                emit(S_AHL);
             }
         } else {
             /* Pointer not register-allocated - load to HL then indirect */
             emitExpr(ctx, e->left);
-            fdprintf(outFd, "\tld a, (hl)\n");
+            emit(S_AHL);
         }
 
         /* Free outer node (don't free e->left, already freed above if emitted) */
@@ -1115,7 +1179,7 @@ static void emitExpr(struct function_ctx *ctx, struct expr *e)
                     if (is_dec) {
                         fdprintf(outFd, "\tld a, (iy %c %d)\n", sign, abs_offset);
                         fdprintf(outFd, "\tdec (iy %c %d)\n", sign, abs_offset);
-                        fdprintf(outFd, "\tor a\n");
+                        emit(S_ORA);
                         fdprintf(outFd, "\tjr nz, $+3\n");
                         fdprintf(outFd, "\tdec (iy %c %d)\n", sign, abs_offset + 1);
                     } else {
@@ -1128,9 +1192,9 @@ static void emitExpr(struct function_ctx *ctx, struct expr *e)
                     fdprintf(outFd, "\tld h, (iy %c %d)\n", sign, abs_offset + 1);
                     fdprintf(outFd, "\tld de, %ld\n", amount);
                     if (is_dec) {
-                        fdprintf(outFd, "\tor a\n\tsbc hl, de\n");
+                        emit(S_SBCHLDE);
                     } else {
-                        fdprintf(outFd, "\tadd hl, de\n");
+                        emit(S_ADDHLDE);
                     }
                     fdprintf(outFd, "\tld (iy %c %d), l\n", sign, abs_offset);
                     fdprintf(outFd, "\tld (iy %c %d), h\n", sign, abs_offset + 1);
@@ -1176,9 +1240,9 @@ static void emitExpr(struct function_ctx *ctx, struct expr *e)
                     } else {
                         fdprintf(outFd, "\tld de, %ld\n", amount);
                         if (is_dec) {
-                            fdprintf(outFd, "\tor a\n\tsbc hl, de\n");
+                            emit(S_SBCHLDE);
                         } else {
-                            fdprintf(outFd, "\tadd hl, de\n");
+                            emit(S_ADDHLDE);
                         }
                     }
                     fdprintf(outFd, "\tld (%s), hl\n", sym);
@@ -1190,9 +1254,9 @@ static void emitExpr(struct function_ctx *ctx, struct expr *e)
                     } else {
                         fdprintf(outFd, "\tld de, %ld\n", amount);
                         if (is_dec) {
-                            fdprintf(outFd, "\tor a\n\tsbc hl, de\n");
+                            emit(S_SBCHLDE);
                         } else {
-                            fdprintf(outFd, "\tadd hl, de\n");
+                            emit(S_ADDHLDE);
                         }
                     }
                     fdprintf(outFd, "\tld (%s), hl\n", sym);
@@ -1272,21 +1336,21 @@ static void emitExpr(struct function_ctx *ctx, struct expr *e)
                 if (e->size == 1) {
                     /* Byte: move A to register */
                     if (var->reg == REG_B) {
-                        fdprintf(outFd, "\tld b, a\n");
+                        emit(S_BA);
                     } else if (var->reg == REG_C) {
-                        fdprintf(outFd, "\tld c, a\n");
+                        emit(S_CA);
                     } else if (var->reg == REG_Bp) {
-                        fdprintf(outFd, "\texx\n\tld b, a\n\texx\n");
+                        emit(S_EXXLDBA);
                     } else if (var->reg == REG_Cp) {
-                        fdprintf(outFd, "\texx\n\tld c, a\n\texx\n");
+                        emit(S_EXXLDCA);
                     }
                 } else {
                     /* Word: move HL to register pair */
                     if (var->reg == REG_BC || var->reg == REG_IX) {
                         if (var->reg == REG_BC) {
-                            fdprintf(outFd, "\tld b, h\n\tld c, l\n");
+                            emit(S_BCHLX);
                         } else {
-                            fdprintf(outFd, "\tpush hl\n\tpop ix\n");
+                            emit(S_HLPIX);
                         }
 
                         /* After ld b,h; ld c,l OR push hl; pop ix,
@@ -1334,16 +1398,16 @@ static void emitExpr(struct function_ctx *ctx, struct expr *e)
             /* Value is already in PRIMARY (HL or A) */
             if (e->size == 1) {
                 /* Byte: value in A, need address in HL */
-                fdprintf(outFd, "\tld e, a  ; save byte value\n");
+                emit(S_ESAVE);
                 emitExpr(ctx, e->left->left);  /* Load pointer to HL */
-                fdprintf(outFd, "\tld (hl), e\n");
+                emit(S_HLDE);
             } else if (e->size == 2) {
                 /* Word: value in HL, need address in HL - save value first */
-                fdprintf(outFd, "\tex de, hl  ; save word value in DE\n");
+                emit(S_DESAVE);
                 emitExpr(ctx, e->left->left);  /* Load pointer to HL */
-                fdprintf(outFd, "\tld (hl), e\n");
-                fdprintf(outFd, "\tinc hl\n");
-                fdprintf(outFd, "\tld (hl), d\n");
+                emit(S_HLDE);
+                emit(S_INCHL);
+                emit(S_HLD);
             }
         }
         else if (e->left && e->left->op == '+') {
@@ -1354,17 +1418,17 @@ static void emitExpr(struct function_ctx *ctx, struct expr *e)
             if (e->size == 1) {
                 /* Byte: value in A */
                 /* Save value to E, compute address to HL, store (HL) <- E */
-                fdprintf(outFd, "\tld e, a  ; save byte value\n");
+                emit(S_ESAVE);
                 emitExpr(ctx, e->left);  /* Compute address to HL */
-                fdprintf(outFd, "\tld (hl), e\n");
+                emit(S_HLDE);
             } else if (e->size == 2) {
                 /* Word: value in HL */
                 /* Save value to DE, compute address to HL, store */
-                fdprintf(outFd, "\tex de, hl  ; save word value in DE\n");
+                emit(S_DESAVE);
                 emitExpr(ctx, e->left);  /* Compute address to HL */
-                fdprintf(outFd, "\tld (hl), e\n");
-                fdprintf(outFd, "\tinc hl\n");
-                fdprintf(outFd, "\tld (hl), d\n");
+                emit(S_HLDE);
+                emit(S_INCHL);
+                emit(S_HLD);
             } else if (e->size == 4) {
                 /* Long: value in HL'HL */
                 /* This is complex - need to save 4 bytes */
@@ -1380,18 +1444,18 @@ static void emitExpr(struct function_ctx *ctx, struct expr *e)
                 fdprintf(outFd, "\tpop de  ; DE = address\n");
                 fdprintf(outFd, "\tpop hl  ; restore lower word\n");
                 /* Store 4 bytes: (DE) <- HL, (DE+2) <- HL' */
-                fdprintf(outFd, "\tld a, l\n");
-                fdprintf(outFd, "\tld (de), a\n");
-                fdprintf(outFd, "\tinc de\n");
-                fdprintf(outFd, "\tld a, h\n");
-                fdprintf(outFd, "\tld (de), a\n");
-                fdprintf(outFd, "\tinc de\n");
+                emit(S_AL);
+                emit(S_DEA);
+                emit(S_INCDE);
+                emit(S_AH);
+                emit(S_DEA);
+                emit(S_INCDE);
                 emit(S_EXX);
-                fdprintf(outFd, "\tld a, l\n");
-                fdprintf(outFd, "\tld (de), a\n");
-                fdprintf(outFd, "\tinc de\n");
-                fdprintf(outFd, "\tld a, h\n");
-                fdprintf(outFd, "\tld (de), a\n");
+                emit(S_AL);
+                emit(S_DEA);
+                emit(S_INCDE);
+                emit(S_AH);
+                emit(S_DEA);
                 emit(S_EXX);
             }
         }
@@ -1445,7 +1509,7 @@ static void emitExpr(struct function_ctx *ctx, struct expr *e)
                 } else if (var->reg == REG_BCp) {
                     /* Can't use exx - it switches HL too, making result inaccessible */
                     /* Stage BC' through stack into HL */
-                    fdprintf(outFd, "\texx\n\tpush bc\n\texx\n\tpop hl\n");
+                    emit(S_EXXBCHL);
                 } else {  /* REG_IX */
                     emit(S_IXHL);
                 }
@@ -1636,7 +1700,7 @@ static void emitExpr(struct function_ctx *ctx, struct expr *e)
                             if (var->reg == REG_BC) {
                                 fdprintf(outFd, "\tpush bc\n");
                             } else if (var->reg == REG_BCp) {
-                                fdprintf(outFd, "\texx\n\tpush bc\n\texx\n");
+                                emit(S_EXXBC);
                             } else if (var->reg == REG_IX) {
                                 fdprintf(outFd, "\tpush ix\n");
                             }
@@ -1653,7 +1717,7 @@ static void emitExpr(struct function_ctx *ctx, struct expr *e)
                             emit(S_BCHL);
                         } else if (var->reg == REG_BCp) {
                             /* Can't use exx - it switches HL too */
-                            fdprintf(outFd, "\texx\n\tpush bc\n\texx\n\tpop hl\n");
+                            emit(S_EXXBCHL);
                         } else if (var->reg == REG_IX) {
                             emit(S_IXHL);
                         }
@@ -1713,7 +1777,7 @@ static void emitExpr(struct function_ctx *ctx, struct expr *e)
                 emit(S_BCHL);
             } else if (var->reg == REG_BCp) {
                 /* Can't use exx - it switches HL too */
-                fdprintf(outFd, "\texx\n\tpush bc\n\texx\n\tpop hl\n");
+                emit(S_EXXBCHL);
             } else if (var->reg == REG_IX) {
                 emit(S_IXHL);
             }
@@ -1748,11 +1812,11 @@ static void emitExpr(struct function_ctx *ctx, struct expr *e)
         /* Test condition result (in PRIMARY - HL for words, A for bytes) */
         if (cond_size == 1) {
             /* Byte condition - test A */
-            fdprintf(outFd, "\tor a\n");  /* Set Z flag based on A */
+            emit(S_ORA);  /* Set Z flag based on A */
         } else {
             /* Word condition - test HL */
             if (!ctx->zflag_valid) {
-                fdprintf(outFd, "\tld a, h\n\tor l\n");  /* Set Z flag if HL==0 */
+                emit(S_AHORL);  /* Set Z flag if HL==0 */
             }
         }
         ctx->zflag_valid = 0;  /* Z flag consumed */
@@ -1934,7 +1998,7 @@ static void emitStmt(struct function_ctx *ctx, struct stmt *s)
                 emitExpr(ctx, s->expr);
                 /* Test if HL is zero */
                 if (!ctx->zflag_valid) {
-                    fdprintf(outFd, "\tld a, h\n\tor l\n");
+                    emit(S_AHORL);
                 }
                 ctx->zflag_valid = 0;  /* Z flag consumed */
             }

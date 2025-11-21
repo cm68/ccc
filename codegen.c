@@ -150,7 +150,7 @@ addParam(struct function_ctx *ctx, const char *name, unsigned char size,
 
     ctx->locals = var;
 
-    fdprintf(2, "  Parameter: %s, size=%d, offset=+%d\n", name, size, offset);
+    /* debug output removed */
 }
 
 /*
@@ -183,8 +183,7 @@ addLocalVar(struct function_ctx *ctx, const char *name, unsigned char size,
     ctx->locals = var;
     ctx->frame_size += size;
 
-    fdprintf(2, "  Local var: %s, size=%d, offset=%d%s\n", 
-        name, size, var->offset, is_array ? " (array)" : "");
+    /* debug output removed */
 }
 
 /*
@@ -305,8 +304,7 @@ allocRegs(struct function_ctx *ctx)
         if (best_ix_cand && best_agg_refs > 0) {
             best_ix_cand->reg = REG_IX;
             ix_allocated = 1;
-            fdprintf(2, "  Allocated IX to %s (agg_refs=%d)\n",
-                     best_ix_cand->name, best_ix_cand->agg_refs);
+            /* debug output removed */
         }
     }
 
@@ -341,8 +339,7 @@ allocRegs(struct function_ctx *ctx)
                 byteRegsUsed = 2; /* B and C are now unavailable */
             }
             wordRegsUsed++;
-            fdprintf(2, "  Allocated word reg to %s (refs=%d)\n",
-                     var->name, var->ref_count);
+            /* debug output removed */
         }
     }
 
@@ -366,13 +363,11 @@ allocRegs(struct function_ctx *ctx)
             enum register_id regs[] = {REG_B, REG_C, REG_Bp, REG_Cp};
             var->reg = regs[byteRegsUsed];
             byteRegsUsed++;
-            fdprintf(2, "  Allocated byte reg to %s (refs=%d)\n",
-                     var->name, var->ref_count);
+            /* debug output removed */
         }
     }
 
-    fdprintf(2, "  Register allocation complete: %d byte, %d word, %d IX\n",
-             byteRegsUsed, wordRegsUsed, ix_allocated);
+    /* debug output removed */
 }
 
 /*
@@ -474,7 +469,7 @@ optFrmLayout(struct function_ctx *ctx)
 
     if (!ctx) return;
 
-    fdprintf(2, "  Optimizing frame layout based on lifetimes:\n");
+    /* debug output removed */
 
     /* Build slot assignments for each local variable */
     for (var = ctx->locals; var; var = var->next) {
@@ -483,7 +478,7 @@ optFrmLayout(struct function_ctx *ctx)
 
         /* Skip unused variables (never referenced) */
         if (var->first_label == -1) {
-            fdprintf(2, "    %s: unused (can be eliminated)\n", var->name);
+            /* debug output removed */
             continue;
         }
 
@@ -494,9 +489,7 @@ optFrmLayout(struct function_ctx *ctx)
                 /* Found a compatible slot */
                 addVarToSlot(&slots[slot_idx], var);
                 found_slot = 1;
-                fdprintf(2, "    %s: slot %d (lifetime %d-%d, shares with %d others)\n",
-                         var->name, slot_idx, var->first_label, var->last_label,
-                         slots[slot_idx].numVars - 1);
+                /* debug output removed */
                 break;
             }
         }
@@ -518,8 +511,7 @@ optFrmLayout(struct function_ctx *ctx)
 
             addVarToSlot(&slots[num_slots], var);
 
-            fdprintf(2, "    %s: slot %d (lifetime %d-%d, new slot)\n",
-                     var->name, num_slots, var->first_label, var->last_label);
+            /* debug output removed */
 
             num_slots++;
         }
@@ -538,8 +530,7 @@ optFrmLayout(struct function_ctx *ctx)
     }
 
     /* Update context frame size */
-    fdprintf(2, "  Frame optimization: %d bytes -> %d bytes (saved %d bytes)\n",
-             ctx->frame_size, newFrameSize, ctx->frame_size - newFrameSize);
+    /* debug output removed */
     ctx->frame_size = newFrameSize;
 
     /* Check frame size limit - IY-indexed addressing uses signed 8-bit offsets
@@ -573,7 +564,7 @@ assignFrmOff(struct function_ctx *ctx)
 
     if (!ctx || !ctx->body) return;
 
-    fdprintf(2, "  Assigning stack frame offsets:\n");
+    /* debug output removed */
 
     /* First, assign offsets to parameters (positive offsets above FP) */
     /* Stack layout: FP+0=saved FP, FP+2=return addr, FP+4=first param */
@@ -618,7 +609,7 @@ assignFrmOff(struct function_ctx *ctx)
 
     /* Then, assign offsets to local variables (negative offsets below FP) */
     walkForLocals(ctx, ctx->body);
-    fdprintf(2, "  Initial frame size: %d bytes (before optimization)\n", ctx->frame_size);
+    /* debug output removed */
 }
 
 /*
