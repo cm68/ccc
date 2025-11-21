@@ -162,7 +162,7 @@ match(token_t t)
  *   - Advances character stream if match succeeds (calls advance())
  */
 int
-charmatch(int c)
+charmatch(unsigned char c)
 {
     if (curchar == c) {
         advance();

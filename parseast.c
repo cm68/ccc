@@ -50,7 +50,7 @@ isMangledName(const char *name)
 }
 
 /* Parser state */
-int outFd = 1;  /* Assembly output (default: stdout) */
+unsigned char outFd = 1;  /* Assembly output (default: stdout) */
 static int labelCounter = 0;  /* For generating unique labels */
 
 /* Segment tracking */

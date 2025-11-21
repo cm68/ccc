@@ -50,7 +50,7 @@ struct name *curFunc = NULL;
 unsigned char staticCtr = 0;
 
 /* AST output control */
-int astFd;  // defaults to 1 (stdout), can be overridden with -o
+unsigned char astFd;  // defaults to 1 (stdout), can be overridden with -o
 
 /*
  * Process a single source file through compilation

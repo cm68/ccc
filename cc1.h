@@ -266,7 +266,7 @@ extern struct name *curFunc;
 extern unsigned char staticCtr;  // counter for statics in current function
 
 /* AST output control */
-extern int astFd;                   // where to write AST output
+extern unsigned char astFd;         // where to write AST output
 
 /* kw.c */
 extern unsigned char cppkw[];
@@ -365,7 +365,7 @@ extern unsigned char lookupc(char *s, char c);
 extern void hexdump(char *tag, char *s, int len);
 int iswhite(unsigned char c);
 char *bitdef(unsigned char v, char **defs);
-int fdprintf(int fd, const char *fmt, ...);
+int fdprintf(unsigned char fd, const char *fmt, ...);
 int quotedString(char *d, char *s);
 int longout(char *d, long v);
 int controlify(char *d, unsigned char c);

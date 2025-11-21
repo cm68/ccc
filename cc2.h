@@ -160,11 +160,11 @@ struct function_ctx {
 };
 
 /* Forward declarations from util.c */
-int fdprintf(int fd, const char *fmt, ...);
-int fdputs(int fd, const char *s);
+int fdprintf(unsigned char fd, const char *fmt, ...);
+int fdputs(unsigned char fd, const char *s);
 
 /* Global variables */
-extern int outFd;  /* Assembly output file descriptor (from parseast.c) */
+extern unsigned char outFd;  /* Assembly output file descriptor (from parseast.c) */
 
 /* Tree construction functions */
 struct expr *newExpr(unsigned char op);

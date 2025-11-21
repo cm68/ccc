@@ -196,7 +196,7 @@ lookupc(char *s, char c)
  * Uses sprintf to format to a static buffer, then writes via write() syscall
  */
 int
-fdprintf(int fd, const char *fmt, ...)
+fdprintf(unsigned char fd, const char *fmt, ...)
 {
     static char buf[4096];
     va_list args;
@@ -220,7 +220,7 @@ fdprintf(int fd, const char *fmt, ...)
  * More efficient than fdprintf for simple string output (no formatting overhead)
  */
 int
-fdputs(int fd, const char *s)
+fdputs(unsigned char fd, const char *s)
 {
     int len;
 
