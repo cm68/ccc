@@ -4,6 +4,8 @@
  * Extends the basic expr/stmt structures from cc1.h with
  * code generation fields (asm_block and label numbers)
  */
+#ifndef CC2_H
+#define CC2_H
 
 #include <stdlib.h>
 #include <string.h>
@@ -194,6 +196,8 @@ struct local_var *findVar(struct function_ctx *ctx, const char *symbol);
 
 /* Code emission functions (emit.c) */
 void emitAssembly(struct function_ctx *ctx, int outFd);
+
+#endif /* CC2_H */
 
 /*
  * vim: tabstop=4 shiftwidth=4 expandtab:

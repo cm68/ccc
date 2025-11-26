@@ -456,7 +456,7 @@ again:
 
         /*
          * Read nextchar from parent buffer WITHOUT doing
-         * curchar=nextchar again
+         * curchar=nextchar again.
          */
         if (tbtop->offset < tbtop->valid) {
             nextchar = tbtop->storage[tbtop->offset];
@@ -479,6 +479,12 @@ again:
     if (!tbtop) {
         /* No parent textbuf, we're at EOF */
         nextchar = 0;
+    } else if (curchar == 0) {
+        /*
+         * curchar became 0 from end of macro buffer.
+         * Re-run advance with parent buffer to get proper curchar.
+         */
+        goto again;
     }
 done:
     column = nextcol;

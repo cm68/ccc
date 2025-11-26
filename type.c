@@ -89,6 +89,9 @@ popScope()
 {
 	struct name *n;
 
+    if (VERBOSE(V_SCOPE)) {
+        fdprintf(2, "popScope: %d -> %d\n", lexlevel, lexlevel - 1);
+    }
     lexlevel--;
 
     while (lastname >= 0) {
@@ -124,6 +127,9 @@ popScope()
 void
 pushScope(char *n)
 {
+    if (VERBOSE(V_SCOPE)) {
+        fdprintf(2, "pushScope(%s): %d -> %d\n", n ? n : "?", lexlevel, lexlevel + 1);
+    }
     lexlevel++;
 }
 

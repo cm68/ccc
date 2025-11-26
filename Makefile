@@ -43,7 +43,7 @@ endif
 CC1OBJECTS = cc1.o error.o lex.o io.o macro.o kw.o util.o tokenlist.o \
 	unixlib.o expr.o parse.o type.o declare.o outast.o
 
-CC2OBJECTS = cc2.o util.o astio.o parseast.o codegen.o emit.o
+CC2OBJECTS = cc2.o util.o astio.o parseast.o codegen.o emithelper.o emitexpr.o emitops.o emit.o
 
 HEADERS = cc1.h token.h
 GENERATED = enumlist.h tokenlist.c error.h debug.h debugtags.c op_pri.h
@@ -51,11 +51,11 @@ GENERATED = enumlist.h tokenlist.c error.h debug.h debugtags.c op_pri.h
 # All C source files (generated + corresponding to .o files)
 CFILES = cc1.c error.c lex.c io.c macro.c kw.c util.c unixlib.c \
 	expr.c parse.c type.c declare.c outast.c \
-	cc2.c astio.c parseast.c codegen.c emit.c ccc.c \
+	cc2.c astio.c parseast.c codegen.c emithelper.c emitexpr.c emitops.c emit.c ccc.c \
 	tokenlist.c debugtags.c
 
 # All header files (manually written + generated)
-HFILES = $(HEADERS) astio.h enumlist.h error.h debug.h op_pri.h
+HFILES = $(HEADERS) astio.h emithelper.h enumlist.h error.h debug.h op_pri.h
 
 # All source files
 SOURCES = $(CFILES) $(HFILES)
