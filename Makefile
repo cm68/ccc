@@ -151,7 +151,6 @@ stage1: cc1 cc2
 	          echo "FAIL (asm error)"; \
 	        else \
 	          echo "PASS"; \
-	          rm -f stage1/$$b.err; \
 	        fi; \
 	      fi; \
 	    fi; \
