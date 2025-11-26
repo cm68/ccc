@@ -1790,6 +1790,7 @@ doGlobal(void)
     const char *global_label;
     char label_buf[128];
     int has_init = 0;
+    int is_array_init = 0;
     int isDefined;
 
     /* (g name type [init]) */
@@ -1817,6 +1818,7 @@ doGlobal(void)
             skip();
             if (curchar == '[') {
                 int array_type;
+                is_array_init = 1;
                 expect('[');
                 skip();
                 expect(':');
@@ -1910,8 +1912,7 @@ doGlobal(void)
                 /* After loop, curchar is ')' that closes value list */
                 expect(')');  /* Close ([:b values...) */
                 skip();
-                expect(')');  /* Close (([:b values...)) */
-/* debug output removed */                expect(')');  /* Close global declaration */
+                expect(')');  /* Close global declaration */
                 return;  /* Done - byte array was emitted */
             } else if (array_type == 'p') {
                 /* Pointer array - emit as .dw directives */
@@ -1953,8 +1954,7 @@ doGlobal(void)
                 /* After loop, curchar is ')' that closes value list */
                 expect(')');  /* Close ([:p values...) */
                 skip();
-                expect(')');  /* Close (([:p values...)) */
-/* debug output removed */                expect(')');  /* Close global declaration */
+                expect(')');  /* Close global declaration */
                 return;
             } else if (array_type == 's') {
                 /* Struct array - emit as .dw directives with padding */
@@ -1998,8 +1998,7 @@ doGlobal(void)
                 /* After loop, curchar is ')' that closes value list */
                 expect(')');  /* Close ([:s values...) */
                 skip();
-                expect(')');  /* Close (([:s values...)) */
-/* debug output removed */                expect(')');  /* Close global declaration */
+                expect(')');  /* Close global declaration */
                 return;
             } else {
                 /* Other array types - skip the initializer */
@@ -2026,8 +2025,8 @@ doGlobal(void)
                 }
             }
         } else {
-            /* Non-array initializer - skip to end of line or next global */
-            while (curchar != '\n' && curchar != '(' && curchar != EOF) {
+            /* Non-array initializer - skip to closing paren */
+            while (curchar != ')' && curchar != EOF) {
                 nextchar();
             }
         }
@@ -2044,7 +2043,7 @@ doGlobal(void)
     }
 
     /* For non-array initializers, emit the data */
-    if (has_init && curchar == ')') {
+    if (is_array_init) {
         /* Array initializer was already emitted above */
     } else if (!has_init) {
         /* Uninitialized data */
