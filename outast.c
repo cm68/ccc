@@ -321,21 +321,22 @@ emitStmt(struct stmt *st)
 
 	case WHILE:
 		/* Emit as labeled sequence:
-		 * Lxxx_top: (test condition) (body) Lxxx_continue: Lxxx_break: */
+		 * Lxxx_top: (if cond body (goto break)) Lxxx_continue: (goto top) Lxxx_break: */
 		if (st->label) {
 			/* Top label */
 			fdprintf(astFd, "(L %s_top) ", st->label);
-			/* Test condition (if false, goto break) */
+			/* Test condition - if true execute body, if false goto break */
 			fdprintf(astFd, "(I ");
 			emitExpr(st->left);
 			fdprintf(astFd, " ");
-			/* Body */
+			/* Body (then branch) */
 			if (st->chain) {
 				emitStmt(st->chain);
 			} else {
 				fdprintf(astFd, "()");
 			}
-			fdprintf(astFd, " ()) ");  /* close IF */
+			/* Else branch: goto break */
+			fdprintf(astFd, " (B (G %s_break))) ", st->label);
 			/* Continue label (for continue statements) */
 			fdprintf(astFd, "(L %s_continue) ", st->label);
 			/* Goto top to loop */
@@ -394,7 +395,7 @@ emitStmt(struct stmt *st)
 	case FOR:
 		/*
 		 * Emit as labeled sequence:
-		 * (init) Lxxx_top: (if !cond goto break) (body) Lxxx_continue:
+		 * (init) Lxxx_top: (if cond body (goto break)) Lxxx_continue:
 		 * (increment) (goto top) Lxxx_break:
 		 */
 		if (st->label) {
@@ -411,13 +412,14 @@ emitStmt(struct stmt *st)
 				fdprintf(astFd, "(I ");
 				emitExpr(st->middle);
 				fdprintf(astFd, " ");
-				/* Body */
+				/* Body (then branch) */
 				if (st->chain) {
 					emitStmt(st->chain);
 				} else {
 					fdprintf(astFd, "()");
 				}
-				fdprintf(astFd, " ()) ");  /* close IF */
+				/* Else branch: goto break */
+				fdprintf(astFd, " (B (G %s_break))) ", st->label);
 			} else {
 				/* No condition - always execute body */
 				if (st->chain) {
