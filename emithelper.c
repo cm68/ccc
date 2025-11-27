@@ -202,8 +202,11 @@ void storeByteIY(char offset, char is_param) {
 
 /* IX-indexed memory access */
 void loadWordIX(char offset) {
+    if (fnIXHLOfs == offset) return;  /* Already in HL */
     fdprintf(outFd, "\tld l, (ix + %d)\n", offset);
     fdprintf(outFd, "\tld h, (ix + %d)\n", offset + 1);
+    clearHL();
+    fnIXHLOfs = offset;
 }
 
 void storeWordIX(char offset) {
@@ -575,6 +578,7 @@ void clearHL() {
         freeExpr(fnHLCache);
         fnHLCache = NULL;
     }
+    fnIXHLOfs = -1;
 }
 
 void clearDE() {

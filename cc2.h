@@ -162,6 +162,7 @@ extern struct expr *fnHLCache;  /* Shallow copy of expr in HL */
 extern struct expr *fnDECache;  /* Shallow copy of expr in DE */
 extern struct expr *fnACache;   /* Shallow copy of byte expr in A */
 extern char fnIXAOfs;           /* When >=0, A has byte from (ix+fnIXAOfs) */
+extern char fnIXHLOfs;          /* When >=0, HL has word from (ix+fnIXHLOfs) */
 
 /* Forward declarations from util.c */
 int fdprintf(unsigned char fd, const char *fmt, ...);

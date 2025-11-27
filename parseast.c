@@ -73,6 +73,7 @@ struct expr *fnHLCache;
 struct expr *fnDECache;
 struct expr *fnACache;
 char fnIXAOfs;           /* When >=0, A has byte from (ix+fnIXAOfs) */
+char fnIXHLOfs;          /* When >=0, HL has word from (ix+fnIXHLOfs) */
 
 /* Segment tracking */
 #define SEG_NONE 0
@@ -1626,6 +1627,7 @@ doFunction(char rettype)
     fnDECache = NULL;
     fnACache = NULL;
     fnIXAOfs = -1;
+    fnIXHLOfs = -1;
 
     if (TRACE(T_AST)) {
         fdprintf(2, "doFunction: before expect ')' curchar=%d '%c'\n",
