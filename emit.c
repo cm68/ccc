@@ -28,6 +28,96 @@ static const char *elseGotoTgt(struct stmt *else_branch) {
 }
 
 /*
+ * Emit conditional expression with explicit true/false targets.
+ * For AND/OR, recursively handles nested short-circuit logic.
+ * true_lbl/true_num: where to jump when condition is true (-1 = fall through)
+ * false_lbl/false_num: where to jump when condition is false (-1 = fall through)
+ */
+static void emitCond(struct expr *e, int invert,
+                     const char *true_lbl, int true_num,
+                     const char *false_lbl, int false_num)
+{
+    int e_size;
+    if (!e) return;
+    e_size = e->size;
+
+    /* Handle NOT - invert sense and unwrap */
+    if (e->op == '!') {
+        emitCond(e->left, !invert, true_lbl, true_num, false_lbl, false_num);
+        freeNode(e);
+        return;
+    }
+
+    /* Handle OR (||) */
+    if (e->op == 'h') {
+        /* For OR: if left is true, skip rest of OR; if false, try right */
+        int skip_lbl = fnLblCnt++;
+        /* Left: if true -> skip to end of OR; if false -> continue to right */
+        /* Pass skip_lbl as true target so we jump past the OR on success */
+        emitCond(e->left, invert, "_or_end_", skip_lbl, NULL, -1);
+        /* Right: if true -> original true_target; if false -> original false_target */
+        emitCond(e->right, invert, true_lbl, true_num, false_lbl, false_num);
+        fdprintf(outFd, "_or_end_%d:\n", skip_lbl);
+        freeNode(e);
+        return;
+    }
+
+    /* Handle AND (&&) */
+    if (e->op == 'j') {
+        /* For AND: if left is false, fail immediately; if true, try right */
+        /* Left: if false -> false_target; if true -> continue to right */
+        emitCond(e->left, invert, NULL, -1, false_lbl, false_num);
+        /* Right: if true -> true_target; if false -> false_target */
+        emitCond(e->right, invert, true_lbl, true_num, false_lbl, false_num);
+        freeNode(e);
+        return;
+    }
+
+    /* Leaf condition - emit comparison and jump */
+    emitExpr(e);
+
+    /* Determine which way to jump based on Z flag semantics and invert */
+    if (fnZValid) {
+        /* fnZValid==1: Z=1 means true; fnZValid==2: Z=1 means false */
+        int zMeansTrue = (fnZValid == 1);
+        if (invert) zMeansTrue = !zMeansTrue;
+
+        /* We need to jump to false on false, or true on true */
+        /* If Z means true: jp z -> true, jp nz -> false */
+        /* If Z means false: jp z -> false, jp nz -> true */
+        if (false_num >= 0) {
+            emitJump(zMeansTrue ? "jp nz," : "jp z,", false_lbl, false_num);
+        } else if (true_num >= 0) {
+            emitJump(zMeansTrue ? "jp z," : "jp nz,", true_lbl, true_num);
+        }
+        fnZValid = 0;
+    } else {
+        /* No Z flag info - need to test the value */
+        if (e_size == 1) {
+            fdprintf(outFd, "\tor a\n");
+        } else {
+            emit(S_AHORL);
+        }
+        /* Z=1 means zero/false, Z=0 means nonzero/true */
+        if (invert) {
+            /* Inverted: nonzero is false */
+            if (false_num >= 0) {
+                emitJump("jp nz,", false_lbl, false_num);
+            } else if (true_num >= 0) {
+                emitJump("jp z,", true_lbl, true_num);
+            }
+        } else {
+            /* Normal: zero is false */
+            if (false_num >= 0) {
+                emitJump("jp z,", false_lbl, false_num);
+            } else if (true_num >= 0) {
+                emitJump("jp nz,", true_lbl, true_num);
+            }
+        }
+    }
+}
+
+/*
  * Walk statement tree, emit assembly, and free nodes
  */
 static int stmt_count = 0;
@@ -83,138 +173,14 @@ static void emitStmt(struct stmt *s)
             return;
         }
 
-        /* Check if condition has ! wrapper */
-        if (cond && cond->op == '!') {
-            invertCond = 1;
-            cond = cond->left;  /* unwrap ! */
-        }
-
-        /* Handle logical OR (||) - short circuit: jump to then if any true */
-        if (cond && cond->op == 'h') {
-            /* For OR: jump to then-body when true, else-branch when all false
-             * true_lbl = start of then body (_if_then_N)
-             * false_lbl = else branch (_if_N) or end (_if_end_N) if no else
-             * Optimize: if else is just GOTO, jump directly to its target */
+        /* Handle logical OR/AND with recursive short-circuit */
+        if (cond && (cond->op == 'h' || cond->op == 'j' || cond->op == '!')) {
             const char *else_goto = s->else_branch ? elseGotoTgt(s->else_branch) : NULL;
             const char *false_lbl = else_goto ? else_goto : (s->label2 > 0 ? "_if_" : "_if_end_");
-            int false_num = s->label;
-            int use_symbol = (else_goto != NULL);
+            int false_num = else_goto ? -1 : s->label;
 
-            /* Flatten the OR tree and emit each comparison */
-            /* For (a || b || c), emit: test a, jnz then; test b, jnz then; test c, jz else */
-            struct expr *stack[32];
-            int sp = 0;
-            struct expr *e = cond;
-
-            /* Collect all OR operands by traversing left spine */
-            while (e && e->op == 'h' && sp < 31) {
-                stack[sp++] = e->right;
-                e = e->left;
-            }
-            if (e) stack[sp++] = e;
-
-            /* Emit in reverse order (leftmost first) */
-            while (sp > 1) {
-                int e_size;
-                e = stack[--sp];
-                e_size = e->size;
-                emitExpr(e);
-                if (fnZValid) {
-                    /* fnZValid==1: Z=1 means true; fnZValid==2: Z=1 means false */
-                    int zTrue = (fnZValid == 1);
-                    if (invertCond) zTrue = !zTrue;
-                    emitJump(zTrue ? "jp z," : "jp nz,", "_if_then_", s->label);
-                    fnZValid = 0;
-                } else {
-                    if (e_size == 1) {
-                        fdprintf(outFd, "\tor a\n");
-                    } else {
-                        emit(S_AHORL);
-                    }
-                    /* Z=0 means nonzero/true, jump to then body */
-                    if (invertCond) {
-                        emitJump("jp z,", "_if_then_", s->label);
-                    } else {
-                        emitJump("jp nz,", "_if_then_", s->label);
-                    }
-                }
-            }
-            /* Last operand - if false, jump to else; if true, fall through to then */
-            if (sp > 0) {
-                int e_size;
-                int lbl = use_symbol ? -1 : false_num;
-                e = stack[--sp];
-                e_size = e->size;
-                emitExpr(e);
-                if (fnZValid) {
-                    /* fnZValid==1: Z=1 true, Z=0 false; fnZValid==2: Z=1 false */
-                    int zFalse = (fnZValid == 2);
-                    if (invertCond) zFalse = !zFalse;
-                    emitJump(zFalse ? "jp z," : "jp nz,", false_lbl, lbl);
-                    fnZValid = 0;
-                } else {
-                    if (e_size == 1) {
-                        fdprintf(outFd, "\tor a\n");
-                    } else {
-                        emit(S_AHORL);
-                    }
-                    /* Z=1 means zero/false -> jump to else */
-                    if (invertCond) {
-                        emitJump("jp nz,", false_lbl, lbl);
-                    } else {
-                        emitJump("jp z,", false_lbl, lbl);
-                    }
-                }
-            }
-            skip_else = (else_goto != NULL);
-            goto emit_if_body;
-        }
-
-        /* Handle logical AND (&&) - short circuit: jump to else if any false */
-        if (cond && cond->op == 'j') {
-            /* Optimize: if else is just GOTO, jump directly to its target */
-            const char *else_goto = s->else_branch ? elseGotoTgt(s->else_branch) : NULL;
-            const char *false_lbl = else_goto ? else_goto : (s->label2 > 0 ? "_if_" : "_if_end_");
-            int false_num = s->label;
-            int lbl = else_goto ? -1 : false_num;
-
-            /* Flatten the AND tree and emit each comparison */
-            struct expr *stack[32];
-            int sp = 0;
-            struct expr *e = cond;
-
-            /* Collect all AND operands by traversing left spine */
-            while (e && e->op == 'j' && sp < 31) {
-                stack[sp++] = e->right;
-                e = e->left;
-            }
-            if (e) stack[sp++] = e;
-
-            /* Emit in reverse order (leftmost first) */
-            while (sp > 0) {
-                int e_size;
-                e = stack[--sp];
-                e_size = e->size;
-                emitExpr(e);
-                if (fnZValid) {
-                    /* fnZValid==1: Z=1 true, Z=0 false; fnZValid==2: Z=1 false */
-                    int zFalse = (fnZValid == 2);
-                    if (invertCond) zFalse = !zFalse;
-                    emitJump(zFalse ? "jp z," : "jp nz,", false_lbl, lbl);
-                    fnZValid = 0;
-                } else {
-                    if (e_size == 1) {
-                        fdprintf(outFd, "\tor a\n");
-                    } else {
-                        emit(S_AHORL);
-                    }
-                    if (invertCond) {
-                        emitJump("jp nz,", false_lbl, lbl);
-                    } else {
-                        emitJump("jp z,", false_lbl, lbl);
-                    }
-                }
-            }
+            /* Use recursive emitCond: fall through on true, jump on false */
+            emitCond(cond, 0, NULL, -1, false_lbl, false_num);
             skip_else = (else_goto != NULL);
             goto emit_if_body;
         }

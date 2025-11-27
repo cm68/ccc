@@ -470,7 +470,14 @@ void emitFnProlog(char *name, char *params, char *rettype, int frame_size,
                     loadBCIY(var->offset);
                 } else {
                     loadWordIY(var->offset);
-                    if (var->reg == REG_IX) emit(S_HLPIX);
+                    if (var->reg == REG_IX) {
+                        char sym[64];
+                        emit(S_HLPIX);
+                        /* HL still has the value - set cache */
+                        snprintf(sym, sizeof(sym), "$%s", var->name);
+                        clearHL();
+                        fnHLCache = mkVarCache(sym, 2);
+                    }
                 }
             } else if (var->size == 1 && var->reg <= REG_C) {
                 static const char bc[] = "?bc";
@@ -583,6 +590,7 @@ void clearA() {
         freeExpr(fnACache);
         fnACache = NULL;
     }
+    fnIXAOfs = -1;
 }
 
 void pushStack() {

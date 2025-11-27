@@ -214,7 +214,13 @@ void emitExpr(struct expr *e)
         if (var && var->reg == REG_IX) {
             /* Variable is in IX - use IX-indexed addressing */
             if (e->size == 1) {
-                fdprintf(outFd, "\tld a, (ix + %d)\n", (char)offset);
+                /* Check if A already has this byte from cache */
+                if (fnIXAOfs != (char)offset) {
+                    fdprintf(outFd, "\tld a, (ix + %d)\n", (char)offset);
+                    /* Cache: A has byte at (ix + offset) */
+                    clearA();
+                    fnIXAOfs = (char)offset;
+                }
             } else if (e->size == 2) {
                 loadWordIX((char)offset);
             } else if (e->size == 4) {
@@ -273,8 +279,14 @@ void emitExpr(struct expr *e)
             /* Pointer is register-allocated - use indirect addressing */
             if (var->reg == REG_BC) {
                 emit(S_LDABC);
+                clearA();
             } else if (var->reg == REG_IX) {
-                emit(S_LDAIXZ);
+                /* Check if A already has (ix+0) from cache */
+                if (fnIXAOfs != 0) {
+                    emit(S_LDAIXZ);
+                    clearA();
+                    fnIXAOfs = 0;
+                }
             } else {
                 /* Register type can't do indirect addressing - fall back */
                 /* Load pointer to HL first, then indirect load */

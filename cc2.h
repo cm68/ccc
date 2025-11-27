@@ -161,6 +161,7 @@ extern int fnZValid;            /* 1 if Z flag valid for HL test */
 extern struct expr *fnHLCache;  /* Shallow copy of expr in HL */
 extern struct expr *fnDECache;  /* Shallow copy of expr in DE */
 extern struct expr *fnACache;   /* Shallow copy of byte expr in A */
+extern char fnIXAOfs;           /* When >=0, A has byte from (ix+fnIXAOfs) */
 
 /* Forward declarations from util.c */
 int fdprintf(unsigned char fd, const char *fmt, ...);
