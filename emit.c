@@ -64,6 +64,24 @@ static void emitStmt(struct stmt *s)
         int use_dir_jump = 0;
         struct expr *cond = s->expr;
 
+        /* Handle constant conditions - skip condition evaluation entirely */
+        if (cond && cond->op == 'C') {
+            int is_true = (cond->value != 0);
+            freeExpr(cond);
+            s->expr = NULL;
+            /* Emit only the taken branch */
+            if (is_true) {
+                if (s->then_branch) emitStmt(s->then_branch);
+            } else {
+                if (s->else_branch) emitStmt(s->else_branch);
+            }
+            if (s->next) emitStmt(s->next);
+            if (s->asm_block) free(s->asm_block);
+            if (s->jump) freeJump(s->jump);
+            free(s);
+            return;
+        }
+
         /* Check if condition has ! wrapper */
         if (cond && cond->op == '!') {
             invertCond = 1;
