@@ -10,30 +10,32 @@ static void emitTypeInfo(struct type *type);
 /*
  * Get size suffix for memory operations based on type
  * Returns: 'b' (byte), 's' (short/int), 'l' (long), 'p' (pointer),
- * 'f' (float), 'd' (double)
+ * 'f' (float), 'd' (double), 'v' (void)
  */
 static char
 getSizeSuffix(struct type *t)
 {
 	if (!t)
-		return 's';  // default to short
+		return 's';  /* default to short */
 
 	if (t->flags & TF_POINTER)
 		return 'p';
 
-	// Check primitive types by size
-	if (t->size == 1)
-		return 'b';  // char/byte
+	/* Check primitive types by size */
+	if (t->size == 0)
+		return 'v';  /* void */
+	else if (t->size == 1)
+		return 'b';  /* char/byte */
 	else if (t->size == 2)
-		return 's';  // short/int
+		return 's';  /* short/int */
 	else if (t->size == 4) {
 		if (t->flags & TF_FLOAT)
-			return 'f';  // float
-		return 'l';  // long
+			return 'f';  /* float */
+		return 'l';  /* long */
 	} else if (t->size == 8)
-		return 'd';  // double
+		return 'd';  /* double */
 
-	return 's';  // default to short
+	return 's';  /* default to short */
 }
 
 /*
@@ -288,9 +290,8 @@ emitStmt(struct stmt *st)
 		if (st->locals) {
 			struct name *local;
 			for (local = st->locals; local; local = local->next) {
-				fdprintf(astFd, " (d %s", local->name);
-				emitTypeInfo(local->type);
-				fdprintf(astFd, ")");
+				fdprintf(astFd, " (d:%c %s)",
+					getSizeSuffix(local->type), local->name);
 			}
 		}
 
@@ -604,74 +605,33 @@ emitParams(struct type *functype)
 	fdprintf(astFd, "(");
 	if (functype && (functype->flags & TF_FUNC)) {
 		for (param = functype->elem; param; param = param->next) {
+			/* Skip void parameters - (void) means no params */
+			if (param->type && param->type->size == 0)
+				continue;
 			if (!first) fdprintf(astFd, " ");
 			first = 0;
+			/* Emit as (d:suffix name) */
+			fdprintf(astFd, "(d:%c ", getSizeSuffix(param->type));
 			if (param->name && param->name[0] != '\0') {
 				fdprintf(astFd, "%s", param->name);
 			} else {
 				fdprintf(astFd, "_");  /* anonymous parameter */
 			}
-			if (param->type && param->type->name) {
-				fdprintf(astFd, ":%s", param->type->name);
-			}
+			fdprintf(astFd, ")");
 		}
 	}
 	fdprintf(astFd, ")");
 }
 
 /*
- * Output declaration nodes for function parameters and local variables
- * Called while variables are still in scope (before popScope)
- */
-static void
-emitDecls(struct name *func)
-{
-	extern struct name **names;
-	extern int lastname;
-	struct name *n;
-	int i;
-	int has_decls = 0;
-
-	/* Iterate through names array looking for parameters and locals */
-	for (i = 0; i <= lastname; i++) {
-		n = names[i];
-		if (!n)
-			continue;
-
-		/* Skip if not at function scope or deeper */
-		if (n->level < 2)
-			continue;
-
-		/* Skip tags, typedefs, and function definitions */
-		if (n->is_tag || n->kind == tdef || n->kind == fdef)
-			continue;
-
-		/*
-		 * Emit declaration node: (d varname type) - only for function
-		 * parameters. Local variables are emitted in their containing
-		 * blocks, not at function level
-		 */
-		if (n->kind == funarg) {
-			if (!has_decls) {
-				fdprintf(astFd, "\n  ");
-				has_decls = 1;
-			} else {
-				fdprintf(astFd, " ");
-			}
-			fdprintf(astFd, "(d %s", n->name);
-			emitTypeInfo(n->type);
-			fdprintf(astFd, ")");
-		}
-	}
-}
-
-/*
  * Output a function in AST format
+ * Format: (f:rettype name (params) body)
  */
 void
 emitFunction(struct name *func)
 {
 	const char *func_name;
+	char ret_suffix;
 
 	if (!func || !func->u.body)
 		return;
@@ -679,24 +639,22 @@ emitFunction(struct name *func)
 	/* Use mangled name for static functions, otherwise use original name */
 	func_name = func->mangled_name ? func->mangled_name : func->name;
 
-	fdprintf(astFd, "\n; Function: %s\n", func_name);
-	fdprintf(astFd, "(f %s ", func_name);
-
-	/* Output parameter list */
-	if (func->type) {
-		emitParams(func->type);
-		/* Output return type */
-		if (func->type->sub) {
-			emitTypeInfo(func->type->sub);
-		} else {
-			fdprintf(astFd, " _void_");
-		}
+	/* Get return type suffix (void uses 'v') */
+	if (func->type && func->type->sub) {
+		ret_suffix = getSizeSuffix(func->type->sub);
 	} else {
-		fdprintf(astFd, "() _void_");
+		ret_suffix = 'v';  /* void */
 	}
 
-	/* Output declarations for parameters and local variables */
-	emitDecls(func);
+	fdprintf(astFd, "\n; Function: %s\n", func_name);
+	fdprintf(astFd, "(f:%c %s ", ret_suffix, func_name);
+
+	/* Output parameter list with declarations */
+	if (func->type) {
+		emitParams(func->type);
+	} else {
+		fdprintf(astFd, "()");
+	}
 
 	/* Output function body */
 	fdprintf(astFd, "\n  ");

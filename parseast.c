@@ -16,6 +16,7 @@
 /* Forward declarations for static helper functions */
 static struct expr *parseExpr(void);
 static struct stmt *parseStmt(void);
+static struct stmt *doStmtBody(char op);
 
 /* Symbol tracking for EXTERN declarations */
 static void addDefSym(const char *name);
@@ -414,7 +415,7 @@ doGeneric(unsigned char op)
 
     e = newExpr(op);
 
-/* debug output removed */    skip();
+    skip();
 
     /* Skip to closing paren - recursively handle any nested expressions */
     depth = 1;
@@ -449,7 +450,7 @@ doConst(void)
         e->size = 4;  /* Requires 32 bits (long) */
     }
 
-/* debug output removed */    return e;
+    return e;
 }
 
 static struct expr *
@@ -458,7 +459,7 @@ doSymbol(void)
     struct expr *e = newExpr('$');  // '$' for symbol
     char *sym = readSymbol();
     e->symbol = strdup(sym);
-/* debug output removed */    return e;
+    return e;
 }
 
 static struct expr *
@@ -467,7 +468,7 @@ doString(void)
     struct expr *e = newExpr('S');  // 'S' for string
     /* String literal: S followed by index */
     e->value = readNumber();
-/* debug output removed */    return e;
+    return e;
 }
 
 static struct expr *
@@ -509,11 +510,11 @@ doBinaryOp(unsigned char op)
 {
     struct expr *e = newExpr(op);
 
-/* debug output removed */    skip();
+    skip();
     e->left = parseExpr();  /* left operand - now returns tree */
-/* debug output removed */    skip();
+    skip();
     e->right = parseExpr();  /* right operand - now returns tree */
-/* debug output removed */    expect(')');
+    expect(')');
 
     /* Result size is the larger of the two operand sizes */
     if (e->left && e->right) {
@@ -566,16 +567,16 @@ doLand(unsigned char op)
     struct expr *e = newExpr(op);
     e->label = labelCounter++;
 
-/* debug output removed */    skip();
+    skip();
     e->left = parseExpr();  /* left operand */
-/* debug output removed */
+
     /* Will emit conditional jump during code generation */
-/* debug output removed */
+
     skip();
     e->right = parseExpr();  /* right operand */
 
     /* Will emit skip label during code generation */
-/* debug output removed */    expect(')');
+    expect(')');
     return e;
 }
 
@@ -589,16 +590,16 @@ doLor(unsigned char op)
     struct expr *e = newExpr(op);
     e->label = labelCounter++;
 
-/* debug output removed */    skip();
+    skip();
     e->left = parseExpr();  /* left operand */
-/* debug output removed */
+
     /* Will emit conditional jump during code generation */
-/* debug output removed */
+
     skip();
     e->right = parseExpr();  /* right operand */
 
     /* Will emit skip label during code generation */
-/* debug output removed */    expect(')');
+    expect(')');
     return e;
 }
 
@@ -624,12 +625,12 @@ doUnaryOp(unsigned char op)
         width_str[2] = '\0';
         e->type_str = strdup(width_str);
         e->size = getSizeFTStr(e->type_str);
-/* debug output removed */    } else {
-/* debug output removed */    }
+    } else {
+    }
 
     skip();
     e->left = parseExpr();  /* operand */
-/* debug output removed */    expect(')');
+    expect(')');
 
     /* If no type annotation, inherit size from operand */
     if (width == ' ' && e->left) {
@@ -660,7 +661,7 @@ doIncDec(unsigned char op)
 
     e = newExpr(op);
 
-/* debug output removed */
+
     skip();
     e->left = parseExpr();  /* lvalue */
 
@@ -669,7 +670,7 @@ doIncDec(unsigned char op)
     amount = readNumber();
     e->value = amount;  /* Store increment amount in value field */
 
-/* debug output removed */    expect(')');
+    expect(')');
 
     /* Inherit size from operand */
     if (e->left) {
@@ -702,9 +703,9 @@ doBfextract(unsigned char op)
     /* Store offset and width in value field (pack into long) */
     e->value = (offset << 16) | width;
 
-/* debug output removed */    skip();
+    skip();
     e->left = parseExpr();  /* address */
-/* debug output removed */    expect(')');
+    expect(')');
     return e;
 }
 
@@ -748,11 +749,11 @@ doColon(unsigned char op)
 {
     struct expr *e = newExpr(op);
 
-/* debug output removed */    skip();
+    skip();
     e->left = parseExpr();  /* left */
-/* debug output removed */    skip();
+    skip();
     e->right = parseExpr();  /* right */
-/* debug output removed */    expect(')');
+    expect(')');
     return e;
 }
 
@@ -781,9 +782,9 @@ doDeref(unsigned char op)
         e->flags = getSignFTStr(e->type_str);
     }
 
-/* debug output removed */    skip();
+    skip();
     e->left = parseExpr();  /* address expression */
-/* debug output removed */    expect(')');
+    expect(')');
     return e;
 }
 
@@ -869,9 +870,9 @@ doTernary(unsigned char op)
 
     e = newExpr('?');  /* '?' for ternary */
 
-/* debug output removed */    skip();
+    skip();
     e->left = parseExpr();  /* condition */
-/* debug output removed */    skip();
+    skip();
 
     /* Expect COLON node - this becomes the right child */
     if (curchar == '(') {
@@ -883,14 +884,14 @@ doTernary(unsigned char op)
             /* Build COLON node with true/false branches */
             colon = newExpr(':');
             colon->left = parseExpr();  /* true expr */
-/* debug output removed */            skip();
+            skip();
             colon->right = parseExpr();  /* false expr */
             expect(')');
             e->right = colon;
         }
     }
 
-/* debug output removed */    expect(')');
+    expect(')');
     return e;
 }
 
@@ -917,9 +918,9 @@ doCaseInBlock(void)
     /* Case statement: (C value ()) */
     struct stmt *child = newStmt('C');
 
-/* debug output removed */    skip();
+    skip();
     child->expr = parseExpr();  /* case value */
-/* debug output removed */    skip();
+    skip();
     /* Skip empty body placeholder () */
     if (curchar == '(') {
         nextchar();
@@ -939,7 +940,7 @@ doDefInBlock(void)
     /* Default statement: (O ()) */
     struct stmt *child = newStmt('O');
 
-/* debug output removed */    skip();
+    skip();
     /* Skip empty body placeholder () */
     if (curchar == '(') {
         nextchar();
@@ -962,7 +963,6 @@ doBlock(void)
     struct stmt *child;
     char op;
     char *name;
-    char *type;
 
     s = newStmt('B');
     first_child = NULL;
@@ -987,14 +987,18 @@ doBlock(void)
             skip();      /* Now safe to skip whitespace */
 
             if (op == 'd') {
-                /* Declaration */
+                /* Declaration: (d:suffix name) */
+                char type_suffix[3];
+                expect(':');
+                type_suffix[0] = curchar;  /* b, s, l, p, etc. */
+                type_suffix[1] = '\0';
+                nextchar();
                 name = readSymbol();
-                type = readType();
-/* debug output removed */
+
                 /* Create declaration statement node */
                 child = newStmt('d');
-                child->symbol = strdup(name);  // symbuf is reused
-                child->type_str = strdup(type);  // typebuf is reused
+                child->symbol = strdup(name);
+                child->type_str = strdup(type_suffix);
 
                 expect(')');
             } else {
@@ -1048,11 +1052,11 @@ doBlock(void)
                     child = doDefInBlock();
                     break;
                 case 'K':  /* Break */
-/* debug output removed */                    child = newStmt('K');
+                    child = newStmt('K');
                     expect(')');
                     break;
                 case 'N':  /* Continue */
-/* debug output removed */                    child = newStmt('N');
+                    child = newStmt('N');
                     expect(')');
                     break;
                 default:
@@ -1068,7 +1072,7 @@ doBlock(void)
                     child = NULL;
                     break;
                 }
-/* debug output removed */            }
+            }
 
             /* Add child to linked list and update tail pointer */
             if (child) {
@@ -1105,9 +1109,9 @@ doIf(void)
 
     s->label = labelCounter++;
 
-/* debug output removed */    skip();
+    skip();
     s->expr = parseExpr();  /* condition */
-/* debug output removed */
+
     skip();
     s->then_branch = parseStmt();  /* then branch */
 
@@ -1116,7 +1120,7 @@ doIf(void)
         /* Has else branch - need second label for end of else */
         s->label2 = labelCounter++;
 
-/* debug output removed */        s->else_branch = parseStmt();  /* else branch */
+        s->else_branch = parseStmt();  /* else branch */
 
         /* Insert end label after the IF statement */
         snprintf(label_buf, sizeof(label_buf), "_if_end_%d", s->label2);
@@ -1143,9 +1147,9 @@ doWhile(void)
     s = newStmt('W');
     s->label = labelCounter++;  /* Loop start label */
 
-/* debug output removed */    skip();
+    skip();
     s->expr = parseExpr();  /* condition */
-/* debug output removed */
+
     skip();
     s->then_branch = parseStmt();  /* body */
 
@@ -1174,12 +1178,12 @@ doDo(void)
     s = newStmt('D');
     s->label = labelCounter++;  /* Loop start label */
 
-/* debug output removed */    skip();
+    skip();
     s->then_branch = parseStmt();  /* body */
 
-/* debug output removed */    skip();
+    skip();
     s->expr = parseExpr();  /* condition */
-/* debug output removed */
+
     expect(')');
 
     /* Insert loop start label before the do, and end label after */
@@ -1204,13 +1208,13 @@ doFor(void)
     s = newStmt('F');
     s->label = labelCounter++;  /* Loop start label */
 
-/* debug output removed */    skip();
+    skip();
     s->expr = parseExpr();  /* init */
-/* debug output removed */    skip();
+    skip();
     s->expr2 = parseExpr();  /* condition */
-/* debug output removed */    skip();
+    skip();
     s->expr3 = parseExpr();  /* increment */
-/* debug output removed */
+
     skip();
     s->then_branch = parseStmt();  /* body */
 
@@ -1233,9 +1237,9 @@ doReturn(void)
 {
     struct stmt *s = newStmt('R');
 
-/* debug output removed */    skip();
+    skip();
     if (curchar != ')') {
-/* debug output removed */        s->expr = parseExpr();
+        s->expr = parseExpr();
     } else {
         s->expr = NULL;
     }
@@ -1248,9 +1252,9 @@ doExprStmt(void)
 {
     struct stmt *s = newStmt('E');
 
-/* debug output removed */    skip();
+    skip();
     s->expr = parseExpr();
-/* debug output removed */    expect(')');
+    expect(')');
     return s;
 }
 
@@ -1259,7 +1263,7 @@ doEmptyStmt(void)
 {
     struct stmt *s = newStmt(';');
 
-/* debug output removed */    expect(')');
+    expect(')');
     return s;
 }
 
@@ -1288,7 +1292,7 @@ doAsm(void)
         }
 
         /* Diagnostic output to stderr */
-/* debug output removed */
+
         /* Store assembly text in statement node */
         s->asm_block = malloc(strlen(asm_buf) + 1);
         strcpy(s->asm_block, asm_buf);
@@ -1308,7 +1312,7 @@ doLabel(void)
     label_name = readSymbol();
 
     /* Diagnostic output to stderr */
-/* debug output removed */
+
     /* Store label name in statement node */
     s->symbol = label_name;
 
@@ -1327,7 +1331,7 @@ doGoto(void)
     label_name = readSymbol();
 
     /* Diagnostic output to stderr */
-/* debug output removed */
+
     /* Store label name in statement node */
     s->symbol = label_name;
 
@@ -1349,9 +1353,9 @@ doSwitch(void)
     last_child = NULL;
 
     /* Switch statement: (S expr (C val ...) (C val ...) (O ...) ) */
-/* debug output removed */    skip();
+    skip();
     s->expr = parseExpr();  /* switch expression */
-/* debug output removed */
+
     /* Parse case and default clauses */
     skip();
     while (curchar != ')') {
@@ -1364,10 +1368,10 @@ doSwitch(void)
 
             if (clause_type == 'C') {
                 /* Case clause: (C value ()) - body is always empty */
-/* debug output removed */                child = newStmt('C');
+                child = newStmt('C');
                 skip();
                 child->expr = parseExpr();  /* case value */
-/* debug output removed */                skip();
+                skip();
                 /* Skip empty body placeholder () */
                 if (curchar == '(') {
                     nextchar();
@@ -1379,7 +1383,7 @@ doSwitch(void)
                 expect(')');
             } else if (clause_type == 'O') {
                 /* Default clause: (O ()) - body placeholder is always empty */
-/* debug output removed */                child = newStmt('O');
+                child = newStmt('O');
                 skip();
                 /* Skip empty body placeholder () */
                 if (curchar == '(') {
@@ -1401,19 +1405,19 @@ doSwitch(void)
                 /* Back up - we need to reparse this as a statement */
                 /* Unfortunately we already consumed the '(' and type char */
                 /* For now, just handle common ones inline */
-/* debug output removed */                if (clause_type == 'R') {
+                if (clause_type == 'R') {
                     child = doReturn();
                 } else if (clause_type == 'G') {
                     child = newStmt('G');
                     skip();
                     child->symbol = readSymbol();
-/* debug output removed */                    expect(')');
+                    expect(')');
                 } else if (clause_type == 'B') {
                     /* BLOCK statement */
                     child = doBlock();
                 } else if (clause_type == 'K') {
                     /* BREAK statement */
-/* debug output removed */                    child = newStmt('K');
+                    child = newStmt('K');
                     expect(')');
                 } else if (clause_type == 'E') {
                     child = doExprStmt();
@@ -1431,7 +1435,7 @@ doSwitch(void)
                     child = doAsm();
                 } else if (clause_type == 'N') {
                     /* CONTINUE statement */
-/* debug output removed */                    child = newStmt('N');
+                    child = newStmt('N');
                     expect(')');
                 } else if (clause_type == ';') {
                     child = doEmptyStmt();
@@ -1440,7 +1444,7 @@ doSwitch(void)
                 }
             } else {
                 /* Unknown - skip it */
-/* debug output removed */                while (curchar && curchar != ')') {
+                while (curchar && curchar != ')') {
                     nextchar();
                 }
                 if (curchar == ')') {
@@ -1466,7 +1470,7 @@ doSwitch(void)
         skip();
     }
 
-/* debug output removed */    expect(')');
+    expect(')');
 
     s->then_branch = first_child;  /* Use then_branch for switch body */
     return s;
@@ -1478,25 +1482,25 @@ doSwitch(void)
  * Helper: Get register name string from register_id enum
  */
 static void
-doFunction(void)
+doFunction(char rettype)
 {
     struct function_ctx ctx;
     char name_buf[64];  /* Stack buffer for function name */
     char params_buf[256];
+    char rettype_buf[2];
     char *p;
     int first_param;
-    struct stmt *first_child = NULL;
-    struct stmt *last_child = NULL;
-    struct stmt *child;
-    char *dname;
-    char *dtype;
 
-    /* (f name (params) return_type declarations body) */
+    /* (f:rettype name (params) body) - rettype already consumed */
+    rettype_buf[0] = rettype;
+    rettype_buf[1] = '\0';
+    ctx.rettype = rettype_buf;
+
     /* Copy function name to stack buffer before reading parameters */
     strncpy(name_buf, readSymbol(), sizeof(name_buf) - 1);
     name_buf[sizeof(name_buf) - 1] = '\0';
     ctx.name = name_buf;
-/* debug output removed */
+
     /* Switch to .text segment for function code */
     switchToSeg(SEG_TEXT);
 
@@ -1512,18 +1516,30 @@ doFunction(void)
         addDefSym(func_label);
     }
 
-    /* Parameters - collect into buffer for prologue */
+    /* Parameters - format: ((d:suffix name) (d:suffix name) ...) */
     skip();
     expect('(');
-/* debug output removed */    p = params_buf;
+    p = params_buf;
     params_buf[0] = '\0';
     first_param = 1;
     skip();
     while (curchar != ')') {
-        char *param = readSymbol();
-        char *ptype = NULL;
+        char *param;
+        char ptype;
 
-/* debug output removed */
+        /* Each param is (d:suffix name) */
+        expect('(');
+        skip();
+        if (curchar != 'd') {
+            fdprintf(2, "parseast: expected 'd' in param decl\n");
+            break;
+        }
+        nextchar();
+        expect(':');
+        ptype = curchar;  /* b, s, l, p */
+        nextchar();
+        param = readSymbol();
+
         /* Add to params buffer */
         if (!first_param) {
             if (p < params_buf + sizeof(params_buf) - 2) {
@@ -1533,130 +1549,25 @@ doFunction(void)
         }
         first_param = 0;
 
-        /* Copy parameter name */
+        /* Copy parameter name:type */
         while (*param && p < params_buf + sizeof(params_buf) - 20) {
             *p++ = *param++;
         }
-
-        skip();
-        /* Read type annotation if present (format: name:type) */
-        if (curchar == ':') {
-            nextchar();
-            ptype = readType();  /* Get type */
-            /* Add type to params buffer */
-            if (ptype && p < params_buf + sizeof(params_buf) - 20) {
-                *p++ = ':';
-                while (*ptype && p < params_buf + sizeof(params_buf) - 1) {
-                    *p++ = *ptype++;
-                }
-            }
-            skip();
+        if (p < params_buf + sizeof(params_buf) - 3) {
+            *p++ = ':';
+            *p++ = ptype;
         }
+
+        expect(')');
+        skip();
     }
     *p = '\0';
     ctx.params = params_buf;
     expect(')');
-/* debug output removed */
-    /* Return type */
-    ctx.rettype = readType();
-/* debug output removed */
-    /* Declarations and body - collect into statement tree */
+
+    /* Body is a single statement (typically a block) */
     skip();
-    while (curchar != ')') {
-        skip();
-        if (curchar == '(') {
-            /* Peek ahead to see if it's a declaration or statement */
-            nextchar();
-            skip();
-            if (curchar == 'd') {
-                /* Declaration - we're already past the '(' */
-                nextchar();
-                dname = readSymbol();
-                dtype = readType();
-/* debug output removed */
-                /* Create declaration statement node */
-                child = newStmt('d');
-                child->symbol = strdup(dname);  /* symbuf is reused */
-                child->type_str = strdup(dtype);  /* typebuf is reused */
-
-                expect(')');
-            } else {
-                /* Body statement - we've already consumed 
-                 * '(', now consume operator */
-                char op = curchar;
-                nextchar();
-
-/* debug output removed */                switch (op) {
-                case 'B':  /* Block */
-                    child = doBlock();
-                    break;
-                case 'I':  /* If */
-                    child = doIf();
-                    break;
-                case 'W':  /* While */
-                    child = doWhile();
-                    break;
-                case 'D':  /* Do-while */
-                    child = doDo();
-                    break;
-                case 'F':  /* For */
-                    child = doFor();
-                    break;
-                case 'R':  /* Return */
-                    child = doReturn();
-                    break;
-                case 'E':  /* Expression statement */
-                    child = doExprStmt();
-                    break;
-                case ';':  /* Empty statement */
-                    child = doEmptyStmt();
-                    break;
-                case 'A':  /* Asm block */
-                    child = doAsm();
-                    break;
-                case 'L':  /* Label */
-                    child = doLabel();
-                    break;
-                case 'G':  /* Goto */
-                    child = doGoto();
-                    break;
-                case 'S':  /* Switch */
-                    child = doSwitch();
-                    break;
-                default:
-                    fdprintf(2, "parseast: line %d: unknown stmt op '%c'\n", 
-                        lineNum, op);
-                    /* Skip to closing paren */
-                    while (curchar && curchar != ')') {
-                        nextchar();
-                    }
-                    if (curchar == ')') {
-                        nextchar();
-                    }
-                    child = NULL;
-                    break;
-                }
-/* debug output removed */            }
-
-            /* Add child to linked list and update tail pointer */
-            if (child) {
-                if (!first_child) {
-                    first_child = child;
-                } else {
-                    last_child->next = child;
-                }
-                /* Update last_child to point to the actual end of the chain */
-                last_child = child;
-                while (last_child->next) {
-                    last_child = last_child->next;
-                }
-            }
-        }
-        skip();
-    }
-
-    /* Store body tree in context */
-    ctx.body = first_child;
+    ctx.body = parseStmt();
     ctx.labelCounter = labelCounter;  /* Save current label counter */
     ctx.locals = NULL;  /* No local variables yet */
     ctx.frame_size = 0;  /* No frame size yet */
@@ -1726,7 +1637,7 @@ doGlobal(void)
     name = readSymbol();
     type = readType();
 
-/* debug output removed */
+
     /* Track this global as defined (strip "$" prefix for assembly format) */
     global_label = name;
     if (global_label[0] == '$') {
@@ -1739,7 +1650,7 @@ doGlobal(void)
 
     skip();
     if (curchar != ')') {
-/* debug output removed */        has_init = 1;
+        has_init = 1;
 
         /* Check if initializer is a byte array ([:b ...]) */
         if (curchar == '(') {
@@ -1961,7 +1872,7 @@ doGlobal(void)
         }
     }
 
-/* debug output removed */
+
     /*
      * Skip tentative array definitions (array with size -1).
      * These are forward declarations; the real definition comes later.
@@ -2045,7 +1956,7 @@ doStrLiteral(void)
     name = readSymbol();
     data = readQuotedStr();
 
-/* debug output removed */
+
     /* Switch to .data segment for string literals */
     switchToSeg(SEG_DATA);
 
@@ -2188,22 +2099,50 @@ parseExpr(void)
 }
 
 /*
+ * Parse statement body after '(' and op have been consumed
+ */
+static struct stmt *
+doStmtBody(char op)
+{
+    struct stmt *s;
+
+    switch (op) {
+    case 'B':  s = doBlock();     break;
+    case 'I':  s = doIf();        break;
+    case 'W':  s = doWhile();     break;
+    case 'D':  s = doDo();        break;
+    case 'F':  s = doFor();       break;
+    case 'R':  s = doReturn();    break;
+    case 'E':  s = doExprStmt();  break;
+    case ';':  s = doEmptyStmt(); break;
+    case 'A':  s = doAsm();       break;
+    case 'L':  s = doLabel();     break;
+    case 'G':  s = doGoto();      break;
+    case 'S':  s = doSwitch();    break;
+    default:
+        fdprintf(2, "parseast: line %d: unknown stmt op '%c'\n", lineNum, op);
+        while (curchar && curchar != ')') nextchar();
+        if (curchar == ')') nextchar();
+        s = NULL;
+        break;
+    }
+    return s;
+}
+
+/*
  * Parse a statement (recursive)
  */
 static struct stmt *
 parseStmt(void)
 {
-    struct stmt *s;
     char op;
 
     skip();
-
     if (curchar != '(') {
         fdprintf(2, "parseast: line %d: expected '(' at start of statement\n",
             lineNum);
         return NULL;
     }
-
     nextchar();
     skip();
 
@@ -2215,57 +2154,7 @@ parseStmt(void)
 
     op = curchar;
     nextchar();
-
-    switch (op) {
-    case 'B':  /* Block */
-        s = doBlock();
-        break;
-    case 'I':  /* If */
-        s = doIf();
-        break;
-    case 'W':  /* While */
-        s = doWhile();
-        break;
-    case 'D':  /* Do-while */
-        s = doDo();
-        break;
-    case 'F':  /* For */
-        s = doFor();
-        break;
-    case 'R':  /* Return */
-        s = doReturn();
-        break;
-    case 'E':  /* Expression statement */
-        s = doExprStmt();
-        break;
-    case ';':  /* Empty statement */
-        s = doEmptyStmt();
-        break;
-    case 'A':  /* Asm block */
-        s = doAsm();
-        break;
-    case 'L':  /* Label */
-        s = doLabel();
-        break;
-    case 'G':  /* Goto */
-        s = doGoto();
-        break;
-    case 'S':  /* Switch */
-        s = doSwitch();
-        break;
-    default:
-/* debug output removed */        /* Skip to closing paren */
-        while (curchar && curchar != ')') {
-            nextchar();
-        }
-        if (curchar == ')') {
-            nextchar();
-        }
-        s = NULL;
-        break;
-    }
-
-    return s;
+    return doStmtBody(op);
 }
 
 /*
@@ -2293,14 +2182,20 @@ parseToplvl(void)
     }
 
     switch (op) {
-    case 'f':  /* Function */
-        if (TRACE(T_AST)) {
-            fdprintf(2, "parseToplvl: calling doFunction\n");
-        }
-        doFunction();
-        if (TRACE(T_AST)) {
-            fdprintf(2, "parseToplvl: doFunction returned, curchar=%d '%c'\n",
-                curchar, curchar > 31 ? curchar : '?');
+    case 'f':  /* Function: (f:rettype name ...) */
+        {
+            char rettype;
+            expect(':');
+            rettype = curchar;
+            nextchar();
+            if (TRACE(T_AST)) {
+                fdprintf(2, "parseToplvl: calling doFunction rettype='%c'\n", rettype);
+            }
+            doFunction(rettype);
+            if (TRACE(T_AST)) {
+                fdprintf(2, "parseToplvl: doFunction returned, curchar=%d '%c'\n",
+                    curchar, curchar > 31 ? curchar : '?');
+            }
         }
         break;
     case 'g':  /* Global variable */

@@ -168,7 +168,7 @@ addParam(struct function_ctx *ctx, const char *name, unsigned char size,
 
     ctx->locals = var;
 
-    /* debug output removed */
+    
 }
 
 /*
@@ -201,7 +201,7 @@ addLocalVar(struct function_ctx *ctx, const char *name, unsigned char size,
     ctx->locals = var;
     ctx->frame_size += size;
 
-    /* debug output removed */
+    
 }
 
 /*
@@ -322,7 +322,7 @@ allocRegs(struct function_ctx *ctx)
         if (best_ix_cand && best_agg_refs > 0) {
             best_ix_cand->reg = REG_IX;
             ix_allocated = 1;
-            /* debug output removed */
+            
         }
     }
 
@@ -357,7 +357,7 @@ allocRegs(struct function_ctx *ctx)
                 byteRegsUsed = 2; /* B and C are now unavailable */
             }
             wordRegsUsed++;
-            /* debug output removed */
+            
         }
     }
 
@@ -381,11 +381,11 @@ allocRegs(struct function_ctx *ctx)
             enum register_id regs[] = {REG_B, REG_C, REG_Bp, REG_Cp};
             var->reg = regs[byteRegsUsed];
             byteRegsUsed++;
-            /* debug output removed */
+            
         }
     }
 
-    /* debug output removed */
+    
 }
 
 /*
@@ -487,7 +487,7 @@ optFrmLayout(struct function_ctx *ctx)
 
     if (!ctx) return;
 
-    /* debug output removed */
+    
 
     /* Build slot assignments for each local variable */
     for (var = ctx->locals; var; var = var->next) {
@@ -496,7 +496,7 @@ optFrmLayout(struct function_ctx *ctx)
 
         /* Skip unused variables (never referenced) */
         if (var->first_label == -1) {
-            /* debug output removed */
+            
             continue;
         }
 
@@ -507,7 +507,7 @@ optFrmLayout(struct function_ctx *ctx)
                 /* Found a compatible slot */
                 addVarToSlot(&slots[slot_idx], var);
                 found_slot = 1;
-                /* debug output removed */
+                
                 break;
             }
         }
@@ -529,7 +529,7 @@ optFrmLayout(struct function_ctx *ctx)
 
             addVarToSlot(&slots[num_slots], var);
 
-            /* debug output removed */
+            
 
             num_slots++;
         }
@@ -548,7 +548,7 @@ optFrmLayout(struct function_ctx *ctx)
     }
 
     /* Update context frame size */
-    /* debug output removed */
+    
     ctx->frame_size = newFrameSize;
 
     /* Check frame size limit - IY-indexed addressing uses signed 8-bit offsets
@@ -582,7 +582,7 @@ assignFrmOff(struct function_ctx *ctx)
 
     if (!ctx || !ctx->body) return;
 
-    /* debug output removed */
+    
 
     /* First, assign offsets to parameters (positive offsets above FP) */
     /* Stack layout: FP+0=saved FP, FP+2=return addr, FP+4=first param */
@@ -627,7 +627,7 @@ assignFrmOff(struct function_ctx *ctx)
 
     /* Then, assign offsets to local variables (negative offsets below FP) */
     walkForLocals(ctx, ctx->body);
-    /* debug output removed */
+    
 }
 
 /*
