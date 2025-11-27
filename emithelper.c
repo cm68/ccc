@@ -95,21 +95,57 @@ void emit(unsigned char idx) {
     fdprintf(outFd, "%s", asmstr[idx]);
 }
 
+/* Register lookup tables - indexed by register_id enum */
+static const char * const regNameTab[] = {
+    NULL, "B", "C", "B'", "C'", "BC", "BC'", "IX"
+};
+static const char * const byteRegTab[] = {
+    NULL, "b", "c", "b", "c", NULL, NULL, NULL
+};
+static const char * const wordRegTab[] = {
+    NULL, NULL, NULL, NULL, NULL, "bc", "bc", "ix"
+};
+static const unsigned char byteLoadTab[] = {
+    0, S_LDAB, S_LDAC, S_EXXLDAB, S_EXXLDAC, 0, 0, 0
+};
+static const unsigned char byteStoreTab[] = {
+    0, S_BA, S_CA, S_EXXLDBA, S_EXXLDCA, 0, 0, 0
+};
+static const unsigned char wordLoadTab[] = {
+    0, 0, 0, 0, 0, S_BCHL, S_EXXBCHL, S_IXHL
+};
+static const unsigned char wordStoreTab[] = {
+    0, 0, 0, 0, 0, S_BCHLX, 0, S_HLPIX
+};
+static const unsigned char addHLRegTab[] = {
+    0, 0, 0, 0, 0, S_ADDHLBC, S_EXXBCPOPHL, S_IXSWPHL
+};
+static const unsigned char isAltTab[] = {
+    0, 0, 0, 1, 1, 0, 1, 0
+};
+/* Callee-save bitmask: bit0=BC/B/C, bit1=IX, bit2=BC'/B'/C' */
+static const unsigned char saveMaskTab[] = {
+    0, 1, 1, 4, 4, 1, 4, 2
+};
+/* BC or-c test: S_ABCORC for BC, S_EXXABCORC for BCp, 0 otherwise */
+static const unsigned char bcOrCTab[] = {
+    0, 0, 0, 0, 0, S_ABCORC, S_EXXABCORC, 0
+};
+
 const char *
 getRegName(enum register_id reg)
 {
-    switch (reg) {
-        case REG_NO:  return NULL;
-        case REG_B:   return "B";
-        case REG_C:   return "C";
-        case REG_Bp:  return "B'";
-        case REG_Cp:  return "C'";
-        case REG_BC:  return "BC";
-        case REG_BCp: return "BC'";
-        case REG_IX:  return "IX";
-        default:      return "???";
-    }
+    return reg <= REG_IX ? regNameTab[reg] : "???";
 }
+
+void emitByteLoad(unsigned char reg) { emit(byteLoadTab[reg]); }
+void emitByteStore(unsigned char reg) { emit(byteStoreTab[reg]); }
+void emitWordLoad(unsigned char reg) { emit(wordLoadTab[reg]); }
+void emitAddHLReg(unsigned char reg) { emit(addHLRegTab[reg]); }
+int isAltReg(unsigned char reg) { return isAltTab[reg]; }
+const char *byteRegName(unsigned char reg) { return byteRegTab[reg]; }
+const char *wordRegName(unsigned char reg) { return wordRegTab[reg]; }
+unsigned char bcOrCIdx(unsigned char reg) { return bcOrCTab[reg]; }
 
 const char *
 stripDollar(const char *symbol)
@@ -381,14 +417,8 @@ void emitJump(const char *instr, const char *prefix, int label) {
 int getUsedRegs(struct local_var *locals) {
     struct local_var *var;
     int used = 0;
-    for (var = locals; var; var = var->next) {
-        if (var->reg == REG_BC || var->reg == REG_B || var->reg == REG_C)
-            used |= 1;
-        if (var->reg == REG_IX)
-            used |= 2;
-        if (var->reg == REG_BCp || var->reg == REG_Bp || var->reg == REG_Cp)
-            used |= 4;
-    }
+    for (var = locals; var; var = var->next)
+        used |= saveMaskTab[var->reg];
     return used;
 }
 
@@ -650,16 +680,7 @@ void loadVar(const char *sym, char sz, char docache) {
         if (TRACE(T_VAR)) {
             fdprintf(2, "  loadVar: branch A\n");
         }
-        if (sz == 1) {
-            if (v->reg == REG_B) emit(S_LDAB);
-            else if (v->reg == REG_C) emit(S_LDAC);
-            else if (v->reg == REG_Bp) emit(S_EXXLDAB);
-            else if (v->reg == REG_Cp) emit(S_EXXLDAC);
-        } else {
-            if (v->reg == REG_BC) emit(S_BCHL);
-            else if (v->reg == REG_BCp) emit(S_EXXBCHL);
-            else if (v->reg == REG_IX) emit(S_IXHL);
-        }
+        emit(sz == 1 ? byteLoadTab[v->reg] : wordLoadTab[v->reg]);
     } else if (v) {
         if (TRACE(T_VAR)) {
             fdprintf(2, "  loadVar: branch B\n");
@@ -704,14 +725,10 @@ void storeVar(const char *sym, char sz, char docache) {
 
     if (v && v->reg != REG_NO) {
         if (sz == 1) {
-            if (v->reg == REG_B) emit(S_BA);
-            else if (v->reg == REG_C) emit(S_CA);
-            else if (v->reg == REG_Bp) emit(S_EXXLDBA);
-            else if (v->reg == REG_Cp) emit(S_EXXLDCA);
+            emit(byteStoreTab[v->reg]);
         } else {
-            if (v->reg == REG_BC) emit(S_BCHLX);
-            else if (v->reg == REG_IX) emit(S_HLPIX);
-            if (docache ) {
+            emit(wordStoreTab[v->reg]);
+            if (docache) {
                 clearHL();
                 fnHLCache = mkVarCache(sym, sz);
             }

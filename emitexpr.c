@@ -117,24 +117,11 @@ void emitExpr(struct expr *e)
             if (var->reg != REG_NO) {
                 /* Variable is in a register - move to PRIMARY */
                 if (e->size == 1) {
-                    /* Byte: move register to A */
-                    if (var->reg == REG_B) {
-                        emit(S_LDAB);
-                    } else if (var->reg == REG_C || var->reg == REG_BC) {
-                        /* BC: low byte is in C */
-                        emit(S_LDAC);
-                    } else if (var->reg == REG_Bp) {
-                        emit(S_EXXLDAB);
-                    } else if (var->reg == REG_Cp) {
-                        emit(S_EXXLDAC);
-                    }
+                    /* Byte: move register to A; BC low byte is in C */
+                    emitByteLoad(var->reg == REG_BC ? REG_C : var->reg);
                 } else {
                     /* Word: move register pair to HL */
-                    if (var->reg == REG_BC) {
-                        emit(S_BCHL);
-                    } else if (var->reg == REG_IX) {
-                        emit(S_IXHL);
-                    }
+                    emitWordLoad(var->reg);
                 }
             } else {
                 /* Variable is on stack - load from (iy + offset) */
@@ -290,8 +277,7 @@ void emitExpr(struct expr *e)
             } else {
                 /* Register type can't do indirect addressing - fall back */
                 /* Load pointer to HL first, then indirect load */
-                if (var->reg == REG_B || var->reg == REG_C ||
-                    var->reg == REG_Bp || var->reg == REG_Cp) {
+                if (byteRegName(var->reg)) {
                     /* Single byte register shouldn't hold pointer, but handle it */
                     emit(S_WARNBPTR);
                 }

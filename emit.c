@@ -238,12 +238,8 @@ static void emitStmt(struct stmt *s)
                 var = findVar(stripVarPfx(cond->left->symbol));
             }
 
-            if (var && (var->reg == REG_BC || var->reg == REG_BCp)) {
-                if (var->reg == REG_BC) {
-                    emit(S_ABCORC);
-                } else {
-                    emit(S_EXXABCORC);
-                }
+            if (var && bcOrCIdx(var->reg)) {
+                emit(bcOrCIdx(var->reg));
                 freeExpr(cond);
                 if (invertCond && s->expr != cond) {
                     free(s->expr);

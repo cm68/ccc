@@ -101,40 +101,38 @@ void emitIncDec(struct expr *e)
     var_name = stripVarPfx(symbol);
     var = findVar(var_name);
 
+    /* Use actual variable size if available (placeholder size may be wrong for SYM nodes) */
+    if (var) size = var->size;
+
     if (var && var->reg != REG_NO) {
         /* Variable is register-allocated */
         if (size == 1) {
             /* Byte register */
-            const char *reg_name = (var->reg == REG_B || var->reg == REG_Bp) ? "b" : "c";
-            int use_alt = (var->reg == REG_Bp || var->reg == REG_Cp);
-
-            if (use_alt) emit(S_EXX);
-            if (is_post) fdprintf(outFd, "\tld a, %s\n", reg_name);
+            const char *rn = byteRegName(var->reg);
+            if (isAltReg(var->reg)) emit(S_EXX);
+            if (is_post) fdprintf(outFd, "\tld a, %s\n", rn);
             if (amount == 1) {
-                fdprintf(outFd, "\t%s %s\n", is_dec ? "dec" : "inc", reg_name);
+                fdprintf(outFd, "\t%s %s\n", is_dec ? "dec" : "inc", rn);
             } else {
-                fdprintf(outFd, "\t%s a, %ld\n", is_dec ? "sub" : "add", amount);
-                fdprintf(outFd, "\tld %s, a\n", reg_name);
+                fdprintf(outFd, "\t%s a, %ld\n\tld %s, a\n",
+                         is_dec ? "sub" : "add", amount, rn);
             }
-            if (!is_post) fdprintf(outFd, "\tld a, %s\n", reg_name);
-            if (use_alt) emit(S_EXX);
+            if (!is_post) fdprintf(outFd, "\tld a, %s\n", rn);
+            if (isAltReg(var->reg)) emit(S_EXX);
         } else {
             /* Word register */
-            const char *reg_pair = (var->reg == REG_IX) ? "ix" : "bc";
-            int use_alt = (var->reg == REG_BCp);
-
-            if (use_alt) emit(S_EXX);
-            if (is_post) emit(var->reg == REG_IX ? S_IXHL : S_BCHL);
+            const char *rp = wordRegName(var->reg);
+            if (isAltReg(var->reg)) emit(S_EXX);
+            if (is_post) emitWordLoad(var->reg);
             if (amount == 1) {
-                fdprintf(outFd, "\t%s %s\n", is_dec ? "dec" : "inc", reg_pair);
+                fdprintf(outFd, "\t%s %s\n", is_dec ? "dec" : "inc", rp);
             } else {
-                fdprintf(outFd, "\tpush %s\n", reg_pair);
-                fdprintf(outFd, "\tld de, %ld\n", amount);
-                fdprintf(outFd, is_dec ? "\tor a\n\tsbc %s, de\n" : "\tadd %s, de\n", reg_pair);
+                fdprintf(outFd, "\tpush %s\n\tld de, %ld\n", rp, amount);
+                fdprintf(outFd, is_dec ? "\tor a\n\tsbc %s, de\n" : "\tadd %s, de\n", rp);
                 emit(S_POPHPOST);
             }
-            if (!is_post) emit(var->reg == REG_IX ? S_IXHL : S_BCHL);
-            if (use_alt) emit(S_EXX);
+            if (!is_post) emitWordLoad(var->reg);
+            if (isAltReg(var->reg)) emit(S_EXX);
         }
     } else if (var) {
         /* Variable is on stack */
@@ -319,7 +317,7 @@ void emitAddConst(struct expr *e)
     const char *var_name = stripVarPfx(e->left->left->symbol);
     struct local_var *var = findVar(var_name);
 
-    if (var && (var->reg == REG_BC || var->reg == REG_BCp || var->reg == REG_IX)) {
+    if (var && wordRegName(var->reg)) {
         long const_val = 0;
         int is_small = 0;
 
@@ -337,13 +335,11 @@ void emitAddConst(struct expr *e)
         freeExpr(e->left);
 
         if (is_small && const_val <= 4) {
-            emit(var->reg == REG_BC ? S_BCHL :
-                 var->reg == REG_BCp ? S_EXXBCHL : S_IXHL);
+            emitWordLoad(var->reg);
             fdprintf(outFd, "%s\n", e->asm_block);
         } else {
             fdprintf(outFd, "\tld hl, %ld\n", const_val);
-            emit(var->reg == REG_BC ? S_ADDHLBC :
-                 var->reg == REG_BCp ? S_EXXBCPOPHL : S_IXSWPHL);
+            emitAddHLReg(var->reg);
         }
     } else {
         emitExpr(e->left);
@@ -384,20 +380,17 @@ static int emitByteCp(struct expr *e)
         }
         break;
     case CMP_REG:
-        if (cmp.reg == REG_B) {
-            fdprintf(outFd, "\tcp b\n");
-        } else if (cmp.reg == REG_C || cmp.reg == REG_BC) {
-            /* BC: low byte is in C */
-            fdprintf(outFd, "\tcp c\n");
-        } else if (cmp.reg == REG_Bp) {
-            fdprintf(outFd, "\texx\n\tcp b\n\texx\n");
-        } else if (cmp.reg == REG_Cp) {
-            fdprintf(outFd, "\texx\n\tcp c\n\texx\n");
-        } else if (cmp.reg == REG_IX) {
-            /* IX byte: use (ix+0) */
+        if (cmp.reg == REG_IX) {
             fdprintf(outFd, "\tcp (ix + 0)\n");
+        } else if (byteRegName(cmp.reg) || cmp.reg == REG_BC) {
+            /* BC low byte is C */
+            const char *rn = cmp.reg == REG_BC ? "c" : byteRegName(cmp.reg);
+            if (isAltReg(cmp.reg))
+                fdprintf(outFd, "\texx\n\tcp %s\n\texx\n", rn);
+            else
+                fdprintf(outFd, "\tcp %s\n", rn);
         } else {
-            return 0;  /* Unknown register */
+            return 0;
         }
         break;
     case CMP_IX:
