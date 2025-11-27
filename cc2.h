@@ -66,6 +66,7 @@ struct labelMap {
     int label;                  // Label number
     int target;                 // What this label jumps to (-1 if not a pure jump)
     enum jump_type jump_type;   // Type of jump at this label
+    int refcnt;                 // Number of jumps targeting this label
 };
 
 /*

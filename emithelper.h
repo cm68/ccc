@@ -73,6 +73,8 @@ int extLabelNum(const char *asm_text);
 int extJumpTarget(const char *asm_text, enum jump_type *jtype);
 void addLabelMap(int from, int to, enum jump_type type);
 int resolveLabel(int label);
+void refLabel(int label);
+int getLabelRef(int label);
 void scanExprJumps(struct expr *e);
 void scanLabJumps(struct stmt *s);
 void emitJump(const char *instr, const char *prefix, int label);

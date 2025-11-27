@@ -62,6 +62,7 @@ static void emitStmt(struct stmt *s)
     if (s->type == 'I') {
         int invertCond = 0;
         int use_dir_jump = 0;
+        int skip_else = 0;
         struct expr *cond = s->expr;
 
         /* Handle constant conditions - skip condition evaluation entirely */
@@ -221,6 +222,11 @@ static void emitStmt(struct stmt *s)
             goto emit_if_body;
         }
 
+        /* Check if else branch is just a GOTO - can jump directly to target */
+        {
+        const char *else_goto = s->else_branch ? elseGotoTgt(s->else_branch) : NULL;
+        skip_else = (else_goto != NULL);
+
         /* Check if this is a byte operation that sets Z flag */
         if (cond && (cond->op == '&' || cond->op == '|' || cond->op == '^') &&
             cond->left && cond->left->size == 1 &&
@@ -247,10 +253,11 @@ static void emitStmt(struct stmt *s)
             fnZValid = 0;
 
             if (s->label2 > 0) {
-                if (invertCond) {
-                    emitJump("jp nz,", "_if_", s->label);
+                if (skip_else) {
+                    /* Jump directly to else's goto target */
+                    fdprintf(outFd, "\t%s %s\n", invertCond ? "jp nz," : "jp z,", else_goto);
                 } else {
-                    emitJump("jp z,", "_if_", s->label);
+                    emitJump(invertCond ? "jp nz," : "jp z,", "_if_", s->label);
                 }
             } else {
                 if (invertCond) {
@@ -294,10 +301,16 @@ static void emitStmt(struct stmt *s)
             }
 
             if (s->label2 > 0) {
-                emitJump(invertCond ? "jp nz," : "jp z,", "_if_", s->label);
+                if (skip_else) {
+                    /* Jump directly to else's goto target */
+                    fdprintf(outFd, "\t%s %s\n", invertCond ? "jp nz," : "jp z,", else_goto);
+                } else {
+                    emitJump(invertCond ? "jp nz," : "jp z,", "_if_", s->label);
+                }
             } else {
                 emitJump(invertCond ? "jp nz," : "jp z,", "_if_end_", s->label);
             }
+        }
         }
 
 emit_if_body:
@@ -308,8 +321,10 @@ emit_if_body:
 
         if (s->label2 > 0) {
             emitJump("jp", "_if_end_", s->label2);
-            fdprintf(outFd, "_if_%d:\n", s->label);
-            if (s->else_branch) emitStmt(s->else_branch);
+            if (!skip_else) {
+                fdprintf(outFd, "_if_%d:\n", s->label);
+                if (s->else_branch) emitStmt(s->else_branch);
+            }
         }
 
         if (s->next) emitStmt(s->next);

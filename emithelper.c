@@ -211,8 +211,41 @@ void addLabelMap(int from, int to, enum jump_type type) {
         labelMap[lblMapCnt].label = from;
         labelMap[lblMapCnt].target = to;
         labelMap[lblMapCnt].jump_type = type;
+        labelMap[lblMapCnt].refcnt = 0;
         lblMapCnt++;
     }
+}
+
+/* Find or create label entry, return index */
+static int findLabel(int label) {
+    int i;
+    for (i = 0; i < lblMapCnt; i++) {
+        if (labelMap[i].label == label) return i;
+    }
+    /* Create new entry */
+    if (lblMapCnt < MAX_LABELS) {
+        labelMap[lblMapCnt].label = label;
+        labelMap[lblMapCnt].target = -1;
+        labelMap[lblMapCnt].jump_type = JMP_UNCOND;
+        labelMap[lblMapCnt].refcnt = 0;
+        return lblMapCnt++;
+    }
+    return -1;
+}
+
+/* Increment reference count for a label */
+void refLabel(int label) {
+    int idx = findLabel(label);
+    if (idx >= 0) labelMap[idx].refcnt++;
+}
+
+/* Get reference count for a label */
+int getLabelRef(int label) {
+    int i;
+    for (i = 0; i < lblMapCnt; i++) {
+        if (labelMap[i].label == label) return labelMap[i].refcnt;
+    }
+    return 0;
 }
 
 int resolveLabel(int label) {
