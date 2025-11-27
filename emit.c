@@ -56,13 +56,14 @@ static void emitStmt(struct stmt *s)
 
         /* Handle logical OR (||) - short circuit: jump to then if any true */
         if (cond && cond->op == 'h') {
-            const char *true_lbl = s->label2 > 0 ? "_if_end_" : "_if_";
-            int true_num = s->label2 > 0 ? s->label2 : s->label;
+            /* For OR: jump to then-body when true, else-branch when all false
+             * true_lbl = start of then body (_if_then_N)
+             * false_lbl = else branch (_if_N) or end (_if_end_N) if no else */
             const char *false_lbl = s->label2 > 0 ? "_if_" : "_if_end_";
             int false_num = s->label;
 
             /* Flatten the OR tree and emit each comparison */
-            /* For (a || b || c), emit: test a, jnz true; test b, jnz true; test c, jz false */
+            /* For (a || b || c), emit: test a, jnz then; test b, jnz then; test c, jz else */
             struct expr *stack[32];
             int sp = 0;
             struct expr *e = cond;
@@ -81,10 +82,11 @@ static void emitStmt(struct stmt *s)
                 e_size = e->size;
                 emitExpr(e);
                 if (fnZValid) {
+                    /* Z=1 means comparison true, jump to then body */
                     if (invertCond) {
-                        emitJump("jp nz,", true_lbl, true_num);
+                        emitJump("jp nz,", "_if_then_", s->label);
                     } else {
-                        emitJump("jp z,", true_lbl, true_num);
+                        emitJump("jp z,", "_if_then_", s->label);
                     }
                     fnZValid = 0;
                 } else {
@@ -93,20 +95,22 @@ static void emitStmt(struct stmt *s)
                     } else {
                         emit(S_AHORL);
                     }
+                    /* Z=0 means nonzero/true, jump to then body */
                     if (invertCond) {
-                        emitJump("jp z,", true_lbl, true_num);
+                        emitJump("jp z,", "_if_then_", s->label);
                     } else {
-                        emitJump("jp nz,", true_lbl, true_num);
+                        emitJump("jp nz,", "_if_then_", s->label);
                     }
                 }
             }
-            /* Last operand - if false, jump to else */
+            /* Last operand - if false, jump to else; if true, fall through to then */
             if (sp > 0) {
                 int e_size;
                 e = stack[--sp];
                 e_size = e->size;
                 emitExpr(e);
                 if (fnZValid) {
+                    /* Z=1 means true, Z=0 means false -> jump to else */
                     if (invertCond) {
                         emitJump("jp z,", false_lbl, false_num);
                     } else {
@@ -119,6 +123,7 @@ static void emitStmt(struct stmt *s)
                     } else {
                         emit(S_AHORL);
                     }
+                    /* Z=1 means zero/false -> jump to else */
                     if (invertCond) {
                         emitJump("jp nz,", false_lbl, false_num);
                     } else {
@@ -255,6 +260,8 @@ static void emitStmt(struct stmt *s)
         }
 
 emit_if_body:
+        /* Emit label for OR short-circuit jumps to then body */
+        fdprintf(outFd, "_if_then_%d:\n", s->label);
         /* Emit then branch */
         if (s->then_branch) emitStmt(s->then_branch);
 
