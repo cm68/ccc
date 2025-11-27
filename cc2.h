@@ -163,6 +163,8 @@ extern struct expr *fnDECache;  /* Shallow copy of expr in DE */
 extern struct expr *fnACache;   /* Shallow copy of byte expr in A */
 extern char fnIXAOfs;           /* When >=0, A has byte from (ix+fnIXAOfs) */
 extern char fnIXHLOfs;          /* When >=0, HL has word from (ix+fnIXHLOfs) */
+extern char fnIYHLOfs;          /* When valid, HL has word from (iy+fnIYHLOfs) */
+extern char fnIYHLValid;        /* 1 if fnIYHLOfs is valid */
 
 /* Forward declarations from util.c */
 int fdprintf(unsigned char fd, const char *fmt, ...);

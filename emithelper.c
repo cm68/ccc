@@ -155,6 +155,7 @@ isMangledName(const char *name)
 
 /* IY-indexed memory access */
 void loadWordIY(char offset) {
+    if (fnIYHLValid && fnIYHLOfs == offset) return;  /* Already in HL */
     if (offset >= 0) {
         fdprintf(outFd, "\tld l, (iy + %d)\n", offset);
         fdprintf(outFd, "\tld h, (iy + %d)\n", offset + 1);
@@ -162,6 +163,9 @@ void loadWordIY(char offset) {
         fdprintf(outFd, "\tld l, (iy - %d)\n", -offset);
         fdprintf(outFd, "\tld h, (iy - %d)\n", -offset - 1);
     }
+    clearHL();
+    fnIYHLOfs = offset;
+    fnIYHLValid = 1;
 }
 
 void loadBCIY(char offset) {
@@ -182,6 +186,10 @@ void storeWordIY(char offset) {
         fdprintf(outFd, "\tld (iy - %d), l\n", -offset);
         fdprintf(outFd, "\tld (iy - %d), h\n", -offset - 1);
     }
+    /* After store, HL still has the value */
+    fnIYHLOfs = offset;
+    fnIYHLValid = 1;
+    fnIXHLOfs = -1;  /* Invalidate IX cache */
 }
 
 void loadByteIY(char offset, char is_param) {
@@ -579,6 +587,7 @@ void clearHL() {
         fnHLCache = NULL;
     }
     fnIXHLOfs = -1;
+    fnIYHLValid = 0;
 }
 
 void clearDE() {
