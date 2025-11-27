@@ -331,8 +331,13 @@ void scanLabJumps(struct stmt *s) {
 }
 
 void emitJump(const char *instr, const char *prefix, int label) {
-    int resolved = resolveLabel(label);
-    fdprintf(outFd, "\t%s %s%d\n", instr, prefix, resolved);
+    if (label < 0) {
+        /* label < 0 means prefix is the complete label symbol */
+        fdprintf(outFd, "\t%s %s\n", instr, prefix);
+    } else {
+        int resolved = resolveLabel(label);
+        fdprintf(outFd, "\t%s %s%d\n", instr, prefix, resolved);
+    }
 }
 
 /* Callee-save helpers */

@@ -12,6 +12,22 @@
 #include "emithelper.h"
 
 /*
+ * Check if else branch is just a GOTO, return target symbol or NULL
+ */
+static const char *elseGotoTgt(struct stmt *else_branch) {
+    struct stmt *s = else_branch;
+    /* Unwrap block: (B (G label)) */
+    if (s && s->type == 'B' && s->then_branch && !s->then_branch->next) {
+        s = s->then_branch;
+    }
+    /* Check for GOTO */
+    if (s && s->type == 'G' && s->symbol) {
+        return s->symbol;
+    }
+    return NULL;
+}
+
+/*
  * Walk statement tree, emit assembly, and free nodes
  */
 static int stmt_count = 0;
@@ -58,9 +74,12 @@ static void emitStmt(struct stmt *s)
         if (cond && cond->op == 'h') {
             /* For OR: jump to then-body when true, else-branch when all false
              * true_lbl = start of then body (_if_then_N)
-             * false_lbl = else branch (_if_N) or end (_if_end_N) if no else */
-            const char *false_lbl = s->label2 > 0 ? "_if_" : "_if_end_";
+             * false_lbl = else branch (_if_N) or end (_if_end_N) if no else
+             * Optimize: if else is just GOTO, jump directly to its target */
+            const char *else_goto = s->else_branch ? elseGotoTgt(s->else_branch) : NULL;
+            const char *false_lbl = else_goto ? else_goto : (s->label2 > 0 ? "_if_" : "_if_end_");
             int false_num = s->label;
+            int use_symbol = (else_goto != NULL);
 
             /* Flatten the OR tree and emit each comparison */
             /* For (a || b || c), emit: test a, jnz then; test b, jnz then; test c, jz else */
@@ -106,15 +125,16 @@ static void emitStmt(struct stmt *s)
             /* Last operand - if false, jump to else; if true, fall through to then */
             if (sp > 0) {
                 int e_size;
+                int lbl = use_symbol ? -1 : false_num;
                 e = stack[--sp];
                 e_size = e->size;
                 emitExpr(e);
                 if (fnZValid) {
                     /* Z=1 means true, Z=0 means false -> jump to else */
                     if (invertCond) {
-                        emitJump("jp z,", false_lbl, false_num);
+                        emitJump("jp z,", false_lbl, lbl);
                     } else {
-                        emitJump("jp nz,", false_lbl, false_num);
+                        emitJump("jp nz,", false_lbl, lbl);
                     }
                     fnZValid = 0;
                 } else {
@@ -125,9 +145,9 @@ static void emitStmt(struct stmt *s)
                     }
                     /* Z=1 means zero/false -> jump to else */
                     if (invertCond) {
-                        emitJump("jp nz,", false_lbl, false_num);
+                        emitJump("jp nz,", false_lbl, lbl);
                     } else {
-                        emitJump("jp z,", false_lbl, false_num);
+                        emitJump("jp z,", false_lbl, lbl);
                     }
                 }
             }
@@ -136,8 +156,11 @@ static void emitStmt(struct stmt *s)
 
         /* Handle logical AND (&&) - short circuit: jump to else if any false */
         if (cond && cond->op == 'j') {
-            const char *false_lbl = s->label2 > 0 ? "_if_" : "_if_end_";
+            /* Optimize: if else is just GOTO, jump directly to its target */
+            const char *else_goto = s->else_branch ? elseGotoTgt(s->else_branch) : NULL;
+            const char *false_lbl = else_goto ? else_goto : (s->label2 > 0 ? "_if_" : "_if_end_");
             int false_num = s->label;
+            int lbl = else_goto ? -1 : false_num;
 
             /* Flatten the AND tree and emit each comparison */
             struct expr *stack[32];
@@ -159,9 +182,9 @@ static void emitStmt(struct stmt *s)
                 emitExpr(e);
                 if (fnZValid) {
                     if (invertCond) {
-                        emitJump("jp z,", false_lbl, false_num);
+                        emitJump("jp z,", false_lbl, lbl);
                     } else {
-                        emitJump("jp nz,", false_lbl, false_num);
+                        emitJump("jp nz,", false_lbl, lbl);
                     }
                     fnZValid = 0;
                 } else {
@@ -171,9 +194,9 @@ static void emitStmt(struct stmt *s)
                         emit(S_AHORL);
                     }
                     if (invertCond) {
-                        emitJump("jp nz,", false_lbl, false_num);
+                        emitJump("jp nz,", false_lbl, lbl);
                     } else {
-                        emitJump("jp z,", false_lbl, false_num);
+                        emitJump("jp z,", false_lbl, lbl);
                     }
                 }
             }
