@@ -170,6 +170,7 @@ static void emitStmt(struct stmt *s)
                     }
                 }
             }
+            skip_else = (else_goto != NULL);
             goto emit_if_body;
         }
 
@@ -219,6 +220,7 @@ static void emitStmt(struct stmt *s)
                     }
                 }
             }
+            skip_else = (else_goto != NULL);
             goto emit_if_body;
         }
 
@@ -319,12 +321,10 @@ emit_if_body:
         /* Emit then branch */
         if (s->then_branch) emitStmt(s->then_branch);
 
-        if (s->label2 > 0) {
+        if (s->label2 > 0 && !skip_else) {
             emitJump("jp", "_if_end_", s->label2);
-            if (!skip_else) {
-                fdprintf(outFd, "_if_%d:\n", s->label);
-                if (s->else_branch) emitStmt(s->else_branch);
-            }
+            fdprintf(outFd, "_if_%d:\n", s->label);
+            if (s->else_branch) emitStmt(s->else_branch);
         }
 
         if (s->next) emitStmt(s->next);
