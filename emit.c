@@ -32,6 +32,16 @@ static void emitStmt(struct stmt *s)
         fdprintf(outFd, "%s\n", s->asm_block);
     }
 
+    /* Handle LABEL statements - emit a label */
+    if (s->type == 'L' && s->symbol) {
+        fdprintf(outFd, "%s:\n", s->symbol);
+    }
+
+    /* Handle GOTO statements - emit unconditional jump */
+    if (s->type == 'G' && s->symbol) {
+        fdprintf(outFd, "\tjp %s\n", s->symbol);
+    }
+
     /* Handle IF statements specially */
     if (s->type == 'I') {
         int invertCond = 0;
@@ -42,6 +52,127 @@ static void emitStmt(struct stmt *s)
         if (cond && cond->op == '!') {
             invertCond = 1;
             cond = cond->left;  /* unwrap ! */
+        }
+
+        /* Handle logical OR (||) - short circuit: jump to then if any true */
+        if (cond && cond->op == 'h') {
+            const char *true_lbl = s->label2 > 0 ? "_if_end_" : "_if_";
+            int true_num = s->label2 > 0 ? s->label2 : s->label;
+            const char *false_lbl = s->label2 > 0 ? "_if_" : "_if_end_";
+            int false_num = s->label;
+
+            /* Flatten the OR tree and emit each comparison */
+            /* For (a || b || c), emit: test a, jnz true; test b, jnz true; test c, jz false */
+            struct expr *stack[32];
+            int sp = 0;
+            struct expr *e = cond;
+
+            /* Collect all OR operands by traversing left spine */
+            while (e && e->op == 'h' && sp < 31) {
+                stack[sp++] = e->right;
+                e = e->left;
+            }
+            if (e) stack[sp++] = e;
+
+            /* Emit in reverse order (leftmost first) */
+            while (sp > 1) {
+                int e_size;
+                e = stack[--sp];
+                e_size = e->size;
+                emitExpr(e);
+                if (fnZValid) {
+                    if (invertCond) {
+                        emitJump("jp nz,", true_lbl, true_num);
+                    } else {
+                        emitJump("jp z,", true_lbl, true_num);
+                    }
+                    fnZValid = 0;
+                } else {
+                    if (e_size == 1) {
+                        fdprintf(outFd, "\tor a\n");
+                    } else {
+                        emit(S_AHORL);
+                    }
+                    if (invertCond) {
+                        emitJump("jp z,", true_lbl, true_num);
+                    } else {
+                        emitJump("jp nz,", true_lbl, true_num);
+                    }
+                }
+            }
+            /* Last operand - if false, jump to else */
+            if (sp > 0) {
+                int e_size;
+                e = stack[--sp];
+                e_size = e->size;
+                emitExpr(e);
+                if (fnZValid) {
+                    if (invertCond) {
+                        emitJump("jp z,", false_lbl, false_num);
+                    } else {
+                        emitJump("jp nz,", false_lbl, false_num);
+                    }
+                    fnZValid = 0;
+                } else {
+                    if (e_size == 1) {
+                        fdprintf(outFd, "\tor a\n");
+                    } else {
+                        emit(S_AHORL);
+                    }
+                    if (invertCond) {
+                        emitJump("jp nz,", false_lbl, false_num);
+                    } else {
+                        emitJump("jp z,", false_lbl, false_num);
+                    }
+                }
+            }
+            goto emit_if_body;
+        }
+
+        /* Handle logical AND (&&) - short circuit: jump to else if any false */
+        if (cond && cond->op == 'j') {
+            const char *false_lbl = s->label2 > 0 ? "_if_" : "_if_end_";
+            int false_num = s->label;
+
+            /* Flatten the AND tree and emit each comparison */
+            struct expr *stack[32];
+            int sp = 0;
+            struct expr *e = cond;
+
+            /* Collect all AND operands by traversing left spine */
+            while (e && e->op == 'j' && sp < 31) {
+                stack[sp++] = e->right;
+                e = e->left;
+            }
+            if (e) stack[sp++] = e;
+
+            /* Emit in reverse order (leftmost first) */
+            while (sp > 0) {
+                int e_size;
+                e = stack[--sp];
+                e_size = e->size;
+                emitExpr(e);
+                if (fnZValid) {
+                    if (invertCond) {
+                        emitJump("jp z,", false_lbl, false_num);
+                    } else {
+                        emitJump("jp nz,", false_lbl, false_num);
+                    }
+                    fnZValid = 0;
+                } else {
+                    if (e_size == 1) {
+                        fdprintf(outFd, "\tor a\n");
+                    } else {
+                        emit(S_AHORL);
+                    }
+                    if (invertCond) {
+                        emitJump("jp nz,", false_lbl, false_num);
+                    } else {
+                        emitJump("jp z,", false_lbl, false_num);
+                    }
+                }
+            }
+            goto emit_if_body;
         }
 
         /* Check if this is a byte operation that sets Z flag */
@@ -61,6 +192,13 @@ static void emitStmt(struct stmt *s)
             if (invertCond && s->expr != cond) {
                 free(s->expr);
             }
+
+            /* Check if this is a comparison (Z=1 means true) vs bitwise (Z=1 means zero/false) */
+            if (fnZValid) {
+                /* Z from comparison: Z=1 means true, invert jump sense */
+                invertCond = !invertCond;
+            }
+            fnZValid = 0;
 
             if (s->label2 > 0) {
                 if (invertCond) {
@@ -94,11 +232,19 @@ static void emitStmt(struct stmt *s)
                     free(s->expr);
                 }
             } else {
+                int cmpSense = 0;  /* 1 if Z from comparison (Z=1 means true) */
                 emitExpr(s->expr);
-                if (!fnZValid) {
+                if (fnZValid) {
+                    /* Z from comparison: Z=1 means true, need opposite jump */
+                    cmpSense = 1;
+                } else {
+                    /* Need to test HL: Z=1 means HL=0 (false) */
                     emit(S_AHORL);
                 }
                 fnZValid = 0;
+                /* With cmpSense: jp nz skips when false (Z=0)
+                 * Without:       jp z skips when false (Z=1, HL=0) */
+                if (cmpSense) invertCond = !invertCond;
             }
 
             if (s->label2 > 0) {
@@ -108,6 +254,7 @@ static void emitStmt(struct stmt *s)
             }
         }
 
+emit_if_body:
         /* Emit then branch */
         if (s->then_branch) emitStmt(s->then_branch);
 

@@ -1571,6 +1571,8 @@ static void generateStmt(struct stmt *s)
     }
 
     /* Recursively generate code for expressions */
+    /* For expression statements, mark the expr as unused (result discarded) */
+    if (s->type == 'E' && s->expr) s->expr->flags |= E_UNUSED;
     if (s->expr) generateExpr(s->expr);
     if (s->expr2) generateExpr(s->expr2);
     if (s->expr3) generateExpr(s->expr3);

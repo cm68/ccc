@@ -71,6 +71,7 @@ int fnDEValid;
 int fnZValid;
 struct expr *fnHLCache;
 struct expr *fnDECache;
+struct expr *fnACache;
 
 /* Segment tracking */
 #define SEG_NONE 0
@@ -1354,10 +1355,8 @@ doLabel(void)
     skip();
     label_name = readSymbol();
 
-    /* Diagnostic output to stderr */
-
-    /* Store label name in statement node */
-    s->symbol = label_name;
+    /* Store label name in statement node - must strdup since readSymbol uses static buffer */
+    s->symbol = strdup(label_name);
 
     expect(')');
     return s;
@@ -1373,10 +1372,8 @@ doGoto(void)
     skip();
     label_name = readSymbol();
 
-    /* Diagnostic output to stderr */
-
-    /* Store label name in statement node */
-    s->symbol = label_name;
+    /* Store label name in statement node - must strdup since readSymbol uses static buffer */
+    s->symbol = strdup(label_name);
 
     expect(')');
     return s;
@@ -1620,6 +1617,7 @@ doFunction(char rettype)
     fnZValid = 0;
     fnHLCache = NULL;
     fnDECache = NULL;
+    fnACache = NULL;
 
     if (TRACE(T_AST)) {
         fdprintf(2, "doFunction: before expect ')' curchar=%d '%c'\n",

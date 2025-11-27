@@ -80,6 +80,15 @@ void emitExpr(struct expr *e)
             return;
         }
 
+        /* Check A cache for byte values */
+        if (e->size == 1 && fnACache && matchesCache(e, fnACache)) {
+            /* Value already in A - no load needed */
+            e->flags |= E_GENERATED;
+            freeExpr(e->left);
+            freeNode(e);
+            return;
+        }
+
         /* Look up variable BEFORE emitting child (which frees it) */
         if (TRACE(T_EXPR)) {
             fdprintf(2, "  looking up var, e->left=%p\n", (void*)e->left);
@@ -89,14 +98,9 @@ void emitExpr(struct expr *e)
             if (TRACE(T_EXPR)) {
                 fdprintf(2, "  found symbol: %s\n", e->left->symbol);
             }
+            /* Save symbol for cache before freeing - always save it */
+            global_sym = e->left->symbol;
             var = findVar(e->left->symbol);
-            /* If not found as local var, it's a global - save symbol name */
-            if (!var) {
-                if (TRACE(T_EXPR)) {
-                    fdprintf(2, "  not a local, saving as global_sym\n");
-                }
-                global_sym = e->left->symbol;
-            }
         }
 
         /* Free child without emitting (we'll emit the load ourselves) */
@@ -157,18 +161,29 @@ void emitExpr(struct expr *e)
             }
         }
 
-        /* Value now in HL (TOS) - Z flag may be invalid */
+        /* Value now in A (byte) or HL (word) - Z flag may be invalid */
         fnZValid = 0;
 
-        /* Save expression to cache */
-        if (TRACE(T_EXPR)) {
-            fdprintf(2, "  clearing HL cache\n");
+        /* Save expression to appropriate cache using saved symbol info */
+        if (e->size == 1) {
+            /* Byte value in A - update A cache */
+            clearA();
+            if (global_sym) {
+                fnACache = mkVarCache(global_sym, 1);
+            }
+        } else {
+            /* Word value in HL - update HL cache */
+            if (TRACE(T_EXPR)) {
+                fdprintf(2, "  clearing HL cache\n");
+            }
+            clearHL();
+            if (TRACE(T_EXPR)) {
+                fdprintf(2, "  making shallow copy\n");
+            }
+            if (global_sym) {
+                fnHLCache = mkVarCache(global_sym, e->size);
+            }
         }
-        clearHL();
-        if (TRACE(T_EXPR)) {
-            fdprintf(2, "  making shallow copy\n");
-        }
-        fnHLCache = shallowCopy(e);
         if (TRACE(T_EXPR)) {
             fdprintf(2, "  freeing node and returning\n");
         }

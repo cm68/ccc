@@ -158,6 +158,7 @@ extern int fnDEValid;           /* 1 if DE holds valid value */
 extern int fnZValid;            /* 1 if Z flag valid for HL test */
 extern struct expr *fnHLCache;  /* Shallow copy of expr in HL */
 extern struct expr *fnDECache;  /* Shallow copy of expr in DE */
+extern struct expr *fnACache;   /* Shallow copy of byte expr in A */
 
 /* Forward declarations from util.c */
 int fdprintf(unsigned char fd, const char *fmt, ...);

@@ -51,6 +51,7 @@ struct expr *mkVarCache(const char *sym, int size);
 /* Cache management */
 void clearHL();
 void clearDE();
+void clearA();
 void pushStack();
 void popStack();
 void invalStack();

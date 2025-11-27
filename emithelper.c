@@ -501,13 +501,13 @@ struct expr *mkVarCache(const char *symbol, int size) {
     memset(sym_node, 0, sizeof(struct expr));
     sym_node->op = '$';
     sym_node->symbol = (char *)symbol;
-    sym_node->size = size;
+    sym_node->size = 2;  /* SYM node is always pointer size (2 bytes) */
 
     deref_node = malloc(sizeof(struct expr));
     if (!deref_node) { free(sym_node); return NULL; }
     memset(deref_node, 0, sizeof(struct expr));
     deref_node->op = 'M';
-    deref_node->size = size;
+    deref_node->size = size;  /* DEREF size is the dereferenced value size */
     deref_node->left = sym_node;
     return deref_node;
 }
@@ -526,6 +526,13 @@ void clearDE() {
     if (fnDECache) {
         freeExpr(fnDECache);
         fnDECache = NULL;
+    }
+}
+
+void clearA() {
+    if (fnACache) {
+        freeExpr(fnACache);
+        fnACache = NULL;
     }
 }
 
@@ -559,6 +566,7 @@ void invalStack() {
     fnZValid = 0;
     clearHL();
     clearDE();
+    clearA();
 }
 
 int isBinopWAccum(unsigned char op) {
