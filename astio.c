@@ -13,6 +13,8 @@
 #include "astio.h"
 #include "cc2.h"
 
+#define BUFSIZE 512
+
 /* Parser state */
 static int inFd;
 static char buf[BUFSIZE];
@@ -304,70 +306,6 @@ readType(void)
 
     typebuf[i] = '\0';
     return typebuf;
-}
-
-/*
- * Save current parser state
- */
-void
-saveParseSt(struct parser_state *state)
-{
-    state->saved_buf = malloc(BUFSIZE);
-    memcpy(state->saved_buf, buf, bufValid);
-    state->saved_buf_pos = bufPos;
-    state->saved_bufvld = bufValid;
-    state->savedLineNum = lineNum;
-    state->saved_curchar = curchar;
-    state->saved_in_fd = inFd;
-}
-
-/*
- * Restore parser state (can be called multiple times)
- */
-void
-restoreParse(struct parser_state *state)
-{
-    memcpy(buf, state->saved_buf, state->saved_bufvld);
-    bufPos = state->saved_buf_pos;
-    bufValid = state->saved_bufvld;
-    lineNum = state->savedLineNum;
-    curchar = state->saved_curchar;
-    inFd = state->saved_in_fd;
-}
-
-/*
- * Free parser state buffer (call when done with saved state)
- */
-void
-freeParseSt(struct parser_state *state)
-{
-    free(state->saved_buf);
-    state->saved_buf = 0;
-}
-
-/*
- * Set up parser to read from a string buffer
- */
-void
-setupStrInput(char *str, int len)
-{
-    /* Copy string to main buffer */
-    if (len > BUFSIZE - 1) {
-        len = BUFSIZE - 1;
-    }
-    memcpy(buf, str, len);
-    buf[len] = 0;
-    bufPos = 0;
-    bufValid = len;
-    inFd = -1;  /* Mark as string input */
-
-    /* Initialize curchar */
-    if (len > 0) {
-        curchar = buf[0];
-        bufPos = 1;
-    } else {
-        curchar = 0;
-    }
 }
 
 /*

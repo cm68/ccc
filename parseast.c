@@ -86,13 +86,6 @@ switchToSeg(int seg)
     currentSeg = seg;
 }
 
-/* Output buffering for symbol declarations */
-static char *outputBuffer = NULL;
-static int outBufSize = 0;
-static int outBufUsed = 0;
-static int realOutFd = 1;  /* Real output file descriptor */
-static int bufEnabled = 0;
-
 /*
  * Tree node allocation helpers
  */
@@ -831,134 +824,40 @@ static struct expr *
 doCall(unsigned char op)
 {
     struct expr *e;
-    char arg_buf[512];   /* Buffer to capture argument expressions */
-    int arg_start[32];  /* Start position of each argument */
-    int arg_len[32];    /* Length of each argument */
-    struct expr *args[32];  /* Parsed argument trees */
-    int arg_count;
-    int arg_buf_pos;
+    struct expr *args[32];
+    struct expr *wrapper, *prev;
+    int arg_count = 0;
     int i;
-    char func_buf[512];
-    int func_len;
-    int depth;
-    struct parser_state saved_state;
-    struct expr *prev;
 
     e = newExpr('@');  /* '@' for call */
-    arg_count = 0;
-    arg_buf_pos = 0;
-    func_len = 0;
 
-/* debug output removed */
     skip();
-
-    /* Collect function expression into func_buf */
-    depth = 0;
-
-    while (1) {
-        if (curchar == 0) break;
-
-        if (curchar == '(') {
-            depth++;
-        } else if (curchar == ')') {
-            if (depth == 0) {
-                /* End of function expr, no args */
-                break;
-            }
-            depth--;
-        } else if (depth == 0 && 
-                (curchar == ' ' || curchar == '\t' || curchar == '\n')) {
-            /* Whitespace at depth 0 = separator between fn and first arg */
-            skip();
-            break;
-        }
-
-        if (func_len < sizeof(func_buf) - 1) {
-            func_buf[func_len++] = curchar;
-        }
-        nextchar();
-    }
-    func_buf[func_len] = 0;
-
-    /* Collect arguments into arg_buf */
-    while (curchar != ')' && curchar != 0) {
-        skip();
-        if (curchar == ')') break;
-
-        arg_start[arg_count] = arg_buf_pos;
-        depth = 0;
-
-        /* Copy one argument expression */
-        while (1) {
-            if (curchar == 0) break;
-
-            if (curchar == '(') {
-                depth++;
-            } else if (curchar == ')') {
-                if (depth == 0) {
-                    /* End of arguments */
-                    break;
-                }
-                depth--;
-            } else if (depth == 0 && 
-                    (curchar == ' ' || curchar == '\t' || curchar == '\n')) {
-                /* Whitespace at depth 0 = end of this arg */
-                skip();
-                break;
-            }
-
-            if (arg_buf_pos < sizeof(arg_buf) - 1) {
-                arg_buf[arg_buf_pos++] = curchar;
-            }
-            nextchar();
-        }
-
-        arg_len[arg_count] = arg_buf_pos - arg_start[arg_count];
-        arg_count++;
-
-        if (arg_count >= 32) break;  /* Max 32 arguments */
-    }
-
-    /* Now recursively parse: function and arguments */
-    saveParseSt(&saved_state);
-
-    /* Parse function expression */
-/* debug output removed */    setupStrInput(func_buf, func_len);
     e->left = parseExpr();  /* function address */
-    restoreParse(&saved_state);
 
     /* Parse arguments */
-    for (i = 0; i < arg_count; i++) {
-/* debug output removed */        setupStrInput(&arg_buf[arg_start[i]], arg_len[i]);
-        args[i] = parseExpr();
-        restoreParse(&saved_state);
+    skip();
+    while (curchar != ')' && curchar != 0) {
+        if (arg_count >= 32) break;
+        args[arg_count++] = parseExpr();
+        skip();
     }
 
-    /* Done with saved state */
-    freeParseSt(&saved_state);
-
-    /* Build argument chain using wrapper nodes to avoid corrupting argument trees */
-    /* Store arg_count in value field */
+    /* Build argument chain using wrapper nodes */
     e->value = arg_count;
-    if (arg_count > 0) {
-        struct expr *wrappers[32];  /* Wrapper nodes for each argument */
-
-        /* Create wrapper nodes for each argument */
-        for (i = 0; i < arg_count; i++) {
-            wrappers[i] = newExpr(',');  /* ',' represents argument wrapper */
-            wrappers[i]->left = args[i];  /* Actual argument in left */
-            wrappers[i]->right = NULL;    /* Will be set to next wrapper */
+    prev = NULL;
+    for (i = 0; i < arg_count; i++) {
+        wrapper = newExpr(',');
+        wrapper->left = args[i];
+        wrapper->right = NULL;
+        if (prev) {
+            prev->right = wrapper;
+        } else {
+            e->right = wrapper;
         }
-
-        /* Chain wrappers together via right pointers */
-        e->right = wrappers[0];
-        for (i = 0; i < arg_count - 1; i++) {
-            wrappers[i]->right = wrappers[i+1];
-        }
-        /* Last wrapper's right is already NULL */
+        prev = wrapper;
     }
 
-/* debug output removed */    expect(')');
+    expect(')');
     return e;
 }
 
