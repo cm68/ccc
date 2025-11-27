@@ -20,24 +20,47 @@
  *   3. Emit right child (result in PRIMARY)
  *   4. Emit call instruction (operates on SECONDARY and PRIMARY)
  */
+static int exprCount = 0;
 void emitExpr(struct function_ctx *ctx, struct expr *e)
 {
     if (!e) return;
+    exprCount++;
+    if (TRACE(T_EXPR)) {
+        fdprintf(2, "emitExpr: %d calls, op=%c (0x%x)\n", exprCount, e->op, e->op);
+    }
+    if (exprCount > 100000) {
+        fdprintf(2, "emitExpr: exceeded 100000 calls, op=%c\n", e->op);
+        exit(1);
+    }
 
     /* Handle DEREF specially - need to check register allocation */
+    if (TRACE(T_EXPR)) {
+        fdprintf(2, "  asm_block=%p\n", (void*)e->asm_block);
+    }
     if (e->op == 'M' && e->asm_block &&
             strstr(e->asm_block, "DEREF_PLACEHOLDER")) {
         struct local_var *var = NULL;
         const char *global_sym = NULL;
         struct expr *temp;
+        if (TRACE(T_EXPR)) {
+            fdprintf(2, "  => DEREF_PLACEHOLDER case\n");
+            fdprintf(2, "  hl_cache=%p\n", (void*)ctx->hl_cache);
+            fdprintf(2, "  calling matchesCache\n");
+        }
 
         /* Check cache first - if value already in HL, no code needed */
         if (ctx->hl_cache && matchesCache(e, ctx->hl_cache)) {
+            if (TRACE(T_EXPR)) {
+                fdprintf(2, "  matched hl_cache\n");
+            }
             /* Value already in HL - mark as generated and return */
             e->flags |= E_GENERATED;
             freeExpr(e->left);
             freeNode(e);
             return;
+        }
+        if (TRACE(T_EXPR)) {
+            fdprintf(2, "  checking de_cache\n");
         }
 
         /* Check if value is in DE - swap if so */
@@ -58,17 +81,32 @@ void emitExpr(struct function_ctx *ctx, struct expr *e)
         }
 
         /* Look up variable BEFORE emitting child (which frees it) */
+        if (TRACE(T_EXPR)) {
+            fdprintf(2, "  looking up var, e->left=%p\n", (void*)e->left);
+        }
 
         if (e->left && e->left->op == '$' && e->left->symbol) {
+            if (TRACE(T_EXPR)) {
+                fdprintf(2, "  found symbol: %s\n", e->left->symbol);
+            }
             var = findVar(ctx, e->left->symbol);
             /* If not found as local var, it's a global - save symbol name */
             if (!var) {
+                if (TRACE(T_EXPR)) {
+                    fdprintf(2, "  not a local, saving as global_sym\n");
+                }
                 global_sym = e->left->symbol;
             }
         }
 
         /* Free child without emitting (we'll emit the load ourselves) */
+        if (TRACE(T_EXPR)) {
+            fdprintf(2, "  calling freeExpr on e->left\n");
+        }
         freeExpr(e->left);
+        if (TRACE(T_EXPR)) {
+            fdprintf(2, "  after freeExpr\n");
+        }
 
         /* Now emit the load inst based on current register allocation */
         if (var) {
@@ -123,11 +161,23 @@ void emitExpr(struct function_ctx *ctx, struct expr *e)
         ctx->zflag_valid = 0;
 
         /* Save expression to cache */
+        if (TRACE(T_EXPR)) {
+            fdprintf(2, "  clearing HL cache\n");
+        }
         clearHL(ctx);
+        if (TRACE(T_EXPR)) {
+            fdprintf(2, "  making shallow copy\n");
+        }
         ctx->hl_cache = shallowCopy(e);
+        if (TRACE(T_EXPR)) {
+            fdprintf(2, "  freeing node and returning\n");
+        }
 
         /* Free this node and return */
         freeNode(e);
+        if (TRACE(T_EXPR)) {
+            fdprintf(2, "  DEREF case done\n");
+        }
         return;
     }
     /* Handle DEREF with struct member access (marked by flags in codegen) */
@@ -247,7 +297,13 @@ void emitExpr(struct function_ctx *ctx, struct expr *e)
     /* Handle ASSIGN specially - need to check register allocation */
     else if (e->op == '=' && e->asm_block &&
             strstr(e->asm_block, "ASSIGN_PLACEHOLDER")) {
+        if (TRACE(T_EXPR)) {
+            fdprintf(2, "  calling emitAssign\n");
+        }
         emitAssign(ctx, e);
+        if (TRACE(T_EXPR)) {
+            fdprintf(2, "  emitAssign returned, about to return from emitExpr\n");
+        }
         return;
     }
     /* Optimize ADD with constant where left is register-allocated variable */

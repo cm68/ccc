@@ -532,6 +532,38 @@ int main() {
 
 **Test**: tests/hello.c demonstrates implicit printf declaration
 
+### Dead Code Elimination
+
+The compiler eliminates unreachable code for constant conditional expressions at
+parse time:
+
+**Constant `if (0)`**:
+- The then-block is skipped entirely (not parsed into AST)
+- If an else-block exists, it becomes unconditional
+- Example: `if (0) { dead; } else { live; }` → just `live;`
+
+**Constant `if (non-zero)`**:
+- The then-block becomes unconditional
+- The else-block is skipped entirely
+- Example: `if (1) { live; } else { dead; }` → just `live;`
+
+**Constant expressions**:
+- Arithmetic and comparison expressions are folded at parse time
+- Example: `if (2 + 2 == 5) { dead; }` → eliminated (condition is 0)
+
+**Implementation**:
+- `skipstmt()` function parses and discards statements without generating AST
+- Detects `E_CONST` flag on condition expression
+- Uses dummy IF parent so `statement()` returns after one statement
+
+**Benefits**:
+- Reduces code size for conditional compilation patterns
+- Enables `if (0)` style code exclusion
+- Works with VERBOSE/TRACE macros when DEBUG not defined (compiler removes
+  `if (0)` blocks)
+
+**Test**: tests/deadcode.c demonstrates dead code elimination
+
 ### Ternary Conditional Operator
 
 The ternary conditional operator (? :) is fully implemented with proper

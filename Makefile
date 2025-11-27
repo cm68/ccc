@@ -46,7 +46,7 @@ CC1OBJECTS = cc1.o error.o lex.o io.o macro.o kw.o util.o tokenlist.o \
 CC2OBJECTS = cc2.o util.o astio.o parseast.o codegen.o emithelper.o emitexpr.o emitops.o emit.o
 
 HEADERS = cc1.h token.h
-GENERATED = enumlist.h tokenlist.c error.h debug.h debugtags.c op_pri.h
+GENERATED = enumlist.h tokenlist.c error.h debug.h debugtags.c op_pri.h trace2.h tracetags.c
 
 # All C source files (generated + corresponding to .o files)
 CFILES = cc1.c error.c lex.c io.c macro.c kw.c util.c unixlib.c \
@@ -55,7 +55,7 @@ CFILES = cc1.c error.c lex.c io.c macro.c kw.c util.c unixlib.c \
 	tokenlist.c debugtags.c
 
 # All header files (manually written + generated)
-HFILES = $(HEADERS) astio.h emithelper.h enumlist.h error.h debug.h op_pri.h
+HFILES = $(HEADERS) astio.h emithelper.h enumlist.h error.h debug.h op_pri.h trace2.h
 
 # All source files
 SOURCES = $(CFILES) $(HFILES)
@@ -206,6 +206,13 @@ debug.h debugtags.c: ./makedebug.sh
 	./makedebug.sh
 
 #
+# generate the trace2.h file from makedebug2.sh
+# which scans cc2 sources for TRACE(tag)
+#
+trace2.h tracetags.c: ./makedebug2.sh
+	./makedebug2.sh
+
+#
 # process the errorcodes file, which generates error.h, containing the
 # error codes and corresponding error strings
 #
@@ -255,3 +262,4 @@ expr.o: expr.c op_pri.h
 outast.o: outast.c
 astio.o: astio.c astio.h cc2.h
 parseast.o: parseast.c astio.h cc2.h
+$(CC2OBJECTS): trace2.h cc2.h

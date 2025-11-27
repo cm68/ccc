@@ -87,7 +87,8 @@ static const char *asmstr[] = {
     "",                                 /* S_EMPTY */
     "\n",                               /* S_NEWLINE */
     "\tpop ix\n",                       /* S_POPIX */
-    "\tpop bc\n"                        /* S_POPBC */
+    "\tpop bc\n",                       /* S_POPBC */
+    "\texx\n\tpop bc\n\texx\n"          /* S_EXXPOPBC */
 };
 
 void emit(unsigned char idx) {
@@ -343,14 +344,17 @@ int getUsedRegs(struct local_var *locals) {
             used |= 1;
         if (var->reg == REG_IX)
             used |= 2;
+        if (var->reg == REG_BCp || var->reg == REG_Bp || var->reg == REG_Cp)
+            used |= 4;
     }
     return used;
 }
 
 int calleeSavSz(int used) {
     int size = 0;
-    if (used & 1) size += 2;
-    if (used & 2) size += 2;
+    if (used & 1) size += 2;  /* BC */
+    if (used & 2) size += 2;  /* IX */
+    if (used & 4) size += 2;  /* BC' */
     return size;
 }
 
@@ -408,6 +412,7 @@ void emitFnProlog(char *name, char *params, char *rettype, int frame_size,
         int used = getUsedRegs(locals);
         if (used & 1) emit(S_PUSHBC);
         if (used & 2) emit(S_PUSHIX);
+        if (used & 4) emit(S_EXXBC);  /* save BC' via exx; push bc; exx */
     }
 
     for (var = locals; var; var = var->next) {
@@ -458,16 +463,33 @@ struct expr *shallowCopy(struct expr *e) {
 
 /* freeExpr is defined in parseast.c */
 
+static int cache_depth = 0;
 int matchesCache(struct expr *e1, struct expr *e2) {
-    if (!e1 || !e2) return 0;
-    if (e1->op != e2->op) return 0;
-    if (e1->size != e2->size) return 0;
+    int result;
+    cache_depth++;
+    if (TRACE(T_CACHE)) {
+        fdprintf(2, "    matchesCache depth=%d e1=%p e2=%p\n", cache_depth, (void*)e1, (void*)e2);
+    }
+    if (cache_depth > 100) {
+        fdprintf(2, "matchesCache: depth > 100, loop?\n");
+        exit(1);
+    }
+    if (!e1 || !e2) { cache_depth--; return 0; }
+    if (e1->op != e2->op) { cache_depth--; return 0; }
+    if (e1->size != e2->size) { cache_depth--; return 0; }
 
     if (e1->op == '$') {
-        if (!e1->symbol || !e2->symbol) return 0;
-        return strcmp(e1->symbol, e2->symbol) == 0;
+        if (!e1->symbol || !e2->symbol) { cache_depth--; return 0; }
+        result = strcmp(e1->symbol, e2->symbol) == 0;
+        cache_depth--;
+        return result;
     }
-    if (e1->op == 'M') return matchesCache(e1->left, e2->left);
+    if (e1->op == 'M') {
+        result = matchesCache(e1->left, e2->left);
+        cache_depth--;
+        return result;
+    }
+    cache_depth--;
     return 0;
 }
 
@@ -554,9 +576,19 @@ int isBinopWAccum(unsigned char op) {
 /* Variable load/store with cache management */
 void loadVar(struct function_ctx *ctx, const char *sym, char sz, char docache) {
     const char *vn = stripVarPfx(sym);
-    struct local_var *v = findVar(ctx, vn);
+    struct local_var *v;
+    if (TRACE(T_VAR)) {
+        fdprintf(2, "  loadVar: sym=%s (1)\n", sym);
+    }
+    v = findVar(ctx, vn);
+    if (TRACE(T_VAR)) {
+        fdprintf(2, "  loadVar: findVar returned %p (2)\n", (void*)v);
+    }
 
     if (v && v->reg != REG_NO) {
+        if (TRACE(T_VAR)) {
+            fdprintf(2, "  loadVar: branch A\n");
+        }
         if (sz == 1) {
             if (v->reg == REG_B) emit(S_LDAB);
             else if (v->reg == REG_C) emit(S_LDAC);
@@ -568,6 +600,9 @@ void loadVar(struct function_ctx *ctx, const char *sym, char sz, char docache) {
             else if (v->reg == REG_IX) emit(S_IXHL);
         }
     } else if (v) {
+        if (TRACE(T_VAR)) {
+            fdprintf(2, "  loadVar: branch B\n");
+        }
         if (sz == 1) loadByteIY(v->offset, v->offset >= 0);
         else if (sz == 2) loadWordIY(v->offset);
         else if (sz == 4) {
@@ -576,6 +611,10 @@ void loadVar(struct function_ctx *ctx, const char *sym, char sz, char docache) {
         }
     } else {
         const char *s = stripDollar(sym);
+        if (TRACE(T_VAR)) {
+            fdprintf(2, "  loadVar: branch C (global)\n");
+        }
+        addRefSym(s);
         if (sz == 1) fdprintf(outFd, "\tld a, (%s)\n", s);
         else if (sz == 2) fdprintf(outFd, "\tld hl, (%s)\n", s);
         else if (sz == 4) {
@@ -593,7 +632,14 @@ void loadVar(struct function_ctx *ctx, const char *sym, char sz, char docache) {
 
 void storeVar(struct function_ctx *ctx, const char *sym, char sz, char docache) {
     const char *vn = stripVarPfx(sym);
-    struct local_var *v = findVar(ctx, vn);
+    struct local_var *v;
+    if (TRACE(T_VAR)) {
+        fdprintf(2, "  storeVar: sym=%s\n", sym);
+    }
+    v = findVar(ctx, vn);
+    if (TRACE(T_VAR)) {
+        fdprintf(2, "  storeVar: findVar returned %p\n", (void*)v);
+    }
 
     if (v && v->reg != REG_NO) {
         if (sz == 1) {
@@ -618,6 +664,9 @@ void storeVar(struct function_ctx *ctx, const char *sym, char sz, char docache) 
         }
     } else {
         const char *s = stripDollar(sym);
+        if (TRACE(T_VAR)) {
+            fdprintf(2, "  storeVar: global store sz=%d\n", sz);
+        }
         if (sz == 1) fdprintf(outFd, "\tld (%s), a\n", s);
         else if (sz == 2) fdprintf(outFd, "\tld (%s), hl\n", s);
         else if (sz == 4) {
@@ -626,5 +675,11 @@ void storeVar(struct function_ctx *ctx, const char *sym, char sz, char docache) 
             fdprintf(outFd, "\tld (%s+2), hl\n", s);
             emit(S_EXX);
         }
+        if (TRACE(T_VAR)) {
+            fdprintf(2, "  storeVar: done\n");
+        }
+    }
+    if (TRACE(T_VAR)) {
+        fdprintf(2, "  storeVar: returning\n");
     }
 }

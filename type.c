@@ -100,12 +100,10 @@ popScope()
             break;
         names[lastname] = 0;
 
-#ifdef DEBUG
         if (VERBOSE(V_SYM)) {
             fdprintf(2,"popScope: remove %s%s from lookup\n",
                 n->is_tag ? "tag:":"", n->name);
         }
-#endif
 
         // Note: We don't free the name structure here because it may still
         // be referenced by the AST (statement trees via SYM expressions).
@@ -322,14 +320,12 @@ newName(char *name, kind k, struct type *t, unsigned char is_tag)
     n->is_tag = is_tag;
     n->kind = k;
     names[++lastname] = n;
-#ifdef DEBUG
     if (VERBOSE(V_SYM)) {
         fdprintf(2,"newName: level:%d index:%3d %s %s%s\n",
             lexlevel, lastname,
             k < sizeof(kindname)/sizeof(kindname[0]) ? kindname[k] : "unkn",
             is_tag ? "tag:":"", name);
     }
-#endif
 
 	return (n);
 }
@@ -400,7 +396,6 @@ addName(struct name *n)
     n->level = lexlevel;
     names[++lastname] = n;
 
-#ifdef DEBUG
     if (VERBOSE(V_SYM)) {
         fdprintf(2,"addName: level:%d index:%3d %s %s%s\n",
             lexlevel, lastname,
@@ -408,7 +403,6 @@ addName(struct name *n)
                 kindname[n->kind] : "unkn",
             n->is_tag ? "tag:":"", n->name);
     }
-#endif
 }
 
 /*

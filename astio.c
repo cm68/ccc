@@ -49,6 +49,11 @@ unsigned char
 nextchar(void)
 {
     if (bufPos >= bufValid) {
+        /* String input mode: EOF when buffer exhausted */
+        if (inFd < 0) {
+            curchar = 0;
+            return 0;
+        }
         bufValid = read(inFd, buf, BUFSIZE);
         if (bufValid <= 0) {
             curchar = 0;

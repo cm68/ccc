@@ -198,7 +198,7 @@ lookupc(char *s, char c)
 int
 fdprintf(unsigned char fd, const char *fmt, ...)
 {
-    static char buf[4096];
+    static char buf[1024];
     va_list args;
     int len;
     int result;

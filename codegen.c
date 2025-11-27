@@ -68,6 +68,7 @@ findVar(struct function_ctx *ctx, const char *symbol)
 {
     const char *var_name;
     struct local_var *var;
+    int count = 0;
 
     if (!symbol || !ctx) return NULL;
 
@@ -82,10 +83,27 @@ findVar(struct function_ctx *ctx, const char *symbol)
     }
 
     /* Search locals list */
+    if (TRACE(T_VAR)) {
+        fdprintf(2, "      findVar(%p): looking for '%s' in locals\n", (void*)ctx, var_name);
+    }
     for (var = ctx->locals; var; var = var->next) {
+        count++;
+        if (TRACE(T_VAR)) {
+            fdprintf(2, "      findVar: checking '%s' (count=%d)\n", var->name, count);
+        }
+        if (count > 1000) {
+            fdprintf(2, "findVar: loop detected, count > 1000\n");
+            exit(1);
+        }
         if (strcmp(var->name, var_name) == 0) {
+            if (TRACE(T_VAR)) {
+                fdprintf(2, "      findVar: found!\n");
+            }
             return var;
         }
+    }
+    if (TRACE(T_VAR)) {
+        fdprintf(2, "      findVar: not found\n");
     }
 
     return NULL;
@@ -645,6 +663,7 @@ static char *buildStkCln(int bytes);
  *   - Binary operators: left PRIMARY, move to SECONDARY, right PRIMARY, operate
  *   - M (DEREF) operations generate actual load instructions
  */
+static int expr_count = 0;
 static void generateExpr(struct function_ctx *ctx, struct expr *e)
 {
     char buf[256];
@@ -654,133 +673,32 @@ static void generateExpr(struct function_ctx *ctx, struct expr *e)
     int i;
 
     if (!e) return;
+    expr_count++;
+    if (expr_count > 100000) {
+        fdprintf(2, "generateExpr: exceeded 100000 calls, op=%c\n", e->op);
+        exit(1);
+    }
 
-    /* Special handling for CALL - need custom code generation */
+    /* Special handling for CALL - emitCall handles it directly from AST */
     if (e->op == '@') {
-        /* CALL node: left = function, right = argument chain, value = arg count */
-        /* NOTE: Don't do normal traversal - we handle it manually here */
-        char call_buf[4096];
-        int bufPos = 0;
-
         arg_count = e->value;
 
-        /* Collect arguments from wrapper chain (wrappers chained via right) */
+        /* Optimize constant arguments: if constant fits in byte, use byte */
         arg = e->right;
         for (i = 0; i < arg_count && arg; i++) {
-            /* Unwrap: wrapper node has argument in left, next wrapper in right */
-            args[i] = arg->left;  /* Actual argument expression */
-            arg = arg->right;      /* Next wrapper */
+            if (arg->left && arg->left->op == 'C' &&
+                arg->left->value >= 0 && arg->left->value <= 255) {
+                arg->left->size = 1;
+            }
+            arg = arg->right;
         }
 
-        /* Use actual collected count, not expected (handles AST mismatches) */
-        arg_count = i;
-
-        /* Optimize constant arguments: if constant fits in byte, generate as byte */
-        for (i = 0; i < arg_count; i++) {
-            if (args[i]->op == 'C' && args[i]->value >= 0 && args[i]->value <= 255) {
-                args[i]->size = 1;  /* Force byte size for small constants */
-            }
-        }
-
-        /* Generate code for each child expression first */
-        for (i = 0; i < arg_count; i++) {
-            generateExpr(ctx, args[i]);
-        }
-        if (e->left) {
-            generateExpr(ctx, e->left);
-        }
-
-        /* Now build the call sequence:
-         * 1. Push arguments in reverse order (right to left)
-         * 2. Call function
-         * 3. Clean up stack
-         */
-        call_buf[0] = '\0';
-
-        /* Push arguments in reverse order */
-        for (i = arg_count - 1; i >= 0; i--) {
-            /* Emit the argument's code (load into PRIMARY) */
-            if (args[i]->asm_block && args[i]->asm_block[0]) {
-                /* Check if this is a DEREF_PLACEHOLDER - can't defer these */
-                if (strstr(args[i]->asm_block, "DEREF_PLACEHOLDER:")) {
-                    /* Simple variable load - just note it, will handle below */
-                    /* Don't emit placeholder */
-                } else if (strstr(args[i]->asm_block, "DEREF_INDIRECT_B:")) {
-                    /* Indirect load placeholder - don't emit */
-                } else {
-                    /* Normal asm_block - emit it */
-                    bufPos += snprintf(call_buf + bufPos, sizeof(call_buf) - bufPos,
-                                       "%s%s\n", bufPos > 0 ? "" : "", args[i]->asm_block);
-                }
-            }
-
-            /* For plain SYM (address), load symbol address into hl */
-            /* Only handle global symbols ($_xxx), not local variables ($xxx) */
-            if (args[i]->op == '$' && args[i]->symbol &&
-                args[i]->symbol[0] == '$' && args[i]->symbol[1] == '_') {
-                const char *sym_name = args[i]->symbol;
-                /* Strip leading $ from symbol name */
-                if (sym_name[0] == '$') sym_name++;
-                bufPos += snprintf(call_buf + bufPos, sizeof(call_buf) - bufPos,
-                                   "\tld hl, %s  ; symbol address for arg %d\n", sym_name, i);
-            }
-            /* For local variable addresses, emit a placeholder comment */
-            else if (args[i]->op == '$' && args[i]->symbol &&
-                     args[i]->symbol[0] == '$' && args[i]->symbol[1] != '_') {
-                /* Local variable - need to compute address relative to IY */
-                bufPos += snprintf(call_buf + bufPos, sizeof(call_buf) - bufPos,
-                                   "\t; local addr arg %d: %s\n", i, args[i]->symbol);
-            }
-            /* For DEREF of SYM, emit inline load based on register allocation */
-            /* This must be done now, not deferred, since args are baked into call */
-            else if (args[i]->op == 'M' && args[i]->left &&
-                     args[i]->left->op == '$' && args[i]->left->symbol) {
-                /* This is a simple variable dereference - needs inline code */
-                /* Can't use placeholder since CALL asm_block is emitted verbatim */
-                /* Just emit a comment for now - actual code will be in emit phase */
-                /* Actually, for CALL args we MUST resolve immediately */
-                bufPos += snprintf(call_buf + bufPos, sizeof(call_buf) - bufPos,
-                                   "\t; load arg %d: %s\n", i, args[i]->left->symbol);
-            }
-
-            /* Push PRIMARY onto stack */
-            if (args[i]->size == 1) {
-                /* Byte argument - push AF (data in A, flags in F) */
-                bufPos += snprintf(call_buf + bufPos, sizeof(call_buf) - bufPos,
-                                   "\tpush af  ; push byte arg %d\n", i);
-            } else {
-                /* Word argument */
-                bufPos += snprintf(call_buf + bufPos, sizeof(call_buf) - bufPos,
-                                   "\tpush hl  ; push arg %d\n", i);
-            }
-        }
-
-        /* Generate the call instruction */
-        if (e->left && e->left->op == '$' && e->left->symbol) {
-            const char *func_name = e->left->symbol;
-            /* Strip leading $ from function name */
-            if (func_name[0] == '$') func_name++;
-
-            /* Track this function as referenced (for EXTERN declarations) */
-            addRefSym(func_name);
-
-            bufPos += snprintf(call_buf + bufPos, sizeof(call_buf) - bufPos,
-                               "\tcall %s", func_name);
-        } else {
-            /* Indirect call through register */
-            bufPos += snprintf(call_buf + bufPos, sizeof(call_buf) - bufPos,
-                               "\t; TODO: indirect call");
-        }
-
-        /* Don't clean up stack here - defer until after result is used */
-        /* Attach cleanup code to expression for later emission */
-        /* Optimization: only clean up if we're in a loop - otherwise framefree does it */
+        /* Stack cleanup in loops (framefree handles it otherwise) */
         if (arg_count > 0 && g_loop_depth > 0) {
             e->cleanup_block = buildStkCln(arg_count * 2);
         }
 
-        e->asm_block = strdup(call_buf);
-        return;  /* Early return - custom traversal done */
+        return;  /* emitCall will handle the rest */
     }
 
     /* Special handling for ternary operator (? :) */

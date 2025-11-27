@@ -6,7 +6,7 @@
 #ifndef ASTIO_H
 #define ASTIO_H
 
-#define BUFSIZE 4096  /* AST parser read buffer */
+#define BUFSIZE 512   /* AST parser read buffer */
 
 /*
  * Parser state for nested parsing (save/restore)

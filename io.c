@@ -124,11 +124,9 @@ addInclude(char *s)
     } else {
         includes = i;
     }
-#ifdef DEBUG
     if (VERBOSE(V_CPP)) {
         fdprintf(2,"addInclude: %s\n", s);
     }
-#endif
 }
 
 /*
@@ -170,7 +168,6 @@ insertfile(char *name, int sys)
     struct include *i;
 
 
-#ifdef DEBUG
     if (VERBOSE(V_IO)) {
         fdprintf(2,
             "insertfile: %s sys=%d curchar='%c'(0x%x) "
@@ -181,7 +178,6 @@ insertfile(char *name, int sys)
             column,
             tbtop ? tbtop->offset : -1);
     }
-#endif
 
 	t = malloc(sizeof(*t));
     t->fd = -1;  /* Initialize to indicate "not opened yet" */
@@ -276,11 +272,9 @@ insertmacro(char *name, char *macbuf)
 
 
     l = strlen(macbuf);         // our macro without the terminating null
-#ifdef DEBUG
     if (VERBOSE(V_MACRO)) {
         fdprintf(2,"insert macro %s %d $%s$\n", name, l, macbuf);
     }
-#endif
     t = tbtop;
 
     /* does it fit */
@@ -394,7 +388,6 @@ advance()
 again:
     t = tbtop;
 
-#ifdef DEBUG
     if (VERBOSE(V_IO)) {
         fdprintf(2,
             "Top of again: curchar='%c'(0x%x) nextchar='%c'(0x%x) "
@@ -403,7 +396,6 @@ again:
             nextchar >= 32 ? nextchar : '?', nextchar,
             t ? t->offset : -1);
     }
-#endif
 
     curchar = nextchar;
 
@@ -416,7 +408,6 @@ again:
     /* do we have a valid nextchar? */
 	if (t->offset + 1 < t->valid) {
             nextchar = t->storage[++t->offset];
-#ifdef DEBUG
             if (VERBOSE(V_IO)) {
                 fdprintf(2,
                     "Read nextchar from buffer: '%c'(0x%x) at "
@@ -424,7 +415,6 @@ again:
                     nextchar >= 32 ? nextchar : '?', nextchar,
                     t->offset);
             }
-#endif
             goto done;
 	}
 
@@ -441,12 +431,10 @@ again:
     /* closed file or empty macro buffer - pop */
     tbtop = t->prev;
     if (tbtop) {
-#ifdef DEBUG
         if (VERBOSE(V_IO)) {
             fdprintf(2,"Popping from %s, restoring column from %d to %d\n",
                    t->name, column, t->saved_column);
         }
-#endif
         /* Restore parent's state */
         column = t->saved_column;
         /* nextcol must match restored column */
@@ -500,7 +488,6 @@ done:
         nextcol++;
     }
     if (nextchar == '\t') nextchar = ' ';
-#ifdef DEBUG
     if (VERBOSE(V_IO)) {
         fdprintf(2,
             "After done: curchar='%c'(0x%x) nextchar='%c'(0x%x) "
@@ -509,7 +496,6 @@ done:
             nextchar >= 32 ? nextchar : '?', nextchar,
             column, nextcol);
     }
-#endif
     cdump("advance");
 }
 

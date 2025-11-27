@@ -207,6 +207,89 @@ clearDeclIni()
 void declaration();
 
 /*
+ * Skip a statement for dead code elimination
+ *
+ * Parses and discards a statement without generating any AST nodes.
+ * Used when eliminating unreachable code in constant conditionals.
+ * Handles all statement types including blocks, control structures,
+ * and nested statements.
+ */
+void
+skipstmt()
+{
+    int depth;
+
+    switch (cur.type) {
+    case BEGIN:
+        /* Skip entire block */
+        depth = 1;
+        gettoken();
+        while (depth > 0 && cur.type != E_O_F) {
+            if (cur.type == BEGIN) depth++;
+            else if (cur.type == END) depth--;
+            gettoken();
+        }
+        break;
+    case IF:
+        gettoken();
+        expect(LPAR, ER_S_NP);
+        parseExpr(PRI_ALL, 0);
+        expect(RPAR, ER_S_NP);
+        skipstmt();
+        if (cur.type == ELSE) {
+            gettoken();
+            skipstmt();
+        }
+        break;
+    case WHILE:
+        gettoken();
+        expect(LPAR, ER_S_NP);
+        parseExpr(PRI_ALL, 0);
+        expect(RPAR, ER_S_NP);
+        skipstmt();
+        break;
+    case DO:
+        gettoken();
+        skipstmt();
+        expect(WHILE, ER_S_DO);
+        expect(LPAR, ER_S_NP);
+        parseExpr(PRI_ALL, 0);
+        expect(RPAR, ER_S_NP);
+        expect(SEMI, ER_S_SN);
+        break;
+    case FOR:
+        gettoken();
+        expect(LPAR, ER_S_NP);
+        if (cur.type != SEMI) parseExpr(PRI_ALL, 0);
+        expect(SEMI, ER_S_SN);
+        if (cur.type != SEMI) parseExpr(PRI_ALL, 0);
+        expect(SEMI, ER_S_SN);
+        if (cur.type != RPAR) parseExpr(PRI_ALL, 0);
+        expect(RPAR, ER_S_NP);
+        skipstmt();
+        break;
+    case SWITCH:
+        gettoken();
+        expect(LPAR, ER_S_NP);
+        parseExpr(PRI_ALL, 0);
+        expect(RPAR, ER_S_NP);
+        skipstmt();
+        break;
+    case SEMI:
+        /* Empty statement */
+        gettoken();
+        break;
+    default:
+        /* Expression statement or other - skip to semicolon */
+        while (cur.type != SEMI && cur.type != E_O_F) {
+            gettoken();
+        }
+        if (cur.type == SEMI) gettoken();
+        break;
+    }
+}
+
+/*
  * Parse statements recursively - the heart of the compiler frontend
  *
  * This function implements the statement parser for C, handling all control
@@ -279,15 +362,48 @@ statement(struct stmt *parent)
             break;
 
         case IF:    // if <condition> <statement>
-            gettoken();
-            expect(LPAR, ER_S_NP);
-            st = makestmt(IF, parseExpr(PRI_ALL, parent));
-            st->parent = parent;  /* Set parent before recursive call */
-            expect(RPAR, ER_S_NP);
-            st->chain = statement(st);
-            if (cur.type == ELSE) {   // else <statement>
+            {
+                struct expr *cond;
+                struct stmt dummy;
                 gettoken();
-                st->otherwise = statement(st);
+                expect(LPAR, ER_S_NP);
+                cond = parseExpr(PRI_ALL, parent);
+                expect(RPAR, ER_S_NP);
+                /* Dead code elimination for constant conditions */
+                if (cond && (cond->flags & E_CONST)) {
+                    /*
+                     * Use a dummy IF parent so statement() returns
+                     * after one statement (see early-exit check at
+                     * end of statement() while loop)
+                     */
+                    dummy.op = IF;
+                    if (cond->v == 0) {
+                        /* if (0) - skip then-block, use else if present */
+                        skipstmt();
+                        if (cur.type == ELSE) {
+                            gettoken();
+                            st = statement(&dummy);
+                        } else {
+                            st = 0;  /* No statement */
+                        }
+                    } else {
+                        /* if (non-zero) - use then-block, skip else */
+                        st = statement(&dummy);
+                        if (cur.type == ELSE) {
+                            gettoken();
+                            skipstmt();
+                        }
+                    }
+                } else {
+                    /* Non-constant condition - normal IF */
+                    st = makestmt(IF, cond);
+                    st->parent = parent;
+                    st->chain = statement(st);
+                    if (cur.type == ELSE) {
+                        gettoken();
+                        st->otherwise = statement(st);
+                    }
+                }
             }
             break;
         case BREAK:
@@ -1026,11 +1142,9 @@ parseSclass()
 {
 	unsigned char ret = 0;
 	unsigned char bit;
-#ifdef DEBUG
 	if (VERBOSE(V_SYM)) {
 		fdprintf(2,"parseSclass: starting, cur.type=0x%02x\n", cur.type);
 	}
-#endif
 
 	while (1) {
 		switch (cur.type) {
@@ -1054,11 +1168,9 @@ parseSclass()
 			break;
 		case TYPEDEF:
 			bit = SC_TYPEDEF;
-#ifdef DEBUG
 			if (VERBOSE(V_SYM)) {
 				fdprintf(2,"parseSclass: FOUND TYPEDEF token!\n");
 			}
-#endif
 			break;
 		default:
 			bit = 0;
@@ -1171,12 +1283,10 @@ declaration()
         /* handle typedef declarations */
         if (sclass & SC_TYPEDEF) {
             /* change the name kind from var to tdef */
-#ifdef DEBUG
             if (VERBOSE(V_SYM)) {
                 fdprintf(2,"CONVERTING %s from var to tdef "
                          "(sclass=0x%02x)\n", v->name, sclass);
             }
-#endif
             v->kind = tdef;
             /* typedefs cannot have initializers or function bodies */
             if (cur.type == ASSIGN) {

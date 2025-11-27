@@ -52,13 +52,18 @@
 #include <sys/stat.h>
 #include <signal.h>
 
-#define	MAXTIME	30  /* 30 second timeout for debugging */
+#define	MAXTIME	30  /* timeout for debugging */
 
 /* Forward declaration from util.c */
 int fdprintf(int fd, const char *fmt, ...);
 
 /* Forward declaration from parseast.c */
 int parseAstFile(int inFd, int outFd);
+
+/* Trace flag for debugging (like verbose in cc1) */
+#ifdef DEBUG
+int trace = 0;
+#endif
 
 char *progname;
 
@@ -84,6 +89,10 @@ usage(char *complaint)
     fdprintf(2,
         "  -o <output>    Output file (default: <input>.s or stdout "
         "for stdin)\n");
+#ifdef DEBUG
+    fdprintf(2,
+        "  -v <level>     Trace level (hex bitmask, e.g., 0xff)\n");
+#endif
     fdprintf(2,
         "  <ast_file>     Input AST file (default: stdin, for filter "
         "mode)\n");
@@ -150,7 +159,20 @@ main(int argc, char **argv)
             explicit_out = 1;
             argc--;
             argv++;
-        } else if (strcmp(argv[0], "-h") == 0 ||
+        }
+#ifdef DEBUG
+        else if (strcmp(argv[0], "-v") == 0) {
+            argc--;
+            argv++;
+            if (argc == 0) {
+                usage("trace level not specified");
+            }
+            trace = strtol(argv[0], 0, 0);
+            argc--;
+            argv++;
+        }
+#endif
+        else if (strcmp(argv[0], "-h") == 0 ||
                    strcmp(argv[0], "--help") == 0) {
             usage(NULL);
         } else if (argv[0][0] == '-') {

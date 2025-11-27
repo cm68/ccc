@@ -165,6 +165,15 @@ struct function_ctx {
 int fdprintf(unsigned char fd, const char *fmt, ...);
 int fdputs(unsigned char fd, const char *s);
 
+/* Trace options (similar to VERBOSE in cc1) */
+#ifdef DEBUG
+#include "trace2.h"
+#define TRACE(x) (trace & (x))
+extern int trace;
+#else
+#define TRACE(x) 0
+#endif
+
 /* Global variables */
 extern unsigned char outFd;  /* Assembly output file descriptor (from parseast.c) */
 
@@ -193,6 +202,9 @@ void generateCode(struct function_ctx *ctx);
 void optFrmLayout(struct function_ctx *ctx);
 void allocRegs(struct function_ctx *ctx);
 struct local_var *findVar(struct function_ctx *ctx, const char *symbol);
+
+/* Symbol tracking (parseast.c) */
+void addRefSym(const char *name);
 
 /* Code emission functions (emit.c) */
 void emitAssembly(struct function_ctx *ctx, int outFd);

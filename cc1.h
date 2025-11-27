@@ -378,7 +378,11 @@ extern char *tokenname[];
 extern char *detoken[];
 
 /* debug options */
+#ifdef DEBUG
 #define VERBOSE(x) (verbose & (x))
+#else
+#define VERBOSE(x) (0)
+#endif
 extern int verbose;
 
 /* lexer flags */

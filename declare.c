@@ -314,12 +314,10 @@ declInternal(struct type **btp, unsigned char struct_elem)
             nm->next = 0;
             nm->u.init = 0;
             nm->u.body = 0;
-#ifdef DEBUG
             if (VERBOSE(V_SYM)) {
                 fdprintf(2, "struct_elem: %s (not added to names[])\n",
                          nm->name);
             }
-#endif
         } else {
             /* normal variable: add to global names[] array */
             /* Check if this name already exists at this scope */

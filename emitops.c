@@ -143,8 +143,14 @@ void emitIncDec(struct function_ctx *ctx, struct expr *e)
  */
 void emitAssign(struct function_ctx *ctx, struct expr *e)
 {
+    if (TRACE(T_ASSIGN)) {
+        fdprintf(2, "emitAssign: enter\n");
+    }
     /* Emit right child first (value goes to PRIMARY) */
     emitExpr(ctx, e->right);
+    if (TRACE(T_ASSIGN)) {
+        fdprintf(2, "emitAssign: after emitExpr(right)\n");
+    }
 
     /* Check for IX-indexed store */
     if ((e->flags & 1) && e->left && e->left->op == '+' &&
@@ -176,7 +182,13 @@ void emitAssign(struct function_ctx *ctx, struct expr *e)
 
     /* Simple variable assignment */
     if (e->left && e->left->op == '$' && e->left->symbol) {
+        if (TRACE(T_ASSIGN)) {
+            fdprintf(2, "emitAssign: simple variable\n");
+        }
         storeVar(ctx, e->left->symbol, e->size, 1);
+        if (TRACE(T_ASSIGN)) {
+            fdprintf(2, "emitAssign: after storeVar\n");
+        }
     }
     /* Pointer dereference */
     else if (e->left && e->left->op == 'M') {
@@ -230,6 +242,9 @@ void emitAssign(struct function_ctx *ctx, struct expr *e)
             emit(S_DEA);
             emit(S_EXX);
         }
+    }
+    if (TRACE(T_ASSIGN)) {
+        fdprintf(2, "emitAssign: returning\n");
     }
 }
 
@@ -343,127 +358,67 @@ void emitBinop(struct function_ctx *ctx, struct expr *e)
 }
 
 /*
- * Emit function call
+ * Emit function call directly from AST
+ * e->left = function (SYM node)
+ * e->right = wrapper chain of arguments
+ * e->value = argument count
  */
 void emitCall(struct function_ctx *ctx, struct expr *e)
 {
-    if (e->asm_block) {
-        char *line_start = e->asm_block;
-        char *line_end;
-        char line_buf[512];
-        int len;
+    struct expr *args[32];
+    struct expr *arg;
+    int arg_count, i;
+    const char *func_name;
 
-        while (*line_start) {
-            line_end = strchr(line_start, '\n');
-            if (line_end) {
-                len = line_end - line_start;
-                if (len >= sizeof(line_buf)) len = sizeof(line_buf) - 1;
-                memcpy(line_buf, line_start, len);
-                line_buf[len] = '\0';
-                line_start = line_end + 1;
-            } else {
-                strncpy(line_buf, line_start, sizeof(line_buf) - 1);
-                line_buf[sizeof(line_buf) - 1] = '\0';
-                line_start += strlen(line_buf);
-            }
+    /* Collect arguments from wrapper chain */
+    arg_count = e->value;
+    arg = e->right;
+    for (i = 0; i < arg_count && i < 32 && arg; i++) {
+        args[i] = arg->left;
+        arg = arg->right;
+    }
+    arg_count = i;
 
-            if (strstr(line_buf, "DEREF_PLACEHOLDER:") ||
-                strstr(line_buf, "; load arg")) {
-                char *sym_start;
-                char symbol[256];
-                const char *var_name;
-                struct local_var *var;
-                int j = 0;
+    /* Emit arguments in reverse order (C calling convention) */
+    for (i = arg_count - 1; i >= 0; i--) {
+        struct expr *a = args[i];
+        int arg_size;
+        if (!a) continue;
 
-                if (strstr(line_buf, "DEREF_PLACEHOLDER:")) {
-                    sym_start = strstr(line_buf, "DEREF_PLACEHOLDER:") + 18;
-                } else {
-                    sym_start = strchr(line_buf, ':');
-                    if (sym_start) {
-                        sym_start++;
-                        while (*sym_start == ' ') sym_start++;
-                    }
-                }
+        /* Save size before emitExpr frees the node */
+        arg_size = a->size;
 
-                if (sym_start) {
-                    while (sym_start[j] && sym_start[j] != ' ' &&
-                           sym_start[j] != '\t' && sym_start[j] != '\n' && j < 255) {
-                        symbol[j] = sym_start[j];
-                        j++;
-                    }
-                }
-                symbol[j] = '\0';
-                var_name = stripVarPfx(symbol);
-                var = findVar(ctx, var_name);
+        /* Emit code to load argument value */
+        emitExpr(ctx, a);
 
-                /* Look ahead for push hl optimization */
-                if (var && var->reg != REG_NO && var->size == 2 && line_end) {
-                    char *next_line_st = line_end + 1;
-                    char next_buf[512];
-                    char *next_end = strchr(next_line_st, '\n');
-                    int next_len;
-
-                    if (next_end) {
-                        next_len = next_end - next_line_st;
-                        if (next_len >= sizeof(next_buf)) next_len = sizeof(next_buf) - 1;
-                        memcpy(next_buf, next_line_st, next_len);
-                        next_buf[next_len] = '\0';
-                    } else {
-                        strncpy(next_buf, next_line_st, sizeof(next_buf) - 1);
-                        next_buf[sizeof(next_buf) - 1] = '\0';
-                        next_len = strlen(next_buf);
-                    }
-
-                    if (strstr(next_buf, "push hl")) {
-                        if (var->reg == REG_BC) {
-                            emit(S_PUSHBC);
-                        } else if (var->reg == REG_BCp) {
-                            emit(S_EXXBC);
-                        } else if (var->reg == REG_IX) {
-                            emit(S_PUSHIX);
-                        }
-                        line_start = next_end ? next_end + 1 : next_line_st + next_len;
-                        continue;
-                    }
-                }
-
-                if (var && var->reg != REG_NO) {
-                    if (var->reg == REG_BC) {
-                        emit(S_BCHL);
-                    } else if (var->reg == REG_BCp) {
-                        emit(S_EXXBCHL);
-                    } else if (var->reg == REG_IX) {
-                        emit(S_IXHL);
-                    }
-                } else if (var) {
-                    loadWordIY(var->offset);
-                }
-            } else {
-                fdprintf(outFd, "%s\n", line_buf);
-                if (strstr(line_buf, "call")) {
-                    char *call_pos = strstr(line_buf, "call");
-                    call_pos += 4;
-                    while (*call_pos == ' ' || *call_pos == '\t') call_pos++;
-                    if (isCmpFunc(call_pos)) {
-                        ctx->zflag_valid = 1;
-                    }
-                }
-            }
+        /* Push onto stack */
+        if (arg_size == 1) {
+            fdprintf(outFd, "\tpush af  ; arg %d\n", i);
+        } else {
+            fdprintf(outFd, "\tpush hl  ; arg %d\n", i);
         }
     }
 
+    /* Emit the call */
+    if (e->left && e->left->op == '$' && e->left->symbol) {
+        func_name = e->left->symbol;
+        if (func_name[0] == '$') func_name++;
+        addRefSym(func_name);
+        fdprintf(outFd, "\tcall %s\n", func_name);
+        if (isCmpFunc(func_name)) {
+            ctx->zflag_valid = 1;
+        }
+    } else {
+        fdprintf(outFd, "\t; TODO: indirect call\n");
+    }
+
+    /* Stack cleanup in loops (framefree handles it otherwise) */
     if (e->cleanup_block) {
         fdprintf(outFd, "%s", e->cleanup_block);
     }
 
-    {
-        int zflag_saved = ctx->zflag_valid;
-        invalStack(ctx);
-        ctx->zflag_valid = zflag_saved;
-    }
-
-    freeExpr(e->left);
-    freeExpr(e->right);
+    invalStack(ctx);
+    /* Don't free children - they're part of the AST tree */
 }
 
 /*

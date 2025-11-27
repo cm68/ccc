@@ -152,6 +152,7 @@ void emitJump(const char *instr, const char *prefix, int label);
 #define S_NEWLINE 72
 #define S_POPIX 73
 #define S_POPBC 74
+#define S_EXXPOPBC 75
 
 /* Global label map for jump optimization */
 #define MAX_LBLMAP 256

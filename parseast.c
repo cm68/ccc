@@ -831,7 +831,7 @@ static struct expr *
 doCall(unsigned char op)
 {
     struct expr *e;
-    char arg_buf[4096];  /* Buffer to capture argument expressions */
+    char arg_buf[512];   /* Buffer to capture argument expressions */
     int arg_start[32];  /* Start position of each argument */
     int arg_len[32];    /* Length of each argument */
     struct expr *args[32];  /* Parsed argument trees */
@@ -1069,7 +1069,10 @@ doBlock(void)
     first_child = NULL;
     last_child = NULL;
 
-/* debug output removed */
+    if (TRACE(T_AST)) {
+        fdprintf(2, "doBlock: enter, curchar=%d '%c'\n",
+            curchar, curchar > 31 ? curchar : '?');
+    }
     skip();
     while (curchar != ')') {
         /* Could be declaration or statement */
@@ -1185,7 +1188,11 @@ doBlock(void)
         skip();
     }
 
-/* debug output removed */    expect(')');
+    if (TRACE(T_AST)) {
+        fdprintf(2, "doBlock: exiting while, curchar=%d '%c'\n",
+            curchar, curchar > 31 ? curchar : '?');
+    }
+    expect(')');
 
     s->then_branch = first_child;  /* Use then_branch for block's child list */
     return s;
@@ -1361,7 +1368,7 @@ static struct stmt *
 doAsm(void)
 {
     struct stmt *s = newStmt('A');
-    char asm_buf[4096];
+    char asm_buf[512];
     char *p;
 
     /* ASM statement: (A "assembly text") */
@@ -1762,22 +1769,45 @@ doFunction(void)
     ctx.hl_cache = NULL;  /* No expression cached in HL */
     ctx.de_cache = NULL;  /* No expression cached in DE */
 
+    if (TRACE(T_AST)) {
+        fdprintf(2, "doFunction: before expect ')' curchar=%d '%c'\n",
+            curchar, curchar > 31 ? curchar : '?');
+    }
     expect(')');
+    if (TRACE(T_AST)) {
+        fdprintf(2, "doFunction: after expect ')' curchar=%d '%c'\n",
+            curchar, curchar > 31 ? curchar : '?');
+    }
 
     /* Phase 1.5: Assign stack frame offsets to local variables */
     assignFrmOff(&ctx);
+    if (TRACE(T_AST)) {
+        fdprintf(2, "doFunction: after assignFrmOff curchar=%d\n", curchar);
+    }
 
     /* Phase 2: Generate assembly code blocks for tree nodes */
     generateCode(&ctx);
+    if (TRACE(T_AST)) {
+        fdprintf(2, "doFunction: after generateCode curchar=%d\n", curchar);
+    }
 
     /* Phase 2.25: Optimize frame layout based on lifetime analysis */
     optFrmLayout(&ctx);
+    if (TRACE(T_AST)) {
+        fdprintf(2, "doFunction: after optFrmLayout curchar=%d\n", curchar);
+    }
 
     /* Phase 2.5: Allocate registers based on usage patterns */
     allocRegs(&ctx);
+    if (TRACE(T_AST)) {
+        fdprintf(2, "doFunction: after allocRegs curchar=%d\n", curchar);
+    }
 
     /* Phase 3: Emit assembly and free tree nodes */
     emitAssembly(&ctx, outFd);
+    if (TRACE(T_AST)) {
+        fdprintf(2, "doFunction: after emitAssembly curchar=%d\n", curchar);
+    }
 }
 
 /* Forward declaration for symbol tracking */
@@ -2359,9 +2389,20 @@ parseToplvl(void)
     op = curchar;
     nextchar();
 
+    if (TRACE(T_AST)) {
+        fdprintf(2, "parseToplvl: op='%c'\n", op);
+    }
+
     switch (op) {
     case 'f':  /* Function */
+        if (TRACE(T_AST)) {
+            fdprintf(2, "parseToplvl: calling doFunction\n");
+        }
         doFunction();
+        if (TRACE(T_AST)) {
+            fdprintf(2, "parseToplvl: doFunction returned, curchar=%d '%c'\n",
+                curchar, curchar > 31 ? curchar : '?');
+        }
         break;
     case 'g':  /* Global variable */
         doGlobal();
@@ -2612,7 +2653,15 @@ parseAstFile(int in, int out)
 
     /* Parse all top-level constructs and collect symbols */
     while (curchar) {
+        if (TRACE(T_AST)) {
+            fdprintf(2, "parseAstFile: line %d, loop top, curchar=%d '%c'\n",
+                lineNum, curchar, curchar > 31 ? curchar : '?');
+        }
         skip();
+        if (TRACE(T_AST)) {
+            fdprintf(2, "parseAstFile: line %d, after skip, curchar=%d '%c'\n",
+                lineNum, curchar, curchar > 31 ? curchar : '?');
+        }
         if (curchar) {
             parseToplvl();
         }

@@ -990,7 +990,6 @@ parseExpr(unsigned char pri, struct stmt *st)
 
         if (is_assignment) {
             if (e && e->op == DEREF) {
-#ifdef DEBUG
                 if (VERBOSE(V_ASSIGN)) {
                     if (e->type) {
                         fdprintf(2, "ASSIGN: unwrapping DEREF, "
@@ -1004,7 +1003,6 @@ parseExpr(unsigned char pri, struct stmt *st)
                         }
                     }
                 }
-#endif
                 /* Save the type before unwrapping */
                 assign_type = e->type;
                 e = e->left;  // unwrap to get address
