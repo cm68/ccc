@@ -38,7 +38,7 @@ void xreplace_test(struct test_struct *in) {
 }
 
 /* Additional test with various offsets */
-void test_multiple_offsets(struct test_struct *ptr) {
+void tMultiOff(struct test_struct *ptr) {
     ptr->field0 = 1;   /* offset 0 */
     ptr->field1 = 2;   /* offset 2 */
     ptr->field2 = 3;   /* offset 4 */
@@ -49,7 +49,7 @@ void test_multiple_offsets(struct test_struct *ptr) {
 }
 
 /* Test byte access at various offsets */
-void test_byte_access(struct test_struct *ptr) {
+void tByteAcc(struct test_struct *ptr) {
     ptr->field6 = 'X';  /* offset 12 - should use ld (ix+12), a */
 
     char c = ptr->field6;  /* should use ld a, (ix+12) */

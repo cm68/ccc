@@ -35,7 +35,7 @@ int n;
 }
 
 // Function with if-else
-int test_if_else(n)
+int tIfElse(n)
 int n;
 {
     if (n > 0)

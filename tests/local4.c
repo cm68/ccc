@@ -2,7 +2,7 @@
  * Tests ANSI-style function with while loop
  */
 
-int test_while(int n) {
+int tWhile(int n) {
     int i = 0;
     while (i < n) {
         i = i + 1;

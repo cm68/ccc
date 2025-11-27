@@ -3,28 +3,28 @@
  * Tests both prefix and postfix forms
  */
 
-int test_postfix_incr()
+int tPostIncr()
 {
     int i = 5;
     i++;
     return i;  /* should be 6 */
 }
 
-int test_prefix_incr()
+int tPreIncr()
 {
     int i = 5;
     ++i;
     return i;  /* should be 6 */
 }
 
-int test_postfix_decr()
+int tPostDecr()
 {
     int i = 5;
     i--;
     return i;  /* should be 4 */
 }
 
-int test_prefix_decr()
+int tPreDecr()
 {
     int i = 5;
     --i;

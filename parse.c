@@ -345,7 +345,14 @@ statement(struct stmt *parent)
 
         case BEGIN: // begin a block
             gettoken();
-            pushScope(blockname());
+            /*
+             * Don't push scope for function body (parent==NULL) since
+             * parsefunc() already pushed the function scope. This ensures
+             * params and first-level locals share the same scope, so
+             * redeclaration like "void foo(int a) { int a; }" is an error.
+             */
+            if (parent != NULL)
+                pushScope(blockname());
             st = makestmt(BEGIN, 0);
             st->parent = parent;
             st->chain = statement(st);
@@ -353,7 +360,8 @@ statement(struct stmt *parent)
             /* Capture local variables before popping scope */
             st->locals = capLocals();
 
-            popScope();
+            if (parent != NULL)
+                popScope();
             expect(END, ER_S_CC);
             // If this is a top-level block (function body), return immediately
             if (parent == NULL) {
@@ -1042,6 +1050,7 @@ parsefunc(struct name *f)
 	// Set current function context for static variable name mangling
 	curFunc = f;
 	staticCtr = 0;
+	shadowCtr = 0;
 
 	// Push a new scope for the function body
 	pushScope(f->name);

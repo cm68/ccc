@@ -28,8 +28,8 @@ void loadWordIX(char offset);
 void storeWordIX(char offset);
 
 /* Variable load/store with cache management */
-void loadVar(struct function_ctx *ctx, const char *sym, char sz, char docache);
-void storeVar(struct function_ctx *ctx, const char *sym, char sz, char docache);
+void loadVar(const char *sym, char sz, char docache);
+void storeVar(const char *sym, char sz, char docache);
 
 /* Register tracking for callee-save */
 int getUsedRegs(struct local_var *locals);
@@ -49,23 +49,23 @@ int matchesCache(struct expr *e, struct expr *cached);
 struct expr *mkVarCache(const char *sym, int size);
 
 /* Cache management */
-void clearHL(struct function_ctx *ctx);
-void clearDE(struct function_ctx *ctx);
-void pushStack(struct function_ctx *ctx);
-void popStack(struct function_ctx *ctx);
-void invalStack(struct function_ctx *ctx);
+void clearHL();
+void clearDE();
+void pushStack();
+void popStack();
+void invalStack();
 
 /* Helper for binary op detection */
 int isBinopWAccum(unsigned char op);
 
 /* Expression emission - main function and helpers */
-void emitExpr(struct function_ctx *ctx, struct expr *e);
-void emitIncDec(struct function_ctx *ctx, struct expr *e);
-void emitAssign(struct function_ctx *ctx, struct expr *e);
-void emitAddConst(struct function_ctx *ctx, struct expr *e);
-void emitBinop(struct function_ctx *ctx, struct expr *e);
-void emitCall(struct function_ctx *ctx, struct expr *e);
-void emitTernary(struct function_ctx *ctx, struct expr *e);
+void emitExpr(struct expr *e);
+void emitIncDec(struct expr *e);
+void emitAssign(struct expr *e);
+void emitAddConst(struct expr *e);
+void emitBinop(struct expr *e);
+void emitCall(struct expr *e);
+void emitTernary(struct expr *e);
 
 /* Label/jump optimization */
 int extLabelNum(const char *asm_text);

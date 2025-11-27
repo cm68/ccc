@@ -2,7 +2,7 @@
 
 int x, y, z;
 
-int test_compound_ops()
+int tCmpndOps()
 {
     int a;
     

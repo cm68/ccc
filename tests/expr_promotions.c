@@ -8,7 +8,7 @@ long l;
 unsigned char uc;
 unsigned int ui;
 
-int test_arithmetic_promotions()
+int t_arith_promo()
 {
     int result;
 
@@ -25,7 +25,7 @@ int test_arithmetic_promotions()
     return 0;
 }
 
-int test_bitwise_promotions()
+int tBitPromo()
 {
     int result;
 
@@ -39,7 +39,7 @@ int test_bitwise_promotions()
     return 0;
 }
 
-int test_comparison_promotions()
+int t_cmp_promo()
 {
     int result;
 
@@ -54,7 +54,7 @@ int test_comparison_promotions()
     return 0;
 }
 
-int test_unsigned_promotions()
+int t_unsig_promo()
 {
     unsigned int result;
 
@@ -65,7 +65,7 @@ int test_unsigned_promotions()
     return 0;
 }
 
-int test_mixed_size_chain()
+int t_mixed_chain()
 {
     long result;
 

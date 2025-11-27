@@ -1,7 +1,7 @@
 /* Test AST with various control flow */
 
 int
-test_switch(n)
+tSwitch(n)
 int n;
 {
     switch (n) {
@@ -15,7 +15,7 @@ int n;
 }
 
 int
-test_for(n)
+tFor(n)
 int n;
 {
     int i;

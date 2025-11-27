@@ -11,7 +11,7 @@ int* get_ptr()
     return &counter;
 }
 
-int test_simple_compound()
+int tSimpCmpnd()
 {
     int i = 10;
     i += 5;      /* i = 15 */
@@ -22,7 +22,7 @@ int test_simple_compound()
     return i;
 }
 
-int test_pointer_compound()
+int tPtrCmpnd()
 {
     int arr[10];
     int *p = arr;
@@ -32,7 +32,7 @@ int test_pointer_compound()
     return arr[0];
 }
 
-int test_array_subscript()
+int tArrSubscr()
 {
     int arr[10];
     int i = 0;
@@ -42,7 +42,7 @@ int test_array_subscript()
     return arr[0];
 }
 
-int test_complex_lvalue()
+int tCplxLval()
 {
     int arr[10];
     int *p = arr;
@@ -52,7 +52,7 @@ int test_complex_lvalue()
     return arr[0];   /* should be 25 */
 }
 
-int test_function_call()
+int tFuncCall()
 {
     counter = 10;
     *get_ptr() += 5;   /* counter should be incremented once (to 11), then += 5 makes it 16 */

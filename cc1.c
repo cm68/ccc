@@ -48,6 +48,7 @@ int verbose;
 char *srcFileRoot = NULL;
 struct name *curFunc = NULL;
 unsigned char staticCtr = 0;
+unsigned char shadowCtr = 0;  /* Counter for shadowed variable mangling */
 
 /* AST output control */
 unsigned char astFd;  // defaults to 1 (stdout), can be overridden with -o

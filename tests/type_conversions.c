@@ -8,7 +8,7 @@ long l;
 unsigned char uc;
 unsigned int ui;
 
-int test_narrowing()
+int t_narrow()
 {
     /* Narrowing conversions - should emit NARROW */
     c = i;      // int (2) -> char (1): NARROW
@@ -18,7 +18,7 @@ int test_narrowing()
     return 0;
 }
 
-int test_widening_signed()
+int t_widen_sign()
 {
     /* Widening signed - should emit SEXT (sign extend) */
     i = c;      // char (1) -> int (2): SEXT
@@ -28,7 +28,7 @@ int test_widening_signed()
     return 0;
 }
 
-int test_widening_unsigned()
+int t_widen_unsig()
 {
     /* Widening unsigned - should emit WIDEN (zero extend) */
     ui = uc;    // unsigned char (1) -> unsigned int (2): WIDEN
@@ -36,7 +36,7 @@ int test_widening_unsigned()
     return 0;
 }
 
-int test_same_size()
+int t_same_size()
 {
     /* Same size - no conversion needed */
     i = 5;
@@ -45,7 +45,7 @@ int test_same_size()
     return 0;
 }
 
-int test_compound_assignment()
+int t_compound()
 {
     /* Compound assignments should also get conversions */
     c = 10;
@@ -54,7 +54,7 @@ int test_compound_assignment()
     return 0;
 }
 
-int test_local_conversions()
+int t_local_conv()
 {
     char lc;
     int li;

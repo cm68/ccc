@@ -15,7 +15,7 @@
  * Walk statement tree, emit assembly, and free nodes
  */
 static int stmt_count = 0;
-static void emitStmt(struct function_ctx *ctx, struct stmt *s)
+static void emitStmt(struct stmt *s)
 {
     if (!s) return;
     stmt_count++;
@@ -56,7 +56,7 @@ static void emitStmt(struct function_ctx *ctx, struct stmt *s)
         }
 
         if (use_dir_jump) {
-            emitExpr(ctx, cond);
+            emitExpr(cond);
 
             if (invertCond && s->expr != cond) {
                 free(s->expr);
@@ -80,7 +80,7 @@ static void emitStmt(struct function_ctx *ctx, struct stmt *s)
             struct local_var *var = NULL;
             if (cond && cond->op == 'M' && cond->size == 2 &&
                 cond->left && cond->left->op == '$' && cond->left->symbol) {
-                var = findVar(ctx, stripVarPfx(cond->left->symbol));
+                var = findVar(stripVarPfx(cond->left->symbol));
             }
 
             if (var && (var->reg == REG_BC || var->reg == REG_BCp)) {
@@ -94,11 +94,11 @@ static void emitStmt(struct function_ctx *ctx, struct stmt *s)
                     free(s->expr);
                 }
             } else {
-                emitExpr(ctx, s->expr);
-                if (!ctx->zflag_valid) {
+                emitExpr(s->expr);
+                if (!fnZValid) {
                     emit(S_AHORL);
                 }
-                ctx->zflag_valid = 0;
+                fnZValid = 0;
             }
 
             if (s->label2 > 0) {
@@ -109,15 +109,15 @@ static void emitStmt(struct function_ctx *ctx, struct stmt *s)
         }
 
         /* Emit then branch */
-        if (s->then_branch) emitStmt(ctx, s->then_branch);
+        if (s->then_branch) emitStmt(s->then_branch);
 
         if (s->label2 > 0) {
             emitJump("jp", "_if_end_", s->label2);
             fdprintf(outFd, "_if_%d:\n", s->label);
-            if (s->else_branch) emitStmt(ctx, s->else_branch);
+            if (s->else_branch) emitStmt(s->else_branch);
         }
 
-        if (s->next) emitStmt(ctx, s->next);
+        if (s->next) emitStmt(s->next);
 
         if (s->asm_block) free(s->asm_block);
         if (s->jump) freeJump(s->jump);
@@ -127,29 +127,29 @@ static void emitStmt(struct function_ctx *ctx, struct stmt *s)
     /* Handle RETURN statements specially */
     else if (s->type == 'R') {
         if (s->expr) {
-            emitExpr(ctx, s->expr);
-            if (strcmp(ctx->rettype, "_long_") == 0 && s->expr->size == 2) {
+            emitExpr(s->expr);
+            if (strcmp(fnRettype, "_long_") == 0 && s->expr->size == 2) {
                 emit(S_ZEXTSL);
                 emit(S_EXX);
                 emit(S_HLZERO);
                 emit(S_EXX);
             }
         }
-        fdprintf(outFd, "\tjp %sX\n", ctx->name);
+        fdprintf(outFd, "\tjp %sX\n", fnName);
     } else {
         /* Emit expressions (this frees them) */
         if (TRACE(T_EMIT)) {
             fdprintf(2, "  emitStmt: has expr=%p\n", (void*)s->expr);
         }
-        if (s->expr) emitExpr(ctx, s->expr);
+        if (s->expr) emitExpr(s->expr);
         if (TRACE(T_EMIT)) {
             fdprintf(2, "  emitStmt: after expr, expr2=%p\n", (void*)s->expr2);
         }
-        if (s->expr2) emitExpr(ctx, s->expr2);
+        if (s->expr2) emitExpr(s->expr2);
         if (TRACE(T_EMIT)) {
             fdprintf(2, "  emitStmt: after expr2, expr3=%p\n", (void*)s->expr3);
         }
-        if (s->expr3) emitExpr(ctx, s->expr3);
+        if (s->expr3) emitExpr(s->expr3);
         if (TRACE(T_EMIT)) {
             fdprintf(2, "  emitStmt: after expr3\n");
         }
@@ -159,17 +159,17 @@ static void emitStmt(struct function_ctx *ctx, struct stmt *s)
     if (TRACE(T_EMIT)) {
         fdprintf(2, "  emitStmt: checking then_branch=%p\n", (void*)s->then_branch);
     }
-    if (s->then_branch) emitStmt(ctx, s->then_branch);
+    if (s->then_branch) emitStmt(s->then_branch);
     if (TRACE(T_EMIT)) {
         fdprintf(2, "  emitStmt: checking else_branch=%p\n", (void*)s->else_branch);
     }
-    if (s->else_branch) emitStmt(ctx, s->else_branch);
+    if (s->else_branch) emitStmt(s->else_branch);
 
     /* Emit next statement in chain (this frees it) */
     if (TRACE(T_EMIT)) {
         fdprintf(2, "  emitStmt: checking next=%p\n", (void*)s->next);
     }
-    if (s->next) emitStmt(ctx, s->next);
+    if (s->next) emitStmt(s->next);
     if (TRACE(T_EMIT)) {
         fdprintf(2, "  emitStmt: about to free stmt %p\n", (void*)s);
     }
@@ -195,47 +195,47 @@ static void emitStmt(struct function_ctx *ctx, struct stmt *s)
 /*
  * Emit assembly for entire function and free tree
  */
-void emitAssembly(struct function_ctx *ctx, int fd)
+void emitAssembly(int fd)
 {
     struct local_var *var, *next;
     int has_params;
 
-    if (!ctx || !ctx->body) return;
+    if (0 || !fnBody) return;
     stmt_count = 0;
     if (TRACE(T_EMIT)) {
-        fdprintf(2, "emit: function %s\n", ctx->name);
+        fdprintf(2, "emit: function %s\n", fnName);
     }
 
     /* Initialize label map for jump optimization */
     lblMapCnt = 0;
 
     /* Scan statement tree to build label map */
-    scanLabJumps(ctx->body);
+    scanLabJumps(fnBody);
 
-    has_params = (ctx->params && ctx->params[0]);
+    has_params = (fnParams && fnParams[0]);
 
     /* Emit function prologue */
-    emitFnProlog(ctx->name, ctx->params, ctx->rettype,
-        ctx->frame_size, ctx->locals);
+    emitFnProlog(fnName, fnParams, fnRettype,
+        fnFrmSize, fnLocals);
 
     /* Emit function body */
     if (TRACE(T_EMIT)) {
         fdprintf(2, "emit: calling emitStmt\n");
     }
-    emitStmt(ctx, ctx->body);
+    emitStmt(fnBody);
     if (TRACE(T_EMIT)) {
         fdprintf(2, "emit: emitStmt returned\n");
     }
 
     /* Emit function exit label */
-    fdprintf(outFd, "%sX:\n", ctx->name);
+    fdprintf(outFd, "%sX:\n", fnName);
     if (TRACE(T_EMIT)) {
         fdprintf(2, "emit: emitted exit label\n");
     }
 
     /* Restore callee-saved registers (reverse order of push) */
     {
-        int used = getUsedRegs(ctx->locals);
+        int used = getUsedRegs(fnLocals);
         if (used & 4) emit(S_EXXPOPBC);  /* restore BC' via exx; pop bc; exx */
         if (used & 2) emit(S_POPIX);
         if (used & 1) emit(S_POPBC);
@@ -245,7 +245,7 @@ void emitAssembly(struct function_ctx *ctx, int fd)
     }
 
     /* Emit function epilogue */
-    if (ctx->frame_size > 0 || has_params) {
+    if (fnFrmSize > 0 || has_params) {
         emit(S_JPFF);
     } else {
         emit(S_RET);
@@ -258,7 +258,7 @@ void emitAssembly(struct function_ctx *ctx, int fd)
     if (TRACE(T_EMIT)) {
         fdprintf(2, "emit: freeing locals\n");
     }
-    var = ctx->locals;
+    var = fnLocals;
     while (var) {
         if (TRACE(T_EMIT)) {
             fdprintf(2, "emit: freeing var %s\n", var->name);
@@ -269,7 +269,7 @@ void emitAssembly(struct function_ctx *ctx, int fd)
         var = next;
     }
     if (TRACE(T_EMIT)) {
-        fdprintf(2, "emit: function %s done\n", ctx->name);
+        fdprintf(2, "emit: function %s done\n", fnName);
     }
 }
 

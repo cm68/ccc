@@ -3,7 +3,7 @@
  * Tests that postfix returns old value, prefix returns new value
  */
 
-int test_postfix_in_assign()
+int tPostAsgn()
 {
     int i = 5;
     int a;
@@ -12,7 +12,7 @@ int test_postfix_in_assign()
     return a;
 }
 
-int test_prefix_in_assign()
+int tPreAsgn()
 {
     int i = 5;
     int a;
@@ -21,7 +21,7 @@ int test_prefix_in_assign()
     return a;
 }
 
-int test_in_arithmetic()
+int tInArith()
 {
     int i = 5;
     int a;
@@ -30,7 +30,7 @@ int test_in_arithmetic()
     return a;
 }
 
-int test_multiple_in_expr()
+int tMultiExpr()
 {
     int i = 0;
     int j = 10;
@@ -40,7 +40,7 @@ int test_multiple_in_expr()
     return a;
 }
 
-int test_in_array_subscript()
+int tInArrSub()
 {
     int arr[10];
     int i = 0;
@@ -50,7 +50,7 @@ int test_in_array_subscript()
     return i;
 }
 
-int test_prefix_postfix_same()
+int tPrePost()
 {
     int i = 5;
     int a = i++;

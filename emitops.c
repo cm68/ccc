@@ -13,7 +13,7 @@
 /*
  * Emit increment/decrement operation
  */
-void emitIncDec(struct function_ctx *ctx, struct expr *e)
+void emitIncDec(struct expr *e)
 {
     /* Parse placeholder format: INCDEC_PLACEHOLDER:op:size:amount:unused:symbol */
     int op, size, unused;
@@ -38,7 +38,7 @@ void emitIncDec(struct function_ctx *ctx, struct expr *e)
     if (unused && is_post) is_post = 0;
 
     var_name = stripVarPfx(symbol);
-    var = findVar(ctx, var_name);
+    var = findVar(var_name);
 
     if (var && var->reg != REG_NO) {
         /* Variable is register-allocated */
@@ -141,13 +141,13 @@ void emitIncDec(struct function_ctx *ctx, struct expr *e)
 /*
  * Emit assignment operation
  */
-void emitAssign(struct function_ctx *ctx, struct expr *e)
+void emitAssign(struct expr *e)
 {
     if (TRACE(T_ASSIGN)) {
         fdprintf(2, "emitAssign: enter\n");
     }
     /* Emit right child first (value goes to PRIMARY) */
-    emitExpr(ctx, e->right);
+    emitExpr(e->right);
     if (TRACE(T_ASSIGN)) {
         fdprintf(2, "emitAssign: after emitExpr(right)\n");
     }
@@ -161,7 +161,7 @@ void emitAssign(struct function_ctx *ctx, struct expr *e)
         const char *var_symbol = e->left->left->left->symbol;
         long offset = e->value;
         const char *var_name = stripVarPfx(var_symbol);
-        struct local_var *var = findVar(ctx, var_name);
+        struct local_var *var = findVar(var_name);
 
         if (var && var->reg == REG_IX) {
             if (e->size == 1) {
@@ -185,7 +185,7 @@ void emitAssign(struct function_ctx *ctx, struct expr *e)
         if (TRACE(T_ASSIGN)) {
             fdprintf(2, "emitAssign: simple variable\n");
         }
-        storeVar(ctx, e->left->symbol, e->size, 1);
+        storeVar(e->left->symbol, e->size, 1);
         if (TRACE(T_ASSIGN)) {
             fdprintf(2, "emitAssign: after storeVar\n");
         }
@@ -194,11 +194,11 @@ void emitAssign(struct function_ctx *ctx, struct expr *e)
     else if (e->left && e->left->op == 'M') {
         if (e->size == 1) {
             emit(S_ESAVE);
-            emitExpr(ctx, e->left->left);
+            emitExpr(e->left->left);
             emit(S_HLDE);
         } else if (e->size == 2) {
             emit(S_DESAVE);
-            emitExpr(ctx, e->left->left);
+            emitExpr(e->left->left);
             emit(S_HLDE);
             emit(S_INCHL);
             emit(S_HLD);
@@ -208,11 +208,11 @@ void emitAssign(struct function_ctx *ctx, struct expr *e)
     else if (e->left && e->left->op == '+') {
         if (e->size == 1) {
             emit(S_ESAVE);
-            emitExpr(ctx, e->left);
+            emitExpr(e->left);
             emit(S_HLDE);
         } else if (e->size == 2) {
             emit(S_DESAVE);
-            emitExpr(ctx, e->left);
+            emitExpr(e->left);
             emit(S_HLDE);
             emit(S_INCHL);
             emit(S_HLD);
@@ -221,7 +221,7 @@ void emitAssign(struct function_ctx *ctx, struct expr *e)
             emit(S_EXX);
             emit(S_PUSHHLUPP);
             emit(S_EXX);
-            emitExpr(ctx, e->left);
+            emitExpr(e->left);
             emit(S_DEADR);
             emit(S_POPHLUPP);
             emit(S_PUSHDESV);
@@ -251,10 +251,10 @@ void emitAssign(struct function_ctx *ctx, struct expr *e)
 /*
  * Emit ADD with constant where left is register-allocated variable
  */
-void emitAddConst(struct function_ctx *ctx, struct expr *e)
+void emitAddConst(struct expr *e)
 {
     const char *var_name = stripVarPfx(e->left->left->symbol);
-    struct local_var *var = findVar(ctx, var_name);
+    struct local_var *var = findVar(var_name);
 
     if (var && (var->reg == REG_BC || var->reg == REG_BCp || var->reg == REG_IX)) {
         long const_val = 0;
@@ -293,7 +293,7 @@ void emitAddConst(struct function_ctx *ctx, struct expr *e)
             }
         }
     } else {
-        emitExpr(ctx, e->left);
+        emitExpr(e->left);
         fdprintf(outFd, "%s\n", e->asm_block);
     }
 
@@ -303,37 +303,53 @@ void emitAddConst(struct function_ctx *ctx, struct expr *e)
 /*
  * Emit binary operation
  */
-void emitBinop(struct function_ctx *ctx, struct expr *e)
+void emitBinop(struct expr *e)
 {
     /* Check for inline byte operations with immediate */
     int isInlineImm = 0;
-    if (!strchr(e->asm_block, '\n') &&
-        (e->op == '&' || e->op == '|' || e->op == '^') &&
-        e->left && e->left->size == 1 && e->right && e->right->op == 'C' &&
+    int isByteCmp = 0;
+
+    if (e->left && e->left->size == 1 && e->right && e->right->op == 'C' &&
         e->right->value >= 0 && e->right->value <= 255) {
-        isInlineImm = 1;
+        if (!strchr(e->asm_block, '\n') &&
+            (e->op == '&' || e->op == '|' || e->op == '^')) {
+            isInlineImm = 1;
+        } else if (e->op == 'Q' || e->op == 'n') {
+            /* Byte EQ/NE with constant - use cp instruction */
+            isByteCmp = 1;
+        }
     }
 
     if (isInlineImm) {
-        emitExpr(ctx, e->left);
+        emitExpr(e->left);
         freeExpr(e->right);
         fdprintf(outFd, "%s\n", e->asm_block);
+    } else if (isByteCmp) {
+        emitExpr(e->left);
+        fdprintf(outFd, "\tcp %ld\n", e->right->value);
+        freeExpr(e->right);
+        fnZValid = 1;  /* cp sets Z flag */
     } else {
         char *call_inst = NULL;
         char *newline = strchr(e->asm_block, '\n');
-        int init_saves = ctx->de_save_count;
+        int init_saves = fnDESaveCnt;
 
         if (newline) {
             call_inst = strdup(newline + 1);
         }
 
-        emitExpr(ctx, e->left);
-        pushStack(ctx);
-        emitExpr(ctx, e->right);
+        emitExpr(e->left);
+        /* For byte ops, move A to E; for word ops, use standard pushStack */
+        if (e->left && e->left->size == 1) {
+            emit(S_ESAVE);  /* ld e, a */
+        } else {
+            pushStack();
+        }
+        emitExpr(e->right);
 
-        while (ctx->de_save_count > init_saves) {
+        while (fnDESaveCnt > init_saves) {
             emit(S_POPDERES);
-            ctx->de_save_count--;
+            fnDESaveCnt--;
         }
 
         if (call_inst) {
@@ -343,17 +359,18 @@ void emitBinop(struct function_ctx *ctx, struct expr *e)
                 call_pos += 4;
                 while (*call_pos && (*call_pos == ' ' || *call_pos == '\t')) call_pos++;
                 if (*call_pos && isCmpFunc(call_pos)) {
-                    ctx->zflag_valid = 1;
+                    fnZValid = 1;
                 }
             }
             free(call_inst);
         }
     }
 
-    {
-        int zflag_saved = ctx->zflag_valid;
-        popStack(ctx);
-        ctx->zflag_valid = zflag_saved;
+    /* Only pop stack for word ops (byte ops didn't push) */
+    if (!e->left || e->left->size != 1) {
+        int zflag_saved = fnZValid;
+        popStack();
+        fnZValid = zflag_saved;
     }
 }
 
@@ -363,7 +380,7 @@ void emitBinop(struct function_ctx *ctx, struct expr *e)
  * e->right = wrapper chain of arguments
  * e->value = argument count
  */
-void emitCall(struct function_ctx *ctx, struct expr *e)
+void emitCall(struct expr *e)
 {
     struct expr *args[32];
     struct expr *arg;
@@ -389,7 +406,7 @@ void emitCall(struct function_ctx *ctx, struct expr *e)
         arg_size = a->size;
 
         /* Emit code to load argument value */
-        emitExpr(ctx, a);
+        emitExpr(a);
 
         /* Push onto stack */
         if (arg_size == 1) {
@@ -406,7 +423,7 @@ void emitCall(struct function_ctx *ctx, struct expr *e)
         addRefSym(func_name);
         fdprintf(outFd, "\tcall %s\n", func_name);
         if (isCmpFunc(func_name)) {
-            ctx->zflag_valid = 1;
+            fnZValid = 1;
         }
     } else {
         fdprintf(outFd, "\t; TODO: indirect call\n");
@@ -417,36 +434,36 @@ void emitCall(struct function_ctx *ctx, struct expr *e)
         fdprintf(outFd, "%s", e->cleanup_block);
     }
 
-    invalStack(ctx);
+    invalStack();
     /* Don't free children - they're part of the AST tree */
 }
 
 /*
  * Emit ternary conditional operator
  */
-void emitTernary(struct function_ctx *ctx, struct expr *e)
+void emitTernary(struct expr *e)
 {
     unsigned char cond_size;
 
     cond_size = e->left ? e->left->size : 2;
 
-    if (e->left) emitExpr(ctx, e->left);
+    if (e->left) emitExpr(e->left);
 
     if (cond_size == 1) {
         emit(S_ORA);
     } else {
-        if (!ctx->zflag_valid) {
+        if (!fnZValid) {
             emit(S_AHORL);
         }
     }
-    ctx->zflag_valid = 0;
+    fnZValid = 0;
 
     if (e->jump) {
         emitJump("jp z,", "_tern_false_", e->label);
     }
 
     if (e->right && e->right->left) {
-        emitExpr(ctx, e->right->left);
+        emitExpr(e->right->left);
     }
 
     if (e->right && e->right->jump) {
@@ -456,7 +473,7 @@ void emitTernary(struct function_ctx *ctx, struct expr *e)
     fdprintf(outFd, "_tern_false_%d:\n", e->label);
 
     if (e->right && e->right->right) {
-        emitExpr(ctx, e->right->right);
+        emitExpr(e->right->right);
     }
 
     if (e->right) {

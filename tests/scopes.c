@@ -1,6 +1,6 @@
 /* Test variable scoping - function and block scope */
 
-int test_function_vars(int p) {
+int tFuncVars(int p) {
     int a;
     int b;
     a = 10;
@@ -8,7 +8,7 @@ int test_function_vars(int p) {
     return a + b + p;
 }
 
-int test_block_vars(void) {
+int tBlkVars(void) {
     int outer;
     outer = 5;
     {

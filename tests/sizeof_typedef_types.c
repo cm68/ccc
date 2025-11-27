@@ -39,4 +39,4 @@ int test_int = sizeof(int);
 int test_char = sizeof(char);
 int test_long = sizeof(long);
 int test_short = sizeof(short);
-int test_intptr_direct = sizeof(int *);
+int tIntptrDir = sizeof(int *);

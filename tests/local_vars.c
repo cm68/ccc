@@ -1,6 +1,6 @@
 /* Test function-scope and block-scope variable declarations */
 
-int test_function_scope(int param) {
+int tFuncScope(int param) {
     /* Function-scope variables */
     int a;
     int b;
@@ -13,7 +13,7 @@ int test_function_scope(int param) {
     return a + b + c + param;
 }
 
-int test_block_scope(int x) {
+int tBlkScope(int x) {
     int outer;
 
     outer = 5;
@@ -28,7 +28,7 @@ int test_block_scope(int x) {
     return outer;
 }
 
-int test_nested_blocks(void) {
+int tNestBlk(void) {
     int level1;
     level1 = 1;
 
@@ -46,7 +46,7 @@ int test_nested_blocks(void) {
     return level1;
 }
 
-int test_shadowing(void) {
+int tShadow(void) {
     int x;
     x = 10;
 
@@ -58,7 +58,7 @@ int test_shadowing(void) {
     return x;  /* Should return 10 */
 }
 
-int test_multiple_declarations(void) {
+int tMultiDecl(void) {
     int a, b, c;
     char d, e;
     long f;
@@ -73,7 +73,7 @@ int test_multiple_declarations(void) {
     return a + b + c;
 }
 
-int test_initialized_locals(void) {
+int tInitLoc(void) {
     int a = 10;
     int b = 20;
     char c = 'z';
@@ -81,7 +81,7 @@ int test_initialized_locals(void) {
     return a + b + c;
 }
 
-int test_mixed_statements_and_decls(void) {
+int tMixStmts(void) {
     int a;
     a = 5;
 

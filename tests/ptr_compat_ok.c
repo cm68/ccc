@@ -10,7 +10,7 @@ struct point {
 char carr[10];
 int iarr[10];
 
-int test_array_to_ptr()
+int tArrToPtr()
 {
     char *cp;
     int *ip;
@@ -22,7 +22,7 @@ int test_array_to_ptr()
     return 0;
 }
 
-int test_same_base_type()
+int tSameBase()
 {
     int *p1;
     int *p2;
@@ -36,7 +36,7 @@ int test_same_base_type()
     return 0;
 }
 
-int test_same_struct()
+int tSameStr()
 {
     struct point *pt1;
     struct point *pt2;

@@ -33,7 +33,7 @@ int n;
 }
 
 // Function with if-else
-int test_if_else(n)
+int tIfElse(n)
 int n;
 {
     if (n > 0)
@@ -43,7 +43,7 @@ int n;
 }
 
 // Function with while loop
-int test_while(n)
+int tWhile(n)
 int n;
 {
     int i;
@@ -54,7 +54,7 @@ int n;
 }
 
 // Function with for loop
-int test_for(n)
+int tFor(n)
 int n;
 {
     int i;
@@ -97,7 +97,7 @@ int n;
 }
 
 // Function with switch
-int test_switch(n)
+int tSwitch(n)
 int n;
 {
     switch (n) {
@@ -111,7 +111,7 @@ int n;
 }
 
 // Function with goto and label
-int test_goto(n)
+int tGoto(n)
 int n;
 {
     int i;
@@ -139,7 +139,7 @@ int test_blocks()
 }
 
 // Function with do-while
-int test_do_while(n)
+int tDoWhile(n)
 int n;
 {
     int i;

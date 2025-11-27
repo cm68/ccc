@@ -82,7 +82,7 @@ makeexpr(unsigned char op)
 }
 
 /* Test function: Basic replacement */
-void test_basic_replace(void)
+void tBasicRepl(void)
 {
     struct expr *old_node, *new_node, *result;
 
@@ -95,20 +95,20 @@ void test_basic_replace(void)
     result = xreplace(old_node, new_node);
 
     if (result != new_node) {
-        printf("FAIL: test_basic_replace - result != new_node\n");
+        printf("FAIL: tBasicRepl - result != new_node\n");
         return;
     }
     if (result->v != 42) {
-        printf("FAIL: test_basic_replace - value not preserved\n");
+        printf("FAIL: tBasicRepl - value not preserved\n");
         return;
     }
 
     free(new_node);
-    printf("PASS: test_basic_replace\n");
+    printf("PASS: tBasicRepl\n");
 }
 
 /* Test function: Linkage preservation */
-void test_linkage_preservation(void)
+void tLinkage(void)
 {
     struct expr *old_node, *new_node, *prev_node, *next_node, *parent_node;
     struct expr *result;
@@ -132,27 +132,27 @@ void test_linkage_preservation(void)
 
     /* Verify linkages */
     if (prev_node->next != new_node) {
-        printf("FAIL: test_linkage_preservation - prev->next not updated\n");
+        printf("FAIL: tLinkage - prev->next not updated\n");
         goto cleanup;
     }
     if (next_node->prev != new_node) {
-        printf("FAIL: test_linkage_preservation - next->prev not updated\n");
+        printf("FAIL: tLinkage - next->prev not updated\n");
         goto cleanup;
     }
     if (new_node->prev != prev_node) {
-        printf("FAIL: test_linkage_preservation - new->prev incorrect\n");
+        printf("FAIL: tLinkage - new->prev incorrect\n");
         goto cleanup;
     }
     if (new_node->next != next_node) {
-        printf("FAIL: test_linkage_preservation - new->next incorrect\n");
+        printf("FAIL: tLinkage - new->next incorrect\n");
         goto cleanup;
     }
     if (new_node->up != parent_node) {
-        printf("FAIL: test_linkage_preservation - new->up incorrect\n");
+        printf("FAIL: tLinkage - new->up incorrect\n");
         goto cleanup;
     }
 
-    printf("PASS: test_linkage_preservation\n");
+    printf("PASS: tLinkage\n");
 
 cleanup:
     free(prev_node);
@@ -162,7 +162,7 @@ cleanup:
 }
 
 /* Test function: E_FUNARG flag preservation */
-void test_funarg_flag(void)
+void tFunarg(void)
 {
     struct expr *old_node, *new_node, *result;
 
@@ -175,12 +175,12 @@ void test_funarg_flag(void)
     result = xreplace(old_node, new_node);
 
     if (!(result->flags & E_FUNARG)) {
-        printf("FAIL: test_funarg_flag - E_FUNARG not preserved\n");
+        printf("FAIL: tFunarg - E_FUNARG not preserved\n");
         free(new_node);
         return;
     }
 
-    printf("PASS: test_funarg_flag\n");
+    printf("PASS: tFunarg\n");
     free(new_node);
 }
 
@@ -189,9 +189,9 @@ int main(void)
 {
     printf("=== Running xreplace() tests ===\n");
 
-    test_basic_replace();
-    test_linkage_preservation();
-    test_funarg_flag();
+    tBasicRepl();
+    tLinkage();
+    tFunarg();
 
     printf("=== All tests complete ===\n");
     return 0;

@@ -20,7 +20,7 @@ int k = add(3,5);
 
 /* Test #undef */
 #define TESTMACRO 100
-int before_undef = TESTMACRO;
+int befUndef = TESTMACRO;
 
 #undef TESTMACRO
 /* After #undef, TESTMACRO is no longer defined */
@@ -28,7 +28,7 @@ int before_undef = TESTMACRO;
 
 /* Test redefine after undef */
 #define TESTMACRO 200
-int after_redefine = TESTMACRO;
+int aftRedef = TESTMACRO;
 
 
 

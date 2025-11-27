@@ -44,7 +44,7 @@ char c2 = (char) (int) (long) x;
 void *vp3 = (void *) (char *) ip;
 
 /* Cast in expressions */
-int test_cast_expr(int n)
+int tCastExpr(int n)
 {
     int a;
     char b;

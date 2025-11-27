@@ -6,7 +6,7 @@ static int file_static2;
 
 /* Test multiple function-scoped statics */
 int
-test_multiple_statics(x)
+tMultiStat(x)
 int x;
 {
     static int static_a;
@@ -22,7 +22,7 @@ int x;
 
 /* Test statics in different functions */
 int
-another_function(y)
+anotherFunc(y)
 int y;
 {
     static int counter;
@@ -35,7 +35,7 @@ int y;
 int
 third_function()
 {
-    static int counter;  /* Same name as in another_function, but different mangled name */
+    static int counter;  /* Same name as in anotherFunc, but different mangled name */
 
     counter = counter + 1;
     return counter;

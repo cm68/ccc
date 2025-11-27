@@ -31,8 +31,7 @@ All expressions use prefix notation (Polish notation):
 - **Symbols/Variables**: Prefixed with `$` plus scope indicator:
   - **Extern/Global variables**: `$_name` (underscore prefix)
   - **Static variables**: `$Sname` (S prefix)
-  - **Function arguments**: `$Aname` (A prefix)
-  - **Local variables**: `$name` (no additional prefix)
+  - **Local variables and arguments**: `$name` (no additional prefix)
 - **String literals**: `$__name` - reference to synthetic string name (e.g.,
   `$___str0`, `$___str1`)
 - **Binary operators**: `(op left right)` (e.g., `(+ $x $y)`)

@@ -513,52 +513,52 @@ struct expr *mkVarCache(const char *symbol, int size) {
 }
 
 /* Cache management */
-void clearHL(struct function_ctx *ctx) {
-    if (!ctx) return;
-    if (ctx->hl_cache) {
-        freeExpr(ctx->hl_cache);
-        ctx->hl_cache = NULL;
+void clearHL() {
+    if (0) return;
+    if (fnHLCache) {
+        freeExpr(fnHLCache);
+        fnHLCache = NULL;
     }
 }
 
-void clearDE(struct function_ctx *ctx) {
-    if (!ctx) return;
-    if (ctx->de_cache) {
-        freeExpr(ctx->de_cache);
-        ctx->de_cache = NULL;
+void clearDE() {
+    if (0) return;
+    if (fnDECache) {
+        freeExpr(fnDECache);
+        fnDECache = NULL;
     }
 }
 
-void pushStack(struct function_ctx *ctx) {
-    if (!ctx) return;
+void pushStack() {
+    if (0) return;
 
-    if (ctx->de_valid) {
+    if (fnDEValid) {
         emit(S_PUSHDESP);
-        ctx->de_save_count++;
-        clearDE(ctx);
+        fnDESaveCnt++;
+        clearDE();
     }
     emit(S_PUSHTOS);
-    ctx->de_valid = 1;
+    fnDEValid = 1;
 
-    if (ctx->de_cache) freeExpr(ctx->de_cache);
-    ctx->de_cache = ctx->hl_cache;
-    ctx->hl_cache = NULL;
-    ctx->zflag_valid = 0;
+    if (fnDECache) freeExpr(fnDECache);
+    fnDECache = fnHLCache;
+    fnHLCache = NULL;
+    fnZValid = 0;
 }
 
-void popStack(struct function_ctx *ctx) {
-    if (!ctx) return;
-    ctx->de_valid = 0;
-    ctx->zflag_valid = 0;
-    clearDE(ctx);
+void popStack() {
+    if (0) return;
+    fnDEValid = 0;
+    fnZValid = 0;
+    clearDE();
 }
 
-void invalStack(struct function_ctx *ctx) {
-    if (!ctx) return;
-    ctx->de_valid = 0;
-    ctx->zflag_valid = 0;
-    clearHL(ctx);
-    clearDE(ctx);
+void invalStack() {
+    if (0) return;
+    fnDEValid = 0;
+    fnZValid = 0;
+    clearHL();
+    clearDE();
 }
 
 int isBinopWAccum(unsigned char op) {
@@ -574,13 +574,13 @@ int isBinopWAccum(unsigned char op) {
 }
 
 /* Variable load/store with cache management */
-void loadVar(struct function_ctx *ctx, const char *sym, char sz, char docache) {
+void loadVar(const char *sym, char sz, char docache) {
     const char *vn = stripVarPfx(sym);
     struct local_var *v;
     if (TRACE(T_VAR)) {
         fdprintf(2, "  loadVar: sym=%s (1)\n", sym);
     }
-    v = findVar(ctx, vn);
+    v = findVar(vn);
     if (TRACE(T_VAR)) {
         fdprintf(2, "  loadVar: findVar returned %p (2)\n", (void*)v);
     }
@@ -624,19 +624,19 @@ void loadVar(struct function_ctx *ctx, const char *sym, char sz, char docache) {
             emit(S_EXX);
         }
     }
-    if (docache && ctx && sz >= 2) {
-        clearHL(ctx);
-        ctx->hl_cache = mkVarCache(sym, sz);
+    if (docache  && sz >= 2) {
+        clearHL();
+        fnHLCache = mkVarCache(sym, sz);
     }
 }
 
-void storeVar(struct function_ctx *ctx, const char *sym, char sz, char docache) {
+void storeVar(const char *sym, char sz, char docache) {
     const char *vn = stripVarPfx(sym);
     struct local_var *v;
     if (TRACE(T_VAR)) {
         fdprintf(2, "  storeVar: sym=%s\n", sym);
     }
-    v = findVar(ctx, vn);
+    v = findVar(vn);
     if (TRACE(T_VAR)) {
         fdprintf(2, "  storeVar: findVar returned %p\n", (void*)v);
     }
@@ -650,9 +650,9 @@ void storeVar(struct function_ctx *ctx, const char *sym, char sz, char docache) 
         } else {
             if (v->reg == REG_BC) emit(S_BCHLX);
             else if (v->reg == REG_IX) emit(S_HLPIX);
-            if (docache && ctx) {
-                clearHL(ctx);
-                ctx->hl_cache = mkVarCache(sym, sz);
+            if (docache ) {
+                clearHL();
+                fnHLCache = mkVarCache(sym, sz);
             }
         }
     } else if (v) {
@@ -668,7 +668,13 @@ void storeVar(struct function_ctx *ctx, const char *sym, char sz, char docache) 
             fdprintf(2, "  storeVar: global store sz=%d\n", sz);
         }
         if (sz == 1) fdprintf(outFd, "\tld (%s), a\n", s);
-        else if (sz == 2) fdprintf(outFd, "\tld (%s), hl\n", s);
+        else if (sz == 2) {
+            fdprintf(outFd, "\tld (%s), hl\n", s);
+            if (docache ) {
+                clearHL();
+                fnHLCache = mkVarCache(sym, sz);
+            }
+        }
         else if (sz == 4) {
             fdprintf(outFd, "\tld (%s), hl\n", s);
             emit(S_EXX);

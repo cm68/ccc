@@ -33,7 +33,7 @@ int nested_outer = 1;
 #if 1
 int nested_inner = 2;
 #endif
-int nested_outer_end = 3;
+int nestOutEnd = 3;
 #endif
 
 /* Test 6: Nested #if with mixed true/false */
@@ -86,12 +86,12 @@ int seq3 = 3;
 
 /* Test 10: Conditional around function declaration */
 #if 1
-int conditional_func(int x, int y);
+int condFunc(int x, int y);
 #endif
 
 /* Test 11: Conditional around struct definition */
 #if 1
-struct conditional_struct {
+struct condStruct {
     int x;
     int y;
 };
@@ -179,12 +179,12 @@ int neither = 3;
 
 /* Test 21: Conditional compilation of array */
 #if 1
-int conditional_array[10];
+int condArray[10];
 #endif
 
 /* Test 22: Conditional compilation of pointer */
 #if 1
-char *conditional_ptr;
+char *condPtr;
 #endif
 
 /* Test 23: Expression evaluation in #if (if supported) */

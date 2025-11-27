@@ -229,23 +229,18 @@ parseExpr(unsigned char pri, struct stmt *st)
         struct type *const_type;
         long sval = cur.v.numeric;  /* Token stores signed long */
 
-        /* Strength reduction: assign smallest type that fits the constant */
+        /* Assign type based on value - use int for small values to avoid
+         * unnecessary SEXT/WIDEN when used in int/short context */
         if (sval < 0) {
             /* Negative values - check signed ranges */
-            if (sval >= -128) {
-                const_type = chartype;  /* fits in signed char */
-            } else if (sval >= -32768) {
+            if (sval >= -32768) {
                 const_type = inttype;  /* fits in signed short */
             } else {
                 const_type = longtype;  /* needs signed long */
             }
         } else {
-            /* Positive values - check both signed and unsigned ranges */
-            if (sval <= 127) {
-                const_type = chartype;  /* fits in signed char */
-            } else if (sval <= 255) {
-                const_type = uchartype;  /* fits in unsigned char */
-            } else if (sval <= 32767) {
+            /* Positive values */
+            if (sval <= 32767) {
                 const_type = inttype;  /* fits in signed short */
             } else if (sval <= 65535) {
                 const_type = ushorttype;  /* fits in unsigned short */
@@ -478,15 +473,17 @@ parseExpr(unsigned char pri, struct stmt *st)
                 }
                 /* Mixed pointer/scalar casts: need conversion */
                 else {
-                    /*
-                     * For pointer<->scalar, use NARROW or WIDEN
-                     * based on sizes
-                     */
                     int src_size = inner->type->size;
                     int tgt_size = cast_type->size;
-                    token_t cast_op = (tgt_size < src_size) ? NARROW : WIDEN;
 
-                    e = mkexprI(cast_op, inner, cast_type, 0, 0);
+                    if (tgt_size == src_size) {
+                        /* Same size: just reinterpret */
+                        inner->type = cast_type;
+                        e = inner;
+                    } else {
+                        token_t cast_op = (tgt_size < src_size) ? NARROW : WIDEN;
+                        e = mkexprI(cast_op, inner, cast_type, 0, 0);
+                    }
                 }
             } else {
                 /* Shouldn't happen, but create NARROW as fallback */
@@ -1110,26 +1107,28 @@ parseExpr(unsigned char pri, struct stmt *st)
 					(TF_POINTER|TF_ARRAY|TF_FUNC|TF_AGGREGATE));
 
             if (l_scalar && r_scalar && ltype->size != rtype->size) {
-                token_t conv_op;
-                struct expr *conv;
-
-                if (ltype->size < rtype->size) {
-                    // Narrowing conversion
-                    conv_op = NARROW;
+                /* Constants: just retype, no runtime conversion needed */
+                if (e->right->op == CONST) {
+                    e->right->type = ltype;
                 } else {
-                    // Widening conversion
-                    if (rtype->flags & TF_UNSIGNED) {
-                        conv_op = WIDEN;  // Zero extend unsigned
-                    } else {
-                        conv_op = SEXT;   // Sign extend signed
-                    }
-                }
+                    token_t conv_op;
+                    struct expr *conv;
 
-                // Create conversion node
-                conv = mkexprI(conv_op, e->right, ltype, 0, 0);
-                conv->left->up = conv;
-                e->right = conv;
-                e->right->up = e;
+                    if (ltype->size < rtype->size) {
+                        conv_op = NARROW;
+                    } else {
+                        if (rtype->flags & TF_UNSIGNED) {
+                            conv_op = WIDEN;
+                        } else {
+                            conv_op = SEXT;
+                        }
+                    }
+
+                    conv = mkexprI(conv_op, e->right, ltype, 0, 0);
+                    conv->left->up = conv;
+                    e->right = conv;
+                    e->right->up = e;
+                }
             }
 
             // Check pointer type compatibility
@@ -1236,35 +1235,54 @@ parseExpr(unsigned char pri, struct stmt *st)
 					(TF_POINTER|TF_ARRAY|TF_FUNC|TF_AGGREGATE));
 
             if (l_scalar && r_scalar && ltype->size != rtype->size) {
-                token_t conv_op;
-                struct expr *conv;
-                struct type *target_type;
-
-                // Widen smaller operand to match larger operand
+                /*
+                 * Size mismatch - prefer narrowing constants to widening vars.
+                 * For comparisons, if either operand is a constant, narrow it.
+                 */
                 if (ltype->size < rtype->size) {
-                    // Widen left operand to right's size
-                    target_type = rtype;
-                    if (ltype->flags & TF_UNSIGNED) {
-                        conv_op = WIDEN;  // Zero extend unsigned
+                    /* Left is smaller than right */
+                    if (e->left->op == CONST) {
+                        /* Left is const - retype to larger */
+                        e->left->type = rtype;
+                    } else if (e->right->op == CONST) {
+                        /* Right is const - narrow it to left's size */
+                        e->right->type = ltype;
                     } else {
-                        conv_op = SEXT;   // Sign extend signed
+                        /* Neither is const - widen left */
+                        token_t conv_op;
+                        struct expr *conv;
+                        if (ltype->flags & TF_UNSIGNED) {
+                            conv_op = WIDEN;
+                        } else {
+                            conv_op = SEXT;
+                        }
+                        conv = mkexprI(conv_op, e->left, rtype, 0, 0);
+                        conv->left->up = conv;
+                        e->left = conv;
+                        e->left->up = e;
                     }
-                    conv = mkexprI(conv_op, e->left, target_type, 0, 0);
-                    conv->left->up = conv;
-                    e->left = conv;
-                    e->left->up = e;
                 } else {
-                    // Widen right operand to left's size
-                    target_type = ltype;
-                    if (rtype->flags & TF_UNSIGNED) {
-                        conv_op = WIDEN;  // Zero extend unsigned
+                    /* Right is smaller than left */
+                    if (e->right->op == CONST) {
+                        /* Right is const - retype to larger */
+                        e->right->type = ltype;
+                    } else if (e->left->op == CONST) {
+                        /* Left is const - narrow it to right's size */
+                        e->left->type = rtype;
                     } else {
-                        conv_op = SEXT;   // Sign extend signed
+                        /* Neither is const - widen right */
+                        token_t conv_op;
+                        struct expr *conv;
+                        if (rtype->flags & TF_UNSIGNED) {
+                            conv_op = WIDEN;
+                        } else {
+                            conv_op = SEXT;
+                        }
+                        conv = mkexprI(conv_op, e->right, ltype, 0, 0);
+                        conv->left->up = conv;
+                        e->right = conv;
+                        e->right->up = e;
                     }
-                    conv = mkexprI(conv_op, e->right, target_type, 0, 0);
-                    conv->left->up = conv;
-                    e->right = conv;
-                    e->right->up = e;
                 }
             }
         }
@@ -1387,22 +1405,17 @@ cfold(struct expr *e)
             e = xreplace(e, e->left);
             e->v = val;
 
-            /* Re-type the constant after negation using strength reduction */
+            /* Re-type the constant after negation - use int for small values
+             * to avoid unnecessary SEXT/WIDEN in int/short context */
             sval = (long)val;
             if (sval < 0) {
-                if (sval >= -128) {
-                    e->type = chartype;
-                } else if (sval >= -32768) {
+                if (sval >= -32768) {
                     e->type = inttype;
                 } else {
                     e->type = longtype;
                 }
             } else {
-                if (sval <= 127) {
-                    e->type = chartype;
-                } else if (sval <= 255) {
-                    e->type = uchartype;
-                } else if (sval <= 32767) {
+                if (sval <= 32767) {
                     e->type = inttype;
                 } else if (sval <= 65535) {
                     e->type = ushorttype;

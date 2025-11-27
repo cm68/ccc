@@ -64,29 +64,25 @@ isOpndUnsign(struct expr *e)
  * Returns NULL if not found
  */
 struct local_var *
-findVar(struct function_ctx *ctx, const char *symbol)
+findVar(const char *symbol)
 {
     const char *var_name;
     struct local_var *var;
     int count = 0;
 
-    if (!symbol || !ctx) return NULL;
+    if (!symbol) return NULL;
 
     /* Strip $ prefix if present */
     var_name = symbol;
     if (var_name[0] == '$') {
         var_name++;
     }
-    /* Strip A prefix for arguments (e.g., $Ax -> x) */
-    if (var_name[0] == 'A') {
-        var_name++;
-    }
 
     /* Search locals list */
     if (TRACE(T_VAR)) {
-        fdprintf(2, "      findVar(%p): looking for '%s' in locals\n", (void*)ctx, var_name);
+        fdprintf(2, "      findVar(%p): looking for '%s' in locals\n", fnName, var_name);
     }
-    for (var = ctx->locals; var; var = var->next) {
+    for (var = fnLocals; var; var = var->next) {
         count++;
         if (TRACE(T_VAR)) {
             fdprintf(2, "      findVar: checking '%s' (count=%d)\n", var->name, count);
@@ -145,7 +141,7 @@ mkBinopFnName(char *buf, size_t bufsize, const char *opname,
  *   - Data is at the HIGHER address within the pushed word
  */
 static void
-addParam(struct function_ctx *ctx, const char *name, unsigned char size, 
+addParam(const char *name, unsigned char size, 
     int offset)
 {
     struct local_var *var = malloc(sizeof(struct local_var));
@@ -164,9 +160,9 @@ addParam(struct function_ctx *ctx, const char *name, unsigned char size,
     var->ref_count = 0;     /* Not referenced yet */
     var->agg_refs = 0;      /* No aggregate member accesses yet */
     var->reg = REG_NO;      /* Not allocated to register yet */
-    var->next = ctx->locals;
+    var->next = fnLocals;
 
-    ctx->locals = var;
+    fnLocals = var;
 
     
 }
@@ -176,7 +172,7 @@ addParam(struct function_ctx *ctx, const char *name, unsigned char size,
  * Local variables have negative offsets (below frame pointer)
  */
 static void
-addLocalVar(struct function_ctx *ctx, const char *name, unsigned char size, 
+addLocalVar(const char *name, unsigned char size, 
     int is_array)
 {
     struct local_var *var = malloc(sizeof(struct local_var));
@@ -188,7 +184,7 @@ addLocalVar(struct function_ctx *ctx, const char *name, unsigned char size,
     var->name = strdup(name);
     var->size = size;
     /* Stack grows downward - assign negative offset from frame pointer */
-    var->offset = -(ctx->frame_size + size);
+    var->offset = -(fnFrmSize + size);
     var->is_param = 0;
     var->is_array = is_array;  /* Arrays cannot be allocated to registers */
     var->first_label = -1;  /* Not used yet */
@@ -196,10 +192,10 @@ addLocalVar(struct function_ctx *ctx, const char *name, unsigned char size,
     var->ref_count = 0;     /* Not referenced yet */
     var->agg_refs = 0;      /* No aggregate member accesses yet */
     var->reg = REG_NO;      /* Not allocated to register yet */
-    var->next = ctx->locals;
+    var->next = fnLocals;
 
-    ctx->locals = var;
-    ctx->frame_size += size;
+    fnLocals = var;
+    fnFrmSize += size;
 
     
 }
@@ -209,22 +205,22 @@ addLocalVar(struct function_ctx *ctx, const char *name, unsigned char size,
  * Called whenever a variable is used, updates first_label and last_label
  */
 static void
-updVarLife(struct function_ctx *ctx, const char *name)
+updVarLife(const char *name)
 {
     struct local_var *var;
 
-    if (!ctx || !name) return;
+    if (!fnLocals || !name) return;
 
     /* Find the variable in locals list */
-    for (var = ctx->locals; var; var = var->next) {
+    for (var = fnLocals; var; var = var->next) {
         if (strcmp(var->name, name) == 0) {
             /* Update first use if not set */
             if (var->first_label == -1) {
-                var->first_label = ctx->current_label;
+                var->first_label = fnCurLbl;
             }
             /* Always update last use (high water mark) */
-            if (ctx->current_label > var->last_label) {
-                var->last_label = ctx->current_label;
+            if (fnCurLbl > var->last_label) {
+                var->last_label = fnCurLbl;
             }
             /* Increment reference count */
             var->ref_count++;
@@ -237,10 +233,10 @@ updVarLife(struct function_ctx *ctx, const char *name)
  * Helper: Check if a name is a parameter
  */
 static int
-isParameter(struct function_ctx *ctx, const char *name)
+isParameter(const char *name)
 {
     struct local_var *var;
-    for (var = ctx->locals; var; var = var->next) {
+    for (var = fnLocals; var; var = var->next) {
         if (var->is_param && strcmp(var->name, name) == 0) {
             return 1;
         }
@@ -252,26 +248,26 @@ isParameter(struct function_ctx *ctx, const char *name)
  * Walk statement tree and assign stack frame offsets to local variables
  */
 static void
-walkForLocals(struct function_ctx *ctx, struct stmt *s)
+walkForLocals(struct stmt *s)
 {
     if (!s) return;
 
     /* If this is a declaration, add it to locals list (unless it's a param) */
     if (s->type == 'd' && s->symbol) {
         /* Skip parameter declarations - they already have offsets */
-        if (!isParameter(ctx, s->symbol)) {
+        if (!isParameter(s->symbol)) {
             unsigned char size = getSizeFromTN(s->type_str);
             /* Detect arrays: type_str contains ":array:" */
             int is_array = (s->type_str && 
                 strstr(s->type_str, ":array:") != NULL) ? 1 : 0;
-            addLocalVar(ctx, s->symbol, size, is_array);
+            addLocalVar(s->symbol, size, is_array);
         }
     }
 
     /* Recursively walk child statements */
-    if (s->then_branch) walkForLocals(ctx, s->then_branch);
-    if (s->else_branch) walkForLocals(ctx, s->else_branch);
-    if (s->next) walkForLocals(ctx, s->next);
+    if (s->then_branch) walkForLocals(s->then_branch);
+    if (s->else_branch) walkForLocals(s->else_branch);
+    if (s->next) walkForLocals(s->next);
 }
 
 /*
@@ -295,21 +291,21 @@ walkForLocals(struct function_ctx *ctx, struct stmt *s)
  *   - Variables whose address is taken (future enhancement)
  */
 void
-allocRegs(struct function_ctx *ctx)
+allocRegs()
 {
     struct local_var *var;
     int byteRegsUsed = 0;  /* Count of byte registers allocated */
     int wordRegsUsed = 0;  /* Count of word registers allocated */
     int ix_allocated = 0;    /* IX register allocated flag */
 
-    if (!ctx) return;
+    if (!fnLocals) return;
 
     /* First pass: allocate IX to struct pointer with highest agg_refs */
     {
         struct local_var *best_ix_cand = NULL;
         int best_agg_refs = 0;
 
-        for (var = ctx->locals; var; var = var->next) {
+        for (var = fnLocals; var; var = var->next) {
             /* Skip if not a word/pointer variable */
             if (var->size != 2) continue;
             /* Prefer variables with aggregate member accesses */
@@ -327,7 +323,7 @@ allocRegs(struct function_ctx *ctx)
     }
 
     /* Second pass: allocate word registers first (BC must be allocated before B/C) */
-    for (var = ctx->locals; var; var = var->next) {
+    for (var = fnLocals; var; var = var->next) {
         /* Skip if already allocated */
         if (var->reg != REG_NO) continue;
 
@@ -362,7 +358,7 @@ allocRegs(struct function_ctx *ctx)
     }
 
     /* Third pass: allocate byte registers after all word registers are allocated */
-    for (var = ctx->locals; var; var = var->next) {
+    for (var = fnLocals; var; var = var->next) {
         /* Skip if already allocated */
         if (var->reg != REG_NO) continue;
 
@@ -474,7 +470,7 @@ addVarToSlot(struct stackSlot *slot, struct local_var *var)
  * lifetimes to share the same stack location.
  */
 void
-optFrmLayout(struct function_ctx *ctx)
+optFrmLayout()
 {
     struct stackSlot *slots = NULL;
     int num_slots = 0;
@@ -485,12 +481,12 @@ optFrmLayout(struct function_ctx *ctx)
     int slot_idx;
     int found_slot;
 
-    if (!ctx) return;
+    if (!fnLocals) return;
 
     
 
     /* Build slot assignments for each local variable */
-    for (var = ctx->locals; var; var = var->next) {
+    for (var = fnLocals; var; var = var->next) {
         /* Skip parameters - they have fixed offsets */
         if (var->is_param) continue;
 
@@ -549,14 +545,14 @@ optFrmLayout(struct function_ctx *ctx)
 
     /* Update context frame size */
     
-    ctx->frame_size = newFrameSize;
+    fnFrmSize = newFrameSize;
 
     /* Check frame size limit - IY-indexed addressing uses signed 8-bit offsets
      * Local variables use negative offsets from IY, range is -1 to -128
      * Limit to 127 bytes to ensure all locals fit within addressing range */
-    if (ctx->frame_size > 127) {
+    if (fnFrmSize > 127) {
         fdprintf(2, "ERROR: Function %s has %d bytes of local variables after optimization (max 127)\n",
-                 ctx->name, ctx->frame_size);
+                 fnName, fnFrmSize);
         fdprintf(2, "       Reduce number or size of local variables\n");
         exit(1);
     }
@@ -572,7 +568,7 @@ optFrmLayout(struct function_ctx *ctx)
  * Phase 1.5: Assign stack frame offsets to all local variables and parameters
  */
 void
-assignFrmOff(struct function_ctx *ctx)
+assignFrmOff()
 {
     char *p;
     char name_buf[64];
@@ -580,7 +576,7 @@ assignFrmOff(struct function_ctx *ctx)
     int param_offset;
     int i;
 
-    if (!ctx || !ctx->body) return;
+    if (!fnBody) return;
 
     
 
@@ -588,8 +584,8 @@ assignFrmOff(struct function_ctx *ctx)
     /* Stack layout: FP+0=saved FP, FP+2=return addr, FP+4=first param */
     param_offset = 4;  /* Skip saved FP (2 bytes) + return address (2 bytes) */
 
-    if (ctx->params && ctx->params[0]) {
-        p = ctx->params;
+    if (fnParams && fnParams[0]) {
+        p = fnParams;
         while (*p) {
             /* Skip whitespace and commas */
             while (*p == ' ' || *p == ',') p++;
@@ -619,14 +615,14 @@ assignFrmOff(struct function_ctx *ctx)
             if (name_buf[0]) {
                 unsigned char size = type_buf[0] ? 
                     getSizeFromTN(type_buf) : 2;
-                addParam(ctx, name_buf, size, param_offset);
+                addParam(name_buf, size, param_offset);
                 param_offset += size;
             }
         }
     }
 
     /* Then, assign offsets to local variables (negative offsets below FP) */
-    walkForLocals(ctx, ctx->body);
+    walkForLocals(fnBody);
     
 }
 
@@ -664,7 +660,7 @@ static char *buildStkCln(int bytes);
  *   - M (DEREF) operations generate actual load instructions
  */
 static int expr_count = 0;
-static void generateExpr(struct function_ctx *ctx, struct expr *e)
+static void generateExpr(struct expr *e)
 {
     char buf[256];
     struct expr *arg;
@@ -708,14 +704,14 @@ static void generateExpr(struct function_ctx *ctx, struct expr *e)
         /* ':' node has true_expr in left, false_expr in right */
 
         /* Recursively generate code for all three sub-expressions */
-        if (e->left) generateExpr(ctx, e->left);  /* condition */
-        if (e->right && e->right->left) generateExpr(ctx, e->right->left);   /* true expr */
-        if (e->right && e->right->right) generateExpr(ctx, e->right->right); /* false expr */
+        if (e->left) generateExpr(e->left);  /* condition */
+        if (e->right && e->right->left) generateExpr(e->right->left);   /* true expr */
+        if (e->right && e->right->right) generateExpr(e->right->right); /* false expr */
 
         /* Allocate labels for branches */
-        e->label = ctx->labelCounter++;  /* false_label */
+        e->label = fnLblCnt++;  /* false_label */
         if (e->right) {
-            e->right->label = ctx->labelCounter++;  /* end_label */
+            e->right->label = fnLblCnt++;  /* end_label */
         }
 
         /* Create jump nodes that will be resolved during emission */
@@ -752,7 +748,7 @@ static void generateExpr(struct function_ctx *ctx, struct expr *e)
         }
         if (var_name) {
             struct local_var *var;
-            for (var = ctx->locals; var; var = var->next) {
+            for (var = fnLocals; var; var = var->next) {
                 if (strcmp(var->name, var_name) == 0) {
                     var->agg_refs++;
                     break;
@@ -783,7 +779,7 @@ static void generateExpr(struct function_ctx *ctx, struct expr *e)
         }
         if (var_name) {
             struct local_var *var;
-            for (var = ctx->locals; var; var = var->next) {
+            for (var = fnLocals; var; var = var->next) {
                 if (strcmp(var->name, var_name) == 0) {
                     var->agg_refs++;
                     break;
@@ -813,7 +809,7 @@ static void generateExpr(struct function_ctx *ctx, struct expr *e)
 
             if (var_name && var_name[0] == '$') var_name++;
             if (var_name && var_name[0] == 'A') var_name++;
-            updVarLife(ctx, var_name);
+            updVarLife(var_name);
         }
 
         /* Use placeholder to defer code generation to emit phase */
@@ -837,7 +833,7 @@ static void generateExpr(struct function_ctx *ctx, struct expr *e)
             /* Generate address, load, add/sub amount, store */
             long amount = e->value;  /* Increment amount from AST */
 
-            generateExpr(ctx, e->left->left);  /* Generate address -> PRIMARY (HL) */
+            generateExpr(e->left->left);  /* Generate address -> PRIMARY (HL) */
 
             if (e->size == 1) {
                 /* Byte increment/decrement */
@@ -989,7 +985,7 @@ static void generateExpr(struct function_ctx *ctx, struct expr *e)
             /* This is already an address - just load, add/sub amount, store */
             long amount = e->value;  /* Increment amount from AST */
 
-            generateExpr(ctx, e->left);  /* Generate address -> PRIMARY (HL) */
+            generateExpr(e->left);  /* Generate address -> PRIMARY (HL) */
 
             if (e->size == 1) {
                 /* Byte */
@@ -1141,8 +1137,8 @@ static void generateExpr(struct function_ctx *ctx, struct expr *e)
     }
 
     /* Recursively generate code for children (postorder traversal) */
-    if (e->left) generateExpr(ctx, e->left);
-    if (e->right) generateExpr(ctx, e->right);
+    if (e->left) generateExpr(e->left);
+    if (e->right) generateExpr(e->right);
 
     /* Track variable usage for lifetime analysis */
     if (e->op == '$' && e->symbol) {
@@ -1151,11 +1147,7 @@ static void generateExpr(struct function_ctx *ctx, struct expr *e)
         if (var_name[0] == '$') {
             var_name++;  /* Skip $ prefix */
         }
-        /* Also skip 'A' prefix for arguments (e.g., $Ax -> x) */
-        if (var_name[0] == 'A') {
-            var_name++;  /* Skip A prefix */
-        }
-        updVarLife(ctx, var_name);
+        updVarLife(var_name);
     }
 
     /* Generate assembly code for this node based on operator */
@@ -1200,7 +1192,7 @@ static void generateExpr(struct function_ctx *ctx, struct expr *e)
                 /* Increment aggregate reference count for this variable */
                 if (var_name) {
                     struct local_var *var;
-                    for (var = ctx->locals; var; var = var->next) {
+                    for (var = fnLocals; var; var = var->next) {
                         if (strcmp(var->name, var_name) == 0) {
                             var->agg_refs++;
                             break;
@@ -1561,13 +1553,13 @@ freeJump(struct jump_instr *j)
 /*
  * Walk statement tree and generate assembly code blocks
  */
-static void generateStmt(struct function_ctx *ctx, struct stmt *s)
+static void generateStmt(struct stmt *s)
 {
     if (!s) return;
 
     /* Increment current_label for each statement to track program points
      * This provides a monotonically increasing sequence for lifetime analysis */
-    ctx->current_label++;
+    fnCurLbl++;
 
     /* Track loop depth globally for call cleanup optimization */
     if (s->type == 'L' && s->symbol) {
@@ -1579,14 +1571,14 @@ static void generateStmt(struct function_ctx *ctx, struct stmt *s)
     }
 
     /* Recursively generate code for expressions */
-    if (s->expr) generateExpr(ctx, s->expr);
-    if (s->expr2) generateExpr(ctx, s->expr2);
-    if (s->expr3) generateExpr(ctx, s->expr3);
+    if (s->expr) generateExpr(s->expr);
+    if (s->expr2) generateExpr(s->expr2);
+    if (s->expr3) generateExpr(s->expr3);
 
     /* Recursively generate code for child statements */
-    if (s->then_branch) generateStmt(ctx, s->then_branch);
-    if (s->else_branch) generateStmt(ctx, s->else_branch);
-    if (s->next) generateStmt(ctx, s->next);
+    if (s->then_branch) generateStmt(s->then_branch);
+    if (s->else_branch) generateStmt(s->else_branch);
+    if (s->next) generateStmt(s->next);
 
     /* Create jump nodes for control flow statements
      * These will be resolved and optimized during emission
@@ -1619,17 +1611,17 @@ static void generateStmt(struct function_ctx *ctx, struct stmt *s)
 /*
  * Generate assembly code for entire function
  */
-void generateCode(struct function_ctx *ctx)
+void generateCode()
 {
-    if (!ctx || !ctx->body) return;
+    if (!fnBody) return;
 
     /* Initialize lifetime tracking */
-    ctx->current_label = 0;
+    fnCurLbl = 0;
 
     /* Reset global loop depth at start of each function */
     g_loop_depth = 0;
 
-    generateStmt(ctx, ctx->body);
+    generateStmt(fnBody);
 }
 
 

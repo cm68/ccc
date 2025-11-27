@@ -2,7 +2,7 @@
  * Test lvalue validation - these should all produce errors
  */
 
-int test_invalid_assignment()
+int tInvAssign()
 {
     int x = 5;
 
@@ -15,7 +15,7 @@ int test_invalid_assignment()
     return 0;
 }
 
-int test_invalid_increment()
+int tInvIncr()
 {
     int x = 5;
 
@@ -30,7 +30,7 @@ int test_invalid_increment()
     return 0;
 }
 
-int test_invalid_decrement()
+int tInvDecr()
 {
     int x = 5;
 
@@ -45,7 +45,7 @@ int test_invalid_decrement()
     return 0;
 }
 
-int test_invalid_compound_assign()
+int tInvCmpnd()
 {
     int x = 5;
 

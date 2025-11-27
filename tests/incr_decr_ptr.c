@@ -3,7 +3,7 @@
  * Tests pointer arithmetic and dereferencing combinations
  */
 
-int test_ptr_postfix()
+int tPtrPost()
 {
     int arr[5];
     int *p = arr;
@@ -13,7 +13,7 @@ int test_ptr_postfix()
     return 0;
 }
 
-int test_ptr_prefix()
+int tPtrPre()
 {
     int arr[5];
     int *p = arr;
@@ -23,7 +23,7 @@ int test_ptr_prefix()
     return 0;
 }
 
-int test_deref_postfix()
+int tDrfPost()
 {
     int i = 5;
     int *p = &i;
@@ -32,7 +32,7 @@ int test_deref_postfix()
     return i;
 }
 
-int test_deref_prefix()
+int tDrfPre()
 {
     int i = 5;
     int *p = &i;
@@ -41,7 +41,7 @@ int test_deref_prefix()
     return i;
 }
 
-int test_ptr_then_deref()
+int tPtrDrf()
 {
     int arr[5];
     int *p = arr;
@@ -53,7 +53,7 @@ int test_ptr_then_deref()
     return *p;  /* should be 20 */
 }
 
-int test_deref_ptr_incr()
+int tDrfPtrI()
 {
     int arr[5];
     int *p = arr;
@@ -64,7 +64,7 @@ int test_deref_ptr_incr()
     return *p;  /* should be 20 */
 }
 
-int test_incr_deref()
+int tIncrDrf()
 {
     int arr[5];
     int *p = arr;
@@ -74,7 +74,7 @@ int test_incr_deref()
     return arr[0];
 }
 
-int test_complex_ptr()
+int tCplxPtr()
 {
     int arr[5];
     int *p = arr;
@@ -98,7 +98,7 @@ int test_char_ptr()
     return 0;
 }
 
-int test_deref_then_incr()
+int tDrfThenI()
 {
     int arr[5];
     int *p = arr;

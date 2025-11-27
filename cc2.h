@@ -140,26 +140,24 @@ struct local_var {
 };
 
 /*
- * Function context - holds parsed function tree and generation state
+ * Function context globals - state for current function being compiled
  */
-struct function_ctx {
-    char *name;                 // Function name
-    char *params;               // Parameter list string
-    char *rettype;              // Return type
-    struct stmt *body;          // Function body statement tree
-    int labelCounter;          // For generating unique labels
-    struct local_var *locals;   // List of local variables with stack offsets
-    int frame_size;             // Total stack frame size in bytes
-    int current_label;          // Current label context during code generation (for lifetime tracking)
-    int de_save_count;          // Counter for nested DE saves (for secondary register preservation)
-    int d_in_use;               // Flag: D register holds spilled byte secondary (E)
-    int pendStkClean;  // Bytes to clean up after current expression (for CALL return values)
-    int loop_depth;             // Nesting depth of loops (0=not in loop, >0=in loop)
-    int de_valid;               // Stack machine: 1 if DE holds valid value (2nd stack entry), 0 if empty
-    int zflag_valid;            // 1 if Z flag is valid for HL test (comparison functions)
-    struct expr *hl_cache;      // Shallow copy of expr in HL (TOS), NULL if invalid
-    struct expr *de_cache;      // Shallow copy of expr in DE (2nd entry), NULL if invalid
-};
+extern char *fnName;            /* Function name */
+extern char *fnParams;          /* Parameter list string */
+extern char *fnRettype;         /* Return type */
+extern struct stmt *fnBody;     /* Function body statement tree */
+extern int fnLblCnt;            /* For generating unique labels */
+extern struct local_var *fnLocals;  /* List of local variables */
+extern int fnFrmSize;           /* Total stack frame size in bytes */
+extern int fnCurLbl;            /* Current label for lifetime tracking */
+extern int fnDESaveCnt;         /* Counter for nested DE saves */
+extern int fnDInUse;            /* Flag: D register holds spilled byte */
+extern int fnPendClean;         /* Bytes to clean up after CALL */
+extern int fnLoopDep;           /* Nesting depth of loops */
+extern int fnDEValid;           /* 1 if DE holds valid value */
+extern int fnZValid;            /* 1 if Z flag valid for HL test */
+extern struct expr *fnHLCache;  /* Shallow copy of expr in HL */
+extern struct expr *fnDECache;  /* Shallow copy of expr in DE */
 
 /* Forward declarations from util.c */
 int fdprintf(unsigned char fd, const char *fmt, ...);
@@ -197,17 +195,17 @@ int isStructMem(struct expr *e, char **out_var, long *out_offset);
 int isMulByPow2(struct expr *e, struct expr **out_expr);
 
 /* Code generation functions (codegen.c) */
-void assignFrmOff(struct function_ctx *ctx);
-void generateCode(struct function_ctx *ctx);
-void optFrmLayout(struct function_ctx *ctx);
-void allocRegs(struct function_ctx *ctx);
-struct local_var *findVar(struct function_ctx *ctx, const char *symbol);
+void assignFrmOff(void);
+void generateCode(void);
+void optFrmLayout(void);
+void allocRegs(void);
+struct local_var *findVar(const char *symbol);
 
 /* Symbol tracking (parseast.c) */
 void addRefSym(const char *name);
 
 /* Code emission functions (emit.c) */
-void emitAssembly(struct function_ctx *ctx, int outFd);
+void emitAssembly(int outFd);
 
 #endif /* CC2_H */
 

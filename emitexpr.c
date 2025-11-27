@@ -21,7 +21,7 @@
  *   4. Emit call instruction (operates on SECONDARY and PRIMARY)
  */
 static int exprCount = 0;
-void emitExpr(struct function_ctx *ctx, struct expr *e)
+void emitExpr(struct expr *e)
 {
     if (!e) return;
     exprCount++;
@@ -44,12 +44,12 @@ void emitExpr(struct function_ctx *ctx, struct expr *e)
         struct expr *temp;
         if (TRACE(T_EXPR)) {
             fdprintf(2, "  => DEREF_PLACEHOLDER case\n");
-            fdprintf(2, "  hl_cache=%p\n", (void*)ctx->hl_cache);
+            fdprintf(2, "  hl_cache=%p\n", (void*)fnHLCache);
             fdprintf(2, "  calling matchesCache\n");
         }
 
         /* Check cache first - if value already in HL, no code needed */
-        if (ctx->hl_cache && matchesCache(e, ctx->hl_cache)) {
+        if (fnHLCache && matchesCache(e, fnHLCache)) {
             if (TRACE(T_EXPR)) {
                 fdprintf(2, "  matched hl_cache\n");
             }
@@ -64,14 +64,14 @@ void emitExpr(struct function_ctx *ctx, struct expr *e)
         }
 
         /* Check if value is in DE - swap if so */
-        if (ctx->de_cache && matchesCache(e, ctx->de_cache)) {
+        if (fnDECache && matchesCache(e, fnDECache)) {
             /* Value in DE - swap DE and HL */
             emit(S_CACHESWP);
 
             /* Swap caches */
-            temp = ctx->hl_cache;
-            ctx->hl_cache = ctx->de_cache;
-            ctx->de_cache = temp;
+            temp = fnHLCache;
+            fnHLCache = fnDECache;
+            fnDECache = temp;
 
             /* Mark as generated and return */
             e->flags |= E_GENERATED;
@@ -89,7 +89,7 @@ void emitExpr(struct function_ctx *ctx, struct expr *e)
             if (TRACE(T_EXPR)) {
                 fdprintf(2, "  found symbol: %s\n", e->left->symbol);
             }
-            var = findVar(ctx, e->left->symbol);
+            var = findVar(e->left->symbol);
             /* If not found as local var, it's a global - save symbol name */
             if (!var) {
                 if (TRACE(T_EXPR)) {
@@ -158,17 +158,17 @@ void emitExpr(struct function_ctx *ctx, struct expr *e)
         }
 
         /* Value now in HL (TOS) - Z flag may be invalid */
-        ctx->zflag_valid = 0;
+        fnZValid = 0;
 
         /* Save expression to cache */
         if (TRACE(T_EXPR)) {
             fdprintf(2, "  clearing HL cache\n");
         }
-        clearHL(ctx);
+        clearHL();
         if (TRACE(T_EXPR)) {
             fdprintf(2, "  making shallow copy\n");
         }
-        ctx->hl_cache = shallowCopy(e);
+        fnHLCache = shallowCopy(e);
         if (TRACE(T_EXPR)) {
             fdprintf(2, "  freeing node and returning\n");
         }
@@ -193,7 +193,7 @@ void emitExpr(struct function_ctx *ctx, struct expr *e)
         var_symbol = e->left->left->left->symbol;
         offset = e->value;  /* Saved by codegen phase */
         var_name = stripVarPfx(var_symbol);
-        var = findVar(ctx, var_name);
+        var = findVar(var_name);
 
         if (var && var->reg == REG_IX) {
             /* Variable is in IX - use IX-indexed addressing */
@@ -217,7 +217,7 @@ void emitExpr(struct function_ctx *ctx, struct expr *e)
         } else {
             /* Not IX-allocated - fall back to computing address and dereferencing */
             /* Emit child expression (computes address to HL) */
-            emitExpr(ctx, e->left);
+            emitExpr(e->left);
 
             /* Emit load from (HL) */
             if (e->size == 1) {
@@ -251,7 +251,7 @@ void emitExpr(struct function_ctx *ctx, struct expr *e)
         }
         symbol[i] = '\0';
         var_name = stripVarPfx(symbol);
-        var = findVar(ctx, var_name);
+        var = findVar(var_name);
 
         if (var && var->reg != REG_NO) {
             /* Pointer is register-allocated - use indirect addressing */
@@ -269,12 +269,12 @@ void emitExpr(struct function_ctx *ctx, struct expr *e)
                 }
                 emit(S_FBKNORM);
                 /* Emit the inner DEREF to load pointer */
-                emitExpr(ctx, e->left);
+                emitExpr(e->left);
                 emit(S_AHL);
             }
         } else {
             /* Pointer not register-allocated - load to HL then indirect */
-            emitExpr(ctx, e->left);
+            emitExpr(e->left);
             emit(S_AHL);
         }
 
@@ -291,7 +291,7 @@ void emitExpr(struct function_ctx *ctx, struct expr *e)
     }
     /* Handle increment/decrement placeholders - need to check register allocation */
     else if (e->asm_block && strstr(e->asm_block, "INCDEC_PLACEHOLDER:")) {
-        emitIncDec(ctx, e);
+        emitIncDec(e);
         return;
     }
     /* Handle ASSIGN specially - need to check register allocation */
@@ -300,7 +300,7 @@ void emitExpr(struct function_ctx *ctx, struct expr *e)
         if (TRACE(T_EXPR)) {
             fdprintf(2, "  calling emitAssign\n");
         }
-        emitAssign(ctx, e);
+        emitAssign(e);
         if (TRACE(T_EXPR)) {
             fdprintf(2, "  emitAssign returned, about to return from emitExpr\n");
         }
@@ -310,33 +310,33 @@ void emitExpr(struct function_ctx *ctx, struct expr *e)
     else if (e->op == '+' && e->left && e->left->op == 'M' && e->size == 2 &&
              e->left->left && e->left->left->op == '$' && e->left->left->symbol &&
              !e->right) {
-        emitAddConst(ctx, e);
+        emitAddConst(e);
         return;
     }
     /* Binary operators with accumulator management need special handling */
     else if (isBinopWAccum(e->op) && e->left && e->right &&
             e->asm_block) {
-        emitBinop(ctx, e);
+        emitBinop(e);
         return;
     }
     /* CALL operator - don't emit children, they're in the asm_block */
     else if (e->op == '@') {
-        emitCall(ctx, e);
+        emitCall(e);
         return;
     }
     /* Handle SYM - load variable value to PRIMARY */
     else if (e->op == '$' && e->symbol) {
-        loadVar(ctx, e->symbol, 2, 0);
+        loadVar(e->symbol, 2, 0);
     }
     /* Handle ternary operator (? :) */
     else if (e->op == '?') {
-        emitTernary(ctx, e);
+        emitTernary(e);
         return;
     }
     else {
         /* Normal postorder traversal for other operators */
-        if (e->left) emitExpr(ctx, e->left);
-        if (e->right) emitExpr(ctx, e->right);
+        if (e->left) emitExpr(e->left);
+        if (e->right) emitExpr(e->right);
 
         if (e->asm_block) {
             if (e->asm_block[0]) {  /* Only if non-empty */
@@ -354,7 +354,7 @@ void emitExpr(struct function_ctx *ctx, struct expr *e)
                     call_pos++;
                 }
                 if (*call_pos && isCmpFunc(call_pos)) {
-                    ctx->zflag_valid = 1;
+                    fnZValid = 1;
                 }
             }
         }

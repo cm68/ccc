@@ -2,12 +2,12 @@
 
 #define DEFINED_MACRO 1
 
-#ifndef UNDEFINED_MACRO
-int should_appear_1 = 1;
+#ifndef UNDEF_MACRO
+int shldAppear1 = 1;
 #endif
 
 #ifndef DEFINED_MACRO
-int should_not_appear = 2;
+int shldNotAppr = 2;
 #endif
 
-int should_appear_2 = 3;
+int shldAppear2 = 3;

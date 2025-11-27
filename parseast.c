@@ -54,6 +54,24 @@ isMangledName(const char *name)
 unsigned char outFd = 1;  /* Assembly output (default: stdout) */
 static int labelCounter = 0;  /* For generating unique labels */
 
+/* Function context globals */
+char *fnName;
+char *fnParams;
+char *fnRettype;
+struct stmt *fnBody;
+int fnLblCnt;
+struct local_var *fnLocals;
+int fnFrmSize;
+int fnCurLbl;
+int fnDESaveCnt;
+int fnDInUse;
+int fnPendClean;
+int fnLoopDep;
+int fnDEValid;
+int fnZValid;
+struct expr *fnHLCache;
+struct expr *fnDECache;
+
 /* Segment tracking */
 #define SEG_NONE 0
 #define SEG_TEXT 1
@@ -502,6 +520,11 @@ handleCmpAsn(unsigned char op)
     e->right = parseExpr();  /* rvalue */
     expect(')');
 
+    /* If RHS is a constant, inherit size from assignment */
+    if (e->right && e->right->op == 'C') {
+        e->right->size = e->size;
+    }
+
     return e;
 }
 
@@ -516,9 +539,18 @@ doBinaryOp(unsigned char op)
     e->right = parseExpr();  /* right operand - now returns tree */
     expect(')');
 
+    /* For comparisons with a constant, narrow the constant to match */
+    if (e->left && e->right) {
+        if (e->left->op == 'C' && e->right->op != 'C') {
+            e->left->size = e->right->size;
+        } else if (e->right->op == 'C' && e->left->op != 'C') {
+            e->right->size = e->left->size;
+        }
+    }
+
     /* Result size is the larger of the two operand sizes */
     if (e->left && e->right) {
-        e->size = (e->left->size > e->right->size) ? 
+        e->size = (e->left->size > e->right->size) ?
             e->left->size : e->right->size;
     } else if (e->left) {
         e->size = e->left->size;
@@ -818,6 +850,12 @@ doAssign(unsigned char op)
     skip();
     e->right = parseExpr();  /* rvalue */
     expect(')');
+
+    /* If RHS is a constant, inherit size from assignment */
+    if (e->right && e->right->op == 'C') {
+        e->right->size = e->size;
+    }
+
     return e;
 }
 
@@ -1240,6 +1278,11 @@ doReturn(void)
     skip();
     if (curchar != ')') {
         s->expr = parseExpr();
+        /* If return value is a constant, set size from function return type */
+        if (s->expr && s->expr->op == 'C') {
+            s->expr->size = fnRettype[0] == 'b' ? 1 :
+                            fnRettype[0] == 'l' ? 4 : 2;
+        }
     } else {
         s->expr = NULL;
     }
@@ -1484,22 +1527,21 @@ doSwitch(void)
 static void
 doFunction(char rettype)
 {
-    struct function_ctx ctx;
-    char name_buf[64];  /* Stack buffer for function name */
-    char params_buf[256];
-    char rettype_buf[2];
+    static char name_buf[64];  /* Buffer for function name */
+    static char params_buf[256];
+    static char rettype_buf[2];
     char *p;
     int first_param;
 
     /* (f:rettype name (params) body) - rettype already consumed */
     rettype_buf[0] = rettype;
     rettype_buf[1] = '\0';
-    ctx.rettype = rettype_buf;
+    fnRettype = rettype_buf;
 
     /* Copy function name to stack buffer before reading parameters */
     strncpy(name_buf, readSymbol(), sizeof(name_buf) - 1);
     name_buf[sizeof(name_buf) - 1] = '\0';
-    ctx.name = name_buf;
+    fnName = name_buf;
 
     /* Switch to .text segment for function code */
     switchToSeg(SEG_TEXT);
@@ -1508,10 +1550,10 @@ doFunction(char rettype)
     /* Static functions (mangled names) don't get the underscore prefix */
     {
         char func_label[128];
-        if (isMangledName(ctx.name)) {
-            snprintf(func_label, sizeof(func_label), "%s", ctx.name);
+        if (isMangledName(fnName)) {
+            snprintf(func_label, sizeof(func_label), "%s", fnName);
         } else {
-            snprintf(func_label, sizeof(func_label), "_%s", ctx.name);
+            snprintf(func_label, sizeof(func_label), "_%s", fnName);
         }
         addDefSym(func_label);
     }
@@ -1562,22 +1604,22 @@ doFunction(char rettype)
         skip();
     }
     *p = '\0';
-    ctx.params = params_buf;
+    fnParams = params_buf;
     expect(')');
 
     /* Body is a single statement (typically a block) */
     skip();
-    ctx.body = parseStmt();
-    ctx.labelCounter = labelCounter;  /* Save current label counter */
-    ctx.locals = NULL;  /* No local variables yet */
-    ctx.frame_size = 0;  /* No frame size yet */
-    ctx.de_save_count = 0;  /* No nested DE saves yet */
-    ctx.d_in_use = 0;  /* D register not in use yet */
-    ctx.loop_depth = 0;  /* Not in a loop initially */
-    ctx.de_valid = 0;  /* Stack machine: DE empty initially (only HL = TOS) */
-    ctx.zflag_valid = 0;  /* Z flag not valid initially */
-    ctx.hl_cache = NULL;  /* No expression cached in HL */
-    ctx.de_cache = NULL;  /* No expression cached in DE */
+    fnBody = parseStmt();
+    fnLblCnt = labelCounter;
+    fnLocals = NULL;
+    fnFrmSize = 0;
+    fnDESaveCnt = 0;
+    fnDInUse = 0;
+    fnLoopDep = 0;
+    fnDEValid = 0;
+    fnZValid = 0;
+    fnHLCache = NULL;
+    fnDECache = NULL;
 
     if (TRACE(T_AST)) {
         fdprintf(2, "doFunction: before expect ')' curchar=%d '%c'\n",
@@ -1590,31 +1632,31 @@ doFunction(char rettype)
     }
 
     /* Phase 1.5: Assign stack frame offsets to local variables */
-    assignFrmOff(&ctx);
+    assignFrmOff();
     if (TRACE(T_AST)) {
         fdprintf(2, "doFunction: after assignFrmOff curchar=%d\n", curchar);
     }
 
     /* Phase 2: Generate assembly code blocks for tree nodes */
-    generateCode(&ctx);
+    generateCode();
     if (TRACE(T_AST)) {
         fdprintf(2, "doFunction: after generateCode curchar=%d\n", curchar);
     }
 
     /* Phase 2.25: Optimize frame layout based on lifetime analysis */
-    optFrmLayout(&ctx);
+    optFrmLayout();
     if (TRACE(T_AST)) {
         fdprintf(2, "doFunction: after optFrmLayout curchar=%d\n", curchar);
     }
 
     /* Phase 2.5: Allocate registers based on usage patterns */
-    allocRegs(&ctx);
+    allocRegs();
     if (TRACE(T_AST)) {
         fdprintf(2, "doFunction: after allocRegs curchar=%d\n", curchar);
     }
 
     /* Phase 3: Emit assembly and free tree nodes */
-    emitAssembly(&ctx, outFd);
+    emitAssembly(outFd);
     if (TRACE(T_AST)) {
         fdprintf(2, "doFunction: after emitAssembly curchar=%d\n", curchar);
     }
@@ -2335,96 +2377,6 @@ emitSymDecls(void)
     }
 }
 
-/*
- * Emit EXTERN declarations for runtime helper functions
- * These are provided by the runtime library (ccclib.s)
- */
-static void
-emitRtHelpers(void)
-{
-    /* Frame management */
-    fdputs(outFd, ASM_EXTERN " framealloc\n");
-    fdputs(outFd, ASM_EXTERN " framefree\n");
-
-    /* Long (32-bit) operations */
-    fdputs(outFd, ASM_EXTERN " getlong\n");
-    fdputs(outFd, ASM_EXTERN " putlong\n");
-    fdputs(outFd, ASM_EXTERN " load32i\n");
-
-    /* 32-bit arithmetic */
-    fdputs(outFd, ASM_EXTERN " add3232\n");
-    fdputs(outFd, ASM_EXTERN " sub3232\n");
-    fdputs(outFd, ASM_EXTERN " mul3232\n");
-    fdputs(outFd, ASM_EXTERN " div3232\n");
-    fdputs(outFd, ASM_EXTERN " mod3232\n");
-    fdputs(outFd, ASM_EXTERN " shr3232\n");
-
-    /* 32-bit comparisons */
-    fdputs(outFd, ASM_EXTERN " lt3232\n");
-    fdputs(outFd, ASM_EXTERN " gt3232\n");
-    fdputs(outFd, ASM_EXTERN " le3232\n");
-    fdputs(outFd, ASM_EXTERN " ge3232\n");
-    fdputs(outFd, ASM_EXTERN " eq3232\n");
-    fdputs(outFd, ASM_EXTERN " ne3232\n");
-
-    /* 32-bit bitwise */
-    fdputs(outFd, ASM_EXTERN " and3232\n");
-    fdputs(outFd, ASM_EXTERN " or3232\n");
-    fdputs(outFd, ASM_EXTERN " xor3232\n");
-
-    /* 16-bit operations */
-    fdputs(outFd, ASM_EXTERN " lt1616\n");
-    fdputs(outFd, ASM_EXTERN " gt1616\n");
-    fdputs(outFd, ASM_EXTERN " le1616\n");
-    fdputs(outFd, ASM_EXTERN " ge1616\n");
-    fdputs(outFd, ASM_EXTERN " eq1616\n");
-    fdputs(outFd, ASM_EXTERN " ne1616\n");
-    fdputs(outFd, ASM_EXTERN " ueq1616\n");
-    fdputs(outFd, ASM_EXTERN " and1616\n");
-    fdputs(outFd, ASM_EXTERN " or1616\n");
-    fdputs(outFd, ASM_EXTERN " xor1616\n");
-    fdputs(outFd, ASM_EXTERN " sub1616\n");
-    fdputs(outFd, ASM_EXTERN " mul1616\n");
-    fdputs(outFd, ASM_EXTERN " mod1616\n");
-    fdputs(outFd, ASM_EXTERN " shr1616\n");
-    fdputs(outFd, ASM_EXTERN " ult1616\n");
-    fdputs(outFd, ASM_EXTERN " ugt1616\n");
-    fdputs(outFd, ASM_EXTERN " uge1616\n");
-    fdputs(outFd, ASM_EXTERN " une1616\n");
-    fdputs(outFd, ASM_EXTERN " uand1616\n");
-    fdputs(outFd, ASM_EXTERN " usub1616\n");
-
-    /* Mixed size operations */
-    fdputs(outFd, ASM_EXTERN " lt816\n");
-    fdputs(outFd, ASM_EXTERN " le816\n");
-    fdputs(outFd, ASM_EXTERN " gt816\n");
-    fdputs(outFd, ASM_EXTERN " ge816\n");
-    fdputs(outFd, ASM_EXTERN " sub816\n");
-    fdputs(outFd, ASM_EXTERN " eq816\n");
-    fdputs(outFd, ASM_EXTERN " ne816\n");
-    fdputs(outFd, ASM_EXTERN " ueq816\n");
-    fdputs(outFd, ASM_EXTERN " ule3216\n");
-    fdputs(outFd, ASM_EXTERN " ult168\n");
-    fdputs(outFd, ASM_EXTERN " ult816\n");
-    fdputs(outFd, ASM_EXTERN " une816\n");
-    fdputs(outFd, ASM_EXTERN " shr816\n");
-    fdputs(outFd, ASM_EXTERN " ushr816\n");
-    fdputs(outFd, ASM_EXTERN " uand3216\n");
-    fdputs(outFd, ASM_EXTERN " and816\n");
-    fdputs(outFd, ASM_EXTERN " gt168\n");
-
-    /* 8-bit operations */
-    fdputs(outFd, ASM_EXTERN " add88\n");
-    fdputs(outFd, ASM_EXTERN " eq88\n");
-    fdputs(outFd, ASM_EXTERN " ne88\n");
-    fdputs(outFd, ASM_EXTERN " lt88\n");
-    fdputs(outFd, ASM_EXTERN " gt88\n");
-    fdputs(outFd, ASM_EXTERN " ge88\n");
-    fdputs(outFd, ASM_EXTERN " and88\n");
-    fdputs(outFd, ASM_EXTERN " or88\n");
-
-    fdputs(outFd, "\n");
-}
 
 /*
  * Initialize parser and read AST file
@@ -2438,9 +2390,6 @@ parseAstFile(int in, int out)
 
     /* Initialize expression handler lookup table */
     initExprHndl();
-
-    /* Emit runtime helper EXTERN declarations at the beginning */
-    emitRtHelpers();
 
     /* Prime the input */
     nextchar();

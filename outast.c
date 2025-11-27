@@ -95,14 +95,10 @@ emitExpr(struct expr *e)
 				/* Global variable (extern or level 1) */
 				prefix = "$_";
 				name = sym->name;
-			} else if (sym->kind == funarg) {
-				/* Function argument */
-				prefix = "$A";
-				name = sym->name;
 			} else {
-				/* Local variable */
+				/* Local variable or argument - use mangled name if shadowing */
 				prefix = "$";
-				name = sym->name;
+				name = sym->mangled_name ? sym->mangled_name : sym->name;
 			}
 			fdprintf(astFd, "%s%s", prefix, name);
 		} else {
@@ -286,12 +282,17 @@ emitStmt(struct stmt *st)
 	case BEGIN:
 		fdprintf(astFd, "(B");  /* Block */
 
-		/* Emit declarations for local variables in this scope */
+		/* Emit declarations for local variables in this scope (skip args) */
 		if (st->locals) {
 			struct name *local;
+			const char *lname;
 			for (local = st->locals; local; local = local->next) {
+				if (local->kind == funarg)
+					continue;  /* args are in function header */
+				lname = local->mangled_name ?
+					local->mangled_name : local->name;
 				fdprintf(astFd, " (d:%c %s)",
-					getSizeSuffix(local->type), local->name);
+					getSizeSuffix(local->type), lname);
 			}
 		}
 

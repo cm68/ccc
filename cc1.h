@@ -264,6 +264,7 @@ void cleanupParse();
 extern char *srcFileRoot;
 extern struct name *curFunc;
 extern unsigned char staticCtr;  // counter for statics in current function
+extern unsigned char shadowCtr;  // counter for shadowed locals
 
 /* AST output control */
 extern unsigned char astFd;         // where to write AST output

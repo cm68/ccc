@@ -1,5 +1,5 @@
 /*
- * Tests multiple K&R style functions with minimal implementations
+ * Tests multiple K&R style functions with minimal impls
  */
 
 int test_if(n)
@@ -8,13 +8,13 @@ int n;
     return 0;
 }
 
-int test_if_else(n)
+int tIfElse(n)
 int n;
 {
     return 1;
 }
 
-int test_while(n)
+int tWhile(n)
 int n;
 {
     return 2;

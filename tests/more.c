@@ -12,7 +12,7 @@ int test_if(int x) {
 }
 
 // if-else statement
-int test_if_else(int x) {
+int tIfElse(int x) {
     if (x > 0) {
         return 1;
     } else {
@@ -21,7 +21,7 @@ int test_if_else(int x) {
 }
 
 // if-else-if chain
-int test_if_else_if(int x) {
+int tIfElse(int x) {
     if (x > 0) {
         return 1;
     } else if (x < 0) {
@@ -32,7 +32,7 @@ int test_if_else_if(int x) {
 }
 
 // Nested if statements
-int test_nested_if(int x, int y) {
+int tNestedIf(int x, int y) {
     if (x > 0) {
         if (y > 0) {
             return 1;
@@ -42,7 +42,7 @@ int test_nested_if(int x, int y) {
 }
 
 // while loop
-int test_while(int n) {
+int tWhile(int n) {
     int i = 0;
     while (i < n) {
         i = i + 1;
@@ -51,7 +51,7 @@ int test_while(int n) {
 }
 
 // do-while loop
-int test_do_while(int n) {
+int tDoWhile(int n) {
     int i = 0;
     do {
         i = i + 1;
@@ -60,7 +60,7 @@ int test_do_while(int n) {
 }
 
 // for loop
-int test_for(int n) {
+int tFor(int n) {
     int i;
     int sum = 0;
     for (i = 0; i < n; i = i + 1) {
@@ -70,7 +70,7 @@ int test_for(int n) {
 }
 
 // for loop with empty expressions
-int test_for_empty() {
+int tFor_empty() {
     int i = 0;
     for (;;) {
         if (i >= 10) break;
@@ -102,7 +102,7 @@ int test_continue(int n) {
 }
 
 // switch statement
-int test_switch(int x) {
+int tSwitch(int x) {
     switch (x) {
         case 0:
             return 100;
@@ -116,7 +116,7 @@ int test_switch(int x) {
 }
 
 // switch with fall-through
-int test_switch_fallthrough(int x) {
+int tSwFall(int x) {
     int result = 0;
     switch (x) {
         case 0:

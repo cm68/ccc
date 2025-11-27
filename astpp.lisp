@@ -192,9 +192,20 @@
               (pp-statement s (1+ depth)))
             (format t "~A}~%" (indent)))
 
-           ;; Declaration
-           ((or (eq stmt-type '|d|) (eq stmt-type 'd))
-            (format t "~A~A ~A : ~A~%" (indent) stmt-name (second stmt) (third stmt)))
+           ;; Declaration - new format: (d:type name) -> (d_type name) after preprocessing
+           ((or (eq stmt-type '|d|) (eq stmt-type 'd)
+                (let ((tag-str (symbol-name stmt-type)))
+                  (and (> (length tag-str) 1)
+                       (char= (char tag-str 0) #\d)
+                       (char= (char tag-str 1) #\_))))
+            (let* ((parsed (parse-decl-tag stmt-type))
+                   (type (cdr parsed))
+                   (name (second stmt)))
+              (if type
+                  ;; New format: type in tag
+                  (format t "~ADECL ~A : ~A~%" (indent) name type)
+                  ;; Old format: (d name type)
+                  (format t "~ADECL ~A : ~A~%" (indent) (second stmt) (third stmt)))))
 
            ;; If statement
            ((or (eq stmt-type '|I|) (eq stmt-type 'I))
@@ -259,42 +270,53 @@
            (t
             (format t "~A??? ~A~%" (indent) stmt))))))))
 
-(defun pp-function (func-def)
-  "Pretty print a function definition"
+(defun parse-func-tag (tag)
+  "Parse function tag like f_v into (f . v) for return type"
+  (let ((name (if (symbolp tag) (symbol-name tag) (string tag))))
+    (let ((underscore-pos (position #\_ name)))
+      (if underscore-pos
+          (cons (subseq name 0 underscore-pos)
+                (subseq name (1+ underscore-pos)))
+          (cons name nil)))))
+
+(defun parse-decl-tag (tag)
+  "Parse declaration tag like d_b into (d . b) for type"
+  (let ((name (if (symbolp tag) (symbol-name tag) (string tag))))
+    (let ((underscore-pos (position #\_ name)))
+      (if underscore-pos
+          (cons (subseq name 0 underscore-pos)
+                (subseq name (1+ underscore-pos)))
+          (cons name nil)))))
+
+(defun pp-function (func-def return-type)
+  "Pretty print a function definition.
+   func-def is (name (params...) body) where params are (d:type name) forms.
+   return-type is extracted from f:type tag."
   (let* ((name (first func-def))
          (params (second func-def))
-         (return-type (third func-def))
-         (rest-items (nthcdr 3 func-def))
-         (declarations nil)
-         (body nil))
-
-    ;; Separate declarations (d ...) from body
-    ;; Declarations are (d name type) forms
-    ;; Body is everything else (typically a (B ...) block)
-    (dolist (item rest-items)
-      (if (and (listp item)
-               (or (eq (first item) 'd) (eq (first item) '|d|)))
-          (push item declarations)
-          (setf body item)))
+         (body (third func-def)))
 
     (format t "~%FUNCTION ~A(" name)
+    ;; Print parameters - now in (d:type name) format
     (loop for param in params
           for i from 0
           do (when (> i 0) (format t ", "))
-             (format t "~A" param))
-    (format t ") -> ~A~%" return-type)
+             (if (and (listp param)
+                      (let ((tag (symbol-name (first param))))
+                        (and (> (length tag) 1)
+                             (char= (char tag 0) #\d)
+                             (char= (char tag 1) #\_))))
+                 ;; New format: (d_type name)
+                 (let* ((parsed (parse-decl-tag (first param)))
+                        (type (cdr parsed))
+                        (pname (second param)))
+                   (format t "~A : ~A" pname type))
+                 ;; Old format or unknown
+                 (format t "~A" param)))
+    (format t ") -> ~A~%" (or return-type "?"))
     (format t "{~%")
 
-    ;; Print declarations if any (at indent level 1)
-    (when declarations
-      (let ((*indent-level* 1))
-        (dolist (decl (reverse declarations))
-          (format t "~ADECL ~A" (indent) (symbol-name-only (second decl)))
-          (when (third decl)
-            (format t " : ~A" (third decl)))
-          (format t "~%"))))
-
-    ;; Print body
+    ;; Print body - declarations are now inline in the block
     (when body
       (pp-statement body 1))
 
@@ -424,9 +446,16 @@
                (pp-string (symbol-name-only (second lit))
                          (third lit)))))
 
-          ;; Function definition (f <name> <params> <type> <body>)
-          ((or (eq tag 'f) (eq tag '|f|))
-           (pp-function (rest item)))))))))) ; cond, let, when, dolist, progn, if, defun
+          ;; Function definition (f:type <name> <params> <body>)
+          ;; Tag is f_type after preprocessing (colon -> underscore)
+          ((or (eq tag 'f) (eq tag '|f|)
+               (let ((tag-str (symbol-name tag)))
+                 (and (> (length tag-str) 1)
+                      (char= (char tag-str 0) #\f)
+                      (char= (char tag-str 1) #\_))))
+           (let* ((parsed (parse-func-tag tag))
+                  (return-type (cdr parsed)))
+             (pp-function (rest item) return-type)))))))))) ; cond, let, when, dolist, progn, if, defun
 
 (defun setup-reader ()
   "Configure the Lisp reader to handle AST symbols"

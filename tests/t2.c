@@ -11,7 +11,7 @@ char bar[] = "this is a another, uglier\0 one\n";
 
 #define assign(x,y)  x = y
 
-#define assignstringify(x,y) x = #y
+#define assignStrfy(x,y) x = #y
 
 #define stringify(y) #y
 
@@ -25,7 +25,7 @@ vv = identity(k);
 
 assign(a,b);
 
-assignstringify(c,d);
+assignStrfy(c,d);
 
 k = glom(a,b);
 k = glom(fu,bar);

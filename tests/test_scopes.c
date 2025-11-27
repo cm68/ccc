@@ -11,7 +11,7 @@ static int static_global;
 
 /* Test function with all scope types */
 int
-test_all_scopes(x, y)
+tAllScopes(x, y)
 int x;   /* Arguments should have A prefix */
 int y;
 {

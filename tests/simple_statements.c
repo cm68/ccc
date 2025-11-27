@@ -6,10 +6,10 @@
 
 // Forward declarations (these work)
 int test_if();
-int test_while();
-int test_for();
-int test_switch();
-void test_return();
+int tWhile();
+int tFor();
+int tSwitch();
+void tReturn();
 
 // K&R style function with simple statements
 int simple()

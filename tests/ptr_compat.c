@@ -13,7 +13,7 @@ struct bar {
 char carr[10];
 int iarr[10];
 
-int test_array_ptr_compat()
+int tArrPtrCmp()
 {
     char *cp;
     int *ip;
@@ -25,7 +25,7 @@ int test_array_ptr_compat()
     return 0;
 }
 
-int test_same_type_ptr()
+int tSamePtr()
 {
     int *p1;
     int *p2;
@@ -36,7 +36,7 @@ int test_same_type_ptr()
     return 0;
 }
 
-int test_struct_ptr_compat()
+int tStrPtr()
 {
     struct foo *fp1;
     struct foo *fp2;
@@ -51,7 +51,7 @@ int test_struct_ptr_compat()
     return 0;
 }
 
-int test_base_type_compat()
+int tBaseType()
 {
     char *cp;
     int *ip;
@@ -63,7 +63,7 @@ int test_base_type_compat()
     return 0;
 }
 
-int test_signed_unsigned()
+int tSignUnsig()
 {
     unsigned int *up;
     int *sp;

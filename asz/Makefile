@@ -22,6 +22,9 @@ test: asz
 	./asz util.s
 	./asz expr.s
 
+install:	asz
+	sudo cp asz /usr/local/bin
+
 clean:
 	rm *.o
 

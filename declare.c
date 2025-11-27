@@ -340,6 +340,16 @@ declInternal(struct type **btp, unsigned char struct_elem)
                     /* Not a function prototype - error on redeclaration */
                     nm = newName(cur.v.name, var, prefix, 0);
                 }
+            } else if (existing && existing->level < lexlevel) {
+                /*
+                 * Name exists at outer scope - this is shadowing.
+                 * Mangle the name so cc2 can distinguish variables.
+                 */
+                char mangled[64];
+                snprintf(mangled, sizeof(mangled), "%s_%d",
+                    cur.v.name, shadowCtr++);
+                nm = newName(cur.v.name, var, prefix, 0);
+                nm->mangled_name = strdup(mangled);
             } else {
                 /* New name - create it */
                 nm = newName(cur.v.name, var, prefix, 0);

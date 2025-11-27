@@ -4,19 +4,19 @@ int add(int x, int y);
 int multiply(int a, int b);
 
 int
-test_simple_call()
+tSimpCall()
 {
     return add(1, 2);
 }
 
 int
-test_nested_call()
+tNestCall()
 {
     return add(multiply(2, 3), multiply(4, 5));
 }
 
 int
-test_call_with_vars(x, y)
+tCallVars(x, y)
 int x;
 int y;
 {
@@ -34,7 +34,7 @@ test_no_args()
 }
 
 int
-test_expr_in_call(n)
+tExprCall(n)
 int n;
 {
     return add(n + 1, n * 2);

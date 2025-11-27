@@ -98,18 +98,29 @@ $(CC1OBJECTS): $(HFILES)
 %.obj: %.s
 	$(ASM) $(ASMOPTS) -o $@ $<
 
-# Pattern rules for stage1 directory
-stage1/%.ast: %.c cc1
+# Pattern rules for stage1 directory - always rebuild (FORCE dependency)
+stage1/%.i: %.c cc1 FORCE
+	@mkdir -p stage1
+	./cc1 -DCCC -i./include -I. -E -o stage1/$*.ast $<
+	mv $*.i $@
+
+stage1/%.ast: %.c cc1 FORCE
 	@mkdir -p stage1
 	./cc1 -DCCC -i./include -I. -E -o $@ $<
+	mv $*.i stage1/$*.i
 
-stage1/%.s: stage1/%.ast cc2
+stage1/%.pp: stage1/%.ast FORCE
+	./astpp.lisp $< > $@
+
+stage1/%.s: stage1/%.ast cc2 FORCE
 	./cc2 -o $@ $<
 
-stage1/%.o: stage1/%.s
+stage1/%.o: stage1/%.s FORCE
 	asz/asz $(ASMOPTS) -o $@ $<
 
-.PHONY: test tests valgrind
+FORCE:
+
+.PHONY: test tests valgrind FORCE
 test: cc1 tests/runtest.sh
 	$(MAKE) -C tests test
 

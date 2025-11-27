@@ -23,7 +23,7 @@ struct mixed {
 };
 
 /* Test 4: Reading and writing bitfields */
-int test_read_write() {
+int tRdWr() {
     struct flags f;
 
     /* Write to bitfields */
@@ -40,7 +40,7 @@ int test_read_write() {
 }
 
 /* Test 5: Bitfield operations in expressions */
-int test_expressions() {
+int tExpr() {
     struct flags f;
 
     f.enable = 0;
@@ -57,7 +57,7 @@ int test_expressions() {
 }
 
 /* Test 6: Bitfield assignment from variables */
-int test_assignment() {
+int tAssign() {
     struct flags f;
     int val = 5;
 
@@ -72,14 +72,14 @@ struct wide {
     int bits : 12;
 };
 
-int test_wide_bitfield() {
+int tWideBit() {
     struct wide w;
     w.bits = 4095;  /* Max value for 12 bits */
     return w.bits;  /* Should return 4095 */
 }
 
 /* Test 8: Multiple bit extractions */
-int test_multiple_reads() {
+int tMultiRd() {
     struct packed p;
 
     p.a = 31;   /* 5 bits max */
@@ -92,7 +92,7 @@ int test_multiple_reads() {
 }
 
 /* Test 9: Conditional with bitfields */
-int test_conditional() {
+int tCond() {
     struct flags f;
     f.enable = 1;
     f.mode = 2;
@@ -105,7 +105,7 @@ int test_conditional() {
 }
 
 /* Test 10: Bitfield comparison */
-int test_comparison() {
+int tCompare() {
     struct flags f1, f2;
 
     f1.mode = 5;
@@ -121,13 +121,13 @@ int test_comparison() {
 int main() {
     int result = 0;
 
-    result += test_read_write();      /* 23 */
-    result += test_expressions();     /* 19 */
-    result += test_assignment();      /* 12 */
-    result += test_wide_bitfield();   /* 4095 */
-    result += test_multiple_reads();  /* 352 */
-    result += test_conditional();     /* 20 */
-    result += test_comparison();      /* 1 */
+    result += tRdWr();      /* 23 */
+    result += tExpr();     /* 19 */
+    result += tAssign();      /* 12 */
+    result += tWideBit();   /* 4095 */
+    result += tMultiRd();  /* 352 */
+    result += tCond();     /* 20 */
+    result += tCompare();      /* 1 */
 
     /* Total: 23 + 19 + 12 + 4095 + 352 + 20 + 1 = 4522 */
     return result;

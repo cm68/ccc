@@ -2543,8 +2543,8 @@ assemble()
 	        for (sym = symbols; sym; sym = sym->next) {
 
                 if (sym->seg == SEG_UNDEF) {
-                    gripe2("undefined symbol ", sym->name);
-                    continue;
+                    /* Treat undefined symbols as extern */
+                    sym->seg = SEG_EXT;
                 }
                 if (sym->index == 0) {
                     sym->index = next++;

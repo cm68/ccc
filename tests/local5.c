@@ -10,7 +10,7 @@ int test_if(int x) {
     }
 }
 
-int test_while(int n) {
+int tWhile(int n) {
     int i = 0;
     while (i < n) {
         i = i + 1;

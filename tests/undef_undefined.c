@@ -4,7 +4,7 @@
  */
 
 #define TESTMACRO 100
-int before_undef = TESTMACRO;
+int befUndef = TESTMACRO;
 
 #undef TESTMACRO
 

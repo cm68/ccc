@@ -13,11 +13,11 @@ int func_one_int(int x);
 char func_one_char(char c);
 long func_one_long(long l);
 float func_one_float(float f);
-double func_one_double(double d);
+double funcOneDbl(double d);
 
 /* Multiple parameters - same type */
 int func_two_ints(int a, int b);
-int func_three_ints(int a, int b, int c);
+int funcThreeI(int a, int b, int c);
 
 /* Multiple parameters - mixed types */
 int func_mixed_2(int x, char c);
@@ -35,7 +35,7 @@ char *func_ret_str(void);
 
 /* Array parameters (decay to pointers) */
 int func_array(int arr[]);
-int func_array_sized(int arr[10]);
+int funcArrSize(int arr[10]);
 int func_2d_array(int arr[10][20]);
 
 /* Mixed pointers and values */

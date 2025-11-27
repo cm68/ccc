@@ -49,13 +49,9 @@
             (char= (char name 0) #\$)
             (char= (char name 1) #\_))
        (subseq name 2))  ; Global: $_name -> name
-      ((and (>= (length name) 3)
-            (char= (char name 0) #\$)
-            (char= (char name 1) #\A))
-       (subseq name 2))  ; Argument: $Aname -> name
       ((and (>= (length name) 2)
             (char= (char name 0) #\$))
-       (subseq name 1))  ; Local: $name -> name
+       (subseq name 1))  ; Local or argument: $name -> name
       (t name))))
 
 ;;; Memory operations
