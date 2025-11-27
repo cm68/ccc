@@ -11,6 +11,22 @@
 #include "emithelper.h"
 
 /*
+ * Check if expr is an IY-indexed local byte variable.
+ * Returns the IY offset if so, or 0 if not.
+ * (IY+0 is the saved frame pointer, so locals are never at offset 0)
+ */
+static int getIYOffset(struct expr *e) {
+    struct local_var *v;
+    const char *sym;
+    if (!e || e->op != 'M' || e->size != 1) return 0;
+    if (!e->left || e->left->op != '$' || !e->left->symbol) return 0;
+    sym = e->left->symbol;
+    v = findVar(stripVarPfx(sym));
+    if (!v || v->reg != REG_NO) return 0;
+    return v->offset;
+}
+
+/*
  * Emit increment/decrement operation
  */
 void emitIncDec(struct expr *e)
@@ -308,6 +324,7 @@ void emitBinop(struct expr *e)
     /* Check for inline byte operations with immediate */
     int isInlineImm = 0;
     int isByteCmp = 0;
+    int iyOffset = 0;
 
     if (e->left && e->left->size == 1 && e->right && e->right->op == 'C' &&
         e->right->value >= 0 && e->right->value <= 255) {
@@ -320,6 +337,12 @@ void emitBinop(struct expr *e)
         }
     }
 
+    /* Check for byte EQ/NE with IY-indexed local */
+    if (!isByteCmp && (e->op == 'Q' || e->op == 'n') &&
+        e->left && e->left->size == 1) {
+        iyOffset = getIYOffset(e->right);
+    }
+
     if (isInlineImm) {
         emitExpr(e->left);
         freeExpr(e->right);
@@ -327,6 +350,16 @@ void emitBinop(struct expr *e)
     } else if (isByteCmp) {
         emitExpr(e->left);
         fdprintf(outFd, "\tcp %ld\n", e->right->value);
+        freeExpr(e->right);
+        fnZValid = 1;  /* cp sets Z flag */
+    } else if (iyOffset) {
+        /* Byte EQ/NE with IY-indexed local - use cp (iy + offset) */
+        emitExpr(e->left);
+        if (iyOffset > 0) {
+            fdprintf(outFd, "\tcp (iy + %d)\n", iyOffset);
+        } else {
+            fdprintf(outFd, "\tcp (iy - %d)\n", -iyOffset);
+        }
         freeExpr(e->right);
         fnZValid = 1;  /* cp sets Z flag */
     } else {
