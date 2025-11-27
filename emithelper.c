@@ -680,8 +680,13 @@ void storeVar(const char *sym, char sz, char docache) {
         if (TRACE(T_VAR)) {
             fdprintf(2, "  storeVar: global store sz=%d\n", sz);
         }
-        if (sz == 1) fdprintf(outFd, "\tld (%s), a\n", s);
-        else if (sz == 2) {
+        if (sz == 1) {
+            fdprintf(outFd, "\tld (%s), a\n", s);
+            if (docache) {
+                clearA();
+                fnACache = mkVarCache(sym, 1);
+            }
+        } else if (sz == 2) {
             fdprintf(outFd, "\tld (%s), hl\n", s);
             if (docache ) {
                 clearHL();
