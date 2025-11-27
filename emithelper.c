@@ -153,59 +153,42 @@ isMangledName(const char *name)
 
 /* findVar is defined in codegen.c */
 
-/* IY-indexed memory access */
+/* IY-indexed memory access - helper for sign handling */
+static void iyOp(const char *fmt, char offset, int adj) {
+    if (offset >= 0)
+        fdprintf(outFd, fmt, '+', offset + adj);
+    else
+        fdprintf(outFd, fmt, '-', -offset - adj);
+}
+
 void loadWordIY(char offset) {
-    if (fnIYHLValid && fnIYHLOfs == offset) return;  /* Already in HL */
-    if (offset >= 0) {
-        fdprintf(outFd, "\tld l, (iy + %d)\n", offset);
-        fdprintf(outFd, "\tld h, (iy + %d)\n", offset + 1);
-    } else {
-        fdprintf(outFd, "\tld l, (iy - %d)\n", -offset);
-        fdprintf(outFd, "\tld h, (iy - %d)\n", -offset - 1);
-    }
+    if (fnIYHLValid && fnIYHLOfs == offset) return;
+    iyOp("\tld l, (iy %c %d)\n", offset, 0);
+    iyOp("\tld h, (iy %c %d)\n", offset, 1);
     clearHL();
     fnIYHLOfs = offset;
     fnIYHLValid = 1;
 }
 
 void loadBCIY(char offset) {
-    if (offset >= 0) {
-        fdprintf(outFd, "\tld c, (iy + %d)\n", offset);
-        fdprintf(outFd, "\tld b, (iy + %d)\n", offset + 1);
-    } else {
-        fdprintf(outFd, "\tld c, (iy - %d)\n", -offset);
-        fdprintf(outFd, "\tld b, (iy - %d)\n", -offset - 1);
-    }
+    iyOp("\tld c, (iy %c %d)\n", offset, 0);
+    iyOp("\tld b, (iy %c %d)\n", offset, 1);
 }
 
 void storeWordIY(char offset) {
-    if (offset >= 0) {
-        fdprintf(outFd, "\tld (iy + %d), l\n", offset);
-        fdprintf(outFd, "\tld (iy + %d), h\n", offset + 1);
-    } else {
-        fdprintf(outFd, "\tld (iy - %d), l\n", -offset);
-        fdprintf(outFd, "\tld (iy - %d), h\n", -offset - 1);
-    }
-    /* After store, HL still has the value */
+    iyOp("\tld (iy %c %d), l\n", offset, 0);
+    iyOp("\tld (iy %c %d), h\n", offset, 1);
     fnIYHLOfs = offset;
     fnIYHLValid = 1;
-    fnIXHLOfs = -1;  /* Invalidate IX cache */
+    fnIXHLOfs = -1;
 }
 
 void loadByteIY(char offset, char is_param) {
-    if (offset >= 0) {
-        fdprintf(outFd, "\tld a, (iy + %d)\n", is_param ? offset + 1 : offset);
-    } else {
-        fdprintf(outFd, "\tld a, (iy - %d)\n", -offset);
-    }
+    iyOp("\tld a, (iy %c %d)\n", offset, is_param && offset >= 0 ? 1 : 0);
 }
 
 void storeByteIY(char offset, char is_param) {
-    if (offset >= 0) {
-        fdprintf(outFd, "\tld (iy + %d), a\n", is_param ? offset + 1 : offset);
-    } else {
-        fdprintf(outFd, "\tld (iy - %d), a\n", -offset);
-    }
+    iyOp("\tld (iy %c %d), a\n", offset, is_param && offset >= 0 ? 1 : 0);
 }
 
 /* IX-indexed memory access */

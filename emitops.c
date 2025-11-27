@@ -212,15 +212,9 @@ void emitAssign(struct expr *e)
     if (e->right && e->right->op == 'C' && e->size == 2 &&
         e->left && e->left->op == '$' && e->left->symbol) {
         struct local_var *v = findVar(stripVarPfx(e->left->symbol));
-        if (v && v->reg == REG_BC) {
-            fdprintf(outFd, "\tld bc, %ld\n", e->right->value);
-            freeExpr(e->right);
-            freeExpr(e->left);
-            freeNode(e);
-            return;
-        }
-        if (v && v->reg == REG_IX) {
-            fdprintf(outFd, "\tld ix, %ld\n", e->right->value);
+        if (v && (v->reg == REG_BC || v->reg == REG_IX)) {
+            fdprintf(outFd, "\tld %s, %ld\n",
+                v->reg == REG_BC ? "bc" : "ix", e->right->value);
             freeExpr(e->right);
             freeExpr(e->left);
             freeNode(e);
@@ -272,33 +266,20 @@ void emitAssign(struct expr *e)
             fdprintf(2, "emitAssign: after storeVar\n");
         }
     }
-    /* Pointer dereference */
-    else if (e->left && e->left->op == 'M') {
+    /* Pointer dereference or complex lvalue */
+    else if (e->left && (e->left->op == 'M' || e->left->op == '+')) {
+        struct expr *addr = (e->left->op == 'M') ? e->left->left : e->left;
         if (e->size == 1) {
             emit(S_ESAVE);
-            emitExpr(e->left->left);
+            emitExpr(addr);
             emit(S_HLDE);
         } else if (e->size == 2) {
             emit(S_DESAVE);
-            emitExpr(e->left->left);
+            emitExpr(addr);
             emit(S_HLDE);
             emit(S_INCHL);
             emit(S_HLD);
-        }
-    }
-    /* Complex lvalue */
-    else if (e->left && e->left->op == '+') {
-        if (e->size == 1) {
-            emit(S_ESAVE);
-            emitExpr(e->left);
-            emit(S_HLDE);
-        } else if (e->size == 2) {
-            emit(S_DESAVE);
-            emitExpr(e->left);
-            emit(S_HLDE);
-            emit(S_INCHL);
-            emit(S_HLD);
-        } else if (e->size == 4) {
+        } else if (e->left->op == '+' && e->size == 4) {
             emit(S_PUSHHLLOW);
             emit(S_EXX);
             emit(S_PUSHHLUPP);
@@ -356,23 +337,13 @@ void emitAddConst(struct expr *e)
         freeExpr(e->left);
 
         if (is_small && const_val <= 4) {
-            if (var->reg == REG_BC) {
-                emit(S_BCHL);
-            } else if (var->reg == REG_BCp) {
-                emit(S_EXXBCHL);
-            } else {
-                emit(S_IXHL);
-            }
+            emit(var->reg == REG_BC ? S_BCHL :
+                 var->reg == REG_BCp ? S_EXXBCHL : S_IXHL);
             fdprintf(outFd, "%s\n", e->asm_block);
         } else {
             fdprintf(outFd, "\tld hl, %ld\n", const_val);
-            if (var->reg == REG_BC) {
-                emit(S_ADDHLBC);
-            } else if (var->reg == REG_BCp) {
-                emit(S_EXXBCPOPHL);
-            } else {
-                emit(S_IXSWPHL);
-            }
+            emit(var->reg == REG_BC ? S_ADDHLBC :
+                 var->reg == REG_BCp ? S_EXXBCPOPHL : S_IXSWPHL);
         }
     } else {
         emitExpr(e->left);
