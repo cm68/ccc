@@ -120,12 +120,10 @@ static void emitStmt(struct stmt *s)
                 e_size = e->size;
                 emitExpr(e);
                 if (fnZValid) {
-                    /* Z=1 means comparison true, jump to then body */
-                    if (invertCond) {
-                        emitJump("jp nz,", "_if_then_", s->label);
-                    } else {
-                        emitJump("jp z,", "_if_then_", s->label);
-                    }
+                    /* fnZValid==1: Z=1 means true; fnZValid==2: Z=1 means false */
+                    int zTrue = (fnZValid == 1);
+                    if (invertCond) zTrue = !zTrue;
+                    emitJump(zTrue ? "jp z," : "jp nz,", "_if_then_", s->label);
                     fnZValid = 0;
                 } else {
                     if (e_size == 1) {
@@ -149,12 +147,10 @@ static void emitStmt(struct stmt *s)
                 e_size = e->size;
                 emitExpr(e);
                 if (fnZValid) {
-                    /* Z=1 means true, Z=0 means false -> jump to else */
-                    if (invertCond) {
-                        emitJump("jp z,", false_lbl, lbl);
-                    } else {
-                        emitJump("jp nz,", false_lbl, lbl);
-                    }
+                    /* fnZValid==1: Z=1 true, Z=0 false; fnZValid==2: Z=1 false */
+                    int zFalse = (fnZValid == 2);
+                    if (invertCond) zFalse = !zFalse;
+                    emitJump(zFalse ? "jp z," : "jp nz,", false_lbl, lbl);
                     fnZValid = 0;
                 } else {
                     if (e_size == 1) {
@@ -201,11 +197,10 @@ static void emitStmt(struct stmt *s)
                 e_size = e->size;
                 emitExpr(e);
                 if (fnZValid) {
-                    if (invertCond) {
-                        emitJump("jp z,", false_lbl, lbl);
-                    } else {
-                        emitJump("jp nz,", false_lbl, lbl);
-                    }
+                    /* fnZValid==1: Z=1 true, Z=0 false; fnZValid==2: Z=1 false */
+                    int zFalse = (fnZValid == 2);
+                    if (invertCond) zFalse = !zFalse;
+                    emitJump(zFalse ? "jp z," : "jp nz,", false_lbl, lbl);
                     fnZValid = 0;
                 } else {
                     if (e_size == 1) {
@@ -248,10 +243,11 @@ static void emitStmt(struct stmt *s)
             }
 
             /* Check if this is a comparison (Z=1 means true) vs bitwise (Z=1 means zero/false) */
-            if (fnZValid) {
-                /* Z from comparison: Z=1 means true, invert jump sense */
+            if (fnZValid == 1) {
+                /* Z from EQ comparison: Z=1 means true, invert jump sense */
                 invertCond = !invertCond;
             }
+            /* fnZValid == 2: NE comparison, Z=1 means false, no invert needed */
             fnZValid = 0;
 
             if (s->label2 > 0) {
@@ -289,13 +285,14 @@ static void emitStmt(struct stmt *s)
             } else {
                 int cmpSense = 0;  /* 1 if Z from comparison (Z=1 means true) */
                 emitExpr(s->expr);
-                if (fnZValid) {
-                    /* Z from comparison: Z=1 means true, need opposite jump */
+                if (fnZValid == 1) {
+                    /* Z from EQ comparison: Z=1 means true, need opposite jump */
                     cmpSense = 1;
-                } else {
+                } else if (!fnZValid) {
                     /* Need to test HL: Z=1 means HL=0 (false) */
                     emit(S_AHORL);
                 }
+                /* fnZValid == 2: NE comparison, Z=1 means false, no invert needed */
                 fnZValid = 0;
                 /* With cmpSense: jp nz skips when false (Z=0)
                  * Without:       jp z skips when false (Z=1, HL=0) */

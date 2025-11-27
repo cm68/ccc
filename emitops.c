@@ -351,7 +351,8 @@ void emitBinop(struct expr *e)
         emitExpr(e->left);
         fdprintf(outFd, "\tcp %ld\n", e->right->value);
         freeExpr(e->right);
-        fnZValid = 1;  /* cp sets Z flag */
+        /* cp sets Z=1 if equal: EQ wants Z=1 true, NE wants Z=1 false */
+        fnZValid = (e->op == 'Q') ? 1 : 2;
     } else if (iyOffset) {
         /* Byte EQ/NE with IY-indexed local - use cp (iy + offset) */
         emitExpr(e->left);
@@ -361,7 +362,8 @@ void emitBinop(struct expr *e)
             fdprintf(outFd, "\tcp (iy - %d)\n", -iyOffset);
         }
         freeExpr(e->right);
-        fnZValid = 1;  /* cp sets Z flag */
+        /* cp sets Z=1 if equal: EQ wants Z=1 true, NE wants Z=1 false */
+        fnZValid = (e->op == 'Q') ? 1 : 2;
     } else {
         char *call_inst = NULL;
         char *newline = strchr(e->asm_block, '\n');
