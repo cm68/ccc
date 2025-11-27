@@ -448,6 +448,8 @@ void emitBinop(struct expr *e)
         emitExpr(e->left);
         freeExpr(e->right);
         fdprintf(outFd, "%s\n", e->asm_block);
+        /* and/or/xor set Z flag: Z=1 means result is 0 */
+        fnZValid = 2;  /* Z=1 means false (zero result) */
     } else if (emitByteCp(e)) {
         /* Byte comparison emitted inline */
     } else {
@@ -570,18 +572,20 @@ void emitTernary(struct expr *e)
 
     if (e->left) emitExpr(e->left);
 
-    if (cond_size == 1) {
-        emit(S_ORA);
-    } else {
-        if (!fnZValid) {
+    if (!fnZValid) {
+        if (cond_size == 1) {
+            emit(S_ORA);
+        } else {
             emit(S_AHORL);
         }
     }
-    fnZValid = 0;
 
     if (e->jump) {
-        emitJump("jp z,", "_tern_false_", e->label);
+        /* fnZValid: 1=Z means true, 2=Z means false, 0=Z means zero */
+        const char *jmp = (fnZValid == 1) ? "jp nz," : "jp z,";
+        emitJump(jmp, "_tern_false_", e->label);
     }
+    fnZValid = 0;
 
     if (e->right && e->right->left) {
         emitExpr(e->right->left);
