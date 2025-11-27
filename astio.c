@@ -27,7 +27,7 @@ unsigned char curchar;
 
 /* Static buffers for token reading */
 static char symbuf[256];
-static char strbuf[1024];
+static char strbuf[256];
 static char typebuf[256];
 
 /*

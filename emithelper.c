@@ -164,6 +164,16 @@ void loadWordIY(char offset) {
     }
 }
 
+void loadBCIY(char offset) {
+    if (offset >= 0) {
+        fdprintf(outFd, "\tld c, (iy + %d)\n", offset);
+        fdprintf(outFd, "\tld b, (iy + %d)\n", offset + 1);
+    } else {
+        fdprintf(outFd, "\tld c, (iy - %d)\n", -offset);
+        fdprintf(outFd, "\tld b, (iy - %d)\n", -offset - 1);
+    }
+}
+
 void storeWordIY(char offset) {
     if (offset >= 0) {
         fdprintf(outFd, "\tld (iy + %d), l\n", offset);
@@ -202,7 +212,7 @@ void storeWordIX(char offset) {
 }
 
 /* Label map for jump optimization */
-#define MAX_LABELS 1000
+#define MAX_LABELS 256
 static struct labelMap labelMap[MAX_LABELS];
 int lblMapCnt = 0;
 
@@ -225,7 +235,7 @@ static int findLabel(int label) {
     /* Create new entry */
     if (lblMapCnt < MAX_LABELS) {
         labelMap[lblMapCnt].label = label;
-        labelMap[lblMapCnt].target = -1;
+        labelMap[lblMapCnt].target = 255;  /* 255 = no target */
         labelMap[lblMapCnt].jump_type = JMP_UNCOND;
         labelMap[lblMapCnt].refcnt = 0;
         return lblMapCnt++;
@@ -263,7 +273,7 @@ int resolveLabel(int label) {
         for (i = 0; i < lblMapCnt; i++) {
             if (labelMap[i].label == current &&
                 labelMap[i].jump_type == JMP_UNCOND &&
-                labelMap[i].target != -1) {
+                labelMap[i].target != 255) {
                 current = labelMap[i].target;
                 break;
             }
@@ -419,7 +429,7 @@ void emitFnProlog(char *name, char *params, char *rettype, int frame_size,
                 snprintf(offset_str, sizeof(offset_str), "(iy%d)", var->offset);
 
             fdprintf(outFd, ";   %s: ", var->name);
-            if (var->first_label == -1) {
+            if (var->first_label == 255) {
                 if (regname)
                     fdprintf(outFd, "unused (0 refs, 0 agg_refs, %s, reg=%s)\n",
                              offset_str, regname);
@@ -456,15 +466,16 @@ void emitFnProlog(char *name, char *params, char *rettype, int frame_size,
     for (var = locals; var; var = var->next) {
         if (var->is_param && var->reg != REG_NO) {
             if (var->size == 2) {
-                loadWordIY(var->offset);
-                if (var->reg == REG_BC) emit(S_BCHLX);
-                else if (var->reg == REG_IX) emit(S_HLPIX);
-            } else if (var->size == 1) {
-                if (var->reg == REG_B || var->reg == REG_C) {
-                    fdprintf(outFd, "\tld a, (iy + %d)\n", var->offset + 1);
-                    if (var->reg == REG_B) emit(S_BA);
-                    else emit(S_CA);
+                if (var->reg == REG_BC) {
+                    loadBCIY(var->offset);
+                } else {
+                    loadWordIY(var->offset);
+                    if (var->reg == REG_IX) emit(S_HLPIX);
                 }
+            } else if (var->size == 1 && var->reg <= REG_C) {
+                static const char bc[] = "?bc";
+                fdprintf(outFd, "\tld %c, (iy + %d)\n",
+                    bc[var->reg], var->offset + 1);
             }
         }
     }

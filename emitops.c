@@ -11,19 +11,64 @@
 #include "emithelper.h"
 
 /*
- * Check if expr is an IY-indexed local byte variable.
- * Returns the IY offset if so, or 0 if not.
- * (IY+0 is the saved frame pointer, so locals are never at offset 0)
+ * Byte comparison info for inline cp instructions
  */
-static int getIYOffset(struct expr *e) {
+enum cmp_kind { CMP_NONE, CMP_CONST, CMP_IY, CMP_REG, CMP_IX, CMP_GLOBAL };
+
+struct bytecmp {
+    enum cmp_kind kind;
+    int offset;          /* IY or IX offset */
+    int reg;             /* Register (REG_B, REG_C, etc.) */
+    const char *global;  /* Global/static symbol name */
+};
+
+/*
+ * Check what kind of byte comparison operand we have.
+ * Returns CMP_NONE if not optimizable, else fills in cmp struct.
+ */
+static enum cmp_kind getByteCmp(struct expr *e, struct bytecmp *cmp) {
     struct local_var *v;
     const char *sym;
-    if (!e || e->op != 'M' || e->size != 1) return 0;
-    if (!e->left || e->left->op != '$' || !e->left->symbol) return 0;
+
+    cmp->kind = CMP_NONE;
+    cmp->offset = 0;
+    cmp->reg = REG_NO;
+    cmp->global = NULL;
+
+    if (!e) return CMP_NONE;
+
+    /* Constant */
+    if (e->op == 'C' && e->value >= 0 && e->value <= 255) {
+        cmp->kind = CMP_CONST;
+        cmp->offset = e->value;
+        return CMP_CONST;
+    }
+
+    /* Must be byte DEREF */
+    if (e->op != 'M' || e->size != 1) return CMP_NONE;
+    if (!e->left || e->left->op != '$' || !e->left->symbol) return CMP_NONE;
+
     sym = e->left->symbol;
     v = findVar(stripVarPfx(sym));
-    if (!v || v->reg != REG_NO) return 0;
-    return v->offset;
+
+    if (v) {
+        if (v->reg != REG_NO) {
+            /* Register-allocated variable */
+            cmp->kind = CMP_REG;
+            cmp->reg = v->reg;
+            return CMP_REG;
+        } else {
+            /* Stack variable - IY-indexed */
+            cmp->kind = CMP_IY;
+            cmp->offset = v->offset;
+            return CMP_IY;
+        }
+    }
+
+    /* Global or static */
+    cmp->kind = CMP_GLOBAL;
+    cmp->global = stripDollar(sym);
+    return CMP_GLOBAL;
 }
 
 /*
@@ -317,53 +362,94 @@ void emitAddConst(struct expr *e)
 }
 
 /*
+ * Emit inline byte comparison (cp instruction)
+ * Returns 1 if emitted, 0 if not applicable
+ */
+static int emitByteCp(struct expr *e)
+{
+    struct bytecmp cmp;
+
+    /* Only for byte EQ/NE */
+    if ((e->op != 'Q' && e->op != 'n') || !e->left || e->left->size != 1)
+        return 0;
+
+    if (getByteCmp(e->right, &cmp) == CMP_NONE)
+        return 0;
+
+    /* Emit left operand to A */
+    emitExpr(e->left);
+
+    /* Emit cp instruction based on right operand type */
+    switch (cmp.kind) {
+    case CMP_CONST:
+        fdprintf(outFd, "\tcp %d\n", cmp.offset);
+        break;
+    case CMP_IY:
+        if (cmp.offset > 0) {
+            fdprintf(outFd, "\tcp (iy + %d)\n", cmp.offset);
+        } else {
+            fdprintf(outFd, "\tcp (iy - %d)\n", -cmp.offset);
+        }
+        break;
+    case CMP_REG:
+        if (cmp.reg == REG_B) {
+            fdprintf(outFd, "\tcp b\n");
+        } else if (cmp.reg == REG_C || cmp.reg == REG_BC) {
+            /* BC: low byte is in C */
+            fdprintf(outFd, "\tcp c\n");
+        } else if (cmp.reg == REG_Bp) {
+            fdprintf(outFd, "\texx\n\tcp b\n\texx\n");
+        } else if (cmp.reg == REG_Cp) {
+            fdprintf(outFd, "\texx\n\tcp c\n\texx\n");
+        } else if (cmp.reg == REG_IX) {
+            /* IX byte: use (ix+0) */
+            fdprintf(outFd, "\tcp (ix + 0)\n");
+        } else {
+            return 0;  /* Unknown register */
+        }
+        break;
+    case CMP_IX:
+        fdprintf(outFd, "\tcp (ix + %d)\n", cmp.offset);
+        break;
+    case CMP_GLOBAL:
+        /* Swap: save A, load global, cp saved */
+        fdprintf(outFd, "\tld e, a\n\tld a, (%s)\n\tcp e\n", cmp.global);
+        /* A now contains right operand, invalidate cache */
+        clearA();
+        break;
+    default:
+        return 0;
+    }
+
+    freeExpr(e->right);
+
+    /* cp sets Z=1 if equal: EQ wants Z=1 true, NE wants Z=1 false */
+    fnZValid = (e->op == 'Q') ? 1 : 2;
+    return 1;
+}
+
+/*
  * Emit binary operation
  */
 void emitBinop(struct expr *e)
 {
     /* Check for inline byte operations with immediate */
     int isInlineImm = 0;
-    int isByteCmp = 0;
-    int iyOffset = 0;
 
     if (e->left && e->left->size == 1 && e->right && e->right->op == 'C' &&
         e->right->value >= 0 && e->right->value <= 255) {
         if (!strchr(e->asm_block, '\n') &&
             (e->op == '&' || e->op == '|' || e->op == '^')) {
             isInlineImm = 1;
-        } else if (e->op == 'Q' || e->op == 'n') {
-            /* Byte EQ/NE with constant - use cp instruction */
-            isByteCmp = 1;
         }
-    }
-
-    /* Check for byte EQ/NE with IY-indexed local */
-    if (!isByteCmp && (e->op == 'Q' || e->op == 'n') &&
-        e->left && e->left->size == 1) {
-        iyOffset = getIYOffset(e->right);
     }
 
     if (isInlineImm) {
         emitExpr(e->left);
         freeExpr(e->right);
         fdprintf(outFd, "%s\n", e->asm_block);
-    } else if (isByteCmp) {
-        emitExpr(e->left);
-        fdprintf(outFd, "\tcp %ld\n", e->right->value);
-        freeExpr(e->right);
-        /* cp sets Z=1 if equal: EQ wants Z=1 true, NE wants Z=1 false */
-        fnZValid = (e->op == 'Q') ? 1 : 2;
-    } else if (iyOffset) {
-        /* Byte EQ/NE with IY-indexed local - use cp (iy + offset) */
-        emitExpr(e->left);
-        if (iyOffset > 0) {
-            fdprintf(outFd, "\tcp (iy + %d)\n", iyOffset);
-        } else {
-            fdprintf(outFd, "\tcp (iy - %d)\n", -iyOffset);
-        }
-        freeExpr(e->right);
-        /* cp sets Z=1 if equal: EQ wants Z=1 true, NE wants Z=1 false */
-        fnZValid = (e->op == 'Q') ? 1 : 2;
+    } else if (emitByteCp(e)) {
+        /* Byte comparison emitted inline */
     } else {
         char *call_inst = NULL;
         char *newline = strchr(e->asm_block, '\n');

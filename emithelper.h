@@ -19,6 +19,7 @@ const char *getRegName(enum register_id reg);
 
 /* IY-indexed memory access */
 void loadWordIY(char offset);
+void loadBCIY(char offset);
 void storeWordIY(char offset);
 void loadByteIY(char offset, char is_param);
 void storeByteIY(char offset, char is_param);

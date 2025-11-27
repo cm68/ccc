@@ -53,20 +53,21 @@ enum jump_type {
  * Jump instruction node - deferred until emission for optimization
  */
 struct jump_instr {
-    enum jump_type type;        // Type of jump
-    int target_label;           // Target label number
+    unsigned char type;         // Type of jump
+    unsigned char target_label; // Target label number (0-255)
     char *condition;            // Condition string (for conditional jumps)
     struct jump_instr *next;    // Next in list
 };
 
 /*
  * Label mapping for jump optimization
+ * Compact: 4 bytes per entry (max 256 labels per function)
  */
 struct labelMap {
-    int label;                  // Label number
-    int target;                 // What this label jumps to (-1 if not a pure jump)
-    enum jump_type jump_type;   // Type of jump at this label
-    int refcnt;                 // Number of jumps targeting this label
+    unsigned char label;        // Label number (0-255)
+    unsigned char target;       // Target label (255 = no target)
+    unsigned char jump_type;    // Type of jump at this label
+    unsigned char refcnt;       // Number of jumps targeting this label
 };
 
 /*
@@ -82,6 +83,9 @@ struct labelMap {
  */
 struct expr {
     unsigned char op;           // Operation ('+', '-', 'M', '=', '@', etc.)
+    unsigned char size;         // Result size in bytes (1=byte, 2=short/ptr, 4=long/float, 8=double)
+    unsigned char flags;        // E_UNSIGNED, etc.
+    unsigned char label;        // Label number (if needed for this expression)
     struct expr *left;          // Left operand
     struct expr *right;         // Right operand
 
@@ -89,13 +93,10 @@ struct expr {
     char *type_str;             // Type annotation from AST (":s", ":b", ":l", ":p", etc.)
     long value;                 // Constant value (for numeric constants)
     char *symbol;               // Symbol name (for SYM nodes)
-    unsigned char size;         // Result size in bytes (1=byte, 2=short/ptr, 4=long/float, 8=double)
-    unsigned char flags;        // E_UNSIGNED, etc.
 
     /* Code generation fields */
     char *asm_block;            // Generated assembly code (or NULL)
     char *cleanup_block;        // Deferred cleanup code (for CALL stack cleanup)
-    int label;                  // Label number (if needed for this expression)
     struct jump_instr *jump;    // Jump instruction (deferred) or NULL
 };
 
@@ -105,6 +106,8 @@ struct expr {
  */
 struct stmt {
     unsigned char type;         // Statement type ('I', 'W', 'R', 'B', 'E', etc.)
+    unsigned char label;        // Primary label number for this statement
+    unsigned char label2;       // Secondary label (for if/else end)
     struct expr *expr;          // Expression (condition for if/while, value for return, etc.)
     struct expr *expr2;         // Second expression (for for-loops, assignments, etc.)
     struct expr *expr3;         // Third expression (for for-loops)
@@ -117,8 +120,6 @@ struct stmt {
     char *type_str;             // Type annotation (for declarations)
 
     /* Code generation fields */
-    int label;                  // Primary label number for this statement
-    int label2;                 // Secondary label (for if/else end)
     char *asm_block;            // Generated assembly code (or NULL)
     struct jump_instr *jump;    // Jump instruction (deferred) or NULL
 };
@@ -128,15 +129,15 @@ struct stmt {
  */
 struct local_var {
     char *name;                 // Variable name
-    int offset;                 // Offset in stack frame (negative for locals, positive for params)
+    char offset;                // Offset in stack frame (-128..127)
     unsigned char size;         // Size in bytes
     unsigned char is_param;     // 1 if parameter, 0 if local variable
     unsigned char is_array;     // 1 if array, 0 if scalar (arrays can't be in registers)
-    int first_label;            // First label where variable is used (-1 if unused)
-    int last_label;             // Last label where variable is used (high water mark)
-    int ref_count;              // Number of times variable is referenced
-    int agg_refs;               // Number of struct/array member accesses (for IX allocation)
-    enum register_id reg;       // Allocated register (REG_NO if on stack)
+    unsigned char first_label;  // First label where variable is used (255 if unused)
+    unsigned char last_label;   // Last label where variable is used (high water mark)
+    unsigned char ref_count;    // Number of times variable is referenced
+    unsigned char agg_refs;     // Number of struct/array member accesses (for IX allocation)
+    unsigned char reg;          // Allocated register (REG_NO if on stack)
     struct local_var *next;     // Next in linked list
 };
 

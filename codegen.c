@@ -155,8 +155,8 @@ addParam(const char *name, unsigned char size,
     var->offset = offset;
     var->is_param = 1;
     var->is_array = 0;      /* Params are scalar (array params are pointers) */
-    var->first_label = -1;  /* Not used yet */
-    var->last_label = -1;   /* Not used yet */
+    var->first_label = 255;  /* Not used yet */
+    var->last_label = 255;   /* Not used yet */
     var->ref_count = 0;     /* Not referenced yet */
     var->agg_refs = 0;      /* No aggregate member accesses yet */
     var->reg = REG_NO;      /* Not allocated to register yet */
@@ -187,8 +187,8 @@ addLocalVar(const char *name, unsigned char size,
     var->offset = -(fnFrmSize + size);
     var->is_param = 0;
     var->is_array = is_array;  /* Arrays cannot be allocated to registers */
-    var->first_label = -1;  /* Not used yet */
-    var->last_label = -1;   /* Not used yet */
+    var->first_label = 255;  /* Not used yet */
+    var->last_label = 255;   /* Not used yet */
     var->ref_count = 0;     /* Not referenced yet */
     var->agg_refs = 0;      /* No aggregate member accesses yet */
     var->reg = REG_NO;      /* Not allocated to register yet */
@@ -215,7 +215,7 @@ updVarLife(const char *name)
     for (var = fnLocals; var; var = var->next) {
         if (strcmp(var->name, name) == 0) {
             /* Update first use if not set */
-            if (var->first_label == -1) {
+            if (var->first_label == 255) {
                 var->first_label = fnCurLbl;
             }
             /* Always update last use (high water mark) */
@@ -404,7 +404,7 @@ static int
 lifeOverlap(struct local_var *v1, struct local_var *v2)
 {
     /* If either variable is never used, they don't conflict */
-    if (v1->first_label == -1 || v2->first_label == -1) {
+    if (v1->first_label == 255 || v2->first_label == 255) {
         return 0;
     }
 
@@ -613,10 +613,11 @@ assignFrmOff()
 
             /* Add parameter with positive offset */
             if (name_buf[0]) {
-                unsigned char size = type_buf[0] ? 
+                unsigned char size = type_buf[0] ?
                     getSizeFromTN(type_buf) : 2;
                 addParam(name_buf, size, param_offset);
-                param_offset += size;
+                /* All params take at least 2 bytes on stack (push af/hl) */
+                param_offset += (size < 2) ? 2 : size;
             }
         }
     }
@@ -679,12 +680,16 @@ static void generateExpr(struct expr *e)
     if (e->op == '@') {
         arg_count = e->value;
 
-        /* Optimize constant arguments: if constant fits in byte, use byte */
+        /* Generate code for each argument */
         arg = e->right;
         for (i = 0; i < arg_count && arg; i++) {
-            if (arg->left && arg->left->op == 'C' &&
-                arg->left->value >= 0 && arg->left->value <= 255) {
-                arg->left->size = 1;
+            if (arg->left) {
+                /* Optimize constant arguments: if constant fits in byte, use byte */
+                if (arg->left->op == 'C' &&
+                    arg->left->value >= 0 && arg->left->value <= 255) {
+                    arg->left->size = 1;
+                }
+                generateExpr(arg->left);
             }
             arg = arg->right;
         }

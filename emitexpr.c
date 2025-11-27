@@ -120,7 +120,8 @@ void emitExpr(struct expr *e)
                     /* Byte: move register to A */
                     if (var->reg == REG_B) {
                         emit(S_LDAB);
-                    } else if (var->reg == REG_C) {
+                    } else if (var->reg == REG_C || var->reg == REG_BC) {
+                        /* BC: low byte is in C */
                         emit(S_LDAC);
                     } else if (var->reg == REG_Bp) {
                         emit(S_EXXLDAB);

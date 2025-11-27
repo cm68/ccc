@@ -219,6 +219,12 @@ getSizeFromTN(const char *typename)
 {
     if (!typename) return 2;  /* Default to short */
 
+    /* Check for type suffix letters (from AST: :b, :s, :l, :p) */
+    if (typename[0] == 'b') return 1;  /* byte */
+    if (typename[0] == 's') return 2;  /* short */
+    if (typename[0] == 'l') return 4;  /* long */
+    if (typename[0] == 'p') return 2;  /* pointer */
+
     /* Check for common type names */
     if (strstr(typename, "char")) return 1;
     if (strstr(typename, "short")) return 2;
@@ -1929,10 +1935,19 @@ doGlobal(void)
         /* Uninitialized data */
         isDefined = isDefSym(label_buf);
         if (!isDefined) {
+            int size = 2;  /* Default word size */
+            char *arr = strstr(type, ":array:");
+            if (arr) {
+                /* Parse :array:SIZE:ELEMSIZE */
+                int arrlen, elemsize;
+                if (sscanf(arr, ":array:%d:%d", &arrlen, &elemsize) == 2) {
+                    size = arrlen * elemsize;
+                }
+            }
             addDefSym(label_buf);
             switchToSeg(SEG_BSS);
             fdprintf(outFd, "%s:\n", label_buf);
-            fdprintf(outFd, "\t.dw 0\n");
+            fdprintf(outFd, "\t.ds %d\n", size);
         }
     } else {
         /* Scalar initializer (not yet implemented) */
