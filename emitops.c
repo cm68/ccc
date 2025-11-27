@@ -207,6 +207,27 @@ void emitAssign(struct expr *e)
     if (TRACE(T_ASSIGN)) {
         fdprintf(2, "emitAssign: enter\n");
     }
+
+    /* Optimize: constant to register-allocated variable */
+    if (e->right && e->right->op == 'C' && e->size == 2 &&
+        e->left && e->left->op == '$' && e->left->symbol) {
+        struct local_var *v = findVar(stripVarPfx(e->left->symbol));
+        if (v && v->reg == REG_BC) {
+            fdprintf(outFd, "\tld bc, %ld\n", e->right->value);
+            freeExpr(e->right);
+            freeExpr(e->left);
+            freeNode(e);
+            return;
+        }
+        if (v && v->reg == REG_IX) {
+            fdprintf(outFd, "\tld ix, %ld\n", e->right->value);
+            freeExpr(e->right);
+            freeExpr(e->left);
+            freeNode(e);
+            return;
+        }
+    }
+
     /* Emit right child first (value goes to PRIMARY) */
     emitExpr(e->right);
     if (TRACE(T_ASSIGN)) {
