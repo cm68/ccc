@@ -222,6 +222,7 @@ void assignFrmOff(void);
 void analyzeVars(void);
 void allocRegs(void);
 void setOpFlags(void);
+void dumpFnAst(int fd);
 void specialize(void);
 void generateCode(void);
 void optFrmLayout(void);

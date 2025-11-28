@@ -1646,6 +1646,9 @@ doFunction(char rettype)
         fdprintf(2, "doFunction: after setOpFlags curchar=%d\n", curchar);
     }
 
+    /* Dump AST as comments before code generation */
+    dumpFnAst(outFd);
+
     /* Phase 2.9: Specialize - detect patterns, replace subtrees with asm */
     specialize();
     if (TRACE(T_AST)) {
