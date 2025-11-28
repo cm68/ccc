@@ -10,6 +10,7 @@
 
 #include "cc2.h"
 #include "emithelper.h"
+#include "regcache.h"
 
 /*
  * Check if else branch is just a GOTO, return target symbol or NULL
@@ -50,14 +51,18 @@ static void emitCond(struct expr *e, int invert,
 
     /* Handle OR (||) */
     if (e->op == 'h') {
-        /* For OR: if left is true, skip rest of OR; if false, try right */
-        int skip_lbl = fnLblCnt++;
-        /* Left: if true -> skip to end of OR; if false -> continue to right */
-        /* Pass skip_lbl as true target so we jump past the OR on success */
-        emitCond(e->left, invert, "_or_end_", skip_lbl, NULL, -1);
-        /* Right: if true -> original true_target; if false -> original false_target */
-        emitCond(e->right, invert, true_lbl, true_num, false_lbl, false_num);
-        fdprintf(outFd, "_or_end_%d:\n", skip_lbl);
+        /* For OR: if left is true, skip rest; if false, try right */
+        if (true_lbl || true_num >= 0) {
+            /* Inherited true target - pass it through to both children */
+            emitCond(e->left, invert, true_lbl, true_num, NULL, -1);
+            emitCond(e->right, invert, true_lbl, true_num, false_lbl, false_num);
+        } else {
+            /* No inherited target - create our own _or_end_ label */
+            int skip_lbl = fnLblCnt++;
+            emitCond(e->left, invert, "_or_end_", skip_lbl, NULL, -1);
+            emitCond(e->right, invert, true_lbl, true_num, false_lbl, false_num);
+            fdprintf(outFd, "_or_end_%d:\n", skip_lbl);
+        }
         freeNode(e);
         return;
     }
@@ -120,9 +125,12 @@ static void emitCond(struct expr *e, int invert,
 
 /*
  * Walk statement tree, emit assembly, and free nodes
+ * tailPos: if true and return has no next, can fall through to exit
  */
 static int stmt_count = 0;
-static void emitStmt(struct stmt *s)
+static void emitStmtTail(struct stmt *s, int tailPos);
+static void emitStmt(struct stmt *s) { emitStmtTail(s, 0); }
+static void emitStmtTail(struct stmt *s, int tailPos)
 {
     if (!s) return;
     stmt_count++;
@@ -141,6 +149,10 @@ static void emitStmt(struct stmt *s)
 
     /* Handle LABEL statements - emit a label */
     if (s->type == 'L' && s->symbol) {
+        /* Invalidate cache at loop labels (backward jump targets) */
+        if (s->symbol[0] == 'L' && (strstr(s->symbol, "_top") || strstr(s->symbol, "_continue"))) {
+            cacheInvalAll();
+        }
         fdprintf(outFd, "%s:\n", s->symbol);
     }
 
@@ -213,6 +225,9 @@ static void emitStmt(struct stmt *s)
             if (fnZValid == 1) {
                 /* Z from EQ comparison: Z=1 means true, invert jump sense */
                 invertCond = !invertCond;
+            } else if (!fnZValid) {
+                /* Z flag not set - need or a to test byte value */
+                emit(S_ORA);
             }
             /* fnZValid == 2: NE comparison, Z=1 means false, no invert needed */
             fnZValid = 0;
@@ -287,7 +302,7 @@ emit_if_body:
             if (s->else_branch) emitStmt(s->else_branch);
         }
 
-        if (s->next) emitStmt(s->next);
+        if (s->next) emitStmtTail(s->next, tailPos);
 
         if (s->asm_block) free(s->asm_block);
         if (s->jump) freeJump(s->jump);
@@ -305,7 +320,10 @@ emit_if_body:
                 emit(S_EXX);
             }
         }
-        fdprintf(outFd, "\tjp %sX\n", fnName);
+        /* Skip jump if in tail position with no next - can fall through */
+        if (!(tailPos && !s->next)) {
+            fdprintf(outFd, "\tjp %sX\n", fnName);
+        }
     } else {
         /* Emit expressions (this frees them) */
         if (TRACE(T_EMIT)) {
@@ -329,7 +347,11 @@ emit_if_body:
     if (TRACE(T_EMIT)) {
         fdprintf(2, "  emitStmt: checking then_branch=%p\n", (void*)s->then_branch);
     }
-    if (s->then_branch) emitStmt(s->then_branch);
+    /* Block's then_branch is in tail position if block is and has no next */
+    if (s->then_branch) {
+        int branchTail = (s->type == 'B' && tailPos && !s->next);
+        emitStmtTail(s->then_branch, branchTail);
+    }
     if (TRACE(T_EMIT)) {
         fdprintf(2, "  emitStmt: checking else_branch=%p\n", (void*)s->else_branch);
     }
@@ -339,7 +361,7 @@ emit_if_body:
     if (TRACE(T_EMIT)) {
         fdprintf(2, "  emitStmt: checking next=%p\n", (void*)s->next);
     }
-    if (s->next) emitStmt(s->next);
+    if (s->next) emitStmtTail(s->next, tailPos);
     if (TRACE(T_EMIT)) {
         fdprintf(2, "  emitStmt: about to free stmt %p\n", (void*)s);
     }
@@ -392,7 +414,7 @@ void emitAssembly(int fd)
     if (TRACE(T_EMIT)) {
         fdprintf(2, "emit: calling emitStmt\n");
     }
-    emitStmt(fnBody);
+    emitStmtTail(fnBody, 1);  /* tail position - returns can fall through */
     if (TRACE(T_EMIT)) {
         fdprintf(2, "emit: emitStmt returned\n");
     }

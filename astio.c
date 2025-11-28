@@ -16,7 +16,7 @@
 #define BUFSIZE 512
 
 /* Parser state */
-static int inFd;
+static char inFd;
 static char buf[BUFSIZE];
 static int bufPos;
 static int bufValid;
@@ -125,6 +125,25 @@ expect(unsigned char c)
 }
 
 /*
+ * return the index of char c in string s; 255 if miss
+ */
+unsigned char
+instring(char c, char *s)
+{
+    unsigned char ret = 0;
+    while (*s) {
+        if (*s == c)
+            return ret;
+        s++;
+        ret++;
+    }
+    return 255;
+}
+
+char *escapes = "tnr\\\"";
+char *escaped = "\t\n\r\\\"";
+
+/*
  * Read a quoted string literal with escape sequences
  * Expects curchar to be on the opening quote
  * Returns pointer to static buffer with unescaped string data
@@ -133,6 +152,7 @@ char *
 readQuotedStr(void)
 {
     unsigned char i = 0;
+    unsigned char cc;
 
     skip();
 
@@ -147,75 +167,47 @@ readQuotedStr(void)
     nextchar();  /* Skip opening quote */
 
     /* Read until closing quote */
-    while (curchar && curchar != '"') {
-        if (curchar == '\\') {
-            /* Handle escape sequences */
+    while (1) {
+        cc = curchar;
+        if (!cc || cc == '"')
+            break;
+
+        if (cc == '\\') {
             nextchar();
-            switch (curchar) {
-            case 'n':
-                if (i < sizeof(strbuf) - 1) strbuf[i++] = '\n';
-                break;
-            case 't':
-                if (i < sizeof(strbuf) - 1) strbuf[i++] = '\t';
-                break;
-            case 'r':
-                if (i < sizeof(strbuf) - 1) strbuf[i++] = '\r';
-                break;
-            case '\\':
-                if (i < sizeof(strbuf) - 1) strbuf[i++] = '\\';
-                break;
-            case '"':
-                if (i < sizeof(strbuf) - 1) strbuf[i++] = '"';
-                break;
-            case 'x':
-                /* Hex escape: \xNN */
-                {
-                    unsigned char hex1, hex2, val;
+            cc = curchar;
+            if (cc == 'x') {
+                unsigned char val;
+                val = 0;
+                while (1) {
+                    val <<= 4;
                     nextchar();
-                    hex1 = curchar;
-                    nextchar();
-                    hex2 = curchar;
-                    val = 0;
-
-                    if (hex1 >= '0' && hex1 <= '9')
-                        val = (hex1 - '0') << 4;
-                    else if (hex1 >= 'a' && hex1 <= 'f')
-                        val = (hex1 - 'a' + 10) << 4;
-                    else if (hex1 >= 'A' && hex1 <= 'F')
-                        val = (hex1 - 'A' + 10) << 4;
-
-                    if (hex2 >= '0' && hex2 <= '9')
-                        val |= (hex2 - '0');
-                    else if (hex2 >= 'a' && hex2 <= 'f')
-                        val |= (hex2 - 'a' + 10);
-                    else if (hex2 >= 'A' && hex2 <= 'F')
-                        val |= (hex2 - 'A' + 10);
-
-                    if (i < sizeof(strbuf) - 1) strbuf[i++] = val;
+                    cc = curchar | 0x20;
+                    if (cc >= '0' && cc <= '9') {
+                        val += cc - '0';
+                    } else if (cc >= 'a' && cc <= 'f') {
+                        val += cc - 'a' + 10;
+                    } else {
+                        break;
+                    }
                 }
-                break;
-            default:
-                /* Unknown escape, just copy the character */
-                if (i < sizeof(strbuf) - 1) strbuf[i++] = curchar;
-                break;
+                cc = val;
+            } else {
+                cc = instring(cc, escapes);
+                if (cc != 255) {
+                    cc = escaped[cc];
+                } else {
+                    cc = curchar;
+                }
             }
-            nextchar();
-        } else {
-            /* Regular character */
-            if (i < sizeof(strbuf) - 1) {
-                strbuf[i++] = curchar;
-            }
-            nextchar();
         }
-    }
-
-    strbuf[i] = '\0';
-
-    /* Expect closing quote */
-    if (curchar == '"') {
+        if (i < sizeof(strbuf) - 1) {
+            strbuf[i++] = cc;
+        }
         nextchar();
     }
+    strbuf[i] = '\0';
 
+    expect('"');
     return strbuf;
 }
 

@@ -18,9 +18,9 @@
 
 /* Stub declarations - actual implementations use system calls */
 extern int access(const char *pathname, int mode);
-extern int read(int fd, void *buf, unsigned int count);
-extern int write(int fd, const void *buf, unsigned int count);
-extern int close(int fd);
+extern int read(unsigned char fd, void *buf, unsigned int count);
+extern int write(unsigned char fd, const void *buf, unsigned int count);
+extern int close(unsigned char fd);
 extern int fork(void);
 extern int execv(const char *path, char *const argv[]);
 extern unsigned int alarm(unsigned int seconds);

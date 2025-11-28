@@ -382,13 +382,12 @@ allocRegs()
         /* Skip unused or single-use variables */
         if (var->ref_count <= 1) continue;
 
-        /* Allocate byte registers (B, C, B', C')
-         * B' and C' work with A (8-bit primary) since exx doesn't swap A
+        /* Allocate byte registers (B, C only for now)
+         * B' and C' disabled until exx codegen is tested
          * Cannot allocate B or C if BC is already allocated (they conflict)
-         * B' and C' can always be allocated (no conflicts)
          */
-        if (var->size == 1 && byteRegsUsed < 4) {
-            enum register_id regs[] = {REG_B, REG_C, REG_Bp, REG_Cp};
+        if (var->size == 1 && byteRegsUsed < 2) {
+            enum register_id regs[] = {REG_B, REG_C};
             var->reg = regs[byteRegsUsed];
             byteRegsUsed++;
             
@@ -626,6 +625,17 @@ setExprFlags(struct expr *e)
                 }
             } else {
                 e->opflags |= OP_GLOBAL;
+            }
+        }
+        /* Check for byte indirect through BC: (M:b (M:p $bcvar)) */
+        else if (e->size == 1 && e->left && e->left->op == 'M' &&
+                 e->left->left && e->left->left->op == '$' && e->left->left->symbol) {
+            const char *sym = e->left->left->symbol;
+            struct local_var *var;
+            if (sym[0] == '$') sym++;
+            var = findVar(sym);
+            if (var && var->reg == REG_BC) {
+                e->opflags |= OP_BCINDIR;
             }
         }
     }
@@ -1515,7 +1525,11 @@ static void generateExpr(struct expr *e)
     switch (e->op) {
     case 'C':  /* CONST - load immediate value */
         if (e->size == 1) {
-            snprintf(buf, sizeof(buf), "\tld a, %ld", e->value);
+            if (e->value == 0) {
+                snprintf(buf, sizeof(buf), "\txor a");
+            } else {
+                snprintf(buf, sizeof(buf), "\tld a, %ld", e->value);
+            }
         } else if (e->size == 2) {
             snprintf(buf, sizeof(buf), "\tld hl, %ld", e->value);
         } else {  /* size == 4 - long constant, load into HL',HL */
@@ -1611,21 +1625,11 @@ static void generateExpr(struct expr *e)
             /* Fall through to compute address if not IX-allocated */
         }
 
-        /* Indirect byte load through pointer: (M (M $ptr)) */
-        if ((e->opflags & OP_INDIR) && e->size == 1) {
-            const char *sym = e->left->left->symbol;
-            struct local_var *var = findVar(sym);
-
-            if (var && var->reg == REG_BC) {
-                e->asm_block = strdup("\tld a, (bc)");
-                e->left->asm_block = strdup("");  /* Don't load pointer to HL */
-                break;
-            } else if (var && var->reg == REG_IX) {
-                e->asm_block = strdup("\tld a, (ix+0)");
-                e->left->asm_block = strdup("");
-                break;
-            }
-            /* Fall through - pointer not in register */
+        /* Indirect byte load through BC pointer: (M:b (M:p $bcvar)) */
+        if (e->opflags & OP_BCINDIR) {
+            e->asm_block = strdup("BCINDIR");  /* Placeholder for emit-time cache check */
+            e->left->asm_block = strdup("");   /* Don't load pointer to HL */
+            break;
         }
 
         /* Complex address expression - address will be in PRIMARY (HL) */

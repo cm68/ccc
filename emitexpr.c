@@ -9,6 +9,7 @@
 
 #include "cc2.h"
 #include "emithelper.h"
+#include "regcache.h"
 
 /*
  * Emit expression tree, emit assembly, and free nodes
@@ -40,6 +41,12 @@ void emitExpr(struct expr *e)
     /* Handle increment/decrement placeholders - need to check register allocation */
     if (e->asm_block && strstr(e->asm_block, "INCDEC_PLACEHOLDER:")) {
         emitIncDec(e);
+        return;
+    }
+    /* Handle BC indirect with caching */
+    else if (e->asm_block && strcmp(e->asm_block, "BCINDIR") == 0) {
+        emitBCIndir();
+        freeNode(e);
         return;
     }
     /* Handle ASSIGN specially - need to check register allocation */

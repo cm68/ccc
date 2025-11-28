@@ -9,6 +9,7 @@
 
 #include "cc2.h"
 #include "emithelper.h"
+#include "regcache.h"
 
 /*
  * Byte comparison info for inline cp instructions
@@ -131,7 +132,12 @@ void emitIncDec(struct expr *e)
                 fdprintf(outFd, is_dec ? "\tor a\n\tsbc %s, de\n" : "\tadd %s, de\n", rp);
                 emit(S_POPHPOST);
             }
-            if (!is_post) emitWordLoad(var->reg);
+            /* Invalidate BC indirect cache if BC was modified */
+            if (var->reg == REG_BC) {
+                fnABCValid = 0;
+                cacheInvalA();  /* A may hold *(bc) which is now invalid */
+            }
+            if (!is_post && !unused) emitWordLoad(var->reg);
             if (isAltReg(var->reg)) emit(S_EXX);
         }
     } else if (var) {
@@ -512,6 +518,23 @@ void emitCall(struct expr *e)
 
         /* Save size before emitExpr frees the node */
         arg_size = a->size;
+
+        /* Check for word DEREF of register variable - can push directly */
+        if (arg_size == 2 && a->op == 'M' && a->left && a->left->op == '$') {
+            const char *sym = a->left->symbol;
+            struct local_var *var;
+            if (sym && sym[0] == '$') sym++;
+            var = findVar(sym);
+            if (var && var->reg == REG_BC) {
+                fdprintf(outFd, "\tpush bc  ; arg %d\n", i);
+                freeExpr(a);
+                continue;
+            } else if (var && var->reg == REG_IX) {
+                fdprintf(outFd, "\tpush ix  ; arg %d\n", i);
+                freeExpr(a);
+                continue;
+            }
+        }
 
         /* Emit code to load argument value */
         emitExpr(a);

@@ -51,10 +51,7 @@ void emitFnProlog(char *name, char *params, char *rettype, int frame_size,
 /* Comparison function detection */
 int isCmpFunc(const char *fname);
 
-/* Expression cache helpers */
-struct expr *shallowCopy(struct expr *e);
-/* freeExpr is declared in cc2.h */
-int matchesCache(struct expr *e, struct expr *cached);
+/* Expression cache helper - creates (M $sym) node */
 struct expr *mkVarCache(const char *sym, int size);
 
 /* Cache management */
@@ -77,6 +74,7 @@ void emitBinop(struct expr *e);
 void emitCall(struct expr *e);
 void emitTernary(struct expr *e);
 void emitGlobDrf(struct expr *e);
+void emitBCIndir(void);
 
 /* Label/jump optimization */
 int extLabelNum(const char *asm_text);

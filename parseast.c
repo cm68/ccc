@@ -12,6 +12,7 @@
 
 #include "cc2.h"
 #include "astio.h"
+#include "regcache.h"
 
 /* Forward declarations for static helper functions */
 static struct expr *parseExpr(void);
@@ -69,13 +70,11 @@ int fnPendClean;
 int fnLoopDep;
 int fnDEValid;
 int fnZValid;
-struct expr *fnHLCache;
-struct expr *fnDECache;
-struct expr *fnACache;
 char fnIXAOfs;           /* When >=0, A has byte from (ix+fnIXAOfs) */
 char fnIXHLOfs;          /* When >=0, HL has word from (ix+fnIXHLOfs) */
 char fnIYHLOfs;          /* When valid, HL has word from (iy+fnIYHLOfs) */
 char fnIYHLValid;        /* 1 if fnIYHLOfs is valid */
+char fnABCValid;         /* 1 if A has byte from (bc) */
 
 /* Segment tracking */
 #define SEG_NONE 0
@@ -1599,12 +1598,11 @@ doFunction(char rettype)
     fnLoopDep = 0;
     fnDEValid = 0;
     fnZValid = 0;
-    fnHLCache = NULL;
-    fnDECache = NULL;
-    fnACache = NULL;
     fnIXAOfs = -1;
     fnIXHLOfs = -1;
     fnIYHLValid = 0;
+    fnABCValid = 0;
+    cacheInvalAll();
 
     if (TRACE(T_AST)) {
         fdprintf(2, "doFunction: before expect ')' curchar=%d '%c'\n",

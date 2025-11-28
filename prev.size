@@ -1,0 +1,27 @@
+stage1/cc1.o 1373 527 136
+stage1/error.o 1291 2060 136
+stage1/lex.o 3991 592 1288
+stage1/io.o 1823 65 266
+stage1/macro.o 1870 2 134
+stage1/kw.o 130 301 134
+stage1/util.o 985 38 414
+stage1/tokenlist.o 0 2072 0
+stage1/unixlib.o 0 0 134
+stage1/expr.o 11382 226 134
+stage1/parse.o 7091 164 218
+stage1/type.o 4683 718 134
+stage1/declare.o 2407 7 134
+stage1/outast.o 7818 864 134
+cc1 size:  44844 7636 3396 = 55876
+stage1/cc2.o 1087 600 2
+stage1/util.o 985 38 414
+stage1/astio.o 1205 112 1336
+stage1/parseast.o 11048 765 2420
+stage1/codegen.o 17316 3895 48
+stage1/dumpast.o 12 0 46
+stage1/regcache.o 912 0 48
+stage1/emithelper.o 5968 2471 1072
+stage1/emitexpr.o 952 106 48
+stage1/emitops.o 6461 921 48
+stage1/emit.o 3945 355 48
+cc2 size:  49891 9263 5530 = 64684

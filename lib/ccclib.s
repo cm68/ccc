@@ -185,5 +185,24 @@ eq1616:
 	ret
 
 ;
+; compare de, hl. return z if eq, c if gt
+; if de >= hl, return nonzero 
+;
+ge1616:
+	ld	a,h		; h - d sets carry if d > h
+	cp	a,d
+	ret	c
+	jr	z,geheq
+gelt:
+	xor	a,a
+	ret
+geheq:			; here if h == d
+	ld	a,l		; l - e sets carry if e > h
+	cp	a,e
+	ret	c
+	jr	nz,gelt
+	inc	a
+	ret
+;
 ; vim: tabstop=4 shiftwidth=4 noexpandtab:
 ;

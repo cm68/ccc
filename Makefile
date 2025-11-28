@@ -43,7 +43,7 @@ endif
 CC1OBJECTS = cc1.o error.o lex.o io.o macro.o kw.o util.o tokenlist.o \
 	unixlib.o expr.o parse.o type.o declare.o outast.o
 
-CC2OBJECTS = cc2.o util.o astio.o parseast.o codegen.o dumpast.o emithelper.o emitexpr.o emitops.o emit.o
+CC2OBJECTS = cc2.o util.o astio.o parseast.o codegen.o dumpast.o regcache.o emithelper.o emitexpr.o emitops.o emit.o
 
 HEADERS = cc1.h token.h
 GENERATED = enumlist.h tokenlist.c error.h debug.h debugtags.c op_pri.h trace2.h tracetags.c
@@ -51,7 +51,7 @@ GENERATED = enumlist.h tokenlist.c error.h debug.h debugtags.c op_pri.h trace2.h
 # All C source files (generated + corresponding to .o files)
 CFILES = cc1.c error.c lex.c io.c macro.c kw.c util.c unixlib.c \
 	expr.c parse.c type.c declare.c outast.c \
-	cc2.c astio.c parseast.c codegen.c dumpast.c emithelper.c emitexpr.c emitops.c emit.c ccc.c \
+	cc2.c astio.c parseast.c codegen.c dumpast.c regcache.c emithelper.c emitexpr.c emitops.c emit.c ccc.c \
 	tokenlist.c debugtags.c
 
 # All header files (manually written + generated)
@@ -175,10 +175,11 @@ stage1: cc1 cc2
 sizecheck: stage1
 	@for o in $(CC1OBJECTS) ; do wssize stage1/$$o ; done | \
 		tr ':' ' ' | \
-	awk 'NF==1{fname=$$1} NF!=1{print fname, $$6, $$8, $$10; text+=$$6;data+=$$8;bss+=$$10}END{print "cc1 size: ", text, data, bss, "=", text+data+bss}'
+	awk 'NF==1{fname=$$1} NF!=1{print fname, $$6, $$8, $$10; text+=$$6;data+=$$8;bss+=$$10}END{print "cc1 size: ", text, data, bss, "=", text+data+bss}' | tee current.size
 	@for o in $(CC2OBJECTS) ; do wssize stage1/$$o ; done | \
 		tr ':' ' ' | \
-	awk 'NF==1{fname=$$1} NF!=1{print fname, $$6, $$8, $$10; text+=$$6;data+=$$8;bss+=$$10}END{print "cc2 size: ", text, data, bss, "=", text+data+bss}'
+	awk 'NF==1{fname=$$1} NF!=1{print fname, $$6, $$8, $$10; text+=$$6;data+=$$8;bss+=$$10}END{print "cc2 size: ", text, data, bss, "=", text+data+bss}' | tee -a current.size
+	@if [ -f prev.size ] ; then diff prev.size current.size ; fi ; mv current.size prev.size
 
 #
 # process the cc1.h file, extracting the enum tags for the tokens

@@ -10,6 +10,7 @@
 
 #include "cc2.h"
 #include "emithelper.h"
+#include "regcache.h"
 
 /* Common assembly strings - indexed for compact emission */
 static const char *asmstr[] = {
@@ -491,7 +492,11 @@ void emitFnProlog(char *name, char *params, char *rettype, int frame_size,
     else fdprintf(outFd, "_%s:\n", name);
 
     if (frame_size > 0 || has_params) {
-        fdprintf(outFd, "\tld a, %d\n", frame_size);
+        if (frame_size == 0) {
+            fdprintf(outFd, "\txor a\n");
+        } else {
+            fdprintf(outFd, "\tld a, %d\n", frame_size);
+        }
         emit(S_CALLFA);
     }
 
@@ -511,11 +516,14 @@ void emitFnProlog(char *name, char *params, char *rettype, int frame_size,
                     loadWordIY(var->offset);
                     if (var->reg == REG_IX) {
                         char sym[64];
+                        struct expr *cache;
                         emit(S_HLPIX);
                         /* HL still has the value - set cache */
                         snprintf(sym, sizeof(sym), "$%s", var->name);
+                        cache = mkVarCache(sym, 2);
                         clearHL();
-                        fnHLCache = mkVarCache(sym, 2);
+                        cacheSetHL(cache);
+                        freeExpr(cache);
                     }
                 }
             } else if (var->size == 1 && var->reg <= REG_C) {
@@ -541,52 +549,7 @@ int isCmpFunc(const char *fname) {
     return 0;
 }
 
-/* Expression cache helpers */
-struct expr *shallowCopy(struct expr *e) {
-    struct expr *copy;
-    if (!e) return NULL;
-    copy = malloc(sizeof(struct expr));
-    if (!copy) return NULL;
-    memcpy(copy, e, sizeof(struct expr));
-    copy->left = NULL;
-    copy->right = NULL;
-    copy->asm_block = NULL;
-    copy->cleanup_block = NULL;
-    copy->jump = NULL;
-    return copy;
-}
-
 /* freeExpr is defined in parseast.c */
-
-static int cache_depth = 0;
-int matchesCache(struct expr *e1, struct expr *e2) {
-    int result;
-    cache_depth++;
-    if (TRACE(T_CACHE)) {
-        fdprintf(2, "    matchesCache depth=%d e1=%p e2=%p\n", cache_depth, (void*)e1, (void*)e2);
-    }
-    if (cache_depth > 100) {
-        fdprintf(2, "matchesCache: depth > 100, loop?\n");
-        exit(1);
-    }
-    if (!e1 || !e2) { cache_depth--; return 0; }
-    if (e1->op != e2->op) { cache_depth--; return 0; }
-    if (e1->size != e2->size) { cache_depth--; return 0; }
-
-    if (e1->op == '$') {
-        if (!e1->symbol || !e2->symbol) { cache_depth--; return 0; }
-        result = strcmp(e1->symbol, e2->symbol) == 0;
-        cache_depth--;
-        return result;
-    }
-    if (e1->op == 'M') {
-        result = matchesCache(e1->left, e2->left);
-        cache_depth--;
-        return result;
-    }
-    cache_depth--;
-    return 0;
-}
 
 struct expr *mkVarCache(const char *symbol, int size) {
     struct expr *sym_node, *deref_node;
@@ -609,29 +572,19 @@ struct expr *mkVarCache(const char *symbol, int size) {
 
 /* Cache management */
 void clearHL() {
-    if (0) return;
-    if (fnHLCache) {
-        freeExpr(fnHLCache);
-        fnHLCache = NULL;
-    }
     fnIXHLOfs = -1;
     fnIYHLValid = 0;
+    cacheInvalHL();
 }
 
 void clearDE() {
-    if (0) return;
-    if (fnDECache) {
-        freeExpr(fnDECache);
-        fnDECache = NULL;
-    }
+    cacheInvalDE();
 }
 
 void clearA() {
-    if (fnACache) {
-        freeExpr(fnACache);
-        fnACache = NULL;
-    }
     fnIXAOfs = -1;
+    fnABCValid = 0;
+    cacheInvalA();
 }
 
 void pushStack() {
@@ -644,11 +597,8 @@ void pushStack() {
     }
     emit(S_PUSHTOS);
     fnDEValid = 1;
-
-    if (fnDECache) freeExpr(fnDECache);
-    fnDECache = fnHLCache;
-    fnHLCache = NULL;
     fnZValid = 0;
+    cachePushHL();  /* Move HL cache to DE */
 }
 
 void popStack() {
@@ -722,8 +672,10 @@ void loadVar(const char *sym, char sz, char docache) {
         }
     }
     if (docache  && sz >= 2) {
+        struct expr *cache = mkVarCache(sym, sz);
         clearHL();
-        fnHLCache = mkVarCache(sym, sz);
+        cacheSetHL(cache);
+        freeExpr(cache);
     }
 }
 
@@ -744,8 +696,10 @@ void storeVar(const char *sym, char sz, char docache) {
         } else {
             emit(wordStoreTab[v->reg]);
             if (docache) {
+                struct expr *cache = mkVarCache(sym, sz);
                 clearHL();
-                fnHLCache = mkVarCache(sym, sz);
+                cacheSetHL(cache);
+                freeExpr(cache);
             }
         }
     } else if (v) {
@@ -763,14 +717,18 @@ void storeVar(const char *sym, char sz, char docache) {
         if (sz == 1) {
             fdprintf(outFd, "\tld (%s), a\n", s);
             if (docache) {
+                struct expr *cache = mkVarCache(sym, 1);
                 clearA();
-                fnACache = mkVarCache(sym, 1);
+                cacheSetA(cache);
+                freeExpr(cache);
             }
         } else if (sz == 2) {
             fdprintf(outFd, "\tld (%s), hl\n", s);
-            if (docache ) {
+            if (docache) {
+                struct expr *cache = mkVarCache(sym, sz);
                 clearHL();
-                fnHLCache = mkVarCache(sym, sz);
+                cacheSetHL(cache);
+                freeExpr(cache);
             }
         }
         else if (sz == 4) {
@@ -804,26 +762,20 @@ void emitGlobDrf(struct expr *e)
     addRefSym(s);
 
     if (e->size == 1) {
-        /* Check A cache */
-        if (fnACache && fnACache->op == 'M' && fnACache->left &&
-            fnACache->left->op == '$' && fnACache->left->symbol &&
-            strcmp(fnACache->left->symbol, sym) == 0) {
+        if (cacheFindByte(e) == 'A') {
             /* A already holds this value - skip load */
         } else {
             fdprintf(outFd, "\tld a, (%s)\n", s);
             clearA();
-            fnACache = mkVarCache(sym, 1);
+            cacheSetA(e);
         }
     } else if (e->size == 2) {
-        /* Check HL cache */
-        if (fnHLCache && fnHLCache->op == 'M' && fnHLCache->left &&
-            fnHLCache->left->op == '$' && fnHLCache->left->symbol &&
-            strcmp(fnHLCache->left->symbol, sym) == 0) {
+        if (cacheFindWord(e) == 'H') {
             /* HL already holds this value - skip load */
         } else {
             fdprintf(outFd, "\tld hl, (%s)\n", s);
             clearHL();
-            fnHLCache = mkVarCache(sym, 2);
+            cacheSetHL(e);
         }
     } else if (e->size == 4) {
         fdprintf(outFd, "\tld hl, (%s)\n", s);
@@ -835,4 +787,22 @@ void emitGlobDrf(struct expr *e)
 
     /* Free the expression tree */
     freeExpr(e);
+}
+
+/*
+ * Emit byte load from (BC) with caching
+ * Creates a synthetic expression representing *(bc) for cache matching
+ */
+void emitBCIndir(void)
+{
+    static struct expr bcIndir = { 'B', 1 };  /* Synthetic BC indirect marker */
+
+    /* Check if A already holds (bc) */
+    if (cacheFindByte(&bcIndir) == 'A') {
+        /* A already has (bc) - skip load */
+        return;
+    }
+    fdprintf(outFd, "\tld a, (bc)\n");
+    cacheInvalA();
+    cacheSetA(&bcIndir);
 }

@@ -110,6 +110,7 @@ opflagsLen(unsigned char flags)
     if (flags & OP_IYMEM) len += 2;
     if (flags & OP_GLOBAL) len += 1;
     if (flags & OP_INDIR) len += 1;
+    if (flags & OP_BCINDIR) len += 2;
     return len;
 }
 
@@ -161,6 +162,7 @@ dumpOpflags(unsigned char flags)
     if (flags & OP_IYMEM) out("IY");
     if (flags & OP_GLOBAL) out("G");
     if (flags & OP_INDIR) out("I");
+    if (flags & OP_BCINDIR) out("BC");
     out("]");
 }
 
