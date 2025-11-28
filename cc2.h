@@ -71,11 +71,25 @@ struct labelMap {
 };
 
 /*
- * Expression flags
+ * Expression flags (e->flags)
  */
 #define E_UNSIGNED  0x01        // Value is unsigned
 #define E_UNUSED    0x02        // Value is not used (result discarded)
 #define E_GENERATED 0x04        // Node has been code-generated (asm_block emitted)
+#define E_IXASSIGN  0x08        // ASSIGN to IX-indexed struct member
+#define E_IXDEREF   0x10        // DEREF of IX-indexed struct member
+
+/*
+ * Operand pattern flags (e->opflags) - set during analysis phase
+ * These identify common patterns to avoid repeated checking in codegen
+ */
+#define OP_CONST    0x01        // Right operand is a constant (C node)
+#define OP_SIMPLEVAR 0x02       // Left is simple var deref: (M $var)
+#define OP_REGVAR   0x04        // Left var is register-allocated
+#define OP_IXMEM    0x08        // Left is IX-indexed: (M (+ (M:p $ixvar) ofs))
+#define OP_IYMEM    0x10        // Left is IY-indexed (stack var)
+#define OP_GLOBAL   0x20        // Left is global variable
+#define OP_INDIR    0x40        // Left is indirect through pointer: (M (M $ptr))
 
 /*
  * Expression tree node for code generation
@@ -84,13 +98,14 @@ struct labelMap {
 struct expr {
     unsigned char op;           // Operation ('+', '-', 'M', '=', '@', etc.)
     unsigned char size;         // Result size in bytes (1=byte, 2=short/ptr, 4=long/float, 8=double)
-    unsigned char flags;        // E_UNSIGNED, etc.
+    unsigned char flags;        // E_UNSIGNED, E_UNUSED, etc.
+    unsigned char opflags;      // OP_CONST, OP_REGVAR, etc. (operand patterns)
     unsigned char label;        // Label number (if needed for this expression)
     struct expr *left;          // Left operand
     struct expr *right;         // Right operand
 
     /* Type and value information from AST */
-    char *type_str;             // Type annotation from AST (":s", ":b", ":l", ":p", etc.)
+    char type_str;              // Type annotation char: 'b', 's', 'l', 'p', etc. (0 if none)
     long value;                 // Constant value (for numeric constants)
     char *symbol;               // Symbol name (for SYM nodes)
 
@@ -98,6 +113,7 @@ struct expr {
     char *asm_block;            // Generated assembly code (or NULL)
     char *cleanup_block;        // Deferred cleanup code (for CALL stack cleanup)
     struct jump_instr *jump;    // Jump instruction (deferred) or NULL
+    struct local_var *cached_var; // Cached variable lookup result (set by setLeftFlags)
 };
 
 /*
@@ -117,7 +133,7 @@ struct stmt {
     struct stmt *next;          // Next statement in sequence
 
     char *symbol;               // Symbol name (for labels, declarations)
-    char *type_str;             // Type annotation (for declarations)
+    char type_str;              // Type annotation char: 'b', 's', 'l', 'p' (for declarations)
 
     /* Code generation fields */
     char *asm_block;            // Generated assembly code (or NULL)
@@ -193,9 +209,9 @@ struct jump_instr *newJump(enum jump_type type, int target_label);
 void freeJump(struct jump_instr *j);
 
 /* Width and signedness extraction from type annotations */
-unsigned char getSizeFTStr(const char *type_str);
+unsigned char getSizeFTStr(char type_str);
 unsigned char getSizeFromTN(const char *typename);
-unsigned char getSignFTStr(const char *type_str);
+unsigned char getSignFTStr(char type_str);
 
 /* Pattern recognizers */
 int isStructMem(struct expr *e, char **out_var, long *out_offset);
@@ -203,9 +219,12 @@ int isMulByPow2(struct expr *e, struct expr **out_expr);
 
 /* Code generation functions (codegen.c) */
 void assignFrmOff(void);
+void analyzeVars(void);
+void allocRegs(void);
+void setOpFlags(void);
+void specialize(void);
 void generateCode(void);
 void optFrmLayout(void);
-void allocRegs(void);
 struct local_var *findVar(const char *symbol);
 
 /* Symbol tracking (parseast.c) */

@@ -26,7 +26,7 @@ static const char *asmstr[] = {
     "\tpush hl\n\tpop ix\n",            /* S_HLPIX */
     "\tor a\n",                         /* S_ORA */
     "\tld (hl), d\n",                   /* S_HLD */
-    "\tld e, a  ; save byte value\n",  /* S_ESAVE */
+    "\tld e, a\n",			/* S_ESAVE */
     "\tld c, a\n",                      /* S_CA */
     "\tld b, h\n\tld c, l\n",           /* S_BCHLX */
     "\tld b, a\n",                      /* S_BA */
@@ -35,7 +35,7 @@ static const char *asmstr[] = {
     "\tld a, h\n",                      /* S_AH */
     "\tjr nz, $+3\n",                   /* S_JRNZ3 */
     "\tinc hl\n",                       /* S_INCHL */
-    "\tex de, hl  ; save word value in DE\n", /* S_DESAVE */
+    "\tex de, hl\n", 			/* S_DESAVE */
     "\tex de, hl\n",                    /* S_EXBCHL */
     "\texx\n\tpush bc\n\texx\n",        /* S_EXXBC */
     "\tld a, (bc)\n",                   /* S_LDABC */
@@ -54,30 +54,30 @@ static const char *asmstr[] = {
     "\tcall load32i\n",                 /* S_CALLL32I */
     "\tcall putlong\n",                 /* S_CALLPL */
     "\t; ERROR: failed to parse INCDEC_PLACEHOLDER\n", /* S_ERRPARS */
-    "\tex de, hl  ; cached value in DE, swap to HL\n", /* S_CACHESWP */
-    "\tex de, hl  ; DE = address\n",    /* S_DEADR */
-    "\tex de, hl  ; push TOS to 2nd entry\n", /* S_PUSHTOS */
+    "\tex de, hl\n", 			/* S_CACHESWP */
+    "\tex de, hl\n",			/* S_DEADR */
+    "\tex de, hl\n",			/* S_PUSHTOS */
     "\texx\n\tld a, b\n\tor c\n\texx\n", /* S_EXXABCORC */
     "\texx\n\tpush bc\n\texx\n\tpop de\n\tadd hl, de\n", /* S_EXXBCPOPHL */
     "\t; fall back to normal indirect\n", /* S_FBKNORM */
     "\tjp framefree\n",                 /* S_JPFF */
     "\tld a, b\n\tor c\n",              /* S_ABCORC */
     "\tld e, (hl)\n\tinc hl\n\tld d, (hl)\n\tex de, hl\n", /* S_LDEDHLSWP */
-    "\tld hl, 0  ; upper 16 bits = 0\n", /* S_HLZERO */
-    "\tpop af  ; return old value\n",  /* S_POPAFRET */
-    "\tpop de  ; DE = address\n",      /* S_POPDEADR */
-    "\tpop de  ; restore from nested op\n", /* S_POPDERES */
-    "\tpop hl  ; old value for postfix\n", /* S_POPHPOST */
-    "\tpop hl  ; restore lower word\n", /* S_POPHLLOW */
-    "\tpop hl  ; restore upper word\n", /* S_POPHLUPP */
-    "\tpop hl  ; return old value\n",  /* S_POPHLRET */
-    "\tpush af  ; save old value\n",   /* S_PUSHAFSV */
+    "\tld hl, 0\n",			/* S_HLZERO */
+    "\tpop af\n",  			/* S_POPAFRET */
+    "\tpop de\n",      			/* S_POPDEADR */
+    "\tpop de\n", 			/* S_POPDERES */
+    "\tpop hl\n", 			/* S_POPHPOST */
+    "\tpop hl\n", 			/* S_POPHLLOW */
+    "\tpop hl\n", 			/* S_POPHLUPP */
+    "\tpop hl\n",  			/* S_POPHLRET */
+    "\tpush af\n",   			/* S_PUSHAFSV */
     "\tpush bc\n",                      /* S_PUSHBC */
-    "\tpush de  ; save address\n",     /* S_PUSHDESV */
-    "\tpush de  ; spill 2nd stack entry\n", /* S_PUSHDESP */
-    "\tpush hl  ; save lower word\n",  /* S_PUSHHLLOW */
-    "\tpush hl  ; save old value\n",   /* S_PUSHHLOV */
-    "\tpush hl  ; save upper word\n",  /* S_PUSHHLUPP */
+    "\tpush de\n",     			/* S_PUSHDESV */
+    "\tpush de\n", 			/* S_PUSHDESP */
+    "\tpush hl\n",  			/* S_PUSHHLLOW */
+    "\tpush hl\n",   			/* S_PUSHHLOV */
+    "\tpush hl\n",  			/* S_PUSHHLUPP */
     "\tpush ix\n",                      /* S_PUSHIX */
     "\tpush ix\n\tpop de\n\tadd hl, de\n", /* S_IXSWPHL */
     "\tret\n",                          /* S_RET */
@@ -241,7 +241,22 @@ void storeWordIX(char offset) {
     fdprintf(outFd, "\tld (ix + %d), h\n", offset + 1);
 }
 
-/* Label map for jump optimization */
+/*
+ * Label map for jump optimization
+ *
+ * Maps labels to their jump targets to enable chain resolution.
+ * When a label immediately precedes an unconditional jump, we record
+ * the mapping (label -> target). During emission, resolveLabel()
+ * follows these chains to find the final destination, eliminating
+ * redundant jumps like:
+ *
+ *   jp L1      becomes    jp L3
+ *   ...
+ *   L1: jp L2
+ *   L2: jp L3
+ *
+ * Also tracks reference counts to identify unused labels.
+ */
 #define MAX_LABELS 256
 static struct labelMap labelMap[MAX_LABELS];
 int lblMapCnt = 0;

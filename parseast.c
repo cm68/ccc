@@ -124,7 +124,7 @@ newExpr(unsigned char op)
     e->op = op;
     e->left = NULL;
     e->right = NULL;
-    e->type_str = NULL;
+    e->type_str = 0;
     e->value = 0;
     e->symbol = NULL;
     e->size = 2;  /* Default to short size */
@@ -133,6 +133,8 @@ newExpr(unsigned char op)
     e->cleanup_block = NULL;
     e->label = 0;
     e->jump = NULL;
+    e->opflags = 0;
+    e->cached_var = NULL;
     return e;
 }
 
@@ -152,7 +154,7 @@ newStmt(unsigned char type)
     s->else_branch = NULL;
     s->next = NULL;
     s->symbol = NULL;
-    s->type_str = NULL;
+    s->type_str = 0;
     s->label = 0;
     s->label2 = 0;
     s->asm_block = NULL;
@@ -167,13 +169,9 @@ newStmt(unsigned char type)
  * Returns: size in bytes, or 2 (default short size) if no annotation
  */
 unsigned char
-getSizeFTStr(const char *type_str)
+getSizeFTStr(char type_str)
 {
-    if (!type_str || *type_str != ':') {
-        return 2;  /* Default to short size */
-    }
-
-    switch (type_str[1]) {
+    switch (type_str) {
     case 'b':  /* byte/char */
         return 1;
     case 's':  /* short/int */
@@ -190,20 +188,16 @@ getSizeFTStr(const char *type_str)
 }
 
 /*
- * Extract signedness from type annotation string
- * Pointers (:p) are unsigned (addresses)
+ * Extract signedness from type annotation char
+ * Pointers ('p') are unsigned (addresses)
  * Other types default to signed (signedness comes from ops like WIDEN/SEXT)
  * Returns: E_UNSIGNED flag if unsigned, 0 if signed
  */
 unsigned char
-getSignFTStr(const char *type_str)
+getSignFTStr(char type_str)
 {
-    if (!type_str || *type_str != ':') {
-        return 0;  /* Default to signed */
-    }
-
     /* Pointers are unsigned (addresses) */
-    if (type_str[1] == 'p') {
+    if (type_str == 'p') {
         return E_UNSIGNED;
     }
 
@@ -352,7 +346,7 @@ isStructMem(struct expr *e, char **out_var, long *out_offset)
     if (!ptr_load || ptr_load->op != 'M') {
         return 0;
     }
-    if (!ptr_load->type_str || strcmp(ptr_load->type_str, ":p") != 0) {
+    if (ptr_load->type_str != 'p') {
         return 0;
     }
 
@@ -402,9 +396,8 @@ freeExpr(struct expr *e)
     if (!e) return;
     freeExpr(e->left);
     freeExpr(e->right);
-    /* NOTE: type_str and symbol point to static buffers from
-     * readType()/readSymbol()
-     * They should NOT be freed. Only asm_block and cleanup_block are dynamically allocated. */
+    /* NOTE: symbol points to static buffer from readSymbol()
+     * Only asm_block and cleanup_block are dynamically allocated. */
     if (e->asm_block) free(e->asm_block);
     if (e->cleanup_block) free(e->cleanup_block);
     free(e);
@@ -422,7 +415,6 @@ frStmt(struct stmt *s)
     frStmt(s->next);
     /* Free dynamically allocated fields */
     if (s->symbol) free(s->symbol);
-    if (s->type_str) free(s->type_str);
     if (s->asm_block) free(s->asm_block);
     free(s);
 }
@@ -505,7 +497,6 @@ handleCmpAsn(unsigned char op)
 {
     struct expr *e;
     char width;
-    char width_str[3];
 
     e = newExpr(op);
     width = 's';  /* default */
@@ -517,12 +508,9 @@ handleCmpAsn(unsigned char op)
         width = curchar;
         nextchar();
         /* Store width annotation */
-        width_str[0] = ':';
-        width_str[1] = width;
-        width_str[2] = '\0';
-        e->type_str = strdup(width_str);
-        e->size = getSizeFTStr(e->type_str);
-        e->flags = getSignFTStr(e->type_str);
+        e->type_str = width;
+        e->size = getSizeFTStr(width);
+        e->flags = getSignFTStr(width);
     }
 
     skip();
@@ -651,10 +639,9 @@ doUnaryOp(unsigned char op)
 {
     struct expr *e;
     char width;
-    char width_str[3];
 
     e = newExpr(op);
-    width = ' ';
+    width = 0;
 
     /* Check for width annotation :b :s :l :p (for type conversion ops) */
     skip();
@@ -663,12 +650,8 @@ doUnaryOp(unsigned char op)
         width = curchar;
         nextchar();
         /* Store width annotation */
-        width_str[0] = ':';
-        width_str[1] = width;
-        width_str[2] = '\0';
-        e->type_str = strdup(width_str);
-        e->size = getSizeFTStr(e->type_str);
-    } else {
+        e->type_str = width;
+        e->size = getSizeFTStr(width);
     }
 
     skip();
@@ -676,7 +659,7 @@ doUnaryOp(unsigned char op)
     expect(')');
 
     /* If no type annotation, inherit size from operand */
-    if (width == ' ' && e->left) {
+    if (!width && e->left) {
         e->size = e->left->size;
     }
 
@@ -805,7 +788,6 @@ doDeref(unsigned char op)
 {
     struct expr *e;
     char width;
-    char width_str[3];
 
     e = newExpr('M');  /* 'M' for memory/deref */
     width = 's';  /* default */
@@ -817,12 +799,9 @@ doDeref(unsigned char op)
         width = curchar;
         nextchar();
         /* Store width annotation */
-        width_str[0] = ':';
-        width_str[1] = width;
-        width_str[2] = '\0';
-        e->type_str = strdup(width_str);
-        e->size = getSizeFTStr(e->type_str);
-        e->flags = getSignFTStr(e->type_str);
+        e->type_str = width;
+        e->size = getSizeFTStr(width);
+        e->flags = getSignFTStr(width);
     }
 
     skip();
@@ -836,7 +815,6 @@ doAssign(unsigned char op)
 {
     struct expr *e;
     char width;
-    char width_str[3];
 
     e = newExpr('=');  /* '=' for assignment */
     width = 's';  /* default */
@@ -848,12 +826,9 @@ doAssign(unsigned char op)
         width = curchar;
         nextchar();
         /* Store width annotation */
-        width_str[0] = ':';
-        width_str[1] = width;
-        width_str[2] = '\0';
-        e->type_str = strdup(width_str);
-        e->size = getSizeFTStr(e->type_str);
-        e->flags = getSignFTStr(e->type_str);
+        e->type_str = width;
+        e->size = getSizeFTStr(width);
+        e->flags = getSignFTStr(width);
     }
 
     skip();
@@ -1037,17 +1012,16 @@ doBlock(void)
 
             if (op == 'd') {
                 /* Declaration: (d:suffix name) */
-                char type_suffix[3];
+                char type_suffix;
                 expect(':');
-                type_suffix[0] = curchar;  /* b, s, l, p, etc. */
-                type_suffix[1] = '\0';
+                type_suffix = curchar;  /* b, s, l, p, etc. */
                 nextchar();
                 name = readSymbol();
 
                 /* Create declaration statement node */
                 child = newStmt('d');
                 child->symbol = strdup(name);
-                child->type_str = strdup(type_suffix);
+                child->type_str = type_suffix;
 
                 expect(')');
             } else {
@@ -1648,10 +1622,10 @@ doFunction(char rettype)
         fdprintf(2, "doFunction: after assignFrmOff curchar=%d\n", curchar);
     }
 
-    /* Phase 2: Generate assembly code blocks for tree nodes */
-    generateCode();
+    /* Phase 2: Analyze variable usage for register allocation */
+    analyzeVars();
     if (TRACE(T_AST)) {
-        fdprintf(2, "doFunction: after generateCode curchar=%d\n", curchar);
+        fdprintf(2, "doFunction: after analyzeVars curchar=%d\n", curchar);
     }
 
     /* Phase 2.25: Optimize frame layout based on lifetime analysis */
@@ -1664,6 +1638,24 @@ doFunction(char rettype)
     allocRegs();
     if (TRACE(T_AST)) {
         fdprintf(2, "doFunction: after allocRegs curchar=%d\n", curchar);
+    }
+
+    /* Phase 2.75: Set operand pattern flags for fast pattern matching */
+    setOpFlags();
+    if (TRACE(T_AST)) {
+        fdprintf(2, "doFunction: after setOpFlags curchar=%d\n", curchar);
+    }
+
+    /* Phase 2.9: Specialize - detect patterns, replace subtrees with asm */
+    specialize();
+    if (TRACE(T_AST)) {
+        fdprintf(2, "doFunction: after specialize curchar=%d\n", curchar);
+    }
+
+    /* Phase 3: Generate assembly code blocks for remaining nodes */
+    generateCode();
+    if (TRACE(T_AST)) {
+        fdprintf(2, "doFunction: after generateCode curchar=%d\n", curchar);
     }
 
     /* Phase 3: Emit assembly and free tree nodes */

@@ -15,6 +15,7 @@
 #include <string.h>
 
 #include "cc2.h"
+#include "emithelper.h"
 
 /* Global loop depth for tracking whether we're inside a loop */
 static int g_loop_depth = 0;
@@ -56,6 +57,20 @@ isOpndUnsign(struct expr *e)
 
     /* Otherwise check the expression's flags */
     return (e->flags & E_UNSIGNED) ? 1 : 0;
+}
+
+/*
+ * Helper: Check if value is a power of 2, return bit number (0-7) or -1
+ */
+static int
+getBitNum(long val)
+{
+    int bit;
+    if (val <= 0 || val > 128) return -1;
+    for (bit = 0; bit < 8; bit++) {
+        if (val == (1L << bit)) return bit;
+    }
+    return -1;
 }
 
 /*
@@ -256,10 +271,9 @@ walkForLocals(struct stmt *s)
     if (s->type == 'd' && s->symbol) {
         /* Skip parameter declarations - they already have offsets */
         if (!isParameter(s->symbol)) {
-            unsigned char size = getSizeFromTN(s->type_str);
-            /* Detect arrays: type_str contains ":array:" */
-            int is_array = (s->type_str && 
-                strstr(s->type_str, ":array:") != NULL) ? 1 : 0;
+            unsigned char size = getSizeFTStr(s->type_str);
+            /* Local arrays are typed as pointers (p) in the AST */
+            int is_array = 0;
             addLocalVar(s->symbol, size, is_array);
         }
     }
@@ -382,6 +396,746 @@ allocRegs()
     }
 
     
+}
+
+/*
+ * Phase 2: Analyze variable usage for register allocation
+ * Walk expression/statement trees to count references and struct member accesses
+ * Must run BEFORE allocRegs() and generateCode()
+ */
+
+/* Helper: increment agg_refs for struct member access pattern */
+static void
+incAggRef(const char *var_symbol)
+{
+    const char *var_name = var_symbol;
+    struct local_var *var;
+
+    if (!var_name) return;
+    if (var_name[0] == '$') var_name++;
+    if (var_name[0] == 'A') var_name++;
+
+    for (var = fnLocals; var; var = var->next) {
+        if (strcmp(var->name, var_name) == 0) {
+            var->agg_refs++;
+            return;
+        }
+    }
+}
+
+/* Analyze expression tree for variable usage */
+static void
+analyzeExpr(struct expr *e)
+{
+    if (!e) return;
+
+    /* Count variable references */
+    if (e->op == '$' && e->symbol) {
+        const char *var_name = e->symbol;
+        if (var_name[0] == '$') var_name++;
+        updVarLife(var_name);
+    }
+
+    /* Pattern 1: (= (+ (M:p $var) const) value) - struct member write */
+    if (e->op == '=' && e->left && e->left->op == '+' &&
+        e->left->left && e->left->left->op == 'M' &&
+        e->left->left->type_str == 'p' &&
+        e->left->left->left && e->left->left->left->op == '$' &&
+        e->left->left->left->symbol &&
+        e->left->right && e->left->right->op == 'C') {
+        incAggRef(e->left->left->left->symbol);
+        e->flags |= E_IXASSIGN;
+        e->value = e->left->right->value;
+    }
+
+    /* Pattern 2: (M (+ (M:p $var) const)) - struct member read */
+    if (e->op == 'M' && e->left && e->left->op == '+' &&
+        e->left->left && e->left->left->op == 'M' &&
+        e->left->left->type_str == 'p' &&
+        e->left->left->left && e->left->left->left->op == '$' &&
+        e->left->left->left->symbol &&
+        e->left->right && e->left->right->op == 'C') {
+        incAggRef(e->left->left->left->symbol);
+        e->flags |= E_IXDEREF;
+        e->value = e->left->right->value;
+    }
+
+    /* Recurse on children */
+    analyzeExpr(e->left);
+    analyzeExpr(e->right);
+}
+
+/* Analyze statement tree for variable usage */
+static void
+analyzeStmt(struct stmt *s)
+{
+    if (!s) return;
+
+    /* Track label for lifetime analysis */
+    if (s->type == 'L') {
+        fnCurLbl++;
+    }
+
+    /* Analyze expression if present */
+    if (s->expr) {
+        analyzeExpr(s->expr);
+    }
+
+    /* Recurse on child statements */
+    if (s->then_branch) analyzeStmt(s->then_branch);
+    if (s->else_branch) analyzeStmt(s->else_branch);
+    if (s->next) analyzeStmt(s->next);
+}
+
+/* Entry point: analyze all variables in function */
+void
+analyzeVars()
+{
+    if (!fnBody) return;
+    fnCurLbl = 0;
+    analyzeStmt(fnBody);
+}
+
+/*
+ * Phase 2.75: Set operand pattern flags (opflags)
+ * Must run AFTER allocRegs() so we know which variables are register-allocated
+ * These flags allow codegen to quickly check for common patterns
+ */
+
+/* Helper: set opflags for left operand patterns and cache var lookup */
+static void
+setLeftFlags(struct expr *e)
+{
+    struct expr *left = e->left;
+    struct local_var *var;
+    const char *sym;
+
+    if (!left) return;
+
+    /* Check for simple variable deref: (M $var) */
+    if (left->op == 'M' && left->left && left->left->op == '$' &&
+        left->left->symbol) {
+        e->opflags |= OP_SIMPLEVAR;
+        sym = left->left->symbol;
+        if (sym[0] == '$') sym++;
+
+        var = findVar(sym);
+        e->cached_var = var;  /* Cache the lookup */
+        if (var) {
+            if (var->reg != REG_NO) {
+                e->opflags |= OP_REGVAR;
+                if (var->reg == REG_IX) e->opflags |= OP_IXMEM;
+            } else {
+                e->opflags |= OP_IYMEM;
+            }
+        } else {
+            e->opflags |= OP_GLOBAL;
+        }
+    }
+    /* Check for bare variable: ($var) - used by OREQ/ANDEQ */
+    else if (left->op == '$' && left->symbol) {
+        e->opflags |= OP_SIMPLEVAR;
+        sym = left->symbol;
+        if (sym[0] == '$') sym++;
+
+        var = findVar(sym);
+        e->cached_var = var;  /* Cache the lookup */
+        if (var) {
+            if (var->reg != REG_NO) {
+                e->opflags |= OP_REGVAR;
+            } else {
+                e->opflags |= OP_IYMEM;
+            }
+        } else {
+            e->opflags |= OP_GLOBAL;
+        }
+    }
+    /* Check for struct member address: (+ (M:p $var) ofs) - used by OREQ/ANDEQ */
+    else if (left->op == '+' &&
+             left->left && left->left->op == 'M' &&
+             left->left->left && left->left->left->op == '$' &&
+             left->right && left->right->op == 'C') {
+        sym = left->left->left->symbol;
+        if (sym && sym[0] == '$') sym++;
+        var = findVar(sym);
+        e->cached_var = var;  /* Cache the lookup */
+        if (var) {
+            if (var->reg == REG_IX) {
+                e->opflags |= OP_IXMEM;
+            }
+            /* Store offset in e->value for later use */
+            e->value = left->right->value;
+        }
+    }
+    /* Check for IX-indexed struct member: (M (+ (M:p $var) ofs)) */
+    else if (left->op == 'M' && (left->flags & E_IXDEREF)) {
+        /* Already flagged during analyzeExpr - check if var is in IX */
+        if (left->left && left->left->left && left->left->left->left &&
+            left->left->left->left->op == '$' &&
+            left->left->left->left->symbol) {
+            sym = left->left->left->left->symbol;
+            var = findVar(sym);
+            e->cached_var = var;  /* Cache the lookup */
+            if (var && var->reg == REG_IX) {
+                e->opflags |= OP_IXMEM;
+            }
+        }
+    }
+    /* Check for indirect through pointer: (M (M $ptr)) */
+    else if (left->op == 'M' && left->left && left->left->op == 'M' &&
+             left->left->left && left->left->left->op == '$') {
+        e->opflags |= OP_INDIR;
+        sym = left->left->left->symbol;
+        var = findVar(sym);
+        e->cached_var = var;  /* Cache the lookup */
+        if (var && var->reg != REG_NO) {
+            e->opflags |= OP_REGVAR;
+        }
+    }
+}
+
+/* Set opflags for an expression and its children */
+static void
+setExprFlags(struct expr *e)
+{
+    if (!e) return;
+
+    /* Clear opflags first */
+    e->opflags = 0;
+
+    /* Check right operand for constant */
+    if (e->right && e->right->op == 'C') {
+        e->opflags |= OP_CONST;
+    }
+
+    /* Set left operand pattern flags */
+    setLeftFlags(e);
+
+    /* For DEREF nodes, check if this is a simple var or IX-indexed */
+    if (e->op == 'M') {
+        if (e->left && e->left->op == '$' && e->left->symbol) {
+            const char *sym = e->left->symbol;
+            struct local_var *var;
+            if (sym[0] == '$') sym++;
+            var = findVar(sym);
+            if (var) {
+                if (var->reg != REG_NO) {
+                    e->opflags |= OP_REGVAR;
+                } else {
+                    e->opflags |= OP_IYMEM;
+                }
+            } else {
+                e->opflags |= OP_GLOBAL;
+            }
+        }
+    }
+
+    /* Recurse on children */
+    setExprFlags(e->left);
+    setExprFlags(e->right);
+}
+
+/* Set opflags for all expressions in statement tree */
+static void
+setStmtFlags(struct stmt *s)
+{
+    if (!s) return;
+
+    if (s->expr) setExprFlags(s->expr);
+    if (s->expr2) setExprFlags(s->expr2);
+    if (s->expr3) setExprFlags(s->expr3);
+
+    if (s->then_branch) setStmtFlags(s->then_branch);
+    if (s->else_branch) setStmtFlags(s->else_branch);
+    if (s->next) setStmtFlags(s->next);
+}
+
+/* Entry point: set opflags for all expressions in function */
+void
+setOpFlags()
+{
+    if (!fnBody) return;
+    setStmtFlags(fnBody);
+}
+
+/*
+ * Phase 3: Specialize - detect patterns and replace subtrees with asm
+ *
+ * This pass walks the tree BEFORE generateExpr, detecting patterns like:
+ * - INC/DEC of variables (simple and complex)
+ * - OREQ/ANDEQ single-bit operations (set/res instructions)
+ * - Other patterns that can be replaced with efficient asm
+ *
+ * When a pattern matches, the entire subtree is replaced with an asm_block
+ * and children are freed. generateExpr then just emits what remains.
+ */
+
+/* Forward declarations */
+static void specExpr(struct expr *e);
+static void specStmt(struct stmt *s);
+
+/*
+ * Specialize INC/DEC operations
+ * Patterns:
+ *   - Simple var: (INC/DEC $var) -> placeholder for emit phase
+ *   - DEREF: (INC/DEC (M addr)) -> load, inc/dec, store
+ *   - Struct member: (INC/DEC (+ base ofs)) -> compute addr, load, inc/dec, store
+ */
+static int
+specIncDec(struct expr *e)
+{
+    char buf[512];
+    int is_post = (e->op == 0xef || e->op == 0xf6);
+    int is_dec = (e->op == 0xd6 || e->op == 0xf6);
+    const char *incdec = is_dec ? "dec" : "inc";
+    int unused = (e->flags & E_UNUSED) ? 1 : 0;
+    long amount = e->value;
+
+    /* Pattern 1: Simple variable */
+    if (e->left && e->left->op == '$' && e->left->symbol) {
+        /* Defer to emit phase via placeholder */
+        snprintf(buf, sizeof(buf), "INCDEC_PLACEHOLDER:%d:%d:%ld:%d:%s",
+                 (int)e->op, e->size, amount, unused, e->left->symbol);
+        e->asm_block = strdup(buf);
+        freeExpr(e->left);
+        freeExpr(e->right);
+        e->left = NULL;
+        e->right = NULL;
+        return 1;
+    }
+
+    /* Pattern 2: DEREF - (INC/DEC (M addr)) */
+    if (e->left && e->left->op == 'M' && e->left->left) {
+        /* First, specialize the address expression */
+        specExpr(e->left->left);
+
+        if (e->size == 1) {
+            /* Byte */
+            if (is_post && !unused) {
+                if (amount == 1) {
+                    snprintf(buf, sizeof(buf),
+                        "\tld e, l\n"
+                        "\tld d, h  ; save address\n"
+                        "\tld a, (hl)  ; load old value\n"
+                        "\tld c, a  ; save old value\n"
+                        "\t%s a\n"
+                        "\tld (de), a  ; store new value\n"
+                        "\tld a, c  ; return old value",
+                        incdec);
+                } else {
+                    snprintf(buf, sizeof(buf),
+                        "\tld e, l\n"
+                        "\tld d, h  ; save address\n"
+                        "\tld a, (hl)  ; load old value\n"
+                        "\tld c, a  ; save old value\n"
+                        "\t%s a, %ld\n"
+                        "\tld (de), a  ; store new value\n"
+                        "\tld a, c  ; return old value",
+                        is_dec ? "sub" : "add", amount);
+                }
+            } else {
+                if (amount == 1) {
+                    snprintf(buf, sizeof(buf),
+                        "\tld e, l\n"
+                        "\tld d, h  ; save address\n"
+                        "\tld a, (hl)  ; load value\n"
+                        "\t%s a\n"
+                        "\tld (de), a  ; store new value",
+                        incdec);
+                } else {
+                    snprintf(buf, sizeof(buf),
+                        "\tld e, l\n"
+                        "\tld d, h  ; save address\n"
+                        "\tld a, (hl)  ; load value\n"
+                        "\t%s a, %ld\n"
+                        "\tld (de), a  ; store new value",
+                        is_dec ? "sub" : "add", amount);
+                }
+            }
+        } else {
+            /* Word */
+            if (is_post && !unused) {
+                if (amount == 1) {
+                    snprintf(buf, sizeof(buf),
+                        "\tld e, l\n"
+                        "\tld d, h  ; save address\n"
+                        "\tld a, (hl)\n"
+                        "\tld c, a  ; save old low\n"
+                        "\tinc hl\n"
+                        "\tld a, (hl)\n"
+                        "\tld b, a  ; save old high\n"
+                        "\tld h, b\n"
+                        "\tld l, c  ; old value to HL\n"
+                        "\t%s hl\n"
+                        "\tld a, l\n"
+                        "\tld (de), a  ; store new low\n"
+                        "\tinc de\n"
+                        "\tld a, h\n"
+                        "\tld (de), a  ; store new high\n"
+                        "\tld h, b\n"
+                        "\tld l, c  ; return old value",
+                        incdec);
+                } else {
+                    snprintf(buf, sizeof(buf),
+                        "\tld e, l\n"
+                        "\tld d, h  ; save address\n"
+                        "\tld a, (hl)\n"
+                        "\tld c, a\n"
+                        "\tinc hl\n"
+                        "\tld a, (hl)\n"
+                        "\tld b, a  ; old value in BC\n"
+                        "\tld h, b\n"
+                        "\tld l, c  ; old value to HL\n"
+                        "\tpush hl  ; save old for return\n"
+                        "\tld bc, %ld\n"
+                        "\t%s hl, bc\n"
+                        "\tex de, hl\n"
+                        "\tld a, e\n"
+                        "\tld (hl), a\n"
+                        "\tinc hl\n"
+                        "\tld a, d\n"
+                        "\tld (hl), a\n"
+                        "\tpop hl  ; return old value",
+                        amount, is_dec ? "or a\n\tsbc" : "add");
+                }
+            } else {
+                if (amount == 1) {
+                    snprintf(buf, sizeof(buf),
+                        "\tld e, l\n"
+                        "\tld d, h  ; save address\n"
+                        "\tld a, (hl)\n"
+                        "\tld c, a\n"
+                        "\tinc hl\n"
+                        "\tld a, (hl)\n"
+                        "\tld h, a\n"
+                        "\tld l, c  ; value to HL\n"
+                        "\t%s hl\n"
+                        "\tld a, l\n"
+                        "\tld (de), a\n"
+                        "\tinc de\n"
+                        "\tld a, h\n"
+                        "\tld (de), a",
+                        incdec);
+                } else {
+                    snprintf(buf, sizeof(buf),
+                        "\tld e, l\n"
+                        "\tld d, h  ; save address\n"
+                        "\tld a, (hl)\n"
+                        "\tld c, a\n"
+                        "\tinc hl\n"
+                        "\tld a, (hl)\n"
+                        "\tld h, a\n"
+                        "\tld l, c  ; value to HL\n"
+                        "\tld bc, %ld\n"
+                        "\t%s hl, bc\n"
+                        "\tex de, hl\n"
+                        "\tld a, e\n"
+                        "\tld (hl), a\n"
+                        "\tinc hl\n"
+                        "\tld a, d\n"
+                        "\tld (hl), a",
+                        amount, is_dec ? "or a\n\tsbc" : "add");
+                }
+            }
+        }
+        e->asm_block = strdup(buf);
+        /* Don't free left - address was processed, just null it */
+        e->left = NULL;
+        freeExpr(e->right);
+        e->right = NULL;
+        return 1;
+    }
+
+    /* Pattern 3: ADD expr - struct member or array (+ base ofs) */
+    if (e->left && e->left->op == '+') {
+        /* Specialize the address expression first */
+        specExpr(e->left);
+
+        if (e->size == 1) {
+            if (is_post && !unused) {
+                if (amount == 1) {
+                    snprintf(buf, sizeof(buf),
+                        "\tld e, l\n"
+                        "\tld d, h  ; save address\n"
+                        "\tld a, (hl)\n"
+                        "\tld c, a  ; save old\n"
+                        "\t%s a\n"
+                        "\tld (de), a\n"
+                        "\tld a, c",
+                        incdec);
+                } else {
+                    snprintf(buf, sizeof(buf),
+                        "\tld e, l\n"
+                        "\tld d, h\n"
+                        "\tld a, (hl)\n"
+                        "\tld c, a\n"
+                        "\t%s a, %ld\n"
+                        "\tld (de), a\n"
+                        "\tld a, c",
+                        is_dec ? "sub" : "add", amount);
+                }
+            } else {
+                if (amount == 1) {
+                    snprintf(buf, sizeof(buf),
+                        "\tld e, l\n"
+                        "\tld d, h\n"
+                        "\tld a, (hl)\n"
+                        "\t%s a\n"
+                        "\tld (de), a",
+                        incdec);
+                } else {
+                    snprintf(buf, sizeof(buf),
+                        "\tld e, l\n"
+                        "\tld d, h\n"
+                        "\tld a, (hl)\n"
+                        "\t%s a, %ld\n"
+                        "\tld (de), a",
+                        is_dec ? "sub" : "add", amount);
+                }
+            }
+        } else {
+            /* Word */
+            if (is_post && !unused) {
+                if (amount == 1) {
+                    snprintf(buf, sizeof(buf),
+                        "\tld e, l\n"
+                        "\tld d, h\n"
+                        "\tld a, (hl)\n"
+                        "\tld c, a\n"
+                        "\tinc hl\n"
+                        "\tld a, (hl)\n"
+                        "\tld b, a\n"
+                        "\tld h, b\n"
+                        "\tld l, c\n"
+                        "\t%s hl\n"
+                        "\tld a, l\n"
+                        "\tld (de), a\n"
+                        "\tinc de\n"
+                        "\tld a, h\n"
+                        "\tld (de), a\n"
+                        "\tld h, b\n"
+                        "\tld l, c",
+                        incdec);
+                } else {
+                    snprintf(buf, sizeof(buf),
+                        "\tld e, l\n"
+                        "\tld d, h\n"
+                        "\tld a, (hl)\n"
+                        "\tld c, a\n"
+                        "\tinc hl\n"
+                        "\tld a, (hl)\n"
+                        "\tld b, a\n"
+                        "\tld h, b\n"
+                        "\tld l, c\n"
+                        "\tpush hl\n"
+                        "\tld bc, %ld\n"
+                        "\t%s hl, bc\n"
+                        "\tex de, hl\n"
+                        "\tld a, e\n"
+                        "\tld (hl), a\n"
+                        "\tinc hl\n"
+                        "\tld a, d\n"
+                        "\tld (hl), a\n"
+                        "\tpop hl",
+                        amount, is_dec ? "or a\n\tsbc" : "add");
+                }
+            } else {
+                if (amount == 1) {
+                    snprintf(buf, sizeof(buf),
+                        "\tld e, l\n"
+                        "\tld d, h\n"
+                        "\tld a, (hl)\n"
+                        "\tld c, a\n"
+                        "\tinc hl\n"
+                        "\tld a, (hl)\n"
+                        "\tld h, a\n"
+                        "\tld l, c\n"
+                        "\t%s hl\n"
+                        "\tld a, l\n"
+                        "\tld (de), a\n"
+                        "\tinc de\n"
+                        "\tld a, h\n"
+                        "\tld (de), a",
+                        incdec);
+                } else {
+                    snprintf(buf, sizeof(buf),
+                        "\tld e, l\n"
+                        "\tld d, h\n"
+                        "\tld a, (hl)\n"
+                        "\tld c, a\n"
+                        "\tinc hl\n"
+                        "\tld a, (hl)\n"
+                        "\tld h, a\n"
+                        "\tld l, c\n"
+                        "\tld bc, %ld\n"
+                        "\t%s hl, bc\n"
+                        "\tex de, hl\n"
+                        "\tld a, e\n"
+                        "\tld (hl), a\n"
+                        "\tinc hl\n"
+                        "\tld a, d\n"
+                        "\tld (hl), a",
+                        amount, is_dec ? "or a\n\tsbc" : "add");
+                }
+            }
+        }
+        e->asm_block = strdup(buf);
+        e->left = NULL;
+        freeExpr(e->right);
+        e->right = NULL;
+        return 1;
+    }
+
+    return 0;  /* Not handled */
+}
+
+/*
+ * Specialize OREQ/ANDEQ for single-bit operations
+ * Uses opflags set by setLeftFlags() to avoid repeated findVar calls
+ * Patterns:
+ *   - var |= (1<<n) -> set n, reg/mem
+ *   - var &= ~(1<<n) -> res n, reg/mem
+ *   - struct->field |= (1<<n) -> set n, (ix+d) or set n, (hl)
+ */
+static int
+specBitOp(struct expr *e)
+{
+    char buf[256];
+    int bitnum;
+    int is_or = (e->op == 0x31);  /* OREQ vs ANDEQ */
+    const char *inst = is_or ? "set" : "res";
+
+    /* Must be byte operation with constant RHS (OP_CONST cached by setOpFlags) */
+    if (e->size != 1 || !(e->opflags & OP_CONST))
+        return 0;
+
+    /* Get bit number */
+    if (is_or) {
+        bitnum = getBitNum(e->right->value);
+    } else {
+        long mask = e->right->value & 0xFF;
+        bitnum = getBitNum(~mask & 0xFF);
+    }
+    if (bitnum < 0) return 0;
+
+    /* Pattern 1: Simple variable - use cached opflags and cached_var */
+    if ((e->opflags & OP_SIMPLEVAR) && e->left && e->left->op == '$') {
+        struct local_var *var = e->cached_var;  /* Use cached lookup */
+        if (e->opflags & OP_REGVAR) {
+            /* Register-allocated */
+            if (var) {
+                const char *rn = byteRegName(var->reg);
+                if (var->reg == REG_BC) rn = "c";
+                if (rn) {
+                    if (isAltReg(var->reg))
+                        snprintf(buf, sizeof(buf), "\texx\n\t%s %d, %s\n\texx", inst, bitnum, rn);
+                    else
+                        snprintf(buf, sizeof(buf), "\t%s %d, %s", inst, bitnum, rn);
+                    e->asm_block = strdup(buf);
+                    freeExpr(e->left);
+                    freeExpr(e->right);
+                    e->left = NULL;
+                    e->right = NULL;
+                    return 1;
+                }
+            }
+        } else if (e->opflags & OP_IYMEM) {
+            /* Stack variable */
+            if (var) {
+                int ofs = var->offset + (var->is_param ? 1 : 0);
+                char sign = (ofs >= 0) ? '+' : '-';
+                int abs_ofs = (ofs >= 0) ? ofs : -ofs;
+                snprintf(buf, sizeof(buf), "\t%s %d, (iy %c %d)", inst, bitnum, sign, abs_ofs);
+                e->asm_block = strdup(buf);
+                freeExpr(e->left);
+                freeExpr(e->right);
+                e->left = NULL;
+                e->right = NULL;
+                return 1;
+            }
+        }
+    }
+
+    /* Pattern 2: Struct member via pointer - use cached OP_IXMEM and e->value */
+    if (e->left && e->left->op == '+') {
+        if (e->opflags & OP_IXMEM) {
+            /* IX-indexed - offset cached in e->value by setLeftFlags */
+            long ofs = e->value;
+            snprintf(buf, sizeof(buf), "\t%s %d, (ix + %ld)", inst, bitnum, ofs);
+            e->asm_block = strdup(buf);
+            freeExpr(e->left);
+            freeExpr(e->right);
+            e->left = NULL;
+            e->right = NULL;
+            return 1;
+        } else {
+            /* Non-IX: compute address, then use (hl)
+             * Keep e->left so generateExpr will process it and generate
+             * the address computation code. Just set our asm_block. */
+            snprintf(buf, sizeof(buf), "\t%s %d, (hl)", inst, bitnum);
+            e->asm_block = strdup(buf);
+            /* Free right (the constant), but keep left for address generation */
+            freeExpr(e->right);
+            e->right = NULL;
+            return 1;
+        }
+    }
+
+    return 0;
+}
+
+/*
+ * Specialize an expression - check for patterns and replace with asm
+ * Must be called BEFORE generateExpr
+ */
+static void
+specExpr(struct expr *e)
+{
+    if (!e) return;
+
+    /* Skip if already has asm_block */
+    if (e->asm_block) return;
+
+    /* Try INC/DEC specialization */
+    if (e->op == 0xcf || e->op == 0xef || e->op == 0xd6 || e->op == 0xf6) {
+        if (specIncDec(e)) return;
+    }
+
+    /* Try OREQ/ANDEQ bit operations */
+    if (e->op == 0x31 || e->op == 0xc6) {
+        if (specBitOp(e)) return;
+    }
+
+    /* Recurse on children */
+    specExpr(e->left);
+    specExpr(e->right);
+}
+
+/*
+ * Specialize all expressions in a statement
+ */
+static void
+specStmt(struct stmt *s)
+{
+    if (!s) return;
+
+    if (s->expr) specExpr(s->expr);
+    if (s->expr2) specExpr(s->expr2);
+    if (s->expr3) specExpr(s->expr3);
+
+    if (s->then_branch) specStmt(s->then_branch);
+    if (s->else_branch) specStmt(s->else_branch);
+    if (s->next) specStmt(s->next);
+}
+
+/*
+ * Entry point: specialize all expressions in function
+ */
+void
+specialize()
+{
+    if (!fnBody) return;
+    specStmt(fnBody);
 }
 
 /*
@@ -665,7 +1419,6 @@ static void generateExpr(struct expr *e)
 {
     char buf[256];
     struct expr *arg;
-    struct expr *args[32];
     int arg_count;
     int i;
 
@@ -731,429 +1484,29 @@ static void generateExpr(struct expr *e)
         return;  /* Early return - custom traversal done */
     }
 
-    /* Check for struct member access patterns BEFORE processing children */
-    /* (tree may be modified during processing, e.g., ADD frees constant operands) */
-
-    /* Pattern 1: (= (+ (M:p $var) const) value) - struct member write */
-    if (e->op == '=' && e->left && e->left->op == '+' &&
-        e->left->left && e->left->left->op == 'M' &&
-        e->left->left->type_str && strcmp(e->left->left->type_str, ":p") == 0 &&
-        e->left->left->left && e->left->left->left->op == '$' &&
-        e->left->left->left->symbol &&
-        e->left->right && e->left->right->op == 'C') {
-        /* Increment agg_refs and save info for emit phase */
-        const char *var_symbol = e->left->left->left->symbol;
-        long offset = e->left->right->value;
-        const char *var_name = var_symbol;
-        if (var_name && var_name[0] == '$') {
-            var_name++;  /* Skip $ prefix */
-        }
-        if (var_name && var_name[0] == 'A') {
-            var_name++;  /* Skip A prefix for arguments */
-        }
-        if (var_name) {
-            struct local_var *var;
-            for (var = fnLocals; var; var = var->next) {
-                if (strcmp(var->name, var_name) == 0) {
-                    var->agg_refs++;
-                    break;
-                }
-            }
-        }
-        /* Mark this ASSIGN for IX-indexed optimization in emit phase */
-        e->flags |= 1;  /* Use flags field to mark struct member assignment */
-        e->value = offset;  /* Store offset in value field */
+    /* NOTE: INC/DEC and OREQ/ANDEQ patterns are now handled by specialize() */
+    /* Skip nodes that already have asm_block (handled by specialize) */
+    if (e->asm_block) {
+        /* Still need to recurse for any children that weren't freed */
+        if (e->left) generateExpr(e->left);
+        if (e->right) generateExpr(e->right);
+        return;
     }
 
-    /* Pattern 2: (M (+ (M:p $var) const)) - struct member read */
-    if (e->op == 'M' && e->left && e->left->op == '+' &&
-        e->left->left && e->left->left->op == 'M' &&
-        e->left->left->type_str && strcmp(e->left->left->type_str, ":p") == 0 &&
-        e->left->left->left && e->left->left->left->op == '$' &&
-        e->left->left->left->symbol &&
-        e->left->right && e->left->right->op == 'C') {
-        /* Increment agg_refs and create placeholder for IX-indexed load */
-        const char *var_symbol = e->left->left->left->symbol;
-        long offset = e->left->right->value;
-        const char *var_name = var_symbol;
-        if (var_name && var_name[0] == '$') {
-            var_name++;  /* Skip $ prefix */
-        }
-        if (var_name && var_name[0] == 'A') {
-            var_name++;  /* Skip A prefix for arguments */
-        }
-        if (var_name) {
-            struct local_var *var;
-            for (var = fnLocals; var; var = var->next) {
-                if (strcmp(var->name, var_name) == 0) {
-                    var->agg_refs++;
-                    break;
-                }
-            }
-        }
-        /* Store placeholder info for emit phase - mark with flags and value */
-        e->flags |= 2;  /* Use bit 2 for DEREF struct member access */
-        e->value = offset;  /* Store offset */
-    }
-
-    /* Handle increment/decrement operators BEFORE recursion */
-    /* These operators need custom handling - don't process left child normally */
+    /* INC/DEC and OREQ/ANDEQ are now handled by specialize()
+     * If we get here with these ops, specialize didn't handle them - emit fallback */
     if (e->op == 0xcf || e->op == 0xef || e->op == 0xd6 || e->op == 0xf6) {
-        char buf[512];
-        int is_post = (e->op == 0xef || e->op == 0xf6);
-        int is_dec = (e->op == 0xd6 || e->op == 0xf6);
-        const char *incdec = is_dec ? "dec" : "inc";
-        int unused = (e->flags & E_UNUSED) ? 1 : 0;
-
-        /* Check for simple variable (SYM node) */
-        if (e->left && e->left->op == '$' && e->left->symbol) {
-
-        /* Track variable usage for lifetime analysis */
-        {
-            const char *var_name = e->left->symbol;
-
-            if (var_name && var_name[0] == '$') var_name++;
-            if (var_name && var_name[0] == 'A') var_name++;
-            updVarLife(var_name);
-        }
-
-        /* Use placeholder to defer code generation to emit phase */
-        /* This allows register allocation to happen first, so emit.c can */
-        /* generate optimal code based on whether variable is in register */
-        /* Placeholder format: INCDEC_PLACEHOLDER:op:size:amount:unused:symbol */
-        snprintf(buf, sizeof(buf), "INCDEC_PLACEHOLDER:%d:%d:%ld:%d:%s",
-                 (int)e->op, e->size, e->value, unused, e->left->symbol);
+        /* INC/DEC not handled by specialize - emit TODO comment */
+        snprintf(buf, sizeof(buf), "\t; TODO: unhandled inc/dec op=0x%02x", e->op);
         e->asm_block = strdup(buf);
-
-            /* Free children manually since we didn't process them normally */
-            /* NULL out pointers so emit phase doesn't try to process freed nodes */
-            freeExpr(e->left);
-            e->left = NULL;
-            freeExpr(e->right);
-            e->right = NULL;
-            return;  /* Early return - skip normal traversal */
-        } else if (e->left && e->left->op == 'M') {
-            /* Complex lvalue: dereferenced pointer, array element, struct member */
-            /* Pattern: (INC/DEC (DEREF addr)) */
-            /* Generate address, load, add/sub amount, store */
-            long amount = e->value;  /* Increment amount from AST */
-
-            generateExpr(e->left->left);  /* Generate address -> PRIMARY (HL) */
-
-            if (e->size == 1) {
-                /* Byte increment/decrement */
-                if (is_post && !(e->flags & E_UNUSED)) {
-                    /* Postfix with used result - need to save old value */
-                    if (amount == 1) {
-                        snprintf(buf, sizeof(buf),
-                            "\tld e, l\n"
-                            "\tld d, h  ; save address\n"
-                            "\tld a, (hl)  ; load old value\n"
-                            "\tld c, a  ; save old value\n"
-                            "\t%s a\n"
-                            "\tld (de), a  ; store new value\n"
-                            "\tld a, c  ; return old value",
-                            incdec);
-                    } else {
-                        snprintf(buf, sizeof(buf),
-                            "\tld e, l\n"
-                            "\tld d, h  ; save address\n"
-                            "\tld a, (hl)  ; load old value\n"
-                            "\tld c, a  ; save old value\n"
-                            "\t%s a, %ld\n"
-                            "\tld (de), a  ; store new value\n"
-                            "\tld a, c  ; return old value",
-                            is_dec ? "sub" : "add", amount);
-                    }
-                } else {
-                    /* Prefix, or postfix with unused result - simple increment */
-                    if (amount == 1) {
-                        snprintf(buf, sizeof(buf),
-                            "\tld e, l\n"
-                            "\tld d, h  ; save address\n"
-                            "\tld a, (hl)  ; load value\n"
-                            "\t%s a\n"
-                            "\tld (de), a  ; store new value",
-                            incdec);
-                    } else {
-                        snprintf(buf, sizeof(buf),
-                            "\tld e, l\n"
-                            "\tld d, h  ; save address\n"
-                            "\tld a, (hl)  ; load value\n"
-                            "\t%s a, %ld\n"
-                            "\tld (de), a  ; store new value",
-                            is_dec ? "sub" : "add", amount);
-                    }
-                }
-            } else {
-                /* Word increment/decrement */
-                if (is_post && !(e->flags & E_UNUSED)) {
-                    /* Postfix with used result - need to save old value */
-                    if (amount == 1) {
-                        snprintf(buf, sizeof(buf),
-                            "\tld e, l\n"
-                            "\tld d, h  ; save address\n"
-                            "\tld a, (hl)\n"
-                            "\tld c, a  ; save old low\n"
-                            "\tinc hl\n"
-                            "\tld a, (hl)\n"
-                            "\tld b, a  ; save old high\n"
-                            "\tld h, b\n"
-                            "\tld l, c  ; old value to HL\n"
-                            "\tpush hl  ; save old value\n"
-                            "\t%s hl\n"
-                            "\tex de, hl\n"
-                            "\tld a, l\n"
-                            "\tld (de), a  ; store new low\n"
-                            "\tinc de\n"
-                            "\tld a, h\n"
-                            "\tld (de), a  ; store new high\n"
-                            "\tpop hl  ; return old value",
-                            incdec);
-                    } else {
-                        snprintf(buf, sizeof(buf),
-                            "\tld e, l\n"
-                            "\tld d, h  ; save address\n"
-                            "\tld a, (hl)\n"
-                            "\tld c, a  ; save old low\n"
-                            "\tinc hl\n"
-                            "\tld a, (hl)\n"
-                            "\tld b, a  ; save old high\n"
-                            "\tld h, b\n"
-                            "\tld l, c  ; old value to HL\n"
-                            "\tpush hl  ; save old value\n"
-                            "\tld bc, %ld\n"
-                            "\t%s hl, bc\n"
-                            "\tex de, hl\n"
-                            "\tld a, l\n"
-                            "\tld (de), a  ; store new low\n"
-                            "\tinc de\n"
-                            "\tld a, h\n"
-                            "\tld (de), a  ; store new high\n"
-                            "\tpop hl  ; return old value",
-                            amount, is_dec ? "or a\n\tsbc" : "add");
-                    }
-                } else {
-                    /* Prefix, or postfix with unused result - simple increment */
-                    if (amount == 1) {
-                        snprintf(buf, sizeof(buf),
-                            "\tld e, l\n"
-                            "\tld d, h  ; save address\n"
-                            "\tld a, (hl)\n"
-                            "\tld c, a\n"
-                            "\tinc hl\n"
-                            "\tld a, (hl)\n"
-                            "\tld b, a\n"
-                            "\tld h, b\n"
-                            "\tld l, c  ; value to HL\n"
-                            "\t%s hl\n"
-                            "\tex de, hl\n"
-                            "\tld a, l\n"
-                            "\tld (de), a  ; store new low\n"
-                            "\tinc de\n"
-                            "\tld a, h\n"
-                            "\tld (de), a  ; store new high",
-                            incdec);
-                    } else {
-                        snprintf(buf, sizeof(buf),
-                            "\tld e, l\n"
-                            "\tld d, h  ; save address\n"
-                            "\tld a, (hl)\n"
-                            "\tld c, a\n"
-                            "\tinc hl\n"
-                            "\tld a, (hl)\n"
-                            "\tld b, a\n"
-                            "\tld h, b\n"
-                            "\tld l, c  ; value to HL\n"
-                            "\tld bc, %ld\n"
-                            "\t%s hl, bc\n"
-                            "\tex de, hl\n"
-                            "\tld a, l\n"
-                            "\tld (de), a  ; store new low\n"
-                            "\tinc de\n"
-                            "\tld a, h\n"
-                            "\tld (de), a  ; store new high",
-                            amount, is_dec ? "or a\n\tsbc" : "add");
-                    }
-                }
-            }
-
-            e->asm_block = strdup(buf);
-            /* Don't free left child - already processed */
-            e->left = NULL;
-            freeExpr(e->right);
-            e->right = NULL;
-            return;
-        } else if (e->left && e->left->op == '+') {
-            /* ADD expression: struct member or array element */
-            /* Pattern: (INC/DEC (+ base offset)) */
-            /* This is already an address - just load, add/sub amount, store */
-            long amount = e->value;  /* Increment amount from AST */
-
-            generateExpr(e->left);  /* Generate address -> PRIMARY (HL) */
-
-            if (e->size == 1) {
-                /* Byte */
-                if (is_post) {
-                    if (amount == 1) {
-                        snprintf(buf, sizeof(buf),
-                            "\tld e, l\n"
-                            "\tld d, h\n"
-                            "\tld a, (hl)\n"
-                            "\tld c, a\n"
-                            "\t%s a\n"
-                            "\tld (de), a\n"
-                            "\tld a, c",
-                            incdec);
-                    } else {
-                        snprintf(buf, sizeof(buf),
-                            "\tld e, l\n"
-                            "\tld d, h\n"
-                            "\tld a, (hl)\n"
-                            "\tld c, a\n"
-                            "\t%s a, %ld\n"
-                            "\tld (de), a\n"
-                            "\tld a, c",
-                            is_dec ? "sub" : "add", amount);
-                    }
-                } else {
-                    if (amount == 1) {
-                        snprintf(buf, sizeof(buf),
-                            "\tld e, l\n"
-                            "\tld d, h\n"
-                            "\tld a, (hl)\n"
-                            "\t%s a\n"
-                            "\tld (de), a",
-                            incdec);
-                    } else {
-                        snprintf(buf, sizeof(buf),
-                            "\tld e, l\n"
-                            "\tld d, h\n"
-                            "\tld a, (hl)\n"
-                            "\t%s a, %ld\n"
-                            "\tld (de), a",
-                            is_dec ? "sub" : "add", amount);
-                    }
-                }
-            } else {
-                /* Word */
-                if (is_post) {
-                    if (amount == 1) {
-                        snprintf(buf, sizeof(buf),
-                            "\tld e, l\n"
-                            "\tld d, h\n"
-                            "\tld a, (hl)\n"
-                            "\tld c, a\n"
-                            "\tinc hl\n"
-                            "\tld a, (hl)\n"
-                            "\tld b, a\n"
-                            "\tld h, b\n"
-                            "\tld l, c\n"
-                            "\tpush hl\n"
-                            "\t%s hl\n"
-                            "\tex de, hl\n"
-                            "\tld a, l\n"
-                            "\tld (de), a\n"
-                            "\tinc de\n"
-                            "\tld a, h\n"
-                            "\tld (de), a\n"
-                            "\tpop hl",
-                            incdec);
-                    } else {
-                        snprintf(buf, sizeof(buf),
-                            "\tld e, l\n"
-                            "\tld d, h\n"
-                            "\tld a, (hl)\n"
-                            "\tld c, a\n"
-                            "\tinc hl\n"
-                            "\tld a, (hl)\n"
-                            "\tld b, a\n"
-                            "\tld h, b\n"
-                            "\tld l, c\n"
-                            "\tpush hl\n"
-                            "\tld bc, %ld\n"
-                            "\t%s hl, bc\n"
-                            "\tex de, hl\n"
-                            "\tld a, l\n"
-                            "\tld (de), a\n"
-                            "\tinc de\n"
-                            "\tld a, h\n"
-                            "\tld (de), a\n"
-                            "\tpop hl",
-                            amount, is_dec ? "or a\n\tsbc" : "add");
-                    }
-                } else {
-                    if (amount == 1) {
-                        snprintf(buf, sizeof(buf),
-                            "\tld e, l\n"
-                            "\tld d, h\n"
-                            "\tld a, (hl)\n"
-                            "\tld c, a\n"
-                            "\tinc hl\n"
-                            "\tld a, (hl)\n"
-                            "\tld b, a\n"
-                            "\tld h, b\n"
-                            "\tld l, c\n"
-                            "\t%s hl\n"
-                            "\tex de, hl\n"
-                            "\tld a, l\n"
-                            "\tld (de), a\n"
-                            "\tinc de\n"
-                            "\tld a, h\n"
-                            "\tld (de), a",
-                            incdec);
-                    } else {
-                        snprintf(buf, sizeof(buf),
-                            "\tld e, l\n"
-                            "\tld d, h\n"
-                            "\tld a, (hl)\n"
-                            "\tld c, a\n"
-                            "\tinc hl\n"
-                            "\tld a, (hl)\n"
-                            "\tld b, a\n"
-                            "\tld h, b\n"
-                            "\tld l, c\n"
-                            "\tld bc, %ld\n"
-                            "\t%s hl, bc\n"
-                            "\tex de, hl\n"
-                            "\tld a, l\n"
-                            "\tld (de), a\n"
-                            "\tinc de\n"
-                            "\tld a, h\n"
-                            "\tld (de), a",
-                            amount, is_dec ? "or a\n\tsbc" : "add");
-                    }
-                }
-            }
-
-            e->asm_block = strdup(buf);
-            e->left = NULL;
-            freeExpr(e->right);
-            e->right = NULL;
-            return;
-        } else {
-            /* Unsupported lvalue type */
-            snprintf(buf, sizeof(buf), "\t; TODO: inc/dec unsupported lvalue");
-            e->asm_block = strdup(buf);
-            freeExpr(e->left);
-            freeExpr(e->right);
-            return;
-        }
+        return;
     }
 
     /* Recursively generate code for children (postorder traversal) */
     if (e->left) generateExpr(e->left);
     if (e->right) generateExpr(e->right);
 
-    /* Track variable usage for lifetime analysis */
-    if (e->op == '$' && e->symbol) {
-        /* Skip the leading $ to match variable names in locals list */
-        const char *var_name = e->symbol;
-        if (var_name[0] == '$') {
-            var_name++;  /* Skip $ prefix */
-        }
-        updVarLife(var_name);
-    }
+    /* NOTE: Variable usage tracking is now done in analyzeExpr() */
 
     /* Generate assembly code for this node based on operator */
     switch (e->op) {
@@ -1177,75 +1530,213 @@ static void generateExpr(struct expr *e)
         break;
 
     case 'M':  /* DEREF - load from memory */
-        /* Check if this is a struct mem access: (M (+ (M:p <var>) <const>)) */
-        {
-            char *var_symbol;
-            long offset;
-            const char *var_name;
+        /* Skip if already marked as generated (e.g., by bit test optimization) */
+        if (e->flags & E_GENERATED) break;
 
-            var_symbol = NULL;
-            offset = 0;
-            if (isStructMem(e, &var_symbol, &offset)) {
-                /* Extract variable name (skip $ and A prefixes) */
-                var_name = var_symbol;
-                if (var_name && var_name[0] == '$') {
-                    var_name++;  /* Skip $ prefix */
-                }
-                if (var_name && var_name[0] == 'A') {
-                    var_name++;  /* Skip A prefix for arguments */
-                }
-                /* Increment aggregate reference count for this variable */
-                if (var_name) {
-                    struct local_var *var;
-                    for (var = fnLocals; var; var = var->next) {
-                        if (strcmp(var->name, var_name) == 0) {
-                            var->agg_refs++;
-                            break;
-                        }
+        /* Simple variable load: (M $var) - use opflags set by setOpFlags() */
+        if ((e->opflags & (OP_REGVAR | OP_IYMEM | OP_GLOBAL)) &&
+            e->left && e->left->op == '$' && e->left->symbol) {
+            const char *sym = e->left->symbol;
+            struct local_var *var = findVar(sym);
+
+            if (var && var->reg != REG_NO) {
+                /* Register-allocated variable - generate move to PRIMARY */
+                if (e->size == 1) {
+                    /* Byte in reg -> A */
+                    int reg = (var->reg == REG_BC) ? REG_C : var->reg;
+                    static const char *byte_load[] = {
+                        NULL, "\tld a, b", "\tld a, c",
+                        "\texx\n\tld a, b\n\texx", "\texx\n\tld a, c\n\texx"
+                    };
+                    if (reg >= REG_B && reg <= REG_Cp) {
+                        e->asm_block = strdup(byte_load[reg]);
+                    } else {
+                        e->asm_block = strdup("");
+                    }
+                } else {
+                    /* Word in reg -> HL */
+                    if (var->reg == REG_BC) {
+                        e->asm_block = strdup("\tld h, b\n\tld l, c");
+                    } else if (var->reg == REG_IX) {
+                        e->asm_block = strdup("\tpush ix\n\tpop hl");
+                    } else if (var->reg == REG_BCp) {
+                        e->asm_block = strdup("\texx\n\tpush bc\n\texx\n\tpop hl");
+                    } else {
+                        e->asm_block = strdup("");
                     }
                 }
-
-                /* Create placeholder for emit phase to check IX allocation */
-                snprintf(buf, sizeof(buf), "DEREF_IXOFS:%s:%ld", var_symbol, offset);
+            } else if (var) {
+                /* Stack variable - IY-indexed */
+                char sign = (var->offset >= 0) ? '+' : '-';
+                int abs_ofs = (var->offset >= 0) ? var->offset : -var->offset;
+                if (e->size == 1) {
+                    int adj = (var->offset >= 0 && var->is_param) ? 1 : 0;
+                    snprintf(buf, sizeof(buf), "\tld a, (iy %c %d)", sign, abs_ofs + adj);
+                } else if (e->size == 2) {
+                    snprintf(buf, sizeof(buf), "\tld l, (iy %c %d)\n\tld h, (iy %c %d)",
+                             sign, abs_ofs, sign, abs_ofs + 1);
+                } else {
+                    snprintf(buf, sizeof(buf), "\tld a, %d\n\tcall getlong", var->offset);
+                }
                 e->asm_block = strdup(buf);
+            } else {
+                /* Global variable */
+                const char *s = sym;
+                if (s[0] == '$') s++;
+                if (e->size == 1) {
+                    snprintf(buf, sizeof(buf), "\tld a, (%s)", s);
+                } else if (e->size == 2) {
+                    snprintf(buf, sizeof(buf), "\tld hl, (%s)", s);
+                } else {
+                    snprintf(buf, sizeof(buf), "\tld hl, (%s)\n\texx\n\tld hl, (%s+2)\n\texx", s, s);
+                }
+                e->asm_block = strdup(buf);
+            }
+            break;
+        }
+
+        /* IX-indexed struct member: (M (+ (M:p $var) ofs)) */
+        if (e->flags & E_IXDEREF) {
+            long ofs = e->value;  /* Offset saved by analyzeExpr */
+            const char *sym = e->left->left->left->symbol;
+            struct local_var *var = findVar(sym);
+
+            if (var && var->reg == REG_IX) {
+                if (e->size == 1) {
+                    snprintf(buf, sizeof(buf), "\tld a, (ix + %ld)", ofs);
+                } else if (e->size == 2) {
+                    snprintf(buf, sizeof(buf), "\tld l, (ix + %ld)\n\tld h, (ix + %ld)", ofs, ofs + 1);
+                } else {
+                    snprintf(buf, sizeof(buf), "\tld l, (ix + %ld)\n\tld h, (ix + %ld)\n\texx\n\tld l, (ix + %ld)\n\tld h, (ix + %ld)\n\texx",
+                             ofs, ofs + 1, ofs + 2, ofs + 3);
+                }
+                e->asm_block = strdup(buf);
+                /* Mark child as handled - don't generate address calculation */
+                if (e->left) e->left->asm_block = strdup("");
                 break;
             }
+            /* Fall through to compute address if not IX-allocated */
         }
 
-        /* Register allocation happens later, so defer instruction to emit phase */
-        /* Check if child is a SYM node for simple variable load */
-        if (e->left && e->left->op == '$' && e->left->symbol) {
-            /* Placeholder - emit phase will check register allocation */
-            snprintf(buf, sizeof(buf), "DEREF_PLACEHOLDER:%s", e->left->symbol);
-        }
-        /* Check for pattern M:b(M:p($sym)) - indirect byte load through pointer */
-        else if (e->size == 1 && e->left && e->left->op == 'M' &&
-                 e->left->size == 2 && /* inner is pointer load */
-                 e->left->left && e->left->left->op == '$' &&
-                 e->left->left->symbol) {
-            /* Defer to emit phase - if pointer is register-allocated, use (bc)/(ix) */
-            snprintf(buf, sizeof(buf), "DEREF_INDIRECT_B:%s", e->left->left->symbol);
-        }
-        else {
-            /* Complex address expression - address will be in PRIMARY (HL) */
-            if (e->size == 1) {
-                /* Load byte from (HL) */
-                snprintf(buf, sizeof(buf), "\tld a, (hl)");
-            } else if (e->size == 2) {
-                /* Load word from (HL) - need sequence to preserve address */
-                snprintf(buf, sizeof(buf),
-                    "\tld e, (hl)\n\tinc hl\n\tld d, (hl)\n\tex de, hl");
-            } else {
-                /* Load long from (HL) - call load32i */
-                snprintf(buf, sizeof(buf), "\tcall load32i");
+        /* Indirect byte load through pointer: (M (M $ptr)) */
+        if ((e->opflags & OP_INDIR) && e->size == 1) {
+            const char *sym = e->left->left->symbol;
+            struct local_var *var = findVar(sym);
+
+            if (var && var->reg == REG_BC) {
+                e->asm_block = strdup("\tld a, (bc)");
+                e->left->asm_block = strdup("");  /* Don't load pointer to HL */
+                break;
+            } else if (var && var->reg == REG_IX) {
+                e->asm_block = strdup("\tld a, (ix+0)");
+                e->left->asm_block = strdup("");
+                break;
             }
+            /* Fall through - pointer not in register */
+        }
+
+        /* Complex address expression - address will be in PRIMARY (HL) */
+        if (e->size == 1) {
+            snprintf(buf, sizeof(buf), "\tld a, (hl)");
+        } else if (e->size == 2) {
+            snprintf(buf, sizeof(buf), "\tld e, (hl)\n\tinc hl\n\tld d, (hl)\n\tex de, hl");
+        } else {
+            snprintf(buf, sizeof(buf), "\tcall load32i");
         }
         e->asm_block = strdup(buf);
         break;
 
     case '=':  /* ASSIGN - store to memory */
-        /* Register allocation later, so defer instruction to emit phase */
-        /* Just mark an assignment - emitExpr will handle register vs stack */
+        /*
+         * Check for set/res bit patterns:
+         *   var |= (1 << n)  ->  set n, (iy + d) or set n, (ix + d)
+         *   var &= ~(1 << n) ->  res n, (iy + d) or res n, (ix + d)
+         */
+        /* Pattern 1: Simple variable (IY-indexed) */
+        if (e->left && e->left->op == '$' && e->left->symbol &&
+            e->right && e->size == 1) {
+            const char *sym = e->left->symbol;
+            struct local_var *var = findVar(sym);
+
+            if (var && var->reg == REG_NO) {
+                int ofs = var->offset + (var->is_param ? 1 : 0);
+                char sign = (ofs >= 0) ? '+' : '-';
+                int abs_ofs = (ofs >= 0) ? ofs : -ofs;
+
+                /* Pattern: var |= const where const is power of 2 -> set */
+                if (e->right->op == '|' && e->right->right &&
+                    e->right->right->op == 'C') {
+                    int bitnum = getBitNum(e->right->right->value);
+                    if (bitnum >= 0) {
+                        snprintf(buf, sizeof(buf), "\tset %d, (iy %c %d)",
+                                 bitnum, sign, abs_ofs);
+                        e->asm_block = strdup(buf);
+                        /* Suppress children - no load/store needed */
+                        if (e->right->left) e->right->left->asm_block = strdup("");
+                        e->right->asm_block = strdup("");
+                        break;
+                    }
+                }
+                /* Pattern: var &= const where const has single 0 bit -> res */
+                if (e->right->op == '&' && e->right->right &&
+                    e->right->right->op == 'C') {
+                    long mask = e->right->right->value & 0xFF;
+                    int bitnum = getBitNum(~mask & 0xFF);
+                    if (bitnum >= 0) {
+                        snprintf(buf, sizeof(buf), "\tres %d, (iy %c %d)",
+                                 bitnum, sign, abs_ofs);
+                        e->asm_block = strdup(buf);
+                        /* Suppress children - no load/store needed */
+                        if (e->right->left) e->right->left->asm_block = strdup("");
+                        e->right->asm_block = strdup("");
+                        break;
+                    }
+                }
+            }
+        }
+        /* Pattern 2: IX-indexed struct member */
+        if ((e->flags & E_IXASSIGN) && e->size == 1 && e->right) {
+            long ofs = e->value;  /* Offset saved by analyzeExpr */
+            /* Get the struct pointer variable */
+            if (e->left && e->left->left && e->left->left->left &&
+                e->left->left->left->op == '$' && e->left->left->left->symbol) {
+                const char *sym = e->left->left->left->symbol;
+                struct local_var *var = findVar(sym);
+
+                if (var && var->reg == REG_IX) {
+                    /* Pattern: s->field |= const -> set n, (ix + d) */
+                    if (e->right->op == '|' && e->right->right &&
+                        e->right->right->op == 'C') {
+                        int bitnum = getBitNum(e->right->right->value);
+                        if (bitnum >= 0) {
+                            snprintf(buf, sizeof(buf), "\tset %d, (ix + %ld)",
+                                     bitnum, ofs);
+                            e->asm_block = strdup(buf);
+                            if (e->right->left) e->right->left->asm_block = strdup("");
+                            e->right->asm_block = strdup("");
+                            if (e->left) e->left->asm_block = strdup("");
+                            break;
+                        }
+                    }
+                    /* Pattern: s->field &= const -> res n, (ix + d) */
+                    if (e->right->op == '&' && e->right->right &&
+                        e->right->right->op == 'C') {
+                        long mask = e->right->right->value & 0xFF;
+                        int bitnum = getBitNum(~mask & 0xFF);
+                        if (bitnum >= 0) {
+                            snprintf(buf, sizeof(buf), "\tres %d, (ix + %ld)",
+                                     bitnum, ofs);
+                            e->asm_block = strdup(buf);
+                            if (e->right->left) e->right->left->asm_block = strdup("");
+                            e->right->asm_block = strdup("");
+                            if (e->left) e->left->asm_block = strdup("");
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        /* Default: defer to emit phase */
         e->asm_block = strdup("\t; ASSIGN_PLACEHOLDER");
         break;
 
@@ -1340,10 +1831,39 @@ static void generateExpr(struct expr *e)
 
     case '&':  /* AND */
         /* Optimize byte AND with small constant to inline instruction */
-        if (e->left && e->left->size == 1 && e->right && e->right->op == 'C' &&
+        if (e->left && e->left->size == 1 && (e->opflags & OP_CONST) &&
             e->right->value >= 0 && e->right->value <= 255) {
-            /* Byte AND with immediate: use inline "and <imm>" instruction */
-            snprintf(buf, sizeof(buf), "\tand %ld", e->right->value & 0xFF);
+            int bitnum = getBitNum(e->right->value);
+            /* Check for IX-indexed struct member access */
+            if (bitnum >= 0 && (e->opflags & OP_IXMEM)) {
+                long ofs = e->left->value;
+                snprintf(buf, sizeof(buf), "\tbit %d, (ix + %ld)", bitnum, ofs);
+                e->asm_block = strdup(buf);
+                e->left->asm_block = strdup("");  /* Suppress left operand load */
+                break;
+            }
+            /* Check for simple local variable in memory (IY-indexed) */
+            if (bitnum >= 0 && (e->opflags & OP_SIMPLEVAR) && (e->opflags & OP_IYMEM)) {
+                const char *sym = e->left->left->symbol;
+                struct local_var *var = findVar(sym);
+                if (var) {
+                    int ofs = var->offset + (var->is_param ? 1 : 0);
+                    if (ofs >= 0)
+                        snprintf(buf, sizeof(buf), "\tbit %d, (iy + %d)", bitnum, ofs);
+                    else
+                        snprintf(buf, sizeof(buf), "\tbit %d, (iy - %d)", bitnum, -ofs);
+                    e->asm_block = strdup(buf);
+                    e->left->asm_block = strdup("");  /* Suppress left operand load */
+                    break;
+                }
+            }
+            if (bitnum >= 0) {
+                /* Single bit test: use "bit n, a" which sets Z without modifying A */
+                snprintf(buf, sizeof(buf), "\tbit %d, a", bitnum);
+            } else {
+                /* Byte AND with immediate: use inline "and <imm>" instruction */
+                snprintf(buf, sizeof(buf), "\tand %ld", e->right->value & 0xFF);
+            }
             e->asm_block = strdup(buf);
         } else {
             genBinop(e, "and");
@@ -1352,9 +1872,8 @@ static void generateExpr(struct expr *e)
 
     case '|':  /* OR */
         /* Optimize byte OR with small constant to inline instruction */
-        if (e->left && e->left->size == 1 && e->right && e->right->op == 'C' &&
+        if (e->left && e->left->size == 1 && (e->opflags & OP_CONST) &&
             e->right->value >= 0 && e->right->value <= 255) {
-            /* Byte OR with immediate: use inline "or <imm>" instruction */
             snprintf(buf, sizeof(buf), "\tor %ld", e->right->value & 0xFF);
             e->asm_block = strdup(buf);
         } else {
@@ -1364,9 +1883,8 @@ static void generateExpr(struct expr *e)
 
     case '^':  /* XOR */
         /* Optimize byte XOR with small constant to inline instruction */
-        if (e->left && e->left->size == 1 && e->right && e->right->op == 'C' &&
+        if (e->left && e->left->size == 1 && (e->opflags & OP_CONST) &&
             e->right->value >= 0 && e->right->value <= 255) {
-            /* Byte XOR with immediate: use inline "xor <imm>" instruction */
             snprintf(buf, sizeof(buf), "\txor %ld", e->right->value & 0xFF);
             e->asm_block = strdup(buf);
         } else {
@@ -1482,6 +2000,16 @@ static void generateExpr(struct expr *e)
         e->asm_block = strdup("");
         break;
 
+    case 0x31:  /* OREQ (|=) - handled by specialize(), fallback here */
+        snprintf(buf, sizeof(buf), "\t; OREQ fallback size=%d", e->size);
+        e->asm_block = strdup(buf);
+        break;
+
+    case 0xc6:  /* ANDEQ (&=) - handled by specialize(), fallback here */
+        snprintf(buf, sizeof(buf), "\t; ANDEQ fallback size=%d", e->size);
+        e->asm_block = strdup(buf);
+        break;
+
     default:
         /* For now, generate placeholder comment for other operators */
         snprintf(buf, sizeof(buf), "\t; op %c (0x%02x) size=%d%s",
@@ -1500,7 +2028,6 @@ static void generateExpr(struct expr *e)
 static char *buildStkCln(int bytes)
 {
     char *cleanup;
-    int len = 0;
     int i;
 
     if (bytes <= 6) {

@@ -1901,7 +1901,12 @@ struct instruct *isr;
 	} else
 		emitbyte(0xCB);
 
-	if (arg > 7)
+	/* Convert register token to register code (0-7) */
+	if (arg >= T_B && arg <= T_A)
+		arg -= T_B;
+	else if (arg == T_HL_I)
+		arg = 6;
+	else if (arg > 7)
 		return 1;
 
 	emitbyte(isr->opcode + arg + (reg << 3));

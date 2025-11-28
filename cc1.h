@@ -347,7 +347,7 @@ void usage(char *complaint, char *p);
 
 /* macro.c */
 struct macro {
-	char parmcount;
+	unsigned char parmcount;
 	char *name;
 	char **parms;
 	char *mactext;

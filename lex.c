@@ -676,7 +676,6 @@ outputToken(struct token *tok)
             char *src = tok->v.str;
             int len = *src++;  /* First byte is length */
             int chunk_size = 16;  /* Process this many source chars at a time */
-            int pos = 0;
 
             /* Opening quote */
             cppAsmOut("\"", 1);
@@ -1166,8 +1165,6 @@ gettoken()
 {
     token_t t;
     unsigned char c;
-    int i;
-    char *s;
 
     freetoken();
 
@@ -1251,7 +1248,7 @@ gettoken()
             /* CPP directive at column 0 */
             skipws1();
             if (issym()) {
-                t = kwlook(strbuf, cppkw);
+                t = kwlook((unsigned char *)strbuf, cppkw);
                 if (VERBOSE(V_CPP)) {
                     fdprintf(2,"CPP keyword: '%s' -> %d\n", strbuf, t);
                 }
@@ -1366,7 +1363,7 @@ gettoken()
                 continue;
             }
             advance();
-            t = kwlook(strbuf, ckw);
+            t = kwlook((unsigned char *)strbuf, ckw);
             if (t) {
                 next.type = t;
                 next.v.name = 0;  // keywords don't have names

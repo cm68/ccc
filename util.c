@@ -9,37 +9,31 @@
 #include <unistd.h>
 #endif
 
-#define NPATS   2           // and 2 per printf
-char patspace[PSIZE * NPATS];
-unsigned char patoff;
+char patspace[PSIZE];
 
 /*
  * byte bitoff formatter.
- * usage:  char *foo = { "0", "1", "2", "3", 0, "5", "6", "7" };
- *  printf("%s %s\n", bitdef(0xa, foo), bitdef(0x83, foo));
- * null pointer for defs is fine.
  */
 char *
 bitdef(unsigned char v, char **defs)
 {
-	unsigned char i;
+	unsigned char i = 0x01;
 	char *patptr;
-	int sep = 0;
+	unsigned char sep = 0;
 
-	patptr = &patspace[PSIZE * patoff];
-	patoff = (patoff + 1) % NPATS;
+	patptr = patspace;
 	*patptr = 0;
 
-	if (defs) {
-		for (i = 0; i < 8; i++) {
-			if ((v & (1 << i)) && defs[i]) {
-				if (sep++) {
-					strcat(patptr, ",");
-				}
-				strcat(patptr, defs[i]);
+    while (i) {
+		if ((v & i) && *defs) {
+			if (sep++) {
+				strcat(patptr, ",");
 			}
+			strcat(patptr, *defs);
 		}
-	}
+        i = i * 2;
+        defs++;
+	}		
 	return patptr;
 }
 

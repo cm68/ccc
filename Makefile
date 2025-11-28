@@ -33,7 +33,7 @@ endif
 
 ifeq ($(CC),gcc)
 DEFINES= -DDEBUG
-WARNS = -Wdeclaration-after-statement -Werror=declaration-after-statement -Werror=implicit-function-declaration -Wall
+WARNS = -Wdeclaration-after-statement -Werror=declaration-after-statement -Werror=implicit-function-declaration -Wall -Werror
 DEBUG= -ggdb3 -O0
 CFLAGS = $(DEBUG) $(DEFINES) $(WARNS)
 LDFLAGS= $(DEBUG) -o

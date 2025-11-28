@@ -34,7 +34,7 @@ static char typebuf[256];
  * Initialize I/O subsystem with file descriptor
  */
 void
-initAstio(int fd)
+initAstio(unsigned char fd)
 {
     inFd = fd;
     bufPos = 0;
@@ -111,7 +111,7 @@ skip(void)
 /*
  * Expect and consume a specific character
  */
-int
+unsigned char
 expect(unsigned char c)
 {
     skip();
@@ -259,7 +259,7 @@ long
 readNumber(void)
 {
     long val = 0;
-    int sign = 1;
+    char sign = 1;
 
     skip();
 
@@ -306,10 +306,10 @@ readType(void)
 /*
  * Check if a line is a label (ends with ':')
  */
-int
+unsigned char
 isLabel(char *line)
 {
-    int len;
+    unsigned char len;
 
     /* Trim trailing whitespace to find actual end */
     len = strlen(line);
@@ -329,7 +329,7 @@ trimLine(char *line)
 {
     char *end;
     char *src, *dst;
-    int lastWasSpace;
+    char lastWasSpace;
 
     /* Trim leading space */
     while (*line == ' ' || *line == '\t') {

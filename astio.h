@@ -11,12 +11,12 @@ extern unsigned char curchar;
 extern int lineNum;
 
 /* Buffer initialization */
-void initAstio(int fd);
+void initAstio(unsigned char fd);
 
 /* Character-level I/O */
 unsigned char nextchar(void);
 void skip(void);
-int expect(unsigned char c);
+unsigned char expect(unsigned char c);
 
 /* Token reading (return pointers to static buffers) */
 char *readSymbol(void);
@@ -25,7 +25,7 @@ char *readType(void);
 char *readQuotedStr(void);
 
 /* String utilities */
-int isLabel(char *line);
+unsigned char isLabel(char *line);
 char *trimLine(char *line);
 
 #endif /* ASTIO_H */

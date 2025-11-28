@@ -227,9 +227,9 @@ void emitAssign(struct expr *e)
     }
 
     /* Check for IX-indexed store */
-    if ((e->flags & 1) && e->left && e->left->op == '+' &&
+    if ((e->flags & E_IXASSIGN) && e->left && e->left->op == '+' &&
         e->left->left && e->left->left->op == 'M' &&
-        e->left->left->type_str && strcmp(e->left->left->type_str, ":p") == 0 &&
+        e->left->left->type_str == 'p' &&
         e->left->left->left && e->left->left->left->op == '$' &&
         e->left->left->left->symbol) {
         const char *var_symbol = e->left->left->left->symbol;

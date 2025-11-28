@@ -238,7 +238,7 @@ createPrmEnt(char *name, struct type *type)
 struct name *
 declInternal(struct type **btp, unsigned char struct_elem)
 {
-    struct name *nm, *arg;
+    struct name *nm, *arg, *param_tail;
     struct type *t, *prefix, *suffix, *rt;
     unsigned long i;
     unsigned char is_typedef;
@@ -419,6 +419,7 @@ declInternal(struct type **btp, unsigned char struct_elem)
 
         // Parse parameter list
         param_type = NULL;
+        param_tail = NULL;
         while (cur.type != RPAR && cur.type != E_O_F) {
             char paramNameBuf[64];  /* Stack buffer for parameter names */
             param_name = NULL;
@@ -488,8 +489,13 @@ declInternal(struct type **btp, unsigned char struct_elem)
              * ignores names
              */
             arg = createPrmEnt(param_name, param_type);
-            arg->next = suffix->elem;
-            suffix->elem = arg;
+            arg->next = NULL;
+            if (param_tail) {
+                param_tail->next = arg;
+            } else {
+                suffix->elem = arg;
+            }
+            param_tail = arg;
 
             /* Stack buffer automatically freed */
 
