@@ -76,6 +76,7 @@ void emitAddConst(struct expr *e);
 void emitBinop(struct expr *e);
 void emitCall(struct expr *e);
 void emitTernary(struct expr *e);
+void emitGlobDrf(struct expr *e);
 
 /* Label/jump optimization */
 int extLabelNum(const char *asm_text);

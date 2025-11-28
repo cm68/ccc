@@ -72,13 +72,14 @@ void emitExpr(struct expr *e)
         emitCall(e);
         return;
     }
-    /* Handle SYM - load variable value to PRIMARY */
-    else if (e->op == '$' && e->symbol) {
-        loadVar(e->symbol, 2, 0);
-    }
     /* Handle ternary operator (? :) */
     else if (e->op == '?') {
         emitTernary(e);
+        return;
+    }
+    /* Handle DEREF of global with caching */
+    else if (e->op == 'M' && !e->asm_block && e->left && e->left->op == '$') {
+        emitGlobDrf(e);
         return;
     }
     else {

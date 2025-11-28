@@ -787,3 +787,52 @@ void storeVar(const char *sym, char sz, char docache) {
         fdprintf(2, "  storeVar: returning\n");
     }
 }
+
+/*
+ * Emit DEREF of global variable with cache check
+ * Pattern: (M $global) where asm_block is NULL
+ */
+void emitGlobDrf(struct expr *e)
+{
+    const char *sym;
+    const char *s;
+
+    if (!e || !e->left || !e->left->symbol) return;
+
+    sym = e->left->symbol;
+    s = stripDollar(sym);
+    addRefSym(s);
+
+    if (e->size == 1) {
+        /* Check A cache */
+        if (fnACache && fnACache->op == 'M' && fnACache->left &&
+            fnACache->left->op == '$' && fnACache->left->symbol &&
+            strcmp(fnACache->left->symbol, sym) == 0) {
+            /* A already holds this value - skip load */
+        } else {
+            fdprintf(outFd, "\tld a, (%s)\n", s);
+            clearA();
+            fnACache = mkVarCache(sym, 1);
+        }
+    } else if (e->size == 2) {
+        /* Check HL cache */
+        if (fnHLCache && fnHLCache->op == 'M' && fnHLCache->left &&
+            fnHLCache->left->op == '$' && fnHLCache->left->symbol &&
+            strcmp(fnHLCache->left->symbol, sym) == 0) {
+            /* HL already holds this value - skip load */
+        } else {
+            fdprintf(outFd, "\tld hl, (%s)\n", s);
+            clearHL();
+            fnHLCache = mkVarCache(sym, 2);
+        }
+    } else if (e->size == 4) {
+        fdprintf(outFd, "\tld hl, (%s)\n", s);
+        emit(S_EXX);
+        fdprintf(outFd, "\tld hl, (%s+2)\n", s);
+        emit(S_EXX);
+        clearHL();
+    }
+
+    /* Free the expression tree */
+    freeExpr(e);
+}

@@ -85,9 +85,9 @@ static void emitCond(struct expr *e, int invert,
         /* We need to jump to false on false, or true on true */
         /* If Z means true: jp z -> true, jp nz -> false */
         /* If Z means false: jp z -> false, jp nz -> true */
-        if (false_num >= 0) {
+        if (false_num >= 0 || (false_num == -1 && false_lbl)) {
             emitJump(zMeansTrue ? "jp nz," : "jp z,", false_lbl, false_num);
-        } else if (true_num >= 0) {
+        } else if (true_num >= 0 || (true_num == -1 && true_lbl)) {
             emitJump(zMeansTrue ? "jp z," : "jp nz,", true_lbl, true_num);
         }
         fnZValid = 0;
@@ -99,18 +99,19 @@ static void emitCond(struct expr *e, int invert,
             emit(S_AHORL);
         }
         /* Z=1 means zero/false, Z=0 means nonzero/true */
+        /* false_num >= 0 means numbered label, false_num == -1 with false_lbl means named label */
         if (invert) {
             /* Inverted: nonzero is false */
-            if (false_num >= 0) {
+            if (false_num >= 0 || (false_num == -1 && false_lbl)) {
                 emitJump("jp nz,", false_lbl, false_num);
-            } else if (true_num >= 0) {
+            } else if (true_num >= 0 || (true_num == -1 && true_lbl)) {
                 emitJump("jp z,", true_lbl, true_num);
             }
         } else {
             /* Normal: zero is false */
-            if (false_num >= 0) {
+            if (false_num >= 0 || (false_num == -1 && false_lbl)) {
                 emitJump("jp z,", false_lbl, false_num);
-            } else if (true_num >= 0) {
+            } else if (true_num >= 0 || (true_num == -1 && true_lbl)) {
                 emitJump("jp nz,", true_lbl, true_num);
             }
         }

@@ -641,6 +641,9 @@ setStmtFlags(struct stmt *s)
 {
     if (!s) return;
 
+    /* For expression statements, mark the expr as unused (result discarded) */
+    if (s->type == 'E' && s->expr) s->expr->flags |= E_UNUSED;
+
     if (s->expr) setExprFlags(s->expr);
     if (s->expr2) setExprFlags(s->expr2);
     if (s->expr3) setExprFlags(s->expr3);
@@ -1570,8 +1573,7 @@ static void generateExpr(struct expr *e)
                 char sign = (var->offset >= 0) ? '+' : '-';
                 int abs_ofs = (var->offset >= 0) ? var->offset : -var->offset;
                 if (e->size == 1) {
-                    int adj = (var->offset >= 0 && var->is_param) ? 1 : 0;
-                    snprintf(buf, sizeof(buf), "\tld a, (iy %c %d)", sign, abs_ofs + adj);
+                    snprintf(buf, sizeof(buf), "\tld a, (iy %c %d)", sign, abs_ofs);
                 } else if (e->size == 2) {
                     snprintf(buf, sizeof(buf), "\tld l, (iy %c %d)\n\tld h, (iy %c %d)",
                              sign, abs_ofs, sign, abs_ofs + 1);
@@ -1580,17 +1582,8 @@ static void generateExpr(struct expr *e)
                 }
                 e->asm_block = strdup(buf);
             } else {
-                /* Global variable */
-                const char *s = sym;
-                if (s[0] == '$') s++;
-                if (e->size == 1) {
-                    snprintf(buf, sizeof(buf), "\tld a, (%s)", s);
-                } else if (e->size == 2) {
-                    snprintf(buf, sizeof(buf), "\tld hl, (%s)", s);
-                } else {
-                    snprintf(buf, sizeof(buf), "\tld hl, (%s)\n\texx\n\tld hl, (%s+2)\n\texx", s, s);
-                }
-                e->asm_block = strdup(buf);
+                /* Global variable - defer to emit for cache optimization */
+                e->asm_block = NULL;  /* Let emit handle with caching */
             }
             break;
         }
@@ -1765,26 +1758,29 @@ static void generateExpr(struct expr *e)
                 /* Use left operand's size since that's the register being used */
                 op_size = e->left ? e->left->size : e->size;
 
-                if (op_size == 1) {
+                if (const_val == 0) {
+                    /* Adding 0 is a no-op */
+                    e->asm_block = strdup("");
+                } else if (op_size == 1) {
                     /* Byte add with constant - use immediate add */
                     snprintf(buf, sizeof(buf),
                         "\tadd a, %ld  ; add constant to byte", const_val);
-                } else {
+                    e->asm_block = strdup(buf);
+                } else if (const_val >= 1 && const_val <= 4) {
                     /* Word add with constant 1-4 - use repeated inc hl */
-                    if (const_val >= 1 && const_val <= 4) {
-                        buf[0] = '\0';
-                        for (i = 0; i < const_val; i++) {
-                            if (i > 0) strcat(buf, "\n");
-                            strcat(buf, "\tinc hl");
-                        }
-                        strcat(buf, "  ; add small constant");
-                    } else {
-                        /* Word add with larger constant - load and add */
-                        snprintf(buf, sizeof(buf),
-                            "\tld de, %ld\n\tadd hl, de", const_val);
+                    buf[0] = '\0';
+                    for (i = 0; i < const_val; i++) {
+                        if (i > 0) strcat(buf, "\n");
+                        strcat(buf, "\tinc hl");
                     }
+                    strcat(buf, "  ; add small constant");
+                    e->asm_block = strdup(buf);
+                } else {
+                    /* Word add with larger constant - load and add */
+                    snprintf(buf, sizeof(buf),
+                        "\tld de, %ld\n\tadd hl, de", const_val);
+                    e->asm_block = strdup(buf);
                 }
-                e->asm_block = strdup(buf);
 
                 /* Free and clear right operand to prevent emission */
                 freeExpr(e->right);
@@ -1981,23 +1977,46 @@ static void generateExpr(struct expr *e)
         e->asm_block = strdup(buf);
         break;
 
-    case 0xb6:  /* WIDEN - zero extend */
-        snprintf(buf, sizeof(buf), "\t; zero extend to size %d", e->size);
-        e->asm_block = strdup(buf);
+    case 'W':  /* WIDEN - zero extend */
+        /* Determine source size from child */
+        if (e->left) {
+            int src_size = e->left->size;
+            if (src_size == 1 && e->size == 2) {
+                /* byte to word: A -> HL */
+                e->asm_block = strdup("\tld l, a\n\tld h, 0");
+            } else if (src_size == 1 && e->size == 4) {
+                /* byte to long: A -> HL:HL' */
+                e->asm_block = strdup("\tld l, a\n\tld h, 0\n\texx\n\tld hl, 0\n\texx");
+            } else if (src_size == 2 && e->size == 4) {
+                /* word to long: HL -> HL:HL' */
+                e->asm_block = strdup("\texx\n\tld hl, 0\n\texx");
+            } else {
+                snprintf(buf, sizeof(buf), "\t; zero extend %d to %d", src_size, e->size);
+                e->asm_block = strdup(buf);
+            }
+        } else {
+            e->asm_block = strdup("");
+        }
         break;
 
     case '$':  /* SYM - symbol reference (address) */
-        /* SYM nodes don't generate code directly */
-        /* Parent operations (M, =, etc.) will use the symbol information */
-
-        /* Track global variable references (for EXTERN declarations) */
-        /* Only track if it's a global (starts with $_), not a local (starts with $) */
-        if (e->symbol && e->symbol[0] == '$' && e->symbol[1] == '_') {
-            const char *sym_name = e->symbol + 1;  /* Strip leading $ */
-            addRefSym(sym_name);
+        /* Global symbols as values: load address into HL */
+        /* Local symbols as values: handled by parent DEREF */
+        if (e->symbol) {
+            const char *sym_name = stripVarPfx(e->symbol);
+            struct local_var *var = findVar(sym_name);
+            if (!var) {
+                /* Global (extern or static) - load address into HL */
+                if (e->symbol[1] == '_') addRefSym(e->symbol + 1);
+                snprintf(buf, sizeof(buf), "\tld hl, %s", sym_name);
+                e->asm_block = strdup(buf);
+            } else {
+                /* Local/param - parent DEREF handles load */
+                e->asm_block = strdup("");
+            }
+        } else {
+            e->asm_block = strdup("");
         }
-
-        e->asm_block = strdup("");
         break;
 
     case 0x31:  /* OREQ (|=) - handled by specialize(), fallback here */
