@@ -89,6 +89,37 @@ void emitExpr(struct expr *e)
         emitGlobDrf(e);
         return;
     }
+    /* Handle DEREF of byte register variable with caching */
+    else if (e->op == 'M' && e->size == 1 && e->asm_block &&
+             e->left && e->left->op == '$' && e->left->symbol &&
+             (strstr(e->asm_block, "ld a, c") || strstr(e->asm_block, "ld a, b"))) {
+        /* Check if A already has this register variable's value */
+        int cached = cacheFindByte(e);
+        if (cached == 'A') {
+            /* A already has this value - skip load */
+        } else {
+            fdprintf(outFd, "%s\n", e->asm_block);
+            cacheSetA(e);
+        }
+        free(e->asm_block);
+        if (e->left) freeExpr(e->left);
+        free(e);
+        return;
+    }
+    /* Handle global symbol address with caching */
+    else if (e->op == '$' && e->symbol && e->asm_block && e->asm_block[0]) {
+        /* Check if HL already has this address - only for globals that load address */
+        int cached = cacheFindWord(e);
+        if (cached == 'H') {
+            /* HL already has this address - skip load */
+        } else {
+            fdprintf(outFd, "%s\n", e->asm_block);
+            cacheSetHL(e);
+        }
+        free(e->asm_block);
+        free(e);
+        return;
+    }
     else {
         /* Normal postorder traversal for other operators */
         if (e->left) emitExpr(e->left);

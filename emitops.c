@@ -226,6 +226,19 @@ void emitAssign(struct expr *e)
         }
     }
 
+    /* Optimize: byte constant to pointer target - use ld (hl), N */
+    if (e->size == 1 && e->right && e->right->op == 'C' &&
+        e->left && (e->left->op == 'M' || e->left->op == '+')) {
+        struct expr *addr = (e->left->op == 'M') ? e->left->left : e->left;
+        emitExpr(addr);  /* emitExpr loads address to HL and sets cache */
+        fdprintf(outFd, "\tld (hl), %ld\n", e->right->value & 0xff);
+        /* Don't free e->left - addr was already freed by emitExpr */
+        if (e->left->op == 'M') freeNode(e->left);  /* Free just the M wrapper */
+        freeExpr(e->right);
+        freeNode(e);
+        return;
+    }
+
     /* Emit right child first (value goes to PRIMARY) */
     emitExpr(e->right);
     if (TRACE(T_ASSIGN)) {
@@ -447,6 +460,7 @@ void emitBinop(struct expr *e)
         char *call_inst = NULL;
         char *newline = strchr(e->asm_block, '\n');
         int init_saves = fnDESaveCnt;
+        int left_size = e->left ? e->left->size : 2;  /* Save before emitExpr frees */
 
         if (newline) {
             call_inst = strdup(newline + 1);
@@ -454,7 +468,7 @@ void emitBinop(struct expr *e)
 
         emitExpr(e->left);
         /* For byte ops, move A to E; for word ops, use standard pushStack */
-        if (e->left && e->left->size == 1) {
+        if (left_size == 1) {
             emit(S_ESAVE);  /* ld e, a */
         } else {
             pushStack();
@@ -468,6 +482,7 @@ void emitBinop(struct expr *e)
 
         if (call_inst) {
             fdprintf(outFd, "%s\n", call_inst);
+            cacheInvalA();  /* Function calls clobber A */
             if (strstr(call_inst, "call")) {
                 char *call_pos = strstr(call_inst, "call");
                 call_pos += 4;
@@ -478,13 +493,13 @@ void emitBinop(struct expr *e)
             }
             free(call_inst);
         }
-    }
 
-    /* Only pop stack for word ops (byte ops didn't push) */
-    if (!e->left || e->left->size != 1) {
-        int zflag_saved = fnZValid;
-        popStack();
-        fnZValid = zflag_saved;
+        /* Only pop stack for word ops (byte ops didn't push) */
+        if (left_size != 1) {
+            int zflag_saved = fnZValid;
+            popStack();
+            fnZValid = zflag_saved;
+        }
     }
 }
 

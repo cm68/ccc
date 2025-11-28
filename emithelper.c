@@ -693,6 +693,12 @@ void storeVar(const char *sym, char sz, char docache) {
     if (v && v->reg != REG_NO) {
         if (sz == 1) {
             emit(byteStoreTab[v->reg]);
+            /* After ld c,a or ld b,a, A still has the value */
+            if (docache) {
+                struct expr *cache = mkVarCache(sym, sz);
+                cacheSetA(cache);
+                freeExpr(cache);
+            }
         } else {
             emit(wordStoreTab[v->reg]);
             if (docache) {
