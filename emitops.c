@@ -491,18 +491,26 @@ void emitBinop(struct expr *e)
 
     if (e->left && e->left->size == 1 && e->right && e->right->op == 'C' &&
         e->right->value >= 0 && e->right->value <= 255) {
-        if (!strchr(e->asm_block, '\n') &&
-            (e->op == '&' || e->op == '|' || e->op == '^')) {
+        if (e->op == '&' || e->op == '|' || e->op == '^' ||
+            e->op == '+' || e->op == '-') {
             isInlineImm = 1;
         }
     }
 
     if (isInlineImm) {
+        int val = e->right->value & 0xff;
         emitExpr(e->left);
         freeExpr(e->right);
-        fdprintf(outFd, "%s\n", e->asm_block);
-        /* and/or/xor set Z flag: Z=1 means result is 0 */
-        fnZValid = 2;  /* Z=1 means false (zero result) */
+        /* Emit inline instruction based on operator */
+        switch (e->op) {
+        case '&': fdprintf(outFd, "\tand %d\n", val); break;
+        case '|': fdprintf(outFd, "\tor %d\n", val); break;
+        case '^': fdprintf(outFd, "\txor %d\n", val); break;
+        case '+': fdprintf(outFd, "\tadd a, %d\n", val); break;
+        case '-': fdprintf(outFd, "\tsub %d\n", val); break;
+        }
+        /* These ops set Z flag: Z=1 means result is 0 */
+        fnZValid = 2;
     } else if (emitByteCp(e)) {
         /* Byte comparison emitted inline */
     } else {
