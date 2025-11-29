@@ -1155,6 +1155,65 @@ specShiftOp(struct expr *e)
 }
 
 /*
+ * Specialize PLUSEQ/SUBEQ for byte register variables
+ * Pattern: var += expr or var -= expr where var is in register B or C
+ * Generates: add a,r; ld r,a  or  sub r; neg; ld r,a (for subtraction)
+ * For SUBEQ: result is var - expr, so we need: ld a,r; sub (expr); ld r,a
+ */
+static int
+specAddSubOp(struct expr *e)
+{
+    char buf[128];
+    const char *rn;
+    struct local_var *var;
+    int is_add = (e->op == 'P');
+
+    /* Must be byte operation */
+    if (e->size != 1)
+        return 0;
+
+    /* Check for simple register variable */
+    if (!(e->opflags & OP_SIMPLEVAR) || !e->left || e->left->op != '$')
+        return 0;
+
+    if (!(e->opflags & OP_REGVAR))
+        return 0;
+
+    var = e->cached_var;
+    if (!var) return 0;
+
+    rn = byteRegName(var->reg);
+    if (var->reg == REG_BC) rn = "c";
+    if (!rn) return 0;
+
+    /* For PLUSEQ: evaluate RHS to A, then add a,r; ld r,a
+     * For SUBEQ: need to do var - expr, so: save RHS, load var, sub, store */
+    if (is_add) {
+        /* RHS will be in A after evaluation, add register to it, store back */
+        if (isAltReg(var->reg)) {
+            snprintf(buf, sizeof(buf), "\texx\n\tadd a, %s\n\tld %s, a\n\texx", rn, rn);
+        } else {
+            snprintf(buf, sizeof(buf), "\tadd a, %s\n\tld %s, a", rn, rn);
+        }
+    } else {
+        /* SUBEQ: var -= expr means var = var - expr
+         * RHS in A, need to compute var - A
+         * Use: ld e,a; ld a,r; sub e; ld r,a */
+        if (isAltReg(var->reg)) {
+            snprintf(buf, sizeof(buf), "\tld e, a\n\texx\n\tld a, %s\n\texx\n\tsub e\n\texx\n\tld %s, a\n\texx", rn, rn);
+        } else {
+            snprintf(buf, sizeof(buf), "\tld e, a\n\tld a, %s\n\tsub e\n\tld %s, a", rn, rn);
+        }
+    }
+
+    e->asm_block = strdup(buf);
+    /* Keep e->right for RHS evaluation, free e->left (the variable reference) */
+    freeExpr(e->left);
+    e->left = NULL;
+    return 1;
+}
+
+/*
  * Specialize an expression - check for patterns and replace with asm
  * Must be called BEFORE generateExpr
  */
@@ -1179,6 +1238,11 @@ specExpr(struct expr *e)
     /* Try LSHIFTEQ/RSHIFTEQ for register variables */
     if (e->op == '0' || e->op == '6') {
         if (specShiftOp(e)) return;
+    }
+
+    /* Try PLUSEQ/SUBEQ for byte register variables */
+    if (e->op == 'P' || e->op == 0xdf) {
+        if (specAddSubOp(e)) return;
     }
 
     /* Recurse on children */
