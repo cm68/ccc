@@ -69,11 +69,31 @@ static void emitCond(struct expr *e, int invert,
 
     /* Handle AND (&&) */
     if (e->op == 'j') {
-        /* For AND: if left is false, fail immediately; if true, try right */
-        /* Left: if false -> false_target; if true -> continue to right */
-        emitCond(e->left, invert, NULL, -1, false_lbl, false_num);
-        /* Right: if true -> true_target; if false -> false_target */
-        emitCond(e->right, invert, true_lbl, true_num, false_lbl, false_num);
+        /* With invert (De Morgan): !(a && b) = !a || !b
+         * So AND with invert behaves like OR: if left is true (inverted), short-circuit */
+        if (invert) {
+            /* Inverted AND = OR semantics */
+            if (true_num >= 0 || true_lbl) {
+                emitCond(e->left, invert, true_lbl, true_num, NULL, -1);
+                emitCond(e->right, invert, true_lbl, true_num, false_lbl, false_num);
+            } else {
+                int skip_lbl = fnLblCnt++;
+                emitCond(e->left, invert, "_and_end_", skip_lbl, NULL, -1);
+                emitCond(e->right, invert, "_and_end_", skip_lbl, false_lbl, false_num);
+                fdprintf(outFd, "_and_end_%d:\n", skip_lbl);
+            }
+        } else {
+            /* Normal AND: if left is false, fail immediately; if true, try right */
+            if (false_num >= 0 || false_lbl) {
+                emitCond(e->left, invert, NULL, -1, false_lbl, false_num);
+                emitCond(e->right, invert, true_lbl, true_num, false_lbl, false_num);
+            } else {
+                int skip_lbl = fnLblCnt++;
+                emitCond(e->left, invert, NULL, -1, "_and_end_", skip_lbl);
+                emitCond(e->right, invert, true_lbl, true_num, "_and_end_", skip_lbl);
+                fdprintf(outFd, "_and_end_%d:\n", skip_lbl);
+            }
+        }
         freeNode(e);
         return;
     }
@@ -81,8 +101,22 @@ static void emitCond(struct expr *e, int invert,
     /* Leaf condition - emit comparison and jump */
     emitExpr(e);
 
+    /* Check for carry-based comparison (byte cmp with constant) */
+    if (fnCmpFlag) {
+        /* fnCmpFlag == 'c': nc = true (ge, gt)
+         * fnCmpFlag == 'C': c = true (lt, le) */
+        int cMeansTrue = (fnCmpFlag == 'C');
+        if (invert) cMeansTrue = !cMeansTrue;
+
+        if (false_num >= 0 || (false_num == -1 && false_lbl)) {
+            emitJump(cMeansTrue ? "jp nc," : "jp c,", false_lbl, false_num);
+        } else if (true_num >= 0 || (true_num == -1 && true_lbl)) {
+            emitJump(cMeansTrue ? "jp c," : "jp nc,", true_lbl, true_num);
+        }
+        fnCmpFlag = 0;
+    }
     /* Determine which way to jump based on Z flag semantics and invert */
-    if (fnZValid) {
+    else if (fnZValid) {
         /* fnZValid==1: Z=1 means true; fnZValid==2: Z=1 means false */
         int zMeansTrue = (fnZValid == 1);
         if (invert) zMeansTrue = !zMeansTrue;
@@ -221,29 +255,50 @@ static void emitStmtTail(struct stmt *s, int tailPos)
                 free(s->expr);
             }
 
+            /* Check for carry-based comparison first */
+            if (fnCmpFlag) {
+                /* fnCmpFlag == 'c': nc = true, 'C': c = true */
+                int cMeansTrue = (fnCmpFlag == 'C');
+                if (invertCond) cMeansTrue = !cMeansTrue;
+                fnCmpFlag = 0;
+
+                if (s->label2 > 0) {
+                    if (skip_else) {
+                        fdprintf(outFd, "\t%s %s\n", cMeansTrue ? "jp nc," : "jp c,", else_goto);
+                    } else {
+                        emitJump(cMeansTrue ? "jp nc," : "jp c,", "_if_", s->label);
+                    }
+                } else {
+                    emitJump(cMeansTrue ? "jp nc," : "jp c,", "_if_end_", s->label);
+                }
+            }
             /* Check if this is a comparison (Z=1 means true) vs bitwise (Z=1 means zero/false) */
-            if (fnZValid == 1) {
+            else if (fnZValid == 1) {
                 /* Z from EQ comparison: Z=1 means true, invert jump sense */
                 invertCond = !invertCond;
+                fnZValid = 0;
+                goto emit_z_jump;
             } else if (!fnZValid) {
                 /* Z flag not set - need or a to test byte value */
                 emit(S_ORA);
-            }
-            /* fnZValid == 2: NE comparison, Z=1 means false, no invert needed */
-            fnZValid = 0;
-
-            if (s->label2 > 0) {
-                if (skip_else) {
-                    /* Jump directly to else's goto target */
-                    fdprintf(outFd, "\t%s %s\n", invertCond ? "jp nz," : "jp z,", else_goto);
-                } else {
-                    emitJump(invertCond ? "jp nz," : "jp z,", "_if_", s->label);
-                }
+                goto emit_z_jump;
             } else {
-                if (invertCond) {
-                    emitJump("jp nz,", "_if_end_", s->label);
+                /* fnZValid == 2: NE comparison, Z=1 means false, no invert needed */
+                fnZValid = 0;
+emit_z_jump:
+                if (s->label2 > 0) {
+                    if (skip_else) {
+                        /* Jump directly to else's goto target */
+                        fdprintf(outFd, "\t%s %s\n", invertCond ? "jp nz," : "jp z,", else_goto);
+                    } else {
+                        emitJump(invertCond ? "jp nz," : "jp z,", "_if_", s->label);
+                    }
                 } else {
-                    emitJump("jp z,", "_if_end_", s->label);
+                    if (invertCond) {
+                        emitJump("jp nz,", "_if_end_", s->label);
+                    } else {
+                        emitJump("jp z,", "_if_end_", s->label);
+                    }
                 }
             }
         } else {
@@ -262,8 +317,14 @@ static void emitStmtTail(struct stmt *s, int tailPos)
                 }
             } else {
                 int cmpSense = 0;  /* 1 if Z from comparison (Z=1 means true) */
+                int useCarry = 0;  /* 1 if using carry flag */
+                int cMeansTrue = 0;
                 emitExpr(s->expr);
-                if (fnZValid == 1) {
+                if (fnCmpFlag) {
+                    useCarry = 1;
+                    cMeansTrue = (fnCmpFlag == 'C');
+                    fnCmpFlag = 0;
+                } else if (fnZValid == 1) {
                     /* Z from EQ comparison: Z=1 means true, need opposite jump */
                     cmpSense = 1;
                 } else if (!fnZValid) {
@@ -272,20 +333,32 @@ static void emitStmtTail(struct stmt *s, int tailPos)
                 }
                 /* fnZValid == 2: NE comparison, Z=1 means false, no invert needed */
                 fnZValid = 0;
-                /* With cmpSense: jp nz skips when false (Z=0)
-                 * Without:       jp z skips when false (Z=1, HL=0) */
-                if (cmpSense) invertCond = !invertCond;
-            }
 
-            if (s->label2 > 0) {
-                if (skip_else) {
-                    /* Jump directly to else's goto target */
-                    fdprintf(outFd, "\t%s %s\n", invertCond ? "jp nz," : "jp z,", else_goto);
+                if (useCarry) {
+                    if (invertCond) cMeansTrue = !cMeansTrue;
+                    if (s->label2 > 0) {
+                        if (skip_else) {
+                            fdprintf(outFd, "\t%s %s\n", cMeansTrue ? "jp nc," : "jp c,", else_goto);
+                        } else {
+                            emitJump(cMeansTrue ? "jp nc," : "jp c,", "_if_", s->label);
+                        }
+                    } else {
+                        emitJump(cMeansTrue ? "jp nc," : "jp c,", "_if_end_", s->label);
+                    }
                 } else {
-                    emitJump(invertCond ? "jp nz," : "jp z,", "_if_", s->label);
+                    /* With cmpSense: jp nz skips when false (Z=0)
+                     * Without:       jp z skips when false (Z=1, HL=0) */
+                    if (cmpSense) invertCond = !invertCond;
+                    if (s->label2 > 0) {
+                        if (skip_else) {
+                            fdprintf(outFd, "\t%s %s\n", invertCond ? "jp nz," : "jp z,", else_goto);
+                        } else {
+                            emitJump(invertCond ? "jp nz," : "jp z,", "_if_", s->label);
+                        }
+                    } else {
+                        emitJump(invertCond ? "jp nz," : "jp z,", "_if_end_", s->label);
+                    }
                 }
-            } else {
-                emitJump(invertCond ? "jp nz," : "jp z,", "_if_end_", s->label);
             }
         }
         }

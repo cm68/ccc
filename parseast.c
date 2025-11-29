@@ -70,6 +70,7 @@ int fnPendClean;
 int fnLoopDep;
 int fnDEValid;
 int fnZValid;
+int fnCmpFlag;
 char fnIXAOfs;           /* When >=0, A has byte from (ix+fnIXAOfs) */
 char fnIXHLOfs;          /* When >=0, HL has word from (ix+fnIXHLOfs) */
 char fnIYHLOfs;          /* When valid, HL has word from (iy+fnIYHLOfs) */

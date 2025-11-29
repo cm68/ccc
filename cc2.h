@@ -175,6 +175,7 @@ extern int fnPendClean;         /* Bytes to clean up after CALL */
 extern int fnLoopDep;           /* Nesting depth of loops */
 extern int fnDEValid;           /* 1 if DE holds valid value */
 extern int fnZValid;            /* 1 if Z flag valid for HL test */
+extern int fnCmpFlag;           /* 0=none, 'Z'=z, 'N'=nz, 'C'=c, 'c'=nc */
 extern char fnIXAOfs;           /* When >=0, A has byte from (ix+fnIXAOfs) */
 extern char fnIXHLOfs;          /* When >=0, HL has word from (ix+fnIXHLOfs) */
 extern char fnIYHLOfs;          /* When valid, HL has word from (iy+fnIYHLOfs) */

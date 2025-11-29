@@ -375,9 +375,58 @@ void emitAddConst(struct expr *e)
 static int emitByteCp(struct expr *e)
 {
     struct bytecmp cmp;
+    int val;
 
-    /* Only for byte EQ/NE */
-    if ((e->op != 'Q' && e->op != 'n') || !e->left || e->left->size != 1)
+    /* Only for byte comparisons */
+    if (!e->left || e->left->size != 1)
+        return 0;
+
+    /* For >=, <=, >, < with constant, use carry flag directly */
+    if ((e->op == 'g' || e->op == 'L' || e->op == '>' || e->op == '<') &&
+        e->right && e->right->op == 'C') {
+        val = e->right->value & 0xff;
+
+        /* Emit left operand to A */
+        emitExpr(e->left);
+
+        /* Emit cp with adjusted constant based on comparison */
+        switch (e->op) {
+        case 'g':  /* GE (>=): cp N, nc = true */
+            fdprintf(outFd, "\tcp %d\n", val);
+            fnCmpFlag = 'c';  /* nc = true */
+            break;
+        case '<':  /* LT (<): cp N, c = true */
+            fdprintf(outFd, "\tcp %d\n", val);
+            fnCmpFlag = 'C';  /* c = true */
+            break;
+        case '>':  /* GT (>): cp N+1, nc = true */
+            if (val >= 255) {
+                /* A > 255 always false - emit compare that always fails */
+                fdprintf(outFd, "\tor a\n\tscf\n");  /* set carry */
+                fnCmpFlag = 'c';  /* nc = true, but carry is set so always false */
+            } else {
+                fdprintf(outFd, "\tcp %d\n", val + 1);
+                fnCmpFlag = 'c';  /* nc = true */
+            }
+            break;
+        case 'L':  /* LE (<=): cp N+1, c = true */
+            if (val >= 255) {
+                /* A <= 255 always true - emit compare that always succeeds */
+                fdprintf(outFd, "\tor a\n");  /* clears carry */
+                fnCmpFlag = 'c';  /* nc = true, always true */
+            } else {
+                fdprintf(outFd, "\tcp %d\n", val + 1);
+                fnCmpFlag = 'C';  /* c = true */
+            }
+            break;
+        }
+
+        freeExpr(e->right);
+        return 1;
+    }
+
+    /* Only EQ/NE for non-constant comparisons */
+    if (e->op != 'Q' && e->op != 'n')
         return 0;
 
     if (getByteCmp(e->right, &cmp) == CMP_NONE)

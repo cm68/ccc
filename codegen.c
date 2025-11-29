@@ -1098,6 +1098,63 @@ specBitOp(struct expr *e)
 }
 
 /*
+ * Specialize LSHIFTEQ/RSHIFTEQ for byte register variables
+ * Pattern: var <<= N or var >>= N where var is in register B or C
+ * Generates: N x (sla r) or N x (srl r)
+ */
+static int
+specShiftOp(struct expr *e)
+{
+    char buf[256];
+    int i, count;
+    char *p;
+    const char *inst;
+    const char *rn;
+    struct local_var *var;
+
+    /* Must be byte operation with constant RHS */
+    if (e->size != 1 || !e->right || e->right->op != 'C')
+        return 0;
+
+    count = e->right->value & 0xff;
+    if (count < 1 || count > 7) return 0;  /* Reasonable range */
+
+    inst = (e->op == '0') ? "sla" : "srl";  /* LSHIFTEQ vs RSHIFTEQ */
+
+    /* Check for simple register variable */
+    if (!(e->opflags & OP_SIMPLEVAR) || !e->left || e->left->op != '$')
+        return 0;
+
+    if (!(e->opflags & OP_REGVAR))
+        return 0;
+
+    var = e->cached_var;
+    if (!var) return 0;
+
+    rn = byteRegName(var->reg);
+    if (var->reg == REG_BC) rn = "c";
+    if (!rn) return 0;
+
+    /* Generate N shift instructions */
+    p = buf;
+    for (i = 0; i < count; i++) {
+        if (isAltReg(var->reg)) {
+            p += sprintf(p, "%s\texx\n\t%s %s\n\texx",
+                i > 0 ? "\n" : "", inst, rn);
+        } else {
+            p += sprintf(p, "%s\t%s %s", i > 0 ? "\n" : "", inst, rn);
+        }
+    }
+
+    e->asm_block = strdup(buf);
+    freeExpr(e->left);
+    freeExpr(e->right);
+    e->left = NULL;
+    e->right = NULL;
+    return 1;
+}
+
+/*
  * Specialize an expression - check for patterns and replace with asm
  * Must be called BEFORE generateExpr
  */
@@ -1117,6 +1174,11 @@ specExpr(struct expr *e)
     /* Try OREQ/ANDEQ bit operations */
     if (e->op == 0x31 || e->op == 0xc6) {
         if (specBitOp(e)) return;
+    }
+
+    /* Try LSHIFTEQ/RSHIFTEQ for register variables */
+    if (e->op == '0' || e->op == '6') {
+        if (specShiftOp(e)) return;
     }
 
     /* Recurse on children */
