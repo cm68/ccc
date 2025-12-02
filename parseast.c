@@ -13,6 +13,7 @@
 #include "cc2.h"
 #include "astio.h"
 #include "regcache.h"
+#include "emithelper.h"
 
 /* Forward declarations for static helper functions */
 static struct expr *parseExpr(void);
@@ -23,33 +24,7 @@ static struct stmt *doStmtBody(char op);
 static void addDefSym(const char *name);
 void addRefSym(const char *name);
 
-/*
- * Check if a name is a mangled static function name
- * Mangled names end with 4 hex digits
- */
-static int
-isMangledName(const char *name)
-{
-    int len;
-    int i;
-
-    if (!name)
-        return 0;
-
-    len = strlen(name);
-    if (len < 4)
-        return 0;
-
-    /* Check if last 4 characters are hex digits */
-    for (i = len - 4; i < len; i++) {
-        char c = name[i];
-        if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F'))) {
-            return 0;
-        }
-    }
-
-    return 1;
-}
+/* isLocalSym is defined in emithelper.c */
 
 /* Parser state */
 unsigned char outFd = 1;  /* Assembly output (default: stdout) */
@@ -371,6 +346,20 @@ isStructMem(struct expr *e, char **out_var, long *out_offset)
     }
 
     return 1;
+}
+
+/*
+ * Helper: Append child to statement list, updating first/last pointers
+ * Handles chained statements (where child->next may already be set)
+ */
+static void
+appendChild(struct stmt *child, struct stmt **first, struct stmt **last)
+{
+    if (!child) return;
+    if (!*first) *first = child;
+    else (*last)->next = child;
+    *last = child;
+    while ((*last)->next) *last = (*last)->next;  /* Find chain end */
 }
 
 /*
@@ -1097,19 +1086,7 @@ doBlock(void)
                 }
             }
 
-            /* Add child to linked list and update tail pointer */
-            if (child) {
-                if (!first_child) {
-                    first_child = child;
-                } else {
-                    last_child->next = child;
-                }
-                /* Update last_child to point to the actual end of the chain */
-                last_child = child;
-                while (last_child->next) {
-                    last_child = last_child->next;
-                }
-            }
+            appendChild(child, &first_child, &last_child);
         }
         skip();
     }
@@ -1120,7 +1097,7 @@ doBlock(void)
     }
     expect(')');
 
-    s->then_branch = first_child;  /* Use then_branch for block's child list */
+    s->then_branch = first_child;
     return s;
 }
 
@@ -1160,99 +1137,59 @@ doIf(void)
     return s;
 }
 
+/*
+ * Helper: wrap a loop statement with start/end labels
+ * Returns the start_label node (which links to s, which links to end_label)
+ */
 static struct stmt *
-doWhile(void)
+wrapLoop(struct stmt *s, const char *prefix)
 {
-    struct stmt *s;
     char label_buf[64];
     struct stmt *start_label;
 
-    s = newStmt('W');
-    s->label = labelCounter++;  /* Loop start label */
-
-    skip();
-    s->expr = parseExpr();  /* condition */
-
-    skip();
-    s->then_branch = parseStmt();  /* body */
-
-    expect(')');
-
-    /* Insert loop start label before the while, and end label after */
-    /* Create label for loop start */
-    snprintf(label_buf, sizeof(label_buf), "_while_%d", s->label);
+    snprintf(label_buf, sizeof(label_buf), "_%s_%d", prefix, s->label);
     start_label = createLblAsm(label_buf);
     start_label->next = s;
 
-    /* Insert end/break label after the while */
-    snprintf(label_buf, sizeof(label_buf), "_while_end_%d", s->label);
+    snprintf(label_buf, sizeof(label_buf), "_%s_end_%d", prefix, s->label);
     s->next = createLblAsm(label_buf);
 
-    return start_label;  /* Return the label, not the while node */
+    return start_label;
+}
+
+static struct stmt *
+doWhile(void)
+{
+    struct stmt *s = newStmt('W');
+    s->label = labelCounter++;
+    skip(); s->expr = parseExpr();
+    skip(); s->then_branch = parseStmt();
+    expect(')');
+    return wrapLoop(s, "while");
 }
 
 static struct stmt *
 doDo(void)
 {
-    struct stmt *s;
-    char label_buf[64];
-    struct stmt *start_label;
-
-    s = newStmt('D');
-    s->label = labelCounter++;  /* Loop start label */
-
-    skip();
-    s->then_branch = parseStmt();  /* body */
-
-    skip();
-    s->expr = parseExpr();  /* condition */
-
+    struct stmt *s = newStmt('D');
+    s->label = labelCounter++;
+    skip(); s->then_branch = parseStmt();
+    skip(); s->expr = parseExpr();
     expect(')');
-
-    /* Insert loop start label before the do, and end label after */
-    snprintf(label_buf, sizeof(label_buf), "_do_%d", s->label);
-    start_label = createLblAsm(label_buf);
-    start_label->next = s;
-
-    /* Insert end/break label after the do-while */
-    snprintf(label_buf, sizeof(label_buf), "_do_end_%d", s->label);
-    s->next = createLblAsm(label_buf);
-
-    return start_label;
+    return wrapLoop(s, "do");
 }
 
 static struct stmt *
 doFor(void)
 {
-    struct stmt *s;
-    char label_buf[64];
-    struct stmt *start_label;
-
-    s = newStmt('F');
-    s->label = labelCounter++;  /* Loop start label */
-
-    skip();
-    s->expr = parseExpr();  /* init */
-    skip();
-    s->expr2 = parseExpr();  /* condition */
-    skip();
-    s->expr3 = parseExpr();  /* increment */
-
-    skip();
-    s->then_branch = parseStmt();  /* body */
-
+    struct stmt *s = newStmt('F');
+    s->label = labelCounter++;
+    skip(); s->expr = parseExpr();
+    skip(); s->expr2 = parseExpr();
+    skip(); s->expr3 = parseExpr();
+    skip(); s->then_branch = parseStmt();
     expect(')');
-
-    /* Insert loop start label before the for, and end label after */
-    snprintf(label_buf, sizeof(label_buf), "_for_%d", s->label);
-    start_label = createLblAsm(label_buf);
-    start_label->next = s;
-
-    /* Insert end/break label after the for */
-    snprintf(label_buf, sizeof(label_buf), "_for_end_%d", s->label);
-    s->next = createLblAsm(label_buf);
-
-    return start_label;
+    return wrapLoop(s, "for");
 }
 
 static struct stmt *
@@ -1477,26 +1414,14 @@ doSwitch(void)
                 child = NULL;
             }
 
-            /* Add child to linked list and update tail pointer */
-            if (child) {
-                if (!first_child) {
-                    first_child = child;
-                } else {
-                    last_child->next = child;
-                }
-                /* Update last_child to point to the actual end of the chain */
-                last_child = child;
-                while (last_child->next) {
-                    last_child = last_child->next;
-                }
-            }
+            appendChild(child, &first_child, &last_child);
         }
         skip();
     }
 
     expect(')');
 
-    s->then_branch = first_child;  /* Use then_branch for switch body */
+    s->then_branch = first_child;
     return s;
 }
 
@@ -1527,17 +1452,8 @@ doFunction(char rettype)
     /* Switch to .text segment for function code */
     switchToSeg(SEG_TEXT);
 
-    /* Track this function as defined (prepend "_" for assembly label format) */
-    /* Static functions (mangled names) don't get the underscore prefix */
-    {
-        char func_label[128];
-        if (isMangledName(fnName)) {
-            snprintf(func_label, sizeof(func_label), "%s", fnName);
-        } else {
-            snprintf(func_label, sizeof(func_label), "_%s", fnName);
-        }
-        addDefSym(func_label);
-    }
+    /* Track function as defined - name already has _ prefix if public */
+    addDefSym(fnName);
 
     /* Parameters - format: ((d:suffix name) (d:suffix name) ...) */
     skip();
@@ -2286,107 +2202,60 @@ static char *refSymbols[MAX_SYMBOLS];
 static int numReferenced = 0;
 
 /*
- * Check if a symbol has already been defined
+ * Helper: add symbol to array if not already present
+ * Returns 1 if found (already present), 0 if added
  */
 static int
-isDefSym(const char *name)
+addSymTo(const char *name, char **arr, int *cnt, int max)
 {
     int i;
-    for (i = 0; i < numDefined; i++) {
-        if (strcmp(defSymbols[i], name) == 0) {
-            return 1;
-        }
+    for (i = 0; i < *cnt; i++) {
+        if (strcmp(arr[i], name) == 0) return 1;
     }
+    if (*cnt < max) arr[(*cnt)++] = strdup(name);
     return 0;
 }
 
-/*
- * Track a symbol definition (function or global variable)
- */
-static void
-addDefSym(const char *name)
-{
+static int isDefSym(const char *name) {
     int i;
-
-    if (numDefined >= MAX_SYMBOLS) return;
-
-    /* Check if already recorded */
-    for (i = 0; i < numDefined; i++) {
-        if (strcmp(defSymbols[i], name) == 0) {
-            return;
-        }
-    }
-
-    /* Add new symbol */
-    defSymbols[numDefined++] = strdup(name);
+    for (i = 0; i < numDefined; i++)
+        if (strcmp(defSymbols[i], name) == 0) return 1;
+    return 0;
 }
 
-/*
- * Track a symbol reference (function call or variable use)
- */
-void
-addRefSym(const char *name)
-{
-    int i;
+static void addDefSym(const char *name) {
+    addSymTo(name, defSymbols, &numDefined, MAX_SYMBOLS);
+}
 
-    if (numReferenced >= MAX_SYMBOLS) return;
-
-    /* Check if already recorded */
-    for (i = 0; i < numReferenced; i++) {
-        if (strcmp(refSymbols[i], name) == 0) {
-            return;
-        }
-    }
-
-    /* Add new symbol */
-    refSymbols[numReferenced++] = strdup(name);
+void addRefSym(const char *name) {
+    addSymTo(name, refSymbols, &numReferenced, MAX_SYMBOLS);
 }
 
 /*
  * Emit GLOBAL and EXTERN declarations
- * GLOBAL for symbols defined in this file
- * EXTERN for symbols referenced but not defined
+ * GLOBAL for public symbols (starting with _)
+ * EXTERN for referenced but undefined public symbols
  */
 static void
 emitSymDecls(void)
 {
-    int i, j;
-    int is_defined;
+    int i;
 
-    /* First emit GLOBAL declarations for all defined symbols */
+    /* Emit GLOBAL for public defined symbols (start with _) */
     for (i = 0; i < numDefined; i++) {
-        fdputs(outFd, ASM_GLOBAL " ");
-        fdputs(outFd, defSymbols[i]);
-        fdputs(outFd, "\n");
-    }
-
-    /* Blank line after GLOBAL declarations */
-    if (numDefined > 0) {
-        fdputs(outFd, "\n");
-    }
-
-    /* Then emit EXTERN declarations for undefined references */
-    for (i = 0; i < numReferenced; i++) {
-        is_defined = 0;
-
-        /* Check if this symbol is defined in this file */
-        for (j = 0; j < numDefined; j++) {
-            if (strcmp(refSymbols[i], defSymbols[j]) == 0) {
-                is_defined = 1;
-                break;
-            }
-        }
-
-        /* If not defined, emit EXTERN declaration */
-        if (!is_defined) {
-            fdputs(outFd, ASM_EXTERN " ");
-            fdputs(outFd, refSymbols[i]);
+        if (!isLocalSym(defSymbols[i])) {
+            fdputs(outFd, ASM_GLOBAL " ");
+            fdputs(outFd, defSymbols[i]);
             fdputs(outFd, "\n");
         }
     }
 
-    /* Blank line after EXTERN declarations */
-    if (numReferenced > 0) {
+    /* Emit EXTERN for public referenced but undefined symbols */
+    for (i = 0; i < numReferenced; i++) {
+        if (isLocalSym(refSymbols[i])) continue;  /* Skip local symbols */
+        if (isDefSym(refSymbols[i])) continue;    /* Skip if defined here */
+        fdputs(outFd, ASM_EXTERN " ");
+        fdputs(outFd, refSymbols[i]);
         fdputs(outFd, "\n");
     }
 }

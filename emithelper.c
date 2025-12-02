@@ -161,7 +161,6 @@ const char *
 stripVarPfx(const char *name)
 {
     if (name && name[0] == '$') name++;
-    if (name && name[0] == 'A') name++;
     return name;
 }
 
@@ -171,21 +170,9 @@ void freeNode(struct expr *e) {
     free(e);
 }
 
-int
-isMangledName(const char *name)
-{
-    int len, i;
-
-    if (!name) return 0;
-    len = strlen(name);
-    if (len < 4) return 0;
-
-    for (i = len - 4; i < len; i++) {
-        char c = name[i];
-        if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')))
-            return 0;
-    }
-    return 1;
+/* isLocalSym: symbols not starting with '_' are local/static */
+int isLocalSym(const char *name) {
+    return name && name[0] != '_';
 }
 
 /* findVar is defined in codegen.c */
@@ -488,8 +475,7 @@ void emitFnProlog(char *name, char *params, char *rettype, int frame_size,
         }
     }
 
-    if (isMangledName(name)) fdprintf(outFd, "%s:\n", name);
-    else fdprintf(outFd, "_%s:\n", name);
+    fdprintf(outFd, "%s:\n", name);  /* Name already has _ prefix if public */
 
     if (frame_size > 0 || has_params) {
         if (frame_size == 0) {

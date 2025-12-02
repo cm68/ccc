@@ -83,9 +83,8 @@ emitExpr(struct expr *e)
 			sym = (struct name *)e->var;
 			/* Add prefix based on scope/storage class:
 			 * - extern/global (level 1): prefix with underscore
-			 * - static: use mangled name with S prefix
-			 * - function arguments: prefix with A
-			 * - local variables: no prefix
+			 * - static: use mangled name
+			 * - local variables and arguments: no prefix
 			 */
 			if (sym->sclass & SC_STATIC) {
 				/* Use mangled name for statics */
@@ -639,8 +638,14 @@ emitFunction(struct name *func)
 	if (!func || !func->u.body)
 		return;
 
-	/* Use mangled name for static functions, otherwise use original name */
-	func_name = func->mangled_name ? func->mangled_name : func->name;
+	/* Static functions use mangled name, public get underscore prefix */
+	if (func->mangled_name) {
+		func_name = func->mangled_name;
+	} else {
+		static char prefixed[256];
+		snprintf(prefixed, sizeof(prefixed), "_%s", func->name);
+		func_name = prefixed;
+	}
 
 	/* Get return type suffix (void uses 'v') */
 	if (func->type && func->type->sub) {

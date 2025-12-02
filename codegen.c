@@ -74,6 +74,35 @@ getBitNum(long val)
 }
 
 /*
+ * Predicate: byte left operand with constant 0-255 right operand
+ */
+static int
+isByteConstOp(struct expr *e)
+{
+    return e->left && e->left->size == 1 && (e->opflags & OP_CONST) &&
+           e->right && e->right->value >= 0 && e->right->value <= 255;
+}
+
+/*
+ * Predicate: right child is |/& with constant (for set/res bit patterns)
+ */
+static int
+getBitOpConst(struct expr *e, int *is_or)
+{
+    if (!e->right || !e->right->right || e->right->right->op != 'C')
+        return -1;
+    if (e->right->op == '|') {
+        *is_or = 1;
+        return getBitNum(e->right->right->value);
+    }
+    if (e->right->op == '&') {
+        *is_or = 0;
+        return getBitNum(~e->right->right->value & 0xFF);
+    }
+    return -1;
+}
+
+/*
  * Helper: Look up a variable by symbol name
  * Strips leading $ and A prefixes from symbol name before lookup
  * Returns NULL if not found
@@ -687,12 +716,12 @@ setOpFlags()
 static void specExpr(struct expr *e);
 static void specStmt(struct stmt *s);
 
+
 /*
  * Specialize INC/DEC operations
  * Patterns:
  *   - Simple var: (INC/DEC $var) -> placeholder for emit phase
- *   - DEREF: (INC/DEC (M addr)) -> load, inc/dec, store
- *   - Struct member: (INC/DEC (+ base ofs)) -> compute addr, load, inc/dec, store
+ *   - DEREF/ADD: (INC/DEC (M addr)) or (INC/DEC (+ base ofs)) -> load, inc/dec, store
  */
 static int
 specIncDec(struct expr *e)
@@ -700,298 +729,77 @@ specIncDec(struct expr *e)
     char buf[512];
     int is_post = (e->op == 0xef || e->op == 0xf6);
     int is_dec = (e->op == 0xd6 || e->op == 0xf6);
-    const char *incdec = is_dec ? "dec" : "inc";
     int unused = (e->flags & E_UNUSED) ? 1 : 0;
+    int need_old = is_post && !unused;
     long amount = e->value;
+    char *p;
 
-    /* Pattern 1: Simple variable */
+    /* Pattern 1: Simple variable - defer to emit phase */
     if (e->left && e->left->op == '$' && e->left->symbol) {
-        /* Defer to emit phase via placeholder */
+        struct local_var *var = findVar(e->left->symbol);
+        if (var) e->size = var->size;
         snprintf(buf, sizeof(buf), "INCDEC_PLACEHOLDER:%d:%d:%ld:%d:%s",
                  (int)e->op, e->size, amount, unused, e->left->symbol);
         e->asm_block = strdup(buf);
         freeExpr(e->left);
         freeExpr(e->right);
-        e->left = NULL;
-        e->right = NULL;
+        e->left = e->right = NULL;
         return 1;
     }
 
-    /* Pattern 2: DEREF - (INC/DEC (M addr)) */
-    if (e->left && e->left->op == 'M' && e->left->left) {
-        /* First, specialize the address expression */
-        specExpr(e->left->left);
+    /* Pattern 2/3: DEREF or ADD - address in HL after specExpr */
+    if (e->left && (e->left->op == 'M' || e->left->op == '+')) {
+        struct expr *addr = (e->left->op == 'M') ? e->left->left : e->left;
+        specExpr(addr);
+        if (e->left->op == 'M') e->left->left = NULL;
+
+        p = buf;
+        /* Save address to DE */
+        p += sprintf(p, "\tld e, l\n\tld d, h\n");
 
         if (e->size == 1) {
-            /* Byte */
-            if (is_post && !unused) {
-                if (amount == 1) {
-                    snprintf(buf, sizeof(buf),
-                        "\tld e, l\n"
-                        "\tld d, h  ; save address\n"
-                        "\tld a, (hl)  ; load old value\n"
-                        "\tld c, a  ; save old value\n"
-                        "\t%s a\n"
-                        "\tld (de), a  ; store new value\n"
-                        "\tld a, c  ; return old value",
-                        incdec);
-                } else {
-                    snprintf(buf, sizeof(buf),
-                        "\tld e, l\n"
-                        "\tld d, h  ; save address\n"
-                        "\tld a, (hl)  ; load old value\n"
-                        "\tld c, a  ; save old value\n"
-                        "\t%s a, %ld\n"
-                        "\tld (de), a  ; store new value\n"
-                        "\tld a, c  ; return old value",
-                        is_dec ? "sub" : "add", amount);
-                }
-            } else {
-                if (amount == 1) {
-                    snprintf(buf, sizeof(buf),
-                        "\tld e, l\n"
-                        "\tld d, h  ; save address\n"
-                        "\tld a, (hl)  ; load value\n"
-                        "\t%s a\n"
-                        "\tld (de), a  ; store new value",
-                        incdec);
-                } else {
-                    snprintf(buf, sizeof(buf),
-                        "\tld e, l\n"
-                        "\tld d, h  ; save address\n"
-                        "\tld a, (hl)  ; load value\n"
-                        "\t%s a, %ld\n"
-                        "\tld (de), a  ; store new value",
-                        is_dec ? "sub" : "add", amount);
-                }
-            }
+            /* Byte: load, modify, store */
+            p += sprintf(p, "\tld a, (hl)\n");
+            if (need_old) p += sprintf(p, "\tld c, a\n");
+            if (amount == 1)
+                p += sprintf(p, "\t%s a\n", is_dec ? "dec" : "inc");
+            else
+                p += sprintf(p, "\t%s a, %ld\n", is_dec ? "sub" : "add", amount);
+            p += sprintf(p, "\tld (de), a");
+            if (need_old) p += sprintf(p, "\n\tld a, c");
         } else {
-            /* Word */
-            if (is_post && !unused) {
-                if (amount == 1) {
-                    snprintf(buf, sizeof(buf),
-                        "\tld e, l\n"
-                        "\tld d, h  ; save address\n"
-                        "\tld a, (hl)\n"
-                        "\tld c, a  ; save old low\n"
-                        "\tinc hl\n"
-                        "\tld a, (hl)\n"
-                        "\tld b, a  ; save old high\n"
-                        "\tld h, b\n"
-                        "\tld l, c  ; old value to HL\n"
-                        "\t%s hl\n"
-                        "\tld a, l\n"
-                        "\tld (de), a  ; store new low\n"
-                        "\tinc de\n"
-                        "\tld a, h\n"
-                        "\tld (de), a  ; store new high\n"
-                        "\tld h, b\n"
-                        "\tld l, c  ; return old value",
-                        incdec);
-                } else {
-                    snprintf(buf, sizeof(buf),
-                        "\tld e, l\n"
-                        "\tld d, h  ; save address\n"
-                        "\tld a, (hl)\n"
-                        "\tld c, a\n"
-                        "\tinc hl\n"
-                        "\tld a, (hl)\n"
-                        "\tld b, a  ; old value in BC\n"
-                        "\tld h, b\n"
-                        "\tld l, c  ; old value to HL\n"
-                        "\tpush hl  ; save old for return\n"
-                        "\tld bc, %ld\n"
-                        "\t%s hl, bc\n"
-                        "\tex de, hl\n"
-                        "\tld a, e\n"
-                        "\tld (hl), a\n"
-                        "\tinc hl\n"
-                        "\tld a, d\n"
-                        "\tld (hl), a\n"
-                        "\tpop hl  ; return old value",
-                        amount, is_dec ? "or a\n\tsbc" : "add");
-                }
+            /* Word: load to HL via BC */
+            p += sprintf(p, "\tld a, (hl)\n\tld c, a\n\tinc hl\n");
+            p += sprintf(p, "\tld a, (hl)\n");
+            if (need_old) p += sprintf(p, "\tld b, a\n\tld h, b\n");
+            else p += sprintf(p, "\tld h, a\n");
+            p += sprintf(p, "\tld l, c\n");
+
+            if (need_old && amount != 1) p += sprintf(p, "\tpush hl\n");
+
+            /* Modify HL */
+            if (amount == 1)
+                p += sprintf(p, "\t%s hl\n", is_dec ? "dec" : "inc");
+            else
+                p += sprintf(p, "\tld bc, %ld\n\t%s hl, bc\n",
+                             amount, is_dec ? "or a\n\tsbc" : "add");
+
+            /* Store new value */
+            if (amount != 1) {
+                p += sprintf(p, "\tex de, hl\n\tld a, e\n\tld (hl), a\n");
+                p += sprintf(p, "\tinc hl\n\tld a, d\n\tld (hl), a");
             } else {
-                if (amount == 1) {
-                    snprintf(buf, sizeof(buf),
-                        "\tld e, l\n"
-                        "\tld d, h  ; save address\n"
-                        "\tld a, (hl)\n"
-                        "\tld c, a\n"
-                        "\tinc hl\n"
-                        "\tld a, (hl)\n"
-                        "\tld h, a\n"
-                        "\tld l, c  ; value to HL\n"
-                        "\t%s hl\n"
-                        "\tld a, l\n"
-                        "\tld (de), a\n"
-                        "\tinc de\n"
-                        "\tld a, h\n"
-                        "\tld (de), a",
-                        incdec);
-                } else {
-                    snprintf(buf, sizeof(buf),
-                        "\tld e, l\n"
-                        "\tld d, h  ; save address\n"
-                        "\tld a, (hl)\n"
-                        "\tld c, a\n"
-                        "\tinc hl\n"
-                        "\tld a, (hl)\n"
-                        "\tld h, a\n"
-                        "\tld l, c  ; value to HL\n"
-                        "\tld bc, %ld\n"
-                        "\t%s hl, bc\n"
-                        "\tex de, hl\n"
-                        "\tld a, e\n"
-                        "\tld (hl), a\n"
-                        "\tinc hl\n"
-                        "\tld a, d\n"
-                        "\tld (hl), a",
-                        amount, is_dec ? "or a\n\tsbc" : "add");
-                }
+                p += sprintf(p, "\tld a, l\n\tld (de), a\n");
+                p += sprintf(p, "\tinc de\n\tld a, h\n\tld (de), a");
+            }
+
+            /* Restore old value if needed */
+            if (need_old) {
+                if (amount != 1) p += sprintf(p, "\n\tpop hl");
+                else p += sprintf(p, "\n\tld h, b\n\tld l, c");
             }
         }
-        e->asm_block = strdup(buf);
-        /* Don't free left - address was processed, just null it */
-        e->left = NULL;
-        freeExpr(e->right);
-        e->right = NULL;
-        return 1;
-    }
 
-    /* Pattern 3: ADD expr - struct member or array (+ base ofs) */
-    if (e->left && e->left->op == '+') {
-        /* Specialize the address expression first */
-        specExpr(e->left);
-
-        if (e->size == 1) {
-            if (is_post && !unused) {
-                if (amount == 1) {
-                    snprintf(buf, sizeof(buf),
-                        "\tld e, l\n"
-                        "\tld d, h  ; save address\n"
-                        "\tld a, (hl)\n"
-                        "\tld c, a  ; save old\n"
-                        "\t%s a\n"
-                        "\tld (de), a\n"
-                        "\tld a, c",
-                        incdec);
-                } else {
-                    snprintf(buf, sizeof(buf),
-                        "\tld e, l\n"
-                        "\tld d, h\n"
-                        "\tld a, (hl)\n"
-                        "\tld c, a\n"
-                        "\t%s a, %ld\n"
-                        "\tld (de), a\n"
-                        "\tld a, c",
-                        is_dec ? "sub" : "add", amount);
-                }
-            } else {
-                if (amount == 1) {
-                    snprintf(buf, sizeof(buf),
-                        "\tld e, l\n"
-                        "\tld d, h\n"
-                        "\tld a, (hl)\n"
-                        "\t%s a\n"
-                        "\tld (de), a",
-                        incdec);
-                } else {
-                    snprintf(buf, sizeof(buf),
-                        "\tld e, l\n"
-                        "\tld d, h\n"
-                        "\tld a, (hl)\n"
-                        "\t%s a, %ld\n"
-                        "\tld (de), a",
-                        is_dec ? "sub" : "add", amount);
-                }
-            }
-        } else {
-            /* Word */
-            if (is_post && !unused) {
-                if (amount == 1) {
-                    snprintf(buf, sizeof(buf),
-                        "\tld e, l\n"
-                        "\tld d, h\n"
-                        "\tld a, (hl)\n"
-                        "\tld c, a\n"
-                        "\tinc hl\n"
-                        "\tld a, (hl)\n"
-                        "\tld b, a\n"
-                        "\tld h, b\n"
-                        "\tld l, c\n"
-                        "\t%s hl\n"
-                        "\tld a, l\n"
-                        "\tld (de), a\n"
-                        "\tinc de\n"
-                        "\tld a, h\n"
-                        "\tld (de), a\n"
-                        "\tld h, b\n"
-                        "\tld l, c",
-                        incdec);
-                } else {
-                    snprintf(buf, sizeof(buf),
-                        "\tld e, l\n"
-                        "\tld d, h\n"
-                        "\tld a, (hl)\n"
-                        "\tld c, a\n"
-                        "\tinc hl\n"
-                        "\tld a, (hl)\n"
-                        "\tld b, a\n"
-                        "\tld h, b\n"
-                        "\tld l, c\n"
-                        "\tpush hl\n"
-                        "\tld bc, %ld\n"
-                        "\t%s hl, bc\n"
-                        "\tex de, hl\n"
-                        "\tld a, e\n"
-                        "\tld (hl), a\n"
-                        "\tinc hl\n"
-                        "\tld a, d\n"
-                        "\tld (hl), a\n"
-                        "\tpop hl",
-                        amount, is_dec ? "or a\n\tsbc" : "add");
-                }
-            } else {
-                if (amount == 1) {
-                    snprintf(buf, sizeof(buf),
-                        "\tld e, l\n"
-                        "\tld d, h\n"
-                        "\tld a, (hl)\n"
-                        "\tld c, a\n"
-                        "\tinc hl\n"
-                        "\tld a, (hl)\n"
-                        "\tld h, a\n"
-                        "\tld l, c\n"
-                        "\t%s hl\n"
-                        "\tld a, l\n"
-                        "\tld (de), a\n"
-                        "\tinc de\n"
-                        "\tld a, h\n"
-                        "\tld (de), a",
-                        incdec);
-                } else {
-                    snprintf(buf, sizeof(buf),
-                        "\tld e, l\n"
-                        "\tld d, h\n"
-                        "\tld a, (hl)\n"
-                        "\tld c, a\n"
-                        "\tinc hl\n"
-                        "\tld a, (hl)\n"
-                        "\tld h, a\n"
-                        "\tld l, c\n"
-                        "\tld bc, %ld\n"
-                        "\t%s hl, bc\n"
-                        "\tex de, hl\n"
-                        "\tld a, e\n"
-                        "\tld (hl), a\n"
-                        "\tinc hl\n"
-                        "\tld a, d\n"
-                        "\tld (hl), a",
-                        amount, is_dec ? "or a\n\tsbc" : "add");
-                }
-            }
-        }
         e->asm_block = strdup(buf);
         e->left = NULL;
         freeExpr(e->right);
@@ -999,7 +807,7 @@ specIncDec(struct expr *e)
         return 1;
     }
 
-    return 0;  /* Not handled */
+    return 0;
 }
 
 /*
@@ -1770,91 +1578,37 @@ static void generateExpr(struct expr *e)
         break;
 
     case '=':  /* ASSIGN - store to memory */
-        /*
-         * Check for set/res bit patterns:
-         *   var |= (1 << n)  ->  set n, (iy + d) or set n, (ix + d)
-         *   var &= ~(1 << n) ->  res n, (iy + d) or res n, (ix + d)
-         */
-        /* Pattern 1: Simple variable (IY-indexed) */
-        if (e->left && e->left->op == '$' && e->left->symbol &&
-            e->right && e->size == 1) {
-            const char *sym = e->left->symbol;
-            struct local_var *var = findVar(sym);
-
-            if (var && var->reg == REG_NO) {
-                int ofs = var->offset + (var->is_param ? 1 : 0);
-                char sign = (ofs >= 0) ? '+' : '-';
-                int abs_ofs = (ofs >= 0) ? ofs : -ofs;
-
-                /* Pattern: var |= const where const is power of 2 -> set */
-                if (e->right->op == '|' && e->right->right &&
-                    e->right->right->op == 'C') {
-                    int bitnum = getBitNum(e->right->right->value);
-                    if (bitnum >= 0) {
-                        snprintf(buf, sizeof(buf), "\tset %d, (iy %c %d)",
-                                 bitnum, sign, abs_ofs);
+        /* Check for set/res bit patterns using helper */
+        if (e->size == 1 && e->right) {
+            int is_or, bitnum = getBitOpConst(e, &is_or);
+            if (bitnum >= 0) {
+                const char *inst = is_or ? "set" : "res";
+                /* Pattern 1: Simple variable (IY-indexed) */
+                if (e->left && e->left->op == '$' && e->left->symbol) {
+                    struct local_var *var = findVar(e->left->symbol);
+                    if (var && var->reg == REG_NO) {
+                        int ofs = var->offset + (var->is_param ? 1 : 0);
+                        if (ofs >= 0)
+                            snprintf(buf, sizeof(buf), "\t%s %d, (iy + %d)", inst, bitnum, ofs);
+                        else
+                            snprintf(buf, sizeof(buf), "\t%s %d, (iy - %d)", inst, bitnum, -ofs);
                         e->asm_block = strdup(buf);
-                        /* Suppress children - no load/store needed */
                         if (e->right->left) e->right->left->asm_block = strdup("");
                         e->right->asm_block = strdup("");
                         break;
                     }
                 }
-                /* Pattern: var &= const where const has single 0 bit -> res */
-                if (e->right->op == '&' && e->right->right &&
-                    e->right->right->op == 'C') {
-                    long mask = e->right->right->value & 0xFF;
-                    int bitnum = getBitNum(~mask & 0xFF);
-                    if (bitnum >= 0) {
-                        snprintf(buf, sizeof(buf), "\tres %d, (iy %c %d)",
-                                 bitnum, sign, abs_ofs);
+                /* Pattern 2: IX-indexed struct member */
+                if ((e->flags & E_IXASSIGN) && e->left && e->left->left &&
+                    e->left->left->left && e->left->left->left->op == '$') {
+                    struct local_var *var = findVar(e->left->left->left->symbol);
+                    if (var && var->reg == REG_IX) {
+                        snprintf(buf, sizeof(buf), "\t%s %d, (ix + %ld)", inst, bitnum, e->value);
                         e->asm_block = strdup(buf);
-                        /* Suppress children - no load/store needed */
                         if (e->right->left) e->right->left->asm_block = strdup("");
                         e->right->asm_block = strdup("");
+                        if (e->left) e->left->asm_block = strdup("");
                         break;
-                    }
-                }
-            }
-        }
-        /* Pattern 2: IX-indexed struct member */
-        if ((e->flags & E_IXASSIGN) && e->size == 1 && e->right) {
-            long ofs = e->value;  /* Offset saved by analyzeExpr */
-            /* Get the struct pointer variable */
-            if (e->left && e->left->left && e->left->left->left &&
-                e->left->left->left->op == '$' && e->left->left->left->symbol) {
-                const char *sym = e->left->left->left->symbol;
-                struct local_var *var = findVar(sym);
-
-                if (var && var->reg == REG_IX) {
-                    /* Pattern: s->field |= const -> set n, (ix + d) */
-                    if (e->right->op == '|' && e->right->right &&
-                        e->right->right->op == 'C') {
-                        int bitnum = getBitNum(e->right->right->value);
-                        if (bitnum >= 0) {
-                            snprintf(buf, sizeof(buf), "\tset %d, (ix + %ld)",
-                                     bitnum, ofs);
-                            e->asm_block = strdup(buf);
-                            if (e->right->left) e->right->left->asm_block = strdup("");
-                            e->right->asm_block = strdup("");
-                            if (e->left) e->left->asm_block = strdup("");
-                            break;
-                        }
-                    }
-                    /* Pattern: s->field &= const -> res n, (ix + d) */
-                    if (e->right->op == '&' && e->right->right &&
-                        e->right->right->op == 'C') {
-                        long mask = e->right->right->value & 0xFF;
-                        int bitnum = getBitNum(~mask & 0xFF);
-                        if (bitnum >= 0) {
-                            snprintf(buf, sizeof(buf), "\tres %d, (ix + %ld)",
-                                     bitnum, ofs);
-                            e->asm_block = strdup(buf);
-                            if (e->right->left) e->right->left->asm_block = strdup("");
-                            e->right->asm_block = strdup("");
-                            if (e->left) e->left->asm_block = strdup("");
-                            break;
-                        }
                     }
                 }
             }
@@ -1920,6 +1674,9 @@ static void generateExpr(struct expr *e)
                 char *move_inst;
                 char *add_inst;
 
+                /* For POSTINC/PREINC/etc, size is now correctly set by specIncDec */
+                int rsize = e->right ? e->right->size : 2;
+
                 if (e->size == 1) {
                     /* Byte add - need to call add88 */
                     char funcname[32];
@@ -1927,6 +1684,14 @@ static void generateExpr(struct expr *e)
                     move_inst = "\tld e, a  ; move PRIMARY (A) to SECONDARY (E)";
                     snprintf(buf, sizeof(buf), "%s\n\tcall %s",
                         move_inst, funcname);
+                } else if (e->right && rsize == 1) {
+                    /* Word + byte: after pushStack, DE has left (addr), A has right (byte)
+                     * Zero-extend A to HL and add DE. Preserves E for nested saves. */
+                    snprintf(buf, sizeof(buf),
+                        "\tex de, hl  ; (matches pushStack)\n"
+                        "\tld l, a\n"
+                        "\tld h, 0\n"
+                        "\tadd hl, de");
                 } else {
                     /* Word add - use native Z80 add hl,de instruction */
                     move_inst =
@@ -1957,8 +1722,7 @@ static void generateExpr(struct expr *e)
 
     case '&':  /* AND */
         /* Optimize byte AND with small constant to inline instruction */
-        if (e->left && e->left->size == 1 && (e->opflags & OP_CONST) &&
-            e->right->value >= 0 && e->right->value <= 255) {
+        if (isByteConstOp(e)) {
             int bitnum = getBitNum(e->right->value);
             /* Check for IX-indexed struct member access */
             if (bitnum >= 0 && (e->opflags & OP_IXMEM)) {
@@ -1998,8 +1762,7 @@ static void generateExpr(struct expr *e)
 
     case '|':  /* OR */
         /* Optimize byte OR with small constant to inline instruction */
-        if (e->left && e->left->size == 1 && (e->opflags & OP_CONST) &&
-            e->right->value >= 0 && e->right->value <= 255) {
+        if (isByteConstOp(e)) {
             snprintf(buf, sizeof(buf), "\tor %ld", e->right->value & 0xFF);
             e->asm_block = strdup(buf);
         } else {
@@ -2009,8 +1772,7 @@ static void generateExpr(struct expr *e)
 
     case '^':  /* XOR */
         /* Optimize byte XOR with small constant to inline instruction */
-        if (e->left && e->left->size == 1 && (e->opflags & OP_CONST) &&
-            e->right->value >= 0 && e->right->value <= 255) {
+        if (isByteConstOp(e)) {
             snprintf(buf, sizeof(buf), "\txor %ld", e->right->value & 0xFF);
             e->asm_block = strdup(buf);
         } else {

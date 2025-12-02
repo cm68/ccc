@@ -21,7 +21,7 @@ unsigned char bcOrCIdx(unsigned char reg);
 const char *stripDollar(const char *symbol);
 const char *stripVarPfx(const char *name);
 void freeNode(struct expr *e);
-int isMangledName(const char *name);
+int isLocalSym(const char *name);  /* Returns 1 if symbol is local (no _ prefix) */
 const char *getRegName(enum register_id reg);
 /* findVar is declared in cc2.h */
 
