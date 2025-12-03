@@ -58,4 +58,7 @@ test: all
 clean:
 	rm -f $(ALL) *.o tests/*.out tests/test.a tests/ctest.o
 
-.PHONY: all clean test
+install: all
+	sudo cp $(ALL) /usr/local/bin/
+
+.PHONY: all clean test install
