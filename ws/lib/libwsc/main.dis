@@ -1,0 +1,455 @@
+=== lib/libwsc/main.o ===
+
+Header:
+  Magic:       0x99
+  Config:      0x14 little-endian
+  Symlen:      9 chars
+  Symtab:      132 bytes (11 symbols)
+  Text:        585 bytes
+  Data:        0 bytes
+  BSS:         0 bytes
+  Heap:        0 bytes
+  Text offset: 0x0000
+  Data offset: 0x0249
+
+Disassembly: 585 bytes
+  0000  63           ld h,e
+  0001  61           ld h,c
+  0002  6e           ld l,(hl)
+  0003  27           daa
+  0004  74           ld (hl),h
+  0005  20 77        jr nz,007eh
+  0007  72           ld (hl),d
+  0008  69           ld l,c
+  0009  74           ld (hl),h
+  000a  65           ld h,l
+  000b  20 00        jr nz,000dh
+  000d  63           ld h,e
+  000e  61           ld h,c
+  000f  6e           ld l,(hl)
+  0010  27           daa
+  0011  74           ld (hl),h
+  0012  20 72        jr nz,0086h
+  0014  65           ld h,l
+  0015  61           ld h,c
+  0016  64           ld h,h
+  0017  20 00        jr nz,__main
+__main:
+  0019  cd 00 00     call 0000h
+  001c  21 f9 fe     ld hl,fef9h
+  001f  39           add hl,sp
+  0020  f9           ld sp,hl
+  0021  21 74 ff     ld hl,ff74h
+  0024  19           add hl,de
+  0025  e5           push hl
+  0026  21 f3 fe     ld hl,fef3h
+  0029  19           add hl,de
+  002a  c1           pop bc
+  002b  7d           ld a,l
+  002c  02           ld (bc),a
+  002d  7c           ld a,h
+  002e  03           inc bc
+  002f  02           ld (bc),a
+  0030  21 80 00     ld hl,0080h
+  0033  22 00 00     ld (0000h),hl
+  0036  21 f6 ff     ld hl,fff6h
+  0039  19           add hl,de
+  003a  e5           push hl
+  003b  2a 00 00     ld hl,(0000h)
+  003e  e5           push hl
+  003f  2a 00 00     ld hl,(0000h)
+  0042  23           inc hl
+  0043  22 00 00     ld (0000h),hl
+  0046  e1           pop hl
+  0047  c1           pop bc
+  0048  7e           ld a,(hl)
+  0049  02           ld (bc),a
+  004a  97           sub a
+  004b  03           inc bc
+  004c  02           ld (bc),a
+  004d  21 f6 ff     ld hl,fff6h
+  0050  19           add hl,de
+  0051  97           sub a
+  0052  96           sub (hl)
+  0053  3e 00        ld a,00h
+  0055  23           inc hl
+  0056  9e           sbc a,(hl)
+  0057  f2 7c 00     jp p,007ch
+  005a  21 f6 ff     ld hl,fff6h
+  005d  19           add hl,de
+  005e  97           sub a
+  005f  96           sub (hl)
+  0060  3e 00        ld a,00h
+  0062  23           inc hl
+  0063  9e           sbc a,(hl)
+  0064  f2 ee 00     jp p,00eeh
+  0067  2a 00 00     ld hl,(0000h)
+  006a  3e 20        ld a,20h
+  006c  be           cp (hl)
+  006d  d2 fe 00     jp nc,00feh
+  0070  2a 00 00     ld hl,(0000h)
+  0073  7e           ld a,(hl)
+  0074  fe 7f        cp 7fh
+  0076  da ee 00     jp c,00eeh
+  0079  c3 fe 00     jp 00feh
+  007c  21 f8 ff     ld hl,fff8h
+  007f  19           add hl,de
+  0080  3e 01        ld a,01h
+  0082  77           ld (hl),a
+  0083  87           add a,a
+  0084  9f           sbc a,a
+  0085  23           inc hl
+  0086  77           ld (hl),a
+  0087  21 76 ff     ld hl,ff76h
+  008a  19           add hl,de
+  008b  3a 00 00     ld a,(0000h)
+  008e  77           ld (hl),a
+  008f  3a 01 00     ld a,(0001h)
+  0092  23           inc hl
+  0093  77           ld (hl),a
+  0094  21 f3 fe     ld hl,fef3h
+  0097  19           add hl,de
+  0098  22 00 00     ld (0000h),hl
+  009b  21 74 ff     ld hl,ff74h
+  009e  19           add hl,de
+  009f  3a 00 00     ld a,(0000h)
+  00a2  be           cp (hl)
+  00a3  c2 ab 00     jp nz,00abh
+  00a6  3a 01 00     ld a,(0001h)
+  00a9  23           inc hl
+  00aa  be           cp (hl)
+  00ab  ca a9 01     jp z,01a9h
+  00ae  2a 00 00     ld hl,(0000h)
+  00b1  7e           ld a,(hl)
+  00b2  fe 3c        cp 3ch
+  00b4  c2 c8 01     jp nz,01c8h
+  00b7  21 00 00     ld hl,0000h
+  00ba  e5           push hl
+  00bb  cd 00 00     call 0000h
+  00be  f1           pop af
+  00bf  21 00 00     ld hl,0000h
+  00c2  e5           push hl
+  00c3  21 00 00     ld hl,0000h
+  00c6  e5           push hl
+  00c7  2a 00 00     ld hl,(0000h)
+  00ca  01 01 00     ld bc,0001h
+  00cd  09           add hl,bc
+  00ce  e5           push hl
+  00cf  cd 00 00     call 0000h
+  00d2  f1           pop af
+  00d3  f1           pop af
+  00d4  f1           pop af
+  00d5  79           ld a,c
+  00d6  b0           or b
+  00d7  ca 37 02     jp z,0237h
+  00da  2a 00 00     ld hl,(0000h)
+  00dd  01 01 00     ld bc,0001h
+  00e0  09           add hl,bc
+  00e1  e5           push hl
+  00e2  21 0d 00     ld hl,000dh
+  00e5  e5           push hl
+  00e6  cd 00 00     call 0000h
+  00e9  f1           pop af
+  00ea  f1           pop af
+  00eb  c3 37 02     jp 0237h
+  00ee  21 f6 ff     ld hl,fff6h
+  00f1  19           add hl,de
+  00f2  97           sub a
+  00f3  96           sub (hl)
+  00f4  3e 00        ld a,00h
+  00f6  23           inc hl
+  00f7  9e           sbc a,(hl)
+  00f8  fa 15 01     jp m,0115h
+  00fb  c3 7c 00     jp 007ch
+  00fe  21 f6 ff     ld hl,fff6h
+  0101  19           add hl,de
+  0102  7e           ld a,(hl)
+  0103  d6 01        sub 01h
+  0105  77           ld (hl),a
+  0106  23           inc hl
+  0107  7e           ld a,(hl)
+  0108  de 00        sbc a,00h
+  010a  77           ld (hl),a
+  010b  2a 00 00     ld hl,(0000h)
+  010e  23           inc hl
+  010f  22 00 00     ld (0000h),hl
+  0112  c3 5a 00     jp 005ah
+  0115  21 f6 ff     ld hl,fff6h
+  0118  19           add hl,de
+  0119  97           sub a
+  011a  96           sub (hl)
+  011b  3e 00        ld a,00h
+  011d  23           inc hl
+  011e  9e           sbc a,(hl)
+  011f  f2 8e 01     jp p,018eh
+  0122  2a 00 00     ld hl,(0000h)
+  0125  3e 20        ld a,20h
+  0127  be           cp (hl)
+  0128  d2 8e 01     jp nc,018eh
+  012b  2a 00 00     ld hl,(0000h)
+  012e  7e           ld a,(hl)
+  012f  fe 7f        cp 7fh
+  0131  d2 8e 01     jp nc,018eh
+  0134  21 74 ff     ld hl,ff74h
+  0137  19           add hl,de
+  0138  4e           ld c,(hl)
+  0139  23           inc hl
+  013a  46           ld b,(hl)
+  013b  c5           push bc
+  013c  21 74 ff     ld hl,ff74h
+  013f  19           add hl,de
+  0140  7e           ld a,(hl)
+  0141  c6 01        add a,01h
+  0143  77           ld (hl),a
+  0144  23           inc hl
+  0145  7e           ld a,(hl)
+  0146  ce 00        adc a,00h
+  0148  77           ld (hl),a
+  0149  e1           pop hl
+  014a  e5           push hl
+  014b  2a 00 00     ld hl,(0000h)
+  014e  7e           ld a,(hl)
+  014f  fe 41        cp 41h
+  0151  da 6d 01     jp c,016dh
+  0154  2a 00 00     ld hl,(0000h)
+  0157  3e 5a        ld a,5ah
+  0159  be           cp (hl)
+  015a  da 6d 01     jp c,016dh
+  015d  2a 00 00     ld hl,(0000h)
+  0160  7e           ld a,(hl)
+  0161  4f           ld c,a
+  0162  97           sub a
+  0163  47           ld b,a
+  0164  21 20 00     ld hl,0020h
+  0167  09           add hl,bc
+  0168  4d           ld c,l
+  0169  44           ld b,h
+  016a  c3 74 01     jp 0174h
+  016d  2a 00 00     ld hl,(0000h)
+  0170  7e           ld a,(hl)
+  0171  4f           ld c,a
+  0172  97           sub a
+  0173  47           ld b,a
+  0174  e1           pop hl
+  0175  79           ld a,c
+  0176  77           ld (hl),a
+  0177  21 f6 ff     ld hl,fff6h
+  017a  19           add hl,de
+  017b  7e           ld a,(hl)
+  017c  d6 01        sub 01h
+  017e  77           ld (hl),a
+  017f  23           inc hl
+  0180  7e           ld a,(hl)
+  0181  de 00        sbc a,00h
+  0183  77           ld (hl),a
+  0184  2a 00 00     ld hl,(0000h)
+  0187  23           inc hl
+  0188  22 00 00     ld (0000h),hl
+  018b  c3 15 01     jp 0115h
+  018e  21 74 ff     ld hl,ff74h
+  0191  19           add hl,de
+  0192  4e           ld c,(hl)
+  0193  23           inc hl
+  0194  46           ld b,(hl)
+  0195  c5           push bc
+  0196  21 74 ff     ld hl,ff74h
+  0199  19           add hl,de
+  019a  7e           ld a,(hl)
+  019b  c6 01        add a,01h
+  019d  77           ld (hl),a
+  019e  23           inc hl
+  019f  7e           ld a,(hl)
+  01a0  ce 00        adc a,00h
+  01a2  77           ld (hl),a
+  01a3  e1           pop hl
+  01a4  36 00        ld (hl),00h
+  01a6  c3 4d 00     jp 004dh
+  01a9  21 76 ff     ld hl,ff76h
+  01ac  19           add hl,de
+  01ad  e5           push hl
+  01ae  21 f8 ff     ld hl,fff8h
+  01b1  19           add hl,de
+  01b2  4e           ld c,(hl)
+  01b3  23           inc hl
+  01b4  46           ld b,(hl)
+  01b5  c5           push bc
+  01b6  cd 00 00     call 0000h
+  01b9  f1           pop af
+  01ba  f1           pop af
+  01bb  c3 00 00     jp 0000h
+  01be  2a 00 00     ld hl,(0000h)
+  01c1  23           inc hl
+  01c2  22 00 00     ld (0000h),hl
+  01c5  c3 9b 00     jp 009bh
+  01c8  2a 00 00     ld hl,(0000h)
+  01cb  7e           ld a,(hl)
+  01cc  fe 3e        cp 3eh
+  01ce  c2 0f 02     jp nz,020fh
+  01d1  21 01 00     ld hl,0001h
+  01d4  e5           push hl
+  01d5  cd 00 00     call 0000h
+  01d8  f1           pop af
+  01d9  21 00 00     ld hl,0000h
+  01dc  e5           push hl
+  01dd  21 01 00     ld hl,0001h
+  01e0  e5           push hl
+  01e1  2a 00 00     ld hl,(0000h)
+  01e4  01 01 00     ld bc,0001h
+  01e7  09           add hl,bc
+  01e8  e5           push hl
+  01e9  cd 00 00     call 0000h
+  01ec  f1           pop af
+  01ed  f1           pop af
+  01ee  f1           pop af
+  01ef  79           ld a,c
+  01f0  fe 01        cp 01h
+  01f2  c2 f8 01     jp nz,01f8h
+  01f5  78           ld a,b
+  01f6  fe 00        cp 00h
+  01f8  ca 37 02     jp z,0237h
+  01fb  2a 00 00     ld hl,(0000h)
+  01fe  01 01 00     ld bc,0001h
+  0201  09           add hl,bc
+  0202  e5           push hl
+  0203  21 00 00     ld hl,0000h
+  0206  e5           push hl
+  0207  cd 00 00     call 0000h
+  020a  f1           pop af
+  020b  f1           pop af
+  020c  c3 37 02     jp 0237h
+  020f  21 f8 ff     ld hl,fff8h
+  0212  19           add hl,de
+  0213  4e           ld c,(hl)
+  0214  23           inc hl
+  0215  46           ld b,(hl)
+  0216  c5           push bc
+  0217  21 f8 ff     ld hl,fff8h
+  021a  19           add hl,de
+  021b  7e           ld a,(hl)
+  021c  c6 01        add a,01h
+  021e  77           ld (hl),a
+  021f  23           inc hl
+  0220  7e           ld a,(hl)
+  0221  ce 00        adc a,00h
+  0223  77           ld (hl),a
+  0224  e1           pop hl
+  0225  29           add hl,hl
+  0226  e5           push hl
+  0227  21 76 ff     ld hl,ff76h
+  022a  19           add hl,de
+  022b  e3           ex (sp),hl
+  022c  c1           pop bc
+  022d  09           add hl,bc
+  022e  3a 00 00     ld a,(0000h)
+  0231  77           ld (hl),a
+  0232  3a 01 00     ld a,(0001h)
+  0235  23           inc hl
+  0236  77           ld (hl),a
+  0237  2a 00 00     ld hl,(0000h)
+  023a  7e           ld a,(hl)
+  023b  b7           or a
+  023c  ca be 01     jp z,01beh
+  023f  2a 00 00     ld hl,(0000h)
+  0242  23           inc hl
+  0243  22 00 00     ld (0000h),hl
+  0246  c3 37 02     jp 0237h
+
+Data segment: (empty)
+
+Symbol table: 11 symbols (9-char names)
+  Index  Value  Type Seg    Global  Name
+  -----  -----  ---- -----  ------  ----
+  [  0]  0000   08   ext    yes      c.r3
+  [  1]  0000   08   ext    yes      c.r2
+  [  2]  0000   08   ext    yes      _close
+  [  3]  0000   08   ext    yes      _create
+  [  4]  0000   08   ext    yes      _open
+  [  5]  0000   08   ext    yes      c.rets
+  [  6]  0000   08   ext    yes      __pname
+  [  7]  0000   08   ext    yes      c.ents
+  [  8]  0000   08   ext    yes      _error
+  [  9]  0000   08   ext    yes      _main
+  [ 10]  0019   0d   text   yes      __main
+
+Text relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  001a    word        symbol[7]
+  0034    word        symbol[1]
+  003c    word        symbol[1]
+  0040    word        symbol[1]
+  0044    word        symbol[1]
+  0058    word        text segment
+  0065    word        text segment
+  0068    word        symbol[1]
+  006e    word        text segment
+  0071    word        symbol[1]
+  0077    word        text segment
+  007a    word        text segment
+  008c    word        symbol[6]
+  0090    word        symbol[6]
+  0099    word        symbol[0]
+  00a0    word        symbol[0]
+  00a4    word        text segment
+  00a7    word        symbol[0]
+  00ac    word        text segment
+  00af    word        symbol[0]
+  00b5    word        text segment
+  00bc    word        symbol[2]
+  00c8    word        symbol[0]
+  00d0    word        symbol[4]
+  00d8    word        text segment
+  00db    word        symbol[0]
+  00e3    word        text segment
+  00e7    word        symbol[8]
+  00ec    word        text segment
+  00f9    word        text segment
+  00fc    word        text segment
+  010c    word        symbol[1]
+  0110    word        symbol[1]
+  0113    word        text segment
+  0120    word        text segment
+  0123    word        symbol[1]
+  0129    word        text segment
+  012c    word        symbol[1]
+  0132    word        text segment
+  014c    word        symbol[1]
+  0152    word        text segment
+  0155    word        symbol[1]
+  015b    word        text segment
+  015e    word        symbol[1]
+  016b    word        text segment
+  016e    word        symbol[1]
+  0185    word        symbol[1]
+  0189    word        symbol[1]
+  018c    word        text segment
+  01a7    word        text segment
+  01b7    word        symbol[9]
+  01bc    word        symbol[5]
+  01bf    word        symbol[0]
+  01c3    word        symbol[0]
+  01c6    word        text segment
+  01c9    word        symbol[0]
+  01cf    word        text segment
+  01d6    word        symbol[2]
+  01e2    word        symbol[0]
+  01ea    word        symbol[3]
+  01f3    word        text segment
+  01f9    word        text segment
+  01fc    word        symbol[0]
+  0204    word        text segment
+  0208    word        symbol[8]
+  020d    word        text segment
+  022f    word        symbol[0]
+  0233    word        symbol[0]
+  0238    word        symbol[0]
+  023d    word        text segment
+  0240    word        symbol[0]
+  0244    word        symbol[0]
+  0247    word        text segment
+
+Data relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  (none)
+

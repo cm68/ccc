@@ -1,0 +1,59 @@
+=== lib/libws/sqr.o ===
+
+Header:
+  Magic:       0x99
+  Config:      0x14 little-endian
+  Symlen:      9 chars
+  Symtab:      72 bytes (6 symbols)
+  Text:        31 bytes
+  Data:        0 bytes
+  BSS:         0 bytes
+  Heap:        0 bytes
+  Text offset: 0x0000
+  Data offset: 0x001f
+
+Disassembly: 31 bytes
+_sqr:
+  0000  cd 00 00     call _sqr
+  0003  21 04 00     ld hl,0004h
+  0006  19           add hl,de
+  0007  e5           push hl
+  0008  e1           pop hl
+  0009  01 00 00     ld bc,_sqr
+  000c  cd 00 00     call _sqr
+  000f  21 00 00     ld hl,_sqr
+  0012  e5           push hl
+  0013  21 04 00     ld hl,0004h
+  0016  19           add hl,de
+  0017  e5           push hl
+  0018  cd 00 00     call _sqr
+  001b  f1           pop af
+  001c  c3 00 00     jp _sqr
+
+Data segment: (empty)
+
+Symbol table: 6 symbols (9-char names)
+  Index  Value  Type Seg    Global  Name
+  -----  -----  ---- -----  ------  ----
+  [  0]  0000   08   ext    yes      c.r0
+  [  1]  0000   08   ext    yes      c.ret
+  [  2]  0000   08   ext    yes      c.ent
+  [  3]  0000   08   ext    yes      c.dmul
+  [  4]  0000   08   ext    yes      c.dcpy
+  [  5]  0000   0d   text   yes      _sqr
+
+Text relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  0001    word        symbol[2]
+  000a    word        symbol[0]
+  000d    word        symbol[4]
+  0010    word        symbol[0]
+  0019    word        symbol[3]
+  001d    word        symbol[1]
+
+Data relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  (none)
+

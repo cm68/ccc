@@ -1,0 +1,86 @@
+=== lib/libmdc/_exit.o ===
+
+Header:
+  Magic:       0x99
+  Config:      0x14 little-endian
+  Symlen:      9 chars
+  Symtab:      72 bytes (6 symbols)
+  Text:        68 bytes
+  Data:        0 bytes
+  BSS:         0 bytes
+  Heap:        0 bytes
+  Text offset: 0x0000
+  Data offset: 0x0044
+
+Disassembly: 68 bytes
+__exit:
+  0000  cd 00 00     call __exit
+  0003  f5           push af
+  0004  f5           push af
+  0005  f5           push af
+  0006  f5           push af
+  0007  21 f8 ff     ld hl,fff8h
+  000a  19           add hl,de
+  000b  97           sub a
+  000c  77           ld (hl),a
+  000d  23           inc hl
+  000e  77           ld (hl),a
+  000f  21 f8 ff     ld hl,fff8h
+  0012  19           add hl,de
+  0013  7e           ld a,(hl)
+  0014  d6 10        sub 10h
+  0016  23           inc hl
+  0017  7e           ld a,(hl)
+  0018  de 00        sbc a,00h
+  001a  f2 39 00     jp p,0039h
+  001d  21 f8 ff     ld hl,fff8h
+  0020  19           add hl,de
+  0021  4e           ld c,(hl)
+  0022  23           inc hl
+  0023  46           ld b,(hl)
+  0024  c5           push bc
+  0025  cd 00 00     call __exit
+  0028  f1           pop af
+  0029  21 f8 ff     ld hl,fff8h
+  002c  19           add hl,de
+  002d  7e           ld a,(hl)
+  002e  c6 01        add a,01h
+  0030  77           ld (hl),a
+  0031  23           inc hl
+  0032  7e           ld a,(hl)
+  0033  ce 00        adc a,00h
+  0035  77           ld (hl),a
+  0036  c3 0f 00     jp 000fh
+  0039  21 00 00     ld hl,__exit
+  003c  e5           push hl
+  003d  cd 00 00     call __exit
+  0040  f1           pop af
+  0041  c3 00 00     jp __exit
+
+Data segment: (empty)
+
+Symbol table: 6 symbols (9-char names)
+  Index  Value  Type Seg    Global  Name
+  -----  -----  ---- -----  ------  ----
+  [  0]  0000   08   ext    yes      _close
+  [  1]  0000   08   ext    yes      _cpm
+  [  2]  0000   08   ext    yes      c.ret
+  [  3]  0000   08   ext    yes      c.ent
+  [  4]  0000   08   ext    yes      __files
+  [  5]  0000   0d   text   yes      __exit
+
+Text relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  0001    word        symbol[3]
+  001b    word        text segment
+  0026    word        symbol[0]
+  0037    word        text segment
+  003e    word        symbol[1]
+  0042    word        symbol[2]
+
+Data relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  (none)
+

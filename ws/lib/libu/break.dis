@@ -1,0 +1,52 @@
+=== lib/libu/break.o ===
+
+Header:
+  Magic:       0x99
+  Config:      0x14 little-endian
+  Symlen:      9 chars
+  Symtab:      24 bytes (2 symbols)
+  Text:        20 bytes
+  Data:        4 bytes
+  BSS:         0 bytes
+  Heap:        0 bytes
+  Text offset: 0x0000
+  Data offset: 0x0014
+
+Disassembly: 20 bytes
+__break:
+  0000  c1           pop bc
+  0001  e1           pop hl
+  0002  e5           push hl
+  0003  c5           push bc
+  0004  22 16 00     ld (0016h),hl
+  0007  cf           rst 08h
+  0008  00           nop
+  0009  14           inc d
+  000a  00           nop
+  000b  01 00 00     ld bc,__break
+  000e  d0           ret nc
+  000f  0b           dec bc
+  0010  22 00 00     ld (__break),hl
+  0013  c9           ret
+
+Data segment: 4 bytes
+  0000: cf 11 00 00                                       |....|
+
+Symbol table: 2 symbols (9-char names)
+  Index  Value  Type Seg    Global  Name
+  -----  -----  ---- -----  ------  ----
+  [  0]  0000   08   ext    yes      _errno
+  [  1]  0000   0d   text   yes      __break
+
+Text relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  0005    word        data segment
+  0009    word        data segment
+  0011    word        symbol[0]
+
+Data relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  (none)
+

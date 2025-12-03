@@ -1,0 +1,69 @@
+=== lib/libu/read.o ===
+
+Header:
+  Magic:       0x99
+  Config:      0x14 little-endian
+  Symlen:      9 chars
+  Symtab:      24 bytes (2 symbols)
+  Text:        44 bytes
+  Data:        6 bytes
+  BSS:         0 bytes
+  Heap:        0 bytes
+  Text offset: 0x0000
+  Data offset: 0x002c
+
+Disassembly: 44 bytes
+_read:
+  0000  21 04 00     ld hl,0004h
+  0003  39           add hl,sp
+  0004  7e           ld a,(hl)
+  0005  23           inc hl
+  0006  66           ld h,(hl)
+  0007  6f           ld l,a
+  0008  22 2e 00     ld (002eh),hl
+  000b  21 06 00     ld hl,0006h
+  000e  39           add hl,sp
+  000f  7e           ld a,(hl)
+  0010  23           inc hl
+  0011  66           ld h,(hl)
+  0012  6f           ld l,a
+  0013  22 30 00     ld (0030h),hl
+  0016  21 02 00     ld hl,0002h
+  0019  39           add hl,sp
+  001a  7e           ld a,(hl)
+  001b  23           inc hl
+  001c  66           ld h,(hl)
+  001d  6f           ld l,a
+  001e  cf           rst 08h
+  001f  00           nop
+  0020  2c           inc l
+  0021  00           nop
+  0022  4d           ld c,l
+  0023  44           ld b,h
+  0024  d0           ret nc
+  0025  01 ff ff     ld bc,ffffh
+  0028  22 00 00     ld (_read),hl
+  002b  c9           ret
+
+Data segment: 6 bytes
+  0000: cf 03 00 00 00 00                                 |......|
+
+Symbol table: 2 symbols (9-char names)
+  Index  Value  Type Seg    Global  Name
+  -----  -----  ---- -----  ------  ----
+  [  0]  0000   08   ext    yes      _errno
+  [  1]  0000   0d   text   yes      _read
+
+Text relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  0009    word        data segment
+  0014    word        data segment
+  0020    word        data segment
+  0029    word        symbol[0]
+
+Data relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  (none)
+

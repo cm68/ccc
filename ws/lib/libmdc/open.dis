@@ -1,0 +1,189 @@
+=== lib/libmdc/open.o ===
+
+Header:
+  Magic:       0x99
+  Config:      0x14 little-endian
+  Symlen:      9 chars
+  Symtab:      96 bytes (8 symbols)
+  Text:        210 bytes
+  Data:        2 bytes
+  BSS:         0 bytes
+  Heap:        0 bytes
+  Text offset: 0x0000
+  Data offset: 0x00d2
+
+Disassembly: 210 bytes
+_open:
+  0000  cd 00 00     call _open
+  0003  21 06 00     ld hl,0006h
+  0006  19           add hl,de
+  0007  7e           ld a,(hl)
+  0008  23           inc hl
+  0009  b6           or (hl)
+  000a  ca 29 00     jp z,0029h
+  000d  21 06 00     ld hl,0006h
+  0010  19           add hl,de
+  0011  7e           ld a,(hl)
+  0012  fe 01        cp 01h
+  0014  c2 1b 00     jp nz,001bh
+  0017  23           inc hl
+  0018  7e           ld a,(hl)
+  0019  fe 00        cp 00h
+  001b  ca 29 00     jp z,0029h
+  001e  21 06 00     ld hl,0006h
+  0021  19           add hl,de
+  0022  3e 02        ld a,02h
+  0024  77           ld (hl),a
+  0025  87           add a,a
+  0026  9f           sbc a,a
+  0027  23           inc hl
+  0028  77           ld (hl),a
+  0029  cd 00 00     call _open
+  002c  69           ld l,c
+  002d  60           ld h,b
+  002e  22 d2 00     ld (00d2h),hl
+  0031  21 d2 00     ld hl,00d2h
+  0034  7e           ld a,(hl)
+  0035  23           inc hl
+  0036  b6           or (hl)
+  0037  c2 40 00     jp nz,0040h
+  003a  01 ff ff     ld bc,ffffh
+  003d  c3 00 00     jp _open
+  0040  2a d2 00     ld hl,(00d2h)
+  0043  e5           push hl
+  0044  21 04 00     ld hl,0004h
+  0047  19           add hl,de
+  0048  4e           ld c,(hl)
+  0049  23           inc hl
+  004a  46           ld b,(hl)
+  004b  c5           push bc
+  004c  cd 00 00     call _open
+  004f  f1           pop af
+  0050  f1           pop af
+  0051  79           ld a,c
+  0052  b0           or b
+  0053  c2 5c 00     jp nz,005ch
+  0056  01 ff ff     ld bc,ffffh
+  0059  c3 00 00     jp _open
+  005c  2a d2 00     ld hl,(00d2h)
+  005f  01 05 00     ld bc,0005h
+  0062  09           add hl,bc
+  0063  7e           ld a,(hl)
+  0064  fe 44        cp 44h
+  0066  c2 8e 00     jp nz,008eh
+  0069  2a d2 00     ld hl,(00d2h)
+  006c  01 08 00     ld bc,0008h
+  006f  09           add hl,bc
+  0070  e5           push hl
+  0071  21 0f 00     ld hl,000fh
+  0074  e5           push hl
+  0075  cd 00 00     call _open
+  0078  f1           pop af
+  0079  f1           pop af
+  007a  78           ld a,b
+  007b  b7           or a
+  007c  f2 8e 00     jp p,008eh
+  007f  2a d2 00     ld hl,(00d2h)
+  0082  01 05 00     ld bc,0005h
+  0085  09           add hl,bc
+  0086  36 00        ld (hl),00h
+  0088  01 ff ff     ld bc,ffffh
+  008b  c3 00 00     jp _open
+  008e  2a d2 00     ld hl,(00d2h)
+  0091  e5           push hl
+  0092  21 06 00     ld hl,0006h
+  0095  19           add hl,de
+  0096  c1           pop bc
+  0097  7e           ld a,(hl)
+  0098  02           ld (bc),a
+  0099  2a d2 00     ld hl,(00d2h)
+  009c  23           inc hl
+  009d  97           sub a
+  009e  77           ld (hl),a
+  009f  23           inc hl
+  00a0  77           ld (hl),a
+  00a1  23           inc hl
+  00a2  77           ld (hl),a
+  00a3  23           inc hl
+  00a4  77           ld (hl),a
+  00a5  2a d2 00     ld hl,(00d2h)
+  00a8  01 06 00     ld bc,0006h
+  00ab  09           add hl,bc
+  00ac  e5           push hl
+  00ad  21 08 00     ld hl,0008h
+  00b0  19           add hl,de
+  00b1  c1           pop bc
+  00b2  7e           ld a,(hl)
+  00b3  02           ld (bc),a
+  00b4  23           inc hl
+  00b5  7e           ld a,(hl)
+  00b6  03           inc bc
+  00b7  02           ld (bc),a
+  00b8  2a d2 00     ld hl,(00d2h)
+  00bb  01 00 00     ld bc,_open
+  00be  7d           ld a,l
+  00bf  91           sub c
+  00c0  6f           ld l,a
+  00c1  7c           ld a,h
+  00c2  98           sbc a,b
+  00c3  67           ld h,a
+  00c4  e5           push hl
+  00c5  21 2c 00     ld hl,002ch
+  00c8  e5           push hl
+  00c9  cd 00 00     call _open
+  00cc  e1           pop hl
+  00cd  4d           ld c,l
+  00ce  44           ld b,h
+  00cf  c3 00 00     jp _open
+
+Data segment: 2 bytes
+  0000: 00 00                                             |..|
+
+Symbol table: 8 symbols (9-char names)
+  Index  Value  Type Seg    Global  Name
+  -----  -----  ---- -----  ------  ----
+  [  0]  0000   08   ext    yes      __first
+  [  1]  0000   08   ext    yes      __name
+  [  2]  0000   08   ext    yes      _cpm
+  [  3]  0000   08   ext    yes      c.ret
+  [  4]  0000   08   ext    yes      c.ent
+  [  5]  0000   08   ext    yes      __files
+  [  6]  0000   08   ext    yes      c.udiv
+  [  7]  0000   0d   text   yes      _open
+
+Text relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  0001    word        symbol[4]
+  000b    word        text segment
+  0015    word        text segment
+  001c    word        text segment
+  002a    word        symbol[0]
+  002f    word        data segment
+  0032    word        data segment
+  0038    word        text segment
+  003e    word        symbol[3]
+  0041    word        data segment
+  004d    word        symbol[1]
+  0054    word        text segment
+  005a    word        symbol[3]
+  005d    word        data segment
+  0067    word        text segment
+  006a    word        data segment
+  0076    word        symbol[2]
+  007d    word        text segment
+  0080    word        data segment
+  008c    word        symbol[3]
+  008f    word        data segment
+  009a    word        data segment
+  00a6    word        data segment
+  00b9    word        data segment
+  00bc    word        symbol[5]
+  00ca    word        symbol[6]
+  00d0    word        symbol[3]
+
+Data relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  (none)
+

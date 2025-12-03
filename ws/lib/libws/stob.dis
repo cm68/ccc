@@ -1,0 +1,248 @@
+=== lib/libws/stob.o ===
+
+Header:
+  Magic:       0x99
+  Config:      0x14 little-endian
+  Symlen:      9 chars
+  Symtab:      96 bytes (8 symbols)
+  Text:        282 bytes
+  Data:        0 bytes
+  BSS:         0 bytes
+  Heap:        0 bytes
+  Text offset: 0x0000
+  Data offset: 0x011a
+
+Disassembly: 282 bytes
+_stob:
+  0000  cd 00 00     call _stob
+  0003  21 04 00     ld hl,0004h
+  0006  19           add hl,de
+  0007  7e           ld a,(hl)
+  0008  23           inc hl
+  0009  66           ld h,(hl)
+  000a  6f           ld l,a
+  000b  22 00 00     ld (_stob),hl
+  000e  2a 00 00     ld hl,(_stob)
+  0011  22 00 00     ld (_stob),hl
+  0014  21 06 00     ld hl,0006h
+  0017  19           add hl,de
+  0018  23           inc hl
+  0019  7e           ld a,(hl)
+  001a  b7           or a
+  001b  f2 54 00     jp p,0054h
+  001e  21 08 00     ld hl,0008h
+  0021  19           add hl,de
+  0022  97           sub a
+  0023  96           sub (hl)
+  0024  3e 00        ld a,00h
+  0026  23           inc hl
+  0027  9e           sbc a,(hl)
+  0028  fa 54 00     jp m,0054h
+  002b  21 06 00     ld hl,0006h
+  002e  19           add hl,de
+  002f  e5           push hl
+  0030  21 06 00     ld hl,0006h
+  0033  19           add hl,de
+  0034  7e           ld a,(hl)
+  0035  23           inc hl
+  0036  66           ld h,(hl)
+  0037  6f           ld l,a
+  0038  3e 00        ld a,00h
+  003a  95           sub l
+  003b  6f           ld l,a
+  003c  3e 00        ld a,00h
+  003e  9c           sbc a,h
+  003f  67           ld h,a
+  0040  c1           pop bc
+  0041  7d           ld a,l
+  0042  02           ld (bc),a
+  0043  7c           ld a,h
+  0044  03           inc bc
+  0045  02           ld (bc),a
+  0046  2a 00 00     ld hl,(_stob)
+  0049  e5           push hl
+  004a  2a 00 00     ld hl,(_stob)
+  004d  23           inc hl
+  004e  22 00 00     ld (_stob),hl
+  0051  e1           pop hl
+  0052  36 2d        ld (hl),2dh
+  0054  21 06 00     ld hl,0006h
+  0057  19           add hl,de
+  0058  7e           ld a,(hl)
+  0059  23           inc hl
+  005a  66           ld h,(hl)
+  005b  6f           ld l,a
+  005c  7d           ld a,l
+  005d  e6 ff        and ffh
+  005f  6f           ld l,a
+  0060  7c           ld a,h
+  0061  e6 ff        and ffh
+  0063  67           ld h,a
+  0064  22 00 00     ld (_stob),hl
+  0067  21 08 00     ld hl,0008h
+  006a  19           add hl,de
+  006b  7e           ld a,(hl)
+  006c  23           inc hl
+  006d  b6           or (hl)
+  006e  c2 7f 00     jp nz,007fh
+  0071  21 08 00     ld hl,0008h
+  0074  19           add hl,de
+  0075  3e 0a        ld a,0ah
+  0077  77           ld (hl),a
+  0078  87           add a,a
+  0079  9f           sbc a,a
+  007a  23           inc hl
+  007b  77           ld (hl),a
+  007c  c3 a4 00     jp 00a4h
+  007f  21 08 00     ld hl,0008h
+  0082  19           add hl,de
+  0083  23           inc hl
+  0084  7e           ld a,(hl)
+  0085  b7           or a
+  0086  f2 a4 00     jp p,00a4h
+  0089  21 08 00     ld hl,0008h
+  008c  19           add hl,de
+  008d  e5           push hl
+  008e  21 08 00     ld hl,0008h
+  0091  19           add hl,de
+  0092  7e           ld a,(hl)
+  0093  23           inc hl
+  0094  66           ld h,(hl)
+  0095  6f           ld l,a
+  0096  3e 00        ld a,00h
+  0098  95           sub l
+  0099  6f           ld l,a
+  009a  3e 00        ld a,00h
+  009c  9c           sbc a,h
+  009d  67           ld h,a
+  009e  c1           pop bc
+  009f  7d           ld a,l
+  00a0  02           ld (bc),a
+  00a1  7c           ld a,h
+  00a2  03           inc bc
+  00a3  02           ld (bc),a
+  00a4  21 08 00     ld hl,0008h
+  00a7  19           add hl,de
+  00a8  3a 00 00     ld a,(_stob)
+  00ab  96           sub (hl)
+  00ac  3a 01 00     ld a,(0001h)
+  00af  23           inc hl
+  00b0  9e           sbc a,(hl)
+  00b1  da dc 00     jp c,00dch
+  00b4  21 08 00     ld hl,0008h
+  00b7  19           add hl,de
+  00b8  4e           ld c,(hl)
+  00b9  23           inc hl
+  00ba  46           ld b,(hl)
+  00bb  c5           push bc
+  00bc  2a 00 00     ld hl,(_stob)
+  00bf  e5           push hl
+  00c0  21 08 00     ld hl,0008h
+  00c3  19           add hl,de
+  00c4  4e           ld c,(hl)
+  00c5  23           inc hl
+  00c6  46           ld b,(hl)
+  00c7  c5           push bc
+  00c8  cd 00 00     call _stob
+  00cb  2a 00 00     ld hl,(_stob)
+  00ce  e5           push hl
+  00cf  cd 00 00     call _stob
+  00d2  f1           pop af
+  00d3  f1           pop af
+  00d4  f1           pop af
+  00d5  2a 00 00     ld hl,(_stob)
+  00d8  09           add hl,bc
+  00d9  22 00 00     ld (_stob),hl
+  00dc  2a 00 00     ld hl,(_stob)
+  00df  e5           push hl
+  00e0  2a 00 00     ld hl,(_stob)
+  00e3  e5           push hl
+  00e4  21 08 00     ld hl,0008h
+  00e7  19           add hl,de
+  00e8  4e           ld c,(hl)
+  00e9  23           inc hl
+  00ea  46           ld b,(hl)
+  00eb  c5           push bc
+  00ec  cd 00 00     call _stob
+  00ef  e1           pop hl
+  00f0  01 30 00     ld bc,0030h
+  00f3  09           add hl,bc
+  00f4  c1           pop bc
+  00f5  7d           ld a,l
+  00f6  02           ld (bc),a
+  00f7  2a 00 00     ld hl,(_stob)
+  00fa  3e 39        ld a,39h
+  00fc  be           cp (hl)
+  00fd  d2 07 01     jp nc,0107h
+  0100  2a 00 00     ld hl,(_stob)
+  0103  7e           ld a,(hl)
+  0104  c6 27        add a,27h
+  0106  77           ld (hl),a
+  0107  2a 00 00     ld hl,(_stob)
+  010a  e5           push hl
+  010b  21 00 00     ld hl,_stob
+  010e  c1           pop bc
+  010f  79           ld a,c
+  0110  96           sub (hl)
+  0111  4f           ld c,a
+  0112  78           ld a,b
+  0113  23           inc hl
+  0114  9e           sbc a,(hl)
+  0115  47           ld b,a
+  0116  03           inc bc
+  0117  c3 00 00     jp _stob
+
+Data segment: (empty)
+
+Symbol table: 8 symbols (9-char names)
+  Index  Value  Type Seg    Global  Name
+  -----  -----  ---- -----  ------  ----
+  [  0]  0000   08   ext    yes      c.r4
+  [  1]  0000   08   ext    yes      c.r3
+  [  2]  0000   08   ext    yes      c.r2
+  [  3]  0000   08   ext    yes      c.rets
+  [  4]  0000   08   ext    yes      c.ents
+  [  5]  0000   08   ext    yes      c.udiv
+  [  6]  0000   08   ext    yes      c.umod
+  [  7]  0000   0d   text   yes      _stob
+
+Text relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  0001    word        symbol[4]
+  000c    word        symbol[0]
+  000f    word        symbol[0]
+  0012    word        symbol[1]
+  001c    word        text segment
+  0029    word        text segment
+  0047    word        symbol[1]
+  004b    word        symbol[1]
+  004f    word        symbol[1]
+  0065    word        symbol[2]
+  006f    word        text segment
+  007d    word        text segment
+  0087    word        text segment
+  00a9    word        symbol[2]
+  00ad    word        symbol[2]
+  00b2    word        text segment
+  00bd    word        symbol[2]
+  00c9    word        symbol[5]
+  00cc    word        symbol[1]
+  00d0    word        text segment
+  00d6    word        symbol[1]
+  00da    word        symbol[1]
+  00dd    word        symbol[1]
+  00e1    word        symbol[2]
+  00ed    word        symbol[6]
+  00f8    word        symbol[1]
+  00fe    word        text segment
+  0101    word        symbol[1]
+  0108    word        symbol[1]
+  010c    word        symbol[0]
+  0118    word        symbol[3]
+
+Data relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  (none)
+

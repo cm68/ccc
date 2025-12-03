@@ -1,0 +1,98 @@
+=== lib/libmd/calloc.o ===
+
+Header:
+  Magic:       0x99
+  Config:      0x14 little-endian
+  Symlen:      9 chars
+  Symtab:      96 bytes (8 symbols)
+  Text:        80 bytes
+  Data:        0 bytes
+  BSS:         0 bytes
+  Heap:        0 bytes
+  Text offset: 0x0000
+  Data offset: 0x0050
+
+Disassembly: 80 bytes
+_calloc:
+  0000  cd 00 00     call _calloc
+  0003  21 04 00     ld hl,0004h
+  0006  19           add hl,de
+  0007  4e           ld c,(hl)
+  0008  23           inc hl
+  0009  46           ld b,(hl)
+  000a  c5           push bc
+  000b  21 06 00     ld hl,0006h
+  000e  19           add hl,de
+  000f  4e           ld c,(hl)
+  0010  23           inc hl
+  0011  46           ld b,(hl)
+  0012  c5           push bc
+  0013  cd 00 00     call _calloc
+  0016  e1           pop hl
+  0017  22 00 00     ld (_calloc),hl
+  001a  2a 00 00     ld hl,(_calloc)
+  001d  e5           push hl
+  001e  cd 00 00     call _calloc
+  0021  f1           pop af
+  0022  69           ld l,c
+  0023  60           ld h,b
+  0024  22 00 00     ld (_calloc),hl
+  0027  21 00 00     ld hl,_calloc
+  002a  7e           ld a,(hl)
+  002b  23           inc hl
+  002c  b6           or (hl)
+  002d  c2 36 00     jp nz,0036h
+  0030  01 00 00     ld bc,_calloc
+  0033  c3 00 00     jp _calloc
+  0036  21 00 00     ld hl,_calloc
+  0039  e5           push hl
+  003a  2a 00 00     ld hl,(_calloc)
+  003d  e5           push hl
+  003e  2a 00 00     ld hl,(_calloc)
+  0041  e5           push hl
+  0042  cd 00 00     call _calloc
+  0045  f1           pop af
+  0046  f1           pop af
+  0047  f1           pop af
+  0048  2a 00 00     ld hl,(_calloc)
+  004b  4d           ld c,l
+  004c  44           ld b,h
+  004d  c3 00 00     jp _calloc
+
+Data segment: (empty)
+
+Symbol table: 8 symbols (9-char names)
+  Index  Value  Type Seg    Global  Name
+  -----  -----  ---- -----  ------  ----
+  [  0]  0000   08   ext    yes      c.r4
+  [  1]  0000   08   ext    yes      c.r2
+  [  2]  0000   08   ext    yes      _alloc
+  [  3]  0000   08   ext    yes      c.rets
+  [  4]  0000   08   ext    yes      c.ents
+  [  5]  0000   08   ext    yes      c.imul
+  [  6]  0000   08   ext    yes      _fill
+  [  7]  0000   0d   text   yes      _calloc
+
+Text relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  0001    word        symbol[4]
+  0014    word        symbol[5]
+  0018    word        symbol[1]
+  001b    word        symbol[1]
+  001f    word        symbol[2]
+  0025    word        symbol[0]
+  0028    word        symbol[0]
+  002e    word        text segment
+  0034    word        symbol[3]
+  003b    word        symbol[1]
+  003f    word        symbol[0]
+  0043    word        symbol[6]
+  0049    word        symbol[0]
+  004e    word        symbol[3]
+
+Data relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  (none)
+

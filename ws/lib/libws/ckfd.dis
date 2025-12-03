@@ -1,0 +1,89 @@
+=== lib/libws/ckfd.o ===
+
+Header:
+  Magic:       0x99
+  Config:      0x14 little-endian
+  Symlen:      9 chars
+  Symtab:      72 bytes (6 symbols)
+  Text:        70 bytes
+  Data:        0 bytes
+  BSS:         0 bytes
+  Heap:        0 bytes
+  Text offset: 0x0000
+  Data offset: 0x0046
+
+Disassembly: 70 bytes
+__ckfd:
+  0000  cd 00 00     call __ckfd
+  0003  21 04 00     ld hl,0004h
+  0006  19           add hl,de
+  0007  7e           ld a,(hl)
+  0008  23           inc hl
+  0009  66           ld h,(hl)
+  000a  6f           ld l,a
+  000b  22 00 00     ld (__ckfd),hl
+  000e  3a 01 00     ld a,(0001h)
+  0011  b7           or a
+  0012  fa 32 00     jp m,0032h
+  0015  21 00 00     ld hl,__ckfd
+  0018  3a 00 00     ld a,(__ckfd)
+  001b  96           sub (hl)
+  001c  3a 01 00     ld a,(0001h)
+  001f  23           inc hl
+  0020  9e           sbc a,(hl)
+  0021  d2 32 00     jp nc,0032h
+  0024  2a 00 00     ld hl,(__ckfd)
+  0027  29           add hl,hl
+  0028  29           add hl,hl
+  0029  01 00 00     ld bc,__ckfd
+  002c  09           add hl,bc
+  002d  7e           ld a,(hl)
+  002e  b7           or a
+  002f  c2 38 00     jp nz,0038h
+  0032  01 00 00     ld bc,__ckfd
+  0035  c3 00 00     jp __ckfd
+  0038  2a 00 00     ld hl,(__ckfd)
+  003b  29           add hl,hl
+  003c  29           add hl,hl
+  003d  01 00 00     ld bc,__ckfd
+  0040  09           add hl,bc
+  0041  4d           ld c,l
+  0042  44           ld b,h
+  0043  c3 00 00     jp __ckfd
+
+Data segment: (empty)
+
+Symbol table: 6 symbols (9-char names)
+  Index  Value  Type Seg    Global  Name
+  -----  -----  ---- -----  ------  ----
+  [  0]  0000   08   ext    yes      __nfiles
+  [  1]  0000   08   ext    yes      c.r4
+  [  2]  0000   08   ext    yes      __wcbs
+  [  3]  0000   08   ext    yes      c.rets
+  [  4]  0000   08   ext    yes      c.ents
+  [  5]  0000   0d   text   yes      __ckfd
+
+Text relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  0001    word        symbol[4]
+  000c    word        symbol[1]
+  000f    word        symbol[1]
+  0013    word        text segment
+  0016    word        symbol[0]
+  0019    word        symbol[1]
+  001d    word        symbol[1]
+  0022    word        text segment
+  0025    word        symbol[1]
+  002a    word        symbol[2]
+  0030    word        text segment
+  0036    word        symbol[3]
+  0039    word        symbol[1]
+  003e    word        symbol[2]
+  0044    word        symbol[3]
+
+Data relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  (none)
+

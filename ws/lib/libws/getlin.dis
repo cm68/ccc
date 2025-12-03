@@ -1,0 +1,61 @@
+=== lib/libws/getlin.o ===
+
+Header:
+  Magic:       0x99
+  Config:      0x14 little-endian
+  Symlen:      9 chars
+  Symtab:      60 bytes (5 symbols)
+  Text:        32 bytes
+  Data:        0 bytes
+  BSS:         0 bytes
+  Heap:        0 bytes
+  Text offset: 0x0000
+  Data offset: 0x0020
+
+Disassembly: 32 bytes
+_getlin:
+  0000  cd 00 00     call _getlin
+  0003  21 06 00     ld hl,0006h
+  0006  19           add hl,de
+  0007  4e           ld c,(hl)
+  0008  23           inc hl
+  0009  46           ld b,(hl)
+  000a  c5           push bc
+  000b  21 04 00     ld hl,0004h
+  000e  19           add hl,de
+  000f  4e           ld c,(hl)
+  0010  23           inc hl
+  0011  46           ld b,(hl)
+  0012  c5           push bc
+  0013  21 00 00     ld hl,_getlin
+  0016  e5           push hl
+  0017  cd 00 00     call _getlin
+  001a  f1           pop af
+  001b  f1           pop af
+  001c  f1           pop af
+  001d  c3 00 00     jp _getlin
+
+Data segment: (empty)
+
+Symbol table: 5 symbols (9-char names)
+  Index  Value  Type Seg    Global  Name
+  -----  -----  ---- -----  ------  ----
+  [  0]  0000   08   ext    yes      c.ret
+  [  1]  0000   08   ext    yes      c.ent
+  [  2]  0000   08   ext    yes      _getl
+  [  3]  0000   08   ext    yes      _stdin
+  [  4]  0000   0d   text   yes      _getlin
+
+Text relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  0001    word        symbol[1]
+  0014    word        symbol[3]
+  0018    word        symbol[2]
+  001e    word        symbol[0]
+
+Data relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  (none)
+

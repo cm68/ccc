@@ -1,0 +1,139 @@
+=== lib/libws/inbuf.o ===
+
+Header:
+  Magic:       0x99
+  Config:      0x14 little-endian
+  Symlen:      9 chars
+  Symtab:      72 bytes (6 symbols)
+  Text:        137 bytes
+  Data:        0 bytes
+  BSS:         0 bytes
+  Heap:        0 bytes
+  Text offset: 0x0000
+  Data offset: 0x0089
+
+Disassembly: 137 bytes
+_inbuf:
+  0000  cd 00 00     call _inbuf
+  0003  21 06 00     ld hl,0006h
+  0006  19           add hl,de
+  0007  7e           ld a,(hl)
+  0008  23           inc hl
+  0009  66           ld h,(hl)
+  000a  6f           ld l,a
+  000b  22 00 00     ld (_inbuf),hl
+  000e  21 04 00     ld hl,0004h
+  0011  19           add hl,de
+  0012  7e           ld a,(hl)
+  0013  23           inc hl
+  0014  66           ld h,(hl)
+  0015  6f           ld l,a
+  0016  22 00 00     ld (_inbuf),hl
+  0019  21 00 00     ld hl,_inbuf
+  001c  7e           ld a,(hl)
+  001d  23           inc hl
+  001e  b6           or (hl)
+  001f  ca 4d 00     jp z,004dh
+  0022  21 08 00     ld hl,0008h
+  0025  19           add hl,de
+  0026  7e           ld a,(hl)
+  0027  23           inc hl
+  0028  66           ld h,(hl)
+  0029  6f           ld l,a
+  002a  22 00 00     ld (_inbuf),hl
+  002d  2a 00 00     ld hl,(_inbuf)
+  0030  e5           push hl
+  0031  2a 00 00     ld hl,(_inbuf)
+  0034  c1           pop bc
+  0035  0a           ld a,(bc)
+  0036  be           cp (hl)
+  0037  c2 60 00     jp nz,0060h
+  003a  2a 00 00     ld hl,(_inbuf)
+  003d  e5           push hl
+  003e  21 04 00     ld hl,0004h
+  0041  19           add hl,de
+  0042  c1           pop bc
+  0043  79           ld a,c
+  0044  96           sub (hl)
+  0045  4f           ld c,a
+  0046  78           ld a,b
+  0047  23           inc hl
+  0048  9e           sbc a,(hl)
+  0049  47           ld b,a
+  004a  c3 00 00     jp _inbuf
+  004d  2a 00 00     ld hl,(_inbuf)
+  0050  e5           push hl
+  0051  21 04 00     ld hl,0004h
+  0054  19           add hl,de
+  0055  c1           pop bc
+  0056  79           ld a,c
+  0057  96           sub (hl)
+  0058  4f           ld c,a
+  0059  78           ld a,b
+  005a  23           inc hl
+  005b  9e           sbc a,(hl)
+  005c  47           ld b,a
+  005d  c3 00 00     jp _inbuf
+  0060  2a 00 00     ld hl,(_inbuf)
+  0063  23           inc hl
+  0064  22 00 00     ld (_inbuf),hl
+  0067  2a 00 00     ld hl,(_inbuf)
+  006a  7e           ld a,(hl)
+  006b  b7           or a
+  006c  c2 2d 00     jp nz,002dh
+  006f  3a 00 00     ld a,(_inbuf)
+  0072  d6 01        sub 01h
+  0074  32 00 00     ld (_inbuf),a
+  0077  3a 01 00     ld a,(0001h)
+  007a  de 00        sbc a,00h
+  007c  32 01 00     ld (0001h),a
+  007f  2a 00 00     ld hl,(_inbuf)
+  0082  23           inc hl
+  0083  22 00 00     ld (_inbuf),hl
+  0086  c3 19 00     jp 0019h
+
+Data segment: (empty)
+
+Symbol table: 6 symbols (9-char names)
+  Index  Value  Type Seg    Global  Name
+  -----  -----  ---- -----  ------  ----
+  [  0]  0000   08   ext    yes      c.r4
+  [  1]  0000   08   ext    yes      c.r3
+  [  2]  0000   08   ext    yes      c.r2
+  [  3]  0000   08   ext    yes      c.rets
+  [  4]  0000   08   ext    yes      c.ents
+  [  5]  0000   0d   text   yes      _inbuf
+
+Text relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  0001    word        symbol[4]
+  000c    word        symbol[0]
+  0017    word        symbol[2]
+  001a    word        symbol[0]
+  0020    word        text segment
+  002b    word        symbol[1]
+  002e    word        symbol[2]
+  0032    word        symbol[1]
+  0038    word        text segment
+  003b    word        symbol[2]
+  004b    word        symbol[3]
+  004e    word        symbol[2]
+  005e    word        symbol[3]
+  0061    word        symbol[1]
+  0065    word        symbol[1]
+  0068    word        symbol[1]
+  006d    word        text segment
+  0070    word        symbol[0]
+  0075    word        symbol[0]
+  0078    word        symbol[0]
+  007d    word        symbol[0]
+  0080    word        symbol[2]
+  0084    word        symbol[2]
+  0087    word        text segment
+
+Data relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  (none)
+

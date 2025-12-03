@@ -1,0 +1,260 @@
+=== lib/libwsc/lseek.o ===
+
+Header:
+  Magic:       0x99
+  Config:      0x14 little-endian
+  Symlen:      9 chars
+  Symtab:      132 bytes (11 symbols)
+  Text:        295 bytes
+  Data:        0 bytes
+  BSS:         0 bytes
+  Heap:        0 bytes
+  Text offset: 0x0000
+  Data offset: 0x0127
+
+Disassembly: 295 bytes
+_lseek:
+  0000  cd 00 00     call _lseek
+  0003  f5           push af
+  0004  21 04 00     ld hl,0004h
+  0007  19           add hl,de
+  0008  4e           ld c,(hl)
+  0009  23           inc hl
+  000a  46           ld b,(hl)
+  000b  c5           push bc
+  000c  cd 00 00     call _lseek
+  000f  f1           pop af
+  0010  69           ld l,c
+  0011  60           ld h,b
+  0012  22 00 00     ld (_lseek),hl
+  0015  21 00 00     ld hl,_lseek
+  0018  7e           ld a,(hl)
+  0019  23           inc hl
+  001a  b6           or (hl)
+  001b  ca 2a 00     jp z,002ah
+  001e  2a 00 00     ld hl,(_lseek)
+  0021  01 01 00     ld bc,0001h
+  0024  09           add hl,bc
+  0025  7e           ld a,(hl)
+  0026  b7           or a
+  0027  f2 30 00     jp p,0030h
+  002a  01 ff ff     ld bc,ffffh
+  002d  c3 00 00     jp _lseek
+  0030  2a 00 00     ld hl,(_lseek)
+  0033  01 02 00     ld bc,0002h
+  0036  09           add hl,bc
+  0037  7e           ld a,(hl)
+  0038  23           inc hl
+  0039  66           ld h,(hl)
+  003a  6f           ld l,a
+  003b  22 00 00     ld (_lseek),hl
+  003e  21 0a 00     ld hl,000ah
+  0041  19           add hl,de
+  0042  7e           ld a,(hl)
+  0043  23           inc hl
+  0044  b6           or (hl)
+  0045  c2 66 00     jp nz,0066h
+  0048  2a 00 00     ld hl,(_lseek)
+  004b  01 24 00     ld bc,0024h
+  004e  09           add hl,bc
+  004f  e5           push hl
+  0050  21 06 00     ld hl,0006h
+  0053  19           add hl,de
+  0054  c1           pop bc
+  0055  7e           ld a,(hl)
+  0056  02           ld (bc),a
+  0057  23           inc hl
+  0058  7e           ld a,(hl)
+  0059  03           inc bc
+  005a  02           ld (bc),a
+  005b  23           inc hl
+  005c  7e           ld a,(hl)
+  005d  03           inc bc
+  005e  02           ld (bc),a
+  005f  23           inc hl
+  0060  7e           ld a,(hl)
+  0061  03           inc bc
+  0062  02           ld (bc),a
+  0063  c3 1a 01     jp 011ah
+  0066  21 0a 00     ld hl,000ah
+  0069  19           add hl,de
+  006a  7e           ld a,(hl)
+  006b  fe 01        cp 01h
+  006d  c2 74 00     jp nz,0074h
+  0070  23           inc hl
+  0071  7e           ld a,(hl)
+  0072  fe 00        cp 00h
+  0074  c2 8b 00     jp nz,008bh
+  0077  2a 00 00     ld hl,(_lseek)
+  007a  01 24 00     ld bc,0024h
+  007d  09           add hl,bc
+  007e  e5           push hl
+  007f  21 06 00     ld hl,0006h
+  0082  19           add hl,de
+  0083  e5           push hl
+  0084  cd 00 00     call _lseek
+  0087  f1           pop af
+  0088  c3 1a 01     jp 011ah
+  008b  97           sub a
+  008c  32 00 00     ld (_lseek),a
+  008f  32 01 00     ld (0001h),a
+  0092  21 01 00     ld hl,0001h
+  0095  e5           push hl
+  0096  2a 00 00     ld hl,(_lseek)
+  0099  e5           push hl
+  009a  2a 00 00     ld hl,(_lseek)
+  009d  e5           push hl
+  009e  cd 00 00     call _lseek
+  00a1  f1           pop af
+  00a2  f1           pop af
+  00a3  f1           pop af
+  00a4  78           ld a,b
+  00a5  b7           or a
+  00a6  fa cd 00     jp m,00cdh
+  00a9  21 f8 ff     ld hl,fff8h
+  00ac  19           add hl,de
+  00ad  e5           push hl
+  00ae  2a 00 00     ld hl,(_lseek)
+  00b1  01 0f 00     ld bc,000fh
+  00b4  09           add hl,bc
+  00b5  c1           pop bc
+  00b6  7e           ld a,(hl)
+  00b7  02           ld (bc),a
+  00b8  87           add a,a
+  00b9  9f           sbc a,a
+  00ba  03           inc bc
+  00bb  02           ld (bc),a
+  00bc  2a 00 00     ld hl,(_lseek)
+  00bf  7d           ld a,l
+  00c0  c6 80        add a,80h
+  00c2  6f           ld l,a
+  00c3  7c           ld a,h
+  00c4  ce 00        adc a,00h
+  00c6  67           ld h,a
+  00c7  22 00 00     ld (_lseek),hl
+  00ca  c3 92 00     jp 0092h
+  00cd  2a 00 00     ld hl,(_lseek)
+  00d0  01 24 00     ld bc,0024h
+  00d3  09           add hl,bc
+  00d4  e5           push hl
+  00d5  2a 00 00     ld hl,(_lseek)
+  00d8  e5           push hl
+  00d9  21 f8 ff     ld hl,fff8h
+  00dc  19           add hl,de
+  00dd  7e           ld a,(hl)
+  00de  23           inc hl
+  00df  66           ld h,(hl)
+  00e0  6f           ld l,a
+  00e1  e3           ex (sp),hl
+  00e2  c1           pop bc
+  00e3  09           add hl,bc
+  00e4  4d           ld c,l
+  00e5  44           ld b,h
+  00e6  78           ld a,b
+  00e7  87           add a,a
+  00e8  9f           sbc a,a
+  00e9  32 00 00     ld (_lseek),a
+  00ec  32 01 00     ld (0001h),a
+  00ef  78           ld a,b
+  00f0  32 03 00     ld (0003h),a
+  00f3  79           ld a,c
+  00f4  32 02 00     ld (0002h),a
+  00f7  21 00 00     ld hl,_lseek
+  00fa  e5           push hl
+  00fb  21 07 00     ld hl,0007h
+  00fe  e5           push hl
+  00ff  cd 00 00     call _lseek
+  0102  21 06 00     ld hl,0006h
+  0105  19           add hl,de
+  0106  e5           push hl
+  0107  cd 00 00     call _lseek
+  010a  e1           pop hl
+  010b  c1           pop bc
+  010c  7e           ld a,(hl)
+  010d  02           ld (bc),a
+  010e  23           inc hl
+  010f  7e           ld a,(hl)
+  0110  03           inc bc
+  0111  02           ld (bc),a
+  0112  23           inc hl
+  0113  7e           ld a,(hl)
+  0114  03           inc bc
+  0115  02           ld (bc),a
+  0116  23           inc hl
+  0117  7e           ld a,(hl)
+  0118  03           inc bc
+  0119  02           ld (bc),a
+  011a  21 04 00     ld hl,0004h
+  011d  19           add hl,de
+  011e  7e           ld a,(hl)
+  011f  23           inc hl
+  0120  66           ld h,(hl)
+  0121  6f           ld l,a
+  0122  4d           ld c,l
+  0123  44           ld b,h
+  0124  c3 00 00     jp _lseek
+
+Data segment: (empty)
+
+Symbol table: 11 symbols (9-char names)
+  Index  Value  Type Seg    Global  Name
+  -----  -----  ---- -----  ------  ----
+  [  0]  0000   08   ext    yes      c.r4
+  [  1]  0000   08   ext    yes      c.r3
+  [  2]  0000   08   ext    yes      c.r2
+  [  3]  0000   08   ext    yes      c.r0
+  [  4]  0000   08   ext    yes      __setex
+  [  5]  0000   08   ext    yes      c.ladd
+  [  6]  0000   08   ext    yes      __ckfd
+  [  7]  0000   08   ext    yes      c.rets
+  [  8]  0000   08   ext    yes      c.ents
+  [  9]  0000   08   ext    yes      c.llsh
+  [ 10]  0000   0d   text   yes      _lseek
+
+Text relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  0001    word        symbol[8]
+  000d    word        symbol[6]
+  0013    word        symbol[1]
+  0016    word        symbol[1]
+  001c    word        text segment
+  001f    word        symbol[1]
+  0028    word        text segment
+  002e    word        symbol[7]
+  0031    word        symbol[1]
+  003c    word        symbol[2]
+  0046    word        text segment
+  0049    word        symbol[2]
+  0064    word        text segment
+  006e    word        text segment
+  0075    word        text segment
+  0078    word        symbol[2]
+  0085    word        symbol[5]
+  0089    word        text segment
+  008d    word        symbol[0]
+  0090    word        symbol[0]
+  0097    word        symbol[0]
+  009b    word        symbol[1]
+  009f    word        symbol[4]
+  00a7    word        text segment
+  00af    word        symbol[2]
+  00bd    word        symbol[0]
+  00c8    word        symbol[0]
+  00cb    word        text segment
+  00ce    word        symbol[2]
+  00d6    word        symbol[0]
+  00ea    word        symbol[3]
+  00ed    word        symbol[3]
+  00f1    word        symbol[3]
+  00f5    word        symbol[3]
+  00f8    word        symbol[3]
+  0100    word        symbol[9]
+  0108    word        symbol[5]
+  0125    word        symbol[7]
+
+Data relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  (none)
+

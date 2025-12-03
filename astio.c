@@ -1,360 +1,109 @@
 /*
- * astio.c - Low-level I/O and token parsing for AST parser
+ * astio.c - Simple hex-based AST I/O
  *
- * Handles buffered input, whitespace/comment skipping, and basic token reading.
- * These functions are separated from semantic parsing to keep parseast.c focused
- * on higher-level AST construction.
+ * All names/strings are <2-hex-len><hex-bytes>
+ * All numbers are hex terminated by '.'
+ * No whitespace scanning needed.
  */
 #include <stdlib.h>
-#include <stdio.h>
-#include <string.h>
 #include <unistd.h>
-
 #include "astio.h"
 #include "cc2.h"
 
-#define BUFSIZE 512
+#define BUFSIZE 4096
 
-/* Parser state */
 static char inFd;
 static char buf[BUFSIZE];
 static int bufPos;
 static int bufValid;
 
-/* Global parser state (accessible to parser) */
 int lineNum = 1;
 unsigned char curchar;
 
-/* Static buffers for token reading */
 static char symbuf[256];
-static char strbuf[256];
-static char typebuf[256];
 
-/*
- * Initialize I/O subsystem with file descriptor
- */
-void
-initAstio(unsigned char fd)
-{
-    inFd = fd;
-    bufPos = 0;
-    bufValid = 0;
-    lineNum = 1;
-    curchar = 0;
+void initAstio(unsigned char fd) {
+	inFd = fd;
+	bufPos = 0;
+	bufValid = 0;
+	lineNum = 1;
+	curchar = 0;
 }
 
-/*
- * Read next character from input
- * Returns 0 on EOF
- */
-unsigned char
-nextchar(void)
-{
-    if (bufPos >= bufValid) {
-        bufValid = read(inFd, buf, BUFSIZE);
-        if (bufValid <= 0) {
-            curchar = 0;
-            return 0;
-        }
-        bufPos = 0;
-    }
-    curchar = buf[bufPos++];
-    if (curchar == '\n') {
-        lineNum++;
-    }
-    return curchar;
+unsigned char nextchar(void) {
+	if (bufPos >= bufValid) {
+		bufValid = read(inFd, buf, BUFSIZE);
+		if (bufValid <= 0) {
+			curchar = 0;
+			return 0;
+		}
+		bufPos = 0;
+	}
+	curchar = buf[bufPos++];
+	if (curchar == '\n') lineNum++;
+	return curchar;
 }
 
-/*
- * Skip whitespace
- */
-static void
-skipws(void)
-{
-    while (curchar == ' ' || curchar == '\t' || curchar == '\n') {
-        nextchar();
-    }
+/* Convert hex char to value */
+static int hval(char c) {
+	if (c >= '0' && c <= '9') return c - '0';
+	if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+	if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+	return 0;
 }
 
-/*
- * Skip comments (lines starting with ;)
- */
-static void
-skipcomment(void)
-{
-    if (curchar == ';') {
-        while (curchar && curchar != '\n') {
-            nextchar();
-        }
-        if (curchar == '\n') {
-            nextchar();
-        }
-    }
+/* Read 2 hex chars as byte */
+int readHex2(void) {
+	int h = hval(curchar);
+	int l = hval(nextchar());
+	nextchar();
+	return (h << 4) | l;
 }
 
-/*
- * Skip whitespace and comments
- */
-void
-skip(void)
-{
-    while (1) {
-        skipws();
-        if (curchar == ';') {
-            skipcomment();
-        } else {
-            break;
-        }
-    }
+/* Read hex number terminated by '.' */
+long readNum(void) {
+	long v = 0;
+	int neg = 0;
+	if (curchar == '-') { neg = 1; nextchar(); }
+	while (curchar && curchar != '.') {
+		v = (v << 4) | hval(curchar);
+		nextchar();
+	}
+	if (curchar == '.') nextchar();
+	return neg ? -v : v;
 }
 
-/*
- * Expect and consume a specific character
- */
-unsigned char
-expect(unsigned char c)
-{
-    skip();
-    if (curchar != c) {
-        fdprintf(2, "parseast: line %d: expected '%c', got '%c'\n",
-                 lineNum, c, curchar);
-        return 0;
-    }
-    nextchar();
-    return 1;
+/* Read hex-length-prefixed name into static buffer */
+char *readName(void) {
+	int len = readHex2();
+	int i;
+	for (i = 0; i < len && i < 255; i++)
+		symbuf[i] = readHex2();
+	symbuf[i] = 0;
+	return symbuf;
 }
 
-/*
- * return the index of char c in string s; 255 if miss
- */
-unsigned char
-instring(char c, char *s)
-{
-    unsigned char ret = 0;
-    while (*s) {
-        if (*s == c)
-            return ret;
-        s++;
-        ret++;
-    }
-    return 255;
+/* Read hex-length-prefixed string, return malloc'd copy */
+char *readStr(void) {
+	int len = readHex2();
+	char *s = malloc(len + 1);
+	int i;
+	for (i = 0; i < len; i++)
+		s[i] = readHex2();
+	s[len] = 0;
+	return s;
 }
 
-char *escapes = "tnr\\\"";
-char *escaped = "\t\n\r\\\"";
-
-/*
- * Read a quoted string literal with escape sequences
- * Expects curchar to be on the opening quote
- * Returns pointer to static buffer with unescaped string data
- */
-char *
-readQuotedStr(void)
-{
-    unsigned char i = 0;
-    unsigned char cc;
-
-    skip();
-
-    /* Expect opening quote */
-    if (curchar != '"') {
-        fdprintf(2, "parseast: line %d: expected '\"' at start of string\n",
-            lineNum);
-        strbuf[0] = '\0';
-        return strbuf;
-    }
-
-    nextchar();  /* Skip opening quote */
-
-    /* Read until closing quote */
-    while (1) {
-        cc = curchar;
-        if (!cc || cc == '"')
-            break;
-
-        if (cc == '\\') {
-            nextchar();
-            cc = curchar;
-            if (cc == 'x') {
-                unsigned char val;
-                val = 0;
-                while (1) {
-                    val <<= 4;
-                    nextchar();
-                    cc = curchar | 0x20;
-                    if (cc >= '0' && cc <= '9') {
-                        val += cc - '0';
-                    } else if (cc >= 'a' && cc <= 'f') {
-                        val += cc - 'a' + 10;
-                    } else {
-                        break;
-                    }
-                }
-                cc = val;
-            } else {
-                cc = instring(cc, escapes);
-                if (cc != 255) {
-                    cc = escaped[cc];
-                } else {
-                    cc = curchar;
-                }
-            }
-        }
-        if (i < sizeof(strbuf) - 1) {
-            strbuf[i++] = cc;
-        }
-        nextchar();
-    }
-    strbuf[i] = '\0';
-
-    expect('"');
-    return strbuf;
+/* Skip to next line (for comments/newlines) */
+void skipLine(void) {
+	while (curchar && curchar != '\n')
+		nextchar();
+	if (curchar == '\n')
+		nextchar();
 }
 
-/*
- * Read a symbol name (starting with $ or alphanumeric)
- * Returns pointer to static buffer
- */
-char *
-readSymbol(void)
-{
-    unsigned char i = 0;
-
-    skip();
-
-    /* Symbol can start with $ or letter */
-    if (curchar == '$' || (curchar >= 'a' && curchar <= 'z') ||
-        (curchar >= 'A' && curchar <= 'Z') || curchar == '_') {
-        symbuf[i++] = curchar;
-        nextchar();
-
-        /* Continue with alphanumeric or underscore */
-        while ((curchar >= 'a' && curchar <= 'z') ||
-               (curchar >= 'A' && curchar <= 'Z') ||
-               (curchar >= '0' && curchar <= '9') ||
-               curchar == '_') {
-            if (i < sizeof(symbuf) - 1) {
-                symbuf[i++] = curchar;
-            }
-            nextchar();
-        }
-    }
-
-    symbuf[i] = '\0';
-    return symbuf;
+/* Skip newlines */
+void skipNL(void) {
+	while (curchar == '\n')
+		nextchar();
 }
-
-/*
- * Read a number (decimal integer or constant)
- */
-long
-readNumber(void)
-{
-    long val = 0;
-    char sign = 1;
-
-    skip();
-
-    if (curchar == '-') {
-        sign = -1;
-        nextchar();
-    }
-
-    while (curchar >= '0' && curchar <= '9') {
-        val = val * 10 + (curchar - '0');
-        nextchar();
-    }
-
-    return val * sign;
-}
-
-/*
- * Read a type name (e.g., _short_, _char_, :ptr, :array:10)
- */
-char *
-readType(void)
-{
-    unsigned char i = 0;
-
-    skip();
-
-    /* Type can start with _ or : */
-    if (curchar == '_' || curchar == ':') {
-        while ((curchar >= 'a' && curchar <= 'z') ||
-               (curchar >= 'A' && curchar <= 'Z') ||
-               (curchar >= '0' && curchar <= '9') ||
-               curchar == '_' || curchar == ':' || curchar == '-') {
-            if (i < sizeof(typebuf) - 1) {
-                typebuf[i++] = curchar;
-            }
-            nextchar();
-        }
-    }
-
-    typebuf[i] = '\0';
-    return typebuf;
-}
-
-/*
- * Check if a line is a label (ends with ':')
- */
-unsigned char
-isLabel(char *line)
-{
-    unsigned char len;
-
-    /* Trim trailing whitespace to find actual end */
-    len = strlen(line);
-    while (len > 0 && (line[len-1] == ' ' || line[len-1] == '\t')) {
-        len--;
-    }
-
-    return len > 0 && line[len-1] == ':';
-}
-
-/*
- * Trim leading and trailing whitespace from a line
- * Also collapse multiple consecutive spaces into single spaces
- */
-char *
-trimLine(char *line)
-{
-    char *end;
-    char *src, *dst;
-    char lastWasSpace;
-
-    /* Trim leading space */
-    while (*line == ' ' || *line == '\t') {
-        line++;
-    }
-
-    /* Collapse multiple spaces into single spaces */
-    src = dst = line;
-    lastWasSpace = 0;
-    while (*src) {
-        if (*src == ' ' || *src == '\t') {
-            if (!lastWasSpace) {
-                *dst++ = ' ';
-                lastWasSpace = 1;
-            }
-            src++;
-        } else {
-            *dst++ = *src++;
-            lastWasSpace = 0;
-        }
-    }
-    *dst = '\0';
-
-    /* Trim trailing space */
-    end = line + strlen(line) - 1;
-    while (end >= line && (*end == ' ' || *end == '\t')) {
-        *end = '\0';
-        end--;
-    }
-
-    return line;
-}
-
-/*
- * vim: tabstop=4 shiftwidth=4 expandtab:
- */

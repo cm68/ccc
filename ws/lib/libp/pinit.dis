@@ -1,0 +1,156 @@
+=== lib/libp/pinit.o ===
+
+Header:
+  Magic:       0x99
+  Config:      0x14 little-endian
+  Symlen:      9 chars
+  Symtab:      72 bytes (6 symbols)
+  Text:        165 bytes
+  Data:        0 bytes
+  BSS:         0 bytes
+  Heap:        0 bytes
+  Text offset: 0x0000
+  Data offset: 0x00a5
+
+Disassembly: 165 bytes
+  0000  70           ld (hl),b
+  0001  69           ld l,c
+  0002  6e           ld l,(hl)
+  0003  69           ld l,c
+  0004  74           ld (hl),h
+  0005  00           nop
+_pinit:
+  0006  cd 00 00     call 0000h
+  0009  21 00 00     ld hl,0000h
+  000c  e5           push hl
+  000d  21 04 00     ld hl,0004h
+  0010  19           add hl,de
+  0011  4e           ld c,(hl)
+  0012  23           inc hl
+  0013  46           ld b,(hl)
+  0014  c5           push bc
+  0015  cd 00 00     call 0000h
+  0018  f1           pop af
+  0019  f1           pop af
+  001a  69           ld l,c
+  001b  60           ld h,b
+  001c  22 00 00     ld (0000h),hl
+  001f  21 00 00     ld hl,0000h
+  0022  7e           ld a,(hl)
+  0023  23           inc hl
+  0024  b6           or (hl)
+  0025  ca 3e 00     jp z,003eh
+  0028  21 01 00     ld hl,0001h
+  002b  e5           push hl
+  002c  21 04 00     ld hl,0004h
+  002f  19           add hl,de
+  0030  4e           ld c,(hl)
+  0031  23           inc hl
+  0032  46           ld b,(hl)
+  0033  c5           push bc
+  0034  cd 00 00     call 0000h
+  0037  f1           pop af
+  0038  f1           pop af
+  0039  69           ld l,c
+  003a  60           ld h,b
+  003b  22 00 00     ld (0000h),hl
+  003e  21 00 00     ld hl,0000h
+  0041  e5           push hl
+  0042  21 00 00     ld hl,0000h
+  0045  e5           push hl
+  0046  cd 00 00     call 0000h
+  0049  f1           pop af
+  004a  f1           pop af
+  004b  69           ld l,c
+  004c  60           ld h,b
+  004d  22 00 00     ld (0000h),hl
+  0050  2a 00 00     ld hl,(0000h)
+  0053  e5           push hl
+  0054  21 04 00     ld hl,0004h
+  0057  19           add hl,de
+  0058  c1           pop bc
+  0059  7e           ld a,(hl)
+  005a  02           ld (bc),a
+  005b  23           inc hl
+  005c  7e           ld a,(hl)
+  005d  03           inc bc
+  005e  02           ld (bc),a
+  005f  2a 00 00     ld hl,(0000h)
+  0062  01 02 00     ld bc,0002h
+  0065  09           add hl,bc
+  0066  e5           push hl
+  0067  21 0a 00     ld hl,000ah
+  006a  19           add hl,de
+  006b  c1           pop bc
+  006c  7e           ld a,(hl)
+  006d  02           ld (bc),a
+  006e  23           inc hl
+  006f  7e           ld a,(hl)
+  0070  03           inc bc
+  0071  02           ld (bc),a
+  0072  2a 00 00     ld hl,(0000h)
+  0075  01 04 00     ld bc,0004h
+  0078  09           add hl,bc
+  0079  e5           push hl
+  007a  21 08 00     ld hl,0008h
+  007d  19           add hl,de
+  007e  7e           ld a,(hl)
+  007f  23           inc hl
+  0080  b6           or (hl)
+  0081  ca 8a 00     jp z,008ah
+  0084  01 04 00     ld bc,0004h
+  0087  c3 8d 00     jp 008dh
+  008a  01 02 00     ld bc,0002h
+  008d  e1           pop hl
+  008e  79           ld a,c
+  008f  77           ld (hl),a
+  0090  2a 00 00     ld hl,(0000h)
+  0093  01 05 00     ld bc,0005h
+  0096  09           add hl,bc
+  0097  e5           push hl
+  0098  21 06 00     ld hl,_pinit
+  009b  19           add hl,de
+  009c  c1           pop bc
+  009d  7e           ld a,(hl)
+  009e  02           ld (bc),a
+  009f  01 01 00     ld bc,0001h
+  00a2  c3 00 00     jp 0000h
+
+Data segment: (empty)
+
+Symbol table: 6 symbols (9-char names)
+  Index  Value  Type Seg    Global  Name
+  -----  -----  ---- -----  ------  ----
+  [  0]  0000   08   ext    yes      c.r4
+  [  1]  0000   08   ext    yes      c.rets
+  [  2]  0000   08   ext    yes      c.ents
+  [  3]  0000   08   ext    yes      _p_ckfd
+  [  4]  0000   08   ext    yes      _p_close
+  [  5]  0006   0d   text   yes      _pinit
+
+Text relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  0007    word        symbol[2]
+  0016    word        symbol[3]
+  001d    word        symbol[0]
+  0020    word        symbol[0]
+  0026    word        text segment
+  0035    word        symbol[4]
+  003c    word        symbol[0]
+  003f    word        text segment
+  0047    word        symbol[3]
+  004e    word        symbol[0]
+  0051    word        symbol[0]
+  0060    word        symbol[0]
+  0073    word        symbol[0]
+  0082    word        text segment
+  0088    word        text segment
+  0091    word        symbol[0]
+  00a3    word        symbol[1]
+
+Data relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  (none)
+

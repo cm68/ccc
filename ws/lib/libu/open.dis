@@ -1,0 +1,63 @@
+=== lib/libu/open.o ===
+
+Header:
+  Magic:       0x99
+  Config:      0x14 little-endian
+  Symlen:      9 chars
+  Symtab:      24 bytes (2 symbols)
+  Text:        36 bytes
+  Data:        6 bytes
+  BSS:         0 bytes
+  Heap:        0 bytes
+  Text offset: 0x0000
+  Data offset: 0x0024
+
+Disassembly: 36 bytes
+_open:
+  0000  21 02 00     ld hl,0002h
+  0003  39           add hl,sp
+  0004  7e           ld a,(hl)
+  0005  23           inc hl
+  0006  66           ld h,(hl)
+  0007  6f           ld l,a
+  0008  22 26 00     ld (0026h),hl
+  000b  21 04 00     ld hl,0004h
+  000e  39           add hl,sp
+  000f  7e           ld a,(hl)
+  0010  23           inc hl
+  0011  66           ld h,(hl)
+  0012  6f           ld l,a
+  0013  22 28 00     ld (0028h),hl
+  0016  cf           rst 08h
+  0017  00           nop
+  0018  24           inc h
+  0019  00           nop
+  001a  4d           ld c,l
+  001b  44           ld b,h
+  001c  d0           ret nc
+  001d  01 ff ff     ld bc,ffffh
+  0020  22 00 00     ld (_open),hl
+  0023  c9           ret
+
+Data segment: 6 bytes
+  0000: cf 05 00 00 00 00                                 |......|
+
+Symbol table: 2 symbols (9-char names)
+  Index  Value  Type Seg    Global  Name
+  -----  -----  ---- -----  ------  ----
+  [  0]  0000   08   ext    yes      _errno
+  [  1]  0000   0d   text   yes      _open
+
+Text relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  0009    word        data segment
+  0014    word        data segment
+  0018    word        data segment
+  0021    word        symbol[0]
+
+Data relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  (none)
+

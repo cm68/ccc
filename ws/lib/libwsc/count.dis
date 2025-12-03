@@ -1,0 +1,35 @@
+=== lib/libwsc/count.o ===
+
+Header:
+  Magic:       0x99
+  Config:      0x14 little-endian
+  Symlen:      9 chars
+  Symtab:      12 bytes (1 symbols)
+  Text:        1 bytes
+  Data:        0 bytes
+  BSS:         0 bytes
+  Heap:        0 bytes
+  Text offset: 0x0000
+  Data offset: 0x0001
+
+Disassembly: 1 bytes
+c.count:
+  0000  c9           ret
+
+Data segment: (empty)
+
+Symbol table: 1 symbols (9-char names)
+  Index  Value  Type Seg    Global  Name
+  -----  -----  ---- -----  ------  ----
+  [  0]  0000   0d   text   yes      c.count
+
+Text relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  (none)
+
+Data relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  (none)
+

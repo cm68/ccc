@@ -1,0 +1,52 @@
+=== lib/libp/odd.o ===
+
+Header:
+  Magic:       0x99
+  Config:      0x14 little-endian
+  Symlen:      9 chars
+  Symtab:      36 bytes (3 symbols)
+  Text:        22 bytes
+  Data:        0 bytes
+  BSS:         0 bytes
+  Heap:        0 bytes
+  Text offset: 0x0000
+  Data offset: 0x0016
+
+Disassembly: 22 bytes
+_odd:
+  0000  cd 00 00     call _odd
+  0003  21 04 00     ld hl,0004h
+  0006  19           add hl,de
+  0007  7e           ld a,(hl)
+  0008  23           inc hl
+  0009  66           ld h,(hl)
+  000a  6f           ld l,a
+  000b  7d           ld a,l
+  000c  e6 01        and 01h
+  000e  6f           ld l,a
+  000f  97           sub a
+  0010  67           ld h,a
+  0011  4d           ld c,l
+  0012  44           ld b,h
+  0013  c3 00 00     jp _odd
+
+Data segment: (empty)
+
+Symbol table: 3 symbols (9-char names)
+  Index  Value  Type Seg    Global  Name
+  -----  -----  ---- -----  ------  ----
+  [  0]  0000   08   ext    yes      c.ret
+  [  1]  0000   08   ext    yes      c.ent
+  [  2]  0000   0d   text   yes      _odd
+
+Text relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  0001    word        symbol[1]
+  0014    word        symbol[0]
+
+Data relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  (none)
+

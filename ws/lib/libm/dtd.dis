@@ -1,0 +1,61 @@
+=== lib/libm/dtd.o ===
+
+Header:
+  Magic:       0x99
+  Config:      0x14 little-endian
+  Symlen:      9 chars
+  Symtab:      24 bytes (2 symbols)
+  Text:        34 bytes
+  Data:        0 bytes
+  BSS:         0 bytes
+  Heap:        0 bytes
+  Text offset: 0x0000
+  Data offset: 0x0022
+
+Disassembly: 34 bytes
+c.dtd:
+  0000  e5           push hl
+  0001  c5           push bc
+  0002  21 08 00     ld hl,0008h
+  0005  39           add hl,sp
+  0006  4e           ld c,(hl)
+  0007  23           inc hl
+  0008  46           ld b,(hl)
+  0009  21 06 00     ld hl,0006h
+  000c  39           add hl,sp
+  000d  7e           ld a,(hl)
+  000e  23           inc hl
+  000f  66           ld h,(hl)
+  0010  6f           ld l,a
+  0011  d5           push de
+  0012  1e 07        ld e,07h
+  0014  7e           ld a,(hl)
+  0015  02           ld (bc),a
+  0016  23           inc hl
+  0017  7e           ld a,(hl)
+  0018  03           inc bc
+  0019  02           ld (bc),a
+  001a  1d           dec e
+  001b  c2 16 00     jp nz,0016h
+  001e  d1           pop de
+  001f  c3 00 00     jp c.dtd
+
+Data segment: (empty)
+
+Symbol table: 2 symbols (9-char names)
+  Index  Value  Type Seg    Global  Name
+  -----  -----  ---- -----  ------  ----
+  [  0]  0000   08   ext    yes      c.lret
+  [  1]  0000   0d   text   yes      c.dtd
+
+Text relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  001c    word        text segment
+  0020    word        symbol[0]
+
+Data relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  (none)
+

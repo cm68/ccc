@@ -1,0 +1,546 @@
+=== lib/libmd/getpwent.o ===
+
+Header:
+  Magic:       0x99
+  Config:      0x14 little-endian
+  Symlen:      9 chars
+  Symtab:      216 bytes (18 symbols)
+  Text:        645 bytes
+  Data:        276 bytes
+  BSS:         0 bytes
+  Heap:        0 bytes
+  Text offset: 0x0000
+  Data offset: 0x0285
+
+Disassembly: 645 bytes
+_getpwen:
+  0000  cd 00 00     call _getpwen
+  0003  21 85 02     ld hl,0285h
+  0006  7e           ld a,(hl)
+  0007  23           inc hl
+  0008  b6           or (hl)
+  0009  c2 1a 00     jp nz,001ah
+  000c  cd 29 02     call _setpwen
+  000f  79           ld a,c
+  0010  b0           or b
+  0011  c2 1a 00     jp nz,001ah
+  0014  01 00 00     ld bc,_getpwen
+  0017  c3 00 00     jp _getpwen
+  001a  2a 85 02     ld hl,(0285h)
+  001d  e5           push hl
+  001e  21 00 01     ld hl,0100h
+  0021  e5           push hl
+  0022  21 87 02     ld hl,0287h
+  0025  e5           push hl
+  0026  cd 00 00     call _getpwen
+  0029  f1           pop af
+  002a  f1           pop af
+  002b  f1           pop af
+  002c  2a 85 02     ld hl,(0285h)
+  002f  01 06 00     ld bc,0006h
+  0032  09           add hl,bc
+  0033  7e           ld a,(hl)
+  0034  23           inc hl
+  0035  66           ld h,(hl)
+  0036  6f           ld l,a
+  0037  7d           ld a,l
+  0038  e6 30        and 30h
+  003a  ca 43 00     jp z,0043h
+  003d  01 00 00     ld bc,_getpwen
+  0040  c3 00 00     jp _getpwen
+  0043  21 87 02     ld hl,0287h
+  0046  22 87 03     ld (0387h),hl
+  0049  2a 87 03     ld hl,(0387h)
+  004c  22 89 03     ld (0389h),hl
+  004f  2a 87 03     ld hl,(0387h)
+  0052  e5           push hl
+  0053  cd 01 01     call __pwnext
+  0056  f1           pop af
+  0057  69           ld l,c
+  0058  60           ld h,b
+  0059  22 87 03     ld (0387h),hl
+  005c  2a 87 03     ld hl,(0387h)
+  005f  22 8b 03     ld (038bh),hl
+  0062  2a 87 03     ld hl,(0387h)
+  0065  e5           push hl
+  0066  cd 01 01     call __pwnext
+  0069  f1           pop af
+  006a  69           ld l,c
+  006b  60           ld h,b
+  006c  22 87 03     ld (0387h),hl
+  006f  21 87 03     ld hl,0387h
+  0072  7e           ld a,(hl)
+  0073  23           inc hl
+  0074  b6           or (hl)
+  0075  ca 1a 00     jp z,001ah
+  0078  2a 87 03     ld hl,(0387h)
+  007b  e5           push hl
+  007c  cd 00 00     call _getpwen
+  007f  f1           pop af
+  0080  79           ld a,c
+  0081  32 8d 03     ld (038dh),a
+  0084  2a 87 03     ld hl,(0387h)
+  0087  e5           push hl
+  0088  cd 01 01     call __pwnext
+  008b  f1           pop af
+  008c  69           ld l,c
+  008d  60           ld h,b
+  008e  22 87 03     ld (0387h),hl
+  0091  21 87 03     ld hl,0387h
+  0094  7e           ld a,(hl)
+  0095  23           inc hl
+  0096  b6           or (hl)
+  0097  ca 1a 00     jp z,001ah
+  009a  2a 87 03     ld hl,(0387h)
+  009d  e5           push hl
+  009e  cd 00 00     call _getpwen
+  00a1  f1           pop af
+  00a2  79           ld a,c
+  00a3  32 8e 03     ld (038eh),a
+  00a6  2a 87 03     ld hl,(0387h)
+  00a9  e5           push hl
+  00aa  cd 01 01     call __pwnext
+  00ad  f1           pop af
+  00ae  69           ld l,c
+  00af  60           ld h,b
+  00b0  22 87 03     ld (0387h),hl
+  00b3  2a 87 03     ld hl,(0387h)
+  00b6  22 8f 03     ld (038fh),hl
+  00b9  2a 87 03     ld hl,(0387h)
+  00bc  e5           push hl
+  00bd  cd 01 01     call __pwnext
+  00c0  f1           pop af
+  00c1  69           ld l,c
+  00c2  60           ld h,b
+  00c3  22 87 03     ld (0387h),hl
+  00c6  2a 87 03     ld hl,(0387h)
+  00c9  22 91 03     ld (0391h),hl
+  00cc  2a 87 03     ld hl,(0387h)
+  00cf  e5           push hl
+  00d0  cd 01 01     call __pwnext
+  00d3  f1           pop af
+  00d4  69           ld l,c
+  00d5  60           ld h,b
+  00d6  22 87 03     ld (0387h),hl
+  00d9  2a 87 03     ld hl,(0387h)
+  00dc  22 93 03     ld (0393h),hl
+  00df  2a 87 03     ld hl,(0387h)
+  00e2  e5           push hl
+  00e3  cd 01 01     call __pwnext
+  00e6  f1           pop af
+  00e7  69           ld l,c
+  00e8  60           ld h,b
+  00e9  22 87 03     ld (0387h),hl
+  00ec  21 87 03     ld hl,0387h
+  00ef  7e           ld a,(hl)
+  00f0  23           inc hl
+  00f1  b6           or (hl)
+  00f2  ca 1a 00     jp z,001ah
+  00f5  21 89 03     ld hl,0389h
+  00f8  4d           ld c,l
+  00f9  44           ld b,h
+  00fa  c3 00 00     jp _getpwen
+  00fd  3a 0a 0d     ld a,(0d0ah)
+  0100  00           nop
+__pwnext:
+  0101  cd 00 00     call _getpwen
+  0104  21 04 00     ld hl,0004h
+  0107  19           add hl,de
+  0108  7e           ld a,(hl)
+  0109  23           inc hl
+  010a  b6           or (hl)
+  010b  c2 14 01     jp nz,0114h
+  010e  01 00 00     ld bc,_getpwen
+  0111  c3 00 00     jp _getpwen
+  0114  21 04 00     ld hl,0004h
+  0117  19           add hl,de
+  0118  7e           ld a,(hl)
+  0119  23           inc hl
+  011a  66           ld h,(hl)
+  011b  6f           ld l,a
+  011c  7e           ld a,(hl)
+  011d  b7           or a
+  011e  ca 4d 01     jp z,014dh
+  0121  21 fd 00     ld hl,00fdh
+  0124  e5           push hl
+  0125  21 04 00     ld hl,0004h
+  0128  19           add hl,de
+  0129  7e           ld a,(hl)
+  012a  23           inc hl
+  012b  66           ld h,(hl)
+  012c  6f           ld l,a
+  012d  7e           ld a,(hl)
+  012e  4f           ld c,a
+  012f  87           add a,a
+  0130  9f           sbc a,a
+  0131  47           ld b,a
+  0132  c5           push bc
+  0133  cd 00 00     call _getpwen
+  0136  f1           pop af
+  0137  f1           pop af
+  0138  79           ld a,c
+  0139  b0           or b
+  013a  c2 4d 01     jp nz,014dh
+  013d  21 04 00     ld hl,0004h
+  0140  19           add hl,de
+  0141  7e           ld a,(hl)
+  0142  c6 01        add a,01h
+  0144  77           ld (hl),a
+  0145  23           inc hl
+  0146  7e           ld a,(hl)
+  0147  ce 00        adc a,00h
+  0149  77           ld (hl),a
+  014a  c3 14 01     jp 0114h
+  014d  21 04 00     ld hl,0004h
+  0150  19           add hl,de
+  0151  7e           ld a,(hl)
+  0152  23           inc hl
+  0153  66           ld h,(hl)
+  0154  6f           ld l,a
+  0155  7e           ld a,(hl)
+  0156  b7           or a
+  0157  c2 60 01     jp nz,0160h
+  015a  01 00 00     ld bc,_getpwen
+  015d  c3 00 00     jp _getpwen
+  0160  21 04 00     ld hl,0004h
+  0163  19           add hl,de
+  0164  4e           ld c,(hl)
+  0165  23           inc hl
+  0166  46           ld b,(hl)
+  0167  c5           push bc
+  0168  21 04 00     ld hl,0004h
+  016b  19           add hl,de
+  016c  7e           ld a,(hl)
+  016d  c6 01        add a,01h
+  016f  77           ld (hl),a
+  0170  23           inc hl
+  0171  7e           ld a,(hl)
+  0172  ce 00        adc a,00h
+  0174  77           ld (hl),a
+  0175  e1           pop hl
+  0176  36 00        ld (hl),00h
+  0178  21 04 00     ld hl,0004h
+  017b  19           add hl,de
+  017c  7e           ld a,(hl)
+  017d  23           inc hl
+  017e  66           ld h,(hl)
+  017f  6f           ld l,a
+  0180  4d           ld c,l
+  0181  44           ld b,h
+  0182  c3 00 00     jp _getpwen
+_getpwui:
+  0185  cd 00 00     call _getpwen
+  0188  cd 29 02     call _setpwen
+  018b  79           ld a,c
+  018c  b0           or b
+  018d  c2 96 01     jp nz,0196h
+  0190  01 00 00     ld bc,_getpwen
+  0193  c3 00 00     jp _getpwen
+  0196  cd 00 00     call _getpwen
+  0199  69           ld l,c
+  019a  60           ld h,b
+  019b  22 95 03     ld (0395h),hl
+  019e  21 95 03     ld hl,0395h
+  01a1  7e           ld a,(hl)
+  01a2  23           inc hl
+  01a3  b6           or (hl)
+  01a4  c2 ad 01     jp nz,01adh
+  01a7  01 00 00     ld bc,_getpwen
+  01aa  c3 00 00     jp _getpwen
+  01ad  2a 95 03     ld hl,(0395h)
+  01b0  23           inc hl
+  01b1  23           inc hl
+  01b2  23           inc hl
+  01b3  23           inc hl
+  01b4  7e           ld a,(hl)
+  01b5  4f           ld c,a
+  01b6  97           sub a
+  01b7  47           ld b,a
+  01b8  21 04 00     ld hl,0004h
+  01bb  19           add hl,de
+  01bc  79           ld a,c
+  01bd  be           cp (hl)
+  01be  c2 c4 01     jp nz,01c4h
+  01c1  78           ld a,b
+  01c2  23           inc hl
+  01c3  be           cp (hl)
+  01c4  c2 96 01     jp nz,0196h
+  01c7  2a 95 03     ld hl,(0395h)
+  01ca  4d           ld c,l
+  01cb  44           ld b,h
+  01cc  c3 00 00     jp _getpwen
+_getpwna:
+  01cf  cd 00 00     call _getpwen
+  01d2  cd 29 02     call _setpwen
+  01d5  79           ld a,c
+  01d6  b0           or b
+  01d7  c2 e0 01     jp nz,01e0h
+  01da  01 00 00     ld bc,_getpwen
+  01dd  c3 00 00     jp _getpwen
+  01e0  cd 00 00     call _getpwen
+  01e3  69           ld l,c
+  01e4  60           ld h,b
+  01e5  22 97 03     ld (0397h),hl
+  01e8  21 97 03     ld hl,0397h
+  01eb  7e           ld a,(hl)
+  01ec  23           inc hl
+  01ed  b6           or (hl)
+  01ee  c2 f7 01     jp nz,01f7h
+  01f1  01 00 00     ld bc,_getpwen
+  01f4  c3 00 00     jp _getpwen
+  01f7  21 04 00     ld hl,0004h
+  01fa  19           add hl,de
+  01fb  4e           ld c,(hl)
+  01fc  23           inc hl
+  01fd  46           ld b,(hl)
+  01fe  c5           push bc
+  01ff  2a 97 03     ld hl,(0397h)
+  0202  4e           ld c,(hl)
+  0203  23           inc hl
+  0204  46           ld b,(hl)
+  0205  c5           push bc
+  0206  cd 00 00     call _getpwen
+  0209  f1           pop af
+  020a  f1           pop af
+  020b  79           ld a,c
+  020c  b0           or b
+  020d  ca e0 01     jp z,01e0h
+  0210  2a 97 03     ld hl,(0397h)
+  0213  4d           ld c,l
+  0214  44           ld b,h
+  0215  c3 00 00     jp _getpwen
+  0218  72           ld (hl),d
+  0219  65           ld h,l
+  021a  61           ld h,c
+  021b  64           ld h,h
+  021c  00           nop
+  021d  2f           cpl
+  021e  65           ld h,l
+  021f  74           ld (hl),h
+  0220  63           ld h,e
+  0221  2f           cpl
+  0222  70           ld (hl),b
+  0223  61           ld h,c
+  0224  73           ld (hl),e
+  0225  73           ld (hl),e
+  0226  77           ld (hl),a
+  0227  64           ld h,h
+  0228  00           nop
+_setpwen:
+  0229  cd 00 00     call _getpwen
+  022c  21 85 02     ld hl,0285h
+  022f  7e           ld a,(hl)
+  0230  23           inc hl
+  0231  b6           or (hl)
+  0232  ca 40 02     jp z,0240h
+  0235  2a 85 02     ld hl,(0285h)
+  0238  e5           push hl
+  0239  cd 00 00     call _getpwen
+  023c  f1           pop af
+  023d  c3 61 02     jp 0261h
+  0240  21 18 02     ld hl,0218h
+  0243  e5           push hl
+  0244  21 1d 02     ld hl,021dh
+  0247  e5           push hl
+  0248  cd 00 00     call _getpwen
+  024b  f1           pop af
+  024c  f1           pop af
+  024d  69           ld l,c
+  024e  60           ld h,b
+  024f  22 85 02     ld (0285h),hl
+  0252  21 85 02     ld hl,0285h
+  0255  7e           ld a,(hl)
+  0256  23           inc hl
+  0257  b6           or (hl)
+  0258  c2 61 02     jp nz,0261h
+  025b  01 00 00     ld bc,_getpwen
+  025e  c3 00 00     jp _getpwen
+  0261  01 01 00     ld bc,0001h
+  0264  c3 00 00     jp _getpwen
+_endpwen:
+  0267  cd 00 00     call _getpwen
+  026a  21 85 02     ld hl,0285h
+  026d  7e           ld a,(hl)
+  026e  23           inc hl
+  026f  b6           or (hl)
+  0270  ca 82 02     jp z,0282h
+  0273  2a 85 02     ld hl,(0285h)
+  0276  e5           push hl
+  0277  cd 00 00     call _getpwen
+  027a  f1           pop af
+  027b  97           sub a
+  027c  32 85 02     ld (0285h),a
+  027f  32 86 02     ld (0286h),a
+  0282  c3 00 00     jp _getpwen
+
+Data segment: 276 bytes
+  0000: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00  |................|
+  0010: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00  |................|
+  0020: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00  |................|
+  0030: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00  |................|
+  0040: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00  |................|
+  0050: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00  |................|
+  0060: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00  |................|
+  0070: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00  |................|
+  0080: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00  |................|
+  0090: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00  |................|
+  00a0: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00  |................|
+  00b0: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00  |................|
+  00c0: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00  |................|
+  00d0: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00  |................|
+  00e0: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00  |................|
+  00f0: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00  |................|
+  0100: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00  |................|
+  0110: 00 00 00 00                                       |....|
+
+Symbol table: 18 symbols (9-char names)
+  Index  Value  Type Seg    Global  Name
+  -----  -----  ---- -----  ------  ----
+  [  0]  0000   08   ext    yes      __iob
+  [  1]  0000   08   ext    yes      __exit
+  [  2]  0000   08   ext    yes      _fgets
+  [  3]  0000   08   ext    yes      _fopen
+  [  4]  0000   08   ext    yes      _equal
+  [  5]  0000   08   ext    yes      _rewind
+  [  6]  0000   08   ext    yes      c.ret
+  [  7]  0000   08   ext    yes      _fclose
+  [  8]  0000   08   ext    yes      _exit
+  [  9]  0000   08   ext    yes      c.ent
+  [ 10]  0000   08   ext    yes      _atoi
+  [ 11]  0000   08   ext    yes      _element
+  [ 12]  0229   0d   text   yes      _setpwen
+  [ 13]  0185   0d   text   yes      _getpwui
+  [ 14]  0101   0d   text   yes      __pwnext
+  [ 15]  0000   0d   text   yes      _getpwen
+  [ 16]  01cf   0d   text   yes      _getpwna
+  [ 17]  0267   0d   text   yes      _endpwen
+
+Text relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  0001    word        symbol[9]
+  0004    word        data segment
+  000a    word        text segment
+  000d    word        text segment
+  0012    word        text segment
+  0018    word        symbol[6]
+  001b    word        data segment
+  0023    word        data segment
+  0027    word        symbol[2]
+  002d    word        data segment
+  003b    word        text segment
+  0041    word        symbol[6]
+  0044    word        data segment
+  0047    word        data segment
+  004a    word        data segment
+  004d    word        data segment
+  0050    word        data segment
+  0054    word        text segment
+  005a    word        data segment
+  005d    word        data segment
+  0060    word        data segment
+  0063    word        data segment
+  0067    word        text segment
+  006d    word        data segment
+  0070    word        data segment
+  0076    word        text segment
+  0079    word        data segment
+  007d    word        symbol[10]
+  0082    word        data segment
+  0085    word        data segment
+  0089    word        text segment
+  008f    word        data segment
+  0092    word        data segment
+  0098    word        text segment
+  009b    word        data segment
+  009f    word        symbol[10]
+  00a4    word        data segment
+  00a7    word        data segment
+  00ab    word        text segment
+  00b1    word        data segment
+  00b4    word        data segment
+  00b7    word        data segment
+  00ba    word        data segment
+  00be    word        text segment
+  00c4    word        data segment
+  00c7    word        data segment
+  00ca    word        data segment
+  00cd    word        data segment
+  00d1    word        text segment
+  00d7    word        data segment
+  00da    word        data segment
+  00dd    word        data segment
+  00e0    word        data segment
+  00e4    word        text segment
+  00ea    word        data segment
+  00ed    word        data segment
+  00f3    word        text segment
+  00f6    word        data segment
+  00fb    word        symbol[6]
+  0102    word        symbol[9]
+  010c    word        text segment
+  0112    word        symbol[6]
+  011f    word        text segment
+  0122    word        text segment
+  0134    word        symbol[11]
+  013b    word        text segment
+  014b    word        text segment
+  0158    word        text segment
+  015e    word        symbol[6]
+  0183    word        symbol[6]
+  0186    word        symbol[9]
+  0189    word        text segment
+  018e    word        text segment
+  0194    word        symbol[6]
+  0197    word        text segment
+  019c    word        data segment
+  019f    word        data segment
+  01a5    word        text segment
+  01ab    word        symbol[6]
+  01ae    word        data segment
+  01bf    word        text segment
+  01c5    word        text segment
+  01c8    word        data segment
+  01cd    word        symbol[6]
+  01d0    word        symbol[9]
+  01d3    word        text segment
+  01d8    word        text segment
+  01de    word        symbol[6]
+  01e1    word        text segment
+  01e6    word        data segment
+  01e9    word        data segment
+  01ef    word        text segment
+  01f5    word        symbol[6]
+  0200    word        data segment
+  0207    word        symbol[4]
+  020e    word        text segment
+  0211    word        data segment
+  0216    word        symbol[6]
+  022a    word        symbol[9]
+  022d    word        data segment
+  0233    word        text segment
+  0236    word        data segment
+  023a    word        symbol[5]
+  023e    word        text segment
+  0241    word        text segment
+  0245    word        text segment
+  0249    word        symbol[3]
+  0250    word        data segment
+  0253    word        data segment
+  0259    word        text segment
+  025f    word        symbol[6]
+  0265    word        symbol[6]
+  0268    word        symbol[9]
+  026b    word        data segment
+  0271    word        text segment
+  0274    word        data segment
+  0278    word        symbol[7]
+  027d    word        data segment
+  0280    word        data segment
+  0283    word        symbol[6]
+
+Data relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  (none)
+

@@ -1,0 +1,50 @@
+=== lib/libwsc/in.o ===
+
+Header:
+  Magic:       0x99
+  Config:      0x14 little-endian
+  Symlen:      9 chars
+  Symtab:      24 bytes (2 symbols)
+  Text:        22 bytes
+  Data:        0 bytes
+  BSS:         0 bytes
+  Heap:        0 bytes
+  Text offset: 0x0000
+  Data offset: 0x0016
+
+Disassembly: 22 bytes
+_in:
+  0000  c1           pop bc
+  0001  e1           pop hl
+  0002  26 c9        ld h,c9h
+  0004  e5           push hl
+  0005  21 00 db     ld hl,db00h
+  0008  e5           push hl
+  0009  21 00 00     ld hl,_in
+  000c  39           add hl,sp
+  000d  cd 00 00     call _in
+  0010  e1           pop hl
+  0011  c5           push bc
+  0012  4f           ld c,a
+  0013  97           sub a
+  0014  47           ld b,a
+  0015  c9           ret
+
+Data segment: (empty)
+
+Symbol table: 2 symbols (9-char names)
+  Index  Value  Type Seg    Global  Name
+  -----  -----  ---- -----  ------  ----
+  [  0]  0000   08   ext    yes      c.ihl
+  [  1]  0000   0d   text   yes      _in
+
+Text relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  000e    word        symbol[0]
+
+Data relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  (none)
+

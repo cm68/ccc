@@ -1,0 +1,47 @@
+=== lib/libwsc/out.o ===
+
+Header:
+  Magic:       0x99
+  Config:      0x14 little-endian
+  Symlen:      9 chars
+  Symtab:      24 bytes (2 symbols)
+  Text:        19 bytes
+  Data:        0 bytes
+  BSS:         0 bytes
+  Heap:        0 bytes
+  Text offset: 0x0000
+  Data offset: 0x0013
+
+Disassembly: 19 bytes
+_out:
+  0000  c1           pop bc
+  0001  e1           pop hl
+  0002  26 c9        ld h,c9h
+  0004  e3           ex (sp),hl
+  0005  7d           ld a,l
+  0006  21 00 d3     ld hl,d300h
+  0009  e5           push hl
+  000a  21 00 00     ld hl,_out
+  000d  39           add hl,sp
+  000e  cd 00 00     call _out
+  0011  c5           push bc
+  0012  c9           ret
+
+Data segment: (empty)
+
+Symbol table: 2 symbols (9-char names)
+  Index  Value  Type Seg    Global  Name
+  -----  -----  ---- -----  ------  ----
+  [  0]  0000   08   ext    yes      c.ihl
+  [  1]  0000   0d   text   yes      _out
+
+Text relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  000f    word        symbol[0]
+
+Data relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  (none)
+

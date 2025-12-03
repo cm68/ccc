@@ -1,0 +1,42 @@
+=== lib/libu/pause.o ===
+
+Header:
+  Magic:       0x99
+  Config:      0x14 little-endian
+  Symlen:      9 chars
+  Symtab:      24 bytes (2 symbols)
+  Text:        8 bytes
+  Data:        2 bytes
+  BSS:         0 bytes
+  Heap:        0 bytes
+  Text offset: 0x0000
+  Data offset: 0x0008
+
+Disassembly: 8 bytes
+_pause:
+  0000  cf           rst 08h
+  0001  00           nop
+  0002  08           ex af,af'
+  0003  00           nop
+  0004  01 00 00     ld bc,_pause
+  0007  c9           ret
+
+Data segment: 2 bytes
+  0000: cf 1d                                             |..|
+
+Symbol table: 2 symbols (9-char names)
+  Index  Value  Type Seg    Global  Name
+  -----  -----  ---- -----  ------  ----
+  [  0]  0000   08   ext    yes      _errno
+  [  1]  0000   0d   text   yes      _pause
+
+Text relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  0002    word        data segment
+
+Data relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  (none)
+

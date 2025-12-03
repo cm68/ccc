@@ -1,0 +1,167 @@
+=== lib/libp/eoln.o ===
+
+Header:
+  Magic:       0x99
+  Config:      0x14 little-endian
+  Symlen:      9 chars
+  Symtab:      96 bytes (8 symbols)
+  Text:        157 bytes
+  Data:        5 bytes
+  BSS:         0 bytes
+  Heap:        0 bytes
+  Text offset: 0x0000
+  Data offset: 0x009d
+
+Disassembly: 157 bytes
+  0000  91           sub c
+  0001  00           nop
+  0002  01 00 83     ld bc,8300h
+  0005  00           nop
+  0006  02           ld (bc),a
+  0007  00           nop
+  0008  76           halt
+  0009  00           nop
+  000a  00           nop
+  000b  00           nop
+  000c  76           halt
+  000d  00           nop
+  000e  05           dec b
+  000f  00           nop
+  0010  76           halt
+  0011  00           nop
+  0012  04           inc b
+  0013  00           nop
+  0014  00           nop
+  0015  00           nop
+  0016  97           sub a
+  0017  00           nop
+  0018  65           ld h,l
+  0019  6e           ld l,(hl)
+  001a  64           ld h,h
+  001b  20 6f        jr nz,008ch
+  001d  66           ld h,(hl)
+  001e  20 66        jr nz,0086h
+  0020  69           ld l,c
+  0021  6c           ld l,h
+  0022  65           ld h,l
+  0023  00           nop
+  0024  6e           ld l,(hl)
+  0025  6f           ld l,a
+  0026  74           ld (hl),h
+  0027  20 74        jr nz,009dh
+  0029  65           ld h,l
+  002a  78           ld a,b
+  002b  74           ld (hl),h
+  002c  20 66        jr nz,0094h
+  002e  69           ld l,c
+  002f  6c           ld l,h
+  0030  65           ld h,l
+  0031  00           nop
+_eoln:
+  0032  cd 00 00     call 0000h
+  0035  21 9d 00     ld hl,009dh
+  0038  e5           push hl
+  0039  21 04 00     ld hl,0004h
+  003c  19           add hl,de
+  003d  4e           ld c,(hl)
+  003e  23           inc hl
+  003f  46           ld b,(hl)
+  0040  c5           push bc
+  0041  cd 00 00     call 0000h
+  0044  f1           pop af
+  0045  f1           pop af
+  0046  69           ld l,c
+  0047  60           ld h,b
+  0048  22 00 00     ld (0000h),hl
+  004b  2a 00 00     ld hl,(0000h)
+  004e  01 02 00     ld bc,0002h
+  0051  09           add hl,bc
+  0052  7e           ld a,(hl)
+  0053  23           inc hl
+  0054  b6           or (hl)
+  0055  ca 65 00     jp z,0065h
+  0058  21 24 00     ld hl,0024h
+  005b  e5           push hl
+  005c  21 9d 00     ld hl,009dh
+  005f  e5           push hl
+  0060  cd 00 00     call 0000h
+  0063  f1           pop af
+  0064  f1           pop af
+  0065  2a 00 00     ld hl,(0000h)
+  0068  01 04 00     ld bc,0004h
+  006b  09           add hl,bc
+  006c  7e           ld a,(hl)
+  006d  4f           ld c,a
+  006e  97           sub a
+  006f  47           ld b,a
+  0070  21 00 00     ld hl,0000h
+  0073  c3 00 00     jp 0000h
+  0076  21 18 00     ld hl,0018h
+  0079  e5           push hl
+  007a  21 9d 00     ld hl,009dh
+  007d  e5           push hl
+  007e  cd 00 00     call 0000h
+  0081  f1           pop af
+  0082  f1           pop af
+  0083  2a 00 00     ld hl,(0000h)
+  0086  e5           push hl
+  0087  cd 00 00     call 0000h
+  008a  f1           pop af
+  008b  c3 65 00     jp 0065h
+  008e  c3 65 00     jp 0065h
+  0091  01 01 00     ld bc,0001h
+  0094  c3 00 00     jp 0000h
+  0097  01 00 00     ld bc,0000h
+  009a  c3 00 00     jp 0000h
+
+Data segment: 5 bytes
+  0000: 65 6f 6c 6e 00                                    |eoln.|
+
+Symbol table: 8 symbols (9-char names)
+  Index  Value  Type Seg    Global  Name
+  -----  -----  ---- -----  ------  ----
+  [  0]  0000   08   ext    yes      c.r4
+  [  1]  0000   08   ext    yes      c.switch
+  [  2]  0000   08   ext    yes      c.rets
+  [  3]  0000   08   ext    yes      _p_load
+  [  4]  0000   08   ext    yes      c.ents
+  [  5]  0000   08   ext    yes      _p_ckfd
+  [  6]  0000   08   ext    yes      _p_abort
+  [  7]  0032   0d   text   yes      _eoln
+
+Text relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  0000    word        text segment
+  0004    word        text segment
+  0008    word        text segment
+  000c    word        text segment
+  0010    word        text segment
+  0016    word        text segment
+  0033    word        symbol[4]
+  0036    word        data segment
+  0042    word        symbol[5]
+  0049    word        symbol[0]
+  004c    word        symbol[0]
+  0056    word        text segment
+  0059    word        text segment
+  005d    word        data segment
+  0061    word        symbol[6]
+  0066    word        symbol[0]
+  0071    word        text segment
+  0074    word        symbol[1]
+  0077    word        text segment
+  007b    word        data segment
+  007f    word        symbol[6]
+  0084    word        symbol[0]
+  0088    word        symbol[3]
+  008c    word        text segment
+  008f    word        text segment
+  0095    word        symbol[2]
+  009b    word        symbol[2]
+
+Data relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  (none)
+

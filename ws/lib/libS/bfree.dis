@@ -1,0 +1,92 @@
+=== lib/libS/bfree.o ===
+
+Header:
+  Magic:       0x99
+  Config:      0x14 little-endian
+  Symlen:      9 chars
+  Symtab:      84 bytes (7 symbols)
+  Text:        71 bytes
+  Data:        0 bytes
+  BSS:         0 bytes
+  Heap:        0 bytes
+  Text offset: 0x0000
+  Data offset: 0x0047
+
+Disassembly: 71 bytes
+_bfree:
+  0000  cd 00 00     call _bfree
+  0003  21 04 00     ld hl,0004h
+  0006  19           add hl,de
+  0007  7e           ld a,(hl)
+  0008  23           inc hl
+  0009  66           ld h,(hl)
+  000a  6f           ld l,a
+  000b  22 00 00     ld (_bfree),hl
+  000e  21 06 00     ld hl,0006h
+  0011  19           add hl,de
+  0012  7e           ld a,(hl)
+  0013  23           inc hl
+  0014  66           ld h,(hl)
+  0015  6f           ld l,a
+  0016  22 00 00     ld (_bfree),hl
+  0019  2a 00 00     ld hl,(_bfree)
+  001c  e5           push hl
+  001d  2a 00 00     ld hl,(_bfree)
+  0020  e5           push hl
+  0021  21 04 00     ld hl,0004h
+  0024  e5           push hl
+  0025  cd 00 00     call _bfree
+  0028  e1           pop hl
+  0029  c1           pop bc
+  002a  7d           ld a,l
+  002b  02           ld (bc),a
+  002c  7c           ld a,h
+  002d  03           inc bc
+  002e  02           ld (bc),a
+  002f  0b           dec bc
+  0030  69           ld l,c
+  0031  60           ld h,b
+  0032  7e           ld a,(hl)
+  0033  23           inc hl
+  0034  b6           or (hl)
+  0035  ca 44 00     jp z,0044h
+  0038  2a 00 00     ld hl,(_bfree)
+  003b  01 04 00     ld bc,0004h
+  003e  09           add hl,bc
+  003f  e5           push hl
+  0040  cd 00 00     call _bfree
+  0043  f1           pop af
+  0044  c3 00 00     jp _bfree
+
+Data segment: (empty)
+
+Symbol table: 7 symbols (9-char names)
+  Index  Value  Type Seg    Global  Name
+  -----  -----  ---- -----  ------  ----
+  [  0]  0000   08   ext    yes      c.r4
+  [  1]  0000   08   ext    yes      c.r2
+  [  2]  0000   08   ext    yes      c.rets
+  [  3]  0000   08   ext    yes      c.ents
+  [  4]  0000   08   ext    yes      c.udiv
+  [  5]  0000   08   ext    yes      _free
+  [  6]  0000   0d   text   yes      _bfree
+
+Text relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  0001    word        symbol[3]
+  000c    word        symbol[0]
+  0017    word        symbol[1]
+  001a    word        symbol[0]
+  001e    word        symbol[1]
+  0026    word        symbol[4]
+  0036    word        text segment
+  0039    word        symbol[0]
+  0041    word        symbol[5]
+  0045    word        symbol[2]
+
+Data relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  (none)
+

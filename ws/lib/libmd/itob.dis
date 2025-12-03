@@ -1,0 +1,196 @@
+=== lib/libmd/itob.o ===
+
+Header:
+  Magic:       0x99
+  Config:      0x14 little-endian
+  Symlen:      9 chars
+  Symtab:      96 bytes (8 symbols)
+  Text:        213 bytes
+  Data:        3 bytes
+  BSS:         0 bytes
+  Heap:        0 bytes
+  Text offset: 0x0000
+  Data offset: 0x00d5
+
+Disassembly: 213 bytes
+_itob:
+  0000  cd 00 00     call _itob
+  0003  21 06 00     ld hl,0006h
+  0006  19           add hl,de
+  0007  7e           ld a,(hl)
+  0008  23           inc hl
+  0009  66           ld h,(hl)
+  000a  6f           ld l,a
+  000b  22 00 00     ld (_itob),hl
+  000e  21 08 00     ld hl,0008h
+  0011  19           add hl,de
+  0012  7e           ld a,(hl)
+  0013  23           inc hl
+  0014  66           ld h,(hl)
+  0015  6f           ld l,a
+  0016  22 00 00     ld (_itob),hl
+  0019  21 04 00     ld hl,0004h
+  001c  19           add hl,de
+  001d  7e           ld a,(hl)
+  001e  23           inc hl
+  001f  66           ld h,(hl)
+  0020  6f           ld l,a
+  0021  22 00 00     ld (_itob),hl
+  0024  3a 01 00     ld a,(0001h)
+  0027  b7           or a
+  0028  f2 5c 00     jp p,005ch
+  002b  2a 00 00     ld hl,(_itob)
+  002e  3e 00        ld a,00h
+  0030  95           sub l
+  0031  6f           ld l,a
+  0032  3e 00        ld a,00h
+  0034  9c           sbc a,h
+  0035  67           ld h,a
+  0036  22 00 00     ld (_itob),hl
+  0039  3a 01 00     ld a,(0001h)
+  003c  b7           or a
+  003d  f2 5c 00     jp p,005ch
+  0040  2a 00 00     ld hl,(_itob)
+  0043  3e 00        ld a,00h
+  0045  95           sub l
+  0046  6f           ld l,a
+  0047  3e 00        ld a,00h
+  0049  9c           sbc a,h
+  004a  67           ld h,a
+  004b  22 00 00     ld (_itob),hl
+  004e  2a 00 00     ld hl,(_itob)
+  0051  e5           push hl
+  0052  2a 00 00     ld hl,(_itob)
+  0055  23           inc hl
+  0056  22 00 00     ld (_itob),hl
+  0059  e1           pop hl
+  005a  36 2d        ld (hl),2dh
+  005c  2a 00 00     ld hl,(_itob)
+  005f  e5           push hl
+  0060  2a 00 00     ld hl,(_itob)
+  0063  e5           push hl
+  0064  cd 00 00     call _itob
+  0067  e1           pop hl
+  0068  22 d6 00     ld (00d6h),hl
+  006b  21 d6 00     ld hl,00d6h
+  006e  7e           ld a,(hl)
+  006f  23           inc hl
+  0070  b6           or (hl)
+  0071  ca 8d 00     jp z,008dh
+  0074  2a 00 00     ld hl,(_itob)
+  0077  e5           push hl
+  0078  2a d6 00     ld hl,(00d6h)
+  007b  e5           push hl
+  007c  2a 00 00     ld hl,(_itob)
+  007f  e5           push hl
+  0080  cd 00 00     call _itob
+  0083  f1           pop af
+  0084  f1           pop af
+  0085  f1           pop af
+  0086  2a 00 00     ld hl,(_itob)
+  0089  09           add hl,bc
+  008a  22 00 00     ld (_itob),hl
+  008d  2a 00 00     ld hl,(_itob)
+  0090  e5           push hl
+  0091  2a 00 00     ld hl,(_itob)
+  0094  e5           push hl
+  0095  cd 00 00     call _itob
+  0098  e1           pop hl
+  0099  01 30 00     ld bc,0030h
+  009c  09           add hl,bc
+  009d  7d           ld a,l
+  009e  32 d5 00     ld (00d5h),a
+  00a1  21 d5 00     ld hl,00d5h
+  00a4  3e 39        ld a,39h
+  00a6  be           cp (hl)
+  00a7  d2 b2 00     jp nc,00b2h
+  00aa  3a d5 00     ld a,(00d5h)
+  00ad  c6 27        add a,27h
+  00af  32 d5 00     ld (00d5h),a
+  00b2  2a 00 00     ld hl,(_itob)
+  00b5  e5           push hl
+  00b6  2a 00 00     ld hl,(_itob)
+  00b9  23           inc hl
+  00ba  22 00 00     ld (_itob),hl
+  00bd  e1           pop hl
+  00be  3a d5 00     ld a,(00d5h)
+  00c1  77           ld (hl),a
+  00c2  2a 00 00     ld hl,(_itob)
+  00c5  e5           push hl
+  00c6  21 04 00     ld hl,0004h
+  00c9  19           add hl,de
+  00ca  c1           pop bc
+  00cb  79           ld a,c
+  00cc  96           sub (hl)
+  00cd  4f           ld c,a
+  00ce  78           ld a,b
+  00cf  23           inc hl
+  00d0  9e           sbc a,(hl)
+  00d1  47           ld b,a
+  00d2  c3 00 00     jp _itob
+
+Data segment: 3 bytes
+  0000: 00 00 00                                          |...|
+
+Symbol table: 8 symbols (9-char names)
+  Index  Value  Type Seg    Global  Name
+  -----  -----  ---- -----  ------  ----
+  [  0]  0000   08   ext    yes      c.r4
+  [  1]  0000   08   ext    yes      c.r3
+  [  2]  0000   08   ext    yes      c.r2
+  [  3]  0000   08   ext    yes      c.rets
+  [  4]  0000   08   ext    yes      c.ents
+  [  5]  0000   08   ext    yes      c.udiv
+  [  6]  0000   08   ext    yes      c.umod
+  [  7]  0000   0d   text   yes      _itob
+
+Text relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  0001    word        symbol[4]
+  000c    word        symbol[0]
+  0017    word        symbol[2]
+  0022    word        symbol[1]
+  0025    word        symbol[2]
+  0029    word        text segment
+  002c    word        symbol[2]
+  0037    word        symbol[2]
+  003a    word        symbol[0]
+  003e    word        text segment
+  0041    word        symbol[0]
+  004c    word        symbol[0]
+  004f    word        symbol[1]
+  0053    word        symbol[1]
+  0057    word        symbol[1]
+  005d    word        symbol[0]
+  0061    word        symbol[2]
+  0065    word        symbol[5]
+  0069    word        data segment
+  006c    word        data segment
+  0072    word        text segment
+  0075    word        symbol[2]
+  0079    word        data segment
+  007d    word        symbol[1]
+  0081    word        text segment
+  0087    word        symbol[1]
+  008b    word        symbol[1]
+  008e    word        symbol[0]
+  0092    word        symbol[2]
+  0096    word        symbol[6]
+  009f    word        data segment
+  00a2    word        data segment
+  00a8    word        text segment
+  00ab    word        data segment
+  00b0    word        data segment
+  00b3    word        symbol[1]
+  00b7    word        symbol[1]
+  00bb    word        symbol[1]
+  00bf    word        data segment
+  00c3    word        symbol[1]
+  00d3    word        symbol[3]
+
+Data relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  (none)
+

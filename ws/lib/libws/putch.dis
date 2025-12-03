@@ -1,0 +1,54 @@
+=== lib/libws/putch.o ===
+
+Header:
+  Magic:       0x99
+  Config:      0x14 little-endian
+  Symlen:      9 chars
+  Symtab:      60 bytes (5 symbols)
+  Text:        23 bytes
+  Data:        0 bytes
+  BSS:         0 bytes
+  Heap:        0 bytes
+  Text offset: 0x0000
+  Data offset: 0x0017
+
+Disassembly: 23 bytes
+_putch:
+  0000  cd 00 00     call _putch
+  0003  21 04 00     ld hl,0004h
+  0006  19           add hl,de
+  0007  4e           ld c,(hl)
+  0008  23           inc hl
+  0009  46           ld b,(hl)
+  000a  c5           push bc
+  000b  21 00 00     ld hl,_putch
+  000e  e5           push hl
+  000f  cd 00 00     call _putch
+  0012  f1           pop af
+  0013  f1           pop af
+  0014  c3 00 00     jp _putch
+
+Data segment: (empty)
+
+Symbol table: 5 symbols (9-char names)
+  Index  Value  Type Seg    Global  Name
+  -----  -----  ---- -----  ------  ----
+  [  0]  0000   08   ext    yes      c.ret
+  [  1]  0000   08   ext    yes      _putc
+  [  2]  0000   08   ext    yes      c.ent
+  [  3]  0000   08   ext    yes      _stdout
+  [  4]  0000   0d   text   yes      _putch
+
+Text relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  0001    word        symbol[2]
+  000c    word        symbol[3]
+  0010    word        symbol[1]
+  0015    word        symbol[0]
+
+Data relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  (none)
+

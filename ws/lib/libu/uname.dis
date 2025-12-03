@@ -1,0 +1,176 @@
+=== lib/libu/uname.o ===
+
+Header:
+  Magic:       0x99
+  Config:      0x14 little-endian
+  Symlen:      9 chars
+  Symtab:      120 bytes (10 symbols)
+  Text:        175 bytes
+  Data:        22 bytes
+  BSS:         0 bytes
+  Heap:        0 bytes
+  Text offset: 0x0000
+  Data offset: 0x00af
+
+Disassembly: 175 bytes
+  0000  2f           cpl
+  0001  74           ld (hl),h
+  0002  6d           ld l,l
+  0003  70           ld (hl),b
+  0004  2f           cpl
+  0005  00           nop
+_uname:
+  0006  cd 00 00     call 0000h
+  0009  21 c1 00     ld hl,00c1h
+  000c  7e           ld a,(hl)
+  000d  23           inc hl
+  000e  b6           or (hl)
+  000f  23           inc hl
+  0010  b6           or (hl)
+  0011  23           inc hl
+  0012  b6           or (hl)
+  0013  c2 3e 00     jp nz,003eh
+  0016  21 c1 00     ld hl,00c1h
+  0019  e5           push hl
+  001a  cd 00 00     call 0000h
+  001d  f1           pop af
+  001e  21 c1 00     ld hl,00c1h
+  0021  e5           push hl
+  0022  3e 27        ld a,27h
+  0024  87           add a,a
+  0025  9f           sbc a,a
+  0026  32 00 00     ld (0000h),a
+  0029  32 01 00     ld (0001h),a
+  002c  3e 27        ld a,27h
+  002e  32 03 00     ld (0003h),a
+  0031  3e 10        ld a,10h
+  0033  32 02 00     ld (0002h),a
+  0036  21 00 00     ld hl,0000h
+  0039  e5           push hl
+  003a  cd 00 00     call 0000h
+  003d  f1           pop af
+  003e  21 00 00     ld hl,0000h
+  0041  e5           push hl
+  0042  21 00 00     ld hl,0000h
+  0045  e5           push hl
+  0046  21 af 00     ld hl,00afh
+  0049  e5           push hl
+  004a  cd 00 00     call 0000h
+  004d  f1           pop af
+  004e  f1           pop af
+  004f  f1           pop af
+  0050  69           ld l,c
+  0051  60           ld h,b
+  0052  22 bf 00     ld (00bfh),hl
+  0055  21 0a 00     ld hl,000ah
+  0058  e5           push hl
+  0059  cd 00 00     call 0000h
+  005c  c5           push bc
+  005d  2a bf 00     ld hl,(00bfh)
+  0060  e5           push hl
+  0061  cd 00 00     call 0000h
+  0064  f1           pop af
+  0065  f1           pop af
+  0066  f1           pop af
+  0067  2a bf 00     ld hl,(00bfh)
+  006a  09           add hl,bc
+  006b  22 bf 00     ld (00bfh),hl
+  006e  2a bf 00     ld hl,(00bfh)
+  0071  e5           push hl
+  0072  2a bf 00     ld hl,(00bfh)
+  0075  23           inc hl
+  0076  22 bf 00     ld (00bfh),hl
+  0079  e1           pop hl
+  007a  36 2d        ld (hl),2dh
+  007c  21 0a 00     ld hl,000ah
+  007f  e5           push hl
+  0080  21 c1 00     ld hl,00c1h
+  0083  23           inc hl
+  0084  23           inc hl
+  0085  4e           ld c,(hl)
+  0086  23           inc hl
+  0087  46           ld b,(hl)
+  0088  c5           push bc
+  0089  2b           dec hl
+  008a  2b           dec hl
+  008b  2b           dec hl
+  008c  4e           ld c,(hl)
+  008d  23           inc hl
+  008e  46           ld b,(hl)
+  008f  c5           push bc
+  0090  2a bf 00     ld hl,(00bfh)
+  0093  e5           push hl
+  0094  cd 00 00     call 0000h
+  0097  f1           pop af
+  0098  f1           pop af
+  0099  f1           pop af
+  009a  f1           pop af
+  009b  2a bf 00     ld hl,(00bfh)
+  009e  09           add hl,bc
+  009f  22 bf 00     ld (00bfh),hl
+  00a2  2a bf 00     ld hl,(00bfh)
+  00a5  36 00        ld (hl),00h
+  00a7  21 af 00     ld hl,00afh
+  00aa  4d           ld c,l
+  00ab  44           ld b,h
+  00ac  c3 00 00     jp 0000h
+
+Data segment: 22 bytes
+  0000: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00  |................|
+  0010: 00 00 00 00 00 00                                 |......|
+
+Symbol table: 10 symbols (9-char names)
+  Index  Value  Type Seg    Global  Name
+  -----  -----  ---- -----  ------  ----
+  [  0]  0000   08   ext    yes      c.r0
+  [  1]  0000   08   ext    yes      c.ulmod
+  [  2]  0000   08   ext    yes      c.ret
+  [  3]  0000   08   ext    yes      _getpid
+  [  4]  0000   08   ext    yes      c.ent
+  [  5]  0000   08   ext    yes      _ltob
+  [  6]  0000   08   ext    yes      _time
+  [  7]  0000   08   ext    yes      _itob
+  [  8]  0000   08   ext    yes      _cpystr
+  [  9]  0006   0d   text   yes      _uname
+
+Text relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  0007    word        symbol[4]
+  000a    word        data segment
+  0014    word        text segment
+  0017    word        data segment
+  001b    word        symbol[6]
+  001f    word        data segment
+  0027    word        symbol[0]
+  002a    word        symbol[0]
+  002f    word        symbol[0]
+  0034    word        symbol[0]
+  0037    word        symbol[0]
+  003b    word        symbol[1]
+  0043    word        text segment
+  0047    word        data segment
+  004b    word        symbol[8]
+  0053    word        data segment
+  005a    word        symbol[3]
+  005e    word        data segment
+  0062    word        symbol[7]
+  0068    word        data segment
+  006c    word        data segment
+  006f    word        data segment
+  0073    word        data segment
+  0077    word        data segment
+  0081    word        data segment
+  0091    word        data segment
+  0095    word        symbol[5]
+  009c    word        data segment
+  00a0    word        data segment
+  00a3    word        data segment
+  00a8    word        data segment
+  00ad    word        symbol[2]
+
+Data relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  (none)
+

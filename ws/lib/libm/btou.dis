@@ -1,0 +1,84 @@
+=== lib/libm/btou.o ===
+
+Header:
+  Magic:       0x99
+  Config:      0x14 little-endian
+  Symlen:      9 chars
+  Symtab:      24 bytes (2 symbols)
+  Text:        65 bytes
+  Data:        0 bytes
+  BSS:         0 bytes
+  Heap:        0 bytes
+  Text offset: 0x0000
+  Data offset: 0x0041
+
+Disassembly: 65 bytes
+c.btou:
+  0000  e5           push hl
+  0001  c5           push bc
+  0002  21 08 00     ld hl,0008h
+  0005  39           add hl,sp
+  0006  7e           ld a,(hl)
+  0007  23           inc hl
+  0008  66           ld h,(hl)
+  0009  6f           ld l,a
+  000a  4e           ld c,(hl)
+  000b  23           inc hl
+  000c  46           ld b,(hl)
+  000d  21 06 00     ld hl,0006h
+  0010  39           add hl,sp
+  0011  7e           ld a,(hl)
+  0012  6f           ld l,a
+  0013  2d           dec l
+  0014  fa 20 00     jp m,0020h
+  0017  78           ld a,b
+  0018  1f           rra
+  0019  47           ld b,a
+  001a  79           ld a,c
+  001b  1f           rra
+  001c  4f           ld c,a
+  001d  c3 13 00     jp 0013h
+  0020  21 07 00     ld hl,0007h
+  0023  39           add hl,sp
+  0024  7e           ld a,(hl)
+  0025  21 01 00     ld hl,0001h
+  0028  3d           dec a
+  0029  fa 30 00     jp m,0030h
+  002c  29           add hl,hl
+  002d  c3 28 00     jp 0028h
+  0030  2b           dec hl
+  0031  79           ld a,c
+  0032  a5           and l
+  0033  4f           ld c,a
+  0034  78           ld a,b
+  0035  a4           and h
+  0036  47           ld b,a
+  0037  21 08 00     ld hl,0008h
+  003a  39           add hl,sp
+  003b  71           ld (hl),c
+  003c  23           inc hl
+  003d  70           ld (hl),b
+  003e  c3 00 00     jp c.btou
+
+Data segment: (empty)
+
+Symbol table: 2 symbols (9-char names)
+  Index  Value  Type Seg    Global  Name
+  -----  -----  ---- -----  ------  ----
+  [  0]  0000   08   ext    yes      c.lret
+  [  1]  0000   0d   text   yes      c.btou
+
+Text relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  0015    word        text segment
+  001e    word        text segment
+  002a    word        text segment
+  002e    word        text segment
+  003f    word        symbol[0]
+
+Data relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  (none)
+

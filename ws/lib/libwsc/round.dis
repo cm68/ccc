@@ -1,0 +1,97 @@
+=== lib/libwsc/round.o ===
+
+Header:
+  Magic:       0x99
+  Config:      0x14 little-endian
+  Symlen:      9 chars
+  Symtab:      96 bytes (8 symbols)
+  Text:        78 bytes
+  Data:        16 bytes
+  BSS:         0 bytes
+  Heap:        0 bytes
+  Text offset: 0x0000
+  Data offset: 0x004e
+
+Disassembly: 78 bytes
+_round:
+  0000  cd 00 00     call _round
+  0003  21 04 00     ld hl,0004h
+  0006  19           add hl,de
+  0007  23           inc hl
+  0008  7e           ld a,(hl)
+  0009  b7           or a
+  000a  f2 28 00     jp p,0028h
+  000d  21 04 00     ld hl,0004h
+  0010  19           add hl,de
+  0011  e5           push hl
+  0012  e1           pop hl
+  0013  01 00 00     ld bc,_round
+  0016  cd 00 00     call _round
+  0019  21 00 00     ld hl,_round
+  001c  e5           push hl
+  001d  21 4e 00     ld hl,004eh
+  0020  e5           push hl
+  0021  cd 00 00     call _round
+  0024  f1           pop af
+  0025  c3 40 00     jp 0040h
+  0028  21 04 00     ld hl,0004h
+  002b  19           add hl,de
+  002c  e5           push hl
+  002d  e1           pop hl
+  002e  01 00 00     ld bc,_round
+  0031  cd 00 00     call _round
+  0034  21 00 00     ld hl,_round
+  0037  e5           push hl
+  0038  21 56 00     ld hl,0056h
+  003b  e5           push hl
+  003c  cd 00 00     call _round
+  003f  f1           pop af
+  0040  21 00 00     ld hl,_round
+  0043  e5           push hl
+  0044  c1           pop bc
+  0045  c5           push bc
+  0046  c5           push bc
+  0047  cd 00 00     call _round
+  004a  c1           pop bc
+  004b  c3 00 00     jp _round
+
+Data segment: 16 bytes
+  0000: 00 40 00 00 00 00 00 00  00 40 00 00 00 00 00 00  |.@.......@......|
+
+Symbol table: 8 symbols (9-char names)
+  Index  Value  Type Seg    Global  Name
+  -----  -----  ---- -----  ------  ----
+  [  0]  0000   08   ext    yes      c.dsub
+  [  1]  0000   08   ext    yes      c.r0
+  [  2]  0000   08   ext    yes      c.dadd
+  [  3]  0000   08   ext    yes      c.ret
+  [  4]  0000   08   ext    yes      c.dtr
+  [  5]  0000   08   ext    yes      c.ent
+  [  6]  0000   08   ext    yes      c.dcpy
+  [  7]  0000   0d   text   yes      _round
+
+Text relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  0001    word        symbol[5]
+  000b    word        text segment
+  0014    word        symbol[1]
+  0017    word        symbol[6]
+  001a    word        symbol[1]
+  001e    word        data segment
+  0022    word        symbol[0]
+  0026    word        text segment
+  002f    word        symbol[1]
+  0032    word        symbol[6]
+  0035    word        symbol[1]
+  0039    word        data segment
+  003d    word        symbol[2]
+  0041    word        symbol[1]
+  0048    word        symbol[4]
+  004c    word        symbol[3]
+
+Data relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  (none)
+

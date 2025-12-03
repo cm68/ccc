@@ -1,0 +1,86 @@
+=== lib/libwsc/imul.o ===
+
+Header:
+  Magic:       0x99
+  Config:      0x14 little-endian
+  Symlen:      9 chars
+  Symtab:      24 bytes (2 symbols)
+  Text:        68 bytes
+  Data:        0 bytes
+  BSS:         0 bytes
+  Heap:        0 bytes
+  Text offset: 0x0000
+  Data offset: 0x0044
+
+Disassembly: 68 bytes
+c.imul:
+  0000  e5           push hl
+  0001  c5           push bc
+  0002  21 00 00     ld hl,c.imul
+  0005  e5           push hl
+  0006  21 09 00     ld hl,0009h
+  0009  39           add hl,sp
+  000a  7e           ld a,(hl)
+  000b  2b           dec hl
+  000c  b6           or (hl)
+  000d  ca 39 00     jp z,0039h
+  0010  7e           ld a,(hl)
+  0011  1f           rra
+  0012  d2 1f 00     jp nc,001fh
+  0015  21 0a 00     ld hl,000ah
+  0018  39           add hl,sp
+  0019  4e           ld c,(hl)
+  001a  23           inc hl
+  001b  46           ld b,(hl)
+  001c  e1           pop hl
+  001d  09           add hl,bc
+  001e  e5           push hl
+  001f  21 0a 00     ld hl,000ah
+  0022  39           add hl,sp
+  0023  7e           ld a,(hl)
+  0024  87           add a,a
+  0025  77           ld (hl),a
+  0026  23           inc hl
+  0027  7e           ld a,(hl)
+  0028  8f           adc a,a
+  0029  77           ld (hl),a
+  002a  21 09 00     ld hl,0009h
+  002d  39           add hl,sp
+  002e  7e           ld a,(hl)
+  002f  b7           or a
+  0030  1f           rra
+  0031  77           ld (hl),a
+  0032  2b           dec hl
+  0033  7e           ld a,(hl)
+  0034  1f           rra
+  0035  77           ld (hl),a
+  0036  c3 06 00     jp 0006h
+  0039  c1           pop bc
+  003a  21 08 00     ld hl,0008h
+  003d  39           add hl,sp
+  003e  71           ld (hl),c
+  003f  23           inc hl
+  0040  70           ld (hl),b
+  0041  c3 00 00     jp c.imul
+
+Data segment: (empty)
+
+Symbol table: 2 symbols (9-char names)
+  Index  Value  Type Seg    Global  Name
+  -----  -----  ---- -----  ------  ----
+  [  0]  0000   08   ext    yes      c.lret
+  [  1]  0000   0d   text   yes      c.imul
+
+Text relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  000e    word        text segment
+  0013    word        text segment
+  0037    word        text segment
+  0042    word        symbol[0]
+
+Data relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  (none)
+

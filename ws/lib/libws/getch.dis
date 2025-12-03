@@ -1,0 +1,47 @@
+=== lib/libws/getch.o ===
+
+Header:
+  Magic:       0x99
+  Config:      0x14 little-endian
+  Symlen:      9 chars
+  Symtab:      60 bytes (5 symbols)
+  Text:        14 bytes
+  Data:        0 bytes
+  BSS:         0 bytes
+  Heap:        0 bytes
+  Text offset: 0x0000
+  Data offset: 0x000e
+
+Disassembly: 14 bytes
+_getch:
+  0000  cd 00 00     call _getch
+  0003  21 00 00     ld hl,_getch
+  0006  e5           push hl
+  0007  cd 00 00     call _getch
+  000a  f1           pop af
+  000b  c3 00 00     jp _getch
+
+Data segment: (empty)
+
+Symbol table: 5 symbols (9-char names)
+  Index  Value  Type Seg    Global  Name
+  -----  -----  ---- -----  ------  ----
+  [  0]  0000   08   ext    yes      c.ret
+  [  1]  0000   08   ext    yes      c.ent
+  [  2]  0000   08   ext    yes      _getc
+  [  3]  0000   08   ext    yes      _stdin
+  [  4]  0000   0d   text   yes      _getch
+
+Text relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  0001    word        symbol[1]
+  0004    word        symbol[3]
+  0008    word        symbol[2]
+  000c    word        symbol[0]
+
+Data relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  (none)
+

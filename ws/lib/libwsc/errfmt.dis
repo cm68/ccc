@@ -1,0 +1,61 @@
+=== lib/libwsc/errfmt.o ===
+
+Header:
+  Magic:       0x99
+  Config:      0x14 little-endian
+  Symlen:      9 chars
+  Symtab:      60 bytes (5 symbols)
+  Text:        34 bytes
+  Data:        0 bytes
+  BSS:         0 bytes
+  Heap:        0 bytes
+  Text offset: 0x0000
+  Data offset: 0x0022
+
+Disassembly: 34 bytes
+_errfmt:
+  0000  cd 00 00     call _errfmt
+  0003  21 06 00     ld hl,0006h
+  0006  19           add hl,de
+  0007  e5           push hl
+  0008  21 04 00     ld hl,0004h
+  000b  19           add hl,de
+  000c  4e           ld c,(hl)
+  000d  23           inc hl
+  000e  46           ld b,(hl)
+  000f  c5           push bc
+  0010  21 02 00     ld hl,0002h
+  0013  e5           push hl
+  0014  21 00 00     ld hl,_errfmt
+  0017  e5           push hl
+  0018  cd 00 00     call _errfmt
+  001b  f1           pop af
+  001c  f1           pop af
+  001d  f1           pop af
+  001e  f1           pop af
+  001f  c3 00 00     jp _errfmt
+
+Data segment: (empty)
+
+Symbol table: 5 symbols (9-char names)
+  Index  Value  Type Seg    Global  Name
+  -----  -----  ---- -----  ------  ----
+  [  0]  0000   08   ext    yes      __putf
+  [  1]  0000   08   ext    yes      c.ret
+  [  2]  0000   08   ext    yes      c.ent
+  [  3]  0000   08   ext    yes      _write
+  [  4]  0000   0d   text   yes      _errfmt
+
+Text relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  0001    word        symbol[2]
+  0015    word        symbol[3]
+  0019    word        symbol[0]
+  0020    word        symbol[1]
+
+Data relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  (none)
+

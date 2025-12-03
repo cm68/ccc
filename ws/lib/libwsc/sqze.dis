@@ -1,0 +1,137 @@
+=== lib/libwsc/sqze.o ===
+
+Header:
+  Magic:       0x99
+  Config:      0x14 little-endian
+  Symlen:      9 chars
+  Symtab:      72 bytes (6 symbols)
+  Text:        138 bytes
+  Data:        0 bytes
+  BSS:         0 bytes
+  Heap:        0 bytes
+  Text offset: 0x0000
+  Data offset: 0x008a
+
+Disassembly: 138 bytes
+_squeeze:
+  0000  cd 00 00     call _squeeze
+  0003  21 ff ff     ld hl,ffffh
+  0006  39           add hl,sp
+  0007  f9           ld sp,hl
+  0008  21 06 00     ld hl,0006h
+  000b  19           add hl,de
+  000c  7e           ld a,(hl)
+  000d  23           inc hl
+  000e  66           ld h,(hl)
+  000f  6f           ld l,a
+  0010  22 00 00     ld (_squeeze),hl
+  0013  21 f9 ff     ld hl,fff9h
+  0016  19           add hl,de
+  0017  e5           push hl
+  0018  21 08 00     ld hl,0008h
+  001b  19           add hl,de
+  001c  c1           pop bc
+  001d  7e           ld a,(hl)
+  001e  02           ld (bc),a
+  001f  21 04 00     ld hl,0004h
+  0022  19           add hl,de
+  0023  7e           ld a,(hl)
+  0024  23           inc hl
+  0025  66           ld h,(hl)
+  0026  6f           ld l,a
+  0027  22 00 00     ld (_squeeze),hl
+  002a  2a 00 00     ld hl,(_squeeze)
+  002d  22 00 00     ld (_squeeze),hl
+  0030  21 00 00     ld hl,_squeeze
+  0033  7e           ld a,(hl)
+  0034  23           inc hl
+  0035  b6           or (hl)
+  0036  ca 5d 00     jp z,005dh
+  0039  2a 00 00     ld hl,(_squeeze)
+  003c  e5           push hl
+  003d  21 f9 ff     ld hl,fff9h
+  0040  19           add hl,de
+  0041  c1           pop bc
+  0042  0a           ld a,(bc)
+  0043  be           cp (hl)
+  0044  ca 70 00     jp z,0070h
+  0047  2a 00 00     ld hl,(_squeeze)
+  004a  e5           push hl
+  004b  2a 00 00     ld hl,(_squeeze)
+  004e  23           inc hl
+  004f  22 00 00     ld (_squeeze),hl
+  0052  e1           pop hl
+  0053  e5           push hl
+  0054  2a 00 00     ld hl,(_squeeze)
+  0057  c1           pop bc
+  0058  7e           ld a,(hl)
+  0059  02           ld (bc),a
+  005a  c3 70 00     jp 0070h
+  005d  2a 00 00     ld hl,(_squeeze)
+  0060  e5           push hl
+  0061  21 04 00     ld hl,0004h
+  0064  19           add hl,de
+  0065  c1           pop bc
+  0066  79           ld a,c
+  0067  96           sub (hl)
+  0068  4f           ld c,a
+  0069  78           ld a,b
+  006a  23           inc hl
+  006b  9e           sbc a,(hl)
+  006c  47           ld b,a
+  006d  c3 00 00     jp _squeeze
+  0070  3a 00 00     ld a,(_squeeze)
+  0073  d6 01        sub 01h
+  0075  32 00 00     ld (_squeeze),a
+  0078  3a 01 00     ld a,(0001h)
+  007b  de 00        sbc a,00h
+  007d  32 01 00     ld (0001h),a
+  0080  2a 00 00     ld hl,(_squeeze)
+  0083  23           inc hl
+  0084  22 00 00     ld (_squeeze),hl
+  0087  c3 30 00     jp 0030h
+
+Data segment: (empty)
+
+Symbol table: 6 symbols (9-char names)
+  Index  Value  Type Seg    Global  Name
+  -----  -----  ---- -----  ------  ----
+  [  0]  0000   08   ext    yes      c.r4
+  [  1]  0000   08   ext    yes      c.r3
+  [  2]  0000   08   ext    yes      c.r2
+  [  3]  0000   08   ext    yes      c.rets
+  [  4]  0000   08   ext    yes      c.ents
+  [  5]  0000   0d   text   yes      _squeeze
+
+Text relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  0001    word        symbol[4]
+  0011    word        symbol[0]
+  0028    word        symbol[1]
+  002b    word        symbol[1]
+  002e    word        symbol[2]
+  0031    word        symbol[0]
+  0037    word        text segment
+  003a    word        symbol[2]
+  0045    word        text segment
+  0048    word        symbol[1]
+  004c    word        symbol[1]
+  0050    word        symbol[1]
+  0055    word        symbol[2]
+  005b    word        text segment
+  005e    word        symbol[1]
+  006e    word        symbol[3]
+  0071    word        symbol[0]
+  0076    word        symbol[0]
+  0079    word        symbol[0]
+  007e    word        symbol[0]
+  0081    word        symbol[2]
+  0085    word        symbol[2]
+  0088    word        text segment
+
+Data relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  (none)
+

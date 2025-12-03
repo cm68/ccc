@@ -1,0 +1,133 @@
+=== lib/libS/ungetc.o ===
+
+Header:
+  Magic:       0x99
+  Config:      0x14 little-endian
+  Symlen:      9 chars
+  Symtab:      96 bytes (8 symbols)
+  Text:        130 bytes
+  Data:        0 bytes
+  BSS:         0 bytes
+  Heap:        0 bytes
+  Text offset: 0x0000
+  Data offset: 0x0082
+
+Disassembly: 130 bytes
+_ungetc:
+  0000  cd 00 00     call _ungetc
+  0003  21 04 00     ld hl,0004h
+  0006  19           add hl,de
+  0007  7e           ld a,(hl)
+  0008  23           inc hl
+  0009  66           ld h,(hl)
+  000a  6f           ld l,a
+  000b  22 00 00     ld (_ungetc),hl
+  000e  21 06 00     ld hl,0006h
+  0011  19           add hl,de
+  0012  7e           ld a,(hl)
+  0013  23           inc hl
+  0014  66           ld h,(hl)
+  0015  6f           ld l,a
+  0016  22 00 00     ld (_ungetc),hl
+  0019  2a 00 00     ld hl,(_ungetc)
+  001c  01 06 00     ld bc,0006h
+  001f  09           add hl,bc
+  0020  7e           ld a,(hl)
+  0021  23           inc hl
+  0022  66           ld h,(hl)
+  0023  6f           ld l,a
+  0024  7d           ld a,l
+  0025  e6 01        and 01h
+  0027  ca 4f 00     jp z,004fh
+  002a  2a 00 00     ld hl,(_ungetc)
+  002d  01 04 00     ld bc,0004h
+  0030  09           add hl,bc
+  0031  e5           push hl
+  0032  2a 00 00     ld hl,(_ungetc)
+  0035  c1           pop bc
+  0036  0a           ld a,(bc)
+  0037  96           sub (hl)
+  0038  03           inc bc
+  0039  0a           ld a,(bc)
+  003a  23           inc hl
+  003b  9e           sbc a,(hl)
+  003c  d2 4f 00     jp nc,004fh
+  003f  3a 00 00     ld a,(_ungetc)
+  0042  fe ff        cp ffh
+  0044  c2 4c 00     jp nz,004ch
+  0047  3a 01 00     ld a,(0001h)
+  004a  fe ff        cp ffh
+  004c  c2 55 00     jp nz,0055h
+  004f  01 ff ff     ld bc,ffffh
+  0052  c3 00 00     jp _ungetc
+  0055  2a 00 00     ld hl,(_ungetc)
+  0058  7e           ld a,(hl)
+  0059  d6 01        sub 01h
+  005b  77           ld (hl),a
+  005c  23           inc hl
+  005d  7e           ld a,(hl)
+  005e  de 00        sbc a,00h
+  0060  77           ld (hl),a
+  0061  2b           dec hl
+  0062  7e           ld a,(hl)
+  0063  23           inc hl
+  0064  66           ld h,(hl)
+  0065  6f           ld l,a
+  0066  3a 00 00     ld a,(_ungetc)
+  0069  77           ld (hl),a
+  006a  2a 00 00     ld hl,(_ungetc)
+  006d  01 02 00     ld bc,0002h
+  0070  09           add hl,bc
+  0071  7e           ld a,(hl)
+  0072  c6 01        add a,01h
+  0074  77           ld (hl),a
+  0075  23           inc hl
+  0076  7e           ld a,(hl)
+  0077  ce 00        adc a,00h
+  0079  77           ld (hl),a
+  007a  2a 00 00     ld hl,(_ungetc)
+  007d  4d           ld c,l
+  007e  44           ld b,h
+  007f  c3 00 00     jp _ungetc
+
+Data segment: (empty)
+
+Symbol table: 8 symbols (9-char names)
+  Index  Value  Type Seg    Global  Name
+  -----  -----  ---- -----  ------  ----
+  [  0]  0000   08   ext    yes      __iob
+  [  1]  0000   08   ext    yes      __exit
+  [  2]  0000   08   ext    yes      c.r4
+  [  3]  0000   08   ext    yes      c.r2
+  [  4]  0000   08   ext    yes      _exit
+  [  5]  0000   08   ext    yes      c.rets
+  [  6]  0000   08   ext    yes      c.ents
+  [  7]  0000   0d   text   yes      _ungetc
+
+Text relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  0001    word        symbol[6]
+  000c    word        symbol[2]
+  0017    word        symbol[3]
+  001a    word        symbol[3]
+  0028    word        text segment
+  002b    word        symbol[3]
+  0033    word        symbol[3]
+  003d    word        text segment
+  0040    word        symbol[2]
+  0045    word        text segment
+  0048    word        symbol[2]
+  004d    word        text segment
+  0053    word        symbol[5]
+  0056    word        symbol[3]
+  0067    word        symbol[2]
+  006b    word        symbol[3]
+  007b    word        symbol[2]
+  0080    word        symbol[5]
+
+Data relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  (none)
+

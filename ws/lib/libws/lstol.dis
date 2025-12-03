@@ -1,0 +1,190 @@
+=== lib/libws/lstol.o ===
+
+Header:
+  Magic:       0x99
+  Config:      0x14 little-endian
+  Symlen:      9 chars
+  Symtab:      120 bytes (10 symbols)
+  Text:        208 bytes
+  Data:        16 bytes
+  BSS:         0 bytes
+  Heap:        0 bytes
+  Text offset: 0x0000
+  Data offset: 0x00d0
+
+Disassembly: 208 bytes
+_lstol:
+  0000  cd 00 00     call _lstol
+  0003  f5           push af
+  0004  f5           push af
+  0005  21 04 00     ld hl,0004h
+  0008  19           add hl,de
+  0009  7e           ld a,(hl)
+  000a  23           inc hl
+  000b  66           ld h,(hl)
+  000c  6f           ld l,a
+  000d  22 00 00     ld (_lstol),hl
+  0010  21 f6 ff     ld hl,fff6h
+  0013  19           add hl,de
+  0014  e5           push hl
+  0015  2a 00 00     ld hl,(_lstol)
+  0018  01 01 00     ld bc,0001h
+  001b  09           add hl,bc
+  001c  97           sub a
+  001d  32 00 00     ld (_lstol),a
+  0020  32 01 00     ld (0001h),a
+  0023  7e           ld a,(hl)
+  0024  32 02 00     ld (0002h),a
+  0027  97           sub a
+  0028  32 03 00     ld (0003h),a
+  002b  21 00 00     ld hl,_lstol
+  002e  e5           push hl
+  002f  21 d0 00     ld hl,00d0h
+  0032  e5           push hl
+  0033  cd 00 00     call _lstol
+  0036  21 18 00     ld hl,0018h
+  0039  e5           push hl
+  003a  cd 00 00     call _lstol
+  003d  2a 00 00     ld hl,(_lstol)
+  0040  97           sub a
+  0041  32 00 00     ld (_lstol),a
+  0044  32 01 00     ld (0001h),a
+  0047  7e           ld a,(hl)
+  0048  32 02 00     ld (0002h),a
+  004b  97           sub a
+  004c  32 03 00     ld (0003h),a
+  004f  21 00 00     ld hl,_lstol
+  0052  e5           push hl
+  0053  21 d4 00     ld hl,00d4h
+  0056  e5           push hl
+  0057  cd 00 00     call _lstol
+  005a  21 10 00     ld hl,0010h
+  005d  e5           push hl
+  005e  cd 00 00     call _lstol
+  0061  cd 00 00     call _lstol
+  0064  2a 00 00     ld hl,(_lstol)
+  0067  01 03 00     ld bc,0003h
+  006a  09           add hl,bc
+  006b  97           sub a
+  006c  32 00 00     ld (_lstol),a
+  006f  32 01 00     ld (0001h),a
+  0072  7e           ld a,(hl)
+  0073  32 02 00     ld (0002h),a
+  0076  97           sub a
+  0077  32 03 00     ld (0003h),a
+  007a  21 00 00     ld hl,_lstol
+  007d  e5           push hl
+  007e  21 d8 00     ld hl,00d8h
+  0081  e5           push hl
+  0082  cd 00 00     call _lstol
+  0085  21 08 00     ld hl,0008h
+  0088  e5           push hl
+  0089  cd 00 00     call _lstol
+  008c  cd 00 00     call _lstol
+  008f  2a 00 00     ld hl,(_lstol)
+  0092  01 02 00     ld bc,0002h
+  0095  09           add hl,bc
+  0096  97           sub a
+  0097  32 00 00     ld (_lstol),a
+  009a  32 01 00     ld (0001h),a
+  009d  7e           ld a,(hl)
+  009e  32 02 00     ld (0002h),a
+  00a1  97           sub a
+  00a2  32 03 00     ld (0003h),a
+  00a5  21 00 00     ld hl,_lstol
+  00a8  e5           push hl
+  00a9  21 dc 00     ld hl,00dch
+  00ac  e5           push hl
+  00ad  cd 00 00     call _lstol
+  00b0  cd 00 00     call _lstol
+  00b3  e1           pop hl
+  00b4  c1           pop bc
+  00b5  7e           ld a,(hl)
+  00b6  02           ld (bc),a
+  00b7  23           inc hl
+  00b8  7e           ld a,(hl)
+  00b9  03           inc bc
+  00ba  02           ld (bc),a
+  00bb  23           inc hl
+  00bc  7e           ld a,(hl)
+  00bd  03           inc bc
+  00be  02           ld (bc),a
+  00bf  23           inc hl
+  00c0  7e           ld a,(hl)
+  00c1  03           inc bc
+  00c2  02           ld (bc),a
+  00c3  21 f6 ff     ld hl,fff6h
+  00c6  19           add hl,de
+  00c7  01 00 00     ld bc,_lstol
+  00ca  cd 00 00     call _lstol
+  00cd  c3 00 00     jp _lstol
+
+Data segment: 16 bytes
+  0000: 00 00 ff 00 00 00 ff 00  00 00 ff 00 00 00 ff 00  |................|
+
+Symbol table: 10 symbols (9-char names)
+  Index  Value  Type Seg    Global  Name
+  -----  -----  ---- -----  ------  ----
+  [  0]  0000   08   ext    yes      c.r4
+  [  1]  0000   08   ext    yes      c.r1
+  [  2]  0000   08   ext    yes      c.r0
+  [  3]  0000   08   ext    yes      c.land
+  [  4]  0000   08   ext    yes      c.ladd
+  [  5]  0000   08   ext    yes      c.rets
+  [  6]  0000   08   ext    yes      c.ents
+  [  7]  0000   08   ext    yes      c.lcpy
+  [  8]  0000   08   ext    yes      c.llsh
+  [  9]  0000   0d   text   yes      _lstol
+
+Text relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  0001    word        symbol[6]
+  000e    word        symbol[0]
+  0016    word        symbol[0]
+  001e    word        symbol[2]
+  0021    word        symbol[2]
+  0025    word        symbol[2]
+  0029    word        symbol[2]
+  002c    word        symbol[2]
+  0030    word        data segment
+  0034    word        symbol[3]
+  003b    word        symbol[8]
+  003e    word        symbol[0]
+  0042    word        symbol[1]
+  0045    word        symbol[1]
+  0049    word        symbol[1]
+  004d    word        symbol[1]
+  0050    word        symbol[1]
+  0054    word        data segment
+  0058    word        symbol[3]
+  005f    word        symbol[8]
+  0062    word        symbol[4]
+  0065    word        symbol[0]
+  006d    word        symbol[1]
+  0070    word        symbol[1]
+  0074    word        symbol[1]
+  0078    word        symbol[1]
+  007b    word        symbol[1]
+  007f    word        data segment
+  0083    word        symbol[3]
+  008a    word        symbol[8]
+  008d    word        symbol[4]
+  0090    word        symbol[0]
+  0098    word        symbol[1]
+  009b    word        symbol[1]
+  009f    word        symbol[1]
+  00a3    word        symbol[1]
+  00a6    word        symbol[1]
+  00aa    word        data segment
+  00ae    word        symbol[3]
+  00b1    word        symbol[4]
+  00c8    word        symbol[2]
+  00cb    word        symbol[7]
+  00ce    word        symbol[5]
+
+Data relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  (none)
+

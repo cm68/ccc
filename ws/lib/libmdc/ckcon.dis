@@ -1,0 +1,89 @@
+=== lib/libmdc/ckcon.o ===
+
+Header:
+  Magic:       0x99
+  Config:      0x14 little-endian
+  Symlen:      9 chars
+  Symtab:      60 bytes (5 symbols)
+  Text:        77 bytes
+  Data:        2 bytes
+  BSS:         0 bytes
+  Heap:        0 bytes
+  Text offset: 0x0000
+  Data offset: 0x004d
+
+Disassembly: 77 bytes
+__ckcon:
+  0000  cd 00 00     call __ckcon
+  0003  21 0b 00     ld hl,000bh
+  0006  e5           push hl
+  0007  cd 00 00     call __ckcon
+  000a  f1           pop af
+  000b  79           ld a,c
+  000c  b0           or b
+  000d  c2 1a 00     jp nz,001ah
+  0010  97           sub a
+  0011  32 4d 00     ld (004dh),a
+  0014  32 4e 00     ld (004eh),a
+  0017  c3 00 00     jp __ckcon
+  001a  2a 4d 00     ld hl,(004dh)
+  001d  23           inc hl
+  001e  22 4d 00     ld (004dh),hl
+  0021  3a 4d 00     ld a,(004dh)
+  0024  d6 04        sub 04h
+  0026  3a 4e 00     ld a,(004eh)
+  0029  de 00        sbc a,00h
+  002b  fa 4a 00     jp m,004ah
+  002e  21 01 00     ld hl,0001h
+  0031  e5           push hl
+  0032  cd 00 00     call __ckcon
+  0035  f1           pop af
+  0036  79           ld a,c
+  0037  fe 03        cp 03h
+  0039  c2 3f 00     jp nz,003fh
+  003c  78           ld a,b
+  003d  fe 00        cp 00h
+  003f  c2 4a 00     jp nz,004ah
+  0042  21 00 00     ld hl,__ckcon
+  0045  e5           push hl
+  0046  cd 00 00     call __ckcon
+  0049  f1           pop af
+  004a  c3 00 00     jp __ckcon
+
+Data segment: 2 bytes
+  0000: 00 00                                             |..|
+
+Symbol table: 5 symbols (9-char names)
+  Index  Value  Type Seg    Global  Name
+  -----  -----  ---- -----  ------  ----
+  [  0]  0000   08   ext    yes      _cpm
+  [  1]  0000   08   ext    yes      c.ret
+  [  2]  0000   08   ext    yes      c.ent
+  [  3]  0000   08   ext    yes      __files
+  [  4]  0000   0d   text   yes      __ckcon
+
+Text relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  0001    word        symbol[2]
+  0008    word        symbol[0]
+  000e    word        text segment
+  0012    word        data segment
+  0015    word        data segment
+  0018    word        symbol[1]
+  001b    word        data segment
+  001f    word        data segment
+  0022    word        data segment
+  0027    word        data segment
+  002c    word        text segment
+  0033    word        symbol[0]
+  003a    word        text segment
+  0040    word        text segment
+  0047    word        symbol[0]
+  004b    word        symbol[1]
+
+Data relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  (none)
+

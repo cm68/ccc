@@ -1,0 +1,176 @@
+=== lib/libp/page.o ===
+
+Header:
+  Magic:       0x99
+  Config:      0x14 little-endian
+  Symlen:      9 chars
+  Symtab:      120 bytes (10 symbols)
+  Text:        172 bytes
+  Data:        5 bytes
+  BSS:         0 bytes
+  Heap:        0 bytes
+  Text offset: 0x0000
+  Data offset: 0x00ac
+
+Disassembly: 172 bytes
+  0000  7c           ld a,h
+  0001  00           nop
+  0002  04           inc b
+  0003  00           nop
+  0004  49           ld c,c
+  0005  00           nop
+  0006  05           dec b
+  0007  00           nop
+  0008  00           nop
+  0009  00           nop
+  000a  9c           sbc a,h
+  000b  00           nop
+  000c  6e           ld l,(hl)
+  000d  6f           ld l,a
+  000e  74           ld (hl),h
+  000f  20 74        jr nz,0085h
+  0011  65           ld h,l
+  0012  78           ld a,b
+  0013  74           ld (hl),h
+  0014  20 66        jr nz,007ch
+  0016  69           ld l,c
+  0017  6c           ld l,h
+  0018  65           ld h,l
+  0019  00           nop
+  001a  0c           inc c
+  001b  00           nop
+  001c  0a           ld a,(bc)
+  001d  0c           inc c
+  001e  00           nop
+_page:
+  001f  cd 00 00     call 0000h
+  0022  21 ac 00     ld hl,00ach
+  0025  e5           push hl
+  0026  21 04 00     ld hl,0004h
+  0029  19           add hl,de
+  002a  4e           ld c,(hl)
+  002b  23           inc hl
+  002c  46           ld b,(hl)
+  002d  c5           push bc
+  002e  cd 00 00     call 0000h
+  0031  f1           pop af
+  0032  f1           pop af
+  0033  69           ld l,c
+  0034  60           ld h,b
+  0035  22 00 00     ld (0000h),hl
+  0038  2a 00 00     ld hl,(0000h)
+  003b  01 04 00     ld bc,0004h
+  003e  09           add hl,bc
+  003f  7e           ld a,(hl)
+  0040  4f           ld c,a
+  0041  97           sub a
+  0042  47           ld b,a
+  0043  21 00 00     ld hl,0000h
+  0046  c3 00 00     jp 0000h
+  0049  3e 02        ld a,02h
+  004b  32 00 00     ld (0000h),a
+  004e  87           add a,a
+  004f  9f           sbc a,a
+  0050  32 01 00     ld (0001h),a
+  0053  21 1c 00     ld hl,001ch
+  0056  22 00 00     ld (0000h),hl
+  0059  21 ac 00     ld hl,00ach
+  005c  e5           push hl
+  005d  2a 00 00     ld hl,(0000h)
+  0060  e5           push hl
+  0061  2a 00 00     ld hl,(0000h)
+  0064  e5           push hl
+  0065  2a 00 00     ld hl,(0000h)
+  0068  e5           push hl
+  0069  cd 00 00     call 0000h
+  006c  f1           pop af
+  006d  f1           pop af
+  006e  f1           pop af
+  006f  f1           pop af
+  0070  2a 00 00     ld hl,(0000h)
+  0073  01 04 00     ld bc,0004h
+  0076  09           add hl,bc
+  0077  36 05        ld (hl),05h
+  0079  c3 00 00     jp 0000h
+  007c  2a 00 00     ld hl,(0000h)
+  007f  01 02 00     ld bc,0002h
+  0082  09           add hl,bc
+  0083  7e           ld a,(hl)
+  0084  23           inc hl
+  0085  b6           or (hl)
+  0086  c2 9c 00     jp nz,009ch
+  0089  3e 01        ld a,01h
+  008b  32 00 00     ld (0000h),a
+  008e  87           add a,a
+  008f  9f           sbc a,a
+  0090  32 01 00     ld (0001h),a
+  0093  21 1a 00     ld hl,001ah
+  0096  22 00 00     ld (0000h),hl
+  0099  c3 59 00     jp 0059h
+  009c  21 0c 00     ld hl,000ch
+  009f  e5           push hl
+  00a0  21 ac 00     ld hl,00ach
+  00a3  e5           push hl
+  00a4  cd 00 00     call 0000h
+  00a7  f1           pop af
+  00a8  f1           pop af
+  00a9  c3 59 00     jp 0059h
+
+Data segment: 5 bytes
+  0000: 70 61 67 65 00                                    |page.|
+
+Symbol table: 10 symbols (9-char names)
+  Index  Value  Type Seg    Global  Name
+  -----  -----  ---- -----  ------  ----
+  [  0]  0000   08   ext    yes      c.r4
+  [  1]  0000   08   ext    yes      c.r3
+  [  2]  0000   08   ext    yes      c.r2
+  [  3]  0000   08   ext    yes      c.switch
+  [  4]  0000   08   ext    yes      _p_write
+  [  5]  0000   08   ext    yes      c.rets
+  [  6]  0000   08   ext    yes      c.ents
+  [  7]  0000   08   ext    yes      _p_ckfd
+  [  8]  0000   08   ext    yes      _p_abort
+  [  9]  001f   0d   text   yes      _page
+
+Text relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  0000    word        text segment
+  0004    word        text segment
+  000a    word        text segment
+  0020    word        symbol[6]
+  0023    word        data segment
+  002f    word        symbol[7]
+  0036    word        symbol[2]
+  0039    word        symbol[2]
+  0044    word        text segment
+  0047    word        symbol[3]
+  004c    word        symbol[0]
+  0051    word        symbol[0]
+  0054    word        text segment
+  0057    word        symbol[1]
+  005a    word        data segment
+  005e    word        symbol[0]
+  0062    word        symbol[1]
+  0066    word        symbol[2]
+  006a    word        symbol[4]
+  0071    word        symbol[2]
+  007a    word        symbol[5]
+  007d    word        symbol[2]
+  0087    word        text segment
+  008c    word        symbol[0]
+  0091    word        symbol[0]
+  0094    word        text segment
+  0097    word        symbol[1]
+  009a    word        text segment
+  009d    word        text segment
+  00a1    word        data segment
+  00a5    word        symbol[8]
+  00aa    word        text segment
+
+Data relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  (none)
+

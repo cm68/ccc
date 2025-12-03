@@ -1,0 +1,172 @@
+=== lib/libmdc/create.o ===
+
+Header:
+  Magic:       0x99
+  Config:      0x14 little-endian
+  Symlen:      9 chars
+  Symtab:      96 bytes (8 symbols)
+  Text:        192 bytes
+  Data:        2 bytes
+  BSS:         0 bytes
+  Heap:        0 bytes
+  Text offset: 0x0000
+  Data offset: 0x00c0
+
+Disassembly: 192 bytes
+_create:
+  0000  cd 00 00     call _create
+  0003  21 06 00     ld hl,0006h
+  0006  19           add hl,de
+  0007  7e           ld a,(hl)
+  0008  23           inc hl
+  0009  b6           or (hl)
+  000a  ca 29 00     jp z,0029h
+  000d  21 06 00     ld hl,0006h
+  0010  19           add hl,de
+  0011  7e           ld a,(hl)
+  0012  fe 01        cp 01h
+  0014  c2 1b 00     jp nz,001bh
+  0017  23           inc hl
+  0018  7e           ld a,(hl)
+  0019  fe 00        cp 00h
+  001b  ca 29 00     jp z,0029h
+  001e  21 06 00     ld hl,0006h
+  0021  19           add hl,de
+  0022  3e 02        ld a,02h
+  0024  77           ld (hl),a
+  0025  87           add a,a
+  0026  9f           sbc a,a
+  0027  23           inc hl
+  0028  77           ld (hl),a
+  0029  cd 00 00     call _create
+  002c  69           ld l,c
+  002d  60           ld h,b
+  002e  22 c0 00     ld (00c0h),hl
+  0031  21 c0 00     ld hl,00c0h
+  0034  7e           ld a,(hl)
+  0035  23           inc hl
+  0036  b6           or (hl)
+  0037  c2 40 00     jp nz,0040h
+  003a  01 ff ff     ld bc,ffffh
+  003d  c3 00 00     jp _create
+  0040  2a c0 00     ld hl,(00c0h)
+  0043  e5           push hl
+  0044  21 04 00     ld hl,0004h
+  0047  19           add hl,de
+  0048  4e           ld c,(hl)
+  0049  23           inc hl
+  004a  46           ld b,(hl)
+  004b  c5           push bc
+  004c  cd 00 00     call _create
+  004f  f1           pop af
+  0050  f1           pop af
+  0051  79           ld a,c
+  0052  b0           or b
+  0053  c2 5c 00     jp nz,005ch
+  0056  01 ff ff     ld bc,ffffh
+  0059  c3 00 00     jp _create
+  005c  2a c0 00     ld hl,(00c0h)
+  005f  01 05 00     ld bc,0005h
+  0062  09           add hl,bc
+  0063  7e           ld a,(hl)
+  0064  fe 44        cp 44h
+  0066  c2 96 00     jp nz,0096h
+  0069  2a c0 00     ld hl,(00c0h)
+  006c  01 08 00     ld bc,0008h
+  006f  09           add hl,bc
+  0070  e5           push hl
+  0071  21 13 00     ld hl,0013h
+  0074  e5           push hl
+  0075  cd 00 00     call _create
+  0078  f1           pop af
+  0079  f1           pop af
+  007a  2a c0 00     ld hl,(00c0h)
+  007d  01 08 00     ld bc,0008h
+  0080  09           add hl,bc
+  0081  e5           push hl
+  0082  21 16 00     ld hl,0016h
+  0085  e5           push hl
+  0086  cd 00 00     call _create
+  0089  f1           pop af
+  008a  f1           pop af
+  008b  78           ld a,b
+  008c  b7           or a
+  008d  f2 96 00     jp p,0096h
+  0090  01 ff ff     ld bc,ffffh
+  0093  c3 00 00     jp _create
+  0096  2a c0 00     ld hl,(00c0h)
+  0099  01 05 00     ld bc,0005h
+  009c  09           add hl,bc
+  009d  36 00        ld (hl),00h
+  009f  21 08 00     ld hl,0008h
+  00a2  19           add hl,de
+  00a3  4e           ld c,(hl)
+  00a4  23           inc hl
+  00a5  46           ld b,(hl)
+  00a6  c5           push bc
+  00a7  21 06 00     ld hl,0006h
+  00aa  19           add hl,de
+  00ab  4e           ld c,(hl)
+  00ac  23           inc hl
+  00ad  46           ld b,(hl)
+  00ae  c5           push bc
+  00af  21 04 00     ld hl,0004h
+  00b2  19           add hl,de
+  00b3  4e           ld c,(hl)
+  00b4  23           inc hl
+  00b5  46           ld b,(hl)
+  00b6  c5           push bc
+  00b7  cd 00 00     call _create
+  00ba  f1           pop af
+  00bb  f1           pop af
+  00bc  f1           pop af
+  00bd  c3 00 00     jp _create
+
+Data segment: 2 bytes
+  0000: 00 00                                             |..|
+
+Symbol table: 8 symbols (9-char names)
+  Index  Value  Type Seg    Global  Name
+  -----  -----  ---- -----  ------  ----
+  [  0]  0000   08   ext    yes      __first
+  [  1]  0000   08   ext    yes      __name
+  [  2]  0000   08   ext    yes      _cpm
+  [  3]  0000   08   ext    yes      c.ret
+  [  4]  0000   08   ext    yes      c.ent
+  [  5]  0000   08   ext    yes      __files
+  [  6]  0000   08   ext    yes      _open
+  [  7]  0000   0d   text   yes      _create
+
+Text relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  0001    word        symbol[4]
+  000b    word        text segment
+  0015    word        text segment
+  001c    word        text segment
+  002a    word        symbol[0]
+  002f    word        data segment
+  0032    word        data segment
+  0038    word        text segment
+  003e    word        symbol[3]
+  0041    word        data segment
+  004d    word        symbol[1]
+  0054    word        text segment
+  005a    word        symbol[3]
+  005d    word        data segment
+  0067    word        text segment
+  006a    word        data segment
+  0076    word        symbol[2]
+  007b    word        data segment
+  0087    word        symbol[2]
+  008e    word        text segment
+  0094    word        symbol[3]
+  0097    word        data segment
+  00b8    word        symbol[6]
+  00be    word        symbol[3]
+
+Data relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  (none)
+

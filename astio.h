@@ -1,31 +1,35 @@
 /*
- * astio.h - Low-level I/O and token parsing for AST parser
- *
- * Handles buffered input, whitespace/comment skipping, and basic token reading.
+ * astio.h - AST I/O functions for hex-based format
  */
 #ifndef ASTIO_H
 #define ASTIO_H
 
-/* Global parser state (managed by astio.c, accessible to parser) */
-extern unsigned char curchar;
+/* Parser state */
 extern int lineNum;
+extern unsigned char curchar;
 
-/* Buffer initialization */
+/* Initialize with file descriptor */
 void initAstio(unsigned char fd);
 
-/* Character-level I/O */
+/* Read next character */
 unsigned char nextchar(void);
-void skip(void);
-unsigned char expect(unsigned char c);
 
-/* Token reading (return pointers to static buffers) */
-char *readSymbol(void);
-long readNumber(void);
-char *readType(void);
-char *readQuotedStr(void);
+/* Read 2 hex chars as byte value */
+int readHex2(void);
 
-/* String utilities */
-unsigned char isLabel(char *line);
-char *trimLine(char *line);
+/* Read hex number terminated by '.' */
+long readNum(void);
 
-#endif /* ASTIO_H */
+/* Read hex-length-prefixed name (static buffer) */
+char *readName(void);
+
+/* Read hex-length-prefixed string (malloc'd) */
+char *readStr(void);
+
+/* Skip to next line */
+void skipLine(void);
+
+/* Skip newlines */
+void skipNL(void);
+
+#endif

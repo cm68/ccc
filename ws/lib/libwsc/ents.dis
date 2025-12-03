@@ -1,0 +1,73 @@
+=== lib/libwsc/ents.o ===
+
+Header:
+  Magic:       0x99
+  Config:      0x14 little-endian
+  Symlen:      9 chars
+  Symtab:      84 bytes (7 symbols)
+  Text:        41 bytes
+  Data:        22 bytes
+  BSS:         0 bytes
+  Heap:        0 bytes
+  Text offset: 0x0000
+  Data offset: 0x0029
+
+Disassembly: 41 bytes
+c.ents:
+  0000  c1           pop bc
+  0001  21 fe ff     ld hl,fffeh
+  0004  39           add hl,sp
+  0005  eb           ex de,hl
+  0006  e5           push hl
+  0007  2a 3d 00     ld hl,(c.r4)
+  000a  e5           push hl
+  000b  2a 3b 00     ld hl,(c.r3)
+  000e  e5           push hl
+  000f  2a 39 00     ld hl,(c.r2)
+  0012  e5           push hl
+  0013  69           ld l,c
+  0014  60           ld h,b
+  0015  e9           jp (hl)
+c.rets:
+  0016  21 fa ff     ld hl,fffah
+  0019  19           add hl,de
+  001a  f9           ld sp,hl
+  001b  e1           pop hl
+  001c  22 39 00     ld (c.r2),hl
+  001f  e1           pop hl
+  0020  22 3b 00     ld (c.r3),hl
+  0023  e1           pop hl
+  0024  22 3d 00     ld (c.r4),hl
+  0027  d1           pop de
+  0028  c9           ret
+
+Data segment: 22 bytes
+  0000: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00  |................|
+  0010: 00 00 00 00 00 00                                 |......|
+
+Symbol table: 7 symbols (9-char names)
+  Index  Value  Type Seg    Global  Name
+  -----  -----  ---- -----  ------  ----
+  [  0]  003d   0e   data   yes      c.r4
+  [  1]  003b   0e   data   yes      c.r3
+  [  2]  0039   0e   data   yes      c.r2
+  [  3]  0031   0e   data   yes      c.r1
+  [  4]  0029   0e   data   yes      c.r0
+  [  5]  0016   0d   text   yes      c.rets
+  [  6]  0000   0d   text   yes      c.ents
+
+Text relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  0008    word        data segment
+  000c    word        data segment
+  0010    word        data segment
+  001d    word        data segment
+  0021    word        data segment
+  0025    word        data segment
+
+Data relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  (none)
+

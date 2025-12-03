@@ -1,0 +1,160 @@
+=== lib/libp/pxsequ.o ===
+
+Header:
+  Magic:       0x99
+  Config:      0x14 little-endian
+  Symlen:      9 chars
+  Symtab:      96 bytes (8 symbols)
+  Text:        173 bytes
+  Data:        0 bytes
+  BSS:         0 bytes
+  Heap:        0 bytes
+  Text offset: 0x0000
+  Data offset: 0x00ad
+
+Disassembly: 173 bytes
+_p_sequ:
+  0000  cd 00 00     call _p_sequ
+  0003  21 06 00     ld hl,0006h
+  0006  19           add hl,de
+  0007  7e           ld a,(hl)
+  0008  23           inc hl
+  0009  66           ld h,(hl)
+  000a  6f           ld l,a
+  000b  22 00 00     ld (_p_sequ),hl
+  000e  21 08 00     ld hl,0008h
+  0011  19           add hl,de
+  0012  7e           ld a,(hl)
+  0013  23           inc hl
+  0014  66           ld h,(hl)
+  0015  6f           ld l,a
+  0016  22 00 00     ld (_p_sequ),hl
+  0019  21 04 00     ld hl,0004h
+  001c  19           add hl,de
+  001d  4e           ld c,(hl)
+  001e  23           inc hl
+  001f  46           ld b,(hl)
+  0020  c5           push bc
+  0021  21 03 00     ld hl,0003h
+  0024  e5           push hl
+  0025  cd 00 00     call _p_sequ
+  0028  e1           pop hl
+  0029  22 00 00     ld (_p_sequ),hl
+  002c  3a 00 00     ld a,(_p_sequ)
+  002f  d6 01        sub 01h
+  0031  32 00 00     ld (_p_sequ),a
+  0034  3a 01 00     ld a,(0001h)
+  0037  de 00        sbc a,00h
+  0039  32 01 00     ld (0001h),a
+  003c  fa 5c 00     jp m,005ch
+  003f  2a 00 00     ld hl,(_p_sequ)
+  0042  e5           push hl
+  0043  2a 00 00     ld hl,(_p_sequ)
+  0046  23           inc hl
+  0047  22 00 00     ld (_p_sequ),hl
+  004a  2a 00 00     ld hl,(_p_sequ)
+  004d  e5           push hl
+  004e  2a 00 00     ld hl,(_p_sequ)
+  0051  23           inc hl
+  0052  22 00 00     ld (_p_sequ),hl
+  0055  e1           pop hl
+  0056  c1           pop bc
+  0057  0a           ld a,(bc)
+  0058  be           cp (hl)
+  0059  ca 2c 00     jp z,002ch
+  005c  21 04 00     ld hl,0004h
+  005f  19           add hl,de
+  0060  7e           ld a,(hl)
+  0061  23           inc hl
+  0062  66           ld h,(hl)
+  0063  6f           ld l,a
+  0064  7d           ld a,l
+  0065  e6 02        and 02h
+  0067  ca 7b 00     jp z,007bh
+  006a  21 00 00     ld hl,_p_sequ
+  006d  e5           push hl
+  006e  21 06 00     ld hl,0006h
+  0071  19           add hl,de
+  0072  4e           ld c,(hl)
+  0073  23           inc hl
+  0074  46           ld b,(hl)
+  0075  c5           push bc
+  0076  cd 00 00     call _p_sequ
+  0079  f1           pop af
+  007a  f1           pop af
+  007b  21 04 00     ld hl,0004h
+  007e  19           add hl,de
+  007f  7e           ld a,(hl)
+  0080  23           inc hl
+  0081  66           ld h,(hl)
+  0082  6f           ld l,a
+  0083  7d           ld a,l
+  0084  e6 01        and 01h
+  0086  ca 9a 00     jp z,009ah
+  0089  21 00 00     ld hl,_p_sequ
+  008c  e5           push hl
+  008d  21 08 00     ld hl,0008h
+  0090  19           add hl,de
+  0091  4e           ld c,(hl)
+  0092  23           inc hl
+  0093  46           ld b,(hl)
+  0094  c5           push bc
+  0095  cd 00 00     call _p_sequ
+  0098  f1           pop af
+  0099  f1           pop af
+  009a  3a 01 00     ld a,(0001h)
+  009d  b7           or a
+  009e  f2 a7 00     jp p,00a7h
+  00a1  01 01 00     ld bc,0001h
+  00a4  c3 aa 00     jp 00aah
+  00a7  01 00 00     ld bc,_p_sequ
+  00aa  c3 00 00     jp _p_sequ
+
+Data segment: (empty)
+
+Symbol table: 8 symbols (9-char names)
+  Index  Value  Type Seg    Global  Name
+  -----  -----  ---- -----  ------  ----
+  [  0]  0000   08   ext    yes      c.r4
+  [  1]  0000   08   ext    yes      c.r3
+  [  2]  0000   08   ext    yes      c.r2
+  [  3]  0000   08   ext    yes      c.ursh
+  [  4]  0000   08   ext    yes      c.rets
+  [  5]  0000   08   ext    yes      c.ents
+  [  6]  0000   08   ext    yes      _free
+  [  7]  0000   0d   text   yes      _p_sequ
+
+Text relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  0001    word        symbol[5]
+  000c    word        symbol[2]
+  0017    word        symbol[1]
+  0026    word        symbol[3]
+  002a    word        symbol[0]
+  002d    word        symbol[0]
+  0032    word        symbol[0]
+  0035    word        symbol[0]
+  003a    word        symbol[0]
+  003d    word        text segment
+  0040    word        symbol[2]
+  0044    word        symbol[2]
+  0048    word        symbol[2]
+  004b    word        symbol[1]
+  004f    word        symbol[1]
+  0053    word        symbol[1]
+  005a    word        text segment
+  0068    word        text segment
+  0077    word        symbol[6]
+  0087    word        text segment
+  0096    word        symbol[6]
+  009b    word        symbol[0]
+  009f    word        text segment
+  00a5    word        text segment
+  00ab    word        symbol[4]
+
+Data relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  (none)
+

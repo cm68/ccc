@@ -1,0 +1,252 @@
+=== lib/libS/puts.o ===
+
+Header:
+  Magic:       0x99
+  Config:      0x14 little-endian
+  Symlen:      9 chars
+  Symtab:      132 bytes (11 symbols)
+  Text:        288 bytes
+  Data:        0 bytes
+  BSS:         0 bytes
+  Heap:        0 bytes
+  Text offset: 0x0000
+  Data offset: 0x0120
+
+Disassembly: 288 bytes
+_puts:
+  0000  cd 00 00     call _puts
+  0003  21 04 00     ld hl,0004h
+  0006  19           add hl,de
+  0007  7e           ld a,(hl)
+  0008  23           inc hl
+  0009  66           ld h,(hl)
+  000a  6f           ld l,a
+  000b  22 00 00     ld (_puts),hl
+  000e  21 10 00     ld hl,0010h
+  0011  e5           push hl
+  0012  2a 00 00     ld hl,(_puts)
+  0015  e5           push hl
+  0016  cd 6c 00     call _fputs
+  0019  f1           pop af
+  001a  f1           pop af
+  001b  3a 12 00     ld a,(0012h)
+  001e  d6 01        sub 01h
+  0020  32 12 00     ld (0012h),a
+  0023  3a 13 00     ld a,(0013h)
+  0026  de 00        sbc a,00h
+  0028  32 13 00     ld (0013h),a
+  002b  fa 3f 00     jp m,003fh
+  002e  2a 10 00     ld hl,(0010h)
+  0031  e5           push hl
+  0032  2a 10 00     ld hl,(0010h)
+  0035  23           inc hl
+  0036  22 10 00     ld (0010h),hl
+  0039  e1           pop hl
+  003a  36 0a        ld (hl),0ah
+  003c  c3 4c 00     jp 004ch
+  003f  21 10 00     ld hl,0010h
+  0042  e5           push hl
+  0043  21 0a 00     ld hl,000ah
+  0046  e5           push hl
+  0047  cd 00 00     call _puts
+  004a  f1           pop af
+  004b  f1           pop af
+  004c  2a 16 00     ld hl,(0016h)
+  004f  7d           ld a,l
+  0050  e6 40        and 40h
+  0052  6f           ld l,a
+  0053  7c           ld a,h
+  0054  e6 01        and 01h
+  0056  67           ld h,a
+  0057  7d           ld a,l
+  0058  b4           or h
+  0059  ca 69 00     jp z,0069h
+  005c  21 10 00     ld hl,0010h
+  005f  e5           push hl
+  0060  21 ff ff     ld hl,ffffh
+  0063  e5           push hl
+  0064  cd 00 00     call _puts
+  0067  f1           pop af
+  0068  f1           pop af
+  0069  c3 00 00     jp _puts
+_fputs:
+  006c  cd 00 00     call _puts
+  006f  21 04 00     ld hl,0004h
+  0072  19           add hl,de
+  0073  7e           ld a,(hl)
+  0074  23           inc hl
+  0075  66           ld h,(hl)
+  0076  6f           ld l,a
+  0077  22 00 00     ld (_puts),hl
+  007a  21 06 00     ld hl,0006h
+  007d  19           add hl,de
+  007e  7e           ld a,(hl)
+  007f  23           inc hl
+  0080  66           ld h,(hl)
+  0081  6f           ld l,a
+  0082  22 00 00     ld (_puts),hl
+  0085  2a 00 00     ld hl,(_puts)
+  0088  e5           push hl
+  0089  2a 00 00     ld hl,(_puts)
+  008c  23           inc hl
+  008d  22 00 00     ld (_puts),hl
+  0090  e1           pop hl
+  0091  7e           ld a,(hl)
+  0092  32 00 00     ld (_puts),a
+  0095  87           add a,a
+  0096  9f           sbc a,a
+  0097  32 01 00     ld (0001h),a
+  009a  21 00 00     ld hl,_puts
+  009d  7e           ld a,(hl)
+  009e  23           inc hl
+  009f  b6           or (hl)
+  00a0  ca d2 00     jp z,00d2h
+  00a3  2a 00 00     ld hl,(_puts)
+  00a6  01 02 00     ld bc,0002h
+  00a9  09           add hl,bc
+  00aa  7e           ld a,(hl)
+  00ab  d6 01        sub 01h
+  00ad  77           ld (hl),a
+  00ae  23           inc hl
+  00af  7e           ld a,(hl)
+  00b0  de 00        sbc a,00h
+  00b2  77           ld (hl),a
+  00b3  2b           dec hl
+  00b4  fa d5 00     jp m,00d5h
+  00b7  2a 00 00     ld hl,(_puts)
+  00ba  4e           ld c,(hl)
+  00bb  23           inc hl
+  00bc  46           ld b,(hl)
+  00bd  c5           push bc
+  00be  2a 00 00     ld hl,(_puts)
+  00c1  7e           ld a,(hl)
+  00c2  c6 01        add a,01h
+  00c4  77           ld (hl),a
+  00c5  23           inc hl
+  00c6  7e           ld a,(hl)
+  00c7  ce 00        adc a,00h
+  00c9  77           ld (hl),a
+  00ca  e1           pop hl
+  00cb  3a 00 00     ld a,(_puts)
+  00ce  77           ld (hl),a
+  00cf  c3 e8 00     jp 00e8h
+  00d2  c3 00 00     jp _puts
+  00d5  2a 00 00     ld hl,(_puts)
+  00d8  e5           push hl
+  00d9  2a 00 00     ld hl,(_puts)
+  00dc  7d           ld a,l
+  00dd  e6 ff        and ffh
+  00df  6f           ld l,a
+  00e0  97           sub a
+  00e1  67           ld h,a
+  00e2  e5           push hl
+  00e3  cd 00 00     call _puts
+  00e6  f1           pop af
+  00e7  f1           pop af
+  00e8  3a 00 00     ld a,(_puts)
+  00eb  fe 0a        cp 0ah
+  00ed  c2 f5 00     jp nz,00f5h
+  00f0  3a 01 00     ld a,(0001h)
+  00f3  fe 00        cp 00h
+  00f5  c2 85 00     jp nz,0085h
+  00f8  2a 00 00     ld hl,(_puts)
+  00fb  01 06 00     ld bc,0006h
+  00fe  09           add hl,bc
+  00ff  7e           ld a,(hl)
+  0100  23           inc hl
+  0101  66           ld h,(hl)
+  0102  6f           ld l,a
+  0103  7d           ld a,l
+  0104  e6 40        and 40h
+  0106  6f           ld l,a
+  0107  7c           ld a,h
+  0108  e6 01        and 01h
+  010a  67           ld h,a
+  010b  7d           ld a,l
+  010c  b4           or h
+  010d  ca 85 00     jp z,0085h
+  0110  2a 00 00     ld hl,(_puts)
+  0113  e5           push hl
+  0114  21 ff ff     ld hl,ffffh
+  0117  e5           push hl
+  0118  cd 00 00     call _puts
+  011b  f1           pop af
+  011c  f1           pop af
+  011d  c3 85 00     jp 0085h
+
+Data segment: (empty)
+
+Symbol table: 11 symbols (9-char names)
+  Index  Value  Type Seg    Global  Name
+  -----  -----  ---- -----  ------  ----
+  [  0]  0000   08   ext    yes      __exit
+  [  1]  0000   08   ext    yes      __iob
+  [  2]  0000   08   ext    yes      c.r4
+  [  3]  0000   08   ext    yes      c.r3
+  [  4]  0000   08   ext    yes      c.r2
+  [  5]  0000   08   ext    yes      _exit
+  [  6]  0000   08   ext    yes      c.rets
+  [  7]  0000   08   ext    yes      c.ents
+  [  8]  0000   08   ext    yes      __flushb
+  [  9]  0000   0d   text   yes      _puts
+  [ 10]  006c   0d   text   yes      _fputs
+
+Text relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  0001    word        symbol[7]
+  000c    word        symbol[2]
+  000f    word        symbol[1]
+  0013    word        symbol[2]
+  0017    word        text segment
+  001c    word        symbol[1]
+  0021    word        symbol[1]
+  0024    word        symbol[1]
+  0029    word        symbol[1]
+  002c    word        text segment
+  002f    word        symbol[1]
+  0033    word        symbol[1]
+  0037    word        symbol[1]
+  003d    word        text segment
+  0040    word        symbol[1]
+  0048    word        symbol[8]
+  004d    word        symbol[1]
+  005a    word        text segment
+  005d    word        symbol[1]
+  0065    word        symbol[8]
+  006a    word        symbol[6]
+  006d    word        symbol[7]
+  0078    word        symbol[2]
+  0083    word        symbol[4]
+  0086    word        symbol[2]
+  008a    word        symbol[2]
+  008e    word        symbol[2]
+  0093    word        symbol[3]
+  0098    word        symbol[3]
+  009b    word        symbol[3]
+  00a1    word        text segment
+  00a4    word        symbol[4]
+  00b5    word        text segment
+  00b8    word        symbol[4]
+  00bf    word        symbol[4]
+  00cc    word        symbol[3]
+  00d0    word        text segment
+  00d3    word        symbol[6]
+  00d6    word        symbol[4]
+  00da    word        symbol[3]
+  00e4    word        symbol[8]
+  00e9    word        symbol[3]
+  00ee    word        text segment
+  00f1    word        symbol[3]
+  00f6    word        text segment
+  00f9    word        symbol[4]
+  010e    word        text segment
+  0111    word        symbol[4]
+  0119    word        symbol[8]
+  011e    word        text segment
+
+Data relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  (none)
+

@@ -1,0 +1,408 @@
+=== lib/libS/fseek.o ===
+
+Header:
+  Magic:       0x99
+  Config:      0x14 little-endian
+  Symlen:      9 chars
+  Symtab:      216 bytes (18 symbols)
+  Text:        487 bytes
+  Data:        8 bytes
+  BSS:         0 bytes
+  Heap:        0 bytes
+  Text offset: 0x0000
+  Data offset: 0x01e7
+
+Disassembly: 487 bytes
+_fseek:
+  0000  cd 00 00     call _fseek
+  0003  21 dc ff     ld hl,ffdch
+  0006  39           add hl,sp
+  0007  f9           ld sp,hl
+  0008  21 04 00     ld hl,0004h
+  000b  19           add hl,de
+  000c  7e           ld a,(hl)
+  000d  23           inc hl
+  000e  66           ld h,(hl)
+  000f  6f           ld l,a
+  0010  22 00 00     ld (_fseek),hl
+  0013  21 0a 00     ld hl,000ah
+  0016  19           add hl,de
+  0017  7e           ld a,(hl)
+  0018  23           inc hl
+  0019  66           ld h,(hl)
+  001a  6f           ld l,a
+  001b  22 00 00     ld (_fseek),hl
+  001e  2a 00 00     ld hl,(_fseek)
+  0021  01 06 00     ld bc,0006h
+  0024  09           add hl,bc
+  0025  7e           ld a,(hl)
+  0026  23           inc hl
+  0027  66           ld h,(hl)
+  0028  6f           ld l,a
+  0029  7d           ld a,l
+  002a  e6 40        and 40h
+  002c  ca 35 00     jp z,0035h
+  002f  01 ff ff     ld bc,ffffh
+  0032  c3 00 00     jp _fseek
+  0035  2a 00 00     ld hl,(_fseek)
+  0038  e5           push hl
+  0039  21 ff ff     ld hl,ffffh
+  003c  e5           push hl
+  003d  cd 00 00     call _fseek
+  0040  f1           pop af
+  0041  f1           pop af
+  0042  2a 00 00     ld hl,(_fseek)
+  0045  01 02 00     ld bc,0002h
+  0048  09           add hl,bc
+  0049  97           sub a
+  004a  77           ld (hl),a
+  004b  23           inc hl
+  004c  77           ld (hl),a
+  004d  2a 00 00     ld hl,(_fseek)
+  0050  e5           push hl
+  0051  2a 00 00     ld hl,(_fseek)
+  0054  01 04 00     ld bc,0004h
+  0057  09           add hl,bc
+  0058  c1           pop bc
+  0059  7e           ld a,(hl)
+  005a  02           ld (bc),a
+  005b  23           inc hl
+  005c  7e           ld a,(hl)
+  005d  03           inc bc
+  005e  02           ld (bc),a
+  005f  2a 00 00     ld hl,(_fseek)
+  0062  e5           push hl
+  0063  21 06 00     ld hl,0006h
+  0066  19           add hl,de
+  0067  23           inc hl
+  0068  23           inc hl
+  0069  4e           ld c,(hl)
+  006a  23           inc hl
+  006b  46           ld b,(hl)
+  006c  c5           push bc
+  006d  2b           dec hl
+  006e  2b           dec hl
+  006f  2b           dec hl
+  0070  4e           ld c,(hl)
+  0071  23           inc hl
+  0072  46           ld b,(hl)
+  0073  c5           push bc
+  0074  2a 00 00     ld hl,(_fseek)
+  0077  01 08 00     ld bc,0008h
+  007a  09           add hl,bc
+  007b  4e           ld c,(hl)
+  007c  23           inc hl
+  007d  46           ld b,(hl)
+  007e  c5           push bc
+  007f  cd 00 00     call _fseek
+  0082  f1           pop af
+  0083  f1           pop af
+  0084  f1           pop af
+  0085  f1           pop af
+  0086  78           ld a,b
+  0087  b7           or a
+  0088  f2 91 00     jp p,0091h
+  008b  01 ff ff     ld bc,ffffh
+  008e  c3 00 00     jp _fseek
+  0091  21 00 00     ld hl,_fseek
+  0094  7e           ld a,(hl)
+  0095  23           inc hl
+  0096  b6           or (hl)
+  0097  c2 b8 00     jp nz,00b8h
+  009a  2a 00 00     ld hl,(_fseek)
+  009d  01 0a 00     ld bc,000ah
+  00a0  09           add hl,bc
+  00a1  e5           push hl
+  00a2  21 06 00     ld hl,0006h
+  00a5  19           add hl,de
+  00a6  c1           pop bc
+  00a7  7e           ld a,(hl)
+  00a8  02           ld (bc),a
+  00a9  23           inc hl
+  00aa  7e           ld a,(hl)
+  00ab  03           inc bc
+  00ac  02           ld (bc),a
+  00ad  23           inc hl
+  00ae  7e           ld a,(hl)
+  00af  03           inc bc
+  00b0  02           ld (bc),a
+  00b1  23           inc hl
+  00b2  7e           ld a,(hl)
+  00b3  03           inc bc
+  00b4  02           ld (bc),a
+  00b5  c3 71 01     jp 0171h
+  00b8  3a 00 00     ld a,(_fseek)
+  00bb  fe 01        cp 01h
+  00bd  c2 c5 00     jp nz,00c5h
+  00c0  3a 01 00     ld a,(0001h)
+  00c3  fe 00        cp 00h
+  00c5  c2 dc 00     jp nz,00dch
+  00c8  2a 00 00     ld hl,(_fseek)
+  00cb  01 0a 00     ld bc,000ah
+  00ce  09           add hl,bc
+  00cf  e5           push hl
+  00d0  21 06 00     ld hl,0006h
+  00d3  19           add hl,de
+  00d4  e5           push hl
+  00d5  cd 00 00     call _fseek
+  00d8  f1           pop af
+  00d9  c3 71 01     jp 0171h
+  00dc  97           sub a
+  00dd  32 e7 01     ld (01e7h),a
+  00e0  32 e8 01     ld (01e8h),a
+  00e3  32 e9 01     ld (01e9h),a
+  00e6  32 ea 01     ld (01eah),a
+  00e9  21 d6 ff     ld hl,ffd6h
+  00ec  19           add hl,de
+  00ed  e5           push hl
+  00ee  2a 00 00     ld hl,(_fseek)
+  00f1  01 08 00     ld bc,0008h
+  00f4  09           add hl,bc
+  00f5  4e           ld c,(hl)
+  00f6  23           inc hl
+  00f7  46           ld b,(hl)
+  00f8  c5           push bc
+  00f9  cd 00 00     call _fseek
+  00fc  f1           pop af
+  00fd  f1           pop af
+  00fe  78           ld a,b
+  00ff  b7           or a
+  0100  fa 42 01     jp m,0142h
+  0103  21 df ff     ld hl,ffdfh
+  0106  19           add hl,de
+  0107  97           sub a
+  0108  32 e7 01     ld (01e7h),a
+  010b  32 e8 01     ld (01e8h),a
+  010e  7e           ld a,(hl)
+  010f  32 e9 01     ld (01e9h),a
+  0112  97           sub a
+  0113  32 ea 01     ld (01eah),a
+  0116  21 e7 01     ld hl,01e7h
+  0119  e5           push hl
+  011a  21 10 00     ld hl,0010h
+  011d  e5           push hl
+  011e  cd 00 00     call _fseek
+  0121  f1           pop af
+  0122  21 e7 01     ld hl,01e7h
+  0125  e5           push hl
+  0126  21 e0 ff     ld hl,ffe0h
+  0129  19           add hl,de
+  012a  97           sub a
+  012b  32 00 00     ld (_fseek),a
+  012e  32 01 00     ld (0001h),a
+  0131  7e           ld a,(hl)
+  0132  32 02 00     ld (0002h),a
+  0135  23           inc hl
+  0136  7e           ld a,(hl)
+  0137  32 03 00     ld (0003h),a
+  013a  21 00 00     ld hl,_fseek
+  013d  e5           push hl
+  013e  cd 00 00     call _fseek
+  0141  f1           pop af
+  0142  2a 00 00     ld hl,(_fseek)
+  0145  01 0a 00     ld bc,000ah
+  0148  09           add hl,bc
+  0149  e5           push hl
+  014a  21 e7 01     ld hl,01e7h
+  014d  e5           push hl
+  014e  e1           pop hl
+  014f  01 00 00     ld bc,_fseek
+  0152  cd 00 00     call _fseek
+  0155  21 00 00     ld hl,_fseek
+  0158  e5           push hl
+  0159  21 06 00     ld hl,0006h
+  015c  19           add hl,de
+  015d  e5           push hl
+  015e  cd 00 00     call _fseek
+  0161  e1           pop hl
+  0162  c1           pop bc
+  0163  7e           ld a,(hl)
+  0164  02           ld (bc),a
+  0165  23           inc hl
+  0166  7e           ld a,(hl)
+  0167  03           inc bc
+  0168  02           ld (bc),a
+  0169  23           inc hl
+  016a  7e           ld a,(hl)
+  016b  03           inc bc
+  016c  02           ld (bc),a
+  016d  23           inc hl
+  016e  7e           ld a,(hl)
+  016f  03           inc bc
+  0170  02           ld (bc),a
+  0171  2a 00 00     ld hl,(_fseek)
+  0174  4d           ld c,l
+  0175  44           ld b,h
+  0176  c3 00 00     jp _fseek
+_rewind:
+  0179  cd 00 00     call _fseek
+  017c  21 04 00     ld hl,0004h
+  017f  19           add hl,de
+  0180  7e           ld a,(hl)
+  0181  23           inc hl
+  0182  66           ld h,(hl)
+  0183  6f           ld l,a
+  0184  22 00 00     ld (_fseek),hl
+  0187  2a 00 00     ld hl,(_fseek)
+  018a  01 06 00     ld bc,0006h
+  018d  09           add hl,bc
+  018e  7e           ld a,(hl)
+  018f  e6 ef        and efh
+  0191  77           ld (hl),a
+  0192  23           inc hl
+  0193  7e           ld a,(hl)
+  0194  e6 ff        and ffh
+  0196  77           ld (hl),a
+  0197  2a 00 00     ld hl,(_fseek)
+  019a  01 06 00     ld bc,0006h
+  019d  09           add hl,bc
+  019e  7e           ld a,(hl)
+  019f  e6 df        and dfh
+  01a1  77           ld (hl),a
+  01a2  23           inc hl
+  01a3  7e           ld a,(hl)
+  01a4  e6 ff        and ffh
+  01a6  77           ld (hl),a
+  01a7  21 00 00     ld hl,_fseek
+  01aa  e5           push hl
+  01ab  21 eb 01     ld hl,01ebh
+  01ae  23           inc hl
+  01af  23           inc hl
+  01b0  4e           ld c,(hl)
+  01b1  23           inc hl
+  01b2  46           ld b,(hl)
+  01b3  c5           push bc
+  01b4  2b           dec hl
+  01b5  2b           dec hl
+  01b6  2b           dec hl
+  01b7  4e           ld c,(hl)
+  01b8  23           inc hl
+  01b9  46           ld b,(hl)
+  01ba  c5           push bc
+  01bb  2a 00 00     ld hl,(_fseek)
+  01be  e5           push hl
+  01bf  cd 00 00     call _fseek
+  01c2  f1           pop af
+  01c3  f1           pop af
+  01c4  f1           pop af
+  01c5  f1           pop af
+  01c6  c3 00 00     jp _fseek
+_ftell:
+  01c9  cd 00 00     call _fseek
+  01cc  21 04 00     ld hl,0004h
+  01cf  19           add hl,de
+  01d0  7e           ld a,(hl)
+  01d1  23           inc hl
+  01d2  66           ld h,(hl)
+  01d3  6f           ld l,a
+  01d4  22 00 00     ld (_fseek),hl
+  01d7  2a 00 00     ld hl,(_fseek)
+  01da  01 0a 00     ld bc,000ah
+  01dd  09           add hl,bc
+  01de  01 00 00     ld bc,_fseek
+  01e1  cd 00 00     call _fseek
+  01e4  c3 00 00     jp _fseek
+
+Data segment: 8 bytes
+  0000: 00 00 00 00 00 00 00 00                           |........|
+
+Symbol table: 18 symbols (9-char names)
+  Index  Value  Type Seg    Global  Name
+  -----  -----  ---- -----  ------  ----
+  [  0]  0000   08   ext    yes      __iob
+  [  1]  0000   08   ext    yes      __exit
+  [  2]  0000   08   ext    yes      c.r4
+  [  3]  0000   08   ext    yes      c.r2
+  [  4]  0000   08   ext    yes      c.r0
+  [  5]  0000   08   ext    yes      _lseek
+  [  6]  0000   08   ext    yes      c.ladd
+  [  7]  0000   08   ext    yes      c.lor
+  [  8]  0000   08   ext    yes      _stat
+  [  9]  0000   08   ext    yes      _exit
+  [ 10]  0000   08   ext    yes      c.rets
+  [ 11]  0000   08   ext    yes      c.ents
+  [ 12]  0000   08   ext    yes      c.lcpy
+  [ 13]  0000   08   ext    yes      c.llsh
+  [ 14]  0000   08   ext    yes      __flushb
+  [ 15]  01c9   0d   text   yes      _ftell
+  [ 16]  0000   0d   text   yes      _fseek
+  [ 17]  0179   0d   text   yes      _rewind
+
+Text relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  0001    word        symbol[11]
+  0011    word        symbol[2]
+  001c    word        symbol[3]
+  001f    word        symbol[2]
+  002d    word        text segment
+  0033    word        symbol[10]
+  0036    word        symbol[2]
+  003e    word        symbol[14]
+  0043    word        symbol[2]
+  004e    word        symbol[2]
+  0052    word        symbol[2]
+  0060    word        symbol[3]
+  0075    word        symbol[2]
+  0080    word        symbol[5]
+  0089    word        text segment
+  008f    word        symbol[10]
+  0092    word        symbol[3]
+  0098    word        text segment
+  009b    word        symbol[2]
+  00b6    word        text segment
+  00b9    word        symbol[3]
+  00be    word        text segment
+  00c1    word        symbol[3]
+  00c6    word        text segment
+  00c9    word        symbol[2]
+  00d6    word        symbol[6]
+  00da    word        text segment
+  00de    word        data segment
+  00e1    word        data segment
+  00e4    word        data segment
+  00e7    word        data segment
+  00ef    word        symbol[2]
+  00fa    word        symbol[8]
+  0101    word        text segment
+  0109    word        data segment
+  010c    word        data segment
+  0110    word        data segment
+  0114    word        data segment
+  0117    word        data segment
+  011f    word        symbol[13]
+  0123    word        data segment
+  012c    word        symbol[4]
+  012f    word        symbol[4]
+  0133    word        symbol[4]
+  0138    word        symbol[4]
+  013b    word        symbol[4]
+  013f    word        symbol[7]
+  0143    word        symbol[2]
+  014b    word        data segment
+  0150    word        symbol[4]
+  0153    word        symbol[12]
+  0156    word        symbol[4]
+  015f    word        symbol[6]
+  0172    word        symbol[2]
+  0177    word        symbol[10]
+  017a    word        symbol[11]
+  0185    word        symbol[2]
+  0188    word        symbol[2]
+  0198    word        symbol[2]
+  01ac    word        data segment
+  01bc    word        symbol[2]
+  01c0    word        text segment
+  01c7    word        symbol[10]
+  01ca    word        symbol[11]
+  01d5    word        symbol[2]
+  01d8    word        symbol[2]
+  01df    word        symbol[4]
+  01e2    word        symbol[12]
+  01e5    word        symbol[10]
+
+Data relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  (none)
+

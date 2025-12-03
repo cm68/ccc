@@ -1,0 +1,50 @@
+=== lib/libmdc/uname.o ===
+
+Header:
+  Magic:       0x99
+  Config:      0x14 little-endian
+  Symlen:      9 chars
+  Symtab:      36 bytes (3 symbols)
+  Text:        18 bytes
+  Data:        0 bytes
+  BSS:         0 bytes
+  Heap:        0 bytes
+  Text offset: 0x0000
+  Data offset: 0x0012
+
+Disassembly: 18 bytes
+  0000  63           ld h,e
+  0001  74           ld (hl),h
+  0002  65           ld h,l
+  0003  6d           ld l,l
+  0004  70           ld (hl),b
+  0005  63           ld h,e
+  0006  00           nop
+_uname:
+  0007  cd 00 00     call 0000h
+  000a  21 00 00     ld hl,0000h
+  000d  4d           ld c,l
+  000e  44           ld b,h
+  000f  c3 00 00     jp 0000h
+
+Data segment: (empty)
+
+Symbol table: 3 symbols (9-char names)
+  Index  Value  Type Seg    Global  Name
+  -----  -----  ---- -----  ------  ----
+  [  0]  0000   08   ext    yes      c.ret
+  [  1]  0000   08   ext    yes      c.ent
+  [  2]  0007   0d   text   yes      _uname
+
+Text relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  0008    word        symbol[1]
+  000b    word        text segment
+  0010    word        symbol[0]
+
+Data relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  (none)
+

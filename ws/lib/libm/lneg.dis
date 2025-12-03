@@ -1,0 +1,62 @@
+=== lib/libm/lneg.o ===
+
+Header:
+  Magic:       0x99
+  Config:      0x14 little-endian
+  Symlen:      9 chars
+  Symtab:      12 bytes (1 symbols)
+  Text:        33 bytes
+  Data:        0 bytes
+  BSS:         0 bytes
+  Heap:        0 bytes
+  Text offset: 0x0000
+  Data offset: 0x0021
+
+Disassembly: 33 bytes
+c.lneg:
+  0000  e5           push hl
+  0001  21 04 00     ld hl,0004h
+  0004  39           add hl,sp
+  0005  7e           ld a,(hl)
+  0006  23           inc hl
+  0007  66           ld h,(hl)
+  0008  6f           ld l,a
+  0009  97           sub a
+  000a  23           inc hl
+  000b  23           inc hl
+  000c  96           sub (hl)
+  000d  77           ld (hl),a
+  000e  3e 00        ld a,00h
+  0010  23           inc hl
+  0011  9e           sbc a,(hl)
+  0012  77           ld (hl),a
+  0013  3e 00        ld a,00h
+  0015  2b           dec hl
+  0016  2b           dec hl
+  0017  2b           dec hl
+  0018  9e           sbc a,(hl)
+  0019  77           ld (hl),a
+  001a  3e 00        ld a,00h
+  001c  23           inc hl
+  001d  9e           sbc a,(hl)
+  001e  77           ld (hl),a
+  001f  e1           pop hl
+  0020  c9           ret
+
+Data segment: (empty)
+
+Symbol table: 1 symbols (9-char names)
+  Index  Value  Type Seg    Global  Name
+  -----  -----  ---- -----  ------  ----
+  [  0]  0000   0d   text   yes      c.lneg
+
+Text relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  (none)
+
+Data relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  (none)
+

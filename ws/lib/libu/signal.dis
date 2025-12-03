@@ -1,0 +1,207 @@
+=== lib/libu/signal.o ===
+
+Header:
+  Magic:       0x99
+  Config:      0x14 little-endian
+  Symlen:      9 chars
+  Symtab:      96 bytes (8 symbols)
+  Text:        235 bytes
+  Data:        2 bytes
+  BSS:         0 bytes
+  Heap:        0 bytes
+  Text offset: 0x0000
+  Data offset: 0x00eb
+
+Disassembly: 235 bytes
+_signal:
+  0000  cd 00 00     call _signal
+  0003  21 04 00     ld hl,0004h
+  0006  19           add hl,de
+  0007  7e           ld a,(hl)
+  0008  23           inc hl
+  0009  66           ld h,(hl)
+  000a  6f           ld l,a
+  000b  22 00 00     ld (_signal),hl
+  000e  21 06 00     ld hl,0006h
+  0011  19           add hl,de
+  0012  7e           ld a,(hl)
+  0013  23           inc hl
+  0014  66           ld h,(hl)
+  0015  6f           ld l,a
+  0016  22 00 00     ld (_signal),hl
+  0019  3a 00 00     ld a,(_signal)
+  001c  d6 01        sub 01h
+  001e  3a 01 00     ld a,(0001h)
+  0021  de 00        sbc a,00h
+  0023  fa 33 00     jp m,0033h
+  0026  21 00 00     ld hl,_signal
+  0029  3e 0f        ld a,0fh
+  002b  96           sub (hl)
+  002c  3e 00        ld a,00h
+  002e  23           inc hl
+  002f  9e           sbc a,(hl)
+  0030  f2 39 00     jp p,0039h
+  0033  01 ff ff     ld bc,ffffh
+  0036  c3 00 00     jp _signal
+  0039  3a 00 00     ld a,(_signal)
+  003c  fe 01        cp 01h
+  003e  c2 46 00     jp nz,0046h
+  0041  3a 01 00     ld a,(0001h)
+  0044  fe 00        cp 00h
+  0046  ca 58 00     jp z,0058h
+  0049  21 00 00     ld hl,_signal
+  004c  7e           ld a,(hl)
+  004d  23           inc hl
+  004e  b6           or (hl)
+  004f  ca 58 00     jp z,0058h
+  0052  01 01 00     ld bc,0001h
+  0055  c3 5d 00     jp 005dh
+  0058  2a 00 00     ld hl,(_signal)
+  005b  4d           ld c,l
+  005c  44           ld b,h
+  005d  c5           push bc
+  005e  2a 00 00     ld hl,(_signal)
+  0061  e5           push hl
+  0062  cd 00 00     call _signal
+  0065  f1           pop af
+  0066  f1           pop af
+  0067  69           ld l,c
+  0068  60           ld h,b
+  0069  22 eb 00     ld (00ebh),hl
+  006c  3a eb 00     ld a,(00ebh)
+  006f  fe 01        cp 01h
+  0071  c2 79 00     jp nz,0079h
+  0074  3a ec 00     ld a,(00ech)
+  0077  fe 00        cp 00h
+  0079  ca 98 00     jp z,0098h
+  007c  21 eb 00     ld hl,00ebh
+  007f  7e           ld a,(hl)
+  0080  23           inc hl
+  0081  b6           or (hl)
+  0082  ca 98 00     jp z,0098h
+  0085  2a 00 00     ld hl,(_signal)
+  0088  01 ff ff     ld bc,ffffh
+  008b  09           add hl,bc
+  008c  29           add hl,hl
+  008d  01 00 00     ld bc,_signal
+  0090  09           add hl,bc
+  0091  7e           ld a,(hl)
+  0092  23           inc hl
+  0093  66           ld h,(hl)
+  0094  6f           ld l,a
+  0095  22 eb 00     ld (00ebh),hl
+  0098  3a 00 00     ld a,(_signal)
+  009b  fe 01        cp 01h
+  009d  c2 a5 00     jp nz,00a5h
+  00a0  3a 01 00     ld a,(0001h)
+  00a3  fe 00        cp 00h
+  00a5  ca e3 00     jp z,00e3h
+  00a8  21 00 00     ld hl,_signal
+  00ab  7e           ld a,(hl)
+  00ac  23           inc hl
+  00ad  b6           or (hl)
+  00ae  ca e3 00     jp z,00e3h
+  00b1  2a 00 00     ld hl,(_signal)
+  00b4  01 ff ff     ld bc,ffffh
+  00b7  09           add hl,bc
+  00b8  29           add hl,hl
+  00b9  01 00 00     ld bc,_signal
+  00bc  09           add hl,bc
+  00bd  3a 00 00     ld a,(_signal)
+  00c0  77           ld (hl),a
+  00c1  3a 01 00     ld a,(0001h)
+  00c4  23           inc hl
+  00c5  77           ld (hl),a
+  00c6  2a 00 00     ld hl,(_signal)
+  00c9  01 ff ff     ld bc,ffffh
+  00cc  09           add hl,bc
+  00cd  c5           push bc
+  00ce  4d           ld c,l
+  00cf  44           ld b,h
+  00d0  29           add hl,hl
+  00d1  09           add hl,bc
+  00d2  29           add hl,hl
+  00d3  09           add hl,bc
+  00d4  c1           pop bc
+  00d5  01 00 00     ld bc,_signal
+  00d8  09           add hl,bc
+  00d9  e5           push hl
+  00da  2a 00 00     ld hl,(_signal)
+  00dd  e5           push hl
+  00de  cd 00 00     call _signal
+  00e1  f1           pop af
+  00e2  f1           pop af
+  00e3  2a eb 00     ld hl,(00ebh)
+  00e6  4d           ld c,l
+  00e7  44           ld b,h
+  00e8  c3 00 00     jp _signal
+
+Data segment: 2 bytes
+  0000: 00 00                                             |..|
+
+Symbol table: 8 symbols (9-char names)
+  Index  Value  Type Seg    Global  Name
+  -----  -----  ---- -----  ------  ----
+  [  0]  0000   08   ext    yes      __signal
+  [  1]  0000   08   ext    yes      c.r4
+  [  2]  0000   08   ext    yes      c.r2
+  [  3]  0000   08   ext    yes      __stab
+  [  4]  0000   08   ext    yes      __jtab
+  [  5]  0000   08   ext    yes      c.rets
+  [  6]  0000   08   ext    yes      c.ents
+  [  7]  0000   0d   text   yes      _signal
+
+Text relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  0001    word        symbol[6]
+  000c    word        symbol[1]
+  0017    word        symbol[2]
+  001a    word        symbol[1]
+  001f    word        symbol[1]
+  0024    word        text segment
+  0027    word        symbol[1]
+  0031    word        text segment
+  0037    word        symbol[5]
+  003a    word        symbol[2]
+  003f    word        text segment
+  0042    word        symbol[2]
+  0047    word        text segment
+  004a    word        symbol[2]
+  0050    word        text segment
+  0056    word        text segment
+  0059    word        symbol[2]
+  005f    word        symbol[1]
+  0063    word        symbol[0]
+  006a    word        data segment
+  006d    word        data segment
+  0072    word        text segment
+  0075    word        data segment
+  007a    word        text segment
+  007d    word        data segment
+  0083    word        text segment
+  0086    word        symbol[1]
+  008e    word        symbol[3]
+  0096    word        data segment
+  0099    word        symbol[2]
+  009e    word        text segment
+  00a1    word        symbol[2]
+  00a6    word        text segment
+  00a9    word        symbol[2]
+  00af    word        text segment
+  00b2    word        symbol[1]
+  00ba    word        symbol[3]
+  00be    word        symbol[2]
+  00c2    word        symbol[2]
+  00c7    word        symbol[1]
+  00d6    word        symbol[4]
+  00db    word        symbol[1]
+  00df    word        symbol[0]
+  00e4    word        data segment
+  00e9    word        symbol[5]
+
+Data relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  (none)
+

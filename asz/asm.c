@@ -1425,7 +1425,9 @@ struct expval *vp;
 				gripe("invalid segment");
 			}
 		}
-		emitword(vp->num);
+		/* emit symbol value + offset for internal symbols */
+		/* external symbols have value 0, linker fills in */
+		emitword(vp->num + (vp->sym ? vp->sym->value : 0));
 	}
 }
 

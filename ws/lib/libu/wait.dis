@@ -1,0 +1,57 @@
+=== lib/libu/wait.o ===
+
+Header:
+  Magic:       0x99
+  Config:      0x14 little-endian
+  Symlen:      9 chars
+  Symtab:      24 bytes (2 symbols)
+  Text:        29 bytes
+  Data:        0 bytes
+  BSS:         0 bytes
+  Heap:        0 bytes
+  Text offset: 0x0000
+  Data offset: 0x001d
+
+Disassembly: 29 bytes
+_wait:
+  0000  d5           push de
+  0001  cf           rst 08h
+  0002  07           rlca
+  0003  da 15 00     jp c,0015h
+  0006  4d           ld c,l
+  0007  44           ld b,h
+  0008  21 04 00     ld hl,0004h
+  000b  39           add hl,sp
+  000c  7e           ld a,(hl)
+  000d  23           inc hl
+  000e  66           ld h,(hl)
+  000f  6f           ld l,a
+  0010  73           ld (hl),e
+  0011  23           inc hl
+  0012  72           ld (hl),d
+  0013  d1           pop de
+  0014  c9           ret
+  0015  d1           pop de
+  0016  01 ff ff     ld bc,ffffh
+  0019  22 00 00     ld (_wait),hl
+  001c  c9           ret
+
+Data segment: (empty)
+
+Symbol table: 2 symbols (9-char names)
+  Index  Value  Type Seg    Global  Name
+  -----  -----  ---- -----  ------  ----
+  [  0]  0000   08   ext    yes      _errno
+  [  1]  0000   0d   text   yes      _wait
+
+Text relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  0004    word        text segment
+  001a    word        symbol[0]
+
+Data relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  (none)
+

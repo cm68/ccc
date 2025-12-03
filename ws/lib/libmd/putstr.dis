@@ -1,0 +1,88 @@
+=== lib/libmd/putstr.o ===
+
+Header:
+  Magic:       0x99
+  Config:      0x14 little-endian
+  Symlen:      9 chars
+  Symtab:      72 bytes (6 symbols)
+  Text:        66 bytes
+  Data:        0 bytes
+  BSS:         0 bytes
+  Heap:        0 bytes
+  Text offset: 0x0000
+  Data offset: 0x0042
+
+Disassembly: 66 bytes
+_putstr:
+  0000  cd 00 00     call _putstr
+  0003  21 06 00     ld hl,0006h
+  0006  19           add hl,de
+  0007  22 00 00     ld (_putstr),hl
+  000a  2a 00 00     ld hl,(_putstr)
+  000d  7e           ld a,(hl)
+  000e  23           inc hl
+  000f  b6           or (hl)
+  0010  ca 3f 00     jp z,003fh
+  0013  2a 00 00     ld hl,(_putstr)
+  0016  4e           ld c,(hl)
+  0017  23           inc hl
+  0018  46           ld b,(hl)
+  0019  c5           push bc
+  001a  cd 00 00     call _putstr
+  001d  f1           pop af
+  001e  c5           push bc
+  001f  2a 00 00     ld hl,(_putstr)
+  0022  4e           ld c,(hl)
+  0023  23           inc hl
+  0024  46           ld b,(hl)
+  0025  c5           push bc
+  0026  21 04 00     ld hl,0004h
+  0029  19           add hl,de
+  002a  4e           ld c,(hl)
+  002b  23           inc hl
+  002c  46           ld b,(hl)
+  002d  c5           push bc
+  002e  cd 00 00     call _putstr
+  0031  f1           pop af
+  0032  f1           pop af
+  0033  f1           pop af
+  0034  2a 00 00     ld hl,(_putstr)
+  0037  23           inc hl
+  0038  23           inc hl
+  0039  22 00 00     ld (_putstr),hl
+  003c  c3 0a 00     jp 000ah
+  003f  c3 00 00     jp _putstr
+
+Data segment: (empty)
+
+Symbol table: 6 symbols (9-char names)
+  Index  Value  Type Seg    Global  Name
+  -----  -----  ---- -----  ------  ----
+  [  0]  0000   08   ext    yes      c.r4
+  [  1]  0000   08   ext    yes      _lenstr
+  [  2]  0000   08   ext    yes      c.rets
+  [  3]  0000   08   ext    yes      c.ents
+  [  4]  0000   08   ext    yes      _write
+  [  5]  0000   0d   text   yes      _putstr
+
+Text relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  0001    word        symbol[3]
+  0008    word        symbol[0]
+  000b    word        symbol[0]
+  0011    word        text segment
+  0014    word        symbol[0]
+  001b    word        symbol[1]
+  0020    word        symbol[0]
+  002f    word        symbol[4]
+  0035    word        symbol[0]
+  003a    word        symbol[0]
+  003d    word        text segment
+  0040    word        symbol[2]
+
+Data relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  (none)
+

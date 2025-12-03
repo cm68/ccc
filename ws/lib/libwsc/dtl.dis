@@ -1,0 +1,174 @@
+=== lib/libwsc/dtl.o ===
+
+Header:
+  Magic:       0x99
+  Config:      0x14 little-endian
+  Symlen:      9 chars
+  Symtab:      60 bytes (5 symbols)
+  Text:        172 bytes
+  Data:        0 bytes
+  BSS:         0 bytes
+  Heap:        0 bytes
+  Text offset: 0x0000
+  Data offset: 0x00ac
+
+Disassembly: 172 bytes
+  0000  e3           ex (sp),hl
+  0001  c5           push bc
+  0002  d5           push de
+  0003  4d           ld c,l
+  0004  44           ld b,h
+  0005  21 00 00     ld hl,0000h
+  0008  39           add hl,sp
+  0009  eb           ex de,hl
+  000a  21 f7 ff     ld hl,fff7h
+  000d  39           add hl,sp
+  000e  f9           ld sp,hl
+  000f  c5           push bc
+  0010  21 08 00     ld hl,0008h
+  0013  19           add hl,de
+  0014  4e           ld c,(hl)
+  0015  23           inc hl
+  0016  46           ld b,(hl)
+  0017  c5           push bc
+  0018  21 f7 ff     ld hl,fff7h
+  001b  19           add hl,de
+  001c  e5           push hl
+  001d  cd 00 00     call 0000h
+  0020  f1           pop af
+  0021  f1           pop af
+  0022  79           ld a,c
+  0023  b0           or b
+  0024  ca 68 00     jp z,0068h
+  0027  79           ld a,c
+  0028  d6 a8        sub a8h
+  002a  4f           ld c,a
+  002b  78           ld a,b
+  002c  de 00        sbc a,00h
+  002e  47           ld b,a
+  002f  f2 4e 00     jp p,004eh
+  0032  21 ff ff     ld hl,ffffh
+  0035  19           add hl,de
+  0036  d5           push de
+  0037  1e 06        ld e,06h
+  0039  7e           ld a,(hl)
+  003a  87           add a,a
+  003b  23           inc hl
+  003c  2b           dec hl
+  003d  7e           ld a,(hl)
+  003e  1f           rra
+  003f  77           ld (hl),a
+  0040  1d           dec e
+  0041  c2 3c 00     jp nz,003ch
+  0044  d1           pop de
+  0045  03           inc bc
+  0046  79           ld a,c
+  0047  b0           or b
+  0048  c2 32 00     jp nz,0032h
+  004b  c3 68 00     jp 0068h
+  004e  79           ld a,c
+  004f  b0           or b
+  0050  ca 68 00     jp z,0068h
+  0053  21 f9 ff     ld hl,fff9h
+  0056  19           add hl,de
+  0057  d5           push de
+  0058  1e 04        ld e,04h
+  005a  b7           or a
+  005b  23           inc hl
+  005c  7e           ld a,(hl)
+  005d  8f           adc a,a
+  005e  77           ld (hl),a
+  005f  1d           dec e
+  0060  c2 5b 00     jp nz,005bh
+  0063  d1           pop de
+  0064  0b           dec bc
+  0065  c3 4e 00     jp 004eh
+  0068  21 0a 00     ld hl,000ah
+  006b  19           add hl,de
+  006c  c9           ret
+c.dti:
+  006d  cd 00 00     call 0000h
+  0070  4e           ld c,(hl)
+  0071  23           inc hl
+  0072  46           ld b,(hl)
+  0073  21 fa ff     ld hl,fffah
+  0076  19           add hl,de
+  0077  7e           ld a,(hl)
+  0078  02           ld (bc),a
+  0079  23           inc hl
+  007a  7e           ld a,(hl)
+  007b  03           inc bc
+  007c  02           ld (bc),a
+  007d  eb           ex de,hl
+  007e  f9           ld sp,hl
+  007f  d1           pop de
+  0080  c3 00 00     jp 0000h
+c.dtl:
+  0083  cd 00 00     call 0000h
+  0086  4e           ld c,(hl)
+  0087  23           inc hl
+  0088  46           ld b,(hl)
+  0089  21 fd ff     ld hl,fffdh
+  008c  19           add hl,de
+  008d  7e           ld a,(hl)
+  008e  03           inc bc
+  008f  02           ld (bc),a
+  0090  2b           dec hl
+  0091  7e           ld a,(hl)
+  0092  0b           dec bc
+  0093  02           ld (bc),a
+  0094  2b           dec hl
+  0095  7e           ld a,(hl)
+  0096  03           inc bc
+  0097  03           inc bc
+  0098  03           inc bc
+  0099  02           ld (bc),a
+  009a  2b           dec hl
+  009b  7e           ld a,(hl)
+  009c  0b           dec bc
+  009d  02           ld (bc),a
+  009e  eb           ex de,hl
+  009f  f9           ld sp,hl
+  00a0  d1           pop de
+  00a1  c3 00 00     jp 0000h
+c.dtr:
+  00a4  cd 00 00     call 0000h
+  00a7  4d           ld c,l
+  00a8  44           ld b,h
+  00a9  c3 73 00     jp 0073h
+
+Data segment: (empty)
+
+Symbol table: 5 symbols (9-char names)
+  Index  Value  Type Seg    Global  Name
+  -----  -----  ---- -----  ------  ----
+  [  0]  0000   08   ext    yes      c.unpk
+  [  1]  0000   08   ext    yes      c.lret
+  [  2]  00a4   0d   text   yes      c.dtr
+  [  3]  0083   0d   text   yes      c.dtl
+  [  4]  006d   0d   text   yes      c.dti
+
+Text relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  001e    word        symbol[0]
+  0025    word        text segment
+  0030    word        text segment
+  0042    word        text segment
+  0049    word        text segment
+  004c    word        text segment
+  0051    word        text segment
+  0061    word        text segment
+  0066    word        text segment
+  006e    word        text segment
+  0081    word        symbol[1]
+  0084    word        text segment
+  00a2    word        symbol[1]
+  00a5    word        text segment
+  00aa    word        text segment
+
+Data relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  (none)
+

@@ -1,0 +1,49 @@
+=== lib/libu/dup.o ===
+
+Header:
+  Magic:       0x99
+  Config:      0x14 little-endian
+  Symlen:      9 chars
+  Symtab:      24 bytes (2 symbols)
+  Text:        20 bytes
+  Data:        0 bytes
+  BSS:         0 bytes
+  Heap:        0 bytes
+  Text offset: 0x0000
+  Data offset: 0x0014
+
+Disassembly: 20 bytes
+_dup:
+  0000  21 02 00     ld hl,0002h
+  0003  39           add hl,sp
+  0004  7e           ld a,(hl)
+  0005  23           inc hl
+  0006  66           ld h,(hl)
+  0007  6f           ld l,a
+  0008  cf           rst 08h
+  0009  29           add hl,hl
+  000a  4d           ld c,l
+  000b  44           ld b,h
+  000c  d0           ret nc
+  000d  01 ff ff     ld bc,ffffh
+  0010  22 00 00     ld (_dup),hl
+  0013  c9           ret
+
+Data segment: (empty)
+
+Symbol table: 2 symbols (9-char names)
+  Index  Value  Type Seg    Global  Name
+  -----  -----  ---- -----  ------  ----
+  [  0]  0000   08   ext    yes      _errno
+  [  1]  0000   0d   text   yes      _dup
+
+Text relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  0011    word        symbol[0]
+
+Data relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  (none)
+

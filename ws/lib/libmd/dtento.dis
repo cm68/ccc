@@ -1,0 +1,197 @@
+=== lib/libmd/dtento.o ===
+
+Header:
+  Magic:       0x99
+  Config:      0x14 little-endian
+  Symlen:      9 chars
+  Symtab:      84 bytes (7 symbols)
+  Text:        207 bytes
+  Data:        128 bytes
+  BSS:         0 bytes
+  Heap:        0 bytes
+  Text offset: 0x0000
+  Data offset: 0x00cf
+
+Disassembly: 207 bytes
+_dtento:
+  0000  cd 00 00     call _dtento
+  0003  21 ed ff     ld hl,ffedh
+  0006  39           add hl,sp
+  0007  f9           ld sp,hl
+  0008  21 f8 ff     ld hl,fff8h
+  000b  19           add hl,de
+  000c  97           sub a
+  000d  77           ld (hl),a
+  000e  23           inc hl
+  000f  77           ld (hl),a
+  0010  21 0c 00     ld hl,000ch
+  0013  19           add hl,de
+  0014  23           inc hl
+  0015  7e           ld a,(hl)
+  0016  b7           or a
+  0017  f2 40 00     jp p,0040h
+  001a  21 f8 ff     ld hl,fff8h
+  001d  19           add hl,de
+  001e  3e 01        ld a,01h
+  0020  77           ld (hl),a
+  0021  87           add a,a
+  0022  9f           sbc a,a
+  0023  23           inc hl
+  0024  77           ld (hl),a
+  0025  21 0c 00     ld hl,000ch
+  0028  19           add hl,de
+  0029  e5           push hl
+  002a  21 0c 00     ld hl,000ch
+  002d  19           add hl,de
+  002e  7e           ld a,(hl)
+  002f  23           inc hl
+  0030  66           ld h,(hl)
+  0031  6f           ld l,a
+  0032  3e 00        ld a,00h
+  0034  95           sub l
+  0035  6f           ld l,a
+  0036  3e 00        ld a,00h
+  0038  9c           sbc a,h
+  0039  67           ld h,a
+  003a  c1           pop bc
+  003b  7d           ld a,l
+  003c  02           ld (bc),a
+  003d  7c           ld a,h
+  003e  03           inc bc
+  003f  02           ld (bc),a
+  0040  21 ed ff     ld hl,ffedh
+  0043  19           add hl,de
+  0044  01 cf 00     ld bc,00cfh
+  0047  79           ld a,c
+  0048  77           ld (hl),a
+  0049  78           ld a,b
+  004a  23           inc hl
+  004b  77           ld (hl),a
+  004c  21 ed ff     ld hl,ffedh
+  004f  19           add hl,de
+  0050  01 cf 00     ld bc,00cfh
+  0053  79           ld a,c
+  0054  77           ld (hl),a
+  0055  78           ld a,b
+  0056  23           inc hl
+  0057  77           ld (hl),a
+  0058  21 0c 00     ld hl,000ch
+  005b  19           add hl,de
+  005c  7e           ld a,(hl)
+  005d  23           inc hl
+  005e  b6           or (hl)
+  005f  ca 8f 00     jp z,008fh
+  0062  21 0c 00     ld hl,000ch
+  0065  19           add hl,de
+  0066  7e           ld a,(hl)
+  0067  23           inc hl
+  0068  66           ld h,(hl)
+  0069  6f           ld l,a
+  006a  7d           ld a,l
+  006b  e6 01        and 01h
+  006d  ca 9c 00     jp z,009ch
+  0070  21 f8 ff     ld hl,fff8h
+  0073  19           add hl,de
+  0074  7e           ld a,(hl)
+  0075  23           inc hl
+  0076  b6           or (hl)
+  0077  ca ba 00     jp z,00bah
+  007a  21 04 00     ld hl,0004h
+  007d  19           add hl,de
+  007e  e5           push hl
+  007f  21 ed ff     ld hl,ffedh
+  0082  19           add hl,de
+  0083  7e           ld a,(hl)
+  0084  23           inc hl
+  0085  66           ld h,(hl)
+  0086  6f           ld l,a
+  0087  e5           push hl
+  0088  cd 00 00     call _dtento
+  008b  f1           pop af
+  008c  c3 9c 00     jp 009ch
+  008f  21 04 00     ld hl,0004h
+  0092  19           add hl,de
+  0093  01 00 00     ld bc,_dtento
+  0096  cd 00 00     call _dtento
+  0099  c3 00 00     jp _dtento
+  009c  21 ed ff     ld hl,ffedh
+  009f  19           add hl,de
+  00a0  7e           ld a,(hl)
+  00a1  c6 08        add a,08h
+  00a3  77           ld (hl),a
+  00a4  23           inc hl
+  00a5  7e           ld a,(hl)
+  00a6  ce 00        adc a,00h
+  00a8  77           ld (hl),a
+  00a9  21 0c 00     ld hl,000ch
+  00ac  19           add hl,de
+  00ad  23           inc hl
+  00ae  7e           ld a,(hl)
+  00af  87           add a,a
+  00b0  7e           ld a,(hl)
+  00b1  1f           rra
+  00b2  77           ld (hl),a
+  00b3  2b           dec hl
+  00b4  7e           ld a,(hl)
+  00b5  1f           rra
+  00b6  77           ld (hl),a
+  00b7  c3 58 00     jp 0058h
+  00ba  21 04 00     ld hl,0004h
+  00bd  19           add hl,de
+  00be  e5           push hl
+  00bf  21 ed ff     ld hl,ffedh
+  00c2  19           add hl,de
+  00c3  7e           ld a,(hl)
+  00c4  23           inc hl
+  00c5  66           ld h,(hl)
+  00c6  6f           ld l,a
+  00c7  e5           push hl
+  00c8  cd 00 00     call _dtento
+  00cb  f1           pop af
+  00cc  c3 9c 00     jp 009ch
+
+Data segment: 128 bytes
+  0000: 20 42 00 00 00 00 00 00  c8 43 00 00 00 00 00 00  | B.......C......|
+  0010: 1c 47 00 40 00 00 00 00  be 4d 20 bc 00 00 00 00  |.G.@.....M .....|
+  0020: 0e 5b c9 1b 04 bf 00 00  9d 75 ad c5 2b a8 b7 70  |.[.......u..+..p|
+  0030: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00  |................|
+  0040: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00  |................|
+  0050: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00  |................|
+  0060: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00  |................|
+  0070: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00  |................|
+
+Symbol table: 7 symbols (9-char names)
+  Index  Value  Type Seg    Global  Name
+  -----  -----  ---- -----  ------  ----
+  [  0]  0000   08   ext    yes      c.ddiv
+  [  1]  0000   08   ext    yes      c.r0
+  [  2]  0000   08   ext    yes      c.ret
+  [  3]  0000   08   ext    yes      c.ent
+  [  4]  0000   08   ext    yes      c.dmul
+  [  5]  0000   08   ext    yes      c.dcpy
+  [  6]  0000   0d   text   yes      _dtento
+
+Text relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  0001    word        symbol[3]
+  0018    word        text segment
+  0045    word        data segment
+  0051    word        data segment
+  0060    word        text segment
+  006e    word        text segment
+  0078    word        text segment
+  0089    word        symbol[0]
+  008d    word        text segment
+  0094    word        symbol[1]
+  0097    word        symbol[5]
+  009a    word        symbol[2]
+  00b8    word        text segment
+  00c9    word        symbol[4]
+  00cd    word        text segment
+
+Data relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  (none)
+

@@ -1,0 +1,195 @@
+=== lib/libws/cround.o ===
+
+Header:
+  Magic:       0x99
+  Config:      0x14 little-endian
+  Symlen:      9 chars
+  Symtab:      60 bytes (5 symbols)
+  Text:        225 bytes
+  Data:        0 bytes
+  BSS:         0 bytes
+  Heap:        0 bytes
+  Text offset: 0x0000
+  Data offset: 0x00e1
+
+Disassembly: 225 bytes
+__round:
+  0000  cd 00 00     call __round
+  0003  21 04 00     ld hl,0004h
+  0006  19           add hl,de
+  0007  7e           ld a,(hl)
+  0008  23           inc hl
+  0009  66           ld h,(hl)
+  000a  6f           ld l,a
+  000b  22 00 00     ld (__round),hl
+  000e  21 08 00     ld hl,0008h
+  0011  19           add hl,de
+  0012  23           inc hl
+  0013  7e           ld a,(hl)
+  0014  b7           or a
+  0015  fa 85 00     jp m,0085h
+  0018  21 08 00     ld hl,0008h
+  001b  19           add hl,de
+  001c  e5           push hl
+  001d  21 06 00     ld hl,0006h
+  0020  19           add hl,de
+  0021  c1           pop bc
+  0022  0a           ld a,(bc)
+  0023  96           sub (hl)
+  0024  03           inc bc
+  0025  0a           ld a,(bc)
+  0026  23           inc hl
+  0027  9e           sbc a,(hl)
+  0028  f2 85 00     jp p,0085h
+  002b  2a 00 00     ld hl,(__round)
+  002e  e5           push hl
+  002f  21 08 00     ld hl,0008h
+  0032  19           add hl,de
+  0033  7e           ld a,(hl)
+  0034  23           inc hl
+  0035  66           ld h,(hl)
+  0036  6f           ld l,a
+  0037  e3           ex (sp),hl
+  0038  c1           pop bc
+  0039  09           add hl,bc
+  003a  7e           ld a,(hl)
+  003b  fe 35        cp 35h
+  003d  da 85 00     jp c,0085h
+  0040  21 08 00     ld hl,0008h
+  0043  19           add hl,de
+  0044  7e           ld a,(hl)
+  0045  23           inc hl
+  0046  66           ld h,(hl)
+  0047  6f           ld l,a
+  0048  01 ff ff     ld bc,ffffh
+  004b  09           add hl,bc
+  004c  22 00 00     ld (__round),hl
+  004f  3a 01 00     ld a,(0001h)
+  0052  b7           or a
+  0053  fa 8b 00     jp m,008bh
+  0056  2a 00 00     ld hl,(__round)
+  0059  e5           push hl
+  005a  2a 00 00     ld hl,(__round)
+  005d  e3           ex (sp),hl
+  005e  c1           pop bc
+  005f  09           add hl,bc
+  0060  7e           ld a,(hl)
+  0061  fe 39        cp 39h
+  0063  c2 cd 00     jp nz,00cdh
+  0066  2a 00 00     ld hl,(__round)
+  0069  e5           push hl
+  006a  2a 00 00     ld hl,(__round)
+  006d  e3           ex (sp),hl
+  006e  c1           pop bc
+  006f  09           add hl,bc
+  0070  36 30        ld (hl),30h
+  0072  3a 00 00     ld a,(__round)
+  0075  d6 01        sub 01h
+  0077  32 00 00     ld (__round),a
+  007a  3a 01 00     ld a,(0001h)
+  007d  de 00        sbc a,00h
+  007f  32 01 00     ld (0001h),a
+  0082  c3 4f 00     jp 004fh
+  0085  01 00 00     ld bc,__round
+  0088  c3 00 00     jp __round
+  008b  3a 01 00     ld a,(0001h)
+  008e  b7           or a
+  008f  f2 85 00     jp p,0085h
+  0092  2a 00 00     ld hl,(__round)
+  0095  36 31        ld (hl),31h
+  0097  21 08 00     ld hl,0008h
+  009a  19           add hl,de
+  009b  7e           ld a,(hl)
+  009c  23           inc hl
+  009d  66           ld h,(hl)
+  009e  6f           ld l,a
+  009f  22 00 00     ld (__round),hl
+  00a2  21 00 00     ld hl,__round
+  00a5  97           sub a
+  00a6  96           sub (hl)
+  00a7  3e 00        ld a,00h
+  00a9  23           inc hl
+  00aa  9e           sbc a,(hl)
+  00ab  f2 db 00     jp p,00dbh
+  00ae  2a 00 00     ld hl,(__round)
+  00b1  e5           push hl
+  00b2  2a 00 00     ld hl,(__round)
+  00b5  e3           ex (sp),hl
+  00b6  c1           pop bc
+  00b7  09           add hl,bc
+  00b8  36 30        ld (hl),30h
+  00ba  3a 00 00     ld a,(__round)
+  00bd  d6 01        sub 01h
+  00bf  32 00 00     ld (__round),a
+  00c2  3a 01 00     ld a,(0001h)
+  00c5  de 00        sbc a,00h
+  00c7  32 01 00     ld (0001h),a
+  00ca  c3 a2 00     jp 00a2h
+  00cd  2a 00 00     ld hl,(__round)
+  00d0  e5           push hl
+  00d1  2a 00 00     ld hl,(__round)
+  00d4  e3           ex (sp),hl
+  00d5  c1           pop bc
+  00d6  09           add hl,bc
+  00d7  34           inc (hl)
+  00d8  c3 8b 00     jp 008bh
+  00db  01 01 00     ld bc,0001h
+  00de  c3 00 00     jp __round
+
+Data segment: (empty)
+
+Symbol table: 5 symbols (9-char names)
+  Index  Value  Type Seg    Global  Name
+  -----  -----  ---- -----  ------  ----
+  [  0]  0000   08   ext    yes      c.r4
+  [  1]  0000   08   ext    yes      c.r2
+  [  2]  0000   08   ext    yes      c.rets
+  [  3]  0000   08   ext    yes      c.ents
+  [  4]  0000   0d   text   yes      __round
+
+Text relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  0001    word        symbol[3]
+  000c    word        symbol[0]
+  0016    word        text segment
+  0029    word        text segment
+  002c    word        symbol[0]
+  003e    word        text segment
+  004d    word        symbol[1]
+  0050    word        symbol[1]
+  0054    word        text segment
+  0057    word        symbol[0]
+  005b    word        symbol[1]
+  0064    word        text segment
+  0067    word        symbol[0]
+  006b    word        symbol[1]
+  0073    word        symbol[1]
+  0078    word        symbol[1]
+  007b    word        symbol[1]
+  0080    word        symbol[1]
+  0083    word        text segment
+  0089    word        symbol[2]
+  008c    word        symbol[1]
+  0090    word        text segment
+  0093    word        symbol[0]
+  00a0    word        symbol[1]
+  00a3    word        symbol[1]
+  00ac    word        text segment
+  00af    word        symbol[0]
+  00b3    word        symbol[1]
+  00bb    word        symbol[1]
+  00c0    word        symbol[1]
+  00c3    word        symbol[1]
+  00c8    word        symbol[1]
+  00cb    word        text segment
+  00ce    word        symbol[0]
+  00d2    word        symbol[1]
+  00d9    word        text segment
+  00df    word        symbol[2]
+
+Data relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  (none)
+

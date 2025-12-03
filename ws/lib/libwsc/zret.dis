@@ -1,0 +1,71 @@
+=== lib/libwsc/zret.o ===
+
+Header:
+  Magic:       0x99
+  Config:      0x14 little-endian
+  Symlen:      9 chars
+  Symtab:      24 bytes (2 symbols)
+  Text:        39 bytes
+  Data:        0 bytes
+  BSS:         0 bytes
+  Heap:        0 bytes
+  Text offset: 0x0000
+  Data offset: 0x0027
+
+Disassembly: 39 bytes
+c.zret:
+  0000  f5           push af
+  0001  21 06 00     ld hl,0006h
+  0004  39           add hl,sp
+  0005  4e           ld c,(hl)
+  0006  23           inc hl
+  0007  46           ld b,(hl)
+  0008  23           inc hl
+  0009  23           inc hl
+  000a  23           inc hl
+  000b  71           ld (hl),c
+  000c  23           inc hl
+  000d  70           ld (hl),b
+  000e  c1           pop bc
+  000f  2b           dec hl
+  0010  2b           dec hl
+  0011  2b           dec hl
+  0012  71           ld (hl),c
+  0013  c1           pop bc
+  0014  e1           pop hl
+  0015  f1           pop af
+  0016  f1           pop af
+  0017  c9           ret
+c.lret:
+  0018  21 04 00     ld hl,0004h
+  001b  39           add hl,sp
+  001c  4e           ld c,(hl)
+  001d  23           inc hl
+  001e  46           ld b,(hl)
+  001f  23           inc hl
+  0020  71           ld (hl),c
+  0021  23           inc hl
+  0022  70           ld (hl),b
+  0023  c1           pop bc
+  0024  e1           pop hl
+  0025  f1           pop af
+  0026  c9           ret
+
+Data segment: (empty)
+
+Symbol table: 2 symbols (9-char names)
+  Index  Value  Type Seg    Global  Name
+  -----  -----  ---- -----  ------  ----
+  [  0]  0000   0d   text   yes      c.zret
+  [  1]  0018   0d   text   yes      c.lret
+
+Text relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  (none)
+
+Data relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  (none)
+

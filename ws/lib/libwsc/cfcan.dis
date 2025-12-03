@@ -1,0 +1,201 @@
+=== lib/libwsc/cfcan.o ===
+
+Header:
+  Magic:       0x99
+  Config:      0x14 little-endian
+  Symlen:      9 chars
+  Symtab:      84 bytes (7 symbols)
+  Text:        220 bytes
+  Data:        0 bytes
+  BSS:         0 bytes
+  Heap:        0 bytes
+  Text offset: 0x0000
+  Data offset: 0x00dc
+
+Disassembly: 220 bytes
+__fcan:
+  0000  cd 00 00     call __fcan
+  0003  21 04 00     ld hl,0004h
+  0006  19           add hl,de
+  0007  7e           ld a,(hl)
+  0008  23           inc hl
+  0009  66           ld h,(hl)
+  000a  6f           ld l,a
+  000b  22 00 00     ld (__fcan),hl
+  000e  2a 00 00     ld hl,(__fcan)
+  0011  7e           ld a,(hl)
+  0012  b7           or a
+  0013  c2 28 00     jp nz,0028h
+  0016  2a 00 00     ld hl,(__fcan)
+  0019  01 01 00     ld bc,0001h
+  001c  09           add hl,bc
+  001d  7e           ld a,(hl)
+  001e  b7           or a
+  001f  c2 28 00     jp nz,0028h
+  0022  01 00 00     ld bc,__fcan
+  0025  c3 00 00     jp __fcan
+  0028  97           sub a
+  0029  32 00 00     ld (__fcan),a
+  002c  32 01 00     ld (0001h),a
+  002f  3a 00 00     ld a,(__fcan)
+  0032  d6 08        sub 08h
+  0034  3a 01 00     ld a,(0001h)
+  0037  de 00        sbc a,00h
+  0039  f2 87 00     jp p,0087h
+  003c  2a 00 00     ld hl,(__fcan)
+  003f  e5           push hl
+  0040  2a 00 00     ld hl,(__fcan)
+  0043  e3           ex (sp),hl
+  0044  c1           pop bc
+  0045  09           add hl,bc
+  0046  7e           ld a,(hl)
+  0047  32 00 00     ld (__fcan),a
+  004a  97           sub a
+  004b  32 01 00     ld (0001h),a
+  004e  2a 00 00     ld hl,(__fcan)
+  0051  e5           push hl
+  0052  2a 00 00     ld hl,(__fcan)
+  0055  e3           ex (sp),hl
+  0056  c1           pop bc
+  0057  09           add hl,bc
+  0058  e5           push hl
+  0059  2a 00 00     ld hl,(__fcan)
+  005c  e5           push hl
+  005d  2a 00 00     ld hl,(__fcan)
+  0060  01 01 00     ld bc,0001h
+  0063  09           add hl,bc
+  0064  e3           ex (sp),hl
+  0065  c1           pop bc
+  0066  09           add hl,bc
+  0067  c1           pop bc
+  0068  7e           ld a,(hl)
+  0069  02           ld (bc),a
+  006a  2a 00 00     ld hl,(__fcan)
+  006d  e5           push hl
+  006e  2a 00 00     ld hl,(__fcan)
+  0071  01 01 00     ld bc,0001h
+  0074  09           add hl,bc
+  0075  e3           ex (sp),hl
+  0076  c1           pop bc
+  0077  09           add hl,bc
+  0078  3a 00 00     ld a,(__fcan)
+  007b  77           ld (hl),a
+  007c  2a 00 00     ld hl,(__fcan)
+  007f  23           inc hl
+  0080  23           inc hl
+  0081  22 00 00     ld (__fcan),hl
+  0084  c3 2f 00     jp 002fh
+  0087  2a 00 00     ld hl,(__fcan)
+  008a  7e           ld a,(hl)
+  008b  4f           ld c,a
+  008c  97           sub a
+  008d  47           ld b,a
+  008e  69           ld l,c
+  008f  60           ld h,b
+  0090  7d           ld a,l
+  0091  e6 7f        and 7fh
+  0093  6f           ld l,a
+  0094  97           sub a
+  0095  67           ld h,a
+  0096  29           add hl,hl
+  0097  e5           push hl
+  0098  2a 00 00     ld hl,(__fcan)
+  009b  01 01 00     ld bc,0001h
+  009e  09           add hl,bc
+  009f  7e           ld a,(hl)
+  00a0  4f           ld c,a
+  00a1  97           sub a
+  00a2  47           ld b,a
+  00a3  79           ld a,c
+  00a4  e6 80        and 80h
+  00a6  4f           ld c,a
+  00a7  97           sub a
+  00a8  47           ld b,a
+  00a9  c5           push bc
+  00aa  21 07 00     ld hl,0007h
+  00ad  e5           push hl
+  00ae  cd 00 00     call __fcan
+  00b1  e1           pop hl
+  00b2  c1           pop bc
+  00b3  79           ld a,c
+  00b4  b5           or l
+  00b5  4f           ld c,a
+  00b6  78           ld a,b
+  00b7  b4           or h
+  00b8  47           ld b,a
+  00b9  69           ld l,c
+  00ba  60           ld h,b
+  00bb  22 00 00     ld (__fcan),hl
+  00be  2a 00 00     ld hl,(__fcan)
+  00c1  7e           ld a,(hl)
+  00c2  e6 80        and 80h
+  00c4  77           ld (hl),a
+  00c5  2a 00 00     ld hl,(__fcan)
+  00c8  01 01 00     ld bc,0001h
+  00cb  09           add hl,bc
+  00cc  7e           ld a,(hl)
+  00cd  f6 80        or 80h
+  00cf  77           ld (hl),a
+  00d0  2a 00 00     ld hl,(__fcan)
+  00d3  01 80 ff     ld bc,ff80h
+  00d6  09           add hl,bc
+  00d7  4d           ld c,l
+  00d8  44           ld b,h
+  00d9  c3 00 00     jp __fcan
+
+Data segment: (empty)
+
+Symbol table: 7 symbols (9-char names)
+  Index  Value  Type Seg    Global  Name
+  -----  -----  ---- -----  ------  ----
+  [  0]  0000   08   ext    yes      c.r4
+  [  1]  0000   08   ext    yes      c.r3
+  [  2]  0000   08   ext    yes      c.r2
+  [  3]  0000   08   ext    yes      c.rets
+  [  4]  0000   08   ext    yes      c.ents
+  [  5]  0000   08   ext    yes      c.irsh
+  [  6]  0000   0d   text   yes      __fcan
+
+Text relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  0001    word        symbol[4]
+  000c    word        symbol[0]
+  000f    word        symbol[0]
+  0014    word        text segment
+  0017    word        symbol[0]
+  0020    word        text segment
+  0026    word        symbol[3]
+  002a    word        symbol[2]
+  002d    word        symbol[2]
+  0030    word        symbol[2]
+  0035    word        symbol[2]
+  003a    word        text segment
+  003d    word        symbol[0]
+  0041    word        symbol[2]
+  0048    word        symbol[1]
+  004c    word        symbol[1]
+  004f    word        symbol[0]
+  0053    word        symbol[2]
+  005a    word        symbol[0]
+  005e    word        symbol[2]
+  006b    word        symbol[0]
+  006f    word        symbol[2]
+  0079    word        symbol[1]
+  007d    word        symbol[2]
+  0082    word        symbol[2]
+  0085    word        text segment
+  0088    word        symbol[0]
+  0099    word        symbol[0]
+  00af    word        symbol[5]
+  00bc    word        symbol[1]
+  00bf    word        symbol[0]
+  00c6    word        symbol[0]
+  00d1    word        symbol[1]
+  00da    word        symbol[3]
+
+Data relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  (none)
+

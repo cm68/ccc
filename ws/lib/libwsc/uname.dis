@@ -1,0 +1,50 @@
+=== lib/libwsc/uname.o ===
+
+Header:
+  Magic:       0x99
+  Config:      0x14 little-endian
+  Symlen:      9 chars
+  Symtab:      36 bytes (3 symbols)
+  Text:        19 bytes
+  Data:        0 bytes
+  BSS:         0 bytes
+  Heap:        0 bytes
+  Text offset: 0x0000
+  Data offset: 0x0013
+
+Disassembly: 19 bytes
+  0000  63           ld h,e
+  0001  74           ld (hl),h
+  0002  65           ld h,l
+  0003  6d           ld l,l
+  0004  70           ld (hl),b
+  0005  63           ld h,e
+  0006  2e 00        ld l,00h
+_uname:
+  0008  cd 00 00     call 0000h
+  000b  21 00 00     ld hl,0000h
+  000e  4d           ld c,l
+  000f  44           ld b,h
+  0010  c3 00 00     jp 0000h
+
+Data segment: (empty)
+
+Symbol table: 3 symbols (9-char names)
+  Index  Value  Type Seg    Global  Name
+  -----  -----  ---- -----  ------  ----
+  [  0]  0000   08   ext    yes      c.ret
+  [  1]  0000   08   ext    yes      c.ent
+  [  2]  0008   0d   text   yes      _uname
+
+Text relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  0009    word        symbol[1]
+  000c    word        text segment
+  0011    word        symbol[0]
+
+Data relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  (none)
+

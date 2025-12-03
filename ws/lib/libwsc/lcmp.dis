@@ -1,0 +1,69 @@
+=== lib/libwsc/lcmp.o ===
+
+Header:
+  Magic:       0x99
+  Config:      0x14 little-endian
+  Symlen:      9 chars
+  Symtab:      24 bytes (2 symbols)
+  Text:        43 bytes
+  Data:        0 bytes
+  BSS:         0 bytes
+  Heap:        0 bytes
+  Text offset: 0x0000
+  Data offset: 0x002b
+
+Disassembly: 43 bytes
+c.lcmp:
+  0000  e5           push hl
+  0001  c5           push bc
+  0002  21 08 00     ld hl,0008h
+  0005  39           add hl,sp
+  0006  4e           ld c,(hl)
+  0007  23           inc hl
+  0008  46           ld b,(hl)
+  0009  21 06 00     ld hl,0006h
+  000c  39           add hl,sp
+  000d  7e           ld a,(hl)
+  000e  23           inc hl
+  000f  66           ld h,(hl)
+  0010  6f           ld l,a
+  0011  0a           ld a,(bc)
+  0012  be           cp (hl)
+  0013  c2 00 00     jp nz,c.lcmp
+  0016  03           inc bc
+  0017  0a           ld a,(bc)
+  0018  23           inc hl
+  0019  be           cp (hl)
+  001a  c2 00 00     jp nz,c.lcmp
+  001d  03           inc bc
+  001e  0a           ld a,(bc)
+  001f  23           inc hl
+  0020  be           cp (hl)
+  0021  c2 00 00     jp nz,c.lcmp
+  0024  03           inc bc
+  0025  0a           ld a,(bc)
+  0026  23           inc hl
+  0027  be           cp (hl)
+  0028  c3 00 00     jp c.lcmp
+
+Data segment: (empty)
+
+Symbol table: 2 symbols (9-char names)
+  Index  Value  Type Seg    Global  Name
+  -----  -----  ---- -----  ------  ----
+  [  0]  0000   08   ext    yes      c.zret
+  [  1]  0000   0d   text   yes      c.lcmp
+
+Text relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  0014    word        symbol[0]
+  001b    word        symbol[0]
+  0022    word        symbol[0]
+  0029    word        symbol[0]
+
+Data relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  (none)
+

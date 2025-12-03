@@ -1,0 +1,107 @@
+=== lib/libwsc/fcreat.o ===
+
+Header:
+  Magic:       0x99
+  Config:      0x14 little-endian
+  Symlen:      9 chars
+  Symtab:      72 bytes (6 symbols)
+  Text:        99 bytes
+  Data:        0 bytes
+  BSS:         0 bytes
+  Heap:        0 bytes
+  Text offset: 0x0000
+  Data offset: 0x0063
+
+Disassembly: 99 bytes
+_fcreate:
+  0000  cd 00 00     call _fcreate
+  0003  21 00 00     ld hl,_fcreate
+  0006  e5           push hl
+  0007  21 08 00     ld hl,0008h
+  000a  19           add hl,de
+  000b  7e           ld a,(hl)
+  000c  fe ff        cp ffh
+  000e  c2 15 00     jp nz,0015h
+  0011  23           inc hl
+  0012  7e           ld a,(hl)
+  0013  fe ff        cp ffh
+  0015  c2 1e 00     jp nz,001eh
+  0018  01 01 00     ld bc,0001h
+  001b  c3 25 00     jp 0025h
+  001e  21 08 00     ld hl,0008h
+  0021  19           add hl,de
+  0022  4e           ld c,(hl)
+  0023  23           inc hl
+  0024  46           ld b,(hl)
+  0025  c5           push bc
+  0026  21 06 00     ld hl,0006h
+  0029  19           add hl,de
+  002a  4e           ld c,(hl)
+  002b  23           inc hl
+  002c  46           ld b,(hl)
+  002d  c5           push bc
+  002e  cd 00 00     call _fcreate
+  0031  f1           pop af
+  0032  f1           pop af
+  0033  f1           pop af
+  0034  69           ld l,c
+  0035  60           ld h,b
+  0036  22 00 00     ld (_fcreate),hl
+  0039  3a 01 00     ld a,(0001h)
+  003c  b7           or a
+  003d  fa 5d 00     jp m,005dh
+  0040  21 08 00     ld hl,0008h
+  0043  19           add hl,de
+  0044  4e           ld c,(hl)
+  0045  23           inc hl
+  0046  46           ld b,(hl)
+  0047  c5           push bc
+  0048  2a 00 00     ld hl,(_fcreate)
+  004b  e5           push hl
+  004c  21 04 00     ld hl,0004h
+  004f  19           add hl,de
+  0050  4e           ld c,(hl)
+  0051  23           inc hl
+  0052  46           ld b,(hl)
+  0053  c5           push bc
+  0054  cd 00 00     call _fcreate
+  0057  f1           pop af
+  0058  f1           pop af
+  0059  f1           pop af
+  005a  c3 00 00     jp _fcreate
+  005d  01 00 00     ld bc,_fcreate
+  0060  c3 00 00     jp _fcreate
+
+Data segment: (empty)
+
+Symbol table: 6 symbols (9-char names)
+  Index  Value  Type Seg    Global  Name
+  -----  -----  ---- -----  ------  ----
+  [  0]  0000   08   ext    yes      _finit
+  [  1]  0000   08   ext    yes      c.r4
+  [  2]  0000   08   ext    yes      _create
+  [  3]  0000   08   ext    yes      c.rets
+  [  4]  0000   08   ext    yes      c.ents
+  [  5]  0000   0d   text   yes      _fcreate
+
+Text relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  0001    word        symbol[4]
+  000f    word        text segment
+  0016    word        text segment
+  001c    word        text segment
+  002f    word        symbol[2]
+  0037    word        symbol[1]
+  003a    word        symbol[1]
+  003e    word        text segment
+  0049    word        symbol[1]
+  0055    word        symbol[0]
+  005b    word        symbol[3]
+  0061    word        symbol[3]
+
+Data relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  (none)
+

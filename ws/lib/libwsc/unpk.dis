@@ -1,0 +1,119 @@
+=== lib/libwsc/unpk.o ===
+
+Header:
+  Magic:       0x99
+  Config:      0x14 little-endian
+  Symlen:      9 chars
+  Symtab:      12 bytes (1 symbols)
+  Text:        110 bytes
+  Data:        0 bytes
+  BSS:         0 bytes
+  Heap:        0 bytes
+  Text offset: 0x0000
+  Data offset: 0x006e
+
+Disassembly: 110 bytes
+c.unpk:
+  0000  d5           push de
+  0001  21 00 00     ld hl,c.unpk
+  0004  e5           push hl
+  0005  21 06 00     ld hl,0006h
+  0008  39           add hl,sp
+  0009  4e           ld c,(hl)
+  000a  23           inc hl
+  000b  46           ld b,(hl)
+  000c  21 08 00     ld hl,0008h
+  000f  39           add hl,sp
+  0010  5e           ld e,(hl)
+  0011  23           inc hl
+  0012  56           ld d,(hl)
+  0013  1b           dec de
+  0014  21 0a 00     ld hl,000ah
+  0017  09           add hl,bc
+  0018  eb           ex de,hl
+  0019  c5           push bc
+  001a  0e 04        ld c,04h
+  001c  23           inc hl
+  001d  7e           ld a,(hl)
+  001e  1b           dec de
+  001f  1b           dec de
+  0020  1b           dec de
+  0021  12           ld (de),a
+  0022  23           inc hl
+  0023  7e           ld a,(hl)
+  0024  13           inc de
+  0025  12           ld (de),a
+  0026  0d           dec c
+  0027  c2 1c 00     jp nz,001ch
+  002a  c1           pop bc
+  002b  97           sub a
+  002c  02           ld (bc),a
+  002d  21 07 00     ld hl,0007h
+  0030  09           add hl,bc
+  0031  7e           ld a,(hl)
+  0032  17           rla
+  0033  23           inc hl
+  0034  7e           ld a,(hl)
+  0035  17           rla
+  0036  57           ld d,a
+  0037  d2 3d 00     jp nc,003dh
+  003a  e3           ex (sp),hl
+  003b  2b           dec hl
+  003c  e3           ex (sp),hl
+  003d  b7           or a
+  003e  c2 4c 00     jp nz,004ch
+  0041  1e 08        ld e,08h
+  0043  03           inc bc
+  0044  02           ld (bc),a
+  0045  1d           dec e
+  0046  c2 43 00     jp nz,0043h
+  0049  c3 68 00     jp 0068h
+  004c  3e 00        ld a,00h
+  004e  77           ld (hl),a
+  004f  2b           dec hl
+  0050  7e           ld a,(hl)
+  0051  f6 80        or 80h
+  0053  77           ld (hl),a
+  0054  e3           ex (sp),hl
+  0055  7d           ld a,l
+  0056  b7           or a
+  0057  ca 68 00     jp z,0068h
+  005a  69           ld l,c
+  005b  60           ld h,b
+  005c  1e 08        ld e,08h
+  005e  b7           or a
+  005f  3e 00        ld a,00h
+  0061  23           inc hl
+  0062  9e           sbc a,(hl)
+  0063  77           ld (hl),a
+  0064  1d           dec e
+  0065  c2 5f 00     jp nz,005fh
+  0068  4a           ld c,d
+  0069  06 00        ld b,00h
+  006b  f1           pop af
+  006c  d1           pop de
+  006d  c9           ret
+
+Data segment: (empty)
+
+Symbol table: 1 symbols (9-char names)
+  Index  Value  Type Seg    Global  Name
+  -----  -----  ---- -----  ------  ----
+  [  0]  0000   0d   text   yes      c.unpk
+
+Text relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  0028    word        text segment
+  0038    word        text segment
+  003f    word        text segment
+  0047    word        text segment
+  004a    word        text segment
+  0058    word        text segment
+  0066    word        text segment
+
+Data relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  (none)
+

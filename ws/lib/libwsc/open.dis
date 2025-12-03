@@ -1,0 +1,69 @@
+=== lib/libwsc/open.o ===
+
+Header:
+  Magic:       0x99
+  Config:      0x14 little-endian
+  Symlen:      9 chars
+  Symtab:      48 bytes (4 symbols)
+  Text:        48 bytes
+  Data:        0 bytes
+  BSS:         0 bytes
+  Heap:        0 bytes
+  Text offset: 0x0000
+  Data offset: 0x0030
+
+Disassembly: 48 bytes
+_open:
+  0000  cd 00 00     call _open
+  0003  21 08 00     ld hl,0008h
+  0006  19           add hl,de
+  0007  4e           ld c,(hl)
+  0008  23           inc hl
+  0009  46           ld b,(hl)
+  000a  c5           push bc
+  000b  21 06 00     ld hl,0006h
+  000e  19           add hl,de
+  000f  7e           ld a,(hl)
+  0010  23           inc hl
+  0011  b6           or (hl)
+  0012  ca 1b 00     jp z,001bh
+  0015  01 05 00     ld bc,0005h
+  0018  c3 1e 00     jp 001eh
+  001b  01 01 00     ld bc,0001h
+  001e  c5           push bc
+  001f  21 04 00     ld hl,0004h
+  0022  19           add hl,de
+  0023  4e           ld c,(hl)
+  0024  23           inc hl
+  0025  46           ld b,(hl)
+  0026  c5           push bc
+  0027  cd 00 00     call _open
+  002a  f1           pop af
+  002b  f1           pop af
+  002c  f1           pop af
+  002d  c3 00 00     jp _open
+
+Data segment: (empty)
+
+Symbol table: 4 symbols (9-char names)
+  Index  Value  Type Seg    Global  Name
+  -----  -----  ---- -----  ------  ----
+  [  0]  0000   08   ext    yes      c.ret
+  [  1]  0000   08   ext    yes      c.ent
+  [  2]  0000   08   ext    yes      __copen
+  [  3]  0000   0d   text   yes      _open
+
+Text relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  0001    word        symbol[1]
+  0013    word        text segment
+  0019    word        text segment
+  0028    word        symbol[2]
+  002e    word        symbol[0]
+
+Data relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  (none)
+

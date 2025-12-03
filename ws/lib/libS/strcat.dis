@@ -1,0 +1,96 @@
+=== lib/libS/strcat.o ===
+
+Header:
+  Magic:       0x99
+  Config:      0x14 little-endian
+  Symlen:      9 chars
+  Symtab:      60 bytes (5 symbols)
+  Text:        79 bytes
+  Data:        0 bytes
+  BSS:         0 bytes
+  Heap:        0 bytes
+  Text offset: 0x0000
+  Data offset: 0x004f
+
+Disassembly: 79 bytes
+_strcat:
+  0000  cd 00 00     call _strcat
+  0003  21 04 00     ld hl,0004h
+  0006  19           add hl,de
+  0007  7e           ld a,(hl)
+  0008  23           inc hl
+  0009  66           ld h,(hl)
+  000a  6f           ld l,a
+  000b  22 00 00     ld (_strcat),hl
+  000e  21 06 00     ld hl,0006h
+  0011  19           add hl,de
+  0012  7e           ld a,(hl)
+  0013  23           inc hl
+  0014  66           ld h,(hl)
+  0015  6f           ld l,a
+  0016  22 00 00     ld (_strcat),hl
+  0019  2a 00 00     ld hl,(_strcat)
+  001c  7e           ld a,(hl)
+  001d  b7           or a
+  001e  ca 2b 00     jp z,002bh
+  0021  2a 00 00     ld hl,(_strcat)
+  0024  23           inc hl
+  0025  22 00 00     ld (_strcat),hl
+  0028  c3 19 00     jp 0019h
+  002b  2a 00 00     ld hl,(_strcat)
+  002e  e5           push hl
+  002f  2a 00 00     ld hl,(_strcat)
+  0032  23           inc hl
+  0033  22 00 00     ld (_strcat),hl
+  0036  e1           pop hl
+  0037  e5           push hl
+  0038  2a 00 00     ld hl,(_strcat)
+  003b  e5           push hl
+  003c  2a 00 00     ld hl,(_strcat)
+  003f  23           inc hl
+  0040  22 00 00     ld (_strcat),hl
+  0043  e1           pop hl
+  0044  c1           pop bc
+  0045  7e           ld a,(hl)
+  0046  02           ld (bc),a
+  0047  0a           ld a,(bc)
+  0048  b7           or a
+  0049  c2 2b 00     jp nz,002bh
+  004c  c3 00 00     jp _strcat
+
+Data segment: (empty)
+
+Symbol table: 5 symbols (9-char names)
+  Index  Value  Type Seg    Global  Name
+  -----  -----  ---- -----  ------  ----
+  [  0]  0000   08   ext    yes      c.r4
+  [  1]  0000   08   ext    yes      c.r2
+  [  2]  0000   08   ext    yes      c.rets
+  [  3]  0000   08   ext    yes      c.ents
+  [  4]  0000   0d   text   yes      _strcat
+
+Text relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  0001    word        symbol[3]
+  000c    word        symbol[0]
+  0017    word        symbol[1]
+  001a    word        symbol[0]
+  001f    word        text segment
+  0022    word        symbol[0]
+  0026    word        symbol[0]
+  0029    word        text segment
+  002c    word        symbol[0]
+  0030    word        symbol[0]
+  0034    word        symbol[0]
+  0039    word        symbol[1]
+  003d    word        symbol[1]
+  0041    word        symbol[1]
+  004a    word        text segment
+  004d    word        symbol[2]
+
+Data relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  (none)
+

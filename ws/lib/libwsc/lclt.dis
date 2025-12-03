@@ -1,0 +1,71 @@
+=== lib/libwsc/lclt.o ===
+
+Header:
+  Magic:       0x99
+  Config:      0x14 little-endian
+  Symlen:      9 chars
+  Symtab:      24 bytes (2 symbols)
+  Text:        42 bytes
+  Data:        0 bytes
+  BSS:         0 bytes
+  Heap:        0 bytes
+  Text offset: 0x0000
+  Data offset: 0x002a
+
+Disassembly: 42 bytes
+c.lclt:
+  0000  e5           push hl
+  0001  c5           push bc
+  0002  21 08 00     ld hl,0008h
+  0005  39           add hl,sp
+  0006  4e           ld c,(hl)
+  0007  23           inc hl
+  0008  46           ld b,(hl)
+  0009  21 06 00     ld hl,0006h
+  000c  39           add hl,sp
+  000d  7e           ld a,(hl)
+  000e  23           inc hl
+  000f  66           ld h,(hl)
+  0010  6f           ld l,a
+  0011  03           inc bc
+  0012  03           inc bc
+  0013  0a           ld a,(bc)
+  0014  23           inc hl
+  0015  23           inc hl
+  0016  96           sub (hl)
+  0017  03           inc bc
+  0018  0a           ld a,(bc)
+  0019  23           inc hl
+  001a  9e           sbc a,(hl)
+  001b  0b           dec bc
+  001c  0b           dec bc
+  001d  0b           dec bc
+  001e  0a           ld a,(bc)
+  001f  2b           dec hl
+  0020  2b           dec hl
+  0021  2b           dec hl
+  0022  9e           sbc a,(hl)
+  0023  03           inc bc
+  0024  0a           ld a,(bc)
+  0025  23           inc hl
+  0026  9e           sbc a,(hl)
+  0027  c3 00 00     jp c.lclt
+
+Data segment: (empty)
+
+Symbol table: 2 symbols (9-char names)
+  Index  Value  Type Seg    Global  Name
+  -----  -----  ---- -----  ------  ----
+  [  0]  0000   08   ext    yes      c.zret
+  [  1]  0000   0d   text   yes      c.lclt
+
+Text relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  0028    word        symbol[0]
+
+Data relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  (none)
+

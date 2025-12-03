@@ -1,0 +1,116 @@
+=== lib/libp/pxsub.o ===
+
+Header:
+  Magic:       0x99
+  Config:      0x14 little-endian
+  Symlen:      9 chars
+  Symtab:      48 bytes (4 symbols)
+  Text:        101 bytes
+  Data:        0 bytes
+  BSS:         0 bytes
+  Heap:        0 bytes
+  Text offset: 0x0000
+  Data offset: 0x0065
+
+Disassembly: 101 bytes
+  0000  6f           ld l,a
+  0001  75           ld (hl),l
+  0002  74           ld (hl),h
+  0003  20 6f        jr nz,0074h
+  0005  66           ld h,(hl)
+  0006  20 72        jr nz,007ah
+  0008  61           ld h,c
+  0009  6e           ld l,(hl)
+  000a  67           ld h,a
+  000b  65           ld h,l
+  000c  00           nop
+  000d  73           ld (hl),e
+  000e  75           ld (hl),l
+  000f  62           ld h,d
+  0010  73           ld (hl),e
+  0011  63           ld h,e
+  0012  72           ld (hl),d
+  0013  69           ld l,c
+  0014  70           ld (hl),b
+  0015  74           ld (hl),h
+  0016  00           nop
+_p_sub:
+  0017  cd 00 00     call 0000h
+  001a  21 04 00     ld hl,0004h
+  001d  19           add hl,de
+  001e  e5           push hl
+  001f  21 06 00     ld hl,0006h
+  0022  19           add hl,de
+  0023  c1           pop bc
+  0024  0a           ld a,(bc)
+  0025  96           sub (hl)
+  0026  03           inc bc
+  0027  0a           ld a,(bc)
+  0028  23           inc hl
+  0029  9e           sbc a,(hl)
+  002a  fa 40 00     jp m,0040h
+  002d  21 08 00     ld hl,0008h
+  0030  19           add hl,de
+  0031  e5           push hl
+  0032  21 04 00     ld hl,0004h
+  0035  19           add hl,de
+  0036  c1           pop bc
+  0037  0a           ld a,(bc)
+  0038  96           sub (hl)
+  0039  03           inc bc
+  003a  0a           ld a,(bc)
+  003b  23           inc hl
+  003c  9e           sbc a,(hl)
+  003d  f2 4d 00     jp p,004dh
+  0040  21 00 00     ld hl,0000h
+  0043  e5           push hl
+  0044  21 0d 00     ld hl,000dh
+  0047  e5           push hl
+  0048  cd 00 00     call 0000h
+  004b  f1           pop af
+  004c  f1           pop af
+  004d  21 04 00     ld hl,0004h
+  0050  19           add hl,de
+  0051  7e           ld a,(hl)
+  0052  23           inc hl
+  0053  66           ld h,(hl)
+  0054  6f           ld l,a
+  0055  e5           push hl
+  0056  21 06 00     ld hl,0006h
+  0059  19           add hl,de
+  005a  c1           pop bc
+  005b  79           ld a,c
+  005c  96           sub (hl)
+  005d  4f           ld c,a
+  005e  78           ld a,b
+  005f  23           inc hl
+  0060  9e           sbc a,(hl)
+  0061  47           ld b,a
+  0062  c3 00 00     jp 0000h
+
+Data segment: (empty)
+
+Symbol table: 4 symbols (9-char names)
+  Index  Value  Type Seg    Global  Name
+  -----  -----  ---- -----  ------  ----
+  [  0]  0000   08   ext    yes      c.ret
+  [  1]  0000   08   ext    yes      c.ent
+  [  2]  0000   08   ext    yes      _p_abort
+  [  3]  0017   0d   text   yes      _p_sub
+
+Text relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  0018    word        symbol[1]
+  002b    word        text segment
+  003e    word        text segment
+  0041    word        text segment
+  0045    word        text segment
+  0049    word        symbol[2]
+  0063    word        symbol[0]
+
+Data relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  (none)
+

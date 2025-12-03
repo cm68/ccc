@@ -1,0 +1,258 @@
+=== lib/libmd/ctime.o ===
+
+Header:
+  Magic:       0x99
+  Config:      0x14 little-endian
+  Symlen:      9 chars
+  Symtab:      72 bytes (6 symbols)
+  Text:        238 bytes
+  Data:        72 bytes
+  BSS:         0 bytes
+  Heap:        0 bytes
+  Text offset: 0x0000
+  Data offset: 0x00ee
+
+Disassembly: 238 bytes
+  0000  53           ld d,e
+  0001  61           ld h,c
+  0002  74           ld (hl),h
+  0003  00           nop
+  0004  46           ld b,(hl)
+  0005  72           ld (hl),d
+  0006  69           ld l,c
+  0007  00           nop
+  0008  54           ld d,h
+  0009  68           ld l,b
+  000a  75           ld (hl),l
+  000b  00           nop
+  000c  57           ld d,a
+  000d  65           ld h,l
+  000e  64           ld h,h
+  000f  00           nop
+  0010  54           ld d,h
+  0011  75           ld (hl),l
+  0012  65           ld h,l
+  0013  00           nop
+  0014  4d           ld c,l
+  0015  6f           ld l,a
+  0016  6e           ld l,(hl)
+  0017  00           nop
+  0018  53           ld d,e
+  0019  75           ld (hl),l
+  001a  6e           ld l,(hl)
+  001b  00           nop
+  001c  44           ld b,h
+  001d  65           ld h,l
+  001e  63           ld h,e
+  001f  00           nop
+  0020  4e           ld c,(hl)
+  0021  6f           ld l,a
+  0022  76           halt
+  0023  00           nop
+  0024  4f           ld c,a
+  0025  63           ld h,e
+  0026  74           ld (hl),h
+  0027  00           nop
+  0028  53           ld d,e
+  0029  65           ld h,l
+  002a  70           ld (hl),b
+  002b  00           nop
+  002c  41           ld b,c
+  002d  75           ld (hl),l
+  002e  67           ld h,a
+  002f  00           nop
+  0030  4a           ld c,d
+  0031  75           ld (hl),l
+  0032  6c           ld l,h
+  0033  00           nop
+  0034  4a           ld c,d
+  0035  75           ld (hl),l
+  0036  6e           ld l,(hl)
+  0037  00           nop
+  0038  4d           ld c,l
+  0039  61           ld h,c
+  003a  79           ld a,c
+  003b  00           nop
+  003c  41           ld b,c
+  003d  70           ld (hl),b
+  003e  72           ld (hl),d
+  003f  00           nop
+  0040  4d           ld c,l
+  0041  61           ld h,c
+  0042  72           ld (hl),d
+  0043  00           nop
+  0044  46           ld b,(hl)
+  0045  65           ld h,l
+  0046  62           ld h,d
+  0047  00           nop
+  0048  4a           ld c,d
+  0049  61           ld h,c
+  004a  6e           ld l,(hl)
+  004b  00           nop
+  004c  25           dec h
+  004d  73           ld (hl),e
+  004e  20 25        jr nz,0075h
+  0050  73           ld (hl),e
+  0051  20 25        jr nz,0078h
+  0053  2d           dec l
+  0054  32 64 20     ld (2064h),a
+  0057  25           dec h
+  0058  32 64 3a     ld (3a64h),a
+  005b  25           dec h
+  005c  30 32        jr nc,0090h
+  005e  64           ld h,h
+  005f  3a 25 30     ld a,(3025h)
+  0062  32 64 20     ld (2064h),a
+  0065  25           dec h
+  0066  64           ld h,h
+  0067  0a           ld a,(bc)
+  0068  00           nop
+_ctime:
+  0069  cd 00 00     call 0000h
+  006c  21 04 00     ld hl,0004h
+  006f  19           add hl,de
+  0070  4e           ld c,(hl)
+  0071  23           inc hl
+  0072  46           ld b,(hl)
+  0073  c5           push bc
+  0074  cd 00 00     call 0000h
+  0077  f1           pop af
+  0078  69           ld l,c
+  0079  60           ld h,b
+  007a  22 34 01     ld (0134h),hl
+  007d  2a 34 01     ld hl,(0134h)
+  0080  01 0a 00     ld bc,000ah
+  0083  09           add hl,bc
+  0084  7e           ld a,(hl)
+  0085  23           inc hl
+  0086  66           ld h,(hl)
+  0087  6f           ld l,a
+  0088  01 6c 07     ld bc,076ch
+  008b  09           add hl,bc
+  008c  e5           push hl
+  008d  2a 34 01     ld hl,(0134h)
+  0090  4e           ld c,(hl)
+  0091  23           inc hl
+  0092  46           ld b,(hl)
+  0093  c5           push bc
+  0094  2a 34 01     ld hl,(0134h)
+  0097  23           inc hl
+  0098  23           inc hl
+  0099  4e           ld c,(hl)
+  009a  23           inc hl
+  009b  46           ld b,(hl)
+  009c  c5           push bc
+  009d  2a 34 01     ld hl,(0134h)
+  00a0  23           inc hl
+  00a1  23           inc hl
+  00a2  23           inc hl
+  00a3  23           inc hl
+  00a4  4e           ld c,(hl)
+  00a5  23           inc hl
+  00a6  46           ld b,(hl)
+  00a7  c5           push bc
+  00a8  2a 34 01     ld hl,(0134h)
+  00ab  01 06 00     ld bc,0006h
+  00ae  09           add hl,bc
+  00af  4e           ld c,(hl)
+  00b0  23           inc hl
+  00b1  46           ld b,(hl)
+  00b2  c5           push bc
+  00b3  2a 34 01     ld hl,(0134h)
+  00b6  01 08 00     ld bc,0008h
+  00b9  09           add hl,bc
+  00ba  7e           ld a,(hl)
+  00bb  23           inc hl
+  00bc  66           ld h,(hl)
+  00bd  6f           ld l,a
+  00be  29           add hl,hl
+  00bf  01 fc 00     ld bc,00fch
+  00c2  09           add hl,bc
+  00c3  4e           ld c,(hl)
+  00c4  23           inc hl
+  00c5  46           ld b,(hl)
+  00c6  c5           push bc
+  00c7  2a 34 01     ld hl,(0134h)
+  00ca  01 0c 00     ld bc,000ch
+  00cd  09           add hl,bc
+  00ce  7e           ld a,(hl)
+  00cf  23           inc hl
+  00d0  66           ld h,(hl)
+  00d1  6f           ld l,a
+  00d2  29           add hl,hl
+  00d3  01 ee 00     ld bc,00eeh
+  00d6  09           add hl,bc
+  00d7  4e           ld c,(hl)
+  00d8  23           inc hl
+  00d9  46           ld b,(hl)
+  00da  c5           push bc
+  00db  21 4c 00     ld hl,004ch
+  00de  e5           push hl
+  00df  21 14 01     ld hl,0114h
+  00e2  e5           push hl
+  00e3  cd 00 00     call 0000h
+  00e6  21 12 00     ld hl,0012h
+  00e9  39           add hl,sp
+  00ea  f9           ld sp,hl
+  00eb  c3 00 00     jp 0000h
+
+Data segment: 72 bytes
+  0000: 18 00 14 00 10 00 0c 00  08 00 04 00 00 00 48 00  |..............H.|
+  0010: 44 00 40 00 3c 00 38 00  34 00 30 00 2c 00 28 00  |D.@.<.8.4.0.,.(.|
+  0020: 24 00 20 00 1c 00 00 00  00 00 00 00 00 00 00 00  |$. .............|
+  0030: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00  |................|
+  0040: 00 00 00 00 00 00 00 00                           |........|
+
+Symbol table: 6 symbols (9-char names)
+  Index  Value  Type Seg    Global  Name
+  -----  -----  ---- -----  ------  ----
+  [  0]  0000   08   ext    yes      _timezon
+  [  1]  0000   08   ext    yes      _sprintf
+  [  2]  0000   08   ext    yes      c.ret
+  [  3]  0000   08   ext    yes      c.ent
+  [  4]  0000   08   ext    yes      _localti
+  [  5]  0069   0d   text   yes      _ctime
+
+Text relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  006a    word        symbol[3]
+  0075    word        symbol[4]
+  007b    word        data segment
+  007e    word        data segment
+  008e    word        data segment
+  0095    word        data segment
+  009e    word        data segment
+  00a9    word        data segment
+  00b4    word        data segment
+  00c0    word        data segment
+  00c8    word        data segment
+  00d4    word        data segment
+  00dc    word        text segment
+  00e0    word        data segment
+  00e4    word        symbol[1]
+  00ec    word        symbol[2]
+
+Data relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  0000    word        text segment
+  0002    word        text segment
+  0004    word        text segment
+  0006    word        text segment
+  0008    word        text segment
+  000a    word        text segment
+  000c    word        text segment
+  000e    word        text segment
+  0010    word        text segment
+  0012    word        text segment
+  0014    word        text segment
+  0016    word        text segment
+  0018    word        text segment
+  001a    word        text segment
+  001c    word        text segment
+  001e    word        text segment
+  0020    word        text segment
+  0022    word        text segment
+  0024    word        text segment
+

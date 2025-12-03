@@ -1,0 +1,166 @@
+=== lib/libp/getarg.o ===
+
+Header:
+  Magic:       0x99
+  Config:      0x14 little-endian
+  Symlen:      9 chars
+  Symtab:      132 bytes (11 symbols)
+  Text:        169 bytes
+  Data:        0 bytes
+  BSS:         0 bytes
+  Heap:        0 bytes
+  Text offset: 0x0000
+  Data offset: 0x00a9
+
+Disassembly: 169 bytes
+_getarg:
+  0000  cd 00 00     call _getarg
+  0003  21 06 00     ld hl,0006h
+  0006  19           add hl,de
+  0007  7e           ld a,(hl)
+  0008  23           inc hl
+  0009  66           ld h,(hl)
+  000a  6f           ld l,a
+  000b  22 00 00     ld (_getarg),hl
+  000e  21 08 00     ld hl,0008h
+  0011  19           add hl,de
+  0012  7e           ld a,(hl)
+  0013  23           inc hl
+  0014  66           ld h,(hl)
+  0015  6f           ld l,a
+  0016  22 00 00     ld (_getarg),hl
+  0019  21 04 00     ld hl,0004h
+  001c  19           add hl,de
+  001d  23           inc hl
+  001e  7e           ld a,(hl)
+  001f  b7           or a
+  0020  fa 35 00     jp m,0035h
+  0023  21 04 00     ld hl,0004h
+  0026  19           add hl,de
+  0027  e5           push hl
+  0028  21 00 00     ld hl,_getarg
+  002b  c1           pop bc
+  002c  0a           ld a,(bc)
+  002d  96           sub (hl)
+  002e  03           inc bc
+  002f  0a           ld a,(bc)
+  0030  23           inc hl
+  0031  9e           sbc a,(hl)
+  0032  da 3b 00     jp c,003bh
+  0035  01 00 00     ld bc,_getarg
+  0038  c3 00 00     jp _getarg
+  003b  21 04 00     ld hl,0004h
+  003e  19           add hl,de
+  003f  7e           ld a,(hl)
+  0040  23           inc hl
+  0041  66           ld h,(hl)
+  0042  6f           ld l,a
+  0043  29           add hl,hl
+  0044  e5           push hl
+  0045  2a 00 00     ld hl,(_getarg)
+  0048  e3           ex (sp),hl
+  0049  c1           pop bc
+  004a  09           add hl,bc
+  004b  7e           ld a,(hl)
+  004c  23           inc hl
+  004d  66           ld h,(hl)
+  004e  6f           ld l,a
+  004f  22 00 00     ld (_getarg),hl
+  0052  3a 00 00     ld a,(_getarg)
+  0055  d6 01        sub 01h
+  0057  32 00 00     ld (_getarg),a
+  005a  3a 01 00     ld a,(0001h)
+  005d  de 00        sbc a,00h
+  005f  32 01 00     ld (0001h),a
+  0062  21 00 00     ld hl,_getarg
+  0065  97           sub a
+  0066  96           sub (hl)
+  0067  3e 00        ld a,00h
+  0069  23           inc hl
+  006a  9e           sbc a,(hl)
+  006b  f2 8f 00     jp p,008fh
+  006e  2a 00 00     ld hl,(_getarg)
+  0071  e5           push hl
+  0072  2a 00 00     ld hl,(_getarg)
+  0075  23           inc hl
+  0076  22 00 00     ld (_getarg),hl
+  0079  e1           pop hl
+  007a  e5           push hl
+  007b  2a 00 00     ld hl,(_getarg)
+  007e  e5           push hl
+  007f  2a 00 00     ld hl,(_getarg)
+  0082  23           inc hl
+  0083  22 00 00     ld (_getarg),hl
+  0086  e1           pop hl
+  0087  c1           pop bc
+  0088  7e           ld a,(hl)
+  0089  02           ld (bc),a
+  008a  0a           ld a,(bc)
+  008b  b7           or a
+  008c  c2 52 00     jp nz,0052h
+  008f  2a 00 00     ld hl,(_getarg)
+  0092  36 00        ld (hl),00h
+  0094  01 01 00     ld bc,0001h
+  0097  c3 00 00     jp _getarg
+_nargs:
+  009a  cd 00 00     call _getarg
+  009d  2a 00 00     ld hl,(_getarg)
+  00a0  01 ff ff     ld bc,ffffh
+  00a3  09           add hl,bc
+  00a4  4d           ld c,l
+  00a5  44           ld b,h
+  00a6  c3 00 00     jp _getarg
+
+Data segment: (empty)
+
+Symbol table: 11 symbols (9-char names)
+  Index  Value  Type Seg    Global  Name
+  -----  -----  ---- -----  ------  ----
+  [  0]  0000   08   ext    yes      _argc
+  [  1]  0000   08   ext    yes      c.r4
+  [  2]  0000   08   ext    yes      c.r3
+  [  3]  0000   08   ext    yes      c.r2
+  [  4]  0000   08   ext    yes      c.ret
+  [  5]  0000   08   ext    yes      c.ent
+  [  6]  0000   08   ext    yes      _argv
+  [  7]  0000   08   ext    yes      c.rets
+  [  8]  0000   08   ext    yes      c.ents
+  [  9]  009a   0d   text   yes      _nargs
+  [ 10]  0000   0d   text   yes      _getarg
+
+Text relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  0001    word        symbol[8]
+  000c    word        symbol[1]
+  0017    word        symbol[3]
+  0021    word        text segment
+  0029    word        symbol[0]
+  0033    word        text segment
+  0039    word        symbol[7]
+  0046    word        symbol[6]
+  0050    word        symbol[2]
+  0053    word        symbol[3]
+  0058    word        symbol[3]
+  005b    word        symbol[3]
+  0060    word        symbol[3]
+  0063    word        symbol[3]
+  006c    word        text segment
+  006f    word        symbol[1]
+  0073    word        symbol[1]
+  0077    word        symbol[1]
+  007c    word        symbol[2]
+  0080    word        symbol[2]
+  0084    word        symbol[2]
+  008d    word        text segment
+  0090    word        symbol[1]
+  0098    word        symbol[7]
+  009b    word        symbol[5]
+  009e    word        symbol[0]
+  00a7    word        symbol[4]
+
+Data relocations:
+  Offset  Type        Target
+  ------  ----        ------
+  (none)
+
