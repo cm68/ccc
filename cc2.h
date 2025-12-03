@@ -209,9 +209,9 @@ struct jump_instr *newJump(enum jump_type type, int target_label);
 void freeJump(struct jump_instr *j);
 
 /* Width and signedness extraction from type annotations */
-unsigned char getSizeFTStr(char type_str);
+unsigned char getSizeFTStr(unsigned char type_str);
 unsigned char getSizeFromTN(const char *typename);
-unsigned char getSignFTStr(char type_str);
+unsigned char getSignFTStr(unsigned char type_str);
 
 /* Pattern recognizers */
 int isStructMem(struct expr *e, char **out_var, long *out_offset);

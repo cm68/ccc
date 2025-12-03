@@ -21,10 +21,10 @@ int readHex2(void);
 long readNum(void);
 
 /* Read hex-length-prefixed name (static buffer) */
-char *readName(void);
+unsigned char *readName(void);
 
 /* Read hex-length-prefixed string (malloc'd) */
-char *readStr(void);
+unsigned char *readStr(void);
 
 /* Skip to next line */
 void skipLine(void);

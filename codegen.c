@@ -20,6 +20,16 @@
 /* Global loop depth for tracking whether we're inside a loop */
 static int g_loop_depth = 0;
 
+/* Global tree walk counter for loop detection */
+static long g_walk_count = 0;
+#define MAX_WALKS 1000000
+#define CHECK_WALK() do { \
+    if (++g_walk_count > MAX_WALKS) { \
+        fdprintf(2, "codegen: exceeded %ld tree walks\n", (long)MAX_WALKS); \
+        exit(1); \
+    } \
+} while(0)
+
 /* Forward declaration from parseast.c for symbol tracking */
 void addRefSym(const char *name);
 
@@ -456,6 +466,7 @@ static void
 analyzeExpr(struct expr *e)
 {
     if (!e) return;
+    CHECK_WALK();
 
     /* Count variable references */
     if (e->op == '$' && e->symbol) {
@@ -627,6 +638,7 @@ static void
 setExprFlags(struct expr *e)
 {
     if (!e) return;
+    CHECK_WALK();
 
     /* Clear opflags first */
     e->opflags = 0;
@@ -1029,6 +1041,7 @@ static void
 specExpr(struct expr *e)
 {
     if (!e) return;
+    CHECK_WALK();
 
     /* Skip if already has asm_block */
     if (e->asm_block) return;
@@ -1370,6 +1383,7 @@ static void generateExpr(struct expr *e)
     int i;
 
     if (!e) return;
+    CHECK_WALK();
     expr_count++;
     if (expr_count > 100000) {
         fdprintf(2, "generateExpr: exceeded 100000 calls, op=%c\n", e->op);

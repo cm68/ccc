@@ -13,14 +13,14 @@
 #define BUFSIZE 4096
 
 static char inFd;
-static char buf[BUFSIZE];
+static unsigned char buf[BUFSIZE];
 static int bufPos;
 static int bufValid;
 
 int lineNum = 1;
 unsigned char curchar;
 
-static char symbuf[256];
+static unsigned char symbuf[256];
 
 void initAstio(unsigned char fd) {
 	inFd = fd;
@@ -45,7 +45,7 @@ unsigned char nextchar(void) {
 }
 
 /* Convert hex char to value */
-static int hval(char c) {
+static int hval(unsigned char c) {
 	if (c >= '0' && c <= '9') return c - '0';
 	if (c >= 'a' && c <= 'f') return c - 'a' + 10;
 	if (c >= 'A' && c <= 'F') return c - 'A' + 10;
@@ -74,7 +74,7 @@ long readNum(void) {
 }
 
 /* Read hex-length-prefixed name into static buffer */
-char *readName(void) {
+unsigned char *readName(void) {
 	int len = readHex2();
 	int i;
 	for (i = 0; i < len && i < 255; i++)
@@ -84,9 +84,9 @@ char *readName(void) {
 }
 
 /* Read hex-length-prefixed string, return malloc'd copy */
-char *readStr(void) {
+unsigned char *readStr(void) {
 	int len = readHex2();
-	char *s = malloc(len + 1);
+	unsigned char *s = malloc(len + 1);
 	int i;
 	for (i = 0; i < len; i++)
 		s[i] = readHex2();
