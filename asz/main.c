@@ -13,6 +13,8 @@
  *
  * now, instead, for a file foo.s, we write foo.o as the gods intended
  *
+ * on top of that, we assemble stdin to a.out
+ *
  * Changed: <2025-11-19 17:16:21 curt>
  *
  * vim: tabstop=4 shiftwidth=4 expandtab:
@@ -36,6 +38,7 @@
 
 char verbose INIT;
 char m_flag INIT;
+char n_flag INIT;
 
 char *progname INIT;
 
@@ -44,6 +47,7 @@ int lineNum INIT;
 int outfd;
 int tmpfd;
 int infd;
+int inbuffd;
 
 /*
  * outputs a byte onto output file
@@ -95,9 +99,10 @@ timeoutHdlr(int sig)
 void
 usage()
 {
-	fprintf(stderr, "usage: %s [-vm] [ -o <objectfile> ] [<sourcefile>]\n", progname);
+	fprintf(stderr, "usage: %s [-vmn9] [ -o <objectfile> ] [<sourcefile>]\n", progname);
 	fprintf(stderr, "\t-v\tincrease verbosity\n");
-	fprintf(stderr, "\t-m\t9 character name limit\n");
+	fprintf(stderr, "\t-9\t9 character symbol names (default 15)\n");
+	fprintf(stderr, "\t-n\tno timeout\n");
 	exit(1);
 }
 
@@ -118,12 +123,6 @@ char **argv;
     argv++;
     argc--;
 
-#ifdef linux
-    /* Set up timeout handler to catch infinite loops */
-    signal(SIGALRM, timeoutHdlr);
-    alarm(5);  /* 5 second timeout */
-#endif
- 
 	while (argc) {
         s = *argv;
 
@@ -136,6 +135,11 @@ char **argv;
 	    while (*s) {
             switch (*s++) {
 
+            case 'n':
+                n_flag++;
+                break;
+
+			case '9':
 			case 'm':
 				m_flag++;
 				break;
@@ -180,13 +184,29 @@ char **argv;
         infd = 0;
         if (!outfile)
             outfile = "a.out";
+        sprintf(tmpbuf, "/tmp/atmi%d", getpid());
+        if ((inbuffd = open(tmpbuf, O_CREAT|O_TRUNC|O_RDWR, 0700)) == -1) {
+            printf("cannot open tmp input buffer file %s\n", tmpbuf);
+            exit(1);
+        }
+        unlink(tmpbuf);
     }
+
+
+#ifdef linux
+    if (infd && !n_flag) {
+	    /* Set up timeout handler to catch infinite loops */
+	    signal(SIGALRM, timeoutHdlr);
+	    alarm(5);  /* 5 second timeout */
+	}
+#endif
 
 	sprintf(tmpbuf, "/tmp/atm%d", getpid());
     if ((tmpfd = open(tmpbuf, O_CREAT|O_TRUNC|O_RDWR, 0700)) == -1) {
         printf("cannot open tmp file %s\n", tmpbuf);
         exit(1);
     }
+    unlink(tmpbuf);
 
     if ((outfd = creat(outfile, 0700)) == -1) {
         printf("cannot open source file %s\n", outfile);
@@ -211,3 +231,7 @@ char **argv;
     close(infd);
     close(tmpfd);
 }
+
+/*
+ * vim: tabstop=4 shiftwidth=4 expandtab:
+ */

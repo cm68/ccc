@@ -47,6 +47,7 @@
  */
 
 extern int infd;
+extern int inbuffd;
 extern int lineNum;
 extern char *infile;
 extern char verbose;
@@ -67,56 +68,56 @@ unsigned char operand();
  */
 #define T_BIAS  0x80
 
-#define T_B     T_BIAS + 0
-#define T_C     T_BIAS + 1
-#define T_D     T_BIAS + 2
-#define T_E     T_BIAS + 3
-#define T_H     T_BIAS + 4
-#define T_L     T_BIAS + 5
-#define T_HL_I  T_BIAS + 6
-#define T_A     T_BIAS + 7
+#define T_B     (T_BIAS + 0)
+#define T_C     (T_BIAS + 1)
+#define T_D     (T_BIAS + 2)
+#define T_E     (T_BIAS + 3)
+#define T_H     (T_BIAS + 4)
+#define T_L     (T_BIAS + 5)
+#define T_HL_I  (T_BIAS + 6)
+#define T_A     (T_BIAS + 7)
 
-#define T_BC    T_BIAS + 8
-#define T_DE    T_BIAS + 9
-#define T_HL    T_BIAS + 10
-#define T_SP    T_BIAS + 11
-#define T_AF    T_BIAS + 12
-#define T_IX    T_BIAS + 13
-#define T_IY    T_BIAS + 14
+#define T_BC    (T_BIAS + 8)
+#define T_DE    (T_BIAS + 9)
+#define T_HL    (T_BIAS + 10)
+#define T_SP    (T_BIAS + 11)
+#define T_AF    (T_BIAS + 12)
+#define T_IX    (T_BIAS + 13)
+#define T_IY    (T_BIAS + 14)
 
-#define T_NZ    T_BIAS + 15
-#define T_Z     T_BIAS + 16
-#define T_NC    T_BIAS + 17
-#define T_CR    T_BIAS + 18
-#define T_PO    T_BIAS + 19
-#define T_PE    T_BIAS + 20
-#define T_P     T_BIAS + 21
-#define T_M     T_BIAS + 22
+#define T_NZ    (T_BIAS + 15)
+#define T_Z     (T_BIAS + 16)
+#define T_NC    (T_BIAS + 17)
+#define T_CR    (T_BIAS + 18)
+#define T_PO    (T_BIAS + 19)
+#define T_PE    (T_BIAS + 20)
+#define T_P     (T_BIAS + 21)
+#define T_M     (T_BIAS + 22)
 
-#define T_IXH   T_BIAS + 23
-#define T_IXL   T_BIAS + 24
-#define T_IX_D  T_BIAS + 25
-#define T_IYH   T_BIAS + 26
-#define T_IYL   T_BIAS + 27
-#define T_IY_D  T_BIAS + 28
+#define T_IXH   (T_BIAS + 23)
+#define T_IXL   (T_BIAS + 24)
+#define T_IX_D  (T_BIAS + 25)
+#define T_IYH   (T_BIAS + 26)
+#define T_IYL   (T_BIAS + 27)
+#define T_IY_D  (T_BIAS + 28)
 
-#define T_PLAIN T_BIAS + 29     /* an immediate value */
-#define T_INDIR T_BIAS + 30     /* in indirect immediate */
+#define T_PLAIN (T_BIAS + 29)   /* an immediate value */
+#define T_INDIR (T_BIAS + 30)   /* in indirect immediate */
 
-#define T_SP_I  T_BIAS + 31
-#define T_BC_I  T_BIAS + 32
-#define T_DE_I  T_BIAS + 33
-#define T_IX_I  T_BIAS + 34
-#define T_IY_I  T_BIAS + 35
+#define T_SP_I  (T_BIAS + 31)
+#define T_BC_I  (T_BIAS + 32)
+#define T_DE_I  (T_BIAS + 33)
+#define T_IX_I  (T_BIAS + 34)
+#define T_IY_I  (T_BIAS + 35)
 
-#define T_C_I   T_BIAS + 36
-#define T_I     T_BIAS + 37
-#define T_R     T_BIAS + 38
+#define T_C_I   (T_BIAS + 36)
+#define T_I     (T_BIAS + 37)
+#define T_R     (T_BIAS + 38)
 
-#define T_NAME  T_BIAS + 39
-#define T_NUM   T_BIAS + 40
-#define T_STR   T_BIAS + 41
-#define T_EOF   T_BIAS + 42
+#define T_NAME  (T_BIAS + 39)
+#define T_NUM   (T_BIAS + 40)
+#define T_STR   (T_BIAS + 41)
+#define T_EOF   (T_BIAS + 42)
 
 char *tokname[] = {
     /*  0 */ "B", "C", "D", "E", "H", "L", "(HL)", "A",
@@ -381,8 +382,10 @@ struct expval {
     unsigned short num;
 };
 
-unsigned char *inptr = "";
-unsigned char inbuf[100];
+unsigned char *lineptr = "";
+unsigned char linebuf[100];
+#define FILEBUFSIZE 512
+unsigned char filebuf[FILEBUFSIZE+1];
 
 /*
  * token buffer 
@@ -418,6 +421,21 @@ char segment INIT;
 
 struct rhead textr = { "text" };
 struct rhead datar = { "data" };
+
+/*
+ * jump records for jp->jr relaxation
+ * only jp instructions with resolvable targets in text segment
+ */
+struct jump {
+    unsigned short addr;        /* address of jp instruction */
+    struct symbol *sym;         /* target symbol (NULL for absolute) */
+    unsigned short offset;      /* target offset */
+    unsigned char cond;         /* condition (T_NZ..T_CR) or 0 for unconditional */
+    unsigned char is_jr;        /* 1 if converted to jr */
+    struct jump *next;
+};
+
+struct jump *jumps INIT;
 
 struct symbol *symbols INIT;
 
@@ -498,7 +516,7 @@ gripe(msg)
 char *msg;
 {
 	printf("%s:%d %s\n%s", 
-        infile, lineNum, msg, inbuf);
+        infile, lineNum, msg, linebuf);
 	exit(1);
 }
 
@@ -508,7 +526,7 @@ char *msg;
 char *arg;
 {
 	printf("%s:%d %s%s\n%s", 
-        infile, lineNum, msg, arg, inbuf);
+        infile, lineNum, msg, arg, linebuf);
 	exit(1);
 }
 
@@ -633,6 +651,29 @@ char *s;
     return val;
 }
 
+unsigned char *limit = 0;
+unsigned char *inptr = 0;
+
+int
+fillbuf()
+{
+    int i;
+
+    i = read(infd, filebuf, FILEBUFSIZE);
+    if (i < 0) {
+        gripe("io error on read"); 
+    } else if (i == 0) {
+        return 0;
+    } else {
+        inptr = filebuf;
+        limit = &filebuf[i];
+    }
+    if (pass == 0 && infd == 0) {
+        write(inbuffd, filebuf, i);
+    }
+    return i;
+}
+
 /*
  * read an entire line into a null-terminated C string
  * the line will end with a newline.
@@ -642,31 +683,34 @@ get_line()
 {
     unsigned char *s;
     int i;
+    unsigned char c;
 
-    inptr = inbuf;
-	for (i = 0; i < sizeof(inbuf); i++) {
-		if (read(infd, inptr, 1) == 0) {
-        	*inptr++ = T_EOF;
-			break;		
-		}
-		if (*inptr == '\n') {
-			inptr++;
+    lineptr = linebuf;
+	for (i = 0; i < sizeof(linebuf); i++) {
+        if (inptr >= limit) {
+            if (fillbuf() == 0) {
+                *lineptr++ = T_EOF;
+                break;
+            }
+        }
+        c = *inptr++;
+		*lineptr++ = c;
+		if (c == '\n') {
 			break;
 		}
-		inptr++;
 	}
-	*inptr = '\0';
+	*lineptr = '\0';
     lineNum++;
-    i = strlen(inbuf);
-    /* 
+    i = strlen(linebuf);
+    /*
      * we normalize the line to not do the cr-lf thing.
      * if we see a cr, we change it to and lf and null out.
      */
-    if (inbuf[i - 2] == '\r') {
-        inbuf[i - 2] = '\n';
-        inbuf[i - 1] = 0;
+    if (i >= 2 && linebuf[i - 2] == '\r') {
+        linebuf[i - 2] = '\n';
+        linebuf[i - 1] = 0;
     }
-	inptr = inbuf;
+	lineptr = linebuf;
 }
 
 /*
@@ -677,7 +721,7 @@ peekchar()
 {
     unsigned char c;
 
-    c = *inptr;
+    c = *lineptr;
     if (verbose > 5)
         printf("peekchar: %d \'%c\'\n", c, (c > ' ') ? c : ' ');
     return (c);
@@ -715,12 +759,12 @@ nextchar()
 {
     unsigned char c;
 
-    if (!*inptr)
+    if (!*lineptr)
         get_line();
     
-    c = *inptr;
+    c = *lineptr;
     if (c != T_EOF) {
-        inptr++;
+        lineptr++;
     }
 
     return c;
@@ -732,7 +776,7 @@ nextchar()
 void
 consume()
 {
-    *inptr = '\0';
+    *lineptr = '\0';
 }
 
 /*
@@ -764,7 +808,7 @@ get_token()
     /* skip over whitespace and comments */
     while (1) {
 		/* ensure buffer has content */
-		if (!*inptr) {
+		if (!*lineptr) {
 			get_line();
 		}
 
@@ -795,9 +839,9 @@ get_token()
             }
         }
         token_buf[i++] = '\0';
-        if (i > 16) {  /* >15 chars plus null terminator */
-            printf("%s:%d warning: symbol '%s' longer than 15 characters\n",
-                   infile, lineNum, token_buf);
+        if (i > (m_flag ? 10 : 16)) {  /* >9 or >15 chars plus null terminator */
+            printf("%s:%d warning: symbol '%s' longer than %d characters\n",
+                   infile, lineNum, token_buf, m_flag ? 9 : 15);
         }
         c = T_NAME;
     }
@@ -979,6 +1023,19 @@ struct rhead *rh;
     rh->head = 0;
 }
 
+void
+freejumps()
+{
+    struct jump *j, *n;
+
+    for (j = jumps; j;) {
+        n = j->next;
+        free(j);
+        j = n;
+    }
+    jumps = 0;
+}
+
 /*
  * resets all allocation stuff
  * this is what we run between assemblies.
@@ -997,6 +1054,7 @@ asm_reset()
     }
     freerelocs(&textr);
     freerelocs(&datar);
+    freejumps();
 }
 
 /*
@@ -1039,6 +1097,133 @@ struct symbol *sym;
 		tab->tail->next = r;
 	}
 	tab->tail = r;
+}
+
+/*
+ * record a jp instruction for potential conversion to jr
+ * only in pass 0, only for text segment
+ */
+void
+add_jump(addr, sym, offset, cond)
+unsigned short addr;
+struct symbol *sym;
+unsigned short offset;
+unsigned char cond;
+{
+    struct jump *j;
+
+    if (pass != 0)
+        return;
+    if (segment != SEG_TEXT)
+        return;
+
+    j = (struct jump *)malloc(sizeof(struct jump));
+    j->addr = addr;
+    j->sym = sym;
+    j->offset = offset;
+    j->cond = cond;
+    j->is_jr = 0;
+    j->next = jumps;
+    jumps = j;
+}
+
+/*
+ * find jump record for address
+ */
+struct jump *
+find_jump(addr)
+unsigned short addr;
+{
+    struct jump *j;
+
+    for (j = jumps; j; j = j->next) {
+        if (j->addr == addr)
+            return j;
+    }
+    return 0;
+}
+
+/*
+ * relax jp instructions to jr where possible
+ * iterate until no more changes
+ * jr only supports conditions NZ, Z, NC, C (not PO, PE, P, M)
+ */
+void
+relax_jumps()
+{
+    struct jump *j, *k;
+    struct symbol *s;
+    int changed;
+    int target, dist;
+    int saved = 0;
+    unsigned short conv_addr;
+
+    if (verbose > 1)
+        printf("relaxing jumps\n");
+
+    do {
+        changed = 0;
+
+        for (j = jumps; j; j = j->next) {
+            if (j->is_jr)
+                continue;
+
+            /* jr only supports NZ, Z, NC, C (conditions 0-3) */
+            /* cond==0 means unconditional, T_NZ..T_CR are conditions 0-3 */
+            if (j->cond != 0 && (j->cond < T_NZ || j->cond > T_CR))
+                continue;
+
+            /* calculate target address */
+            if (j->sym) {
+                /* symbol must be defined and in text segment */
+                if (j->sym->seg == SEG_UNDEF || j->sym->seg == SEG_EXT)
+                    continue;
+                if (j->sym->seg != SEG_TEXT)
+                    continue;
+                target = j->sym->value + j->offset;
+            } else {
+                target = j->offset;
+            }
+
+            /* jr offset is from PC after the 2-byte jr instruction */
+            /* jp is 3 bytes, so the address field is at addr+1 */
+            /* if we convert to jr, offset is from addr+2 */
+            dist = target - (j->addr + 2);
+
+            if (dist >= -128 && dist <= 127) {
+                j->is_jr = 1;
+                changed = 1;
+                saved++;
+                conv_addr = j->addr;
+
+                if (verbose > 2)
+                    printf("  convert jp at %04x to jr (target %04x, dist %d)\n",
+                           j->addr, target, dist);
+
+                /* adjust all symbols after this jp */
+                for (s = symbols; s; s = s->next) {
+                    if (s->seg == SEG_TEXT && s->value > conv_addr)
+                        s->value--;
+                }
+
+                /* adjust all jump addresses and targets after this jp */
+                for (k = jumps; k; k = k->next) {
+                    if (k->addr > conv_addr)
+                        k->addr--;
+                    /* if target is a symbol, it's already adjusted */
+                    /* if target is absolute and after this jp, adjust it */
+                    if (!k->sym && k->offset > conv_addr)
+                        k->offset--;
+                }
+
+                /* adjust segment size */
+                text_top--;
+            }
+        }
+    } while (changed);
+
+    if (verbose && saved)
+        fprintf(stderr, "relaxation: %d bytes saved\n", saved);
 }
 
 /*
@@ -1959,20 +2144,60 @@ static char
 do_jmp(isr)
 struct instruct *isr;
 {
-	unsigned char arg;
+	unsigned char arg, cond;
 	struct expval value;
+	struct jump *j;
+	unsigned short addr;
+	int target, dist;
 
 	arg = operand(&value);
 
 	if (arg == T_C) arg = T_CR;
 	if (arg >= T_NZ && arg <= T_M) {
-		emitbyte(isr->opcode + ((arg - T_NZ) << 3));
+		cond = arg;
 		need(',');
 		arg = operand(&value);
-		emit_exp(2, &value);
+
+		/* record jump for relaxation */
+		addr = cur_address;
+		add_jump(addr, value.sym, value.num, cond);
+
+		/* check if relaxed to jr */
+		j = find_jump(addr);
+		if (j && j->is_jr) {
+			/* emit jr cc, offset */
+			/* jr nz=20, z=28, nc=30, c=38 */
+			emitbyte(0x20 + ((cond - T_NZ) << 3));
+			/* calculate relative offset */
+			if (value.sym)
+				target = value.sym->value + value.num;
+			else
+				target = value.num;
+			dist = target - (cur_address + 1);
+			emitbyte(dist & 0xff);
+		} else {
+			emitbyte(isr->opcode + ((cond - T_NZ) << 3));
+			emit_exp(2, &value);
+		}
 	} else if (arg == T_NUM || arg == T_PLAIN) {
-		emitbyte(isr->opcode + 1);
-		emit_exp(2, &value);
+		/* unconditional jp */
+		addr = cur_address;
+		add_jump(addr, value.sym, value.num, 0);
+
+		j = find_jump(addr);
+		if (j && j->is_jr) {
+			/* emit jr offset */
+			emitbyte(0x18);
+			if (value.sym)
+				target = value.sym->value + value.num;
+			else
+				target = value.num;
+			dist = target - (cur_address + 1);
+			emitbyte(dist & 0xff);
+		} else {
+			emitbyte(isr->opcode + 1);
+			emit_exp(2, &value);
+		}
 	} else if (arg == T_HL_I) {
 		emitbyte(isr->arg);
 	} else if (arg == T_IX_I) {
@@ -2332,12 +2557,10 @@ char next;
 
 /*
  * perform assembly functions
- * we do some passes over the source code, 
- * pass 1: locate symbols and relocs in relative segments
- *      all segments start at zero, and overlay
- *      fix up sizes and emit header
- * pass 2: now we know segment sizes, we can assign addresses
- *      and actually emit code and data
+ * two passes over the source code:
+ * pass 0: locate symbols in relative segments, calculate sizes
+ * pass 1: emit code and data with final addresses
+ * then output symbol table and relocations
  */
 void
 assemble()
@@ -2379,7 +2602,7 @@ assemble()
             }            
 
 			if (verbose > 4)
-				printf("line %d: %s", lineNum, inbuf);
+				printf("line %d: %s", lineNum, linebuf);
 
 			/*
 			 * command read 
@@ -2537,6 +2760,9 @@ assemble()
 
 			change_seg(SEG_TEXT);
 
+			/* relax jp->jr before finalizing sizes */
+			relax_jumps();
+
 			mem_size = text_top + data_top + bss_top;
 			text_size = text_top;
 			data_size = data_top;
@@ -2550,6 +2776,7 @@ assemble()
                 if (sym->seg == SEG_UNDEF) {
                     /* Treat undefined symbols as extern */
                     sym->seg = SEG_EXT;
+                    sym->index = next++;
                 }
                 if (sym->index == 0) {
                     sym->index = next++;
@@ -2564,7 +2791,7 @@ assemble()
 
 			outbyte(0x99);		/* magic */
 			outbyte(m_flag ? CONF_9 : CONF_15);		/* config byte */
-			outword(next * 12); /* symbol table size */
+			outword(next * ((m_flag ? 9 : 15) + 3)); /* symbol table size */
 			outword(text_size);	/* text */
 			outword(data_size);	/* data */
 			outword(bss_size);	/* bss */
@@ -2575,8 +2802,8 @@ assemble()
             if (verbose)
                 printf("magic %x text:%d data:%d bss:%d heap:%d "
                        "symbols:%d textoff:%x dataoff:%x\n",
-                       0x9914, text_size, data_size, bss_size, 0,
-                       next * 12, 0, text_size);
+                       m_flag ? 0x9914 : 0x9917, text_size, data_size, bss_size, 0,
+                       next * ((m_flag ? 9 : 15) + 3), 0, text_size);
 
 			/*
 			 * reset segment addresses to their final addresses
@@ -2588,57 +2815,63 @@ assemble()
 
             lineNum = 0;
 
-            *inptr = '\0';
+            *lineptr = '\0';
+            if (infd == 0) {
+                infd = inbuffd;
+            }	
 			lseek(infd, 0, SEEK_SET);
 
 			continue;
 		}
 
-		/*
-		 * pass 2 is to output the code, data, symbols and reloc
-		 */
-		if (pass == 2) {
-            for (sym = symbols; sym; sym = sym->next) {
-                switch (sym->seg) {
-                case SEG_UNDEF:
-                    type = 0x08;
-                    break;
-                case SEG_TEXT:
-                    type = 0x05 | 0x08;
-                    break;
-                case SEG_DATA:
-                    type = 0x06 | 0x08;
-                    break;
-                case SEG_BSS:
-                    type = 0x07 | 0x08;
-                    break;
-                case SEG_ABS:
-                    type = 0x04 | 0x08;
-                    break;
-                case SEG_EXT:
-                    type = 0x08;
-                    break;
-                default:
-                    break;
-                }
-                if (verbose > 3) {
-                    printf("sym: %9s index: %5d seg: %s(%d) type: %x\n",
-                        sym->name, sym->index, segname[sym->seg], sym->seg, type);
-                }
-                if (sym->index == 0xffff)
-                    continue;
-	            outtmp(sym->value & 0xff);
-	            outtmp(sym->value >> 8);
-                outtmp(type);
-                for (next = 0; next < (m_flag ? 9 : 15); next++) {
-                    outtmp(sym->name[next]);
-                }
-            }
+		if (pass == 2)
+			break;
+	}
 
-            reloc_out(textr.head, 0);
-            reloc_out(datar.head, text_top);
-
-			return;
+	/*
+	 * output symbols and relocation tables
+	 */
+	for (sym = symbols; sym; sym = sym->next) {
+		switch (sym->seg) {
+		case SEG_UNDEF:
+			type = 0x08;
+			break;
+		case SEG_TEXT:
+			type = 0x05 | 0x08;
+			break;
+		case SEG_DATA:
+			type = 0x06 | 0x08;
+			break;
+		case SEG_BSS:
+			type = 0x07 | 0x08;
+			break;
+		case SEG_ABS:
+			type = 0x04 | 0x08;
+			break;
+		case SEG_EXT:
+			type = 0x08;
+			break;
+		default:
+			break;
+		}
+		if (verbose > 3) {
+			printf("sym: %9s index: %5d seg: %s(%d) type: %x\n",
+				sym->name, sym->index, segname[sym->seg], sym->seg, type);
+		}
+		if (sym->index == 0xffff)
+			continue;
+		outtmp(sym->value & 0xff);
+		outtmp(sym->value >> 8);
+		outtmp(type);
+		for (next = 0; next < (m_flag ? 9 : 15); next++) {
+			outtmp(sym->name[next]);
 		}
 	}
+
+	reloc_out(textr.head, 0);
+	reloc_out(datar.head, text_top);
 }
+
+/*
+ * vim: tabstop=4 shiftwidth=4 expandtab:
+ */
