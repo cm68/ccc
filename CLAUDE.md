@@ -48,22 +48,10 @@ make expr.s
 ## Running the Compiler
 
 ```bash
-./ccc -x source.c              # Compile and execute with interpreter
 ./ccc -k source.c              # Compile with cc2, keep AST file
 ./cc1 -E source.c              # Preprocessor only
 ./cc1 -v 0x3f -E file.c        # Maximum verbosity
 ```
-
-## Debugging with the Interpreter
-
-The `-x` option validates parser correctness without needing cc2:
-
-```bash
-make cc1
-./ccc -x tests/arith_widths.c  # Expected: exit code 3622
-```
-
-If wrong, inspect AST: `cat test.ast`
 
 ## Architecture
 
@@ -75,7 +63,7 @@ If wrong, inspect AST: `cat test.ast`
 - **expr.c**: Expression parsing, constant folding, K&R implicit declarations
 - **type.c**: Type system (primitives, pointers, arrays, functions, structs)
 - **declare.c**: Declaration parsing (K&R and ANSI)
-- **outast.c**: AST emission (S-expressions with width annotations)
+- **outast.c**: AST emission (compact paren-free hex format)
 - **kw.c**: Keyword tables
 - **io.c**: I/O, file stack, macro buffer
 - **macro.c**: Macro definition/expansion
@@ -92,19 +80,21 @@ enumlist.h, tokenlist.c, error.h, debug.h, debugtags.c, op_pri.h
 
 ### Key Data Structures
 
-- **struct expr** (ccc.h): Expression tree nodes
-- **struct stmt** (ccc.h): Statement nodes
-- **struct type** (ccc.h): Type descriptors
-- **struct name** (ccc.h): Symbol table entries
+- **struct expr** (cc1.h): Expression tree nodes
+- **struct stmt** (cc1.h): Statement nodes
+- **struct type** (cc1.h): Type descriptors
+- **struct name** (cc1.h): Symbol table entries
 
-### AST Width Annotations
+### AST Format
 
-Memory ops use size suffixes: `:b` (byte), `:s` (short), `:l` (long), `:p` (pointer)
+The AST uses a compact paren-free hex format with counted children and
+dot-terminated hex numbers. Memory ops use size suffixes:
+`:b` (byte), `:s` (short), `:l` (long), `:p` (pointer)
 
 ```c
 char c; int i;
-c = 10;    // (=:b $_c 10)
-i = c;     // (=:s $_i (M:b $_c))
+c = 10;    // =b$_c a.
+i = c;     // =s$_i Mb$_c
 ```
 
 ### Type Conversions
@@ -116,7 +106,7 @@ i = c;     // (=:s $_i (M:b $_c))
 ### Function/Array Decay
 
 - Functions and arrays decay to pointers (no DEREF wrapper)
-- Variables get DEREF wrapper: `x` -> `(M $_x)`
+- Variables get DEREF wrapper: `x` -> `M$_x`
 
 ## Known Issues
 

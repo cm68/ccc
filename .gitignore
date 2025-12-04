@@ -21,6 +21,8 @@ cc2
 ccc
 debug.h
 debugtags.c
+trace2.h
+tracetags.c
 enumlist.h
 error.h
 maketokens
@@ -32,6 +34,7 @@ unit_test/test_insertmacro
 test_kw_real
 *.ast.*
 *.ast
+*.pp
 a.out
 do.ast
 *.pdf

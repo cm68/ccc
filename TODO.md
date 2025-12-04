@@ -34,7 +34,7 @@ lines implemented.
 
 **Completed**:
 - [x] Tree-based AST parser (builds complete function trees in memory)
-- [x] Three-phase architecture: parse → codegen → emit
+- [x] Three-phase architecture: parse -> codegen -> emit
 - [x] Register allocation and stack frame management
 - [x] Z80 assembly emission
 - [x] Basic code generation for simple functions

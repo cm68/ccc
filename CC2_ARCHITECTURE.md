@@ -1,23 +1,21 @@
 # cc2 Architecture - Code Generation Pass
 
-## Current State (Streaming Parser)
+## Current State (Tree-Based Parser)
 
-The current cc2 implementation uses a streaming parser approach:
-- Reads AST from input file character by character
-- Parses S-expressions on-the-fly
-- Emits assembly code incrementally as it parses
-- No in-memory representation of the function body
-- Limited ability to analyze or optimize
+The current cc2 implementation uses a tree-based parser approach:
+- Reads AST from input file (compact paren-free hex format)
+- Builds complete function trees in memory
+- Three-phase code generation: parse -> codegen -> emit
+- Full function context available for analysis
 
-## New Architecture (Tree-Based Code Generation)
+## Architecture (Tree-Based Code Generation)
 
 ### Overview
 
-Replace streaming parser with a tree-based approach:
+The tree-based approach uses three phases:
 1. **Parse phase**: Read entire function AST into memory data structures
-2. **Analysis phase**: Walk the tree, annotate with code generation info
-3. **Emission phase**: Convert operation nodes to code emission nodes
-4. **Output phase**: Walk code emission tree and generate assembly
+2. **Codegen phase**: Walk the tree, generate code for each node
+3. **Emit phase**: Walk code emission tree and output assembly
 
 ### Key Benefits
 
@@ -67,7 +65,7 @@ struct stmt {
 
 #### Phase 1: Parse AST into Memory Trees
 
-Parse entire function from S-expression AST into memory:
+Parse entire function from paren-free hex AST into memory:
 - `parse_function_ast()`: Read entire (f ...) form into stmt/expr trees
 - Assign label numbers to nodes during parsing:
   - If statements get `label` (and `label2` for if/else)
@@ -219,10 +217,9 @@ static struct stmt* handle_if(void) {
 
 ### Example: If Statement Processing
 
-**Input AST:**
-```lisp
-(I (> (M:s $x) 0)
-   (B (E (=:s $x (+ (M:s $x) 1)))))
+**Input AST (paren-free hex format):**
+```
+I2.>sMsX_x 0.B1.E=s$_x +Mssx 1.
 ```
 
 **After Phase 1 (Parse with labels - handle_if returns this tree):**
@@ -263,16 +260,13 @@ stmt (type='I', label=0, asm_block=""):
 _if_0:
 ```
 
-### Migration Path
+### Implementation Status
 
-1. **Commit current streaming implementation** ✓
-2. **Document new architecture** (this file) ✓
-3. **Create new codegen.c with tree builders**
-4. **Implement phase 1: Parse AST into stmt/expr trees with label assignment**
-5. **Implement phase 2: Walk trees and generate ASM blocks**
-6. **Implement phase 3: Walk ASM-annotated trees and emit assembly**
-7. **Test and validate**
-8. **Replace parseast.c usage in cc2.c**
+1. **Tree-based parser** ✓ Implemented
+2. **Document architecture** (this file) ✓
+3. **Phase 1: Parse AST into stmt/expr trees** ✓ Implemented
+4. **Phase 2: Code generation** In progress
+5. **Phase 3: Assembly emission** In progress
 
 ## Key Architectural Insight
 

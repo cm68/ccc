@@ -4,9 +4,9 @@ A standalone tool for formatting ccc compiler AST output in human-readable form.
 
 ## Purpose
 
-The AST pretty printer (`astpp.lisp`) converts the S-expression AST format into
-a nicely formatted, indented, and annotated representation that's easier to read
-and understand.
+The AST pretty printer (`astpp.lisp`) converts the compact paren-free hex AST
+format into a nicely formatted, indented, and annotated representation that's
+easier to read and understand.
 
 **Use cases:**
 - **Debugging the parser**: Visually inspect the AST structure to verify correct
@@ -41,7 +41,7 @@ The script is already executable and ready to use.
 
 ```bash
 # Generate AST from C source
-./cc1 -E program.c > program.ast
+make program.ast
 
 # Pretty print the AST
 ./astpp.lisp program.ast
@@ -54,13 +54,10 @@ is provided:
 
 ```bash
 # Use as filter in a pipeline
-./cc1 -E program.c | ./astpp.lisp
+./cc1 -DCCC -i./include -I. -E program.c | ./astpp.lisp
 
 # Combine with stderr (cc1 outputs AST to stdout, diagnostics to stderr)
-./cc1 -E program.c 2>&1 | ./astpp.lisp
-
-# Raw mode in a pipeline
-./cc1 -E program.c | ./astpp.lisp --raw
+./cc1 -DCCC -i./include -I. -E program.c 2>&1 | ./astpp.lisp
 ```
 
 This is particularly useful for:
@@ -78,64 +75,6 @@ This is particularly useful for:
 ./astpp.lisp program.ast
 ```
 
-### Raw Mode (No Translation)
-
-Use `--raw` or `-r` to keep original operators while still getting proper
-indentation:
-
-```bash
-# Pretty print with raw operators (M, =, +, etc.)
-./astpp.lisp --raw program.ast
-
-# Or short form
-./astpp.lisp -r program.ast
-```
-
-**When to use raw mode:**
-- **Reformatting AST files**: Output is valid S-expression AST that can be read
-  back
-- You're familiar with the AST format and don't need translation
-- You want to minimize differences when comparing ASTs
-- You're writing code that parses the output
-- You want the most compact representation
-
-**Raw mode outputs valid AST:**
-```bash
-# Reformat an AST file (canonicalize spacing/indentation)
-./astpp.lisp --raw messy.ast > clean.ast
-
-# The output can be fed back to the compiler/interpreter
-sbcl --script interp.lisp clean.ast
-```
-
-**Comparison:**
-
-Normal mode:
-```
-EXPR:
-  (ASSIGN:short $a (NARROW:short 10))
-IF ((GT (SEXT:long (DEREF:short $a)) 5))
-  BLOCK {
-```
-
-Raw mode:
-```
-E:
-  (=:short $a (N:short 10))
-I ((> (X:long (M:short $a)) 5))
-  B {
-```
-
-### One-Line Pipeline
-
-```bash
-# Generate and immediately view
-./cc1 -E program.c | sbcl --script astpp.lisp /dev/stdin
-
-# With raw mode
-./cc1 -E program.c | sbcl --script astpp.lisp /dev/stdin --raw
-```
-
 ## Output Format
 
 The pretty printer outputs:
@@ -145,13 +84,6 @@ The pretty printer outputs:
 3. **Expression trees** with operator names and type annotations
 4. **String literals** with their definitions
 5. **Global variables** with types and initializers
-
-### Example Input (AST)
-
-```lisp
-(f main () _short_
-  (B (d result _short_) (E (=:s $result (N:s 42))) (R (M:s $result))))
-```
 
 ### Example Output (Pretty Printed)
 
@@ -252,7 +184,8 @@ int main() {
 
 **Command:**
 ```bash
-./cc1 -E test.c | ./astpp.lisp /dev/stdin
+make test.ast
+./astpp.lisp test.ast
 ```
 
 **Output:**
@@ -309,25 +242,18 @@ int classify(int x) {
 
 The pretty printer is implemented in Common Lisp and:
 
-1. **Reads the AST** using Lisp's reader with custom preprocessing
+1. **Reads the AST** using a custom parser for the paren-free hex format
 2. **Handles special characters** like `|` and escape sequences in strings
-3. **Translates colons** to underscores for width annotations (`:s` → `_s`)
+3. **Translates widths** to readable names (`:s` -> `:short`)
 4. **Formats recursively** using indentation tracking
 5. **Annotates operators** with human-readable names
 6. **Displays type widths** on memory operations
 
 ## Debugging with Pretty Printer
 
-1. Generate AST: `./cc1 -E test.c > test.ast`
+1. Generate AST: `make test.ast`
 2. Pretty print: `./astpp.lisp test.ast`
 3. Verify structure matches expected AST
-
-## Comparison with Interpreter
-
-- **astpp.lisp**: Format AST for visual inspection (structure)
-- **interp.lisp**: Execute AST to verify semantics (behavior)
-- Use both together when debugging: pretty print to verify structure, interpret
-  to verify semantics
 
 ## Tips
 
@@ -349,19 +275,11 @@ For complex expressions, focus on specific parts:
 ### Compare ASTs
 
 ```bash
-# Compare two versions (normal mode)
+# Compare two versions
 ./astpp.lisp old.ast > /tmp/old.txt
 ./astpp.lisp new.ast > /tmp/new.txt
 diff -u /tmp/old.txt /tmp/new.txt
-
-# For minimal diff noise, use raw mode
-./astpp.lisp --raw old.ast > /tmp/old_raw.txt
-./astpp.lisp --raw new.ast > /tmp/new_raw.txt
-diff -u /tmp/old_raw.txt /tmp/new_raw.txt
 ```
-
-**Tip:** Raw mode produces more compact output with fewer long words to diff,
-making it easier to spot actual structural changes versus just reformatting.
 
 ### Pipe to Editor
 

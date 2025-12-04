@@ -6,20 +6,19 @@ developed and generates Z80 assembly code.
 
 ## Project Status
 
-**Pass 1 (cc1) - Complete** ✓ Tagged as **cc1_complete** and **self-parse**
+**Pass 1 (cc1) - Complete** Tagged as **cc1_complete** and **self-parse**
 - Full C preprocessor, type system, expression/statement parsing, AST emission
 - 142 tests passing, 18/18 source files self-host
 - ~7,500 lines of C code
 - See CLAUDE.md for detailed architecture and features
 
 **Debugging Tools**
-- **AST Interpreter** (interp.lisp): Execute AST without code generation
 - **AST Pretty Printer** (astpp.lisp): Format AST for human inspection
-- See INTERP.md and ASTPP.md for details
+- See ASTPP.md for details
 
-**Pass 2 (cc2) - Active Development** ✓ Generating Z80 Assembly
+**Pass 2 (cc2) - Active Development** Generating Z80 Assembly
 - Tree-based AST parser with complete function representation (~3,400 lines)
-- Three-phase code generation: parse → codegen → emit
+- Three-phase code generation: parse -> codegen -> emit
 - Register allocation and stack frame management
 - Generates working Z80 assembly for simple functions
 - See CC2_ARCHITECTURE.md for implementation details
@@ -30,13 +29,13 @@ This is a 2-pass compiler:
 
 **Pass 1 (cc1)**: Recursive descent parser with embedded C preprocessor
 - Parses and validates C source code
-- Outputs AST in S-expression format (single-char operators)
+- Outputs AST in compact paren-free hex format
 - Uses Unix syscalls (write) instead of stdio for output
 - ~7,500 lines of C code
 
 **Pass 2 (cc2)**: Tree-based code generator targeting Z80
-- Reads AST from pass 1 (S-expression format)
-- Three-phase architecture: parse → codegen → emit
+- Reads AST from pass 1 (paren-free hex format)
+- Three-phase architecture: parse -> codegen -> emit
 - Builds complete function trees in memory before code generation
 - Register allocation and stack frame management
 - Uses Unix syscalls (read/write) instead of stdio
@@ -53,7 +52,7 @@ This is a 2-pass compiler:
 - expr.c - Expression parsing with precedence
 - type.c - Type system management
 - declare.c - Declaration processing
-- outast.c - AST emission in S-expression format
+- outast.c - AST emission in compact hex format
 - macro.c - CPP macro definition and expansion
 - io.c - Character I/O and file stack management
 - error.c - Error reporting
@@ -85,9 +84,6 @@ This is a 2-pass compiler:
 # Full compilation (when cc2 is complete)
 ./ccc -o program source.c
 
-# Execute with interpreter (debugging/testing)
-./ccc -x source.c
-
 # Keep intermediate AST file
 ./ccc -k -o program source.c
 ```
@@ -108,57 +104,7 @@ This is a 2-pass compiler:
 ./cc1 -E source.c | ./cc2 -o executable
 ```
 
-## Debugging the Parser and AST
-
-The `-x` option executes the generated AST with a Common Lisp interpreter,
-providing a way to validate that the parser is producing correct AST without
-needing a working code generator.
-
-**Quick validation:**
-```bash
-./ccc -x tests/arith_widths.c
-```
-
-This compiles the source to AST, then executes it with the interpreter. If the
-program runs and produces the expected result, the parser is working
-correctly.
-
-**Debugging workflow:**
-
-1. Write a test program with known expected behavior
-2. Compile and execute with `-x`:
-   ```bash
-   ./ccc -x mytest.c
-   ```
-3. Check the exit code and output match expectations
-4. If incorrect, inspect the AST file (automatically saved as `mytest.ast`)
-5. Compare AST structure against expected operations
-
-**Example - verify arithmetic:**
-```c
-// test.c
-int main() {
-    int a = 10;
-    int b = 20;
-    int c = a + b;
-    return c;  // Should return 30
-}
-```
-
-```bash
-$ ./ccc -x test.c
-=== Pass 1: Parsing test.c ===
-
-=== Executing AST with interpreter ===
-Program exited with code: 30
-
-AST saved to: test.ast
-```
-
-The exit code of 30 confirms the parser correctly:
-- Parsed declarations
-- Generated assignment operations
-- Performed arithmetic
+## Debugging the Parser
 
 ### AST Pretty Printer
 
@@ -166,7 +112,7 @@ For visual inspection of AST structure, use the standalone pretty printer:
 
 ```bash
 # Generate AST
-./cc1 -E test.c > test.ast
+make test.ast
 
 # Pretty print with human-readable formatting
 ./astpp.lisp test.ast
@@ -192,7 +138,7 @@ FUNCTION main() -> _short_
 ```
 
 The pretty printer translates single-char operators to readable names
-(M→DEREF, =→ASSIGN, +→ADD, etc.) and shows type width annotations, making
+(M->DEREF, =->ASSIGN, +->ADD, etc.) and shows type width annotations, making
 it easy to verify the AST structure at a glance.
 
 **Use cases:**
@@ -202,18 +148,3 @@ it easy to verify the AST structure at a glance.
 - Learn the AST format
 
 See [ASTPP.md](ASTPP.md) for complete documentation.
-
-**Benefits of interpreter-based debugging:**
-- Test parser without implementing code generator
-- Validate type conversions and promotions
-- Verify control flow (loops, conditionals, function calls)
-- Confirm expression evaluation and constant folding
-- Quick iteration on parser changes
-
-**Interpreter limitations:**
-- Simplified memory model (doesn't simulate real memory addresses)
-- No pointer arithmetic validation
-- Type conversions are pass-through (no actual narrowing/widening)
-- Some operations simplified for interpretation
-
-See INTERP.md for complete interpreter documentation.
