@@ -27,17 +27,7 @@
 #endif
 
 #include "asm.h"
-
-#define	CONF_SYMLEN	0x07
-#define	CONF_INT32	0x08
-#define	CONF_LITTLE	0x10
-#define	CONF_ALIGN	0x60
-#define	CONF_NORELO	0x80
-
-#define	CONF_9	(CONF_LITTLE | (4 & CONF_SYMLEN))	/* 9 char syms */
-#define	CONF_15	(CONF_LITTLE | (7 & CONF_SYMLEN))	/* 15 char syms */
-
-#define	SYMLEN	15
+#include "wsobj.h"
 
 /*
  * verbosity levels:
@@ -312,16 +302,6 @@ struct instruct isr_table[] = {
 
 #define TOKLEN 19
 
-/*
- * symbols have a segment, emitted code does too.
- */
-#define SEG_UNDEF   0       /* if index == 0xffff, not .globl */
-#define SEG_TEXT    1
-#define SEG_DATA    2
-#define SEG_BSS     3
-#define SEG_ABS     4
-#define SEG_EXT     5
-
 char *segname[] = {
 	"undef", "text", "data", "bss", "abs", "ext"
 };
@@ -384,7 +364,7 @@ struct expval {
     unsigned short num;
 };
 
-unsigned char *lineptr = "";
+unsigned char *lineptr = (unsigned char *)"";
 unsigned char linebuf[100];
 #define FILEBUFSIZE 512
 unsigned char filebuf[FILEBUFSIZE+1];
@@ -693,7 +673,6 @@ fillbuf()
 void
 get_line()
 {
-    unsigned char *s;
     int i;
     unsigned char c;
 
@@ -713,7 +692,7 @@ get_line()
 	}
 	*lineptr = '\0';
     lineNum++;
-    i = strlen(linebuf);
+    i = strlen((char *)linebuf);
     /*
      * we normalize the line to not do the cr-lf thing.
      * if we see a cr, we change it to and lf and null out.
@@ -813,8 +792,6 @@ void
 get_token()
 {
     int i = 0;
-    unsigned short val = 0;
-    unsigned char *s;
     unsigned char c;
 
     /* skip over whitespace and comments */
@@ -859,7 +836,7 @@ get_token()
     }
 
     /* numbers can have radix info, so look for a delimiter */
-    else if (c >= '0' & c <= '9') {
+    else if ((c >= '0') && (c <= '9')) {
         token_buf[i++] = nextchar();
         while (1) {
             c = peekchar();
@@ -1066,7 +1043,6 @@ void
 asm_reset()
 {
     struct symbol *s, *n;
-    struct reloc *r;
 
     for (s = symbols; s;) {
         n = s->next;
@@ -1089,15 +1065,13 @@ struct rhead *tab;
 unsigned short addr;
 struct symbol *sym;
 {
-	unsigned short diff;
-	unsigned char i, next;
 	struct reloc *r;
 
 	if (!pass)
 		return;
 
     if (verbose > 2)
-        printf("add_reloc: %s %x %s\n", 
+        printf("add_reloc: %s %x %s\n",
             tab->segment, addr, sym ? sym->name : "nosym");
 
     if (sym->seg == SEG_ABS)
@@ -1106,7 +1080,7 @@ struct symbol *sym;
     if (sym->seg == SEG_UNDEF)
         return;
 
-	r = (struct reloc *) malloc(sizeof(struct reloc *));
+    r = (struct reloc *) malloc(sizeof(struct reloc));
 
 	r->addr = addr;
     r->sym = sym;
@@ -1405,7 +1379,6 @@ struct expval *vp;
 {
 	unsigned short rel;
     unsigned char seg;
-    unsigned short num;
 
     if (vp->sym) {
         seg = vp->sym->seg;
@@ -1416,7 +1389,6 @@ struct expval *vp;
 		/* if we are on the second pass, error out */
 		if (pass == 1)
 			gripe2("undefined symbol ", vp->sym->name);
-		num = 0;
 	}
 
 	if (size == 1) {
@@ -1566,8 +1538,7 @@ struct expval *vp;
 {
 	int i;
 	char c;
-	unsigned char ret, seg;
-    struct symbol *sym;
+	unsigned char ret;
     int indir = 0;
 
     vp->num = 0;
@@ -1711,9 +1682,9 @@ int
 do_stax(vp)
 struct expval *vp;
 {
-	unsigned char prim, arg, reg, type;
+	unsigned char arg;
 	struct expval value;
-    
+
 	need(',');
 	arg = operand(&value);
 
@@ -1829,8 +1800,7 @@ do_ldr8(arg, disp)
 unsigned char arg;
 struct expval *disp;
 {
-	unsigned char reg, type;
-    struct symbol *sym;
+	unsigned char reg;
     struct expval value;
 	struct expval *disp_ptr;
 	unsigned char arg_reg, reg_reg;

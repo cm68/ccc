@@ -362,6 +362,26 @@ doUnaryOp(unsigned char op)
 	return e;
 }
 
+/* Handle conversion ops: N (NARROW), W (WIDEN), 0xab (SEXT) with :s suffix */
+static struct expr *
+doConvOp(unsigned char op)
+{
+	struct expr *e = newExpr(op);
+	unsigned char size_suffix;
+	/* expect :s suffix */
+	if (curchar == ':') {
+		nextchar();
+		size_suffix = curchar;
+		nextchar();
+		e->type_str = size_suffix;
+		e->size = getSizeFTStr(size_suffix);
+	}
+	e->left = parseExpr();
+	if (e->left) e->flags = e->left->flags;
+	if (curchar == ')') nextchar();
+	return e;
+}
+
 static struct expr *
 doIncDec(unsigned char op)
 {
@@ -504,8 +524,9 @@ parseExpr(void)
 		case 0xdf: case 0xfe: case 0xc6:
 			e = doCompAsn(op); break;
 		case '!': case '~': case '\\': case '\'':
-		case 'N': case 'W': case 0xab:
 			e = doUnaryOp(op); break;
+		case 'N': case 'W': case 0xab:
+			e = doConvOp(op); break;
 		case 0xcf: case 0xef: case 0xd6: case 0xf6:
 			e = doIncDec(op); break;
 		case 0xa7: e = doBfextract(); break;
@@ -602,6 +623,9 @@ doBlock(void)
 				}
 			}
 			appendChild(child, &first, &last);
+		} else {
+			/* Skip unexpected character */
+			nextchar();
 		}
 	}
 	if (curchar == ')') nextchar();
@@ -1089,7 +1113,7 @@ parseToplvl(void)
 		nextchar();
 		doFunction(rettype);
 		break;
-	case 'g':
+	case 'Z':
 		doGlobal();
 		break;
 	case 's':

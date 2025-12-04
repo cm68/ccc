@@ -116,7 +116,7 @@ stage1/%.s: stage1/%.ast cc2 FORCE
 	./cc2 -o $@ $<
 
 stage1/%.o: stage1/%.s FORCE
-	asz/asz $(ASMOPTS) -o $@ $<
+	ws/asz $(ASMOPTS) -o $@ $<
 
 FORCE:
 
@@ -173,12 +173,10 @@ stage1: cc1 cc2
 # check size of compiled objects
 #
 sizecheck: stage1
-	@for o in $(CC1OBJECTS) ; do wssize stage1/$$o ; done | \
-		tr ':' ' ' | \
-	awk 'NF==1{fname=$$1} NF!=1{print fname, $$6, $$8, $$10; text+=$$6;data+=$$8;bss+=$$10}END{print "cc1 size: ", text, data, bss, "=", text+data+bss}' | tee current.size
-	@for o in $(CC2OBJECTS) ; do wssize stage1/$$o ; done | \
-		tr ':' ' ' | \
-	awk 'NF==1{fname=$$1} NF!=1{print fname, $$6, $$8, $$10; text+=$$6;data+=$$8;bss+=$$10}END{print "cc2 size: ", text, data, bss, "=", text+data+bss}' | tee -a current.size
+	@wssize $(addprefix stage1/, $(CC1OBJECTS)) | \
+	awk '($$1 != "text") {print substr($$6, 8), $$1, $$2, $$3; text+=$$1;data+=$$2;bss+=$$3}END{print "cc1 size: ", text, data, bss, "=", text+data+bss}' | tee current.size
+	@wssize $(addprefix stage1/, $(CC2OBJECTS)) | \
+	awk '($$1 != "text") {print substr($$6, 8), $$1, $$2, $$3; text+=$$1;data+=$$2;bss+=$$3}END{print "cc2 size: ", text, data, bss, "=", text+data+bss}' | tee current.size
 	@if [ -f prev.size ] ; then diff prev.size current.size ; fi ; mv current.size prev.size
 
 #

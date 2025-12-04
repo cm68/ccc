@@ -4,8 +4,6 @@
  * Two-pass linker:
  * Pass 1: assign addresses, resolve symbols
  * Pass 2: write output with relocations applied
- *
- * vim: tabstop=4 shiftwidth=4 noexpandtab:
  */
 #ifdef linux
 #include <stdio.h>
@@ -20,20 +18,7 @@
 #define INIT = 0
 #endif
 
-#define MAGIC       0x99
-#define AR_MAGIC    0xFF75  /* 0177565 octal - archive magic */
-
-#define CONF_SYMLEN 0x07
-#define CONF_INT32  0x08
-#define CONF_LITTLE 0x10
-#define CONF_ALIGN  0x60
-#define CONF_NORELO 0x80
-
-#define SEG_ABS     0
-#define SEG_TEXT    1
-#define SEG_DATA    2
-#define SEG_BSS     3
-#define SEG_EXT     4
+#include "wsobj.h"
 
 char *segnames[] = { "abs", "text", "data", "bss", "ext" };
 

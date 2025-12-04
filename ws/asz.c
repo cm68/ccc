@@ -1,7 +1,8 @@
 /*
- * trasm main file - arg processing and file handling
+ * asz main file - arg processing and file handling
+ * used to be trasm.  see README and LICENSE files
  *
- * /usr/src/cmd/asz/main.c
+ * /usr/src/cmd/asz/asz.c
  *
  * this file has interpolated the original sio.c
  * because it became almost trivial after the buffer stuff was
@@ -14,12 +15,7 @@
  * now, instead, for a file foo.s, we write foo.o as the gods intended
  *
  * on top of that, we assemble stdin to a.out
- *
- * Changed: <2025-11-19 17:16:21 curt>
- *
- * vim: tabstop=4 shiftwidth=4 expandtab:
  */
-
 
 #ifdef linux
 #include <stdlib.h>
@@ -59,9 +55,9 @@ void
 outbyte(out)
 char out;
 {
-    if (verbose > 4) 
-        printf("outbyte: 0x%x\n", out); 
-	write(outfd, &out, 1);
+    if (verbose > 4)
+        printf("outbyte: 0x%x\n", out);
+    write(outfd, &out, 1);
 }
 
 /*
@@ -73,9 +69,9 @@ void
 outtmp(tmp)
 char tmp;
 {
-    if (verbose > 4) 
+    if (verbose > 4)
         printf("outtmp: 0x%x\n", tmp);
-	write(tmpfd, &tmp, 1);
+    write(tmpfd, &tmp, 1);
 }
 
 /*
@@ -118,7 +114,6 @@ int argc;
 char **argv;
 {
     char *s;
-    char tname[40];
     int i;
 
     progname = *argv;
@@ -236,6 +231,7 @@ char **argv;
     close(outfd);
     close(infd);
     close(tmpfd);
+    return 0;
 }
 
 /*

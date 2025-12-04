@@ -426,8 +426,8 @@
     (when (listp item)
       (let ((tag (first item)))
         (cond
-          ;; Global variable (g <name> <type> [<init>])
-          ((or (eq tag 'g) (eq tag '|g|))
+          ;; Global variable (Z <name> <type> [<init>])
+          ((or (eq tag 'Z) (eq tag '|Z|))
            (pp-global (symbol-name-only (second item))
                      (third item)
                      (fourth item)))
@@ -492,6 +492,11 @@
                         ((and (not in-string) (char= ch #\;))
                          (vector-push-extend #\\ result)
                          (vector-push-extend ch result))
+                        ;; Backslash outside string - double it to prevent escaping next char
+                        ;; (backslash is the NEGATE operator in AST, but Lisp escape char)
+                        ((and (not in-string) (char= ch #\\))
+                         (vector-push-extend #\\ result)
+                         (vector-push-extend ch result))
                         ;; Everything else - pass through as-is
                         ;; C and Lisp escape sequences are compatible (\n, \\, \", etc.)
                         (t
@@ -499,7 +504,20 @@
                       (setf prev-ch ch)
                    finally (return result)))
 
-  ;; Replace colons with underscores (for width annotations like =:s -> =_s)
+  ;; Replace conversion operators with type suffix (W:s -> W_s, N:b -> N_b, X:l -> X_l)
+  ;; These are widen, narrow, and sign-extend with target type annotation
+  ;; Must be done before the blanket colon replacement below
+  (dolist (prefix '("W" "N" "X"))
+    (let ((old (concatenate 'string prefix ":"))
+          (new (concatenate 'string prefix "_")))
+      (loop for pos = (search old text)
+            while pos
+            do (setf text (concatenate 'string
+                                       (subseq text 0 pos)
+                                       new
+                                       (subseq text (+ pos 2)))))))
+
+  ;; Replace remaining colons with underscores (for width annotations like =:s -> =_s)
   (setf text (substitute #\_ #\: text))
 
   ;; Read all forms

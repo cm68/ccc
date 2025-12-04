@@ -453,10 +453,14 @@ macexpand(char *s)	/* the symbol we are looking up as a macro */
             /*
              * only advance when we have a non-parenthesized comma
              */
-            if (((plevel == 1) && (curchar == ',')) || 
+            if (((plevel == 1) && (curchar == ',')) ||
                 ((plevel == 0) && (curchar == ')'))) {
                 *d++ = 0;
-                parms[args++] = strdup(macbuffer);
+                /* Only count argument if we have content, OR if we already
+                 * have args (to handle trailing comma case like FOO(a,)) */
+                if (d > macbuffer + 1 || args > 0) {
+                    parms[args++] = strdup(macbuffer);
+                }
                 if (curchar == ')') {
                     break;
                 }

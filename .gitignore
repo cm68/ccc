@@ -45,3 +45,4 @@ do.ast
 *.asm
 *.s
 !lib/*.s
+core

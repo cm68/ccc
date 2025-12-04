@@ -784,7 +784,7 @@ emitGv(struct name *var)
 		return;
 
 	fdprintf(astFd, "\n; Global variable: %s\n", var->name);
-	fdprintf(astFd, "(g$");
+	fdprintf(astFd, "(Z$");
 
 	/* Build variable name with scope prefix */
 	if (var->sclass & SC_STATIC) {

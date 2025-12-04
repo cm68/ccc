@@ -1,21 +1,22 @@
 # Whitesmith's tools
-# asz   - Z80 assembler
-# wsld  - linker
-# wsnm  - object/archive dump
-# wslib - archive librarian
+# asz    - Z80 assembler
+# wsld   - linker
+# wsnm   - object/archive dump
+# wslib  - archive librarian
+# wssize - display object sizes
 
 CC = gcc
 CFLAGS = -g -Wall -std=c90 -pedantic -Dlinux
 
-ALL = asz wsld wsnm wslib
+ALL = asz wsld wsnm wslib wssize
 
 all: $(ALL)
 
-asz: main.o asm.o
-	$(CC) $(CFLAGS) -o asz main.o asm.o
+asz: asz.o asm.o
+	$(CC) $(CFLAGS) -o asz asz.o asm.o
 
-main.o: main.c asm.h
-	$(CC) $(CFLAGS) -c main.c
+asz.o: asz.c asm.h
+	$(CC) $(CFLAGS) -c asz.c
 
 asm.o: asm.c asm.h
 	$(CC) $(CFLAGS) -c asm.c
@@ -28,6 +29,9 @@ wsnm: wsnm.c
 
 wslib: wslib.c
 	$(CC) $(CFLAGS) -o wslib wslib.c
+
+wssize: wssize.c
+	$(CC) $(CFLAGS) -o wssize wssize.c
 
 test: all
 	@echo "=== Testing asz ==="

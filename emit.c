@@ -182,7 +182,7 @@ static void emitStmtTail(struct stmt *s, int tailPos)
     }
 
     /* Handle LABEL statements - emit a label */
-    if (s->type == 'L' && s->symbol) {
+    if (s->type == 'L' && s->symbol && s->symbol[0]) {
         /* Invalidate cache at loop labels (backward jump targets) */
         if (s->symbol[0] == 'L' && (strstr(s->symbol, "_top") || strstr(s->symbol, "_continue"))) {
             cacheInvalAll();

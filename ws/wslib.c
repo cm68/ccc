@@ -12,8 +12,6 @@
  *   wslib -a archive.a obj1.o obj2.o ...   append to archive
  *   wslib -r archive.a obj1.o obj2.o ...   replace in archive
  *   wslib -t archive.a                     list contents
- *
- * vim: tabstop=4 shiftwidth=4 noexpandtab:
  */
 #ifdef linux
 #include <stdio.h>
@@ -26,7 +24,7 @@
 #define void int
 #endif
 
-#define AR_MAGIC    0xFF75  /* 0177565 octal */
+#include "wsobj.h"
 
 char *progname;
 int verbose;

@@ -2,8 +2,7 @@
  * wsnm - Whitesmith's object file dump utility
  *
  * Displays symbol table, relocations, and hex dump of segments
- *
- * vim: tabstop=4 shiftwidth=4 noexpandtab:
+ * disassembles, too.
  */
 #ifdef linux
 #include <stdio.h>
@@ -16,14 +15,7 @@
 #define void int
 #endif
 
-#define MAGIC       0x99
-#define AR_MAGIC    0xFF75  /* 0177565 octal */
-
-#define CONF_SYMLEN 0x07
-#define CONF_INT32  0x08
-#define CONF_LITTLE 0x10
-#define CONF_ALIGN  0x60
-#define CONF_NORELO 0x80
+#include "wsobj.h"
 
 int fd;
 unsigned char *filebuf;
