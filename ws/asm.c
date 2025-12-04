@@ -695,12 +695,17 @@ get_line()
 	*lineptr = '\0';
     lineNum++;
 
-    /* strip comments: find ; and truncate */
-    for (p = linebuf; *p; p++) {
-        if (*p == ';') {
-            *p++ = '\n';
-            *p = '\0';
-            break;
+    /* strip comments: find ; outside of strings and truncate */
+    {
+        int in_string = 0;
+        for (p = linebuf; *p; p++) {
+            if (*p == '"' && (p == linebuf || p[-1] != '\\')) {
+                in_string = !in_string;
+            } else if (*p == ';' && !in_string) {
+                *p++ = '\n';
+                *p = '\0';
+                break;
+            }
         }
     }
 
