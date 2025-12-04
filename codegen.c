@@ -1342,8 +1342,49 @@ assignFrmOff()
 }
 
 /*
+ * Check if a comparison can be inlined (cheap operations)
+ * Returns inline assembly or NULL if needs helper call
+ */
+static const char *
+getInlineCmp(const char *op_name, int size, int is_unsigned)
+{
+    /* 16-bit comparisons that can be inlined */
+    if (size == 2) {
+        if (strcmp(op_name, "eq") == 0) {
+            /* HL == DE: or a; sbc hl,de sets Z if equal */
+            return "\tex de, hl\n\tor a\n\tsbc hl, de";
+        }
+        if (strcmp(op_name, "ne") == 0) {
+            /* HL != DE: or a; sbc hl,de sets NZ if not equal */
+            return "\tex de, hl\n\tor a\n\tsbc hl, de";
+        }
+        if (is_unsigned && strcmp(op_name, "lt") == 0) {
+            /* unsigned HL < DE: or a; sbc hl,de sets C if less */
+            return "\tex de, hl\n\tor a\n\tsbc hl, de";
+        }
+    }
+    /* 8-bit comparisons that can be inlined */
+    if (size == 1) {
+        if (strcmp(op_name, "eq") == 0) {
+            /* A == E: cp e sets Z if equal */
+            return "\tld e, a\n\tcp e";
+        }
+        if (strcmp(op_name, "ne") == 0) {
+            /* A != E: cp e sets NZ if not equal */
+            return "\tld e, a\n\tcp e";
+        }
+        if (is_unsigned && strcmp(op_name, "lt") == 0) {
+            /* unsigned A < E: cp e sets C if less */
+            return "\tld e, a\n\tcp e";
+        }
+    }
+    return NULL;
+}
+
+/*
  * Generate standard binary operator code
  * Common pattern: move PRIMARY to SECONDARY, call runtime function
+ * Some cheap operations are inlined instead of calling helpers
  */
 static void
 genBinop(struct expr *e, const char *op_name)
@@ -1351,6 +1392,16 @@ genBinop(struct expr *e, const char *op_name)
     char funcname[32];
     char buf[256];
     char *move_inst;
+    const char *inline_code;
+    int is_unsigned;
+
+    /* Check if this can be inlined */
+    is_unsigned = isOpndUnsign(e->left) || isOpndUnsign(e->right);
+    inline_code = getInlineCmp(op_name, e->size, is_unsigned);
+    if (inline_code) {
+        e->asm_block = strdup(inline_code);
+        return;
+    }
 
     mkBinopFnName(funcname, sizeof(funcname), op_name, e);
 
