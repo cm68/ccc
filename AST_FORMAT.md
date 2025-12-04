@@ -118,21 +118,21 @@ i = c;      // =s$_i Xsb$_c     (sign-extend char to int)
 
 | Op | Name | Description |
 |----|------|-------------|
-| `0xcf` (Ï) | PREINC | Prefix increment |
-| `0xef` (ï) | POSTINC | Postfix increment |
-| `0xd6` (Ö) | PREDEC | Prefix decrement |
-| `0xf6` (ö) | POSTDEC | Postfix decrement |
+| `0xcf` | PREINC | Prefix increment |
+| `0xef` | POSTINC | Postfix increment |
+| `0xd6` | PREDEC | Prefix decrement |
+| `0xf6` | POSTDEC | Postfix decrement |
 
 ### Compound Assignment Operators
 
 | Op | Name | Description |
 |----|------|-------------|
 | `P` | ADDASSIGN | += |
-| `0xdf` (ß) | SUBASSIGN | -= |
+| `0xdf` | SUBASSIGN | -= |
 | `T` | MULASSIGN | *= |
 | `2` | DIVASSIGN | /= |
-| `0xfe` (þ) | MODASSIGN | %= |
-| `0xc6` (Æ) | ANDASSIGN | &= |
+| `0xfe` | MODASSIGN | %= |
+| `0xc6` | ANDASSIGN | &= |
 | `1` | ORASSIGN | \|= |
 | `X` | XORASSIGN | ^= |
 | `0` | LSHASSIGN | <<= |
@@ -234,8 +234,8 @@ t1.
 
 The compiler automatically inserts type conversion operators:
 
-- **N** (NARROW): Truncate larger to smaller (e.g., int→char)
-- **X** (SEXT): Sign-extend signed types (e.g., char→int)
+- **N** (NARROW): Truncate larger to smaller (e.g., int to char)
+- **X** (SEXT): Sign-extend signed types (e.g., char to int)
 - **W** (WIDEN): Zero-extend unsigned types
 
 **Examples:**

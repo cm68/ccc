@@ -114,8 +114,8 @@ Walk the tree with ASM blocks and output:
 
 3. **Implement incrementally**:
    - Phase 1: Modify parseast.c handlers to build trees
-   - Phase 2: Add code generation pass (trees → ASM blocks)
-   - Phase 3: Add emission pass (ASM blocks → stdout)
+   - Phase 2: Add code generation pass (trees -> ASM blocks)
+   - Phase 3: Add emission pass (ASM blocks -> stdout)
 4. **Test with simple programs** at each phase
 5. **Add optimizations** once basic generation works
 
@@ -262,9 +262,9 @@ _if_0:
 
 ### Implementation Status
 
-1. **Tree-based parser** ✓ Implemented
-2. **Document architecture** (this file) ✓
-3. **Phase 1: Parse AST into stmt/expr trees** ✓ Implemented
+1. **Tree-based parser** - Implemented
+2. **Document architecture** (this file) - Done
+3. **Phase 1: Parse AST into stmt/expr trees** - Implemented
 4. **Phase 2: Code generation** In progress
 5. **Phase 3: Assembly emission** In progress
 
@@ -279,9 +279,9 @@ numbers to statement nodes that need them (if, while, etc.). During code
 generation, we use these label numbers to emit jumps and labels.
 
 **Three simple phases**:
-1. Parse → trees with labels
-2. Trees → trees with ASM blocks
-3. Trees with ASM blocks → assembly text
+1. Parse -> trees with labels
+2. Trees -> trees with ASM blocks
+3. Trees with ASM blocks -> assembly text
 
 ## Future Enhancements
 
@@ -313,7 +313,7 @@ Higher addresses
     +----------------+
     | Return address |  FP + 2 (2 bytes)
     +----------------+
-    | Saved FP       |  FP + 0 ← Frame Pointer points here
+    | Saved FP       |  FP + 0 <-- Frame Pointer points here
     +----------------+
     | Local 1        |  FP - 2 (first local, size depends on type)
     +----------------+
