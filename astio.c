@@ -12,12 +12,12 @@
 
 #define BUFSIZE 4096
 
-static char inFd;
+static unsigned char inFd;
 static unsigned char buf[BUFSIZE];
-static int bufPos;
-static int bufValid;
+static unsigned bufPos;
+static unsigned bufValid;
 
-int lineNum = 1;
+unsigned lineNum = 1;
 unsigned char curchar;
 
 static unsigned char symbuf[256];
@@ -32,11 +32,12 @@ void initAstio(unsigned char fd) {
 
 unsigned char nextchar(void) {
 	if (bufPos >= bufValid) {
-		bufValid = read(inFd, buf, BUFSIZE);
-		if (bufValid <= 0) {
+		int n = read(inFd, buf, BUFSIZE);
+		if (n <= 0) {
 			curchar = 0;
 			return 0;
 		}
+		bufValid = n;
 		bufPos = 0;
 	}
 	curchar = buf[bufPos++];
@@ -60,16 +61,25 @@ int readHex2(void) {
 	return (h << 4) | l;
 }
 
-/* Read hex number terminated by '.' */
-long readNum(void) {
-	long v = 0;
-	int neg = 0;
-	if (curchar == '-') { neg = 1; nextchar(); }
-	while (curchar && curchar != '.') {
+/* Read 4 hex chars as unsigned 16-bit */
+int readHex4(void) {
+	int v = 0, i;
+	for (i = 0; i < 4; i++) {
 		v = (v << 4) | hval(curchar);
 		nextchar();
 	}
-	if (curchar == '.') nextchar();
+	return v;
+}
+
+/* Read 8 hex chars as unsigned 32-bit, with optional leading - */
+long readHex8(void) {
+	long v = 0;
+	int neg = 0, i;
+	if (curchar == '-') { neg = 1; nextchar(); }
+	for (i = 0; i < 8; i++) {
+		v = (v << 4) | hval(curchar);
+		nextchar();
+	}
 	return neg ? -v : v;
 }
 
