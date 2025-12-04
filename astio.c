@@ -75,8 +75,8 @@ long readNum(void) {
 
 /* Read hex-length-prefixed name into static buffer */
 unsigned char *readName(void) {
-	int len = readHex2();
-	int i;
+	int len, i;
+	len = readHex2();
 	for (i = 0; i < len && i < 255; i++)
 		symbuf[i] = readHex2();
 	symbuf[i] = 0;

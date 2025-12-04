@@ -176,7 +176,7 @@ sizecheck: stage1
 	@wssize $(addprefix stage1/, $(CC1OBJECTS)) | \
 	awk '($$1 != "text") {print substr($$6, 8), $$1, $$2, $$3; text+=$$1;data+=$$2;bss+=$$3}END{print "cc1 size: ", text, data, bss, "=", text+data+bss}' | tee current.size
 	@wssize $(addprefix stage1/, $(CC2OBJECTS)) | \
-	awk '($$1 != "text") {print substr($$6, 8), $$1, $$2, $$3; text+=$$1;data+=$$2;bss+=$$3}END{print "cc2 size: ", text, data, bss, "=", text+data+bss}' | tee current.size
+	awk '($$1 != "text") {print substr($$6, 8), $$1, $$2, $$3; text+=$$1;data+=$$2;bss+=$$3}END{print "cc2 size: ", text, data, bss, "=", text+data+bss}' | tee -a current.size
 	@if [ -f prev.size ] ; then diff prev.size current.size ; fi ; mv current.size prev.size
 
 #
@@ -256,7 +256,7 @@ clean:
 	$(MAKE) -C unit_test clean
 
 clobber: clean
-	rm -f $(BINS) tags doc.pdf
+	rm -f $(BINS) tags doc.pdf prev.size
 
 cc1.o: debugtags.c
 parse.o: parse.c

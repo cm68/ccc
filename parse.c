@@ -44,76 +44,20 @@ findEnclLoop(struct stmt *parent, int is_continue)
 }
 
 /*
- * Simple hash function for generating short unique identifiers
- * Returns a 4-character hex hash string
- */
-static unsigned short
-hashString(const char *str)
-{
-	unsigned short hash = 0;
-	unsigned char c;
-
-	while ((c = *str++)) {
-		hash = hash * 31 + c;
-		hash = (hash << 5) ^ (hash >> 11);  /* Mix bits */
-	}
-	return hash;
-}
-
-/*
  * Generate mangled name for static variables
- * Format: <short_name>_<hash> (max 15 chars total)
- * Hash is based on full context to ensure uniqueness:
- * - File-scoped: hash(file_root + "_" + varname)
- * - Function-scoped: hash(file_root + "_" + funcname + "_" + varname + "_" + counter)
+ * Format: <name><index> where index is file-global incrementing counter
+ * No underscore prefix - static symbols don't get exported
  */
 static char *
 mangleStatNam(struct name *var)
 {
 	char *mangled;
-	char context_buf[256];
-	unsigned short hash;
-	int name_len;
+	int len;
 
-	if (!srcFileRoot) {
-		/* Fallback if no source file set */
-		return strdup(var->name);
-	}
-
-	/* Build context string for hashing */
-	if (var->level == 1) {
-		/* File-scoped static */
-		snprintf(context_buf, sizeof(context_buf), "%s_%s",
-		         srcFileRoot, var->name);
-	} else if (curFunc) {
-		/* Function-scoped static */
-		snprintf(context_buf, sizeof(context_buf), "%s_%s_%s_%d",
-		         srcFileRoot, curFunc->name,
-		         var->name, staticCtr++);
-	} else {
-		/* Shouldn't happen, but handle gracefully */
-		snprintf(context_buf, sizeof(context_buf), "%s_%s",
-		         srcFileRoot, var->name);
-	}
-
-	/* Generate hash */
-	hash = hashString(context_buf);
-
-	/* Allocate mangled name: <short_name><hash> (no prefix) */
-	/* Format: up to 10 chars of name + 4 hex digits = 14 chars max */
-	/* No 'S' prefix, no '_' - static functions don't get global symbol prefix */
-	mangled = malloc(15);  /* 14 + null terminator */
-
-	/* Calculate how much of the name we can use (max 10 chars to leave room for XXXX) */
-	name_len = strlen(var->name);
-	if (name_len > 10) {
-		name_len = 10;
-	}
-
-	/* Copy truncated name and append hash */
-	/* Example: "doBfassign" (10 chars) + "4286" = "doBfassign4286" (14 chars) */
-	snprintf(mangled, 15, "%.*s%04x", name_len, var->name, hash);
-
+	/* Allocate: name + up to 5 digits + null */
+	len = strlen(var->name) + 6;
+	mangled = malloc(len);
+	snprintf(mangled, len, "%s%d", var->name, staticCtr++);
 	return mangled;
 }
 struct stmt *makestmt(unsigned char op, struct expr *left);
@@ -1049,7 +993,7 @@ parsefunc(struct name *f)
 
 	// Set current function context for static variable name mangling
 	curFunc = f;
-	staticCtr = 0;
+	// staticCtr is file-global, not reset per function
 	shadowCtr = 0;
 
 	// Push a new scope for the function body

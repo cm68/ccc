@@ -66,9 +66,8 @@ emitLabel(const char *base, const char *suffix)
 {
 	char buf[256];
 	snprintf(buf, sizeof(buf), "%s%s", base, suffix);
-	fdprintf(astFd, "(L");
+	fdprintf(astFd, "L");
 	emitHexName(buf);
-	fdprintf(astFd, ")");
 }
 
 /* Emit a goto statement with hex-encoded name */
@@ -77,9 +76,8 @@ emitGoto(const char *base, const char *suffix)
 {
 	char buf[256];
 	snprintf(buf, sizeof(buf), "%s%s", base, suffix);
-	fdprintf(astFd, "(G");
+	fdprintf(astFd, "G");
 	emitHexName(buf);
-	fdprintf(astFd, ")");
 }
 
 /*
@@ -95,12 +93,13 @@ emitChild(struct expr *e)
 }
 
 /*
- * Output an expression in S-expression format
- * Constants: just the value (decimal)
+ * Output an expression in paren-free format
+ * Constants: just the value (hex with dot)
  * Symbols: $name
- * Binary ops: (op left right)
- * Unary ops: (op operand)
- * Memory ops annotated with size: (M:b expr) (=:l lvalue rvalue)
+ * Binary ops: op width left right
+ * Unary ops: op width operand
+ * Memory ops annotated with size: Mb expr, =l lvalue rvalue
+ * Empty/null expression: _
  */
 static void
 emitExpr(struct expr *e)
@@ -109,7 +108,7 @@ emitExpr(struct expr *e)
 	char *name;
 
 	if (!e) {
-		fdprintf(astFd, "()");
+		fdprintf(astFd, "_");
 		return;
 	}
 
@@ -160,17 +159,16 @@ emitExpr(struct expr *e)
 		break;
 
 	case CALL:
-		/* Function call: (@ func arg1 arg2 ...) */
-		fdprintf(astFd, "(@");
-		emitChild(e->left);
-		/* Arguments are in e->right and linked via next */
-		if (e->right) {
+		/* Function call: @count. func arg1 arg2 ... */
+		{
+			int argc = 0;
 			struct expr *arg;
-			for (arg = e->right; arg; arg = arg->next) {
+			for (arg = e->right; arg; arg = arg->next) argc++;
+			fdprintf(astFd, "@%x.", argc);
+			emitChild(e->left);
+			for (arg = e->right; arg; arg = arg->next)
 				emitChild(arg);
-			}
 		}
-		fdprintf(astFd, ")");
 		break;
 
 	case NARROW:
@@ -181,19 +179,17 @@ emitExpr(struct expr *e)
 			char size_suffix = getSizeSuffix(e->type);
 			unsigned char op_char = (e->op == NARROW) ? 'N' :
 			    (e->op == WIDEN) ? 'W' : 0xab;  /* SEXT = 0xab */
-			fdprintf(astFd, "(%c:%c", op_char, size_suffix);
+			fdprintf(astFd, "%c%c", op_char, size_suffix);
 			emitChild(e->left);
-			fdprintf(astFd, ")");
 		}
 		break;
 
 	case COPY:
-		/* Memory copy operator: (Y length. dest src) */
-		fdprintf(astFd, "(Y");
+		/* Memory copy operator: Y length. dest src */
+		fdprintf(astFd, "Y");
 		emitHexNum(e->v);  /* v field contains byte count */
 		emitChild(e->left);
 		emitChild(e->right);
-		fdprintf(astFd, ")");
 		break;
 
 	case INCR:
@@ -217,17 +213,17 @@ emitExpr(struct expr *e)
 				amount = e->type->sub->size;
 			}
 
-			fdprintf(astFd, "(%c%c", op_char, size_suffix);
+			fdprintf(astFd, "%c%c", op_char, size_suffix);
 			emitChild(e->left);
-			fdprintf(astFd, " %x.)", amount);
+			emitHexNum(amount);
 		}
 		break;
 
 	case BFEXTRACT:
-		/* Bitfield extract: (0xa7 offset. width. addr) */
+		/* Bitfield extract: 0xa7 offset. width. addr */
 		{
 			struct name *member = (struct name *)e->var;
-			fdprintf(astFd, "(%c", BFEXTRACT);
+			fdprintf(astFd, "%c", BFEXTRACT);
 			if (member) {
 				emitHexNum(member->bitoff);
 				emitHexNum(member->width);
@@ -235,15 +231,14 @@ emitExpr(struct expr *e)
 				fdprintf(astFd, "0.0.");  /* fallback */
 			}
 			emitChild(e->left);
-			fdprintf(astFd, ")");
 		}
 		break;
 
 	case BFASSIGN:
-		/* Bitfield assign: (0xdd offset. width. addr value) */
+		/* Bitfield assign: 0xdd offset. width. addr value */
 		{
 			struct name *member = (struct name *)e->var;
-			fdprintf(astFd, "(%c", BFASSIGN);
+			fdprintf(astFd, "%c", BFASSIGN);
 			if (member) {
 				emitHexNum(member->bitoff);
 				emitHexNum(member->width);
@@ -252,26 +247,24 @@ emitExpr(struct expr *e)
 			}
 			emitChild(e->left);
 			emitChild(e->right);
-			fdprintf(astFd, ")");
+		}
+		break;
+
+	case QUES:
+		/* Ternary: ?w cond then else - flatten the COLON node */
+		fdprintf(astFd, "?%c", getSizeSuffix(e->type));
+		emitChild(e->left);
+		if (e->right && e->right->op == COLON) {
+			emitChild(e->right->left);
+			emitChild(e->right->right);
 		}
 		break;
 
 	default:
-		/* Operator - output in prefix notation */
-		/* For DEREF (M), ASSIGN (=), add size annotation (no colon) */
-		if (e->op == DEREF || e->op == ASSIGN ||
-		    e->op == PLUSEQ || e->op == SUBEQ || e->op == MULTEQ ||
-		    e->op == DIVEQ || e->op == MODEQ || e->op == ANDEQ ||
-		    e->op == OREQ || e->op == XOREQ || e->op == LSHIFTEQ ||
-		    e->op == RSHIFTEQ || e->op == LANDEQ || e->op == LOREQ) {
-			char size_suffix = getSizeSuffix(e->type);
-			fdprintf(astFd, "(%c%c", e->op, size_suffix);
-		} else {
-			fdprintf(astFd, "(%c", e->op);
-		}
+		/* All operators get width suffix: op width operands... */
+		fdprintf(astFd, "%c%c", e->op, getSizeSuffix(e->type));
 		emitChild(e->left);
 		emitChild(e->right);
-		fdprintf(astFd, ")");
 		break;
 	}
 }
@@ -313,8 +306,22 @@ emitTypeInfo(struct type *type)
 }
 
 /*
- * Output a statement in S-expression format
- * Each statement type has its own format
+ * Count statements in a chain
+ */
+static int
+countStmts(struct stmt *st)
+{
+	int count = 0;
+	while (st) {
+		count++;
+		st = st->next;
+	}
+	return count;
+}
+
+/*
+ * Output a statement in paren-free format
+ * Each statement type has its own format with counted children
  */
 static void
 emitStmt(struct stmt *st)
@@ -325,272 +332,324 @@ emitStmt(struct stmt *st)
 	/* Output this statement */
 	switch (st->op) {
 	case BEGIN:
-		fdprintf(astFd, "(B");  /* Block */
-
-		/* Emit declarations for local variables in this scope (skip args) */
-		if (st->locals) {
+		{
+			int decl_count = 0, stmt_count = 0;
 			struct name *local;
+			struct stmt *s;
 			const char *lname;
-			for (local = st->locals; local; local = local->next) {
-				if (local->kind == funarg)
-					continue;  /* args are in function header */
-				lname = local->mangled_name ?
-					local->mangled_name : local->name;
-				fdprintf(astFd, "(d%c", getSizeSuffix(local->type));
-				emitHexName(lname);
-				fdprintf(astFd, ")");
-			}
-		}
 
-		if (st->chain) {
-			emitStmt(st->chain);
+			/* Count declarations and statements */
+			if (st->locals) {
+				for (local = st->locals; local; local = local->next) {
+					if (local->kind != funarg)
+						decl_count++;
+				}
+			}
+			stmt_count = countStmts(st->chain);
+
+			/* Emit: B decl_count. stmt_count. decls... stmts... */
+			fdprintf(astFd, "B%x.%x.", decl_count, stmt_count);
+
+			/* Emit declarations */
+			if (st->locals) {
+				for (local = st->locals; local; local = local->next) {
+					if (local->kind == funarg)
+						continue;
+					lname = local->mangled_name ?
+						local->mangled_name : local->name;
+					fdprintf(astFd, "d%c", getSizeSuffix(local->type));
+					emitHexName(lname);
+				}
+			}
+
+			/* Emit statements */
+			for (s = st->chain; s; s = s->next)
+				emitStmt(s);
 		}
-		fdprintf(astFd, ")");
 		break;
 
 	case IF:
-		fdprintf(astFd, "(I");
+		/* If: I has_else. cond then [else] */
+		fdprintf(astFd, "I%x.", st->otherwise ? 1 : 0);
 		emitExpr(st->left);
 		if (st->chain)
 			emitStmt(st->chain);
 		else
-			fdprintf(astFd, "()");
+			fdprintf(astFd, ";");  /* empty statement */
 		if (st->otherwise)
 			emitStmt(st->otherwise);
-		fdprintf(astFd, ")");
 		break;
 
 	case WHILE:
-		/* Emit as labeled sequence */
+		/* Emit as labeled sequence wrapped in block */
 		if (st->label) {
+			fdprintf(astFd, "B0.5.");  /* 5 stmts: label, if, label, goto, label */
 			emitLabel(st->label, "_top");
-			fdprintf(astFd, "(I");
+			fdprintf(astFd, "I%x.", 1);  /* has else */
 			emitExpr(st->left);
 			if (st->chain)
 				emitStmt(st->chain);
 			else
-				fdprintf(astFd, "()");
-			fdprintf(astFd, "(B");
+				fdprintf(astFd, ";");
+			/* else: block with goto break */
+			fdprintf(astFd, "B0.1.");
 			emitGoto(st->label, "_break");
-			fdprintf(astFd, "))");
 			emitLabel(st->label, "_continue");
 			emitGoto(st->label, "_top");
 			emitLabel(st->label, "_break");
 		} else {
-			fdprintf(astFd, "(W");
+			fdprintf(astFd, "W");
 			emitExpr(st->left);
 			if (st->chain)
 				emitStmt(st->chain);
 			else
-				fdprintf(astFd, "()");
-			fdprintf(astFd, ")");
+				fdprintf(astFd, ";");
 		}
 		break;
 
 	case DO:
-		/* Emit as labeled sequence */
+		/* Emit as labeled sequence wrapped in block */
 		if (st->label) {
+			fdprintf(astFd, "B0.5.");  /* 5 stmts: top, body, test, if, break */
 			emitLabel(st->label, "_top");
 			if (st->chain)
 				emitStmt(st->chain);
 			else
-				fdprintf(astFd, "()");
+				fdprintf(astFd, ";");
 			emitLabel(st->label, "_test");
-			fdprintf(astFd, "(I");
+			fdprintf(astFd, "I0.");  /* no else */
 			emitExpr(st->left);
 			emitGoto(st->label, "_top");
-			fdprintf(astFd, "())");
 			emitLabel(st->label, "_break");
 		} else {
-			fdprintf(astFd, "(D");
+			fdprintf(astFd, "D");
 			if (st->chain)
 				emitStmt(st->chain);
 			else
-				fdprintf(astFd, "()");
+				fdprintf(astFd, ";");
 			emitExpr(st->left);
-			fdprintf(astFd, ")");
 		}
 		break;
 
 	case FOR:
-		/* Emit as labeled sequence */
+		/* Emit as labeled sequence wrapped in block */
 		if (st->label) {
+			/* Count statements: init? + top + (if or body) + continue + incr? + goto + break */
+			int stmt_count = 5;  /* top, (if or body), continue, goto, break */
+			if (st->left) stmt_count++;   /* init */
+			if (st->right) stmt_count++;  /* incr */
+			fdprintf(astFd, "B0.%x.", stmt_count);
 			if (st->left) {
-				fdprintf(astFd, "(E");
+				fdprintf(astFd, "E");
 				emitExpr(st->left);
-				fdprintf(astFd, ")");
 			}
 			emitLabel(st->label, "_top");
 			if (st->middle) {
-				fdprintf(astFd, "(I");
+				fdprintf(astFd, "I1.");  /* has else */
 				emitExpr(st->middle);
 				if (st->chain)
 					emitStmt(st->chain);
 				else
-					fdprintf(astFd, "()");
-				fdprintf(astFd, "(B");
+					fdprintf(astFd, ";");
+				fdprintf(astFd, "B0.1.");
 				emitGoto(st->label, "_break");
-				fdprintf(astFd, "))");
 			} else {
 				if (st->chain)
 					emitStmt(st->chain);
 				else
-					fdprintf(astFd, "()");
+					fdprintf(astFd, ";");
 			}
 			emitLabel(st->label, "_continue");
 			if (st->right) {
-				fdprintf(astFd, "(E");
+				fdprintf(astFd, "E");
 				emitExpr(st->right);
-				fdprintf(astFd, ")");
 			}
 			emitGoto(st->label, "_top");
 			emitLabel(st->label, "_break");
 		} else {
-			fdprintf(astFd, "(F");
+			fdprintf(astFd, "F");
 			emitExpr(st->left);
 			emitExpr(st->middle);
 			emitExpr(st->right);
 			if (st->chain)
 				emitStmt(st->chain);
 			else
-				fdprintf(astFd, "()");
-			fdprintf(astFd, ")");
+				fdprintf(astFd, ";");
 		}
 		break;
 
 	case SWITCH:
-		/* Emit as labeled sequence with break label */
-		if (st->label) {
-			emitLabel(st->label, "_top");
-			fdprintf(astFd, "(S");
+		/* Switch: S has_label. [hexlabel] case_count. expr cases...
+		 * In the parsed AST, case labels and their statements are siblings.
+		 * We need to group them so each case contains its statements.
+		 */
+		{
+			struct stmt *s;
+			int case_count = 0;
+			/* Count case/default labels */
+			for (s = st->chain; s; s = s->next) {
+				if (s->op == CASE || s->op == DEFAULT)
+					case_count++;
+			}
+			if (st->label) {
+				fdprintf(astFd, "S1.");
+				emitHexName(st->label);
+			} else {
+				fdprintf(astFd, "S0.");
+			}
+			fdprintf(astFd, "%x.", case_count);
 			emitExpr(st->left);
-			if (st->chain)
-				emitStmt(st->chain);
-			else
-				fdprintf(astFd, "()");
-			fdprintf(astFd, ")");
-			emitLabel(st->label, "_break");
-		} else {
-			fdprintf(astFd, "(S");
-			emitExpr(st->left);
-			if (st->chain)
-				emitStmt(st->chain);
-			else
-				fdprintf(astFd, "()");
-			fdprintf(astFd, ")");
+			/* Emit each case with its body statements */
+			for (s = st->chain; s; ) {
+				if (s->op == CASE) {
+					struct stmt *body = s->next;
+					int body_count = 0;
+					struct stmt *t;
+					/* Count statements until next case/default */
+					for (t = body; t && t->op != CASE && t->op != DEFAULT; t = t->next)
+						body_count++;
+					fdprintf(astFd, "C%x.", body_count);
+					emitExpr(s->left);
+					/* Emit body statements */
+					for (t = body; t && t->op != CASE && t->op != DEFAULT; t = t->next)
+						emitStmt(t);
+					/* Skip to next case/default */
+					s = body;
+					while (s && s->op != CASE && s->op != DEFAULT)
+						s = s->next;
+				} else if (s->op == DEFAULT) {
+					struct stmt *body = s->next;
+					int body_count = 0;
+					struct stmt *t;
+					/* Count statements until next case/default */
+					for (t = body; t && t->op != CASE && t->op != DEFAULT; t = t->next)
+						body_count++;
+					fdprintf(astFd, "O%x.", body_count);
+					/* Emit body statements */
+					for (t = body; t && t->op != CASE && t->op != DEFAULT; t = t->next)
+						emitStmt(t);
+					/* Skip to next case/default */
+					s = body;
+					while (s && s->op != CASE && s->op != DEFAULT)
+						s = s->next;
+				} else {
+					/* Statement before first case - emit directly */
+					emitStmt(s);
+					s = s->next;
+				}
+			}
 		}
 		break;
 
 	case CASE:
-		fdprintf(astFd, "(C");
+		/* Case labels are handled by SWITCH - this shouldn't be called directly */
+		fdprintf(astFd, "C0.");
 		emitExpr(st->left);
-		if (st->chain)
-			emitStmt(st->chain);
-		else
-			fdprintf(astFd, "()");
-		fdprintf(astFd, ")");
 		break;
 
 	case DEFAULT:
-		fdprintf(astFd, "(O");
-		if (st->chain)
-			emitStmt(st->chain);
-		else
-			fdprintf(astFd, "()");
-		fdprintf(astFd, ")");
+		/* Default labels are handled by SWITCH - this shouldn't be called directly */
+		fdprintf(astFd, "O0.");
 		break;
 
 	case RETURN:
-		fdprintf(astFd, "(R");
+		/* Return: R has_value. [expr] */
+		fdprintf(astFd, "R%x.", st->left ? 1 : 0);
 		if (st->left)
 			emitExpr(st->left);
-		fdprintf(astFd, ")");
 		break;
 
 	case BREAK:
-		fdprintf(astFd, "(K)");
+		fdprintf(astFd, "K");
 		break;
 
 	case CONTINUE:
-		fdprintf(astFd, "(N)");
+		fdprintf(astFd, "N");
 		break;
 
 	case GOTO:
-		fdprintf(astFd, "(G");
+		fdprintf(astFd, "G");
 		emitHexName(st->label ? st->label : "?");
-		fdprintf(astFd, ")");
 		break;
 
 	case LABEL:
-		fdprintf(astFd, "(L");
+		fdprintf(astFd, "L");
 		emitHexName(st->label ? st->label : "?");
-		fdprintf(astFd, ")");
 		break;
 
 	case EXPR:
-		fdprintf(astFd, "(E");
+		fdprintf(astFd, "E");
 		emitExpr(st->left);
-		fdprintf(astFd, ")");
 		break;
 
 	case ';':
-		fdprintf(astFd, "(;)");
+		fdprintf(astFd, ";");
 		break;
 
 	case ASM:
-		fdprintf(astFd, "(A");
-		if (st->label) {
-			/* Emit assembly text as hex-encoded string */
-			int len = strlen(st->label);
+		{
+			int len = st->label ? strlen(st->label) : 0;
 			int i;
-			fdprintf(astFd, "%02x", len);
+			fdprintf(astFd, "A%02x", len);
 			for (i = 0; i < len; i++)
 				fdprintf(astFd, "%02x", (unsigned char)st->label[i]);
-		} else {
-			fdprintf(astFd, "00");  /* empty string */
 		}
-		fdprintf(astFd, ")");
 		break;
 
 	default:
-		fdprintf(astFd, "(?%d)", st->op);
+		fdprintf(astFd, "X%d.", st->op);  /* unknown */
 		break;
 	}
+	/* Note: st->next is handled by caller (block counts statements) */
+}
 
-	/* Output sibling statements */
-	if (st->next)
-		emitStmt(st->next);
+/*
+ * Count function parameters
+ */
+static int
+countParams(struct type *functype)
+{
+	int count = 0;
+	struct name *param;
+	if (functype && (functype->flags & TF_FUNC)) {
+		for (param = functype->elem; param; param = param->next) {
+			if (param->type && param->type->size == 0)
+				continue;  /* skip void */
+			count++;
+		}
+	}
+	return count;
 }
 
 /*
  * Output function parameter list
+ * Format: param_count. d suffix name d suffix name ...
  */
 static void
 emitParams(struct type *functype)
 {
 	struct name *param;
+	int count = countParams(functype);
 
-	fdprintf(astFd, "(");
+	fdprintf(astFd, "%x.", count);
 	if (functype && (functype->flags & TF_FUNC)) {
 		for (param = functype->elem; param; param = param->next) {
 			/* Skip void parameters - (void) means no params */
 			if (param->type && param->type->size == 0)
 				continue;
-			/* Emit as (d suffix hexname) */
-			fdprintf(astFd, "(d%c", getSizeSuffix(param->type));
+			/* Emit as: d suffix hexname */
+			fdprintf(astFd, "d%c", getSizeSuffix(param->type));
 			if (param->name && param->name[0] != '\0')
 				emitHexName(param->name);
 			else
 				emitHexName("_");  /* anonymous parameter */
-			fdprintf(astFd, ")");
 		}
 	}
-	fdprintf(astFd, ")");
 }
 
 /*
  * Output a function in AST format
- * Format: (f rettype hexname (params) body)
+ * Format: F rettype hexname param_count. params... body
  */
 void
 emitFunction(struct name *func)
@@ -614,45 +673,48 @@ emitFunction(struct name *func)
 	else
 		ret_suffix = 'v';  /* void */
 
-	fdprintf(astFd, "\n; Function: %s\n", func_name);
-	fdprintf(astFd, "(f%c", ret_suffix);
+	fdprintf(astFd, "\nF%c", ret_suffix);
 	emitHexName(func_name);
 
 	/* Output parameter list with declarations */
 	if (func->type)
 		emitParams(func->type);
 	else
-		fdprintf(astFd, "()");
+		fdprintf(astFd, "0.");
 
 	/* Output function body */
 	fdprintf(astFd, "\n");
 	emitStmt(func->u.body);
-	fdprintf(astFd, ")\n");
+	fdprintf(astFd, "\n");
 }
 
 /*
  * Emit an initializer list (linked via next pointers)
  * Used for array/struct initializers like {1, 2, 3}
  * elem_type: type of array elements for width annotation
+ * Format: [ width count. items...
  */
 static void
 emitInitList(struct expr *init, struct type *elem_type)
 {
 	struct expr *item;
 	char width;
+	int count = 0;
 
-	/* Get element width for array initializers */
+	/* Count items and get element width */
+	for (item = init; item; item = item->next)
+		count++;
 	width = getSizeSuffix(elem_type);
 
-	fdprintf(astFd, "([%c", width);
+	fdprintf(astFd, "[%c%x.", width, count);
 	for (item = init; item; item = item->next)
 		emitExpr(item);
-	fdprintf(astFd, ")");
 }
 
 /*
  * Emit a single string literal immediately
  * Called when string literal is created during parsing
+ * Format: U hexname hexdata
  */
 void
 emitStrLit(struct name *strname)
@@ -672,14 +734,13 @@ emitStrLit(struct name *strname)
 	len = (unsigned char)str[0];
 	data = (unsigned char *)str + 1;
 
-	/* Output: (s hexname hexdata) */
-	fdprintf(astFd, "\n; String literal: %s\n", strname->name);
-	fdprintf(astFd, "(s");
+	/* Output: U hexname hexdata */
+	fdprintf(astFd, "\nU");
 	emitHexName(strname->name);
 	fdprintf(astFd, "%02x", len);
 	for (j = 0; j < len; j++)
 		fdprintf(astFd, "%02x", data[j]);
-	fdprintf(astFd, ")\n");
+	fdprintf(astFd, "\n");
 
 	/* Free the string data after emitting */
 	free((void*)str);
@@ -721,8 +782,7 @@ emitLiterals(void)
 		return;
 
 	/* Output literals section header */
-	fdprintf(astFd, "\n; String literals\n");
-	fdprintf(astFd, "(L\n");
+	fdprintf(astFd, "\n(L\n");
 
 	/* Second pass: output each string literal */
 	for (i = 0; i <= lastname; i++) {
@@ -773,7 +833,7 @@ emitLiterals(void)
 
 /*
  * Output a global variable declaration with optional initializer
- * Format: (g hexname type [init-expr])
+ * Format: Z $hexname type has_init. [init-expr]
  */
 void
 emitGv(struct name *var)
@@ -783,8 +843,7 @@ emitGv(struct name *var)
 	if (!var || !var->type)
 		return;
 
-	fdprintf(astFd, "\n; Global variable: %s\n", var->name);
-	fdprintf(astFd, "(Z$");
+	fdprintf(astFd, "\nZ$");
 
 	/* Build variable name with scope prefix */
 	if (var->sclass & SC_STATIC) {
@@ -800,7 +859,8 @@ emitGv(struct name *var)
 	/* Output type */
 	emitTypeInfo(var->type);
 
-	/* Output initializer if present */
+	/* Output has_init flag and initializer if present */
+	fdprintf(astFd, "%x.", var->u.init ? 1 : 0);
 	if (var->u.init) {
 		/* Check if this is an initializer list (has next pointers) */
 		if (var->u.init->next) {
@@ -813,7 +873,7 @@ emitGv(struct name *var)
 		}
 	}
 
-	fdprintf(astFd, ")\n");
+	fdprintf(astFd, "\n");
 }
 
 /*

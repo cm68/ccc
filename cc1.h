@@ -263,7 +263,7 @@ void cleanupParse();
 /* Global context for static variable name mangling */
 extern char *srcFileRoot;
 extern struct name *curFunc;
-extern unsigned char staticCtr;  // counter for statics in current function
+extern unsigned char staticCtr;  // file-global counter for static variable names
 extern unsigned char shadowCtr;  // counter for shadowed locals
 
 /* AST output control */

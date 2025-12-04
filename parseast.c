@@ -232,85 +232,63 @@ frStmt(struct stmt *s)
 	free(s);
 }
 
-/* Expression handlers */
+/* Expression parsing - table-driven
+ * All ops have format: (op width operands...)
+ * Table encodes: bits 0-1 = arity (0,1,2,3=special), bit 2 = needs label
+ */
+#define OP_1  1   /* 1 operand */
+#define OP_2  2   /* 2 operands */
+#define OP_S  3   /* special handler */
+#define OP_L  4   /* needs label */
 
-static struct expr *
-doConst(void)
+static unsigned char optab[256];
+static int optab_init;
+
+static void
+initOptab(void)
 {
-	struct expr *e = newExpr('C');
-	e->value = readNum();
-	e->size = (e->value >= -32768 && e->value <= 65535) ? 2 : 4;
-	return e;
+	if (optab_init) return;
+	optab_init = 1;
+	/* Unary ops */
+	optab['M'] = optab['N'] = optab['W'] = optab[0xab] = OP_1;
+	optab['!'] = optab['~'] = optab['\\'] = optab['\''] = OP_1;
+	/* Binary ops */
+	optab['='] = optab['+'] = optab['-'] = optab['*'] = optab['/'] = OP_2;
+	optab['%'] = optab['&'] = optab['|'] = optab['^'] = OP_2;
+	optab['<'] = optab['>'] = optab['Q'] = optab['n'] = optab['L'] = OP_2;
+	optab['g'] = optab['y'] = optab['w'] = optab[':'] = OP_2;
+	optab['P'] = optab['T'] = optab['2'] = optab['1'] = OP_2;
+	optab['X'] = optab['0'] = optab['6'] = OP_2;
+	optab[0xdf] = optab[0xfe] = optab[0xc6] = OP_2;
+	/* Logical with label */
+	optab['h'] = optab['j'] = OP_2 | OP_L;
+	/* Special: call, ternary, copy, inc/dec, bitfield */
+	optab['@'] = optab['?'] = optab['Y'] = OP_S;
+	optab[0xcf] = optab[0xef] = optab[0xd6] = optab[0xf6] = OP_S;
+	optab[0xa7] = optab[0xdd] = OP_S;
 }
 
+/* Unified expression handler - all ops have width suffix */
 static struct expr *
-doSymbol(void)
-{
-	struct expr *e = newExpr('$');
-	e->symbol = strdup((char *)readName());
-	return e;
-}
-
-static struct expr *
-doDeref(void)
-{
-	struct expr *e = newExpr('M');
-	unsigned char width = curchar;
-	nextchar();
-	e->type_str = width;
-	e->size = getSizeFTStr(width);
-	e->flags = getSignFTStr(width);
-	e->left = parseExpr();
-	if (curchar == ')') nextchar();
-	return e;
-}
-
-static struct expr *
-doAssign(void)
-{
-	struct expr *e = newExpr('=');
-	unsigned char width = curchar;
-	nextchar();
-	e->type_str = width;
-	e->size = getSizeFTStr(width);
-	e->flags = getSignFTStr(width);
-	e->left = parseExpr();
-	e->right = parseExpr();
-	if (e->right && e->right->op == 'C') e->right->size = e->size;
-	if (curchar == ')') nextchar();
-	return e;
-}
-
-static struct expr *
-doCompAsn(unsigned char op)
+doExprOp(unsigned char op)
 {
 	struct expr *e = newExpr(op);
-	unsigned char width = curchar;
-	nextchar();
-	e->type_str = width;
-	e->size = getSizeFTStr(width);
-	e->flags = getSignFTStr(width);
-	e->left = parseExpr();
-	e->right = parseExpr();
-	if (e->right && e->right->op == 'C') e->right->size = e->size;
-	if (curchar == ')') nextchar();
-	return e;
-}
+	unsigned char info = optab[op];
+	int arity = info & 3;
 
-static struct expr *
-doBinaryOp(unsigned char op)
-{
-	struct expr *e = newExpr(op);
-	e->left = parseExpr();
-	e->right = parseExpr();
-	if (e->left && e->right) {
-		if (e->left->op == 'C' && e->right->op != 'C')
-			e->left->size = e->right->size;
-		else if (e->right->op == 'C' && e->left->op != 'C')
-			e->right->size = e->left->size;
-		e->size = (e->left->size > e->right->size) ? e->left->size : e->right->size;
-		e->flags = (e->left->flags | e->right->flags) & E_UNSIGNED;
-	}
+	/* Read width suffix (all ops have one now) */
+	e->type_str = curchar;
+	nextchar();
+	e->size = getSizeFTStr(e->type_str);
+	e->flags = getSignFTStr(e->type_str);
+
+	/* Allocate label if needed */
+	if (info & OP_L) e->label = labelCounter++;
+
+	/* Parse operands */
+	if (arity >= 1) e->left = parseExpr();
+	if (arity >= 2) e->right = parseExpr();
+
 	/* Strength reduction: multiply by power of 2 */
 	if (op == '*') {
 		int shift = isMulByPow2(e, NULL);
@@ -323,62 +301,37 @@ doBinaryOp(unsigned char op)
 			freeExpr(old_right);
 		}
 	}
-	if (curchar == ')') nextchar();
 	return e;
 }
 
+/* Special handlers for irregular ops */
 static struct expr *
-doLand(void)
+doCall(void)
 {
-	struct expr *e = newExpr('j');
-	e->label = labelCounter++;
+	struct expr *e = newExpr('@'), *w, *prev = NULL;
+	int argc = (int)readNum(), i;
+	e->value = argc;
 	e->left = parseExpr();
-	e->right = parseExpr();
-	if (curchar == ')') nextchar();
-	return e;
-}
-
-static struct expr *
-doLor(void)
-{
-	struct expr *e = newExpr('h');
-	e->label = labelCounter++;
-	e->left = parseExpr();
-	e->right = parseExpr();
-	if (curchar == ')') nextchar();
-	return e;
-}
-
-static struct expr *
-doUnaryOp(unsigned char op)
-{
-	struct expr *e = newExpr(op);
-	e->left = parseExpr();
-	if (e->left) e->size = e->left->size;
-	if (op == 0xb6) e->flags = E_UNSIGNED;
-	else if (op == 0xab) e->flags = 0;
-	else if (e->left) e->flags = e->left->flags;
-	if (curchar == ')') nextchar();
-	return e;
-}
-
-/* Handle conversion ops: N (NARROW), W (WIDEN), 0xab (SEXT) with :s suffix */
-static struct expr *
-doConvOp(unsigned char op)
-{
-	struct expr *e = newExpr(op);
-	unsigned char size_suffix;
-	/* expect :s suffix */
-	if (curchar == ':') {
-		nextchar();
-		size_suffix = curchar;
-		nextchar();
-		e->type_str = size_suffix;
-		e->size = getSizeFTStr(size_suffix);
+	for (i = 0; i < argc; i++) {
+		w = newExpr(',');
+		w->left = parseExpr();
+		if (prev) prev->right = w;
+		else e->right = w;
+		prev = w;
 	}
+	return e;
+}
+
+static struct expr *
+doTernary(void)
+{
+	struct expr *e = newExpr('?'), *c = newExpr(':');
+	e->type_str = curchar; nextchar();
+	e->size = getSizeFTStr(e->type_str);
 	e->left = parseExpr();
-	if (e->left) e->flags = e->left->flags;
-	if (curchar == ')') nextchar();
+	c->left = parseExpr();
+	c->right = parseExpr();
+	e->right = c;
 	return e;
 }
 
@@ -386,39 +339,22 @@ static struct expr *
 doIncDec(unsigned char op)
 {
 	struct expr *e = newExpr(op);
-	unsigned char size = curchar;
-	nextchar();
-	e->type_str = size;
-	e->size = getSizeFTStr(size);
+	e->type_str = curchar; nextchar();
+	e->size = getSizeFTStr(e->type_str);
 	e->left = parseExpr();
 	e->value = readNum();
 	if (e->left) e->flags = e->left->flags;
-	if (curchar == ')') nextchar();
 	return e;
 }
 
 static struct expr *
-doBfextract(void)
+doBitfield(unsigned char op)
 {
-	struct expr *e = newExpr(0xa7);
-	int offset = (int)readNum();
-	int width = (int)readNum();
-	e->value = (offset << 16) | width;
+	struct expr *e = newExpr(op);
+	int off = (int)readNum(), wid = (int)readNum();
+	e->value = (off << 16) | wid;
 	e->left = parseExpr();
-	if (curchar == ')') nextchar();
-	return e;
-}
-
-static struct expr *
-doBfassign(void)
-{
-	struct expr *e = newExpr(0xdd);
-	int offset = (int)readNum();
-	int width = (int)readNum();
-	e->value = (offset << 16) | width;
-	e->left = parseExpr();
-	e->right = parseExpr();
-	if (curchar == ')') nextchar();
+	if (op == 0xdd) e->right = parseExpr();
 	return e;
 }
 
@@ -429,362 +365,300 @@ doCopy(void)
 	e->value = readNum();
 	e->left = parseExpr();
 	e->right = parseExpr();
-	if (curchar == ')') nextchar();
 	return e;
 }
 
-static struct expr *
-doCall(void)
-{
-	struct expr *e = newExpr('@');
-	struct expr *args[32];
-	struct expr *wrapper, *prev;
-	int arg_count = 0;
-	int i;
-	e->left = parseExpr();
-	while (curchar != ')' && curchar != 0) {
-		if (curchar == '\n' || curchar == ' ' || curchar == '\t' || curchar == '\r') {
-			nextchar();
-			continue;
-		}
-		if (arg_count >= 32) break;
-		args[arg_count++] = parseExpr();
-	}
-	e->value = arg_count;
-	prev = NULL;
-	for (i = 0; i < arg_count; i++) {
-		wrapper = newExpr(',');
-		wrapper->left = args[i];
-		wrapper->right = NULL;
-		if (prev) prev->right = wrapper;
-		else e->right = wrapper;
-		prev = wrapper;
-	}
-	if (curchar == ')') nextchar();
-	return e;
-}
 
-static struct expr *
-doTernary(void)
-{
-	struct expr *e = newExpr('?');
-	struct expr *colon;
-	e->left = parseExpr();
-	if (curchar == '(') {
-		nextchar();
-		if (curchar == ':') {
-			nextchar();
-			colon = newExpr(':');
-			colon->left = parseExpr();
-			colon->right = parseExpr();
-			if (curchar == ')') nextchar();
-			e->right = colon;
-		}
-	}
-	if (curchar == ')') nextchar();
-	return e;
-}
-
-static struct expr *
-doColon(void)
-{
-	struct expr *e = newExpr(':');
-	e->left = parseExpr();
-	e->right = parseExpr();
-	if (curchar == ')') nextchar();
-	return e;
-}
-
-/* Parse expression */
+/* Parse expression - paren-free format */
 static struct expr *
 parseExpr(void)
 {
 	struct expr *e;
-	unsigned char op;
+	unsigned char op, info;
 
-	if (curchar == '(') {
+	/* Skip whitespace */
+	while (curchar == '\n' || curchar == ' ' || curchar == '\t' || curchar == '\r')
 		nextchar();
-		if (curchar == ')') { nextchar(); return NULL; }
-		op = curchar;
+
+	initOptab();
+
+	/* Null expression marker */
+	if (curchar == '_') {
 		nextchar();
-		switch (op) {
-		case 'M': e = doDeref(); break;
-		case '=': e = doAssign(); break;
-		case '@': e = doCall(); break;
-		case '?': e = doTernary(); break;
-		case ':': e = doColon(); break;
-		case 'Y': e = doCopy(); break;
-		case '+': case '-': case '*': case '/': case '%':
-		case '&': case '|': case '^': case '<': case '>':
-		case 'Q': case 'n': case 'L': case 'g': case 'y': case 'w':
-			e = doBinaryOp(op); break;
-		case 'h': e = doLor(); break;
-		case 'j': e = doLand(); break;
-		case 'P': case 'T': case '2': case '1': case 'X': case '0': case '6':
-		case 0xdf: case 0xfe: case 0xc6:
-			e = doCompAsn(op); break;
-		case '!': case '~': case '\\': case '\'':
-			e = doUnaryOp(op); break;
-		case 'N': case 'W': case 0xab:
-			e = doConvOp(op); break;
-		case 0xcf: case 0xef: case 0xd6: case 0xf6:
-			e = doIncDec(op); break;
-		case 0xa7: e = doBfextract(); break;
-		case 0xdd: e = doBfassign(); break;
-		default:
-			e = newExpr(op);
-			while (curchar && curchar != ')') nextchar();
-			if (curchar == ')') nextchar();
-			break;
-		}
-	} else if (curchar == '$') {
+		return NULL;
+	}
+
+	/* Symbol reference */
+	if (curchar == '$') {
 		nextchar();
-		e = doSymbol();
-	} else if (curchar == 'S') {
+		e = newExpr('$');
+		e->symbol = strdup((char *)readName());
+		return e;
+	}
+
+	/* Stack offset (rare) */
+	if (curchar == 'S') {
 		nextchar();
 		e = newExpr('S');
 		e->value = readNum();
-	} else if ((curchar >= '0' && curchar <= '9') ||
-		   (curchar >= 'a' && curchar <= 'f') || curchar == '-') {
-		e = doConst();
+		return e;
+	}
+
+	/* Numeric constant - starts with hex digit or minus */
+	if ((curchar >= '0' && curchar <= '9') ||
+	    (curchar >= 'a' && curchar <= 'f') || curchar == '-') {
+		e = newExpr('C');
+		e->value = readNum();
+		e->size = (e->value >= -32768 && e->value <= 65535) ? 2 : 4;
+		return e;
+	}
+
+	/* Operator - check optab */
+	op = curchar;
+	nextchar();
+	info = optab[op];
+
+	if ((info & 3) == OP_S) {
+		/* Special handlers */
+		switch (op) {
+		case '@': e = doCall(); break;
+		case '?': e = doTernary(); break;
+		case 'Y': e = doCopy(); break;
+		case 0xcf: case 0xef: case 0xd6: case 0xf6:
+			e = doIncDec(op); break;
+		case 0xa7: case 0xdd:
+			e = doBitfield(op); break;
+		default:
+			/* Unknown special - return placeholder */
+			e = newExpr(op);
+			break;
+		}
+	} else if (info) {
+		e = doExprOp(op);
 	} else {
-		e = NULL;
+		/* Unknown op - return placeholder */
+		e = newExpr(op);
 	}
 	return e;
 }
 
-/* Statement handlers */
-static struct stmt *doBlock(void);
-static struct stmt *doIf(void);
-static struct stmt *doReturn(void);
-static struct stmt *doExprStmt(void);
-static struct stmt *doAsm(void);
-static struct stmt *doLabel(void);
-static struct stmt *doGoto(void);
-static struct stmt *doSwitch(void);
+/* Statement handlers - paren-free format */
 
-static struct stmt *
-doBlock(void)
-{
-	struct stmt *s = newStmt('B');
-	struct stmt *first = NULL, *last = NULL, *child;
-	unsigned char op;
-	char *name;
-	unsigned char type_suffix;
-
-	while (curchar != ')' && curchar) {
-		if (curchar == '\n' || curchar == ' ' || curchar == '\t' || curchar == '\r') {
-			nextchar();
-			continue;
-		}
-		if (curchar == '(') {
-			nextchar();
-			op = curchar;
-			nextchar();
-			if (op == 'd') {
-				type_suffix = curchar;
-				nextchar();
-				name = (char *)readName();
-				child = newStmt('d');
-				child->symbol = strdup(name);
-				child->type_str = type_suffix;
-				if (curchar == ')') nextchar();
-			} else {
-				switch (op) {
-				case 'B': child = doBlock(); break;
-				case 'I': child = doIf(); break;
-				case 'R': child = doReturn(); break;
-				case 'E': child = doExprStmt(); break;
-				case ';': child = newStmt(';'); if (curchar == ')') nextchar(); break;
-				case 'A': child = doAsm(); break;
-				case 'L': child = doLabel(); break;
-				case 'G': child = doGoto(); break;
-				case 'S': child = doSwitch(); break;
-				case 'C': {
-					child = newStmt('C');
-					child->expr = parseExpr();
-					if (curchar == '(') { nextchar(); if (curchar == ')') nextchar(); }
-					if (curchar == ')') nextchar();
-					break;
-				}
-				case 'O': {
-					child = newStmt('O');
-					if (curchar == '(') { nextchar(); if (curchar == ')') nextchar(); }
-					if (curchar == ')') nextchar();
-					break;
-				}
-				case 'K': child = newStmt('K'); if (curchar == ')') nextchar(); break;
-				case 'N': child = newStmt('N'); if (curchar == ')') nextchar(); break;
-				default:
-					while (curchar && curchar != ')') nextchar();
-					if (curchar == ')') nextchar();
-					child = NULL;
-					break;
-				}
-			}
-			appendChild(child, &first, &last);
-		} else {
-			/* Skip unexpected character */
-			nextchar();
-		}
-	}
-	if (curchar == ')') nextchar();
-	s->then_branch = first;
-	return s;
-}
-
-static struct stmt *
-doIf(void)
-{
-	struct stmt *s = newStmt('I');
-	char label_buf[64];
-	s->label = labelCounter++;
-	s->expr = parseExpr();
-	s->then_branch = parseStmt();
-	if (curchar != ')') {
-		s->label2 = labelCounter++;
-		s->else_branch = parseStmt();
-		snprintf(label_buf, sizeof(label_buf), "_if_end_%d", s->label2);
-	} else {
-		snprintf(label_buf, sizeof(label_buf), "_if_end_%d", s->label);
-	}
-	s->next = createLblAsm(label_buf);
-	if (curchar == ')') nextchar();
-	return s;
-}
-
-static struct stmt *
-doReturn(void)
-{
-	struct stmt *s = newStmt('R');
-	if (curchar != ')') {
-		s->expr = parseExpr();
-		if (s->expr && s->expr->op == 'C') {
-			s->expr->size = fnRettype[0] == 'b' ? 1 : fnRettype[0] == 'l' ? 4 : 2;
-		}
-	}
-	if (curchar == ')') nextchar();
-	return s;
-}
-
-static struct stmt *
-doExprStmt(void)
-{
-	struct stmt *s = newStmt('E');
-	s->expr = parseExpr();
-	if (curchar == ')') nextchar();
-	return s;
-}
-
-static struct stmt *
-doAsm(void)
-{
-	struct stmt *s = newStmt('A');
-	char *asm_text = (char *)readStr();
-	s->asm_block = asm_text;
-	if (curchar == ')') nextchar();
-	return s;
-}
-
-static struct stmt *
-doLabel(void)
-{
-	struct stmt *s = newStmt('L');
-	s->symbol = strdup((char *)readName());
-	if (curchar == ')') nextchar();
-	return s;
-}
-
-static struct stmt *
-doGoto(void)
-{
-	struct stmt *s = newStmt('G');
-	s->symbol = strdup((char *)readName());
-	if (curchar == ')') nextchar();
-	return s;
-}
-
-static struct stmt *
-doSwitch(void)
-{
-	struct stmt *s = newStmt('S');
-	struct stmt *first = NULL, *last = NULL, *child;
-	unsigned char clause_type;
-
-	s->expr = parseExpr();
-	while (curchar != ')' && curchar) {
-		if (curchar == '\n' || curchar == ' ' || curchar == '\t' || curchar == '\r') {
-			nextchar();
-			continue;
-		}
-		if (curchar == '(') {
-			nextchar();
-			clause_type = curchar;
-			nextchar();
-			switch (clause_type) {
-			case 'C':
-				child = newStmt('C');
-				child->expr = parseExpr();
-				if (curchar == '(') { nextchar(); if (curchar == ')') nextchar(); }
-				if (curchar == ')') nextchar();
-				break;
-			case 'O':
-				child = newStmt('O');
-				if (curchar == '(') { nextchar(); if (curchar == ')') nextchar(); }
-				if (curchar == ')') nextchar();
-				break;
-			case 'R': child = doReturn(); break;
-			case 'G': child = doGoto(); break;
-			case 'B': child = doBlock(); break;
-			case 'K': child = newStmt('K'); if (curchar == ')') nextchar(); break;
-			case 'E': child = doExprStmt(); break;
-			case 'I': child = doIf(); break;
-			case 'L': child = doLabel(); break;
-			case 'A': child = doAsm(); break;
-			case 'N': child = newStmt('N'); if (curchar == ')') nextchar(); break;
-			case ';': child = newStmt(';'); if (curchar == ')') nextchar(); break;
-			default:
-				while (curchar && curchar != ')') nextchar();
-				if (curchar == ')') nextchar();
-				child = NULL;
-				break;
-			}
-			appendChild(child, &first, &last);
-		}
-	}
-	if (curchar == ')') nextchar();
-	s->then_branch = first;
-	return s;
-}
-
-/* Parse statement */
+/*
+ * Parse a single statement based on first char
+ * New format:
+ *   B decl_count. stmt_count. decls... stmts...
+ *   I has_else. cond then [else]
+ *   E expr
+ *   R has_value. [expr]
+ *   L hexname
+ *   G hexname
+ *   S case_count. expr cases...
+ *   C stmt_count. value stmts...
+ *   O stmt_count. stmts...
+ *   A len hexdata
+ *   ; (empty)
+ *   K (break)
+ *   N (continue)
+ */
 static struct stmt *
 parseStmt(void)
 {
+	struct stmt *s, *first, *last, *child;
 	unsigned char op;
-	if (curchar != '(') return NULL;
-	nextchar();
-	if (curchar == ')') { nextchar(); return NULL; }
+	int i;
+	char label_buf[64];
+
+	/* Skip whitespace */
+	while (curchar == '\n' || curchar == ' ' || curchar == '\t' || curchar == '\r')
+		nextchar();
+
+	if (!curchar) return NULL;
+
 	op = curchar;
 	nextchar();
+
 	switch (op) {
-	case 'B': return doBlock();
-	case 'I': return doIf();
-	case 'R': return doReturn();
-	case 'E': return doExprStmt();
-	case ';': { struct stmt *s = newStmt(';'); if (curchar == ')') nextchar(); return s; }
-	case 'A': return doAsm();
-	case 'L': return doLabel();
-	case 'G': return doGoto();
-	case 'S': return doSwitch();
+	case 'B':
+		/* Block: B decl_count. stmt_count. decls... stmts... */
+		{
+			int decl_count = (int)readNum();
+			int stmt_count = (int)readNum();
+			s = newStmt('B');
+			first = last = NULL;
+
+			/* Read declarations */
+			for (i = 0; i < decl_count; i++) {
+				if (curchar == 'd') {
+					nextchar();
+					child = newStmt('d');
+					child->type_str = curchar;
+					nextchar();
+					child->symbol = strdup((char *)readName());
+					appendChild(child, &first, &last);
+				}
+			}
+
+			/* Read statements */
+			for (i = 0; i < stmt_count; i++) {
+				child = parseStmt();
+				appendChild(child, &first, &last);
+			}
+			s->then_branch = first;
+		}
+		return s;
+
+	case 'I':
+		/* If: I has_else. cond then [else] */
+		{
+			int has_else = (int)readNum();
+			s = newStmt('I');
+			s->label = labelCounter++;
+			s->expr = parseExpr();
+			s->then_branch = parseStmt();
+			if (has_else) {
+				s->label2 = labelCounter++;
+				s->else_branch = parseStmt();
+				snprintf(label_buf, sizeof(label_buf), "_if_end_%d", s->label2);
+			} else {
+				snprintf(label_buf, sizeof(label_buf), "_if_end_%d", s->label);
+			}
+			s->next = createLblAsm(label_buf);
+		}
+		return s;
+
+	case 'E':
+		/* Expression statement */
+		s = newStmt('E');
+		s->expr = parseExpr();
+		return s;
+
+	case 'R':
+		/* Return: R has_value. [expr] */
+		{
+			int has_value = (int)readNum();
+			s = newStmt('R');
+			if (has_value) {
+				s->expr = parseExpr();
+				if (s->expr && s->expr->op == 'C') {
+					s->expr->size = fnRettype[0] == 'b' ? 1 : fnRettype[0] == 'l' ? 4 : 2;
+				}
+			}
+		}
+		return s;
+
+	case 'L':
+		/* Label */
+		s = newStmt('L');
+		s->symbol = strdup((char *)readName());
+		return s;
+
+	case 'G':
+		/* Goto */
+		s = newStmt('G');
+		s->symbol = strdup((char *)readName());
+		return s;
+
+	case 'S':
+		/* Switch: S has_label. [hexlabel] case_count. expr cases... */
+		{
+			int has_label = (int)readNum();
+			char *label_name = NULL;
+			int case_count;
+			if (has_label)
+				label_name = strdup((char *)readName());
+			case_count = (int)readNum();
+			s = newStmt('S');
+			s->symbol = label_name;
+			s->expr = parseExpr();
+			first = last = NULL;
+			for (i = 0; i < case_count; i++) {
+				child = parseStmt();
+				appendChild(child, &first, &last);
+			}
+			s->then_branch = first;
+		}
+		return s;
+
+	case 'C':
+		/* Case: C stmt_count. value stmts... */
+		{
+			int stmt_count = (int)readNum();
+			s = newStmt('C');
+			s->expr = parseExpr();
+			first = last = NULL;
+			for (i = 0; i < stmt_count; i++) {
+				child = parseStmt();
+				appendChild(child, &first, &last);
+			}
+			s->then_branch = first;
+		}
+		return s;
+
+	case 'O':
+		/* Default: O stmt_count. stmts... */
+		{
+			int stmt_count = (int)readNum();
+			s = newStmt('O');
+			first = last = NULL;
+			for (i = 0; i < stmt_count; i++) {
+				child = parseStmt();
+				appendChild(child, &first, &last);
+			}
+			s->then_branch = first;
+		}
+		return s;
+
+	case 'A':
+		/* Asm: A len hexdata */
+		s = newStmt('A');
+		s->asm_block = strdup((char *)readStr());
+		return s;
+
+	case ';':
+		/* Empty statement */
+		return newStmt(';');
+
+	case 'K':
+		/* Break */
+		return newStmt('K');
+
+	case 'N':
+		/* Continue */
+		return newStmt('N');
+
+	case 'W':
+		/* While (unlabeled) - not used when labels present */
+		s = newStmt('W');
+		s->expr = parseExpr();
+		s->then_branch = parseStmt();
+		return s;
+
+	case 'D':
+		/* Do (unlabeled) - not used when labels present */
+		s = newStmt('D');
+		s->then_branch = parseStmt();
+		s->expr = parseExpr();
+		return s;
+
+	case 'F':
+		/* For (unlabeled) - not used when labels present */
+		s = newStmt('F');
+		s->expr = parseExpr();   /* init */
+		s->expr2 = parseExpr();  /* cond */
+		s->expr3 = parseExpr();  /* incr */
+		s->then_branch = parseStmt();
+		return s;
+
 	default:
-		while (curchar && curchar != ')') nextchar();
-		if (curchar == ')') nextchar();
-		return NULL;
+		/* Unknown - return empty */
+		return newStmt(';');
 	}
 }
 
-/* Top-level: function */
+/* Top-level: function
+ * New format: F rettype hexname param_count. d suffix name d suffix name ... body
+ */
 static void
 doFunction(unsigned char rettype)
 {
@@ -793,7 +667,7 @@ doFunction(unsigned char rettype)
 	static char rettype_buf[2];
 	char *p, *param;
 	unsigned char ptype;
-	int first_param;
+	int first_param, param_count, i;
 
 	rettype_buf[0] = rettype;
 	rettype_buf[1] = '\0';
@@ -806,38 +680,32 @@ doFunction(unsigned char rettype)
 	switchToSeg(SEG_TEXT);
 	addDefSym(fnName);
 
-	/* Parse parameters: ((d suffix hexname) ...) */
-	if (curchar == '(') nextchar();
+	/* Parse parameters: param_count. d suffix name d suffix name ... */
+	param_count = (int)readNum();
 	p = params_buf;
 	params_buf[0] = '\0';
 	first_param = 1;
-	while (curchar != ')' && curchar) {
-		if (curchar == '\n' || curchar == ' ' || curchar == '\t' || curchar == '\r') {
+	for (i = 0; i < param_count; i++) {
+		/* Skip whitespace */
+		while (curchar == '\n' || curchar == ' ' || curchar == '\t' || curchar == '\r')
 			nextchar();
-			continue;
+		if (curchar != 'd') break;
+		nextchar();
+		ptype = curchar;
+		nextchar();
+		param = (char *)readName();
+		if (!first_param && p < params_buf + sizeof(params_buf) - 2) {
+			*p++ = ','; *p++ = ' ';
 		}
-		if (curchar == '(') {
-			nextchar();
-			if (curchar != 'd') break;
-			nextchar();
-			ptype = curchar;
-			nextchar();
-			param = (char *)readName();
-			if (!first_param && p < params_buf + sizeof(params_buf) - 2) {
-				*p++ = ','; *p++ = ' ';
-			}
-			first_param = 0;
-			while (*param && p < params_buf + sizeof(params_buf) - 20)
-				*p++ = *param++;
-			if (p < params_buf + sizeof(params_buf) - 3) {
-				*p++ = ':'; *p++ = ptype;
-			}
-			if (curchar == ')') nextchar();
+		first_param = 0;
+		while (*param && p < params_buf + sizeof(params_buf) - 20)
+			*p++ = *param++;
+		if (p < params_buf + sizeof(params_buf) - 3) {
+			*p++ = ':'; *p++ = ptype;
 		}
 	}
 	*p = '\0';
 	fnParams = params_buf;
-	if (curchar == ')') nextchar();
 
 	/* Skip newlines between params and body */
 	skipNL();
@@ -857,8 +725,6 @@ doFunction(unsigned char rettype)
 	fnIYHLValid = 0;
 	fnABCValid = 0;
 	cacheInvalAll();
-
-	if (curchar == ')') nextchar();
 
 	/* Code generation phases */
 	assignFrmOff();
@@ -904,14 +770,17 @@ void addRefSym(const char *name) {
 	addSymTo(name, refSymbols, &numReferenced, MAX_SYMBOLS);
 }
 
-/* Top-level: global variable */
+/* Top-level: global variable
+ * New format: Z $hexname type has_init. [init]
+ * Initializer format: [ width count. items...
+ */
 static void
 doGlobal(void)
 {
 	char name_buf[256];
 	char *name;
 	unsigned char type_char, elem_type;
-	int isDefined, depth, val, col, first;
+	int isDefined, val, col, first, has_init, init_count;
 	long count, elemsize, size;
 
 	/* Skip '$' if present */
@@ -925,58 +794,50 @@ doGlobal(void)
 	nextchar();
 
 	if (type_char == 'a') {
-		/* Array: a count. elemsize. [init] */
+		/* Array: a count. elemsize. has_init. [init] */
 		count = readNum();
 		elemsize = readNum();
 		size = count * elemsize;
+		has_init = (int)readNum();
 
 		/* Check for initializer */
-		if (curchar == '(' && count >= 0) {
+		if (has_init && curchar == '[' && count >= 0) {
+			nextchar();  /* skip '[' */
+			elem_type = curchar;
 			nextchar();
-			if (curchar == '[') {
-				nextchar();
-				elem_type = curchar;
-				nextchar();
+			init_count = (int)readNum();
 
-				isDefined = isDefSym(name_buf);
-				if (!isDefined && elem_type == 'b') {
-					col = 0; first = 1;
-					addDefSym(name_buf);
-					switchToSeg(SEG_DATA);
-					fdprintf(outFd, "%s:\n", name_buf);
-					while (curchar != ')' && curchar) {
-						val = (int)readNum();
-						if (!first && col > 70) {
-							fdputs(outFd, "\n");
-							col = 0;
-						}
-						if (first || col == 0) {
-							fdputs(outFd, "\t.db ");
-							col = 12;
-							first = 0;
-						} else {
-							fdputs(outFd, ", ");
-							col += 2;
-						}
-						fdprintf(outFd, "%d", val);
-						col += (val < 10) ? 1 : (val < 100) ? 2 : 3;
+			isDefined = isDefSym(name_buf);
+			if (!isDefined && elem_type == 'b') {
+				int i;
+				col = 0; first = 1;
+				addDefSym(name_buf);
+				switchToSeg(SEG_DATA);
+				fdprintf(outFd, "%s:\n", name_buf);
+				for (i = 0; i < init_count; i++) {
+					val = (int)readNum();
+					if (!first && col > 70) {
+						fdputs(outFd, "\n");
+						col = 0;
 					}
-					fdputs(outFd, "\n");
-				} else {
-					while (curchar != ')' && curchar) readNum();
+					if (first || col == 0) {
+						fdputs(outFd, "\t.db ");
+						col = 12;
+						first = 0;
+					} else {
+						fdputs(outFd, ", ");
+						col += 2;
+					}
+					fdprintf(outFd, "%d", val);
+					col += (val < 10) ? 1 : (val < 100) ? 2 : 3;
 				}
-				if (curchar == ')') nextchar();
-				if (curchar == ')') nextchar();
-				if (curchar == ')') nextchar();
-				return;
+				fdputs(outFd, "\n");
+			} else {
+				/* Skip initializer */
+				int i;
+				for (i = 0; i < init_count; i++) readNum();
 			}
-			/* Skip other initializer formats */
-			depth = 1;
-			while (depth > 0 && curchar) {
-				if (curchar == '(') depth++;
-				else if (curchar == ')') depth--;
-				nextchar();
-			}
+			return;
 		}
 
 		/* Uninitialized array */
@@ -985,11 +846,16 @@ doGlobal(void)
 			if (!isDefined) {
 				addDefSym(name_buf);
 				switchToSeg(SEG_BSS);
-				fdprintf(outFd, "%s:\n\t.ds %d\n", name_buf, size);
+				fdprintf(outFd, "%s:\n\t.ds %d\n", name_buf, (int)size);
 			}
 		}
 	} else if (type_char == 'p') {
 		/* Pointer */
+		has_init = (int)readNum();
+		/* Skip any initializer - pointers don't have runtime init */
+		if (has_init) {
+			parseExpr();  /* skip init expr */
+		}
 		isDefined = isDefSym(name_buf);
 		if (!isDefined) {
 			addDefSym(name_buf);
@@ -998,39 +864,27 @@ doGlobal(void)
 		}
 	} else if (type_char == 'r') {
 		/* Struct */
-		long size = readNum();
+		long ssize = readNum();
+		has_init = (int)readNum();
+		if (has_init) parseExpr();  /* skip init */
 		isDefined = isDefSym(name_buf);
 		if (!isDefined) {
 			addDefSym(name_buf);
 			switchToSeg(SEG_BSS);
-			fdprintf(outFd, "%s:\n\t.ds %ld\n", name_buf, size);
+			fdprintf(outFd, "%s:\n\t.ds %ld\n", name_buf, ssize);
 		}
 	} else {
 		/* Primitive: b/s/l */
-		int size = getSizeFTStr(type_char);
+		int psize = getSizeFTStr(type_char);
+		has_init = (int)readNum();
+		if (has_init) parseExpr();  /* skip init */
 		isDefined = isDefSym(name_buf);
 		if (!isDefined) {
 			addDefSym(name_buf);
 			switchToSeg(SEG_BSS);
-			fdprintf(outFd, "%s:\n\t.ds %d\n", name_buf, size);
+			fdprintf(outFd, "%s:\n\t.ds %d\n", name_buf, psize);
 		}
 	}
-
-	/* Skip any trailing content */
-	while (curchar && curchar != ')' && curchar != '\n') {
-		if (curchar == '(') {
-			int depth = 1;
-			nextchar();
-			while (depth > 0 && curchar) {
-				if (curchar == '(') depth++;
-				else if (curchar == ')') depth--;
-				nextchar();
-			}
-		} else {
-			nextchar();
-		}
-	}
-	if (curchar == ')') nextchar();
 }
 
 /* Top-level: string literal */
@@ -1065,8 +919,6 @@ doStrLiteral(void)
 	snprintf(str_label, sizeof(str_label), "_%s", name);
 	addDefSym(str_label);
 	free(orig_data);
-
-	if (curchar == ')') nextchar();
 }
 
 /* Emit symbol declarations */
@@ -1090,7 +942,11 @@ emitSymDecls(void)
 	}
 }
 
-/* Parse top-level */
+/* Parse top-level - paren-free format
+ * F rettype name params body
+ * Z $name type has_init [init]
+ * U name data
+ */
 static void
 parseToplvl(void)
 {
@@ -1098,17 +954,13 @@ parseToplvl(void)
 	unsigned char rettype;
 
 	skipNL();
-	if (curchar != '(') {
-		/* consume unexpected char to avoid infinite loop */
-		if (curchar) nextchar();
-		return;
-	}
-	nextchar();
+	if (!curchar) return;
+
 	op = curchar;
 	nextchar();
 
 	switch (op) {
-	case 'f':
+	case 'F':
 		rettype = curchar;
 		nextchar();
 		doFunction(rettype);
@@ -1116,12 +968,12 @@ parseToplvl(void)
 	case 'Z':
 		doGlobal();
 		break;
-	case 's':
+	case 'U':
 		doStrLiteral();
 		break;
 	default:
-		while (curchar && curchar != ')') nextchar();
-		if (curchar == ')') nextchar();
+		/* Unknown top-level - skip to newline */
+		while (curchar && curchar != '\n') nextchar();
 		break;
 	}
 }
@@ -1136,10 +988,6 @@ parseAstFile(int in, int out)
 
 	while (curchar) {
 		skipNL();
-		if (curchar == ';') {
-			skipLine();
-			continue;
-		}
 		if (curchar) parseToplvl();
 	}
 

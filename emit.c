@@ -382,6 +382,26 @@ emit_if_body:
         free(s);
         return;
     }
+    /* Handle SWITCH statements - emit labels around cases */
+    else if (s->type == 'S') {
+        /* Emit top label if we have one */
+        if (s->symbol)
+            fdprintf(outFd, "%s_top:\n", s->symbol);
+        /* Emit switch expression (evaluated but result discarded for now) */
+        /* TODO: implement proper switch jump table */
+        if (s->expr) emitExpr(s->expr);
+        /* Emit cases */
+        if (s->then_branch) emitStmt(s->then_branch);
+        /* Emit break label if we have one */
+        if (s->symbol)
+            fdprintf(outFd, "%s_break:\n", s->symbol);
+        if (s->next) emitStmtTail(s->next, tailPos);
+        if (s->symbol) free(s->symbol);
+        if (s->asm_block) free(s->asm_block);
+        if (s->jump) freeJump(s->jump);
+        free(s);
+        return;
+    }
     /* Handle RETURN statements specially */
     else if (s->type == 'R') {
         if (s->expr) {
