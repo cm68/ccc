@@ -9,15 +9,15 @@
 ;
 
 .globl framealloc, framefree, indexiy, leaiy, ldixi, getlong, putlong, load32i
-.globl add88, add168, add32, sub32, and88, and1616, and32, and3216
+.globl add168, add32, sub32, and1616, and32, and3216
 .globl or1616, or32, or3216, xor32
 .globl mul168, mul1616, mul1616e, mul3232
 .globl div1616, udiv1616, mod1616, umod1616, div3232, mod3232
 .globl shl1616, shr1616, ushr1616, shr3232, ushr816
-.globl eq88, ne88, lt88, le88, gt88, ge88, ugt88, ult88
+.globl lt88, le88, gt88, ge88, ugt88
 .globl eq816, ne816, ueq816, une816, ugt816
-.globl eq1616, ne1616, lt1616, le1616, gt1616, ge1616
-.globl ult1616, ule1616, ugt1616, uge1616, ugt168, ult168, ult1632, gt1632
+.globl lt1616, le1616, gt1616, ge1616
+.globl ule1616, ugt1616, uge1616, ugt168, ult168, ult1632, gt1632
 .globl eq3216, ne3216, lt3216, le3216, gt3216, ge3216
 .globl eq3232, ne3232, lt3232, le3232, gt3232, ge3232
 
@@ -248,20 +248,6 @@ xor32:
 ; ============================================================================
 ; 8-bit arithmetic (a op e -> a)
 ; ============================================================================
-
-;
-; 8-bit add: a + e -> a
-;
-add88:
-	add	a,e
-	ret
-
-;
-; 8-bit and: a & e -> a
-;
-and88:
-	and	e
-	ret
 
 ; ============================================================================
 ; Mixed width arithmetic
@@ -651,24 +637,6 @@ shr32lp:
 ; ============================================================================
 
 ;
-; hl == de
-;
-eq1616:
-	or	a
-	sbc	hl,de
-	jp	z,ret_true
-	jp	ret_false
-
-;
-; hl != de
-;
-ne1616:
-	or	a
-	sbc	hl,de
-	jp	nz,ret_true
-	jp	ret_false
-
-;
 ; hl < de (signed)
 ;
 lt1616:
@@ -748,15 +716,6 @@ ret_false:
 ; ============================================================================
 
 ;
-; hl < de (unsigned)
-;
-ult1616:
-	or	a
-	sbc	hl,de
-	jp	c,ret_true
-	jp	ret_false
-
-;
 ; hl <= de (unsigned)
 ;
 ule1616:
@@ -788,22 +747,6 @@ uge1616:
 ; ============================================================================
 ; 8-bit comparisons: a op e
 ; ============================================================================
-
-;
-; a == e
-;
-eq88:
-	cp	e
-	jp	z,ret_true
-	jp	ret_false
-
-;
-; a != e
-;
-ne88:
-	cp	e
-	jp	nz,ret_true
-	jp	ret_false
 
 ;
 ; a < e (signed)
@@ -869,14 +812,6 @@ ge88:
 ge8diff:
 	bit	7,e
 	jp	nz,ret_true
-	jp	ret_false
-
-;
-; a < e (unsigned)
-;
-ult88:
-	cp	e
-	jp	c,ret_true
 	jp	ret_false
 
 ;
