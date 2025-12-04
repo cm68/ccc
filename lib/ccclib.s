@@ -8,6 +8,21 @@
 ; 8-bit values in A or L
 ;
 
+.globl framealloc, framefree, indexiy, leaiy, ldixi, getlong, putlong, load32i
+.globl add88, add168, add32, sub32, and88, and1616, and32, and3216
+.globl or1616, or32, or3216, xor32
+.globl mul168, mul1616, mul1616e, mul3232
+.globl div1616, udiv1616, mod1616, umod1616, div3232, mod3232
+.globl shl1616, shr1616, ushr1616, shr3232, ushr816
+.globl eq88, ne88, lt88, le88, gt88, ge88, ugt88, ult88
+.globl eq816, ne816, ueq816, une816, ugt816
+.globl eq1616, ne1616, lt1616, le1616, gt1616, ge1616
+.globl ult1616, ule1616, ugt1616, uge1616, ugt168, ult168, ult1632, gt1632
+.globl eq3216, ne3216, lt3216, le3216, gt3216, ge3216
+.globl eq3232, ne3232, lt3232, le3232, gt3232, ge3232
+
+.text
+
 ;
 ; allocate stack frame
 ; input: A = frame size in bytes (for locals)
@@ -289,15 +304,15 @@ mul1616e:
 mul16lp:
 	ld	a,b
 	or	c
-	jr	z,mul16done
+	jp	z,mul16done
 	srl	b
 	rr	c		; shift multiplier right
-	jr	nc,mul16skip
+	jp	nc,mul16skip
 	add	hl,de		; add multiplicand if bit was set
 mul16skip:
 	sla	e
 	rl	d		; shift multiplicand left
-	jr	mul16lp
+	jp	mul16lp
 mul16done:
 	pop	bc
 	ret
@@ -313,7 +328,7 @@ div1616:
 	push	af
 	; make both positive
 	bit	7,h
-	jr	z,div16lpos
+	jp	z,div16lpos
 	xor	a
 	sub	l
 	ld	l,a
@@ -322,7 +337,7 @@ div1616:
 	ld	h,a
 div16lpos:
 	bit	7,d
-	jr	z,div16rpos
+	jp	z,div16rpos
 	xor	a
 	sub	e
 	ld	e,a
@@ -333,7 +348,7 @@ div16rpos:
 	call	udiv1616
 	pop	af
 	bit	7,a
-	jr	z,div16done
+	jp	z,div16done
 	; negate result
 	xor	a
 	sub	l
@@ -359,14 +374,14 @@ udiv16lp:
 	rl	b		; shift dividend left, msb into carry
 	adc	hl,hl		; shift into remainder
 	sbc	hl,de		; try subtract divisor
-	jr	nc,udiv16ok
+	jp	nc,udiv16ok
 	add	hl,de		; restore if negative
-	jr	udiv16next
+	jp	udiv16next
 udiv16ok:
 	inc	c		; set quotient bit
 udiv16next:
 	dec	a
-	jr	nz,udiv16lp
+	jp	nz,udiv16lp
 	ld	h,b
 	ld	l,c		; quotient in hl
 	pop	bc
@@ -382,7 +397,7 @@ mod1616:
 	push	af
 	; make both positive
 	bit	7,h
-	jr	z,mod16lpos
+	jp	z,mod16lpos
 	xor	a
 	sub	l
 	ld	l,a
@@ -391,7 +406,7 @@ mod1616:
 	ld	h,a
 mod16lpos:
 	bit	7,d
-	jr	z,mod16rpos
+	jp	z,mod16rpos
 	xor	a
 	sub	e
 	ld	e,a
@@ -402,7 +417,7 @@ mod16rpos:
 	call	umod1616
 	pop	af
 	bit	7,a
-	jr	z,mod16done
+	jp	z,mod16done
 	; negate result
 	xor	a
 	sub	l
@@ -428,11 +443,11 @@ umod16lp:
 	rl	b		; shift dividend left
 	adc	hl,hl		; shift into remainder
 	sbc	hl,de		; try subtract divisor
-	jr	nc,umod16ok
+	jp	nc,umod16ok
 	add	hl,de		; restore if negative
 umod16ok:
 	dec	a
-	jr	nz,umod16lp
+	jp	nz,umod16lp
 	; remainder already in hl
 	pop	bc
 	ret
@@ -472,7 +487,7 @@ shr16lp:
 	sra	h
 	rr	l
 	dec	a
-	jr	nz,shr16lp
+	jp	nz,shr16lp
 	ret
 
 ;
@@ -486,7 +501,7 @@ ushr16lp:
 	srl	h
 	rr	l
 	dec	a
-	jr	nz,ushr16lp
+	jp	nz,ushr16lp
 	ret
 
 ;
@@ -499,7 +514,7 @@ shl1616:
 shl16lp:
 	add	hl,hl
 	dec	a
-	jr	nz,shl16lp
+	jp	nz,shl16lp
 	ret
 
 ; ============================================================================
@@ -538,11 +553,11 @@ mul32lp:
 	or	d
 	or	e
 	exx
-	jr	z,mul32done
+	jp	z,mul32done
 	; check low bit of multiplier
 	ld	a,e
 	and	1
-	jr	z,mul32skip
+	jp	z,mul32skip
 	; add multiplicand to result
 	push	hl
 	exx
@@ -581,7 +596,7 @@ mul32skip:
 	exx
 	adc	hl,hl
 	exx
-	jr	mul32lp
+	jp	mul32lp
 mul32done:
 	pop	de
 	exx
@@ -627,7 +642,7 @@ shr32lp:
 	rr	h
 	rr	l
 	dec	a
-	jr	nz,shr32lp
+	jp	nz,shr32lp
 	ret
 
 ; ============================================================================
@@ -641,8 +656,8 @@ shr32lp:
 eq1616:
 	or	a
 	sbc	hl,de
-	jr	z,ret_true
-	jr	ret_false
+	jp	z,ret_true
+	jp	ret_false
 
 ;
 ; hl != de
@@ -650,8 +665,8 @@ eq1616:
 ne1616:
 	or	a
 	sbc	hl,de
-	jr	nz,ret_true
-	jr	ret_false
+	jp	nz,ret_true
+	jp	ret_false
 
 ;
 ; hl < de (signed)
@@ -662,12 +677,12 @@ lt1616:
 	jp	m,lt16diffsign
 	or	a
 	sbc	hl,de
-	jr	c,ret_true	; same sign, use carry
-	jr	ret_false
+	jp	c,ret_true	; same sign, use carry
+	jp	ret_false
 lt16diffsign:
 	bit	7,h		; hl negative?
-	jr	nz,ret_true	; negative < positive
-	jr	ret_false
+	jp	nz,ret_true	; negative < positive
+	jp	ret_false
 
 ;
 ; hl <= de (signed)
@@ -678,13 +693,13 @@ le1616:
 	jp	m,le16diffsign
 	or	a
 	sbc	hl,de
-	jr	z,ret_true
-	jr	c,ret_true
-	jr	ret_false
+	jp	z,ret_true
+	jp	c,ret_true
+	jp	ret_false
 le16diffsign:
 	bit	7,h
-	jr	nz,ret_true
-	jr	ret_false
+	jp	nz,ret_true
+	jp	ret_false
 
 ;
 ; hl > de (signed)
@@ -695,13 +710,13 @@ gt1616:
 	jp	m,gt16diffsign
 	or	a
 	sbc	hl,de
-	jr	z,ret_false
-	jr	nc,ret_true
-	jr	ret_false
+	jp	z,ret_false
+	jp	nc,ret_true
+	jp	ret_false
 gt16diffsign:
 	bit	7,d		; de negative?
-	jr	nz,ret_true	; positive > negative
-	jr	ret_false
+	jp	nz,ret_true	; positive > negative
+	jp	ret_false
 
 ;
 ; hl >= de (signed)
@@ -712,12 +727,12 @@ ge1616:
 	jp	m,ge16diffsign
 	or	a
 	sbc	hl,de
-	jr	nc,ret_true
-	jr	ret_false
+	jp	nc,ret_true
+	jp	ret_false
 ge16diffsign:
 	bit	7,d
-	jr	nz,ret_true
-	jr	ret_false
+	jp	nz,ret_true
+	jp	ret_false
 
 ; common return points
 ret_true:
@@ -738,8 +753,8 @@ ret_false:
 ult1616:
 	or	a
 	sbc	hl,de
-	jr	c,ret_true
-	jr	ret_false
+	jp	c,ret_true
+	jp	ret_false
 
 ;
 ; hl <= de (unsigned)
@@ -747,9 +762,9 @@ ult1616:
 ule1616:
 	or	a
 	sbc	hl,de
-	jr	c,ret_true
-	jr	z,ret_true
-	jr	ret_false
+	jp	c,ret_true
+	jp	z,ret_true
+	jp	ret_false
 
 ;
 ; hl > de (unsigned)
@@ -757,9 +772,9 @@ ule1616:
 ugt1616:
 	or	a
 	sbc	hl,de
-	jr	z,ret_false
-	jr	nc,ret_true
-	jr	ret_false
+	jp	z,ret_false
+	jp	nc,ret_true
+	jp	ret_false
 
 ;
 ; hl >= de (unsigned)
@@ -767,8 +782,8 @@ ugt1616:
 uge1616:
 	or	a
 	sbc	hl,de
-	jr	nc,ret_true
-	jr	ret_false
+	jp	nc,ret_true
+	jp	ret_false
 
 ; ============================================================================
 ; 8-bit comparisons: a op e
@@ -779,16 +794,16 @@ uge1616:
 ;
 eq88:
 	cp	e
-	jr	z,ret_true
-	jr	ret_false
+	jp	z,ret_true
+	jp	ret_false
 
 ;
 ; a != e
 ;
 ne88:
 	cp	e
-	jr	nz,ret_true
-	jr	ret_false
+	jp	nz,ret_true
+	jp	ret_false
 
 ;
 ; a < e (signed)
@@ -799,12 +814,12 @@ lt88:
 	jp	m,lt8diff
 	ld	a,b
 	cp	e
-	jr	c,ret_true
-	jr	ret_false
+	jp	c,ret_true
+	jp	ret_false
 lt8diff:
 	bit	7,b
-	jr	nz,ret_true
-	jr	ret_false
+	jp	nz,ret_true
+	jp	ret_false
 
 ;
 ; a <= e (signed)
@@ -815,13 +830,13 @@ le88:
 	jp	m,le8diff
 	ld	a,b
 	cp	e
-	jr	z,ret_true
-	jr	c,ret_true
-	jr	ret_false
+	jp	z,ret_true
+	jp	c,ret_true
+	jp	ret_false
 le8diff:
 	bit	7,b
-	jr	nz,ret_true
-	jr	ret_false
+	jp	nz,ret_true
+	jp	ret_false
 
 ;
 ; a > e (signed)
@@ -832,13 +847,13 @@ gt88:
 	jp	m,gt8diff
 	ld	a,b
 	cp	e
-	jr	z,ret_false
-	jr	nc,ret_true
-	jr	ret_false
+	jp	z,ret_false
+	jp	nc,ret_true
+	jp	ret_false
 gt8diff:
 	bit	7,e
-	jr	nz,ret_true
-	jr	ret_false
+	jp	nz,ret_true
+	jp	ret_false
 
 ;
 ; a >= e (signed)
@@ -849,29 +864,29 @@ ge88:
 	jp	m,ge8diff
 	ld	a,b
 	cp	e
-	jr	nc,ret_true
-	jr	ret_false
+	jp	nc,ret_true
+	jp	ret_false
 ge8diff:
 	bit	7,e
-	jr	nz,ret_true
-	jr	ret_false
+	jp	nz,ret_true
+	jp	ret_false
 
 ;
 ; a < e (unsigned)
 ;
 ult88:
 	cp	e
-	jr	c,ret_true
-	jr	ret_false
+	jp	c,ret_true
+	jp	ret_false
 
 ;
 ; a > e (unsigned)
 ;
 ugt88:
 	cp	e
-	jr	z,ret_false
-	jr	nc,ret_true
-	jr	ret_false
+	jp	z,ret_false
+	jp	nc,ret_true
+	jp	ret_false
 
 ; ============================================================================
 ; Mixed width comparisons
@@ -887,8 +902,8 @@ eq816:
 	ld	h,a
 	or	a
 	sbc	hl,de
-	jr	z,ret_true
-	jr	ret_false
+	jp	z,ret_true
+	jp	ret_false
 
 ;
 ; 8-bit a != 16-bit de
@@ -900,8 +915,8 @@ ne816:
 	ld	h,a
 	or	a
 	sbc	hl,de
-	jr	nz,ret_true
-	jr	ret_false
+	jp	nz,ret_true
+	jp	ret_false
 
 ;
 ; unsigned 8-bit a == 16-bit de (zero extend a)
@@ -911,8 +926,8 @@ ueq816:
 	ld	h,0
 	or	a
 	sbc	hl,de
-	jr	z,ret_true
-	jr	ret_false
+	jp	z,ret_true
+	jp	ret_false
 
 ;
 ; unsigned 8-bit a != 16-bit de
@@ -922,8 +937,8 @@ une816:
 	ld	h,0
 	or	a
 	sbc	hl,de
-	jr	nz,ret_true
-	jr	ret_false
+	jp	nz,ret_true
+	jp	ret_false
 
 ;
 ; unsigned 8-bit a > 16-bit de
@@ -933,9 +948,9 @@ ugt816:
 	ld	h,0
 	or	a
 	sbc	hl,de
-	jr	z,ret_false
-	jr	nc,ret_true
-	jr	ret_false
+	jp	z,ret_false
+	jp	nc,ret_true
+	jp	ret_false
 
 ;
 ; unsigned 8-bit a < 16-bit de
@@ -945,8 +960,8 @@ ult168:
 	ex	de,hl
 	or	a
 	sbc	hl,de
-	jr	c,ret_true
-	jr	ret_false
+	jp	c,ret_true
+	jp	ret_false
 
 ;
 ; unsigned 8-bit a > 16-bit de
@@ -956,9 +971,9 @@ ugt168:
 	ex	de,hl
 	or	a
 	sbc	hl,de
-	jr	z,ret_false
-	jr	nc,ret_true
-	jr	ret_false
+	jp	z,ret_false
+	jp	nc,ret_true
+	jp	ret_false
 
 ;
 ; unsigned 16-bit hl < 32-bit de'de
@@ -969,12 +984,12 @@ ult1632:
 	ld	a,d
 	or	e
 	exx
-	jr	nz,ret_true
+	jp	nz,ret_true
 	; compare hl with low word
 	or	a
 	sbc	hl,de
-	jr	c,ret_true
-	jr	ret_false
+	jp	c,ret_true
+	jp	ret_false
 
 ;
 ; 16-bit hl > 32-bit de'de (signed)
@@ -987,26 +1002,26 @@ gt1632:
 	exx
 	cp	d		; compare high bytes
 	exx
-	jr	nz,gt1632diff
+	jp	nz,gt1632diff
 	; high bytes equal, compare low 24 bits
 	exx
 	ld	a,0
 	cp	e
 	exx
-	jr	nz,gt1632diff
+	jp	nz,gt1632diff
 	; high word is 0 or -1, compare low words
 	or	a
 	sbc	hl,de
-	jr	z,ret_false
-	jr	nc,ret_true
-	jr	ret_false
+	jp	z,ret_false
+	jp	nc,ret_true
+	jp	ret_false
 gt1632diff:
 	; different high bytes, check sign of de'de
 	exx
 	bit	7,d
 	exx
-	jr	nz,ret_true	; de'de negative, hl > de'de
-	jr	ret_false
+	jp	nz,ret_true	; de'de negative, hl > de'de
+	jp	ret_false
 
 ;
 ; 8-bit a right shift by e (unsigned)
@@ -1031,17 +1046,17 @@ eq3232:
 	exx
 	ld	a,h
 	cp	d
-	jr	nz,eq32fail
+	jp	nz,eq32fail
 	ld	a,l
 	cp	e
-	jr	nz,eq32fail
+	jp	nz,eq32fail
 	exx
 	ld	a,h
 	cp	d
-	jr	nz,eq32fail
+	jp	nz,eq32fail
 	ld	a,l
 	cp	e
-	jr	z,ret_true
+	jp	z,ret_true
 eq32fail:
 	exx
 	jp	ret_false
@@ -1051,8 +1066,8 @@ eq32fail:
 ;
 ne3232:
 	call	eq3232
-	jr	z,ret_true
-	jr	ret_false
+	jp	z,ret_true
+	jp	ret_false
 
 ;
 ; hl'hl < de'de (signed)
@@ -1065,25 +1080,25 @@ lt3232:
 	jp	m,lt32diffsign
 	ld	a,h
 	cp	d
-	jr	c,lt32true
-	jr	nz,lt32false
+	jp	c,lt32true
+	jp	nz,lt32false
 	ld	a,l
 	cp	e
-	jr	c,lt32true
-	jr	nz,lt32false
+	jp	c,lt32true
+	jp	nz,lt32false
 	exx
 	; high words equal, compare low words
 	ld	a,h
 	cp	d
-	jr	c,lt32true
-	jr	nz,lt32false
+	jp	c,lt32true
+	jp	nz,lt32false
 	ld	a,l
 	cp	e
-	jr	c,lt32true
-	jr	ret_false
+	jp	c,lt32true
+	jp	ret_false
 lt32diffsign:
 	bit	7,h		; hl'hl negative?
-	jr	nz,lt32true
+	jp	nz,lt32true
 lt32false:
 	exx
 	jp	ret_false
@@ -1096,7 +1111,7 @@ lt32true:
 ;
 le3232:
 	call	eq3232
-	jr	z,ret_true
+	jp	z,ret_true
 	jp	lt3232
 
 ;
@@ -1104,16 +1119,16 @@ le3232:
 ;
 gt3232:
 	call	le3232
-	jr	z,ret_true	; was false, so > is true
-	jr	ret_false
+	jp	z,ret_true	; was false, so > is true
+	jp	ret_false
 
 ;
 ; hl'hl >= de'de (signed)
 ;
 ge3232:
 	call	lt3232
-	jr	z,ret_true	; was false, so >= is true
-	jr	ret_false
+	jp	z,ret_true	; was false, so >= is true
+	jp	ret_false
 
 ; ============================================================================
 ; Mixed 32/16 comparisons
@@ -1138,8 +1153,8 @@ eq3216:
 ;
 ne3216:
 	call	eq3216
-	jr	z,ret_true
-	jr	ret_false
+	jp	z,ret_true
+	jp	ret_false
 
 ;
 ; 32-bit hl'hl < 16-bit de (sign extend de)

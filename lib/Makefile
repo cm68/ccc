@@ -1,28 +1,26 @@
 # CCC Runtime Library Makefile
 # Builds the Z80 runtime library for programs compiled with ccc
 
+# Assembler - use our Whitesmith-compatible assembler
+ASZ = ../ws/asz
+
 # Source files
 SOURCES = ccclib.s
 
-# Object files
-OBJECTS = $(SOURCES:.s=.o)
-
-# Library target
-LIBRARY = ccclib.lib
-
-AS = z80asm
-ASFLAGS = 
+# Object files (Whitesmith .O format)
+OBJECTS = $(SOURCES:.s=.O)
 
 .PHONY: all clean
 
 all: $(OBJECTS)
-	
-# Future build rules (uncomment when assembler available):
-%.o: %.s
-	$(AS) $(ASFLAGS) --output=$@ $<
 
-# $(LIBRARY): $(OBJECTS)
-# 	ar rcs $@ $^
+# Assemble source to Whitesmith object format
+%.O: %.s $(ASZ)
+	$(ASZ) -o $@ $<
+
+# Build assembler if needed
+$(ASZ):
+	$(MAKE) -C ../ws asz
 
 clean:
-	rm -f $(OBJECTS) $(LIBRARY)
+	rm -f $(OBJECTS) *.lst

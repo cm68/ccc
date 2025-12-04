@@ -49,3 +49,8 @@ do.ast
 *.s
 !lib/*.s
 core
+ws/asz
+ws/wsnm
+ws/wslib
+ws/wssize
+lib/*.O

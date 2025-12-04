@@ -669,12 +669,14 @@ fillbuf()
 /*
  * read an entire line into a null-terminated C string
  * the line will end with a newline.
+ * comments and trailing whitespace are stripped.
  */
 void
 get_line()
 {
     int i;
     unsigned char c;
+    unsigned char *p;
 
     lineptr = linebuf;
 	for (i = 0; i < sizeof(linebuf); i++) {
@@ -692,15 +694,25 @@ get_line()
 	}
 	*lineptr = '\0';
     lineNum++;
-    i = strlen((char *)linebuf);
-    /*
-     * we normalize the line to not do the cr-lf thing.
-     * if we see a cr, we change it to and lf and null out.
-     */
-    if (i >= 2 && linebuf[i - 2] == '\r') {
-        linebuf[i - 2] = '\n';
-        linebuf[i - 1] = 0;
+
+    /* strip comments: find ; and truncate */
+    for (p = linebuf; *p; p++) {
+        if (*p == ';') {
+            *p++ = '\n';
+            *p = '\0';
+            break;
+        }
     }
+
+    /* strip trailing whitespace before newline */
+    i = strlen((char *)linebuf);
+    while (i >= 2 && (linebuf[i - 2] == ' ' || linebuf[i - 2] == '\t' ||
+                      linebuf[i - 2] == '\r')) {
+        linebuf[i - 2] = '\n';
+        linebuf[i - 1] = '\0';
+        i--;
+    }
+
 	lineptr = linebuf;
 }
 
@@ -794,7 +806,7 @@ get_token()
     int i = 0;
     unsigned char c;
 
-    /* skip over whitespace and comments */
+    /* skip over whitespace (comments stripped in get_line) */
     while (1) {
 		/* ensure buffer has content */
 		if (!*lineptr) {
@@ -806,12 +818,6 @@ get_token()
         if (c == T_EOF) {
             cur_token = T_EOF;
             return;
-        }
-
-        /* a comment */
-        if (c == ';') {
-            consume();
-            continue;
         }
         break;
     }
@@ -2223,7 +2229,7 @@ struct instruct *isr;
 
 	reg = 0;
 	if (isr->arg) {
-		if (arg == 1) arg = T_CR;
+		if (arg == T_C) arg = T_CR;  /* 'c' means carry, not register C */
 		if (arg >= T_NZ && arg <= T_CR) {
 			reg = (arg - T_NZ) << 3;
 			need(',');
