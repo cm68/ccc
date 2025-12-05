@@ -762,7 +762,13 @@ void emitGlobDrf(struct expr *e)
             cacheSetA(e);
         }
     } else if (e->size == 2) {
-        if (cacheFindWord(e) == 'H') {
+        if (fnTargetDE) {
+            /* Load directly to DE instead of HL */
+            fdprintf(outFd, "\tld de, (%s)\n", s);
+            fnTargetDE = 0;
+            fnDEValid = 1;
+            /* Note: DE cache not tracked yet, so no cacheSetDE */
+        } else if (cacheFindWord(e) == 'H') {
             /* HL already holds this value - skip load */
         } else {
             fdprintf(outFd, "\tld hl, (%s)\n", s);

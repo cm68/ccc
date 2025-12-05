@@ -520,17 +520,57 @@ void emitBinop(struct expr *e)
         char *newline = strchr(e->asm_block, '\n');
         int init_saves = fnDESaveCnt;
         int left_size = e->left ? e->left->size : 2;  /* Save before emitExpr frees */
+        int is_inline_cmp = 0;
+        int usedDirDE = 0;
 
         if (newline) {
             call_inst = strdup(newline + 1);
+            /* Check if this is inline sbc comparison (no call) */
+            is_inline_cmp = strstr(call_inst, "sbc hl") && !strstr(call_inst, "call");
         }
 
-        emitExpr(e->left);
-        /* For byte ops, move A to E; for word ops, use standard pushStack */
-        if (left_size == 1) {
-            emit(S_ESAVE);  /* ld e, a */
+        /* Check for signed compare with 0: "bit 7, h" pattern */
+        if (strstr(e->asm_block, "bit 7, h")) {
+            /* Inline signed compare with 0:
+             * Only emit left child, skip pushStack and right child */
+            emitExpr(e->left);
+            fdprintf(outFd, "%s\n", e->asm_block);
+            /* Set Z flag meaning: for < and >=, bit 7 sets Z appropriately
+             * x < 0: NZ if true (Z=0 means true) -> fnZValid = 2
+             * x >= 0: Z if true (Z=1 means true) -> fnZValid = 1
+             * For <= and >, more complex: already handled by jump in asm_block
+             */
+            switch (e->op) {
+            case '<': fnZValid = 2; break;  /* x < 0: NZ = true */
+            case 'g': fnZValid = 1; break;  /* x >= 0: Z = true */
+            case 'L': fnDualCmp = 'L'; break;  /* x <= 0: two-test */
+            case '>': fnDualCmp = '>'; break;  /* x > 0: two-test */
+            }
+            /* Free the right child (constant 0) without emitting, set to NULL to prevent double-free */
+            if (e->right) {
+                freeExpr(e->right);
+                e->right = NULL;
+            }
+            if (call_inst) free(call_inst);
+            return;
+        }
+
+        /* Check if left is simple global word deref - can load directly to DE */
+        if (left_size == 2 && e->left && e->left->op == 'M' &&
+            !e->left->asm_block && e->left->left &&
+            e->left->left->op == '$' && e->left->left->symbol) {
+            fnTargetDE = 1;
+            emitExpr(e->left);
+            /* fnTargetDE cleared by emitGlobDrf, fnDEValid set */
+            usedDirDE = 1;
         } else {
-            pushStack();
+            emitExpr(e->left);
+            /* For byte ops, move A to E; for word ops, use standard pushStack */
+            if (left_size == 1) {
+                emit(S_ESAVE);  /* ld e, a */
+            } else {
+                pushStack();
+            }
         }
         emitExpr(e->right);
 
@@ -539,7 +579,33 @@ void emitBinop(struct expr *e)
             fnDESaveCnt--;
         }
 
-        if (call_inst) {
+        if (is_inline_cmp) {
+            /* Emit full inline code: ex de,hl + or a + sbc hl,de
+             * After pushStack: DE=left, HL=right
+             * ex de,hl: HL=left, DE=right
+             * sbc hl,de = left - right */
+            if (usedDirDE) {
+                /* Skip ex de,hl - already have DE=left, HL=right */
+                char *p = e->asm_block;
+                if (strncmp(p, "\tex de, hl", 10) == 0) {
+                    p += 10;
+                    while (*p == ' ' || *p == ';') {
+                        while (*p && *p != '\n') p++;
+                    }
+                    if (*p == '\n') p++;
+                }
+                fdprintf(outFd, "%s\n", p);
+            } else {
+                fdprintf(outFd, "%s\n", e->asm_block);
+            }
+            /* Set flag based on operator */
+            switch (e->op) {
+            case 'Q': fnZValid = 1; break;       /* EQ: Z=1 true */
+            case 'n': fnZValid = 2; break;       /* NE: Z=1 false */
+            case 'g': fnCmpFlag = 'c'; break;    /* GE: NC=1 true */
+            case '<': fnCmpFlag = 'C'; break;    /* LT: C=1 true */
+            }
+        } else if (call_inst) {
             fdprintf(outFd, "%s\n", call_inst);
             cacheInvalA();  /* Function calls clobber A */
             if (strstr(call_inst, "call")) {
@@ -550,11 +616,11 @@ void emitBinop(struct expr *e)
                     fnZValid = 1;
                 }
             }
-            free(call_inst);
         }
+        if (call_inst) free(call_inst);
 
         /* Only pop stack for word ops (byte ops didn't push) */
-        if (left_size != 1) {
+        if (left_size != 1 && !usedDirDE) {
             int zflag_saved = fnZValid;
             popStack();
             fnZValid = zflag_saved;

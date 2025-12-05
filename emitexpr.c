@@ -106,6 +106,24 @@ void emitExpr(struct expr *e)
         free(e);
         return;
     }
+    /* Handle DEREF of word register variable (BC) with caching */
+    else if (e->op == 'M' && e->size == 2 && e->asm_block &&
+             e->left && e->left->op == '$' && e->left->symbol &&
+             strstr(e->asm_block, "ld h, b")) {
+        /* Check if HL already has this BC register variable's value */
+        int cached = cacheFindWord(e);
+        if (cached == 'H') {
+            /* HL already has this value - skip load */
+        } else {
+            fdprintf(outFd, "%s\n", e->asm_block);
+            clearHL();
+            cacheSetHL(e);
+        }
+        free(e->asm_block);
+        if (e->left) freeExpr(e->left);
+        free(e);
+        return;
+    }
     /* Handle global symbol address with caching */
     else if (e->op == '$' && e->symbol && e->asm_block && e->asm_block[0]) {
         /* Check if HL already has this address - only for globals that load address */

@@ -91,8 +91,8 @@ $(CC1OBJECTS): $(HFILES)
 	./cc2 $<
 
 # Suffix rule to generate .pp (pretty-printed) files from .ast files
-%.pp: %.ast astpp.lisp
-	./astpp.lisp $< > $@
+%.pp: %.ast astpp.py
+	python3 ./astpp.py $< > $@
 
 # Suffix rule to assemble to .obj files
 %.obj: %.s
@@ -107,10 +107,9 @@ stage1/%.i: %.c cc1 FORCE
 stage1/%.ast: %.c cc1 FORCE
 	@mkdir -p stage1
 	./cc1 -DCCC -i./include -I. -E -o $@ $<
-	mv $*.i stage1/$*.i
 
 stage1/%.pp: stage1/%.ast FORCE
-	./astpp.lisp $< > $@
+	python3 ./astpp.py $< > $@
 
 stage1/%.s: stage1/%.ast cc2 FORCE
 	./cc2 -o $@ $<
@@ -149,7 +148,7 @@ stage1: cc1 cc2
 	    if [ $$ret1 -ne 0 ]; then \
 	      echo "FAIL (parse error)"; \
 	    else \
-	      ./astpp.lisp stage1/$$b.ast >stage1/$$b.pp 2>>stage1/$$b.err ; \
+	      python3 ./astpp.py stage1/$$b.ast >stage1/$$b.pp 2>>stage1/$$b.err ; \
 	      ./cc2 stage1/$$b.ast >stage1/$$b.s 2>>stage1/$$b.err ; \
 	      ret2=$$?; \
 	      if [ $$ret2 -ne 0 ]; then \
