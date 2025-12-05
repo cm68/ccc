@@ -358,7 +358,23 @@ static const char *locName(int loc)
     case LOC_STACK: return "stk";
     case LOC_IX:    return "ix";
     case LOC_INDIR: return "ind";
+    case LOC_FLAGS: return "flags";
     default:        return "?";
+    }
+}
+
+/* Condition code names */
+static const char *condName(int cond)
+{
+    switch (cond) {
+    case CC_NONE: return "";
+    case CC_Z:    return "z";
+    case CC_NZ:   return "nz";
+    case CC_C:    return "c";
+    case CC_NC:   return "nc";
+    case CC_M:    return "m";
+    case CC_P:    return "p";
+    default:      return "?";
     }
 }
 
@@ -402,6 +418,9 @@ dumpSchedExpr(struct expr *e, int indent)
             }
             if (e->loc == LOC_STACK || e->loc == LOC_IX) {
                 fdprintf(dumpFd, "=%d", (int)e->offset);
+            }
+            if (e->loc == LOC_FLAGS && e->cond != CC_NONE) {
+                fdprintf(dumpFd, ":%s", condName(e->cond));
             }
         }
         if (e->dest != R_NONE) {

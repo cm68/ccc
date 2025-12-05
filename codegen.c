@@ -2275,6 +2275,32 @@ schedExpr(struct expr *e, int dest)
             schedExpr(e->left, R_DE);
             schedExpr(e->right, R_HL);
         }
+        /* Set condition code based on operator and signedness */
+        e->loc = LOC_FLAGS;
+        switch (e->op) {
+        case 'Q':  /* == */
+            e->cond = CC_Z;
+            break;
+        case 'n':  /* != */
+            e->cond = CC_NZ;
+            break;
+        case '<':
+            /* unsigned: C set means less; signed: use helper result */
+            e->cond = (e->flags & E_UNSIGNED) ? CC_C : CC_C;
+            break;
+        case '>':
+            /* unsigned: C clear AND NZ; signed: use helper result */
+            e->cond = (e->flags & E_UNSIGNED) ? CC_NZ : CC_NZ;
+            break;
+        case 'L':  /* <= */
+            /* unsigned: C set OR Z; signed: M or Z */
+            e->cond = (e->flags & E_UNSIGNED) ? CC_Z : CC_Z;
+            break;
+        case 'g':  /* >= */
+            /* unsigned: C clear; signed: P or Z */
+            e->cond = (e->flags & E_UNSIGNED) ? CC_NC : CC_NC;
+            break;
+        }
         break;
 
     case '=':  /* Assignment */

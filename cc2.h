@@ -103,6 +103,19 @@ struct labelMap {
 #define LOC_STACK   4           // Stack-relative (IY + e->offset)
 #define LOC_IX      5           // IX-indexed (IX + e->offset)
 #define LOC_INDIR   6           // Indirect through register e->reg
+#define LOC_FLAGS   7           // Result in flags, e->cond specifies which
+
+/*
+ * Condition codes for LOC_FLAGS (e->cond field)
+ * Encodes which flag and what sense for conditional jumps
+ */
+#define CC_NONE     0           // No condition
+#define CC_Z        1           // Zero flag set (jp z)
+#define CC_NZ       2           // Zero flag clear (jp nz)
+#define CC_C        3           // Carry flag set (jp c)
+#define CC_NC       4           // Carry flag clear (jp nc)
+#define CC_M        5           // Sign flag set / negative (jp m)
+#define CC_P        6           // Sign flag clear / positive (jp p)
 
 /*
  * Register identifiers for e->reg and e->dest
@@ -138,6 +151,7 @@ struct expr {
     unsigned char loc;          // Location type: LOC_CONST, LOC_REG, LOC_MEM, etc.
     unsigned char reg;          // Register if LOC_REG or LOC_INDIR: R_A, R_HL, R_DE, etc.
     unsigned char dest;         // Destination register for result: R_HL, R_DE, R_A
+    unsigned char cond;         // Condition code if LOC_FLAGS: CC_Z, CC_NZ, CC_C, etc.
     char offset;                // Stack/IX offset if LOC_STACK or LOC_IX (-128..127)
 
     /* Code generation fields (to be phased out) */
