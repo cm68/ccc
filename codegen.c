@@ -1549,6 +1549,11 @@ static void generateExpr(struct expr *e)
         return;
     }
 
+    /* For assignments, propagate size to constant RHS before code gen */
+    if (e->op == '=' && e->right && e->right->op == 'C') {
+        e->right->size = e->size;
+    }
+
     /* Recursively generate code for children (postorder traversal) */
     if (e->left) generateExpr(e->left);
     if (e->right) generateExpr(e->right);
