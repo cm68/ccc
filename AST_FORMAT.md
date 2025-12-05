@@ -1,296 +1,373 @@
-# AST Output Format
+# CCC AST Binary Format
 
-The compiler outputs a compact paren-free hex AST format for consumption by
-the second pass (code generator).
+This document describes the binary AST format produced by cc1 and consumed by cc2.
 
-## Format Overview
+## Overview
 
-The AST uses a paren-free format with:
-- Single-character opcodes
-- Hex-encoded numbers terminated with `.`
-- Hex-encoded symbol names
-- Width suffixes (`:b`, `:s`, `:l`, `:p`)
-- Counted children for compound statements
+The AST is a compact binary format with minimal whitespace. Numbers are hexadecimal.
+Names use length-prefixed format. All expressions carry type/size annotations.
 
-### Basic Syntax
+## Encoding Primitives
 
-- **Numbers**: Hex digits terminated by `.` (e.g., `a.` = 10, `ff.` = 255)
-- **Symbols**: `$` followed by hex-encoded name (e.g., `$5f78` = `_x`)
-- **Widths**: `:b` (byte), `:s` (short), `:l` (long), `:p` (pointer)
-- **Operators**: Single character followed by width and operands
-
-## Global Variables
-
-Global variables are emitted with the `Z` opcode:
+### Names
 ```
-Z$<hex_name><type>[<init>]
+<2-hex-len><ascii-chars>
 ```
+Example: `05hello` = "hello" (5 characters)
 
-**Examples:**
-```c
-int global_a = 10;     // Z$_global_a s 1. a.
-int global_b;          // Z$_global_b s 0.
-```
+### Numbers
+- 2-digit hex: `%02x` format (0-255)
+- 4-digit hex: `%04lx` format (0-65535)
+- 8-digit hex (constants): `#%08lx` format (32-bit signed, two's complement)
 
-The format is:
-- `Z` - global variable marker
-- `$` + hex-encoded name
-- type width (s=short, l=long, b=byte, p=pointer)
-- init flag: `1.` if initialized, `0.` if not
-- initializer value (if init flag is 1)
-
-## Functions
-
-Functions are emitted with the `F` opcode:
-```
-F<width>$<hex_name><param_count>.<body>
-```
-
-**Example:**
-```c
-int add(int x, int y) {
-    return x + y;
-}
-```
-Emits:
-```
-Fs$_add2.
-  ds$x
-  ds$y
-  B0.1.R1.+sMs$xMs$y
-```
-
-## Expression Format
-
-Expressions use prefix notation with single-character operators:
-
-### Operators
-
-| Op | Name | Format | Description |
-|----|------|--------|-------------|
-| `+` | ADD | `+<w><left><right>` | Addition |
-| `-` | SUB | `-<w><left><right>` | Subtraction |
-| `*` | MUL | `*<w><left><right>` | Multiplication |
-| `/` | DIV | `/<w><left><right>` | Division |
-| `%` | MOD | `%<w><left><right>` | Modulo |
-| `<` | LT | `<<w><left><right>` | Less than |
-| `>` | GT | `><w><left><right>` | Greater than |
-| `L` | LE | `L<w><left><right>` | Less or equal |
-| `g` | GE | `g<w><left><right>` | Greater or equal |
-| `Q` | EQ | `Q<w><left><right>` | Equal |
-| `n` | NE | `n<w><left><right>` | Not equal |
-| `&` | AND | `&<w><left><right>` | Bitwise AND |
-| `\|` | OR | `\|<w><left><right>` | Bitwise OR |
-| `^` | XOR | `^<w><left><right>` | Bitwise XOR |
-| `~` | NOT | `~<w><operand>` | Bitwise NOT |
-| `y` | LSHIFT | `y<w><left><right>` | Left shift |
-| `w` | RSHIFT | `w<w><left><right>` | Right shift |
-| `j` | LAND | `j<left><right>` | Logical AND |
-| `h` | LOR | `h<left><right>` | Logical OR |
-| `!` | LNOT | `!<operand>` | Logical NOT |
-| `M` | DEREF | `M<w><addr>` | Memory read |
-| `=` | ASSIGN | `=<w><lval><rval>` | Assignment |
-| `@` | CALL | `@<argc>.<func><args...>` | Function call |
-| `?` | TERN | `?<cond><true><false>` | Ternary |
-| `N` | NARROW | `N<w><expr>` | Truncate to smaller type |
-| `W` | WIDEN | `W<w><expr>` | Zero-extend |
-| `X` | SEXT | `X<w><expr>` | Sign-extend |
-| `Y` | MCOPY | `Y<len>.<dest><src>` | Memory copy |
-| `A` | ADDR | `A<expr>` | Address-of |
-
-### Width Suffixes
-
-- `b` - byte (1 byte: char)
-- `s` - short (2 bytes: short, int)
-- `l` - long (4 bytes: long)
+### Type/Size Suffixes
+Single character after operators indicating operand type:
+- `b` - signed byte (1 byte)
+- `B` - unsigned byte
+- `s` - signed short/int (2 bytes)
+- `S` - unsigned short/int
+- `l` - signed long (4 bytes)
+- `L` - unsigned long
 - `p` - pointer (2 bytes)
 - `f` - float (4 bytes)
 - `d` - double (8 bytes)
+- `v` - void
 
-**Examples:**
-```c
-char c; int i;
-c = 10;     // =b$_c a.
-i = c;      // =s$_i Xsb$_c     (sign-extend char to int)
+---
+
+## Top-Level Declarations
+
+### Function Definition
+```
+F<rettype><hexname><param_count><params...><body>
 ```
 
-### Increment/Decrement Operators
+- `rettype` - single char size suffix for return type
+- `hexname` - hex-length-prefixed function name
+- `param_count` - 2-digit hex count of parameters
+- `params` - sequence of `d<type><hexname>` declarations
+- `body` - statement (usually a Block)
 
-| Op | Name | Description |
-|----|------|-------------|
-| `0xcf` | PREINC | Prefix increment |
-| `0xef` | POSTINC | Postfix increment |
-| `0xd6` | PREDEC | Prefix decrement |
-| `0xf6` | POSTDEC | Postfix decrement |
+Example:
+```
+Fs05_main02ds04argcdp04argv
+```
+= `int _main(int argc, char **argv)` - returns short (s), name "_main", 2 params
 
-### Compound Assignment Operators
+### Global Variable
+```
+Z$<hexname><type><has_init><init?>
+```
 
-| Op | Name | Description |
-|----|------|-------------|
-| `P` | ADDASSIGN | += |
-| `0xdf` | SUBASSIGN | -= |
-| `T` | MULASSIGN | *= |
-| `2` | DIVASSIGN | /= |
-| `0xfe` | MODASSIGN | %= |
-| `0xc6` | ANDASSIGN | &= |
-| `1` | ORASSIGN | \|= |
-| `X` | XORASSIGN | ^= |
-| `0` | LSHASSIGN | <<= |
-| `6` | RSHASSIGN | >>= |
+- `type` - `p` (pointer), `a<count><elemsize>` (array), `r<size>` (aggregate), or size char
+- `has_init` - `00` (no init) or `01` (has init)
+- `init` - initializer expression if present
 
-## Statement Format
+### String Literal
+```
+U<hexname><len><hexdata>
+```
 
-Statements use single-character codes with counted children:
+- `hexname` - synthetic name like "str0", "str1"
+- `len` - 2-digit hex byte count
+- `hexdata` - hex-encoded string bytes
 
-| Op | Name | Format | Description |
-|----|------|--------|-------------|
-| `B` | BLOCK | `B<has_label>.<count>.<stmts...>` | Block |
-| `E` | EXPR | `E<expr>` | Expression statement |
-| `R` | RETURN | `R<has_expr>.[<expr>]` | Return |
-| `I` | IF | `I<has_else>.<cond><then>[<else>]` | If statement |
-| `W` | WHILE | `W<cond><body>` | While loop |
-| `D` | DO | `D<body><cond>` | Do-while loop |
-| `F` | FOR | See below | For loop |
-| `S` | SWITCH | `S<has_label>.[<label>]<case_count>.<expr><cases...>` | Switch |
-| `C` | CASE | `C<body_count>.<value><body_stmts...>` | Case label |
-| `O` | DEFAULT | `O<body_count>.<body_stmts...>` | Default label |
-| `K` | BREAK | `K` | Break |
-| `N` | CONTINUE | `N` | Continue |
-| `G` | GOTO | `G$<label>` | Goto |
-| `L` | LABEL | `L$<label><stmt>` | Label |
-| `d` | DECL | `d<width>$<name>` | Declaration |
+Example:
+```
+U04str00548656c6c6f00
+```
+= str0 containing "Hello\0" (5 bytes + null = 6 bytes shown as 05)
 
-### Block Statement
+### Array Initializer (in global)
+```
+[<width><count><items...>
+```
 
-Format: `B<has_label>.<count>.<stmts...>`
-- `has_label`: `1` if block has a label, `0` otherwise
-- `count`: number of statements in hex
-- If has_label=1, label name follows count
+- `width` - element size suffix
+- `count` - 2-digit hex element count
+- `items` - constant expressions
+
+---
+
+## Statements
+
+### Block
+```
+B<decl_count><stmt_count><decls...><stmts...>
+```
+
+- `decl_count` - 2-digit hex count of local variable declarations
+- `stmt_count` - 2-digit hex count of statements
+- `decls` - sequence of `d<type><hexname>` declarations
+- `stmts` - sequence of statements
+
+Example: `B0203` = block with 2 declarations, 3 statements
 
 ### If Statement
-
-Format: `I<has_else>.<cond><then>[<else>]`
-- `has_else`: `1` if has else branch, `0` otherwise
-- If has_else=1, else statement follows then
-
-### For Loop
-
-For loops with labels are lowered to synthetic blocks:
 ```
-B0.<count>.
-  <init>           ; if present
-  L$_top: ...      ; loop top
-  I...             ; if (cond) body else break
-  L$_continue: ... ; continue label
-  <incr>           ; if present
-  G$_top           ; goto top
-  L$_break: (;)    ; break label
+I<has_else><cond><then>[<else>]
+```
+
+- `has_else` - `00` (no else) or `01` (has else)
+- `cond` - condition expression
+- `then` - then-branch statement
+- `else` - else-branch statement (only if has_else=01)
+
+### While Loop (lowered to labels)
+```
+B0005L<top>I01<cond><body>B0001G<break>L<continue>G<top>L<break>
+```
+
+Loops are lowered to a block containing:
+1. `L<label>_top` - loop top label
+2. `I01<cond><body>B0001G<break>` - if with else that breaks
+3. `L<label>_continue` - continue label
+4. `G<label>_top` - goto top
+5. `L<label>_break` - break label
+
+### For Loop (lowered)
+```
+B00<count>[E<init>]L<top>[I01<cond><body>B0001G<break>|<body>]L<continue>[E<incr>]G<top>L<break>
+```
+
+### Expression Statement
+```
+E<expr>
+```
+
+### Return Statement
+```
+R<has_value>[<expr>]
+```
+
+- `has_value` - `00` (void return) or `01` (has value)
+
+### Label
+```
+L<hexname>
+```
+
+### Goto
+```
+G<hexname>
 ```
 
 ### Switch Statement
-
-Format: `S<has_label>.[<label>]<case_count>.<expr><cases...>`
-
-Each case: `C<body_count>.<value><body_stmts...>`
-Each default: `O<body_count>.<body_stmts...>`
-
-## Symbol Names
-
-Symbols are hex-encoded and prefixed with `$`:
-
-| Scope | Prefix | Example | Description |
-|-------|--------|---------|-------------|
-| Global/Extern | `_` | `$_global` | Global variable or function |
-| Static | (mangled) | `$counter0` | Static variable with index |
-| Local | (none) | `$x` | Local variable |
-| String literal | `__` | `$__str0` | String constant |
-
-**Static Variable Name Mangling:**
-
-Static variables use simplified naming: `<name><index>`
-- File-global counter increments for each static
-- Example: `static int counter;` becomes `$counter0`
-
-## String Literals
-
-String literals are emitted in a literals section:
 ```
-t<count>.
-  <len>.<hex_data>
-  ...
+S<has_label>[<hexlabel>]<case_count><expr><cases...>
 ```
 
-**Example:**
+- `has_label` - `00` or `01`
+- `case_count` - 2-digit hex count of case/default labels
+
+### Case Label
+```
+C<stmt_count><value><stmts...>
+```
+
+### Default Label
+```
+O<stmt_count><stmts...>
+```
+
+### Inline Assembly
+```
+A<len><hexdata>
+```
+
+### Empty Statement
+```
+;
+```
+
+### Break
+```
+K
+```
+
+### Continue
+```
+N
+```
+
+---
+
+## Expressions
+
+All expressions use prefix notation with type suffix after the operator.
+
+### Constants
+```
+#<8-hex-digits>
+```
+
+32-bit signed value in two's complement.
+Example: `#00000042` = 66, `#ffffffff` = -1
+
+### Symbol Reference
+```
+$<hexname>
+```
+
+Example: `$05_main` = reference to _main
+
+### Null/Empty Expression
+```
+_
+```
+
+### Memory Dereference
+```
+M<type><addr>
+```
+
+Example: `Mb$03foo` = byte load from foo
+
+### Assignment
+```
+=<type><lvalue><rvalue>
+```
+
+Example: `=s$01x#00000005` = x = 5 (short)
+
+### Binary Operators
+```
+<op><type><left><right>
+```
+
+Operators:
+- `+` - add
+- `-` - subtract
+- `*` - multiply
+- `/` - divide
+- `%` - modulo
+- `&` - bitwise AND
+- `|` - bitwise OR
+- `^` - bitwise XOR
+- `y` - left shift
+- `w` - right shift (arithmetic)
+- `<` - less than
+- `>` - greater than
+- `Q` - equal (==)
+- `n` - not equal (!=)
+- `L` - less or equal (<=)
+- `g` - greater or equal (>=)
+- `h` - logical OR (||)
+- `j` - logical AND (&&)
+
+### Unary Operators
+```
+<op><type><operand>
+```
+
+- `M` - memory dereference
+- `!` - logical NOT
+- `~` - bitwise NOT
+- `\` - address-of
+- `'` - unary minus
+
+### Type Conversions
+```
+N<type><expr>   - narrow (truncate to smaller type)
+W<type><expr>   - widen (zero-extend unsigned)
+<0xab><type><expr>   - sign-extend (SEXT)
+```
+
+### Increment/Decrement
+```
+<op><type><expr><amount>
+```
+
+- `0xcf` - pre-increment (++x)
+- `0xef` - post-increment (x++)
+- `0xd6` - pre-decrement (--x)
+- `0xf6` - post-decrement (x--)
+- `amount` - 4-digit hex increment value
+
+### Function Call
+```
+@<argc><func><args...>
+```
+
+- `argc` - 2-digit hex argument count
+- `func` - function expression
+- `args` - argument expressions wrapped in comma nodes
+
+### Ternary Operator
+```
+?<type><cond><then><else>
+```
+
+### Memory Copy
+```
+Y<length><dest><src>
+```
+
+- `length` - 4-digit hex byte count
+
+### Bitfield Extract
+```
+<0xa7><offset><width><addr>
+```
+
+### Bitfield Assign
+```
+<0xdd><offset><width><addr><value>
+```
+
+### Comma Operator
+```
+,<type><left><right>
+```
+
+Used for function argument lists.
+
+---
+
+## Example
+
+```
+Fs05_main00
+B0101ds01x
+E=s$01x#0000000a
+R01Ms$01x
+```
+
+Parses as:
 ```c
-char *s = "hello";
-```
-Emits:
-```
-t1.
-  6.68656c6c6f00
-```
-
-## Type Conversions
-
-The compiler automatically inserts type conversion operators:
-
-- **N** (NARROW): Truncate larger to smaller (e.g., int to char)
-- **X** (SEXT): Sign-extend signed types (e.g., char to int)
-- **W** (WIDEN): Zero-extend unsigned types
-
-**Examples:**
-```c
-char c; int i; long l;
-
-c = i;      // =b$_c Nb Ms$_i     (narrow int to char)
-i = c;      // =s$_i Xs Mb$_c     (sign-extend char to int)
-l = i;      // =l$_l Xl Ms$_i     (sign-extend int to long)
-```
-
-## Complete Example
-
-```c
-int global_a = 10;
-
-int main() {
-    int x = 5;
-    if (x > 0) {
-        return 1;
-    }
-    return 0;
+int _main() {
+    int x;      // B0101ds01x - block with 1 decl, 1 stmt
+    x = 10;     // E=s$01x#0000000a
+    return x;   // R01Ms$01x
 }
 ```
 
-Emits:
-```
-Z$_global_as1.a.
+---
 
-Fs$_main0.
-B0.3.ds$xE=s$x5.I0.>sMs$x0.B0.1.R1.1.R1.0.
-```
+## Notes
 
-Breaking down the function body:
-- `B0.3.` - Block, no label, 3 statements
-- `ds$x` - Declare short variable x
-- `E=s$x5.` - Expression: assign 5 to x
-- `I0.>sMs$x0.B0.1.R1.1.` - If (no else): condition `x > 0`, then block with return 1
-- `R1.0.` - Return 0
+1. **Loop Lowering**: Loops are fully lowered to labeled if/goto sequences by cc1.
+   The labels use format `L<n>_top`, `L<n>_continue`, `L<n>_break`.
 
-## Implementation Notes
+2. **Name Mangling**:
+   - Global/extern symbols get `_` prefix
+   - Static symbols use mangled names
+   - Local variables have no prefix
 
-The format is designed for:
-1. **Compact output** - Minimal bytes for constrained environments
-2. **Easy parsing** - Single-character opcodes, counted children
-3. **Self-delimiting** - Hex numbers end with `.`, symbols start with `$`
-4. **No ambiguity** - Each construct has unique prefix
+3. **Operator Encoding**: Some operators use byte values >127:
+   - `0xab` (171) - sign-extend (SEXT)
+   - `0xcf` (207) - pre-increment
+   - `0xef` (239) - post-increment
+   - `0xd6` (214) - pre-decrement
+   - `0xf6` (246) - post-decrement
+   - `0xa7` (167) - bitfield extract
+   - `0xdd` (221) - bitfield assign
+   - `0xbb` (187) - memory copy (Y alias)
 
-## Type Names
+4. **Width Annotations**: Operators that produce values have a type suffix
+   indicating the result size. This is used for code generation.
 
-Type information uses width codes:
-- `b` - char (1 byte)
-- `s` - short/int (2 bytes)
-- `l` - long (4 bytes)
-- `p` - pointer (2 bytes)
-
-Arrays: `:array:<count>` in type declarations
-Structs: `:struct:<size>` in type declarations
+5. **Expression Flags**: The type suffix also encodes signedness:
+   - Lowercase (b,s,l) = signed
+   - Uppercase (B,S,L) = unsigned
+   - `p` = pointer (unsigned)

@@ -302,7 +302,7 @@ isParameter(const char *name)
  * Walk statement tree and assign stack frame offsets to local variables
  */
 static void
-walkForLocals(struct stmt *s)
+walkLocals(struct stmt *s)
 {
     if (!s) return;
 
@@ -318,9 +318,9 @@ walkForLocals(struct stmt *s)
     }
 
     /* Recursively walk child statements */
-    if (s->then_branch) walkForLocals(s->then_branch);
-    if (s->else_branch) walkForLocals(s->else_branch);
-    if (s->next) walkForLocals(s->next);
+    if (s->then_branch) walkLocals(s->then_branch);
+    if (s->else_branch) walkLocals(s->else_branch);
+    if (s->next) walkLocals(s->next);
 }
 
 /*
@@ -1337,54 +1337,57 @@ assignFrmOff()
     }
 
     /* Then, assign offsets to local variables (negative offsets below FP) */
-    walkForLocals(fnBody);
+    walkLocals(fnBody);
     
 }
 
 /*
- * Check if a comparison can be inlined (cheap operations)
- * Returns inline assembly or NULL if needs helper call
+ * Check if expression is unsigned 16-bit comparison that can be inlined
+ * Unsigned comparisons can use sbc hl,de and check carry flag
  */
-static const char *
-getInlineCmp(const char *op_name, int size, int is_unsigned)
+static int isInlUCmp(struct expr *e)
 {
-    /* 16-bit comparisons that can be inlined */
-    if (size == 2) {
-        if (strcmp(op_name, "eq") == 0) {
-            /* HL == DE: or a; sbc hl,de sets Z if equal */
-            return "\tex de, hl\n\tor a\n\tsbc hl, de";
-        }
-        if (strcmp(op_name, "ne") == 0) {
-            /* HL != DE: or a; sbc hl,de sets NZ if not equal */
-            return "\tex de, hl\n\tor a\n\tsbc hl, de";
-        }
-        if (is_unsigned && strcmp(op_name, "lt") == 0) {
-            /* unsigned HL < DE: or a; sbc hl,de sets C if less */
-            return "\tex de, hl\n\tor a\n\tsbc hl, de";
-        }
-    }
-    /* 8-bit comparisons that can be inlined */
-    if (size == 1) {
-        if (strcmp(op_name, "eq") == 0) {
-            /* A == E: cp e sets Z if equal */
-            return "\tld e, a\n\tcp e";
-        }
-        if (strcmp(op_name, "ne") == 0) {
-            /* A != E: cp e sets NZ if not equal */
-            return "\tld e, a\n\tcp e";
-        }
-        if (is_unsigned && strcmp(op_name, "lt") == 0) {
-            /* unsigned A < E: cp e sets C if less */
-            return "\tld e, a\n\tcp e";
-        }
-    }
-    return NULL;
+    /* Must be ge or lt comparison */
+    if (e->op != 'g' && e->op != '<') return 0;
+
+    /* Must be 16-bit operands */
+    if (e->size != 2) return 0;
+    if (!e->left || e->left->size != 2) return 0;
+    if (!e->right || e->right->size != 2) return 0;
+
+    /* Must be unsigned (either operand unsigned makes it unsigned) */
+    return isOpndUnsign(e->left) || isOpndUnsign(e->right);
+}
+
+/*
+ * Check if expression is signed 16-bit comparison with constant 0
+ * Returns: '<' for LT, 'g' for GE, 'L' for LE, '>' for GT, 0 otherwise
+ * These can be optimized using bit tests on high byte
+ */
+static int isSCmpZero(struct expr *e)
+{
+    /* Must be a comparison op */
+    if (e->op != '<' && e->op != 'g' && e->op != 'L' && e->op != '>') return 0;
+
+    /* Must be 16-bit */
+    if (e->size != 2) return 0;
+    if (!e->left || e->left->size != 2) return 0;
+    if (!e->right) return 0;
+
+    /* Right operand must be constant 0 */
+    if (e->right->op != 'C' || e->right->value != 0) return 0;
+
+    /* Must be signed (neither operand unsigned) */
+    if (isOpndUnsign(e->left) || isOpndUnsign(e->right)) return 0;
+
+    return e->op;
 }
 
 /*
  * Generate standard binary operator code
  * Common pattern: move PRIMARY to SECONDARY, call runtime function
- * Some cheap operations are inlined instead of calling helpers
+ * For unsigned 16-bit comparisons (ge/lt), inline with sbc hl,de
+ * For signed 16-bit comparisons with 0, inline with bit 7,h
  */
 static void
 genBinop(struct expr *e, const char *op_name)
@@ -1392,14 +1395,46 @@ genBinop(struct expr *e, const char *op_name)
     char funcname[32];
     char buf[256];
     char *move_inst;
-    const char *inline_code;
-    int is_unsigned;
+    int cmp_op;
 
-    /* Check if this can be inlined */
-    is_unsigned = isOpndUnsign(e->left) || isOpndUnsign(e->right);
-    inline_code = getInlineCmp(op_name, e->size, is_unsigned);
-    if (inline_code) {
-        e->asm_block = strdup(inline_code);
+    /* Inline unsigned 16-bit ge/lt comparisons */
+    if (isInlUCmp(e)) {
+        /* After pushStack: DE=left, HL=right
+         * ex de,hl: HL=left, DE=right
+         * or a: clear carry
+         * sbc hl,de: HL = left - right, carry set if left < right */
+        snprintf(buf, sizeof(buf),
+            "\tex de, hl  ; move PRIMARY to SECONDARY\n"
+            "\tor a  ; clear carry\n"
+            "\tsbc hl, de  ; compare: C if left < right");
+        e->asm_block = strdup(buf);
+        return;
+    }
+
+    /* Inline signed 16-bit comparisons with 0 */
+    cmp_op = isSCmpZero(e);
+    if (cmp_op) {
+        /* Left operand is in HL, right is constant 0 (not emitted)
+         * x < 0:  bit 7,h; nz = negative = true
+         * x >= 0: bit 7,h; z = non-negative = true
+         * x <= 0: test zero first, then sign
+         * x > 0:  test sign first, then zero
+         */
+        switch (cmp_op) {
+        case '<':  /* x < 0: true if negative */
+            snprintf(buf, sizeof(buf), "\tbit 7, h");
+            break;
+        case 'g':  /* x >= 0: true if non-negative */
+            snprintf(buf, sizeof(buf), "\tbit 7, h");
+            break;
+        case 'L':  /* x <= 0: two-test pattern handled in emit.c */
+        case '>':  /* x > 0: two-test pattern handled in emit.c */
+            snprintf(buf, sizeof(buf), "\tbit 7, h");
+            break;
+        }
+        e->asm_block = strdup(buf);
+        /* Mark right operand (constant 0) as not needing emission */
+        if (e->right) e->right->asm_block = strdup("");
         return;
     }
 

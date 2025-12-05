@@ -101,8 +101,60 @@ static void emitCond(struct expr *e, int invert,
     /* Leaf condition - emit comparison and jump */
     emitExpr(e);
 
+    /* Check for dual-test pattern: <= 0 and > 0 */
+    if (fnDualCmp) {
+        /* After bit 7, h: NZ = negative
+         * <= 0: negative=true OR zero=true
+         * > 0: negative=false AND zero=false (only positive true) */
+        int have_target = (false_num >= 0 || (false_num == -1 && false_lbl) ||
+                          true_num >= 0 || (true_num == -1 && true_lbl));
+        if (have_target) {
+            if (fnDualCmp == 'L') {
+                /* x <= 0: jump to true if NZ (negative), else test zero */
+                if (!invert) {
+                    if (true_num >= 0 || (true_num == -1 && true_lbl))
+                        emitJump("jp nz,", true_lbl, true_num);
+                    else
+                        fdprintf(outFd, "\tjp nz, $+8\n");
+                    fdprintf(outFd, "\tld a, h\n\tor l\n");
+                    if (false_num >= 0 || (false_num == -1 && false_lbl))
+                        emitJump("jp nz,", false_lbl, false_num);
+                } else {
+                    /* inverted <= is > : false if negative, false if zero */
+                    if (false_num >= 0 || (false_num == -1 && false_lbl))
+                        emitJump("jp nz,", false_lbl, false_num);
+                    else
+                        fdprintf(outFd, "\tjp nz, $+8\n");
+                    fdprintf(outFd, "\tld a, h\n\tor l\n");
+                    if (false_num >= 0 || (false_num == -1 && false_lbl))
+                        emitJump("jp z,", false_lbl, false_num);
+                }
+            } else {  /* fnDualCmp == '>' */
+                /* x > 0: jump to false if NZ (negative), else test zero */
+                if (!invert) {
+                    if (false_num >= 0 || (false_num == -1 && false_lbl))
+                        emitJump("jp nz,", false_lbl, false_num);
+                    else
+                        fdprintf(outFd, "\tjp nz, $+8\n");
+                    fdprintf(outFd, "\tld a, h\n\tor l\n");
+                    if (false_num >= 0 || (false_num == -1 && false_lbl))
+                        emitJump("jp z,", false_lbl, false_num);
+                } else {
+                    /* inverted > is <= : true if negative or zero */
+                    if (true_num >= 0 || (true_num == -1 && true_lbl))
+                        emitJump("jp nz,", true_lbl, true_num);
+                    else
+                        fdprintf(outFd, "\tjp nz, $+8\n");
+                    fdprintf(outFd, "\tld a, h\n\tor l\n");
+                    if (false_num >= 0 || (false_num == -1 && false_lbl))
+                        emitJump("jp nz,", false_lbl, false_num);
+                }
+            }
+        }
+        fnDualCmp = 0;
+    }
     /* Check for carry-based comparison (byte cmp with constant) */
-    if (fnCmpFlag) {
+    else if (fnCmpFlag) {
         /* fnCmpFlag == 'c': nc = true (ge, gt)
          * fnCmpFlag == 'C': c = true (lt, le) */
         int cMeansTrue = (fnCmpFlag == 'C');
@@ -183,6 +235,7 @@ static void emitStmtTail(struct stmt *s, int tailPos)
 
     /* Handle LABEL statements - emit a label */
     if (s->type == 'L' && s->symbol && s->symbol[0]) {
+        if (TRACE(T_EMIT)) fdprintf(2, "LABEL: %s\n", s->symbol);
         /* Invalidate cache at loop labels (backward jump targets) */
         if (s->symbol[0] == 'L' && (strstr(s->symbol, "_top") || strstr(s->symbol, "_continue"))) {
             cacheInvalAll();
@@ -320,6 +373,27 @@ emit_z_jump:
                 int useCarry = 0;  /* 1 if using carry flag */
                 int cMeansTrue = 0;
                 emitExpr(s->expr);
+
+                /* Handle dual-test pattern (<=0 and >0) */
+                if (fnDualCmp) {
+                    /* bit 7, h already emitted by emitExpr */
+                    const char *tgt = (s->label2 > 0) ? "_if_" : "_if_end_";
+                    int num = s->label;
+                    if (fnDualCmp == 'L') {
+                        /* x <= 0: negative=true, zero=true */
+                        emitJump("jp nz,", "_if_then_", num);  /* neg -> then */
+                        fdprintf(outFd, "\tld a, h\n\tor l\n");
+                        emitJump("jp nz,", tgt, num);  /* pos -> else/end */
+                    } else {
+                        /* x > 0: negative=false, zero=false */
+                        emitJump("jp nz,", tgt, num);  /* neg -> else/end */
+                        fdprintf(outFd, "\tld a, h\n\tor l\n");
+                        emitJump("jp z,", tgt, num);  /* zero -> else/end */
+                    }
+                    fnDualCmp = 0;
+                    goto emit_if_body;
+                }
+
                 if (fnCmpFlag) {
                     useCarry = 1;
                     cMeansTrue = (fnCmpFlag == 'C');
@@ -375,6 +449,12 @@ emit_if_body:
             if (s->else_branch) emitStmt(s->else_branch);
         }
 
+        if (TRACE(T_EMIT)) {
+            fdprintf(2, "IF: s->next=%p skip_else=%d label2=%d\n",
+                     (void*)s->next, skip_else, s->label2);
+            if (s->next) fdprintf(2, "IF: s->next->type=%c s->next->next=%p\n",
+                                  s->next->type, (void*)s->next->next);
+        }
         if (s->next) emitStmtTail(s->next, tailPos);
 
         if (s->asm_block) free(s->asm_block);

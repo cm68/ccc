@@ -1563,9 +1563,13 @@ struct expval *vp;
 		return 255;
 
 	/*
-	 * read the token 
+	 * read the token
 	 */
 	get_token();
+
+	/* after skipping whitespace/comments, may be at end of line */
+	if (cur_token == '\n')
+		return 255;
 
 	/*
 	 * maybe a register symbol? sometimes 'c' means carry
@@ -2741,13 +2745,18 @@ assemble()
 					consume();
 				} else if (peekchar() == ':') {
 					/*
-					 * set the new symbol (if it is the first pass) 
+					 * set the new symbol (if it is the first pass)
+					 * label:: (double colon) exports the symbol
 					 */
-					if (pass == 0) {
-						sym_update(token_buf, segment, cur_address, 0);
+					int visible = 0;
+					nextchar();  /* consume first : */
+					if (peekchar() == ':') {
+						nextchar();  /* consume second : */
+						visible = 1;
 					}
-
-					get_token();
+					if (pass == 0) {
+						sym_update(token_buf, segment, cur_address, visible);
+					}
 				} else {
 					gripe("unexpected symbol");
 				}
@@ -2791,8 +2800,7 @@ assemble()
                     /* Treat undefined symbols as extern */
                     sym->seg = SEG_EXT;
                     sym->index = next++;
-                }
-                if (sym->index == 0) {
+                } else if (sym->index == 0) {
                     sym->index = next++;
                 }
 		        if (sym->seg == SEG_DATA) {

@@ -35,6 +35,14 @@
 (defun hex-digit-p (c)
   (and c (or (digit-char-p c 16))))
 
+(defun width-char-p (c)
+  "Check if character is a type width suffix: b/B (byte), s/S (short), l/L (long), p (ptr), f (float), d (double), v (void)"
+  (and c (member c '(#\b #\B #\s #\S #\l #\L #\p #\f #\d #\v))))
+
+(defun digit-operator-p (c)
+  "Check if character is one of the digit operators: 0=<<=, 1=|=, 2=/=, 6=>>="
+  (and c (member c '(#\0 #\1 #\2 #\6))))
+
 (defun hex-val (c)
   (cond ((char<= #\0 c #\9) (- (char-code c) (char-code #\0)))
         ((char<= #\a c #\f) (+ 10 (- (char-code c) (char-code #\a))))
@@ -88,8 +96,11 @@
 (defun width-name (c)
   (case c
     (#\b "byte")
+    (#\B "ubyte")
     (#\s "short")
+    (#\S "ushort")
     (#\l "long")
+    (#\L "ulong")
     (#\p "ptr")
     (#\f "float")
     (#\d "double")
@@ -128,6 +139,12 @@
     (#\Y "COPY")
     (#\\ "NEG")
     (#\' "ADDR")
+    (#\P "+=")
+    (#\T "*=")
+    (#\0 "<<=")
+    (#\1 "|=")
+    (#\2 "/=")
+    (#\6 ">>=")
     (t (format nil "~A" c))))
 
 ;;; Expression parsing and printing
@@ -154,10 +171,16 @@
          (format nil "SP[~A]" off)))
 
       ;; Numeric constant (hex digits, or - followed by hex digit)
-      ((or (hex-digit-p c)
+      ;; BUT NOT operators when followed by a width char:
+      ;; - digit operators (0,1,2,6) followed by width
+      ;; - minus (-) when followed by width (it's subtraction, not negative number)
+      ((or (and (hex-digit-p c)
+                (not (and (digit-operator-p c)
+                          (width-char-p (peek-char-at 1)))))
            (and (eql c #\-)
                 (let ((next (peek-char-at 1)))
-                  (and next (hex-digit-p next)))))
+                  (and next (hex-digit-p next)
+                       (not (width-char-p next))))))
        (let ((v (read-num)))
          (format nil "~A" v)))
 

@@ -1271,7 +1271,8 @@ declaration()
                  * so it's available when emitting the AST */
                 if (sclass & SC_STATIC) {
                     v->sclass = SC_STATIC;
-                    v->mangled_name = mangleStatNam(v);
+                    if (!v->mangled_name)
+                        v->mangled_name = mangleStatNam(v);
                 } else if (sclass & SC_EXTERN) {
                     v->sclass = SC_EXTERN;
                 }
@@ -1296,7 +1297,8 @@ declaration()
          */
         if (sclass & SC_STATIC) {
             v->sclass = SC_STATIC;
-            v->mangled_name = mangleStatNam(v);
+            if (!v->mangled_name)
+                v->mangled_name = mangleStatNam(v);
         } else if (sclass & SC_EXTERN) {
             v->sclass = SC_EXTERN;
         }
@@ -1355,10 +1357,13 @@ declaration()
 		/* Emit global variables and static locals immediately */
 		/*
 		 * Emit if: (global scope OR static storage) AND not
-		 * typedef AND not function def
+		 * typedef AND not function def AND not extern declaration
+		 * Extern declarations don't define storage - they just
+		 * reference symbols defined elsewhere.
 		 */
 		if ((lexlevel == 1 || (sclass & SC_STATIC)) &&
-		    v->kind != tdef && v->kind != fdef) {
+		    v->kind != tdef && v->kind != fdef &&
+		    !(sclass & SC_EXTERN)) {
 			/* Skip function declarations - only emit actual variables */
 			if (!(v->type && (v->type->flags & TF_FUNC))) {
 				emitGv(v);

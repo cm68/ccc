@@ -41,7 +41,9 @@ int fnDInUse;
 int fnPendClean;
 int fnLoopDep;
 int fnDEValid;
+int fnTargetDE;
 int fnZValid;
+int fnDualCmp;
 int fnCmpFlag;
 char fnIXAOfs;
 char fnIXHLOfs;
@@ -112,14 +114,14 @@ newStmt(unsigned char type)
 	return s;
 }
 
-/* Size helpers */
+/* Size helpers - uppercase B/S/L = unsigned */
 unsigned char
 getSizeFTStr(unsigned char type_str)
 {
 	switch (type_str) {
-	case 'b': return 1;
-	case 's': case 'p': return 2;
-	case 'l': case 'f': return 4;
+	case 'b': case 'B': return 1;
+	case 's': case 'S': case 'p': return 2;
+	case 'l': case 'L': case 'f': return 4;
 	case 'd': return 8;
 	default: return 2;
 	}
@@ -128,16 +130,19 @@ getSizeFTStr(unsigned char type_str)
 unsigned char
 getSignFTStr(unsigned char type_str)
 {
-	return (type_str == 'p') ? E_UNSIGNED : 0;
+	/* Uppercase B/S/L or pointer = unsigned */
+	if (type_str == 'p' || type_str == 'B' || type_str == 'S' || type_str == 'L')
+		return E_UNSIGNED;
+	return 0;
 }
 
 unsigned char
 getSizeFromTN(const char *typename)
 {
 	if (!typename) return 2;
-	if (typename[0] == 'b') return 1;
-	if (typename[0] == 's') return 2;
-	if (typename[0] == 'l') return 4;
+	if (typename[0] == 'b' || typename[0] == 'B') return 1;
+	if (typename[0] == 's' || typename[0] == 'S') return 2;
+	if (typename[0] == 'l' || typename[0] == 'L') return 4;
 	if (typename[0] == 'p') return 2;
 	return 2;
 }
@@ -189,10 +194,15 @@ static void
 appendChild(struct stmt *child, struct stmt **first, struct stmt **last)
 {
 	if (!child) return;
+	if (TRACE(T_PARSE)) fdprintf(2, "appendChild: child=%c first=%p last=%p\n", child->type, (void*)*first, (void*)*last);
 	if (!*first) *first = child;
 	else (*last)->next = child;
 	*last = child;
-	while ((*last)->next) *last = (*last)->next;
+	while ((*last)->next) {
+		if (TRACE(T_PARSE)) fdprintf(2, "  walking: last=%c->next=%c\n", (*last)->type, (*last)->next->type);
+		*last = (*last)->next;
+	}
+	if (TRACE(T_PARSE)) fdprintf(2, "  final last=%c\n", (*last)->type);
 }
 
 /* Create ASM label statement */
@@ -254,7 +264,7 @@ initOptab(void)
 	optab['!'] = optab['~'] = optab['\\'] = optab['\''] = OP_1;
 	/* Binary ops */
 	optab['='] = optab['+'] = optab['-'] = optab['*'] = optab['/'] = OP_2;
-	optab['%'] = optab['&'] = optab['|'] = optab['^'] = OP_2;
+	optab['%'] = optab['&'] = optab['|'] = optab['^'] = optab[','] = OP_2;
 	optab['<'] = optab['>'] = optab['Q'] = optab['n'] = optab['L'] = OP_2;
 	optab['g'] = optab['y'] = optab['w'] = optab[':'] = OP_2;
 	optab['P'] = optab['T'] = optab['2'] = optab['1'] = OP_2;
@@ -309,7 +319,7 @@ static struct expr *
 doCall(void)
 {
 	struct expr *e = newExpr('@'), *w, *prev = NULL;
-	int argc = (int)readNum(), i;
+	int argc = readHex2(), i;
 	e->value = argc;
 	e->left = parseExpr();
 	for (i = 0; i < argc; i++) {
@@ -342,7 +352,7 @@ doIncDec(unsigned char op)
 	e->type_str = curchar; nextchar();
 	e->size = getSizeFTStr(e->type_str);
 	e->left = parseExpr();
-	e->value = readNum();
+	e->value = readHex4();
 	if (e->left) e->flags = e->left->flags;
 	return e;
 }
@@ -351,7 +361,7 @@ static struct expr *
 doBitfield(unsigned char op)
 {
 	struct expr *e = newExpr(op);
-	int off = (int)readNum(), wid = (int)readNum();
+	int off = readHex2(), wid = readHex2();
 	e->value = (off << 16) | wid;
 	e->left = parseExpr();
 	if (op == 0xdd) e->right = parseExpr();
@@ -362,7 +372,7 @@ static struct expr *
 doCopy(void)
 {
 	struct expr *e = newExpr(0xbb);
-	e->value = readNum();
+	e->value = readHex4();
 	e->left = parseExpr();
 	e->right = parseExpr();
 	return e;
@@ -400,15 +410,15 @@ parseExpr(void)
 	if (curchar == 'S') {
 		nextchar();
 		e = newExpr('S');
-		e->value = readNum();
+		e->value = readHex4();
 		return e;
 	}
 
-	/* Numeric constant - starts with hex digit or minus */
-	if ((curchar >= '0' && curchar <= '9') ||
-	    (curchar >= 'a' && curchar <= 'f') || curchar == '-') {
+	/* Numeric constant - prefixed with # */
+	if (curchar == '#') {
+		nextchar();
 		e = newExpr('C');
-		e->value = readNum();
+		e->value = readHex8();
 		e->size = (e->value >= -32768 && e->value <= 65535) ? 2 : 4;
 		return e;
 	}
@@ -480,10 +490,11 @@ parseStmt(void)
 
 	switch (op) {
 	case 'B':
-		/* Block: B decl_count. stmt_count. decls... stmts... */
+		/* Block: B decl_count stmt_count decls... stmts... */
 		{
-			int decl_count = (int)readNum();
-			int stmt_count = (int)readNum();
+			int decl_count = readHex2();
+			int stmt_count = readHex2();
+			if (TRACE(T_PARSE)) fdprintf(2, "BLOCK: decl=%d stmt=%d\n", decl_count, stmt_count);
 			s = newStmt('B');
 			first = last = NULL;
 
@@ -496,11 +507,15 @@ parseStmt(void)
 					nextchar();
 					child->symbol = strdup((char *)readName());
 					appendChild(child, &first, &last);
+				} else {
+					if (TRACE(T_PARSE)) fdprintf(2, "BLOCK: decl %d/%d expected 'd', got '%c' (0x%x)\n", i, decl_count, curchar, curchar);
+					break;  /* Parse error - stop */
 				}
 			}
 
 			/* Read statements */
 			for (i = 0; i < stmt_count; i++) {
+				if (TRACE(T_PARSE)) fdprintf(2, "BLOCK: reading stmt %d/%d, curchar='%c' (0x%x)\n", i, stmt_count, curchar, curchar);
 				child = parseStmt();
 				appendChild(child, &first, &last);
 			}
@@ -509,13 +524,16 @@ parseStmt(void)
 		return s;
 
 	case 'I':
-		/* If: I has_else. cond then [else] */
+		/* If: I has_else cond then [else] */
 		{
-			int has_else = (int)readNum();
+			int has_else = readHex2();
+			if (TRACE(T_PARSE)) fdprintf(2, "IF: has_else=%d\n", has_else);
 			s = newStmt('I');
 			s->label = labelCounter++;
 			s->expr = parseExpr();
+			if (TRACE(T_PARSE)) fdprintf(2, "IF: after cond, curchar='%c' (0x%x)\n", curchar, curchar);
 			s->then_branch = parseStmt();
+			if (TRACE(T_PARSE)) fdprintf(2, "IF: after then, curchar='%c' (0x%x)\n", curchar, curchar);
 			if (has_else) {
 				s->label2 = labelCounter++;
 				s->else_branch = parseStmt();
@@ -530,18 +548,21 @@ parseStmt(void)
 	case 'E':
 		/* Expression statement */
 		s = newStmt('E');
+		if (TRACE(T_PARSE)) fdprintf(2, "E: before parseExpr, curchar='%c' (0x%x)\n", curchar, curchar);
 		s->expr = parseExpr();
+		if (TRACE(T_PARSE)) fdprintf(2, "E: after parseExpr, curchar='%c' (0x%x)\n", curchar, curchar);
 		return s;
 
 	case 'R':
-		/* Return: R has_value. [expr] */
+		/* Return: R has_value [expr] */
 		{
-			int has_value = (int)readNum();
+			int has_value = readHex2();
+			if (TRACE(T_PARSE)) fdprintf(2, "RETURN: has_value=%d\n", has_value);
 			s = newStmt('R');
 			if (has_value) {
 				s->expr = parseExpr();
 				if (s->expr && s->expr->op == 'C') {
-					s->expr->size = fnRettype[0] == 'b' ? 1 : fnRettype[0] == 'l' ? 4 : 2;
+					s->expr->size = getSizeFTStr(fnRettype[0]);
 				}
 			}
 		}
@@ -560,14 +581,15 @@ parseStmt(void)
 		return s;
 
 	case 'S':
-		/* Switch: S has_label. [hexlabel] case_count. expr cases... */
+		/* Switch: S has_label [hexlabel] case_count expr cases... */
 		{
-			int has_label = (int)readNum();
+			int has_label = readHex2();
 			char *label_name = NULL;
 			int case_count;
 			if (has_label)
 				label_name = strdup((char *)readName());
-			case_count = (int)readNum();
+			case_count = readHex2();
+			if (TRACE(T_PARSE)) fdprintf(2, "SWITCH: has_label=%d case_count=%d\n", has_label, case_count);
 			s = newStmt('S');
 			s->symbol = label_name;
 			s->expr = parseExpr();
@@ -581,9 +603,10 @@ parseStmt(void)
 		return s;
 
 	case 'C':
-		/* Case: C stmt_count. value stmts... */
+		/* Case: C stmt_count value stmts... */
 		{
-			int stmt_count = (int)readNum();
+			int stmt_count = readHex2();
+			if (TRACE(T_PARSE)) fdprintf(2, "CASE: stmt_count=%d\n", stmt_count);
 			s = newStmt('C');
 			s->expr = parseExpr();
 			first = last = NULL;
@@ -596,9 +619,10 @@ parseStmt(void)
 		return s;
 
 	case 'O':
-		/* Default: O stmt_count. stmts... */
+		/* Default: O stmt_count stmts... */
 		{
-			int stmt_count = (int)readNum();
+			int stmt_count = readHex2();
+			if (TRACE(T_PARSE)) fdprintf(2, "DEFAULT: stmt_count=%d\n", stmt_count);
 			s = newStmt('O');
 			first = last = NULL;
 			for (i = 0; i < stmt_count; i++) {
@@ -652,6 +676,7 @@ parseStmt(void)
 
 	default:
 		/* Unknown - return empty */
+		if (TRACE(T_PARSE)) fdprintf(2, "UNKNOWN STMT: curchar='%c' (0x%x)\n", curchar, curchar);
 		return newStmt(';');
 	}
 }
@@ -676,12 +701,14 @@ doFunction(unsigned char rettype)
 	strncpy(name_buf, (char *)readName(), sizeof(name_buf) - 1);
 	name_buf[sizeof(name_buf) - 1] = '\0';
 	fnName = name_buf;
+	if (TRACE(T_PARSE)) fdprintf(2, "doFunction: %s\n", fnName);
 
 	switchToSeg(SEG_TEXT);
 	addDefSym(fnName);
 
-	/* Parse parameters: param_count. d suffix name d suffix name ... */
-	param_count = (int)readNum();
+	/* Parse parameters: param_count d suffix name d suffix name ... */
+	param_count = readHex2();
+	if (TRACE(T_PARSE)) fdprintf(2, "  param_count=%d\n", param_count);
 	p = params_buf;
 	params_buf[0] = '\0';
 	first_param = 1;
@@ -706,12 +733,15 @@ doFunction(unsigned char rettype)
 	}
 	*p = '\0';
 	fnParams = params_buf;
+	if (TRACE(T_PARSE)) fdprintf(2, "  params: %s\n", fnParams);
 
 	/* Skip newlines between params and body */
 	skipNL();
+	if (TRACE(T_PARSE)) fdprintf(2, "  parsing body\n");
 
 	/* Parse body */
 	fnBody = parseStmt();
+	if (TRACE(T_PARSE)) fdprintf(2, "  body parsed\n");
 	fnLblCnt = labelCounter;
 	fnLocals = NULL;
 	fnFrmSize = 0;
@@ -727,15 +757,25 @@ doFunction(unsigned char rettype)
 	cacheInvalAll();
 
 	/* Code generation phases */
+	if (TRACE(T_PARSE)) fdprintf(2, "  assignFrmOff\n");
 	assignFrmOff();
+	if (TRACE(T_PARSE)) fdprintf(2, "  analyzeVars\n");
 	analyzeVars();
+	if (TRACE(T_PARSE)) fdprintf(2, "  optFrmLayout\n");
 	optFrmLayout();
+	if (TRACE(T_PARSE)) fdprintf(2, "  allocRegs\n");
 	allocRegs();
+	if (TRACE(T_PARSE)) fdprintf(2, "  setOpFlags\n");
 	setOpFlags();
+	if (TRACE(T_PARSE)) fdprintf(2, "  dumpFnAst\n");
 	dumpFnAst(outFd);
+	if (TRACE(T_PARSE)) fdprintf(2, "  specialize\n");
 	specialize();
+	if (TRACE(T_PARSE)) fdprintf(2, "  generateCode\n");
 	generateCode();
+	if (TRACE(T_PARSE)) fdprintf(2, "  emitAssembly\n");
 	emitAssembly(outFd);
+	if (TRACE(T_PARSE)) fdprintf(2, "  complete\n");
 }
 
 /* Symbol tracking */
@@ -794,28 +834,29 @@ doGlobal(void)
 	nextchar();
 
 	if (type_char == 'a') {
-		/* Array: a count. elemsize. has_init. [init] */
-		count = readNum();
-		elemsize = readNum();
+		/* Array: a count elemsize has_init [init] */
+		count = readHex4();
+		elemsize = readHex4();
 		size = count * elemsize;
-		has_init = (int)readNum();
+		has_init = readHex2();
 
 		/* Check for initializer */
 		if (has_init && curchar == '[' && count >= 0) {
 			nextchar();  /* skip '[' */
 			elem_type = curchar;
 			nextchar();
-			init_count = (int)readNum();
+			init_count = readHex2();
 
 			isDefined = isDefSym(name_buf);
-			if (!isDefined && elem_type == 'b') {
+			if (!isDefined && (elem_type == 'b' || elem_type == 'B')) {
 				int i;
 				col = 0; first = 1;
 				addDefSym(name_buf);
 				switchToSeg(SEG_DATA);
 				fdprintf(outFd, "%s:\n", name_buf);
 				for (i = 0; i < init_count; i++) {
-					val = (int)readNum();
+					nextchar();  /* skip # */
+					val = (int)readHex8();
 					if (!first && col > 70) {
 						fdputs(outFd, "\n");
 						col = 0;
@@ -835,7 +876,10 @@ doGlobal(void)
 			} else {
 				/* Skip initializer */
 				int i;
-				for (i = 0; i < init_count; i++) readNum();
+				for (i = 0; i < init_count; i++) {
+					nextchar();  /* skip # */
+					readHex8();
+				}
 			}
 			return;
 		}
@@ -851,7 +895,7 @@ doGlobal(void)
 		}
 	} else if (type_char == 'p') {
 		/* Pointer */
-		has_init = (int)readNum();
+		has_init = readHex2();
 		/* Skip any initializer - pointers don't have runtime init */
 		if (has_init) {
 			parseExpr();  /* skip init expr */
@@ -864,8 +908,8 @@ doGlobal(void)
 		}
 	} else if (type_char == 'r') {
 		/* Struct */
-		long ssize = readNum();
-		has_init = (int)readNum();
+		long ssize = readHex4();
+		has_init = readHex2();
 		if (has_init) parseExpr();  /* skip init */
 		isDefined = isDefSym(name_buf);
 		if (!isDefined) {
@@ -876,7 +920,7 @@ doGlobal(void)
 	} else {
 		/* Primitive: b/s/l */
 		int psize = getSizeFTStr(type_char);
-		has_init = (int)readNum();
+		has_init = readHex2();
 		if (has_init) parseExpr();  /* skip init */
 		isDefined = isDefSym(name_buf);
 		if (!isDefined) {
@@ -887,17 +931,17 @@ doGlobal(void)
 	}
 }
 
-/* Top-level: string literal */
+/* Top-level: string literal - these are local/static symbols */
 static void
 doStrLiteral(void)
 {
 	char *name = (char *)readName();
 	char *data = (char *)readStr();
 	char *orig_data = data;
-	char str_label[128];
 
 	switchToSeg(SEG_DATA);
-	fdprintf(outFd, "_%s:\n\t.db \"", name);
+	/* No underscore prefix - keeps symbol local/static */
+	fdprintf(outFd, "%s:\n\t.db \"", name);
 
 	/* Emit escaped string */
 	while (*data) {
@@ -915,9 +959,6 @@ doStrLiteral(void)
 		}
 	}
 	fdputs(outFd, "\\0\"\n");
-
-	snprintf(str_label, sizeof(str_label), "_%s", name);
-	addDefSym(str_label);
 	free(orig_data);
 }
 

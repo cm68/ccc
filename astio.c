@@ -12,12 +12,12 @@
 
 #define BUFSIZE 4096
 
-static char inFd;
+static unsigned char inFd;
 static unsigned char buf[BUFSIZE];
-static int bufPos;
-static int bufValid;
+static unsigned bufPos;
+static unsigned bufValid;
 
-int lineNum = 1;
+unsigned lineNum = 1;
 unsigned char curchar;
 
 static unsigned char symbuf[256];
@@ -32,11 +32,12 @@ void initAstio(unsigned char fd) {
 
 unsigned char nextchar(void) {
 	if (bufPos >= bufValid) {
-		bufValid = read(inFd, buf, BUFSIZE);
-		if (bufValid <= 0) {
+		int n = read(inFd, buf, BUFSIZE);
+		if (n <= 0) {
 			curchar = 0;
 			return 0;
 		}
+		bufValid = n;
 		bufPos = 0;
 	}
 	curchar = buf[bufPos++];
@@ -60,36 +61,48 @@ int readHex2(void) {
 	return (h << 4) | l;
 }
 
-/* Read hex number terminated by '.' */
-long readNum(void) {
-	long v = 0;
-	int neg = 0;
-	if (curchar == '-') { neg = 1; nextchar(); }
-	while (curchar && curchar != '.') {
+/* Read 4 hex chars as unsigned 16-bit */
+int readHex4(void) {
+	int v = 0, i;
+	for (i = 0; i < 4; i++) {
 		v = (v << 4) | hval(curchar);
 		nextchar();
 	}
-	if (curchar == '.') nextchar();
-	return neg ? -v : v;
+	return v;
 }
 
-/* Read hex-length-prefixed name into static buffer */
+/* Read 8 hex chars as 32-bit (two's complement) */
+long readHex8(void) {
+	unsigned long v = 0;
+	int i;
+	for (i = 0; i < 8; i++) {
+		v = (v << 4) | hval(curchar);
+		nextchar();
+	}
+	return (long)v;
+}
+
+/* Read hex-length-prefixed ASCII name into static buffer */
 unsigned char *readName(void) {
 	int len, i;
 	len = readHex2();
-	for (i = 0; i < len && i < 255; i++)
-		symbuf[i] = readHex2();
+	for (i = 0; i < len && i < 255; i++) {
+		symbuf[i] = curchar;
+		nextchar();
+	}
 	symbuf[i] = 0;
 	return symbuf;
 }
 
-/* Read hex-length-prefixed string, return malloc'd copy */
+/* Read hex-length-prefixed ASCII string, return malloc'd copy */
 unsigned char *readStr(void) {
 	int len = readHex2();
 	unsigned char *s = malloc(len + 1);
 	int i;
-	for (i = 0; i < len; i++)
-		s[i] = readHex2();
+	for (i = 0; i < len; i++) {
+		s[i] = curchar;
+		nextchar();
+	}
 	s[len] = 0;
 	return s;
 }
