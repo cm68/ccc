@@ -11,7 +11,9 @@
  *   wslib -x archive.a [obj1.o ...]        extract (all if no names)
  *   wslib -a archive.a obj1.o obj2.o ...   append to archive
  *   wslib -r archive.a obj1.o obj2.o ...   replace in archive
+ *   wslib -cr archive.a obj1.o obj2.o ...  create if needed, then replace
  *   wslib -t archive.a                     list contents
+ *   wslib -v                               verbose mode
  */
 #ifdef linux
 #include <stdio.h>
@@ -32,13 +34,13 @@ int verbose;
 void
 usage()
 {
-    fprintf(stderr, "usage: %s [-v] -c|-x|-a|-r|-t archive [file...]\n", progname);
-    fprintf(stderr, "  -c  create archive\n");
+    fprintf(stderr, "usage: %s [-crv] archive [file...]\n", progname);
+    fprintf(stderr, "  -c  create archive (with -r: create if not exists)\n");
+    fprintf(stderr, "  -r  replace/add files in archive\n");
+    fprintf(stderr, "  -v  verbose (list files as processed)\n");
     fprintf(stderr, "  -x  extract files (all if none specified)\n");
     fprintf(stderr, "  -a  append files to archive\n");
-    fprintf(stderr, "  -r  replace files in archive\n");
     fprintf(stderr, "  -t  list archive contents\n");
-    fprintf(stderr, "  -v  verbose\n");
     exit(1);
 }
 
@@ -514,6 +516,7 @@ char **argv;
     char **files;
     int nfiles;
     int mode = 0;  /* c=1, x=2, a=3, r=4, t=5 */
+    int create_flag = 0;  /* -c modifier for -r */
     int i;
 
     progname = argv[0];
@@ -523,7 +526,7 @@ char **argv;
             char *p = &argv[i][1];
             while (*p) {
                 switch (*p) {
-                case 'c': mode = 1; break;
+                case 'c': create_flag = 1; if (!mode) mode = 1; break;
                 case 'x': mode = 2; break;
                 case 'a': mode = 3; break;
                 case 'r': mode = 4; break;
@@ -549,7 +552,21 @@ char **argv;
     case 1: do_create(archive, files, nfiles); break;
     case 2: do_extract(archive, files, nfiles); break;
     case 3: do_append(archive, files, nfiles); break;
-    case 4: do_replace(archive, files, nfiles); break;
+    case 4:
+        /* -cr: create if not exists, then replace */
+        if (create_flag) {
+            int fd = open(archive, O_RDONLY);
+            if (fd < 0) {
+                /* archive doesn't exist, create it */
+                do_create(archive, files, nfiles);
+            } else {
+                close(fd);
+                do_replace(archive, files, nfiles);
+            }
+        } else {
+            do_replace(archive, files, nfiles);
+        }
+        break;
     case 5: do_list(archive); break;
     }
 
