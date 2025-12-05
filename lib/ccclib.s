@@ -127,10 +127,11 @@ add32:
 ; subtract de'de from hl'hl
 ;
 sub32:
-	sub	hl,de
+	or	a		; clear carry
+	sbc	hl,de
 	exx
 	sbc	hl,de
-	exx	
+	exx
 	ret
 
 ;
