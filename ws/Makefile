@@ -6,7 +6,7 @@
 # wssize - display object sizes
 
 CC = gcc
-CFLAGS = -g -Wall -std=c90 -pedantic -Dlinux
+CFLAGS = -m32 -g -Wall -std=c90 -pedantic -Dlinux
 
 ALL = asz wsld wsnm wslib wssize
 

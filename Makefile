@@ -35,8 +35,8 @@ ifeq ($(CC),gcc)
 DEFINES= -DDEBUG
 WARNS = -Wdeclaration-after-statement -Werror=declaration-after-statement -Werror=implicit-function-declaration -Wall -Werror
 DEBUG= -ggdb3 -O0
-CFLAGS = $(DEBUG) $(DEFINES) $(WARNS)
-LDFLAGS= $(DEBUG) -o
+CFLAGS = -m32 $(DEBUG) $(DEFINES) $(WARNS)
+LDFLAGS= -m32 $(DEBUG) -o
 LD= gcc
 endif
 

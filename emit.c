@@ -235,6 +235,7 @@ static void emitStmtTail(struct stmt *s, int tailPos)
 
     /* Handle LABEL statements - emit a label */
     if (s->type == 'L' && s->symbol && s->symbol[0]) {
+        if (TRACE(T_EMIT)) fdprintf(2, "LABEL: %s\n", s->symbol);
         /* Invalidate cache at loop labels (backward jump targets) */
         if (s->symbol[0] == 'L' && (strstr(s->symbol, "_top") || strstr(s->symbol, "_continue"))) {
             cacheInvalAll();
@@ -448,6 +449,12 @@ emit_if_body:
             if (s->else_branch) emitStmt(s->else_branch);
         }
 
+        if (TRACE(T_EMIT)) {
+            fdprintf(2, "IF: s->next=%p skip_else=%d label2=%d\n",
+                     (void*)s->next, skip_else, s->label2);
+            if (s->next) fdprintf(2, "IF: s->next->type=%c s->next->next=%p\n",
+                                  s->next->type, (void*)s->next->next);
+        }
         if (s->next) emitStmtTail(s->next, tailPos);
 
         if (s->asm_block) free(s->asm_block);

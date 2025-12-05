@@ -194,10 +194,15 @@ static void
 appendChild(struct stmt *child, struct stmt **first, struct stmt **last)
 {
 	if (!child) return;
+	if (TRACE(T_PARSE)) fdprintf(2, "appendChild: child=%c first=%p last=%p\n", child->type, (void*)*first, (void*)*last);
 	if (!*first) *first = child;
 	else (*last)->next = child;
 	*last = child;
-	while ((*last)->next) *last = (*last)->next;
+	while ((*last)->next) {
+		if (TRACE(T_PARSE)) fdprintf(2, "  walking: last=%c->next=%c\n", (*last)->type, (*last)->next->type);
+		*last = (*last)->next;
+	}
+	if (TRACE(T_PARSE)) fdprintf(2, "  final last=%c\n", (*last)->type);
 }
 
 /* Create ASM label statement */
@@ -409,9 +414,9 @@ parseExpr(void)
 		return e;
 	}
 
-	/* Numeric constant - starts with hex digit */
-	if ((curchar >= '0' && curchar <= '9') ||
-	    (curchar >= 'a' && curchar <= 'f')) {
+	/* Numeric constant - prefixed with # */
+	if (curchar == '#') {
+		nextchar();
 		e = newExpr('C');
 		e->value = readHex8();
 		e->size = (e->value >= -32768 && e->value <= 65535) ? 2 : 4;
@@ -510,6 +515,7 @@ parseStmt(void)
 
 			/* Read statements */
 			for (i = 0; i < stmt_count; i++) {
+				if (TRACE(T_PARSE)) fdprintf(2, "BLOCK: reading stmt %d/%d, curchar='%c' (0x%x)\n", i, stmt_count, curchar, curchar);
 				child = parseStmt();
 				appendChild(child, &first, &last);
 			}
@@ -525,7 +531,9 @@ parseStmt(void)
 			s = newStmt('I');
 			s->label = labelCounter++;
 			s->expr = parseExpr();
+			if (TRACE(T_PARSE)) fdprintf(2, "IF: after cond, curchar='%c' (0x%x)\n", curchar, curchar);
 			s->then_branch = parseStmt();
+			if (TRACE(T_PARSE)) fdprintf(2, "IF: after then, curchar='%c' (0x%x)\n", curchar, curchar);
 			if (has_else) {
 				s->label2 = labelCounter++;
 				s->else_branch = parseStmt();
@@ -540,7 +548,9 @@ parseStmt(void)
 	case 'E':
 		/* Expression statement */
 		s = newStmt('E');
+		if (TRACE(T_PARSE)) fdprintf(2, "E: before parseExpr, curchar='%c' (0x%x)\n", curchar, curchar);
 		s->expr = parseExpr();
+		if (TRACE(T_PARSE)) fdprintf(2, "E: after parseExpr, curchar='%c' (0x%x)\n", curchar, curchar);
 		return s;
 
 	case 'R':
@@ -666,6 +676,7 @@ parseStmt(void)
 
 	default:
 		/* Unknown - return empty */
+		if (TRACE(T_PARSE)) fdprintf(2, "UNKNOWN STMT: curchar='%c' (0x%x)\n", curchar, curchar);
 		return newStmt(';');
 	}
 }
@@ -844,6 +855,7 @@ doGlobal(void)
 				switchToSeg(SEG_DATA);
 				fdprintf(outFd, "%s:\n", name_buf);
 				for (i = 0; i < init_count; i++) {
+					nextchar();  /* skip # */
 					val = (int)readHex8();
 					if (!first && col > 70) {
 						fdputs(outFd, "\n");
@@ -864,7 +876,10 @@ doGlobal(void)
 			} else {
 				/* Skip initializer */
 				int i;
-				for (i = 0; i < init_count; i++) readHex8();
+				for (i = 0; i < init_count; i++) {
+					nextchar();  /* skip # */
+					readHex8();
+				}
 			}
 			return;
 		}
