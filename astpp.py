@@ -78,11 +78,14 @@ class ASTParser:
         return -v if neg else v
 
     def read_name(self):
-        """Read hex-length-prefixed name"""
+        """Read hex-length-prefixed name (length in hex, followed by raw ASCII)"""
         length = self.read_hex2()
         chars = []
         for _ in range(length):
-            chars.append(chr(self.read_hex2()))
+            c = self.cur()
+            if c:
+                chars.append(c)
+            self.advance()
         return ''.join(chars)
 
     def indent_str(self):
@@ -184,13 +187,9 @@ class ASTParser:
             off = self.read_hex4()
             return f"SP[{off}]"
 
-        # Numeric constant: 8 hex digits (with optional leading -)
-        # Digit operators (0, 1, 2, 6) are followed by width char
-        is_hex_digit = c in '0123456789abcdef'
-        is_digit_op = c in self.DIGIT_OPS and self.is_width_char(self.peek())
-        is_neg_num = c == '-'
-
-        if (is_hex_digit and not is_digit_op) or is_neg_num:
+        # Numeric constant: # followed by 8 hex digits
+        if c == '#':
+            self.advance()
             v = self.read_hex8()
             return str(v)
 
@@ -502,10 +501,22 @@ class ASTParser:
             else:
                 print()
 
+    def read_hex_string(self):
+        """Read hex-length-prefixed hex-encoded string data"""
+        length = self.read_hex2()  # length in hex pairs
+        chars = []
+        for _ in range(length):
+            byte = self.read_hex2()  # read hex pair as byte
+            if 32 <= byte < 127:
+                chars.append(chr(byte))
+            else:
+                chars.append(f'\\x{byte:02x}')
+        return ''.join(chars)
+
     def parse_string(self):
-        """Parse string: U hexname hexdata"""
+        """Parse string: U name hexdata"""
         name = self.read_name()
-        data = self.read_name()
+        data = self.read_hex_string()
         print(f'STRING _{name} = "{data}"')
 
     def parse_toplevel(self):
