@@ -17,7 +17,7 @@
 ;         [ret to caller]    <- IY + 2
 ;         [args...]          <- IY + 4
 ;
-framealloc:
+framealloc::
 	ex	(sp),iy		; save iy and get ret addr
 	push	iy
 	pop	de
@@ -42,7 +42,7 @@ framealloc:
 ;         [ret to caller]    <- IY + 2
 ;         [args...]
 ;
-framefree:
+framefree::
 	ld	sp,iy		; SP = IY, free locals, point at saved IY
 	pop	iy		; restore caller's frame pointer
 	ret			; return to caller (addr is now on top)

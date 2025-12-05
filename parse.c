@@ -1271,7 +1271,8 @@ declaration()
                  * so it's available when emitting the AST */
                 if (sclass & SC_STATIC) {
                     v->sclass = SC_STATIC;
-                    v->mangled_name = mangleStatNam(v);
+                    if (!v->mangled_name)
+                        v->mangled_name = mangleStatNam(v);
                 } else if (sclass & SC_EXTERN) {
                     v->sclass = SC_EXTERN;
                 }
@@ -1296,7 +1297,8 @@ declaration()
          */
         if (sclass & SC_STATIC) {
             v->sclass = SC_STATIC;
-            v->mangled_name = mangleStatNam(v);
+            if (!v->mangled_name)
+                v->mangled_name = mangleStatNam(v);
         } else if (sclass & SC_EXTERN) {
             v->sclass = SC_EXTERN;
         }

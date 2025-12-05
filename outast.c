@@ -150,14 +150,12 @@ emitExpr(struct expr *e)
 		break;
 
 	case STRING:
-		/* String literals - output as reference to global synthetic name */
+		/* String literals - output as reference to local synthetic name */
 		if (e->var) {
-			char fullname[256];
 			struct name *strname = (struct name *)e->var;
-			/* Synthetic string names are global variables, use _ prefix */
-			snprintf(fullname, sizeof(fullname), "_%s", strname->name);
+			/* Synthetic string names are local - no _ prefix */
 			fdprintf(astFd, "$");
-			emitHexName(fullname);
+			emitHexName(strname->name);
 		} else {
 			/* Fallback to address if name not available */
 			fdprintf(astFd, "S");

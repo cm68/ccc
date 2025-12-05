@@ -32,6 +32,14 @@ chatgpt-expr.c*
 unit_test/test_kw
 unit_test/test_insertmacro
 test_kw_real
+ws/asz
+ws/wsld
+ws/wsnm
+ws/wslib
+ws/wssize
+ws/tests/*.out
+ws/tests/*.a
+lib/ccclib.a
 *.ast.*
 *.ast
 *.pp
