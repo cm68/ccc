@@ -627,11 +627,12 @@ pass1_layout()
     total_bss = bss_pos;
 
     /* now resolve all symbol addresses */
+    {
+    int undef_count = 0;
     for (s = symbols; s; s = s->next) {
         if (s->seg == SEG_EXT) {
             fprintf(stderr, "wsld: undefined symbol: %s\n", s->name);
-            if (!rflag)
-                exit(1);
+            undef_count++;
             continue;
         }
         if (s->seg == SEG_ABS)
@@ -657,6 +658,9 @@ pass1_layout()
         if (verbose > 1) {
             printf("resolved %s = 0x%04x\n", s->name, s->value);
         }
+    }
+    if (undef_count && !rflag)
+        exit(1);
     }
 }
 
