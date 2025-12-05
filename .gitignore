@@ -57,3 +57,5 @@ do.ast
 *.s
 !lib/*.s
 core
+__pycache__/
+prev.size
