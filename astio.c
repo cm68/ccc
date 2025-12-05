@@ -83,23 +83,27 @@ long readHex8(void) {
 	return neg ? -v : v;
 }
 
-/* Read hex-length-prefixed name into static buffer */
+/* Read hex-length-prefixed ASCII name into static buffer */
 unsigned char *readName(void) {
 	int len, i;
 	len = readHex2();
-	for (i = 0; i < len && i < 255; i++)
-		symbuf[i] = readHex2();
+	for (i = 0; i < len && i < 255; i++) {
+		symbuf[i] = curchar;
+		nextchar();
+	}
 	symbuf[i] = 0;
 	return symbuf;
 }
 
-/* Read hex-length-prefixed string, return malloc'd copy */
+/* Read hex-length-prefixed ASCII string, return malloc'd copy */
 unsigned char *readStr(void) {
 	int len = readHex2();
 	unsigned char *s = malloc(len + 1);
 	int i;
-	for (i = 0; i < len; i++)
-		s[i] = readHex2();
+	for (i = 0; i < len; i++) {
+		s[i] = curchar;
+		nextchar();
+	}
 	s[len] = 0;
 	return s;
 }

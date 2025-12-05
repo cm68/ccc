@@ -62,15 +62,12 @@ emitHexNum32(long v)
 		fdprintf(astFd, "%08lx", (unsigned long)v);
 }
 
-/* Emit string as hex-length-prefixed bytes */
+/* Emit string as hex-length-prefixed ASCII */
 static void
 emitHexName(const char *s)
 {
 	int len = strlen(s);
-	int i;
-	fdprintf(astFd, "%02x", len);
-	for (i = 0; i < len; i++)
-		fdprintf(astFd, "%02x", (unsigned char)s[i]);
+	fdprintf(astFd, "%02x%s", len, s);
 }
 
 /* Emit a label statement with hex-encoded name */
