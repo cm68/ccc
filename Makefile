@@ -167,6 +167,24 @@ stage1: cc1 cc2
 	  fi; \
 	done
 	@echo "Stage1 build complete: stage1/*.o files ready for linking"
+	$(MAKE) lib/ccclib.a
+	$(MAKE) stage1/cc1 stage1/cc2
+	@echo "Stage1 linking complete: stage1/cc1 stage1/cc2"
+
+# Library dependency
+lib/ccclib.a: lib/ccclib.s
+	$(MAKE) -C lib ccclib.a
+
+# Link stage1 binaries
+WSLD = ws/wsld
+STAGE1_CC1_OBJS = $(addprefix stage1/, $(CC1OBJECTS))
+STAGE1_CC2_OBJS = $(addprefix stage1/, $(CC2OBJECTS))
+
+stage1/cc1: $(STAGE1_CC1_OBJS) lib/ccclib.a
+	$(WSLD) -o $@ $(STAGE1_CC1_OBJS) lib/ccclib.a
+
+stage1/cc2: $(STAGE1_CC2_OBJS) lib/ccclib.a
+	$(WSLD) -o $@ $(STAGE1_CC2_OBJS) lib/ccclib.a
 
 #
 # check size of compiled objects

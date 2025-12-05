@@ -916,17 +916,17 @@ doGlobal(void)
 	}
 }
 
-/* Top-level: string literal */
+/* Top-level: string literal - these are local/static symbols */
 static void
 doStrLiteral(void)
 {
 	char *name = (char *)readName();
 	char *data = (char *)readStr();
 	char *orig_data = data;
-	char str_label[128];
 
 	switchToSeg(SEG_DATA);
-	fdprintf(outFd, "_%s:\n\t.db \"", name);
+	/* No underscore prefix - keeps symbol local/static */
+	fdprintf(outFd, "%s:\n\t.db \"", name);
 
 	/* Emit escaped string */
 	while (*data) {
@@ -944,9 +944,6 @@ doStrLiteral(void)
 		}
 	}
 	fdputs(outFd, "\\0\"\n");
-
-	snprintf(str_label, sizeof(str_label), "_%s", name);
-	addDefSym(str_label);
 	free(orig_data);
 }
 
