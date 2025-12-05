@@ -1355,10 +1355,13 @@ declaration()
 		/* Emit global variables and static locals immediately */
 		/*
 		 * Emit if: (global scope OR static storage) AND not
-		 * typedef AND not function def
+		 * typedef AND not function def AND not extern declaration
+		 * Extern declarations don't define storage - they just
+		 * reference symbols defined elsewhere.
 		 */
 		if ((lexlevel == 1 || (sclass & SC_STATIC)) &&
-		    v->kind != tdef && v->kind != fdef) {
+		    v->kind != tdef && v->kind != fdef &&
+		    !(sclass & SC_EXTERN)) {
 			/* Skip function declarations - only emit actual variables */
 			if (!(v->type && (v->type->flags & TF_FUNC))) {
 				emitGv(v);
