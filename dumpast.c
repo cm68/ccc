@@ -385,7 +385,8 @@ dumpSchedExpr(struct expr *e, int indent)
     int i;
     if (!e) return;
 
-    /* Indent */
+    /* Comment prefix and indent */
+    fdprintf(dumpFd, "; ");
     for (i = 0; i < indent; i++) fdprintf(dumpFd, "  ");
 
     /* Op and size */
@@ -427,7 +428,8 @@ dumpSchedStmt(struct stmt *s, int indent)
     int i;
     if (!s) return;
 
-    /* Indent */
+    /* Comment prefix and indent */
+    fdprintf(dumpFd, "; ");
     for (i = 0; i < indent; i++) fdprintf(dumpFd, "  ");
 
     /* Statement type */

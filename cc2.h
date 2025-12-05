@@ -258,6 +258,7 @@ void dumpFnAst(int fd);
 void dumpScheduled(int fd);
 void specialize(void);
 void generateCode(void);
+void scheduleCode(void);
 void optFrmLayout(void);
 struct local_var *findVar(const char *symbol);
 

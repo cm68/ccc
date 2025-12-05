@@ -758,6 +758,10 @@ doFunction(unsigned char rettype)
 	setOpFlags();
 	if (TRACE(T_PARSE)) fdprintf(2, "  dumpFnAst\n");
 	dumpFnAst(outFd);
+	if (TRACE(T_PARSE)) fdprintf(2, "  scheduleCode\n");
+	scheduleCode();
+	if (TRACE(T_PARSE)) fdprintf(2, "  dumpScheduled\n");
+	dumpScheduled(outFd);
 	if (TRACE(T_PARSE)) fdprintf(2, "  specialize\n");
 	specialize();
 	if (TRACE(T_PARSE)) fdprintf(2, "  generateCode\n");
