@@ -409,9 +409,9 @@ parseExpr(void)
 		return e;
 	}
 
-	/* Numeric constant - starts with hex digit or minus */
+	/* Numeric constant - starts with hex digit */
 	if ((curchar >= '0' && curchar <= '9') ||
-	    (curchar >= 'a' && curchar <= 'f') || curchar == '-') {
+	    (curchar >= 'a' && curchar <= 'f')) {
 		e = newExpr('C');
 		e->value = readHex8();
 		e->size = (e->value >= -32768 && e->value <= 65535) ? 2 : 4;

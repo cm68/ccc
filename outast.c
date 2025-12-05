@@ -52,14 +52,11 @@ emitHexNum(long v)
 	fdprintf(astFd, "%04lx", (unsigned long)(v & 0xffff));
 }
 
-/* Emit number as 8 hex digits (signed 32-bit) - for constants */
+/* Emit number as 8 hex digits (two's complement) - for constants */
 static void
 emitHexNum32(long v)
 {
-	if (v < 0)
-		fdprintf(astFd, "-%08lx", (unsigned long)(-v));
-	else
-		fdprintf(astFd, "%08lx", (unsigned long)v);
+	fdprintf(astFd, "%08lx", (unsigned long)v);
 }
 
 /* Emit string as hex-length-prefixed ASCII */

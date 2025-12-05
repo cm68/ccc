@@ -71,16 +71,15 @@ int readHex4(void) {
 	return v;
 }
 
-/* Read 8 hex chars as unsigned 32-bit, with optional leading - */
+/* Read 8 hex chars as 32-bit (two's complement) */
 long readHex8(void) {
-	long v = 0;
-	int neg = 0, i;
-	if (curchar == '-') { neg = 1; nextchar(); }
+	unsigned long v = 0;
+	int i;
 	for (i = 0; i < 8; i++) {
 		v = (v << 4) | hval(curchar);
 		nextchar();
 	}
-	return neg ? -v : v;
+	return (long)v;
 }
 
 /* Read hex-length-prefixed ASCII name into static buffer */
