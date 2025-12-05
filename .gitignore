@@ -39,7 +39,7 @@ ws/wslib
 ws/wssize
 ws/tests/*.out
 ws/tests/*.a
-lib/ccclib.a
+native/lib/ccclib.a
 *.ast.*
 *.ast
 *.pp
@@ -55,7 +55,7 @@ do.ast
 *.map
 *.asm
 *.s
-!lib/*.s
+!native/lib/*.s
 core
 __pycache__/
 prev.size
