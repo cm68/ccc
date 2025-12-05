@@ -393,16 +393,19 @@ dumpSchedExpr(struct expr *e, int indent)
     fdprintf(dumpFd, "%c:%d", e->op, e->size);
 
     /* Location info */
-    if (e->loc != LOC_NONE) {
-        fdprintf(dumpFd, " [%s", locName(e->loc));
-        if (e->loc == LOC_REG || e->loc == LOC_INDIR) {
-            fdprintf(dumpFd, "=%s", regName(e->reg));
-        }
-        if (e->loc == LOC_STACK || e->loc == LOC_IX) {
-            fdprintf(dumpFd, "=%d", (int)e->offset);
+    if (e->loc != LOC_NONE || e->dest != R_NONE) {
+        fdprintf(dumpFd, " [");
+        if (e->loc != LOC_NONE) {
+            fdprintf(dumpFd, "%s", locName(e->loc));
+            if (e->loc == LOC_REG || e->loc == LOC_INDIR) {
+                fdprintf(dumpFd, "=%s", regName(e->reg));
+            }
+            if (e->loc == LOC_STACK || e->loc == LOC_IX) {
+                fdprintf(dumpFd, "=%d", (int)e->offset);
+            }
         }
         if (e->dest != R_NONE) {
-            fdprintf(dumpFd, " ->%s", regName(e->dest));
+            fdprintf(dumpFd, "->%s", regName(e->dest));
         }
         fdprintf(dumpFd, "]");
     }
