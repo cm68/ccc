@@ -476,9 +476,22 @@ class ASTParser:
                     init_count = self.read_hex2()
                     values = []
                     for i in range(init_count):
-                        val = self.read_hex8()
+                        # Array init can have symbol refs ($name) or constants (#hex)
+                        self.skip_whitespace()
+                        if self.cur() == '$':
+                            self.advance()
+                            sym = self.read_name()
+                            val_str = f"${sym}"
+                        elif self.cur() == '#':
+                            self.advance()
+                            val = self.read_hex8()
+                            val_str = str(val)
+                        else:
+                            # Raw hex constant (legacy)
+                            val = self.read_hex8()
+                            val_str = str(val)
                         if i < 10:
-                            values.append(str(val))
+                            values.append(val_str)
                         elif i == 10:
                             values.append("...")
                     print(f"  = {{ {', '.join(values)} }}")

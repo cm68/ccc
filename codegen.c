@@ -302,7 +302,7 @@ isParameter(const char *name)
  * Walk statement tree and assign stack frame offsets to local variables
  */
 static void
-walkForLocals(struct stmt *s)
+walkLocals(struct stmt *s)
 {
     if (!s) return;
 
@@ -318,9 +318,9 @@ walkForLocals(struct stmt *s)
     }
 
     /* Recursively walk child statements */
-    if (s->then_branch) walkForLocals(s->then_branch);
-    if (s->else_branch) walkForLocals(s->else_branch);
-    if (s->next) walkForLocals(s->next);
+    if (s->then_branch) walkLocals(s->then_branch);
+    if (s->else_branch) walkLocals(s->else_branch);
+    if (s->next) walkLocals(s->next);
 }
 
 /*
@@ -1337,7 +1337,7 @@ assignFrmOff()
     }
 
     /* Then, assign offsets to local variables (negative offsets below FP) */
-    walkForLocals(fnBody);
+    walkLocals(fnBody);
     
 }
 

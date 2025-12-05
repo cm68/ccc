@@ -60,10 +60,10 @@ HFILES = $(HEADERS) astio.h emithelper.h enumlist.h error.h debug.h op_pri.h tra
 # All source files
 SOURCES = $(CFILES) $(HFILES)
 
-LIBSRCS = lib/Makefile lib/ccclib.s
+LIBSRCS = native/lib/Makefile native/lib/ccclib.s
 
 # Documentation files (in reading order)
-DOCFILES = README.md TODO.md CLAUDE.md AST_FORMAT.md lib/README.md
+DOCFILES = README.md TODO.md CLAUDE.md AST_FORMAT.md native/lib/README.md
 
 BINS = enumcheck cc1 cc2 ccc maketokens genop_pri
 
@@ -101,12 +101,12 @@ $(CC1OBJECTS): $(HFILES)
 # Pattern rules for stage1 directory - always rebuild (FORCE dependency)
 stage1/%.i: %.c cc1 FORCE
 	@mkdir -p stage1
-	./cc1 -DCCC -i./include -I. -E -o stage1/$*.ast $<
+	./cc1 -DCCC -i./native/include -I. -E -o stage1/$*.ast $<
 	mv $*.i $@
 
 stage1/%.ast: %.c cc1 FORCE
 	@mkdir -p stage1
-	./cc1 -DCCC -i./include -I. -E -o $@ $<
+	./cc1 -DCCC -i./native/include -I. -E -o $@ $<
 
 stage1/%.pp: stage1/%.ast FORCE
 	python3 ./astpp.py $< > $@
@@ -141,7 +141,7 @@ stage1: cc1 cc2
 	  if [ -f "$$f" ]; then \
 	    b=$$(basename $$f .c) ; \
 	    printf "%-30s" "$$f: "; \
-	    ./cc1 -DCCC -i./include -I. -E -o stage1/$$b.ast "$$f" \
+	    ./cc1 -DCCC -i./native/include -I. -E -o stage1/$$b.ast "$$f" \
 		2>stage1/$$b.err ; \
 	    ret1=$$?; \
 	    mv $$b.i stage1/$$b.i; \
@@ -167,32 +167,32 @@ stage1: cc1 cc2
 	  fi; \
 	done
 	@echo "Stage1 build complete: stage1/*.o files ready for linking"
-	$(MAKE) lib/ccclib.a
+	$(MAKE) native/lib/ccclib.a
 	$(MAKE) stage1/cc1 stage1/cc2
 	@echo "Stage1 linking complete: stage1/cc1 stage1/cc2"
 
 # Library dependency
-lib/ccclib.a: lib/ccclib.s
-	$(MAKE) -C lib ccclib.a
+native/lib/ccclib.a: native/lib/ccclib.s
+	$(MAKE) -C native/lib ccclib.a
 
 # Link stage1 binaries
 WSLD = ws/wsld
 STAGE1_CC1_OBJS = $(addprefix stage1/, $(CC1OBJECTS))
 STAGE1_CC2_OBJS = $(addprefix stage1/, $(CC2OBJECTS))
 
-stage1/cc1: $(STAGE1_CC1_OBJS) lib/ccclib.a
-	$(WSLD) -o $@ $(STAGE1_CC1_OBJS) lib/ccclib.a
+stage1/cc1: $(STAGE1_CC1_OBJS) native/lib/ccclib.a
+	$(WSLD) -o $@ $(STAGE1_CC1_OBJS) native/lib/ccclib.a
 
-stage1/cc2: $(STAGE1_CC2_OBJS) lib/ccclib.a
-	$(WSLD) -o $@ $(STAGE1_CC2_OBJS) lib/ccclib.a
+stage1/cc2: $(STAGE1_CC2_OBJS) native/lib/ccclib.a
+	$(WSLD) -o $@ $(STAGE1_CC2_OBJS) native/lib/ccclib.a
 
 #
 # check size of compiled objects
 #
-sizecheck: stage1
-	@wssize $(addprefix stage1/, $(CC1OBJECTS)) | \
+sizecheck: $(STAGE1_CC1_OBJS) $(STAGE1_CC2_OBJS)
+	@wssize $(STAGE1_CC1_OBJS) | \
 	awk '($$1 != "text") {print substr($$6, 8), $$1, $$2, $$3; text+=$$1;data+=$$2;bss+=$$3}END{print "cc1 size: ", text, data, bss, "=", text+data+bss}' | tee current.size
-	@wssize $(addprefix stage1/, $(CC2OBJECTS)) | \
+	@wssize $(STAGE1_CC2_OBJS) | \
 	awk '($$1 != "text") {print substr($$6, 8), $$1, $$2, $$3; text+=$$1;data+=$$2;bss+=$$3}END{print "cc2 size: ", text, data, bss, "=", text+data+bss}' | tee -a current.size
 	@if [ -f prev.size ] ; then diff prev.size current.size ; fi ; mv current.size prev.size
 

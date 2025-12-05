@@ -264,7 +264,7 @@ initOptab(void)
 	optab['!'] = optab['~'] = optab['\\'] = optab['\''] = OP_1;
 	/* Binary ops */
 	optab['='] = optab['+'] = optab['-'] = optab['*'] = optab['/'] = OP_2;
-	optab['%'] = optab['&'] = optab['|'] = optab['^'] = OP_2;
+	optab['%'] = optab['&'] = optab['|'] = optab['^'] = optab[','] = OP_2;
 	optab['<'] = optab['>'] = optab['Q'] = optab['n'] = optab['L'] = OP_2;
 	optab['g'] = optab['y'] = optab['w'] = optab[':'] = OP_2;
 	optab['P'] = optab['T'] = optab['2'] = optab['1'] = OP_2;
