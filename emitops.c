@@ -481,7 +481,7 @@ static int emitByteCp(struct expr *e)
 
         /* Emit left operand to A */
         emitExpr(e->left);
-        cacheInvalA();  /* A was loaded, invalidate cache */
+        /* Note: cp does NOT change A, so don't invalidate cache */
 
         /* Emit cp with adjusted constant based on comparison */
         switch (e->op) {
@@ -528,7 +528,7 @@ static int emitByteCp(struct expr *e)
 
     /* Emit left operand to A */
     emitExpr(e->left);
-    cacheInvalA();  /* A was loaded, invalidate cache */
+    /* Note: cp does NOT change A, so don't invalidate cache */
 
     /* Emit cp instruction based on right operand type */
     switch (cmp.kind) {
