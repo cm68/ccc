@@ -57,7 +57,7 @@
 /* Forward declaration from util.c */
 int fdprintf(int fd, const char *fmt, ...);
 
-/* Empty asm_block - used to suppress code emission without allocating */
+/* Empty string - used in xfree to avoid freeing static strings */
 char noasm[] = "";
 
 void xfree(void *p) { if (p && p != noasm) free(p); }

@@ -100,7 +100,6 @@ newExpr(unsigned char op)
 	e->symbol = NULL;
 	e->size = 2;
 	e->flags = 0;
-	e->asm_block = NULL;
 	e->cleanup_block = NULL;
 	e->label = 0;
 	e->jump = NULL;
@@ -226,7 +225,6 @@ freeExpr(struct expr *e)
 	if (!e) return;
 	freeExpr(e->left);
 	freeExpr(e->right);
-	xfree(e->asm_block);
 	xfree(e->cleanup_block);
 	free(e);
 }

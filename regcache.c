@@ -61,7 +61,6 @@ deepCopy(struct expr *e)
     if (e->symbol) c->symbol = strdup(e->symbol);
     c->left = deepCopy(e->left);
     c->right = deepCopy(e->right);
-    c->asm_block = NULL;  /* Don't copy generated code */
     c->cleanup_block = NULL;
     c->jump = NULL;
     c->cached_var = NULL;

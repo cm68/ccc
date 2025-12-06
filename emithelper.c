@@ -158,7 +158,6 @@ stripVarPfx(const char *name)
 const char *stripDollar(const char *s) { return stripVarPfx(s); }
 
 void freeNode(struct expr *e) {
-    xfree(e->asm_block);
     xfree(e->cleanup_block);
     free(e);
 }
@@ -748,7 +747,7 @@ int emitSimplLd(struct expr *e)
 
 /*
  * Emit DEREF of global variable with cache check
- * Pattern: (M $global) where asm_block is NULL
+ * Pattern: (M $global) with OP_GLOBAL opflag set
  */
 void emitGlobDrf(struct expr *e)
 {

@@ -1,13 +1,13 @@
 /*
  * codegen.c - Code generation phase for cc2
  *
- * Walks expression and statement trees, generating assembly code blocks
- * for each node. This phase builds the asm_block strings but does not
- * emit them - that's done by emit.c.
+ * Walks expression and statement trees, analyzing patterns and scheduling
+ * for code emission.
  *
  * Key responsibilities:
  * - assignFrmOff(): Assign stack offsets to local variables and parameters
- * - generateCode(): Walk trees and generate assembly code blocks
+ * - specialize(): Detect patterns (inc/dec, bit ops) and mark for emit
+ * - scheduleCode(): Set location/dest fields for expressions
  * - allocRegs(): Allocate variables to registers based on usage patterns
  */
 #include <stdlib.h>
@@ -563,13 +563,13 @@ setOpFlags()
 /*
  * Phase 3: Specialize - detect patterns and replace subtrees with asm
  *
- * This pass walks the tree BEFORE generateExpr, detecting patterns like:
+ * This pass walks the tree BEFORE emit, detecting patterns like:
  * - INC/DEC of variables (simple and complex)
  * - OREQ/ANDEQ single-bit operations (set/res instructions)
- * - Other patterns that can be replaced with efficient asm
+ * - Shift operations with constant counts
  *
- * When a pattern matches, the entire subtree is replaced with an asm_block
- * and children are freed. generateExpr then just emits what remains.
+ * When a pattern matches, children are freed and opflags/value are set
+ * so emit can generate the optimized code.
  */
 
 /* Forward declarations */
@@ -780,9 +780,6 @@ specExpr(struct expr *e)
 {
     if (!e) return;
     CHECK_WALK();
-
-    /* Skip if already has asm_block */
-    if (e->asm_block) return;
 
     /* Try INC/DEC specialization */
     if (e->op == 0xcf || e->op == 0xef || e->op == 0xd6 || e->op == 0xf6) {
@@ -1099,7 +1096,6 @@ static char *buildStkCln(int bytes);
 static int expr_count = 0;
 static void generateExpr(struct expr *e)
 {
-    char buf[256];
     struct expr *arg;
     int arg_count;
     int i;
@@ -1165,24 +1161,6 @@ static void generateExpr(struct expr *e)
         }
 
         return;  /* Early return - custom traversal done */
-    }
-
-    /* NOTE: INC/DEC and OREQ/ANDEQ patterns are now handled by specialize() */
-    /* Skip nodes that already have asm_block (handled by specialize) */
-    if (e->asm_block) {
-        /* Still need to recurse for any children that weren't freed */
-        if (e->left) generateExpr(e->left);
-        if (e->right) generateExpr(e->right);
-        return;
-    }
-
-    /* INC/DEC and OREQ/ANDEQ are now handled by specialize()
-     * If we get here with these ops, specialize didn't handle them - emit fallback */
-    if (e->op == 0xcf || e->op == 0xef || e->op == 0xd6 || e->op == 0xf6) {
-        /* INC/DEC not handled by specialize - emit TODO comment */
-        snprintf(buf, sizeof(buf), "\t; TODO: unhandled inc/dec op=0x%02x", e->op);
-        e->asm_block = strdup(buf);
-        return;
     }
 
     /* For assignments, propagate size to constant RHS before code gen */
@@ -1388,8 +1366,7 @@ void generateCode()
  * ============================================================================
  * SCHEDULING PASS - Set location/dest fields on expression nodes
  *
- * This is a new pass that will eventually replace asm_block generation.
- * It walks expressions and tags them with:
+ * Walks expressions and tags them with:
  *   - loc: where the value currently lives
  *   - reg: which register (if loc=REG or INDIR)
  *   - dest: where the value needs to go

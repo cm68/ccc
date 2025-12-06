@@ -533,7 +533,7 @@ static int emitByteCp(struct expr *e)
 }
 
 /*
- * Emit binary operation - no asm_block, generate everything inline
+ * Emit binary operation - generates code directly
  */
 void emitBinop(struct expr *e)
 {

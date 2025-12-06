@@ -2,7 +2,7 @@
  * cc2.h - Data structures for code generation (pass 2)
  *
  * Extends the basic expr/stmt structures from cc1.h with
- * code generation fields (asm_block and label numbers)
+ * code generation fields (scheduling, jump instructions, label numbers)
  */
 #ifndef CC2_H
 #define CC2_H
@@ -79,7 +79,7 @@ struct labelMap {
  */
 #define E_UNSIGNED  0x01        // Value is unsigned
 #define E_UNUSED    0x02        // Value is not used (result discarded)
-#define E_GENERATED 0x04        // Node has been code-generated (asm_block emitted)
+#define E_GENERATED 0x04        // Node has been code-generated (scheduled/emitted)
 #define E_IXASSIGN  0x08        // ASSIGN to IX-indexed struct member
 #define E_IXDEREF   0x10        // DEREF of IX-indexed struct member
 
@@ -158,8 +158,7 @@ struct expr {
     unsigned char cond;         // Condition code if LOC_FLAGS: CC_Z, CC_NZ, CC_C, etc.
     char offset;                // Stack/IX offset if LOC_STACK or LOC_IX (-128..127)
 
-    /* Code generation fields (to be phased out) */
-    char *asm_block;            // Generated assembly code (or NULL)
+    /* Code generation fields */
     char *cleanup_block;        // Deferred cleanup code (for CALL stack cleanup)
     struct jump_instr *jump;    // Jump instruction (deferred) or NULL
     struct local_var *cached_var; // Cached variable lookup result (set by setLeftFlags)
@@ -185,7 +184,7 @@ struct stmt {
     char type_str;              // Type annotation char: 'b', 's', 'l', 'p' (for declarations)
 
     /* Code generation fields */
-    char *asm_block;            // Generated assembly code (or NULL)
+    char *asm_block;            // Inline assembly text (type 'A' statements only)
     struct jump_instr *jump;    // Jump instruction (deferred) or NULL
 };
 

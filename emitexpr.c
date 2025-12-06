@@ -34,10 +34,6 @@ void emitExpr(struct expr *e)
         exit(1);
     }
 
-    /* Handle DEREF specially for tracing */
-    if (TRACE(T_EXPR)) {
-        fdprintf(2, "  asm_block=%p\n", (void*)e->asm_block);
-    }
     /* Handle BC indirect load with caching - use opflags */
     if (e->op == 'M' && (e->opflags & OP_BCINDIR)) {
         emitBCIndir();
@@ -66,7 +62,7 @@ void emitExpr(struct expr *e)
         emitBinop(e);
         return;
     }
-    /* CALL operator - don't emit children, they're in the asm_block */
+    /* CALL operator - children handled by emitCall */
     else if (e->op == '@') {
         emitCall(e);
         return;
@@ -138,7 +134,6 @@ void emitExpr(struct expr *e)
             }
             clearHL();
         }
-        xfree(e->asm_block);
         free(e);
         return;
     }
@@ -254,27 +249,6 @@ void emitExpr(struct expr *e)
         if (e->left) emitExpr(e->left);
         if (e->right) emitExpr(e->right);
 
-        if (e->asm_block) {
-            if (e->asm_block[0]) {  /* Only if non-empty */
-                fdprintf(outFd, "%s\n", e->asm_block);
-            }
-            /* Empty asm_block - don't emit anything */
-
-            /* Check if this is a call to a comparison function that sets Z flag */
-            if (strstr(e->asm_block, "call")) {
-                char *call_pos;
-                call_pos = strstr(e->asm_block, "call");
-                /* Skip "call" and any whitespace/newlines to get function name */
-                call_pos += 4;  /* Skip "call" */
-                while (*call_pos && (*call_pos == ' ' || *call_pos == '\t' || *call_pos == '\n' || *call_pos == '\r')) {
-                    call_pos++;
-                }
-                if (*call_pos && isCmpFunc(call_pos)) {
-                    fnZValid = 1;
-                }
-            }
-        }
-
         /* Emit deferred cleanup (for CALL stack cleanup after result used) */
         if (e->cleanup_block) {
             fdprintf(outFd, "%s", e->cleanup_block);
@@ -282,7 +256,6 @@ void emitExpr(struct expr *e)
     }
 
     /* Free this node (children already freed by recursive emit calls above) */
-    xfree(e->asm_block);
     xfree(e->cleanup_block);
     if (e->jump) freeJump(e->jump);
     free(e);
