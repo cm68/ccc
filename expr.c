@@ -330,6 +330,8 @@ parseExpr(unsigned char pri, struct stmt *st)
             e->var = (struct var *)strname;
             /* Emit string literal immediately (string data freed in emit) */
             emitStrLit(strname);
+            /* Clear e->v since string data was freed by emitStrLit */
+            e->v = 0;
         }
         e->flags = E_CONST;
         break;

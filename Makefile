@@ -119,7 +119,7 @@ stage1/%.o: stage1/%.s FORCE
 
 FORCE:
 
-.PHONY: test tests valgrind FORCE
+.PHONY: test tests valgrind valgrind-stage1 FORCE
 test: cc1 tests/runtest.sh
 	$(MAKE) -C tests test
 
@@ -128,6 +128,33 @@ tests: cc1 tests/runtest.sh
 
 valgrind: cc1 tests/runvalgrind.sh
 	$(MAKE) -C tests valgrind
+
+# Run valgrind on stage1 compilation - generates .vg files for each pass
+# Output files per source:
+#   stage1/<base>.cc1.vg  - valgrind log for cc1
+#   stage1/<base>.cc1.err - stderr from cc1
+#   stage1/<base>.cc2.vg  - valgrind log for cc2
+#   stage1/<base>.cc2.err - stderr from cc2
+valgrind-stage1: cc1 cc2
+	@echo "Running valgrind on stage1 compilation"
+	@mkdir -p stage1
+	@for f in $(CFILES); do \
+	  if [ -f "$$f" ]; then \
+	    b=$$(basename $$f .c) ; \
+	    printf "%-20s cc1: " "$$f"; \
+	    valgrind --leak-check=full --log-file=stage1/$$b.cc1.vg \
+	      ./cc1 -DCCC -i./native/include -I. -E -o stage1/$$b.ast "$$f" \
+	      2>stage1/$$b.cc1.err; \
+	    grep -q "ERROR SUMMARY: 0 errors" stage1/$$b.cc1.vg && echo -n "OK " || echo -n "ERR "; \
+	    mv $$b.i stage1/$$b.i 2>/dev/null; \
+	    printf "cc2: "; \
+	    valgrind --leak-check=full --log-file=stage1/$$b.cc2.vg \
+	      ./cc2 -o stage1/$$b.s stage1/$$b.ast \
+	      2>stage1/$$b.cc2.err; \
+	    grep -q "ERROR SUMMARY: 0 errors" stage1/$$b.cc2.vg && echo "OK" || echo "ERR"; \
+	  fi; \
+	done
+	@echo "Valgrind logs: stage1/*.vg, stderr: stage1/*.err"
 
 .PHONY: unit-tests
 unit-tests: $(GENERATED)

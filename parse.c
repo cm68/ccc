@@ -1315,7 +1315,8 @@ declaration()
              */
             if (v->type && (v->type->flags & TF_ARRAY) &&
                 v->type->count == -1 &&
-                v->u.init && v->u.init->op == STRING && !v->u.init->next) {
+                v->u.init && v->u.init->op == STRING && !v->u.init->next &&
+                v->u.init->v) {
                 /* Get string length from counted string */
                 str = (cstring)v->u.init->v;
                 if (str) {
