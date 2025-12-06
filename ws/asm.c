@@ -615,16 +615,17 @@ char *s;
     } else if (c == 'b') {
         base = 2;
         s[i-1] = '\0';
-    } else if (*s == 0) {
-        c = *s++ | 0x20;
-        if (c == 'h') {
+    } else if (*s == '0' && s[1]) {
+        c = s[1] | 0x20;
+        if (c == 'x') {
             base = 16;
-            s++;
+            s += 2;
         } else if (c == 'b') {
             base = 2;
-            s++;
+            s += 2;
         } else {
             base = 8;
+            s++;
         }
     }
 

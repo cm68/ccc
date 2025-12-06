@@ -29,6 +29,9 @@ unsigned char *readName(void);
 /* Read hex-length-prefixed string (malloc'd) */
 unsigned char *readStr(void);
 
+/* Read hex-encoded string (len + 2*len hex digits, malloc'd) */
+unsigned char *readHexStr(void);
+
 /* Skip to next line */
 void skipLine(void);
 

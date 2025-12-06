@@ -270,7 +270,7 @@ Operators:
 ```
 N<type><expr>   - narrow (truncate to smaller type)
 W<type><expr>   - widen (zero-extend unsigned)
-<0xab><type><expr>   - sign-extend (SEXT)
+x<type><expr>   - sign-extend (SEXT)
 ```
 
 ### Increment/Decrement
@@ -278,10 +278,10 @@ W<type><expr>   - widen (zero-extend unsigned)
 <op><type><expr><amount>
 ```
 
-- `0xcf` - pre-increment (++x)
-- `0xef` - post-increment (x++)
-- `0xd6` - pre-decrement (--x)
-- `0xf6` - post-decrement (x--)
+- `(` - pre-increment (++x)
+- `)` - post-increment (x++)
+- `{` - pre-decrement (--x)
+- `}` - post-decrement (x--)
 - `amount` - 4-digit hex increment value
 
 ### Function Call
@@ -308,12 +308,12 @@ Y<length><dest><src>
 
 ### Bitfield Extract
 ```
-<0xa7><offset><width><addr>
+e<offset><width><addr>
 ```
 
 ### Bitfield Assign
 ```
-<0xdd><offset><width><addr><value>
+f<offset><width><addr><value>
 ```
 
 ### Comma Operator
@@ -355,15 +355,22 @@ int _main() {
    - Static symbols use mangled names
    - Local variables have no prefix
 
-3. **Operator Encoding**: Some operators use byte values >127:
-   - `0xab` (171) - sign-extend (SEXT)
-   - `0xcf` (207) - pre-increment
-   - `0xef` (239) - post-increment
-   - `0xd6` (214) - pre-decrement
-   - `0xf6` (246) - post-decrement
-   - `0xa7` (167) - bitfield extract
-   - `0xdd` (221) - bitfield assign
-   - `0xbb` (187) - memory copy (Y alias)
+3. **Operator Encoding**: All AST operators use ASCII (0x21-0x7e) to avoid
+   encoding issues. Some operators reuse keyword character values since
+   keywords never appear in expression-operator context:
+   - `x` - sign-extend (SEXT) - reuses EXTERN
+   - `(` - pre-increment - reuses LPAR
+   - `)` - post-increment - reuses RPAR
+   - `{` - pre-decrement - reuses BEGIN
+   - `}` - post-decrement - reuses END
+   - `e` - bitfield extract - reuses ENUM
+   - `f` - bitfield assign - reuses FLOAT
+   - `o` - subtract-equals - reuses AUTO
+   - `a` - and-equals - reuses STRUCT
+   - `m` - mod-equals - reuses UNION
+   - `Y` - memory copy
+   - `W` - widen (zero-extend)
+   - `N` - narrow (truncate)
 
 4. **Width Annotations**: Operators that produce values have a type suffix
    indicating the result size. This is used for code generation.

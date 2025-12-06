@@ -128,6 +128,7 @@ extern struct stmt *newStmt(unsigned char op, struct expr *left);
 extern void frStm(struct stmt *s);
 extern void frStmt(struct stmt *s);
 extern void emitFunction(struct name *func);
+extern void emitGlobalAsm(struct stmt *st);
 extern void emitGv(struct name *var);
 extern void emitGvs(void);
 extern void emitStrLit(struct name *strname);

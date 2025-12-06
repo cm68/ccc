@@ -15,6 +15,22 @@ extern char noasm[];
 void xfree(void *p);
 
 /*
+ * AST operator codes - ASCII values used in .ast files
+ * These reuse keyword character values that can never appear
+ * as expression operators (context distinguishes them).
+ */
+#define AST_SEXT      'x'   /* sign extend */
+#define AST_PREINC    '('   /* pre-increment */
+#define AST_POSTINC   ')'   /* post-increment */
+#define AST_PREDEC    '{'   /* pre-decrement */
+#define AST_POSTDEC   '}'   /* post-decrement */
+#define AST_SUBEQ     'o'   /* subtract-equals */
+#define AST_ANDEQ     'a'   /* and-equals */
+#define AST_MODEQ     'm'   /* mod-equals */
+#define AST_BFEXTRACT 'e'   /* bitfield extract */
+#define AST_BFASSIGN  'f'   /* bitfield assign */
+
+/*
  * Assembler directive syntax
  * Different assemblers use different syntax for these directives
  */

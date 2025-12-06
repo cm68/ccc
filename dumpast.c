@@ -84,14 +84,14 @@ opName(unsigned char op)
     case ',': return ",";
     case '?': return "?";
     case ':': return ":";
-    case 0xcf: return "++p";
-    case 0xef: return "p++";
-    case 0xd6: return "--p";
-    case 0xf6: return "p--";
-    case 0x31: return "|=";
-    case 0xc6: return "&=";
+    case AST_PREINC: return "++p";
+    case AST_POSTINC: return "p++";
+    case AST_PREDEC: return "--p";
+    case AST_POSTDEC: return "p--";
+    case '1': return "|=";
+    case AST_ANDEQ: return "&=";
     case 'P': return "+=";
-    case 0xdf: return "-=";
+    case AST_SUBEQ: return "-=";
     default: return NULL;
     }
 }

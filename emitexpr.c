@@ -41,7 +41,7 @@ void emitExpr(struct expr *e)
         return;
     }
     /* Handle increment/decrement - Pattern 1 (e->symbol) or Pattern 2/3 (e->left) */
-    else if ((e->op == 0xcf || e->op == 0xef || e->op == 0xd6 || e->op == 0xf6) &&
+    else if ((e->op == AST_PREINC || e->op == AST_POSTINC || e->op == AST_PREDEC || e->op == AST_POSTDEC) &&
              (e->symbol || e->left)) {
         emitIncDec(e);
         return;
@@ -176,11 +176,11 @@ void emitExpr(struct expr *e)
         return;
     }
     /* Handle specialized bit ops (OREQ=set, ANDEQ=res) */
-    else if ((e->op == 0x31 || e->op == 0xc6) && !e->left && !e->right && e->cached_var &&
+    else if ((e->op == '1' || e->op == AST_ANDEQ) && !e->left && !e->right && e->cached_var &&
              e->value >= 0 && e->value <= 7) {
         /* Simple variable patterns - kids were freed, bitnum stored in e->value */
         struct local_var *var = e->cached_var;
-        const char *inst = (e->op == 0x31) ? "set" : "res";
+        const char *inst = (e->op == '1') ? "set" : "res";
         int bitnum = e->value;
         if (e->opflags & OP_REGVAR) {
             const char *rn = byteRegName(var->reg);
@@ -200,8 +200,8 @@ void emitExpr(struct expr *e)
         return;
     }
     /* Handle specialized bit ops with IX-indexed or (hl) addressing */
-    else if ((e->op == 0x31 || e->op == 0xc6) && (e->opflags & OP_IXMEM) && !e->left) {
-        const char *inst = (e->op == 0x31) ? "set" : "res";
+    else if ((e->op == '1' || e->op == AST_ANDEQ) && (e->opflags & OP_IXMEM) && !e->left) {
+        const char *inst = (e->op == '1') ? "set" : "res";
         int bitnum = (e->value >> 8) & 0xff;
         int ofs = (char)(e->value & 0xff);
         fdprintf(outFd, "\t%s %d, (ix %c %d)\n", inst, bitnum,
@@ -209,9 +209,9 @@ void emitExpr(struct expr *e)
         freeNode(e);
         return;
     }
-    else if ((e->op == 0x31 || e->op == 0xc6) && e->left && !e->right) {
+    else if ((e->op == '1' || e->op == AST_ANDEQ) && e->left && !e->right) {
         /* (hl) addressing - emit left for address, then bit op */
-        const char *inst = (e->op == 0x31) ? "set" : "res";
+        const char *inst = (e->op == '1') ? "set" : "res";
         int bitnum = e->value;
         emitExpr(e->left);
         fdprintf(outFd, "\t%s %d, (hl)\n", inst, bitnum);
@@ -219,7 +219,7 @@ void emitExpr(struct expr *e)
         return;
     }
     /* Handle specialized PLUSEQ/SUBEQ for byte register variables */
-    else if ((e->op == 'P' || e->op == 0xdf) && (e->opflags & OP_REGVAR) &&
+    else if ((e->op == 'P' || e->op == AST_SUBEQ) && (e->opflags & OP_REGVAR) &&
              !e->left && e->right && e->cached_var) {
         struct local_var *var = e->cached_var;
         const char *rn = byteRegName(var->reg);

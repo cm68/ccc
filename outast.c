@@ -170,7 +170,7 @@ emitExpr(struct expr *e)
 		{
 			char size_suffix = getSizeSuffix(e->type);
 			unsigned char op_char = (e->op == NARROW) ? 'N' :
-			    (e->op == WIDEN) ? 'W' : 0xab;  /* SEXT = 0xab */
+			    (e->op == WIDEN) ? 'W' : AST_SEXT;
 			fdprintf(astFd, "%c%c", op_char, size_suffix);
 			emitChild(e->left);
 		}
@@ -195,9 +195,9 @@ emitExpr(struct expr *e)
 			char size_suffix = getSizeSuffix(e->type);
 
 			if (e->op == INCR) {
-				op_char = (e->flags & E_POSTFIX) ? POSTINC : PREINC;
+				op_char = (e->flags & E_POSTFIX) ? AST_POSTINC : AST_PREINC;
 			} else {
-				op_char = (e->flags & E_POSTFIX) ? POSTDEC : PREDEC;
+				op_char = (e->flags & E_POSTFIX) ? AST_POSTDEC : AST_PREDEC;
 			}
 
 			/* Calculate increment amount based on type */
@@ -212,10 +212,10 @@ emitExpr(struct expr *e)
 		break;
 
 	case BFEXTRACT:
-		/* Bitfield extract: 0xa7 offset width addr */
+		/* Bitfield extract: AST_BFEXTRACT offset width addr */
 		{
 			struct name *member = (struct name *)e->var;
-			fdprintf(astFd, "%c", BFEXTRACT);
+			fdprintf(astFd, "%c", AST_BFEXTRACT);
 			if (member) {
 				fdprintf(astFd, "%02x%02x", member->bitoff, member->width);
 			} else {
@@ -226,10 +226,10 @@ emitExpr(struct expr *e)
 		break;
 
 	case BFASSIGN:
-		/* Bitfield assign: 0xdd offset width addr value */
+		/* Bitfield assign: AST_BFASSIGN offset width addr value */
 		{
 			struct name *member = (struct name *)e->var;
-			fdprintf(astFd, "%c", BFASSIGN);
+			fdprintf(astFd, "%c", AST_BFASSIGN);
 			if (member) {
 				fdprintf(astFd, "%02x%02x", member->bitoff, member->width);
 			} else {
@@ -247,6 +247,19 @@ emitExpr(struct expr *e)
 		if (e->right && e->right->op == COLON) {
 			emitChild(e->right->left);
 			emitChild(e->right->right);
+		}
+		break;
+
+	case SUBEQ:
+	case ANDEQ:
+	case MODEQ:
+		/* Compound assignment operators with high-bit tokens - map to ASCII */
+		{
+			unsigned char op_char = (e->op == SUBEQ) ? AST_SUBEQ :
+			    (e->op == ANDEQ) ? AST_ANDEQ : AST_MODEQ;
+			fdprintf(astFd, "%c%c", op_char, getSizeSuffix(e->type));
+			emitChild(e->left);
+			emitChild(e->right);
 		}
 		break;
 
@@ -548,7 +561,7 @@ emitStmt(struct stmt *st)
 		{
 			int len = st->label ? strlen(st->label) : 0;
 			int i;
-			fdprintf(astFd, "A%02x", len);
+			fdprintf(astFd, "A%04x", len);
 			for (i = 0; i < len; i++)
 				fdprintf(astFd, "%02x", (unsigned char)st->label[i]);
 		}
@@ -603,6 +616,23 @@ emitParams(struct type *functype)
 				emitHexName("_");  /* anonymous parameter */
 		}
 	}
+}
+
+/*
+ * Output a global asm block in AST format
+ * Format: A len hexdata (same as inline asm but at top level)
+ */
+void
+emitGlobalAsm(struct stmt *st)
+{
+	int len, i;
+	if (!st || !st->label)
+		return;
+	len = strlen(st->label);
+	fdprintf(astFd, "\nA%04x", len);
+	for (i = 0; i < len; i++)
+		fdprintf(astFd, "%02x", (unsigned char)st->label[i]);
+	fdprintf(astFd, "\n");
 }
 
 /*

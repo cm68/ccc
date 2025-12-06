@@ -55,6 +55,18 @@ enum {
     PREINC = 0xcf, POSTINC = 0xef, PREDEC = 0xd6, POSTDEC = 0xf6,
     BFEXTRACT = 0xa7, BFASSIGN = 0xdd,
 
+    /* AST operator aliases - reuse keyword values for .ast serialization */
+    AST_SEXT = 'x',         /* EXTERN - sign extend */
+    AST_PREINC = '(',       /* LPAR - pre-increment */
+    AST_POSTINC = ')',      /* RPAR - post-increment */
+    AST_PREDEC = '{',       /* BEGIN - pre-decrement */
+    AST_POSTDEC = '}',      /* END - post-decrement */
+    AST_SUBEQ = 'o',        /* AUTO - subtract-equals */
+    AST_ANDEQ = 'a',        /* STRUCT - and-equals */
+    AST_MODEQ = 'm',        /* UNION - mod-equals */
+    AST_BFEXTRACT = 'e',    /* ENUM - bitfield extract */
+    AST_BFASSIGN = 'f',     /* FLOAT - bitfield assign */
+
     /* CPP */
     INCLUDE = '#',
     DEFINE = '$', UNDEF = 'K',

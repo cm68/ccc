@@ -130,36 +130,34 @@ class ASTParser:
         return self.WIDTH_NAMES.get(c, c)
 
     def op_name(self, c):
-        # Handle special byte opcodes
-        if isinstance(c, int):
-            special = {
-                0xcf: '++p', 0xef: 'p++', 0xd6: '--p', 0xf6: 'p--',
-                0xdf: '-=', 0xfe: '|=', 0xc6: '&=',
-                0xa7: 'BFEXT', 0xdd: 'BFSET', 0xab: 'SEXT'
-            }
-            return special.get(c, f'0x{c:02x}')
+        # Handle special operators (new ASCII encoding)
+        special = {
+            '(': '++p', ')': 'p++', '{': '--p', '}': 'p--',
+            'o': '-=', 'm': '%=', 'a': '&=',
+            'e': 'BFEXT', 'f': 'BFSET', 'x': 'SEXT'
+        }
+        if c in special:
+            return special[c]
         return self.OP_NAMES.get(c, c)
 
     def op_arity(self, c):
         """Return arity of operator"""
-        # Handle byte opcodes
-        if isinstance(c, int):
-            if c in (0xcf, 0xef, 0xd6, 0xf6):  # inc/dec
-                return 'special'
-            if c in (0xa7,):  # bitfield extract
-                return 'special'
-            if c in (0xdd,):  # bitfield assign
-                return 'special'
-            if c == 0xab:  # sign extend
-                return 1
-            return 2  # compound assignments
+        # Inc/dec operators (new ASCII encoding)
+        if c in '(){}':
+            return 'special'
+        # Bitfield operators
+        if c in 'ef':
+            return 'special'
+        # Sign extend
+        if c == 'x':
+            return 1
         # Unary operators
         if c in "MNW!~\\'":
             return 1
         # Special operators
         if c in '@?Y':
             return 'special'
-        # Binary operators
+        # Binary operators (includes compound assignments o, a, m)
         return 2
 
     def parse_expr(self):
@@ -193,49 +191,41 @@ class ASTParser:
             v = self.read_hex8()
             return str(v)
 
-        # Check for high-byte opcodes (special operators)
-        if ord(c) >= 0x80:
-            op_byte = ord(c)
+        # Inc/Dec: op width expr delta (4 hex) - ASCII encoding (){}
+        if c in '(){}':
             self.advance()
-
-            # Inc/Dec: op width expr delta (4 hex)
-            if op_byte in (0xcf, 0xef, 0xd6, 0xf6):
-                w = self.cur()
-                self.advance()
-                e = self.parse_expr()
-                delta = self.read_hex4()
-                op_name = {0xcf: 'PREINC', 0xef: 'POSTINC',
-                          0xd6: 'PREDEC', 0xf6: 'POSTDEC'}[op_byte]
-                return f"({op_name}:{self.width_name(w)} {e} {delta})"
-
-            # Bitfield extract: 0xa7 off(2) wid(2) expr
-            if op_byte == 0xa7:
-                off = self.read_hex2()
-                wid = self.read_hex2()
-                e = self.parse_expr()
-                return f"(BFEXT {off}:{wid} {e})"
-
-            # Bitfield assign: 0xdd off(2) wid(2) dest val
-            if op_byte == 0xdd:
-                off = self.read_hex2()
-                wid = self.read_hex2()
-                dst = self.parse_expr()
-                val = self.parse_expr()
-                return f"(BFSET {off}:{wid} {dst} {val})"
-
-            # Sign extend (0xab) - unary with width
-            if op_byte == 0xab:
-                w = self.cur()
-                self.advance()
-                e = self.parse_expr()
-                return f"(SEXT:{self.width_name(w)} {e})"
-
-            # Other high-byte ops (compound assignments) - binary with width
             w = self.cur()
             self.advance()
-            e1 = self.parse_expr()
-            e2 = self.parse_expr()
-            return f"({self.op_name(op_byte)}:{self.width_name(w)} {e1} {e2})"
+            e = self.parse_expr()
+            delta = self.read_hex4()
+            op_name = {'(': 'PREINC', ')': 'POSTINC',
+                      '{': 'PREDEC', '}': 'POSTDEC'}[c]
+            return f"({op_name}:{self.width_name(w)} {e} {delta})"
+
+        # Bitfield extract: e off(2) wid(2) expr
+        if c == 'e':
+            self.advance()
+            off = self.read_hex2()
+            wid = self.read_hex2()
+            e = self.parse_expr()
+            return f"(BFEXT {off}:{wid} {e})"
+
+        # Bitfield assign: f off(2) wid(2) dest val
+        if c == 'f':
+            self.advance()
+            off = self.read_hex2()
+            wid = self.read_hex2()
+            dst = self.parse_expr()
+            val = self.parse_expr()
+            return f"(BFSET {off}:{wid} {dst} {val})"
+
+        # Sign extend (x) - unary with width
+        if c == 'x':
+            self.advance()
+            w = self.cur()
+            self.advance()
+            e = self.parse_expr()
+            return f"(SEXT:{self.width_name(w)} {e})"
 
         # Regular operator
         op_char = c

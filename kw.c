@@ -120,49 +120,85 @@ unsigned char ckw[] = {
  *   - Modifies Z80 registers (HL, DE, A, flags)
  *   - No side effects to memory or global state
  */
+
+char *kw_table;
+char *kw_string;
+unsigned kw_ret;
+
 char
 kwlook(char *str, char *table)
-ASMFUNC
 {
-    static char *s;
-    static char *t;
+    kw_string = str;
+    kw_table = table;
 
-    s = str;        // de
-    t = table;      // hl
-
-    ASMSTART
-        ld hl,(t) ; ld de,(s) ; jr done_p;
+    asm {
+        ld hl,(_kw_table)
+        ld de,(_kw_string)
+        jr done_p;
     lp:
     top:
-        ld a,(hl);
-        cp a,#ff; jr nz,not_term;
-        inc hl; ld a,(de); or a,a; ld a,0; jr nz,fin;
+        ld a,(hl)
+        cp a,0xff
+        jr nz,not_term
+        inc hl
+        ld a,(de)
+        or a,a
+        ld a,0
+        jr nz,fin
     ret_tok:
-        ld a,(hl); jr fin;
+        ld a,(hl)
+        jr fin
     not_term:
-        cp a,#fe; jr nz,cond;
-        inc hl; ld a,(de); or a,a; jr z,ret_tok;
-        inc hl; jr lp;
+        cp a,0xfe
+        jr nz,cond
+        inc hl
+        ld a,(de)
+        or a,a
+        jr z,ret_tok;
+        inc hl
+        jr lp
     cond:
-        bit 7,a; jr z,liter;
-        res 7,a; ex de,hl; cp a,(hl); ex de,hl; jr nz,skip
-        inc hl; jr next;
+        bit 7,a
+        jr z,liter
+        res 7,a
+        ex de,hl
+        cp a,(hl)
+        ex de,hl
+        jr nz,skip
+        inc hl
+        jr next;
     skip:
-        inc hl; ld a,(hl);
-        add a,#2; add a,l; ld l,a;
-        ld a,#0; adc a,h; ld h,a;
-        jr lp;
+        inc hl
+        ld a,(hl);
+        add a,2
+        add a,l
+        ld l,a;
+        ld a,0
+        adc a,h
+        ld h,a
+        jr lp
     liter:
-        cp a,(hl); ld a,0; jr nz,fin;
+        cp a,(hl)
+        ld a,0
+        jr nz,fin
     next:
-        inc hl; inc de;
+        inc hl
+        inc de
     done_p:
-        ld a,(de); or a,a; jr nz, top;
+        ld a,(de)
+        or a,a
+        jr nz, top
     fin:
-        ld l,a; ld h,0;
-    ASMEND
-    return 0;  // Never reached - assembly does its own return
+        ld (_kw_ret), a
+    }
+    return kw_ret;
 }
+
+asm {
+test_func::
+    ret
+}
+
 #else
 /*
  * Look up keyword in compressed table (portable C implementation)

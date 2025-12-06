@@ -598,8 +598,7 @@ statement(struct stmt *parent)
             break;
 
         case ASM:
-            gettoken();
-            st = asmblock();
+            st = asmblock();  /* asmblock() handles token advancement */
             break;
 
         default:
@@ -682,75 +681,24 @@ struct stmt *
 asmblock(void)
 {
     struct stmt *st;
-    int depth = 0;
-    char *captured_text = NULL;
-    int captured_len = 0;
+    char *text;
 
-    /* Expect opening brace */
-    if (cur.type != BEGIN) {
-        gripe(ER_S_SB);  /* Expected { (brace) */
+    /* The ASM token should have raw text in cur.v.str (captured by lexer) */
+    if (!cur.v.str) {
+        gripe(ER_S_SB);  /* Expected asm block */
         return NULL;
     }
 
-    /* Initialize asm capture buffer */
-    asmCbuf = malloc(256);
-    asmCsiz = 256;
-    asmClen = 0;
-    asmCbuf[0] = 0;
+    /* Take ownership of the raw text */
+    text = cur.v.str;
+    cur.v.str = NULL;
 
-    /* Set ASM_BLOCK flag for special asm processing */
-    tflags |= ASM_BLOCK;
-
-    /* Clear lineend flag from any newline after the opening brace */
-    lineend = 0;
-
-    /* Consume { and start capturing tokens */
+    /* Get next token to continue parsing */
     gettoken();
-    depth = 1;
-
-    while (depth > 0 && cur.type != E_O_F) {
-        /* Check for nested braces */
-        if (cur.type == BEGIN) {
-            depth++;
-        } else if (cur.type == END) {
-            depth--;
-            if (depth == 0) {
-                /* Found matching closing brace - save captured text and stop */
-                captured_text = asmCbuf;
-                captured_len = asmClen;
-                asmCbuf = NULL;
-                asmCsiz = 0;
-                asmClen = 0;
-                tflags &= ~ASM_BLOCK;  /* Clear ASM_BLOCK flag */
-                break;
-            }
-        }
-
-        /*
-         * Get next token (will be captured by lexer if
-         * asmCbuf is set)
-         */
-        gettoken();
-    }
-
-    /* Clear ASM_BLOCK flag in case we exited loop due to EOF */
-    tflags &= ~ASM_BLOCK;
-
-    /* Trim trailing space and semicolon from captured text */
-    while (captured_len > 0 && (captured_text[captured_len-1] == ' ' ||
-                                 captured_text[captured_len-1] == ';')) {
-        captured_text[captured_len-1] = 0;
-        captured_len--;
-    }
-
-    /* Consume the closing } */
-    if (cur.type == END) {
-        gettoken();
-    }
 
     /* Create statement with assembly text */
     st = makestmt(ASM, NULL);
-    st->label = captured_text;  /* Transfer ownership to statement */
+    st->label = text;
 
     return st;
 }
@@ -1342,6 +1290,14 @@ parse()
 			cur.type == REGISTER || cur.type == AUTO || cur.type == EXTERN ||
 			(poss_typedef && poss_typedef->kind == tdef)) {
 			declaration();
+		} else if (cur.type == ASM) {
+			/* Global asm block */
+			struct stmt *st;
+			st = asmblock();  /* asmblock() handles token advancement */
+			if (st) {
+				emitGlobalAsm(st);
+				frStmt(st);
+			}
 		} else {
 			/* Not a declaration - skip this token to avoid getting stuck */
 			gettoken();

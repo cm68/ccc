@@ -110,8 +110,8 @@ void emitIncDec(struct expr *e)
     size = e->size;
     amount = e->value;
     unused = (e->flags & E_UNUSED) ? 1 : 0;
-    is_post = (e->op == 0xef || e->op == 0xf6);
-    is_dec = (e->op == 0xd6 || e->op == 0xf6);
+    is_post = (e->op == AST_POSTINC || e->op == AST_POSTDEC);
+    is_dec = (e->op == AST_PREDEC || e->op == AST_POSTDEC);
     if (unused) is_post = 0;
 
     /* Initialize */

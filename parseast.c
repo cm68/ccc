@@ -262,7 +262,7 @@ initOptab(void)
 	if (optab_init) return;
 	optab_init = 1;
 	/* Unary ops */
-	optab['M'] = optab['N'] = optab['W'] = optab[0xab] = OP_1;
+	optab['M'] = optab['N'] = optab['W'] = optab[AST_SEXT] = OP_1;
 	optab['!'] = optab['~'] = optab['\\'] = optab['\''] = OP_1;
 	/* Binary ops */
 	optab['='] = optab['+'] = optab['-'] = optab['*'] = optab['/'] = OP_2;
@@ -271,13 +271,13 @@ initOptab(void)
 	optab['g'] = optab['y'] = optab['w'] = optab[':'] = OP_2;
 	optab['P'] = optab['T'] = optab['2'] = optab['1'] = OP_2;
 	optab['X'] = optab['0'] = optab['6'] = OP_2;
-	optab[0xdf] = optab[0xfe] = optab[0xc6] = OP_2;
+	optab[AST_SUBEQ] = optab[AST_MODEQ] = optab[AST_ANDEQ] = OP_2;
 	/* Logical with label */
 	optab['h'] = optab['j'] = OP_2 | OP_L;
 	/* Special: call, ternary, copy, inc/dec, bitfield */
 	optab['@'] = optab['?'] = optab['Y'] = OP_S;
-	optab[0xcf] = optab[0xef] = optab[0xd6] = optab[0xf6] = OP_S;
-	optab[0xa7] = optab[0xdd] = OP_S;
+	optab[AST_PREINC] = optab[AST_POSTINC] = optab[AST_PREDEC] = optab[AST_POSTDEC] = OP_S;
+	optab[AST_BFEXTRACT] = optab[AST_BFASSIGN] = OP_S;
 }
 
 /* Read type suffix and set size/flags */
@@ -374,14 +374,14 @@ doBitfield(unsigned char op)
 	int off = readHex2(), wid = readHex2();
 	e->value = (off << 16) | wid;
 	e->left = parseExpr();
-	if (op == 0xdd) e->right = parseExpr();
+	if (op == AST_BFASSIGN) e->right = parseExpr();
 	return e;
 }
 
 static struct expr *
 doCopy(void)
 {
-	struct expr *e = newExpr(0xbb);
+	struct expr *e = newExpr('Y');
 	e->value = readHex4();
 	e->left = parseExpr();
 	e->right = parseExpr();
@@ -441,9 +441,9 @@ parseExpr(void)
 		case '@': e = doCall(); break;
 		case '?': e = doTernary(); break;
 		case 'Y': e = doCopy(); break;
-		case 0xcf: case 0xef: case 0xd6: case 0xf6:
+		case AST_PREINC: case AST_POSTINC: case AST_PREDEC: case AST_POSTDEC:
 			e = doIncDec(op); break;
-		case 0xa7: case 0xdd:
+		case AST_BFEXTRACT: case AST_BFASSIGN:
 			e = doBitfield(op); break;
 		default:
 			/* Unknown special - return placeholder */
@@ -613,9 +613,9 @@ parseStmt(void)
 		return s;
 
 	case 'A':
-		/* Asm: A len hexdata */
+		/* Asm: A len hexdata (hex-encoded) */
 		s = newStmt('A');
-		s->asm_block = strdup((char *)readStr());
+		s->asm_block = (char *)readHexStr();
 		return s;
 
 	case ';':  /* Empty statement */
@@ -953,6 +953,15 @@ parseToplvl(void)
 		break;
 	case 'U':
 		doStrLiteral();
+		break;
+	case 'A':
+		/* Global asm block - output raw text to text segment */
+		{
+			char *asm_text = (char *)readHexStr();
+			switchToSeg(SEG_TEXT);
+			fdprintf(outFd, "%s\n", asm_text);
+			free(asm_text);
+		}
 		break;
 	default:
 		/* Unknown top-level - skip to newline */

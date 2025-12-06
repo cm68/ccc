@@ -15,21 +15,7 @@ CC = gcc
 ASM = asz
 ASMOPTS =
 
-ifeq ($(CC),cc)
-DEFINES= -DCCC
-DEBUG=
-CFLAGS = $(DEBUG) $(DEFINES)
-LD = echo
-LDFLAGS= 
-endif
-
-ifeq ($(CC),sdcc)
-DEFINES= -DSDCC
-DEBUG=
-CFLAGS = $(DEBUG) $(DEFINES) -mz80
-LD = sdldz80
-LDFLAGS= -l /usr/share/sdcc/lib/z80/z80.lib -m -w -i -y
-endif
+CCCFLAGS = -DCCC -DASMKWLOOK -inative/include -I.
 
 ifeq ($(CC),gcc)
 DEFINES= -DDEBUG
@@ -65,7 +51,7 @@ LIBSRCS = native/lib/Makefile native/lib/ccclib.s
 # Documentation files (in reading order)
 DOCFILES = README.md TODO.md CLAUDE.md AST_FORMAT.md native/lib/README.md
 
-BINS = enumcheck cc1 cc2 ccc maketokens genop_pri
+BINS = cc1 cc2 ccc maketokens genop_pri
 
 #VERBOSE=-v 3
 
@@ -84,7 +70,7 @@ $(CC1OBJECTS): $(HFILES)
 
 # Suffix rule to generate .ast files from .c files
 %.ast: %.c cc1
-	./cc1 -DCCC -i./include -I. -o $@ $<
+	./cc1 $(CCCFLAGS) -o $@ $<
 
 # Suffix rule to generate .s assembly files from .ast files
 %.s: %.ast cc2
@@ -104,12 +90,12 @@ $(CC1OBJECTS): $(HFILES)
 
 stage1/%.i: %.c cc1 FORCE
 	@mkdir -p stage1
-	./cc1 -DCCC -i./native/include -I. -o stage1/$*.ast $<
+	./cc1 $(CCCFLAGS) -o stage1/$*.ast $<
 	mv $*.i $@
 
 stage1/%.ast: %.c cc1 FORCE
 	@mkdir -p stage1
-	./cc1 -DCCC -i./native/include -I. -o $@ $<
+	./cc1 $(CCCFLAGS) -o $@ $<
 
 stage1/%.pp: stage1/%.ast FORCE
 	python3 ./astpp.py $< > $@
@@ -146,7 +132,7 @@ valgrind-stage1: cc1 cc2
 	    b=$$(basename $$f .c) ; \
 	    printf "%-20s cc1: " "$$f"; \
 	    valgrind --leak-check=full --log-file=stage1/$$b.cc1.vg \
-	      ./cc1 -DCCC -i./native/include -I. -o stage1/$$b.ast "$$f" \
+	      ./cc1 $(CCCFLAGS) -o stage1/$$b.ast "$$f" \
 	      2>stage1/$$b.cc1.err; \
 	    grep -q "ERROR SUMMARY: 0 errors" stage1/$$b.cc1.vg && echo -n "OK " || echo -n "ERR "; \
 	    mv $$b.i stage1/$$b.i 2>/dev/null; \
@@ -171,7 +157,7 @@ stage1: cc1 cc2
 	  if [ -f "$$f" ]; then \
 	    b=$$(basename $$f .c) ; \
 	    printf "%-30s" "$$f: "; \
-	    ./cc1 -DCCC -i./native/include -I. -E -o stage1/$$b.ast "$$f" \
+	    ./cc1 $(CCCFLAGS) -E -o stage1/$$b.ast "$$f" \
 		2>stage1/$$b.err ; \
 	    ret1=$$?; \
 	    mv $$b.i stage1/$$b.i; \
@@ -276,10 +262,6 @@ trace2.h tracetags.c: ./makedebug2.sh
 #
 error.h: errorcodes ./makeerror.awk
 	awk -f ./makeerror.awk < errorcodes > error.h
-	
-enumcheck: enumlist.h enumcheck.c
-	cc -o enumcheck enumcheck.c
-	./enumcheck
 
 regen:
 	rm -f $(GENERATED)

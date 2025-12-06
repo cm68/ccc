@@ -1324,7 +1324,46 @@ gettoken()
             t = kwlook((unsigned char *)strbuf, ckw);
             if (t) {
                 next.type = t;
-                next.v.name = 0;  // keywords don't have names
+                next.v.name = 0;  /* keywords don't have names */
+                /* Special handling for asm { } - capture raw text */
+                if (t == ASM) {
+                    /* Skip whitespace to find { */
+                    while (curchar == ' ' || curchar == '\t' || curchar == '\n')
+                        advance();
+                    if (curchar == '{') {
+                        int depth = 1;
+                        int bufsiz = 256;
+                        int buflen = 0;
+                        char *buf = malloc(bufsiz);
+                        advance();  /* skip { */
+                        /* Capture until matching } */
+                        while (depth > 0 && curchar) {
+                            if (curchar == '{') depth++;
+                            else if (curchar == '}') {
+                                depth--;
+                                if (depth == 0) break;
+                            }
+                            if (buflen + 1 >= bufsiz) {
+                                bufsiz *= 2;
+                                buf = realloc(buf, bufsiz);
+                            }
+                            buf[buflen++] = curchar;
+                            advance();
+                        }
+                        buf[buflen] = 0;
+                        if (curchar == '}') advance();
+                        /* Trim whitespace */
+                        while (buflen > 0 && (buf[buflen-1] == ' ' ||
+                               buf[buflen-1] == '\t' || buf[buflen-1] == '\n'))
+                            buf[--buflen] = 0;
+                        {
+                            char *p = buf;
+                            while (*p == ' ' || *p == '\t' || *p == '\n') p++;
+                            if (p != buf) memmove(buf, p, strlen(p) + 1);
+                        }
+                        next.v.str = buf;  /* Store raw text */
+                    }
+                }
                 break;
             }
             next.type = SYM;

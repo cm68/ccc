@@ -635,7 +635,7 @@ static int
 specBitOp(struct expr *e)
 {
     int bitnum;
-    int is_or = (e->op == 0x31);  /* OREQ vs ANDEQ */
+    int is_or = (e->op == '1');  /* OREQ vs ANDEQ */
 
     /* Must be byte operation with constant RHS (OP_CONST cached by setOpFlags) */
     if (e->size != 1 || !(e->opflags & OP_CONST))
@@ -782,12 +782,12 @@ specExpr(struct expr *e)
     CHECK_WALK();
 
     /* Try INC/DEC specialization */
-    if (e->op == 0xcf || e->op == 0xef || e->op == 0xd6 || e->op == 0xf6) {
+    if (e->op == AST_PREINC || e->op == AST_POSTINC || e->op == AST_PREDEC || e->op == AST_POSTDEC) {
         if (specIncDec(e)) return;
     }
 
     /* Try OREQ/ANDEQ bit operations */
-    if (e->op == 0x31 || e->op == 0xc6) {
+    if (e->op == '1' || e->op == AST_ANDEQ) {
         if (specBitOp(e)) return;
     }
 
@@ -797,7 +797,7 @@ specExpr(struct expr *e)
     }
 
     /* Try PLUSEQ/SUBEQ for byte register variables */
-    if (e->op == 'P' || e->op == 0xdf) {
+    if (e->op == 'P' || e->op == AST_SUBEQ) {
         if (specAddSubOp(e)) return;
     }
 
@@ -1203,10 +1203,10 @@ static void generateExpr(struct expr *e)
     case 'n':  /* NEQ - emit handles */
         break;
 
-    case 0xab:  /* SEXT - sign extend, emit handles */
+    case AST_SEXT:  /* SEXT - sign extend, emit handles */
     case 'W':  /* WIDEN - zero extend, emit handles */
-    case 0x31:  /* OREQ (|=) - emit handles */
-    case 0xc6:  /* ANDEQ (&=) - emit handles */
+    case '1':  /* OREQ (|=) - emit handles */
+    case AST_ANDEQ:  /* ANDEQ (&=) - emit handles */
         break;
 
     case '$':  /* SYM - symbol reference (address) */

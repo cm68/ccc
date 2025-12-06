@@ -119,6 +119,18 @@ readStr(void) {
 	return s;
 }
 
+/* Read hex-encoded string (4-digit len + 2*len hex chars) */
+unsigned char *
+readHexStr(void) {
+	int len = readHex4();
+	unsigned char *s = malloc(len + 1);
+	int i;
+	for (i = 0; i < len; i++)
+		s[i] = readHex2();
+	s[len] = 0;
+	return s;
+}
+
 /* Skip to next line (for comments/newlines) */
 void 
 skipLine(void) {

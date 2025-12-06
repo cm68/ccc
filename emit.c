@@ -228,7 +228,7 @@ static void emitStmtTail(struct stmt *s, int tailPos)
         exit(1);
     }
 
-    /* For ASM nodes, emit the assembly block directly */
+    /* For ASM nodes, emit the raw assembly text */
     if (s->type == 'A' && s->asm_block) {
         fdprintf(outFd, "%s\n", s->asm_block);
     }
