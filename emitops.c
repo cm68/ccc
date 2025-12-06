@@ -88,131 +88,225 @@ static enum cmp_kind getByteCmp(struct expr *e, struct bytecmp *cmp) {
 
 /*
  * Emit increment/decrement operation
+ * Uses expr fields: e->op, e->size, e->value (amount), e->flags, e->symbol, e->left
+ *
+ * Algorithm:
+ * 1. Set up addressing strings based on location type
+ * 2. If post && !unused: save old value
+ * 3. Do inc/dec (amount==1: direct; else load/modify/store)
+ * 4. If post: restore old; else if !unused: load new
  */
 void emitIncDec(struct expr *e)
 {
-    /* Parse placeholder format: INCDEC_PLACEHOLDER:op:size:amount:unused:symbol */
-    int op, size, unused;
+    int size, unused, is_post, is_dec, need_exx;
     long amount;
-    char symbol[256];
-    const char *p;
-    const char *var_name;
     struct local_var *var;
-    int is_post, is_dec;
+    const char *rn;     /* byte register name */
+    const char *rp;     /* word register pair name */
+    const char *sym;    /* global symbol name */
+    int ofs;            /* IY offset */
+    enum { ID_REG, ID_STACK, ID_GLOBAL, ID_HL } loc;
 
-    p = strstr(e->asm_block, "INCDEC_PLACEHOLDER:") + 19;
-    if (sscanf(p, "%d:%d:%ld:%d:%255s", &op, &size, &amount, &unused, symbol) != 5) {
-        emit(S_ERRPARS);
+    size = e->size;
+    amount = e->value;
+    unused = (e->flags & E_UNUSED) ? 1 : 0;
+    is_post = (e->op == 0xef || e->op == 0xf6);
+    is_dec = (e->op == 0xd6 || e->op == 0xf6);
+    if (unused) is_post = 0;
+
+    /* Initialize */
+    var = NULL; rn = NULL; rp = NULL; sym = NULL; ofs = 0; need_exx = 0;
+
+    /* Determine location type and set up addressing */
+    if (e->symbol) {
+        const char *var_name = stripVarPfx(e->symbol);
+        var = findVar(var_name);
+        if (var) size = var->size;
+
+        if (var && var->reg != REG_NO) {
+            loc = ID_REG;
+            rn = byteRegName(var->reg);
+            rp = wordRegName(var->reg);
+            need_exx = isAltReg(var->reg);
+        } else if (var) {
+            loc = ID_STACK;
+            ofs = var->offset;
+        } else {
+            loc = ID_GLOBAL;
+            sym = stripDollar(e->symbol);
+        }
+    } else if (e->left) {
+        loc = ID_HL;
+        emitExpr(e->left);
+        e->left = NULL;
+    } else {
         freeNode(e);
         return;
     }
 
-    is_post = (op == 0xef || op == 0xf6);
-    is_dec = (op == 0xd6 || op == 0xf6);
+    if (need_exx) emit(S_EXX);
 
-    /* If result is unused, treat postfix like prefix (simpler code) */
-    if (unused && is_post) is_post = 0;
-
-    var_name = stripVarPfx(symbol);
-    var = findVar(var_name);
-
-    /* Use actual variable size if available (placeholder size may be wrong for SYM nodes) */
-    if (var) size = var->size;
-
-    if (var && var->reg != REG_NO) {
-        /* Variable is register-allocated */
-        if (size == 1) {
-            /* Byte register */
-            const char *rn = byteRegName(var->reg);
-            if (isAltReg(var->reg)) emit(S_EXX);
-            if (is_post) fdprintf(outFd, "\tld a, %s\n", rn);
-            if (amount == 1) {
-                fdprintf(outFd, "\t%s %s\n", is_dec ? "dec" : "inc", rn);
-            } else {
-                fdprintf(outFd, "\t%s a, %ld\n\tld %s, a\n",
-                         is_dec ? "sub" : "add", amount, rn);
+    /* === BYTE operations === */
+    if (size == 1) {
+        /* 1. If post: load old value to A */
+        if (is_post) {
+            switch (loc) {
+            case ID_REG:    fdprintf(outFd, "\tld a, %s\n", rn); break;
+            case ID_STACK:  iyFmt("\tld a, (iy %c %d)\n", ofs); break;
+            case ID_GLOBAL: fdprintf(outFd, "\tld a, (%s)\n", sym); emit(S_PUSHAFSV); break;
+            case ID_HL:     fdprintf(outFd, "\tld a, (hl)\n\tpush af\n"); break;
             }
-            if (!is_post) fdprintf(outFd, "\tld a, %s\n", rn);
-            if (isAltReg(var->reg)) emit(S_EXX);
-        } else {
-            /* Word register */
-            const char *rp = wordRegName(var->reg);
-            if (isAltReg(var->reg)) emit(S_EXX);
-            if (is_post) emitWordLoad(var->reg);
-            if (amount == 1) {
-                fdprintf(outFd, "\t%s %s\n", is_dec ? "dec" : "inc", rp);
-            } else {
-                fdprintf(outFd, "\tpush %s\n\tld de, %ld\n", rp, amount);
-                fdprintf(outFd, is_dec ? "\tor a\n\tsbc %s, de\n" : "\tadd %s, de\n", rp);
-                emit(S_POPHPOST);
-            }
-            /* Invalidate BC indirect cache if BC was modified */
-            if (var->reg == REG_BC) {
-                fnABCValid = 0;
-                cacheInvalA();  /* A may hold *(bc) which is now invalid */
-            }
-            if (!is_post && !unused) emitWordLoad(var->reg);
-            if (isAltReg(var->reg)) emit(S_EXX);
         }
-    } else if (var) {
-        /* Variable is on stack */
-        int ofs = var->offset;
-        int byte_ofs = ofs + (size == 1 && ofs >= 0 ? 1 : 0);
 
-        if (size == 1) {
-            if (is_post) iyFmt("\tld a, (iy %c %d)\n", byte_ofs);
-            if (amount == 1) {
-                iyFmt(is_dec ? "\tdec (iy %c %d)\n" : "\tinc (iy %c %d)\n", byte_ofs);
-            } else {
-                iyFmt("\tld a, (iy %c %d)\n", byte_ofs);
-                fdprintf(outFd, "\t%s a, %ld\n", is_dec ? "sub" : "add", amount);
-                iyFmt("\tld (iy %c %d), a\n", byte_ofs);
+        /* 2. Do inc/dec */
+        if (amount == 1 && loc != ID_GLOBAL) {
+            /* Direct inc/dec on location */
+            switch (loc) {
+            case ID_REG:   fdprintf(outFd, "\t%s %s\n", is_dec ? "dec" : "inc", rn); break;
+            case ID_STACK: iyFmt(is_dec ? "\tdec (iy %c %d)\n" : "\tinc (iy %c %d)\n", ofs); break;
+            case ID_HL:    fdprintf(outFd, "\t%s (hl)\n", is_dec ? "dec" : "inc"); break;
+            default: break;
             }
-            if (!is_post) iyFmt("\tld a, (iy %c %d)\n", byte_ofs);
         } else {
-            if (is_post) loadWordIY(ofs);
-            if (amount == 1) {
-                if (is_dec) iyFmt("\tld a, (iy %c %d)\n", ofs);
-                iyFmt(is_dec ? "\tdec (iy %c %d)\n" : "\tinc (iy %c %d)\n", ofs);
-                if (is_dec) emit(S_ORA);
-                fdprintf(outFd, "\tjr nz, $+3\n");
-                iyFmt(is_dec ? "\tdec (iy %c %d)\n" : "\tinc (iy %c %d)\n", ofs + 1);
-            } else {
-                loadWordIY(ofs);
-                fdprintf(outFd, "\tld de, %ld\n", amount);
-                emit(is_dec ? S_SBCHLDE : S_ADDHLDE);
-                storeWordIY(ofs);
+            /* Load to A, modify, store */
+            switch (loc) {
+            case ID_REG:    if (!is_post) fdprintf(outFd, "\tld a, %s\n", rn); break;
+            case ID_STACK:  if (!is_post) iyFmt("\tld a, (iy %c %d)\n", ofs); break;
+            case ID_GLOBAL: if (!is_post) fdprintf(outFd, "\tld a, (%s)\n", sym); break;
+            case ID_HL:     if (!is_post) fdprintf(outFd, "\tld a, (hl)\n"); break;
             }
-            if (!is_post) loadWordIY(ofs);
+            fdprintf(outFd, "\t%s a, %ld\n", is_dec ? "sub" : "add", amount);
+            switch (loc) {
+            case ID_REG:    fdprintf(outFd, "\tld %s, a\n", rn); break;
+            case ID_STACK:  iyFmt("\tld (iy %c %d), a\n", ofs); break;
+            case ID_GLOBAL: fdprintf(outFd, "\tld (%s), a\n", sym); break;
+            case ID_HL:     fdprintf(outFd, "\tld (hl), a\n"); break;
+            }
         }
-    } else {
-        /* Global variable */
-        const char *sym = stripDollar(symbol);
 
-        if (size == 1) {
-            fdprintf(outFd, "\tld a, (%s)\n", sym);
-            if (is_post) emit(S_PUSHAFSV);
-            if (amount == 1) {
-                fdprintf(outFd, "\t%s a\n", is_dec ? "dec" : "inc");
-            } else {
-                fdprintf(outFd, "\t%s a, %ld\n", is_dec ? "sub" : "add", amount);
+        /* 3. Return value */
+        if (is_post) {
+            if (loc == ID_GLOBAL) emit(S_POPAFRET);
+            else if (loc == ID_HL) fdprintf(outFd, "\tpop af\n");
+            /* else: A already has old value */
+        } else if (!unused) {
+            switch (loc) {
+            case ID_REG:    fdprintf(outFd, "\tld a, %s\n", rn); break;
+            case ID_STACK:  iyFmt("\tld a, (iy %c %d)\n", ofs); break;
+            case ID_GLOBAL: /* A already has new value */ break;
+            case ID_HL:     fdprintf(outFd, "\tld a, (hl)\n"); break;
             }
-            fdprintf(outFd, "\tld (%s), a\n", sym);
-            if (is_post) emit(S_POPAFRET);
-        } else {
-            fdprintf(outFd, "\tld hl, (%s)\n", sym);
-            if (is_post) emit(S_PUSHHLOV);
-            if (amount == 1) {
-                fdprintf(outFd, "\t%s hl\n", is_dec ? "dec" : "inc");
-            } else {
-                fdprintf(outFd, "\tld de, %ld\n", amount);
-                emit(is_dec ? S_SBCHLDE : S_ADDHLDE);
-            }
-            fdprintf(outFd, "\tld (%s), hl\n", sym);
-            if (is_post) emit(S_POPHLRET);
         }
     }
+    /* === WORD operations === */
+    else if (size == 2) {
+        /* 1. If post: save old value */
+        if (is_post) {
+            switch (loc) {
+            case ID_REG:    emitWordLoad(var->reg); break;
+            case ID_STACK:  loadWordIY(ofs); break;
+            case ID_GLOBAL: fdprintf(outFd, "\tld hl, (%s)\n", sym); emit(S_PUSHHLOV); break;
+            case ID_HL:
+                fdprintf(outFd, "\tld e, l\n\tld d, h\n");
+                fdprintf(outFd, "\tld a, (hl)\n\tld c, a\n\tinc hl\n");
+                fdprintf(outFd, "\tld a, (hl)\n\tld h, a\n\tld l, c\n");
+                fdprintf(outFd, "\tpush hl\n\tex de, hl\n");
+                break;
+            }
+        } else if (loc == ID_HL) {
+            fdprintf(outFd, "\tld e, l\n\tld d, h\n");
+        }
 
+        /* 2. Do inc/dec */
+        if (amount <= 4) {
+            int i;
+            switch (loc) {
+            case ID_REG:
+                for (i = 0; i < amount; i++)
+                    fdprintf(outFd, "\t%s %s\n", is_dec ? "dec" : "inc", rp);
+                break;
+            case ID_STACK:
+                for (i = 0; i < amount; i++) {
+                    iyFmt(is_dec ? "\tdec (iy %c %d)\n" : "\tinc (iy %c %d)\n", ofs);
+                    if (i == 0 && amount > 1)
+                        fdprintf(outFd, "\tjr nz, $+%d\n", 3 * (int)(amount - 1) + 3);
+                }
+                iyFmt(is_dec ? "\tdec (iy %c %d)\n" : "\tinc (iy %c %d)\n", ofs + 1);
+                break;
+            case ID_GLOBAL:
+                if (!is_post) fdprintf(outFd, "\tld hl, (%s)\n", sym);
+                for (i = 0; i < amount; i++)
+                    fdprintf(outFd, "\t%s hl\n", is_dec ? "dec" : "inc");
+                fdprintf(outFd, "\tld (%s), hl\n", sym);
+                break;
+            case ID_HL:
+                for (i = 0; i < amount; i++) {
+                    fdprintf(outFd, "\t%s (hl)\n", is_dec ? "dec" : "inc");
+                    fdprintf(outFd, "\tjr nz, $+4\n\tinc hl\n");
+                    fdprintf(outFd, "\t%s (hl)\n\tdec hl\n", is_dec ? "dec" : "inc");
+                }
+                break;
+            }
+        } else {
+            /* Use DE as addend */
+            switch (loc) {
+            case ID_REG:
+                fdprintf(outFd, "\tld de, %ld\n\tadd %s, de\n", is_dec ? -amount : amount, rp);
+                break;
+            case ID_STACK:
+                loadWordIY(ofs);
+                fdprintf(outFd, "\tld de, %ld\n", is_dec ? -amount : amount);
+                emit(S_ADDHLDE);
+                storeWordIY(ofs);
+                break;
+            case ID_GLOBAL:
+                if (!is_post) fdprintf(outFd, "\tld hl, (%s)\n", sym);
+                fdprintf(outFd, "\tld de, %ld\n", is_dec ? -amount : amount);
+                emit(S_ADDHLDE);
+                fdprintf(outFd, "\tld (%s), hl\n", sym);
+                break;
+            case ID_HL:
+                fdprintf(outFd, "\tld c, (hl)\n\tinc hl\n\tld b, (hl)\n");
+                fdprintf(outFd, "\tpush hl\n\tld h, b\n\tld l, c\n");
+                fdprintf(outFd, "\tld de, %ld\n\tadd hl, de\n", is_dec ? -amount : amount);
+                fdprintf(outFd, "\tex de, hl\n\tpop hl\n");
+                fdprintf(outFd, "\tld (hl), d\n\tdec hl\n\tld (hl), e\n");
+                break;
+            }
+        }
+
+        /* 3. Return value */
+        if (is_post) {
+            switch (loc) {
+            case ID_REG: /* HL already has old value */ break;
+            case ID_STACK: /* HL already has old value */ break;
+            case ID_GLOBAL: emit(S_POPHLRET); break;
+            case ID_HL: fdprintf(outFd, "\tpop hl\n"); break;
+            }
+        } else if (!unused) {
+            switch (loc) {
+            case ID_REG:    emitWordLoad(var->reg); break;
+            case ID_STACK:  loadWordIY(ofs); break;
+            case ID_GLOBAL: /* HL already has new value */ break;
+            case ID_HL:
+                fdprintf(outFd, "\tld a, (hl)\n\tld c, a\n\tinc hl\n");
+                fdprintf(outFd, "\tld a, (hl)\n\tld h, a\n\tld l, c\n");
+                break;
+            }
+        }
+
+        if (loc == ID_REG && var->reg == REG_BC) {
+            fnABCValid = 0;
+            cacheInvalA();
+        }
+    }
+    /* === LONG operations - call helper === */
+    else if (size == 4) {
+        /* TODO: call ladd/lsub helper */
+        fdprintf(outFd, "\t; TODO: long inc/dec\n");
+    }
+
+    if (need_exx) emit(S_EXX);
     freeNode(e);
 }
 

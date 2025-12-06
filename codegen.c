@@ -35,26 +35,6 @@ static long g_walk_count = 0;
 void addRefSym(const char *name);
 
 /*
- * Helper: Get the original operand size, looking through SEXT/WIDEN/NARROW
- */
-static int
-getOrigSize(struct expr *e)
-{
-    if (!e) return 2;
-    /* Look through type conversions to find original size */
-    if ((e->op == 'X' || e->op == 'W' || e->op == 'N') && e->left)
-        return e->left->size;
-    return e->size;
-}
-
-/* Check if operand is unsigned (WIDEN or E_UNSIGNED flag) */
-static int
-isOpndUnsign(struct expr *e)
-{
-    return e && (e->op == 'W' || (e->flags & E_UNSIGNED));
-}
-
-/*
  * Helper: Check if value is a power of 2, return bit number (0-7) or -1
  */
 static int
@@ -68,34 +48,6 @@ getBitNum(long val)
     return -1;
 }
 
-/*
- * Predicate: byte left operand with constant 0-255 right operand
- */
-static int
-isByteConstOp(struct expr *e)
-{
-    return e->left && e->left->size == 1 && (e->opflags & OP_CONST) &&
-           e->right && e->right->value >= 0 && e->right->value <= 255;
-}
-
-/*
- * Predicate: right child is |/& with constant (for set/res bit patterns)
- */
-static int
-getBitOpConst(struct expr *e, int *is_or)
-{
-    if (!e->right || !e->right->right || e->right->right->op != 'C')
-        return -1;
-    if (e->right->op == '|') {
-        *is_or = 1;
-        return getBitNum(e->right->right->value);
-    }
-    if (e->right->op == '&') {
-        *is_or = 0;
-        return getBitNum(~e->right->right->value & 0xFF);
-    }
-    return -1;
-}
 
 /*
  * Helper: Look up a variable by symbol name
@@ -142,26 +94,6 @@ findVar(const char *symbol)
     }
 
     return NULL;
-}
-
-/*
- * Helper: Generate function name for binary arithmetic operations
- * Format: [u]<op><leftwidth><rightwidth>
- * Examples: mul88, umul816, div1616, add168
- */
-static void
-mkBinopFnName(char *buf, size_t bufsize, const char *opname,
-                    struct expr *e)
-{
-    int left_bits = getOrigSize(e->left) * 8;
-    int right_bits = getOrigSize(e->right) * 8;
-
-    /* Operation is unsigned if either operand is unsigned */
-    int is_unsigned = isOpndUnsign(e->left) || 
-        isOpndUnsign(e->right);
-    const char *prefix = is_unsigned ? "u" : "";
-
-    snprintf(buf, bufsize, "%s%s%d%d", prefix, opname, left_bits, right_bits);
 }
 
 /*
@@ -677,82 +609,29 @@ fmtIY(char *buf, size_t sz, const char *fmt, int ofs)
 static int
 specIncDec(struct expr *e)
 {
-    char buf[512];
-    int is_post = (e->op == 0xef || e->op == 0xf6);
-    int is_dec = (e->op == 0xd6 || e->op == 0xf6);
-    int unused = (e->flags & E_UNUSED) ? 1 : 0;
-    int need_old = is_post && !unused;
-    long amount = e->value;
-    char *p;
+    (void)e->value;  /* amount - used by emit */
 
     /* Pattern 1: Simple variable - defer to emit phase */
     if (e->left && e->left->op == '$' && e->left->symbol) {
         struct local_var *var = findVar(e->left->symbol);
         if (var) e->size = var->size;
-        snprintf(buf, sizeof(buf), "INCDEC_PLACEHOLDER:%d:%d:%ld:%d:%s",
-                 (int)e->op, e->size, amount, unused, e->left->symbol);
-        e->asm_block = strdup(buf);
+        /* Save symbol for emit, then free children */
+        e->symbol = strdup(e->left->symbol);
         freeKids(e);
         return 1;
     }
 
-    /* Pattern 2/3: DEREF or ADD - address in HL after specExpr */
+    /* Pattern 2/3: DEREF or ADD - defer to emit phase, keep address tree */
     if (e->left && (e->left->op == 'M' || e->left->op == '+')) {
         struct expr *addr = (e->left->op == 'M') ? e->left->left : e->left;
         specExpr(addr);
-        if (e->left->op == 'M') e->left->left = NULL;
-
-        p = buf;
-        /* Save address to DE */
-        p += sprintf(p, "\tld e, l\n\tld d, h\n");
-
-        if (e->size == 1) {
-            /* Byte: load, modify, store */
-            p += sprintf(p, "\tld a, (hl)\n");
-            if (need_old) p += sprintf(p, "\tld c, a\n");
-            if (amount == 1)
-                p += sprintf(p, "\t%s a\n", is_dec ? "dec" : "inc");
-            else
-                p += sprintf(p, "\t%s a, %ld\n", is_dec ? "sub" : "add", amount);
-            p += sprintf(p, "\tld (de), a");
-            if (need_old) p += sprintf(p, "\n\tld a, c");
-        } else {
-            /* Word: load to HL via BC */
-            p += sprintf(p, "\tld a, (hl)\n\tld c, a\n\tinc hl\n");
-            p += sprintf(p, "\tld a, (hl)\n");
-            if (need_old) p += sprintf(p, "\tld b, a\n\tld h, b\n");
-            else p += sprintf(p, "\tld h, a\n");
-            p += sprintf(p, "\tld l, c\n");
-
-            if (need_old && amount != 1) p += sprintf(p, "\tpush hl\n");
-
-            /* Modify HL */
-            if (amount == 1)
-                p += sprintf(p, "\t%s hl\n", is_dec ? "dec" : "inc");
-            else
-                p += sprintf(p, "\tld bc, %ld\n\t%s hl, bc\n",
-                             amount, is_dec ? "or a\n\tsbc" : "add");
-
-            /* Store new value */
-            if (amount != 1) {
-                p += sprintf(p, "\tex de, hl\n\tld a, e\n\tld (hl), a\n");
-                p += sprintf(p, "\tinc hl\n\tld a, d\n\tld (hl), a");
-            } else {
-                p += sprintf(p, "\tld a, l\n\tld (de), a\n");
-                p += sprintf(p, "\tinc de\n\tld a, h\n\tld (de), a");
-            }
-
-            /* Restore old value if needed */
-            if (need_old) {
-                if (amount != 1) p += sprintf(p, "\n\tpop hl");
-                else p += sprintf(p, "\n\tld h, b\n\tld l, c");
-            }
+        /* Flatten: move address directly under inc/dec node */
+        if (e->left->op == 'M') {
+            e->left->left = NULL;
+            freeExpr(e->left);
+            e->left = addr;
         }
-
-        e->asm_block = strdup(buf);
-        e->left = NULL;
-        freeExpr(e->right);
-        e->right = NULL;
+        /* e->left now has address expr, emit will handle */
         return 1;
     }
 
@@ -1270,104 +1149,6 @@ assignFrmOff()
     
 }
 
-/*
- * Check if expression is unsigned 16-bit comparison that can be inlined
- * Unsigned comparisons can use sbc hl,de and check carry flag
- */
-static int isInlUCmp(struct expr *e)
-{
-    /* Must be ge or lt comparison */
-    if (e->op != 'g' && e->op != '<') return 0;
-
-    /* Must be 16-bit operands */
-    if (e->size != 2) return 0;
-    if (!e->left || e->left->size != 2) return 0;
-    if (!e->right || e->right->size != 2) return 0;
-
-    /* Must be unsigned (either operand unsigned makes it unsigned) */
-    return isOpndUnsign(e->left) || isOpndUnsign(e->right);
-}
-
-/*
- * Check if expression is signed 16-bit comparison with constant 0
- * Returns: '<' for LT, 'g' for GE, 'L' for LE, '>' for GT, 0 otherwise
- * These can be optimized using bit tests on high byte
- */
-static int isSCmpZero(struct expr *e)
-{
-    /* Must be a comparison op */
-    if (e->op != '<' && e->op != 'g' && e->op != 'L' && e->op != '>') return 0;
-
-    /* Must be 16-bit */
-    if (e->size != 2) return 0;
-    if (!e->left || e->left->size != 2) return 0;
-    if (!e->right) return 0;
-
-    /* Right operand must be constant 0 */
-    if (e->right->op != 'C' || e->right->value != 0) return 0;
-
-    /* Must be signed (neither operand unsigned) */
-    if (isOpndUnsign(e->left) || isOpndUnsign(e->right)) return 0;
-
-    return e->op;
-}
-
-/*
- * Generate standard binary operator code
- * Common pattern: move PRIMARY to SECONDARY, call runtime function
- * For unsigned 16-bit comparisons (ge/lt), inline with sbc hl,de
- * For signed 16-bit comparisons with 0, inline with bit 7,h
- */
-static void
-genBinop(struct expr *e, const char *op_name)
-{
-    char funcname[32];
-    char buf[256];
-    char *move_inst;
-    int cmp_op;
-
-    /* Inline unsigned 16-bit ge/lt comparisons */
-    if (isInlUCmp(e)) {
-        /* After pushStack: DE=left, HL=right
-         * ex de,hl: HL=left, DE=right
-         * or a: clear carry
-         * sbc hl,de: HL = left - right, carry set if left < right */
-        snprintf(buf, sizeof(buf),
-            "\tex de, hl  ; move PRIMARY to SECONDARY\n"
-            "\tor a  ; clear carry\n"
-            "\tsbc hl, de  ; compare: C if left < right");
-        e->asm_block = strdup(buf);
-        return;
-    }
-
-    /* Inline signed 16-bit comparisons with 0 */
-    cmp_op = isSCmpZero(e);
-    if (cmp_op) {
-        /* Left operand is in HL, right is constant 0 (not emitted)
-         * x < 0:  bit 7,h; nz = negative = true
-         * x >= 0: bit 7,h; z = non-negative = true
-         * x <= 0: test zero first, then sign
-         * x > 0:  test sign first, then zero
-         */
-        /* All sign comparisons use bit 7 test; emit.c handles result logic */
-        (void)cmp_op;  /* All cases same: <, >=, <=, > */
-        snprintf(buf, sizeof(buf), "\tbit 7, h");
-        e->asm_block = strdup(buf);
-        /* Mark right operand (constant 0) as not needing emission */
-        if (e->right) e->right->asm_block = noasm;
-        return;
-    }
-
-    mkBinopFnName(funcname, sizeof(funcname), op_name, e);
-
-    move_inst = (e->size == 1) ?
-        "\tld e, a  ; move PRIMARY to SECONDARY" :
-        "\tex de, hl  ; move PRIMARY to SECONDARY";
-
-    snprintf(buf, sizeof(buf), "%s\n\tcall %s", move_inst, funcname);
-    e->asm_block = strdup(buf);
-}
-
 /* Forward declaration */
 static char *buildStkCln(int bytes);
 
@@ -1482,474 +1263,51 @@ static void generateExpr(struct expr *e)
 
     /* Generate assembly code for this node based on operator */
     switch (e->op) {
-    case 'C':  /* CONST - load immediate value */
-        if (e->size == 1) {
-            if (e->value == 0) {
-                snprintf(buf, sizeof(buf), "\txor a");
-            } else {
-                snprintf(buf, sizeof(buf), "\tld a, %ld", e->value);
-            }
-        } else if (e->size == 2) {
-            snprintf(buf, sizeof(buf), "\tld hl, %ld", e->value);
-        } else {  /* size == 4 - long constant, load into HL',HL */
-            unsigned long uval = (unsigned long)e->value;
-            unsigned short lower = uval & 0xFFFF;
-            unsigned short upper = (uval >> 16) & 0xFFFF;
-            snprintf(buf, sizeof(buf),
-                "\tld hl, %u  ; load lower 16 bits\n"
-                "\texx\n"
-                "\tld hl, %u  ; load upper 16 bits into HL'\n"
-                "\texx",
-                lower, upper);
-        }
-        e->asm_block = strdup(buf);
+    case 'C':  /* CONST - emit handles based on e->value and e->size */
         break;
 
-    case 'M':  /* DEREF - load from memory */
-        /* Skip if already marked as generated (e.g., by bit test optimization) */
-        if (e->flags & E_GENERATED) break;
-
-        /* Simple variable load: (M $var) - use opflags set by setOpFlags() */
-        if ((e->opflags & (OP_REGVAR | OP_IYMEM | OP_GLOBAL)) &&
-            e->left && e->left->op == '$' && e->left->symbol) {
-            const char *sym = e->left->symbol;
-            struct local_var *var = findVar(sym);
-
-            if (var && var->reg != REG_NO) {
-                /* Register-allocated variable - generate move to PRIMARY */
-                if (e->size == 1) {
-                    /* Byte in reg -> A */
-                    int reg = (var->reg == REG_BC) ? REG_C : var->reg;
-                    static const char *byte_load[] = {
-                        NULL, "\tld a, b", "\tld a, c",
-                        "\texx\n\tld a, b\n\texx", "\texx\n\tld a, c\n\texx"
-                    };
-                    if (reg >= REG_B && reg <= REG_Cp) {
-                        e->asm_block = strdup(byte_load[reg]);
-                    } else {
-                        e->asm_block = noasm;
-                    }
-                } else {
-                    /* Word in reg -> HL */
-                    if (var->reg == REG_BC) {
-                        e->asm_block = strdup("\tld h, b\n\tld l, c");
-                    } else if (var->reg == REG_IX) {
-                        e->asm_block = strdup("\tpush ix\n\tpop hl");
-                    } else if (var->reg == REG_BCp) {
-                        e->asm_block = strdup("\texx\n\tpush bc\n\texx\n\tpop hl");
-                    } else {
-                        e->asm_block = noasm;
-                    }
-                }
-            } else if (var) {
-                /* Stack variable - IY-indexed */
-                int ofs = var->offset;
-                char *p = buf;
-                if (e->size == 1) {
-                    p += sprintf(p, "\tld a, (iy ");
-                    fmtIY(p, sizeof(buf) - (p - buf), "%c %d)", ofs);
-                } else if (e->size == 2) {
-                    p += sprintf(p, "\tld l, (iy ");
-                    p += fmtIY(p, sizeof(buf) - (p - buf), "%c %d)", ofs);
-                    p += sprintf(p, "\n\tld h, (iy ");
-                    fmtIY(p, sizeof(buf) - (p - buf), "%c %d)", ofs + 1);
-                } else {
-                    sprintf(buf, "\tld a, %d\n\tcall getlong", ofs);
-                }
-                e->asm_block = strdup(buf);
-            } else {
-                /* Global variable - defer to emit for cache optimization */
-                e->asm_block = noasm;  /* Let emit handle with caching */
-            }
-            break;
-        }
-
-        /* IX-indexed struct member: (M (+ (M:p $var) ofs)) */
-        if (e->flags & E_IXDEREF) {
-            long ofs = e->value;  /* Offset saved by analyzeExpr */
-            const char *sym = e->left->left->left->symbol;
-            struct local_var *var = findVar(sym);
-
-            if (var && var->reg == REG_IX) {
-                if (e->size == 1) {
-                    snprintf(buf, sizeof(buf), "\tld a, (ix + %ld)", ofs);
-                } else if (e->size == 2) {
-                    snprintf(buf, sizeof(buf), "\tld l, (ix + %ld)\n\tld h, (ix + %ld)", ofs, ofs + 1);
-                } else {
-                    snprintf(buf, sizeof(buf), "\tld l, (ix + %ld)\n\tld h, (ix + %ld)\n\texx\n\tld l, (ix + %ld)\n\tld h, (ix + %ld)\n\texx",
-                             ofs, ofs + 1, ofs + 2, ofs + 3);
-                }
-                e->asm_block = strdup(buf);
-                /* Mark child as handled - don't generate address calculation */
-                if (e->left) e->left->asm_block = noasm;
-                break;
-            }
-            /* Fall through to compute address if not IX-allocated */
-        }
-
-        /* Indirect byte load through BC pointer: (M:b (M:p $bcvar)) */
-        if (e->opflags & OP_BCINDIR) {
-            e->asm_block = strdup("BCINDIR");  /* Placeholder for emit-time cache check */
-            e->left->asm_block = noasm;   /* Don't load pointer to HL */
-            break;
-        }
-
-        /* Complex address expression - address will be in PRIMARY (HL) */
-        if (e->size == 1) {
-            snprintf(buf, sizeof(buf), "\tld a, (hl)");
-        } else if (e->size == 2) {
-            snprintf(buf, sizeof(buf), "\tld e, (hl)\n\tinc hl\n\tld d, (hl)\n\tex de, hl");
-        } else {
-            snprintf(buf, sizeof(buf), "\tcall load32i");
-        }
-        e->asm_block = strdup(buf);
+    case 'M':  /* DEREF - emit handles based on opflags and scheduling fields */
+    case '=':  /* ASSIGN - emit handles based on opflags and scheduling fields */
         break;
 
-    case '=':  /* ASSIGN - store to memory */
-        /* Check for set/res bit patterns using helper */
-        if (e->size == 1 && e->right) {
-            int is_or, bitnum = getBitOpConst(e, &is_or);
-            if (bitnum >= 0) {
-                const char *inst = is_or ? "set" : "res";
-                /* Pattern 1: Simple variable (IY-indexed) */
-                if (e->left && e->left->op == '$' && e->left->symbol) {
-                    struct local_var *var = findVar(e->left->symbol);
-                    if (var && var->reg == REG_NO) {
-                        char *p = buf;
-                        p += sprintf(p, "\t%s %d, (iy ", inst, bitnum);
-                        fmtIY(p, sizeof(buf) - (p - buf), "%c %d)", varIYOfs(var));
-                        e->asm_block = strdup(buf);
-                        if (e->right->left) e->right->left->asm_block = noasm;
-                        e->right->asm_block = noasm;
-                        break;
-                    }
-                }
-                /* Pattern 2: IX-indexed struct member */
-                if ((e->flags & E_IXASSIGN) && e->left && e->left->left &&
-                    e->left->left->left && e->left->left->left->op == '$') {
-                    struct local_var *var = findVar(e->left->left->left->symbol);
-                    if (var && var->reg == REG_IX) {
-                        snprintf(buf, sizeof(buf), "\t%s %d, (ix + %ld)", inst, bitnum, e->value);
-                        e->asm_block = strdup(buf);
-                        if (e->right->left) e->right->left->asm_block = noasm;
-                        e->right->asm_block = noasm;
-                        if (e->left) e->left->asm_block = noasm;
-                        break;
-                    }
-                }
-            }
-        }
-        /* Default: defer to emit phase */
-        e->asm_block = strdup("\t; ASSIGN_PLACEHOLDER");
+    case '+':  /* ADD - emit handles based on opflags and operand sizes */
         break;
 
-    case '+':  /* ADD */
-        {
-            /* Check if right operand is a constant for optimization */
-            /* Handle both direct constants and type-converted constants */
-            struct expr *right_const = NULL;
-            long const_val = 0;
-            int op_size;
-            int i;
-
-            if (e->right && e->right->op == 'C') {
-                /* Direct constant */
-                right_const = e->right;
-                const_val = e->right->value;
-            } else if (e->right && e->right->left &&
-                       e->right->left->op == 'C') {
-                /* Constant wrapped in type conversion (NARROW/WIDEN/SEXT) */
-                right_const = e->right->left;
-                const_val = e->right->left->value;
-            }
-
-            if (right_const) {
-                /* Optimized constant addition */
-                /* Use left operand's size since that's the register being used */
-                op_size = e->left ? e->left->size : e->size;
-
-                if (const_val == 0) {
-                    /* Adding 0 is a no-op */
-                    e->asm_block = noasm;
-                } else if (op_size == 1) {
-                    /* Byte add with constant - use immediate add */
-                    snprintf(buf, sizeof(buf),
-                        "\tadd a, %ld  ; add constant to byte", const_val);
-                    e->asm_block = strdup(buf);
-                } else if (const_val >= 1 && const_val <= 4) {
-                    /* Word add with constant 1-4 - use repeated inc hl */
-                    buf[0] = '\0';
-                    for (i = 0; i < const_val; i++) {
-                        if (i > 0) strcat(buf, "\n");
-                        strcat(buf, "\tinc hl");
-                    }
-                    strcat(buf, "  ; add small constant");
-                    e->asm_block = strdup(buf);
-                } else {
-                    /* Word add with larger constant - load and add */
-                    snprintf(buf, sizeof(buf),
-                        "\tld de, %ld\n\tadd hl, de", const_val);
-                    e->asm_block = strdup(buf);
-                }
-
-                /* Free and clear right operand to prevent emission */
-                freeExpr(e->right);
-                e->right = NULL;
-            } else {
-                /* Non-constant addition - use general form */
-                char *move_inst;
-                char *add_inst;
-
-                /* For POSTINC/PREINC/etc, size is now correctly set by specIncDec */
-                int rsize = e->right ? e->right->size : 2;
-
-                if (e->size == 1) {
-                    /* Byte add - need to call add88 */
-                    char funcname[32];
-                    mkBinopFnName(funcname, sizeof(funcname), "add", e);
-                    move_inst = "\tld e, a  ; move PRIMARY (A) to SECONDARY (E)";
-                    snprintf(buf, sizeof(buf), "%s\n\tcall %s",
-                        move_inst, funcname);
-                } else if (e->right && rsize == 1) {
-                    /* Word + byte: after pushStack, DE has left (addr), A has right (byte)
-                     * Zero-extend A to HL and add DE. Preserves E for nested saves. */
-                    snprintf(buf, sizeof(buf),
-                        "\tex de, hl  ; (matches pushStack)\n"
-                        "\tld l, a\n"
-                        "\tld h, 0\n"
-                        "\tadd hl, de");
-                } else {
-                    /* Word add - use native Z80 add hl,de instruction */
-                    move_inst =
-                        "\tex de, hl  ; move PRIMARY(HL) to SECONDARY(DE)";
-                    add_inst = "\tadd hl, de";
-                    snprintf(buf, sizeof(buf), "%s\n%s", move_inst, add_inst);
-                }
-                e->asm_block = strdup(buf);
-            }
-        }
+    case '-':  /* SUB - emit handles */
+    case '*':  /* MUL - emit handles */
+    case '/':  /* DIV - emit handles */
+    case '%':  /* MOD - emit handles */
+    case '&':  /* AND - emit handles, including bit test optimizations */
+    case '|':  /* OR - emit handles */
+    case '^':  /* XOR - emit handles */
+    case 'y':  /* LSHIFT - emit handles */
+    case 'w':  /* RSHIFT - emit handles */
+    case '>':  /* GT - emit handles */
+    case '<':  /* LT - emit handles */
+    case 'g':  /* GE - emit handles */
+    case 'L':  /* LE - emit handles */
+    case 'Q':  /* EQ - emit handles */
+    case 'n':  /* NEQ - emit handles */
         break;
 
-    case '-':  /* SUB */
-        genBinop(e, "sub");
-        break;
-
-    case '*':  /* MUL */
-        genBinop(e, "mul");
-        break;
-
-    case '/':  /* DIV */
-        genBinop(e, "div");
-        break;
-
-    case '%':  /* MOD */
-        genBinop(e, "mod");
-        break;
-
-    case '&':  /* AND */
-        /* Optimize byte AND with small constant to inline instruction */
-        if (isByteConstOp(e)) {
-            int bitnum = getBitNum(e->right->value);
-            /* Check for IX-indexed struct member access */
-            if (bitnum >= 0 && (e->opflags & OP_IXMEM)) {
-                long ofs = e->left->value;
-                snprintf(buf, sizeof(buf), "\tbit %d, (ix + %ld)", bitnum, ofs);
-                e->asm_block = strdup(buf);
-                e->left->asm_block = noasm;  /* Suppress left operand load */
-                break;
-            }
-            /* Check for simple local variable in memory (IY-indexed) */
-            if (bitnum >= 0 && (e->opflags & OP_SIMPLEVAR) && (e->opflags & OP_IYMEM)) {
-                const char *sym = e->left->left->symbol;
-                struct local_var *var = findVar(sym);
-                if (var) {
-                    char *p = buf;
-                    p += sprintf(p, "\tbit %d, (iy ", bitnum);
-                    fmtIY(p, sizeof(buf) - (p - buf), "%c %d)", varIYOfs(var));
-                    e->asm_block = strdup(buf);
-                    e->left->asm_block = noasm;  /* Suppress left operand load */
-                    break;
-                }
-            }
-            if (bitnum >= 0) {
-                /* Single bit test: use "bit n, a" which sets Z without modifying A */
-                snprintf(buf, sizeof(buf), "\tbit %d, a", bitnum);
-            } else {
-                /* Byte AND with immediate: use inline "and <imm>" instruction */
-                snprintf(buf, sizeof(buf), "\tand %ld", e->right->value & 0xFF);
-            }
-            e->asm_block = strdup(buf);
-        } else {
-            genBinop(e, "and");
-        }
-        break;
-
-    case '|':  /* OR */
-        /* Optimize byte OR with small constant to inline instruction */
-        if (isByteConstOp(e)) {
-            snprintf(buf, sizeof(buf), "\tor %ld", e->right->value & 0xFF);
-            e->asm_block = strdup(buf);
-        } else {
-            genBinop(e, "or");
-        }
-        break;
-
-    case '^':  /* XOR */
-        /* Optimize byte XOR with small constant to inline instruction */
-        if (isByteConstOp(e)) {
-            snprintf(buf, sizeof(buf), "\txor %ld", e->right->value & 0xFF);
-            e->asm_block = strdup(buf);
-        } else {
-            genBinop(e, "xor");
-        }
-        break;
-
-    case 'y':  /* LSHIFT */
-        {
-            /* Emit inline shifts using repeated add instructions */
-            /* Right operand should be constant shift amount from strength
-             * reduction */
-            int shift_amount = 0;
-            char asm_buf[256];
-            int pos = 0;
-            int i;
-
-            if (e->right && e->right->op == 'C') {
-                shift_amount = (int)e->right->value;
-                /* Suppress code generation for constant - already handled */
-                xfree(e->right->asm_block);
-                e->right->asm_block = noasm;
-            }
-
-            /* Build assembly: repeated add */
-            asm_buf[0] = '\0';
-
-            for (i = 0; i < shift_amount && i < 16; i++) {  /* cap at 16 */
-                if (e->size == 1) {
-                    /* Byte shift: add a,a */
-                    pos += snprintf(asm_buf + pos, sizeof(asm_buf) - pos, 
-                        "\tadd a,a\n");
-                } else {
-                    /* Word shift: add hl,hl */
-                    pos += snprintf(asm_buf + pos, sizeof(asm_buf) - pos, 
-                        "\tadd hl,hl\n");
-                }
-            }
-
-            /* Remove trailing newline */
-            if (pos > 0 && asm_buf[pos-1] == '\n') {
-                asm_buf[pos-1] = '\0';
-            }
-
-            e->asm_block = strdup(asm_buf);
-        }
-        break;
-
-    case 'w':  /* RSHIFT */
-        genBinop(e, "shr");
-        break;
-
-    case '>':  /* GT - greater than comparison */
-        genBinop(e, "gt");
-        break;
-
-    case '<':  /* LT - less than comparison */
-        genBinop(e, "lt");
-        break;
-
-    case 'g':  /* GE - greater or equal comparison */
-        genBinop(e, "ge");
-        break;
-
-    case 'L':  /* LE - less or equal comparison */
-        genBinop(e, "le");
-        break;
-
-    case 'Q':  /* EQ - equality comparison */
-        genBinop(e, "eq");
-        break;
-
-    case 'n':  /* NEQ - not equal comparison */
-        genBinop(e, "ne");
-        break;
-
-    case 0xab:  /* SEXT - sign extend */
-        /* Sign extend child expression to target size */
-        if (e->size == 2 && e->left && e->left->size == 1) {
-            /* Byte to word: extend sign bit from A into H */
-            /* Child already in A, extend to HL */
-            snprintf(buf, sizeof(buf),
-                     "\tld l, a\n"
-                     "\trlca\n"
-                     "\tsbc a, a\n"
-                     "\tld h, a");
-        } else {
-            /* Other size conversions - placeholder for now */
-            snprintf(buf, sizeof(buf), "\t; sign extend from %d to %d",
-                     e->left ? e->left->size : 0, e->size);
-        }
-        e->asm_block = strdup(buf);
-        break;
-
-    case 'W':  /* WIDEN - zero extend */
-        /* Determine source size from child */
-        if (e->left) {
-            int src_size = e->left->size;
-            if (src_size == 1 && e->size == 2) {
-                /* byte to word: A -> HL */
-                e->asm_block = strdup("\tld l, a\n\tld h, 0");
-            } else if (src_size == 1 && e->size == 4) {
-                /* byte to long: A -> HL:HL' */
-                e->asm_block = strdup("\tld l, a\n\tld h, 0\n\texx\n\tld hl, 0\n\texx");
-            } else if (src_size == 2 && e->size == 4) {
-                /* word to long: HL -> HL:HL' */
-                e->asm_block = strdup("\texx\n\tld hl, 0\n\texx");
-            } else {
-                snprintf(buf, sizeof(buf), "\t; zero extend %d to %d", src_size, e->size);
-                e->asm_block = strdup(buf);
-            }
-        } else {
-            e->asm_block = noasm;
-        }
+    case 0xab:  /* SEXT - sign extend, emit handles */
+    case 'W':  /* WIDEN - zero extend, emit handles */
+    case 0x31:  /* OREQ (|=) - emit handles */
+    case 0xc6:  /* ANDEQ (&=) - emit handles */
         break;
 
     case '$':  /* SYM - symbol reference (address) */
-        /* Global symbols as values: load address into HL */
-        /* Local symbols as values: handled by parent DEREF */
+        /* Track global symbol references for linker */
         if (e->symbol) {
             const char *sym_name = stripVarPfx(e->symbol);
-            struct local_var *var = findVar(sym_name);
-            if (!var) {
-                /* Global (extern or static) - load address into HL */
-                if (e->symbol[1] == '_') addRefSym(e->symbol + 1);
-                snprintf(buf, sizeof(buf), "\tld hl, %s", sym_name);
-                e->asm_block = strdup(buf);
-            } else {
-                /* Local/param - parent DEREF handles load */
-                e->asm_block = noasm;
-            }
-        } else {
-            e->asm_block = noasm;
+            if (!findVar(sym_name) && e->symbol[1] == '_')
+                addRefSym(e->symbol + 1);
         }
-        break;
-
-    case 0x31:  /* OREQ (|=) - handled by specialize(), fallback here */
-        snprintf(buf, sizeof(buf), "\t; OREQ fallback size=%d", e->size);
-        e->asm_block = strdup(buf);
-        break;
-
-    case 0xc6:  /* ANDEQ (&=) - handled by specialize(), fallback here */
-        snprintf(buf, sizeof(buf), "\t; ANDEQ fallback size=%d", e->size);
-        e->asm_block = strdup(buf);
+        /* Emit handles loading address into HL */
         break;
 
     default:
-        /* For now, generate placeholder comment for other operators */
-        snprintf(buf, sizeof(buf), "\t; op %c (0x%02x) size=%d%s",
-                 e->op >= ' ' && e->op <= '~' ? e->op : '?',
-                 e->op, e->size,
-                 (e->flags & E_UNSIGNED) ? " unsigned" : "");
-        e->asm_block = strdup(buf);
+        /* Emit handles all other operators */
         break;
     }
 }

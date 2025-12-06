@@ -38,20 +38,20 @@ void emitExpr(struct expr *e)
     if (TRACE(T_EXPR)) {
         fdprintf(2, "  asm_block=%p\n", (void*)e->asm_block);
     }
-    /* Handle increment/decrement placeholders - need to check register allocation */
-    if (e->asm_block && strstr(e->asm_block, "INCDEC_PLACEHOLDER:")) {
-        emitIncDec(e);
-        return;
-    }
-    /* Handle BC indirect with caching */
-    else if (e->asm_block && strcmp(e->asm_block, "BCINDIR") == 0) {
+    /* Handle BC indirect load with caching - use opflags */
+    if (e->op == 'M' && (e->opflags & OP_BCINDIR)) {
         emitBCIndir();
         freeNode(e);
         return;
     }
-    /* Handle ASSIGN specially - need to check register allocation */
-    else if (e->op == '=' && e->asm_block &&
-            strstr(e->asm_block, "ASSIGN_PLACEHOLDER")) {
+    /* Handle increment/decrement - Pattern 1 (e->symbol) or Pattern 2/3 (e->left) */
+    else if ((e->op == 0xcf || e->op == 0xef || e->op == 0xd6 || e->op == 0xf6) &&
+             (e->symbol || e->left)) {
+        emitIncDec(e);
+        return;
+    }
+    /* Handle ASSIGN - use op check */
+    else if (e->op == '=') {
         if (TRACE(T_EXPR)) {
             fdprintf(2, "  calling emitAssign\n");
         }
@@ -84,58 +84,49 @@ void emitExpr(struct expr *e)
         emitTernary(e);
         return;
     }
+    /* Handle DEREF of register variable with caching - use opflags */
+    else if (e->op == 'M' && (e->opflags & OP_REGVAR) &&
+             e->left && e->left->op == '$') {
+        emitRegVarDrf(e);
+        return;
+    }
     /* Handle DEREF of global with caching */
-    else if (e->op == 'M' && (!e->asm_block || e->asm_block == noasm) &&
+    else if (e->op == 'M' && (e->opflags & OP_GLOBAL) &&
              e->left && e->left->op == '$') {
         emitGlobDrf(e);
         return;
     }
-    /* Handle DEREF of byte register variable with caching */
-    else if (e->op == 'M' && e->size == 1 && e->asm_block &&
-             e->left && e->left->op == '$' && e->left->symbol &&
-             (strstr(e->asm_block, "ld a, c") || strstr(e->asm_block, "ld a, b"))) {
-        /* Check if A already has this register variable's value */
-        int cached = cacheFindByte(e);
-        if (cached == 'A') {
-            /* A already has this value - skip load */
-        } else {
-            fdprintf(outFd, "%s\n", e->asm_block);
-            cacheSetA(e);
-        }
-        free(e->asm_block);
-        if (e->left) freeExpr(e->left);
-        free(e);
+    /* Handle DEREF of stack variable (IY-indexed) */
+    else if (e->op == 'M' && (e->opflags & OP_IYMEM) &&
+             e->left && e->left->op == '$') {
+        emitStackDrf(e);
         return;
     }
-    /* Handle DEREF of word register variable (BC) with caching */
-    else if (e->op == 'M' && e->size == 2 && e->asm_block &&
-             e->left && e->left->op == '$' && e->left->symbol &&
-             strstr(e->asm_block, "ld h, b")) {
-        /* Check if HL already has this BC register variable's value */
-        int cached = cacheFindWord(e);
-        if (cached == 'H') {
-            /* HL already has this value - skip load */
+    /* Handle symbol address - check if global or local */
+    else if (e->op == '$' && e->symbol) {
+        const char *sym_name = stripVarPfx(e->symbol);
+        struct local_var *var = findVar(sym_name);
+
+        if (!var) {
+            /* Global symbol - load address with caching */
+            int cached = cacheFindWord(e);
+            addRefSym(sym_name);  /* Track for extern declaration */
+            if (cached == 'H') {
+                /* HL already has this address - skip load */
+            } else {
+                fdprintf(outFd, "\tld hl, %s\n", sym_name);
+                cacheSetHL(e);
+            }
         } else {
-            fdprintf(outFd, "%s\n", e->asm_block);
+            /* Local variable - compute address (IY + offset) */
+            int ofs = var->offset;
+            fdprintf(outFd, "\tpush iy\n\tpop hl\n");
+            if (ofs != 0) {
+                fdprintf(outFd, "\tld de, %d\n\tadd hl, de\n", ofs);
+            }
             clearHL();
-            cacheSetHL(e);
         }
-        free(e->asm_block);
-        if (e->left) freeExpr(e->left);
-        free(e);
-        return;
-    }
-    /* Handle global symbol address with caching */
-    else if (e->op == '$' && e->symbol && e->asm_block && e->asm_block[0]) {
-        /* Check if HL already has this address - only for globals that load address */
-        int cached = cacheFindWord(e);
-        if (cached == 'H') {
-            /* HL already has this address - skip load */
-        } else {
-            fdprintf(outFd, "%s\n", e->asm_block);
-            cacheSetHL(e);
-        }
-        free(e->asm_block);
+        xfree(e->asm_block);
         free(e);
         return;
     }

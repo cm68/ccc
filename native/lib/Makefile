@@ -4,6 +4,7 @@
 LIB = wslib
 AS = asz
 CC = ../../ccc
+CCFLAGS = -i../include -I../..
 
 ASFLAGS =
 
@@ -24,7 +25,7 @@ all: $(LIBRARY)
 	$(AS) $(ASFLAGS) -o $@ $<
 
 unixlib.s: unixlib.c
-	$(CC) -s $<
+	$(CC) $(CCFLAGS) -s $<
 
 $(LIBRARY): $(OBJECTS)
 	$(LIB) -crv $@ $^

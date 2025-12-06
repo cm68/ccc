@@ -54,7 +54,7 @@ static const char *asmstr[] = {
     "\tcall getlong\n",                 /* S_CALLGL */
     "\tcall load32i\n",                 /* S_CALLL32I */
     "\tcall putlong\n",                 /* S_CALLPL */
-    "\t; ERROR: failed to parse INCDEC_PLACEHOLDER\n", /* S_ERRPARS */
+    "\t; ERROR: emit parse error\n", /* S_ERRPARS */
     "\tex de, hl\n", 			/* S_CACHESWP */
     "\tex de, hl\n",			/* S_DEADR */
     "\tex de, hl\n",			/* S_PUSHTOS */
@@ -709,6 +709,126 @@ void emitGlobDrf(struct expr *e)
     }
 
     /* Free the expression tree */
+    freeExpr(e);
+}
+
+/*
+ * Emit DEREF of register-allocated variable with cache check
+ * Pattern: (M $regvar) where opflags has OP_REGVAR
+ */
+void emitRegVarDrf(struct expr *e)
+{
+    struct local_var *var;
+    const char *sym;
+
+    if (!e || !e->left || !e->left->symbol) return;
+
+    sym = e->left->symbol;
+    if (sym[0] == '$') sym++;
+    var = findVar(sym);
+    if (!var) {
+        /* Fallback to global */
+        emitGlobDrf(e);
+        return;
+    }
+
+    if (e->size == 1) {
+        /* Byte register variable */
+        if (cacheFindByte(e) == 'A') {
+            /* A already holds this value - skip load */
+        } else {
+            if (var->reg == REG_B || var->reg == REG_BC) {
+                fdprintf(outFd, "\tld a, b\n");
+            } else if (var->reg == REG_C) {
+                fdprintf(outFd, "\tld a, c\n");
+            } else if (var->reg == REG_Bp) {
+                emit(S_EXX);
+                fdprintf(outFd, "\tld a, b\n");
+                emit(S_EXX);
+            } else if (var->reg == REG_Cp) {
+                emit(S_EXX);
+                fdprintf(outFd, "\tld a, c\n");
+                emit(S_EXX);
+            }
+            cacheSetA(e);
+        }
+    } else {
+        /* Word register variable */
+        if (cacheFindWord(e) == 'H') {
+            /* HL already holds this value - skip load */
+        } else {
+            if (var->reg == REG_BC) {
+                fdprintf(outFd, "\tld h, b\n\tld l, c\n");
+            } else if (var->reg == REG_IX) {
+                emit(S_IXHL);
+            } else if (var->reg == REG_BCp) {
+                emit(S_EXXBCHL);
+            }
+            clearHL();
+            cacheSetHL(e);
+        }
+    }
+
+    freeExpr(e);
+}
+
+/*
+ * Emit DEREF of stack variable (IY-indexed) with cache check
+ * Pattern: (M $stackvar) where opflags has OP_IYMEM
+ */
+void emitStackDrf(struct expr *e)
+{
+    struct local_var *var;
+    const char *sym;
+    int ofs;
+
+    if (!e || !e->left || !e->left->symbol) return;
+
+    sym = e->left->symbol;
+    if (sym[0] == '$') sym++;
+    var = findVar(sym);
+    if (!var) {
+        /* Fallback to global */
+        emitGlobDrf(e);
+        return;
+    }
+
+    ofs = var->offset;
+
+    if (e->size == 1) {
+        if (cacheFindByte(e) == 'A') {
+            /* A already holds this value - skip load */
+        } else {
+            loadByteIY(ofs, var->is_param);
+            cacheSetA(e);
+        }
+    } else if (e->size == 2) {
+        if (fnTargetDE) {
+            /* Load directly to DE */
+            fdprintf(outFd, "\tld e, (iy %c %d)\n\tld d, (iy %c %d)\n",
+                     ofs >= 0 ? '+' : '-', ofs >= 0 ? ofs : -ofs,
+                     ofs + 1 >= 0 ? '+' : '-', ofs + 1 >= 0 ? ofs + 1 : -(ofs + 1));
+            fnTargetDE = 0;
+            fnDEValid = 1;
+        } else if (cacheFindWord(e) == 'H') {
+            /* HL already holds this value - skip load */
+        } else {
+            loadWordIY(ofs);
+            clearHL();
+            cacheSetHL(e);
+        }
+    } else if (e->size == 4) {
+        fdprintf(outFd, "\tld l, (iy %c %d)\n\tld h, (iy %c %d)\n",
+                 ofs >= 0 ? '+' : '-', ofs >= 0 ? ofs : -ofs,
+                 ofs + 1 >= 0 ? '+' : '-', ofs + 1 >= 0 ? ofs + 1 : -(ofs + 1));
+        emit(S_EXX);
+        fdprintf(outFd, "\tld l, (iy %c %d)\n\tld h, (iy %c %d)\n",
+                 ofs + 2 >= 0 ? '+' : '-', ofs + 2 >= 0 ? ofs + 2 : -(ofs + 2),
+                 ofs + 3 >= 0 ? '+' : '-', ofs + 3 >= 0 ? ofs + 3 : -(ofs + 3));
+        emit(S_EXX);
+        clearHL();
+    }
+
     freeExpr(e);
 }
 

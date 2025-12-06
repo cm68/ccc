@@ -74,6 +74,8 @@ void emitBinop(struct expr *e);
 void emitCall(struct expr *e);
 void emitTernary(struct expr *e);
 void emitGlobDrf(struct expr *e);
+void emitRegVarDrf(struct expr *e);
+void emitStackDrf(struct expr *e);
 void emitBCIndir(void);
 
 /* Label/jump optimization */
