@@ -79,7 +79,7 @@ makeTempAst(char *basename)
 }
 
 /*
- * Get basename without .c extension
+ * Get basename without extension (.c, .s, .o, .a)
  * Returns a newly allocated string
  */
 char *
@@ -94,9 +94,10 @@ getBaseNoExt(char *filename)
     result = strdup(base);
     free(temp);
 
-    /* Remove .c extension if present */
+    /* Remove known extensions */
     dot = strrchr(result, '.');
-    if (dot && strcmp(dot, ".c") == 0) {
+    if (dot && (strcmp(dot, ".c") == 0 || strcmp(dot, ".s") == 0 ||
+                strcmp(dot, ".o") == 0 || strcmp(dot, ".a") == 0)) {
         *dot = '\0';
     }
 
