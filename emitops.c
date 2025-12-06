@@ -422,46 +422,6 @@ void emitAssign(struct expr *e)
 }
 
 /*
- * Emit ADD with constant where left is register-allocated variable
- */
-void emitAddConst(struct expr *e)
-{
-    const char *var_name = stripVarPfx(e->left->left->symbol);
-    struct local_var *var = findVar(var_name);
-
-    if (var && wordRegName(var->reg)) {
-        long const_val = 0;
-        int is_small = 0;
-
-        if (strstr(e->asm_block, "inc hl")) {
-            const char *p = e->asm_block;
-            while ((p = strstr(p, "inc hl")) != NULL) {
-                const_val++;
-                p += 6;
-            }
-            is_small = 1;
-        } else if (strstr(e->asm_block, "ld de, ")) {
-            sscanf(strstr(e->asm_block, "ld de, ") + 7, "%ld", &const_val);
-        }
-
-        freeExpr(e->left);
-
-        if (is_small && const_val <= 4) {
-            emitWordLoad(var->reg);
-            fdprintf(outFd, "%s\n", e->asm_block);
-        } else {
-            fdprintf(outFd, "\tld hl, %ld\n", const_val);
-            emitAddHLReg(var->reg);
-        }
-    } else {
-        emitExpr(e->left);
-        fdprintf(outFd, "%s\n", e->asm_block);
-    }
-
-    freeNode(e);
-}
-
-/*
  * Emit inline byte comparison (cp instruction)
  * Returns 1 if emitted, 0 if not applicable
  */
@@ -578,11 +538,13 @@ static int emitByteCp(struct expr *e)
 void emitBinop(struct expr *e)
 {
     int left_size = e->left ? e->left->size : 2;
+    int result_size = e->size ? e->size : left_size;
     int is_cmp = (e->op == '>' || e->op == '<' || e->op == 'g' ||
                   e->op == 'L' || e->op == 'Q' || e->op == 'n');
 
     /* Byte operations with immediate constant (not comparisons - those use emitByteCp) */
-    if (left_size == 1 && !is_cmp && e->right && e->right->op == 'C' &&
+    /* Only use byte ops if result is also byte, otherwise need word ops */
+    if (left_size == 1 && result_size == 1 && !is_cmp && e->right && e->right->op == 'C' &&
         e->right->value >= 0 && e->right->value <= 255) {
         int val = e->right->value & 0xff;
         emitExpr(e->left);
@@ -599,8 +561,8 @@ void emitBinop(struct expr *e)
         return;
     }
 
-    /* Byte comparisons */
-    if (left_size == 1 && is_cmp && emitByteCp(e)) {
+    /* Byte comparisons - only if both operand and result are byte */
+    if (left_size == 1 && result_size == 1 && is_cmp && emitByteCp(e)) {
         return;
     }
 

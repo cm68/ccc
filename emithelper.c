@@ -168,6 +168,11 @@ int isLocalSym(const char *name) {
     return name && name[0] != '_';
 }
 
+/* Get IY-indexed offset for a local/param variable */
+int varIYOfs(struct local_var *var) {
+    return var->offset + (var->is_param ? 1 : 0);
+}
+
 /* findVar is defined in codegen.c */
 
 /* IY-indexed memory access - helper for sign handling */

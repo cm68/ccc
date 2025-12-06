@@ -585,21 +585,6 @@ freeKids(struct expr *e)
     e->left = e->right = NULL;
 }
 
-/* Helper: get IY-indexed offset for a local/param variable */
-static int
-varIYOfs(struct local_var *var)
-{
-    return var->offset + (var->is_param ? 1 : 0);
-}
-
-/* Helper: format IY-indexed operand into buffer, return chars written */
-static int
-fmtIY(char *buf, size_t sz, const char *fmt, int ofs)
-{
-    return snprintf(buf, sz, fmt, ofs >= 0 ? '+' : '-', ofs >= 0 ? ofs : -ofs);
-}
-
-
 /*
  * Specialize INC/DEC operations
  * Patterns:
@@ -649,10 +634,8 @@ specIncDec(struct expr *e)
 static int
 specBitOp(struct expr *e)
 {
-    char buf[256];
     int bitnum;
     int is_or = (e->op == 0x31);  /* OREQ vs ANDEQ */
-    const char *inst = is_or ? "set" : "res";
 
     /* Must be byte operation with constant RHS (OP_CONST cached by setOpFlags) */
     if (e->size != 1 || !(e->opflags & OP_CONST))
@@ -676,11 +659,7 @@ specBitOp(struct expr *e)
                 const char *rn = byteRegName(var->reg);
                 if (var->reg == REG_BC) rn = "c";
                 if (rn) {
-                    if (isAltReg(var->reg))
-                        snprintf(buf, sizeof(buf), "\texx\n\t%s %d, %s\n\texx", inst, bitnum, rn);
-                    else
-                        snprintf(buf, sizeof(buf), "\t%s %d, %s", inst, bitnum, rn);
-                    e->asm_block = strdup(buf);
+                    e->value = bitnum;  /* Store bit number; emit will generate */
                     freeKids(e);
                     return 1;
                 }
@@ -688,32 +667,25 @@ specBitOp(struct expr *e)
         } else if (e->opflags & OP_IYMEM) {
             /* Stack variable */
             if (var) {
-                char *p = buf;
-                p += sprintf(p, "\t%s %d, (iy ", inst, bitnum);
-                fmtIY(p, sizeof(buf) - (p - buf), "%c %d)", varIYOfs(var));
-                e->asm_block = strdup(buf);
+                e->value = bitnum;  /* Store bit number; emit will generate */
                 freeKids(e);
                 return 1;
             }
         }
     }
 
-    /* Pattern 2: Struct member via pointer - use cached OP_IXMEM and e->value */
+    /* Pattern 2: Struct member via pointer - use cached OP_IXMEM and offset */
     if (e->left && e->left->op == '+') {
         if (e->opflags & OP_IXMEM) {
-            /* IX-indexed - offset cached in e->value by setLeftFlags */
-            long ofs = e->value;
-            snprintf(buf, sizeof(buf), "\t%s %d, (ix + %ld)", inst, bitnum, ofs);
-            e->asm_block = strdup(buf);
+            /* IX-indexed - offset already in e->value from setLeftFlags */
+            /* Store bit number in high byte, keep offset in low */
+            e->value = (bitnum << 8) | (e->value & 0xff);
             freeKids(e);
             return 1;
         } else {
             /* Non-IX: compute address, then use (hl)
-             * Keep e->left so generateExpr will process it and generate
-             * the address computation code. Just set our asm_block. */
-            snprintf(buf, sizeof(buf), "\t%s %d, (hl)", inst, bitnum);
-            e->asm_block = strdup(buf);
-            /* Free right (the constant), but keep left for address generation */
+             * Keep e->left so emit will process it for address generation */
+            e->value = bitnum;
             freeExpr(e->right);
             e->right = NULL;
             return 1;
@@ -731,10 +703,7 @@ specBitOp(struct expr *e)
 static int
 specShiftOp(struct expr *e)
 {
-    char buf[256];
-    int i, count;
-    char *p;
-    const char *inst;
+    int count;
     const char *rn;
     struct local_var *var;
 
@@ -744,8 +713,6 @@ specShiftOp(struct expr *e)
 
     count = e->right->value & 0xff;
     if (count < 1 || count > 7) return 0;  /* Reasonable range */
-
-    inst = (e->op == '0') ? "sla" : "srl";  /* LSHIFTEQ vs RSHIFTEQ */
 
     /* Check for simple register variable */
     if (!(e->opflags & OP_SIMPLEVAR) || !e->left || e->left->op != '$')
@@ -761,18 +728,8 @@ specShiftOp(struct expr *e)
     if (var->reg == REG_BC) rn = "c";
     if (!rn) return 0;
 
-    /* Generate N shift instructions */
-    p = buf;
-    for (i = 0; i < count; i++) {
-        if (isAltReg(var->reg)) {
-            p += sprintf(p, "%s\texx\n\t%s %s\n\texx",
-                i > 0 ? "\n" : "", inst, rn);
-        } else {
-            p += sprintf(p, "%s\t%s %s", i > 0 ? "\n" : "", inst, rn);
-        }
-    }
-
-    e->asm_block = strdup(buf);
+    /* Store shift count in e->value; emit will generate code */
+    e->value = count;
     freeKids(e);
     return 1;
 }
@@ -786,10 +743,8 @@ specShiftOp(struct expr *e)
 static int
 specAddSubOp(struct expr *e)
 {
-    char buf[128];
     const char *rn;
     struct local_var *var;
-    int is_add = (e->op == 'P');
 
     /* Must be byte operation */
     if (e->size != 1)
@@ -809,28 +764,8 @@ specAddSubOp(struct expr *e)
     if (var->reg == REG_BC) rn = "c";
     if (!rn) return 0;
 
-    /* For PLUSEQ: evaluate RHS to A, then add a,r; ld r,a
-     * For SUBEQ: need to do var - expr, so: save RHS, load var, sub, store */
-    if (is_add) {
-        /* RHS will be in A after evaluation, add register to it, store back */
-        if (isAltReg(var->reg)) {
-            snprintf(buf, sizeof(buf), "\texx\n\tadd a, %s\n\tld %s, a\n\texx", rn, rn);
-        } else {
-            snprintf(buf, sizeof(buf), "\tadd a, %s\n\tld %s, a", rn, rn);
-        }
-    } else {
-        /* SUBEQ: var -= expr means var = var - expr
-         * RHS in A, need to compute var - A
-         * Use: ld e,a; ld a,r; sub e; ld r,a */
-        if (isAltReg(var->reg)) {
-            snprintf(buf, sizeof(buf), "\tld e, a\n\texx\n\tld a, %s\n\texx\n\tsub e\n\texx\n\tld %s, a\n\texx", rn, rn);
-        } else {
-            snprintf(buf, sizeof(buf), "\tld e, a\n\tld a, %s\n\tsub e\n\tld %s, a", rn, rn);
-        }
-    }
-
-    e->asm_block = strdup(buf);
-    /* Keep e->right for RHS evaluation, free e->left (the variable reference) */
+    /* Keep e->right for RHS evaluation, free e->left (the variable reference)
+     * Emit will generate the add/sub code based on e->op and opflags */
     freeExpr(e->left);
     e->left = NULL;
     return 1;

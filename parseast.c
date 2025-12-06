@@ -565,9 +565,7 @@ parseStmt(void)
 			s = newStmt('R');
 			if (has_value) {
 				s->expr = parseExpr();
-				if (s->expr && s->expr->op == 'C') {
-					s->expr->size = getSizeFTStr(fnRettype[0]);
-				}
+				/* Keep expression's natural size; emit.c handles widening */
 			}
 		}
 		return s;

@@ -494,8 +494,18 @@ emit_if_body:
     /* Handle RETURN statements specially */
     else if (s->type == 'R') {
         if (s->expr) {
+            int expr_size = s->expr->size;
+            int ret_size = getSizeFTStr(fnRettype[0]);
+            /* For byte return, set constant size so emit uses A not HL */
+            if (ret_size == 1 && s->expr->op == 'C')
+                s->expr->size = 1;
             emitExpr(s->expr);
-            if (strcmp(fnRettype, "_long_") == 0 && s->expr->size == 2) {
+            /* Widen byte to word if needed */
+            if (expr_size == 1 && ret_size == 2) {
+                fdprintf(outFd, "\tld l, a\n\tld h, 0\n");
+            }
+            /* Widen word to long if needed */
+            if (expr_size == 2 && ret_size == 4) {
                 emit(S_ZEXTSL);
                 emit(S_EXX);
                 emit(S_HLZERO);

@@ -39,6 +39,7 @@ void storeWordIX(char offset);
 /* Variable load/store with cache management */
 void loadVar(const char *sym, char sz, char docache);
 void storeVar(const char *sym, char sz, char docache);
+int varIYOfs(struct local_var *var);
 
 /* Register tracking for callee-save */
 int getUsedRegs(struct local_var *locals);
@@ -72,7 +73,6 @@ int emitSimplLd(struct expr *e);
 void emitExpr(struct expr *e);
 void emitIncDec(struct expr *e);
 void emitAssign(struct expr *e);
-void emitAddConst(struct expr *e);
 void emitBinop(struct expr *e);
 void emitCall(struct expr *e);
 void emitTernary(struct expr *e);

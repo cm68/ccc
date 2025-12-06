@@ -47,22 +47,23 @@ nextchar(void) {
 	return curchar;
 }
 
-/* Convert hex char to value */
+/* Convert hex char to value (0-15) */
 static unsigned char
 hval(unsigned char c) {
+    c |= 0x20;
 	if (c >= '0' && c <= '9') return c - '0';
 	if (c >= 'a' && c <= 'f') return c - ('a' - 10);
-	if (c >= 'A' && c <= 'F') return c - ('A' - 10);
 	return 0;
 }
 
 /* Read 2 hex chars as byte */
 unsigned char 
 readHex2(void) {
-	unsigned char h = hval(curchar);
-	unsigned char l = hval(nextchar());
+	unsigned char v = hval(curchar);
+	v <<= 4;
+    v |= hval(nextchar());
 	nextchar();
-	return (h << 4) | l;
+	return v;
 }
 
 /* Read 4 hex chars as unsigned 16-bit */
@@ -71,7 +72,8 @@ readHex4(void) {
     unsigned char i;
 	unsigned short v = 0;
 	for (i = 0; i < 4; i++) {
-		v = (v << 4) | hval(curchar);
+        v <<= 4;
+		v |= hval(curchar);
 		nextchar();
 	}
 	return v;
@@ -81,9 +83,10 @@ readHex4(void) {
 unsigned long 
 readHex8(void) {
 	unsigned long v = 0;
-	int i;
+	unsigned char i;
 	for (i = 0; i < 8; i++) {
-		v = (v << 4) | hval(curchar);
+		v <<= 4;
+		v |= hval(curchar);
 		nextchar();
 	}
 	return v;
@@ -103,7 +106,8 @@ readName(void) {
 }
 
 /* Read hex-length-prefixed ASCII string, return malloc'd copy */
-unsigned char *readStr(void) {
+unsigned char *
+readStr(void) {
 	int len = readHex2();
 	unsigned char *s = malloc(len + 1);
 	int i;
@@ -116,7 +120,8 @@ unsigned char *readStr(void) {
 }
 
 /* Skip to next line (for comments/newlines) */
-void skipLine(void) {
+void 
+skipLine(void) {
 	while (curchar && curchar != '\n')
 		nextchar();
 	if (curchar == '\n')
@@ -124,7 +129,8 @@ void skipLine(void) {
 }
 
 /* Skip newlines */
-void skipNL(void) {
+void 
+skipNL(void) {
 	while (curchar == '\n')
 		nextchar();
 }
