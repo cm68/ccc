@@ -21,7 +21,7 @@ usage(void)
     printf("usage: %s [<options>] <source.c>\n", progname);
     printf("  -o <output>    Output file (default: a.out)\n");
     printf("  -c             Compile and assemble only (produce .o file)\n");
-    printf("  -S             Compile only (produce .s file, no assembly)\n");
+    printf("  -s             Compile only (produce .s file, no assembly)\n");
     printf("  -k             Keep intermediate AST file\n");
     printf("  -v <level>     Verbosity level (passed to cc1)\n");
     printf("  -V <level>     Verbosity level (passed to cc2)\n");
@@ -30,6 +30,7 @@ usage(void)
         "default /usr/include)\n");
     printf("  -D<var>[=val]  Define macro (passed to cc1)\n");
     printf("  -E             Preprocess only (passed to cc1)\n");
+    printf("  -x             Print commands (don't execute)\n");
     exit(1);
 }
 
@@ -102,6 +103,20 @@ getBaseNoExt(char *filename)
 }
 
 /*
+ * Print a command line
+ */
+void
+printCommand(char **args)
+{
+    int i;
+    for (i = 0; args[i]; i++) {
+        if (i > 0) printf(" ");
+        printf("%s", args[i]);
+    }
+    printf("\n");
+}
+
+/*
  * Execute a command with arguments
  * Returns exit status of child process
  */
@@ -145,6 +160,7 @@ main(int argc, char **argv)
     int keep_ast = 0;
     int compile_only = 0;    /* -c: compile+assemble to .o */
     int asm_only = 0;        /* -S: compile to .s only */
+    int print_cmds = 0;      /* -x: print commands, don't execute */
 
     /* Input files by type */
     char *c_files[MAX_ARGS];
@@ -204,8 +220,12 @@ main(int argc, char **argv)
             compile_only = 1;
             argc--;
             argv++;
-        } else if (strcmp(argv[0], "-S") == 0) {
+        } else if (strcmp(argv[0], "-s") == 0) {
             asm_only = 1;
+            argc--;
+            argv++;
+        } else if (strcmp(argv[0], "-x") == 0) {
+            print_cmds = 1;
             argc--;
             argv++;
         } else if (strcmp(argv[0], "-v") == 0) {
@@ -320,7 +340,7 @@ main(int argc, char **argv)
         obj_file = malloc(strlen(base) + 10);
         sprintf(obj_file, "%s.o", base);
 
-        printf("=== Compiling %s ===\n", src);
+        if (!print_cmds) printf("=== Compiling %s ===\n", src);
 
         /* Build cc1 args: base options + -o ast_file + source */
         cc1_argc = 0;
@@ -331,10 +351,14 @@ main(int argc, char **argv)
         cc1_args[cc1_argc++] = src;
         cc1_args[cc1_argc] = NULL;
 
-        status = execCommand(cc1_path, cc1_args);
-        if (status != 0) {
-            fprintf(stderr, "Error: cc1 failed on %s\n", src);
-            exit(status);
+        if (print_cmds) {
+            printCommand(cc1_args);
+        } else {
+            status = execCommand(cc1_path, cc1_args);
+            if (status != 0) {
+                fprintf(stderr, "Error: cc1 failed on %s\n", src);
+                exit(status);
+            }
         }
 
         /* Build cc2 args: base options + -o asm_file + ast_file */
@@ -346,20 +370,24 @@ main(int argc, char **argv)
         cc2_args[cc2_argc++] = ast_file;
         cc2_args[cc2_argc] = NULL;
 
-        status = execCommand(cc2_path, cc2_args);
-        if (status != 0) {
-            fprintf(stderr, "Error: cc2 failed on %s\n", ast_file);
-            exit(status);
+        if (print_cmds) {
+            printCommand(cc2_args);
+        } else {
+            status = execCommand(cc2_path, cc2_args);
+            if (status != 0) {
+                fprintf(stderr, "Error: cc2 failed on %s\n", ast_file);
+                exit(status);
+            }
         }
 
-        /* Clean up AST unless -k */
-        if (!keep_ast)
+        /* Clean up AST unless -k or -x */
+        if (!keep_ast && !print_cmds)
             unlink(ast_file);
         free(ast_file);
 
         /* If -S, we're done with this file */
         if (asm_only) {
-            printf("  -> %s\n", asm_file);
+            if (!print_cmds) printf("  -> %s\n", asm_file);
             free(asm_file);
             free(obj_file);
             free(base);
@@ -373,19 +401,23 @@ main(int argc, char **argv)
         as_args[3] = asm_file;
         as_args[4] = NULL;
 
-        status = execCommand(asm_path, as_args);
-        if (status != 0) {
-            fprintf(stderr, "Error: assembler failed on %s\n", asm_file);
-            exit(status);
-        }
+        if (print_cmds) {
+            printCommand(as_args);
+        } else {
+            status = execCommand(asm_path, as_args);
+            if (status != 0) {
+                fprintf(stderr, "Error: assembler failed on %s\n", asm_file);
+                exit(status);
+            }
 
-        /* Clean up .s file */
-        unlink(asm_file);
+            /* Clean up .s file */
+            unlink(asm_file);
+        }
         free(asm_file);
 
         /* Add to object list for linking */
         o_files[o_count++] = obj_file;
-        printf("  -> %s\n", obj_file);
+        if (!print_cmds) printf("  -> %s\n", obj_file);
         free(base);
     }
 
@@ -405,7 +437,7 @@ main(int argc, char **argv)
         obj_file = malloc(strlen(base) + 10);
         sprintf(obj_file, "%s.o", base);
 
-        printf("=== Assembling %s ===\n", src);
+        if (!print_cmds) printf("=== Assembling %s ===\n", src);
 
         as_args[0] = asm_path;
         as_args[1] = "-o";
@@ -413,14 +445,18 @@ main(int argc, char **argv)
         as_args[3] = src;
         as_args[4] = NULL;
 
-        status = execCommand(asm_path, as_args);
-        if (status != 0) {
-            fprintf(stderr, "Error: assembler failed on %s\n", src);
-            exit(status);
+        if (print_cmds) {
+            printCommand(as_args);
+        } else {
+            status = execCommand(asm_path, as_args);
+            if (status != 0) {
+                fprintf(stderr, "Error: assembler failed on %s\n", src);
+                exit(status);
+            }
         }
 
         o_files[o_count++] = obj_file;
-        printf("  -> %s\n", obj_file);
+        if (!print_cmds) printf("  -> %s\n", obj_file);
         free(base);
     }
 
@@ -435,7 +471,7 @@ main(int argc, char **argv)
         char *ld_args[MAX_ARGS];
         int ld_argc = 0;
 
-        printf("\n=== Linking -> %s ===\n", output_file);
+        if (!print_cmds) printf("\n=== Linking -> %s ===\n", output_file);
 
         ld_args[ld_argc++] = ld_path;
         ld_args[ld_argc++] = "-o";
@@ -451,14 +487,19 @@ main(int argc, char **argv)
 
         ld_args[ld_argc] = NULL;
 
-        status = execCommand(ld_path, ld_args);
-        if (status != 0) {
-            fprintf(stderr, "Error: linker failed\n");
-            exit(status);
+        if (print_cmds) {
+            printCommand(ld_args);
+        } else {
+            status = execCommand(ld_path, ld_args);
+            if (status != 0) {
+                fprintf(stderr, "Error: linker failed\n");
+                exit(status);
+            }
         }
     }
 
-    printf("\n=== Build successful: %s ===\n", output_file);
+    if (!print_cmds)
+        printf("\n=== Build successful: %s ===\n", output_file);
 
     free(scriptdir);
     return 0;

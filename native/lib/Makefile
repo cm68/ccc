@@ -24,7 +24,7 @@ all: $(LIBRARY)
 	$(AS) $(ASFLAGS) -o $@ $<
 
 unixlib.s: unixlib.c
-	$(CC) -S $<
+	$(CC) -s $<
 
 $(LIBRARY): $(OBJECTS)
 	$(LIB) -crv $@ $^
