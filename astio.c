@@ -48,7 +48,7 @@ nextchar(void) {
 }
 
 /* Convert hex char to value */
-static int 
+static unsigned char
 hval(unsigned char c) {
 	if (c >= '0' && c <= '9') return c - '0';
 	if (c >= 'a' && c <= 'f') return c - ('a' - 10);
