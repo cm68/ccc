@@ -84,7 +84,7 @@ $(CC1OBJECTS): $(HFILES)
 
 # Suffix rule to generate .ast files from .c files
 %.ast: %.c cc1
-	./cc1 -DCCC -i./include -I. -E -o $@ $<
+	./cc1 -DCCC -i./include -I. -o $@ $<
 
 # Suffix rule to generate .s assembly files from .ast files
 %.s: %.ast cc2
@@ -101,12 +101,12 @@ $(CC1OBJECTS): $(HFILES)
 # Pattern rules for stage1 directory - always rebuild (FORCE dependency)
 stage1/%.i: %.c cc1 FORCE
 	@mkdir -p stage1
-	./cc1 -DCCC -i./native/include -I. -E -o stage1/$*.ast $<
+	./cc1 -DCCC -i./native/include -I. -o stage1/$*.ast $<
 	mv $*.i $@
 
 stage1/%.ast: %.c cc1 FORCE
 	@mkdir -p stage1
-	./cc1 -DCCC -i./native/include -I. -E -o $@ $<
+	./cc1 -DCCC -i./native/include -I. -o $@ $<
 
 stage1/%.pp: stage1/%.ast FORCE
 	python3 ./astpp.py $< > $@
@@ -143,7 +143,7 @@ valgrind-stage1: cc1 cc2
 	    b=$$(basename $$f .c) ; \
 	    printf "%-20s cc1: " "$$f"; \
 	    valgrind --leak-check=full --log-file=stage1/$$b.cc1.vg \
-	      ./cc1 -DCCC -i./native/include -I. -E -o stage1/$$b.ast "$$f" \
+	      ./cc1 -DCCC -i./native/include -I. -o stage1/$$b.ast "$$f" \
 	      2>stage1/$$b.cc1.err; \
 	    grep -q "ERROR SUMMARY: 0 errors" stage1/$$b.cc1.vg && echo -n "OK " || echo -n "ERR "; \
 	    mv $$b.i stage1/$$b.i 2>/dev/null; \

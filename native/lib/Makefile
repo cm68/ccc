@@ -1,9 +1,10 @@
 # CCC Runtime Library Makefile
 # Builds the Z80 runtime library for programs compiled with ccc
 
-LIB = ../ws/wslib
-AS = ../ws/asz
+LIB = wslib
+AS = asz
 CC = ../../ccc
+
 ASFLAGS =
 
 # Source files
@@ -23,7 +24,7 @@ all: $(LIBRARY)
 	$(AS) $(ASFLAGS) -o $@ $<
 
 unixlib.s: unixlib.c
-	$(CC) -S -o $@ $<
+	$(CC) -S $<
 
 $(LIBRARY): $(OBJECTS)
 	$(LIB) -crv $@ $^

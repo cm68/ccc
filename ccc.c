@@ -20,15 +20,16 @@ usage(void)
 {
     printf("usage: %s [<options>] <source.c>\n", progname);
     printf("  -o <output>    Output file (default: a.out)\n");
+    printf("  -c             Compile and assemble only (produce .o file)\n");
+    printf("  -S             Compile only (produce .s file, no assembly)\n");
     printf("  -k             Keep intermediate AST file\n");
     printf("  -v <level>     Verbosity level (passed to cc1)\n");
+    printf("  -V <level>     Verbosity level (passed to cc2)\n");
     printf("  -I<dir>        Include directory (passed to cc1)\n");
     printf("  -i<dir>        System include directory (passed to cc1, "
         "default /usr/include)\n");
     printf("  -D<var>[=val]  Define macro (passed to cc1)\n");
     printf("  -E             Preprocess only (passed to cc1)\n");
-    printf("  -x             Execute AST with interpreter (skip code "
-        "generation)\n");
     exit(1);
 }
 
@@ -140,35 +141,43 @@ execCommand(char *cmd, char **args)
 int
 main(int argc, char **argv)
 {
-    char *source_file = NULL;
     char *output_file = NULL;
-    char *ast_file = NULL;
     int keep_ast = 0;
-    int execute_ast = 0;
+    int compile_only = 0;    /* -c: compile+assemble to .o */
+    int asm_only = 0;        /* -S: compile to .s only */
 
-    char *cc1_args[MAX_ARGS];
-    char *cc2_args[MAX_ARGS];
-    int cc1_argc = 0;
-    int cc2_argc = 0;
+    /* Input files by type */
+    char *c_files[MAX_ARGS];
+    char *s_files[MAX_ARGS];
+    char *o_files[MAX_ARGS];
+    char *a_files[MAX_ARGS];
+    int c_count = 0, s_count = 0, o_count = 0, a_count = 0;
+
+    char *cc1_base[MAX_ARGS];  /* Base cc1 args (options only) */
+    char *cc2_base[MAX_ARGS];  /* Base cc2 args (options only) */
+    int cc1_base_argc = 0;
+    int cc2_base_argc = 0;
 
     char cc1_path[1024];
     char cc2_path[1024];
-    char interp_path[1024];
+    char asm_path[1024];
+    char ld_path[1024];
 
-    char *basenameNoExt;
     int status;
+    int i;
 
     progname = argv[0];
     scriptdir = getScriptDir(argv[0]);
 
-    /* Build paths to cc1, cc2, and interpreter */
+    /* Build paths to cc1, cc2, assembler, linker */
     snprintf(cc1_path, sizeof(cc1_path), "%s/cc1", scriptdir);
     snprintf(cc2_path, sizeof(cc2_path), "%s/cc2", scriptdir);
-    snprintf(interp_path, sizeof(interp_path), "%s/interp.lisp", scriptdir);
+    snprintf(asm_path, sizeof(asm_path), "%s/asz", scriptdir);
+    snprintf(ld_path, sizeof(ld_path), "%s/wsld", scriptdir);
 
-    /* Initialize argument arrays with program names */
-    cc1_args[cc1_argc++] = cc1_path;
-    cc2_args[cc2_argc++] = cc2_path;
+    /* Initialize base argument arrays with program names */
+    cc1_base[cc1_base_argc++] = cc1_path;
+    cc2_base[cc2_base_argc++] = cc2_path;
 
     /* Parse arguments */
     argc--;
@@ -191,75 +200,99 @@ main(int argc, char **argv)
             keep_ast = 1;
             argc--;
             argv++;
-        } else if (strcmp(argv[0], "-x") == 0) {
-            execute_ast = 1;
-            keep_ast = 1;  /* Must keep AST to execute it */
+        } else if (strcmp(argv[0], "-c") == 0) {
+            compile_only = 1;
+            argc--;
+            argv++;
+        } else if (strcmp(argv[0], "-S") == 0) {
+            asm_only = 1;
             argc--;
             argv++;
         } else if (strcmp(argv[0], "-v") == 0) {
             /* Pass -v and its argument to cc1 */
-            if (cc1_argc + 2 >= MAX_ARGS) {
+            if (cc1_base_argc + 2 >= MAX_ARGS) {
                 fprintf(stderr, "Error: too many arguments\n");
                 exit(1);
             }
-            cc1_args[cc1_argc++] = "-v";
+            cc1_base[cc1_base_argc++] = "-v";
             argc--;
             argv++;
             if (argc == 0) {
                 fprintf(stderr, "Error: -v requires an argument\n");
                 usage();
             }
-            cc1_args[cc1_argc++] = argv[0];
+            cc1_base[cc1_base_argc++] = argv[0];
+            argc--;
+            argv++;
+        } else if (strcmp(argv[0], "-V") == 0) {
+            /* Pass -v and its argument to cc2 */
+            if (cc2_base_argc + 2 >= MAX_ARGS) {
+                fprintf(stderr, "Error: too many arguments\n");
+                exit(1);
+            }
+            cc2_base[cc2_base_argc++] = "-v";
+            argc--;
+            argv++;
+            if (argc == 0) {
+                fprintf(stderr, "Error: -V requires an argument\n");
+                usage();
+            }
+            cc2_base[cc2_base_argc++] = argv[0];
             argc--;
             argv++;
         } else if (argv[0][0] == '-' &&
                    (argv[0][1] == 'I' || argv[0][1] == 'i' ||
                     argv[0][1] == 'D')) {
             /* Pass -I, -i, or -D options to cc1 */
-            if (cc1_argc >= MAX_ARGS) {
+            if (cc1_base_argc >= MAX_ARGS) {
                 fprintf(stderr, "Error: too many arguments\n");
                 exit(1);
             }
-            cc1_args[cc1_argc++] = argv[0];
+            cc1_base[cc1_base_argc++] = argv[0];
             argc--;
             argv++;
         } else if (strcmp(argv[0], "-E") == 0) {
             /* Pass -E to cc1 */
-            if (cc1_argc >= MAX_ARGS) {
+            if (cc1_base_argc >= MAX_ARGS) {
                 fprintf(stderr, "Error: too many arguments\n");
                 exit(1);
             }
-            cc1_args[cc1_argc++] = argv[0];
+            cc1_base[cc1_base_argc++] = argv[0];
             argc--;
             argv++;
         } else if (argv[0][0] == '-') {
             fprintf(stderr, "Error: unknown option: %s\n", argv[0]);
             usage();
         } else {
-            /* Source file */
-            if (source_file) {
+            /* Input file - classify by extension */
+            char *ext = strrchr(argv[0], '.');
+            if (access(argv[0], R_OK) != 0) {
                 fprintf(stderr,
-                    "Error: multiple source files not supported yet\n");
+                    "Error: file '%s' not found or not readable\n",
+                    argv[0]);
                 exit(1);
             }
-            source_file = argv[0];
+            if (ext && strcmp(ext, ".c") == 0) {
+                c_files[c_count++] = argv[0];
+            } else if (ext && strcmp(ext, ".s") == 0) {
+                s_files[s_count++] = argv[0];
+            } else if (ext && strcmp(ext, ".o") == 0) {
+                o_files[o_count++] = argv[0];
+            } else if (ext && strcmp(ext, ".a") == 0) {
+                a_files[a_count++] = argv[0];
+            } else {
+                fprintf(stderr, "Error: unknown file type: %s\n", argv[0]);
+                exit(1);
+            }
             argc--;
             argv++;
         }
     }
 
-    /* Check for source file */
-    if (!source_file) {
-        fprintf(stderr, "Error: no source file specified\n");
+    /* Check for input files */
+    if (c_count + s_count + o_count + a_count == 0) {
+        fprintf(stderr, "Error: no input files specified\n");
         usage();
-    }
-
-    /* Check if source file exists */
-    if (access(source_file, R_OK) != 0) {
-        fprintf(stderr,
-            "Error: source file '%s' not found or not readable\n",
-            source_file);
-        exit(1);
     }
 
     /* Set default output file */
@@ -267,90 +300,166 @@ main(int argc, char **argv)
         output_file = "a.out";
     }
 
-    /* Generate AST filename */
-    basenameNoExt = getBaseNoExt(source_file);
-    if (keep_ast) {
-        ast_file = malloc(strlen(basenameNoExt) + 10);
-        sprintf(ast_file, "%s.ast", basenameNoExt);
-    } else {
-        ast_file = makeTempAst(basenameNoExt);
-    }
+    /* Process each .c file: cc1 -> cc2 -> asm */
+    for (i = 0; i < c_count; i++) {
+        char *src = c_files[i];
+        char *base = getBaseNoExt(src);
+        char *ast_file;
+        char *asm_file;
+        char *obj_file;
+        char *cc1_args[MAX_ARGS];
+        char *cc2_args[MAX_ARGS];
+        char *as_args[8];
+        int cc1_argc, cc2_argc, j;
 
-    printf("=== Pass 1: Parsing %s ===\n", source_file);
+        /* Generate intermediate filenames */
+        ast_file = malloc(strlen(base) + 10);
+        sprintf(ast_file, "%s.ast", base);
+        asm_file = malloc(strlen(base) + 10);
+        sprintf(asm_file, "%s.s", base);
+        obj_file = malloc(strlen(base) + 10);
+        sprintf(obj_file, "%s.o", base);
 
-    /* Build cc1 argument list (cc1_path already at index 0) */
-    cc1_args[cc1_argc++] = "-o";
-    cc1_args[cc1_argc++] = ast_file;
-    cc1_args[cc1_argc++] = source_file;
-    cc1_args[cc1_argc] = NULL;
+        printf("=== Compiling %s ===\n", src);
 
-    /* Execute cc1 */
-    status = execCommand(cc1_path, cc1_args);
-    if (status != 0) {
-        fprintf(stderr, "Error: cc1 failed with status %d\n", status);
-        if (!keep_ast) {
-            unlink(ast_file);
+        /* Build cc1 args: base options + -o ast_file + source */
+        cc1_argc = 0;
+        for (j = 0; j < cc1_base_argc; j++)
+            cc1_args[cc1_argc++] = cc1_base[j];
+        cc1_args[cc1_argc++] = "-o";
+        cc1_args[cc1_argc++] = ast_file;
+        cc1_args[cc1_argc++] = src;
+        cc1_args[cc1_argc] = NULL;
+
+        status = execCommand(cc1_path, cc1_args);
+        if (status != 0) {
+            fprintf(stderr, "Error: cc1 failed on %s\n", src);
+            exit(status);
         }
-        exit(status);
-    }
 
-    /*
-     * If -x specified, execute AST with interpreter instead of code
-     * generation
-     */
-    if (execute_ast) {
-        char *interp_args[MAX_ARGS];
-        int interp_argc = 0;
+        /* Build cc2 args: base options + -o asm_file + ast_file */
+        cc2_argc = 0;
+        for (j = 0; j < cc2_base_argc; j++)
+            cc2_args[cc2_argc++] = cc2_base[j];
+        cc2_args[cc2_argc++] = "-o";
+        cc2_args[cc2_argc++] = asm_file;
+        cc2_args[cc2_argc++] = ast_file;
+        cc2_args[cc2_argc] = NULL;
 
-        printf("\n=== Executing AST with interpreter ===\n");
+        status = execCommand(cc2_path, cc2_args);
+        if (status != 0) {
+            fprintf(stderr, "Error: cc2 failed on %s\n", ast_file);
+            exit(status);
+        }
 
-        interp_args[interp_argc++] = "sbcl";
-        interp_args[interp_argc++] = "--script";
-        interp_args[interp_argc++] = interp_path;
-        interp_args[interp_argc++] = ast_file;
-        interp_args[interp_argc] = NULL;
-
-        status = execCommand("/usr/bin/sbcl", interp_args);
-
-        printf("\nAST saved to: %s\n", ast_file);
-
+        /* Clean up AST unless -k */
+        if (!keep_ast)
+            unlink(ast_file);
         free(ast_file);
-        free(basenameNoExt);
-        free(scriptdir);
 
-        exit(status);
-    }
-
-    printf("\n=== Pass 2: Generating code from %s ===\n", ast_file);
-
-    /* Build cc2 argument list (cc2_path already at index 0) */
-    cc2_args[cc2_argc++] = "-o";
-    cc2_args[cc2_argc++] = output_file;
-    cc2_args[cc2_argc++] = ast_file;
-    cc2_args[cc2_argc] = NULL;
-
-    /* Execute cc2 */
-    status = execCommand(cc2_path, cc2_args);
-    if (status != 0) {
-        fprintf(stderr, "Error: cc2 failed with status %d\n", status);
-        if (!keep_ast) {
-            unlink(ast_file);
+        /* If -S, we're done with this file */
+        if (asm_only) {
+            printf("  -> %s\n", asm_file);
+            free(asm_file);
+            free(obj_file);
+            free(base);
+            continue;
         }
-        exit(status);
+
+        /* Assemble to .o */
+        as_args[0] = asm_path;
+        as_args[1] = "-o";
+        as_args[2] = obj_file;
+        as_args[3] = asm_file;
+        as_args[4] = NULL;
+
+        status = execCommand(asm_path, as_args);
+        if (status != 0) {
+            fprintf(stderr, "Error: assembler failed on %s\n", asm_file);
+            exit(status);
+        }
+
+        /* Clean up .s file */
+        unlink(asm_file);
+        free(asm_file);
+
+        /* Add to object list for linking */
+        o_files[o_count++] = obj_file;
+        printf("  -> %s\n", obj_file);
+        free(base);
     }
 
-    /* Clean up temporary AST file if not keeping */
-    if (!keep_ast) {
-        unlink(ast_file);
-    } else {
-        printf("AST saved to: %s\n", ast_file);
+    /* If -S, we're done */
+    if (asm_only) {
+        free(scriptdir);
+        return 0;
     }
 
-    printf("\n=== Compilation successful: %s ===\n", output_file);
+    /* Process each .s file: assemble to .o */
+    for (i = 0; i < s_count; i++) {
+        char *src = s_files[i];
+        char *base = getBaseNoExt(src);
+        char *obj_file;
+        char *as_args[8];
 
-    free(ast_file);
-    free(basenameNoExt);
+        obj_file = malloc(strlen(base) + 10);
+        sprintf(obj_file, "%s.o", base);
+
+        printf("=== Assembling %s ===\n", src);
+
+        as_args[0] = asm_path;
+        as_args[1] = "-o";
+        as_args[2] = obj_file;
+        as_args[3] = src;
+        as_args[4] = NULL;
+
+        status = execCommand(asm_path, as_args);
+        if (status != 0) {
+            fprintf(stderr, "Error: assembler failed on %s\n", src);
+            exit(status);
+        }
+
+        o_files[o_count++] = obj_file;
+        printf("  -> %s\n", obj_file);
+        free(base);
+    }
+
+    /* If -c, we're done */
+    if (compile_only) {
+        free(scriptdir);
+        return 0;
+    }
+
+    /* Link all object files and libraries */
+    {
+        char *ld_args[MAX_ARGS];
+        int ld_argc = 0;
+
+        printf("\n=== Linking -> %s ===\n", output_file);
+
+        ld_args[ld_argc++] = ld_path;
+        ld_args[ld_argc++] = "-o";
+        ld_args[ld_argc++] = output_file;
+
+        /* Add object files */
+        for (i = 0; i < o_count; i++)
+            ld_args[ld_argc++] = o_files[i];
+
+        /* Add library files */
+        for (i = 0; i < a_count; i++)
+            ld_args[ld_argc++] = a_files[i];
+
+        ld_args[ld_argc] = NULL;
+
+        status = execCommand(ld_path, ld_args);
+        if (status != 0) {
+            fprintf(stderr, "Error: linker failed\n");
+            exit(status);
+        }
+    }
+
+    printf("\n=== Build successful: %s ===\n", output_file);
+
     free(scriptdir);
-
     return 0;
 }
