@@ -97,6 +97,43 @@ struct labelMap {
 #define OP_BCINDIR  0x80        // Byte DEREF of BC-allocated pointer: (M:b (M:p $bc))
 
 /*
+ * Location types for scheduled expressions (e->loc)
+ * Set during scheduling phase, used by emit
+ */
+#define LOC_NONE    0           // Not yet scheduled
+#define LOC_CONST   1           // Constant value in e->value
+#define LOC_REG     2           // In register specified by e->reg
+#define LOC_MEM     3           // Global memory, symbol in e->symbol
+#define LOC_STACK   4           // Stack-relative (IY + e->offset)
+#define LOC_IX      5           // IX-indexed (IX + e->offset)
+#define LOC_INDIR   6           // Indirect through register e->reg
+#define LOC_FLAGS   7           // Result in flags, e->cond specifies which
+
+/*
+ * Condition codes for LOC_FLAGS (e->cond field)
+ * Encodes which flag and what sense for conditional jumps
+ */
+#define CC_NONE     0           // No condition
+#define CC_Z        1           // Zero flag set (jp z)
+#define CC_NZ       2           // Zero flag clear (jp nz)
+#define CC_C        3           // Carry flag set (jp c)
+#define CC_NC       4           // Carry flag clear (jp nc)
+#define CC_M        5           // Sign flag set / negative (jp m)
+#define CC_P        6           // Sign flag clear / positive (jp p)
+
+/*
+ * Register identifiers for e->reg and e->dest
+ */
+#define R_NONE      0
+#define R_A         1           // 8-bit accumulator
+#define R_HL        2           // 16-bit primary
+#define R_DE        3           // 16-bit secondary
+#define R_BC        4           // 16-bit tertiary / register var
+#define R_IX        5           // Index register (struct pointer)
+#define R_IY        6           // Frame pointer
+#define R_SP        7           // Stack pointer
+
+/*
  * Expression tree node for code generation
  * This is the parse tree representation of expressions
  */
@@ -114,7 +151,14 @@ struct expr {
     long value;                 // Constant value (for numeric constants)
     char *symbol;               // Symbol name (for SYM nodes)
 
-    /* Code generation fields */
+    /* Scheduling fields - set by codegen, used by emit */
+    unsigned char loc;          // Location type: LOC_CONST, LOC_REG, LOC_MEM, etc.
+    unsigned char reg;          // Register if LOC_REG or LOC_INDIR: R_A, R_HL, R_DE, etc.
+    unsigned char dest;         // Destination register for result: R_HL, R_DE, R_A
+    unsigned char cond;         // Condition code if LOC_FLAGS: CC_Z, CC_NZ, CC_C, etc.
+    char offset;                // Stack/IX offset if LOC_STACK or LOC_IX (-128..127)
+
+    /* Code generation fields (to be phased out) */
     char *asm_block;            // Generated assembly code (or NULL)
     char *cleanup_block;        // Deferred cleanup code (for CALL stack cleanup)
     struct jump_instr *jump;    // Jump instruction (deferred) or NULL
@@ -229,7 +273,9 @@ void analyzeVars(void);
 void allocRegs(void);
 void setOpFlags(void);
 void dumpFnAst(int fd);
+void dumpScheduled(int fd);
 void specialize(void);
+void scheduleCode(void);
 void generateCode(void);
 void optFrmLayout(void);
 struct local_var *findVar(const char *symbol);

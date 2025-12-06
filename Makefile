@@ -99,6 +99,9 @@ $(CC1OBJECTS): $(HFILES)
 	$(ASM) $(ASMOPTS) -o $@ $<
 
 # Pattern rules for stage1 directory - always rebuild (FORCE dependency)
+# Preserve intermediate files (make normally deletes .ast and .s after building .o)
+.PRECIOUS: stage1/%.ast stage1/%.s
+
 stage1/%.i: %.c cc1 FORCE
 	@mkdir -p stage1
 	./cc1 -DCCC -i./native/include -I. -o stage1/$*.ast $<

@@ -347,11 +347,132 @@ dumpFnAst(int fd)
     fdprintf(fd, "\n");
 }
 
+/* Location type names */
+static const char *locName(int loc)
+{
+    switch (loc) {
+    case LOC_NONE:  return "-";
+    case LOC_CONST: return "const";
+    case LOC_REG:   return "reg";
+    case LOC_MEM:   return "mem";
+    case LOC_STACK: return "stk";
+    case LOC_IX:    return "ix";
+    case LOC_INDIR: return "ind";
+    default:        return "?";
+    }
+}
+
+/* Register names */
+static const char *regName(int reg)
+{
+    switch (reg) {
+    case R_NONE: return "-";
+    case R_A:    return "A";
+    case R_HL:   return "HL";
+    case R_DE:   return "DE";
+    case R_BC:   return "BC";
+    case R_IX:   return "IX";
+    case R_IY:   return "IY";
+    case R_SP:   return "SP";
+    default:     return "?";
+    }
+}
+
+/* Dump expression with scheduling info */
+static void
+dumpSchedExpr(struct expr *e, int indent)
+{
+    int i;
+    if (!e) return;
+
+    /* Comment prefix and indent */
+    fdprintf(dumpFd, "; ");
+    for (i = 0; i < indent; i++) fdprintf(dumpFd, "  ");
+
+    /* Op and size */
+    fdprintf(dumpFd, "%c:%d", e->op, e->size);
+
+    /* Location info */
+    if (e->loc != LOC_NONE) {
+        fdprintf(dumpFd, " [%s", locName(e->loc));
+        if (e->loc == LOC_REG || e->loc == LOC_INDIR) {
+            fdprintf(dumpFd, "=%s", regName(e->reg));
+        }
+        if (e->loc == LOC_STACK || e->loc == LOC_IX) {
+            fdprintf(dumpFd, "=%d", (int)e->offset);
+        }
+        if (e->dest != R_NONE) {
+            fdprintf(dumpFd, " ->%s", regName(e->dest));
+        }
+        fdprintf(dumpFd, "]");
+    }
+
+    /* Value/symbol */
+    if (e->op == 'C') {
+        fdprintf(dumpFd, " %ld", e->value);
+    } else if (e->op == '$' && e->symbol) {
+        fdprintf(dumpFd, " %s", e->symbol);
+    }
+
+    fdprintf(dumpFd, "\n");
+
+    /* Children */
+    if (e->left)  dumpSchedExpr(e->left, indent + 1);
+    if (e->right) dumpSchedExpr(e->right, indent + 1);
+}
+
+/* Dump scheduled statement tree */
+static void
+dumpSchedStmt(struct stmt *s, int indent)
+{
+    int i;
+    if (!s) return;
+
+    /* Comment prefix and indent */
+    fdprintf(dumpFd, "; ");
+    for (i = 0; i < indent; i++) fdprintf(dumpFd, "  ");
+
+    /* Statement type */
+    fdprintf(dumpFd, "%c", s->type);
+    if (s->label) fdprintf(dumpFd, " L%d", s->label);
+    if (s->label2) fdprintf(dumpFd, " L2=%d", s->label2);
+    fdprintf(dumpFd, "\n");
+
+    /* Expression */
+    if (s->expr) dumpSchedExpr(s->expr, indent + 1);
+    if (s->expr2) dumpSchedExpr(s->expr2, indent + 1);
+    if (s->expr3) dumpSchedExpr(s->expr3, indent + 1);
+
+    /* Branches */
+    if (s->then_branch) dumpSchedStmt(s->then_branch, indent + 1);
+    if (s->else_branch) dumpSchedStmt(s->else_branch, indent + 1);
+
+    /* Next */
+    if (s->next) dumpSchedStmt(s->next, indent);
+}
+
+/* Entry point: dump scheduled tree */
+void
+dumpScheduled(int fd)
+{
+    if (!fnBody) return;
+
+    dumpFd = fd;
+    fdprintf(fd, "; Scheduled tree for %s:\n", fnName ? fnName : "?");
+    dumpSchedStmt(fnBody, 0);
+}
+
 #else
 
 /* Stub when DEBUG not defined */
 void
 dumpFnAst(int fd)
+{
+    (void)fd;
+}
+
+void
+dumpScheduled(int fd)
 {
     (void)fd;
 }

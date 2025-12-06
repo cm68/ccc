@@ -990,6 +990,11 @@ specExpr(struct expr *e)
         if (specAddSubOp(e)) return;
     }
 
+    /* Propagate ASSIGN size to constant right operand */
+    if (e->op == '=' && e->right && e->right->op == 'C') {
+        e->right->size = e->size;
+    }
+
     /* Recurse on children */
     specExpr(e->left);
     specExpr(e->right);
@@ -1462,6 +1467,11 @@ static void generateExpr(struct expr *e)
         snprintf(buf, sizeof(buf), "\t; TODO: unhandled inc/dec op=0x%02x", e->op);
         e->asm_block = strdup(buf);
         return;
+    }
+
+    /* For assignments, propagate size to constant RHS before code gen */
+    if (e->op == '=' && e->right && e->right->op == 'C') {
+        e->right->size = e->size;
     }
 
     /* Recursively generate code for children (postorder traversal) */
@@ -2081,6 +2091,188 @@ void generateCode()
     generateStmt(fnBody);
 }
 
+/*
+ * ============================================================================
+ * SCHEDULING PASS - Set location/dest fields on expression nodes
+ *
+ * This is a new pass that will eventually replace asm_block generation.
+ * It walks expressions and tags them with:
+ *   - loc: where the value currently lives
+ *   - reg: which register (if loc=REG or INDIR)
+ *   - dest: where the value needs to go
+ *   - offset: stack/IX offset (if loc=STACK or IX)
+ * ============================================================================
+ */
+
+/*
+ * Schedule expression with a destination hint
+ * dest: R_HL, R_DE, R_A, or R_NONE (use default)
+ */
+static void
+schedExpr(struct expr *e, int dest)
+{
+    struct local_var *var;
+
+    if (!e) return;
+
+    /* Set destination if provided */
+    if (dest != R_NONE) {
+        e->dest = dest;
+    } else {
+        /* Default destination based on size */
+        e->dest = (e->size == 1) ? R_A : R_HL;
+    }
+
+    switch (e->op) {
+    case 'C':  /* Constant */
+        e->loc = LOC_CONST;
+        /* value already in e->value */
+        break;
+
+    case '$':  /* Symbol reference (address of) */
+        e->loc = LOC_MEM;
+        /* symbol already in e->symbol */
+        break;
+
+    case 'M':  /* DEREF - memory load */
+        /* Check what we're dereferencing */
+        if (e->left && e->left->op == '$' && e->left->symbol) {
+            /* Direct variable reference: (M $var) */
+            var = findVar(e->left->symbol);
+            if (var) {
+                /* Local variable */
+                if (var->reg != REG_NO) {
+                    /* Register variable */
+                    e->loc = LOC_REG;
+                    switch (var->reg) {
+                    case REG_BC: e->reg = R_BC; break;
+                    case REG_IX: e->reg = R_IX; break;
+                    default:     e->reg = R_NONE; break;
+                    }
+                } else {
+                    /* Stack variable */
+                    e->loc = LOC_STACK;
+                    e->offset = var->offset;
+                }
+            } else {
+                /* Global variable */
+                e->loc = LOC_MEM;
+            }
+            /* Don't recurse into $ child - we handled it */
+            e->left->loc = LOC_MEM;
+        } else {
+            /* Complex dereference - recurse */
+            schedExpr(e->left, R_HL);
+            e->loc = LOC_INDIR;
+            e->reg = R_HL;
+        }
+        break;
+
+    case '+':
+    case '-':
+    case '&':
+    case '|':
+    case '^':
+        /* Binary ops: left -> DE, right -> HL (for word ops) */
+        if (e->size == 1) {
+            schedExpr(e->left, R_A);
+            schedExpr(e->right, R_A);
+        } else {
+            schedExpr(e->left, R_DE);
+            schedExpr(e->right, R_HL);
+        }
+        break;
+
+    case '<':
+    case '>':
+    case 'g':  /* >= */
+    case 'L':  /* <= */
+    case 'Q':  /* == */
+    case 'n':  /* != */
+        /* Comparisons: left -> DE, right -> HL */
+        if (e->size == 1 || (e->left && e->left->size == 1)) {
+            schedExpr(e->left, R_A);
+            schedExpr(e->right, R_A);
+        } else {
+            schedExpr(e->left, R_DE);
+            schedExpr(e->right, R_HL);
+        }
+        /* Set condition code based on operator and signedness */
+        e->loc = LOC_FLAGS;
+        switch (e->op) {
+        case 'Q':  /* == */
+            e->cond = CC_Z;
+            break;
+        case 'n':  /* != */
+            e->cond = CC_NZ;
+            break;
+        case '<':
+            /* unsigned: C set means less; signed: use helper result */
+            e->cond = (e->flags & E_UNSIGNED) ? CC_C : CC_C;
+            break;
+        case '>':
+            /* unsigned: C clear AND NZ; signed: use helper result */
+            e->cond = (e->flags & E_UNSIGNED) ? CC_NZ : CC_NZ;
+            break;
+        case 'L':  /* <= */
+            /* unsigned: C set OR Z; signed: M or Z */
+            e->cond = (e->flags & E_UNSIGNED) ? CC_Z : CC_Z;
+            break;
+        case 'g':  /* >= */
+            /* unsigned: C clear; signed: P or Z */
+            e->cond = (e->flags & E_UNSIGNED) ? CC_NC : CC_NC;
+            break;
+        }
+        break;
+
+    case '=':  /* Assignment */
+        /* LHS is destination, RHS provides value */
+        if (e->size == 1) {
+            schedExpr(e->right, R_A);
+        } else {
+            schedExpr(e->right, R_HL);
+        }
+        schedExpr(e->left, R_NONE);
+        break;
+
+    default:
+        /* Recurse with default destinations */
+        schedExpr(e->left, R_NONE);
+        schedExpr(e->right, R_NONE);
+        break;
+    }
+}
+
+/*
+ * Schedule statement tree
+ */
+static void
+schedStmt(struct stmt *s)
+{
+    if (!s) return;
+
+    /* Schedule expressions in this statement */
+    if (s->expr)  schedExpr(s->expr, R_NONE);
+    if (s->expr2) schedExpr(s->expr2, R_NONE);
+    if (s->expr3) schedExpr(s->expr3, R_NONE);
+
+    /* Recurse into branches */
+    if (s->then_branch) schedStmt(s->then_branch);
+    if (s->else_branch) schedStmt(s->else_branch);
+
+    /* Continue to next statement */
+    if (s->next) schedStmt(s->next);
+}
+
+/*
+ * Entry point: schedule all expressions in function
+ */
+void
+scheduleCode(void)
+{
+    if (!fnBody) return;
+    schedStmt(fnBody);
+}
 
 /*
  * vim: tabstop=4 shiftwidth=4 expandtab:
