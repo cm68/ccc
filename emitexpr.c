@@ -85,7 +85,8 @@ void emitExpr(struct expr *e)
         return;
     }
     /* Handle DEREF of global with caching */
-    else if (e->op == 'M' && !e->asm_block && e->left && e->left->op == '$') {
+    else if (e->op == 'M' && (!e->asm_block || e->asm_block == noasm) &&
+             e->left && e->left->op == '$') {
         emitGlobDrf(e);
         return;
     }
