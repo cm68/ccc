@@ -18,7 +18,8 @@ char *scriptdir;
 void
 usage(void)
 {
-    printf("usage: %s [<options>] <source.c>\n", progname);
+    printf("usage: %s [<options>] <files...>\n", progname);
+    printf("  files: .c (compile) .s (assemble) .o .a (link)\n");
     printf("  -o <output>    Output file (default: a.out)\n");
     printf("  -c             Compile and assemble only (produce .o file)\n");
     printf("  -s             Compile only (produce .s file, no assembly)\n");
