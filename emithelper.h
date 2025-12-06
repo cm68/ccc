@@ -77,8 +77,6 @@ void emitGlobDrf(struct expr *e);
 void emitBCIndir(void);
 
 /* Label/jump optimization */
-int extLabelNum(const char *asm_text);
-int extJumpTarget(const char *asm_text, enum jump_type *jtype);
 void addLabelMap(int from, int to, enum jump_type type);
 int resolveLabel(int label);
 void refLabel(int label);

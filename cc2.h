@@ -10,6 +10,10 @@
 #include <stdlib.h>
 #include <string.h>
 
+/* Free that tolerates NULL and static empty string */
+extern char noasm[];
+void xfree(void *p);
+
 /*
  * Assembler directive syntax
  * Different assemblers use different syntax for these directives

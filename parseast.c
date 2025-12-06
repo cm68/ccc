@@ -19,6 +19,14 @@
 static struct expr *parseExpr(void);
 static struct stmt *parseStmt(void);
 
+/* Skip whitespace (space, tab, newline, cr) */
+static void
+skipWS(void)
+{
+	while (curchar == '\n' || curchar == ' ' || curchar == '\t' || curchar == '\r')
+		nextchar();
+}
+
 /* Symbol tracking */
 static void addDefSym(const char *name);
 void addRefSym(const char *name);
@@ -57,17 +65,23 @@ char fnABCValid;
 #define SEG_DATA 2
 #define SEG_BSS  3
 static int currentSeg = SEG_NONE;
+static const char *segNames[] = { NULL, "\n.text\n", "\n.data\n", "\n.bss\n" };
 
 static void
 switchToSeg(int seg)
 {
-	if (seg == currentSeg) return;
-	switch (seg) {
-	case SEG_TEXT: fdputs(outFd, "\n.text\n"); break;
-	case SEG_DATA: fdputs(outFd, "\n.data\n"); break;
-	case SEG_BSS:  fdputs(outFd, "\n.bss\n");  break;
+	if (seg != currentSeg) {
+		fdputs(outFd, segNames[seg]);
+		currentSeg = seg;
 	}
-	currentSeg = seg;
+}
+
+/* Out of memory handler */
+static void
+oom(void)
+{
+	fdprintf(2, "parseast: out of memory\n");
+	exit(1);
 }
 
 /* Tree node allocation */
@@ -75,7 +89,7 @@ struct expr *
 newExpr(unsigned char op)
 {
 	struct expr *e = malloc(sizeof(struct expr));
-	if (!e) { fdprintf(2, "parseast: out of memory\n"); exit(1); }
+	if (!e) oom();
 	e->op = op;
 	e->left = NULL;
 	e->right = NULL;
@@ -97,7 +111,7 @@ struct stmt *
 newStmt(unsigned char type)
 {
 	struct stmt *s = malloc(sizeof(struct stmt));
-	if (!s) { fdprintf(2, "parseast: out of memory\n"); exit(1); }
+	if (!s) oom();
 	s->type = type;
 	s->expr = NULL;
 	s->expr2 = NULL;
@@ -116,35 +130,25 @@ newStmt(unsigned char type)
 
 /* Size helpers - uppercase B/S/L = unsigned */
 unsigned char
-getSizeFTStr(unsigned char type_str)
+getSizeFTStr(unsigned char c)
 {
-	switch (type_str) {
-	case 'b': case 'B': return 1;
-	case 's': case 'S': case 'p': return 2;
-	case 'l': case 'L': case 'f': return 4;
-	case 'd': return 8;
-	default: return 2;
-	}
-}
-
-unsigned char
-getSignFTStr(unsigned char type_str)
-{
-	/* Uppercase B/S/L or pointer = unsigned */
-	if (type_str == 'p' || type_str == 'B' || type_str == 'S' || type_str == 'L')
-		return E_UNSIGNED;
-	return 0;
-}
-
-unsigned char
-getSizeFromTN(const char *typename)
-{
-	if (!typename) return 2;
-	if (typename[0] == 'b' || typename[0] == 'B') return 1;
-	if (typename[0] == 's' || typename[0] == 'S') return 2;
-	if (typename[0] == 'l' || typename[0] == 'L') return 4;
-	if (typename[0] == 'p') return 2;
+	if ((c | 0x20) == 'b') return 1;
+	if ((c | 0x20) == 's' || c == 'p') return 2;
+	if ((c | 0x20) == 'l' || c == 'f') return 4;
+	if (c == 'd') return 8;
 	return 2;
+}
+
+unsigned char
+getSignFTStr(unsigned char c)
+{
+	return (c == 'p' || c == 'B' || c == 'S' || c == 'L') ? E_UNSIGNED : 0;
+}
+
+unsigned char
+getSizeFromTN(const char *t)
+{
+	return t ? getSizeFTStr(t[0]) : 2;
 }
 
 /* Pattern matchers */
@@ -205,14 +209,12 @@ appendChild(struct stmt *child, struct stmt **first, struct stmt **last)
 	if (TRACE(T_PARSE)) fdprintf(2, "  final last=%c\n", (*last)->type);
 }
 
-/* Create ASM label statement */
+/* Create numeric end-label statement (type 'Y') */
 static struct stmt *
-createLblAsm(const char *label_name)
+mkEndLbl(unsigned char lbl)
 {
-	struct stmt *s = newStmt('A');
-	char buf[128];
-	snprintf(buf, sizeof(buf), "%s:", label_name);
-	s->asm_block = strdup(buf);
+	struct stmt *s = newStmt('Y');
+	s->label = lbl;
 	return s;
 }
 
@@ -222,8 +224,8 @@ freeExpr(struct expr *e)
 	if (!e) return;
 	freeExpr(e->left);
 	freeExpr(e->right);
-	if (e->asm_block) free(e->asm_block);
-	if (e->cleanup_block) free(e->cleanup_block);
+	xfree(e->asm_block);
+	xfree(e->cleanup_block);
 	free(e);
 }
 
@@ -237,8 +239,8 @@ frStmt(struct stmt *s)
 	frStmt(s->then_branch);
 	frStmt(s->else_branch);
 	frStmt(s->next);
-	if (s->symbol) free(s->symbol);
-	if (s->asm_block) free(s->asm_block);
+	xfree(s->symbol);
+	xfree(s->asm_block);
 	free(s);
 }
 
@@ -278,6 +280,16 @@ initOptab(void)
 	optab[0xa7] = optab[0xdd] = OP_S;
 }
 
+/* Read type suffix and set size/flags */
+static void
+readType(struct expr *e)
+{
+	e->type_str = curchar;
+	nextchar();
+	e->size = getSizeFTStr(e->type_str);
+	e->flags = getSignFTStr(e->type_str);
+}
+
 /* Unified expression handler - all ops have width suffix */
 static struct expr *
 doExprOp(unsigned char op)
@@ -286,11 +298,7 @@ doExprOp(unsigned char op)
 	unsigned char info = optab[op];
 	int arity = info & 3;
 
-	/* Read width suffix (all ops have one now) */
-	e->type_str = curchar;
-	nextchar();
-	e->size = getSizeFTStr(e->type_str);
-	e->flags = getSignFTStr(e->type_str);
+	readType(e);
 
 	/* Allocate label if needed */
 	if (info & OP_L) e->label = labelCounter++;
@@ -336,8 +344,7 @@ static struct expr *
 doTernary(void)
 {
 	struct expr *e = newExpr('?'), *c = newExpr(':');
-	e->type_str = curchar; nextchar();
-	e->size = getSizeFTStr(e->type_str);
+	readType(e);
 	e->left = parseExpr();
 	c->left = parseExpr();
 	c->right = parseExpr();
@@ -349,8 +356,7 @@ static struct expr *
 doIncDec(unsigned char op)
 {
 	struct expr *e = newExpr(op);
-	e->type_str = curchar; nextchar();
-	e->size = getSizeFTStr(e->type_str);
+	readType(e);
 	e->left = parseExpr();
 	e->value = readHex4();
 	if (e->left) e->flags = e->left->flags;
@@ -386,10 +392,7 @@ parseExpr(void)
 	struct expr *e;
 	unsigned char op, info;
 
-	/* Skip whitespace */
-	while (curchar == '\n' || curchar == ' ' || curchar == '\t' || curchar == '\r')
-		nextchar();
-
+	skipWS();
 	initOptab();
 
 	/* Null expression marker */
@@ -477,12 +480,8 @@ parseStmt(void)
 	struct stmt *s, *first, *last, *child;
 	unsigned char op;
 	int i;
-	char label_buf[64];
 
-	/* Skip whitespace */
-	while (curchar == '\n' || curchar == ' ' || curchar == '\t' || curchar == '\r')
-		nextchar();
-
+	skipWS();
 	if (!curchar) return NULL;
 
 	op = curchar;
@@ -537,11 +536,10 @@ parseStmt(void)
 			if (has_else) {
 				s->label2 = labelCounter++;
 				s->else_branch = parseStmt();
-				snprintf(label_buf, sizeof(label_buf), "_if_end_%d", s->label2);
+				s->next = mkEndLbl(s->label2);
 			} else {
-				snprintf(label_buf, sizeof(label_buf), "_if_end_%d", s->label);
+				s->next = mkEndLbl(s->label);
 			}
-			s->next = createLblAsm(label_buf);
 		}
 		return s;
 
@@ -568,15 +566,9 @@ parseStmt(void)
 		}
 		return s;
 
-	case 'L':
-		/* Label */
-		s = newStmt('L');
-		s->symbol = strdup((char *)readName());
-		return s;
-
-	case 'G':
-		/* Goto */
-		s = newStmt('G');
+	case 'L':  /* Label */
+	case 'G':  /* Goto */
+		s = newStmt(op);
 		s->symbol = strdup((char *)readName());
 		return s;
 
@@ -602,28 +594,13 @@ parseStmt(void)
 		}
 		return s;
 
-	case 'C':
-		/* Case: C stmt_count value stmts... */
+	case 'C':  /* Case: C stmt_count value stmts... */
+	case 'O':  /* Default: O stmt_count stmts... */
 		{
 			int stmt_count = readHex2();
-			if (TRACE(T_PARSE)) fdprintf(2, "CASE: stmt_count=%d\n", stmt_count);
-			s = newStmt('C');
-			s->expr = parseExpr();
-			first = last = NULL;
-			for (i = 0; i < stmt_count; i++) {
-				child = parseStmt();
-				appendChild(child, &first, &last);
-			}
-			s->then_branch = first;
-		}
-		return s;
-
-	case 'O':
-		/* Default: O stmt_count stmts... */
-		{
-			int stmt_count = readHex2();
-			if (TRACE(T_PARSE)) fdprintf(2, "DEFAULT: stmt_count=%d\n", stmt_count);
-			s = newStmt('O');
+			if (TRACE(T_PARSE)) fdprintf(2, "%s: stmt_count=%d\n", op == 'C' ? "CASE" : "DEFAULT", stmt_count);
+			s = newStmt(op);
+			if (op == 'C') s->expr = parseExpr();
 			first = last = NULL;
 			for (i = 0; i < stmt_count; i++) {
 				child = parseStmt();
@@ -639,17 +616,10 @@ parseStmt(void)
 		s->asm_block = strdup((char *)readStr());
 		return s;
 
-	case ';':
-		/* Empty statement */
-		return newStmt(';');
-
-	case 'K':
-		/* Break */
-		return newStmt('K');
-
-	case 'N':
-		/* Continue */
-		return newStmt('N');
+	case ';':  /* Empty statement */
+	case 'K':  /* Break */
+	case 'N':  /* Continue */
+		return newStmt(op);
 
 	case 'W':
 		/* While (unlabeled) - not used when labels present */
@@ -713,9 +683,7 @@ doFunction(unsigned char rettype)
 	params_buf[0] = '\0';
 	first_param = 1;
 	for (i = 0; i < param_count; i++) {
-		/* Skip whitespace */
-		while (curchar == '\n' || curchar == ' ' || curchar == '\t' || curchar == '\r')
-			nextchar();
+		skipWS();
 		if (curchar != 'd') break;
 		nextchar();
 		ptype = curchar;
@@ -786,28 +754,35 @@ static char *refSymbols[MAX_SYMBOLS];
 static int numReferenced = 0;
 
 static int
-addSymTo(const char *name, char **arr, int *cnt, int max)
+findSym(const char *name, char **arr, int cnt)
 {
 	int i;
-	for (i = 0; i < *cnt; i++)
+	for (i = 0; i < cnt; i++)
 		if (strcmp(arr[i], name) == 0) return 1;
-	if (*cnt < max) arr[(*cnt)++] = strdup(name);
 	return 0;
 }
 
-static int isDefSym(const char *name) {
-	int i;
-	for (i = 0; i < numDefined; i++)
-		if (strcmp(defSymbols[i], name) == 0) return 1;
-	return 0;
-}
+#define isDefSym(n) findSym(n, defSymbols, numDefined)
 
 static void addDefSym(const char *name) {
-	addSymTo(name, defSymbols, &numDefined, MAX_SYMBOLS);
+	if (!isDefSym(name) && numDefined < MAX_SYMBOLS)
+		defSymbols[numDefined++] = strdup(name);
 }
 
 void addRefSym(const char *name) {
-	addSymTo(name, refSymbols, &numReferenced, MAX_SYMBOLS);
+	if (!findSym(name, refSymbols, numReferenced) && numReferenced < MAX_SYMBOLS)
+		refSymbols[numReferenced++] = strdup(name);
+}
+
+/* Emit BSS variable if not already defined */
+static void
+emitBss(const char *name, int size)
+{
+	if (!isDefSym(name)) {
+		addDefSym(name);
+		switchToSeg(SEG_BSS);
+		fdprintf(outFd, "%s:\n\t.ds %d\n", name, size);
+	}
 }
 
 /* Top-level: global variable
@@ -820,7 +795,7 @@ doGlobal(void)
 	char name_buf[256];
 	char *name;
 	unsigned char type_char, elem_type;
-	int isDefined, val, col, first, has_init, init_count;
+	int val, col, first, has_init, init_count;
 	long count, elemsize, size;
 
 	/* Skip '$' if present */
@@ -847,8 +822,7 @@ doGlobal(void)
 			nextchar();
 			init_count = readHex2();
 
-			isDefined = isDefSym(name_buf);
-			if (!isDefined && (elem_type == 'b' || elem_type == 'B')) {
+			if (!isDefSym(name_buf) && (elem_type == 'b' || elem_type == 'B')) {
 				int i;
 				col = 0; first = 1;
 				addDefSym(name_buf);
@@ -885,49 +859,24 @@ doGlobal(void)
 		}
 
 		/* Uninitialized array */
-		if (count >= 0) {
-			isDefined = isDefSym(name_buf);
-			if (!isDefined) {
-				addDefSym(name_buf);
-				switchToSeg(SEG_BSS);
-				fdprintf(outFd, "%s:\n\t.ds %d\n", name_buf, (int)size);
-			}
-		}
+		if (count >= 0)
+			emitBss(name_buf, (int)size);
 	} else if (type_char == 'p') {
 		/* Pointer */
 		has_init = readHex2();
-		/* Skip any initializer - pointers don't have runtime init */
-		if (has_init) {
-			parseExpr();  /* skip init expr */
-		}
-		isDefined = isDefSym(name_buf);
-		if (!isDefined) {
-			addDefSym(name_buf);
-			switchToSeg(SEG_BSS);
-			fdprintf(outFd, "%s:\n\t.ds 2\n", name_buf);
-		}
+		if (has_init) parseExpr();
+		emitBss(name_buf, 2);
 	} else if (type_char == 'r') {
 		/* Struct */
-		long ssize = readHex4();
+		size = readHex4();
 		has_init = readHex2();
-		if (has_init) parseExpr();  /* skip init */
-		isDefined = isDefSym(name_buf);
-		if (!isDefined) {
-			addDefSym(name_buf);
-			switchToSeg(SEG_BSS);
-			fdprintf(outFd, "%s:\n\t.ds %ld\n", name_buf, ssize);
-		}
+		if (has_init) parseExpr();
+		emitBss(name_buf, (int)size);
 	} else {
 		/* Primitive: b/s/l */
-		int psize = getSizeFTStr(type_char);
 		has_init = readHex2();
-		if (has_init) parseExpr();  /* skip init */
-		isDefined = isDefSym(name_buf);
-		if (!isDefined) {
-			addDefSym(name_buf);
-			switchToSeg(SEG_BSS);
-			fdprintf(outFd, "%s:\n\t.ds %d\n", name_buf, psize);
-		}
+		if (has_init) parseExpr();
+		emitBss(name_buf, getSizeFTStr(type_char));
 	}
 }
 
@@ -935,28 +884,22 @@ doGlobal(void)
 static void
 doStrLiteral(void)
 {
+	static const char *esc = "\n\t\r\"\\";
+	static const char *rep[] = { "\\n", "\\t", "\\r", "\\\"", "\\\\" };
 	char *name = (char *)readName();
 	char *data = (char *)readStr();
-	char *orig_data = data;
+	char *orig_data = data, *p;
+	unsigned char c;
 
 	switchToSeg(SEG_DATA);
-	/* No underscore prefix - keeps symbol local/static */
 	fdprintf(outFd, "%s:\n\t.db \"", name);
-
-	/* Emit escaped string */
-	while (*data) {
-		unsigned char c = *data++;
-		switch (c) {
-		case '\n': fdputs(outFd, "\\n"); break;
-		case '\t': fdputs(outFd, "\\t"); break;
-		case '\r': fdputs(outFd, "\\r"); break;
-		case '"':  fdputs(outFd, "\\\""); break;
-		case '\\': fdputs(outFd, "\\\\"); break;
-		default:
-			if (c >= 32 && c < 127) fdprintf(outFd, "%c", c);
-			else fdprintf(outFd, "\\x%02x", c);
-			break;
-		}
+	while ((c = *data++)) {
+		if ((p = strchr(esc, c)))
+			fdputs(outFd, rep[p - esc]);
+		else if (c >= 32 && c < 127)
+			fdprintf(outFd, "%c", c);
+		else
+			fdprintf(outFd, "\\x%02x", c);
 	}
 	fdputs(outFd, "\\0\"\n");
 	free(orig_data);
@@ -967,20 +910,12 @@ static void
 emitSymDecls(void)
 {
 	int i;
-	for (i = 0; i < numDefined; i++) {
-		if (!isLocalSym(defSymbols[i])) {
-			fdputs(outFd, ASM_GLOBAL " ");
-			fdputs(outFd, defSymbols[i]);
-			fdputs(outFd, "\n");
-		}
-	}
-	for (i = 0; i < numReferenced; i++) {
-		if (isLocalSym(refSymbols[i])) continue;
-		if (isDefSym(refSymbols[i])) continue;
-		fdputs(outFd, ASM_EXTERN " ");
-		fdputs(outFd, refSymbols[i]);
-		fdputs(outFd, "\n");
-	}
+	for (i = 0; i < numDefined; i++)
+		if (!isLocalSym(defSymbols[i]))
+			fdprintf(outFd, "%s %s\n", ASM_GLOBAL, defSymbols[i]);
+	for (i = 0; i < numReferenced; i++)
+		if (!isLocalSym(refSymbols[i]) && !isDefSym(refSymbols[i]))
+			fdprintf(outFd, "%s %s\n", ASM_EXTERN, refSymbols[i]);
 }
 
 /* Parse top-level - paren-free format

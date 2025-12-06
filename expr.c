@@ -11,6 +11,21 @@
 static int stringCtr = 0;
 
 /*
+ * Determine smallest type that can hold a constant value
+ */
+static struct type *
+constType(long v)
+{
+	if (v < 0)
+		return (v >= -32768) ? inttype : longtype;
+	if (v <= 32767)
+		return inttype;
+	if (v <= 65535)
+		return ushorttype;
+	return (v <= 2147483647L) ? longtype : ulongtype;
+}
+
+/*
  * Create a new expression tree node
  *
  * Allocates and zero-initializes an expression structure, setting the
@@ -174,6 +189,55 @@ binopPri(unsigned char t)
 }
 
 /*
+ * Process increment/decrement (prefix or postfix)
+ */
+static struct expr *
+mkIncDec(struct expr *operand, unsigned char inc_op, unsigned char is_postfix)
+{
+    struct type *value_type = operand ? operand->type : NULL;
+    struct expr *e;
+
+    if (operand && operand->op == DEREF) {
+        operand = operand->left;
+    } else {
+        gripe(ER_E_LV);
+        operand = NULL;
+    }
+    e = mkexpr(inc_op, operand);
+    if (e->left) {
+        e->left->up = e;
+        e->type = value_type;
+    }
+    if (is_postfix)
+        e->flags |= E_POSTFIX;
+    return e;
+}
+
+/*
+ * Wrap expression in type conversion (NARROW/WIDEN/SEXT)
+ */
+static struct expr *
+mkConv(struct expr *inner, struct type *tgt)
+{
+    struct type *src = inner->type;
+    token_t op;
+    struct expr *conv;
+
+    if (tgt->size < src->size)
+        op = NARROW;
+    else if (src->flags & TF_UNSIGNED)
+        op = WIDEN;
+    else
+        op = SEXT;
+    conv = mkexprI(op, inner, tgt, 0, 0);
+    conv->left->up = conv;
+    return conv;
+}
+
+/* Check if type is scalar (not pointer/array/func/aggregate) */
+#define IS_SCALAR(t) (!((t)->flags & (TF_POINTER|TF_ARRAY|TF_FUNC|TF_AGGREGATE)))
+
+/*
  * Parse an expression using precedence climbing algorithm
  *
  * Recursive descent parser for C expressions that implements operator
@@ -226,32 +290,8 @@ parseExpr(unsigned char pri, struct stmt *st)
 	switch (cur.type) {   // prefix
 
     case NUMBER: {
-        struct type *const_type;
-        long sval = cur.v.numeric;  /* Token stores signed long */
-
-        /* Assign type based on value - use int for small values to avoid
-         * unnecessary SEXT/WIDEN when used in int/short context */
-        if (sval < 0) {
-            /* Negative values - check signed ranges */
-            if (sval >= -32768) {
-                const_type = inttype;  /* fits in signed short */
-            } else {
-                const_type = longtype;  /* needs signed long */
-            }
-        } else {
-            /* Positive values */
-            if (sval <= 32767) {
-                const_type = inttype;  /* fits in signed short */
-            } else if (sval <= 65535) {
-                const_type = ushorttype;  /* fits in unsigned short */
-            } else if (sval <= 2147483647L) {
-                const_type = longtype;  /* fits in signed long */
-            } else {
-                const_type = ulongtype;  /* needs unsigned long */
-            }
-        }
-
-        e = mkexprI(CONST, 0, const_type, (unsigned long)sval, E_CONST);
+        long sval = cur.v.numeric;
+        e = mkexprI(CONST, 0, constType(sval), (unsigned long)sval, E_CONST);
         gettoken();
         break;
     }
@@ -502,32 +542,16 @@ parseExpr(unsigned char pri, struct stmt *st)
         break;
 
     case MINUS:     // unary minus
-        gettoken();
-        /* higher precedence than mult */
-        e = mkexpr(NEG, parseExpr(OP_PRI_MULT - 1, st));
-        if (e->left) {
-            unopSet(e);
-        }
-        e = cfold(e);
-        break;
-
     case TWIDDLE:   // bitwise not
+    case BANG: {    // logical not
+        unsigned char uop = (cur.type == MINUS) ? NEG : cur.type;
         gettoken();
-        e = mkexpr(TWIDDLE, parseExpr(OP_PRI_MULT - 1, st));
-        if (e->left) {
+        e = mkexpr(uop, parseExpr(OP_PRI_MULT - 1, st));
+        if (e->left)
             unopSet(e);
-        }
         e = cfold(e);
         break;
-
-    case BANG:      // logical not
-        gettoken();
-        e = mkexpr(BANG, parseExpr(OP_PRI_MULT - 1, st));
-        if (e->left) {
-            unopSet(e);
-        }
-        e = cfold(e);
-        break;
+    }
 
     case STAR:      // dereference (unary)
         gettoken();
@@ -617,31 +641,8 @@ parseExpr(unsigned char pri, struct stmt *st)
     case INCR:      // prefix increment: ++i
     case DECR: {    // prefix decrement: --i
         unsigned char inc_op = cur.type;
-        struct expr *operand;
-        struct type *value_type;
-
         gettoken();
-        operand = parseExpr(OP_PRI_MULT - 1, st);  // unary precedence
-
-        // Save the value type before unwrapping DEREF
-        value_type = operand ? operand->type : NULL;
-
-        // Unwrap DEREF to get lvalue address (similar to ASSIGN)
-        if (operand && operand->op == DEREF) {
-            operand = operand->left;
-        } else {
-            // Increment/decrement requires an lvalue
-            gripe(ER_E_LV);
-            operand = NULL;
-        }
-
-        // Create increment/decrement node
-        e = mkexpr(inc_op, operand);
-        if (e->left) {
-            e->left->up = e;
-            e->type = value_type;  // Use saved value type, not lvalue type
-        }
-        // Note: Do NOT set E_POSTFIX flag for prefix form
+        e = mkIncDec(parseExpr(OP_PRI_MULT - 1, st), inc_op, 0);
         break;
     }
 
@@ -877,31 +878,8 @@ parseExpr(unsigned char pri, struct stmt *st)
         } else if (cur.type == INCR || cur.type == DECR) {
             // Postfix increment/decrement: i++ or i--
             unsigned char inc_op = cur.type;
-            struct expr *inc_node;
-            struct type *value_type;
-
             gettoken();
-
-            // Save the value type before unwrapping DEREF
-            value_type = e ? e->type : NULL;
-
-            // Unwrap DEREF to get lvalue address (similar to ASSIGN)
-            if (e && e->op == DEREF) {
-                e = e->left;
-            } else {
-                // Increment/decrement requires an lvalue
-                gripe(ER_E_LV);
-                e = NULL;
-            }
-
-            // Create increment/decrement node
-            inc_node = mkexpr(inc_op, e);
-            if (inc_node->left) {
-                inc_node->left->up = inc_node;
-                inc_node->type = value_type;  // Use saved value type, not lvalue type
-            }
-            inc_node->flags |= E_POSTFIX;  // Mark as postfix form
-            e = inc_node;
+            e = mkIncDec(e, inc_op, 1);
         }
     }
 
@@ -1099,36 +1077,12 @@ parseExpr(unsigned char pri, struct stmt *st)
             struct type *ltype = assign_type ? assign_type : e->left->type;
             struct type *rtype = e->right->type;
 
-            /*
-             * Only convert scalar types
-             * (not pointers, arrays, functions, aggregates)
-             */
-            int l_scalar = !(ltype->flags &
-					(TF_POINTER|TF_ARRAY|TF_FUNC|TF_AGGREGATE));
-            int r_scalar = !(rtype->flags &
-					(TF_POINTER|TF_ARRAY|TF_FUNC|TF_AGGREGATE));
-
-            if (l_scalar && r_scalar && ltype->size != rtype->size) {
-                /* Constants: just retype, no runtime conversion needed */
+            if (IS_SCALAR(ltype) && IS_SCALAR(rtype) &&
+					ltype->size != rtype->size) {
                 if (e->right->op == CONST) {
                     e->right->type = ltype;
                 } else {
-                    token_t conv_op;
-                    struct expr *conv;
-
-                    if (ltype->size < rtype->size) {
-                        conv_op = NARROW;
-                    } else {
-                        if (rtype->flags & TF_UNSIGNED) {
-                            conv_op = WIDEN;
-                        } else {
-                            conv_op = SEXT;
-                        }
-                    }
-
-                    conv = mkexprI(conv_op, e->right, ltype, 0, 0);
-                    conv->left->up = conv;
-                    e->right = conv;
+                    e->right = mkConv(e->right, ltype);
                     e->right->up = e;
                 }
             }
@@ -1214,7 +1168,6 @@ parseExpr(unsigned char pri, struct stmt *st)
 
         /*
          * Widen operands of binary expressions if sizes mismatch
-         * Apply to arithmetic, bitwise, and comparison operators
          */
         is_binary_op = (op == PLUS || op == MINUS ||
 				op == STAR || op == DIV || op == MOD || op == AND ||
@@ -1227,64 +1180,25 @@ parseExpr(unsigned char pri, struct stmt *st)
             struct type *ltype = e->left->type;
             struct type *rtype = e->right->type;
 
-            /*
-             * Only widen scalar types
-             * (not pointers, arrays, functions, aggregates)
-             */
-            int l_scalar = !(ltype->flags &
-					(TF_POINTER|TF_ARRAY|TF_FUNC|TF_AGGREGATE));
-            int r_scalar = !(rtype->flags &
-					(TF_POINTER|TF_ARRAY|TF_FUNC|TF_AGGREGATE));
-
-            if (l_scalar && r_scalar && ltype->size != rtype->size) {
-                /*
-                 * Size mismatch - prefer narrowing constants to widening vars.
-                 * For comparisons, if either operand is a constant, narrow it.
-                 */
+            if (IS_SCALAR(ltype) && IS_SCALAR(rtype) &&
+					ltype->size != rtype->size) {
+                /* Prefer retyping constants over inserting conversions */
+                struct expr **smaller, **larger;
+                struct type *smallt, *larget;
                 if (ltype->size < rtype->size) {
-                    /* Left is smaller than right */
-                    if (e->left->op == CONST) {
-                        /* Left is const - retype to larger */
-                        e->left->type = rtype;
-                    } else if (e->right->op == CONST) {
-                        /* Right is const - narrow it to left's size */
-                        e->right->type = ltype;
-                    } else {
-                        /* Neither is const - widen left */
-                        token_t conv_op;
-                        struct expr *conv;
-                        if (ltype->flags & TF_UNSIGNED) {
-                            conv_op = WIDEN;
-                        } else {
-                            conv_op = SEXT;
-                        }
-                        conv = mkexprI(conv_op, e->left, rtype, 0, 0);
-                        conv->left->up = conv;
-                        e->left = conv;
-                        e->left->up = e;
-                    }
+                    smaller = &e->left; larger = &e->right;
+                    smallt = ltype; larget = rtype;
                 } else {
-                    /* Right is smaller than left */
-                    if (e->right->op == CONST) {
-                        /* Right is const - retype to larger */
-                        e->right->type = ltype;
-                    } else if (e->left->op == CONST) {
-                        /* Left is const - narrow it to right's size */
-                        e->left->type = rtype;
-                    } else {
-                        /* Neither is const - widen right */
-                        token_t conv_op;
-                        struct expr *conv;
-                        if (rtype->flags & TF_UNSIGNED) {
-                            conv_op = WIDEN;
-                        } else {
-                            conv_op = SEXT;
-                        }
-                        conv = mkexprI(conv_op, e->right, ltype, 0, 0);
-                        conv->left->up = conv;
-                        e->right = conv;
-                        e->right->up = e;
-                    }
+                    smaller = &e->right; larger = &e->left;
+                    smallt = rtype; larget = ltype;
+                }
+                if ((*smaller)->op == CONST)
+                    (*smaller)->type = larget;
+                else if ((*larger)->op == CONST)
+                    (*larger)->type = smallt;
+                else {
+                    *smaller = mkConv(*smaller, larget);
+                    (*smaller)->up = e;
                 }
             }
         }
@@ -1402,31 +1316,10 @@ cfold(struct expr *e)
     switch (e->op) {
     case NEG:
         if (e->left->op == CONST) {
-            long sval;
             val = -e->left->v;
             e = xreplace(e, e->left);
             e->v = val;
-
-            /* Re-type the constant after negation - use int for small values
-             * to avoid unnecessary SEXT/WIDEN in int/short context */
-            sval = (long)val;
-            if (sval < 0) {
-                if (sval >= -32768) {
-                    e->type = inttype;
-                } else {
-                    e->type = longtype;
-                }
-            } else {
-                if (sval <= 32767) {
-                    e->type = inttype;
-                } else if (sval <= 65535) {
-                    e->type = ushorttype;
-                } else if (sval <= 2147483647L) {
-                    e->type = longtype;
-                } else {
-                    e->type = ulongtype;
-                }
-            }
+            e->type = constType((long)val);
         }
         return e;
     case TWIDDLE:

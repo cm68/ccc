@@ -115,7 +115,7 @@ stage1/%.s: stage1/%.ast cc2 FORCE
 	./cc2 -o $@ $<
 
 stage1/%.o: stage1/%.s FORCE
-	ws/asz $(ASMOPTS) -o $@ $<
+	$(ASM) $(ASMOPTS) -o $@ $<
 
 FORCE:
 

@@ -149,24 +149,17 @@ const char *wordRegName(unsigned char reg) { return wordRegTab[reg]; }
 unsigned char bcOrCIdx(unsigned char reg) { return bcOrCTab[reg]; }
 
 const char *
-stripDollar(const char *symbol)
-{
-    if (symbol && symbol[0] == '$') {
-        return symbol + 1;
-    }
-    return symbol;
-}
-
-const char *
 stripVarPfx(const char *name)
 {
-    if (name && name[0] == '$') name++;
-    return name;
+    return (name && name[0] == '$') ? name + 1 : name;
 }
 
+/* stripDollar is an alias for stripVarPfx */
+const char *stripDollar(const char *s) { return stripVarPfx(s); }
+
 void freeNode(struct expr *e) {
-    if (e->asm_block) free(e->asm_block);
-    if (e->cleanup_block) free(e->cleanup_block);
+    xfree(e->asm_block);
+    xfree(e->cleanup_block);
     free(e);
 }
 
@@ -316,62 +309,6 @@ int resolveLabel(int label) {
     return label;
 }
 
-int extLabelNum(const char *asm_text) {
-    const char *p;
-    int num;
-
-    if (!asm_text) return -1;
-
-    if ((p = strstr(asm_text, "_tern_false_")) != NULL) {
-        if (sscanf(p + 12, "%d:", &num) == 1) return num;
-    }
-    else if ((p = strstr(asm_text, "_tern_end_")) != NULL) {
-        if (sscanf(p + 10, "%d:", &num) == 1) return num;
-    }
-    else if ((p = strstr(asm_text, "_end_")) != NULL) {
-        if (sscanf(p + 5, "%d:", &num) == 1) return num;
-    }
-    else if ((p = strstr(asm_text, "_if_")) != NULL) {
-        if (sscanf(p + 4, "%d:", &num) == 1) return num;
-    }
-    else if ((p = strstr(asm_text, "_while_")) != NULL && !strstr(asm_text, "_end_")) {
-        if (sscanf(p + 7, "%d:", &num) == 1) return num;
-    }
-    return -1;
-}
-
-int extJumpTarget(const char *asm_text, enum jump_type *jtype) {
-    const char *p;
-    int num;
-
-    if (!asm_text) return -1;
-
-    if ((p = strstr(asm_text, "jp ")) != NULL) {
-        *jtype = JMP_UNCOND;
-        if (sscanf(p + 3, "_tern_end_%d", &num) == 1) return num;
-        if (sscanf(p + 3, "_tern_false_%d", &num) == 1) return num;
-        if (sscanf(p + 3, "_if_end_%d", &num) == 1) return num;
-        if (sscanf(p + 3, "_if_%d", &num) == 1) return num;
-        if (sscanf(p + 3, "_while_%d", &num) == 1) return num;
-        if (sscanf(p + 3, "_while_end_%d", &num) == 1) return num;
-    }
-    else if ((p = strstr(asm_text, "jp z,")) != NULL) {
-        *jtype = JUMP_IF_ZERO;
-        if (sscanf(p + 6, "_tern_false_%d", &num) == 1) return num;
-        if (sscanf(p + 6, "_tern_end_%d", &num) == 1) return num;
-        if (sscanf(p + 6, "_if_end_%d", &num) == 1) return num;
-        if (sscanf(p + 6, "_if_%d", &num) == 1) return num;
-    }
-    else if ((p = strstr(asm_text, "jp nz,")) != NULL) {
-        *jtype = JMP_IF_NOT_Z;
-        if (sscanf(p + 7, "_tern_false_%d", &num) == 1) return num;
-        if (sscanf(p + 7, "_tern_end_%d", &num) == 1) return num;
-        if (sscanf(p + 7, "_if_end_%d", &num) == 1) return num;
-        if (sscanf(p + 7, "_if_%d", &num) == 1) return num;
-    }
-    return -1;
-}
-
 void scanExprJumps(struct expr *e) {
     if (!e) return;
     if (e->jump && e->label > 0)
@@ -383,15 +320,9 @@ void scanExprJumps(struct expr *e) {
 void scanLabJumps(struct stmt *s) {
     if (!s) return;
 
-    if (s->type == 'A' && s->asm_block) {
-        int label_num = extLabelNum(s->asm_block);
-        if (label_num >= 0) {
-            if (s->next && s->next->type == 'A' && s->next->asm_block) {
-                enum jump_type jtype;
-                int target = extJumpTarget(s->next->asm_block, &jtype);
-                if (target >= 0) addLabelMap(label_num, target, jtype);
-            }
-        }
+    /* Handle numeric end-label (type 'Y') followed by jump */
+    if (s->type == 'Y' && s->next && s->next->jump) {
+        addLabelMap(s->label, s->next->jump->target_label, s->next->jump->type);
     }
 
     if (s->jump && s->label > 0)
@@ -615,6 +546,33 @@ int isBinopWAccum(unsigned char op) {
     }
 }
 
+/* Helper: set cache for variable after load/store */
+static void setVarCache(const char *sym, char sz, char isA) {
+    struct expr *cache = mkVarCache(sym, sz);
+    if (isA) {
+        clearA();
+        cacheSetA(cache);
+    } else {
+        clearHL();
+        cacheSetHL(cache);
+    }
+    freeExpr(cache);
+}
+
+/* Helper: emit global long (4-byte) load/store */
+static void globLong(const char *s, char isStore) {
+    if (isStore) {
+        fdprintf(outFd, "\tld (%s), hl\n", s);
+        emit(S_EXX);
+        fdprintf(outFd, "\tld (%s+2), hl\n", s);
+    } else {
+        fdprintf(outFd, "\tld hl, (%s)\n", s);
+        emit(S_EXX);
+        fdprintf(outFd, "\tld hl, (%s+2)\n", s);
+    }
+    emit(S_EXX);
+}
+
 /* Variable load/store with cache management */
 void loadVar(const char *sym, char sz, char docache) {
     const char *vn = stripVarPfx(sym);
@@ -650,19 +608,9 @@ void loadVar(const char *sym, char sz, char docache) {
         addRefSym(s);
         if (sz == 1) fdprintf(outFd, "\tld a, (%s)\n", s);
         else if (sz == 2) fdprintf(outFd, "\tld hl, (%s)\n", s);
-        else if (sz == 4) {
-            fdprintf(outFd, "\tld hl, (%s)\n", s);
-            emit(S_EXX);
-            fdprintf(outFd, "\tld hl, (%s+2)\n", s);
-            emit(S_EXX);
-        }
+        else if (sz == 4) globLong(s, 0);
     }
-    if (docache  && sz >= 2) {
-        struct expr *cache = mkVarCache(sym, sz);
-        clearHL();
-        cacheSetHL(cache);
-        freeExpr(cache);
-    }
+    if (docache && sz >= 2) setVarCache(sym, sz, 0);
 }
 
 void storeVar(const char *sym, char sz, char docache) {
@@ -680,19 +628,10 @@ void storeVar(const char *sym, char sz, char docache) {
         if (sz == 1) {
             emit(byteStoreTab[v->reg]);
             /* After ld c,a or ld b,a, A still has the value */
-            if (docache) {
-                struct expr *cache = mkVarCache(sym, sz);
-                cacheSetA(cache);
-                freeExpr(cache);
-            }
+            if (docache) setVarCache(sym, sz, 1);
         } else {
             emit(wordStoreTab[v->reg]);
-            if (docache) {
-                struct expr *cache = mkVarCache(sym, sz);
-                clearHL();
-                cacheSetHL(cache);
-                freeExpr(cache);
-            }
+            if (docache) setVarCache(sym, sz, 0);
         }
     } else if (v) {
         if (sz == 1) storeByteIY(v->offset, v->offset >= 0);
@@ -708,26 +647,12 @@ void storeVar(const char *sym, char sz, char docache) {
         }
         if (sz == 1) {
             fdprintf(outFd, "\tld (%s), a\n", s);
-            if (docache) {
-                struct expr *cache = mkVarCache(sym, 1);
-                clearA();
-                cacheSetA(cache);
-                freeExpr(cache);
-            }
+            if (docache) setVarCache(sym, 1, 1);
         } else if (sz == 2) {
             fdprintf(outFd, "\tld (%s), hl\n", s);
-            if (docache) {
-                struct expr *cache = mkVarCache(sym, sz);
-                clearHL();
-                cacheSetHL(cache);
-                freeExpr(cache);
-            }
-        }
-        else if (sz == 4) {
-            fdprintf(outFd, "\tld (%s), hl\n", s);
-            emit(S_EXX);
-            fdprintf(outFd, "\tld (%s+2), hl\n", s);
-            emit(S_EXX);
+            if (docache) setVarCache(sym, sz, 0);
+        } else if (sz == 4) {
+            globLong(s, 1);
         }
         if (TRACE(T_VAR)) {
             fdprintf(2, "  storeVar: done\n");

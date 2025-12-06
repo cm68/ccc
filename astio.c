@@ -10,7 +10,7 @@
 #include "astio.h"
 #include "cc2.h"
 
-#define BUFSIZE 4096
+#define BUFSIZE 512
 
 static unsigned char inFd;
 static unsigned char buf[BUFSIZE];

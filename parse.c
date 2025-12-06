@@ -138,14 +138,51 @@ addDeclInit(struct name *v)
 
 /*
  * Clear the deferred initialization list
- *
- * Called after processing local variable initializers to reset the
- * tracking array for the next declaration statement.
  */
 void
 clearDeclIni()
 {
 	declInitCnt = 0;
+}
+
+/*
+ * Convert deferred local variable initializers to assignment statements
+ * Returns head of statement list, updates *ppst to point to next pointer
+ */
+static struct stmt *
+emitDeclInits(struct stmt ***ppst, struct stmt *parent)
+{
+	struct stmt *head = NULL;
+	unsigned char i;
+
+	for (i = 0; i < declInitCnt; i++) {
+		struct name *v = declInits[i];
+		struct expr *lhs, *assign_expr;
+		struct stmt *assign_st;
+
+		lhs = mkexprI(SYM, 0, v->type, 0, 0);
+		lhs->var = (struct var *)v;
+
+		if (v->type && (v->type->flags & TF_ARRAY) && v->u.init) {
+			assign_expr = mkexprI(COPY, lhs, v->type, v->type->count, 0);
+		} else {
+			assign_expr = mkexprI(ASSIGN, lhs, v->type, 0, 0);
+		}
+		assign_expr->right = v->u.init;
+		v->u.init = NULL;
+
+		assign_st = makestmt(EXPR, assign_expr);
+		if (!*ppst) {
+			head = assign_st;
+			assign_st->flags |= S_PARENT;
+		} else {
+			**ppst = assign_st;
+		}
+		*ppst = &assign_st->next;
+		assign_st->parent = parent;
+	}
+	clearDeclIni();
+	return head;
 }
 
 void declaration();
@@ -186,6 +223,7 @@ skipstmt()
         }
         break;
     case WHILE:
+    case SWITCH:
         gettoken();
         expect(LPAR, ER_S_NP);
         parseExpr(PRI_ALL, 0);
@@ -209,13 +247,6 @@ skipstmt()
         if (cur.type != SEMI) parseExpr(PRI_ALL, 0);
         expect(SEMI, ER_S_SN);
         if (cur.type != RPAR) parseExpr(PRI_ALL, 0);
-        expect(RPAR, ER_S_NP);
-        skipstmt();
-        break;
-    case SWITCH:
-        gettoken();
-        expect(LPAR, ER_S_NP);
-        parseExpr(PRI_ALL, 0);
         expect(RPAR, ER_S_NP);
         skipstmt();
         break;
@@ -359,52 +390,24 @@ statement(struct stmt *parent)
             }
             break;
         case BREAK:
+        case CONTINUE: {
+            unsigned char is_cont = (cur.type == CONTINUE);
+            struct stmt *loop;
+            const char *suffix;
             gettoken();
             expect(SEMI, ER_S_SN);
-            /* Transform break into goto to enclosing loop's break label */
-            {
-                struct stmt *loop = findEnclLoop(parent, 0);
-                if (loop && loop->label) {
-                    st = makestmt(GOTO, 0);
-                    st->label = malloc(strlen(loop->label) + 10);
-                    sprintf(st->label, "%s_break", loop->label);
-                } else {
-                    /* No enclosing loop - keep as BREAK (will be an error) */
-                    st = makestmt(BREAK, 0);
-                }
+            loop = findEnclLoop(parent, is_cont);
+            if (loop && loop->label) {
+                st = makestmt(GOTO, 0);
+                suffix = is_cont ? (loop->op == DO ? "_test" : "_continue")
+                                 : "_break";
+                st->label = malloc(strlen(loop->label) + 15);
+                sprintf(st->label, "%s%s", loop->label, suffix);
+            } else {
+                st = makestmt(is_cont ? CONTINUE : BREAK, 0);
             }
             break;
-        case CONTINUE:
-            gettoken();
-            expect(SEMI, ER_S_SN);
-            /*
-             * Transform continue into goto to enclosing
-             * loop's continue label
-             */
-            {
-                struct stmt *loop = findEnclLoop(parent, 1);
-                if (loop && loop->label) {
-                    st = makestmt(GOTO, 0);
-                    /*
-                     * For DO-WHILE, continue goes to test label,
-                     * for others go to top
-                     */
-                    if (loop->op == DO) {
-                        st->label = malloc(strlen(loop->label) + 10);
-                        sprintf(st->label, "%s_test", loop->label);
-                    } else {
-                        st->label = malloc(strlen(loop->label) + 15);
-                        sprintf(st->label, "%s_continue", loop->label);
-                    }
-                } else {
-                    /*
-                     * No enclosing loop - keep as CONTINUE
-                     * (will be an error)
-                     */
-                    st = makestmt(CONTINUE, 0);
-                }
-            }
-            break;
+        }
         case RETURN:
             gettoken();
             st = makestmt(RETURN, 0);
@@ -434,55 +437,12 @@ statement(struct stmt *parent)
         case EXTERN:
             clearDeclIni();
             declaration();
-            /* Convert local variable initializers to assignment statements */
             if (declInitCnt > 0) {
-                unsigned char i;
-                for (i = 0; i < declInitCnt; i++) {
-                    struct name *v = declInits[i];
-                    struct expr *lhs, *assign_expr;
-                    struct stmt *assign_st;
-
-                    /* Create lvalue: just the variable symbol */
-                    lhs = mkexprI(SYM, 0, v->type, 0, 0);
-                    /* Cast name* to var* (field is overloaded) */
-                    lhs->var = (struct var *)v;
-
-                    /*
-                     * Check if this is an array initialization
-                     * requiring memory copy
-                     */
-                    if (v->type && (v->type->flags & TF_ARRAY) && v->u.init) {
-                        /* Create memory copy: COPY dest src length */
-                        assign_expr = mkexprI(COPY, lhs, v->type,
-                                                     v->type->count, 0);
-                        assign_expr->right = v->u.init;
-                        /* Clear so it's not output in declaration */
-                        v->u.init = NULL;
-                    } else {
-                        /* Regular scalar assignment: lhs = initializer */
-                        assign_expr = mkexprI(ASSIGN, lhs, v->type,
-                                                     0, 0);
-                        assign_expr->right = v->u.init;
-                        /* Clear so it's not output in declaration */
-                        v->u.init = NULL;
-                    }
-
-                    /* Create expression statement */
-                    assign_st = makestmt(EXPR, assign_expr);
-
-                    /* Link this statement into the list */
-                    if (!pst) {
-                        head = assign_st;
-                        assign_st->flags |= S_PARENT;
-                    } else {
-                        *pst = assign_st;
-                    }
-                    pst = &assign_st->next;
-                    assign_st->parent = parent;
-                }
-                clearDeclIni();
+                struct stmt *init_head = emitDeclInits(&pst, parent);
+                if (init_head && !head)
+                    head = init_head;
             }
-            st = NULL;  /* Don't create another statement */
+            st = NULL;
             break;
 
         case TYPEDEF:
@@ -503,67 +463,16 @@ statement(struct stmt *parent)
             }
             /* Check if it's a typedef name used in a declaration */
             {
-                struct name *poss_typedef =
-                    findName(cur.v.name, 0);
+                struct name *poss_typedef = findName(cur.v.name, 0);
                 if (poss_typedef && poss_typedef->kind == tdef) {
                     clearDeclIni();
                     declaration();
-                    /*
-                     * Convert local variable initializers to
-                     * assignment statements
-                     */
                     if (declInitCnt > 0) {
-                        unsigned char i;
-                        for (i = 0; i < declInitCnt; i++) {
-                            struct name *v = declInits[i];
-                            struct expr *lhs, *assign_expr;
-                            struct stmt *assign_st;
-
-                            /* Create lvalue: just the variable symbol */
-                            lhs = mkexprI(SYM, 0, v->type, 0, 0);
-                            /* Cast name* to var* (field is overloaded) */
-                            lhs->var = (struct var *)v;
-
-                            /*
-                             * Check if this is an array initialization
-                             * requiring memory copy
-                             */
-                            if (v->type && (v->type->flags & TF_ARRAY) &&
-                                v->u.init) {
-                                /* Create memory copy: COPY dest src length */
-                                assign_expr = mkexprI(COPY, lhs, v->type,
-                                                             v->type->count, 0);
-                                assign_expr->right = v->u.init;
-                                /* Clear so it's not output in declaration */
-                                v->u.init = NULL;
-                            } else {
-                                /*
-                                 * Regular scalar assignment:
-                                 * lhs = initializer
-                                 */
-                                assign_expr = mkexprI(ASSIGN, lhs,
-                                                             v->type, 0, 0);
-                                assign_expr->right = v->u.init;
-                                /* Clear so it's not output in declaration */
-                                v->u.init = NULL;
-                            }
-
-                            /* Create expression statement */
-                            assign_st = makestmt(EXPR, assign_expr);
-
-                            /* Link this statement into the list */
-                            if (!pst) {
-                                head = assign_st;
-                                assign_st->flags |= S_PARENT;
-                            } else {
-                                *pst = assign_st;
-                            }
-                            pst = &assign_st->next;
-                            assign_st->parent = parent;
-                        }
-                        clearDeclIni();
+                        struct stmt *init_head = emitDeclInits(&pst, parent);
+                        if (init_head && !head)
+                            head = init_head;
                     }
-                    st = NULL;  /* declaration() doesn't return a statement */
+                    st = NULL;
                     break;
                 }
             }
@@ -1090,73 +999,43 @@ char *sclassBitDef[] = { "EXTERN", "REGISTER", "STATIC", "CONST",
  * Returns:
  *   Bitmask of storage class flags (SC_EXTERN, SC_STATIC, etc.)
  */
+/* token -> storage class bit mapping */
+static unsigned char
+sclassBit(token_t t)
+{
+	switch (t) {
+	case EXTERN:   return SC_EXTERN;
+	case REGISTER: return SC_REGISTER;
+	case STATIC:   return SC_STATIC;
+	case CONST:    return SC_CONST;
+	case VOLATILE: return SC_VOLATILE;
+	case AUTO:     return SC_AUTO;
+	case TYPEDEF:  return SC_TYPEDEF;
+	default:       return 0;
+	}
+}
+
 unsigned char
 parseSclass()
 {
 	unsigned char ret = 0;
 	unsigned char bit;
-	if (VERBOSE(V_SYM)) {
-		fdprintf(2,"parseSclass: starting, cur.type=0x%02x\n", cur.type);
-	}
 
-	while (1) {
-		switch (cur.type) {
-		case EXTERN:
-			bit = SC_EXTERN;
-			break;
-		case REGISTER:
-			bit = SC_REGISTER;
-			break;
-		case STATIC:
-			bit = SC_STATIC;
-			break;
-		case CONST:
-			bit = SC_CONST;
-			break;
-		case VOLATILE:
-			bit = SC_VOLATILE;
-			break;
-		case AUTO:
-			bit = SC_AUTO;
-			break;
-		case TYPEDEF:
-			bit = SC_TYPEDEF;
-			if (VERBOSE(V_SYM)) {
-				fdprintf(2,"parseSclass: FOUND TYPEDEF token!\n");
-			}
-			break;
-		default:
-			bit = 0;
-			break;
-		}
-		if (bit) {
-			if (ret & bit) {
-				gripe(ER_P_SC);
-			}
-			ret |= bit;
-			gettoken();
-		} else {
-			break;
-		}
+	while ((bit = sclassBit(cur.type)) != 0) {
+		if (ret & bit)
+			gripe(ER_P_SC);
+		ret |= bit;
+		gettoken();
 	}
-	// bogosity checks
-	if ((ret & SC_EXTERN) &&
-        (ret & (SC_STATIC | SC_AUTO | SC_REGISTER))) {
+	/* bogosity checks: conflicting storage classes */
+	if ((ret & SC_EXTERN) && (ret & (SC_STATIC|SC_AUTO|SC_REGISTER)))
 		gripe(ER_P_SC);
-	}
-	if ((ret & SC_REGISTER) &&
-        (ret & (SC_STATIC))) {
+	if ((ret & SC_REGISTER) && (ret & SC_STATIC))
 		gripe(ER_P_SC);
-	}
-	if ((ret & SC_STATIC) &&
-        (ret & (SC_AUTO))) {
+	if ((ret & SC_STATIC) && (ret & SC_AUTO))
 		gripe(ER_P_SC);
-	}
-	/* const and volatile are ignored by this compiler */
-	if ((ret & SC_TYPEDEF) &&
-        (ret & (SC_EXTERN | SC_STATIC | SC_AUTO | SC_REGISTER))) {
+	if ((ret & SC_TYPEDEF) && (ret & (SC_EXTERN|SC_STATIC|SC_AUTO|SC_REGISTER)))
 		gripe(ER_P_SC);
-	}
 	return ret;
 }
 

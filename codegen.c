@@ -20,6 +20,7 @@
 /* Global loop depth for tracking whether we're inside a loop */
 static int g_loop_depth = 0;
 
+
 /* Global tree walk counter for loop detection */
 static long g_walk_count = 0;
 #define MAX_WALKS 1000000
@@ -34,39 +35,23 @@ static long g_walk_count = 0;
 void addRefSym(const char *name);
 
 /*
- * Helper: Get the original operand size, looking through SEXT/WIDEN conversions
+ * Helper: Get the original operand size, looking through SEXT/WIDEN/NARROW
  */
 static int
 getOrigSize(struct expr *e)
 {
-    if (!e) return 2;  /* default to 16-bit */
-
-    /* Look through SEXT ('X') and WIDEN ('W') to find original size */
-    if ((e->op == 'X' || e->op == 'W') && e->left) {
+    if (!e) return 2;
+    /* Look through type conversions to find original size */
+    if ((e->op == 'X' || e->op == 'W' || e->op == 'N') && e->left)
         return e->left->size;
-    }
-
-    /* Also check for NARROW ('N') which truncates to smaller size */
-    if (e->op == 'N' && e->left) {
-        return e->left->size;
-    }
-
     return e->size;
 }
 
-/*
- * Helper: Check if operand is unsigned (look through conversions)
- */
+/* Check if operand is unsigned (WIDEN or E_UNSIGNED flag) */
 static int
 isOpndUnsign(struct expr *e)
 {
-    if (!e) return 0;
-
-    /* WIDEN ('W') means unsigned (zero extend) */
-    if (e->op == 'W') return 1;
-
-    /* Otherwise check the expression's flags */
-    return (e->flags & E_UNSIGNED) ? 1 : 0;
+    return e && (e->op == 'W' || (e->flags & E_UNSIGNED));
 }
 
 /*
@@ -180,79 +165,35 @@ mkBinopFnName(char *buf, size_t bufsize, const char *opname,
 }
 
 /*
- * Helper: Add a parameter to the function context
- * Parameters have positive offsets (above frame pointer)
- *
- * Parameters are eligible for register allocation. If allocated to a register,
- * the function prologue will load the parameter from the stack into the 
- * register.
- *
- * Z80 byte parameter stack layout:
- *   - Byte parameters are pushed using "push AF"
- *   - A register contains the data (high byte of the word)
- *   - F register contains flags (low byte of the word)
- *   - On stack: [flags at offset+0, data at offset+1]
- *   - Data is at the HIGHER address within the pushed word
+ * Helper: Add a variable (param or local) to the function context
+ * For params: is_param=1, offset=positive (caller's stack)
+ * For locals: is_param=0, offset computed from fnFrmSize
  */
 static void
-addParam(const char *name, unsigned char size, 
-    int offset)
+addVar(const char *name, unsigned char size, int is_param, int offset, int is_array)
 {
     struct local_var *var = malloc(sizeof(struct local_var));
     if (!var) {
         fdprintf(2, "parseast: out of memory allocating local_var\n");
         exit(1);
     }
-
     var->name = strdup(name);
     var->size = size;
-    var->offset = offset;
-    var->is_param = 1;
-    var->is_array = 0;      /* Params are scalar (array params are pointers) */
-    var->first_label = 255;  /* Not used yet */
-    var->last_label = 255;   /* Not used yet */
-    var->ref_count = 0;     /* Not referenced yet */
-    var->agg_refs = 0;      /* No aggregate member accesses yet */
-    var->reg = REG_NO;      /* Not allocated to register yet */
+    var->offset = is_param ? offset : -(fnFrmSize + size);
+    var->is_param = is_param;
+    var->is_array = is_array;
+    var->first_label = 255;
+    var->last_label = 255;
+    var->ref_count = 0;
+    var->agg_refs = 0;
+    var->reg = REG_NO;
     var->next = fnLocals;
-
     fnLocals = var;
-
-    
+    if (!is_param) fnFrmSize += size;
 }
 
-/*
- * Helper: Add a local variable to the function context
- * Local variables have negative offsets (below frame pointer)
- */
-static void
-addLocalVar(const char *name, unsigned char size, 
-    int is_array)
-{
-    struct local_var *var = malloc(sizeof(struct local_var));
-    if (!var) {
-        fdprintf(2, "parseast: out of memory allocating local_var\n");
-        exit(1);
-    }
-
-    var->name = strdup(name);
-    var->size = size;
-    /* Stack grows downward - assign negative offset from frame pointer */
-    var->offset = -(fnFrmSize + size);
-    var->is_param = 0;
-    var->is_array = is_array;  /* Arrays cannot be allocated to registers */
-    var->first_label = 255;  /* Not used yet */
-    var->last_label = 255;   /* Not used yet */
-    var->ref_count = 0;     /* Not referenced yet */
-    var->agg_refs = 0;      /* No aggregate member accesses yet */
-    var->reg = REG_NO;      /* Not allocated to register yet */
-    var->next = fnLocals;
-
-    fnLocals = var;
-    fnFrmSize += size;
-
-    
-}
+#define addParam(n,sz,ofs) addVar(n,sz,1,ofs,0)
+#define addLocalVar(n,sz,arr) addVar(n,sz,0,0,arr)
 
 /*
  * Helper: Update variable lifetime tracking
@@ -541,13 +482,31 @@ analyzeVars()
  * These flags allow codegen to quickly check for common patterns
  */
 
+/* Helper: cache var lookup and set basic opflags */
+static void
+cacheVar(struct expr *e, const char *sym)
+{
+    struct local_var *var;
+    if (sym && sym[0] == '$') sym++;
+    var = findVar(sym);
+    e->cached_var = var;
+    if (var) {
+        if (var->reg != REG_NO) {
+            e->opflags |= OP_REGVAR;
+            if (var->reg == REG_IX) e->opflags |= OP_IXMEM;
+        } else {
+            e->opflags |= OP_IYMEM;
+        }
+    } else {
+        e->opflags |= OP_GLOBAL;
+    }
+}
+
 /* Helper: set opflags for left operand patterns and cache var lookup */
 static void
 setLeftFlags(struct expr *e)
 {
     struct expr *left = e->left;
-    struct local_var *var;
-    const char *sym;
 
     if (!left) return;
 
@@ -555,81 +514,38 @@ setLeftFlags(struct expr *e)
     if (left->op == 'M' && left->left && left->left->op == '$' &&
         left->left->symbol) {
         e->opflags |= OP_SIMPLEVAR;
-        sym = left->left->symbol;
-        if (sym[0] == '$') sym++;
-
-        var = findVar(sym);
-        e->cached_var = var;  /* Cache the lookup */
-        if (var) {
-            if (var->reg != REG_NO) {
-                e->opflags |= OP_REGVAR;
-                if (var->reg == REG_IX) e->opflags |= OP_IXMEM;
-            } else {
-                e->opflags |= OP_IYMEM;
-            }
-        } else {
-            e->opflags |= OP_GLOBAL;
-        }
+        cacheVar(e, left->left->symbol);
     }
     /* Check for bare variable: ($var) - used by OREQ/ANDEQ */
     else if (left->op == '$' && left->symbol) {
         e->opflags |= OP_SIMPLEVAR;
-        sym = left->symbol;
-        if (sym[0] == '$') sym++;
-
-        var = findVar(sym);
-        e->cached_var = var;  /* Cache the lookup */
-        if (var) {
-            if (var->reg != REG_NO) {
-                e->opflags |= OP_REGVAR;
-            } else {
-                e->opflags |= OP_IYMEM;
-            }
-        } else {
-            e->opflags |= OP_GLOBAL;
-        }
+        cacheVar(e, left->symbol);
     }
     /* Check for struct member address: (+ (M:p $var) ofs) - used by OREQ/ANDEQ */
     else if (left->op == '+' &&
              left->left && left->left->op == 'M' &&
              left->left->left && left->left->left->op == '$' &&
              left->right && left->right->op == 'C') {
-        sym = left->left->left->symbol;
-        if (sym && sym[0] == '$') sym++;
-        var = findVar(sym);
-        e->cached_var = var;  /* Cache the lookup */
-        if (var) {
-            if (var->reg == REG_IX) {
-                e->opflags |= OP_IXMEM;
-            }
-            /* Store offset in e->value for later use */
-            e->value = left->right->value;
-        }
+        cacheVar(e, left->left->left->symbol);
+        if (e->cached_var && e->cached_var->reg == REG_IX)
+            e->opflags |= OP_IXMEM;
+        e->value = left->right->value;
     }
     /* Check for IX-indexed struct member: (M (+ (M:p $var) ofs)) */
     else if (left->op == 'M' && (left->flags & E_IXDEREF)) {
         /* Already flagged during analyzeExpr - check if var is in IX */
         if (left->left && left->left->left && left->left->left->left &&
-            left->left->left->left->op == '$' &&
-            left->left->left->left->symbol) {
-            sym = left->left->left->left->symbol;
-            var = findVar(sym);
-            e->cached_var = var;  /* Cache the lookup */
-            if (var && var->reg == REG_IX) {
+            left->left->left->left->op == '$') {
+            cacheVar(e, left->left->left->left->symbol);
+            if (e->cached_var && e->cached_var->reg == REG_IX)
                 e->opflags |= OP_IXMEM;
-            }
         }
     }
     /* Check for indirect through pointer: (M (M $ptr)) */
     else if (left->op == 'M' && left->left && left->left->op == 'M' &&
              left->left->left && left->left->left->op == '$') {
         e->opflags |= OP_INDIR;
-        sym = left->left->left->symbol;
-        var = findVar(sym);
-        e->cached_var = var;  /* Cache the lookup */
-        if (var && var->reg != REG_NO) {
-            e->opflags |= OP_REGVAR;
-        }
+        cacheVar(e, left->left->left->symbol);
     }
 }
 
@@ -728,6 +644,29 @@ setOpFlags()
 static void specExpr(struct expr *e);
 static void specStmt(struct stmt *s);
 
+/* Helper: free both children and clear pointers after specialization */
+static void
+freeKids(struct expr *e)
+{
+    freeExpr(e->left);
+    freeExpr(e->right);
+    e->left = e->right = NULL;
+}
+
+/* Helper: get IY-indexed offset for a local/param variable */
+static int
+varIYOfs(struct local_var *var)
+{
+    return var->offset + (var->is_param ? 1 : 0);
+}
+
+/* Helper: format IY-indexed operand into buffer, return chars written */
+static int
+fmtIY(char *buf, size_t sz, const char *fmt, int ofs)
+{
+    return snprintf(buf, sz, fmt, ofs >= 0 ? '+' : '-', ofs >= 0 ? ofs : -ofs);
+}
+
 
 /*
  * Specialize INC/DEC operations
@@ -753,9 +692,7 @@ specIncDec(struct expr *e)
         snprintf(buf, sizeof(buf), "INCDEC_PLACEHOLDER:%d:%d:%ld:%d:%s",
                  (int)e->op, e->size, amount, unused, e->left->symbol);
         e->asm_block = strdup(buf);
-        freeExpr(e->left);
-        freeExpr(e->right);
-        e->left = e->right = NULL;
+        freeKids(e);
         return 1;
     }
 
@@ -865,25 +802,18 @@ specBitOp(struct expr *e)
                     else
                         snprintf(buf, sizeof(buf), "\t%s %d, %s", inst, bitnum, rn);
                     e->asm_block = strdup(buf);
-                    freeExpr(e->left);
-                    freeExpr(e->right);
-                    e->left = NULL;
-                    e->right = NULL;
+                    freeKids(e);
                     return 1;
                 }
             }
         } else if (e->opflags & OP_IYMEM) {
             /* Stack variable */
             if (var) {
-                int ofs = var->offset + (var->is_param ? 1 : 0);
-                char sign = (ofs >= 0) ? '+' : '-';
-                int abs_ofs = (ofs >= 0) ? ofs : -ofs;
-                snprintf(buf, sizeof(buf), "\t%s %d, (iy %c %d)", inst, bitnum, sign, abs_ofs);
+                char *p = buf;
+                p += sprintf(p, "\t%s %d, (iy ", inst, bitnum);
+                fmtIY(p, sizeof(buf) - (p - buf), "%c %d)", varIYOfs(var));
                 e->asm_block = strdup(buf);
-                freeExpr(e->left);
-                freeExpr(e->right);
-                e->left = NULL;
-                e->right = NULL;
+                freeKids(e);
                 return 1;
             }
         }
@@ -896,10 +826,7 @@ specBitOp(struct expr *e)
             long ofs = e->value;
             snprintf(buf, sizeof(buf), "\t%s %d, (ix + %ld)", inst, bitnum, ofs);
             e->asm_block = strdup(buf);
-            freeExpr(e->left);
-            freeExpr(e->right);
-            e->left = NULL;
-            e->right = NULL;
+            freeKids(e);
             return 1;
         } else {
             /* Non-IX: compute address, then use (hl)
@@ -967,10 +894,7 @@ specShiftOp(struct expr *e)
     }
 
     e->asm_block = strdup(buf);
-    freeExpr(e->left);
-    freeExpr(e->right);
-    e->left = NULL;
-    e->right = NULL;
+    freeKids(e);
     return 1;
 }
 
@@ -1420,21 +1344,12 @@ genBinop(struct expr *e, const char *op_name)
          * x <= 0: test zero first, then sign
          * x > 0:  test sign first, then zero
          */
-        switch (cmp_op) {
-        case '<':  /* x < 0: true if negative */
-            snprintf(buf, sizeof(buf), "\tbit 7, h");
-            break;
-        case 'g':  /* x >= 0: true if non-negative */
-            snprintf(buf, sizeof(buf), "\tbit 7, h");
-            break;
-        case 'L':  /* x <= 0: two-test pattern handled in emit.c */
-        case '>':  /* x > 0: two-test pattern handled in emit.c */
-            snprintf(buf, sizeof(buf), "\tbit 7, h");
-            break;
-        }
+        /* All sign comparisons use bit 7 test; emit.c handles result logic */
+        (void)cmp_op;  /* All cases same: <, >=, <=, > */
+        snprintf(buf, sizeof(buf), "\tbit 7, h");
         e->asm_block = strdup(buf);
         /* Mark right operand (constant 0) as not needing emission */
-        if (e->right) e->right->asm_block = strdup("");
+        if (e->right) e->right->asm_block = noasm;
         return;
     }
 
@@ -1602,7 +1517,7 @@ static void generateExpr(struct expr *e)
                     if (reg >= REG_B && reg <= REG_Cp) {
                         e->asm_block = strdup(byte_load[reg]);
                     } else {
-                        e->asm_block = strdup("");
+                        e->asm_block = noasm;
                     }
                 } else {
                     /* Word in reg -> HL */
@@ -1613,25 +1528,28 @@ static void generateExpr(struct expr *e)
                     } else if (var->reg == REG_BCp) {
                         e->asm_block = strdup("\texx\n\tpush bc\n\texx\n\tpop hl");
                     } else {
-                        e->asm_block = strdup("");
+                        e->asm_block = noasm;
                     }
                 }
             } else if (var) {
                 /* Stack variable - IY-indexed */
-                char sign = (var->offset >= 0) ? '+' : '-';
-                int abs_ofs = (var->offset >= 0) ? var->offset : -var->offset;
+                int ofs = var->offset;
+                char *p = buf;
                 if (e->size == 1) {
-                    snprintf(buf, sizeof(buf), "\tld a, (iy %c %d)", sign, abs_ofs);
+                    p += sprintf(p, "\tld a, (iy ");
+                    fmtIY(p, sizeof(buf) - (p - buf), "%c %d)", ofs);
                 } else if (e->size == 2) {
-                    snprintf(buf, sizeof(buf), "\tld l, (iy %c %d)\n\tld h, (iy %c %d)",
-                             sign, abs_ofs, sign, abs_ofs + 1);
+                    p += sprintf(p, "\tld l, (iy ");
+                    p += fmtIY(p, sizeof(buf) - (p - buf), "%c %d)", ofs);
+                    p += sprintf(p, "\n\tld h, (iy ");
+                    fmtIY(p, sizeof(buf) - (p - buf), "%c %d)", ofs + 1);
                 } else {
-                    snprintf(buf, sizeof(buf), "\tld a, %d\n\tcall getlong", var->offset);
+                    sprintf(buf, "\tld a, %d\n\tcall getlong", ofs);
                 }
                 e->asm_block = strdup(buf);
             } else {
                 /* Global variable - defer to emit for cache optimization */
-                e->asm_block = NULL;  /* Let emit handle with caching */
+                e->asm_block = noasm;  /* Let emit handle with caching */
             }
             break;
         }
@@ -1653,7 +1571,7 @@ static void generateExpr(struct expr *e)
                 }
                 e->asm_block = strdup(buf);
                 /* Mark child as handled - don't generate address calculation */
-                if (e->left) e->left->asm_block = strdup("");
+                if (e->left) e->left->asm_block = noasm;
                 break;
             }
             /* Fall through to compute address if not IX-allocated */
@@ -1662,7 +1580,7 @@ static void generateExpr(struct expr *e)
         /* Indirect byte load through BC pointer: (M:b (M:p $bcvar)) */
         if (e->opflags & OP_BCINDIR) {
             e->asm_block = strdup("BCINDIR");  /* Placeholder for emit-time cache check */
-            e->left->asm_block = strdup("");   /* Don't load pointer to HL */
+            e->left->asm_block = noasm;   /* Don't load pointer to HL */
             break;
         }
 
@@ -1687,14 +1605,12 @@ static void generateExpr(struct expr *e)
                 if (e->left && e->left->op == '$' && e->left->symbol) {
                     struct local_var *var = findVar(e->left->symbol);
                     if (var && var->reg == REG_NO) {
-                        int ofs = var->offset + (var->is_param ? 1 : 0);
-                        if (ofs >= 0)
-                            snprintf(buf, sizeof(buf), "\t%s %d, (iy + %d)", inst, bitnum, ofs);
-                        else
-                            snprintf(buf, sizeof(buf), "\t%s %d, (iy - %d)", inst, bitnum, -ofs);
+                        char *p = buf;
+                        p += sprintf(p, "\t%s %d, (iy ", inst, bitnum);
+                        fmtIY(p, sizeof(buf) - (p - buf), "%c %d)", varIYOfs(var));
                         e->asm_block = strdup(buf);
-                        if (e->right->left) e->right->left->asm_block = strdup("");
-                        e->right->asm_block = strdup("");
+                        if (e->right->left) e->right->left->asm_block = noasm;
+                        e->right->asm_block = noasm;
                         break;
                     }
                 }
@@ -1705,9 +1621,9 @@ static void generateExpr(struct expr *e)
                     if (var && var->reg == REG_IX) {
                         snprintf(buf, sizeof(buf), "\t%s %d, (ix + %ld)", inst, bitnum, e->value);
                         e->asm_block = strdup(buf);
-                        if (e->right->left) e->right->left->asm_block = strdup("");
-                        e->right->asm_block = strdup("");
-                        if (e->left) e->left->asm_block = strdup("");
+                        if (e->right->left) e->right->left->asm_block = noasm;
+                        e->right->asm_block = noasm;
+                        if (e->left) e->left->asm_block = noasm;
                         break;
                     }
                 }
@@ -1744,7 +1660,7 @@ static void generateExpr(struct expr *e)
 
                 if (const_val == 0) {
                     /* Adding 0 is a no-op */
-                    e->asm_block = strdup("");
+                    e->asm_block = noasm;
                 } else if (op_size == 1) {
                     /* Byte add with constant - use immediate add */
                     snprintf(buf, sizeof(buf),
@@ -1829,7 +1745,7 @@ static void generateExpr(struct expr *e)
                 long ofs = e->left->value;
                 snprintf(buf, sizeof(buf), "\tbit %d, (ix + %ld)", bitnum, ofs);
                 e->asm_block = strdup(buf);
-                e->left->asm_block = strdup("");  /* Suppress left operand load */
+                e->left->asm_block = noasm;  /* Suppress left operand load */
                 break;
             }
             /* Check for simple local variable in memory (IY-indexed) */
@@ -1837,13 +1753,11 @@ static void generateExpr(struct expr *e)
                 const char *sym = e->left->left->symbol;
                 struct local_var *var = findVar(sym);
                 if (var) {
-                    int ofs = var->offset + (var->is_param ? 1 : 0);
-                    if (ofs >= 0)
-                        snprintf(buf, sizeof(buf), "\tbit %d, (iy + %d)", bitnum, ofs);
-                    else
-                        snprintf(buf, sizeof(buf), "\tbit %d, (iy - %d)", bitnum, -ofs);
+                    char *p = buf;
+                    p += sprintf(p, "\tbit %d, (iy ", bitnum);
+                    fmtIY(p, sizeof(buf) - (p - buf), "%c %d)", varIYOfs(var));
                     e->asm_block = strdup(buf);
-                    e->left->asm_block = strdup("");  /* Suppress left operand load */
+                    e->left->asm_block = noasm;  /* Suppress left operand load */
                     break;
                 }
             }
@@ -1893,10 +1807,8 @@ static void generateExpr(struct expr *e)
             if (e->right && e->right->op == 'C') {
                 shift_amount = (int)e->right->value;
                 /* Suppress code generation for constant - already handled */
-                if (e->right->asm_block) {
-                    free(e->right->asm_block);
-                }
-                e->right->asm_block = strdup("");
+                xfree(e->right->asm_block);
+                e->right->asm_block = noasm;
             }
 
             /* Build assembly: repeated add */
@@ -1987,7 +1899,7 @@ static void generateExpr(struct expr *e)
                 e->asm_block = strdup(buf);
             }
         } else {
-            e->asm_block = strdup("");
+            e->asm_block = noasm;
         }
         break;
 
@@ -2004,10 +1916,10 @@ static void generateExpr(struct expr *e)
                 e->asm_block = strdup(buf);
             } else {
                 /* Local/param - parent DEREF handles load */
-                e->asm_block = strdup("");
+                e->asm_block = noasm;
             }
         } else {
-            e->asm_block = strdup("");
+            e->asm_block = noasm;
         }
         break;
 
@@ -2087,7 +1999,7 @@ freeJump(struct jump_instr *j)
 
     while (j) {
         next = j->next;
-        if (j->condition) free(j->condition);
+        xfree(j->condition);
         free(j);
         j = next;
     }

@@ -67,25 +67,17 @@ emitHexName(const char *s)
 	fdprintf(astFd, "%02x%s", len, s);
 }
 
-/* Emit a label statement with hex-encoded name */
+/* Emit a label or goto statement with hex-encoded name */
 static void
-emitLabel(const char *base, const char *suffix)
+emitLG(char op, const char *base, const char *suffix)
 {
 	char buf[256];
 	snprintf(buf, sizeof(buf), "%s%s", base, suffix);
-	fdprintf(astFd, "L");
+	fdprintf(astFd, "%c", op);
 	emitHexName(buf);
 }
-
-/* Emit a goto statement with hex-encoded name */
-static void
-emitGoto(const char *base, const char *suffix)
-{
-	char buf[256];
-	snprintf(buf, sizeof(buf), "%s%s", base, suffix);
-	fdprintf(astFd, "G");
-	emitHexName(buf);
-}
+#define emitLabel(b,s) emitLG('L',b,s)
+#define emitGoto(b,s)  emitLG('G',b,s)
 
 /*
  * Helper: emit child expression (if non-null)
@@ -129,24 +121,17 @@ emitExpr(struct expr *e)
 		if (e->var) {
 			char fullname[256];
 			sym = (struct name *)e->var;
-			/* Build full name based on scope/storage class:
-			 * - extern/global (level 1): prefix with underscore
-			 * - static: use mangled name
-			 * - local variables and arguments: no prefix
-			 */
-			if (sym->sclass & SC_STATIC) {
-				name = sym->mangled_name ? sym->mangled_name : sym->name;
-				snprintf(fullname, sizeof(fullname), "%s", name);
-			} else if ((sym->sclass & SC_EXTERN) || sym->level == 1) {
+			/* extern/global get underscore prefix, others use mangled or plain */
+			if ((sym->sclass & SC_EXTERN) || sym->level == 1)
 				snprintf(fullname, sizeof(fullname), "_%s", sym->name);
-			} else {
+			else {
 				name = sym->mangled_name ? sym->mangled_name : sym->name;
 				snprintf(fullname, sizeof(fullname), "%s", name);
 			}
 			fdprintf(astFd, "$");
 			emitHexName(fullname);
 		} else {
-			fdprintf(astFd, "$01%02x", '?');
+			fdprintf(astFd, "$01?");
 		}
 		break;
 
@@ -483,61 +468,33 @@ emitStmt(struct stmt *st)
 		break;
 
 	case SWITCH:
-		/* Switch: S has_label. [hexlabel] case_count. expr cases...
-		 * In the parsed AST, case labels and their statements are siblings.
-		 * We need to group them so each case contains its statements.
-		 */
+		/* Switch: S has_label. [hexlabel] case_count. expr cases... */
 		{
-			struct stmt *s;
-			int case_count = 0;
-			/* Count case/default labels */
-			for (s = st->chain; s; s = s->next) {
+			struct stmt *s, *body, *t;
+			int case_count = 0, body_count;
+			for (s = st->chain; s; s = s->next)
 				if (s->op == CASE || s->op == DEFAULT)
 					case_count++;
-			}
-			if (st->label) {
-				fdprintf(astFd, "S01");
+			fdprintf(astFd, "S%02x", st->label ? 1 : 0);
+			if (st->label)
 				emitHexName(st->label);
-			} else {
-				fdprintf(astFd, "S00");
-			}
 			fdprintf(astFd, "%02x", case_count);
 			emitExpr(st->left);
-			/* Emit each case with its body statements */
 			for (s = st->chain; s; ) {
-				if (s->op == CASE) {
-					struct stmt *body = s->next;
-					int body_count = 0;
-					struct stmt *t;
-					/* Count statements until next case/default */
+				if (s->op == CASE || s->op == DEFAULT) {
+					body = s->next;
+					body_count = 0;
 					for (t = body; t && t->op != CASE && t->op != DEFAULT; t = t->next)
 						body_count++;
-					fdprintf(astFd, "C%02x", body_count);
-					emitExpr(s->left);
-					/* Emit body statements */
+					fdprintf(astFd, "%c%02x", s->op == CASE ? 'C' : 'O', body_count);
+					if (s->op == CASE)
+						emitExpr(s->left);
 					for (t = body; t && t->op != CASE && t->op != DEFAULT; t = t->next)
 						emitStmt(t);
-					/* Skip to next case/default */
-					s = body;
-					while (s && s->op != CASE && s->op != DEFAULT)
-						s = s->next;
-				} else if (s->op == DEFAULT) {
-					struct stmt *body = s->next;
-					int body_count = 0;
-					struct stmt *t;
-					/* Count statements until next case/default */
-					for (t = body; t && t->op != CASE && t->op != DEFAULT; t = t->next)
-						body_count++;
-					fdprintf(astFd, "O%02x", body_count);
-					/* Emit body statements */
-					for (t = body; t && t->op != CASE && t->op != DEFAULT; t = t->next)
-						emitStmt(t);
-					/* Skip to next case/default */
 					s = body;
 					while (s && s->op != CASE && s->op != DEFAULT)
 						s = s->next;
 				} else {
-					/* Statement before first case - emit directly */
 					emitStmt(s);
 					s = s->next;
 				}
@@ -572,12 +529,8 @@ emitStmt(struct stmt *st)
 		break;
 
 	case GOTO:
-		fdprintf(astFd, "G");
-		emitHexName(st->label ? st->label : "?");
-		break;
-
 	case LABEL:
-		fdprintf(astFd, "L");
+		fdprintf(astFd, "%c", st->op == GOTO ? 'G' : 'L');
 		emitHexName(st->label ? st->label : "?");
 		break;
 
@@ -752,90 +705,6 @@ emitStrLit(struct name *strname)
 }
 
 /*
- * Emit string literals section (DEPRECATED - kept for compatibility)
- * Now string literals are emitted incrementally
- */
-void
-emitLiterals(void)
-{
-	extern struct name **names;
-	extern int lastname;
-	struct name *n;
-	int i;
-	int found_any = 0;
-
-	/* First pass: check if we have any string literals */
-	for (i = 0; i <= lastname; i++) {
-		n = names[i];
-		if (!n)
-			continue;
-
-		/*
-		 * Look for synthetic string literal names (str0, str1, etc.)
-		 * at any level
-		 */
-		if (n->kind == var && n->u.init && n->u.init->op == STRING &&
-		    n->name && strncmp(n->name, "str", 3) == 0 &&
-		    n->name[3] >= '0' && n->name[3] <= '9') {
-			found_any = 1;
-			break;
-		}
-	}
-
-	if (!found_any)
-		return;
-
-	/* Output literals section header */
-	fdprintf(astFd, "\n(L\n");
-
-	/* Second pass: output each string literal */
-	for (i = 0; i <= lastname; i++) {
-		n = names[i];
-		if (!n)
-			continue;
-
-		/*
-		 * Output string literal data (only synthetic str names at any
-		 * level)
-		 */
-		if (n->kind == var && n->u.init && n->u.init->op == STRING &&
-		    n->name && strncmp(n->name, "str", 3) == 0 &&
-		    n->name[3] >= '0' && n->name[3] <= '9') {
-			cstring str = (cstring)n->u.init->v;
-			if (str) {
-				unsigned char len = (unsigned char)str[0];
-				unsigned char *data = (unsigned char *)str + 1;
-				int j;
-
-				/* Output: (s name "literal_data") */
-				fdprintf(astFd, "  (s %s \"", n->name);
-				for (j = 0; j < len; j++) {
-					unsigned char c = data[j];
-					if (c == '"') {
-						fdprintf(astFd, "\\\"");
-					} else if (c == '\\') {
-						fdprintf(astFd, "\\\\");
-					} else if (c == '\n') {
-						fdprintf(astFd, "\\n");
-					} else if (c == '\t') {
-						fdprintf(astFd, "\\t");
-					} else if (c == '\r') {
-						fdprintf(astFd, "\\r");
-					} else if (c >= ' ' && c < 0x7f) {
-						fdprintf(astFd, "%c", c);
-					} else {
-						fdprintf(astFd, "\\x%02x", c);
-					}
-				}
-				fdprintf(astFd, "\")\n");
-			}
-		}
-	}
-
-	fdprintf(astFd, ")\n");
-}
-
-/*
  * Output a global variable declaration with optional initializer
  * Format: Z $hexname type has_init. [init-expr]
  */
@@ -843,30 +712,26 @@ void
 emitGv(struct name *var)
 {
 	char fullname[256];
+	char *name;
 
 	if (!var || !var->type)
 		return;
 
 	fdprintf(astFd, "\nZ$");
 
-	/* Build variable name with scope prefix */
+	/* Static uses mangled name, public gets underscore prefix */
 	if (var->sclass & SC_STATIC) {
-		if (var->mangled_name)
-			snprintf(fullname, sizeof(fullname), "%s", var->mangled_name);
-		else
-			snprintf(fullname, sizeof(fullname), "%s", var->name);
+		name = var->mangled_name ? var->mangled_name : var->name;
+		snprintf(fullname, sizeof(fullname), "%s", name);
 	} else {
 		snprintf(fullname, sizeof(fullname), "_%s", var->name);
 	}
 	emitHexName(fullname);
 
-	/* Output type */
 	emitTypeInfo(var->type);
 
-	/* Output has_init flag and initializer if present */
 	fdprintf(astFd, "%02x", var->u.init ? 1 : 0);
 	if (var->u.init) {
-		/* Check if this is an initializer list (has next pointers) */
 		if (var->u.init->next) {
 			struct type *elem_type =
 			    (var->type && (var->type->flags & TF_ARRAY)) ?
@@ -876,7 +741,6 @@ emitGv(struct name *var)
 			emitExpr(var->u.init);
 		}
 	}
-
 	fdprintf(astFd, "\n");
 }
 

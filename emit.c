@@ -233,6 +233,11 @@ static void emitStmtTail(struct stmt *s, int tailPos)
         fdprintf(outFd, "%s\n", s->asm_block);
     }
 
+    /* Handle end-label statements (type 'Y') - emit _if_end_N: */
+    if (s->type == 'Y') {
+        fdprintf(outFd, "_if_end_%d:\n", s->label);
+    }
+
     /* Handle LABEL statements - emit a label */
     if (s->type == 'L' && s->symbol && s->symbol[0]) {
         if (TRACE(T_EMIT)) fdprintf(2, "LABEL: %s\n", s->symbol);
@@ -267,7 +272,7 @@ static void emitStmtTail(struct stmt *s, int tailPos)
                 if (s->else_branch) emitStmt(s->else_branch);
             }
             if (s->next) emitStmt(s->next);
-            if (s->asm_block) free(s->asm_block);
+            xfree(s->asm_block);
             if (s->jump) freeJump(s->jump);
             free(s);
             return;
@@ -457,7 +462,7 @@ emit_if_body:
         }
         if (s->next) emitStmtTail(s->next, tailPos);
 
-        if (s->asm_block) free(s->asm_block);
+        xfree(s->asm_block);
         if (s->jump) freeJump(s->jump);
         free(s);
         return;
@@ -476,8 +481,8 @@ emit_if_body:
         if (s->symbol)
             fdprintf(outFd, "%s_break:\n", s->symbol);
         if (s->next) emitStmtTail(s->next, tailPos);
-        if (s->symbol) free(s->symbol);
-        if (s->asm_block) free(s->asm_block);
+        xfree(s->symbol);
+        xfree(s->asm_block);
         if (s->jump) freeJump(s->jump);
         free(s);
         return;
@@ -543,7 +548,7 @@ emit_if_body:
     if (TRACE(T_EMIT)) {
         fdprintf(2, "  freeing asm_block=%p\n", (void*)s->asm_block);
     }
-    if (s->asm_block) free(s->asm_block);
+    xfree(s->asm_block);
     if (TRACE(T_EMIT)) {
         fdprintf(2, "  freeing jump=%p\n", (void*)s->jump);
     }

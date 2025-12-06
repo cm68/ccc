@@ -79,9 +79,7 @@ asmOut(char *s, int len)
         return;
 
     /* Skip braces - they're for parsing only, not part of asm text */
-    if (len == 2 && s[0] == '{' && s[1] == ' ')
-        return;
-    if (len == 2 && s[0] == '}' && s[1] == ' ')
+    if (len == 2 && (s[0] == '{' || s[0] == '}') && s[1] == ' ')
         return;
 
     /* Grow buffer if needed */
@@ -92,7 +90,7 @@ asmOut(char *s, int len)
 
     memcpy(&asmCbuf[asmClen], s, len);
     asmClen += len;
-    asmCbuf[asmClen] = 0;  /* Null terminate */
+    asmCbuf[asmClen] = 0;
 }
 
 /*
@@ -215,7 +213,7 @@ skipws()
 void
 skipws1()
 {
-    while (curchar == ' ') {
+    while (curchar == ' ' || curchar == '\t') {
         advance();
     }
 }
@@ -348,6 +346,12 @@ getint(unsigned char base)
  *   - May increment lineno for backslash-newline
  *   - Reports errors for invalid characters
  */
+/* escape char -> value lookup: index = char - 'a' for a-z */
+static char escval[] = {
+    0, '\b', 0, 0, '\x1b', '\f', 0, 0, 0, 0, 0, 0, 0,
+    '\n', 0, 0, 0, '\r', 0, '\t', 0, '\v', 0, 0, 0, 0
+};
+
 static unsigned char
 getlit()
 {
@@ -360,49 +364,16 @@ top:
         }
         c = curchar;
     } else {
-        advance();          // eat the backslash
-        switch (curchar) {
-        case '\n':          /* backslash at end of line */
-            lineno++;
-            goto top;
-        case 'b':
-            c = '\b';
-            break;
-        case 'e':
-            c = '\x1b';
-            break;
-        case 'f':
-            c = '\f';
-            break;
-        case 'n':
-            c = '\n';
-            break;
-        case 'r':
-            c = '\r';
-            break;
-        case 't':
-            c = '\t';
-            break;
-        case 'v':
-            c = '\v';
-            break;
-        case '0': case '1': case '2': case '3':     // octal
-        case '4': case '5': case '6': case '7':
-            return (getint(8));
-        case 'x': case 'X':                         // hex
-            advance();
-            return (getint(16));
-        /* extension */
-        case 'B':                                   // binary
-            advance();
-            return (getint(2));
-        case 'D':                                   // decimal
-            advance();
-            return (getint(10));
-        default:
+        advance();
+        if (curchar == '\n') { lineno++; goto top; }
+        if (curchar >= '0' && curchar <= '7') return getint(8);
+        if ((curchar | 0x20) == 'x') { advance(); return getint(16); }
+        if (curchar == 'B') { advance(); return getint(2); }
+        if (curchar == 'D') { advance(); return getint(10); }
+        if (curchar >= 'a' && curchar <= 'z' && escval[curchar - 'a'])
+            c = escval[curchar - 'a'];
+        else
             c = curchar;
-            break;                                   // literal next
-        }
     }
     advance();
     return c;
@@ -795,6 +766,7 @@ doCpp(unsigned char t)
          * already advanced past the line
          */
         return;
+    case IFNDEF:
     case IFDEF:
         skipws1();
         if (!issym()) {
@@ -804,21 +776,7 @@ doCpp(unsigned char t)
         }
         advance();
         v = (maclookup(strbuf) != 0);  // true if macro is defined
-        c = malloc(sizeof(*c));
-        c->next = cond;
-        cond = c;
-        cond->flags = (v ? (C_TRUE|C_TRUESEEN) : 0);
-        skiptoeol();
-        return;
-    case IFNDEF:
-        skipws1();
-        if (!issym()) {
-            gripe(ER_C_MN);
-            skiptoeol();
-            return;
-        }
-        advance();
-        v = (maclookup(strbuf) == 0);  // true if macro is NOT defined
+        if (t == IFNDEF) v = !v;       // invert for ifndef
         c = malloc(sizeof(*c));
         c->next = cond;
         cond = c;
@@ -1513,27 +1471,25 @@ cpppseudofunc()
     int r = 0;
 
     if ((strcmp("defined", strbuf) == 0) && (tflags & CPPFUNCS)) {
-        /* Skip past the "defined" identifier */
         advance();
-        while ((curchar == '\t') || (curchar == ' ')) advance();
+        skipws1();
         if (curchar != '(') {
             gripe(ER_C_DP);
             curchar = '0';
             return 1;
         }
         advance();
-        while ((curchar == '\t') || (curchar == ' ')) advance();
+        skipws1();
         if (issym()) {
-            /* Check if the macro name in strbuf is defined */
             r = (maclookup(strbuf) != 0);
-            advance();  /* Move past the macro name */
+            advance();
         }
-        while ((curchar == '\t') || (curchar == ' ')) advance();
+        skipws1();
         if (curchar != ')') {
             gripe(ER_C_DP);
             r = 0;
         } else {
-            advance();  /* Move past the ')' */
+            advance();
         }
         curchar = r ? '1' : '0';
         return 1;

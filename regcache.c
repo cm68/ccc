@@ -77,7 +77,7 @@ deepFree(struct expr *e)
     if (!e) return;
     deepFree(e->left);
     deepFree(e->right);
-    if (e->symbol) free(e->symbol);
+    xfree(e->symbol);
     free(e);
 }
 

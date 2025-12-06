@@ -11,6 +11,20 @@
 #include "emithelper.h"
 #include "regcache.h"
 
+/* Helper: emit IY-indexed instruction with proper sign handling */
+static void iyFmt(const char *fmt, int offset) {
+    if (offset >= 0)
+        fdprintf(outFd, fmt, '+', offset);
+    else
+        fdprintf(outFd, fmt, '-', -offset);
+}
+
+/* Helper: emit store word from HL to (DE) and increment DE */
+static void storeHLtoDE(void) {
+    emit(S_AL); emit(S_DEA); emit(S_INCDE);
+    emit(S_AH); emit(S_DEA); emit(S_INCDE);
+}
+
 /*
  * Byte comparison info for inline cp instructions
  */
@@ -142,35 +156,34 @@ void emitIncDec(struct expr *e)
         }
     } else if (var) {
         /* Variable is on stack */
-        char sign = (var->offset >= 0) ? '+' : '-';
-        int abs_offset = (var->offset >= 0) ? var->offset : -var->offset;
-        int byte_adj = (size == 1 && var->offset >= 0) ? 1 : 0;
+        int ofs = var->offset;
+        int byte_ofs = ofs + (size == 1 && ofs >= 0 ? 1 : 0);
 
         if (size == 1) {
-            if (is_post) fdprintf(outFd, "\tld a, (iy %c %d)\n", sign, abs_offset + byte_adj);
+            if (is_post) iyFmt("\tld a, (iy %c %d)\n", byte_ofs);
             if (amount == 1) {
-                fdprintf(outFd, "\t%s (iy %c %d)\n", is_dec ? "dec" : "inc", sign, abs_offset + byte_adj);
+                iyFmt(is_dec ? "\tdec (iy %c %d)\n" : "\tinc (iy %c %d)\n", byte_ofs);
             } else {
-                fdprintf(outFd, "\tld a, (iy %c %d)\n", sign, abs_offset + byte_adj);
+                iyFmt("\tld a, (iy %c %d)\n", byte_ofs);
                 fdprintf(outFd, "\t%s a, %ld\n", is_dec ? "sub" : "add", amount);
-                fdprintf(outFd, "\tld (iy %c %d), a\n", sign, abs_offset + byte_adj);
+                iyFmt("\tld (iy %c %d), a\n", byte_ofs);
             }
-            if (!is_post) fdprintf(outFd, "\tld a, (iy %c %d)\n", sign, abs_offset + byte_adj);
+            if (!is_post) iyFmt("\tld a, (iy %c %d)\n", byte_ofs);
         } else {
-            if (is_post) loadWordIY(var->offset);
+            if (is_post) loadWordIY(ofs);
             if (amount == 1) {
-                const char *op_str = is_dec ? "dec" : "inc";
-                if (is_dec) fdprintf(outFd, "\tld a, (iy %c %d)\n", sign, abs_offset);
-                fdprintf(outFd, "\t%s (iy %c %d)\n", op_str, sign, abs_offset);
+                if (is_dec) iyFmt("\tld a, (iy %c %d)\n", ofs);
+                iyFmt(is_dec ? "\tdec (iy %c %d)\n" : "\tinc (iy %c %d)\n", ofs);
                 if (is_dec) emit(S_ORA);
-                fdprintf(outFd, "\tjr nz, $+3\n\t%s (iy %c %d)\n", op_str, sign, abs_offset + 1);
+                fdprintf(outFd, "\tjr nz, $+3\n");
+                iyFmt(is_dec ? "\tdec (iy %c %d)\n" : "\tinc (iy %c %d)\n", ofs + 1);
             } else {
-                loadWordIY(var->offset);
+                loadWordIY(ofs);
                 fdprintf(outFd, "\tld de, %ld\n", amount);
                 emit(is_dec ? S_SBCHLDE : S_ADDHLDE);
-                storeWordIY(var->offset);
+                storeWordIY(ofs);
             }
-            if (!is_post) loadWordIY(var->offset);
+            if (!is_post) loadWordIY(ofs);
         }
     } else {
         /* Global variable */
@@ -299,29 +312,13 @@ void emitAssign(struct expr *e)
             emit(S_INCHL);
             emit(S_HLD);
         } else if (e->left->op == '+' && e->size == 4) {
-            emit(S_PUSHHLLOW);
-            emit(S_EXX);
-            emit(S_PUSHHLUPP);
-            emit(S_EXX);
+            emit(S_PUSHHLLOW); emit(S_EXX); emit(S_PUSHHLUPP); emit(S_EXX);
             emitExpr(e->left);
-            emit(S_DEADR);
-            emit(S_POPHLUPP);
-            emit(S_PUSHDESV);
+            emit(S_DEADR); emit(S_POPHLUPP); emit(S_PUSHDESV);
+            emit(S_EXX); emit(S_POPDEADR); emit(S_POPHLLOW);
+            storeHLtoDE();
             emit(S_EXX);
-            emit(S_POPDEADR);
-            emit(S_POPHLLOW);
-            emit(S_AL);
-            emit(S_DEA);
-            emit(S_INCDE);
-            emit(S_AH);
-            emit(S_DEA);
-            emit(S_INCDE);
-            emit(S_EXX);
-            emit(S_AL);
-            emit(S_DEA);
-            emit(S_INCDE);
-            emit(S_AH);
-            emit(S_DEA);
+            storeHLtoDE();
             emit(S_EXX);
         }
     }
@@ -445,11 +442,7 @@ static int emitByteCp(struct expr *e)
         fdprintf(outFd, "\tcp %d\n", cmp.offset);
         break;
     case CMP_IY:
-        if (cmp.offset > 0) {
-            fdprintf(outFd, "\tcp (iy + %d)\n", cmp.offset);
-        } else {
-            fdprintf(outFd, "\tcp (iy - %d)\n", -cmp.offset);
-        }
+        iyFmt("\tcp (iy %c %d)\n", cmp.offset);
         break;
     case CMP_REG:
         if (cmp.reg == REG_IX) {
@@ -553,7 +546,7 @@ void emitBinop(struct expr *e)
                 freeExpr(e->right);
                 e->right = NULL;
             }
-            if (call_inst) free(call_inst);
+            xfree(call_inst);
             return;
         }
 
@@ -619,7 +612,7 @@ void emitBinop(struct expr *e)
                 }
             }
         }
-        if (call_inst) free(call_inst);
+        xfree(call_inst);
 
         /* Only pop stack for word ops (byte ops didn't push) */
         if (left_size != 1 && !usedDirDE) {
@@ -757,7 +750,7 @@ void emitTernary(struct expr *e)
 
     if (e->jump) freeJump(e->jump);
     if (e->right && e->right->jump) freeJump(e->right->jump);
-    if (e->right) free(e->right);
+    xfree(e->right);
 
     freeNode(e);
 }

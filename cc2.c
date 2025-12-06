@@ -57,6 +57,11 @@
 /* Forward declaration from util.c */
 int fdprintf(int fd, const char *fmt, ...);
 
+/* Empty asm_block - used to suppress code emission without allocating */
+char noasm[] = "";
+
+void xfree(void *p) { if (p && p != noasm) free(p); }
+
 /* Forward declaration from parseast.c */
 int parseAstFile(int inFd, int outFd);
 

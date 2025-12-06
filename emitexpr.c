@@ -171,8 +171,8 @@ void emitExpr(struct expr *e)
     }
 
     /* Free this node (children already freed by recursive emit calls above) */
-    if (e->asm_block) free(e->asm_block);
-    if (e->cleanup_block) free(e->cleanup_block);
+    xfree(e->asm_block);
+    xfree(e->cleanup_block);
     if (e->jump) freeJump(e->jump);
     free(e);
 }
