@@ -381,21 +381,25 @@ emit_z_jump:
 
                 /* Handle dual-test pattern (<=0 and >0) */
                 if (fnDualCmp) {
-                    /* bit 7, h already emitted by emitExpr */
+                    /* bit 7 test already emitted by emitExpr */
                     const char *tgt = (s->label2 > 0) ? "_if_" : "_if_end_";
+                    const char *hi = "h", *lo = "l";
                     int num = s->label;
+                    if (fnDualReg == R_BC) { hi = "b"; lo = "c"; }
+                    else if (fnDualReg == R_DE) { hi = "d"; lo = "e"; }
                     if (fnDualCmp == 'L') {
                         /* x <= 0: negative=true, zero=true */
                         emitJump("jp nz,", "_if_then_", num);  /* neg -> then */
-                        fdprintf(outFd, "\tld a, h\n\tor l\n");
+                        fdprintf(outFd, "\tld a, %s\n\tor %s\n", hi, lo);
                         emitJump("jp nz,", tgt, num);  /* pos -> else/end */
                     } else {
                         /* x > 0: negative=false, zero=false */
                         emitJump("jp nz,", tgt, num);  /* neg -> else/end */
-                        fdprintf(outFd, "\tld a, h\n\tor l\n");
+                        fdprintf(outFd, "\tld a, %s\n\tor %s\n", hi, lo);
                         emitJump("jp z,", tgt, num);  /* zero -> else/end */
                     }
                     fnDualCmp = 0;
+                    fnDualReg = 0;
                     goto emit_if_body;
                 }
 

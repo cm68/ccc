@@ -65,6 +65,9 @@ void invalStack();
 /* Helper for binary op detection */
 int isBinopWAccum(unsigned char op);
 
+/* Simple load - uses scheduler's loc/dest fields */
+int emitSimplLd(struct expr *e);
+
 /* Expression emission - main function and helpers */
 void emitExpr(struct expr *e);
 void emitIncDec(struct expr *e);

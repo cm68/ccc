@@ -150,12 +150,13 @@ emitExpr(struct expr *e)
 		break;
 
 	case CALL:
-		/* Function call: @count. func arg1 arg2 ... */
+		/* Function call: @type count. func arg1 arg2 ... */
 		{
 			int argc = 0;
 			struct expr *arg;
+			char ret_type = getSizeSuffix(e->type);
 			for (arg = e->right; arg; arg = arg->next) argc++;
-			fdprintf(astFd, "@%02x", argc);
+			fdprintf(astFd, "@%c%02x", ret_type, argc);
 			emitChild(e->left);
 			for (arg = e->right; arg; arg = arg->next)
 				emitChild(arg);

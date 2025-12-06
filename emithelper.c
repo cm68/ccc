@@ -501,6 +501,7 @@ void clearDE() {
 void clearA() {
     fnIXAOfs = -1;
     fnABCValid = 0;
+    fnAZero = 0;
     cacheInvalA();
 }
 
@@ -550,7 +551,9 @@ int isBinopWAccum(unsigned char op) {
 static void setVarCache(const char *sym, char sz, char isA) {
     struct expr *cache = mkVarCache(sym, sz);
     if (isA) {
+        char saveAZero = fnAZero;  /* Preserve A-is-zero flag across store */
         clearA();
+        fnAZero = saveAZero;
         cacheSetA(cache);
     } else {
         clearHL();
@@ -664,6 +667,81 @@ void storeVar(const char *sym, char sz, char docache) {
 }
 
 /*
+ * Emit simple word load based on scheduler's loc and dest fields.
+ * Handles: LOC_REG (BC, IX), LOC_MEM, LOC_STACK, LOC_IX
+ * Target register from e->dest: R_HL, R_DE, R_BC
+ * Returns 1 if handled, 0 if not a simple case.
+ */
+int emitSimplLd(struct expr *e)
+{
+    const char *sym;
+    int ofs;
+    char hi, lo;            /* register halves */
+    const char *rp;         /* register pair name */
+
+    if (!e || e->size != 2) return 0;
+
+    /* Set register names based on destination */
+    switch (e->dest) {
+    case R_HL: hi = 'h'; lo = 'l'; rp = "hl"; break;
+    case R_DE: hi = 'd'; lo = 'e'; rp = "de"; break;
+    case R_BC: hi = 'b'; lo = 'c'; rp = "bc"; break;
+    default: return 0;
+    }
+
+    switch (e->loc) {
+    case LOC_CONST:
+        fdprintf(outFd, "\tld %s, %ld\n", rp, e->value);
+        break;
+
+    case LOC_REG:
+        if (e->reg == R_BC && e->dest != R_BC) {
+            fdprintf(outFd, "\tld %c, b\n\tld %c, c\n", hi, lo);
+        } else if (e->reg == R_IX) {
+            fdprintf(outFd, "\tpush ix\n\tpop %s\n", rp);
+        } else if (e->reg == R_HL && e->dest == R_DE) {
+            fdprintf(outFd, "\tex de, hl\n");
+        } else if (e->reg == R_DE && e->dest == R_HL) {
+            fdprintf(outFd, "\tex de, hl\n");
+        } else {
+            return 0;
+        }
+        break;
+
+    case LOC_MEM:
+        if (!e->left || !e->left->symbol) return 0;
+        sym = stripDollar(e->left->symbol);
+        addRefSym(sym);
+        fdprintf(outFd, "\tld %s, (%s)\n", rp, sym);
+        break;
+
+    case LOC_STACK:
+        ofs = e->offset;
+        fdprintf(outFd, "\tld %c, (iy %c %d)\n\tld %c, (iy %c %d)\n",
+                 lo, ofs >= 0 ? '+' : '-', ofs >= 0 ? ofs : -ofs,
+                 hi, ofs + 1 >= 0 ? '+' : '-', ofs + 1 >= 0 ? ofs + 1 : -(ofs + 1));
+        break;
+
+    case LOC_IX:
+        ofs = e->offset;
+        fdprintf(outFd, "\tld %c, (ix %c %d)\n\tld %c, (ix %c %d)\n",
+                 lo, ofs >= 0 ? '+' : '-', ofs >= 0 ? ofs : -ofs,
+                 hi, ofs + 1 >= 0 ? '+' : '-', ofs + 1 >= 0 ? ofs + 1 : -(ofs + 1));
+        break;
+
+    default:
+        return 0;
+    }
+
+    /* Update state based on destination */
+    if (e->dest == R_DE) fnDEValid = 1;
+    else if (e->dest == R_HL) clearHL();
+
+    freeExpr(e);
+    return 1;
+}
+
+/*
  * Emit DEREF of global variable with cache check
  * Pattern: (M $global) where asm_block is NULL
  */
@@ -687,12 +765,10 @@ void emitGlobDrf(struct expr *e)
             cacheSetA(e);
         }
     } else if (e->size == 2) {
-        if (fnTargetDE) {
-            /* Load directly to DE instead of HL */
+        if (e->dest == R_DE) {
+            /* Scheduler says load to DE */
             fdprintf(outFd, "\tld de, (%s)\n", s);
-            fnTargetDE = 0;
             fnDEValid = 1;
-            /* Note: DE cache not tracked yet, so no cacheSetDE */
         } else if (cacheFindWord(e) == 'H') {
             /* HL already holds this value - skip load */
         } else {
@@ -754,7 +830,19 @@ void emitRegVarDrf(struct expr *e)
         }
     } else {
         /* Word register variable */
-        if (cacheFindWord(e) == 'H') {
+        if (e->dest == R_DE) {
+            /* Scheduler says load to DE */
+            if (var->reg == REG_BC) {
+                fdprintf(outFd, "\tld d, b\n\tld e, c\n");
+            } else if (var->reg == REG_IX) {
+                fdprintf(outFd, "\tpush ix\n\tpop de\n");
+            } else if (var->reg == REG_BCp) {
+                emit(S_EXX);
+                fdprintf(outFd, "\tld d, b\n\tld e, c\n");
+                emit(S_EXX);
+            }
+            fnDEValid = 1;
+        } else if (cacheFindWord(e) == 'H') {
             /* HL already holds this value - skip load */
         } else {
             if (var->reg == REG_BC) {
@@ -803,12 +891,11 @@ void emitStackDrf(struct expr *e)
             cacheSetA(e);
         }
     } else if (e->size == 2) {
-        if (fnTargetDE) {
-            /* Load directly to DE */
+        if (e->dest == R_DE) {
+            /* Scheduler says load to DE */
             fdprintf(outFd, "\tld e, (iy %c %d)\n\tld d, (iy %c %d)\n",
                      ofs >= 0 ? '+' : '-', ofs >= 0 ? ofs : -ofs,
                      ofs + 1 >= 0 ? '+' : '-', ofs + 1 >= 0 ? ofs + 1 : -(ofs + 1));
-            fnTargetDE = 0;
             fnDEValid = 1;
         } else if (cacheFindWord(e) == 'H') {
             /* HL already holds this value - skip load */

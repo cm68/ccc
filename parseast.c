@@ -52,12 +52,14 @@ int fnDEValid;
 int fnTargetDE;
 int fnZValid;
 int fnDualCmp;
+int fnDualReg;      /* Register for fnDualCmp: R_BC, R_HL, R_DE, or 0 for memory */
 int fnCmpFlag;
 char fnIXAOfs;
 char fnIXHLOfs;
 char fnIYHLOfs;
 char fnIYHLValid;
 char fnABCValid;
+char fnAZero;
 
 /* Segment tracking */
 #define SEG_NONE 0
@@ -327,7 +329,11 @@ static struct expr *
 doCall(void)
 {
 	struct expr *e = newExpr('@'), *w, *prev = NULL;
-	int argc = readHex2(), i;
+	int argc, i;
+	e->type_str = curchar;  /* Return type */
+	e->size = getSizeFTStr(curchar);
+	nextchar();
+	argc = readHex2();
 	e->value = argc;
 	e->left = parseExpr();
 	for (i = 0; i < argc; i++) {
@@ -722,6 +728,7 @@ doFunction(unsigned char rettype)
 	fnIXHLOfs = -1;
 	fnIYHLValid = 0;
 	fnABCValid = 0;
+	fnAZero = 0;
 	cacheInvalAll();
 
 	/* Code generation phases */

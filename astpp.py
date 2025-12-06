@@ -241,15 +241,17 @@ class ASTParser:
         op_char = c
         self.advance()
 
-        # Call: @ argc(2) func args...
+        # Call: @ ret_type argc(2) func args...
         if op_char == '@':
+            ret_type = self.cur()
+            self.advance()
             argc = self.read_hex2()
             func = self.parse_expr()
             args = [self.parse_expr() for _ in range(argc)]
             args_str = ' '.join(args)
             if args_str:
-                return f"(CALL {func} {args_str})"
-            return f"(CALL {func})"
+                return f"(CALL:{ret_type} {func} {args_str})"
+            return f"(CALL:{ret_type} {func})"
 
         # Ternary: ? width cond then else
         if op_char == '?':

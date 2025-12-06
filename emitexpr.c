@@ -69,8 +69,7 @@ void emitExpr(struct expr *e)
         return;
     }
     /* Binary operators with accumulator management need special handling */
-    else if (isBinopWAccum(e->op) && e->left && e->right &&
-            e->asm_block) {
+    else if (isBinopWAccum(e->op) && e->left && e->right) {
         emitBinop(e);
         return;
     }
@@ -102,20 +101,40 @@ void emitExpr(struct expr *e)
         emitStackDrf(e);
         return;
     }
+    /* Handle DEREF with indirect addressing (loc=LOC_INDIR) */
+    else if (e->op == 'M' && e->loc == LOC_INDIR) {
+        /* Emit address calculation first */
+        emitExpr(e->left);
+        /* Then load through HL */
+        if (e->size == 1) {
+            fdprintf(outFd, "\tld a, (hl)\n");
+            clearA();
+        } else if (e->size == 2) {
+            fdprintf(outFd, "\tld a, (hl)\n\tinc hl\n\tld h, (hl)\n\tld l, a\n");
+            clearHL();
+        }
+        freeNode(e);
+        return;
+    }
     /* Handle symbol address - check if global or local */
     else if (e->op == '$' && e->symbol) {
         const char *sym_name = stripVarPfx(e->symbol);
         struct local_var *var = findVar(sym_name);
 
         if (!var) {
-            /* Global symbol - load address with caching */
-            int cached = cacheFindWord(e);
+            /* Global symbol - load address */
             addRefSym(sym_name);  /* Track for extern declaration */
-            if (cached == 'H') {
-                /* HL already has this address - skip load */
+            if (e->dest == R_DE) {
+                fdprintf(outFd, "\tld de, %s\n", sym_name);
+                fnDEValid = 1;
             } else {
-                fdprintf(outFd, "\tld hl, %s\n", sym_name);
-                cacheSetHL(e);
+                int cached = cacheFindWord(e);
+                if (cached == 'H') {
+                    /* HL already has this address - skip load */
+                } else {
+                    fdprintf(outFd, "\tld hl, %s\n", sym_name);
+                    cacheSetHL(e);
+                }
             }
         } else {
             /* Local variable - compute address (IY + offset) */
@@ -128,6 +147,28 @@ void emitExpr(struct expr *e)
         }
         xfree(e->asm_block);
         free(e);
+        return;
+    }
+    /* Handle constants with scheduler */
+    else if (e->op == 'C' && e->loc == LOC_CONST) {
+        if (e->size == 1) {
+            if ((e->value & 0xff) == 0) {
+                if (!fnAZero) {
+                    fdprintf(outFd, "\txor a\n");
+                    fnAZero = 1;
+                }
+            } else if (cacheFindByte(e) == 'A') {
+                /* A already has this value */
+            } else {
+                fdprintf(outFd, "\tld a, %ld\n", e->value & 0xff);
+                fnAZero = 0;
+                cacheSetA(e);
+            }
+        } else {
+            fdprintf(outFd, "\tld hl, %ld\n", e->value);
+            clearHL();
+        }
+        freeNode(e);
         return;
     }
     else {

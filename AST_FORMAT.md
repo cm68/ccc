@@ -286,9 +286,10 @@ W<type><expr>   - widen (zero-extend unsigned)
 
 ### Function Call
 ```
-@<argc><func><args...>
+@<rettype><argc><func><args...>
 ```
 
+- `rettype` - single char return type suffix (b/s/l/p/etc)
 - `argc` - 2-digit hex argument count
 - `func` - function expression
 - `args` - argument expressions wrapped in comma nodes

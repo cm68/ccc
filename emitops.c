@@ -573,148 +573,181 @@ static int emitByteCp(struct expr *e)
 }
 
 /*
- * Emit binary operation
+ * Emit binary operation - no asm_block, generate everything inline
  */
 void emitBinop(struct expr *e)
 {
-    /* Check for inline byte operations with immediate */
-    int isInlineImm = 0;
+    int left_size = e->left ? e->left->size : 2;
+    int is_cmp = (e->op == '>' || e->op == '<' || e->op == 'g' ||
+                  e->op == 'L' || e->op == 'Q' || e->op == 'n');
 
-    if (e->left && e->left->size == 1 && e->right && e->right->op == 'C' &&
+    /* Byte operations with immediate constant (not comparisons - those use emitByteCp) */
+    if (left_size == 1 && !is_cmp && e->right && e->right->op == 'C' &&
         e->right->value >= 0 && e->right->value <= 255) {
-        if (e->op == '&' || e->op == '|' || e->op == '^' ||
-            e->op == '+' || e->op == '-') {
-            isInlineImm = 1;
-        }
-    }
-
-    if (isInlineImm) {
         int val = e->right->value & 0xff;
         emitExpr(e->left);
         freeExpr(e->right);
-        /* Emit inline instruction based on operator */
         switch (e->op) {
         case '&': fdprintf(outFd, "\tand %d\n", val); break;
         case '|': fdprintf(outFd, "\tor %d\n", val); break;
         case '^': fdprintf(outFd, "\txor %d\n", val); break;
         case '+': fdprintf(outFd, "\tadd a, %d\n", val); break;
         case '-': fdprintf(outFd, "\tsub %d\n", val); break;
+        default: break;
         }
-        /* These ops set Z flag: Z=1 means result is 0 */
         fnZValid = 2;
-    } else if (emitByteCp(e)) {
-        /* Byte comparison emitted inline */
-    } else {
-        char *call_inst = NULL;
-        char *newline = strchr(e->asm_block, '\n');
-        int init_saves = fnDESaveCnt;
-        int left_size = e->left ? e->left->size : 2;  /* Save before emitExpr frees */
-        int is_inline_cmp = 0;
-        int usedDirDE = 0;
-
-        if (newline) {
-            call_inst = strdup(newline + 1);
-            /* Check if this is inline sbc comparison (no call) */
-            is_inline_cmp = strstr(call_inst, "sbc hl") && !strstr(call_inst, "call");
-        }
-
-        /* Check for signed compare with 0: "bit 7, h" pattern */
-        if (strstr(e->asm_block, "bit 7, h")) {
-            /* Inline signed compare with 0:
-             * Only emit left child, skip pushStack and right child */
-            emitExpr(e->left);
-            fdprintf(outFd, "%s\n", e->asm_block);
-            /* Set Z flag meaning: for < and >=, bit 7 sets Z appropriately
-             * x < 0: NZ if true (Z=0 means true) -> fnZValid = 2
-             * x >= 0: Z if true (Z=1 means true) -> fnZValid = 1
-             * For <= and >, more complex: already handled by jump in asm_block
-             */
-            switch (e->op) {
-            case '<': fnZValid = 2; break;  /* x < 0: NZ = true */
-            case 'g': fnZValid = 1; break;  /* x >= 0: Z = true */
-            case 'L': fnDualCmp = 'L'; break;  /* x <= 0: two-test */
-            case '>': fnDualCmp = '>'; break;  /* x > 0: two-test */
-            }
-            /* Free the right child (constant 0) without emitting, set to NULL to prevent double-free */
-            if (e->right) {
-                freeExpr(e->right);
-                e->right = NULL;
-            }
-            xfree(call_inst);
-            return;
-        }
-
-        /* Check if left is simple global word deref - can load directly to DE */
-        if (left_size == 2 && e->left && e->left->op == 'M' &&
-            !e->left->asm_block && e->left->left &&
-            e->left->left->op == '$' && e->left->left->symbol) {
-            fnTargetDE = 1;
-            emitExpr(e->left);
-            /* fnTargetDE cleared by emitGlobDrf, fnDEValid set */
-            usedDirDE = 1;
-        } else {
-            emitExpr(e->left);
-            /* For byte ops, move A to E; for word ops, use standard pushStack */
-            if (left_size == 1) {
-                emit(S_ESAVE);  /* ld e, a */
-            } else {
-                pushStack();
-            }
-        }
-        emitExpr(e->right);
-
-        while (fnDESaveCnt > init_saves) {
-            emit(S_POPDERES);
-            fnDESaveCnt--;
-        }
-
-        if (is_inline_cmp) {
-            /* Emit full inline code: ex de,hl + or a + sbc hl,de
-             * After pushStack: DE=left, HL=right
-             * ex de,hl: HL=left, DE=right
-             * sbc hl,de = left - right */
-            if (usedDirDE) {
-                /* Skip ex de,hl - already have DE=left, HL=right */
-                char *p = e->asm_block;
-                if (strncmp(p, "\tex de, hl", 10) == 0) {
-                    p += 10;
-                    while (*p == ' ' || *p == ';') {
-                        while (*p && *p != '\n') p++;
-                    }
-                    if (*p == '\n') p++;
-                }
-                fdprintf(outFd, "%s\n", p);
-            } else {
-                fdprintf(outFd, "%s\n", e->asm_block);
-            }
-            /* Set flag based on operator */
-            switch (e->op) {
-            case 'Q': fnZValid = 1; break;       /* EQ: Z=1 true */
-            case 'n': fnZValid = 2; break;       /* NE: Z=1 false */
-            case 'g': fnCmpFlag = 'c'; break;    /* GE: NC=1 true */
-            case '<': fnCmpFlag = 'C'; break;    /* LT: C=1 true */
-            }
-        } else if (call_inst) {
-            fdprintf(outFd, "%s\n", call_inst);
-            cacheInvalA();  /* Function calls clobber A */
-            if (strstr(call_inst, "call")) {
-                char *call_pos = strstr(call_inst, "call");
-                call_pos += 4;
-                while (*call_pos && (*call_pos == ' ' || *call_pos == '\t')) call_pos++;
-                if (*call_pos && isCmpFunc(call_pos)) {
-                    fnZValid = 1;
-                }
-            }
-        }
-        xfree(call_inst);
-
-        /* Only pop stack for word ops (byte ops didn't push) */
-        if (left_size != 1 && !usedDirDE) {
-            int zflag_saved = fnZValid;
-            popStack();
-            fnZValid = zflag_saved;
-        }
+        return;
     }
+
+    /* Byte comparisons */
+    if (left_size == 1 && is_cmp && emitByteCp(e)) {
+        return;
+    }
+
+    /* Signed comparisons with 0 - test bit 7 in place */
+    if (left_size == 2 && is_cmp && !(e->flags & E_UNSIGNED) &&
+        e->right && e->right->op == 'C' && e->right->value == 0) {
+        struct expr *l = e->left;
+        int ofs;
+        const char *sym;
+
+        /* >= 0 and < 0: just test bit 7 */
+        if (e->op == 'g' || e->op == '<') {
+            switch (l->loc) {
+            case LOC_REG:
+                if (l->reg == R_BC) fdprintf(outFd, "\tbit 7, b\n");
+                else if (l->reg == R_HL) fdprintf(outFd, "\tbit 7, h\n");
+                else if (l->reg == R_DE) fdprintf(outFd, "\tbit 7, d\n");
+                else if (l->reg == R_IX) fdprintf(outFd, "\tld a, ixh\n\tbit 7, a\n");
+                else goto fallback;
+                break;
+            case LOC_STACK:
+                ofs = l->offset + 1;
+                fdprintf(outFd, "\tbit 7, (iy %c %d)\n",
+                         ofs >= 0 ? '+' : '-', ofs >= 0 ? ofs : -ofs);
+                break;
+            case LOC_IX:
+                ofs = l->offset + 1;
+                fdprintf(outFd, "\tbit 7, (ix %c %d)\n",
+                         ofs >= 0 ? '+' : '-', ofs >= 0 ? ofs : -ofs);
+                break;
+            case LOC_MEM:
+                if (!l->left || !l->left->symbol) goto fallback;
+                sym = stripDollar(l->left->symbol);
+                addRefSym(sym);
+                fdprintf(outFd, "\tld a, (%s+1)\n\tbit 7, a\n", sym);
+                break;
+            default:
+                goto fallback;
+            }
+            fnZValid = (e->op == 'g') ? 1 : 2;
+        }
+        /* <= 0 and > 0: emit bit 7 test, let emit.c handle jumps */
+        else if (e->op == 'L' || e->op == '>') {
+            switch (l->loc) {
+            case LOC_REG:
+                if (l->reg == R_BC) {
+                    fdprintf(outFd, "\tbit 7, b\n");
+                    fnDualReg = R_BC;
+                } else if (l->reg == R_HL) {
+                    fdprintf(outFd, "\tbit 7, h\n");
+                    fnDualReg = R_HL;
+                } else if (l->reg == R_DE) {
+                    fdprintf(outFd, "\tbit 7, d\n");
+                    fnDualReg = R_DE;
+                } else goto fallback;
+                break;
+            case LOC_STACK:
+                ofs = l->offset;
+                fdprintf(outFd, "\tld l, (iy %c %d)\n\tld h, (iy %c %d)\n",
+                         ofs >= 0 ? '+' : '-', ofs >= 0 ? ofs : -ofs,
+                         ofs + 1 >= 0 ? '+' : '-', ofs + 1 >= 0 ? ofs + 1 : -(ofs + 1));
+                fdprintf(outFd, "\tbit 7, h\n");
+                fnDualReg = R_HL;
+                break;
+            case LOC_MEM:
+                if (!l->left || !l->left->symbol) goto fallback;
+                sym = stripDollar(l->left->symbol);
+                addRefSym(sym);
+                fdprintf(outFd, "\tld hl, (%s)\n\tbit 7, h\n", sym);
+                fnDualReg = R_HL;
+                break;
+            default:
+                goto fallback;
+            }
+            fnDualCmp = e->op;  /* 'L' or '>' - emit.c handles the jumps */
+        }
+        else goto fallback;
+
+        freeExpr(e->left);
+        freeExpr(e->right);
+        e->left = e->right = NULL;
+        freeNode(e);
+        return;
+    fallback:
+        ;
+    }
+
+    /* Word comparisons - scheduler places operands for sbc hl,de
+     * < and >=: left->HL, right->DE, compute left-right
+     * > and <=: left->DE, right->HL, compute right-left
+     */
+    if (left_size == 2 && is_cmp) {
+        if (!emitSimplLd(e->left)) emitExpr(e->left);
+        if (!emitSimplLd(e->right)) emitExpr(e->right);
+        fdprintf(outFd, "\tor a\n\tsbc hl, de\n");
+        switch (e->op) {
+        case 'Q': fnZValid = 1; break;       /* EQ: Z true */
+        case 'n': fnZValid = 2; break;       /* NE: NZ true */
+        case 'g': fnCmpFlag = 'c'; break;    /* GE: left-right, NC true */
+        case '<': fnCmpFlag = 'C'; break;    /* LT: left-right, C true */
+        case '>': fnCmpFlag = 'C'; break;    /* GT: right-left, C true */
+        case 'L': fnCmpFlag = 'c'; break;    /* LE: right-left, NC true */
+        }
+        freeNode(e);
+        return;
+    }
+
+    /* Byte binary ops - emit left to A, save to E, emit right to A, call helper */
+    if (left_size == 1) {
+        const char *fn = NULL;
+        emitExpr(e->left);
+        emit(S_ESAVE);
+        emitExpr(e->right);
+        switch (e->op) {
+        case '*': fn = "bmul"; break;
+        case '/': fn = "bdiv"; break;
+        case '%': fn = "bmod"; break;
+        case 'w': fn = "brsh"; break;  /* right shift */
+        case 'y': fn = "blsh"; break;  /* left shift */
+        default: break;
+        }
+        if (fn) {
+            fdprintf(outFd, "\tcall %s\n", fn);
+            addRefSym(fn);
+        }
+        return;
+    }
+
+    /* Word binary ops - scheduler places left->DE, right->HL */
+    if (!emitSimplLd(e->left)) emitExpr(e->left);
+    if (!emitSimplLd(e->right)) emitExpr(e->right);
+
+    /* DE=left, HL=right; most ops need HL=left so swap */
+    switch (e->op) {
+    case '+': fdprintf(outFd, "\tadd hl, de\n"); break;
+    case '-': fdprintf(outFd, "\tex de, hl\n\tor a\n\tsbc hl, de\n"); break;
+    case '*': fdprintf(outFd, "\tcall imul\n"); addRefSym("imul"); break;
+    case '/': fdprintf(outFd, "\tex de, hl\n\tcall idiv\n"); addRefSym("idiv"); break;
+    case '%': fdprintf(outFd, "\tex de, hl\n\tcall imod\n"); addRefSym("imod"); break;
+    case '&': fdprintf(outFd, "\tld a, l\n\tand e\n\tld l, a\n\tld a, h\n\tand d\n\tld h, a\n"); break;
+    case '|': fdprintf(outFd, "\tld a, l\n\tor e\n\tld l, a\n\tld a, h\n\tor d\n\tld h, a\n"); break;
+    case '^': fdprintf(outFd, "\tld a, l\n\txor e\n\tld l, a\n\tld a, h\n\txor d\n\tld h, a\n"); break;
+    case 'w': fdprintf(outFd, "\tex de, hl\n\tcall irsh\n"); addRefSym("irsh"); break;
+    case 'y': fdprintf(outFd, "\tex de, hl\n\tcall ilsh\n"); addRefSym("ilsh"); break;
+    default: break;
+    }
+    freeNode(e);
 }
 
 /*

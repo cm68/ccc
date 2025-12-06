@@ -225,12 +225,14 @@ extern int fnDEValid;           /* 1 if DE holds valid value */
 extern int fnTargetDE;          /* 1 if next expr should load to DE */
 extern int fnZValid;            /* 1 if Z flag valid for HL test */
 extern int fnDualCmp;           /* 'L' or '>' for two-test cmp with 0 */
+extern int fnDualReg;           /* Register for fnDualCmp: R_BC, R_HL, R_DE */
 extern int fnCmpFlag;           /* 0=none, 'Z'=z, 'N'=nz, 'C'=c, 'c'=nc */
 extern char fnIXAOfs;           /* When >=0, A has byte from (ix+fnIXAOfs) */
 extern char fnIXHLOfs;          /* When >=0, HL has word from (ix+fnIXHLOfs) */
 extern char fnIYHLOfs;          /* When valid, HL has word from (iy+fnIYHLOfs) */
 extern char fnIYHLValid;        /* 1 if fnIYHLOfs is valid */
 extern char fnABCValid;         /* 1 if A has byte from (bc) */
+extern char fnAZero;            /* 1 if A is known to be 0 */
 
 /* Forward declarations from util.c */
 int fdprintf(unsigned char fd, const char *fmt, ...);

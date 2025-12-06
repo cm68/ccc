@@ -22,7 +22,8 @@ unsigned char curchar;
 
 static unsigned char symbuf[256];
 
-void initAstio(unsigned char fd) {
+void 
+initAstio(unsigned char fd) {
 	inFd = fd;
 	bufPos = 0;
 	bufValid = 0;
@@ -30,7 +31,8 @@ void initAstio(unsigned char fd) {
 	curchar = 0;
 }
 
-unsigned char nextchar(void) {
+unsigned char 
+nextchar(void) {
 	if (bufPos >= bufValid) {
 		int n = read(inFd, buf, BUFSIZE);
 		if (n <= 0) {
@@ -46,24 +48,28 @@ unsigned char nextchar(void) {
 }
 
 /* Convert hex char to value */
-static int hval(unsigned char c) {
+static int 
+hval(unsigned char c) {
 	if (c >= '0' && c <= '9') return c - '0';
-	if (c >= 'a' && c <= 'f') return c - 'a' + 10;
-	if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+	if (c >= 'a' && c <= 'f') return c - ('a' - 10);
+	if (c >= 'A' && c <= 'F') return c - ('A' - 10);
 	return 0;
 }
 
 /* Read 2 hex chars as byte */
-int readHex2(void) {
-	int h = hval(curchar);
-	int l = hval(nextchar());
+unsigned char 
+readHex2(void) {
+	unsigned char h = hval(curchar);
+	unsigned char l = hval(nextchar());
 	nextchar();
 	return (h << 4) | l;
 }
 
 /* Read 4 hex chars as unsigned 16-bit */
-int readHex4(void) {
-	int v = 0, i;
+unsigned short 
+readHex4(void) {
+    unsigned char i;
+	unsigned short v = 0;
 	for (i = 0; i < 4; i++) {
 		v = (v << 4) | hval(curchar);
 		nextchar();
@@ -72,18 +78,20 @@ int readHex4(void) {
 }
 
 /* Read 8 hex chars as 32-bit (two's complement) */
-long readHex8(void) {
+unsigned long 
+readHex8(void) {
 	unsigned long v = 0;
 	int i;
 	for (i = 0; i < 8; i++) {
 		v = (v << 4) | hval(curchar);
 		nextchar();
 	}
-	return (long)v;
+	return v;
 }
 
 /* Read hex-length-prefixed ASCII name into static buffer */
-unsigned char *readName(void) {
+unsigned char *
+readName(void) {
 	int len, i;
 	len = readHex2();
 	for (i = 0; i < len && i < 255; i++) {
@@ -120,3 +128,7 @@ void skipNL(void) {
 	while (curchar == '\n')
 		nextchar();
 }
+
+/*
+ * vim: tabstop=4 shiftwidth=4 expandtab:
+ */

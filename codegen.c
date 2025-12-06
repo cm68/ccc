@@ -1547,10 +1547,25 @@ schedExpr(struct expr *e, int dest)
     case 'L':  /* <= */
     case 'Q':  /* == */
     case 'n':  /* != */
-        /* Comparisons: left -> DE, right -> HL */
+        /* Signed comparison with 0: test in place, no register scheduling */
+        if (!(e->flags & E_UNSIGNED) && e->right && e->right->op == 'C' &&
+            e->right->value == 0 && e->left && e->left->size == 2) {
+            schedExpr(e->left, R_NONE);  /* just set loc, don't force register */
+            e->right->loc = LOC_CONST;
+            e->right->dest = R_NONE;
+            e->loc = LOC_FLAGS;
+            break;
+        }
+        /* Comparisons: schedule so sbc hl,de gives correct result
+         * < and >=: compute left-right, so left->HL, right->DE
+         * > and <=: compute right-left, so left->DE, right->HL
+         */
         if (e->size == 1 || (e->left && e->left->size == 1)) {
             schedExpr(e->left, R_A);
             schedExpr(e->right, R_A);
+        } else if (e->op == '<' || e->op == 'g') {
+            schedExpr(e->left, R_HL);
+            schedExpr(e->right, R_DE);
         } else {
             schedExpr(e->left, R_DE);
             schedExpr(e->right, R_HL);

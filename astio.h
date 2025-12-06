@@ -15,13 +15,13 @@ void initAstio(unsigned char fd);
 unsigned char nextchar(void);
 
 /* Read 2 hex chars as byte value */
-int readHex2(void);
+unsigned char readHex2(void);
 
 /* Read 4 hex chars as 16-bit value */
-int readHex4(void);
+unsigned short readHex4(void);
 
 /* Read 8 hex chars as 32-bit value (with optional -) */
-long readHex8(void);
+unsigned long readHex8(void);
 
 /* Read hex-length-prefixed name (static buffer) */
 unsigned char *readName(void);

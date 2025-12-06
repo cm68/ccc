@@ -744,6 +744,11 @@ parseExpr(unsigned char pri, struct stmt *st)
             call = mkexpr(CALL, e);
             call->left->up = call;
 
+            // Set return type from function type
+            if (e->type && (e->type->flags & TF_FUNC) && e->type->sub) {
+                call->type = e->type->sub;
+            }
+
             // Parse argument list
             lastarg = NULL;
             if (cur.type != RPAR) {
