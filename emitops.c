@@ -171,7 +171,7 @@ void emitIncDec(struct expr *e)
             case ID_REG:    if (!is_post) fdprintf(outFd, "\tld a, %s\n", rn); break;
             case ID_STACK:  if (!is_post) iyFmt("\tld a, (iy %c %d)\n", ofs); break;
             case ID_GLOBAL: if (!is_post) fdprintf(outFd, "\tld a, (%s)\n", sym); break;
-            case ID_HL:     if (!is_post) fdprintf(outFd, "\tld a, (hl)\n"); break;
+            case ID_HL:     if (!is_post) emit(S_LDAHL); break;
             }
             fdprintf(outFd, "\t%s a, %ld\n", is_dec ? "sub" : "add", amount);
             switch (loc) {
@@ -193,7 +193,7 @@ void emitIncDec(struct expr *e)
             case ID_REG:    fdprintf(outFd, "\tld a, %s\n", rn); break;
             case ID_STACK:  iyFmt("\tld a, (iy %c %d)\n", ofs); break;
             case ID_GLOBAL: /* A already has new value */ break;
-            case ID_HL:     fdprintf(outFd, "\tld a, (hl)\n"); break;
+            case ID_HL:     emit(S_LDAHL); break;
             }
         }
     }
@@ -206,14 +206,14 @@ void emitIncDec(struct expr *e)
             case ID_STACK:  loadWordIY(ofs); break;
             case ID_GLOBAL: fdprintf(outFd, "\tld hl, (%s)\n", sym); emit(S_PUSHHLOV); break;
             case ID_HL:
-                fdprintf(outFd, "\tld e, l\n\tld d, h\n");
+                emit(S_HLTODE);
                 fdprintf(outFd, "\tld a, (hl)\n\tld c, a\n\tinc hl\n");
                 fdprintf(outFd, "\tld a, (hl)\n\tld h, a\n\tld l, c\n");
                 fdprintf(outFd, "\tpush hl\n\tex de, hl\n");
                 break;
             }
         } else if (loc == ID_HL) {
-            fdprintf(outFd, "\tld e, l\n\tld d, h\n");
+            emit(S_HLTODE);
         }
 
         /* 2. Do inc/dec */
@@ -464,7 +464,7 @@ static int emitByteCp(struct expr *e)
         case 'L':  /* LE (<=): cp N+1, c = true */
             if (val >= 255) {
                 /* A <= 255 always true - emit compare that always succeeds */
-                fdprintf(outFd, "\tor a\n");  /* clears carry */
+                emit(S_ORA);  /* clears carry */
                 fnCmpFlag = 'c';  /* nc = true, always true */
             } else {
                 fdprintf(outFd, "\tcp %d\n", val + 1);
@@ -572,9 +572,9 @@ void emitBinop(struct expr *e)
         if (e->op == 'g' || e->op == '<') {
             switch (l->loc) {
             case LOC_REG:
-                if (l->reg == R_BC) fdprintf(outFd, "\tbit 7, b\n");
-                else if (l->reg == R_HL) fdprintf(outFd, "\tbit 7, h\n");
-                else if (l->reg == R_DE) fdprintf(outFd, "\tbit 7, d\n");
+                if (l->reg == R_BC) emit(S_BIT7B);
+                else if (l->reg == R_HL) emit(S_BIT7H);
+                else if (l->reg == R_DE) emit(S_BIT7D);
                 else if (l->reg == R_IX) fdprintf(outFd, "\tld a, ixh\n\tbit 7, a\n");
                 else goto fallback;
                 break;
@@ -604,13 +604,13 @@ void emitBinop(struct expr *e)
             switch (l->loc) {
             case LOC_REG:
                 if (l->reg == R_BC) {
-                    fdprintf(outFd, "\tbit 7, b\n");
+                    emit(S_BIT7B);
                     fnDualReg = R_BC;
                 } else if (l->reg == R_HL) {
-                    fdprintf(outFd, "\tbit 7, h\n");
+                    emit(S_BIT7H);
                     fnDualReg = R_HL;
                 } else if (l->reg == R_DE) {
-                    fdprintf(outFd, "\tbit 7, d\n");
+                    emit(S_BIT7D);
                     fnDualReg = R_DE;
                 } else goto fallback;
                 break;
@@ -619,7 +619,7 @@ void emitBinop(struct expr *e)
                 fdprintf(outFd, "\tld l, (iy %c %d)\n\tld h, (iy %c %d)\n",
                          ofs >= 0 ? '+' : '-', ofs >= 0 ? ofs : -ofs,
                          ofs + 1 >= 0 ? '+' : '-', ofs + 1 >= 0 ? ofs + 1 : -(ofs + 1));
-                fdprintf(outFd, "\tbit 7, h\n");
+                emit(S_BIT7H);
                 fnDualReg = R_HL;
                 break;
             case LOC_MEM:
@@ -696,16 +696,16 @@ void emitBinop(struct expr *e)
             lft->left && lft->left->op == '$') {
             struct local_var *v = lft->cached_var;
             if (v && v->reg == REG_BC) {
-                fdprintf(outFd, "\tld h, b\n\tld l, c\n");
+                emit(S_BCHL);
                 freeExpr(lft);
             } else goto shift_generic;
         } else {
 shift_generic:
             emitExpr(e->left);  /* Value to DE (scheduled dest) */
-            fdprintf(outFd, "\tex de, hl\n");  /* DE->HL */
+            emit(S_EXDEHL);  /* DE->HL */
         }
         for (i = 0; i < cnt; i++)
-            fdprintf(outFd, "\tadd hl, hl\n");
+            emit(S_ADDHLHL);
         freeExpr(e->right);
         freeNode(e);
         return;

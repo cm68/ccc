@@ -89,7 +89,15 @@ static const char *asmstr[] = {
     "\n",                               /* S_NEWLINE */
     "\tpop ix\n",                       /* S_POPIX */
     "\tpop bc\n",                       /* S_POPBC */
-    "\texx\n\tpop bc\n\texx\n"          /* S_EXXPOPBC */
+    "\texx\n\tpop bc\n\texx\n",         /* S_EXXPOPBC */
+    "\tjp nz, $+8\n",                   /* S_JPNZ8 */
+    "\tld a, (hl)\n",                   /* S_LDAHL */
+    "\tbit 7, h\n",                     /* S_BIT7H */
+    "\txor a\n",                        /* S_XORA */
+    "\tld e, l\n\tld d, h\n",           /* S_HLTODE */
+    "\tbit 7, d\n",                     /* S_BIT7D */
+    "\tbit 7, b\n",                     /* S_BIT7B */
+    "\tadd hl, hl\n"                    /* S_ADDHLHL */
 };
 
 void emit(unsigned char idx) {
@@ -374,7 +382,7 @@ void emitFnProlog(char *name, char *params, char *rettype, int frame_size,
 
     if (frame_size > 0 || has_params) {
         if (frame_size == 0) {
-            fdprintf(outFd, "\txor a\n");
+            emit(S_XORA);
         } else {
             fdprintf(outFd, "\tld a, %d\n", frame_size);
         }

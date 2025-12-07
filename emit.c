@@ -115,8 +115,8 @@ static void emitCond(struct expr *e, int invert,
                     if (true_num >= 0 || (true_num == -1 && true_lbl))
                         emitJump("jp nz,", true_lbl, true_num);
                     else
-                        fdprintf(outFd, "\tjp nz, $+8\n");
-                    fdprintf(outFd, "\tld a, h\n\tor l\n");
+                        emit(S_JPNZ8);
+                    emit(S_AHORL);
                     if (false_num >= 0 || (false_num == -1 && false_lbl))
                         emitJump("jp nz,", false_lbl, false_num);
                 } else {
@@ -124,8 +124,8 @@ static void emitCond(struct expr *e, int invert,
                     if (false_num >= 0 || (false_num == -1 && false_lbl))
                         emitJump("jp nz,", false_lbl, false_num);
                     else
-                        fdprintf(outFd, "\tjp nz, $+8\n");
-                    fdprintf(outFd, "\tld a, h\n\tor l\n");
+                        emit(S_JPNZ8);
+                    emit(S_AHORL);
                     if (false_num >= 0 || (false_num == -1 && false_lbl))
                         emitJump("jp z,", false_lbl, false_num);
                 }
@@ -135,8 +135,8 @@ static void emitCond(struct expr *e, int invert,
                     if (false_num >= 0 || (false_num == -1 && false_lbl))
                         emitJump("jp nz,", false_lbl, false_num);
                     else
-                        fdprintf(outFd, "\tjp nz, $+8\n");
-                    fdprintf(outFd, "\tld a, h\n\tor l\n");
+                        emit(S_JPNZ8);
+                    emit(S_AHORL);
                     if (false_num >= 0 || (false_num == -1 && false_lbl))
                         emitJump("jp z,", false_lbl, false_num);
                 } else {
@@ -144,8 +144,8 @@ static void emitCond(struct expr *e, int invert,
                     if (true_num >= 0 || (true_num == -1 && true_lbl))
                         emitJump("jp nz,", true_lbl, true_num);
                     else
-                        fdprintf(outFd, "\tjp nz, $+8\n");
-                    fdprintf(outFd, "\tld a, h\n\tor l\n");
+                        emit(S_JPNZ8);
+                    emit(S_AHORL);
                     if (false_num >= 0 || (false_num == -1 && false_lbl))
                         emitJump("jp nz,", false_lbl, false_num);
                 }
