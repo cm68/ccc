@@ -98,7 +98,7 @@ static enum cmp_kind getByteCmp(struct expr *e, struct bytecmp *cmp) {
  */
 void emitIncDec(struct expr *e)
 {
-    int size, unused, is_post, is_dec, need_exx;
+    int size, unused, is_post, is_dec;
     long amount;
     struct local_var *var;
     const char *rn;     /* byte register name */
@@ -115,7 +115,7 @@ void emitIncDec(struct expr *e)
     if (unused) is_post = 0;
 
     /* Initialize */
-    var = NULL; rn = NULL; rp = NULL; sym = NULL; ofs = 0; need_exx = 0;
+    var = NULL; rn = NULL; rp = NULL; sym = NULL; ofs = 0;
 
     /* Determine location type and set up addressing */
     if (e->symbol) {
@@ -127,7 +127,6 @@ void emitIncDec(struct expr *e)
             loc = ID_REG;
             rn = byteRegName(var->reg);
             rp = wordRegName(var->reg);
-            need_exx = isAltReg(var->reg);
         } else if (var) {
             loc = ID_STACK;
             ofs = var->offset;
@@ -144,8 +143,6 @@ void emitIncDec(struct expr *e)
         return;
     }
 
-    if (need_exx) emit(S_EXX);
-
     /* === BYTE operations === */
     if (size == 1) {
         /* 1. If post: load old value to A */
@@ -160,13 +157,14 @@ void emitIncDec(struct expr *e)
 
         /* 2. Do inc/dec */
         if (amount == 1 && loc != ID_GLOBAL) {
-            /* Direct inc/dec on location */
+            /* Direct inc/dec on location - sets Z flag for zero test */
             switch (loc) {
             case ID_REG:   fdprintf(outFd, "\t%s %s\n", is_dec ? "dec" : "inc", rn); break;
             case ID_STACK: iyFmt(is_dec ? "\tdec (iy %c %d)\n" : "\tinc (iy %c %d)\n", ofs); break;
             case ID_HL:    fdprintf(outFd, "\t%s (hl)\n", is_dec ? "dec" : "inc"); break;
             default: break;
             }
+            fnZValid = 2;  /* Z=1 means result is zero (false in bool context) */
         } else {
             /* Load to A, modify, store */
             switch (loc) {
@@ -184,12 +182,13 @@ void emitIncDec(struct expr *e)
             }
         }
 
-        /* 3. Return value */
+        /* 3. Return value - skip if only condition flags needed and Z is valid */
         if (is_post) {
             if (loc == ID_GLOBAL) emit(S_POPAFRET);
             else if (loc == ID_HL) fdprintf(outFd, "\tpop af\n");
             /* else: A already has old value */
-        } else if (!unused) {
+        } else if (!unused && !(fnCondOnly && fnZValid)) {
+            /* Load value to A unless only testing condition (fnCondOnly + fnZValid) */
             switch (loc) {
             case ID_REG:    fdprintf(outFd, "\tld a, %s\n", rn); break;
             case ID_STACK:  iyFmt("\tld a, (iy %c %d)\n", ofs); break;
@@ -306,7 +305,6 @@ void emitIncDec(struct expr *e)
         fdprintf(outFd, "\t; TODO: long inc/dec\n");
     }
 
-    if (need_exx) emit(S_EXX);
     freeNode(e);
 }
 
@@ -504,10 +502,7 @@ static int emitByteCp(struct expr *e)
         } else if (byteRegName(cmp.reg) || cmp.reg == REG_BC) {
             /* BC low byte is C */
             const char *rn = cmp.reg == REG_BC ? "c" : byteRegName(cmp.reg);
-            if (isAltReg(cmp.reg))
-                fdprintf(outFd, "\texx\n\tcp %s\n\texx\n", rn);
-            else
-                fdprintf(outFd, "\tcp %s\n", rn);
+            fdprintf(outFd, "\tcp %s\n", rn);
         } else {
             return 0;
         }
@@ -688,6 +683,31 @@ void emitBinop(struct expr *e)
             fdprintf(outFd, "\tcall %s\n", fn);
             addRefSym(fn);
         }
+        return;
+    }
+
+    /* Word left shift by constant 1-8: inline as add hl, hl */
+    if (e->op == 'y' && e->right && e->right->op == 'C' &&
+        e->right->value >= 1 && e->right->value <= 8) {
+        int i, cnt = e->right->value;
+        struct expr *lft = e->left;
+        /* Optimize: load register variable directly to HL */
+        if (lft && lft->op == 'M' && (lft->opflags & OP_REGVAR) &&
+            lft->left && lft->left->op == '$') {
+            struct local_var *v = lft->cached_var;
+            if (v && v->reg == REG_BC) {
+                fdprintf(outFd, "\tld h, b\n\tld l, c\n");
+                freeExpr(lft);
+            } else goto shift_generic;
+        } else {
+shift_generic:
+            emitExpr(e->left);  /* Value to DE (scheduled dest) */
+            fdprintf(outFd, "\tex de, hl\n");  /* DE->HL */
+        }
+        for (i = 0; i < cnt; i++)
+            fdprintf(outFd, "\tadd hl, hl\n");
+        freeExpr(e->right);
+        freeNode(e);
         return;
     }
 

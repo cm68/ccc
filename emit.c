@@ -307,7 +307,9 @@ static void emitStmtTail(struct stmt *s, int tailPos)
         }
 
         if (use_dir_jump) {
+            fnCondOnly = 1;
             emitExpr(cond);
+            fnCondOnly = 0;
 
             if (invertCond && s->expr != cond) {
                 free(s->expr);
@@ -377,7 +379,9 @@ emit_z_jump:
                 int cmpSense = 0;  /* 1 if Z from comparison (Z=1 means true) */
                 int useCarry = 0;  /* 1 if using carry flag */
                 int cMeansTrue = 0;
+                fnCondOnly = 1;
                 emitExpr(s->expr);
+                fnCondOnly = 0;
 
                 /* Handle dual-test pattern (<=0 and >0) */
                 if (fnDualCmp) {
@@ -617,10 +621,16 @@ void emitAssembly(int fd)
         fdprintf(2, "emit: emitted exit label\n");
     }
 
+    /* Clean up call argument stack (when not using framealloc) */
+    if (fnCallStk > 0 && fnFrmSize == 0 && !has_params) {
+        int i;
+        for (i = 0; i < fnCallStk; i += 2)
+            fdprintf(outFd, "\tpop de\n");
+    }
+
     /* Restore callee-saved registers (reverse order of push) */
     {
         int used = getUsedRegs(fnLocals);
-        if (used & 4) emit(S_EXXPOPBC);  /* restore BC' via exx; pop bc; exx */
         if (used & 2) emit(S_POPIX);
         if (used & 1) emit(S_POPBC);
     }

@@ -8,24 +8,20 @@
  *   IY - frame pointer for local variables and parameters
  *
  * Register Variables (available for allocation):
- *   Byte registers:  B, C, B', C' (4 byte registers)
- *   Word registers:  BC, IX (2 word registers)
+ *   Byte registers:  B, C
+ *   Word registers:  BC, IX
  *   Note: IX preferred for structure pointers (indexed addressing: (IX+offset))
- *   Note: BC' excluded from allocation due to exx instruction complexity
  *
  * Primary Accumulator (expression evaluation):
  *   Byte:  A
  *   Word:  HL
- *   Long:  HL' (extended to alternate register set)
+ *   Long:  HL:HL' (alternate set for upper word)
  *
  * Secondary Accumulator (expression evaluation):
  *   Byte:  E
  *   Word:  DE
- *   Long:  DE' (extended to alternate register set)
  *
- * Total available:
- *   6 byte registers (4 register variables + A primary + E secondary)
- *   5 word registers (3 register variables + HL primary + DE secondary)
+ * Register variables: B/C (byte), BC/IX (word)
  *
  * Register Allocation Constraints:
  *   - Variables whose address is taken (&var) cannot be allocated to

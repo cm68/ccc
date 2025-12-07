@@ -12,7 +12,6 @@ void emitByteLoad(unsigned char reg);
 void emitByteStore(unsigned char reg);
 void emitWordLoad(unsigned char reg);
 void emitAddHLReg(unsigned char reg);
-int isAltReg(unsigned char reg);
 const char *byteRegName(unsigned char reg);
 const char *wordRegName(unsigned char reg);
 unsigned char bcOrCIdx(unsigned char reg);

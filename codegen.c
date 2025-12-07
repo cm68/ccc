@@ -20,6 +20,9 @@
 /* Global loop depth for tracking whether we're inside a loop */
 static int g_loop_depth = 0;
 
+/* Accumulated call argument bytes outside loops (cleaned at function exit) */
+int fnCallStk = 0;
+
 
 /* Global tree walk counter for loop detection */
 static long g_walk_count = 0;
@@ -197,9 +200,8 @@ walkLocals(struct stmt *s)
 }
 
 /*
- * Phase 2.5: Allocate registers to local variables and parameters
- * Called after code generation (Phase 2) which computes 
- * ref_count, agg_refs, lifetimes
+ * Allocate registers to local variables and parameters
+ * Called after analyzeVars() which computes ref_count, agg_refs, lifetimes
  *
  * Both function parameters and local variables are candidates for 
  * register allocation.
@@ -772,6 +774,39 @@ specAddSubOp(struct expr *e)
 }
 
 /*
+ * Specialize OREQ/ANDEQ/XOREQ for byte register variables (non-bit patterns)
+ * Pattern: regvar |= expr, regvar &= expr, regvar ^= expr
+ * Generates: or a,r / and a,r / xor a,r; ld r,a
+ */
+static int
+specLogicOp(struct expr *e)
+{
+    struct local_var *var;
+
+    /* Must be byte operation */
+    if (e->size != 1)
+        return 0;
+
+    /* Check for simple register variable */
+    if (!(e->opflags & OP_SIMPLEVAR) || !e->left || e->left->op != '$')
+        return 0;
+
+    if (!(e->opflags & OP_REGVAR))
+        return 0;
+
+    var = e->cached_var;
+    if (!var) return 0;
+
+    if (!byteRegName(var->reg) && var->reg != REG_BC)
+        return 0;
+
+    /* Keep e->right for RHS evaluation, free e->left */
+    freeExpr(e->left);
+    e->left = NULL;
+    return 1;
+}
+
+/*
  * Specialize an expression - check for patterns and replace with asm
  * Must be called BEFORE generateExpr
  */
@@ -789,6 +824,11 @@ specExpr(struct expr *e)
     /* Try OREQ/ANDEQ bit operations */
     if (e->op == '1' || e->op == AST_ANDEQ) {
         if (specBitOp(e)) return;
+    }
+
+    /* Try OREQ/ANDEQ/XOREQ for byte register variables (non-bit patterns) */
+    if (e->op == '1' || e->op == AST_ANDEQ || e->op == 'X') {
+        if (specLogicOp(e)) return;
     }
 
     /* Try LSHIFTEQ/RSHIFTEQ for register variables */
@@ -910,8 +950,7 @@ addVarToSlot(struct stackSlot *slot, struct local_var *var)
 
 /*
  * Optimize stack frame by reusing slots for non-overlapping lifetimes
- * Called after code generation (which computes lifetimes) but before
- * register allocation.
+ * Called after register allocation - skips register-allocated variables.
  *
  * Algorithm: Greedy slot packing
  * - For each local variable, try to find an existing slot where its
@@ -944,11 +983,11 @@ optFrmLayout()
         /* Skip parameters - they have fixed offsets */
         if (var->is_param) continue;
 
+        /* Skip register-allocated variables - no stack space needed */
+        if (var->reg != REG_NO) continue;
+
         /* Skip unused variables (never referenced) */
-        if (var->first_label == -1) {
-            
-            continue;
-        }
+        if (var->first_label == -1) continue;
 
         /* Try to find an existing slot this variable can use */
         found_slot = 0;
@@ -1126,9 +1165,13 @@ static void generateExpr(struct expr *e)
             arg = arg->right;
         }
 
-        /* Stack cleanup in loops (framefree handles it otherwise) */
-        if (arg_count > 0 && g_loop_depth > 0) {
-            e->cleanup_block = buildStkCln(arg_count * 2);
+        /* Stack cleanup: in loops emit after call, otherwise defer to exit */
+        if (arg_count > 0) {
+            if (g_loop_depth > 0) {
+                e->cleanup_block = buildStkCln(arg_count * 2);
+            } else {
+                fnCallStk += arg_count * 2;
+            }
         }
 
         return;  /* emitCall will handle the rest */
@@ -1356,8 +1399,9 @@ void generateCode()
     /* Initialize lifetime tracking */
     fnCurLbl = 0;
 
-    /* Reset global loop depth at start of each function */
+    /* Reset global state at start of each function */
     g_loop_depth = 0;
+    fnCallStk = 0;
 
     generateStmt(fnBody);
 }
@@ -1440,9 +1484,14 @@ schedExpr(struct expr *e, int dest)
 
     case '+':
     case '-':
+    case '*':
+    case '/':
+    case '%':
     case '&':
     case '|':
     case '^':
+    case 'y':  /* LSHIFT */
+    case 'w':  /* RSHIFT */
         /* Binary ops: left -> DE, right -> HL (for word ops) */
         if (e->size == 1) {
             schedExpr(e->left, R_A);

@@ -194,11 +194,6 @@ kwlook(char *str, char *table)
     return kw_ret;
 }
 
-asm {
-test_func::
-    ret
-}
-
 #else
 /*
  * Look up keyword in compressed table (portable C implementation)

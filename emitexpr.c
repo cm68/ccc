@@ -159,19 +159,16 @@ void emitExpr(struct expr *e)
         freeNode(e);
         return;
     }
-    /* Handle specialized shift ops (LSHIFTEQ/RSHIFTEQ with register var) */
-    else if ((e->op == '0' || e->op == '6') && (e->opflags & OP_REGVAR) && e->cached_var) {
+    /* Handle specialized BYTE shift ops (LSHIFTEQ/RSHIFTEQ with register var) */
+    else if ((e->op == '0' || e->op == '6') && e->size == 1 &&
+             (e->opflags & OP_REGVAR) && e->cached_var) {
         struct local_var *var = e->cached_var;
         const char *rn = byteRegName(var->reg);
         const char *inst = (e->op == '0') ? "sla" : "srl";
         int count = e->value, i;
         if (var->reg == REG_BC) rn = "c";
-        for (i = 0; i < count; i++) {
-            if (isAltReg(var->reg))
-                fdprintf(outFd, "\texx\n\t%s %s\n\texx\n", inst, rn);
-            else
-                fdprintf(outFd, "\t%s %s\n", inst, rn);
-        }
+        for (i = 0; i < count; i++)
+            fdprintf(outFd, "\t%s %s\n", inst, rn);
         freeNode(e);
         return;
     }
@@ -185,12 +182,8 @@ void emitExpr(struct expr *e)
         if (e->opflags & OP_REGVAR) {
             const char *rn = byteRegName(var->reg);
             if (var->reg == REG_BC) rn = "c";
-            if (rn) {
-                if (isAltReg(var->reg))
-                    fdprintf(outFd, "\texx\n\t%s %d, %s\n\texx\n", inst, bitnum, rn);
-                else
-                    fdprintf(outFd, "\t%s %d, %s\n", inst, bitnum, rn);
-            }
+            if (rn)
+                fdprintf(outFd, "\t%s %d, %s\n", inst, bitnum, rn);
         } else if (e->opflags & OP_IYMEM) {
             int ofs = varIYOfs(var);
             fdprintf(outFd, "\t%s %d, (iy %c %d)\n", inst, bitnum,
@@ -218,29 +211,65 @@ void emitExpr(struct expr *e)
         freeNode(e);
         return;
     }
+    /* Handle specialized OREQ/ANDEQ/XOREQ for byte register variables */
+    else if ((e->op == '1' || e->op == AST_ANDEQ || e->op == 'X') && (e->opflags & OP_REGVAR) &&
+             !e->left && e->right && e->cached_var) {
+        struct local_var *var = e->cached_var;
+        const char *rn = byteRegName(var->reg);
+        const char *inst = (e->op == '1') ? "or" : (e->op == AST_ANDEQ) ? "and" : "xor";
+        if (var->reg == REG_BC) rn = "c";
+        emitExpr(e->right);
+        fdprintf(outFd, "\t%s %s\n\tld %s, a\n", inst, rn, rn);
+        freeNode(e);
+        return;
+    }
     /* Handle specialized PLUSEQ/SUBEQ for byte register variables */
     else if ((e->op == 'P' || e->op == AST_SUBEQ) && (e->opflags & OP_REGVAR) &&
              !e->left && e->right && e->cached_var) {
         struct local_var *var = e->cached_var;
         const char *rn = byteRegName(var->reg);
-        int is_add = (e->op == 'P');
         if (var->reg == REG_BC) rn = "c";
-        /* Emit RHS to A */
         emitExpr(e->right);
-        /* For PLUSEQ: add a,r; ld r,a
-         * For SUBEQ: var -= expr means var = var - expr
-         *   RHS in A, need var - A: ld e,a; ld a,r; sub e; ld r,a */
-        if (is_add) {
-            if (isAltReg(var->reg))
-                fdprintf(outFd, "\texx\n\tadd a, %s\n\tld %s, a\n\texx\n", rn, rn);
-            else
-                fdprintf(outFd, "\tadd a, %s\n\tld %s, a\n", rn, rn);
-        } else {
-            if (isAltReg(var->reg))
-                fdprintf(outFd, "\tld e, a\n\texx\n\tld a, %s\n\texx\n\tsub e\n\texx\n\tld %s, a\n\texx\n", rn, rn);
-            else
-                fdprintf(outFd, "\tld e, a\n\tld a, %s\n\tsub e\n\tld %s, a\n", rn, rn);
-        }
+        if (e->op == 'P')
+            fdprintf(outFd, "\tadd a, %s\n\tld %s, a\n", rn, rn);
+        else
+            fdprintf(outFd, "\tld e, a\n\tld a, %s\n\tsub e\n\tld %s, a\n", rn, rn);
+        freeNode(e);
+        return;
+    }
+    /* Handle word LSHIFTEQ for BC register variable with constant shift */
+    else if (e->op == '0' && e->size == 2 && (e->opflags & OP_REGVAR) &&
+             e->cached_var && e->cached_var->reg == REG_BC &&
+             e->right && e->right->op == 'C' &&
+             e->right->value >= 1 && e->right->value <= 8) {
+        int i, cnt = e->right->value;
+        fdprintf(outFd, "\tld h, b\n\tld l, c\n");
+        for (i = 0; i < cnt; i++)
+            fdprintf(outFd, "\tadd hl, hl\n");
+        fdprintf(outFd, "\tld b, h\n\tld c, l\n");
+        freeExpr(e->left);
+        freeExpr(e->right);
+        freeNode(e);
+        return;
+    }
+    /* Handle word OREQ for BC register variable */
+    else if (e->op == '1' && e->size == 2 && (e->opflags & OP_REGVAR) &&
+             e->cached_var && e->cached_var->reg == REG_BC && e->right) {
+        int rhs_byte = (e->right->op == 'W');  /* WIDEN means high byte is 0 */
+        freeExpr(e->left);
+        emitExpr(e->right);  /* Result in HL */
+        fdprintf(outFd, "\tld a, l\n\tor c\n\tld c, a\n");
+        if (!rhs_byte)
+            fdprintf(outFd, "\tld a, h\n\tor b\n\tld b, a\n");
+        freeNode(e);
+        return;
+    }
+    /* Handle word PLUSEQ for BC register variable */
+    else if (e->op == 'P' && e->size == 2 && (e->opflags & OP_REGVAR) &&
+             e->cached_var && e->cached_var->reg == REG_BC && e->right) {
+        freeExpr(e->left);
+        emitExpr(e->right);  /* Result in HL */
+        fdprintf(outFd, "\tadd hl, bc\n\tld b, h\n\tld c, l\n");
         freeNode(e);
         return;
     }

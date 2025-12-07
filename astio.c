@@ -59,7 +59,7 @@ hval(unsigned char c) {
 /* Read 2 hex chars as byte */
 unsigned char
 readHex2(void) {
-	unsigned char v = 0;
+	unsigned char v;
 	v = hval(curchar);
 	nextchar();
 	v <<= 4;
@@ -71,9 +71,9 @@ readHex2(void) {
 /* Read 4 hex chars as unsigned 16-bit */
 unsigned short 
 readHex4(void) {
-    unsigned char i;
+    unsigned char i = 5;
 	unsigned short v = 0;
-	for (i = 0; i < 4; i++) {
+	while (--i) {
         v <<= 4;
 		v |= hval(curchar);
 		nextchar();
@@ -85,8 +85,8 @@ readHex4(void) {
 unsigned long 
 readHex8(void) {
 	unsigned long v = 0;
-	unsigned char i;
-	for (i = 0; i < 8; i++) {
+	unsigned char i = 9;
+	while (--i) {
 		v <<= 4;
 		v |= hval(curchar);
 		nextchar();

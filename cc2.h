@@ -44,15 +44,12 @@ void xfree(void *p);
 enum register_id {
     REG_NO = 0,     /* Not allocated to a register */
 
-    /* Byte registers (4 available) */
+    /* Byte registers */
     REG_B,          /* B register */
     REG_C,          /* C register */
-    REG_Bp,         /* B' (alternate) register */
-    REG_Cp,         /* C' (alternate) register */
 
-    /* Word registers (3 available) */
+    /* Word registers */
     REG_BC,         /* BC register pair */
-    REG_BCp,        /* BC' (alternate) register pair */
     REG_IX          /* IX index register (preferred for struct pointers) */
 };
 
@@ -231,6 +228,7 @@ extern struct stmt *fnBody;     /* Function body statement tree */
 extern int fnLblCnt;            /* For generating unique labels */
 extern struct local_var *fnLocals;  /* List of local variables */
 extern int fnFrmSize;           /* Total stack frame size in bytes */
+extern int fnCallStk;           /* Call argument bytes to clean at exit */
 extern int fnCurLbl;            /* Current label for lifetime tracking */
 extern int fnDESaveCnt;         /* Counter for nested DE saves */
 extern int fnDInUse;            /* Flag: D register holds spilled byte */
@@ -239,6 +237,7 @@ extern int fnLoopDep;           /* Nesting depth of loops */
 extern int fnDEValid;           /* 1 if DE holds valid value */
 extern int fnTargetDE;          /* 1 if next expr should load to DE */
 extern int fnZValid;            /* 1 if Z flag valid for HL test */
+extern int fnCondOnly;          /* 1 if only condition flags needed, not value */
 extern int fnDualCmp;           /* 'L' or '>' for two-test cmp with 0 */
 extern int fnDualReg;           /* Register for fnDualCmp: R_BC, R_HL, R_DE */
 extern int fnCmpFlag;           /* 0=none, 'Z'=z, 'N'=nz, 'C'=c, 'c'=nc */

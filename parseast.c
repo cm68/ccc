@@ -51,6 +51,7 @@ int fnLoopDep;
 int fnDEValid;
 int fnTargetDE;
 int fnZValid;
+int fnCondOnly;
 int fnDualCmp;
 int fnDualReg;      /* Register for fnDualCmp: R_BC, R_HL, R_DE, or 0 for memory */
 int fnCmpFlag;
@@ -732,10 +733,10 @@ doFunction(unsigned char rettype)
 	assignFrmOff();
 	if (TRACE(T_PARSE)) fdprintf(2, "  analyzeVars\n");
 	analyzeVars();
-	if (TRACE(T_PARSE)) fdprintf(2, "  optFrmLayout\n");
-	optFrmLayout();
 	if (TRACE(T_PARSE)) fdprintf(2, "  allocRegs\n");
 	allocRegs();
+	if (TRACE(T_PARSE)) fdprintf(2, "  optFrmLayout\n");
+	optFrmLayout();
 	if (TRACE(T_PARSE)) fdprintf(2, "  setOpFlags\n");
 	setOpFlags();
 	if (TRACE(T_PARSE)) fdprintf(2, "  dumpFnAst\n");

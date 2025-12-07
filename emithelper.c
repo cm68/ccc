@@ -98,39 +98,36 @@ void emit(unsigned char idx) {
 
 /* Register lookup tables - indexed by register_id enum */
 static const char * const regNameTab[] = {
-    NULL, "B", "C", "B'", "C'", "BC", "BC'", "IX"
+    NULL, "B", "C", "BC", "IX"
 };
 static const char * const byteRegTab[] = {
-    NULL, "b", "c", "b", "c", NULL, NULL, NULL
+    NULL, "b", "c", NULL, NULL
 };
 static const char * const wordRegTab[] = {
-    NULL, NULL, NULL, NULL, NULL, "bc", "bc", "ix"
+    NULL, NULL, NULL, "bc", "ix"
 };
 static const unsigned char byteLoadTab[] = {
-    0, S_LDAB, S_LDAC, S_EXXLDAB, S_EXXLDAC, 0, 0, 0
+    0, S_LDAB, S_LDAC, 0, 0
 };
 static const unsigned char byteStoreTab[] = {
-    0, S_BA, S_CA, S_EXXLDBA, S_EXXLDCA, 0, 0, 0
+    0, S_BA, S_CA, 0, 0
 };
 static const unsigned char wordLoadTab[] = {
-    0, 0, 0, 0, 0, S_BCHL, S_EXXBCHL, S_IXHL
+    0, 0, 0, S_BCHL, S_IXHL
 };
 static const unsigned char wordStoreTab[] = {
-    0, 0, 0, 0, 0, S_BCHLX, 0, S_HLPIX
+    0, 0, 0, S_BCHLX, S_HLPIX
 };
 static const unsigned char addHLRegTab[] = {
-    0, 0, 0, 0, 0, S_ADDHLBC, S_EXXBCPOPHL, S_IXSWPHL
+    0, 0, 0, S_ADDHLBC, S_IXSWPHL
 };
-static const unsigned char isAltTab[] = {
-    0, 0, 0, 1, 1, 0, 1, 0
-};
-/* Callee-save bitmask: bit0=BC/B/C, bit1=IX, bit2=BC'/B'/C' */
+/* Callee-save bitmask: bit0=BC/B/C, bit1=IX */
 static const unsigned char saveMaskTab[] = {
-    0, 1, 1, 4, 4, 1, 4, 2
+    0, 1, 1, 1, 2
 };
-/* BC or-c test: S_ABCORC for BC, S_EXXABCORC for BCp, 0 otherwise */
+/* BC or-c test: S_ABCORC for BC, 0 otherwise */
 static const unsigned char bcOrCTab[] = {
-    0, 0, 0, 0, 0, S_ABCORC, S_EXXABCORC, 0
+    0, 0, 0, S_ABCORC, 0
 };
 
 const char *
@@ -143,7 +140,6 @@ void emitByteLoad(unsigned char reg) { emit(byteLoadTab[reg]); }
 void emitByteStore(unsigned char reg) { emit(byteStoreTab[reg]); }
 void emitWordLoad(unsigned char reg) { emit(wordLoadTab[reg]); }
 void emitAddHLReg(unsigned char reg) { emit(addHLRegTab[reg]); }
-int isAltReg(unsigned char reg) { return isAltTab[reg]; }
 const char *byteRegName(unsigned char reg) { return byteRegTab[reg]; }
 const char *wordRegName(unsigned char reg) { return wordRegTab[reg]; }
 unsigned char bcOrCIdx(unsigned char reg) { return bcOrCTab[reg]; }
@@ -384,28 +380,18 @@ void emitFnProlog(char *name, char *params, char *rettype, int frame_size,
         emit(S_LOCVAR);
         for (var = locals; var; var = var->next) {
             const char *regname = getRegName(var->reg);
-            char offset_str[32];
-            if (var->offset >= 0)
-                snprintf(offset_str, sizeof(offset_str), "(iy+%d)", var->offset);
-            else
-                snprintf(offset_str, sizeof(offset_str), "(iy%d)", var->offset);
 
             fdprintf(outFd, ";   %s: ", var->name);
             if (var->first_label == 255) {
                 if (regname)
-                    fdprintf(outFd, "unused (0 refs, 0 agg_refs, %s, reg=%s)\n",
-                             offset_str, regname);
+                    fdprintf(outFd, "unused, reg=%s\n", regname);
                 else
-                    fdprintf(outFd, "unused (0 refs, 0 agg_refs, %s)\n", offset_str);
+                    fdprintf(outFd, "unused, (iy%+d)\n", var->offset);
             } else {
                 if (regname)
-                    fdprintf(outFd, "labels %d-%d (%d refs, %d agg_refs, %s, reg=%s)\n",
-                             var->first_label, var->last_label, var->ref_count,
-                             var->agg_refs, offset_str, regname);
+                    fdprintf(outFd, "reg=%s\n", regname);
                 else
-                    fdprintf(outFd, "labels %d-%d (%d refs, %d agg_refs, %s)\n",
-                             var->first_label, var->last_label, var->ref_count,
-                             var->agg_refs, offset_str);
+                    fdprintf(outFd, "(iy%+d)\n", var->offset);
             }
         }
     }
@@ -425,7 +411,6 @@ void emitFnProlog(char *name, char *params, char *rettype, int frame_size,
         int used = getUsedRegs(locals);
         if (used & 1) emit(S_PUSHBC);
         if (used & 2) emit(S_PUSHIX);
-        if (used & 4) emit(S_EXXBC);  /* save BC' via exx; push bc; exx */
     }
 
     for (var = locals; var; var = var->next) {
@@ -542,7 +527,7 @@ void invalStack() {
 int isBinopWAccum(unsigned char op) {
     switch (op) {
     case '+': case '-': case '*': case '/': case '%':
-    case '&': case '|': case '^': case 'w':
+    case '&': case '|': case '^': case 'y': case 'w':
     case '>': case '<': case 'g': case 'L':
     case 'Q': case 'n':
         return 1;
@@ -817,45 +802,28 @@ void emitRegVarDrf(struct expr *e)
         if (cacheFindByte(e) == 'A') {
             /* A already holds this value - skip load */
         } else {
-            if (var->reg == REG_B || var->reg == REG_BC) {
+            if (var->reg == REG_B || var->reg == REG_BC)
                 fdprintf(outFd, "\tld a, b\n");
-            } else if (var->reg == REG_C) {
+            else if (var->reg == REG_C)
                 fdprintf(outFd, "\tld a, c\n");
-            } else if (var->reg == REG_Bp) {
-                emit(S_EXX);
-                fdprintf(outFd, "\tld a, b\n");
-                emit(S_EXX);
-            } else if (var->reg == REG_Cp) {
-                emit(S_EXX);
-                fdprintf(outFd, "\tld a, c\n");
-                emit(S_EXX);
-            }
             cacheSetA(e);
         }
     } else {
         /* Word register variable */
         if (e->dest == R_DE) {
             /* Scheduler says load to DE */
-            if (var->reg == REG_BC) {
+            if (var->reg == REG_BC)
                 fdprintf(outFd, "\tld d, b\n\tld e, c\n");
-            } else if (var->reg == REG_IX) {
+            else if (var->reg == REG_IX)
                 fdprintf(outFd, "\tpush ix\n\tpop de\n");
-            } else if (var->reg == REG_BCp) {
-                emit(S_EXX);
-                fdprintf(outFd, "\tld d, b\n\tld e, c\n");
-                emit(S_EXX);
-            }
             fnDEValid = 1;
         } else if (cacheFindWord(e) == 'H') {
             /* HL already holds this value - skip load */
         } else {
-            if (var->reg == REG_BC) {
+            if (var->reg == REG_BC)
                 fdprintf(outFd, "\tld h, b\n\tld l, c\n");
-            } else if (var->reg == REG_IX) {
+            else if (var->reg == REG_IX)
                 emit(S_IXHL);
-            } else if (var->reg == REG_BCp) {
-                emit(S_EXXBCHL);
-            }
             clearHL();
             cacheSetHL(e);
         }
