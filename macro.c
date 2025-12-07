@@ -395,7 +395,6 @@ macexpand(char *s)	/* the symbol we are looking up as a macro */
     char *n;
     unsigned char i;
     int stringify = 0;
-    int saw_newline = 0;
 
     if (!macbuffer) {
         macbuffer = malloc(1024);
@@ -411,11 +410,7 @@ macexpand(char *s)	/* the symbol we are looking up as a macro */
     args = 0;
     d = macbuffer;
     /* this will stop after nextchar is not white space */
-    /* Track if we see newline when asm capture is active */
     while (iswhite(nextchar)) {
-        if (asmCbuf && nextchar == '\n') {
-            saw_newline = 1;  /* Remember that we saw a newline */
-        }
         advance();
     }
     plevel = 0;
@@ -549,13 +544,6 @@ macexpand(char *s)	/* the symbol we are looking up as a macro */
         *d++ = *s++;
     }
     *d = 0;
-
-    /* If we saw a newline during asm capture, append semicolon to macro text */
-    if (saw_newline && asmCbuf) {
-        *d++ = ';';
-        *d++ = ' ';
-        *d = 0;
-    }
 
     // printf("insertmacro: %s %s\n", m->name, macbuffer);
 

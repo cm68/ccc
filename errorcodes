@@ -1,77 +1,77 @@
 # type errors
-ER_T_PT		broken primitive type decl
-ER_T_TD		busted typedef definition
-ER_T_ED		busted enum definition
-ER_T_ET		busted enum tag
-ER_T_SA		duplicate aggregate definition
-ER_T_GB		get base type failed
-ER_T_SB		huge struct
+ER_T_PT		bad type decl
+ER_T_TD		bad typedef
+ER_T_ED		bad enum
+ER_T_ET		bad enum tag
+ER_T_SA		dup aggregate
+ER_T_GB		no basetype
+ER_T_SB		struct too big
 ER_T_UB		union bitfield
-ER_T_SE		bad aggregate element list
-ER_T_SD		no struct def or ref
-ER_T_DT		more than one basetype
-ER_T_RT		duplicate type definition
-ER_T_PA		strange type non-def
+ER_T_SE		bad struct elem
+ER_T_SD		no struct def
+ER_T_DT		multi basetype
+ER_T_RT		dup type def
+ER_T_PA		bad type ref
 ER_T_UT		unknown type
 
 # decl errors
-ER_D_DP		declaration paren balance
-ER_D_MV		multiple variables in decl
-ER_D_BD		bitfield dimension not number
-ER_D_BM		bitfield too big
-ER_D_AD		array dimension problem
-ER_D_FA		function array meaningless
-ER_D_FM		old style arg defs
-ER_D_FO		multiple types for funarg
-ER_D_UT		unexpected token in decl
-ER_D_TL		illegal toplevel storage class
-ER_D_OF		too many local names
-ER_D_DN		duplicate local name
+ER_D_DP		decl parens
+ER_D_MV		multi vars
+ER_D_BD		bitfield dim
+ER_D_BM		bitfield big
+ER_D_AD		array dim
+ER_D_FA		fn array
+ER_D_FM		old style arg
+ER_D_FO		multi arg type
+ER_D_UT		bad decl token
+ER_D_TL		bad sclass
+ER_D_OF		too many names
+ER_D_DN		dup name
 
 # parse errors
-ER_P_SC		bogus storage class
+ER_P_SC		bad sclass
 
 # statement errors
-ER_S_CC		close curly for block
-ER_S_NP		conditional parens
-ER_S_SN		need semicolon
+ER_S_CC		need }
+ER_S_NP		cond parens
+ER_S_SN		need ;
 ER_S_OE		orphan else
-ER_S_NC		non constant case label
-ER_S_NL		need colon for label
-ER_S_DO		malformed do statement
-ER_S_GL		goto label expected
-ER_S_SB		switch statement bracked expected
-ER_S_UK     unkown statement
+ER_S_NC		case not const
+ER_S_NL		label :
+ER_S_DO		bad do
+ER_S_GL		goto label
+ER_S_SB		switch {
+ER_S_UK		bad stmt
 
 # lexer or cpp errors
-ER_C_BD		unknown cpp operation
-ER_C_CU		endif without if
-ER_C_ME		too many elses
+ER_C_BD		bad cpp op
+ER_C_CU		endif no if
+ER_C_ME		multi else
 ER_C_MN		no macro name
-ER_C_ID		bad include name format
-ER_C_IF		include file not found
-ER_C_DP		bad macro param list
-ER_C_CE		cpp const required
+ER_C_ID		bad include
+ER_C_IF		no include
+ER_C_DP		bad macro args
+ER_C_CE		cpp const
 ER_C_CD		bad literal
-ER_C_BC		bad character
-ER_C_NR		numeric range of char exceeded
-ER_C_NX		number format error
-ER_C_UT		unknown character
-ER_C_TL		identifier too long
+ER_C_BC		bad char
+ER_C_NR		char range
+ER_C_NX		bad number
+ER_C_UT		bad char
+ER_C_TL		id too long
 
 # expression errors
 ER_E_LV		need lvalue
-ER_E_DP		bad dereference
-ER_E_SC		scalar only operator
-ER_E_CP		cast paren needed
-ER_E_SP		subexpression paren missing
-ER_E_IT		bad type to index
-ER_E_IB		need close bracket for index
-ER_E_FN		function pointer needed
-ER_E_FA		broken function arg list
-ER_E_UO		unknown operator
-ER_E_CF		constant wont fold
-ER_E_PT		incompatible pointer types
+ER_E_DP		bad deref
+ER_E_SC		scalar op
+ER_E_CP		cast paren
+ER_E_SP		expr paren
+ER_E_IT		bad index
+ER_E_IB		need ]
+ER_E_FN		need fn ptr
+ER_E_FA		bad fn args
+ER_E_UO		bad op
+ER_E_CF		no fold
+ER_E_PT		ptr compat
 
 # warnings
-ER_W_SYMTRUNC	symbol name truncated
+ER_W_SYMTRUNC	sym truncated

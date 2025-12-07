@@ -79,7 +79,4 @@ for t in "${TESTS[@]}" ; do
 		fi
 	fi
 
-	echo "========= object ========="
-	cat "${t%.c}.i"
-	echo ""
 done

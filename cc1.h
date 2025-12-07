@@ -187,7 +187,6 @@ struct type {
 
 extern struct type *getbasetype();
 extern void initbasictype(void);
-extern void dumpType(struct type *t, int lv);
 struct type *getType(int flags, struct type *sub, int count);
 extern int compatFnTyp(struct type *t1, struct type *t2);
 
@@ -233,7 +232,6 @@ extern struct name *newName(char *name, kind k, struct type *t,
 extern void addName(struct name *n);
 extern struct name *findName(char *name, unsigned char is_tag);
 extern struct name *findElement(char *name, struct type *t);
-extern void dumpName(struct name *s);
 extern void pushScope(char *name);
 extern void popScope(void);
 
@@ -286,15 +284,6 @@ struct token {				// lexeme
 };
 
 extern struct token cur, next;
-
-/* Token history for debugging */
-#define TOK_HIST_SIZE 10
-extern struct token tokHist[TOK_HIST_SIZE];
-extern int tokHidx;
-
-extern int writeCppfile;
-extern int cppfile;
-extern char *cppfname;
 extern char strbuf[];
 extern char match(token_t t);
 extern void gettoken();
@@ -373,9 +362,6 @@ int controlify(char *d, unsigned char c);
 extern struct name *declare(struct type **btp);
 
 /* tokenlist.c */
-extern char *tokenname[];
-extern char *detoken[];
-
 /* debug options */
 #ifdef DEBUG
 #define VERBOSE(x) (verbose & (x))
@@ -390,13 +376,8 @@ extern unsigned char tflags;
 #define CPPFUNCS    0x02
 #define ASM_BLOCK   0x04  /* Special mode for asm blocks */
 
-/* Track newlines for asm semicolon insertion */
+/* Track newlines for statement separation */
 extern unsigned char lineend;
-
-/* ASM block capture */
-extern char *asmCbuf;
-extern int asmCsiz;
-extern int asmClen;
 
 #ifdef ASMKWLOOK
 /* Test inline assembly with asm { } syntax */

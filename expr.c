@@ -1355,40 +1355,21 @@ cfold(struct expr *e)
         long vr = e->right->v;
         switch (e->op) {
         case PLUS:
-            // x + 0 = x
-            if (vr == 0) {
-                return xreplace(e, e->left);
-            }
-            break;
         case MINUS:
-            // x - 0 = x
-            if (vr == 0) {
-                return xreplace(e, e->left);
-            }
-            break;
-        case STAR:
-            // x * 1 = x
-            if (vr == 1) {
-                return xreplace(e, e->left);
-            }
-            // x * 0 = 0
-            if (vr == 0) {
-                return xreplace(e, e->right);
-            }
-            break;
-        case DIV:
-        case MOD:
-            // x / 1 = x
-            if (vr == 1 && e->op == DIV) {
-                return xreplace(e, e->left);
-            }
-            break;
         case LSHIFT:
         case RSHIFT:
-            // x << 0 = x, x >> 0 = x
-            if (vr == 0) {
+            if (vr == 0)
                 return xreplace(e, e->left);
-            }
+            break;
+        case STAR:
+            if (vr == 1)
+                return xreplace(e, e->left);
+            if (vr == 0)
+                return xreplace(e, e->right);
+            break;
+        case DIV:
+            if (vr == 1)
+                return xreplace(e, e->left);
             break;
         }
     }

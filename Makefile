@@ -157,10 +157,9 @@ stage1: cc1 cc2
 	  if [ -f "$$f" ]; then \
 	    b=$$(basename $$f .c) ; \
 	    printf "%-30s" "$$f: "; \
-	    ./cc1 $(CCCFLAGS) -E -o stage1/$$b.ast "$$f" \
+	    ./cc1 $(CCCFLAGS) -o stage1/$$b.ast "$$f" \
 		2>stage1/$$b.err ; \
 	    ret1=$$?; \
-	    mv $$b.i stage1/$$b.i; \
 	    if [ $$ret1 -ne 0 ]; then \
 	      echo "FAIL (parse error)"; \
 	    else \

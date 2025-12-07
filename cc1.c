@@ -92,8 +92,8 @@ unsigned char astFd;  // defaults to 1 (stdout), can be overridden with -o
 void
 process(char *f)
 {
-    int i, len;
-    char *s, *basenameStart, *dot;
+    int len;
+    char *basenameStart, *dot;
 
     if (VERBOSE(V_TRACE)) {
         fdprintf(2,"process %s\n", f);
@@ -120,39 +120,12 @@ process(char *f)
     srcFileRoot = malloc(len + 1);
     strncpy(srcFileRoot, basenameStart, len);
     srcFileRoot[len] = '\0';
-    if (writeCppfile) {
-        if (cppfile) {
-            close(cppfile);
-            cppfile = 0;
-            free(cppfname);
-        }
-        /* Use basename only - put .i file in current directory */
-        i = strlen(basenameStart);
-        if (i >= 2 && basenameStart[i-2] == '.' &&
-            basenameStart[i-1] == 'c') {
-            i -= 2;
-        }
-        cppfname = malloc(i+3);  // +2 for ".i", +1 for null terminator
-        strncpy(cppfname, basenameStart, i);
-        cppfname[i] = '\0';  // Ensure null termination
-        strcat(cppfname, ".i");
-        cppfile = creat(cppfname, 0777);
-        if (cppfile == -1) {
-            perror(cppfname);
-        }
-        s = "/* preprocessed file */\n";
-        cppOut(s, strlen(s));
-    }
 
     insertfile(f, 0);
     ioinit();
     cur.type = next.type = NONE;
 
     parse();
-
-    if (writeCppfile) {
-        cppFlush();
-    }
 }
 
 /*
@@ -185,19 +158,21 @@ process(char *f)
 void
 usage(char *complaint, char *p)
 {
-    int i;
-
     fdprintf(2,"%s", complaint);
     fdprintf(2,"usage: %s [<options>] [program [<program options>]]\n", p);
     fdprintf(2,"\t-I<include dir>\n");
-    fdprintf(2,"\t-i<system include dir> (default /usr/include)\n");
-    fdprintf(2,"\t-D<variable>[=<definition>]\n");
+    fdprintf(2,"\t-i<system include dir>\n");
+    fdprintf(2,"\t-D<name>[=<value>]\n");
     fdprintf(2,"\t-v <verbosity>\n");
-    fdprintf(2,"\t-o <output file> (AST output, default stdout)\n");
-    fdprintf(2,"\t-E (write preprocessed .i file)\n");
-    for (i = 0; vopts[i]; i++) {
-        fdprintf(2,"\t%x %s\n", 1 << i, vopts[i]);
+    fdprintf(2,"\t-o <output file>\n");
+#ifndef CCC
+    {
+        int i;
+        for (i = 0; vopts[i]; i++) {
+            fdprintf(2,"\t%x %s\n", 1 << i, vopts[i]);
+        }
     }
+#endif
     exit(1);
 }
 
@@ -296,9 +271,6 @@ main(int argc, char **argv)
                 addDefine(s);
                 s="";
                 break;
-            case 'E':
-                writeCppfile++;
-                break;
             case 'v':
                 if (!argc--) {
                     usage("verbosity not specified \n", progname);
@@ -326,6 +298,7 @@ main(int argc, char **argv)
         }
     }
 
+#ifndef CCC
     if (verbose) {
         int j = 0;
 
@@ -348,6 +321,7 @@ main(int argc, char **argv)
         }
         fdprintf(2,")\n");
     }
+#endif
 #ifdef __UNIX__
     setvbuf(stdout, 0, _IONBF, 0);
 #endif

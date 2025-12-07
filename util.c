@@ -9,11 +9,9 @@
 #include <unistd.h>
 #endif
 
+#ifndef CCC
 char patspace[PSIZE];
 
-/*
- * byte bitoff formatter.
- */
 char *
 bitdef(unsigned char v, char **defs)
 {
@@ -33,9 +31,10 @@ bitdef(unsigned char v, char **defs)
 		}
         i = i * 2;
         defs++;
-	}		
+	}
 	return patptr;
 }
+#endif
 
 /*
  * append string s at d
@@ -137,6 +136,7 @@ iswhite(unsigned char c)
     }
 }
 
+#ifndef CCC
 char xxbuf[200];
 
 void
@@ -167,6 +167,7 @@ hexdump(char *tag, char *h, int l)
     }
     printf(" %s\n", xxbuf);
 }
+#endif
 
 /*
  * return the index in an array of the first occurrance of a char

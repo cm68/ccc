@@ -38,10 +38,12 @@
 
 #include "cc1.h"
 
+#ifndef CCC
 char *kindname[] = {
     "prim", "etag", "stag", "utag", "vari", "elem", "tdef", "fdef",
     "bitf", "farg", "locl"
 };
+#endif
 struct type *types;
 struct type *chartype;
 struct type *inttype;
@@ -203,33 +205,19 @@ findElement(char *name, struct type *t)
 	return 0;
 }
 
+#ifndef CCC
 char *typeBitdefs[] = {
 		"AGGREGATE", "INCOMPLETE", "UNSIGNED",
         "FUNC", "POINTER", "ARRAY", "FLOAT", "OLD"
 };
+void dumpType(struct type *t, int lv);
 
-/*
- * Print a name entry for debugging
- *
- * Outputs detailed information about a name entry to stderr, including:
- *   - Name identifier and namespace (tag vs ordinary)
- *   - Storage class flags (extern, static, register, etc.)
- *   - Type information (via dumpType)
- *   - Struct member offset, bitfield position, and width
- *
- * Used for debugging symbol table contents and type resolution.
- *
- * Parameters:
- *   n - Name entry to dump (NULL-safe)
- */
 void
 dumpName(struct name *n)
 {
 	fdprintf(2,"dumpName: ");
 	if (!n) { printf("null\n"); return; }
 	fdprintf(2,"%s (%s)", n->name, n->is_tag ? "tag" : "decl");
-
-	/* Show storage class if set */
 	if (n->sclass) {
 		fdprintf(2," sclass=");
 		if (n->sclass & SC_EXTERN) printf("extern ");
@@ -241,13 +229,43 @@ dumpName(struct name *n)
 		if (n->sclass & SC_TYPEDEF) printf("typedef ");
 	}
 	fdprintf(2,"\n");
-
-	if (n->type) {
-		dumpType(n->type, 0);
-	}
+	if (n->type) dumpType(n->type, 0);
     fdprintf(2,"\toffset: %d bitoff: %d width: %d\n",
         n->offset, n->bitoff, n->width);
 }
+
+void
+dumpType(struct type *t, int lv)
+{
+    struct name *param;
+    unsigned char param_count = 0;
+    int i;
+
+    if (!t) return;
+    if (lv > 20) {
+        fdprintf(2,"\t... (max depth)\n");
+        return;
+    }
+    for (i = 0; i < lv; i++) fdprintf(2,"\t");
+
+    if (t->flags & TF_FUNC) {
+        for (param = t->elem; param; param = param->next)
+            param_count++;
+        fdprintf(2,"function: flags %x (%s) params %d\n",
+            t->flags, bitdef(t->flags, typeBitdefs), param_count);
+        if (t->sub) {
+            for (i = 0; i <= lv; i++) fdprintf(2,"\t");
+            fdprintf(2,"returns:\n");
+            dumpType(t->sub, lv + 2);
+        }
+    } else {
+        fdprintf(2,"name %s flags %x (%s) count %x\n",
+            t->name ? t->name : "unnamed",
+            t->flags, bitdef(t->flags, typeBitdefs), t->count);
+        dumpType(t->sub, ++lv);
+    }
+}
+#endif
 
 /*
  * Create and add a new name entry to the symbol table
@@ -402,93 +420,6 @@ addName(struct name *n)
             n->kind < sizeof(kindname)/sizeof(kindname[0]) ?
                 kindname[n->kind] : "unkn",
             n->is_tag ? "tag:":"", n->name);
-    }
-}
-
-/*
- * Print type information recursively for debugging
- *
- * Outputs detailed type information to stderr, including flags, sizes,
- * and subtype relationships. Handles complex recursive types by tracking
- * depth and detecting cycles.
- *
- * Output format:
- *   - Function types: Shows parameter count, parameter types, return type
- *   - Other types: Shows name, flags (POINTER, ARRAY, etc.), count (array size)
- *   - Subtypes are indented proportional to recursion depth
- *
- * Special handling:
- *   - Function parameters are displayed with argument numbers
- *   - Return types are labeled and indented
- *   - Cycle detection prevents infinite recursion (max depth 20)
- *
- * Parameters:
- *   t  - Type to dump (NULL-safe)
- *   lv - Current indentation level (0 for top-level)
- */
-void
-dumpType(struct type *t, int lv)
-{
-    struct name *param;
-    unsigned char param_count = 0;
-
-    if (!t) return;
-    if (lv > 20) {  // Cycle detection: prevent infinite recursion
-        fdprintf(2,"\t... (max depth reached, possible cycle)\n");
-        return;
-    }
-    if (lv) {
-        int i = lv;
-        while (i--) {
-            fdprintf(2,"\t");
-        }
-    }
-
-    // Count parameters for functions
-    if (t->flags & TF_FUNC) {
-        for (param = t->elem; param; param = param->next) {
-            param_count++;
-        }
-    }
-
-    // Display type info - format depends on whether it's a function
-    if (t->flags & TF_FUNC) {
-        fdprintf(2,"function type: flags %x (%s) params %d\n",
-            t->flags, bitdef(t->flags, typeBitdefs), param_count);
-
-        // Show parameter types (without names - function type signature)
-        if (param_count > 0) {
-            int arg_num = 0;
-            for (param = t->elem; param; param = param->next) {
-                // Print indentation
-                int i;
-                for (i = 0; i <= lv; i++)
-                    fdprintf(2,"\t");
-                fdprintf(2,"arg %d:", arg_num);
-                if (param->type && param->type->name) {
-                    fdprintf(2," %s", param->type->name);
-                } else {
-                    fdprintf(2," ?");
-                }
-                fdprintf(2,"\n");
-                arg_num++;
-            }
-        }
-
-        // Show return type
-        if (t->sub) {
-            int i;
-            for (i = 0; i <= lv; i++)
-                fdprintf(2,"\t");
-            fdprintf(2,"returntype:\n");
-            dumpType(t->sub, lv + 2);
-        }
-    } else {
-        // Non-function types
-        fdprintf(2,"name %s flags %x (%s) count %x\n",
-            t->name ? t->name : "unnamed",
-            t->flags, bitdef(t->flags, typeBitdefs), t->count);
-        dumpType(t->sub, ++lv);
     }
 }
 
@@ -1108,11 +1039,9 @@ getbasetype()
         // mark as complete
         t->flags &= ~TF_INCOMPLETE;
 
-        // warn if struct exceeds Z80 IX offset limit
+        /* warn if struct exceeds Z80 IX offset limit */
         if (t->size > 127) {
             gripe(ER_T_SB);
-            fdprintf(2, "  Struct '%s' size %d exceeds IX offset limit (127 bytes)\n",
-                     n ? n->name : "(anonymous)", t->size);
         }
 
         return t;

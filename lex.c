@@ -7,18 +7,10 @@
  */
 #include "cc1.h"
 
-int writeCppfile = 0;
-char *cppfname;
-int cppfile;
 static unsigned char incomment = 0;
 /* Track comment state across gettoken() calls */
 
 struct token cur, next;
-
-/* Token history for debugging */
-#define TOK_HIST_SIZE 10
-struct token tokHist[TOK_HIST_SIZE];
-int tokHidx = 0;
 
 /*
  * this is the place we build filenames, symbols and literal strings
@@ -42,56 +34,6 @@ struct cond {
 struct cond *cond;
 
 unsigned char tflags;
-
-/* ASM block capture */
-char *asmCbuf = NULL;
-int asmCsiz = 0;
-int asmClen = 0;
-
-/*
- * Output text to assembly capture buffer
- *
- * Appends assembly code text to the dynamically growing asm capture buffer.
- * Used to collect inline assembly blocks during parsing for later output
- * to the AST. The buffer automatically expands as needed.
- *
- * Special character handling:
- *   - Skips braces "{ " and "} " (parsing markers, not asm text)
- *   - All other text copied verbatim
- *
- * Buffer management:
- *   - Starts at asmCsiz bytes, doubles when full
- *   - Always null-terminated after append
- *   - Allocated with realloc() for dynamic growth
- *
- * Parameters:
- *   s   - Text to append
- *   len - Length of text in bytes
- *
- * Side effects:
- *   - May reallocate asmCbuf (pointer changes)
- *   - Updates asmClen to reflect new length
- */
-void
-asmOut(char *s, int len)
-{
-    if (!s || !asmCbuf)
-        return;
-
-    /* Skip braces - they're for parsing only, not part of asm text */
-    if (len == 2 && (s[0] == '{' || s[0] == '}') && s[1] == ' ')
-        return;
-
-    /* Grow buffer if needed */
-    while (asmClen + len >= asmCsiz) {
-        asmCsiz *= 2;
-        asmCbuf = realloc(asmCbuf, asmCsiz);
-    }
-
-    memcpy(&asmCbuf[asmClen], s, len);
-    asmClen += len;
-    asmCbuf[asmClen] = 0;
-}
 
 /*
  * Check if current token matches and consume it if so
@@ -518,161 +460,6 @@ issym()
 }
 
 /*
- * Output text to preprocessor file and/or asm capture buffer
- *
- * Unified output function that writes text to both preprocessor output
- * (when -E flag active) and inline assembly capture buffer (when in asm
- * block). Simplifies caller code by handling both destinations.
- *
- * Output destinations:
- *   - Preprocessor file (.i file) if writeCppfile is set
- *   - Assembly capture buffer if asmCbuf is allocated
- *   - Can output to neither, one, or both simultaneously
- *
- * Parameters:
- *   s   - Text to output
- *   len - Length in bytes
- *
- * Side effects:
- *   - Writes to cppfile if enabled
- *   - Appends to asmCbuf if enabled
- */
-void
-cppAsmOut(char *s, int len)
-{
-    if (writeCppfile) {
-        cppOut(s, len);
-    }
-    if (asmCbuf) {
-        asmOut(s, len);
-    }
-}
-
-/*
- * Output text followed by space - common token output pattern
- *
- * Convenience wrapper that appends a space after the text. Most tokens
- * need spacing in output, so this reduces code duplication in outputToken().
- *
- * Parameters:
- *   s   - Text to output
- *   len - Length in bytes (not including trailing space)
- *
- * Side effects:
- *   - Writes text + space to cpp file and/or asm buffer
- */
-void
-cppAsmOutSpc(char *s, int len)
-{
-    cppAsmOut(s, len);
-    cppAsmOut(" ", 1);
-}
-
-/*
- * Output token to preprocessor file and/or asm buffer
- *
- * Converts a token structure back to source text representation for
- * preprocessor output (-E flag) and inline assembly capture. Handles
- * special formatting for each token type.
- *
- * Token types and formatting:
- *   - SYM: Output identifier name + space
- *   - STRING: Output with quotes and escape sequences
- *   - NUMBER: Convert to decimal with space
- *   - Keywords/operators: Use detoken[] or tokenname[] lookup
- *
- * String literal formatting:
- *   - Outputs opening quote
- *   - Processes in chunks to avoid large stack buffer
- *   - Uses controlify() for escape sequences (\\n, \\t, \\", etc.)
- *   - Outputs closing quote + space
- *   - Chunk size: 16 source chars at a time
- *
- * Memory efficiency:
- *   - Chunked string processing reduces stack usage
- *   - Small buffer (128 bytes) for escape expansion
- *   - Important for compiler size constraints
- *
- * Output destinations:
- *   - Preprocessor .i file if writeCppfile enabled
- *   - Inline asm buffer if asmCbuf allocated
- *   - No-op if neither destination active
- *
- * Parameters:
- *   tok - Token to output
- *
- * Side effects:
- *   - Writes to cpp file and/or asm buffer via cppAsmOut()
- */
-void
-outputToken(struct token *tok)
-{
-    /*
-     * Small buffer for chunked string output
-     * (16 chars * 5 bytes max expansion)
-     */
-    char nbuf[128];
-    int i;
-    char *s;
-
-    if (!writeCppfile && !asmCbuf) {
-        return;
-    }
-
-    switch (tok->type) {
-    case SYM:
-        cppAsmOutSpc(tok->v.name, strlen(tok->v.name));
-        break;
-    case STRING:
-        if (!tok->v.str) {
-            break;
-        }
-        /* Output string in chunks to avoid large stack buffer */
-        {
-            char *src = tok->v.str;
-            int len = *src++;  /* First byte is length */
-            int chunk_size = 16;  /* Process this many source chars at a time */
-
-            /* Opening quote */
-            cppAsmOut("\"", 1);
-
-            /* Output string content in chunks */
-            while (len > 0) {
-                int todo = (len > chunk_size) ? chunk_size : len;
-                for (i = 0; i < todo; i++) {
-                    int n = controlify(nbuf, *src++);
-                    cppAsmOut(nbuf, n);
-                }
-                len -= todo;
-            }
-
-            /* Closing quote and space */
-            cppAsmOut("\" ", 2);
-        }
-        break;
-    case NUMBER:
-        i = longout(nbuf, tok->v.numeric);
-        nbuf[i++] = ' ';
-        cppAsmOut(nbuf, i);
-        break;
-    case NONE:
-        break;
-    default:
-        if (detoken[tok->type]) {
-            s = detoken[tok->type];
-        } else {
-            s = tokenname[tok->type];
-        }
-        if (VERBOSE(V_CPP) && tok->type == INT) {
-            fdprintf(2,"outputToken(INT): s='%s' writeCppfile=%d\n",
-                s, writeCppfile);
-        }
-        cppAsmOutSpc(s, strlen(s));
-        break;
-    }
-}
-
-/*
  * Process preprocessor directive
  *
  * Handles all C preprocessor directives (#define, #if, #include, etc.)
@@ -1018,8 +805,6 @@ freetoken()
      * global variable initializers throughout compilation */
 }
 
-char nbuf[1024];  // Large enough for escaped string: 1 + 255*4 + 1 = 1022 bytes
-
 /*
  * Get next token from input stream
  *
@@ -1112,11 +897,6 @@ gettoken()
     freetoken();
 
     memcpy(&cur, &next, sizeof(cur));
-
-    /* Save current token to history for debugging */
-    memcpy(&tokHist[tokHidx], &cur, sizeof(cur));
-    tokHidx = (tokHidx + 1) % TOK_HIST_SIZE;
-
     next.v.str = 0;
     next.type = NONE;
 
@@ -1146,12 +926,6 @@ gettoken()
                 advance();
                 advance();
                 continue;
-            }
-            if (VERBOSE(V_TOKEN) && writeCppfile) {
-                fdprintf(2,"Slash but nextchar='%c'(0x%x) "
-                    "not asterisk at line %d, incomment=%d\n",
-                    nextchar >= 32 ? nextchar : '?', nextchar,
-                    lineno, incomment);
             }
         }
         if ((curchar == '/') && (nextchar == '/')) {
@@ -1355,8 +1129,7 @@ gettoken()
             /* Enforce symbol length limit with warning */
             if (strlen(strbuf) > MAXSYMLEN) {
                 gripe(ER_W_SYMTRUNC);
-                fdprintf(2, "  Symbol '%s' truncated to %d characters\n", strbuf, MAXSYMLEN);
-                strbuf[MAXSYMLEN] = '\0';  /* Truncate to max length */
+                strbuf[MAXSYMLEN] = '\0';
             }
             next.v.name = strdup(strbuf);
             break;
@@ -1407,36 +1180,7 @@ gettoken()
         break;
     }
 
-    /*
-     * detokenize for cpp output or asm capture
-     */
-    if (VERBOSE(V_CPP) && (cur.type == INT || cur.type == SYM)) {
-        fdprintf(2,"About to output cur.type=0x%02x", cur.type);
-        if (cur.type == SYM && cur.v.name) {
-            fdprintf(2," (SYM: %s)", cur.v.name);
-        } else if (cur.type == INT) {
-            fdprintf(2," (INT)");
-        }
-        fdprintf(2," writeCppfile=%d\n", writeCppfile);
-    }
-    outputToken(&cur);
-
-    if ((writeCppfile || asmCbuf) && lineend) {
-        if (writeCppfile) {
-            cppOut("\n", 1);
-        }
-        /* For asm blocks, convert newlines to semicolons */
-        /* (macexpand() handles its own newlines directly) */
-        /*
-         * Don't output semicolon for braces - they mark boundaries
-         * of asm block
-         */
-        if (asmCbuf && cur.type != BEGIN && cur.type != END) {
-            asmOut(";", 1);  /* Convert newline to semicolon for asm */
-            asmOut(" ", 1);
-        }
-        lineend = 0;  /* Clear after using it */
-    }
+    lineend = 0;
     if (VERBOSE(V_TOKEN)) {
         fdprintf(2,"cur.type = 0x%02x \'%c\'\n", cur.type,
             cur.type > ' ' ? cur.type : ' ');
@@ -1580,20 +1324,11 @@ readcppconst()
 {
     unsigned long val;
     char savedtflags = tflags;
-    int saved_wrt_cpp = writeCppfile;
     struct token saved_cur;
 
-    /* Save cur because recursive gettoken() calls will modify it */
     memcpy(&saved_cur, &cur, sizeof(cur));
 
-    /*
-     * hack to make lexer translate newlines to ';', so that expressions
-     * terminate at eol;  also enable defined pseudofunction
-     */
     tflags = ONELINE | CPPFUNCS;
-
-    /* Disable cpp output while evaluating the #if expression */
-    writeCppfile = 0;
 
     /* Skip whitespace before reading the first token */
     skipws1();
@@ -1626,17 +1361,8 @@ readcppconst()
         fdprintf(2,"After parseConst: curchar=0x%02x\n", curchar);
     }
 
-    /* Restore cur so outer gettoken() sees original cur */
     memcpy(&cur, &saved_cur, sizeof(cur));
-
-    /* Restore flags */
     tflags = savedtflags;
-    writeCppfile = saved_wrt_cpp;
-
-    /* Leave next with whatever was read - it contains the INT token */
-    /* The caller will handle discarding it if in a false block */
-
-    /* Clear lineend flag */
     lineend = 0;
 
     if (VERBOSE(V_CPP)) {
@@ -1647,24 +1373,6 @@ readcppconst()
     }
 
     return val;
-}
-
-/*
- * Debug helper - dump token name to stderr
- *
- * Outputs human-readable token name for debugging. Used during verbose
- * mode or error diagnostics.
- *
- * Parameters:
- *   c - Token type to display
- *
- * Side effects:
- *   - Writes to stderr
- */
-void
-tdump(unsigned char c)
-{
-	fdprintf(2,"%s ", tokenname[c]);
 }
 
 /*

@@ -794,13 +794,6 @@ parsefunc(struct name *f)
 }
 
 /*
- * storage class clauses - many combinations are illogical
- */
-char *sclassBitDef[] = { "EXTERN", "REGISTER", "STATIC", "CONST",
-	"VOLATILE", "AUTO", "TYPEDEF"
-};
-
-/*
  * Parse storage class specifiers in a declaration
  *
  * Storage class specifiers control visibility, lifetime, and storage
