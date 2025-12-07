@@ -91,18 +91,32 @@ static const char *asmstr[] = {
     "\tpop bc\n",                       /* S_POPBC */
     "\texx\n\tpop bc\n\texx\n",         /* S_EXXPOPBC */
     "\tjp nz, $+8\n",                   /* S_JPNZ8 */
-    "\tld a, (hl)\n",                   /* S_LDAHL */
+    "",                                 /* S_77_UNUSED */
     "\tbit 7, h\n",                     /* S_BIT7H */
     "\txor a\n",                        /* S_XORA */
     "\tld e, l\n\tld d, h\n",           /* S_HLTODE */
     "\tbit 7, d\n",                     /* S_BIT7D */
     "\tbit 7, b\n",                     /* S_BIT7B */
-    "\tadd hl, hl\n"                    /* S_ADDHLHL */
+    "\tadd hl, hl\n",                   /* S_ADDHLHL */
+    "\tld (hl), a\n",                   /* S_LDHLA */
+    "",                                 /* S_85_UNUSED */
+    "\tdec hl\n",                       /* S_DECHL */
+    "\tld c, (hl)\n\tinc hl\n\tld b, (hl)\n",  /* S_LDCHL */
+    "",                                 /* S_88_UNUSED */
+    "\tld d, b\n\tld e, c\n",           /* S_LDDEBC */
+    "\tld a, (hl)\n\tld c, a\n\tinc hl\n",  /* S_LDAHLINC */
+    "\tld a, (hl)\n\tld h, a\n\tld l, c\n"  /* S_LDAHLHIGH */
 };
 
 void emit(unsigned char idx) {
-    fdprintf(outFd, "%s", asmstr[idx]);
+    fdputs(outFd, asmstr[idx]);
 }
+
+/* Output string to assembly output - saves passing outFd at each call site */
+void out(const char *s) {
+    fdputs(outFd, s);
+}
+
 
 /* Register lookup tables - indexed by register_id enum */
 static const char * const regNameTab[] = {
@@ -551,23 +565,31 @@ static void globLong(const char *s, char isStore) {
 void loadVar(const char *sym, char sz, char docache) {
     const char *vn = stripVarPfx(sym);
     struct local_var *v;
+#ifdef DEBUG
     if (TRACE(T_VAR)) {
         fdprintf(2, "  loadVar: sym=%s (1)\n", sym);
     }
+#endif
     v = findVar(vn);
+#ifdef DEBUG
     if (TRACE(T_VAR)) {
         fdprintf(2, "  loadVar: findVar returned %p (2)\n", (void*)v);
     }
+#endif
 
     if (v && v->reg != REG_NO) {
+#ifdef DEBUG
         if (TRACE(T_VAR)) {
             fdprintf(2, "  loadVar: branch A\n");
         }
+#endif
         emit(sz == 1 ? byteLoadTab[v->reg] : wordLoadTab[v->reg]);
     } else if (v) {
+#ifdef DEBUG
         if (TRACE(T_VAR)) {
             fdprintf(2, "  loadVar: branch B\n");
         }
+#endif
         if (sz == 1) loadByteIY(v->offset, v->offset >= 0);
         else if (sz == 2) loadWordIY(v->offset);
         else if (sz == 4) {
@@ -576,9 +598,11 @@ void loadVar(const char *sym, char sz, char docache) {
         }
     } else {
         const char *s = stripDollar(sym);
+#ifdef DEBUG
         if (TRACE(T_VAR)) {
             fdprintf(2, "  loadVar: branch C (global)\n");
         }
+#endif
         addRefSym(s);
         if (sz == 1) fdprintf(outFd, "\tld a, (%s)\n", s);
         else if (sz == 2) fdprintf(outFd, "\tld hl, (%s)\n", s);
@@ -590,13 +614,17 @@ void loadVar(const char *sym, char sz, char docache) {
 void storeVar(const char *sym, char sz, char docache) {
     const char *vn = stripVarPfx(sym);
     struct local_var *v;
+#ifdef DEBUG
     if (TRACE(T_VAR)) {
         fdprintf(2, "  storeVar: sym=%s\n", sym);
     }
+#endif
     v = findVar(vn);
+#ifdef DEBUG
     if (TRACE(T_VAR)) {
         fdprintf(2, "  storeVar: findVar returned %p\n", (void*)v);
     }
+#endif
 
     if (v && v->reg != REG_NO) {
         if (sz == 1) {
@@ -616,9 +644,11 @@ void storeVar(const char *sym, char sz, char docache) {
         }
     } else {
         const char *s = stripDollar(sym);
+#ifdef DEBUG
         if (TRACE(T_VAR)) {
             fdprintf(2, "  storeVar: global store sz=%d\n", sz);
         }
+#endif
         if (sz == 1) {
             fdprintf(outFd, "\tld (%s), a\n", s);
             if (docache) setVarCache(sym, 1, 1);
@@ -628,13 +658,17 @@ void storeVar(const char *sym, char sz, char docache) {
         } else if (sz == 4) {
             globLong(s, 1);
         }
+#ifdef DEBUG
         if (TRACE(T_VAR)) {
             fdprintf(2, "  storeVar: done\n");
         }
+#endif
     }
+#ifdef DEBUG
     if (TRACE(T_VAR)) {
         fdprintf(2, "  storeVar: returning\n");
     }
+#endif
 }
 
 /*

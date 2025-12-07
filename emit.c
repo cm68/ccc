@@ -220,13 +220,10 @@ static void emitStmtTail(struct stmt *s, int tailPos)
 {
     if (!s) return;
     stmt_count++;
-    if (TRACE(T_EMIT)) {
-        fdprintf(2, "emitStmt #%d type=%c\n", stmt_count, s->type);
-    }
-    if (stmt_count > 100000) {
-        fdprintf(2, "stmt overflow\n");
-        exit(1);
-    }
+#ifdef DEBUG
+    if (TRACE(T_EMIT)) fdprintf(2, "emitStmt #%d type=%c\n", stmt_count, s->type);
+    if (stmt_count > 100000) { fdprintf(2, "stmt overflow\n"); exit(1); }
+#endif
 
     /* For ASM nodes, emit the raw assembly text */
     if (s->type == 'A' && s->asm_block) {
@@ -240,7 +237,9 @@ static void emitStmtTail(struct stmt *s, int tailPos)
 
     /* Handle LABEL statements - emit a label */
     if (s->type == 'L' && s->symbol && s->symbol[0]) {
+#ifdef DEBUG
         if (TRACE(T_EMIT)) fdprintf(2, "LABEL: %s\n", s->symbol);
+#endif
         /* Invalidate cache at loop labels (backward jump targets) */
         if (s->symbol[0] == 'L' && (strstr(s->symbol, "_top") || strstr(s->symbol, "_continue"))) {
             cacheInvalAll();
@@ -462,12 +461,6 @@ emit_if_body:
             if (s->else_branch) emitStmt(s->else_branch);
         }
 
-        if (TRACE(T_EMIT)) {
-            fdprintf(2, "IF: s->next=%p skip_else=%d label2=%d\n",
-                     (void*)s->next, skip_else, s->label2);
-            if (s->next) fdprintf(2, "IF: s->next->type=%c s->next->next=%p\n",
-                                  s->next->type, (void*)s->next->next);
-        }
         if (s->next) emitStmtTail(s->next, tailPos);
 
         xfree(s->asm_block);
@@ -522,62 +515,86 @@ emit_if_body:
         }
     } else {
         /* Emit expressions (this frees them) */
+#ifdef DEBUG
         if (TRACE(T_EMIT)) {
             fdprintf(2, "  emitStmt: has expr=%p\n", (void*)s->expr);
         }
+#endif
         if (s->expr) emitExpr(s->expr);
+#ifdef DEBUG
         if (TRACE(T_EMIT)) {
             fdprintf(2, "  emitStmt: after expr, expr2=%p\n", (void*)s->expr2);
         }
+#endif
         if (s->expr2) emitExpr(s->expr2);
+#ifdef DEBUG
         if (TRACE(T_EMIT)) {
             fdprintf(2, "  emitStmt: after expr2, expr3=%p\n", (void*)s->expr3);
         }
+#endif
         if (s->expr3) emitExpr(s->expr3);
+#ifdef DEBUG
         if (TRACE(T_EMIT)) {
             fdprintf(2, "  emitStmt: after expr3\n");
         }
+#endif
     }
 
     /* Emit child statements (this frees them) */
+#ifdef DEBUG
     if (TRACE(T_EMIT)) {
         fdprintf(2, "  emitStmt: checking then_branch=%p\n", (void*)s->then_branch);
     }
+#endif
     /* Block's then_branch is in tail position if block is and has no next */
     if (s->then_branch) {
         int branchTail = (s->type == 'B' && tailPos && !s->next);
         emitStmtTail(s->then_branch, branchTail);
     }
+#ifdef DEBUG
     if (TRACE(T_EMIT)) {
         fdprintf(2, "  emitStmt: checking else_branch=%p\n", (void*)s->else_branch);
     }
+#endif
     if (s->else_branch) emitStmt(s->else_branch);
 
     /* Emit next statement in chain (this frees it) */
+#ifdef DEBUG
     if (TRACE(T_EMIT)) {
         fdprintf(2, "  emitStmt: checking next=%p\n", (void*)s->next);
     }
+#endif
     if (s->next) emitStmtTail(s->next, tailPos);
+#ifdef DEBUG
     if (TRACE(T_EMIT)) {
         fdprintf(2, "  emitStmt: about to free stmt %p\n", (void*)s);
     }
+#endif
 
     /* Free this node only (children already freed by recursive emit calls) */
+#ifdef DEBUG
     if (TRACE(T_EMIT)) {
         fdprintf(2, "  freeing asm_block=%p\n", (void*)s->asm_block);
     }
+#endif
     xfree(s->asm_block);
+#ifdef DEBUG
     if (TRACE(T_EMIT)) {
         fdprintf(2, "  freeing jump=%p\n", (void*)s->jump);
     }
+#endif
     if (s->jump) freeJump(s->jump);
+#ifdef DEBUG
     if (TRACE(T_EMIT)) {
         fdprintf(2, "  freeing stmt\n");
     }
+#endif
     free(s);
+#ifdef DEBUG
     if (TRACE(T_EMIT)) {
         fdprintf(2, "  emitStmt DONE\n");
     }
+#endif
 }
 
 /*
@@ -590,9 +607,11 @@ void emitAssembly(int fd)
 
     if (0 || !fnBody) return;
     stmt_count = 0;
+#ifdef DEBUG
     if (TRACE(T_EMIT)) {
         fdprintf(2, "emit: function %s\n", fnName);
     }
+#endif
 
     /* Initialize label map for jump optimization */
     lblMapCnt = 0;
@@ -607,19 +626,25 @@ void emitAssembly(int fd)
         fnFrmSize, fnLocals);
 
     /* Emit function body */
+#ifdef DEBUG
     if (TRACE(T_EMIT)) {
         fdprintf(2, "emit: calling emitStmt\n");
     }
+#endif
     emitStmtTail(fnBody, 1);  /* tail position - returns can fall through */
+#ifdef DEBUG
     if (TRACE(T_EMIT)) {
         fdprintf(2, "emit: emitStmt returned\n");
     }
+#endif
 
     /* Emit function exit label */
     fdprintf(outFd, "%sX:\n", fnName);
+#ifdef DEBUG
     if (TRACE(T_EMIT)) {
         fdprintf(2, "emit: emitted exit label\n");
     }
+#endif
 
     /* Clean up call argument stack (when not using framealloc) */
     if (fnCallStk > 0 && fnFrmSize == 0 && !has_params) {
@@ -634,9 +659,11 @@ void emitAssembly(int fd)
         if (used & 2) emit(S_POPIX);
         if (used & 1) emit(S_POPBC);
     }
+#ifdef DEBUG
     if (TRACE(T_EMIT)) {
         fdprintf(2, "emit: restored callee regs\n");
     }
+#endif
 
     /* Emit function epilogue */
     if (fnFrmSize > 0 || has_params) {
@@ -644,6 +671,7 @@ void emitAssembly(int fd)
     } else {
         emit(S_RET);
     }
+#ifdef DEBUG
     if (TRACE(T_EMIT)) {
         fdprintf(2, "emit: emitted epilogue\n");
     }
@@ -652,19 +680,24 @@ void emitAssembly(int fd)
     if (TRACE(T_EMIT)) {
         fdprintf(2, "emit: freeing locals\n");
     }
+#endif
     var = fnLocals;
     while (var) {
+#ifdef DEBUG
         if (TRACE(T_EMIT)) {
             fdprintf(2, "emit: freeing var %s\n", var->name);
         }
+#endif
         next = var->next;
         free(var->name);
         free(var);
         var = next;
     }
+#ifdef DEBUG
     if (TRACE(T_EMIT)) {
         fdprintf(2, "emit: function %s done\n", fnName);
     }
+#endif
 }
 
 /*

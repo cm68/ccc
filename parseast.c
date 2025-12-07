@@ -200,15 +200,21 @@ static void
 appendChild(struct stmt *child, struct stmt **first, struct stmt **last)
 {
 	if (!child) return;
+#ifdef DEBUG
 	if (TRACE(T_PARSE)) fdprintf(2, "appendChild: child=%c first=%p last=%p\n", child->type, (void*)*first, (void*)*last);
+#endif
 	if (!*first) *first = child;
 	else (*last)->next = child;
 	*last = child;
 	while ((*last)->next) {
+#ifdef DEBUG
 		if (TRACE(T_PARSE)) fdprintf(2, "  walking: last=%c->next=%c\n", (*last)->type, (*last)->next->type);
+#endif
 		*last = (*last)->next;
 	}
+#ifdef DEBUG
 	if (TRACE(T_PARSE)) fdprintf(2, "  final last=%c\n", (*last)->type);
+#endif
 }
 
 /* Create numeric end-label statement (type 'Y') */
@@ -498,7 +504,9 @@ parseStmt(void)
 		{
 			int decl_count = readHex2();
 			int stmt_count = readHex2();
+#ifdef DEBUG
 			if (TRACE(T_PARSE)) fdprintf(2, "BLOCK: decl=%d stmt=%d\n", decl_count, stmt_count);
+#endif
 			s = newStmt('B');
 			first = last = NULL;
 
@@ -512,14 +520,18 @@ parseStmt(void)
 					child->symbol = strdup((char *)readName());
 					appendChild(child, &first, &last);
 				} else {
+#ifdef DEBUG
 					if (TRACE(T_PARSE)) fdprintf(2, "BLOCK: decl %d/%d expected 'd', got '%c' (0x%x)\n", i, decl_count, curchar, curchar);
+#endif
 					break;  /* Parse error - stop */
 				}
 			}
 
 			/* Read statements */
 			for (i = 0; i < stmt_count; i++) {
+#ifdef DEBUG
 				if (TRACE(T_PARSE)) fdprintf(2, "BLOCK: reading stmt %d/%d, curchar='%c' (0x%x)\n", i, stmt_count, curchar, curchar);
+#endif
 				child = parseStmt();
 				appendChild(child, &first, &last);
 			}
@@ -531,13 +543,19 @@ parseStmt(void)
 		/* If: I has_else cond then [else] */
 		{
 			int has_else = readHex2();
+#ifdef DEBUG
 			if (TRACE(T_PARSE)) fdprintf(2, "IF: has_else=%d\n", has_else);
+#endif
 			s = newStmt('I');
 			s->label = labelCounter++;
 			s->expr = parseExpr();
+#ifdef DEBUG
 			if (TRACE(T_PARSE)) fdprintf(2, "IF: after cond, curchar='%c' (0x%x)\n", curchar, curchar);
+#endif
 			s->then_branch = parseStmt();
+#ifdef DEBUG
 			if (TRACE(T_PARSE)) fdprintf(2, "IF: after then, curchar='%c' (0x%x)\n", curchar, curchar);
+#endif
 			if (has_else) {
 				s->label2 = labelCounter++;
 				s->else_branch = parseStmt();
@@ -551,16 +569,22 @@ parseStmt(void)
 	case 'E':
 		/* Expression statement */
 		s = newStmt('E');
+#ifdef DEBUG
 		if (TRACE(T_PARSE)) fdprintf(2, "E: before parseExpr, curchar='%c' (0x%x)\n", curchar, curchar);
+#endif
 		s->expr = parseExpr();
+#ifdef DEBUG
 		if (TRACE(T_PARSE)) fdprintf(2, "E: after parseExpr, curchar='%c' (0x%x)\n", curchar, curchar);
+#endif
 		return s;
 
 	case 'R':
 		/* Return: R has_value [expr] */
 		{
 			int has_value = readHex2();
+#ifdef DEBUG
 			if (TRACE(T_PARSE)) fdprintf(2, "RETURN: has_value=%d\n", has_value);
+#endif
 			s = newStmt('R');
 			if (has_value) {
 				s->expr = parseExpr();
@@ -584,7 +608,9 @@ parseStmt(void)
 			if (has_label)
 				label_name = strdup((char *)readName());
 			case_count = readHex2();
+#ifdef DEBUG
 			if (TRACE(T_PARSE)) fdprintf(2, "SWITCH: has_label=%d case_count=%d\n", has_label, case_count);
+#endif
 			s = newStmt('S');
 			s->symbol = label_name;
 			s->expr = parseExpr();
@@ -601,7 +627,9 @@ parseStmt(void)
 	case 'O':  /* Default: O stmt_count stmts... */
 		{
 			int stmt_count = readHex2();
+#ifdef DEBUG
 			if (TRACE(T_PARSE)) fdprintf(2, "%s: stmt_count=%d\n", op == 'C' ? "CASE" : "DEFAULT", stmt_count);
+#endif
 			s = newStmt(op);
 			if (op == 'C') s->expr = parseExpr();
 			first = last = NULL;
@@ -649,7 +677,9 @@ parseStmt(void)
 
 	default:
 		/* Unknown - return empty */
+#ifdef DEBUG
 		if (TRACE(T_PARSE)) fdprintf(2, "UNKNOWN STMT: curchar='%c' (0x%x)\n", curchar, curchar);
+#endif
 		return newStmt(';');
 	}
 }
@@ -674,14 +704,18 @@ doFunction(unsigned char rettype)
 	strncpy(name_buf, (char *)readName(), sizeof(name_buf) - 1);
 	name_buf[sizeof(name_buf) - 1] = '\0';
 	fnName = name_buf;
+#ifdef DEBUG
 	if (TRACE(T_PARSE)) fdprintf(2, "doFunction: %s\n", fnName);
+#endif
 
 	switchToSeg(SEG_TEXT);
 	addDefSym(fnName);
 
 	/* Parse parameters: param_count d suffix name d suffix name ... */
 	param_count = readHex2();
+#ifdef DEBUG
 	if (TRACE(T_PARSE)) fdprintf(2, "  param_count=%d\n", param_count);
+#endif
 	p = params_buf;
 	params_buf[0] = '\0';
 	first_param = 1;
@@ -704,15 +738,21 @@ doFunction(unsigned char rettype)
 	}
 	*p = '\0';
 	fnParams = params_buf;
+#ifdef DEBUG
 	if (TRACE(T_PARSE)) fdprintf(2, "  params: %s\n", fnParams);
 
 	/* Skip newlines between params and body */
 	skipNL();
 	if (TRACE(T_PARSE)) fdprintf(2, "  parsing body\n");
+#else
+	skipNL();
+#endif
 
 	/* Parse body */
 	fnBody = parseStmt();
+#ifdef DEBUG
 	if (TRACE(T_PARSE)) fdprintf(2, "  body parsed\n");
+#endif
 	fnLblCnt = labelCounter;
 	fnLocals = NULL;
 	fnFrmSize = 0;
@@ -729,29 +769,53 @@ doFunction(unsigned char rettype)
 	cacheInvalAll();
 
 	/* Code generation phases */
+#ifdef DEBUG
 	if (TRACE(T_PARSE)) fdprintf(2, "  assignFrmOff\n");
+#endif
 	assignFrmOff();
+#ifdef DEBUG
 	if (TRACE(T_PARSE)) fdprintf(2, "  analyzeVars\n");
+#endif
 	analyzeVars();
+#ifdef DEBUG
 	if (TRACE(T_PARSE)) fdprintf(2, "  allocRegs\n");
+#endif
 	allocRegs();
+#ifdef DEBUG
 	if (TRACE(T_PARSE)) fdprintf(2, "  optFrmLayout\n");
+#endif
 	optFrmLayout();
+#ifdef DEBUG
 	if (TRACE(T_PARSE)) fdprintf(2, "  setOpFlags\n");
+#endif
 	setOpFlags();
+#ifdef DEBUG
 	if (TRACE(T_PARSE)) fdprintf(2, "  dumpFnAst\n");
+#endif
 	dumpFnAst(outFd);
+#ifdef DEBUG
 	if (TRACE(T_PARSE)) fdprintf(2, "  scheduleCode\n");
+#endif
 	scheduleCode();
+#ifdef DEBUG
 	if (TRACE(T_PARSE)) fdprintf(2, "  dumpScheduled\n");
+#endif
 	dumpScheduled(outFd);
+#ifdef DEBUG
 	if (TRACE(T_PARSE)) fdprintf(2, "  specialize\n");
+#endif
 	specialize();
+#ifdef DEBUG
 	if (TRACE(T_PARSE)) fdprintf(2, "  generateCode\n");
+#endif
 	generateCode();
+#ifdef DEBUG
 	if (TRACE(T_PARSE)) fdprintf(2, "  emitAssembly\n");
+#endif
 	emitAssembly(outFd);
+#ifdef DEBUG
 	if (TRACE(T_PARSE)) fdprintf(2, "  complete\n");
+#endif
 }
 
 /* Symbol tracking */

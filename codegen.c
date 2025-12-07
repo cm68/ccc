@@ -73,11 +73,14 @@ findVar(const char *symbol)
     }
 
     /* Search locals list */
+#ifdef DEBUG
     if (TRACE(T_VAR)) {
         fdprintf(2, "      findVar(%p): looking for '%s' in locals\n", fnName, var_name);
     }
+#endif
     for (var = fnLocals; var; var = var->next) {
         count++;
+#ifdef DEBUG
         if (TRACE(T_VAR)) {
             fdprintf(2, "      findVar: checking '%s' (count=%d)\n", var->name, count);
         }
@@ -85,16 +88,21 @@ findVar(const char *symbol)
             fdprintf(2, "findVar: loop detected, count > 1000\n");
             exit(1);
         }
+#endif
         if (strcmp(var->name, var_name) == 0) {
+#ifdef DEBUG
             if (TRACE(T_VAR)) {
                 fdprintf(2, "      findVar: found!\n");
             }
+#endif
             return var;
         }
     }
+#ifdef DEBUG
     if (TRACE(T_VAR)) {
         fdprintf(2, "      findVar: not found\n");
     }
+#endif
 
     return NULL;
 }

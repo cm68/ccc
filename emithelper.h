@@ -8,6 +8,7 @@
 
 /* Assembly string emission */
 void emit(unsigned char idx);
+void out(const char *s);
 void emitByteLoad(unsigned char reg);
 void emitByteStore(unsigned char reg);
 void emitWordLoad(unsigned char reg);
@@ -172,13 +173,21 @@ void emitJump(const char *instr, const char *prefix, int label);
 #define S_POPBC 74
 #define S_EXXPOPBC 75
 #define S_JPNZ8 76
-#define S_LDAHL 77
+#define S_LDAHL S_AHL
 #define S_BIT7H 78
 #define S_XORA 79
 #define S_HLTODE 80
 #define S_BIT7D 81
 #define S_BIT7B 82
 #define S_ADDHLHL 83
+#define S_LDHLA 84
+#define S_POPAF S_POPAFRET
+#define S_DECHL 86
+#define S_LDCHL 87
+#define S_ORASBCHLDE S_SBCHLDE
+#define S_LDDEBC 89
+#define S_LDAHLINC 90
+#define S_LDAHLHIGH 91
 
 /* Global label map for jump optimization */
 #define MAX_LBLMAP 256

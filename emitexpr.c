@@ -26,6 +26,7 @@ void emitExpr(struct expr *e)
 {
     if (!e) return;
     exprCount++;
+#ifdef DEBUG
     if (TRACE(T_EXPR)) {
         fdprintf(2, "emitExpr: %d calls, op=%c (0x%x)\n", exprCount, e->op, e->op);
     }
@@ -33,6 +34,7 @@ void emitExpr(struct expr *e)
         fdprintf(2, "emitExpr: exceeded 100000 calls, op=%c\n", e->op);
         exit(1);
     }
+#endif
 
     /* Handle BC indirect load with caching - use opflags */
     if (e->op == 'M' && (e->opflags & OP_BCINDIR)) {
@@ -48,13 +50,17 @@ void emitExpr(struct expr *e)
     }
     /* Handle ASSIGN - use op check */
     else if (e->op == '=') {
+#ifdef DEBUG
         if (TRACE(T_EXPR)) {
             fdprintf(2, "  calling emitAssign\n");
         }
+#endif
         emitAssign(e);
+#ifdef DEBUG
         if (TRACE(T_EXPR)) {
             fdprintf(2, "  emitAssign returned, about to return from emitExpr\n");
         }
+#endif
         return;
     }
     /* Binary operators with accumulator management need special handling */

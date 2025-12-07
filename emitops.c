@@ -178,14 +178,14 @@ void emitIncDec(struct expr *e)
             case ID_REG:    fdprintf(outFd, "\tld %s, a\n", rn); break;
             case ID_STACK:  iyFmt("\tld (iy %c %d), a\n", ofs); break;
             case ID_GLOBAL: fdprintf(outFd, "\tld (%s), a\n", sym); break;
-            case ID_HL:     fdprintf(outFd, "\tld (hl), a\n"); break;
+            case ID_HL:     emit(S_LDHLA); break;
             }
         }
 
         /* 3. Return value - skip if only condition flags needed and Z is valid */
         if (is_post) {
             if (loc == ID_GLOBAL) emit(S_POPAFRET);
-            else if (loc == ID_HL) fdprintf(outFd, "\tpop af\n");
+            else if (loc == ID_HL) emit(S_POPAF);
             /* else: A already has old value */
         } else if (!unused && !(fnCondOnly && fnZValid)) {
             /* Load value to A unless only testing condition (fnCondOnly + fnZValid) */
@@ -207,8 +207,8 @@ void emitIncDec(struct expr *e)
             case ID_GLOBAL: fdprintf(outFd, "\tld hl, (%s)\n", sym); emit(S_PUSHHLOV); break;
             case ID_HL:
                 emit(S_HLTODE);
-                fdprintf(outFd, "\tld a, (hl)\n\tld c, a\n\tinc hl\n");
-                fdprintf(outFd, "\tld a, (hl)\n\tld h, a\n\tld l, c\n");
+                emit(S_LDAHLINC);
+                emit(S_LDAHLHIGH);
                 fdprintf(outFd, "\tpush hl\n\tex de, hl\n");
                 break;
             }
@@ -265,7 +265,7 @@ void emitIncDec(struct expr *e)
                 fdprintf(outFd, "\tld (%s), hl\n", sym);
                 break;
             case ID_HL:
-                fdprintf(outFd, "\tld c, (hl)\n\tinc hl\n\tld b, (hl)\n");
+                emit(S_LDCHL);
                 fdprintf(outFd, "\tpush hl\n\tld h, b\n\tld l, c\n");
                 fdprintf(outFd, "\tld de, %ld\n\tadd hl, de\n", is_dec ? -amount : amount);
                 fdprintf(outFd, "\tex de, hl\n\tpop hl\n");
@@ -288,8 +288,8 @@ void emitIncDec(struct expr *e)
             case ID_STACK:  loadWordIY(ofs); break;
             case ID_GLOBAL: /* HL already has new value */ break;
             case ID_HL:
-                fdprintf(outFd, "\tld a, (hl)\n\tld c, a\n\tinc hl\n");
-                fdprintf(outFd, "\tld a, (hl)\n\tld h, a\n\tld l, c\n");
+                emit(S_LDAHLINC);
+                emit(S_LDAHLHIGH);
                 break;
             }
         }
@@ -313,9 +313,11 @@ void emitIncDec(struct expr *e)
  */
 void emitAssign(struct expr *e)
 {
+#ifdef DEBUG
     if (TRACE(T_ASSIGN)) {
         fdprintf(2, "emitAssign: enter\n");
     }
+#endif
 
     /* Optimize: constant to register-allocated variable */
     if (e->right && e->right->op == 'C' && e->size == 2 &&
@@ -348,9 +350,11 @@ void emitAssign(struct expr *e)
 
     /* Emit right child first (value goes to PRIMARY) */
     emitExpr(e->right);
+#ifdef DEBUG
     if (TRACE(T_ASSIGN)) {
         fdprintf(2, "emitAssign: after emitExpr(right)\n");
     }
+#endif
 
     /* Check for IX-indexed store */
     if ((e->flags & E_IXASSIGN) && e->left && e->left->op == '+' &&
@@ -382,13 +386,17 @@ void emitAssign(struct expr *e)
 
     /* Simple variable assignment */
     if (e->left && e->left->op == '$' && e->left->symbol) {
+#ifdef DEBUG
         if (TRACE(T_ASSIGN)) {
             fdprintf(2, "emitAssign: simple variable\n");
         }
+#endif
         storeVar(e->left->symbol, e->size, 1);
+#ifdef DEBUG
         if (TRACE(T_ASSIGN)) {
             fdprintf(2, "emitAssign: after storeVar\n");
         }
+#endif
     }
     /* Pointer dereference or complex lvalue */
     else if (e->left && (e->left->op == 'M' || e->left->op == '+')) {
@@ -414,9 +422,11 @@ void emitAssign(struct expr *e)
             emit(S_EXX);
         }
     }
+#ifdef DEBUG
     if (TRACE(T_ASSIGN)) {
         fdprintf(2, "emitAssign: returning\n");
     }
+#endif
 }
 
 /*
