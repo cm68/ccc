@@ -372,15 +372,28 @@ emitStmt(struct stmt *st)
 		break;
 
 	case IF:
-		/* If: I has_else cond then [else] */
-		fdprintf(astFd, "I%02x", st->otherwise ? 1 : 0);
-		emitExpr(st->left);
-		if (st->chain)
-			emitStmt(st->chain);
-		else
-			fdprintf(astFd, ";");  /* empty statement */
-		if (st->otherwise)
-			emitStmt(st->otherwise);
+		/* Dead code elimination for constant conditions */
+		if (st->left && (st->left->flags & E_CONST)) {
+			if (st->left->v == 0) {
+				/* if (0) - emit only else branch */
+				if (st->otherwise)
+					emitStmt(st->otherwise);
+			} else {
+				/* if (non-zero) - emit only then branch */
+				if (st->chain)
+					emitStmt(st->chain);
+			}
+		} else {
+			/* If: I has_else cond then [else] */
+			fdprintf(astFd, "I%02x", st->otherwise ? 1 : 0);
+			emitExpr(st->left);
+			if (st->chain)
+				emitStmt(st->chain);
+			else
+				fdprintf(astFd, ";");  /* empty statement */
+			if (st->otherwise)
+				emitStmt(st->otherwise);
+		}
 		break;
 
 	case WHILE:
