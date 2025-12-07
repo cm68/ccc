@@ -36,8 +36,8 @@ static const char *asmstr[] = {
     "\tld a, h\n",                      /* S_AH */
     "\tjr nz, $+3\n",                   /* S_JRNZ3 */
     "\tinc hl\n",                       /* S_INCHL */
-    "\tex de, hl\n", 			/* S_DESAVE */
-    "\tex de, hl\n",                    /* S_EXBCHL */
+    "\tex de, hl\n", 			/* S_EXDEHL */
+    "",                                 /* S_UNUSED1 */
     "\texx\n\tpush bc\n\texx\n",        /* S_EXXBC */
     "\tld a, (bc)\n",                   /* S_LDABC */
     "\tld a, (ix+0)\n",                 /* S_LDAIXZ */
@@ -54,37 +54,37 @@ static const char *asmstr[] = {
     "\tcall getlong\n",                 /* S_CALLGL */
     "\tcall load32i\n",                 /* S_CALLL32I */
     "\tcall putlong\n",                 /* S_CALLPL */
-    "\t; ERROR: emit parse error\n", /* S_ERRPARS */
-    "\tex de, hl\n", 			/* S_CACHESWP */
-    "\tex de, hl\n",			/* S_DEADR */
-    "\tex de, hl\n",			/* S_PUSHTOS */
+    "\t; ERR\n", /* S_ERRPARS */
+    "",                                 /* S_UNUSED2 */
+    "",                                 /* S_UNUSED3 */
+    "",                                 /* S_UNUSED4 */
     "\texx\n\tld a, b\n\tor c\n\texx\n", /* S_EXXABCORC */
     "\texx\n\tpush bc\n\texx\n\tpop de\n\tadd hl, de\n", /* S_EXXBCPOPHL */
-    "\t; fall back to normal indirect\n", /* S_FBKNORM */
+    "", /* S_FBKNORM */
     "\tjp framefree\n",                 /* S_JPFF */
     "\tld a, b\n\tor c\n",              /* S_ABCORC */
     "\tld e, (hl)\n\tinc hl\n\tld d, (hl)\n\tex de, hl\n", /* S_LDEDHLSWP */
     "\tld hl, 0\n",			/* S_HLZERO */
     "\tpop af\n",  			/* S_POPAFRET */
-    "\tpop de\n",      			/* S_POPDEADR */
-    "\tpop de\n", 			/* S_POPDERES */
-    "\tpop hl\n", 			/* S_POPHPOST */
-    "\tpop hl\n", 			/* S_POPHLLOW */
-    "\tpop hl\n", 			/* S_POPHLUPP */
-    "\tpop hl\n",  			/* S_POPHLRET */
+    "\tpop de\n",      			/* S_POPDE */
+    "",                                 /* S_UNUSED10 */
+    "\tpop hl\n", 			/* S_POPHL */
+    "",                                 /* S_UNUSED5 */
+    "",                                 /* S_UNUSED6 */
+    "",                                 /* S_UNUSED7 */
     "\tpush af\n",   			/* S_PUSHAFSV */
     "\tpush bc\n",                      /* S_PUSHBC */
-    "\tpush de\n",     			/* S_PUSHDESV */
-    "\tpush de\n", 			/* S_PUSHDESP */
-    "\tpush hl\n",  			/* S_PUSHHLLOW */
-    "\tpush hl\n",   			/* S_PUSHHLOV */
-    "\tpush hl\n",  			/* S_PUSHHLUPP */
+    "\tpush de\n",     			/* S_PUSHDE */
+    "",                                 /* S_UNUSED11 */
+    "\tpush hl\n",  			/* S_PUSHHL */
+    "",                                 /* S_UNUSED8 */
+    "",                                 /* S_UNUSED9 */
     "\tpush ix\n",                      /* S_PUSHIX */
     "\tpush ix\n\tpop de\n\tadd hl, de\n", /* S_IXSWPHL */
     "\tret\n",                          /* S_RET */
-    "\t; WARNING: byte reg holds pointer?\n", /* S_WARNBPTR */
-    "\t; zero-extend short to long\n", /* S_ZEXTSL */
-    "; Local variables:\n",             /* S_LOCVAR */
+    "", /* S_WARNBPTR */
+    "", /* S_ZEXTSL */
+    "; Locals:\n",             /* S_LOCVAR */
     "",                                 /* S_EMPTY */
     "\n",                               /* S_NEWLINE */
     "\tpop ix\n",                       /* S_POPIX */
@@ -238,7 +238,7 @@ void storeWordIX(char offset) {
  *
  * Also tracks reference counts to identify unused labels.
  */
-#define MAX_LABELS 256
+#define MAX_LABELS 128
 static struct labelMap labelMap[MAX_LABELS];
 int lblMapCnt = 0;
 
@@ -370,33 +370,7 @@ void emitFnProlog(char *name, char *params, char *rettype, int frame_size,
     int has_params = (params && params[0]);
     struct local_var *var;
 
-    fdprintf(outFd, "; Function: %s", name);
-    if (has_params) fdprintf(outFd, "(%s)", params);
-    else fdprintf(outFd, "()");
-    if (rettype && rettype[0]) fdprintf(outFd, " -> %s", rettype);
-    emit(S_NEWLINE);
-
-    if (locals) {
-        emit(S_LOCVAR);
-        for (var = locals; var; var = var->next) {
-            const char *regname = getRegName(var->reg);
-
-            fdprintf(outFd, ";   %s: ", var->name);
-            if (var->first_label == 255) {
-                if (regname)
-                    fdprintf(outFd, "unused, reg=%s\n", regname);
-                else
-                    fdprintf(outFd, "unused, (iy%+d)\n", var->offset);
-            } else {
-                if (regname)
-                    fdprintf(outFd, "reg=%s\n", regname);
-                else
-                    fdprintf(outFd, "(iy%+d)\n", var->offset);
-            }
-        }
-    }
-
-    fdprintf(outFd, "%s:\n", name);  /* Name already has _ prefix if public */
+    fdprintf(outFd, "; %s\n%s:\n", name, name);
 
     if (frame_size > 0 || has_params) {
         if (frame_size == 0) {

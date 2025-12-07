@@ -10,7 +10,7 @@
 #include "astio.h"
 #include "cc2.h"
 
-#define BUFSIZE 512
+#define BUFSIZE 256
 
 static unsigned char inFd;
 static unsigned char buf[BUFSIZE];
@@ -20,7 +20,7 @@ static unsigned bufValid;
 unsigned lineNum = 1;
 unsigned char curchar;
 
-static unsigned char symbuf[256];
+static unsigned char symbuf[64];
 
 void 
 initAstio(unsigned char fd) {
@@ -99,7 +99,7 @@ unsigned char *
 readName(void) {
 	int len, i;
 	len = readHex2();
-	for (i = 0; i < len && i < 255; i++) {
+	for (i = 0; i < len && i < 63; i++) {
 		symbuf[i] = curchar;
 		nextchar();
 	}

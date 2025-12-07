@@ -83,7 +83,7 @@ switchToSeg(int seg)
 static void
 oom(void)
 {
-	fdprintf(2, "parseast: out of memory\n");
+	fdprintf(2, "oom\n");
 	exit(1);
 }
 
@@ -755,7 +755,7 @@ doFunction(unsigned char rettype)
 }
 
 /* Symbol tracking */
-#define MAX_SYMBOLS 512
+#define MAX_SYMBOLS 256
 static char *defSymbols[MAX_SYMBOLS];
 static int numDefined = 0;
 static char *refSymbols[MAX_SYMBOLS];

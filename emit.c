@@ -224,7 +224,7 @@ static void emitStmtTail(struct stmt *s, int tailPos)
         fdprintf(2, "emitStmt #%d type=%c\n", stmt_count, s->type);
     }
     if (stmt_count > 100000) {
-        fdprintf(2, "emitStmt: exceeded 100000 statements\n");
+        fdprintf(2, "stmt overflow\n");
         exit(1);
     }
 

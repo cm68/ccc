@@ -29,7 +29,7 @@ static long g_walk_count = 0;
 #define MAX_WALKS 1000000
 #define CHECK_WALK() do { \
     if (++g_walk_count > MAX_WALKS) { \
-        fdprintf(2, "codegen: exceeded %ld tree walks\n", (long)MAX_WALKS); \
+        fdprintf(2, "walk overflow\n"); \
         exit(1); \
     } \
 } while(0)
@@ -108,10 +108,7 @@ static void
 addVar(const char *name, unsigned char size, int is_param, int offset, int is_array)
 {
     struct local_var *var = malloc(sizeof(struct local_var));
-    if (!var) {
-        fdprintf(2, "parseast: out of memory allocating local_var\n");
-        exit(1);
-    }
+    if (!var) { fdprintf(2, "oom\n"); exit(1); }
     var->name = strdup(name);
     var->size = size;
     var->offset = is_param ? offset : -(fnFrmSize + size);
@@ -1040,13 +1037,9 @@ optFrmLayout()
     
     fnFrmSize = newFrameSize;
 
-    /* Check frame size limit - IY-indexed addressing uses signed 8-bit offsets
-     * Local variables use negative offsets from IY, range is -1 to -128
-     * Limit to 127 bytes to ensure all locals fit within addressing range */
+    /* Check frame size limit - IY-indexed addressing uses signed 8-bit offsets */
     if (fnFrmSize > 127) {
-        fdprintf(2, "ERROR: Function %s has %d bytes of local variables after optimization (max 127)\n",
-                 fnName, fnFrmSize);
-        fdprintf(2, "       Reduce number or size of local variables\n");
+        fdprintf(2, "%s: frame > 127\n", fnName);
         exit(1);
     }
 
@@ -1143,7 +1136,7 @@ static void generateExpr(struct expr *e)
     CHECK_WALK();
     expr_count++;
     if (expr_count > 100000) {
-        fdprintf(2, "generateExpr: exceeded 100000 calls, op=%c\n", e->op);
+        fdprintf(2, "expr overflow\n");
         exit(1);
     }
 

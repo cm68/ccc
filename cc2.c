@@ -74,29 +74,15 @@ char *progname;
 void
 timeoutHdlr(int sig)
 {
-    fdprintf(2, "\n\n*** TIMEOUT after %d seconds ***\n", MAXTIME);
-    fdprintf(2,
-        "cc2: code generation took too long (possible infinite loop)\n");
+    fdprintf(2, "cc2: timeout\n");
     exit(1);
 }
 
 void
 usage(char *complaint)
 {
-    if (complaint) {
-        fdprintf(2, "%s\n", complaint);
-    }
-    fdprintf(2, "usage: %s [<options>] [<ast_file>]\n", progname);
-    fdprintf(2,
-        "  -o <output>    Output file (default: <input>.s or stdout "
-        "for stdin)\n");
-#ifdef DEBUG
-    fdprintf(2,
-        "  -v <level>     Trace level (hex bitmask, e.g., 0xff)\n");
-#endif
-    fdprintf(2,
-        "  <ast_file>     Input AST file (default: stdin, for filter "
-        "mode)\n");
+    if (complaint) fdprintf(2, "%s\n", complaint);
+    fdprintf(2, "usage: %s [-o out] [ast]\n", progname);
     exit(1);
 }
 
@@ -200,20 +186,17 @@ main(int argc, char **argv)
 
     /* Open input: file or stdin */
     if (ast_file) {
-        fdprintf(2, "cc2: Reading AST from %s\n", ast_file);
         inFd = open(ast_file, O_RDONLY);
         if (inFd < 0) {
             fdprintf(2, "cc2: cannot open %s\n", ast_file);
             exit(1);
         }
     } else {
-        fdprintf(2, "cc2: Reading AST from stdin\n");
         inFd = 0;  /* stdin */
     }
 
     /* Open output: file or stdout */
     if (output_file) {
-        fdprintf(2, "cc2: Writing assembly to %s\n", output_file);
         outFd = open(output_file, O_WRONLY | O_CREAT | O_TRUNC, 0644);
         if (outFd < 0) {
             fdprintf(2, "cc2: cannot create %s\n", output_file);
@@ -221,14 +204,12 @@ main(int argc, char **argv)
             exit(1);
         }
     } else {
-        fdprintf(2, "cc2: Writing assembly to stdout\n");
         outFd = 1;  /* stdout */
     }
 
     /* Parse AST file and generate code */
-    fdprintf(2, "cc2: Parsing AST and generating code...\n");
     if (parseAstFile(inFd, outFd) != 0) {
-        fdprintf(2, "cc2: failed to parse AST\n");
+        fdprintf(2, "cc2: parse failed\n");
         if (inFd != 0) close(inFd);
         if (outFd != 1) close(outFd);
         exit(1);
@@ -237,8 +218,6 @@ main(int argc, char **argv)
     /* Close files */
     if (inFd != 0) close(inFd);
     if (outFd != 1) close(outFd);
-
-    fdprintf(2, "\ncc2: Generation complete\n");
 
     return 0;
 }
