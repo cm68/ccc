@@ -130,7 +130,6 @@ extern void frStmt(struct stmt *s);
 extern void emitFunction(struct name *func);
 extern void emitGlobalAsm(struct stmt *st);
 extern void emitGv(struct name *var);
-extern void emitGvs(void);
 extern void emitStrLit(struct name *strname);
 
 /* statement flags used in parse.c */
@@ -293,7 +292,6 @@ extern struct token cur, next;
 extern struct token tokHist[TOK_HIST_SIZE];
 extern int tokHidx;
 
-extern void lexinit();
 extern int writeCppfile;
 extern int cppfile;
 extern char *cppfname;

@@ -65,7 +65,7 @@ unsigned char astFd;  // defaults to 1 (stdout), can be overridden with -o
  *   2. Create .i preprocessor output file if -E flag specified
  *   3. Push source file onto input stack (insertfile)
  *   4. Initialize I/O system (ioinit) - prime character lookahead
- *   5. Initialize lexer state (lexinit)
+ *   5. Initialize lexer state - clear token lookahead
  *   6. Parse entire file (parse) - generates AST output
  *   7. Flush preprocessor output if enabled
  *
@@ -146,7 +146,7 @@ process(char *f)
 
     insertfile(f, 0);
     ioinit();
-    lexinit();
+    cur.type = next.type = NONE;
 
     parse();
 

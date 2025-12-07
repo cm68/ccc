@@ -789,17 +789,5 @@ emitGv(struct name *var)
 }
 
 /*
- * Emit all global variables (DEPRECATED - kept for compatibility)
- * Global variables are now emitted incrementally during parsing
- * Called after parsing completes with all names still in scope
- */
-void
-emitGvs(void)
-{
-	/* No-op: globals are now emitted incrementally in declaration() */
-	/* This function is kept for API compatibility but does nothing */
-}
-
-/*
  * vim: tabstop=4 shiftwidth=4 expandtab:
  */

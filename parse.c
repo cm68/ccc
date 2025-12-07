@@ -137,15 +137,6 @@ addDeclInit(struct name *v)
 }
 
 /*
- * Clear the deferred initialization list
- */
-void
-clearDeclIni()
-{
-	declInitCnt = 0;
-}
-
-/*
  * Convert deferred local variable initializers to assignment statements
  * Returns head of statement list, updates *ppst to point to next pointer
  */
@@ -181,7 +172,7 @@ emitDeclInits(struct stmt ***ppst, struct stmt *parent)
 		*ppst = &assign_st->next;
 		assign_st->parent = parent;
 	}
-	clearDeclIni();
+	declInitCnt = 0;
 	return head;
 }
 
@@ -326,7 +317,7 @@ statement(struct stmt *parent)
         case REGISTER:
         case AUTO:
         case EXTERN:
-            clearDeclIni();
+            declInitCnt = 0;
             declaration();
             if (declInitCnt > 0) {
                 struct stmt *init_head = emitDeclInits(&pst, parent);
@@ -356,7 +347,7 @@ statement(struct stmt *parent)
             {
                 struct name *poss_typedef = findName(cur.v.name, 0);
                 if (poss_typedef && poss_typedef->kind == tdef) {
-                    clearDeclIni();
+                    declInitCnt = 0;
                     declaration();
                     if (declInitCnt > 0) {
                         struct stmt *init_head = emitDeclInits(&pst, parent);
@@ -1194,9 +1185,6 @@ parse()
 			gettoken();
 		}
 	}
-
-	/* Emit global variables (no-op, already emitted incrementally) */
-	emitGvs();
 
 	popScope();
 

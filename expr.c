@@ -140,26 +140,6 @@ lvalue(struct expr *e)
 }
 
 /*
- * Set up type and parent linkage for unary operator expressions
- *
- * Helper function that factors out common initialization for unary operators.
- * Propagates the operand's type to the operation (unary ops preserve type)
- * and establishes the parent link from child to parent.
- *
- * Used after creating unary operator nodes (NEG, NOT, BITNOT, etc.) to
- * ensure proper type propagation and tree connectivity.
- *
- * Parameters:
- *   e - Unary operator expression node (must have e->left set)
- */
-void
-unopSet(struct expr *e)
-{
-    e->type = e->left->type;
-    e->left->up = e;
-}
-
-/*
  * Get binary operator precedence priority
  *
  * Looks up the precedence priority for a binary operator token in the
@@ -547,8 +527,10 @@ parseExpr(unsigned char pri, struct stmt *st)
         unsigned char uop = (cur.type == MINUS) ? NEG : cur.type;
         gettoken();
         e = mkexpr(uop, parseExpr(OP_PRI_MULT - 1, st));
-        if (e->left)
-            unopSet(e);
+        if (e->left) {
+            e->type = e->left->type;
+            e->left->up = e;
+        }
         e = cfold(e);
         break;
     }

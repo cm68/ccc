@@ -94,21 +94,6 @@ asmOut(char *s, int len)
 }
 
 /*
- * Initialize lexer state
- *
- * Resets the token stream to initial state. Called at the start of each
- * source file before parsing begins.
- *
- * Side effects:
- *   - Clears cur and next token types to NONE
- */
-void
-lexinit()
-{
-	cur.type = next.type = NONE;
-}
-
-/*
  * Check if current token matches and consume it if so
  *
  * Common pattern in parsing: test for token type and consume if matched.
