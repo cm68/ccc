@@ -57,11 +57,13 @@ hval(unsigned char c) {
 }
 
 /* Read 2 hex chars as byte */
-unsigned char 
+unsigned char
 readHex2(void) {
-	unsigned char v = hval(curchar);
+	unsigned char v = 0;
+	v = hval(curchar);
+	nextchar();
 	v <<= 4;
-    v |= hval(nextchar());
+	v |= hval(curchar);
 	nextchar();
 	return v;
 }
