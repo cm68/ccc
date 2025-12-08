@@ -24,6 +24,7 @@
 char verbose INIT;
 char Vflag INIT;            /* -V: list object files */
 char rflag INIT;            /* -r: emit relocatable output */
+char out_symlen INIT;       /* output symbol length (0=15, set by -9) */
 
 /*
  * segment base addresses (command line settable)
@@ -113,9 +114,10 @@ int outfd INIT;
 void
 usage()
 {
-    fprintf(stderr, "usage: wsld [-vV] [-r] [-o outfile] [-Ttext addr] [-Tdata addr] [-Tbss addr] file...\n");
+    fprintf(stderr, "usage: wsld [-vV9] [-r] [-o outfile] [-Ttext addr] [-Tdata addr] [-Tbss addr] file...\n");
     fprintf(stderr, "  -V          list object files linked\n");
     fprintf(stderr, "  -r          emit relocatable output (for subsequent links)\n");
+    fprintf(stderr, "  -9          use 9-char symbols in output (default 15)\n");
     exit(1);
 }
 
@@ -966,6 +968,10 @@ pass2_output()
 {
     struct object *obj;
     unsigned char config;
+    int symlen;
+
+    /* default to 15-char symbols */
+    symlen = out_symlen ? out_symlen : 15;
 
     outfd = open(outfile, O_WRONLY | O_CREAT | O_TRUNC, 0666);
     if (outfd < 0)
@@ -973,11 +979,11 @@ pass2_output()
 
     /* write header */
     write_byte(MAGIC);
-    config = CONF_LITTLE | 7;   /* 15-char symbols */
+    config = CONF_LITTLE | ((symlen - 1) / 2);
     if (!rflag)
         config |= CONF_NORELO;
     write_byte(config);
-    write_word(rflag ? num_globals * 18 : 0);   /* symtab size */
+    write_word(rflag ? num_globals * (symlen + 3) : 0);   /* symtab size */
     write_word(total_text);
     write_word(total_data);
     write_word(total_bss);
@@ -1006,6 +1012,10 @@ pass2_output()
         unsigned char type;
 
         for (s = symbols; s; s = s->next) {
+            /* warn if symbol name will be truncated */
+            if (strlen(s->name) > symlen) {
+                fprintf(stderr, "wsld: symbol truncated: %s\n", s->name);
+            }
             /* symbol entry: value, type, name */
             write_word(s->value);
             /* encode segment in type byte */
@@ -1017,7 +1027,7 @@ pass2_output()
             default:       type = 0x08; break;
             }
             write_byte(type);
-            for (i = 0; i < 15; i++) {
+            for (i = 0; i < symlen; i++) {
                 write_byte(s->name[i]);
             }
         }
@@ -1187,6 +1197,10 @@ char **argv;
 
             case 'r':
                 rflag++;
+                break;
+
+            case '9':
+                out_symlen = 9;
                 break;
 
             case 'o':
