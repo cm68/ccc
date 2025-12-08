@@ -225,12 +225,12 @@ void emitIncDec(struct expr *e)
                     fdprintf(outFd, "\t%s %s\n", is_dec ? "dec" : "inc", rp);
                 break;
             case ID_STACK:
+                /* 8-bit dec/inc affects C flag, so we can use borrow/carry */
                 for (i = 0; i < amount; i++) {
                     iyFmt(is_dec ? "\tdec (iy %c %d)\n" : "\tinc (iy %c %d)\n", ofs);
-                    if (i == 0 && amount > 1)
-                        fdprintf(outFd, "\tjr nz, $+%d\n", 3 * (int)(amount - 1) + 3);
+                    fdprintf(outFd, "\tjr nc, $+3\n");
+                    iyFmt(is_dec ? "\tdec (iy %c %d)\n" : "\tinc (iy %c %d)\n", ofs + 1);
                 }
-                iyFmt(is_dec ? "\tdec (iy %c %d)\n" : "\tinc (iy %c %d)\n", ofs + 1);
                 break;
             case ID_GLOBAL:
                 if (!is_post) fdprintf(outFd, "\tld hl, (%s)\n", sym);
