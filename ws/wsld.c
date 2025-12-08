@@ -22,6 +22,7 @@
 /* use wsSegNames from wsobj.c */
 
 char verbose INIT;
+char Vflag INIT;            /* -V: list object files */
 char rflag INIT;            /* -r: emit relocatable output */
 
 /*
@@ -112,7 +113,8 @@ int outfd INIT;
 void
 usage()
 {
-    fprintf(stderr, "usage: wsld [-v] [-r] [-o outfile] [-Ttext addr] [-Tdata addr] [-Tbss addr] file...\n");
+    fprintf(stderr, "usage: wsld [-vV] [-r] [-o outfile] [-Ttext addr] [-Tdata addr] [-Tbss addr] file...\n");
+    fprintf(stderr, "  -V          list object files linked\n");
     fprintf(stderr, "  -r          emit relocatable output (for subsequent links)\n");
     exit(1);
 }
@@ -287,6 +289,9 @@ char *name;
     obj->hdr_data_off = read_word(fd);
 
     obj->num_syms = obj->symtab_size / (obj->symlen + 3);
+
+    if (Vflag)
+        printf("%s\n", name);
 
     if (verbose) {
         printf("%s: symlen=%d text=%d data=%d bss=%d syms=%d\n",
@@ -480,6 +485,9 @@ char *membername;
     obj->hdr_data_off = read_word(fd);
 
     obj->num_syms = obj->symtab_size / (obj->symlen + 3);
+
+    if (Vflag)
+        printf("%s\n", fullname);
 
     if (verbose) {
         printf("%s: symlen=%d text=%d data=%d bss=%d syms=%d\n",
@@ -1171,6 +1179,10 @@ char **argv;
             switch (arg[1]) {
             case 'v':
                 verbose++;
+                break;
+
+            case 'V':
+                Vflag++;
                 break;
 
             case 'r':
