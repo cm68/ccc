@@ -24,6 +24,7 @@
 char verbose INIT;
 char Vflag INIT;            /* -V: list object files */
 char rflag INIT;            /* -r: emit relocatable output */
+char sflag INIT;            /* -s: strip symbols */
 char out_symlen INIT;       /* output symbol length (0=15, set by -9) */
 
 /*
@@ -115,9 +116,10 @@ int outfd INIT;
 void
 usage()
 {
-    fprintf(stderr, "usage: wsld [-vV9] [-r] [-o outfile] [-Ttext addr] [-Tdata addr] [-Tbss addr] file...\n");
+    fprintf(stderr, "usage: wsld [-vV9rs] [-o outfile] [-Ttext addr] [-Tdata addr] [-Tbss addr] file...\n");
     fprintf(stderr, "  -V          list object files linked\n");
     fprintf(stderr, "  -r          emit relocatable output (for subsequent links)\n");
+    fprintf(stderr, "  -s          strip symbol table from output\n");
     fprintf(stderr, "  -9          use 9-char symbols in output (default 15)\n");
     exit(1);
 }
@@ -985,7 +987,7 @@ pass2_output()
     if (!rflag)
         config |= CONF_NORELO;
     write_byte(config);
-    write_word(rflag ? num_globals * (symlen + 3) : 0);   /* symtab size */
+    write_word(sflag ? 0 : num_globals * (symlen + 3));   /* symtab size */
     write_word(total_text);
     write_word(total_data);
     write_word(total_bss);
@@ -1007,8 +1009,8 @@ pass2_output()
                      data_base + total_text + obj->data_off, 0);
     }
 
-    /* write symbol table (after text and data) */
-    if (rflag) {
+    /* write symbol table (after text and data) unless stripped */
+    if (!sflag) {
         struct symbol *s;
         int i;
         unsigned char type;
@@ -1199,6 +1201,10 @@ char **argv;
 
             case 'r':
                 rflag++;
+                break;
+
+            case 's':
+                sflag++;
                 break;
 
             case '9':

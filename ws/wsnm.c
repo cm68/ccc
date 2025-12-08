@@ -709,12 +709,14 @@ unsigned char type;
 
 /*
  * hex dump a region
+ * addr_base is the displayed address offset
  */
 void
-hexdump(name, start, size)
+hexdump(name, start, size, addr_base)
 char *name;
 long start;
 int size;
+int addr_base;
 {
     int i, j;
     unsigned char c;
@@ -727,7 +729,7 @@ int size;
     printf("\n%s: %d bytes\n", name, size);
 
     for (i = 0; i < size; i += 16) {
-        printf("  %04x: ", i);
+        printf("  %04x: ", addr_base + i);
 
         /* hex bytes */
         for (j = 0; j < 16; j++) {
@@ -1368,7 +1370,7 @@ long objsize;
     if (dflag && text_size > 0) {
         disassemble(base + 16, text_size);
     } else if (bflag) {
-        hexdump("Text segment", base + 16, text_size);
+        hexdump("Text segment", base + 16, text_size, 0);
     }
 
     if (reltab) {
@@ -1377,7 +1379,7 @@ long objsize;
     }
 
     if ((dflag || bflag) && data_size > 0)
-        hexdump("Data segment", base + 16 + text_size, data_size);
+        hexdump("Data segment", base + 16 + text_size, data_size, data_off);
 
     /* dump symbol table */
     if (symtab_size > 0) {
