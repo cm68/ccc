@@ -1376,7 +1376,7 @@ long objsize;
         reltab = 0;
     }
 
-    if (bflag)
+    if ((dflag || bflag) && data_size > 0)
         hexdump("Data segment", base + 16 + text_size, data_size);
 
     /* dump symbol table */
