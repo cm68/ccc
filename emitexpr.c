@@ -111,6 +111,29 @@ void emitExpr(struct expr *e)
         freeNode(e);
         return;
     }
+    /* Handle DEREF of IX-allocated pointer: (M (M $ptr)) or (M (+ (M $ptr) ofs)) */
+    else if (e->op == 'M' && e->loc == LOC_IX) {
+        int ofs = e->offset;
+        if (e->size == 1) {
+            fdprintf(outFd, "\tld a, (ix %c %d)\n",
+                     ofs >= 0 ? '+' : '-', ofs >= 0 ? ofs : -ofs);
+            fnAZero = 0;
+            clearA();
+        } else {
+            char hi, lo;
+            switch (e->dest) {
+            case R_BC: hi = 'b'; lo = 'c'; break;
+            case R_DE: hi = 'd'; lo = 'e'; break;
+            default:   hi = 'h'; lo = 'l'; break;
+            }
+            fdprintf(outFd, "\tld %c, (ix %c %d)\n\tld %c, (ix %c %d)\n",
+                     lo, ofs >= 0 ? '+' : '-', ofs >= 0 ? ofs : -ofs,
+                     hi, ofs + 1 >= 0 ? '+' : '-', ofs + 1 >= 0 ? ofs + 1 : -(ofs + 1));
+        }
+        freeExpr(e->left);
+        freeNode(e);
+        return;
+    }
     /* Handle symbol address - check if global or local */
     else if (e->op == '$' && e->symbol) {
         const char *sym_name = stripVarPfx(e->symbol);

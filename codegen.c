@@ -1475,6 +1475,36 @@ schedExpr(struct expr *e, int dest)
             }
             /* Don't recurse into $ child - we handled it */
             e->left->loc = LOC_MEM;
+        } else if (e->left && e->left->op == 'M' &&
+                   e->left->left && e->left->left->op == '$') {
+            /* Dereference of pointer variable: (M (M $ptr))
+             * Check if ptr is IX-allocated for (ix+0) addressing */
+            var = findVar(e->left->left->symbol);
+            if (var && var->reg == REG_IX) {
+                e->loc = LOC_IX;
+                e->offset = 0;
+            } else {
+                /* Not IX - fall through to indirect */
+                schedExpr(e->left, R_HL);
+                e->loc = LOC_INDIR;
+                e->reg = R_HL;
+            }
+        } else if (e->left && e->left->op == '+' &&
+                   e->left->left && e->left->left->op == 'M' &&
+                   e->left->left->left && e->left->left->left->op == '$' &&
+                   e->left->right && e->left->right->op == 'C') {
+            /* Struct member access: (M (+ (M $ptr) const))
+             * Check if ptr is IX-allocated for (ix+offset) addressing */
+            var = findVar(e->left->left->left->symbol);
+            if (var && var->reg == REG_IX) {
+                e->loc = LOC_IX;
+                e->offset = e->left->right->value;
+            } else {
+                /* Not IX - fall through to indirect */
+                schedExpr(e->left, R_HL);
+                e->loc = LOC_INDIR;
+                e->reg = R_HL;
+            }
         } else {
             /* Complex dereference - recurse */
             schedExpr(e->left, R_HL);
@@ -1564,11 +1594,18 @@ schedExpr(struct expr *e, int dest)
         break;
 
     case '=':  /* Assignment */
-        /* LHS is destination, RHS provides value */
+        /* LHS is destination, RHS provides value
+         * If LHS is a register-allocated variable, target that register */
         if (e->size == 1) {
             schedExpr(e->right, R_A);
         } else {
-            schedExpr(e->right, R_HL);
+            int rhs_dest = R_HL;
+            /* Check if LHS is a register variable */
+            if (e->left && e->left->op == '$' && e->left->symbol) {
+                var = findVar(e->left->symbol);
+                if (var && var->reg == REG_BC) rhs_dest = R_BC;
+            }
+            schedExpr(e->right, rhs_dest);
         }
         schedExpr(e->left, R_NONE);
         break;

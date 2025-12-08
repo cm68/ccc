@@ -391,7 +391,15 @@ void emitAssign(struct expr *e)
             fdprintf(2, "emitAssign: simple variable\n");
         }
 #endif
-        storeVar(e->left->symbol, e->size, 1);
+        /* Skip store if RHS was loaded directly into target register */
+        {
+            struct local_var *lv = findVar(stripVarPfx(e->left->symbol));
+            int skip = 0;
+            if (lv && lv->reg == REG_BC && e->right && e->right->dest == R_BC)
+                skip = 1;
+            if (!skip)
+                storeVar(e->left->symbol, e->size, 1);
+        }
 #ifdef DEBUG
         if (TRACE(T_ASSIGN)) {
             fdprintf(2, "emitAssign: after storeVar\n");
