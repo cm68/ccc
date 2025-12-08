@@ -392,7 +392,23 @@ void emitFnProlog(char *name, char *params, char *rettype, int frame_size,
     int has_params = (params && params[0]);
     struct local_var *var;
 
-    fdprintf(outFd, "; %s\n%s:\n", name, name);
+    fdprintf(outFd, "; %s\n", name);
+
+#ifdef DEBUG
+    /* Emit local variable info as comments */
+    if (locals) {
+        static const char *regnames[] = { "-", "B", "C", "BC", "IX" };
+        fdprintf(outFd, "; frame=%d\n", frame_size);
+        for (var = locals; var; var = var->next) {
+            const char *rn = (var->reg < 5) ? regnames[var->reg] : "?";
+            fdprintf(outFd, ";   %s %s: size=%d iy%+d refs=%d reg=%s\n",
+                var->is_param ? "param" : "local",
+                var->name, var->size, var->offset, var->ref_count, rn);
+        }
+    }
+#endif
+
+    fdprintf(outFd, "%s:\n", name);
 
     if (frame_size > 0 || has_params) {
         if (frame_size == 0) {
