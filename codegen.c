@@ -1509,9 +1509,12 @@ schedExpr(struct expr *e, int dest)
     case 'L':  /* <= */
     case 'Q':  /* == */
     case 'n':  /* != */
-        /* Signed comparison with 0: test in place, no register scheduling */
-        if (!(e->flags & E_UNSIGNED) && e->right && e->right->op == 'C' &&
-            e->right->value == 0 && e->left && e->left->size == 2) {
+        /* Comparison with 0: test in place, no register scheduling
+         * For == and !=, signedness doesn't matter (just test for zero)
+         * For relational ops, only signed can use simple test */
+        if (e->right && e->right->op == 'C' &&
+            e->right->value == 0 && e->left && e->left->size == 2 &&
+            ((e->op == 'Q' || e->op == 'n') || !(e->flags & E_UNSIGNED))) {
             schedExpr(e->left, R_NONE);  /* just set loc, don't force register */
             e->right->loc = LOC_CONST;
             e->right->dest = R_NONE;

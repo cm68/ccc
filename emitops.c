@@ -660,6 +660,15 @@ void emitBinop(struct expr *e)
      * > and <=: left->DE, right->HL, compute right-left
      */
     if (left_size == 2 && is_cmp) {
+        /* For == and != with 0, just test HL with "ld a, h / or l" */
+        if ((e->op == 'Q' || e->op == 'n') &&
+            e->right && e->right->op == 'C' && e->right->value == 0) {
+            if (!emitSimplLd(e->left)) emitExpr(e->left);
+            fdprintf(outFd, "\tld a, h\n\tor l\n");
+            fnZValid = (e->op == 'Q') ? 1 : 2;
+            freeNode(e);
+            return;
+        }
         if (!emitSimplLd(e->left)) emitExpr(e->left);
         if (!emitSimplLd(e->right)) emitExpr(e->right);
         fdprintf(outFd, "\tor a\n\tsbc hl, de\n");
