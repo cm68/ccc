@@ -143,36 +143,25 @@ int seg;
 
 /*
  * format address with symbol if available
- * when gflag is set and there's a relocation at disasm_pc, use the relocation symbol
- * in -g mode, only use symbols when there's a relocation (to produce correct assembly)
+ * uses relocation table when available for accurate symbol resolution
  */
 void
 fmt_addr(buf, val)
 char *buf;
 unsigned short val;
 {
-    char *sym;
     int ri;
 
-    /* in -g mode, check for relocation at the current operand position */
-    if (gflag && disasm_pc >= 0) {
+    /* check for relocation at the current operand position */
+    if (disasm_pc >= 0) {
         ri = find_reloc(disasm_pc);
         if (ri >= 0) {
             reloc_name(reltab[ri].symidx, val, buf);
             return;
         }
-        /* in -g mode, no reloc means use literal value */
-        goto literal;
     }
 
-    sym = sym_lookup(val, 1);  /* try text first */
-    if (!sym) sym = sym_lookup(val, 2);  /* then data */
-    if (!sym) sym = sym_lookup(val, 3);  /* then bss */
-    if (sym) {
-        sprintf(buf, "%s", sym);
-        return;
-    }
-literal:
+    /* no relocation - use literal value */
     /* hex numbers starting with a-f need leading 0 for assembler */
     if ((val >> 12) >= 10)
         sprintf(buf, "0%04xh", val);
@@ -588,7 +577,8 @@ char *buf;
 }
 
 /*
- * disassemble text segment
+ * disassemble text segment with byte dump
+ * uses relocation table for accurate symbol resolution
  */
 void
 disassemble(start, size)
@@ -598,7 +588,10 @@ int size;
     int pc = 0;
     char buf[64];
     char *sym;
-    int len, i;
+    int len, i, ri;
+    int addend;
+    unsigned char sc;
+    int sclen;
 
     printf("\nDisassembly: %d bytes\n", size);
 
@@ -609,6 +602,46 @@ int size;
             printf("%s:\n", sym);
         }
 
+        /* check for relocation at this address - emit as .dw */
+        ri = find_reloc(pc);
+        if (ri >= 0) {
+            addend = filebuf[start + pc] | (filebuf[start + pc + 1] << 8);
+            reloc_name(reltab[ri].symidx, addend, buf);
+            printf("  %04x  %02x %02x        .dw %s\n",
+                   pc, filebuf[start + pc], filebuf[start + pc + 1], buf);
+            pc += 2;
+            continue;
+        }
+
+        /* check for syscall */
+        if (filebuf[start + pc] == 0xcf) {
+            printf("  %04x  cf           rst 08h\n", pc);
+            pc++;
+            if (pc < size) {
+                sc = filebuf[start + pc];
+                sclen = (sc < NSYS) ? syscalls[sc].argbytes : 0;
+                /* emit syscall data bytes */
+                for (i = 0; i < sclen && pc < size; i++) {
+                    ri = find_reloc(pc);
+                    if (ri >= 0) {
+                        addend = filebuf[start + pc] | (filebuf[start + pc + 1] << 8);
+                        reloc_name(reltab[ri].symidx, addend, buf);
+                        printf("  %04x  %02x %02x        .dw %s\n",
+                               pc, filebuf[start + pc], filebuf[start + pc + 1], buf);
+                        pc += 2;
+                        i++;
+                    } else {
+                        printf("  %04x  %02x           .db 0%02xh\n",
+                               pc, filebuf[start + pc], filebuf[start + pc]);
+                        pc++;
+                    }
+                }
+            }
+            continue;
+        }
+
+        /* regular instruction */
+        disasm_pc = -1;
         len = disasm(start + pc, pc, buf);
 
         /* print address and bytes */
@@ -1319,12 +1352,26 @@ long objsize;
         }
     }
 
+    /* parse relocations for disassembly (needed before disassemble call) */
+    text_reloc_off = symtab_off + symtab_size;
+    if (!(config & CONF_NORELO) && dflag) {
+        text_off_g = 0;
+        data_off_g = text_size;
+        data_reloc_off = parse_relocs(text_reloc_off, limit);
+    }
+
     /* hex dump or disassemble segments */
     if (dflag && text_size > 0) {
         disassemble(base + 16, text_size);
     } else {
         hexdump("Text segment", base + 16, text_size);
     }
+
+    if (reltab) {
+        free(reltab);
+        reltab = 0;
+    }
+
     hexdump("Data segment", base + 16 + text_size, data_size);
 
     /* dump symbol table */
@@ -1336,8 +1383,6 @@ long objsize;
 
     /* dump relocations */
     if (!(config & CONF_NORELO)) {
-        text_reloc_off = symtab_off + symtab_size;
-
         dump_relocs("Text", text_reloc_off, symlen, num_syms);
 
         /* find data reloc offset by scanning past text relocs */
@@ -1345,10 +1390,10 @@ long objsize;
         while (off < limit) {
             unsigned char b = get_byte(off++);
             if (b == 0) break;
-            if (b >= 32 && b < 64) off++;
-            else if (b == 0xfc) {
+            if (b >= REL_BUMP_EXT && b < REL_ABS) off++;
+            else if (b == REL_SYM_EXT) {
                 b = get_byte(off++);
-                if (b >= 0x80) off++;
+                if (b >= REL_EXT_LONG) off++;
             }
         }
         data_reloc_off = off;
