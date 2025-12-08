@@ -54,7 +54,75 @@
 #define SEG_EXT     5       /* external reference */
 
 /*
- * Object file header layout (after magic and config bytes):
+ * common functions (wsobj.c)
+ */
+extern char *ws_segnames[];
+
+void ws_write_byte(/* int fd, unsigned char b */);
+void ws_write_word(/* int fd, unsigned short val */);
+void ws_encode_bump(/* int fd, int bump */);
+void ws_encode_reloc_type(/* int fd, int seg, int symidx */);
+void ws_end_relocs(/* int fd */);
+
+/*
+ * Relocation encoding constants
+ *
+ * Bump encoding (distance to next relocation):
+ *   0x01-0x1f: bump value 1-31
+ *   0x20-0x3f: high byte (value = ((b-32)<<8) + next_byte + 32)
+ *   max single bump = 0x3f,0xff = 8223
+ *
+ * Control bytes (relocation type):
+ *   0x40: absolute (SEG_ABS)
+ *   0x44: text segment (SEG_TEXT)
+ *   0x48: data segment (SEG_DATA)
+ *   0x4c: bss segment (SEG_BSS)
+ *   0x50-0xfb: symbol index = (b - 0x50) >> 2
+ *   0xfc: extended symbol, followed by:
+ *     0x00-0x7f: index = b + 43
+ *     0x80-0xff: index = ((b-0x80)<<8) + next_byte + 171
+ */
+#define REL_BUMP_MAX    31      /* max simple bump (0x01-0x1f) */
+#define REL_BUMP_EXT    32      /* extended bump threshold (0x20) */
+#define REL_BUMP_LIMIT  8223    /* max single bump value (0x3f,0xff) */
+
+#define REL_ABS         0x40    /* absolute relocation */
+#define REL_TEXT        0x44    /* text segment relocation */
+#define REL_DATA        0x48    /* data segment relocation */
+#define REL_BSS         0x4c    /* bss segment relocation */
+#define REL_SYM_BASE    0x50    /* start of symbol index range */
+#define REL_SYM_END     0xfc    /* end of symbol index range (exclusive) */
+#define REL_SYM_EXT     0xfc    /* extended symbol marker */
+#define REL_EXT_LONG    0x80    /* extended symbol long form flag */
+
+/* symbol index encoding thresholds */
+#define REL_SYM_OFFSET  4       /* offset added to symbol index */
+#define REL_SYM_SHIFT   16      /* shift for inline encoding */
+#define REL_EXT_THRESH1 47      /* threshold for 1-byte extended */
+#define REL_EXT_THRESH2 175     /* threshold for 2-byte extended */
+
+/*
+ * Object file header offsets
+ */
+#define HDR_MAGIC       0       /* 1 byte: magic (0x99) */
+#define HDR_CONFIG      1       /* 1 byte: config byte */
+#define HDR_SYMTAB      2       /* 2 bytes: symbol table size */
+#define HDR_TEXT        4       /* 2 bytes: text segment size */
+#define HDR_DATA        6       /* 2 bytes: data segment size */
+#define HDR_BSS         8       /* 2 bytes: bss segment size */
+#define HDR_HEAP        10      /* 2 bytes: heap size */
+#define HDR_TEXTOFF     12      /* 2 bytes: text start offset */
+#define HDR_DATAOFF     14      /* 2 bytes: data start offset */
+#define HDR_SIZE        16      /* total header size */
+
+/*
+ * Archive entry header
+ */
+#define AR_NAMELEN      14      /* archive member name length */
+#define AR_HDRSIZE      16      /* name(14) + length(2) */
+
+/*
+ * Object file header layout:
  *
  *   Offset  Size  Description
  *   0       1     Magic (0x99)
@@ -68,16 +136,16 @@
  *   14      2     Data start offset (usually text_size)
  *
  * After header:
- *   - Symbol table entries
- *   - Text segment data
- *   - Text relocation records
- *   - Data segment data
- *   - Data relocation records
+ *   - Text segment data (text_size bytes)
+ *   - Data segment data (data_size bytes)
+ *   - Symbol table entries (symtab_size bytes)
+ *   - Text relocation records (variable, 0-terminated)
+ *   - Data relocation records (variable, 0-terminated)
  *
- * Symbol table entry:
- *   - N bytes: symbol name (N = symlen from config)
- *   - 1 byte: type (segment in bits 0-2, global flag in bit 3)
+ * Symbol table entry (symlen+3 bytes each):
  *   - 2 bytes: value (segment-relative offset)
+ *   - 1 byte: type (segment in bits 0-2, global flag in bit 3)
+ *   - N bytes: symbol name (N = symlen from config)
  *
  * Relocation record:
  *   - 2 bytes: address within segment to patch

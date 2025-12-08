@@ -12,25 +12,31 @@ ALL = asz wsld wsnm wslib wssize
 
 all: $(ALL)
 
-asz: asz.o asm.o
-	$(CC) $(CFLAGS) -o asz asz.o asm.o
+asz: asz.o asm.o wsobj.o
+	$(CC) $(CFLAGS) -o asz asz.o asm.o wsobj.o
 
 asz.o: asz.c asm.h
 	$(CC) $(CFLAGS) -c asz.c
 
-asm.o: asm.c asm.h
+asm.o: asm.c asm.h wsobj.h
 	$(CC) $(CFLAGS) -c asm.c
 
-wsld: wsld.c
-	$(CC) $(CFLAGS) -o wsld wsld.c
+wsobj.o: wsobj.c wsobj.h
+	$(CC) $(CFLAGS) -c wsobj.c
 
-wsnm: wsnm.c
-	$(CC) $(CFLAGS) -o wsnm wsnm.c
+wsld: wsld.o wsobj.o
+	$(CC) $(CFLAGS) -o wsld wsld.o wsobj.o
 
-wslib: wslib.c
+wsld.o: wsld.c wsobj.h
+	$(CC) $(CFLAGS) -c wsld.c
+
+wsnm: wsnm.c wsobj.o wsobj.h
+	$(CC) $(CFLAGS) -o wsnm wsnm.c wsobj.o
+
+wslib: wslib.c wsobj.h
 	$(CC) $(CFLAGS) -o wslib wslib.c
 
-wssize: wssize.c
+wssize: wssize.c wsobj.h
 	$(CC) $(CFLAGS) -o wssize wssize.c
 
 test: all

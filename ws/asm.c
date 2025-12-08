@@ -302,9 +302,8 @@ struct instruct isr_table[] = {
 
 #define TOKLEN 19
 
-char *segname[] = {
-	"undef", "text", "data", "bss", "abs", "ext"
-};
+/* use ws_segnames from wsobj.c */
+#define segname ws_segnames
 
 /*
  * symbols come in a couple of flavors that are driven by
@@ -420,6 +419,7 @@ struct jump {
 struct jump *jumps INIT;
 
 struct symbol *symbols INIT;
+struct symbol *symbols_tail INIT;  /* for append order */
 
 /*
  * if looking at whitespace, skip it
@@ -630,15 +630,16 @@ char *s;
     }
 
     while (*s) {
+        int d;
         val *= base;
-        c = *s | 0x20; 
-        c -= '0';
-        if ((base == 16) && (c > 9))
-            c -= ('a' - '0') - 10;
-        if ((c > base) || (c < 0)) {
+        c = *s | 0x20;
+        d = c - '0';
+        if ((base == 16) && (d > 9))
+            d -= ('a' - '0') - 10;
+        if ((d >= base) || (d < 0)) {
             gripe("numeric digit out of range");
         }
-        val += c;
+        val += d;
         s++;
     }
     return val;
@@ -990,10 +991,15 @@ int visible;
 
 	if (!sym) {
 		sym = (struct symbol *) malloc(sizeof(struct symbol));
-		sym->next = symbols;
-		symbols = sym;
-        sym->seg = SEG_UNDEF;
-        sym->index = 0xffff;
+		sym->next = 0;
+		/* append to preserve first-reference order */
+		if (symbols_tail)
+			symbols_tail->next = sym;
+		else
+			symbols = sym;
+		symbols_tail = sym;
+		sym->seg = SEG_UNDEF;
+		sym->index = 0xffff;
 		for (i = 0; i < SYMLEN && name[i]; i++)
 			sym->name[i] = name[i];
 		sym->name[i] = 0;
@@ -1242,6 +1248,8 @@ relax_jumps()
  *
  * tab = relocation table
  */
+extern int tmpfd;
+
 void
 reloc_out(r, base)
 struct reloc *r;
@@ -1249,8 +1257,7 @@ unsigned short base;
 {
 	int last = base;
 	int bump;
-	int control;
-    int seg;
+	int seg;
 
 	while (r) {
 		seg = r->sym->seg;
@@ -1263,53 +1270,21 @@ unsigned short base;
 		if (verbose > 4) {
 			printf("bump: %d\n", bump);
 		}
-		while (bump >= 8223) {
-			outtmp(0x3f);
-			outtmp(0xff);
-			bump -= 8223;
-		}
-		if (bump >= 32) {
-			bump -= 32;
-			outtmp((bump >> 8) + 32);
-			outtmp(bump & 0xff);
-		} else if (bump) {
-			outtmp(bump);
-		}
-		switch (seg) {
-		case SEG_UNDEF:
+		ws_encode_bump(tmpfd, bump);
+
+		if (seg == SEG_UNDEF) {
 			printf("reloc for undef\n");
-			break;
-		case SEG_ABS:
-			outtmp(0x40);
-			break;
-		case SEG_TEXT:
-			outtmp(0x44);
-			break;
-		case SEG_DATA:
-			outtmp(0x48);
-			break;
-		case SEG_BSS:
-			outtmp(0x4c);
-			break;
-		default:
-			control = r->sym->index + 4;
-			if (control < 47) {
-				outtmp((control + 16) << 2);
-			} else if (control < 175) {
-				outtmp(0xfc);
-				outtmp(control - 47);
-			} else {
-				control -= 175;
-				outtmp(0xfc);
-				outtmp((control >> 8) + 0x80);
-				outtmp(control);
-			}
-			break;
+		} else if (seg >= SEG_TEXT && seg <= SEG_ABS) {
+			/* segment-relative relocation */
+			ws_encode_reloc_type(tmpfd, seg, 0);
+		} else {
+			/* symbol reference (SEG_EXT) */
+			ws_encode_reloc_type(tmpfd, -1, r->sym->index);
 		}
 		last += bump + 2;
 		r = r->next;
 	}
-	outtmp(0);
+	ws_end_relocs(tmpfd);
 }
 
 /*
@@ -2812,7 +2787,7 @@ assemble()
                 }
             }
 
-			outbyte(0x99);		/* magic */
+			outbyte(MAGIC);		/* magic */
 			outbyte(m_flag ? CONF_9 : CONF_15);		/* config byte */
 			outword(next * ((m_flag ? 9 : 15) + 3)); /* symbol table size */
 			outword(text_size);	/* text */

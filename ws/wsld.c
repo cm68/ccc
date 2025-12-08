@@ -20,7 +20,7 @@
 
 #include "wsobj.h"
 
-char *segnames[] = { "abs", "text", "data", "bss", "ext" };
+/* use ws_segnames from wsobj.c */
 
 char verbose INIT;
 char rflag INIT;            /* -r: emit relocatable output */
@@ -91,6 +91,21 @@ struct object {
 
 struct object *objects INIT;
 struct object *objects_tail INIT;
+
+/*
+ * pending relocation for -r output
+ */
+struct outreloc {
+    unsigned short offset;      /* offset in merged segment */
+    struct symbol *sym;         /* symbol (for ext) or NULL (for seg) */
+    unsigned char seg;          /* segment type if sym is NULL */
+    struct outreloc *next;
+};
+
+struct outreloc *text_relocs INIT;
+struct outreloc *text_relocs_tail INIT;
+struct outreloc *data_relocs INIT;
+struct outreloc *data_relocs_tail INIT;
 
 char *outfile = "a.out";
 int outfd INIT;
@@ -308,7 +323,7 @@ char *name;
 
         if (verbose > 1) {
             printf("  [%d] %s: val=0x%04x seg=%s%s\n",
-                   i, symname, val, segnames[seg],
+                   i, symname, val, ws_segnames[seg],
                    (type & 0x08) ? " global" : "");
         }
     }
@@ -500,7 +515,7 @@ char *membername;
 
         if (verbose > 1) {
             printf("  [%d] %s: val=0x%04x seg=%s%s\n",
-                   i, symname, val, segnames[seg],
+                   i, symname, val, ws_segnames[seg],
                    (type & 0x08) ? " global" : "");
         }
     }
@@ -703,25 +718,96 @@ int ctrl;
 }
 
 /*
+ * add a pending relocation for -r output
+ */
+void
+add_outreloc(list, tail, offset, sym, seg)
+struct outreloc **list;
+struct outreloc **tail;
+unsigned short offset;
+struct symbol *sym;
+unsigned char seg;
+{
+    struct outreloc *r = malloc(sizeof(struct outreloc));
+    r->offset = offset;
+    r->sym = sym;
+    r->seg = seg;
+    r->next = NULL;
+    if (*tail)
+        (*tail)->next = r;
+    else
+        *list = r;
+    *tail = r;
+}
+
+/*
+ * find symbol index in output symbol table
+ */
+int
+find_sym_index(sym)
+struct symbol *sym;
+{
+    struct symbol *s;
+    int idx = 0;
+    for (s = symbols; s; s = s->next, idx++) {
+        if (s == sym)
+            return idx;
+    }
+    return -1;
+}
+
+/*
+ * write a relocation table using shared wsobj functions
+ */
+void
+write_relocs(rlist)
+struct outreloc *rlist;
+{
+    struct outreloc *r;
+    int last = 0;
+    int bump;
+
+    for (r = rlist; r; r = r->next) {
+        bump = r->offset - last;
+        ws_encode_bump(outfd, bump);
+
+        if (r->sym) {
+            /* symbol reference */
+            int idx = find_sym_index(r->sym);
+            ws_encode_reloc_type(outfd, -1, idx);
+        } else {
+            /* segment reference */
+            ws_encode_reloc_type(outfd, r->seg, 0);
+        }
+        last = r->offset + 2;
+    }
+    ws_end_relocs(outfd);
+}
+
+/*
  * apply relocations to segment data
  * reloc_off: file offset of relocation table
  * buf: segment data buffer
  * seg_size: size of segment
  * seg_base: base address adjustment for this object's segment
+ * is_text: 1 for text segment, 0 for data segment (for -r reloc collection)
  */
 void
-apply_relocs(obj, reloc_off, buf, seg_size, seg_base)
+apply_relocs(obj, reloc_off, buf, seg_size, seg_base, is_text)
 struct object *obj;
 long reloc_off;
 unsigned char *buf;
 int seg_size;
 unsigned short seg_base;
+int is_text;
 {
     int pos = 0;
     unsigned char b;
     int bump, idx;
     unsigned short val, add;
     struct symbol *s;
+    int need_reloc;     /* for -r: does this reloc need to be preserved? */
+    unsigned char outseg;
 
     lseek(obj->fd, reloc_off, SEEK_SET);
 
@@ -737,6 +823,9 @@ unsigned short seg_base;
         } else {
             /* control byte - determine relocation type */
             add = 0;
+            need_reloc = 0;
+            s = NULL;
+            outseg = 0;
 
             if (b == 0x40) {
                 /* absolute - no adjustment */
@@ -744,19 +833,38 @@ unsigned short seg_base;
             } else if (b == 0x44) {
                 /* text segment - code has text-relative offset */
                 add = text_base + obj->text_off;
+                if (rflag) {
+                    /* preserve as text segment reloc */
+                    need_reloc = 1;
+                    outseg = SEG_TEXT;
+                }
             } else if (b == 0x48) {
                 /* data segment - code has combined offset, adjust */
                 add = data_base + total_text + obj->data_off - obj->text_size;
+                if (rflag) {
+                    /* preserve as data segment reloc */
+                    need_reloc = 1;
+                    outseg = SEG_DATA;
+                }
             } else if (b == 0x4c) {
                 /* bss segment - code has combined offset, adjust */
                 add = bss_base + total_text + total_data + obj->bss_off
                       - obj->text_size - obj->data_size;
+                if (rflag) {
+                    /* preserve as bss segment reloc */
+                    need_reloc = 1;
+                    outseg = SEG_BSS;
+                }
             } else if (b >= 0x50 && b < 0xfc) {
                 /* symbol reference */
                 idx = (b - 0x50) >> 2;
                 if (idx < obj->num_syms) {
                     s = obj->symtab[idx];
                     add = s->value;
+                    if (rflag && s->seg == SEG_EXT) {
+                        /* external symbol - preserve reloc */
+                        need_reloc = 1;
+                    }
                 }
             } else if (b == 0xfc) {
                 /* extended symbol encoding */
@@ -769,6 +877,10 @@ unsigned short seg_base;
                 if (idx < obj->num_syms) {
                     s = obj->symtab[idx];
                     add = s->value;
+                    if (rflag && s->seg == SEG_EXT) {
+                        /* external symbol - preserve reloc */
+                        need_reloc = 1;
+                    }
                 }
             }
 
@@ -785,6 +897,16 @@ unsigned short seg_base;
                 }
             }
 
+            /* collect reloc for -r output */
+            if (need_reloc) {
+                if (is_text)
+                    add_outreloc(&text_relocs, &text_relocs_tail,
+                                 seg_base + pos, s, outseg);
+                else
+                    add_outreloc(&data_relocs, &data_relocs_tail,
+                                 seg_base + pos, s, outseg);
+            }
+
             pos += 2;
             continue;
         }
@@ -797,12 +919,13 @@ unsigned short seg_base;
  * copy segment data with relocations applied
  */
 void
-copy_segment(obj, seg_start, seg_size, reloc_off, seg_base)
+copy_segment(obj, seg_start, seg_size, reloc_off, seg_base, is_text)
 struct object *obj;
 int seg_start;
 int seg_size;
 long reloc_off;
 unsigned short seg_base;
+int is_text;
 {
     unsigned char *buf;
 
@@ -819,7 +942,7 @@ unsigned short seg_base;
         error("read error");
 
     /* apply relocations */
-    apply_relocs(obj, reloc_off, buf, seg_size, seg_base);
+    apply_relocs(obj, reloc_off, buf, seg_size, seg_base, is_text);
 
     /* write to output */
     if (write(outfd, buf, seg_size) != seg_size)
@@ -859,23 +982,24 @@ pass2_output()
     for (obj = objects; obj; obj = obj->next) {
         copy_segment(obj, 16, obj->text_size,
                      obj->text_reloc_off,
-                     text_base + obj->text_off);
+                     text_base + obj->text_off, 1);
     }
 
     /* write data segments */
     for (obj = objects; obj; obj = obj->next) {
         copy_segment(obj, 16 + obj->text_size, obj->data_size,
                      obj->data_reloc_off,
-                     data_base + total_text + obj->data_off);
+                     data_base + total_text + obj->data_off, 0);
     }
 
-    /* if relocatable, write symbol table */
+    /* write symbol table (after text and data) */
     if (rflag) {
         struct symbol *s;
         int i;
         unsigned char type;
 
         for (s = symbols; s; s = s->next) {
+            /* symbol entry: value, type, name */
             write_word(s->value);
             /* encode segment in type byte */
             switch (s->seg) {
@@ -890,10 +1014,16 @@ pass2_output()
                 write_byte(s->name[i]);
             }
         }
+    }
 
-        /* TODO: merge and write relocation tables */
-        write_byte(0);  /* empty text relocs */
-        write_byte(0);  /* empty data relocs */
+    /* write text relocs */
+    if (rflag) {
+        write_relocs(text_relocs);
+    }
+
+    /* write data relocs */
+    if (rflag) {
+        write_relocs(data_relocs);
     }
 
     close(outfd);

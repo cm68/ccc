@@ -124,11 +124,14 @@ char **argv;
         s = *argv;
 
 		if (*s++ != '-') {
-            break;
+            /* non-flag argument is input file */
+            infile = *argv++;
+            argc--;
+            continue;
         }
         argv++;
         argc--;
- 
+
 	    while (*s) {
             switch (*s++) {
 
@@ -164,8 +167,7 @@ char **argv;
         printf("verbose: %d\n", verbose);
     }
 
-    if (argc) {
-        infile = *argv;
+    if (infile) {
         infd = open(infile, O_RDONLY);
 		if (infd == -1) {
             printf("cannot open source file %s\n", infile);
