@@ -311,12 +311,31 @@ emitTypeInfo(struct type *type)
 /*
  * Count statements in a chain
  */
+/*
+ * Check if a statement will be eliminated by DCE
+ */
+static int
+isDCE(struct stmt *st)
+{
+	if (!st || st->op != IF)
+		return 0;
+	/* IF with constant condition and no output */
+	if (st->left && (st->left->flags & E_CONST)) {
+		if (st->left->v == 0 && !st->otherwise)
+			return 1;  /* if(0) with no else */
+		if (st->left->v != 0 && !st->chain)
+			return 1;  /* if(non-zero) with empty then */
+	}
+	return 0;
+}
+
 static int
 countStmts(struct stmt *st)
 {
 	int count = 0;
 	while (st) {
-		count++;
+		if (!isDCE(st))
+			count++;
 		st = st->next;
 	}
 	return count;
