@@ -146,6 +146,7 @@ int seg;
 /*
  * format address with symbol if available
  * uses relocation table when available for accurate symbol resolution
+ * falls back to symbol table lookup for non-relocatable files
  */
 void
 fmt_addr(buf, val)
@@ -153,6 +154,7 @@ char *buf;
 unsigned short val;
 {
     int ri;
+    char *sym;
 
     /* check for relocation at the current operand position */
     if (disasm_pc >= 0) {
@@ -163,7 +165,17 @@ unsigned short val;
         }
     }
 
-    /* no relocation - use literal value */
+    /* no relocation - try symbol table lookup */
+    /* try text, then data, then bss */
+    sym = sym_lookup(val, 1);
+    if (!sym) sym = sym_lookup(val, 2);
+    if (!sym) sym = sym_lookup(val, 3);
+    if (sym) {
+        sprintf(buf, "%s", sym);
+        return;
+    }
+
+    /* no symbol found - use literal value */
     /* hex numbers starting with a-f need leading 0 for assembler */
     if ((val >> 12) >= 10)
         sprintf(buf, "0%04xh", val);
