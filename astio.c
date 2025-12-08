@@ -107,16 +107,14 @@ readName(void) {
 	return symbuf;
 }
 
-/* Read hex-length-prefixed ASCII string, return malloc'd copy */
+/* Read hex-length-prefixed hex-encoded string, return malloc'd copy */
 unsigned char *
 readStr(void) {
 	int len = readHex2();
 	unsigned char *s = malloc(len + 1);
 	int i;
-	for (i = 0; i < len; i++) {
-		s[i] = curchar;
-		nextchar();
-	}
+	for (i = 0; i < len; i++)
+		s[i] = readHex2();
 	s[len] = 0;
 	return s;
 }
