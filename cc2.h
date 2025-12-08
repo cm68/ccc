@@ -10,8 +10,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-/* Free that tolerates NULL and static empty string */
-extern char noasm[];
+/* Free that tolerates NULL */
 void xfree(void *p);
 
 /*

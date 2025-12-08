@@ -53,10 +53,7 @@
 /* Forward declaration from util.c */
 int fdprintf(int fd, const char *fmt, ...);
 
-/* Empty string - used in xfree to avoid freeing static strings */
-char noasm[] = "";
-
-void xfree(void *p) { if (p && p != noasm) free(p); }
+void xfree(void *p) { if (p) free(p); }
 
 /* Forward declaration from parseast.c */
 int parseAstFile(int inFd, int outFd);
