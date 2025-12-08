@@ -468,19 +468,62 @@ emit_if_body:
         free(s);
         return;
     }
-    /* Handle SWITCH statements - emit labels around cases */
+    /* Handle SWITCH statements with jump table helper */
     else if (s->type == 'S') {
-        /* Emit top label if we have one */
-        if (s->symbol)
-            fdprintf(outFd, "%s_top:\n", s->symbol);
-        /* Emit switch expression (evaluated but result discarded for now) */
-        /* TODO: implement proper switch jump table */
-        if (s->expr) emitExpr(s->expr);
-        /* Emit cases */
-        if (s->then_branch) emitStmt(s->then_branch);
-        /* Emit break label if we have one */
-        if (s->symbol)
-            fdprintf(outFd, "%s_break:\n", s->symbol);
+        struct stmt *c;
+        int case_count = 0;
+        int has_default = 0;
+        char *lbl = s->symbol ? s->symbol : "S?";
+
+        /* Count cases and check for default */
+        for (c = s->then_branch; c; c = c->next) {
+            if (c->type == 'C') case_count++;
+            else if (c->type == 'O') has_default = 1;
+        }
+
+        /* Emit switch expression to A (byte value) */
+        if (s->expr) {
+            s->expr->size = 1;  /* Force byte evaluation */
+            emitExpr(s->expr);
+        }
+
+        /* Emit: ld hl, table; jp switch */
+        fdprintf(outFd, "\tld hl, %s_tbl\n\tjp switch\n", lbl);
+
+        /* Emit case bodies with labels */
+        for (c = s->then_branch; c; c = c->next) {
+            if (c->type == 'C') {
+                fdprintf(outFd, "%s_c%ld:\n", lbl, c->expr ? c->expr->value : 0);
+                if (c->then_branch) emitStmt(c->then_branch);
+            } else if (c->type == 'O') {
+                fdprintf(outFd, "%s_def:\n", lbl);
+                if (c->then_branch) emitStmt(c->then_branch);
+            }
+        }
+
+        /* Emit break label */
+        fdprintf(outFd, "%s_break:\n", lbl);
+
+        /* Emit jump table in data section */
+        fdprintf(outFd, ".data\n%s_tbl:\n\t.db %d\n", lbl, case_count);
+        for (c = s->then_branch; c; c = c->next) {
+            if (c->type == 'C' && c->expr) {
+                fdprintf(outFd, "\t.db %ld\n\t.dw %s_c%ld\n",
+                         c->expr->value & 0xff, lbl, c->expr->value);
+            }
+        }
+        /* Default address (or break if no default) */
+        fdprintf(outFd, "\t.dw %s_%s\n.text\n", lbl, has_default ? "def" : "break");
+
+        /* Free case statements */
+        for (c = s->then_branch; c; ) {
+            struct stmt *next = c->next;
+            if (c->expr) freeExpr(c->expr);
+            /* then_branch already emitted and freed */
+            free(c);
+            c = next;
+        }
+
         if (s->next) emitStmtTail(s->next, tailPos);
         xfree(s->symbol);
         xfree(s->asm_block);

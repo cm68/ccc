@@ -223,11 +223,13 @@ void storeWordIY(char offset) {
 }
 
 void loadByteIY(char offset, char is_param) {
-    iyOp("\tld a, (iy %c %d)\n", offset, is_param && offset >= 0 ? 1 : 0);
+    (void)is_param;  /* Byte params are at exact offset, no adjustment */
+    iyOp("\tld a, (iy %c %d)\n", offset, 0);
 }
 
 void storeByteIY(char offset, char is_param) {
-    iyOp("\tld (iy %c %d), a\n", offset, is_param && offset >= 0 ? 1 : 0);
+    (void)is_param;  /* Byte params are at exact offset, no adjustment */
+    iyOp("\tld (iy %c %d), a\n", offset, 0);
 }
 
 /* IX-indexed memory access */
