@@ -5,9 +5,7 @@
 
 #include "cc1.h"
 #include <stdarg.h>
-#ifndef SDCC
 #include <unistd.h>
-#endif
 
 #ifndef CCC
 char patspace[PSIZE];

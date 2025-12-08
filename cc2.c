@@ -64,6 +64,7 @@ int parseAstFile(int inFd, int outFd);
 /* Trace flag for debugging (like verbose in cc1) */
 #ifdef DEBUG
 int trace = 0;
+#include "tracetags.c"
 #endif
 
 char *progname;
@@ -83,6 +84,14 @@ usage(char *complaint)
 {
     if (complaint) fdprintf(2, "%s\n", complaint);
     fdprintf(2, "usage: %s [-o out] [ast]\n", progname);
+#ifdef DEBUG
+    fdprintf(2, "\t-v <trace>\n");
+    {
+        int i;
+        for (i = 0; topts[i]; i++)
+            fdprintf(2, "\t%x %s\n", 1 << i, topts[i]);
+    }
+#endif
     exit(1);
 }
 
@@ -172,6 +181,25 @@ main(int argc, char **argv)
             argv++;
         }
     }
+
+#ifdef DEBUG
+    /* Print trace flags if set */
+    if (trace) {
+        int i, j = 0;
+        for (i = 0; topts[i]; i++)
+            if (trace & (1 << i))
+                j |= (1 << i);
+        fdprintf(2, "trace: %x (", j);
+        for (i = 0; topts[i]; i++) {
+            if (j & (1 << i)) {
+                fdprintf(2, "%s", topts[i]);
+                j ^= (1 << i);
+                if (j) fdprintf(2, " ");
+            }
+        }
+        fdprintf(2, ")\n");
+    }
+#endif
 
     /* Determine output file name */
     if (!explicit_out) {

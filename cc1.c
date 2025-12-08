@@ -10,7 +10,9 @@
 #include <signal.h>
 #include <unistd.h>
 
+#ifdef DEBUG
 #include "debugtags.c"
+#endif
 
 #ifndef CCC
 /*
