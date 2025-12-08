@@ -27,7 +27,6 @@
 #define INIT
 #else
 #define INIT = 0
-#define void int
 #endif
 
 #include "asm.h"

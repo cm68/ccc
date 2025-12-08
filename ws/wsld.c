@@ -14,13 +14,12 @@
 #define INIT
 #else
 #include <stdio.h>
-#define void int
 #define INIT = 0
 #endif
 
 #include "wsobj.h"
 
-/* use ws_segnames from wsobj.c */
+/* use wsSegNames from wsobj.c */
 
 char verbose INIT;
 char rflag INIT;            /* -r: emit relocatable output */
@@ -82,8 +81,8 @@ struct object {
     unsigned short data_off;        /* offset in final data segment */
     unsigned short bss_off;         /* offset in final bss segment */
     /* relocation table offsets in file */
-    long text_reloc_off;            /* file offset of text relocs */
-    long data_reloc_off;            /* file offset of data relocs */
+    long textRelocOff;            /* file offset of text relocs */
+    long dataRelocOff;            /* file offset of data relocs */
     /* local symbol table for relocation lookups */
     struct symbol **symtab;         /* array indexed by symbol index */
     struct object *next;
@@ -103,9 +102,9 @@ struct outreloc {
 };
 
 struct outreloc *text_relocs INIT;
-struct outreloc *text_relocs_tail INIT;
+struct outreloc *textRelocTl INIT;
 struct outreloc *data_relocs INIT;
-struct outreloc *data_relocs_tail INIT;
+struct outreloc *dataRelocTl INIT;
 
 char *outfile = "a.out";
 int outfd INIT;
@@ -323,13 +322,13 @@ char *name;
 
         if (verbose > 1) {
             printf("  [%d] %s: val=0x%04x seg=%s%s\n",
-                   i, symname, val, ws_segnames[seg],
+                   i, symname, val, wsSegNames[seg],
                    (type & 0x08) ? " global" : "");
         }
     }
 
     /* record relocation table positions */
-    obj->text_reloc_off = lseek(fd, 0, SEEK_CUR);
+    obj->textRelocOff = lseek(fd, 0, SEEK_CUR);
 
     /* skip text relocs to find data relocs */
     while (1) {
@@ -341,11 +340,11 @@ char *name;
             if (b >= 0x80) read_byte(fd);  /* extended symbol */
         }
     }
-    obj->data_reloc_off = lseek(fd, 0, SEEK_CUR);
+    obj->dataRelocOff = lseek(fd, 0, SEEK_CUR);
 
     if (verbose > 1) {
         printf("  text_reloc@0x%lx data_reloc@0x%lx\n",
-               obj->text_reloc_off, obj->data_reloc_off);
+               obj->textRelocOff, obj->dataRelocOff);
     }
 }
 
@@ -515,13 +514,13 @@ char *membername;
 
         if (verbose > 1) {
             printf("  [%d] %s: val=0x%04x seg=%s%s\n",
-                   i, symname, val, ws_segnames[seg],
+                   i, symname, val, wsSegNames[seg],
                    (type & 0x08) ? " global" : "");
         }
     }
 
     /* record relocation table positions (relative to file, not archive) */
-    obj->text_reloc_off = lseek(fd, 0, SEEK_CUR);
+    obj->textRelocOff = lseek(fd, 0, SEEK_CUR);
 
     /* skip text relocs to find data relocs */
     while (1) {
@@ -533,11 +532,11 @@ char *membername;
             if (b >= 0x80) read_byte(fd);
         }
     }
-    obj->data_reloc_off = lseek(fd, 0, SEEK_CUR);
+    obj->dataRelocOff = lseek(fd, 0, SEEK_CUR);
 
     if (verbose > 1) {
         printf("  text_reloc@0x%lx data_reloc@0x%lx\n",
-               obj->text_reloc_off, obj->data_reloc_off);
+               obj->textRelocOff, obj->dataRelocOff);
     }
 }
 
@@ -683,7 +682,7 @@ pass1_layout()
  * get relocation target value for a symbol index
  */
 unsigned short
-get_reloc_value(obj, ctrl)
+getRelocVal(obj, ctrl)
 struct object *obj;
 int ctrl;
 {
@@ -744,7 +743,7 @@ unsigned char seg;
  * find symbol index in output symbol table
  */
 int
-find_sym_index(sym)
+findSymIdx(sym)
 struct symbol *sym;
 {
     struct symbol *s;
@@ -769,19 +768,19 @@ struct outreloc *rlist;
 
     for (r = rlist; r; r = r->next) {
         bump = r->offset - last;
-        ws_encode_bump(outfd, bump);
+        wsEncBump(outfd, bump);
 
         if (r->sym) {
             /* symbol reference */
-            int idx = find_sym_index(r->sym);
-            ws_encode_reloc_type(outfd, -1, idx);
+            int idx = findSymIdx(r->sym);
+            wsEncReloc(outfd, -1, idx);
         } else {
             /* segment reference */
-            ws_encode_reloc_type(outfd, r->seg, 0);
+            wsEncReloc(outfd, r->seg, 0);
         }
         last = r->offset + 2;
     }
-    ws_end_relocs(outfd);
+    wsEndReloc(outfd);
 }
 
 /*
@@ -900,10 +899,10 @@ int is_text;
             /* collect reloc for -r output */
             if (need_reloc) {
                 if (is_text)
-                    add_outreloc(&text_relocs, &text_relocs_tail,
+                    add_outreloc(&text_relocs, &textRelocTl,
                                  seg_base + pos, s, outseg);
                 else
-                    add_outreloc(&data_relocs, &data_relocs_tail,
+                    add_outreloc(&data_relocs, &dataRelocTl,
                                  seg_base + pos, s, outseg);
             }
 
@@ -981,14 +980,14 @@ pass2_output()
     /* write text segments */
     for (obj = objects; obj; obj = obj->next) {
         copy_segment(obj, 16, obj->text_size,
-                     obj->text_reloc_off,
+                     obj->textRelocOff,
                      text_base + obj->text_off, 1);
     }
 
     /* write data segments */
     for (obj = objects; obj; obj = obj->next) {
         copy_segment(obj, 16 + obj->text_size, obj->data_size,
-                     obj->data_reloc_off,
+                     obj->dataRelocOff,
                      data_base + total_text + obj->data_off, 0);
     }
 

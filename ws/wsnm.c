@@ -12,7 +12,6 @@
 #include <fcntl.h>
 #else
 #include <stdio.h>
-#define void int
 #endif
 
 #include "wsobj.h"
@@ -20,12 +19,15 @@
 int fd;
 unsigned char *filebuf;
 long filesize;
+int bflag;      /* -b: hex dump segments */
 int dflag;      /* -d: disassemble */
 int gflag;      /* -g: generate .s files */
+int rflag;      /* -r: show relocations */
+int vflag;      /* -v: show header */
 FILE *gfile;    /* output file for -g */
 char gname[256]; /* output filename for -g */
 
-/* use ws_segnames from wsobj.c */
+/* use wsSegNames from wsobj.c */
 
 /*
  * Micronix syscall table - argbytes is bytes after rst 08h (including syscall number)
@@ -183,14 +185,14 @@ char *buf;
     unsigned short nn;
     int len = 1;
     char abuf[32];
-    signed char rel;
+    char rel;
+    int r, b;
+    static char *rot[] = { "rlc", "rrc", "rl", "rr", "sla", "sra", "sll", "srl" };
 
     op = filebuf[addr];
 
     /* CB prefix - bit operations */
     if (op == 0xcb) {
-        int r, b;
-        static char *rot[] = { "rlc", "rrc", "rl", "rr", "sla", "sra", "sll", "srl" };
         op2 = filebuf[addr + 1];
         len = 2;
         r = op2 & 7;
@@ -309,13 +311,13 @@ char *buf;
             sprintf(buf, "dec %s", ir);
         } else if (op2 == 0x34) {
             d = filebuf[addr+2]; len=3;
-            sprintf(buf, "inc (%s%+d)", ir, (signed char)d);
+            sprintf(buf, "inc (%s%+d)", ir, (char)d);
         } else if (op2 == 0x35) {
             d = filebuf[addr+2]; len=3;
-            sprintf(buf, "dec (%s%+d)", ir, (signed char)d);
+            sprintf(buf, "dec (%s%+d)", ir, (char)d);
         } else if (op2 == 0x36) {
             d = filebuf[addr+2]; n = filebuf[addr+3]; len=4;
-            sprintf(buf, "ld (%s%+d),0%02xh", ir, (signed char)d, n);
+            sprintf(buf, "ld (%s%+d),0%02xh", ir, (char)d, n);
         } else if (op2 == 0xe1) {
             sprintf(buf, "pop %s", ir);
         } else if (op2 == 0xe3) {
@@ -329,15 +331,15 @@ char *buf;
         } else if ((op2 & 0xc0) == 0x40 && (op2 & 7) == 6) {
             /* ld r,(ix+d) */
             d = filebuf[addr+2]; len=3;
-            sprintf(buf, "ld %s,(%s%+d)", r8[(op2>>3)&7], ir, (signed char)d);
+            sprintf(buf, "ld %s,(%s%+d)", r8[(op2>>3)&7], ir, (char)d);
         } else if ((op2 & 0xc0) == 0x40 && ((op2>>3) & 7) == 6) {
             /* ld (ix+d),r */
             d = filebuf[addr+2]; len=3;
-            sprintf(buf, "ld (%s%+d),%s", ir, (signed char)d, r8[op2&7]);
+            sprintf(buf, "ld (%s%+d),%s", ir, (char)d, r8[op2&7]);
         } else if ((op2 & 0xc0) == 0x80 && (op2 & 7) == 6) {
             /* alu (ix+d) */
             d = filebuf[addr+2]; len=3;
-            sprintf(buf, "%s(%s%+d)", alu[(op2>>3)&7], ir, (signed char)d);
+            sprintf(buf, "%s(%s%+d)", alu[(op2>>3)&7], ir, (char)d);
         } else if (op2 == 0xcb) {
             /* DD/FD CB d op */
             int b;
@@ -347,13 +349,13 @@ char *buf;
             len = 4;
             b = (op2 >> 3) & 7;
             if (op2 < 0x40) {
-                sprintf(buf, "%s (%s%+d)", rot[b], ir, (signed char)d);
+                sprintf(buf, "%s (%s%+d)", rot[b], ir, (char)d);
             } else if (op2 < 0x80) {
-                sprintf(buf, "bit %d,(%s%+d)", b, ir, (signed char)d);
+                sprintf(buf, "bit %d,(%s%+d)", b, ir, (char)d);
             } else if (op2 < 0xc0) {
-                sprintf(buf, "res %d,(%s%+d)", b, ir, (signed char)d);
+                sprintf(buf, "res %d,(%s%+d)", b, ir, (char)d);
             } else {
-                sprintf(buf, "set %d,(%s%+d)", b, ir, (signed char)d);
+                sprintf(buf, "set %d,(%s%+d)", b, ir, (char)d);
             }
         } else {
             sprintf(buf, "db 0%02xh,0%02xh", op, op2);
@@ -784,7 +786,7 @@ int symlen;
         seg = decode_seg(type);
 
         printf("  [%3d]  %04x   %02x   %-5s  %s      %s\n",
-               i, val, type, ws_segnames[seg],
+               i, val, type, wsSegNames[seg],
                (type & 0x08) ? "yes" : "no ",
                name);
 
@@ -842,9 +844,9 @@ int num_syms;
             } else if (b == REL_SYM_EXT) {
                 b = get_byte(off++);
                 if (b < REL_EXT_LONG) {
-                    idx = b + REL_EXT_THRESH1 - REL_SYM_OFFSET;
+                    idx = b + REL_EXT_THR1 - REL_SYM_OFS;
                 } else {
-                    idx = ((b - REL_EXT_LONG) << 8) + get_byte(off++) + REL_EXT_THRESH2 - REL_SYM_OFFSET;
+                    idx = ((b - REL_EXT_LONG) << 8) + get_byte(off++) + REL_EXT_THR2 - REL_SYM_OFS;
                 }
                 sprintf(symbuf, "symbol[%d] (ext)", idx);
                 target = symbuf;
@@ -937,9 +939,9 @@ long limit;
             } else if (b == REL_SYM_EXT) {
                 b = get_byte(off++);
                 if (b < REL_EXT_LONG) {
-                    idx = b + REL_EXT_THRESH1 - REL_SYM_OFFSET;
+                    idx = b + REL_EXT_THR1 - REL_SYM_OFS;
                 } else {
-                    idx = ((b - REL_EXT_LONG) << 8) + get_byte(off++) + REL_EXT_THRESH2 - REL_SYM_OFFSET;
+                    idx = ((b - REL_EXT_LONG) << 8) + get_byte(off++) + REL_EXT_THR2 - REL_SYM_OFS;
                 }
                 reltab[nrels].symidx = idx;
             } else {
@@ -1159,7 +1161,7 @@ long objsize;
     unsigned char config;
     int symlen;
     unsigned short symtab_size, text_size, data_size, bss_size;
-    long symtab_off, text_reloc_off, data_reloc_off;
+    long symtab_off, textRelocOff, dataRelocOff;
     int num_syms, i, seg;
     long limit = base + objsize;
     char *p;
@@ -1232,8 +1234,8 @@ long objsize;
 
     /* parse and emit text segment */
     if (!(config & CONF_NORELO)) {
-        text_reloc_off = symtab_off + symtab_size;
-        data_reloc_off = parse_relocs(text_reloc_off, limit);
+        textRelocOff = symtab_off + symtab_size;
+        dataRelocOff = parse_relocs(textRelocOff, limit);
     } else {
         nrels = 0;
         reltab = 0;
@@ -1249,7 +1251,7 @@ long objsize;
 
     /* parse and emit data segment */
     if (!(config & CONF_NORELO)) {
-        parse_relocs(data_reloc_off, limit);
+        parse_relocs(dataRelocOff, limit);
     }
 
     if (data_size > 0)
@@ -1277,7 +1279,7 @@ long objsize;
  * objsize is the size limit for this object (for bounds checking)
  */
 void
-process_object(name, base, objsize)
+processObj(name, base, objsize)
 char *name;
 long base;
 long objsize;
@@ -1286,7 +1288,7 @@ long objsize;
     int symlen;
     unsigned short symtab_size, text_size, data_size, bss_size;
     unsigned short heap_size, text_off, data_off;
-    long symtab_off, text_reloc_off, data_reloc_off;
+    long symtab_off, textRelocOff, dataRelocOff;
     int num_syms;
     long off;
     long limit;
@@ -1320,21 +1322,23 @@ long objsize;
     num_syms = symtab_size / (symlen + 3);
 
     printf("=== %s ===\n", name);
-    printf("\nHeader:\n");
-    printf("  Magic:       0x%02x\n", magic);
-    printf("  Config:      0x%02x", config);
-    if (config & CONF_LITTLE) printf(" little-endian");
-    if (config & CONF_INT32) printf(" 32-bit-int");
-    if (config & CONF_NORELO) printf(" no-reloc");
-    printf("\n");
-    printf("  Symlen:      %d chars\n", symlen);
-    printf("  Symtab:      %d bytes (%d symbols)\n", symtab_size, num_syms);
-    printf("  Text:        %d bytes\n", text_size);
-    printf("  Data:        %d bytes\n", data_size);
-    printf("  BSS:         %d bytes\n", bss_size);
-    printf("  Heap:        %d bytes\n", heap_size);
-    printf("  Text offset: 0x%04x\n", text_off);
-    printf("  Data offset: 0x%04x\n", data_off);
+    if (vflag) {
+        printf("\nHeader:\n");
+        printf("  Magic:       0x%02x\n", magic);
+        printf("  Config:      0x%02x", config);
+        if (config & CONF_LITTLE) printf(" little-endian");
+        if (config & CONF_INT32) printf(" 32-bit-int");
+        if (config & CONF_NORELO) printf(" no-reloc");
+        printf("\n");
+        printf("  Symlen:      %d chars\n", symlen);
+        printf("  Symtab:      %d bytes (%d symbols)\n", symtab_size, num_syms);
+        printf("  Text:        %d bytes\n", text_size);
+        printf("  Data:        %d bytes\n", data_size);
+        printf("  BSS:         %d bytes\n", bss_size);
+        printf("  Heap:        %d bytes\n", heap_size);
+        printf("  Text offset: 0x%04x\n", text_off);
+        printf("  Data offset: 0x%04x\n", data_off);
+    }
 
     /* load symbol table for disassembly */
     symtab_off = base + 16 + text_size + data_size;
@@ -1353,17 +1357,17 @@ long objsize;
     }
 
     /* parse relocations for disassembly (needed before disassemble call) */
-    text_reloc_off = symtab_off + symtab_size;
+    textRelocOff = symtab_off + symtab_size;
     if (!(config & CONF_NORELO) && dflag) {
         text_off_g = 0;
         data_off_g = text_size;
-        data_reloc_off = parse_relocs(text_reloc_off, limit);
+        dataRelocOff = parse_relocs(textRelocOff, limit);
     }
 
     /* hex dump or disassemble segments */
     if (dflag && text_size > 0) {
         disassemble(base + 16, text_size);
-    } else {
+    } else if (bflag) {
         hexdump("Text segment", base + 16, text_size);
     }
 
@@ -1372,7 +1376,8 @@ long objsize;
         reltab = 0;
     }
 
-    hexdump("Data segment", base + 16 + text_size, data_size);
+    if (bflag)
+        hexdump("Data segment", base + 16 + text_size, data_size);
 
     /* dump symbol table */
     if (symtab_size > 0) {
@@ -1382,25 +1387,27 @@ long objsize;
     }
 
     /* dump relocations */
-    if (!(config & CONF_NORELO)) {
-        dump_relocs("Text", text_reloc_off, symlen, num_syms);
+    if (rflag) {
+        if (!(config & CONF_NORELO)) {
+            dump_relocs("Text", textRelocOff, symlen, num_syms);
 
-        /* find data reloc offset by scanning past text relocs */
-        off = text_reloc_off;
-        while (off < limit) {
-            unsigned char b = get_byte(off++);
-            if (b == 0) break;
-            if (b >= REL_BUMP_EXT && b < REL_ABS) off++;
-            else if (b == REL_SYM_EXT) {
-                b = get_byte(off++);
-                if (b >= REL_EXT_LONG) off++;
+            /* find data reloc offset by scanning past text relocs */
+            off = textRelocOff;
+            while (off < limit) {
+                unsigned char b = get_byte(off++);
+                if (b == 0) break;
+                if (b >= REL_BUMP_EXT && b < REL_ABS) off++;
+                else if (b == REL_SYM_EXT) {
+                    b = get_byte(off++);
+                    if (b >= REL_EXT_LONG) off++;
+                }
             }
-        }
-        data_reloc_off = off;
+            dataRelocOff = off;
 
-        dump_relocs("Data", data_reloc_off, symlen, num_syms);
-    } else {
-        printf("\nRelocations: (stripped)\n");
+            dump_relocs("Data", dataRelocOff, symlen, num_syms);
+        } else {
+            printf("\nRelocations: (stripped)\n");
+        }
     }
 
     printf("\n");
@@ -1417,7 +1424,7 @@ long objsize;
  * terminated by entry with null name
  */
 void
-process_archive(filename)
+processAr(filename)
 char *filename;
 {
     long off;
@@ -1441,7 +1448,7 @@ char *filename;
 
         /* process the object */
         if (off + len <= filesize) {
-            process_object(name, off, len);
+            processObj(name, off, len);
         }
 
         off += len;
@@ -1473,14 +1480,27 @@ char *filename;
     /* check for archive or object */
     magic16 = get_word(0);
     if (magic16 == AR_MAGIC) {
-        process_archive(filename);
+        processAr(filename);
     } else if (get_byte(0) == MAGIC) {
-        process_object(filename, 0, filesize);
+        processObj(filename, 0, filesize);
     } else {
         error2("bad magic", filename);
     }
 
     free(filebuf);
+}
+
+void
+usage()
+{
+    fprintf(stderr, "usage: wsnm [-bdgrv] file.o [...]\n");
+    fprintf(stderr, "  -b    hex dump text/data segments\n");
+    fprintf(stderr, "  -d    disassemble text segment\n");
+    fprintf(stderr, "  -g    generate assemblable .s files\n");
+    fprintf(stderr, "  -r    show relocations\n");
+    fprintf(stderr, "  -v    show header\n");
+    fprintf(stderr, "With no options, only symbol table is shown.\n");
+    exit(1);
 }
 
 int
@@ -1494,17 +1514,23 @@ char **argv;
     for (i = 1; i < argc; i++) {
         if (argv[i][0] == '-') {
             switch (argv[i][1]) {
+            case 'b':
+                bflag++;
+                break;
             case 'd':
                 dflag++;
                 break;
             case 'g':
                 gflag++;
                 break;
+            case 'r':
+                rflag++;
+                break;
+            case 'v':
+                vflag++;
+                break;
             default:
-                fprintf(stderr, "usage: wsnm [-dg] file.o [...]\n");
-                fprintf(stderr, "  -d    disassemble text segment\n");
-                fprintf(stderr, "  -g    generate assemblable .s files\n");
-                exit(1);
+                usage();
             }
         } else {
             process_file(argv[i]);
@@ -1512,12 +1538,8 @@ char **argv;
         }
     }
 
-    if (nfiles == 0) {
-        fprintf(stderr, "usage: wsnm [-dg] file.o [...]\n");
-        fprintf(stderr, "  -d    disassemble text segment\n");
-        fprintf(stderr, "  -g    generate assemblable .s files\n");
-        exit(1);
-    }
+    if (nfiles == 0)
+        usage();
 
     return 0;
 }

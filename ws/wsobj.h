@@ -56,13 +56,13 @@
 /*
  * common functions (wsobj.c)
  */
-extern char *ws_segnames[];
+extern char *wsSegNames[];
 
-void ws_write_byte(/* int fd, unsigned char b */);
-void ws_write_word(/* int fd, unsigned short val */);
-void ws_encode_bump(/* int fd, int bump */);
-void ws_encode_reloc_type(/* int fd, int seg, int symidx */);
-void ws_end_relocs(/* int fd */);
+void wsWrByte();
+void wsWrWord();
+void wsEncBump();
+void wsEncReloc();
+void wsEndReloc();
 
 /*
  * Relocation encoding constants
@@ -84,7 +84,7 @@ void ws_end_relocs(/* int fd */);
  */
 #define REL_BUMP_MAX    31      /* max simple bump (0x01-0x1f) */
 #define REL_BUMP_EXT    32      /* extended bump threshold (0x20) */
-#define REL_BUMP_LIMIT  8223    /* max single bump value (0x3f,0xff) */
+#define REL_BUMP_LIM    8223    /* max single bump value (0x3f,0xff) */
 
 #define REL_ABS         0x40    /* absolute relocation */
 #define REL_TEXT        0x44    /* text segment relocation */
@@ -96,10 +96,10 @@ void ws_end_relocs(/* int fd */);
 #define REL_EXT_LONG    0x80    /* extended symbol long form flag */
 
 /* symbol index encoding thresholds */
-#define REL_SYM_OFFSET  4       /* offset added to symbol index */
+#define REL_SYM_OFS     4       /* offset added to symbol index */
 #define REL_SYM_SHIFT   16      /* shift for inline encoding */
-#define REL_EXT_THRESH1 47      /* threshold for 1-byte extended */
-#define REL_EXT_THRESH2 175     /* threshold for 2-byte extended */
+#define REL_EXT_THR1    47      /* threshold for 1-byte extended */
+#define REL_EXT_THR2    175     /* threshold for 2-byte extended */
 
 /*
  * Object file header offsets

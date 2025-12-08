@@ -10,7 +10,6 @@
 #include <unistd.h>
 #define INIT
 #else
-#define void int
 #define INIT = 0
 #endif
 
@@ -19,13 +18,13 @@
 /*
  * segment name strings for debugging
  */
-char *ws_segnames[] = { "undef", "text", "data", "bss", "abs", "ext" };
+char *wsSegNames[] = { "undef", "text", "data", "bss", "abs", "ext" };
 
 /*
  * write a byte to file descriptor
  */
 void
-ws_write_byte(fd, b)
+wsWrByte(fd, b)
 int fd;
 unsigned char b;
 {
@@ -36,12 +35,12 @@ unsigned char b;
  * write a 16-bit little-endian word
  */
 void
-ws_write_word(fd, val)
+wsWrWord(fd, val)
 int fd;
 unsigned short val;
 {
-    ws_write_byte(fd, val & 0xff);
-    ws_write_byte(fd, val >> 8);
+    wsWrByte(fd, val & 0xff);
+    wsWrByte(fd, val >> 8);
 }
 
 /*
@@ -49,21 +48,21 @@ unsigned short val;
  * bump = distance from last relocation to this one
  */
 void
-ws_encode_bump(fd, bump)
+wsEncBump(fd, bump)
 int fd;
 int bump;
 {
-    while (bump >= REL_BUMP_LIMIT) {
-        ws_write_byte(fd, REL_BUMP_EXT + REL_BUMP_MAX);
-        ws_write_byte(fd, 0xff);
-        bump -= REL_BUMP_LIMIT;
+    while (bump >= REL_BUMP_LIM) {
+        wsWrByte(fd, REL_BUMP_EXT + REL_BUMP_MAX);
+        wsWrByte(fd, 0xff);
+        bump -= REL_BUMP_LIM;
     }
     if (bump >= REL_BUMP_EXT) {
         bump -= REL_BUMP_EXT;
-        ws_write_byte(fd, (bump >> 8) + REL_BUMP_EXT);
-        ws_write_byte(fd, bump & 0xff);
+        wsWrByte(fd, (bump >> 8) + REL_BUMP_EXT);
+        wsWrByte(fd, bump & 0xff);
     } else if (bump) {
-        ws_write_byte(fd, bump);
+        wsWrByte(fd, bump);
     }
 }
 
@@ -74,7 +73,7 @@ int bump;
  * symidx = symbol index (only used if seg == -1)
  */
 void
-ws_encode_reloc_type(fd, seg, symidx)
+wsEncReloc(fd, seg, symidx)
 int fd;
 int seg;
 int symidx;
@@ -83,30 +82,30 @@ int symidx;
 
     switch (seg) {
     case SEG_ABS:
-        ws_write_byte(fd, REL_ABS);
+        wsWrByte(fd, REL_ABS);
         break;
     case SEG_TEXT:
-        ws_write_byte(fd, REL_TEXT);
+        wsWrByte(fd, REL_TEXT);
         break;
     case SEG_DATA:
-        ws_write_byte(fd, REL_DATA);
+        wsWrByte(fd, REL_DATA);
         break;
     case SEG_BSS:
-        ws_write_byte(fd, REL_BSS);
+        wsWrByte(fd, REL_BSS);
         break;
     default:
         /* symbol reference - encode index */
-        control = symidx + REL_SYM_OFFSET;
-        if (control < REL_EXT_THRESH1) {
-            ws_write_byte(fd, (control + REL_SYM_SHIFT) << 2);
-        } else if (control < REL_EXT_THRESH2) {
-            ws_write_byte(fd, REL_SYM_EXT);
-            ws_write_byte(fd, control - REL_EXT_THRESH1);
+        control = symidx + REL_SYM_OFS;
+        if (control < REL_EXT_THR1) {
+            wsWrByte(fd, (control + REL_SYM_SHIFT) << 2);
+        } else if (control < REL_EXT_THR2) {
+            wsWrByte(fd, REL_SYM_EXT);
+            wsWrByte(fd, control - REL_EXT_THR1);
         } else {
-            control -= REL_EXT_THRESH2;
-            ws_write_byte(fd, REL_SYM_EXT);
-            ws_write_byte(fd, (control >> 8) + REL_EXT_LONG);
-            ws_write_byte(fd, control);
+            control -= REL_EXT_THR2;
+            wsWrByte(fd, REL_SYM_EXT);
+            wsWrByte(fd, (control >> 8) + REL_EXT_LONG);
+            wsWrByte(fd, control);
         }
         break;
     }
@@ -116,10 +115,10 @@ int symidx;
  * terminate a relocation table
  */
 void
-ws_end_relocs(fd)
+wsEndReloc(fd)
 int fd;
 {
-    ws_write_byte(fd, 0);
+    wsWrByte(fd, 0);
 }
 
 /*

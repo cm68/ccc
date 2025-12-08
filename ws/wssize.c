@@ -11,7 +11,6 @@
 #include <fcntl.h>
 #else
 #include <stdio.h>
-#define void int
 #endif
 
 #include "wsobj.h"
@@ -39,7 +38,7 @@ unsigned char *buf;
  * process a single object file
  */
 int
-process_object(buf, size, name)
+processObj(buf, size, name)
 unsigned char *buf;
 long size;
 char *name;
@@ -72,7 +71,7 @@ char *name;
  * process an archive file
  */
 int
-process_archive(buf, size, name)
+processAr(buf, size, name)
 unsigned char *buf;
 long size;
 char *name;
@@ -105,7 +104,7 @@ char *name;
         }
 
         sprintf(fullname, "%s(%s)", name, membername);
-        ret |= process_object(buf + pos, memberlen, fullname);
+        ret |= processObj(buf + pos, memberlen, fullname);
 
         pos += memberlen;
     }
@@ -118,7 +117,7 @@ main(argc, argv)
 int argc;
 char **argv;
 {
-    int fd, ret = 0, header_printed = 0;
+    int fd, ret = 0, hdrPrinted = 0;
     unsigned char *buf;
     long size;
     unsigned short magic;
@@ -159,21 +158,21 @@ char **argv;
         }
         close(fd);
 
-        if (!header_printed) {
+        if (!hdrPrinted) {
             printf("   text\t   data\t    bss\t    dec\t    hex\tfilename\n");
-            header_printed = 1;
+            hdrPrinted = 1;
         }
 
         if (size >= 2) {
             magic = read16(buf);
             if (magic == AR_MAGIC) {
-                ret |= process_archive(buf, size, name);
+                ret |= processAr(buf, size, name);
                 free(buf);
                 continue;
             }
         }
 
-        ret |= process_object(buf, size, name);
+        ret |= processObj(buf, size, name);
         free(buf);
     }
 

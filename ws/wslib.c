@@ -23,7 +23,6 @@
 #include <fcntl.h>
 #else
 #include <stdio.h>
-#define void int
 #endif
 
 #include "wsobj.h"

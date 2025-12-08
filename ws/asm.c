@@ -22,7 +22,6 @@
 #define INIT
 #else
 #include <stdio.h>
-#define void int
 #define INIT = 0
 #endif
 
@@ -302,8 +301,8 @@ struct instruct isr_table[] = {
 
 #define TOKLEN 19
 
-/* use ws_segnames from wsobj.c */
-#define segname ws_segnames
+/* use wsSegNames from wsobj.c */
+#define segname wsSegNames
 
 /*
  * symbols come in a couple of flavors that are driven by
@@ -513,7 +512,7 @@ char *arg;
 }
 
 void
-save_symname()
+save_symn()
 {
 	int i;
     char c;
@@ -1006,16 +1005,18 @@ int visible;
 	}
 
 	if ((sym->seg != SEG_UNDEF) && (seg == SEG_UNDEF)) {
-		seg = sym->seg;
+		/* Symbol already defined, just marking visible - preserve value */
+		if (visible) sym->index = 0;
+		return sym;
 	}
 
 	/*
-	 * update the symbol 
+	 * update the symbol
 	 */
-    if ((sym->seg != SEG_UNDEF) && 
+    if ((sym->seg != SEG_UNDEF) &&
         (sym->seg != seg)) {
 		printf("pass: %d from: %s to: %s\n", pass, segname[sym->seg], segname[seg]);
-        gripe2("segment for symbol changed", name);            
+        gripe2("segment for symbol changed", name);
     }
 	sym->seg = seg;
 	sym->value = value;
@@ -1162,7 +1163,7 @@ unsigned short addr;
  * jr only supports conditions NZ, Z, NC, C (not PO, PE, P, M)
  */
 void
-relax_jumps()
+relax_jmp()
 {
     struct jump *j, *k;
     struct symbol *s;
@@ -1270,21 +1271,21 @@ unsigned short base;
 		if (verbose > 4) {
 			printf("bump: %d\n", bump);
 		}
-		ws_encode_bump(tmpfd, bump);
+		wsEncBump(tmpfd, bump);
 
 		if (seg == SEG_UNDEF) {
 			printf("reloc for undef\n");
 		} else if (seg >= SEG_TEXT && seg <= SEG_ABS) {
 			/* segment-relative relocation */
-			ws_encode_reloc_type(tmpfd, seg, 0);
+			wsEncReloc(tmpfd, seg, 0);
 		} else {
 			/* symbol reference (SEG_EXT) */
-			ws_encode_reloc_type(tmpfd, -1, r->sym->index);
+			wsEncReloc(tmpfd, -1, r->sym->index);
 		}
 		last += bump + 2;
 		r = r->next;
 	}
-	ws_end_relocs(tmpfd);
+	wsEndReloc(tmpfd);
 }
 
 /*
@@ -2712,7 +2713,7 @@ assemble()
 					/*
 					 * it's a symbol definition 
 					 */
-					save_symname();
+					save_symn();
 					get_token();
 
 					type = operand(&result);
@@ -2760,7 +2761,7 @@ assemble()
 			change_seg(SEG_TEXT);
 
 			/* relax jp->jr before finalizing sizes */
-			relax_jumps();
+			relax_jmp();
 
 			mem_size = text_top + data_top + bss_top;
 			text_size = text_top;
