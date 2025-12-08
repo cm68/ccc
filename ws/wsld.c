@@ -68,6 +68,7 @@ int num_globals INIT;
 struct object {
     char *name;
     int fd;
+    long file_base;                 /* base offset in file (for archives) */
     unsigned char config;
     unsigned char symlen;
     unsigned short symtab_size;
@@ -475,6 +476,7 @@ char *membername;
     memset(obj, 0, sizeof(struct object));
     obj->name = fullname;
     obj->fd = fd;
+    obj->file_base = base;
 
     obj->config = read_byte(fd);
     obj->symlen = (obj->config & CONF_SYMLEN) * 2 + 1;
@@ -946,7 +948,7 @@ int is_text;
         error("out of memory");
 
     /* read segment data */
-    lseek(obj->fd, seg_start, SEEK_SET);
+    lseek(obj->fd, obj->file_base + seg_start, SEEK_SET);
     if (read(obj->fd, buf, seg_size) != seg_size)
         error("read error");
 
