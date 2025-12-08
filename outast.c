@@ -749,6 +749,11 @@ emitStrLit(struct name *strname)
 	if (!strname || !strname->u.init || strname->u.init->op != STRING)
 		return;
 
+	/* Only emit once */
+	if (strname->emitted)
+		return;
+	strname->emitted = 1;
+
 	str = (cstring)strname->u.init->v;
 	if (!str)
 		return;
@@ -793,6 +798,18 @@ emitGv(struct name *var)
 			emitStrLit(strname);
 		}
 		return;
+	}
+
+	/*
+	 * For pointers initialized to string literals, emit the string
+	 * BEFORE the Z record so it doesn't interrupt the record
+	 */
+	if ((var->type->flags & TF_POINTER) &&
+	    var->u.init && var->u.init->op == STRING && !var->u.init->next) {
+		struct name *strname = (struct name *)var->u.init->var;
+		if (strname) {
+			emitStrLit(strname);
+		}
 	}
 
 	fdprintf(astFd, "\nZ$");

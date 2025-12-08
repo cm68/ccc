@@ -872,8 +872,22 @@ doGlobal(void)
 	} else if (type_char == 'p') {
 		/* Pointer */
 		has_init = readHex2();
-		if (has_init) parseExpr();
-		emitBss(name_buf, 2);
+		if (has_init) {
+			struct expr *init = parseExpr();
+			if (init && init->op == '$' && init->symbol) {
+				/* Pointer initialized to symbol address */
+				addDefSym(name_buf);
+				switchToSeg(SEG_DATA);
+				fdprintf(outFd, "%s:\n\t.dw %s\n", name_buf, init->symbol);
+				freeExpr(init);
+			} else {
+				/* Unknown init - fall back to BSS */
+				freeExpr(init);
+				emitBss(name_buf, 2);
+			}
+		} else {
+			emitBss(name_buf, 2);
+		}
 	} else if (type_char == 'r') {
 		/* Struct */
 		size = readHex4();

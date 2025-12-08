@@ -203,6 +203,7 @@ struct name {
 	char *name;
     unsigned char is_tag;   // true if (enum, struct, union),
                             // else false for var,enum elem,typedef
+    unsigned char emitted;  // true if string literal already emitted
     int level;              // lexical level
 	struct name *next;		// all names in same container
 	struct type *type;
