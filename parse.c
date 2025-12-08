@@ -1003,6 +1003,9 @@ declaration()
                 v->mangled_name = mangleStatNam(v);
         } else if (sclass & SC_EXTERN) {
             v->sclass = SC_EXTERN;
+        } else {
+            /* Clear extern flag if this is a definition (not extern decl) */
+            v->sclass &= ~SC_EXTERN;
         }
 
         if (cur.type == ASSIGN) {

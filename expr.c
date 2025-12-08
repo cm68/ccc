@@ -348,10 +348,8 @@ parseExpr(unsigned char pri, struct stmt *st)
             e->v = (unsigned long)combined_str;
             /* store reference to the named string in the expression */
             e->var = (struct var *)strname;
-            /* Emit string literal immediately (string data freed in emit) */
+            /* Emit string literal immediately */
             emitStrLit(strname);
-            /* Clear e->v since string data was freed by emitStrLit */
-            e->v = 0;
         }
         e->flags = E_CONST;
         break;

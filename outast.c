@@ -762,9 +762,7 @@ emitStrLit(struct name *strname)
 		fdprintf(astFd, "%02x", data[j]);
 	fdprintf(astFd, "\n");
 
-	/* Free the string data after emitting */
-	free((void*)str);
-	strname->u.init->v = 0;
+	/* Don't free string data - needed for array size inference in char[] = "str" */
 }
 
 /*
