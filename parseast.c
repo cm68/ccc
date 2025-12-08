@@ -899,6 +899,7 @@ doStrLiteral(void)
 	char *orig_data = data, *p;
 	unsigned char c;
 
+	addDefSym(name);
 	switchToSeg(SEG_DATA);
 	fdprintf(outFd, "%s:\n\t.db \"", name);
 	while ((c = *data++)) {

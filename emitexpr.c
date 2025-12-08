@@ -78,6 +78,35 @@ void emitExpr(struct expr *e)
         emitTernary(e);
         return;
     }
+    /* Handle NARROW - truncate to smaller type */
+    else if (e->op == 'N') {
+        if (e->left && e->size == 1) {
+            /* Narrowing to byte */
+            if (e->left->op == 'C') {
+                /* Constant - just load low byte directly */
+                int val = e->left->value & 0xff;
+                if (val == 0 && !fnAZero) {
+                    fdprintf(outFd, "\txor a\n");
+                    fnAZero = 1;
+                } else if (val != 0) {
+                    fdprintf(outFd, "\tld a, %d\n", val);
+                    fnAZero = 0;
+                }
+                freeExpr(e->left);
+                clearA();
+            } else {
+                /* Non-constant - emit child then move L to A */
+                emitExpr(e->left);
+                fdprintf(outFd, "\tld a, l\n");
+                clearA();
+            }
+        } else if (e->left) {
+            /* Not narrowing to byte - just emit child */
+            emitExpr(e->left);
+        }
+        freeNode(e);
+        return;
+    }
     /* Handle DEREF of register variable with caching - use opflags */
     else if (e->op == 'M' && (e->opflags & OP_REGVAR) &&
              e->left && e->left->op == '$') {

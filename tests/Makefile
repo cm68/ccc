@@ -215,7 +215,10 @@ ALL_TESTS = \
 	$(MISC_TESTS)
 
 # Main test targets
-.PHONY: test tests test-fail test-all
+.PHONY: test tests test-fail test-all all
+all:
+	../xbin/ccc -o mtest mtest.c
+
 test:
 	./runtest.sh -k $(VERBOSE) $(ALL_TESTS)
 

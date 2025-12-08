@@ -136,9 +136,11 @@ emitExpr(struct expr *e)
 		break;
 
 	case STRING:
-		/* String literals - output as reference to local synthetic name */
+		/* String literals - emit the string data and reference it */
 		if (e->var) {
 			struct name *strname = (struct name *)e->var;
+			/* Emit string literal if not already emitted */
+			emitStrLit(strname);
 			/* Synthetic string names are local - no _ prefix */
 			fdprintf(astFd, "$");
 			emitHexName(strname->name);
@@ -777,6 +779,21 @@ emitGv(struct name *var)
 
 	if (!var || !var->type)
 		return;
+
+	/*
+	 * For char[] = "string", emit the string directly with var name
+	 * and skip the Z record
+	 */
+	if ((var->type->flags & TF_ARRAY) && var->type->sub &&
+	    var->type->sub->size == 1 &&
+	    var->u.init && var->u.init->op == STRING && !var->u.init->next) {
+		/* Emit string literal with the variable's name */
+		struct name *strname = (struct name *)var->u.init->var;
+		if (strname) {
+			emitStrLit(strname);
+		}
+		return;
+	}
 
 	fdprintf(astFd, "\nZ$");
 

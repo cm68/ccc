@@ -595,9 +595,10 @@ char *buf;
  * uses relocation table for accurate symbol resolution
  */
 void
-disassemble(start, size)
+disassemble(start, size, addr_base)
 long start;
 int size;
+int addr_base;
 {
     int pc = 0;
     char buf[64];
@@ -611,7 +612,7 @@ int size;
 
     while (pc < size) {
         /* check for symbol at this address */
-        sym = sym_lookup(pc, 1);
+        sym = sym_lookup(pc + addr_base, 1);
         if (sym) {
             printf("%s:\n", sym);
         }
@@ -622,14 +623,14 @@ int size;
             addend = filebuf[start + pc] | (filebuf[start + pc + 1] << 8);
             reloc_name(reltab[ri].symidx, addend, buf);
             printf("  %04x  %02x %02x        .dw %s\n",
-                   pc, filebuf[start + pc], filebuf[start + pc + 1], buf);
+                   pc + addr_base, filebuf[start + pc], filebuf[start + pc + 1], buf);
             pc += 2;
             continue;
         }
 
         /* check for syscall */
         if (filebuf[start + pc] == 0xcf) {
-            printf("  %04x  cf           rst 08h\n", pc);
+            printf("  %04x  cf           rst 08h\n", pc + addr_base);
             pc++;
             if (pc < size) {
                 sc = filebuf[start + pc];
@@ -641,12 +642,12 @@ int size;
                         addend = filebuf[start + pc] | (filebuf[start + pc + 1] << 8);
                         reloc_name(reltab[ri].symidx, addend, buf);
                         printf("  %04x  %02x %02x        .dw %s\n",
-                               pc, filebuf[start + pc], filebuf[start + pc + 1], buf);
+                               pc + addr_base, filebuf[start + pc], filebuf[start + pc + 1], buf);
                         pc += 2;
                         i++;
                     } else {
                         printf("  %04x  %02x           .db 0%02xh\n",
-                               pc, filebuf[start + pc], filebuf[start + pc]);
+                               pc + addr_base, filebuf[start + pc], filebuf[start + pc]);
                         pc++;
                     }
                 }
@@ -656,10 +657,10 @@ int size;
 
         /* regular instruction */
         disasm_pc = -1;
-        len = disasm(start + pc, pc, buf);
+        len = disasm(start + pc, pc + addr_base, buf);
 
         /* print address and bytes */
-        printf("  %04x  ", pc);
+        printf("  %04x  ", pc + addr_base);
         for (i = 0; i < 4; i++) {
             if (i < len)
                 printf("%02x ", filebuf[start + pc + i]);
@@ -1380,9 +1381,9 @@ long objsize;
 
     /* hex dump or disassemble segments */
     if (dflag && text_size > 0) {
-        disassemble(base + 16, text_size);
+        disassemble(base + 16, text_size, text_off);
     } else if (bflag) {
-        hexdump("Text segment", base + 16, text_size, 0);
+        hexdump("Text segment", base + 16, text_size, text_off);
     }
 
     if (reltab) {

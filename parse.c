@@ -1033,6 +1033,22 @@ declaration()
                      */
                     v->type = getType(TF_ARRAY|TF_POINTER, v->type->sub,
                                        len + 1);
+                    /*
+                     * Rename string literal to use array name directly
+                     * instead of synthetic str0, str1, etc.
+                     */
+                    if (v->u.init->var) {
+                        struct name *strname = (struct name *)v->u.init->var;
+                        char fullname[256];
+                        if (v->sclass & SC_STATIC) {
+                            snprintf(fullname, sizeof(fullname), "%s",
+                                v->mangled_name ? v->mangled_name : v->name);
+                        } else {
+                            snprintf(fullname, sizeof(fullname), "_%s", v->name);
+                        }
+                        free(strname->name);
+                        strname->name = strdup(fullname);
+                    }
                 }
             }
 

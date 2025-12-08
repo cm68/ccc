@@ -15,7 +15,7 @@ CC = gcc
 ASM = asz
 ASMOPTS =
 
-CCCFLAGS = -DCCC -DASMKWLOOK -inative/include -I.
+CCCFLAGS = -DCCC -DASMKWLOOK -ilibsrc/include -I.
 
 ifeq ($(CC),gcc)
 DEFINES= -DDEBUG
@@ -46,16 +46,21 @@ HFILES = $(HEADERS) astio.h emithelper.h enumlist.h error.h debug.h op_pri.h tra
 # All source files
 SOURCES = $(CFILES) $(HFILES)
 
-LIBSRCS = native/lib/Makefile native/lib/ccclib.s
+# just for doc generation
+LIBSRCS = libsrc/Makefile libsrc/*/*.s libsrc/*/*.c libsrc/include/*.h
 
 # Documentation files (in reading order)
-DOCFILES = README.md TODO.md CLAUDE.md AST_FORMAT.md native/lib/README.md
+DOCFILES = README.md TODO.md CLAUDE.md AST_FORMAT.md libsrc/README.md libsrc/libc/README.md
 
 BINS = cc1 cc2 ccc maketokens genop_pri
 
 #VERBOSE=-v 3
 
 all: cc1 cc2 ccc doc.pdf
+
+install: cc2 cc2 ccc
+	mkdir -p xbin
+	cp cc1 cc2 ccc xbin
 
 cc1: $(CC1OBJECTS)
 	$(LD) $(LDFLAGS) cc1 $(CC1OBJECTS)
@@ -182,25 +187,24 @@ stage1: cc1 cc2
 	  fi; \
 	done
 	@echo "Stage1 build complete: stage1/*.o files ready for linking"
-	# Link disabled until library complete
-	# $(MAKE) native/lib/ccclib.a
-	# $(MAKE) stage1/cc1 stage1/cc2
-	# @echo "Stage1 linking complete: stage1/cc1 stage1/cc2"
+	$(MAKE) native/lib/libccc.a
+	$(MAKE) stage1/pass1.o stage1/pass2.o
+	@echo "Stage1 linking complete: stage1/pass1.o stage1/pass2.o"
 
 # Library dependency
-native/lib/ccclib.a: native/lib/ccclib.s
-	$(MAKE) -C native/lib ccclib.a
+native/lib/libccc.a:
+	$(MAKE) -C native/lib libccc.a
 
-# Link stage1 binaries
+# Link stage1 binaries with -r (relocatable)
 WSLD = ws/wsld
 STAGE1_CC1_OBJS = $(addprefix stage1/, $(CC1OBJECTS))
 STAGE1_CC2_OBJS = $(addprefix stage1/, $(CC2OBJECTS))
 
-stage1/cc1: $(STAGE1_CC1_OBJS) native/lib/ccclib.a
-	$(WSLD) -o $@ $(STAGE1_CC1_OBJS) native/lib/ccclib.a
+stage1/pass1.o: $(STAGE1_CC1_OBJS) native/lib/libccc.a
+	$(WSLD) -r -o $@ $(STAGE1_CC1_OBJS) native/lib/libccc.a
 
-stage1/cc2: $(STAGE1_CC2_OBJS) native/lib/ccclib.a
-	$(WSLD) -o $@ $(STAGE1_CC2_OBJS) native/lib/ccclib.a
+stage1/pass2.o: $(STAGE1_CC2_OBJS) native/lib/libccc.a
+	$(WSLD) -r -o $@ $(STAGE1_CC2_OBJS) native/lib/libccc.a
 
 #
 # check size of compiled objects

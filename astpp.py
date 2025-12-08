@@ -461,7 +461,12 @@ class ASTParser:
             print(f"GLOBAL {name} : array[{count}] of {elemsize}-byte")
             if has_init == 1:
                 self.skip_whitespace()
-                if self.cur() == '[':
+                if self.cur() == '$':
+                    # String reference init (e.g., $04str0)
+                    self.advance()
+                    sym = self.read_name()
+                    print(f"  = ${sym}")
+                elif self.cur() == '[':
                     self.advance()
                     elem_type = self.cur()
                     self.advance()

@@ -1156,11 +1156,6 @@ static void generateExpr(struct expr *e)
         arg = e->right;
         for (i = 0; i < arg_count && arg; i++) {
             if (arg->left) {
-                /* Optimize constant arguments: if constant fits in byte, use byte */
-                if (arg->left->op == 'C' &&
-                    arg->left->value >= 0 && arg->left->value <= 255) {
-                    arg->left->size = 1;
-                }
                 generateExpr(arg->left);
             }
             arg = arg->right;

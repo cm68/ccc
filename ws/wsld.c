@@ -116,11 +116,14 @@ int outfd INIT;
 void
 usage()
 {
-    fprintf(stderr, "usage: wsld [-vV9rs] [-o outfile] [-Ttext addr] [-Tdata addr] [-Tbss addr] file...\n");
-    fprintf(stderr, "  -V          list object files linked\n");
-    fprintf(stderr, "  -r          emit relocatable output (for subsequent links)\n");
-    fprintf(stderr, "  -s          strip symbol table from output\n");
-    fprintf(stderr, "  -9          use 9-char symbols in output (default 15)\n");
+    fprintf(stderr, "usage: wsld [-vV9rs] [-o outfile] [-Ttext=addr] [-Tdata=addr] [-Tbss=addr] file...\n");
+    fprintf(stderr, "  -V            list object files linked\n");
+    fprintf(stderr, "  -r            emit relocatable output (for subsequent links)\n");
+    fprintf(stderr, "  -s            strip symbol table from output\n");
+    fprintf(stderr, "  -9            use 9-char symbols in output (default 15)\n");
+    fprintf(stderr, "  -Ttext=addr   set text segment base address\n");
+    fprintf(stderr, "  -Tdata=addr   set data segment base address\n");
+    fprintf(stderr, "  -Tbss=addr    set bss segment base address\n");
     exit(1);
 }
 
@@ -992,8 +995,8 @@ pass2_output()
     write_word(total_data);
     write_word(total_bss);
     write_word(0);              /* heap */
-    write_word(0);              /* text offset */
-    write_word(total_text);     /* data offset */
+    write_word(text_base);      /* text offset */
+    write_word(text_base + total_text);     /* data offset */
 
     /* write text segments */
     for (obj = objects; obj; obj = obj->next) {
@@ -1283,6 +1286,12 @@ char **argv;
             printf("archive pass %d: added %d objects\n", pass, added);
         }
     } while (added > 0 && has_undefined());
+
+    /* default data/bss base to text_base if not explicitly set */
+    if (data_base == 0 && text_base != 0)
+        data_base = text_base;
+    if (bss_base == 0 && text_base != 0)
+        bss_base = text_base;
 
     /* Pass 1: assign addresses and resolve symbols */
     pass1_layout();

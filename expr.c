@@ -218,6 +218,22 @@ mkConv(struct expr *inner, struct type *tgt)
 #define IS_SCALAR(t) (!((t)->flags & (TF_POINTER|TF_ARRAY|TF_FUNC|TF_AGGREGATE)))
 
 /*
+ * Coerce expression to target type if sizes differ
+ */
+static struct expr *
+coerceTypes(struct expr *e, struct type *tgt)
+{
+    if (!e || !tgt || !e->type)
+        return e;
+    if (e->type->size == tgt->size)
+        return e;
+    /* Don't convert pointers/arrays */
+    if ((e->type->flags | tgt->flags) & (TF_POINTER|TF_ARRAY))
+        return e;
+    return mkConv(e, tgt);
+}
+
+/*
  * Parse an expression using precedence climbing algorithm
  *
  * Recursive descent parser for C expressions that implements operator
@@ -348,8 +364,7 @@ parseExpr(unsigned char pri, struct stmt *st)
             e->v = (unsigned long)combined_str;
             /* store reference to the named string in the expression */
             e->var = (struct var *)strname;
-            /* Emit string literal immediately */
-            emitStrLit(strname);
+            /* String emission deferred until name is finalized */
         }
         e->flags = E_CONST;
         break;
@@ -717,6 +732,7 @@ parseExpr(unsigned char pri, struct stmt *st)
         } else if (cur.type == LPAR) {
             // Function call: expr(arg1, arg2, ...)
             struct expr *call, *arg, *lastarg;
+            struct name *param;
 
             gettoken();  // consume '('
 
@@ -729,6 +745,9 @@ parseExpr(unsigned char pri, struct stmt *st)
                 call->type = e->type->sub;
             }
 
+            // Get first parameter for type coercion
+            param = (e->type && (e->type->flags & TF_FUNC)) ? e->type->elem : 0;
+
             // Parse argument list
             lastarg = NULL;
             if (cur.type != RPAR) {
@@ -736,9 +755,13 @@ parseExpr(unsigned char pri, struct stmt *st)
                 arg = parseExpr(OP_PRI_COMMA, st);
                 if (arg) {
                     arg->flags |= E_FUNARG;
+                    // Coerce argument to parameter type
+                    if (param && param->type)
+                        arg = coerceTypes(arg, param->type);
                     call->right = arg;
                     arg->up = call;
                     lastarg = arg;
+                    if (param) param = param->next;
                 }
 
                 // Parse remaining arguments
@@ -747,11 +770,15 @@ parseExpr(unsigned char pri, struct stmt *st)
                     arg = parseExpr(OP_PRI_COMMA, st);
                     if (arg) {
                         arg->flags |= E_FUNARG;
+                        // Coerce argument to parameter type
+                        if (param && param->type)
+                            arg = coerceTypes(arg, param->type);
                         if (lastarg) {
                             lastarg->next = arg;
                             arg->prev = lastarg;
                         }
                         lastarg = arg;
+                        if (param) param = param->next;
                     }
                 }
             }

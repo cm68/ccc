@@ -86,8 +86,14 @@ struct include {
     struct include *next;
 } *includes;
 
-/* System include path for #include <foo.h> */
-char *sysIncPath = "include";
+/*
+ * System include path for #include <foo.h>
+ */
+#ifdef CCC
+char *sysIncPath = "/usr/include";
+#else
+char *sysIncPath = "libsrc/include";
+#endif
 
 /*
  * Add a path to the include file search list

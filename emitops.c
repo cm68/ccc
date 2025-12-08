@@ -299,10 +299,32 @@ void emitIncDec(struct expr *e)
             cacheInvalA();
         }
     }
-    /* === LONG operations - call helper === */
+    /* === LONG operations - call helpers === */
     else if (size == 4) {
-        /* TODO: call ladd/lsub helper */
-        fdprintf(outFd, "\t; TODO: long inc/dec\n");
+        /* Load address of long to HL for helper */
+        switch (loc) {
+        case ID_GLOBAL:
+            fdprintf(outFd, "\tld hl, %s\n", sym);
+            break;
+        case ID_STACK:
+            fdprintf(outFd, "\tld a, %d\n\tcall leaiy\n", ofs);
+            addRefSym("leaiy");
+            break;
+        case ID_HL:
+            /* emitExpr computed address of pointer variable into HL.
+             * Need to load through it to get the pointer value (address of long). */
+            fdprintf(outFd, "\tld a, (hl)\n\tinc hl\n\tld h, (hl)\n\tld l, a\n");
+            break;
+        default: break;
+        }
+        /* Call linc or ldec helper - takes address in HL, always increments by 1 */
+        if (is_post) {
+            fdprintf(outFd, "\tcall %s\n", is_dec ? "ldecp" : "lincp");
+            addRefSym(is_dec ? "ldecp" : "lincp");
+        } else {
+            fdprintf(outFd, "\tcall %s\n", is_dec ? "ldec" : "linc");
+            addRefSym(is_dec ? "ldec" : "linc");
+        }
     }
 
     freeNode(e);
@@ -554,6 +576,47 @@ void emitBinop(struct expr *e)
     int result_size = e->size ? e->size : left_size;
     int is_cmp = (e->op == '>' || e->op == '<' || e->op == 'g' ||
                   e->op == 'L' || e->op == 'Q' || e->op == 'n');
+
+    /* Long (32-bit) operations - call helpers */
+    if (left_size == 4 || result_size == 4) {
+        const char *fn = NULL;
+        /* Emit left to HL'HL, right to DE'DE */
+        emitExpr(e->left);
+        emit(S_EXX); emit(S_PUSHHL); emit(S_EXX); emit(S_PUSHHL);
+        emitExpr(e->right);
+        /* Move right from HL'HL to DE'DE */
+        emit(S_HLTODE);
+        emit(S_EXX); emit(S_HLTODE); emit(S_EXX);
+        /* Pop left back to HL'HL */
+        emit(S_POPHL);
+        emit(S_EXX); emit(S_POPHL); emit(S_EXX);
+        switch (e->op) {
+        case '+': fn = "add32"; break;
+        case '-': fn = "sub32"; break;
+        case '*': fn = "mul3232"; break;
+        case '/': fn = "div3232"; break;
+        case '%': fn = "mod3232"; break;
+        case '&': fn = "and32"; break;
+        case '|': fn = "or32"; break;
+        case '^': fn = "xor32"; break;
+        case 'w': fn = "shr3232"; break;
+        case 'y': fn = "shl3232"; break;
+        case 'Q': fn = "eq3232"; break;
+        case 'n': fn = "ne3232"; break;
+        case '<': fn = "lt3232"; break;
+        case '>': fn = "gt3232"; break;
+        case 'g': fn = "ge3232"; break;
+        case 'L': fn = "le3232"; break;
+        default: break;
+        }
+        if (fn) {
+            fdprintf(outFd, "\tcall %s\n", fn);
+            addRefSym(fn);
+        }
+        if (is_cmp) fnZValid = 2;  /* NZ = true, Z = false */
+        freeNode(e);
+        return;
+    }
 
     /* Byte operations with immediate constant (not comparisons - those use emitByteCp) */
     /* Only use byte ops if result is also byte, otherwise need word ops */
