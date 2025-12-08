@@ -365,10 +365,10 @@ extern struct name *declare(struct type **btp);
 /* debug options */
 #ifdef DEBUG
 #define VERBOSE(x) (verbose & (x))
+extern int verbose;
 #else
 #define VERBOSE(x) (0)
 #endif
-extern int verbose;
 
 /* lexer flags */
 extern unsigned char tflags;
@@ -386,7 +386,7 @@ extern unsigned char lineend;
 #define ASMEND }
 #endif
 
-#if defined(__SDCC) || defined(CCC)
+#if defined(CCC)
 /*
  * this is a minimal unix library header file for use on compilers
  * that don't have unixlike libraries and includes
@@ -401,15 +401,6 @@ int read(int fd, char *buf, int len);
 int write(int fd, char *buf, int len);
 long strtol(char *str, char **endptr, int base);
 void bcopy(void *src, void *dst, int len);
-#ifdef CCC
-#define ASMFUNC __naked
-#define ASMSTART __asm
-#define ASMEND __asmend;  
-#else
-#define ASMFUNC 
-#define ASMSTART asm {
-#define ASMEND }
-#endif
 #endif
 
 /*

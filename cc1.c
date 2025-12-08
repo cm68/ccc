@@ -6,14 +6,13 @@
  * and type resolution
  */
 #include "cc1.h"
-#ifndef SDCC
 #include <fcntl.h>
 #include <signal.h>
 #include <unistd.h>
-#endif
 
 #include "debugtags.c"
 
+#ifndef CCC
 /*
  * Signal handler for compilation timeout
  *
@@ -40,9 +39,12 @@ timeoutHdlr(int sig)
     fdprintf(2,"\n\n*** TIMEOUT after 5 seconds ***\n");
     fatal(ER_WTF);
 }
+#endif
 
 char *progname;
+#ifdef DEBUG
 int verbose;
+#endif
 
 /* Global context for static variable name mangling */
 char *srcFileRoot = NULL;
@@ -163,8 +165,9 @@ usage(char *complaint, char *p)
     fdprintf(2,"\t-I<include dir>\n");
     fdprintf(2,"\t-i<system include dir>\n");
     fdprintf(2,"\t-D<name>[=<value>]\n");
-    fdprintf(2,"\t-v <verbosity>\n");
     fdprintf(2,"\t-o <output file>\n");
+#ifdef DEBUG
+    fdprintf(2,"\t-v <verbosity>\n");
 #ifndef CCC
     {
         int i;
@@ -172,6 +175,7 @@ usage(char *complaint, char *p)
             fdprintf(2,"\t%x %s\n", 1 << i, vopts[i]);
         }
     }
+#endif
 #endif
     exit(1);
 }
@@ -231,7 +235,7 @@ main(int argc, char **argv)
 	char *s;
     int i;
 
-#ifndef SDCC
+#ifndef CCC
     /* Set up timeout handler to catch infinite loops */
     signal(SIGALRM, timeoutHdlr);
     alarm(5);  /* 5 second timeout */
@@ -271,21 +275,19 @@ main(int argc, char **argv)
                 addDefine(s);
                 s="";
                 break;
+#ifdef DEBUG
             case 'v':
                 if (!argc--) {
                     usage("verbosity not specified \n", progname);
                 }
                 verbose = strtol(*argv++, 0, 0);
                 break;
+#endif
             case 'o':
                 if (!argc--) {
                     usage("output file not specified \n", progname);
                 }
-#ifdef SDCC
-                astFd = creat(*argv++, 0644);
-#else
                 astFd = open(*argv++, O_WRONLY | O_CREAT | O_TRUNC, 0644);
-#endif
                 if (astFd < 0) {
                     perror("cannot open output file");
                     exit(1);
@@ -298,6 +300,7 @@ main(int argc, char **argv)
         }
     }
 
+#ifdef DEBUG
 #ifndef CCC
     if (verbose) {
         int j = 0;
@@ -321,6 +324,7 @@ main(int argc, char **argv)
         }
         fdprintf(2,")\n");
     }
+#endif
 #endif
 #ifdef __UNIX__
     setvbuf(stdout, 0, _IONBF, 0);
