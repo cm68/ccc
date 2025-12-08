@@ -7,6 +7,11 @@ This document describes the binary AST format produced by cc1 and consumed by cc
 The AST is a compact binary format with minimal whitespace. Numbers are hexadecimal.
 Names use length-prefixed format. All expressions carry type/size annotations.
 
+**Important**: cc1 performs all preprocessing internally. The AST output contains
+no preprocessor directives - all macros are expanded, conditionals resolved, and
+includes processed before AST emission. String literals are hex-encoded to avoid
+escape sequence issues in the binary format.
+
 ## Encoding Primitives
 
 ### Names
@@ -70,13 +75,17 @@ U<hexname><len><hexdata>
 
 - `hexname` - synthetic name like "str0", "str1"
 - `len` - 2-digit hex byte count
-- `hexdata` - hex-encoded string bytes
+- `hexdata` - hex-encoded string bytes (each byte as 2 hex digits)
 
 Example:
 ```
-U04str00548656c6c6f00
+U04str00648656c6c6f00
 ```
-= str0 containing "Hello\0" (5 bytes + null = 6 bytes shown as 05)
+= str0 containing "Hello\0" (6 bytes: 48='H', 65='e', 6c='l', 6c='l', 6f='o', 00='\0')
+
+**Note**: String data is hex-encoded because the AST is a text format and raw
+binary data (especially null bytes and control characters) would cause parsing
+issues. cc2's readStr() decodes the hex data back to binary.
 
 ### Array Initializer (in global)
 ```

@@ -1,531 +1,290 @@
 # cc2 Architecture - Code Generation Pass
 
-## Current State (Tree-Based Parser)
+## Overview
 
-The current cc2 implementation uses a tree-based parser approach:
-- Reads AST from input file (compact paren-free hex format)
-- Builds complete function trees in memory
-- Three-phase code generation: parse -> codegen -> emit
-- Full function context available for analysis
+cc2 is the second pass of the ccc compiler. It reads AST from cc1 (compact
+paren-free hex format) and generates Z80 assembly code.
 
-## Architecture (Tree-Based Code Generation)
+## Three-Phase Architecture
 
-### Overview
+cc2 uses a three-phase approach for code generation:
 
-The tree-based approach uses three phases:
-1. **Parse phase**: Read entire function AST into memory data structures
-2. **Codegen phase**: Walk the tree, generate code for each node
-3. **Emit phase**: Walk code emission tree and output assembly
+```
+AST Input -> Parse -> Schedule -> Emit -> Assembly Output
+```
 
-### Key Benefits
+### Phase 1: Parse (parseast.c)
 
-- **Complete function view**: All statements and expressions in memory
-- **Multi-pass optimization**: Can analyze before committing to code sequences
-- **Better register allocation**: See all variable uses before allocation
-- **Deferred code emission**: Generate optimal instruction sequences
-- **Expression tree manipulation**: Optimize before code generation
+Reads the AST and builds in-memory trees:
+- `struct expr` - Expression tree nodes
+- `struct stmt` - Statement tree nodes
+- `struct local_var` - Variable information (name, type, offset, register)
 
-### Data Structures
+All loops are pre-lowered to labeled if/goto by cc1, simplifying cc2.
 
-#### Expression Tree Nodes
+### Phase 2: Schedule (codegen.c)
+
+The scheduler annotates expression trees with:
+- **Location** (`e->loc`): Where the value is/goes
+  - `LOC_REG` - In a register (BC, IX)
+  - `LOC_STACK` - On stack (IY-indexed)
+  - `LOC_MEM` - Global memory
+  - `LOC_CONST` - Constant value
+  - `LOC_IX` - IX-indexed pointer dereference
+  - `LOC_INDIR` - Indirect through HL
+  - `LOC_FLAGS` - Result in condition flags
+
+- **Destination** (`e->dest`): Target register for result
+  - `R_A` - Accumulator (byte operations)
+  - `R_HL` - Primary word register
+  - `R_DE` - Secondary word register
+  - `R_BC` - BC register pair
+  - `R_IX` - IX register
+  - `R_NONE` - No register needed
+
+- **Offset** (`e->offset`): For IX/IY-indexed addressing
+- **Condition** (`e->cond`): For comparison results (CC_Z, CC_NZ, CC_C, etc.)
+
+The scheduler also:
+- Allocates variables to registers (BC, IX for words; B, C for bytes)
+- Identifies optimization patterns (IX-indexed struct access, comparison with 0)
+- Specializes compound operations (bit ops, shifts, inc/dec)
+
+### Phase 3: Emit (emitexpr.c, emitops.c, emithelper.c, emit.c)
+
+Walks the scheduled trees and outputs Z80 assembly:
+- `emitExpr()` - Main expression emitter, dispatches by op and location
+- `emitAssign()` - Assignment operations
+- `emitBinop()` - Binary operations with accumulator management
+- `emitIncDec()` - Increment/decrement operations
+- `emitCall()` - Function calls
+- Helper functions for common patterns (loadVar, storeVar, etc.)
+
+## Data Structures
+
+### Expression Node
 ```c
 struct expr {
-    unsigned char op;           // Operation ('+', '-', 'M', '=', etc.)
-    struct expr *left;          // Left operand
-    struct expr *right;         // Right operand
-    struct type *type;          // Type information
-    long value;                 // Constant value (if E_CONST)
-    char *symbol;              // Symbol name (if SYM)
-    int flags;                  // E_CONST, E_RESOLVED, etc.
+    unsigned char op;       // Operation: '+', '-', 'M', '=', '@', etc.
+    unsigned char size;     // Result size in bytes
+    unsigned char flags;    // E_UNSIGNED, E_LVALUE, etc.
+    unsigned char opflags;  // Scheduler flags: OP_REGVAR, OP_IYMEM, etc.
+    struct expr *left;      // Left operand
+    struct expr *right;     // Right operand
+    char *symbol;           // Symbol name (for $ nodes)
+    long value;             // Constant value (for C nodes)
 
-    // Code generation fields
-    char *asm_block;           // Assembly code for this node (or NULL)
-    int label;                 // Label number (if needed for this node)
+    // Scheduler annotations
+    unsigned char loc;      // Location type
+    unsigned char dest;     // Destination register
+    unsigned char reg;      // Source register (if LOC_REG)
+    unsigned char cond;     // Condition code (if LOC_FLAGS)
+    int offset;             // Stack/IX offset
+    struct local_var *cached_var;  // Variable info for optimizations
 };
 ```
 
-#### Statement Tree Nodes
+### Statement Node
 ```c
 struct stmt {
-    unsigned char type;         // Statement type ('I', 'W', 'R', 'B', etc.)
-    struct expr *expr;          // Expression (for if/while condition, etc.)
-    struct expr *expr2;         // Second expression (for assignments, etc.)
-    struct stmt *then_branch;   // Then/body branch
-    struct stmt *else_branch;   // Else branch
-    struct stmt *next;          // Next statement in sequence
-
-    // Code generation fields
-    int label;                  // Label number for this statement (if needed)
-    int label2;                 // Second label (for if/else end label)
-    char *asm_block;           // Assembly code for this statement (or NULL)
+    unsigned char type;     // 'B'lock, 'I'f, 'E'xpr, 'R'eturn, etc.
+    struct expr *expr;      // Condition or expression
+    struct expr *expr2;     // Second expression (for-loops)
+    struct expr *expr3;     // Third expression (for-loops)
+    struct stmt *then_branch;  // Then/body
+    struct stmt *else_branch;  // Else branch
+    struct stmt *next;      // Next statement in sequence
 };
 ```
 
-### Phases
-
-#### Phase 1: Parse AST into Memory Trees
-
-Parse entire function from paren-free hex AST into memory:
-- `parse_function_ast()`: Read entire (f ...) form into stmt/expr trees
-- Assign label numbers to nodes during parsing:
-  - If statements get `label` (and `label2` for if/else)
-  - While/for loops get `label` for loop start
-  - Switch statements get labels for cases
-- Build complete tree before any code generation
-- Store in function context structure
-
-**Key point**: Label numbers are stored IN the tree nodes themselves
-
-#### Phase 2: Code Generation
-
-Walk the tree and replace operation nodes with ASM blocks:
-- Visit each stmt/expr node
-- Generate assembly text for the operation
-- Store assembly text in `asm_block` field
-- Use label numbers from nodes to emit jumps/labels
-- After this phase, every node has its `asm_block` set
-
-**Key point**: Nodes are transformed from operation descriptions to ASM blocks
-
-#### Phase 3: Emit Assembly
-
-Walk the tree with ASM blocks and output:
-- Traverse stmt/expr trees
-- Emit each node's `asm_block` text
-- Emit labels using the label numbers in nodes
-- Format with proper indentation
-- Add comments for readability
-
-**Key point**: This is a simple tree walk that outputs the prepared ASM blocks
-
-### Implementation Strategy
-
-1. **Reuse parsing machinery from parseast.c**:
-   - Keep all low-level parsing: nextchar(), skip(), expect(), read_symbol(),
-     read_number(), etc.
-   - Keep buffer management and S-expression parsing infrastructure
-   - These functions are solid and well-tested
-
-2. **Modify handlers to return parse nodes**:
-   - Change `parse_expr()` from `void` to `struct expr*`
-   - Change `parse_stmt()` from `void` to `struct stmt*`
-   - Handler functions return allocated tree nodes instead of printing
-   - Assign label numbers during parsing
-
-3. **Implement incrementally**:
-   - Phase 1: Modify parseast.c handlers to build trees
-   - Phase 2: Add code generation pass (trees -> ASM blocks)
-   - Phase 3: Add emission pass (ASM blocks -> stdout)
-4. **Test with simple programs** at each phase
-5. **Add optimizations** once basic generation works
-
-### Handler Signature Changes
-
-**Current (parseast.c):**
+### Local Variable
 ```c
-static void parse_expr(void);           // Prints diagnostics, no return value
-static void parse_stmt(void);           // Prints diagnostics, no return value
-static void handle_if(void);            // Prints diagnostics
-static void handle_binary_op(unsigned char op);  // Prints diagnostics
-```
-
-**New (modified parseast.c):**
-```c
-static struct expr* parse_expr(void);   // Returns allocated expr tree
-static struct stmt* parse_stmt(void);   // Returns allocated stmt tree
-static struct stmt* handle_if(void);    // Returns if statement node with label
-// Returns binary op node
-static struct expr* handle_binary_op(unsigned char op);
-```
-
-**Key changes:**
-- Allocate nodes with `malloc(sizeof(struct expr))` or `malloc(sizeof(struct
-  stmt))`
-- Build tree by setting left/right/then_branch/else_branch pointers
-- Assign label numbers from global label_counter during parsing
-- Return root of subtree instead of printing
-- Diagnostic output (fdprintf to stderr) can remain for debugging
-
-### Function Context Structure
-
-```c
-struct function_context {
-    char *name;                 // Function name
-    struct stmt *body;          // Function body statement tree
-    int label_counter;          // For generating unique labels
+struct local_var {
+    char *name;             // Variable name
+    int size;               // Size in bytes
+    int offset;             // IY offset (negative for locals, positive for params)
+    int ref_count;          // Reference count for register allocation
+    int reg;                // Allocated register (REG_NO, REG_B, REG_C, REG_BC, REG_IX)
+    char is_param;          // Is this a parameter?
+    struct local_var *next;
 };
 ```
 
-### Example: Handler Transformation
+## Register Allocation
 
-**Current handle_if() (void return, prints diagnostics):**
+### Available Registers
+- **BC** - Word variable (most common)
+- **IX** - Word variable (usually pointers for indexed access)
+- **B** or **C** - Byte variables
+
+### Allocation Strategy
+1. Count references to each variable during parse
+2. Sort by reference count
+3. Allocate BC to highest-ref word variable
+4. Allocate IX to second-highest (if pointer type preferred)
+5. Remaining variables stay on stack (IY-indexed)
+
+### IX-Indexed Optimization
+
+When a pointer variable is allocated to IX, dereferences use direct indexed
+addressing:
+
 ```c
-static void handle_if(void) {
-    int if_label = label_counter++;
-    int else_label;
-
-    fdprintf(2, "IF (");
-    skip();
-    parse_expr();  /* condition - just prints */
-    fdprintf(2, ") ");
-
-    skip();
-    parse_stmt();  /* then branch - just prints */
-
-    skip();
-    if (curchar != ')') {
-        else_label = label_counter++;
-        fdprintf(out_fd, "\tjp _if_end_%d\n", else_label);
-        fdprintf(out_fd, "_if_%d:\n", if_label);
-        fdprintf(2, " ELSE ");
-        parse_stmt();  /* else branch - just prints */
-        fdprintf(out_fd, "_if_end_%d:\n", else_label);
-    } else {
-        fdprintf(out_fd, "_if_%d:\n", if_label);
-    }
-    expect(')');
-}
+struct foo *p;  // p allocated to IX
+x = p->field;   // Generates: ld r,(ix+offset)
 ```
 
-**New handle_if() (returns struct stmt*):**
-```c
-static struct stmt* handle_if(void) {
-    struct stmt *s = malloc(sizeof(struct stmt));
-    s->type = 'I';
-    s->label = label_counter++;
-    s->label2 = 0;
-    s->asm_block = NULL;
+Pattern recognition in scheduler:
+- `(M (M $ptr))` - Simple pointer deref, offset 0
+- `(M (+ (M $ptr) const))` - Struct member access
 
-    skip();
-    s->expr = parse_expr();  /* condition - returns expr tree */
-
-    skip();
-    s->then_branch = parse_stmt();  /* then branch - returns stmt tree */
-
-    skip();
-    if (curchar != ')') {
-        s->label2 = label_counter++;  /* Need second label for else */
-        s->else_branch = parse_stmt();  /* else branch - returns stmt tree */
-    } else {
-        s->else_branch = NULL;
-    }
-    expect(')');
-
-    return s;  /* Return the if statement node */
-}
-```
-
-### Example: If Statement Processing
-
-**Input AST (paren-free hex format):**
-```
-I2.>sMsX_x 0.B1.E=s$_x +Mssx 1.
-```
-
-**After Phase 1 (Parse with labels - handle_if returns this tree):**
-```
-stmt (type='I', label=0):
-  expr (op='>', ...)
-  then_branch:
-    stmt (type='B', ...):
-      stmt (type='E', ...):
-        expr (op='=', ...):
-          ...
-```
-
-**After Phase 2 (Generate ASM blocks):**
-```
-stmt (type='I', label=0, asm_block=""):
-  expr (op='>', asm_block="ld hl,($x); ld de,0; ..."):
-    ...
-  then_branch:
-    stmt (asm_block=""):
-      stmt (asm_block=""):
-        expr (op='=', asm_block="ld hl,($x); inc hl; ld ($x),hl"):
-          ...
-```
-
-**Phase 3 (Emit Assembly):**
-```asm
-    ; Evaluate condition
-    ld hl,($x)
-    ld de,0
-    or a
-    sbc hl,de
-    jp z,_if_0
-    ; Then branch
-    ld hl,($x)
-    inc hl
-    ld ($x),hl
-_if_0:
-```
-
-### Implementation Status
-
-1. **Tree-based parser** - Implemented
-2. **Document architecture** (this file) - Done
-3. **Phase 1: Parse AST into stmt/expr trees** - Implemented
-4. **Phase 2: Code generation** In progress
-5. **Phase 3: Assembly emission** In progress
-
-## Key Architectural Insight
-
-**Emit nodes ARE asm blocks** - they're just strings of assembly code stored in
-the tree nodes. The tree structure itself defines the control flow and emission
-order. No need for a separate linked list of code emission structures.
-
-**Label numbers live in operator nodes** - during parsing, we assign label
-numbers to statement nodes that need them (if, while, etc.). During code
-generation, we use these label numbers to emit jumps and labels.
-
-**Three simple phases**:
-1. Parse -> trees with labels
-2. Trees -> trees with ASM blocks
-3. Trees with ASM blocks -> assembly text
-
-## Future Enhancements
-
-With tree-based approach, these become possible:
-- Constant folding and propagation (at tree level)
-- Dead code elimination (tree pruning)
-- Common subexpression elimination (tree manipulation)
-- Register allocation improvements (multi-pass analysis)
-- Instruction scheduling (ASM block reordering)
-- Peephole optimization (ASM block analysis)
-
-## Stack Frame Layout and Calling Convention
-
-### Stack Frame Structure
-
-The compiler uses a frame pointer (FP) based calling convention. Each function
-has a stack frame with the following layout:
+## Stack Frame Layout
 
 ```
 Higher addresses
-    +----------------+
-    | Last parameter |  FP + (4 + sum of earlier param sizes)
-    +----------------+
-    | ...            |
-    +----------------+
-    | Param 2        |  FP + 6 (if 2-byte param)
-    +----------------+
-    | Param 1        |  FP + 4 (first parameter, pushed last)
-    +----------------+
-    | Return address |  FP + 2 (2 bytes)
-    +----------------+
-    | Saved FP       |  FP + 0 <-- Frame Pointer points here
-    +----------------+
-    | Local 1        |  FP - 2 (first local, size depends on type)
-    +----------------+
-    | Local 2        |  FP - (2 + size1)
-    +----------------+
-    | ...            |
-    +----------------+
-    | Last local     |  FP - frame_size
-    +----------------+
-Lower addresses (stack grows downward)
++------------------+
+| Parameters       |  IY + 4, IY + 6, ...
++------------------+
+| Return address   |  IY + 2
++------------------+
+| Saved IY         |  IY + 0  <-- Frame pointer
++------------------+
+| Local variables  |  IY - 2, IY - 4, ...
++------------------+
+| Saved registers  |  BC, IX if used
++------------------+
+Lower addresses
 ```
 
-### Parameter Layout
+Frame management:
+- `framealloc` - Allocate frame, save IY
+- `framefree` - Restore IY, deallocate frame
 
-Parameters are pushed in **reverse order** (right-to-left):
-- For `func(a, b, c)`: push c, push b, push a
-- This makes the first parameter closest to the frame pointer
-- Parameters have **positive offsets** from FP
-
-**Example: `add(int x, int y)`**
-```
-FP + 6: y (second parameter, pushed first)
-FP + 4: x (first parameter, pushed last)
-FP + 2: return address
-FP + 0: saved FP
-FP - 2: result (local variable)
-```
-
-**Example: `test_multi(char a, int b, long c)`**
-```
-FP + 10: a (1 byte, third parameter)
-FP + 8:  b (2 bytes, second parameter)
-FP + 4:  c (4 bytes, first parameter)
-FP + 2:  return address
-FP + 0:  saved FP
-FP - 1:  local_a (1 byte)
-FP - 3:  local_b (2 bytes)
-```
-
-### Local Variable Layout
-
-Local variables have **negative offsets** from FP:
-- Stack grows downward
-- First local at FP - size1
-- Second local at FP - (size1 + size2)
-- etc.
-
-### Frame Allocation
-
-Every function with parameters or locals calls `framealloc` and `framefree`:
-
-**Prologue:**
-```asm
-_funcname:
-    ld a, <frame_size>    ; Size in bytes (locals only)
-    call framealloc       ; Sets up frame pointer
-```
-
-**Epilogue:**
-```asm
-    call framefree        ; Restores frame pointer
-    ret
-```
-
-**Frame allocation rules:**
-- Emit `framealloc`/`framefree` if: `frame_size > 0` OR function has parameters
-- Functions with no parameters and no locals omit frame setup
-- Frame size passed in register A is the **local variable space only** (not
-  parameters)
-
-**Examples:**
-
-Function with parameters and locals: `add(int x, int y)` with local `result`
-```asm
-_add:
-    ld a, 2           ; 2 bytes for local 'result'
-    call framealloc   ; FP needed for params at FP+4, FP+6
-    ...
-    call framefree
-    ret
-```
-
-Function with parameters but no locals: `identity(int x)`
-```asm
-_identity:
-    ld a, 0           ; 0 bytes for locals
-    call framealloc   ; FP still needed to access param at FP+4
-    ...
-    call framefree
-    ret
-```
-
-Function with no parameters or locals: `empty()`
-```asm
-_empty:
-    ...               ; No frame setup needed
-    ret
-```
-
-### Runtime Library Functions
-
-**framealloc** (implemented in runtime library):
-- Input: A register = frame size (local variable space)
-- Saves current frame pointer to stack
-- Allocates stack space for locals
-- Sets up new frame pointer
-- Returns with FP pointing to saved FP location
-
-**framefree** (implemented in runtime library):
-- Restores previous frame pointer
-- Deallocates local variable stack space
-- Leaves return address at top of stack for ret instruction
+## Code Generation Patterns
 
 ### Variable Access
 
-All variable access is frame-relative:
-
-**Parameters:** Use positive offsets
+**Register variable (BC):**
 ```asm
-; Access first parameter (int x) at FP+4
-ld hl, (ix+4)    ; Assuming IX is frame pointer
+ld h, b         ; Load to HL
+ld l, c
+ld b, h         ; Store from HL
+ld c, l
 ```
 
-**Locals:** Use negative offsets
+**Stack variable (IY-indexed):**
 ```asm
-; Access first local (int result) at FP-2
-ld (ix-2), hl    ; Assuming IX is frame pointer
+ld l, (iy + offset)    ; Load word
+ld h, (iy + offset+1)
+ld (iy + offset), l    ; Store word
+ld (iy + offset+1), h
 ```
 
-### Type Sizes
-
-Variables are allocated based on their type:
-- `char`: 1 byte
-- `short`, `int`, pointers: 2 bytes
-- `long`, `float`: 4 bytes
-- `double`: 8 bytes
-
-### Variable Lifetime Tracking and Reference Counting
-
-To enable efficient register allocation, cc2 tracks when variables are used
-during code generation:
-
-**Lifetime Tracking:**
-- `first_label`: Label number where variable is first referenced (-1 if unused)
-- `last_label`: Label number where variable is last referenced (high water mark)
-- `current_label`: Current label context during code generation (in
-  function_ctx)
-
-**Reference Counting:**
-- `ref_count`: Total number of times variable is referenced in the function
-- Incremented on every symbol reference (SYM nodes)
-- Helps identify frequently-used variables for register allocation
-
-**How It Works:**
-
-1. During parsing (Phase 1), control flow statements are assigned label numbers:
-   - `if` statements: `s->label` for the if-false jump, `s->label2` for else-end
-   - `while` loops: `s->label` for loop start
-   - `do-while` loops: `s->label` for loop start
-   - `for` loops: `s->label` for loop start
-
-2. During code generation (Phase 2):
-   - `ctx->current_label` is updated when processing statements with labels
-   - When a SYM node is encountered, `update_var_lifetime()` is called
-   - First reference sets `first_label`, subsequent refs update `last_label`
-   - Every reference increments `ref_count`
-
-3. After code generation, lifetime info is available for register allocation:
-   - Variables with non-overlapping lifetimes can share registers
-   - Frequently referenced variables should get registers
-   - Rarely used variables can stay in memory
-
-**Example Output:**
-```
-Variable lifetimes:
-  result: labels 0-9 (9 refs)   // Used throughout function, many refs
-  a: labels 0-9 (6 refs)         // Used throughout function
-  b: labels 0-4 (3 refs)         // Only used in first half, fewer refs
+**IX-indexed pointer:**
+```asm
+ld c, (ix + 0)         ; Load word through IX
+ld b, (ix + 1)
+ld c, (ix + 2)         ; Struct member at offset 2
+ld b, (ix + 3)
 ```
 
-This shows that `b` is only used from label 0 to 4, so its register could be
-reused
-for another variable after label 4. Also, `result` and `a` are referenced more
-frequently, making them better candidates for registers.
+### Comparisons
 
-### Current Implementation Status
+**Word comparison with 0:**
+```asm
+ld a, h
+or l            ; Z flag set if HL == 0
+```
 
-**Implemented:**
-- Stack frame offset assignment for parameters (Phase 1.5)
-- Stack frame offset assignment for local variables (Phase 1.5)
-- Frame size calculation
-- `framealloc`/`framefree` emission in prologue/epilogue
-- Proper handling of functions with/without parameters/locals
-- Helper function calls for all arithmetic operations
-- Width and signedness tracking for code generation
-- Variable lifetime tracking (first_label, last_label)
-- Reference counting for variables
+**General word comparison:**
+```asm
+; HL = left, DE = right
+or a
+sbc hl, de      ; Sets flags for comparison
+```
+
+### Increment/Decrement
+
+**Register variable:**
+```asm
+inc bc          ; or dec bc
+```
+
+**Stack variable:**
+```asm
+dec (iy + offset)      ; Low byte
+jr nc, $+3             ; Skip if no borrow
+dec (iy + offset+1)    ; High byte
+```
+
+### Function Calls
+
+```asm
+; Push arguments right-to-left
+push bc         ; Last arg
+ld hl, value
+push hl         ; First arg
+call _function
+pop af          ; Clean up N bytes (pop pairs for efficiency)
+pop af
+; Result in HL (word) or A (byte)
+```
+
+## Optimization Passes
+
+### Dead Code Elimination
+- Performed at AST emission time in cc1
+- Removes unreachable code after unconditional jumps/returns
+- Handles IF statement elimination when condition is constant
+
+### Specialization (codegen.c)
+- Bit operations: `var |= (1<<n)` -> `set n, r`
+- Shifts: `var <<= n` -> `sla r` (repeated)
+- Compound byte ops: `var += expr` -> `add a, r; ld r, a`
+
+### Value Caching (regcache.c)
+- Tracks what values are in A, HL
+- Eliminates redundant loads
+- Cleared on function calls and jumps
+
+## File Organization
+
+- **cc2.c** - Main entry, command-line processing
+- **parseast.c** - AST parser, builds stmt/expr trees
+- **astio.c** - Low-level AST I/O
+- **codegen.c** - Scheduler: register allocation, pattern recognition
+- **emitexpr.c** - Expression emission dispatcher
+- **emitops.c** - Operation emitters (assign, binop, call, etc.)
+- **emithelper.c** - Helper functions (loadVar, storeVar, emit strings)
+- **emit.c** - Low-level emit table and string lookup
+- **regcache.c** - Value caching for A and HL registers
+- **dumpast.c** - Debug AST dumper
+
+## Debug Support
+
+When compiled with `-DDEBUG`:
+- `-v` flags enable tracing (T_EXPR, T_ASSIGN, T_VAR, etc.)
+- Function headers include variable info comments:
+  ```asm
+  ; frame=4
+  ;   local x: size=2 iy-2 refs=5 reg=BC
+  ;   param argc: size=2 iy+4 refs=3 reg=-
+  ```
+- Scheduled tree dumped before emission
+
+## Current Status
+
+**Complete:**
+- Full AST parsing
+- Register allocation (BC, IX, B, C)
+- Stack frame management
+- All expression types
+- All statement types (IF, loops lowered to labels)
+- Function calls with argument passing
+- Struct member access optimization
+- Dead code elimination
 
 **In Progress:**
-- Actual variable address calculation using frame offsets
-- Code emission using frame-relative addressing
-
-**Next Steps:**
-- Implement variable lookup by name to get frame offset
-- Generate frame-relative addressing (IX+offset or IX-offset)
-- Complete memory operation code generation (load/store)
-
-## Notes
-
-- Simpler than complex code_emit structures
-- ASM blocks are just strings in tree nodes
-- Label numbers stored directly in tree nodes
-- Tree walk for emission is straightforward
-- Memory usage increases but manageable for typical functions
-- Enables optimization at tree level before ASM generation
+- Long (32-bit) arithmetic
+- Floating point support
+- Further size optimization

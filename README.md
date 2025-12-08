@@ -1,27 +1,37 @@
 ccc - full native C compiler
 
-This is a 2-pass C compiler written in C, currently under reconstruction from
-a paper printout. Pass 1 (cc1) is complete; pass 2 (cc2) is actively being
-developed and generates Z80 assembly code.
+This is a 2-pass C compiler written in C, targeting Z80. Pass 1 (cc1) is
+complete; pass 2 (cc2) generates Z80 assembly and is nearing completion.
 
 ## Project Status
 
 **Pass 1 (cc1) - Complete** Tagged as **cc1_complete** and **self-parse**
-- Full C preprocessor, type system, expression/statement parsing, AST emission
+- Full C preprocessor (embedded, no separate cpp output), type system,
+  expression/statement parsing, AST emission
 - 142 tests passing, 18/18 source files self-host
-- ~7,500 lines of C code
+- Binary size under 40KB (target: <64KB for native Z80 build)
+- All loops lowered to labeled if/goto for simplified code generation
 - See CLAUDE.md for detailed architecture and features
+
+**Pass 2 (cc2) - Near Complete** Tagged as **much_progress**
+- Tree-based AST parser with complete function representation
+- Three-phase code generation: parse -> codegen -> emit
+- Register allocation (BC, IX) and stack frame management
+- IX-indexed pointer optimization for struct access
+- Dead code elimination at AST emission time
+- Generates working Z80 assembly for full compiler source
+- See CC2_ARCHITECTURE.md for implementation details
+
+**Whitesmith's Object Tools (ws/)** - Relocatable object support
+- **asz**: Z80 assembler producing relocatable objects
+- **wsld**: Linker for object files and libraries
+- **wsnm**: Symbol table and disassembly utility
+- **wslib**: Static library manager
+- See ws/README.md for details
 
 **Debugging Tools**
 - **AST Pretty Printer** (astpp.lisp): Format AST for human inspection
 - See ASTPP.md for details
-
-**Pass 2 (cc2) - Active Development** Generating Z80 Assembly
-- Tree-based AST parser with complete function representation (~3,400 lines)
-- Three-phase code generation: parse -> codegen -> emit
-- Register allocation and stack frame management
-- Generates working Z80 assembly for simple functions
-- See CC2_ARCHITECTURE.md for implementation details
 
 ## Architecture
 
