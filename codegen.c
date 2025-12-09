@@ -18,10 +18,10 @@
 #include "emithelper.h"
 
 /* Global loop depth for tracking whether we're inside a loop */
-static int g_loop_depth = 0;
+static char g_loop_depth = 0;
 
 /* Accumulated call argument bytes outside loops (cleaned at function exit) */
-int fnCallStk = 0;
+char fnCallStk = 0;
 
 
 /* Global tree walk counter for loop detection */

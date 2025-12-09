@@ -238,7 +238,7 @@ int isLocalSym(const char *name) {
 }
 
 /* Get IY-indexed offset for a local/param variable */
-int varIYOfs(struct local_var *var) {
+char varIYOfs(struct local_var *var) {
     return var->offset + (var->is_param ? 1 : 0);
 }
 
@@ -448,7 +448,7 @@ void emitJump(const char *instr, const char *prefix, unsigned char label) {
 }
 
 /* Callee-save helpers */
-int getUsedRegs(struct local_var *locals) {
+char getUsedRegs(struct local_var *locals) {
     struct local_var *var;
     int used = 0;
     for (var = locals; var; var = var->next)
@@ -456,7 +456,7 @@ int getUsedRegs(struct local_var *locals) {
     return used;
 }
 
-int calleeSavSz(int used) {
+char calleeSavSz(char used) {
     int size = 0;
     if (used & 1) size += 2;  /* BC */
     if (used & 2) size += 2;  /* IX */
@@ -465,9 +465,9 @@ int calleeSavSz(int used) {
 }
 
 /* Function prolog emission */
-void emitFnProlog(char *name, char *params, char *rettype, int frame_size,
+void emitFnProlog(char *name, char *params, char *rettype, char frame_size,
                   struct local_var *locals) {
-    int has_params = (params && params[0]);
+    char has_params = (params && params[0]);
     struct local_var *var;
 
     fdprintf(outFd, "; %s\n", name);
@@ -536,7 +536,7 @@ static const char *cmpPats[] = {
     "eq", "ne", "lt", "gt", "le", "ge", "and", "or", 0
 };
 
-int isCmpFunc(const char *fname) {
+char isCmpFunc(const char *fname) {
     int i;
     if (!fname) return 0;
     for (i = 0; cmpPats[i]; i++) {
@@ -547,7 +547,7 @@ int isCmpFunc(const char *fname) {
 
 /* freeExpr is defined in parseast.c */
 
-struct expr *mkVarCache(const char *symbol, int size) {
+struct expr *mkVarCache(const char *symbol, char size) {
     struct expr *sym_node, *deref_node;
 
     sym_node = malloc(sizeof(struct expr));
@@ -614,7 +614,7 @@ void invalStack() {
     clearA();
 }
 
-int isBinopWAccum(unsigned char op) {
+char isBinopWAccum(unsigned char op) {
     switch (op) {
     case '+': case '-': case '*': case '/': case '%':
     case '&': case '|': case '^': case 'y': case 'w':
@@ -770,7 +770,7 @@ void storeVar(const char *sym, char sz, char docache) {
  * Target register from e->dest: R_HL, R_DE, R_BC
  * Returns 1 if handled, 0 if not a simple case.
  */
-int emitSimplLd(struct expr *e)
+char emitSimplLd(struct expr *e)
 {
     const char *sym;
     int ofs;
@@ -951,7 +951,7 @@ void emitRegVarDrf(struct expr *e)
  * dest: target register (R_HL, R_DE, R_BC)
  * e: expression for cache tracking (may be NULL)
  */
-void emitIndexDrf(char reg, int ofs, int size, int dest, struct expr *e)
+void emitIndexDrf(char reg, char ofs, char size, char dest, struct expr *e)
 {
     char hi, lo;
 

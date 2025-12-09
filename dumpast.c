@@ -331,7 +331,7 @@ dumpStmt(struct stmt *s)
 
 /* Entry point: dump function AST as comments */
 void
-dumpFnAst(int fd)
+dumpFnAst(char fd)
 {
     struct stmt *s;
     if (!fnBody) return;
@@ -453,7 +453,7 @@ dumpSchedStmt(struct stmt *s, int indent)
 
 /* Entry point: dump scheduled tree */
 void
-dumpScheduled(int fd)
+dumpScheduled(char fd)
 {
     struct local_var *v;
 
@@ -477,13 +477,13 @@ dumpScheduled(int fd)
 
 /* Stub when DEBUG not defined */
 void
-dumpFnAst(int fd)
+dumpFnAst(char fd)
 {
     (void)fd;
 }
 
 void
-dumpScheduled(int fd)
+dumpScheduled(char fd)
 {
     (void)fd;
 }

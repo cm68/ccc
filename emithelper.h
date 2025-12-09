@@ -40,21 +40,21 @@ void storeWordIX(char offset);
 /* Variable load/store with cache management */
 void loadVar(const char *sym, char sz, char docache);
 void storeVar(const char *sym, char sz, char docache);
-int varIYOfs(struct local_var *var);
+char varIYOfs(struct local_var *var);
 
 /* Register tracking for callee-save */
-int getUsedRegs(struct local_var *locals);
-int calleeSavSz(int used);
+char getUsedRegs(struct local_var *locals);
+char calleeSavSz(char used);
 
 /* Function prolog emission */
-void emitFnProlog(char *name, char *params, char *rettype, int frame_size,
+void emitFnProlog(char *name, char *params, char *rettype, char frame_size,
                   struct local_var *locals);
 
 /* Comparison function detection */
-int isCmpFunc(const char *fname);
+char isCmpFunc(const char *fname);
 
 /* Expression cache helper - creates (M $sym) node */
-struct expr *mkVarCache(const char *sym, int size);
+struct expr *mkVarCache(const char *sym, char size);
 
 /* Cache management */
 void clearHL();
@@ -65,10 +65,10 @@ void popStack();
 void invalStack();
 
 /* Helper for binary op detection */
-int isBinopWAccum(unsigned char op);
+char isBinopWAccum(unsigned char op);
 
 /* Simple load - uses scheduler's loc/dest fields */
-int emitSimplLd(struct expr *e);
+char emitSimplLd(struct expr *e);
 
 /* Expression emission - main function and helpers */
 void emitExpr(struct expr *e);
@@ -80,7 +80,7 @@ void emitTernary(struct expr *e);
 void emitGlobDrf(struct expr *e);
 void emitRegVarDrf(struct expr *e);
 void emitStackDrf(struct expr *e);
-void emitIndexDrf(char reg, int ofs, int size, int dest, struct expr *e);
+void emitIndexDrf(char reg, char ofs, char size, char dest, struct expr *e);
 void emitBCIndir(void);
 
 /* Label/jump optimization */

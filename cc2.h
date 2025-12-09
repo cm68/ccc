@@ -226,20 +226,20 @@ extern char *fnRettype;         /* Return type */
 extern struct stmt *fnBody;     /* Function body statement tree */
 extern unsigned char fnLblCnt;  /* For generating unique labels (0-254, 255=overflow) */
 extern struct local_var *fnLocals;  /* List of local variables */
-extern int fnFrmSize;           /* Total stack frame size in bytes */
-extern int fnCallStk;           /* Call argument bytes to clean at exit */
-extern int fnCurLbl;            /* Current label for lifetime tracking */
-extern int fnDESaveCnt;         /* Counter for nested DE saves */
-extern int fnDInUse;            /* Flag: D register holds spilled byte */
-extern int fnPendClean;         /* Bytes to clean up after CALL */
-extern int fnLoopDep;           /* Nesting depth of loops */
-extern int fnDEValid;           /* 1 if DE holds valid value */
-extern int fnTargetDE;          /* 1 if next expr should load to DE */
-extern int fnZValid;            /* 1 if Z flag valid for HL test */
-extern int fnCondOnly;          /* 1 if only condition flags needed, not value */
-extern int fnDualCmp;           /* 'L' or '>' for two-test cmp with 0 */
-extern int fnDualReg;           /* Register for fnDualCmp: R_BC, R_HL, R_DE */
-extern int fnCmpFlag;           /* 0=none, 'Z'=z, 'N'=nz, 'C'=c, 'c'=nc */
+extern char fnFrmSize;          /* Total stack frame size in bytes */
+extern char fnCallStk;          /* Call argument bytes to clean at exit */
+extern unsigned char fnCurLbl;  /* Current label for lifetime tracking */
+extern char fnDESaveCnt;        /* Counter for nested DE saves */
+extern char fnDInUse;           /* Flag: D register holds spilled byte */
+extern char fnPendClean;        /* Bytes to clean up after CALL */
+extern char fnLoopDep;          /* Nesting depth of loops */
+extern char fnDEValid;          /* 1 if DE holds valid value */
+extern char fnTargetDE;         /* 1 if next expr should load to DE */
+extern char fnZValid;           /* 1 if Z flag valid for HL test */
+extern char fnCondOnly;         /* 1 if only condition flags needed, not value */
+extern char fnDualCmp;          /* 'L' or '>' for two-test cmp with 0 */
+extern char fnDualReg;          /* Register for fnDualCmp: R_BC, R_HL, R_DE */
+extern char fnCmpFlag;          /* 0=none, 'Z'=z, 'N'=nz, 'C'=c, 'c'=nc */
 extern char fnIXAOfs;           /* When >=0, A has byte from (ix+fnIXAOfs) */
 extern char fnIXHLOfs;          /* When >=0, HL has word from (ix+fnIXHLOfs) */
 extern char fnIYHLOfs;          /* When valid, HL has word from (iy+fnIYHLOfs) */
@@ -295,8 +295,8 @@ void assignFrmOff(void);
 void analyzeVars(void);
 void allocRegs(void);
 void setOpFlags(void);
-void dumpFnAst(int fd);
-void dumpScheduled(int fd);
+void dumpFnAst(char fd);
+void dumpScheduled(char fd);
 void specialize(void);
 void scheduleCode(void);
 void generateCode(void);
@@ -307,7 +307,7 @@ struct local_var *findVar(const char *symbol);
 void addRefSym(const char *name);
 
 /* Code emission functions (emit.c) */
-void emitAssembly(int outFd);
+void emitAssembly(char outFd);
 
 #endif /* CC2_H */
 

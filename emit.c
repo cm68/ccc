@@ -214,9 +214,9 @@ static void emitCond(struct expr *e, unsigned char invert,
  * tailPos: if true and return has no next, can fall through to exit
  */
 static int stmt_count = 0;
-static void emitStmtTail(struct stmt *s, int tailPos);
+static void emitStmtTail(struct stmt *s, char tailPos);
 static void emitStmt(struct stmt *s) { emitStmtTail(s, 0); }
-static void emitStmtTail(struct stmt *s, int tailPos)
+static void emitStmtTail(struct stmt *s, char tailPos)
 {
     if (!s) return;
     stmt_count++;
@@ -643,10 +643,10 @@ emit_if_body:
 /*
  * Emit assembly for entire function and free tree
  */
-void emitAssembly(int fd)
+void emitAssembly(char fd)
 {
     struct local_var *var, *next;
-    int has_params;
+    char has_params;
 
     if (0 || !fnBody) return;
     stmt_count = 0;
