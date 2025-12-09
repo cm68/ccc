@@ -383,7 +383,7 @@ macdefine(char *s)
  *   - Inserts expansion text into input stream
  *   - Advances curchar/nextchar to start of expansion
  */
-int
+char
 macexpand(char *s)	/* the symbol we are looking up as a macro */
 {
     struct macro *m;

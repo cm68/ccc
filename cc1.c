@@ -45,7 +45,7 @@ timeoutHdlr(int sig)
 
 char *progname;
 #ifdef DEBUG
-int verbose;
+char verbose;
 #endif
 
 /* Global context for static variable name mangling */

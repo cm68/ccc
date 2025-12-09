@@ -646,7 +646,7 @@ declare(struct type **btp)
  *   1 if current token could start a type cast
  *   0 if current token starts a parenthesized expression
  */
-int
+char
 isCastStart(void)
 {
     struct name *n;

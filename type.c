@@ -58,7 +58,7 @@ struct type *voidtype;
  * global = 1
  * inner blocks > 1
  */
-int lexlevel;
+unsigned char lexlevel;
 int lastname;
 struct name **names;
 
@@ -449,7 +449,7 @@ cmpParamLists(struct name *p1, struct name *p2)
  * Returns 1 if compatible, 0 if different
  * Checks return type and parameter types, ignoring parameter names
  */
-int
+char
 compatFnTyp(struct type *t1, struct type *t2)
 {
     if (!t1 || !t2) return 0;
@@ -499,7 +499,7 @@ compatFnTyp(struct type *t1, struct type *t2)
  */
 struct type *
 getType(
-    int flags,              // TF_whatever
+    char flags,             // TF_whatever
     struct type *sub,       // subtype (return type for functions)
     int count)              // if array, length
 {

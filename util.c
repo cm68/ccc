@@ -82,7 +82,7 @@ controlify(char *d, unsigned char c)
 	return ret;
 }
 
-int
+char
 iswhite(unsigned char c)
 {
     switch (c) {

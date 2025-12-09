@@ -123,13 +123,13 @@ static const char *fmtstr[] = {
     "\tand %d\n",                           /* F_AND */
     "\tor %d\n",                            /* F_OR */
     "\txor %d\n",                           /* F_XOR */
-    "_if_end_%d:\n",                        /* F_IFEND */
-    "_if_then_%d:\n",                       /* F_IFTHEN */
-    "_if_%d:\n",                            /* F_IF */
-    "_or_end_%d:\n",                        /* F_OREND */
-    "_and_end_%d:\n",                       /* F_ANDEND */
-    "_tern_false_%d:\n",                    /* F_TERNF */
-    "_tern_end_%d:\n",                      /* F_TERNE */
+    "no%d:\n",                              /* F_IFEND */
+    "yes%d:\n",                             /* F_IFTHEN */
+    "el%d:\n",                              /* F_IF */
+    "orE%d:\n",                             /* F_OREND */
+    "anE%d:\n",                             /* F_ANDEND */
+    "tF%d:\n",                              /* F_TERNF */
+    "tE%d:\n",                              /* F_TERNE */
     "\tld a, %d\n\tcall leaiy\n"            /* F_LEAIY */
 };
 
@@ -155,13 +155,13 @@ void emit1(unsigned char idx, unsigned char val) {
     /* For label format strings (F_IFEND through F_TERNE), include fnIndex */
     if (idx >= F_IFEND && idx <= F_TERNE) {
         static const char *labfmt[] = {
-            "_if_end_%d_%d:\n",    /* F_IFEND */
-            "_if_then_%d_%d:\n",   /* F_IFTHEN */
-            "_if_%d_%d:\n",        /* F_IF */
-            "_or_end_%d_%d:\n",    /* F_OREND */
-            "_and_end_%d_%d:\n",   /* F_ANDEND */
-            "_tern_false_%d_%d:\n",/* F_TERNF */
-            "_tern_end_%d_%d:\n"   /* F_TERNE */
+            "no%d_%d:\n",    /* F_IFEND - if-end (false path done) */
+            "yes%d_%d:\n",   /* F_IFTHEN - if-then (true path) */
+            "el%d_%d:\n",    /* F_IF - else branch */
+            "orE%d_%d:\n",   /* F_OREND - or short-circuit end */
+            "anE%d_%d:\n",   /* F_ANDEND - and short-circuit end */
+            "tF%d_%d:\n",    /* F_TERNF - ternary false */
+            "tE%d_%d:\n"     /* F_TERNE - ternary end */
         };
         fdprintf(outFd, labfmt[idx - F_IFEND], fnIndex, val);
     } else {

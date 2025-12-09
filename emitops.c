@@ -988,7 +988,7 @@ void emitTernary(struct expr *e)
             }
             jmp = "jp z,";
         }
-        emitJump(jmp, "_tern_false_", e->label);
+        emitJump(jmp, "tF", e->label);
     }
     fnZValid = 0;
 
@@ -997,7 +997,7 @@ void emitTernary(struct expr *e)
     }
 
     if (e->right && e->right->jump) {
-        emitJump("jp", "_tern_end_", e->right->label);
+        emitJump("jp", "tE", e->right->label);
     }
 
     emit1(F_TERNF, e->label);

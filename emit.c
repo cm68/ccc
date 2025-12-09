@@ -59,7 +59,7 @@ static void emitCond(struct expr *e, unsigned char invert,
         } else {
             /* No inherited target - create our own _or_end_ label */
             unsigned char skip_lbl = newLabel();
-            emitCond(e->left, invert, "_or_end_", skip_lbl, NULL, 255);
+            emitCond(e->left, invert, "orE", skip_lbl, NULL, 255);
             emitCond(e->right, invert, true_lbl, true_num, false_lbl, false_num);
             emit1(F_OREND, skip_lbl);
         }
@@ -78,8 +78,8 @@ static void emitCond(struct expr *e, unsigned char invert,
                 emitCond(e->right, invert, true_lbl, true_num, false_lbl, false_num);
             } else {
                 unsigned char skip_lbl = newLabel();
-                emitCond(e->left, invert, "_and_end_", skip_lbl, NULL, 255);
-                emitCond(e->right, invert, "_and_end_", skip_lbl, false_lbl, false_num);
+                emitCond(e->left, invert, "anE", skip_lbl, NULL, 255);
+                emitCond(e->right, invert, "anE", skip_lbl, false_lbl, false_num);
                 emit1(F_ANDEND, skip_lbl);
             }
         } else {
@@ -89,8 +89,8 @@ static void emitCond(struct expr *e, unsigned char invert,
                 emitCond(e->right, invert, true_lbl, true_num, false_lbl, false_num);
             } else {
                 unsigned char skip_lbl = newLabel();
-                emitCond(e->left, invert, NULL, 255, "_and_end_", skip_lbl);
-                emitCond(e->right, invert, true_lbl, true_num, "_and_end_", skip_lbl);
+                emitCond(e->left, invert, NULL, 255, "anE", skip_lbl);
+                emitCond(e->right, invert, true_lbl, true_num, "anE", skip_lbl);
                 emit1(F_ANDEND, skip_lbl);
             }
         }
@@ -230,7 +230,7 @@ static void emitStmtTail(struct stmt *s, char tailPos)
         fdprintf(outFd, "%s\n", s->asm_block);
     }
 
-    /* Handle end-label statements (type 'Y') - emit _if_end_N: */
+    /* Handle end-label statements (type 'Y') - emit noN: */
     if (s->type == 'Y') {
         emit1(F_IFEND, s->label);
     }
@@ -280,7 +280,7 @@ static void emitStmtTail(struct stmt *s, char tailPos)
         /* Handle logical OR/AND with recursive short-circuit */
         if (cond && (cond->op == 'h' || cond->op == 'j' || cond->op == '!')) {
             const char *else_goto = s->else_branch ? elseGotoTgt(s->else_branch) : NULL;
-            const char *false_lbl = else_goto ? else_goto : (s->label2 > 0 ? "_if_" : "_if_end_");
+            const char *false_lbl = else_goto ? else_goto : (s->label2 > 0 ? "el" : "no");
             unsigned char false_num = else_goto ? 255 : s->label;
 
             /* Use recursive emitCond: fall through on true, jump on false */
@@ -325,10 +325,10 @@ static void emitStmtTail(struct stmt *s, char tailPos)
                     if (skip_else) {
                         fdprintf(outFd, "\t%s %s\n", cMeansTrue ? "jp nc," : "jp c,", else_goto);
                     } else {
-                        emitJump(cMeansTrue ? "jp nc," : "jp c,", "_if_", s->label);
+                        emitJump(cMeansTrue ? "jp nc," : "jp c,", "el", s->label);
                     }
                 } else {
-                    emitJump(cMeansTrue ? "jp nc," : "jp c,", "_if_end_", s->label);
+                    emitJump(cMeansTrue ? "jp nc," : "jp c,", "no", s->label);
                 }
             }
             /* Check if this is a comparison (Z=1 means true) vs bitwise (Z=1 means zero/false) */
@@ -350,13 +350,13 @@ emit_z_jump:
                         /* Jump directly to else's goto target */
                         fdprintf(outFd, "\t%s %s\n", invertCond ? "jp nz," : "jp z,", else_goto);
                     } else {
-                        emitJump(invertCond ? "jp nz," : "jp z,", "_if_", s->label);
+                        emitJump(invertCond ? "jp nz," : "jp z,", "el", s->label);
                     }
                 } else {
                     if (invertCond) {
-                        emitJump("jp nz,", "_if_end_", s->label);
+                        emitJump("jp nz,", "no", s->label);
                     } else {
-                        emitJump("jp z,", "_if_end_", s->label);
+                        emitJump("jp z,", "no", s->label);
                     }
                 }
             }
@@ -385,14 +385,14 @@ emit_z_jump:
                 /* Handle dual-test pattern (<=0 and >0) */
                 if (fnDualCmp) {
                     /* bit 7 test already emitted by emitExpr */
-                    const char *tgt = (s->label2 > 0) ? "_if_" : "_if_end_";
+                    const char *tgt = (s->label2 > 0) ? "el" : "no";
                     const char *hi = "h", *lo = "l";
                     int num = s->label;
                     if (fnDualReg == R_BC) { hi = "b"; lo = "c"; }
                     else if (fnDualReg == R_DE) { hi = "d"; lo = "e"; }
                     if (fnDualCmp == 'L') {
                         /* x <= 0: negative=true, zero=true */
-                        emitJump("jp nz,", "_if_then_", num);  /* neg -> then */
+                        emitJump("jp nz,", "yes", num);  /* neg -> then */
                         fdprintf(outFd, "\tld a, %s\n\tor %s\n", hi, lo);
                         emitJump("jp nz,", tgt, num);  /* pos -> else/end */
                     } else {
@@ -426,10 +426,10 @@ emit_z_jump:
                         if (skip_else) {
                             fdprintf(outFd, "\t%s %s\n", cMeansTrue ? "jp nc," : "jp c,", else_goto);
                         } else {
-                            emitJump(cMeansTrue ? "jp nc," : "jp c,", "_if_", s->label);
+                            emitJump(cMeansTrue ? "jp nc," : "jp c,", "el", s->label);
                         }
                     } else {
-                        emitJump(cMeansTrue ? "jp nc," : "jp c,", "_if_end_", s->label);
+                        emitJump(cMeansTrue ? "jp nc," : "jp c,", "no", s->label);
                     }
                 } else {
                     /* With cmpSense: jp nz skips when false (Z=0)
@@ -439,10 +439,10 @@ emit_z_jump:
                         if (skip_else) {
                             fdprintf(outFd, "\t%s %s\n", invertCond ? "jp nz," : "jp z,", else_goto);
                         } else {
-                            emitJump(invertCond ? "jp nz," : "jp z,", "_if_", s->label);
+                            emitJump(invertCond ? "jp nz," : "jp z,", "el", s->label);
                         }
                     } else {
-                        emitJump(invertCond ? "jp nz," : "jp z,", "_if_end_", s->label);
+                        emitJump(invertCond ? "jp nz," : "jp z,", "no", s->label);
                     }
                 }
             }
@@ -456,7 +456,7 @@ emit_if_body:
         if (s->then_branch) emitStmt(s->then_branch);
 
         if (s->label2 > 0 && !skip_else) {
-            emitJump("jp", "_if_end_", s->label2);
+            emitJump("jp", "no", s->label2);
             emit1(F_IF, s->label);
             if (s->else_branch) emitStmt(s->else_branch);
         }

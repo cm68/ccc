@@ -166,7 +166,7 @@ extern void emitStrLit(struct name *strname);
  */
 struct type {
 	char *name;     		// the type name
-	int size;		    	// how big is one of me
+	unsigned char size;		// how big is one of me (0-255)
 	int count;		    	// if we are an array, how many
 	struct name *elem;		// element list (struct members, function parameters)
     struct type *sub;		// pointer to, array of, function return type
@@ -187,8 +187,8 @@ struct type {
 
 extern struct type *getbasetype();
 extern void initbasictype(void);
-struct type *getType(int flags, struct type *sub, int count);
-extern int compatFnTyp(struct type *t1, struct type *t2);
+struct type *getType(char flags, struct type *sub, int count);
+extern char compatFnTyp(struct type *t1, struct type *t2);
 
 typedef enum { 
     prim, etag, stag, utag, var, elem, tdef, fdef, bitfield, funarg, local 
@@ -204,13 +204,13 @@ struct name {
     unsigned char is_tag;   // true if (enum, struct, union),
                             // else false for var,enum elem,typedef
     unsigned char emitted;  // true if string literal already emitted
-    int level;              // lexical level
+    unsigned char level;    // lexical level (0+)
 	struct name *next;		// all names in same container
 	struct type *type;
 	unsigned char sclass;   // storage class (SC_STATIC, SC_EXTERN, etc.)
-	int offset;				// if inside a struct
-    int bitoff;
-    int width;
+	unsigned char offset;	// if inside a struct (0-255)
+    unsigned char bitoff;   // bit offset (0-7)
+    unsigned char width;    // bitfield width (1-32)
     char *mangled_name;     // mangled name for statics (NULL for others)
     union {
         struct expr *init;  // value of constant or initializer (for var)
@@ -237,14 +237,14 @@ extern void pushScope(char *name);
 extern void popScope(void);
 
 /* declare.c */
-extern int lexlevel;
+extern unsigned char lexlevel;
 extern int lastname;
 extern struct name **names;
 extern struct type *types;
 extern char *kindname[];
 extern struct name *declInternal(struct type **btp, unsigned char struct_elem);
 extern struct name *declare(struct type **btp);
-extern int isCastStart(void);
+extern char isCastStart(void);
 extern struct type *parseTypeName(void);
 
 extern struct type *chartype;
@@ -345,14 +345,14 @@ extern struct macro *macros;
 extern char *macbuffer;
 void macdefine(char *s);
 void macundefine(char *s);
-int macexpand(char *s);
+char macexpand(char *s);
 struct macro *maclookup(char *s);
 void addDefine(char *s);
 
 /* util.c */
 extern unsigned char lookupc(char *s, char c);
 extern void hexdump(char *tag, char *s, int len);
-int iswhite(unsigned char c);
+char iswhite(unsigned char c);
 char *bitdef(unsigned char v, char **defs);
 int fdprintf(unsigned char fd, const char *fmt, ...);
 int quotedString(char *d, char *s);
@@ -366,7 +366,7 @@ extern struct name *declare(struct type **btp);
 /* debug options */
 #ifdef DEBUG
 #define VERBOSE(x) (verbose & (x))
-extern int verbose;
+extern char verbose;
 #else
 #define VERBOSE(x) (0)
 #endif
