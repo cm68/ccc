@@ -81,6 +81,7 @@ void emitTernary(struct expr *e);
 void emitGlobDrf(struct expr *e);
 void emitRegVarDrf(struct expr *e);
 void emitStackDrf(struct expr *e);
+void emitIndexDrf(char reg, int ofs, int size, int dest, struct expr *e);
 void emitBCIndir(void);
 
 /* Label/jump optimization */
@@ -123,8 +124,8 @@ void emitJump(const char *instr, const char *prefix, int label);
 #define S_LDAIXZ 26
 #define S_LDAB 27
 #define S_LDAC 28
-#define S_LDBA 29
-#define S_LDCA 30
+#define S_CALLILSH 29
+#define S_CALLIDIV 30
 #define S_EXXLDAB 31
 #define S_EXXLDAC 32
 #define S_EXXLDBA 33
@@ -140,7 +141,6 @@ void emitJump(const char *instr, const char *prefix, int label);
 #define S_PUSHTOS S_EXDEHL
 #define S_EXXABCORC 44
 #define S_EXXBCPOPHL 45
-#define S_FBKNORM 46
 #define S_JPFF 47
 #define S_ABCORC 48
 #define S_LDEDHLSWP 49
@@ -166,11 +166,7 @@ void emitJump(const char *instr, const char *prefix, int label);
 #define S_PUSHIX 65
 #define S_IXSWPHL 66
 #define S_RET 67
-#define S_WARNBPTR 68
 #define S_ZEXTSL 69
-#define S_LOCVAR 70
-#define S_EMPTY 71
-#define S_NEWLINE 72
 #define S_POPIX 73
 #define S_POPBC 74
 #define S_EXXPOPBC 75
@@ -196,26 +192,24 @@ void emitJump(const char *instr, const char *prefix, int label);
 #define S_IXDE 95
 #define S_EXX0 96
 #define S_CALLIMUL 97
-#define S_CALLIDIV 98
-#define S_CALLILSH 99
-#define S_CALLIRSH 100
-#define S_CALLLOR32 101
-#define S_STDEHL 102
-#define S_JRNC3 103
-#define S_JRNZ4INC 104
-#define S_ANDHLDE 105
-#define S_ORHLDE 106
-#define S_XORHLDE 107
-#define S_PUSHHLEXDE 108
-#define S_PUSHHLBCHL 109
-#define S_EXDEHLPOPHL 110
-#define S_ADDHLBCBC 111
-#define S_IXHBIT7 112
-#define S_CPIXZ 113
-#define S_LDAHLPUSH 114
-#define S_AHORBBA 115
-#define S_ALORCC 116
-#define S_ORASCF 117
+#define S_ORASCF 23
+#define S_ALORCC 41
+#define S_AHORBBA 42
+#define S_LDAHLPUSH 43
+#define S_CPIXZ 46
+#define S_IXHBIT7 53
+#define S_ADDHLBCBC 55
+#define S_EXDEHLPOPHL 56
+#define S_PUSHHLBCHL 57
+#define S_PUSHHLEXDE 61
+#define S_XORHLDE 63
+#define S_ORHLDE 64
+#define S_ANDHLDE 68
+#define S_JRNZ4INC 70
+#define S_JRNC3 71
+#define S_STDEHL 72
+#define S_CALLLOR32 77
+#define S_CALLIRSH 85
 
 /* Format string indices for emit1() */
 #define F_LDA 0

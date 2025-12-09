@@ -37,14 +37,14 @@ static const char *asmstr[] = {
     "\tjr nz, $+3\n",                   /* S_JRNZ3 */
     "\tinc hl\n",                       /* S_INCHL */
     "\tex de, hl\n", 			/* S_EXDEHL */
-    "",                                 /* S_UNUSED1 */
+    "\tor a\n\tscf\n",                  /* S_ORASCF */
     "\texx\n\tpush bc\n\texx\n",        /* S_EXXBC */
     "\tld a, (bc)\n",                   /* S_LDABC */
     "\tld a, (ix+0)\n",                 /* S_LDAIXZ */
     "\tld a, b\n",                      /* S_LDAB */
     "\tld a, c\n",                      /* S_LDAC */
-    "\tld b, a\n",                      /* S_LDBA */
-    "\tld c, a\n",                      /* S_LDCA */
+    "\tex de, hl\n\tcall ilsh\n",       /* S_CALLILSH */
+    "\tex de, hl\n\tcall idiv\n",       /* S_CALLIDIV */
     "\texx\n\tld a, b\n\texx\n",        /* S_EXXLDAB */
     "\texx\n\tld a, c\n\texx\n",        /* S_EXXLDAC */
     "\texx\n\tld b, a\n\texx\n",        /* S_EXXLDBA */
@@ -55,43 +55,43 @@ static const char *asmstr[] = {
     "\tcall load32i\n",                 /* S_CALLL32I */
     "\tcall putlong\n",                 /* S_CALLPL */
     "\t; ERR\n", /* S_ERRPARS */
-    "",                                 /* S_UNUSED2 */
-    "",                                 /* S_UNUSED3 */
-    "",                                 /* S_UNUSED4 */
+    "\tld a, l\n\tor c\n\tld c, a\n",   /* S_ALORCC */
+    "\tld a, h\n\tor b\n\tld b, a\n",   /* S_AHORBBA */
+    "\tld a, (hl)\n\tpush af\n",        /* S_LDAHLPUSH */
     "\texx\n\tld a, b\n\tor c\n\texx\n", /* S_EXXABCORC */
     "\texx\n\tpush bc\n\texx\n\tpop de\n\tadd hl, de\n", /* S_EXXBCPOPHL */
-    "", /* S_FBKNORM */
+    "\tcp (ix + 0)\n",                  /* S_CPIXZ */
     "\tjp framefree\n",                 /* S_JPFF */
     "\tld a, b\n\tor c\n",              /* S_ABCORC */
     "\tld e, (hl)\n\tinc hl\n\tld d, (hl)\n\tex de, hl\n", /* S_LDEDHLSWP */
     "\tld hl, 0\n",			/* S_HLZERO */
     "\tpop af\n",  			/* S_POPAFRET */
     "\tpop de\n",      			/* S_POPDE */
-    "",                                 /* S_UNUSED10 */
+    "\tld a, ixh\n\tbit 7, a\n",        /* S_IXHBIT7 */
     "\tpop hl\n", 			/* S_POPHL */
-    "",                                 /* S_UNUSED5 */
-    "",                                 /* S_UNUSED6 */
-    "",                                 /* S_UNUSED7 */
+    "\tadd hl, bc\n\tld b, h\n\tld c, l\n", /* S_ADDHLBCBC */
+    "\tex de, hl\n\tpop hl\n",          /* S_EXDEHLPOPHL */
+    "\tpush hl\n\tld h, b\n\tld l, c\n", /* S_PUSHHLBCHL */
     "\tpush af\n",   			/* S_PUSHAFSV */
     "\tpush bc\n",                      /* S_PUSHBC */
     "\tpush de\n",     			/* S_PUSHDE */
-    "",                                 /* S_UNUSED11 */
+    "\tpush hl\n\tex de, hl\n",         /* S_PUSHHLEXDE */
     "\tpush hl\n",  			/* S_PUSHHL */
-    "",                                 /* S_UNUSED8 */
-    "",                                 /* S_UNUSED9 */
+    "\tld a, l\n\txor e\n\tld l, a\n\tld a, h\n\txor d\n\tld h, a\n", /* S_XORHLDE */
+    "\tld a, l\n\tor e\n\tld l, a\n\tld a, h\n\tor d\n\tld h, a\n",  /* S_ORHLDE */
     "\tpush ix\n",                      /* S_PUSHIX */
     "\tpush ix\n\tpop de\n\tadd hl, de\n", /* S_IXSWPHL */
     "\tret\n",                          /* S_RET */
-    "", /* S_WARNBPTR */
+    "\tld a, l\n\tand e\n\tld l, a\n\tld a, h\n\tand d\n\tld h, a\n", /* S_ANDHLDE */
     "", /* S_ZEXTSL */
-    "; Locals:\n",             /* S_LOCVAR */
-    "",                                 /* S_EMPTY */
-    "\n",                               /* S_NEWLINE */
+    "\tjr nz, $+4\n\tinc hl\n",         /* S_JRNZ4INC */
+    "\tjr nc, $+3\n",                   /* S_JRNC3 */
+    "\tld (hl), d\n\tdec hl\n\tld (hl), e\n", /* S_STDEHL */
     "\tpop ix\n",                       /* S_POPIX */
     "\tpop bc\n",                       /* S_POPBC */
     "\texx\n\tpop bc\n\texx\n",         /* S_EXXPOPBC */
     "\tjp nz, $+8\n",                   /* S_JPNZ8 */
-    "",                                 /* S_77_UNUSED */
+    "\tcall lor32\n",                   /* S_CALLLOR32 */
     "\tbit 7, h\n",                     /* S_BIT7H */
     "\txor a\n",                        /* S_XORA */
     "\tld e, l\n\tld d, h\n",           /* S_HLTODE */
@@ -99,10 +99,10 @@ static const char *asmstr[] = {
     "\tbit 7, b\n",                     /* S_BIT7B */
     "\tadd hl, hl\n",                   /* S_ADDHLHL */
     "\tld (hl), a\n",                   /* S_LDHLA */
-    "",                                 /* S_85_UNUSED */
+    "\tex de, hl\n\tcall irsh\n",       /* S_CALLIRSH */
     "\tdec hl\n",                       /* S_DECHL */
     "\tld c, (hl)\n\tinc hl\n\tld b, (hl)\n",  /* S_LDCHL */
-    "",                                 /* S_88_UNUSED */
+    "",                                 /* UNUSED88 */
     "\tld d, b\n\tld e, c\n",           /* S_LDDEBC */
     "\tld a, (hl)\n\tld c, a\n\tinc hl\n",  /* S_LDAHLINC */
     "\tld a, (hl)\n\tld h, a\n\tld l, c\n", /* S_LDAHLHIGH */
@@ -111,27 +111,7 @@ static const char *asmstr[] = {
     "\tpush iy\n\tpop hl\n",                /* S_IYHL */
     "\tpush ix\n\tpop de\n",                /* S_IXDE */
     "\texx\n\tld hl, 0\n\texx\n",           /* S_EXX0 */
-    "\tcall imul\n",                        /* S_CALLIMUL */
-    "\tex de, hl\n\tcall idiv\n",           /* S_CALLIDIV */
-    "\tex de, hl\n\tcall ilsh\n",           /* S_CALLILSH */
-    "\tex de, hl\n\tcall irsh\n",           /* S_CALLIRSH */
-    "\tcall lor32\n",                       /* S_CALLLOR32 */
-    "\tld (hl), d\n\tdec hl\n\tld (hl), e\n", /* S_STDEHL */
-    "\tjr nc, $+3\n",                       /* S_JRNC3 */
-    "\tjr nz, $+4\n\tinc hl\n",             /* S_JRNZ4INC */
-    "\tld a, l\n\tand e\n\tld l, a\n\tld a, h\n\tand d\n\tld h, a\n", /* S_ANDHLDE */
-    "\tld a, l\n\tor e\n\tld l, a\n\tld a, h\n\tor d\n\tld h, a\n",  /* S_ORHLDE */
-    "\tld a, l\n\txor e\n\tld l, a\n\tld a, h\n\txor d\n\tld h, a\n", /* S_XORHLDE */
-    "\tpush hl\n\tex de, hl\n",             /* S_PUSHHLEXDE */
-    "\tpush hl\n\tld h, b\n\tld l, c\n",    /* S_PUSHHLBCHL */
-    "\tex de, hl\n\tpop hl\n",              /* S_EXDEHLPOPHL */
-    "\tadd hl, bc\n\tld b, h\n\tld c, l\n", /* S_ADDHLBCBC */
-    "\tld a, ixh\n\tbit 7, a\n",            /* S_IXHBIT7 */
-    "\tcp (ix + 0)\n",                      /* S_CPIXZ */
-    "\tld a, (hl)\n\tpush af\n",            /* S_LDAHLPUSH */
-    "\tld a, h\n\tor b\n\tld b, a\n",       /* S_AHORBBA */
-    "\tld a, l\n\tor c\n\tld c, a\n",       /* S_ALORCC */
-    "\tor a\n\tscf\n"                       /* S_ORASCF */
+    "\tcall imul\n"                         /* S_CALLIMUL */
 };
 
 /* Format strings with single %d - for emit1() */
@@ -260,6 +240,30 @@ int varIYOfs(struct local_var *var) {
 /* findVar is defined in codegen.c */
 
 /* IY-indexed memory access - helper for sign handling */
+/* Unified index register ops: pass 'x' for IX, 'y' for IY
+ * fmt should have: first %c for low byte dest (or none), then i%c for register,
+ * %c for sign, %d for offset
+ * For simple forms like "\tld a, (i%c %c %d)\n"
+ * For dest-taking forms like "\tld %c, (i%c %c %d)\n"
+ */
+static void idxOp(const char *fmt, char arg1, int offset, int adj) {
+    int o = offset + adj;
+    if (o >= 0)
+        fdprintf(outFd, fmt, arg1, '+', o);
+    else
+        fdprintf(outFd, fmt, arg1, '-', -o);
+}
+
+/* 4-arg version for destination register forms */
+static void idxOp2(const char *fmt, char dest, char reg, int offset, int adj) {
+    int o = offset + adj;
+    if (o >= 0)
+        fdprintf(outFd, fmt, dest, reg, '+', o);
+    else
+        fdprintf(outFd, fmt, dest, reg, '-', -o);
+}
+
+/* IY shorthand using legacy signature */
 static void iyOp(const char *fmt, char offset, int adj) {
     if (offset >= 0)
         fdprintf(outFd, fmt, '+', offset + adj);
@@ -934,11 +938,73 @@ void emitRegVarDrf(struct expr *e)
  * Emit DEREF of stack variable (IY-indexed) with cache check
  * Pattern: (M $stackvar) where opflags has OP_IYMEM
  */
+/*
+ * Unified index register dereference - works for both IY and IX
+ * reg: 'x' for IX, 'y' for IY
+ * ofs: offset from index register
+ * size: 1, 2, or 4 bytes
+ * dest: target register (R_HL, R_DE, R_BC)
+ * e: expression for cache tracking (may be NULL)
+ */
+void emitIndexDrf(char reg, int ofs, int size, int dest, struct expr *e)
+{
+    char hi, lo;
+
+    if (size == 1) {
+        if (e && cacheFindByte(e) == 'A') {
+            /* A already holds this value - skip load */
+            return;
+        }
+        idxOp("\tld a, (i%c %c %d)\n", reg, ofs, 0);
+        fnAZero = 0;
+        clearA();
+        if (e) cacheSetA(e);
+    } else if (size == 2) {
+        switch (dest) {
+        case R_BC: hi = 'b'; lo = 'c'; break;
+        case R_DE: hi = 'd'; lo = 'e'; break;
+        default:   hi = 'h'; lo = 'l'; break;
+        }
+        if (dest == R_DE) {
+            idxOp("\tld e, (i%c %c %d)\n", reg, ofs, 0);
+            idxOp("\tld d, (i%c %c %d)\n", reg, ofs, 1);
+            fnDEValid = 1;
+        } else if (e && cacheFindWord(e) == 'H') {
+            /* HL already holds this value - skip load */
+            return;
+        } else {
+            /* Load to HL (or BC) */
+            if (reg == 'y' && (dest == R_HL || dest == 0)) {
+                /* Use cached IY load */
+                loadWordIY(ofs);
+            } else {
+                idxOp2("\tld %c, (i%c %c %d)\n", lo, reg, ofs, 0);
+                idxOp2("\tld %c, (i%c %c %d)\n", hi, reg, ofs, 1);
+            }
+            if (dest == R_HL || dest == 0) {
+                clearHL();
+                if (e) cacheSetHL(e);
+            }
+        }
+    } else if (size == 4) {
+        idxOp("\tld l, (i%c %c %d)\n", reg, ofs, 0);
+        idxOp("\tld h, (i%c %c %d)\n", reg, ofs, 1);
+        emit(S_EXX);
+        idxOp("\tld l, (i%c %c %d)\n", reg, ofs, 2);
+        idxOp("\tld h, (i%c %c %d)\n", reg, ofs, 3);
+        emit(S_EXX);
+        clearHL();
+    }
+}
+
+/*
+ * Emit DEREF of stack variable (IY-indexed) with cache check
+ * Pattern: (M $stackvar) where opflags has OP_IYMEM
+ */
 void emitStackDrf(struct expr *e)
 {
     struct local_var *var;
     const char *sym;
-    int ofs;
 
     if (!e || !e->left || !e->left->symbol) return;
 
@@ -951,41 +1017,7 @@ void emitStackDrf(struct expr *e)
         return;
     }
 
-    ofs = var->offset;
-
-    if (e->size == 1) {
-        if (cacheFindByte(e) == 'A') {
-            /* A already holds this value - skip load */
-        } else {
-            loadByteIY(ofs, var->is_param);
-            cacheSetA(e);
-        }
-    } else if (e->size == 2) {
-        if (e->dest == R_DE) {
-            /* Scheduler says load to DE */
-            fdprintf(outFd, "\tld e, (iy %c %d)\n\tld d, (iy %c %d)\n",
-                     ofs >= 0 ? '+' : '-', ofs >= 0 ? ofs : -ofs,
-                     ofs + 1 >= 0 ? '+' : '-', ofs + 1 >= 0 ? ofs + 1 : -(ofs + 1));
-            fnDEValid = 1;
-        } else if (cacheFindWord(e) == 'H') {
-            /* HL already holds this value - skip load */
-        } else {
-            loadWordIY(ofs);
-            clearHL();
-            cacheSetHL(e);
-        }
-    } else if (e->size == 4) {
-        fdprintf(outFd, "\tld l, (iy %c %d)\n\tld h, (iy %c %d)\n",
-                 ofs >= 0 ? '+' : '-', ofs >= 0 ? ofs : -ofs,
-                 ofs + 1 >= 0 ? '+' : '-', ofs + 1 >= 0 ? ofs + 1 : -(ofs + 1));
-        emit(S_EXX);
-        fdprintf(outFd, "\tld l, (iy %c %d)\n\tld h, (iy %c %d)\n",
-                 ofs + 2 >= 0 ? '+' : '-', ofs + 2 >= 0 ? ofs + 2 : -(ofs + 2),
-                 ofs + 3 >= 0 ? '+' : '-', ofs + 3 >= 0 ? ofs + 3 : -(ofs + 3));
-        emit(S_EXX);
-        clearHL();
-    }
-
+    emitIndexDrf('y', var->offset, e->size, e->dest, e);
     freeExpr(e);
 }
 
