@@ -199,8 +199,6 @@ struct local_var {
     unsigned char size;         // Size in bytes
     unsigned char is_param;     // 1 if parameter, 0 if local variable
     unsigned char is_array;     // 1 if array, 0 if scalar (arrays can't be in registers)
-    unsigned char first_label;  // First label where variable is used (255 if unused)
-    unsigned char last_label;   // Last label where variable is used (high water mark)
     unsigned char ref_count;    // Number of times variable is referenced
     unsigned char agg_refs;     // Number of struct/array member accesses (for IX allocation)
     unsigned char reg;          // Allocated register (REG_NO if on stack)

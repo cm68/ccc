@@ -462,12 +462,11 @@ dumpScheduled(char fd)
     dumpFd = fd;
     fdprintf(fd, "; Scheduled tree for %s:\n", fnName ? fnName : "?");
 
-    /* Dump variable lifetime stats */
+    /* Dump variable stats */
     for (v = fnLocals; v; v = v->next) {
-        fdprintf(fd, ";   %s: ofs=%d sz=%d ref=%d agg=%d life=%d-%d reg=%d%s\n",
+        fdprintf(fd, ";   %s: ofs=%d sz=%d ref=%d agg=%d reg=%d%s\n",
             v->name, v->offset, v->size, v->ref_count, v->agg_refs,
-            v->first_label, v->last_label, v->reg,
-            v->is_param ? " (param)" : "");
+            v->reg, v->is_param ? " (param)" : "");
     }
 
     dumpSchedStmt(fnBody, 0);

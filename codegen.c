@@ -120,8 +120,6 @@ addVar(const char *name, unsigned char size, int is_param, int offset, int is_ar
     var->offset = is_param ? offset : -(fnFrmSize + size);
     var->is_param = is_param;
     var->is_array = is_array;
-    var->first_label = 255;  /* 255 = not yet used */
-    var->last_label = 0;     /* 0 = not yet used */
     var->ref_count = 0;
     var->agg_refs = 0;
     var->reg = REG_NO;
@@ -132,33 +130,6 @@ addVar(const char *name, unsigned char size, int is_param, int offset, int is_ar
 
 #define addParam(n,sz,ofs) addVar(n,sz,1,ofs,0)
 #define addLocalVar(n,sz,arr) addVar(n,sz,0,0,arr)
-
-/*
- * Helper: Update variable lifetime tracking
- * Called whenever a variable is used, updates first_label and last_label
- */
-static void
-updVarLife(const char *name)
-{
-    struct local_var *var;
-
-    if (!fnLocals || !name) return;
-
-    /* Find the variable in locals list */
-    for (var = fnLocals; var; var = var->next) {
-        if (strcmp(var->name, name) == 0) {
-            /* Update first use if not set */
-            if (var->first_label == 255) {
-                var->first_label = fnCurLbl;
-            }
-            /* Always update last use (high water mark) */
-            var->last_label = fnCurLbl;
-            /* Increment reference count */
-            var->ref_count++;
-            return;
-        }
-    }
-}
 
 /*
  * Helper: Check if a name is a parameter
@@ -285,13 +256,6 @@ setExprFlags(struct expr *e)
     if (!e) return;
     CHECK_WALK();
 
-    /* Track variable usage for lifetime analysis */
-    if (e->op == '$' && e->symbol) {
-        const char *var_name = e->symbol;
-        if (var_name[0] == '$') var_name++;
-        updVarLife(var_name);
-    }
-
     /* Clear opflags first */
     e->opflags = 0;
 
@@ -359,9 +323,6 @@ setStmtFlags(struct stmt *s)
 {
     if (!s) return;
 
-    /* Track statement index for lifetime analysis */
-    fnCurLbl++;
-
     /* For expression statements, mark the expr as unused (result discarded) */
     if (s->type == 'E' && s->expr) s->expr->flags |= E_UNUSED;
 
@@ -379,7 +340,6 @@ void
 setOpFlags()
 {
     if (!fnBody) return;
-    fnCurLbl = 0;
     setStmtFlags(fnBody);
 }
 
@@ -700,178 +660,29 @@ specialize()
 }
 
 /*
- * Stack slot structure for frame optimization
- * A slot can hold multiple variables whose lifetimes don't overlap
- */
-struct stackSlot {
-    int offset;              /* Negative offset from frame pointer */
-    int size;                /* Size of this slot in bytes */
-    struct local_var **vars; /* Array of variables using this slot */
-    int numVars;            /* Number of variables in this slot */
-    int capacity;            /* Allocated capacity of vars array */
-};
-
-/*
- * Helper: Check if two variables' lifetimes overlap
- * Returns 1 if they overlap (cannot share a slot), 0 if they don't overlap
- */
-static int
-lifeOverlap(struct local_var *v1, struct local_var *v2)
-{
-    /* If either variable is never used, they don't conflict */
-    if (v1->first_label == 255 || v2->first_label == 255) {
-        return 0;
-    }
-
-    /* Variables overlap if their ranges [first, last] intersect
-     * Ranges [a1,a2] and [b1,b2] intersect if: a1 <= b2 AND b1 <= a2 */
-    return (v1->first_label <= v2->last_label &&
-            v2->first_label <= v1->last_label);
-}
-
-/*
- * Helper: Check if a variable can fit in a slot (no lifetime conflicts)
- * Returns 1 if variable can use this slot, 0 otherwise
- */
-static int
-canUseSlot(struct stackSlot *slot, struct local_var *var)
-{
-    int i;
-
-    /* Variable must be same size as slot */
-    if (var->size != slot->size) {
-        return 0;
-    }
-
-    /* Check for lifetime conflicts with all variables in this slot */
-    for (i = 0; i < slot->numVars; i++) {
-        if (lifeOverlap(var, slot->vars[i])) {
-            return 0;  /* Conflict - cannot use this slot */
-        }
-    }
-
-    return 1;  /* No conflicts - can use this slot */
-}
-
-/*
- * Helper: Add a variable to a slot
- */
-static void
-addVarToSlot(struct stackSlot *slot, struct local_var *var)
-{
-    /* Grow array if needed */
-    if (slot->numVars >= slot->capacity) {
-        slot->capacity = slot->capacity ? slot->capacity * 2 : 4;
-        slot->vars = realloc(slot->vars,
-                             slot->capacity * sizeof(struct local_var *));
-    }
-
-    slot->vars[slot->numVars++] = var;
-}
-
-/*
- * Optimize stack frame by reusing slots for non-overlapping lifetimes
- * Called after register allocation - skips register-allocated variables.
- *
- * Algorithm: Greedy slot packing
- * - For each local variable, try to find an existing slot where its
- *   lifetime doesn't overlap with any variable already in that slot
- * - If found, assign the variable to that slot
- * - Otherwise, create a new slot
- * - Finally, reassign offsets based on slot assignments
- *
- * This reduces frame size by allowing variables with non-overlapping
- * lifetimes to share the same stack location.
+ * Assign stack frame offsets to locals (skips register-allocated vars)
  */
 void
 optFrmLayout()
 {
-    struct stackSlot *slots = NULL;
-    int num_slots = 0;
-    int slot_capacity = 0;
     struct local_var *var;
-    int newFrameSize;
-    int i, j;
-    int slot_idx;
-    int found_slot;
+    int offset = 0;
 
     if (!fnLocals) return;
 
-    
-
-    /* Build slot assignments for each local variable */
     for (var = fnLocals; var; var = var->next) {
-        /* Skip parameters - they have fixed offsets */
         if (var->is_param) continue;
-
-        /* Skip register-allocated variables - no stack space needed */
         if (var->reg != REG_NO) continue;
-
-        /* Skip unused variables (never referenced) */
-        if (var->first_label == -1) continue;
-
-        /* Try to find an existing slot this variable can use */
-        found_slot = 0;
-        for (slot_idx = 0; slot_idx < num_slots; slot_idx++) {
-            if (canUseSlot(&slots[slot_idx], var)) {
-                /* Found a compatible slot */
-                addVarToSlot(&slots[slot_idx], var);
-                found_slot = 1;
-                
-                break;
-            }
-        }
-
-        /* If no compatible slot found, create a new one */
-        if (!found_slot) {
-            /* Grow slots array if needed */
-            if (num_slots >= slot_capacity) {
-                slot_capacity = slot_capacity ? slot_capacity * 2 : 8;
-                slots = realloc(slots, slot_capacity * sizeof(struct stackSlot));
-            }
-
-            /* Initialize new slot */
-            slots[num_slots].offset = 0;  /* Will assign later */
-            slots[num_slots].size = var->size;
-            slots[num_slots].vars = NULL;
-            slots[num_slots].numVars = 0;
-            slots[num_slots].capacity = 0;
-
-            addVarToSlot(&slots[num_slots], var);
-
-            
-
-            num_slots++;
-        }
+        offset += var->size;
+        var->offset = -offset;
     }
 
-    /* Reassign offsets based on slots */
-    newFrameSize = 0;
-    for (i = 0; i < num_slots; i++) {
-        newFrameSize += slots[i].size;
-        slots[i].offset = -newFrameSize;
+    fnFrmSize = offset;
 
-        /* Assign this offset to all variables in the slot */
-        for (j = 0; j < slots[i].numVars; j++) {
-            slots[i].vars[j]->offset = slots[i].offset;
-        }
-    }
-
-    /* Update context frame size */
-    
-    fnFrmSize = newFrameSize;
-
-    /* Check frame size limit - IY-indexed addressing uses signed 8-bit offsets */
     if (fnFrmSize > 127) {
         fdprintf(2, "%s: frame > 127\n", fnName);
         exit(1);
     }
-
-    /* Free slot data structures */
-    for (i = 0; i < num_slots; i++) {
-        free(slots[i].vars);
-    }
-    free(slots);
 }
 
 /*
@@ -1159,10 +970,6 @@ static void generateStmt(struct stmt *s)
 {
     if (!s) return;
 
-    /* Increment current_label for each statement to track program points
-     * This provides a monotonically increasing sequence for lifetime analysis */
-    fnCurLbl++;
-
     /* Track loop depth globally for call cleanup optimization */
     if (s->type == 'L' && s->symbol) {
         if (strstr(s->symbol, "_top")) {
@@ -1218,9 +1025,6 @@ static void generateStmt(struct stmt *s)
 void generateCode()
 {
     if (!fnBody) return;
-
-    /* Initialize lifetime tracking */
-    fnCurLbl = 0;
 
     /* Reset global state at start of each function */
     g_loop_depth = 0;

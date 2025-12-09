@@ -50,7 +50,6 @@ struct stmt *fnBody;
 unsigned char fnLblCnt;
 struct local_var *fnLocals;
 char fnFrmSize;
-unsigned char fnCurLbl;
 char fnDESaveCnt;
 char fnDInUse;
 char fnPendClean;
