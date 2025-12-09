@@ -114,30 +114,62 @@ Example: `B0203` = block with 2 declarations, 3 statements
 
 ### If Statement
 ```
-I<has_else><cond><then>[<else>]
+I<has_else><nlabels><cond><then>[<else>]
 ```
 
 - `has_else` - `00` (no else) or `01` (has else)
+- `nlabels` - 2-digit hex count of intermediate labels for ||/&& short-circuit
 - `cond` - condition expression
 - `then` - then-branch statement
 - `else` - else-branch statement (only if has_else=01)
 
+See CONDITIONS.md for details on label assignment for short-circuit evaluation.
+
 ### While Loop (lowered to labels)
 ```
-B0005L<top>I01<cond><body>B0001G<break>L<continue>G<top>L<break>
+B0005L<top>I01<nlabels><cond><body>B0001G<break>L<continue>G<top>L<break>
 ```
 
 Loops are lowered to a block containing:
 1. `L<label>_top` - loop top label
-2. `I01<cond><body>B0001G<break>` - if with else that breaks
+2. `I01<nlabels><cond><body>B0001G<break>` - if with else that breaks
 3. `L<label>_continue` - continue label
 4. `G<label>_top` - goto top
 5. `L<label>_break` - break label
 
+### While Loop (non-lowered form)
+```
+W<nlabels><cond><body>
+```
+
+- `nlabels` - 2-digit hex count of intermediate labels for ||/&& short-circuit
+- `cond` - condition expression
+- `body` - loop body statement
+
+### Do-While Loop (non-lowered form)
+```
+D<nlabels><body><cond>
+```
+
+- `nlabels` - 2-digit hex count of intermediate labels
+- `body` - loop body statement
+- `cond` - condition expression
+
 ### For Loop (lowered)
 ```
-B00<count>[E<init>]L<top>[I01<cond><body>B0001G<break>|<body>]L<continue>[E<incr>]G<top>L<break>
+B00<count>[E<init>]L<top>[I01<nlabels><cond><body>B0001G<break>|<body>]L<continue>[E<incr>]G<top>L<break>
 ```
+
+### For Loop (non-lowered form)
+```
+F<nlabels><init><cond><incr><body>
+```
+
+- `nlabels` - 2-digit hex count of intermediate labels
+- `init` - initializer expression (or `_` if none)
+- `cond` - condition expression (or `_` if none)
+- `incr` - increment expression (or `_` if none)
+- `body` - loop body statement
 
 ### Expression Statement
 ```
@@ -305,8 +337,11 @@ x<type><expr>   - sign-extend (SEXT)
 
 ### Ternary Operator
 ```
-?<type><cond><then><else>
+?<type><nlabels><cond><then><else>
 ```
+
+- `type` - result type suffix
+- `nlabels` - 2-digit hex count of intermediate labels for ||/&& in condition
 
 ### Memory Copy
 ```

@@ -75,16 +75,6 @@ struct jump_instr {
     struct jump_instr *next;    // Next in list
 };
 
-/*
- * Label mapping for jump optimization
- * Compact: 4 bytes per entry (max 256 labels per function)
- */
-struct labelMap {
-    unsigned char label;        // Label number (0-255)
-    unsigned char target;       // Target label (255 = no target)
-    unsigned char jump_type;    // Type of jump at this label
-    unsigned char refcnt;       // Number of jumps targeting this label
-};
 
 /*
  * Expression flags (e->flags)
@@ -247,11 +237,11 @@ extern char fnIYHLValid;        /* 1 if fnIYHLOfs is valid */
 extern char fnABCValid;         /* 1 if A has byte from (bc) */
 extern char fnAZero;            /* 1 if A is known to be 0 */
 
-/* Label generation with overflow check */
+/* Label generation - 255 is reserved as "no label" sentinel */
 #ifdef DEBUG
-#define newLabel() (fnLblCnt == 255 ? (fdprintf(2, "fatal: label overflow in %s\n", fnName), exit(1), 0) : fnLblCnt++)
+#define newLabel() (fnLblCnt >= 254 ? (fdprintf(2, "fatal: label overflow in %s\n", fnName), exit(1), 0) : fnLblCnt++)
 #else
-#define newLabel() (fnLblCnt++)
+#define newLabel() (fnLblCnt >= 254 ? 254 : fnLblCnt++)
 #endif
 
 /* Forward declarations from util.c */

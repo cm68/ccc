@@ -231,7 +231,7 @@ dumpStmt(struct stmt *s)
         break;
 
     case 'I': /* If */
-        out("(I ");
+        outf("(I@%d ", s->label);
         dumpExpr(s->expr);
         if (s->then_branch) { newLine(); dumpStmt(s->then_branch); }
         if (s->else_branch) { newLine(); dumpStmt(s->else_branch); }
@@ -287,14 +287,14 @@ dumpStmt(struct stmt *s)
         break;
 
     case 'W': /* While */
-        out("(W ");
+        outf("(W@%d ", s->label);
         dumpExpr(s->expr);
         if (s->then_branch) { newLine(); dumpStmt(s->then_branch); }
         out(")");
         break;
 
     case 'D': /* Do-while */
-        out("(D");
+        outf("(D@%d", s->label);
         if (s->then_branch) { newLine(); dumpStmt(s->then_branch); }
         out(" ");
         dumpExpr(s->expr);
@@ -302,7 +302,7 @@ dumpStmt(struct stmt *s)
         break;
 
     case 'F': /* For */
-        out("(F ");
+        outf("(F@%d ", s->label);
         if (s->expr) dumpExpr(s->expr);
         out("; ");
         if (s->expr2) dumpExpr(s->expr2);

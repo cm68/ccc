@@ -83,13 +83,7 @@ void emitStackDrf(struct expr *e);
 void emitIndexDrf(char reg, char ofs, char size, char dest, struct expr *e);
 void emitBCIndir(void);
 
-/* Label/jump optimization */
-void addLabelMap(unsigned char from, unsigned char to, enum jump_type type);
-unsigned char resolveLabel(unsigned char label);
-void refLabel(unsigned char label);
-unsigned char getLabelRef(unsigned char label);
-void scanExprJumps(struct expr *e);
-void scanLabJumps(struct stmt *s);
+/* Jump emission */
 void emitJump(const char *instr, const char *prefix, unsigned char label);
 
 /* Assembly string indices */

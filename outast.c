@@ -8,6 +8,48 @@
 static void emitTypeInfo(struct type *type);
 
 /*
+ * Jump-to-jump optimization: when LABEL is followed only by GOTO,
+ * record mapping so GOTOs to that label can go directly to target.
+ */
+#define MAX_JMP_MAP 32
+static struct {
+	char *label;   /* label name */
+	char *target;  /* goto target */
+} jmpMap[MAX_JMP_MAP];
+static int jmpMapCnt;
+
+/* Find target for a label, returns label itself if no mapping */
+static char *
+resolveJmp(char *label)
+{
+	int i, j;
+	char *cur = label;
+	/* Follow chain (max 8 hops to avoid loops) */
+	for (j = 0; j < 8; j++) {
+		for (i = 0; i < jmpMapCnt; i++) {
+			if (jmpMap[i].label && cur &&
+			    strcmp(jmpMap[i].label, cur) == 0) {
+				cur = jmpMap[i].target;
+				break;
+			}
+		}
+		if (i == jmpMapCnt) break;  /* no mapping found */
+	}
+	return cur;
+}
+
+/* Add a jump mapping: gotos to 'from' should go to 'to' instead */
+static void
+addJmpMap(const char *from, const char *to)
+{
+	if (jmpMapCnt < MAX_JMP_MAP && from && to) {
+		jmpMap[jmpMapCnt].label = strdup(from);
+		jmpMap[jmpMapCnt].target = strdup(to);
+		jmpMapCnt++;
+	}
+}
+
+/*
  * Get size suffix for memory operations based on type
  * Returns: 'b' (byte), 's' (short/int), 'l' (long), 'p' (pointer),
  * 'f' (float), 'd' (double), 'v' (void)
@@ -67,14 +109,25 @@ emitHexName(const char *s)
 	fdprintf(astFd, "%02x%s", len, s);
 }
 
+/* Helper: build label name from base+suffix (4 rotating buffers) */
+static char *
+mkLbl(const char *base, const char *suffix)
+{
+	static char buf[4][32];
+	static int idx;
+	char *p = buf[idx++ & 3];
+	snprintf(p, 32, "%s%s", base, suffix);
+	return p;
+}
+
 /* Emit a label or goto statement with hex-encoded name */
 static void
 emitLG(char op, const char *base, const char *suffix)
 {
-	char buf[256];
-	snprintf(buf, sizeof(buf), "%s%s", base, suffix);
+	char *name = mkLbl(base, suffix);
 	fdprintf(astFd, "%c", op);
-	emitHexName(buf);
+	/* For GOTO, resolve through jump map */
+	emitHexName(op == 'G' ? resolveJmp(name) : name);
 }
 #define emitLabel(b,s) emitLG('L',b,s)
 #define emitGoto(b,s)  emitLG('G',b,s)
@@ -89,6 +142,67 @@ emitChild(struct expr *e)
 {
 	if (e)
 		emitExpr(e);
+}
+
+/*
+ * Context for counting intermediate labels in conditions.
+ * See CONDITIONS.md for full explanation.
+ */
+#define CTX_TOP      0  /* top-level condition */
+#define CTX_OR_LEFT  1  /* left child of || */
+#define CTX_OR_RIGHT 2  /* right child of || */
+#define CTX_AND_LEFT 3  /* left child of && */
+#define CTX_AND_RIGHT 4 /* right child of && */
+
+/*
+ * Count intermediate labels needed for short-circuit evaluation.
+ * Returns number of labels beyond the basic yes/el/no.
+ */
+static unsigned char
+cntCondLbls(struct expr *e, unsigned char ctx)
+{
+	unsigned char count = 0;
+
+	if (!e)
+		return 0;
+
+	/* NOT just inverts sense, pass through */
+	if (e->op == '!') {
+		return cntCondLbls(e->left, ctx);
+	}
+
+	/* OR (||) */
+	if (e->op == LOR) {
+		/* || inside && (right side) or at top needs intermediate label */
+		if (ctx == CTX_AND_RIGHT || ctx == CTX_TOP) {
+			count = 1;
+			count += cntCondLbls(e->left, CTX_OR_LEFT);
+			count += cntCondLbls(e->right, CTX_OR_RIGHT);
+		} else {
+			/* chained || shares parent's target */
+			count = cntCondLbls(e->left, CTX_OR_LEFT);
+			count += cntCondLbls(e->right, ctx);
+		}
+		return count;
+	}
+
+	/* AND (&&) */
+	if (e->op == LAND) {
+		/* && inside || (right side) or at top needs intermediate label */
+		if (ctx == CTX_OR_RIGHT || ctx == CTX_TOP) {
+			count = 1;
+			count += cntCondLbls(e->left, CTX_AND_LEFT);
+			count += cntCondLbls(e->right, CTX_AND_RIGHT);
+		} else {
+			/* chained && shares parent's target */
+			count = cntCondLbls(e->left, CTX_AND_LEFT);
+			count += cntCondLbls(e->right, ctx);
+		}
+		return count;
+	}
+
+	/* Leaf node - no intermediate labels needed */
+	return 0;
 }
 
 /*
@@ -243,12 +357,15 @@ emitExpr(struct expr *e)
 		break;
 
 	case QUES:
-		/* Ternary: ?w cond then else - flatten the COLON node */
-		fdprintf(astFd, "?%c", getSizeSuffix(e->type));
-		emitChild(e->left);
-		if (e->right && e->right->op == COLON) {
-			emitChild(e->right->left);
-			emitChild(e->right->right);
+		/* Ternary: ?w nlabels cond then else - flatten the COLON node */
+		{
+			unsigned char nlabels = cntCondLbls(e->left, CTX_TOP);
+			fdprintf(astFd, "?%c%02x", getSizeSuffix(e->type), nlabels);
+			emitChild(e->left);
+			if (e->right && e->right->op == COLON) {
+				emitChild(e->right->left);
+				emitChild(e->right->right);
+			}
 		}
 		break;
 
@@ -405,8 +522,11 @@ emitStmt(struct stmt *st)
 					emitStmt(st->chain);
 			}
 		} else {
-			/* If: I has_else cond then [else] */
-			fdprintf(astFd, "I%02x", st->otherwise ? 1 : 0);
+			/* If: I flags nlabels cond then [else]
+			 * flags: bit 0 = has_else
+			 * nlabels: intermediate labels for ||/&& short-circuit */
+			unsigned char nlabels = cntCondLbls(st->left, CTX_TOP);
+			fdprintf(astFd, "I%02x%02x", st->otherwise ? 1 : 0, nlabels);
 			emitExpr(st->left);
 			if (st->chain)
 				emitStmt(st->chain);
@@ -420,9 +540,13 @@ emitStmt(struct stmt *st)
 	case WHILE:
 		/* Emit as labeled sequence wrapped in block */
 		if (st->label) {
+			unsigned char nlabels = cntCondLbls(st->left, CTX_TOP);
+			/* WHILE has no incr, so _continue goes straight to _top */
+			addJmpMap(mkLbl(st->label, "_continue"),
+			          mkLbl(st->label, "_top"));
 			fdprintf(astFd, "B0005");  /* 5 stmts: label, if, label, goto, label */
 			emitLabel(st->label, "_top");
-			fdprintf(astFd, "I01");  /* has else */
+			fdprintf(astFd, "I01%02x", nlabels);  /* has else */
 			emitExpr(st->left);
 			if (st->chain)
 				emitStmt(st->chain);
@@ -435,7 +559,8 @@ emitStmt(struct stmt *st)
 			emitGoto(st->label, "_top");
 			emitLabel(st->label, "_break");
 		} else {
-			fdprintf(astFd, "W");
+			unsigned char nlabels = cntCondLbls(st->left, CTX_TOP);
+			fdprintf(astFd, "W%02x", nlabels);
 			emitExpr(st->left);
 			if (st->chain)
 				emitStmt(st->chain);
@@ -447,6 +572,7 @@ emitStmt(struct stmt *st)
 	case DO:
 		/* Emit as labeled sequence wrapped in block */
 		if (st->label) {
+			unsigned char nlabels = cntCondLbls(st->left, CTX_TOP);
 			fdprintf(astFd, "B0005");  /* 5 stmts: top, body, test, if, break */
 			emitLabel(st->label, "_top");
 			if (st->chain)
@@ -454,12 +580,13 @@ emitStmt(struct stmt *st)
 			else
 				fdprintf(astFd, ";");
 			emitLabel(st->label, "_test");
-			fdprintf(astFd, "I00");  /* no else */
+			fdprintf(astFd, "I00%02x", nlabels);  /* no else */
 			emitExpr(st->left);
 			emitGoto(st->label, "_top");
 			emitLabel(st->label, "_break");
 		} else {
-			fdprintf(astFd, "D");
+			unsigned char nlabels = cntCondLbls(st->left, CTX_TOP);
+			fdprintf(astFd, "D%02x", nlabels);
 			if (st->chain)
 				emitStmt(st->chain);
 			else
@@ -471,10 +598,15 @@ emitStmt(struct stmt *st)
 	case FOR:
 		/* Emit as labeled sequence wrapped in block */
 		if (st->label) {
+			unsigned char nlabels = cntCondLbls(st->middle, CTX_TOP);
 			/* Count statements: init? + top + (if or body) + continue + incr? + goto + break */
 			int stmt_count = 5;  /* top, (if or body), continue, goto, break */
 			if (st->left) stmt_count++;   /* init */
 			if (st->right) stmt_count++;  /* incr */
+			/* If no increment, _continue goes straight to _top */
+			if (!st->right)
+				addJmpMap(mkLbl(st->label, "_continue"),
+				          mkLbl(st->label, "_top"));
 			fdprintf(astFd, "B00%02x", stmt_count);
 			if (st->left) {
 				fdprintf(astFd, "E");
@@ -482,7 +614,7 @@ emitStmt(struct stmt *st)
 			}
 			emitLabel(st->label, "_top");
 			if (st->middle) {
-				fdprintf(astFd, "I01");  /* has else */
+				fdprintf(astFd, "I01%02x", nlabels);  /* has else */
 				emitExpr(st->middle);
 				if (st->chain)
 					emitStmt(st->chain);
@@ -504,7 +636,8 @@ emitStmt(struct stmt *st)
 			emitGoto(st->label, "_top");
 			emitLabel(st->label, "_break");
 		} else {
-			fdprintf(astFd, "F");
+			unsigned char nlabels = cntCondLbls(st->middle, CTX_TOP);
+			fdprintf(astFd, "F%02x", nlabels);
 			emitExpr(st->left);
 			emitExpr(st->middle);
 			emitExpr(st->right);
@@ -577,8 +710,12 @@ emitStmt(struct stmt *st)
 		break;
 
 	case GOTO:
+		fdprintf(astFd, "G");
+		emitHexName(resolveJmp(st->label ? st->label : "?"));
+		break;
+
 	case LABEL:
-		fdprintf(astFd, "%c", st->op == GOTO ? 'G' : 'L');
+		fdprintf(astFd, "L");
 		emitHexName(st->label ? st->label : "?");
 		break;
 
@@ -703,6 +840,9 @@ emitFunction(struct name *func)
 		emitParams(func->type);
 	else
 		fdprintf(astFd, "0.");
+
+	/* Reset jump map for this function */
+	jmpMapCnt = 0;
 
 	/* Output function body */
 	fdprintf(astFd, "\n");

@@ -323,127 +323,15 @@ void storeWordIX(char offset) {
 }
 
 /*
- * Label map for jump optimization
- *
- * Maps labels to their jump targets to enable chain resolution.
- * When a label immediately precedes an unconditional jump, we record
- * the mapping (label -> target). During emission, resolveLabel()
- * follows these chains to find the final destination, eliminating
- * redundant jumps like:
- *
- *   jp L1      becomes    jp L3
- *   ...
- *   L1: jp L2
- *   L2: jp L3
- *
- * Also tracks reference counts to identify unused labels.
+ * Emit a jump instruction.
+ * If label == 255, prefix is used as the complete symbol name.
+ * Otherwise, constructs prefix + fnIndex + _ + label.
  */
-#define MAX_LABELS 64
-static struct labelMap labelMap[MAX_LABELS];
-int lblMapCnt = 0;
-
-void addLabelMap(unsigned char from, unsigned char to, enum jump_type type) {
-    if (lblMapCnt < MAX_LABELS) {
-        labelMap[lblMapCnt].label = from;
-        labelMap[lblMapCnt].target = to;
-        labelMap[lblMapCnt].jump_type = type;
-        labelMap[lblMapCnt].refcnt = 0;
-        lblMapCnt++;
-    }
-}
-
-/* Find or create label entry, return index */
-static int findLabel(unsigned char label) {
-    int i;
-    for (i = 0; i < lblMapCnt; i++) {
-        if (labelMap[i].label == label) return i;
-    }
-    /* Create new entry */
-    if (lblMapCnt < MAX_LABELS) {
-        labelMap[lblMapCnt].label = label;
-        labelMap[lblMapCnt].target = 255;  /* 255 = no target */
-        labelMap[lblMapCnt].jump_type = JMP_UNCOND;
-        labelMap[lblMapCnt].refcnt = 0;
-        return lblMapCnt++;
-    }
-    return -1;
-}
-
-/* Increment reference count for a label */
-void refLabel(unsigned char label) {
-    int idx = findLabel(label);
-    if (idx >= 0) labelMap[idx].refcnt++;
-}
-
-/* Get reference count for a label */
-unsigned char getLabelRef(unsigned char label) {
-    int i;
-    for (i = 0; i < lblMapCnt; i++) {
-        if (labelMap[i].label == label) return labelMap[i].refcnt;
-    }
-    return 0;
-}
-
-unsigned char resolveLabel(unsigned char label) {
-    int i, j;
-    unsigned char visited[64];
-    unsigned char vcnt = 0;
-    unsigned char current = label;
-
-    while (vcnt < 64) {
-        for (j = 0; j < vcnt; j++) {
-            if (visited[j] == current) return current;
-        }
-        visited[vcnt++] = current;
-
-        for (i = 0; i < lblMapCnt; i++) {
-            if (labelMap[i].label == current &&
-                labelMap[i].jump_type == JMP_UNCOND &&
-                labelMap[i].target != 255) {
-                current = labelMap[i].target;
-                break;
-            }
-        }
-        if (i == lblMapCnt) return current;
-    }
-    return label;
-}
-
-void scanExprJumps(struct expr *e) {
-    if (!e) return;
-    if (e->jump && e->label > 0)
-        addLabelMap(e->label, e->jump->target_label, e->jump->type);
-    if (e->left) scanExprJumps(e->left);
-    if (e->right) scanExprJumps(e->right);
-}
-
-void scanLabJumps(struct stmt *s) {
-    if (!s) return;
-
-    /* Handle numeric end-label (type 'Y') followed by jump */
-    if (s->type == 'Y' && s->next && s->next->jump) {
-        addLabelMap(s->label, s->next->jump->target_label, s->next->jump->type);
-    }
-
-    if (s->jump && s->label > 0)
-        addLabelMap(s->label, s->jump->target_label, s->jump->type);
-
-    if (s->expr) scanExprJumps(s->expr);
-    if (s->expr2) scanExprJumps(s->expr2);
-    if (s->expr3) scanExprJumps(s->expr3);
-
-    if (s->then_branch) scanLabJumps(s->then_branch);
-    if (s->else_branch) scanLabJumps(s->else_branch);
-    if (s->next) scanLabJumps(s->next);
-}
-
 void emitJump(const char *instr, const char *prefix, unsigned char label) {
     if (label == 255) {
-        /* label == 255 means prefix is the complete label symbol */
         fdprintf(outFd, "\t%s %s\n", instr, prefix);
     } else {
-        unsigned char resolved = resolveLabel(label);
-        fdprintf(outFd, "\t%s %s%d_%d\n", instr, prefix, fnIndex, resolved);
+        fdprintf(outFd, "\t%s %s%d_%d\n", instr, prefix, fnIndex, label);
     }
 }
 

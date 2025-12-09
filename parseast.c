@@ -39,9 +39,7 @@ int fnIndex = 0;  /* Function index for unique labels */
 #ifdef DEBUG
 /* High water marks for buffer usage stats */
 static int hwmSymbols = 0;   /* symbols in defSymbols[] */
-static int hwmLabels = 0;    /* labels per function */
 static int hwmParams = 0;    /* params_buf usage */
-#define MAX_LABELS 64        /* match emithelper.c */
 #endif
 
 /* Function context globals */
@@ -346,7 +344,11 @@ static struct expr *
 doTernary(void)
 {
 	struct expr *e = newExpr('?'), *c = newExpr(':');
+	int nlabels;
 	readType(e);
+	nlabels = readHex2();
+	e->label = labelCounter++;  /* for condition jump */
+	labelCounter += nlabels;    /* intermediate labels for ||/&& */
 	e->left = parseExpr();
 	c->left = parseExpr();
 	c->right = parseExpr();
@@ -539,14 +541,17 @@ parseStmt(void)
 		return s;
 
 	case 'I':
-		/* If: I has_else cond then [else] */
+		/* If: I has_else nlabels cond then [else] */
 		{
 			int has_else = readHex2();
+			int nlabels = readHex2();
 #ifdef DEBUG
-			if (TRACE(T_PARSE)) fdprintf(2, "IF: has_else=%d\n", has_else);
+			if (TRACE(T_PARSE)) fdprintf(2, "IF: has_else=%d nlabels=%d\n", has_else, nlabels);
 #endif
 			s = newStmt('I');
 			s->label = labelCounter++;
+			/* Reserve intermediate labels for ||/&& short-circuit */
+			labelCounter += nlabels;
 			s->expr = parseExpr();
 #ifdef DEBUG
 			if (TRACE(T_PARSE)) fdprintf(2, "IF: after cond, curchar='%c' (0x%x)\n", curchar, curchar);
@@ -652,26 +657,41 @@ parseStmt(void)
 		return newStmt(op);
 
 	case 'W':
-		/* While (unlabeled) - not used when labels present */
-		s = newStmt('W');
-		s->expr = parseExpr();
-		s->then_branch = parseStmt();
+		/* While: W nlabels cond body */
+		{
+			int nlabels = readHex2();
+			s = newStmt('W');
+			s->label = labelCounter++;  /* yes */
+			labelCounter += nlabels;    /* intermediate labels */
+			s->expr = parseExpr();
+			s->then_branch = parseStmt();
+		}
 		return s;
 
 	case 'D':
-		/* Do (unlabeled) - not used when labels present */
-		s = newStmt('D');
-		s->then_branch = parseStmt();
-		s->expr = parseExpr();
+		/* Do-while: D nlabels body cond */
+		{
+			int nlabels = readHex2();
+			s = newStmt('D');
+			s->label = labelCounter++;  /* yes */
+			labelCounter += nlabels;    /* intermediate labels */
+			s->then_branch = parseStmt();
+			s->expr = parseExpr();
+		}
 		return s;
 
 	case 'F':
-		/* For (unlabeled) - not used when labels present */
-		s = newStmt('F');
-		s->expr = parseExpr();   /* init */
-		s->expr2 = parseExpr();  /* cond */
-		s->expr3 = parseExpr();  /* incr */
-		s->then_branch = parseStmt();
+		/* For: F nlabels init cond incr body */
+		{
+			int nlabels = readHex2();
+			s = newStmt('F');
+			s->label = labelCounter++;  /* yes */
+			labelCounter += nlabels;    /* intermediate labels */
+			s->expr = parseExpr();   /* init */
+			s->expr2 = parseExpr();  /* cond */
+			s->expr3 = parseExpr();  /* incr */
+			s->then_branch = parseStmt();
+		}
 		return s;
 
 	default:
@@ -821,7 +841,6 @@ doFunction(unsigned char rettype)
 #endif
 	emitAssembly(outFd);
 #ifdef DEBUG
-	if (lblMapCnt > hwmLabels) hwmLabels = lblMapCnt;
 	if (TRACE(T_PARSE)) fdprintf(2, "  complete\n");
 #endif
 }
@@ -1072,8 +1091,8 @@ parseAstFile(int in, int out)
 
 	emitSymDecls();
 #ifdef DEBUG
-	fdprintf(2, "cc2 stats: symbols=%d/%d labels=%d/%d params=%d/%d\n",
-		hwmSymbols, MAX_SYMBOLS, hwmLabels, MAX_LABELS, hwmParams, 160);
+	fdprintf(2, "cc2 stats: symbols=%d/%d params=%d/%d\n",
+		hwmSymbols, MAX_SYMBOLS, hwmParams, 160);
 #endif
 	return 0;
 }

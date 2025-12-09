@@ -656,12 +656,6 @@ void emitAssembly(char fd)
     }
 #endif
 
-    /* Initialize label map for jump optimization */
-    lblMapCnt = 0;
-
-    /* Scan statement tree to build label map */
-    scanLabJumps(fnBody);
-
     has_params = (fnParams && fnParams[0]);
 
     /* Emit function prologue */

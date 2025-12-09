@@ -243,10 +243,11 @@ class ASTParser:
                 return f"(CALL:{ret_type} {func} {args_str})"
             return f"(CALL:{ret_type} {func})"
 
-        # Ternary: ? width cond then else
+        # Ternary: ? width nlabels(2) cond then else
         if op_char == '?':
             w = self.cur()
             self.advance()
+            nlabels = self.read_hex2()  # skip intermediate label count
             cond = self.parse_expr()
             then_e = self.parse_expr()
             else_e = self.parse_expr()
@@ -299,9 +300,10 @@ class ASTParser:
             self.indent -= 1
             self.prln("}")
 
-        # If: I has_else(2) cond then [else]
+        # If: I has_else(2) nlabels(2) cond then [else]
         elif c == 'I':
             has_else = self.read_hex2()
+            nlabels = self.read_hex2()  # skip intermediate label count
             cond = self.parse_expr()
             self.prln(f"IF ({cond})")
             self.indent += 1
@@ -389,16 +391,18 @@ class ASTParser:
         elif c == 'N':
             self.prln("CONTINUE")
 
-        # While (unlabeled): W cond body
+        # While: W nlabels(2) cond body
         elif c == 'W':
+            nlabels = self.read_hex2()  # skip intermediate label count
             cond = self.parse_expr()
             self.prln(f"WHILE ({cond})")
             self.indent += 1
             self.parse_stmt()
             self.indent -= 1
 
-        # Do (unlabeled): D body cond
+        # Do-while: D nlabels(2) body cond
         elif c == 'D':
+            nlabels = self.read_hex2()  # skip intermediate label count
             self.prln("DO")
             self.indent += 1
             self.parse_stmt()
@@ -406,8 +410,9 @@ class ASTParser:
             cond = self.parse_expr()
             self.prln(f"WHILE ({cond})")
 
-        # For (unlabeled): F init cond incr body
+        # For: F nlabels(2) init cond incr body
         elif c == 'F':
+            nlabels = self.read_hex2()  # skip intermediate label count
             init = self.parse_expr()
             cond = self.parse_expr()
             incr = self.parse_expr()
