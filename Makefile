@@ -187,9 +187,9 @@ stage1: cc1 cc2
 	  fi; \
 	done
 	@echo "Stage1 build complete: stage1/*.o files ready for linking"
-	$(MAKE) native/lib/libccc.a
-	$(MAKE) stage1/pass1.o stage1/pass2.o
-	@echo "Stage1 linking complete: stage1/pass1.o stage1/pass2.o"
+#	$(MAKE) native/lib/libccc.a
+#	$(MAKE) stage1/pass1.o stage1/pass2.o
+#	@echo "Stage1 linking complete: stage1/pass1.o stage1/pass2.o"
 
 # Library dependency
 native/lib/libccc.a:

@@ -232,6 +232,7 @@ extern char fnDualReg;          /* Register for fnDualCmp: R_BC, R_HL, R_DE */
 extern char fnCmpFlag;          /* 0=none, 'Z'=z, 'N'=nz, 'C'=c, 'c'=nc */
 extern char fnIXAOfs;           /* When >=0, A has byte from (ix+fnIXAOfs) */
 extern char fnIXHLOfs;          /* When >=0, HL has word from (ix+fnIXHLOfs) */
+extern char fnIXHL32;           /* When 1, HL/HL' has long from (ix+fnIXHLOfs) */
 extern char fnIYHLOfs;          /* When valid, HL has word from (iy+fnIYHLOfs) */
 extern char fnIYHLValid;        /* 1 if fnIYHLOfs is valid */
 extern char fnABCValid;         /* 1 if A has byte from (bc) */

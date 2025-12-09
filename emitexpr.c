@@ -125,6 +125,15 @@ void emitExpr(struct expr *e)
         emitStackDrf(e);
         return;
     }
+    /* Handle DEREF of local member: (M (+ $var C)) with pre-computed offset */
+    else if (e->op == 'M' && (e->opflags & OP_IYMEM) &&
+             e->left && e->left->op == '+' && e->cached_var) {
+        /* offset field has combined var offset + member offset */
+        emitIndexDrf('y', e->offset, e->size, e->dest, NULL);
+        freeExpr(e->left);
+        freeNode(e);
+        return;
+    }
     /* Handle DEREF with indirect addressing (loc=LOC_INDIR) */
     else if (e->op == 'M' && e->loc == LOC_INDIR) {
         /* Emit address calculation first */
@@ -166,8 +175,16 @@ void emitExpr(struct expr *e)
                     cacheSetHL(e);
                 }
             }
+        } else if (var->reg != REG_NO) {
+            /* Register variable - load register value to HL
+             * (the variable holds a pointer, we need its value as address) */
+            if (var->reg == REG_BC)
+                emit(S_BCHL);
+            else if (var->reg == REG_IX)
+                emit(S_IXHL);
+            clearHL();
         } else {
-            /* Local variable - compute address (IY + offset) */
+            /* Stack variable - compute address (IY + offset) */
             int ofs = var->offset;
             emit(S_IYHL);
             if (ofs != 0) {

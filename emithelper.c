@@ -111,7 +111,8 @@ static const char *asmstr[] = {
     "\tpush iy\n\tpop hl\n",                /* S_IYHL */
     "\tpush ix\n\tpop de\n",                /* S_IXDE */
     "\texx\n\tld hl, 0\n\texx\n",           /* S_EXX0 */
-    "\tcall imul\n"                         /* S_CALLIMUL */
+    "\tcall imul\n",                        /* S_CALLIMUL */
+    "\tpush ix\n\tpop bc\n"                 /* S_IXBC */
 };
 
 /* Format strings with single %d - for emit1() */
@@ -296,6 +297,7 @@ void storeWordIY(char offset) {
     fnIYHLOfs = offset;
     fnIYHLValid = 1;
     fnIXHLOfs = -1;
+    fnIXHL32 = 0;
 }
 
 void loadByteIY(char offset, char is_param) {
@@ -320,6 +322,9 @@ void loadWordIX(char offset) {
 void storeWordIX(char offset) {
     fdprintf(outFd, "\tld (ix + %d), l\n", offset);
     fdprintf(outFd, "\tld (ix + %d), h\n", offset + 1);
+    fnIXHLOfs = offset;  /* HL still holds the stored value */
+    fnIXHL32 = 0;        /* Only 2-byte value, not 4 */
+    fnIYHLValid = 0;     /* IY cache is no longer valid */
 }
 
 /*
@@ -457,6 +462,7 @@ struct expr *mkVarCache(const char *symbol, char size) {
 /* Cache management */
 void clearHL() {
     fnIXHLOfs = -1;
+    fnIXHL32 = 0;
     fnIYHLValid = 0;
     cacheInvalHL();
 }
@@ -812,6 +818,11 @@ void emitRegVarDrf(struct expr *e)
             else if (var->reg == REG_IX)
                 emit(S_IXDE);
             fnDEValid = 1;
+        } else if (e->dest == R_BC) {
+            /* Scheduler says load to BC */
+            if (var->reg == REG_IX)
+                emit(S_IXBC);
+            /* BC->BC is a no-op */
         } else if (cacheFindWord(e) == 'H') {
             /* HL already holds this value - skip load */
         } else {
@@ -880,13 +891,30 @@ void emitIndexDrf(char reg, char ofs, char size, char dest, struct expr *e)
             }
         }
     } else if (size == 4) {
-        idxOp("\tld l, (i%c %c %d)\n", reg, ofs, 0);
-        idxOp("\tld h, (i%c %c %d)\n", reg, ofs, 1);
-        emit(S_EXX);
-        idxOp("\tld l, (i%c %c %d)\n", reg, ofs, 2);
-        idxOp("\tld h, (i%c %c %d)\n", reg, ofs, 3);
-        emit(S_EXX);
-        clearHL();
+        /* Check if full 32-bit value already in HL/HL' (IX cache) */
+        if (reg == 'x' && fnIXHLOfs == ofs && fnIXHL32) {
+            /* Both low and high words cached - skip entire load */
+        } else if (reg == 'x' && fnIXHLOfs == ofs) {
+            /* Low word cached - just load high word */
+            emit(S_EXX);
+            idxOp("\tld l, (i%c %c %d)\n", reg, ofs, 2);
+            idxOp("\tld h, (i%c %c %d)\n", reg, ofs, 3);
+            emit(S_EXX);
+            fnIXHL32 = 1;
+        } else {
+            idxOp("\tld l, (i%c %c %d)\n", reg, ofs, 0);
+            idxOp("\tld h, (i%c %c %d)\n", reg, ofs, 1);
+            emit(S_EXX);
+            idxOp("\tld l, (i%c %c %d)\n", reg, ofs, 2);
+            idxOp("\tld h, (i%c %c %d)\n", reg, ofs, 3);
+            emit(S_EXX);
+            if (reg == 'x') {
+                fnIXHLOfs = ofs;
+                fnIXHL32 = 1;
+            }
+        }
+        /* Invalidate expr cache but preserve IX cache for reloads */
+        cacheInvalHL();
     }
 }
 

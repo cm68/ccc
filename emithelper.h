@@ -203,6 +203,7 @@ void emitJump(const char *instr, const char *prefix, unsigned char label);
 #define S_STDEHL 72
 #define S_CALLLOR32 77
 #define S_CALLIRSH 85
+#define S_IXBC 98
 
 /* Format string indices for emit1() */
 #define F_LDA 0

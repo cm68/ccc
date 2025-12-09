@@ -689,6 +689,9 @@ parseExpr(unsigned char pri, struct stmt *st)
                 addr->type = base_type;
             }
 
+            // Fold nested constant offsets (e.g., (ptr + 2) + 0 -> ptr + 2)
+            addr = cfold(addr);
+
             // Dereference to get element value
             e = mkexpr(DEREF, addr);
             e->left->up = e;
@@ -1368,6 +1371,17 @@ cfold(struct expr *e)
             if (vr == 1)
                 return xreplace(e, e->left);
             break;
+        }
+        // Associative folding: (x + C1) + C2 -> x + (C1+C2)
+        // This handles nested struct/union member offsets
+        if (e->op == PLUS && e->left->op == PLUS &&
+            e->left->right && e->left->right->op == CONST) {
+            long c1 = e->left->right->v;
+            long c2 = vr;
+            e->right->v = c1 + c2;
+            e->left = xreplace(e->left, e->left->left);
+            e->left->up = e;
+            return cfold(e);  // recurse in case of deeper nesting
         }
     }
     if (e->left->op == CONST) {

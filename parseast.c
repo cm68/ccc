@@ -64,6 +64,7 @@ char fnDualReg;
 char fnCmpFlag;
 char fnIXAOfs;
 char fnIXHLOfs;
+char fnIXHL32;
 char fnIYHLOfs;
 char fnIYHLValid;
 char fnABCValid;
@@ -431,10 +432,12 @@ restart:
 
 	/* Numeric constant - prefixed with # */
 	if (curchar == '#') {
+		union { long l; int w[2]; } u = {0};
 		nextchar();
 		e = newExpr('C');
-		e->value = readHex8();
-		e->size = (e->value >= -32768 && e->value <= 65535) ? 2 : 4;
+		u.l = e->value = readHex8();
+		/* Check if value fits in 16 bits: high word must be 0 or -1 */
+		e->size = (u.w[1] == 0 || u.w[1] == -1) ? 2 : 4;
 		return e;
 	}
 
@@ -790,6 +793,7 @@ doFunction(unsigned char rettype)
 	fnZValid = 0;
 	fnIXAOfs = -1;
 	fnIXHLOfs = -1;
+	fnIXHL32 = 0;
 	fnIYHLValid = 0;
 	fnABCValid = 0;
 	fnAZero = 0;

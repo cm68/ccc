@@ -518,6 +518,21 @@ setExprFlags(struct expr *e)
                 e->opflags |= OP_GLOBAL;
             }
         }
+        /* Check for local member access: (M (+ $var C)) - struct/union member */
+        else if (e->left && e->left->op == '+' &&
+                 e->left->left && e->left->left->op == '$' && e->left->left->symbol &&
+                 e->left->right && e->left->right->op == 'C') {
+            const char *sym = e->left->left->symbol;
+            struct local_var *var;
+            if (sym[0] == '$') sym++;
+            var = findVar(sym);
+            if (var && var->reg == REG_NO) {
+                /* IY-indexed with constant offset - store combined offset */
+                e->opflags |= OP_IYMEM;
+                e->offset = var->offset + e->left->right->value;
+                e->cached_var = var;
+            }
+        }
         /* Check for byte indirect through BC: (M:b (M:p $bcvar)) */
         else if (e->size == 1 && e->left && e->left->op == 'M' &&
                  e->left->left && e->left->left->op == '$' && e->left->left->symbol) {

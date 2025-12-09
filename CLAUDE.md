@@ -116,3 +116,6 @@ i = c;     // =s$_i Mb$_c
 ## Code Style
 
 - Minimize code size, even at cost to clarity
+- **Identifier limit: 13 characters max** - use camelCase to preserve meaning
+  - Good: `notConstStore`, `emitRegVarDrf`, `fnIXHLOfs`
+  - Bad: `not_const_store` (too long), `noCstSt` (loses meaning)

@@ -350,20 +350,62 @@ void emitAssign(struct expr *e)
         }
     }
 
-    /* Optimize: byte constant to pointer target - use ld (hl), N */
-    if (e->size == 1 && e->right && e->right->op == 'C' &&
-        e->left && (e->left->op == 'M' || e->left->op == '+')) {
-        int left_is_deref = (e->left->op == 'M');
-        struct expr *addr = left_is_deref ? e->left->left : e->left;
-        struct expr *deref_node = left_is_deref ? e->left : NULL;
-        emitExpr(addr);  /* emitExpr loads address to HL and sets cache */
-        fdprintf(outFd, "\tld (hl), %ld\n", e->right->value & 0xff);
-        /* Don't free addr - it was already freed by emitExpr */
-        if (deref_node) freeNode(deref_node);  /* Free just the M wrapper */
+    /* Optimize: constant to (ptr + offset) where ptr is stack/global
+     * Pattern: (= (+ (M $ptr) offset) const_value)
+     * Emit: load ptr to HL, add offset inline, store const directly */
+    if (e->right && e->right->op == 'C' &&
+        e->left && e->left->op == '+' &&
+        e->left->left && e->left->left->op == 'M' &&
+        e->left->left->left && e->left->left->left->op == '$' &&
+        e->left->right && e->left->right->op == 'C') {
+        const char *sym = e->left->left->left->symbol;
+        const char *vn = stripVarPfx(sym);
+        struct local_var *var = findVar(vn);
+        long offset = e->left->right->value;
+        long value = e->right->value;
+
+        /* Skip if ptr is in IX - handled by E_IXASSIGN path */
+        if (var && var->reg == REG_IX)
+            goto notConstStore;
+
+        /* Load pointer to HL */
+        if (var) {
+            /* Stack variable */
+            loadWordIY(var->offset);
+        } else {
+            /* Global */
+            fdprintf(outFd, "\tld hl, (%s)\n", stripDollar(sym));
+        }
+
+        /* Add offset inline: ld a,ofs; add l; ld l,a; adc h; sub l; ld h,a */
+        if (offset != 0) {
+            if (offset >= 1 && offset <= 4) {
+                /* Small offset - use inc hl */
+                while (offset--) emit(S_INCHL);
+            } else if (offset < 256) {
+                fdprintf(outFd, "\tld a, %ld\n\tadd a, l\n\tld l, a\n", offset);
+                fdprintf(outFd, "\tld a, h\n\tadc a, 0\n\tld h, a\n");
+            } else {
+                fdprintf(outFd, "\tld de, %ld\n\tadd hl, de\n", offset);
+            }
+        }
+
+        /* Store constant directly */
+        if (e->size == 1) {
+            fdprintf(outFd, "\tld (hl), %ld\n", value & 0xff);
+        } else if (e->size == 2) {
+            fdprintf(outFd, "\tld (hl), %ld\n", value & 0xff);
+            emit(S_INCHL);
+            fdprintf(outFd, "\tld (hl), %ld\n", (value >> 8) & 0xff);
+        }
+
+        clearHL();  /* HL is modified, don't let cache reuse it */
+        freeExpr(e->left);
         freeExpr(e->right);
         freeNode(e);
         return;
     }
+notConstStore:
 
     /* Optimize: IX = IX->member (self-referential IX load)
      * Pattern: lhs = $p where p is IX, rhs = (M (+ (M $p) offset))
@@ -415,6 +457,8 @@ void emitAssign(struct expr *e)
                 emit(S_EXX);
                 storeWordIX((char)(offset + 2));
                 emit(S_EXX);
+                fnIXHLOfs = offset;  /* After EXX pair, HL has low word */
+                fnIXHL32 = 1;        /* HL' also has high word */
             }
             freeExpr(e->left);
             freeNode(e);
@@ -449,7 +493,9 @@ void emitAssign(struct expr *e)
     }
     /* Pointer dereference or complex lvalue */
     else if (e->left && (e->left->op == 'M' || e->left->op == '+')) {
-        struct expr *addr = (e->left->op == 'M') ? e->left->left : e->left;
+        /* For (= (M $ptr) val): emit (M $ptr) to get target address
+         * For (= (+ ...) val): emit the + expression to get address */
+        struct expr *addr = e->left;
         if (e->size == 1) {
             emit(S_ESAVE);
             emitExpr(addr);
