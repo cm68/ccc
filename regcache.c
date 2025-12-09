@@ -158,20 +158,6 @@ cacheSetHL(struct expr *e)
     cacheHL = deepCopy(e);
 }
 
-void
-cacheSetDE(struct expr *e)
-{
-    cacheInvalDE();
-    cacheDE = deepCopy(e);
-}
-
-void
-cacheSetBC(struct expr *e)
-{
-    cacheInvalBC();
-    cacheBC = deepCopy(e);
-}
-
 /*
  * Find which register (if any) holds expression e
  * Returns: 'A', 'H' (HL), 'D' (DE), 'B' (BC), or 0 if not cached
@@ -193,17 +179,6 @@ cacheFindWord(struct expr *e)
 }
 
 /*
- * Move DE to HL cache (for ex de,hl or push/pop sequences)
- */
-void
-cacheSwapHLDE(void)
-{
-    struct expr *tmp = cacheHL;
-    cacheHL = cacheDE;
-    cacheDE = tmp;
-}
-
-/*
  * Push HL to stack - move HL cache to DE (simulating stack behavior)
  */
 void
@@ -213,26 +188,3 @@ cachePushHL(void)
     cacheDE = cacheHL;
     cacheHL = NULL;
 }
-
-/*
- * Pop to HL - move DE cache to HL
- */
-void
-cachePopHL(void)
-{
-    cacheInvalHL();
-    cacheHL = cacheDE;
-    cacheDE = NULL;
-}
-
-/*
- * Get cached expression for debugging/display
- */
-struct expr *
-cacheGetA(void) { return cacheA; }
-struct expr *
-cacheGetHL(void) { return cacheHL; }
-struct expr *
-cacheGetDE(void) { return cacheDE; }
-struct expr *
-cacheGetBC(void) { return cacheBC; }

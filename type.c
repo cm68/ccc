@@ -175,36 +175,6 @@ findName(char *name, unsigned char is_tag)
 	return 0;
 }
 
-/*
- * Look up a member within a struct/union type
- *
- * Searches the element list of a struct or union type for a member with
- * the specified name. Used for struct member access (s.x) and pointer
- * member access (p->x).
- *
- * Unlike findName(), this function searches only within a specific type's
- * element list, not the global symbol table. Struct/union members have
- * their own namespace separate from ordinary names.
- *
- * Parameters:
- *   name - Member name to search for
- *   t    - Struct/union type to search within
- *
- * Returns:
- *   Pointer to member name entry if found, NULL if not found
- */
-struct name *
-findElement(char *name, struct type *t)
-{
-	struct name *n;
-	for (n = t->elem; n; n = n->next) {
-		if (strcmp(name, n->name) == 0) {
-			return (n);
-		}
-	}
-	return 0;
-}
-
 #ifndef CCC
 char *typeBitdefs[] = {
 		"AGGREGATE", "INCOMPLETE", "UNSIGNED",

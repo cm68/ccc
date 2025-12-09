@@ -635,9 +635,35 @@ void emitBinop(struct expr *e)
         return;
     }
 
-    /* Byte operations with immediate constant (not comparisons - those use emitByteCp) */
+    /* Optimize: ptr + (byte << const) for array indexing */
+    /* Generates: add a,a (shift); ld hl,base; add a,l; ld l,a; jr nc,$+3; inc h */
+    if (e->op == '+' && e->left && e->left->op == '$' && e->left->symbol &&
+        e->right && e->right->op == 'y' && e->right->left &&
+        e->right->left->size == 1 && e->right->right &&
+        e->right->right->op == 'C' && e->right->right->value >= 1 &&
+        e->right->right->value <= 7) {
+        int i, cnt = e->right->right->value;
+        const char *sym = stripDollar(e->left->symbol);
+        emitExpr(e->right->left);  /* byte index to A */
+        for (i = 0; i < cnt; i++)
+            out("\tadd a, a\n");
+        fdprintf(outFd, "\tld hl, %s\n", sym);
+        out("\tadd a, l\n");
+        out("\tld l, a\n");
+        out("\tjr nc, $+3\n");
+        out("\tinc h\n");
+        freeExpr(e->left);
+        freeExpr(e->right->right);
+        freeNode(e->right);
+        freeNode(e);
+        return;
+    }
+
+    /* Byte operations with immediate constant (not comparisons or shifts) */
     /* Only use byte ops if result is also byte, otherwise need word ops */
-    if (left_size == 1 && result_size == 1 && !is_cmp && e->right && e->right->op == 'C' &&
+    if (left_size == 1 && result_size == 1 && !is_cmp &&
+        e->op != 'y' && e->op != 'w' &&  /* shifts handled separately */
+        e->right && e->right->op == 'C' &&
         e->right->value >= 0 && e->right->value <= 255) {
         int val = e->right->value & 0xff;
         emitExpr(e->left);
@@ -766,6 +792,20 @@ void emitBinop(struct expr *e)
         case '>': fnCmpFlag = 'C'; break;    /* GT: right-left, C true */
         case 'L': fnCmpFlag = 'c'; break;    /* LE: right-left, NC true */
         }
+        freeNode(e);
+        return;
+    }
+
+    /* Byte left shift by constant 1-7: inline add a, a */
+    /* Only for byte result - word result handled by ptr+byte pattern above */
+    if (left_size == 1 && result_size == 1 && e->op == 'y' &&
+        e->right && e->right->op == 'C' &&
+        e->right->value >= 1 && e->right->value <= 7) {
+        int i, cnt = e->right->value;
+        emitExpr(e->left);
+        for (i = 0; i < cnt; i++)
+            out("\tadd a, a\n");
+        freeExpr(e->right);
         freeNode(e);
         return;
     }
@@ -926,17 +966,26 @@ void emitTernary(struct expr *e)
 
     if (e->left) emitExpr(e->left);
 
-    if (!fnZValid) {
-        if (cond_size == 1) {
-            emit(S_ORA);
-        } else {
-            emit(S_AHORL);
-        }
-    }
-
     if (e->jump) {
-        /* fnZValid: 1=Z means true, 2=Z means false, 0=Z means zero */
-        const char *jmp = (fnZValid == 1) ? "jp nz," : "jp z,";
+        const char *jmp;
+        if (fnCmpFlag) {
+            /* Carry-based comparison: 'c' = NC true, 'C' = C true */
+            /* Jump to false when condition is false */
+            jmp = (fnCmpFlag == 'c') ? "jp c," : "jp nc,";
+            fnCmpFlag = 0;
+        } else if (fnZValid) {
+            /* Z-flag comparison: 1 = Z true, 2 = Z false */
+            jmp = (fnZValid == 1) ? "jp nz," : "jp z,";
+            fnZValid = 0;
+        } else {
+            /* No comparison - test for zero */
+            if (cond_size == 1) {
+                emit(S_ORA);
+            } else {
+                emit(S_AHORL);
+            }
+            jmp = "jp z,";
+        }
         emitJump(jmp, "_tern_false_", e->label);
     }
     fnZValid = 0;

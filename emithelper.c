@@ -166,9 +166,6 @@ void out(const char *s) {
 
 
 /* Register lookup tables - indexed by register_id enum */
-static const char * const regNameTab[] = {
-    NULL, "B", "C", "BC", "IX"
-};
 static const char * const byteRegTab[] = {
     NULL, "b", "c", NULL, NULL
 };
@@ -198,12 +195,6 @@ static const unsigned char saveMaskTab[] = {
 static const unsigned char bcOrCTab[] = {
     0, 0, 0, S_ABCORC, 0
 };
-
-const char *
-getRegName(enum register_id reg)
-{
-    return reg <= REG_IX ? regNameTab[reg] : "???";
-}
 
 void emitByteLoad(unsigned char reg) { emit(byteLoadTab[reg]); }
 void emitByteStore(unsigned char reg) { emit(byteStoreTab[reg]); }
@@ -333,7 +324,7 @@ void storeWordIX(char offset) {
  *
  * Also tracks reference counts to identify unused labels.
  */
-#define MAX_LABELS 128
+#define MAX_LABELS 64
 static struct labelMap labelMap[MAX_LABELS];
 int lblMapCnt = 0;
 

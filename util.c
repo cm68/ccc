@@ -82,47 +82,6 @@ controlify(char *d, unsigned char c)
 	return ret;
 }
 
-/*
- * format an integer for output
- */
-int
-longout(char *d, long v)
-{
-	int shift = 28;
-	int ret = 2;
-	int nibble;
-
-	*d++ = '0';
-	*d++ = 'x';
-	for (shift = 28; shift >= 0; shift -= 4) {
-		nibble = (v >> shift) & 0xf;
-		if (shift && (ret == 2) && (nibble == 0)) { // skip leading zeros
-			continue;
-		}
-		ret++;
-		*d++ = (nibble > 9) ? (nibble - 0xa) + 'a' : nibble + '0';
-	}
-	return ret;
-}
-
-/*
- * output a string in a form that we can emit as source code
- * this means escaping control characters
- */
-int
-quotedString(char *d, char *s)
-{
-	int len = *s++;
-	int ret = 1;
-
-	d[0] = '\"';
-	while (len--) {
-		ret += controlify(&d[ret], *s++);
-	}
-	d[ret] = '\"';
-	return ++ret;
-}
-
 int
 iswhite(unsigned char c)
 {

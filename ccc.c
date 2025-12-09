@@ -68,28 +68,6 @@ getroot(char *argv0)
 }
 
 /*
- * Create a temporary AST filename
- * Returns allocated string that must be freed
- */
-char *
-makeTempAst(char *basename)
-{
-    char template[256];
-    int fd;
-    char *result;
-
-    snprintf(template, sizeof(template), "%s.ast.XXXXXX", basename);
-    fd = mkstemp(template);
-    if (fd < 0) {
-        perror("mkstemp");
-        exit(1);
-    }
-    close(fd);  /* We just need the name */
-    result = strdup(template);
-    return result;
-}
-
-/*
  * Get basename without extension (.c, .s, .o, .a)
  * Returns a newly allocated string
  */

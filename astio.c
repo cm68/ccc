@@ -131,15 +131,6 @@ readHexStr(void) {
 	return s;
 }
 
-/* Skip to next line (for comments/newlines) */
-void 
-skipLine(void) {
-	while (curchar && curchar != '\n')
-		nextchar();
-	if (curchar == '\n')
-		nextchar();
-}
-
 /* Skip newlines */
 void 
 skipNL(void) {

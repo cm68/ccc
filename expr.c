@@ -112,34 +112,6 @@ frExp(struct expr *e)
 }
 
 /*
- * Check if an expression is an lvalue (can appear on left side of assignment)
- *
- * An lvalue is an expression that represents a memory location that can be
- * assigned to. In this compiler, lvalues are represented by DEREF operations,
- * which represent dereferencing a pointer to access a memory location.
- *
- * Examples of lvalues:
- *   - Variables: x (represented as DEREF of address)
- *   - Array subscripts: a[i] (DEREF of computed address)
- *   - Pointer dereferences: *p (DEREF operation)
- *   - Struct members: s.field (DEREF of member address)
- *
- * Parameters:
- *   e - Expression to check
- *
- * Returns:
- *   1 if expression is an lvalue (DEREF operation), 0 otherwise
- */
-char
-lvalue(struct expr *e)
-{
-	if (e->op == DEREF) {
-		return 1;
-	}
-	return 0;
-}
-
-/*
  * Get binary operator precedence priority
  *
  * Looks up the precedence priority for a binary operator token in the

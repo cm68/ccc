@@ -311,38 +311,6 @@ insertmacro(char *name, char *macbuf)
 }
 
 /*
- * Dump a single textbuf for debugging
- *
- * Outputs textbuf state information to stderr including name, file
- * descriptor, buffer position, and line number.
- *
- * Parameters:
- *   t - Textbuf to dump
- */
-void
-tbdump(struct textbuf *t)
-{
-    fdprintf(2,"textbuf: %s fd: %d offset: %d valid: %d lineno %d\n",
-        t->name, t->fd, t->offset, t->valid, t->lineno);
-}
-
-/*
- * Dump the entire textbuf stack for debugging
- *
- * Walks the textbuf stack from top to bottom, printing state of each
- * textbuf. Shows the nesting of include files and macro expansions.
- */
-void
-dump()
-{
-    struct textbuf *t = tbtop;
-    while (t) {
-        tbdump(t);
-        t = t->prev;
-    }
-}
-
-/*
  * Advance to the next character in the input stream
  *
  * This is the core I/O function that implements the unified character stream
