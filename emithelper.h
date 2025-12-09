@@ -232,6 +232,7 @@ void emitJump(const char *instr, const char *prefix, int label);
 #define F_ANDEND 11
 #define F_TERNF 12
 #define F_TERNE 13
+#define F_LEAIY 14
 
 /* String format indices for emitS() */
 #define FS_LDHLM 0
@@ -243,6 +244,7 @@ void emitJump(const char *instr, const char *prefix, int label);
 #define FS_LDDE 6
 #define FS_LABEL 7
 #define FS_JP 8
+#define FS_LDDEM 9
 
 /* Global label map for jump optimization */
 #define MAX_LBLMAP 256

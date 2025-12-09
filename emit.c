@@ -244,12 +244,12 @@ static void emitStmtTail(struct stmt *s, int tailPos)
         if (s->symbol[0] == 'L' && (strstr(s->symbol, "_top") || strstr(s->symbol, "_continue"))) {
             cacheInvalAll();
         }
-        fdprintf(outFd, "%s:\n", s->symbol);
+        emitS(FS_LABEL, s->symbol);
     }
 
     /* Handle GOTO statements - emit unconditional jump */
     if (s->type == 'G' && s->symbol) {
-        fdprintf(outFd, "\tjp %s\n", s->symbol);
+        emitS(FS_JP, s->symbol);
     }
 
     /* Handle IF statements specially */

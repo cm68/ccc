@@ -149,7 +149,8 @@ static const char *fmtstr[] = {
     "_or_end_%d:\n",                        /* F_OREND */
     "_and_end_%d:\n",                       /* F_ANDEND */
     "_tern_false_%d:\n",                    /* F_TERNF */
-    "_tern_end_%d:\n"                       /* F_TERNE */
+    "_tern_end_%d:\n",                      /* F_TERNE */
+    "\tld a, %d\n\tcall leaiy\n"            /* F_LEAIY */
 };
 
 /* Format strings with single %s - for emitS() */
@@ -162,7 +163,8 @@ static const char *sfmtstr[] = {
     "\tld hl, %s\n",                        /* FS_LDHL */
     "\tld de, %s\n",                        /* FS_LDDE */
     "%s:\n",                                /* FS_LABEL */
-    "\tjp %s\n"                             /* FS_JP */
+    "\tjp %s\n",                            /* FS_JP */
+    "\tld de, (%s)\n"                       /* FS_LDDEM */
 };
 
 void emit(unsigned char idx) {
@@ -475,13 +477,13 @@ void emitFnProlog(char *name, char *params, char *rettype, int frame_size,
     }
 #endif
 
-    fdprintf(outFd, "%s:\n", name);
+    emitS(FS_LABEL, name);
 
     if (frame_size > 0 || has_params) {
         if (frame_size == 0) {
             emit(S_XORA);
         } else {
-            fdprintf(outFd, "\tld a, %d\n", frame_size);
+            emit1(F_LDA, frame_size);
         }
         emit(S_CALLFA);
     }
@@ -633,7 +635,7 @@ static void setVarCache(const char *sym, char sz, char isA) {
 /* Helper: emit global long (4-byte) load/store */
 static void globLong(const char *s, char isStore) {
     if (isStore) {
-        fdprintf(outFd, "\tld (%s), hl\n", s);
+        emitS(FS_STHLM, s);
         emit(S_EXX);
         fdprintf(outFd, "\tld (%s+2), hl\n", s);
     } else {
@@ -676,7 +678,7 @@ void loadVar(const char *sym, char sz, char docache) {
         if (sz == 1) loadByteIY(v->offset, v->offset >= 0);
         else if (sz == 2) loadWordIY(v->offset);
         else if (sz == 4) {
-            fdprintf(outFd, "\tld a, %d\n", v->offset);
+            emit1(F_LDA, v->offset);
             emit(S_CALLGL);
         }
     } else {
@@ -721,7 +723,7 @@ void storeVar(const char *sym, char sz, char docache) {
         if (sz == 1) storeByteIY(v->offset, v->offset >= 0);
         else if (sz == 2) storeWordIY(v->offset);
         else if (sz == 4) {
-            fdprintf(outFd, "\tld a, %d\n", v->offset);
+            emit1(F_LDA, v->offset);
             emit(S_CALLPL);
         }
     } else {
@@ -732,10 +734,10 @@ void storeVar(const char *sym, char sz, char docache) {
         }
 #endif
         if (sz == 1) {
-            fdprintf(outFd, "\tld (%s), a\n", s);
+            emitS(FS_STAM, s);
             if (docache) setVarCache(sym, 1, 1);
         } else if (sz == 2) {
-            fdprintf(outFd, "\tld (%s), hl\n", s);
+            emitS(FS_STHLM, s);
             if (docache) setVarCache(sym, sz, 0);
         } else if (sz == 4) {
             globLong(s, 1);
@@ -845,14 +847,14 @@ void emitGlobDrf(struct expr *e)
         if (cacheFindByte(e) == 'A') {
             /* A already holds this value - skip load */
         } else {
-            fdprintf(outFd, "\tld a, (%s)\n", s);
+            emitS(FS_LDAM, s);
             clearA();
             cacheSetA(e);
         }
     } else if (e->size == 2) {
         if (e->dest == R_DE) {
             /* Scheduler says load to DE */
-            fdprintf(outFd, "\tld de, (%s)\n", s);
+            emitS(FS_LDDEM, s);
             fnDEValid = 1;
         } else if (cacheFindWord(e) == 'H') {
             /* HL already holds this value - skip load */

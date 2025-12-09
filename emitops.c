@@ -150,7 +150,7 @@ void emitIncDec(struct expr *e)
             switch (loc) {
             case ID_REG:    fdprintf(outFd, "\tld a, %s\n", rn); break;
             case ID_STACK:  iyFmt("\tld a, (iy %c %d)\n", ofs); break;
-            case ID_GLOBAL: fdprintf(outFd, "\tld a, (%s)\n", sym); emit(S_PUSHAFSV); break;
+            case ID_GLOBAL: emitS(FS_LDAM, sym); emit(S_PUSHAFSV); break;
             case ID_HL:     emit(S_LDAHLPUSH); break;
             }
         }
@@ -170,14 +170,14 @@ void emitIncDec(struct expr *e)
             switch (loc) {
             case ID_REG:    if (!is_post) fdprintf(outFd, "\tld a, %s\n", rn); break;
             case ID_STACK:  if (!is_post) iyFmt("\tld a, (iy %c %d)\n", ofs); break;
-            case ID_GLOBAL: if (!is_post) fdprintf(outFd, "\tld a, (%s)\n", sym); break;
+            case ID_GLOBAL: if (!is_post) emitS(FS_LDAM, sym); break;
             case ID_HL:     if (!is_post) emit(S_LDAHL); break;
             }
             fdprintf(outFd, "\t%s a, %ld\n", is_dec ? "sub" : "add", amount);
             switch (loc) {
             case ID_REG:    fdprintf(outFd, "\tld %s, a\n", rn); break;
             case ID_STACK:  iyFmt("\tld (iy %c %d), a\n", ofs); break;
-            case ID_GLOBAL: fdprintf(outFd, "\tld (%s), a\n", sym); break;
+            case ID_GLOBAL: emitS(FS_STAM, sym); break;
             case ID_HL:     emit(S_LDHLA); break;
             }
         }
@@ -236,7 +236,7 @@ void emitIncDec(struct expr *e)
                 if (!is_post) emitS(FS_LDHLM, sym);
                 for (i = 0; i < amount; i++)
                     fdprintf(outFd, "\t%s hl\n", is_dec ? "dec" : "inc");
-                fdprintf(outFd, "\tld (%s), hl\n", sym);
+                emitS(FS_STHLM, sym);
                 break;
             case ID_HL:
                 for (i = 0; i < amount; i++) {
@@ -262,7 +262,7 @@ void emitIncDec(struct expr *e)
                 if (!is_post) emitS(FS_LDHLM, sym);
                 fdprintf(outFd, "\tld de, %ld\n", is_dec ? -amount : amount);
                 emit(S_ADDHLDE);
-                fdprintf(outFd, "\tld (%s), hl\n", sym);
+                emitS(FS_STHLM, sym);
                 break;
             case ID_HL:
                 emit(S_LDCHL);
@@ -304,10 +304,10 @@ void emitIncDec(struct expr *e)
         /* Load address of long to HL for helper */
         switch (loc) {
         case ID_GLOBAL:
-            fdprintf(outFd, "\tld hl, %s\n", sym);
+            emitS(FS_LDHL, sym);
             break;
         case ID_STACK:
-            fdprintf(outFd, "\tld a, %d\n\tcall leaiy\n", ofs);
+            emit1(F_LEAIY, ofs);
             break;
         case ID_HL:
             /* emitExpr computed address of pointer variable into HL.
@@ -622,11 +622,11 @@ void emitBinop(struct expr *e)
         emitExpr(e->left);
         freeExpr(e->right);
         switch (e->op) {
-        case '&': fdprintf(outFd, "\tand %d\n", val); break;
-        case '|': fdprintf(outFd, "\tor %d\n", val); break;
-        case '^': fdprintf(outFd, "\txor %d\n", val); break;
-        case '+': fdprintf(outFd, "\tadd a, %d\n", val); break;
-        case '-': fdprintf(outFd, "\tsub %d\n", val); break;
+        case '&': emit1(F_AND, val); break;
+        case '|': emit1(F_OR, val); break;
+        case '^': emit1(F_XOR, val); break;
+        case '+': emit1(F_ADDA, val); break;
+        case '-': emit1(F_SUB, val); break;
         default: break;
         }
         fnZValid = 2;
