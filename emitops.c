@@ -365,6 +365,27 @@ void emitAssign(struct expr *e)
         return;
     }
 
+    /* Optimize: IX = IX->member (self-referential IX load)
+     * Pattern: lhs = $p where p is IX, rhs = (M (+ (M $p) offset))
+     * Emit: ld h,(ix+ofs+1); ld l,(ix+ofs); push hl; pop ix */
+    if (e->size == 2 && e->left && e->left->op == '$' && e->left->symbol &&
+        e->right && e->right->op == 'M' && e->right->loc == LOC_IX) {
+        struct local_var *lv = findVar(stripVarPfx(e->left->symbol));
+        if (lv && lv->reg == REG_IX) {
+            int ofs = e->right->offset;
+            /* Load H first, then L (natural order for push) */
+            fdprintf(outFd, "\tld h, (ix %c %d)\n",
+                     ofs + 1 >= 0 ? '+' : '-', ofs + 1 >= 0 ? ofs + 1 : -(ofs + 1));
+            fdprintf(outFd, "\tld l, (ix %c %d)\n",
+                     ofs >= 0 ? '+' : '-', ofs >= 0 ? ofs : -ofs);
+            emit(S_HLPIX);
+            freeExpr(e->right);
+            freeExpr(e->left);
+            freeNode(e);
+            return;
+        }
+    }
+
     /* Emit right child first (value goes to PRIMARY) */
     emitExpr(e->right);
 #ifdef DEBUG
