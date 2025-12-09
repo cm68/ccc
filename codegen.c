@@ -8,7 +8,8 @@
  * - assignFrmOff(): Assign stack offsets to local variables and parameters
  * - specialize(): Detect patterns (inc/dec, bit ops) and mark for emit
  * - scheduleCode(): Set location/dest fields for expressions
- * - allocRegs(): Allocate variables to registers based on usage patterns
+ *
+ * Note: Register allocation is now done in pass1 (outast.c)
  */
 #include <stdlib.h>
 #include <stdio.h>
@@ -206,119 +207,7 @@ walkLocals(struct stmt *s)
 }
 
 /*
- * Register allocation now comes from pass1 via the AST.
- * This function is kept for compatibility but does nothing.
- * The register assignments are read in assignFrmOff() from the
- * declaration statements' label field.
- */
-void
-allocRegs()
-{
-    /* Register allocation is done in pass1 and communicated via AST */
-}
-
-/*
- * Phase 2: Analyze variable usage for register allocation
- * Walk expression/statement trees to count references and struct member accesses
- * Must run BEFORE allocRegs() and generateCode()
- */
-
-/* Helper: increment agg_refs for struct member access pattern */
-static void
-incAggRef(const char *var_symbol)
-{
-    const char *var_name = var_symbol;
-    struct local_var *var;
-
-    if (!var_name) return;
-    if (var_name[0] == '$') var_name++;
-    if (var_name[0] == 'A') var_name++;
-
-    for (var = fnLocals; var; var = var->next) {
-        if (strcmp(var->name, var_name) == 0) {
-            var->agg_refs++;
-            return;
-        }
-    }
-}
-
-/* Analyze expression tree for variable usage */
-static void
-analyzeExpr(struct expr *e)
-{
-    if (!e) return;
-    CHECK_WALK();
-
-    /* Count variable references */
-    if (e->op == '$' && e->symbol) {
-        const char *var_name = e->symbol;
-        if (var_name[0] == '$') var_name++;
-        updVarLife(var_name);
-    }
-
-    /* Pattern 1: (= (+ (M:p $var) const) value) - struct member write */
-    if (e->op == '=' && e->left && e->left->op == '+' &&
-        e->left->left && e->left->left->op == 'M' &&
-        e->left->left->type_str == 'p' &&
-        e->left->left->left && e->left->left->left->op == '$' &&
-        e->left->left->left->symbol &&
-        e->left->right && e->left->right->op == 'C') {
-        incAggRef(e->left->left->left->symbol);
-        e->flags |= E_IXASSIGN;
-        e->value = e->left->right->value;
-    }
-
-    /* Pattern 2: (M (+ (M:p $var) const)) - struct member read */
-    if (e->op == 'M' && e->left && e->left->op == '+' &&
-        e->left->left && e->left->left->op == 'M' &&
-        e->left->left->type_str == 'p' &&
-        e->left->left->left && e->left->left->left->op == '$' &&
-        e->left->left->left->symbol &&
-        e->left->right && e->left->right->op == 'C') {
-        incAggRef(e->left->left->left->symbol);
-        e->flags |= E_IXDEREF;
-        e->value = e->left->right->value;
-    }
-
-    /* Recurse on children */
-    analyzeExpr(e->left);
-    analyzeExpr(e->right);
-}
-
-/* Analyze statement tree for variable usage */
-static void
-analyzeStmt(struct stmt *s)
-{
-    if (!s) return;
-
-    /* Track label for lifetime analysis */
-    if (s->type == 'L') {
-        fnCurLbl++;
-    }
-
-    /* Analyze expression if present */
-    if (s->expr) {
-        analyzeExpr(s->expr);
-    }
-
-    /* Recurse on child statements */
-    if (s->then_branch) analyzeStmt(s->then_branch);
-    if (s->else_branch) analyzeStmt(s->else_branch);
-    if (s->next) analyzeStmt(s->next);
-}
-
-/* Entry point: analyze all variables in function */
-void
-analyzeVars()
-{
-    if (!fnBody) return;
-    fnCurLbl = 0;
-    analyzeStmt(fnBody);
-}
-
-/*
- * Phase 2.75: Set operand pattern flags (opflags)
- * Must run AFTER allocRegs() so we know which variables are register-allocated
+ * Set operand pattern flags (opflags)
  * These flags allow codegen to quickly check for common patterns
  */
 
@@ -396,6 +285,13 @@ setExprFlags(struct expr *e)
     if (!e) return;
     CHECK_WALK();
 
+    /* Track variable usage for lifetime analysis */
+    if (e->op == '$' && e->symbol) {
+        const char *var_name = e->symbol;
+        if (var_name[0] == '$') var_name++;
+        updVarLife(var_name);
+    }
+
     /* Clear opflags first */
     e->opflags = 0;
 
@@ -463,6 +359,9 @@ setStmtFlags(struct stmt *s)
 {
     if (!s) return;
 
+    /* Track statement index for lifetime analysis */
+    fnCurLbl++;
+
     /* For expression statements, mark the expr as unused (result discarded) */
     if (s->type == 'E' && s->expr) s->expr->flags |= E_UNUSED;
 
@@ -480,6 +379,7 @@ void
 setOpFlags()
 {
     if (!fnBody) return;
+    fnCurLbl = 0;
     setStmtFlags(fnBody);
 }
 

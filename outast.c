@@ -290,7 +290,7 @@ analyzeFunc(struct name *func)
  * Uppercase B/S/L for unsigned types
  */
 static char
-getSizeSuffix(struct type *t)
+typeSfx(struct type *t)
 {
 	char c;
 	if (!t)
@@ -504,7 +504,7 @@ emitExpr(struct expr *e)
 		{
 			int argc = 0;
 			struct expr *arg;
-			char ret_type = getSizeSuffix(e->type);
+			char ret_type = typeSfx(e->type);
 			for (arg = e->right; arg; arg = arg->next) argc++;
 			fdprintf(astFd, "@%c%02x", ret_type, argc);
 			emitChild(e->left);
@@ -518,7 +518,7 @@ emitExpr(struct expr *e)
 	case SEXT:
 		/* Cast operators with destination width annotation */
 		{
-			char size_suffix = getSizeSuffix(e->type);
+			char size_suffix = typeSfx(e->type);
 			unsigned char op_char = (e->op == NARROW) ? 'N' :
 			    (e->op == WIDEN) ? 'W' : AST_SEXT;
 			fdprintf(astFd, "%c%c", op_char, size_suffix);
@@ -542,7 +542,7 @@ emitExpr(struct expr *e)
 		{
 			unsigned char op_char;
 			int amount = 1;
-			char size_suffix = getSizeSuffix(e->type);
+			char size_suffix = typeSfx(e->type);
 
 			if (e->op == INCR) {
 				op_char = (e->flags & E_POSTFIX) ? AST_POSTINC : AST_PREINC;
@@ -594,7 +594,7 @@ emitExpr(struct expr *e)
 		/* Ternary: ?w nlabels cond then else - flatten the COLON node */
 		{
 			unsigned char nlabels = cntCondLbls(e->left, CTX_TOP);
-			fdprintf(astFd, "?%c%02x", getSizeSuffix(e->type), nlabels);
+			fdprintf(astFd, "?%c%02x", typeSfx(e->type), nlabels);
 			emitChild(e->left);
 			if (e->right && e->right->op == COLON) {
 				emitChild(e->right->left);
@@ -610,7 +610,7 @@ emitExpr(struct expr *e)
 		{
 			unsigned char op_char = (e->op == SUBEQ) ? AST_SUBEQ :
 			    (e->op == ANDEQ) ? AST_ANDEQ : AST_MODEQ;
-			fdprintf(astFd, "%c%c", op_char, getSizeSuffix(e->type));
+			fdprintf(astFd, "%c%c", op_char, typeSfx(e->type));
 			emitChild(e->left);
 			emitChild(e->right);
 		}
@@ -618,7 +618,7 @@ emitExpr(struct expr *e)
 
 	default:
 		/* All operators get width suffix: op width operands... */
-		fdprintf(astFd, "%c%c", e->op, getSizeSuffix(e->type));
+		fdprintf(astFd, "%c%c", e->op, typeSfx(e->type));
 		emitChild(e->left);
 		emitChild(e->right);
 		break;
@@ -658,7 +658,7 @@ emitTypeInfo(struct type *type)
 	}
 
 	/* For primitives: size char */
-	fdprintf(astFd, "%c", getSizeSuffix(type));
+	fdprintf(astFd, "%c", typeSfx(type));
 }
 
 /*
@@ -732,7 +732,7 @@ emitStmt(struct stmt *st)
 						continue;
 					lname = local->mangled_name ?
 						local->mangled_name : local->name;
-					fdprintf(astFd, "d%c", getSizeSuffix(local->type));
+					fdprintf(astFd, "d%c", typeSfx(local->type));
 					emitHexName(lname);
 					fdprintf(astFd, "%02x", local->reg);
 				}
@@ -1027,7 +1027,7 @@ emitParams(struct type *functype, struct stmt *body)
 				}
 			}
 			/* Emit as: d suffix hexname reg */
-			fdprintf(astFd, "d%c", getSizeSuffix(param->type));
+			fdprintf(astFd, "d%c", typeSfx(param->type));
 			if (param->name && param->name[0] != '\0')
 				emitHexName(param->name);
 			else
@@ -1079,7 +1079,7 @@ emitFunction(struct name *func)
 
 	/* Get return type suffix (void uses 'v') */
 	if (func->type && func->type->sub)
-		ret_suffix = getSizeSuffix(func->type->sub);
+		ret_suffix = typeSfx(func->type->sub);
 	else
 		ret_suffix = 'v';  /* void */
 
@@ -1117,7 +1117,7 @@ emitInitList(struct expr *init, struct type *elem_type)
 	/* Count items and get element width */
 	for (item = init; item; item = item->next)
 		count++;
-	width = getSizeSuffix(elem_type);
+	width = typeSfx(elem_type);
 
 	fdprintf(astFd, "[%c%02x", width, count);
 	for (item = init; item; item = item->next)

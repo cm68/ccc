@@ -813,14 +813,6 @@ doFunction(unsigned char rettype)
 #endif
 	assignFrmOff();
 #ifdef DEBUG
-	if (TRACE(T_PARSE)) fdprintf(2, "  analyzeVars\n");
-#endif
-	analyzeVars();
-#ifdef DEBUG
-	if (TRACE(T_PARSE)) fdprintf(2, "  allocRegs\n");
-#endif
-	allocRegs();
-#ifdef DEBUG
 	if (TRACE(T_PARSE)) fdprintf(2, "  optFrmLayout\n");
 #endif
 	optFrmLayout();
