@@ -86,7 +86,7 @@ void emitExpr(struct expr *e)
                 /* Constant - just load low byte directly */
                 int val = e->left->value & 0xff;
                 if (val == 0 && !fnAZero) {
-                    fdprintf(outFd, "\txor a\n");
+                    emit(S_XORA);
                     fnAZero = 1;
                 } else if (val != 0) {
                     fdprintf(outFd, "\tld a, %d\n", val);
@@ -97,7 +97,7 @@ void emitExpr(struct expr *e)
             } else {
                 /* Non-constant - emit child then move L to A */
                 emitExpr(e->left);
-                fdprintf(outFd, "\tld a, l\n");
+                emit(S_AL);
                 clearA();
             }
         } else if (e->left) {
@@ -131,10 +131,10 @@ void emitExpr(struct expr *e)
         emitExpr(e->left);
         /* Then load through HL */
         if (e->size == 1) {
-            fdprintf(outFd, "\tld a, (hl)\n");
+            emit(S_AHL);
             clearA();
         } else if (e->size == 2) {
-            fdprintf(outFd, "\tld a, (hl)\n\tinc hl\n\tld h, (hl)\n\tld l, a\n");
+            emit(S_LDHLIND);
             clearHL();
         }
         freeNode(e);
@@ -170,7 +170,6 @@ void emitExpr(struct expr *e)
 
         if (!var) {
             /* Global symbol - load address */
-            addRefSym(sym_name);  /* Track for extern declaration */
             if (e->dest == R_DE) {
                 fdprintf(outFd, "\tld de, %s\n", sym_name);
                 fnDEValid = 1;
@@ -186,7 +185,7 @@ void emitExpr(struct expr *e)
         } else {
             /* Local variable - compute address (IY + offset) */
             int ofs = var->offset;
-            fdprintf(outFd, "\tpush iy\n\tpop hl\n");
+            emit(S_IYHL);
             if (ofs != 0) {
                 fdprintf(outFd, "\tld de, %d\n\tadd hl, de\n", ofs);
             }
@@ -200,7 +199,7 @@ void emitExpr(struct expr *e)
         if (e->size == 1) {
             if ((e->value & 0xff) == 0) {
                 if (!fnAZero) {
-                    fdprintf(outFd, "\txor a\n");
+                    emit(S_XORA);
                     fnAZero = 1;
                 }
             } else if (cacheFindByte(e) == 'A') {
@@ -301,10 +300,10 @@ void emitExpr(struct expr *e)
              e->right && e->right->op == 'C' &&
              e->right->value >= 1 && e->right->value <= 8) {
         int i, cnt = e->right->value;
-        fdprintf(outFd, "\tld h, b\n\tld l, c\n");
+        emit(S_BCHL);
         for (i = 0; i < cnt; i++)
-            fdprintf(outFd, "\tadd hl, hl\n");
-        fdprintf(outFd, "\tld b, h\n\tld c, l\n");
+            emit(S_ADDHLHL);
+        emit(S_BCHLX);
         freeExpr(e->left);
         freeExpr(e->right);
         freeNode(e);
@@ -316,9 +315,9 @@ void emitExpr(struct expr *e)
         int rhs_byte = (e->right->op == 'W');  /* WIDEN means high byte is 0 */
         freeExpr(e->left);
         emitExpr(e->right);  /* Result in HL */
-        fdprintf(outFd, "\tld a, l\n\tor c\n\tld c, a\n");
+        emit(S_ALORCC);
         if (!rhs_byte)
-            fdprintf(outFd, "\tld a, h\n\tor b\n\tld b, a\n");
+            emit(S_AHORBBA);
         freeNode(e);
         return;
     }
@@ -327,7 +326,7 @@ void emitExpr(struct expr *e)
              e->cached_var && e->cached_var->reg == REG_BC && e->right) {
         freeExpr(e->left);
         emitExpr(e->right);  /* Result in HL */
-        fdprintf(outFd, "\tadd hl, bc\n\tld b, h\n\tld c, l\n");
+        emit(S_ADDHLBCBC);
         freeNode(e);
         return;
     }
@@ -335,8 +334,33 @@ void emitExpr(struct expr *e)
     else if (e->op == 'W' && e->left) {
         emitExpr(e->left);
         /* Child puts byte result in A, zero-extend to HL */
-        fdprintf(outFd, "\tld l, a\n\tld h, 0\n");
+        emit(S_WIDEN);
         clearHL();
+        freeNode(e);
+        return;
+    }
+    /* Handle long (4-byte) LSHIFTEQ on IY-indexed variable */
+    else if (e->op == '0' && e->size == 4 && (e->opflags & OP_IYMEM) && e->cached_var) {
+        int ofs = varIYOfs(e->cached_var);
+        int count = e->right ? e->right->value : 0;
+        freeExpr(e->left);
+        freeExpr(e->right);
+        /* Set up EA in DE, then shift */
+        fdprintf(outFd, "\tld a, %d\n\tcall lea_iy\n", ofs);
+        fdprintf(outFd, "\tld a, %d\n\tcall lshift32\n", count);
+        freeNode(e);
+        return;
+    }
+    /* Handle long (4-byte) OREQ on IY-indexed variable */
+    else if (e->op == '1' && e->size == 4 && (e->opflags & OP_IYMEM) && e->cached_var) {
+        int ofs = varIYOfs(e->cached_var);
+        freeExpr(e->left);
+        /* Emit RHS - result in HL (widened to HL:HL' with high word = 0) */
+        emitExpr(e->right);
+        emit(S_EXX0);  /* Clear high word */
+        /* Set up EA in DE, then OR */
+        fdprintf(outFd, "\tld a, %d\n\tcall lea_iy\n", ofs);
+        emit(S_CALLLOR32);
         freeNode(e);
         return;
     }

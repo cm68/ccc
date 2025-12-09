@@ -30,7 +30,6 @@ skipWS(void)
 
 /* Symbol tracking */
 static void addDefSym(const char *name);
-void addRefSym(const char *name);
 
 /* Parser state */
 unsigned char outFd = 1;
@@ -767,8 +766,6 @@ doFunction(unsigned char rettype)
 #define MAX_SYMBOLS 256
 static char *defSymbols[MAX_SYMBOLS];
 static int numDefined = 0;
-static char *refSymbols[MAX_SYMBOLS];
-static int numReferenced = 0;
 
 static int
 findSym(const char *name, char **arr, int cnt)
@@ -784,11 +781,6 @@ findSym(const char *name, char **arr, int cnt)
 static void addDefSym(const char *name) {
 	if (!isDefSym(name) && numDefined < MAX_SYMBOLS)
 		defSymbols[numDefined++] = strdup(name);
-}
-
-void addRefSym(const char *name) {
-	if (!findSym(name, refSymbols, numReferenced) && numReferenced < MAX_SYMBOLS)
-		refSymbols[numReferenced++] = strdup(name);
 }
 
 /* Emit BSS variable if not already defined */
@@ -950,9 +942,6 @@ emitSymDecls(void)
 	for (i = 0; i < numDefined; i++)
 		if (!isLocalSym(defSymbols[i]))
 			fdprintf(outFd, "%s %s\n", ASM_GLOBAL, defSymbols[i]);
-	for (i = 0; i < numReferenced; i++)
-		if (!isLocalSym(refSymbols[i]) && !isDefSym(refSymbols[i]))
-			fdprintf(outFd, "%s %s\n", ASM_EXTERN, refSymbols[i]);
 }
 
 /* Parse top-level - paren-free format

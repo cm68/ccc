@@ -34,9 +34,6 @@ static long g_walk_count = 0;
     } \
 } while(0)
 
-/* Forward declaration from parseast.c for symbol tracking */
-void addRefSym(const char *name);
-
 /*
  * Helper: Check if value is a power of 2, return bit number (0-7) or -1
  */
@@ -1249,12 +1246,6 @@ static void generateExpr(struct expr *e)
         break;
 
     case '$':  /* SYM - symbol reference (address) */
-        /* Track global symbol references for linker */
-        if (e->symbol) {
-            const char *sym_name = stripVarPfx(e->symbol);
-            if (!findVar(sym_name) && e->symbol[1] == '_')
-                addRefSym(e->symbol + 1);
-        }
         /* Emit handles loading address into HL */
         break;
 

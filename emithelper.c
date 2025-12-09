@@ -105,11 +105,76 @@ static const char *asmstr[] = {
     "",                                 /* S_88_UNUSED */
     "\tld d, b\n\tld e, c\n",           /* S_LDDEBC */
     "\tld a, (hl)\n\tld c, a\n\tinc hl\n",  /* S_LDAHLINC */
-    "\tld a, (hl)\n\tld h, a\n\tld l, c\n"  /* S_LDAHLHIGH */
+    "\tld a, (hl)\n\tld h, a\n\tld l, c\n", /* S_LDAHLHIGH */
+    "\tld l, a\n\tld h, 0\n",               /* S_WIDEN */
+    "\tld a, (hl)\n\tinc hl\n\tld h, (hl)\n\tld l, a\n", /* S_LDHLIND */
+    "\tpush iy\n\tpop hl\n",                /* S_IYHL */
+    "\tpush ix\n\tpop de\n",                /* S_IXDE */
+    "\texx\n\tld hl, 0\n\texx\n",           /* S_EXX0 */
+    "\tcall imul\n",                        /* S_CALLIMUL */
+    "\tex de, hl\n\tcall idiv\n",           /* S_CALLIDIV */
+    "\tex de, hl\n\tcall ilsh\n",           /* S_CALLILSH */
+    "\tex de, hl\n\tcall irsh\n",           /* S_CALLIRSH */
+    "\tcall lor32\n",                       /* S_CALLLOR32 */
+    "\tld (hl), d\n\tdec hl\n\tld (hl), e\n", /* S_STDEHL */
+    "\tjr nc, $+3\n",                       /* S_JRNC3 */
+    "\tjr nz, $+4\n\tinc hl\n",             /* S_JRNZ4INC */
+    "\tld a, l\n\tand e\n\tld l, a\n\tld a, h\n\tand d\n\tld h, a\n", /* S_ANDHLDE */
+    "\tld a, l\n\tor e\n\tld l, a\n\tld a, h\n\tor d\n\tld h, a\n",  /* S_ORHLDE */
+    "\tld a, l\n\txor e\n\tld l, a\n\tld a, h\n\txor d\n\tld h, a\n", /* S_XORHLDE */
+    "\tpush hl\n\tex de, hl\n",             /* S_PUSHHLEXDE */
+    "\tpush hl\n\tld h, b\n\tld l, c\n",    /* S_PUSHHLBCHL */
+    "\tex de, hl\n\tpop hl\n",              /* S_EXDEHLPOPHL */
+    "\tadd hl, bc\n\tld b, h\n\tld c, l\n", /* S_ADDHLBCBC */
+    "\tld a, ixh\n\tbit 7, a\n",            /* S_IXHBIT7 */
+    "\tcp (ix + 0)\n",                      /* S_CPIXZ */
+    "\tld a, (hl)\n\tpush af\n",            /* S_LDAHLPUSH */
+    "\tld a, h\n\tor b\n\tld b, a\n",       /* S_AHORBBA */
+    "\tld a, l\n\tor c\n\tld c, a\n",       /* S_ALORCC */
+    "\tor a\n\tscf\n"                       /* S_ORASCF */
+};
+
+/* Format strings with single %d - for emit1() */
+static const char *fmtstr[] = {
+    "\tld a, %d\n",                         /* F_LDA */
+    "\tcp %d\n",                            /* F_CP */
+    "\tadd a, %d\n",                        /* F_ADDA */
+    "\tsub %d\n",                           /* F_SUB */
+    "\tand %d\n",                           /* F_AND */
+    "\tor %d\n",                            /* F_OR */
+    "\txor %d\n",                           /* F_XOR */
+    "_if_end_%d:\n",                        /* F_IFEND */
+    "_if_then_%d:\n",                       /* F_IFTHEN */
+    "_if_%d:\n",                            /* F_IF */
+    "_or_end_%d:\n",                        /* F_OREND */
+    "_and_end_%d:\n",                       /* F_ANDEND */
+    "_tern_false_%d:\n",                    /* F_TERNF */
+    "_tern_end_%d:\n"                       /* F_TERNE */
+};
+
+/* Format strings with single %s - for emitS() */
+static const char *sfmtstr[] = {
+    "\tld hl, (%s)\n",                      /* FS_LDHLM */
+    "\tld (%s), hl\n",                      /* FS_STHLM */
+    "\tld a, (%s)\n",                       /* FS_LDAM */
+    "\tld (%s), a\n",                       /* FS_STAM */
+    "\tcall %s\n",                          /* FS_CALL */
+    "\tld hl, %s\n",                        /* FS_LDHL */
+    "\tld de, %s\n",                        /* FS_LDDE */
+    "%s:\n",                                /* FS_LABEL */
+    "\tjp %s\n"                             /* FS_JP */
 };
 
 void emit(unsigned char idx) {
     fdputs(outFd, asmstr[idx]);
+}
+
+void emit1(unsigned char idx, int val) {
+    fdprintf(outFd, fmtstr[idx], val);
+}
+
+void emitS(unsigned char idx, const char *s) {
+    fdprintf(outFd, sfmtstr[idx], s);
 }
 
 /* Output string to assembly output - saves passing outFd at each call site */
@@ -572,7 +637,7 @@ static void globLong(const char *s, char isStore) {
         emit(S_EXX);
         fdprintf(outFd, "\tld (%s+2), hl\n", s);
     } else {
-        fdprintf(outFd, "\tld hl, (%s)\n", s);
+        emitS(FS_LDHLM, s);
         emit(S_EXX);
         fdprintf(outFd, "\tld hl, (%s+2)\n", s);
     }
@@ -621,9 +686,8 @@ void loadVar(const char *sym, char sz, char docache) {
             fdprintf(2, "  loadVar: branch C (global)\n");
         }
 #endif
-        addRefSym(s);
-        if (sz == 1) fdprintf(outFd, "\tld a, (%s)\n", s);
-        else if (sz == 2) fdprintf(outFd, "\tld hl, (%s)\n", s);
+        if (sz == 1) emitS(FS_LDAM, s);
+        else if (sz == 2) emitS(FS_LDHLM, s);
         else if (sz == 4) globLong(s, 0);
     }
     if (docache && sz >= 2) setVarCache(sym, sz, 0);
@@ -723,9 +787,9 @@ int emitSimplLd(struct expr *e)
         } else if (e->reg == R_IX) {
             fdprintf(outFd, "\tpush ix\n\tpop %s\n", rp);
         } else if (e->reg == R_HL && e->dest == R_DE) {
-            fdprintf(outFd, "\tex de, hl\n");
+            emit(S_EXDEHL);
         } else if (e->reg == R_DE && e->dest == R_HL) {
-            fdprintf(outFd, "\tex de, hl\n");
+            emit(S_EXDEHL);
         } else {
             return 0;
         }
@@ -734,7 +798,6 @@ int emitSimplLd(struct expr *e)
     case LOC_MEM:
         if (!e->left || !e->left->symbol) return 0;
         sym = stripDollar(e->left->symbol);
-        addRefSym(sym);
         fdprintf(outFd, "\tld %s, (%s)\n", rp, sym);
         break;
 
@@ -777,7 +840,6 @@ void emitGlobDrf(struct expr *e)
 
     sym = e->left->symbol;
     s = stripDollar(sym);
-    addRefSym(s);
 
     if (e->size == 1) {
         if (cacheFindByte(e) == 'A') {
@@ -795,12 +857,12 @@ void emitGlobDrf(struct expr *e)
         } else if (cacheFindWord(e) == 'H') {
             /* HL already holds this value - skip load */
         } else {
-            fdprintf(outFd, "\tld hl, (%s)\n", s);
+            emitS(FS_LDHLM, s);
             clearHL();
             cacheSetHL(e);
         }
     } else if (e->size == 4) {
-        fdprintf(outFd, "\tld hl, (%s)\n", s);
+        emitS(FS_LDHLM, s);
         emit(S_EXX);
         fdprintf(outFd, "\tld hl, (%s+2)\n", s);
         emit(S_EXX);
@@ -837,9 +899,9 @@ void emitRegVarDrf(struct expr *e)
             /* A already holds this value - skip load */
         } else {
             if (var->reg == REG_B || var->reg == REG_BC)
-                fdprintf(outFd, "\tld a, b\n");
+                emit(S_LDAB);
             else if (var->reg == REG_C)
-                fdprintf(outFd, "\tld a, c\n");
+                emit(S_LDAC);
             cacheSetA(e);
         }
     } else {
@@ -847,15 +909,15 @@ void emitRegVarDrf(struct expr *e)
         if (e->dest == R_DE) {
             /* Scheduler says load to DE */
             if (var->reg == REG_BC)
-                fdprintf(outFd, "\tld d, b\n\tld e, c\n");
+                emit(S_LDDEBC);
             else if (var->reg == REG_IX)
-                fdprintf(outFd, "\tpush ix\n\tpop de\n");
+                emit(S_IXDE);
             fnDEValid = 1;
         } else if (cacheFindWord(e) == 'H') {
             /* HL already holds this value - skip load */
         } else {
             if (var->reg == REG_BC)
-                fdprintf(outFd, "\tld h, b\n\tld l, c\n");
+                emit(S_BCHL);
             else if (var->reg == REG_IX)
                 emit(S_IXHL);
             clearHL();
@@ -938,7 +1000,7 @@ void emitBCIndir(void)
         /* A already has (bc) - skip load */
         return;
     }
-    fdprintf(outFd, "\tld a, (bc)\n");
+    emit(S_LDABC);
     cacheInvalA();
     cacheSetA(&bcIndir);
 }

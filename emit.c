@@ -61,7 +61,7 @@ static void emitCond(struct expr *e, int invert,
             int skip_lbl = fnLblCnt++;
             emitCond(e->left, invert, "_or_end_", skip_lbl, NULL, -1);
             emitCond(e->right, invert, true_lbl, true_num, false_lbl, false_num);
-            fdprintf(outFd, "_or_end_%d:\n", skip_lbl);
+            emit1(F_OREND, skip_lbl);
         }
         freeNode(e);
         return;
@@ -80,7 +80,7 @@ static void emitCond(struct expr *e, int invert,
                 int skip_lbl = fnLblCnt++;
                 emitCond(e->left, invert, "_and_end_", skip_lbl, NULL, -1);
                 emitCond(e->right, invert, "_and_end_", skip_lbl, false_lbl, false_num);
-                fdprintf(outFd, "_and_end_%d:\n", skip_lbl);
+                emit1(F_ANDEND, skip_lbl);
             }
         } else {
             /* Normal AND: if left is false, fail immediately; if true, try right */
@@ -91,7 +91,7 @@ static void emitCond(struct expr *e, int invert,
                 int skip_lbl = fnLblCnt++;
                 emitCond(e->left, invert, NULL, -1, "_and_end_", skip_lbl);
                 emitCond(e->right, invert, true_lbl, true_num, "_and_end_", skip_lbl);
-                fdprintf(outFd, "_and_end_%d:\n", skip_lbl);
+                emit1(F_ANDEND, skip_lbl);
             }
         }
         freeNode(e);
@@ -185,7 +185,7 @@ static void emitCond(struct expr *e, int invert,
     } else {
         /* No Z flag info - need to test the value */
         if (e_size == 1) {
-            fdprintf(outFd, "\tor a\n");
+            emit(S_ORA);
         } else {
             emit(S_AHORL);
         }
@@ -232,7 +232,7 @@ static void emitStmtTail(struct stmt *s, int tailPos)
 
     /* Handle end-label statements (type 'Y') - emit _if_end_N: */
     if (s->type == 'Y') {
-        fdprintf(outFd, "_if_end_%d:\n", s->label);
+        emit1(F_IFEND, s->label);
     }
 
     /* Handle LABEL statements - emit a label */
@@ -451,13 +451,13 @@ emit_z_jump:
 
 emit_if_body:
         /* Emit label for OR short-circuit jumps to then body */
-        fdprintf(outFd, "_if_then_%d:\n", s->label);
+        emit1(F_IFTHEN, s->label);
         /* Emit then branch */
         if (s->then_branch) emitStmt(s->then_branch);
 
         if (s->label2 > 0 && !skip_else) {
             emitJump("jp", "_if_end_", s->label2);
-            fdprintf(outFd, "_if_%d:\n", s->label);
+            emit1(F_IF, s->label);
             if (s->else_branch) emitStmt(s->else_branch);
         }
 
@@ -542,7 +542,7 @@ emit_if_body:
             emitExpr(s->expr);
             /* Widen byte to word if needed */
             if (expr_size == 1 && ret_size == 2) {
-                fdprintf(outFd, "\tld l, a\n\tld h, 0\n");
+                emit(S_WIDEN);
             }
             /* Widen word to long if needed */
             if (expr_size == 2 && ret_size == 4) {
@@ -693,7 +693,7 @@ void emitAssembly(int fd)
     if (fnCallStk > 0 && fnFrmSize == 0 && !has_params) {
         int i;
         for (i = 0; i < fnCallStk; i += 2)
-            fdprintf(outFd, "\tpop de\n");
+            emit(S_POPDE);
     }
 
     /* Restore callee-saved registers (reverse order of push) */

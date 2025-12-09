@@ -151,7 +151,7 @@ void emitIncDec(struct expr *e)
             case ID_REG:    fdprintf(outFd, "\tld a, %s\n", rn); break;
             case ID_STACK:  iyFmt("\tld a, (iy %c %d)\n", ofs); break;
             case ID_GLOBAL: fdprintf(outFd, "\tld a, (%s)\n", sym); emit(S_PUSHAFSV); break;
-            case ID_HL:     fdprintf(outFd, "\tld a, (hl)\n\tpush af\n"); break;
+            case ID_HL:     emit(S_LDAHLPUSH); break;
             }
         }
 
@@ -204,12 +204,12 @@ void emitIncDec(struct expr *e)
             switch (loc) {
             case ID_REG:    emitWordLoad(var->reg); break;
             case ID_STACK:  loadWordIY(ofs); break;
-            case ID_GLOBAL: fdprintf(outFd, "\tld hl, (%s)\n", sym); emit(S_PUSHHLOV); break;
+            case ID_GLOBAL: emitS(FS_LDHLM, sym); emit(S_PUSHHLOV); break;
             case ID_HL:
                 emit(S_HLTODE);
                 emit(S_LDAHLINC);
                 emit(S_LDAHLHIGH);
-                fdprintf(outFd, "\tpush hl\n\tex de, hl\n");
+                emit(S_PUSHHLEXDE);
                 break;
             }
         } else if (loc == ID_HL) {
@@ -228,12 +228,12 @@ void emitIncDec(struct expr *e)
                 /* 8-bit dec/inc affects C flag, so we can use borrow/carry */
                 for (i = 0; i < amount; i++) {
                     iyFmt(is_dec ? "\tdec (iy %c %d)\n" : "\tinc (iy %c %d)\n", ofs);
-                    fdprintf(outFd, "\tjr nc, $+3\n");
+                    emit(S_JRNC3);
                     iyFmt(is_dec ? "\tdec (iy %c %d)\n" : "\tinc (iy %c %d)\n", ofs + 1);
                 }
                 break;
             case ID_GLOBAL:
-                if (!is_post) fdprintf(outFd, "\tld hl, (%s)\n", sym);
+                if (!is_post) emitS(FS_LDHLM, sym);
                 for (i = 0; i < amount; i++)
                     fdprintf(outFd, "\t%s hl\n", is_dec ? "dec" : "inc");
                 fdprintf(outFd, "\tld (%s), hl\n", sym);
@@ -241,7 +241,7 @@ void emitIncDec(struct expr *e)
             case ID_HL:
                 for (i = 0; i < amount; i++) {
                     fdprintf(outFd, "\t%s (hl)\n", is_dec ? "dec" : "inc");
-                    fdprintf(outFd, "\tjr nz, $+4\n\tinc hl\n");
+                    emit(S_JRNZ4INC);
                     fdprintf(outFd, "\t%s (hl)\n\tdec hl\n", is_dec ? "dec" : "inc");
                 }
                 break;
@@ -259,17 +259,17 @@ void emitIncDec(struct expr *e)
                 storeWordIY(ofs);
                 break;
             case ID_GLOBAL:
-                if (!is_post) fdprintf(outFd, "\tld hl, (%s)\n", sym);
+                if (!is_post) emitS(FS_LDHLM, sym);
                 fdprintf(outFd, "\tld de, %ld\n", is_dec ? -amount : amount);
                 emit(S_ADDHLDE);
                 fdprintf(outFd, "\tld (%s), hl\n", sym);
                 break;
             case ID_HL:
                 emit(S_LDCHL);
-                fdprintf(outFd, "\tpush hl\n\tld h, b\n\tld l, c\n");
+                emit(S_PUSHHLBCHL);
                 fdprintf(outFd, "\tld de, %ld\n\tadd hl, de\n", is_dec ? -amount : amount);
-                fdprintf(outFd, "\tex de, hl\n\tpop hl\n");
-                fdprintf(outFd, "\tld (hl), d\n\tdec hl\n\tld (hl), e\n");
+                emit(S_EXDEHLPOPHL);
+                emit(S_STDEHL);
                 break;
             }
         }
@@ -280,7 +280,7 @@ void emitIncDec(struct expr *e)
             case ID_REG: /* HL already has old value */ break;
             case ID_STACK: /* HL already has old value */ break;
             case ID_GLOBAL: emit(S_POPHLRET); break;
-            case ID_HL: fdprintf(outFd, "\tpop hl\n"); break;
+            case ID_HL: emit(S_POPHL); break;
             }
         } else if (!unused) {
             switch (loc) {
@@ -308,23 +308,18 @@ void emitIncDec(struct expr *e)
             break;
         case ID_STACK:
             fdprintf(outFd, "\tld a, %d\n\tcall leaiy\n", ofs);
-            addRefSym("leaiy");
             break;
         case ID_HL:
             /* emitExpr computed address of pointer variable into HL.
              * Need to load through it to get the pointer value (address of long). */
-            fdprintf(outFd, "\tld a, (hl)\n\tinc hl\n\tld h, (hl)\n\tld l, a\n");
+            emit(S_LDHLIND);
             break;
         default: break;
         }
         /* Call linc or ldec helper - takes address in HL, always increments by 1 */
-        if (is_post) {
-            fdprintf(outFd, "\tcall %s\n", is_dec ? "ldecp" : "lincp");
-            addRefSym(is_dec ? "ldecp" : "lincp");
-        } else {
-            fdprintf(outFd, "\tcall %s\n", is_dec ? "ldec" : "linc");
-            addRefSym(is_dec ? "ldec" : "linc");
-        }
+        fdprintf(outFd, "\tcall %s\n",
+                 is_post ? (is_dec ? "ldecp" : "lincp")
+                         : (is_dec ? "ldec" : "linc"));
     }
 
     freeNode(e);
@@ -487,20 +482,20 @@ static int emitByteCp(struct expr *e)
         /* Emit cp with adjusted constant based on comparison */
         switch (e->op) {
         case 'g':  /* GE (>=): cp N, nc = true */
-            fdprintf(outFd, "\tcp %d\n", val);
+            emit1(F_CP, val);
             fnCmpFlag = 'c';  /* nc = true */
             break;
         case '<':  /* LT (<): cp N, c = true */
-            fdprintf(outFd, "\tcp %d\n", val);
+            emit1(F_CP, val);
             fnCmpFlag = 'C';  /* c = true */
             break;
         case '>':  /* GT (>): cp N+1, nc = true */
             if (val >= 255) {
                 /* A > 255 always false - emit compare that always fails */
-                fdprintf(outFd, "\tor a\n\tscf\n");  /* set carry */
+                emit(S_ORASCF);  /* set carry */
                 fnCmpFlag = 'c';  /* nc = true, but carry is set so always false */
             } else {
-                fdprintf(outFd, "\tcp %d\n", val + 1);
+                emit1(F_CP, val + 1);
                 fnCmpFlag = 'c';  /* nc = true */
             }
             break;
@@ -510,7 +505,7 @@ static int emitByteCp(struct expr *e)
                 emit(S_ORA);  /* clears carry */
                 fnCmpFlag = 'c';  /* nc = true, always true */
             } else {
-                fdprintf(outFd, "\tcp %d\n", val + 1);
+                emit1(F_CP, val + 1);
                 fnCmpFlag = 'C';  /* c = true */
             }
             break;
@@ -534,14 +529,14 @@ static int emitByteCp(struct expr *e)
     /* Emit cp instruction based on right operand type */
     switch (cmp.kind) {
     case CMP_CONST:
-        fdprintf(outFd, "\tcp %d\n", cmp.offset);
+        emit1(F_CP, cmp.offset);
         break;
     case CMP_IY:
         iyFmt("\tcp (iy %c %d)\n", cmp.offset);
         break;
     case CMP_REG:
         if (cmp.reg == REG_IX) {
-            fdprintf(outFd, "\tcp (ix + 0)\n");
+            emit(S_CPIXZ);
         } else if (byteRegName(cmp.reg) || cmp.reg == REG_BC) {
             /* BC low byte is C */
             const char *rn = cmp.reg == REG_BC ? "c" : byteRegName(cmp.reg);
@@ -612,10 +607,8 @@ void emitBinop(struct expr *e)
         case 'L': fn = "le3232"; break;
         default: break;
         }
-        if (fn) {
-            fdprintf(outFd, "\tcall %s\n", fn);
-            addRefSym(fn);
-        }
+        if (fn)
+            emitS(FS_CALL, fn);
         if (is_cmp) fnZValid = 2;  /* NZ = true, Z = false */
         freeNode(e);
         return;
@@ -659,7 +652,7 @@ void emitBinop(struct expr *e)
                 if (l->reg == R_BC) emit(S_BIT7B);
                 else if (l->reg == R_HL) emit(S_BIT7H);
                 else if (l->reg == R_DE) emit(S_BIT7D);
-                else if (l->reg == R_IX) fdprintf(outFd, "\tld a, ixh\n\tbit 7, a\n");
+                else if (l->reg == R_IX) emit(S_IXHBIT7);
                 else goto fallback;
                 break;
             case LOC_STACK:
@@ -675,7 +668,6 @@ void emitBinop(struct expr *e)
             case LOC_MEM:
                 if (!l->left || !l->left->symbol) goto fallback;
                 sym = stripDollar(l->left->symbol);
-                addRefSym(sym);
                 fdprintf(outFd, "\tld a, (%s+1)\n\tbit 7, a\n", sym);
                 break;
             default:
@@ -709,7 +701,6 @@ void emitBinop(struct expr *e)
             case LOC_MEM:
                 if (!l->left || !l->left->symbol) goto fallback;
                 sym = stripDollar(l->left->symbol);
-                addRefSym(sym);
                 fdprintf(outFd, "\tld hl, (%s)\n\tbit 7, h\n", sym);
                 fnDualReg = R_HL;
                 break;
@@ -738,14 +729,14 @@ void emitBinop(struct expr *e)
         if ((e->op == 'Q' || e->op == 'n') &&
             e->right && e->right->op == 'C' && e->right->value == 0) {
             if (!emitSimplLd(e->left)) emitExpr(e->left);
-            fdprintf(outFd, "\tld a, h\n\tor l\n");
+            emit(S_AHORL);
             fnZValid = (e->op == 'Q') ? 1 : 2;
             freeNode(e);
             return;
         }
         if (!emitSimplLd(e->left)) emitExpr(e->left);
         if (!emitSimplLd(e->right)) emitExpr(e->right);
-        fdprintf(outFd, "\tor a\n\tsbc hl, de\n");
+        emit(S_SBCHLDE);
         switch (e->op) {
         case 'Q': fnZValid = 1; break;       /* EQ: Z true */
         case 'n': fnZValid = 2; break;       /* NE: NZ true */
@@ -772,10 +763,8 @@ void emitBinop(struct expr *e)
         case 'y': fn = "blsh"; break;  /* left shift */
         default: break;
         }
-        if (fn) {
-            fdprintf(outFd, "\tcall %s\n", fn);
-            addRefSym(fn);
-        }
+        if (fn)
+            emitS(FS_CALL, fn);
         return;
     }
 
@@ -810,16 +799,16 @@ shift_generic:
 
     /* DE=left, HL=right; most ops need HL=left so swap */
     switch (e->op) {
-    case '+': fdprintf(outFd, "\tadd hl, de\n"); break;
-    case '-': fdprintf(outFd, "\tex de, hl\n\tor a\n\tsbc hl, de\n"); break;
-    case '*': fdprintf(outFd, "\tcall imul\n"); addRefSym("imul"); break;
-    case '/': fdprintf(outFd, "\tex de, hl\n\tcall idiv\n"); addRefSym("idiv"); break;
-    case '%': fdprintf(outFd, "\tex de, hl\n\tcall imod\n"); addRefSym("imod"); break;
-    case '&': fdprintf(outFd, "\tld a, l\n\tand e\n\tld l, a\n\tld a, h\n\tand d\n\tld h, a\n"); break;
-    case '|': fdprintf(outFd, "\tld a, l\n\tor e\n\tld l, a\n\tld a, h\n\tor d\n\tld h, a\n"); break;
-    case '^': fdprintf(outFd, "\tld a, l\n\txor e\n\tld l, a\n\tld a, h\n\txor d\n\tld h, a\n"); break;
-    case 'w': fdprintf(outFd, "\tex de, hl\n\tcall irsh\n"); addRefSym("irsh"); break;
-    case 'y': fdprintf(outFd, "\tex de, hl\n\tcall ilsh\n"); addRefSym("ilsh"); break;
+    case '+': emit(S_ADDHLDE); break;
+    case '-': emit(S_EXDEHL); emit(S_SBCHLDE); break;
+    case '*': emit(S_CALLIMUL); break;
+    case '/': emit(S_CALLIDIV); break;
+    case '%': fdprintf(outFd, "\tex de, hl\n\tcall imod\n"); break;
+    case '&': emit(S_ANDHLDE); break;
+    case '|': emit(S_ORHLDE); break;
+    case '^': emit(S_XORHLDE); break;
+    case 'w': emit(S_CALLIRSH); break;
+    case 'y': emit(S_CALLILSH); break;
     default: break;
     }
     freeNode(e);
@@ -888,8 +877,7 @@ void emitCall(struct expr *e)
     if (e->left && e->left->op == '$' && e->left->symbol) {
         func_name = e->left->symbol;
         if (func_name[0] == '$') func_name++;
-        addRefSym(func_name);
-        fdprintf(outFd, "\tcall %s\n", func_name);
+        emitS(FS_CALL, func_name);
         if (isCmpFunc(func_name)) {
             fnZValid = 1;
         }
@@ -940,14 +928,14 @@ void emitTernary(struct expr *e)
         emitJump("jp", "_tern_end_", e->right->label);
     }
 
-    fdprintf(outFd, "_tern_false_%d:\n", e->label);
+    emit1(F_TERNF, e->label);
 
     if (e->right && e->right->right) {
         emitExpr(e->right->right);
     }
 
     if (e->right) {
-        fdprintf(outFd, "_tern_end_%d:\n", e->right->label);
+        emit1(F_TERNE, e->right->label);
     }
 
     if (e->jump) freeJump(e->jump);

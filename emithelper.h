@@ -8,6 +8,8 @@
 
 /* Assembly string emission */
 void emit(unsigned char idx);
+void emit1(unsigned char idx, int val);
+void emitS(unsigned char idx, const char *s);
 void out(const char *s);
 void emitByteLoad(unsigned char reg);
 void emitByteStore(unsigned char reg);
@@ -188,6 +190,59 @@ void emitJump(const char *instr, const char *prefix, int label);
 #define S_LDDEBC 89
 #define S_LDAHLINC 90
 #define S_LDAHLHIGH 91
+#define S_WIDEN 92
+#define S_LDHLIND 93
+#define S_IYHL 94
+#define S_IXDE 95
+#define S_EXX0 96
+#define S_CALLIMUL 97
+#define S_CALLIDIV 98
+#define S_CALLILSH 99
+#define S_CALLIRSH 100
+#define S_CALLLOR32 101
+#define S_STDEHL 102
+#define S_JRNC3 103
+#define S_JRNZ4INC 104
+#define S_ANDHLDE 105
+#define S_ORHLDE 106
+#define S_XORHLDE 107
+#define S_PUSHHLEXDE 108
+#define S_PUSHHLBCHL 109
+#define S_EXDEHLPOPHL 110
+#define S_ADDHLBCBC 111
+#define S_IXHBIT7 112
+#define S_CPIXZ 113
+#define S_LDAHLPUSH 114
+#define S_AHORBBA 115
+#define S_ALORCC 116
+#define S_ORASCF 117
+
+/* Format string indices for emit1() */
+#define F_LDA 0
+#define F_CP 1
+#define F_ADDA 2
+#define F_SUB 3
+#define F_AND 4
+#define F_OR 5
+#define F_XOR 6
+#define F_IFEND 7
+#define F_IFTHEN 8
+#define F_IF 9
+#define F_OREND 10
+#define F_ANDEND 11
+#define F_TERNF 12
+#define F_TERNE 13
+
+/* String format indices for emitS() */
+#define FS_LDHLM 0
+#define FS_STHLM 1
+#define FS_LDAM 2
+#define FS_STAM 3
+#define FS_CALL 4
+#define FS_LDHL 5
+#define FS_LDDE 6
+#define FS_LABEL 7
+#define FS_JP 8
 
 /* Global label map for jump optimization */
 #define MAX_LBLMAP 256
