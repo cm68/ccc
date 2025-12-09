@@ -50,6 +50,240 @@ addJmpMap(const char *from, const char *to)
 }
 
 /*
+ * Variable usage analysis for register allocation
+ * Walk expression/statement trees counting variable references
+ */
+
+/* Find a local/param variable by name in function scope - currently unused
+ * but kept for potential future use in pass1 optimizations */
+#if 0
+static struct name *
+findLocal(const char *name, struct stmt *body)
+{
+	struct name *n;
+	if (!body || !body->locals || !name)
+		return NULL;
+	for (n = body->locals; n; n = n->next) {
+		if (n->name && strcmp(n->name, name) == 0)
+			return n;
+	}
+	return NULL;
+}
+#endif
+
+/* Find a variable in body->locals by name */
+static struct name *
+findInLocals(const char *name, struct stmt *body)
+{
+	struct name *n;
+	if (!body || !body->locals || !name)
+		return NULL;
+	for (n = body->locals; n; n = n->next) {
+		if (n->name && strcmp(n->name, name) == 0)
+			return n;
+	}
+	return NULL;
+}
+
+/* Increment ref_count for a variable (capped at 255) */
+static void
+incRef(struct name *n)
+{
+	if (n && n->ref_count < 255)
+		n->ref_count++;
+}
+
+/* Increment agg_refs for a variable (capped at 255) */
+static void
+incAgg(struct name *n)
+{
+	if (n && n->agg_refs < 255)
+		n->agg_refs++;
+}
+
+/* Forward declarations */
+static void analyzeExpr(struct expr *e, struct stmt *body);
+static void analyzeStmt(struct stmt *s, struct stmt *body);
+
+/* Analyze expression tree for variable usage */
+static void
+analyzeExpr(struct expr *e, struct stmt *body)
+{
+	struct name *var, *local;
+	if (!e)
+		return;
+
+	/* Count variable references from SYM nodes
+	 * Look up the variable in body->locals by name since e->var
+	 * points to the original symbol table entry (now gone) while
+	 * body->locals contains copies made by capLocals() */
+	if (e->op == SYM && e->var) {
+		var = (struct name *)e->var;
+		if (var->name) {
+			local = findInLocals(var->name, body);
+			if (local)
+				incRef(local);
+		}
+	}
+
+	/* Detect struct member access patterns for IX allocation:
+	 * Pattern: DEREF(ADD(DEREF($ptr), offset)) - reading member
+	 * Pattern: ASSIGN(ADD(DEREF($ptr), offset), val) - writing member
+	 * The inner DEREF($ptr) must be a pointer variable */
+	if (e->op == DEREF && e->left && e->left->op == '+' &&
+	    e->left->left && e->left->left->op == DEREF &&
+	    e->left->left->left && e->left->left->left->op == SYM &&
+	    e->left->left->left->var &&
+	    e->left->right && e->left->right->op == CONST) {
+		var = (struct name *)e->left->left->left->var;
+		if (var->name) {
+			local = findInLocals(var->name, body);
+			if (local && local->type && (local->type->flags & TF_POINTER))
+				incAgg(local);
+		}
+	}
+
+	if (e->op == '=' && e->left && e->left->op == '+' &&
+	    e->left->left && e->left->left->op == DEREF &&
+	    e->left->left->left && e->left->left->left->op == SYM &&
+	    e->left->left->left->var &&
+	    e->left->right && e->left->right->op == CONST) {
+		var = (struct name *)e->left->left->left->var;
+		if (var->name) {
+			local = findInLocals(var->name, body);
+			if (local && local->type && (local->type->flags & TF_POINTER))
+				incAgg(local);
+		}
+	}
+
+	/* Recurse */
+	analyzeExpr(e->left, body);
+	analyzeExpr(e->right, body);
+	analyzeExpr(e->next, body);
+}
+
+/* Analyze statement tree for variable usage */
+static void
+analyzeStmt(struct stmt *s, struct stmt *body)
+{
+	if (!s)
+		return;
+
+	/* Analyze expressions in this statement */
+	analyzeExpr(s->left, body);
+	analyzeExpr(s->right, body);
+	analyzeExpr(s->middle, body);
+
+	/* Recurse into child statements */
+	analyzeStmt(s->chain, body);
+	analyzeStmt(s->otherwise, body);
+	analyzeStmt(s->next, body);
+}
+
+/*
+ * Register allocation for local variables and parameters
+ * Called after analyzeStmt() has computed ref_count and agg_refs
+ *
+ * Allocation priority:
+ *   1. IX register: allocated to struct pointer with highest agg_refs
+ *   2. BC register: allocated to word variable with highest ref_count
+ *   3. B/C registers: allocated to byte variables by ref_count
+ *
+ * Variables excluded:
+ *   - Arrays (must remain on stack for &arr[i])
+ *   - Unused variables (ref_count == 0)
+ *   - Single-use variables (ref_count == 1) - no benefit
+ */
+static void
+allocRegs(struct stmt *body)
+{
+	struct name *n, *best;
+	int bc_used = 0;  /* BC allocated? (precludes B and C) */
+	int b_used = 0, c_used = 0;
+
+	if (!body || !body->locals)
+		return;
+
+	/* First pass: allocate IX to struct pointer with highest agg_refs */
+	best = NULL;
+	for (n = body->locals; n; n = n->next) {
+		if (n->type && (n->type->flags & TF_POINTER) &&
+		    n->agg_refs > 0 && n->ref_count > 1) {
+			if (!best || n->agg_refs > best->agg_refs)
+				best = n;
+		}
+	}
+	if (best) {
+		best->reg = REG_IX;
+	}
+
+	/* Second pass: allocate BC to word variable with highest ref_count */
+	best = NULL;
+	for (n = body->locals; n; n = n->next) {
+		if (n->reg != REG_NONE)
+			continue;  /* already allocated */
+		if (n->type && (n->type->flags & (TF_ARRAY | TF_AGGREGATE)))
+			continue;  /* arrays/structs stay on stack */
+		if (n->ref_count <= 1)
+			continue;  /* not worth it */
+		if (n->type && n->type->size == 2) {
+			if (!best || n->ref_count > best->ref_count)
+				best = n;
+		}
+	}
+	if (best) {
+		best->reg = REG_BC;
+		bc_used = 1;
+	}
+
+	/* Third pass: allocate B and C to byte variables (if BC not used) */
+	if (!bc_used) {
+		for (n = body->locals; n; n = n->next) {
+			if (n->reg != REG_NONE)
+				continue;
+			if (n->type && (n->type->flags & (TF_ARRAY | TF_AGGREGATE)))
+				continue;
+			if (n->ref_count <= 1)
+				continue;
+			if (n->type && n->type->size == 1) {
+				if (!b_used) {
+					n->reg = REG_B;
+					b_used = 1;
+				} else if (!c_used) {
+					n->reg = REG_C;
+					c_used = 1;
+				}
+				if (b_used && c_used)
+					break;
+			}
+		}
+	}
+}
+
+/* Entry point: analyze function and allocate registers */
+static void
+analyzeFunc(struct name *func)
+{
+	struct name *n;
+
+	if (!func || !func->u.body)
+		return;
+
+	/* Initialize all locals/params to no register, zero counts */
+	for (n = func->u.body->locals; n; n = n->next) {
+		n->ref_count = 0;
+		n->agg_refs = 0;
+		n->reg = REG_NONE;
+	}
+
+	/* Walk the tree counting references */
+	analyzeStmt(func->u.body, func->u.body);
+
+	/* Allocate registers based on usage */
+	allocRegs(func->u.body);
+}
+
+/*
  * Get size suffix for memory operations based on type
  * Returns: 'b' (byte), 's' (short/int), 'l' (long), 'p' (pointer),
  * 'f' (float), 'd' (double), 'v' (void)
@@ -491,7 +725,7 @@ emitStmt(struct stmt *st)
 			/* Emit: B decl_count stmt_count decls... stmts... */
 			fdprintf(astFd, "B%02x%02x", decl_count, stmt_count);
 
-			/* Emit declarations */
+			/* Emit declarations with register allocation */
 			if (st->locals) {
 				for (local = st->locals; local; local = local->next) {
 					if (local->kind == funarg)
@@ -500,6 +734,7 @@ emitStmt(struct stmt *st)
 						local->mangled_name : local->name;
 					fdprintf(astFd, "d%c", getSizeSuffix(local->type));
 					emitHexName(lname);
+					fdprintf(astFd, "%02x", local->reg);
 				}
 			}
 
@@ -765,13 +1000,15 @@ countParams(struct type *functype)
 
 /*
  * Output function parameter list
- * Format: param_count. d suffix name d suffix name ...
+ * Format: param_count. d suffix name reg d suffix name reg ...
+ * reg is 2 hex digits: 00=none, 01=B, 02=C, 03=BC, 04=IX
  */
 static void
-emitParams(struct type *functype)
+emitParams(struct type *functype, struct stmt *body)
 {
-	struct name *param;
+	struct name *param, *local;
 	int count = countParams(functype);
+	unsigned char reg;
 
 	fdprintf(astFd, "%02x", count);
 	if (functype && (functype->flags & TF_FUNC)) {
@@ -779,12 +1016,23 @@ emitParams(struct type *functype)
 			/* Skip void parameters - (void) means no params */
 			if (param->type && param->type->size == 0)
 				continue;
-			/* Emit as: d suffix hexname */
+			/* Look up register allocation from body locals */
+			reg = REG_NONE;
+			if (body && body->locals && param->name) {
+				for (local = body->locals; local; local = local->next) {
+					if (local->name && strcmp(local->name, param->name) == 0) {
+						reg = local->reg;
+						break;
+					}
+				}
+			}
+			/* Emit as: d suffix hexname reg */
 			fdprintf(astFd, "d%c", getSizeSuffix(param->type));
 			if (param->name && param->name[0] != '\0')
 				emitHexName(param->name);
 			else
 				emitHexName("_");  /* anonymous parameter */
+			fdprintf(astFd, "%02x", reg);
 		}
 	}
 }
@@ -819,6 +1067,9 @@ emitFunction(struct name *func)
 	if (!func || !func->u.body)
 		return;
 
+	/* Analyze variable usage and allocate registers BEFORE emission */
+	analyzeFunc(func);
+
 	/* Static functions use mangled name, public get underscore prefix */
 	if (func->mangled_name) {
 		snprintf(func_name, sizeof(func_name), "%s", func->mangled_name);
@@ -835,11 +1086,11 @@ emitFunction(struct name *func)
 	fdprintf(astFd, "\nF%c", ret_suffix);
 	emitHexName(func_name);
 
-	/* Output parameter list with declarations */
+	/* Output parameter list with declarations and register allocations */
 	if (func->type)
-		emitParams(func->type);
+		emitParams(func->type, func->u.body);
 	else
-		fdprintf(astFd, "0.");
+		fdprintf(astFd, "00");
 
 	/* Reset jump map for this function */
 	jmpMapCnt = 0;

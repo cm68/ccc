@@ -514,7 +514,7 @@ parseStmt(void)
 			s = newStmt('B');
 			first = last = NULL;
 
-			/* Read declarations */
+			/* Read declarations: d suffix name reg */
 			for (i = 0; i < decl_count; i++) {
 				if (curchar == 'd') {
 					nextchar();
@@ -522,6 +522,7 @@ parseStmt(void)
 					child->type_str = curchar;
 					nextchar();
 					child->symbol = strdup((char *)readName());
+					child->label = readHex2();  /* Register allocation (0=none) */
 					appendChild(child, &first, &last);
 				} else {
 #ifdef DEBUG
@@ -737,7 +738,7 @@ doFunction(unsigned char rettype)
 	switchToSeg(SEG_TEXT);
 	addDefSym(fnName);
 
-	/* Parse parameters: param_count d suffix name d suffix name ... */
+	/* Parse parameters: param_count d suffix name reg d suffix name reg ... */
 	param_count = readHex2();
 #ifdef DEBUG
 	if (TRACE(T_PARSE)) fdprintf(2, "  param_count=%d\n", param_count);
@@ -746,20 +747,27 @@ doFunction(unsigned char rettype)
 	params_buf[0] = '\0';
 	first_param = 1;
 	for (i = 0; i < param_count; i++) {
+		unsigned char preg;
 		skipWS();
 		if (curchar != 'd') break;
 		nextchar();
 		ptype = curchar;
 		nextchar();
 		param = (char *)readName();
+		preg = readHex2();  /* Read register allocation */
 		if (!first_param && p < params_buf + sizeof(params_buf) - 2) {
 			*p++ = ','; *p++ = ' ';
 		}
 		first_param = 0;
 		while (*param && p < params_buf + sizeof(params_buf) - 20)
 			*p++ = *param++;
-		if (p < params_buf + sizeof(params_buf) - 3) {
+		if (p < params_buf + sizeof(params_buf) - 5) {
 			*p++ = ':'; *p++ = ptype;
+			/* Append register if allocated */
+			if (preg) {
+				*p++ = ':';
+				*p++ = '0' + preg;
+			}
 		}
 	}
 	*p = '\0';

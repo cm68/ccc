@@ -102,6 +102,15 @@ class ASTParser:
         'p': 'ptr', 'f': 'float', 'd': 'double', 'v': 'void'
     }
 
+    # Register allocation mapping
+    REG_NAMES = {
+        0: '-',    # REG_NONE
+        1: 'B',    # REG_B
+        2: 'C',    # REG_C
+        3: 'BC',   # REG_BC
+        4: 'IX'    # REG_IX
+    }
+
     # Operator names
     OP_NAMES = {
         'M': 'DEREF', '=': 'ASSIGN', '+': 'ADD', '-': 'SUB',
@@ -282,6 +291,7 @@ class ASTParser:
         self.advance()
 
         # Block: B decl_count(2) stmt_count(2) decls... stmts...
+        # Declarations: d suffix name reg (reg is 2 hex digits)
         if c == 'B':
             decl_count = self.read_hex2()
             stmt_count = self.read_hex2()
@@ -294,7 +304,9 @@ class ASTParser:
                     type_char = self.cur()
                     self.advance()
                     name = self.read_name()
-                    self.prln(f"DECL {name} : {self.width_name(type_char)}")
+                    reg = self.read_hex2()
+                    reg_str = self.REG_NAMES.get(reg, str(reg))
+                    self.prln(f"DECL {name} : {self.width_name(type_char)} reg={reg_str}")
             for _ in range(stmt_count):
                 self.parse_stmt()
             self.indent -= 1
@@ -425,7 +437,8 @@ class ASTParser:
             self.prln(f"??? stmt {repr(c)}")
 
     def parse_function(self):
-        """Parse function: F rettype hexname param_count(2) params... body"""
+        """Parse function: F rettype hexname param_count(2) params... body
+        Params format: d suffix name reg (reg is 2 hex digits)"""
         ret_type = self.cur()
         self.advance()
         name = self.read_name()
@@ -439,7 +452,12 @@ class ASTParser:
                 ptype = self.cur()
                 self.advance()
                 pname = self.read_name()
-                params.append(f"{pname}:{self.width_name(ptype)}")
+                preg = self.read_hex2()
+                reg_str = self.REG_NAMES.get(preg, str(preg))
+                if preg:
+                    params.append(f"{pname}:{self.width_name(ptype)}@{reg_str}")
+                else:
+                    params.append(f"{pname}:{self.width_name(ptype)}")
 
         params_str = ', '.join(params)
         print(f"\nFUNCTION {name}({params_str}) -> {self.width_name(ret_type)}")

@@ -189,7 +189,13 @@ walkLocals(struct stmt *s)
             unsigned char size = getSizeFTStr(s->type_str);
             /* Local arrays are typed as pointers (p) in the AST */
             int is_array = 0;
+            struct local_var *var;
             addLocalVar(s->symbol, size, is_array);
+            /* Apply register allocation from AST (stored in s->label) */
+            if (s->label) {
+                var = findVar(s->symbol);
+                if (var) var->reg = s->label;
+            }
         }
     }
 
@@ -200,115 +206,15 @@ walkLocals(struct stmt *s)
 }
 
 /*
- * Allocate registers to local variables and parameters
- * Called after analyzeVars() which computes ref_count, agg_refs, lifetimes
- *
- * Both function parameters and local variables are candidates for 
- * register allocation.
- * Parameters start on the stack (passed by caller) but can be loaded into 
- * registers in the function prologue for efficiency.
- *
- * Allocation priority:
- *   1. IX register: allocated to struct pointers with aggregate member accesses
- *   2. Byte/word registers: allocated by reference count (by frequency)
- *
- * Variables excluded from register allocation:
- *   - Arrays (must remain on stack)
- *   - Unused variables (ref_count == 0)
- *   - Single-use variables (ref_count == 1) - no benefit to register allocation
- *   - Variables whose address is taken (future enhancement)
+ * Register allocation now comes from pass1 via the AST.
+ * This function is kept for compatibility but does nothing.
+ * The register assignments are read in assignFrmOff() from the
+ * declaration statements' label field.
  */
 void
 allocRegs()
 {
-    struct local_var *var;
-    int byteRegsUsed = 0;  /* Count of byte registers allocated */
-    int wordRegsUsed = 0;  /* Count of word registers allocated */
-    int ix_allocated = 0;    /* IX register allocated flag */
-
-    if (!fnLocals) return;
-
-    /* First pass: allocate IX to struct pointer with highest agg_refs */
-    {
-        struct local_var *best_ix_cand = NULL;
-        int best_agg_refs = 0;
-
-        for (var = fnLocals; var; var = var->next) {
-            /* Skip if not a word/pointer variable */
-            if (var->size != 2) continue;
-            /* Prefer variables with aggregate member accesses */
-            if (var->agg_refs > best_agg_refs) {
-                best_agg_refs = var->agg_refs;
-                best_ix_cand = var;
-            }
-        }
-
-        if (best_ix_cand && best_agg_refs > 0) {
-            best_ix_cand->reg = REG_IX;
-            ix_allocated = 1;
-            
-        }
-    }
-
-    /* Second pass: allocate word registers first (BC must be allocated before B/C) */
-    for (var = fnLocals; var; var = var->next) {
-        /* Skip if already allocated */
-        if (var->reg != REG_NO) continue;
-
-        /* Skip arrays (they must stay on stack) */
-        if (var->is_array) continue;
-
-        /* Skip unused or single-use variables */
-        if (var->ref_count <= 1) continue;
-
-        /* Allocate word registers (BC and IX only)
-         * BC must be allocated before B or C to avoid conflicts
-         * BC' excluded because exx swaps both BC and HL, making HL inaccessible
-         */
-        if (var->size == 2 && wordRegsUsed < 2) {
-            enum register_id regs[] = {REG_BC, REG_IX};
-            /* If IX already allocated to struct pointer, skip it */
-            if (wordRegsUsed == 1 && ix_allocated) {
-                /* No more registers available */
-                continue;
-            }
-            var->reg = regs[wordRegsUsed];
-            if (var->reg == REG_IX) {
-                ix_allocated = 1;
-            }
-            /* Mark B and C as unavailable if BC is allocated */
-            if (var->reg == REG_BC) {
-                byteRegsUsed = 2; /* B and C are now unavailable */
-            }
-            wordRegsUsed++;
-            
-        }
-    }
-
-    /* Third pass: allocate byte registers after all word registers are allocated */
-    for (var = fnLocals; var; var = var->next) {
-        /* Skip if already allocated */
-        if (var->reg != REG_NO) continue;
-
-        /* Skip arrays (they must stay on stack) */
-        if (var->is_array) continue;
-
-        /* Skip unused or single-use variables */
-        if (var->ref_count <= 1) continue;
-
-        /* Allocate byte registers (B, C only for now)
-         * B' and C' disabled until exx codegen is tested
-         * Cannot allocate B or C if BC is already allocated (they conflict)
-         */
-        if (var->size == 1 && byteRegsUsed < 2) {
-            enum register_id regs[] = {REG_B, REG_C};
-            var->reg = regs[byteRegsUsed];
-            byteRegsUsed++;
-            
-        }
-    }
-
-    
+    /* Register allocation is done in pass1 and communicated via AST */
 }
 
 /*
@@ -1091,13 +997,16 @@ assignFrmOff()
     if (fnParams && fnParams[0]) {
         p = fnParams;
         while (*p) {
+            unsigned char preg = REG_NO;
+            struct local_var *var;
+
             /* Skip whitespace and commas */
             while (*p == ' ' || *p == ',') p++;
             if (!*p) break;
 
             /* Read parameter name */
             i = 0;
-            while (*p && *p != ':' && *p != ',' && *p != ' ' && 
+            while (*p && *p != ':' && *p != ',' && *p != ' ' &&
                     i < sizeof(name_buf) - 1) {
                 name_buf[i++] = *p++;
             }
@@ -1108,11 +1017,20 @@ assignFrmOff()
             if (*p == ':') {
                 p++;  /* Skip ':' */
                 i = 0;
-                while (*p && *p != ',' && *p != ' ' && 
+                while (*p && *p != ':' && *p != ',' && *p != ' ' &&
                         i < sizeof(type_buf) - 1) {
                     type_buf[i++] = *p++;
                 }
                 type_buf[i] = '\0';
+            }
+
+            /* Read register allocation if present (format :N where N is digit) */
+            if (*p == ':') {
+                p++;  /* Skip ':' */
+                if (*p >= '0' && *p <= '9') {
+                    preg = *p - '0';
+                    p++;
+                }
             }
 
             /* Add parameter with positive offset */
@@ -1120,6 +1038,11 @@ assignFrmOff()
                 unsigned char size = type_buf[0] ?
                     getSizeFromTN(type_buf) : 2;
                 addParam(name_buf, size, param_offset);
+                /* Apply register allocation from AST */
+                if (preg) {
+                    var = findVar(name_buf);
+                    if (var) var->reg = preg;
+                }
                 /* All params take at least 2 bytes on stack (push af/hl) */
                 param_offset += (size < 2) ? 2 : size;
             }

@@ -50,14 +50,21 @@ F<rettype><hexname><param_count><params...><body>
 - `rettype` - single char size suffix for return type
 - `hexname` - hex-length-prefixed function name
 - `param_count` - 2-digit hex count of parameters
-- `params` - sequence of `d<type><hexname>` declarations
+- `params` - sequence of `d<type><hexname><reg>` declarations with register allocation
 - `body` - statement (usually a Block)
+
+**Parameter format**: `d<type><hexname><reg>`
+- `type` - single char type suffix (b/s/l/p)
+- `hexname` - hex-length-prefixed parameter name
+- `reg` - 2-digit hex register allocation (see Register Allocation below)
 
 Example:
 ```
-Fs05_main02ds04argcdp04argv
+Fs05_main02ds04argc00dp04argv04
 ```
 = `int _main(int argc, char **argv)` - returns short (s), name "_main", 2 params
+- argc: short, no register (00)
+- argv: pointer, allocated to IX (04)
 
 ### Global Variable
 ```
@@ -107,10 +114,15 @@ B<decl_count><stmt_count><decls...><stmts...>
 
 - `decl_count` - 2-digit hex count of local variable declarations
 - `stmt_count` - 2-digit hex count of statements
-- `decls` - sequence of `d<type><hexname>` declarations
+- `decls` - sequence of `d<type><hexname><reg>` declarations with register allocation
 - `stmts` - sequence of statements
 
-Example: `B0203` = block with 2 declarations, 3 statements
+**Local declaration format**: `d<type><hexname><reg>`
+- `type` - single char type suffix (b/s/l/p)
+- `hexname` - hex-length-prefixed variable name
+- `reg` - 2-digit hex register allocation (see Register Allocation below)
+
+Example: `B0203ds01x00ds01y03` = block with 2 declarations (x:short no-reg, y:short in BC), 3 statements
 
 ### If Statement
 ```
@@ -423,3 +435,37 @@ int _main() {
    - Lowercase (b,s,l) = signed
    - Uppercase (B,S,L) = unsigned
    - `p` = pointer (unsigned)
+
+---
+
+## Register Allocation
+
+Register allocation is computed by pass1 (cc1) based on variable usage analysis
+and communicated to pass2 (cc2) via the AST. Each variable declaration includes
+a 2-digit hex register field.
+
+### Register Values
+| Value | Register | Description |
+|-------|----------|-------------|
+| `00`  | -        | No register (on stack) |
+| `01`  | B        | B register (byte) |
+| `02`  | C        | C register (byte) |
+| `03`  | BC       | BC register pair (word) |
+| `04`  | IX       | IX index register (struct pointer) |
+
+### Allocation Strategy
+Pass1 analyzes variable usage to determine optimal register allocation:
+
+1. **IX register**: Allocated to pointer variables with struct member accesses
+   (e.g., `ptr->field`). IX indexing enables efficient `(ix+n)` addressing.
+
+2. **BC register**: Allocated to the most frequently referenced word variable.
+   BC is preserved across function calls on Z80.
+
+3. **B/C registers**: Allocated to frequently referenced byte variables if BC
+   is not already allocated as a pair.
+
+### Benefits
+- Eliminates redundant load/store operations
+- Enables efficient IX-indexed addressing for struct access
+- Pass2 receives allocation decisions and generates appropriate code

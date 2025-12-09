@@ -217,6 +217,10 @@ struct name {
         struct stmt *body;  // function body (for fdef)
     } u;
     kind kind;
+    /* Variable usage tracking for register allocation (computed before AST emit) */
+    unsigned char ref_count;  // reference count (capped at 255)
+    unsigned char agg_refs;   // struct member access count (for IX allocation)
+    unsigned char reg;        // allocated register: 0=none, 1=B, 2=C, 3=BC, 4=IX
 };
 
 /* Storage class specifiers (used in struct name sclass field) */
@@ -227,6 +231,13 @@ struct name {
 #define	SC_VOLATILE	0x10
 #define	SC_AUTO		0x20
 #define	SC_TYPEDEF	0x40
+
+/* Register allocation values (used in struct name reg field) */
+#define REG_NONE    0   /* Not allocated to a register (on stack) */
+#define REG_B       1   /* B register (byte) */
+#define REG_C       2   /* C register (byte) */
+#define REG_BC      3   /* BC register pair (word) */
+#define REG_IX      4   /* IX index register (struct pointer) */
 
 extern struct name *newName(char *name, kind k, struct type *t,
     unsigned char is_tag);
