@@ -538,7 +538,8 @@ dumpScheduled(char fd)
     if (!fnBody) return;
 
     dumpFd = fd;
-    fdprintf(fd, "; Scheduled tree for %s:\n", fnName ? fnName : "?");
+    fdprintf(fd, "; Scheduled tree for %s (ret=%s):\n", fnName ? fnName : "?",
+        fnRettype ? fnRettype : "?");
 
     /* Dump variable stats */
     for (v = fnLocals; v; v = v->next) {

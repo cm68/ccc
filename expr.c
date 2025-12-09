@@ -17,9 +17,9 @@ static struct type *
 constType(long v)
 {
 	if (v < 0)
-		return (v >= -32768) ? inttype : longtype;
-	if (v <= 32767)
-		return inttype;
+		return (v >= -128) ? chartype : (v >= -32768) ? inttype : longtype;
+	if (v <= 255)
+		return uchartype;
 	if (v <= 65535)
 		return ushorttype;
 	return (v <= 2147483647L) ? longtype : ulongtype;
@@ -253,7 +253,6 @@ parseExpr(unsigned char pri, struct stmt *st)
 	int r_ptr = 0;
 	struct type *l_base = NULL;
 	struct type *r_base = NULL;
-	unsigned char is_binary_op = 0;
 
 	switch (cur.type) {   // prefix
 
@@ -1058,8 +1057,10 @@ parseExpr(unsigned char pri, struct stmt *st)
             e->right = e->right->left;  // unwrap to get address
         }
 
-        /* For assignments, insert type conversion if needed */
-        if (is_assignment && e->left && e->right && e->left->type &&
+        /* For plain assignments, insert type conversion if needed.
+         * Compound assignments (|=, +=, etc.) don't need WIDEN - pass2
+         * can handle mixed sizes for the operation itself. */
+        if (op == ASSIGN && e->left && e->right && e->left->type &&
 				e->right->type) {
             struct type *ltype = assign_type ? assign_type : e->left->type;
             struct type *rtype = e->right->type;
@@ -1154,47 +1155,21 @@ parseExpr(unsigned char pri, struct stmt *st)
         }
 
         /*
-         * Widen operands of binary expressions if sizes mismatch
+         * Don't widen operands of binary expressions here - pass2 can
+         * decide if widening is needed based on the operation. WIDEN is
+         * only required for assignments and function call arguments.
          */
-        is_binary_op = (op == PLUS || op == MINUS ||
-				op == STAR || op == DIV || op == MOD || op == AND ||
-				op == OR || op == XOR || op == LSHIFT || op == RSHIFT ||
-				op == LT || op == GT || op == LE || op == GE ||
-				op == EQ || op == NEQ);
-
-        if (is_binary_op && e->left && e->right && e->left->type &&
-				e->right->type) {
-            struct type *ltype = e->left->type;
-            struct type *rtype = e->right->type;
-
-            if (IS_SCALAR(ltype) && IS_SCALAR(rtype) &&
-					ltype->size != rtype->size) {
-                /* Prefer retyping constants over inserting conversions */
-                struct expr **smaller, **larger;
-                struct type *smallt, *larget;
-                if (ltype->size < rtype->size) {
-                    smaller = &e->left; larger = &e->right;
-                    smallt = ltype; larget = rtype;
-                } else {
-                    smaller = &e->right; larger = &e->left;
-                    smallt = rtype; larget = ltype;
-                }
-                if ((*smaller)->op == CONST)
-                    (*smaller)->type = larget;
-                else if ((*larger)->op == CONST)
-                    (*larger)->type = smallt;
-                else {
-                    *smaller = mkConv(*smaller, larget);
-                    (*smaller)->up = e;
-                }
-            }
-        }
 
         // try to determine result type
         if (e->left && e->right) {
             // For ASSIGN and compound assignments, use the saved assign_type
             if (is_assignment && assign_type) {
                 e->type = assign_type;
+            }
+            // Comparisons and logical ops produce boolean (byte) result
+            else if (op == LT || op == GT || op == LE || op == GE ||
+                     op == EQ || op == NEQ || op == LAND || op == LOR) {
+                e->type = uchartype;
             }
             // For other operators, use the larger type as result type
             else if (e->left->type && e->right->type) {

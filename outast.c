@@ -563,7 +563,7 @@ emitExpr(struct expr *e)
 
 	switch (e->op) {
 	case CONST:
-		fdprintf(astFd, "#");
+		fdprintf(astFd, "#%c", typeSfx(e->type));
 		emitHexNum32(e->v);
 		break;
 

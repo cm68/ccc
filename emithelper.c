@@ -475,6 +475,7 @@ void clearA() {
     fnIXAOfs = -1;
     fnABCValid = 0;
     fnAZero = 0;
+    fnARegvar = 0;
     cacheInvalA();
 }
 
@@ -577,7 +578,19 @@ void loadVar(const char *sym, char sz, char docache) {
             fdprintf(2, "  loadVar: branch A\n");
         }
 #endif
-        emit(sz == 1 ? byteLoadTab[v->reg] : wordLoadTab[v->reg]);
+        if (sz == 1) {
+            /* Check if A already has this regvar's value */
+            if ((v->reg == REG_B || v->reg == REG_C) && fnARegvar == v->reg) {
+                /* A already has this regvar - skip load */
+            } else {
+                emit(byteLoadTab[v->reg]);
+                /* Track that A now has this regvar's value */
+                if (v->reg == REG_B || v->reg == REG_C)
+                    fnARegvar = v->reg;
+            }
+        } else {
+            emit(wordLoadTab[v->reg]);
+        }
     } else if (v) {
 #ifdef DEBUG
         if (TRACE(T_VAR)) {

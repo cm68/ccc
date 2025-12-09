@@ -72,6 +72,7 @@ char emitSimplLd(struct expr *e);
 
 /* Expression emission - main function and helpers */
 void emitExpr(struct expr *e);
+void emit2Expr(struct expr *e);  /* New scheduler-driven emit */
 void emitIncDec(struct expr *e);
 void emitAssign(struct expr *e);
 void emitBinop(struct expr *e);

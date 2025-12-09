@@ -48,7 +48,16 @@ execIns(struct expr *e, unsigned char ins)
         emit(S_AL);
         return 1;
     case EO_A_C:
+        if (fnARegvar == REG_C)
+            return 1;  /* Already in A */
         fdprintf(outFd, "\tld a, c\n");
+        fnARegvar = REG_C;
+        return 1;
+    case EO_A_B:
+        if (fnARegvar == REG_B)
+            return 1;  /* Already in A */
+        fdprintf(outFd, "\tld a, b\n");
+        fnARegvar = REG_B;
         return 1;
 
     /* Word loads to HL */
@@ -66,6 +75,14 @@ execIns(struct expr *e, unsigned char ins)
             return 1;  /* Already in HL */
         fdprintf(outFd, "\tld hl, %ld\n", e->value);
         cacheSetHL(e);  /* Cache constant for potential reuse */
+        return 1;
+    case EO_DE_CONST:
+        /* Load constant/symbol address into DE */
+        if (e->symbol) {
+            fdprintf(outFd, "\tld de, %s\n", stripVarPfx(e->symbol));
+        } else {
+            fdprintf(outFd, "\tld de, %ld\n", e->value);
+        }
         return 1;
 
     /* Byte loads to A */
@@ -531,12 +548,18 @@ void emitExpr(struct expr *e)
     /* Handle word OREQ for BC register variable */
     else if (e->op == '1' && e->size == 2 && (e->opflags & OP_REGVAR) &&
              e->cached_var && e->cached_var->reg == REG_BC && e->right) {
-        int rhs_byte = (e->right->op == 'W');  /* WIDEN means high byte is 0 */
+        /* Check if RHS is byte-sized (high byte is implicitly 0) */
+        int rhs_byte = (e->right->size == 1);
         freeExpr(e->left);
-        emitExpr(e->right);  /* Result in HL */
-        emit(S_ALORCC);
-        if (!rhs_byte)
+        emitExpr(e->right);  /* Result in A (byte) or HL (word) */
+        if (rhs_byte) {
+            /* RHS in A, just OR with C */
+            fdprintf(outFd, "\tor c\n\tld c, a\n");
+        } else {
+            /* RHS in HL, OR both bytes */
+            emit(S_ALORCC);
             emit(S_AHORBBA);
+        }
         freeNode(e);
         return;
     }

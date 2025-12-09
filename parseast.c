@@ -68,6 +68,7 @@ char fnIYHLOfs;
 char fnIYHLValid;
 char fnABCValid;
 char fnAZero;
+char fnARegvar;
 
 /* Segment tracking */
 #define SEG_NONE 0
@@ -429,14 +430,13 @@ restart:
 		return e;
 	}
 
-	/* Numeric constant - prefixed with # */
+	/* Numeric constant - prefixed with # and size suffix */
 	if (curchar == '#') {
-		union { long l; int w[2]; } u = {0};
 		nextchar();
 		e = newExpr('C');
-		u.l = e->value = readHex8();
-		/* Check if value fits in 16 bits: high word must be 0 or -1 */
-		e->size = (u.w[1] == 0 || u.w[1] == -1) ? 2 : 4;
+		e->size = getSizeFTStr(curchar);
+		nextchar();
+		e->value = readHex8();
 		return e;
 	}
 
@@ -804,6 +804,7 @@ doFunction(unsigned char rettype)
 	fnIYHLValid = 0;
 	fnABCValid = 0;
 	fnAZero = 0;
+	fnARegvar = 0;
 	cacheInvalAll();
 
 	/* Code generation phases */

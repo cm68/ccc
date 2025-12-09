@@ -1412,7 +1412,11 @@ sched2Deref(struct expr *e)
     else if (e->opflags & OP_REGVAR) {
         if (e->size == 1) {
             e->dest = R_A;
-            addIns(e, EO_A_C);      /* ld a,c for byte BC regvar */
+            /* Check which register the byte regvar is in */
+            if (e->cached_var && e->cached_var->reg == REG_B)
+                addIns(e, EO_A_B);  /* ld a,b */
+            else
+                addIns(e, EO_A_C);  /* ld a,c */
         } else {
             e->dest = R_HL;
             addIns(e, EO_HL_BC);    /* ld h,b; ld l,c */
@@ -1462,9 +1466,13 @@ static void
 sched2Symbol(struct expr *e)
 {
     e->nins = 0;
-    e->dest = R_HL;
-    /* TODO: distinguish global vs local address computation */
-    addIns(e, EO_HL_CONST);  /* For globals, symbol address is just ld hl,symbol */
+    /* Respect dest if already set by parent (e.g., R_DE for left side of +) */
+    if (e->dest == R_DE) {
+        addIns(e, EO_DE_CONST);
+    } else {
+        e->dest = R_HL;
+        addIns(e, EO_HL_CONST);
+    }
 }
 
 /*
@@ -1477,7 +1485,13 @@ sched2Binary(struct expr *e)
 {
     e->nins = 0;
 
-    /* Recurse to schedule children first */
+    /* Set child destinations for word ops: left->DE, right->HL */
+    if (e->size == 2) {
+        if (e->left) e->left->dest = R_DE;
+        if (e->right) e->right->dest = R_HL;
+    }
+
+    /* Recurse to schedule children */
     if (e->left) sched2Expr(e->left);
     if (e->right) sched2Expr(e->right);
 
@@ -1792,6 +1806,20 @@ sched2Expr(struct expr *e)
         addIns(e, EO_NOP);
         break;
 
+    /* Compound assignment operators - specialized by specExpr, emit handles */
+    case '0':   /* <<= */
+    case '6':   /* >>= */
+    case '1':   /* |= */
+    case AST_ANDEQ:  /* &= */
+    case 'P':   /* += */
+    case AST_SUBEQ:  /* -= */
+        /* These may have remaining children if specialize didn't fully handle */
+        if (e->left) sched2Expr(e->left);
+        if (e->right) sched2Expr(e->right);
+        e->dest = (e->size == 1) ? R_A : R_HL;
+        /* Don't add NOP - emit handlers check flags and generate code */
+        break;
+
     default:
         /* Unknown - just recurse and add NOP */
         sched2Expr(e->left);
@@ -1811,7 +1839,15 @@ sched2Stmt(struct stmt *s)
     if (!s) return;
 
     /* Schedule expressions in this statement */
-    if (s->expr)  sched2Expr(s->expr);
+    if (s->expr) {
+        /* For return statements, set dest based on return type */
+        if (s->type == 'R' && fnRettype && getSizeFTStr(fnRettype[0]) == 1) {
+            s->expr->dest = R_A;
+            if (s->expr->op == 'C')
+                s->expr->size = 1;  /* Force byte constant */
+        }
+        sched2Expr(s->expr);
+    }
     if (s->expr2) sched2Expr(s->expr2);
     if (s->expr3) sched2Expr(s->expr3);
 

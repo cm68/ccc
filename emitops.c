@@ -741,14 +741,42 @@ static int emitSignCmp0(struct expr *e)
 /* Word comparison. Returns 1 if handled. */
 static int emitWordCmp(struct expr *e)
 {
-    if ((e->op == 'Q' || e->op == 'n') &&
-        e->right && e->right->op == 'C' && e->right->value == 0) {
+    /* Special case: compare with 0 */
+    if (e->right && e->right->op == 'C' && e->right->value == 0) {
         if (!emitSimplLd(e->left)) emitExpr(e->left);
-        emit(S_AHORL);
-        fnZValid = (e->op == 'Q') ? 1 : 2;
+        switch (e->op) {
+        case 'Q':  /* == 0 */
+        case 'n':  /* != 0 */
+            emit(S_AHORL);
+            fnZValid = (e->op == 'Q') ? 1 : 2;
+            break;
+        case 'L':  /* <= 0: zero or negative */
+            fnDualCmp = 'L';
+            fnDualReg = R_HL;
+            emit(S_AHORL);
+            emit(S_BIT7H);
+            break;
+        case '<':  /* < 0: negative */
+            emit(S_BIT7H);
+            fnZValid = 2;  /* NZ if negative */
+            break;
+        case 'g':  /* >= 0: non-negative */
+            emit(S_BIT7H);
+            fnZValid = 1;  /* Z if non-negative */
+            break;
+        case '>':  /* > 0: positive (non-zero and non-negative) */
+            fnDualCmp = '>';
+            fnDualReg = R_HL;
+            emit(S_AHORL);
+            emit(S_BIT7H);
+            break;
+        }
         freeNode(e);
         return 1;
     }
+    /* General case: promote byte constant to word if needed */
+    if (e->right && e->right->op == 'C' && e->right->size == 1)
+        e->right->size = 2;
     if (!emitSimplLd(e->left)) emitExpr(e->left);
     if (!emitSimplLd(e->right)) emitExpr(e->right);
     emit(S_SBCHLDE);
@@ -848,6 +876,7 @@ void emitBinop(struct expr *e)
         default: break;
         }
         fnZValid = 2;
+        fnARegvar = 0;  /* A no longer holds regvar value */
         return;
     }
 
@@ -856,7 +885,7 @@ void emitBinop(struct expr *e)
         return;
 
     /* Signed comparisons with 0 */
-    if (left_size == 2 && is_cmp && !(e->flags & E_UNSIGNED) &&
+    if (left_size == 2 && is_cmp && e->left && !(e->left->flags & E_UNSIGNED) &&
         e->right && e->right->op == 'C' && e->right->value == 0) {
         if (emitSignCmp0(e))
             return;

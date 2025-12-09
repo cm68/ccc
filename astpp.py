@@ -194,11 +194,13 @@ class ASTParser:
             off = self.read_hex4()
             return f"SP[{off}]"
 
-        # Numeric constant: # followed by 8 hex digits
+        # Numeric constant: # followed by size suffix and 8 hex digits
         if c == '#':
             self.advance()
+            w = self.cur()
+            self.advance()
             v = self.read_hex8()
-            return str(v)
+            return f"{v}:{self.width_name(w)}"
 
         # Inc/Dec: op width expr delta (4 hex) - ASCII encoding (){}
         if c in '(){}':
@@ -504,8 +506,10 @@ class ASTParser:
                             val_str = f"${sym}"
                         elif self.cur() == '#':
                             self.advance()
+                            w = self.cur()  # size suffix
+                            self.advance()
                             val = self.read_hex8()
-                            val_str = str(val)
+                            val_str = f"{val}:{self.width_name(w)}"
                         else:
                             # Raw hex constant (legacy)
                             val = self.read_hex8()

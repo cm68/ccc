@@ -108,6 +108,9 @@ static void emitCond(struct expr *e, unsigned char invert,
          * > 0: negative=false AND zero=false (only positive true) */
         unsigned char have_target = (false_num != 255 || false_lbl ||
                           true_num != 255 || true_lbl);
+        const char *hi = "h", *lo = "l";
+        if (fnDualReg == R_BC) { hi = "b"; lo = "c"; }
+        else if (fnDualReg == R_DE) { hi = "d"; lo = "e"; }
         if (have_target) {
             if (fnDualCmp == 'L') {
                 /* x <= 0: jump to true if NZ (negative), else test zero */
@@ -116,7 +119,7 @@ static void emitCond(struct expr *e, unsigned char invert,
                         emitJump("jp nz,", true_lbl, true_num);
                     else
                         emit(S_JPNZ8);
-                    emit(S_AHORL);
+                    fdprintf(outFd, "\tld a, %s\n\tor %s\n", hi, lo);
                     if (false_num != 255 || false_lbl)
                         emitJump("jp nz,", false_lbl, false_num);
                 } else {
@@ -125,7 +128,7 @@ static void emitCond(struct expr *e, unsigned char invert,
                         emitJump("jp nz,", false_lbl, false_num);
                     else
                         emit(S_JPNZ8);
-                    emit(S_AHORL);
+                    fdprintf(outFd, "\tld a, %s\n\tor %s\n", hi, lo);
                     if (false_num != 255 || false_lbl)
                         emitJump("jp z,", false_lbl, false_num);
                 }
@@ -136,7 +139,7 @@ static void emitCond(struct expr *e, unsigned char invert,
                         emitJump("jp nz,", false_lbl, false_num);
                     else
                         emit(S_JPNZ8);
-                    emit(S_AHORL);
+                    fdprintf(outFd, "\tld a, %s\n\tor %s\n", hi, lo);
                     if (false_num != 255 || false_lbl)
                         emitJump("jp z,", false_lbl, false_num);
                 } else {
@@ -145,13 +148,14 @@ static void emitCond(struct expr *e, unsigned char invert,
                         emitJump("jp nz,", true_lbl, true_num);
                     else
                         emit(S_JPNZ8);
-                    emit(S_AHORL);
+                    fdprintf(outFd, "\tld a, %s\n\tor %s\n", hi, lo);
                     if (false_num != 255 || false_lbl)
                         emitJump("jp nz,", false_lbl, false_num);
                 }
             }
         }
         fnDualCmp = 0;
+        fnDualReg = 0;
     }
     /* Check for carry-based comparison (byte cmp with constant) */
     else if (fnCmpFlag) {
@@ -330,6 +334,29 @@ static void emitStmtTail(struct stmt *s, char tailPos)
                 } else {
                     emitJump(cMeansTrue ? "jp nc," : "jp c,", "no", s->label);
                 }
+            }
+            /* Handle dual-test pattern (<=0 and >0) - byte result but word comparison */
+            else if (fnDualCmp) {
+                /* bit 7 test already emitted by emitExpr */
+                const char *tgt = (s->label2 > 0) ? "el" : "no";
+                const char *hi = "h", *lo = "l";
+                int num = s->label;
+                if (fnDualReg == R_BC) { hi = "b"; lo = "c"; }
+                else if (fnDualReg == R_DE) { hi = "d"; lo = "e"; }
+                if (fnDualCmp == 'L') {
+                    /* x <= 0: negative=true, zero=true */
+                    emitJump("jp nz,", "yes", num);  /* neg -> then */
+                    fdprintf(outFd, "\tld a, %s\n\tor %s\n", hi, lo);
+                    emitJump("jp nz,", tgt, num);  /* pos -> else/end */
+                } else {
+                    /* x > 0: negative=false, zero=false */
+                    emitJump("jp nz,", tgt, num);  /* neg -> else/end */
+                    fdprintf(outFd, "\tld a, %s\n\tor %s\n", hi, lo);
+                    emitJump("jp z,", tgt, num);  /* zero -> else/end */
+                }
+                fnDualCmp = 0;
+                fnDualReg = 0;
+                goto emit_if_body;
             }
             /* Check if this is a comparison (Z=1 means true) vs bitwise (Z=1 means zero/false) */
             else if (fnZValid == 1) {
