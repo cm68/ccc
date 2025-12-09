@@ -417,7 +417,10 @@ void emitAssign(struct expr *e)
         {
             struct local_var *lv = findVar(stripVarPfx(e->left->symbol));
             int skip = 0;
-            if (lv && lv->reg == REG_BC && e->right && e->right->dest == R_BC)
+            /* Skip only if RHS destination is BC and RHS is not a call
+             * (calls always return in HL regardless of dest) */
+            if (lv && lv->reg == REG_BC && e->right && e->right->dest == R_BC &&
+                e->right->op != '@')
                 skip = 1;
             if (!skip)
                 storeVar(e->left->symbol, e->size, 1);
