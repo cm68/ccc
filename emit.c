@@ -31,14 +31,14 @@ static const char *elseGotoTgt(struct stmt *else_branch) {
 /*
  * Emit conditional expression with explicit true/false targets.
  * For AND/OR, recursively handles nested short-circuit logic.
- * true_lbl/true_num: where to jump when condition is true (-1 = fall through)
- * false_lbl/false_num: where to jump when condition is false (-1 = fall through)
+ * true_lbl/true_num: where to jump when condition is true (255 = fall through)
+ * false_lbl/false_num: where to jump when condition is false (255 = fall through)
  */
-static void emitCond(struct expr *e, int invert,
-                     const char *true_lbl, int true_num,
-                     const char *false_lbl, int false_num)
+static void emitCond(struct expr *e, unsigned char invert,
+                     const char *true_lbl, unsigned char true_num,
+                     const char *false_lbl, unsigned char false_num)
 {
-    int e_size;
+    unsigned char e_size;
     if (!e) return;
     e_size = e->size;
 
@@ -52,14 +52,14 @@ static void emitCond(struct expr *e, int invert,
     /* Handle OR (||) */
     if (e->op == 'h') {
         /* For OR: if left is true, skip rest; if false, try right */
-        if (true_lbl || true_num >= 0) {
+        if (true_lbl || true_num != 255) {
             /* Inherited true target - pass it through to both children */
-            emitCond(e->left, invert, true_lbl, true_num, NULL, -1);
+            emitCond(e->left, invert, true_lbl, true_num, NULL, 255);
             emitCond(e->right, invert, true_lbl, true_num, false_lbl, false_num);
         } else {
             /* No inherited target - create our own _or_end_ label */
-            int skip_lbl = fnLblCnt++;
-            emitCond(e->left, invert, "_or_end_", skip_lbl, NULL, -1);
+            unsigned char skip_lbl = newLabel();
+            emitCond(e->left, invert, "_or_end_", skip_lbl, NULL, 255);
             emitCond(e->right, invert, true_lbl, true_num, false_lbl, false_num);
             emit1(F_OREND, skip_lbl);
         }
@@ -73,23 +73,23 @@ static void emitCond(struct expr *e, int invert,
          * So AND with invert behaves like OR: if left is true (inverted), short-circuit */
         if (invert) {
             /* Inverted AND = OR semantics */
-            if (true_num >= 0 || true_lbl) {
-                emitCond(e->left, invert, true_lbl, true_num, NULL, -1);
+            if (true_num != 255 || true_lbl) {
+                emitCond(e->left, invert, true_lbl, true_num, NULL, 255);
                 emitCond(e->right, invert, true_lbl, true_num, false_lbl, false_num);
             } else {
-                int skip_lbl = fnLblCnt++;
-                emitCond(e->left, invert, "_and_end_", skip_lbl, NULL, -1);
+                unsigned char skip_lbl = newLabel();
+                emitCond(e->left, invert, "_and_end_", skip_lbl, NULL, 255);
                 emitCond(e->right, invert, "_and_end_", skip_lbl, false_lbl, false_num);
                 emit1(F_ANDEND, skip_lbl);
             }
         } else {
             /* Normal AND: if left is false, fail immediately; if true, try right */
-            if (false_num >= 0 || false_lbl) {
-                emitCond(e->left, invert, NULL, -1, false_lbl, false_num);
+            if (false_num != 255 || false_lbl) {
+                emitCond(e->left, invert, NULL, 255, false_lbl, false_num);
                 emitCond(e->right, invert, true_lbl, true_num, false_lbl, false_num);
             } else {
-                int skip_lbl = fnLblCnt++;
-                emitCond(e->left, invert, NULL, -1, "_and_end_", skip_lbl);
+                unsigned char skip_lbl = newLabel();
+                emitCond(e->left, invert, NULL, 255, "_and_end_", skip_lbl);
                 emitCond(e->right, invert, true_lbl, true_num, "_and_end_", skip_lbl);
                 emit1(F_ANDEND, skip_lbl);
             }
@@ -106,47 +106,47 @@ static void emitCond(struct expr *e, int invert,
         /* After bit 7, h: NZ = negative
          * <= 0: negative=true OR zero=true
          * > 0: negative=false AND zero=false (only positive true) */
-        int have_target = (false_num >= 0 || (false_num == -1 && false_lbl) ||
-                          true_num >= 0 || (true_num == -1 && true_lbl));
+        unsigned char have_target = (false_num != 255 || false_lbl ||
+                          true_num != 255 || true_lbl);
         if (have_target) {
             if (fnDualCmp == 'L') {
                 /* x <= 0: jump to true if NZ (negative), else test zero */
                 if (!invert) {
-                    if (true_num >= 0 || (true_num == -1 && true_lbl))
+                    if (true_num != 255 || true_lbl)
                         emitJump("jp nz,", true_lbl, true_num);
                     else
                         emit(S_JPNZ8);
                     emit(S_AHORL);
-                    if (false_num >= 0 || (false_num == -1 && false_lbl))
+                    if (false_num != 255 || false_lbl)
                         emitJump("jp nz,", false_lbl, false_num);
                 } else {
                     /* inverted <= is > : false if negative, false if zero */
-                    if (false_num >= 0 || (false_num == -1 && false_lbl))
+                    if (false_num != 255 || false_lbl)
                         emitJump("jp nz,", false_lbl, false_num);
                     else
                         emit(S_JPNZ8);
                     emit(S_AHORL);
-                    if (false_num >= 0 || (false_num == -1 && false_lbl))
+                    if (false_num != 255 || false_lbl)
                         emitJump("jp z,", false_lbl, false_num);
                 }
             } else {  /* fnDualCmp == '>' */
                 /* x > 0: jump to false if NZ (negative), else test zero */
                 if (!invert) {
-                    if (false_num >= 0 || (false_num == -1 && false_lbl))
+                    if (false_num != 255 || false_lbl)
                         emitJump("jp nz,", false_lbl, false_num);
                     else
                         emit(S_JPNZ8);
                     emit(S_AHORL);
-                    if (false_num >= 0 || (false_num == -1 && false_lbl))
+                    if (false_num != 255 || false_lbl)
                         emitJump("jp z,", false_lbl, false_num);
                 } else {
                     /* inverted > is <= : true if negative or zero */
-                    if (true_num >= 0 || (true_num == -1 && true_lbl))
+                    if (true_num != 255 || true_lbl)
                         emitJump("jp nz,", true_lbl, true_num);
                     else
                         emit(S_JPNZ8);
                     emit(S_AHORL);
-                    if (false_num >= 0 || (false_num == -1 && false_lbl))
+                    if (false_num != 255 || false_lbl)
                         emitJump("jp nz,", false_lbl, false_num);
                 }
             }
@@ -157,12 +157,12 @@ static void emitCond(struct expr *e, int invert,
     else if (fnCmpFlag) {
         /* fnCmpFlag == 'c': nc = true (ge, gt)
          * fnCmpFlag == 'C': c = true (lt, le) */
-        int cMeansTrue = (fnCmpFlag == 'C');
+        unsigned char cMeansTrue = (fnCmpFlag == 'C');
         if (invert) cMeansTrue = !cMeansTrue;
 
-        if (false_num >= 0 || (false_num == -1 && false_lbl)) {
+        if (false_num != 255 || false_lbl) {
             emitJump(cMeansTrue ? "jp nc," : "jp c,", false_lbl, false_num);
-        } else if (true_num >= 0 || (true_num == -1 && true_lbl)) {
+        } else if (true_num != 255 || true_lbl) {
             emitJump(cMeansTrue ? "jp c," : "jp nc,", true_lbl, true_num);
         }
         fnCmpFlag = 0;
@@ -170,15 +170,15 @@ static void emitCond(struct expr *e, int invert,
     /* Determine which way to jump based on Z flag semantics and invert */
     else if (fnZValid) {
         /* fnZValid==1: Z=1 means true; fnZValid==2: Z=1 means false */
-        int zMeansTrue = (fnZValid == 1);
+        unsigned char zMeansTrue = (fnZValid == 1);
         if (invert) zMeansTrue = !zMeansTrue;
 
         /* We need to jump to false on false, or true on true */
         /* If Z means true: jp z -> true, jp nz -> false */
         /* If Z means false: jp z -> false, jp nz -> true */
-        if (false_num >= 0 || (false_num == -1 && false_lbl)) {
+        if (false_num != 255 || false_lbl) {
             emitJump(zMeansTrue ? "jp nz," : "jp z,", false_lbl, false_num);
-        } else if (true_num >= 0 || (true_num == -1 && true_lbl)) {
+        } else if (true_num != 255 || true_lbl) {
             emitJump(zMeansTrue ? "jp z," : "jp nz,", true_lbl, true_num);
         }
         fnZValid = 0;
@@ -190,19 +190,19 @@ static void emitCond(struct expr *e, int invert,
             emit(S_AHORL);
         }
         /* Z=1 means zero/false, Z=0 means nonzero/true */
-        /* false_num >= 0 means numbered label, false_num == -1 with false_lbl means named label */
+        /* false_num != 255 means numbered label, false_num == 255 with false_lbl means named label */
         if (invert) {
             /* Inverted: nonzero is false */
-            if (false_num >= 0 || (false_num == -1 && false_lbl)) {
+            if (false_num != 255 || false_lbl) {
                 emitJump("jp nz,", false_lbl, false_num);
-            } else if (true_num >= 0 || (true_num == -1 && true_lbl)) {
+            } else if (true_num != 255 || true_lbl) {
                 emitJump("jp z,", true_lbl, true_num);
             }
         } else {
             /* Normal: zero is false */
-            if (false_num >= 0 || (false_num == -1 && false_lbl)) {
+            if (false_num != 255 || false_lbl) {
                 emitJump("jp z,", false_lbl, false_num);
-            } else if (true_num >= 0 || (true_num == -1 && true_lbl)) {
+            } else if (true_num != 255 || true_lbl) {
                 emitJump("jp nz,", true_lbl, true_num);
             }
         }
@@ -281,10 +281,10 @@ static void emitStmtTail(struct stmt *s, int tailPos)
         if (cond && (cond->op == 'h' || cond->op == 'j' || cond->op == '!')) {
             const char *else_goto = s->else_branch ? elseGotoTgt(s->else_branch) : NULL;
             const char *false_lbl = else_goto ? else_goto : (s->label2 > 0 ? "_if_" : "_if_end_");
-            int false_num = else_goto ? -1 : s->label;
+            unsigned char false_num = else_goto ? 255 : s->label;
 
             /* Use recursive emitCond: fall through on true, jump on false */
-            emitCond(cond, 0, NULL, -1, false_lbl, false_num);
+            emitCond(cond, 0, NULL, 255, false_lbl, false_num);
             skip_else = (else_goto != NULL);
             goto emit_if_body;
         }

@@ -1180,9 +1180,9 @@ static void generateExpr(struct expr *e)
         if (e->right && e->right->right) generateExpr(e->right->right); /* false expr */
 
         /* Allocate labels for branches */
-        e->label = fnLblCnt++;  /* false_label */
+        e->label = newLabel();  /* false_label */
         if (e->right) {
-            e->right->label = fnLblCnt++;  /* end_label */
+            e->right->label = newLabel();  /* end_label */
         }
 
         /* Create jump nodes that will be resolved during emission */

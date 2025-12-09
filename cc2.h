@@ -224,7 +224,7 @@ extern char *fnName;            /* Function name */
 extern char *fnParams;          /* Parameter list string */
 extern char *fnRettype;         /* Return type */
 extern struct stmt *fnBody;     /* Function body statement tree */
-extern int fnLblCnt;            /* For generating unique labels */
+extern unsigned char fnLblCnt;  /* For generating unique labels (0-254, 255=overflow) */
 extern struct local_var *fnLocals;  /* List of local variables */
 extern int fnFrmSize;           /* Total stack frame size in bytes */
 extern int fnCallStk;           /* Call argument bytes to clean at exit */
@@ -247,6 +247,13 @@ extern char fnIYHLValid;        /* 1 if fnIYHLOfs is valid */
 extern char fnABCValid;         /* 1 if A has byte from (bc) */
 extern char fnAZero;            /* 1 if A is known to be 0 */
 
+/* Label generation with overflow check */
+#ifdef DEBUG
+#define newLabel() (fnLblCnt == 255 ? (fdprintf(2, "fatal: label overflow in %s\n", fnName), exit(1), 0) : fnLblCnt++)
+#else
+#define newLabel() (fnLblCnt++)
+#endif
+
 /* Forward declarations from util.c */
 int fdprintf(unsigned char fd, const char *fmt, ...);
 int fdputs(unsigned char fd, const char *s);
@@ -262,6 +269,7 @@ extern int trace;
 
 /* Global variables */
 extern unsigned char outFd;  /* Assembly output file descriptor (from parseast.c) */
+extern int fnIndex;          /* Function index for unique labels (from parseast.c) */
 
 /* Tree construction functions */
 struct expr *newExpr(unsigned char op);

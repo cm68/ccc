@@ -34,6 +34,7 @@ static void addDefSym(const char *name);
 /* Parser state */
 unsigned char outFd = 1;
 static int labelCounter = 0;
+int fnIndex = 0;  /* Function index for unique labels */
 
 #ifdef DEBUG
 /* High water marks for buffer usage stats */
@@ -48,7 +49,7 @@ char *fnName;
 char *fnParams;
 char *fnRettype;
 struct stmt *fnBody;
-int fnLblCnt;
+unsigned char fnLblCnt;
 struct local_var *fnLocals;
 int fnFrmSize;
 int fnCurLbl;
@@ -698,6 +699,10 @@ doFunction(unsigned char rettype)
 	rettype_buf[0] = rettype;
 	rettype_buf[1] = '\0';
 	fnRettype = rettype_buf;
+
+	/* Reset label counter and increment function index for unique labels */
+	labelCounter = 0;
+	fnIndex++;
 
 	strncpy(name_buf, (char *)readName(), sizeof(name_buf) - 1);
 	name_buf[sizeof(name_buf) - 1] = '\0';

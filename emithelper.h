@@ -8,7 +8,7 @@
 
 /* Assembly string emission */
 void emit(unsigned char idx);
-void emit1(unsigned char idx, int val);
+void emit1(unsigned char idx, unsigned char val);
 void emitS(unsigned char idx, const char *s);
 void out(const char *s);
 void emitByteLoad(unsigned char reg);
@@ -84,13 +84,13 @@ void emitIndexDrf(char reg, int ofs, int size, int dest, struct expr *e);
 void emitBCIndir(void);
 
 /* Label/jump optimization */
-void addLabelMap(int from, int to, enum jump_type type);
-int resolveLabel(int label);
-void refLabel(int label);
-int getLabelRef(int label);
+void addLabelMap(unsigned char from, unsigned char to, enum jump_type type);
+unsigned char resolveLabel(unsigned char label);
+void refLabel(unsigned char label);
+unsigned char getLabelRef(unsigned char label);
 void scanExprJumps(struct expr *e);
 void scanLabJumps(struct stmt *s);
-void emitJump(const char *instr, const char *prefix, int label);
+void emitJump(const char *instr, const char *prefix, unsigned char label);
 
 /* Assembly string indices */
 #define S_EXX 0

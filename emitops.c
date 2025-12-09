@@ -586,6 +586,169 @@ static int emitByteCp(struct expr *e)
     return 1;
 }
 
+/* Long (32-bit) binary operation */
+static void emitLongBinop(struct expr *e, int is_cmp)
+{
+    const char *fn = NULL;
+    emitExpr(e->left);
+    emit(S_EXX); emit(S_PUSHHL); emit(S_EXX); emit(S_PUSHHL);
+    emitExpr(e->right);
+    emit(S_HLTODE);
+    emit(S_EXX); emit(S_HLTODE); emit(S_EXX);
+    emit(S_POPHL);
+    emit(S_EXX); emit(S_POPHL); emit(S_EXX);
+    switch (e->op) {
+    case '+': fn = "add32"; break;
+    case '-': fn = "sub32"; break;
+    case '*': fn = "mul3232"; break;
+    case '/': fn = "div3232"; break;
+    case '%': fn = "mod3232"; break;
+    case '&': fn = "and32"; break;
+    case '|': fn = "or32"; break;
+    case '^': fn = "xor32"; break;
+    case 'w': fn = "shr3232"; break;
+    case 'y': fn = "shl3232"; break;
+    case 'Q': fn = "eq3232"; break;
+    case 'n': fn = "ne3232"; break;
+    case '<': fn = "lt3232"; break;
+    case '>': fn = "gt3232"; break;
+    case 'g': fn = "ge3232"; break;
+    case 'L': fn = "le3232"; break;
+    default: break;
+    }
+    if (fn) emitS(FS_CALL, fn);
+    if (is_cmp) fnZValid = 2;
+    freeNode(e);
+}
+
+/* Signed comparison with 0 using bit 7 test. Returns 1 if handled. */
+static int emitSignCmp0(struct expr *e)
+{
+    struct expr *l = e->left;
+    int ofs;
+    const char *sym;
+
+    if (e->op == 'g' || e->op == '<') {
+        switch (l->loc) {
+        case LOC_REG:
+            if (l->reg == R_BC) emit(S_BIT7B);
+            else if (l->reg == R_HL) emit(S_BIT7H);
+            else if (l->reg == R_DE) emit(S_BIT7D);
+            else if (l->reg == R_IX) emit(S_IXHBIT7);
+            else return 0;
+            break;
+        case LOC_STACK:
+            ofs = l->offset + 1;
+            fdprintf(outFd, "\tbit 7, (iy %c %d)\n",
+                     ofs >= 0 ? '+' : '-', ofs >= 0 ? ofs : -ofs);
+            break;
+        case LOC_IX:
+            ofs = l->offset + 1;
+            fdprintf(outFd, "\tbit 7, (ix %c %d)\n",
+                     ofs >= 0 ? '+' : '-', ofs >= 0 ? ofs : -ofs);
+            break;
+        case LOC_MEM:
+            if (!l->left || !l->left->symbol) return 0;
+            sym = stripDollar(l->left->symbol);
+            fdprintf(outFd, "\tld a, (%s+1)\n\tbit 7, a\n", sym);
+            break;
+        default:
+            return 0;
+        }
+        fnZValid = (e->op == 'g') ? 1 : 2;
+    } else if (e->op == 'L' || e->op == '>') {
+        switch (l->loc) {
+        case LOC_REG:
+            if (l->reg == R_BC) { emit(S_BIT7B); fnDualReg = R_BC; }
+            else if (l->reg == R_HL) { emit(S_BIT7H); fnDualReg = R_HL; }
+            else if (l->reg == R_DE) { emit(S_BIT7D); fnDualReg = R_DE; }
+            else return 0;
+            break;
+        case LOC_STACK:
+            ofs = l->offset;
+            fdprintf(outFd, "\tld l, (iy %c %d)\n\tld h, (iy %c %d)\n",
+                     ofs >= 0 ? '+' : '-', ofs >= 0 ? ofs : -ofs,
+                     ofs + 1 >= 0 ? '+' : '-', ofs + 1 >= 0 ? ofs + 1 : -(ofs + 1));
+            emit(S_BIT7H);
+            fnDualReg = R_HL;
+            break;
+        case LOC_MEM:
+            if (!l->left || !l->left->symbol) return 0;
+            sym = stripDollar(l->left->symbol);
+            fdprintf(outFd, "\tld hl, (%s)\n\tbit 7, h\n", sym);
+            fnDualReg = R_HL;
+            break;
+        default:
+            return 0;
+        }
+        fnDualCmp = e->op;
+    } else {
+        return 0;
+    }
+    freeExpr(e->left);
+    freeExpr(e->right);
+    e->left = e->right = NULL;
+    freeNode(e);
+    return 1;
+}
+
+/* Word comparison. Returns 1 if handled. */
+static int emitWordCmp(struct expr *e)
+{
+    if ((e->op == 'Q' || e->op == 'n') &&
+        e->right && e->right->op == 'C' && e->right->value == 0) {
+        if (!emitSimplLd(e->left)) emitExpr(e->left);
+        emit(S_AHORL);
+        fnZValid = (e->op == 'Q') ? 1 : 2;
+        freeNode(e);
+        return 1;
+    }
+    if (!emitSimplLd(e->left)) emitExpr(e->left);
+    if (!emitSimplLd(e->right)) emitExpr(e->right);
+    emit(S_SBCHLDE);
+    switch (e->op) {
+    case 'Q': fnZValid = 1; break;
+    case 'n': fnZValid = 2; break;
+    case 'g': fnCmpFlag = 'c'; break;
+    case '<': fnCmpFlag = 'C'; break;
+    case '>': fnCmpFlag = 'C'; break;
+    case 'L': fnCmpFlag = 'c'; break;
+    }
+    freeNode(e);
+    return 1;
+}
+
+/* Word left shift by constant. Returns 1 if handled. */
+static int emitWordShift(struct expr *e)
+{
+    int i, cnt;
+    struct expr *lft;
+    if (e->op != 'y' || !e->right || e->right->op != 'C' ||
+        e->right->value < 1 || e->right->value > 8)
+        return 0;
+    cnt = e->right->value;
+    lft = e->left;
+    if (lft && lft->op == 'M' && (lft->opflags & OP_REGVAR) &&
+        lft->left && lft->left->op == '$') {
+        struct local_var *v = lft->cached_var;
+        if (v && v->reg == REG_BC) {
+            emit(S_BCHL);
+            freeExpr(lft);
+        } else {
+            emitExpr(e->left);
+            emit(S_EXDEHL);
+        }
+    } else {
+        emitExpr(e->left);
+        emit(S_EXDEHL);
+    }
+    for (i = 0; i < cnt; i++)
+        emit(S_ADDHLHL);
+    freeExpr(e->right);
+    freeNode(e);
+    return 1;
+}
+
 /*
  * Emit binary operation - generates code directly
  */
@@ -596,47 +759,13 @@ void emitBinop(struct expr *e)
     int is_cmp = (e->op == '>' || e->op == '<' || e->op == 'g' ||
                   e->op == 'L' || e->op == 'Q' || e->op == 'n');
 
-    /* Long (32-bit) operations - call helpers */
+    /* Long (32-bit) operations */
     if (left_size == 4 || result_size == 4) {
-        const char *fn = NULL;
-        /* Emit left to HL'HL, right to DE'DE */
-        emitExpr(e->left);
-        emit(S_EXX); emit(S_PUSHHL); emit(S_EXX); emit(S_PUSHHL);
-        emitExpr(e->right);
-        /* Move right from HL'HL to DE'DE */
-        emit(S_HLTODE);
-        emit(S_EXX); emit(S_HLTODE); emit(S_EXX);
-        /* Pop left back to HL'HL */
-        emit(S_POPHL);
-        emit(S_EXX); emit(S_POPHL); emit(S_EXX);
-        switch (e->op) {
-        case '+': fn = "add32"; break;
-        case '-': fn = "sub32"; break;
-        case '*': fn = "mul3232"; break;
-        case '/': fn = "div3232"; break;
-        case '%': fn = "mod3232"; break;
-        case '&': fn = "and32"; break;
-        case '|': fn = "or32"; break;
-        case '^': fn = "xor32"; break;
-        case 'w': fn = "shr3232"; break;
-        case 'y': fn = "shl3232"; break;
-        case 'Q': fn = "eq3232"; break;
-        case 'n': fn = "ne3232"; break;
-        case '<': fn = "lt3232"; break;
-        case '>': fn = "gt3232"; break;
-        case 'g': fn = "ge3232"; break;
-        case 'L': fn = "le3232"; break;
-        default: break;
-        }
-        if (fn)
-            emitS(FS_CALL, fn);
-        if (is_cmp) fnZValid = 2;  /* NZ = true, Z = false */
-        freeNode(e);
+        emitLongBinop(e, is_cmp);
         return;
     }
 
     /* Optimize: ptr + (byte << const) for array indexing */
-    /* Generates: add a,a (shift); ld hl,base; add a,l; ld l,a; jr nc,$+3; inc h */
     if (e->op == '+' && e->left && e->left->op == '$' && e->left->symbol &&
         e->right && e->right->op == 'y' && e->right->left &&
         e->right->left->size == 1 && e->right->right &&
@@ -644,14 +773,11 @@ void emitBinop(struct expr *e)
         e->right->right->value <= 7) {
         int i, cnt = e->right->right->value;
         const char *sym = stripDollar(e->left->symbol);
-        emitExpr(e->right->left);  /* byte index to A */
+        emitExpr(e->right->left);
         for (i = 0; i < cnt; i++)
             out("\tadd a, a\n");
         fdprintf(outFd, "\tld hl, %s\n", sym);
-        out("\tadd a, l\n");
-        out("\tld l, a\n");
-        out("\tjr nc, $+3\n");
-        out("\tinc h\n");
+        out("\tadd a, l\n\tld l, a\n\tjr nc, $+3\n\tinc h\n");
         freeExpr(e->left);
         freeExpr(e->right->right);
         freeNode(e->right);
@@ -659,10 +785,9 @@ void emitBinop(struct expr *e)
         return;
     }
 
-    /* Byte operations with immediate constant (not comparisons or shifts) */
-    /* Only use byte ops if result is also byte, otherwise need word ops */
+    /* Byte operations with immediate constant */
     if (left_size == 1 && result_size == 1 && !is_cmp &&
-        e->op != 'y' && e->op != 'w' &&  /* shifts handled separately */
+        e->op != 'y' && e->op != 'w' &&
         e->right && e->right->op == 'C' &&
         e->right->value >= 0 && e->right->value <= 255) {
         int val = e->right->value & 0xff;
@@ -680,124 +805,24 @@ void emitBinop(struct expr *e)
         return;
     }
 
-    /* Byte comparisons - only if both operand and result are byte */
-    if (left_size == 1 && result_size == 1 && is_cmp && emitByteCp(e)) {
+    /* Byte comparisons */
+    if (left_size == 1 && result_size == 1 && is_cmp && emitByteCp(e))
         return;
-    }
 
-    /* Signed comparisons with 0 - test bit 7 in place */
+    /* Signed comparisons with 0 */
     if (left_size == 2 && is_cmp && !(e->flags & E_UNSIGNED) &&
         e->right && e->right->op == 'C' && e->right->value == 0) {
-        struct expr *l = e->left;
-        int ofs;
-        const char *sym;
-
-        /* >= 0 and < 0: just test bit 7 */
-        if (e->op == 'g' || e->op == '<') {
-            switch (l->loc) {
-            case LOC_REG:
-                if (l->reg == R_BC) emit(S_BIT7B);
-                else if (l->reg == R_HL) emit(S_BIT7H);
-                else if (l->reg == R_DE) emit(S_BIT7D);
-                else if (l->reg == R_IX) emit(S_IXHBIT7);
-                else goto fallback;
-                break;
-            case LOC_STACK:
-                ofs = l->offset + 1;
-                fdprintf(outFd, "\tbit 7, (iy %c %d)\n",
-                         ofs >= 0 ? '+' : '-', ofs >= 0 ? ofs : -ofs);
-                break;
-            case LOC_IX:
-                ofs = l->offset + 1;
-                fdprintf(outFd, "\tbit 7, (ix %c %d)\n",
-                         ofs >= 0 ? '+' : '-', ofs >= 0 ? ofs : -ofs);
-                break;
-            case LOC_MEM:
-                if (!l->left || !l->left->symbol) goto fallback;
-                sym = stripDollar(l->left->symbol);
-                fdprintf(outFd, "\tld a, (%s+1)\n\tbit 7, a\n", sym);
-                break;
-            default:
-                goto fallback;
-            }
-            fnZValid = (e->op == 'g') ? 1 : 2;
-        }
-        /* <= 0 and > 0: emit bit 7 test, let emit.c handle jumps */
-        else if (e->op == 'L' || e->op == '>') {
-            switch (l->loc) {
-            case LOC_REG:
-                if (l->reg == R_BC) {
-                    emit(S_BIT7B);
-                    fnDualReg = R_BC;
-                } else if (l->reg == R_HL) {
-                    emit(S_BIT7H);
-                    fnDualReg = R_HL;
-                } else if (l->reg == R_DE) {
-                    emit(S_BIT7D);
-                    fnDualReg = R_DE;
-                } else goto fallback;
-                break;
-            case LOC_STACK:
-                ofs = l->offset;
-                fdprintf(outFd, "\tld l, (iy %c %d)\n\tld h, (iy %c %d)\n",
-                         ofs >= 0 ? '+' : '-', ofs >= 0 ? ofs : -ofs,
-                         ofs + 1 >= 0 ? '+' : '-', ofs + 1 >= 0 ? ofs + 1 : -(ofs + 1));
-                emit(S_BIT7H);
-                fnDualReg = R_HL;
-                break;
-            case LOC_MEM:
-                if (!l->left || !l->left->symbol) goto fallback;
-                sym = stripDollar(l->left->symbol);
-                fdprintf(outFd, "\tld hl, (%s)\n\tbit 7, h\n", sym);
-                fnDualReg = R_HL;
-                break;
-            default:
-                goto fallback;
-            }
-            fnDualCmp = e->op;  /* 'L' or '>' - emit.c handles the jumps */
-        }
-        else goto fallback;
-
-        freeExpr(e->left);
-        freeExpr(e->right);
-        e->left = e->right = NULL;
-        freeNode(e);
-        return;
-    fallback:
-        ;
-    }
-
-    /* Word comparisons - scheduler places operands for sbc hl,de
-     * < and >=: left->HL, right->DE, compute left-right
-     * > and <=: left->DE, right->HL, compute right-left
-     */
-    if (left_size == 2 && is_cmp) {
-        /* For == and != with 0, just test HL with "ld a, h / or l" */
-        if ((e->op == 'Q' || e->op == 'n') &&
-            e->right && e->right->op == 'C' && e->right->value == 0) {
-            if (!emitSimplLd(e->left)) emitExpr(e->left);
-            emit(S_AHORL);
-            fnZValid = (e->op == 'Q') ? 1 : 2;
-            freeNode(e);
+        if (emitSignCmp0(e))
             return;
-        }
-        if (!emitSimplLd(e->left)) emitExpr(e->left);
-        if (!emitSimplLd(e->right)) emitExpr(e->right);
-        emit(S_SBCHLDE);
-        switch (e->op) {
-        case 'Q': fnZValid = 1; break;       /* EQ: Z true */
-        case 'n': fnZValid = 2; break;       /* NE: NZ true */
-        case 'g': fnCmpFlag = 'c'; break;    /* GE: left-right, NC true */
-        case '<': fnCmpFlag = 'C'; break;    /* LT: left-right, C true */
-        case '>': fnCmpFlag = 'C'; break;    /* GT: right-left, C true */
-        case 'L': fnCmpFlag = 'c'; break;    /* LE: right-left, NC true */
-        }
-        freeNode(e);
+    }
+
+    /* Word comparisons */
+    if (left_size == 2 && is_cmp) {
+        emitWordCmp(e);
         return;
     }
 
-    /* Byte left shift by constant 1-7: inline add a, a */
-    /* Only for byte result - word result handled by ptr+byte pattern above */
+    /* Byte left shift by constant */
     if (left_size == 1 && result_size == 1 && e->op == 'y' &&
         e->right && e->right->op == 'C' &&
         e->right->value >= 1 && e->right->value <= 7) {
@@ -810,7 +835,7 @@ void emitBinop(struct expr *e)
         return;
     }
 
-    /* Byte binary ops - emit left to A, save to E, emit right to A, call helper */
+    /* Byte binary ops */
     if (left_size == 1) {
         const char *fn = NULL;
         emitExpr(e->left);
@@ -820,45 +845,22 @@ void emitBinop(struct expr *e)
         case '*': fn = "bmul"; break;
         case '/': fn = "bdiv"; break;
         case '%': fn = "bmod"; break;
-        case 'w': fn = "brsh"; break;  /* right shift */
-        case 'y': fn = "blsh"; break;  /* left shift */
+        case 'w': fn = "brsh"; break;
+        case 'y': fn = "blsh"; break;
         default: break;
         }
-        if (fn)
-            emitS(FS_CALL, fn);
+        if (fn) emitS(FS_CALL, fn);
         return;
     }
 
-    /* Word left shift by constant 1-8: inline as add hl, hl */
-    if (e->op == 'y' && e->right && e->right->op == 'C' &&
-        e->right->value >= 1 && e->right->value <= 8) {
-        int i, cnt = e->right->value;
-        struct expr *lft = e->left;
-        /* Optimize: load register variable directly to HL */
-        if (lft && lft->op == 'M' && (lft->opflags & OP_REGVAR) &&
-            lft->left && lft->left->op == '$') {
-            struct local_var *v = lft->cached_var;
-            if (v && v->reg == REG_BC) {
-                emit(S_BCHL);
-                freeExpr(lft);
-            } else goto shift_generic;
-        } else {
-shift_generic:
-            emitExpr(e->left);  /* Value to DE (scheduled dest) */
-            emit(S_EXDEHL);  /* DE->HL */
-        }
-        for (i = 0; i < cnt; i++)
-            emit(S_ADDHLHL);
-        freeExpr(e->right);
-        freeNode(e);
+    /* Word left shift by constant */
+    if (emitWordShift(e))
         return;
-    }
 
-    /* Word binary ops - scheduler places left->DE, right->HL */
+    /* Word binary ops */
     if (!emitSimplLd(e->left)) emitExpr(e->left);
     if (!emitSimplLd(e->right)) emitExpr(e->right);
 
-    /* DE=left, HL=right; most ops need HL=left so swap */
     switch (e->op) {
     case '+': emit(S_ADDHLDE); break;
     case '-': emit(S_EXDEHL); emit(S_SBCHLDE); break;

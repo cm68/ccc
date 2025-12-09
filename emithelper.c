@@ -151,8 +151,22 @@ void emit(unsigned char idx) {
     fdputs(outFd, asmstr[idx]);
 }
 
-void emit1(unsigned char idx, int val) {
-    fdprintf(outFd, fmtstr[idx], val);
+void emit1(unsigned char idx, unsigned char val) {
+    /* For label format strings (F_IFEND through F_TERNE), include fnIndex */
+    if (idx >= F_IFEND && idx <= F_TERNE) {
+        static const char *labfmt[] = {
+            "_if_end_%d_%d:\n",    /* F_IFEND */
+            "_if_then_%d_%d:\n",   /* F_IFTHEN */
+            "_if_%d_%d:\n",        /* F_IF */
+            "_or_end_%d_%d:\n",    /* F_OREND */
+            "_and_end_%d_%d:\n",   /* F_ANDEND */
+            "_tern_false_%d_%d:\n",/* F_TERNF */
+            "_tern_end_%d_%d:\n"   /* F_TERNE */
+        };
+        fdprintf(outFd, labfmt[idx - F_IFEND], fnIndex, val);
+    } else {
+        fdprintf(outFd, fmtstr[idx], val);
+    }
 }
 
 void emitS(unsigned char idx, const char *s) {
@@ -328,7 +342,7 @@ void storeWordIX(char offset) {
 static struct labelMap labelMap[MAX_LABELS];
 int lblMapCnt = 0;
 
-void addLabelMap(int from, int to, enum jump_type type) {
+void addLabelMap(unsigned char from, unsigned char to, enum jump_type type) {
     if (lblMapCnt < MAX_LABELS) {
         labelMap[lblMapCnt].label = from;
         labelMap[lblMapCnt].target = to;
@@ -339,7 +353,7 @@ void addLabelMap(int from, int to, enum jump_type type) {
 }
 
 /* Find or create label entry, return index */
-static int findLabel(int label) {
+static int findLabel(unsigned char label) {
     int i;
     for (i = 0; i < lblMapCnt; i++) {
         if (labelMap[i].label == label) return i;
@@ -356,13 +370,13 @@ static int findLabel(int label) {
 }
 
 /* Increment reference count for a label */
-void refLabel(int label) {
+void refLabel(unsigned char label) {
     int idx = findLabel(label);
     if (idx >= 0) labelMap[idx].refcnt++;
 }
 
 /* Get reference count for a label */
-int getLabelRef(int label) {
+unsigned char getLabelRef(unsigned char label) {
     int i;
     for (i = 0; i < lblMapCnt; i++) {
         if (labelMap[i].label == label) return labelMap[i].refcnt;
@@ -370,13 +384,13 @@ int getLabelRef(int label) {
     return 0;
 }
 
-int resolveLabel(int label) {
+unsigned char resolveLabel(unsigned char label) {
     int i, j;
-    int visited[100];
-    int vcnt = 0;
-    int current = label;
+    unsigned char visited[64];
+    unsigned char vcnt = 0;
+    unsigned char current = label;
 
-    while (vcnt < 100) {
+    while (vcnt < 64) {
         for (j = 0; j < vcnt; j++) {
             if (visited[j] == current) return current;
         }
@@ -423,13 +437,13 @@ void scanLabJumps(struct stmt *s) {
     if (s->next) scanLabJumps(s->next);
 }
 
-void emitJump(const char *instr, const char *prefix, int label) {
-    if (label < 0) {
-        /* label < 0 means prefix is the complete label symbol */
+void emitJump(const char *instr, const char *prefix, unsigned char label) {
+    if (label == 255) {
+        /* label == 255 means prefix is the complete label symbol */
         fdprintf(outFd, "\t%s %s\n", instr, prefix);
     } else {
-        int resolved = resolveLabel(label);
-        fdprintf(outFd, "\t%s %s%d\n", instr, prefix, resolved);
+        unsigned char resolved = resolveLabel(label);
+        fdprintf(outFd, "\t%s %s%d_%d\n", instr, prefix, fnIndex, resolved);
     }
 }
 
