@@ -455,10 +455,21 @@ dumpSchedStmt(struct stmt *s, int indent)
 void
 dumpScheduled(int fd)
 {
+    struct local_var *v;
+
     if (!fnBody) return;
 
     dumpFd = fd;
     fdprintf(fd, "; Scheduled tree for %s:\n", fnName ? fnName : "?");
+
+    /* Dump variable lifetime stats */
+    for (v = fnLocals; v; v = v->next) {
+        fdprintf(fd, ";   %s: ofs=%d sz=%d ref=%d agg=%d life=%d-%d reg=%d%s\n",
+            v->name, v->offset, v->size, v->ref_count, v->agg_refs,
+            v->first_label, v->last_label, v->reg,
+            v->is_param ? " (param)" : "");
+    }
+
     dumpSchedStmt(fnBody, 0);
 }
 

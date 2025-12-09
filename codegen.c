@@ -119,8 +119,8 @@ addVar(const char *name, unsigned char size, int is_param, int offset, int is_ar
     var->offset = is_param ? offset : -(fnFrmSize + size);
     var->is_param = is_param;
     var->is_array = is_array;
-    var->first_label = 255;
-    var->last_label = 255;
+    var->first_label = 255;  /* 255 = not yet used */
+    var->last_label = 0;     /* 0 = not yet used */
     var->ref_count = 0;
     var->agg_refs = 0;
     var->reg = REG_NO;
@@ -151,9 +151,7 @@ updVarLife(const char *name)
                 var->first_label = fnCurLbl;
             }
             /* Always update last use (high water mark) */
-            if (fnCurLbl > var->last_label) {
-                var->last_label = fnCurLbl;
-            }
+            var->last_label = fnCurLbl;
             /* Increment reference count */
             var->ref_count++;
             return;
