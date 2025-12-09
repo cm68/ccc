@@ -22,19 +22,227 @@
  *   4. Emit call instruction (operates on SECONDARY and PRIMARY)
  */
 static int exprCount = 0;
+/*
+ * Execute a single scheduled instruction from e->ins[]
+ * Returns 1 if instruction was handled, 0 if not
+ */
+static int
+execIns(struct expr *e, unsigned char ins)
+{
+    switch (ins) {
+    case EO_NOP:
+        return 1;
+
+    /* Register moves */
+    case EO_HL_BC:
+        emit(S_BCHL);
+        return 1;
+    case EO_HL_DE:
+    case EO_DE_HL:
+        emit(S_EXDEHL);
+        return 1;
+    case EO_BC_HL:
+        fdprintf(outFd, "\tld b, h\n\tld c, l\n");
+        return 1;
+    case EO_A_L:
+        emit(S_AL);
+        return 1;
+    case EO_A_C:
+        fdprintf(outFd, "\tld a, c\n");
+        return 1;
+
+    /* Word loads to HL */
+    case EO_HL_IYW:
+        loadWordIY(e->offset);
+        return 1;
+    case EO_HL_MEM:
+        if (e->left && e->left->symbol) {
+            fdprintf(outFd, "\tld hl, (%s)\n", stripVarPfx(e->left->symbol));
+            clearHL();
+        }
+        return 1;
+    case EO_HL_CONST:
+        if (cacheFindWord(e) == 'H')
+            return 1;  /* Already in HL */
+        fdprintf(outFd, "\tld hl, %ld\n", e->value);
+        cacheSetHL(e);  /* Cache constant for potential reuse */
+        return 1;
+
+    /* Byte loads to A */
+    case EO_A_IY:
+        loadByteIY(e->offset, 0);
+        return 1;
+    case EO_A_MEM:
+        if (e->left && e->left->symbol) {
+            fdprintf(outFd, "\tld a, (%s)\n", stripVarPfx(e->left->symbol));
+            clearA();
+        }
+        return 1;
+    case EO_A_CONST:
+        if ((e->value & 0xff) == 0) {
+            if (!fnAZero) {
+                emit(S_XORA);
+                fnAZero = 1;
+            }
+        } else {
+            fdprintf(outFd, "\tld a, %ld\n", e->value & 0xff);
+            fnAZero = 0;
+        }
+        clearA();
+        return 1;
+    case EO_A_BC_IND:
+        fdprintf(outFd, "\tld a, (bc)\n");
+        return 1;
+    case EO_A_IX:
+        emitIndexDrf('x', e->offset, 1, R_A, NULL);
+        return 1;
+
+    /* Word stores from HL */
+    case EO_IYW_HL:
+        storeWordIY(e->offset);
+        return 1;
+
+    /* Word stores from BC/DE to global (ED-prefixed) */
+    case EO_MEM_BC:
+        if (e->left && e->left->symbol) {
+            fdprintf(outFd, "\tld (%s), bc\n", stripVarPfx(e->left->symbol));
+        }
+        return 1;
+    case EO_MEM_DE:
+        if (e->left && e->left->symbol) {
+            fdprintf(outFd, "\tld (%s), de\n", stripVarPfx(e->left->symbol));
+        }
+        return 1;
+
+    /* Byte stores from A */
+    case EO_IY_A:
+        storeByteIY(e->offset, 0);
+        return 1;
+
+    /* Arithmetic */
+    case EO_ADD_HL_DE:
+        emit(S_ADDHLDE);
+        return 1;
+    case EO_ADD_HL_BC:
+        emit(S_ADDHLBC);
+        return 1;
+    case EO_SBC_HL_DE:
+        emit(S_SBCHLDE);
+        return 1;
+    case EO_ADD_IX_DE:
+        fdprintf(outFd, "\tadd ix, de\n");
+        return 1;
+    case EO_ADD_IX_BC:
+        fdprintf(outFd, "\tadd ix, bc\n");
+        return 1;
+    case EO_IX_CONST:
+        fdprintf(outFd, "\tld ix, %d\n", e->value);
+        return 1;
+    case EO_DE_IX:
+        fdprintf(outFd, "\tpush ix\n\tpop de\n");
+        return 1;
+    case EO_INC_HL:
+        emit(S_INCHL);
+        return 1;
+    case EO_DEC_HL:
+        emit(S_DECHL);
+        return 1;
+
+    /* Type conversions */
+    case EO_WIDEN:
+        fdprintf(outFd, "\tld l, a\n\tld h, 0\n");
+        return 1;
+    case EO_SEXT:
+        fdprintf(outFd, "\tld l, a\n\trla\n\tsbc a, a\n\tld h, a\n");
+        return 1;
+
+    /* Stack ops */
+    case EO_PUSH_HL:
+        emit(S_PUSHHL);
+        return 1;
+    case EO_POP_HL:
+        emit(S_POPHL);
+        return 1;
+    case EO_PUSH_DE:
+        emit(S_PUSHDE);
+        return 1;
+    case EO_POP_DE:
+        emit(S_POPDE);
+        return 1;
+
+    default:
+        return 0;  /* Not handled */
+    }
+}
+
+/*
+ * Check if expression has simple scheduled instructions we can execute
+ * Returns 1 if fully handled, 0 if should use old emit path
+ */
+static int
+trySched(struct expr *e)
+{
+    int i;
+
+    /* Must have scheduled instructions */
+    if (e->nins == 0) return 0;
+
+    /* Handle simple DEREF of variable: (M $var) */
+    if (e->op == 'M' && e->left && e->left->op == '$' && !e->right) {
+        /* Simple variable load - execute scheduled instructions */
+        for (i = 0; i < e->nins; i++) {
+            if (!execIns(e, e->ins[i])) {
+                return 0;
+            }
+        }
+        /* Free the child $ node */
+        freeExpr(e->left);
+        e->left = NULL;
+        return 1;
+    }
+
+    /* Handle constants */
+    if (e->op == 'C') {
+        for (i = 0; i < e->nins; i++) {
+            if (!execIns(e, e->ins[i])) {
+                return 0;
+            }
+        }
+        return 1;
+    }
+
+    /* Handle other leaf nodes */
+    if (e->left || e->right) return 0;
+
+    /* Execute all scheduled instructions */
+    for (i = 0; i < e->nins; i++) {
+        if (!execIns(e, e->ins[i])) {
+            return 0;  /* Instruction not handled */
+        }
+    }
+
+    return 1;  /* Fully handled */
+}
+
 void emitExpr(struct expr *e)
 {
     if (!e) return;
     exprCount++;
 #ifdef DEBUG
     if (TRACE(T_EXPR)) {
-        fdprintf(2, "emitExpr: %d calls, op=%c (0x%x)\n", exprCount, e->op, e->op);
+        fdprintf(2, "emitExpr: %d calls, op=%c (0x%x) nins=%d\n", exprCount, e->op, e->op, e->nins);
     }
     if (exprCount > 100000) {
         fdprintf(2, "emitExpr: exceeded 100000 calls, op=%c\n", e->op);
         exit(1);
     }
 #endif
+
+    /* Try new scheduled emit for simple cases */
+    if (trySched(e)) {
+        freeNode(e);
+        return;
+    }
 
     /* Handle BC indirect load with caching - use opflags */
     if (e->op == 'M' && (e->opflags & OP_BCINDIR)) {
@@ -50,6 +258,16 @@ void emitExpr(struct expr *e)
     }
     /* Handle ASSIGN - use op check */
     else if (e->op == '=') {
+        /* Check for scheduled direct store (EO_MEM_BC, etc) */
+        if (e->nins > 0 && (e->ins[0] == EO_MEM_BC || e->ins[0] == EO_MEM_DE)) {
+            int i;
+            for (i = 0; i < e->nins; i++)
+                execIns(e, e->ins[i]);
+            freeExpr(e->right);
+            freeExpr(e->left);
+            freeNode(e);
+            return;
+        }
 #ifdef DEBUG
         if (TRACE(T_EXPR)) {
             fdprintf(2, "  calling emitAssign\n");
@@ -377,6 +595,224 @@ void emitExpr(struct expr *e)
     }
 
     /* Free this node (children already freed by recursive emit calls above) */
+    xfree(e->cleanup_block);
+    if (e->jump) freeJump(e->jump);
+    free(e);
+}
+
+/*
+ * New emit: Execute scheduled instructions
+ * This is the "dumb" emit that just does what the scheduler told it to.
+ */
+void emit2Expr(struct expr *e)
+{
+    int i;
+
+    if (!e) return;
+
+    /* Process children first (post-order) */
+    emit2Expr(e->left);
+    emit2Expr(e->right);
+
+    /* Execute scheduled instructions */
+    for (i = 0; i < e->nins; i++) {
+        switch (e->ins[i]) {
+        case EO_NOP:
+            break;
+
+        /* Register-to-register moves */
+        case EO_HL_BC:
+            emit(S_BCHL);
+            break;
+        case EO_HL_DE:
+        case EO_DE_HL:
+            emit(S_EXDEHL);
+            break;
+        case EO_BC_HL:
+            fdprintf(outFd, "\tld b, h\n\tld c, l\n");
+            break;
+        case EO_A_L:
+            emit(S_AL);
+            break;
+        case EO_A_C:
+            fdprintf(outFd, "\tld a, c\n");
+            break;
+        case EO_L_A:
+            fdprintf(outFd, "\tld l, a\n\tld h, 0\n");
+            break;
+
+        /* Memory loads - word to HL */
+        case EO_HL_IYW:
+            loadWordIY(e->offset);
+            break;
+        case EO_HL_MEM:
+            if (e->left && e->left->symbol) {
+                const char *sym = stripVarPfx(e->left->symbol);
+                fdprintf(outFd, "\tld hl, (%s)\n", sym);
+            }
+            break;
+        case EO_HL_CONST:
+            fdprintf(outFd, "\tld hl, %ld\n", e->value);
+            break;
+
+        /* Memory loads - byte to A */
+        case EO_A_IY:
+            loadByteIY(e->offset, 0);
+            break;
+        case EO_A_MEM:
+            if (e->left && e->left->symbol) {
+                const char *sym = stripVarPfx(e->left->symbol);
+                fdprintf(outFd, "\tld a, (%s)\n", sym);
+            }
+            break;
+        case EO_A_CONST:
+            if ((e->value & 0xff) == 0) {
+                emit(S_XORA);
+            } else {
+                fdprintf(outFd, "\tld a, %ld\n", e->value & 0xff);
+            }
+            break;
+        case EO_A_BC_IND:
+            fdprintf(outFd, "\tld a, (bc)\n");
+            break;
+
+        /* Memory stores - word from HL */
+        case EO_IYW_HL:
+            storeWordIY(e->offset);
+            break;
+        case EO_MEM_HL:
+            if (e->left && e->left->left && e->left->left->symbol) {
+                const char *sym = stripVarPfx(e->left->left->symbol);
+                fdprintf(outFd, "\tld (%s), hl\n", sym);
+            }
+            break;
+        case EO_MEM_BC:
+            /* For (= $glob (M $bcvar)), e->left is $glob directly */
+            if (e->left && e->left->symbol) {
+                const char *sym = stripVarPfx(e->left->symbol);
+                fdprintf(outFd, "\tld (%s), bc\n", sym);
+            }
+            break;
+        case EO_MEM_DE:
+            if (e->left && e->left->symbol) {
+                const char *sym = stripVarPfx(e->left->symbol);
+                fdprintf(outFd, "\tld (%s), de\n", sym);
+            }
+            break;
+
+        /* Memory stores - byte from A */
+        case EO_IY_A:
+            storeByteIY(e->offset, 0);
+            break;
+        case EO_MEM_A:
+            if (e->left && e->left->left && e->left->left->symbol) {
+                const char *sym = stripVarPfx(e->left->left->symbol);
+                fdprintf(outFd, "\tld (%s), a\n", sym);
+            }
+            break;
+
+        /* Word arithmetic */
+        case EO_ADD_HL_DE:
+            emit(S_ADDHLDE);
+            break;
+        case EO_ADD_HL_BC:
+            emit(S_ADDHLBC);
+            break;
+        case EO_SBC_HL_DE:
+            emit(S_SBCHLDE);
+            break;
+
+        /* Byte arithmetic */
+        case EO_ADD_A_N:
+            if (e->right && e->right->op == 'C') {
+                fdprintf(outFd, "\tadd a, %ld\n", e->right->value & 0xff);
+            }
+            break;
+        case EO_SUB_A_N:
+            if (e->right && e->right->op == 'C') {
+                fdprintf(outFd, "\tsub %ld\n", e->right->value & 0xff);
+            }
+            break;
+        case EO_AND_A_N:
+            if (e->right && e->right->op == 'C') {
+                fdprintf(outFd, "\tand %ld\n", e->right->value & 0xff);
+            }
+            break;
+        case EO_OR_A_N:
+            if (e->right && e->right->op == 'C') {
+                fdprintf(outFd, "\tor %ld\n", e->right->value & 0xff);
+            }
+            break;
+        case EO_XOR_A_N:
+            if (e->right && e->right->op == 'C') {
+                fdprintf(outFd, "\txor %ld\n", e->right->value & 0xff);
+            }
+            break;
+        case EO_CP_N:
+            if (e->right && e->right->op == 'C') {
+                fdprintf(outFd, "\tcp %ld\n", e->right->value & 0xff);
+            }
+            break;
+
+        /* Inc/Dec */
+        case EO_INC_HL:
+            emit(S_INCHL);
+            break;
+        case EO_DEC_HL:
+            emit(S_DECHL);
+            break;
+        case EO_INC_A:
+            fdprintf(outFd, "\tinc a\n");
+            break;
+        case EO_DEC_A:
+            fdprintf(outFd, "\tdec a\n");
+            break;
+
+        /* Flag tests */
+        case EO_OR_A:
+            emit(S_ORA);
+            break;
+        case EO_AHORL:
+            emit(S_AHORL);
+            break;
+
+        /* Stack operations */
+        case EO_PUSH_HL:
+            emit(S_PUSHHL);
+            break;
+        case EO_PUSH_DE:
+            emit(S_PUSHDE);
+            break;
+        case EO_POP_HL:
+            emit(S_POPHL);
+            break;
+        case EO_POP_DE:
+            emit(S_POPDE);
+            break;
+
+        /* Type conversions */
+        case EO_WIDEN:
+            fdprintf(outFd, "\tld l, a\n\tld h, 0\n");
+            break;
+        case EO_SEXT:
+            /* Sign extend A to HL: ld l,a; rla; sbc a,a; ld h,a */
+            fdprintf(outFd, "\tld l, a\n\trla\n\tsbc a, a\n\tld h, a\n");
+            break;
+
+        /* Calls */
+        case EO_CALL:
+            if (e->left && e->left->symbol) {
+                fdprintf(outFd, "\tcall %s\n", stripVarPfx(e->left->symbol));
+            }
+            break;
+
+        default:
+            /* Unknown instruction - skip */
+            break;
+        }
+    }
+
+    /* Free this node */
     xfree(e->cleanup_block);
     if (e->jump) freeJump(e->jump);
     free(e);

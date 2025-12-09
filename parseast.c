@@ -47,7 +47,7 @@ char *fnName;
 char *fnParams;
 char *fnRettype;
 struct stmt *fnBody;
-unsigned char fnLblCnt;
+unsigned short fnLblCnt;
 struct local_var *fnLocals;
 char fnFrmSize;
 char fnDESaveCnt;
@@ -820,9 +820,9 @@ doFunction(unsigned char rettype)
 #endif
 	setOpFlags();
 #ifdef DEBUG
-	if (TRACE(T_PARSE)) fdprintf(2, "  dumpFnAst\n");
+	if (TRACE(T_PARSE)) fdprintf(2, "  sched2Code\n");
 #endif
-	dumpFnAst(outFd);
+	sched2Code();  /* New scheduler - populates e->ins[] */
 #ifdef DEBUG
 	if (TRACE(T_PARSE)) fdprintf(2, "  scheduleCode\n");
 #endif

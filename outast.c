@@ -200,43 +200,116 @@ allocRegs(struct stmt *body)
 	struct name *n, *best;
 	int bc_used = 0;  /* BC allocated? (precludes B and C) */
 	int b_used = 0, c_used = 0;
+	int ix_used = 0;
+	int has_reg_hint = 0;
 
 	if (!body || !body->locals)
 		return;
 
-	/* First pass: allocate IX to struct pointer with highest agg_refs */
-	best = NULL;
+	/* Check if any locals have explicit 'register' storage class */
 	for (n = body->locals; n; n = n->next) {
-		if (n->type && (n->type->flags & TF_POINTER) &&
-		    n->agg_refs > 0 && n->ref_count > 1) {
-			if (!best || n->agg_refs > best->agg_refs)
-				best = n;
-		}
-	}
-	if (best) {
-		best->reg = REG_IX;
+		if (n->sclass & SC_REGISTER)
+			has_reg_hint = 1;
 	}
 
-	/* Second pass: allocate BC to word variable with highest ref_count */
-	best = NULL;
-	for (n = body->locals; n; n = n->next) {
-		if (n->reg != REG_NONE)
-			continue;  /* already allocated */
-		if (n->type && (n->type->flags & (TF_ARRAY | TF_AGGREGATE)))
-			continue;  /* arrays/structs stay on stack */
-		if (n->ref_count <= 1)
-			continue;  /* not worth it */
-		if (n->type && n->type->size == 2) {
-			if (!best || n->ref_count > best->ref_count)
-				best = n;
+	/* First: allocate register-marked variables with preferences */
+	if (has_reg_hint) {
+		int has_reg_byte = 0;
+		/* Check if any register-marked bytes exist */
+		for (n = body->locals; n; n = n->next) {
+			if ((n->sclass & SC_REGISTER) && n->type &&
+			    n->type->size == 1)
+				has_reg_byte = 1;
+		}
+		/* Pass 1: pointers prefer IX */
+		for (n = body->locals; n; n = n->next) {
+			if (!(n->sclass & SC_REGISTER) || n->reg != REG_NONE)
+				continue;
+			if (n->type && (n->type->flags & TF_POINTER) && !ix_used) {
+				n->reg = REG_IX;
+				ix_used = 1;
+			}
+		}
+		/* Pass 2: words - prefer IX if bytes need B/C, else BC */
+		for (n = body->locals; n; n = n->next) {
+			if (!(n->sclass & SC_REGISTER) || n->reg != REG_NONE)
+				continue;
+			if (n->type && n->type->size == 2) {
+				if (has_reg_byte && !ix_used) {
+					n->reg = REG_IX;
+					ix_used = 1;
+				} else if (!bc_used) {
+					n->reg = REG_BC;
+					bc_used = 1;
+				} else if (!ix_used) {
+					n->reg = REG_IX;
+					ix_used = 1;
+				}
+			}
+		}
+		/* Pass 3: bytes get B then C */
+		for (n = body->locals; n; n = n->next) {
+			if (!(n->sclass & SC_REGISTER) || n->reg != REG_NONE)
+				continue;
+			if (n->type && n->type->size == 1 && !bc_used) {
+				if (!b_used) {
+					n->reg = REG_B;
+					b_used = 1;
+				} else if (!c_used) {
+					n->reg = REG_C;
+					c_used = 1;
+				}
+			}
 		}
 	}
-	if (best) {
-		best->reg = REG_BC;
-		bc_used = 1;
+
+	/* Second: allocate remaining registers to unmarked vars by usage */
+
+	/* IX to struct pointer with highest agg_refs */
+	if (!ix_used) {
+		best = NULL;
+		for (n = body->locals; n; n = n->next) {
+			if (n->reg != REG_NONE)
+				continue;
+			if (n->type && (n->type->flags & TF_POINTER) &&
+			    n->agg_refs > 0 && n->ref_count > 1) {
+				if (!best || n->agg_refs > best->agg_refs)
+					best = n;
+			}
+		}
+		if (best) {
+			best->reg = REG_IX;
+			ix_used = 1;
+		}
 	}
 
-	/* Third pass: allocate B and C to byte variables (if BC not used) */
+	/* BC (or IX if BC taken) to word variable with highest ref_count */
+	if (!bc_used || !ix_used) {
+		best = NULL;
+		for (n = body->locals; n; n = n->next) {
+			if (n->reg != REG_NONE)
+				continue;
+			if (n->type && (n->type->flags & (TF_ARRAY | TF_AGGREGATE)))
+				continue;
+			if (n->ref_count <= 1)
+				continue;
+			if (n->type && n->type->size == 2) {
+				if (!best || n->ref_count > best->ref_count)
+					best = n;
+			}
+		}
+		if (best) {
+			if (!bc_used) {
+				best->reg = REG_BC;
+				bc_used = 1;
+			} else {
+				best->reg = REG_IX;
+				ix_used = 1;
+			}
+		}
+	}
+
+	/* B and C to byte variables (if BC not used as word) */
 	if (!bc_used) {
 		for (n = body->locals; n; n = n->next) {
 			if (n->reg != REG_NONE)
@@ -260,6 +333,32 @@ allocRegs(struct stmt *body)
 	}
 }
 
+/* Collect locals from nested blocks into function body's locals list */
+static void
+collectLocl(struct stmt *s, struct stmt *body)
+{
+	struct name *tail;
+	if (!s || !body)
+		return;
+	/* If this nested block has locals, append them to body->locals */
+	if (s != body && s->locals) {
+		/* Find tail of body->locals */
+		tail = body->locals;
+		if (tail) {
+			while (tail->next)
+				tail = tail->next;
+			tail->next = s->locals;
+		} else {
+			body->locals = s->locals;
+		}
+		s->locals = NULL;  /* Moved to body */
+	}
+	/* Recurse */
+	collectLocl(s->chain, body);
+	collectLocl(s->otherwise, body);
+	collectLocl(s->next, body);
+}
+
 /* Entry point: analyze function and allocate registers */
 static void
 analyzeFunc(struct name *func)
@@ -268,6 +367,9 @@ analyzeFunc(struct name *func)
 
 	if (!func || !func->u.body)
 		return;
+
+	/* First collect all locals from nested blocks */
+	collectLocl(func->u.body, func->u.body);
 
 	/* Initialize all locals/params to no register, zero counts */
 	for (n = func->u.body->locals; n; n = n->next) {
@@ -617,6 +719,18 @@ emitExpr(struct expr *e)
 		break;
 
 	default:
+		/* Optimize: *++p -> (++p, *p) using comma operator
+		 * This lets pass2 see simple inc + simple deref */
+		if (e->op == DEREF && e->left &&
+		    (e->left->op == INCR || e->left->op == DECR) &&
+		    !(e->left->flags & E_POSTFIX)) {
+			/* Emit: ,type (++p) (M type p) */
+			fdprintf(astFd, ",%c", typeSfx(e->type));
+			emitExpr(e->left);  /* the ++p */
+			fdprintf(astFd, "M%c", typeSfx(e->type));
+			emitExpr(e->left->left);  /* just p */
+			break;
+		}
 		/* All operators get width suffix: op width operands... */
 		fdprintf(astFd, "%c%c", e->op, typeSfx(e->type));
 		emitChild(e->left);
@@ -955,6 +1069,11 @@ emitStmt(struct stmt *st)
 		break;
 
 	case EXPR:
+		/* Convert postinc/postdec to preinc/predec since result unused */
+		if (st->left && (st->left->op == INCR || st->left->op == DECR) &&
+		    (st->left->flags & E_POSTFIX)) {
+			st->left->flags &= ~E_POSTFIX;  /* Make it prefix */
+		}
 		fdprintf(astFd, "E");
 		emitExpr(st->left);
 		break;

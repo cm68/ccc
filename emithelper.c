@@ -529,8 +529,14 @@ static void setVarCache(const char *sym, char sz, char isA) {
         fnAZero = saveAZero;
         cacheSetA(cache);
     } else {
-        clearHL();
-        cacheSetHL(cache);
+        /* Clear other HL tracking but NOT the value cache.
+         * cacheSetHL will properly replace the old cache entry.
+         * This allows constant->variable store sequences to
+         * keep the constant cached for subsequent stores. */
+        fnIXHLOfs = -1;
+        fnIXHL32 = 0;
+        fnIYHLValid = 0;
+        /* Don't set var cache - keep constant cache if present */
     }
     freeExpr(cache);
 }
@@ -859,10 +865,17 @@ void emitIndexDrf(char reg, char ofs, char size, char dest, struct expr *e)
             /* A already holds this value - skip load */
             return;
         }
-        idxOp("\tld a, (i%c %c %d)\n", reg, ofs, 0);
-        fnAZero = 0;
-        clearA();
-        if (e) cacheSetA(e);
+        /* Load byte to A, B, or C based on dest */
+        if (dest == R_B) {
+            idxOp("\tld b, (i%c %c %d)\n", reg, ofs, 0);
+        } else if (dest == R_C) {
+            idxOp("\tld c, (i%c %c %d)\n", reg, ofs, 0);
+        } else {
+            idxOp("\tld a, (i%c %c %d)\n", reg, ofs, 0);
+            fnAZero = 0;
+            clearA();
+            if (e) cacheSetA(e);
+        }
     } else if (size == 2) {
         switch (dest) {
         case R_BC: hi = 'b'; lo = 'c'; break;

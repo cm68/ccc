@@ -378,40 +378,118 @@ static const char *regName(int reg)
     }
 }
 
+/* Instruction names for scheduled ops */
+static const char *insName(int ins)
+{
+    switch (ins) {
+    case EO_NOP:       return "NOP";
+    case EO_HL_BC:     return "HL<-BC";
+    case EO_HL_DE:     return "HL<->DE";
+    case EO_DE_HL:     return "DE<->HL";
+    case EO_BC_HL:     return "BC<-HL";
+    case EO_A_L:       return "A<-L";
+    case EO_A_B:       return "A<-B";
+    case EO_A_C:       return "A<-C";
+    case EO_L_A:       return "L<-A";
+    case EO_HL_IX:     return "HL<-IX";
+    case EO_IX_HL:     return "IX<-HL";
+    case EO_HL_IYW:    return "HL<-(IY+n)";
+    case EO_HL_IXW:    return "HL<-(IX+n)";
+    case EO_HL_MEM:    return "HL<-(mem)";
+    case EO_HL_CONST:  return "HL<-const";
+    case EO_DE_IYW:    return "DE<-(IY+n)";
+    case EO_DE_IXW:    return "DE<-(IX+n)";
+    case EO_DE_MEM:    return "DE<-(mem)";
+    case EO_DE_CONST:  return "DE<-const";
+    case EO_A_IY:      return "A<-(IY+n)";
+    case EO_A_IX:      return "A<-(IX+n)";
+    case EO_A_MEM:     return "A<-(mem)";
+    case EO_A_CONST:   return "A<-const";
+    case EO_A_BC_IND:  return "A<-(BC)";
+    case EO_A_HL_IND:  return "A<-(HL)";
+    case EO_IYW_HL:    return "(IY+n)<-HL";
+    case EO_IXW_HL:    return "(IX+n)<-HL";
+    case EO_MEM_HL:    return "(mem)<-HL";
+    case EO_MEM_BC:    return "(mem)<-BC";
+    case EO_MEM_DE:    return "(mem)<-DE";
+    case EO_IY_A:      return "(IY+n)<-A";
+    case EO_IX_A:      return "(IX+n)<-A";
+    case EO_MEM_A:     return "(mem)<-A";
+    case EO_BC_IND_A:  return "(BC)<-A";
+    case EO_HL_IND_A:  return "(HL)<-A";
+    case EO_ADD_HL_DE: return "HL+=DE";
+    case EO_ADD_HL_BC: return "HL+=BC";
+    case EO_SBC_HL_DE: return "HL-=DE";
+    default:           return "?";
+    }
+}
+
 /* Dump expression with scheduling info */
 static void
 dumpSchedExpr(struct expr *e, int indent)
 {
     int i;
+    const char *oname;
     if (!e) return;
 
     /* Comment prefix and indent */
     fdprintf(dumpFd, "; ");
     for (i = 0; i < indent; i++) fdprintf(dumpFd, "  ");
 
-    /* Op and size */
-    fdprintf(dumpFd, "%c:%d", e->op, e->size);
+    /* Op name or code */
+    oname = opName(e->op);
+    if (oname) {
+        fdprintf(dumpFd, "%s", oname);
+    } else {
+        fdprintf(dumpFd, "%c", e->op);
+    }
+    fdprintf(dumpFd, ":%d", e->size);
 
-    /* Location info */
+    /* Opflags (from setExprFlags) */
+    if (e->opflags) {
+        fdprintf(dumpFd, " flags=[");
+        if (e->opflags & OP_CONST) fdprintf(dumpFd, "C");
+        if (e->opflags & OP_SIMPLEVAR) fdprintf(dumpFd, "V");
+        if (e->opflags & OP_REGVAR) fdprintf(dumpFd, "R");
+        if (e->opflags & OP_IXMEM) fdprintf(dumpFd, "IX");
+        if (e->opflags & OP_IYMEM) fdprintf(dumpFd, "IY");
+        if (e->opflags & OP_GLOBAL) fdprintf(dumpFd, "G");
+        if (e->opflags & OP_INDIR) fdprintf(dumpFd, "I");
+        if (e->opflags & OP_BCINDIR) fdprintf(dumpFd, "BC");
+        fdprintf(dumpFd, "]");
+    }
+
+    /* Location info (from old scheduler) */
     if (e->loc != LOC_NONE) {
-        fdprintf(dumpFd, " [%s", locName(e->loc));
+        fdprintf(dumpFd, " loc=%s", locName(e->loc));
         if (e->loc == LOC_REG || e->loc == LOC_INDIR) {
-            fdprintf(dumpFd, "=%s", regName(e->reg));
+            fdprintf(dumpFd, "(%s)", regName(e->reg));
         }
         if (e->loc == LOC_STACK || e->loc == LOC_IX) {
-            fdprintf(dumpFd, "=%d", (int)e->offset);
+            fdprintf(dumpFd, "(%d)", (int)e->offset);
         }
-        if (e->dest != R_NONE) {
-            fdprintf(dumpFd, " ->%s", regName(e->dest));
+    }
+
+    /* Destination (from sched2) */
+    if (e->dest != R_NONE) {
+        fdprintf(dumpFd, " dest=%s", regName(e->dest));
+    }
+
+    /* Scheduled instructions */
+    if (e->nins > 0) {
+        fdprintf(dumpFd, " emit={");
+        for (i = 0; i < e->nins; i++) {
+            if (i > 0) fdprintf(dumpFd, ",");
+            fdprintf(dumpFd, "%s", insName(e->ins[i]));
         }
-        fdprintf(dumpFd, "]");
+        fdprintf(dumpFd, "}");
     }
 
     /* Value/symbol */
     if (e->op == 'C') {
-        fdprintf(dumpFd, " %ld", e->value);
+        fdprintf(dumpFd, " val=%ld", e->value);
     } else if (e->op == '$' && e->symbol) {
-        fdprintf(dumpFd, " %s", e->symbol);
+        fdprintf(dumpFd, " sym=%s", e->symbol);
     }
 
     fdprintf(dumpFd, "\n");

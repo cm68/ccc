@@ -363,7 +363,7 @@ struct expval {
 };
 
 unsigned char *lineptr = (unsigned char *)"";
-unsigned char linebuf[100];
+unsigned char linebuf[256];
 #define FILEBUFSIZE 512
 unsigned char filebuf[FILEBUFSIZE+1];
 

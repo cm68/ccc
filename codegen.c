@@ -24,6 +24,35 @@ static char g_loop_depth = 0;
 /* Accumulated call argument bytes outside loops (cleaned at function exit) */
 char fnCallStk = 0;
 
+/*
+ * Register state for scheduler - tracks what each register holds
+ * and flag state for conditional optimization
+ */
+static struct {
+    /* Register contents: 0=unknown, else expr node ID */
+    unsigned char hl;
+    unsigned char de;
+    unsigned char a;
+    unsigned char bc;       /* Only valid if BC is a regvar */
+
+    /* Temp register demand tracking */
+    unsigned char depth;    /* Current temp registers in use */
+    unsigned char max;      /* Max demand seen in subtree */
+
+    /* Flag state - critical for conditionals */
+    unsigned char zvalid;   /* Z flag: 0=invalid, 1=Z=1 means TRUE, 2=Z=1 means FALSE */
+    unsigned char cmpflag;  /* Carry: 'c'=NC is TRUE, 'C'=C is TRUE, 0=invalid */
+    unsigned char znode;    /* Node ID whose result set the flags */
+} rs;
+
+/* Reset register state at function entry */
+static void
+rsReset(void)
+{
+    rs.hl = rs.de = rs.a = rs.bc = 0;
+    rs.depth = rs.max = 0;
+    rs.zvalid = rs.cmpflag = rs.znode = 0;
+}
 
 /* Global tree walk counter for loop detection */
 static long g_walk_count = 0;
@@ -275,7 +304,18 @@ setExprFlags(struct expr *e)
             if (sym[0] == '$') sym++;
             var = findVar(sym);
             if (var) {
-                if (var->reg != REG_NO) {
+                if (var->reg == REG_BC) {
+                    /* Pointer in BC - use ld a,(bc) for bytes */
+                    if (e->size == 1) {
+                        e->opflags |= OP_BCINDIR;
+                    } else {
+                        e->opflags |= OP_REGVAR;  /* word deref needs staging */
+                    }
+                } else if (var->reg == REG_IX) {
+                    /* Pointer in IX - use ld a,(ix+0) */
+                    e->opflags |= OP_IXMEM;
+                    e->offset = 0;
+                } else if (var->reg != REG_NO) {
                     e->opflags |= OP_REGVAR;
                 } else {
                     e->opflags |= OP_IYMEM;
@@ -297,17 +337,6 @@ setExprFlags(struct expr *e)
                 e->opflags |= OP_IYMEM;
                 e->offset = var->offset + e->left->right->value;
                 e->cached_var = var;
-            }
-        }
-        /* Check for byte indirect through BC: (M:b (M:p $bcvar)) */
-        else if (e->size == 1 && e->left && e->left->op == 'M' &&
-                 e->left->left && e->left->left->op == '$' && e->left->left->symbol) {
-            const char *sym = e->left->left->symbol;
-            struct local_var *var;
-            if (sym[0] == '$') sym++;
-            var = findVar(sym);
-            if (var && var->reg == REG_BC) {
-                e->opflags |= OP_BCINDIR;
             }
         }
     }
@@ -1273,6 +1302,536 @@ scheduleCode(void)
 {
     if (!fnBody) return;
     schedStmt(fnBody);
+}
+
+/*
+ * ============================================================================
+ * NEW SCHEDULER - prescriptive instruction selection
+ *
+ * This replaces the hint-based scheduling above with explicit instruction
+ * selection. The scheduler tracks register contents and flag state, then
+ * records exactly which instructions to emit in e->ins[].
+ * ============================================================================
+ */
+
+/*
+ * Add an instruction to a node's instruction sequence
+ */
+static void
+addIns(struct expr *e, unsigned char ins)
+{
+    if (e->nins < 3) {
+        e->ins[e->nins++] = ins;
+    }
+}
+
+/* Forward declarations for scheduler */
+static void sched2Expr(struct expr *e);
+
+/*
+ * Schedule expression - pass 1: calculate temp register demand
+ * Returns number of temp registers needed to evaluate this subtree
+ */
+static unsigned char
+sched2Demand(struct expr *e)
+{
+    unsigned char left_demand, right_demand, my_demand;
+
+    if (!e) return 0;
+
+    /* Leaves need 1 register for their result */
+    if (e->op == 'C' || e->op == '$') {
+        return 1;
+    }
+
+    /* DEREF of simple var needs 1 register */
+    if (e->op == 'M' && e->left && e->left->op == '$') {
+        return 1;
+    }
+
+    /* Binary ops: evaluate children, need max of (left, right+1) */
+    left_demand = sched2Demand(e->left);
+    right_demand = sched2Demand(e->right);
+
+    /* When evaluating right, left result must be held somewhere */
+    if (right_demand > 0) {
+        my_demand = (left_demand > right_demand + 1) ? left_demand : right_demand + 1;
+    } else {
+        my_demand = left_demand;
+    }
+
+    return my_demand;
+}
+
+/*
+ * Schedule loads for constant nodes
+ * Sets e->dest to natural register (R_A for byte, R_HL for word)
+ */
+static void
+sched2Const(struct expr *e)
+{
+    e->nins = 0;
+    /* Use dest if set by parent (byte assign sets R_A), else use size */
+    if (e->dest == R_A || e->size == 1) {
+        e->dest = R_A;
+        addIns(e, EO_A_CONST);
+    } else {
+        if (e->dest == R_NONE) e->dest = R_HL;
+        addIns(e, EO_HL_CONST);
+    }
+}
+
+/*
+ * Schedule loads for DEREF of simple variable
+ * Pattern: (M $var) - opflags has OP_REGVAR, OP_IYMEM, or OP_GLOBAL
+ */
+static void
+sched2Deref(struct expr *e)
+{
+    struct local_var *var;
+    const char *sym;
+
+    e->nins = 0;
+
+    /* BC indirect (byte through pointer in BC) - check first! */
+    if (e->opflags & OP_BCINDIR) {
+        e->dest = R_A;
+        addIns(e, EO_A_BC_IND);     /* ld a,(bc) */
+    }
+    /* IX indirect (through pointer in IX) - check before generic REGVAR */
+    else if ((e->opflags & OP_IXMEM) && !(e->opflags & OP_IYMEM)) {
+        if (e->size == 1) {
+            e->dest = R_A;
+            addIns(e, EO_A_IX);     /* ld a,(ix+ofs) */
+        } else {
+            e->dest = R_HL;
+            addIns(e, EO_HL_IXW);   /* ld l,(ix+ofs); ld h,(ix+ofs+1) */
+        }
+    }
+    /* BC register variable (not a pointer deref) */
+    else if (e->opflags & OP_REGVAR) {
+        if (e->size == 1) {
+            e->dest = R_A;
+            addIns(e, EO_A_C);      /* ld a,c for byte BC regvar */
+        } else {
+            e->dest = R_HL;
+            addIns(e, EO_HL_BC);    /* ld h,b; ld l,c */
+        }
+    }
+    /* IY-indexed stack variable */
+    else if (e->opflags & OP_IYMEM) {
+        /* Get offset from cached_var or look it up */
+        if (e->cached_var) {
+            e->offset = e->cached_var->offset;
+        } else if (e->left && e->left->symbol) {
+            sym = e->left->symbol;
+            if (sym[0] == '$') sym++;
+            var = findVar(sym);
+            if (var) e->offset = var->offset;
+        }
+        if (e->size == 1) {
+            e->dest = R_A;
+            addIns(e, EO_A_IY);     /* ld a,(iy+ofs) */
+        } else {
+            e->dest = R_HL;
+            addIns(e, EO_HL_IYW);   /* ld l,(iy+ofs); ld h,(iy+ofs+1) */
+        }
+    }
+    /* Global variable */
+    else if (e->opflags & OP_GLOBAL) {
+        if (e->size == 1) {
+            e->dest = R_A;
+            addIns(e, EO_A_MEM);    /* ld a,(symbol) */
+        } else {
+            e->dest = R_HL;
+            addIns(e, EO_HL_MEM);   /* ld hl,(symbol) */
+        }
+    }
+    /* Default - complex DEREF, children handle it */
+    else {
+        e->dest = (e->size == 1) ? R_A : R_HL;
+        addIns(e, EO_NOP);
+    }
+}
+
+/*
+ * Schedule loads for symbol address
+ * Pattern: $var - load address of variable
+ */
+static void
+sched2Symbol(struct expr *e)
+{
+    e->nins = 0;
+    e->dest = R_HL;
+    /* TODO: distinguish global vs local address computation */
+    addIns(e, EO_HL_CONST);  /* For globals, symbol address is just ld hl,symbol */
+}
+
+/*
+ * Schedule binary operations
+ * Word ops: left in HL, right in DE, result in HL
+ * Byte ops: left in A, right immediate or (hl), result in A
+ */
+static void
+sched2Binary(struct expr *e)
+{
+    e->nins = 0;
+
+    /* Recurse to schedule children first */
+    if (e->left) sched2Expr(e->left);
+    if (e->right) sched2Expr(e->right);
+
+    /* Select instruction based on operator */
+    switch (e->op) {
+    case '+':
+        if (e->size == 2) {
+            e->dest = R_HL;
+            addIns(e, EO_ADD_HL_DE);
+        } else {
+            e->dest = R_A;
+            addIns(e, EO_ADD_A_N);
+        }
+        break;
+    case '-':
+        if (e->size == 2) {
+            e->dest = R_HL;
+            addIns(e, EO_SBC_HL_DE);
+        } else {
+            e->dest = R_A;
+            addIns(e, EO_SUB_A_N);
+        }
+        break;
+    case '&':
+        e->dest = R_A;
+        addIns(e, EO_AND_A_N);
+        break;
+    case '|':
+        e->dest = R_A;
+        addIns(e, EO_OR_A_N);
+        break;
+    case '^':
+        e->dest = R_A;
+        addIns(e, EO_XOR_A_N);
+        break;
+    /* Comparison operators - these set flags, result in A (0 or 1) */
+    case '<':
+    case '>':
+    case 'L':   /* <= */
+    case 'g':   /* >= */
+    case 'Q':   /* == */
+    case 'n':   /* != */
+        e->dest = R_A;
+        if (e->size == 1) {
+            addIns(e, EO_CP_N);  /* Byte comparison */
+        } else {
+            addIns(e, EO_SBC_HL_DE);  /* Word comparison via subtract */
+        }
+        break;
+    default:
+        e->dest = (e->size == 1) ? R_A : R_HL;
+        addIns(e, EO_NOP);
+        break;
+    }
+}
+
+/*
+ * Schedule type conversion
+ * N (NARROW): truncate to smaller type
+ * W (WIDEN): zero-extend unsigned
+ * X (SEXT): sign-extend signed
+ */
+static void
+sched2Conv(struct expr *e)
+{
+    e->nins = 0;
+
+    /* Schedule child first */
+    if (e->left) sched2Expr(e->left);
+
+    switch (e->op) {
+    case 'N':   /* NARROW - truncate */
+        if (e->size == 1) {
+            /* Word to byte - take L into A */
+            e->dest = R_A;
+            addIns(e, EO_A_L);
+        } else {
+            e->dest = R_HL;
+            addIns(e, EO_NOP);
+        }
+        break;
+    case 'W':   /* WIDEN - zero extend */
+        if (e->left && e->left->size == 1) {
+            /* Byte to word - A to HL with zero high byte */
+            e->dest = R_HL;
+            addIns(e, EO_WIDEN);
+        } else {
+            e->dest = R_HL;
+            addIns(e, EO_NOP);
+        }
+        break;
+    case 'X':   /* SEXT - sign extend */
+        if (e->left && e->left->size == 1) {
+            /* Byte to word with sign extension */
+            e->dest = R_HL;
+            addIns(e, EO_SEXT);
+        } else {
+            e->dest = R_HL;
+            addIns(e, EO_NOP);
+        }
+        break;
+    default:
+        e->dest = (e->size == 1) ? R_A : R_HL;
+        addIns(e, EO_NOP);
+        break;
+    }
+}
+
+/*
+ * Schedule store instruction based on destination
+ * Pattern: (= dest value) - store value to dest
+ */
+static void
+sched2Store(struct expr *e)
+{
+    struct expr *dest = e->left;
+    struct expr *src = e->right;
+    struct local_var *var;
+    const char *sym;
+
+    e->nins = 0;
+
+    /* Optimize: BC regvar -> global uses ED-prefixed ld (addr),bc
+     * Pattern: (= $global (M $bcvar)) where bcvar is in BC
+     * Saves 3 bytes: ld (sym),bc is 4 bytes vs ld h,b;ld l,c;ld (sym),hl is 7 */
+    if (e->size == 2 && dest && src &&
+        dest->op == '$' && dest->symbol &&
+        src->op == 'M' && (src->opflags & OP_REGVAR) &&
+        src->left && src->left->op == '$' && src->left->symbol) {
+        /* Check dest is global (not a local) */
+        sym = dest->symbol;
+        if (sym[0] == '$') sym++;
+        if (!findVar(sym)) {
+            /* Dest is global - check if src is BC regvar */
+            sym = src->left->symbol;
+            if (sym[0] == '$') sym++;
+            var = findVar(sym);
+            if (var && var->reg == REG_BC) {
+                /* Don't schedule RHS - value is already in BC */
+                src->nins = 0;
+                addIns(e, EO_MEM_BC);
+                e->dest = R_BC;
+                return;
+            }
+        }
+    }
+
+    /* Set dest on RHS to indicate target register before scheduling */
+    if (src) {
+        src->dest = (e->size == 1) ? R_A : R_HL;
+        sched2Expr(src);
+    }
+
+    /* Destination is simple var deref: (M $var) */
+    if (dest && dest->op == 'M' && dest->left && dest->left->op == '$') {
+        /* Check destination type */
+        if (dest->opflags & OP_REGVAR) {
+            /* Store to BC regvar */
+            if (e->size == 1) {
+                addIns(e, EO_NOP);  /* TODO: ld c,a */
+            } else {
+                addIns(e, EO_BC_HL);
+            }
+        } else if (dest->opflags & OP_IYMEM) {
+            /* Get offset from cached_var or look it up */
+            if (dest->cached_var) {
+                e->offset = dest->cached_var->offset;
+            } else if (dest->left && dest->left->symbol) {
+                sym = dest->left->symbol;
+                if (sym[0] == '$') sym++;
+                var = findVar(sym);
+                if (var) e->offset = var->offset;
+            }
+            /* Store to IY-indexed stack var */
+            if (e->size == 1) {
+                addIns(e, EO_IY_A);
+            } else {
+                addIns(e, EO_IYW_HL);
+            }
+        } else if (dest->opflags & OP_GLOBAL) {
+            /* Store to global */
+            if (e->size == 1) {
+                addIns(e, EO_MEM_A);
+            } else {
+                addIns(e, EO_MEM_HL);
+            }
+        } else {
+            addIns(e, EO_NOP);
+        }
+    } else {
+        /* Complex destination - schedule address, then store */
+        if (dest) sched2Expr(dest);
+        addIns(e, EO_NOP);
+    }
+
+    /* Assignment result is in the value we stored */
+    e->dest = (e->size == 1) ? R_A : R_HL;
+}
+
+/*
+ * Schedule expression - pass 2: select instructions
+ * Tracks register state, selects optimal instructions, records in e->ins[]
+ */
+static void
+sched2Expr(struct expr *e)
+{
+    unsigned char demand;
+
+    if (!e) return;
+
+    /* Initialize instruction list */
+    e->nins = 0;
+
+    /* Calculate temp register demand for this subtree */
+    demand = sched2Demand(e);
+    (void)demand;  /* TODO: use for spill decisions */
+
+    /* Select instructions based on node type */
+    switch (e->op) {
+    case 'C':   /* Constant */
+        sched2Const(e);
+        break;
+
+    case 'M':   /* DEREF - load from memory */
+        if (e->left && e->left->op == '$') {
+            /* Simple variable deref: (M $var) */
+            sched2Expr(e->left);  /* Schedule address load (usually NOP) */
+            sched2Deref(e);
+        } else {
+            /* Complex deref - recurse to children */
+            sched2Expr(e->left);
+            e->dest = (e->size == 1) ? R_A : R_HL;
+            addIns(e, EO_NOP);
+        }
+        break;
+
+    case '$':   /* Symbol address */
+        sched2Symbol(e);
+        break;
+
+    case '=':   /* Assignment */
+        sched2Store(e);
+        break;
+
+    case 'N':   /* NARROW */
+    case 'W':   /* WIDEN */
+    case 'X':   /* SEXT */
+        sched2Conv(e);
+        break;
+
+    case '@':   /* Function call */
+        /* Schedule arguments first */
+        if (e->right) sched2Expr(e->right);
+        if (e->left) sched2Expr(e->left);
+        e->dest = R_HL;  /* Function returns in HL */
+        addIns(e, EO_CALL);
+        break;
+
+    case AST_PREINC:    /* ++x */
+    case AST_PREDEC:    /* --x */
+    case AST_POSTINC:   /* x++ */
+    case AST_POSTDEC:   /* x-- */
+        /* Handled by specIncDec + emitIncDec - don't schedule */
+        break;
+
+    case '+':
+    case '-':
+    case '&':
+    case '|':
+    case '^':
+    case '<':
+    case '>':
+    case 'L':   /* <= */
+    case 'g':   /* >= */
+    case 'Q':   /* == */
+    case 'n':   /* != */
+    case '*':   /* Multiply */
+    case '/':   /* Divide */
+    case '%':   /* Modulo */
+    case 'y':   /* Left shift << */
+    case 'z':   /* Right shift >> */
+    case 'j':   /* Logical and && */
+    case 'h':   /* Logical or || */
+        /* Binary operations */
+        sched2Binary(e);
+        break;
+
+    case '~':   /* Bitwise not */
+    case '!':   /* Logical not */
+        if (e->left) sched2Expr(e->left);
+        e->dest = (e->size == 1) ? R_A : R_HL;
+        addIns(e, EO_NOP);
+        break;
+
+    case 'A':   /* Address of */
+        if (e->left) sched2Expr(e->left);
+        e->dest = R_HL;  /* Address always in HL */
+        addIns(e, EO_NOP);
+        break;
+
+    case ',':   /* Comma operator - evaluate both, return right */
+        if (e->left) sched2Expr(e->left);
+        if (e->right) sched2Expr(e->right);
+        e->dest = (e->size == 1) ? R_A : R_HL;
+        addIns(e, EO_NOP);
+        break;
+
+    case '?':   /* Ternary operator */
+        if (e->left) sched2Expr(e->left);
+        if (e->right) sched2Expr(e->right);
+        e->dest = (e->size == 1) ? R_A : R_HL;
+        addIns(e, EO_NOP);
+        break;
+
+    default:
+        /* Unknown - just recurse and add NOP */
+        sched2Expr(e->left);
+        sched2Expr(e->right);
+        e->dest = (e->size == 1) ? R_A : R_HL;
+        addIns(e, EO_NOP);
+        break;
+    }
+}
+
+/*
+ * Schedule statement tree with new scheduler
+ */
+static void
+sched2Stmt(struct stmt *s)
+{
+    if (!s) return;
+
+    /* Schedule expressions in this statement */
+    if (s->expr)  sched2Expr(s->expr);
+    if (s->expr2) sched2Expr(s->expr2);
+    if (s->expr3) sched2Expr(s->expr3);
+
+    /* Recurse into branches */
+    if (s->then_branch) sched2Stmt(s->then_branch);
+    if (s->else_branch) sched2Stmt(s->else_branch);
+
+    /* Continue to next statement */
+    if (s->next) sched2Stmt(s->next);
+}
+
+/*
+ * Entry point: new scheduler with instruction selection
+ */
+void
+sched2Code(void)
+{
+    if (!fnBody) return;
+    rsReset();
+    sched2Stmt(fnBody);
 }
 
 /*

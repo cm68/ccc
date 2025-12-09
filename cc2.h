@@ -134,6 +134,115 @@ struct jump_instr {
 #define R_IX        5           // Index register (struct pointer)
 #define R_IY        6           // Frame pointer
 #define R_SP        7           // Stack pointer
+#define R_B         8           // 8-bit B register
+#define R_C         9           // 8-bit C register
+
+/*
+ * Emit opcodes (EO_*) - scheduled instructions
+ * Set by scheduler in e->ins[], blindly executed by emit
+ */
+enum {
+    EO_NOP = 0,         // No operation (value already in place)
+
+    /* Register-to-register moves */
+    EO_HL_BC,           // ld h,b; ld l,c
+    EO_HL_DE,           // ex de,hl (DE->HL)
+    EO_DE_HL,           // ex de,hl (HL->DE)
+    EO_DE_BC,           // ld d,b; ld e,c
+    EO_BC_HL,           // ld b,h; ld c,l
+    EO_A_L,             // ld a,l
+    EO_A_H,             // ld a,h
+    EO_A_B,             // ld a,b
+    EO_A_C,             // ld a,c
+    EO_L_A,             // ld l,a; ld h,0
+    EO_HL_IX,           // push ix; pop hl
+    EO_IX_HL,           // push hl; pop ix
+
+    /* Memory loads - word to HL */
+    EO_HL_IYW,          // ld l,(iy+ofs); ld h,(iy+ofs+1)
+    EO_HL_IXW,          // ld l,(ix+ofs); ld h,(ix+ofs+1)
+    EO_HL_MEM,          // ld hl,(symbol)
+    EO_HL_CONST,        // ld hl,value
+
+    /* Memory loads - word to DE */
+    EO_DE_IYW,          // ld e,(iy+ofs); ld d,(iy+ofs+1)
+    EO_DE_IXW,          // ld e,(ix+ofs); ld d,(ix+ofs+1)
+    EO_DE_MEM,          // ld de,(symbol)
+    EO_DE_CONST,        // ld de,value
+
+    /* Memory loads - byte to A */
+    EO_A_IY,            // ld a,(iy+ofs)
+    EO_A_IX,            // ld a,(ix+ofs)
+    EO_A_MEM,           // ld a,(symbol)
+    EO_A_CONST,         // ld a,value
+    EO_A_BC_IND,        // ld a,(bc)
+    EO_A_HL_IND,        // ld a,(hl)
+
+    /* Memory stores - word from HL */
+    EO_IYW_HL,          // ld (iy+ofs),l; ld (iy+ofs+1),h
+    EO_IXW_HL,          // ld (ix+ofs),l; ld (ix+ofs+1),h
+    EO_MEM_HL,          // ld (symbol),hl
+    EO_MEM_BC,          // ld (symbol),bc (ED 43) - 4 bytes
+    EO_MEM_DE,          // ld (symbol),de (ED 53) - 4 bytes
+    EO_BC_IND_HL,       // ld (bc),l; inc bc; ld (bc),h; dec bc
+
+    /* Memory stores - byte from A */
+    EO_IY_A,            // ld (iy+ofs),a
+    EO_IX_A,            // ld (ix+ofs),a
+    EO_MEM_A,           // ld (symbol),a
+    EO_BC_IND_A,        // ld (bc),a
+    EO_HL_IND_A,        // ld (hl),a
+
+    /* Word arithmetic - HL */
+    EO_ADD_HL_DE,       // add hl,de
+    EO_ADD_HL_BC,       // add hl,bc
+    EO_SBC_HL_DE,       // or a; sbc hl,de
+
+    /* Word arithmetic - IX as accumulator */
+    EO_ADD_IX_DE,       // add ix,de
+    EO_ADD_IX_BC,       // add ix,bc
+    EO_IX_CONST,        // ld ix,value
+
+    /* IX register moves */
+    EO_DE_IX,           // push ix; pop de
+
+    /* Byte arithmetic */
+    EO_ADD_A_N,         // add a,N (value in e->value)
+    EO_SUB_A_N,         // sub N
+    EO_AND_A_N,         // and N
+    EO_OR_A_N,          // or N
+    EO_XOR_A_N,         // xor N
+    EO_CP_N,            // cp N (sets Z and C)
+
+    /* Inc/Dec */
+    EO_INC_HL,          // inc hl (no flags)
+    EO_DEC_HL,          // dec hl (no flags)
+    EO_INC_A,           // inc a (sets Z)
+    EO_DEC_A,           // dec a (sets Z)
+    EO_INC_IY,          // inc (iy+ofs) (sets Z)
+    EO_DEC_IY,          // dec (iy+ofs) (sets Z)
+
+    /* Flag tests */
+    EO_OR_A,            // or a (sets Z from A)
+    EO_AHORL,           // ld a,h; or l (sets Z from HL)
+
+    /* Stack operations (spill/fill) */
+    EO_PUSH_HL,         // push hl
+    EO_PUSH_DE,         // push de
+    EO_PUSH_AF,         // push af
+    EO_POP_HL,          // pop hl
+    EO_POP_DE,          // pop de
+    EO_POP_AF,          // pop af
+
+    /* Calls */
+    EO_CALL,            // call symbol
+
+    /* Type conversions */
+    EO_WIDEN,           // ld l,a; ld h,0 (byte->word unsigned)
+    EO_SEXT,            // sign extend A to HL
+
+    EO_MAX              // Marker for enum size
+};
 
 /*
  * Expression tree node for code generation
@@ -164,6 +273,10 @@ struct expr {
     char *cleanup_block;        // Deferred cleanup code (for CALL stack cleanup)
     struct jump_instr *jump;    // Jump instruction (deferred) or NULL
     struct local_var *cached_var; // Cached variable lookup result (set by setLeftFlags)
+
+    /* Scheduled instructions - set by scheduler, blindly emitted */
+    unsigned char ins[3];       // Instructions to emit (EO_* opcodes)
+    unsigned char nins;         // Number of instructions (0-3)
 };
 
 /*
@@ -212,7 +325,7 @@ extern char *fnName;            /* Function name */
 extern char *fnParams;          /* Parameter list string */
 extern char *fnRettype;         /* Return type */
 extern struct stmt *fnBody;     /* Function body statement tree */
-extern unsigned char fnLblCnt;  /* For generating unique labels (0-254, 255=overflow) */
+extern unsigned short fnLblCnt; /* For generating unique labels */
 extern struct local_var *fnLocals;  /* List of local variables */
 extern char fnFrmSize;          /* Total stack frame size in bytes */
 extern char fnCallStk;          /* Call argument bytes to clean at exit */
@@ -238,9 +351,9 @@ extern char fnAZero;            /* 1 if A is known to be 0 */
 
 /* Label generation - 255 is reserved as "no label" sentinel */
 #ifdef DEBUG
-#define newLabel() (fnLblCnt >= 254 ? (fdprintf(2, "fatal: label overflow in %s\n", fnName), exit(1), 0) : fnLblCnt++)
+#define newLabel() (fnLblCnt >= 65534 ? (fdprintf(2, "fatal: label overflow in %s\n", fnName), exit(1), 0) : fnLblCnt++)
 #else
-#define newLabel() (fnLblCnt >= 254 ? 254 : fnLblCnt++)
+#define newLabel() (fnLblCnt >= 65534 ? 65534 : fnLblCnt++)
 #endif
 
 /* Forward declarations from util.c */
@@ -286,6 +399,7 @@ void dumpFnAst(char fd);
 void dumpScheduled(char fd);
 void specialize(void);
 void scheduleCode(void);
+void sched2Code(void);      /* New prescriptive scheduler */
 void generateCode(void);
 void optFrmLayout(void);
 struct local_var *findVar(const char *symbol);
