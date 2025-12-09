@@ -2217,7 +2217,8 @@ struct instruct *isr;
 	if (isr->arg) {
 		if (arg == T_C) arg = T_CR;  /* 'c' means carry, not register C */
 		if (arg >= T_NZ && arg <= T_CR) {
-			reg = (arg - T_NZ) << 3;
+			/* conditional jr: base opcode 0x20 + (cond * 8) */
+			reg = 0x08 + ((arg - T_NZ) << 3);
 			need(',');
 			arg = operand(&value);
 		} else if (arg != T_NUM && arg != T_PLAIN)

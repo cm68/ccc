@@ -331,6 +331,15 @@ void emitExpr(struct expr *e)
         freeNode(e);
         return;
     }
+    /* Handle WIDEN - zero extend byte to word */
+    else if (e->op == 'W' && e->left) {
+        emitExpr(e->left);
+        /* Child puts byte result in A, zero-extend to HL */
+        fdprintf(outFd, "\tld l, a\n\tld h, 0\n");
+        clearHL();
+        freeNode(e);
+        return;
+    }
     else {
         /* Normal postorder traversal for other operators */
         if (e->left) emitExpr(e->left);

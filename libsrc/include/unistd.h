@@ -1,5 +1,5 @@
 /*
- * unistd.h - minimal stub for POSIX system calls
+ * unistd.h - POSIX system calls for Micronix
  */
 
 #ifndef _UNISTD_H
@@ -16,16 +16,51 @@
 #define W_OK 2
 #define R_OK 4
 
-/* Stub declarations - actual implementations use system calls */
-extern int access(const char *pathname, int mode);
-extern int read(unsigned char fd, void *buf, unsigned int count);
-extern int write(unsigned char fd, const void *buf, unsigned int count);
-extern int close(unsigned char fd);
-extern int fork(void);
-extern int execv(const char *path, char *const argv[]);
+/* lseek() whence values */
+#define SEEK_SET 0
+#define SEEK_CUR 1
+#define SEEK_END 2
+
+/* System call prototypes */
+extern int access(char *pathname, int mode);
 extern unsigned int alarm(unsigned int seconds);
-extern char *realpath(const char *path, char *resolved_path);
-extern int mkstemp(char *template);
-extern int unlink(const char *pathname);
+extern int chdir(char *path);
+extern int chmod(char *path, int mode);
+extern int chown(char *path, int owner);
+extern int close(char fd);
+extern int creat(char *path, int mode);
+extern int dup(char fd);
+extern int exec(char *path, char *argv[]);
+extern int execv(char *path, char *argv[]);
+extern void exit(int status);
+extern int fork(void);
+extern int fstat(char fd, char *buf);
+extern int getpid(void);
+extern int getuid(void);
+extern int gtty(char fd, char *buf);
+extern int kill(int pid, int sig);
+extern int link(char *oldpath, char *newpath);
+extern long lseek(char fd, long offset, int whence);
+extern int mknod(char *path, int mode, int dev);
+extern int mount(char *dev, char *dir, int flags);
+extern int nice(int inc);
+extern int open(char *path, int flags);
+extern int pause(void);
+extern int pipe(int *fds);
+extern int read(char fd, char *buf, int count);
+extern int seek(char fd, int offset, int whence);
+extern int setuid(int uid);
+extern void *sbrk(int incr);
+extern int brk(void *addr);
+extern int stat(char *path, char *buf);
+extern int stime(long *tp);
+extern int stty(char fd, char *buf);
+extern void sync(void);
+extern int time(long *tp);
+extern int umount(char *target);
+extern int unlink(char *pathname);
+extern int wait(int *status);
+extern int write(char fd, char *buf, int count);
+extern int sleep(unsigned int seconds);
 
 #endif /* _UNISTD_H */

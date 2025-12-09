@@ -18,6 +18,7 @@
 /* Forward declarations */
 static struct expr *parseExpr(void);
 static struct stmt *parseStmt(void);
+static void doStrLiteral(void);
 
 /* Skip whitespace (space, tab, newline, cr) */
 static void
@@ -397,6 +398,7 @@ parseExpr(void)
 	struct expr *e;
 	unsigned char op, info;
 
+restart:
 	skipWS();
 	initOptab();
 
@@ -404,6 +406,13 @@ parseExpr(void)
 	if (curchar == '_') {
 		nextchar();
 		return NULL;
+	}
+
+	/* Inline string literal - emit and continue to the reference */
+	if (curchar == 'U') {
+		nextchar();
+		doStrLiteral();
+		goto restart;
 	}
 
 	/* Symbol reference */
@@ -912,6 +921,7 @@ doStrLiteral(void)
 	char *data = (char *)readStr();
 	char *orig_data = data, *p;
 	unsigned char c;
+	int savedSeg = currentSeg;
 
 	addDefSym(name);
 	switchToSeg(SEG_DATA);
@@ -926,6 +936,10 @@ doStrLiteral(void)
 	}
 	fdputs(outFd, "\\0\"\n");
 	free(orig_data);
+
+	/* Restore previous segment (needed when called from parseExpr) */
+	if (savedSeg != SEG_NONE && savedSeg != SEG_DATA)
+		switchToSeg(savedSeg);
 }
 
 /* Emit symbol declarations */
