@@ -274,18 +274,30 @@ frStmt(struct stmt *s)
  * OP_1=unary, OP_2=binary, OP_S=special, OP_L=needs label
  */
 static const unsigned char optab[96] = {
-/*0x20*/ 0,OP_1|OP_LOG,0,0,0,OP_2,OP_2|OP_BIT,OP_1, OP_S,OP_S,OP_2,OP_2,OP_2,OP_2,0,OP_2,
-/*     spc !              %    &             '      (    )    *    +    ,    -      /    */
-/*0x30*/ OP_2,OP_2,OP_2,0,0,0,OP_2,0, 0,0,OP_2,0,OP_2|OP_CMP|OP_ORD,OP_2,OP_2|OP_CMP|OP_ORD,OP_S,
-/*       0    1    2        6              :      <                 =    >                 ?    */
-/*0x40*/ OP_S,0,0,0,0,0,0,0, 0,0,0,0,OP_2|OP_CMP|OP_ORD,OP_1,OP_1,0,
-/*       @                               L                 M    N       */
-/*0x50*/ OP_2,OP_2|OP_CMP,0,0,OP_2,0,0,OP_1, OP_2,OP_S,0,0,OP_1,0,OP_2|OP_BIT,0,
-/*       P    Q              T          W    X    Y          \       ^         */
-/*0x60*/ 0,OP_2,0,0,0,OP_S,OP_S,OP_2|OP_CMP|OP_ORD, OP_2|OP_L|OP_LOG,0,OP_2|OP_L|OP_LOG,0,0,OP_2,OP_2|OP_CMP,OP_2,
-/*         a        e    f    g                    h                   j                   m    n              o    */
-/*0x70*/ 0,0,0,0,0,0,0,OP_2, OP_1,OP_2,0,OP_S,OP_2|OP_BIT,OP_S,OP_1,0
-/*                        w    x    y      {    |              }    ~    */
+/*0x20 spc !           "  #  $  %    &           ' */
+       0,OP_1|OP_LOG,0,0,0,OP_2,OP_2|OP_BIT,OP_1,
+/*0x28 (    )    *    +    ,    -    .  / */
+       OP_S,OP_S,OP_2,OP_2,OP_2,OP_2,0,OP_2,
+/*0x30 0    1    2    3  4  5  6    7 */
+       OP_2,OP_2,OP_2,0,0,0,OP_2,0,
+/*0x38 8  9  :    ;  <                 =    >                 ? */
+       0,0,OP_2,0,OP_2|OP_CMP|OP_ORD,OP_2,OP_2|OP_CMP|OP_ORD,OP_S,
+/*0x40 @    A  B  C  D  E  F  G */
+       OP_S,0,0,0,0,0,0,0,
+/*0x48 H  I  J  K  L                 M    N    O */
+       0,0,0,0,OP_2|OP_CMP|OP_ORD,OP_1,OP_1,0,
+/*0x50 P    Q           R  S  T    U  V  W */
+       OP_2,OP_2|OP_CMP,0,0,OP_2,0,0,OP_1,
+/*0x58 X    Y    Z  [  \    ]  ^           _ */
+       OP_2,OP_S,0,0,OP_1,0,OP_2|OP_BIT,0,
+/*0x60 `  a    b  c  d  e    f    g */
+       0,OP_2,0,0,0,OP_S,OP_S,OP_2|OP_CMP|OP_ORD,
+/*0x68 h                 i  j                 k  l  m    n           o */
+       OP_2|OP_L|OP_LOG,0,OP_2|OP_L|OP_LOG,0,0,OP_2,OP_2|OP_CMP,OP_2,
+/*0x70 p  q  r  s  t  u  v  w */
+       0,0,0,0,0,0,0,OP_2,
+/*0x78 x    y    z  {    |           }    ~    DEL */
+       OP_1,OP_2,0,OP_S,OP_2|OP_BIT,OP_S,OP_1,0
 };
 #define OPTAB(op) optab[(op) - 0x20]
 #define IS_CMP(op) (OPTAB(op) & OP_CMP)
