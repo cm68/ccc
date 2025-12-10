@@ -28,6 +28,7 @@ static int exprCount = 0;
 static int
 execIns(struct expr *e, unsigned char ins)
 {
+    const char *symbol = (e->left && e->left->symbol) ? e->left->symbol : e->symbol;
     unsigned char s = 0;
 
     switch (ins) {
@@ -72,8 +73,8 @@ execIns(struct expr *e, unsigned char ins)
         loadWordIY(e->offset);
         return 1;
     case EO_HL_MEM:
-        if (e->left && e->left->symbol) {
-            fdprintf(outFd, "\tld hl, (%s)\n", e->left->symbol);
+        if (symbol) {
+            fdprintf(outFd, "\tld hl, (%s)\n", symbol);
             clearHL();
         }
         return 1;
@@ -92,8 +93,8 @@ execIns(struct expr *e, unsigned char ins)
         clearHL();
         return 1;
     case EO_DE_CONST:
-        if (e->symbol)
-            fdprintf(outFd, "\tld de, %s\n", e->symbol);
+        if (symbol)
+            fdprintf(outFd, "\tld de, %s\n", symbol);
         else
             fdprintf(outFd, "\tld de, %ld\n", e->value);
         return 1;
@@ -101,8 +102,8 @@ execIns(struct expr *e, unsigned char ins)
         loadByteIY(e->offset, 0);
         return 1;
     case EO_A_MEM:
-        if (e->left && e->left->symbol) {
-            fdprintf(outFd, "\tld a, (%s)\n", e->left->symbol);
+        if (symbol) {
+            fdprintf(outFd, "\tld a, (%s)\n", symbol);
             clearA();
         }
         return 1;
@@ -125,12 +126,12 @@ execIns(struct expr *e, unsigned char ins)
         storeWordIY(e->offset);
         return 1;
     case EO_MEM_BC:
-        if (e->left && e->left->symbol)
-            fdprintf(outFd, "\tld (%s), bc\n", e->left->symbol);
+        if (symbol)
+            fdprintf(outFd, "\tld (%s), bc\n", symbol);
         return 1;
     case EO_MEM_DE:
-        if (e->left && e->left->symbol)
-            fdprintf(outFd, "\tld (%s), de\n", e->left->symbol);
+        if (symbol)
+            fdprintf(outFd, "\tld (%s), de\n", symbol);
         return 1;
     case EO_IY_A:
         storeByteIY(e->offset, 0);
