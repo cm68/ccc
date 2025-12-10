@@ -961,8 +961,9 @@ generateCode()
  */
 
 /*
- * Schedule expression with a destination hint
- * dest: R_HL, R_DE, R_A, or R_NONE (use default)
+ * Schedule expression - propagate dest hints down the tree
+ * loc/offset/reg/cond are now set during parsing by schedNode()
+ * This just handles the top-down dest propagation
  */
 static void
 schedExpr(struct expr *e, int dest)
@@ -980,78 +981,15 @@ schedExpr(struct expr *e, int dest)
     }
 
     switch (e->op) {
-    case 'C':  /* Constant */
-        e->loc = LOC_CONST;
-        /* value already in e->value */
+    case 'C':  /* Constant - no children */
+    case '$':  /* Symbol - no children */
+    case 'S':  /* Stack offset - no children */
         break;
 
-    case '$':  /* Symbol reference (address of) */
-        e->loc = LOC_MEM;
-        /* symbol already in e->symbol */
-        break;
-
-    case 'M':  /* DEREF - memory load */
-        /* Check what we're dereferencing */
-        if (e->left && e->left->op == '$' && e->left->symbol) {
-            /* Direct variable reference: (M $var) */
-            var = findVar(e->left->symbol);
-            if (var) {
-                /* Local variable */
-                if (var->reg != REG_NO) {
-                    /* Register variable */
-                    e->loc = LOC_REG;
-                    switch (var->reg) {
-                    case REG_BC: e->reg = R_BC; break;
-                    case REG_IX: e->reg = R_IX; break;
-                    default:     e->reg = R_NONE; break;
-                    }
-                } else {
-                    /* Stack variable */
-                    e->loc = LOC_STACK;
-                    e->offset = var->offset;
-                }
-            } else {
-                /* Global variable */
-                e->loc = LOC_MEM;
-            }
-            /* Don't recurse into $ child - we handled it */
-            e->left->loc = LOC_MEM;
-        } else if (e->left && e->left->op == 'M' &&
-                   e->left->left && e->left->left->op == '$') {
-            /* Dereference of pointer variable: (M (M $ptr))
-             * Check if ptr is IX-allocated for (ix+0) addressing */
-            var = findVar(e->left->left->symbol);
-            if (var && var->reg == REG_IX) {
-                e->loc = LOC_IX;
-                e->offset = 0;
-            } else {
-                /* Not IX - fall through to indirect */
-                schedExpr(e->left, R_HL);
-                e->loc = LOC_INDIR;
-                e->reg = R_HL;
-            }
-        } else if (e->left && e->left->op == '+' &&
-                   e->left->left && e->left->left->op == 'M' &&
-                   e->left->left->left && e->left->left->left->op == '$' &&
-                   e->left->right && e->left->right->op == 'C') {
-            /* Struct member access: (M (+ (M $ptr) const))
-             * Check if ptr is IX-allocated for (ix+offset) addressing */
-            var = findVar(e->left->left->left->symbol);
-            if (var && var->reg == REG_IX) {
-                e->loc = LOC_IX;
-                e->offset = e->left->right->value;
-            } else {
-                /* Not IX - fall through to indirect */
-                schedExpr(e->left, R_HL);
-                e->loc = LOC_INDIR;
-                e->reg = R_HL;
-            }
-        } else {
-            /* Complex dereference - recurse */
+    case 'M':  /* DEREF */
+        /* Only recurse if not a simple variable reference or IX-indexed */
+        if (e->loc == LOC_INDIR)
             schedExpr(e->left, R_HL);
-            e->loc = LOC_INDIR;
-            e->reg = R_HL;
-        }
         break;
 
     case '+':
@@ -1080,22 +1018,15 @@ schedExpr(struct expr *e, int dest)
     case 'L':  /* <= */
     case 'Q':  /* == */
     case 'n':  /* != */
-        /* Comparison with 0: test in place, no register scheduling
-         * For == and !=, signedness doesn't matter (just test for zero)
-         * For relational ops, only signed can use simple test */
-        if (e->right && e->right->op == 'C' &&
-            e->right->value == 0 && e->left && e->left->size == 2 &&
+        /* Comparison with 0: test in place */
+        if (e->right && e->right->op == 'C' && e->right->value == 0 &&
+            e->left && e->left->size == 2 &&
             ((e->op == 'Q' || e->op == 'n') || !(e->flags & E_UNSIGNED))) {
-            schedExpr(e->left, R_NONE);  /* just set loc, don't force register */
-            e->right->loc = LOC_CONST;
+            schedExpr(e->left, R_NONE);
             e->right->dest = R_NONE;
-            e->loc = LOC_FLAGS;
             break;
         }
-        /* Comparisons: schedule so sbc hl,de gives correct result
-         * < and >=: compute left-right, so left->HL, right->DE
-         * > and <=: compute right-left, so left->DE, right->HL
-         */
+        /* Comparisons: schedule so sbc hl,de gives correct result */
         if (e->size == 1 || (e->left && e->left->size == 1)) {
             schedExpr(e->left, R_A);
             schedExpr(e->right, R_A);
@@ -1106,37 +1037,9 @@ schedExpr(struct expr *e, int dest)
             schedExpr(e->left, R_DE);
             schedExpr(e->right, R_HL);
         }
-        /* Set condition code based on operator and signedness */
-        e->loc = LOC_FLAGS;
-        switch (e->op) {
-        case 'Q':  /* == */
-            e->cond = CC_Z;
-            break;
-        case 'n':  /* != */
-            e->cond = CC_NZ;
-            break;
-        case '<':
-            /* unsigned: C set means less; signed: use helper result */
-            e->cond = (e->flags & E_UNSIGNED) ? CC_C : CC_C;
-            break;
-        case '>':
-            /* unsigned: C clear AND NZ; signed: use helper result */
-            e->cond = (e->flags & E_UNSIGNED) ? CC_NZ : CC_NZ;
-            break;
-        case 'L':  /* <= */
-            /* unsigned: C set OR Z; signed: M or Z */
-            e->cond = (e->flags & E_UNSIGNED) ? CC_Z : CC_Z;
-            break;
-        case 'g':  /* >= */
-            /* unsigned: C clear; signed: P or Z */
-            e->cond = (e->flags & E_UNSIGNED) ? CC_NC : CC_NC;
-            break;
-        }
         break;
 
     case '=':  /* Assignment */
-        /* LHS is destination, RHS provides value
-         * If LHS is a register-allocated variable, target that register */
         if (e->size == 1) {
             schedExpr(e->right, R_A);
         } else {

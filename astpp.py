@@ -194,6 +194,18 @@ class ASTParser:
             off = self.read_hex4()
             return f"SP[{off}]"
 
+        # Inline string literal: U hexname len hexdata, followed by $name ref
+        if c == 'U':
+            self.advance()
+            name = self.read_name()
+            data_len = self.read_hex2()
+            # Skip hex-encoded data (2 chars per byte)
+            for _ in range(data_len):
+                self.advance()
+                self.advance()
+            # The value is the following expression (usually $name)
+            return self.parse_expr()
+
         # Numeric constant: # followed by size suffix and 8 hex digits
         if c == '#':
             self.advance()
@@ -393,10 +405,28 @@ class ASTParser:
                 self.parse_stmt()
             self.indent -= 1
 
-        # Asm: A len hexdata
+        # Asm: A len(4) hexdata
         elif c == 'A':
-            asm_str = self.read_name()
-            self.prln(f"ASM {{ {asm_str} }}")
+            asm_len = self.read_hex4()
+            # Read hex-encoded asm data
+            asm_bytes = []
+            for _ in range(asm_len):
+                hi = self.cur()
+                self.advance()
+                lo = self.cur()
+                self.advance()
+                asm_bytes.append(int(hi + lo, 16))
+            asm_str = bytes(asm_bytes).decode('latin-1')
+            lines = asm_str.split('\n')
+            if len(lines) == 1:
+                self.prln(f"ASM {{ {lines[0]} }}")
+            else:
+                self.prln("ASM {")
+                self.indent += 1
+                for line in lines:
+                    self.prln(line)
+                self.indent -= 1
+                self.prln("}")
 
         # Empty statement
         elif c == ';':
@@ -444,12 +474,13 @@ class ASTParser:
             self.prln(f"??? stmt {repr(c)}")
 
     def parse_function(self):
-        """Parse function: F rettype hexname param_count(2) frm_size(2) params... body
-        Params format: d suffix name reg off (reg and off are 2 hex digits each)"""
+        """Parse function: F rettype hexname param_count(2) local_count(2) frm_size(2) params... locals... body
+        Decl format: d suffix name reg off (reg and off are 2 hex digits each)"""
         ret_type = self.cur()
         self.advance()
         name = self.read_name()
         param_count = self.read_hex2()
+        local_count = self.read_hex2()
         frm_size = self.read_hex2()
 
         params = []
@@ -472,8 +503,29 @@ class ASTParser:
                 else:
                     params.append(f"{pname}:{self.width_name(ptype)}@{off_str}")
 
+        locals_list = []
+        for _ in range(local_count):
+            self.skip_whitespace()
+            if self.cur() == 'd':
+                self.advance()
+                ltype = self.cur()
+                self.advance()
+                lname = self.read_name()
+                lreg = self.read_hex2()
+                loff = self.read_hex2()
+                if loff > 127:
+                    loff = loff - 256
+                reg_str = self.REG_NAMES.get(lreg, str(lreg))
+                off_str = f"IY{loff:+d}" if loff else "IY"
+                if lreg:
+                    locals_list.append(f"{lname}:{self.width_name(ltype)}@{reg_str}")
+                else:
+                    locals_list.append(f"{lname}:{self.width_name(ltype)}@{off_str}")
+
         params_str = ', '.join(params)
         print(f"\nFUNCTION {name}({params_str}) -> {self.width_name(ret_type)} [frame={frm_size}]")
+        if locals_list:
+            print(f"  LOCALS: {', '.join(locals_list)}")
         print("{")
         self.indent = 1
         self.skip_whitespace()

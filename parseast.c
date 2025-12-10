@@ -19,16 +19,16 @@ static struct expr *parseExpr(void);
 static struct stmt *parseStmt(void);
 static void doStrLiteral(void);
 
-/* Add a parameter to fnLocals list */
+/* Add a variable to fnLocals list */
 static void
-addParam(const char *name, unsigned char size, char offset, unsigned char reg)
+addVar(const char *name, unsigned char size, char offset, unsigned char reg, int is_param)
 {
 	struct local_var *var = malloc(sizeof(struct local_var));
 	if (!var) { fdprintf(2, "oom\n"); exit(1); }
 	var->name = strdup(name);
 	var->size = size;
 	var->offset = offset;
-	var->is_param = 1;
+	var->is_param = is_param;
 	var->is_array = 0;
 	var->ref_count = 0;
 	var->agg_refs = 0;
@@ -302,6 +302,119 @@ readType(struct expr *e)
 	e->flags = getSignFTStr(e->type_str);
 }
 
+/*
+ * Schedule node during parsing - sets loc/offset/reg/cond
+ * Called after children are parsed, before returning node
+ * Does NOT set dest - that's a top-down pass done later
+ */
+static void
+schedNode(struct expr *e)
+{
+	struct local_var *var;
+	unsigned char op;
+
+	if (!e) return;
+	op = e->op;
+
+	switch (op) {
+	case 'C':  /* Constant */
+		e->loc = LOC_CONST;
+		break;
+
+	case '$':  /* Symbol reference (address of) */
+		e->loc = LOC_MEM;
+		break;
+
+	case 'S':  /* Stack offset (e.g., for varargs) */
+		e->loc = LOC_STACK;
+		break;
+
+	case 'M':  /* DEREF - memory load */
+		if (e->left && e->left->op == '$' && e->left->symbol) {
+			/* Direct variable reference: (M $var) */
+			var = findVar(e->left->symbol);
+			if (var) {
+				if (var->reg != REG_NO) {
+					/* Register variable */
+					e->loc = LOC_REG;
+					e->reg = (var->reg == REG_BC) ? R_BC :
+					         (var->reg == REG_IX) ? R_IX : R_NONE;
+					e->cached_var = var;
+				} else {
+					/* Stack variable */
+					e->loc = LOC_STACK;
+					e->offset = var->offset;
+				}
+			} else {
+				/* Global variable */
+				e->loc = LOC_MEM;
+			}
+			e->left->loc = LOC_MEM;
+		} else if (e->left && e->left->op == 'M' &&
+		           e->left->left && e->left->left->op == '$') {
+			/* Dereference of pointer: (M (M $ptr)) */
+			var = findVar(e->left->left->symbol);
+			if (var && var->reg == REG_IX) {
+				e->loc = LOC_IX;
+				e->offset = 0;
+			} else {
+				e->loc = LOC_INDIR;
+				e->reg = R_HL;
+			}
+		} else if (e->left && e->left->op == '+' &&
+		           e->left->left && e->left->left->op == 'M' &&
+		           e->left->left->left && e->left->left->left->op == '$' &&
+		           e->left->right && e->left->right->op == 'C') {
+			/* Struct member: (M (+ (M $ptr) const)) */
+			var = findVar(e->left->left->left->symbol);
+			if (var && var->reg == REG_IX) {
+				e->loc = LOC_IX;
+				e->offset = e->left->right->value;
+			} else {
+				e->loc = LOC_INDIR;
+				e->reg = R_HL;
+			}
+		} else {
+			/* Complex dereference */
+			e->loc = LOC_INDIR;
+			e->reg = R_HL;
+		}
+		break;
+
+	case '<':
+	case '>':
+	case 'g':  /* >= */
+	case 'L':  /* <= */
+	case 'Q':  /* == */
+	case 'n':  /* != */
+		e->loc = LOC_FLAGS;
+		switch (op) {
+		case 'Q': e->cond = CC_Z; break;
+		case 'n': e->cond = CC_NZ; break;
+		case '<': e->cond = CC_C; break;
+		case '>': e->cond = CC_NZ; break;
+		case 'L': e->cond = CC_Z; break;
+		case 'g': e->cond = CC_NC; break;
+		}
+		break;
+
+	case '@':  /* Call - result in register (HL or A depending on size) */
+		e->loc = LOC_REG;
+		e->reg = (e->size == 1) ? R_A : R_HL;
+		break;
+
+	case '?':  /* Ternary - result in register */
+	case ':':  /* Colon (ternary branches) */
+		e->loc = LOC_REG;
+		break;
+
+	default:
+		/* Binary ops, assignments, etc - result in register */
+		e->loc = LOC_REG;
+		break;
+	}
+}
+
 /* Unified expression handler - all ops have width suffix */
 static struct expr *
 doExprOp(unsigned char op)
@@ -331,6 +444,9 @@ doExprOp(unsigned char op)
 			freeExpr(old_right);
 		}
 	}
+
+	/* Schedule this node now that children are ready */
+	schedNode(e);
 	return e;
 }
 
@@ -353,6 +469,7 @@ doCall(void)
 		else e->right = w;
 		prev = w;
 	}
+	schedNode(e);
 	return e;
 }
 
@@ -369,6 +486,8 @@ doTernary(void)
 	c->left = parseExpr();
 	c->right = parseExpr();
 	e->right = c;
+	schedNode(c);
+	schedNode(e);
 	return e;
 }
 
@@ -380,6 +499,7 @@ doIncDec(unsigned char op)
 	e->left = parseExpr();
 	e->value = readHex4();
 	if (e->left) e->flags = e->left->flags;
+	schedNode(e);
 	return e;
 }
 
@@ -391,6 +511,7 @@ doBitfield(unsigned char op)
 	e->value = (off << 16) | wid;
 	e->left = parseExpr();
 	if (op == AST_BFASSIGN) e->right = parseExpr();
+	schedNode(e);
 	return e;
 }
 
@@ -401,6 +522,7 @@ doCopy(void)
 	e->value = readHex4();
 	e->left = parseExpr();
 	e->right = parseExpr();
+	schedNode(e);
 	return e;
 }
 
@@ -434,6 +556,7 @@ restart:
 		nextchar();
 		e = newExpr('$');
 		e->symbol = strdup((char *)readName());
+		schedNode(e);
 		return e;
 	}
 
@@ -442,6 +565,7 @@ restart:
 		nextchar();
 		e = newExpr('S');
 		e->value = readHex4();
+		schedNode(e);
 		return e;
 	}
 
@@ -452,6 +576,7 @@ restart:
 		e->size = getSizeFTStr(curchar);
 		nextchar();
 		e->value = readHex8();
+		schedNode(e);
 		return e;
 	}
 
@@ -518,34 +643,17 @@ parseStmt(void)
 
 	switch (op) {
 	case 'B':
-		/* Block: B decl_count stmt_count decls... stmts... */
+		/* Block: B 00 stmt_count stmts...
+		 * All locals hoisted to function prolog, so decl_count always 0 */
 		{
-			int decl_count = readHex2();
-			int stmt_count = readHex2();
+			int stmt_count;
+			readHex2();  /* Skip decl_count (always 0) */
+			stmt_count = readHex2();
 #ifdef DEBUG
-			if (TRACE(T_PARSE)) fdprintf(2, "BLOCK: decl=%d stmt=%d\n", decl_count, stmt_count);
+			if (TRACE(T_PARSE)) fdprintf(2, "BLOCK: stmt=%d\n", stmt_count);
 #endif
 			s = newStmt('B');
 			first = last = NULL;
-
-			/* Read declarations: d suffix name reg off */
-			for (i = 0; i < decl_count; i++) {
-				if (curchar == 'd') {
-					nextchar();
-					child = newStmt('d');
-					child->type_str = curchar;
-					nextchar();
-					child->symbol = strdup((char *)readName());
-					child->label = readHex2();  /* Register allocation (0=none) */
-					child->frm_off = (char)readHex2();  /* Frame offset (signed) */
-					appendChild(child, &first, &last);
-				} else {
-#ifdef DEBUG
-					if (TRACE(T_PARSE)) fdprintf(2, "BLOCK: decl %d/%d expected 'd', got '%c' (0x%x)\n", i, decl_count, curchar, curchar);
-#endif
-					break;  /* Parse error - stop */
-				}
-			}
 
 			/* Read statements */
 			for (i = 0; i < stmt_count; i++) {
@@ -732,7 +840,7 @@ doFunction(unsigned char rettype)
 	static char rettype_buf[2];
 	char *param;
 	unsigned char ptype;
-	int param_count, i;
+	int param_count, local_count, i;
 
 	rettype_buf[0] = rettype;
 	rettype_buf[1] = '\0';
@@ -752,13 +860,16 @@ doFunction(unsigned char rettype)
 	switchToSeg(SEG_TEXT);
 	addDefSym(fnName);
 
-	/* Parse parameters: param_count frm_size d suffix name reg off ... */
+	/* Parse: param_count local_count frm_size params... locals... */
 	param_count = readHex2();
+	local_count = readHex2();
 	fnFrmSize = readHex2();  /* Frame size computed by pass1 */
-	fnLocals = NULL;  /* Initialize before adding params */
+	fnLocals = NULL;  /* Initialize before adding vars */
 #ifdef DEBUG
-	if (TRACE(T_PARSE)) fdprintf(2, "  param_count=%d frm_size=%d\n", param_count, fnFrmSize);
+	if (TRACE(T_PARSE)) fdprintf(2, "  params=%d locals=%d frm_size=%d\n",
+		param_count, local_count, fnFrmSize);
 #endif
+	/* Read parameter declarations */
 	for (i = 0; i < param_count; i++) {
 		unsigned char preg, psize;
 		char poff;
@@ -769,15 +880,32 @@ doFunction(unsigned char rettype)
 		psize = getSizeFTStr(ptype);
 		nextchar();
 		param = (char *)readName();
-		preg = readHex2();  /* Read register allocation */
-		poff = (char)readHex2();  /* Read frame offset */
-		addParam(param, psize, poff, preg);
+		preg = readHex2();
+		poff = (char)readHex2();
+		addVar(param, psize, poff, preg, 1);  /* is_param=1 */
+	}
+	/* Read local variable declarations (hoisted from all blocks) */
+	for (i = 0; i < local_count; i++) {
+		unsigned char vreg, vsize;
+		char voff;
+		char *vname;
+		skipWS();
+		if (curchar != 'd') break;
+		nextchar();
+		ptype = curchar;
+		vsize = getSizeFTStr(ptype);
+		nextchar();
+		vname = strdup((char *)readName());
+		vreg = readHex2();
+		voff = (char)readHex2();
+		addVar(vname, vsize, voff, vreg, 0);  /* is_param=0 */
 	}
 #ifdef DEBUG
-	if (TRACE(T_PARSE)) fdprintf(2, "  %d params added to fnLocals\n", param_count);
+	if (TRACE(T_PARSE)) fdprintf(2, "  %d vars added to fnLocals\n",
+		param_count + local_count);
 #endif
 
-	/* Skip newlines between params and body */
+	/* Skip newlines between declarations and body */
 	skipNL();
 #ifdef DEBUG
 	if (TRACE(T_PARSE)) fdprintf(2, "  parsing body\n");

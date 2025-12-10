@@ -44,27 +44,32 @@ Single character after operators indicating operand type:
 
 ### Function Definition
 ```
-F<rettype><hexname><param_count><params...><body>
+F<rettype><hexname><param_count><local_count><frm_size><params...><locals...><body>
 ```
 
 - `rettype` - single char size suffix for return type
 - `hexname` - hex-length-prefixed function name
 - `param_count` - 2-digit hex count of parameters
-- `params` - sequence of `d<type><hexname><reg>` declarations with register allocation
+- `local_count` - 2-digit hex count of local variables (hoisted from all blocks)
+- `frm_size` - 2-digit hex frame size (bytes for stack locals)
+- `params` - sequence of parameter declarations
+- `locals` - sequence of local variable declarations
 - `body` - statement (usually a Block)
 
-**Parameter format**: `d<type><hexname><reg>`
+**Declaration format**: `d<type><hexname><reg><off>`
 - `type` - single char type suffix (b/s/l/p)
-- `hexname` - hex-length-prefixed parameter name
+- `hexname` - hex-length-prefixed name
 - `reg` - 2-digit hex register allocation (see Register Allocation below)
+- `off` - 2-digit hex frame offset (signed, params positive, locals negative)
 
 Example:
 ```
-Fs05_main02ds04argc00dp04argv04
+Fs05_main0201 04 ds04argc0004 dp04argv0406 ds01x03fe
 ```
-= `int _main(int argc, char **argv)` - returns short (s), name "_main", 2 params
-- argc: short, no register (00)
-- argv: pointer, allocated to IX (04)
+= `int _main(int argc, char **argv) { int x; }` - returns short, 2 params, 1 local, 4-byte frame
+- argc: short, no register (00), offset +4
+- argv: pointer, allocated to IX (04), offset +6
+- x: short, allocated to BC (03), offset -2
 
 ### Global Variable
 ```
@@ -109,20 +114,17 @@ issues. cc2's readStr() decodes the hex data back to binary.
 
 ### Block
 ```
-B<decl_count><stmt_count><decls...><stmts...>
+B00<stmt_count><stmts...>
 ```
 
-- `decl_count` - 2-digit hex count of local variable declarations
+- `decl_count` - always `00` (locals hoisted to function prolog)
 - `stmt_count` - 2-digit hex count of statements
-- `decls` - sequence of `d<type><hexname><reg>` declarations with register allocation
 - `stmts` - sequence of statements
 
-**Local declaration format**: `d<type><hexname><reg>`
-- `type` - single char type suffix (b/s/l/p)
-- `hexname` - hex-length-prefixed variable name
-- `reg` - 2-digit hex register allocation (see Register Allocation below)
+Note: All local variable declarations are hoisted to the function prolog.
+Blocks no longer contain inline declarations.
 
-Example: `B0203ds01x00ds01y03` = block with 2 declarations (x:short no-reg, y:short in BC), 3 statements
+Example: `B0003` = block with 3 statements (decl_count always 0)
 
 ### If Statement
 ```
@@ -225,8 +227,11 @@ O<stmt_count><stmts...>
 
 ### Inline Assembly
 ```
-A<len><hexdata>
+A<len4><hexdata>
 ```
+
+- `len4` - 4-digit hex byte count
+- `hexdata` - hex-encoded assembly text (each byte as 2 hex digits)
 
 ### Empty Statement
 ```
@@ -384,8 +389,8 @@ Used for function argument lists.
 ## Example
 
 ```
-Fs05_main00
-B0101ds01x
+Fs05_main000102ds01x03fe
+B0002
 E=s$01x#0000000a
 R01Ms$01x
 ```
@@ -393,11 +398,14 @@ R01Ms$01x
 Parses as:
 ```c
 int _main() {
-    int x;      // B0101ds01x - block with 1 decl, 1 stmt
+    int x;      // local hoisted to prolog: ds01x03fe (x in BC, offset -2)
     x = 10;     // E=s$01x#0000000a
     return x;   // R01Ms$01x
 }
 ```
+Function header: Fs (return short) 05_main (name) 00 (0 params) 01 (1 local) 02 (frame size 2)
+Local x: ds (short) 01x (name) 03 (BC register) fe (offset -2)
+Block: B0002 (0 decls, 2 statements)
 
 ---
 

@@ -47,15 +47,19 @@ else
 fi
 
 for t in "${TESTS[@]}" ; do
+	base="${t%.c}"
+	ast="${base}.ast"
+	s="${base}.s"
+	pp="${base}.pp"
+
 	echo testing against $t
 	echo "======= source ========"
 	cat "$t"
-	echo "======== run ========"
-	echo ../cc1 $VERBOSE -E $t
+	echo "======== cc1 ========"
+	echo ../cc1 -DTEST=$t -I.. $VERBOSE -o $ast $t
 
 	# Run cc1 and capture stderr
-	ERRORS=$(../cc1 -DTEST=$t -I.. $VERBOSE -E "$t" 2>&1 >/dev/null | grep "^file.*error code")
-	EXIT_CODE=$?
+	ERRORS=$(../cc1 -DTEST=$t -I.. $VERBOSE -o "$ast" "$t" 2>&1 >/dev/null | grep "^file.*error code")
 
 	# Check if there were errors
 	if [ -n "$ERRORS" ]; then
@@ -67,7 +71,7 @@ for t in "${TESTS[@]}" ; do
 			echo "ERRORS DETECTED:"
 			echo "$ERRORS"
 			echo "file ../cc1" > .gdbargs
-			echo "set args -DTEST=$t -I.. $VERBOSE -E $t" >> .gdbargs
+			echo "set args -DTEST=$t -I.. $VERBOSE -o $ast $t" >> .gdbargs
 			if $not_k ; then exit 1 ; fi
 		fi
 	else
@@ -75,7 +79,37 @@ for t in "${TESTS[@]}" ; do
 			echo "*** UNEXPECTED PASS *** Test was expected to fail but passed!"
 			if $not_k ; then exit 1 ; fi
 		else
-			echo "exited code 0"
+			echo "cc1 ok"
+		fi
+
+		# Run cc2 to produce .s
+		echo "======== cc2 ========"
+		echo ../cc2 -o $s $ast
+		if ../cc2 -o "$s" "$ast" 2>&1; then
+			echo "cc2 ok"
+		else
+			echo "cc2 FAILED"
+			if $not_k ; then exit 1 ; fi
+		fi
+
+		# Run astpp.py to produce .pp
+		echo "======== astpp ========"
+		echo python3 ../astpp.py $ast
+		if python3 ../astpp.py "$ast" > "$pp" 2>&1; then
+			echo "astpp ok"
+		else
+			echo "astpp FAILED"
+			if $not_k ; then exit 1 ; fi
+		fi
+
+		# Run asz to produce .o
+		echo "======== asz ========"
+		echo ../xbin/asz -o ${base}.o $s
+		if ../xbin/asz -o "${base}.o" "$s" 2>&1; then
+			echo "asz ok"
+		else
+			echo "asz FAILED"
+			if $not_k ; then exit 1 ; fi
 		fi
 	fi
 

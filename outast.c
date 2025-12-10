@@ -884,36 +884,12 @@ emitStmt(struct stmt *st)
 	switch (st->op) {
 	case BEGIN:
 		{
-			int decl_count = 0, stmt_count = 0;
-			struct name *local;
+			int stmt_count = countStmts(st->chain);
 			struct stmt *s;
-			const char *lname;
 
-			/* Count declarations and statements */
-			if (st->locals) {
-				for (local = st->locals; local; local = local->next) {
-					if (local->kind != funarg)
-						decl_count++;
-				}
-			}
-			stmt_count = countStmts(st->chain);
-
-			/* Emit: B decl_count stmt_count decls... stmts... */
-			fdprintf(astFd, "B%02x%02x", decl_count, stmt_count);
-
-			/* Emit declarations with register allocation and frame offset */
-			if (st->locals) {
-				for (local = st->locals; local; local = local->next) {
-					if (local->kind == funarg)
-						continue;
-					lname = local->mangled_name ?
-						local->mangled_name : local->name;
-					fdprintf(astFd, "d%c", typeSfx(local->type));
-					emitHexName(lname);
-					fdprintf(astFd, "%02x%02x", local->reg,
-						(unsigned char)local->frm_off);
-				}
-			}
+			/* Emit: B 00 stmt_count stmts...
+			 * All locals hoisted to function prolog, so decl_count=0 */
+			fdprintf(astFd, "B00%02x", stmt_count);
 
 			/* Emit statements */
 			for (s = st->chain; s; s = s->next)
@@ -1213,6 +1189,47 @@ emitPrmDecls(struct type *functype, struct stmt *body)
 	}
 }
 
+/* Count local variables (non-params) */
+static int
+countLocals(struct stmt *body)
+{
+	struct name *local;
+	int count = 0;
+
+	if (!body || !body->locals)
+		return 0;
+
+	for (local = body->locals; local; local = local->next) {
+		if (local->kind != funarg)
+			count++;
+	}
+	return count;
+}
+
+/*
+ * Emit local variable declarations (non-params) at function prolog
+ * All locals are hoisted to function level - no scope tracking needed
+ */
+static void
+emitLocals(struct stmt *body)
+{
+	struct name *local;
+	const char *lname;
+
+	if (!body || !body->locals)
+		return;
+
+	for (local = body->locals; local; local = local->next) {
+		if (local->kind == funarg)
+			continue;  /* params already emitted */
+		lname = local->mangled_name ? local->mangled_name : local->name;
+		fdprintf(astFd, "d%c", typeSfx(local->type));
+		emitHexName(lname);
+		fdprintf(astFd, "%02x%02x", local->reg,
+			(unsigned char)local->frm_off);
+	}
+}
+
 /*
  * Output a global asm block in AST format
  * Format: A len hexdata (same as inline asm but at top level)
@@ -1232,14 +1249,15 @@ emitGlobalAsm(struct stmt *st)
 
 /*
  * Output a function in AST format
- * Format: F rettype hexname param_count frm_size params... body
+ * Format: F rettype hexname param_count local_count frm_size params... locals... body
+ * All locals hoisted to function prolog - no declarations in blocks
  */
 void
 emitFunction(struct name *func)
 {
 	char func_name[256];
 	char ret_suffix;
-	int frm_size;
+	int frm_size, param_count, local_count;
 
 	if (!func || !func->u.body)
 		return;
@@ -1263,13 +1281,17 @@ emitFunction(struct name *func)
 	fdprintf(astFd, "\nF%c", ret_suffix);
 	emitHexName(func_name);
 
-	/* Output parameter count and frame size */
-	if (func->type) {
-		fdprintf(astFd, "%02x%02x", countParams(func->type), frm_size);
+	/* Output param count, local count, and frame size */
+	param_count = func->type ? countParams(func->type) : 0;
+	local_count = countLocals(func->u.body);
+	fdprintf(astFd, "%02x%02x%02x", param_count, local_count, frm_size);
+
+	/* Emit parameter declarations */
+	if (func->type)
 		emitPrmDecls(func->type, func->u.body);
-	} else {
-		fdprintf(astFd, "0000");
-	}
+
+	/* Emit local variable declarations (hoisted from all blocks) */
+	emitLocals(func->u.body);
 
 	/* Reset jump map for this function */
 	jmpMapCnt = 0;
