@@ -460,8 +460,6 @@ doExprOp(unsigned char op)
 		}
 	}
 
-	/* Schedule this node now that children are ready */
-	schedNode(e);
 	return e;
 }
 
@@ -484,7 +482,6 @@ doCall(void)
 		else e->right = w;
 		prev = w;
 	}
-	schedNode(e);
 	return e;
 }
 
@@ -501,8 +498,7 @@ doTernary(void)
 	c->left = parseExpr();
 	c->right = parseExpr();
 	e->right = c;
-	schedNode(c);
-	schedNode(e);
+	schedNode(c);  /* ':' built inline, not returned through parseExpr */
 	return e;
 }
 
@@ -514,7 +510,6 @@ doIncDec(unsigned char op)
 	e->left = parseExpr();
 	e->value = readHex4();
 	if (e->left) e->flags = e->left->flags;
-	schedNode(e);
 	return e;
 }
 
@@ -526,7 +521,6 @@ doBitfield(unsigned char op)
 	e->value = (off << 16) | wid;
 	e->left = parseExpr();
 	if (op == AST_BFASSIGN) e->right = parseExpr();
-	schedNode(e);
 	return e;
 }
 
@@ -537,7 +531,6 @@ doCopy(void)
 	e->value = readHex4();
 	e->left = parseExpr();
 	e->right = parseExpr();
-	schedNode(e);
 	return e;
 }
 
@@ -570,8 +563,7 @@ restart:
 		nextchar();
 		e = newExpr('$');
 		e->symbol = strdup((char *)readName());
-		schedNode(e);
-		return e;
+		goto done;
 	}
 
 	/* Stack offset (rare) */
@@ -579,8 +571,7 @@ restart:
 		nextchar();
 		e = newExpr('S');
 		e->value = readHex4();
-		schedNode(e);
-		return e;
+		goto done;
 	}
 
 	/* Numeric constant - prefixed with # and size suffix */
@@ -590,8 +581,7 @@ restart:
 		e->size = getSizeFTStr(curchar);
 		nextchar();
 		e->value = readHex8();
-		schedNode(e);
-		return e;
+		goto done;
 	}
 
 	/* Operator - check optab */
@@ -620,6 +610,8 @@ restart:
 		/* Unknown op - return placeholder */
 		e = newExpr(op);
 	}
+done:
+	schedNode(e);
 	return e;
 }
 
