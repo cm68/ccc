@@ -110,6 +110,7 @@ emitIncDec(struct expr *e)
     const char *rn;     /* byte register name */
     const char *rp;     /* word register pair name */
     const char *sym;    /* global symbol name */
+    const char *opn;    /* "inc" or "dec" */
     int ofs;            /* IY offset */
     enum { ID_REG, ID_STACK, ID_GLOBAL, ID_HL } loc;
 
@@ -122,6 +123,7 @@ emitIncDec(struct expr *e)
 
     /* Initialize */
     var = NULL; rn = NULL; rp = NULL; sym = NULL; ofs = 0;
+    opn = is_dec ? "dec" : "inc";
 
     /* Determine location type and set up addressing */
     if (e->symbol) {
@@ -165,9 +167,9 @@ emitIncDec(struct expr *e)
         if (amount == 1 && loc != ID_GLOBAL) {
             /* Direct inc/dec on location - sets Z flag for zero test */
             switch (loc) {
-            case ID_REG:   emit2S(FS2_OP, is_dec ? "dec" : "inc", rn); break;
+            case ID_REG:   emit2S(FS2_OP, opn, rn); break;
             case ID_STACK: iyFmt(is_dec ? "\tdec (iy %c %d)\n" : "\tinc (iy %c %d)\n", ofs); break;
-            case ID_HL:    fdprintf(outFd, "\t%s (hl)\n", is_dec ? "dec" : "inc"); break;
+            case ID_HL:    fdprintf(outFd, "\t%s (hl)\n", opn); break;
             default: break;
             }
             fnZValid = 2;  /* Z=1 means result is zero (false in bool context) */
@@ -228,7 +230,7 @@ emitIncDec(struct expr *e)
             switch (loc) {
             case ID_REG:
                 for (i = 0; i < amount; i++)
-                    emit2S(FS2_OP, is_dec ? "dec" : "inc", rp);
+                    emit2S(FS2_OP, opn, rp);
                 break;
             case ID_STACK:
                 /* 8-bit dec/inc affects C flag, so we can use borrow/carry */
@@ -241,14 +243,14 @@ emitIncDec(struct expr *e)
             case ID_GLOBAL:
                 if (!is_post) emitS(FS_LDHLM, sym);
                 for (i = 0; i < amount; i++)
-                    fdprintf(outFd, "\t%s hl\n", is_dec ? "dec" : "inc");
+                    fdprintf(outFd, "\t%s hl\n", opn);
                 emitS(FS_STHLM, sym);
                 break;
             case ID_HL:
                 for (i = 0; i < amount; i++) {
-                    fdprintf(outFd, "\t%s (hl)\n", is_dec ? "dec" : "inc");
+                    fdprintf(outFd, "\t%s (hl)\n", opn);
                     emit(S_JRNZ4INC);
-                    fdprintf(outFd, "\t%s (hl)\n\tdec hl\n", is_dec ? "dec" : "inc");
+                    fdprintf(outFd, "\t%s (hl)\n\tdec hl\n", opn);
                 }
                 break;
             }
