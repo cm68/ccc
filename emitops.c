@@ -439,6 +439,27 @@ notConstStore:
         goto do_store;
     }
 
+    /* Optimize: word = WIDEN(byte) for IY-indexed variable
+     * Pattern: =s $var Ws expr  ->  ld (iy+ofs),a; ld (iy+ofs+1),0
+     * Avoids: ld l,a; ld h,0; ld (iy+ofs),l; ld (iy+ofs+1),h */
+    if (e->size == 2 && e->right && e->right->op == 'W' &&
+        e->left && e->left->op == '$' && e->left->symbol) {
+        struct local_var *lv = findVar(stripVarPfx(e->left->symbol));
+        if (lv && lv->reg == REG_NO) {
+            int ofs = lv->offset;
+            emitExpr(e->right->left);  /* byte result in A; emitExpr frees it */
+            e->right->left = NULL;     /* prevent double-free */
+            fdprintf(outFd, "\tld (iy %c %d), a\n",
+                     ofs >= 0 ? '+' : '-', ofs >= 0 ? ofs : -ofs);
+            fdprintf(outFd, "\tld (iy %c %d), 0\n",
+                     ofs + 1 >= 0 ? '+' : '-', ofs + 1 >= 0 ? ofs + 1 : -(ofs + 1));
+            freeExpr(e->right);
+            freeExpr(e->left);
+            freeNode(e);
+            return;
+        }
+    }
+
     /* Emit right child first (value goes to PRIMARY) */
     emitExpr(e->right);
 #ifdef DEBUG
