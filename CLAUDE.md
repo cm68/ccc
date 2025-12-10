@@ -108,6 +108,51 @@ i = c;     // =s$_i Mb$_c
 - Functions and arrays decay to pointers (no DEREF wrapper)
 - Variables get DEREF wrapper: `x` -> `M$_x`
 
+### Value Union Optimization
+
+The `e->value` field in struct expr uses a union to reduce code size:
+
+```c
+union { long l; short s; char c; } value;
+```
+
+Access the appropriately-sized member to avoid 32-bit operations when unnecessary:
+- `e->value.c` for byte values (shift counts, small constants, argc)
+- `e->value.s` for 16-bit values (most constants, offsets)
+- `e->value.l` for 32-bit values (long constants, float bit patterns)
+
+This saves ~1200 bytes in cc2 by eliminating 32-bit load/mask operations where
+8-bit or 16-bit access suffices. Example: `e->value.c & 0xff` becomes just
+`e->value.c` since .c is already char.
+
+### Float Support
+
+Float and double are both 32-bit IEEE 754. Code size strategies used:
+
+1. **Reuse long infrastructure**: Float is size 4, same as long. Uses HLHL' register
+   pair and existing 32-bit load/store code paths.
+
+2. **Helper functions for all operations**: No inline float math. All arithmetic
+   (+, -, *, /) and comparisons call external helpers (_fadd, _fsub, _fmul, _fdiv,
+   _fcmp). Keeps compiler small; float library can be optimized separately.
+
+3. **Single flag for float detection**: E_FLOAT flag on expressions distinguishes
+   float from long. Intercept before long handling, delegate to helpers.
+
+4. **Reuse libc for parsing**: Float literals parsed with atof() - no custom
+   float-to-binary converter in the compiler.
+
+5. **Minimal type system changes**: Float uses 'f' type suffix in AST, same
+   encoding as other types. Double aliased to float (both 4 bytes).
+
+6. **Conversion helpers**: _itof (int→float) and _ftoi (float→int) avoid inline
+   conversion code.
+
+Calling convention for float helpers:
+- Left operand: DEDE' (pushed to stack, popped into DE/DE')
+- Right operand: HLHL'
+- Result: HLHL'
+
 ## Known Issues
 
 - 'signed' keyword not supported
