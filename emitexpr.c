@@ -205,11 +205,13 @@ emitExpr(struct expr *e)
     struct expr *left;
     unsigned char op, opflags;
     const char *symbol;
+    long value;
 
     if (!e) return;
     op = e->op;
     opflags = e->opflags;
     symbol = e->symbol;
+    value = e->value;
     left = e->left;
 #ifdef DEBUG
     exprCount++;
@@ -394,21 +396,21 @@ emitExpr(struct expr *e)
     /* Handle constants with scheduler */
     else if (op == 'C' && e->loc == LOC_CONST) {
         if (e->size == 1) {
-            if ((e->value & 0xff) == 0) {
+            if ((value & 0xff) == 0) {
                 if (!fnAZero) {
                     emit(S_XORA);
                     fnAZero = 1;
                 }
             } else {
-                emit1(F_LDA, e->value & 0xff);
+                emit1(F_LDA, value & 0xff);
                 fnAZero = 0;
             }
         } else {
-            if (e->value == 0 && fnHLZero) {
+            if (value == 0 && fnHLZero) {
                 /* HL already zero */
             } else {
-                fdprintf(outFd, "\tld hl, %ld\n", e->value);
-                fnHLZero = (e->value == 0);
+                fdprintf(outFd, "\tld hl, %ld\n", value);
+                fnHLZero = (value == 0);
                 if (!fnHLZero) clearHL();
             }
         }
@@ -421,7 +423,7 @@ emitExpr(struct expr *e)
         struct local_var *var = e->cached_var;
         const char *rn = byteRegName(var->reg);
         const char *inst = (op == '0') ? "sla" : "srl";
-        int count = e->value, i;
+        int count = value, i;
         if (var->reg == REG_BC) rn = "c";
         for (i = 0; i < count; i++)
             emit2S(FS2_OP, inst, rn);
@@ -430,11 +432,11 @@ emitExpr(struct expr *e)
     }
     /* Handle specialized bit ops (OREQ=set, ANDEQ=res) */
     else if ((op == '1' || op == AST_ANDEQ) && !left && !e->right && e->cached_var &&
-             e->value >= 0 && e->value <= 7) {
-        /* Simple variable patterns - kids were freed, bitnum stored in e->value */
+             value >= 0 && value <= 7) {
+        /* Simple variable patterns - kids were freed, bitnum stored in value */
         struct local_var *var = e->cached_var;
         const char *inst = (op == '1') ? "set" : "res";
-        int bitnum = e->value;
+        int bitnum = value;
         if (opflags & OP_REGVAR) {
             const char *rn = byteRegName(var->reg);
             if (var->reg == REG_BC) rn = "c";
@@ -451,8 +453,8 @@ emitExpr(struct expr *e)
     /* Handle specialized bit ops with IX-indexed or (hl) addressing */
     else if ((op == '1' || op == AST_ANDEQ) && (opflags & OP_IXMEM) && !left) {
         const char *inst = (op == '1') ? "set" : "res";
-        int bitnum = (e->value >> 8) & 0xff;
-        int ofs = (char)(e->value & 0xff);
+        int bitnum = (value >> 8) & 0xff;
+        int ofs = (char)(value & 0xff);
         fdprintf(outFd, "\t%s %d, (ix %c %d)\n", inst, bitnum,
                  ofs >= 0 ? '+' : '-', ofs >= 0 ? ofs : -ofs);
         freeNode(e);
@@ -461,7 +463,7 @@ emitExpr(struct expr *e)
     else if ((op == '1' || op == AST_ANDEQ) && left && !e->right) {
         /* (hl) addressing - emit left for address, then bit op */
         const char *inst = (op == '1') ? "set" : "res";
-        int bitnum = e->value;
+        int bitnum = value;
         emitExpr(left);
         fdprintf(outFd, "\t%s %d, (hl)\n", inst, bitnum);
         freeNode(e);
