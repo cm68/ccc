@@ -265,32 +265,25 @@ frStmt(struct stmt *s)
 #define OP_S  3   /* special handler */
 #define OP_L  4   /* needs label */
 
-static unsigned char optab[256];
-static int optab_init;
-
-static void
-initOptab(void)
-{
-	if (optab_init) return;
-	optab_init = 1;
-	/* Unary ops */
-	optab['M'] = optab['N'] = optab['W'] = optab[AST_SEXT] = OP_1;
-	optab['!'] = optab['~'] = optab['\\'] = optab['\''] = OP_1;
-	/* Binary ops */
-	optab['='] = optab['+'] = optab['-'] = optab['*'] = optab['/'] = OP_2;
-	optab['%'] = optab['&'] = optab['|'] = optab['^'] = optab[','] = OP_2;
-	optab['<'] = optab['>'] = optab['Q'] = optab['n'] = optab['L'] = OP_2;
-	optab['g'] = optab['y'] = optab['w'] = optab[':'] = OP_2;
-	optab['P'] = optab['T'] = optab['2'] = optab['1'] = OP_2;
-	optab['X'] = optab['0'] = optab['6'] = OP_2;
-	optab[AST_SUBEQ] = optab[AST_MODEQ] = optab[AST_ANDEQ] = OP_2;
-	/* Logical with label */
-	optab['h'] = optab['j'] = OP_2 | OP_L;
-	/* Special: call, ternary, copy, inc/dec, bitfield */
-	optab['@'] = optab['?'] = optab['Y'] = OP_S;
-	optab[AST_PREINC] = optab[AST_POSTINC] = optab[AST_PREDEC] = optab[AST_POSTDEC] = OP_S;
-	optab[AST_BFEXTRACT] = optab[AST_BFASSIGN] = OP_S;
-}
+/*
+ * Static operator table - indexed by (op - 0x20)
+ * OP_1=unary, OP_2=binary, OP_S=special, OP_L=needs label
+ */
+static const unsigned char optab[96] = {
+/*0x20*/ 0,OP_1,0,0,0,OP_2,OP_2,OP_1, OP_S,OP_S,OP_2,OP_2,OP_2,OP_2,0,OP_2,
+/*     spc !        %    &    '      (    )    *    +    ,    -      /    */
+/*0x30*/ OP_2,OP_2,OP_2,0,0,0,OP_2,0, 0,0,OP_2,0,OP_2,OP_2,OP_2,OP_S,
+/*       0    1    2        6              :      <    =    >    ?    */
+/*0x40*/ OP_S,0,0,0,0,0,0,0, 0,0,0,0,OP_2,OP_1,OP_1,0,
+/*       @                               L    M    N       */
+/*0x50*/ OP_2,OP_2,0,0,OP_2,0,0,OP_1, OP_2,OP_S,0,0,OP_1,0,OP_2,0,
+/*       P    Q        T          W    X    Y          \       ^    */
+/*0x60*/ 0,OP_2,0,0,0,OP_S,OP_S,OP_2, OP_2|OP_L,0,OP_2|OP_L,0,0,OP_2,OP_2,OP_2,
+/*         a        e    f    g    h          j              m    n    o    */
+/*0x70*/ 0,0,0,0,0,0,0,OP_2, OP_1,OP_2,0,OP_S,OP_2,OP_S,OP_1,0
+/*                        w    x    y      {    |    }    ~    */
+};
+#define OPTAB(op) optab[(op) - 0x20]
 
 /* Read type suffix and set size/flags */
 static void
@@ -420,7 +413,7 @@ static struct expr *
 doExprOp(unsigned char op)
 {
 	struct expr *e = newExpr(op);
-	unsigned char info = optab[op];
+	unsigned char info = OPTAB(op);
 	int arity = info & 3;
 
 	readType(e);
@@ -536,7 +529,6 @@ parseExpr(void)
 
 restart:
 	skipWS();
-	initOptab();
 
 	/* Null expression marker */
 	if (curchar == '_') {
@@ -583,7 +575,7 @@ restart:
 	/* Operator - check optab */
 	op = curchar;
 	nextchar();
-	info = optab[op];
+	info = OPTAB(op);
 
 	if ((info & 3) == OP_S) {
 		/* Special handlers */
