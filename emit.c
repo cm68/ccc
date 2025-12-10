@@ -118,7 +118,7 @@ static void emitCond(struct expr *e, unsigned char invert,
                         emitJump("jp nz,", true_lbl, true_num);
                     else
                         emit(S_JPNZ8);
-                    fdprintf(outFd, "\tld a, %s\n\tor %s\n", hi, lo);
+                    emit2S(FS2_LDAOR, hi, lo);
                     if (false_num != 255 || false_lbl)
                         emitJump("jp nz,", false_lbl, false_num);
                 } else {
@@ -127,7 +127,7 @@ static void emitCond(struct expr *e, unsigned char invert,
                         emitJump("jp nz,", false_lbl, false_num);
                     else
                         emit(S_JPNZ8);
-                    fdprintf(outFd, "\tld a, %s\n\tor %s\n", hi, lo);
+                    emit2S(FS2_LDAOR, hi, lo);
                     if (false_num != 255 || false_lbl)
                         emitJump("jp z,", false_lbl, false_num);
                 }
@@ -138,7 +138,7 @@ static void emitCond(struct expr *e, unsigned char invert,
                         emitJump("jp nz,", false_lbl, false_num);
                     else
                         emit(S_JPNZ8);
-                    fdprintf(outFd, "\tld a, %s\n\tor %s\n", hi, lo);
+                    emit2S(FS2_LDAOR, hi, lo);
                     if (false_num != 255 || false_lbl)
                         emitJump("jp z,", false_lbl, false_num);
                 } else {
@@ -147,7 +147,7 @@ static void emitCond(struct expr *e, unsigned char invert,
                         emitJump("jp nz,", true_lbl, true_num);
                     else
                         emit(S_JPNZ8);
-                    fdprintf(outFd, "\tld a, %s\n\tor %s\n", hi, lo);
+                    emit2S(FS2_LDAOR, hi, lo);
                     if (false_num != 255 || false_lbl)
                         emitJump("jp nz,", false_lbl, false_num);
                 }
@@ -321,7 +321,7 @@ emitStmtTail(struct stmt *s, char tailPos)
 
                 if (s->label2 > 0) {
                     if (skip_else) {
-                        fdprintf(outFd, "\t%s %s\n", cMeansTrue ? "jp nc," : "jp c,", else_goto);
+                        emit2S(FS2_OP, cMeansTrue ? "jp nc," : "jp c,", else_goto);
                     } else {
                         emitJump(cMeansTrue ? "jp nc," : "jp c,", "el", s->label);
                     }
@@ -340,12 +340,12 @@ emitStmtTail(struct stmt *s, char tailPos)
                 if (fnDualCmp == 'L') {
                     /* x <= 0: negative=true, zero=true */
                     emitJump("jp nz,", "yes", num);  /* neg -> then */
-                    fdprintf(outFd, "\tld a, %s\n\tor %s\n", hi, lo);
+                    emit2S(FS2_LDAOR, hi, lo);
                     emitJump("jp nz,", tgt, num);  /* pos -> else/end */
                 } else {
                     /* x > 0: negative=false, zero=false */
                     emitJump("jp nz,", tgt, num);  /* neg -> else/end */
-                    fdprintf(outFd, "\tld a, %s\n\tor %s\n", hi, lo);
+                    emit2S(FS2_LDAOR, hi, lo);
                     emitJump("jp z,", tgt, num);  /* zero -> else/end */
                 }
                 fnDualCmp = 0;
@@ -369,7 +369,7 @@ emit_z_jump:
                 if (s->label2 > 0) {
                     if (skip_else) {
                         /* Jump directly to else's goto target */
-                        fdprintf(outFd, "\t%s %s\n", invertCond ? "jp nz," : "jp z,", else_goto);
+                        emit2S(FS2_OP, invertCond ? "jp nz," : "jp z,", else_goto);
                     } else {
                         emitJump(invertCond ? "jp nz," : "jp z,", "el", s->label);
                     }
@@ -414,12 +414,12 @@ emit_z_jump:
                     if (fnDualCmp == 'L') {
                         /* x <= 0: negative=true, zero=true */
                         emitJump("jp nz,", "yes", num);  /* neg -> then */
-                        fdprintf(outFd, "\tld a, %s\n\tor %s\n", hi, lo);
+                        emit2S(FS2_LDAOR, hi, lo);
                         emitJump("jp nz,", tgt, num);  /* pos -> else/end */
                     } else {
                         /* x > 0: negative=false, zero=false */
                         emitJump("jp nz,", tgt, num);  /* neg -> else/end */
-                        fdprintf(outFd, "\tld a, %s\n\tor %s\n", hi, lo);
+                        emit2S(FS2_LDAOR, hi, lo);
                         emitJump("jp z,", tgt, num);  /* zero -> else/end */
                     }
                     fnDualCmp = 0;
@@ -445,7 +445,7 @@ emit_z_jump:
                     if (invertCond) cMeansTrue = !cMeansTrue;
                     if (s->label2 > 0) {
                         if (skip_else) {
-                            fdprintf(outFd, "\t%s %s\n", cMeansTrue ? "jp nc," : "jp c,", else_goto);
+                            emit2S(FS2_OP, cMeansTrue ? "jp nc," : "jp c,", else_goto);
                         } else {
                             emitJump(cMeansTrue ? "jp nc," : "jp c,", "el", s->label);
                         }
@@ -458,7 +458,7 @@ emit_z_jump:
                     if (cmpSense) invertCond = !invertCond;
                     if (s->label2 > 0) {
                         if (skip_else) {
-                            fdprintf(outFd, "\t%s %s\n", invertCond ? "jp nz," : "jp z,", else_goto);
+                            emit2S(FS2_OP, invertCond ? "jp nz," : "jp z,", else_goto);
                         } else {
                             emitJump(invertCond ? "jp nz," : "jp z,", "el", s->label);
                         }

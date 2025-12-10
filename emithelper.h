@@ -10,6 +10,7 @@
 void emit(unsigned char idx);
 void emit1(unsigned char idx, char val);
 void emitS(unsigned char idx, const char *s);
+void emit2S(unsigned char idx, const char *s1, const char *s2);
 void out(const char *s);
 void emitByteLoad(unsigned char reg);
 void emitByteStore(unsigned char reg);
@@ -241,6 +242,10 @@ void emitJump(const char *instr, const char *prefix, unsigned char label);
 #define FS_LABEL 7
 #define FS_JP 8
 #define FS_LDDEM 9
+
+/* emit2S format indices - two %s args */
+#define FS2_LDAOR 0
+#define FS2_OP 1
 
 /* Global label map for jump optimization */
 #define MAX_LBLMAP 256

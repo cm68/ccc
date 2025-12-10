@@ -182,6 +182,16 @@ void emitS(unsigned char idx, const char *s) {
     fdprintf(outFd, sfmtstr[idx], s);
 }
 
+/* Format strings with two %s args - for emit2S() */
+static const char *s2fmtstr[] = {
+    "\tld a, %s\n\tor %s\n",               /* FS2_LDAOR */
+    "\t%s %s\n"                            /* FS2_OP */
+};
+
+void emit2S(unsigned char idx, const char *s1, const char *s2) {
+    fdprintf(outFd, s2fmtstr[idx], s1, s2);
+}
+
 /* Output string to assembly output - saves passing outFd at each call site */
 void out(const char *s) {
     fdputs(outFd, s);

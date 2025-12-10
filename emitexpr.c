@@ -418,7 +418,7 @@ emitExpr(struct expr *e)
         int count = e->value, i;
         if (var->reg == REG_BC) rn = "c";
         for (i = 0; i < count; i++)
-            fdprintf(outFd, "\t%s %s\n", inst, rn);
+            emit2S(FS2_OP, inst, rn);
         freeNode(e);
         return;
     }

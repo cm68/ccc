@@ -165,7 +165,7 @@ emitIncDec(struct expr *e)
         if (amount == 1 && loc != ID_GLOBAL) {
             /* Direct inc/dec on location - sets Z flag for zero test */
             switch (loc) {
-            case ID_REG:   fdprintf(outFd, "\t%s %s\n", is_dec ? "dec" : "inc", rn); break;
+            case ID_REG:   emit2S(FS2_OP, is_dec ? "dec" : "inc", rn); break;
             case ID_STACK: iyFmt(is_dec ? "\tdec (iy %c %d)\n" : "\tinc (iy %c %d)\n", ofs); break;
             case ID_HL:    fdprintf(outFd, "\t%s (hl)\n", is_dec ? "dec" : "inc"); break;
             default: break;
@@ -228,7 +228,7 @@ emitIncDec(struct expr *e)
             switch (loc) {
             case ID_REG:
                 for (i = 0; i < amount; i++)
-                    fdprintf(outFd, "\t%s %s\n", is_dec ? "dec" : "inc", rp);
+                    emit2S(FS2_OP, is_dec ? "dec" : "inc", rp);
                 break;
             case ID_STACK:
                 /* 8-bit dec/inc affects C flag, so we can use borrow/carry */
