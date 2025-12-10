@@ -81,10 +81,10 @@ execIns(struct expr *e, unsigned char ins)
         }
         return 1;
     case EO_HL_CONST:
-        if (e->value == 0 && fnHLZero)
+        if (e->value.s == 0 && fnHLZero)
             return 1;
-        fdprintf(outFd, "\tld hl, %ld\n", e->value);
-        fnHLZero = (e->value == 0);
+        fdprintf(outFd, "\tld hl, %d\n", e->value.s);
+        fnHLZero = (e->value.s == 0);
         return 1;
     case EO_HLHL_IYL:
         fdprintf(outFd, "\tld a, %d\n\tcall getLiy\n", (int)e->offset);
@@ -98,7 +98,7 @@ execIns(struct expr *e, unsigned char ins)
         if (symbol)
             fdprintf(outFd, "\tld de, %s\n", symbol);
         else
-            fdprintf(outFd, "\tld de, %ld\n", e->value);
+            fdprintf(outFd, "\tld de, %d\n", e->value.s);
         return 1;
     case EO_A_IY:
         loadByteIY(e->offset, 0);
@@ -110,13 +110,13 @@ execIns(struct expr *e, unsigned char ins)
         }
         return 1;
     case EO_A_CONST:
-        if ((e->value & 0xff) == 0) {
+        if (e->value.c == 0) {
             if (!fnAZero) {
                 emit(S_XORA);
                 fnAZero = 1;
             }
         } else {
-            emit1(F_LDA, e->value & 0xff);
+            emit1(F_LDA, e->value.c);
             fnAZero = 0;
         }
         clearA();
@@ -139,7 +139,7 @@ execIns(struct expr *e, unsigned char ins)
         storeByteIY(e->offset, 0);
         return 1;
     case EO_IX_CONST:
-        fdprintf(outFd, "\tld ix, %d\n", e->value);
+        fdprintf(outFd, "\tld ix, %d\n", e->value.s);
         return 1;
 
     default:
@@ -211,7 +211,7 @@ emitExpr(struct expr *e)
     op = e->op;
     opflags = e->opflags;
     symbol = e->symbol;
-    value = e->value;
+    value = e->value.l;
     left = e->left;
 #ifdef DEBUG
     exprCount++;
@@ -288,7 +288,7 @@ emitExpr(struct expr *e)
             /* Narrowing to byte */
             if (left->op == 'C') {
                 /* Constant - just load low byte directly */
-                int val = left->value & 0xff;
+                int val = left->value.c;
                 if (val == 0 && !fnAZero) {
                     emit(S_XORA);
                     fnAZero = 1;
@@ -499,8 +499,8 @@ emitExpr(struct expr *e)
     else if (op == '0' && e->size == 2 && (opflags & OP_REGVAR) &&
              e->cached_var && e->cached_var->reg == REG_BC &&
              e->right && e->right->op == 'C' &&
-             e->right->value >= 1 && e->right->value <= 8) {
-        int i, cnt = e->right->value;
+             e->right->value.c >= 1 && e->right->value.c <= 8) {
+        int i, cnt = e->right->value.c;
         emit(S_BCHL);
         for (i = 0; i < cnt; i++)
             emit(S_ADDHLHL);
@@ -549,7 +549,7 @@ emitExpr(struct expr *e)
     /* Handle long (4-byte) LSHIFTEQ on IY-indexed variable */
     else if (op == '0' && e->size == 4 && (opflags & OP_IYMEM) && e->cached_var) {
         int ofs = varIYOfs(e->cached_var);
-        int count = e->right ? e->right->value : 0;
+        int count = e->right ? e->right->value.c : 0;
         freeExpr(left);
         freeExpr(e->right);
         /* Set up EA in DE, then shift */
@@ -655,7 +655,7 @@ emit2Expr(struct expr *e)
                 fdprintf(outFd, "\tld hl, (%s)\n", left->symbol);
             continue;
         case EO_HL_CONST:
-            fdprintf(outFd, "\tld hl, %ld\n", e->value);
+            fdprintf(outFd, "\tld hl, %d\n", e->value.s);
             continue;
         case EO_A_IY: loadByteIY(e->offset, 0); continue;
         case EO_A_MEM:
@@ -663,10 +663,10 @@ emit2Expr(struct expr *e)
                 fdprintf(outFd, "\tld a, (%s)\n", left->symbol);
             continue;
         case EO_A_CONST:
-            if ((e->value & 0xff) == 0)
+            if (e->value.c == 0)
                 emit(S_XORA);
             else
-                emit1(F_LDA, e->value & 0xff);
+                emit1(F_LDA, e->value.c);
             continue;
         case EO_IYW_HL: storeWordIY(e->offset); continue;
         case EO_MEM_HL:
@@ -694,7 +694,7 @@ emit2Expr(struct expr *e)
         }
         if (s) emit(s);
         else if (f && e->right && e->right->op == 'C')
-            emit1(f, e->right->value & 0xff);
+            emit1(f, e->right->value.c);
     }
 
     /* Free this node */

@@ -248,7 +248,7 @@ setLeftFlags(struct expr *e)
         cacheVar(e, ll->left->symbol);
         if (e->cached_var && e->cached_var->reg == REG_IX)
             e->opflags |= OP_IXMEM;
-        e->value = left->right->value;
+        e->value.s = left->right->value.s;
     }
     /* Check for IX-indexed struct member: (M (+ (M:p $var) ofs)) */
     else if (lop == 'M' && (left->flags & E_IXDEREF)) {
@@ -325,7 +325,7 @@ setExprFlags(struct expr *e)
                 if (var && var->reg == REG_NO) {
                     /* IY-indexed with constant offset - store combined offset */
                     e->opflags |= OP_IYMEM;
-                    e->offset = var->offset + left->right->value;
+                    e->offset = var->offset + left->right->value.c;
                     e->cached_var = var;
                 }
             }
@@ -397,7 +397,7 @@ freeKids(struct expr *e)
 static int
 specIncDec(struct expr *e)
 {
-    (void)e->value;  /* amount - used by emit */
+    (void)e->value.s;  /* amount - used by emit */
 
     /* Pattern 1: Simple variable - defer to emit phase */
     if (e->left && e->left->op == '$' && e->left->symbol) {
@@ -446,9 +446,9 @@ specBitOp(struct expr *e)
 
     /* Get bit number */
     if (is_or) {
-        bitnum = getBitNum(e->right->value);
+        bitnum = getBitNum(e->right->value.c);
     } else {
-        long mask = e->right->value & 0xFF;
+        int mask = e->right->value.c;
         bitnum = getBitNum(~mask & 0xFF);
     }
     if (bitnum < 0) return 0;
@@ -462,7 +462,7 @@ specBitOp(struct expr *e)
                 const char *rn = byteRegName(var->reg);
                 if (var->reg == REG_BC) rn = "c";
                 if (rn) {
-                    e->value = bitnum;  /* Store bit number; emit will generate */
+                    e->value.c = bitnum;  /* Store bit number; emit will generate */
                     freeKids(e);
                     return 1;
                 }
@@ -470,7 +470,7 @@ specBitOp(struct expr *e)
         } else if (e->opflags & OP_IYMEM) {
             /* Stack variable */
             if (var) {
-                e->value = bitnum;  /* Store bit number; emit will generate */
+                e->value.c = bitnum;  /* Store bit number; emit will generate */
                 freeKids(e);
                 return 1;
             }
@@ -482,13 +482,13 @@ specBitOp(struct expr *e)
         if (e->opflags & OP_IXMEM) {
             /* IX-indexed - offset already in e->value from setLeftFlags */
             /* Store bit number in high byte, keep offset in low */
-            e->value = (bitnum << 8) | (e->value & 0xff);
+            e->value.s = (bitnum << 8) | e->value.c;
             freeKids(e);
             return 1;
         } else {
             /* Non-IX: compute address, then use (hl)
              * Keep e->left so emit will process it for address generation */
-            e->value = bitnum;
+            e->value.c = bitnum;
             freeExpr(e->right);
             e->right = NULL;
             return 1;
@@ -514,7 +514,7 @@ specShiftOp(struct expr *e)
     if (e->size != 1 || !e->right || e->right->op != 'C')
         return 0;
 
-    count = e->right->value & 0xff;
+    count = e->right->value.c;
     if (count < 1 || count > 7) return 0;  /* Reasonable range */
 
     /* Check for simple register variable */
@@ -532,7 +532,7 @@ specShiftOp(struct expr *e)
     if (!rn) return 0;
 
     /* Store shift count in e->value; emit will generate code */
-    e->value = count;
+    e->value.c = count;
     freeKids(e);
     return 1;
 }
@@ -732,7 +732,7 @@ generateExpr(struct expr *e)
 
     /* Special handling for CALL - emitCall handles it directly from AST */
     if (e->op == '@') {
-        arg_count = e->value;
+        arg_count = e->value.c;
 
         /* Generate code for each argument */
         arg = e->right;
@@ -1003,7 +1003,7 @@ schedExpr(struct expr *e, int dest)
     case 'Q':  /* == */
     case 'n':  /* != */
         /* Comparison with 0: test in place */
-        if (e->right && e->right->op == 'C' && e->right->value == 0 &&
+        if (e->right && e->right->op == 'C' && e->right->value.s == 0 &&
             e->left && e->left->size == 2 &&
             ((e->op == 'Q' || e->op == 'n') || !(e->flags & E_UNSIGNED))) {
             schedExpr(e->left, R_NONE);

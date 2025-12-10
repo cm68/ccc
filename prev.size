@@ -15,11 +15,11 @@ cc1 size:  36836 2854 682 = 40372
 cc2.o 891 177 2
 util.o 122 12 0
 astio.o 585 0 328
-parseast.o 6730 389 570
-codegen.o 8420 488 17
+parseast.o 6616 389 570
+codegen.o 8163 488 17
 dumpast.o 20 0 0
-emithelper.o 3963 2682 0
-emitexpr.o 5336 839 0
-emitops.o 8433 1613 29
-emit.o 4931 610 2
-cc2 size:  39431 6810 948 = 47189
+emithelper.o 3964 2681 0
+emitexpr.o 5047 836 0
+emitops.o 7983 1612 29
+emit.o 4874 607 2
+cc2 size:  38265 6802 948 = 46015

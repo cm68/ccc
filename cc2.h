@@ -240,7 +240,11 @@ struct expr {
 
     /* Type and value information from AST */
     char type_str;              // Type annotation char: 'b', 's', 'l', 'p', etc. (0 if none)
-    long value;                 // Constant value (for numeric constants)
+    union {
+        long l;
+        short s;
+        char c;
+    } value;                    // Constant value (for numeric constants)
     char *symbol;               // Symbol name (for SYM nodes)
 
     /* Scheduling fields - set by codegen, used by emit */

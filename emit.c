@@ -261,7 +261,7 @@ emitStmtTail(struct stmt *s, char tailPos)
 
         /* Handle constant conditions - skip condition evaluation entirely */
         if (cond && cond->op == 'C') {
-            int is_true = (cond->value != 0);
+            int is_true = (cond->value.s != 0);
             freeExpr(cond);
             s->expr = NULL;
             /* Emit only the taken branch */
@@ -296,7 +296,7 @@ emitStmtTail(struct stmt *s, char tailPos)
         if (cond && is_bit(cond->op) &&
             cond->left && cond->left->size == 1 &&
             cond->right && cond->right->op == 'C' &&
-            cond->right->value >= 0 && cond->right->value <= 255) {
+            cond->right->value.s >= 0 && cond->right->value.s <= 255) {
             use_dir_jump = 1;
         }
         else if (cond && cond->size == 1) {
@@ -513,7 +513,7 @@ emit_if_body:
         /* Emit case bodies with labels */
         for (c = s->then_branch; c; c = c->next) {
             if (c->type == 'C') {
-                fdprintf(outFd, "%s_c%ld:\n", lbl, c->expr ? c->expr->value : 0);
+                fdprintf(outFd, "%s_c%d:\n", lbl, c->expr ? c->expr->value.s : 0);
                 emitStmt(c->then_branch);
             } else if (c->type == 'O') {
                 fdprintf(outFd, "%s_def:\n", lbl);
@@ -528,8 +528,8 @@ emit_if_body:
         fdprintf(outFd, ".data\n%s_tbl:\n\t.db %d\n", lbl, case_count);
         for (c = s->then_branch; c; c = c->next) {
             if (c->type == 'C' && c->expr) {
-                fdprintf(outFd, "\t.db %ld\n\t.dw %s_c%ld\n",
-                         c->expr->value & 0xff, lbl, c->expr->value);
+                fdprintf(outFd, "\t.db %d\n\t.dw %s_c%d\n",
+                         c->expr->value.c, lbl, c->expr->value.s);
             }
         }
         /* Default address (or break if no default) */

@@ -51,9 +51,9 @@ static enum cmp_kind getByteCmp(struct expr *e, struct bytecmp *cmp) {
     if (!e) return CMP_NONE;
 
     /* Constant */
-    if (e->op == 'C' && e->value >= 0 && e->value <= 255) {
+    if (e->op == 'C' && e->value.s >= 0 && e->value.s <= 255) {
         cmp->kind = CMP_CONST;
-        cmp->offset = e->value;
+        cmp->offset = e->value.c;
         return CMP_CONST;
     }
 
@@ -108,7 +108,7 @@ emitIncDec(struct expr *e)
     enum { ID_REG, ID_STACK, ID_GLOBAL, ID_HL } loc;
 
     size = e->size;
-    amount = e->value;
+    amount = e->value.s;
     unused = (e->flags & E_UNUSED) ? 1 : 0;
     is_post = (e->op == AST_POSTINC || e->op == AST_POSTDEC);
     is_dec = (e->op == AST_PREDEC || e->op == AST_POSTDEC);
@@ -348,8 +348,8 @@ emitAssign(struct expr *e)
         left->op == '$' && left->symbol) {
         struct local_var *v = findVar(left->symbol);
         if (v && (v->reg == REG_BC || v->reg == REG_IX)) {
-            fdprintf(outFd, "\tld %s, %ld\n",
-                v->reg == REG_BC ? "bc" : "ix", right->value);
+            fdprintf(outFd, "\tld %s, %d\n",
+                v->reg == REG_BC ? "bc" : "ix", right->value.s);
             freeExpr(right);
             freeExpr(left);
             freeNode(e);
@@ -371,8 +371,8 @@ emitAssign(struct expr *e)
         const char *sym = ll->symbol;
         const char *vn = sym;
         struct local_var *var = findVar(vn);
-        long offset = lright->value;
-        long value = right->value;
+        int offset = lright->value.s;
+        int value = right->value.s;
 
         /* Skip if ptr is in IX - handled by E_IXASSIGN path */
         if (var && var->reg == REG_IX)
@@ -441,7 +441,7 @@ notConstStore:
 
     /* Long (4-byte) constant assignment: load all 32 bits into HLHL' */
     if (e->size == 4 && right->op == 'C') {
-        long val = right->value;
+        long val = right->value.l;
         fdprintf(outFd, "\tld hl, %d\n", (int)(val & 0xffff));
         emit(S_EXX);
         fdprintf(outFd, "\tld hl, %d\n", (int)((val >> 16) & 0xffff));
@@ -491,7 +491,7 @@ do_store:
         lleft->type_str == 'p' &&
         ll->op == '$' && ll->symbol) {
         const char *var_symbol = ll->symbol;
-        long offset = e->value;
+        int offset = e->value.c;
         const char *var_name = var_symbol;
         struct local_var *var = findVar(var_name);
 
@@ -593,7 +593,7 @@ emitByteCp(struct expr *e)
 
     /* For >=, <=, >, < with constant, use carry flag directly */
     if (is_ord(op) && right && right->op == 'C') {
-        val = right->value & 0xff;
+        val = right->value.c;
 
         /* Emit left operand to A */
         emitExpr(left);
@@ -795,7 +795,7 @@ emitWordCmp(struct expr *e)
     int op = e->op;
 
     /* Special case: compare with 0 */
-    if (right->op == 'C' && right->value == 0) {
+    if (right->op == 'C' && right->value.s == 0) {
         if (!emitSimplLd(left)) emitExpr(left);
         switch (op) {
         case 'Q':  /* == 0 */
@@ -855,9 +855,9 @@ emitWordShift(struct expr *e)
     struct expr *ll;  /* left->left */
 
     if (e->op != 'y' || !right || right->op != 'C' ||
-        right->value < 1 || right->value > 8)
+        right->value.c < 1 || right->value.c > 8)
         return 0;
-    cnt = right->value;
+    cnt = right->value.c;
     ll = left ? left->left : NULL;
     if (left && left->op == 'M' && (left->opflags & OP_REGVAR) &&
         ll && ll->op == '$') {
@@ -909,8 +909,8 @@ emitBinop(struct expr *e)
     if (op == '+' && left->op == '$' && left->symbol &&
         right->op == 'y' &&
         rl->size == 1 &&
-        rr->op == 'C' && rr->value >= 1 && rr->value <= 7) {
-        int i, cnt = rr->value;
+        rr->op == 'C' && rr->value.c >= 1 && rr->value.c <= 7) {
+        int i, cnt = rr->value.c;
         const char *sym = left->symbol;
         emitExpr(rl);
         for (i = 0; i < cnt; i++)
@@ -928,8 +928,8 @@ emitBinop(struct expr *e)
     if (left_size == 1 && result_size == 1 && !cmp_op &&
         op != 'y' && op != 'w' &&
         right->op == 'C' &&
-        right->value >= 0 && right->value <= 255) {
-        int val = right->value & 0xff;
+        right->value.s >= 0 && right->value.s <= 255) {
+        int val = right->value.c;
         emitExpr(left);
         freeExpr(right);
         switch (op) {
@@ -951,7 +951,7 @@ emitBinop(struct expr *e)
 
     /* Signed comparisons with 0 */
     if (left_size == 2 && cmp_op && !(left->flags & E_UNSIGNED) &&
-        right->op == 'C' && right->value == 0) {
+        right->op == 'C' && right->value.s == 0) {
         if (emitSignCmp0(e))
             return;
     }
@@ -965,8 +965,8 @@ emitBinop(struct expr *e)
     /* Byte left shift by constant */
     if (left_size == 1 && result_size == 1 && op == 'y' &&
         right->op == 'C' &&
-        right->value >= 1 && right->value <= 7) {
-        int i, cnt = right->value;
+        right->value.c >= 1 && right->value.c <= 7) {
+        int i, cnt = right->value.c;
         emitExpr(left);
         for (i = 0; i < cnt; i++)
             out("\tadd a, a\n");
@@ -1032,7 +1032,7 @@ emitCall(struct expr *e)
     int arg_count, i;
 
     /* Collect arguments from wrapper chain */
-    arg_count = e->value;
+    arg_count = e->value.c;
     arg = e->right;
     for (i = 0; i < arg_count && i < 32 && arg; i++) {
         args[i] = arg->left;

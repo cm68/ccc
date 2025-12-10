@@ -122,7 +122,7 @@ newExpr(unsigned char op)
 	e->left = NULL;
 	e->right = NULL;
 	e->type_str = 0;
-	e->value = 0;
+	e->value.l = 0;
 	e->symbol = NULL;
 	e->size = 2;
 	e->flags = 0;
@@ -194,7 +194,7 @@ isMulByPow2(struct expr *e, struct expr **out_expr)
 	int shift;
 	if (!e || e->op != '*') return -1;
 	if (!e->right || e->right->op != 'C') return -1;
-	shift = isPowerOf2(e->right->value);
+	shift = isPowerOf2(e->right->value.l);
 	if (shift < 0) return -1;
 	if (out_expr) *out_expr = e->left;
 	return shift;
@@ -384,7 +384,7 @@ schedNode(struct expr *e)
 			var = findVar(e->left->left->left->symbol);
 			if (var && var->reg == REG_IX) {
 				e->loc = LOC_IX;
-				e->offset = e->left->right->value;
+				e->offset = e->left->right->value.c;
 			} else {
 				e->loc = LOC_INDIR;
 				e->reg = R_HL;
@@ -454,7 +454,7 @@ doExprOp(unsigned char op)
 			struct expr *old_right = e->right;
 			e->op = 'y';
 			e->right = newExpr('C');
-			e->right->value = shift;
+			e->right->value.c = shift;
 			e->right->size = 1;
 			freeExpr(old_right);
 		}
@@ -473,7 +473,7 @@ doCall(void)
 	e->size = getSizeFTStr(curchar);
 	nextchar();
 	argc = readHex2();
-	e->value = argc;
+	e->value.c = argc;
 	e->left = parseExpr();
 	for (i = 0; i < argc; i++) {
 		w = newExpr(',');
@@ -508,7 +508,7 @@ doIncDec(unsigned char op)
 	struct expr *e = newExpr(op);
 	readType(e);
 	e->left = parseExpr();
-	e->value = readHex4();
+	e->value.s = readHex4();
 	if (e->left) e->flags = e->left->flags;
 	return e;
 }
@@ -518,7 +518,7 @@ doBitfield(unsigned char op)
 {
 	struct expr *e = newExpr(op);
 	int off = readHex2(), wid = readHex2();
-	e->value = (off << 16) | wid;
+	e->value.l = (off << 16) | wid;
 	e->left = parseExpr();
 	if (op == AST_BFASSIGN) e->right = parseExpr();
 	return e;
@@ -528,7 +528,7 @@ static struct expr *
 doCopy(void)
 {
 	struct expr *e = newExpr('Y');
-	e->value = readHex4();
+	e->value.s = readHex4();
 	e->left = parseExpr();
 	e->right = parseExpr();
 	return e;
@@ -570,7 +570,7 @@ restart:
 	if (curchar == 'S') {
 		nextchar();
 		e = newExpr('S');
-		e->value = readHex4();
+		e->value.s = readHex4();
 		goto done;
 	}
 
@@ -580,7 +580,7 @@ restart:
 		e = newExpr('C');
 		e->size = getSizeFTStr(curchar);
 		nextchar();
-		e->value = readHex8();
+		e->value.l = readHex8();
 		goto done;
 	}
 

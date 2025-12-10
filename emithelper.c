@@ -684,7 +684,7 @@ emitSimplLd(struct expr *e)
 
     switch (e->loc) {
     case LOC_CONST:
-        fdprintf(outFd, "\tld %s, %ld\n", rp, e->value);
+        fdprintf(outFd, "\tld %s, %d\n", rp, e->value.s);
         break;
 
     case LOC_REG:

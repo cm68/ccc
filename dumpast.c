@@ -136,7 +136,7 @@ exprLen(struct expr *e)
     /* Value or symbol */
     if (e->op == 'C') {
         char buf[20];
-        snprintf(buf, sizeof(buf), "%ld", e->value);
+        snprintf(buf, sizeof(buf), "%ld", e->value.l);
         len += 1 + strlen(buf); /* space + number */
     } else if (e->op == '$' && e->symbol) {
         len += 1 + strlen(e->symbol); /* space + symbol */
@@ -194,7 +194,7 @@ dumpExpr(struct expr *e)
 
     /* Value or symbol */
     if (e->op == 'C') {
-        outf(" %ld", e->value);
+        outf(" %ld", e->value.l);
     } else if (e->op == '$' && e->symbol) {
         out(" ");
         out(e->symbol);
@@ -275,7 +275,7 @@ dumpStmt(struct stmt *s)
         break;
 
     case 'C': /* Case */
-        outf("(C %ld", s->expr ? s->expr->value : 0);
+        outf("(C %ld", s->expr ? s->expr->value.l : 0);
         if (s->then_branch) { newLine(); dumpStmt(s->then_branch); }
         out(")");
         break;
@@ -492,7 +492,7 @@ dumpSchedExpr(struct expr *e, int indent)
 
     /* Value/symbol */
     if (e->op == 'C') {
-        fdprintf(dumpFd, " val=%ld", e->value);
+        fdprintf(dumpFd, " val=%ld", e->value.l);
     } else if (e->op == '$' && e->symbol) {
         fdprintf(dumpFd, " sym=%s", e->symbol);
     }
