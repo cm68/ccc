@@ -20,7 +20,9 @@
  *   3. Emit right child (result in PRIMARY)
  *   4. Emit call instruction (operates on SECONDARY and PRIMARY)
  */
+#ifdef DEBUG
 static int exprCount = 0;
+#endif
 /*
  * Execute a single scheduled instruction from e->ins[]
  * Returns 1 if instruction was handled, 0 if not
@@ -201,13 +203,16 @@ void
 emitExpr(struct expr *e)
 {
     struct expr *left;
-    unsigned char op;
+    unsigned char op, opflags;
+    const char *symbol;
 
     if (!e) return;
     op = e->op;
+    opflags = e->opflags;
+    symbol = e->symbol;
     left = e->left;
-    exprCount++;
 #ifdef DEBUG
+    exprCount++;
     if (TRACE(T_EXPR)) {
         fdprintf(2, "emitExpr: %d calls, op=%c (0x%x) nins=%d\n", exprCount, op, op, e->nins);
     }
@@ -224,14 +229,14 @@ emitExpr(struct expr *e)
     }
 
     /* Handle BC indirect load with caching - use opflags */
-    if (op == 'M' && (e->opflags & OP_BCINDIR)) {
+    if (op == 'M' && (opflags & OP_BCINDIR)) {
         emitBCIndir();
         freeNode(e);
         return;
     }
-    /* Handle increment/decrement - Pattern 1 (e->symbol) or Pattern 2/3 (left) */
+    /* Handle increment/decrement - Pattern 1 (symbol) or Pattern 2/3 (left) */
     else if ((op == AST_PREINC || op == AST_POSTINC || op == AST_PREDEC || op == AST_POSTDEC) &&
-             (e->symbol || left)) {
+             (symbol || left)) {
         emitIncDec(e);
         return;
     }
@@ -305,25 +310,25 @@ emitExpr(struct expr *e)
         return;
     }
     /* Handle DEREF of register variable with caching - use opflags */
-    else if (op == 'M' && (e->opflags & OP_REGVAR) &&
+    else if (op == 'M' && (opflags & OP_REGVAR) &&
              left && left->op == '$') {
         emitRegVarDrf(e);
         return;
     }
     /* Handle DEREF of global with caching */
-    else if (op == 'M' && (e->opflags & OP_GLOBAL) &&
+    else if (op == 'M' && (opflags & OP_GLOBAL) &&
              left && left->op == '$') {
         emitGlobDrf(e);
         return;
     }
     /* Handle DEREF of stack variable (IY-indexed) */
-    else if (op == 'M' && (e->opflags & OP_IYMEM) &&
+    else if (op == 'M' && (opflags & OP_IYMEM) &&
              left && left->op == '$') {
         emitStackDrf(e);
         return;
     }
     /* Handle DEREF of local member: (M (+ $var C)) with pre-computed offset */
-    else if (op == 'M' && (e->opflags & OP_IYMEM) &&
+    else if (op == 'M' && (opflags & OP_IYMEM) &&
              left && left->op == '+' && e->cached_var) {
         /* offset field has combined var offset + member offset */
         emitIndexDrf('y', e->offset, e->size, e->dest, NULL);
@@ -354,8 +359,8 @@ emitExpr(struct expr *e)
         return;
     }
     /* Handle symbol address - check if global or local */
-    else if (op == '$' && e->symbol) {
-        const char *sym_name = e->symbol;
+    else if (op == '$' && symbol) {
+        const char *sym_name = symbol;
         struct local_var *var = findVar(sym_name);
 
         if (!var) {
@@ -412,7 +417,7 @@ emitExpr(struct expr *e)
     }
     /* Handle specialized BYTE shift ops (LSHIFTEQ/RSHIFTEQ with register var) */
     else if ((op == '0' || op == '6') && e->size == 1 &&
-             (e->opflags & OP_REGVAR) && e->cached_var) {
+             (opflags & OP_REGVAR) && e->cached_var) {
         struct local_var *var = e->cached_var;
         const char *rn = byteRegName(var->reg);
         const char *inst = (op == '0') ? "sla" : "srl";
@@ -430,12 +435,12 @@ emitExpr(struct expr *e)
         struct local_var *var = e->cached_var;
         const char *inst = (op == '1') ? "set" : "res";
         int bitnum = e->value;
-        if (e->opflags & OP_REGVAR) {
+        if (opflags & OP_REGVAR) {
             const char *rn = byteRegName(var->reg);
             if (var->reg == REG_BC) rn = "c";
             if (rn)
                 fdprintf(outFd, "\t%s %d, %s\n", inst, bitnum, rn);
-        } else if (e->opflags & OP_IYMEM) {
+        } else if (opflags & OP_IYMEM) {
             int ofs = varIYOfs(var);
             fdprintf(outFd, "\t%s %d, (iy %c %d)\n", inst, bitnum,
                      ofs >= 0 ? '+' : '-', ofs >= 0 ? ofs : -ofs);
@@ -444,7 +449,7 @@ emitExpr(struct expr *e)
         return;
     }
     /* Handle specialized bit ops with IX-indexed or (hl) addressing */
-    else if ((op == '1' || op == AST_ANDEQ) && (e->opflags & OP_IXMEM) && !left) {
+    else if ((op == '1' || op == AST_ANDEQ) && (opflags & OP_IXMEM) && !left) {
         const char *inst = (op == '1') ? "set" : "res";
         int bitnum = (e->value >> 8) & 0xff;
         int ofs = (char)(e->value & 0xff);
@@ -463,7 +468,7 @@ emitExpr(struct expr *e)
         return;
     }
     /* Handle specialized OREQ/ANDEQ/XOREQ for byte register variables */
-    else if ((op == '1' || op == AST_ANDEQ || op == 'X') && (e->opflags & OP_REGVAR) &&
+    else if ((op == '1' || op == AST_ANDEQ || op == 'X') && (opflags & OP_REGVAR) &&
              !left && e->right && e->cached_var) {
         struct local_var *var = e->cached_var;
         const char *rn = byteRegName(var->reg);
@@ -475,7 +480,7 @@ emitExpr(struct expr *e)
         return;
     }
     /* Handle specialized PLUSEQ/SUBEQ for byte register variables */
-    else if ((op == 'P' || op == AST_SUBEQ) && (e->opflags & OP_REGVAR) &&
+    else if ((op == 'P' || op == AST_SUBEQ) && (opflags & OP_REGVAR) &&
              !left && e->right && e->cached_var) {
         struct local_var *var = e->cached_var;
         const char *rn = byteRegName(var->reg);
@@ -489,7 +494,7 @@ emitExpr(struct expr *e)
         return;
     }
     /* Handle word LSHIFTEQ for BC register variable with constant shift */
-    else if (op == '0' && e->size == 2 && (e->opflags & OP_REGVAR) &&
+    else if (op == '0' && e->size == 2 && (opflags & OP_REGVAR) &&
              e->cached_var && e->cached_var->reg == REG_BC &&
              e->right && e->right->op == 'C' &&
              e->right->value >= 1 && e->right->value <= 8) {
@@ -504,7 +509,7 @@ emitExpr(struct expr *e)
         return;
     }
     /* Handle word OREQ for BC register variable */
-    else if (op == '1' && e->size == 2 && (e->opflags & OP_REGVAR) &&
+    else if (op == '1' && e->size == 2 && (opflags & OP_REGVAR) &&
              e->cached_var && e->cached_var->reg == REG_BC && e->right) {
         /* Check if RHS is byte-sized (high byte is implicitly 0) */
         int rhs_byte = (e->right->size == 1);
@@ -522,7 +527,7 @@ emitExpr(struct expr *e)
         return;
     }
     /* Handle word PLUSEQ for BC register variable */
-    else if (op == 'P' && e->size == 2 && (e->opflags & OP_REGVAR) &&
+    else if (op == 'P' && e->size == 2 && (opflags & OP_REGVAR) &&
              e->cached_var && e->cached_var->reg == REG_BC && e->right) {
         freeExpr(left);
         emitExpr(e->right);  /* Result in HL */
@@ -540,7 +545,7 @@ emitExpr(struct expr *e)
         return;
     }
     /* Handle long (4-byte) LSHIFTEQ on IY-indexed variable */
-    else if (op == '0' && e->size == 4 && (e->opflags & OP_IYMEM) && e->cached_var) {
+    else if (op == '0' && e->size == 4 && (opflags & OP_IYMEM) && e->cached_var) {
         int ofs = varIYOfs(e->cached_var);
         int count = e->right ? e->right->value : 0;
         freeExpr(left);
@@ -552,7 +557,7 @@ emitExpr(struct expr *e)
         return;
     }
     /* Handle long (4-byte) OREQ on IY-indexed variable */
-    else if (op == '1' && e->size == 4 && (e->opflags & OP_IYMEM) && e->cached_var) {
+    else if (op == '1' && e->size == 4 && (opflags & OP_IYMEM) && e->cached_var) {
         int ofs = varIYOfs(e->cached_var);
         int rhs_size = e->right ? e->right->size : 2;
         freeExpr(left);
