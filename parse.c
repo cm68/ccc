@@ -1003,6 +1003,8 @@ declaration()
                 v->mangled_name = mangleStatNam(v);
         } else if (sclass & SC_EXTERN) {
             v->sclass = SC_EXTERN;
+        } else if (sclass & SC_REGISTER) {
+            v->sclass = SC_REGISTER;
         } else {
             /* Clear extern flag if this is a definition (not extern decl) */
             v->sclass &= ~SC_EXTERN;

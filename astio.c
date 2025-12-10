@@ -27,8 +27,8 @@ initAstio(unsigned char fd) {
 	inFd = fd;
 	bufPos = 0;
 	bufValid = 0;
-	lineNum = 1;
 	curchar = 0;
+	lineNum = 1;
 }
 
 unsigned char 
