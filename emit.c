@@ -386,7 +386,7 @@ emit_z_jump:
             struct local_var *var = NULL;
             if (cond && cond->op == 'M' && cond->size == 2 &&
                 cond->left && cond->left->op == '$' && cond->left->symbol) {
-                var = findVar(stripVarPfx(cond->left->symbol));
+                var = findVar(cond->left->symbol);
             }
 
             if (var && bcOrCIdx(var->reg)) {

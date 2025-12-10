@@ -62,7 +62,7 @@ static enum cmp_kind getByteCmp(struct expr *e, struct bytecmp *cmp) {
     if (!e->left || e->left->op != '$' || !e->left->symbol) return CMP_NONE;
 
     sym = e->left->symbol;
-    v = findVar(stripVarPfx(sym));
+    v = findVar(sym);
 
     if (v) {
         if (v->reg != REG_NO) {
@@ -80,7 +80,7 @@ static enum cmp_kind getByteCmp(struct expr *e, struct bytecmp *cmp) {
 
     /* Global or static */
     cmp->kind = CMP_GLOBAL;
-    cmp->global = stripDollar(sym);
+    cmp->global = sym;
     return CMP_GLOBAL;
 }
 
@@ -120,7 +120,7 @@ emitIncDec(struct expr *e)
 
     /* Determine location type and set up addressing */
     if (e->symbol) {
-        const char *var_name = stripVarPfx(e->symbol);
+        const char *var_name = e->symbol;
         var = findVar(var_name);
         if (var) size = var->size;
 
@@ -133,7 +133,7 @@ emitIncDec(struct expr *e)
             ofs = var->offset;
         } else {
             loc = ID_GLOBAL;
-            sym = stripDollar(e->symbol);
+            sym = e->symbol;
         }
     } else if (e->left) {
         loc = ID_HL;
@@ -346,7 +346,7 @@ emitAssign(struct expr *e)
     /* Optimize: constant to register-allocated variable */
     if (right->op == 'C' && e->size == 2 &&
         left->op == '$' && left->symbol) {
-        struct local_var *v = findVar(stripVarPfx(left->symbol));
+        struct local_var *v = findVar(left->symbol);
         if (v && (v->reg == REG_BC || v->reg == REG_IX)) {
             fdprintf(outFd, "\tld %s, %ld\n",
                 v->reg == REG_BC ? "bc" : "ix", right->value);
@@ -369,7 +369,7 @@ emitAssign(struct expr *e)
         ll->op == '$' &&
         lright->op == 'C') {
         const char *sym = ll->symbol;
-        const char *vn = stripVarPfx(sym);
+        const char *vn = sym;
         struct local_var *var = findVar(vn);
         long offset = lright->value;
         long value = right->value;
@@ -384,7 +384,7 @@ emitAssign(struct expr *e)
             loadWordIY(var->offset);
         } else {
             /* Global */
-            fdprintf(outFd, "\tld hl, (%s)\n", stripDollar(sym));
+            fdprintf(outFd, "\tld hl, (%s)\n", sym);
         }
 
         /* Add offset inline: ld a,ofs; add l; ld l,a; adc h; sub l; ld h,a */
@@ -425,7 +425,7 @@ notConstStore:
      * Emit: ld h,(ix+ofs+1); ld l,(ix+ofs); push hl; pop ix */
     if (e->size == 2 && left->op == '$' && left->symbol &&
         right->op == 'M' && right->loc == LOC_IX) {
-        struct local_var *lv = findVar(stripVarPfx(left->symbol));
+        struct local_var *lv = findVar(left->symbol);
         if (lv && lv->reg == REG_IX) {
             int ofs = right->offset;
             /* Load H first, then L (natural order for push) */
@@ -456,7 +456,7 @@ notConstStore:
      * Avoids: ld l,a; ld h,0; ld (iy+ofs),l; ld (iy+ofs+1),h */
     if (e->size == 2 && right->op == 'W' &&
         left->op == '$' && left->symbol) {
-        struct local_var *lv = findVar(stripVarPfx(left->symbol));
+        struct local_var *lv = findVar(left->symbol);
         if (lv && lv->reg == REG_NO) {
             int ofs = lv->offset;
             emitExpr(right->left);  /* byte result in A; emitExpr frees it */
@@ -492,7 +492,7 @@ do_store:
         ll->op == '$' && ll->symbol) {
         const char *var_symbol = ll->symbol;
         long offset = e->value;
-        const char *var_name = stripVarPfx(var_symbol);
+        const char *var_name = var_symbol;
         struct local_var *var = findVar(var_name);
 
         if (var && var->reg == REG_IX) {
@@ -523,7 +523,7 @@ do_store:
 #endif
         /* Skip store if RHS was loaded directly into target register */
         {
-            struct local_var *lv = findVar(stripVarPfx(left->symbol));
+            struct local_var *lv = findVar(left->symbol);
             int skip = 0;
             /* Skip only if RHS destination is BC and RHS is not a call
              * (calls always return in HL regardless of dest) */
@@ -745,7 +745,7 @@ emitSignCmp0(struct expr *e)
             break;
         case LOC_MEM:
             if (!l->left || !l->left->symbol) return 0;
-            sym = stripDollar(l->left->symbol);
+            sym = l->left->symbol;
             fdprintf(outFd, "\tld a, (%s+1)\n\tbit 7, a\n", sym);
             break;
         default:
@@ -768,7 +768,7 @@ emitSignCmp0(struct expr *e)
             break;
         case LOC_MEM:
             if (!l->left || !l->left->symbol) return 0;
-            sym = stripDollar(l->left->symbol);
+            sym = l->left->symbol;
             fdprintf(outFd, "\tld hl, (%s)\n\tbit 7, h\n", sym);
             fnDualReg = R_HL;
             break;
@@ -911,7 +911,7 @@ emitBinop(struct expr *e)
         rl->size == 1 &&
         rr->op == 'C' && rr->value >= 1 && rr->value <= 7) {
         int i, cnt = rr->value;
-        const char *sym = stripDollar(left->symbol);
+        const char *sym = left->symbol;
         emitExpr(rl);
         for (i = 0; i < cnt; i++)
             out("\tadd a, a\n");
@@ -1030,7 +1030,6 @@ emitCall(struct expr *e)
     struct expr *left = e->left;
     struct expr *arg;
     int arg_count, i;
-    const char *func_name;
 
     /* Collect arguments from wrapper chain */
     arg_count = e->value;
@@ -1054,10 +1053,7 @@ emitCall(struct expr *e)
 
         /* Check for word DEREF of register variable - can push directly */
         if (arg_size == 2 && a->op == 'M' && al && al->op == '$') {
-            const char *sym = al->symbol;
-            struct local_var *var;
-            if (sym && sym[0] == '$') sym++;
-            var = findVar(sym);
+            struct local_var *var = findVar(al->symbol);
             if (var && var->reg == REG_BC) {
                 fdprintf(outFd, "\tpush bc  ; arg %d\n", i);
                 freeExpr(a);
@@ -1082,10 +1078,8 @@ emitCall(struct expr *e)
 
     /* Emit the call */
     if (left && left->op == '$' && left->symbol) {
-        func_name = left->symbol;
-        if (func_name[0] == '$') func_name++;
-        emitS(FS_CALL, func_name);
-        if (isCmpFunc(func_name)) {
+        emitS(FS_CALL, left->symbol);
+        if (isCmpFunc(left->symbol)) {
             fnZValid = 1;
         }
     } else {

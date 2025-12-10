@@ -81,28 +81,20 @@ getBitNum(long val)
 
 /*
  * Helper: Look up a variable by symbol name
- * Strips leading $ and A prefixes from symbol name before lookup
  * Returns NULL if not found
  */
 struct local_var *
 findVar(const char *symbol)
 {
-    const char *var_name;
     struct local_var *var;
     int count = 0;
 
     if (!symbol) return NULL;
 
-    /* Strip $ prefix if present */
-    var_name = symbol;
-    if (var_name[0] == '$') {
-        var_name++;
-    }
-
     /* Search locals list */
 #ifdef DEBUG
     if (TRACE(T_VAR)) {
-        fdprintf(2, "      findVar(%p): looking for '%s' in locals\n", fnName, var_name);
+        fdprintf(2, "      findVar(%p): looking for '%s' in locals\n", fnName, symbol);
     }
 #endif
     for (var = fnLocals; var; var = var->next) {
@@ -116,7 +108,7 @@ findVar(const char *symbol)
             exit(1);
         }
 #endif
-        if (strcmp(var->name, var_name) == 0) {
+        if (strcmp(var->name, symbol) == 0) {
 #ifdef DEBUG
             if (TRACE(T_VAR)) {
                 fdprintf(2, "      findVar: found!\n");
@@ -213,9 +205,7 @@ walkLocals(struct stmt *s)
 static void
 cacheVar(struct expr *e, const char *sym)
 {
-    struct local_var *var;
-    if (sym && sym[0] == '$') sym++;
-    var = findVar(sym);
+    struct local_var *var = findVar(sym);
     e->cached_var = var;
     if (var) {
         if (var->reg != REG_NO) {
@@ -304,10 +294,7 @@ setExprFlags(struct expr *e)
     /* For DEREF nodes, check if this is a simple var or IX-indexed */
     if (e->op == 'M') {
         if (left && left->op == '$' && left->symbol) {
-            const char *sym = left->symbol;
-            struct local_var *var;
-            if (sym[0] == '$') sym++;
-            var = findVar(sym);
+            struct local_var *var = findVar(left->symbol);
             if (var) {
                 if (var->reg == REG_BC) {
                     /* Pointer in BC - use ld a,(bc) for bytes */
@@ -334,10 +321,7 @@ setExprFlags(struct expr *e)
             ll = left->left;
             if (ll && ll->op == '$' && ll->symbol &&
                 left->right && left->right->op == 'C') {
-                const char *sym = ll->symbol;
-                struct local_var *var;
-                if (sym[0] == '$') sym++;
-                var = findVar(sym);
+                struct local_var *var = findVar(ll->symbol);
                 if (var && var->reg == REG_NO) {
                     /* IY-indexed with constant offset - store combined offset */
                     e->opflags |= OP_IYMEM;
@@ -1179,7 +1163,6 @@ static void
 sched2Deref(struct expr *e)
 {
     struct local_var *var;
-    const char *sym;
     unsigned char opf = e->opflags;
     unsigned char size = e->size;
 
@@ -1223,9 +1206,7 @@ sched2Deref(struct expr *e)
         if (e->cached_var) {
             e->offset = e->cached_var->offset;
         } else if (e->left && e->left->symbol) {
-            sym = e->left->symbol;
-            if (sym[0] == '$') sym++;
-            var = findVar(sym);
+            var = findVar(e->left->symbol);
             if (var) e->offset = var->offset;
         }
         if (size == 1) {
@@ -1415,7 +1396,6 @@ sched2Store(struct expr *e)
     struct expr *dest = e->left;
     struct expr *src = e->right;
     struct local_var *var;
-    const char *sym;
 
     e->nins = 0;
 
@@ -1427,13 +1407,9 @@ sched2Store(struct expr *e)
         src->op == 'M' && (src->opflags & OP_REGVAR) &&
         src->left && src->left->op == '$' && src->left->symbol) {
         /* Check dest is global (not a local) */
-        sym = dest->symbol;
-        if (sym[0] == '$') sym++;
-        if (!findVar(sym)) {
+        if (!findVar(dest->symbol)) {
             /* Dest is global - check if src is BC regvar */
-            sym = src->left->symbol;
-            if (sym[0] == '$') sym++;
-            var = findVar(sym);
+            var = findVar(src->left->symbol);
             if (var && var->reg == REG_BC) {
                 /* Don't schedule RHS - value is already in BC */
                 src->nins = 0;
@@ -1465,9 +1441,7 @@ sched2Store(struct expr *e)
             if (dest->cached_var) {
                 e->offset = dest->cached_var->offset;
             } else if (dest->left && dest->left->symbol) {
-                sym = dest->left->symbol;
-                if (sym[0] == '$') sym++;
-                var = findVar(sym);
+                var = findVar(dest->left->symbol);
                 if (var) e->offset = var->offset;
             }
             /* Store to IY-indexed stack var */

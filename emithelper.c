@@ -245,15 +245,6 @@ const char *byteRegName(unsigned char reg) { return byteRegTab[reg]; }
 const char *wordRegName(unsigned char reg) { return wordRegTab[reg]; }
 unsigned char bcOrCIdx(unsigned char reg) { return bcOrCTab[reg]; }
 
-const char *
-stripVarPfx(const char *name)
-{
-    return (name && name[0] == '$') ? name + 1 : name;
-}
-
-/* stripDollar is an alias for stripVarPfx */
-const char *stripDollar(const char *s) { return stripVarPfx(s); }
-
 void freeNode(struct expr *e) {
     xfree(e->cleanup_block);
     free(e);
@@ -554,7 +545,7 @@ static void globLong(const char *s, char isStore) {
 
 /* Variable load/store with cache management */
 void loadVar(const char *sym, char sz, char docache) {
-    const char *vn = stripVarPfx(sym);
+    const char *vn = sym;
     struct local_var *v;
 #ifdef DEBUG
     if (TRACE(T_VAR)) {
@@ -600,7 +591,7 @@ void loadVar(const char *sym, char sz, char docache) {
             emit(S_CALLGL);
         }
     } else {
-        const char *s = stripDollar(sym);
+        const char *s = sym;
 #ifdef DEBUG
         if (TRACE(T_VAR)) {
             fdprintf(2, "  loadVar: branch C (global)\n");
@@ -613,7 +604,7 @@ void loadVar(const char *sym, char sz, char docache) {
 }
 
 void storeVar(const char *sym, char sz, char docache) {
-    const char *vn = stripVarPfx(sym);
+    const char *vn = sym;
     struct local_var *v;
 #ifdef DEBUG
     if (TRACE(T_VAR)) {
@@ -641,7 +632,7 @@ void storeVar(const char *sym, char sz, char docache) {
             emit(S_CALLPL);
         }
     } else {
-        const char *s = stripDollar(sym);
+        const char *s = sym;
 #ifdef DEBUG
         if (TRACE(T_VAR)) {
             fdprintf(2, "  storeVar: global store sz=%d\n", sz);
@@ -712,7 +703,7 @@ emitSimplLd(struct expr *e)
 
     case LOC_MEM:
         if (!e->left || !e->left->symbol) return 0;
-        sym = stripDollar(e->left->symbol);
+        sym = e->left->symbol;
         fdprintf(outFd, "\tld %s, (%s)\n", rp, sym);
         break;
 
@@ -755,7 +746,7 @@ emitGlobDrf(struct expr *e)
     if (!e || !e->left || !e->left->symbol) return;
 
     sym = e->left->symbol;
-    s = stripDollar(sym);
+    s = sym;
 
     if (e->size == 1) {
         emitS(FS_LDAM, s);
@@ -789,13 +780,10 @@ void
 emitRegVarDrf(struct expr *e)
 {
     struct local_var *var;
-    const char *sym;
 
     if (!e || !e->left || !e->left->symbol) return;
 
-    sym = e->left->symbol;
-    if (sym[0] == '$') sym++;
-    var = findVar(sym);
+    var = findVar(e->left->symbol);
     if (!var) {
         /* Fallback to global */
         emitGlobDrf(e);
@@ -919,13 +907,10 @@ void
 emitStackDrf(struct expr *e)
 {
     struct local_var *var;
-    const char *sym;
 
     if (!e || !e->left || !e->left->symbol) return;
 
-    sym = e->left->symbol;
-    if (sym[0] == '$') sym++;
-    var = findVar(sym);
+    var = findVar(e->left->symbol);
     if (!var) {
         /* Fallback to global */
         emitGlobDrf(e);

@@ -22,8 +22,6 @@ const char *wordRegName(unsigned char reg);
 unsigned char bcOrCIdx(unsigned char reg);
 
 /* String/name helpers */
-const char *stripDollar(const char *symbol);
-const char *stripVarPfx(const char *name);
 void freeNode(struct expr *e);
 int isLocalSym(const char *name);  /* Returns 1 if symbol is local (no _ prefix) */
 /* findVar is declared in cc2.h */

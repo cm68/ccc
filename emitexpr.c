@@ -73,7 +73,7 @@ execIns(struct expr *e, unsigned char ins)
         return 1;
     case EO_HL_MEM:
         if (e->left && e->left->symbol) {
-            fdprintf(outFd, "\tld hl, (%s)\n", stripVarPfx(e->left->symbol));
+            fdprintf(outFd, "\tld hl, (%s)\n", e->left->symbol);
             clearHL();
         }
         return 1;
@@ -93,7 +93,7 @@ execIns(struct expr *e, unsigned char ins)
         return 1;
     case EO_DE_CONST:
         if (e->symbol)
-            fdprintf(outFd, "\tld de, %s\n", stripVarPfx(e->symbol));
+            fdprintf(outFd, "\tld de, %s\n", e->symbol);
         else
             fdprintf(outFd, "\tld de, %ld\n", e->value);
         return 1;
@@ -102,7 +102,7 @@ execIns(struct expr *e, unsigned char ins)
         return 1;
     case EO_A_MEM:
         if (e->left && e->left->symbol) {
-            fdprintf(outFd, "\tld a, (%s)\n", stripVarPfx(e->left->symbol));
+            fdprintf(outFd, "\tld a, (%s)\n", e->left->symbol);
             clearA();
         }
         return 1;
@@ -126,11 +126,11 @@ execIns(struct expr *e, unsigned char ins)
         return 1;
     case EO_MEM_BC:
         if (e->left && e->left->symbol)
-            fdprintf(outFd, "\tld (%s), bc\n", stripVarPfx(e->left->symbol));
+            fdprintf(outFd, "\tld (%s), bc\n", e->left->symbol);
         return 1;
     case EO_MEM_DE:
         if (e->left && e->left->symbol)
-            fdprintf(outFd, "\tld (%s), de\n", stripVarPfx(e->left->symbol));
+            fdprintf(outFd, "\tld (%s), de\n", e->left->symbol);
         return 1;
     case EO_IY_A:
         storeByteIY(e->offset, 0);
@@ -354,7 +354,7 @@ emitExpr(struct expr *e)
     }
     /* Handle symbol address - check if global or local */
     else if (op == '$' && e->symbol) {
-        const char *sym_name = stripVarPfx(e->symbol);
+        const char *sym_name = e->symbol;
         struct local_var *var = findVar(sym_name);
 
         if (!var) {
@@ -644,7 +644,7 @@ emit2Expr(struct expr *e)
         case EO_HL_IYW: loadWordIY(e->offset); continue;
         case EO_HL_MEM:
             if (left && left->symbol)
-                fdprintf(outFd, "\tld hl, (%s)\n", stripVarPfx(left->symbol));
+                fdprintf(outFd, "\tld hl, (%s)\n", left->symbol);
             continue;
         case EO_HL_CONST:
             fdprintf(outFd, "\tld hl, %ld\n", e->value);
@@ -652,7 +652,7 @@ emit2Expr(struct expr *e)
         case EO_A_IY: loadByteIY(e->offset, 0); continue;
         case EO_A_MEM:
             if (left && left->symbol)
-                fdprintf(outFd, "\tld a, (%s)\n", stripVarPfx(left->symbol));
+                fdprintf(outFd, "\tld a, (%s)\n", left->symbol);
             continue;
         case EO_A_CONST:
             if ((e->value & 0xff) == 0)
@@ -663,24 +663,24 @@ emit2Expr(struct expr *e)
         case EO_IYW_HL: storeWordIY(e->offset); continue;
         case EO_MEM_HL:
             if (ll && ll->symbol)
-                fdprintf(outFd, "\tld (%s), hl\n", stripVarPfx(ll->symbol));
+                fdprintf(outFd, "\tld (%s), hl\n", ll->symbol);
             continue;
         case EO_MEM_BC:
             if (left && left->symbol)
-                fdprintf(outFd, "\tld (%s), bc\n", stripVarPfx(left->symbol));
+                fdprintf(outFd, "\tld (%s), bc\n", left->symbol);
             continue;
         case EO_MEM_DE:
             if (left && left->symbol)
-                fdprintf(outFd, "\tld (%s), de\n", stripVarPfx(left->symbol));
+                fdprintf(outFd, "\tld (%s), de\n", left->symbol);
             continue;
         case EO_IY_A: storeByteIY(e->offset, 0); continue;
         case EO_MEM_A:
             if (ll && ll->symbol)
-                fdprintf(outFd, "\tld (%s), a\n", stripVarPfx(ll->symbol));
+                fdprintf(outFd, "\tld (%s), a\n", ll->symbol);
             continue;
         case EO_CALL:
             if (left && left->symbol)
-                fdprintf(outFd, "\tcall %s\n", stripVarPfx(left->symbol));
+                fdprintf(outFd, "\tcall %s\n", left->symbol);
             continue;
         default: continue;
         }
