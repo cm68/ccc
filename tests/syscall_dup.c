@@ -1,0 +1,17 @@
+/*
+ * syscall_dup test
+ */
+
+int dup();
+int close();
+
+int main(void)
+{
+	int fd;
+
+	fd = dup(1);	/* dup stdout */
+	if (fd < 0)
+		return 1;
+	close(fd);
+	return 0;
+}

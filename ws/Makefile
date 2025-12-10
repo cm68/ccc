@@ -70,9 +70,8 @@ clean:
 	rm -f stage1/*.ast stage1/*.s stage1/*.o
 
 install: all
-	mkdir -p ../xbin
-	cp $(ALL) ../xbin
-	sudo cp $(ALL) /usr/local/bin/
+	mkdir -p $(ROOTDIR)/bin
+	cp $(ALL) $(ROOTDIR)/bin
 
 # Stage1 build - compile ws tools to native Z80
 # Uses ../cc1, ../cc2, ./asz from host build

@@ -58,9 +58,13 @@ BINS = cc1 cc2 ccc maketokens
 
 all: cc1 cc2 ccc doc.pdf
 
-install: cc2 cc2 ccc
-	mkdir -p xbin
-	cp cc1 cc2 ccc xbin
+ROOTDIR = root
+
+install: cc1 cc2 ccc
+	mkdir -p $(ROOTDIR)/bin
+	cp cc1 cc2 ccc $(ROOTDIR)/bin
+	$(MAKE) -C ws install ROOTDIR=$(CURDIR)/$(ROOTDIR)
+	$(MAKE) -C libsrc install ROOTDIR=$(CURDIR)/$(ROOTDIR)
 
 cc1: $(CC1OBJECTS)
 	$(LD) $(LDFLAGS) cc1 $(CC1OBJECTS)

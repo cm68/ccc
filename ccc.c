@@ -15,13 +15,6 @@
 char *progname;
 
 char *rootdir;
-#ifdef CCC
-char *tooldir = "bin";
-#else
-char *tooldir = "xbin";
-#endif
-
-char *libdir = "lib";
 
 void
 usage(void)
@@ -176,6 +169,7 @@ main(int argc, char **argv)
     char chdr_path[1024];
     char libc_path[1024];
     char libu_path[1024];
+    char sysinc_path[1024];
 
     int status;
     int i;
@@ -185,14 +179,15 @@ main(int argc, char **argv)
     rootdir = getroot(progname);
 
     /* Build paths to cc1, cc2, assembler, linker */
-    snprintf(cc1_path, sizeof(cc1_path), "%s/%s/cc1", rootdir, tooldir);
-    snprintf(cc2_path, sizeof(cc2_path), "%s/%s/cc2", rootdir, tooldir);
-    snprintf(asm_path, sizeof(asm_path), "%s/%s/asz", rootdir, tooldir);
-    snprintf(ld_path, sizeof(ld_path), "%s/%s/wsld", rootdir, tooldir);
+    snprintf(cc1_path, sizeof(cc1_path), "%s/bin/cc1", rootdir);
+    snprintf(cc2_path, sizeof(cc2_path), "%s/bin/cc2", rootdir);
+    snprintf(asm_path, sizeof(asm_path), "%s/bin/asz", rootdir);
+    snprintf(ld_path, sizeof(ld_path), "%s/bin/wsld", rootdir);
 
-    snprintf(chdr_path, sizeof(chdr_path), "%s/%s/crt0.o", rootdir, libdir);
-    snprintf(libc_path, sizeof(libc_path), "%s/%s/libc.a", rootdir, libdir);
-    snprintf(libu_path, sizeof(libu_path), "%s/%s/libu.a", rootdir, libdir);
+    snprintf(chdr_path, sizeof(chdr_path), "%s/lib/crt0.o", rootdir);
+    snprintf(libc_path, sizeof(libc_path), "%s/lib/libc.a", rootdir);
+    snprintf(libu_path, sizeof(libu_path), "%s/lib/libu.a", rootdir);
+    snprintf(sysinc_path, sizeof(sysinc_path), "-i%s/usr/include", rootdir);
 
     /* Initialize base argument arrays with program names */
     cc1_base[cc1_base_argc++] = cc1_path;
@@ -362,6 +357,7 @@ main(int argc, char **argv)
         for (j = 0; j < cc1_base_argc; j++)
             cc1_args[cc1_argc++] = cc1_base[j];
 	cc1_args[cc1_argc++] = "-DCCC";
+	cc1_args[cc1_argc++] = sysinc_path;
         cc1_args[cc1_argc++] = "-o";
         cc1_args[cc1_argc++] = ast_file;
         cc1_args[cc1_argc++] = src;
