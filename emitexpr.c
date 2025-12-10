@@ -282,8 +282,24 @@ emitExpr(struct expr *e)
         emitTernary(e);
         return;
     }
+    /* Handle int to float conversion (SEXT to float) */
+    else if (op == 'x' && (e->flags & E_FLOAT)) {
+        emitExpr(left);
+        emit(S_CALLITOF);
+        clearHL();
+        freeNode(e);
+        return;
+    }
     /* Handle NARROW - truncate to smaller type */
     else if (op == 'N') {
+        /* Float to int conversion */
+        if (left && (left->flags & E_FLOAT)) {
+            emitExpr(left);
+            emit(S_CALLFTOI);
+            clearHL();
+            freeNode(e);
+            return;
+        }
         if (left && e->size == 1) {
             /* Narrowing to byte */
             if (left->op == 'C') {

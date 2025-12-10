@@ -895,6 +895,31 @@ emitBinop(struct expr *e)
     int result_size = e->size ? e->size : left_size;
     int cmp_op = is_cmp(op);
 
+    /* Float operations - use helper functions */
+    if (e->flags & E_FLOAT) {
+        emitExpr(left);
+        emit(S_PUSHHL);
+        emit(S_EXX);
+        emit(S_PUSHHL);
+        emit(S_EXX);
+        emitExpr(right);
+        emit(S_EXX);
+        emit(S_POPDE);
+        emit(S_EXX);
+        emit(S_POPDE);
+        switch (op) {
+        case '+': emit(S_CALLFADD); break;
+        case '-': emit(S_CALLFSUB); break;
+        case '*': emit(S_CALLFMUL); break;
+        case '/': emit(S_CALLFDIV); break;
+        default:
+            if (cmp_op) emit(S_CALLFCMP);
+            break;
+        }
+        freeNode(e);
+        return;
+    }
+
     /* Long (32-bit) operations */
     if (left_size == 4 || result_size == 4) {
         emitLongBinop(e, cmp_op);

@@ -34,7 +34,7 @@ enum {
     LABEL = '3',
 
     /* terminals */
-    SYM = '5', NUMBER = '9', STRING = '\"',
+    SYM = '5', NUMBER = '9', FNUMBER = 'b', STRING = '\"',
 
     /* operators */
     ASSIGN = '=', DOT = '.', ARROW = 'q', DEREF = 'M',

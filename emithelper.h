@@ -212,6 +212,14 @@ void emitJump(const char *instr, const char *prefix, unsigned char label);
 #define S_INCA 103
 #define S_DECA 104
 #define S_ADCH0 105
+#define S_CALLFADD 106
+#define S_CALLFSUB 107
+#define S_CALLFMUL 108
+#define S_CALLFDIV 109
+#define S_CALLFCMP 110
+#define S_CALLFNEG 111
+#define S_CALLITOF 112
+#define S_CALLFTOI 113
 
 /* Format string indices for emit1() */
 #define F_LDA 0

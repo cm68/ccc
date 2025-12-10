@@ -61,6 +61,7 @@ enum register_id {
 #define E_IXASSIGN  0x08        // ASSIGN to IX-indexed struct member
 #define E_IXDEREF   0x10        // DEREF of IX-indexed struct member
 #define E_JUMP      0x20        // Node has associated jump (ternary, return)
+#define E_FLOAT     0x40        // Float/double type (uses float helpers)
 
 /*
  * Operand pattern flags (e->opflags) - set during analysis phase
@@ -231,7 +232,7 @@ enum {
  */
 struct expr {
     unsigned char op;           // Operation ('+', '-', 'M', '=', '@', etc.)
-    unsigned char size;         // Result size in bytes (1=byte, 2=short/ptr, 4=long/float, 8=double)
+    unsigned char size;         // Result size in bytes (1=byte, 2=short/ptr, 4=long/float/double)
     unsigned char flags;        // E_UNSIGNED, E_UNUSED, etc.
     unsigned char opflags;      // OP_CONST, OP_REGVAR, etc. (operand patterns)
     unsigned char label;        // Label number (if needed for this expression)

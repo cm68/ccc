@@ -291,6 +291,15 @@ parseExpr(unsigned char pri, struct stmt *st)
         break;
     }
 
+    case FNUMBER: {
+        /* Store float bit pattern in v */
+        union { float f; unsigned long u; } fu;
+        fu.f = cur.v.fval;
+        e = mkexprI(CONST, 0, floattype, fu.u, E_CONST);
+        gettoken();
+        break;
+    }
+
     case STRING: {
         struct name *strname;
         char namebuf[32];

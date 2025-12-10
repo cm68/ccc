@@ -159,15 +159,17 @@ getSizeFTStr(unsigned char c)
 {
 	if ((c | 0x20) == 'b') return 1;
 	if ((c | 0x20) == 's' || c == 'p') return 2;
-	if ((c | 0x20) == 'l' || c == 'f') return 4;
-	if (c == 'd') return 8;
+	if ((c | 0x20) == 'l' || c == 'f' || c == 'd') return 4;
 	return 2;
 }
 
 unsigned char
 getSignFTStr(unsigned char c)
 {
-	return (c == 'p' || c == 'B' || c == 'S' || c == 'L') ? E_UNSIGNED : 0;
+	unsigned char flags = 0;
+	if (c == 'p' || c == 'B' || c == 'S' || c == 'L') flags |= E_UNSIGNED;
+	if (c == 'f' || c == 'd') flags |= E_FLOAT;
+	return flags;
 }
 
 unsigned char

@@ -347,6 +347,7 @@ char
 isnumber()
 {
     unsigned char base;
+    char *p;
 
     if (charmatch('\'')) {
         next.v.numeric = getlit();
@@ -376,6 +377,35 @@ isnumber()
         }
     }
     next.v.numeric = getint(base);
+
+    /* Check for float literal (requires decimal point) */
+    if (base == 10 && curchar == '.') {
+        /* Build float string: integer part + . + fractional + optional exp */
+        p = strbuf;
+        sprintf(p, "%ld", next.v.numeric);
+        p += strlen(p);
+        *p++ = '.';
+        advance();
+        while (curchar >= '0' && curchar <= '9') {
+            *p++ = curchar;
+            advance();
+        }
+        if ((curchar | 0x20) == 'e') {
+            *p++ = curchar;
+            advance();
+            while (curchar >= '0' && curchar <= '9') {
+                *p++ = curchar;
+                advance();
+            }
+        }
+        *p = '\0';
+        next.v.fval = (float)atof(strbuf);
+        /* Skip optional f/F/l/L suffix */
+        if ((curchar | 0x20) == 'f' || (curchar | 0x20) == 'l') {
+            advance();
+        }
+        return 2;  /* Return 2 for float */
+    }
 
     /* Skip optional 'L' or 'l' suffix for long constants */
     if ((curchar == 'L') || (curchar == 'l')) {
@@ -1134,9 +1164,12 @@ gettoken()
             next.v.name = strdup(strbuf);
             break;
         }
-        if (isnumber()) {
-            next.type = NUMBER;
-            break;
+        {
+            char numtype = isnumber();
+            if (numtype) {
+                next.type = (numtype == 2) ? FNUMBER : NUMBER;
+                break;
+            }
         }
         if (isstring()) {
             next.type = STRING;

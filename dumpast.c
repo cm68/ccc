@@ -461,6 +461,7 @@ dumpSchedExpr(struct expr *e, int indent)
         if (e->opflags & OP_GLOBAL) fdprintf(dumpFd, "G");
         if (e->opflags & OP_INDIR) fdprintf(dumpFd, "I");
         if (e->opflags & OP_BCINDIR) fdprintf(dumpFd, "BC");
+        if (e->flags & E_FLOAT) fdprintf(dumpFd, "F");
         fdprintf(dumpFd, "]");
     }
 

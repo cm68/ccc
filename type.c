@@ -52,6 +52,7 @@ struct type *uchartype;
 struct type *ushorttype;
 struct type *ulongtype;
 struct type *voidtype;
+struct type *floattype;
 
 /*
  * basic types = 0
@@ -421,7 +422,7 @@ static struct {
 	{ "_void_", 0, 0 },						// 6
 	/* { "_boolean_", 1, TF_UNSIGNED }, */  /* Removed - not used */
 	{ "_float_", 4, TF_FLOAT },
-	{ "_double_", 8, TF_FLOAT },
+	{ "_double_", 4, TF_FLOAT },
 };
 
 /*
@@ -609,6 +610,7 @@ initbasictype()
         if (i == 4) ushorttype = t;
         if (i == 5) ulongtype = t;
         if (i == 6) voidtype = t;
+        if (i == 7) floattype = t;
     }
 }
 

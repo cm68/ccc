@@ -118,7 +118,15 @@ static const char *asmstr[] = {
     "\tor c\n\tld c, a\n",                  /* S_ORCCA */
     "\tinc a\n",                            /* S_INCA */
     "\tdec a\n",                            /* S_DECA */
-    "\tld a, h\n\tadc a, 0\n\tld h, a\n"    /* S_ADCH0 */
+    "\tld a, h\n\tadc a, 0\n\tld h, a\n",   /* S_ADCH0 */
+    "\tcall _fadd\n",                       /* S_CALLFADD */
+    "\tcall _fsub\n",                       /* S_CALLFSUB */
+    "\tcall _fmul\n",                       /* S_CALLFMUL */
+    "\tcall _fdiv\n",                       /* S_CALLFDIV */
+    "\tcall _fcmp\n",                       /* S_CALLFCMP */
+    "\tcall _fneg\n",                       /* S_CALLFNEG */
+    "\tcall _itof\n",                       /* S_CALLITOF */
+    "\tcall _ftoi\n"                        /* S_CALLFTOI */
 };
 
 /* Format strings with single %d - for emit1() */

@@ -266,6 +266,7 @@ extern struct type *uchartype;
 extern struct type *ushorttype;
 extern struct type *ulongtype;
 extern struct type *voidtype;
+extern struct type *floattype;
 
 void parse();
 void cleanupParse();
@@ -291,6 +292,7 @@ struct token {				// lexeme
 	token_t type;
 	union {
 		long numeric;		// char, short, int, long
+		float fval;			// float, double
 		char *name;			// if we have a symbol
 		cstring str;		// counted literal string
 	} v;
