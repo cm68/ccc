@@ -381,6 +381,10 @@ void sched2Code(void);      /* New prescriptive scheduler */
 void generateCode(void);
 void optFrmLayout(void);
 struct local_var *findVar(const char *symbol);
+char is_cmp(unsigned char op);  /* Test if op is comparison (< > <= >= == !=) */
+char is_ord(unsigned char op);  /* Test if op is ordered comparison (< > <= >=) */
+char is_log(unsigned char op);  /* Test if op is logical (! && ||) */
+char is_bit(unsigned char op);  /* Test if op is bitwise (& | ^) */
 
 /* Symbol tracking (parseast.c) */
 void addRefSym(const char *name);

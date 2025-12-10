@@ -11,6 +11,7 @@ void emit(unsigned char idx);
 void emit1(unsigned char idx, char val);
 void emitS(unsigned char idx, const char *s);
 void emit2S(unsigned char idx, const char *s1, const char *s2);
+void idxFmt(const char *fmt, int offset);
 void out(const char *s);
 void emitByteLoad(unsigned char reg);
 void emitByteStore(unsigned char reg);

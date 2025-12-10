@@ -192,6 +192,14 @@ void emit2S(unsigned char idx, const char *s1, const char *s2) {
     fdprintf(outFd, s2fmtstr[idx], s1, s2);
 }
 
+/* Emit IX/IY indexed instruction with proper sign handling */
+void idxFmt(const char *fmt, int offset) {
+    if (offset >= 0)
+        fdprintf(outFd, fmt, '+', offset);
+    else
+        fdprintf(outFd, fmt, '-', -offset);
+}
+
 /* Output string to assembly output - saves passing outFd at each call site */
 void out(const char *s) {
     fdputs(outFd, s);

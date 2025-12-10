@@ -3,7 +3,48 @@
  */
 #include "cc1.h"
 
-#include "op_pri.h"
+/*
+ * Combined operator priority and flags table
+ * Table covers 0x20-0x7f (96 bytes), indexed by (tok - 0x20)
+ * Bits 0-3: priority (0-15), Bits 4-7: flags
+ */
+#define TF_ASN 0x10   /* assignment op: = += -= etc */
+#define TF_CMP 0x20   /* comparison: < > <= >= == != */
+#define TF_LOG 0x40   /* logical: && || */
+
+#define P(p) (p)                     /* priority only */
+#define PF(p,f) ((p) | (f))          /* priority + flags */
+
+static const unsigned char oppri[96] = {
+/*0x20  spc !  "  #  $  %    &    ' */  0,0,0,0,0,P(3),P(8),0,
+/*0x28  (  )  *    +    ,     -    .    / */  0,0,P(3),P(4),P(15),P(4),P(1),P(3),
+/*0x30  0             1             2             3  4  5  6             7 */
+        PF(14,TF_ASN),PF(14,TF_ASN),PF(14,TF_ASN),0,0,0,PF(14,TF_ASN),0,
+/*0x38  8  9  :  ;  <          =             >          ? */
+        0,0,0,0,PF(6,TF_CMP),PF(14,TF_ASN),PF(6,TF_CMP),P(13),
+/*0x40  @  A  B  C  D  E  F  G */  0,0,0,0,0,0,0,0,
+/*0x48  H             I  J             K  L          M    N  O */
+        PF(14,TF_ASN),0,PF(14,TF_ASN),0,PF(6,TF_CMP),P(1),0,0,
+/*0x50  P             Q             R  S  T             U  V  W */
+        PF(14,TF_ASN),PF(7,TF_CMP),0,0,PF(14,TF_ASN),0,0,0,
+/*0x58  X             Y  Z  [  \  ]  ^    _ */
+        PF(14,TF_ASN),0,0,0,0,0,P(9),0,
+/*0x60  `  a  b  c  d  e  f  g */  0,0,0,0,0,0,0,PF(6,TF_CMP),
+/*0x68  h              i  j              k  l  m  n             o */
+        PF(12,TF_LOG),0,PF(11,TF_LOG),0,0,0,PF(7,TF_CMP),0,
+/*0x70  p  q  r  s  t  u  v  w */  0,0,0,0,0,0,0,P(5),
+/*0x78  x  y     z  {  |      }  ~  DEL */  0,P(5),0,0,P(10),0,0,0
+};
+#undef P
+#undef PF
+
+#define OPPRI(t) ((unsigned char)(t) < 0x80 ? oppri[(t) - 0x20] : 0)
+
+/* High-byte assignment operators: SUBEQ=0xdf MODEQ=0xfe ANDEQ=0xc6 */
+#define IS_ASSIGN(t) ((OPPRI(t) & TF_ASN) || (t) == 0xdf || (t) == 0xfe || (t) == 0xc6)
+#define IS_CMP(t)    (OPPRI(t) & TF_CMP)
+#define IS_LOG(t)    (OPPRI(t) & TF_LOG)
+#define IS_CMPLOG(t) (OPPRI(t) & (TF_CMP | TF_LOG))
 
 /*
  * counter for generating synthetic string literal names
@@ -113,31 +154,18 @@ frExp(struct expr *e)
 
 /*
  * Get binary operator precedence priority
- *
- * Looks up the precedence priority for a binary operator token in the
- * auto-generated op_pri[] table. Lower numbers bind tighter (higher
- * precedence). The table is indexed from OP_MIN to OP_MAX and contains
- * the encoded priority of each binary operator.
- *
- * Priority values:
- *   0 = not an operator (or invalid token)
- *   1 = highest precedence (e.g., array subscript, member access)
- *   ...
- *   14 = lowest binary precedence (e.g., comma operator)
- *
- * Parameters:
- *   t - Operator token to look up
- *
- * Returns:
- *   Precedence priority (0 if not a binary operator or out of range)
+ * Uses combined oppri[] table (bits 0-3 = priority)
+ * High-byte tokens (SUBEQ, MODEQ, ANDEQ) handled explicitly
  */
 unsigned char
 binopPri(unsigned char t)
 {
-    if ((t < OP_MIN) || (t > OP_MAX)) {
-        return 0;
-    }
-	return (op_pri[t - OP_MIN]);
+    if (t < 0x80)
+        return (t >= 0x20) ? (oppri[t - 0x20] & 0x0f) : 0;
+    /* High-byte assignment operators: all priority 14 */
+    if (t == 0xdf || t == 0xfe || t == 0xc6)
+        return 14;
+    return 0;
 }
 
 /*
@@ -945,11 +973,7 @@ parseExpr(unsigned char pri, struct stmt *st)
          * Track the actual type being assigned
          */
         assign_type = NULL;
-        is_assignment = (op == ASSIGN || op == PLUSEQ ||
-				op == SUBEQ || op == MULTEQ || op == DIVEQ ||
-				op == MODEQ || op == ANDEQ || op == OREQ ||
-				op == XOREQ || op == LSHIFTEQ || op == RSHIFTEQ ||
-				op == LANDEQ || op == LOREQ);
+        is_assignment = IS_ASSIGN(op);
 
         if (is_assignment) {
             if (e && e->op == DEREF) {
@@ -1167,8 +1191,7 @@ parseExpr(unsigned char pri, struct stmt *st)
                 e->type = assign_type;
             }
             // Comparisons and logical ops produce boolean (byte) result
-            else if (op == LT || op == GT || op == LE || op == GE ||
-                     op == EQ || op == NEQ || op == LAND || op == LOR) {
+            else if (IS_CMPLOG(op)) {
                 e->type = uchartype;
             }
             // For other operators, use the larger type as result type

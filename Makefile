@@ -32,7 +32,7 @@ CC1OBJECTS = cc1.o error.o lex.o io.o macro.o kw.o util.o tokenlist.o \
 CC2OBJECTS = cc2.o util.o astio.o parseast.o codegen.o dumpast.o emithelper.o emitexpr.o emitops.o emit.o
 
 HEADERS = cc1.h token.h
-GENERATED = enumlist.h tokenlist.c error.h debug.h debugtags.c op_pri.h trace2.h tracetags.c
+GENERATED = enumlist.h tokenlist.c error.h debug.h debugtags.c trace2.h tracetags.c
 
 # All C source files (generated + corresponding to .o files)
 CFILES = cc1.c error.c lex.c io.c macro.c kw.c util.c \
@@ -41,7 +41,7 @@ CFILES = cc1.c error.c lex.c io.c macro.c kw.c util.c \
 	tokenlist.c debugtags.c
 
 # All header files (manually written + generated)
-HFILES = $(HEADERS) astio.h emithelper.h enumlist.h error.h debug.h op_pri.h trace2.h
+HFILES = $(HEADERS) astio.h emithelper.h enumlist.h error.h debug.h trace2.h
 
 # All source files
 SOURCES = $(CFILES) $(HFILES)
@@ -52,7 +52,7 @@ LIBSRCS = libsrc/Makefile libsrc/*/*.s libsrc/*/*.c libsrc/include/*.h
 # Documentation files (in reading order)
 DOCFILES = README.md TODO.md CLAUDE.md AST_FORMAT.md libsrc/README.md libsrc/libc/README.md
 
-BINS = cc1 cc2 ccc maketokens genop_pri
+BINS = cc1 cc2 ccc maketokens
 
 #VERBOSE=-v 3
 
@@ -228,15 +228,6 @@ enumlist.h: cc1.h Makefile
 	awk '/[A-Z]+/ {printf("check(%s);\n", $$1);}' >>enumlist.h
 
 #
-# generate the operator priority table
-#
-op_pri.h: ./genop_pri
-	./genop_pri
-
-genop_pri: genop_pri.c
-	cc -o genop_pri genop_pri.c
-
-#
 # generate token names from the enumlist.h file
 #
 tokenlist.c: enumlist.h maketokens
@@ -301,7 +292,7 @@ kw.o: kw.c
 error.o: error.c
 util.o: util.c
 tokenlist.o: tokenlist.c
-expr.o: expr.c op_pri.h
+expr.o: expr.c
 outast.o: outast.c
 astio.o: astio.c astio.h cc2.h
 parseast.o: parseast.c astio.h cc2.h

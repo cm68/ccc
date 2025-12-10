@@ -285,7 +285,7 @@ emitExpr(struct expr *e)
                     emit(S_XORA);
                     fnAZero = 1;
                 } else if (val != 0) {
-                    fdprintf(outFd, "\tld a, %d\n", val);
+                    emit1(F_LDA, val);
                     fnAZero = 0;
                 }
                 freeExpr(left);

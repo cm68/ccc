@@ -16,13 +16,6 @@
  */
 struct expr nullExpr;
 
-/* Helper: emit IY-indexed instruction with proper sign handling */
-static void iyFmt(const char *fmt, int offset) {
-    if (offset >= 0)
-        fdprintf(outFd, fmt, '+', offset);
-    else
-        fdprintf(outFd, fmt, '-', -offset);
-}
 
 /* Helper: emit store word from HL to (DE) and increment DE */
 static void storeHLtoDE(void) {
@@ -157,7 +150,7 @@ emitIncDec(struct expr *e)
         if (is_post) {
             switch (loc) {
             case ID_REG:    fdprintf(outFd, "\tld a, %s\n", rn); break;
-            case ID_STACK:  iyFmt("\tld a, (iy %c %d)\n", ofs); break;
+            case ID_STACK:  idxFmt("\tld a, (iy %c %d)\n", ofs); break;
             case ID_GLOBAL: emitS(FS_LDAM, sym); emit(S_PUSHAFSV); break;
             case ID_HL:     emit(S_LDAHLPUSH); break;
             }
@@ -168,7 +161,7 @@ emitIncDec(struct expr *e)
             /* Direct inc/dec on location - sets Z flag for zero test */
             switch (loc) {
             case ID_REG:   emit2S(FS2_OP, opn, rn); break;
-            case ID_STACK: iyFmt(is_dec ? "\tdec (iy %c %d)\n" : "\tinc (iy %c %d)\n", ofs); break;
+            case ID_STACK: idxFmt(is_dec ? "\tdec (iy %c %d)\n" : "\tinc (iy %c %d)\n", ofs); break;
             case ID_HL:    fdprintf(outFd, "\t%s (hl)\n", opn); break;
             default: break;
             }
@@ -177,14 +170,14 @@ emitIncDec(struct expr *e)
             /* Load to A, modify, store */
             switch (loc) {
             case ID_REG:    if (!is_post) fdprintf(outFd, "\tld a, %s\n", rn); break;
-            case ID_STACK:  if (!is_post) iyFmt("\tld a, (iy %c %d)\n", ofs); break;
+            case ID_STACK:  if (!is_post) idxFmt("\tld a, (iy %c %d)\n", ofs); break;
             case ID_GLOBAL: if (!is_post) emitS(FS_LDAM, sym); break;
             case ID_HL:     if (!is_post) emit(S_LDAHL); break;
             }
             fdprintf(outFd, "\t%s a, %ld\n", is_dec ? "sub" : "add", amount);
             switch (loc) {
             case ID_REG:    fdprintf(outFd, "\tld %s, a\n", rn); break;
-            case ID_STACK:  iyFmt("\tld (iy %c %d), a\n", ofs); break;
+            case ID_STACK:  idxFmt("\tld (iy %c %d), a\n", ofs); break;
             case ID_GLOBAL: emitS(FS_STAM, sym); break;
             case ID_HL:     emit(S_LDHLA); break;
             }
@@ -199,7 +192,7 @@ emitIncDec(struct expr *e)
             /* Load value to A unless only testing condition (fnCondOnly + fnZValid) */
             switch (loc) {
             case ID_REG:    fdprintf(outFd, "\tld a, %s\n", rn); break;
-            case ID_STACK:  iyFmt("\tld a, (iy %c %d)\n", ofs); break;
+            case ID_STACK:  idxFmt("\tld a, (iy %c %d)\n", ofs); break;
             case ID_GLOBAL: /* A already has new value */ break;
             case ID_HL:     emit(S_LDAHL); break;
             }
@@ -235,9 +228,9 @@ emitIncDec(struct expr *e)
             case ID_STACK:
                 /* 8-bit dec/inc affects C flag, so we can use borrow/carry */
                 for (i = 0; i < amount; i++) {
-                    iyFmt(is_dec ? "\tdec (iy %c %d)\n" : "\tinc (iy %c %d)\n", ofs);
+                    idxFmt(is_dec ? "\tdec (iy %c %d)\n" : "\tinc (iy %c %d)\n", ofs);
                     emit(S_JRNC3);
-                    iyFmt(is_dec ? "\tdec (iy %c %d)\n" : "\tinc (iy %c %d)\n", ofs + 1);
+                    idxFmt(is_dec ? "\tdec (iy %c %d)\n" : "\tinc (iy %c %d)\n", ofs + 1);
                 }
                 break;
             case ID_GLOBAL:
@@ -256,26 +249,27 @@ emitIncDec(struct expr *e)
             }
         } else {
             /* Use DE as addend */
+            if (is_dec) amount = -amount;
             switch (loc) {
             case ID_REG:
-                fdprintf(outFd, "\tld de, %ld\n\tadd %s, de\n", is_dec ? -amount : amount, rp);
+                fdprintf(outFd, "\tld de, %ld\n\tadd %s, de\n", amount, rp);
                 break;
             case ID_STACK:
                 loadWordIY(ofs);
-                fdprintf(outFd, "\tld de, %ld\n", is_dec ? -amount : amount);
+                fdprintf(outFd, "\tld de, %ld\n", amount);
                 emit(S_ADDHLDE);
                 storeWordIY(ofs);
                 break;
             case ID_GLOBAL:
                 if (!is_post) emitS(FS_LDHLM, sym);
-                fdprintf(outFd, "\tld de, %ld\n", is_dec ? -amount : amount);
+                fdprintf(outFd, "\tld de, %ld\n", amount);
                 emit(S_ADDHLDE);
                 emitS(FS_STHLM, sym);
                 break;
             case ID_HL:
                 emit(S_LDCHL);
                 emit(S_PUSHHLBCHL);
-                fdprintf(outFd, "\tld de, %ld\n\tadd hl, de\n", is_dec ? -amount : amount);
+                fdprintf(outFd, "\tld de, %ld\n\tadd hl, de\n", amount);
                 emit(S_EXDEHLPOPHL);
                 emit(S_STDEHL);
                 break;
@@ -435,10 +429,8 @@ notConstStore:
         if (lv && lv->reg == REG_IX) {
             int ofs = right->offset;
             /* Load H first, then L (natural order for push) */
-            fdprintf(outFd, "\tld h, (ix %c %d)\n",
-                     ofs + 1 >= 0 ? '+' : '-', ofs + 1 >= 0 ? ofs + 1 : -(ofs + 1));
-            fdprintf(outFd, "\tld l, (ix %c %d)\n",
-                     ofs >= 0 ? '+' : '-', ofs >= 0 ? ofs : -ofs);
+            idxFmt("\tld h, (ix %c %d)\n", ofs + 1);
+            idxFmt("\tld l, (ix %c %d)\n", ofs);
             emit(S_HLPIX);
             freeExpr(right);
             freeExpr(left);
@@ -469,10 +461,8 @@ notConstStore:
             int ofs = lv->offset;
             emitExpr(right->left);  /* byte result in A; emitExpr frees it */
             right->left = NULL;     /* prevent double-free */
-            fdprintf(outFd, "\tld (iy %c %d), a\n",
-                     ofs >= 0 ? '+' : '-', ofs >= 0 ? ofs : -ofs);
-            fdprintf(outFd, "\tld (iy %c %d), 0\n",
-                     ofs + 1 >= 0 ? '+' : '-', ofs + 1 >= 0 ? ofs + 1 : -(ofs + 1));
+            idxFmt("\tld (iy %c %d), a\n", ofs);
+            idxFmt("\tld (iy %c %d), 0\n", ofs + 1);
             freeExpr(right);
             freeExpr(left);
             freeNode(e);
@@ -602,8 +592,7 @@ emitByteCp(struct expr *e)
         return 0;
 
     /* For >=, <=, >, < with constant, use carry flag directly */
-    if ((op == 'g' || op == 'L' || op == '>' || op == '<') &&
-        right && right->op == 'C') {
+    if (is_ord(op) && right && right->op == 'C') {
         val = right->value & 0xff;
 
         /* Emit left operand to A */
@@ -663,7 +652,7 @@ emitByteCp(struct expr *e)
         emit1(F_CP, cmp.offset);
         break;
     case CMP_IY:
-        iyFmt("\tcp (iy %c %d)\n", cmp.offset);
+        idxFmt("\tcp (iy %c %d)\n", cmp.offset);
         break;
     case CMP_REG:
         if (cmp.reg == REG_IX) {
@@ -737,7 +726,6 @@ static int
 emitSignCmp0(struct expr *e)
 {
     struct expr *l = e->left;
-    int ofs;
     const char *sym;
 
     if (e->op == 'g' || e->op == '<') {
@@ -750,14 +738,10 @@ emitSignCmp0(struct expr *e)
             else return 0;
             break;
         case LOC_STACK:
-            ofs = l->offset + 1;
-            fdprintf(outFd, "\tbit 7, (iy %c %d)\n",
-                     ofs >= 0 ? '+' : '-', ofs >= 0 ? ofs : -ofs);
+            idxFmt("\tbit 7, (iy %c %d)\n", l->offset + 1);
             break;
         case LOC_IX:
-            ofs = l->offset + 1;
-            fdprintf(outFd, "\tbit 7, (ix %c %d)\n",
-                     ofs >= 0 ? '+' : '-', ofs >= 0 ? ofs : -ofs);
+            idxFmt("\tbit 7, (ix %c %d)\n", l->offset + 1);
             break;
         case LOC_MEM:
             if (!l->left || !l->left->symbol) return 0;
@@ -777,10 +761,8 @@ emitSignCmp0(struct expr *e)
             else return 0;
             break;
         case LOC_STACK:
-            ofs = l->offset;
-            fdprintf(outFd, "\tld l, (iy %c %d)\n\tld h, (iy %c %d)\n",
-                     ofs >= 0 ? '+' : '-', ofs >= 0 ? ofs : -ofs,
-                     ofs + 1 >= 0 ? '+' : '-', ofs + 1 >= 0 ? ofs + 1 : -(ofs + 1));
+            idxFmt("\tld l, (iy %c %d)\n", l->offset);
+            idxFmt("\tld h, (iy %c %d)\n", l->offset + 1);
             emit(S_BIT7H);
             fnDualReg = R_HL;
             break;
@@ -911,12 +893,11 @@ emitBinop(struct expr *e)
     int op = e->op;
     int left_size = left->size ? left->size : 2;
     int result_size = e->size ? e->size : left_size;
-    int is_cmp = (op == '>' || op == '<' || op == 'g' ||
-                  op == 'L' || op == 'Q' || op == 'n');
+    int cmp_op = is_cmp(op);
 
     /* Long (32-bit) operations */
     if (left_size == 4 || result_size == 4) {
-        emitLongBinop(e, is_cmp);
+        emitLongBinop(e, cmp_op);
         return;
     }
 
@@ -944,7 +925,7 @@ emitBinop(struct expr *e)
     }
 
     /* Byte operations with immediate constant */
-    if (left_size == 1 && result_size == 1 && !is_cmp &&
+    if (left_size == 1 && result_size == 1 && !cmp_op &&
         op != 'y' && op != 'w' &&
         right->op == 'C' &&
         right->value >= 0 && right->value <= 255) {
@@ -965,18 +946,18 @@ emitBinop(struct expr *e)
     }
 
     /* Byte comparisons */
-    if (left_size == 1 && result_size == 1 && is_cmp && emitByteCp(e))
+    if (left_size == 1 && result_size == 1 && cmp_op && emitByteCp(e))
         return;
 
     /* Signed comparisons with 0 */
-    if (left_size == 2 && is_cmp && !(left->flags & E_UNSIGNED) &&
+    if (left_size == 2 && cmp_op && !(left->flags & E_UNSIGNED) &&
         right->op == 'C' && right->value == 0) {
         if (emitSignCmp0(e))
             return;
     }
 
     /* Word comparisons */
-    if (left_size == 2 && is_cmp) {
+    if (left_size == 2 && cmp_op) {
         emitWordCmp(e);
         return;
     }

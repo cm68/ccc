@@ -276,7 +276,7 @@ emitStmtTail(struct stmt *s, char tailPos)
         }
 
         /* Handle logical OR/AND with recursive short-circuit */
-        if (cond && (cond->op == 'h' || cond->op == 'j' || cond->op == '!')) {
+        if (cond && is_log(cond->op)) {
             const char *else_goto = s->else_branch ? elseGotoTgt(s->else_branch) : NULL;
             const char *false_lbl = else_goto ? else_goto : (s->label2 > 0 ? "el" : "no");
             unsigned char false_num = else_goto ? 255 : s->label;
@@ -293,7 +293,7 @@ emitStmtTail(struct stmt *s, char tailPos)
         skip_else = (else_goto != NULL);
 
         /* Check if this is a byte operation that sets Z flag */
-        if (cond && (cond->op == '&' || cond->op == '|' || cond->op == '^') &&
+        if (cond && is_bit(cond->op) &&
             cond->left && cond->left->size == 1 &&
             cond->right && cond->right->op == 'C' &&
             cond->right->value >= 0 && cond->right->value <= 255) {

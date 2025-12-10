@@ -260,30 +260,40 @@ frStmt(struct stmt *s)
  * All ops have format: (op width operands...)
  * Table encodes: bits 0-1 = arity (0,1,2,3=special), bit 2 = needs label
  */
-#define OP_1  1   /* 1 operand */
-#define OP_2  2   /* 2 operands */
-#define OP_S  3   /* special handler */
-#define OP_L  4   /* needs label */
+#define OP_1   1   /* 1 operand */
+#define OP_2   2   /* 2 operands */
+#define OP_S   3   /* special handler */
+#define OP_L   4   /* needs label */
+#define OP_CMP 8   /* comparison op: < > g L Q n */
+#define OP_ORD 16  /* ordered comparison: < > g L (not == !=) */
+#define OP_LOG 32  /* logical op: h j ! */
+#define OP_BIT 64  /* bitwise op: & | ^ */
 
 /*
  * Static operator table - indexed by (op - 0x20)
  * OP_1=unary, OP_2=binary, OP_S=special, OP_L=needs label
  */
 static const unsigned char optab[96] = {
-/*0x20*/ 0,OP_1,0,0,0,OP_2,OP_2,OP_1, OP_S,OP_S,OP_2,OP_2,OP_2,OP_2,0,OP_2,
-/*     spc !        %    &    '      (    )    *    +    ,    -      /    */
-/*0x30*/ OP_2,OP_2,OP_2,0,0,0,OP_2,0, 0,0,OP_2,0,OP_2,OP_2,OP_2,OP_S,
-/*       0    1    2        6              :      <    =    >    ?    */
-/*0x40*/ OP_S,0,0,0,0,0,0,0, 0,0,0,0,OP_2,OP_1,OP_1,0,
-/*       @                               L    M    N       */
-/*0x50*/ OP_2,OP_2,0,0,OP_2,0,0,OP_1, OP_2,OP_S,0,0,OP_1,0,OP_2,0,
-/*       P    Q        T          W    X    Y          \       ^    */
-/*0x60*/ 0,OP_2,0,0,0,OP_S,OP_S,OP_2, OP_2|OP_L,0,OP_2|OP_L,0,0,OP_2,OP_2,OP_2,
-/*         a        e    f    g    h          j              m    n    o    */
-/*0x70*/ 0,0,0,0,0,0,0,OP_2, OP_1,OP_2,0,OP_S,OP_2,OP_S,OP_1,0
-/*                        w    x    y      {    |    }    ~    */
+/*0x20*/ 0,OP_1|OP_LOG,0,0,0,OP_2,OP_2|OP_BIT,OP_1, OP_S,OP_S,OP_2,OP_2,OP_2,OP_2,0,OP_2,
+/*     spc !              %    &             '      (    )    *    +    ,    -      /    */
+/*0x30*/ OP_2,OP_2,OP_2,0,0,0,OP_2,0, 0,0,OP_2,0,OP_2|OP_CMP|OP_ORD,OP_2,OP_2|OP_CMP|OP_ORD,OP_S,
+/*       0    1    2        6              :      <                 =    >                 ?    */
+/*0x40*/ OP_S,0,0,0,0,0,0,0, 0,0,0,0,OP_2|OP_CMP|OP_ORD,OP_1,OP_1,0,
+/*       @                               L                 M    N       */
+/*0x50*/ OP_2,OP_2|OP_CMP,0,0,OP_2,0,0,OP_1, OP_2,OP_S,0,0,OP_1,0,OP_2|OP_BIT,0,
+/*       P    Q              T          W    X    Y          \       ^         */
+/*0x60*/ 0,OP_2,0,0,0,OP_S,OP_S,OP_2|OP_CMP|OP_ORD, OP_2|OP_L|OP_LOG,0,OP_2|OP_L|OP_LOG,0,0,OP_2,OP_2|OP_CMP,OP_2,
+/*         a        e    f    g                    h                   j                   m    n              o    */
+/*0x70*/ 0,0,0,0,0,0,0,OP_2, OP_1,OP_2,0,OP_S,OP_2|OP_BIT,OP_S,OP_1,0
+/*                        w    x    y      {    |              }    ~    */
 };
 #define OPTAB(op) optab[(op) - 0x20]
+#define IS_CMP(op) (OPTAB(op) & OP_CMP)
+
+char is_cmp(unsigned char op) { return OPTAB(op) & OP_CMP; }
+char is_ord(unsigned char op) { return OPTAB(op) & OP_ORD; }
+char is_log(unsigned char op) { return OPTAB(op) & OP_LOG; }
+char is_bit(unsigned char op) { return OPTAB(op) & OP_BIT; }
 
 /* Read type suffix and set size/flags */
 static void
