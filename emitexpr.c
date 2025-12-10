@@ -205,13 +205,13 @@ emitExpr(struct expr *e)
     struct expr *left;
     unsigned char op, opflags;
     const char *symbol;
-    long value;
+    short value;
 
     if (!e) return;
     op = e->op;
     opflags = e->opflags;
     symbol = e->symbol;
-    value = e->value.l;
+    value = e->value.s;
     left = e->left;
 #ifdef DEBUG
     exprCount++;
@@ -409,7 +409,7 @@ emitExpr(struct expr *e)
             if (value == 0 && fnHLZero) {
                 /* HL already zero */
             } else {
-                fdprintf(outFd, "\tld hl, %ld\n", value);
+                fdprintf(outFd, "\tld hl, %d\n", value);
                 fnHLZero = (value == 0);
                 if (!fnHLZero) clearHL();
             }

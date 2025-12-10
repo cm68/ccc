@@ -19,7 +19,7 @@ parseast.o 6616 389 570
 codegen.o 8163 488 17
 dumpast.o 20 0 0
 emithelper.o 3964 2681 0
-emitexpr.o 5047 836 0
+emitexpr.o 4912 835 0
 emitops.o 7983 1612 29
 emit.o 4874 607 2
-cc2 size:  38265 6802 948 = 46015
+cc2 size:  38130 6801 948 = 45879
