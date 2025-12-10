@@ -1,0 +1,51 @@
+;
+; read system call
+;
+; read(fd, buffer, nbytes)
+; char buffer[];
+;
+; A file descriptor is a word returned from a successful
+; open, creat, dup, or pipe call. Buffer is a memory
+; location where at most nbytes of data will be placed.
+; The number of bytes actually read is returned. This may
+; be less than nbytes; a read on a terminal will return
+; at most one line. If 0 is returned, file is exhausted.
+;
+; passes fd in hl
+;
+; returns -1 on error, 0 on EOF, else bytes read
+;
+	.extern _errno
+	.global _read
+
+	.text
+_read:
+	pop 	hl		; discard ret addr
+	pop 	de		; fd
+	pop 	hl		; buffer
+	ld 	(buf),hl
+	pop 	hl		; nbytes
+	ld 	(count),hl
+
+	ld 	hl,-8		; restore stack
+	add 	hl,sp
+	ld 	sp,hl
+
+	ex 	de,hl		; fd in hl
+	rst 	08h
+	.db 	000h
+	.dw 	scall
+	ret 	nc		; read count in hl
+	ld 	(_errno),hl
+	ld 	hl,-1
+	ret
+
+	.data
+scall:	.db 	0cfh
+	.db 	003h
+buf:	.dw 	0
+count:	.dw 	0
+
+;
+; vim: tabstop=8 shiftwidth=8 noexpandtab:
+;

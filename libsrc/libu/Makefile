@@ -9,7 +9,7 @@ DEST = ../../lib
 LIBU_SRCS = access.s alarm.s break.s chdir.s chmod.s chown.s close.s create.s \
 	creat.s dup.s errno.s exec.s execv.s exit.s fork.s fstat.s getpid.s \
 	getuid.s gtty.s kill.s link.s lseek.s mknod.s mount.s nice.s open.s pause.s \
-	perror.s pipe.s read.s remove.s sbreak.s seek.s setuid.s _signal.s signal.s \
+	perror.s pipe.s read.s sbreak.s seek.s setuid.s _signal.s signal.s \
 	sleep.s stat.s stime.s stty.s sync.s time.s umount.s uname.s unlink.s wait.s \
 	write.s
 

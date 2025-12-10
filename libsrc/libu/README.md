@@ -12,6 +12,7 @@ via an indirect argument block.
 ### Direct System Calls
 
 Simple system calls take arguments in registers:
+and are inline with our code flow.
 
 ```
     rst 08h
@@ -24,6 +25,8 @@ some calls) are passed directly to the kernel.
 ### Indirect System Calls
 
 System calls with multiple arguments use an indirect block:
+this theoretically allows having shared read only text, since we 
+don't have to write the system call block with our arguments.
 
 ```
     rst 08h
