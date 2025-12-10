@@ -1028,7 +1028,7 @@ doGlobal(void)
 	char *name;
 	unsigned char type_char, elem_type;
 	int val, col, first, has_init, init_count;
-	long count, elemsize, size;
+	int count, elemsize, size;
 
 	/* Skip '$' if present */
 	if (curchar == '$') nextchar();
@@ -1092,7 +1092,7 @@ doGlobal(void)
 
 		/* Uninitialized array */
 		if (count >= 0)
-			emitBss(name_buf, (int)size);
+			emitBss(name_buf, size);
 	} else if (type_char == 'p') {
 		/* Pointer */
 		has_init = readHex2();
@@ -1117,7 +1117,7 @@ doGlobal(void)
 		size = readHex4();
 		has_init = readHex2();
 		if (has_init) parseExpr();
-		emitBss(name_buf, (int)size);
+		emitBss(name_buf, size);
 	} else {
 		/* Primitive: b/s/l */
 		has_init = readHex2();

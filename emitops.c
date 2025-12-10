@@ -98,7 +98,7 @@ void
 emitIncDec(struct expr *e)
 {
     int size, unused, is_post, is_dec;
-    long amount;
+    int amount;
     struct local_var *var;
     const char *rn;     /* byte register name */
     const char *rp;     /* word register pair name */
@@ -174,7 +174,7 @@ emitIncDec(struct expr *e)
             case ID_GLOBAL: if (!is_post) emitS(FS_LDAM, sym); break;
             case ID_HL:     if (!is_post) emit(S_LDAHL); break;
             }
-            fdprintf(outFd, "\t%s a, %ld\n", is_dec ? "sub" : "add", amount);
+            fdprintf(outFd, "\t%s a, %d\n", is_dec ? "sub" : "add", amount);
             switch (loc) {
             case ID_REG:    fdprintf(outFd, "\tld %s, a\n", rn); break;
             case ID_STACK:  idxFmt("\tld (iy %c %d), a\n", ofs); break;
@@ -252,24 +252,24 @@ emitIncDec(struct expr *e)
             if (is_dec) amount = -amount;
             switch (loc) {
             case ID_REG:
-                fdprintf(outFd, "\tld de, %ld\n\tadd %s, de\n", amount, rp);
+                fdprintf(outFd, "\tld de, %d\n\tadd %s, de\n", amount, rp);
                 break;
             case ID_STACK:
                 loadWordIY(ofs);
-                fdprintf(outFd, "\tld de, %ld\n", amount);
+                fdprintf(outFd, "\tld de, %d\n", amount);
                 emit(S_ADDHLDE);
                 storeWordIY(ofs);
                 break;
             case ID_GLOBAL:
                 if (!is_post) emitS(FS_LDHLM, sym);
-                fdprintf(outFd, "\tld de, %ld\n", amount);
+                fdprintf(outFd, "\tld de, %d\n", amount);
                 emit(S_ADDHLDE);
                 emitS(FS_STHLM, sym);
                 break;
             case ID_HL:
                 emit(S_LDCHL);
                 emit(S_PUSHHLBCHL);
-                fdprintf(outFd, "\tld de, %ld\n\tadd hl, de\n", amount);
+                fdprintf(outFd, "\tld de, %d\n\tadd hl, de\n", amount);
                 emit(S_EXDEHLPOPHL);
                 emit(S_STDEHL);
                 break;

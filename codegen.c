@@ -55,6 +55,7 @@ rsReset(void)
 }
 
 /* Global tree walk counter for loop detection */
+#ifdef DEBUG
 static long g_walk_count = 0;
 #define MAX_WALKS 1000000
 #define CHECK_WALK() do { \
@@ -63,17 +64,20 @@ static long g_walk_count = 0;
         exit(1); \
     } \
 } while(0)
+#else
+#define CHECK_WALK()
+#endif
 
 /*
  * Helper: Check if value is a power of 2, return bit number (0-7) or -1
  */
 static int
-getBitNum(long val)
+getBitNum(unsigned char val)
 {
     int bit;
-    if (val <= 0 || val > 128) return -1;
+    if (val == 0) return -1;
     for (bit = 0; bit < 8; bit++) {
-        if (val == (1L << bit)) return bit;
+        if (val == (1 << bit)) return bit;
     }
     return -1;
 }
