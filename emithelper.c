@@ -10,7 +10,6 @@
 
 #include "cc2.h"
 #include "emithelper.h"
-#include "regcache.h"
 
 /* Common assembly strings - indexed for compact emission */
 static const char *asmstr[] = {
@@ -171,8 +170,6 @@ void emit1(unsigned char idx, char val) {
             "tF%d_%d:\n",    /* F_TERNF - ternary false */
             "tE%d_%d:\n"     /* F_TERNE - ternary end */
         };
-        /* Labels are control flow merge points - invalidate cache */
-        cacheInvalAll();
         /* Labels use unsigned val as label number */
         fdprintf(outFd, labfmt[idx - F_IFEND], fnIndex, (unsigned char)val);
     } else {
@@ -182,8 +179,6 @@ void emit1(unsigned char idx, char val) {
 }
 
 void emitS(unsigned char idx, const char *s) {
-    /* Labels are control flow merge points - invalidate cache */
-    if (idx == FS_LABEL) cacheInvalAll();
     fdprintf(outFd, sfmtstr[idx], s);
 }
 
@@ -418,15 +413,8 @@ emitFnProlog(char *name, char *rettype, char frame_size,
                 } else {
                     loadWordIY(var->offset);
                     if (var->reg == REG_IX) {
-                        char sym[64];
-                        struct expr *cache;
                         emit(S_HLPIX);
-                        /* HL still has the value - set cache */
-                        snprintf(sym, sizeof(sym), "$%s", var->name);
-                        cache = mkVarCache(sym, 2);
                         clearHL();
-                        cacheSetHL(cache);
-                        freeExpr(cache);
                     }
                 }
             } else if (var->size == 1 && var->reg <= REG_C) {
@@ -478,11 +466,10 @@ void clearHL() {
     fnIXHLOfs = -1;
     fnIXHL32 = 0;
     fnIYHLValid = 0;
-    cacheInvalHL();
+    fnHLZero = 0;
 }
 
 void clearDE() {
-    cacheInvalDE();
 }
 
 void clearA() {
@@ -490,7 +477,6 @@ void clearA() {
     fnABCValid = 0;
     fnAZero = 0;
     fnARegvar = 0;
-    cacheInvalA();
 }
 
 void pushStack() {
@@ -504,7 +490,6 @@ void pushStack() {
     emit(S_PUSHTOS);
     fnDEValid = 1;
     fnZValid = 0;
-    cachePushHL();  /* Move HL cache to DE */
 }
 
 void popStack() {
@@ -533,27 +518,6 @@ char isBinopWAccum(unsigned char op) {
     default:
         return 0;
     }
-}
-
-/* Helper: set cache for variable after load/store */
-static void setVarCache(const char *sym, char sz, char isA) {
-    struct expr *cache = mkVarCache(sym, sz);
-    if (isA) {
-        char saveAZero = fnAZero;  /* Preserve A-is-zero flag across store */
-        clearA();
-        fnAZero = saveAZero;
-        cacheSetA(cache);
-    } else {
-        /* Clear other HL tracking but NOT the value cache.
-         * cacheSetHL will properly replace the old cache entry.
-         * This allows constant->variable store sequences to
-         * keep the constant cached for subsequent stores. */
-        fnIXHLOfs = -1;
-        fnIXHL32 = 0;
-        fnIYHLValid = 0;
-        /* Don't set var cache - keep constant cache if present */
-    }
-    freeExpr(cache);
 }
 
 /* Helper: emit global long (4-byte) load/store */
@@ -628,7 +592,6 @@ void loadVar(const char *sym, char sz, char docache) {
         else if (sz == 2) emitS(FS_LDHLM, s);
         else if (sz == 4) globLong(s, 0);
     }
-    if (docache && sz >= 2) setVarCache(sym, sz, 0);
 }
 
 void storeVar(const char *sym, char sz, char docache) {
@@ -649,11 +612,8 @@ void storeVar(const char *sym, char sz, char docache) {
     if (v && v->reg != REG_NO) {
         if (sz == 1) {
             emit(byteStoreTab[v->reg]);
-            /* After ld c,a or ld b,a, A still has the value */
-            if (docache) setVarCache(sym, sz, 1);
         } else {
             emit(wordStoreTab[v->reg]);
-            if (docache) setVarCache(sym, sz, 0);
         }
     } else if (v) {
         if (sz == 1) storeByteIY(v->offset, v->offset >= 0);
@@ -671,10 +631,8 @@ void storeVar(const char *sym, char sz, char docache) {
 #endif
         if (sz == 1) {
             emitS(FS_STAM, s);
-            if (docache) setVarCache(sym, 1, 1);
         } else if (sz == 2) {
             emitS(FS_STHLM, s);
-            if (docache) setVarCache(sym, sz, 0);
         } else if (sz == 4) {
             globLong(s, 1);
         }
@@ -782,24 +740,16 @@ emitGlobDrf(struct expr *e)
     s = stripDollar(sym);
 
     if (e->size == 1) {
-        if (cacheFindByte(e) == 'A') {
-            /* A already holds this value - skip load */
-        } else {
-            emitS(FS_LDAM, s);
-            clearA();
-            cacheSetA(e);
-        }
+        emitS(FS_LDAM, s);
+        clearA();
     } else if (e->size == 2) {
         if (e->dest == R_DE) {
             /* Scheduler says load to DE */
             emitS(FS_LDDEM, s);
             fnDEValid = 1;
-        } else if (cacheFindWord(e) == 'H') {
-            /* HL already holds this value - skip load */
         } else {
             emitS(FS_LDHLM, s);
             clearHL();
-            cacheSetHL(e);
         }
     } else if (e->size == 4) {
         emitS(FS_LDHLM, s);
@@ -836,15 +786,10 @@ emitRegVarDrf(struct expr *e)
 
     if (e->size == 1) {
         /* Byte register variable */
-        if (cacheFindByte(e) == 'A') {
-            /* A already holds this value - skip load */
-        } else {
-            if (var->reg == REG_B || var->reg == REG_BC)
-                emit(S_LDAB);
-            else if (var->reg == REG_C)
-                emit(S_LDAC);
-            cacheSetA(e);
-        }
+        if (var->reg == REG_B || var->reg == REG_BC)
+            emit(S_LDAB);
+        else if (var->reg == REG_C)
+            emit(S_LDAC);
     } else {
         /* Word register variable */
         if (e->dest == R_DE) {
@@ -859,15 +804,12 @@ emitRegVarDrf(struct expr *e)
             if (var->reg == REG_IX)
                 emit(S_IXBC);
             /* BC->BC is a no-op */
-        } else if (cacheFindWord(e) == 'H') {
-            /* HL already holds this value - skip load */
         } else {
             if (var->reg == REG_BC)
                 emit(S_BCHL);
             else if (var->reg == REG_IX)
                 emit(S_IXHL);
             clearHL();
-            cacheSetHL(e);
         }
     }
 
@@ -892,10 +834,6 @@ emitIndexDrf(char reg, char ofs, char size, char dest, struct expr *e)
     char hi, lo;
 
     if (size == 1) {
-        if (e && cacheFindByte(e) == 'A') {
-            /* A already holds this value - skip load */
-            return;
-        }
         /* Load byte to A, B, or C based on dest */
         if (dest == R_B) {
             idxOp("\tld b, (i%c %c %d)\n", reg, ofs, 0);
@@ -905,7 +843,6 @@ emitIndexDrf(char reg, char ofs, char size, char dest, struct expr *e)
             idxOp("\tld a, (i%c %c %d)\n", reg, ofs, 0);
             fnAZero = 0;
             clearA();
-            if (e) cacheSetA(e);
         }
     } else if (size == 2) {
         switch (dest) {
@@ -917,9 +854,6 @@ emitIndexDrf(char reg, char ofs, char size, char dest, struct expr *e)
             idxOp("\tld e, (i%c %c %d)\n", reg, ofs, 0);
             idxOp("\tld d, (i%c %c %d)\n", reg, ofs, 1);
             fnDEValid = 1;
-        } else if (e && cacheFindWord(e) == 'H') {
-            /* HL already holds this value - skip load */
-            return;
         } else {
             /* Load to HL (or BC) */
             if (reg == 'y' && (dest == R_HL || dest == 0)) {
@@ -931,7 +865,6 @@ emitIndexDrf(char reg, char ofs, char size, char dest, struct expr *e)
             }
             if (dest == R_HL || dest == 0) {
                 clearHL();
-                if (e) cacheSetHL(e);
             }
         }
     } else if (size == 4) {
@@ -957,8 +890,6 @@ emitIndexDrf(char reg, char ofs, char size, char dest, struct expr *e)
                 fnIXHL32 = 1;
             }
         }
-        /* Invalidate expr cache but preserve IX cache for reloads */
-        cacheInvalHL();
     }
 }
 
@@ -988,20 +919,10 @@ emitStackDrf(struct expr *e)
 }
 
 /*
- * Emit byte load from (BC) with caching
- * Creates a synthetic expression representing *(bc) for cache matching
+ * Emit byte load from (BC)
  */
 void
 emitBCIndir(void)
 {
-    static struct expr bcIndir = { 'B', 1 };  /* Synthetic BC indirect marker */
-
-    /* Check if A already holds (bc) */
-    if (cacheFindByte(&bcIndir) == 'A') {
-        /* A already has (bc) - skip load */
-        return;
-    }
     emit(S_LDABC);
-    cacheInvalA();
-    cacheSetA(&bcIndir);
 }

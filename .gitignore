@@ -59,4 +59,3 @@ do.ast
 core
 lib/*.O
 __pycache__/
-prev.size

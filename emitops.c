@@ -9,7 +9,6 @@
 
 #include "cc2.h"
 #include "emithelper.h"
-#include "regcache.h"
 
 /*
  * Sentinel expr - used instead of NULL to eliminate null checks.
@@ -303,7 +302,6 @@ emitIncDec(struct expr *e)
 
         if (loc == ID_REG && var->reg == REG_BC) {
             fnABCValid = 0;
-            cacheInvalA();
         }
     }
     /* === LONG operations - call helpers === */

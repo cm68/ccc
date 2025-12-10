@@ -9,7 +9,6 @@
 
 #include "cc2.h"
 #include "emithelper.h"
-#include "regcache.h"
 
 /*
  * Emit expression tree, emit assembly, and free nodes
@@ -79,10 +78,10 @@ execIns(struct expr *e, unsigned char ins)
         }
         return 1;
     case EO_HL_CONST:
-        if (cacheFindWord(e) == 'H')
+        if (e->value == 0 && fnHLZero)
             return 1;
         fdprintf(outFd, "\tld hl, %ld\n", e->value);
-        cacheSetHL(e);
+        fnHLZero = (e->value == 0);
         return 1;
     case EO_HLHL_IYL:
         fdprintf(outFd, "\tld a, %d\n\tcall getLiy\n", (int)e->offset);
@@ -364,13 +363,7 @@ emitExpr(struct expr *e)
                 fdprintf(outFd, "\tld de, %s\n", sym_name);
                 fnDEValid = 1;
             } else {
-                int cached = cacheFindWord(e);
-                if (cached == 'H') {
-                    /* HL already has this address - skip load */
-                } else {
-                    fdprintf(outFd, "\tld hl, %s\n", sym_name);
-                    cacheSetHL(e);
-                }
+                fdprintf(outFd, "\tld hl, %s\n", sym_name);
             }
         } else if (var->reg != REG_NO) {
             /* Register variable - load register value to HL
@@ -400,16 +393,18 @@ emitExpr(struct expr *e)
                     emit(S_XORA);
                     fnAZero = 1;
                 }
-            } else if (cacheFindByte(e) == 'A') {
-                /* A already has this value */
             } else {
                 emit1(F_LDA, e->value & 0xff);
                 fnAZero = 0;
-                cacheSetA(e);
             }
         } else {
-            fdprintf(outFd, "\tld hl, %ld\n", e->value);
-            clearHL();
+            if (e->value == 0 && fnHLZero) {
+                /* HL already zero */
+            } else {
+                fdprintf(outFd, "\tld hl, %ld\n", e->value);
+                fnHLZero = (e->value == 0);
+                if (!fnHLZero) clearHL();
+            }
         }
         freeNode(e);
         return;

@@ -12,7 +12,6 @@
 
 #include "cc2.h"
 #include "astio.h"
-#include "regcache.h"
 #include "emithelper.h"
 
 /* Forward declarations */
@@ -85,6 +84,7 @@ char fnIYHLOfs;
 char fnIYHLValid;
 char fnABCValid;
 char fnAZero;
+char fnHLZero;
 char fnARegvar;
 
 /* Segment tracking */
@@ -802,8 +802,8 @@ doFunction(unsigned char rettype)
 	fnIYHLValid = 0;
 	fnABCValid = 0;
 	fnAZero = 0;
+	fnHLZero = 0;
 	fnARegvar = 0;
-	cacheInvalAll();
 
 	/* Code generation phases */
 #ifdef DEBUG

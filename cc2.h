@@ -327,6 +327,7 @@ extern char fnIYHLOfs;          /* When valid, HL has word from (iy+fnIYHLOfs) *
 extern char fnIYHLValid;        /* 1 if fnIYHLOfs is valid */
 extern char fnABCValid;         /* 1 if A has byte from (bc) */
 extern char fnAZero;            /* 1 if A is known to be 0 */
+extern char fnHLZero;           /* 1 if HL is known to be 0 */
 extern char fnARegvar;          /* REG_B/REG_C if A has that regvar value, 0 otherwise */
 
 /* Label generation - 255 is reserved as "no label" sentinel */

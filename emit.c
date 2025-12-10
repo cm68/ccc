@@ -10,7 +10,6 @@
 
 #include "cc2.h"
 #include "emithelper.h"
-#include "regcache.h"
 
 /*
  * Check if else branch is just a GOTO, return target symbol or NULL
@@ -514,18 +513,15 @@ emit_if_body:
         /* Emit case bodies with labels */
         for (c = s->then_branch; c; c = c->next) {
             if (c->type == 'C') {
-                cacheInvalAll();
                 fdprintf(outFd, "%s_c%ld:\n", lbl, c->expr ? c->expr->value : 0);
                 emitStmt(c->then_branch);
             } else if (c->type == 'O') {
-                cacheInvalAll();
                 fdprintf(outFd, "%s_def:\n", lbl);
                 emitStmt(c->then_branch);
             }
         }
 
         /* Emit break label */
-        cacheInvalAll();
         fdprintf(outFd, "%s_break:\n", lbl);
 
         /* Emit jump table in data section */

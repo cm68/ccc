@@ -1,0 +1,25 @@
+cc1.o 669 230 9
+error.o 195 582 4
+lex.o 3208 399 143
+io.o 1414 19 142
+macro.o 1725 2 4
+kw.o 102 301 6
+util.o 122 12 0
+tokenlist.o 0 0 0
+expr.o 9367 365 2
+parse.o 5278 222 91
+type.o 3121 156 21
+declare.o 2336 7 0
+outast.o 9039 654 260
+cc1 size:  36576 2949 682 = 40207
+cc2.o 882 177 2
+util.o 122 12 0
+astio.o 585 0 328
+parseast.o 6153 230 828
+codegen.o 9426 515 17
+dumpast.o 20 0 0
+emithelper.o 3966 2674 0
+emitexpr.o 5546 858 2
+emitops.o 8978 1668 29
+emit.o 5033 786 2
+cc2 size:  40711 6920 1208 = 48839
