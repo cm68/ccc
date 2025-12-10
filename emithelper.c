@@ -112,7 +112,14 @@ static const char *asmstr[] = {
     "\tpush ix\n\tpop de\n",                /* S_IXDE */
     "\texx\n\tld hl, 0\n\texx\n",           /* S_EXX0 */
     "\tcall imul\n",                        /* S_CALLIMUL */
-    "\tpush ix\n\tpop bc\n"                 /* S_IXBC */
+    "\tpush ix\n\tpop bc\n",                /* S_IXBC */
+    "\tld l, a\n\trla\n\tsbc a, a\n\tld h, a\n",  /* S_SEXT */
+    "\tadd ix, de\n",                       /* S_ADDIXDE */
+    "\tadd ix, bc\n",                       /* S_ADDIXBC */
+    "\tor c\n\tld c, a\n",                  /* S_ORCCA */
+    "\tinc a\n",                            /* S_INCA */
+    "\tdec a\n",                            /* S_DECA */
+    "\tld a, h\n\tadc a, 0\n\tld h, a\n"    /* S_ADCH0 */
 };
 
 /* Format strings with single %d - for emit1() */
@@ -164,6 +171,8 @@ void emit1(unsigned char idx, char val) {
             "tF%d_%d:\n",    /* F_TERNF - ternary false */
             "tE%d_%d:\n"     /* F_TERNE - ternary end */
         };
+        /* Labels are control flow merge points - invalidate cache */
+        cacheInvalAll();
         /* Labels use unsigned val as label number */
         fdprintf(outFd, labfmt[idx - F_IFEND], fnIndex, (unsigned char)val);
     } else {
@@ -173,6 +182,8 @@ void emit1(unsigned char idx, char val) {
 }
 
 void emitS(unsigned char idx, const char *s) {
+    /* Labels are control flow merge points - invalidate cache */
+    if (idx == FS_LABEL) cacheInvalAll();
     fdprintf(outFd, sfmtstr[idx], s);
 }
 
@@ -360,9 +371,10 @@ char calleeSavSz(char used) {
 }
 
 /* Function prolog emission */
-void emitFnProlog(char *name, char *params, char *rettype, char frame_size,
-                  struct local_var *locals) {
-    char has_params = (params && params[0]);
+void
+emitFnProlog(char *name, char *rettype, char frame_size,
+             struct local_var *locals, int has_params)
+{
     struct local_var *var;
 
     fdprintf(outFd, "; %s\n", name);
@@ -685,7 +697,8 @@ void storeVar(const char *sym, char sz, char docache) {
  * Target register from e->dest: R_HL, R_DE, R_BC
  * Returns 1 if handled, 0 if not a simple case.
  */
-char emitSimplLd(struct expr *e)
+char
+emitSimplLd(struct expr *e)
 {
     const char *sym;
     int ofs;
@@ -757,7 +770,8 @@ char emitSimplLd(struct expr *e)
  * Emit DEREF of global variable with cache check
  * Pattern: (M $global) with OP_GLOBAL opflag set
  */
-void emitGlobDrf(struct expr *e)
+void
+emitGlobDrf(struct expr *e)
 {
     const char *sym;
     const char *s;
@@ -803,7 +817,8 @@ void emitGlobDrf(struct expr *e)
  * Emit DEREF of register-allocated variable with cache check
  * Pattern: (M $regvar) where opflags has OP_REGVAR
  */
-void emitRegVarDrf(struct expr *e)
+void
+emitRegVarDrf(struct expr *e)
 {
     struct local_var *var;
     const char *sym;
@@ -871,7 +886,8 @@ void emitRegVarDrf(struct expr *e)
  * dest: target register (R_HL, R_DE, R_BC)
  * e: expression for cache tracking (may be NULL)
  */
-void emitIndexDrf(char reg, char ofs, char size, char dest, struct expr *e)
+void
+emitIndexDrf(char reg, char ofs, char size, char dest, struct expr *e)
 {
     char hi, lo;
 
@@ -950,7 +966,8 @@ void emitIndexDrf(char reg, char ofs, char size, char dest, struct expr *e)
  * Emit DEREF of stack variable (IY-indexed) with cache check
  * Pattern: (M $stackvar) where opflags has OP_IYMEM
  */
-void emitStackDrf(struct expr *e)
+void
+emitStackDrf(struct expr *e)
 {
     struct local_var *var;
     const char *sym;
@@ -974,7 +991,8 @@ void emitStackDrf(struct expr *e)
  * Emit byte load from (BC) with caching
  * Creates a synthetic expression representing *(bc) for cache matching
  */
-void emitBCIndir(void)
+void
+emitBCIndir(void)
 {
     static struct expr bcIndir = { 'B', 1 };  /* Synthetic BC indirect marker */
 

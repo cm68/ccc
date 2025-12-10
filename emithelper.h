@@ -47,8 +47,8 @@ char getUsedRegs(struct local_var *locals);
 char calleeSavSz(char used);
 
 /* Function prolog emission */
-void emitFnProlog(char *name, char *params, char *rettype, char frame_size,
-                  struct local_var *locals);
+void emitFnProlog(char *name, char *rettype, char frame_size,
+                  struct local_var *locals, int has_params);
 
 /* Comparison function detection */
 char isCmpFunc(const char *fname);
@@ -205,6 +205,13 @@ void emitJump(const char *instr, const char *prefix, unsigned char label);
 #define S_CALLLOR32 77
 #define S_CALLIRSH 85
 #define S_IXBC 98
+#define S_SEXT 99
+#define S_ADDIXDE 100
+#define S_ADDIXBC 101
+#define S_ORCCA 102
+#define S_INCA 103
+#define S_DECA 104
+#define S_ADCH0 105
 
 /* Format string indices for emit1() */
 #define F_LDA 0

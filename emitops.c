@@ -11,6 +11,12 @@
 #include "emithelper.h"
 #include "regcache.h"
 
+/*
+ * Sentinel expr - used instead of NULL to eliminate null checks.
+ * Has op=0 and size=0 which won't match any real conditions.
+ */
+struct expr nullExpr;
+
 /* Helper: emit IY-indexed instruction with proper sign handling */
 static void iyFmt(const char *fmt, int offset) {
     if (offset >= 0)
@@ -96,7 +102,8 @@ static enum cmp_kind getByteCmp(struct expr *e, struct bytecmp *cmp) {
  * 3. Do inc/dec (amount==1: direct; else load/modify/store)
  * 4. If post: restore old; else if !unused: load new
  */
-void emitIncDec(struct expr *e)
+void
+emitIncDec(struct expr *e)
 {
     int size, unused, is_post, is_dec;
     long amount;
@@ -328,8 +335,14 @@ void emitIncDec(struct expr *e)
 /*
  * Emit assignment operation
  */
-void emitAssign(struct expr *e)
+void
+emitAssign(struct expr *e)
 {
+    struct expr *left = e->left ? e->left : &nullExpr;
+    struct expr *right = e->right ? e->right : &nullExpr;
+    struct expr *ll, *lleft, *lright;
+    unsigned char rhs_dest, rhs_op;
+
 #ifdef DEBUG
     if (TRACE(T_ASSIGN)) {
         fdprintf(2, "emitAssign: enter\n");
@@ -337,14 +350,14 @@ void emitAssign(struct expr *e)
 #endif
 
     /* Optimize: constant to register-allocated variable */
-    if (e->right && e->right->op == 'C' && e->size == 2 &&
-        e->left && e->left->op == '$' && e->left->symbol) {
-        struct local_var *v = findVar(stripVarPfx(e->left->symbol));
+    if (right->op == 'C' && e->size == 2 &&
+        left->op == '$' && left->symbol) {
+        struct local_var *v = findVar(stripVarPfx(left->symbol));
         if (v && (v->reg == REG_BC || v->reg == REG_IX)) {
             fdprintf(outFd, "\tld %s, %ld\n",
-                v->reg == REG_BC ? "bc" : "ix", e->right->value);
-            freeExpr(e->right);
-            freeExpr(e->left);
+                v->reg == REG_BC ? "bc" : "ix", right->value);
+            freeExpr(right);
+            freeExpr(left);
             freeNode(e);
             return;
         }
@@ -353,16 +366,19 @@ void emitAssign(struct expr *e)
     /* Optimize: constant to (ptr + offset) where ptr is stack/global
      * Pattern: (= (+ (M $ptr) offset) const_value)
      * Emit: load ptr to HL, add offset inline, store const directly */
-    if (e->right && e->right->op == 'C' &&
-        e->left && e->left->op == '+' &&
-        e->left->left && e->left->left->op == 'M' &&
-        e->left->left->left && e->left->left->left->op == '$' &&
-        e->left->right && e->left->right->op == 'C') {
-        const char *sym = e->left->left->left->symbol;
+    lleft = left->left ? left->left : &nullExpr;
+    lright = left->right ? left->right : &nullExpr;
+    ll = lleft->left ? lleft->left : &nullExpr;
+    if (right->op == 'C' &&
+        left->op == '+' &&
+        lleft->op == 'M' &&
+        ll->op == '$' &&
+        lright->op == 'C') {
+        const char *sym = ll->symbol;
         const char *vn = stripVarPfx(sym);
         struct local_var *var = findVar(vn);
-        long offset = e->left->right->value;
-        long value = e->right->value;
+        long offset = lright->value;
+        long value = right->value;
 
         /* Skip if ptr is in IX - handled by E_IXASSIGN path */
         if (var && var->reg == REG_IX)
@@ -384,7 +400,7 @@ void emitAssign(struct expr *e)
                 while (offset--) emit(S_INCHL);
             } else if (offset < 256) {
                 fdprintf(outFd, "\tld a, %ld\n\tadd a, l\n\tld l, a\n", offset);
-                fdprintf(outFd, "\tld a, h\n\tadc a, 0\n\tld h, a\n");
+                emit(S_ADCH0);
             } else {
                 fdprintf(outFd, "\tld de, %ld\n\tadd hl, de\n", offset);
             }
@@ -400,68 +416,73 @@ void emitAssign(struct expr *e)
         }
 
         clearHL();  /* HL is modified, don't let cache reuse it */
-        freeExpr(e->left);
-        freeExpr(e->right);
+        freeExpr(left);
+        freeExpr(right);
         freeNode(e);
         return;
     }
 notConstStore:
+    /* Capture RHS info before emitExpr frees it */
+    rhs_dest = right->dest;
+    rhs_op = right->op;
 
     /* Optimize: IX = IX->member (self-referential IX load)
      * Pattern: lhs = $p where p is IX, rhs = (M (+ (M $p) offset))
      * Emit: ld h,(ix+ofs+1); ld l,(ix+ofs); push hl; pop ix */
-    if (e->size == 2 && e->left && e->left->op == '$' && e->left->symbol &&
-        e->right && e->right->op == 'M' && e->right->loc == LOC_IX) {
-        struct local_var *lv = findVar(stripVarPfx(e->left->symbol));
+    if (e->size == 2 && left->op == '$' && left->symbol &&
+        right->op == 'M' && right->loc == LOC_IX) {
+        struct local_var *lv = findVar(stripVarPfx(left->symbol));
         if (lv && lv->reg == REG_IX) {
-            int ofs = e->right->offset;
+            int ofs = right->offset;
             /* Load H first, then L (natural order for push) */
             fdprintf(outFd, "\tld h, (ix %c %d)\n",
                      ofs + 1 >= 0 ? '+' : '-', ofs + 1 >= 0 ? ofs + 1 : -(ofs + 1));
             fdprintf(outFd, "\tld l, (ix %c %d)\n",
                      ofs >= 0 ? '+' : '-', ofs >= 0 ? ofs : -ofs);
             emit(S_HLPIX);
-            freeExpr(e->right);
-            freeExpr(e->left);
+            freeExpr(right);
+            freeExpr(left);
             freeNode(e);
             return;
         }
     }
 
     /* Long (4-byte) constant assignment: load all 32 bits into HLHL' */
-    if (e->size == 4 && e->right && e->right->op == 'C') {
-        long val = e->right->value;
+    if (e->size == 4 && right->op == 'C') {
+        long val = right->value;
         fdprintf(outFd, "\tld hl, %d\n", (int)(val & 0xffff));
         emit(S_EXX);
         fdprintf(outFd, "\tld hl, %d\n", (int)((val >> 16) & 0xffff));
         emit(S_EXX);
-        freeExpr(e->right);
+        freeExpr(right);
+        e->right = NULL;
         goto do_store;
     }
 
     /* Optimize: word = WIDEN(byte) for IY-indexed variable
      * Pattern: =s $var Ws expr  ->  ld (iy+ofs),a; ld (iy+ofs+1),0
      * Avoids: ld l,a; ld h,0; ld (iy+ofs),l; ld (iy+ofs+1),h */
-    if (e->size == 2 && e->right && e->right->op == 'W' &&
-        e->left && e->left->op == '$' && e->left->symbol) {
-        struct local_var *lv = findVar(stripVarPfx(e->left->symbol));
+    if (e->size == 2 && right->op == 'W' &&
+        left->op == '$' && left->symbol) {
+        struct local_var *lv = findVar(stripVarPfx(left->symbol));
         if (lv && lv->reg == REG_NO) {
             int ofs = lv->offset;
-            emitExpr(e->right->left);  /* byte result in A; emitExpr frees it */
-            e->right->left = NULL;     /* prevent double-free */
+            emitExpr(right->left);  /* byte result in A; emitExpr frees it */
+            right->left = NULL;     /* prevent double-free */
             fdprintf(outFd, "\tld (iy %c %d), a\n",
                      ofs >= 0 ? '+' : '-', ofs >= 0 ? ofs : -ofs);
             fdprintf(outFd, "\tld (iy %c %d), 0\n",
                      ofs + 1 >= 0 ? '+' : '-', ofs + 1 >= 0 ? ofs + 1 : -(ofs + 1));
-            freeExpr(e->right);
-            freeExpr(e->left);
+            freeExpr(right);
+            freeExpr(left);
             freeNode(e);
             return;
         }
     }
 
     /* Emit right child first (value goes to PRIMARY) */
-    emitExpr(e->right);
+    emitExpr(right);
+    e->right = NULL;  /* Mark as consumed - emitExpr freed it */
 #ifdef DEBUG
     if (TRACE(T_ASSIGN)) {
         fdprintf(2, "emitAssign: after emitExpr(right)\n");
@@ -469,13 +490,17 @@ notConstStore:
 #endif
 
 do_store:
+    /* After do_store: left is still valid, right has been consumed */
+    left = e->left ? e->left : &nullExpr;
+    lleft = left->left ? left->left : &nullExpr;
+    ll = lleft->left ? lleft->left : &nullExpr;
+
     /* Check for IX-indexed store */
-    if ((e->flags & E_IXASSIGN) && e->left && e->left->op == '+' &&
-        e->left->left && e->left->left->op == 'M' &&
-        e->left->left->type_str == 'p' &&
-        e->left->left->left && e->left->left->left->op == '$' &&
-        e->left->left->left->symbol) {
-        const char *var_symbol = e->left->left->left->symbol;
+    if ((e->flags & E_IXASSIGN) && left->op == '+' &&
+        lleft->op == 'M' &&
+        lleft->type_str == 'p' &&
+        ll->op == '$' && ll->symbol) {
+        const char *var_symbol = ll->symbol;
         long offset = e->value;
         const char *var_name = stripVarPfx(var_symbol);
         struct local_var *var = findVar(var_name);
@@ -493,14 +518,14 @@ do_store:
                 fnIXHLOfs = offset;  /* After EXX pair, HL has low word */
                 fnIXHL32 = 1;        /* HL' also has high word */
             }
-            freeExpr(e->left);
+            freeExpr(left);
             freeNode(e);
             return;
         }
     }
 
     /* Simple variable assignment */
-    if (e->left && e->left->op == '$' && e->left->symbol) {
+    if (left->op == '$' && left->symbol) {
 #ifdef DEBUG
         if (TRACE(T_ASSIGN)) {
             fdprintf(2, "emitAssign: simple variable\n");
@@ -508,15 +533,15 @@ do_store:
 #endif
         /* Skip store if RHS was loaded directly into target register */
         {
-            struct local_var *lv = findVar(stripVarPfx(e->left->symbol));
+            struct local_var *lv = findVar(stripVarPfx(left->symbol));
             int skip = 0;
             /* Skip only if RHS destination is BC and RHS is not a call
              * (calls always return in HL regardless of dest) */
-            if (lv && lv->reg == REG_BC && e->right && e->right->dest == R_BC &&
-                e->right->op != '@')
+            if (lv && lv->reg == REG_BC && rhs_dest == R_BC &&
+                rhs_op != '@')
                 skip = 1;
             if (!skip)
-                storeVar(e->left->symbol, e->size, 1);
+                storeVar(left->symbol, e->size, 1);
         }
 #ifdef DEBUG
         if (TRACE(T_ASSIGN)) {
@@ -525,23 +550,25 @@ do_store:
 #endif
     }
     /* Pointer dereference or complex lvalue */
-    else if (e->left && (e->left->op == 'M' || e->left->op == '+')) {
+    else if (left->op == 'M' || left->op == '+') {
         /* For (= (M $ptr) val): emit (M $ptr) to get target address
          * For (= (+ ...) val): emit the + expression to get address */
-        struct expr *addr = e->left;
         if (e->size == 1) {
             emit(S_ESAVE);
-            emitExpr(addr);
+            emitExpr(left);
+            e->left = NULL;
             emit(S_HLDE);
         } else if (e->size == 2) {
             emit(S_DESAVE);
-            emitExpr(addr);
+            emitExpr(left);
+            e->left = NULL;
             emit(S_HLDE);
             emit(S_INCHL);
             emit(S_HLD);
-        } else if (e->left->op == '+' && e->size == 4) {
+        } else if (left->op == '+' && e->size == 4) {
             emit(S_PUSHHLLOW); emit(S_EXX); emit(S_PUSHHLUPP); emit(S_EXX);
-            emitExpr(e->left);
+            emitExpr(left);
+            e->left = NULL;
             emit(S_DEADR); emit(S_POPHLUPP); emit(S_PUSHDESV);
             emit(S_EXX); emit(S_POPDEADR); emit(S_POPHLLOW);
             storeHLtoDE();
@@ -561,26 +588,30 @@ do_store:
  * Emit inline byte comparison (cp instruction)
  * Returns 1 if emitted, 0 if not applicable
  */
-static int emitByteCp(struct expr *e)
+static int
+emitByteCp(struct expr *e)
 {
+    struct expr *left = e->left;
+    struct expr *right = e->right;
+    int op = e->op;
     struct bytecmp cmp;
     int val;
 
     /* Only for byte comparisons */
-    if (!e->left || e->left->size != 1)
+    if (!left || left->size != 1)
         return 0;
 
     /* For >=, <=, >, < with constant, use carry flag directly */
-    if ((e->op == 'g' || e->op == 'L' || e->op == '>' || e->op == '<') &&
-        e->right && e->right->op == 'C') {
-        val = e->right->value & 0xff;
+    if ((op == 'g' || op == 'L' || op == '>' || op == '<') &&
+        right && right->op == 'C') {
+        val = right->value & 0xff;
 
         /* Emit left operand to A */
-        emitExpr(e->left);
+        emitExpr(left);
         /* Note: cp does NOT change A, so don't invalidate cache */
 
         /* Emit cp with adjusted constant based on comparison */
-        switch (e->op) {
+        switch (op) {
         case 'g':  /* GE (>=): cp N, nc = true */
             emit1(F_CP, val);
             fnCmpFlag = 'c';  /* nc = true */
@@ -611,19 +642,19 @@ static int emitByteCp(struct expr *e)
             break;
         }
 
-        freeExpr(e->right);
+        freeExpr(right);
         return 1;
     }
 
     /* Only EQ/NE for non-constant comparisons */
-    if (e->op != 'Q' && e->op != 'n')
+    if (op != 'Q' && op != 'n')
         return 0;
 
-    if (getByteCmp(e->right, &cmp) == CMP_NONE)
+    if (getByteCmp(right, &cmp) == CMP_NONE)
         return 0;
 
     /* Emit left operand to A */
-    emitExpr(e->left);
+    emitExpr(left);
     /* Note: cp does NOT change A, so don't invalidate cache */
 
     /* Emit cp instruction based on right operand type */
@@ -658,15 +689,16 @@ static int emitByteCp(struct expr *e)
         return 0;
     }
 
-    freeExpr(e->right);
+    freeExpr(right);
 
     /* cp sets Z=1 if equal: EQ wants Z=1 true, NE wants Z=1 false */
-    fnZValid = (e->op == 'Q') ? 1 : 2;
+    fnZValid = (op == 'Q') ? 1 : 2;
     return 1;
 }
 
 /* Long (32-bit) binary operation */
-static void emitLongBinop(struct expr *e, int is_cmp)
+static void
+emitLongBinop(struct expr *e, int is_cmp)
 {
     const char *fn = NULL;
     emitExpr(e->left);
@@ -701,7 +733,8 @@ static void emitLongBinop(struct expr *e, int is_cmp)
 }
 
 /* Signed comparison with 0 using bit 7 test. Returns 1 if handled. */
-static int emitSignCmp0(struct expr *e)
+static int
+emitSignCmp0(struct expr *e)
 {
     struct expr *l = e->left;
     int ofs;
@@ -772,16 +805,21 @@ static int emitSignCmp0(struct expr *e)
 }
 
 /* Word comparison. Returns 1 if handled. */
-static int emitWordCmp(struct expr *e)
+static int
+emitWordCmp(struct expr *e)
 {
+    struct expr *left = e->left ? e->left : &nullExpr;
+    struct expr *right = e->right ? e->right : &nullExpr;
+    int op = e->op;
+
     /* Special case: compare with 0 */
-    if (e->right && e->right->op == 'C' && e->right->value == 0) {
-        if (!emitSimplLd(e->left)) emitExpr(e->left);
-        switch (e->op) {
+    if (right->op == 'C' && right->value == 0) {
+        if (!emitSimplLd(left)) emitExpr(left);
+        switch (op) {
         case 'Q':  /* == 0 */
         case 'n':  /* != 0 */
             emit(S_AHORL);
-            fnZValid = (e->op == 'Q') ? 1 : 2;
+            fnZValid = (op == 'Q') ? 1 : 2;
             break;
         case 'L':  /* <= 0: zero or negative */
             fnDualCmp = 'L';
@@ -808,12 +846,12 @@ static int emitWordCmp(struct expr *e)
         return 1;
     }
     /* General case: promote byte constant to word if needed */
-    if (e->right && e->right->op == 'C' && e->right->size == 1)
-        e->right->size = 2;
-    if (!emitSimplLd(e->left)) emitExpr(e->left);
-    if (!emitSimplLd(e->right)) emitExpr(e->right);
+    if (right->op == 'C' && right->size == 1)
+        right->size = 2;
+    if (!emitSimplLd(left)) emitExpr(left);
+    if (!emitSimplLd(right)) emitExpr(right);
     emit(S_SBCHLDE);
-    switch (e->op) {
+    switch (op) {
     case 'Q': fnZValid = 1; break;
     case 'n': fnZValid = 2; break;
     case 'g': fnCmpFlag = 'c'; break;
@@ -826,32 +864,36 @@ static int emitWordCmp(struct expr *e)
 }
 
 /* Word left shift by constant. Returns 1 if handled. */
-static int emitWordShift(struct expr *e)
+static int
+emitWordShift(struct expr *e)
 {
     int i, cnt;
-    struct expr *lft;
-    if (e->op != 'y' || !e->right || e->right->op != 'C' ||
-        e->right->value < 1 || e->right->value > 8)
+    struct expr *left = e->left;
+    struct expr *right = e->right;
+    struct expr *ll;  /* left->left */
+
+    if (e->op != 'y' || !right || right->op != 'C' ||
+        right->value < 1 || right->value > 8)
         return 0;
-    cnt = e->right->value;
-    lft = e->left;
-    if (lft && lft->op == 'M' && (lft->opflags & OP_REGVAR) &&
-        lft->left && lft->left->op == '$') {
-        struct local_var *v = lft->cached_var;
+    cnt = right->value;
+    ll = left ? left->left : NULL;
+    if (left && left->op == 'M' && (left->opflags & OP_REGVAR) &&
+        ll && ll->op == '$') {
+        struct local_var *v = left->cached_var;
         if (v && v->reg == REG_BC) {
             emit(S_BCHL);
-            freeExpr(lft);
+            freeExpr(left);
         } else {
-            emitExpr(e->left);
+            emitExpr(left);
             emit(S_EXDEHL);
         }
     } else {
-        emitExpr(e->left);
+        emitExpr(left);
         emit(S_EXDEHL);
     }
     for (i = 0; i < cnt; i++)
         emit(S_ADDHLHL);
-    freeExpr(e->right);
+    freeExpr(right);
     freeNode(e);
     return 1;
 }
@@ -859,12 +901,18 @@ static int emitWordShift(struct expr *e)
 /*
  * Emit binary operation - generates code directly
  */
-void emitBinop(struct expr *e)
+void
+emitBinop(struct expr *e)
 {
-    int left_size = e->left ? e->left->size : 2;
+    /* Use sentinels for null-safe condition checks */
+    struct expr *left = e->left ? e->left : &nullExpr;
+    struct expr *right = e->right ? e->right : &nullExpr;
+    struct expr *rl, *rr;   /* right->left, right->right */
+    int op = e->op;
+    int left_size = left->size ? left->size : 2;
     int result_size = e->size ? e->size : left_size;
-    int is_cmp = (e->op == '>' || e->op == '<' || e->op == 'g' ||
-                  e->op == 'L' || e->op == 'Q' || e->op == 'n');
+    int is_cmp = (op == '>' || op == '<' || op == 'g' ||
+                  op == 'L' || op == 'Q' || op == 'n');
 
     /* Long (32-bit) operations */
     if (left_size == 4 || result_size == 4) {
@@ -872,35 +920,38 @@ void emitBinop(struct expr *e)
         return;
     }
 
+    /* Cache right->left and right->right with sentinels */
+    rl = right->left ? right->left : &nullExpr;
+    rr = right->right ? right->right : &nullExpr;
+
     /* Optimize: ptr + (byte << const) for array indexing */
-    if (e->op == '+' && e->left && e->left->op == '$' && e->left->symbol &&
-        e->right && e->right->op == 'y' && e->right->left &&
-        e->right->left->size == 1 && e->right->right &&
-        e->right->right->op == 'C' && e->right->right->value >= 1 &&
-        e->right->right->value <= 7) {
-        int i, cnt = e->right->right->value;
-        const char *sym = stripDollar(e->left->symbol);
-        emitExpr(e->right->left);
+    if (op == '+' && left->op == '$' && left->symbol &&
+        right->op == 'y' &&
+        rl->size == 1 &&
+        rr->op == 'C' && rr->value >= 1 && rr->value <= 7) {
+        int i, cnt = rr->value;
+        const char *sym = stripDollar(left->symbol);
+        emitExpr(rl);
         for (i = 0; i < cnt; i++)
             out("\tadd a, a\n");
         fdprintf(outFd, "\tld hl, %s\n", sym);
         out("\tadd a, l\n\tld l, a\n\tjr nc, $+3\n\tinc h\n");
-        freeExpr(e->left);
-        freeExpr(e->right->right);
-        freeNode(e->right);
+        freeExpr(left);
+        freeExpr(rr);
+        freeNode(right);
         freeNode(e);
         return;
     }
 
     /* Byte operations with immediate constant */
     if (left_size == 1 && result_size == 1 && !is_cmp &&
-        e->op != 'y' && e->op != 'w' &&
-        e->right && e->right->op == 'C' &&
-        e->right->value >= 0 && e->right->value <= 255) {
-        int val = e->right->value & 0xff;
-        emitExpr(e->left);
-        freeExpr(e->right);
-        switch (e->op) {
+        op != 'y' && op != 'w' &&
+        right->op == 'C' &&
+        right->value >= 0 && right->value <= 255) {
+        int val = right->value & 0xff;
+        emitExpr(left);
+        freeExpr(right);
+        switch (op) {
         case '&': emit1(F_AND, val); break;
         case '|': emit1(F_OR, val); break;
         case '^': emit1(F_XOR, val); break;
@@ -918,8 +969,8 @@ void emitBinop(struct expr *e)
         return;
 
     /* Signed comparisons with 0 */
-    if (left_size == 2 && is_cmp && e->left && !(e->left->flags & E_UNSIGNED) &&
-        e->right && e->right->op == 'C' && e->right->value == 0) {
+    if (left_size == 2 && is_cmp && !(left->flags & E_UNSIGNED) &&
+        right->op == 'C' && right->value == 0) {
         if (emitSignCmp0(e))
             return;
     }
@@ -931,14 +982,14 @@ void emitBinop(struct expr *e)
     }
 
     /* Byte left shift by constant */
-    if (left_size == 1 && result_size == 1 && e->op == 'y' &&
-        e->right && e->right->op == 'C' &&
-        e->right->value >= 1 && e->right->value <= 7) {
-        int i, cnt = e->right->value;
-        emitExpr(e->left);
+    if (left_size == 1 && result_size == 1 && op == 'y' &&
+        right->op == 'C' &&
+        right->value >= 1 && right->value <= 7) {
+        int i, cnt = right->value;
+        emitExpr(left);
         for (i = 0; i < cnt; i++)
             out("\tadd a, a\n");
-        freeExpr(e->right);
+        freeExpr(right);
         freeNode(e);
         return;
     }
@@ -946,10 +997,10 @@ void emitBinop(struct expr *e)
     /* Byte binary ops */
     if (left_size == 1) {
         const char *fn = NULL;
-        emitExpr(e->left);
+        emitExpr(left);
         emit(S_ESAVE);
-        emitExpr(e->right);
-        switch (e->op) {
+        emitExpr(right);
+        switch (op) {
         case '*': fn = "bmul"; break;
         case '/': fn = "bdiv"; break;
         case '%': fn = "bmod"; break;
@@ -966,10 +1017,10 @@ void emitBinop(struct expr *e)
         return;
 
     /* Word binary ops */
-    if (!emitSimplLd(e->left)) emitExpr(e->left);
-    if (!emitSimplLd(e->right)) emitExpr(e->right);
+    if (!emitSimplLd(left)) emitExpr(left);
+    if (!emitSimplLd(right)) emitExpr(right);
 
-    switch (e->op) {
+    switch (op) {
     case '+': emit(S_ADDHLDE); break;
     case '-': emit(S_EXDEHL); emit(S_SBCHLDE); break;
     case '*': emit(S_CALLIMUL); break;
@@ -991,9 +1042,11 @@ void emitBinop(struct expr *e)
  * e->right = wrapper chain of arguments
  * e->value = argument count
  */
-void emitCall(struct expr *e)
+void
+emitCall(struct expr *e)
 {
     struct expr *args[32];
+    struct expr *left = e->left;
     struct expr *arg;
     int arg_count, i;
     const char *func_name;
@@ -1010,15 +1063,17 @@ void emitCall(struct expr *e)
     /* Emit arguments in reverse order (C calling convention) */
     for (i = arg_count - 1; i >= 0; i--) {
         struct expr *a = args[i];
+        struct expr *al;  /* a->left */
         int arg_size;
         if (!a) continue;
 
         /* Save size before emitExpr frees the node */
         arg_size = a->size;
+        al = a->left;
 
         /* Check for word DEREF of register variable - can push directly */
-        if (arg_size == 2 && a->op == 'M' && a->left && a->left->op == '$') {
-            const char *sym = a->left->symbol;
+        if (arg_size == 2 && a->op == 'M' && al && al->op == '$') {
+            const char *sym = al->symbol;
             struct local_var *var;
             if (sym && sym[0] == '$') sym++;
             var = findVar(sym);
@@ -1045,8 +1100,8 @@ void emitCall(struct expr *e)
     }
 
     /* Emit the call */
-    if (e->left && e->left->op == '$' && e->left->symbol) {
-        func_name = e->left->symbol;
+    if (left && left->op == '$' && left->symbol) {
+        func_name = left->symbol;
         if (func_name[0] == '$') func_name++;
         emitS(FS_CALL, func_name);
         if (isCmpFunc(func_name)) {
@@ -1068,15 +1123,21 @@ void emitCall(struct expr *e)
 /*
  * Emit ternary conditional operator
  */
-void emitTernary(struct expr *e)
+void
+emitTernary(struct expr *e)
 {
+    struct expr *left = e->left;
+    struct expr *right = e->right;
+    struct expr *rl, *rr;
     unsigned char cond_size;
 
-    cond_size = e->left ? e->left->size : 2;
+    cond_size = left ? left->size : 2;
+    rl = right ? right->left : NULL;
+    rr = right ? right->right : NULL;
 
-    if (e->left) emitExpr(e->left);
+    emitExpr(left);
 
-    if (e->jump) {
+    if (e->flags & E_JUMP) {
         const char *jmp;
         if (fnCmpFlag) {
             /* Carry-based comparison: 'c' = NC true, 'C' = C true */
@@ -1100,27 +1161,25 @@ void emitTernary(struct expr *e)
     }
     fnZValid = 0;
 
-    if (e->right && e->right->left) {
-        emitExpr(e->right->left);
+    if (rl) {
+        emitExpr(rl);
     }
 
-    if (e->right && e->right->jump) {
-        emitJump("jp", "tE", e->right->label);
+    if (right && (right->flags & E_JUMP)) {
+        emitJump("jp", "tE", right->label);
     }
 
     emit1(F_TERNF, e->label);
 
-    if (e->right && e->right->right) {
-        emitExpr(e->right->right);
+    if (rr) {
+        emitExpr(rr);
     }
 
-    if (e->right) {
-        emit1(F_TERNE, e->right->label);
+    if (right) {
+        emit1(F_TERNE, right->label);
     }
 
-    if (e->jump) freeJump(e->jump);
-    if (e->right && e->right->jump) freeJump(e->right->jump);
-    xfree(e->right);
+    xfree(right);
 
     freeNode(e);
 }

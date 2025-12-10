@@ -1272,29 +1272,37 @@ xreplace(struct expr *out, struct expr *in)
 struct expr *
 cfold(struct expr *e)
 {
+	struct expr *left, *right;
+	unsigned char op, lop, rop;
 	long val;
 	long vl, vr;
 
-    switch (e->op) {
+	op = e->op;
+	left = e->left;
+	right = e->right;
+	lop = left ? left->op : 0;
+	rop = right ? right->op : 0;
+
+    switch (op) {
     case NEG:
-        if (e->left->op == CONST) {
-            val = -e->left->v;
-            e = xreplace(e, e->left);
+        if (lop == CONST) {
+            val = -left->v;
+            e = xreplace(e, left);
             e->v = val;
             e->type = constType((long)val);
         }
         return e;
     case TWIDDLE:
-        if (e->left->op == CONST) {
-            val = ~e->left->v;
-            e = xreplace(e, e->left);
+        if (lop == CONST) {
+            val = ~left->v;
+            e = xreplace(e, left);
             e->v = val;
         }
         return e;
     case BANG:
-        if (e->left->op == CONST) {
-            val = e->left->v ? 0 : 1;
-            e = xreplace(e, e->left);
+        if (lop == CONST) {
+            val = left->v ? 0 : 1;
+            e = xreplace(e, left);
             e->v = val;
         }
         return e;
@@ -1303,15 +1311,14 @@ cfold(struct expr *e)
          * Ternary conditional: condition ? true : false
          * Structure: QUES(condition, COLON(true_expr, false_expr))
          */
-        if (e->left && e->left->op == CONST && e->right &&
-				e->right->op == COLON) {
+        if (left && lop == CONST && right && rop == COLON) {
             struct expr *result;
-            if (e->left->v) {
+            if (left->v) {
                 // Condition is true, use true branch
-                result = e->right->left;
+                result = right->left;
             } else {
                 // Condition is false, use false branch
-                result = e->right->right;
+                result = right->right;
             }
             if (result) {
                 e = xreplace(e, result);
@@ -1319,75 +1326,75 @@ cfold(struct expr *e)
         }
         return e;
     }
-    if (!e->right) {
+    if (!right) {
         gripe(ER_E_CF);
         return e;
     }
 
     // Algebraic simplifications for identity operations
     // These work even when one operand is not constant
-    if (e->right->op == CONST) {
-        long vr = e->right->v;
-        switch (e->op) {
+    if (rop == CONST) {
+        long vr = right->v;
+        switch (op) {
         case PLUS:
         case MINUS:
         case LSHIFT:
         case RSHIFT:
             if (vr == 0)
-                return xreplace(e, e->left);
+                return xreplace(e, left);
             break;
         case STAR:
             if (vr == 1)
-                return xreplace(e, e->left);
+                return xreplace(e, left);
             if (vr == 0)
-                return xreplace(e, e->right);
+                return xreplace(e, right);
             break;
         case DIV:
             if (vr == 1)
-                return xreplace(e, e->left);
+                return xreplace(e, left);
             break;
         }
         // Associative folding: (x + C1) + C2 -> x + (C1+C2)
         // This handles nested struct/union member offsets
-        if (e->op == PLUS && e->left->op == PLUS &&
-            e->left->right && e->left->right->op == CONST) {
-            long c1 = e->left->right->v;
+        if (op == PLUS && lop == PLUS &&
+            left->right && left->right->op == CONST) {
+            long c1 = left->right->v;
             long c2 = vr;
-            e->right->v = c1 + c2;
-            e->left = xreplace(e->left, e->left->left);
+            right->v = c1 + c2;
+            e->left = xreplace(left, left->left);
             e->left->up = e;
             return cfold(e);  // recurse in case of deeper nesting
         }
     }
-    if (e->left->op == CONST) {
-        long vl = e->left->v;
-        switch (e->op) {
+    if (lop == CONST) {
+        long vl = left->v;
+        switch (op) {
         case PLUS:
             // 0 + x = x
             if (vl == 0) {
-                return xreplace(e, e->right);
+                return xreplace(e, right);
             }
             break;
         case STAR:
             // 1 * x = x
             if (vl == 1) {
-                return xreplace(e, e->right);
+                return xreplace(e, right);
             }
             // 0 * x = 0
             if (vl == 0) {
-                return xreplace(e, e->left);
+                return xreplace(e, left);
             }
             break;
         }
     }
 
-    if ((e->left->op != CONST) || (e->right->op != CONST)) {
+    if ((lop != CONST) || (rop != CONST)) {
         return e;
     }
-    vl = e->left->v;
-    vr = e->right->v;
+    vl = left->v;
+    vr = right->v;
 
-    switch (e->op) {
+    switch (op) {
     case PLUS:
         val = vl + vr;
         break;
@@ -1453,7 +1460,7 @@ cfold(struct expr *e)
     default:
         return e;
     }
-    e = xreplace(e, e->left);
+    e = xreplace(e, left);
     e->v = val;  // Store the computed constant value
     return e;
 }

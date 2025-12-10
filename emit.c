@@ -220,7 +220,8 @@ static void emitCond(struct expr *e, unsigned char invert,
 static int stmt_count = 0;
 static void emitStmtTail(struct stmt *s, char tailPos);
 static void emitStmt(struct stmt *s) { emitStmtTail(s, 0); }
-static void emitStmtTail(struct stmt *s, char tailPos)
+static void
+emitStmtTail(struct stmt *s, char tailPos)
 {
     if (!s) return;
     stmt_count++;
@@ -244,10 +245,6 @@ static void emitStmtTail(struct stmt *s, char tailPos)
 #ifdef DEBUG
         if (TRACE(T_EMIT)) fdprintf(2, "LABEL: %s\n", s->symbol);
 #endif
-        /* Invalidate cache at loop labels (backward jump targets) */
-        if (s->symbol[0] == 'L' && (strstr(s->symbol, "_top") || strstr(s->symbol, "_continue"))) {
-            cacheInvalAll();
-        }
         emitS(FS_LABEL, s->symbol);
     }
 
@@ -269,14 +266,12 @@ static void emitStmtTail(struct stmt *s, char tailPos)
             freeExpr(cond);
             s->expr = NULL;
             /* Emit only the taken branch */
-            if (is_true) {
-                if (s->then_branch) emitStmt(s->then_branch);
-            } else {
-                if (s->else_branch) emitStmt(s->else_branch);
-            }
-            if (s->next) emitStmt(s->next);
+            if (is_true)
+                emitStmt(s->then_branch);
+            else
+                emitStmt(s->else_branch);
+            emitStmt(s->next);
             xfree(s->asm_block);
-            if (s->jump) freeJump(s->jump);
             free(s);
             return;
         }
@@ -480,18 +475,17 @@ emit_if_body:
         /* Emit label for OR short-circuit jumps to then body */
         emit1(F_IFTHEN, s->label);
         /* Emit then branch */
-        if (s->then_branch) emitStmt(s->then_branch);
+        emitStmt(s->then_branch);
 
         if (s->label2 > 0 && !skip_else) {
             emitJump("jp", "no", s->label2);
             emit1(F_IF, s->label);
-            if (s->else_branch) emitStmt(s->else_branch);
+            emitStmt(s->else_branch);
         }
 
-        if (s->next) emitStmtTail(s->next, tailPos);
+        emitStmtTail(s->next, tailPos);
 
         xfree(s->asm_block);
-        if (s->jump) freeJump(s->jump);
         free(s);
         return;
     }
@@ -520,15 +514,18 @@ emit_if_body:
         /* Emit case bodies with labels */
         for (c = s->then_branch; c; c = c->next) {
             if (c->type == 'C') {
+                cacheInvalAll();
                 fdprintf(outFd, "%s_c%ld:\n", lbl, c->expr ? c->expr->value : 0);
-                if (c->then_branch) emitStmt(c->then_branch);
+                emitStmt(c->then_branch);
             } else if (c->type == 'O') {
+                cacheInvalAll();
                 fdprintf(outFd, "%s_def:\n", lbl);
-                if (c->then_branch) emitStmt(c->then_branch);
+                emitStmt(c->then_branch);
             }
         }
 
         /* Emit break label */
+        cacheInvalAll();
         fdprintf(outFd, "%s_break:\n", lbl);
 
         /* Emit jump table in data section */
@@ -545,7 +542,7 @@ emit_if_body:
         /* Free case statements */
         for (c = s->then_branch; c; ) {
             struct stmt *next = c->next;
-            if (c->expr) freeExpr(c->expr);
+            freeExpr(c->expr);
             /* then_branch already emitted and freed */
             free(c);
             c = next;
@@ -554,7 +551,6 @@ emit_if_body:
         if (s->next) emitStmtTail(s->next, tailPos);
         xfree(s->symbol);
         xfree(s->asm_block);
-        if (s->jump) freeJump(s->jump);
         free(s);
         return;
     }
@@ -590,19 +586,19 @@ emit_if_body:
             fdprintf(2, "  emitStmt: has expr=%p\n", (void*)s->expr);
         }
 #endif
-        if (s->expr) emitExpr(s->expr);
+        emitExpr(s->expr);
 #ifdef DEBUG
         if (TRACE(T_EMIT)) {
             fdprintf(2, "  emitStmt: after expr, expr2=%p\n", (void*)s->expr2);
         }
 #endif
-        if (s->expr2) emitExpr(s->expr2);
+        emitExpr(s->expr2);
 #ifdef DEBUG
         if (TRACE(T_EMIT)) {
             fdprintf(2, "  emitStmt: after expr2, expr3=%p\n", (void*)s->expr3);
         }
 #endif
-        if (s->expr3) emitExpr(s->expr3);
+        emitExpr(s->expr3);
 #ifdef DEBUG
         if (TRACE(T_EMIT)) {
             fdprintf(2, "  emitStmt: after expr3\n");
@@ -626,7 +622,7 @@ emit_if_body:
         fdprintf(2, "  emitStmt: checking else_branch=%p\n", (void*)s->else_branch);
     }
 #endif
-    if (s->else_branch) emitStmt(s->else_branch);
+    emitStmt(s->else_branch);
 
     /* Emit next statement in chain (this frees it) */
 #ifdef DEBUG
@@ -634,7 +630,7 @@ emit_if_body:
         fdprintf(2, "  emitStmt: checking next=%p\n", (void*)s->next);
     }
 #endif
-    if (s->next) emitStmtTail(s->next, tailPos);
+    emitStmtTail(s->next, tailPos);
 #ifdef DEBUG
     if (TRACE(T_EMIT)) {
         fdprintf(2, "  emitStmt: about to free stmt %p\n", (void*)s);
@@ -648,12 +644,6 @@ emit_if_body:
     }
 #endif
     xfree(s->asm_block);
-#ifdef DEBUG
-    if (TRACE(T_EMIT)) {
-        fdprintf(2, "  freeing jump=%p\n", (void*)s->jump);
-    }
-#endif
-    if (s->jump) freeJump(s->jump);
 #ifdef DEBUG
     if (TRACE(T_EMIT)) {
         fdprintf(2, "  freeing stmt\n");
@@ -670,7 +660,8 @@ emit_if_body:
 /*
  * Emit assembly for entire function and free tree
  */
-void emitAssembly(char fd)
+void
+emitAssembly(char fd)
 {
     struct local_var *var, *next;
     char has_params;
@@ -683,11 +674,16 @@ void emitAssembly(char fd)
     }
 #endif
 
-    has_params = (fnParams && fnParams[0]);
+    /* Check if function has parameters (from fnLocals) */
+    has_params = 0;
+    {
+        struct local_var *v;
+        for (v = fnLocals; v; v = v->next)
+            if (v->is_param) { has_params = 1; break; }
+    }
 
     /* Emit function prologue */
-    emitFnProlog(fnName, fnParams, fnRettype,
-        fnFrmSize, fnLocals);
+    emitFnProlog(fnName, fnRettype, fnFrmSize, fnLocals, has_params);
 
     /* Emit function body */
 #ifdef DEBUG

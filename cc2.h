@@ -53,30 +53,6 @@ enum register_id {
 };
 
 /*
- * Jump instruction types
- */
-enum jump_type {
-    JUMP_NONE = 0,
-    JMP_UNCOND,     /* jp label */
-    JUMP_IF_ZERO,          /* jr z, label or jp z, label */
-    JMP_IF_NOT_Z,      /* jr nz, label or jp nz, label */
-    JUMP_IF_CARRY,         /* jr c, label or jp c, label */
-    JMP_IF_NOT_C,     /* jr nc, label or jp nc, label */
-    JUMP_CALL              /* call label */
-};
-
-/*
- * Jump instruction node - deferred until emission for optimization
- */
-struct jump_instr {
-    unsigned char type;         // Type of jump
-    unsigned char target_label; // Target label number (0-255)
-    char *condition;            // Condition string (for conditional jumps)
-    struct jump_instr *next;    // Next in list
-};
-
-
-/*
  * Expression flags (e->flags)
  */
 #define E_UNSIGNED  0x01        // Value is unsigned
@@ -84,6 +60,7 @@ struct jump_instr {
 #define E_GENERATED 0x04        // Node has been code-generated (scheduled/emitted)
 #define E_IXASSIGN  0x08        // ASSIGN to IX-indexed struct member
 #define E_IXDEREF   0x10        // DEREF of IX-indexed struct member
+#define E_JUMP      0x20        // Node has associated jump (ternary, return)
 
 /*
  * Operand pattern flags (e->opflags) - set during analysis phase
@@ -275,7 +252,6 @@ struct expr {
 
     /* Code generation fields */
     char *cleanup_block;        // Deferred cleanup code (for CALL stack cleanup)
-    struct jump_instr *jump;    // Jump instruction (deferred) or NULL
     struct local_var *cached_var; // Cached variable lookup result (set by setLeftFlags)
 
     /* Scheduled instructions - set by scheduler, blindly emitted */
@@ -301,10 +277,10 @@ struct stmt {
 
     char *symbol;               // Symbol name (for labels, declarations)
     char type_str;              // Type annotation char: 'b', 's', 'l', 'p' (for declarations)
+    char frm_off;               // Frame offset for declarations (signed: params +, locals -)
 
     /* Code generation fields */
     char *asm_block;            // Inline assembly text (type 'A' statements only)
-    struct jump_instr *jump;    // Jump instruction (deferred) or NULL
 };
 
 /*
@@ -326,7 +302,6 @@ struct local_var {
  * Function context globals - state for current function being compiled
  */
 extern char *fnName;            /* Function name */
-extern char *fnParams;          /* Parameter list string */
 extern char *fnRettype;         /* Return type */
 extern struct stmt *fnBody;     /* Function body statement tree */
 extern unsigned short fnLblCnt; /* For generating unique labels */
@@ -377,16 +352,13 @@ extern int trace;
 /* Global variables */
 extern unsigned char outFd;  /* Assembly output file descriptor (from parseast.c) */
 extern int fnIndex;          /* Function index for unique labels (from parseast.c) */
+extern struct expr nullExpr; /* Sentinel for null-safe derefs (from emitops.c) */
 
 /* Tree construction functions */
 struct expr *newExpr(unsigned char op);
 struct stmt *newStmt(unsigned char type);
 void freeExpr(struct expr *e);
 void frStmt(struct stmt *s);
-
-/* Jump instruction management */
-struct jump_instr *newJump(enum jump_type type, int target_label);
-void freeJump(struct jump_instr *j);
 
 /* Width and signedness extraction from type annotations */
 unsigned char getSizeFTStr(unsigned char type_str);

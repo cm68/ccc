@@ -348,7 +348,8 @@ dumpFnAst(char fd)
 }
 
 /* Location type names */
-static const char *locName(int loc)
+static const char *
+locName(int loc)
 {
     switch (loc) {
     case LOC_NONE:  return "-";
@@ -363,7 +364,8 @@ static const char *locName(int loc)
 }
 
 /* Register names */
-static const char *regName(int reg)
+static const char *
+regName(int reg)
 {
     switch (reg) {
     case R_NONE: return "-";
@@ -379,7 +381,8 @@ static const char *regName(int reg)
 }
 
 /* Instruction names for scheduled ops */
-static const char *insName(int ins)
+static const char *
+insName(int ins)
 {
     switch (ins) {
     case EO_NOP:       return "NOP";

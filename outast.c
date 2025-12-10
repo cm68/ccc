@@ -6,6 +6,7 @@
 
 /* Forward declarations */
 static void emitTypeInfo(struct type *type);
+static int assignFrmOff(struct name *func);
 
 /*
  * Jump-to-jump optimization: when LABEL is followed only by GOTO,
@@ -110,14 +111,20 @@ static void
 analyzeExpr(struct expr *e, struct stmt *body)
 {
 	struct name *var, *local;
+	struct expr *left, *ll, *lll;
+	unsigned char op;
+
 	if (!e)
 		return;
+
+	op = e->op;
+	left = e->left;
 
 	/* Count variable references from SYM nodes
 	 * Look up the variable in body->locals by name since e->var
 	 * points to the original symbol table entry (now gone) while
 	 * body->locals contains copies made by capLocals() */
-	if (e->op == SYM && e->var) {
+	if (op == SYM && e->var) {
 		var = (struct name *)e->var;
 		if (var->name) {
 			local = findInLocals(var->name, body);
@@ -130,25 +137,12 @@ analyzeExpr(struct expr *e, struct stmt *body)
 	 * Pattern: DEREF(ADD(DEREF($ptr), offset)) - reading member
 	 * Pattern: ASSIGN(ADD(DEREF($ptr), offset), val) - writing member
 	 * The inner DEREF($ptr) must be a pointer variable */
-	if (e->op == DEREF && e->left && e->left->op == '+' &&
-	    e->left->left && e->left->left->op == DEREF &&
-	    e->left->left->left && e->left->left->left->op == SYM &&
-	    e->left->left->left->var &&
-	    e->left->right && e->left->right->op == CONST) {
-		var = (struct name *)e->left->left->left->var;
-		if (var->name) {
-			local = findInLocals(var->name, body);
-			if (local && local->type && (local->type->flags & TF_POINTER))
-				incAgg(local);
-		}
-	}
-
-	if (e->op == '=' && e->left && e->left->op == '+' &&
-	    e->left->left && e->left->left->op == DEREF &&
-	    e->left->left->left && e->left->left->left->op == SYM &&
-	    e->left->left->left->var &&
-	    e->left->right && e->left->right->op == CONST) {
-		var = (struct name *)e->left->left->left->var;
+	ll = left ? left->left : 0;
+	lll = ll ? ll->left : 0;
+	if ((op == DEREF || op == '=') && left && left->op == '+' &&
+	    ll && ll->op == DEREF && lll && lll->op == SYM && lll->var &&
+	    left->right && left->right->op == CONST) {
+		var = (struct name *)lll->var;
 		if (var->name) {
 			local = findInLocals(var->name, body);
 			if (local && local->type && (local->type->flags & TF_POINTER))
@@ -157,7 +151,7 @@ analyzeExpr(struct expr *e, struct stmt *body)
 	}
 
 	/* Recurse */
-	analyzeExpr(e->left, body);
+	analyzeExpr(left, body);
 	analyzeExpr(e->right, body);
 	analyzeExpr(e->next, body);
 }
@@ -359,14 +353,14 @@ collectLocl(struct stmt *s, struct stmt *body)
 	collectLocl(s->next, body);
 }
 
-/* Entry point: analyze function and allocate registers */
-static void
+/* Entry point: analyze function and allocate registers, returns frame size */
+static int
 analyzeFunc(struct name *func)
 {
 	struct name *n;
 
 	if (!func || !func->u.body)
-		return;
+		return 0;
 
 	/* First collect all locals from nested blocks */
 	collectLocl(func->u.body, func->u.body);
@@ -383,6 +377,61 @@ analyzeFunc(struct name *func)
 
 	/* Allocate registers based on usage */
 	allocRegs(func->u.body);
+
+	/* Assign frame offsets to non-register vars, return frame size */
+	return assignFrmOff(func);
+}
+
+/*
+ * Assign stack frame offsets to parameters and locals.
+ * Params get positive offsets (above FP), locals get negative (below FP).
+ * Register-allocated variables get frm_off=0 (not on stack).
+ * Returns frame size (bytes needed for locals on stack).
+ */
+static int
+assignFrmOff(struct name *func)
+{
+	struct name *n;
+	struct stmt *body;
+	int off;
+
+	if (!func || !func->type || !func->u.body)
+		return 0;
+	body = func->u.body;
+
+	/* Parameters: positive offsets starting at +4 (skip saved FP + ret addr) */
+	off = 4;
+	for (n = func->type->elem; n; n = n->next) {
+		if (n->type && n->type->size == 0)
+			continue;  /* skip void */
+		/* Find matching local to set its frm_off */
+		if (body->locals && n->name) {
+			struct name *local;
+			for (local = body->locals; local; local = local->next) {
+				if (local->name && strcmp(local->name, n->name) == 0) {
+					local->frm_off = (local->reg) ? 0 : off;
+					break;
+				}
+			}
+		}
+		off += (n->type && n->type->size > 2) ? n->type->size : 2;
+	}
+
+	/* Locals: negative offsets for non-register vars */
+	off = 0;
+	for (n = body->locals; n; n = n->next) {
+		if (n->kind == funarg)
+			continue;
+		if (n->reg) {
+			n->frm_off = 0;  /* in register, not on stack */
+		} else {
+			int sz = (n->type) ? n->type->size : 2;
+			if (sz < 1) sz = 2;
+			off += sz;
+			n->frm_off = -off;
+		}
+	}
+	return off;  /* frame size = total local stack space */
 }
 
 /*
@@ -497,42 +546,47 @@ emitChild(struct expr *e)
 static unsigned char
 cntCondLbls(struct expr *e, unsigned char ctx)
 {
-	unsigned char count = 0;
+	struct expr *left, *right;
+	unsigned char op, count = 0;
 
 	if (!e)
 		return 0;
 
+	op = e->op;
+	left = e->left;
+	right = e->right;
+
 	/* NOT just inverts sense, pass through */
-	if (e->op == '!') {
-		return cntCondLbls(e->left, ctx);
+	if (op == '!') {
+		return cntCondLbls(left, ctx);
 	}
 
 	/* OR (||) */
-	if (e->op == LOR) {
+	if (op == LOR) {
 		/* || inside && (right side) or at top needs intermediate label */
 		if (ctx == CTX_AND_RIGHT || ctx == CTX_TOP) {
 			count = 1;
-			count += cntCondLbls(e->left, CTX_OR_LEFT);
-			count += cntCondLbls(e->right, CTX_OR_RIGHT);
+			count += cntCondLbls(left, CTX_OR_LEFT);
+			count += cntCondLbls(right, CTX_OR_RIGHT);
 		} else {
 			/* chained || shares parent's target */
-			count = cntCondLbls(e->left, CTX_OR_LEFT);
-			count += cntCondLbls(e->right, ctx);
+			count = cntCondLbls(left, CTX_OR_LEFT);
+			count += cntCondLbls(right, ctx);
 		}
 		return count;
 	}
 
 	/* AND (&&) */
-	if (e->op == LAND) {
+	if (op == LAND) {
 		/* && inside || (right side) or at top needs intermediate label */
 		if (ctx == CTX_OR_RIGHT || ctx == CTX_TOP) {
 			count = 1;
-			count += cntCondLbls(e->left, CTX_AND_LEFT);
-			count += cntCondLbls(e->right, CTX_AND_RIGHT);
+			count += cntCondLbls(left, CTX_AND_LEFT);
+			count += cntCondLbls(right, CTX_AND_RIGHT);
 		} else {
 			/* chained && shares parent's target */
-			count = cntCondLbls(e->left, CTX_AND_LEFT);
-			count += cntCondLbls(e->right, ctx);
+			count = cntCondLbls(left, CTX_AND_LEFT);
+			count += cntCondLbls(right, ctx);
 		}
 		return count;
 	}
@@ -554,6 +608,9 @@ static void
 emitExpr(struct expr *e)
 {
 	struct name *sym;
+	struct expr *left, *right;
+	struct type *type;
+	unsigned char op;
 	char *name;
 
 	if (!e) {
@@ -561,9 +618,14 @@ emitExpr(struct expr *e)
 		return;
 	}
 
-	switch (e->op) {
+	op = e->op;
+	left = e->left;
+	right = e->right;
+	type = e->type;
+
+	switch (op) {
 	case CONST:
-		fdprintf(astFd, "#%c", typeSfx(e->type));
+		fdprintf(astFd, "#%c", typeSfx(type));
 		emitHexNum32(e->v);
 		break;
 
@@ -606,11 +668,11 @@ emitExpr(struct expr *e)
 		{
 			int argc = 0;
 			struct expr *arg;
-			char ret_type = typeSfx(e->type);
-			for (arg = e->right; arg; arg = arg->next) argc++;
+			char ret_type = typeSfx(type);
+			for (arg = right; arg; arg = arg->next) argc++;
 			fdprintf(astFd, "@%c%02x", ret_type, argc);
-			emitChild(e->left);
-			for (arg = e->right; arg; arg = arg->next)
+			emitChild(left);
+			for (arg = right; arg; arg = arg->next)
 				emitChild(arg);
 		}
 		break;
@@ -620,11 +682,11 @@ emitExpr(struct expr *e)
 	case SEXT:
 		/* Cast operators with destination width annotation */
 		{
-			char size_suffix = typeSfx(e->type);
-			unsigned char op_char = (e->op == NARROW) ? 'N' :
-			    (e->op == WIDEN) ? 'W' : AST_SEXT;
+			char size_suffix = typeSfx(type);
+			unsigned char op_char = (op == NARROW) ? 'N' :
+			    (op == WIDEN) ? 'W' : AST_SEXT;
 			fdprintf(astFd, "%c%c", op_char, size_suffix);
-			emitChild(e->left);
+			emitChild(left);
 		}
 		break;
 
@@ -632,8 +694,8 @@ emitExpr(struct expr *e)
 		/* Memory copy operator: Y length. dest src */
 		fdprintf(astFd, "Y");
 		emitHexNum(e->v);  /* v field contains byte count */
-		emitChild(e->left);
-		emitChild(e->right);
+		emitChild(left);
+		emitChild(right);
 		break;
 
 	case INCR:
@@ -644,21 +706,21 @@ emitExpr(struct expr *e)
 		{
 			unsigned char op_char;
 			int amount = 1;
-			char size_suffix = typeSfx(e->type);
+			char size_suffix = typeSfx(type);
 
-			if (e->op == INCR) {
+			if (op == INCR) {
 				op_char = (e->flags & E_POSTFIX) ? AST_POSTINC : AST_PREINC;
 			} else {
 				op_char = (e->flags & E_POSTFIX) ? AST_POSTDEC : AST_PREDEC;
 			}
 
 			/* Calculate increment amount based on type */
-			if (e->type && (e->type->flags & TF_POINTER) && e->type->sub) {
-				amount = e->type->sub->size;
+			if (type && (type->flags & TF_POINTER) && type->sub) {
+				amount = type->sub->size;
 			}
 
 			fdprintf(astFd, "%c%c", op_char, size_suffix);
-			emitChild(e->left);
+			emitChild(left);
 			emitHexNum(amount);
 		}
 		break;
@@ -673,7 +735,7 @@ emitExpr(struct expr *e)
 			} else {
 				fdprintf(astFd, "0000");  /* fallback */
 			}
-			emitChild(e->left);
+			emitChild(left);
 		}
 		break;
 
@@ -687,20 +749,20 @@ emitExpr(struct expr *e)
 			} else {
 				fdprintf(astFd, "0000");  /* fallback */
 			}
-			emitChild(e->left);
-			emitChild(e->right);
+			emitChild(left);
+			emitChild(right);
 		}
 		break;
 
 	case QUES:
 		/* Ternary: ?w nlabels cond then else - flatten the COLON node */
 		{
-			unsigned char nlabels = cntCondLbls(e->left, CTX_TOP);
-			fdprintf(astFd, "?%c%02x", typeSfx(e->type), nlabels);
-			emitChild(e->left);
-			if (e->right && e->right->op == COLON) {
-				emitChild(e->right->left);
-				emitChild(e->right->right);
+			unsigned char nlabels = cntCondLbls(left, CTX_TOP);
+			fdprintf(astFd, "?%c%02x", typeSfx(type), nlabels);
+			emitChild(left);
+			if (right && right->op == COLON) {
+				emitChild(right->left);
+				emitChild(right->right);
 			}
 		}
 		break;
@@ -710,31 +772,31 @@ emitExpr(struct expr *e)
 	case MODEQ:
 		/* Compound assignment operators with high-bit tokens - map to ASCII */
 		{
-			unsigned char op_char = (e->op == SUBEQ) ? AST_SUBEQ :
-			    (e->op == ANDEQ) ? AST_ANDEQ : AST_MODEQ;
-			fdprintf(astFd, "%c%c", op_char, typeSfx(e->type));
-			emitChild(e->left);
-			emitChild(e->right);
+			unsigned char op_char = (op == SUBEQ) ? AST_SUBEQ :
+			    (op == ANDEQ) ? AST_ANDEQ : AST_MODEQ;
+			fdprintf(astFd, "%c%c", op_char, typeSfx(type));
+			emitChild(left);
+			emitChild(right);
 		}
 		break;
 
 	default:
 		/* Optimize: *++p -> (++p, *p) using comma operator
 		 * This lets pass2 see simple inc + simple deref */
-		if (e->op == DEREF && e->left &&
-		    (e->left->op == INCR || e->left->op == DECR) &&
-		    !(e->left->flags & E_POSTFIX)) {
+		if (op == DEREF && left &&
+		    (left->op == INCR || left->op == DECR) &&
+		    !(left->flags & E_POSTFIX)) {
 			/* Emit: ,type (++p) (M type p) */
-			fdprintf(astFd, ",%c", typeSfx(e->type));
-			emitExpr(e->left);  /* the ++p */
-			fdprintf(astFd, "M%c", typeSfx(e->type));
-			emitExpr(e->left->left);  /* just p */
+			fdprintf(astFd, ",%c", typeSfx(type));
+			emitExpr(left);  /* the ++p */
+			fdprintf(astFd, "M%c", typeSfx(type));
+			emitExpr(left->left);  /* just p */
 			break;
 		}
 		/* All operators get width suffix: op width operands... */
-		fdprintf(astFd, "%c%c", e->op, typeSfx(e->type));
-		emitChild(e->left);
-		emitChild(e->right);
+		fdprintf(astFd, "%c%c", op, typeSfx(type));
+		emitChild(left);
+		emitChild(right);
 		break;
 	}
 }
@@ -839,7 +901,7 @@ emitStmt(struct stmt *st)
 			/* Emit: B decl_count stmt_count decls... stmts... */
 			fdprintf(astFd, "B%02x%02x", decl_count, stmt_count);
 
-			/* Emit declarations with register allocation */
+			/* Emit declarations with register allocation and frame offset */
 			if (st->locals) {
 				for (local = st->locals; local; local = local->next) {
 					if (local->kind == funarg)
@@ -848,7 +910,8 @@ emitStmt(struct stmt *st)
 						local->mangled_name : local->name;
 					fdprintf(astFd, "d%c", typeSfx(local->type));
 					emitHexName(lname);
-					fdprintf(astFd, "%02x", local->reg);
+					fdprintf(astFd, "%02x%02x", local->reg,
+						(unsigned char)local->frm_off);
 				}
 			}
 
@@ -861,15 +924,10 @@ emitStmt(struct stmt *st)
 	case IF:
 		/* Dead code elimination for constant conditions */
 		if (st->left && (st->left->flags & E_CONST)) {
-			if (st->left->v == 0) {
-				/* if (0) - emit only else branch */
-				if (st->otherwise)
-					emitStmt(st->otherwise);
-			} else {
-				/* if (non-zero) - emit only then branch */
-				if (st->chain)
-					emitStmt(st->chain);
-			}
+			if (st->left->v == 0)
+				emitStmt(st->otherwise);  /* if (0) - emit only else */
+			else
+				emitStmt(st->chain);      /* if (non-zero) - emit only then */
 		} else {
 			/* If: I flags nlabels cond then [else]
 			 * flags: bit 0 = has_else
@@ -881,8 +939,7 @@ emitStmt(struct stmt *st)
 				emitStmt(st->chain);
 			else
 				fdprintf(astFd, ";");  /* empty statement */
-			if (st->otherwise)
-				emitStmt(st->otherwise);
+			emitStmt(st->otherwise);
 		}
 		break;
 
@@ -1118,40 +1175,40 @@ countParams(struct type *functype)
 }
 
 /*
- * Output function parameter list
- * Format: param_count. d suffix name reg d suffix name reg ...
+ * Output function parameter declarations
+ * Format: d suffix name reg off d suffix name reg off ...
  * reg is 2 hex digits: 00=none, 01=B, 02=C, 03=BC, 04=IX
+ * off is 2 hex digits: signed frame offset (params positive, locals negative)
  */
 static void
-emitParams(struct type *functype, struct stmt *body)
+emitPrmDecls(struct type *functype, struct stmt *body)
 {
-	struct name *param, *local;
-	int count = countParams(functype);
-	unsigned char reg;
+	struct name *param, *local, *found;
 
-	fdprintf(astFd, "%02x", count);
 	if (functype && (functype->flags & TF_FUNC)) {
 		for (param = functype->elem; param; param = param->next) {
 			/* Skip void parameters - (void) means no params */
 			if (param->type && param->type->size == 0)
 				continue;
-			/* Look up register allocation from body locals */
-			reg = REG_NONE;
+			/* Look up register/offset from body locals */
+			found = NULL;
 			if (body && body->locals && param->name) {
 				for (local = body->locals; local; local = local->next) {
 					if (local->name && strcmp(local->name, param->name) == 0) {
-						reg = local->reg;
+						found = local;
 						break;
 					}
 				}
 			}
-			/* Emit as: d suffix hexname reg */
+			/* Emit as: d suffix hexname reg off */
 			fdprintf(astFd, "d%c", typeSfx(param->type));
 			if (param->name && param->name[0] != '\0')
 				emitHexName(param->name);
 			else
 				emitHexName("_");  /* anonymous parameter */
-			fdprintf(astFd, "%02x", reg);
+			fdprintf(astFd, "%02x%02x",
+				found ? found->reg : 0,
+				found ? (unsigned char)found->frm_off : 0);
 		}
 	}
 }
@@ -1175,19 +1232,20 @@ emitGlobalAsm(struct stmt *st)
 
 /*
  * Output a function in AST format
- * Format: F rettype hexname param_count. params... body
+ * Format: F rettype hexname param_count frm_size params... body
  */
 void
 emitFunction(struct name *func)
 {
 	char func_name[256];
 	char ret_suffix;
+	int frm_size;
 
 	if (!func || !func->u.body)
 		return;
 
 	/* Analyze variable usage and allocate registers BEFORE emission */
-	analyzeFunc(func);
+	frm_size = analyzeFunc(func);
 
 	/* Static functions use mangled name, public get underscore prefix */
 	if (func->mangled_name) {
@@ -1205,11 +1263,13 @@ emitFunction(struct name *func)
 	fdprintf(astFd, "\nF%c", ret_suffix);
 	emitHexName(func_name);
 
-	/* Output parameter list with declarations and register allocations */
-	if (func->type)
-		emitParams(func->type, func->u.body);
-	else
-		fdprintf(astFd, "00");
+	/* Output parameter count and frame size */
+	if (func->type) {
+		fdprintf(astFd, "%02x%02x", countParams(func->type), frm_size);
+		emitPrmDecls(func->type, func->u.body);
+	} else {
+		fdprintf(astFd, "0000");
+	}
 
 	/* Reset jump map for this function */
 	jmpMapCnt = 0;

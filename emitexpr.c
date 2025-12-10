@@ -29,38 +29,46 @@ static int exprCount = 0;
 static int
 execIns(struct expr *e, unsigned char ins)
 {
-    switch (ins) {
-    case EO_NOP:
-        return 1;
+    unsigned char s = 0;
 
-    /* Register moves */
-    case EO_HL_BC:
-        emit(S_BCHL);
-        return 1;
+    switch (ins) {
+    /* Simple emit cases - set s and break */
+    case EO_HL_BC: s = S_BCHL; break;
     case EO_HL_DE:
-    case EO_DE_HL:
-        emit(S_EXDEHL);
-        return 1;
-    case EO_BC_HL:
-        fdprintf(outFd, "\tld b, h\n\tld c, l\n");
-        return 1;
-    case EO_A_L:
-        emit(S_AL);
+    case EO_DE_HL: s = S_EXDEHL; break;
+    case EO_BC_HL: s = S_BCHLX; break;
+    case EO_A_L: s = S_AL; break;
+    case EO_A_BC_IND: s = S_LDABC; break;
+    case EO_ADD_HL_DE: s = S_ADDHLDE; break;
+    case EO_ADD_HL_BC: s = S_ADDHLBC; break;
+    case EO_SBC_HL_DE: s = S_SBCHLDE; break;
+    case EO_ADD_IX_DE: s = S_ADDIXDE; break;
+    case EO_ADD_IX_BC: s = S_ADDIXBC; break;
+    case EO_DE_IX: s = S_IXDE; break;
+    case EO_INC_HL: s = S_INCHL; break;
+    case EO_DEC_HL: s = S_DECHL; break;
+    case EO_WIDEN: s = S_WIDEN; break;
+    case EO_SEXT: s = S_SEXT; break;
+    case EO_PUSH_HL: s = S_PUSHHL; break;
+    case EO_POP_HL: s = S_POPHL; break;
+    case EO_PUSH_DE: s = S_PUSHDE; break;
+    case EO_POP_DE: s = S_POPDE; break;
+
+    /* Complex cases with additional logic */
+    case EO_NOP:
         return 1;
     case EO_A_C:
         if (fnARegvar == REG_C)
-            return 1;  /* Already in A */
-        fdprintf(outFd, "\tld a, c\n");
+            return 1;
+        emit(S_LDAC);
         fnARegvar = REG_C;
         return 1;
     case EO_A_B:
         if (fnARegvar == REG_B)
-            return 1;  /* Already in A */
-        fdprintf(outFd, "\tld a, b\n");
+            return 1;
+        emit(S_LDAB);
         fnARegvar = REG_B;
         return 1;
-
-    /* Word loads to HL */
     case EO_HL_IYW:
         loadWordIY(e->offset);
         return 1;
@@ -72,12 +80,10 @@ execIns(struct expr *e, unsigned char ins)
         return 1;
     case EO_HL_CONST:
         if (cacheFindWord(e) == 'H')
-            return 1;  /* Already in HL */
+            return 1;
         fdprintf(outFd, "\tld hl, %ld\n", e->value);
-        cacheSetHL(e);  /* Cache constant for potential reuse */
+        cacheSetHL(e);
         return 1;
-
-    /* Long (4-byte) load to HLHL' */
     case EO_HLHL_IYL:
         fdprintf(outFd, "\tld a, %d\n\tcall getLiy\n", (int)e->offset);
         clearHL();
@@ -86,17 +92,12 @@ execIns(struct expr *e, unsigned char ins)
         fdprintf(outFd, "\tld a, %d\n\tcall getLix\n", (int)e->offset);
         clearHL();
         return 1;
-
     case EO_DE_CONST:
-        /* Load constant/symbol address into DE */
-        if (e->symbol) {
+        if (e->symbol)
             fdprintf(outFd, "\tld de, %s\n", stripVarPfx(e->symbol));
-        } else {
+        else
             fdprintf(outFd, "\tld de, %ld\n", e->value);
-        }
         return 1;
-
-    /* Byte loads to A */
     case EO_A_IY:
         loadByteIY(e->offset, 0);
         return 1;
@@ -113,94 +114,38 @@ execIns(struct expr *e, unsigned char ins)
                 fnAZero = 1;
             }
         } else {
-            fdprintf(outFd, "\tld a, %ld\n", e->value & 0xff);
+            emit1(F_LDA, e->value & 0xff);
             fnAZero = 0;
         }
         clearA();
         return 1;
-    case EO_A_BC_IND:
-        fdprintf(outFd, "\tld a, (bc)\n");
-        return 1;
     case EO_A_IX:
         emitIndexDrf('x', e->offset, 1, R_A, NULL);
         return 1;
-
-    /* Word stores from HL */
     case EO_IYW_HL:
         storeWordIY(e->offset);
         return 1;
-
-    /* Word stores from BC/DE to global (ED-prefixed) */
     case EO_MEM_BC:
-        if (e->left && e->left->symbol) {
+        if (e->left && e->left->symbol)
             fdprintf(outFd, "\tld (%s), bc\n", stripVarPfx(e->left->symbol));
-        }
         return 1;
     case EO_MEM_DE:
-        if (e->left && e->left->symbol) {
+        if (e->left && e->left->symbol)
             fdprintf(outFd, "\tld (%s), de\n", stripVarPfx(e->left->symbol));
-        }
         return 1;
-
-    /* Byte stores from A */
     case EO_IY_A:
         storeByteIY(e->offset, 0);
-        return 1;
-
-    /* Arithmetic */
-    case EO_ADD_HL_DE:
-        emit(S_ADDHLDE);
-        return 1;
-    case EO_ADD_HL_BC:
-        emit(S_ADDHLBC);
-        return 1;
-    case EO_SBC_HL_DE:
-        emit(S_SBCHLDE);
-        return 1;
-    case EO_ADD_IX_DE:
-        fdprintf(outFd, "\tadd ix, de\n");
-        return 1;
-    case EO_ADD_IX_BC:
-        fdprintf(outFd, "\tadd ix, bc\n");
         return 1;
     case EO_IX_CONST:
         fdprintf(outFd, "\tld ix, %d\n", e->value);
         return 1;
-    case EO_DE_IX:
-        fdprintf(outFd, "\tpush ix\n\tpop de\n");
-        return 1;
-    case EO_INC_HL:
-        emit(S_INCHL);
-        return 1;
-    case EO_DEC_HL:
-        emit(S_DECHL);
-        return 1;
-
-    /* Type conversions */
-    case EO_WIDEN:
-        fdprintf(outFd, "\tld l, a\n\tld h, 0\n");
-        return 1;
-    case EO_SEXT:
-        fdprintf(outFd, "\tld l, a\n\trla\n\tsbc a, a\n\tld h, a\n");
-        return 1;
-
-    /* Stack ops */
-    case EO_PUSH_HL:
-        emit(S_PUSHHL);
-        return 1;
-    case EO_POP_HL:
-        emit(S_POPHL);
-        return 1;
-    case EO_PUSH_DE:
-        emit(S_PUSHDE);
-        return 1;
-    case EO_POP_DE:
-        emit(S_POPDE);
-        return 1;
 
     default:
-        return 0;  /* Not handled */
+        return 0;
     }
+
+    emit(s);
+    return 1;
 }
 
 /*
@@ -252,16 +197,22 @@ trySched(struct expr *e)
     return 1;  /* Fully handled */
 }
 
-void emitExpr(struct expr *e)
+void
+emitExpr(struct expr *e)
 {
+    struct expr *left;
+    unsigned char op;
+
     if (!e) return;
+    op = e->op;
+    left = e->left;
     exprCount++;
 #ifdef DEBUG
     if (TRACE(T_EXPR)) {
-        fdprintf(2, "emitExpr: %d calls, op=%c (0x%x) nins=%d\n", exprCount, e->op, e->op, e->nins);
+        fdprintf(2, "emitExpr: %d calls, op=%c (0x%x) nins=%d\n", exprCount, op, op, e->nins);
     }
     if (exprCount > 100000) {
-        fdprintf(2, "emitExpr: exceeded 100000 calls, op=%c\n", e->op);
+        fdprintf(2, "emitExpr: exceeded 100000 calls, op=%c\n", op);
         exit(1);
     }
 #endif
@@ -273,19 +224,19 @@ void emitExpr(struct expr *e)
     }
 
     /* Handle BC indirect load with caching - use opflags */
-    if (e->op == 'M' && (e->opflags & OP_BCINDIR)) {
+    if (op == 'M' && (e->opflags & OP_BCINDIR)) {
         emitBCIndir();
         freeNode(e);
         return;
     }
-    /* Handle increment/decrement - Pattern 1 (e->symbol) or Pattern 2/3 (e->left) */
-    else if ((e->op == AST_PREINC || e->op == AST_POSTINC || e->op == AST_PREDEC || e->op == AST_POSTDEC) &&
-             (e->symbol || e->left)) {
+    /* Handle increment/decrement - Pattern 1 (e->symbol) or Pattern 2/3 (left) */
+    else if ((op == AST_PREINC || op == AST_POSTINC || op == AST_PREDEC || op == AST_POSTDEC) &&
+             (e->symbol || left)) {
         emitIncDec(e);
         return;
     }
     /* Handle ASSIGN - use op check */
-    else if (e->op == '=') {
+    else if (op == '=') {
         /* Check for scheduled direct store (EO_MEM_BC, etc) */
         if (e->nins > 0 && (e->ins[0] == EO_MEM_BC || e->ins[0] == EO_MEM_DE)) {
             int i;
@@ -310,27 +261,27 @@ void emitExpr(struct expr *e)
         return;
     }
     /* Binary operators with accumulator management need special handling */
-    else if (isBinopWAccum(e->op) && e->left && e->right) {
+    else if (isBinopWAccum(op) && left && e->right) {
         emitBinop(e);
         return;
     }
     /* CALL operator - children handled by emitCall */
-    else if (e->op == '@') {
+    else if (op == '@') {
         emitCall(e);
         return;
     }
     /* Handle ternary operator (? :) */
-    else if (e->op == '?') {
+    else if (op == '?') {
         emitTernary(e);
         return;
     }
     /* Handle NARROW - truncate to smaller type */
-    else if (e->op == 'N') {
-        if (e->left && e->size == 1) {
+    else if (op == 'N') {
+        if (left && e->size == 1) {
             /* Narrowing to byte */
-            if (e->left->op == 'C') {
+            if (left->op == 'C') {
                 /* Constant - just load low byte directly */
-                int val = e->left->value & 0xff;
+                int val = left->value & 0xff;
                 if (val == 0 && !fnAZero) {
                     emit(S_XORA);
                     fnAZero = 1;
@@ -338,52 +289,52 @@ void emitExpr(struct expr *e)
                     fdprintf(outFd, "\tld a, %d\n", val);
                     fnAZero = 0;
                 }
-                freeExpr(e->left);
+                freeExpr(left);
                 clearA();
             } else {
                 /* Non-constant - emit child then move L to A */
-                emitExpr(e->left);
+                emitExpr(left);
                 emit(S_AL);
                 clearA();
             }
-        } else if (e->left) {
+        } else if (left) {
             /* Not narrowing to byte - just emit child */
-            emitExpr(e->left);
+            emitExpr(left);
         }
         freeNode(e);
         return;
     }
     /* Handle DEREF of register variable with caching - use opflags */
-    else if (e->op == 'M' && (e->opflags & OP_REGVAR) &&
-             e->left && e->left->op == '$') {
+    else if (op == 'M' && (e->opflags & OP_REGVAR) &&
+             left && left->op == '$') {
         emitRegVarDrf(e);
         return;
     }
     /* Handle DEREF of global with caching */
-    else if (e->op == 'M' && (e->opflags & OP_GLOBAL) &&
-             e->left && e->left->op == '$') {
+    else if (op == 'M' && (e->opflags & OP_GLOBAL) &&
+             left && left->op == '$') {
         emitGlobDrf(e);
         return;
     }
     /* Handle DEREF of stack variable (IY-indexed) */
-    else if (e->op == 'M' && (e->opflags & OP_IYMEM) &&
-             e->left && e->left->op == '$') {
+    else if (op == 'M' && (e->opflags & OP_IYMEM) &&
+             left && left->op == '$') {
         emitStackDrf(e);
         return;
     }
     /* Handle DEREF of local member: (M (+ $var C)) with pre-computed offset */
-    else if (e->op == 'M' && (e->opflags & OP_IYMEM) &&
-             e->left && e->left->op == '+' && e->cached_var) {
+    else if (op == 'M' && (e->opflags & OP_IYMEM) &&
+             left && left->op == '+' && e->cached_var) {
         /* offset field has combined var offset + member offset */
         emitIndexDrf('y', e->offset, e->size, e->dest, NULL);
-        freeExpr(e->left);
+        freeExpr(left);
         freeNode(e);
         return;
     }
     /* Handle DEREF with indirect addressing (loc=LOC_INDIR) */
-    else if (e->op == 'M' && e->loc == LOC_INDIR) {
+    else if (op == 'M' && e->loc == LOC_INDIR) {
         /* Emit address calculation first */
-        emitExpr(e->left);
+        emitExpr(left);
         /* Then load through HL */
         if (e->size == 1) {
             emit(S_AHL);
@@ -396,14 +347,14 @@ void emitExpr(struct expr *e)
         return;
     }
     /* Handle DEREF of IX-allocated pointer: (M (M $ptr)) or (M (+ (M $ptr) ofs)) */
-    else if (e->op == 'M' && e->loc == LOC_IX) {
+    else if (op == 'M' && e->loc == LOC_IX) {
         emitIndexDrf('x', e->offset, e->size, e->dest, NULL);
-        freeExpr(e->left);
+        freeExpr(left);
         freeNode(e);
         return;
     }
     /* Handle symbol address - check if global or local */
-    else if (e->op == '$' && e->symbol) {
+    else if (op == '$' && e->symbol) {
         const char *sym_name = stripVarPfx(e->symbol);
         struct local_var *var = findVar(sym_name);
 
@@ -442,7 +393,7 @@ void emitExpr(struct expr *e)
         return;
     }
     /* Handle constants with scheduler */
-    else if (e->op == 'C' && e->loc == LOC_CONST) {
+    else if (op == 'C' && e->loc == LOC_CONST) {
         if (e->size == 1) {
             if ((e->value & 0xff) == 0) {
                 if (!fnAZero) {
@@ -452,7 +403,7 @@ void emitExpr(struct expr *e)
             } else if (cacheFindByte(e) == 'A') {
                 /* A already has this value */
             } else {
-                fdprintf(outFd, "\tld a, %ld\n", e->value & 0xff);
+                emit1(F_LDA, e->value & 0xff);
                 fnAZero = 0;
                 cacheSetA(e);
             }
@@ -464,11 +415,11 @@ void emitExpr(struct expr *e)
         return;
     }
     /* Handle specialized BYTE shift ops (LSHIFTEQ/RSHIFTEQ with register var) */
-    else if ((e->op == '0' || e->op == '6') && e->size == 1 &&
+    else if ((op == '0' || op == '6') && e->size == 1 &&
              (e->opflags & OP_REGVAR) && e->cached_var) {
         struct local_var *var = e->cached_var;
         const char *rn = byteRegName(var->reg);
-        const char *inst = (e->op == '0') ? "sla" : "srl";
+        const char *inst = (op == '0') ? "sla" : "srl";
         int count = e->value, i;
         if (var->reg == REG_BC) rn = "c";
         for (i = 0; i < count; i++)
@@ -477,11 +428,11 @@ void emitExpr(struct expr *e)
         return;
     }
     /* Handle specialized bit ops (OREQ=set, ANDEQ=res) */
-    else if ((e->op == '1' || e->op == AST_ANDEQ) && !e->left && !e->right && e->cached_var &&
+    else if ((op == '1' || op == AST_ANDEQ) && !left && !e->right && e->cached_var &&
              e->value >= 0 && e->value <= 7) {
         /* Simple variable patterns - kids were freed, bitnum stored in e->value */
         struct local_var *var = e->cached_var;
-        const char *inst = (e->op == '1') ? "set" : "res";
+        const char *inst = (op == '1') ? "set" : "res";
         int bitnum = e->value;
         if (e->opflags & OP_REGVAR) {
             const char *rn = byteRegName(var->reg);
@@ -497,8 +448,8 @@ void emitExpr(struct expr *e)
         return;
     }
     /* Handle specialized bit ops with IX-indexed or (hl) addressing */
-    else if ((e->op == '1' || e->op == AST_ANDEQ) && (e->opflags & OP_IXMEM) && !e->left) {
-        const char *inst = (e->op == '1') ? "set" : "res";
+    else if ((op == '1' || op == AST_ANDEQ) && (e->opflags & OP_IXMEM) && !left) {
+        const char *inst = (op == '1') ? "set" : "res";
         int bitnum = (e->value >> 8) & 0xff;
         int ofs = (char)(e->value & 0xff);
         fdprintf(outFd, "\t%s %d, (ix %c %d)\n", inst, bitnum,
@@ -506,21 +457,21 @@ void emitExpr(struct expr *e)
         freeNode(e);
         return;
     }
-    else if ((e->op == '1' || e->op == AST_ANDEQ) && e->left && !e->right) {
+    else if ((op == '1' || op == AST_ANDEQ) && left && !e->right) {
         /* (hl) addressing - emit left for address, then bit op */
-        const char *inst = (e->op == '1') ? "set" : "res";
+        const char *inst = (op == '1') ? "set" : "res";
         int bitnum = e->value;
-        emitExpr(e->left);
+        emitExpr(left);
         fdprintf(outFd, "\t%s %d, (hl)\n", inst, bitnum);
         freeNode(e);
         return;
     }
     /* Handle specialized OREQ/ANDEQ/XOREQ for byte register variables */
-    else if ((e->op == '1' || e->op == AST_ANDEQ || e->op == 'X') && (e->opflags & OP_REGVAR) &&
-             !e->left && e->right && e->cached_var) {
+    else if ((op == '1' || op == AST_ANDEQ || op == 'X') && (e->opflags & OP_REGVAR) &&
+             !left && e->right && e->cached_var) {
         struct local_var *var = e->cached_var;
         const char *rn = byteRegName(var->reg);
-        const char *inst = (e->op == '1') ? "or" : (e->op == AST_ANDEQ) ? "and" : "xor";
+        const char *inst = (op == '1') ? "or" : (op == AST_ANDEQ) ? "and" : "xor";
         if (var->reg == REG_BC) rn = "c";
         emitExpr(e->right);
         fdprintf(outFd, "\t%s %s\n\tld %s, a\n", inst, rn, rn);
@@ -528,13 +479,13 @@ void emitExpr(struct expr *e)
         return;
     }
     /* Handle specialized PLUSEQ/SUBEQ for byte register variables */
-    else if ((e->op == 'P' || e->op == AST_SUBEQ) && (e->opflags & OP_REGVAR) &&
-             !e->left && e->right && e->cached_var) {
+    else if ((op == 'P' || op == AST_SUBEQ) && (e->opflags & OP_REGVAR) &&
+             !left && e->right && e->cached_var) {
         struct local_var *var = e->cached_var;
         const char *rn = byteRegName(var->reg);
         if (var->reg == REG_BC) rn = "c";
         emitExpr(e->right);
-        if (e->op == 'P')
+        if (op == 'P')
             fdprintf(outFd, "\tadd a, %s\n\tld %s, a\n", rn, rn);
         else
             fdprintf(outFd, "\tld e, a\n\tld a, %s\n\tsub e\n\tld %s, a\n", rn, rn);
@@ -542,7 +493,7 @@ void emitExpr(struct expr *e)
         return;
     }
     /* Handle word LSHIFTEQ for BC register variable with constant shift */
-    else if (e->op == '0' && e->size == 2 && (e->opflags & OP_REGVAR) &&
+    else if (op == '0' && e->size == 2 && (e->opflags & OP_REGVAR) &&
              e->cached_var && e->cached_var->reg == REG_BC &&
              e->right && e->right->op == 'C' &&
              e->right->value >= 1 && e->right->value <= 8) {
@@ -551,21 +502,21 @@ void emitExpr(struct expr *e)
         for (i = 0; i < cnt; i++)
             emit(S_ADDHLHL);
         emit(S_BCHLX);
-        freeExpr(e->left);
+        freeExpr(left);
         freeExpr(e->right);
         freeNode(e);
         return;
     }
     /* Handle word OREQ for BC register variable */
-    else if (e->op == '1' && e->size == 2 && (e->opflags & OP_REGVAR) &&
+    else if (op == '1' && e->size == 2 && (e->opflags & OP_REGVAR) &&
              e->cached_var && e->cached_var->reg == REG_BC && e->right) {
         /* Check if RHS is byte-sized (high byte is implicitly 0) */
         int rhs_byte = (e->right->size == 1);
-        freeExpr(e->left);
+        freeExpr(left);
         emitExpr(e->right);  /* Result in A (byte) or HL (word) */
         if (rhs_byte) {
             /* RHS in A, just OR with C */
-            fdprintf(outFd, "\tor c\n\tld c, a\n");
+            emit(S_ORCCA);
         } else {
             /* RHS in HL, OR both bytes */
             emit(S_ALORCC);
@@ -575,17 +526,17 @@ void emitExpr(struct expr *e)
         return;
     }
     /* Handle word PLUSEQ for BC register variable */
-    else if (e->op == 'P' && e->size == 2 && (e->opflags & OP_REGVAR) &&
+    else if (op == 'P' && e->size == 2 && (e->opflags & OP_REGVAR) &&
              e->cached_var && e->cached_var->reg == REG_BC && e->right) {
-        freeExpr(e->left);
+        freeExpr(left);
         emitExpr(e->right);  /* Result in HL */
         emit(S_ADDHLBCBC);
         freeNode(e);
         return;
     }
     /* Handle WIDEN - zero extend byte to word */
-    else if (e->op == 'W' && e->left) {
-        emitExpr(e->left);
+    else if (op == 'W' && left) {
+        emitExpr(left);
         /* Child puts byte result in A, zero-extend to HL */
         emit(S_WIDEN);
         clearHL();
@@ -593,10 +544,10 @@ void emitExpr(struct expr *e)
         return;
     }
     /* Handle long (4-byte) LSHIFTEQ on IY-indexed variable */
-    else if (e->op == '0' && e->size == 4 && (e->opflags & OP_IYMEM) && e->cached_var) {
+    else if (op == '0' && e->size == 4 && (e->opflags & OP_IYMEM) && e->cached_var) {
         int ofs = varIYOfs(e->cached_var);
         int count = e->right ? e->right->value : 0;
-        freeExpr(e->left);
+        freeExpr(left);
         freeExpr(e->right);
         /* Set up EA in DE, then shift */
         fdprintf(outFd, "\tld a, %d\n\tcall lea_iy\n", ofs);
@@ -605,15 +556,15 @@ void emitExpr(struct expr *e)
         return;
     }
     /* Handle long (4-byte) OREQ on IY-indexed variable */
-    else if (e->op == '1' && e->size == 4 && (e->opflags & OP_IYMEM) && e->cached_var) {
+    else if (op == '1' && e->size == 4 && (e->opflags & OP_IYMEM) && e->cached_var) {
         int ofs = varIYOfs(e->cached_var);
         int rhs_size = e->right ? e->right->size : 2;
-        freeExpr(e->left);
+        freeExpr(left);
         /* Emit RHS - result in A (byte) or HL (word) */
         emitExpr(e->right);
         /* Widen to HLHL': byte->A needs ld l,a; ld h,0, word already in HL */
         if (rhs_size == 1) {
-            fdprintf(outFd, "\tld l, a\n\tld h, 0\n");
+            emit(S_WIDEN);
         }
         emit(S_EXX0);  /* Clear high word */
         /* Set up EA in DE, then OR */
@@ -624,8 +575,8 @@ void emitExpr(struct expr *e)
     }
     else {
         /* Normal postorder traversal for other operators */
-        if (e->left) emitExpr(e->left);
-        if (e->right) emitExpr(e->right);
+        emitExpr(left);
+        emitExpr(e->right);
 
         /* Emit deferred cleanup (for CALL stack cleanup after result used) */
         if (e->cleanup_block) {
@@ -635,7 +586,6 @@ void emitExpr(struct expr *e)
 
     /* Free this node (children already freed by recursive emit calls above) */
     xfree(e->cleanup_block);
-    if (e->jump) freeJump(e->jump);
     free(e);
 }
 
@@ -643,11 +593,15 @@ void emitExpr(struct expr *e)
  * New emit: Execute scheduled instructions
  * This is the "dumb" emit that just does what the scheduler told it to.
  */
-void emit2Expr(struct expr *e)
+void
+emit2Expr(struct expr *e)
 {
+    struct expr *left, *ll;
     int i;
 
     if (!e) return;
+    left = e->left;
+    ll = left ? left->left : NULL;
 
     /* Process children first (post-order) */
     emit2Expr(e->left);
@@ -655,205 +609,93 @@ void emit2Expr(struct expr *e)
 
     /* Execute scheduled instructions */
     for (i = 0; i < e->nins; i++) {
+        unsigned char s = 0, f = 0;
         switch (e->ins[i]) {
-        case EO_NOP:
-            break;
-
-        /* Register-to-register moves */
-        case EO_HL_BC:
-            emit(S_BCHL);
-            break;
+        /* Simple emit cases - set s and break */
+        case EO_HL_BC: s = S_BCHL; break;
         case EO_HL_DE:
-        case EO_DE_HL:
-            emit(S_EXDEHL);
-            break;
-        case EO_BC_HL:
-            fdprintf(outFd, "\tld b, h\n\tld c, l\n");
-            break;
-        case EO_A_L:
-            emit(S_AL);
-            break;
-        case EO_A_C:
-            fdprintf(outFd, "\tld a, c\n");
-            break;
-        case EO_L_A:
-            fdprintf(outFd, "\tld l, a\n\tld h, 0\n");
-            break;
+        case EO_DE_HL: s = S_EXDEHL; break;
+        case EO_BC_HL: s = S_BCHLX; break;
+        case EO_A_L: s = S_AL; break;
+        case EO_A_C: s = S_LDAC; break;
+        case EO_L_A: s = S_WIDEN; break;
+        case EO_A_BC_IND: s = S_LDABC; break;
+        case EO_ADD_HL_DE: s = S_ADDHLDE; break;
+        case EO_ADD_HL_BC: s = S_ADDHLBC; break;
+        case EO_SBC_HL_DE: s = S_SBCHLDE; break;
+        case EO_INC_HL: s = S_INCHL; break;
+        case EO_DEC_HL: s = S_DECHL; break;
+        case EO_INC_A: s = S_INCA; break;
+        case EO_DEC_A: s = S_DECA; break;
+        case EO_OR_A: s = S_ORA; break;
+        case EO_AHORL: s = S_AHORL; break;
+        case EO_PUSH_HL: s = S_PUSHHL; break;
+        case EO_PUSH_DE: s = S_PUSHDE; break;
+        case EO_POP_HL: s = S_POPHL; break;
+        case EO_POP_DE: s = S_POPDE; break;
+        case EO_WIDEN: s = S_WIDEN; break;
+        case EO_SEXT: s = S_SEXT; break;
 
-        /* Memory loads - word to HL */
-        case EO_HL_IYW:
-            loadWordIY(e->offset);
-            break;
+        /* Byte arithmetic - set f and break */
+        case EO_ADD_A_N: f = F_ADDA; break;
+        case EO_SUB_A_N: f = F_SUB; break;
+        case EO_AND_A_N: f = F_AND; break;
+        case EO_OR_A_N: f = F_OR; break;
+        case EO_XOR_A_N: f = F_XOR; break;
+        case EO_CP_N: f = F_CP; break;
+
+        /* Complex cases */
+        case EO_NOP: continue;
+        case EO_HL_IYW: loadWordIY(e->offset); continue;
         case EO_HL_MEM:
-            if (e->left && e->left->symbol) {
-                const char *sym = stripVarPfx(e->left->symbol);
-                fdprintf(outFd, "\tld hl, (%s)\n", sym);
-            }
-            break;
+            if (left && left->symbol)
+                fdprintf(outFd, "\tld hl, (%s)\n", stripVarPfx(left->symbol));
+            continue;
         case EO_HL_CONST:
             fdprintf(outFd, "\tld hl, %ld\n", e->value);
-            break;
-
-        /* Memory loads - byte to A */
-        case EO_A_IY:
-            loadByteIY(e->offset, 0);
-            break;
+            continue;
+        case EO_A_IY: loadByteIY(e->offset, 0); continue;
         case EO_A_MEM:
-            if (e->left && e->left->symbol) {
-                const char *sym = stripVarPfx(e->left->symbol);
-                fdprintf(outFd, "\tld a, (%s)\n", sym);
-            }
-            break;
+            if (left && left->symbol)
+                fdprintf(outFd, "\tld a, (%s)\n", stripVarPfx(left->symbol));
+            continue;
         case EO_A_CONST:
-            if ((e->value & 0xff) == 0) {
+            if ((e->value & 0xff) == 0)
                 emit(S_XORA);
-            } else {
-                fdprintf(outFd, "\tld a, %ld\n", e->value & 0xff);
-            }
-            break;
-        case EO_A_BC_IND:
-            fdprintf(outFd, "\tld a, (bc)\n");
-            break;
-
-        /* Memory stores - word from HL */
-        case EO_IYW_HL:
-            storeWordIY(e->offset);
-            break;
+            else
+                emit1(F_LDA, e->value & 0xff);
+            continue;
+        case EO_IYW_HL: storeWordIY(e->offset); continue;
         case EO_MEM_HL:
-            if (e->left && e->left->left && e->left->left->symbol) {
-                const char *sym = stripVarPfx(e->left->left->symbol);
-                fdprintf(outFd, "\tld (%s), hl\n", sym);
-            }
-            break;
+            if (ll && ll->symbol)
+                fdprintf(outFd, "\tld (%s), hl\n", stripVarPfx(ll->symbol));
+            continue;
         case EO_MEM_BC:
-            /* For (= $glob (M $bcvar)), e->left is $glob directly */
-            if (e->left && e->left->symbol) {
-                const char *sym = stripVarPfx(e->left->symbol);
-                fdprintf(outFd, "\tld (%s), bc\n", sym);
-            }
-            break;
+            if (left && left->symbol)
+                fdprintf(outFd, "\tld (%s), bc\n", stripVarPfx(left->symbol));
+            continue;
         case EO_MEM_DE:
-            if (e->left && e->left->symbol) {
-                const char *sym = stripVarPfx(e->left->symbol);
-                fdprintf(outFd, "\tld (%s), de\n", sym);
-            }
-            break;
-
-        /* Memory stores - byte from A */
-        case EO_IY_A:
-            storeByteIY(e->offset, 0);
-            break;
+            if (left && left->symbol)
+                fdprintf(outFd, "\tld (%s), de\n", stripVarPfx(left->symbol));
+            continue;
+        case EO_IY_A: storeByteIY(e->offset, 0); continue;
         case EO_MEM_A:
-            if (e->left && e->left->left && e->left->left->symbol) {
-                const char *sym = stripVarPfx(e->left->left->symbol);
-                fdprintf(outFd, "\tld (%s), a\n", sym);
-            }
-            break;
-
-        /* Word arithmetic */
-        case EO_ADD_HL_DE:
-            emit(S_ADDHLDE);
-            break;
-        case EO_ADD_HL_BC:
-            emit(S_ADDHLBC);
-            break;
-        case EO_SBC_HL_DE:
-            emit(S_SBCHLDE);
-            break;
-
-        /* Byte arithmetic */
-        case EO_ADD_A_N:
-            if (e->right && e->right->op == 'C') {
-                fdprintf(outFd, "\tadd a, %ld\n", e->right->value & 0xff);
-            }
-            break;
-        case EO_SUB_A_N:
-            if (e->right && e->right->op == 'C') {
-                fdprintf(outFd, "\tsub %ld\n", e->right->value & 0xff);
-            }
-            break;
-        case EO_AND_A_N:
-            if (e->right && e->right->op == 'C') {
-                fdprintf(outFd, "\tand %ld\n", e->right->value & 0xff);
-            }
-            break;
-        case EO_OR_A_N:
-            if (e->right && e->right->op == 'C') {
-                fdprintf(outFd, "\tor %ld\n", e->right->value & 0xff);
-            }
-            break;
-        case EO_XOR_A_N:
-            if (e->right && e->right->op == 'C') {
-                fdprintf(outFd, "\txor %ld\n", e->right->value & 0xff);
-            }
-            break;
-        case EO_CP_N:
-            if (e->right && e->right->op == 'C') {
-                fdprintf(outFd, "\tcp %ld\n", e->right->value & 0xff);
-            }
-            break;
-
-        /* Inc/Dec */
-        case EO_INC_HL:
-            emit(S_INCHL);
-            break;
-        case EO_DEC_HL:
-            emit(S_DECHL);
-            break;
-        case EO_INC_A:
-            fdprintf(outFd, "\tinc a\n");
-            break;
-        case EO_DEC_A:
-            fdprintf(outFd, "\tdec a\n");
-            break;
-
-        /* Flag tests */
-        case EO_OR_A:
-            emit(S_ORA);
-            break;
-        case EO_AHORL:
-            emit(S_AHORL);
-            break;
-
-        /* Stack operations */
-        case EO_PUSH_HL:
-            emit(S_PUSHHL);
-            break;
-        case EO_PUSH_DE:
-            emit(S_PUSHDE);
-            break;
-        case EO_POP_HL:
-            emit(S_POPHL);
-            break;
-        case EO_POP_DE:
-            emit(S_POPDE);
-            break;
-
-        /* Type conversions */
-        case EO_WIDEN:
-            fdprintf(outFd, "\tld l, a\n\tld h, 0\n");
-            break;
-        case EO_SEXT:
-            /* Sign extend A to HL: ld l,a; rla; sbc a,a; ld h,a */
-            fdprintf(outFd, "\tld l, a\n\trla\n\tsbc a, a\n\tld h, a\n");
-            break;
-
-        /* Calls */
+            if (ll && ll->symbol)
+                fdprintf(outFd, "\tld (%s), a\n", stripVarPfx(ll->symbol));
+            continue;
         case EO_CALL:
-            if (e->left && e->left->symbol) {
-                fdprintf(outFd, "\tcall %s\n", stripVarPfx(e->left->symbol));
-            }
-            break;
-
-        default:
-            /* Unknown instruction - skip */
-            break;
+            if (left && left->symbol)
+                fdprintf(outFd, "\tcall %s\n", stripVarPfx(left->symbol));
+            continue;
+        default: continue;
         }
+        if (s) emit(s);
+        else if (f && e->right && e->right->op == 'C')
+            emit1(f, e->right->value & 0xff);
     }
 
     /* Free this node */
     xfree(e->cleanup_block);
-    if (e->jump) freeJump(e->jump);
     free(e);
 }
 

@@ -605,7 +605,8 @@ asmblock(void)
  *   Linked list of initializer expressions (via next pointers), or
  *   NULL on error
  */
-static struct expr *parseInitList(void)
+static struct expr *
+parseInitList(void)
 {
     struct expr *head = NULL;
     struct expr *tail = NULL;

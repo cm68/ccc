@@ -62,7 +62,6 @@ deepCopy(struct expr *e)
     c->left = deepCopy(e->left);
     c->right = deepCopy(e->right);
     c->cleanup_block = NULL;
-    c->jump = NULL;
     c->cached_var = NULL;
     return c;
 }

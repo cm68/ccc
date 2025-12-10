@@ -293,7 +293,7 @@ class ASTParser:
         self.advance()
 
         # Block: B decl_count(2) stmt_count(2) decls... stmts...
-        # Declarations: d suffix name reg (reg is 2 hex digits)
+        # Declarations: d suffix name reg off (reg and off are 2 hex digits each)
         if c == 'B':
             decl_count = self.read_hex2()
             stmt_count = self.read_hex2()
@@ -307,8 +307,13 @@ class ASTParser:
                     self.advance()
                     name = self.read_name()
                     reg = self.read_hex2()
+                    off = self.read_hex2()
+                    # Convert unsigned to signed offset
+                    if off > 127:
+                        off = off - 256
                     reg_str = self.REG_NAMES.get(reg, str(reg))
-                    self.prln(f"DECL {name} : {self.width_name(type_char)} reg={reg_str}")
+                    off_str = f"IY{off:+d}" if off else "IY"
+                    self.prln(f"DECL {name} : {self.width_name(type_char)} reg={reg_str} off={off_str}")
             for _ in range(stmt_count):
                 self.parse_stmt()
             self.indent -= 1
@@ -439,12 +444,13 @@ class ASTParser:
             self.prln(f"??? stmt {repr(c)}")
 
     def parse_function(self):
-        """Parse function: F rettype hexname param_count(2) params... body
-        Params format: d suffix name reg (reg is 2 hex digits)"""
+        """Parse function: F rettype hexname param_count(2) frm_size(2) params... body
+        Params format: d suffix name reg off (reg and off are 2 hex digits each)"""
         ret_type = self.cur()
         self.advance()
         name = self.read_name()
         param_count = self.read_hex2()
+        frm_size = self.read_hex2()
 
         params = []
         for _ in range(param_count):
@@ -455,14 +461,19 @@ class ASTParser:
                 self.advance()
                 pname = self.read_name()
                 preg = self.read_hex2()
+                poff = self.read_hex2()
+                # Convert unsigned to signed offset
+                if poff > 127:
+                    poff = poff - 256
                 reg_str = self.REG_NAMES.get(preg, str(preg))
+                off_str = f"IY{poff:+d}" if poff else "IY"
                 if preg:
                     params.append(f"{pname}:{self.width_name(ptype)}@{reg_str}")
                 else:
-                    params.append(f"{pname}:{self.width_name(ptype)}")
+                    params.append(f"{pname}:{self.width_name(ptype)}@{off_str}")
 
         params_str = ', '.join(params)
-        print(f"\nFUNCTION {name}({params_str}) -> {self.width_name(ret_type)}")
+        print(f"\nFUNCTION {name}({params_str}) -> {self.width_name(ret_type)} [frame={frm_size}]")
         print("{")
         self.indent = 1
         self.skip_whitespace()

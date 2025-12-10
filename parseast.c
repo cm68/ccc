@@ -20,6 +20,24 @@ static struct expr *parseExpr(void);
 static struct stmt *parseStmt(void);
 static void doStrLiteral(void);
 
+/* Add a parameter to fnLocals list */
+static void
+addParam(const char *name, unsigned char size, char offset, unsigned char reg)
+{
+	struct local_var *var = malloc(sizeof(struct local_var));
+	if (!var) { fdprintf(2, "oom\n"); exit(1); }
+	var->name = strdup(name);
+	var->size = size;
+	var->offset = offset;
+	var->is_param = 1;
+	var->is_array = 0;
+	var->ref_count = 0;
+	var->agg_refs = 0;
+	var->reg = reg;
+	var->next = fnLocals;
+	fnLocals = var;
+}
+
 /* Skip whitespace (space, tab, newline, cr) */
 static void
 skipWS(void)
@@ -44,7 +62,6 @@ static int hwmParams = 0;    /* params_buf usage */
 
 /* Function context globals */
 char *fnName;
-char *fnParams;
 char *fnRettype;
 struct stmt *fnBody;
 unsigned short fnLblCnt;
@@ -111,7 +128,6 @@ newExpr(unsigned char op)
 	e->flags = 0;
 	e->cleanup_block = NULL;
 	e->label = 0;
-	e->jump = NULL;
 	e->opflags = 0;
 	e->cached_var = NULL;
 	return e;
@@ -134,7 +150,6 @@ newStmt(unsigned char type)
 	s->label = 0;
 	s->label2 = 0;
 	s->asm_block = NULL;
-	s->jump = NULL;
 	return s;
 }
 
@@ -219,7 +234,7 @@ mkEndLbl(unsigned char lbl)
 void
 freeExpr(struct expr *e)
 {
-	if (!e) return;
+	if (!e || e == &nullExpr) return;
 	freeExpr(e->left);
 	freeExpr(e->right);
 	xfree(e->cleanup_block);
@@ -513,7 +528,7 @@ parseStmt(void)
 			s = newStmt('B');
 			first = last = NULL;
 
-			/* Read declarations: d suffix name reg */
+			/* Read declarations: d suffix name reg off */
 			for (i = 0; i < decl_count; i++) {
 				if (curchar == 'd') {
 					nextchar();
@@ -522,6 +537,7 @@ parseStmt(void)
 					nextchar();
 					child->symbol = strdup((char *)readName());
 					child->label = readHex2();  /* Register allocation (0=none) */
+					child->frm_off = (char)readHex2();  /* Frame offset (signed) */
 					appendChild(child, &first, &last);
 				} else {
 #ifdef DEBUG
@@ -713,11 +729,10 @@ static void
 doFunction(unsigned char rettype)
 {
 	static char name_buf[16];
-	static char params_buf[160];
 	static char rettype_buf[2];
-	char *p, *param;
+	char *param;
 	unsigned char ptype;
-	int first_param, param_count, i;
+	int param_count, i;
 
 	rettype_buf[0] = rettype;
 	rettype_buf[1] = '\0';
@@ -737,46 +752,29 @@ doFunction(unsigned char rettype)
 	switchToSeg(SEG_TEXT);
 	addDefSym(fnName);
 
-	/* Parse parameters: param_count d suffix name reg d suffix name reg ... */
+	/* Parse parameters: param_count frm_size d suffix name reg off ... */
 	param_count = readHex2();
+	fnFrmSize = readHex2();  /* Frame size computed by pass1 */
+	fnLocals = NULL;  /* Initialize before adding params */
 #ifdef DEBUG
-	if (TRACE(T_PARSE)) fdprintf(2, "  param_count=%d\n", param_count);
+	if (TRACE(T_PARSE)) fdprintf(2, "  param_count=%d frm_size=%d\n", param_count, fnFrmSize);
 #endif
-	p = params_buf;
-	params_buf[0] = '\0';
-	first_param = 1;
 	for (i = 0; i < param_count; i++) {
-		unsigned char preg;
+		unsigned char preg, psize;
+		char poff;
 		skipWS();
 		if (curchar != 'd') break;
 		nextchar();
 		ptype = curchar;
+		psize = getSizeFTStr(ptype);
 		nextchar();
 		param = (char *)readName();
 		preg = readHex2();  /* Read register allocation */
-		if (!first_param && p < params_buf + sizeof(params_buf) - 2) {
-			*p++ = ','; *p++ = ' ';
-		}
-		first_param = 0;
-		while (*param && p < params_buf + sizeof(params_buf) - 20)
-			*p++ = *param++;
-		if (p < params_buf + sizeof(params_buf) - 5) {
-			*p++ = ':'; *p++ = ptype;
-			/* Append register if allocated */
-			if (preg) {
-				*p++ = ':';
-				*p++ = '0' + preg;
-			}
-		}
+		poff = (char)readHex2();  /* Read frame offset */
+		addParam(param, psize, poff, preg);
 	}
-	*p = '\0';
-	fnParams = params_buf;
 #ifdef DEBUG
-	{
-		int plen = p - params_buf;
-		if (plen > hwmParams) hwmParams = plen;
-	}
-	if (TRACE(T_PARSE)) fdprintf(2, "  params: %s\n", fnParams);
+	if (TRACE(T_PARSE)) fdprintf(2, "  %d params added to fnLocals\n", param_count);
 #endif
 
 	/* Skip newlines between params and body */
@@ -791,8 +789,8 @@ doFunction(unsigned char rettype)
 	if (TRACE(T_PARSE)) fdprintf(2, "  body parsed\n");
 #endif
 	fnLblCnt = labelCounter;
-	fnLocals = NULL;
-	fnFrmSize = 0;
+	/* fnLocals already contains params; walkLocals adds locals */
+	/* fnFrmSize already set from AST header */
 	fnDESaveCnt = 0;
 	fnDInUse = 0;
 	fnLoopDep = 0;

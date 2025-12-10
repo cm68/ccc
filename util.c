@@ -46,42 +46,6 @@ append(char *d, char *s)
     *d = 0;
 }
 
-/*
- * change a binary character into a form we can print
- */
-int
-controlify(char *d, unsigned char c)
-{
-	int ret = 0;
-	unsigned char digit;
-
-	if (c == '\n') {
-		append(d, "\\n");
-		ret = 2;  // Wrote 2 chars: \ and n (null terminator will be overwritten)
-	} else if (c == '\\') {
-		append(d, "\\\\");  // Need to escape backslash as two backslashes
-		ret = 2;  // Wrote 2 chars: two backslashes
-	} else if ((c < ' ') || (c >= 0x7f)) {
-		int shift;
-		*d++ = '\\';
-		*d++ = '0';
-		ret = 2;
-		for (shift = 6; shift >= 0; shift -= 3) {
-			digit = (c >> shift) & 0x7;
-			if ((ret == 2) && (digit == 0)) {
-				continue;
-			}
-			*d++ = '0' + digit;
-			ret++;
-		}
-		*d = 0;
-	} else {
-		*d++ = c;
-		ret = 1;
-	}
-	return ret;
-}
-
 char
 iswhite(unsigned char c)
 {

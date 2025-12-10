@@ -221,6 +221,7 @@ struct name {
     unsigned char ref_count;  // reference count (capped at 255)
     unsigned char agg_refs;   // struct member access count (for IX allocation)
     unsigned char reg;        // allocated register: 0=none, 1=B, 2=C, 3=BC, 4=IX
+    char frm_off;             // frame offset: params positive, locals negative
 };
 
 /* Storage class specifiers (used in struct name sclass field) */
@@ -319,10 +320,8 @@ extern void pushfile(char *name);
 extern void insertmacro(char *name, char *macbuf);
 extern void insertfile(char *name, int sysdirs);
 extern void advance();
-void iodump();
 void ioinit();
 void addInclude(char *name);
-void cppFlush();
 void cppOut(char *s, int len);
 
 extern unsigned char curchar;
@@ -366,9 +365,6 @@ extern void hexdump(char *tag, char *s, int len);
 char iswhite(unsigned char c);
 char *bitdef(unsigned char v, char **defs);
 int fdprintf(unsigned char fd, const char *fmt, ...);
-int quotedString(char *d, char *s);
-int longout(char *d, long v);
-int controlify(char *d, unsigned char c);
 
 /* declare.c / type.c */
 extern struct name *declare(struct type **btp);

@@ -146,7 +146,7 @@ addVar(const char *name, unsigned char size, int is_param, int offset, int is_ar
     if (!var) { fdprintf(2, "oom\n"); exit(1); }
     var->name = strdup(name);
     var->size = size;
-    var->offset = is_param ? offset : -(fnFrmSize + size);
+    var->offset = offset;  /* Use pre-computed offset from pass1 */
     var->is_param = is_param;
     var->is_array = is_array;
     var->ref_count = 0;
@@ -154,7 +154,6 @@ addVar(const char *name, unsigned char size, int is_param, int offset, int is_ar
     var->reg = REG_NO;
     var->next = fnLocals;
     fnLocals = var;
-    if (!is_param) fnFrmSize += size;
 }
 
 #define addParam(n,sz,ofs) addVar(n,sz,1,ofs,0)
@@ -188,10 +187,9 @@ walkLocals(struct stmt *s)
         /* Skip parameter declarations - they already have offsets */
         if (!isParameter(s->symbol)) {
             unsigned char size = getSizeFTStr(s->type_str);
-            /* Local arrays are typed as pointers (p) in the AST */
-            int is_array = 0;
             struct local_var *var;
-            addLocalVar(s->symbol, size, is_array);
+            /* Use pre-computed offset from pass1 */
+            addVar(s->symbol, size, 0, s->frm_off, 0);
             /* Apply register allocation from AST (stored in s->label) */
             if (s->label) {
                 var = findVar(s->symbol);
@@ -236,45 +234,47 @@ static void
 setLeftFlags(struct expr *e)
 {
     struct expr *left = e->left;
+    struct expr *ll;
+    unsigned char lop;
 
     if (!left) return;
+    lop = left->op;
+    ll = left->left;
 
     /* Check for simple variable deref: (M $var) */
-    if (left->op == 'M' && left->left && left->left->op == '$' &&
-        left->left->symbol) {
+    if (lop == 'M' && ll && ll->op == '$' && ll->symbol) {
         e->opflags |= OP_SIMPLEVAR;
-        cacheVar(e, left->left->symbol);
+        cacheVar(e, ll->symbol);
     }
     /* Check for bare variable: ($var) - used by OREQ/ANDEQ */
-    else if (left->op == '$' && left->symbol) {
+    else if (lop == '$' && left->symbol) {
         e->opflags |= OP_SIMPLEVAR;
         cacheVar(e, left->symbol);
     }
     /* Check for struct member address: (+ (M:p $var) ofs) - used by OREQ/ANDEQ */
-    else if (left->op == '+' &&
-             left->left && left->left->op == 'M' &&
-             left->left->left && left->left->left->op == '$' &&
+    else if (lop == '+' && ll && ll->op == 'M' &&
+             ll->left && ll->left->op == '$' &&
              left->right && left->right->op == 'C') {
-        cacheVar(e, left->left->left->symbol);
+        cacheVar(e, ll->left->symbol);
         if (e->cached_var && e->cached_var->reg == REG_IX)
             e->opflags |= OP_IXMEM;
         e->value = left->right->value;
     }
     /* Check for IX-indexed struct member: (M (+ (M:p $var) ofs)) */
-    else if (left->op == 'M' && (left->flags & E_IXDEREF)) {
+    else if (lop == 'M' && (left->flags & E_IXDEREF)) {
         /* Already flagged during analyzeExpr - check if var is in IX */
-        if (left->left && left->left->left && left->left->left->left &&
-            left->left->left->left->op == '$') {
-            cacheVar(e, left->left->left->left->symbol);
+        if (ll && ll->left && ll->left->left &&
+            ll->left->left->op == '$') {
+            cacheVar(e, ll->left->left->symbol);
             if (e->cached_var && e->cached_var->reg == REG_IX)
                 e->opflags |= OP_IXMEM;
         }
     }
     /* Check for indirect through pointer: (M (M $ptr)) */
-    else if (left->op == 'M' && left->left && left->left->op == 'M' &&
-             left->left->left && left->left->left->op == '$') {
+    else if (lop == 'M' && ll && ll->op == 'M' &&
+             ll->left && ll->left->op == '$') {
         e->opflags |= OP_INDIR;
-        cacheVar(e, left->left->left->symbol);
+        cacheVar(e, ll->left->symbol);
     }
 }
 
@@ -282,14 +282,19 @@ setLeftFlags(struct expr *e)
 static void
 setExprFlags(struct expr *e)
 {
+    struct expr *left, *right, *ll;
+
     if (!e) return;
     CHECK_WALK();
+
+    left = e->left;
+    right = e->right;
 
     /* Clear opflags first */
     e->opflags = 0;
 
     /* Check right operand for constant */
-    if (e->right && e->right->op == 'C') {
+    if (right && right->op == 'C') {
         e->opflags |= OP_CONST;
     }
 
@@ -298,8 +303,8 @@ setExprFlags(struct expr *e)
 
     /* For DEREF nodes, check if this is a simple var or IX-indexed */
     if (e->op == 'M') {
-        if (e->left && e->left->op == '$' && e->left->symbol) {
-            const char *sym = e->left->symbol;
+        if (left && left->op == '$' && left->symbol) {
+            const char *sym = left->symbol;
             struct local_var *var;
             if (sym[0] == '$') sym++;
             var = findVar(sym);
@@ -325,25 +330,27 @@ setExprFlags(struct expr *e)
             }
         }
         /* Check for local member access: (M (+ $var C)) - struct/union member */
-        else if (e->left && e->left->op == '+' &&
-                 e->left->left && e->left->left->op == '$' && e->left->left->symbol &&
-                 e->left->right && e->left->right->op == 'C') {
-            const char *sym = e->left->left->symbol;
-            struct local_var *var;
-            if (sym[0] == '$') sym++;
-            var = findVar(sym);
-            if (var && var->reg == REG_NO) {
-                /* IY-indexed with constant offset - store combined offset */
-                e->opflags |= OP_IYMEM;
-                e->offset = var->offset + e->left->right->value;
-                e->cached_var = var;
+        else if (left && left->op == '+') {
+            ll = left->left;
+            if (ll && ll->op == '$' && ll->symbol &&
+                left->right && left->right->op == 'C') {
+                const char *sym = ll->symbol;
+                struct local_var *var;
+                if (sym[0] == '$') sym++;
+                var = findVar(sym);
+                if (var && var->reg == REG_NO) {
+                    /* IY-indexed with constant offset - store combined offset */
+                    e->opflags |= OP_IYMEM;
+                    e->offset = var->offset + left->right->value;
+                    e->cached_var = var;
+                }
             }
         }
     }
 
     /* Recurse on children */
-    setExprFlags(e->left);
-    setExprFlags(e->right);
+    setExprFlags(left);
+    setExprFlags(right);
 }
 
 /* Set opflags for all expressions in statement tree */
@@ -669,13 +676,13 @@ specStmt(struct stmt *s)
 {
     if (!s) return;
 
-    if (s->expr) specExpr(s->expr);
-    if (s->expr2) specExpr(s->expr2);
-    if (s->expr3) specExpr(s->expr3);
+    specExpr(s->expr);
+    specExpr(s->expr2);
+    specExpr(s->expr3);
 
-    if (s->then_branch) specStmt(s->then_branch);
-    if (s->else_branch) specStmt(s->else_branch);
-    if (s->next) specStmt(s->next);
+    specStmt(s->then_branch);
+    specStmt(s->else_branch);
+    specStmt(s->next);
 }
 
 /*
@@ -689,25 +696,11 @@ specialize()
 }
 
 /*
- * Assign stack frame offsets to locals (skips register-allocated vars)
+ * Validate frame size (computed by pass1, stored in fnFrmSize)
  */
 void
 optFrmLayout()
 {
-    struct local_var *var;
-    int offset = 0;
-
-    if (!fnLocals) return;
-
-    for (var = fnLocals; var; var = var->next) {
-        if (var->is_param) continue;
-        if (var->reg != REG_NO) continue;
-        offset += var->size;
-        var->offset = -offset;
-    }
-
-    fnFrmSize = offset;
-
     if (fnFrmSize > 127) {
         fdprintf(2, "%s: frame > 127\n", fnName);
         exit(1);
@@ -715,83 +708,14 @@ optFrmLayout()
 }
 
 /*
- * Phase 1.5: Assign stack frame offsets to all local variables and parameters
+ * Add local variables to fnLocals list.
+ * Parameters are already added by parseast.c; this adds locals from decl stmts.
  */
 void
 assignFrmOff()
 {
-    char *p;
-    char name_buf[64];
-    char type_buf[64];
-    int param_offset;
-    int i;
-
     if (!fnBody) return;
-
-    
-
-    /* First, assign offsets to parameters (positive offsets above FP) */
-    /* Stack layout: FP+0=saved FP, FP+2=return addr, FP+4=first param */
-    param_offset = 4;  /* Skip saved FP (2 bytes) + return address (2 bytes) */
-
-    if (fnParams && fnParams[0]) {
-        p = fnParams;
-        while (*p) {
-            unsigned char preg = REG_NO;
-            struct local_var *var;
-
-            /* Skip whitespace and commas */
-            while (*p == ' ' || *p == ',') p++;
-            if (!*p) break;
-
-            /* Read parameter name */
-            i = 0;
-            while (*p && *p != ':' && *p != ',' && *p != ' ' &&
-                    i < sizeof(name_buf) - 1) {
-                name_buf[i++] = *p++;
-            }
-            name_buf[i] = '\0';
-
-            /* Read parameter type if present */
-            type_buf[0] = '\0';
-            if (*p == ':') {
-                p++;  /* Skip ':' */
-                i = 0;
-                while (*p && *p != ':' && *p != ',' && *p != ' ' &&
-                        i < sizeof(type_buf) - 1) {
-                    type_buf[i++] = *p++;
-                }
-                type_buf[i] = '\0';
-            }
-
-            /* Read register allocation if present (format :N where N is digit) */
-            if (*p == ':') {
-                p++;  /* Skip ':' */
-                if (*p >= '0' && *p <= '9') {
-                    preg = *p - '0';
-                    p++;
-                }
-            }
-
-            /* Add parameter with positive offset */
-            if (name_buf[0]) {
-                unsigned char size = type_buf[0] ?
-                    getSizeFromTN(type_buf) : 2;
-                addParam(name_buf, size, param_offset);
-                /* Apply register allocation from AST */
-                if (preg) {
-                    var = findVar(name_buf);
-                    if (var) var->reg = preg;
-                }
-                /* All params take at least 2 bytes on stack (push af/hl) */
-                param_offset += (size < 2) ? 2 : size;
-            }
-        }
-    }
-
-    /* Then, assign offsets to local variables (negative offsets below FP) */
     walkLocals(fnBody);
-    
 }
 
 /* Forward declaration */
@@ -807,7 +731,8 @@ static char *buildStkCln(int bytes);
  *   - M (DEREF) operations generate actual load instructions
  */
 static int expr_count = 0;
-static void generateExpr(struct expr *e)
+static void
+generateExpr(struct expr *e)
 {
     struct expr *arg;
     int arg_count;
@@ -853,23 +778,18 @@ static void generateExpr(struct expr *e)
         /* ':' node has true_expr in left, false_expr in right */
 
         /* Recursively generate code for all three sub-expressions */
-        if (e->left) generateExpr(e->left);  /* condition */
-        if (e->right && e->right->left) generateExpr(e->right->left);   /* true expr */
-        if (e->right && e->right->right) generateExpr(e->right->right); /* false expr */
+        generateExpr(e->left);  /* condition */
+        if (e->right) {
+            generateExpr(e->right->left);   /* true expr */
+            generateExpr(e->right->right);  /* false expr */
+        }
 
         /* Allocate labels for branches */
         e->label = newLabel();  /* false_label */
+        e->flags |= E_JUMP;     /* Mark: jump to false_label if condition is zero */
         if (e->right) {
             e->right->label = newLabel();  /* end_label */
-        }
-
-        /* Create jump nodes that will be resolved during emission */
-        /* Jump from condition evaluation to false branch */
-        e->jump = newJump(JUMP_IF_ZERO, e->label);  /* if cond is zero (false), jump to false_label */
-
-        /* Jump from true branch to end (skip false branch) */
-        if (e->right) {
-            e->right->jump = newJump(JMP_UNCOND, e->right->label);  /* jump to end_label */
+            e->right->flags |= E_JUMP;     /* Mark: jump to end_label after true branch */
         }
 
         return;  /* Early return - custom traversal done */
@@ -881,8 +801,8 @@ static void generateExpr(struct expr *e)
     }
 
     /* Recursively generate code for children (postorder traversal) */
-    if (e->left) generateExpr(e->left);
-    if (e->right) generateExpr(e->right);
+    generateExpr(e->left);
+    generateExpr(e->right);
 
     /* NOTE: Variable usage tracking is now done in analyzeExpr() */
 
@@ -935,7 +855,8 @@ static void generateExpr(struct expr *e)
  * Build pending stack cleanup asm code (for CALL arguments)
  * Returns a malloc'd string with the cleanup code
  */
-static char *buildStkCln(int bytes)
+static char *
+buildStkCln(int bytes)
 {
     char *cleanup;
     int i;
@@ -958,44 +879,10 @@ static char *buildStkCln(int bytes)
 }
 
 /*
- * Create a new jump instruction node
- */
-struct jump_instr *
-newJump(enum jump_type type, int target_label)
-{
-    struct jump_instr *j;
-
-    j = (struct jump_instr *)malloc(sizeof(struct jump_instr));
-    if (!j) return NULL;
-
-    j->type = type;
-    j->target_label = target_label;
-    j->condition = NULL;
-    j->next = NULL;
-
-    return j;
-}
-
-/*
- * Free a jump instruction node (and its chain)
- */
-void
-freeJump(struct jump_instr *j)
-{
-    struct jump_instr *next;
-
-    while (j) {
-        next = j->next;
-        xfree(j->condition);
-        free(j);
-        j = next;
-    }
-}
-
-/*
  * Walk statement tree and generate assembly code blocks
  */
-static void generateStmt(struct stmt *s)
+static void
+generateStmt(struct stmt *s)
 {
     if (!s) return;
 
@@ -1011,14 +898,14 @@ static void generateStmt(struct stmt *s)
     /* Recursively generate code for expressions */
     /* For expression statements, mark the expr as unused (result discarded) */
     if (s->type == 'E' && s->expr) s->expr->flags |= E_UNUSED;
-    if (s->expr) generateExpr(s->expr);
-    if (s->expr2) generateExpr(s->expr2);
-    if (s->expr3) generateExpr(s->expr3);
+    generateExpr(s->expr);
+    generateExpr(s->expr2);
+    generateExpr(s->expr3);
 
     /* Recursively generate code for child statements */
-    if (s->then_branch) generateStmt(s->then_branch);
-    if (s->else_branch) generateStmt(s->else_branch);
-    if (s->next) generateStmt(s->next);
+    generateStmt(s->then_branch);
+    generateStmt(s->else_branch);
+    generateStmt(s->next);
 
     /* Create jump nodes for control flow statements
      * These will be resolved and optimized during emission
@@ -1037,9 +924,7 @@ static void generateStmt(struct stmt *s)
         /* Conditional jumps are created in emit.c based on condition evaluation */
         break;
 
-    case 'R':  /* RETURN statement */
-        /* Create unconditional jump to function exit */
-        s->jump = newJump(JMP_UNCOND, -1);  /* -1 = exit label, resolved in emit */
+    case 'R':  /* RETURN statement - handled directly in emit */
         break;
 
     default:
@@ -1051,7 +936,8 @@ static void generateStmt(struct stmt *s)
 /*
  * Generate assembly code for entire function
  */
-void generateCode()
+void
+generateCode()
 {
     if (!fnBody) return;
 
@@ -1282,16 +1168,14 @@ schedStmt(struct stmt *s)
     if (!s) return;
 
     /* Schedule expressions in this statement */
-    if (s->expr)  schedExpr(s->expr, R_NONE);
-    if (s->expr2) schedExpr(s->expr2, R_NONE);
-    if (s->expr3) schedExpr(s->expr3, R_NONE);
+    schedExpr(s->expr, R_NONE);
+    schedExpr(s->expr2, R_NONE);
+    schedExpr(s->expr3, R_NONE);
 
-    /* Recurse into branches */
-    if (s->then_branch) schedStmt(s->then_branch);
-    if (s->else_branch) schedStmt(s->else_branch);
-
-    /* Continue to next statement */
-    if (s->next) schedStmt(s->next);
+    /* Recurse into branches and next */
+    schedStmt(s->then_branch);
+    schedStmt(s->else_branch);
+    schedStmt(s->next);
 }
 
 /*
@@ -1335,22 +1219,25 @@ static void sched2Expr(struct expr *e);
 static unsigned char
 sched2Demand(struct expr *e)
 {
-    unsigned char left_demand, right_demand, my_demand;
+    struct expr *left;
+    unsigned char op, left_demand, right_demand, my_demand;
 
     if (!e) return 0;
+    op = e->op;
+    left = e->left;
 
     /* Leaves need 1 register for their result */
-    if (e->op == 'C' || e->op == '$') {
+    if (op == 'C' || op == '$') {
         return 1;
     }
 
     /* DEREF of simple var needs 1 register */
-    if (e->op == 'M' && e->left && e->left->op == '$') {
+    if (op == 'M' && left && left->op == '$') {
         return 1;
     }
 
     /* Binary ops: evaluate children, need max of (left, right+1) */
-    left_demand = sched2Demand(e->left);
+    left_demand = sched2Demand(left);
     right_demand = sched2Demand(e->right);
 
     /* When evaluating right, left result must be held somewhere */
@@ -1390,20 +1277,22 @@ sched2Deref(struct expr *e)
 {
     struct local_var *var;
     const char *sym;
+    unsigned char opf = e->opflags;
+    unsigned char size = e->size;
 
     e->nins = 0;
 
     /* BC indirect (byte through pointer in BC) - check first! */
-    if (e->opflags & OP_BCINDIR) {
+    if (opf & OP_BCINDIR) {
         e->dest = R_A;
         addIns(e, EO_A_BC_IND);     /* ld a,(bc) */
     }
     /* IX indirect (through pointer in IX) - check before generic REGVAR */
-    else if ((e->opflags & OP_IXMEM) && !(e->opflags & OP_IYMEM)) {
-        if (e->size == 1) {
+    else if ((opf & OP_IXMEM) && !(opf & OP_IYMEM)) {
+        if (size == 1) {
             e->dest = R_A;
             addIns(e, EO_A_IX);     /* ld a,(ix+ofs) */
-        } else if (e->size == 4) {
+        } else if (size == 4) {
             e->dest = R_HL;
             addIns(e, EO_HLHL_IXL); /* ld a,ofs; call getLix */
         } else {
@@ -1412,8 +1301,8 @@ sched2Deref(struct expr *e)
         }
     }
     /* BC register variable (not a pointer deref) */
-    else if (e->opflags & OP_REGVAR) {
-        if (e->size == 1) {
+    else if (opf & OP_REGVAR) {
+        if (size == 1) {
             e->dest = R_A;
             /* Check which register the byte regvar is in */
             if (e->cached_var && e->cached_var->reg == REG_B)
@@ -1426,7 +1315,7 @@ sched2Deref(struct expr *e)
         }
     }
     /* IY-indexed stack variable */
-    else if (e->opflags & OP_IYMEM) {
+    else if (opf & OP_IYMEM) {
         /* Get offset from cached_var or look it up */
         if (e->cached_var) {
             e->offset = e->cached_var->offset;
@@ -1436,10 +1325,10 @@ sched2Deref(struct expr *e)
             var = findVar(sym);
             if (var) e->offset = var->offset;
         }
-        if (e->size == 1) {
+        if (size == 1) {
             e->dest = R_A;
             addIns(e, EO_A_IY);     /* ld a,(iy+ofs) */
-        } else if (e->size == 4) {
+        } else if (size == 4) {
             e->dest = R_HL;
             addIns(e, EO_HLHL_IYL); /* ld a,ofs; call getlong */
         } else {
@@ -1448,8 +1337,8 @@ sched2Deref(struct expr *e)
         }
     }
     /* Global variable */
-    else if (e->opflags & OP_GLOBAL) {
-        if (e->size == 1) {
+    else if (opf & OP_GLOBAL) {
+        if (size == 1) {
             e->dest = R_A;
             addIns(e, EO_A_MEM);    /* ld a,(symbol) */
         } else {
@@ -1459,7 +1348,7 @@ sched2Deref(struct expr *e)
     }
     /* Default - complex DEREF, children handle it */
     else {
-        e->dest = (e->size == 1) ? R_A : R_HL;
+        e->dest = (size == 1) ? R_A : R_HL;
         addIns(e, EO_NOP);
     }
 }
@@ -1489,22 +1378,27 @@ sched2Symbol(struct expr *e)
 static void
 sched2Binary(struct expr *e)
 {
+    struct expr *left = e->left;
+    struct expr *right = e->right;
+    unsigned char op = e->op;
+    unsigned char size = e->size;
+
     e->nins = 0;
 
     /* Set child destinations for word ops: left->DE, right->HL */
-    if (e->size == 2) {
-        if (e->left) e->left->dest = R_DE;
-        if (e->right) e->right->dest = R_HL;
+    if (size == 2) {
+        if (left) left->dest = R_DE;
+        if (right) right->dest = R_HL;
     }
 
     /* Recurse to schedule children */
-    if (e->left) sched2Expr(e->left);
-    if (e->right) sched2Expr(e->right);
+    sched2Expr(left);
+    sched2Expr(right);
 
     /* Select instruction based on operator */
-    switch (e->op) {
+    switch (op) {
     case '+':
-        if (e->size == 2) {
+        if (size == 2) {
             e->dest = R_HL;
             addIns(e, EO_ADD_HL_DE);
         } else {
@@ -1513,7 +1407,7 @@ sched2Binary(struct expr *e)
         }
         break;
     case '-':
-        if (e->size == 2) {
+        if (size == 2) {
             e->dest = R_HL;
             addIns(e, EO_SBC_HL_DE);
         } else {
@@ -1541,14 +1435,14 @@ sched2Binary(struct expr *e)
     case 'Q':   /* == */
     case 'n':   /* != */
         e->dest = R_A;
-        if (e->size == 1) {
+        if (size == 1) {
             addIns(e, EO_CP_N);  /* Byte comparison */
         } else {
             addIns(e, EO_SBC_HL_DE);  /* Word comparison via subtract */
         }
         break;
     default:
-        e->dest = (e->size == 1) ? R_A : R_HL;
+        e->dest = (size == 1) ? R_A : R_HL;
         addIns(e, EO_NOP);
         break;
     }
@@ -1563,10 +1457,12 @@ sched2Binary(struct expr *e)
 static void
 sched2Conv(struct expr *e)
 {
+    struct expr *left = e->left;
+
     e->nins = 0;
 
     /* Schedule child first */
-    if (e->left) sched2Expr(e->left);
+    sched2Expr(left);
 
     switch (e->op) {
     case 'N':   /* NARROW - truncate */
@@ -1580,7 +1476,7 @@ sched2Conv(struct expr *e)
         }
         break;
     case 'W':   /* WIDEN - zero extend */
-        if (e->left && e->left->size == 1) {
+        if (left && left->size == 1) {
             /* Byte to word - A to HL with zero high byte */
             e->dest = R_HL;
             addIns(e, EO_WIDEN);
@@ -1590,7 +1486,7 @@ sched2Conv(struct expr *e)
         }
         break;
     case 'X':   /* SEXT - sign extend */
-        if (e->left && e->left->size == 1) {
+        if (left && left->size == 1) {
             /* Byte to word with sign extension */
             e->dest = R_HL;
             addIns(e, EO_SEXT);
@@ -1689,7 +1585,7 @@ sched2Store(struct expr *e)
         }
     } else {
         /* Complex destination - schedule address, then store */
-        if (dest) sched2Expr(dest);
+        sched2Expr(dest);
         addIns(e, EO_NOP);
     }
 
@@ -1704,9 +1600,12 @@ sched2Store(struct expr *e)
 static void
 sched2Expr(struct expr *e)
 {
-    unsigned char demand;
+    struct expr *left;
+    unsigned char op, demand;
 
     if (!e) return;
+    op = e->op;
+    left = e->left;
 
     /* Initialize instruction list */
     e->nins = 0;
@@ -1716,19 +1615,19 @@ sched2Expr(struct expr *e)
     (void)demand;  /* TODO: use for spill decisions */
 
     /* Select instructions based on node type */
-    switch (e->op) {
+    switch (op) {
     case 'C':   /* Constant */
         sched2Const(e);
         break;
 
     case 'M':   /* DEREF - load from memory */
-        if (e->left && e->left->op == '$') {
+        if (left && left->op == '$') {
             /* Simple variable deref: (M $var) */
-            sched2Expr(e->left);  /* Schedule address load (usually NOP) */
+            sched2Expr(left);  /* Schedule address load (usually NOP) */
             sched2Deref(e);
         } else {
             /* Complex deref - recurse to children */
-            sched2Expr(e->left);
+            sched2Expr(left);
             e->dest = (e->size == 1) ? R_A : R_HL;
             addIns(e, EO_NOP);
         }
@@ -1750,8 +1649,8 @@ sched2Expr(struct expr *e)
 
     case '@':   /* Function call */
         /* Schedule arguments first */
-        if (e->right) sched2Expr(e->right);
-        if (e->left) sched2Expr(e->left);
+        sched2Expr(e->right);
+        sched2Expr(left);
         e->dest = R_HL;  /* Function returns in HL */
         addIns(e, EO_CALL);
         break;
@@ -1787,27 +1686,27 @@ sched2Expr(struct expr *e)
 
     case '~':   /* Bitwise not */
     case '!':   /* Logical not */
-        if (e->left) sched2Expr(e->left);
+        sched2Expr(left);
         e->dest = (e->size == 1) ? R_A : R_HL;
         addIns(e, EO_NOP);
         break;
 
     case 'A':   /* Address of */
-        if (e->left) sched2Expr(e->left);
+        sched2Expr(left);
         e->dest = R_HL;  /* Address always in HL */
         addIns(e, EO_NOP);
         break;
 
     case ',':   /* Comma operator - evaluate both, return right */
-        if (e->left) sched2Expr(e->left);
-        if (e->right) sched2Expr(e->right);
+        sched2Expr(left);
+        sched2Expr(e->right);
         e->dest = (e->size == 1) ? R_A : R_HL;
         addIns(e, EO_NOP);
         break;
 
     case '?':   /* Ternary operator */
-        if (e->left) sched2Expr(e->left);
-        if (e->right) sched2Expr(e->right);
+        sched2Expr(left);
+        sched2Expr(e->right);
         e->dest = (e->size == 1) ? R_A : R_HL;
         addIns(e, EO_NOP);
         break;
@@ -1820,15 +1719,15 @@ sched2Expr(struct expr *e)
     case 'P':   /* += */
     case AST_SUBEQ:  /* -= */
         /* These may have remaining children if specialize didn't fully handle */
-        if (e->left) sched2Expr(e->left);
-        if (e->right) sched2Expr(e->right);
+        sched2Expr(left);
+        sched2Expr(e->right);
         e->dest = (e->size == 1) ? R_A : R_HL;
         /* Don't add NOP - emit handlers check flags and generate code */
         break;
 
     default:
         /* Unknown - just recurse and add NOP */
-        sched2Expr(e->left);
+        sched2Expr(left);
         sched2Expr(e->right);
         e->dest = (e->size == 1) ? R_A : R_HL;
         addIns(e, EO_NOP);
@@ -1854,15 +1753,15 @@ sched2Stmt(struct stmt *s)
         }
         sched2Expr(s->expr);
     }
-    if (s->expr2) sched2Expr(s->expr2);
-    if (s->expr3) sched2Expr(s->expr3);
+    sched2Expr(s->expr2);
+    sched2Expr(s->expr3);
 
     /* Recurse into branches */
-    if (s->then_branch) sched2Stmt(s->then_branch);
-    if (s->else_branch) sched2Stmt(s->else_branch);
+    sched2Stmt(s->then_branch);
+    sched2Stmt(s->else_branch);
 
     /* Continue to next statement */
-    if (s->next) sched2Stmt(s->next);
+    sched2Stmt(s->next);
 }
 
 /*
