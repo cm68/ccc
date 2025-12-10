@@ -218,9 +218,9 @@ insertfile(char *name, int sys)
         }
     }
     if (t->fd == -1) {
-        filename = name;  /* Set filename for error message */
-        lineno = 1;
-        fatal(ER_C_IF);
+        free(t);
+        fdprintf(2, "cannot find include file: %s\n", name);
+        exit(1);
     }
 found:
 	t->name = strdup(namebuf);
