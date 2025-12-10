@@ -76,6 +76,17 @@ execIns(struct expr *e, unsigned char ins)
         fdprintf(outFd, "\tld hl, %ld\n", e->value);
         cacheSetHL(e);  /* Cache constant for potential reuse */
         return 1;
+
+    /* Long (4-byte) load to HLHL' */
+    case EO_HLHL_IYL:
+        fdprintf(outFd, "\tld a, %d\n\tcall getLiy\n", (int)e->offset);
+        clearHL();
+        return 1;
+    case EO_HLHL_IXL:
+        fdprintf(outFd, "\tld a, %d\n\tcall getLix\n", (int)e->offset);
+        clearHL();
+        return 1;
+
     case EO_DE_CONST:
         /* Load constant/symbol address into DE */
         if (e->symbol) {
@@ -596,9 +607,14 @@ void emitExpr(struct expr *e)
     /* Handle long (4-byte) OREQ on IY-indexed variable */
     else if (e->op == '1' && e->size == 4 && (e->opflags & OP_IYMEM) && e->cached_var) {
         int ofs = varIYOfs(e->cached_var);
+        int rhs_size = e->right ? e->right->size : 2;
         freeExpr(e->left);
-        /* Emit RHS - result in HL (widened to HL:HL' with high word = 0) */
+        /* Emit RHS - result in A (byte) or HL (word) */
         emitExpr(e->right);
+        /* Widen to HLHL': byte->A needs ld l,a; ld h,0, word already in HL */
+        if (rhs_size == 1) {
+            fdprintf(outFd, "\tld l, a\n\tld h, 0\n");
+        }
         emit(S_EXX0);  /* Clear high word */
         /* Set up EA in DE, then OR */
         fdprintf(outFd, "\tld a, %d\n\tcall lea_iy\n", ofs);

@@ -8,7 +8,7 @@
 
 /* Assembly string emission */
 void emit(unsigned char idx);
-void emit1(unsigned char idx, unsigned char val);
+void emit1(unsigned char idx, char val);
 void emitS(unsigned char idx, const char *s);
 void out(const char *s);
 void emitByteLoad(unsigned char reg);

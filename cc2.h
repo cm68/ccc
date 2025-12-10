@@ -164,6 +164,10 @@ enum {
     EO_HL_MEM,          // ld hl,(symbol)
     EO_HL_CONST,        // ld hl,value
 
+    /* Memory loads - long (4 bytes) to HLHL' */
+    EO_HLHL_IYL,        // ld a,ofs; call getLiy
+    EO_HLHL_IXL,        // ld a,ofs; call getLix
+
     /* Memory loads - word to DE */
     EO_DE_IYW,          // ld e,(iy+ofs); ld d,(iy+ofs+1)
     EO_DE_IXW,          // ld e,(ix+ofs); ld d,(ix+ofs+1)

@@ -397,6 +397,8 @@ static const char *insName(int ins)
     case EO_HL_IXW:    return "HL<-(IX+n)";
     case EO_HL_MEM:    return "HL<-(mem)";
     case EO_HL_CONST:  return "HL<-const";
+    case EO_HLHL_IYL:  return "HLHL'<-(IY+n:4)";
+    case EO_HLHL_IXL:  return "HLHL'<-(IX+n:4)";
     case EO_DE_IYW:    return "DE<-(IY+n)";
     case EO_DE_IXW:    return "DE<-(IX+n)";
     case EO_DE_MEM:    return "DE<-(mem)";

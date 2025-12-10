@@ -1403,6 +1403,9 @@ sched2Deref(struct expr *e)
         if (e->size == 1) {
             e->dest = R_A;
             addIns(e, EO_A_IX);     /* ld a,(ix+ofs) */
+        } else if (e->size == 4) {
+            e->dest = R_HL;
+            addIns(e, EO_HLHL_IXL); /* ld a,ofs; call getLix */
         } else {
             e->dest = R_HL;
             addIns(e, EO_HL_IXW);   /* ld l,(ix+ofs); ld h,(ix+ofs+1) */
@@ -1436,6 +1439,9 @@ sched2Deref(struct expr *e)
         if (e->size == 1) {
             e->dest = R_A;
             addIns(e, EO_A_IY);     /* ld a,(iy+ofs) */
+        } else if (e->size == 4) {
+            e->dest = R_HL;
+            addIns(e, EO_HLHL_IYL); /* ld a,ofs; call getlong */
         } else {
             e->dest = R_HL;
             addIns(e, EO_HL_IYW);   /* ld l,(iy+ofs); ld h,(iy+ofs+1) */

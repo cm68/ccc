@@ -428,6 +428,17 @@ notConstStore:
         }
     }
 
+    /* Long (4-byte) constant assignment: load all 32 bits into HLHL' */
+    if (e->size == 4 && e->right && e->right->op == 'C') {
+        long val = e->right->value;
+        fdprintf(outFd, "\tld hl, %d\n", (int)(val & 0xffff));
+        emit(S_EXX);
+        fdprintf(outFd, "\tld hl, %d\n", (int)((val >> 16) & 0xffff));
+        emit(S_EXX);
+        freeExpr(e->right);
+        goto do_store;
+    }
+
     /* Emit right child first (value goes to PRIMARY) */
     emitExpr(e->right);
 #ifdef DEBUG
@@ -436,6 +447,7 @@ notConstStore:
     }
 #endif
 
+do_store:
     /* Check for IX-indexed store */
     if ((e->flags & E_IXASSIGN) && e->left && e->left->op == '+' &&
         e->left->left && e->left->left->op == 'M' &&

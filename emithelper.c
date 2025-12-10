@@ -51,9 +51,9 @@ static const char *asmstr[] = {
     "\texx\n\tld c, a\n\texx\n",        /* S_EXXLDCA */
     "\tadd hl, bc\n",                   /* S_ADDHLBC */
     "\tcall framealloc\n",              /* S_CALLFA */
-    "\tcall getlong\n",                 /* S_CALLGL */
+    "\tcall getLiy\n",                  /* S_CALLGL */
     "\tcall load32i\n",                 /* S_CALLL32I */
-    "\tcall putlong\n",                 /* S_CALLPL */
+    "\tcall putLiy\n",                  /* S_CALLPL */
     "\t; ERR\n", /* S_ERRPARS */
     "\tld a, l\n\tor c\n\tld c, a\n",   /* S_ALORCC */
     "\tld a, h\n\tor b\n\tld b, a\n",   /* S_AHORBBA */
@@ -152,7 +152,7 @@ void emit(unsigned char idx) {
     fdputs(outFd, asmstr[idx]);
 }
 
-void emit1(unsigned char idx, unsigned char val) {
+void emit1(unsigned char idx, char val) {
     /* For label format strings (F_IFEND through F_TERNE), include fnIndex */
     if (idx >= F_IFEND && idx <= F_TERNE) {
         static const char *labfmt[] = {
@@ -164,8 +164,10 @@ void emit1(unsigned char idx, unsigned char val) {
             "tF%d_%d:\n",    /* F_TERNF - ternary false */
             "tE%d_%d:\n"     /* F_TERNE - ternary end */
         };
-        fdprintf(outFd, labfmt[idx - F_IFEND], fnIndex, val);
+        /* Labels use unsigned val as label number */
+        fdprintf(outFd, labfmt[idx - F_IFEND], fnIndex, (unsigned char)val);
     } else {
+        /* Instructions use signed val for offsets */
         fdprintf(outFd, fmtstr[idx], val);
     }
 }
