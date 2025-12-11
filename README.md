@@ -1,7 +1,7 @@
 ccc - full native C compiler
 
-This is a 2-pass C compiler written in C, targeting Z80. Pass 1 (cc1) is
-complete; pass 2 (cc2) generates Z80 assembly and is nearing completion.
+This is a 2-pass C compiler written in C, targeting Z80. Both passes are
+complete; small programs run in simulation.
 
 ## Project Status
 
@@ -13,13 +13,13 @@ complete; pass 2 (cc2) generates Z80 assembly and is nearing completion.
 - All loops lowered to labeled if/goto for simplified code generation
 - See CLAUDE.md for detailed architecture and features
 
-**Pass 2 (cc2) - Near Complete** Tagged as **much_progress**
+**Pass 2 (cc2) - Complete**
 - Tree-based AST parser with complete function representation
-- Three-phase code generation: parse -> codegen -> emit
-- Register allocation (BC, IX) and stack frame management
-- IX-indexed pointer optimization for struct access
-- Dead code elimination at AST emission time
-- Generates working Z80 assembly for full compiler source
+- Two-phase code generation: parse -> schedule/emit
+- Register allocation done in cc1 (outast.c), communicated via AST
+- BC and IX register allocation, IX-indexed struct pointer optimization
+- Long (32-bit) and float (IEEE 754) support via helper functions
+- Generates working Z80 assembly; programs run in simulation
 - See CC2_ARCHITECTURE.md for implementation details
 
 **Whitesmith's Object Tools (ws/)** - Relocatable object support
@@ -30,7 +30,7 @@ complete; pass 2 (cc2) generates Z80 assembly and is nearing completion.
 - See ws/README.md for details
 
 **Debugging Tools**
-- **AST Pretty Printer** (astpp.lisp): Format AST for human inspection
+- **AST Pretty Printer** (astpp.py): Format AST for human inspection
 - See ASTPP.md for details
 
 ## Architecture
@@ -45,11 +45,10 @@ This is a 2-pass compiler:
 
 **Pass 2 (cc2)**: Tree-based code generator targeting Z80
 - Reads AST from pass 1 (paren-free hex format)
-- Three-phase architecture: parse -> codegen -> emit
+- Two-phase architecture: parse -> schedule/emit
 - Builds complete function trees in memory before code generation
-- Register allocation and stack frame management
+- Register assignments received from cc1 via AST declarations
 - Uses Unix syscalls (read/write) instead of stdio
-- parseast.c: ~3,400 lines (parser, code generation, emission)
 - Handles memory width annotations (:b :s :l :p :f :d)
 - Generates Z80 assembly code
 
@@ -71,14 +70,19 @@ This is a 2-pass compiler:
 
 **Pass 2 (cc2) files:**
 - cc2.c - Main entry point, command-line processing
-- parseast.c - Table-driven AST parser
+- parseast.c - AST parser, builds expression/statement trees
+- astio.c - Low-level AST I/O (character reading, hex parsing)
+- codegen.c - Scheduler: pattern recognition, instruction selection
+- emitexpr.c - Expression emission dispatcher
+- emitops.c - Operation emitters (assign, binop, call, incdec, etc.)
+- emithelper.c - Helper functions (loadVar, storeVar, emit strings)
+- emit.c - Statement emission
 - util.c - Shared utilities (fdprintf)
 
 **Auto-generated files:**
 - tokenlist.c, enumlist.h - Token definitions
 - error.h - Error code definitions
 - debug.h, debugtags.c - Debug/verbose infrastructure
-- op_pri.h - Operator priority table
 
 **Stub system headers (include/):**
 - stdio.h, stdlib.h, string.h, stdarg.h - C standard library stubs
@@ -91,27 +95,22 @@ This is a 2-pass compiler:
 
 **Using the ccc driver (recommended):**
 ```bash
-# Full compilation (when cc2 is complete)
-./ccc -o program source.c
-
-# Keep intermediate AST file
-./ccc -k -o program source.c
+./ccc source.c           # Compile to executable
+./ccc -k source.c        # Keep intermediate files (.ast, .s, .o)
+./ccc -S source.c        # Compile to assembly only
 ```
 
-**Pass 1 - Parse and output AST:**
+**Individual passes:**
 ```bash
-./cc1 -E source.c > output.ast
+./cc1 source.c           # Generate AST (writes source.ast)
+./cc2 source.ast         # Generate assembly (writes source.s)
 ```
 
-**Pass 2 - Generate Z80 assembly from AST:**
+**Running in simulation:**
 ```bash
-./cc2 output.ast              # Generates output.s assembly file
-./cc2 output.ast -o custom.s  # Specify output file
-```
-
-**Full pipeline (when complete):**
-```bash
-./cc1 -E source.c | ./cc2 -o executable
+cd tests
+../root/bin/ccc -o prog prog.c    # Compile with installed toolchain
+../root/sim prog                   # Run in Z80 simulator
 ```
 
 ## Debugging the Parser
@@ -125,7 +124,7 @@ For visual inspection of AST structure, use the standalone pretty printer:
 make test.ast
 
 # Pretty print with human-readable formatting
-./astpp.lisp test.ast
+./astpp.py test.ast
 ```
 
 **Output:**

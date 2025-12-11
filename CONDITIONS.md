@@ -1,26 +1,89 @@
-# Condition Label Scheme
+# Condition and Loop Label Schemes
 
-This document describes how labels are assigned for conditional statements
-(if/while/for) with short-circuit evaluation of `||` and `&&` operators.
+This document describes label generation for control flow statements.
 
 ## Overview
 
-Each IF statement needs labels for control flow:
-- **yes**: Start of then-body (usually fall-through, but `||` jumps here on true)
-- **el**: Start of else-body (jump here on condition false, if else exists)
-- **no**: End of IF statement (then-body jumps here to skip else)
+There are two distinct label schemes in ccc:
 
-Short-circuit `||` and `&&` operators may need intermediate labels when nested.
+1. **Loop labels** (cc1): Text labels like `L0_top`, `L0_break` for loops/switch
+2. **Condition labels** (cc2): Numeric labels like `yes0_1`, `el0_2` for if/ternary
 
-## Label Assignment
+## Loop Labels (cc1)
 
-Labels are assigned sequentially starting from 0 for each function:
+Generated in `parse.c` by `genLoopLabel()` using a global counter:
+
+```c
+static int loopLblCnt = 0;
+static char *genLoopLabel(const char *prefix) {
+    sprintf(label, "%s%d", prefix, loopLblCnt++);
+    return label;
+}
 ```
-Label 0: yes  (then-body start)
-Label 1: el   (else-body start, or no if no else)
-Label 2: no   (if-end, when else exists)
-Label 3+: intermediate labels for nested ||/&&
+
+**Prefixes:**
+- `L` - while/for loops
+- `D` - do-while loops
+- `S` - switch statements
+
+**Suffixes added by outast.c:**
+- `_top` - loop start (condition test)
+- `_continue` - continue target
+- `_break` - break target
+- `_test` - do-while condition (before test)
+
+**Example:** A while loop generates:
 ```
+L0_top:
+    ; condition test
+    jp z, L0_break
+    ; body
+L0_continue:
+    jp L0_top
+L0_break:
+```
+
+All loops are lowered to labeled if/goto sequences by cc1. The labels are
+stored as text in `stmt->label` and emitted directly.
+
+## Condition Labels (cc2)
+
+For if statements and ternary operators, cc2 uses numeric labels with a
+two-part scheme: function index + label number.
+
+**Label format:** `<type><fnIndex>_<labelNum>`
+
+**Types:**
+- `yes` - then-branch start (true path)
+- `el` - else-branch start
+- `no` - if-end (after else, or end if no else)
+- `orE` - OR short-circuit end
+- `anE` - AND short-circuit end
+- `tF` - ternary false branch
+- `tE` - ternary end
+
+**Example:** Function 0, if statement with label 3:
+```
+    jp z, el0_3
+yes0_3:
+    ; then body
+    jp no0_3
+el0_3:
+    ; else body
+no0_3:
+```
+
+### Label Counter
+
+The `nlabels` field in the AST IF statement tells cc2 how many intermediate
+labels are needed for short-circuit `||` and `&&` evaluation:
+
+```
+I<has_else><nlabels><condition><then>[<else>]
+```
+
+cc2's `parseast.c` maintains a `labelCounter` that is incremented for each
+label slot needed. The `fnIndex` resets to 0 at each function.
 
 ## Short-Circuit Evaluation
 
@@ -28,8 +91,8 @@ Label 3+: intermediate labels for nested ||/&&
 ```c
 if (a || b) { then } else { else }
 ```
-- `a` true → jump to `yes`
-- `a` false → fall through, evaluate `b`
+- `a` true → fall through to `yes`
+- `a` false → evaluate `b`
 - `b` true → fall through to `yes`
 - `b` false → jump to `el`
 
@@ -38,170 +101,45 @@ if (a || b) { then } else { else }
 if (a && b) { then } else { else }
 ```
 - `a` false → jump to `el`
-- `a` true → fall through, evaluate `b`
+- `a` true → evaluate `b`
 - `b` false → jump to `el`
 - `b` true → fall through to `yes`
 
-### Chained OR: `a || b || c`
-```
-      ||
-     /  \
-    ||   c
-   /  \
-  a    b
-```
-All true cases share the same `yes` label:
-- `a` true → jump to `yes`
-- `a` false → fall through to `b`
-- `b` true → jump to `yes`
-- `b` false → fall through to `c`
-- `c` true → fall through to `yes`
-- `c` false → jump to `el`
-
-No intermediate labels needed.
-
-### Chained AND: `a && b && c`
-```
-      &&
-     /  \
-    &&   c
-   /  \
-  a    b
-```
-All false cases share the same `el` label:
-- `a` false → jump to `el`
-- `a` true → fall through to `b`
-- `b` false → jump to `el`
-- `b` true → fall through to `c`
-- `c` false → jump to `el`
-- `c` true → fall through to `yes`
-
-No intermediate labels needed.
-
 ### Nested: `(a || b) && c`
+
+The `||` needs an intermediate `orE` label:
 ```
-       &&
-      /  \
-    ||    c
-   /  \
-  a    b
-```
-The `||` needs an intermediate label for its "end" (where true case goes):
-- `a` true → jump to `orEnd` (skip `b`, continue to `c`)
-- `a` false → fall through to `b`
-- `b` true → fall through to `orEnd`
-- `b` false → jump to `el` (whole && fails)
-- `orEnd`: evaluate `c`
-- `c` false → jump to `el`
-- `c` true → fall through to `yes`
-
-**Intermediate label needed: 1 (orEnd)**
-
-### Nested: `(a && b) || c`
-```
-       ||
-      /  \
-    &&    c
-   /  \
-  a    b
-```
-The `&&` needs an intermediate label for its "end" (where false case goes):
-- `a` false → jump to `anEnd` (skip `b`, continue to `c`)
-- `a` true → fall through to `b`
-- `b` false → fall through to `anEnd`
-- `b` true → jump to `yes` (whole || succeeds)
-- `anEnd`: evaluate `c`
-- `c` true → fall through to `yes`
-- `c` false → jump to `el`
-
-**Intermediate label needed: 1 (anEnd)**
-
-### Complex: `(a || b) && (c || d)`
-```
-           &&
-          /  \
-        ||    ||
-       / \   / \
-      a   b c   d
-```
-Left `||`:
-- `a` true → jump to `orEnd1`
-- `a` false → fall through to `b`
-- `b` true → fall through to `orEnd1`
-- `b` false → jump to `el`
-
-`orEnd1`: evaluate right `||`:
-- `c` true → jump to `yes`
-- `c` false → fall through to `d`
-- `d` true → fall through to `yes`
-- `d` false → jump to `el`
-
-**Intermediate labels needed: 1 (orEnd1)**
-
-Note: Right `||` doesn't need an intermediate label because its true case
-goes directly to `yes`.
-
-## Counting Intermediate Labels
-
-Walk the condition tree and count labels needed:
-
-```
-countLabels(node, context):
-    if node is ||:
-        if context is AND_RIGHT or TOP:
-            // || inside && needs orEnd label
-            return 1 + countLabels(left, OR_LEFT) + countLabels(right, OR_RIGHT)
-        else:
-            // chained || shares parent's target
-            return countLabels(left, OR_LEFT) + countLabels(right, context)
-
-    if node is &&:
-        if context is OR_RIGHT or TOP:
-            // && inside || needs anEnd label
-            return 1 + countLabels(left, AND_LEFT) + countLabels(right, AND_RIGHT)
-        else:
-            // chained && shares parent's target
-            return countLabels(left, AND_LEFT) + countLabels(right, context)
-
-    if node is !:
-        // NOT just inverts, pass context through
-        return countLabels(child, context)
-
-    // leaf node (comparison, variable, etc)
-    return 0
+    ; eval a
+    jp nz, orE0_3     ; a true -> skip b
+    ; eval b
+    jp z, el0_1       ; b false -> else
+orE0_3:
+    ; eval c
+    jp z, el0_1       ; c false -> else
+yes0_1:
+    ; then body
 ```
 
-## AST Format
+### Counting Intermediate Labels
 
-IF statement in AST:
-```
-I flags nlabels condition then [else]
-```
+`cntCondLbls()` in `outast.c` walks the condition tree:
 
-Where:
-- `flags`: bit 0 = has_else
-- `nlabels`: number of intermediate labels needed (beyond yes/el/no)
-- `condition`: the condition expression with label indices on ||/&& nodes
-- `then`: then-body statements
-- `else`: else-body statements (if has_else)
+- `||` inside `&&` right side or at top → needs `orE` label (+1)
+- `&&` inside `||` right side or at top → needs `anE` label (+1)
+- Chained `||` or `&&` share parent's target (no extra label)
 
-Each `||` and `&&` node that needs an intermediate label gets annotated:
-```
-h labelidx left right    // || with intermediate label
-j labelidx left right    // && with intermediate label
-```
+The count is emitted as `nlabels` in the AST so cc2 knows how many labels
+to pre-allocate.
 
-Label indices are assigned:
-- 0 = yes
-- 1 = el (or no if no else)
-- 2 = no (if else exists)
-- 3+ = intermediate labels in tree-walk order
+## Integration
 
-## Pass2 Usage
+1. **cc1** generates loop labels as text (`L0_top`, etc.) and embeds them
+   directly in the lowered if/goto sequences
 
-Pass2 reads the label count and pre-allocates that many labels for the IF.
-When emitting `||`/`&&`, it reads the label index from the AST instead of
-calling `newLabel()`.
+2. **cc1** counts intermediate condition labels and emits the count in AST
 
-This eliminates the "255 means no label" hack - every jump target has an
-explicit label index in the AST.
+3. **cc2** uses `fnIndex` + `labelCounter` to generate unique condition
+   labels per function
+
+This separation keeps cc1 simple (text labels for loops) while allowing
+cc2 to manage condition labels efficiently (numeric indices).
