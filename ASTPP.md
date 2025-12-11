@@ -4,7 +4,7 @@ A standalone tool for formatting ccc compiler AST output in human-readable form.
 
 ## Purpose
 
-The AST pretty printer (`astpp.lisp`) converts the compact paren-free hex AST
+The AST pretty printer (`astpp.py`) converts the compact paren-free hex AST
 format into a nicely formatted, indented, and annotated representation that's
 easier to read and understand.
 
@@ -20,17 +20,17 @@ easier to read and understand.
 
 ## Installation
 
-Requires SBCL (Steel Bank Common Lisp):
+Requires Python 3:
 
 ```bash
-# Debian/Ubuntu
-sudo apt-get install sbcl
+# Most systems already have Python 3 installed
+python3 --version
 
-# macOS
-brew install sbcl
+# Debian/Ubuntu (if needed)
+sudo apt-get install python3
 
-# Arch Linux
-sudo pacman -S sbcl
+# macOS (if needed)
+brew install python3
 ```
 
 The script is already executable and ready to use.
@@ -44,7 +44,9 @@ The script is already executable and ready to use.
 make program.ast
 
 # Pretty print the AST
-./astpp.lisp program.ast
+python3 astpp.py program.ast
+# or
+./astpp.py program.ast
 ```
 
 ### Filter Mode (Reading from stdin)
@@ -54,10 +56,10 @@ is provided:
 
 ```bash
 # Use as filter in a pipeline
-./cc1 -DCCC -i./include -I. -E program.c | ./astpp.lisp
+./cc1 -DCCC -i./include -I. -E program.c | ./astpp.py
 
 # Combine with stderr (cc1 outputs AST to stdout, diagnostics to stderr)
-./cc1 -DCCC -i./include -I. -E program.c 2>&1 | ./astpp.lisp
+./cc1 -DCCC -i./include -I. -E program.c 2>&1 | ./astpp.py
 ```
 
 This is particularly useful for:
@@ -72,36 +74,53 @@ This is particularly useful for:
 ./ccc -E program.c
 
 # Pretty print the generated AST
-./astpp.lisp program.ast
+./astpp.py program.ast
 ```
 
 ## Output Format
 
 The pretty printer outputs:
 
-1. **Function definitions** with parameters and return types
+1. **Function definitions** with parameters, return types, frame size, and register allocation
 2. **Statement structure** with proper indentation showing nesting
 3. **Expression trees** with operator names and type annotations
 4. **String literals** with their definitions
 5. **Global variables** with types and initializers
 
-### Example Output (Pretty Printed)
+### Example Output
 
 ```
-FUNCTION main() -> _short_
+========================================
+AST Pretty Printer Output
+========================================
+
+FUNCTION main(argc:short@IY+4, argv:ptr@BC) -> short [frame=0]
+  LOCALS: result:short@IY-2
 {
   BLOCK {
-    DECL result : _short_
-    EXPR:
-      (ASSIGN:short
-        $result
-        (NARROW:short 42))
+    EXPR (ASSIGN:short $result 42:short)
     RETURN (DEREF:short $result)
   }
 }
+
+========================================
 ```
 
 ## Features
+
+### Register Allocation Display
+
+The pretty printer shows register assignments for parameters and locals:
+
+| Register | Name | Description |
+|----------|------|-------------|
+| `-` | REG_NONE | No register (stack only) |
+| `B` | REG_B | B register |
+| `C` | REG_C | C register |
+| `BC` | REG_BC | BC register pair |
+| `IX` | REG_IX | IX register |
+
+Stack offsets are shown as `IY+N` or `IY-N`.
 
 ### Operator Translation
 
@@ -136,6 +155,29 @@ The pretty printer translates single-character operators to readable names:
 | `W` | WIDEN | Widen type |
 | `?` | TERNARY | Ternary conditional |
 | `@` | CALL | Function call |
+| `Y` | COPY | Structure copy |
+| `\` | NEG | Unary negation |
+| `'` | ADDR | Address-of |
+| `(` | PREINC | Pre-increment |
+| `)` | POSTINC | Post-increment |
+| `{` | PREDEC | Pre-decrement |
+| `}` | POSTDEC | Post-decrement |
+| `e` | BFEXT | Bitfield extract |
+| `f` | BFSET | Bitfield set |
+
+### Compound Assignment Operators
+
+| AST | Pretty Name |
+|-----|-------------|
+| `P` | += |
+| `T` | *= |
+| `o` | -= |
+| `m` | %= |
+| `a` | &= |
+| `0` | <<= |
+| `1` | \|= |
+| `2` | /= |
+| `6` | >>= |
 
 ### Statement Types
 
@@ -147,7 +189,7 @@ The pretty printer translates single-character operators to readable names:
 | `I` | IF | If/else conditional |
 | `W` | WHILE | While loop |
 | `F` | FOR | For loop |
-| `D` | DO-WHILE | Do-while loop |
+| `D` | DO | Do-while loop |
 | `S` | SWITCH | Switch statement |
 | `C` | CASE | Case label |
 | `O` | DEFAULT | Default label |
@@ -155,6 +197,7 @@ The pretty printer translates single-character operators to readable names:
 | `N` | CONTINUE | Continue statement |
 | `G` | GOTO | Goto statement |
 | `L` | LABEL | Label definition |
+| `A` | ASM | Inline assembly |
 | `d` | DECL | Variable declaration |
 
 ### Type Width Annotations
@@ -163,12 +206,16 @@ The pretty printer shows type widths on operations:
 
 | Width | Name | Size | Type |
 |-------|------|------|------|
-| `:b` | byte | 1 byte | char |
-| `:s` | short | 2 bytes | short, int |
-| `:l` | long | 4 bytes | long |
-| `:p` | ptr | 2 bytes | pointer |
-| `:f` | float | 4 bytes | float |
-| `:d` | double | 8 bytes | double |
+| `b` | byte | 1 byte | signed char |
+| `B` | ubyte | 1 byte | unsigned char |
+| `s` | short | 2 bytes | short, int |
+| `S` | ushort | 2 bytes | unsigned short/int |
+| `l` | long | 4 bytes | long |
+| `L` | ulong | 4 bytes | unsigned long |
+| `p` | ptr | 2 bytes | pointer |
+| `f` | float | 4 bytes | float |
+| `d` | double | 4 bytes | double |
+| `v` | void | 0 bytes | void |
 
 ## Examples
 
@@ -185,74 +232,70 @@ int main() {
 **Command:**
 ```bash
 make test.ast
-./astpp.lisp test.ast
+./astpp.py test.ast
 ```
 
 **Output:**
 ```
-FUNCTION main() -> _short_
+FUNCTION main() -> short [frame=2]
+  LOCALS: x:short@IY-2
 {
   BLOCK {
-    DECL x : _short_
-    EXPR:
-      (ASSIGN:short $x (NARROW:short 10))
-    RETURN (ADD (DEREF:short $x) 5)
+    EXPR (ASSIGN:short $x 10:short)
+    RETURN (ADD:short (DEREF:short $x) 5:short)
   }
 }
 ```
 
-### Example 2: Control Flow
+### Example 2: Function with Parameters
 
 **Source:**
 ```c
-int factorial(int n) {
-    if (n <= 1) {
-        return 1;
-    }
-    return n * factorial(n - 1);
+int add(int a, int b) {
+    return a + b;
 }
 ```
 
-**Output shows:**
-- IF statement with condition
-- Nested blocks
-- Recursive function call
-- Type conversions
+**Output:**
+```
+FUNCTION add(a:short@IY+4, b:short@IY+6) -> short [frame=0]
+{
+  BLOCK {
+    RETURN (ADD:short (DEREF:short $a) (DEREF:short $b))
+  }
+}
+```
 
-### Example 3: Switch Statement
+### Example 3: Globals and Strings
 
 **Source:**
 ```c
-int classify(int x) {
-    switch (x) {
-        case 0: return 10;
-        case 1: return 20;
-        default: return 99;
-    }
-}
+int counter = 0;
+char *msg = "hello";
 ```
 
-**Output shows:**
-- SWITCH with expression
-- CASE labels with values
-- DEFAULT label
-- BREAK statements
+**Output:**
+```
+GLOBAL counter : short = 0:short
+STRING _str0 = "hello\x00"
+GLOBAL msg : ptr = $_str0
+```
 
 ## Implementation
 
-The pretty printer is implemented in Common Lisp and:
+The pretty printer is implemented in Python and:
 
 1. **Reads the AST** using a custom parser for the paren-free hex format
-2. **Handles special characters** like `|` and escape sequences in strings
+2. **Handles hex-encoded names** with 2-digit length prefix
 3. **Translates widths** to readable names (`:s` -> `:short`)
 4. **Formats recursively** using indentation tracking
 5. **Annotates operators** with human-readable names
-6. **Displays type widths** on memory operations
+6. **Shows register allocation** for parameters and locals
 
 ## Debugging with Pretty Printer
 
 1. Generate AST: `make test.ast`
-2. Pretty print: `./astpp.lisp test.ast`
+2. Pretty print: `./astpp.py test.ast`
 3. Verify structure matches expected AST
 
 ## Tips
@@ -263,21 +306,21 @@ For complex expressions, focus on specific parts:
 
 ```bash
 # Extract only function definitions
-./astpp.lisp program.ast | grep -A 20 "FUNCTION"
+./astpp.py program.ast | grep -A 20 "FUNCTION"
 
 # Show only global variables
-./astpp.lisp program.ast | grep "GLOBAL"
+./astpp.py program.ast | grep "GLOBAL"
 
 # Find specific variable references
-./astpp.lisp program.ast | grep "\$myvar"
+./astpp.py program.ast | grep "\$myvar"
 ```
 
 ### Compare ASTs
 
 ```bash
 # Compare two versions
-./astpp.lisp old.ast > /tmp/old.txt
-./astpp.lisp new.ast > /tmp/new.txt
+./astpp.py old.ast > /tmp/old.txt
+./astpp.py new.ast > /tmp/new.txt
 diff -u /tmp/old.txt /tmp/new.txt
 ```
 
@@ -285,7 +328,7 @@ diff -u /tmp/old.txt /tmp/new.txt
 
 ```bash
 # Open in editor for exploration
-./astpp.lisp program.ast | vim -
+./astpp.py program.ast | vim -
 ```
 
 ## License
