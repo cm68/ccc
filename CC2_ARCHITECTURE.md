@@ -5,13 +5,17 @@
 cc2 is the second pass of the ccc compiler. It reads AST from cc1 (compact
 paren-free hex format) and generates Z80 assembly code.
 
-## Three-Phase Architecture
+## Two-Phase Architecture
 
-cc2 uses a three-phase approach for code generation:
+cc2 uses a two-phase approach for code generation:
 
 ```
-AST Input -> Parse -> Schedule -> Emit -> Assembly Output
+AST Input -> Parse -> Schedule/Emit -> Assembly Output
 ```
+
+**Note:** Register allocation is performed by cc1 (outast.c) and communicated
+to cc2 via the AST. cc2 receives variables already assigned to registers or
+stack offsets.
 
 ### Phase 1: Parse (parseast.c)
 
@@ -22,7 +26,15 @@ Reads the AST and builds in-memory trees:
 
 All loops are pre-lowered to labeled if/goto by cc1, simplifying cc2.
 
-### Phase 2: Schedule (codegen.c)
+Register assignments are parsed from the AST declaration format:
+`d<type><hexname><reg><offset>` where reg is:
+- `00` - No register (on stack)
+- `01` - B register (byte)
+- `02` - C register (byte)
+- `03` - BC register pair (word)
+- `04` - IX register (word, for struct pointers)
+
+### Phase 2: Schedule/Emit (codegen.c, emitexpr.c, emitops.c)
 
 The scheduler annotates expression trees with:
 - **Location** (`e->loc`): Where the value is/goes
@@ -42,23 +54,7 @@ The scheduler annotates expression trees with:
   - `R_IX` - IX register
   - `R_NONE` - No register needed
 
-- **Offset** (`e->offset`): For IX/IY-indexed addressing
-- **Condition** (`e->cond`): For comparison results (CC_Z, CC_NZ, CC_C, etc.)
-
-The scheduler also:
-- Allocates variables to registers (BC, IX for words; B, C for bytes)
-- Identifies optimization patterns (IX-indexed struct access, comparison with 0)
-- Specializes compound operations (bit ops, shifts, inc/dec)
-
-### Phase 3: Emit (emitexpr.c, emitops.c, emithelper.c, emit.c)
-
-Walks the scheduled trees and outputs Z80 assembly:
-- `emitExpr()` - Main expression emitter, dispatches by op and location
-- `emitAssign()` - Assignment operations
-- `emitBinop()` - Binary operations with accumulator management
-- `emitIncDec()` - Increment/decrement operations
-- `emitCall()` - Function calls
-- Helper functions for common patterns (loadVar, storeVar, etc.)
+The emitters walk scheduled trees and output Z80 assembly.
 
 ## Data Structures
 
@@ -66,13 +62,13 @@ Walks the scheduled trees and outputs Z80 assembly:
 ```c
 struct expr {
     unsigned char op;       // Operation: '+', '-', 'M', '=', '@', etc.
-    unsigned char size;     // Result size in bytes
-    unsigned char flags;    // E_UNSIGNED, E_LVALUE, etc.
+    unsigned char size;     // Result size in bytes (1, 2, or 4)
+    unsigned char flags;    // E_UNSIGNED, E_LVALUE, E_FLOAT, etc.
     unsigned char opflags;  // Scheduler flags: OP_REGVAR, OP_IYMEM, etc.
     struct expr *left;      // Left operand
     struct expr *right;     // Right operand
     char *symbol;           // Symbol name (for $ nodes)
-    long value;             // Constant value (for C nodes)
+    long value;             // Constant value (for # nodes)
 
     // Scheduler annotations
     unsigned char loc;      // Location type
@@ -89,11 +85,10 @@ struct expr {
 struct stmt {
     unsigned char type;     // 'B'lock, 'I'f, 'E'xpr, 'R'eturn, etc.
     struct expr *expr;      // Condition or expression
-    struct expr *expr2;     // Second expression (for-loops)
-    struct expr *expr3;     // Third expression (for-loops)
     struct stmt *then_branch;  // Then/body
     struct stmt *else_branch;  // Else branch
     struct stmt *next;      // Next statement in sequence
+    char *symbol;           // Label name (for L/G statements)
 };
 ```
 
@@ -102,27 +97,29 @@ struct stmt {
 struct local_var {
     char *name;             // Variable name
     int size;               // Size in bytes
-    int offset;             // IY offset (negative for locals, positive for params)
-    int ref_count;          // Reference count for register allocation
-    int reg;                // Allocated register (REG_NO, REG_B, REG_C, REG_BC, REG_IX)
+    int offset;             // IY offset (params positive, locals negative)
+    int ref_count;          // Reference count (from cc1 analysis)
+    int reg;                // Allocated register (0=none, 1=B, 2=C, 3=BC, 4=IX)
     char is_param;          // Is this a parameter?
     struct local_var *next;
 };
 ```
 
-## Register Allocation
+## Register Allocation (Done in cc1)
 
 ### Available Registers
 - **BC** - Word variable (most common)
-- **IX** - Word variable (usually pointers for indexed access)
+- **IX** - Word variable (preferred for struct pointers)
 - **B** or **C** - Byte variables
 
-### Allocation Strategy
-1. Count references to each variable during parse
-2. Sort by reference count
-3. Allocate BC to highest-ref word variable
-4. Allocate IX to second-highest (if pointer type preferred)
+### Allocation Strategy (in cc1/outast.c)
+1. Count references to each variable during expression walks
+2. Track aggregate accesses (ptr->field patterns)
+3. Allocate IX to pointer variables with struct member accesses
+4. Allocate BC to highest-ref word variable
 5. Remaining variables stay on stack (IY-indexed)
+
+cc2 receives these allocations via the AST and generates appropriate code.
 
 ### IX-Indexed Optimization
 
@@ -133,10 +130,6 @@ addressing:
 struct foo *p;  // p allocated to IX
 x = p->field;   // Generates: ld r,(ix+offset)
 ```
-
-Pattern recognition in scheduler:
-- `(M (M $ptr))` - Simple pointer deref, offset 0
-- `(M (+ (M $ptr) const))` - Struct member access
 
 ## Stack Frame Layout
 
@@ -151,14 +144,14 @@ Higher addresses
 +------------------+
 | Local variables  |  IY - 2, IY - 4, ...
 +------------------+
-| Saved registers  |  BC, IX if used
+| Saved registers  |  BC, IX if used as regvars
 +------------------+
 Lower addresses
 ```
 
-Frame management:
-- `framealloc` - Allocate frame, save IY
-- `framefree` - Restore IY, deallocate frame
+Frame management via runtime library:
+- `framealloc` - Allocate frame, save IY, push regvars
+- `framefree` - Pop regvars, restore IY, deallocate frame
 
 ## Code Generation Patterns
 
@@ -188,34 +181,29 @@ ld c, (ix + 2)         ; Struct member at offset 2
 ld b, (ix + 3)
 ```
 
-### Comparisons
+### Long (32-bit) Operations
 
-**Word comparison with 0:**
+Uses HL:HL' (primary/alternate register pair):
 ```asm
-ld a, h
-or l            ; Z flag set if HL == 0
+ld hl, low_word
+exx
+ld hl, high_word       ; HLHL' = 32-bit value
+exx
 ```
 
-**General word comparison:**
-```asm
-; HL = left, DE = right
-or a
-sbc hl, de      ; Sets flags for comparison
-```
+Arithmetic via helper functions: `_ladd`, `_lsub`, `_lmul`, `_ldiv`
 
-### Increment/Decrement
+### Float Operations
 
-**Register variable:**
-```asm
-inc bc          ; or dec bc
-```
+Float and double are both 32-bit IEEE 754. All operations call helpers:
+- `_fadd`, `_fsub`, `_fmul`, `_fdiv` - Arithmetic
+- `_fcmp` - Comparison
+- `_itof`, `_ftoi` - Conversions
 
-**Stack variable:**
-```asm
-dec (iy + offset)      ; Low byte
-jr nc, $+3             ; Skip if no borrow
-dec (iy + offset+1)    ; High byte
-```
+Calling convention:
+- Left operand: DEDE' (pushed, popped into DE/DE')
+- Right operand: HLHL'
+- Result: HLHL'
 
 ### Function Calls
 
@@ -225,39 +213,21 @@ push bc         ; Last arg
 ld hl, value
 push hl         ; First arg
 call _function
-pop af          ; Clean up N bytes (pop pairs for efficiency)
+pop af          ; Clean up N bytes
 pop af
-; Result in HL (word) or A (byte)
+; Result in HL (word), A (byte), or HLHL' (long/float)
 ```
-
-## Optimization Passes
-
-### Dead Code Elimination
-- Performed at AST emission time in cc1
-- Removes unreachable code after unconditional jumps/returns
-- Handles IF statement elimination when condition is constant
-
-### Specialization (codegen.c)
-- Bit operations: `var |= (1<<n)` -> `set n, r`
-- Shifts: `var <<= n` -> `sla r` (repeated)
-- Compound byte ops: `var += expr` -> `add a, r; ld r, a`
-
-### Value Caching (regcache.c)
-- Tracks what values are in A, HL
-- Eliminates redundant loads
-- Cleared on function calls and jumps
 
 ## File Organization
 
 - **cc2.c** - Main entry, command-line processing
-- **parseast.c** - AST parser, builds stmt/expr trees
-- **astio.c** - Low-level AST I/O
-- **codegen.c** - Scheduler: register allocation, pattern recognition
+- **parseast.c** - AST parser, builds stmt/expr trees from hex format
+- **astio.c** - Low-level AST I/O (character reading, hex parsing)
+- **codegen.c** - Scheduler: pattern recognition, instruction selection
 - **emitexpr.c** - Expression emission dispatcher
-- **emitops.c** - Operation emitters (assign, binop, call, etc.)
+- **emitops.c** - Operation emitters (assign, binop, call, incdec, etc.)
 - **emithelper.c** - Helper functions (loadVar, storeVar, emit strings)
-- **emit.c** - Low-level emit table and string lookup
-- **regcache.c** - Value caching for A and HL registers
+- **emit.c** - Statement emission, emit table and string lookup
 - **dumpast.c** - Debug AST dumper
 
 ## Debug Support
@@ -275,16 +245,13 @@ When compiled with `-DDEBUG`:
 ## Current Status
 
 **Complete:**
-- Full AST parsing
-- Register allocation (BC, IX, B, C)
-- Stack frame management
-- All expression types
-- All statement types (IF, loops lowered to labels)
-- Function calls with argument passing
-- Struct member access optimization
-- Dead code elimination
+- Full AST parsing (hex format with register assignments)
+- All expression types (unary, binary, ternary, calls)
+- All statement types (IF, loops lowered to labels, switch)
+- Long (32-bit) arithmetic via helpers
+- Float support (32-bit IEEE 754) via helpers
+- Struct copy (Y operator)
+- Bitfield extract/assign
+- IX-indexed struct access optimization
 
-**In Progress:**
-- Long (32-bit) arithmetic
-- Floating point support
-- Further size optimization
+**Note:** Register allocation moved to cc1 for whole-function analysis.
