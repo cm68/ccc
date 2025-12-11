@@ -561,12 +561,22 @@ class ASTParser:
                     init_count = self.read_hex2()
                     values = []
                     for i in range(init_count):
-                        # Array init can have symbol refs ($name) or constants (#hex)
+                        # Array init can have symbol refs ($name), widened constants (Wp#),
+                        # or direct constants (#hex)
                         self.skip_whitespace()
                         if self.cur() == '$':
                             self.advance()
                             sym = self.read_name()
                             val_str = f"${sym}"
+                        elif self.cur() == 'W':
+                            # Widened constant (e.g., Wp#B00000000 for NULL)
+                            self.advance()  # skip W
+                            self.advance()  # skip target type (p)
+                            self.advance()  # skip #
+                            w = self.cur()  # size suffix
+                            self.advance()
+                            val = self.read_hex8()
+                            val_str = f"{val}:{self.width_name(w)}"
                         elif self.cur() == '#':
                             self.advance()
                             w = self.cur()  # size suffix

@@ -486,9 +486,6 @@ void clearHL() {
     fnHLZero = 0;
 }
 
-void clearDE() {
-}
-
 void clearA() {
     fnIXAOfs = -1;
     fnABCValid = 0;
@@ -502,7 +499,6 @@ void pushStack() {
     if (fnDEValid) {
         emit(S_PUSHDESP);
         fnDESaveCnt++;
-        clearDE();
     }
     emit(S_PUSHTOS);
     fnDEValid = 1;
@@ -513,7 +509,6 @@ void popStack() {
     if (0) return;
     fnDEValid = 0;
     fnZValid = 0;
-    clearDE();
 }
 
 void invalStack() {
@@ -521,20 +516,7 @@ void invalStack() {
     fnDEValid = 0;
     fnZValid = 0;
     clearHL();
-    clearDE();
     clearA();
-}
-
-char isBinopWAccum(unsigned char op) {
-    switch (op) {
-    case '+': case '-': case '*': case '/': case '%':
-    case '&': case '|': case '^': case 'y': case 'w':
-    case '>': case '<': case 'g': case 'L':
-    case 'Q': case 'n':
-        return 1;
-    default:
-        return 0;
-    }
 }
 
 /* Helper: emit global long (4-byte) load/store */
@@ -929,11 +911,3 @@ emitStackDrf(struct expr *e)
     freeExpr(e);
 }
 
-/*
- * Emit byte load from (BC)
- */
-void
-emitBCIndir(void)
-{
-    emit(S_LDABC);
-}

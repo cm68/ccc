@@ -1381,6 +1381,19 @@ emitGv(struct name *var)
 		}
 	}
 
+	/*
+	 * For arrays with initializer lists containing strings, emit all
+	 * strings BEFORE the Z record so they don't interrupt it
+	 */
+	if ((var->type->flags & TF_ARRAY) && var->u.init && var->u.init->next) {
+		struct expr *item;
+		for (item = var->u.init; item; item = item->next) {
+			if (item->op == STRING && item->var) {
+				emitStrLit((struct name *)item->var);
+			}
+		}
+	}
+
 	fdprintf(astFd, "\nZ$");
 
 	/* Static uses mangled name, public gets underscore prefix */

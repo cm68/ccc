@@ -106,7 +106,7 @@ ccc/
 │   ├── bin/          # Executables (cc1, cc2, ccc, asz, wsld, etc.)
 │   ├── lib/          # Runtime libraries (crt0.o, libc.a, libu.a)
 │   └── usr/include/  # Installed headers
-└── native/           # Native Z80 build files
+└── stage1/           # Cross-compiled Z80 object files (cc1.o, cc2.o)
 ```
 
 ## Command Line Reference

@@ -242,7 +242,7 @@ emitExpr(struct expr *e)
 
     /* Handle BC indirect load with caching - use opflags */
     if (op == 'M' && (opflags & OP_BCINDIR)) {
-        emitBCIndir();
+        emit(S_LDABC);  /* ld a,(bc) */
         freeNode(e);
         return;
     }
@@ -278,7 +278,7 @@ emitExpr(struct expr *e)
         return;
     }
     /* Binary operators with accumulator management need special handling */
-    else if (isBinopWAccum(op) && left && e->right) {
+    else if (is_acc(op) && left && e->right) {
         emitBinop(e);
         return;
     }

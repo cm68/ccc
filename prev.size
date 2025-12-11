@@ -1,25 +1,25 @@
-cc1.o 695 230 9
-error.o 195 582 4
-lex.o 3501 403 143
-io.o 1463 49 142
-macro.o 1760 2 4
+pass1.o 695 230 9
+error.o 195 900 4
+lex.o 3535 403 143
+io.o 1465 49 142
+macro.o 1773 2 4
 kw.o 102 301 6
-util.o 122 12 0
+util.o 128 12 0
 tokenlist.o 0 0 0
-expr.o 9399 246 2
-parse.o 5307 222 91
-type.o 3178 156 23
-declare.o 2345 7 0
-outast.o 8932 627 260
-cc1 size:  36999 2837 684 = 40520
-cc2.o 933 177 2
-util.o 122 12 0
-astio.o 599 0 328
-parseast.o 6369 380 570
-codegen.o 7948 443 13
+expr.o 9414 246 2
+parse.o 5324 222 91
+type.o 3209 178 23
+declare.o 2361 7 0
+outast.o 9091 627 260
+cc1 size:  37292 3177 684 = 41153
+pass2.o 936 177 2
+util.o 128 12 0
+astio.o 611 0 328
+parseast.o 6818 444 570
+codegen.o 8042 443 13
 dumpast.o 20 0 0
-emithelper.o 3970 2761 0
-emitexpr.o 5122 859 0
-emitops.o 8375 1725 29
-emit.o 5044 607 2
-cc2 size:  38502 6964 944 = 46410
+emithelper.o 3933 3490 0
+emitexpr.o 5155 888 0
+emitops.o 8383 1725 29
+emit.o 5046 607 2
+cc2 size:  39072 7786 944 = 47802

@@ -270,36 +270,38 @@ frStmt(struct stmt *s)
 #define OP_ORD 16  /* ordered comparison: < > g L (not == !=) */
 #define OP_LOG 32  /* logical op: h j ! */
 #define OP_BIT 64  /* bitwise op: & | ^ */
+#define OP_ACC 128 /* accum binop: + - * / % & | ^ y w < > g L Q n */
 
 /*
  * Static operator table - indexed by (op - 0x20)
  * OP_1=unary, OP_2=binary, OP_S=special, OP_L=needs label
  */
 static const unsigned char optab[96] = {
-/*0x20 spc !           "  #  $  %    &           ' */
-       0,OP_1|OP_LOG,0,0,0,OP_2,OP_2|OP_BIT,OP_1,
-/*0x28 (    )    *    +    ,    -    .  / */
-       OP_S,OP_S,OP_2,OP_2,OP_2,OP_2,0,OP_2,
-/*0x30 0    1    2    3  4  5  6    7 */
-       OP_2,OP_2,OP_2,0,0,0,OP_2,0,
-/*0x38 8  9  :    ;  <                 =    >                 ? */
-       0,0,OP_2,0,OP_2|OP_CMP|OP_ORD,OP_2,OP_2|OP_CMP|OP_ORD,OP_S,
-/*0x40 @    A  B  C  D  E  F  G */
-       OP_S,0,0,0,0,0,0,0,
-/*0x48 H  I  J  K  L                 M    N    O */
-       0,0,0,0,OP_2|OP_CMP|OP_ORD,OP_1,OP_1,0,
-/*0x50 P    Q           R  S  T    U  V  W */
-       OP_2,OP_2|OP_CMP,0,0,OP_2,0,0,OP_1,
-/*0x58 X    Y    Z  [  \    ]  ^           _ */
-       OP_2,OP_S,0,0,OP_1,0,OP_2|OP_BIT,0,
+/*       0    1            2  3  4  5        6               7 */
+/*0x20 spc    !            "  #  $  %        &               ' */
+       0,OP_1|OP_LOG,      0, 0, 0,OP_2|OP_ACC,OP_2|OP_BIT|OP_ACC,OP_1,
+/*0x28 (      )            *        +    ,        -          .  / */
+       OP_S,OP_S,OP_2|OP_ACC,OP_2|OP_ACC,OP_2,OP_2|OP_ACC, 0,OP_2|OP_ACC,
+/*0x30 0      1            2        3  4  5  6    7 */
+       OP_2,OP_2,          OP_2,    0, 0, 0,OP_2, 0,
+/*0x38 8  9  :             ;        <                     =    >                     ? */
+       0, 0,OP_2,          0,OP_2|OP_CMP|OP_ORD|OP_ACC,OP_2,OP_2|OP_CMP|OP_ORD|OP_ACC,OP_S,
+/*0x40 @      A  B  C  D  E  F  G */
+       OP_S, 0, 0, 0, 0, 0, 0, 0,
+/*0x48 H  I  J  K          L                     M    N    O */
+       0, 0, 0, 0,OP_2|OP_CMP|OP_ORD|OP_ACC,    OP_1,OP_1, 0,
+/*0x50 P      Q               R  S  T    U  V  W */
+       OP_2,OP_2|OP_CMP|OP_ACC,0, 0,OP_2, 0, 0,OP_1,
+/*0x58 X      Y              Z  [  \    ]  ^                   _ */
+       OP_2,OP_S,             0, 0,OP_1, 0,OP_2|OP_BIT|OP_ACC, 0,
 /*0x60 `  a    b  c  d  e    f    g */
-       0,OP_2,0,0,0,OP_S,OP_S,OP_2|OP_CMP|OP_ORD,
-/*0x68 h                 i  j                 k  l  m    n           o */
-       OP_2|OP_L|OP_LOG,0,OP_2|OP_L|OP_LOG,0,0,OP_2,OP_2|OP_CMP,OP_2,
+       0,OP_2, 0, 0, 0,OP_S,OP_S,OP_2|OP_CMP|OP_ORD|OP_ACC,
+/*0x68 h                 i  j                 k  l  m    n               o */
+       OP_2|OP_L|OP_LOG, 0,OP_2|OP_L|OP_LOG,  0, 0,OP_2,OP_2|OP_CMP|OP_ACC,OP_2,
 /*0x70 p  q  r  s  t  u  v  w */
-       0,0,0,0,0,0,0,OP_2,
-/*0x78 x    y    z  {    |           }    ~    DEL */
-       OP_1,OP_2,0,OP_S,OP_2|OP_BIT,OP_S,OP_1,0
+       0, 0, 0, 0, 0, 0, 0,OP_2|OP_ACC,
+/*0x78 x     y           z  {     |               }    ~    DEL */
+       OP_1,OP_2|OP_ACC, 0,OP_S,OP_2|OP_BIT|OP_ACC,OP_S,OP_1, 0
 };
 #define OPTAB(op) optab[(op) - 0x20]
 #define IS_CMP(op) (OPTAB(op) & OP_CMP)
@@ -308,6 +310,7 @@ char is_cmp(unsigned char op) { return OPTAB(op) & OP_CMP; }
 char is_ord(unsigned char op) { return OPTAB(op) & OP_ORD; }
 char is_log(unsigned char op) { return OPTAB(op) & OP_LOG; }
 char is_bit(unsigned char op) { return OPTAB(op) & OP_BIT; }
+char is_acc(unsigned char op) { return OPTAB(op) & OP_ACC; }
 
 /* Read type suffix and set size/flags */
 static void
@@ -1043,12 +1046,59 @@ doGlobal(void)
 					col += (val < 10) ? 1 : (val < 100) ? 2 : 3;
 				}
 				fdputs(outFd, "\n");
+			} else if (!isDefSym(name_buf) && elem_type == 'p') {
+				/* Pointer array initializer */
+				int i;
+				addDefSym(name_buf);
+				switchToSeg(SEG_DATA);
+				fdprintf(outFd, "%s:\n", name_buf);
+				for (i = 0; i < init_count; i++) {
+					if (curchar == '$') {
+						/* Symbol reference */
+						char *sym;
+						nextchar();  /* skip $ */
+						sym = (char *)readName();
+						fdprintf(outFd, "\t.dw %s\n", sym);
+					} else if (curchar == 'W') {
+						/* Widened constant (e.g. Wp#B00000000 for NULL) */
+						nextchar();  /* skip W */
+						nextchar();  /* skip p */
+						nextchar();  /* skip # */
+						nextchar();  /* skip type char */
+						val = (int)readHex8();
+						fdprintf(outFd, "\t.dw %d\n", val);
+					} else if (curchar == '#') {
+						/* Direct constant value */
+						nextchar();  /* skip # */
+						nextchar();  /* skip type char */
+						val = (int)readHex8();
+						fdprintf(outFd, "\t.dw %d\n", val);
+					} else {
+						/* Unknown - skip */
+						nextchar();
+					}
+				}
 			} else {
 				/* Skip initializer */
 				int i;
 				for (i = 0; i < init_count; i++) {
-					nextchar();  /* skip # */
-					readHex8();
+					if (curchar == '$') {
+						nextchar();  /* skip $ */
+						readName();
+					} else if (curchar == 'W') {
+						/* Widened constant */
+						nextchar();  /* skip W */
+						nextchar();  /* skip p */
+						nextchar();  /* skip # */
+						nextchar();  /* skip type char */
+						readHex8();
+					} else if (curchar == '#') {
+						nextchar();  /* skip # */
+						nextchar();  /* skip type char */
+						readHex8();
+					} else {
+						nextchar();
+					}
 				}
 			}
 			return;
