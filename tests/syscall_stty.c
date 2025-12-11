@@ -1,12 +1,9 @@
 /*
  * syscall_stty test
  */
-
-int gtty();
-int stty();
+#include <unistd.h>
 
 char ttybuf[6];
-
 int main(void)
 {
 	/* get current settings */

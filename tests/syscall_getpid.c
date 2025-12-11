@@ -1,8 +1,7 @@
 /*
  * syscall_getpid test
  */
-
-int getpid();
+#include <unistd.h>
 
 int main(void)
 {

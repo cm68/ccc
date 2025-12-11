@@ -1,14 +1,9 @@
 /*
  * syscall_seek test
  */
-
-int open();
-int close();
-int seek();
-int read();
+#include <unistd.h>
 
 char buf[10];
-
 int main(void)
 {
 	int fd, n;

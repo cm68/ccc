@@ -1,11 +1,9 @@
 /*
  * syscall_time test
  */
-
-int time();
+#include <unistd.h>
 
 long timeval;
-
 int main(void)
 {
 	if (time(&timeval) < 0)

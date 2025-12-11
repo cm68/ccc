@@ -2,13 +2,9 @@
  * syscall_stime test
  * Note: stime requires superuser privileges
  */
-
-int getuid();
-int time();
-int stime();
+#include <unistd.h>
 
 long timeval;
-
 int main(void)
 {
 	int uid;

@@ -2,10 +2,7 @@
  * syscall_mknod test
  * Note: mknod requires superuser privileges
  */
-
-int mknod();
-int unlink();
-int getuid();
+#include <unistd.h>
 
 int main(void)
 {

@@ -12,7 +12,7 @@ CC = gcc
 #CC = sdcc
 #CC = ccc
 
-ASM = asz
+ASM = root/bin/asz
 ASMOPTS =
 
 CCCFLAGS = -DCCC -DASMKWLOOK -ilibsrc/include -I.
@@ -200,7 +200,7 @@ native/lib/libccc.a:
 	$(MAKE) -C native/lib libccc.a
 
 # Link stage1 binaries with -r (relocatable)
-WSLD = ws/wsld
+WSLD = root/bin/wsld
 STAGE1_CC1_OBJS = $(addprefix stage1/, $(CC1OBJECTS))
 STAGE1_CC2_OBJS = $(addprefix stage1/, $(CC2OBJECTS))
 
@@ -214,9 +214,9 @@ stage1/pass2.o: $(STAGE1_CC2_OBJS) native/lib/libccc.a
 # check size of compiled objects
 #
 sizecheck: $(STAGE1_CC1_OBJS) $(STAGE1_CC2_OBJS)
-	@wssize $(STAGE1_CC1_OBJS) | \
+	@root/bin/wssize $(STAGE1_CC1_OBJS) | \
 	awk '($$1 != "text") {print substr($$6, 8), $$1, $$2, $$3; text+=$$1;data+=$$2;bss+=$$3}END{print "cc1 size: ", text, data, bss, "=", text+data+bss}' | tee current.size
-	@wssize $(STAGE1_CC2_OBJS) | \
+	@root/bin/wssize $(STAGE1_CC2_OBJS) | \
 	awk '($$1 != "text") {print substr($$6, 8), $$1, $$2, $$3; text+=$$1;data+=$$2;bss+=$$3}END{print "cc2 size: ", text, data, bss, "=", text+data+bss}' | tee -a current.size
 	@if [ -f prev.size ] ; then diff prev.size current.size ; fi ; mv current.size prev.size
 

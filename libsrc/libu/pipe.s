@@ -31,21 +31,26 @@ _pipe:
 	push 	de		; save fds pointer
 	rst 	08h
 	.db 	02ah
-	; returns: hl = read fd, de = write fd
-	pop 	bc		; bc = fds pointer
+
 	jr 	c,error
 
-	ld 	a,l		; store read fd
-	ld 	(bc),a
-	inc 	bc
-	ld 	a,h
-	ld 	(bc),a
-	inc 	bc
-	ld 	a,e		; store write fd
-	ld 	(bc),a
-	inc 	bc
-	ld 	a,d
-	ld 	(bc),a
+	; returns: hl = read fd, de = write fd
+	ex	de,hl		; read fd in de
+	ex	(sp),hl		; pointer in hl, write fd to stack
+
+	ld 	(hl),e
+	inc 	hl
+	ld 	(hl),d
+	inc 	hl
+
+	ex	(sp),hl		; pointer to stack, write fd to hl
+	ex	de,hl		; write fd to de
+	pop	hl		; get pointer
+
+	ld 	(hl),e
+	inc 	hl
+	ld 	(hl),d
+
 	ld 	hl,0
 	ret
 error:

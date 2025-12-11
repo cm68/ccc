@@ -1,9 +1,7 @@
 /*
  * syscall_kill test
  */
-
-int getpid();
-int kill();
+#include <unistd.h>
 
 int main(void)
 {

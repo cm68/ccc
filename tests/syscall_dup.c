@@ -1,9 +1,7 @@
 /*
  * syscall_dup test
  */
-
-int dup();
-int close();
+#include <unistd.h>
 
 int main(void)
 {

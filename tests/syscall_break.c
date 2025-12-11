@@ -1,10 +1,9 @@
 /*
  * syscall_break test
  */
+#include <unistd.h>
 
-int brk();
 char *sbrk();
-
 int main(void)
 {
 	char *cur, *new;

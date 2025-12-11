@@ -1,13 +1,9 @@
 /*
  * syscall_fstat test
  */
-
-int open();
-int close();
-int fstat();
+#include <unistd.h>
 
 char statbuf[36];
-
 int main(void)
 {
 	int fd;

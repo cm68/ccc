@@ -1,11 +1,9 @@
 /*
  * syscall_stat test
  */
-
-int stat();
+#include <unistd.h>
 
 char statbuf[36];
-
 int main(void)
 {
 	if (stat("/etc/passwd", statbuf) < 0)

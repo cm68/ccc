@@ -81,10 +81,15 @@ execIns(struct expr *e, unsigned char ins)
         }
         return 1;
     case EO_HL_CONST:
-        if (e->value.s == 0 && fnHLZero)
+        /* Only use symbol name for globals (findVar returns NULL) */
+        if (symbol && !findVar(symbol))
+            fdprintf(outFd, "\tld hl, %s\n", symbol);
+        else if (e->value.s == 0 && fnHLZero)
             return 1;
-        fdprintf(outFd, "\tld hl, %d\n", e->value.s);
-        fnHLZero = (e->value.s == 0);
+        else {
+            fdprintf(outFd, "\tld hl, %d\n", e->value.s);
+            fnHLZero = (e->value.s == 0);
+        }
         return 1;
     case EO_HLHL_IYL:
         fdprintf(outFd, "\tld a, %d\n\tcall getLiy\n", (int)e->offset);
@@ -671,7 +676,11 @@ emit2Expr(struct expr *e)
                 fdprintf(outFd, "\tld hl, (%s)\n", left->symbol);
             continue;
         case EO_HL_CONST:
-            fdprintf(outFd, "\tld hl, %d\n", e->value.s);
+            /* Only use symbol name for globals (findVar returns NULL) */
+            if (e->symbol && !findVar(e->symbol))
+                fdprintf(outFd, "\tld hl, %s\n", e->symbol);
+            else
+                fdprintf(outFd, "\tld hl, %d\n", e->value.s);
             continue;
         case EO_A_IY: loadByteIY(e->offset, 0); continue;
         case EO_A_MEM:

@@ -2,8 +2,7 @@
  * syscall_umount test
  * Note: umount requires superuser privileges
  */
-
-int getuid();
+#include <unistd.h>
 
 int main(void)
 {

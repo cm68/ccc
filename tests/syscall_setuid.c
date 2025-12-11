@@ -1,9 +1,7 @@
 /*
  * syscall_setuid test
  */
-
-int getuid();
-int setuid();
+#include <unistd.h>
 
 int main(void)
 {

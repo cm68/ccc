@@ -20,15 +20,16 @@
 	.text
 _fstat:
 	pop 	hl		; ret addr
-	pop 	de		; fd in a
+	pop 	af		; fd in a
 	pop 	hl		; buf
 	ld 	(buf),hl
 
 	ld	hl,-6
 	add	hl,sp
 	ld	sp,hl
-	
-	ex	de,hl
+
+	ld 	l,a		; fd in hl
+	ld 	h,0
 	rst 	08h
 	.db 	000h
 	.dw 	scall

@@ -1,8 +1,7 @@
 /*
  * syscall_exit test
  */
-
-void exit();
+#include <unistd.h>
 
 int main(void)
 {

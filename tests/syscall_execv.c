@@ -1,14 +1,9 @@
 /*
  * syscall_execv test
  */
+#include <unistd.h>
 
-int fork();
-int wait();
-int execv();
-void exit();
-
-char *argv[] = { "/bin/true", 0 };
-
+char *args[] = { "/bin/true", 0 };
 int main(void)
 {
 	int pid, status;
@@ -18,7 +13,7 @@ int main(void)
 		return 1;
 	if (pid == 0) {
 		/* child execs /bin/true */
-		execv("/bin/true", argv);
+		execv("/bin/true", args);
 		exit(99);	/* exec failed */
 	}
 	/* parent waits */

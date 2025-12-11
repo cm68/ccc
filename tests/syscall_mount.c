@@ -2,8 +2,7 @@
  * syscall_mount test
  * Note: mount requires superuser privileges
  */
-
-int getuid();
+#include <unistd.h>
 
 int main(void)
 {

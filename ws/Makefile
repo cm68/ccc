@@ -4,6 +4,7 @@
 # wsnm   - object/archive dump
 # wslib  - archive librarian
 # wssize - display object sizes
+ROOTDIR = ../root
 
 CC = gcc
 CFLAGS = -m32 -g -Wall -std=c90 -pedantic -Dlinux -std=c89
@@ -66,8 +67,11 @@ test: all
 	./wsnm tests/test.out
 
 clean:
-	rm -f $(ALL) *.o tests/*.out tests/test.a tests/ctest.o
+	rm -f *.o tests/*.out tests/test.a tests/ctest.o
 	rm -f stage1/*.ast stage1/*.s stage1/*.o
+
+clobber: clean
+	rm -f $(ALL)
 
 install: all
 	mkdir -p $(ROOTDIR)/bin
@@ -136,4 +140,4 @@ link: stage1/asz stage1/wsld stage1/wsnm stage1/wslib stage1/wssize
 	@echo "=== Linked stage1 tools ==="
 	@ls -la stage1/asz stage1/wsld stage1/wsnm stage1/wslib stage1/wssize
 
-.PHONY: all clean test install stage1 sizecheck link
+.PHONY: all clean clobber test install stage1 sizecheck link

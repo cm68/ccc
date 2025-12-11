@@ -1,11 +1,9 @@
 /*
  * syscall_gtty test
  */
-
-int gtty();
+#include <unistd.h>
 
 char ttybuf[6];
-
 int main(void)
 {
 	/* get tty settings for stdin */

@@ -1,9 +1,10 @@
 # CCC Runtime Library Makefile
 # Builds the Z80 runtime libraries for programs compiled with ccc
 
-AS = ../../xbin/asz
-LIB = ../../xbin/wslib
-DEST = ../../lib
+CC = ../../root/bin/ccc
+LIB = ../../root/bin/wslib
+ROOTDIR ?= ../../root
+DEST = $(ROOTDIR)/lib
 
 # Source files - each in its own .s file for selective linking
 LIBC_SRCS = frame.s indexiy.s long.s long32.s switch.s \
@@ -22,14 +23,15 @@ CRT0 = crt0.o
 # Library target
 LIBC = libc.a
 
-.PHONY: all clean
+.PHONY: all clean clobber install
 
 all: $(LIBC) $(CRT0)
 
 %.o: %.s
-	$(AS) $(ASFLAGS) -o $@ $<
+	$(CC) -c -o $@ $<
 
 crt0.o: crt0.s
+	$(CC) -c -o $@ $<
 
 $(LIBC): $(LIBC_OBJS)
 	$(LIB) -crv $@ $^
@@ -39,7 +41,10 @@ install: $(LIBC) $(CRT0)
 	cp $(LIBC) $(CRT0) $(DEST)
 	
 clean:
-	rm -f $(LIBC_OBJS) $(CRT0) $(LIBC)
+	rm -f $(LIBC_OBJS)
+
+clobber: clean
+	rm -f $(CRT0) $(LIBC)
 
 #
 # vim: tabstop=4 shiftwidth=4 noexpandtab:

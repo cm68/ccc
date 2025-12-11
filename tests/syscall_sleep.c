@@ -1,8 +1,7 @@
 /*
  * syscall_sleep test
  */
-
-int sleep();
+#include <unistd.h>
 
 int main(void)
 {

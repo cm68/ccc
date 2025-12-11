@@ -1,13 +1,7 @@
 /*
  * syscall_pause test
  */
-
-int fork();
-int kill();
-int pause();
-int alarm();
-int getpid();
-void exit();
+#include <unistd.h>
 
 int main(void)
 {

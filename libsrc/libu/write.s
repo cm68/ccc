@@ -19,7 +19,7 @@
 	.text
 _write:
 	pop 	hl		; discard ret addr
-	pop 	de		; fd
+	pop 	af		; fd in a
 	pop 	hl		; buf
 	ld 	(buf),hl
 	pop 	hl		; nbytes
@@ -29,7 +29,8 @@ _write:
 	add 	hl,sp
 	ld 	sp,hl
 
-	ex 	de,hl		; fd in hl
+	ld 	l,a		; fd in hl
+	ld	h,0
 	rst 	08h
 	.db 	000h
 	.dw 	scall

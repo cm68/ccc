@@ -281,7 +281,11 @@ test-struct:
 valgrind:
 	./runvalgrind.sh $(ALL_TESTS)
 
+# Build executable from .c file using ccc
+%: %.c
+	../root/bin/ccc -o $@ $<
+
 # Clean test artifacts
 .PHONY: clean
 clean:
-	rm -f *.i
+	rm -f *.i *.o *.s *.ast

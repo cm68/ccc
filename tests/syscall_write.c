@@ -1,8 +1,7 @@
 /*
  * syscall_write test
  */
-
-int write();
+#include <unistd.h>
 
 int main(void)
 {

@@ -1,9 +1,7 @@
 /*
  * syscall_close test
  */
-
-int open();
-int close();
+#include <unistd.h>
 
 int main(void)
 {

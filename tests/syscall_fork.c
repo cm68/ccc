@@ -1,10 +1,7 @@
 /*
  * syscall_fork test
  */
-
-int fork();
-int wait();
-void exit();
+#include <unistd.h>
 
 int main(void)
 {

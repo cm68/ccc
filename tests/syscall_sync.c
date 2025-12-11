@@ -1,8 +1,7 @@
 /*
  * syscall_sync test
  */
-
-void sync();
+#include <unistd.h>
 
 int main(void)
 {

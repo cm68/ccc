@@ -1,9 +1,10 @@
 # micronix system call Library Makefile
 # Builds the micronix system call library for programs compiled with ccc
 
-AS = ../../xbin/asz
-LIB = ../../xbin/wslib
-DEST = ../../lib
+CC = ../../root/bin/ccc
+LIB = ../../root/bin/wslib
+ROOTDIR ?= ../../root
+DEST = $(ROOTDIR)/lib
 
 # Source files - each in its own .s file for selective linking
 LIBU_SRCS = access.s alarm.s break.s chdir.s chmod.s chown.s close.s create.s \
@@ -24,7 +25,7 @@ LIBU = libu.a
 all: $(LIBU)
 
 %.o: %.s
-	$(AS) $(ASFLAGS) -o $@ $<
+	$(CC) -c -o $@ $<
 
 $(LIBU): $(LIBU_OBJS)
 	$(LIB) -crv $@ $^
@@ -34,9 +35,10 @@ install: $(LIBU)
 	cp $(LIBU) $(DEST)
 	
 clean:
-	rm -f $(LIBU_OBJS) $(LIBU)
+	rm -f $(LIBU_OBJS)
 
 clobber: clean
+	rm -f $(LIBU)
 
 #
 # vim: tabstop=4 shiftwidth=4 noexpandtab:

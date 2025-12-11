@@ -23,7 +23,7 @@
 	.text
 _seek:
 	pop 	hl		; discard ret addr
-	pop 	de		; fd
+	pop 	af		; fd in a
 	pop 	hl		; offset
 	ld 	(offset),hl
 	pop 	hl		; whence
@@ -33,7 +33,8 @@ _seek:
 	add 	hl,sp
 	ld 	sp,hl
 
-	ex 	de,hl		; fd in hl
+	ld 	l,a		; fd in hl
+	ld 	h,0
 	rst 	08h
 	.db 	000h
 	.dw 	scall

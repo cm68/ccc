@@ -1,11 +1,7 @@
 /*
  * syscall_link test
  */
-
-int creat();
-int close();
-int link();
-int unlink();
+#include <unistd.h>
 
 int main(void)
 {

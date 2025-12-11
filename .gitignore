@@ -8,8 +8,12 @@ iotest
 lextest
 maketokens
 genop_pri
-tests/*.i
+tests/*
+!tests/*.c
+!tests/Makefile
+!tests/runtest.sh
 *.o
+*.a
 stage1/
 enumlist.h
 tokenlist.c
@@ -61,3 +65,5 @@ do.ast
 core
 lib/*.O
 __pycache__/
+ws/lib/
+root/

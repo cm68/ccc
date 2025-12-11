@@ -1015,7 +1015,8 @@ schedExpr(struct expr *e, int dest)
             break;
         }
         /* Comparisons: schedule so sbc hl,de gives correct result */
-        if (e->size == 1 || (e->left && e->left->size == 1)) {
+        /* Check operand size, not result size (result is always byte boolean) */
+        if (e->left && e->left->size == 1) {
             schedExpr(e->left, R_A);
             schedExpr(e->right, R_A);
         } else if (e->op == '<' || e->op == 'g') {

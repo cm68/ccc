@@ -1,8 +1,7 @@
 /*
  * syscall_access test
  */
-
-int access();
+#include <unistd.h>
 
 int main(void)
 {

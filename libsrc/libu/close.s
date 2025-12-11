@@ -19,11 +19,13 @@
 
 	.text
 _close:
-	pop 	de		; discard ret addr
-	pop 	hl		; fd in hl
-	push	hl
-	pop	de
+	pop 	de		; ret addr
+	pop 	af		; fd in a
+	push 	af
+	push 	de
 
+	ld 	l,a		; fd in hl
+	ld 	h,0
 	rst 	08h
 	.db 	006h
 	ex 	de,hl

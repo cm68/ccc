@@ -1,8 +1,7 @@
 /*
  * syscall_chdir test
  */
-
-int chdir();
+#include <unistd.h>
 
 int main(void)
 {

@@ -1,14 +1,9 @@
 /*
  * syscall_read test
  */
-
-int read();
-int write();
-int open();
-int close();
+#include <unistd.h>
 
 char buf[32];
-
 int main(void)
 {
 	int fd, n;

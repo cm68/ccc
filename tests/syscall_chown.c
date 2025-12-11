@@ -2,12 +2,7 @@
  * syscall_chown test
  * Note: chown requires superuser privileges
  */
-
-int creat();
-int close();
-int chown();
-int unlink();
-int getuid();
+#include <unistd.h>
 
 int main(void)
 {

@@ -409,7 +409,8 @@ assignFrmOff(struct name *func)
 			struct name *local;
 			for (local = body->locals; local; local = local->next) {
 				if (local->name && strcmp(local->name, n->name) == 0) {
-					local->frm_off = (local->reg) ? 0 : off;
+					/* Params always need frame offset (passed on stack) */
+					local->frm_off = off;
 					break;
 				}
 			}

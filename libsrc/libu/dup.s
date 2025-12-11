@@ -22,10 +22,12 @@
 	.text
 _dup:
 	pop 	de		; ret addr
-	pop 	hl		; fd
-	push 	hl
+	pop 	af		; fd in a
+	push 	af
 	push 	de
 
+	ld 	l,a		; fd in hl
+	ld 	h,0
 	rst 	08h
 	.db 	029h
 	ret 	nc		; new fd in hl

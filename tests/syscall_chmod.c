@@ -1,11 +1,7 @@
 /*
  * syscall_chmod test
  */
-
-int creat();
-int close();
-int chmod();
-int unlink();
+#include <unistd.h>
 
 int main(void)
 {

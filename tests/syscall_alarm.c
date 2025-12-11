@@ -1,8 +1,7 @@
 /*
  * syscall_alarm test
  */
-
-int alarm();
+#include <unistd.h>
 
 int main(void)
 {

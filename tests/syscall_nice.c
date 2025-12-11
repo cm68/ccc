@@ -1,8 +1,7 @@
 /*
  * syscall_nice test
  */
-
-int nice();
+#include <unistd.h>
 
 int main(void)
 {

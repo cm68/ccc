@@ -1,15 +1,10 @@
 /*
  * syscall_pipe test
  */
-
-int pipe();
-int close();
-int write();
-int read();
+#include <unistd.h>
 
 int fds[2];
 char buf[10];
-
 int main(void)
 {
 	int n;
