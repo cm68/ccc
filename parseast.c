@@ -1050,8 +1050,9 @@ doGlobal(void)
 					col += (val < 10) ? 1 : (val < 100) ? 2 : 3;
 				}
 				fdputs(outFd, "\n");
-			} else if (!isDefSym(name_buf) && elem_type == 'p') {
-				/* Pointer array initializer */
+			} else if (!isDefSym(name_buf) &&
+			           (elem_type == 's' || elem_type == 'S' || elem_type == 'p')) {
+				/* Word/pointer array initializer */
 				int i;
 				addDefSym(name_buf);
 				switchToSeg(SEG_DATA);
