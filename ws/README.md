@@ -1,71 +1,95 @@
-# asz - Z80 Assembler
+# Whitesmith's Object Tools
 
-A Z80 assembler producing Whitesmith's relocatable object files.
+Tools for assembling, linking, and managing Z80 relocatable object files.
 
-## Usage
+## Tools
+
+### asz - Z80 Assembler
+
+Assembles Z80 source to relocatable object files.
 
 ```
-asz [-v] [-9] [-n] [-o outfile] [infile]
+asz [-v] [-8] [-9] [-n] [-o outfile] [infile]
 ```
 
-### Options
+| Option | Description |
+|--------|-------------|
+| `-v` | Verbose (show relaxation stats) |
+| `-8` | 8080 mode (disable jp->jr relaxation) |
+| `-9` | 9-character symbol names (default 15) |
+| `-n` | No timeout on stdin |
+| `-o file` | Output file (default: a.out or foo.s -> foo.o) |
 
-- `-v` - Verbose mode. Prints relaxation statistics to stderr.
-- `-9` - Use 9-character symbol names (default: 15 characters).
-- `-n` - Suppress timeout on interactive input.
-- `-o outfile` - Specify output file (default: `a.out`).
+See [ASZ.md](ASZ.md) for assembler syntax and instruction set.
 
-If no input file is specified, reads from stdin.
+### wsld - Linker
 
-## Features
+Links object files and libraries into executables.
 
-### Jump Relaxation
+```
+wsld [-vVrs9] [-o outfile] [-Ttext=addr] [-Tdata=addr] [-Tbss=addr] file...
+```
 
-The assembler automatically converts `jp` instructions to shorter `jr`
-instructions when the target is within range (-128 to +127 bytes). This
-optimization applies to:
+| Option | Description |
+|--------|-------------|
+| `-v` | Verbose |
+| `-V` | List object files linked |
+| `-r` | Emit relocatable output |
+| `-s` | Strip symbol table |
+| `-9` | 9-character symbols in output |
+| `-Ttext=addr` | Set text segment base |
+| `-Tdata=addr` | Set data segment base |
+| `-Tbss=addr` | Set bss segment base |
 
-- `jp label` → `jr label`
-- `jp nz,label` → `jr nz,label`
-- `jp z,label` → `jr z,label`
-- `jp nc,label` → `jr nc,label`
-- `jp c,label` → `jr c,label`
+### wsnm - Symbol Table / Disassembler
 
-Conditions `po`, `pe`, `p`, and `m` cannot be relaxed (Z80 has no `jr`
-variants for these).
+Displays object file contents.
 
-With `-v`, reports bytes saved to stderr.
+```
+wsnm [-bdgrv] file.o [...]
+```
 
-### Symbol Names
+| Option | Description |
+|--------|-------------|
+| (none) | Show symbol table only |
+| `-b` | Hex dump text/data segments |
+| `-d` | Disassemble text segment |
+| `-g` | Generate assemblable .s files |
+| `-r` | Show relocations |
+| `-v` | Show header |
 
-By default, symbols are 15 characters. Use `-9` for compatibility with
-systems expecting 9-character names. The object file header indicates
-which format is used.
+### wslib - Library Manager
 
-## Directives
+Creates and manages static libraries (archives).
 
-- `.text` - Switch to text (code) segment
-- `.data` - Switch to data segment
-- `.globl sym` - Declare symbol as global
-- `.byte val,...` - Emit byte values
-- `.word val,...` - Emit word values
-- `.blkb n` - Reserve n bytes
-- `.blkw n` - Reserve n words
-- `.ascii "str"` - Emit ASCII string
-- `.asciz "str"` - Emit null-terminated ASCII string
+```
+wslib [-crtxav] archive [file...]
+```
 
-## Output Format
+| Option | Description |
+|--------|-------------|
+| `-c` | Create archive |
+| `-r` | Replace/add files |
+| `-t` | List archive contents |
+| `-x` | Extract files (all if none specified) |
+| `-a` | Append files |
+| `-v` | Verbose |
 
-Produces Whitesmith's relocatable object file format with:
-- Header with segment sizes and configuration
-- Text and data segments
-- Symbol table
-- Relocation entries
+### wssize - Size Utility
+
+Displays segment sizes for object files.
+
+```
+wssize file...
+```
+
+## File Formats
+
+See [WS.md](WS.md) for object file and library format documentation.
 
 ## Origin
 
-Extensively modified from TRASM:
+The assembler is extensively modified from TRASM by Gavin Tersteeg:
 https://github.com/tergav17/TRASM
 
-The author, Gavin Tersteeg, has placed TRASM under GPL3.0, so that's
-what this code is licensed as as well.
+Licensed under GPL3.0.
