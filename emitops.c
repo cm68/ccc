@@ -226,11 +226,19 @@ emitIncDec(struct expr *e)
                     emit2S(FS2_OP, opn, rp);
                 break;
             case ID_STACK:
-                /* 8-bit dec/inc affects C flag, so we can use borrow/carry */
+                /* inc sets Z on wrap to 0; dec needs sub for carry */
                 for (i = 0; i < amount; i++) {
-                    idxFmt(is_dec ? "\tdec (iy %c %d)\n" : "\tinc (iy %c %d)\n", ofs);
-                    emit(S_JRNC3);
-                    idxFmt(is_dec ? "\tdec (iy %c %d)\n" : "\tinc (iy %c %d)\n", ofs + 1);
+                    if (is_dec) {
+                        idxFmt("\tld a, (iy %c %d)\n", ofs);
+                        out("\tsub 1\n");
+                        idxFmt("\tld (iy %c %d), a\n", ofs);
+                        emit(S_JRNC3);
+                        idxFmt("\tdec (iy %c %d)\n", ofs + 1);
+                    } else {
+                        idxFmt("\tinc (iy %c %d)\n", ofs);
+                        emit(S_JRNZ3);
+                        idxFmt("\tinc (iy %c %d)\n", ofs + 1);
+                    }
                 }
                 break;
             case ID_GLOBAL:
@@ -241,9 +249,17 @@ emitIncDec(struct expr *e)
                 break;
             case ID_HL:
                 for (i = 0; i < amount; i++) {
-                    fdprintf(outFd, "\t%s (hl)\n", opn);
-                    emit(S_JRNZ4INC);
-                    fdprintf(outFd, "\t%s (hl)\n\tdec hl\n", opn);
+                    if (is_dec) {
+                        /* dec: load, sub 1, store, check carry */
+                        out("\tld a, (hl)\n\tsub 1\n\tld (hl), a\n");
+                        out("\tjr nc, $+6\n\tinc hl\n");
+                        out("\tdec (hl)\n\tdec hl\n");
+                    } else {
+                        /* inc: Z set when wrapping to 0 */
+                        out("\tinc (hl)\n");
+                        emit(S_JRNZ4INC);
+                        out("\tinc (hl)\n\tdec hl\n");
+                    }
                 }
                 break;
             }
