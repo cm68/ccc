@@ -562,7 +562,7 @@ class ASTParser:
                     values = []
                     for i in range(init_count):
                         # Array init can have symbol refs ($name), widened constants (Wp#),
-                        # or direct constants (#hex)
+                        # direct constants (#hex), or struct initializers {count fields...}
                         self.skip_whitespace()
                         if self.cur() == '$':
                             self.advance()
@@ -583,15 +583,26 @@ class ASTParser:
                             self.advance()
                             val = self.read_hex8()
                             val_str = f"{val}:{self.width_name(w)}"
+                        elif self.cur() == '{':
+                            # Struct initializer: {count fields...}
+                            self.advance()  # skip {
+                            field_count = self.read_hex2()
+                            fields = []
+                            for _ in range(field_count):
+                                fields.append(self.parse_init_value())
+                            self.skip_whitespace()
+                            if self.cur() == '}':
+                                self.advance()
+                            val_str = "{" + ", ".join(fields) + "}"
                         else:
                             # Raw hex constant (legacy)
                             val = self.read_hex8()
                             val_str = str(val)
-                        if i < 10:
-                            values.append(val_str)
-                        elif i == 10:
-                            values.append("...")
-                    print(f"  = {{ {', '.join(values)} }}")
+                        values.append(val_str)
+                    print(f"  = {{")
+                    for v in values:
+                        print(f"    {v},")
+                    print(f"  }}")
 
         # Struct: r size(4) has_init(2) [init]
         elif type_char == 'r':
@@ -610,6 +621,44 @@ class ASTParser:
                 print(f" = {e}")
             else:
                 print()
+
+    def parse_init_value(self):
+        """Parse a single initializer value (used in array/struct inits)"""
+        self.skip_whitespace()
+        if self.cur() == '$':
+            self.advance()
+            sym = self.read_name()
+            return f"${sym}"
+        elif self.cur() == 'W':
+            # Widened constant
+            self.advance()  # skip W
+            self.advance()  # skip target type
+            self.advance()  # skip #
+            w = self.cur()
+            self.advance()
+            val = self.read_hex8()
+            return f"{val}:{self.width_name(w)}"
+        elif self.cur() == '#':
+            self.advance()
+            w = self.cur()
+            self.advance()
+            val = self.read_hex8()
+            return f"{val}:{self.width_name(w)}"
+        elif self.cur() == '{':
+            # Nested struct initializer
+            self.advance()
+            field_count = self.read_hex2()
+            fields = []
+            for _ in range(field_count):
+                fields.append(self.parse_init_value())
+            self.skip_whitespace()
+            if self.cur() == '}':
+                self.advance()
+            return "{" + ", ".join(fields) + "}"
+        else:
+            # Raw hex constant (legacy)
+            val = self.read_hex8()
+            return str(val)
 
     def read_hex_string(self):
         """Read hex-length-prefixed hex-encoded string data"""

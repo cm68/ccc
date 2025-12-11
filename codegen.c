@@ -144,7 +144,8 @@ cacheVar(struct expr *e, const char *sym)
     if (var) {
         if (var->reg != REG_NO) {
             e->opflags |= OP_REGVAR;
-            if (var->reg == REG_IX) e->opflags |= OP_IXMEM;
+            /* Don't set OP_IXMEM here - that's for IX-indexed memory,
+             * not for variables whose value is in IX register */
         } else {
             e->opflags |= OP_IYMEM;
         }
@@ -238,8 +239,10 @@ setExprFlags(struct expr *e)
                         e->opflags |= OP_REGVAR;  /* word deref needs staging */
                     }
                 } else if (var->reg == REG_IX) {
-                    /* Pointer in IX - use ld a,(ix+0) */
+                    /* Pointer in IX - mark as IX-indirect for stores,
+                     * and IX-indexed for reads (ld a,(ix+0)) */
                     e->opflags |= OP_IXMEM;
+                    e->cached_var = var;
                     e->offset = 0;
                 } else if (var->reg != REG_NO) {
                     e->opflags |= OP_REGVAR;
@@ -1110,7 +1113,7 @@ sched2Deref(struct expr *e)
             addIns(e, EO_HL_IXW);   /* ld l,(ix+ofs); ld h,(ix+ofs+1) */
         }
     }
-    /* BC register variable (not a pointer deref) */
+    /* Register variable (not a pointer deref) */
     else if (opf & OP_REGVAR) {
         if (size == 1) {
             e->dest = R_A;
@@ -1121,7 +1124,11 @@ sched2Deref(struct expr *e)
                 addIns(e, EO_A_C);  /* ld a,c */
         } else {
             e->dest = R_HL;
-            addIns(e, EO_HL_BC);    /* ld h,b; ld l,c */
+            /* Check if it's IX or BC */
+            if (e->cached_var && e->cached_var->reg == REG_IX)
+                addIns(e, EO_HL_IX);    /* push ix; pop hl */
+            else
+                addIns(e, EO_HL_BC);    /* ld h,b; ld l,c */
         }
     }
     /* IY-indexed stack variable */
@@ -1370,7 +1377,15 @@ sched2Store(struct expr *e)
     /* Destination is simple var deref: (M $var) */
     if (dest && dest->op == 'M' && dest->left && dest->left->op == '$') {
         /* Check destination type */
-        if (dest->opflags & OP_REGVAR) {
+        if (dest->opflags & OP_IXMEM) {
+            /* Store through pointer in IX - need IX value as address
+             * Schedule dest to get IX into HL, emitAssign will handle */
+            dest->dest = R_HL;
+            sched2Expr(dest->left);  /* Schedule $ node (NOP) */
+            dest->nins = 0;
+            addIns(dest, EO_HL_IX);  /* push ix; pop hl */
+            addIns(e, EO_NOP);
+        } else if (dest->opflags & OP_REGVAR) {
             /* Store to BC regvar */
             if (e->size == 1) {
                 addIns(e, EO_NOP);  /* TODO: ld c,a */

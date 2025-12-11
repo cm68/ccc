@@ -79,6 +79,10 @@ execIns(struct expr *e, unsigned char ins)
     case EO_HL_IYW:
         loadWordIY(e->offset);
         return 1;
+    case EO_HL_IX:
+        emit(S_IXHL);
+        clearHL();
+        return 1;
     case EO_HL_MEM:
         if (symbol) {
             fdprintf(outFd, "\tld hl, (%s)\n", symbol);

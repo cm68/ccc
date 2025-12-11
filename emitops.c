@@ -953,10 +953,19 @@ emitBinop(struct expr *e)
         rr->op == 'C' && rr->value.c >= 1 && rr->value.c <= 7) {
         int i, cnt = rr->value.c;
         const char *sym = left->symbol;
+        struct local_var *lv = findVar(sym);
         emitExpr(rl);
         for (i = 0; i < cnt; i++)
             out("\tadd a, a\n");
-        fdprintf(outFd, "\tld hl, %s\n", sym);
+        if (lv) {
+            /* Local variable - compute address from stack */
+            emit(S_IYHL);
+            if (lv->offset != 0)
+                fdprintf(outFd, "\tld de, %d\n\tadd hl, de\n", lv->offset);
+        } else {
+            /* Global symbol */
+            fdprintf(outFd, "\tld hl, %s\n", sym);
+        }
         out("\tadd a, l\n\tld l, a\n\tjr nc, $+3\n\tinc h\n");
         freeExpr(left);
         freeExpr(rr);

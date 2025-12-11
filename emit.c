@@ -332,7 +332,6 @@ emitStmtTail(struct stmt *s, char tailPos)
             /* Handle dual-test pattern (<=0 and >0) - byte result but word comparison */
             else if (fnDualCmp) {
                 /* bit 7 test already emitted by emitExpr */
-                const char *tgt = (s->label2 > 0) ? "el" : "no";
                 const char *hi = "h", *lo = "l";
                 int num = s->label;
                 if (fnDualReg == R_BC) { hi = "b"; lo = "c"; }
@@ -341,12 +340,33 @@ emitStmtTail(struct stmt *s, char tailPos)
                     /* x <= 0: negative=true, zero=true */
                     emitJump("jp nz,", "yes", num);  /* neg -> then */
                     emit2S(FS2_LDAOR, hi, lo);
-                    emitJump("jp nz,", tgt, num);  /* pos -> else/end */
+                    if (s->label2 > 0) {
+                        if (skip_else)
+                            emit2S(FS2_OP, "jp nz,", else_goto);
+                        else
+                            emitJump("jp nz,", "el", num);
+                    } else {
+                        emitJump("jp nz,", "no", num);
+                    }
                 } else {
                     /* x > 0: negative=false, zero=false */
-                    emitJump("jp nz,", tgt, num);  /* neg -> else/end */
+                    if (s->label2 > 0) {
+                        if (skip_else)
+                            emit2S(FS2_OP, "jp nz,", else_goto);
+                        else
+                            emitJump("jp nz,", "el", num);
+                    } else {
+                        emitJump("jp nz,", "no", num);
+                    }
                     emit2S(FS2_LDAOR, hi, lo);
-                    emitJump("jp z,", tgt, num);  /* zero -> else/end */
+                    if (s->label2 > 0) {
+                        if (skip_else)
+                            emit2S(FS2_OP, "jp z,", else_goto);
+                        else
+                            emitJump("jp z,", "el", num);
+                    } else {
+                        emitJump("jp z,", "no", num);
+                    }
                 }
                 fnDualCmp = 0;
                 fnDualReg = 0;
