@@ -12,7 +12,8 @@ LIBC_SRCS = frame.s indexiy.s long.s long32.s switch.s \
 	add168.s mul16.s div16.s mod16.s and16.s or16.s shift16.s \
 	mul32.s div32.s shift32.s \
 	linc.s ldec.s lincp.s ldecp.s \
-	cmp.s cmp8.s cmp16.s ucmp16.s cmpmix.s cmp32.s cmp3216.s
+	cmp.s cmp8.s cmp16.s ucmp16.s cmpmix.s cmp32.s cmp3216.s \
+	va_inc.s mathwrap.s
 
 CRT0_SRC = crt0.s
 
