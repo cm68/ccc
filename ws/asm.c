@@ -2020,14 +2020,14 @@ struct instruct *isr;
 		emitbyte(isr->arg + 0x20);
 	} else if (arg >= T_IXH && arg <= T_IX_D) {
 		emitbyte(0xDD);
-		emitbyte(isr->opcode + ((arg - 19) << 3));
+		emitbyte(isr->opcode + ((arg - T_IXH + 4) << 3));
 		if (arg == T_IX_D)
-			emitbyte(&value);
+			emitbyte(value.num & 0xFF);
 	} else if (arg >= T_IYH && arg <= T_IY_D) {
 		emitbyte(0xFD);
-		emitbyte(isr->opcode + ((arg - T_IY) << 3));
+		emitbyte(isr->opcode + ((arg - T_IYH + 4) << 3));
 		if (arg == T_IY_D)
-			emitbyte(&value);
+			emitbyte(value.num & 0xFF);
 	} else
 		return 1;
 	return 0;
@@ -2210,6 +2210,7 @@ struct instruct *isr;
 {
 	unsigned char arg, reg;
 	struct expval value;
+	int target, dist;
 
 	arg = operand(&value);
 
@@ -2229,7 +2230,15 @@ struct instruct *isr;
 		return 1;
 
 	emitbyte(isr->opcode + reg);
-	emit_exp(1, &value);
+	/* compute PC-relative offset: target - (PC after 2-byte jr) */
+	if (value.sym)
+		target = value.sym->value + value.num;
+	else
+		target = value.num;
+	dist = target - (cur_address + 1);
+	if (pass == 1 && (dist < -128 || dist > 127))
+		gripe("relative jump out of range");
+	emitbyte(dist & 0xff);
 	return 0;
 }
 

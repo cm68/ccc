@@ -33,7 +33,7 @@ static const char *asmstr[] = {
     "\tld a, l\n",                      /* S_AL */
     "\tld a, h\n\tor l\n",              /* S_AHORL */
     "\tld a, h\n",                      /* S_AH */
-    "\tjr nz, $+3\n",                   /* S_JRNZ3 */
+    "\tjr nz, $+5\n",                   /* S_JRNZ3 - skip 3-byte instr */
     "\tinc hl\n",                       /* S_INCHL */
     "\tex de, hl\n", 			/* S_EXDEHL */
     "\tor a\n\tscf\n",                  /* S_ORASCF */
@@ -83,8 +83,8 @@ static const char *asmstr[] = {
     "\tret\n",                          /* S_RET */
     "\tld a, l\n\tand e\n\tld l, a\n\tld a, h\n\tand d\n\tld h, a\n", /* S_ANDHLDE */
     "", /* S_ZEXTSL */
-    "\tjr nz, $+4\n\tinc hl\n",         /* S_JRNZ4INC */
-    "\tjr nc, $+3\n",                   /* S_JRNC3 */
+    "\tjr nz, $+5\n\tinc hl\n",         /* S_JRNZ4INC - skip 3 bytes */
+    "\tjr nc, $+5\n",                   /* S_JRNC3 - skip 3-byte instr */
     "\tld (hl), d\n\tdec hl\n\tld (hl), e\n", /* S_STDEHL */
     "\tpop ix\n",                       /* S_POPIX */
     "\tpop bc\n",                       /* S_POPBC */
