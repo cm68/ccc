@@ -51,6 +51,12 @@ static void addDefSym(const char *name);
 /* Parser state */
 unsigned char outFd = 1;
 static int labelCounter = 0;
+
+/* Get next label, skipping 255 which is reserved as sentinel */
+static int nextLabel(void) {
+	if (labelCounter == 255) labelCounter++;  /* skip 255 */
+	return labelCounter++;
+}
 int fnIndex = 0;  /* Function index for unique labels */
 
 #ifdef DEBUG
@@ -446,7 +452,7 @@ doExprOp(unsigned char op)
 	readType(e);
 
 	/* Allocate label if needed */
-	if (info & OP_L) e->label = labelCounter++;
+	if (info & OP_L) e->label = nextLabel();
 
 	/* Parse operands */
 	if (arity >= 1) e->left = parseExpr();
@@ -497,8 +503,9 @@ doTernary(void)
 	int nlabels;
 	readType(e);
 	nlabels = readHex2();
-	e->label = labelCounter++;  /* for condition jump */
+	e->label = nextLabel();  /* for condition jump */
 	labelCounter += nlabels;    /* intermediate labels for ||/&& */
+	if (labelCounter >= 255) labelCounter++;  /* skip 255 */
 	e->left = parseExpr();
 	c->left = parseExpr();
 	c->right = parseExpr();
@@ -687,9 +694,10 @@ parseStmt(void)
 			if (TRACE(T_PARSE)) fdprintf(2, "IF: has_else=%d nlabels=%d\n", has_else, nlabels);
 #endif
 			s = newStmt('I');
-			s->label = labelCounter++;
+			s->label = nextLabel();
 			/* Reserve intermediate labels for ||/&& short-circuit */
 			labelCounter += nlabels;
+			if (labelCounter >= 255) labelCounter++;
 			s->expr = parseExpr();
 #ifdef DEBUG
 			if (TRACE(T_PARSE)) fdprintf(2, "IF: after cond, curchar='%c' (0x%x)\n", curchar, curchar);
@@ -699,7 +707,7 @@ parseStmt(void)
 			if (TRACE(T_PARSE)) fdprintf(2, "IF: after then, curchar='%c' (0x%x)\n", curchar, curchar);
 #endif
 			if (has_else) {
-				s->label2 = labelCounter++;
+				s->label2 = nextLabel();
 				s->else_branch = parseStmt();
 				s->next = mkEndLbl(s->label2);
 			} else {

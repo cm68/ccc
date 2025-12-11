@@ -341,9 +341,9 @@ extern char fnARegvar;          /* REG_B/REG_C if A has that regvar value, 0 oth
 
 /* Label generation - 255 is reserved as "no label" sentinel */
 #ifdef DEBUG
-#define newLabel() (fnLblCnt >= 65534 ? (fdprintf(2, "fatal: label overflow in %s\n", fnName), exit(1), 0) : fnLblCnt++)
+#define newLabel() (fnLblCnt >= 65534 ? (fdprintf(2, "fatal: label overflow in %s\n", fnName), exit(1), 0) : (fnLblCnt == 255 ? (fnLblCnt += 2) - 1 : fnLblCnt++))
 #else
-#define newLabel() (fnLblCnt >= 65534 ? 65534 : fnLblCnt++)
+#define newLabel() (fnLblCnt == 255 ? (fnLblCnt += 2) - 1 : fnLblCnt++)
 #endif
 
 /* Forward declarations from util.c */

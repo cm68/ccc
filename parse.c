@@ -220,8 +220,6 @@ statement(struct stmt *parent)
 {
     struct stmt *st, **pst = 0;
     struct stmt *head = 0;
-    // struct name *v = 0;
-    struct stmt *makestmt(unsigned char op, struct expr *left);
     unsigned char block = 1;
 
     while (block) {
