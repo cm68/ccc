@@ -25,6 +25,11 @@ Both compiler passes are complete. Small programs compile and run in simulation.
 - [ ] Improve error messages and recovery
 - [ ] Better diagnostics for common mistakes
 
+### Optimizations
+- [ ] Implement alloca (dynamic stack allocation)
+- [ ] Investigate callee-pops calling convention
+- [ ] Pass first argument in HL register
+
 ### Native Build (Future)
 - [ ] Build and run compiler natively on Z80
 - [ ] Verify code fits in 64KB constraint
