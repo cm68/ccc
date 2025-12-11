@@ -182,9 +182,6 @@ struct type {
 #define	TF_FLOAT		0x40
 #define TF_VARIADIC     0x80    // for functions: has ... parameter
 
-/* legacy aliases used by older parser code */
-#define T_FUNC TF_FUNC
-
 extern struct type *getbasetype();
 extern void initbasictype(void);
 struct type *getType(char flags, struct type *sub, int count);

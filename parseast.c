@@ -916,10 +916,6 @@ doFunction(unsigned char rettype)
 
 	/* Code generation phases */
 #ifdef DEBUG
-	if (TRACE(T_PARSE)) fdprintf(2, "  assignFrmOff\n");
-#endif
-	assignFrmOff();
-#ifdef DEBUG
 	if (TRACE(T_PARSE)) fdprintf(2, "  optFrmLayout\n");
 #endif
 	optFrmLayout();

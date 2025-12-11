@@ -380,7 +380,6 @@ int isStructMem(struct expr *e, char **out_var, long *out_offset);
 int isMulByPow2(struct expr *e, struct expr **out_expr);
 
 /* Code generation functions (codegen.c) */
-void assignFrmOff(void);
 void setOpFlags(void);
 void dumpFnAst(char fd);
 void dumpScheduled(char fd);

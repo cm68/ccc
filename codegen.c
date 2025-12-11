@@ -5,11 +5,11 @@
  * for code emission.
  *
  * Key responsibilities:
- * - assignFrmOff(): Assign stack offsets to local variables and parameters
  * - specialize(): Detect patterns (inc/dec, bit ops) and mark for emit
  * - scheduleCode(): Set location/dest fields for expressions
  *
- * Note: Register allocation is now done in pass1 (outast.c)
+ * Note: Local variables are populated by parseast.c from F record.
+ * Register allocation is done in pass1 (outast.c).
  */
 #include <stdlib.h>
 #include <stdio.h>
@@ -128,76 +128,6 @@ findVar(const char *symbol)
 #endif
 
     return NULL;
-}
-
-/*
- * Helper: Add a variable (param or local) to the function context
- * For params: is_param=1, offset=positive (caller's stack)
- * For locals: is_param=0, offset computed from fnFrmSize
- */
-static void
-addVar(const char *name, unsigned char size, int is_param, int offset, int is_array)
-{
-    struct local_var *var = malloc(sizeof(struct local_var));
-    if (!var) { fdprintf(2, "oom\n"); exit(1); }
-    var->name = strdup(name);
-    var->size = size;
-    var->offset = offset;  /* Use pre-computed offset from pass1 */
-    var->is_param = is_param;
-    var->is_array = is_array;
-    var->ref_count = 0;
-    var->agg_refs = 0;
-    var->reg = REG_NO;
-    var->next = fnLocals;
-    fnLocals = var;
-}
-
-#define addParam(n,sz,ofs) addVar(n,sz,1,ofs,0)
-#define addLocalVar(n,sz,arr) addVar(n,sz,0,0,arr)
-
-/*
- * Helper: Check if a name is a parameter
- */
-static int
-isParameter(const char *name)
-{
-    struct local_var *var;
-    for (var = fnLocals; var; var = var->next) {
-        if (var->is_param && strcmp(var->name, name) == 0) {
-            return 1;
-        }
-    }
-    return 0;
-}
-
-/*
- * Walk statement tree and assign stack frame offsets to local variables
- */
-static void
-walkLocals(struct stmt *s)
-{
-    if (!s) return;
-
-    /* If this is a declaration, add it to locals list (unless it's a param) */
-    if (s->type == 'd' && s->symbol) {
-        /* Skip parameter declarations - they already have offsets */
-        if (!isParameter(s->symbol)) {
-            unsigned char size = getSizeFTStr(s->type_str);
-            struct local_var *var;
-            /* Use pre-computed offset from pass1 */
-            addVar(s->symbol, size, 0, s->frm_off, 0);
-            /* Apply register allocation from AST (stored in s->label) */
-            if (s->label) {
-                var = findVar(s->symbol);
-                if (var) var->reg = s->label;
-            }
-        }
-    }
-
-    /* Recursively walk child statements */
-    if (s->then_branch) walkLocals(s->then_branch);
-    if (s->else_branch) walkLocals(s->else_branch);
-    if (s->next) walkLocals(s->next);
 }
 
 /*
@@ -693,17 +623,6 @@ optFrmLayout()
         fdprintf(2, "%s: frame > 127\n", fnName);
         exit(1);
     }
-}
-
-/*
- * Add local variables to fnLocals list.
- * Parameters are already added by parseast.c; this adds locals from decl stmts.
- */
-void
-assignFrmOff()
-{
-    if (!fnBody) return;
-    walkLocals(fnBody);
 }
 
 /* Forward declaration */

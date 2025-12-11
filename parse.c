@@ -4,7 +4,7 @@
 
 #include "cc1.h"
 
-/* file-scope globals/forward declarations expected by legacy parser code */
+/* List of global declarations built during parsing */
 static struct name *global = 0;
 
 /* Loop label generation for control flow transformation */
