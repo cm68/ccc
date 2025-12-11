@@ -44,8 +44,6 @@ jobs:
 
     - name: Verify generated files
       run: |
-        echo "=== Generated op_pri.h ==="
-        head -20 op_pri.h
         echo "=== Generated error.h ==="
         head -20 error.h
         echo "=== Generated debug.h ==="
