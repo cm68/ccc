@@ -32,11 +32,7 @@ void __va_set(char **ap, char *val);
  * va_arg: Fetch next argument of given type, advance ap.
  * Usage: int x = va_arg(ap, int);
  *
- * IMPORTANT: cc1 does not apply default argument promotions to varargs.
- * Callers must explicitly cast char/short args to int:
- *   printf("%d", (int)c);  // correct
- *   printf("%d", c);       // WRONG - will read garbage
- *
+ * cc1 applies default argument promotions: char/short -> int.
  * Uses __va_inc helper to avoid compound assignment code gen issues.
  */
 char *__va_inc(char **ap, int size);

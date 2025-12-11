@@ -744,6 +744,7 @@ parseExpr(unsigned char pri, struct stmt *st)
             // Function call: expr(arg1, arg2, ...)
             struct expr *call, *arg, *lastarg;
             struct name *param;
+            unsigned char is_variadic;
 
             gettoken();  // consume '('
 
@@ -758,6 +759,7 @@ parseExpr(unsigned char pri, struct stmt *st)
 
             // Get first parameter for type coercion
             param = (e->type && (e->type->flags & TF_FUNC)) ? e->type->elem : 0;
+            is_variadic = e->type && (e->type->flags & TF_VARIADIC);
 
             // Parse argument list
             lastarg = NULL;
@@ -769,6 +771,9 @@ parseExpr(unsigned char pri, struct stmt *st)
                     // Coerce argument to parameter type
                     if (param && param->type)
                         arg = coerceTypes(arg, param->type);
+                    else if (is_variadic && arg->type &&
+                             arg->type->size < 2)
+                        arg = mkConv(arg, inttype);
                     call->right = arg;
                     arg->up = call;
                     lastarg = arg;
@@ -784,6 +789,9 @@ parseExpr(unsigned char pri, struct stmt *st)
                         // Coerce argument to parameter type
                         if (param && param->type)
                             arg = coerceTypes(arg, param->type);
+                        else if (is_variadic && arg->type &&
+                                 arg->type->size < 2)
+                            arg = mkConv(arg, inttype);
                         if (lastarg) {
                             lastarg->next = arg;
                             arg->prev = lastarg;
