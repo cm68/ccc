@@ -104,8 +104,8 @@ for t in "${TESTS[@]}" ; do
 
 		# Run asz to produce .o
 		echo "======== asz ========"
-		echo ../xbin/asz -o ${base}.o $s
-		if ../xbin/asz -o "${base}.o" "$s" 2>&1; then
+		echo ../root/bin/asz -o ${base}.o $s
+		if ../root/bin/asz -o "${base}.o" "$s" 2>&1; then
 			echo "asz ok"
 		else
 			echo "asz FAILED"
