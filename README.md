@@ -84,12 +84,81 @@ This is a 2-pass compiler:
 - error.h - Error code definitions
 - debug.h, debugtags.c - Debug/verbose infrastructure
 
-**Stub system headers (include/):**
+**Stub system headers (libsrc/include/):**
 - stdio.h, stdlib.h, string.h, stdarg.h - C standard library stubs
 - fcntl.h, unistd.h, signal.h - POSIX system call stubs
 - libgen.h - Path manipulation stubs
 - sys/stat.h, sys/wait.h - System header stubs
 - Minimal declarations to avoid GNU libc advanced preprocessor features
+
+## Directory Structure
+
+```
+ccc/
+├── *.c, *.h          # Compiler source files
+├── ws/               # Whitesmith's object tools (asz, wsld, wsnm, wslib)
+├── libsrc/           # Runtime library source
+│   ├── include/      # System headers for target
+│   ├── libc/         # C library (printf, malloc, etc.)
+│   └── libu/         # Unix syscall wrappers
+├── tests/            # Test suite
+├── root/             # Installed toolchain (after make install)
+│   ├── bin/          # Executables (cc1, cc2, ccc, asz, wsld, etc.)
+│   ├── lib/          # Runtime libraries (crt0.o, libc.a, libu.a)
+│   └── usr/include/  # Installed headers
+└── native/           # Native Z80 build files
+```
+
+## Command Line Reference
+
+### ccc - Compiler Driver
+
+```
+ccc [options] files...
+```
+
+Files: `.c` (compile), `.s` (assemble), `.o` `.a` (link)
+
+| Option | Description |
+|--------|-------------|
+| `-o <file>` | Output file (default: a.out) |
+| `-c` | Compile and assemble only (produce .o) |
+| `-s` | Compile only (produce .s, no assembly) |
+| `-S` | Strip symbols from output |
+| `-9` | Use 9-char symbols in output |
+| `-k` | Keep intermediate AST file |
+| `-v <level>` | Verbosity level (passed to cc1) |
+| `-V <level>` | Verbosity level (passed to cc2) |
+| `-I<dir>` | Include directory |
+| `-i<dir>` | System include directory (default: /usr/include) |
+| `-D<name>[=val]` | Define macro |
+| `-x` | Print commands as they execute |
+| `-n` | Dry run (print commands without executing) |
+
+### cc1 - Parser (Pass 1)
+
+```
+cc1 [options] source.c
+```
+
+| Option | Description |
+|--------|-------------|
+| `-o <file>` | Output AST file (default: source.ast) |
+| `-I<dir>` | Include directory |
+| `-i<dir>` | System include directory |
+| `-D<name>[=val]` | Define macro |
+| `-v <level>` | Verbosity/trace level (debug builds) |
+
+### cc2 - Code Generator (Pass 2)
+
+```
+cc2 [options] source.ast
+```
+
+| Option | Description |
+|--------|-------------|
+| `-o <file>` | Output assembly file (default: source.s) |
+| `-v <level>` | Trace level (debug builds) |
 
 ## Usage
 
