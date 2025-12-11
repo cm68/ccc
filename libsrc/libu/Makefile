@@ -7,7 +7,7 @@ ROOTDIR ?= ../../root
 DEST = $(ROOTDIR)/lib
 
 # Source files - each in its own .s file for selective linking
-LIBU_S_SRCS = access.s alarm.s break.s chdir.s chmod.s chown.s close.s \
+LIBU_S_SRCS = access.s alarm.s _break.s chdir.s chmod.s chown.s close.s \
 	creat.s dup.s errno.s exec.s execv.s exit.s fork.s fstat.s getpid.s \
 	getuid.s gtty.s kill.s link.s mknod.s mount.s nice.s open.s pause.s \
 	perror.s pipe.s read.s seek.s setuid.s sleep.s stat.s stime.s stty.s \
