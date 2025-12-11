@@ -24,7 +24,8 @@ See [ASZ.md](ASZ.md) for assembler syntax and instruction set.
 
 ### wsld - Linker
 
-Links object files and libraries into executables.
+Links object files and libraries into executables. Accepts both `.o` object
+files and `.a` library archives.
 
 ```
 wsld [-vVrs9] [-o outfile] [-Ttext=addr] [-Tdata=addr] [-Tbss=addr] file...
@@ -43,10 +44,11 @@ wsld [-vVrs9] [-o outfile] [-Ttext=addr] [-Tdata=addr] [-Tbss=addr] file...
 
 ### wsnm - Symbol Table / Disassembler
 
-Displays object file contents.
+Displays object file contents. Accepts both `.o` object files and `.a`
+library archives.
 
 ```
-wsnm [-bdgrv] file.o [...]
+wsnm [-bdgrv] file [...]
 ```
 
 | Option | Description |
