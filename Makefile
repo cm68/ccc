@@ -56,7 +56,7 @@ BINS = cc1 cc2 ccc maketokens
 
 #VERBOSE=-v 3
 
-all: cc1 cc2 ccc doc.pdf
+all: cc1 cc2 ccc doc.pdf install
 
 ROOTDIR = root
 
