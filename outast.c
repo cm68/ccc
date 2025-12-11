@@ -919,8 +919,9 @@ emitStmt(struct stmt *st)
 		break;
 
 	case WHILE:
-		/* Emit as labeled sequence wrapped in block */
-		if (st->label) {
+		/* Emit as labeled sequence wrapped in block
+		 * All loops have labels assigned by parse.c */
+		{
 			unsigned char nlabels = cntCondLbls(st->left, CTX_TOP);
 			/* WHILE has no incr, so _continue goes straight to _top */
 			addJmpMap(mkLbl(st->label, "_continue"),
@@ -939,20 +940,13 @@ emitStmt(struct stmt *st)
 			emitLabel(st->label, "_continue");
 			emitGoto(st->label, "_top");
 			emitLabel(st->label, "_break");
-		} else {
-			unsigned char nlabels = cntCondLbls(st->left, CTX_TOP);
-			fdprintf(astFd, "W%02x", nlabels);
-			emitExpr(st->left);
-			if (st->chain)
-				emitStmt(st->chain);
-			else
-				fdprintf(astFd, ";");
 		}
 		break;
 
 	case DO:
-		/* Emit as labeled sequence wrapped in block */
-		if (st->label) {
+		/* Emit as labeled sequence wrapped in block
+		 * All loops have labels assigned by parse.c */
+		{
 			unsigned char nlabels = cntCondLbls(st->left, CTX_TOP);
 			fdprintf(astFd, "B0005");  /* 5 stmts: top, body, test, if, break */
 			emitLabel(st->label, "_top");
@@ -965,20 +959,13 @@ emitStmt(struct stmt *st)
 			emitExpr(st->left);
 			emitGoto(st->label, "_top");
 			emitLabel(st->label, "_break");
-		} else {
-			unsigned char nlabels = cntCondLbls(st->left, CTX_TOP);
-			fdprintf(astFd, "D%02x", nlabels);
-			if (st->chain)
-				emitStmt(st->chain);
-			else
-				fdprintf(astFd, ";");
-			emitExpr(st->left);
 		}
 		break;
 
 	case FOR:
-		/* Emit as labeled sequence wrapped in block */
-		if (st->label) {
+		/* Emit as labeled sequence wrapped in block
+		 * All loops have labels assigned by parse.c */
+		{
 			unsigned char nlabels = cntCondLbls(st->middle, CTX_TOP);
 			/* Count statements: init? + top + (if or body) + continue + incr? + goto + break */
 			int stmt_count = 5;  /* top, (if or body), continue, goto, break */
@@ -1016,16 +1003,6 @@ emitStmt(struct stmt *st)
 			}
 			emitGoto(st->label, "_top");
 			emitLabel(st->label, "_break");
-		} else {
-			unsigned char nlabels = cntCondLbls(st->middle, CTX_TOP);
-			fdprintf(astFd, "F%02x", nlabels);
-			emitExpr(st->left);
-			emitExpr(st->middle);
-			emitExpr(st->right);
-			if (st->chain)
-				emitStmt(st->chain);
-			else
-				fdprintf(astFd, ";");
 		}
 		break;
 

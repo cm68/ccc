@@ -791,44 +791,6 @@ parseStmt(void)
 	case 'N':  /* Continue */
 		return newStmt(op);
 
-	case 'W':
-		/* While: W nlabels cond body */
-		{
-			int nlabels = readHex2();
-			s = newStmt('W');
-			s->label = labelCounter++;  /* yes */
-			labelCounter += nlabels;    /* intermediate labels */
-			s->expr = parseExpr();
-			s->then_branch = parseStmt();
-		}
-		return s;
-
-	case 'D':
-		/* Do-while: D nlabels body cond */
-		{
-			int nlabels = readHex2();
-			s = newStmt('D');
-			s->label = labelCounter++;  /* yes */
-			labelCounter += nlabels;    /* intermediate labels */
-			s->then_branch = parseStmt();
-			s->expr = parseExpr();
-		}
-		return s;
-
-	case 'F':
-		/* For: F nlabels init cond incr body */
-		{
-			int nlabels = readHex2();
-			s = newStmt('F');
-			s->label = labelCounter++;  /* yes */
-			labelCounter += nlabels;    /* intermediate labels */
-			s->expr = parseExpr();   /* init */
-			s->expr2 = parseExpr();  /* cond */
-			s->expr3 = parseExpr();  /* incr */
-			s->then_branch = parseStmt();
-		}
-		return s;
-
 	default:
 		/* Unknown - return empty */
 #ifdef DEBUG
