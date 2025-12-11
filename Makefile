@@ -26,18 +26,18 @@ LDFLAGS= -m32 $(DEBUG) -o
 LD= gcc
 endif
 
-CC1OBJECTS = cc1.o error.o lex.o io.o macro.o kw.o util.o tokenlist.o \
+CC1OBJECTS = pass1.o error.o lex.o io.o macro.o kw.o util.o tokenlist.o \
 	expr.o parse.o type.o declare.o outast.o
 
-CC2OBJECTS = cc2.o util.o astio.o parseast.o codegen.o dumpast.o emithelper.o emitexpr.o emitops.o emit.o
+CC2OBJECTS = pass2.o util.o astio.o parseast.o codegen.o dumpast.o emithelper.o emitexpr.o emitops.o emit.o
 
 HEADERS = cc1.h token.h
 GENERATED = enumlist.h tokenlist.c error.h debug.h debugtags.c trace2.h tracetags.c
 
 # All C source files (generated + corresponding to .o files)
-CFILES = cc1.c error.c lex.c io.c macro.c kw.c util.c \
+CFILES = pass1.c error.c lex.c io.c macro.c kw.c util.c \
 	expr.c parse.c type.c declare.c outast.c \
-	cc2.c astio.c parseast.c codegen.c dumpast.c emithelper.c emitexpr.c emitops.c emit.c ccc.c \
+	pass2.c astio.c parseast.c codegen.c dumpast.c emithelper.c emitexpr.c emitops.c emit.c ccc.c \
 	tokenlist.c debugtags.c
 
 # All header files (manually written + generated)
@@ -286,7 +286,7 @@ clean:
 clobber: clean
 	rm -f $(BINS) tags doc.pdf prev.size
 
-cc1.o: debugtags.c
+pass1.o: debugtags.c
 parse.o: parse.c
 type.o: type.c
 main.o: main.c
