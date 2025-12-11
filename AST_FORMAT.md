@@ -35,7 +35,7 @@ Single character after operators indicating operand type:
 - `L` - unsigned long
 - `p` - pointer (2 bytes)
 - `f` - float (4 bytes)
-- `d` - double (8 bytes)
+- `d` - double (4 bytes, same as float)
 - `v` - void
 
 ---
@@ -151,39 +151,13 @@ Loops are lowered to a block containing:
 4. `G<label>_top` - goto top
 5. `L<label>_break` - break label
 
-### While Loop (non-lowered form)
-```
-W<nlabels><cond><body>
-```
-
-- `nlabels` - 2-digit hex count of intermediate labels for ||/&& short-circuit
-- `cond` - condition expression
-- `body` - loop body statement
-
-### Do-While Loop (non-lowered form)
-```
-D<nlabels><body><cond>
-```
-
-- `nlabels` - 2-digit hex count of intermediate labels
-- `body` - loop body statement
-- `cond` - condition expression
-
 ### For Loop (lowered)
 ```
 B00<count>[E<init>]L<top>[I01<nlabels><cond><body>B0001G<break>|<body>]L<continue>[E<incr>]G<top>L<break>
 ```
 
-### For Loop (non-lowered form)
-```
-F<nlabels><init><cond><incr><body>
-```
-
-- `nlabels` - 2-digit hex count of intermediate labels
-- `init` - initializer expression (or `_` if none)
-- `cond` - condition expression (or `_` if none)
-- `incr` - increment expression (or `_` if none)
-- `body` - loop body statement
+Note: All loops (while, do-while, for) are lowered to labeled if/goto sequences
+by cc1. There are no standalone W, D, or F loop statements in the emitted AST.
 
 ### Expression Statement
 ```
@@ -256,11 +230,11 @@ All expressions use prefix notation with type suffix after the operator.
 
 ### Constants
 ```
-#<8-hex-digits>
+#<type><8-hex-digits>
 ```
 
-32-bit signed value in two's complement.
-Example: `#00000042` = 66, `#ffffffff` = -1
+Type suffix followed by 32-bit signed value in two's complement.
+Example: `#s00000042` = 66 (short), `#sffffffff` = -1 (short), `#l00000042` = 66 (long)
 
 ### Symbol Reference
 ```
@@ -286,7 +260,7 @@ Example: `Mb$03foo` = byte load from foo
 =<type><lvalue><rvalue>
 ```
 
-Example: `=s$01x#00000005` = x = 5 (short)
+Example: `=s$01x#s00000005` = x = 5 (short)
 
 ### Binary Operators
 ```
@@ -321,8 +295,11 @@ Operators:
 - `M` - memory dereference
 - `!` - logical NOT
 - `~` - bitwise NOT
-- `\` - address-of
-- `'` - unary minus
+- `\` - unary minus (negation)
+
+Note: Address-of (`&`) is implicit in the AST. Taking the address of a variable
+simply uses the symbol reference (`$name`) without a DEREF wrapper. The DEREF
+operator (`M`) converts an address to a value.
 
 ### Type Conversions
 ```
@@ -389,23 +366,23 @@ Used for function argument lists.
 ## Example
 
 ```
-Fs05_main000102ds01x03fe
-B0002
-E=s$01x#0000000a
-R01Ms$01x
+Fs05_main000100ds01x0300
+B0002E=s$01x#B0000000aR01Ms$01x
 ```
 
 Parses as:
 ```c
 int _main() {
-    int x;      // local hoisted to prolog: ds01x03fe (x in BC, offset -2)
-    x = 10;     // E=s$01x#0000000a
+    int x;      // local hoisted to prolog: ds01x0300 (x in BC, offset 0)
+    x = 10;     // E=s$01x#B0000000a (constant type B = unsigned byte)
     return x;   // R01Ms$01x
 }
 ```
-Function header: Fs (return short) 05_main (name) 00 (0 params) 01 (1 local) 02 (frame size 2)
-Local x: ds (short) 01x (name) 03 (BC register) fe (offset -2)
+Function header: Fs (return short) 05_main (name) 00 (0 params) 01 (1 local) 00 (frame size 0)
+Local x: ds (short) 01x (name) 03 (BC register) 00 (offset 0, since in register)
 Block: B0002 (0 decls, 2 statements)
+
+Note: Constants use the smallest sufficient type - here 10 fits in unsigned byte (B).
 
 ---
 
