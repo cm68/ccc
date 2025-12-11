@@ -375,8 +375,6 @@ unsigned char getSizeFTStr(unsigned char type_str);
 unsigned char getSizeFromTN(const char *typename);
 unsigned char getSignFTStr(unsigned char type_str);
 
-/* Pattern recognizers */
-int isStructMem(struct expr *e, char **out_var, long *out_offset);
 int isMulByPow2(struct expr *e, struct expr **out_expr);
 
 /* Code generation functions (codegen.c) */
@@ -394,9 +392,6 @@ char is_ord(unsigned char op);  /* Test if op is ordered comparison (< > <= >=) 
 char is_log(unsigned char op);  /* Test if op is logical (! && ||) */
 char is_bit(unsigned char op);  /* Test if op is bitwise (& | ^) */
 char is_acc(unsigned char op);  /* Test if op is accum binop */
-
-/* Symbol tracking (parseast.c) */
-void addRefSym(const char *name);
 
 /* Code emission functions (emit.c) */
 void emitAssembly(char outFd);

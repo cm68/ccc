@@ -1082,11 +1082,64 @@ doGlobal(void)
 						nextchar();
 					}
 				}
+			} else if (!isDefSym(name_buf) && curchar == '{') {
+				/* Struct array with nested INITLIST - emit fields
+				 * Use type annotation for width: b/B=byte, else=word */
+				int i, j, inner_count;
+				unsigned char ftype;
+				addDefSym(name_buf);
+				switchToSeg(SEG_DATA);
+				fdprintf(outFd, "%s:\n", name_buf);
+				for (i = 0; i < init_count; i++) {
+					if (curchar != '{') break;
+					nextchar();  /* skip { */
+					inner_count = readHex2();
+					for (j = 0; j < inner_count; j++) {
+						if (curchar == '$') {
+							/* Symbol - pointer field */
+							char *sym;
+							nextchar();
+							sym = (char *)readName();
+							fdprintf(outFd, "\t.dw %s\n", sym);
+						} else if (curchar == '#') {
+							/* Constant - use type for width */
+							nextchar();
+							ftype = curchar;
+							nextchar();
+							val = (int)readHex8();
+							/* b/B = byte, s/S/l/L = word */
+							if (ftype == 'b' || ftype == 'B')
+								fdprintf(outFd, "\t.db %d\n", val);
+							else
+								fdprintf(outFd, "\t.dw %d\n", val);
+						} else {
+							nextchar();
+						}
+					}
+					if (curchar == '}') nextchar();
+				}
 			} else {
 				/* Skip initializer */
-				int i;
+				int i, j, inner;
 				for (i = 0; i < init_count; i++) {
-					if (curchar == '$') {
+					if (curchar == '{') {
+						/* Skip nested INITLIST */
+						nextchar();
+						inner = readHex2();
+						for (j = 0; j < inner; j++) {
+							if (curchar == '$') {
+								nextchar();
+								readName();
+							} else if (curchar == '#') {
+								nextchar();
+								nextchar();
+								readHex8();
+							} else {
+								nextchar();
+							}
+						}
+						if (curchar == '}') nextchar();
+					} else if (curchar == '$') {
 						nextchar();  /* skip $ */
 						readName();
 					} else if (curchar == 'W') {

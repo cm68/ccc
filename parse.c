@@ -614,8 +614,10 @@ parseInitList(void)
 
     while (cur.type != END) {
         if (cur.type == BEGIN) {
-            /* Nested initializer for struct/array member */
-            item = parseInitList();
+            /* Nested initializer for struct/array member - wrap in INITLIST
+             * node so the nested list's ->next chain isn't overwritten */
+            struct expr *nested = parseInitList();
+            item = mkexpr(INITLIST, nested);
         } else {
             /* Parse expression but stop before comma operator (priority 15)
              * so that comma is treated as element separator, not an operator */

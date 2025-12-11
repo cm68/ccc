@@ -780,6 +780,19 @@ emitExpr(struct expr *e)
 		}
 		break;
 
+	case INITLIST:
+		/* Nested initializer list - emit contents */
+		{
+			struct expr *it;
+			int cnt = 0;
+			for (it = left; it; it = it->next) cnt++;
+			fdprintf(astFd, "{%02x", cnt);
+			for (it = left; it; it = it->next)
+				emitExpr(it);
+			fdprintf(astFd, "}");
+		}
+		break;
+
 	default:
 		/* Optimize: *++p -> (++p, *p) using comma operator
 		 * This lets pass2 see simple inc + simple deref */
@@ -1285,6 +1298,45 @@ emitFunction(struct name *func)
  * elem_type: type of array elements for width annotation
  * Format: [ width count. items...
  */
+/*
+ * Emit struct initializer with field types from struct definition
+ */
+static void
+emitStInit(struct expr *init, struct type *stype)
+{
+	struct expr *val;
+	struct name *field, *fields[32];
+	int count = 0, nfields = 0, i;
+
+	/* Count initializer items */
+	for (val = init; val; val = val->next)
+		count++;
+
+	/* Build forward-order field array (struct elem list is reversed) */
+	if (stype && (stype->flags & TF_AGGREGATE)) {
+		for (field = stype->elem; field && nfields < 32; field = field->next)
+			fields[nfields++] = field;
+	}
+
+	fdprintf(astFd, "{%02x", count);
+
+	/* Emit each initializer with corresponding field's type */
+	i = nfields - 1;  /* Start from last field (first in source order) */
+	for (val = init; val; val = val->next) {
+		field = (i >= 0) ? fields[i--] : NULL;
+		if (val->op == CONST && field && field->type) {
+			/* Override constant's type with field type */
+			struct type *saved = val->type;
+			val->type = field->type;
+			emitExpr(val);
+			val->type = saved;
+		} else {
+			emitExpr(val);
+		}
+	}
+	fdprintf(astFd, "}");
+}
+
 static void
 emitInitList(struct expr *init, struct type *elem_type)
 {
@@ -1298,8 +1350,15 @@ emitInitList(struct expr *init, struct type *elem_type)
 	width = typeSfx(elem_type);
 
 	fdprintf(astFd, "[%c%02x", width, count);
-	for (item = init; item; item = item->next)
-		emitExpr(item);
+	for (item = init; item; item = item->next) {
+		if (item->op == INITLIST && elem_type &&
+		    (elem_type->flags & TF_AGGREGATE)) {
+			/* Emit struct initializer with field types */
+			emitStInit(item->left, elem_type);
+		} else {
+			emitExpr(item);
+		}
+	}
 }
 
 /*
@@ -1383,13 +1442,20 @@ emitGv(struct name *var)
 
 	/*
 	 * For arrays with initializer lists containing strings, emit all
-	 * strings BEFORE the Z record so they don't interrupt it
+	 * strings BEFORE the Z record so they don't interrupt it.
+	 * Must recursively descend into INITLIST nodes for struct arrays.
 	 */
 	if ((var->type->flags & TF_ARRAY) && var->u.init && var->u.init->next) {
-		struct expr *item;
+		struct expr *item, *inner;
 		for (item = var->u.init; item; item = item->next) {
 			if (item->op == STRING && item->var) {
 				emitStrLit((struct name *)item->var);
+			} else if (item->op == INITLIST) {
+				/* Descend into nested initializer list */
+				for (inner = item->left; inner; inner = inner->next) {
+					if (inner->op == STRING && inner->var)
+						emitStrLit((struct name *)inner->var);
+				}
 			}
 		}
 	}

@@ -51,7 +51,7 @@ enum {
     LANDEQ = 'J', LOREQ = 'H',
     RSHIFTEQ = '6', LSHIFTEQ = '0',
     EXPR = '`', NEG = '\\', NOT = '\'', CALL = '@',
-    NARROW = '_', WIDEN = 0xb6, SEXT = 0xab, COPY = 0xbb,
+    NARROW = '_', WIDEN = 0xb6, SEXT = 0xab, COPY = 0xbb, INITLIST = 0xb7,
     PREINC = 0xcf, POSTINC = 0xef, PREDEC = 0xd6, POSTDEC = 0xf6,
     BFEXTRACT = 0xa7, BFASSIGN = 0xdd,
 
