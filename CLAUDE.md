@@ -4,9 +4,9 @@
 
 **ccc** - a native C compiler written in C. 2-pass compiler:
 1. **Pass 1** (cc1): Recursive descent parser with embedded CPP - parses C code
-2. **Pass 2** (cc2): Code generator and assembler (in development)
+2. **Pass 2** (cc2): Code generator for Z80 target
 
-**Status**: Pass 1 complete (~7,500 lines). All 142 tests pass. Self-hosting.
+**Status**: Both passes complete. All 142 tests pass. Small programs run in simulation.
 
 ## CRITICAL: Memory Footprint Constraint
 
@@ -30,15 +30,12 @@ make clean        # Remove build artifacts
 
 ## CRITICAL: Testing Validation Protocol
 
-**ALWAYS use make rules.** Never run `./cc1 -E file.c` directly.
+**ALWAYS use make rules** to ensure correct flags are passed.
 
 ```bash
 # CORRECT
 make expr.ast     # Uses required flags: -DCCC -i./include -I.
 make expr.s
-
-# WRONG
-./cc1 -E expr.c   # Missing required flags!
 ```
 
 **Before any commit:**
@@ -48,9 +45,19 @@ make expr.s
 ## Running the Compiler
 
 ```bash
-./ccc -k source.c              # Compile with cc2, keep AST file
-./cc1 -E source.c              # Preprocessor only
-./cc1 -v 0x3f -E file.c        # Maximum verbosity
+./ccc -k source.c              # Compile to .s, keep intermediate .ast file
+make source.ast                # Generate AST only
+make source.s                  # Generate assembly
+```
+
+## Running in Simulation
+
+Programs can be run in the Z80 simulator after linking:
+
+```bash
+cd tests
+../root/bin/ccc -o program program.c
+../root/sim ./program arg1 arg2
 ```
 
 ## Architecture
@@ -76,7 +83,7 @@ make expr.s
 
 ### Auto-Generated Files (do NOT edit)
 
-enumlist.h, tokenlist.c, error.h, debug.h, debugtags.c, op_pri.h
+enumlist.h, tokenlist.c, error.h, debug.h, debugtags.c
 
 ### Key Data Structures
 
