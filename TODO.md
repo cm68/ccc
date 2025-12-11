@@ -25,6 +25,9 @@ Both compiler passes are complete. Small programs compile and run in simulation.
 - [ ] Improve error messages and recovery
 - [ ] Better diagnostics for common mistakes
 
+### Features
+- [ ] Varargs (va_start, va_arg, va_end)
+
 ### Optimizations
 - [ ] Implement alloca (dynamic stack allocation)
 - [ ] Investigate callee-pops calling convention
