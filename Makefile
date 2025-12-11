@@ -191,24 +191,20 @@ stage1: cc1 cc2
 	  fi; \
 	done
 	@echo "Stage1 build complete: stage1/*.o files ready for linking"
-#	$(MAKE) native/lib/libccc.a
-#	$(MAKE) stage1/pass1.o stage1/pass2.o
-#	@echo "Stage1 linking complete: stage1/pass1.o stage1/pass2.o"
-
-# Library dependency
-native/lib/libccc.a:
-	$(MAKE) -C native/lib libccc.a
+	$(MAKE) stage1/cc1.o stage1/cc2.o
+	@echo "Stage1 linking complete: stage1/cc1.o stage1/cc2.o"
 
 # Link stage1 binaries with -r (relocatable)
 WSLD = root/bin/wsld
 STAGE1_CC1_OBJS = $(addprefix stage1/, $(CC1OBJECTS))
 STAGE1_CC2_OBJS = $(addprefix stage1/, $(CC2OBJECTS))
+STAGE1_LIBS = root/lib/libc.a root/lib/libu.a
 
-stage1/pass1.o: $(STAGE1_CC1_OBJS) native/lib/libccc.a
-	$(WSLD) -r -o $@ $(STAGE1_CC1_OBJS) native/lib/libccc.a
+stage1/cc1.o: $(STAGE1_CC1_OBJS) $(STAGE1_LIBS)
+	$(WSLD) -r -o $@ $(STAGE1_CC1_OBJS) $(STAGE1_LIBS)
 
-stage1/pass2.o: $(STAGE1_CC2_OBJS) native/lib/libccc.a
-	$(WSLD) -r -o $@ $(STAGE1_CC2_OBJS) native/lib/libccc.a
+stage1/cc2.o: $(STAGE1_CC2_OBJS) $(STAGE1_LIBS)
+	$(WSLD) -r -o $@ $(STAGE1_CC2_OBJS) $(STAGE1_LIBS)
 
 #
 # check size of compiled objects
