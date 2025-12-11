@@ -972,8 +972,9 @@ declaration()
                  * so it's available when emitting the AST */
                 if (sclass & SC_STATIC) {
                     v->sclass = SC_STATIC;
+                    /* Static functions use bare name (no _ prefix) */
                     if (!v->mangled_name)
-                        v->mangled_name = mangleStatNam(v);
+                        v->mangled_name = strdup(v->name);
                 } else if (sclass & SC_EXTERN) {
                     v->sclass = SC_EXTERN;
                 }
@@ -998,8 +999,14 @@ declaration()
          */
         if (sclass & SC_STATIC) {
             v->sclass = SC_STATIC;
-            if (!v->mangled_name)
-                v->mangled_name = mangleStatNam(v);
+            if (!v->mangled_name) {
+                if (lexlevel > 1)
+                    /* Local statics get counter suffix for shadowing */
+                    v->mangled_name = mangleStatNam(v);
+                else
+                    /* File-scope statics use bare name (no _ prefix) */
+                    v->mangled_name = strdup(v->name);
+            }
         } else if (sclass & SC_EXTERN) {
             v->sclass = SC_EXTERN;
         } else if (sclass & SC_REGISTER) {
