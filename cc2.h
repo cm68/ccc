@@ -216,6 +216,10 @@ enum {
     EO_POP_DE,          // pop de
     EO_POP_AF,          // pop af
 
+    /* Address computation */
+    EO_LEA_IY,          // ld a,ofs; call leaiy (HL = IY + ofs)
+    EO_EXDEHL,          // ex de,hl
+
     /* Calls */
     EO_CALL,            // call symbol
 

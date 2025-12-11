@@ -55,8 +55,13 @@ execIns(struct expr *e, unsigned char ins)
     case EO_POP_HL: s = S_POPHL; break;
     case EO_PUSH_DE: s = S_PUSHDE; break;
     case EO_POP_DE: s = S_POPDE; break;
+    case EO_EXDEHL: s = S_EXDEHL; break;
 
     /* Complex cases with additional logic */
+    case EO_LEA_IY:
+        fdprintf(outFd, "\tld a, %d\n\tcall leaiy\n", (int)e->offset);
+        clearHL();
+        return 1;
     case EO_NOP:
         return 1;
     case EO_A_C:

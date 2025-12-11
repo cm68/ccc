@@ -632,8 +632,9 @@ emitExpr(struct expr *e)
 		if (e->var) {
 			char fullname[256];
 			sym = (struct name *)e->var;
-			/* extern/global get underscore prefix, others use mangled or plain */
-			if ((sym->sclass & SC_EXTERN) || sym->level == 1)
+			/* extern/global get underscore prefix, statics use mangled name */
+			if ((sym->sclass & SC_EXTERN) ||
+			    (sym->level == 1 && !(sym->sclass & SC_STATIC)))
 				snprintf(fullname, sizeof(fullname), "_%s", sym->name);
 			else {
 				name = sym->mangled_name ? sym->mangled_name : sym->name;

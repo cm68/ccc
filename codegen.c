@@ -1245,17 +1245,34 @@ sched2Deref(struct expr *e)
 /*
  * Schedule loads for symbol address
  * Pattern: $var - load address of variable
+ * For locals: compute IY + offset
+ * For globals: use symbol name directly
  */
 static void
 sched2Symbol(struct expr *e)
 {
+    struct local_var *var = findVar(e->symbol);
+
     e->nins = 0;
-    /* Respect dest if already set by parent (e.g., R_DE for left side of +) */
-    if (e->dest == R_DE) {
-        addIns(e, EO_DE_CONST);
-    } else {
+    if (var) {
+        /* Local variable - compute address as IY + offset */
+        int need_de = (e->dest == R_DE);
+        e->offset = var->offset;
         e->dest = R_HL;
-        addIns(e, EO_HL_CONST);
+        addIns(e, EO_LEA_IY);
+        if (need_de) {
+            /* Need address in DE - exchange after lea */
+            addIns(e, EO_EXDEHL);
+            e->dest = R_DE;
+        }
+    } else {
+        /* Global variable - use symbol name directly */
+        if (e->dest == R_DE) {
+            addIns(e, EO_DE_CONST);
+        } else {
+            e->dest = R_HL;
+            addIns(e, EO_HL_CONST);
+        }
     }
 }
 
