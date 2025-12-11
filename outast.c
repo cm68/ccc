@@ -1301,6 +1301,9 @@ emitFunction(struct name *func)
 /*
  * Emit struct initializer with field types from struct definition
  */
+static void emitInit(struct expr *init, struct type *type);
+static void emitInitList(struct expr *init, struct type *elem_type);
+
 static void
 emitStInit(struct expr *init, struct type *stype)
 {
@@ -1324,17 +1327,34 @@ emitStInit(struct expr *init, struct type *stype)
 	i = nfields - 1;  /* Start from last field (first in source order) */
 	for (val = init; val; val = val->next) {
 		field = (i >= 0) ? fields[i--] : NULL;
-		if (val->op == CONST && field && field->type) {
-			/* Override constant's type with field type */
-			struct type *saved = val->type;
-			val->type = field->type;
-			emitExpr(val);
-			val->type = saved;
-		} else {
-			emitExpr(val);
-		}
+		emitInit(val, field ? field->type : NULL);
 	}
 	fdprintf(astFd, "}");
+}
+
+/*
+ * Recursively emit an initializer with expected type
+ * type: expected type from declaration (array element type or struct field type)
+ */
+static void
+emitInit(struct expr *init, struct type *type)
+{
+	if (init->op == INITLIST) {
+		/* Nested aggregate - type tells us struct vs array */
+		if (type->flags & TF_AGGREGATE) {
+			emitStInit(init->left, type);
+		} else if (type->flags & TF_ARRAY) {
+			emitInitList(init->left, type->sub);
+		}
+	} else if (init->op == CONST && type) {
+		/* Scalar constant - use declared type */
+		struct type *saved = init->type;
+		init->type = type;
+		emitExpr(init);
+		init->type = saved;
+	} else {
+		emitExpr(init);
+	}
 }
 
 static void
@@ -1351,13 +1371,7 @@ emitInitList(struct expr *init, struct type *elem_type)
 
 	fdprintf(astFd, "[%c%02x", width, count);
 	for (item = init; item; item = item->next) {
-		if (item->op == INITLIST && elem_type &&
-		    (elem_type->flags & TF_AGGREGATE)) {
-			/* Emit struct initializer with field types */
-			emitStInit(item->left, elem_type);
-		} else {
-			emitExpr(item);
-		}
+		emitInit(item, elem_type);
 	}
 }
 

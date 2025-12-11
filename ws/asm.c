@@ -359,7 +359,7 @@ struct rhead {
  */
 struct expval {
     struct symbol *sym;
-    unsigned short num;
+    unsigned long num;
 };
 
 unsigned char *lineptr = (unsigned char *)"";
@@ -372,7 +372,7 @@ unsigned char filebuf[FILEBUFSIZE+1];
  */
 char token_buf[TOKLEN] INIT;
 char sym_name[TOKLEN] INIT;
-unsigned short token_val;
+unsigned long token_val;
 unsigned char cur_token;
 
 /*
@@ -595,26 +595,17 @@ escape()
  * octal: 06, 003, 05o, 06O
  * binary: 0b0001010 000100B 01010b
  */
-unsigned short
+unsigned long
 parsenum(s)
 char *s;
 {
     int i = strlen(s);
-    unsigned short val = 0;
+    unsigned long val = 0;
     int base = 10;
-    char c = s[i-1] | 0x20;
+    char c;
 
-    /* detect and consume our radix markers */
-    if (c == 'h') {
-        base = 16;
-        s[i-1] = '\0';
-    } else if (c == 'o') {
-        base = 8;
-        s[i-1] = '\0';
-    } else if (c == 'b') {
-        base = 2;
-        s[i-1] = '\0';
-    } else if (*s == '0' && s[1]) {
+    /* Check 0x/0b prefix FIRST (before trailing radix check) */
+    if (*s == '0' && s[1]) {
         c = s[1] | 0x20;
         if (c == 'x') {
             base = 16;
@@ -623,8 +614,34 @@ char *s;
             base = 2;
             s += 2;
         } else {
+            /* Leading 0 but not 0x/0b - check for trailing radix or octal */
+            c = s[i-1] | 0x20;
+            if (c == 'h') {
+                base = 16;
+                s[i-1] = '\0';
+            } else if (c == 'o') {
+                base = 8;
+                s[i-1] = '\0';
+            } else if (c == 'b') {
+                base = 2;
+                s[i-1] = '\0';
+            } else {
+                base = 8;
+                s++;
+            }
+        }
+    } else {
+        /* No leading 0 - check for trailing radix marker */
+        c = s[i-1] | 0x20;
+        if (c == 'h') {
+            base = 16;
+            s[i-1] = '\0';
+        } else if (c == 'o') {
             base = 8;
-            s++;
+            s[i-1] = '\0';
+        } else if (c == 'b') {
+            base = 2;
+            s[i-1] = '\0';
         }
     }
 
@@ -923,7 +940,7 @@ get_token()
         if (c == T_NAME) {
             printf(":%s", token_buf);
         } else if (c == T_NUM) {
-            printf(":0x%x", token_val);
+            printf(":0x%lx", token_val);
         }
         printf("\n");
     }
@@ -1331,6 +1348,19 @@ unsigned short w;
 	emitbyte(w >> 8);
 }
 
+/*
+ * emits a little endian long (4 bytes) to the binary
+ */
+void
+emitlong(l)
+unsigned long l;
+{
+	emitbyte(l & 0xFF);
+	emitbyte((l >> 8) & 0xFF);
+	emitbyte((l >> 16) & 0xFF);
+	emitbyte((l >> 24) & 0xFF);
+}
+
 void
 outword(word)
 unsigned short word;
@@ -1494,6 +1524,27 @@ dw()
             gripe("unexpected value");
         }
 		emit_exp(2, &value);
+		if (peekchar() != ',')
+			break;
+		else
+			need(',');
+	}
+}
+
+void
+dl()
+{
+    struct expval value;
+
+	while (peekchar() != '\n' && peekchar() != -1) {
+        if (operand(&value) != T_PLAIN) {
+            gripe("unexpected value");
+        }
+		/* No relocation support for longs - just emit the value */
+		if (value.sym && pass == 1) {
+			gripe("cannot use symbol in .dl");
+		}
+		emitlong(value.num);
 		if (peekchar() != ',')
 			break;
 		else
@@ -2698,6 +2749,16 @@ assemble()
 				if (match(token_buf, "defw") ||
 					match(token_buf, "dw")) {
 					dw();
+					consume();
+					continue;
+				}
+
+				/*
+				 * .defl <long>[,...]
+				 */
+				if (match(token_buf, "defl") ||
+					match(token_buf, "dl")) {
+					dl();
 					consume();
 					continue;
 				}

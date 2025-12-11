@@ -988,6 +988,57 @@ emitBss(const char *name, int size)
 	}
 }
 
+/* Emit a single initializer (recursive) */
+static void
+emitInit(void)
+{
+	unsigned char ftype;
+	unsigned long lval;
+	int count, i;
+
+	if (curchar == '[') {
+		/* Array: '[' type count initializer* */
+		nextchar();  /* skip [ */
+		nextchar();  /* skip type (informational only) */
+		count = readHex2();
+		for (i = 0; i < count; i++)
+			emitInit();
+	} else if (curchar == '{') {
+		/* Aggregate: '{' count initializer* */
+		nextchar();  /* skip { */
+		count = readHex2();
+		for (i = 0; i < count; i++)
+			emitInit();
+		if (curchar == '}') nextchar();
+	} else if (curchar == '#') {
+		/* Scalar constant: '#' type value */
+		nextchar();
+		ftype = curchar;
+		nextchar();
+		lval = readHex8();
+		if (ftype == 'b' || ftype == 'B')
+			fdprintf(outFd, "\t.db %d\n", (int)lval);
+		else if (ftype == 'l' || ftype == 'f')
+			fdprintf(outFd, "\t.dl 0x%lx\n", lval);
+		else
+			fdprintf(outFd, "\t.dw %d\n", (int)lval);
+	} else if (curchar == '$') {
+		/* Symbol reference */
+		char *sym;
+		nextchar();
+		sym = (char *)readName();
+		fdprintf(outFd, "\t.dw %s\n", sym);
+	} else if (curchar == 'W') {
+		/* Widened constant (e.g. Wp#B00000000 for NULL) */
+		nextchar();  /* skip W */
+		nextchar();  /* skip p */
+		emitInit();  /* recurse for inner constant */
+	} else {
+		/* Unknown - skip */
+		nextchar();
+	}
+}
+
 /* Top-level: global variable
  * New format: Z $hexname type has_init. [init]
  * Initializer format: [ width count. items...
@@ -997,8 +1048,8 @@ doGlobal(void)
 {
 	char name_buf[16];
 	char *name;
-	unsigned char type_char, elem_type;
-	int val, col, first, has_init, init_count;
+	unsigned char type_char;
+	int has_init;
 	int count, elemsize, size;
 
 	/* Skip '$' if present */
@@ -1019,146 +1070,11 @@ doGlobal(void)
 		has_init = readHex2();
 
 		/* Check for initializer */
-		if (has_init && curchar == '[' && count >= 0) {
-			nextchar();  /* skip '[' */
-			elem_type = curchar;
-			nextchar();
-			init_count = readHex2();
-
-			if (!isDefSym(name_buf) && (elem_type == 'b' || elem_type == 'B')) {
-				int i;
-				col = 0; first = 1;
-				addDefSym(name_buf);
-				switchToSeg(SEG_DATA);
-				fdprintf(outFd, "%s:\n", name_buf);
-				for (i = 0; i < init_count; i++) {
-					nextchar();  /* skip # */
-					val = (int)readHex8();
-					if (!first && col > 70) {
-						fdputs(outFd, "\n");
-						col = 0;
-					}
-					if (first || col == 0) {
-						fdputs(outFd, "\t.db ");
-						col = 12;
-						first = 0;
-					} else {
-						fdputs(outFd, ", ");
-						col += 2;
-					}
-					fdprintf(outFd, "%d", val);
-					col += (val < 10) ? 1 : (val < 100) ? 2 : 3;
-				}
-				fdputs(outFd, "\n");
-			} else if (!isDefSym(name_buf) &&
-			           (elem_type == 's' || elem_type == 'S' || elem_type == 'p')) {
-				/* Word/pointer array initializer */
-				int i;
-				addDefSym(name_buf);
-				switchToSeg(SEG_DATA);
-				fdprintf(outFd, "%s:\n", name_buf);
-				for (i = 0; i < init_count; i++) {
-					if (curchar == '$') {
-						/* Symbol reference */
-						char *sym;
-						nextchar();  /* skip $ */
-						sym = (char *)readName();
-						fdprintf(outFd, "\t.dw %s\n", sym);
-					} else if (curchar == 'W') {
-						/* Widened constant (e.g. Wp#B00000000 for NULL) */
-						nextchar();  /* skip W */
-						nextchar();  /* skip p */
-						nextchar();  /* skip # */
-						nextchar();  /* skip type char */
-						val = (int)readHex8();
-						fdprintf(outFd, "\t.dw %d\n", val);
-					} else if (curchar == '#') {
-						/* Direct constant value */
-						nextchar();  /* skip # */
-						nextchar();  /* skip type char */
-						val = (int)readHex8();
-						fdprintf(outFd, "\t.dw %d\n", val);
-					} else {
-						/* Unknown - skip */
-						nextchar();
-					}
-				}
-			} else if (!isDefSym(name_buf) && curchar == '{') {
-				/* Struct array with nested INITLIST - emit fields
-				 * Use type annotation for width: b/B=byte, else=word */
-				int i, j, inner_count;
-				unsigned char ftype;
-				addDefSym(name_buf);
-				switchToSeg(SEG_DATA);
-				fdprintf(outFd, "%s:\n", name_buf);
-				for (i = 0; i < init_count; i++) {
-					if (curchar != '{') break;
-					nextchar();  /* skip { */
-					inner_count = readHex2();
-					for (j = 0; j < inner_count; j++) {
-						if (curchar == '$') {
-							/* Symbol - pointer field */
-							char *sym;
-							nextchar();
-							sym = (char *)readName();
-							fdprintf(outFd, "\t.dw %s\n", sym);
-						} else if (curchar == '#') {
-							/* Constant - use type for width */
-							nextchar();
-							ftype = curchar;
-							nextchar();
-							val = (int)readHex8();
-							/* b/B = byte, s/S/l/L = word */
-							if (ftype == 'b' || ftype == 'B')
-								fdprintf(outFd, "\t.db %d\n", val);
-							else
-								fdprintf(outFd, "\t.dw %d\n", val);
-						} else {
-							nextchar();
-						}
-					}
-					if (curchar == '}') nextchar();
-				}
-			} else {
-				/* Skip initializer */
-				int i, j, inner;
-				for (i = 0; i < init_count; i++) {
-					if (curchar == '{') {
-						/* Skip nested INITLIST */
-						nextchar();
-						inner = readHex2();
-						for (j = 0; j < inner; j++) {
-							if (curchar == '$') {
-								nextchar();
-								readName();
-							} else if (curchar == '#') {
-								nextchar();
-								nextchar();
-								readHex8();
-							} else {
-								nextchar();
-							}
-						}
-						if (curchar == '}') nextchar();
-					} else if (curchar == '$') {
-						nextchar();  /* skip $ */
-						readName();
-					} else if (curchar == 'W') {
-						/* Widened constant */
-						nextchar();  /* skip W */
-						nextchar();  /* skip p */
-						nextchar();  /* skip # */
-						nextchar();  /* skip type char */
-						readHex8();
-					} else if (curchar == '#') {
-						nextchar();  /* skip # */
-						nextchar();  /* skip type char */
-						readHex8();
-					} else {
-						nextchar();
-					}
-				}
-			}
+		if (has_init && curchar == '[') {
+			addDefSym(name_buf);
+			switchToSeg(SEG_DATA);
+			fdprintf(outFd, "%s:\n", name_buf);
+			emitInit();
 			return;
 		}
 
@@ -1169,18 +1085,10 @@ doGlobal(void)
 		/* Pointer */
 		has_init = readHex2();
 		if (has_init) {
-			struct expr *init = parseExpr();
-			if (init && init->op == '$' && init->symbol) {
-				/* Pointer initialized to symbol address */
-				addDefSym(name_buf);
-				switchToSeg(SEG_DATA);
-				fdprintf(outFd, "%s:\n\t.dw %s\n", name_buf, init->symbol);
-				freeExpr(init);
-			} else {
-				/* Unknown init - fall back to BSS */
-				freeExpr(init);
-				emitBss(name_buf, 2);
-			}
+			addDefSym(name_buf);
+			switchToSeg(SEG_DATA);
+			fdprintf(outFd, "%s:\n", name_buf);
+			emitInit();
 		} else {
 			emitBss(name_buf, 2);
 		}
@@ -1188,13 +1096,25 @@ doGlobal(void)
 		/* Struct */
 		size = readHex4();
 		has_init = readHex2();
-		if (has_init) parseExpr();
-		emitBss(name_buf, size);
+		if (has_init) {
+			addDefSym(name_buf);
+			switchToSeg(SEG_DATA);
+			fdprintf(outFd, "%s:\n", name_buf);
+			emitInit();
+		} else {
+			emitBss(name_buf, size);
+		}
 	} else {
-		/* Primitive: b/s/l */
+		/* Primitive: b/s/l/f */
 		has_init = readHex2();
-		if (has_init) parseExpr();
-		emitBss(name_buf, getSizeFTStr(type_char));
+		if (has_init) {
+			addDefSym(name_buf);
+			switchToSeg(SEG_DATA);
+			fdprintf(outFd, "%s:\n", name_buf);
+			emitInit();
+		} else {
+			emitBss(name_buf, getSizeFTStr(type_char));
+		}
 	}
 }
 

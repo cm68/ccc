@@ -546,119 +546,90 @@ class ASTParser:
             count = self.read_hex4()
             elemsize = self.read_hex4()
             has_init = self.read_hex2()
-            print(f"GLOBAL {name} : array[{count}] of {elemsize}-byte")
+            print(f"GLOBAL {name} : array[{count}] of {elemsize}-byte", end='')
             if has_init == 1:
-                self.skip_whitespace()
-                if self.cur() == '$':
-                    # String reference init (e.g., $04str0)
-                    self.advance()
-                    sym = self.read_name()
-                    print(f"  = ${sym}")
-                elif self.cur() == '[':
-                    self.advance()
-                    elem_type = self.cur()
-                    self.advance()
-                    init_count = self.read_hex2()
-                    values = []
-                    for i in range(init_count):
-                        # Array init can have symbol refs ($name), widened constants (Wp#),
-                        # direct constants (#hex), or struct initializers {count fields...}
-                        self.skip_whitespace()
-                        if self.cur() == '$':
-                            self.advance()
-                            sym = self.read_name()
-                            val_str = f"${sym}"
-                        elif self.cur() == 'W':
-                            # Widened constant (e.g., Wp#B00000000 for NULL)
-                            self.advance()  # skip W
-                            self.advance()  # skip target type (p)
-                            self.advance()  # skip #
-                            w = self.cur()  # size suffix
-                            self.advance()
-                            val = self.read_hex8()
-                            val_str = f"{val}:{self.width_name(w)}"
-                        elif self.cur() == '#':
-                            self.advance()
-                            w = self.cur()  # size suffix
-                            self.advance()
-                            val = self.read_hex8()
-                            val_str = f"{val}:{self.width_name(w)}"
-                        elif self.cur() == '{':
-                            # Struct initializer: {count fields...}
-                            self.advance()  # skip {
-                            field_count = self.read_hex2()
-                            fields = []
-                            for _ in range(field_count):
-                                fields.append(self.parse_init_value())
-                            self.skip_whitespace()
-                            if self.cur() == '}':
-                                self.advance()
-                            val_str = "{" + ", ".join(fields) + "}"
-                        else:
-                            # Raw hex constant (legacy)
-                            val = self.read_hex8()
-                            val_str = str(val)
-                        values.append(val_str)
-                    print(f"  = {{")
-                    for v in values:
-                        print(f"    {v},")
-                    print(f"  }}")
+                init_str = self.parse_init()
+                print(f" = {init_str}")
+            else:
+                print()
 
         # Struct: r size(4) has_init(2) [init]
         elif type_char == 'r':
             size = self.read_hex4()
             has_init = self.read_hex2()
-            print(f"GLOBAL {name} : struct[{size}]")
+            print(f"GLOBAL {name} : struct[{size}]", end='')
             if has_init == 1:
-                self.parse_expr()
+                init_str = self.parse_init()
+                print(f" = {init_str}")
+            else:
+                print()
 
         # Pointer or primitive
         else:
             has_init = self.read_hex2()
             print(f"GLOBAL {name} : {self.width_name(type_char)}", end='')
             if has_init == 1:
-                e = self.parse_expr()
-                print(f" = {e}")
+                init_str = self.parse_init()
+                print(f" = {init_str}")
             else:
                 print()
 
-    def parse_init_value(self):
-        """Parse a single initializer value (used in array/struct inits)"""
+    def parse_init(self):
+        """Parse a single initializer (recursive)
+
+        Format:
+          '[' type count init*  - array
+          '{' count init*       - aggregate/struct
+          '#' type value        - scalar constant
+          '$' name              - symbol reference
+          'W' p init            - widened constant
+        """
         self.skip_whitespace()
-        if self.cur() == '$':
+        c = self.cur()
+
+        if c == '[':
+            # Array: '[' type count init*
             self.advance()
-            sym = self.read_name()
-            return f"${sym}"
-        elif self.cur() == 'W':
-            # Widened constant
-            self.advance()  # skip W
-            self.advance()  # skip target type
-            self.advance()  # skip #
-            w = self.cur()
+            elem_type = self.cur()
             self.advance()
-            val = self.read_hex8()
-            return f"{val}:{self.width_name(w)}"
-        elif self.cur() == '#':
+            count = self.read_hex2()
+            items = [self.parse_init() for _ in range(count)]
+            return "[" + ", ".join(items) + "]"
+
+        elif c == '{':
+            # Aggregate: '{' count init*
             self.advance()
-            w = self.cur()
-            self.advance()
-            val = self.read_hex8()
-            return f"{val}:{self.width_name(w)}"
-        elif self.cur() == '{':
-            # Nested struct initializer
-            self.advance()
-            field_count = self.read_hex2()
-            fields = []
-            for _ in range(field_count):
-                fields.append(self.parse_init_value())
-            self.skip_whitespace()
+            count = self.read_hex2()
+            fields = [self.parse_init() for _ in range(count)]
             if self.cur() == '}':
                 self.advance()
             return "{" + ", ".join(fields) + "}"
-        else:
-            # Raw hex constant (legacy)
+
+        elif c == '#':
+            # Scalar: '#' type value
+            self.advance()
+            w = self.cur()
+            self.advance()
             val = self.read_hex8()
-            return str(val)
+            return f"{val}:{self.width_name(w)}"
+
+        elif c == '$':
+            # Symbol reference
+            self.advance()
+            sym = self.read_name()
+            return f"${sym}"
+
+        elif c == 'W':
+            # Widened constant: 'W' target_type init
+            self.advance()
+            self.advance()  # skip target type (p)
+            inner = self.parse_init()
+            return f"(W {inner})"
+
+        else:
+            # Unknown - skip one char
+            self.advance()
+            return "?"
 
     def read_hex_string(self):
         """Read hex-length-prefixed hex-encoded string data"""
