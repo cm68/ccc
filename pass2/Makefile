@@ -41,4 +41,10 @@ regen:
 clean:
 	rm -f $(OBJECTS) cc2 $(GENERATED)
 
+clobber: clean
+	rm -f ./cc2
+
+install: cc2
+	cp cc2 ../root/bin
+	
 .PHONY: all clean regen
