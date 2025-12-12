@@ -5,6 +5,11 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Parent directory is the project root
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
+# Paths to compiler binaries
+CC1="$PROJECT_ROOT/root/bin/cc1"
+CC2="$PROJECT_ROOT/root/bin/cc2"
+ASZ="$PROJECT_ROOT/root/bin/asz"
+
 VERBOSE=""
 not_k=true
 expect_fail=false
@@ -56,10 +61,10 @@ for t in "${TESTS[@]}" ; do
 	echo "======= source ========"
 	cat "$t"
 	echo "======== cc1 ========"
-	echo ../cc1 -DTEST=$t -I.. $VERBOSE -o $ast $t
+	echo $CC1 -DTEST=$t -I.. $VERBOSE -o $ast $t
 
 	# Run cc1 and capture stderr
-	ERRORS=$(../cc1 -DTEST=$t -I.. $VERBOSE -o "$ast" "$t" 2>&1 >/dev/null | grep "^file.*error code")
+	ERRORS=$($CC1 -DTEST=$t -I.. $VERBOSE -o "$ast" "$t" 2>&1 >/dev/null | grep "^file.*error code")
 
 	# Check if there were errors
 	if [ -n "$ERRORS" ]; then
@@ -70,7 +75,7 @@ for t in "${TESTS[@]}" ; do
 		else
 			echo "ERRORS DETECTED:"
 			echo "$ERRORS"
-			echo "file ../cc1" > .gdbargs
+			echo "file $CC1" > .gdbargs
 			echo "set args -DTEST=$t -I.. $VERBOSE -o $ast $t" >> .gdbargs
 			if $not_k ; then exit 1 ; fi
 		fi
@@ -84,8 +89,8 @@ for t in "${TESTS[@]}" ; do
 
 		# Run cc2 to produce .s
 		echo "======== cc2 ========"
-		echo ../cc2 -o $s $ast
-		if ../cc2 -o "$s" "$ast" 2>&1; then
+		echo $CC2 -o $s $ast
+		if $CC2 -o "$s" "$ast" 2>&1; then
 			echo "cc2 ok"
 		else
 			echo "cc2 FAILED"
@@ -104,8 +109,8 @@ for t in "${TESTS[@]}" ; do
 
 		# Run asz to produce .o
 		echo "======== asz ========"
-		echo ../root/bin/asz -o ${base}.o $s
-		if ../root/bin/asz -o "${base}.o" "$s" 2>&1; then
+		echo $ASZ -o ${base}.o $s
+		if $ASZ -o "${base}.o" "$s" 2>&1; then
 			echo "asz ok"
 		else
 			echo "asz FAILED"

@@ -3,9 +3,17 @@
  * these are mostly prime candidates for assembly code
  */
 
-#include "cc1.h"
 #include <stdarg.h>
+#include <string.h>
+#include <stdio.h>
 #include <unistd.h>
+
+#ifndef PSIZE
+#define PSIZE 80
+#endif
+
+/* Forward declaration */
+int fdprintf(unsigned char fd, const char *fmt, ...);
 
 #ifndef CCC
 char patspace[PSIZE];

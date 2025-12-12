@@ -8,6 +8,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Parent directory is the project root
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
+# Paths to compiler binaries
+CC1="$PROJECT_ROOT/root/bin/cc1"
+
 PASS=0
 FAIL=0
 LEAK=0
@@ -47,7 +50,7 @@ for t in ${TESTS[@]}; do
 		--errors-for-leak-kinds=definite \
 		--error-exitcode=1 \
 		--log-file=/tmp/valgrind_$$.log \
-		../cc1 -E "$t" > /dev/null 2>&1; then
+		$CC1 -E "$t" > /dev/null 2>&1; then
 		echo "PASS"
 		PASS=$((PASS + 1))
 	else
