@@ -14,6 +14,8 @@ Format:
 
 import sys
 
+sys.setrecursionlimit(10000)
+
 class ASTParser:
     def __init__(self, data):
         self.data = data
