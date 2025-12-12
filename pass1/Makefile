@@ -1,6 +1,8 @@
 #
 # Makefile for cc1 (pass 1 - parser)
 #
+ROOTDIR = ../root
+
 CC = gcc
 
 ifeq ($(CC),gcc)
@@ -12,23 +14,64 @@ CFLAGS = -m32 $(DEBUG) $(DEFINES) $(WARNS) -I.
 LDFLAGS = -m32 $(DEBUG)
 endif
 
-OBJECTS = pass1.o error.o lex.o io.o macro.o kw.o util.o tokenlist.o \
-	expr.o parse.o type.o declare.o outast.o
+ifeq ($(CC),ccc)
+CFLAGS = -I.
+CCC1 = $(ROOTDIR)/bin/cc1
+CCC2 = $(ROOTDIR)/bin/cc2
+ASZ = $(ROOTDIR)/bin/asz
+OUTDIR = ../stage1
+CCC = $(ROOTDIR)/bin/ccc
+endif
+
+SOURCES = pass1.c error.c lex.c io.c macro.c kw.c tokenlist.c \
+	expr.c parse.c type.c declare.c outast.c
+
+OBJECTS = $(SOURCES:.c=.o)
 
 HEADERS = cc1.h token.h enumlist.h error.h debug.h
 
 GENERATED = enumlist.h tokenlist.c error.h debug.h debugtags.c
 
+# Default target depends on CC
+ifeq ($(CC),gcc)
 all: cc1
+else ifeq ($(CC),ccc)
+all: stage1
+endif
 
-cc1: $(OBJECTS)
-	$(CC) $(LDFLAGS) -o $@ $(OBJECTS)
+cc1: $(OBJECTS) util.o
+	$(CC) $(LDFLAGS) -o $@ $(OBJECTS) util.o
 
 $(OBJECTS): $(HEADERS)
 
 # util.c comes from parent
 util.o: ../util.c $(HEADERS)
 	$(CC) $(CFLAGS) -c -o $@ $<
+
+# Stage1: compile with cross ccc to Z80 .o files
+stage1: $(GENERATED)
+	mkdir -p $(OUTDIR)
+	@for f in $(SOURCES); do \
+	  b=$${f%.c}; \
+	  printf "%-20s" "$$f: "; \
+	  $(CCC) $(CFLAGS) -k -c $$f 2> $(OUTDIR)/$$b.err 1>&2 && echo "ok" || echo "FAIL"; \
+	  ../astpp.py $$b.ast > $$b.pp ; \
+	  mv $$b.s $$b.o $$b.ast $$b.pp $(OUTDIR) 2>/dev/null ; \
+	done
+	@printf "%-20s" "../util.c: "
+	@$(CCC) $(CFLAGS) -k -c ../util.c 2> $(OUTDIR)/util.err 1>&2 && echo "ok" || echo "FAIL"
+	@../astpp.py util.ast > util.pp
+	@mv util.s util.o util.ast util.pp $(OUTDIR) 2>/dev/null
+
+# Size report for stage1 objects
+STAGE1_OBJS = $(SOURCES:.c=.o) util.o
+sizefile: Makefile
+	$(MAKE) stage1 CC=ccc
+	@$(ROOTDIR)/bin/wssize $(addprefix ../stage1/,$(STAGE1_OBJS)) | \
+	awk \
+		'{ t+=$$1 ; d+=$$2 ; b+=$$3 ; a+=$$4; print } \
+		END {printf "%7d %7d %7d %7d %19s\n", t, d, b, a, "pass1 total" }' \
+	 > sizefile
 
 # Generated file rules
 enumlist.h: token.h Makefile
@@ -56,12 +99,12 @@ regen:
 	$(MAKE) $(GENERATED)
 
 clean:
-	rm -f $(OBJECTS) cc1 maketokens $(GENERATED)
+	rm -f $(OBJECTS) util.o cc1 maketokens $(GENERATED)
 
 clobber: clean
 	rm -f ./cc1
 
 install: cc1
-	cp cc1 ../root/bin
+	cp cc1 $(ROOTDIR)/bin
 
-.PHONY: all clean regen
+.PHONY: all clean regen stage1 install clobber

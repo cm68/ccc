@@ -51,7 +51,8 @@ ccc: ccc.o
 
 install: cc1 cc2 ccc
 	mkdir -p $(ROOTDIR)/bin
-	cp pass1/cc1 pass2/cc2 ccc $(ROOTDIR)/bin
+	$(MAKE) -C pass1 install ROOTDIR=$(CURDIR)/$(ROOTDIR)
+	$(MAKE) -C pass2 install ROOTDIR=$(CURDIR)/$(ROOTDIR)
 	$(MAKE) -C ws install ROOTDIR=$(CURDIR)/$(ROOTDIR)
 	$(MAKE) -C libsrc install ROOTDIR=$(CURDIR)/$(ROOTDIR)
 
@@ -93,6 +94,13 @@ tests: cc1 cc2 install
 valgrind: cc1 cc2
 	$(MAKE) -C tests valgrind
 
+sizecheck:
+	$(MAKE) -C pass1 sizefile
+	$(MAKE) -C pass2 sizefile
+	@cat pass1/sizefile pass2/sizefile | tee cur.size
+	@diff -N cur.size prev.size
+	@cp cur.size prev.size
+
 .PHONY: unit-tests
 unit-tests:
 	$(MAKE) -C pass1 regen
@@ -100,36 +108,9 @@ unit-tests:
 
 .PHONY: stage1
 stage1: cc1 cc2 install
-	@echo "Building stage1 compiler binaries"
-	@mkdir -p stage1
-	@for f in $(CFILES); do \
-	  if [ -f "$$f" ]; then \
-	    b=$$(basename $$f .c) ; \
-	    printf "%-30s" "$$f: "; \
-	    ./$(ROOTDIR)/bin/cc1 $(CCCFLAGS) -o stage1/$$b.ast "$$f" \
-		2>stage1/$$b.err ; \
-	    ret1=$$?; \
-	    if [ $$ret1 -ne 0 ]; then \
-	      echo "FAIL (parse error)"; \
-	    else \
-	      python3 ./astpp.py stage1/$$b.ast >stage1/$$b.pp 2>>stage1/$$b.err ; \
-	      ./$(ROOTDIR)/bin/cc2 stage1/$$b.ast >stage1/$$b.s 2>>stage1/$$b.err ; \
-	      ret2=$$?; \
-	      if [ $$ret2 -ne 0 ]; then \
-	        echo "FAIL (codegen error)"; \
-	      else \
-	        $(ASM) $(ASMOPTS) -o stage1/$$b.o stage1/$$b.s \
-		    >>stage1/$$b.err 2>&1 ; \
-	        ret3=$$?; \
-	        if [ $$ret3 -ne 0 ]; then \
-	          echo "FAIL (asm error)"; \
-	        else \
-	          echo "PASS"; \
-	        fi; \
-	      fi; \
-	    fi; \
-	  fi; \
-	done
+	@echo "Building stage1 with cross ccc"
+	$(MAKE) -C pass1 CC=ccc ROOTDIR=$(CURDIR)/$(ROOTDIR)
+	$(MAKE) -C pass2 CC=ccc ROOTDIR=$(CURDIR)/$(ROOTDIR)
 	@echo "Stage1 build complete"
 
 regen:

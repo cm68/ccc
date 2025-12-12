@@ -45,10 +45,12 @@
 #include <string.h>
 #include <fcntl.h>
 #include <unistd.h>
+
+#ifndef CCC
 #include <sys/stat.h>
 #include <signal.h>
-
 #define	MAXTIME	30  /* timeout for debugging */
+#endif
 
 /* Forward declaration from util.c */
 int fdprintf(int fd, const char *fmt, ...);
@@ -66,6 +68,7 @@ int trace = 0;
 
 char *progname;
 
+#ifndef CCC
 /*
  * timeout handler - catch infinite loops during code generation
  */
@@ -75,6 +78,7 @@ timeoutHdlr(int sig)
     fdprintf(2, "cc2: timeout\n");
     exit(1);
 }
+#endif
 
 void
 usage(char *complaint)
@@ -136,9 +140,11 @@ main(int argc, char **argv)
     argc--;
     argv++;
 
+#ifndef CCC
     /* Set up timeout handler to catch infinite loops */
     signal(SIGALRM, timeoutHdlr);
     alarm(MAXTIME);
+#endif
 
     /* Parse arguments */
     while (argc > 0) {

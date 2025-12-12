@@ -1,25 +1,26 @@
-pass1.o 695 234 3
-error.o 195 901 2
-lex.o 3538 405 141
-io.o 1463 50 140
-macro.o 1791 2 4
-kw.o 102 301 6
-util.o 128 12 0
-tokenlist.o 0 0 0
-expr.o 9414 247 0
-parse.o 5381 226 84
-type.o 3207 223 23
-declare.o 2363 7 0
-outast.o 9728 646 260
-cc1 size:  38005 3254 663 = 41922
-pass2.o 936 177 2
-util.o 128 12 0
-astio.o 611 1 326
-parseast.o 6428 441 561
-codegen.o 7663 441 9
-dumpast.o 20 0 0
-emithelper.o 3939 3484 0
-emitexpr.o 5166 891 0
-emitops.o 8433 1749 29
-emit.o 5215 660 0
-cc2 size:  38539 7856 927 = 47322
+   text	   data	    bss	    dec	    hex	filename
+    735	    234	      3	    972	    3cc	../stage1/pass1.o
+    208	    901	      2	   1111	    457	../stage1/error.o
+   3672	    405	    141	   4218	   107a	../stage1/lex.o
+   1524	     50	    140	   1714	    6b2	../stage1/io.o
+   1827	      2	      4	   1833	    729	../stage1/macro.o
+    158	    301	      0	    459	    1cb	../stage1/kw.o
+      0	      0	      0	      0	      0	../stage1/tokenlist.o
+   9711	    247	      0	   9958	   26e6	../stage1/expr.o
+   5428	    226	     84	   5738	   166a	../stage1/parse.o
+   3286	    223	     23	   3532	    dcc	../stage1/type.o
+   2436	      7	      0	   2443	    98b	../stage1/declare.o
+  10173	    646	    260	  11079	   2b47	../stage1/outast.o
+    129	     12	      0	    141	     8d	../stage1/util.o
+  39287    3254     657   43198         pass1 total
+   text	   data	    bss	    dec	    hex	filename
+    932	    163	      2	   1097	    449	../stage1/pass2.o
+    572	      1	    326	    899	    383	../stage1/astio.o
+   6780	    441	    561	   7782	   1e66	../stage1/parseast.o
+   8328	    441	      9	   8778	   224a	../stage1/codegen.o
+     20	      0	      0	     20	     14	../stage1/dumpast.o
+   4371	   3558	      0	   7929	   1ef9	../stage1/emithelper.o
+   5399	    917	      0	   6316	   18ac	../stage1/emitexpr.o
+   8653	   1749	     31	  10433	   28c1	../stage1/emitops.o
+   5281	    660	      0	   5941	   1735	../stage1/emit.o
+  40336    7930     929   49195         pass2 total

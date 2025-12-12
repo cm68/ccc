@@ -1001,6 +1001,17 @@ gettoken()
                 }
                 if (t) {
                     advance();
+                    /*
+                     * In false block, only process conditional directives.
+                     * Skip #include, #define, #undef, etc.
+                     */
+                    if (cond && !(cond->flags & C_TRUE)) {
+                        if (t != IF && t != IFDEF && t != IFNDEF &&
+                            t != ELIF && t != ELSE && t != ENDIF) {
+                            skiptoeol();
+                            continue;
+                        }
+                    }
                     if (VERBOSE(V_CPP) && (t == IF || t == ELIF)) {
                         fdprintf(2,
                             "Before doCpp(%s): cur.type=0x%02x "
