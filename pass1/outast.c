@@ -1044,7 +1044,8 @@ emitStmt(struct stmt *st)
 					body = s->next;
 					body_count = 0;
 					for (t = body; t && t->op != CASE && t->op != DEFAULT; t = t->next)
-						body_count++;
+						if (!isDCE(t))
+							body_count++;
 					fdprintf(astFd, "%c%02x", s->op == CASE ? 'C' : 'O', body_count);
 					if (s->op == CASE)
 						emitExpr(s->left);
