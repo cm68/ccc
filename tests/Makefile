@@ -283,7 +283,7 @@ valgrind:
 
 # Build executable from .c file using ccc
 %: %.c
-	../root/bin/ccc -o $@ $<
+	../root/bin/ccc -k -o $@ $<
 
 # Clean test artifacts
 .PHONY: clean

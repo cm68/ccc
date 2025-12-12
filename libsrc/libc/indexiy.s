@@ -11,9 +11,9 @@
 indexiy::
 	push	de		; save register pair
 	ld	e,a		; low = offset
-	or	a,a
-	sbc	a,a		; sign extend
-	ld	d,a		; into high
+	rla			; rotate sign bit into carry
+	sbc	a,a		; A = -1 if carry (negative), else 0
+	ld	d,a		; sign extend into D
 	add	iy,de		; point at destination
 	pop	de		; restore register
 	ret

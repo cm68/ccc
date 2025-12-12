@@ -481,6 +481,14 @@ dumpSchedExpr(struct expr *e, int indent)
         fdprintf(dumpFd, " dest=%s", regName(e->dest));
     }
 
+    /* Demand and spill info */
+    if (e->demand > 0) {
+        fdprintf(dumpFd, " demand=%d", e->demand);
+    }
+    if (e->spill) {
+        fdprintf(dumpFd, " SPILL");
+    }
+
     /* Scheduled instructions */
     if (e->nins > 0) {
         fdprintf(dumpFd, " emit={");

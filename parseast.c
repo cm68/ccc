@@ -136,6 +136,15 @@ newExpr(unsigned char op)
 	e->label = 0;
 	e->opflags = 0;
 	e->cached_var = NULL;
+	/* Initialize scheduler fields checked before being set */
+	e->dest = 0;
+	e->loc = 0;
+	e->reg = 0;
+	e->cond = 0;
+	e->offset = 0;
+	e->nins = 0;
+	e->demand = 0;
+	e->spill = 0;
 	return e;
 }
 
@@ -458,6 +467,11 @@ doExprOp(unsigned char op)
 	if (arity >= 1) e->left = parseExpr();
 	if (arity >= 2) e->right = parseExpr();
 
+	/* Propagate E_HASCALL from children */
+	if ((e->left && (e->left->flags & E_HASCALL)) ||
+	    (e->right && (e->right->flags & E_HASCALL)))
+		e->flags |= E_HASCALL;
+
 	/* Strength reduction: multiply by power of 2 */
 	if (op == '*') {
 		int shift = isMulByPow2(e, NULL);
@@ -482,6 +496,7 @@ doCall(void)
 	int argc, i;
 	e->type_str = curchar;  /* Return type */
 	e->size = getSizeFTStr(curchar);
+	e->flags |= E_HASCALL;  /* Calls clobber DE/HL/A */
 	nextchar();
 	argc = readHex2();
 	e->value.c = argc;

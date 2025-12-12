@@ -10,6 +10,15 @@
 #include <stdlib.h>
 #include <string.h>
 
+/*
+ * Calling convention: who cleans up call arguments from stack
+ * CALLER_FREE: caller cleans up after call returns (current default)
+ * CALLEE_FREE: callee cleans up before returning
+ * Define one or the other; defaults to CALLER_FREE
+ */
+#define CALLER_FREE
+/* #define CALLEE_FREE */
+
 /* Free that tolerates NULL */
 void xfree(void *p);
 
@@ -62,6 +71,7 @@ enum register_id {
 #define E_IXDEREF   0x10        // DEREF of IX-indexed struct member
 #define E_JUMP      0x20        // Node has associated jump (ternary, return)
 #define E_FLOAT     0x40        // Float/double type (uses float helpers)
+#define E_HASCALL   0x80        // Expression contains a function call
 
 /*
  * Operand pattern flags (e->opflags) - set during analysis phase
@@ -266,6 +276,8 @@ struct expr {
     /* Scheduled instructions - set by scheduler, blindly emitted */
     unsigned char ins[3];       // Instructions to emit (EO_* opcodes)
     unsigned char nins;         // Number of instructions (0-3)
+    unsigned char demand;       // Temp register demand for this subtree
+    unsigned char spill;        // 1 if DE must be spilled before right child
 };
 
 /*

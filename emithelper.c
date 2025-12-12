@@ -316,6 +316,11 @@ void loadBCIY(char offset) {
     iyOp("\tld b, (iy %c %d)\n", offset, 1);
 }
 
+void loadDE_IY(char offset) {
+    iyOp("\tld e, (iy %c %d)\n", offset, 0);
+    iyOp("\tld d, (iy %c %d)\n", offset, 1);
+}
+
 void storeWordIY(char offset) {
     iyOp("\tld (iy %c %d), l\n", offset, 0);
     iyOp("\tld (iy %c %d), h\n", offset, 1);
@@ -342,6 +347,11 @@ void loadWordIX(char offset) {
     fdprintf(outFd, "\tld h, (ix + %d)\n", offset + 1);
     clearHL();
     fnIXHLOfs = offset;
+}
+
+void loadDE_IX(char offset) {
+    fdprintf(outFd, "\tld e, (ix + %d)\n", offset);
+    fdprintf(outFd, "\tld d, (ix + %d)\n", offset + 1);
 }
 
 void storeWordIX(char offset) {

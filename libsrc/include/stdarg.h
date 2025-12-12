@@ -21,7 +21,7 @@ typedef char *va_list;
 /*
  * va_start: Initialize ap to point just past the last named parameter.
  * Usage: va_start(ap, last_named_param);
- * Uses __va_set helper to avoid compound assignment code gen issues.
+ * Uses helper to avoid code gen issues with complex expressions.
  */
 void __va_set(char **ap, char *val);
 
@@ -32,8 +32,8 @@ void __va_set(char **ap, char *val);
  * va_arg: Fetch next argument of given type, advance ap.
  * Usage: int x = va_arg(ap, int);
  *
+ * Uses helper to avoid code gen issues with complex expressions.
  * cc1 applies default argument promotions: char/short -> int.
- * Uses __va_inc helper to avoid compound assignment code gen issues.
  */
 char *__va_inc(char **ap, int size);
 

@@ -574,6 +574,10 @@ parseExpr(unsigned char pri, struct stmt *st)
     case AND:       // address-of (unary)
         gettoken();
         e = parseExpr(OP_PRI_MULT - 1, st);
+        /* Mark variable as address-taken (can't use register) */
+        if (e && e->op == DEREF && e->left && e->left->op == SYM &&
+            e->left->var)
+            ((struct name *)e->left->var)->addr_taken = 1;
         /* Optimize: &(DEREF x) = x, since SYM already gives address */
         if (e && e->op == DEREF) {
             e = e->left;

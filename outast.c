@@ -217,7 +217,8 @@ allocRegs(struct stmt *body)
 		}
 		/* Pass 1: pointers prefer IX */
 		for (n = body->locals; n; n = n->next) {
-			if (!(n->sclass & SC_REGISTER) || n->reg != REG_NONE)
+			if (!(n->sclass & SC_REGISTER) || n->reg != REG_NONE ||
+			    (n->addr_taken && n->kind != funarg))
 				continue;
 			if (n->type && (n->type->flags & TF_POINTER) && !ix_used) {
 				n->reg = REG_IX;
@@ -226,7 +227,8 @@ allocRegs(struct stmt *body)
 		}
 		/* Pass 2: words - prefer IX if bytes need B/C, else BC */
 		for (n = body->locals; n; n = n->next) {
-			if (!(n->sclass & SC_REGISTER) || n->reg != REG_NONE)
+			if (!(n->sclass & SC_REGISTER) || n->reg != REG_NONE ||
+			    (n->addr_taken && n->kind != funarg))
 				continue;
 			if (n->type && n->type->size == 2) {
 				if (has_reg_byte && !ix_used) {
@@ -243,7 +245,8 @@ allocRegs(struct stmt *body)
 		}
 		/* Pass 3: bytes get B then C */
 		for (n = body->locals; n; n = n->next) {
-			if (!(n->sclass & SC_REGISTER) || n->reg != REG_NONE)
+			if (!(n->sclass & SC_REGISTER) || n->reg != REG_NONE ||
+			    (n->addr_taken && n->kind != funarg))
 				continue;
 			if (n->type && n->type->size == 1 && !bc_used) {
 				if (!b_used) {
@@ -263,7 +266,8 @@ allocRegs(struct stmt *body)
 	if (!ix_used) {
 		best = NULL;
 		for (n = body->locals; n; n = n->next) {
-			if (n->reg != REG_NONE)
+			if (n->reg != REG_NONE ||
+			    (n->addr_taken && n->kind != funarg))
 				continue;
 			if (n->type && (n->type->flags & TF_POINTER) &&
 			    n->agg_refs > 0 && n->ref_count > 1) {
@@ -281,7 +285,8 @@ allocRegs(struct stmt *body)
 	if (!bc_used || !ix_used) {
 		best = NULL;
 		for (n = body->locals; n; n = n->next) {
-			if (n->reg != REG_NONE)
+			if (n->reg != REG_NONE ||
+			    (n->addr_taken && n->kind != funarg))
 				continue;
 			if (n->type && (n->type->flags & (TF_ARRAY | TF_AGGREGATE)))
 				continue;
@@ -306,7 +311,8 @@ allocRegs(struct stmt *body)
 	/* B and C to byte variables (if BC not used as word) */
 	if (!bc_used) {
 		for (n = body->locals; n; n = n->next) {
-			if (n->reg != REG_NONE)
+			if (n->reg != REG_NONE ||
+			    (n->addr_taken && n->kind != funarg))
 				continue;
 			if (n->type && (n->type->flags & (TF_ARRAY | TF_AGGREGATE)))
 				continue;

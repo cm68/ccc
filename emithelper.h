@@ -29,12 +29,14 @@ int isLocalSym(const char *name);  /* Returns 1 if symbol is local (no _ prefix)
 /* IY-indexed memory access */
 void loadWordIY(char offset);
 void loadBCIY(char offset);
+void loadDE_IY(char offset);
 void storeWordIY(char offset);
 void loadByteIY(char offset, char is_param);
 void storeByteIY(char offset, char is_param);
 
 /* IX-indexed memory access */
 void loadWordIX(char offset);
+void loadDE_IX(char offset);
 void storeWordIX(char offset);
 
 /* Variable load/store with cache management */

@@ -22,18 +22,18 @@ usage(void)
     printf("usage: %s [<options>] <files...>\n", progname);
     printf("  files: .c (compile) .s (assemble) .o .a (link)\n");
     printf("  -o <output>    Output file (default: a.out)\n");
-    printf("  -c             Compile and assemble only (produce .o file)\n");
-    printf("  -s             Compile only (produce .s file, no assembly)\n");
+    printf("  -c             Compile and assemble only, keep .o\n");
+    printf("  -s             Compile only, keep .s (no assembly)\n");
+    printf("  -k             Keep all intermediates (.ast, .s, .o)\n");
     printf("  -S             Strip symbols from output\n");
     printf("  -9             Use 9-char symbols in output\n");
-    printf("  -k             Keep intermediate AST file\n");
     printf("  -v <level>     Verbosity level (passed to cc1)\n");
     printf("  -V <level>     Verbosity level (passed to cc2)\n");
     printf("  -I<dir>        Include directory (passed to cc1)\n");
     printf("  -i<dir>        System include directory (passed to cc1, "
         "default /usr/include)\n");
     printf("  -D<var>[=val]  Define macro (passed to cc1)\n");
-    printf("  -E             Preprocess only (passed to cc1)\n");
+    printf("  -E             Preprocess only (not yet implemented)\n");
     printf("  -x             Print commands as they execute\n");
     printf("  -n             Print commands without executing (dry run)\n");
     exit(1);
@@ -141,7 +141,7 @@ int
 main(int argc, char **argv)
 {
     char *output_file = NULL;
-    int keep_ast = 0;
+    int keep_all = 0;        /* -k: keep all intermediates */
     int compile_only = 0;    /* -c: compile+assemble to .o */
     int asm_only = 0;        /* -s: compile to .s only */
     int print_cmds = 0;      /* -x: print commands as they execute */
@@ -155,6 +155,7 @@ main(int argc, char **argv)
     char *o_files[MAX_ARGS];
     char *a_files[MAX_ARGS];
     int c_count = 0, s_count = 0, o_count = 0, a_count = 0;
+    int o_input_count = 0;   /* .o files from cmdline (vs generated) */
 
     char *cc1_base[MAX_ARGS];  /* Base cc1 args (options only) */
     char *cc2_base[MAX_ARGS];  /* Base cc2 args (options only) */
@@ -211,7 +212,7 @@ main(int argc, char **argv)
             argc--;
             argv++;
         } else if (strcmp(argv[0], "-k") == 0) {
-            keep_ast = 1;
+            keep_all = 1;
             argc--;
             argv++;
         } else if (strcmp(argv[0], "-c") == 0) {
@@ -330,6 +331,9 @@ main(int argc, char **argv)
         output_file = "a.out";
     }
 
+    /* Track how many .o files existed before we generate more from .c files */
+    o_input_count = o_count;
+
     /* Process each .c file: cc1 -> cc2 -> asm */
     for (i = 0; i < c_count; i++) {
         char *src = c_files[i];
@@ -393,7 +397,7 @@ main(int argc, char **argv)
         }
 
         /* Clean up AST unless -k or -n */
-        if (!keep_ast && !no_exec)
+        if (!keep_all && !no_exec)
             unlink(ast_file);
         free(ast_file);
 
@@ -422,8 +426,9 @@ main(int argc, char **argv)
                 exit(status);
             }
 
-            /* Clean up .s file */
-            unlink(asm_file);
+            /* Clean up .s file unless -k */
+            if (!keep_all)
+                unlink(asm_file);
         }
         free(asm_file);
 
@@ -519,6 +524,14 @@ main(int argc, char **argv)
             if (status != 0) {
                 fprintf(stderr, "Error: linker failed\n");
                 exit(status);
+            }
+
+            /* Clean up generated .o files unless -k */
+            if (!keep_all) {
+                for (i = o_input_count; i < o_count; i++) {
+                    if (unlink(o_files[i]) != 0)
+                        perror(o_files[i]);
+                }
             }
         }
     }

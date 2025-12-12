@@ -97,7 +97,9 @@ readHex8(void) {
 /* Read hex-length-prefixed ASCII name into static buffer */
 unsigned char *
 readName(void) {
-	int len, i;
+	unsigned char len;
+    unsigned char i;
+
 	len = readHex2();
 	for (i = 0; i < len && i < 63; i++) {
 		symbuf[i] = curchar;
@@ -110,9 +112,9 @@ readName(void) {
 /* Read hex-length-prefixed hex-encoded string, return malloc'd copy */
 unsigned char *
 readStr(void) {
-	int len = readHex2();
+	unsigned char len = readHex2();
 	unsigned char *s = malloc(len + 1);
-	int i;
+	unsigned char i;
 	for (i = 0; i < len; i++)
 		s[i] = readHex2();
 	s[len] = 0;

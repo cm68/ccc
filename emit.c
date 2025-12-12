@@ -722,12 +722,16 @@ emitAssembly(char fd)
     }
 #endif
 
-    /* Clean up call argument stack (when not using framealloc) */
-    if (fnCallStk > 0 && fnFrmSize == 0 && !has_params) {
+#ifdef CALLER_FREE
+    /* Clean up call argument stack before restoring callee-saved regs.
+     * Even with framealloc, we need to clean up args pushed for calls
+     * because pop bc/ix happens before framefree. */
+    if (fnCallStk > 0) {
         int i;
         for (i = 0; i < fnCallStk; i += 2)
             emit(S_POPDE);
     }
+#endif /* CALLER_FREE */
 
     /* Restore callee-saved registers (reverse order of push) */
     {

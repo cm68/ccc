@@ -669,6 +669,7 @@ generateExpr(struct expr *e)
             arg = arg->right;
         }
 
+#ifdef CALLER_FREE
         /* Stack cleanup: in loops emit after call, otherwise defer to exit */
         if (arg_count > 0) {
             if (g_loop_depth > 0) {
@@ -677,6 +678,7 @@ generateExpr(struct expr *e)
                 fnCallStk += arg_count * 2;
             }
         }
+#endif /* CALLER_FREE */
 
         return;  /* emitCall will handle the rest */
     }
@@ -1029,6 +1031,8 @@ static void sched2Expr(struct expr *e);
 /*
  * Schedule expression - pass 1: calculate temp register demand
  * Returns number of temp registers needed to evaluate this subtree
+ * Available temps: HL, DE (2 for word ops). Demand > 2 means spill needed.
+ * Stores demand in e->demand for debug output.
  */
 static unsigned char
 sched2Demand(struct expr *e)
@@ -1040,13 +1044,21 @@ sched2Demand(struct expr *e)
     op = e->op;
     left = e->left;
 
+    /* Function calls clobber all temps - demand exceeds available */
+    if (op == '@') {
+        e->demand = 3;
+        return 3;
+    }
+
     /* Leaves need 1 register for their result */
     if (op == 'C' || op == '$') {
+        e->demand = 1;
         return 1;
     }
 
     /* DEREF of simple var needs 1 register */
     if (op == 'M' && left && left->op == '$') {
+        e->demand = 1;
         return 1;
     }
 
@@ -1061,21 +1073,23 @@ sched2Demand(struct expr *e)
         my_demand = left_demand;
     }
 
+    e->demand = my_demand;
     return my_demand;
 }
 
 /*
  * Schedule loads for constant nodes
- * Sets e->dest to natural register (R_A for byte, R_HL for word)
+ * Respects e->dest if already set by parent
  */
 static void
 sched2Const(struct expr *e)
 {
     e->nins = 0;
-    /* Use dest if set by parent (byte assign sets R_A), else use size */
-    if (e->dest == R_A || e->size == 1) {
+    if (e->size == 1) {
         e->dest = R_A;
         addIns(e, EO_A_CONST);
+    } else if (e->dest == R_DE) {
+        addIns(e, EO_DE_CONST);
     } else {
         if (e->dest == R_NONE) e->dest = R_HL;
         addIns(e, EO_HL_CONST);
@@ -1085,6 +1099,7 @@ sched2Const(struct expr *e)
 /*
  * Schedule loads for DEREF of simple variable
  * Pattern: (M $var) - opflags has OP_REGVAR, OP_IYMEM, or OP_GLOBAL
+ * Respects e->dest if already set by parent (for binop left operands)
  */
 static void
 sched2Deref(struct expr *e)
@@ -1092,6 +1107,7 @@ sched2Deref(struct expr *e)
     struct local_var *var;
     unsigned char opf = e->opflags;
     unsigned char size = e->size;
+    unsigned char wantDE = (e->dest == R_DE);
 
     e->nins = 0;
 
@@ -1109,8 +1125,14 @@ sched2Deref(struct expr *e)
             e->dest = R_HL;
             addIns(e, EO_HLHL_IXL); /* ld a,ofs; call getLix */
         } else {
-            e->dest = R_HL;
-            addIns(e, EO_HL_IXW);   /* ld l,(ix+ofs); ld h,(ix+ofs+1) */
+            /* Word load from IX-indexed - respect dest */
+            if (wantDE) {
+                e->dest = R_DE;
+                addIns(e, EO_DE_IXW);   /* ld e,(ix+ofs); ld d,(ix+ofs+1) */
+            } else {
+                e->dest = R_HL;
+                addIns(e, EO_HL_IXW);   /* ld l,(ix+ofs); ld h,(ix+ofs+1) */
+            }
         }
     }
     /* Register variable (not a pointer deref) */
@@ -1123,12 +1145,25 @@ sched2Deref(struct expr *e)
             else
                 addIns(e, EO_A_C);  /* ld a,c */
         } else {
-            e->dest = R_HL;
-            /* Check if it's IX or BC */
-            if (e->cached_var && e->cached_var->reg == REG_IX)
-                addIns(e, EO_HL_IX);    /* push ix; pop hl */
-            else
-                addIns(e, EO_HL_BC);    /* ld h,b; ld l,c */
+            /* Word regvar - respect dest */
+            if (e->cached_var && e->cached_var->reg == REG_IX) {
+                if (wantDE) {
+                    e->dest = R_DE;
+                    addIns(e, EO_DE_IX);    /* push ix; pop de */
+                } else {
+                    e->dest = R_HL;
+                    addIns(e, EO_HL_IX);    /* push ix; pop hl */
+                }
+            } else {
+                /* BC regvar */
+                if (wantDE) {
+                    e->dest = R_DE;
+                    addIns(e, EO_DE_BC);    /* ld d,b; ld e,c */
+                } else {
+                    e->dest = R_HL;
+                    addIns(e, EO_HL_BC);    /* ld h,b; ld l,c */
+                }
+            }
         }
     }
     /* IY-indexed stack variable */
@@ -1147,8 +1182,14 @@ sched2Deref(struct expr *e)
             e->dest = R_HL;
             addIns(e, EO_HLHL_IYL); /* ld a,ofs; call getlong */
         } else {
-            e->dest = R_HL;
-            addIns(e, EO_HL_IYW);   /* ld l,(iy+ofs); ld h,(iy+ofs+1) */
+            /* Word load from IY-indexed - respect dest */
+            if (wantDE) {
+                e->dest = R_DE;
+                addIns(e, EO_DE_IYW);   /* ld e,(iy+ofs); ld d,(iy+ofs+1) */
+            } else {
+                e->dest = R_HL;
+                addIns(e, EO_HL_IYW);   /* ld l,(iy+ofs); ld h,(iy+ofs+1) */
+            }
         }
     }
     /* Global variable */
@@ -1157,13 +1198,22 @@ sched2Deref(struct expr *e)
             e->dest = R_A;
             addIns(e, EO_A_MEM);    /* ld a,(symbol) */
         } else {
-            e->dest = R_HL;
-            addIns(e, EO_HL_MEM);   /* ld hl,(symbol) */
+            /* Word load from global - respect dest */
+            if (wantDE) {
+                e->dest = R_DE;
+                addIns(e, EO_DE_MEM);   /* ld de,(symbol) */
+            } else {
+                e->dest = R_HL;
+                addIns(e, EO_HL_MEM);   /* ld hl,(symbol) */
+            }
         }
     }
     /* Default - complex DEREF, children handle it */
     else {
-        e->dest = (size == 1) ? R_A : R_HL;
+        if (size == 1)
+            e->dest = R_A;
+        else if (!wantDE)
+            e->dest = R_HL;
         addIns(e, EO_NOP);
     }
 }
@@ -1204,7 +1254,7 @@ sched2Symbol(struct expr *e)
 
 /*
  * Schedule binary operations
- * Word ops: left in HL, right in DE, result in HL
+ * Word ops: left in DE, right in HL, result in HL
  * Byte ops: left in A, right immediate or (hl), result in A
  */
 static void
@@ -1216,11 +1266,16 @@ sched2Binary(struct expr *e)
     unsigned char size = e->size;
 
     e->nins = 0;
+    e->spill = 0;
 
     /* Set child destinations for word ops: left->DE, right->HL */
     if (size == 2) {
         if (left) left->dest = R_DE;
         if (right) right->dest = R_HL;
+        /* If right subtree has high demand (call), must spill DE */
+        if (right && right->demand > 2) {
+            e->spill = 1;
+        }
     }
 
     /* Recurse to schedule children */

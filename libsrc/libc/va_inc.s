@@ -18,6 +18,7 @@
 ___va_set::
 	xor	a
 	call	framealloc
+	push	de		; preserve DE for caller
 	; Load ap pointer into HL
 	ld	l, (iy + 4)
 	ld	h, (iy + 5)
@@ -28,6 +29,7 @@ ___va_set::
 	ld	(hl), e
 	inc	hl
 	ld	(hl), d
+	pop	de		; restore DE
 	jp	framefree
 
 ;
@@ -43,6 +45,7 @@ ___va_set::
 ___va_inc::
 	xor	a
 	call	framealloc
+	push	de		; preserve DE for caller
 	; Load ap pointer into HL
 	ld	l, (iy + 4)
 	ld	h, (iy + 5)
@@ -69,6 +72,7 @@ ___va_inc::
 	ld	(hl), e
 	inc	hl
 	ld	(hl), d
+	pop	de		; restore DE for caller
 	; Return old value (BC -> HL)
 	ld	h, b
 	ld	l, c

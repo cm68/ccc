@@ -47,6 +47,7 @@ execIns(struct expr *e, unsigned char ins)
     case EO_ADD_IX_DE: s = S_ADDIXDE; break;
     case EO_ADD_IX_BC: s = S_ADDIXBC; break;
     case EO_DE_IX: s = S_IXDE; break;
+    case EO_DE_BC: s = S_LDDEBC; break;
     case EO_INC_HL: s = S_INCHL; break;
     case EO_DEC_HL: s = S_DECHL; break;
     case EO_WIDEN: s = S_WIDEN; break;
@@ -113,6 +114,16 @@ execIns(struct expr *e, unsigned char ins)
             fdprintf(outFd, "\tld de, %s\n", symbol);
         else
             fdprintf(outFd, "\tld de, %d\n", e->value.s);
+        return 1;
+    case EO_DE_IYW:
+        loadDE_IY(e->offset);
+        return 1;
+    case EO_DE_IXW:
+        loadDE_IX(e->offset);
+        return 1;
+    case EO_DE_MEM:
+        if (symbol)
+            fdprintf(outFd, "\tld de, (%s)\n", symbol);
         return 1;
     case EO_A_IY:
         loadByteIY(e->offset, 0);
@@ -378,6 +389,9 @@ emitExpr(struct expr *e)
             clearA();
         } else if (e->size == 2) {
             emit(S_LDHLIND);
+            /* Move to target register if needed */
+            if (e->dest == R_BC)
+                emit(S_BCHLX);
             clearHL();
         }
         freeNode(e);
@@ -611,10 +625,12 @@ emitExpr(struct expr *e)
         emitExpr(left);
         emitExpr(e->right);
 
+#ifdef CALLER_FREE
         /* Emit deferred cleanup (for CALL stack cleanup after result used) */
         if (e->cleanup_block) {
             fdprintf(outFd, "%s", e->cleanup_block);
         }
+#endif /* CALLER_FREE */
     }
 
     /* Free this node (children already freed by recursive emit calls above) */
@@ -629,16 +645,25 @@ emitExpr(struct expr *e)
 void
 emit2Expr(struct expr *e)
 {
-    struct expr *left, *ll;
+    struct expr *left, *ll, *right;
     int i;
 
     if (!e) return;
     left = e->left;
+    right = e->right;
     ll = left ? left->left : NULL;
 
-    /* Process children first (post-order) */
-    emit2Expr(e->left);
-    emit2Expr(e->right);
+    /* If scheduler marked this node for spill, push DE after left, pop after right */
+    if (e->spill) {
+        emit2Expr(left);
+        emit(S_PUSHDE);
+        emit2Expr(right);
+        emit(S_POPDE);
+    } else {
+        /* Normal: Process children first (post-order) */
+        emit2Expr(left);
+        emit2Expr(right);
+    }
 
     /* Execute scheduled instructions */
     for (i = 0; i < e->nins; i++) {

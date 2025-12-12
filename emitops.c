@@ -541,10 +541,11 @@ do_store:
         {
             struct local_var *lv = findVar(left->symbol);
             int skip = 0;
-            /* Skip only if RHS destination is BC and RHS is not a call
-             * (calls always return in HL regardless of dest) */
+            /* Skip only if RHS destination is BC and RHS is a simple
+             * load (M or C), not an operation. Arithmetic ops like +
+             * always leave result in HL regardless of dest field. */
             if (lv && lv->reg == REG_BC && rhs_dest == R_BC &&
-                rhs_op != '@')
+                (rhs_op == 'M' || rhs_op == 'C'))
                 skip = 1;
             if (!skip)
                 storeVar(left->symbol, e->size, 1);
@@ -560,10 +561,13 @@ do_store:
         /* For (= (M $ptr) val): emit (M $ptr) to get target address
          * For (= (+ ...) val): emit the + expression to get address */
         if (e->size == 1) {
-            emit(S_ESAVE);
+            /* Use stack to preserve byte value - E gets clobbered by
+             * address computation if it uses DE (e.g., buf[pos++]) */
+            emit(S_PUSHAFSV);
             emitExpr(left);
             e->left = NULL;
-            emit(S_HLDE);
+            emit(S_POPAFRET);
+            emit(S_LDHLA);
         } else if (e->size == 2) {
             emit(S_DESAVE);
             emitExpr(left);
@@ -1049,7 +1053,9 @@ emitBinop(struct expr *e)
 
     /* Word binary ops */
     if (!emitSimplLd(left)) emitExpr(left);
+    if (e->spill) emit(S_PUSHDE);  /* Save DE before evaluating right (which has call) */
     if (!emitSimplLd(right)) emitExpr(right);
+    if (e->spill) emit(S_POPDE);   /* Restore DE after call */
 
     switch (op) {
     case '+': emit(S_ADDHLDE); break;
@@ -1136,10 +1142,12 @@ emitCall(struct expr *e)
         fdprintf(outFd, "\t; TODO: indirect call\n");
     }
 
+#ifdef CALLER_FREE
     /* Stack cleanup in loops (framefree handles it otherwise) */
     if (e->cleanup_block) {
         fdprintf(outFd, "%s", e->cleanup_block);
     }
+#endif /* CALLER_FREE */
 
     invalStack();
     /* Don't free children - they're part of the AST tree */

@@ -80,6 +80,58 @@ cd tests
 **Pass 2:**
 - **parseast.c**: AST parser, builds expression/statement trees
 - **astio.c**: Low-level AST I/O
+- **codegen.c**: Scheduling passes (demand calculation, dest assignment, instruction selection)
+- **dumpast.c**: AST dump with scheduling annotations
+- **emitexpr.c**: Emit scheduled instructions (slave to scheduler)
+- **emitops.c**: Emit helpers for specific operations
+- **emit.c**: Statement-level emission
+
+### cc2 Scheduler Architecture
+
+Three-phase code generation with strict separation of concerns:
+
+**Phase 1: Demand Calculation (bottom-up)**
+- Walk tree bottom-up calculating temp register demand
+- Leaves (constants, simple derefs): demand = 1
+- Binary ops: demand = max(left_demand, right_demand + 1)
+- Function calls: demand = 3 (clobbers all temps)
+- Set `e->spill = 1` on binops where right child demand > 2
+
+**Phase 2: Dest Assignment (top-down)**
+- Assign destination registers based on tree position
+- Binary ops: left child → DE, right child → HL
+- Result always in HL (primary accumulator)
+- Dests propagate down - children respect parent's assignment
+
+**Phase 3: Instruction Selection**
+- Walk tree with dests already assigned
+- Select instructions that produce results in the assigned dest
+- Z80 has direct load-to-DE instructions: `ld de,const`, `ld de,(addr)`,
+  `ld e,(iy+n); ld d,(iy+n+1)` - use these when dest=DE
+- Only case requiring `ex de,hl`: function call result when dest=DE
+  (calls always return in HL per calling convention)
+- Populate `e->ins[]` array with selected instructions
+
+**Emit Phase (slave)**
+- Strictly mechanical - no decision making
+- Check `e->spill` flag → emit `push de` before right child, `pop de` after
+- Execute `e->ins[]` array in order
+- All register allocation decisions made by scheduler
+
+**Register Model:**
+- HL: primary accumulator (word results)
+- DE: secondary accumulator (left operand of binops)
+- A: byte accumulator
+- BC: available for register variables
+- IX: struct pointer register variable
+- IY: frame pointer (stack locals)
+
+**Calling Convention:**
+Controlled by `#define CALLER_FREE` or `#define CALLEE_FREE` in cc2.h:
+- **CALLER_FREE** (default): Caller cleans up arguments after call returns.
+  Arguments pushed, call made, then `inc sp` or `pop de` to clean stack.
+- **CALLEE_FREE**: Callee cleans up arguments before returning.
+  Requires modified framefree to skip args (not yet implemented).
 
 ### Auto-Generated Files (do NOT edit)
 

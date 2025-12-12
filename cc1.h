@@ -218,6 +218,7 @@ struct name {
     unsigned char ref_count;  // reference count (capped at 255)
     unsigned char agg_refs;   // struct member access count (for IX allocation)
     unsigned char reg;        // allocated register: 0=none, 1=B, 2=C, 3=BC, 4=IX
+    unsigned char addr_taken; // true if address taken (can't use register)
     char frm_off;             // frame offset: params positive, locals negative
 };
 
