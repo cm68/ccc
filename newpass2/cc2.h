@@ -92,6 +92,8 @@ struct expr {
 #define SP_MUL2     5       /* * #pow2 -> add hl,hl (incr = shift count) */
 #define SP_SIGN     6       /* M$sym >= 0 -> bit 7, result in NZ */
 #define SP_MSYM     7       /* Ms $sym -> ld hl,(sym) */
+#define SP_IXOD     8       /* M[+p Mp[Rp(ix)] #ofs] -> (ix+ofs) */
+#define SP_CMPIX    9       /* cmpB left right where one is (ix+d) */
 
 /* Expression allocation */
 struct expr *newExpr(char op, char type);

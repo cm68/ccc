@@ -614,6 +614,18 @@ calcDemand(struct expr *e)
         goto done;
     }
 
+    /* M[+p Mp[Rp(ix)] #ofs] -> (ix+ofs); IX-relative deref */
+    if (op == 'M' && e->left->op == '+' && e->left->type == T_PTR &&
+        e->left->left->op == 'M' && e->left->left->type == T_PTR &&
+        e->left->left->left->op == 'R' && e->left->left->left->aux == R_IX &&
+        e->left->right->op == '#') {
+        e->special = SP_IXOD;
+        e->offset = e->left->right->v.s;
+        e->dest = R_IXO;
+        demand = 0;
+        goto done;
+    }
+
     /* M[+p $sym #const] -> ld hl,(sym+offset) */
     if (op == 'M' && e->left->op == '+' && e->left->type == T_PTR &&
         e->left->left->op == '$' && e->left->right->op == '#' &&
@@ -657,6 +669,34 @@ calcDemand(struct expr *e)
         e->offset = TSIZE(e->left->type) - 1;  /* offset to high byte */
         demand = 1;
         goto done;
+    }
+
+    /* cmpB left M[+p Mp[Rp(ix)] #ofs] -> cp (ix+d); byte cmp with (ix+d) */
+    if ((op == '<' || op == '>' || op == 'Q' || op == 'n' ||
+         op == 'L' || op == 'g') && ISBYTE(e->type)) {
+        struct expr *l = e->left, *r = e->right;
+        /* check if right is the (ix+d) pattern */
+        if (r->op == 'M' && r->left->op == '+' && r->left->type == T_PTR &&
+            r->left->left->op == 'M' && r->left->left->type == T_PTR &&
+            r->left->left->left->op == 'R' && r->left->left->left->aux == R_IX &&
+            r->left->right->op == '#') {
+            e->special = SP_CMPIX;
+            e->offset = r->left->right->v.s;
+            e->aux2 = 0;  /* right is (ix+d), normal sense */
+            demand = calcDemand(l);  /* only need to emit left */
+            goto done;
+        }
+        /* check if left is the (ix+d) pattern */
+        if (l->op == 'M' && l->left->op == '+' && l->left->type == T_PTR &&
+            l->left->left->op == 'M' && l->left->left->type == T_PTR &&
+            l->left->left->left->op == 'R' && l->left->left->left->aux == R_IX &&
+            l->left->right->op == '#') {
+            e->special = SP_CMPIX;
+            e->offset = l->left->right->v.s;
+            e->aux2 = 1;  /* left is (ix+d), flipped sense */
+            demand = calcDemand(r);  /* only need to emit right */
+            goto done;
+        }
     }
 
     /* R in IX (reg=4) or BC (reg=3) is demand 0 - already in register */
@@ -725,6 +765,15 @@ assignDest(struct expr *e, char dest)
 
     /* assign this node's destination */
     e->dest = dest;
+
+    /* SP_CMPIX: only non-(ix+d) operand needs A */
+    if (e->special == SP_CMPIX) {
+        if (e->aux2 == 0)
+            assignDest(e->left, R_A);   /* right is (ix+d), emit left */
+        else
+            assignDest(e->right, R_A);  /* left is (ix+d), emit right */
+        return;
+    }
 
     /* determine child destinations based on operator */
     if (op == '=' || op == '+' || op == '-' || op == '*' || op == '/' ||
@@ -825,7 +874,11 @@ emitExpr(struct expr *e)
     case 'M':
         comment("M%c d=%d %s [", e->type, e->demand, regnames[e->dest] ? regnames[e->dest] : "-");
         indent += 2;
-        if (e->special == SP_MSYM) {
+        if (e->special == SP_IXOD) {
+            /* M[+p Rp(ix) #ofs] -> (ix+ofs) addressing, demand 0 */
+            comment("(ix%+d)", e->offset);
+            /* no code - addressing mode used by parent */
+        } else if (e->special == SP_MSYM) {
             /* M $sym -> ld reg,(sym) */
             comment("$%s", e->sym);
             if (regnames[e->dest])
@@ -993,12 +1046,23 @@ emitExpr(struct expr *e)
     case '+':  /* add */
         comment("+%c d=%d %s [", e->type, e->demand, regnames[e->dest] ? regnames[e->dest] : "-");
         indent += 2;
-        emitExpr(e->left);
-        emitExpr(e->right);
-        if (e->type == T_PTR)
-            emit("add hl,de");
-        else
-            emit("XXXXXXXXX +");
+        if (e->special == SP_SYMOFS) {
+            /* +p $sym #const -> ld hl,sym+ofs */
+            comment("$%s #%d", e->sym ? e->sym : "?", e->offset);
+            if (e->offset > 0)
+                emit("ld hl,%s+%d", e->sym, e->offset);
+            else if (e->offset < 0)
+                emit("ld hl,%s%d", e->sym, e->offset);
+            else
+                emit("ld hl,%s", e->sym);
+        } else {
+            emitExpr(e->left);
+            emitExpr(e->right);
+            if (e->type == T_PTR)
+                emit("add hl,de");
+            else
+                emit("XXXXXXXXX +");
+        }
         indent -= 2;
         comment("]");
         break;
@@ -1020,10 +1084,38 @@ emitExpr(struct expr *e)
         indent -= 2;
         comment("]");
         break;
+    case '<': case '>': case 'Q': case 'n': case 'L':  /* comparisons */
+        comment("%c%c d=%d %s%s [", e->op, e->type, e->demand, regnames[e->dest] ? regnames[e->dest] : "-", e->cond ? " C" : "");
+        indent += 2;
+        if (e->special == SP_CMPIX) {
+            /* byte cmp with (ix+d): aux2=0 right is (ix+d), aux2=1 left is */
+            comment("CMPIX ofs=%d side=%d", e->offset, e->aux2);
+            if (e->aux2 == 0)
+                emitExpr(e->left);   /* left to A */
+            else
+                emitExpr(e->right);  /* right to A */
+            emit("cp (ix%o)", e->offset);
+            /* aux2=0: A - (ix+d) = left - right, flags normal */
+            /* aux2=1: A - (ix+d) = right - left, flags flipped */
+        } else {
+            emitExpr(e->left);
+            emitExpr(e->right);
+            emit("XXXXXXXXX %c", e->op);
+        }
+        indent -= 2;
+        comment("]");
+        break;
     case 'g':  /* >= comparison */
         comment("g%c d=%d %s%s [", e->type, e->demand, regnames[e->dest] ? regnames[e->dest] : "-", e->cond ? " C" : "");
         indent += 2;
-        if (e->special == SP_SIGN) {
+        if (e->special == SP_CMPIX) {
+            comment("CMPIX ofs=%d side=%d", e->offset, e->aux2);
+            if (e->aux2 == 0)
+                emitExpr(e->left);
+            else
+                emitExpr(e->right);
+            emit("cp (ix%o)", e->offset);
+        } else if (e->special == SP_SIGN) {
             /* sign test: bit 7 of high byte */
             comment("SIGN $%s ofs=%d", e->sym ? e->sym : "?", e->offset);
             if (e->offset > 0)
@@ -1137,16 +1229,55 @@ dumpStmt(void)
             assignDest(cond, ISBYTE(cond->type) ? R_A : R_HL);
             emitExpr(cond);
             special = cond->special;
-            freeExpr(cond);
-            /* emit conditional jump to skip then block */
-            if (special == SP_SIGN) {
-                /* >= 0: Z=true, NZ=false; jump to no on NZ */
-                emit("jr nz,no%d_%d", lbl, fnIndex);
-            } else {
-                /* general: test HL/A for zero, jump if zero */
-                emit("ld a,h");
-                emit("or l");
-                emit("jr z,no%d_%d", lbl, fnIndex);
+            {
+                char cop = cond->op;
+                int side = cond->aux2;
+                freeExpr(cond);
+                /* emit conditional jump to skip then block */
+                if (special == SP_SIGN) {
+                    /* >= 0: Z=true, NZ=false; jump to no on NZ */
+                    emit("jr nz,no%d_%d", lbl, fnIndex);
+                } else if (special == SP_CMPIX) {
+                    /* cp sets flags: C if A < operand, Z if A == operand */
+                    /* side=0: A=left, (ix+d)=right -> A-right = left-right */
+                    /* side=1: A=right, (ix+d)=left -> A-left = right-left */
+                    /* We skip the then block when condition is FALSE */
+                    char *jmp = "XXXXXXXXX";
+                    switch (cop) {
+                    case 'Q':  /* == : Z, skip on NZ */
+                        jmp = "jr nz";
+                        break;
+                    case 'n':  /* != : NZ, skip on Z */
+                        jmp = "jr z";
+                        break;
+                    case '<':
+                        /* side=0: left<right means C, skip on NC */
+                        /* side=1: left<right means NC&NZ (right>left), need 2 jumps */
+                        jmp = side ? "jr c" : "jr nc";  /* side=1: skip on C */
+                        break;
+                    case 'L':  /* <= */
+                        /* side=0: left<=right means C or Z, skip on NC&NZ (tricky) */
+                        /* side=1: left<=right means NC (right>=left), skip on C */
+                        jmp = side ? "jr c" : "jr nc";
+                        break;
+                    case '>':
+                        /* side=0: left>right means NC&NZ, skip on C or Z */
+                        /* side=1: left>right means C, skip on NC */
+                        jmp = side ? "jr nc" : "jr c";
+                        break;
+                    case 'g':  /* >= */
+                        /* side=0: left>=right means NC, skip on C */
+                        /* side=1: left>=right means C or Z (right<=left), tricky */
+                        jmp = side ? "jr nc" : "jr c";
+                        break;
+                    }
+                    emit("%s,no%d_%d", jmp, lbl, fnIndex);
+                } else {
+                    /* general: test HL/A for zero, jump if zero */
+                    emit("ld a,h");
+                    emit("or l");
+                    emit("jr z,no%d_%d", lbl, fnIndex);
+                }
             }
             dumpStmt();  /* then */
             if (hasElse) {
