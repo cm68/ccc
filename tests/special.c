@@ -85,3 +85,19 @@ int cmpLtFlip(struct rec *pp, char c) {
     register struct rec *p = pp;
     return c < p->flag;
 }
+
+/* SP_CMPHL: compare with (hl) from complex address */
+char *names[10];
+int cmpHL1(int i, char c) {
+    /* names[i] + offset compared with param byte */
+    return names[i][4] < c;
+}
+int cmpHL2(int i) {
+    /* compare with global byte directly */
+    return names[i][4] < gbyte;
+}
+int cmpHL3(int i) {
+    /* compare with local auto byte */
+    char x = 42;
+    return names[i][4] < x;
+}

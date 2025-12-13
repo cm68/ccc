@@ -562,6 +562,25 @@ parseExpr(void)
 }
 
 /*
+ * Check if byte expr can load to A without using HL
+ * (constants, byte globals, byte regvars, stack bytes via (iy+d))
+ */
+static int
+isSimpleByte(struct expr *e)
+{
+    if (!e) return 0;
+    if (e->op == '#' && ISBYTE(e->type)) return 1;  /* constant */
+    if (e->op == 'R' && ISBYTE(e->type)) return 1;  /* regvar */
+    /* Mb $sym - direct global byte */
+    if (e->op == 'M' && ISBYTE(e->type) && e->left->op == '$')
+        return 1;
+    /* Mb Vb - stack byte via (iy+d) */
+    if (e->op == 'M' && ISBYTE(e->type) && e->left->op == 'V')
+        return 1;
+    return 0;
+}
+
+/*
  * Calculate temporary demand for expression tree
  * Binop: sum of children, Unop/primary: 1
  * Returns demand, also stores in e->demand
@@ -697,6 +716,44 @@ calcDemand(struct expr *e)
             demand = calcDemand(r);  /* only need to emit right */
             goto done;
         }
+        /* check if right is (iy+d) pattern */
+        if (r->op == 'M' && r->left->op == '+' && r->left->type == T_PTR &&
+            r->left->left->op == 'M' && r->left->left->type == T_PTR &&
+            r->left->left->left->op == 'R' && r->left->left->left->aux == R_IY &&
+            r->left->right->op == '#') {
+            e->special = SP_CMPIY;
+            e->offset = r->left->right->v.s;
+            e->aux2 = 0;
+            demand = calcDemand(l);
+            goto done;
+        }
+        /* check if left is (iy+d) pattern */
+        if (l->op == 'M' && l->left->op == '+' && l->left->type == T_PTR &&
+            l->left->left->op == 'M' && l->left->left->type == T_PTR &&
+            l->left->left->left->op == 'R' && l->left->left->left->aux == R_IY &&
+            l->left->right->op == '#') {
+            e->special = SP_CMPIY;
+            e->offset = l->left->right->v.s;
+            e->aux2 = 1;
+            demand = calcDemand(r);
+            goto done;
+        }
+        /* cmpB with (hl): one operand is Mb[addr], other is simple */
+        /* Exclude Mb[Rp] - register pointer needs copy to HL first */
+        if (r->op == 'M' && ISBYTE(r->type) && isSimpleByte(l) &&
+            r->left->op != 'R') {
+            e->special = SP_CMPHL;
+            e->aux2 = 0;  /* right needs (hl) */
+            demand = calcDemand(r->left) + 1;  /* addr to HL, simple to A */
+            goto done;
+        }
+        if (l->op == 'M' && ISBYTE(l->type) && isSimpleByte(r) &&
+            l->left->op != 'R') {
+            e->special = SP_CMPHL;
+            e->aux2 = 1;  /* left needs (hl) */
+            demand = calcDemand(l->left) + 1;
+            goto done;
+        }
     }
 
     /* R in IX (reg=4) or BC (reg=3) is demand 0 - already in register */
@@ -766,12 +823,26 @@ assignDest(struct expr *e, char dest)
     /* assign this node's destination */
     e->dest = dest;
 
-    /* SP_CMPIX: only non-(ix+d) operand needs A */
-    if (e->special == SP_CMPIX) {
+    /* SP_CMPIX/IY: only non-indexed operand needs A */
+    if (e->special == SP_CMPIX || e->special == SP_CMPIY) {
         if (e->aux2 == 0)
-            assignDest(e->left, R_A);   /* right is (ix+d), emit left */
+            assignDest(e->left, R_A);   /* right is indexed, emit left */
         else
-            assignDest(e->right, R_A);  /* left is (ix+d), emit right */
+            assignDest(e->right, R_A);  /* left is indexed, emit right */
+        return;
+    }
+
+    /* SP_CMPHL: complex addr to HL, simple operand to A */
+    if (e->special == SP_CMPHL) {
+        if (e->aux2 == 0) {
+            /* right needs (hl), left is simple */
+            assignDest(e->right->left, R_HL);  /* addr of right to HL */
+            assignDest(e->left, R_A);          /* left to A */
+        } else {
+            /* left needs (hl), right is simple */
+            assignDest(e->left->left, R_HL);   /* addr of left to HL */
+            assignDest(e->right, R_A);         /* right to A */
+        }
         return;
     }
 
@@ -1088,15 +1159,41 @@ emitExpr(struct expr *e)
         comment("%c%c d=%d %s%s [", e->op, e->type, e->demand, regnames[e->dest] ? regnames[e->dest] : "-", e->cond ? " C" : "");
         indent += 2;
         if (e->special == SP_CMPIX) {
-            /* byte cmp with (ix+d): aux2=0 right is (ix+d), aux2=1 left is */
+            /* byte cmp with (ix+d) */
             comment("CMPIX ofs=%d side=%d", e->offset, e->aux2);
             if (e->aux2 == 0)
-                emitExpr(e->left);   /* left to A */
+                emitExpr(e->left);
             else
-                emitExpr(e->right);  /* right to A */
+                emitExpr(e->right);
             emit("cp (ix%o)", e->offset);
-            /* aux2=0: A - (ix+d) = left - right, flags normal */
-            /* aux2=1: A - (ix+d) = right - left, flags flipped */
+        } else if (e->special == SP_CMPIY) {
+            /* byte cmp with (iy+d) */
+            comment("CMPIY ofs=%d side=%d", e->offset, e->aux2);
+            if (e->aux2 == 0)
+                emitExpr(e->left);
+            else
+                emitExpr(e->right);
+            emit("cp (iy%o)", e->offset);
+        } else if (e->special == SP_CMPHL) {
+            /* byte cmp with (hl) */
+            struct expr *simple = e->aux2 == 0 ? e->left : e->right;
+            struct expr *complex = e->aux2 == 0 ? e->right : e->left;
+            comment("CMPHL side=%d", e->aux2);
+            /* emit complex address to HL */
+            emitExpr(complex->left);
+            /* emit simple operand to A directly (without using HL) */
+            if (simple->op == '#') {
+                emit("ld a,%d", simple->v.c & 0xff);
+            } else if (simple->op == 'R') {
+                emit("ld a,%s", regnames[simple->aux]);
+            } else if (simple->op == 'M' && simple->left->op == '$') {
+                emit("ld a,(%s)", simple->left->sym);
+            } else if (simple->op == 'M' && simple->left->op == 'V') {
+                emit("ld a,(iy%o)", (signed char)simple->left->aux2);
+            } else {
+                emit("XXXXXXXXX simple");
+            }
+            emit("cp (hl)");
         } else {
             emitExpr(e->left);
             emitExpr(e->right);
@@ -1115,6 +1212,30 @@ emitExpr(struct expr *e)
             else
                 emitExpr(e->right);
             emit("cp (ix%o)", e->offset);
+        } else if (e->special == SP_CMPIY) {
+            comment("CMPIY ofs=%d side=%d", e->offset, e->aux2);
+            if (e->aux2 == 0)
+                emitExpr(e->left);
+            else
+                emitExpr(e->right);
+            emit("cp (iy%o)", e->offset);
+        } else if (e->special == SP_CMPHL) {
+            struct expr *simple = e->aux2 == 0 ? e->left : e->right;
+            struct expr *complex = e->aux2 == 0 ? e->right : e->left;
+            comment("CMPHL side=%d", e->aux2);
+            emitExpr(complex->left);
+            if (simple->op == '#') {
+                emit("ld a,%d", simple->v.c & 0xff);
+            } else if (simple->op == 'R') {
+                emit("ld a,%s", regnames[simple->aux]);
+            } else if (simple->op == 'M' && simple->left->op == '$') {
+                emit("ld a,(%s)", simple->left->sym);
+            } else if (simple->op == 'M' && simple->left->op == 'V') {
+                emit("ld a,(iy%o)", (signed char)simple->left->aux2);
+            } else {
+                emit("XXXXXXXXX simple");
+            }
+            emit("cp (hl)");
         } else if (e->special == SP_SIGN) {
             /* sign test: bit 7 of high byte */
             comment("SIGN $%s ofs=%d", e->sym ? e->sym : "?", e->offset);
@@ -1237,10 +1358,11 @@ dumpStmt(void)
                 if (special == SP_SIGN) {
                     /* >= 0: Z=true, NZ=false; jump to no on NZ */
                     emit("jr nz,no%d_%d", lbl, fnIndex);
-                } else if (special == SP_CMPIX) {
+                } else if (special == SP_CMPIX || special == SP_CMPIY ||
+                           special == SP_CMPHL) {
                     /* cp sets flags: C if A < operand, Z if A == operand */
-                    /* side=0: A=left, (ix+d)=right -> A-right = left-right */
-                    /* side=1: A=right, (ix+d)=left -> A-left = right-left */
+                    /* side=0: A=left, mem=right -> A-right = left-right */
+                    /* side=1: A=right, mem=left -> A-left = right-left */
                     /* We skip the then block when condition is FALSE */
                     char *jmp = "XXXXXXXXX";
                     switch (cop) {
@@ -1251,23 +1373,15 @@ dumpStmt(void)
                         jmp = "jr z";
                         break;
                     case '<':
-                        /* side=0: left<right means C, skip on NC */
-                        /* side=1: left<right means NC&NZ (right>left), need 2 jumps */
-                        jmp = side ? "jr c" : "jr nc";  /* side=1: skip on C */
+                        jmp = side ? "jr c" : "jr nc";
                         break;
                     case 'L':  /* <= */
-                        /* side=0: left<=right means C or Z, skip on NC&NZ (tricky) */
-                        /* side=1: left<=right means NC (right>=left), skip on C */
                         jmp = side ? "jr c" : "jr nc";
                         break;
                     case '>':
-                        /* side=0: left>right means NC&NZ, skip on C or Z */
-                        /* side=1: left>right means C, skip on NC */
                         jmp = side ? "jr nc" : "jr c";
                         break;
                     case 'g':  /* >= */
-                        /* side=0: left>=right means NC, skip on C */
-                        /* side=1: left>=right means C or Z (right<=left), tricky */
                         jmp = side ? "jr nc" : "jr c";
                         break;
                     }

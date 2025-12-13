@@ -93,7 +93,9 @@ struct expr {
 #define SP_SIGN     6       /* M$sym >= 0 -> bit 7, result in NZ */
 #define SP_MSYM     7       /* Ms $sym -> ld hl,(sym) */
 #define SP_IXOD     8       /* M[+p Mp[Rp(ix)] #ofs] -> (ix+ofs) */
-#define SP_CMPIX    9       /* cmpB left right where one is (ix+d) */
+#define SP_CMPIX    9       /* cmpB where one operand is (ix+d) */
+#define SP_CMPIY    10      /* cmpB where one operand is (iy+d) */
+#define SP_CMPHL    11      /* cmpB where one operand needs (hl) */
 
 /* Expression allocation */
 struct expr *newExpr(char op, char type);
