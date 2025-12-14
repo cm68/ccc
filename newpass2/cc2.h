@@ -35,6 +35,7 @@
 #define R_IYI   10      /* (iy) indirect */
 #define R_IXO   11      /* (ix+ofs) indirect with offset */
 #define R_IYO   12      /* (iy+ofs) indirect with offset */
+#define R_TOS   13      /* top of stack (push to get there) */
 
 extern char *regnames[];
 
@@ -50,7 +51,7 @@ struct sym {
 
 #define MAXLOCALS 64
 extern struct sym locals[];
-extern int nlocals;
+extern unsigned char nlocals;
 
 /* Symbol table operations */
 void clearLocals(void);
@@ -72,14 +73,15 @@ struct expr {
         char c;
     } v;                    /* constant value */
     char *sym;              /* symbol name (malloc'd) */
-    short aux;              /* auxiliary: nargs for call, width for bitfield */
-    short aux2;             /* auxiliary: offset for bitfield, incr for inc/dec */
-    short demand;           /* temporary demand */
+    unsigned char aux;              /* auxiliary: nargs for call, width for bitfield */
+    unsigned char aux2;             /* auxiliary: offset for bitfield, incr for inc/dec */
+    unsigned char demand;           /* temporary demand */
     unsigned char dest;     /* destination register index (R_HL, R_DE, R_A) */
-    char unused;            /* result is unused (expr stmt, void call) */
-    char cond;              /* used as condition (emit flags, not value) */
-    char special;           /* special case type (0=none) */
-    short offset;           /* IY/IX-relative offset for specials */
+    unsigned char spill;             /* need to spill DE before right child */
+    unsigned char unused;            /* result is unused (expr stmt, void call) */
+    unsigned char cond;              /* used as condition (emit flags, not value) */
+    unsigned char special;           /* special case type (0=none) */
+    char offset;           /* IY/IX-relative offset for specials */
     short incr;             /* increment amount for specials */
 };
 
@@ -96,6 +98,11 @@ struct expr {
 #define SP_CMPIX    9       /* cmpB where one operand is (ix+d) */
 #define SP_CMPIY    10      /* cmpB where one operand is (iy+d) */
 #define SP_CMPHL    11      /* cmpB where one operand needs (hl) */
+#define SP_STCONST  12      /* =type [M addr] [#const] -> ld (hl),n */
+#define SP_INCGLOB  13      /* (s $sym -> ld hl,(_sym); inc hl; ld (_sym),hl */
+#define SP_SIGNREG  14      /* Ms[Rs bc] >= 0 -> bit 7,b; sign test regvar */
+#define SP_BITTEST  15      /* &B (ix+ofs) #pow2 -> bit n,(ix+ofs) */
+#define SP_ADDBC    16      /* +p Mp[Rp bc] #const -> ld hl,const; add hl,bc */
 
 /* Expression allocation */
 struct expr *newExpr(char op, char type);
@@ -107,13 +114,14 @@ struct expr *parseExpr(void);
 /* Global state */
 extern int infd;
 extern int outfd;
-extern int curchar;
+#define ASTEOF 255
+extern unsigned char curchar;
 extern int lineno;
 
 /* AST I/O */
 void advance(void);
-int hex2(void);
-int hex4(void);
+unsigned char hex2(void);
+unsigned int hex4(void);
 long hex8(void);
 void readName(char *buf);
 void skipWs(void);
@@ -121,5 +129,31 @@ void skipWs(void);
 /* Output */
 void emit(char *fmt, ...);
 void emitLabel(char *name);
+void comment(char *fmt, ...);
+
+/* Output state */
+extern char outbuf[];
+extern int indent;
+extern int labelCnt;
+extern int fnIndex;
+extern int blockCnt;
+
+/* Scheduling */
+unsigned char calcDemand(struct expr *e);
+void assignDest(struct expr *e, char dest);
+unsigned char treeDepth(struct expr *e);
+unsigned char isSimpleByte(struct expr *e);
+
+/* Code emission */
+void emitExpr(struct expr *e);
+void dumpStmt(void);
+void emitInit(void);
+
+/* Top-level parsing */
+void parseGlobal(void);
+void parseString(void);
+void parseGlobAsm(void);
+void parseFunc(void);
+void parseAst(void);
 
 #endif

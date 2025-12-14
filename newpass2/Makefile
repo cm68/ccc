@@ -2,6 +2,7 @@
 # Makefile for newpass2 (clean-sheet code generator)
 #
 ROOTDIR = ../root
+OUTDIR = ../stage1
 
 CC = gcc
 
@@ -14,13 +15,11 @@ CFLAGS = -m32 $(DEBUG) $(DEFINES) $(WARNS) -I.
 LDFLAGS = -m32 $(DEBUG)
 endif
 
-ifeq ($(CC),ccc)
-CFLAGS = -I.
+CCCFLAGS = -I.
 CCC = $(ROOTDIR)/bin/ccc
 OUTDIR = ../stage1
-endif
 
-SOURCES = cc2.c emit.c
+SOURCES = newcc2.c astio.c emit.c codegen.c parseast.c emitexpr.c
 OBJECTS = $(SOURCES:.c=.o)
 HEADERS = cc2.h
 
@@ -41,8 +40,9 @@ stage1:
 	mkdir -p $(OUTDIR)
 	@for f in $(SOURCES); do \
 	  b=$${f%.c}; \
+	  echo $(CCC) $(CCCFLAGS) -k -c $$f ; \
 	  printf "%-20s" "$$f: "; \
-	  $(CCC) $(CFLAGS) -k -c $$f 2> $(OUTDIR)/$$b.err 1>&2 && echo "ok" || echo "FAIL"; \
+	  $(CCC) $(CCCFLAGS) -k -c $$f 2> $(OUTDIR)/$$b.err 1>&2 && echo "ok" || echo "FAIL"; \
 	  ../astpp.py $$b.ast > $$b.pp ; \
 	  mv $$b.s $$b.o $$b.ast $$b.pp $(OUTDIR) 2>/dev/null ; \
 	done
@@ -56,6 +56,18 @@ sizefile: Makefile
 		'{ t+=$$1 ; d+=$$2 ; b+=$$3 ; a+=$$4; print } \
 		END {printf "%7d %7d %7d %7d %19s\n", t, d, b, a, "newpass2 total" }' \
 	 > sizefile
+
+regen:
+	rm -f $(GENERATED)
+	$(MAKE) $(GENERATED)
+
+clobber: clean
+	rm -f ./cc2
+
+install: cc2
+	cp cc2 $(ROOTDIR)/bin
+
+.PHONY: all clean regen stage1 install clobber
 
 clean:
 	rm -f $(OBJECTS) cc2
