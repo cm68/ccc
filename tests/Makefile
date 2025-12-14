@@ -285,6 +285,22 @@ valgrind:
 %: %.c
 	../root/bin/ccc -k -o $@ $<
 
+# Generate .ast from .c (pass1 only)
+%.ast: %.c
+	../root/bin/cc1 -DCCC -i../root/usr/include -I. -o $@ $<
+
+# Generate pretty-printed .pp from .ast
+%.pp: %.ast
+	../astpp.py $< > $@
+
+# Generate .s from .ast (pass2)
+%.s: %.ast
+	../newpass2/cc2 -o $@ $<
+
+# Generate .o from .s (assemble)
+%.o: %.s
+	../root/bin/wsas -o $@ $<
+
 # Clean test artifacts
 .PHONY: clean
 clean:

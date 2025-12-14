@@ -27,18 +27,19 @@ CC1_SOURCES = pass1/pass1.c pass1/error.c pass1/lex.c pass1/io.c pass1/macro.c \
 	pass1/kw.c pass1/expr.c pass1/parse.c pass1/type.c pass1/declare.c pass1/outast.c
 CC2_SOURCES = pass2/pass2.c pass2/astio.c pass2/parseast.c pass2/codegen.c \
 	pass2/dumpast.c pass2/emithelper.c pass2/emitexpr.c pass2/emitops.c pass2/emit.c
+NEWCC2_SOURCES = newpass2/newcc2.c newpass2/newemit.c
 
 # All C source files
-CFILES = $(CC1_SOURCES) $(CC2_SOURCES) util.c ccc.c \
+CFILES = $(CC1_SOURCES) $(CC2_SOURCES) $(NEWCC2_SOURCES) util.c ccc.c \
 	pass1/tokenlist.c pass1/debugtags.c pass2/tracetags.c
 
-BINS = pass1/cc1 pass2/cc2 ccc
+BINS = pass1/cc1 pass2/cc2 newpass2/cc2 ccc
 
 # Documentation files
 DOCFILES = README.md TODO.md CLAUDE.md AST_FORMAT.md libsrc/README.md libsrc/libc/README.md
 LIBSRCS = libsrc/Makefile libsrc/*/*.s libsrc/*/*.c libsrc/include/*.h
 
-all: cc1 cc2 ccc install
+all: cc1 cc2 newcc2 ccc install
 
 cc1:
 	$(MAKE) -C pass1
@@ -46,13 +47,16 @@ cc1:
 cc2:
 	$(MAKE) -C pass2
 
+newcc2:
+	$(MAKE) -C newpass2
+
 ccc: ccc.o
 	$(LD) $(LDFLAGS) ccc ccc.o
 
 install: cc1 cc2 ccc
 	mkdir -p $(ROOTDIR)/bin
 	$(MAKE) -C pass1 install ROOTDIR=$(CURDIR)/$(ROOTDIR)
-	$(MAKE) -C pass2 install ROOTDIR=$(CURDIR)/$(ROOTDIR)
+	$(MAKE) -C newpass2 install ROOTDIR=$(CURDIR)/$(ROOTDIR)
 	$(MAKE) -C ws install ROOTDIR=$(CURDIR)/$(ROOTDIR)
 	$(MAKE) -C libsrc install ROOTDIR=$(CURDIR)/$(ROOTDIR)
 
@@ -84,20 +88,21 @@ stage1/%.o: stage1/%.s FORCE
 
 FORCE:
 
-.PHONY: test tests valgrind FORCE cc1 cc2
-test: cc1 cc2 install
+.PHONY: test tests valgrind FORCE cc1 cc2 newcc2
+test: cc1 cc2 newcc2 install
 	$(MAKE) -C tests test
 
-tests: cc1 cc2 install
+tests: cc1 cc2 newcc2 install
 	$(MAKE) -C tests tests
 
-valgrind: cc1 cc2
+valgrind: cc1 cc2 newcc2
 	$(MAKE) -C tests valgrind
 
 sizecheck:
 	$(MAKE) -C pass1 sizefile
-	$(MAKE) -C pass2 sizefile
-	@cat pass1/sizefile pass2/sizefile | tee cur.size
+	#$(MAKE) -C pass2 sizefile
+	$(MAKE) -C newpass2 sizefile
+	@cat pass1/sizefile pass2/sizefile newpass2/sizefile | tee cur.size
 	@diff -N cur.size prev.size
 	@cp cur.size prev.size
 
@@ -107,18 +112,19 @@ unit-tests:
 	$(MAKE) -C unit_test tests
 
 .PHONY: stage1
-stage1: cc1 cc2 install
+stage1: cc1 cc2 newcc2 install
 	@echo "Building stage1 with cross ccc"
 	$(MAKE) -C pass1 CC=ccc ROOTDIR=$(CURDIR)/$(ROOTDIR)
-	$(MAKE) -C pass2 CC=ccc ROOTDIR=$(CURDIR)/$(ROOTDIR)
+	$(MAKE) -C newpass2 CC=ccc ROOTDIR=$(CURDIR)/$(ROOTDIR)
 	@echo "Stage1 build complete"
 
 regen:
 	$(MAKE) -C pass1 regen
 	$(MAKE) -C pass2 regen
+	$(MAKE) -C newpass2 regen
 
 tags:
-	ctags pass1/*.c pass2/*.c *.c
+	ctags pass1/*.c newpass2/*.c *.c
 
 doc.pdf: $(CFILES) $(DOCFILES) Makefile
 	{ for f in $(DOCFILES); do \
@@ -132,6 +138,7 @@ doc.pdf: $(CFILES) $(DOCFILES) Makefile
 clean:
 	$(MAKE) -C pass1 clean
 	$(MAKE) -C pass2 clean
+	$(MAKE) -C newpass2 clean
 	rm -f ccc.o ccc tests/*.i *.ast *.s *.pp *.i
 	rm -rf stage1
 	$(MAKE) -C unit_test clean
