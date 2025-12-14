@@ -298,6 +298,10 @@ newName(char *name, kind k, struct type *t, unsigned char is_tag)
                  */
                 return n;
             }
+            // Allow identical typedef redeclaration
+            if (n->kind == tdef && t == n->type) {
+                return n;
+            }
             gripe(ER_D_DN);
 	        return (0);
 		}
