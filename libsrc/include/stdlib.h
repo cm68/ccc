@@ -2,11 +2,7 @@
 #ifndef _STDLIB_H
 #define _STDLIB_H
 
-#ifndef _SIZE_T_DEF
-#define _SIZE_T_DEF
-typedef unsigned long size_t;
-typedef long ssize_t;
-#endif
+typedef unsigned short size_t;
 
 void *malloc(size_t size);
 void *calloc(size_t nmemb, size_t size);
