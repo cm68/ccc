@@ -117,20 +117,48 @@ Add 1 for lo-byte, 2 for hi-byte. Examples:
 
 **Inline encoding (0x50-0xfb):** Symbol index 0-42
 ```
-index = (b - 0x50) >> 2
-hilo = b & 3
+byte = ((index + 16) << 2) | hilo
+```
+Decoding: `index = (b - 0x50) >> 2`, `hilo = b & 3`
+
+**Extended encoding (0xfc-0xff):** Symbol index 43+
+
+For index 43-170 (1-byte extended):
+```
+byte1 = 0xfc | hilo
+byte2 = index - 43
 ```
 
-**Extended encoding (0xfc-0xfe):** Symbol index 43+
+For index 171+ (2-byte extended):
 ```
-hilo = b & 3
+byte1 = 0xfc | hilo
+byte2 = ((index - 171) >> 8) + 0x80
+byte3 = (index - 171) & 0xff
 ```
-Followed by:
 
+Decoding:
 | Next Byte | Symbol Index |
 |-----------|--------------|
 | 0x00-0x7f | index = b + 43 |
 | 0x80-0xff | index = ((b-0x80)<<8) + next_byte + 171 |
+
+**Examples:**
+
+| Index | hilo | Encoding |
+|-------|------|----------|
+| 0 | word | `0x50` |
+| 0 | lo | `0x51` |
+| 0 | hi | `0x52` |
+| 10 | word | `0x78` |
+| 42 | word | `0xf8` |
+| 43 | word | `0xfc 0x00` |
+| 100 | word | `0xfc 0x39` |
+| 170 | word | `0xfc 0x7f` |
+| 171 | word | `0xfc 0x80 0x00` |
+| 200 | word | `0xfc 0x80 0x1d` |
+| 1000 | word | `0xfc 0x83 0x3d` |
+
+Maximum symbol index: ~32,938
 
 ### Byte Relocations (hi/lo)
 
