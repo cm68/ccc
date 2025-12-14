@@ -143,10 +143,7 @@ emitCompare(struct expr *e)
             }
         }
     }
-    if (0) {
 cmpresult:
-        ;
-    }
     if (!e->cond && e->special != SP_SIGN && e->special != SP_SIGNREG) {
         switch (e->op) {
         case 'Q':  /* == */

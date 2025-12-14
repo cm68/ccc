@@ -504,8 +504,6 @@ void clearA() {
 }
 
 void pushStack() {
-    if (0) return;
-
     if (fnDEValid) {
         emit(S_PUSHDESP);
         fnDESaveCnt++;
@@ -516,13 +514,11 @@ void pushStack() {
 }
 
 void popStack() {
-    if (0) return;
     fnDEValid = 0;
     fnZValid = 0;
 }
 
 void invalStack() {
-    if (0) return;
     fnDEValid = 0;
     fnZValid = 0;
     clearHL();
