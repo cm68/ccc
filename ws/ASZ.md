@@ -86,6 +86,39 @@ Simple expressions with one operation:
 - `symbol+number` - Symbol plus offset
 - `symbol-number` - Symbol minus offset
 
+### Byte Extraction: hi() and lo()
+
+The `hi()` and `lo()` operators extract the high or low byte of a 16-bit address:
+
+```
+ld a,lo(symbol)      ; load low byte of symbol's address
+ld b,hi(symbol)      ; load high byte of symbol's address
+```
+
+These generate relocatable byte values that are resolved at link time. Useful for
+loading addresses into register pairs without runtime shifts:
+
+```
+; Load address of 'buffer' into HL
+ld l,lo(buffer)
+ld h,hi(buffer)
+
+; Equivalent to (but resolved at link time):
+; ld hl,buffer
+; ld a,l
+; ld h,h  ; (well, you get the idea)
+```
+
+Works with any 8-bit immediate context:
+```
+ld a,lo(addr)        ; ld r,n instructions
+ld b,hi(addr)
+.db lo(table)        ; data bytes
+.db hi(table)
+add a,lo(offset)     ; ALU immediate operations
+cp hi(limit)
+```
+
 ## Z80 Instruction Set
 
 ### Basic Instructions (No Operands)
