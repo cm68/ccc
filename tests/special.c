@@ -1,7 +1,8 @@
 /*
  * Test special pattern recognition in cc2
  * Tests: SP_INCR, SP_DECR, SP_SYMOFS, SP_IXOD, SP_SYMOFD,
- *        SP_MSYM, SP_MUL2, SP_SIGN, SP_CMPIX
+ *        SP_MSYM, SP_MUL2, SP_SIGN, SP_CMPIX, SP_CMPIY,
+ *        SP_CMPHL, SP_STCONST, SP_INCGLOB, SP_SIGNREG
  */
 
 int gword;
@@ -100,4 +101,29 @@ int cmpHL3(int i) {
     /* compare with local auto byte */
     char x = 42;
     return names[i][4] < x;
+}
+
+/* SP_STCONST: store constant through HL */
+void stcWord(void) { gword = 0; }
+void stcByte(void) { gbyte = 0; }
+void stcPtr(void) { *gptr = 0; }
+void stcMember(void) {
+    struct rec r;
+    r.flag = 42;
+}
+
+/* SP_INCGLOB: inc/dec global word */
+void incGlob(void) {
+    ++gword;
+    --gword;
+    gword++;
+    gword--;
+}
+
+/* SP_SIGNREG: sign test of register variable */
+int signReg(int n) {
+    register int i = n;
+    if (i >= 0)
+        return 1;
+    return 0;
 }
