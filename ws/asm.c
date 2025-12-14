@@ -340,9 +340,14 @@ struct symbol {
  * relocs are chained off of headers and need to stay
  * ordered.
  */
+#define RELOC_WORD  0       /* full 16-bit relocation */
+#define RELOC_LO    1       /* low byte only */
+#define RELOC_HI    2       /* high byte only */
+
 struct reloc {
     unsigned short addr;    /* where the fixup goes */
     struct symbol *sym;     /* what it contains */
+    unsigned char hilo;     /* RELOC_WORD/LO/HI */
     struct reloc *next;
 };
 
@@ -360,6 +365,7 @@ struct rhead {
 struct expval {
     struct symbol *sym;
     unsigned long num;
+    unsigned char hilo;     /* RELOC_WORD/LO/HI */
 };
 
 unsigned char *lineptr = (unsigned char *)"";
@@ -1096,10 +1102,11 @@ asm_reset()
  * all symbols and segment addresses are resolved
  */
 void
-add_reloc(tab, addr, sym)
+add_reloc(tab, addr, sym, hilo)
 struct rhead *tab;
 unsigned short addr;
 struct symbol *sym;
+unsigned char hilo;
 {
 	struct reloc *r;
 
@@ -1107,8 +1114,9 @@ struct symbol *sym;
 		return;
 
     if (verbose > 2)
-        printf("add_reloc: %s %x %s\n",
-            tab->segment, addr, sym ? sym->name : "nosym");
+        printf("add_reloc: %s %x %s %s\n",
+            tab->segment, addr, sym ? sym->name : "nosym",
+            hilo == RELOC_HI ? "hi" : hilo == RELOC_LO ? "lo" : "word");
 
     if (sym->seg == SEG_ABS)
         return;
@@ -1120,6 +1128,7 @@ struct symbol *sym;
 
 	r->addr = addr;
     r->sym = sym;
+    r->hilo = hilo;
 	r->next = 0;
 
 	if (!tab->head) {
@@ -1276,12 +1285,15 @@ unsigned short base;
 	int last = base;
 	int bump;
 	int seg;
+	int size;
 
 	while (r) {
 		seg = r->sym->seg;
+		size = (r->hilo == RELOC_WORD) ? 2 : 1;
 		if (verbose > 3) {
-			printf("reloc: base: %x addr: %x seg: %s(%d) %s\n",
-				   base, r->addr, segname[seg], seg, r->sym->name);
+			printf("reloc: base: %x addr: %x seg: %s(%d) %s %s\n",
+				   base, r->addr, segname[seg], seg, r->sym->name,
+				   r->hilo == RELOC_HI ? "hi" : r->hilo == RELOC_LO ? "lo" : "");
 		}
 
 		bump = r->addr - last;
@@ -1292,14 +1304,15 @@ unsigned short base;
 
 		if (seg == SEG_UNDEF) {
 			printf("reloc for undef\n");
-		} else if (seg >= SEG_TEXT && seg <= SEG_ABS) {
-			/* segment-relative relocation */
-			wsEncReloc(tmpfd, seg, 0);
+		} else if (seg >= SEG_TEXT && seg <= SEG_ABS &&
+				   r->sym->index == 0xffff) {
+			/* local symbol - segment-relative relocation */
+			wsEncReloc(tmpfd, seg, 0, r->hilo);
 		} else {
-			/* symbol reference (SEG_EXT) */
-			wsEncReloc(tmpfd, -1, r->sym->index);
+			/* global/extern symbol reference */
+			wsEncReloc(tmpfd, -1, r->sym->index, r->hilo);
 		}
-		last += bump + 2;
+		last += bump + size;
 		r = r->next;
 	}
 	wsEndReloc(tmpfd);
@@ -1409,9 +1422,29 @@ struct expval *vp;
 			gripe2("undefined symbol ", vp->sym->name);
 	}
 
-	if (size == 1) {
+	if (vp->hilo != RELOC_WORD) {
 		/*
-		 * here we output only a byte 
+		 * hi() or lo() byte extraction from symbol
+		 */
+		unsigned short val = vp->num + (vp->sym ? vp->sym->value : 0);
+		if (vp->hilo == RELOC_HI)
+			val >>= 8;
+		emitbyte(val & 0xff);
+		if (vp->sym && pass) {
+			switch (segment) {
+			case SEG_TEXT:
+				add_reloc(&textr, cur_address - 1, vp->sym, vp->hilo);
+				break;
+			case SEG_DATA:
+				add_reloc(&datar, cur_address - 1, vp->sym, vp->hilo);
+				break;
+			default:
+				gripe("invalid segment");
+			}
+		}
+	} else if (size == 1) {
+		/*
+		 * here we output only a byte
 		 */
 		if ((seg >= SEG_EXT) && (pass == 1))
 			gripe("cannot extern byte");
@@ -1431,10 +1464,10 @@ struct expval *vp;
 		if (vp->sym && pass) {
 			switch (segment) {
 			case SEG_TEXT:
-				add_reloc(&textr, cur_address, vp->sym);
+				add_reloc(&textr, cur_address, vp->sym, RELOC_WORD);
 				break;
 			case SEG_DATA:
-				add_reloc(&datar, cur_address, vp->sym);
+				add_reloc(&datar, cur_address, vp->sym, RELOC_WORD);
 				break;
 			default:
 				gripe("invalid segment");
@@ -1448,12 +1481,17 @@ struct expval *vp;
 
 /*
  * helper function to emit an immediate and do type checking
- * only absolute resolutions will be allowed
+ * only absolute resolutions will be allowed, unless hi/lo
  */
 void
 emit_imm(vp)
 struct expval *vp;
 {
+	if (vp->hilo != RELOC_WORD) {
+		/* hi/lo byte extraction - use emit_exp to handle relocation */
+		emit_exp(1, vp);
+		return;
+	}
 	if (vp->sym && vp->sym->seg != SEG_ABS && (pass == 1)) {
 		printf("sym: %s seg: %s\n", vp->sym->name, segname[vp->sym->seg]);
 		gripe("must be absolute");
@@ -1582,9 +1620,10 @@ struct expval *vp;
 
     vp->num = 0;
     vp->sym = 0;
+    vp->hilo = RELOC_WORD;
 
 	/*
-	 * check if there is anything next 
+	 * check if there is anything next
 	 */
     c = peekchar();
 	if (c == '\n' || c == -1)
@@ -1594,6 +1633,15 @@ struct expval *vp;
 	 * read the token
 	 */
 	get_token();
+
+	/*
+	 * hi() or lo() byte extraction?
+	 */
+	if (cur_token == T_NAME && (match(token_buf, "hi") || match(token_buf, "lo"))) {
+		vp->hilo = (token_buf[0] == 'h') ? RELOC_HI : RELOC_LO;
+		need('(');
+		get_token();
+	}
 
 	/* after skipping whitespace/comments, may be at end of line */
 	if (cur_token == '\n')
@@ -1715,6 +1763,8 @@ struct expval *vp;
 	    need(')');
         return T_INDIR;
 	}
+	if (vp->hilo != RELOC_WORD)
+		need(')');
 	return T_PLAIN;
 }
 

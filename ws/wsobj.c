@@ -71,39 +71,41 @@ int bump;
  * seg = segment type (SEG_TEXT, SEG_DATA, SEG_BSS, SEG_ABS)
  *       or -1 for symbol reference
  * symidx = symbol index (only used if seg == -1)
+ * hilo = REL_WORD (0), REL_LO (1), or REL_HI (2)
  */
 void
-wsEncReloc(fd, seg, symidx)
+wsEncReloc(fd, seg, symidx, hilo)
 int fd;
 int seg;
 int symidx;
+int hilo;
 {
     int control;
 
     switch (seg) {
     case SEG_ABS:
-        wsWrByte(fd, REL_ABS);
+        wsWrByte(fd, REL_ABS + hilo);
         break;
     case SEG_TEXT:
-        wsWrByte(fd, REL_TEXT);
+        wsWrByte(fd, REL_TEXT + hilo);
         break;
     case SEG_DATA:
-        wsWrByte(fd, REL_DATA);
+        wsWrByte(fd, REL_DATA + hilo);
         break;
     case SEG_BSS:
-        wsWrByte(fd, REL_BSS);
+        wsWrByte(fd, REL_BSS + hilo);
         break;
     default:
-        /* symbol reference - encode index */
+        /* symbol reference - encode index with hilo in low 2 bits */
         control = symidx + REL_SYM_OFS;
         if (control < REL_EXT_THR1) {
-            wsWrByte(fd, (control + REL_SYM_SHIFT) << 2);
+            wsWrByte(fd, ((control + REL_SYM_SHIFT) << 2) | hilo);
         } else if (control < REL_EXT_THR2) {
-            wsWrByte(fd, REL_SYM_EXT);
+            wsWrByte(fd, REL_SYM_EXT | hilo);
             wsWrByte(fd, control - REL_EXT_THR1);
         } else {
             control -= REL_EXT_THR2;
-            wsWrByte(fd, REL_SYM_EXT);
+            wsWrByte(fd, REL_SYM_EXT | hilo);
             wsWrByte(fd, (control >> 8) + REL_EXT_LONG);
             wsWrByte(fd, control);
         }

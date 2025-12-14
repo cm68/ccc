@@ -88,22 +88,65 @@ Maximum single bump: 8223 bytes.
 
 ### Control Bytes (Relocation Type)
 
-| Byte | Type |
-|------|------|
+All control bytes encode the relocation size in the low 2 bits:
+
+| Bits 0-1 | Size | Description |
+|----------|------|-------------|
+| 0 | word | Full 16-bit relocation |
+| 1 | lo | Low byte only |
+| 2 | hi | High byte only |
+
+For word relocations, the patched field is 2 bytes. For lo/hi byte relocations,
+the patched field is 1 byte.
+
+#### Segment Relocations (0x40-0x4f)
+
+| Base | Segment |
+|------|---------|
 | 0x40 | Absolute (SEG_ABS) |
 | 0x44 | Text segment (SEG_TEXT) |
 | 0x48 | Data segment (SEG_DATA) |
 | 0x4c | BSS segment (SEG_BSS) |
-| 0x50-0xfb | Symbol index = (b - 0x50) >> 2 |
-| 0xfc | Extended symbol (see below) |
 
-### Extended Symbol Index
+Add 1 for lo-byte, 2 for hi-byte. Examples:
+- `0x44` = text segment, word relocation
+- `0x45` = text segment, lo-byte relocation
+- `0x46` = text segment, hi-byte relocation
 
-When control byte is 0xfc:
+#### Symbol Relocations (0x50-0xff)
+
+**Inline encoding (0x50-0xfb):** Symbol index 0-42
+```
+index = (b - 0x50) >> 2
+hilo = b & 3
+```
+
+**Extended encoding (0xfc-0xfe):** Symbol index 43+
+```
+hilo = b & 3
+```
+Followed by:
+
 | Next Byte | Symbol Index |
 |-----------|--------------|
 | 0x00-0x7f | index = b + 43 |
 | 0x80-0xff | index = ((b-0x80)<<8) + next_byte + 171 |
+
+### Byte Relocations (hi/lo)
+
+Byte relocations allow extracting the high or low byte of a 16-bit address.
+This is useful for loading address components into 8-bit registers:
+
+```asm
+    ld a,lo(symbol)    ; load low byte of symbol address
+    ld b,hi(symbol)    ; load high byte of symbol address
+```
+
+When applying byte relocations:
+- **lo**: Extract bits 0-7 of the relocated address
+- **hi**: Extract bits 8-15 of the relocated address
+
+The bump value after a byte relocation advances by 1 (not 2).
 
 ## Archive (Library) Format
 

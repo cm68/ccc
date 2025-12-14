@@ -86,10 +86,16 @@ void wsEndReloc();
 #define REL_BUMP_EXT    32      /* extended bump threshold (0x20) */
 #define REL_BUMP_LIM    8223    /* max single bump value (0x3f,0xff) */
 
+/* Segment relocation base values (add hilo: 0=word, 1=lo, 2=hi) */
 #define REL_ABS         0x40    /* absolute relocation */
 #define REL_TEXT        0x44    /* text segment relocation */
 #define REL_DATA        0x48    /* data segment relocation */
 #define REL_BSS         0x4c    /* bss segment relocation */
+
+/* Relocation size modifiers (added to segment base) */
+#define REL_WORD        0       /* full 16-bit relocation */
+#define REL_LO          1       /* low byte only */
+#define REL_HI          2       /* high byte only */
 #define REL_SYM_BASE    0x50    /* start of symbol index range */
 #define REL_SYM_END     0xfc    /* end of symbol index range (exclusive) */
 #define REL_SYM_EXT     0xfc    /* extended symbol marker */

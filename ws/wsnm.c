@@ -111,7 +111,8 @@ int symlen_g;
 /* relocation table for -g */
 struct reloc {
     unsigned short offset;
-    int symidx;     /* -1=text, -2=data, -3=bss, >=0=symbol index */
+    int symidx;     /* -4=abs, -1=text, -2=data, -3=bss, >=0=symbol index */
+    unsigned char hilo;  /* 0=word, 1=lo, 2=hi */
 } *reltab;
 int nrels;
 int disasm_pc;      /* current PC during disassembly, for reloc lookup */
@@ -120,6 +121,7 @@ unsigned short text_off_g, data_off_g;  /* segment offsets for reloc fixup */
 /* forward declarations */
 int find_reloc();
 char *reloc_name();
+char *reloc_name_byte();
 
 /*
  * lookup symbol by value and segment
@@ -154,7 +156,6 @@ char *buf;
 unsigned short val;
 {
     int ri;
-    char *sym;
 
     /* check for relocation at the current operand position */
     if (disasm_pc >= 0) {
@@ -165,22 +166,40 @@ unsigned short val;
         }
     }
 
-    /* no relocation - try symbol table lookup */
-    /* try text, then data, then bss */
-    sym = sym_lookup(val, 1);
-    if (!sym) sym = sym_lookup(val, 2);
-    if (!sym) sym = sym_lookup(val, 3);
-    if (sym) {
-        sprintf(buf, "%s", sym);
-        return;
-    }
-
-    /* no symbol found - use literal value */
+    /* no relocation - use literal value */
     /* hex numbers starting with a-f need leading 0 for assembler */
     if ((val >> 12) >= 10)
         sprintf(buf, "0%04xh", val);
     else
         sprintf(buf, "%04xh", val);
+}
+
+/*
+ * format a byte operand, checking for hi/lo relocations
+ */
+void
+fmt_byte(buf, val)
+char *buf;
+unsigned char val;
+{
+    int ri;
+    char symbuf[64];
+
+    /* check for byte relocation at the current operand position */
+    if (disasm_pc >= 0) {
+        ri = find_reloc(disasm_pc);
+        if (ri >= 0 && reltab[ri].hilo != 0) {
+            reloc_name_byte(reltab[ri].symidx, val, reltab[ri].hilo, symbuf);
+            sprintf(buf, "%s(%s)", reltab[ri].hilo == 1 ? "lo" : "hi", symbuf);
+            return;
+        }
+    }
+
+    /* no byte relocation - use literal value */
+    if (val >= 0xa0)
+        sprintf(buf, "0%02xh", val);
+    else
+        sprintf(buf, "%02xh", val);
 }
 
 /*
@@ -385,7 +404,8 @@ char *buf;
     case 0x03: sprintf(buf, "inc bc"); break;
     case 0x04: sprintf(buf, "inc b"); break;
     case 0x05: sprintf(buf, "dec b"); break;
-    case 0x06: sprintf(buf, "ld b,0%02xh", filebuf[addr+1]); len=2; break;
+    case 0x06: disasm_pc = pc + 1;
+               fmt_byte(abuf, filebuf[addr+1]); sprintf(buf, "ld b,%s", abuf); len=2; break;
     case 0x07: sprintf(buf, "rlca"); break;
     case 0x08: sprintf(buf, "ex af,af'"); break;
     case 0x09: sprintf(buf, "add hl,bc"); break;
@@ -393,7 +413,8 @@ char *buf;
     case 0x0b: sprintf(buf, "dec bc"); break;
     case 0x0c: sprintf(buf, "inc c"); break;
     case 0x0d: sprintf(buf, "dec c"); break;
-    case 0x0e: sprintf(buf, "ld c,0%02xh", filebuf[addr+1]); len=2; break;
+    case 0x0e: disasm_pc = pc + 1;
+               fmt_byte(abuf, filebuf[addr+1]); sprintf(buf, "ld c,%s", abuf); len=2; break;
     case 0x0f: sprintf(buf, "rrca"); break;
 
     case 0x10: rel = filebuf[addr+1]; len=2;
@@ -406,7 +427,8 @@ char *buf;
     case 0x13: sprintf(buf, "inc de"); break;
     case 0x14: sprintf(buf, "inc d"); break;
     case 0x15: sprintf(buf, "dec d"); break;
-    case 0x16: sprintf(buf, "ld d,0%02xh", filebuf[addr+1]); len=2; break;
+    case 0x16: disasm_pc = pc + 1;
+               fmt_byte(abuf, filebuf[addr+1]); sprintf(buf, "ld d,%s", abuf); len=2; break;
     case 0x17: sprintf(buf, "rla"); break;
     case 0x18: rel = filebuf[addr+1]; len=2;
                nn = pc + 2 + rel;
@@ -416,7 +438,8 @@ char *buf;
     case 0x1b: sprintf(buf, "dec de"); break;
     case 0x1c: sprintf(buf, "inc e"); break;
     case 0x1d: sprintf(buf, "dec e"); break;
-    case 0x1e: sprintf(buf, "ld e,0%02xh", filebuf[addr+1]); len=2; break;
+    case 0x1e: disasm_pc = pc + 1;
+               fmt_byte(abuf, filebuf[addr+1]); sprintf(buf, "ld e,%s", abuf); len=2; break;
     case 0x1f: sprintf(buf, "rra"); break;
 
     case 0x20: rel = filebuf[addr+1]; len=2;
@@ -431,7 +454,8 @@ char *buf;
     case 0x23: sprintf(buf, "inc hl"); break;
     case 0x24: sprintf(buf, "inc h"); break;
     case 0x25: sprintf(buf, "dec h"); break;
-    case 0x26: sprintf(buf, "ld h,0%02xh", filebuf[addr+1]); len=2; break;
+    case 0x26: disasm_pc = pc + 1;
+               fmt_byte(abuf, filebuf[addr+1]); sprintf(buf, "ld h,%s", abuf); len=2; break;
     case 0x27: sprintf(buf, "daa"); break;
     case 0x28: rel = filebuf[addr+1]; len=2;
                nn = pc + 2 + rel;
@@ -443,7 +467,8 @@ char *buf;
     case 0x2b: sprintf(buf, "dec hl"); break;
     case 0x2c: sprintf(buf, "inc l"); break;
     case 0x2d: sprintf(buf, "dec l"); break;
-    case 0x2e: sprintf(buf, "ld l,0%02xh", filebuf[addr+1]); len=2; break;
+    case 0x2e: disasm_pc = pc + 1;
+               fmt_byte(abuf, filebuf[addr+1]); sprintf(buf, "ld l,%s", abuf); len=2; break;
     case 0x2f: sprintf(buf, "cpl"); break;
 
     case 0x30: rel = filebuf[addr+1]; len=2;
@@ -458,7 +483,8 @@ char *buf;
     case 0x33: sprintf(buf, "inc sp"); break;
     case 0x34: sprintf(buf, "inc (hl)"); break;
     case 0x35: sprintf(buf, "dec (hl)"); break;
-    case 0x36: sprintf(buf, "ld (hl),0%02xh", filebuf[addr+1]); len=2; break;
+    case 0x36: disasm_pc = pc + 1;
+               fmt_byte(abuf, filebuf[addr+1]); sprintf(buf, "ld (hl),%s", abuf); len=2; break;
     case 0x37: sprintf(buf, "scf"); break;
     case 0x38: rel = filebuf[addr+1]; len=2;
                nn = pc + 2 + rel;
@@ -470,7 +496,8 @@ char *buf;
     case 0x3b: sprintf(buf, "dec sp"); break;
     case 0x3c: sprintf(buf, "inc a"); break;
     case 0x3d: sprintf(buf, "dec a"); break;
-    case 0x3e: sprintf(buf, "ld a,0%02xh", filebuf[addr+1]); len=2; break;
+    case 0x3e: disasm_pc = pc + 1;
+               fmt_byte(abuf, filebuf[addr+1]); sprintf(buf, "ld a,%s", abuf); len=2; break;
     case 0x3f: sprintf(buf, "ccf"); break;
 
     case 0x76: sprintf(buf, "halt"); break;
@@ -487,7 +514,8 @@ char *buf;
                disasm_pc = pc + 1;
                fmt_addr(abuf, nn); sprintf(buf, "call nz,%s", abuf); break;
     case 0xc5: sprintf(buf, "push bc"); break;
-    case 0xc6: sprintf(buf, "add a,0%02xh", filebuf[addr+1]); len=2; break;
+    case 0xc6: disasm_pc = pc + 1;
+               fmt_byte(abuf, filebuf[addr+1]); sprintf(buf, "add a,%s", abuf); len=2; break;
     case 0xc7: sprintf(buf, "rst 00h"); break;
     case 0xc8: sprintf(buf, "ret z"); break;
     case 0xc9: sprintf(buf, "ret"); break;
@@ -500,7 +528,8 @@ char *buf;
     case 0xcd: nn = filebuf[addr+1] | (filebuf[addr+2]<<8); len=3;
                disasm_pc = pc + 1;
                fmt_addr(abuf, nn); sprintf(buf, "call %s", abuf); break;
-    case 0xce: sprintf(buf, "adc a,0%02xh", filebuf[addr+1]); len=2; break;
+    case 0xce: disasm_pc = pc + 1;
+               fmt_byte(abuf, filebuf[addr+1]); sprintf(buf, "adc a,%s", abuf); len=2; break;
     case 0xcf: sprintf(buf, "rst 08h"); break;
 
     case 0xd0: sprintf(buf, "ret nc"); break;
@@ -513,7 +542,8 @@ char *buf;
                disasm_pc = pc + 1;
                fmt_addr(abuf, nn); sprintf(buf, "call nc,%s", abuf); break;
     case 0xd5: sprintf(buf, "push de"); break;
-    case 0xd6: sprintf(buf, "sub 0%02xh", filebuf[addr+1]); len=2; break;
+    case 0xd6: disasm_pc = pc + 1;
+               fmt_byte(abuf, filebuf[addr+1]); sprintf(buf, "sub %s", abuf); len=2; break;
     case 0xd7: sprintf(buf, "rst 10h"); break;
     case 0xd8: sprintf(buf, "ret c"); break;
     case 0xd9: sprintf(buf, "exx"); break;
@@ -524,7 +554,8 @@ char *buf;
     case 0xdc: nn = filebuf[addr+1] | (filebuf[addr+2]<<8); len=3;
                disasm_pc = pc + 1;
                fmt_addr(abuf, nn); sprintf(buf, "call c,%s", abuf); break;
-    case 0xde: sprintf(buf, "sbc a,0%02xh", filebuf[addr+1]); len=2; break;
+    case 0xde: disasm_pc = pc + 1;
+               fmt_byte(abuf, filebuf[addr+1]); sprintf(buf, "sbc a,%s", abuf); len=2; break;
     case 0xdf: sprintf(buf, "rst 18h"); break;
 
     case 0xe0: sprintf(buf, "ret po"); break;
@@ -537,7 +568,8 @@ char *buf;
                disasm_pc = pc + 1;
                fmt_addr(abuf, nn); sprintf(buf, "call po,%s", abuf); break;
     case 0xe5: sprintf(buf, "push hl"); break;
-    case 0xe6: sprintf(buf, "and 0%02xh", filebuf[addr+1]); len=2; break;
+    case 0xe6: disasm_pc = pc + 1;
+               fmt_byte(abuf, filebuf[addr+1]); sprintf(buf, "and %s", abuf); len=2; break;
     case 0xe7: sprintf(buf, "rst 20h"); break;
     case 0xe8: sprintf(buf, "ret pe"); break;
     case 0xe9: sprintf(buf, "jp (hl)"); break;
@@ -548,7 +580,8 @@ char *buf;
     case 0xec: nn = filebuf[addr+1] | (filebuf[addr+2]<<8); len=3;
                disasm_pc = pc + 1;
                fmt_addr(abuf, nn); sprintf(buf, "call pe,%s", abuf); break;
-    case 0xee: sprintf(buf, "xor 0%02xh", filebuf[addr+1]); len=2; break;
+    case 0xee: disasm_pc = pc + 1;
+               fmt_byte(abuf, filebuf[addr+1]); sprintf(buf, "xor %s", abuf); len=2; break;
     case 0xef: sprintf(buf, "rst 28h"); break;
 
     case 0xf0: sprintf(buf, "ret p"); break;
@@ -561,7 +594,8 @@ char *buf;
                disasm_pc = pc + 1;
                fmt_addr(abuf, nn); sprintf(buf, "call p,%s", abuf); break;
     case 0xf5: sprintf(buf, "push af"); break;
-    case 0xf6: sprintf(buf, "or 0%02xh", filebuf[addr+1]); len=2; break;
+    case 0xf6: disasm_pc = pc + 1;
+               fmt_byte(abuf, filebuf[addr+1]); sprintf(buf, "or %s", abuf); len=2; break;
     case 0xf7: sprintf(buf, "rst 30h"); break;
     case 0xf8: sprintf(buf, "ret m"); break;
     case 0xf9: sprintf(buf, "ld sp,hl"); break;
@@ -572,7 +606,8 @@ char *buf;
     case 0xfc: nn = filebuf[addr+1] | (filebuf[addr+2]<<8); len=3;
                disasm_pc = pc + 1;
                fmt_addr(abuf, nn); sprintf(buf, "call m,%s", abuf); break;
-    case 0xfe: sprintf(buf, "cp 0%02xh", filebuf[addr+1]); len=2; break;
+    case 0xfe: disasm_pc = pc + 1;
+               fmt_byte(abuf, filebuf[addr+1]); sprintf(buf, "cp %s", abuf); len=2; break;
     case 0xff: sprintf(buf, "rst 38h"); break;
 
     default:
@@ -810,6 +845,63 @@ int symlen;
 }
 
 /*
+ * read next relocation record from stream
+ * off: file offset pointer (updated)
+ * pos: position pointer (updated)
+ * symidx: output symbol index (-4=abs, -1=text, -2=data, -3=bss, >=0=symbol)
+ * hilo: output hilo (0=word, 1=lo, 2=hi)
+ * returns: 1 if relocation found, 0 if end of stream
+ */
+int
+read_reloc(off, pos, symidx, hilo)
+long *off;
+int *pos;
+int *symidx;
+int *hilo;
+{
+    unsigned char b;
+    int bump, idx;
+
+    while (1) {
+        b = get_byte((*off)++);
+        if (b == 0) return 0;  /* end of relocs */
+
+        if (b < REL_BUMP_EXT) {
+            *pos += b;
+        } else if (b < REL_ABS) {
+            bump = ((b - REL_BUMP_EXT) << 8) + get_byte((*off)++) + REL_BUMP_EXT;
+            *pos += bump;
+        } else {
+            /* control byte - decode relocation */
+            *hilo = b & 3;
+
+            if ((b & ~3) == REL_ABS) {
+                *symidx = -4;
+            } else if ((b & ~3) == REL_TEXT) {
+                *symidx = -1;
+            } else if ((b & ~3) == REL_DATA) {
+                *symidx = -2;
+            } else if ((b & ~3) == REL_BSS) {
+                *symidx = -3;
+            } else if (b >= REL_SYM_BASE && b < REL_SYM_EXT) {
+                *symidx = (b - REL_SYM_BASE) >> 2;
+            } else if ((b & ~3) == REL_SYM_EXT) {
+                b = get_byte((*off)++);
+                if (b < REL_EXT_LONG) {
+                    idx = b + REL_EXT_THR1 - REL_SYM_OFS;
+                } else {
+                    idx = ((b - REL_EXT_LONG) << 8) + get_byte((*off)++) + REL_EXT_THR2 - REL_SYM_OFS;
+                }
+                *symidx = idx;
+            } else {
+                *symidx = -100;  /* unknown */
+            }
+            return 1;
+        }
+    }
+}
+
+/*
  * dump relocation table
  */
 void
@@ -821,66 +913,37 @@ int num_syms;
 {
     long off = reloc_off;
     int pos = 0;
-    unsigned char b;
-    int bump, idx;
+    int symidx, hilo;
     int count = 0;
+    char *hilostr[] = { "word", "lo  ", "hi  " };
+    char *segtab[] = { "text segment", "data segment", "bss segment", "absolute" };
 
     printf("\n%s relocations:\n", name);
     printf("  Offset  Type        Target\n");
     printf("  ------  ----        ------\n");
 
-    while (off < filesize) {
-        b = get_byte(off++);
-        if (b == 0) break;  /* end of relocs */
+    while (read_reloc(&off, &pos, &symidx, &hilo)) {
+        char *target;
+        char symbuf[32];
 
-        /* decode bump or control */
-        if (b < REL_BUMP_EXT) {
-            pos += b;
-        } else if (b < REL_ABS) {
-            bump = ((b - REL_BUMP_EXT) << 8) + get_byte(off++) + REL_BUMP_EXT;
-            pos += bump;
+        if (symidx >= 0) {
+            sprintf(symbuf, "symbol[%d]%s", symidx, symidx >= 43 ? " (ext)" : "");
+            target = symbuf;
+        } else if (symidx >= -4) {
+            target = segtab[-symidx - 1];
         } else {
-            /* control byte - relocation type */
-            char *target;
-            char symbuf[32];
-
-            if (b == REL_ABS) {
-                target = "absolute";
-            } else if (b == REL_TEXT) {
-                target = "text segment";
-            } else if (b == REL_DATA) {
-                target = "data segment";
-            } else if (b == REL_BSS) {
-                target = "bss segment";
-            } else if (b >= REL_SYM_BASE && b < REL_SYM_EXT) {
-                idx = (b - REL_SYM_BASE) >> 2;
-                sprintf(symbuf, "symbol[%d]", idx);
-                target = symbuf;
-            } else if (b == REL_SYM_EXT) {
-                b = get_byte(off++);
-                if (b < REL_EXT_LONG) {
-                    idx = b + REL_EXT_THR1 - REL_SYM_OFS;
-                } else {
-                    idx = ((b - REL_EXT_LONG) << 8) + get_byte(off++) + REL_EXT_THR2 - REL_SYM_OFS;
-                }
-                sprintf(symbuf, "symbol[%d] (ext)", idx);
-                target = symbuf;
-            } else {
-                sprintf(symbuf, "unknown (0x%02x)", b);
-                target = symbuf;
-            }
-
-            printf("  %04x    word        %s\n", pos, target);
-            pos += 2;
-            count++;
+            sprintf(symbuf, "unknown (%d)", symidx);
+            target = symbuf;
         }
+
+        printf("  %04x    %s        %s\n", pos, hilostr[hilo], target);
+        pos += hilo ? 1 : 2;
+        count++;
     }
 
     if (count == 0) {
         printf("  (none)\n");
     }
-
-    /* return next offset */
 }
 
 /*
@@ -894,30 +957,14 @@ long limit;
 {
     long off = reloc_off;
     int pos = 0;
-    unsigned char b;
-    int bump, idx;
+    int symidx, hilo;
 
     nrels = 0;
     reltab = 0;
 
     /* first pass: count relocations */
-    while (off < limit) {
-        b = get_byte(off++);
-        if (b == 0) break;
-        if (b < REL_BUMP_EXT) {
-            pos += b;
-        } else if (b < REL_ABS) {
-            off++;
-            pos += ((b - REL_BUMP_EXT) << 8) + get_byte(off - 1) + REL_BUMP_EXT;
-        } else {
-            if (b == REL_SYM_EXT) {
-                b = get_byte(off++);
-                if (b >= REL_EXT_LONG) off++;
-            }
-            nrels++;
-            pos += 2;
-        }
-    }
+    while (read_reloc(&off, &pos, &symidx, &hilo))
+        nrels++;
 
     if (nrels == 0)
         return off;
@@ -930,41 +977,12 @@ long limit;
     pos = 0;
     nrels = 0;
 
-    while (off < limit) {
-        b = get_byte(off++);
-        if (b == 0) break;
-        if (b < REL_BUMP_EXT) {
-            pos += b;
-        } else if (b < REL_ABS) {
-            bump = ((b - REL_BUMP_EXT) << 8) + get_byte(off++) + REL_BUMP_EXT;
-            pos += bump;
-        } else {
-            /* relocation entry */
-            reltab[nrels].offset = pos;
-
-            if (b == REL_TEXT) {
-                reltab[nrels].symidx = -1;  /* text */
-            } else if (b == REL_DATA) {
-                reltab[nrels].symidx = -2;  /* data */
-            } else if (b == REL_BSS) {
-                reltab[nrels].symidx = -3;  /* bss */
-            } else if (b >= REL_SYM_BASE && b < REL_SYM_EXT) {
-                idx = (b - REL_SYM_BASE) >> 2;
-                reltab[nrels].symidx = idx;
-            } else if (b == REL_SYM_EXT) {
-                b = get_byte(off++);
-                if (b < REL_EXT_LONG) {
-                    idx = b + REL_EXT_THR1 - REL_SYM_OFS;
-                } else {
-                    idx = ((b - REL_EXT_LONG) << 8) + get_byte(off++) + REL_EXT_THR2 - REL_SYM_OFS;
-                }
-                reltab[nrels].symidx = idx;
-            } else {
-                reltab[nrels].symidx = -100;  /* unknown */
-            }
-            nrels++;
-            pos += 2;
-        }
+    while (read_reloc(&off, &pos, &symidx, &hilo)) {
+        reltab[nrels].offset = pos;
+        reltab[nrels].symidx = symidx;
+        reltab[nrels].hilo = hilo;
+        pos += hilo ? 1 : 2;
+        nrels++;
     }
 
     return off;
@@ -1053,6 +1071,40 @@ char *buf;
 }
 
 /*
+ * get symbol name for byte relocation target
+ * symidx: symbol index or segment (-1=text, -2=data, -3=bss)
+ * val: the byte value at the relocation site
+ * hilo: 1=lo, 2=hi
+ */
+char *
+reloc_name_byte(symidx, val, hilo, buf)
+int symidx;
+unsigned char val;
+int hilo;
+char *buf;
+{
+    /* symbol reference - just use symbol name */
+    if (symidx >= 0 && symidx < nsyms) {
+        sprintf(buf, "%s", symtab[symidx].name);
+        return buf;
+    }
+
+    /* segment-relative: use segment+offset form (can't recover local symbol name) */
+    if (symidx >= -3 && symidx <= -1) {
+        if (symidx == -1)
+            sprintf(buf, "_.text+0%02xh", val);
+        else if (symidx == -2)
+            sprintf(buf, "_.data+0%02xh", val);
+        else
+            sprintf(buf, "_.bss+0%02xh", val);
+        return buf;
+    }
+
+    sprintf(buf, "?sym%d", symidx);
+    return buf;
+}
+
+/*
  * generate .s file for segment
  * segtype: 1=text, 2=data
  */
@@ -1089,11 +1141,18 @@ int size;
         /* check for relocation at this address - emit as data */
         ri = find_reloc(pc);
         if (ri >= 0) {
-            /* emit word with symbolic reference */
-            addend = filebuf[base + pc] | (filebuf[base + pc + 1] << 8);
-            reloc_name(reltab[ri].symidx, addend, nbuf);
-            fprintf(gfile, "\t.dw %s\n", nbuf);
-            pc += 2;
+            if (reltab[ri].hilo == 0) {
+                /* word relocation */
+                addend = filebuf[base + pc] | (filebuf[base + pc + 1] << 8);
+                reloc_name(reltab[ri].symidx, addend, nbuf);
+                fprintf(gfile, "\t.dw %s\n", nbuf);
+                pc += 2;
+            } else {
+                /* byte relocation (lo/hi) */
+                reloc_name_byte(reltab[ri].symidx, filebuf[base + pc], reltab[ri].hilo, nbuf);
+                fprintf(gfile, "\t.db %s(%s)\n", reltab[ri].hilo == 1 ? "lo" : "hi", nbuf);
+                pc += 1;
+            }
         } else if (segtype == 1) {
             /* text segment: check for syscall */
             if (filebuf[base + pc] == 0xcf) {

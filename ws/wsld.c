@@ -102,6 +102,7 @@ struct outreloc {
     unsigned short offset;      /* offset in merged segment */
     struct symbol *sym;         /* symbol (for ext) or NULL (for seg) */
     unsigned char seg;          /* segment type if sym is NULL */
+    unsigned char hilo;         /* REL_WORD/LO/HI */
     struct outreloc *next;
 };
 
@@ -737,17 +738,19 @@ int ctrl;
  * add a pending relocation for -r output
  */
 void
-add_outreloc(list, tail, offset, sym, seg)
+add_outreloc(list, tail, offset, sym, seg, hilo)
 struct outreloc **list;
 struct outreloc **tail;
 unsigned short offset;
 struct symbol *sym;
 unsigned char seg;
+unsigned char hilo;
 {
     struct outreloc *r = malloc(sizeof(struct outreloc));
     r->offset = offset;
     r->sym = sym;
     r->seg = seg;
+    r->hilo = hilo;
     r->next = NULL;
     if (*tail)
         (*tail)->next = r;
@@ -790,12 +793,12 @@ struct outreloc *rlist;
         if (r->sym) {
             /* symbol reference */
             int idx = findSymIdx(r->sym);
-            wsEncReloc(outfd, -1, idx);
+            wsEncReloc(outfd, -1, idx, r->hilo);
         } else {
             /* segment reference */
-            wsEncReloc(outfd, r->seg, 0);
+            wsEncReloc(outfd, r->seg, 0, r->hilo);
         }
-        last = r->offset + 2;
+        last = r->offset + (r->hilo ? 1 : 2);
     }
     wsEndReloc(outfd);
 }
@@ -824,6 +827,8 @@ int is_text;
     struct symbol *s;
     int need_reloc;     /* for -r: does this reloc need to be preserved? */
     unsigned char outseg;
+    int hilo;           /* 0=word, 1=lo, 2=hi */
+    int size;           /* relocation size: 2 for word, 1 for lo/hi */
 
     lseek(obj->fd, reloc_off, SEEK_SET);
 
@@ -842,48 +847,69 @@ int is_text;
             need_reloc = 0;
             s = NULL;
             outseg = 0;
+            hilo = 0;
 
-            if (b == 0x40) {
-                /* absolute - no adjustment */
-                add = 0;
-            } else if (b == 0x44) {
-                /* text segment - code has text-relative offset */
-                add = text_base + obj->text_off;
-                if (rflag) {
-                    /* preserve as text segment reloc */
-                    need_reloc = 1;
-                    outseg = SEG_TEXT;
-                }
-            } else if (b == 0x48) {
-                /* data segment - code has combined offset, adjust */
-                add = data_base + total_text + obj->data_off - obj->text_size;
-                if (rflag) {
-                    /* preserve as data segment reloc */
-                    need_reloc = 1;
-                    outseg = SEG_DATA;
-                }
-            } else if (b == 0x4c) {
-                /* bss segment - code has combined offset, adjust */
-                add = bss_base + total_text + total_data + obj->bss_off
-                      - obj->text_size - obj->data_size;
-                if (rflag) {
-                    /* preserve as bss segment reloc */
-                    need_reloc = 1;
-                    outseg = SEG_BSS;
+            /* segment relocations: 0x40-0x4f range */
+            if (b >= 0x40 && b < 0x50) {
+                hilo = b & 3;
+                switch (b & ~3) {
+                case 0x40:  /* absolute - no adjustment */
+                    add = 0;
+                    break;
+                case 0x44:  /* text segment */
+                    add = text_base + obj->text_off;
+                    if (rflag) {
+                        need_reloc = 1;
+                        outseg = SEG_TEXT;
+                    }
+                    break;
+                case 0x48:  /* data segment */
+                    add = data_base + total_text + obj->data_off - obj->text_size;
+                    if (rflag) {
+                        need_reloc = 1;
+                        outseg = SEG_DATA;
+                    }
+                    break;
+                case 0x4c:  /* bss segment */
+                    add = bss_base + total_text + total_data + obj->bss_off
+                          - obj->text_size - obj->data_size;
+                    if (rflag) {
+                        need_reloc = 1;
+                        outseg = SEG_BSS;
+                    }
+                    break;
                 }
             } else if (b >= 0x50 && b < 0xfc) {
-                /* symbol reference */
+                /* symbol reference - low 2 bits are hilo */
+                hilo = b & 3;
                 idx = (b - 0x50) >> 2;
                 if (idx < obj->num_syms) {
                     s = obj->symtab[idx];
-                    add = s->value;
-                    if (rflag && s->seg == SEG_EXT) {
-                        /* external symbol - preserve reloc */
-                        need_reloc = 1;
+                    if (hilo && s->obj == obj) {
+                        /* hi/lo on symbol in same object: use segment base */
+                        if (s->seg == SEG_TEXT)
+                            add = text_base + obj->text_off;
+                        else if (s->seg == SEG_DATA)
+                            add = data_base + total_text + obj->data_off - obj->text_size;
+                        else if (s->seg == SEG_BSS)
+                            add = bss_base + total_text + total_data + obj->bss_off
+                                  - obj->text_size - obj->data_size;
+                        else
+                            add = s->value;
+                        /* in -r mode, preserve as symbol relocation */
+                        if (rflag && hilo)
+                            need_reloc = 1;
+                    } else {
+                        /* word reloc or external symbol: use full value */
+                        add = s->value;
+                        /* in -r mode, preserve symbol hi/lo relocations */
+                        if (rflag && (s->seg == SEG_EXT || hilo))
+                            need_reloc = 1;
                     }
                 }
-            } else if (b == 0xfc) {
-                /* extended symbol encoding */
+            } else if ((b & ~3) == 0xfc) {
+                /* extended symbol encoding - low 2 bits are hilo */
+                hilo = b & 3;
                 b = read_byte(obj->fd);
                 if (b < 0x80) {
                     idx = b + 47 - 4;
@@ -892,24 +918,58 @@ int is_text;
                 }
                 if (idx < obj->num_syms) {
                     s = obj->symtab[idx];
-                    add = s->value;
-                    if (rflag && s->seg == SEG_EXT) {
-                        /* external symbol - preserve reloc */
-                        need_reloc = 1;
+                    if (hilo && s->obj == obj) {
+                        /* hi/lo on symbol in same object: use segment base */
+                        if (s->seg == SEG_TEXT)
+                            add = text_base + obj->text_off;
+                        else if (s->seg == SEG_DATA)
+                            add = data_base + total_text + obj->data_off - obj->text_size;
+                        else if (s->seg == SEG_BSS)
+                            add = bss_base + total_text + total_data + obj->bss_off
+                                  - obj->text_size - obj->data_size;
+                        else
+                            add = s->value;
+                        /* in -r mode, preserve as symbol relocation */
+                        if (rflag && hilo)
+                            need_reloc = 1;
+                    } else {
+                        /* word reloc or external symbol: use full value */
+                        add = s->value;
+                        /* in -r mode, preserve symbol hi/lo relocations */
+                        if (rflag && (s->seg == SEG_EXT || hilo))
+                            need_reloc = 1;
                     }
                 }
             }
 
+            /* determine relocation size */
+            size = (hilo == 0) ? 2 : 1;
+
             /* apply relocation at current position */
-            if (pos + 1 < seg_size) {
-                val = buf[pos] | (buf[pos + 1] << 8);
-                val += add;
-                buf[pos] = val & 0xff;
-                buf[pos + 1] = val >> 8;
+            if (pos < seg_size) {
+                if (hilo == 0) {
+                    /* word relocation */
+                    if (pos + 1 < seg_size) {
+                        val = buf[pos] | (buf[pos + 1] << 8);
+                        val += add;
+                        buf[pos] = val & 0xff;
+                        buf[pos + 1] = val >> 8;
+                    }
+                } else if (hilo == 1) {
+                    /* lo byte relocation */
+                    val = buf[pos] + (add & 0xff);
+                    buf[pos] = val & 0xff;
+                } else {
+                    /* hi byte relocation */
+                    val = buf[pos] + (add >> 8);
+                    buf[pos] = val & 0xff;
+                }
 
                 if (verbose > 2) {
-                    printf("    reloc @%04x += %04x -> %04x\n",
-                           seg_base + pos, add, val);
+                    printf("    reloc @%04x += %04x -> %02x (%s)\n",
+                           seg_base + pos, add,
+                           hilo ? buf[pos] : (buf[pos] | (buf[pos+1]<<8)),
+                           hilo == 0 ? "word" : hilo == 1 ? "lo" : "hi");
                 }
             }
 
@@ -917,13 +977,13 @@ int is_text;
             if (need_reloc) {
                 if (is_text)
                     add_outreloc(&text_relocs, &textRelocTl,
-                                 seg_base + pos, s, outseg);
+                                 seg_base + pos, s, outseg, hilo);
                 else
                     add_outreloc(&data_relocs, &dataRelocTl,
-                                 seg_base + pos, s, outseg);
+                                 seg_base + pos, s, outseg, hilo);
             }
 
-            pos += 2;
+            pos += size;
             continue;
         }
 
