@@ -117,10 +117,8 @@ Also detects optimization patterns, setting `e->special`:
 | SP_SYMOFS | `+s $sym #const` → `ld hl,sym+ofs` |
 | SP_SYMOFD | `Ms[+s $sym #const]` → `ld hl,(sym+ofs)` |
 | SP_MSYM | `Ms $sym` → `ld hl,(sym)` |
-| SP_IXOD | `M[+s Ms[Rs ix] #ofs]` → `(ix+ofs)` |
 | SP_MUL2 | `*s expr #pow2` → `add hl,hl` repeated |
 | SP_STCONST | `= [M addr] #const` → `ld (hl),n` |
-| SP_STIX | `= [+s #ofs Rs ix] expr` → `ld (ix+ofs),src` |
 | SP_INCR/DECR | `(s Rs reg` → `inc reg` |
 | SP_INCGLOB | `(s $sym` → `ld hl,(sym); inc hl; ld (sym),hl` |
 | SP_SIGN | `gs Ms $sym #0` → `bit 7,(sym+n)` |

@@ -26,6 +26,10 @@ char *regnames[] = { 0, "b", "c", "bc", "ix", "de", "hl", "a", "iy",
 struct sym locals[MAXLOCALS];
 unsigned char nlocals;
 
+/* Switch statement stack */
+struct swctx swstack[MAXSWDEPTH];
+unsigned char swdepth;
+
 void
 clearLocals(void)
 {

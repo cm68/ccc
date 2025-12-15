@@ -74,7 +74,8 @@ parseExpr(void)
                 e->aux = s->reg;
             } else if (s) {
                 e = newExpr('V', s->type);  /* local var */
-                e->aux2 = s->off;
+                e->aux = R_IY;              /* IY-relative */
+                e->offset = s->off;
             } else {
                 e = newExpr('$', 0);        /* global */
             }
@@ -87,6 +88,25 @@ parseExpr(void)
         advance();
         e = newExpr('M', type);
         e->left = parseExpr();
+        /* Collapse M[V] and M[R] when sizes match - V/R already load value */
+        if ((e->left->op == 'V' || e->left->op == 'R') &&
+            e->size == e->left->size) {
+            struct expr *child = e->left;
+            free(e);
+            return child;
+        }
+        /* Collapse M[+p Mp[Rp(ix)] #ofs] to V with reg=IX */
+        if (e->left->op == '+' && e->left->size == 2 &&
+            e->left->left->op == 'M' && e->left->left->size == 2 &&
+            e->left->left->left->op == 'R' &&
+            e->left->left->left->aux == R_IX &&
+            e->left->right->op == '#') {
+            struct expr *v = newExpr('V', type);
+            v->aux = R_IX;
+            v->offset = e->left->right->v.s;
+            freeExpr(e);
+            return v;
+        }
         return e;
 
     case '=':  /* assign */
@@ -158,6 +178,23 @@ parseExpr(void)
         e = newExpr(c, type);
         e->left = parseExpr();
         e->right = parseExpr();
+        /* Collapse +p [#ofs R(ix/iy)] or +p [R(ix/iy) #ofs] to V node */
+        if (c == '+' && e->size == 2) {
+            struct expr *l = e->left, *r = e->right;
+            int ofs = 0, reg = 0;
+            if (l->op == '#' && r->op == 'R' && (r->aux == R_IX || r->aux == R_IY)) {
+                ofs = l->v.s; reg = r->aux;
+            } else if (r->op == '#' && l->op == 'R' && (l->aux == R_IX || l->aux == R_IY)) {
+                ofs = r->v.s; reg = l->aux;
+            }
+            if (reg) {
+                struct expr *v = newExpr('V', type);
+                v->aux = reg;
+                v->offset = ofs;
+                freeExpr(e);
+                return v;
+            }
+        }
         return e;
 
     case '?':  /* ternary: cond in left, then/else as left/right of right */
@@ -327,8 +364,7 @@ dumpStmt(void)
                 } else if (special == SP_SIGN || special == SP_SIGNREG) {
                     /* >= 0: Z=true, NZ=false; jump to no on NZ */
                     emit("jp nz,no%d_%d", lbl, fnIndex);
-                } else if (special == SP_CMPIX || special == SP_CMPIY ||
-                           special == SP_CMPHL) {
+                } else if (special == SP_CMPHL) {
                     /* cp sets flags: C if A < operand, Z if A == operand */
                     /* side=0: A=left, mem=right -> A-right = left-right */
                     /* side=1: A=right, mem=left -> A-left = right-left */
@@ -462,19 +498,52 @@ dumpStmt(void)
     case 'S':  /* switch */
         {
             struct expr *e;
+            struct swctx *sw;
             unsigned char hasLabel = hex2();
             if (hasLabel) readName(name);
             ncases = hex2();
             comment("SWITCH label=%s cases=%d [", hasLabel ? name : "(none)", ncases);
             indent += 2;
+            /* Push switch context */
+            sw = &swstack[swdepth++];
+            sw->ncases = 0;
+            sw->hasdef = 0;
+            sw->tblLabel = labelCnt++;
+            sw->endLabel = labelCnt++;
+            /* Emit switch expression to A */
             e = parseExpr();
             calcDemand(e);
-            assignDest(e, e->size == 1 ? R_A : R_HL);
-            emitExpr(e);
+            if (e->size == 1) {
+                assignDest(e, R_A);
+                emitExpr(e);
+            } else {
+                /* Word expression - load to HL, then get low byte to A */
+                assignDest(e, R_HL);
+                emitExpr(e);
+                emit("ld a,l");
+            }
             freeExpr(e);
-            /* Cases are statements, parsed via dumpStmt */
+            /* Jump to switch table */
+            emit("ld hl,sw%d_%d", sw->tblLabel, fnIndex);
+            emit("jp switch");
+            /* Process all cases - they record themselves in sw */
             for (i = 0; i < ncases; i++)
                 dumpStmt();
+            /* Emit switch end label */
+            emit("swe%d_%d:", sw->endLabel, fnIndex);
+            /* Emit jump table inline in text segment */
+            emit("sw%d_%d:", sw->tblLabel, fnIndex);
+            emit("\t.db %d", sw->ncases);
+            for (i = 0; i < sw->ncases; i++) {
+                emit("\t.db %d", sw->vals[i]);
+                emit("\t.dw swc%d_%d", sw->labels[i], fnIndex);
+            }
+            if (sw->hasdef)
+                emit("\t.dw swd%d_%d", sw->defLabel, fnIndex);
+            else
+                emit("\t.dw swe%d_%d", sw->endLabel, fnIndex);
+            /* Pop switch context */
+            swdepth--;
             indent -= 2;
             comment("]");
         }
@@ -483,14 +552,22 @@ dumpStmt(void)
     case 'C':  /* case */
         {
             struct expr *e;
+            struct swctx *sw = &swstack[swdepth - 1];
+            int lbl = labelCnt++;
             nstmt = hex2();
-            comment("CASE nstmt=%d [", nstmt);
-            indent += 2;
+            /* Parse case value (must be constant) */
             e = parseExpr();
-            calcDemand(e);
-            assignDest(e, e->size == 1 ? R_A : R_HL);
-            emitExpr(e);
+            /* Record case in switch context */
+            if (sw->ncases < MAXCASES) {
+                sw->vals[sw->ncases] = e->v.c;
+                sw->labels[sw->ncases] = lbl;
+                sw->ncases++;
+            }
+            comment("CASE %d [", e->v.c);
             freeExpr(e);
+            indent += 2;
+            /* Emit case label */
+            emit("swc%d_%d:", lbl, fnIndex);
             for (i = 0; i < nstmt; i++)
                 dumpStmt();
             indent -= 2;
@@ -499,13 +576,20 @@ dumpStmt(void)
         break;
 
     case 'O':  /* default */
-        nstmt = hex2();
-        comment("DEFAULT [");
-        indent += 2;
-        for (i = 0; i < nstmt; i++)
-            dumpStmt();
-        indent -= 2;
-        comment("]");
+        {
+            struct swctx *sw = &swstack[swdepth - 1];
+            int lbl = labelCnt++;
+            nstmt = hex2();
+            sw->hasdef = 1;
+            sw->defLabel = lbl;
+            comment("DEFAULT [");
+            indent += 2;
+            emit("swd%d_%d:", lbl, fnIndex);
+            for (i = 0; i < nstmt; i++)
+                dumpStmt();
+            indent -= 2;
+            comment("]");
+        }
         break;
 
     case ';':  /* empty */

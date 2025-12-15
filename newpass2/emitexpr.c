@@ -16,27 +16,7 @@ emitCompare(struct expr *e)
     comment("%c%c d=%d %s%s [", e->op, e->type, e->demand,
         regnames[e->dest] ? regnames[e->dest] : "-", e->cond ? " C" : "");
     indent += 2;
-    if (e->special == SP_CMPIX) {
-        /* byte cmp with (ix+d) */
-        comment("CMPIX ofs=%d side=%d", e->offset, e->aux2);
-        if (e->aux2 == 0)
-            emitExpr(e->left);
-        else
-            emitExpr(e->right);
-        emit("cp (ix%o)", e->offset);
-        if (!e->cond)
-            goto cmpresult;
-    } else if (e->special == SP_CMPIY) {
-        /* byte cmp with (iy+d) */
-        comment("CMPIY ofs=%d side=%d", e->offset, e->aux2);
-        if (e->aux2 == 0)
-            emitExpr(e->left);
-        else
-            emitExpr(e->right);
-        emit("cp (iy%o)", e->offset);
-        if (!e->cond)
-            goto cmpresult;
-    } else if (e->special == SP_CMPHL) {
+    if (e->special == SP_CMPHL) {
         /* byte cmp with (hl) */
         struct expr *simple = e->aux2 == 0 ? e->left : e->right;
         struct expr *complex = e->aux2 == 0 ? e->right : e->left;
@@ -49,7 +29,8 @@ emitCompare(struct expr *e)
         } else if (simple->op == 'M' && simple->left->op == '$') {
             emit("ld a,(%s)", simple->left->sym);
         } else if (simple->op == 'M' && simple->left->op == 'V') {
-            emit("ld a,(iy%o)", (char)(simple->left->aux2));
+            char *rn = (simple->left->aux == R_IX) ? "ix" : "iy";
+            emit("ld a,(%s%o)", rn, simple->left->offset);
         } else {
             emit("XXXXXXXXX simple");
         }
@@ -253,9 +234,10 @@ emitCmpArith(struct expr *e)
             emit("pop ix");
         }
     } else if (e->left->op == 'V' && e->size == 1) {
-        char ofs = e->left->aux2;
-        comment("V%c off=%d", e->left->type, ofs);
-        emit("ld a,(iy%o)", ofs);
+        char ofs = e->left->offset;
+        char *rn = (e->left->aux == R_IX) ? "ix" : "iy";
+        comment("V%c %s%o", e->left->type, rn, ofs);
+        emit("ld a,(%s%o)", rn, ofs);
         if (e->right->op == '#') {
             unsigned char val = e->right->v.c;
             switch (e->op) {
@@ -267,7 +249,7 @@ emitCmpArith(struct expr *e)
             }
         } else {
             emitExpr(e->right);
-            emit("ld a,(iy%o)", ofs);
+            emit("ld a,(%s%o)", rn, ofs);
             switch (e->op) {
             case 'P': emit("add a,e"); break;
             case 'o': emit("sub e"); break;
@@ -276,7 +258,7 @@ emitCmpArith(struct expr *e)
             case 'X': emit("xor e"); break;
             }
         }
-        emit("ld (iy%o),a", ofs);
+        emit("ld (%s%o),a", rn, ofs);
     } else if (e->size == 1 && e->right->op == '#') {
         unsigned char val = e->right->v.c;
         emitExpr(e->left);
@@ -306,12 +288,13 @@ emitCmpArith(struct expr *e)
         }
         emit("ld (hl),a");
     } else if (e->left->op == 'V' && e->size == 2) {
-        char ofs = e->left->aux2;
-        comment("V%c off=%d", e->left->type, ofs);
+        char ofs = e->left->offset;
+        char *rn = (e->left->aux == R_IX) ? "ix" : "iy";
+        comment("V%c %s%o", e->left->type, rn, ofs);
         emitExpr(e->right);
         emit("ex de,hl");
-        emit("ld l,(iy%o)", ofs);
-        emit("ld h,(iy%o)", ofs + 1);
+        emit("ld l,(%s%o)", rn, ofs);
+        emit("ld h,(%s%o)", rn, ofs + 1);
         switch (e->op) {
         case 'P': emit("add hl,de"); break;
         case 'o': emit("or a"); emit("sbc hl,de"); break;
@@ -322,31 +305,32 @@ emitCmpArith(struct expr *e)
         case 'X': emit("ld a,l"); emit("xor e"); emit("ld l,a");
                   emit("ld a,h"); emit("xor d"); emit("ld h,a"); break;
         }
-        emit("ld (iy%o),l", ofs);
-        emit("ld (iy%o),h", ofs + 1);
+        emit("ld (%s%o),l", rn, ofs);
+        emit("ld (%s%o),h", rn, ofs + 1);
     } else if (e->left->op == 'V' && e->size == 4 && e->op == 'P') {
-        char ofs = e->left->aux2;
-        comment("V%c off=%d", e->left->type, ofs);
+        char ofs = e->left->offset;
+        char *rn = (e->left->aux == R_IX) ? "ix" : "iy";
+        comment("V%c %s%o", e->left->type, rn, ofs);
         emitExpr(e->right);
         emit("push hl");
         emit("exx");
         emit("push hl");
         emit("exx");
-        emit("ld l,(iy%o)", ofs);
-        emit("ld h,(iy%o)", ofs + 1);
+        emit("ld l,(%s%o)", rn, ofs);
+        emit("ld h,(%s%o)", rn, ofs + 1);
         emit("exx");
-        emit("ld l,(iy%o)", ofs + 2);
-        emit("ld h,(iy%o)", ofs + 3);
+        emit("ld l,(%s%o)", rn, ofs + 2);
+        emit("ld h,(%s%o)", rn, ofs + 3);
         emit("exx");
         emit("pop bc");
         emit("add hl,bc");
-        emit("ld (iy%o),l", ofs);
-        emit("ld (iy%o),h", ofs + 1);
+        emit("ld (%s%o),l", rn, ofs);
+        emit("ld (%s%o),h", rn, ofs + 1);
         emit("exx");
         emit("pop bc");
         emit("adc hl,bc");
-        emit("ld (iy%o),l", ofs + 2);
-        emit("ld (iy%o),h", ofs + 3);
+        emit("ld (%s%o),l", rn, ofs + 2);
+        emit("ld (%s%o),h", rn, ofs + 3);
         emit("exx");
     } else if (e->size == 2 && e->right->op == '#') {
         unsigned val = e->right->v.s & 0xffff;
@@ -435,25 +419,26 @@ emitCmpShift(struct expr *e)
         emit("ld b,h");
         emit("ld c,l");
     } else if (e->left->op == 'V' && e->size == 4 && e->right->op == '#') {
-        char ofs = e->left->aux2;
+        char ofs = e->left->offset;
+        char *rn = (e->left->aux == R_IX) ? "ix" : "iy";
         unsigned char cnt = e->right->v.c & 0x1f;
-        comment("V%c off=%d", e->left->type, ofs);
-        emit("ld l,(iy%o)", ofs);
-        emit("ld h,(iy%o)", ofs + 1);
+        comment("V%c %s%o", e->left->type, rn, ofs);
+        emit("ld l,(%s%o)", rn, ofs);
+        emit("ld h,(%s%o)", rn, ofs + 1);
         emit("exx");
-        emit("ld l,(iy%o)", ofs + 2);
-        emit("ld h,(iy%o)", ofs + 3);
+        emit("ld l,(%s%o)", rn, ofs + 2);
+        emit("ld h,(%s%o)", rn, ofs + 3);
         emit("exx");
         emit("ld a,%d", cnt);
         if (e->op == '0')
             emit("call __llshl");
         else
             emit("call __lashr");
-        emit("ld (iy%o),l", ofs);
-        emit("ld (iy%o),h", ofs + 1);
+        emit("ld (%s%o),l", rn, ofs);
+        emit("ld (%s%o),h", rn, ofs + 1);
         emit("exx");
-        emit("ld (iy%o),l", ofs + 2);
-        emit("ld (iy%o),h", ofs + 3);
+        emit("ld (%s%o),l", rn, ofs + 2);
+        emit("ld (%s%o),h", rn, ofs + 3);
         emit("exx");
     } else {
         emitExpr(e->left);
@@ -508,30 +493,32 @@ emitCmpMulDiv(struct expr *e)
             emit("pop ix");
         }
     } else if (e->left->op == 'V' && e->size == 1) {
-        char ofs = e->left->aux2;
-        comment("V%c off=%d", e->left->type, ofs);
+        char ofs = e->left->offset;
+        char *rn = (e->left->aux == R_IX) ? "ix" : "iy";
+        comment("V%c %s%o", e->left->type, rn, ofs);
         emitExpr(e->right);
         emit("ld e,a");
-        emit("ld a,(iy%o)", ofs);
+        emit("ld a,(%s%o)", rn, ofs);
         if (e->op == 'T')
             emit("call __imulb");
         else
             emit("call __idivb");
         emit("ld a,l");
-        emit("ld (iy%o),a", ofs);
+        emit("ld (%s%o),a", rn, ofs);
     } else if (e->left->op == 'V' && e->size == 2) {
-        char ofs = e->left->aux2;
-        comment("V%c off=%d", e->left->type, ofs);
+        char ofs = e->left->offset;
+        char *rn = (e->left->aux == R_IX) ? "ix" : "iy";
+        comment("V%c %s%o", e->left->type, rn, ofs);
         emitExpr(e->right);
         emit("ex de,hl");
-        emit("ld l,(iy%o)", ofs);
-        emit("ld h,(iy%o)", ofs + 1);
+        emit("ld l,(%s%o)", rn, ofs);
+        emit("ld h,(%s%o)", rn, ofs + 1);
         if (e->op == 'T')
             emit("call __imul");
         else
             emit("call __idiv");
-        emit("ld (iy%o),l", ofs);
-        emit("ld (iy%o),h", ofs + 1);
+        emit("ld (%s%o),l", rn, ofs);
+        emit("ld (%s%o),h", rn, ofs + 1);
     } else {
         emitExpr(e->left);
         emitExpr(e->right);
@@ -571,17 +558,19 @@ emitPreIncDec(struct expr *e)
             for (i = 0; i < e->aux2; i++)
                 emit("%s (hl)", ins);
         } else if (e->left->op == 'V' && e->size == 2 && e->aux2 <= 4) {
-            char off = e->left->aux2;
+            char off = e->left->offset;
+            char *rn = (e->left->aux == R_IX) ? "ix" : "iy";
             char *ins = (e->op == '(') ? "inc" : "dec";
             unsigned char i;
             for (i = 0; i < e->aux2; i++)
                 emit("%s hl", ins);
-            emit("ld (iy%o),l", off);
-            emit("ld (iy%o),h", off + 1);
+            emit("ld (%s%o),l", rn, off);
+            emit("ld (%s%o),h", rn, off + 1);
             if (e->dest == R_TOS)
                 emit("push hl");
         } else if (e->left->op == 'V' && e->size == 4 && e->aux2 == 1) {
-            char off = e->left->aux2;
+            char off = e->left->offset;
+            char *rn = (e->left->aux == R_IX) ? "ix" : "iy";
             if (e->op == '(') {
                 emit("inc hl");
                 emit("ld a,h");
@@ -592,11 +581,11 @@ emitPreIncDec(struct expr *e)
                 emit("exx");
                 emit("ni%d_%d:", labelCnt++, fnIndex);
             }
-            emit("ld (iy%o),l", off);
-            emit("ld (iy%o),h", off + 1);
+            emit("ld (%s%o),l", rn, off);
+            emit("ld (%s%o),h", rn, off + 1);
             emit("exx");
-            emit("ld (iy%o),l", off + 2);
-            emit("ld (iy%o),h", off + 3);
+            emit("ld (%s%o),l", rn, off + 2);
+            emit("ld (%s%o),h", rn, off + 3);
             emit("exx");
             if (e->dest == R_TOS) {
                 emit("push hl");
@@ -687,7 +676,8 @@ emitPostInc(struct expr *e)
         for (i = 0; i < e->aux2; i++)
             emit("%s %s", ins, regnames[r]);
     } else if (e->left->op == 'V' && e->size == 2 && e->aux2 <= 4) {
-        char off = e->left->aux2;
+        char off = e->left->offset;
+        char *rn = (e->left->aux == R_IX) ? "ix" : "iy";
         char *ins = (e->op == ')') ? "inc" : "dec";
         unsigned char i;
         emitExpr(e->left);
@@ -696,21 +686,22 @@ emitPostInc(struct expr *e)
             emit("push hl");
         for (i = 0; i < e->aux2; i++)
             emit("%s hl", ins);
-        emit("ld (iy%o),l", off);
-        emit("ld (iy%o),h", off + 1);
+        emit("ld (%s%o),l", rn, off);
+        emit("ld (%s%o),h", rn, off + 1);
         if (!e->unused)
             emit("pop hl");
     } else if (e->left->op == 'V' && e->size == 1 && e->aux2 <= 4) {
-        char off = e->left->aux2;
+        char off = e->left->offset;
+        char *rn = (e->left->aux == R_IX) ? "ix" : "iy";
         char *ins = (e->op == ')') ? "inc" : "dec";
         unsigned char i;
-        emit("ld a,(iy%o)", off);
+        emit("ld a,(%s%o)", rn, off);
         comment("incr=%d", e->aux2);
         if (!e->unused)
             emit("ld e,a");
         for (i = 0; i < e->aux2; i++)
             emit("%s a", ins);
-        emit("ld (iy%o),a", off);
+        emit("ld (%s%o),a", rn, off);
         if (!e->unused)
             emit("ld a,e");
     } else if (e->left->op == '$' && e->size == 2 && e->aux2 <= 4) {
@@ -800,18 +791,7 @@ emitDeref(struct expr *e)
 {
     comment("M%c d=%d %s [", e->type, e->demand, regnames[e->dest] ? regnames[e->dest] : "-");
     indent += 2;
-    if (e->special == SP_IXOD) {
-        /* M[+p Rp(ix) #ofs] -> (ix+ofs) addressing */
-        comment("(ix%+d)", e->offset);
-        if (e->dest) {
-            if (e->size == 1) {
-                emit("ld a,(ix%o)", e->offset);
-            } else if (e->size == 2) {
-                emit("ld l,(ix%o)", e->offset);
-                emit("ld h,(ix%o)", e->offset + 1);
-            }
-        }
-    } else if (e->special == SP_MSYM) {
+    if (e->special == SP_MSYM) {
         /* M $sym -> ld reg,(sym) */
         comment("$%s", e->sym);
         if (e->dest == R_TOS) {
@@ -962,27 +942,28 @@ emitPrimary(struct expr *e)
             }
         }
         break;
-    case 'V':  /* local var */
+    case 'V':  /* local/struct var via IY or IX */
         {
-            char off = e->aux2;
-            comment("V%c %s off=%d d=%d %s", e->type, e->sym ? e->sym : "?", off, e->demand, regnames[e->dest] ? regnames[e->dest] : "-");
+            char off = e->offset;
+            char *rn = (e->aux == R_IX) ? "ix" : "iy";
+            comment("V%c %s %s%o d=%d %s", e->type, e->sym ? e->sym : "?", rn, off, e->demand, regnames[e->dest] ? regnames[e->dest] : "-");
             if (e->demand == 0)
                 break;
             if (e->size == 1) {
-                emit("ld a,(iy%o)", off);
+                emit("ld a,(%s%o)", rn, off);
                 if (e->dest == R_TOS)
                     emit("push af");
             } else if (e->size == 2) {
-                emit("ld l,(iy%o)", off);
-                emit("ld h,(iy%o)", off + 1);
+                emit("ld l,(%s%o)", rn, off);
+                emit("ld h,(%s%o)", rn, off + 1);
                 if (e->dest == R_TOS)
                     emit("push hl");
             } else if (e->size == 4) {
-                emit("ld l,(iy%o)", off);
-                emit("ld h,(iy%o)", off + 1);
+                emit("ld l,(%s%o)", rn, off);
+                emit("ld h,(%s%o)", rn, off + 1);
                 emit("exx");
-                emit("ld l,(iy%o)", off + 2);
-                emit("ld h,(iy%o)", off + 3);
+                emit("ld l,(%s%o)", rn, off + 2);
+                emit("ld h,(%s%o)", rn, off + 3);
                 emit("exx");
                 if (e->dest == R_TOS) {
                     emit("exx");
@@ -1071,67 +1052,25 @@ emitExpr(struct expr *e)
                 emit("exx");
             }
         } else if (e->left->op == 'V') {
-            /* assign to local variable via (iy+offset) */
-            char ofs = e->left->aux2;
-            comment("V%c off=%d", e->left->type, ofs);
+            /* assign to local/struct var via IY or IX */
+            char ofs = e->left->offset;
+            char *rn = (e->left->aux == R_IX) ? "ix" : "iy";
+            comment("V%c %s%o", e->left->type, rn, ofs);
             if (e->special == SP_STCONST && e->right->op == '#') {
                 /* store constant directly */
                 long val = e->right->v.l;
                 if (e->size == 1) {
-                    emit("ld (iy%o),%d", ofs, (int)(val & 0xff));
+                    emit("ld (%s%o),%d", rn, ofs, (int)(val & 0xff));
                 } else if (e->size == 2) {
                     if (val == 0) {
                         emit("xor a");
-                        emit("ld (iy%o),a", ofs);
-                        emit("ld (iy%o),a", ofs + 1);
+                        emit("ld (%s%o),a", rn, ofs);
+                        emit("ld (%s%o),a", rn, ofs + 1);
                     } else {
-                        emit("ld (iy%o),%d", ofs, (int)(val & 0xff));
-                        emit("ld (iy%o),%d", ofs + 1, (int)((val >> 8) & 0xff));
+                        emit("ld (%s%o),%d", rn, ofs, (int)(val & 0xff));
+                        emit("ld (%s%o),%d", rn, ofs + 1, (int)((val >> 8) & 0xff));
                     }
                 } else if (e->size == 4) {
-                    emit("ld (iy%o),%d", ofs, (int)(val & 0xff));
-                    emit("ld (iy%o),%d", ofs + 1, (int)((val >> 8) & 0xff));
-                    emit("ld (iy%o),%d", ofs + 2, (int)((val >> 16) & 0xff));
-                    emit("ld (iy%o),%d", ofs + 3, (int)((val >> 24) & 0xff));
-                }
-            } else {
-                emitExpr(e->right);
-                if (e->size == 1) {
-                    emit("ld (iy%o),a", ofs);
-                } else if (e->size == 2) {
-                    emit("ld (iy%o),l", ofs);
-                    emit("ld (iy%o),h", ofs + 1);
-                } else if (e->size == 4) {
-                    /* long: HLHL' - store 4 bytes */
-                    emit("ld (iy%o),l", ofs);
-                    emit("ld (iy%o),h", ofs + 1);
-                    emit("exx");
-                    emit("ld (iy%o),l", ofs + 2);
-                    emit("ld (iy%o),h", ofs + 3);
-                    emit("exx");
-                }
-            }
-        } else if (e->special == SP_STIX) {
-            /* store to (ix+ofs) or (iy+ofs) - byte, word, or long */
-            char *rn = (e->aux == R_IX) ? "ix" : "iy";
-            int ofs = e->offset;
-            if (e->right->op == '#') {
-                long val = e->right->v.l;
-                comment("STIX %ld (%s%+d)", val, rn, ofs);
-                if (val == 0 && e->size != 1) {
-                    emit("xor a");
-                    emit("ld (%s%o),a", rn, ofs);
-                    emit("ld (%s%o),a", rn, ofs + 1);
-                    if (e->size == 4) {
-                        emit("ld (%s%o),a", rn, ofs + 2);
-                        emit("ld (%s%o),a", rn, ofs + 3);
-                    }
-                } else if (e->size == 1) {
-                    emit("ld (%s%o),%d", rn, ofs, (int)(val & 0xff));
-                } else if (e->size == 2) {
-                    emit("ld (%s%o),%d", rn, ofs, (int)(val & 0xff));
-                    emit("ld (%s%o),%d", rn, ofs + 1, (int)((val >> 8) & 0xff));
-                } else {
                     emit("ld (%s%o),%d", rn, ofs, (int)(val & 0xff));
                     emit("ld (%s%o),%d", rn, ofs + 1, (int)((val >> 8) & 0xff));
                     emit("ld (%s%o),%d", rn, ofs + 2, (int)((val >> 16) & 0xff));
@@ -1140,14 +1079,12 @@ emitExpr(struct expr *e)
             } else {
                 emitExpr(e->right);
                 if (e->size == 1) {
-                    comment("STIX (%s%+d),a", rn, ofs);
                     emit("ld (%s%o),a", rn, ofs);
                 } else if (e->size == 2) {
-                    comment("STIX (%s%+d),hl", rn, ofs);
                     emit("ld (%s%o),l", rn, ofs);
                     emit("ld (%s%o),h", rn, ofs + 1);
-                } else {
-                    comment("STIX (%s%+d),hlhl'", rn, ofs);
+                } else if (e->size == 4) {
+                    /* long: HLHL' - store 4 bytes */
                     emit("ld (%s%o),l", rn, ofs);
                     emit("ld (%s%o),h", rn, ofs + 1);
                     emit("exx");
@@ -1455,10 +1392,6 @@ emitExpr(struct expr *e)
             emitExpr(e->left);
             emitExpr(e->right);
             if (e->size == 1) {
-                /* Check if left was SP_IXOD (didn't load to A) */
-                if (e->left->special == SP_IXOD) {
-                    emit("ld a,(ix%o)", e->left->offset);
-                }
                 emit("and e");  /* A = A & E */
             } else if (e->size == 2) {
                 emit("ld a,l");

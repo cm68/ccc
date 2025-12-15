@@ -94,16 +94,13 @@ struct expr {
 #define SP_MUL2     5       /* * #pow2 -> add hl,hl (incr = shift count) */
 #define SP_SIGN     6       /* M$sym >= 0 -> bit 7, result in NZ */
 #define SP_MSYM     7       /* Ms $sym -> ld hl,(sym) */
-#define SP_IXOD     8       /* M[+p Mp[Rp(ix)] #ofs] -> (ix+ofs) */
-#define SP_CMPIX    9       /* cmpB where one operand is (ix+d) */
-#define SP_CMPIY    10      /* cmpB where one operand is (iy+d) */
+/* SP_IXOD, SP_CMPIX, SP_CMPIY, SP_STIX removed - IX/IY patterns collapsed to V node */
 #define SP_CMPHL    11      /* cmpB where one operand needs (hl) */
 #define SP_STCONST  12      /* =type [M addr] [#const] -> ld (hl),n */
 #define SP_INCGLOB  13      /* (s $sym -> ld hl,(_sym); inc hl; ld (_sym),hl */
 #define SP_SIGNREG  14      /* Ms[Rs bc] >= 0 -> bit 7,b; sign test regvar */
 #define SP_BITTEST  15      /* &B (ix+ofs) #pow2 -> bit n,(ix+ofs) */
 #define SP_ADDBC    16      /* +p Mp[Rp bc] #const -> ld hl,const; add hl,bc */
-#define SP_STIX     17      /* = [+p #const Rp(ix)] #const -> ld (ix+ofs),n */
 
 /* Expression allocation */
 struct expr *newExpr(char op, char type);
@@ -149,6 +146,21 @@ unsigned char isSimpleByte(struct expr *e);
 void emitExpr(struct expr *e);
 void dumpStmt(void);
 void emitInit(void);
+
+/* Switch statement support */
+#define MAXCASES 32
+#define MAXSWDEPTH 4
+struct swctx {
+    unsigned char ncases;       /* number of cases seen */
+    unsigned char hasdef;       /* has default case */
+    int tblLabel;               /* label for jump table */
+    int endLabel;               /* label for switch end */
+    int defLabel;               /* label for default case */
+    unsigned char vals[MAXCASES];  /* case values */
+    int labels[MAXCASES];       /* case labels */
+};
+extern struct swctx swstack[];
+extern unsigned char swdepth;
 
 /* Top-level parsing */
 void parseGlobal(void);

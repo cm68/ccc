@@ -153,18 +153,6 @@ calcDemand(struct expr *e)
         goto done;
     }
 
-    /* M[+s Ms[Rs(ix)] #ofs] -> (ix+ofs); IX-relative deref */
-    if (op == 'M' && e->left->op == '+' && e->left->size == 2 &&
-        e->left->left->op == 'M' && e->left->left->size == 2 &&
-        e->left->left->left->op == 'R' && e->left->left->left->aux == R_IX &&
-        e->left->right->op == '#') {
-        e->special = SP_IXOD;
-        e->offset = e->left->right->v.s;
-        e->dest = R_IXO;
-        demand = 0;
-        goto done;
-    }
-
     /* M[+s $sym #const] -> ld hl,(sym+offset) */
     if (op == 'M' && e->left->op == '+' && e->left->size == 2 &&
         e->left->left->op == '$' && e->left->right->op == '#' &&
@@ -257,56 +245,11 @@ calcDemand(struct expr *e)
         goto done;
     }
 
-    /* cmpB left M[+p Mp[Rp(ix)] #ofs] -> cp (ix+d); byte cmp with (ix+d) */
+    /* cmpB with (hl): one operand is Mb[addr], other is simple */
+    /* Exclude Mb[Rp] - register pointer needs copy to HL first */
     if ((op == '<' || op == '>' || op == 'Q' || op == 'n' ||
          op == 'L' || op == 'g') && e->size == 1) {
         struct expr *l = e->left, *r = e->right;
-        /* check if right is the (ix+d) pattern */
-        if (r->op == 'M' && r->left->op == '+' && r->left->size == 2 &&
-            r->left->left->op == 'M' && r->left->left->size == 2 &&
-            r->left->left->left->op == 'R' && r->left->left->left->aux == R_IX &&
-            r->left->right->op == '#') {
-            e->special = SP_CMPIX;
-            e->offset = r->left->right->v.s;
-            e->aux2 = 0;  /* right is (ix+d), normal sense */
-            demand = calcDemand(l);  /* only need to emit left */
-            goto done;
-        }
-        /* check if left is the (ix+d) pattern */
-        if (l->op == 'M' && l->left->op == '+' && l->left->size == 2 &&
-            l->left->left->op == 'M' && l->left->left->size == 2 &&
-            l->left->left->left->op == 'R' && l->left->left->left->aux == R_IX &&
-            l->left->right->op == '#') {
-            e->special = SP_CMPIX;
-            e->offset = l->left->right->v.s;
-            e->aux2 = 1;  /* left is (ix+d), flipped sense */
-            demand = calcDemand(r);  /* only need to emit right */
-            goto done;
-        }
-        /* check if right is (iy+d) pattern */
-        if (r->op == 'M' && r->left->op == '+' && r->left->size == 2 &&
-            r->left->left->op == 'M' && r->left->left->size == 2 &&
-            r->left->left->left->op == 'R' && r->left->left->left->aux == R_IY &&
-            r->left->right->op == '#') {
-            e->special = SP_CMPIY;
-            e->offset = r->left->right->v.s;
-            e->aux2 = 0;
-            demand = calcDemand(l);
-            goto done;
-        }
-        /* check if left is (iy+d) pattern */
-        if (l->op == 'M' && l->left->op == '+' && l->left->size == 2 &&
-            l->left->left->op == 'M' && l->left->left->size == 2 &&
-            l->left->left->left->op == 'R' && l->left->left->left->aux == R_IY &&
-            l->left->right->op == '#') {
-            e->special = SP_CMPIY;
-            e->offset = l->left->right->v.s;
-            e->aux2 = 1;
-            demand = calcDemand(r);
-            goto done;
-        }
-        /* cmpB with (hl): one operand is Mb[addr], other is simple */
-        /* Exclude Mb[Rp] - register pointer needs copy to HL first */
         if (r->op == 'M' && r->size == 1 && isSimpleByte(l) &&
             r->left->op != 'R') {
             e->special = SP_CMPHL;
@@ -353,25 +296,6 @@ calcDemand(struct expr *e)
         e->special = SP_STCONST;
         demand = calcDemand(e->left->left);  /* only need to compute address */
         goto done;
-    }
-
-    /* = [+s #const Rs(ix/iy)] expr -> ld (ix+ofs),src or ld (iy+ofs),src */
-    if (op == '=' && (e->size == 1 || e->size == 2 || e->size == 4) && e->left->op == '+' && e->left->size == 2) {
-        struct expr *l = e->left->left, *r = e->left->right;
-        int ofs = 0, reg = 0;
-        if (l->op == '#' && r->op == 'R' && (r->aux == R_IX || r->aux == R_IY)) {
-            ofs = l->v.s; reg = r->aux;
-        } else if (r->op == '#' && l->op == 'R' && (l->aux == R_IX || l->aux == R_IY)) {
-            ofs = r->v.s; reg = l->aux;
-        }
-        if (reg) {
-            e->special = SP_STIX;
-            e->offset = ofs;
-            e->aux = reg;  /* R_IX or R_IY */
-            demand = calcDemand(e->right);
-            if (demand < 1 && e->right->op != '#') demand = 1;
-            goto done;
-        }
     }
 
     /* =type [+s addr] [#const] -> ld (hl),n; store constant through computed ptr */
@@ -442,22 +366,6 @@ assignDest(struct expr *e, char dest)
         e->dest = 0;
     else
         e->dest = dest;
-
-    /* SP_CMPIX/IY: only non-indexed operand needs A */
-    if (e->special == SP_CMPIX || e->special == SP_CMPIY) {
-        if (e->aux2 == 0)
-            assignDest(e->left, R_A);   /* right is indexed, emit left */
-        else
-            assignDest(e->right, R_A);  /* left is indexed, emit right */
-        return;
-    }
-
-    /* SP_STIX: value to A (byte) or HL (word), no address computation needed */
-    if (e->special == SP_STIX) {
-        if (e->right->op != '#')
-            assignDest(e->right, e->size == 1 ? R_A : R_HL);
-        return;
-    }
 
     /* SP_STCONST: address to HL, no dest for constant */
     if (e->special == SP_STCONST) {
@@ -553,8 +461,8 @@ assignDest(struct expr *e, char dest)
         if (e->size == 1)
             e->dest = R_A;
         /* child produces address in HL */
-        /* For special cases (SP_IXOD, SP_MSYM, SP_SYMOFD), child isn't emitted */
-        if (e->special == SP_IXOD || e->special == SP_MSYM || e->special == SP_SYMOFD)
+        /* For special cases (SP_MSYM, SP_SYMOFD), child isn't emitted */
+        if (e->special == SP_MSYM || e->special == SP_SYMOFD)
             ;  /* no child assignment for specials */
         else
             assignDest(e->left, R_HL);  /* child computes address to HL */
