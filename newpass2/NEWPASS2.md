@@ -2,16 +2,31 @@
 
 The newpass2 code generator translates AST input from cc1 into Z80 assembly.
 
-## Pipeline Overview
+## Streaming Model
+
+The AST is **not** ingested into a complete tree. Instead, processing is
+streaming: each expression is parsed, scheduled, emitted, and freed before
+the next. This keeps memory footprint minimal for the 64KB target.
 
 ```
-AST input → Parse → Schedule → Emit → Assembly output
-             ↓         ↓         ↓
-           Build    Demand    Walk tree,
-           expr    calc +     emit
-           tree    dest       instructions
-                   assign
+AST stream ──┬── globals ──→ emit .db/.dw/.ds
+             │
+             └── functions ──→ for each statement:
+                                  parseExpr() → build tree
+                                  calcDemand() → bottom-up scheduling
+                                  assignDest() → top-down register alloc
+                                  emitExpr() → generate assembly
+                                  freeExpr() → release memory
 ```
+
+**Parse-time work:**
+- Symbol resolution: `$name` in AST becomes `R` (regvar), `V` (local), or
+  stays `$` (global) based on the current function's symbol table
+- Type/size computation: `e->size` set from type suffix
+- Argument list reversal: `@` call args built in reverse order
+
+**No intermediate representation** - the expression tree exists only
+briefly between parseExpr() and freeExpr().
 
 ## Expression Tree
 
@@ -79,7 +94,9 @@ struct expr {
 - `Y` - memory copy (length in `aux`)
 - `F` - bitfield access
 
-## Three-Phase Code Generation
+## Per-Expression Scheduling
+
+Each expression tree goes through three phases before being freed:
 
 ### Phase 1: Demand Calculation (bottom-up)
 
