@@ -148,6 +148,10 @@ parseExpr(void)
     case '|': case '^': case '&': case 'y': case 'w':
     case 'j': case 'h':  /* logical and/or */
     case 'D': case 'O': case 'z':  /* unsigned ops */
+    case 'o': case 'a': case 'm':  /* compound assign -=, &=, %= */
+    case 'P': case '1': case 'X':  /* +=, |=, ^= */
+    case 'T': case '2': case '6': case '0':  /* *=, /=, >>=, <<= */
+    case ',':  /* comma */
         /* binary operators */
         type = curchar;
         advance();
@@ -165,24 +169,6 @@ parseExpr(void)
         e->right = newExpr(':', type);
         e->right->left = parseExpr();   /* then */
         e->right->right = parseExpr();  /* else */
-        return e;
-
-    case 'o': case 'a': case 'm':  /* compound assign -=, &=, %= */
-    case 'P': case '1': case 'X':  /* +=, |=, ^= */
-    case 'T': case '2': case '6': case '0':  /* *=, /=, >>=, <<= */
-        type = curchar;
-        advance();
-        e = newExpr(c, type);
-        e->left = parseExpr();
-        e->right = parseExpr();
-        return e;
-
-    case ',':  /* comma */
-        type = curchar;
-        advance();
-        e = newExpr(',', type);
-        e->left = parseExpr();
-        e->right = parseExpr();
         return e;
 
     case 'F':  /* bitfield */
