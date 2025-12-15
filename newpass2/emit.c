@@ -92,3 +92,6 @@ comment(char *fmt, ...)
     outbuf[n++] = '\n';
     write(outfd, outbuf, n);
 }
+/*
+ * vim: tabstop=4 shiftwidth=4 expandtab:
+ */

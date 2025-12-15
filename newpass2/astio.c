@@ -38,10 +38,10 @@ unsigned char
 hex()
 {
 	unsigned char c;
-        c = curchar;
-        advance();
+    c = curchar;
+    advance();
 	c |= 0x20;
-        if (c >= '0' && c <= '9') {
+    if (c >= '0' && c <= '9') {
 		c -= '0';
 	} else {
 		c -= 'a' - 10;
@@ -76,7 +76,7 @@ hex8(void)
         advance();
     }
     for (i = 0; i < 8; i++) {
-	v = v << 4 | hex();
+        v = v << 4 | hex();
     }
     return neg ? -v : v;
 }
@@ -98,3 +98,6 @@ readName(char *buf)
         i++;
     }
 }
+/*
+ * vim: tabstop=4 shiftwidth=4 expandtab:
+ */

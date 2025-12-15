@@ -43,9 +43,9 @@ extern char *regnames[];
  */
 struct sym {
     char name[14];
-    char type;              /* type suffix */
-    char reg;               /* register (0=stack) */
-    short off;              /* stack offset */
+    char type;          /* type suffix */
+    char reg;           /* register (0=stack) */
+    char off;		/* stack offset */
 };
 
 #define MAXLOCALS 64
@@ -63,6 +63,7 @@ struct sym *findLocal(char *name);
  */
 struct expr {
     char op;                /* operator: '#', '$', 'R', 'V', 'M', '=', '@', '+', etc. */
+    char size;              /* size in bytes */
     char type;              /* type suffix: 'b', 's', 'l', 'p', etc. */
     struct expr *left;      /* left/first child */
     struct expr *right;     /* right/second child */
@@ -70,18 +71,18 @@ struct expr {
         long l;
         short s;
         char c;
-    } v;                    /* constant value */
-    char *sym;              /* symbol name (malloc'd) */
-    unsigned char aux;              /* auxiliary: nargs for call, width for bitfield */
-    unsigned char aux2;             /* auxiliary: offset for bitfield, incr for inc/dec */
-    unsigned char demand;           /* temporary demand */
-    unsigned char dest;     /* destination register index (R_HL, R_DE, R_A) */
-    unsigned char spill;             /* need to spill DE before right child */
-    unsigned char unused;            /* result is unused (expr stmt, void call) */
-    unsigned char cond;              /* used as condition (emit flags, not value) */
-    unsigned char special;           /* special case type (0=none) */
-    char offset;           /* IY/IX-relative offset for specials */
-    short incr;             /* increment amount for specials */
+    } v;                    	/* constant value */
+    char *sym;			/* symbol name (malloc'd) */
+    unsigned char aux;          /* auxiliary: nargs for call, width for bitfield */
+    unsigned char aux2;         /* auxiliary: offset for bitfield, incr for inc/dec */
+    unsigned char demand;       /* temporary demand */
+    unsigned char dest;     	/* destination register index (R_HL, R_DE, R_A) */
+    unsigned char spill;        /* need to spill DE before right child */
+    unsigned char unused;       /* result is unused (expr stmt, void call) */
+    unsigned char cond;         /* used as condition (emit flags, not value) */
+    unsigned char special;      /* special case type (0=none) */
+    char offset;           	/* IY/IX-relative offset for specials */
+    short incr;             	/* increment amount for specials */
 };
 
 /* Special case types */
@@ -157,3 +158,7 @@ void parseFunc(void);
 void parseAst(void);
 
 #endif
+
+/*
+ * vim: tabstop=4 shiftwidth=4 expandtab:
+ */
