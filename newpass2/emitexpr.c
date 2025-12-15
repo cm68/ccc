@@ -1263,20 +1263,13 @@ emitExpr(struct expr *e)
     case '@':
         comment("@%c nargs=%d d=%d %s%s [", e->type, e->aux, e->demand, regnames[e->dest] ? regnames[e->dest] : "-", e->unused ? " U" : "");
         indent += 2;
-        /* Push args in REVERSE order (right-to-left for C calling convention) */
+        /* Args already in reverse order from parser - just traverse and emit */
         {
-            struct expr *args[16];  /* max 16 args */
-            unsigned char nargs = 0;
-            struct expr *a = e->right;  /* 'A' wrapper nodes */
-            unsigned char i;
-            /* Collect args into array - 'A' wrapper nodes hold actual args in ->left */
-            while (a && a->op == 'A' && nargs < 16) {
-                args[nargs++] = a->left;  /* unwrap actual arg */
-                a = a->right;  /* next wrapper */
+            struct expr *a = e->right;
+            while (a && a->op == 'A') {
+                emitExpr(a->left);
+                a = a->right;
             }
-            /* Emit in reverse order */
-            for (i = nargs; i > 0; )
-                emitExpr(args[--i]);
         }
         /* call */
         if (e->left->op == '$') {

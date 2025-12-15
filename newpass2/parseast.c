@@ -50,7 +50,7 @@ parseExpr(void)
 {
     char c, type;
     char name[14];
-    struct expr *e, *arg, *last;
+    struct expr *e, *arg;
     unsigned char nargs, i;
 
     skipWs();
@@ -87,12 +87,6 @@ parseExpr(void)
         advance();
         e = newExpr('M', type);
         e->left = parseExpr();
-        /* Note: M[V] and M[R] collapse disabled - can't distinguish pointer vars
-         * from short vars now that both use type 's'. Collapse was:
-         *   M[V] -> V when V type matches (V loads value directly)
-         *   M[R] -> R when R type matches (reg holds value directly)
-         * But for pointer vars, V/R holds an address, not the final value.
-         * Would need a pointer flag in sym table to safely collapse. */
         return e;
 
     case '=':  /* assign */
@@ -110,17 +104,12 @@ parseExpr(void)
         e = newExpr('@', type);
         e->aux = nargs;
         e->left = parseExpr();  /* func */
-        /* chain args as right-linked list using 'A' wrapper nodes
-         * to avoid overwriting binary ops' ->right field */
-        last = 0;
+        /* chain args in reverse order for C calling convention (right-to-left) */
         for (i = 0; i < nargs; i++) {
             arg = newExpr('A', 0);  /* wrapper node */
             arg->left = parseExpr();  /* actual argument */
-            if (!last)
-                e->right = arg;
-            else
-                last->right = arg;
-            last = arg;
+            arg->right = e->right;    /* link to previous head */
+            e->right = arg;           /* new head */
         }
         return e;
 
