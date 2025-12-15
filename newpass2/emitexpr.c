@@ -13,11 +13,10 @@ void emitExpr(struct expr *e);
 static void
 emitCompare(struct expr *e)
 {
-    unsigned char special = e->special;
     comment("%c%c d=%d %s%s [", e->op, e->type, e->demand,
         regnames[e->dest] ? regnames[e->dest] : "-", e->cond ? " C" : "");
     indent += 2;
-    if (special == SP_CMPIX) {
+    if (e->special == SP_CMPIX) {
         /* byte cmp with (ix+d) */
         comment("CMPIX ofs=%d side=%d", e->offset, e->aux2);
         if (e->aux2 == 0)
@@ -27,7 +26,7 @@ emitCompare(struct expr *e)
         emit("cp (ix%o)", e->offset);
         if (!e->cond)
             goto cmpresult;
-    } else if (special == SP_CMPIY) {
+    } else if (e->special == SP_CMPIY) {
         /* byte cmp with (iy+d) */
         comment("CMPIY ofs=%d side=%d", e->offset, e->aux2);
         if (e->aux2 == 0)
@@ -37,7 +36,7 @@ emitCompare(struct expr *e)
         emit("cp (iy%o)", e->offset);
         if (!e->cond)
             goto cmpresult;
-    } else if (special == SP_CMPHL) {
+    } else if (e->special == SP_CMPHL) {
         /* byte cmp with (hl) */
         struct expr *simple = e->aux2 == 0 ? e->left : e->right;
         struct expr *complex = e->aux2 == 0 ? e->right : e->left;
@@ -57,7 +56,7 @@ emitCompare(struct expr *e)
         emit("cp (hl)");
         if (!e->cond)
             goto cmpresult;
-    } else if (special == SP_SIGN) {
+    } else if (e->special == SP_SIGN) {
         /* sign test: bit 7 of high byte */
         comment("SIGN $%s ofs=%d", e->sym ? e->sym : "?", e->offset);
         if (e->offset > 0)
@@ -72,7 +71,7 @@ emitCompare(struct expr *e)
             emit("inc a");
             emit("sg%d_%d:", lbl, fnIndex);
         }
-    } else if (special == SP_SIGNREG) {
+    } else if (e->special == SP_SIGNREG) {
         /* sign test regvar BC: bit 7,b */
         comment("SIGNREG bc");
         emit("bit 7,b");
@@ -145,7 +144,7 @@ emitCompare(struct expr *e)
         }
     }
 cmpresult:
-    if (!e->cond && special != SP_SIGN && special != SP_SIGNREG) {
+    if (!e->cond && e->special != SP_SIGN && e->special != SP_SIGNREG) {
         switch (e->op) {
         case 'Q':  /* == */
             emit("ld a,0");
@@ -548,13 +547,12 @@ emitCmpMulDiv(struct expr *e)
 static void
 emitPreIncDec(struct expr *e)
 {
-    unsigned char special = e->special;
-    if (special == SP_INCR || special == SP_DECR) {
-        char *ins = (special == SP_INCR) ? "inc" : "dec";
+    if (e->special == SP_INCR || e->special == SP_DECR) {
+        char *ins = (e->special == SP_INCR) ? "inc" : "dec";
         unsigned char i;
         for (i = 0; i < e->incr; i++)
             emit("\t%s %r", ins, regnames[e->dest], e->offset);
-    } else if (special == SP_INCGLOB) {
+    } else if (e->special == SP_INCGLOB) {
         char *ins = e->aux2 ? "inc" : "dec";
         unsigned char i;
         emit("ld hl,(%s)", e->sym);
@@ -800,10 +798,9 @@ emitPostInc(struct expr *e)
 static void
 emitDeref(struct expr *e)
 {
-    unsigned char special = e->special;
     comment("M%c d=%d %s [", e->type, e->demand, regnames[e->dest] ? regnames[e->dest] : "-");
     indent += 2;
-    if (special == SP_IXOD) {
+    if (e->special == SP_IXOD) {
         /* M[+p Rp(ix) #ofs] -> (ix+ofs) addressing */
         comment("(ix%+d)", e->offset);
         if (e->dest) {
@@ -814,7 +811,7 @@ emitDeref(struct expr *e)
                 emit("ld h,(ix%o)", e->offset + 1);
             }
         }
-    } else if (special == SP_MSYM) {
+    } else if (e->special == SP_MSYM) {
         /* M $sym -> ld reg,(sym) */
         comment("$%s", e->sym);
         if (e->dest == R_TOS) {
@@ -822,7 +819,7 @@ emitDeref(struct expr *e)
             emit("push hl");
         } else
             emit("ld %s,(%s)", regnames[e->dest] ? regnames[e->dest] : "hl", e->sym);
-    } else if (special == SP_SYMOFD) {
+    } else if (e->special == SP_SYMOFD) {
         /* M[+p $sym #ofs] -> ld reg,(sym+ofs) */
         comment("+p $%s #%d", e->sym, e->offset);
         if (e->dest == R_TOS) {
@@ -1007,11 +1004,9 @@ emitPrimary(struct expr *e)
 void
 emitExpr(struct expr *e)
 {
-    unsigned char special;
     if (!e || !e->op) return;
-    special = e->special;
 
-    if (special)
+    if (e->special)
         comment("SPECIAL");
 
     switch (e->op) {
@@ -1046,7 +1041,7 @@ emitExpr(struct expr *e)
             }
         } else if (e->left->op == 'R' && e->left->aux == R_B) {
             comment("Rb %s b", e->left->sym ? e->left->sym : "?");
-            if (special == SP_STCONST && e->right->op == '#') {
+            if (e->special == SP_STCONST && e->right->op == '#') {
                 emit("ld b,%d", e->right->v.c & 0xff);
             } else {
                 emitExpr(e->right);
@@ -1054,7 +1049,7 @@ emitExpr(struct expr *e)
             }
         } else if (e->left->op == 'R' && e->left->aux == R_C) {
             comment("Rb %s c", e->left->sym ? e->left->sym : "?");
-            if (special == SP_STCONST && e->right->op == '#') {
+            if (e->special == SP_STCONST && e->right->op == '#') {
                 emit("ld c,%d", e->right->v.c & 0xff);
             } else {
                 emitExpr(e->right);
@@ -1079,7 +1074,7 @@ emitExpr(struct expr *e)
             /* assign to local variable via (iy+offset) */
             char ofs = e->left->aux2;
             comment("V%c off=%d", e->left->type, ofs);
-            if (special == SP_STCONST && e->right->op == '#') {
+            if (e->special == SP_STCONST && e->right->op == '#') {
                 /* store constant directly */
                 long val = e->right->v.l;
                 if (e->size == 1) {
@@ -1116,7 +1111,7 @@ emitExpr(struct expr *e)
                     emit("exx");
                 }
             }
-        } else if (special == SP_STIX) {
+        } else if (e->special == SP_STIX) {
             /* store to (ix+ofs) or (iy+ofs) - byte, word, or long */
             char *rn = (e->aux == R_IX) ? "ix" : "iy";
             int ofs = e->offset;
@@ -1161,7 +1156,7 @@ emitExpr(struct expr *e)
                     emit("exx");
                 }
             }
-        } else if (special == SP_STCONST) {
+        } else if (e->special == SP_STCONST) {
             /* store constant through HL: ld (hl),n; inc hl; ld (hl),n */
             long val = e->right->v.l;
             comment("STCONST %ld", val);
@@ -1375,7 +1370,7 @@ emitExpr(struct expr *e)
     case '+':  /* add */
         comment("+%c d=%d %s [", e->type, e->demand, regnames[e->dest] ? regnames[e->dest] : "-");
         indent += 2;
-        if (special == SP_SYMOFS) {
+        if (e->special == SP_SYMOFS) {
             /* +p $sym #const -> ld hl,sym+ofs */
             comment("$%s #%d", e->sym ? e->sym : "?", e->offset);
             if (e->offset > 0)
@@ -1386,7 +1381,7 @@ emitExpr(struct expr *e)
                 emit("ld hl,%s", e->sym);
             if (e->dest == R_TOS)
                 emit("push hl");
-        } else if (special == SP_ADDBC) {
+        } else if (e->special == SP_ADDBC) {
             /* +p Mp[Rp bc] #const -> ld hl,const; add hl,bc */
             comment("bc+%d", e->offset);
             emit("ld hl,%d", e->offset);
@@ -1453,7 +1448,7 @@ emitExpr(struct expr *e)
     case '&':  /* bitwise AND */
         comment("&%c d=%d %s [", e->type, e->demand, regnames[e->dest] ? regnames[e->dest] : "-");
         indent += 2;
-        if (special == SP_BITTEST) {
+        if (e->special == SP_BITTEST) {
             /* bit n,(ix+ofs) - no children emitted */
             emit("bit %d,(ix%o)", e->incr, e->offset);
         } else {
@@ -1525,7 +1520,7 @@ emitExpr(struct expr *e)
     case '*':  /* multiply */
         comment("*%c d=%d %s [", e->type, e->demand, regnames[e->dest] ? regnames[e->dest] : "-");
         indent += 2;
-        if (special == SP_MUL2) {
+        if (e->special == SP_MUL2) {
             unsigned char i;
             emitExpr(e->left);
             comment("#%c %ld d=%d -", e->right->type, e->right->v.l, e->right->demand);
