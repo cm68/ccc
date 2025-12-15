@@ -71,6 +71,13 @@ calcDemand(struct expr *e)
         goto done;
     }
 
+    /* = V #const -> ld (iy+n),lo; ld (iy+n+1),hi; store const to local */
+    if (op == '=' && e->left->op == 'V' && e->right->op == '#') {
+        e->special = SP_STCONST;
+        demand = 0;
+        goto done;
+    }
+
     /* (s Rs reg -> inc reg; pre-inc/dec of regvar, incr <= 4 */
     if ((op == '(' || op == '{') && e->left->op == 'R' && count <= 4) {
         e->special = (op == '(') ? SP_INCR : SP_DECR;
@@ -116,8 +123,8 @@ calcDemand(struct expr *e)
         goto done;
     }
 
-    /* +p $sym #const -> ld hl,sym+offset */
-    if (op == '+' && e->type == T_PTR &&
+    /* +s $sym #const -> ld hl,sym+offset */
+    if (op == '+' && ISWORD(e->type) &&
         e->left->op == '$' && e->right->op == '#' && e->left->sym) {
         e->special = SP_SYMOFS;
         e->sym = e->left->sym;          /* steal symbol from child */
@@ -127,8 +134,8 @@ calcDemand(struct expr *e)
         goto done;
     }
 
-    /* +p Mp[Rp bc] #const -> ld hl,const; add hl,bc */
-    if (op == '+' && e->type == T_PTR &&
+    /* +s Ms[Rs bc] #const -> ld hl,const; add hl,bc */
+    if (op == '+' && ISWORD(e->type) &&
         e->left->op == 'M' && e->left->left->op == 'R' &&
         e->left->left->aux == R_BC && e->right->op == '#') {
         e->special = SP_ADDBC;
@@ -137,9 +144,9 @@ calcDemand(struct expr *e)
         goto done;
     }
 
-    /* M[+p Mp[Rp(ix)] #ofs] -> (ix+ofs); IX-relative deref */
-    if (op == 'M' && e->left->op == '+' && e->left->type == T_PTR &&
-        e->left->left->op == 'M' && e->left->left->type == T_PTR &&
+    /* M[+s Ms[Rs(ix)] #ofs] -> (ix+ofs); IX-relative deref */
+    if (op == 'M' && e->left->op == '+' && ISWORD(e->left->type) &&
+        e->left->left->op == 'M' && ISWORD(e->left->left->type) &&
         e->left->left->left->op == 'R' && e->left->left->left->aux == R_IX &&
         e->left->right->op == '#') {
         e->special = SP_IXOD;
@@ -149,8 +156,8 @@ calcDemand(struct expr *e)
         goto done;
     }
 
-    /* M[+p $sym #const] -> ld hl,(sym+offset) */
-    if (op == 'M' && e->left->op == '+' && e->left->type == T_PTR &&
+    /* M[+s $sym #const] -> ld hl,(sym+offset) */
+    if (op == 'M' && e->left->op == '+' && ISWORD(e->left->type) &&
         e->left->left->op == '$' && e->left->right->op == '#' &&
         e->left->left->sym) {
         e->special = SP_SYMOFD;
@@ -206,8 +213,8 @@ calcDemand(struct expr *e)
         if (n > 0 && (n & (n - 1)) == 0) {
             struct expr *l = e->left;
             /* check (ix+ofs) pattern on left */
-            if (l->op == 'M' && l->left->op == '+' && l->left->type == T_PTR &&
-                l->left->left->op == 'M' && l->left->left->type == T_PTR &&
+            if (l->op == 'M' && l->left->op == '+' && ISWORD(l->left->type) &&
+                l->left->left->op == 'M' && ISWORD(l->left->left->type) &&
                 l->left->left->left->op == 'R' && l->left->left->left->aux == R_IX &&
                 l->left->right->op == '#') {
                 unsigned char bit = 0;
@@ -246,8 +253,8 @@ calcDemand(struct expr *e)
          op == 'L' || op == 'g') && ISBYTE(e->type)) {
         struct expr *l = e->left, *r = e->right;
         /* check if right is the (ix+d) pattern */
-        if (r->op == 'M' && r->left->op == '+' && r->left->type == T_PTR &&
-            r->left->left->op == 'M' && r->left->left->type == T_PTR &&
+        if (r->op == 'M' && r->left->op == '+' && ISWORD(r->left->type) &&
+            r->left->left->op == 'M' && ISWORD(r->left->left->type) &&
             r->left->left->left->op == 'R' && r->left->left->left->aux == R_IX &&
             r->left->right->op == '#') {
             e->special = SP_CMPIX;
@@ -257,8 +264,8 @@ calcDemand(struct expr *e)
             goto done;
         }
         /* check if left is the (ix+d) pattern */
-        if (l->op == 'M' && l->left->op == '+' && l->left->type == T_PTR &&
-            l->left->left->op == 'M' && l->left->left->type == T_PTR &&
+        if (l->op == 'M' && l->left->op == '+' && ISWORD(l->left->type) &&
+            l->left->left->op == 'M' && ISWORD(l->left->left->type) &&
             l->left->left->left->op == 'R' && l->left->left->left->aux == R_IX &&
             l->left->right->op == '#') {
             e->special = SP_CMPIX;
@@ -268,8 +275,8 @@ calcDemand(struct expr *e)
             goto done;
         }
         /* check if right is (iy+d) pattern */
-        if (r->op == 'M' && r->left->op == '+' && r->left->type == T_PTR &&
-            r->left->left->op == 'M' && r->left->left->type == T_PTR &&
+        if (r->op == 'M' && r->left->op == '+' && ISWORD(r->left->type) &&
+            r->left->left->op == 'M' && ISWORD(r->left->left->type) &&
             r->left->left->left->op == 'R' && r->left->left->left->aux == R_IY &&
             r->left->right->op == '#') {
             e->special = SP_CMPIY;
@@ -279,8 +286,8 @@ calcDemand(struct expr *e)
             goto done;
         }
         /* check if left is (iy+d) pattern */
-        if (l->op == 'M' && l->left->op == '+' && l->left->type == T_PTR &&
-            l->left->left->op == 'M' && l->left->left->type == T_PTR &&
+        if (l->op == 'M' && l->left->op == '+' && ISWORD(l->left->type) &&
+            l->left->left->op == 'M' && ISWORD(l->left->left->type) &&
             l->left->left->left->op == 'R' && l->left->left->left->aux == R_IY &&
             l->left->right->op == '#') {
             e->special = SP_CMPIY;
@@ -339,8 +346,8 @@ calcDemand(struct expr *e)
         goto done;
     }
 
-    /* = [+p #const Rp(ix/iy)] expr -> ld (ix+ofs),src or ld (iy+ofs),src */
-    if (op == '=' && (ISBYTE(e->type) || ISWORD(e->type)) && e->left->op == '+' && e->left->type == T_PTR) {
+    /* = [+s #const Rs(ix/iy)] expr -> ld (ix+ofs),src or ld (iy+ofs),src */
+    if (op == '=' && (ISBYTE(e->type) || ISWORD(e->type) || ISLONG(e->type)) && e->left->op == '+' && ISWORD(e->left->type)) {
         struct expr *l = e->left->left, *r = e->left->right;
         int ofs = 0, reg = 0;
         if (l->op == '#' && r->op == 'R' && (r->aux == R_IX || r->aux == R_IY)) {
@@ -358,8 +365,8 @@ calcDemand(struct expr *e)
         }
     }
 
-    /* =type [+p addr] [#const] -> ld (hl),n; store constant through computed ptr */
-    if (op == '=' && e->left->op == '+' && e->left->type == T_PTR &&
+    /* =type [+s addr] [#const] -> ld (hl),n; store constant through computed ptr */
+    if (op == '=' && e->left->op == '+' && ISWORD(e->left->type) &&
         e->right->op == '#') {
         e->special = SP_STCONST;
         demand = calcDemand(e->left);  /* compute pointer address */

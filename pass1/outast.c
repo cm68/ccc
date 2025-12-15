@@ -443,9 +443,10 @@ assignFrmOff(struct name *func)
 
 /*
  * Get size suffix for memory operations based on type
- * Returns: 'b' (byte), 's' (short/int), 'l' (long), 'p' (pointer),
+ * Returns: 'b' (byte), 's' (short/int), 'l' (long),
  * 'f' (float), 'd' (double), 'v' (void)
  * Uppercase B/S/L for unsigned types
+ * Pointers use 's' since they're 16-bit on Z80
  */
 static char
 typeSfx(struct type *t)
@@ -455,7 +456,7 @@ typeSfx(struct type *t)
 		return 's';  /* default to short */
 
 	if (t->flags & TF_POINTER)
-		return 'p';
+		return 's';  /* pointers are 16-bit like short */
 
 	/* Check primitive types by size */
 	if (t->size == 0)

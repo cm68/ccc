@@ -50,10 +50,13 @@ addLocal(char *name, char type, int reg, int off)
 struct sym *
 findLocal(char *name)
 {
-    unsigned char i;
-    for (i = 0; i < nlocals; i++) {
-        if (strcmp(locals[i].name, name) == 0)
-            return &locals[i];
+    unsigned char i = nlocals;
+    struct sym *s = locals;
+
+    while (i--) {
+        if (strcmp(s->name, name) == 0)
+            return s;
+        s++;
     }
     return 0;
 }
@@ -119,3 +122,7 @@ main(int argc, char **argv)
 
     return 0;
 }
+
+/*
+ * vim: tabstop=4 shiftwidth=4 expandtab:
+ */

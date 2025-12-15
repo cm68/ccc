@@ -86,18 +86,12 @@ parseExpr(void)
         advance();
         e = newExpr('M', type);
         e->left = parseExpr();
-        /* Collapse M[V] when types match - V already loads value */
-        if (e->left->op == 'V' && e->left->type == type) {
-            struct expr *v = e->left;
-            free(e);
-            return v;
-        }
-        /* Collapse M[R] when types match - register already holds value */
-        if (e->left->op == 'R' && e->left->type == type) {
-            struct expr *r = e->left;
-            free(e);
-            return r;
-        }
+        /* Note: M[V] and M[R] collapse disabled - can't distinguish pointer vars
+         * from short vars now that both use type 's'. Collapse was:
+         *   M[V] -> V when V type matches (V loads value directly)
+         *   M[R] -> R when R type matches (reg holds value directly)
+         * But for pointer vars, V/R holds an address, not the final value.
+         * Would need a pointer flag in sym table to safely collapse. */
         return e;
 
     case '=':  /* assign */

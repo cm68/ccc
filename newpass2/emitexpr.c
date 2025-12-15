@@ -604,6 +604,35 @@ emitPreIncDec(struct expr *e)
                 emit("push hl");
                 emit("exx");
             }
+        } else if (e->left->op == 'R' && e->left->aux == R_BC && ISWORD(e->type)) {
+            /* pre-inc/dec BC register variable */
+            comment("Rs %s bc", e->left->sym ? e->left->sym : "?");
+            comment("incr=%d", e->aux2);
+            if (e->aux2 <= 4) {
+                char *ins = (e->op == '(') ? "inc" : "dec";
+                unsigned char i;
+                for (i = 0; i < e->aux2; i++)
+                    emit("%s bc", ins);
+            } else {
+                emit("ld hl,%d", e->aux2);
+                if (e->op == '(')
+                    emit("add hl,bc");
+                else {
+                    emit("ex de,hl");
+                    emit("ld h,b");
+                    emit("ld l,c");
+                    emit("or a");
+                    emit("sbc hl,de");
+                }
+                emit("ld b,h");
+                emit("ld c,l");
+            }
+            if (e->dest == R_HL) {
+                emit("ld h,b");
+                emit("ld l,c");
+            } else if (e->dest == R_TOS) {
+                emit("push bc");
+            }
         } else if (ISWORD(e->type) && e->aux2 <= 4) {
             char *ins = (e->op == '(') ? "inc" : "dec";
             unsigned char i;
@@ -885,7 +914,7 @@ emitPrimary(struct expr *e)
                 emit("ld de,%d", e->v.s & 0xffff);
         } else if (ISBYTE(e->type)) {
             emit("ld %s,%d", regnames[e->dest] ? regnames[e->dest] : "a", e->v.c & 0xff);
-        } else if (ISWORD(e->type) || e->type == T_PTR) {
+        } else if (ISWORD(e->type)) {
             emit("ld %s,%d", regnames[e->dest] ? regnames[e->dest] : "hl", e->v.s & 0xffff);
         } else if (ISLONG(e->type)) {
             emit("ld hl,%d", e->v.s & 0xffff);
@@ -1001,9 +1030,15 @@ emitExpr(struct expr *e)
             emit("pop ix");
         } else if (e->left->op == 'R' && e->left->aux == R_BC) {
             comment("R%c %s bc d=0 -", e->left->type, e->left->sym ? e->left->sym : "?");
-            emitExpr(e->right);
-            emit("ld b,h");
-            emit("ld c,l");
+            if (e->right->op == '#') {
+                emit("ld bc,%d", e->right->v.s & 0xffff);
+            } else if (e->right->op == '$') {
+                emit("ld bc,%s", e->right->sym);
+            } else {
+                emitExpr(e->right);
+                emit("ld b,h");
+                emit("ld c,l");
+            }
         } else if (e->left->op == 'R' && e->left->aux == R_B) {
             comment("Rb %s b", e->left->sym ? e->left->sym : "?");
             if (e->special == SP_STCONST && e->right->op == '#') {
@@ -1026,7 +1061,7 @@ emitExpr(struct expr *e)
             emitExpr(e->right);
             if (ISBYTE(e->type)) {
                 emit("ld (%s),a", e->left->sym);
-            } else if (ISWORD(e->type) || e->type == T_PTR) {
+            } else if (ISWORD(e->type)) {
                 emit("ld (%s),hl", e->left->sym);
             } else if (ISLONG(e->type)) {
                 /* long: HLHL' - store 4 bytes to symbol */
@@ -1039,63 +1074,105 @@ emitExpr(struct expr *e)
             /* assign to local variable via (iy+offset) */
             char ofs = e->left->aux2;
             comment("V%c off=%d", e->left->type, ofs);
-            emitExpr(e->right);
-            if (ISBYTE(e->type)) {
-                emit("ld (iy%o),a", ofs);
-            } else if (ISWORD(e->type) || e->type == T_PTR) {
-                emit("ld (iy%o),l", ofs);
-                emit("ld (iy%o),h", ofs + 1);
-            } else if (ISLONG(e->type)) {
-                /* long: HLHL' - store 4 bytes */
-                emit("ld (iy%o),l", ofs);
-                emit("ld (iy%o),h", ofs + 1);
-                emit("exx");
-                emit("ld (iy%o),l", ofs + 2);
-                emit("ld (iy%o),h", ofs + 3);
-                emit("exx");
-            }
-        } else if (e->special == SP_STIX) {
-            /* store to (ix+ofs) or (iy+ofs) */
-            char *rn = (e->aux == R_IX) ? "ix" : "iy";
-            if (ISBYTE(e->type)) {
-                if (e->right->op == '#') {
-                    comment("STIX %ld (%s%+d)", e->right->v.l, rn, e->offset);
-                    emit("ld (%s%o),%d", rn, e->offset, (int)(e->right->v.c & 0xff));
-                } else {
-                    comment("STIX (%s%+d),a", rn, e->offset);
-                    emitExpr(e->right);  /* result in A for byte */
-                    emit("ld (%s%o),a", rn, e->offset);
+            if (e->special == SP_STCONST && e->right->op == '#') {
+                /* store constant directly */
+                long val = e->right->v.l;
+                if (ISBYTE(e->type)) {
+                    emit("ld (iy%o),%d", ofs, (int)(val & 0xff));
+                } else if (ISWORD(e->type)) {
+                    if (val == 0) {
+                        emit("xor a");
+                        emit("ld (iy%o),a", ofs);
+                        emit("ld (iy%o),a", ofs + 1);
+                    } else {
+                        emit("ld (iy%o),%d", ofs, (int)(val & 0xff));
+                        emit("ld (iy%o),%d", ofs + 1, (int)((val >> 8) & 0xff));
+                    }
+                } else if (ISLONG(e->type)) {
+                    emit("ld (iy%o),%d", ofs, (int)(val & 0xff));
+                    emit("ld (iy%o),%d", ofs + 1, (int)((val >> 8) & 0xff));
+                    emit("ld (iy%o),%d", ofs + 2, (int)((val >> 16) & 0xff));
+                    emit("ld (iy%o),%d", ofs + 3, (int)((val >> 24) & 0xff));
                 }
             } else {
-                /* word store */
-                if (e->right->op == '#') {
-                    int val = e->right->v.s & 0xffff;
-                    comment("STIX %d (%s%+d)", val, rn, e->offset);
-                    emit("ld (%s%o),%d", rn, e->offset, val & 0xff);
-                    emit("ld (%s%o),%d", rn, e->offset + 1, (val >> 8) & 0xff);
+                emitExpr(e->right);
+                if (ISBYTE(e->type)) {
+                    emit("ld (iy%o),a", ofs);
+                } else if (ISWORD(e->type)) {
+                    emit("ld (iy%o),l", ofs);
+                    emit("ld (iy%o),h", ofs + 1);
+                } else if (ISLONG(e->type)) {
+                    /* long: HLHL' - store 4 bytes */
+                    emit("ld (iy%o),l", ofs);
+                    emit("ld (iy%o),h", ofs + 1);
+                    emit("exx");
+                    emit("ld (iy%o),l", ofs + 2);
+                    emit("ld (iy%o),h", ofs + 3);
+                    emit("exx");
+                }
+            }
+        } else if (e->special == SP_STIX) {
+            /* store to (ix+ofs) or (iy+ofs) - byte, word, or long */
+            char *rn = (e->aux == R_IX) ? "ix" : "iy";
+            int ofs = e->offset;
+            if (e->right->op == '#') {
+                long val = e->right->v.l;
+                comment("STIX %ld (%s%+d)", val, rn, ofs);
+                if (val == 0 && !ISBYTE(e->type)) {
+                    emit("xor a");
+                    emit("ld (%s%o),a", rn, ofs);
+                    emit("ld (%s%o),a", rn, ofs + 1);
+                    if (ISLONG(e->type)) {
+                        emit("ld (%s%o),a", rn, ofs + 2);
+                        emit("ld (%s%o),a", rn, ofs + 3);
+                    }
+                } else if (ISBYTE(e->type)) {
+                    emit("ld (%s%o),%d", rn, ofs, (int)(val & 0xff));
+                } else if (ISWORD(e->type)) {
+                    emit("ld (%s%o),%d", rn, ofs, (int)(val & 0xff));
+                    emit("ld (%s%o),%d", rn, ofs + 1, (int)((val >> 8) & 0xff));
                 } else {
-                    comment("STIX (%s%+d),hl", rn, e->offset);
-                    emitExpr(e->right);  /* result in HL for word */
-                    emit("ld (%s%o),l", rn, e->offset);
-                    emit("ld (%s%o),h", rn, e->offset + 1);
+                    emit("ld (%s%o),%d", rn, ofs, (int)(val & 0xff));
+                    emit("ld (%s%o),%d", rn, ofs + 1, (int)((val >> 8) & 0xff));
+                    emit("ld (%s%o),%d", rn, ofs + 2, (int)((val >> 16) & 0xff));
+                    emit("ld (%s%o),%d", rn, ofs + 3, (int)((val >> 24) & 0xff));
+                }
+            } else {
+                emitExpr(e->right);
+                if (ISBYTE(e->type)) {
+                    comment("STIX (%s%+d),a", rn, ofs);
+                    emit("ld (%s%o),a", rn, ofs);
+                } else if (ISWORD(e->type)) {
+                    comment("STIX (%s%+d),hl", rn, ofs);
+                    emit("ld (%s%o),l", rn, ofs);
+                    emit("ld (%s%o),h", rn, ofs + 1);
+                } else {
+                    comment("STIX (%s%+d),hlhl'", rn, ofs);
+                    emit("ld (%s%o),l", rn, ofs);
+                    emit("ld (%s%o),h", rn, ofs + 1);
+                    emit("exx");
+                    emit("ld (%s%o),l", rn, ofs + 2);
+                    emit("ld (%s%o),h", rn, ofs + 3);
+                    emit("exx");
                 }
             }
         } else if (e->special == SP_STCONST) {
             /* store constant through HL: ld (hl),n; inc hl; ld (hl),n */
             long val = e->right->v.l;
             comment("STCONST %ld", val);
-            /* e->left is M[addr], $global, or +p - get storage address in HL */
+            /* e->left is M[addr], $global, or +s - get storage address in HL */
             if (e->left->op == 'M') {
-                /* Need to get storage address: emit child of M, then deref if pointer */
+                /* Need to get storage address: emit child of M, then deref if global ptr */
                 emitExpr(e->left->left);
-                if (e->left->type == T_PTR) {
-                    /* M pointer: child gave address of ptr, need ptr value */
+                /* For global ptr ($), emitExpr gives address of ptr, need to load ptr value.
+                 * For local var (V), emitExpr already loads the value (the ptr itself). */
+                if (ISWORD(e->left->type) && e->left->left->op == '$') {
+                    /* M[$global] pointer: child gave address of ptr, need ptr value */
                     emit("ld a,(hl)");
                     emit("inc hl");
                     emit("ld h,(hl)");
                     emit("ld l,a");
                 }
-                /* else: M of non-ptr means child already gives storage addr */
             } else if (e->left->op == '$') {
                 /* global symbol: load address directly */
                 emit("ld hl,%s", e->left->sym);
@@ -1125,7 +1202,7 @@ emitExpr(struct expr *e)
             emitExpr(e->right); /* value to HL (or A for byte) */
             if (ISBYTE(e->type)) {
                 emit("ld (de),a");
-            } else if (ISWORD(e->type) || e->type == T_PTR) {
+            } else if (ISWORD(e->type)) {
                 emit("ex de,hl");
                 emit("ld (hl),e");
                 emit("inc hl");
@@ -1148,7 +1225,7 @@ emitExpr(struct expr *e)
             if (ISBYTE(e->type)) {
                 /* byte value is already in A from emitExpr */
                 emit("ld (de),a");
-            } else if (ISWORD(e->type) || e->type == T_PTR) {
+            } else if (ISWORD(e->type)) {
                 emit("ex de,hl");  /* addr back to HL, value to DE */
                 emit("ld (hl),e");
                 emit("inc hl");
@@ -1229,7 +1306,7 @@ emitExpr(struct expr *e)
             /* emit condition */
             emitExpr(e->left);
             /* test condition */
-            if (ISWORD(e->left->type) || e->left->type == T_PTR) {
+            if (ISWORD(e->left->type)) {
                 emit("ld a,h");
                 emit("or l");
             } else {
@@ -1328,7 +1405,7 @@ emitExpr(struct expr *e)
                 emitExpr(e->right);
                 emitExpr(e->left);
             }
-            if (ISWORD(e->type) || e->type == T_PTR) {
+            if (ISWORD(e->type)) {
                 emit("add hl,de");
                 if (e->dest == R_TOS)
                     emit("push hl");
@@ -1349,7 +1426,7 @@ emitExpr(struct expr *e)
         indent += 2;
         emitExpr(e->left);
         emitExpr(e->right);
-        if (ISWORD(e->type) || e->type == T_PTR) {
+        if (ISWORD(e->type)) {
             /* Need HL = left - right. Check where left ended up */
             if (e->left->dest == R_DE) {
                 emit("ex de,hl");  /* swap: left to HL, right to DE */
@@ -1646,7 +1723,7 @@ emitExpr(struct expr *e)
             /* need actual 0/1 value: 1 if input is 0, else 0 */
             int lbl = labelCnt++;
             emitExpr(e->left);
-            if (ISWORD(e->left->type) || e->left->type == T_PTR) {
+            if (ISWORD(e->left->type)) {
                 emit("ld a,h");
                 emit("or l");
             } else {
@@ -1727,7 +1804,7 @@ emitExpr(struct expr *e)
             int lbl = labelCnt++;
             emitExpr(e->left);
             /* test left and short-circuit if false */
-            if (ISWORD(e->left->type) || e->left->type == T_PTR) {
+            if (ISWORD(e->left->type)) {
                 emit("ld a,h");
                 emit("or l");
             } else {
@@ -1742,7 +1819,7 @@ emitExpr(struct expr *e)
             int lbl = labelCnt++;
             emitExpr(e->left);
             /* test left */
-            if (ISWORD(e->left->type) || e->left->type == T_PTR) {
+            if (ISWORD(e->left->type)) {
                 emit("ld a,h");
                 emit("or l");
             } else {
@@ -1751,7 +1828,7 @@ emitExpr(struct expr *e)
             emit("jp z,lj%d_%d", lbl, fnIndex);  /* left false -> result 0 */
             emitExpr(e->right);
             /* test right */
-            if (ISWORD(e->right->type) || e->right->type == T_PTR) {
+            if (ISWORD(e->right->type)) {
                 emit("ld a,h");
                 emit("or l");
             } else {
@@ -1776,7 +1853,7 @@ emitExpr(struct expr *e)
             int lbl = labelCnt++;
             emitExpr(e->left);
             /* test left and short-circuit if true */
-            if (ISWORD(e->left->type) || e->left->type == T_PTR) {
+            if (ISWORD(e->left->type)) {
                 emit("ld a,h");
                 emit("or l");
             } else {
@@ -1791,7 +1868,7 @@ emitExpr(struct expr *e)
             int lbl = labelCnt++;
             emitExpr(e->left);
             /* test left */
-            if (ISWORD(e->left->type) || e->left->type == T_PTR) {
+            if (ISWORD(e->left->type)) {
                 emit("ld a,h");
                 emit("or l");
             } else {
@@ -1800,7 +1877,7 @@ emitExpr(struct expr *e)
             emit("jp nz,lh%d_%d", lbl, fnIndex);  /* left true -> result 1 */
             emitExpr(e->right);
             /* test right */
-            if (ISWORD(e->right->type) || e->right->type == T_PTR) {
+            if (ISWORD(e->right->type)) {
                 emit("ld a,h");
                 emit("or l");
             } else {
