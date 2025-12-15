@@ -13,10 +13,11 @@ void emitExpr(struct expr *e);
 static void
 emitCompare(struct expr *e)
 {
+    unsigned char special = e->special;
     comment("%c%c d=%d %s%s [", e->op, e->type, e->demand,
         regnames[e->dest] ? regnames[e->dest] : "-", e->cond ? " C" : "");
     indent += 2;
-    if (e->special == SP_CMPIX) {
+    if (special == SP_CMPIX) {
         /* byte cmp with (ix+d) */
         comment("CMPIX ofs=%d side=%d", e->offset, e->aux2);
         if (e->aux2 == 0)
@@ -26,7 +27,7 @@ emitCompare(struct expr *e)
         emit("cp (ix%o)", e->offset);
         if (!e->cond)
             goto cmpresult;
-    } else if (e->special == SP_CMPIY) {
+    } else if (special == SP_CMPIY) {
         /* byte cmp with (iy+d) */
         comment("CMPIY ofs=%d side=%d", e->offset, e->aux2);
         if (e->aux2 == 0)
@@ -36,7 +37,7 @@ emitCompare(struct expr *e)
         emit("cp (iy%o)", e->offset);
         if (!e->cond)
             goto cmpresult;
-    } else if (e->special == SP_CMPHL) {
+    } else if (special == SP_CMPHL) {
         /* byte cmp with (hl) */
         struct expr *simple = e->aux2 == 0 ? e->left : e->right;
         struct expr *complex = e->aux2 == 0 ? e->right : e->left;
@@ -56,7 +57,7 @@ emitCompare(struct expr *e)
         emit("cp (hl)");
         if (!e->cond)
             goto cmpresult;
-    } else if (e->special == SP_SIGN) {
+    } else if (special == SP_SIGN) {
         /* sign test: bit 7 of high byte */
         comment("SIGN $%s ofs=%d", e->sym ? e->sym : "?", e->offset);
         if (e->offset > 0)
@@ -71,7 +72,7 @@ emitCompare(struct expr *e)
             emit("inc a");
             emit("sg%d_%d:", lbl, fnIndex);
         }
-    } else if (e->special == SP_SIGNREG) {
+    } else if (special == SP_SIGNREG) {
         /* sign test regvar BC: bit 7,b */
         comment("SIGNREG bc");
         emit("bit 7,b");
@@ -144,7 +145,7 @@ emitCompare(struct expr *e)
         }
     }
 cmpresult:
-    if (!e->cond && e->special != SP_SIGN && e->special != SP_SIGNREG) {
+    if (!e->cond && special != SP_SIGN && special != SP_SIGNREG) {
         switch (e->op) {
         case 'Q':  /* == */
             emit("ld a,0");
