@@ -17,6 +17,7 @@ newExpr(char op, char type)
     struct expr *e = malloc(sizeof(struct expr));
     e->op = op;
     e->type = type;
+    e->size = TSIZE(type);
     e->left = e->right = &sentinel;
     e->v.l = 0;
     e->sym = 0;
@@ -337,7 +338,7 @@ dumpStmt(void)
             cond = parseExpr();
             cond->cond = 1;
             calcDemand(cond);
-            assignDest(cond, ISBYTE(cond->type) ? R_A : R_HL);
+            assignDest(cond, cond->size == 1 ? R_A : R_HL);
             emitExpr(cond);
             special = cond->special;
             {
@@ -442,7 +443,7 @@ dumpStmt(void)
             struct expr *e = parseExpr();
             e->unused = 1;  /* result not used */
             calcDemand(e);
-            assignDest(e, ISBYTE(e->type) ? R_A : R_HL);
+            assignDest(e, e->size == 1 ? R_A : R_HL);
             comment("EXPR [");
             indent += 2;
             emitExpr(e);
@@ -458,7 +459,7 @@ dumpStmt(void)
             if (hasVal) {
                 struct expr *e = parseExpr();
                 calcDemand(e);
-                assignDest(e, ISBYTE(e->type) ? R_A : R_HL);
+                assignDest(e, e->size == 1 ? R_A : R_HL);
                 comment("RETURN [");
                 indent += 2;
                 emitExpr(e);
@@ -493,7 +494,7 @@ dumpStmt(void)
             indent += 2;
             e = parseExpr();
             calcDemand(e);
-            assignDest(e, ISBYTE(e->type) ? R_A : R_HL);
+            assignDest(e, e->size == 1 ? R_A : R_HL);
             emitExpr(e);
             freeExpr(e);
             /* Cases are statements, parsed via dumpStmt */
@@ -512,7 +513,7 @@ dumpStmt(void)
             indent += 2;
             e = parseExpr();
             calcDemand(e);
-            assignDest(e, ISBYTE(e->type) ? R_A : R_HL);
+            assignDest(e, e->size == 1 ? R_A : R_HL);
             emitExpr(e);
             freeExpr(e);
             for (i = 0; i < nstmt; i++)
@@ -857,3 +858,6 @@ parseAst(void)
         }
     }
 }
+/*
+ * vim: tabstop=4 shiftwidth=4 expandtab:
+ */

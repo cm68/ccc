@@ -89,7 +89,7 @@ emitCompare(struct expr *e)
         if (leftDeeper) {
             emitExpr(e->left);
             if (ISBYTE(ctype)) {
-                if (ISWORD(e->left->type))
+                if (e->left->size == 2)
                     emit("ld a,l");
             } else if (ISWORD(ctype)) {
                 emit("ex de,hl");
@@ -128,7 +128,7 @@ emitCompare(struct expr *e)
                 emit("ex de,hl");
             emitExpr(e->left);
             if (ISBYTE(ctype)) {
-                if (ISWORD(e->left->type))
+                if (e->left->size == 2)
                     emit("ld a,l");
                 emit("cp e");
             } else if (ISWORD(ctype)) {
@@ -197,7 +197,7 @@ emitCmpArith(struct expr *e)
     comment("%c%c d=%d %s%s [", e->op, e->type, e->demand,
         regnames[e->dest] ? regnames[e->dest] : "-", e->unused ? " U" : "");
     indent += 2;
-    if (e->left->op == 'R' && ISBYTE(e->type)) {
+    if (e->left->op == 'R' && e->size == 1) {
         char *rname = (e->left->aux == R_B) ? "b" : "c";
         comment("R%c %s %s", e->left->type, e->left->sym ? e->left->sym : "?", rname);
         emitExpr(e->right);
@@ -223,7 +223,7 @@ emitCmpArith(struct expr *e)
             }
         }
         emit("ld %s,a", rname);
-    } else if (e->left->op == 'R' && ISWORD(e->type)) {
+    } else if (e->left->op == 'R' && e->size == 2) {
         unsigned char r = e->left->aux;
         comment("R%c %s %s", e->left->type, e->left->sym ? e->left->sym : "?", regnames[r]);
         emitExpr(e->right);
@@ -252,7 +252,7 @@ emitCmpArith(struct expr *e)
             emit("push hl");
             emit("pop ix");
         }
-    } else if (e->left->op == 'V' && ISBYTE(e->type)) {
+    } else if (e->left->op == 'V' && e->size == 1) {
         char ofs = e->left->aux2;
         comment("V%c off=%d", e->left->type, ofs);
         emit("ld a,(iy%o)", ofs);
@@ -277,7 +277,7 @@ emitCmpArith(struct expr *e)
             }
         }
         emit("ld (iy%o),a", ofs);
-    } else if (ISBYTE(e->type) && e->right->op == '#') {
+    } else if (e->size == 1 && e->right->op == '#') {
         unsigned char val = e->right->v.c;
         emitExpr(e->left);
         emit("ld a,(hl)");
@@ -289,10 +289,10 @@ emitCmpArith(struct expr *e)
         case 'X': emit("xor %d", val); break;
         }
         emit("ld (hl),a");
-    } else if (ISBYTE(e->type)) {
+    } else if (e->size == 1) {
         /* byte compound assign to computed address with non-const operand */
         emitExpr(e->right);  /* operand to A (via L if word) */
-        if (ISWORD(e->right->type))
+        if (e->right->size == 2)
             emit("ld a,l");
         emit("ld e,a");      /* save operand in E */
         emitExpr(e->left);   /* address to HL */
@@ -305,7 +305,7 @@ emitCmpArith(struct expr *e)
         case 'X': emit("xor e"); break;
         }
         emit("ld (hl),a");
-    } else if (e->left->op == 'V' && ISWORD(e->type)) {
+    } else if (e->left->op == 'V' && e->size == 2) {
         char ofs = e->left->aux2;
         comment("V%c off=%d", e->left->type, ofs);
         emitExpr(e->right);
@@ -324,7 +324,7 @@ emitCmpArith(struct expr *e)
         }
         emit("ld (iy%o),l", ofs);
         emit("ld (iy%o),h", ofs + 1);
-    } else if (e->left->op == 'V' && ISLONG(e->type) && e->op == 'P') {
+    } else if (e->left->op == 'V' && e->size == 4 && e->op == 'P') {
         char ofs = e->left->aux2;
         comment("V%c off=%d", e->left->type, ofs);
         emitExpr(e->right);
@@ -348,7 +348,7 @@ emitCmpArith(struct expr *e)
         emit("ld (iy%o),l", ofs + 2);
         emit("ld (iy%o),h", ofs + 3);
         emit("exx");
-    } else if (ISWORD(e->type) && e->right->op == '#') {
+    } else if (e->size == 2 && e->right->op == '#') {
         unsigned val = e->right->v.s & 0xffff;
         emitExpr(e->left);
         emit("ld e,(hl)");
@@ -370,7 +370,7 @@ emitCmpArith(struct expr *e)
         emit("ld (hl),e");
         emit("inc hl");
         emit("ld (hl),d");
-    } else if (ISWORD(e->type)) {
+    } else if (e->size == 2) {
         emitExpr(e->right);
         emit("push hl");
         emitExpr(e->left);
@@ -414,7 +414,7 @@ emitCmpShift(struct expr *e)
     comment("%c%c d=%d %s%s [", e->op, e->type, e->demand,
         regnames[e->dest] ? regnames[e->dest] : "-", e->unused ? " U" : "");
     indent += 2;
-    if (e->left->op == 'R' && ISWORD(e->type) && e->right->op == '#') {
+    if (e->left->op == 'R' && e->size == 2 && e->right->op == '#') {
         /* word regvar <<= or >>= constant */
         unsigned char cnt = e->right->v.c & 0xf;
         comment("R%c %s bc", e->left->type, e->left->sym ? e->left->sym : "?");
@@ -434,7 +434,7 @@ emitCmpShift(struct expr *e)
         }
         emit("ld b,h");
         emit("ld c,l");
-    } else if (e->left->op == 'V' && ISLONG(e->type) && e->right->op == '#') {
+    } else if (e->left->op == 'V' && e->size == 4 && e->right->op == '#') {
         char ofs = e->left->aux2;
         unsigned char cnt = e->right->v.c & 0x1f;
         comment("V%c off=%d", e->left->type, ofs);
@@ -473,7 +473,7 @@ emitCmpMulDiv(struct expr *e)
     comment("%c%c d=%d %s%s [", e->op, e->type, e->demand,
         regnames[e->dest] ? regnames[e->dest] : "-", e->unused ? " U" : "");
     indent += 2;
-    if (e->left->op == 'R' && ISBYTE(e->left->type)) {
+    if (e->left->op == 'R' && e->left->size == 1) {
         char *rname = (e->left->aux == R_B) ? "b" : "c";
         comment("R%c %s %s", e->left->type, e->left->sym ? e->left->sym : "?", rname);
         emitExpr(e->right);
@@ -484,7 +484,7 @@ emitCmpMulDiv(struct expr *e)
         else
             emit("call __idivb");
         emit("ld %s,l", rname);
-    } else if (e->left->op == 'R' && ISWORD(e->left->type)) {
+    } else if (e->left->op == 'R' && e->left->size == 2) {
         unsigned char r = e->left->aux;
         comment("R%c %s %s", e->left->type, e->left->sym ? e->left->sym : "?", regnames[r]);
         emitExpr(e->right);
@@ -507,7 +507,7 @@ emitCmpMulDiv(struct expr *e)
             emit("push hl");
             emit("pop ix");
         }
-    } else if (e->left->op == 'V' && ISBYTE(e->type)) {
+    } else if (e->left->op == 'V' && e->size == 1) {
         char ofs = e->left->aux2;
         comment("V%c off=%d", e->left->type, ofs);
         emitExpr(e->right);
@@ -519,7 +519,7 @@ emitCmpMulDiv(struct expr *e)
             emit("call __idivb");
         emit("ld a,l");
         emit("ld (iy%o),a", ofs);
-    } else if (e->left->op == 'V' && ISWORD(e->type)) {
+    } else if (e->left->op == 'V' && e->size == 2) {
         char ofs = e->left->aux2;
         comment("V%c off=%d", e->left->type, ofs);
         emitExpr(e->right);
@@ -565,12 +565,12 @@ emitPreIncDec(struct expr *e)
         indent += 2;
         emitExpr(e->left);
         comment("incr=%d", e->aux2);
-        if (e->unused && ISBYTE(e->type) && e->aux2 <= 4) {
+        if (e->unused && e->size == 1 && e->aux2 <= 4) {
             char *ins = (e->op == '(') ? "inc" : "dec";
             unsigned char i;
             for (i = 0; i < e->aux2; i++)
                 emit("%s (hl)", ins);
-        } else if (e->left->op == 'V' && ISWORD(e->type) && e->aux2 <= 4) {
+        } else if (e->left->op == 'V' && e->size == 2 && e->aux2 <= 4) {
             char off = e->left->aux2;
             char *ins = (e->op == '(') ? "inc" : "dec";
             unsigned char i;
@@ -580,7 +580,7 @@ emitPreIncDec(struct expr *e)
             emit("ld (iy%o),h", off + 1);
             if (e->dest == R_TOS)
                 emit("push hl");
-        } else if (e->left->op == 'V' && ISLONG(e->type) && e->aux2 == 1) {
+        } else if (e->left->op == 'V' && e->size == 4 && e->aux2 == 1) {
             char off = e->left->aux2;
             if (e->op == '(') {
                 emit("inc hl");
@@ -604,7 +604,7 @@ emitPreIncDec(struct expr *e)
                 emit("push hl");
                 emit("exx");
             }
-        } else if (e->left->op == 'R' && e->left->aux == R_BC && ISWORD(e->type)) {
+        } else if (e->left->op == 'R' && e->left->aux == R_BC && e->size == 2) {
             /* pre-inc/dec BC register variable */
             comment("Rs %s bc", e->left->sym ? e->left->sym : "?");
             comment("incr=%d", e->aux2);
@@ -633,7 +633,7 @@ emitPreIncDec(struct expr *e)
             } else if (e->dest == R_TOS) {
                 emit("push bc");
             }
-        } else if (ISWORD(e->type) && e->aux2 <= 4) {
+        } else if (e->size == 2 && e->aux2 <= 4) {
             char *ins = (e->op == '(') ? "inc" : "dec";
             unsigned char i;
             emit("ld e,(hl)");
@@ -686,7 +686,7 @@ emitPostInc(struct expr *e)
         }
         for (i = 0; i < e->aux2; i++)
             emit("%s %s", ins, regnames[r]);
-    } else if (e->left->op == 'V' && ISWORD(e->type) && e->aux2 <= 4) {
+    } else if (e->left->op == 'V' && e->size == 2 && e->aux2 <= 4) {
         char off = e->left->aux2;
         char *ins = (e->op == ')') ? "inc" : "dec";
         unsigned char i;
@@ -700,7 +700,7 @@ emitPostInc(struct expr *e)
         emit("ld (iy%o),h", off + 1);
         if (!e->unused)
             emit("pop hl");
-    } else if (e->left->op == 'V' && ISBYTE(e->type) && e->aux2 <= 4) {
+    } else if (e->left->op == 'V' && e->size == 1 && e->aux2 <= 4) {
         char off = e->left->aux2;
         char *ins = (e->op == ')') ? "inc" : "dec";
         unsigned char i;
@@ -713,7 +713,7 @@ emitPostInc(struct expr *e)
         emit("ld (iy%o),a", off);
         if (!e->unused)
             emit("ld a,e");
-    } else if (e->left->op == '$' && ISWORD(e->type) && e->aux2 <= 4) {
+    } else if (e->left->op == '$' && e->size == 2 && e->aux2 <= 4) {
         char *ins = (e->op == ')') ? "inc" : "dec";
         unsigned char i;
         emitExpr(e->left);
@@ -735,7 +735,7 @@ emitPostInc(struct expr *e)
             emit("pop hl");
         if (e->dest == R_TOS && !e->unused)
             emit("push hl");
-    } else if (e->left->op == '$' && ISBYTE(e->type) && e->aux2 <= 4) {
+    } else if (e->left->op == '$' && e->size == 1 && e->aux2 <= 4) {
         char *ins = (e->op == ')') ? "inc" : "dec";
         unsigned char i;
         emitExpr(e->left);
@@ -750,7 +750,7 @@ emitPostInc(struct expr *e)
             emit("ld a,e");
         if (e->dest == R_TOS && !e->unused)
             emit("push af");
-    } else if (ISWORD(e->type) && e->aux2 <= 4) {
+    } else if (e->size == 2 && e->aux2 <= 4) {
         char *ins = (e->op == ')') ? "inc" : "dec";
         unsigned char i;
         emitExpr(e->left);
@@ -770,7 +770,7 @@ emitPostInc(struct expr *e)
         emit("ld (hl),d");
         if (!e->unused)
             emit("pop hl");
-    } else if (ISBYTE(e->type) && e->aux2 <= 4) {
+    } else if (e->size == 1 && e->aux2 <= 4) {
         char *ins = (e->op == ')') ? "inc" : "dec";
         unsigned char i;
         emitExpr(e->left);
@@ -804,9 +804,9 @@ emitDeref(struct expr *e)
         /* M[+p Rp(ix) #ofs] -> (ix+ofs) addressing */
         comment("(ix%+d)", e->offset);
         if (e->dest) {
-            if (ISBYTE(e->type)) {
+            if (e->size == 1) {
                 emit("ld a,(ix%o)", e->offset);
-            } else if (ISWORD(e->type)) {
+            } else if (e->size == 2) {
                 emit("ld l,(ix%o)", e->offset);
                 emit("ld h,(ix%o)", e->offset + 1);
             }
@@ -848,11 +848,11 @@ emitDeref(struct expr *e)
     } else {
         /* indirect: emit address, then deref */
         emitExpr(e->left);
-        if (ISBYTE(e->type)) {
+        if (e->size == 1) {
             emit("ld a,(hl)");
             if (e->dest == R_TOS)
                 emit("push af");
-        } else if (ISWORD(e->type)) {
+        } else if (e->size == 2) {
             if (e->dest == R_DE) {
                 emit("ld e,(hl)");
                 emit("inc hl");
@@ -865,7 +865,7 @@ emitDeref(struct expr *e)
                 if (e->dest == R_TOS)
                     emit("push hl");
             }
-        } else if (ISLONG(e->type)) {
+        } else if (e->size == 4) {
             emit("ld e,(hl)");
             emit("inc hl");
             emit("ld d,(hl)");
@@ -898,25 +898,25 @@ emitPrimary(struct expr *e)
         if (e->demand == 0)
             break;
         if (e->dest == R_TOS) {
-            if (ISBYTE(e->type)) {
+            if (e->size == 1) {
                 emit("ld a,%d", e->v.c & 0xff);
                 emit("push af");
-            } else if (ISWORD(e->type)) {
+            } else if (e->size == 2) {
                 emit("ld hl,%d", e->v.s & 0xffff);
                 emit("push hl");
             } else {
                 emit("XXXXXXXXX #tos");
             }
         } else if (e->dest == R_DE) {
-            if (ISBYTE(e->type))
+            if (e->size == 1)
                 emit("ld e,%d", e->v.c & 0xff);
             else
                 emit("ld de,%d", e->v.s & 0xffff);
-        } else if (ISBYTE(e->type)) {
+        } else if (e->size == 1) {
             emit("ld %s,%d", regnames[e->dest] ? regnames[e->dest] : "a", e->v.c & 0xff);
-        } else if (ISWORD(e->type)) {
+        } else if (e->size == 2) {
             emit("ld %s,%d", regnames[e->dest] ? regnames[e->dest] : "hl", e->v.s & 0xffff);
-        } else if (ISLONG(e->type)) {
+        } else if (e->size == 4) {
             emit("ld hl,%d", e->v.s & 0xffff);
             emit("exx");
             emit("ld hl,%d", (e->v.l >> 16) & 0xffff);
@@ -942,14 +942,14 @@ emitPrimary(struct expr *e)
                 rn[e->aux < 5 ? e->aux : 0], e->demand, regnames[e->dest] ? regnames[e->dest] : "-");
             if (e->demand == 0)
                 break;
-            if (ISBYTE(e->type)) {
+            if (e->size == 1) {
                 if (e->aux == R_B)
                     emit("ld a,b");
                 else if (e->aux == R_C)
                     emit("ld a,c");
                 if (e->dest == R_TOS)
                     emit("push af");
-            } else if (ISWORD(e->type)) {
+            } else if (e->size == 2) {
                 if (e->aux == R_BC) {
                     emit("ld h,b");
                     emit("ld l,c");
@@ -968,16 +968,16 @@ emitPrimary(struct expr *e)
             comment("V%c %s off=%d d=%d %s", e->type, e->sym ? e->sym : "?", off, e->demand, regnames[e->dest] ? regnames[e->dest] : "-");
             if (e->demand == 0)
                 break;
-            if (ISBYTE(e->type)) {
+            if (e->size == 1) {
                 emit("ld a,(iy%o)", off);
                 if (e->dest == R_TOS)
                     emit("push af");
-            } else if (ISWORD(e->type)) {
+            } else if (e->size == 2) {
                 emit("ld l,(iy%o)", off);
                 emit("ld h,(iy%o)", off + 1);
                 if (e->dest == R_TOS)
                     emit("push hl");
-            } else if (ISLONG(e->type)) {
+            } else if (e->size == 4) {
                 emit("ld l,(iy%o)", off);
                 emit("ld h,(iy%o)", off + 1);
                 emit("exx");
@@ -1059,11 +1059,11 @@ emitExpr(struct expr *e)
             /* assign to global symbol: emit value, then ld (sym),hl or ld (sym),a */
             comment("$%s", e->left->sym);
             emitExpr(e->right);
-            if (ISBYTE(e->type)) {
+            if (e->size == 1) {
                 emit("ld (%s),a", e->left->sym);
-            } else if (ISWORD(e->type)) {
+            } else if (e->size == 2) {
                 emit("ld (%s),hl", e->left->sym);
-            } else if (ISLONG(e->type)) {
+            } else if (e->size == 4) {
                 /* long: HLHL' - store 4 bytes to symbol */
                 emit("ld (%s),hl", e->left->sym);
                 emit("exx");
@@ -1077,9 +1077,9 @@ emitExpr(struct expr *e)
             if (e->special == SP_STCONST && e->right->op == '#') {
                 /* store constant directly */
                 long val = e->right->v.l;
-                if (ISBYTE(e->type)) {
+                if (e->size == 1) {
                     emit("ld (iy%o),%d", ofs, (int)(val & 0xff));
-                } else if (ISWORD(e->type)) {
+                } else if (e->size == 2) {
                     if (val == 0) {
                         emit("xor a");
                         emit("ld (iy%o),a", ofs);
@@ -1088,7 +1088,7 @@ emitExpr(struct expr *e)
                         emit("ld (iy%o),%d", ofs, (int)(val & 0xff));
                         emit("ld (iy%o),%d", ofs + 1, (int)((val >> 8) & 0xff));
                     }
-                } else if (ISLONG(e->type)) {
+                } else if (e->size == 4) {
                     emit("ld (iy%o),%d", ofs, (int)(val & 0xff));
                     emit("ld (iy%o),%d", ofs + 1, (int)((val >> 8) & 0xff));
                     emit("ld (iy%o),%d", ofs + 2, (int)((val >> 16) & 0xff));
@@ -1096,12 +1096,12 @@ emitExpr(struct expr *e)
                 }
             } else {
                 emitExpr(e->right);
-                if (ISBYTE(e->type)) {
+                if (e->size == 1) {
                     emit("ld (iy%o),a", ofs);
-                } else if (ISWORD(e->type)) {
+                } else if (e->size == 2) {
                     emit("ld (iy%o),l", ofs);
                     emit("ld (iy%o),h", ofs + 1);
-                } else if (ISLONG(e->type)) {
+                } else if (e->size == 4) {
                     /* long: HLHL' - store 4 bytes */
                     emit("ld (iy%o),l", ofs);
                     emit("ld (iy%o),h", ofs + 1);
@@ -1118,17 +1118,17 @@ emitExpr(struct expr *e)
             if (e->right->op == '#') {
                 long val = e->right->v.l;
                 comment("STIX %ld (%s%+d)", val, rn, ofs);
-                if (val == 0 && !ISBYTE(e->type)) {
+                if (val == 0 && e->size != 1) {
                     emit("xor a");
                     emit("ld (%s%o),a", rn, ofs);
                     emit("ld (%s%o),a", rn, ofs + 1);
-                    if (ISLONG(e->type)) {
+                    if (e->size == 4) {
                         emit("ld (%s%o),a", rn, ofs + 2);
                         emit("ld (%s%o),a", rn, ofs + 3);
                     }
-                } else if (ISBYTE(e->type)) {
+                } else if (e->size == 1) {
                     emit("ld (%s%o),%d", rn, ofs, (int)(val & 0xff));
-                } else if (ISWORD(e->type)) {
+                } else if (e->size == 2) {
                     emit("ld (%s%o),%d", rn, ofs, (int)(val & 0xff));
                     emit("ld (%s%o),%d", rn, ofs + 1, (int)((val >> 8) & 0xff));
                 } else {
@@ -1139,10 +1139,10 @@ emitExpr(struct expr *e)
                 }
             } else {
                 emitExpr(e->right);
-                if (ISBYTE(e->type)) {
+                if (e->size == 1) {
                     comment("STIX (%s%+d),a", rn, ofs);
                     emit("ld (%s%o),a", rn, ofs);
-                } else if (ISWORD(e->type)) {
+                } else if (e->size == 2) {
                     comment("STIX (%s%+d),hl", rn, ofs);
                     emit("ld (%s%o),l", rn, ofs);
                     emit("ld (%s%o),h", rn, ofs + 1);
@@ -1166,7 +1166,7 @@ emitExpr(struct expr *e)
                 emitExpr(e->left->left);
                 /* For global ptr ($), emitExpr gives address of ptr, need to load ptr value.
                  * For local var (V), emitExpr already loads the value (the ptr itself). */
-                if (ISWORD(e->left->type) && e->left->left->op == '$') {
+                if (e->left->size == 2 && e->left->left->op == '$') {
                     /* M[$global] pointer: child gave address of ptr, need ptr value */
                     emit("ld a,(hl)");
                     emit("inc hl");
@@ -1180,13 +1180,13 @@ emitExpr(struct expr *e)
                 /* left is address expression like +p, emit directly */
                 emitExpr(e->left);
             }
-            if (ISBYTE(e->type)) {
+            if (e->size == 1) {
                 emit("ld (hl),%d", (int)(val & 0xff));
-            } else if (ISWORD(e->type)) {
+            } else if (e->size == 2) {
                 emit("ld (hl),%d", (int)(val & 0xff));
                 emit("inc hl");
                 emit("ld (hl),%d", (int)((val >> 8) & 0xff));
-            } else if (ISLONG(e->type)) {
+            } else if (e->size == 4) {
                 emit("ld (hl),%d", (int)(val & 0xff));
                 emit("inc hl");
                 emit("ld (hl),%d", (int)((val >> 8) & 0xff));
@@ -1200,14 +1200,14 @@ emitExpr(struct expr *e)
             emitExpr(e->left);  /* address to HL, regvar incremented */
             emit("ex de,hl");   /* save address to DE */
             emitExpr(e->right); /* value to HL (or A for byte) */
-            if (ISBYTE(e->type)) {
+            if (e->size == 1) {
                 emit("ld (de),a");
-            } else if (ISWORD(e->type)) {
+            } else if (e->size == 2) {
                 emit("ex de,hl");
                 emit("ld (hl),e");
                 emit("inc hl");
                 emit("ld (hl),d");
-            } else if (ISLONG(e->type)) {
+            } else if (e->size == 4) {
                 emit("call __stl");  /* store long from HLHL' to (DE) */
             }
         } else if (e->left->op == '+' || e->left->op == 'M') {
@@ -1222,15 +1222,15 @@ emitExpr(struct expr *e)
                 emit("ex de,hl");   /* save address to DE */
                 emitExpr(e->right); /* value to HL (or A for byte) */
             }
-            if (ISBYTE(e->type)) {
+            if (e->size == 1) {
                 /* byte value is already in A from emitExpr */
                 emit("ld (de),a");
-            } else if (ISWORD(e->type)) {
+            } else if (e->size == 2) {
                 emit("ex de,hl");  /* addr back to HL, value to DE */
                 emit("ld (hl),e");
                 emit("inc hl");
                 emit("ld (hl),d");
-            } else if (ISLONG(e->type)) {
+            } else if (e->size == 4) {
                 /* long: addr in DE, value in HLHL' */
                 /* Save value, get addr to HL, store 4 bytes */
                 emit("push hl");     /* save low word */
@@ -1306,7 +1306,7 @@ emitExpr(struct expr *e)
             /* emit condition */
             emitExpr(e->left);
             /* test condition */
-            if (ISWORD(e->left->type)) {
+            if (e->left->size == 2) {
                 emit("ld a,h");
                 emit("or l");
             } else {
@@ -1405,15 +1405,15 @@ emitExpr(struct expr *e)
                 emitExpr(e->right);
                 emitExpr(e->left);
             }
-            if (ISWORD(e->type)) {
+            if (e->size == 2) {
                 emit("add hl,de");
                 if (e->dest == R_TOS)
                     emit("push hl");
-            } else if (ISBYTE(e->type)) {
+            } else if (e->size == 1) {
                 emit("add a,e");
                 if (e->dest == R_TOS)
                     emit("push af");
-            } else if (ISLONG(e->type)) {
+            } else if (e->size == 4) {
                 /* 32-bit add: HLHL' += DEDE' */
                 emit("call __ladd");
             }
@@ -1426,14 +1426,14 @@ emitExpr(struct expr *e)
         indent += 2;
         emitExpr(e->left);
         emitExpr(e->right);
-        if (ISWORD(e->type)) {
+        if (e->size == 2) {
             /* Need HL = left - right. Check where left ended up */
             if (e->left->dest == R_DE) {
                 emit("ex de,hl");  /* swap: left to HL, right to DE */
             }
             emit("or a");
             emit("sbc hl,de");
-        } else if (ISBYTE(e->type)) {
+        } else if (e->size == 1) {
             /* For byte: one is in A, other in E. Need A - E or E - A */
             if (e->left->dest == R_A) {
                 /* A has left, E has right. A = A - E. Good. */
@@ -1445,7 +1445,7 @@ emitExpr(struct expr *e)
                 emit("ld a,e");
                 emit("sub b");
             }
-        } else if (ISLONG(e->type)) {
+        } else if (e->size == 4) {
             /* 32-bit sub: HLHL' = DEDE' - HLHL' */
             emit("call __lsub");
         }
@@ -1461,20 +1461,20 @@ emitExpr(struct expr *e)
         } else {
             emitExpr(e->left);
             emitExpr(e->right);
-            if (ISBYTE(e->type)) {
+            if (e->size == 1) {
                 /* Check if left was SP_IXOD (didn't load to A) */
                 if (e->left->special == SP_IXOD) {
                     emit("ld a,(ix%o)", e->left->offset);
                 }
                 emit("and e");  /* A = A & E */
-            } else if (ISWORD(e->type)) {
+            } else if (e->size == 2) {
                 emit("ld a,l");
                 emit("and e");
                 emit("ld l,a");
                 emit("ld a,h");
                 emit("and d");
                 emit("ld h,a");
-            } else if (ISLONG(e->type)) {
+            } else if (e->size == 4) {
                 /* 32-bit AND: HLHL' &= DEDE' */
                 emit("call __land");
             }
@@ -1487,16 +1487,16 @@ emitExpr(struct expr *e)
         indent += 2;
         emitExpr(e->left);
         emitExpr(e->right);
-        if (ISBYTE(e->type)) {
+        if (e->size == 1) {
             emit("or e");  /* A = A | E */
-        } else if (ISWORD(e->type)) {
+        } else if (e->size == 2) {
             emit("ld a,l");
             emit("or e");
             emit("ld l,a");
             emit("ld a,h");
             emit("or d");
             emit("ld h,a");
-        } else if (ISLONG(e->type)) {
+        } else if (e->size == 4) {
             /* 32-bit OR: HLHL' |= DEDE' */
             emit("call __lor");
         }
@@ -1508,16 +1508,16 @@ emitExpr(struct expr *e)
         indent += 2;
         emitExpr(e->left);
         emitExpr(e->right);
-        if (ISBYTE(e->type)) {
+        if (e->size == 1) {
             emit("xor e");  /* A = A ^ E */
-        } else if (ISWORD(e->type)) {
+        } else if (e->size == 2) {
             emit("ld a,l");
             emit("xor e");
             emit("ld l,a");
             emit("ld a,h");
             emit("xor d");
             emit("ld h,a");
-        } else if (ISLONG(e->type)) {
+        } else if (e->size == 4) {
             /* 32-bit XOR: HLHL' ^= DEDE' */
             emit("call __lxor");
         }
@@ -1536,9 +1536,9 @@ emitExpr(struct expr *e)
         } else {
             /* non-power-of-2: call helper */
             /* Treat small constants (0-255) as bytes for efficiency */
-            unsigned char lbyte = ISBYTE(e->left->type) ||
+            unsigned char lbyte = e->left->size == 1 ||
                         (e->left->op == '#' && (e->left->v.l & ~0xff) == 0);
-            unsigned char rbyte = ISBYTE(e->right->type) ||
+            unsigned char rbyte = e->right->size == 1 ||
                         (e->right->op == '#' && (e->right->v.l & ~0xff) == 0);
             emitExpr(e->left);
             emitExpr(e->right);
@@ -1564,9 +1564,9 @@ emitExpr(struct expr *e)
         comment("%c%c d=%d %s [", e->op, e->type, e->demand, regnames[e->dest] ? regnames[e->dest] : "-");
         indent += 2;
         {
-            unsigned char lbyte = ISBYTE(e->left->type) ||
+            unsigned char lbyte = e->left->size == 1 ||
                         (e->left->op == '#' && (e->left->v.l & ~0xff) == 0);
-            unsigned char rbyte = ISBYTE(e->right->type) ||
+            unsigned char rbyte = e->right->size == 1 ||
                         (e->right->op == '#' && (e->right->v.l & ~0xff) == 0);
             emitExpr(e->left);
             emitExpr(e->right);
@@ -1595,13 +1595,13 @@ emitExpr(struct expr *e)
             /* constant shift count */
             unsigned char cnt = e->right->v.c & 0x1f;
             comment("#B %d", cnt);
-            if (ISBYTE(e->type)) {
+            if (e->size == 1) {
                 while (cnt--)
                     emit("add a,a");
-            } else if (ISWORD(e->type)) {
+            } else if (e->size == 2) {
                 while (cnt--)
                     emit("add hl,hl");
-            } else if (ISLONG(e->type)) {
+            } else if (e->size == 4) {
                 emit("ld a,%d", cnt);
                 emit("call __llshl");
             }
@@ -1621,15 +1621,15 @@ emitExpr(struct expr *e)
             /* constant shift count */
             unsigned char cnt = e->right->v.c & 0x1f;
             comment("#B %d", cnt);
-            if (ISBYTE(e->type)) {
+            if (e->size == 1) {
                 while (cnt--)
                     emit("sra a");
-            } else if (ISWORD(e->type)) {
+            } else if (e->size == 2) {
                 while (cnt--) {
                     emit("sra h");
                     emit("rr l");
                 }
-            } else if (ISLONG(e->type)) {
+            } else if (e->size == 4) {
                 emit("ld a,%d", cnt);
                 emit("call __lashr");
             }
@@ -1649,15 +1649,15 @@ emitExpr(struct expr *e)
             /* constant shift count */
             unsigned char cnt = e->right->v.c & 0x1f;
             comment("#B %d", cnt);
-            if (ISBYTE(e->type)) {
+            if (e->size == 1) {
                 while (cnt--)
                     emit("srl a");
-            } else if (ISWORD(e->type)) {
+            } else if (e->size == 2) {
                 while (cnt--) {
                     emit("srl h");
                     emit("rr l");
                 }
-            } else if (ISLONG(e->type)) {
+            } else if (e->size == 4) {
                 emit("ld a,%d", cnt);
                 emit("call __llshr");
             }
@@ -1673,9 +1673,9 @@ emitExpr(struct expr *e)
         comment("\\%c d=%d %s [", e->type, e->demand, regnames[e->dest] ? regnames[e->dest] : "-");
         indent += 2;
         emitExpr(e->left);
-        if (ISBYTE(e->type)) {
+        if (e->size == 1) {
             emit("neg");
-        } else if (ISWORD(e->type)) {
+        } else if (e->size == 2) {
             /* HL = -HL = 0 - HL */
             emit("xor a");
             emit("sub l");
@@ -1683,7 +1683,7 @@ emitExpr(struct expr *e)
             emit("sbc a,a");
             emit("sub h");
             emit("ld h,a");
-        } else if (ISLONG(e->type)) {
+        } else if (e->size == 4) {
             /* 32-bit negation: 0 - HLHL' */
             emit("call __lneg");
         }
@@ -1694,16 +1694,16 @@ emitExpr(struct expr *e)
         comment("~%c d=%d %s [", e->type, e->demand, regnames[e->dest] ? regnames[e->dest] : "-");
         indent += 2;
         emitExpr(e->left);
-        if (ISBYTE(e->type)) {
+        if (e->size == 1) {
             emit("cpl");
-        } else if (ISWORD(e->type)) {
+        } else if (e->size == 2) {
             emit("ld a,l");
             emit("cpl");
             emit("ld l,a");
             emit("ld a,h");
             emit("cpl");
             emit("ld h,a");
-        } else if (ISLONG(e->type)) {
+        } else if (e->size == 4) {
             emit("call __lcom");
         }
         indent -= 2;
@@ -1723,7 +1723,7 @@ emitExpr(struct expr *e)
             /* need actual 0/1 value: 1 if input is 0, else 0 */
             int lbl = labelCnt++;
             emitExpr(e->left);
-            if (ISWORD(e->left->type)) {
+            if (e->left->size == 2) {
                 emit("ld a,h");
                 emit("or l");
             } else {
@@ -1804,7 +1804,7 @@ emitExpr(struct expr *e)
             int lbl = labelCnt++;
             emitExpr(e->left);
             /* test left and short-circuit if false */
-            if (ISWORD(e->left->type)) {
+            if (e->left->size == 2) {
                 emit("ld a,h");
                 emit("or l");
             } else {
@@ -1819,7 +1819,7 @@ emitExpr(struct expr *e)
             int lbl = labelCnt++;
             emitExpr(e->left);
             /* test left */
-            if (ISWORD(e->left->type)) {
+            if (e->left->size == 2) {
                 emit("ld a,h");
                 emit("or l");
             } else {
@@ -1828,7 +1828,7 @@ emitExpr(struct expr *e)
             emit("jp z,lj%d_%d", lbl, fnIndex);  /* left false -> result 0 */
             emitExpr(e->right);
             /* test right */
-            if (ISWORD(e->right->type)) {
+            if (e->right->size == 2) {
                 emit("ld a,h");
                 emit("or l");
             } else {
@@ -1853,7 +1853,7 @@ emitExpr(struct expr *e)
             int lbl = labelCnt++;
             emitExpr(e->left);
             /* test left and short-circuit if true */
-            if (ISWORD(e->left->type)) {
+            if (e->left->size == 2) {
                 emit("ld a,h");
                 emit("or l");
             } else {
@@ -1868,7 +1868,7 @@ emitExpr(struct expr *e)
             int lbl = labelCnt++;
             emitExpr(e->left);
             /* test left */
-            if (ISWORD(e->left->type)) {
+            if (e->left->size == 2) {
                 emit("ld a,h");
                 emit("or l");
             } else {
@@ -1877,7 +1877,7 @@ emitExpr(struct expr *e)
             emit("jp nz,lh%d_%d", lbl, fnIndex);  /* left true -> result 1 */
             emitExpr(e->right);
             /* test right */
-            if (ISWORD(e->right->type)) {
+            if (e->right->size == 2) {
                 emit("ld a,h");
                 emit("or l");
             } else {
@@ -1938,3 +1938,6 @@ emitExpr(struct expr *e)
         break;
     }
 }
+/*
+ * vim: tabstop=4 shiftwidth=4 expandtab:
+ */

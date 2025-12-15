@@ -11,15 +11,24 @@
 unsigned char
 isSimpleByte(struct expr *e)
 {
+    unsigned char op;
     if (!e) return 0;
-    if (e->op == '#' && ISBYTE(e->type)) return 1;  /* constant */
-    if (e->op == 'R' && ISBYTE(e->type)) return 1;  /* regvar */
+    op = e->op;
+
+    if (e->size != 1)
+        return 0;
+
+    if (op == '#') return 1;  /* constant */
+    if (op == 'R') return 1;  /* regvar */
+
     /* Mb $sym - direct global byte */
-    if (e->op == 'M' && ISBYTE(e->type) && e->left->op == '$')
+    if (op == 'M' && e->left->op == '$')
         return 1;
+
     /* Mb Vb - stack byte via (iy+d) */
-    if (e->op == 'M' && ISBYTE(e->type) && e->left->op == 'V')
+    if (op == 'M' && e->left->op == 'V')
         return 1;
+
     return 0;
 }
 
@@ -47,7 +56,7 @@ calcDemand(struct expr *e)
     unsigned char demand;
     unsigned char op = e->op;
 
-    unsigned char size = TSIZE(e->type);
+    unsigned char size = e->size;
     unsigned char count = e->aux2;
 
     if (!op) return 0;  /* sentinel */
@@ -64,7 +73,7 @@ calcDemand(struct expr *e)
     }
 
     /* =b Rb #const -> ld b,n or ld c,n; direct byte regvar assign */
-    if (op == '=' && ISBYTE(e->type) && e->left->op == 'R' &&
+    if (op == '=' && e->size == 1 && e->left->op == 'R' &&
         (e->left->aux == R_B || e->left->aux == R_C) && e->right->op == '#') {
         e->special = SP_STCONST;
         demand = 0;
@@ -124,7 +133,7 @@ calcDemand(struct expr *e)
     }
 
     /* +s $sym #const -> ld hl,sym+offset */
-    if (op == '+' && ISWORD(e->type) &&
+    if (op == '+' && e->size == 2 &&
         e->left->op == '$' && e->right->op == '#' && e->left->sym) {
         e->special = SP_SYMOFS;
         e->sym = e->left->sym;          /* steal symbol from child */
@@ -135,7 +144,7 @@ calcDemand(struct expr *e)
     }
 
     /* +s Ms[Rs bc] #const -> ld hl,const; add hl,bc */
-    if (op == '+' && ISWORD(e->type) &&
+    if (op == '+' && e->size == 2 &&
         e->left->op == 'M' && e->left->left->op == 'R' &&
         e->left->left->aux == R_BC && e->right->op == '#') {
         e->special = SP_ADDBC;
@@ -145,8 +154,8 @@ calcDemand(struct expr *e)
     }
 
     /* M[+s Ms[Rs(ix)] #ofs] -> (ix+ofs); IX-relative deref */
-    if (op == 'M' && e->left->op == '+' && ISWORD(e->left->type) &&
-        e->left->left->op == 'M' && ISWORD(e->left->left->type) &&
+    if (op == 'M' && e->left->op == '+' && e->left->size == 2 &&
+        e->left->left->op == 'M' && e->left->left->size == 2 &&
         e->left->left->left->op == 'R' && e->left->left->left->aux == R_IX &&
         e->left->right->op == '#') {
         e->special = SP_IXOD;
@@ -157,7 +166,7 @@ calcDemand(struct expr *e)
     }
 
     /* M[+s $sym #const] -> ld hl,(sym+offset) */
-    if (op == 'M' && e->left->op == '+' && ISWORD(e->left->type) &&
+    if (op == 'M' && e->left->op == '+' && e->left->size == 2 &&
         e->left->left->op == '$' && e->left->right->op == '#' &&
         e->left->left->sym) {
         e->special = SP_SYMOFD;
@@ -207,14 +216,14 @@ calcDemand(struct expr *e)
     }
 
     /* &B M[(ix+ofs)] #pow2 -> bit n,(ix+ofs); bit test */
-    if (op == '&' && ISBYTE(e->type) && e->right->op == '#') {
+    if (op == '&' && e->size == 1 && e->right->op == '#') {
         long n = e->right->v.l & 0xff;
         /* check power of 2 (single bit) */
         if (n > 0 && (n & (n - 1)) == 0) {
             struct expr *l = e->left;
             /* check (ix+ofs) pattern on left */
-            if (l->op == 'M' && l->left->op == '+' && ISWORD(l->left->type) &&
-                l->left->left->op == 'M' && ISWORD(l->left->left->type) &&
+            if (l->op == 'M' && l->left->op == '+' && l->left->size == 2 &&
+                l->left->left->op == 'M' && l->left->left->size == 2 &&
                 l->left->left->left->op == 'R' && l->left->left->left->aux == R_IX &&
                 l->left->right->op == '#') {
                 unsigned char bit = 0;
@@ -234,7 +243,7 @@ calcDemand(struct expr *e)
         e->special = SP_SIGN;
         e->sym = e->left->left->sym;    /* steal symbol */
         e->left->left->sym = 0;
-        e->offset = TSIZE(e->left->type) - 1;  /* offset to high byte */
+        e->offset = e->left->size - 1;  /* offset to high byte */
         demand = 1;
         goto done;
     }
@@ -250,11 +259,11 @@ calcDemand(struct expr *e)
 
     /* cmpB left M[+p Mp[Rp(ix)] #ofs] -> cp (ix+d); byte cmp with (ix+d) */
     if ((op == '<' || op == '>' || op == 'Q' || op == 'n' ||
-         op == 'L' || op == 'g') && ISBYTE(e->type)) {
+         op == 'L' || op == 'g') && e->size == 1) {
         struct expr *l = e->left, *r = e->right;
         /* check if right is the (ix+d) pattern */
-        if (r->op == 'M' && r->left->op == '+' && ISWORD(r->left->type) &&
-            r->left->left->op == 'M' && ISWORD(r->left->left->type) &&
+        if (r->op == 'M' && r->left->op == '+' && r->left->size == 2 &&
+            r->left->left->op == 'M' && r->left->left->size == 2 &&
             r->left->left->left->op == 'R' && r->left->left->left->aux == R_IX &&
             r->left->right->op == '#') {
             e->special = SP_CMPIX;
@@ -264,8 +273,8 @@ calcDemand(struct expr *e)
             goto done;
         }
         /* check if left is the (ix+d) pattern */
-        if (l->op == 'M' && l->left->op == '+' && ISWORD(l->left->type) &&
-            l->left->left->op == 'M' && ISWORD(l->left->left->type) &&
+        if (l->op == 'M' && l->left->op == '+' && l->left->size == 2 &&
+            l->left->left->op == 'M' && l->left->left->size == 2 &&
             l->left->left->left->op == 'R' && l->left->left->left->aux == R_IX &&
             l->left->right->op == '#') {
             e->special = SP_CMPIX;
@@ -275,8 +284,8 @@ calcDemand(struct expr *e)
             goto done;
         }
         /* check if right is (iy+d) pattern */
-        if (r->op == 'M' && r->left->op == '+' && ISWORD(r->left->type) &&
-            r->left->left->op == 'M' && ISWORD(r->left->left->type) &&
+        if (r->op == 'M' && r->left->op == '+' && r->left->size == 2 &&
+            r->left->left->op == 'M' && r->left->left->size == 2 &&
             r->left->left->left->op == 'R' && r->left->left->left->aux == R_IY &&
             r->left->right->op == '#') {
             e->special = SP_CMPIY;
@@ -286,8 +295,8 @@ calcDemand(struct expr *e)
             goto done;
         }
         /* check if left is (iy+d) pattern */
-        if (l->op == 'M' && l->left->op == '+' && ISWORD(l->left->type) &&
-            l->left->left->op == 'M' && ISWORD(l->left->left->type) &&
+        if (l->op == 'M' && l->left->op == '+' && l->left->size == 2 &&
+            l->left->left->op == 'M' && l->left->left->size == 2 &&
             l->left->left->left->op == 'R' && l->left->left->left->aux == R_IY &&
             l->left->right->op == '#') {
             e->special = SP_CMPIY;
@@ -298,14 +307,14 @@ calcDemand(struct expr *e)
         }
         /* cmpB with (hl): one operand is Mb[addr], other is simple */
         /* Exclude Mb[Rp] - register pointer needs copy to HL first */
-        if (r->op == 'M' && ISBYTE(r->type) && isSimpleByte(l) &&
+        if (r->op == 'M' && r->size == 1 && isSimpleByte(l) &&
             r->left->op != 'R') {
             e->special = SP_CMPHL;
             e->aux2 = 0;  /* right needs (hl) */
             demand = calcDemand(r->left) + 1;  /* addr to HL, simple to A */
             goto done;
         }
-        if (l->op == 'M' && ISBYTE(l->type) && isSimpleByte(r) &&
+        if (l->op == 'M' && l->size == 1 && isSimpleByte(r) &&
             l->left->op != 'R') {
             e->special = SP_CMPHL;
             e->aux2 = 1;  /* left needs (hl) */
@@ -347,7 +356,7 @@ calcDemand(struct expr *e)
     }
 
     /* = [+s #const Rs(ix/iy)] expr -> ld (ix+ofs),src or ld (iy+ofs),src */
-    if (op == '=' && (ISBYTE(e->type) || ISWORD(e->type) || ISLONG(e->type)) && e->left->op == '+' && ISWORD(e->left->type)) {
+    if (op == '=' && (e->size == 1 || e->size == 2 || e->size == 4) && e->left->op == '+' && e->left->size == 2) {
         struct expr *l = e->left->left, *r = e->left->right;
         int ofs = 0, reg = 0;
         if (l->op == '#' && r->op == 'R' && (r->aux == R_IX || r->aux == R_IY)) {
@@ -366,7 +375,7 @@ calcDemand(struct expr *e)
     }
 
     /* =type [+s addr] [#const] -> ld (hl),n; store constant through computed ptr */
-    if (op == '=' && e->left->op == '+' && ISWORD(e->left->type) &&
+    if (op == '=' && e->left->op == '+' && e->left->size == 2 &&
         e->right->op == '#') {
         e->special = SP_STCONST;
         demand = calcDemand(e->left);  /* compute pointer address */
@@ -446,7 +455,7 @@ assignDest(struct expr *e, char dest)
     /* SP_STIX: value to A (byte) or HL (word), no address computation needed */
     if (e->special == SP_STIX) {
         if (e->right->op != '#')
-            assignDest(e->right, ISBYTE(e->type) ? R_A : R_HL);
+            assignDest(e->right, e->size == 1 ? R_A : R_HL);
         return;
     }
 
@@ -492,15 +501,15 @@ assignDest(struct expr *e, char dest)
         }
     } else if (op == '-' || op == '/' || op == '%') {
         /* non-commutative: left must be in HL for sbc/div/mod */
-        unsigned char hlDest = ISBYTE(e->type) ? R_A : R_HL;
+        unsigned char hlDest = e->size == 1 ? R_A : R_HL;
         assignDest(e->left, hlDest);
         assignDest(e->right, R_DE);
     } else if (op == '*') {
         /* multiply register assignment */
         /* Treat small constants (0-255) as bytes for efficiency */
-        unsigned char lbyte = ISBYTE(e->left->type) ||
+        unsigned char lbyte = e->left->size == 1 ||
                     (e->left->op == '#' && (e->left->v.l & ~0xff) == 0);
-        unsigned char rbyte = ISBYTE(e->right->type) ||
+        unsigned char rbyte = e->right->size == 1 ||
                     (e->right->op == '#' && (e->right->v.l & ~0xff) == 0);
         if (lbyte && rbyte) {
             /* byte × byte -> word: left to A, right to E, result in HL */
@@ -521,7 +530,7 @@ assignDest(struct expr *e, char dest)
         }
     } else if (op == '+' || op == '&' || op == '|' || op == '^') {
         /* commutative binop: higher demand child gets HL, emitted first */
-        unsigned char hlDest = ISBYTE(e->type) ? R_A : R_HL;
+        unsigned char hlDest = e->size == 1 ? R_A : R_HL;
         unsigned char ld = e->left->demand, rd = e->right->demand;
         if (ld >= rd) {
             assignDest(e->left, hlDest);
@@ -532,16 +541,16 @@ assignDest(struct expr *e, char dest)
         }
     } else if (op == '=' || op == 'y' || op == 'w' || op == 'z') {  /* assign, shifts */
         /* non-commutative: left gets HL, right gets DE */
-        unsigned char hlDest = ISBYTE(e->type) ? R_A : R_HL;
+        unsigned char hlDest = e->size == 1 ? R_A : R_HL;
         assignDest(e->left, hlDest);
         assignDest(e->right, R_DE);
     } else if (op == 'R') {
         /* regvar: byte regvar result goes to A */
-        if (ISBYTE(e->type))
+        if (e->size == 1)
             e->dest = R_A;
     } else if (op == 'M') {
         /* deref: result goes to A for byte, HL for word - override parent's dest */
-        if (ISBYTE(e->type))
+        if (e->size == 1)
             e->dest = R_A;
         /* child produces address in HL */
         /* For special cases (SP_IXOD, SP_MSYM, SP_SYMOFD), child isn't emitted */
@@ -588,9 +597,12 @@ assignDest(struct expr *e, char dest)
         assignDest(e->left, dest);
     } else if (op == 'j' || op == 'h') {
         /* logical and/or: each child based on its type */
-        unsigned char ldest = ISBYTE(e->left->type) ? R_A : R_HL;
-        unsigned char rdest = ISBYTE(e->right->type) ? R_A : R_HL;
+        unsigned char ldest = e->left->size == 1 ? R_A : R_HL;
+        unsigned char rdest = e->right->size == 1 ? R_A : R_HL;
         assignDest(e->left, ldest);
         assignDest(e->right, rdest);
     }
 }
+/*
+ * vim: tabstop=4 shiftwidth=4 expandtab:
+ */
