@@ -1913,7 +1913,7 @@ struct expval *disp;
 		if (arg <= T_IX_D) {
 			emitbyte(0xDD);
             /* lose on ld ix*, iy* or ld ix[hl], (ix+d) */
-            if (reg >= T_IYH)
+            if (reg >= T_IYH && reg <= T_IY_D)
                 return 1;
             if (arg != T_IX_D && reg == T_IX_D)
                 return 1;

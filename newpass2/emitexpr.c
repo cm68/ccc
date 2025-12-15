@@ -879,7 +879,7 @@ emitPrimary(struct expr *e)
                 emit("XXXXXXXXX #tos");
             }
         } else if (e->dest == R_DE) {
-            if (ISBYTE(e->type) || (e->v.l & ~0xff) == 0)
+            if (ISBYTE(e->type))
                 emit("ld e,%d", e->v.c & 0xff);
             else
                 emit("ld de,%d", e->v.s & 0xffff);
@@ -1053,6 +1053,32 @@ emitExpr(struct expr *e)
                 emit("ld (iy%o),l", ofs + 2);
                 emit("ld (iy%o),h", ofs + 3);
                 emit("exx");
+            }
+        } else if (e->special == SP_STIX) {
+            /* store to (ix+ofs) or (iy+ofs) */
+            char *rn = (e->aux == R_IX) ? "ix" : "iy";
+            if (ISBYTE(e->type)) {
+                if (e->right->op == '#') {
+                    comment("STIX %ld (%s%+d)", e->right->v.l, rn, e->offset);
+                    emit("ld (%s%o),%d", rn, e->offset, (int)(e->right->v.c & 0xff));
+                } else {
+                    comment("STIX (%s%+d),a", rn, e->offset);
+                    emitExpr(e->right);  /* result in A for byte */
+                    emit("ld (%s%o),a", rn, e->offset);
+                }
+            } else {
+                /* word store */
+                if (e->right->op == '#') {
+                    int val = e->right->v.s & 0xffff;
+                    comment("STIX %d (%s%+d)", val, rn, e->offset);
+                    emit("ld (%s%o),%d", rn, e->offset, val & 0xff);
+                    emit("ld (%s%o),%d", rn, e->offset + 1, (val >> 8) & 0xff);
+                } else {
+                    comment("STIX (%s%+d),hl", rn, e->offset);
+                    emitExpr(e->right);  /* result in HL for word */
+                    emit("ld (%s%o),l", rn, e->offset);
+                    emit("ld (%s%o),h", rn, e->offset + 1);
+                }
             }
         } else if (e->special == SP_STCONST) {
             /* store constant through HL: ld (hl),n; inc hl; ld (hl),n */

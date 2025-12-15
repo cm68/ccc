@@ -103,6 +103,7 @@ struct expr {
 #define SP_SIGNREG  14      /* Ms[Rs bc] >= 0 -> bit 7,b; sign test regvar */
 #define SP_BITTEST  15      /* &B (ix+ofs) #pow2 -> bit n,(ix+ofs) */
 #define SP_ADDBC    16      /* +p Mp[Rp bc] #const -> ld hl,const; add hl,bc */
+#define SP_STIX     17      /* = [+p #const Rp(ix)] #const -> ld (ix+ofs),n */
 
 /* Expression allocation */
 struct expr *newExpr(char op, char type);

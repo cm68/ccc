@@ -92,6 +92,12 @@ parseExpr(void)
             free(e);
             return v;
         }
+        /* Collapse M[R] when types match - register already holds value */
+        if (e->left->op == 'R' && e->left->type == type) {
+            struct expr *r = e->left;
+            free(e);
+            return r;
+        }
         return e;
 
     case '=':  /* assign */

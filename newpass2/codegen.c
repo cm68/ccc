@@ -339,6 +339,25 @@ calcDemand(struct expr *e)
         goto done;
     }
 
+    /* = [+p #const Rp(ix/iy)] expr -> ld (ix+ofs),src or ld (iy+ofs),src */
+    if (op == '=' && (ISBYTE(e->type) || ISWORD(e->type)) && e->left->op == '+' && e->left->type == T_PTR) {
+        struct expr *l = e->left->left, *r = e->left->right;
+        int ofs = 0, reg = 0;
+        if (l->op == '#' && r->op == 'R' && (r->aux == R_IX || r->aux == R_IY)) {
+            ofs = l->v.s; reg = r->aux;
+        } else if (r->op == '#' && l->op == 'R' && (l->aux == R_IX || l->aux == R_IY)) {
+            ofs = r->v.s; reg = l->aux;
+        }
+        if (reg) {
+            e->special = SP_STIX;
+            e->offset = ofs;
+            e->aux = reg;  /* R_IX or R_IY */
+            demand = calcDemand(e->right);
+            if (demand < 1 && e->right->op != '#') demand = 1;
+            goto done;
+        }
+    }
+
     /* =type [+p addr] [#const] -> ld (hl),n; store constant through computed ptr */
     if (op == '=' && e->left->op == '+' && e->left->type == T_PTR &&
         e->right->op == '#') {
@@ -414,6 +433,13 @@ assignDest(struct expr *e, char dest)
             assignDest(e->left, R_A);   /* right is indexed, emit left */
         else
             assignDest(e->right, R_A);  /* left is indexed, emit right */
+        return;
+    }
+
+    /* SP_STIX: value to A (byte) or HL (word), no address computation needed */
+    if (e->special == SP_STIX) {
+        if (e->right->op != '#')
+            assignDest(e->right, ISBYTE(e->type) ? R_A : R_HL);
         return;
     }
 
