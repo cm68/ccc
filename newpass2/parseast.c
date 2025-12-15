@@ -771,7 +771,7 @@ parseFunc(void)
             preg = hex2();
             poff = hex2();
             addLocal(pname, ptype, preg, poff);
-            comment("param %c %s reg=%d off=%d", ptype, pname, preg, (char)(poff));
+            comment("param %c %s %s off=%d", ptype, pname, regnames[preg] ? regnames[preg] : "-", (char)(poff));
         }
     }
 
