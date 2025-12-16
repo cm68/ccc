@@ -147,6 +147,14 @@ unsigned char isSimpleByte(struct expr *e);
 
 /* Code emission */
 void emitExpr(struct expr *e);
+void emitCompare(struct expr *e);
+void emitCmpArith(struct expr *e);
+void emitCmpShift(struct expr *e);
+void emitCmpMulDiv(struct expr *e);
+void emitPreIncDec(struct expr *e);
+void emitPostInc(struct expr *e);
+void emitDeref(struct expr *e);
+void emitPrimary(struct expr *e);
 void dumpStmt(void);
 void emitInit(void);
 

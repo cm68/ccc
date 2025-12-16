@@ -19,7 +19,7 @@ CCCFLAGS = -I.
 CCC = $(ROOTDIR)/bin/ccc
 OUTDIR = ../stage1
 
-SOURCES = newcc2.c astio.c emit.c codegen.c parseast.c emitexpr.c
+SOURCES = newcc2.c astio.c emit.c codegen.c parseast.c emitexpr.c emitcmp.c emitops.c emitincdec.c
 OBJECTS = $(SOURCES:.c=.o)
 HEADERS = cc2.h
 
