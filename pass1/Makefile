@@ -105,4 +105,4 @@ clobber: clean
 install: cc1
 	cp cc1 $(ROOTDIR)/bin
 
-.PHONY: all clean regen stage1 install clobber
+.PHONY: all clean regen stage1 install clobber sizefile
