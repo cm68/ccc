@@ -366,15 +366,8 @@ parseExpr(void)
         e->right = parseExpr();  /* src */
         return e;
 
-    case 'U':  /* inline string - skip definition, parse actual expr */
-        readName(name);
-        {
-            unsigned char len = hex2();
-            while (len-- > 0) {
-                advance();
-                advance();
-            }
-        }
+    case 'U':  /* inline string - emit definition, parse actual expr */
+        parseString();
         return parseExpr();
 
     default:
@@ -749,15 +742,7 @@ dumpStmt(void)
         break;
 
     case 'U':  /* inline string literal */
-        readName(name);
-        comment("STRING %s", name);
-        {
-            unsigned char len = hex2();
-            while (len-- > 0) {
-                advance();
-                advance();
-            }
-        }
+        parseString();
         dumpStmt();  /* continue with next stmt */
         break;
 
@@ -859,6 +844,7 @@ parseString(void)
         bytes[i] = hex2();
     }
 
+    emit("\t.data");
     emitLabel(name);
     col = sprintf(line, "\t.db ");
     strpos = 0;
@@ -923,6 +909,7 @@ parseString(void)
         line[col] = 0;
         emit("%s", line);
     }
+    emit("\t.text");
 }
 
 /*
