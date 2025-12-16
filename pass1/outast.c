@@ -950,24 +950,42 @@ emitStmt(struct stmt *st)
 		/* Emit as labeled sequence wrapped in block
 		 * All loops have labels assigned by parse.c */
 		{
-			unsigned char nlabels = cntCondLbls(st->left, CTX_TOP);
 			/* WHILE has no incr, so _continue goes straight to _top */
 			addJmpMap(mkLbl(st->label, "_continue"),
 			          mkLbl(st->label, "_top"));
-			fdprintf(astFd, "B0005");  /* 5 stmts: label, if, label, goto, label */
-			emitLabel(st->label, "_top");
-			fdprintf(astFd, "I01%02x", nlabels);  /* has else */
-			emitExpr(st->left);
-			if (st->chain)
-				emitStmt(st->chain);
-			else
-				fdprintf(astFd, ";");
-			/* else: block with goto break */
-			fdprintf(astFd, "B0001");
-			emitGoto(st->label, "_break");
-			emitLabel(st->label, "_continue");
-			emitGoto(st->label, "_top");
-			emitLabel(st->label, "_break");
+			/* while(0) - dead code, emit nothing */
+			if (st->left && (st->left->flags & E_CONST) &&
+			    st->left->v == 0) {
+				fdprintf(astFd, ";");  /* empty statement */
+			/* while(1) - constant true, no test needed */
+			} else if (st->left && (st->left->flags & E_CONST) &&
+			    st->left->v != 0) {
+				fdprintf(astFd, "B0005");
+				emitLabel(st->label, "_top");
+				if (st->chain)
+					emitStmt(st->chain);
+				else
+					fdprintf(astFd, ";");
+				emitLabel(st->label, "_continue");
+				emitGoto(st->label, "_top");
+				emitLabel(st->label, "_break");
+			} else {
+				unsigned char nlabels = cntCondLbls(st->left, CTX_TOP);
+				fdprintf(astFd, "B0005");
+				emitLabel(st->label, "_top");
+				fdprintf(astFd, "I01%02x", nlabels);  /* has else */
+				emitExpr(st->left);
+				if (st->chain)
+					emitStmt(st->chain);
+				else
+					fdprintf(astFd, ";");
+				/* else: block with goto break */
+				fdprintf(astFd, "B0001");
+				emitGoto(st->label, "_break");
+				emitLabel(st->label, "_continue");
+				emitGoto(st->label, "_top");
+				emitLabel(st->label, "_break");
+			}
 		}
 		break;
 
@@ -975,18 +993,39 @@ emitStmt(struct stmt *st)
 		/* Emit as labeled sequence wrapped in block
 		 * All loops have labels assigned by parse.c */
 		{
-			unsigned char nlabels = cntCondLbls(st->left, CTX_TOP);
-			fdprintf(astFd, "B0005");  /* 5 stmts: top, body, test, if, break */
-			emitLabel(st->label, "_top");
-			if (st->chain)
-				emitStmt(st->chain);
-			else
-				fdprintf(astFd, ";");
-			emitLabel(st->label, "_test");
-			fdprintf(astFd, "I00%02x", nlabels);  /* no else */
-			emitExpr(st->left);
-			emitGoto(st->label, "_top");
-			emitLabel(st->label, "_break");
+			/* do {} while(0) - execute body once, no loop */
+			if (st->left && (st->left->flags & E_CONST) &&
+			    st->left->v == 0) {
+				if (st->chain)
+					emitStmt(st->chain);
+				else
+					fdprintf(astFd, ";");
+			/* do {} while(1) - constant true, no test needed */
+			} else if (st->left && (st->left->flags & E_CONST) &&
+			    st->left->v != 0) {
+				fdprintf(astFd, "B0005");
+				emitLabel(st->label, "_top");
+				if (st->chain)
+					emitStmt(st->chain);
+				else
+					fdprintf(astFd, ";");
+				emitLabel(st->label, "_test");
+				emitGoto(st->label, "_top");
+				emitLabel(st->label, "_break");
+			} else {
+				unsigned char nlabels = cntCondLbls(st->left, CTX_TOP);
+				fdprintf(astFd, "B0005");
+				emitLabel(st->label, "_top");
+				if (st->chain)
+					emitStmt(st->chain);
+				else
+					fdprintf(astFd, ";");
+				emitLabel(st->label, "_test");
+				fdprintf(astFd, "I00%02x", nlabels);  /* no else */
+				emitExpr(st->left);
+				emitGoto(st->label, "_top");
+				emitLabel(st->label, "_break");
+			}
 		}
 		break;
 
