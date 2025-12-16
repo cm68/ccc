@@ -245,22 +245,14 @@ calcDemand(struct expr *e)
         goto done;
     }
 
-    /* cmpB with (hl): one operand is Mb[addr], other is simple */
+    /* cmpB with (hl): left is Mb[addr], right is simple (normalized) */
     /* Exclude Mb[Rp] - register pointer needs copy to HL first */
     if ((op == '<' || op == '>' || op == 'Q' || op == 'n' ||
          op == 'L' || op == 'g') && e->size == 1) {
         struct expr *l = e->left, *r = e->right;
-        if (r->op == 'M' && r->size == 1 && isSimpleByte(l) &&
-            r->left->op != 'R') {
-            e->special = SP_CMPHL;
-            e->aux2 = 0;  /* right needs (hl) */
-            demand = calcDemand(r->left) + 1;  /* addr to HL, simple to A */
-            goto done;
-        }
         if (l->op == 'M' && l->size == 1 && isSimpleByte(r) &&
             l->left->op != 'R') {
             e->special = SP_CMPHL;
-            e->aux2 = 1;  /* left needs (hl) */
             demand = calcDemand(l->left) + 1;
             goto done;
         }

@@ -196,9 +196,16 @@ allocRegs(struct stmt *body)
 	int b_used = 0, c_used = 0;
 	int ix_used = 0;
 	int has_reg_hint = 0;
+	int no_arg_regs = 0;  /* any arg addr taken? then no arg regs */
 
 	if (!body || !body->locals)
 		return;
+
+	/* If any funarg has address taken, no funargs can use registers */
+	for (n = body->locals; n; n = n->next) {
+		if (n->kind == funarg && n->addr_taken)
+			no_arg_regs = 1;
+	}
 
 	/* Check if any locals have explicit 'register' storage class */
 	for (n = body->locals; n; n = n->next) {
@@ -218,7 +225,7 @@ allocRegs(struct stmt *body)
 		/* Pass 1: pointers prefer IX */
 		for (n = body->locals; n; n = n->next) {
 			if (!(n->sclass & SC_REGISTER) || n->reg != REG_NONE ||
-			    (n->addr_taken && n->kind != funarg))
+			    n->addr_taken || (no_arg_regs && n->kind == funarg))
 				continue;
 			if (n->type && (n->type->flags & TF_POINTER) && !ix_used) {
 				n->reg = REG_IX;
@@ -228,7 +235,7 @@ allocRegs(struct stmt *body)
 		/* Pass 2: words - prefer IX if bytes need B/C, else BC */
 		for (n = body->locals; n; n = n->next) {
 			if (!(n->sclass & SC_REGISTER) || n->reg != REG_NONE ||
-			    (n->addr_taken && n->kind != funarg))
+			    n->addr_taken || (no_arg_regs && n->kind == funarg))
 				continue;
 			if (n->type && n->type->size == 2) {
 				if (has_reg_byte && !ix_used) {
@@ -246,7 +253,7 @@ allocRegs(struct stmt *body)
 		/* Pass 3: bytes get B then C */
 		for (n = body->locals; n; n = n->next) {
 			if (!(n->sclass & SC_REGISTER) || n->reg != REG_NONE ||
-			    (n->addr_taken && n->kind != funarg))
+			    n->addr_taken || (no_arg_regs && n->kind == funarg))
 				continue;
 			if (n->type && n->type->size == 1 && !bc_used) {
 				if (!b_used) {
@@ -267,7 +274,7 @@ allocRegs(struct stmt *body)
 		best = NULL;
 		for (n = body->locals; n; n = n->next) {
 			if (n->reg != REG_NONE ||
-			    (n->addr_taken && n->kind != funarg))
+			    n->addr_taken || (no_arg_regs && n->kind == funarg))
 				continue;
 			if (n->type && (n->type->flags & TF_POINTER) &&
 			    n->agg_refs > 0 && n->ref_count > 1) {
@@ -286,7 +293,7 @@ allocRegs(struct stmt *body)
 		best = NULL;
 		for (n = body->locals; n; n = n->next) {
 			if (n->reg != REG_NONE ||
-			    (n->addr_taken && n->kind != funarg))
+			    n->addr_taken || (no_arg_regs && n->kind == funarg))
 				continue;
 			if (n->type && (n->type->flags & (TF_ARRAY | TF_AGGREGATE)))
 				continue;
@@ -312,7 +319,7 @@ allocRegs(struct stmt *body)
 	if (!bc_used) {
 		for (n = body->locals; n; n = n->next) {
 			if (n->reg != REG_NONE ||
-			    (n->addr_taken && n->kind != funarg))
+			    n->addr_taken || (no_arg_regs && n->kind == funarg))
 				continue;
 			if (n->type && (n->type->flags & (TF_ARRAY | TF_AGGREGATE)))
 				continue;

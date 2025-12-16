@@ -37,7 +37,7 @@ clearLocals(void)
 }
 
 void
-addLocal(char *name, char type, int reg, int off)
+addLocal(char *name, char type, char reg, char off)
 {
     struct sym *s;
     if (nlocals < MAXLOCALS) {

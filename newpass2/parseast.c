@@ -43,6 +43,56 @@ freeExpr(struct expr *e)
 }
 
 /*
+ * Complexity score for normalization (lower = simpler, goes on right)
+ * 0 = constant, 1 = regvar, 2 = local/global, 3 = simple deref, 4+ = complex
+ */
+static int
+exprCmplx(struct expr *e)
+{
+    switch (e->op) {
+    case '#': return 0;  /* constant - simplest */
+    case 'R': return 1;  /* register variable */
+    case 'V': return 2;  /* local variable */
+    case '$': return 2;  /* global variable */
+    case 'M':            /* dereference */
+        if (e->left->op == '$' || e->left->op == 'V' || e->left->op == 'R')
+            return 3;    /* simple deref */
+        return 5;        /* complex deref */
+    default:  return 5;  /* complex expression */
+    }
+}
+
+/*
+ * Normalize binary op: put simpler operand on right
+ * For commutative ops, just swap. For comparisons, swap and flip operator.
+ */
+static void
+normBinop(struct expr *e)
+{
+    struct expr *tmp;
+    int lc = exprCmplx(e->left);
+    int rc = exprCmplx(e->right);
+
+    if (lc >= rc)
+        return;  /* already normalized or equal */
+
+    /* Swap operands */
+    tmp = e->left;
+    e->left = e->right;
+    e->right = tmp;
+
+    /* Flip operator for non-commutative comparisons */
+    switch (e->op) {
+    case '<': e->op = '>'; break;
+    case '>': e->op = '<'; break;
+    case 'L': e->op = 'g'; break;  /* <= becomes >= */
+    case 'g': e->op = 'L'; break;  /* >= becomes <= */
+    /* These are commutative, no op change needed:
+     * + * & | ^ == != && || */
+    }
+}
+
+/*
  * Parse expression from AST, build tree
  */
 struct expr *
@@ -65,7 +115,7 @@ parseExpr(void)
         e->v.l = hex8();
         return e;
 
-    case '$':  /* symbol ref - swizzle to R/V for locals */
+    case '$':  /* symbol ref - mark locals with aux for later M[] collapse */
         readName(name);
         {
             struct sym *s = findLocal(name);
@@ -73,8 +123,9 @@ parseExpr(void)
                 e = newExpr('R', s->type);  /* register var */
                 e->aux = s->reg;
             } else if (s) {
-                e = newExpr('V', s->type);  /* local var */
-                e->aux = R_IY;              /* IY-relative */
+                /* Local address - mark with aux/offset for M[] to collapse */
+                e = newExpr('$', T_USHORT);  /* address type */
+                e->aux = R_IY;               /* IY-relative marker */
                 e->offset = s->off;
             } else {
                 e = newExpr('$', 0);        /* global */
@@ -88,6 +139,16 @@ parseExpr(void)
         advance();
         e = newExpr('M', type);
         e->left = parseExpr();
+        /* Collapse M[$local] to V node - indexed load from IY */
+        if (e->left->op == '$' && e->left->aux == R_IY) {
+            struct expr *v = newExpr('V', type);
+            v->aux = R_IY;
+            v->offset = e->left->offset;
+            v->sym = e->left->sym;
+            e->left->sym = 0;  /* prevent double-free */
+            freeExpr(e);
+            return v;
+        }
         /* Collapse M[V] and M[R] when sizes match - V/R already load value */
         if ((e->left->op == 'V' || e->left->op == 'R') &&
             e->size == e->left->size) {
@@ -178,22 +239,37 @@ parseExpr(void)
         e = newExpr(c, type);
         e->left = parseExpr();
         e->right = parseExpr();
-        /* Collapse +p [#ofs R(ix/iy)] or +p [R(ix/iy) #ofs] to V node */
-        if (c == '+' && e->size == 2) {
-            struct expr *l = e->left, *r = e->right;
-            int ofs = 0, reg = 0;
-            if (l->op == '#' && r->op == 'R' && (r->aux == R_IX || r->aux == R_IY)) {
-                ofs = l->v.s; reg = r->aux;
-            } else if (r->op == '#' && l->op == 'R' && (l->aux == R_IX || l->aux == R_IY)) {
-                ofs = r->v.s; reg = l->aux;
+        /* Normalize: put simpler operand on right for commutative/comparison ops */
+        if (c == '+' || c == '*' || c == '&' || c == '|' || c == '^' ||
+            c == '<' || c == '>' || c == 'L' || c == 'g' ||
+            c == 'Q' || c == 'n' || c == 'j' || c == 'h')
+            normBinop(e);
+        /* Transform <= n to < n+1, >= n to > n-1 when safe */
+        if ((e->op == 'L' || e->op == 'g') && e->right->op == '#') {
+            long val = e->right->v.l;
+            if (e->op == 'L' && e->size == 1 && val < 127) {
+                e->op = '<';
+                e->right->v.l = val + 1;
+            } else if (e->op == 'L' && e->size == 2 && val < 32767) {
+                e->op = '<';
+                e->right->v.l = val + 1;
+            } else if (e->op == 'g' && e->size == 1 && val > -128) {
+                e->op = '>';
+                e->right->v.l = val - 1;
+            } else if (e->op == 'g' && e->size == 2 && val > -32768) {
+                e->op = '>';
+                e->right->v.l = val - 1;
             }
-            if (reg) {
-                struct expr *v = newExpr('V', type);
-                v->aux = reg;
-                v->offset = ofs;
-                freeExpr(e);
-                return v;
-            }
+        }
+        /* Collapse +p [R(ix/iy) #ofs] to V node (constant always on right after normalize) */
+        if (c == '+' && e->size == 2 &&
+            e->left->op == 'R' && (e->left->aux == R_IX || e->left->aux == R_IY) &&
+            e->right->op == '#') {
+            struct expr *v = newExpr('V', type);
+            v->aux = e->left->aux;
+            v->offset = e->right->v.s;
+            freeExpr(e);
+            return v;
         }
         return e;
 
@@ -355,7 +431,6 @@ dumpStmt(void)
             special = cond->special;
             {
                 char cop = cond->op;
-                unsigned char side = cond->aux2;
                 freeExpr(cond);
                 /* emit conditional jump to skip then block */
                 if (special == SP_BITTEST) {
@@ -365,62 +440,29 @@ dumpStmt(void)
                     /* >= 0: Z=true, NZ=false; jump to no on NZ */
                     emit("jp nz,no%d_%d", lbl, fnIndex);
                 } else if (special == SP_CMPHL) {
-                    /* cp sets flags: C if A < operand, Z if A == operand */
-                    /* side=0: A=left, mem=right -> A-right = left-right */
-                    /* side=1: A=right, mem=left -> A-left = right-left */
-                    /* We skip the then block when condition is FALSE */
-                    /* For < and > with swapped operands (side=1), equality changes result.
-                     * side=0: A=left, mem=right, A-mem = left-right
-                     * side=1: A=right, mem=left, A-mem = right-left
-                     * For <: skip when NOT(left < right) = left >= right
-                     *   side=0: skip on NC (no carry means left >= right)
-                     *   side=1: skip on C OR Z (right <= left)
-                     * For <=: skip when NOT(left <= right) = left > right
-                     *   side=0: skip on C (carry means left < right... wait no)
-                     * Actually: just swap the comparison when side=1 to avoid the issue */
+                    /* cp sets flags: C if A < operand, Z if A == operand
+                     * Operands normalized: A=left, comparing against right
+                     * Skip then block when condition is FALSE */
                     switch (cop) {
-                    case 'Q':  /* == : Z, skip on NZ */
+                    case 'Q':  /* == : skip on NZ */
                         emit("jp nz,no%d_%d", lbl, fnIndex);
                         break;
-                    case 'n':  /* != : NZ, skip on Z */
+                    case 'n':  /* != : skip on Z */
                         emit("jp z,no%d_%d", lbl, fnIndex);
                         break;
-                    case '<':
-                        if (side) {
-                            /* right - left: skip on C or Z (left >= right) */
-                            emit("jp c,no%d_%d", lbl, fnIndex);
-                            emit("jp z,no%d_%d", lbl, fnIndex);
-                        } else {
-                            emit("jp nc,no%d_%d", lbl, fnIndex);
-                        }
+                    case '<':  /* skip when left >= right: NC */
+                        emit("jp nc,no%d_%d", lbl, fnIndex);
                         break;
-                    case 'L':  /* <= */
-                        if (side) {
-                            /* skip on C (left > right) */
-                            emit("jp c,no%d_%d", lbl, fnIndex);
-                        } else {
-                            /* left - right: skip on NC and NZ (need two checks) */
-                            emit("jp z,$+5");  /* equal: don't skip */
-                            emit("jp nc,no%d_%d", lbl, fnIndex);
-                        }
+                    case 'L':  /* <= : skip when left > right: NC and NZ */
+                        emit("jp z,$+5");
+                        emit("jp nc,no%d_%d", lbl, fnIndex);
                         break;
-                    case '>':
-                        if (side) {
-                            emit("jp nc,no%d_%d", lbl, fnIndex);
-                        } else {
-                            /* left - right: skip on NC or Z */
-                            emit("jp nc,no%d_%d", lbl, fnIndex);
-                            emit("jp z,no%d_%d", lbl, fnIndex);
-                        }
+                    case '>':  /* skip when left <= right: C or Z */
+                        emit("jp c,no%d_%d", lbl, fnIndex);
+                        emit("jp z,no%d_%d", lbl, fnIndex);
                         break;
-                    case 'g':  /* >= */
-                        if (side) {
-                            /* skip on C and NZ */
-                            emit("jp z,$+5");
-                            emit("jp c,no%d_%d", lbl, fnIndex);
-                        } else {
-                            emit("jp c,no%d_%d", lbl, fnIndex);
-                        }
+                    case 'g':  /* >= : skip when left < right: C */
+                        emit("jp c,no%d_%d", lbl, fnIndex);
                         break;
                     }
                 } else if (cop == '!') {
@@ -854,6 +896,9 @@ parseFunc(void)
             readName(pname);
             preg = hex2();
             poff = hex2();
+            /* Byte params pushed via AF have value in high byte of stack word */
+            if (ISBYTE(ptype) && preg == 0 && poff > 0)
+                poff++;
             addLocal(pname, ptype, preg, poff);
             comment("param %c %s %s off=%d", ptype, pname, regnames[preg] ? regnames[preg] : "-", (char)(poff));
         }

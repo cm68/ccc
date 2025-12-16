@@ -54,7 +54,7 @@ extern unsigned char nlocals;
 
 /* Symbol table operations */
 void clearLocals(void);
-void addLocal(char *name, char type, int reg, int off);
+void addLocal(char *name, char type, char reg, char off);
 struct sym *findLocal(char *name);
 
 /*

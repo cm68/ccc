@@ -17,24 +17,31 @@ emitCompare(struct expr *e)
         regnames[e->dest] ? regnames[e->dest] : "-", e->cond ? " C" : "");
     indent += 2;
     if (e->special == SP_CMPHL) {
-        /* byte cmp with (hl) */
-        struct expr *simple = e->aux2 == 0 ? e->left : e->right;
-        struct expr *complex = e->aux2 == 0 ? e->right : e->left;
-        comment("CMPHL side=%d", e->aux2);
-        emitExpr(complex->left);
+        /* byte cmp with (hl): left is complex (addr in hl), right is simple */
+        struct expr *simple = e->right;
+        struct expr *complex = e->left;
+        comment("CMPHL");
+        emitExpr(complex->left);  /* address to HL */
+        emit("ld a,(hl)");        /* load left operand */
         if (simple->op == '#') {
-            emit("ld a,%d", simple->v.c & 0xff);
+            emit("cp %d", simple->v.c & 0xff);
         } else if (simple->op == 'R') {
-            emit("ld a,%s", regnames[simple->aux]);
+            emit("cp %s", regnames[simple->aux]);
+        } else if (simple->op == 'V') {
+            char *rn = (simple->aux == R_IX) ? "ix" : "iy";
+            emit("cp (%s%o)", rn, simple->offset);
         } else if (simple->op == 'M' && simple->left->op == '$') {
-            emit("ld a,(%s)", simple->left->sym);
+            emit("push hl");
+            emit("ld hl,%s", simple->left->sym);
+            emit("ld e,(hl)");
+            emit("pop hl");
+            emit("cp e");
         } else if (simple->op == 'M' && simple->left->op == 'V') {
             char *rn = (simple->left->aux == R_IX) ? "ix" : "iy";
-            emit("ld a,(%s%o)", rn, simple->left->offset);
+            emit("cp (%s%o)", rn, simple->left->offset);
         } else {
-            emit("XXXXXXXXX simple");
+            emit("XXXXXXXXX simple op=%c", simple->op);
         }
-        emit("cp (hl)");
         if (!e->cond)
             goto cmpresult;
     } else if (e->special == SP_SIGN) {
@@ -236,7 +243,7 @@ emitCmpArith(struct expr *e)
     } else if (e->left->op == 'V' && e->size == 1) {
         char ofs = e->left->offset;
         char *rn = (e->left->aux == R_IX) ? "ix" : "iy";
-        comment("V%c %s%o", e->left->type, rn, ofs);
+        comment("V%c %s%+d", e->left->type, rn, ofs);
         emit("ld a,(%s%o)", rn, ofs);
         if (e->right->op == '#') {
             unsigned char val = e->right->v.c;
@@ -290,7 +297,7 @@ emitCmpArith(struct expr *e)
     } else if (e->left->op == 'V' && e->size == 2) {
         char ofs = e->left->offset;
         char *rn = (e->left->aux == R_IX) ? "ix" : "iy";
-        comment("V%c %s%o", e->left->type, rn, ofs);
+        comment("V%c %s%+d", e->left->type, rn, ofs);
         emitExpr(e->right);
         emit("ex de,hl");
         emit("ld l,(%s%o)", rn, ofs);
@@ -310,7 +317,7 @@ emitCmpArith(struct expr *e)
     } else if (e->left->op == 'V' && e->size == 4 && e->op == 'P') {
         char ofs = e->left->offset;
         char *rn = (e->left->aux == R_IX) ? "ix" : "iy";
-        comment("V%c %s%o", e->left->type, rn, ofs);
+        comment("V%c %s%+d", e->left->type, rn, ofs);
         emitExpr(e->right);
         emit("push hl");
         emit("exx");
@@ -422,7 +429,7 @@ emitCmpShift(struct expr *e)
         char ofs = e->left->offset;
         char *rn = (e->left->aux == R_IX) ? "ix" : "iy";
         unsigned char cnt = e->right->v.c & 0x1f;
-        comment("V%c %s%o", e->left->type, rn, ofs);
+        comment("V%c %s%+d", e->left->type, rn, ofs);
         emit("ld l,(%s%o)", rn, ofs);
         emit("ld h,(%s%o)", rn, ofs + 1);
         emit("exx");
@@ -495,7 +502,7 @@ emitCmpMulDiv(struct expr *e)
     } else if (e->left->op == 'V' && e->size == 1) {
         char ofs = e->left->offset;
         char *rn = (e->left->aux == R_IX) ? "ix" : "iy";
-        comment("V%c %s%o", e->left->type, rn, ofs);
+        comment("V%c %s%+d", e->left->type, rn, ofs);
         emitExpr(e->right);
         emit("ld e,a");
         emit("ld a,(%s%o)", rn, ofs);
@@ -508,7 +515,7 @@ emitCmpMulDiv(struct expr *e)
     } else if (e->left->op == 'V' && e->size == 2) {
         char ofs = e->left->offset;
         char *rn = (e->left->aux == R_IX) ? "ix" : "iy";
-        comment("V%c %s%o", e->left->type, rn, ofs);
+        comment("V%c %s%+d", e->left->type, rn, ofs);
         emitExpr(e->right);
         emit("ex de,hl");
         emit("ld l,(%s%o)", rn, ofs);
@@ -908,19 +915,37 @@ emitPrimary(struct expr *e)
         }
         break;
     case '$':
-        comment("$%s d=%d %s", e->sym ? e->sym : "?", e->demand, regnames[e->dest] ? regnames[e->dest] : "-");
-        if (e->dest == R_TOS) {
-            emit("ld hl,%s", e->sym);
-            emit("push hl");
-        } else if (e->demand > 0)
-            emit("ld %s,%s", regnames[e->dest] ? regnames[e->dest] : "hl", e->sym);
+        if (e->aux == R_IY) {
+            /* Local address: compute IY + offset */
+            char off = e->offset;
+            comment("$%s iy%+d d=%d %s", e->sym ? e->sym : "?", off,
+                    e->demand, regnames[e->dest] ? regnames[e->dest] : "-");
+            if (e->demand == 0 && e->dest != R_TOS)
+                break;
+            emit("push iy");
+            emit("pop hl");
+            if (off != 0) {
+                emit("ld de,%d", off);
+                emit("add hl,de");
+            }
+            if (e->dest == R_TOS)
+                emit("push hl");
+        } else {
+            comment("$%s d=%d %s", e->sym ? e->sym : "?", e->demand, regnames[e->dest] ? regnames[e->dest] : "-");
+            if (e->dest == R_TOS) {
+                emit("ld hl,%s", e->sym);
+                emit("push hl");
+            } else if (e->demand > 0)
+                emit("ld %s,%s", regnames[e->dest] ? regnames[e->dest] : "hl", e->sym);
+        }
         break;
     case 'R':  /* register var */
         {
             static char *rn[] = { "?", "b", "c", "bc", "ix" };
             comment("R%c %s %s d=%d %s", e->type, e->sym ? e->sym : "?",
                 rn[e->aux < 5 ? e->aux : 0], e->demand, regnames[e->dest] ? regnames[e->dest] : "-");
-            if (e->demand == 0)
+            /* Even with demand=0, TOS dest needs push */
+            if (e->demand == 0 && e->dest != R_TOS)
                 break;
             if (e->size == 1) {
                 if (e->aux == R_B)
@@ -931,13 +956,21 @@ emitPrimary(struct expr *e)
                     emit("push af");
             } else if (e->size == 2) {
                 if (e->aux == R_BC) {
-                    emit("ld h,b");
-                    emit("ld l,c");
+                    if (e->dest == R_TOS) {
+                        emit("push bc");
+                    } else {
+                        emit("ld h,b");
+                        emit("ld l,c");
+                    }
                 } else if (e->aux == R_IX) {
-                    emit("push ix");
-                    emit("pop hl");
+                    if (e->dest == R_TOS) {
+                        emit("push ix");
+                    } else {
+                        emit("push ix");
+                        emit("pop hl");
+                    }
                 }
-                if (e->dest == R_TOS)
+                if (e->dest == R_TOS && e->aux != R_BC && e->aux != R_IX)
                     emit("push hl");
             }
         }
@@ -946,7 +979,7 @@ emitPrimary(struct expr *e)
         {
             char off = e->offset;
             char *rn = (e->aux == R_IX) ? "ix" : "iy";
-            comment("V%c %s %s%o d=%d %s", e->type, e->sym ? e->sym : "?", rn, off, e->demand, regnames[e->dest] ? regnames[e->dest] : "-");
+            comment("V%c %s %s%+d d=%d %s", e->type, e->sym ? e->sym : "?", rn, off, e->demand, regnames[e->dest] ? regnames[e->dest] : "-");
             if (e->demand == 0)
                 break;
             if (e->size == 1) {
@@ -1055,7 +1088,7 @@ emitExpr(struct expr *e)
             /* assign to local/struct var via IY or IX */
             char ofs = e->left->offset;
             char *rn = (e->left->aux == R_IX) ? "ix" : "iy";
-            comment("V%c %s%o", e->left->type, rn, ofs);
+            comment("V%c %s%+d", e->left->type, rn, ofs);
             if (e->special == SP_STCONST && e->right->op == '#') {
                 /* store constant directly */
                 long val = e->right->v.l;
@@ -1689,6 +1722,13 @@ emitExpr(struct expr *e)
         if (e->left->op == '#') {
             /* constant was converted to byte in calcDemand */
             emitExpr(e->left);
+        } else if (e->left->op == 'V') {
+            /* V node: just load the low byte directly */
+            char *rn = (e->left->aux == R_IX) ? "ix" : "iy";
+            comment("V%c %s%+d", e->left->type, rn, e->left->offset);
+            emit("ld a,(%s%o)", rn, e->left->offset);
+            if (e->dest == R_TOS)
+                emit("push af");
         } else {
             emitExpr(e->left);  /* word value in HL */
             emit("ld a,l");
