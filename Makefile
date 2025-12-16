@@ -37,7 +37,10 @@ HFILES = newpass2/cc2.h pass1/cc1.h pass1/token.h
 BINS = pass1/cc1 newpass2/cc2 ccc astpp
 
 # Documentation files
-DOCFILES = README.md TODO.md CLAUDE.md AST_FORMAT.md libsrc/README.md libsrc/libc/README.md
+DOCFILES = README.md TODO.md CLAUDE.md AST_FORMAT.md ASTPP.md \
+	newpass2/NEWPASS2.md newpass2/CONDITIONS.md newpass2/STACK.md \
+	ws/README.md ws/ASZ.md ws/WS.md \
+	libsrc/README.md libsrc/libc/README.md
 LIBSRCS = libsrc/Makefile libsrc/*/*.s libsrc/*/*.c libsrc/include/*.h
 
 all: cc1 cc2 ccc install

@@ -4,7 +4,7 @@ A standalone tool for formatting ccc compiler AST output in human-readable form.
 
 ## Purpose
 
-The AST pretty printer (`astpp.py`) converts the compact paren-free hex AST
+The AST pretty printer (`astpp`) converts the compact paren-free hex AST
 format into a nicely formatted, indented, and annotated representation that's
 easier to read and understand.
 
@@ -20,20 +20,12 @@ easier to read and understand.
 
 ## Installation
 
-Requires Python 3:
+Built automatically with the compiler:
 
 ```bash
-# Most systems already have Python 3 installed
-python3 --version
-
-# Debian/Ubuntu (if needed)
-sudo apt-get install python3
-
-# macOS (if needed)
-brew install python3
+make            # Builds astpp along with cc1 and cc2
+make install    # Installs to root/bin/astpp
 ```
-
-The script is already executable and ready to use.
 
 ## Usage
 
@@ -44,9 +36,7 @@ The script is already executable and ready to use.
 make program.ast
 
 # Pretty print the AST
-python3 astpp.py program.ast
-# or
-./astpp.py program.ast
+./astpp program.ast
 ```
 
 ### Filter Mode (Reading from stdin)
@@ -56,10 +46,10 @@ is provided:
 
 ```bash
 # Use as filter in a pipeline
-./cc1 -DCCC -i./include -I. -E program.c | ./astpp.py
+./cc1 -DCCC -i./include -I. -E program.c | ./astpp
 
 # Combine with stderr (cc1 outputs AST to stdout, diagnostics to stderr)
-./cc1 -DCCC -i./include -I. -E program.c 2>&1 | ./astpp.py
+./cc1 -DCCC -i./include -I. -E program.c 2>&1 | ./astpp
 ```
 
 This is particularly useful for:
@@ -70,11 +60,12 @@ This is particularly useful for:
 ### With ccc Driver
 
 ```bash
-# Compile to AST (stops before code generation)
-./ccc -E program.c
+# Compile and generate .pp file automatically
+./ccc -k -P -c program.c    # Creates program.ast, program.pp, program.s, program.o
 
-# Pretty print the generated AST
-./astpp.py program.ast
+# Or manually: compile to AST, then pretty print
+./ccc -k -c program.c       # Creates program.ast
+./astpp program.ast         # Pretty print to stdout
 ```
 
 ## Output Format
@@ -232,7 +223,7 @@ int main() {
 **Command:**
 ```bash
 make test.ast
-./astpp.py test.ast
+./astpp test.ast
 ```
 
 **Output:**
@@ -283,7 +274,7 @@ GLOBAL msg : ptr = $_str0
 
 ## Implementation
 
-The pretty printer is implemented in Python and:
+The pretty printer is implemented in C (~850 lines) and:
 
 1. **Reads the AST** using a custom parser for the paren-free hex format
 2. **Handles hex-encoded names** with 2-digit length prefix
@@ -292,10 +283,12 @@ The pretty printer is implemented in Python and:
 5. **Annotates operators** with human-readable names
 6. **Shows register allocation** for parameters and locals
 
+Source: `astpp.c` in the project root.
+
 ## Debugging with Pretty Printer
 
 1. Generate AST: `make test.ast`
-2. Pretty print: `./astpp.py test.ast`
+2. Pretty print: `./astpp test.ast`
 3. Verify structure matches expected AST
 
 ## Tips
@@ -306,21 +299,21 @@ For complex expressions, focus on specific parts:
 
 ```bash
 # Extract only function definitions
-./astpp.py program.ast | grep -A 20 "FUNCTION"
+./astpp program.ast | grep -A 20 "FUNCTION"
 
 # Show only global variables
-./astpp.py program.ast | grep "GLOBAL"
+./astpp program.ast | grep "GLOBAL"
 
 # Find specific variable references
-./astpp.py program.ast | grep "\$myvar"
+./astpp program.ast | grep "\$myvar"
 ```
 
 ### Compare ASTs
 
 ```bash
 # Compare two versions
-./astpp.py old.ast > /tmp/old.txt
-./astpp.py new.ast > /tmp/new.txt
+./astpp old.ast > /tmp/old.txt
+./astpp new.ast > /tmp/new.txt
 diff -u /tmp/old.txt /tmp/new.txt
 ```
 
@@ -328,7 +321,7 @@ diff -u /tmp/old.txt /tmp/new.txt
 
 ```bash
 # Open in editor for exploration
-./astpp.py program.ast | vim -
+./astpp program.ast | vim -
 ```
 
 ## License

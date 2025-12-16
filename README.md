@@ -14,13 +14,13 @@ complete; small programs run in simulation.
 - See CLAUDE.md for detailed architecture and features
 
 **Pass 2 (cc2) - Complete** (source in newpass2/)
-- Tree-based AST parser with complete function representation
-- Three-phase code generation: demand calculation, dest assignment, emit
+- Stream code generator: builds one statement tree at a time, emits immediately
+- Three-phase per-expression: demand calculation, dest assignment, emit
 - Register allocation done in cc1 (outast.c), communicated via AST
 - BC and IX register allocation, IX-indexed struct pointer optimization
 - Long (32-bit) and float (IEEE 754) support via helper functions
 - Generates working Z80 assembly; programs run in simulation
-- See CC2_ARCHITECTURE.md for implementation details
+- See newpass2/NEWPASS2.md for implementation details
 
 **Whitesmith's Object Tools (ws/)** - Relocatable object support
 - **asz**: Z80 assembler producing relocatable objects
