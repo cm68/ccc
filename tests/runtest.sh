@@ -97,10 +97,10 @@ for t in "${TESTS[@]}" ; do
 			if $not_k ; then exit 1 ; fi
 		fi
 
-		# Run astpp.py to produce .pp
+		# Run astpp to produce .pp
 		echo "======== astpp ========"
-		echo python3 ../astpp.py $ast
-		if python3 ../astpp.py "$ast" > "$pp" 2>&1; then
+		echo ../astpp $ast
+		if ../astpp "$ast" > "$pp" 2>&1; then
 			echo "astpp ok"
 		else
 			echo "astpp FAILED"

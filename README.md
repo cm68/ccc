@@ -13,9 +13,9 @@ complete; small programs run in simulation.
 - All loops lowered to labeled if/goto for simplified code generation
 - See CLAUDE.md for detailed architecture and features
 
-**Pass 2 (cc2) - Complete**
+**Pass 2 (cc2) - Complete** (source in newpass2/)
 - Tree-based AST parser with complete function representation
-- Two-phase code generation: parse -> schedule/emit
+- Three-phase code generation: demand calculation, dest assignment, emit
 - Register allocation done in cc1 (outast.c), communicated via AST
 - BC and IX register allocation, IX-indexed struct pointer optimization
 - Long (32-bit) and float (IEEE 754) support via helper functions
@@ -30,7 +30,7 @@ complete; small programs run in simulation.
 - See ws/README.md for details
 
 **Debugging Tools**
-- **AST Pretty Printer** (astpp.py): Format AST for human inspection
+- **AST Pretty Printer** (astpp): Format AST for human inspection
 - See ASTPP.md for details
 
 ## Architecture
@@ -68,16 +68,16 @@ This is a 2-pass compiler:
 - util.c - Utilities (fdprintf, bitdef, etc.)
 - kw.c - Keyword lookup tables
 
-**Pass 2 (cc2) files:**
-- cc2.c - Main entry point, command-line processing
+**Pass 2 (cc2) files:** (in newpass2/)
+- newcc2.c - Main entry point, command-line processing
 - parseast.c - AST parser, builds expression/statement trees
 - astio.c - Low-level AST I/O (character reading, hex parsing)
-- codegen.c - Scheduler: pattern recognition, instruction selection
+- codegen.c - Scheduler: demand calculation, dest assignment, instruction selection
 - emitexpr.c - Expression emission dispatcher
-- emitops.c - Operation emitters (assign, binop, call, incdec, etc.)
-- emithelper.c - Helper functions (loadVar, storeVar, emit strings)
-- emit.c - Statement emission
-- util.c - Shared utilities (fdprintf)
+- emitops.c - Operation emitters (binop, shift, logical, etc.)
+- emitcmp.c - Comparison and short-circuit evaluation
+- emitincdec.c - Pre/post increment/decrement emission
+- emit.c - Statement emission (if, while, for, switch, etc.)
 
 **Auto-generated files:**
 - tokenlist.c, enumlist.h - Token definitions
@@ -95,18 +95,23 @@ This is a 2-pass compiler:
 
 ```
 ccc/
-├── *.c, *.h          # Compiler source files
+├── pass1/            # Pass 1 source (cc1 - parser)
+├── newpass2/         # Pass 2 source (cc2 - code generator)
 ├── ws/               # Whitesmith's object tools (asz, wsld, wsnm, wslib)
 ├── libsrc/           # Runtime library source
 │   ├── include/      # System headers for target
 │   ├── libc/         # C library (printf, malloc, etc.)
 │   └── libu/         # Unix syscall wrappers
 ├── tests/            # Test suite
+├── attic/            # Obsolete code (pass2/, astpp.py, unit_test/)
 ├── root/             # Installed toolchain (after make install)
-│   ├── bin/          # Executables (cc1, cc2, ccc, asz, wsld, etc.)
+│   ├── bin/          # Executables (cc1, cc2, ccc, asz, wsld, astpp, etc.)
 │   ├── lib/          # Runtime libraries (crt0.o, libc.a, libu.a)
 │   └── usr/include/  # Installed headers
-└── stage1/           # Cross-compiled Z80 object files (cc1.o, cc2.o)
+├── stage1/           # Cross-compiled Z80 object files
+├── astpp.c           # AST pretty printer
+├── ccc.c             # Compiler driver
+└── util.c            # Shared utilities
 ```
 
 ## Command Line Reference
@@ -126,7 +131,8 @@ Files: `.c` (compile), `.s` (assemble), `.o` `.a` (link)
 | `-s` | Compile only (produce .s, no assembly) |
 | `-S` | Strip symbols from output |
 | `-9` | Use 9-char symbols in output |
-| `-k` | Keep intermediate AST file |
+| `-k` | Keep intermediate files (.ast, .s, .o) |
+| `-P` | Generate pretty-printed .pp file from AST |
 | `-v <level>` | Verbosity level (passed to cc1) |
 | `-V <level>` | Verbosity level (passed to cc2) |
 | `-I<dir>` | Include directory |
@@ -193,7 +199,10 @@ For visual inspection of AST structure, use the standalone pretty printer:
 make test.ast
 
 # Pretty print with human-readable formatting
-./astpp.py test.ast
+./astpp test.ast
+
+# Or use ccc -P to generate .pp automatically
+./ccc -k -P -c test.c    # Creates test.ast, test.pp, test.s, test.o
 ```
 
 **Output:**
