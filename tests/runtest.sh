@@ -12,7 +12,8 @@ VERBOSE=""
 not_k=true
 expect_fail=false
 do_link=false
-while getopts hkflv:V: flag; do
+do_run=false
+while getopts hkflrv:V: flag; do
 	case $flag in
 	h)
 		echo -v verbosity for cc1
@@ -20,10 +21,15 @@ while getopts hkflv:V: flag; do
 		echo -k continue after failure
 		echo -f expect failure
 		echo -l link the .o file
+		echo -r run under simulation \(implies -l\)
 		exit
 		;;
 	l)
 		do_link=true
+		;;
+	r)
+		do_link=true
+		do_run=true
 		;;
 	k)
 		not_k=false
@@ -79,6 +85,11 @@ for t in "${TESTS[@]}" ; do
 				echo $CCC -o "$base" "$base.o"
 				if $CCC -o "$base" "$base.o" 2>&1; then
 					echo "link ok"
+					if $do_run ; then
+						echo "======== run ========"
+						"$PROJECT_ROOT/root/sim" "./$base"
+						echo "exit code: $?"
+					fi
 				else
 					echo "link FAILED"
 					if $not_k ; then exit 1 ; fi
