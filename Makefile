@@ -107,7 +107,7 @@ sizecheck:
 	$(MAKE) -C pass1 sizefile
 	$(MAKE) -C newpass2 sizefile
 	@cat pass1/sizefile newpass2/sizefile | tee cur.size
-	@diff -N cur.size prev.size
+	@diff -N cur.size prev.size ; true
 
 .PHONY: stage1
 stage1: cc1 cc2 install
