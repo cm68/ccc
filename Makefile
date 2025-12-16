@@ -27,11 +27,14 @@ CC1_SOURCES = pass1/pass1.c pass1/error.c pass1/lex.c pass1/io.c pass1/macro.c \
 	pass1/kw.c pass1/expr.c pass1/parse.c pass1/type.c pass1/declare.c pass1/outast.c
 CC2_SOURCES = pass2/pass2.c pass2/astio.c pass2/parseast.c pass2/codegen.c \
 	pass2/dumpast.c pass2/emithelper.c pass2/emitexpr.c pass2/emitops.c pass2/emit.c
-NEWCC2_SOURCES = newpass2/newcc2.c newpass2/newemit.c
+NEWCC2_SOURCES = newpass2/astio.c newpass2/codegen.c newpass2/emit.c newpass2/emitcmp.c \
+	newpass2/emitexpr.c newpass2/emitincdec.c newpass2/emitops.c newpass2/newcc2.c \
+	newpass2/parseast.c
 
-# All C source files
-CFILES = $(CC1_SOURCES) $(CC2_SOURCES) $(NEWCC2_SOURCES) util.c ccc.c \
-	pass1/tokenlist.c pass1/debugtags.c pass2/tracetags.c
+# Source files for documentation
+CFILES = $(CC1_SOURCES) $(NEWCC2_SOURCES) util.c ccc.c \
+	pass1/tokenlist.c pass1/debugtags.c
+HFILES = newpass2/cc2.h pass1/cc1.h pass1/token.h
 
 BINS = pass1/cc1 pass2/cc2 newpass2/cc2 ccc
 
@@ -127,13 +130,13 @@ regen:
 tags:
 	ctags pass1/*.c newpass2/*.c *.c
 
-doc.pdf: $(CFILES) $(DOCFILES) Makefile
+doc.pdf: $(CFILES) $(HFILES) $(DOCFILES) Makefile
 	{ for f in $(DOCFILES); do \
 	    pandoc -f gfm -t plain "$$f" | \
 		iconv -f utf-8 -t Latin1//TRANSLIT | \
 		enscript -2rG --title="$$f" -p -; \
 	  done; \
-	  enscript -2rG -p - Makefile $(CFILES) $(LIBSRCS) ; } | \
+	  enscript -2rG -p - Makefile $(CFILES) $(HFILES) $(LIBSRCS) ; } | \
 		ps2pdf - doc.pdf
 
 clean:
