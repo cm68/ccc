@@ -14,7 +14,12 @@ gripe(error_t errcode)
 {
     int i = errcode;
     if (i > ER_WTF) i = ER_WTF;
+    linebuf[linepos] = 0;  /* null-terminate current position */
     fdprintf(2, "%s:%d: %s\n", filename, lineno, errmsg[i]);
+    if (prevline[0])
+        fdprintf(2, "  %s\n", prevline);
+    if (linebuf[0])
+        fdprintf(2, "  %s\n", linebuf);
     error = errcode;
     exitCode = 1;
 }

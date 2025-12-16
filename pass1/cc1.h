@@ -329,6 +329,9 @@ extern unsigned char nextchar;
 extern int lineno;
 extern char *filename;
 extern int column;
+extern char linebuf[];
+extern char prevline[];
+extern int linepos;
 extern char *sysIncPath;
 extern struct textbuf *tbtop;
 extern int exitCode;  /* Global exit code: 0=success, 1=errors occurred */

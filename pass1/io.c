@@ -23,6 +23,9 @@ char *filename;             // current file name
 int column;                 // this is reset to 0 when we see a newline
 int nextcol = 0;
 char namebuf[128];
+char linebuf[256];          // current line for error messages
+char prevline[256];         // previous line for error context
+int linepos = 0;
 
 /*
  * the formal definition of offset is the first unread character.
@@ -435,7 +438,10 @@ again:
         }
     }
     free(t->storage);
-    free(t->name);
+    if (tbtop) {
+        free(t->name);
+    }
+    /* else: keep t->name - filename still points to it */
     free(t);
     if (!tbtop) {
         /* No parent textbuf, we're at EOF */
@@ -452,12 +458,17 @@ done:
     if (curchar == 0) {
         nextcol = 0;
     } else if (curchar == '\n') {
+        linebuf[linepos] = 0;  /* null-terminate the line */
+        strcpy(prevline, linebuf);
+        linepos = 0;
         nextcol = 0;
         lineno++;
         if (tbtop) {
             tbtop->lineno = lineno;  /* Keep textbuf lineno in sync */
         }
     } else {
+        if (linepos < sizeof(linebuf) - 1)
+            linebuf[linepos++] = curchar;
         nextcol++;
     }
     if (nextchar == '\t') nextchar = ' ';
@@ -491,6 +502,9 @@ void
 ioinit()
 {
     lineno = 1;
+    linepos = 0;
+    linebuf[0] = 0;
+    prevline[0] = 0;
     advance();
     advance();
     column = 0;
