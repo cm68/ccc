@@ -1,18 +1,18 @@
    text	   data	    bss	    dec	    hex	filename
-    630	      0	      1	    631	    277	../stage1/pass1.o
-   1038	      0	      2	   1040	    410	../stage1/error.o
-   4071	      0	    139	   4210	   1072	../stage1/lex.o
-   1181	      0	    134	   1315	    523	../stage1/io.o
-   1774	      0	      0	   1774	    6ee	../stage1/macro.o
-    454	      0	      0	    454	    1c6	../stage1/kw.o
+    647	      0	      1	    648	    288	../stage1/pass1.o
+   1085	      0	      2	   1087	    43f	../stage1/error.o
+   4193	      0	    139	   4332	   10ec	../stage1/lex.o
+   1256	      0	    646	   1902	    76e	../stage1/io.o
+   1866	      0	      0	   1866	    74a	../stage1/macro.o
+    473	      0	      0	    473	    1d9	../stage1/kw.o
       0	      0	      0	      0	      0	../stage1/tokenlist.o
-   9805	      0	      0	   9805	   264d	../stage1/expr.o
-   4569	      0	     84	   4653	   122d	../stage1/parse.o
-   2918	      0	      3	   2921	    b69	../stage1/type.o
-   2403	      0	      0	   2403	    963	../stage1/declare.o
-   9750	      0	    260	  10010	   271a	../stage1/outast.o
-    106	      0	      0	    106	     6a	../stage1/util.o
-  38699       0     623   39322         pass1 total
+  10039	      0	      0	  10039	   2737	../stage1/expr.o
+   4837	      0	     84	   4921	   1339	../stage1/parse.o
+   3027	      0	      3	   3030	    bd6	../stage1/type.o
+   2496	      0	      0	   2496	    9c0	../stage1/declare.o
+  10874	      0	    260	  11134	   2b7e	../stage1/outast.o
+    112	      0	      0	    112	     70	../stage1/util.o
+  40905       0    1135   42040         pass1 total
    text	   data	    bss	    dec	    hex	filename
     516	      0	   1511	   2027	    7eb	../stage1/newcc2.o
     334	      0	      0	    334	    14e	../stage1/astio.o
