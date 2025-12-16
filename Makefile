@@ -59,6 +59,7 @@ install: cc1 cc2 ccc
 	$(MAKE) -C newpass2 install ROOTDIR=$(CURDIR)/$(ROOTDIR)
 	$(MAKE) -C ws install ROOTDIR=$(CURDIR)/$(ROOTDIR)
 	$(MAKE) -C libsrc install ROOTDIR=$(CURDIR)/$(ROOTDIR)
+	cp ccc $(ROOTDIR)/bin
 
 # Suffix rules using installed binaries
 %.ast: %.c cc1
