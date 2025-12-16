@@ -1,3 +1,2 @@
 #!/bin/bash
-make sizecheck
-exit 0
+make sizecheck || true
