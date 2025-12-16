@@ -61,5 +61,5 @@ int main() {
     }
 
     /* If we reach here, all tests passed */
-    return 42;
+    return 0;
 }
