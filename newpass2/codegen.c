@@ -258,6 +258,28 @@ calcDemand(struct expr *e)
         }
     }
 
+    /* cmpB Vb #const -> ld a,const; cp (iy/ix+off) */
+    /* cmpB Rb #const -> ld a,reg; cp const */
+    if ((op == '<' || op == '>' || op == 'Q' || op == 'n' ||
+         op == 'L' || op == 'g') && e->size == 1) {
+        struct expr *l = e->left, *r = e->right;
+        if (l->op == 'V' && r->op == '#') {
+            e->special = SP_CMPV;
+            e->aux = l->aux;        /* R_IX or R_IY */
+            e->offset = l->offset;  /* stack/struct offset */
+            e->incr = r->v.c & 0xff; /* constant value */
+            demand = 0;
+            goto done;
+        }
+        if (l->op == 'R' && r->op == '#') {
+            e->special = SP_CMPR;
+            e->aux = l->aux;        /* R_B or R_C */
+            e->incr = r->v.c & 0xff; /* constant value */
+            demand = 0;
+            goto done;
+        }
+    }
+
     /* cmpB with (hl): left is Mb[addr], right is simple (normalized) */
     /* Exclude Mb[Rp] - register pointer needs copy to HL first */
     if ((op == '<' || op == '>' || op == 'Q' || op == 'n' ||

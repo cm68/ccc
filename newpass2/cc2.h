@@ -102,6 +102,8 @@ struct expr {
 #define SP_BITTEST  15      /* &B (ix+ofs) #pow2 -> bit n,(ix+ofs) */
 #define SP_ADDBC    16      /* +p Mp[Rp bc] #const -> ld hl,const; add hl,bc */
 #define SP_CMPEQ    17      /* Qs/ns expr #0/1/-1 -> inc/dec/nop then test HL */
+#define SP_CMPV     18      /* cmpB Vb #const -> ld a,const; cp (iy/ix+off) */
+#define SP_CMPR     19      /* cmpB Rb #const -> ld a,reg; cp const */
 
 /* Expression allocation */
 struct expr *newExpr(char op, char type);

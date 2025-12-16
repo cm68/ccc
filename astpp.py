@@ -339,9 +339,9 @@ class ASTParser:
         # If: I has_else(2) nlabels(2) cond then [else]
         elif c == 'I':
             has_else = self.read_hex2()
-            nlabels = self.read_hex2()  # skip intermediate label count
+            nlabels = self.read_hex2()
             cond = self.parse_expr()
-            self.prln(f"IF ({cond})")
+            self.prln(f"IF [nlabels={nlabels}] ({cond})")
             self.indent += 1
             self.parse_stmt()
             self.indent -= 1

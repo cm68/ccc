@@ -43,6 +43,51 @@ freeExpr(struct expr *e)
 }
 
 /*
+ * Propagate cond flag and label through condition tree.
+ * aux2 encodes the jump target:
+ *   positive: emit FALSE jump to no{aux2}
+ *   negative: emit TRUE jump to ht{-aux2}
+ * inOr indicates we're inside a || chain.
+ */
+static void
+setCondLbl2(struct expr *e, int lbl, int inOr)
+{
+    if (!e || e == &sentinel) return;
+    e->cond = 1;
+    if (e->op == 'h') {  /* LOR */
+        /* || children emit TRUE jumps to merge label */
+        e->aux2 = lbl;
+        setCondLbl2(e->left, lbl, 1);   /* inside || */
+        setCondLbl2(e->right, lbl, 1);
+    } else if (e->op == 'j') {  /* LAND */
+        /* && children emit FALSE jumps */
+        e->aux2 = lbl;
+        setCondLbl2(e->left, lbl, 0);
+        setCondLbl2(e->right, lbl, 0);
+    } else {
+        /* Leaf comparison */
+        if (inOr)
+            e->aux2 = -(lbl + 1);  /* TRUE jump to ht{lbl+1} */
+        else
+            e->aux2 = lbl;         /* FALSE jump to no{lbl} */
+    }
+}
+
+static void
+setCondLbl(struct expr *e, int lbl)
+{
+    if (!e || e == &sentinel) return;
+    if (e->op == 'h')
+        setCondLbl2(e, lbl, 1);  /* || at root: children emit TRUE jumps */
+    else if (e->op == 'j')
+        setCondLbl2(e, lbl, 0);  /* && at root: children emit FALSE jumps */
+    else {
+        e->cond = 1;
+        e->aux2 = lbl;  /* simple comparison: FALSE jump */
+    }
+}
+
+/*
  * Convert $ node with aux (indexed local) to V node.
  * For compound ops, the left operand is an address but we load/modify/store,
  * so it's effectively a V node. Unifies IX/IY handling in emit code.
@@ -443,16 +488,21 @@ dumpStmt(void)
             comment("IF else=%d labels=%d lbl=%d [", hasElse, nlabels, lbl);
             indent += 2;
             cond = parseExpr();
-            cond->cond = 1;
+            setCondLbl(cond, lbl);  /* propagate cond flag and label */
             calcDemand(cond);
             assignDest(cond, cond->size == 1 ? R_A : R_HL);
             emitExpr(cond);
             special = cond->special;
             {
                 char cop = cond->op;
+                char csz = cond->size;
+                char ccond = cond->cond;  /* save cond flag */
                 freeExpr(cond);
                 /* emit conditional jump to skip then block */
-                if (special == SP_BITTEST) {
+                /* If cond had cond=1, it already emitted its own jump */
+                if (ccond && (special == SP_CMPV || special == SP_CMPR)) {
+                    /* comparison already emitted jump, nothing to do */
+                } else if (special == SP_BITTEST) {
                     /* bit n,(ix+ofs): Z=1 if bit is 0; skip then if Z (false) */
                     emit("jp z,no%d_%d", lbl, fnIndex);
                 } else if (special == SP_SIGN || special == SP_SIGNREG) {
@@ -466,7 +516,8 @@ dumpStmt(void)
                         emit("jp nz,no%d_%d", lbl, fnIndex);
                     else             /* != : skip when equal (Z) */
                         emit("jp z,no%d_%d", lbl, fnIndex);
-                } else if (special == SP_CMPHL ||
+                } else if (special == SP_CMPHL || special == SP_CMPV ||
+                           special == SP_CMPR ||
                            cop == '<' || cop == '>' || cop == 'L' || cop == 'g') {
                     /* cp/sbc sets flags: C if A < operand, Z if A == operand
                      * Skip then block when condition is FALSE */
@@ -492,15 +543,29 @@ dumpStmt(void)
                         emit("jp c,no%d_%d", lbl, fnIndex);
                         break;
                     }
+                } else if (cop == 'h') {
+                    /* || chain: emit merge label, then FALSE jump */
+                    /* All TRUE paths jumped to ht, FALSE falls through */
+                    emit("ht%d_%d:", lbl + 1, fnIndex);
+                    /* Last comparison's flags: skip then if FALSE (NZ for ==) */
+                    emit("jp nz,no%d_%d", lbl, fnIndex);
                 } else if (cop == '!') {
                     /* !expr: test child for zero, jump if NON-zero */
-                    emit("ld a,h");
-                    emit("or l");
+                    if (csz == 1) {
+                        emit("or a");
+                    } else {
+                        emit("ld a,h");
+                        emit("or l");
+                    }
                     emit("jp nz,no%d_%d", lbl, fnIndex);
                 } else {
                     /* general: test HL/A for zero, jump if zero */
-                    emit("ld a,h");
-                    emit("or l");
+                    if (csz == 1) {
+                        emit("or a");
+                    } else {
+                        emit("ld a,h");
+                        emit("or l");
+                    }
                     emit("jp z,no%d_%d", lbl, fnIndex);
                 }
             }

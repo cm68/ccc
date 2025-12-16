@@ -25,9 +25,15 @@ advance(void)
 void
 skipWs(void)
 {
-    while (curchar == ' ' || curchar == '\t' ||
-           curchar == '\n' || curchar == '\r') {
+    unsigned char c;
+
+top:
+    c = curchar;
+    if (c == ' ' || c == '\t' || c == '\n' || c == '\r') {
         advance();
+        goto top;
+    } else {
+        return;
     }
 }
 

@@ -44,6 +44,52 @@ emitCompare(struct expr *e)
         }
         if (!e->cond)
             goto cmpresult;
+    } else if (e->special == SP_CMPV) {
+        /* byte cmp V node with constant: ld a,const; cp (iy/ix+off) */
+        char *rn = (e->aux == R_IX) ? "ix" : "iy";
+        comment("CMPV %s%+d #%d", rn, e->offset, e->incr);
+        emit("ld a,%d", e->incr);
+        emit("cp (%s%o)", rn, e->offset);
+        if (e->cond) {
+            /* aux2 < 0: TRUE jump to ht{-aux2}, aux2 >= 0: FALSE jump to no{aux2} */
+            if (e->aux2 < 0) {
+                int target = -e->aux2;
+                if (e->op == 'Q')       /* == : TRUE when Z */
+                    emit("jp z,ht%d_%d", target, fnIndex);
+                else if (e->op == 'n')  /* != : TRUE when NZ */
+                    emit("jp nz,ht%d_%d", target, fnIndex);
+            } else {
+                if (e->op == 'Q')       /* == : FALSE when NZ */
+                    emit("jp nz,no%d_%d", e->aux2, fnIndex);
+                else if (e->op == 'n')  /* != : FALSE when Z */
+                    emit("jp z,no%d_%d", e->aux2, fnIndex);
+            }
+        } else {
+            goto cmpresult;
+        }
+    } else if (e->special == SP_CMPR) {
+        /* byte cmp regvar with constant: ld a,const; cp reg */
+        char *rn = (e->aux == R_B) ? "b" : "c";
+        comment("CMPR %s #%d", rn, e->incr);
+        emit("ld a,%d", e->incr);
+        emit("cp %s", rn);
+        if (e->cond) {
+            /* aux2 < 0: TRUE jump to ht{-aux2}, aux2 >= 0: FALSE jump to no{aux2} */
+            if (e->aux2 < 0) {
+                int target = -e->aux2;
+                if (e->op == 'Q')       /* == : TRUE when Z */
+                    emit("jp z,ht%d_%d", target, fnIndex);
+                else if (e->op == 'n')  /* != : TRUE when NZ */
+                    emit("jp nz,ht%d_%d", target, fnIndex);
+            } else {
+                if (e->op == 'Q')       /* == : FALSE when NZ */
+                    emit("jp nz,no%d_%d", e->aux2, fnIndex);
+                else if (e->op == 'n')  /* != : FALSE when Z */
+                    emit("jp z,no%d_%d", e->aux2, fnIndex);
+            }
+        } else {
+            goto cmpresult;
+        }
     } else if (e->special == SP_SIGN) {
         /* sign test: bit 7 of high byte */
         comment("SIGN $%s ofs=%d", e->sym ? e->sym : "?", e->offset);
@@ -116,9 +162,15 @@ emitCompare(struct expr *e)
                 emit("ex de,hl");
                 emit("exx");
             }
-            emitExpr(e->right);
+            if (ISBYTE(ctype) && e->right->op == '#') {
+                /* Byte compare with constant: use cp immediate */
+                emit("cp %d", e->right->v.c & 0xff);
+            } else {
+                emitExpr(e->right);
+            }
             if (ISBYTE(ctype)) {
-                emit("cp l");
+                if (e->right->op != '#')
+                    emit("cp l");
             } else if (ISWORD(ctype)) {
                 emit("ex de,hl");
                 emit("or a");
@@ -1810,11 +1862,10 @@ emitExpr(struct expr *e)
     case 'j':  /* logical and (&&) with short-circuit */
         comment("j%c d=%d %s%s [", e->type, e->demand, regnames[e->dest] ? regnames[e->dest] : "-", e->cond ? " C" : "");
         indent += 2;
-        if (e->cond) {
-            /* conditional context: emit left, test, emit right */
-            /* if left is false, skip right (HL will be 0) */
-            /* Don't propagate cond to children - we need 0/1 values to test */
+        {
+            /* For &&: FALSE result short-circuits, TRUE continues */
             int lbl = labelCnt++;
+            /* Don't propagate cond - let children produce 0/1 values */
             emitExpr(e->left);
             /* test left and short-circuit if false */
             if (e->left->size == 2) {
@@ -1825,83 +1876,59 @@ emitExpr(struct expr *e)
             }
             emit("jp z,ja%d_%d", lbl, fnIndex);  /* left false -> skip right */
             emitExpr(e->right);
-            emit("ja%d_%d:", lbl, fnIndex);
-            /* if we jumped, HL=0 (left was 0); otherwise HL has right result */
-        } else {
-            /* need 0/1 value */
-            int lbl = labelCnt++;
-            emitExpr(e->left);
-            /* test left */
-            if (e->left->size == 2) {
-                emit("ld a,h");
-                emit("or l");
-            } else {
-                emit("or a");
-            }
-            emit("jp z,lj%d_%d", lbl, fnIndex);  /* left false -> result 0 */
-            emitExpr(e->right);
-            /* test right */
             if (e->right->size == 2) {
                 emit("ld a,h");
                 emit("or l");
             } else {
                 emit("or a");
             }
-            emit("lj%d_%d:", lbl, fnIndex);
-            /* A is zero if we jumped or if right is 0 */
-            emit("ld hl,0");
-            emit("jp z,lk%d_%d", lbl, fnIndex);
-            emit("inc l");
-            emit("lk%d_%d:", lbl, fnIndex);
+            emit("ja%d_%d:", lbl, fnIndex);
+            /* A is zero if we jumped OR if right is zero */
+            if (!e->cond) {
+                /* need 0/1 value */
+                int lbl2 = labelCnt++;
+                emit("ld hl,0");
+                emit("jp z,jz%d_%d", lbl2, fnIndex);
+                emit("inc l");
+                emit("jz%d_%d:", lbl2, fnIndex);
+            }
         }
         indent -= 2;
         comment("]");
         break;
-    case 'h':  /* logical or (||) with short-circuit */
+    case 'h':  /* logical or (||) - propagates cond, emits nothing */
         comment("h%c d=%d %s%s [", e->type, e->demand, regnames[e->dest] ? regnames[e->dest] : "-", e->cond ? " C" : "");
         indent += 2;
         if (e->cond) {
-            /* conditional context: emit left, if true skip right */
-            /* Don't propagate cond to children - we need 0/1 values to test */
-            int lbl = labelCnt++;
+            /* Children have cond=1 and aux2 set - they emit jumps */
             emitExpr(e->left);
-            /* test left and short-circuit if true */
-            if (e->left->size == 2) {
-                emit("ld a,h");
-                emit("or l");
-            } else {
-                emit("or a");
-            }
-            emit("jp nz,hb%d_%d", lbl, fnIndex);  /* left true -> skip right */
             emitExpr(e->right);
-            emit("hb%d_%d:", lbl, fnIndex);
-            /* if we jumped, HL is nonzero; otherwise HL has right result */
         } else {
-            /* need 0/1 value */
+            /* Non-conditional: need 0/1 value */
             int lbl = labelCnt++;
             emitExpr(e->left);
-            /* test left */
             if (e->left->size == 2) {
                 emit("ld a,h");
                 emit("or l");
             } else {
                 emit("or a");
             }
-            emit("jp nz,lh%d_%d", lbl, fnIndex);  /* left true -> result 1 */
+            emit("jp nz,ht%d_%d", lbl, fnIndex);
             emitExpr(e->right);
-            /* test right */
             if (e->right->size == 2) {
                 emit("ld a,h");
                 emit("or l");
             } else {
                 emit("or a");
             }
-            emit("lh%d_%d:", lbl, fnIndex);
-            /* A is nonzero if we jumped or if right is nonzero */
-            emit("ld hl,1");
-            emit("jp nz,li%d_%d", lbl, fnIndex);
-            emit("dec l");
-            emit("li%d_%d:", lbl, fnIndex);
+            emit("ht%d_%d:", lbl, fnIndex);
+            {
+                int lbl2 = labelCnt++;
+                emit("ld hl,0");
+                emit("jp z,hz%d_%d", lbl2, fnIndex);
+                emit("inc l");
+                emit("hz%d_%d:", lbl2, fnIndex);
+            }
         }
         indent -= 2;
         comment("]");
