@@ -22,7 +22,7 @@ jobs:
         sudo apt-get install -y gcc gcc-multilib make gawk pandoc enscript ghostscript
 
     - name: Build project
-      run: make clean && make
+      run: make clean && make && make install
 
     - name: Run tests
       run: make test || true
