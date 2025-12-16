@@ -556,7 +556,11 @@ getType(
         if (sub && count > 0) {
             t->size = sub->size * count;
         } else {
-            t->size = 0;  // incomplete array
+            /*
+             * Incomplete array - when used in expressions, decays to
+             * pointer so size = TS_PTR for argument promotion
+             */
+            t->size = (flags & TF_POINTER) ? TS_PTR : 0;
         }
     } else if (flags & TF_POINTER) {
         t->size = TS_PTR;  // pointer size constant

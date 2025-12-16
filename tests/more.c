@@ -122,3 +122,13 @@ int tSwFall(int x) {
         case 0:
         case 1:
             result = 10;
+            break;
+        case 2:
+        case 3:
+            result = 20;
+            break;
+        default:
+            result = -1;
+    }
+    return result;
+}

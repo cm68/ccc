@@ -92,3 +92,11 @@ int test_break(int n) {
 // continue statement
 int test_continue(int n) {
     int i = 0;
+    int sum = 0;
+    while (i < n) {
+        i = i + 1;
+        if (i == 3) continue;
+        sum = sum + i;
+    }
+    return sum;
+}
