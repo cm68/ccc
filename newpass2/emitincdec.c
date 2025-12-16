@@ -115,6 +115,25 @@ emitPreIncDec(struct expr *e)
             emit("inc hl");
             emit("ld (hl),d");
             emit("ex de,hl");
+        } else if (e->size == 2) {
+            /* Large increment for 16-bit pre-inc/dec */
+            emit("ld e,(hl)");
+            emit("inc hl");
+            emit("ld d,(hl)");
+            emit("dec hl");
+            emit("push hl");
+            emit("ex de,hl");
+            if (e->op == '(')
+                emit("ld de,%d", e->aux2);
+            else
+                emit("ld de,-%d", e->aux2);
+            emit("add hl,de");
+            emit("pop de");
+            emit("ex de,hl");
+            emit("ld (hl),e");
+            emit("inc hl");
+            emit("ld (hl),d");
+            emit("ex de,hl");
         } else {
             emit("XXXXXXXXX %c", e->op);
         }
@@ -237,6 +256,28 @@ emitPostInc(struct expr *e)
         emit("ld (hl),d");
         if (!e->unused)
             emit("pop hl");
+    } else if (e->size == 2) {
+        /* Large increment for 16-bit */
+        emitExpr(e->left);
+        comment("incr=%d", e->aux2);
+        emit("ld e,(hl)");
+        emit("inc hl");
+        emit("ld d,(hl)");
+        emit("dec hl");
+        if (!e->unused)
+            emit("push de");
+        emit("ex de,hl");
+        if (e->op == ')')
+            emit("ld de,%d", e->aux2);
+        else
+            emit("ld de,-%d", e->aux2);
+        emit("add hl,de");
+        emit("ex de,hl");
+        emit("ld (hl),e");
+        emit("inc hl");
+        emit("ld (hl),d");
+        if (!e->unused)
+            emit("pop hl");
     } else if (e->size == 1 && e->aux2 <= 4) {
         char *ins = (e->op == ')') ? "inc" : "dec";
         unsigned char i;
@@ -247,6 +288,20 @@ emitPostInc(struct expr *e)
             emit("ld e,a");
         for (i = 0; i < e->aux2; i++)
             emit("%s a", ins);
+        emit("ld (hl),a");
+        if (!e->unused)
+            emit("ld a,e");
+    } else if (e->size == 1) {
+        /* Large increment for 8-bit */
+        emitExpr(e->left);
+        comment("incr=%d", e->aux2);
+        emit("ld a,(hl)");
+        if (!e->unused)
+            emit("ld e,a");
+        if (e->op == ')')
+            emit("add a,%d", e->aux2);
+        else
+            emit("sub %d", e->aux2);
         emit("ld (hl),a");
         if (!e->unused)
             emit("ld a,e");

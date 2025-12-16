@@ -36,7 +36,7 @@ CFILES = $(CC1_SOURCES) $(NEWCC2_SOURCES) util.c ccc.c \
 	pass1/tokenlist.c pass1/debugtags.c
 HFILES = newpass2/cc2.h pass1/cc1.h pass1/token.h
 
-BINS = pass1/cc1 pass2/cc2 newpass2/cc2 ccc
+BINS = pass1/cc1 pass2/cc2 newpass2/cc2 ccc astpp
 
 # Documentation files
 DOCFILES = README.md TODO.md CLAUDE.md AST_FORMAT.md libsrc/README.md libsrc/libc/README.md
@@ -56,9 +56,9 @@ newcc2:
 ccc: ccc.o
 	$(LD) $(LDFLAGS) ccc ccc.o
 
-install: cc1 cc2 ccc
+install: cc1 cc2 ccc astpp
 	mkdir -p $(ROOTDIR)/bin
-	cp ccc $(ROOTDIR)/bin
+	cp ccc astpp $(ROOTDIR)/bin
 	$(MAKE) -C pass1 install ROOTDIR=$(CURDIR)/$(ROOTDIR)
 	$(MAKE) -C newpass2 install ROOTDIR=$(CURDIR)/$(ROOTDIR)
 	$(MAKE) -C ws install ROOTDIR=$(CURDIR)/$(ROOTDIR)
@@ -71,8 +71,11 @@ install: cc1 cc2 ccc
 %.s: %.ast cc2
 	./$(ROOTDIR)/bin/cc2 $<
 
-%.pp: %.ast astpp.py
-	python3 ./astpp.py $< > $@
+astpp: astpp.c
+	$(CC) -Wall -o $@ $<
+
+%.pp: %.ast astpp
+	./astpp $< > $@
 
 %.obj: %.s
 	$(ASM) $(ASMOPTS) -o $@ $<
@@ -104,9 +107,8 @@ valgrind: cc1 cc2 newcc2
 
 sizecheck:
 	$(MAKE) -C pass1 sizefile
-	#$(MAKE) -C pass2 sizefile
 	$(MAKE) -C newpass2 sizefile
-	@cat pass1/sizefile pass2/sizefile newpass2/sizefile | tee cur.size
+	@cat pass1/sizefile newpass2/sizefile | tee cur.size
 	@diff -N cur.size prev.size
 	@cp cur.size prev.size
 

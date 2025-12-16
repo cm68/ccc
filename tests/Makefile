@@ -291,7 +291,7 @@ valgrind:
 
 # Generate pretty-printed .pp from .ast
 %.pp: %.ast
-	../astpp.py $< > $@
+	../astpp $< > $@
 
 # Generate .s from .ast (pass2)
 %.s: %.ast

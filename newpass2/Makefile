@@ -40,10 +40,9 @@ stage1:
 	mkdir -p $(OUTDIR)
 	@for f in $(SOURCES); do \
 	  b=$${f%.c}; \
-	  echo $(CCC) $(CCCFLAGS) -k -c $$f ; \
+	  echo $(CCC) $(CCCFLAGS) -k -P -c $$f ; \
 	  printf "%-20s" "$$f: "; \
-	  $(CCC) $(CCCFLAGS) -k -c $$f 2> $(OUTDIR)/$$b.err 1>&2 && echo "ok" || echo "FAIL"; \
-	  ../astpp.py $$b.ast > $$b.pp ; \
+	  $(CCC) $(CCCFLAGS) -k -P -c $$f 2> $(OUTDIR)/$$b.err 1>&2 && { echo "ok"; rm -f $(OUTDIR)/$$b.err; } || echo "FAIL"; \
 	  mv $$b.s $$b.o $$b.ast $$b.pp $(OUTDIR) 2>/dev/null ; \
 	done
 

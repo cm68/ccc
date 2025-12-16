@@ -42,6 +42,10 @@ make expr.s
 1. `make stage1` - verify complete pipeline
 2. `make test` - verify all tests pass
 
+**Before any push:**
+- `make sizecheck` - updates prev.size with current emitted code sizes
+- Commit prev.size with your changes to memorialize the current emitted size
+
 ## Running the Compiler
 
 ```bash

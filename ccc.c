@@ -25,6 +25,7 @@ usage(void)
     printf("  -c             Compile and assemble only, keep .o\n");
     printf("  -s             Compile only, keep .s (no assembly)\n");
     printf("  -k             Keep all intermediates (.ast, .s, .o)\n");
+    printf("  -P             Generate pretty-printed .pp from .ast\n");
     printf("  -S             Strip symbols from output\n");
     printf("  -9             Use 9-char symbols in output\n");
     printf("  -v <level>     Verbosity level (passed to cc1)\n");
@@ -148,6 +149,7 @@ main(int argc, char **argv)
     int no_exec = 0;         /* -n: don't execute (dry run) */
     int strip_syms = 0;      /* -S: strip symbols from output */
     int nine_char = 0;       /* -9: use 9-char symbols */
+    int pp_gen = 0;          /* -P: generate .pp file */
 
     /* Input files by type */
     char *c_files[MAX_ARGS];
@@ -166,6 +168,7 @@ main(int argc, char **argv)
     char cc2_path[1024];
     char asm_path[1024];
     char ld_path[1024];
+    char astpp_path[1024];
 
     char chdr_path[1024];
     char libc_path[1024];
@@ -179,11 +182,12 @@ main(int argc, char **argv)
 
     rootdir = getroot(progname);
 
-    /* Build paths to cc1, cc2, assembler, linker */
+    /* Build paths to cc1, cc2, assembler, linker, astpp */
     snprintf(cc1_path, sizeof(cc1_path), "%s/bin/cc1", rootdir);
     snprintf(cc2_path, sizeof(cc2_path), "%s/bin/cc2", rootdir);
     snprintf(asm_path, sizeof(asm_path), "%s/bin/asz", rootdir);
     snprintf(ld_path, sizeof(ld_path), "%s/bin/wsld", rootdir);
+    snprintf(astpp_path, sizeof(astpp_path), "%s/bin/astpp", rootdir);
 
     snprintf(chdr_path, sizeof(chdr_path), "%s/lib/crt0.o", rootdir);
     snprintf(libc_path, sizeof(libc_path), "%s/lib/libc.a", rootdir);
@@ -229,6 +233,10 @@ main(int argc, char **argv)
             argv++;
         } else if (strcmp(argv[0], "-9") == 0) {
             nine_char = 1;
+            argc--;
+            argv++;
+        } else if (strcmp(argv[0], "-P") == 0) {
+            pp_gen = 1;
             argc--;
             argv++;
         } else if (strcmp(argv[0], "-x") == 0) {
@@ -346,6 +354,8 @@ main(int argc, char **argv)
         char *as_args[8];
         int cc1_argc, cc2_argc, j;
 
+        char *pp_file;
+
         /* Generate intermediate filenames */
         ast_file = malloc(strlen(base) + 10);
         sprintf(ast_file, "%s.ast", base);
@@ -353,6 +363,8 @@ main(int argc, char **argv)
         sprintf(asm_file, "%s.s", base);
         obj_file = malloc(strlen(base) + 10);
         sprintf(obj_file, "%s.o", base);
+        pp_file = malloc(strlen(base) + 10);
+        sprintf(pp_file, "%s.pp", base);
 
         if (!no_exec) printf("=== Compiling %s ===\n", src);
 
@@ -374,6 +386,38 @@ main(int argc, char **argv)
             if (status != 0) {
                 fprintf(stderr, "Error: cc1 failed on %s\n", src);
                 exit(status);
+            }
+        }
+
+        /* Generate .pp file if -P */
+        if (pp_gen && !no_exec) {
+            char *pp_args[4];
+            FILE *pp_fp;
+            int pp_pid, pp_status;
+
+            pp_args[0] = astpp_path;
+            pp_args[1] = ast_file;
+            pp_args[2] = NULL;
+
+            if (print_cmds) {
+                printCommand(pp_args);
+                printf(" > %s\n", pp_file);
+            }
+
+            pp_fp = fopen(pp_file, "w");
+            if (!pp_fp) {
+                perror(pp_file);
+            } else {
+                pp_pid = fork();
+                if (pp_pid == 0) {
+                    dup2(fileno(pp_fp), 1);
+                    fclose(pp_fp);
+                    execv(astpp_path, pp_args);
+                    perror(astpp_path);
+                    exit(1);
+                }
+                fclose(pp_fp);
+                waitpid(pp_pid, &pp_status, 0);
             }
         }
 
@@ -400,6 +444,7 @@ main(int argc, char **argv)
         if (!keep_all && !no_exec)
             unlink(ast_file);
         free(ast_file);
+        free(pp_file);
 
         /* If -s, we're done with this file */
         if (asm_only) {

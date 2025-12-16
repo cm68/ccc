@@ -54,13 +54,11 @@ stage1: $(GENERATED)
 	@for f in $(SOURCES); do \
 	  b=$${f%.c}; \
 	  printf "%-20s" "$$f: "; \
-	  $(CCC) $(CFLAGS) -k -c $$f 2> $(OUTDIR)/$$b.err 1>&2 && echo "ok" || echo "FAIL"; \
-	  ../astpp.py $$b.ast > $$b.pp ; \
+	  $(CCC) $(CFLAGS) -k -P -c $$f 2> $(OUTDIR)/$$b.err 1>&2 && { echo "ok"; rm -f $(OUTDIR)/$$b.err; } || echo "FAIL"; \
 	  mv $$b.s $$b.o $$b.ast $$b.pp $(OUTDIR) 2>/dev/null ; \
 	done
 	@printf "%-20s" "../util.c: "
-	@$(CCC) $(CFLAGS) -k -c ../util.c 2> $(OUTDIR)/util.err 1>&2 && echo "ok" || echo "FAIL"
-	@../astpp.py util.ast > util.pp
+	@$(CCC) $(CFLAGS) -k -P -c ../util.c 2> $(OUTDIR)/util.err 1>&2 && { echo "ok"; rm -f $(OUTDIR)/util.err; } || echo "FAIL"
 	@mv util.s util.o util.ast util.pp $(OUTDIR) 2>/dev/null
 
 # Size report for stage1 objects
