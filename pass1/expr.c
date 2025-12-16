@@ -195,6 +195,7 @@ mkIncDec(struct expr *operand, unsigned char inc_op, unsigned char is_postfix)
 
 /*
  * Wrap expression in type conversion (NARROW/WIDEN/SEXT)
+ * Fold constant conversions at compile time.
  */
 static struct expr *
 mkConv(struct expr *inner, struct type *tgt)
@@ -209,6 +210,20 @@ mkConv(struct expr *inner, struct type *tgt)
         op = WIDEN;
     else
         op = SEXT;
+
+    /* Fold constant conversions */
+    if (inner->op == CONST) {
+        if (op == SEXT) {
+            /* Sign extend based on source size */
+            if (src->size == 1 && (inner->v & 0x80))
+                inner->v |= 0xffffff00L;
+            else if (src->size == 2 && (inner->v & 0x8000))
+                inner->v |= 0xffff0000L;
+        }
+        inner->type = tgt;
+        return inner;
+    }
+
     conv = mkexprI(op, inner, tgt, 0, 0);
     conv->left->up = conv;
     return conv;
@@ -581,6 +596,9 @@ parseExpr(unsigned char pri, struct stmt *st)
         /* Optimize: &(DEREF x) = x, since SYM already gives address */
         if (e && e->op == DEREF) {
             e = e->left;
+        } else if (e && e->type && (e->type->flags & TF_ARRAY)) {
+            /* &array = array (just change type to pointer-to-array) */
+            e->type = getType(TF_POINTER, e->type, 0);
         } else {
             struct expr *addr = mkexpr(AND, e);
             if (e) {

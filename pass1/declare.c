@@ -399,7 +399,8 @@ declInternal(struct type **btp, unsigned char struct_elem)
         // Function types need unique instances because we modify elem list
         suffix = calloc(1, sizeof(*suffix));
         suffix->flags = TF_FUNC;
-        suffix->sub = prefix;  // Return type
+        // K&R: no return type defaults to int
+        suffix->sub = prefix ? prefix : inttype;
 
         /*
          * Detect style: K&R if starts with SYM that's not a typedef,

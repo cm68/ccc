@@ -21,6 +21,7 @@ class ASTParser:
         self.data = data
         self.pos = 0
         self.indent = 0
+        self.block_cnt = 0
 
     def cur(self):
         if self.pos < len(self.data):
@@ -311,7 +312,9 @@ class ASTParser:
         if c == 'B':
             decl_count = self.read_hex2()
             stmt_count = self.read_hex2()
-            self.prln("BLOCK {")
+            block_num = self.block_cnt
+            self.block_cnt += 1
+            self.prln(f"BLOCK {block_num} {{")
             self.indent += 1
             for _ in range(decl_count):
                 self.skip_whitespace()

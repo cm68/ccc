@@ -49,13 +49,16 @@ stage1:
 
 # Size report for stage1 objects
 STAGE1_OBJS = $(SOURCES:.c=.o)
-sizefile: Makefile
+sizefile: Makefile cc2 install
 	$(MAKE) stage1 CC=ccc
 	@$(ROOTDIR)/bin/wssize $(addprefix ../stage1/,$(STAGE1_OBJS)) | \
 	awk \
 		'{ t+=$$1 ; d+=$$2 ; b+=$$3 ; a+=$$4; print } \
 		END {printf "%7d %7d %7d %7d %19s\n", t, d, b, a, "newpass2 total" }' \
 	 > sizefile
+	@cat sizefile
+	@if [ -f oldsize ] ; then diff sizefile oldsize ; true; fi
+	@cp sizefile oldsize
 
 regen:
 	rm -f $(GENERATED)

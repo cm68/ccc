@@ -458,9 +458,17 @@ dumpStmt(void)
                 } else if (special == SP_SIGN || special == SP_SIGNREG) {
                     /* >= 0: Z=true, NZ=false; jump to no on NZ */
                     emit("jp nz,no%d_%d", lbl, fnIndex);
-                } else if (special == SP_CMPHL) {
-                    /* cp sets flags: C if A < operand, Z if A == operand
-                     * Operands normalized: A=left, comparing against right
+                } else if (special == SP_CMPEQ) {
+                    /* Word equality: HL==0 means equal; test HL for zero */
+                    emit("ld a,h");
+                    emit("or l");
+                    if (cop == 'Q')  /* == : skip when NOT equal (NZ) */
+                        emit("jp nz,no%d_%d", lbl, fnIndex);
+                    else             /* != : skip when equal (Z) */
+                        emit("jp z,no%d_%d", lbl, fnIndex);
+                } else if (special == SP_CMPHL ||
+                           cop == '<' || cop == '>' || cop == 'L' || cop == 'g') {
+                    /* cp/sbc sets flags: C if A < operand, Z if A == operand
                      * Skip then block when condition is FALSE */
                     switch (cop) {
                     case 'Q':  /* == : skip on NZ */

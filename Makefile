@@ -120,7 +120,7 @@ stage1: cc1 cc2 newcc2 install
 
 regen:
 	$(MAKE) -C pass1 regen
-	$(MAKE) -C pass2 regen
+	#$(MAKE) -C pass2 regen
 	$(MAKE) -C newpass2 regen
 
 tags:

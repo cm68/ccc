@@ -1192,7 +1192,8 @@ parse()
 			cur.type == UNION || cur.type == ENUM || cur.type == CONST ||
 			cur.type == VOLATILE || cur.type == TYPEDEF || cur.type == STATIC ||
 			cur.type == REGISTER || cur.type == AUTO || cur.type == EXTERN ||
-			(poss_typedef && poss_typedef->kind == tdef)) {
+			(poss_typedef && poss_typedef->kind == tdef) ||
+			(cur.type == SYM && next.type == LPAR)) {  /* K&R function */
 			declaration();
 		} else if (cur.type == ASM) {
 			/* Global asm block */

@@ -245,6 +245,19 @@ calcDemand(struct expr *e)
         goto done;
     }
 
+    /* Word equality with small constant: == 0, == 1, == -1 */
+    /* Zero demand - just inc/dec/nop then test HL */
+    if ((op == 'Q' || op == 'n') && ISWORD(e->left->type) &&
+        e->right->op == '#') {
+        long val = e->right->v.l;
+        if (val == 0 || val == 1 || val == -1 || val == 0xffff) {
+            e->special = SP_CMPEQ;
+            e->incr = val;
+            demand = calcDemand(e->left);
+            goto done;
+        }
+    }
+
     /* cmpB with (hl): left is Mb[addr], right is simple (normalized) */
     /* Exclude Mb[Rp] - register pointer needs copy to HL first */
     if ((op == '<' || op == '>' || op == 'Q' || op == 'n' ||

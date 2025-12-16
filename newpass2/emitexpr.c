@@ -70,9 +70,38 @@ emitCompare(struct expr *e)
             emit("inc a");
             emit("sg%d_%d:", lbl, fnIndex);
         }
+    } else if (e->special == SP_CMPEQ) {
+        /* Word equality with 0, 1, -1: zero demand */
+        comment("CMPEQ %d", e->incr);
+        emitExpr(e->left);
+        if (e->incr == 1)
+            emit("dec hl");
+        else if (e->incr == -1 || e->incr == 0xffff)
+            emit("inc hl");
+        /* incr == 0: no modification, just test HL */
+        if (!e->cond) {
+            /* Not conditional - convert HL to boolean in A */
+            /* HL==0 means equal (true for Q, false for n) */
+            int lbl = labelCnt++;
+            emit("ld a,h");
+            emit("or l");
+            if (e->op == 'Q') {
+                /* == : result is 1 if HL==0, else 0 */
+                emit("ld a,1");
+                emit("jr z,eq%d_%d", lbl, fnIndex);
+                emit("xor a");
+            } else {
+                /* != : result is 0 if HL==0, else 1 */
+                emit("ld a,0");
+                emit("jr z,eq%d_%d", lbl, fnIndex);
+                emit("inc a");
+            }
+            emit("eq%d_%d:", lbl, fnIndex);
+        }
+        /* In conditional context, IF handler will test HL */
     } else {
-        /* General comparison */
-        unsigned char ctype = e->type;
+        /* General comparison - use operand type, not result type */
+        unsigned char ctype = e->left->type;
         unsigned char leftDeeper = treeDepth(e->left) >= treeDepth(e->right);
         if (leftDeeper) {
             emitExpr(e->left);
@@ -904,6 +933,12 @@ emitPrimary(struct expr *e)
             } else if (e->size == 2) {
                 emit("ld hl,%d", e->v.s & 0xffff);
                 emit("push hl");
+            } else if (e->size == 4) {
+                /* Long to stack: push high word first, then low */
+                emit("ld hl,%d", (e->v.l >> 16) & 0xffff);
+                emit("push hl");
+                emit("ld hl,%d", e->v.s & 0xffff);
+                emit("push hl");
             } else {
                 emit("XXXXXXXXX #tos");
             }
@@ -928,18 +963,25 @@ emitPrimary(struct expr *e)
         }
         break;
     case '$':
-        if (e->aux == R_IY) {
-            /* Local address: compute IY + offset */
+        if (e->aux == R_IY || e->aux == R_IX) {
+            /* Indexed address: compute IX/IY + offset */
             char off = e->offset;
-            comment("$%s iy%+d d=%d %s", e->sym ? e->sym : "?", off,
+            char *rn = (e->aux == R_IX) ? "ix" : "iy";
+            comment("$%s %s%+d d=%d %s", e->sym ? e->sym : "?", rn, off,
                     e->demand, regnames[e->dest] ? regnames[e->dest] : "-");
             if (e->demand == 0 && e->dest != R_TOS)
                 break;
-            emit("push iy");
+            emit("push %s", rn);
             emit("pop hl");
             if (off != 0) {
-                emit("ld de,%d", off);
-                emit("add hl,de");
+                if (off >= -4 && off <= 4) {
+                    /* Small offset: use inc/dec hl */
+                    while (off > 0) { emit("inc hl"); off--; }
+                    while (off < 0) { emit("dec hl"); off++; }
+                } else {
+                    emit("ld de,%d", off);
+                    emit("add hl,de");
+                }
             }
             if (e->dest == R_TOS)
                 emit("push hl");
