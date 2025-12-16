@@ -67,3 +67,6 @@ lib/*.O
 __pycache__/
 ws/lib/
 root/
+pass1/sizefile
+newpass2/sizefile
+newpass2/oldsize
