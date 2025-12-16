@@ -43,10 +43,10 @@ This is a 2-pass compiler:
 - Uses Unix syscalls (write) instead of stdio for output
 - ~7,500 lines of C code
 
-**Pass 2 (cc2)**: Tree-based code generator targeting Z80
+**Pass 2 (cc2)**: Stream code generator targeting Z80
 - Reads AST from pass 1 (paren-free hex format)
-- Two-phase architecture: parse -> schedule/emit
-- Builds complete function trees in memory before code generation
+- Builds one statement tree at a time, emits code immediately
+- Three-phase per-expression: demand calculation, dest assignment, emit
 - Register assignments received from cc1 via AST declarations
 - Uses Unix syscalls (read/write) instead of stdio
 - Handles memory width annotations (:b :s :l :p :f :d)
@@ -54,8 +54,8 @@ This is a 2-pass compiler:
 
 ## File Organization
 
-**Pass 1 (cc1) files:**
-- cc1.c - Main entry point, orchestration
+**Pass 1 (cc1) files:** (in pass1/)
+- pass1.c - Main entry point, orchestration
 - lex.c - Lexical analyzer (tokenizer)
 - parse.c - Statement and declaration parsing
 - expr.c - Expression parsing with precedence
