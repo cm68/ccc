@@ -39,15 +39,8 @@ jobs:
 
     - name: Show build artifacts
       run: |
-        ls -lh cc1 doc.pdf
-        file cc1 doc.pdf
-
-    - name: Verify generated files
-      run: |
-        echo "=== Generated error.h ==="
-        head -20 error.h
-        echo "=== Generated debug.h ==="
-        cat debug.h
+        ls -lh pass1/cc1 newpass2/cc2 doc.pdf
+        file pass1/cc1 newpass2/cc2 doc.pdf
 
     - name: Create Release and Upload Documentation
       if: startsWith(github.ref, 'refs/tags/')
