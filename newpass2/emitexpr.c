@@ -314,31 +314,30 @@ emitCmpArith(struct expr *e)
         }
         emit("ld (%s%o),l", rn, ofs);
         emit("ld (%s%o),h", rn, ofs + 1);
-    } else if (e->left->op == 'V' && e->size == 4 && e->op == 'P') {
+    } else if (e->left->op == 'V' && e->size == 4) {
+        /* long compound arith on V node - use store helper */
         char ofs = e->left->offset;
         char *rn = (e->left->aux == R_IX) ? "ix" : "iy";
+        char *sth = (e->left->aux == R_IX) ? "sLxindex" : "sLyindex";
         comment("V%c %s%+d", e->left->type, rn, ofs);
         emitExpr(e->right);
-        emit("push hl");
+        /* right operand in HLHL', load left into DEDE' */
+        emit("ld e,(%s%o)", rn, ofs);
+        emit("ld d,(%s%o)", rn, ofs + 1);
         emit("exx");
-        emit("push hl");
+        emit("ld e,(%s%o)", rn, ofs + 2);
+        emit("ld d,(%s%o)", rn, ofs + 3);
         emit("exx");
-        emit("ld l,(%s%o)", rn, ofs);
-        emit("ld h,(%s%o)", rn, ofs + 1);
-        emit("exx");
-        emit("ld l,(%s%o)", rn, ofs + 2);
-        emit("ld h,(%s%o)", rn, ofs + 3);
-        emit("exx");
-        emit("pop bc");
-        emit("add hl,bc");
-        emit("ld (%s%o),l", rn, ofs);
-        emit("ld (%s%o),h", rn, ofs + 1);
-        emit("exx");
-        emit("pop bc");
-        emit("adc hl,bc");
-        emit("ld (%s%o),l", rn, ofs + 2);
-        emit("ld (%s%o),h", rn, ofs + 3);
-        emit("exx");
+        switch (e->op) {
+        case 'P': emit("call __ladd"); break;
+        case 'o': emit("call __lsub"); break;
+        case '1': emit("call __lor"); break;
+        case 'a': emit("call __land"); break;
+        case 'X': emit("call __lxor"); break;
+        }
+        /* store via helper */
+        emit("ld a,%d", ofs);
+        emit("call %s", sth);
     } else if (e->size == 2 && e->right->op == '#') {
         unsigned val = e->right->v.s & 0xffff;
         emitExpr(e->left);
@@ -425,28 +424,42 @@ emitCmpShift(struct expr *e)
         }
         emit("ld b,h");
         emit("ld c,l");
-    } else if (e->left->op == 'V' && e->size == 4 && e->right->op == '#') {
+    } else if (e->left->op == 'V' && e->size == 2 && e->right->op == '#') {
+        /* word local <<= or >>= constant */
         char ofs = e->left->offset;
         char *rn = (e->left->aux == R_IX) ? "ix" : "iy";
-        unsigned char cnt = e->right->v.c & 0x1f;
+        unsigned char cnt = e->right->v.c & 0xf;
         comment("V%c %s%+d", e->left->type, rn, ofs);
         emit("ld l,(%s%o)", rn, ofs);
         emit("ld h,(%s%o)", rn, ofs + 1);
-        emit("exx");
-        emit("ld l,(%s%o)", rn, ofs + 2);
-        emit("ld h,(%s%o)", rn, ofs + 3);
-        emit("exx");
+        if (e->op == '0') {
+            while (cnt--)
+                emit("add hl,hl");
+        } else {
+            while (cnt--) {
+                emit("srl h");
+                emit("rr l");
+            }
+        }
+        emit("ld (%s%o),l", rn, ofs);
+        emit("ld (%s%o),h", rn, ofs + 1);
+    } else if (e->left->op == 'V' && e->size == 4 && e->right->op == '#') {
+        char ofs = e->left->offset;
+        char *ldh = (e->left->aux == R_IX) ? "lLxindex" : "lLyindex";
+        char *sth = (e->left->aux == R_IX) ? "sLxindex" : "sLyindex";
+        unsigned char cnt = e->right->v.c & 0x1f;
+        comment("Vl %s%+d", (e->left->aux == R_IX) ? "ix" : "iy", ofs);
+        /* load via helper */
+        emit("ld a,%d", ofs);
+        emit("call %s", ldh);
         emit("ld a,%d", cnt);
         if (e->op == '0')
             emit("call __llshl");
         else
             emit("call __lashr");
-        emit("ld (%s%o),l", rn, ofs);
-        emit("ld (%s%o),h", rn, ofs + 1);
-        emit("exx");
-        emit("ld (%s%o),l", rn, ofs + 2);
-        emit("ld (%s%o),h", rn, ofs + 3);
-        emit("exx");
+        /* store via helper */
+        emit("ld a,%d", ofs);
+        emit("call %s", sth);
     } else {
         emitExpr(e->left);
         emitExpr(e->right);
@@ -992,12 +1005,8 @@ emitPrimary(struct expr *e)
                 if (e->dest == R_TOS)
                     emit("push hl");
             } else if (e->size == 4) {
-                emit("ld l,(%s%o)", rn, off);
-                emit("ld h,(%s%o)", rn, off + 1);
-                emit("exx");
-                emit("ld l,(%s%o)", rn, off + 2);
-                emit("ld h,(%s%o)", rn, off + 3);
-                emit("exx");
+                emit("ld a,%d", off);
+                emit("call %s", (e->aux == R_IX) ? "lLxindex" : "lLyindex");
                 if (e->dest == R_TOS) {
                     emit("exx");
                     emit("push hl");
@@ -1117,13 +1126,9 @@ emitExpr(struct expr *e)
                     emit("ld (%s%o),l", rn, ofs);
                     emit("ld (%s%o),h", rn, ofs + 1);
                 } else if (e->size == 4) {
-                    /* long: HLHL' - store 4 bytes */
-                    emit("ld (%s%o),l", rn, ofs);
-                    emit("ld (%s%o),h", rn, ofs + 1);
-                    emit("exx");
-                    emit("ld (%s%o),l", rn, ofs + 2);
-                    emit("ld (%s%o),h", rn, ofs + 3);
-                    emit("exx");
+                    /* long: HLHL' - store via helper */
+                    emit("ld a,%d", ofs);
+                    emit("call %s", (e->left->aux == R_IX) ? "sLxindex" : "sLyindex");
                 }
             }
         } else if (e->special == SP_STCONST) {

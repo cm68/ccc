@@ -43,6 +43,21 @@ freeExpr(struct expr *e)
 }
 
 /*
+ * Convert $ node with aux (indexed local) to V node.
+ * For compound ops, the left operand is an address but we load/modify/store,
+ * so it's effectively a V node. Unifies IX/IY handling in emit code.
+ */
+static struct expr *
+dollarToV(struct expr *e)
+{
+    if (e->op == '$' && e->aux) {
+        e->op = 'V';
+        /* keep aux, offset, sym - they transfer directly */
+    }
+    return e;
+}
+
+/*
  * Complexity score for normalization (lower = simpler, goes on right)
  * 0 = constant, 1 = regvar, 2 = local/global, 3 = simple deref, 4+ = complex
  */
@@ -210,7 +225,7 @@ parseExpr(void)
         type = curchar;
         advance();
         e = newExpr(c, type);
-        e->left = parseExpr();
+        e->left = dollarToV(parseExpr());
         e->aux2 = hex4();  /* increment amount */
         return e;
 
@@ -238,6 +253,10 @@ parseExpr(void)
         advance();
         e = newExpr(c, type);
         e->left = parseExpr();
+        /* Collapse $local to V for compound ops - unifies IX/IY handling */
+        if (c == 'o' || c == 'a' || c == 'm' || c == 'P' || c == '1' ||
+            c == 'X' || c == 'T' || c == '2' || c == '6' || c == '0')
+            e->left = dollarToV(e->left);
         e->right = parseExpr();
         /* Normalize: put simpler operand on right for commutative/comparison ops */
         if (c == '+' || c == '*' || c == '&' || c == '|' || c == '^' ||
