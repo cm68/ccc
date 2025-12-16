@@ -982,19 +982,71 @@ emitExpr(struct expr *e)
     case 'j':  /* logical and (&&) with short-circuit */
         comment("j%c d=%d %s%s [", e->type, e->demand, regnames[e->dest] ? regnames[e->dest] : "-", e->cond ? " C" : "");
         indent += 2;
-        {
-            /* For &&: FALSE result short-circuits, TRUE continues */
-            int lbl = labelCnt++;
-            /* Don't propagate cond - let children produce 0/1 values */
+        if (e->cond) {
+            /* aux=1 means inside ||: use local label, fall through with Z for FALSE */
+            /* aux=0 means not inside ||: jump to no{aux2} on FALSE */
+            if (e->aux) {
+                /* Inside ||: use unique local label */
+                int localLbl = labelCnt++;
+                emitExpr(e->left);
+                if (e->left->op == 'R' && e->left->demand == 0 && e->left->aux == R_BC) {
+                    emit("ld a,b");
+                    emit("or c");
+                } else if (e->left->size == 2) {
+                    emit("ld a,h");
+                    emit("or l");
+                } else {
+                    emit("or a");
+                }
+                emit("jp z,ja%d_%d", localLbl, fnIndex);
+                emitExpr(e->right);
+                if (e->right->op == 'R' && e->right->demand == 0 && e->right->aux == R_BC) {
+                    emit("ld a,b");
+                    emit("or c");
+                } else if (e->right->size == 2) {
+                    emit("ld a,h");
+                    emit("or l");
+                } else {
+                    emit("or a");
+                }
+                emit("jp z,ja%d_%d", localLbl, fnIndex);
+                emit("ja%d_%d:", localLbl, fnIndex);
+            } else {
+                /* Not inside ||: jump to no{aux2} on FALSE */
+                emitExpr(e->left);
+                if (e->left->op == 'R' && e->left->demand == 0 && e->left->aux == R_BC) {
+                    emit("ld a,b");
+                    emit("or c");
+                } else if (e->left->size == 2) {
+                    emit("ld a,h");
+                    emit("or l");
+                } else {
+                    emit("or a");
+                }
+                emit("jp z,no%d_%d", e->aux2, fnIndex);
+                emitExpr(e->right);
+                if (e->right->op == 'R' && e->right->demand == 0 && e->right->aux == R_BC) {
+                    emit("ld a,b");
+                    emit("or c");
+                } else if (e->right->size == 2) {
+                    emit("ld a,h");
+                    emit("or l");
+                } else {
+                    emit("or a");
+                }
+                emit("jp z,no%d_%d", e->aux2, fnIndex);
+            }
+        } else {
+            /* Non-conditional: need 0/1 value in HL */
+            int lbl = labelCnt++, lbl2;
             emitExpr(e->left);
-            /* test left and short-circuit if false */
             if (e->left->size == 2) {
                 emit("ld a,h");
                 emit("or l");
             } else {
                 emit("or a");
             }
-            emit("jp z,ja%d_%d", lbl, fnIndex);  /* left false -> skip right */
+            emit("jp z,ja%d_%d", lbl, fnIndex);
             emitExpr(e->right);
             if (e->right->size == 2) {
                 emit("ld a,h");
@@ -1004,25 +1056,51 @@ emitExpr(struct expr *e)
             }
             emit("ja%d_%d:", lbl, fnIndex);
             /* A is zero if we jumped OR if right is zero */
-            if (!e->cond) {
-                /* need 0/1 value */
-                int lbl2 = labelCnt++;
-                emit("ld hl,0");
-                emit("jp z,jz%d_%d", lbl2, fnIndex);
-                emit("inc l");
-                emit("jz%d_%d:", lbl2, fnIndex);
-            }
+            lbl2 = labelCnt++;
+            emit("ld hl,0");
+            emit("jp z,jz%d_%d", lbl2, fnIndex);
+            emit("inc l");
+            emit("jz%d_%d:", lbl2, fnIndex);
         }
         indent -= 2;
         comment("]");
         break;
-    case 'h':  /* logical or (||) - propagates cond, emits nothing */
+    case 'h':  /* logical or (||) with short-circuit */
         comment("h%c d=%d %s%s [", e->type, e->demand, regnames[e->dest] ? regnames[e->dest] : "-", e->cond ? " C" : "");
         indent += 2;
         if (e->cond) {
-            /* Children have cond=1 and aux2 set - they emit jumps */
+            /* For ||: if any child is true (nz), skip to ht (take then) */
+            /* aux=1 means nested inside another ||: fall through, parent emits ht */
+            /* aux=0 means not nested: emit ht label here */
+            int htLabel = e->aux2 + 1;
             emitExpr(e->left);
+            if (e->left->op == 'R' && e->left->demand == 0 && e->left->aux == R_BC) {
+                emit("ld a,b");
+                emit("or c");
+            } else if (e->left->size == 2) {
+                emit("ld a,h");
+                emit("or l");
+            } else {
+                emit("or a");
+            }
+            emit("jp nz,ht%d_%d", htLabel, fnIndex);
             emitExpr(e->right);
+            if (e->right->op == 'R' && e->right->demand == 0 && e->right->aux == R_BC) {
+                emit("ld a,b");
+                emit("or c");
+            } else if (e->right->size == 2) {
+                emit("ld a,h");
+                emit("or l");
+            } else {
+                emit("or a");
+            }
+            if (e->aux) {
+                /* Nested: fall through with Z flag for FALSE, NZ already jumped to ht */
+            } else {
+                /* Not nested: FALSE jumps to no, emit ht label */
+                emit("jp z,no%d_%d", e->aux2, fnIndex);
+                emit("ht%d_%d:", htLabel, fnIndex);
+            }
         } else {
             /* Non-conditional: need 0/1 value */
             int lbl = labelCnt++;

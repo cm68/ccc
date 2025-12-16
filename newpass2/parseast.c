@@ -57,11 +57,13 @@ setCondLbl2(struct expr *e, int lbl, int inOr)
     if (e->op == 'h') {  /* LOR */
         /* || children emit TRUE jumps to merge label */
         e->aux2 = lbl;
+        e->aux = inOr;  /* save context: 1 if nested inside another || */
         setCondLbl2(e->left, lbl, 1);   /* inside || */
         setCondLbl2(e->right, lbl, 1);
     } else if (e->op == 'j') {  /* LAND */
         /* && children emit FALSE jumps */
         e->aux2 = lbl;
+        e->aux = inOr;  /* save context: 1 if inside ||, 0 if not */
         setCondLbl2(e->left, lbl, 0);
         setCondLbl2(e->right, lbl, 0);
     } else {
@@ -78,9 +80,9 @@ setCondLbl(struct expr *e, int lbl)
 {
     if (!e || e == &sentinel) return;
     if (e->op == 'h')
-        setCondLbl2(e, lbl, 1);  /* || at root: children emit TRUE jumps */
+        setCondLbl2(e, lbl, 0);  /* || at root: not nested (aux=0) */
     else if (e->op == 'j')
-        setCondLbl2(e, lbl, 0);  /* && at root: children emit FALSE jumps */
+        setCondLbl2(e, lbl, 0);  /* && at root: not inside || */
     else {
         e->cond = 1;
         e->aux2 = lbl;  /* simple comparison: FALSE jump */
@@ -175,7 +177,7 @@ parseExpr(void)
         e->v.l = hex8();
         return e;
 
-    case '$':  /* symbol ref - mark locals with aux for later M[] collapse */
+    case '$':  /* symbol ref - convert locals to V node */
         readName(name);
         {
             struct sym *s = findLocal(name);
@@ -183,9 +185,9 @@ parseExpr(void)
                 e = newExpr('R', s->type);  /* register var */
                 e->aux = s->reg;
             } else if (s) {
-                /* Local address - mark with aux/offset for M[] to collapse */
-                e = newExpr('$', T_USHORT);  /* address type */
-                e->aux = R_IY;               /* IY-relative marker */
+                /* Local variable - use V node with IY offset */
+                e = newExpr('V', s->type);
+                e->aux = R_IY;
                 e->offset = s->off;
             } else {
                 e = newExpr('$', 0);        /* global */
@@ -500,8 +502,9 @@ dumpStmt(void)
                 freeExpr(cond);
                 /* emit conditional jump to skip then block */
                 /* If cond had cond=1, it already emitted its own jump */
-                if (ccond && (special == SP_CMPV || special == SP_CMPR)) {
-                    /* comparison already emitted jump, nothing to do */
+                if (ccond && (special == SP_CMPV || special == SP_CMPR ||
+                              cop == 'j' || cop == 'h')) {
+                    /* cond node already emitted jumps, nothing to do */
                 } else if (special == SP_BITTEST) {
                     /* bit n,(ix+ofs): Z=1 if bit is 0; skip then if Z (false) */
                     emit("jp z,no%d_%d", lbl, fnIndex);
@@ -572,6 +575,7 @@ dumpStmt(void)
             dumpStmt();  /* then */
             if (hasElse) {
                 emit("\tjp no%d_%d", lbl2, fnIndex);
+                emit("no%d_%d:", lbl, fnIndex);  /* alias for el - condition FALSE jumps here */
                 emit("el%d_%d:", lbl, fnIndex);
                 dumpStmt();  /* else */
                 emit("no%d_%d:", lbl2, fnIndex);
@@ -603,8 +607,9 @@ dumpStmt(void)
             unsigned char hasVal = hex2();
             if (hasVal) {
                 struct expr *e = parseExpr();
+                char dest = ISBYTE(fnRetType) ? R_A : R_HL;
                 calcDemand(e);
-                assignDest(e, e->size == 1 ? R_A : R_HL);
+                assignDest(e, dest);
                 comment("RETURN [");
                 indent += 2;
                 emitExpr(e);
@@ -614,8 +619,10 @@ dumpStmt(void)
             } else {
                 comment("RETURN (void)");
             }
-            /* TODO: epilogue for locals/frame */
-            emit("ret");
+            if (hasFrame)
+                emit("jp framefree");
+            else
+                emit("ret");
         }
         break;
 
@@ -962,6 +969,7 @@ parseFunc(void)
     clearLocals();
 
     type = curchar;
+    fnRetType = type;
     advance();
     readName(name);
 
@@ -1011,6 +1019,13 @@ parseFunc(void)
             addLocal(lname, ltype, lreg, loff);
             comment("local %c %s %s off=%d", ltype, lname, regnames[lreg] ? regnames[lreg] : "-", (char)(loff));
         }
+    }
+
+    /* Emit frame allocation if needed */
+    hasFrame = fsize > 0;
+    if (hasFrame) {
+        emit("ld a,%d", fsize);
+        emit("call framealloc");
     }
 
     /* Dump body */

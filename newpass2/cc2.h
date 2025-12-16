@@ -137,6 +137,8 @@ extern char outbuf[];
 extern int indent;
 extern int labelCnt;
 extern int fnIndex;
+extern int hasFrame;
+extern char fnRetType;
 extern int blockCnt;
 
 /* Scheduling */

@@ -11,6 +11,8 @@ char outbuf[256];
 int indent;
 int labelCnt;   /* label counter within function */
 int fnIndex;    /* function index for unique labels */
+int hasFrame;   /* current function has stack frame */
+char fnRetType; /* function return type */
 int blockCnt;   /* global block counter for debugging */
 
 /*
