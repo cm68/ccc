@@ -48,17 +48,11 @@ findEnclLoop(struct stmt *parent, int is_continue)
  * Format: <name><index> where index is file-global incrementing counter
  * No underscore prefix - static symbols don't get exported
  */
-static char *
+static void
 mangleStatNam(struct name *var)
 {
-	char *mangled;
-	int len;
-
-	/* Allocate: name + up to 5 digits + null */
-	len = strlen(var->name) + 6;
-	mangled = malloc(len);
-	snprintf(mangled, len, "%s%d", var->name, staticCtr++);
-	return mangled;
+	/* Use first 12 chars of name + counter (up to 3 digits) */
+	snprintf(var->mangled, 16, "%.12s%d", var->name, staticCtr++);
 }
 struct stmt *makestmt(unsigned char op, struct expr *left);
 char *blockname(void);
@@ -734,7 +728,7 @@ parsefunc(struct name *f)
 	if (f->type && (f->type->flags & TF_FUNC)) {
 		for (param = f->type->elem; param; param = param->next) {
 			// Only add parameters with actual names (skip anonymous ones)
-			if (param->name && param->name[0] != '\0') {
+			if (param->name[0] != '\0') {
 				// Create a NEW name entry at level 2 (don't reuse type->elem)
 				newName(param->name, funarg, param->type, 0);
 			}
@@ -967,8 +961,8 @@ declaration()
                 if (sclass & SC_STATIC) {
                     v->sclass = SC_STATIC;
                     /* Static functions use bare name (no _ prefix) */
-                    if (!v->mangled_name)
-                        v->mangled_name = strdup(v->name);
+                    if (!v->mangled[0])
+                        strncpy(v->mangled, v->name, 15);
                 } else if (sclass & SC_EXTERN) {
                     v->sclass = SC_EXTERN;
                 }
@@ -993,13 +987,13 @@ declaration()
          */
         if (sclass & SC_STATIC) {
             v->sclass = SC_STATIC;
-            if (!v->mangled_name) {
+            if (!v->mangled[0]) {
                 if (lexlevel > 1)
                     /* Local statics get counter suffix for shadowing */
-                    v->mangled_name = mangleStatNam(v);
+                    mangleStatNam(v);
                 else
                     /* File-scope statics use bare name (no _ prefix) */
-                    v->mangled_name = strdup(v->name);
+                    strncpy(v->mangled, v->name, 15);
             }
         } else if (sclass & SC_EXTERN) {
             v->sclass = SC_EXTERN;
@@ -1041,15 +1035,14 @@ declaration()
                      */
                     if (v->u.init->var) {
                         struct name *strname = (struct name *)v->u.init->var;
-                        char fullname[256];
                         if (v->sclass & SC_STATIC) {
-                            snprintf(fullname, sizeof(fullname), "%s",
-                                v->mangled_name ? v->mangled_name : v->name);
+                            strncpy(strname->name,
+                                v->mangled[0] ? v->mangled : v->name, 15);
                         } else {
-                            snprintf(fullname, sizeof(fullname), "_%s", v->name);
+                            strname->name[0] = '_';
+                            strncpy(strname->name + 1, v->name, 14);
                         }
-                        free(strname->name);
-                        strname->name = strdup(fullname);
+                        strname->name[15] = 0;
                     }
                 }
             }
@@ -1300,8 +1293,6 @@ cleanupParse(void)
 		names = n->chain;
 		if (n->u.body)
 			frStmt(n->u.body);
-		if (n->kind != funarg && n->name)
-			free(n->name);
 		if (n->kind != funarg)
 			free(n);
 	}

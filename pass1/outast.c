@@ -78,7 +78,7 @@ findInLocals(const char *name, struct stmt *body)
 {
 	struct name *n;
 	for (n = body->locals; n; n = n->next) {
-		if (n->name && strcmp(n->name, name) == 0)
+		if (strcmp(n->name, name) == 0)
 			return n;
 	}
 	return NULL;
@@ -124,7 +124,7 @@ analyzeExpr(struct expr *e, struct stmt *body)
 	 * body->locals contains copies made by capLocals() */
 	if (op == SYM && e->var) {
 		var = (struct name *)e->var;
-		if (var->name) {
+		if (var->name[0]) {
 			local = findInLocals(var->name, body);
 			if (local)
 				incRef(local);
@@ -141,7 +141,7 @@ analyzeExpr(struct expr *e, struct stmt *body)
 	    ll && ll->op == DEREF && lll && lll->op == SYM && lll->var &&
 	    left->right && left->right->op == CONST) {
 		var = (struct name *)lll->var;
-		if (var->name) {
+		if (var->name[0]) {
 			local = findInLocals(var->name, body);
 			if (local && local->type && (local->type->flags & TF_POINTER))
 				incAgg(local);
@@ -413,10 +413,10 @@ assignFrmOff(struct name *func)
 		if (n->type && n->type->size == 0)
 			continue;  /* skip void */
 		/* Find matching local to set its frm_off */
-		if (body->locals && n->name) {
+		if (body->locals && n->name[0]) {
 			struct name *local;
 			for (local = body->locals; local; local = local->next) {
-				if (local->name && strcmp(local->name, n->name) == 0) {
+				if (strcmp(local->name, n->name) == 0) {
 					/* Params always need frame offset (passed on stack) */
 					local->frm_off = off;
 					break;
@@ -646,7 +646,7 @@ emitExpr(struct expr *e)
 			    (sym->level == 1 && !(sym->sclass & SC_STATIC)))
 				snprintf(fullname, sizeof(fullname), "_%s", sym->name);
 			else {
-				name = sym->mangled_name ? sym->mangled_name : sym->name;
+				name = sym->mangled[0] ? sym->mangled : sym->name;
 				snprintf(fullname, sizeof(fullname), "%s", name);
 			}
 			fdprintf(astFd, "$");
@@ -1204,9 +1204,9 @@ emitPrmDecls(struct type *functype, struct stmt *body)
 				continue;
 			/* Look up register/offset from body locals */
 			found = NULL;
-			if (body && body->locals && param->name) {
+			if (body && body->locals && param->name[0]) {
 				for (local = body->locals; local; local = local->next) {
-					if (local->name && strcmp(local->name, param->name) == 0) {
+					if (strcmp(local->name, param->name) == 0) {
 						found = local;
 						break;
 					}
@@ -1214,7 +1214,7 @@ emitPrmDecls(struct type *functype, struct stmt *body)
 			}
 			/* Emit as: d suffix hexname reg off */
 			fdprintf(astFd, "d%c", typeSfx(param->type));
-			if (param->name && param->name[0] != '\0')
+			if (param->name[0])
 				emitHexName(param->name);
 			else
 				emitHexName("_");  /* anonymous parameter */
@@ -1258,7 +1258,7 @@ emitLocals(struct stmt *body)
 	for (local = body->locals; local; local = local->next) {
 		if (local->kind == funarg)
 			continue;  /* params already emitted */
-		lname = local->mangled_name ? local->mangled_name : local->name;
+		lname = local->mangled[0] ? local->mangled : local->name;
 		fdprintf(astFd, "d%c", typeSfx(local->type));
 		emitHexName(lname);
 		fdprintf(astFd, "%02x%02x", local->reg,
@@ -1302,8 +1302,8 @@ emitFunction(struct name *func)
 	frm_size = analyzeFunc(func);
 
 	/* Static functions use mangled name, public get underscore prefix */
-	if (func->mangled_name) {
-		snprintf(func_name, sizeof(func_name), "%s", func->mangled_name);
+	if (func->mangled[0]) {
+		snprintf(func_name, sizeof(func_name), "%s", func->mangled);
 	} else {
 		snprintf(func_name, sizeof(func_name), "_%s", func->name);
 	}
@@ -1350,6 +1350,52 @@ emitFunction(struct name *func)
 static void emitInit(struct expr *init, struct type *type);
 static void emitInitList(struct expr *init, struct type *elem_type);
 
+/*
+ * Pre-scan initializer to mark strings that will be inlined.
+ * Must be called before emission so emitStrLit knows to skip them.
+ */
+static void markInlStr(struct expr *init, struct type *type);
+
+static void
+markInlStIn(struct expr *init, struct type *stype)
+{
+	struct expr *val;
+	struct name *field, *fields[32];
+	int nfields = 0, i;
+
+	if (stype && (stype->flags & TF_AGGREGATE)) {
+		for (field = stype->elem; field && nfields < 32; field = field->next)
+			fields[nfields++] = field;
+	}
+	i = nfields - 1;
+	for (val = init; val; val = val->next) {
+		field = (i >= 0) ? fields[i--] : NULL;
+		markInlStr(val, field ? field->type : NULL);
+	}
+}
+
+static void
+markInlStr(struct expr *init, struct type *type)
+{
+	if (init->op == INITLIST) {
+		if (type && (type->flags & TF_AGGREGATE)) {
+			markInlStIn(init->left, type);
+		} else if (type && (type->flags & TF_ARRAY)) {
+			struct expr *item;
+			for (item = init->left; item; item = item->next)
+				markInlStr(item, type->sub);
+		}
+	} else if (init->op == STRING && type &&
+		   (type->flags & TF_ARRAY) && type->sub &&
+		   type->sub->size == 1) {
+		/* String initializing char array - mark as inlined */
+		if (init->var) {
+			struct name *strname = (struct name *)init->var;
+			strname->emitted = 1;
+		}
+	}
+}
+
 static void
 emitStInit(struct expr *init, struct type *stype)
 {
@@ -1392,6 +1438,25 @@ emitInit(struct expr *init, struct type *type)
 		} else if (type->flags & TF_ARRAY) {
 			emitInitList(init->left, type->sub);
 		}
+	} else if (init->op == STRING && type &&
+		   (type->flags & TF_ARRAY) && type->sub &&
+		   type->sub->size == 1) {
+		/* String literal initializing char array - emit bytes inline */
+		unsigned char *str = (unsigned char *)init->v;
+		int slen = str ? str[0] : 0;
+		int arrlen = type->count;
+		int i;
+		/* Mark string as emitted so it won't be emitted separately */
+		if (init->var) {
+			struct name *strname = (struct name *)init->var;
+			strname->emitted = 1;
+		}
+		fdprintf(astFd, "[b%02x", arrlen);
+		for (i = 0; i < arrlen; i++) {
+			int b = (i < slen) ? str[i + 1] : 0;
+			fdprintf(astFd, "#b%08x", b);
+		}
+		fdprintf(astFd, "]");
 	} else if (init->op == CONST && type) {
 		/* Scalar constant - use declared type */
 		struct type *saved = init->type;
@@ -1474,6 +1539,18 @@ emitGv(struct name *var)
 		return;
 
 	/*
+	 * Pre-scan struct array initializers to mark strings that will be
+	 * inlined as bytes. Must happen before any emitStrLit calls.
+	 */
+	if ((var->type->flags & TF_ARRAY) && var->u.init) {
+		struct expr *item;
+		for (item = var->u.init; item; item = item->next) {
+			if (item->op == INITLIST)
+				markInlStr(item, var->type->sub);
+		}
+	}
+
+	/*
 	 * For char[] = "string", emit the string directly with var name
 	 * and skip the Z record
 	 */
@@ -1503,20 +1580,16 @@ emitGv(struct name *var)
 	/*
 	 * For arrays with initializer lists containing strings, emit all
 	 * strings BEFORE the Z record so they don't interrupt it.
-	 * Must recursively descend into INITLIST nodes for struct arrays.
+	 * Skip strings inside INITLIST (struct initializers) - those will
+	 * be emitted inline as bytes for embedded char arrays.
 	 */
 	if ((var->type->flags & TF_ARRAY) && var->u.init && var->u.init->next) {
-		struct expr *item, *inner;
+		struct expr *item;
 		for (item = var->u.init; item; item = item->next) {
 			if (item->op == STRING && item->var) {
 				emitStrLit((struct name *)item->var);
-			} else if (item->op == INITLIST) {
-				/* Descend into nested initializer list */
-				for (inner = item->left; inner; inner = inner->next) {
-					if (inner->op == STRING && inner->var)
-						emitStrLit((struct name *)inner->var);
-				}
 			}
+			/* Skip INITLIST - strings in structs are emitted inline */
 		}
 	}
 
@@ -1524,7 +1597,7 @@ emitGv(struct name *var)
 
 	/* Static uses mangled name, public gets underscore prefix */
 	if (var->sclass & SC_STATIC) {
-		name = var->mangled_name ? var->mangled_name : var->name;
+		name = var->mangled[0] ? var->mangled : var->name;
 		snprintf(fullname, sizeof(fullname), "%s", name);
 	} else {
 		snprintf(fullname, sizeof(fullname), "_%s", var->name);

@@ -75,15 +75,15 @@ struct type *floattype = &basictypes[7];
  * Chained via 'chain' field: [8]->[7]->...->[0]->NULL
  */
 static struct name basicnames[] = {
-    { "_char_",   0,0,0, 0, &basictypes[0], 0,0,0,0, 0, {0}, prim, 0 },
-    { "_short_",  0,0,0, 0, &basictypes[1], 0,0,0,0, 0, {0}, prim, &basicnames[0] },
-    { "_long_",   0,0,0, 0, &basictypes[2], 0,0,0,0, 0, {0}, prim, &basicnames[1] },
-    { "_uchar_",  0,0,0, 0, &basictypes[3], 0,0,0,0, 0, {0}, prim, &basicnames[2] },
-    { "_ushort_", 0,0,0, 0, &basictypes[4], 0,0,0,0, 0, {0}, prim, &basicnames[3] },
-    { "_ulong_",  0,0,0, 0, &basictypes[5], 0,0,0,0, 0, {0}, prim, &basicnames[4] },
-    { "_void_",   0,0,0, 0, &basictypes[6], 0,0,0,0, 0, {0}, prim, &basicnames[5] },
-    { "_float_",  0,0,0, 0, &basictypes[7], 0,0,0,0, 0, {0}, prim, &basicnames[6] },
-    { "_double_", 0,0,0, 0, &basictypes[8], 0,0,0,0, 0, {0}, prim, &basicnames[7] },
+    { "_char_",   0,0,0, 0, &basictypes[0], 0,0,0,0, "", {0}, prim, 0 },
+    { "_short_",  0,0,0, 0, &basictypes[1], 0,0,0,0, "", {0}, prim, &basicnames[0] },
+    { "_long_",   0,0,0, 0, &basictypes[2], 0,0,0,0, "", {0}, prim, &basicnames[1] },
+    { "_uchar_",  0,0,0, 0, &basictypes[3], 0,0,0,0, "", {0}, prim, &basicnames[2] },
+    { "_ushort_", 0,0,0, 0, &basictypes[4], 0,0,0,0, "", {0}, prim, &basicnames[3] },
+    { "_ulong_",  0,0,0, 0, &basictypes[5], 0,0,0,0, "", {0}, prim, &basicnames[4] },
+    { "_void_",   0,0,0, 0, &basictypes[6], 0,0,0,0, "", {0}, prim, &basicnames[5] },
+    { "_float_",  0,0,0, 0, &basictypes[7], 0,0,0,0, "", {0}, prim, &basicnames[6] },
+    { "_double_", 0,0,0, 0, &basictypes[8], 0,0,0,0, "", {0}, prim, &basicnames[7] },
 };
 
 /*
@@ -218,7 +218,7 @@ dumpType(struct type *t, int lv)
         }
     } else {
         fdprintf(2,"name %s flags %x (%s) count %x\n",
-            t->name ? t->name : "unnamed",
+            t->name[0] ? t->name : "unnamed",
             t->flags, bitdef(t->flags, typeBitdefs), t->count);
         dumpType(t->sub, ++lv);
     }
@@ -273,7 +273,8 @@ newName(char *name, kind k, struct type *t, unsigned char is_tag)
     }
 
     n = calloc(1, sizeof(*n));
-    n->name = strdup(name);
+    strncpy(n->name, name, 15);
+    n->name[15] = 0;
     n->type = t;
     n->level = lexlevel;
     n->is_tag = is_tag;

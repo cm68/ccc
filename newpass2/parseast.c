@@ -604,6 +604,7 @@ dumpStmt(void)
     case 'G':  /* goto */
         readName(name);
         comment("GOTO %s", name);
+        emit("jp %s", name);
         break;
 
     case 'S':  /* switch */

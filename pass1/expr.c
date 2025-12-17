@@ -389,7 +389,8 @@ parseExpr(unsigned char pri, struct stmt *st)
          */
         strname = (struct name *)calloc(1, sizeof(struct name));
         if (strname) {
-            strname->name = strdup(namebuf);
+            strncpy(strname->name, namebuf, 15);
+            strname->name[15] = 0;
             strname->kind = var;
             strname->type = e->type;
             strname->level = 1;  /* Global scope */
@@ -437,7 +438,8 @@ parseExpr(unsigned char pri, struct stmt *st)
                 functype->elem = NULL;    /* No parameter info */
 
                 n = calloc(1, sizeof(struct name));
-                n->name = strdup(symname);
+                strncpy(n->name, symname, 15);
+                n->name[15] = 0;
                 n->kind = var;
                 n->type = functype;
                 n->level = 1;  /* Global scope */

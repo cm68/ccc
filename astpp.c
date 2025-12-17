@@ -610,6 +610,7 @@ static void parseInit(void) {
             if (i > 0) initApp(", ");
             parseInit();
         }
+        if (cur() == ']') advance();
         initApp("]");
         return;
     }
@@ -653,6 +654,18 @@ static void parseInit(void) {
         advance();
         advance(); /* skip target type */
         initApp("(W ");
+        parseInit();
+        initApp(")");
+        return;
+    }
+
+    /* ADD expression (for pointer arithmetic in initializers) */
+    if (c == '+') {
+        advance();
+        advance(); /* skip type suffix */
+        initApp("(");
+        parseInit();
+        initApp(" + ");
         parseInit();
         initApp(")");
         return;

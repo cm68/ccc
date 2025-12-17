@@ -124,8 +124,10 @@ static struct name *
 createPrmEnt(char *name, struct type *type)
 {
     struct name *arg = calloc(1, sizeof(*arg));
-    // Always strdup the name to avoid dangling pointers
-    arg->name = name ? strdup(name) : strdup("");
+    if (name) {
+        strncpy(arg->name, name, 15);
+        arg->name[15] = 0;
+    }
     arg->type = type;
     arg->level = lexlevel + 1;
     arg->is_tag = 0;
@@ -267,7 +269,8 @@ declare(struct type **btp, unsigned char struct_elem)
              * global names[] array
              */
             nm = calloc(1, sizeof(*nm));  // Zero-initialize all fields
-            nm->name = strdup(cur.v.name);
+            strncpy(nm->name, cur.v.name, 15);
+            nm->name[15] = 0;
             nm->type = prefix;
             nm->level = lexlevel;
             nm->is_tag = 0;
@@ -311,11 +314,9 @@ declare(struct type **btp, unsigned char struct_elem)
                  * Name exists at outer scope - this is shadowing.
                  * Mangle the name so cc2 can distinguish variables.
                  */
-                char mangled[64];
-                snprintf(mangled, sizeof(mangled), "%s_%d",
-                    cur.v.name, shadowCtr++);
                 nm = newName(cur.v.name, var, prefix, 0);
-                nm->mangled_name = strdup(mangled);
+                snprintf(nm->mangled, 16, "%s_%d",
+                    cur.v.name, shadowCtr++);
             } else {
                 /* New name - create it */
                 nm = newName(cur.v.name, var, prefix, 0);

@@ -165,7 +165,7 @@ extern void emitStrLit(struct name *strname);
  * this is a handle for types.
  */
 struct type {
-	char *name;     		// the type name
+	char name[16];     		// the type name (embedded)
 	unsigned char size;		// how big is one of me (0-255)
 	int count;		    	// if we are an array, how many
 	struct name *elem;		// element list (struct members, function parameters)
@@ -197,7 +197,7 @@ typedef enum {
  * this is a container for types, functions, variables, constants, and fields
  */
 struct name {
-	char *name;
+	char name[16];          // symbol name (max 15 chars + null)
     unsigned char is_tag;   // true if (enum, struct, union),
                             // else false for var,enum elem,typedef
     unsigned char emitted;  // true if string literal already emitted
@@ -208,7 +208,7 @@ struct name {
 	unsigned char offset;	// if inside a struct (0-255)
     unsigned char bitoff;   // bit offset (0-7)
     unsigned char width;    // bitfield width (1-32)
-    char *mangled_name;     // mangled name for statics (NULL for others)
+    char mangled[16];       // mangled name for statics (empty if none)
     union {
         struct expr *init;  // value of constant or initializer (for var)
         struct stmt *body;  // function body (for fdef)
