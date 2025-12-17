@@ -7,7 +7,7 @@ ROOTDIR ?= ../../root
 DEST = $(ROOTDIR)/lib
 
 # Source files - each in its own .s file for selective linking
-LIBC_SRCS = frame.s indexiy.s long.s long32.s switch.s \
+LIBC_SRCS = frame.s indexiy.s long.s long32.s ltemp.s switch.s \
 	add32.s sub32.s and32.s or32.s xor32.s \
 	add168.s mul16.s div16.s mod16.s and16.s or16.s shift16.s \
 	mul32.s div32.s shift32.s \

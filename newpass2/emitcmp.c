@@ -151,18 +151,23 @@ emitCompare(struct expr *e)
         /* General comparison - use operand type, not result type */
         unsigned char ctype = e->left->type;
         unsigned char leftDeeper = treeDepth(e->left) >= treeDepth(e->right);
-        if (leftDeeper) {
+        if (ISLONG(ctype)) {
+            /* Long comparison: emit both, call _lcmp */
+            if (leftDeeper) {
+                emitExpr(e->left);   /* dest=R_DE → _lL */
+                emitExpr(e->right);  /* dest=R_HL → _lR */
+            } else {
+                emitExpr(e->right);  /* dest=R_HL → _lR */
+                emitExpr(e->left);   /* dest=R_DE → _lL */
+            }
+            emit("call _lcmp");
+        } else if (leftDeeper) {
             emitExpr(e->left);
             if (ISBYTE(ctype)) {
                 if (e->left->size == 2)
                     emit("ld a,l");
             } else if (ISWORD(ctype)) {
                 emit("ex de,hl");
-            } else if (ISLONG(ctype)) {
-                emit("ex de,hl");
-                emit("exx");
-                emit("ex de,hl");
-                emit("exx");
             }
             if (ISBYTE(ctype) && e->right->op == '#') {
                 /* Byte compare with constant: use cp immediate */
@@ -177,26 +182,10 @@ emitCompare(struct expr *e)
                 emit("ex de,hl");
                 emit("or a");
                 emit("sbc hl,de");
-            } else if (ISLONG(ctype)) {
-                emit("ex de,hl");
-                emit("exx");
-                emit("ex de,hl");
-                emit("exx");
-                emit("or a");
-                emit("sbc hl,de");
-                emit("exx");
-                emit("sbc hl,de");
-                emit("exx");
             }
         } else {
             emitExpr(e->right);
-            if (ISLONG(ctype)) {
-                emit("ex de,hl");
-                emit("exx");
-                emit("ex de,hl");
-                emit("exx");
-            } else
-                emit("ex de,hl");
+            emit("ex de,hl");
             emitExpr(e->left);
             if (ISBYTE(ctype)) {
                 if (e->left->size == 2)
@@ -205,12 +194,6 @@ emitCompare(struct expr *e)
             } else if (ISWORD(ctype)) {
                 emit("or a");
                 emit("sbc hl,de");
-            } else if (ISLONG(ctype)) {
-                emit("or a");
-                emit("sbc hl,de");
-                emit("exx");
-                emit("sbc hl,de");
-                emit("exx");
             }
         }
     }

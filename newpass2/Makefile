@@ -1,8 +1,11 @@
 #
 # Makefile for newpass2 (clean-sheet code generator)
 #
+# Disable built-in lex rule (.l -> .c) to avoid conflicts with lexeme files
+%.c: %.l
+
 ROOTDIR = ../root
-OUTDIR = ../stage1
+OUTDIR = stage1
 
 CC = gcc
 
@@ -17,9 +20,8 @@ endif
 
 CCCFLAGS = -I.
 CCC = $(ROOTDIR)/bin/ccc
-OUTDIR = ../stage1
 
-SOURCES = newcc2.c astio.c emit.c codegen.c parseast.c emitexpr.c emitcmp.c emitops.c emitincdec.c
+SOURCES = newcc2.c astio.c emit.c codegen.c parseast.c emitexpr.c emitcmp.c emitops.c emitincdec.c emitpat.c
 OBJECTS = $(SOURCES:.c=.o)
 HEADERS = cc2.h
 
@@ -43,20 +45,20 @@ stage1:
 	  echo $(CCC) $(CCCFLAGS) -k -P -c $$f ; \
 	  printf "%-20s" "$$f: "; \
 	  $(CCC) $(CCCFLAGS) -k -P -c $$f 2> $(OUTDIR)/$$b.err 1>&2 && { echo "ok"; rm -f $(OUTDIR)/$$b.err; } || echo "FAIL"; \
-	  mv $$b.s $$b.o $$b.ast $$b.pp $(OUTDIR) 2>/dev/null ; \
+	  mv $$b.i $$b.l $$b.s $$b.o $$b.ast $$b.pp $(OUTDIR) 2>/dev/null ; \
 	done
 
 # Size report for stage1 objects
 STAGE1_OBJS = $(SOURCES:.c=.o)
 sizefile: Makefile cc2 install
 	$(MAKE) stage1 CC=ccc
-	@$(ROOTDIR)/bin/wssize $(addprefix ../stage1/,$(STAGE1_OBJS)) | \
+	@$(ROOTDIR)/bin/wssize $(addprefix $(OUTDIR)/,$(STAGE1_OBJS)) | \
 	awk \
 		'{ t+=$$1 ; d+=$$2 ; b+=$$3 ; a+=$$4; print } \
 		END {printf "%7d %7d %7d %7d %19s\n", t, d, b, a, "newpass2 total" }' \
 	 > sizefile
 	@cat sizefile
-	@if [ -f oldsize ] ; then diff sizefile oldsize ; true; fi
+	@if [ -f oldsize ] ; then if diff sizefile oldsize ; then cp sizefile oldsize ; fi ; fi
 	@cp sizefile oldsize
 
 regen:
@@ -64,7 +66,7 @@ regen:
 	$(MAKE) $(GENERATED)
 
 clobber: clean
-	rm -f ./cc2
+	rm -rf ./cc2 stage1
 
 install: cc2
 	cp cc2 $(ROOTDIR)/bin
@@ -72,7 +74,7 @@ install: cc2
 .PHONY: all clean regen stage1 install clobber
 
 clean:
-	rm -f $(OBJECTS) cc2
+	rm -f $(OBJECTS) cc2 *.i *.l core
 
 # Test against a single file
 test: cc2

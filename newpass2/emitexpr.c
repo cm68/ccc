@@ -67,18 +67,7 @@ emitDeref(struct expr *e)
                     emit("push hl");
             }
         } else if (e->size == 4) {
-            emit("ld e,(hl)");
-            emit("inc hl");
-            emit("ld d,(hl)");
-            emit("inc hl");
-            emit("ld a,(hl)");
-            emit("inc hl");
-            emit("ld h,(hl)");
-            emit("ld l,a");
-            emit("ex de,hl");
-            emit("exx");
-            emit("ex de,hl");
-            emit("exx");
+            emitLLoad(e->dest);
         } else if (e->demand > 0) {
             emit("XXXXXXXXX M");
         }
@@ -124,10 +113,10 @@ emitPrimary(struct expr *e)
         } else if (e->size == 2) {
             emit("ld %s,%d", regnames[e->dest] ? regnames[e->dest] : "hl", e->v.s & 0xffff);
         } else if (e->size == 4) {
-            emit("ld hl,%d", e->v.s & 0xffff);
-            emit("exx");
-            emit("ld hl,%d", (e->v.l >> 16) & 0xffff);
-            emit("exx");
+            if (e->dest == R_DE)
+                emitLImm(e->v.l);
+            else
+                emitLImmR(e->v.l);
         } else if (e->type == T_VOID) {
             /* void - no value */
         } else {
@@ -219,13 +208,21 @@ emitPrimary(struct expr *e)
                 if (e->dest == R_TOS)
                     emit("push hl");
             } else if (e->size == 4) {
-                emit("ld a,%d", off);
-                emit("call %s", (e->aux == R_IX) ? "lLxindex" : "lLyindex");
+                /* compute address: push ix/iy, pop hl, add offset */
+                emit("push %s", rn);
+                emit("pop hl");
+                if (off != 0) {
+                    emit("ld de,%d", (int)(char)off);
+                    emit("add hl,de");
+                }
                 if (e->dest == R_TOS) {
-                    emit("exx");
+                    emit("call _lldHL");
+                    emit("ld hl,(_lL+2)");
                     emit("push hl");
-                    emit("exx");
+                    emit("ld hl,(_lL)");
                     emit("push hl");
+                } else {
+                    emitLLoad(e->dest);
                 }
             } else {
                 emit("XXXXXXXXX V");
@@ -301,11 +298,9 @@ emitExpr(struct expr *e)
             } else if (e->size == 2) {
                 emit("ld (%s),hl", e->left->sym);
             } else if (e->size == 4) {
-                /* long: HLHL' - store 4 bytes to symbol */
-                emit("ld (%s),hl", e->left->sym);
-                emit("exx");
-                emit("ld (%s+2),hl", e->left->sym);
-                emit("exx");
+                /* long: store from _lR to symbol */
+                emit("ld hl,%s", e->left->sym);
+                emitLStoreR();
             }
         } else if (e->left->op == 'V') {
             /* assign to local/struct var via IY or IX */
@@ -340,9 +335,14 @@ emitExpr(struct expr *e)
                     emit("ld (%s%o),l", rn, ofs);
                     emit("ld (%s%o),h", rn, ofs + 1);
                 } else if (e->size == 4) {
-                    /* long: HLHL' - store via helper */
-                    emit("ld a,%d", ofs);
-                    emit("call %s", (e->left->aux == R_IX) ? "sLxindex" : "sLyindex");
+                    /* long: compute addr, store from _lR */
+                    emit("push %s", rn);
+                    emit("pop hl");
+                    if (ofs != 0) {
+                        emit("ld de,%d", (int)(char)ofs);
+                        emit("add hl,de");
+                    }
+                    emitLStoreR();
                 }
             }
         } else if (e->special == SP_STCONST) {
@@ -397,7 +397,9 @@ emitExpr(struct expr *e)
                 emit("inc hl");
                 emit("ld (hl),d");
             } else if (e->size == 4) {
-                emit("call __stl");  /* store long from HLHL' to (DE) */
+                /* long: addr in DE, value in _lR */
+                emit("ex de,hl");
+                emitLStoreR();
             }
         } else if (e->left->op == '+' || e->left->op == 'M') {
             /* assign through computed address: emit addr, save, emit value, store */
@@ -420,26 +422,9 @@ emitExpr(struct expr *e)
                 emit("inc hl");
                 emit("ld (hl),d");
             } else if (e->size == 4) {
-                /* long: addr in DE, value in HLHL' */
-                /* Save value, get addr to HL, store 4 bytes */
-                emit("push hl");     /* save low word */
-                emit("exx");
-                emit("push hl");     /* save high word */
-                emit("exx");
-                emit("ex de,hl");    /* address to HL */
-                emit("pop de");      /* high word to DE */
-                emit("inc hl");
-                emit("inc hl");      /* point to bytes 2-3 */
-                emit("ld (hl),e");
-                emit("inc hl");
-                emit("ld (hl),d");
-                emit("dec hl");
-                emit("dec hl");
-                emit("dec hl");      /* back to byte 0 */
-                emit("pop de");      /* low word to DE */
-                emit("ld (hl),e");
-                emit("inc hl");
-                emit("ld (hl),d");
+                /* long: addr in DE, value in _lR */
+                emit("ex de,hl");
+                emitLStoreR();
             }
         } else {
             emitExpr(e->left);
@@ -488,12 +473,7 @@ emitExpr(struct expr *e)
             /* emit condition */
             emitExpr(e->left);
             /* test condition */
-            if (e->left->size == 2) {
-                emit("ld a,h");
-                emit("or l");
-            } else {
-                emit("or a");
-            }
+            emitTestZero(e->left->size, 0);
             emit("jp z,te%d_%d", lbl, fnIndex);  /* if false, go to else */
             /* emit then branch */
             if (e->right) {
@@ -596,8 +576,8 @@ emitExpr(struct expr *e)
                 if (e->dest == R_TOS)
                     emit("push af");
             } else if (e->size == 4) {
-                /* 32-bit add: HLHL' += DEDE' */
-                emit("call __ladd");
+                /* 32-bit add: _lR = _lL + _lR */
+                emit("call _ladd");
             }
         }
         indent -= 2;
@@ -628,8 +608,8 @@ emitExpr(struct expr *e)
                 emit("sub b");
             }
         } else if (e->size == 4) {
-            /* 32-bit sub: HLHL' = DEDE' - HLHL' */
-            emit("call __lsub");
+            /* 32-bit sub: _lR = _lL - _lR */
+            emit("call _lsub");
         }
         indent -= 2;
         comment("]");
@@ -644,17 +624,11 @@ emitExpr(struct expr *e)
             emitExpr(e->left);
             emitExpr(e->right);
             if (e->size == 1) {
-                emit("and e");  /* A = A & E */
+                emitBOp('&');
             } else if (e->size == 2) {
-                emit("ld a,l");
-                emit("and e");
-                emit("ld l,a");
-                emit("ld a,h");
-                emit("and d");
-                emit("ld h,a");
+                emitWBit('&');
             } else if (e->size == 4) {
-                /* 32-bit AND: HLHL' &= DEDE' */
-                emit("call __land");
+                emit("call _land");
             }
         }
         indent -= 2;
@@ -666,17 +640,11 @@ emitExpr(struct expr *e)
         emitExpr(e->left);
         emitExpr(e->right);
         if (e->size == 1) {
-            emit("or e");  /* A = A | E */
+            emitBOp('|');
         } else if (e->size == 2) {
-            emit("ld a,l");
-            emit("or e");
-            emit("ld l,a");
-            emit("ld a,h");
-            emit("or d");
-            emit("ld h,a");
+            emitWBit('|');
         } else if (e->size == 4) {
-            /* 32-bit OR: HLHL' |= DEDE' */
-            emit("call __lor");
+            emit("call _lor");
         }
         indent -= 2;
         comment("]");
@@ -687,17 +655,11 @@ emitExpr(struct expr *e)
         emitExpr(e->left);
         emitExpr(e->right);
         if (e->size == 1) {
-            emit("xor e");  /* A = A ^ E */
+            emitBOp('^');
         } else if (e->size == 2) {
-            emit("ld a,l");
-            emit("xor e");
-            emit("ld l,a");
-            emit("ld a,h");
-            emit("xor d");
-            emit("ld h,a");
+            emitWBit('^');
         } else if (e->size == 4) {
-            /* 32-bit XOR: HLHL' ^= DEDE' */
-            emit("call __lxor");
+            emit("call _lxor");
         }
         indent -= 2;
         comment("]");
@@ -781,12 +743,15 @@ emitExpr(struct expr *e)
                     emit("add hl,hl");
             } else if (e->size == 4) {
                 emit("ld a,%d", cnt);
-                emit("call __llshl");
+                emit("call _lshl");
             }
         } else {
             /* variable shift count: call helper */
             emitExpr(e->right);
-            emit("call __lshl");
+            if (e->size == 4)
+                emit("call _lshl");
+            else
+                emit("call __lshl");
         }
         indent -= 2;
         comment("]");
@@ -809,12 +774,15 @@ emitExpr(struct expr *e)
                 }
             } else if (e->size == 4) {
                 emit("ld a,%d", cnt);
-                emit("call __lashr");
+                emit("call _lashr");
             }
         } else {
             /* variable shift count: call helper */
             emitExpr(e->right);
-            emit("call __ashr");
+            if (e->size == 4)
+                emit("call _lashr");
+            else
+                emit("call __ashr");
         }
         indent -= 2;
         comment("]");
@@ -837,12 +805,15 @@ emitExpr(struct expr *e)
                 }
             } else if (e->size == 4) {
                 emit("ld a,%d", cnt);
-                emit("call __llshr");
+                emit("call _lshr");
             }
         } else {
             /* variable shift count: call helper */
             emitExpr(e->right);
-            emit("call __lshr");
+            if (e->size == 4)
+                emit("call _lshr");
+            else
+                emit("call __lshr");
         }
         indent -= 2;
         comment("]");
@@ -862,8 +833,8 @@ emitExpr(struct expr *e)
             emit("sub h");
             emit("ld h,a");
         } else if (e->size == 4) {
-            /* 32-bit negation: 0 - HLHL' */
-            emit("call __lneg");
+            /* 32-bit negation: _lR = -_lR */
+            emit("call _lneg");
         }
         indent -= 2;
         comment("]");
@@ -875,14 +846,10 @@ emitExpr(struct expr *e)
         if (e->size == 1) {
             emit("cpl");
         } else if (e->size == 2) {
-            emit("ld a,l");
-            emit("cpl");
-            emit("ld l,a");
-            emit("ld a,h");
-            emit("cpl");
-            emit("ld h,a");
+            emitWCpl();
         } else if (e->size == 4) {
-            emit("call __lcom");
+            /* 32-bit complement: _lR = ~_lR */
+            emit("call _lcom");
         }
         indent -= 2;
         comment("]");
@@ -901,12 +868,7 @@ emitExpr(struct expr *e)
             /* need actual 0/1 value: 1 if input is 0, else 0 */
             int lbl = labelCnt++;
             emitExpr(e->left);
-            if (e->left->size == 2) {
-                emit("ld a,h");
-                emit("or l");
-            } else {
-                emit("or a");
-            }
+            emitTestZero(e->left->size, 0);
             emit("ld hl,0");
             emit("jp nz,ln%d_%d", lbl, fnIndex);
             emit("inc l");
@@ -989,71 +951,29 @@ emitExpr(struct expr *e)
                 /* Inside ||: use unique local label */
                 int localLbl = labelCnt++;
                 emitExpr(e->left);
-                if (e->left->op == 'R' && e->left->demand == 0 && e->left->aux == R_BC) {
-                    emit("ld a,b");
-                    emit("or c");
-                } else if (e->left->size == 2) {
-                    emit("ld a,h");
-                    emit("or l");
-                } else {
-                    emit("or a");
-                }
+                emitTestExpr(e->left);
                 emit("jp z,ja%d_%d", localLbl, fnIndex);
                 emitExpr(e->right);
-                if (e->right->op == 'R' && e->right->demand == 0 && e->right->aux == R_BC) {
-                    emit("ld a,b");
-                    emit("or c");
-                } else if (e->right->size == 2) {
-                    emit("ld a,h");
-                    emit("or l");
-                } else {
-                    emit("or a");
-                }
+                emitTestExpr(e->right);
                 emit("jp z,ja%d_%d", localLbl, fnIndex);
                 emit("ja%d_%d:", localLbl, fnIndex);
             } else {
                 /* Not inside ||: jump to no{aux2} on FALSE */
                 emitExpr(e->left);
-                if (e->left->op == 'R' && e->left->demand == 0 && e->left->aux == R_BC) {
-                    emit("ld a,b");
-                    emit("or c");
-                } else if (e->left->size == 2) {
-                    emit("ld a,h");
-                    emit("or l");
-                } else {
-                    emit("or a");
-                }
+                emitTestExpr(e->left);
                 emit("jp z,no%d_%d", e->aux2, fnIndex);
                 emitExpr(e->right);
-                if (e->right->op == 'R' && e->right->demand == 0 && e->right->aux == R_BC) {
-                    emit("ld a,b");
-                    emit("or c");
-                } else if (e->right->size == 2) {
-                    emit("ld a,h");
-                    emit("or l");
-                } else {
-                    emit("or a");
-                }
+                emitTestExpr(e->right);
                 emit("jp z,no%d_%d", e->aux2, fnIndex);
             }
         } else {
             /* Non-conditional: need 0/1 value in HL */
             int lbl = labelCnt++, lbl2;
             emitExpr(e->left);
-            if (e->left->size == 2) {
-                emit("ld a,h");
-                emit("or l");
-            } else {
-                emit("or a");
-            }
+            emitTestZero(e->left->size, 0);
             emit("jp z,ja%d_%d", lbl, fnIndex);
             emitExpr(e->right);
-            if (e->right->size == 2) {
-                emit("ld a,h");
-                emit("or l");
-            } else {
-                emit("or a");
-            }
+            emitTestZero(e->right->size, 0);
             emit("ja%d_%d:", lbl, fnIndex);
             /* A is zero if we jumped OR if right is zero */
             lbl2 = labelCnt++;
@@ -1074,26 +994,10 @@ emitExpr(struct expr *e)
             /* aux=0 means not nested: emit ht label here */
             int htLabel = e->aux2 + 1;
             emitExpr(e->left);
-            if (e->left->op == 'R' && e->left->demand == 0 && e->left->aux == R_BC) {
-                emit("ld a,b");
-                emit("or c");
-            } else if (e->left->size == 2) {
-                emit("ld a,h");
-                emit("or l");
-            } else {
-                emit("or a");
-            }
+            emitTestExpr(e->left);
             emit("jp nz,ht%d_%d", htLabel, fnIndex);
             emitExpr(e->right);
-            if (e->right->op == 'R' && e->right->demand == 0 && e->right->aux == R_BC) {
-                emit("ld a,b");
-                emit("or c");
-            } else if (e->right->size == 2) {
-                emit("ld a,h");
-                emit("or l");
-            } else {
-                emit("or a");
-            }
+            emitTestExpr(e->right);
             if (e->aux) {
                 /* Nested: fall through with Z flag for FALSE, NZ already jumped to ht */
             } else {
@@ -1105,20 +1009,10 @@ emitExpr(struct expr *e)
             /* Non-conditional: need 0/1 value */
             int lbl = labelCnt++;
             emitExpr(e->left);
-            if (e->left->size == 2) {
-                emit("ld a,h");
-                emit("or l");
-            } else {
-                emit("or a");
-            }
+            emitTestZero(e->left->size, 0);
             emit("jp nz,ht%d_%d", lbl, fnIndex);
             emitExpr(e->right);
-            if (e->right->size == 2) {
-                emit("ld a,h");
-                emit("or l");
-            } else {
-                emit("or a");
-            }
+            emitTestZero(e->right->size, 0);
             emit("ht%d_%d:", lbl, fnIndex);
             {
                 int lbl2 = labelCnt++;

@@ -161,6 +161,23 @@ void emitPrimary(struct expr *e);
 void dumpStmt(void);
 void emitInit(void);
 
+/* Pattern-based emission (emitpat.c) */
+void emitBOp(char op);
+void emitBOpImm(char op, int val);
+void emitWBit(char op);
+void emitWBitBC(char op);
+void emitWBitImm(char op, int val);
+void emitWCpl(void);
+void emitTestZero(unsigned char size, unsigned char reg);
+void emitTestExpr(struct expr *e);
+void emitWAddSub(char op);
+void emitWSubBC(char op, int val);
+void emitLLoad(unsigned char dest);
+void emitLStore(void);
+void emitLStoreR(void);
+void emitLImm(long val);
+void emitLImmR(long val);
+
 /* Switch statement support */
 #define MAXCASES 32
 #define MAXSWDEPTH 4

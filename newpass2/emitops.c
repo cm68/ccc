@@ -30,13 +30,7 @@ emitCmpArith(struct expr *e)
         } else {
             emit("ld e,a");
             emit("ld a,%s", rname);
-            switch (e->op) {
-            case 'P': emit("add a,e"); break;
-            case 'o': emit("sub e"); break;
-            case '1': emit("or e"); break;
-            case 'a': emit("and e"); break;
-            case 'X': emit("xor e"); break;
-            }
+            emitBOp(e->op);
         }
         emit("ld %s,a", rname);
     } else if (e->left->op == 'R' && e->size == 2) {
@@ -54,12 +48,7 @@ emitCmpArith(struct expr *e)
         switch (e->op) {
         case 'P': emit("add hl,de"); break;
         case 'o': emit("or a"); emit("sbc hl,de"); break;
-        case '1': emit("ld a,l"); emit("or e"); emit("ld l,a");
-                  emit("ld a,h"); emit("or d"); emit("ld h,a"); break;
-        case 'a': emit("ld a,l"); emit("and e"); emit("ld l,a");
-                  emit("ld a,h"); emit("and d"); emit("ld h,a"); break;
-        case 'X': emit("ld a,l"); emit("xor e"); emit("ld l,a");
-                  emit("ld a,h"); emit("xor d"); emit("ld h,a"); break;
+        case '1': case 'a': case 'X': emitWBit(e->op); break;
         }
         if (r == R_BC) {
             emit("ld b,h");
@@ -85,13 +74,7 @@ emitCmpArith(struct expr *e)
         } else {
             emitExpr(e->right);
             emit("ld a,(%s%o)", rn, ofs);
-            switch (e->op) {
-            case 'P': emit("add a,e"); break;
-            case 'o': emit("sub e"); break;
-            case '1': emit("or e"); break;
-            case 'a': emit("and e"); break;
-            case 'X': emit("xor e"); break;
-            }
+            emitBOp(e->op);
         }
         emit("ld (%s%o),a", rn, ofs);
     } else if (e->size == 1 && e->right->op == '#') {
@@ -114,13 +97,7 @@ emitCmpArith(struct expr *e)
         emit("ld e,a");      /* save operand in E */
         emitExpr(e->left);   /* address to HL */
         emit("ld a,(hl)");   /* current value to A */
-        switch (e->op) {
-        case 'P': emit("add a,e"); break;
-        case 'o': emit("sub e"); break;
-        case '1': emit("or e"); break;
-        case 'a': emit("and e"); break;
-        case 'X': emit("xor e"); break;
-        }
+        emitBOp(e->op);
         emit("ld (hl),a");
     } else if (e->left->op == 'V' && e->size == 2) {
         char ofs = e->left->offset;
@@ -133,39 +110,39 @@ emitCmpArith(struct expr *e)
         switch (e->op) {
         case 'P': emit("add hl,de"); break;
         case 'o': emit("or a"); emit("sbc hl,de"); break;
-        case '1': emit("ld a,l"); emit("or e"); emit("ld l,a");
-                  emit("ld a,h"); emit("or d"); emit("ld h,a"); break;
-        case 'a': emit("ld a,l"); emit("and e"); emit("ld l,a");
-                  emit("ld a,h"); emit("and d"); emit("ld h,a"); break;
-        case 'X': emit("ld a,l"); emit("xor e"); emit("ld l,a");
-                  emit("ld a,h"); emit("xor d"); emit("ld h,a"); break;
+        case '1': case 'a': case 'X': emitWBit(e->op); break;
         }
         emit("ld (%s%o),l", rn, ofs);
         emit("ld (%s%o),h", rn, ofs + 1);
     } else if (e->left->op == 'V' && e->size == 4) {
-        /* long compound arith on V node - use store helper */
+        /* long compound arith on V node */
         char ofs = e->left->offset;
         char *rn = (e->left->aux == R_IX) ? "ix" : "iy";
-        char *sth = (e->left->aux == R_IX) ? "sLxindex" : "sLyindex";
         comment("V%c %s%+d", e->left->type, rn, ofs);
-        emitExpr(e->right);
-        /* right operand in HLHL', load left into DEDE' */
-        emit("ld e,(%s%o)", rn, ofs);
-        emit("ld d,(%s%o)", rn, ofs + 1);
-        emit("exx");
-        emit("ld e,(%s%o)", rn, ofs + 2);
-        emit("ld d,(%s%o)", rn, ofs + 3);
-        emit("exx");
-        switch (e->op) {
-        case 'P': emit("call __ladd"); break;
-        case 'o': emit("call __lsub"); break;
-        case '1': emit("call __lor"); break;
-        case 'a': emit("call __land"); break;
-        case 'X': emit("call __lxor"); break;
+        emitExpr(e->right);  /* right to _lR */
+        /* load left operand into _lL */
+        emit("push %s", rn);
+        emit("pop hl");
+        if (ofs != 0) {
+            emit("ld de,%d", (int)(char)ofs);
+            emit("add hl,de");
         }
-        /* store via helper */
-        emit("ld a,%d", ofs);
-        emit("call %s", sth);
+        emit("call _lldHL");  /* load (HL) to _lL */
+        switch (e->op) {
+        case 'P': emit("call _ladd"); break;
+        case 'o': emit("call _lsub"); break;
+        case '1': emit("call _lor"); break;
+        case 'a': emit("call _land"); break;
+        case 'X': emit("call _lxor"); break;
+        }
+        /* store from _lR to local */
+        emit("push %s", rn);
+        emit("pop hl");
+        if (ofs != 0) {
+            emit("ld de,%d", (int)(char)ofs);
+            emit("add hl,de");
+        }
+        emit("call _lstHLR");
     } else if (e->size == 2 && e->right->op == '#') {
         unsigned val = e->right->v.s & 0xffff;
         emitExpr(e->left);
@@ -175,14 +152,8 @@ emitCmpArith(struct expr *e)
         emit("dec hl");
         emit("ex de,hl");
         switch (e->op) {
-        case 'P': emit("ld bc,%d", val); emit("add hl,bc"); break;
-        case 'o': emit("ld bc,%d", val); emit("or a"); emit("sbc hl,bc"); break;
-        case '1': emit("ld a,l"); emit("or %d", val & 0xff); emit("ld l,a");
-                  emit("ld a,h"); emit("or %d", (val >> 8) & 0xff); emit("ld h,a"); break;
-        case 'a': emit("ld a,l"); emit("and %d", val & 0xff); emit("ld l,a");
-                  emit("ld a,h"); emit("and %d", (val >> 8) & 0xff); emit("ld h,a"); break;
-        case 'X': emit("ld a,l"); emit("xor %d", val & 0xff); emit("ld l,a");
-                  emit("ld a,h"); emit("xor %d", (val >> 8) & 0xff); emit("ld h,a"); break;
+        case 'P': case 'o': emitWSubBC(e->op, val); break;
+        case '1': case 'a': case 'X': emitWBitImm(e->op, val); break;
         }
         emit("ex de,hl");
         emit("ld (hl),e");
@@ -203,12 +174,7 @@ emitCmpArith(struct expr *e)
         switch (e->op) {
         case 'P': emit("add hl,bc"); break;
         case 'o': emit("or a"); emit("sbc hl,bc"); break;
-        case '1': emit("ld a,l"); emit("or c"); emit("ld l,a");
-                  emit("ld a,h"); emit("or b"); emit("ld h,a"); break;
-        case 'a': emit("ld a,l"); emit("and c"); emit("ld l,a");
-                  emit("ld a,h"); emit("and b"); emit("ld h,a"); break;
-        case 'X': emit("ld a,l"); emit("xor c"); emit("ld l,a");
-                  emit("ld a,h"); emit("xor b"); emit("ld h,a"); break;
+        case '1': case 'a': case 'X': emitWBitBC(e->op); break;
         }
         emit("ex de,hl");
         emit("ld (hl),e");
@@ -273,21 +239,30 @@ emitCmpShift(struct expr *e)
         emit("ld (%s%o),h", rn, ofs + 1);
     } else if (e->left->op == 'V' && e->size == 4 && e->right->op == '#') {
         char ofs = e->left->offset;
-        char *ldh = (e->left->aux == R_IX) ? "lLxindex" : "lLyindex";
-        char *sth = (e->left->aux == R_IX) ? "sLxindex" : "sLyindex";
+        char *rn = (e->left->aux == R_IX) ? "ix" : "iy";
         unsigned char cnt = e->right->v.c & 0x1f;
-        comment("Vl %s%+d", (e->left->aux == R_IX) ? "ix" : "iy", ofs);
-        /* load via helper */
-        emit("ld a,%d", ofs);
-        emit("call %s", ldh);
+        comment("Vl %s%+d", rn, ofs);
+        /* compute address and load to _lR */
+        emit("push %s", rn);
+        emit("pop hl");
+        if (ofs != 0) {
+            emit("ld de,%d", (int)(char)ofs);
+            emit("add hl,de");
+        }
+        emit("call _lldHLR");  /* load (HL) to _lR */
         emit("ld a,%d", cnt);
         if (e->op == '0')
-            emit("call __llshl");
+            emit("call _lshl");
         else
-            emit("call __lashr");
-        /* store via helper */
-        emit("ld a,%d", ofs);
-        emit("call %s", sth);
+            emit("call _lashr");
+        /* store from _lR */
+        emit("push %s", rn);
+        emit("pop hl");
+        if (ofs != 0) {
+            emit("ld de,%d", (int)(char)ofs);
+            emit("add hl,de");
+        }
+        emit("call _lstHLR");
     } else {
         emitExpr(e->left);
         emitExpr(e->right);
