@@ -150,6 +150,7 @@ unsigned char isSimpleByte(struct expr *e);
 /* Code emission */
 void emitExpr(struct expr *e);
 void emitCompare(struct expr *e);
+void emitCondJmp(char op, int aux2);
 void emitCmpArith(struct expr *e);
 void emitCmpShift(struct expr *e);
 void emitCmpMulDiv(struct expr *e);

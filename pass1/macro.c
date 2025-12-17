@@ -50,7 +50,7 @@ addDefine(char *s)
     int namelen;
 
 
-    if (!s || !*s) {
+    if (!*s) {
         return;
     }
 
@@ -144,30 +144,25 @@ macundefine(char *s)
 {
     unsigned char i;
     struct macro *m, *p;
-    p = 0;
 
-
-    for (m = macros; m; m = m->next) {
-        if (strcmp(m->name, s) == 0) {
-            break;
-        }
-        p = m;
+    m = maclookup(s);
+    if (!m) {
+        return;
     }
-    if (m) {
-        if (!p) {
-            macros = m->next;
-        } else {
-            p->next = m->next;
-        }
-        for (i = 0; i < m->parmcount; i++) {
-            free(m->parms[i]);
-        }
-        free(m->parms);
-        free(m->name);
-        free(m->mactext);
-        free(m);
+    /* Unlink from list */
+    if (m == macros) {
+        macros = m->next;
     } else {
+        for (p = macros; p->next != m; p = p->next) ;
+        p->next = m->next;
     }
+    for (i = 0; i < m->parmcount; i++) {
+        free(m->parms[i]);
+    }
+    free(m->parms);
+    free(m->name);
+    free(m->mactext);
+    free(m);
 }
 
 /*

@@ -28,7 +28,6 @@ typedef unsigned long dword;
 /*
  * Compiler limits - adjust these for larger files
  */
-#define MAXNAMES 10000         // symbol table entries
 #define MAXPARMS 10            // macro parameters
 #define TBSIZE 1024            // text buffer size for includes/macros
 #define STRBUFSIZE 128         // string/symbol/identifier buffer
@@ -99,6 +98,7 @@ extern struct expr *mkexprI(unsigned char op, struct expr *left,
     struct type *type, unsigned long v, int flags);
 extern struct expr *cfold(struct expr *e);
 extern struct expr *parseExpr(unsigned char priority, struct stmt *);
+extern int isTypeToken(unsigned char t);
 unsigned long parseConst(unsigned char priority);
 extern struct expr *newExpr(unsigned char op);
 extern void frExp(struct expr *e);
@@ -183,7 +183,7 @@ struct type {
 #define TF_VARIADIC     0x80    // for functions: has ... parameter
 
 extern struct type *getbasetype();
-extern void initbasictype(void);
+extern int isBasicType(struct type *t);
 struct type *getType(char flags, struct type *sub, int count);
 extern char compatFnTyp(struct type *t1, struct type *t2);
 
@@ -214,6 +214,7 @@ struct name {
         struct stmt *body;  // function body (for fdef)
     } u;
     kind kind;
+    struct name *chain;   // symbol table chain (most recent first)
     /* Variable usage tracking for register allocation (computed before AST emit) */
     unsigned char ref_count;  // reference count (capped at 255)
     unsigned char agg_refs;   // struct member access count (for IX allocation)
@@ -248,12 +249,10 @@ extern void popScope(void);
 
 /* declare.c */
 extern unsigned char lexlevel;
-extern int lastname;
-extern struct name **names;
+extern struct name *names;
 extern struct type *types;
 extern char *kindname[];
-extern struct name *declInternal(struct type **btp, unsigned char struct_elem);
-extern struct name *declare(struct type **btp);
+extern struct name *declare(struct type **btp, unsigned char struct_elem);
 extern char isCastStart(void);
 extern struct type *parseTypeName(void);
 
@@ -369,14 +368,11 @@ char iswhite(unsigned char c);
 char *bitdef(unsigned char v, char **defs);
 int fdprintf(unsigned char fd, const char *fmt, ...);
 
-/* declare.c / type.c */
-extern struct name *declare(struct type **btp);
-
 /* tokenlist.c */
 /* debug options */
 #ifdef DEBUG
 #define VERBOSE(x) (verbose & (x))
-extern char verbose;
+extern short verbose;
 #else
 #define VERBOSE(x) (0)
 #endif

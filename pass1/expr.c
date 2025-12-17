@@ -11,15 +11,17 @@
 #define TF_ASN 0x10   /* assignment op: = += -= etc */
 #define TF_CMP 0x20   /* comparison: < > <= >= == != */
 #define TF_LOG 0x40   /* logical: && || */
+#define TF_TYPE 0x80  /* type keyword */
 
 #define P(p) (p)                     /* priority only */
+#define F(f) (f)                     /* flags only */
 #define PF(p,f) ((p) | (f))          /* priority + flags */
 
 static const unsigned char oppri[96] = {
 /*0x20  spc !  "  #  $  %    &    ' */  0,0,0,0,0,P(3),P(8),0,
 /*0x28  (  )  *    +    ,     -    .    / */  0,0,P(3),P(4),P(15),P(4),P(1),P(3),
-/*0x30  0             1             2             3  4  5  6             7 */
-        PF(14,TF_ASN),PF(14,TF_ASN),PF(14,TF_ASN),0,0,0,PF(14,TF_ASN),0,
+/*0x30  0             1             2             3  4            5  6             7 */
+        PF(14,TF_ASN),PF(14,TF_ASN),PF(14,TF_ASN),0,F(TF_TYPE),0,PF(14,TF_ASN),0,
 /*0x38  8  9  :  ;  <          =             >          ? */
         0,0,0,0,PF(6,TF_CMP),PF(14,TF_ASN),PF(6,TF_CMP),P(13),
 /*0x40  @  A  B  C  D  E  F  G */  0,0,0,0,0,0,0,0,
@@ -29,13 +31,16 @@ static const unsigned char oppri[96] = {
         PF(14,TF_ASN),PF(7,TF_CMP),0,0,PF(14,TF_ASN),0,0,0,
 /*0x58  X             Y  Z  [  \  ]  ^    _ */
         PF(14,TF_ASN),0,0,0,0,0,P(9),0,
-/*0x60  `  a  b  c  d  e  f  g */  0,0,0,0,0,0,0,PF(6,TF_CMP),
-/*0x68  h              i  j              k  l  m  n             o */
-        PF(12,TF_LOG),0,PF(11,TF_LOG),0,0,0,PF(7,TF_CMP),0,
-/*0x70  p  q  r  s  t  u  v  w */  0,0,0,0,0,0,0,P(5),
+/*0x60  `  a           b  c           d           e           f           g */
+        0,F(TF_TYPE),0,F(TF_TYPE),F(TF_TYPE),F(TF_TYPE),F(TF_TYPE),PF(6,TF_CMP),
+/*0x68  h              i           j              k           l           m           n             o */
+        PF(12,TF_LOG),F(TF_TYPE),PF(11,TF_LOG),F(TF_TYPE),F(TF_TYPE),F(TF_TYPE),PF(7,TF_CMP),0,
+/*0x70  p  q  r  s           t           u           v           w */
+        0,0,0,F(TF_TYPE),F(TF_TYPE),F(TF_TYPE),F(TF_TYPE),P(5),
 /*0x78  x  y     z  {  |      }  ~  DEL */  0,P(5),0,0,P(10),0,0,0
 };
 #undef P
+#undef F
 #undef PF
 
 #define OPPRI(t) ((unsigned char)(t) < 0x80 ? oppri[(t) - 0x20] : 0)
@@ -45,6 +50,14 @@ static const unsigned char oppri[96] = {
 #define IS_CMP(t)    (OPPRI(t) & TF_CMP)
 #define IS_LOG(t)    (OPPRI(t) & TF_LOG)
 #define IS_CMPLOG(t) (OPPRI(t) & (TF_CMP | TF_LOG))
+#define IS_TYPE(t)   (OPPRI(t) & TF_TYPE)
+
+/* Check if token is a type keyword - exported for declare.c */
+int
+isTypeToken(unsigned char t)
+{
+    return IS_TYPE(t);
+}
 
 /*
  * counter for generating synthetic string literal names
@@ -433,9 +446,11 @@ parseExpr(unsigned char pri, struct stmt *st)
 
                 addName(n);
 
+#ifdef DEBUG
                 if (VERBOSE(V_SYM)) {
                     fdprintf(2, "Implicit declaration: int %s()\n", symname);
                 }
+#endif
             } else {
                 /* Not a function call - report error */
                 gripe(ER_E_UO);
@@ -1016,6 +1031,7 @@ parseExpr(unsigned char pri, struct stmt *st)
 
         if (is_assignment) {
             if (e && e->op == DEREF) {
+#ifdef DEBUG
                 if (VERBOSE(V_ASSIGN)) {
                     if (e->type) {
                         fdprintf(2, "ASSIGN: unwrapping DEREF, "
@@ -1029,6 +1045,7 @@ parseExpr(unsigned char pri, struct stmt *st)
                         }
                     }
                 }
+#endif
                 /* Save the type before unwrapping */
                 assign_type = e->type;
                 e = e->left;  // unwrap to get address

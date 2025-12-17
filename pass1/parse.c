@@ -67,7 +67,6 @@ struct stmt *asmblock(void);
 /*
  * Capture local variables from the current scope level
  * Returns a linked list of name structures (shallow copies)
- * Called before popScope() to preserve variable info
  */
 static struct name *
 capLocals(void)
@@ -75,18 +74,9 @@ capLocals(void)
 	struct name *locals_list = NULL;
 	struct name *tail = NULL;
 	struct name *n, *copy;
-	int i;
 
-	/* Iterate through names array looking for variables at current level */
-	for (i = 0; i <= lastname; i++) {
-		n = names[i];
-		if (!n)
-			continue;
-
-		/* Only capture variables at current lexical level */
-		if (n->level != lexlevel)
-			continue;
-
+	/* Traverse chain - current level names are at head */
+	for (n = names; n && n->level == lexlevel; n = n->chain) {
 		/* Skip tags, typedefs, and functions */
 		if (n->is_tag || n->kind == tdef || n->kind == fdef)
 			continue;
@@ -777,13 +767,13 @@ parsefunc(struct name *f)
 	}
 	/* Verify no local names remain in symbol table */
 	{
-		int i;
-		for (i = 0; i <= lastname; i++) {
-			if (names[i] && names[i]->level > 1) {
+		struct name *n;
+		for (n = names; n; n = n->chain) {
+			if (n->level > 1) {
 				fdprintf(2, "ASSERTION FAILED: found local name "
 				         "'%s' at level %d after parsing "
 				         "function %s\n",
-				         names[i]->name, names[i]->level, f->name);
+				         n->name, n->level, f->name);
 				fatal(0);
 			}
 		}
@@ -917,7 +907,7 @@ declaration()
 	basetype = 0;
 
 	while (1) {
-        v = declare(&basetype);
+        v = declare(&basetype, 0);
 
         /* error recovery: if declare failed, skip to next ; or , */
         if (!v) {
@@ -939,10 +929,12 @@ declaration()
         /* handle typedef declarations */
         if (sclass & SC_TYPEDEF) {
             /* change the name kind from var to tdef */
+#ifdef DEBUG
             if (VERBOSE(V_SYM)) {
                 fdprintf(2,"CONVERTING %s from var to tdef "
                          "(sclass=0x%02x)\n", v->name, sclass);
             }
+#endif
             v->kind = tdef;
             /* typedefs cannot have initializers or function bodies */
             if (cur.type == ASSIGN) {
@@ -1174,7 +1166,6 @@ parse()
 	struct name *poss_typedef;
 
 	pushScope("global");
-	initbasictype();
 	while (cur.type != E_O_F) {
 		while (cur.type == NONE) {
 			gettoken();
@@ -1186,12 +1177,9 @@ parse()
 			poss_typedef = findName(cur.v.name, 0);
 		}
 
-		if (cur.type == INT || cur.type == CHAR || cur.type == SHORT ||
-			cur.type == LONG || cur.type == FLOAT || cur.type == DOUBLE ||
-			cur.type == VOID || cur.type == UNSIGNED || cur.type == STRUCT ||
-			cur.type == UNION || cur.type == ENUM || cur.type == CONST ||
-			cur.type == VOLATILE || cur.type == TYPEDEF || cur.type == STATIC ||
-			cur.type == REGISTER || cur.type == AUTO || cur.type == EXTERN ||
+		if (isTypeToken(cur.type) ||
+			cur.type == STATIC || cur.type == REGISTER ||
+			cur.type == AUTO || cur.type == EXTERN ||
 			(poss_typedef && poss_typedef->kind == tdef) ||
 			(cur.type == SYM && next.type == LPAR)) {  /* K&R function */
 			declaration();
@@ -1223,14 +1211,14 @@ parse()
 	}
 	/* Verify only basic types remain in symbol table (level 0) */
 	{
-		int i;
+		struct name *n;
 		int nonBasicCnt = 0;
-		for (i = 0; i <= lastname; i++) {
-			if (names[i] && names[i]->level > 0) {
+		for (n = names; n; n = n->chain) {
+			if (n->level > 0) {
 				fdprintf(2, "WARNING: name '%s' at level %d "
 				         "still in symbol table after "
 				         "file parse\n",
-				         names[i]->name, names[i]->level);
+				         n->name, n->level);
 				nonBasicCnt++;
 			}
 		}
@@ -1297,73 +1285,36 @@ frStmt(struct stmt *st)
 }
 
 /*
- * Clean up all allocated memory after parsing
- *
- * Frees all dynamically allocated parser data structures including:
- *   - Name entries (symbol table)
- *   - Statement trees (function bodies)
- *   - Type structures
- *   - Names array itself
- *
- * Cleanup order:
- *   1. Free statement trees attached to function definitions
- *   2. Free name strings (except function parameters owned by types)
- *   3. Free name structures (except function parameters)
- *   4. Free names array
- *   5. Free all types (parameter lists are name structures freed above)
- *   6. Reset global type pointers to NULL
- *
- * Note: This function is typically called on process exit or when
- * multiple files are compiled in sequence. Function parameters
- * (funarg kind) are not freed as their names are owned by function types.
+ * Clean up allocated memory after parsing, preserving basic types
+ * Traverse chain and free non-basic (level > 0) names
  */
 void
 cleanupParse(void)
 {
-	int i;
 	struct name *n;
+	struct type *t, *tnext;
 
-	/* Free all names and their statement trees */
-	for (i = 0; i <= lastname; i++) {
-		n = names[i];
-		if (n) {
-			/* Free function body if present */
-			if (n->u.body)
-				frStmt(n->u.body);
-
-			/*
-			 * Free name string (except for function parameters
-			 * which are owned by type)
-			 */
-			if (n->kind != funarg && n->name)
-				free(n->name);
-
-			/* Free the name structure itself (except function parameters) */
-			if (n->kind != funarg)
-				free(n);
-		}
+	/* Free non-basic names by traversing until we hit level 0 */
+	while (names && names->level > 0) {
+		n = names;
+		names = n->chain;
+		if (n->u.body)
+			frStmt(n->u.body);
+		if (n->kind != funarg && n->name)
+			free(n->name);
+		if (n->kind != funarg)
+			free(n);
 	}
+	/* names now points to first basic type (level 0) */
 
-	/* Free the names array itself */
-	if (names)
-		free(names);
-
-	/* Free all type structures */
-	{
-		struct type *t = types;
-		struct type *next;
-		while (t) {
-			next = t->next;
-			/* Note: Don't free t->elem (function parameters) as they're
-			 * name structures that were freed above */
-			free(t);
-			t = next;
-		}
-		types = NULL;  /* Reset to NULL after freeing all types */
-		chartype = NULL;
-		inttype = NULL;
-		uchartype = NULL;
+	/* Free non-basic types only */
+	t = types;
+	while (t && !isBasicType(t)) {
+		tnext = t->next;
+		free(t);
+		t = tnext;
 	}
+	types = t;
 }
 
 /*

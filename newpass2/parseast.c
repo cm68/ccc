@@ -495,8 +495,8 @@ dumpStmt(void)
                 freeExpr(cond);
                 /* emit conditional jump to skip then block */
                 /* If cond had cond=1, it already emitted its own jump */
-                if (ccond && (special == SP_CMPV || special == SP_CMPR ||
-                              cop == 'j' || cop == 'h')) {
+                if (ccond && (special == SP_CMPHL || special == SP_CMPV ||
+                              special == SP_CMPR || cop == 'j' || cop == 'h')) {
                     /* cond node already emitted jumps, nothing to do */
                 } else if (special == SP_BITTEST) {
                     /* bit n,(ix+ofs): Z=1 if bit is 0; skip then if Z (false) */
@@ -512,33 +512,10 @@ dumpStmt(void)
                         emit("jp nz,no%d_%d", lbl, fnIndex);
                     else             /* != : skip when equal (Z) */
                         emit("jp z,no%d_%d", lbl, fnIndex);
-                } else if (special == SP_CMPHL || special == SP_CMPV ||
-                           special == SP_CMPR ||
-                           cop == '<' || cop == '>' || cop == 'L' || cop == 'g') {
-                    /* cp/sbc sets flags: C if A < operand, Z if A == operand
-                     * Skip then block when condition is FALSE */
-                    switch (cop) {
-                    case 'Q':  /* == : skip on NZ */
-                        emit("jp nz,no%d_%d", lbl, fnIndex);
-                        break;
-                    case 'n':  /* != : skip on Z */
-                        emit("jp z,no%d_%d", lbl, fnIndex);
-                        break;
-                    case '<':  /* skip when left >= right: NC */
-                        emit("jp nc,no%d_%d", lbl, fnIndex);
-                        break;
-                    case 'L':  /* <= : skip when left > right: NC and NZ */
-                        emit("jp z,$+5");
-                        emit("jp nc,no%d_%d", lbl, fnIndex);
-                        break;
-                    case '>':  /* skip when left <= right: C or Z */
-                        emit("jp c,no%d_%d", lbl, fnIndex);
-                        emit("jp z,no%d_%d", lbl, fnIndex);
-                        break;
-                    case 'g':  /* >= : skip when left < right: C */
-                        emit("jp c,no%d_%d", lbl, fnIndex);
-                        break;
-                    }
+                } else if (cop == '<' || cop == '>' || cop == 'L' || cop == 'g' ||
+                           cop == 'Q' || cop == 'n') {
+                    /* General comparison: emit FALSE jump to no{lbl} */
+                    emitCondJmp(cop, lbl);
                 } else if (cop == 'h') {
                     /* || chain: emit merge label, then FALSE jump */
                     /* All TRUE paths jumped to ht, FALSE falls through */

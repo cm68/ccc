@@ -45,7 +45,7 @@ timeoutHdlr(int sig)
 
 char *progname;
 #ifdef DEBUG
-char verbose;
+short verbose;
 #endif
 
 /* Global context for static variable name mangling */
@@ -99,9 +99,11 @@ process(char *f)
     int len;
     char *basenameStart, *dot;
 
+#ifdef DEBUG
     if (VERBOSE(V_TRACE)) {
         fdprintf(2,"process %s\n", f);
     }
+#endif
 
     /* Extract source file root for static name mangling */
     if (srcFileRoot) {

@@ -1,40 +1,6 @@
 #include "cc1.h"
 
 /*
- * Check if current token is a type keyword
- *
- * Determines whether a given token represents a C type specifier keyword.
- * Used throughout declaration parsing to detect the start of type declarations
- * and to distinguish between K&R and ANSI function parameter styles.
- *
- * Type keywords recognized:
- *   - Basic types: char, short, int, long, float, double, void
- *   - Modifiers: unsigned
- *   - Aggregate types: struct, union, enum
- *   - Qualifiers: const, volatile
- *   - Storage class: typedef (treated as type in some contexts)
- *
- * Usage:
- *   - K&R style detection: SYM without type keyword indicates K&R parameters
- *   - Declaration parsing: Determines if token starts a new declaration
- *   - Type continuation: Checks if more type tokens follow
- *
- * Parameters:
- *   t - Token type to check
- *
- * Returns:
- *   1 if token is a type keyword, 0 otherwise
- */
-static int
-isTypeToken(unsigned char t)
-{
-    return (t == CHAR || t == SHORT || t == INT || t == LONG ||
-            t == FLOAT || t == DOUBLE || t == VOID || t == UNSIGNED ||
-            t == STRUCT || t == UNION || t == ENUM ||
-            t == CONST || t == VOLATILE || t == TYPEDEF);
-}
-
-/*
  * Parse pointer prefix and build pointer type chain
  *
  * Processes zero or more '*' tokens to construct a chain of pointer types.
@@ -236,7 +202,7 @@ createPrmEnt(char *name, struct type *type)
  *   - For functions: allocates parameter name entries
  */
 struct name *
-declInternal(struct type **btp, unsigned char struct_elem)
+declare(struct type **btp, unsigned char struct_elem)
 {
     struct name *nm, *arg, *param_tail;
     struct type *t, *prefix, *suffix, *rt;
@@ -271,7 +237,7 @@ declInternal(struct type **btp, unsigned char struct_elem)
     if (cur.type == LPAR) {
         gettoken();
         rt = 0;
-        nm = declInternal(&rt, struct_elem);       // recurse
+        nm = declare(&rt, struct_elem);       // recurse
         expect(RPAR, ER_D_DP);
         if (*btp && rt) {
             gripe(ER_T_DT);
@@ -284,10 +250,8 @@ declInternal(struct type **btp, unsigned char struct_elem)
     if (cur.type == RPAR) {
         if (!nm) {
             for (t = prefix; t && t->sub; t = t->sub) {
-                if (t) {
-                    t->sub = *btp;
-                    *btp = prefix;
-                }
+                t->sub = *btp;
+                *btp = prefix;
             }
         }
         return nm;
@@ -314,10 +278,12 @@ declInternal(struct type **btp, unsigned char struct_elem)
             nm->next = 0;
             nm->u.init = 0;
             nm->u.body = 0;
+#ifdef DEBUG
             if (VERBOSE(V_SYM)) {
                 fdprintf(2, "struct_elem: %s (not added to names[])\n",
                          nm->name);
             }
+#endif
         } else {
             /* normal variable: add to global names[] array */
             /* Check if this name already exists at this scope */
@@ -585,36 +551,6 @@ declInternal(struct type **btp, unsigned char struct_elem)
     }
 
     return nm;
-}                               // declInternal
-
-/*
- * Public wrapper for declInternal - normal variable/function declarations
- *
- * Simplified interface for declaring normal variables and functions that
- * should be added to the global names[] symbol table. Used by parse.c for
- * all non-struct-member declarations.
- *
- * Behavior:
- *   - Calls declInternal() with struct_elem=0
- *   - Name entries are added to names[] array
- *   - Visible in current lexical scope
- *
- * Usage contexts:
- *   - Global variable declarations
- *   - Local variable declarations
- *   - Function declarations and definitions
- *   - Typedef declarations
- *
- * Parameters:
- *   btp - Pointer to base type (in/out parameter)
- *
- * Returns:
- *   Name entry created by declInternal(), or NULL on error
- */
-struct name *
-declare(struct type **btp)
-{
-    return declInternal(btp, 0);
 }
 
 /*

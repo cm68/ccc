@@ -44,15 +44,47 @@ char *kindname[] = {
     "bitf", "farg", "locl"
 };
 #endif
-struct type *types;
-struct type *chartype;
-struct type *inttype;
-struct type *longtype;
-struct type *uchartype;
-struct type *ushorttype;
-struct type *ulongtype;
-struct type *voidtype;
-struct type *floattype;
+/*
+ * Static basic types - chained together, never freed
+ */
+static struct type basictypes[] = {
+    { "_char_",   1, 0, 0, 0, 0,           0 },             // 0
+    { "_short_",  2, 0, 0, 0, 0,           &basictypes[0] }, // 1
+    { "_long_",   4, 0, 0, 0, 0,           &basictypes[1] }, // 2
+    { "_uchar_",  1, 0, 0, 0, TF_UNSIGNED, &basictypes[2] }, // 3
+    { "_ushort_", 2, 0, 0, 0, TF_UNSIGNED, &basictypes[3] }, // 4
+    { "_ulong_",  4, 0, 0, 0, TF_UNSIGNED, &basictypes[4] }, // 5
+    { "_void_",   0, 0, 0, 0, 0,           &basictypes[5] }, // 6
+    { "_float_",  4, 0, 0, 0, TF_FLOAT,    &basictypes[6] }, // 7
+    { "_double_", 4, 0, 0, 0, TF_FLOAT,    &basictypes[7] }, // 8
+};
+#define N_BASIC (sizeof(basictypes)/sizeof(basictypes[0]))
+
+struct type *types = &basictypes[N_BASIC-1];
+struct type *chartype = &basictypes[0];
+struct type *inttype = &basictypes[1];
+struct type *longtype = &basictypes[2];
+struct type *uchartype = &basictypes[3];
+struct type *ushorttype = &basictypes[4];
+struct type *ulongtype = &basictypes[5];
+struct type *voidtype = &basictypes[6];
+struct type *floattype = &basictypes[7];
+
+/*
+ * Static name entries for basic types - never freed
+ * Chained via 'chain' field: [8]->[7]->...->[0]->NULL
+ */
+static struct name basicnames[] = {
+    { "_char_",   0,0,0, 0, &basictypes[0], 0,0,0,0, 0, {0}, prim, 0 },
+    { "_short_",  0,0,0, 0, &basictypes[1], 0,0,0,0, 0, {0}, prim, &basicnames[0] },
+    { "_long_",   0,0,0, 0, &basictypes[2], 0,0,0,0, 0, {0}, prim, &basicnames[1] },
+    { "_uchar_",  0,0,0, 0, &basictypes[3], 0,0,0,0, 0, {0}, prim, &basicnames[2] },
+    { "_ushort_", 0,0,0, 0, &basictypes[4], 0,0,0,0, 0, {0}, prim, &basicnames[3] },
+    { "_ulong_",  0,0,0, 0, &basictypes[5], 0,0,0,0, 0, {0}, prim, &basicnames[4] },
+    { "_void_",   0,0,0, 0, &basictypes[6], 0,0,0,0, 0, {0}, prim, &basicnames[5] },
+    { "_float_",  0,0,0, 0, &basictypes[7], 0,0,0,0, 0, {0}, prim, &basicnames[6] },
+    { "_double_", 0,0,0, 0, &basictypes[8], 0,0,0,0, 0, {0}, prim, &basicnames[7] },
+};
 
 /*
  * basic types = 0
@@ -60,58 +92,34 @@ struct type *floattype;
  * inner blocks > 1
  */
 unsigned char lexlevel;
-int lastname;
-struct name **names;
+struct name *names = &basicnames[8];  /* head of chain, most recent first */
 
 #define ENUM_TYPE   "_uchar_"
 
 /*
  * Pop the current lexical scope
  *
- * Removes all names at the current scope level from the symbol table by
- * clearing their entries in the names array. This implements lexical scoping
- * where inner block names shadow outer ones and become inaccessible when
- * the block exits.
- *
- * The function decrements the lexical level and then removes all names
- * with level > new lexlevel by walking backwards through the names array
- * and clearing entries.
- *
- * Note: Name structures are NOT freed here as they may still be referenced
- * by AST nodes (e.g., SYM expressions in statement trees). Memory will be
- * reclaimed on process exit or by explicit cleanupParse() call.
- *
- * Scope levels:
- *   - 0: Basic types (char, int, void, etc.)
- *   - 1: Global declarations
- *   - 2: Function parameters
- *   - 3+: Local blocks (nested)
+ * Removes names at current level by unlinking from the chain.
+ * Names are NOT freed (may be referenced by AST).
  */
 void
 popScope()
 {
-	struct name *n;
-
+#ifdef DEBUG
     if (VERBOSE(V_SCOPE)) {
         fdprintf(2, "popScope: %d -> %d\n", lexlevel, lexlevel - 1);
     }
+#endif
     lexlevel--;
 
-    while (lastname >= 0) {
-        n = names[lastname];
-        if (n->level <= lexlevel)
-            break;
-        names[lastname] = 0;
-
+    while (names->level > lexlevel) {
+#ifdef DEBUG
         if (VERBOSE(V_SYM)) {
             fdprintf(2,"popScope: remove %s%s from lookup\n",
-                n->is_tag ? "tag:":"", n->name);
+                names->is_tag ? "tag:":"", names->name);
         }
-
-        // Note: We don't free the name structure here because it may still
-        // be referenced by the AST (statement trees via SYM expressions).
-        // The memory will be reclaimed when the process exits.
-        lastname--;
+#endif
+        names = names->chain;
     }
 }
 
@@ -128,52 +136,31 @@ popScope()
 void
 pushScope(char *n)
 {
+#ifdef DEBUG
     if (VERBOSE(V_SCOPE)) {
         fdprintf(2, "pushScope(%s): %d -> %d\n", n ? n : "?", lexlevel, lexlevel + 1);
     }
+#endif
     lexlevel++;
 }
 
 /*
- * Look up a name in the symbol table
- *
- * Searches for a name entry by identifier and tag/non-tag namespace.
- * Searches from most recent (highest index) to oldest (lowest index),
- * implementing proper shadowing where inner declarations hide outer ones.
- *
- * C has two separate namespaces:
- *   - Tag namespace (is_tag=1): struct/union/enum tags
- *   - Ordinary namespace (is_tag=0): variables, functions, typedefs, enums
- *
- * This allows declarations like: struct foo { int foo; }; where the
- * struct tag "foo" and member variable "foo" coexist without conflict.
- *
- * Optimization: First character is checked before calling strcmp to
- * quickly reject non-matches.
- *
- * Parameters:
- *   name   - Identifier to search for
- *   is_tag - 1 for tag namespace, 0 for ordinary namespace
- *
- * Returns:
- *   Pointer to name entry if found, NULL if not found
+ * Look up a name in the symbol table chain
+ * Traverses from most recent to oldest, first match wins (shadowing)
  */
 struct name *
 findName(char *name, unsigned char is_tag)
 {
-	struct name *n;
-    int i;
+    struct name *n;
 
-    for (i = lastname; i >= 0; i--) {
-        n = names[i];
-        if (!n) continue;  /* Skip NULL entries from popped scopes */
+    for (n = names; n; n = n->chain) {
         if ((n->is_tag == is_tag) &&
             (name[0] == n->name[0]) &&
             (strcmp(name, n->name) == 0)) {
-	        return (n);
-		}
-	}
-	return 0;
+            return n;
+        }
+    }
+    return 0;
 }
 
 #ifndef CCC
@@ -239,163 +226,85 @@ dumpType(struct type *t, int lv)
 #endif
 
 /*
- * Create and add a new name entry to the symbol table
- *
- * Allocates a new name structure, initializes it with the provided
- * information, and adds it to the symbol table at the current lexical level.
- * Performs duplicate name checking within the current scope.
- *
- * Duplicate handling:
- *   - Duplicate declarations at the same level are errors (except extern)
- *   - If existing entry has SC_EXTERN, it's returned for update with definition
- *   - Inner declarations shadow outer ones (different levels) - allowed
- *
- * Memory management:
- *   - Name string is duplicated with strdup()
- *   - Structure is zero-initialized with calloc()
- *   - Entry persists in names array until scope is popped
- *
- * Parameters:
- *   name   - Identifier string (will be duplicated)
- *   k      - Name kind (var, tdef, fdef, elem, funarg, etc.)
- *   t      - Type pointer (can be NULL for incomplete types)
- *   is_tag - 1 for tag namespace, 0 for ordinary namespace
- *
- * Returns:
- *   Pointer to new name entry, or existing extern entry for update,
- *   or NULL on error (duplicate name or table full)
+ * Find duplicate name at current scope level
  */
-struct name *
-newName(char *name, kind k, struct type *t, unsigned char is_tag)
+static struct name *
+findDup(char *name, unsigned char is_tag)
 {
-	struct name *n;
-    int i;
-
-    if (!names) {
-        names = malloc(sizeof(n) * MAXNAMES);
-        lastname = -1;
-    }
-    if (lastname == MAXNAMES) {
-        gripe(ER_D_OF);
-        return (0);
-    }
-
-    // if there already is one of the same space, lose
-    for (i = lastname; i >= 0; i--) {
-        if (names[i]->level < lexlevel) {
-            break;
-        }
-        n = names[i];
-        if ((n->is_tag == is_tag) &&
-            (name[0] == n->name[0]) &&
-            (strcmp(name, n->name) == 0)) {
-            // Allow extern declaration followed by definition (or vice versa)
-            // This is valid C: extern int x; ... int x = 0;
-            if (n->sclass & SC_EXTERN) {
-                /*
-                 * Existing is extern - return it to be updated with new
-                 * definition
-                 */
-                return n;
-            }
-            // Allow identical typedef redeclaration
-            if (n->kind == tdef && t == n->type) {
-                return n;
-            }
-            gripe(ER_D_DN);
-	        return (0);
-		}
-    }
-	n = calloc(1, sizeof(*n));  // Zero-initialize all fields
-	n->name = strdup(name);
-	n->type = t;
-    n->level = lexlevel;
-    n->is_tag = is_tag;
-    n->kind = k;
-    names[++lastname] = n;
-    if (VERBOSE(V_SYM)) {
-        fdprintf(2,"newName: level:%d index:%3d %s %s%s\n",
-            lexlevel, lastname,
-            k < sizeof(kindname)/sizeof(kindname[0]) ? kindname[k] : "unkn",
-            is_tag ? "tag:":"", name);
-    }
-
-	return (n);
+    struct name *n = findName(name, is_tag);
+    return (n && n->level == lexlevel) ? n : 0;
 }
 
 /*
- * Add an existing name entry to the symbol table
- *
- * Inserts a pre-allocated name structure into the symbol table at the
- * current lexical level. Unlike newName(), this function doesn't allocate
- * a new structure but uses an existing one.
- *
- * Primary use case:
- *   - Installing function parameters into level 2 scope
- *   - Parameters are stored in function type's elem list
- *   - This function makes them visible in function body scope
- *
- * Duplicate handling:
- *   - Checks for duplicates at current level (same as newName)
- *   - If existing entry has SC_EXTERN, updates it instead of adding duplicate
- *   - Frees the new name structure if updating existing extern entry
- *
- * Level update:
- *   - Updates n->level to match current lexlevel
- *   - Allows parameters defined at level 1 to be visible at level 2
- *
- * Parameters:
- *   n - Pre-allocated name entry to add
+ * Link name at head of symbol table chain
  */
-void
-addName(struct name *n)
+static void
+namesAdd(struct name *n)
 {
-    int i;
-
-    if (!names) {
-        names = malloc(sizeof(struct name *) * MAXNAMES);
-        lastname = -1;
-    }
-    if (lastname == MAXNAMES) {
-        gripe(ER_D_OF);
-        return;
-    }
-
-    // Check for duplicate names at current level
-    for (i = lastname; i >= 0; i--) {
-        if (names[i]->level < lexlevel) {
-            break;
-        }
-        if ((names[i]->is_tag == n->is_tag) &&
-            (n->name[0] == names[i]->name[0]) &&
-            (strcmp(n->name, names[i]->name) == 0)) {
-            // Allow extern declaration followed by definition
-            if (names[i]->sclass & SC_EXTERN) {
-                // Existing is extern - update it instead of adding duplicate
-                // Update storage class to remove extern flag
-                names[i]->sclass = n->sclass;
-                if (n->u.init) {
-                    names[i]->u.init = n->u.init;
-                }
-                free(n);  // Don't need the new one
-                return;
-            }
-            gripe(ER_D_DN);
-            return;
-        }
-    }
-
-    // Update the name's level to match current scope
-    n->level = lexlevel;
-    names[++lastname] = n;
-
+    n->chain = names;
+    names = n;
+#ifdef DEBUG
     if (VERBOSE(V_SYM)) {
-        fdprintf(2,"addName: level:%d index:%3d %s %s%s\n",
-            lexlevel, lastname,
+        fdprintf(2,"addName: level:%d %s %s%s\n",
+            lexlevel,
             n->kind < sizeof(kindname)/sizeof(kindname[0]) ?
                 kindname[n->kind] : "unkn",
             n->is_tag ? "tag:":"", n->name);
     }
+#endif
+}
+
+/*
+ * Create and add a new name entry to the symbol table
+ */
+struct name *
+newName(char *name, kind k, struct type *t, unsigned char is_tag)
+{
+    struct name *n;
+
+    n = findDup(name, is_tag);
+    if (n) {
+        if (n->sclass & SC_EXTERN)
+            return n;
+        if (n->kind == tdef && t == n->type)
+            return n;
+        gripe(ER_D_DN);
+        return 0;
+    }
+
+    n = calloc(1, sizeof(*n));
+    n->name = strdup(name);
+    n->type = t;
+    n->level = lexlevel;
+    n->is_tag = is_tag;
+    n->kind = k;
+    namesAdd(n);
+    return n;
+}
+
+/*
+ * Add an existing name entry to the symbol table
+ */
+void
+addName(struct name *n)
+{
+    struct name *dup;
+
+    dup = findDup(n->name, n->is_tag);
+    if (dup) {
+        if (dup->sclass & SC_EXTERN) {
+            dup->sclass = n->sclass;
+            if (n->u.init)
+                dup->u.init = n->u.init;
+            free(n);
+            return;
+        }
+        gripe(ER_D_DN);
+        return;
+    }
+
+    n->level = lexlevel;
+    namesAdd(n);
 }
 
 /*
@@ -409,25 +318,13 @@ addName(struct name *n)
 #define	MISC_BASIC	6
 
 /*
- * all the basic types are pre-loaded, and there is some
- * sensitivity to index in this table.
+ * Check if a type is a static basic type (not to be freed)
  */
-static struct {
-        char *name;
-        short size;
-        unsigned char flags;
-} basictype[] = {
-	{ "_char_", 1, 0 },						// 0
-	{ "_short_", 2, 0 },					
-	{ "_long_", 4, 0 },
-	{ "_uchar_", 1, TF_UNSIGNED },			// 3
-	{ "_ushort_", 2, TF_UNSIGNED },
-	{ "_ulong_", 4, TF_UNSIGNED },
-	{ "_void_", 0, 0 },						// 6
-	/* { "_boolean_", 1, TF_UNSIGNED }, */  /* Removed - not used */
-	{ "_float_", 4, TF_FLOAT },
-	{ "_double_", 4, TF_FLOAT },
-};
+int
+isBasicType(struct type *t)
+{
+    return t >= &basictypes[0] && t <= &basictypes[N_BASIC-1];
+}
 
 /*
  * Compare two function parameter lists for type equality
@@ -509,7 +406,9 @@ getType(
     int count)              // if array, length
 {
     struct type *t;
+#ifdef DEBUG
     int depth = 0;
+#endif
 
     /*
      * search through types to see if we have a permissive match
@@ -520,7 +419,15 @@ getType(
      * Only share non-aggregate types (pointers, arrays, functions, primitives).
      */
     if (!(flags & TF_AGGREGATE)) {
-        for (t = types; t && depth < 1000; t = t->next, depth++) {
+        for (t = types; t 
+#ifdef DEBUG
+&& depth < 1000
+#endif
+; t = t->next
+#ifdef DEBUG
+, depth++
+#endif
+) {
             if ((t->flags == flags) && (t->sub == sub)) {
                 /*
                  * For arrays, also check count to distinguish different
@@ -537,10 +444,12 @@ getType(
             }
         }
 
+#ifdef DEBUG
         if (depth >= 1000) {
             fdprintf(2, "WARNING: type cache search hit depth limit,"
                 " possible cycle in types list\n");
         }
+#endif
     }
 
     t = calloc(1, sizeof(*t));  // Zero-initialize all fields
@@ -572,55 +481,6 @@ getType(
     return t;
 }
 
-/*
- * Initialize basic types and add them to the global symbol table
- *
- * Creates type structures for all primitive types (char, short, long,
- * unsigned variants, void, float, double) and installs them at level 0
- * (basic types level) in the symbol table.
- *
- * These types are always available and persist for the entire compilation.
- * They serve as building blocks for all derived types (pointers, arrays,
- * functions, structs).
- *
- * Type table layout (indices are significant):
- *   0-2: Signed types (char, short, long)
- *   3-5: Unsigned types (uchar, ushort, ulong)
- *   6+:  Special types (void, float, double)
- *
- * Global type pointers are initialized:
- *   - chartype (1 byte signed)
- *   - inttype (2 bytes signed) - NOTE: int is 2 bytes, not 4!
- *   - longtype (4 bytes signed)
- *   - uchartype, ushorttype, ulongtype (unsigned variants)
- *   - voidtype (0 bytes)
- *
- * Called once at start of parse() before processing any declarations.
- */
-void
-initbasictype()
-{
-    int i;
-    struct type *t;
-
-    for (i = 0; i < sizeof(basictype)/sizeof(basictype[0]); i++) {
-        t = calloc(1, sizeof(*t));  // Zero-initialize all fields
-        t->name = basictype[i].name;
-        t->flags = basictype[i].flags;
-        t->size = basictype[i].size;
-        t->next = types;
-        types = t;
-        newName(basictype[i].name, prim, t, 0);
-        if (i == 0) chartype = t;
-        if (i == 1) inttype = t;  // int is 2 bytes (short), not 4 bytes (long)
-        if (i == 2) longtype = t;
-        if (i == 3) uchartype = t;
-        if (i == 4) ushorttype = t;
-        if (i == 5) ulongtype = t;
-        if (i == 6) voidtype = t;
-        if (i == 7) floattype = t;
-    }
-}
 
 /*
  * Parse basic type keywords into a primitive type
@@ -656,7 +516,6 @@ initbasictype()
 struct type *
 parsebasic()
 {
-	struct name *n;
     char unsignedness = 0;
     char length = 0;
     char misc = 0;
@@ -728,8 +587,7 @@ done:
         length = BYTES2 + 1;
     }
     if (length) length--;
-    n = names[unsignedness + length + misc];
-	return n->type;
+    return basicnames[unsignedness + length + misc].type;
 }
 
 /*
@@ -940,7 +798,7 @@ getbasetype()
              * parse member declaration (struct_elem=true to avoid global
              * namespace pollution)
              */
-            member = declInternal(&member_type, 1);
+            member = declare(&member_type, 1);
             if (!member) {
                 // skip to semicolon or end
                 while (cur.type != SEMI && cur.type != END &&

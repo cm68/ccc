@@ -77,8 +77,6 @@ static struct name *
 findInLocals(const char *name, struct stmt *body)
 {
 	struct name *n;
-	if (!body || !body->locals || !name)
-		return NULL;
 	for (n = body->locals; n; n = n->next) {
 		if (n->name && strcmp(n->name, name) == 0)
 			return n;
@@ -90,7 +88,7 @@ findInLocals(const char *name, struct stmt *body)
 static void
 incRef(struct name *n)
 {
-	if (n && n->ref_count < 255)
+	if (n->ref_count < 255)
 		n->ref_count++;
 }
 
@@ -98,7 +96,7 @@ incRef(struct name *n)
 static void
 incAgg(struct name *n)
 {
-	if (n && n->agg_refs < 255)
+	if (n->agg_refs < 255)
 		n->agg_refs++;
 }
 
@@ -197,9 +195,6 @@ allocRegs(struct stmt *body)
 	int ix_used = 0;
 	int has_reg_hint = 0;
 	int no_arg_regs = 0;  /* any arg addr taken? then no arg regs */
-
-	if (!body || !body->locals)
-		return;
 
 	/* If any funarg has address taken, no funargs can use registers */
 	for (n = body->locals; n; n = n->next) {
@@ -835,9 +830,6 @@ emitExpr(struct expr *e)
 static void
 emitTypeInfo(struct type *type)
 {
-	if (!type)
-		return;
-
 	/* For arrays: a count. elemsize. */
 	if (type->flags & TF_ARRAY) {
 		int elemsize = type->sub ? type->sub->size : 0;

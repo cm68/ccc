@@ -5,6 +5,38 @@
 #include "cc2.h"
 
 /*
+ * Emit conditional jump for comparison result
+ * op: comparison operator (<, >, Q, n, L, g)
+ * aux2: label info (negative = TRUE jump to ht, positive = FALSE jump to no)
+ */
+void
+emitCondJmp(char op, int aux2)
+{
+    if (aux2 < 0) {
+        /* TRUE jump to ht{target} */
+        int target = -aux2;
+        switch (op) {
+        case 'Q': emit("jp z,ht%d_%d", target, fnIndex); break;
+        case 'n': emit("jp nz,ht%d_%d", target, fnIndex); break;
+        case '<': emit("jp c,ht%d_%d", target, fnIndex); break;
+        case '>': emit("jp z,$+5"); emit("jp nc,ht%d_%d", target, fnIndex); break;
+        case 'L': emit("jp c,ht%d_%d", target, fnIndex); emit("jp z,ht%d_%d", target, fnIndex); break;
+        case 'g': emit("jp nc,ht%d_%d", target, fnIndex); break;
+        }
+    } else {
+        /* FALSE jump to no{aux2} */
+        switch (op) {
+        case 'Q': emit("jp nz,no%d_%d", aux2, fnIndex); break;
+        case 'n': emit("jp z,no%d_%d", aux2, fnIndex); break;
+        case '<': emit("jp nc,no%d_%d", aux2, fnIndex); break;
+        case '>': emit("jp c,no%d_%d", aux2, fnIndex); emit("jp z,no%d_%d", aux2, fnIndex); break;
+        case 'L': emit("jp z,$+5"); emit("jp nc,no%d_%d", aux2, fnIndex); break;
+        case 'g': emit("jp c,no%d_%d", aux2, fnIndex); break;
+        }
+    }
+}
+
+/*
  * Emit comparison operators: <, >, Q(==), n(!=), L(<=), g(>=)
  */
 void
@@ -28,18 +60,17 @@ emitCompare(struct expr *e)
             char *rn = (simple->aux == R_IX) ? "ix" : "iy";
             emit("cp (%s%o)", rn, simple->offset);
         } else if (simple->op == 'M' && simple->left->op == '$') {
-            emit("push hl");
             emit("ld hl,%s", simple->left->sym);
-            emit("ld e,(hl)");
-            emit("pop hl");
-            emit("cp e");
+            emit("cp (hl)");
         } else if (simple->op == 'M' && simple->left->op == 'V') {
             char *rn = (simple->left->aux == R_IX) ? "ix" : "iy";
             emit("cp (%s%o)", rn, simple->left->offset);
         } else {
             emit("XXXXXXXXX simple op=%c", simple->op);
         }
-        if (!e->cond)
+        if (e->cond)
+            emitCondJmp(e->op, e->aux2);
+        else
             goto cmpresult;
     } else if (e->special == SP_CMPV) {
         /* byte cmp V node with constant: ld a,const; cp (iy/ix+off) */
@@ -47,46 +78,20 @@ emitCompare(struct expr *e)
         comment("CMPV %s%+d #%d", rn, e->offset, e->incr);
         emit("ld a,%d", e->incr);
         emit("cp (%s%o)", rn, e->offset);
-        if (e->cond) {
-            /* aux2 < 0: TRUE jump to ht{-aux2}, aux2 >= 0: FALSE jump to no{aux2} */
-            if (e->aux2 < 0) {
-                int target = -e->aux2;
-                if (e->op == 'Q')       /* == : TRUE when Z */
-                    emit("jp z,ht%d_%d", target, fnIndex);
-                else if (e->op == 'n')  /* != : TRUE when NZ */
-                    emit("jp nz,ht%d_%d", target, fnIndex);
-            } else {
-                if (e->op == 'Q')       /* == : FALSE when NZ */
-                    emit("jp nz,no%d_%d", e->aux2, fnIndex);
-                else if (e->op == 'n')  /* != : FALSE when Z */
-                    emit("jp z,no%d_%d", e->aux2, fnIndex);
-            }
-        } else {
+        if (e->cond)
+            emitCondJmp(e->op, e->aux2);
+        else
             goto cmpresult;
-        }
     } else if (e->special == SP_CMPR) {
         /* byte cmp regvar with constant: ld a,const; cp reg */
         char *rn = (e->aux == R_B) ? "b" : "c";
         comment("CMPR %s #%d", rn, e->incr);
         emit("ld a,%d", e->incr);
         emit("cp %s", rn);
-        if (e->cond) {
-            /* aux2 < 0: TRUE jump to ht{-aux2}, aux2 >= 0: FALSE jump to no{aux2} */
-            if (e->aux2 < 0) {
-                int target = -e->aux2;
-                if (e->op == 'Q')       /* == : TRUE when Z */
-                    emit("jp z,ht%d_%d", target, fnIndex);
-                else if (e->op == 'n')  /* != : TRUE when NZ */
-                    emit("jp nz,ht%d_%d", target, fnIndex);
-            } else {
-                if (e->op == 'Q')       /* == : FALSE when NZ */
-                    emit("jp nz,no%d_%d", e->aux2, fnIndex);
-                else if (e->op == 'n')  /* != : FALSE when Z */
-                    emit("jp z,no%d_%d", e->aux2, fnIndex);
-            }
-        } else {
+        if (e->cond)
+            emitCondJmp(e->op, e->aux2);
+        else
             goto cmpresult;
-        }
     } else if (e->special == SP_SIGN) {
         /* sign test: bit 7 of high byte */
         comment("SIGN $%s ofs=%d", e->sym ? e->sym : "?", e->offset);
