@@ -587,7 +587,9 @@ emitExpr(struct expr *e)
         comment("-%c d=%d %s [", e->type, e->demand, regnames[e->dest] ? regnames[e->dest] : "-");
         indent += 2;
         emitExpr(e->left);
-        emitExpr(e->right);
+        /* Skip emitting right if byte immediate - use sub n directly */
+        if (!(e->size == 1 && e->right->op == '#'))
+            emitExpr(e->right);
         if (e->size == 2) {
             /* Need HL = left - right. Check where left ended up */
             if (e->left->dest == R_DE) {
@@ -596,8 +598,11 @@ emitExpr(struct expr *e)
             emit("or a");
             emit("sbc hl,de");
         } else if (e->size == 1) {
-            /* For byte: one is in A, other in E. Need A - E or E - A */
-            if (e->left->dest == R_A) {
+            /* For byte: check if right is immediate constant */
+            if (e->right->op == '#') {
+                /* sub immediate: A = A - const */
+                emit("sub %d", e->right->v.c & 0xff);
+            } else if (e->left->dest == R_A) {
                 /* A has left, E has right. A = A - E. Good. */
                 emit("sub e");
             } else {
@@ -854,7 +859,7 @@ emitExpr(struct expr *e)
         indent -= 2;
         comment("]");
         break;
-    case '<': case '>': case 'Q': case 'n': case 'L': case 'g':
+    case '<': case 'Q': case 'n':  /* pass1 normalizes >, <=, >= to these */
         emitCompare(e);
         break;
     case '!':  /* logical not */
@@ -947,24 +952,36 @@ emitExpr(struct expr *e)
         if (e->cond) {
             /* aux=1 means inside ||: use local label, fall through with Z for FALSE */
             /* aux=0 means not inside ||: jump to no{aux2} on FALSE */
+            char lop = e->left->op, rop = e->right->op;
+            /* Check if children are comparisons that emit their own jumps */
+            int leftIsCmp = (lop == '<' || lop == 'Q' || lop == 'n') && e->left->cond;
+            int rightIsCmp = (rop == '<' || rop == 'Q' || rop == 'n') && e->right->cond;
             if (e->aux) {
                 /* Inside ||: use unique local label */
                 int localLbl = labelCnt++;
                 emitExpr(e->left);
-                emitTestExpr(e->left);
-                emit("jp z,ja%d_%d", localLbl, fnIndex);
+                if (!leftIsCmp) {
+                    emitTestExpr(e->left);
+                    emit("jp z,ja%d_%d", localLbl, fnIndex);
+                }
                 emitExpr(e->right);
-                emitTestExpr(e->right);
-                emit("jp z,ja%d_%d", localLbl, fnIndex);
+                if (!rightIsCmp) {
+                    emitTestExpr(e->right);
+                    emit("jp z,ja%d_%d", localLbl, fnIndex);
+                }
                 emit("ja%d_%d:", localLbl, fnIndex);
             } else {
                 /* Not inside ||: jump to no{aux2} on FALSE */
                 emitExpr(e->left);
-                emitTestExpr(e->left);
-                emit("jp z,no%d_%d", e->aux2, fnIndex);
+                if (!leftIsCmp) {
+                    emitTestExpr(e->left);
+                    emit("jp z,no%d_%d", e->aux2, fnIndex);
+                }
                 emitExpr(e->right);
-                emitTestExpr(e->right);
-                emit("jp z,no%d_%d", e->aux2, fnIndex);
+                if (!rightIsCmp) {
+                    emitTestExpr(e->right);
+                    emit("jp z,no%d_%d", e->aux2, fnIndex);
+                }
             }
         } else {
             /* Non-conditional: need 0/1 value in HL */
@@ -993,16 +1010,25 @@ emitExpr(struct expr *e)
             /* aux=1 means nested inside another ||: fall through, parent emits ht */
             /* aux=0 means not nested: emit ht label here */
             int htLabel = e->aux2 + 1;
+            char lop = e->left->op, rop = e->right->op;
+            /* Check if children are comparisons that emit their own jumps */
+            int leftIsCmp = (lop == '<' || lop == 'Q' || lop == 'n') && e->left->cond;
+            int rightIsCmp = (rop == '<' || rop == 'Q' || rop == 'n') && e->right->cond;
             emitExpr(e->left);
-            emitTestExpr(e->left);
-            emit("jp nz,ht%d_%d", htLabel, fnIndex);
+            if (!leftIsCmp) {
+                emitTestExpr(e->left);
+                emit("jp nz,ht%d_%d", htLabel, fnIndex);
+            }
             emitExpr(e->right);
-            emitTestExpr(e->right);
+            if (!rightIsCmp) {
+                emitTestExpr(e->right);
+            }
             if (e->aux) {
                 /* Nested: fall through with Z flag for FALSE, NZ already jumped to ht */
             } else {
                 /* Not nested: FALSE jumps to no, emit ht label */
-                emit("jp z,no%d_%d", e->aux2, fnIndex);
+                if (!rightIsCmp)
+                    emit("jp z,no%d_%d", e->aux2, fnIndex);
                 emit("ht%d_%d:", htLabel, fnIndex);
             }
         } else {

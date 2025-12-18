@@ -143,15 +143,9 @@ normBinop(struct expr *e)
     e->left = e->right;
     e->right = tmp;
 
-    /* Flip operator for non-commutative comparisons */
-    switch (e->op) {
-    case '<': e->op = '>'; break;
-    case '>': e->op = '<'; break;
-    case 'L': e->op = 'g'; break;  /* <= becomes >= */
-    case 'g': e->op = 'L'; break;  /* >= becomes <= */
-    /* These are commutative, no op change needed:
-     * + * & | ^ == != && || */
-    }
+    /* Flip operator for non-commutative ops.
+     * Note: comparisons are now always (expr) op 0, so no swap needed.
+     * Pass1 normalizes >, <=, >= to < with rearranged operands. */
 }
 
 /*
@@ -287,7 +281,7 @@ parseExpr(void)
         return e;
 
     case '+': case '-': case '*': case '/': case '%':
-    case '<': case '>': case 'Q': case 'n': case 'L': case 'g':
+    case '<': case 'Q': case 'n':  /* pass1 normalizes >, <=, >= to these */
     case '|': case '^': case '&': case 'y': case 'w':
     case 'j': case 'h':  /* logical and/or */
     case 'D': case 'O': case 'z':  /* unsigned ops */
@@ -496,7 +490,8 @@ dumpStmt(void)
                 /* emit conditional jump to skip then block */
                 /* If cond had cond=1, it already emitted its own jump */
                 if (ccond && (special == SP_CMPHL || special == SP_CMPV ||
-                              special == SP_CMPR || cop == 'j' || cop == 'h')) {
+                              special == SP_CMPR || cop == 'j' || cop == 'h' ||
+                              cop == '<' || cop == 'Q' || cop == 'n')) {
                     /* cond node already emitted jumps, nothing to do */
                 } else if (special == SP_BITTEST) {
                     /* bit n,(ix+ofs): Z=1 if bit is 0; skip then if Z (false) */

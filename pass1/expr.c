@@ -136,6 +136,9 @@ mkexprI(unsigned char op, struct expr *left, struct type *type,
 	return e;
 }
 
+/* Forward declarations */
+static struct expr *normalize(struct expr *e);
+
 /*
  * Free an expression tree recursively
  *
@@ -1278,6 +1281,7 @@ parseExpr(unsigned char pri, struct stmt *st)
             e->type = e->left->type;
         }
 
+        e = normalize(e);
         e = cfold(e);
     }
     return e;
@@ -1543,6 +1547,199 @@ cfold(struct expr *e)
     }
     e = xreplace(e, left);
     e->v = val;  // Store the computed constant value
+    return e;
+}
+
+/*
+ * Normalize expression tree for better code generation:
+ * - Commutative ops: put constant on right
+ * - Subtraction: x - const -> x + (-const)
+ * - Comparisons: convert to (expr) op 0 form
+ *
+ * All comparisons become subtract + flag check:
+ *   a > b  -> (b - a) < 0       -> sub, check C
+ *   a >= b -> (b - a - 1) < 0   -> sub, check C
+ *   a < b  -> (a - b) < 0       -> sub, check C
+ *   a <= b -> (a - b - 1) < 0   -> sub, check C
+ *   a == b -> (a - b) == 0      -> sub, check Z
+ *   a != b -> (a - b) != 0      -> sub, check NZ
+ *
+ * Pass2 should recognize that sub already sets flags, avoiding cp 0.
+ */
+static struct expr *
+normalize(struct expr *e)
+{
+    unsigned char op = e->op;
+    struct expr *left = e->left;
+    struct expr *right = e->right;
+    struct expr *sub, *zero;
+
+    if (!left || !right)
+        return e;
+
+    switch (op) {
+    /* Commutative ops: swap if left is const and right isn't */
+    case PLUS:
+    case STAR:
+    case AND:
+    case OR:
+    case XOR:
+        if (left->op == CONST && right->op != CONST) {
+            e->left = right;
+            e->right = left;
+            e->left->up = e;
+            e->right->up = e;
+        }
+        break;
+
+    /* Subtraction of constant: x - c -> x + (-c) */
+    case MINUS:
+        if (right->op == CONST) {
+            right->v = -(long)right->v;
+            e->op = PLUS;
+        }
+        break;
+
+    /* Comparisons: convert to (a - b) op 0 form */
+    /* For C flag: need left < right, so compute left - right */
+    /* For NC flag: need left >= right, so compute left - right */
+
+    /* a > b -> (b - a) < 0 */
+    case GT:
+        sub = mkexpr(MINUS, right);  /* b - a */
+        sub->right = left;
+        sub->left->up = sub;
+        sub->right->up = sub;
+        sub->type = left->type;
+        zero = mkexprI(CONST, 0, left->type, 0, E_CONST);
+        e->op = LT;
+        e->left = sub;
+        e->right = zero;
+        e->left->up = e;
+        e->right->up = e;
+        break;
+
+    /* a >= b -> (b - a - 1) < 0, fold -1 into constant if possible */
+    case GE:
+        if (left->op == CONST) {
+            /* a is const: (b - (a+1)) < 0 */
+            left->v = left->v + 1;
+            sub = mkexpr(MINUS, right);
+            sub->right = left;
+        } else if (right->op == CONST) {
+            /* b is const: ((b-1) - a) < 0 */
+            right->v = right->v - 1;
+            sub = mkexpr(MINUS, right);
+            sub->right = left;
+        } else {
+            /* neither const: (b - a) + (-1) < 0 */
+            struct expr *negone, *adjusted;
+            sub = mkexpr(MINUS, right);
+            sub->right = left;
+            sub->left->up = sub;
+            sub->right->up = sub;
+            sub->type = left->type;
+            negone = mkexprI(CONST, 0, left->type, -1, E_CONST);
+            adjusted = mkexpr(PLUS, sub);
+            adjusted->right = negone;
+            adjusted->left->up = adjusted;
+            adjusted->right->up = adjusted;
+            adjusted->type = left->type;
+            sub = adjusted;  /* use adjusted as the subtraction result */
+        }
+        sub->left->up = sub;
+        sub->right->up = sub;
+        sub->type = left->type;
+        zero = mkexprI(CONST, 0, left->type, 0, E_CONST);
+        e->op = LT;
+        e->left = sub;
+        e->right = zero;
+        e->left->up = e;
+        e->right->up = e;
+        break;
+
+    /* a < b -> (a - b) < 0 */
+    case LT:
+        sub = mkexpr(MINUS, left);  /* a - b */
+        sub->right = right;
+        sub->left->up = sub;
+        sub->right->up = sub;
+        sub->type = left->type;
+        zero = mkexprI(CONST, 0, left->type, 0, E_CONST);
+        e->left = sub;
+        e->right = zero;
+        e->left->up = e;
+        e->right->up = e;
+        break;
+
+    /* a <= b -> (a - b - 1) < 0, fold -1 into constant if possible */
+    case LE:
+        if (right->op == CONST) {
+            /* b is const: (a - (b+1)) < 0 */
+            right->v = right->v + 1;
+            sub = mkexpr(MINUS, left);
+            sub->right = right;
+        } else if (left->op == CONST) {
+            /* a is const: ((a-1) - b) < 0 */
+            left->v = left->v - 1;
+            sub = mkexpr(MINUS, left);
+            sub->right = right;
+        } else {
+            /* neither const: (a - b) + (-1) < 0 */
+            struct expr *negone, *adjusted;
+            sub = mkexpr(MINUS, left);
+            sub->right = right;
+            sub->left->up = sub;
+            sub->right->up = sub;
+            sub->type = left->type;
+            negone = mkexprI(CONST, 0, left->type, -1, E_CONST);
+            adjusted = mkexpr(PLUS, sub);
+            adjusted->right = negone;
+            adjusted->left->up = adjusted;
+            adjusted->right->up = adjusted;
+            adjusted->type = left->type;
+            sub = adjusted;
+        }
+        sub->left->up = sub;
+        sub->right->up = sub;
+        sub->type = left->type;
+        zero = mkexprI(CONST, 0, left->type, 0, E_CONST);
+        e->op = LT;
+        e->left = sub;
+        e->right = zero;
+        e->left->up = e;
+        e->right->up = e;
+        break;
+
+    /* a == b -> (a - b) == 0 */
+    case EQ:
+        sub = mkexpr(MINUS, left);  /* a - b */
+        sub->right = right;
+        sub->left->up = sub;
+        sub->right->up = sub;
+        sub->type = left->type;
+        zero = mkexprI(CONST, 0, left->type, 0, E_CONST);
+        e->left = sub;
+        e->right = zero;
+        e->left->up = e;
+        e->right->up = e;
+        break;
+
+    /* a != b -> (a - b) != 0 */
+    case NEQ:
+        sub = mkexpr(MINUS, left);  /* a - b */
+        sub->right = right;
+        sub->left->up = sub;
+        sub->right->up = sub;
+        sub->type = left->type;
+        zero = mkexprI(CONST, 0, left->type, 0, E_CONST);
+        e->left = sub;
+        e->right = zero;
+        e->left->up = e;
+        e->right->up = e;
+        break;
+    }
+
     return e;
 }
 

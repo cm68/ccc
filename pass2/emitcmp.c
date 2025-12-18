@@ -6,7 +6,7 @@
 
 /*
  * Emit conditional jump for comparison result
- * op: comparison operator (<, >, Q, n, L, g)
+ * op: comparison operator (<, Q, n) - pass1 normalizes all others
  * aux2: label info (negative = TRUE jump to ht, positive = FALSE jump to no)
  */
 void
@@ -19,9 +19,6 @@ emitCondJmp(char op, int aux2)
         case 'Q': emit("jp z,ht%d_%d", target, fnIndex); break;
         case 'n': emit("jp nz,ht%d_%d", target, fnIndex); break;
         case '<': emit("jp c,ht%d_%d", target, fnIndex); break;
-        case '>': emit("jp z,$+5"); emit("jp nc,ht%d_%d", target, fnIndex); break;
-        case 'L': emit("jp c,ht%d_%d", target, fnIndex); emit("jp z,ht%d_%d", target, fnIndex); break;
-        case 'g': emit("jp nc,ht%d_%d", target, fnIndex); break;
         }
     } else {
         /* FALSE jump to no{aux2} */
@@ -29,15 +26,13 @@ emitCondJmp(char op, int aux2)
         case 'Q': emit("jp nz,no%d_%d", aux2, fnIndex); break;
         case 'n': emit("jp z,no%d_%d", aux2, fnIndex); break;
         case '<': emit("jp nc,no%d_%d", aux2, fnIndex); break;
-        case '>': emit("jp c,no%d_%d", aux2, fnIndex); emit("jp z,no%d_%d", aux2, fnIndex); break;
-        case 'L': emit("jp z,$+5"); emit("jp nc,no%d_%d", aux2, fnIndex); break;
-        case 'g': emit("jp c,no%d_%d", aux2, fnIndex); break;
         }
     }
 }
 
 /*
- * Emit comparison operators: <, >, Q(==), n(!=), L(<=), g(>=)
+ * Emit comparison operators: <, Q(==), n(!=)
+ * Pass1 normalizes >, <=, >= to these three forms
  */
 void
 emitCompare(struct expr *e)
@@ -151,6 +146,9 @@ emitCompare(struct expr *e)
         /* General comparison - use operand type, not result type */
         unsigned char ctype = e->left->type;
         unsigned char leftDeeper = treeDepth(e->left) >= treeDepth(e->right);
+        /* Check if comparing subtraction result against 0 - sub sets flags */
+        int subCmpZero = (e->left->op == '-' && e->right->op == '#' &&
+                          e->right->v.s == 0);
         if (ISLONG(ctype)) {
             /* Long comparison: emit both, call lcmp */
             if (leftDeeper) {
@@ -161,6 +159,19 @@ emitCompare(struct expr *e)
                 emitExpr(e->left);   /* dest=R_DE → _lL */
             }
             emit("call lcmp");
+        } else if (subCmpZero) {
+            /* Subtraction compared to 0: sub already sets flags */
+            emitExpr(e->left);
+            if (ISBYTE(ctype) && e->left->size == 2)
+                emit("ld a,l");
+            /* No comparison needed - sub/sbc already set Z flag */
+            if (e->cond) {
+                emitCondJmp(e->op, e->aux2);
+                indent -= 2;
+                comment("]");
+                return;
+            }
+            goto cmpresult;
         } else if (leftDeeper) {
             emitExpr(e->left);
             if (ISBYTE(ctype)) {
@@ -196,6 +207,13 @@ emitCompare(struct expr *e)
                 emit("sbc hl,de");
             }
         }
+        /* General comparison: emit conditional jump if in cond context */
+        if (e->cond) {
+            emitCondJmp(e->op, e->aux2);
+            indent -= 2;
+            comment("]");
+            return;
+        }
     }
 cmpresult:
     if (!e->cond && e->special != SP_SIGN && e->special != SP_SIGNREG) {
@@ -215,27 +233,6 @@ cmpresult:
             emit("jr nc,$+3");
             emit("inc a");
             break;
-        case '>':  /* > */
-            emit("jr z,$+5");
-            emit("ld a,0");
-            emit("jr c,$+3");
-            emit("inc a");
-            emit("jr $+3");
-            emit("ld a,0");
-            break;
-        case 'L':  /* <= */
-            emit("ld a,1");
-            emit("jr z,$+4");
-            emit("jr c,$+3");
-            emit("dec a");
-            break;
-        case 'g':  /* >= */
-            emit("ld a,0");
-            emit("jr c,$+3");
-            emit("inc a");
-            break;
-        default:
-            emit("XXXXXXXXX cmpres");
         }
     }
     indent -= 2;
