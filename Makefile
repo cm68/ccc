@@ -1,7 +1,7 @@
 #
 # Top-level Makefile for ccc compiler
 #
-# Invokes sub-makes for pass1 (cc1) and newpass2 (cc2)
+# Invokes sub-makes for pass1 (cc1) and pass2 (cc2)
 #
 CC = gcc
 
@@ -25,40 +25,47 @@ ROOTDIR = root
 # Source files for stage1 building
 CC1_SOURCES = pass1/pass1.c pass1/error.c pass1/lex.c pass1/io.c pass1/macro.c \
 	pass1/kw.c pass1/expr.c pass1/parse.c pass1/type.c pass1/declare.c pass1/outast.c
-CC2_SOURCES = newpass2/astio.c newpass2/codegen.c newpass2/emit.c newpass2/emitcmp.c \
-	newpass2/emitexpr.c newpass2/emitincdec.c newpass2/emitops.c newpass2/newcc2.c \
-	newpass2/parseast.c
+CC2_SOURCES = pass2/astio.c pass2/codegen.c pass2/emit.c pass2/emitcmp.c \
+	pass2/emitexpr.c pass2/emitincdec.c pass2/emitops.c pass2/cc2.c \
+	pass2/parseast.c
 
 # Source files for documentation
 CFILES = $(CC1_SOURCES) $(CC2_SOURCES) util.c ccc.c \
 	pass1/tokenlist.c pass1/debugtags.c
-HFILES = newpass2/cc2.h pass1/cc1.h pass1/token.h
+HFILES = pass2/cc2.h pass1/cc1.h pass1/token.h
 
-BINS = pass1/cc1 newpass2/cc2 ccc astpp
+BINS = cpp/cpp pass1/cc1 pass2/cc2 ccc astpp
 
 # Documentation files
 DOCFILES = README.md TODO.md CLAUDE.md AST_FORMAT.md ASTPP.md \
-	newpass2/NEWPASS2.md newpass2/CONDITIONS.md newpass2/STACK.md \
+	pass2/NEWPASS2.md pass2/CONDITIONS.md pass2/STACK.md \
 	ws/README.md ws/ASZ.md ws/WS.md \
 	libsrc/README.md libsrc/libc/README.md
 LIBSRCS = libsrc/Makefile libsrc/*/*.s libsrc/*/*.c libsrc/include/*.h
 
-all: cc1 cc2 ccc install
+all: cpp cc1 cc2 ccc install
+
+cpp:
+	$(MAKE) -C cpp
 
 cc1:
 	$(MAKE) -C pass1
 
 cc2:
-	$(MAKE) -C newpass2
+	$(MAKE) -C pass2
+
+ccc.o: ccc.c
+	$(CC) $(CFLAGS) -DROOTDIR=$(CURDIR)/$(ROOTDIR) -c -o $@ $<
 
 ccc: ccc.o
 	$(LD) $(LDFLAGS) ccc ccc.o
 
-install: cc1 cc2 ccc astpp
+install: cpp cc1 cc2 ccc astpp
 	mkdir -p $(ROOTDIR)/bin
 	cp ccc astpp $(ROOTDIR)/bin
+	$(MAKE) -C cpp install ROOTDIR=$(CURDIR)/$(ROOTDIR)
 	$(MAKE) -C pass1 install ROOTDIR=$(CURDIR)/$(ROOTDIR)
-	$(MAKE) -C newpass2 install ROOTDIR=$(CURDIR)/$(ROOTDIR)
+	$(MAKE) -C pass2 install ROOTDIR=$(CURDIR)/$(ROOTDIR)
 	$(MAKE) -C ws install ROOTDIR=$(CURDIR)/$(ROOTDIR)
 	$(MAKE) -C libsrc install ROOTDIR=$(CURDIR)/$(ROOTDIR)
 
@@ -105,23 +112,23 @@ valgrind: cc1 cc2
 
 sizecheck:
 	$(MAKE) -C pass1 sizefile
-	$(MAKE) -C newpass2 sizefile
-	@cat pass1/sizefile newpass2/sizefile | tee cur.size
+	$(MAKE) -C pass2 sizefile
+	@cat pass1/sizefile pass2/sizefile | tee cur.size
 	@diff -N cur.size prev.size ; true
 
 .PHONY: stage1
 stage1: cc1 cc2 install
 	@echo "Building stage1 with cross ccc"
 	$(MAKE) -C pass1 CC=ccc ROOTDIR=$(CURDIR)/$(ROOTDIR)
-	$(MAKE) -C newpass2 CC=ccc ROOTDIR=$(CURDIR)/$(ROOTDIR)
+	$(MAKE) -C pass2 CC=ccc ROOTDIR=$(CURDIR)/$(ROOTDIR)
 	@echo "Stage1 build complete"
 
 regen:
 	$(MAKE) -C pass1 regen
-	$(MAKE) -C newpass2 regen
+	$(MAKE) -C pass2 regen
 
 tags:
-	ctags pass1/*.c newpass2/*.c *.c
+	ctags pass1/*.c pass2/*.c *.c
 
 doc.pdf: $(CFILES) $(HFILES) $(DOCFILES) Makefile
 	{ for f in $(DOCFILES); do \
@@ -134,7 +141,7 @@ doc.pdf: $(CFILES) $(HFILES) $(DOCFILES) Makefile
 
 clean:
 	$(MAKE) -C pass1 clean
-	$(MAKE) -C newpass2 clean
+	$(MAKE) -C pass2 clean
 	rm -f ccc.o ccc tests/*.i *.ast *.s *.pp *.i
 	rm -rf stage1
 

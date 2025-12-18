@@ -74,7 +74,7 @@ struct expr {
     } v;                    	/* constant value */
     char *sym;			/* symbol name (malloc'd) */
     unsigned char aux;          /* auxiliary: nargs for call, width for bitfield */
-    unsigned char aux2;         /* auxiliary: offset for bitfield, incr for inc/dec */
+    short aux2;                 /* auxiliary: offset for bitfield, incr, or label */
     unsigned char demand;       /* temporary demand */
     unsigned char dest;     	/* destination register index (R_HL, R_DE, R_A) */
     unsigned char spill;        /* need to spill DE before right child */

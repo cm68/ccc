@@ -2,37 +2,37 @@
 ; ltemp.s - Long (32-bit) temporaries and helpers
 ;
 ; Memory-based temps to avoid exx register juggling.
-; _lL = left operand, _lR = right operand
+; lL = left operand, lR = right operand
 ;
-.globl _lL
-.globl _lR
-.globl _lldHL
-.globl _lldHLR
-.globl _lstHL
-.globl _lstHLR
-.globl _ladd
-.globl _lsub
-.globl _land
-.globl _lor
-.globl _lxor
-.globl _lneg
-.globl _lcom
-.globl _lcmp
-.globl _lshl
-.globl _lshr
-.globl _lashr
+.globl lL
+.globl lR
+.globl lldHL
+.globl lldHLR
+.globl lstHL
+.globl lstHLR
+.globl ladd
+.globl lsub
+.globl land
+.globl lor
+.globl lxor
+.globl lneg
+.globl lcom
+.globl lcmp
+.globl lshl
+.globl lshr
+.globl lashr
 
 .data
-_lL:	.ds 4		; left long temp
-_lR:	.ds 4		; right long temp
+lL:	.ds 4		; left long temp
+lR:	.ds 4		; right long temp
 
 .text
 
 ;
-; _lldHL - load 4 bytes from (HL) into _lL
+; lldHL - load 4 bytes from (HL) into lL
 ;
-_lldHL::
-	ld	de,_lL
+lldHL::
+	ld	de,lL
 	ldi
 	ldi
 	ldi
@@ -40,10 +40,10 @@ _lldHL::
 	ret
 
 ;
-; _lldHLR - load 4 bytes from (HL) into _lR
+; lldHLR - load 4 bytes from (HL) into lR
 ;
-_lldHLR::
-	ld	de,_lR
+lldHLR::
+	ld	de,lR
 	ldi
 	ldi
 	ldi
@@ -51,10 +51,10 @@ _lldHLR::
 	ret
 
 ;
-; _lstHL - store 4 bytes from _lL to (HL)
+; lstHL - store 4 bytes from lL to (HL)
 ;
-_lstHL::
-	ld	de,_lL
+lstHL::
+	ld	de,lL
 	ex	de,hl
 	ldi
 	ldi
@@ -63,10 +63,10 @@ _lstHL::
 	ret
 
 ;
-; _lstHLR - store 4 bytes from _lR to (HL)
+; lstHLR - store 4 bytes from lR to (HL)
 ;
-_lstHLR::
-	ld	de,_lR
+lstHLR::
+	ld	de,lR
 	ex	de,hl
 	ldi
 	ldi
@@ -75,40 +75,40 @@ _lstHLR::
 	ret
 
 ;
-; _ladd - _lR = _lL + _lR
+; ladd - lR = lL + lR
 ;
-_ladd::
-	ld	hl,(_lL)
-	ld	de,(_lR)
+ladd::
+	ld	hl,(lL)
+	ld	de,(lR)
 	add	hl,de
-	ld	(_lR),hl
-	ld	hl,(_lL+2)
-	ld	de,(_lR+2)
+	ld	(lR),hl
+	ld	hl,(lL+2)
+	ld	de,(lR+2)
 	adc	hl,de
-	ld	(_lR+2),hl
+	ld	(lR+2),hl
 	ret
 
 ;
-; _lsub - _lR = _lL - _lR
+; lsub - lR = lL - lR
 ;
-_lsub::
-	ld	hl,(_lL)
-	ld	de,(_lR)
+lsub::
+	ld	hl,(lL)
+	ld	de,(lR)
 	or	a
 	sbc	hl,de
-	ld	(_lR),hl
-	ld	hl,(_lL+2)
-	ld	de,(_lR+2)
+	ld	(lR),hl
+	ld	hl,(lL+2)
+	ld	de,(lR+2)
 	sbc	hl,de
-	ld	(_lR+2),hl
+	ld	(lR+2),hl
 	ret
 
 ;
-; _land - _lR = _lL & _lR
+; land - lR = lL & lR
 ;
-_land::
-	ld	hl,_lL
-	ld	de,_lR
+land::
+	ld	hl,lL
+	ld	de,lR
 	ld	a,(de)
 	and	(hl)
 	ld	(de),a
@@ -130,11 +130,11 @@ _land::
 	ret
 
 ;
-; _lor - _lR = _lL | _lR
+; lor - lR = lL | lR
 ;
-_lor::
-	ld	hl,_lL
-	ld	de,_lR
+lor::
+	ld	hl,lL
+	ld	de,lR
 	ld	a,(de)
 	or	(hl)
 	ld	(de),a
@@ -156,11 +156,11 @@ _lor::
 	ret
 
 ;
-; _lxor - _lR = _lL ^ _lR
+; lxor - lR = lL ^ lR
 ;
-_lxor::
-	ld	hl,_lL
-	ld	de,_lR
+lxor::
+	ld	hl,lL
+	ld	de,lR
 	ld	a,(de)
 	xor	(hl)
 	ld	(de),a
@@ -182,25 +182,25 @@ _lxor::
 	ret
 
 ;
-; _lneg - _lR = -_lR
+; lneg - lR = -lR
 ;
-_lneg::
+lneg::
 	ld	hl,0
-	ld	de,(_lR)
+	ld	de,(lR)
 	or	a
 	sbc	hl,de
-	ld	(_lR),hl
+	ld	(lR),hl
 	ld	hl,0
-	ld	de,(_lR+2)
+	ld	de,(lR+2)
 	sbc	hl,de
-	ld	(_lR+2),hl
+	ld	(lR+2),hl
 	ret
 
 ;
-; _lcom - _lR = ~_lR
+; lcom - lR = ~lR
 ;
-_lcom::
-	ld	hl,_lR
+lcom::
+	ld	hl,lR
 	ld	a,(hl)
 	cpl
 	ld	(hl),a
@@ -219,30 +219,30 @@ _lcom::
 	ret
 
 ;
-; _lcmp - compare _lL vs _lR, set flags
-; Returns: Z if equal, C if _lL < _lR (unsigned)
+; lcmp - compare lL vs lR, set flags
+; Returns: Z if equal, C if lL < lR (unsigned)
 ;
-_lcmp::
-	ld	hl,(_lL+2)
-	ld	de,(_lR+2)
+lcmp::
+	ld	hl,(lL+2)
+	ld	de,(lR+2)
 	or	a
 	sbc	hl,de
 	ret	nz		; high words differ
-	ld	hl,(_lL)
-	ld	de,(_lR)
+	ld	hl,(lL)
+	ld	de,(lR)
 	or	a
 	sbc	hl,de
 	ret
 
 ;
-; _lshl - _lR <<= A
+; lshl - lR <<= A
 ;
-_lshl::
+lshl::
 	or	a
 	ret	z
 	ld	b,a
-_lshl1:
-	ld	hl,_lR
+lshl1:
+	ld	hl,lR
 	sla	(hl)
 	inc	hl
 	rl	(hl)
@@ -250,18 +250,18 @@ _lshl1:
 	rl	(hl)
 	inc	hl
 	rl	(hl)
-	djnz	_lshl1
+	djnz	lshl1
 	ret
 
 ;
-; _lshr - _lR >>= A (logical, unsigned)
+; lshr - lR >>= A (logical, unsigned)
 ;
-_lshr::
+lshr::
 	or	a
 	ret	z
 	ld	b,a
-_lshr1:
-	ld	hl,_lR+3
+lshr1:
+	ld	hl,lR+3
 	srl	(hl)
 	dec	hl
 	rr	(hl)
@@ -269,18 +269,18 @@ _lshr1:
 	rr	(hl)
 	dec	hl
 	rr	(hl)
-	djnz	_lshr1
+	djnz	lshr1
 	ret
 
 ;
-; _lashr - _lR >>= A (arithmetic, signed)
+; lashr - lR >>= A (arithmetic, signed)
 ;
-_lashr::
+lashr::
 	or	a
 	ret	z
 	ld	b,a
-_lashr1:
-	ld	hl,_lR+3
+lashr1:
+	ld	hl,lR+3
 	sra	(hl)
 	dec	hl
 	rr	(hl)
@@ -288,7 +288,7 @@ _lashr1:
 	rr	(hl)
 	dec	hl
 	rr	(hl)
-	djnz	_lashr1
+	djnz	lashr1
 	ret
 
 ;

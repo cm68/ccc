@@ -152,7 +152,7 @@ emitCompare(struct expr *e)
         unsigned char ctype = e->left->type;
         unsigned char leftDeeper = treeDepth(e->left) >= treeDepth(e->right);
         if (ISLONG(ctype)) {
-            /* Long comparison: emit both, call _lcmp */
+            /* Long comparison: emit both, call lcmp */
             if (leftDeeper) {
                 emitExpr(e->left);   /* dest=R_DE → _lL */
                 emitExpr(e->right);  /* dest=R_HL → _lR */
@@ -160,7 +160,7 @@ emitCompare(struct expr *e)
                 emitExpr(e->right);  /* dest=R_HL → _lR */
                 emitExpr(e->left);   /* dest=R_DE → _lL */
             }
-            emit("call _lcmp");
+            emit("call lcmp");
         } else if (leftDeeper) {
             emitExpr(e->left);
             if (ISBYTE(ctype)) {

@@ -1,6 +1,6 @@
-# newpass2 Architecture
+# pass2 Architecture
 
-The newpass2 code generator translates AST input from cc1 into Z80 assembly.
+The pass2 code generator translates AST input from cc1 into Z80 assembly.
 
 ## Streaming Model
 
@@ -190,7 +190,7 @@ During expression parsing, `$symbol` references are resolved:
 | File | Purpose |
 |------|---------|
 | cc2.h | Shared definitions, struct expr |
-| newcc2.c | Main, symbol table management |
+| cc2.c | Main, symbol table management |
 | astio.c | Low-level AST reading |
 | parseast.c | Expression/statement parsing |
 | codegen.c | calcDemand(), assignDest() |

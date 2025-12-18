@@ -13,14 +13,14 @@ complete; small programs run in simulation.
 - All loops lowered to labeled if/goto for simplified code generation
 - See CLAUDE.md for detailed architecture and features
 
-**Pass 2 (cc2) - Complete** (source in newpass2/)
+**Pass 2 (cc2) - Complete** (source in pass2/)
 - Stream code generator: builds one statement tree at a time, emits immediately
 - Three-phase per-expression: demand calculation, dest assignment, emit
 - Register allocation done in cc1 (outast.c), communicated via AST
 - BC and IX register allocation, IX-indexed struct pointer optimization
 - Long (32-bit) and float (IEEE 754) support via helper functions
 - Generates working Z80 assembly; programs run in simulation
-- See newpass2/NEWPASS2.md for implementation details
+- See pass2/NEWPASS2.md for implementation details
 
 **Whitesmith's Object Tools (ws/)** - Relocatable object support
 - **asz**: Z80 assembler producing relocatable objects
@@ -68,8 +68,8 @@ This is a 2-pass compiler:
 - util.c - Utilities (fdprintf, bitdef, etc.)
 - kw.c - Keyword lookup tables
 
-**Pass 2 (cc2) files:** (in newpass2/)
-- newcc2.c - Main entry point, command-line processing
+**Pass 2 (cc2) files:** (in pass2/)
+- cc2.c - Main entry point, command-line processing
 - parseast.c - AST parser, builds expression/statement trees
 - astio.c - Low-level AST I/O (character reading, hex parsing)
 - codegen.c - Scheduler: demand calculation, dest assignment, instruction selection
@@ -96,7 +96,7 @@ This is a 2-pass compiler:
 ```
 ccc/
 ├── pass1/            # Pass 1 source (cc1 - parser)
-├── newpass2/         # Pass 2 source (cc2 - code generator)
+├── pass2/         # Pass 2 source (cc2 - code generator)
 ├── ws/               # Whitesmith's object tools (asz, wsld, wsnm, wslib)
 ├── libsrc/           # Runtime library source
 │   ├── include/      # System headers for target

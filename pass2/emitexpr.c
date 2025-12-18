@@ -216,10 +216,10 @@ emitPrimary(struct expr *e)
                     emit("add hl,de");
                 }
                 if (e->dest == R_TOS) {
-                    emit("call _lldHL");
-                    emit("ld hl,(_lL+2)");
+                    emit("call lldHL");
+                    emit("ld hl,(lL+2)");
                     emit("push hl");
-                    emit("ld hl,(_lL)");
+                    emit("ld hl,(lL)");
                     emit("push hl");
                 } else {
                     emitLLoad(e->dest);
@@ -298,7 +298,7 @@ emitExpr(struct expr *e)
             } else if (e->size == 2) {
                 emit("ld (%s),hl", e->left->sym);
             } else if (e->size == 4) {
-                /* long: store from _lR to symbol */
+                /* long: store from lR to symbol */
                 emit("ld hl,%s", e->left->sym);
                 emitLStoreR();
             }
@@ -335,7 +335,7 @@ emitExpr(struct expr *e)
                     emit("ld (%s%o),l", rn, ofs);
                     emit("ld (%s%o),h", rn, ofs + 1);
                 } else if (e->size == 4) {
-                    /* long: compute addr, store from _lR */
+                    /* long: compute addr, store from lR */
                     emit("push %s", rn);
                     emit("pop hl");
                     if (ofs != 0) {
@@ -397,7 +397,7 @@ emitExpr(struct expr *e)
                 emit("inc hl");
                 emit("ld (hl),d");
             } else if (e->size == 4) {
-                /* long: addr in DE, value in _lR */
+                /* long: addr in DE, value in lR */
                 emit("ex de,hl");
                 emitLStoreR();
             }
@@ -422,7 +422,7 @@ emitExpr(struct expr *e)
                 emit("inc hl");
                 emit("ld (hl),d");
             } else if (e->size == 4) {
-                /* long: addr in DE, value in _lR */
+                /* long: addr in DE, value in lR */
                 emit("ex de,hl");
                 emitLStoreR();
             }
@@ -448,10 +448,10 @@ emitExpr(struct expr *e)
         /* call */
         if (e->left->op == '$') {
             comment("$%s d=%d", e->left->sym, e->left->demand);
-            emit("call _%s", e->left->sym);
+            emit("call %s", e->left->sym);
         } else {
             emitExpr(e->left);
-            emit("call _callhl");
+            emit("call callhl");
         }
         indent -= 2;
         comment("]");
@@ -576,8 +576,8 @@ emitExpr(struct expr *e)
                 if (e->dest == R_TOS)
                     emit("push af");
             } else if (e->size == 4) {
-                /* 32-bit add: _lR = _lL + _lR */
-                emit("call _ladd");
+                /* 32-bit add: lR = lL + lR */
+                emit("call ladd");
             }
         }
         indent -= 2;
@@ -608,8 +608,8 @@ emitExpr(struct expr *e)
                 emit("sub b");
             }
         } else if (e->size == 4) {
-            /* 32-bit sub: _lR = _lL - _lR */
-            emit("call _lsub");
+            /* 32-bit sub: lR = lL - lR */
+            emit("call lsub");
         }
         indent -= 2;
         comment("]");
@@ -628,7 +628,7 @@ emitExpr(struct expr *e)
             } else if (e->size == 2) {
                 emitWBit('&');
             } else if (e->size == 4) {
-                emit("call _land");
+                emit("call land");
             }
         }
         indent -= 2;
@@ -644,7 +644,7 @@ emitExpr(struct expr *e)
         } else if (e->size == 2) {
             emitWBit('|');
         } else if (e->size == 4) {
-            emit("call _lor");
+            emit("call lor");
         }
         indent -= 2;
         comment("]");
@@ -659,7 +659,7 @@ emitExpr(struct expr *e)
         } else if (e->size == 2) {
             emitWBit('^');
         } else if (e->size == 4) {
-            emit("call _lxor");
+            emit("call lxor");
         }
         indent -= 2;
         comment("]");
@@ -684,16 +684,16 @@ emitExpr(struct expr *e)
             emitExpr(e->right);
             if (lbyte && rbyte) {
                 /* byte × byte -> word: A has left, E has right */
-                emit("call __imulb");
+                emit("call imulb");
             } else if (lbyte) {
                 /* byte × word: A has left (byte), HL has right (word) */
-                emit("call __imula");
+                emit("call imula");
             } else if (rbyte) {
                 /* word × byte: HL has left (word), A has right (byte) */
-                emit("call __imula");
+                emit("call imula");
             } else {
                 /* word × word: DE has left, HL has right */
-                emit("call __imul");
+                emit("call imul");
             }
         }
         indent -= 2;
@@ -713,15 +713,15 @@ emitExpr(struct expr *e)
             if (lbyte && rbyte) {
                 /* byte op byte */
                 if (e->op == '/')
-                    emit("call __idivb");
+                    emit("call idivb");
                 else
-                    emit("call __imodb");
+                    emit("call imodb");
             } else {
                 /* word op word (or mixed) */
                 if (e->op == '/')
-                    emit("call __idiv");
+                    emit("call idiv");
                 else
-                    emit("call __imod");
+                    emit("call imod");
             }
         }
         indent -= 2;
@@ -743,15 +743,15 @@ emitExpr(struct expr *e)
                     emit("add hl,hl");
             } else if (e->size == 4) {
                 emit("ld a,%d", cnt);
-                emit("call _lshl");
+                emit("call lshl");
             }
         } else {
             /* variable shift count: call helper */
             emitExpr(e->right);
             if (e->size == 4)
-                emit("call _lshl");
+                emit("call lshl");
             else
-                emit("call __lshl");
+                emit("call lshl");
         }
         indent -= 2;
         comment("]");
@@ -774,15 +774,15 @@ emitExpr(struct expr *e)
                 }
             } else if (e->size == 4) {
                 emit("ld a,%d", cnt);
-                emit("call _lashr");
+                emit("call lashr");
             }
         } else {
             /* variable shift count: call helper */
             emitExpr(e->right);
             if (e->size == 4)
-                emit("call _lashr");
+                emit("call lashr");
             else
-                emit("call __ashr");
+                emit("call ashr");
         }
         indent -= 2;
         comment("]");
@@ -805,15 +805,15 @@ emitExpr(struct expr *e)
                 }
             } else if (e->size == 4) {
                 emit("ld a,%d", cnt);
-                emit("call _lshr");
+                emit("call lshr");
             }
         } else {
             /* variable shift count: call helper */
             emitExpr(e->right);
             if (e->size == 4)
-                emit("call _lshr");
+                emit("call lshr");
             else
-                emit("call __lshr");
+                emit("call lshr");
         }
         indent -= 2;
         comment("]");
@@ -833,8 +833,8 @@ emitExpr(struct expr *e)
             emit("sub h");
             emit("ld h,a");
         } else if (e->size == 4) {
-            /* 32-bit negation: _lR = -_lR */
-            emit("call _lneg");
+            /* 32-bit negation: lR = -lR */
+            emit("call lneg");
         }
         indent -= 2;
         comment("]");
@@ -848,8 +848,8 @@ emitExpr(struct expr *e)
         } else if (e->size == 2) {
             emitWCpl();
         } else if (e->size == 4) {
-            /* 32-bit complement: _lR = ~_lR */
-            emit("call _lcom");
+            /* 32-bit complement: lR = ~lR */
+            emit("call lcom");
         }
         indent -= 2;
         comment("]");

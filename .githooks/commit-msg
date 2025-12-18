@@ -1,0 +1,15 @@
+#!/bin/bash
+# Append cpp/cc1/cc2 size summary to commit message
+
+cd "$(git rev-parse --show-toplevel)"
+
+# Get total sizes using wssize
+cpp_size=$(./root/bin/wssize cpp/stage1/*.o 2>/dev/null | awk '{sum+=$4} END {print sum}')
+cc1_size=$(./root/bin/wssize pass1/stage1/*.o 2>/dev/null | awk '{sum+=$4} END {print sum}')
+cc2_size=$(./root/bin/wssize pass2/stage1/*.o 2>/dev/null | awk '{sum+=$4} END {print sum}')
+
+# Only add if we have at least one size
+if [ -n "$cpp_size" ] || [ -n "$cc1_size" ] || [ -n "$cc2_size" ]; then
+    echo "" >> "$1"
+    echo "Size: cpp=${cpp_size:-?} cc1=${cc1_size:-?} cc2=${cc2_size:-?}" >> "$1"
+fi

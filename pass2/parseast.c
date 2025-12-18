@@ -643,6 +643,8 @@ dumpStmt(void)
                 dumpStmt();
             /* Emit switch end label */
             emit("swe%d_%d:", sw->endLabel, fnIndex);
+            if (hasLabel)
+                emit("%s_break:", name);  /* alias for break statements */
             /* Emit jump table inline in text segment */
             emit("sw%d_%d:", sw->tblLabel, fnIndex);
             emit("\t.db %d", sw->ncases);

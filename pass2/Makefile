@@ -1,5 +1,5 @@
 #
-# Makefile for newpass2 (clean-sheet code generator)
+# Makefile for pass2 (clean-sheet code generator)
 #
 # Disable built-in lex rule (.l -> .c) to avoid conflicts with lexeme files
 %.c: %.l
@@ -21,7 +21,7 @@ endif
 CCCFLAGS = -I.
 CCC = $(ROOTDIR)/bin/ccc
 
-SOURCES = newcc2.c astio.c emit.c codegen.c parseast.c emitexpr.c emitcmp.c emitops.c emitincdec.c emitpat.c
+SOURCES = cc2.c astio.c emit.c codegen.c parseast.c emitexpr.c emitcmp.c emitops.c emitincdec.c emitpat.c
 OBJECTS = $(SOURCES:.c=.o)
 HEADERS = cc2.h
 
@@ -55,7 +55,7 @@ sizefile: Makefile cc2 install
 	@$(ROOTDIR)/bin/wssize $(addprefix $(OUTDIR)/,$(STAGE1_OBJS)) | \
 	awk \
 		'{ t+=$$1 ; d+=$$2 ; b+=$$3 ; a+=$$4; print } \
-		END {printf "%7d %7d %7d %7d %19s\n", t, d, b, a, "newpass2 total" }' \
+		END {printf "%7d %7d %7d %7d %19s\n", t, d, b, a, "pass2 total" }' \
 	 > sizefile
 	@cat sizefile
 	@if [ -f oldsize ] ; then if diff sizefile oldsize ; then cp sizefile oldsize ; fi ; fi

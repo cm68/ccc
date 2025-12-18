@@ -127,13 +127,13 @@ emitCmpArith(struct expr *e)
             emit("ld de,%d", (int)(char)ofs);
             emit("add hl,de");
         }
-        emit("call _lldHL");  /* load (HL) to _lL */
+        emit("call lldHL");  /* load (HL) to _lL */
         switch (e->op) {
-        case 'P': emit("call _ladd"); break;
-        case 'o': emit("call _lsub"); break;
-        case '1': emit("call _lor"); break;
-        case 'a': emit("call _land"); break;
-        case 'X': emit("call _lxor"); break;
+        case 'P': emit("call ladd"); break;
+        case 'o': emit("call lsub"); break;
+        case '1': emit("call lor"); break;
+        case 'a': emit("call land"); break;
+        case 'X': emit("call lxor"); break;
         }
         /* store from _lR to local */
         emit("push %s", rn);
@@ -142,7 +142,7 @@ emitCmpArith(struct expr *e)
             emit("ld de,%d", (int)(char)ofs);
             emit("add hl,de");
         }
-        emit("call _lstHLR");
+        emit("call lstHLR");
     } else if (e->size == 2 && e->right->op == '#') {
         unsigned val = e->right->v.s & 0xffff;
         emitExpr(e->left);
@@ -249,12 +249,12 @@ emitCmpShift(struct expr *e)
             emit("ld de,%d", (int)(char)ofs);
             emit("add hl,de");
         }
-        emit("call _lldHLR");  /* load (HL) to _lR */
+        emit("call lldHLR");  /* load (HL) to _lR */
         emit("ld a,%d", cnt);
         if (e->op == '0')
-            emit("call _lshl");
+            emit("call lshl");
         else
-            emit("call _lashr");
+            emit("call lashr");
         /* store from _lR */
         emit("push %s", rn);
         emit("pop hl");
@@ -262,7 +262,7 @@ emitCmpShift(struct expr *e)
             emit("ld de,%d", (int)(char)ofs);
             emit("add hl,de");
         }
-        emit("call _lstHLR");
+        emit("call lstHLR");
     } else {
         emitExpr(e->left);
         emitExpr(e->right);
@@ -288,9 +288,9 @@ emitCmpMulDiv(struct expr *e)
         emit("ld e,a");
         emit("ld a,%s", rname);
         if (e->op == 'T')
-            emit("call __imulb");
+            emit("call imulb");
         else
-            emit("call __idivb");
+            emit("call idivb");
         emit("ld %s,l", rname);
     } else if (e->left->op == 'R' && e->left->size == 2) {
         unsigned char r = e->left->aux;
@@ -305,9 +305,9 @@ emitCmpMulDiv(struct expr *e)
             emit("pop hl");
         }
         if (e->op == 'T')
-            emit("call __imul");
+            emit("call imul");
         else
-            emit("call __idiv");
+            emit("call idiv");
         if (r == R_BC) {
             emit("ld b,h");
             emit("ld c,l");
@@ -323,9 +323,9 @@ emitCmpMulDiv(struct expr *e)
         emit("ld e,a");
         emit("ld a,(%s%o)", rn, ofs);
         if (e->op == 'T')
-            emit("call __imulb");
+            emit("call imulb");
         else
-            emit("call __idivb");
+            emit("call idivb");
         emit("ld a,l");
         emit("ld (%s%o),a", rn, ofs);
     } else if (e->left->op == 'V' && e->size == 2) {
@@ -337,9 +337,9 @@ emitCmpMulDiv(struct expr *e)
         emit("ld l,(%s%o)", rn, ofs);
         emit("ld h,(%s%o)", rn, ofs + 1);
         if (e->op == 'T')
-            emit("call __imul");
+            emit("call imul");
         else
-            emit("call __idiv");
+            emit("call idiv");
         emit("ld (%s%o),l", rn, ofs);
         emit("ld (%s%o),h", rn, ofs + 1);
     } else {

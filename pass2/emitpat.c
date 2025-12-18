@@ -209,57 +209,57 @@ emitWSubBC(char op, int val)
 
 /*
  * Emit long load from (HL) to temp
- * dest: R_DE -> _lL (left), R_HL -> _lR (right)
+ * dest: R_DE -> lL (left), R_HL -> lR (right)
  */
 void
 emitLLoad(unsigned char dest)
 {
     if (dest == R_DE)
-        emit("call _lldHL");
+        emit("call lldHL");
     else
-        emit("call _lldHLR");
+        emit("call lldHLR");
 }
 
 /*
- * Emit long store from _lL to (HL)
+ * Emit long store from lL to (HL)
  */
 void
 emitLStore(void)
 {
-    emit("call _lstHL");
+    emit("call lstHL");
 }
 
 /*
- * Emit long store from _lR to (HL)
+ * Emit long store from lR to (HL)
  */
 void
 emitLStoreR(void)
 {
-    emit("call _lstHLR");
+    emit("call lstHLR");
 }
 
 /*
- * Emit long immediate to _lL
+ * Emit long immediate to lL
  */
 void
 emitLImm(long val)
 {
     emit("ld hl,%d", (int)(val & 0xffff));
-    emit("ld (_lL),hl");
+    emit("ld (lL),hl");
     emit("ld hl,%d", (int)((val >> 16) & 0xffff));
-    emit("ld (_lL+2),hl");
+    emit("ld (lL+2),hl");
 }
 
 /*
- * Emit long immediate to _lR
+ * Emit long immediate to lR
  */
 void
 emitLImmR(long val)
 {
     emit("ld hl,%d", (int)(val & 0xffff));
-    emit("ld (_lR),hl");
+    emit("ld (lR),hl");
     emit("ld hl,%d", (int)((val >> 16) & 0xffff));
-    emit("ld (_lR+2),hl");
+    emit("ld (lR+2),hl");
 }
 
 /*
