@@ -4,7 +4,7 @@
  * Displays symbol table, relocations, and hex dump of segments
  * disassembles, too.
  */
-#ifdef linux
+#if defined(linux) || defined(__linux__)
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -15,6 +15,7 @@
 #endif
 
 #include "wsobj.h"
+#include "hitechobj.h"
 
 int fd;
 unsigned char *filebuf;
@@ -28,6 +29,71 @@ FILE *gfile;    /* output file for -g */
 char gname[256]; /* output filename for -g */
 
 /* use wsSegNames from wsobj.c */
+
+/*
+ * Decode Whitesmith symbol type to text
+ * type byte: bits 0-2 = segment (4=abs,5=text,6=data,7=bss), bit 3 = global
+ */
+void
+ws_decode_sym(type, seg, scope, stype)
+unsigned char type;
+char *seg;
+char *scope;
+char *stype;
+{
+    int segval = type & 0x07;  /* bits 0-2 for segment encoding */
+
+    /* global flag is bit 3 */
+    if (type & 0x08)
+        strcpy(scope, "global");
+    else
+        strcpy(scope, "local");
+
+    /* segment from bits 0-2 */
+    switch (segval) {
+    case 4: strcpy(seg, "abs"); strcpy(stype, "def"); break;
+    case 5: strcpy(seg, "text"); strcpy(stype, "def"); break;
+    case 6: strcpy(seg, "data"); strcpy(stype, "def"); break;
+    case 7: strcpy(seg, "bss"); strcpy(stype, "def"); break;
+    default: strcpy(seg, "-"); strcpy(stype, "undef"); break;  /* extern/undef */
+    }
+}
+
+/*
+ * Decode HiTech symbol flags to text
+ * flags: bit 4 = global, bits 0-3 = type (0=def, 2=common, 6=undef)
+ */
+void
+ht_decode_sym(flags, psect, scope, stype, seg)
+unsigned short flags;
+char *psect;
+char *scope;
+char *stype;
+char *seg;
+{
+    /* global flag is bit 4 (0x10) */
+    if (flags & 0x10)
+        strcpy(scope, "global");
+    else
+        strcpy(scope, "local");
+
+    /* type from low nibble */
+    switch (flags & 0x0f) {
+    case 0: strcpy(stype, "def"); break;    /* defined */
+    case 2: strcpy(stype, "common"); break; /* common block */
+    case 6: strcpy(stype, "undef"); break;  /* undefined/external */
+    default: sprintf(stype, "?%d", flags & 0x0f); break;
+    }
+
+    /* segment from psect name or flags */
+    if (psect[0]) {
+        strcpy(seg, psect);
+    } else if (flags & 0x80) {
+        strcpy(seg, "abs");
+    } else {
+        strcpy(seg, "-");
+    }
+}
 
 /*
  * Micronix syscall table - argbytes is bytes after rst 08h (including syscall number)
@@ -108,15 +174,90 @@ struct sym {
 int nsyms;
 int symlen_g;
 
-/* relocation table for -g */
+/* unified relocation table for disassembler */
+struct ureloc {
+    unsigned long offset;
+    unsigned char size;     /* 1=byte, 2=word */
+    unsigned char hilo;     /* 0=word, 1=lo, 2=hi (for byte relocs) */
+    unsigned char segment;  /* USEG_TEXT or USEG_DATA */
+    char target[80];        /* resolved target name with offset */
+} *ureltab;
+int nurels;
+int disasm_pc;      /* current PC during disassembly, for reloc lookup */
+
+/* legacy Whitesmith relocation table */
 struct reloc {
     unsigned short offset;
     int symidx;     /* -4=abs, -1=text, -2=data, -3=bss, >=0=symbol index */
     unsigned char hilo;  /* 0=word, 1=lo, 2=hi */
 } *reltab;
 int nrels;
-int disasm_pc;      /* current PC during disassembly, for reloc lookup */
-unsigned short text_off_g, data_off_g;  /* segment offsets for reloc fixup */
+unsigned short text_off_g, data_off_g, bss_off_g;  /* segment offsets for reloc fixup */
+
+/* HiTech relocation entry for collection */
+struct ht_reloc {
+    unsigned long offset;
+    unsigned char type;
+    char target[64];
+};
+
+/* HiTech symbol entry for collection */
+struct ht_sym {
+    unsigned long value;
+    unsigned short flags;
+    char psect[32];
+    char name[64];
+};
+
+/*
+ * Unified object data structures
+ * Both Whitesmiths and HiTech readers populate these for common output
+ */
+
+/* segment types */
+#define USEG_UNDEF  0
+#define USEG_ABS    1
+#define USEG_TEXT   2
+#define USEG_DATA   3
+#define USEG_BSS    4
+
+/* symbol scope */
+#define USCOPE_LOCAL  0
+#define USCOPE_GLOBAL 1
+
+/* unified symbol entry */
+struct usym {
+    char name[64];
+    unsigned long value;
+    int segment;      /* USEG_* */
+    int scope;        /* USCOPE_* */
+};
+
+/* unified object data */
+struct uobj {
+    unsigned char *text;
+    unsigned long textsize;
+    unsigned char *data;
+    unsigned long datasize;
+    unsigned long bsssize;
+    struct usym *syms;
+    int nsyms;
+    struct ureloc *relocs;
+    int nrelocs;
+};
+
+/* global unified object for current file */
+struct uobj uobj;
+
+/* synthetic local labels - offsets within segments that are referenced */
+unsigned short *datarefs = NULL;
+int ndatarefs = 0;
+unsigned short *textrefs = NULL;
+int ntextrefs = 0;
+unsigned short *bssrefs = NULL;
+int nbssrefs = 0;
+unsigned short *relrefs = NULL;  /* relative jump targets */
+int nrelrefs = 0;
 
 /* forward declarations */
 int find_reloc();
@@ -124,26 +265,241 @@ char *reloc_name();
 char *reloc_name_byte();
 
 /*
- * lookup symbol by value and segment
+ * find data reference index, returns -1 if not found
  */
-char *
-sym_lookup(val, seg)
-unsigned short val;
-int seg;
+int
+find_data_ref(offset)
+int offset;
 {
-    int i, sseg;
-    for (i = 0; i < nsyms; i++) {
-        sseg = (symtab[i].type & 0x07);
-        /* text=5, data=6, bss=7 */
-        if (symtab[i].value == val) {
-            if (seg == 1 && sseg == 5) return symtab[i].name;  /* text */
-            if (seg == 2 && sseg == 6) return symtab[i].name;  /* data */
-            if (seg == 3 && sseg == 7) return symtab[i].name;  /* bss */
-        }
+    int i;
+    for (i = 0; i < ndatarefs; i++) {
+        if (datarefs[i] == offset)
+            return i;
     }
-    return 0;
+    return -1;
 }
 
+/*
+ * add a data reference offset, returns the index
+ */
+int
+add_data_ref(offset)
+int offset;
+{
+    int i;
+    /* check if already in list */
+    for (i = 0; i < ndatarefs; i++) {
+        if (datarefs[i] == offset)
+            return i;
+    }
+    /* add to list */
+    datarefs = (unsigned short *)realloc(datarefs,
+               (ndatarefs + 1) * sizeof(unsigned short));
+    datarefs[ndatarefs] = offset;
+    return ndatarefs++;
+}
+
+/*
+ * find text reference index, returns -1 if not found
+ */
+int
+find_text_ref(offset)
+int offset;
+{
+    int i;
+    for (i = 0; i < ntextrefs; i++) {
+        if (textrefs[i] == offset)
+            return i;
+    }
+    return -1;
+}
+
+/*
+ * add a text reference offset, returns the index
+ */
+int
+add_text_ref(offset)
+int offset;
+{
+    int i;
+    /* check if already in list */
+    for (i = 0; i < ntextrefs; i++) {
+        if (textrefs[i] == offset)
+            return i;
+    }
+    /* add to list */
+    textrefs = (unsigned short *)realloc(textrefs,
+               (ntextrefs + 1) * sizeof(unsigned short));
+    textrefs[ntextrefs] = offset;
+    return ntextrefs++;
+}
+
+/*
+ * find bss reference index, returns -1 if not found
+ */
+int
+find_bss_ref(offset)
+int offset;
+{
+    int i;
+    for (i = 0; i < nbssrefs; i++) {
+        if (bssrefs[i] == offset)
+            return i;
+    }
+    return -1;
+}
+
+/*
+ * add a bss reference offset, returns the index
+ */
+int
+add_bss_ref(offset)
+int offset;
+{
+    int i;
+    /* check if already in list */
+    for (i = 0; i < nbssrefs; i++) {
+        if (bssrefs[i] == offset)
+            return i;
+    }
+    /* add to list */
+    bssrefs = (unsigned short *)realloc(bssrefs,
+               (nbssrefs + 1) * sizeof(unsigned short));
+    bssrefs[nbssrefs] = offset;
+    return nbssrefs++;
+}
+
+/*
+ * find relative jump reference index, returns -1 if not found
+ */
+int
+find_rel_ref(offset)
+int offset;
+{
+    int i;
+    for (i = 0; i < nrelrefs; i++) {
+        if (relrefs[i] == offset)
+            return i;
+    }
+    return -1;
+}
+
+/*
+ * add a relative jump reference offset, returns the index
+ */
+int
+add_rel_ref(offset)
+int offset;
+{
+    int i;
+    /* check if already in list */
+    for (i = 0; i < nrelrefs; i++) {
+        if (relrefs[i] == offset)
+            return i;
+    }
+    /* add to list */
+    relrefs = (unsigned short *)realloc(relrefs,
+               (nrelrefs + 1) * sizeof(unsigned short));
+    relrefs[nrelrefs] = offset;
+    return nrelrefs++;
+}
+
+/*
+ * free synthetic references
+ */
+void
+free_synth_refs()
+{
+    if (datarefs) {
+        free(datarefs);
+        datarefs = NULL;
+    }
+    ndatarefs = 0;
+    if (textrefs) {
+        free(textrefs);
+        textrefs = NULL;
+    }
+    ntextrefs = 0;
+    if (bssrefs) {
+        free(bssrefs);
+        bssrefs = NULL;
+    }
+    nbssrefs = 0;
+    if (relrefs) {
+        free(relrefs);
+        relrefs = NULL;
+    }
+    nrelrefs = 0;
+}
+
+/*
+ * initialize unified object
+ */
+void
+uobj_init()
+{
+    memset(&uobj, 0, sizeof(uobj));
+}
+
+/*
+ * free unified object
+ */
+void
+uobj_free()
+{
+    if (uobj.text) free(uobj.text);
+    if (uobj.data) free(uobj.data);
+    if (uobj.syms) free(uobj.syms);
+    if (uobj.relocs) free(uobj.relocs);
+    memset(&uobj, 0, sizeof(uobj));
+}
+
+/*
+ * lookup symbol by value and segment in unified object
+ */
+char *
+usym_lookup(val, seg)
+unsigned long val;
+int seg;
+{
+    int i;
+    for (i = 0; i < uobj.nsyms; i++) {
+        if (uobj.syms[i].segment == seg && uobj.syms[i].value == val)
+            return uobj.syms[i].name;
+    }
+    return NULL;
+}
+
+/*
+ * find relocation in unified table
+ */
+int
+find_ureloc(offset)
+unsigned long offset;
+{
+    int i;
+    for (i = 0; i < nurels; i++) {
+        if (ureltab[i].offset == offset)
+            return i;
+    }
+    return -1;
+}
+
+/*
+ * find relocation in uobj relocation table for given segment
+ */
+int
+find_obj_reloc(offset, segment)
+unsigned long offset;
+int segment;
+{
+    int i;
+    for (i = 0; i < uobj.nrelocs; i++) {
+        if (uobj.relocs[i].offset == offset && uobj.relocs[i].segment == segment)
+            return i;
+    }
+    return -1;
+}
 
 /*
  * format address with symbol if available
@@ -157,8 +513,17 @@ unsigned short val;
 {
     int ri;
 
-    /* check for relocation at the current operand position */
-    if (disasm_pc >= 0) {
+    /* check unified relocation table first */
+    if (disasm_pc >= 0 && ureltab) {
+        ri = find_ureloc(disasm_pc);
+        if (ri >= 0 && ureltab[ri].size == 2) {
+            strcpy(buf, ureltab[ri].target);
+            return;
+        }
+    }
+
+    /* check legacy Whitesmith relocation table */
+    if (disasm_pc >= 0 && reltab) {
         ri = find_reloc(disasm_pc);
         if (ri >= 0) {
             reloc_name(reltab[ri].symidx, val, buf);
@@ -185,8 +550,22 @@ unsigned char val;
     int ri;
     char symbuf[64];
 
-    /* check for byte relocation at the current operand position */
-    if (disasm_pc >= 0) {
+    /* check unified relocation table first */
+    if (disasm_pc >= 0 && ureltab) {
+        ri = find_ureloc(disasm_pc);
+        if (ri >= 0 && ureltab[ri].size == 1) {
+            if (ureltab[ri].hilo == 1)
+                sprintf(buf, "low(%s)", ureltab[ri].target);
+            else if (ureltab[ri].hilo == 2)
+                sprintf(buf, "high(%s)", ureltab[ri].target);
+            else
+                strcpy(buf, ureltab[ri].target);
+            return;
+        }
+    }
+
+    /* check legacy Whitesmith relocation table */
+    if (disasm_pc >= 0 && reltab) {
         ri = find_reloc(disasm_pc);
         if (ri >= 0 && reltab[ri].hilo != 0) {
             reloc_name_byte(reltab[ri].symidx, val, reltab[ri].hilo, symbuf);
@@ -200,6 +579,25 @@ unsigned char val;
         sprintf(buf, "0%02xh", val);
     else
         sprintf(buf, "%02xh", val);
+}
+
+/*
+ * format relative jump target address
+ * when gflag is set, creates synthetic R0, R1... labels
+ */
+void
+fmt_rel_addr(buf, target)
+char *buf;
+unsigned short target;
+{
+    if (gflag) {
+        sprintf(buf, "R%d", add_rel_ref(target));
+    } else {
+        if ((target >> 12) >= 10)
+            sprintf(buf, "0%04xh", target);
+        else
+            sprintf(buf, "%04xh", target);
+    }
 }
 
 /*
@@ -419,7 +817,7 @@ char *buf;
 
     case 0x10: rel = filebuf[addr+1]; len=2;
                nn = pc + 2 + rel;
-               fmt_addr(abuf, nn); sprintf(buf, "djnz %s", abuf); break;
+               fmt_rel_addr(abuf, nn); sprintf(buf, "djnz %s", abuf); break;
     case 0x11: nn = filebuf[addr+1] | (filebuf[addr+2]<<8); len=3;
                disasm_pc = pc + 1;
                fmt_addr(abuf, nn); sprintf(buf, "ld de,%s", abuf); break;
@@ -432,7 +830,7 @@ char *buf;
     case 0x17: sprintf(buf, "rla"); break;
     case 0x18: rel = filebuf[addr+1]; len=2;
                nn = pc + 2 + rel;
-               fmt_addr(abuf, nn); sprintf(buf, "jr %s", abuf); break;
+               fmt_rel_addr(abuf, nn); sprintf(buf, "jr %s", abuf); break;
     case 0x19: sprintf(buf, "add hl,de"); break;
     case 0x1a: sprintf(buf, "ld a,(de)"); break;
     case 0x1b: sprintf(buf, "dec de"); break;
@@ -444,7 +842,7 @@ char *buf;
 
     case 0x20: rel = filebuf[addr+1]; len=2;
                nn = pc + 2 + rel;
-               fmt_addr(abuf, nn); sprintf(buf, "jr nz,%s", abuf); break;
+               fmt_rel_addr(abuf, nn); sprintf(buf, "jr nz,%s", abuf); break;
     case 0x21: nn = filebuf[addr+1] | (filebuf[addr+2]<<8); len=3;
                disasm_pc = pc + 1;
                fmt_addr(abuf, nn); sprintf(buf, "ld hl,%s", abuf); break;
@@ -459,7 +857,7 @@ char *buf;
     case 0x27: sprintf(buf, "daa"); break;
     case 0x28: rel = filebuf[addr+1]; len=2;
                nn = pc + 2 + rel;
-               fmt_addr(abuf, nn); sprintf(buf, "jr z,%s", abuf); break;
+               fmt_rel_addr(abuf, nn); sprintf(buf, "jr z,%s", abuf); break;
     case 0x29: sprintf(buf, "add hl,hl"); break;
     case 0x2a: nn = filebuf[addr+1] | (filebuf[addr+2]<<8); len=3;
                disasm_pc = pc + 1;
@@ -473,7 +871,7 @@ char *buf;
 
     case 0x30: rel = filebuf[addr+1]; len=2;
                nn = pc + 2 + rel;
-               fmt_addr(abuf, nn); sprintf(buf, "jr nc,%s", abuf); break;
+               fmt_rel_addr(abuf, nn); sprintf(buf, "jr nc,%s", abuf); break;
     case 0x31: nn = filebuf[addr+1] | (filebuf[addr+2]<<8); len=3;
                disasm_pc = pc + 1;
                fmt_addr(abuf, nn); sprintf(buf, "ld sp,%s", abuf); break;
@@ -488,7 +886,7 @@ char *buf;
     case 0x37: sprintf(buf, "scf"); break;
     case 0x38: rel = filebuf[addr+1]; len=2;
                nn = pc + 2 + rel;
-               fmt_addr(abuf, nn); sprintf(buf, "jr c,%s", abuf); break;
+               fmt_rel_addr(abuf, nn); sprintf(buf, "jr c,%s", abuf); break;
     case 0x39: sprintf(buf, "add hl,sp"); break;
     case 0x3a: nn = filebuf[addr+1] | (filebuf[addr+2]<<8); len=3;
                disasm_pc = pc + 1;
@@ -625,89 +1023,6 @@ char *buf;
     return len;
 }
 
-/*
- * disassemble text segment with byte dump
- * uses relocation table for accurate symbol resolution
- */
-void
-disassemble(start, size, addr_base)
-long start;
-int size;
-int addr_base;
-{
-    int pc = 0;
-    char buf[64];
-    char *sym;
-    int len, i, ri;
-    int addend;
-    unsigned char sc;
-    int sclen;
-
-    printf("\nDisassembly: %d bytes\n", size);
-
-    while (pc < size) {
-        /* check for symbol at this address */
-        sym = sym_lookup(pc + addr_base, 1);
-        if (sym) {
-            printf("%s:\n", sym);
-        }
-
-        /* check for relocation at this address - emit as .dw */
-        ri = find_reloc(pc);
-        if (ri >= 0) {
-            addend = filebuf[start + pc] | (filebuf[start + pc + 1] << 8);
-            reloc_name(reltab[ri].symidx, addend, buf);
-            printf("  %04x  %02x %02x        .dw %s\n",
-                   pc + addr_base, filebuf[start + pc], filebuf[start + pc + 1], buf);
-            pc += 2;
-            continue;
-        }
-
-        /* check for syscall */
-        if (filebuf[start + pc] == 0xcf) {
-            printf("  %04x  cf           rst 08h\n", pc + addr_base);
-            pc++;
-            if (pc < size) {
-                sc = filebuf[start + pc];
-                sclen = (sc < NSYS) ? syscalls[sc].argbytes : 0;
-                /* emit syscall data bytes */
-                for (i = 0; i < sclen && pc < size; i++) {
-                    ri = find_reloc(pc);
-                    if (ri >= 0) {
-                        addend = filebuf[start + pc] | (filebuf[start + pc + 1] << 8);
-                        reloc_name(reltab[ri].symidx, addend, buf);
-                        printf("  %04x  %02x %02x        .dw %s\n",
-                               pc + addr_base, filebuf[start + pc], filebuf[start + pc + 1], buf);
-                        pc += 2;
-                        i++;
-                    } else {
-                        printf("  %04x  %02x           .db 0%02xh\n",
-                               pc + addr_base, filebuf[start + pc], filebuf[start + pc]);
-                        pc++;
-                    }
-                }
-            }
-            continue;
-        }
-
-        /* regular instruction */
-        disasm_pc = -1;
-        len = disasm(start + pc, pc + addr_base, buf);
-
-        /* print address and bytes */
-        printf("  %04x  ", pc + addr_base);
-        for (i = 0; i < 4; i++) {
-            if (i < len)
-                printf("%02x ", filebuf[start + pc + i]);
-            else
-                printf("   ");
-        }
-        printf(" %s\n", buf);
-
-        pc += len;
-    }
-}
-
 void
 error(msg)
 char *msg;
@@ -817,28 +1132,28 @@ int symlen;
     unsigned short val;
     unsigned char type;
     char name[16];
-    int seg;
+    char scope[16], stype[16];
     long off;
 
     num_syms = symtab_size / (symlen + 3);
 
-    printf("\nSymbol table: %d symbols (%d-char names)\n", num_syms, symlen);
-    printf("  Index  Value  Type Seg    Global  Name\n");
-    printf("  -----  -----  ---- -----  ------  ----\n");
+    printf("\nSymbol table: %d symbols\n", num_syms);
+    printf("  Value   Segment  Scope   Type   Name\n");
+    printf("  ------  -------  ------  -----  ----\n");
 
     off = symtab_off;
     for (i = 0; i < num_syms; i++) {
+        char seg[16];
+
         val = get_word(off);
         type = get_byte(off + 2);
         memcpy(name, &filebuf[off + 3], symlen);
         name[symlen] = '\0';
 
-        seg = decode_seg(type);
+        ws_decode_sym(type, seg, scope, stype);
 
-        printf("  [%3d]  %04x   %02x   %-5s  %s      %s\n",
-               i, val, type, wsSegNames[seg],
-               (type & 0x08) ? "yes" : "no ",
-               name);
+        printf("  0x%04x  %-7s  %-6s  %-5s  %s\n",
+               val, seg, scope, stype, name);
 
         off += symlen + 3;
     }
@@ -905,9 +1220,10 @@ int *hilo;
  * dump relocation table
  */
 void
-dump_relocs(name, reloc_off, symlen, num_syms)
+dump_relocs(name, reloc_off, symtab_off, symlen, num_syms)
 char *name;
 long reloc_off;
+long symtab_off;
 int symlen;
 int num_syms;
 {
@@ -915,28 +1231,47 @@ int num_syms;
     int pos = 0;
     int symidx, hilo;
     int count = 0;
-    char *hilostr[] = { "word", "lo  ", "hi  " };
-    char *segtab[] = { "text segment", "data segment", "bss segment", "absolute" };
+    char *segtab[] = { "text", "data", "bss", "abs" };
 
     printf("\n%s relocations:\n", name);
-    printf("  Offset  Type        Target\n");
-    printf("  ------  ----        ------\n");
+    printf("  Offset  Size  Segment  Target\n");
+    printf("  ------  ----  -------  ------\n");
 
     while (read_reloc(&off, &pos, &symidx, &hilo)) {
-        char *target;
-        char symbuf[32];
+        char *seg;
+        char *size;
+        char target[32];
+        char symname[20];
+
+        size = hilo == 0 ? "word" : (hilo == 1 ? "lo" : "hi");
 
         if (symidx >= 0) {
-            sprintf(symbuf, "symbol[%d]%s", symidx, symidx >= 43 ? " (ext)" : "");
-            target = symbuf;
+            /* look up symbol name from symbol table */
+            if (symidx < num_syms) {
+                long soff = symtab_off + symidx * (symlen + 3);
+                int i;
+                for (i = 0; i < symlen && i < 19; i++) {
+                    symname[i] = filebuf[soff + 3 + i];
+                    if (symname[i] == '\0') break;
+                }
+                symname[i] = '\0';
+                strcpy(target, symname);
+            } else {
+                sprintf(target, "sym[%d]", symidx);
+            }
+            seg = "-";
         } else if (symidx >= -4) {
-            target = segtab[-symidx - 1];
+            seg = segtab[-symidx - 1];
+            target[0] = '\0';
         } else {
-            sprintf(symbuf, "unknown (%d)", symidx);
-            target = symbuf;
+            seg = "?";
+            sprintf(target, "(%d)", symidx);
         }
 
-        printf("  %04x    %s        %s\n", pos, hilostr[hilo], target);
+        if (target[0])
+            printf("  0x%04x  %-4s  %-7s  %s\n", pos, size, seg, target);
+        else
+            printf("  0x%04x  %-4s  %s\n", pos, size, seg);
         pos += hilo ? 1 : 2;
         count++;
     }
@@ -1015,7 +1350,7 @@ int symidx;
 int addend;
 char *buf;
 {
-    int i, seg, best_i, best_off;
+    int i, seg;
     int rel_off;  /* offset relative to segment start */
 
     /* for segment-relative, find symbol at or before target offset */
@@ -1029,35 +1364,23 @@ char *buf;
         else if (symidx == -2)
             rel_off = addend - data_off_g;
         else
-            rel_off = addend;  /* bss follows data, offset is already relative */
+            rel_off = addend - bss_off_g;
 
-        best_i = -1;
-        best_off = -1;
+        /* check for exact symbol match at this offset */
         for (i = 0; i < nsyms; i++) {
-            if ((symtab[i].type & 0x07) == seg) {
-                if (symtab[i].value == rel_off) {
-                    /* exact match */
-                    sprintf(buf, "%s", symtab[i].name);
-                    return buf;
-                }
-                if (symtab[i].value < rel_off && (int)symtab[i].value > best_off) {
-                    best_off = symtab[i].value;
-                    best_i = i;
-                }
+            if ((symtab[i].type & 0x07) == seg && symtab[i].value == rel_off) {
+                sprintf(buf, "%s", symtab[i].name);
+                return buf;
             }
         }
-        /* use best symbol + offset */
-        if (best_i >= 0) {
-            sprintf(buf, "%s+%d", symtab[best_i].name, rel_off - best_off);
-            return buf;
-        }
-        /* no symbol found, use segment base */
+
+        /* no exact match - use synthetic local label */
         if (symidx == -1) {
-            sprintf(buf, "_.text+%d", rel_off);
+            sprintf(buf, "T%d", add_text_ref(rel_off));
         } else if (symidx == -2) {
-            sprintf(buf, "_.data+%d", rel_off);
+            sprintf(buf, "D%d", add_data_ref(rel_off));
         } else {
-            sprintf(buf, "_.bss+%d", rel_off);
+            sprintf(buf, "B%d", add_bss_ref(rel_off));
         }
     } else if (symidx >= 0 && symidx < nsyms) {
         if (addend)
@@ -1105,130 +1428,303 @@ char *buf;
 }
 
 /*
- * generate .s file for segment
- * segtype: 1=text, 2=data
+ * Generate unified .s file from uobj
+ * This is the common output function for both Whitesmiths and HiTech formats
+ * When dflag is set, output goes to stdout with hex dump per line
+ * When gflag is set, output goes to a .s file
  */
 void
-gen_segment(segtype, base, size)
-int segtype;
-long base;
-int size;
+gen_uobj_sfile(name)
+char *name;
 {
-    int pc = 0;
-    char *segname = (segtype == 1) ? "text" : "data";
-    int ri, i, len;
-    char nbuf[64];
-    int addend;
-    int seg;
-    unsigned char sc;
-    int sclen;
+    int pc, i, len, ri, ref_idx;
+    char nbuf[128];
+    char *p, *sym;
+    unsigned char *save_filebuf;
 
-    fprintf(gfile, "\n\t.%s\n", segname);
-    fprintf(gfile, "_.%s:\n", segname);
-
-    while (pc < size) {
-        /* check for symbol at this address */
-        for (i = 0; i < nsyms; i++) {
-            seg = symtab[i].type & 0x07;
-            /* text=5, data=6 */
-            if ((segtype == 1 && seg == 5) || (segtype == 2 && seg == 6)) {
-                if (symtab[i].value == pc) {
-                    fprintf(gfile, "%s:\n", symtab[i].name);
-                }
-            }
+    if (dflag) {
+        /* disassembly mode: output to stdout */
+        gfile = stdout;
+    } else {
+        /* generate mode: output to file */
+        strncpy(gname, name, sizeof(gname) - 3);
+        gname[sizeof(gname) - 3] = '\0';
+        p = strrchr(gname, '.');
+        if (p && (strcmp(p, ".obj") == 0 || strcmp(p, ".o") == 0)) {
+            strcpy(p, ".s");
+        } else {
+            strcat(gname, ".s");
         }
 
-        /* check for relocation at this address - emit as data */
-        ri = find_reloc(pc);
-        if (ri >= 0) {
-            if (reltab[ri].hilo == 0) {
-                /* word relocation */
-                addend = filebuf[base + pc] | (filebuf[base + pc + 1] << 8);
-                reloc_name(reltab[ri].symidx, addend, nbuf);
-                fprintf(gfile, "\t.dw %s\n", nbuf);
-                pc += 2;
-            } else {
-                /* byte relocation (lo/hi) */
-                reloc_name_byte(reltab[ri].symidx, filebuf[base + pc], reltab[ri].hilo, nbuf);
-                fprintf(gfile, "\t.db %s(%s)\n", reltab[ri].hilo == 1 ? "lo" : "hi", nbuf);
-                pc += 1;
+        gfile = fopen(gname, "w");
+        if (!gfile) {
+            fprintf(stderr, "wsnm: cannot create %s\n", gname);
+            return;
+        }
+
+        printf("  -> %s\n", gname);
+    }
+
+    /* copy uobj.relocs to ureltab for disassembler fmt_addr to use */
+    ureltab = uobj.relocs;
+    nurels = uobj.nrelocs;
+
+    /* header */
+    fprintf(gfile, "; Generated from %s by wsnm -g\n", name);
+
+    /* emit externs */
+    for (i = 0; i < uobj.nsyms; i++) {
+        if (uobj.syms[i].segment == USEG_UNDEF) {
+            fprintf(gfile, "\t.extern %s\n", uobj.syms[i].name);
+        }
+    }
+
+    /* emit globals */
+    for (i = 0; i < uobj.nsyms; i++) {
+        if (uobj.syms[i].scope == USCOPE_GLOBAL &&
+            uobj.syms[i].segment != USEG_UNDEF) {
+            fprintf(gfile, "\t.global %s\n", uobj.syms[i].name);
+        }
+    }
+
+    /* text section */
+    if (uobj.textsize > 0) {
+        fprintf(gfile, "\n\t.text\n");
+
+        save_filebuf = filebuf;
+        filebuf = uobj.text;
+
+        /* pre-pass: disassemble to find all relative jump targets */
+        pc = 0;
+        while (pc < (int)uobj.textsize) {
+            disasm_pc = -1;
+            len = disasm(pc, pc, nbuf);
+            pc += len;
+        }
+
+        /* main pass: output with labels */
+        pc = 0;
+        while (pc < (int)uobj.textsize) {
+            /* check for symbol at this address */
+            sym = usym_lookup(pc, USEG_TEXT);
+            if (sym) {
+                fprintf(gfile, "%s:\n", sym);
             }
-        } else if (segtype == 1) {
-            /* text segment: check for syscall */
-            if (filebuf[base + pc] == 0xcf) {
-                /* rst 08h - Micronix syscall */
-                fprintf(gfile, "\trst 08h\n");
-                pc++;
-                sc = filebuf[base + pc];
-                if (sc < NSYS) {
-                    sclen = syscalls[sc].argbytes;
-                    /* emit syscall data bytes */
-                    for (i = 0; i < sclen; i++) {
-                        ri = find_reloc(pc);
-                        if (ri >= 0) {
-                            /* word with symbolic reference */
-                            addend = filebuf[base + pc] | (filebuf[base + pc + 1] << 8);
-                            reloc_name(reltab[ri].symidx, addend, nbuf);
-                            fprintf(gfile, "\t.dw %s\n", nbuf);
-                            pc += 2;
-                            i++;  /* consumed 2 bytes */
-                        } else {
-                            fprintf(gfile, "\t.db 0%02xh\n", filebuf[base + pc]);
-                            pc++;
-                        }
+            /* check for synthetic text label */
+            ref_idx = find_text_ref(pc);
+            if (ref_idx >= 0) {
+                fprintf(gfile, "T%d:\n", ref_idx);
+            }
+            /* check for relative jump target label */
+            ref_idx = find_rel_ref(pc);
+            if (ref_idx >= 0) {
+                fprintf(gfile, "R%d:\n", ref_idx);
+            }
+
+            /* check for relocation at this address */
+            ri = find_obj_reloc(pc, USEG_TEXT);
+            if (ri >= 0) {
+                if (uobj.relocs[ri].size == 2) {
+                    if (dflag) {
+                        fprintf(gfile, "  %04x  %02x %02x        ", pc,
+                                uobj.text[pc], uobj.text[pc+1]);
+                    } else {
+                        fprintf(gfile, "\t");
                     }
+                    fprintf(gfile, ".dw %s\n", uobj.relocs[ri].target);
+                    pc += 2;
+                } else {
+                    if (dflag) {
+                        fprintf(gfile, "  %04x  %02x           ", pc, uobj.text[pc]);
+                    } else {
+                        fprintf(gfile, "\t");
+                    }
+                    if (uobj.relocs[ri].hilo == 1)
+                        fprintf(gfile, ".db low(%s)\n", uobj.relocs[ri].target);
+                    else if (uobj.relocs[ri].hilo == 2)
+                        fprintf(gfile, ".db high(%s)\n", uobj.relocs[ri].target);
+                    else
+                        fprintf(gfile, ".db %s\n", uobj.relocs[ri].target);
+                    pc += 1;
                 }
             } else {
-                /* regular instruction: disassemble */
-                disasm_pc = -1;  /* will be set by disasm if needed */
-                len = disasm(base + pc, pc, nbuf);
-                fprintf(gfile, "\t%s\n", nbuf);
+                /* disassemble instruction */
+                disasm_pc = -1;
+                len = disasm(pc, pc, nbuf);
+                if (dflag) {
+                    fprintf(gfile, "  %04x  ", pc);
+                    for (i = 0; i < 4; i++) {
+                        if (i < len)
+                            fprintf(gfile, "%02x ", uobj.text[pc + i]);
+                        else
+                            fprintf(gfile, "   ");
+                    }
+                    fprintf(gfile, " %s\n", nbuf);
+                } else {
+                    fprintf(gfile, "\t%s\n", nbuf);
+                }
                 pc += len;
             }
-        } else {
-            /* data segment: emit raw byte */
-            fprintf(gfile, "\t.db 0%02xh\n", filebuf[base + pc]);
-            pc++;
         }
+
+        filebuf = save_filebuf;
     }
-}
 
-/*
- * generate .s file for bss segment
- */
-void
-gen_bss(size)
-int size;
-{
-    int pc = 0;
-    int i, seg;
+    /* data section */
+    if (uobj.datasize > 0) {
+        int linelen, in_string, line_start;
+        unsigned char c;
 
-    if (size == 0)
-        return;
+        fprintf(gfile, "\n\t.data\n");
 
-    fprintf(gfile, "\n\t.bss\n");
-    fprintf(gfile, "_.bss:\n");
+        pc = 0;
+        while (pc < (int)uobj.datasize) {
+            /* check for symbol at this address */
+            sym = usym_lookup(pc, USEG_DATA);
+            if (sym) {
+                fprintf(gfile, "%s:\n", sym);
+            }
+            /* check for synthetic data label */
+            ref_idx = find_data_ref(pc);
+            if (ref_idx >= 0) {
+                fprintf(gfile, "D%d:\n", ref_idx);
+            }
 
-    while (pc < size) {
-        /* check for symbol at this address */
-        for (i = 0; i < nsyms; i++) {
-            seg = symtab[i].type & 0x07;
-            if (seg == 7 && symtab[i].value == pc) {
-                fprintf(gfile, "%s:\n", symtab[i].name);
+            /* check for relocation at this address */
+            ri = find_obj_reloc(pc, USEG_DATA);
+            if (ri >= 0) {
+                if (uobj.relocs[ri].size == 2) {
+                    if (dflag) {
+                        fprintf(gfile, "  %04x  %02x %02x        ", pc,
+                                uobj.data[pc], uobj.data[pc+1]);
+                    } else {
+                        fprintf(gfile, "\t");
+                    }
+                    fprintf(gfile, ".dw %s\n", uobj.relocs[ri].target);
+                    pc += 2;
+                } else {
+                    if (dflag) {
+                        fprintf(gfile, "  %04x  %02x           ", pc, uobj.data[pc]);
+                    } else {
+                        fprintf(gfile, "\t");
+                    }
+                    if (uobj.relocs[ri].hilo == 1)
+                        fprintf(gfile, ".db low(%s)\n", uobj.relocs[ri].target);
+                    else if (uobj.relocs[ri].hilo == 2)
+                        fprintf(gfile, ".db high(%s)\n", uobj.relocs[ri].target);
+                    else
+                        fprintf(gfile, ".db %s\n", uobj.relocs[ri].target);
+                    pc += 1;
+                }
+                continue;
+            }
+
+            if (dflag) {
+                /* dflag mode: emit one byte per line with hex dump */
+                c = uobj.data[pc];
+                fprintf(gfile, "  %04x  %02x           .db 0%02xh\n", pc, c, c);
+                pc++;
+            } else {
+                /* no relocation - emit raw bytes with string detection */
+                fprintf(gfile, "\t.db\t");
+                linelen = 8;
+                in_string = 0;
+                line_start = pc;
+
+                while (pc < (int)uobj.datasize && linelen < 60) {
+                    /* check for symbol, data ref, or relocation - must break line */
+                    if (pc > line_start && (usym_lookup(pc, USEG_DATA) ||
+                                   find_data_ref(pc) >= 0 ||
+                                   find_obj_reloc(pc, USEG_DATA) >= 0)) {
+                        break;
+                    }
+
+                    c = uobj.data[pc];
+
+                    /* printable ASCII (excluding quotes and backslash) */
+                    if (c >= 0x20 && c <= 0x7e && c != '"' && c != '\\') {
+                        if (!in_string) {
+                            if (linelen > 8) {
+                                fprintf(gfile, ",");
+                                linelen++;
+                            }
+                            fprintf(gfile, "\"");
+                            linelen++;
+                            in_string = 1;
+                        }
+                        fprintf(gfile, "%c", c);
+                        linelen++;
+                    } else {
+                        if (in_string) {
+                            fprintf(gfile, "\"");
+                            linelen++;
+                            in_string = 0;
+                        }
+                        if (linelen > 8) {
+                            fprintf(gfile, ",");
+                            linelen++;
+                        }
+                        fprintf(gfile, "0%02xh", c);
+                        linelen += 4;
+                    }
+                    pc++;
+                }
+
+                if (in_string) {
+                    fprintf(gfile, "\"");
+                }
+                fprintf(gfile, "\n");
             }
         }
-        /* emit single byte reservation */
-        fprintf(gfile, "\tds 1\n");
-        pc++;
     }
+
+    /* bss section */
+    if (uobj.bsssize > 0) {
+        fprintf(gfile, "\n\t.bss\n");
+        fprintf(gfile, "_.bss:\n");
+
+        pc = 0;
+        while (pc < (int)uobj.bsssize) {
+            /* check for symbol at this address */
+            sym = usym_lookup(pc, USEG_BSS);
+            if (sym) {
+                fprintf(gfile, "%s:\n", sym);
+            }
+            /* check for synthetic bss label */
+            ref_idx = find_bss_ref(pc);
+            if (ref_idx >= 0) {
+                fprintf(gfile, "B%d:\n", ref_idx);
+            }
+
+            /* find next symbol/label or end */
+            for (i = pc + 1; i <= (int)uobj.bsssize; i++) {
+                if (i == (int)uobj.bsssize ||
+                    usym_lookup(i, USEG_BSS) ||
+                    find_bss_ref(i) >= 0) {
+                    break;
+                }
+            }
+
+            fprintf(gfile, "\t.ds %d\n", i - pc);
+            pc = i;
+        }
+    }
+
+    /* only close if writing to a file, not stdout */
+    if (!dflag) {
+        fclose(gfile);
+    }
+
+    /* clear ureltab reference */
+    ureltab = NULL;
+    nurels = 0;
 }
 
 /*
- * generate .s file from object
+ * Load Whitesmiths object data into unified object structure
  */
 void
-gen_sfile(name, base, objsize)
-char *name;
+ws_load_uobj(base, objsize)
 long base;
 long objsize;
 {
@@ -1238,26 +1734,11 @@ long objsize;
     long symtab_off, textRelocOff, dataRelocOff;
     int num_syms, i, seg;
     long limit = base + objsize;
-    char *p;
+    int addend;
+    int text_relocs, data_relocs, total_relocs;
+    char nbuf[80];
 
-    /* build output filename */
-    strncpy(gname, name, sizeof(gname) - 3);
-    gname[sizeof(gname) - 3] = '\0';
-    /* replace .o extension with .s */
-    p = strrchr(gname, '.');
-    if (p && strcmp(p, ".o") == 0) {
-        strcpy(p, ".s");
-    } else {
-        strcat(gname, ".s");
-    }
-
-    gfile = fopen(gname, "w");
-    if (!gfile) {
-        fprintf(stderr, "wsnm: cannot create %s\n", gname);
-        return;
-    }
-
-    printf("  -> %s\n", gname);
+    uobj_init();
 
     config = get_byte(base + 1);
     symlen = (config & CONF_SYMLEN) * 2 + 1;
@@ -1267,9 +1748,26 @@ long objsize;
     bss_size = get_word(base + 8);
     text_off_g = get_word(base + 12);
     data_off_g = get_word(base + 14);
+    bss_off_g = data_off_g + data_size;
     num_syms = symtab_size / (symlen + 3);
 
-    /* load symbol table */
+    /* copy text segment */
+    if (text_size > 0) {
+        uobj.text = (unsigned char *)malloc(text_size);
+        memcpy(uobj.text, &filebuf[base + 16], text_size);
+        uobj.textsize = text_size;
+    }
+
+    /* copy data segment */
+    if (data_size > 0) {
+        uobj.data = (unsigned char *)malloc(data_size);
+        memcpy(uobj.data, &filebuf[base + 16 + text_size], data_size);
+        uobj.datasize = data_size;
+    }
+
+    uobj.bsssize = bss_size;
+
+    /* load symbol table into legacy symtab for reloc_name to use */
     symtab_off = base + 16 + text_size + data_size;
     nsyms = num_syms;
     symlen_g = symlen;
@@ -1285,67 +1783,135 @@ long objsize;
         }
     }
 
-    /* emit header comment */
-    fprintf(gfile, "; Generated from %s by wsnm -g\n", name);
+    /* convert symbols to unified format */
+    if (nsyms > 0) {
+        uobj.syms = (struct usym *)malloc(nsyms * sizeof(struct usym));
+        for (i = 0; i < nsyms; i++) {
+            strncpy(uobj.syms[i].name, symtab[i].name, sizeof(uobj.syms[i].name) - 1);
+            uobj.syms[i].name[sizeof(uobj.syms[i].name) - 1] = '\0';
+            uobj.syms[i].value = symtab[i].value;
 
-    /* emit externs */
-    for (i = 0; i < nsyms; i++) {
-        seg = symtab[i].type & 0x07;
-        if (seg < 4) {  /* undef/extern */
-            fprintf(gfile, "\t.extern %s\n", symtab[i].name);
-        }
-    }
-
-    /* emit globals */
-    for (i = 0; i < nsyms; i++) {
-        if (symtab[i].type & 0x08) {  /* global flag */
+            /* convert segment: WS uses 4=abs, 5=text, 6=data, 7=bss, <4=undef */
             seg = symtab[i].type & 0x07;
-            if (seg >= 5 && seg <= 7) {  /* defined in text/data/bss */
-                fprintf(gfile, "\t.global %s\n", symtab[i].name);
+            if (seg < 4) {
+                uobj.syms[i].segment = USEG_UNDEF;
+            } else if (seg == 4) {
+                uobj.syms[i].segment = USEG_ABS;
+            } else if (seg == 5) {
+                uobj.syms[i].segment = USEG_TEXT;
+            } else if (seg == 6) {
+                uobj.syms[i].segment = USEG_DATA;
+            } else {
+                uobj.syms[i].segment = USEG_BSS;
             }
+
+            /* global flag is bit 3 */
+            uobj.syms[i].scope = (symtab[i].type & 0x08) ? USCOPE_GLOBAL : USCOPE_LOCAL;
         }
+        uobj.nsyms = nsyms;
     }
 
-    /* parse and emit text segment */
+    /* count and load relocations */
     if (!(config & CONF_NORELO)) {
+        /* parse text relocations */
         textRelocOff = symtab_off + symtab_size;
         dataRelocOff = parse_relocs(textRelocOff, limit);
-    } else {
+        text_relocs = nrels;
+
+        /* save text relocs temporarily */
+        struct reloc *text_reltab = reltab;
+        int text_nrels = nrels;
+        reltab = NULL;
         nrels = 0;
-        reltab = 0;
-    }
 
-    if (text_size > 0)
-        gen_segment(1, base + 16, text_size);
-
-    if (reltab) {
-        free(reltab);
-        reltab = 0;
-    }
-
-    /* parse and emit data segment */
-    if (!(config & CONF_NORELO)) {
+        /* parse data relocations */
         parse_relocs(dataRelocOff, limit);
+        data_relocs = nrels;
+
+        /* allocate unified relocs */
+        total_relocs = text_relocs + data_relocs;
+        if (total_relocs > 0) {
+            uobj.relocs = (struct ureloc *)malloc(total_relocs * sizeof(struct ureloc));
+
+            /* convert text relocations */
+            for (i = 0; i < text_nrels; i++) {
+                uobj.relocs[i].offset = text_reltab[i].offset;
+                uobj.relocs[i].hilo = text_reltab[i].hilo;
+                uobj.relocs[i].size = text_reltab[i].hilo ? 1 : 2;
+                uobj.relocs[i].segment = USEG_TEXT;
+
+                /* resolve target name */
+                if (text_reltab[i].hilo) {
+                    reloc_name_byte(text_reltab[i].symidx,
+                                   uobj.text[text_reltab[i].offset],
+                                   text_reltab[i].hilo, nbuf);
+                } else {
+                    addend = uobj.text[text_reltab[i].offset] |
+                            (uobj.text[text_reltab[i].offset + 1] << 8);
+                    reloc_name(text_reltab[i].symidx, addend, nbuf);
+                }
+                strncpy(uobj.relocs[i].target, nbuf, sizeof(uobj.relocs[i].target) - 1);
+                uobj.relocs[i].target[sizeof(uobj.relocs[i].target) - 1] = '\0';
+            }
+
+            /* convert data relocations */
+            for (i = 0; i < data_relocs; i++) {
+                int idx = text_nrels + i;
+                uobj.relocs[idx].offset = reltab[i].offset;
+                uobj.relocs[idx].hilo = reltab[i].hilo;
+                uobj.relocs[idx].size = reltab[i].hilo ? 1 : 2;
+                uobj.relocs[idx].segment = USEG_DATA;
+
+                /* resolve target name */
+                if (reltab[i].hilo) {
+                    reloc_name_byte(reltab[i].symidx,
+                                   uobj.data[reltab[i].offset],
+                                   reltab[i].hilo, nbuf);
+                } else {
+                    addend = uobj.data[reltab[i].offset] |
+                            (uobj.data[reltab[i].offset + 1] << 8);
+                    reloc_name(reltab[i].symidx, addend, nbuf);
+                }
+                strncpy(uobj.relocs[idx].target, nbuf, sizeof(uobj.relocs[idx].target) - 1);
+                uobj.relocs[idx].target[sizeof(uobj.relocs[idx].target) - 1] = '\0';
+            }
+
+            uobj.nrelocs = total_relocs;
+        }
+
+        /* free temporary reloc tables */
+        if (text_reltab) free(text_reltab);
+        if (reltab) free(reltab);
+        reltab = NULL;
+        nrels = 0;
     }
 
-    if (data_size > 0)
-        gen_segment(2, base + 16 + text_size, data_size);
-
-    if (reltab) {
-        free(reltab);
-        reltab = 0;
-    }
-
-    /* emit bss segment */
-    gen_bss(bss_size);
-
-    fclose(gfile);
-
+    /* free legacy symtab - we've converted to uobj.syms */
     if (symtab) {
         free(symtab);
-        symtab = 0;
+        symtab = NULL;
     }
     nsyms = 0;
+}
+
+/*
+ * generate .s file from Whitesmiths object - uses unified path
+ */
+void
+gen_sfile(name, base, objsize)
+char *name;
+long base;
+long objsize;
+{
+    /* load into unified structure */
+    ws_load_uobj(base, objsize);
+
+    /* generate output using unified function */
+    gen_uobj_sfile(name);
+
+    /* cleanup */
+    uobj_free();
+    free_synth_refs();
 }
 
 /*
@@ -1377,8 +1943,8 @@ long objsize;
         return;
     }
 
-    /* -g mode: generate .s file and return */
-    if (gflag) {
+    /* -g or -d mode: generate .s file (or stdout with hex dump) and return */
+    if (gflag || dflag) {
         gen_sfile(name, base, objsize);
         return;
     }
@@ -1430,28 +1996,14 @@ long objsize;
         }
     }
 
-    /* parse relocations for disassembly (needed before disassemble call) */
     textRelocOff = symtab_off + symtab_size;
-    if (!(config & CONF_NORELO) && dflag) {
-        text_off_g = 0;
-        data_off_g = text_size;
-        dataRelocOff = parse_relocs(textRelocOff, limit);
-    }
 
-    /* hex dump or disassemble segments */
-    if (dflag && text_size > 0) {
-        disassemble(base + 16, text_size, text_off);
-    } else if (bflag) {
+    /* hex dump segments if -b */
+    if (bflag) {
         hexdump("Text segment", base + 16, text_size, text_off);
+        if (data_size > 0)
+            hexdump("Data segment", base + 16 + text_size, data_size, data_off);
     }
-
-    if (reltab) {
-        free(reltab);
-        reltab = 0;
-    }
-
-    if ((dflag || bflag) && data_size > 0)
-        hexdump("Data segment", base + 16 + text_size, data_size, data_off);
 
     /* dump symbol table */
     if (symtab_size > 0) {
@@ -1463,7 +2015,7 @@ long objsize;
     /* dump relocations */
     if (rflag) {
         if (!(config & CONF_NORELO)) {
-            dump_relocs("Text", textRelocOff, symlen, num_syms);
+            dump_relocs("Text", textRelocOff, symtab_off, symlen, num_syms);
 
             /* find data reloc offset by scanning past text relocs */
             off = textRelocOff;
@@ -1478,7 +2030,7 @@ long objsize;
             }
             dataRelocOff = off;
 
-            dump_relocs("Data", dataRelocOff, symlen, num_syms);
+            dump_relocs("Data", dataRelocOff, symtab_off, symlen, num_syms);
         } else {
             printf("\nRelocations: (stripped)\n");
         }
@@ -1489,6 +2041,637 @@ long objsize;
         free(symtab);
     symtab = 0;
     nsyms = 0;
+}
+
+/*
+ * generate relocation target name for HiTech
+ */
+void
+ht_reloc_name(relocs, ri, syms, nsyms, addend, buf)
+struct ht_reloc *relocs;
+int ri;
+struct ht_sym *syms;
+int nsyms;
+int addend;
+char *buf;
+{
+    int i;
+    char *target = relocs[ri].target;
+
+    if ((relocs[ri].type & 0xf0) == HT_RPSECT) {
+        /* psect-relative: check for exact symbol match */
+        for (i = 0; i < nsyms; i++) {
+            if (strcmp(syms[i].psect, target) == 0 &&
+                (int)syms[i].value == addend) {
+                sprintf(buf, "%s", syms[i].name);
+                return;
+            }
+        }
+        /* no exact match - use synthetic local label */
+        if (strcmp(target, "data") == 0) {
+            sprintf(buf, "D%d", add_data_ref(addend));
+        } else if (strcmp(target, "text") == 0) {
+            sprintf(buf, "T%d", add_text_ref(addend));
+        } else if (strcmp(target, "bss") == 0) {
+            sprintf(buf, "B%d", add_bss_ref(addend));
+        } else {
+            sprintf(buf, "_.%s+%d", target, addend);
+        }
+    } else {
+        /* external symbol */
+        if (addend == 0) {
+            sprintf(buf, "%s", target);
+        } else {
+            sprintf(buf, "%s+%d", target, addend);
+        }
+    }
+}
+
+/*
+ * Load HiTech object data into unified object structure
+ */
+void
+ht_load_uobj(textbuf, textsize, databuf, datasize, bsssize, relocs, nrelocs, syms, nsyms)
+unsigned char *textbuf;
+unsigned long textsize;
+unsigned char *databuf;
+unsigned long datasize;
+unsigned long bsssize;
+struct ht_reloc *relocs;
+int nrelocs;
+struct ht_sym *syms;
+int nsyms;
+{
+    int i, addend;
+
+    uobj_init();
+
+    /* copy text segment */
+    if (textsize > 0) {
+        uobj.text = (unsigned char *)malloc(textsize);
+        memcpy(uobj.text, textbuf, textsize);
+        uobj.textsize = textsize;
+    }
+
+    /* copy data segment */
+    if (datasize > 0) {
+        uobj.data = (unsigned char *)malloc(datasize);
+        memcpy(uobj.data, databuf, datasize);
+        uobj.datasize = datasize;
+    }
+
+    uobj.bsssize = bsssize;
+
+    /* convert symbols */
+    if (nsyms > 0) {
+        uobj.syms = (struct usym *)malloc(nsyms * sizeof(struct usym));
+        for (i = 0; i < nsyms; i++) {
+            strncpy(uobj.syms[i].name, syms[i].name, sizeof(uobj.syms[i].name) - 1);
+            uobj.syms[i].name[sizeof(uobj.syms[i].name) - 1] = '\0';
+            uobj.syms[i].value = syms[i].value;
+
+            /* convert segment */
+            if ((syms[i].flags & 0x0f) == 6) {
+                uobj.syms[i].segment = USEG_UNDEF;
+            } else if (strcmp(syms[i].psect, "text") == 0) {
+                uobj.syms[i].segment = USEG_TEXT;
+            } else if (strcmp(syms[i].psect, "data") == 0) {
+                uobj.syms[i].segment = USEG_DATA;
+            } else if (strcmp(syms[i].psect, "bss") == 0) {
+                uobj.syms[i].segment = USEG_BSS;
+            } else {
+                uobj.syms[i].segment = USEG_ABS;
+            }
+
+            /* convert scope */
+            uobj.syms[i].scope = (syms[i].flags & 0x10) ? USCOPE_GLOBAL : USCOPE_LOCAL;
+        }
+        uobj.nsyms = nsyms;
+    }
+
+    /* convert relocations */
+    if (nrelocs > 0) {
+        uobj.relocs = (struct ureloc *)malloc(nrelocs * sizeof(struct ureloc));
+        for (i = 0; i < nrelocs; i++) {
+            uobj.relocs[i].offset = relocs[i].offset;
+            uobj.relocs[i].size = relocs[i].type & HT_RSIZE_MASK;
+            uobj.relocs[i].hilo = 0;  /* HiTech doesn't have hi/lo byte relocs */
+            uobj.relocs[i].segment = USEG_TEXT;  /* HiTech relocs are in text */
+
+            /* get addend from data */
+            addend = textbuf[relocs[i].offset];
+            if (uobj.relocs[i].size == 2 && relocs[i].offset + 1 < textsize)
+                addend |= textbuf[relocs[i].offset + 1] << 8;
+
+            /* resolve target name */
+            ht_reloc_name(relocs, i, syms, nsyms, addend, uobj.relocs[i].target);
+        }
+        uobj.nrelocs = nrelocs;
+    }
+}
+
+/*
+ * generate .s file from HiTech object - uses unified path
+ */
+void
+gen_ht_sfile(name, textbuf, textsize, databuf, datasize, bsssize, relocs, nrelocs, syms, nsyms)
+char *name;
+unsigned char *textbuf;
+unsigned long textsize;
+unsigned char *databuf;
+unsigned long datasize;
+unsigned long bsssize;
+struct ht_reloc *relocs;
+int nrelocs;
+struct ht_sym *syms;
+int nsyms;
+{
+    /* load into unified structure */
+    ht_load_uobj(textbuf, textsize, databuf, datasize, bsssize, relocs, nrelocs, syms, nsyms);
+
+    /* generate output using unified function */
+    gen_uobj_sfile(name);
+
+    /* cleanup */
+    uobj_free();
+    free_synth_refs();
+}
+
+/*
+ * process HiTech object file
+ */
+void
+processHitech(name)
+char *name;
+{
+    long off = 0;
+    int reclen, rectype;
+    char machine[8];
+    int i;
+
+    /* collected data */
+    struct ht_reloc *relocs = NULL;
+    int nrelocs = 0;
+    int reloc_alloc = 0;
+    struct ht_sym *htsyms = NULL;
+    int nhtsyms = 0;
+    int htsym_alloc = 0;
+    long symbol_off = 0;
+    int symbol_len = 0;
+    unsigned long cur_text_off = 0;  /* offset of current TEXT chunk */
+    int in_text_psect = 0;           /* current TEXT record is "text" psect */
+    unsigned char *textbuf = NULL;   /* combined text data */
+    unsigned long textsize = 0;      /* total text size */
+    unsigned long textalloc = 0;     /* allocated size */
+    unsigned char *databuf = NULL;   /* combined data segment */
+    unsigned long datasize = 0;      /* total data size */
+    unsigned long dataalloc = 0;     /* allocated size */
+    unsigned long bsssize = 0;       /* total bss size */
+
+    if (!gflag)
+        printf("=== %s (HiTech) ===\n", name);
+
+    /* first pass: collect relocations and find symbol record */
+    off = 0;
+    while (off < filesize - 3) {
+        reclen = filebuf[off] | (filebuf[off + 1] << 8);
+        rectype = filebuf[off + 2];
+        off += 3;
+
+        if (off + reclen > filesize)
+            break;
+
+        if (rectype == HT_TEXT && reclen >= 5) {
+            /* collect TEXT data - only from "text" psect */
+            char psect[64];
+            int plen, dlen;
+            unsigned long endoff;
+
+            cur_text_off = filebuf[off] | (filebuf[off+1] << 8) |
+                          ((unsigned long)filebuf[off+2] << 16) |
+                          ((unsigned long)filebuf[off+3] << 24);
+
+            /* get psect name */
+            for (plen = 0; plen < 63 && off + 4 + plen < filesize; plen++) {
+                psect[plen] = filebuf[off + 4 + plen];
+                if (psect[plen] == '\0') break;
+            }
+            psect[plen] = '\0';
+
+            dlen = reclen - 4 - plen - 1;
+            if (dlen < 0) dlen = 0;
+
+            /* collect text and data psects */
+            in_text_psect = (strcmp(psect, "text") == 0);
+            if (in_text_psect) {
+                endoff = cur_text_off + dlen;
+                if (endoff > textsize) textsize = endoff;
+
+                /* grow buffer if needed */
+                if (endoff > textalloc) {
+                    textalloc = endoff + 1024;
+                    textbuf = (unsigned char *)realloc(textbuf, textalloc);
+                    if (!textbuf) { fprintf(stderr, "out of memory\n"); return; }
+                }
+
+                /* copy text data */
+                if (dlen > 0) {
+                    memcpy(textbuf + cur_text_off, filebuf + off + 4 + plen + 1, dlen);
+                }
+            } else if (strcmp(psect, "data") == 0) {
+                endoff = cur_text_off + dlen;
+                if (endoff > datasize) datasize = endoff;
+
+                /* grow buffer if needed */
+                if (endoff > dataalloc) {
+                    dataalloc = endoff + 1024;
+                    databuf = (unsigned char *)realloc(databuf, dataalloc);
+                    if (!databuf) { fprintf(stderr, "out of memory\n"); return; }
+                }
+
+                /* copy data */
+                if (dlen > 0) {
+                    memcpy(databuf + cur_text_off, filebuf + off + 4 + plen + 1, dlen);
+                }
+            } else if (strcmp(psect, "bss") == 0) {
+                /* BSS has no data, just track size */
+                endoff = cur_text_off + dlen;
+                if (endoff > bsssize) bsssize = endoff;
+            }
+        } else if (rectype == HT_RELOC && (rflag || gflag || dflag) && in_text_psect) {
+            long roff = off;
+            long rend = off + reclen;
+
+            while (roff < rend) {
+                unsigned short reloff;
+                unsigned char reltype;
+                char target[64];
+                int tlen;
+
+                if (roff + 3 > rend) break;
+
+                reloff = filebuf[roff] | (filebuf[roff+1] << 8);
+                reltype = filebuf[roff + 2];
+                roff += 3;
+
+                for (tlen = 0; tlen < 63 && roff + tlen < rend; tlen++) {
+                    target[tlen] = filebuf[roff + tlen];
+                    if (target[tlen] == '\0') break;
+                }
+                target[tlen] = '\0';
+                roff += tlen + 1;
+
+                /* grow array if needed */
+                if (nrelocs >= reloc_alloc) {
+                    reloc_alloc = reloc_alloc ? reloc_alloc * 2 : 64;
+                    relocs = (struct ht_reloc *)realloc(relocs,
+                             reloc_alloc * sizeof(struct ht_reloc));
+                }
+                relocs[nrelocs].offset = reloff + cur_text_off;
+                relocs[nrelocs].type = reltype;
+                strcpy(relocs[nrelocs].target, target);
+                nrelocs++;
+            }
+        } else if (rectype == HT_SYMBOL) {
+            /* collect symbols */
+            long soff = off;
+            long send = off + reclen;
+
+            symbol_off = off;
+            symbol_len = reclen;
+
+            while (soff < send) {
+                unsigned long val;
+                unsigned short flags;
+                char psect[64], symname[64];
+                int plen, nlen;
+
+                if (soff + 7 > send) break;
+
+                val = filebuf[soff] | (filebuf[soff+1] << 8) |
+                      ((unsigned long)filebuf[soff+2] << 16) |
+                      ((unsigned long)filebuf[soff+3] << 24);
+                flags = filebuf[soff+4] | (filebuf[soff+5] << 8);
+                soff += 6;
+
+                for (plen = 0; plen < 63 && soff + plen < send; plen++) {
+                    psect[plen] = filebuf[soff + plen];
+                    if (psect[plen] == '\0') break;
+                }
+                psect[plen] = '\0';
+                soff += plen + 1;
+
+                for (nlen = 0; nlen < 63 && soff + nlen < send; nlen++) {
+                    symname[nlen] = filebuf[soff + nlen];
+                    if (symname[nlen] == '\0') break;
+                }
+                symname[nlen] = '\0';
+                soff += nlen + 1;
+
+                /* grow array if needed */
+                if (nhtsyms >= htsym_alloc) {
+                    htsym_alloc = htsym_alloc ? htsym_alloc * 2 : 32;
+                    htsyms = (struct ht_sym *)realloc(htsyms,
+                             htsym_alloc * sizeof(struct ht_sym));
+                }
+                htsyms[nhtsyms].value = val;
+                htsyms[nhtsyms].flags = flags;
+                strncpy(htsyms[nhtsyms].psect, psect, 31);
+                htsyms[nhtsyms].psect[31] = '\0';
+                strncpy(htsyms[nhtsyms].name, symname, 63);
+                htsyms[nhtsyms].name[63] = '\0';
+                nhtsyms++;
+            }
+        }
+
+        off += reclen;
+    }
+
+    /* -g or -d mode: generate .s file (or stdout with hex dump) and return */
+    if (gflag || dflag) {
+        gen_ht_sfile(name, textbuf, textsize, databuf, datasize, bsssize, relocs, nrelocs, htsyms, nhtsyms);
+        if (relocs) free(relocs);
+        if (textbuf) free(textbuf);
+        if (databuf) free(databuf);
+        if (htsyms) free(htsyms);
+        return;
+    }
+
+    /* display combined text section */
+    if (textsize > 0) {
+        if (vflag) {
+            printf("\nTEXT: size=%lu\n", textsize);
+        }
+        if (bflag) {
+            /* use textbuf directly for hexdump */
+            unsigned char *save_filebuf = filebuf;
+            filebuf = textbuf;
+            hexdump("text", 0, (int)textsize, 0);
+            filebuf = save_filebuf;
+        }
+    }
+
+    /* second pass: display psects and other info */
+    off = 0;
+    while (off < filesize - 3) {
+        reclen = filebuf[off] | (filebuf[off + 1] << 8);
+        rectype = filebuf[off + 2];
+        off += 3;
+
+        if (off + reclen > filesize)
+            break;
+
+        switch (rectype) {
+        case HT_IDENT:
+            if (reclen >= 10) {
+                for (i = 0; i < 4 && i < reclen - 6; i++)
+                    machine[i] = filebuf[off + 6 + i];
+                machine[i] = '\0';
+                if (vflag) {
+                    printf("\nIDENT: machine=%s\n", machine);
+                }
+            }
+            break;
+
+        case HT_PSECT:
+            if (vflag && reclen >= 3) {
+                unsigned short flags;
+                char psect[64];
+                int plen;
+
+                flags = filebuf[off] | (filebuf[off+1] << 8);
+
+                for (plen = 0; plen < 63 && off + 2 + plen < filesize; plen++) {
+                    psect[plen] = filebuf[off + 2 + plen];
+                    if (psect[plen] == '\0') break;
+                }
+                psect[plen] = '\0';
+
+                printf("\nPSECT: name=%s flags=0x%04x", psect[0] ? psect : "(empty)", flags);
+                if (flags & HT_F_GLOBAL) printf(" GLOBAL");
+                if (flags & HT_F_PURE) printf(" PURE");
+                if (flags & HT_F_OVRLD) printf(" OVRLD");
+                if (flags & HT_F_ABS) printf(" ABS");
+                printf("\n");
+            }
+            break;
+
+        case HT_START:
+            if (vflag && reclen >= 4) {
+                unsigned long start;
+                char psect[64];
+                int plen;
+
+                start = filebuf[off] | (filebuf[off+1] << 8) |
+                        ((unsigned long)filebuf[off+2] << 16) |
+                        ((unsigned long)filebuf[off+3] << 24);
+
+                for (plen = 0; plen < 63 && off + 4 + plen < filesize; plen++) {
+                    psect[plen] = filebuf[off + 4 + plen];
+                    if (psect[plen] == '\0') break;
+                }
+                psect[plen] = '\0';
+
+                printf("\nSTART: addr=0x%08lx psect=%s\n", start, psect);
+            }
+            break;
+
+        case HT_END:
+            if (vflag) {
+                printf("\nEND\n");
+            }
+            break;
+
+        default:
+            break;
+        }
+
+        off += reclen;
+    }
+
+    /* print collected relocations */
+    if (rflag && nrelocs > 0) {
+        printf("\nRelocations:\n");
+        printf("  Offset  Size  Segment  Target\n");
+        printf("  ------  ----  -------  ------\n");
+
+        for (i = 0; i < nrelocs; i++) {
+            char *seg;
+            char *size;
+
+            size = (relocs[i].type & HT_RSIZE_MASK) == 1 ? "byte" : "word";
+
+            if ((relocs[i].type & 0xf0) == HT_RPSECT) {
+                seg = relocs[i].target;
+                printf("  0x%04lx  %-4s  %s\n", relocs[i].offset, size, seg);
+            } else {
+                seg = "-";
+                printf("  0x%04lx  %-4s  %-7s  %s\n", relocs[i].offset, size, seg, relocs[i].target);
+            }
+        }
+    }
+
+    /* print symbol table */
+    if (symbol_len > 0) {
+        long soff = symbol_off;
+        long send = symbol_off + symbol_len;
+        int nsym = 0;
+
+        /* count symbols */
+        while (soff < send) {
+            int nlen;
+            if (soff + 7 > send) break;
+            soff += 6;
+            while (soff < send && filebuf[soff]) soff++;
+            soff++;
+            for (nlen = 0; soff + nlen < send && filebuf[soff + nlen]; nlen++);
+            soff += nlen + 1;
+            nsym++;
+        }
+
+        printf("\nSymbol table: %d symbols\n", nsym);
+        printf("  Value     Segment  Scope   Type    Name\n");
+        printf("  --------  -------  ------  ------  ----\n");
+
+        soff = symbol_off;
+        while (soff < send) {
+            unsigned long val;
+            unsigned short flags;
+            char psect[64], symname[64];
+            char scope[16], stype[16], seg[16];
+            int plen, nlen;
+
+            if (soff + 7 > send) break;
+
+            val = filebuf[soff] | (filebuf[soff+1] << 8) |
+                  ((unsigned long)filebuf[soff+2] << 16) |
+                  ((unsigned long)filebuf[soff+3] << 24);
+            flags = filebuf[soff+4] | (filebuf[soff+5] << 8);
+            soff += 6;
+
+            for (plen = 0; plen < 63 && soff + plen < send; plen++) {
+                psect[plen] = filebuf[soff + plen];
+                if (psect[plen] == '\0') break;
+            }
+            psect[plen] = '\0';
+            soff += plen + 1;
+
+            for (nlen = 0; nlen < 63 && soff + nlen < send; nlen++) {
+                symname[nlen] = filebuf[soff + nlen];
+                if (symname[nlen] == '\0') break;
+            }
+            symname[nlen] = '\0';
+            soff += nlen + 1;
+
+            ht_decode_sym(flags, psect, scope, stype, seg);
+
+            printf("  0x%06lx  %-7s  %-6s  %-6s  %s\n",
+                   val, seg, scope, stype, symname);
+        }
+    }
+
+    if (relocs)
+        free(relocs);
+    if (textbuf)
+        free(textbuf);
+    if (databuf)
+        free(databuf);
+    if (htsyms)
+        free(htsyms);
+
+    printf("\n");
+}
+
+/*
+ * process HiTech library file (.LIB)
+ */
+void
+processHitechLib(name)
+char *name;
+{
+    long off;
+    unsigned short size_symbols, num_modules;
+    unsigned short symSize, symCnt;
+    unsigned long moduleSize;
+    long modDataOff;
+    char moduleName[256];
+    char symName[256];
+    int i, j, len;
+    unsigned char symFlags;
+    char *symTypes = "D?C???U";
+
+    printf("=== %s (HiTech Library) ===\n", name);
+
+    /* read header */
+    size_symbols = filebuf[0] | (filebuf[1] << 8);
+    num_modules = filebuf[2] | (filebuf[3] << 8);
+
+    if (vflag) {
+        printf("\nHeader:\n");
+        printf("  Symbol directory size: %d bytes\n", size_symbols);
+        printf("  Number of modules: %d\n", num_modules);
+    }
+
+    /* module data starts after header + symbol directory */
+    modDataOff = 4 + size_symbols;
+
+    /* process symbol directory */
+    off = 4;
+    for (i = 0; i < num_modules && off < filesize; i++) {
+        if (off + 12 > filesize) break;
+
+        symSize = filebuf[off] | (filebuf[off+1] << 8);
+        symCnt = filebuf[off+2] | (filebuf[off+3] << 8);
+        moduleSize = filebuf[off+4] | (filebuf[off+5] << 8) |
+                     ((unsigned long)filebuf[off+6] << 16) |
+                     ((unsigned long)filebuf[off+7] << 24);
+        off += 12;
+
+        /* read module name */
+        for (len = 0; len < 255 && off + len < filesize; len++) {
+            moduleName[len] = filebuf[off + len];
+            if (moduleName[len] == '\0') break;
+        }
+        moduleName[len] = '\0';
+        off += len + 1;
+
+        printf("\n%-15s  size=%ld  symbols=%d\n", moduleName, moduleSize, symCnt);
+
+        /* read symbols */
+        if (vflag || rflag) {
+            for (j = 0; j < symCnt && off < filesize; j++) {
+                symFlags = filebuf[off++];
+
+                /* read symbol name */
+                for (len = 0; len < 255 && off + len < filesize; len++) {
+                    symName[len] = filebuf[off + len];
+                    if (symName[len] == '\0') break;
+                }
+                symName[len] = '\0';
+                off += len + 1;
+
+                printf("  %c %s\n",
+                       symFlags < 7 ? symTypes[symFlags] : '?',
+                       symName);
+            }
+        } else {
+            /* skip symbols */
+            for (j = 0; j < symCnt && off < filesize; j++) {
+                off++;  /* skip flags */
+                while (off < filesize && filebuf[off]) off++;
+                off++;  /* skip null terminator */
+            }
+        }
+
+        /* optionally process module data */
+        if (bflag && modDataOff + moduleSize <= filesize) {
+            hexdump(moduleName, modDataOff, (int)moduleSize, 0);
+        }
+
+        modDataOff += moduleSize;
+    }
+
+    printf("\n");
 }
 
 /*
@@ -1551,14 +2734,29 @@ char *filename;
         error("read error");
     close(fd);
 
-    /* check for archive or object */
+    /* check for archive, HiTech, or Whitesmith object */
     magic16 = get_word(0);
     if (magic16 == AR_MAGIC) {
         processAr(filename);
+    } else if (filesize >= 13 && HT_IS_HITECH(filebuf)) {
+        processHitech(filename);
     } else if (get_byte(0) == MAGIC) {
         processObj(filename, 0, filesize);
     } else {
-        error2("bad magic", filename);
+        /* check for HiTech library format */
+        /* library header: 2-byte sym_size, 2-byte num_modules */
+        /* module data starts at offset 4 + sym_size */
+        unsigned short sym_size = get_word(0);
+        unsigned short num_mods = get_word(2);
+        long mod_data_off = 4 + sym_size;
+        if (num_mods > 0 && num_mods < 1000 &&
+            mod_data_off > 4 && mod_data_off < filesize &&
+            filesize >= mod_data_off + 13 &&
+            HT_IS_HITECH(filebuf + mod_data_off)) {
+            processHitechLib(filename);
+        } else {
+            error2("bad magic", filename);
+        }
     }
 
     free(filebuf);

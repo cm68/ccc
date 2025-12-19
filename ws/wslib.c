@@ -15,7 +15,7 @@
  *   wslib -t archive.a                     list contents
  *   wslib -v                               verbose mode
  */
-#ifdef linux
+#if defined(linux) || defined(__linux__)
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -26,20 +26,32 @@
 #endif
 
 #include "wsobj.h"
+#include "hitechobj.h"
 
 char *progname;
 int verbose;
+int hitech_mode;    /* -H flag: create HiTech format library */
+
+/* Symbol table for HiTech library creation */
+#define MAX_SYMS 500
+struct htsym {
+    char name[64];
+    unsigned char flags;
+};
+struct htsym symtab[MAX_SYMS];
+int nsyms;
 
 void
 usage()
 {
-    fprintf(stderr, "usage: %s [-crv] archive [file...]\n", progname);
+    fprintf(stderr, "usage: %s [-crvH] archive [file...]\n", progname);
     fprintf(stderr, "  -c  create archive (with -r: create if not exists)\n");
     fprintf(stderr, "  -r  replace/add files in archive\n");
     fprintf(stderr, "  -v  verbose (list files as processed)\n");
     fprintf(stderr, "  -x  extract files (all if none specified)\n");
     fprintf(stderr, "  -a  append files to archive\n");
     fprintf(stderr, "  -t  list archive contents\n");
+    fprintf(stderr, "  -H  create HiTech format library (default: Whitesmith)\n");
     exit(1);
 }
 
@@ -506,6 +518,494 @@ next_entry:
     }
 }
 
+/*
+ * Scan HiTech object file for symbols
+ * Returns file size, fills symtab[] and sets nsyms
+ */
+long
+ht_scan_object(filename)
+char *filename;
+{
+    int fd;
+    long size;
+    unsigned char *buf;
+    long off;
+    int reclen, rectype;
+
+    fd = open(filename, O_RDONLY);
+    if (fd < 0)
+        error2("cannot open", filename);
+
+    size = lseek(fd, 0, SEEK_END);
+    lseek(fd, 0, SEEK_SET);
+
+    buf = (unsigned char *)malloc(size);
+    if (!buf)
+        error("out of memory");
+
+    if (read(fd, buf, size) != size) {
+        free(buf);
+        error2("read error", filename);
+    }
+    close(fd);
+
+    /* verify HiTech format */
+    if (size < 13 || !HT_IS_HITECH(buf)) {
+        free(buf);
+        error2("not a HiTech object file", filename);
+    }
+
+    nsyms = 0;
+
+    /* scan records for SYMBOL record */
+    off = 0;
+    while (off < size - 3) {
+        reclen = buf[off] | (buf[off + 1] << 8);
+        rectype = buf[off + 2];
+        off += 3;
+
+        if (off + reclen > size)
+            break;
+
+        if (rectype == HT_SYMBOL) {
+            /* parse symbol record */
+            long soff = off;
+            long send = off + reclen;
+
+            while (soff < send && nsyms < MAX_SYMS) {
+                unsigned long val;
+                unsigned short flags;
+                int plen, nlen;
+                char psect[64], symname[64];
+
+                if (soff + 7 > send) break;
+
+                val = buf[soff] | (buf[soff+1] << 8) |
+                      ((unsigned long)buf[soff+2] << 16) |
+                      ((unsigned long)buf[soff+3] << 24);
+                flags = buf[soff+4] | (buf[soff+5] << 8);
+                soff += 6;
+
+                /* psect name */
+                for (plen = 0; plen < 63 && soff + plen < send; plen++) {
+                    psect[plen] = buf[soff + plen];
+                    if (psect[plen] == '\0') break;
+                }
+                psect[plen] = '\0';
+                soff += plen + 1;
+
+                /* symbol name */
+                for (nlen = 0; nlen < 63 && soff + nlen < send; nlen++) {
+                    symname[nlen] = buf[soff + nlen];
+                    if (symname[nlen] == '\0') break;
+                }
+                symname[nlen] = '\0';
+                soff += nlen + 1;
+
+                /* determine symbol type for library */
+                /* Only include: global defined, common, or undefined */
+                if ((flags & 0x10) && (flags & 0x0f) == 0) {
+                    /* global defined symbol */
+                    strcpy(symtab[nsyms].name, symname);
+                    symtab[nsyms].flags = HT_SYM_DEFINED;
+                    nsyms++;
+                } else if ((flags & 0x0f) == 2) {
+                    /* common */
+                    strcpy(symtab[nsyms].name, symname);
+                    symtab[nsyms].flags = HT_SYM_COMMON;
+                    nsyms++;
+                } else if ((flags & 0x0f) == 6) {
+                    /* undefined/extern */
+                    strcpy(symtab[nsyms].name, symname);
+                    symtab[nsyms].flags = HT_SYM_UNDEF;
+                    nsyms++;
+                }
+            }
+        } else if (rectype == HT_END) {
+            break;
+        }
+
+        off += reclen;
+    }
+
+    free(buf);
+    return size;
+}
+
+/*
+ * Create HiTech format library
+ */
+void
+ht_create(archive, files, nfiles)
+char *archive;
+char **files;
+int nfiles;
+{
+    FILE *fp;
+    FILE *tmpfp;
+    int i, j;
+    long *modsizes;
+    int *symcounts;
+    int *symsizes;
+    char **modnames;
+    struct htsym **modsyms;
+    unsigned char hdr[12];
+    long total_symdir;
+    int namelen;
+    char *basename;
+
+    if (nfiles == 0)
+        error("no files to add");
+
+    /* allocate arrays */
+    modsizes = (long *)malloc(nfiles * sizeof(long));
+    symcounts = (int *)malloc(nfiles * sizeof(int));
+    symsizes = (int *)malloc(nfiles * sizeof(int));
+    modnames = (char **)malloc(nfiles * sizeof(char *));
+    modsyms = (struct htsym **)malloc(nfiles * sizeof(struct htsym *));
+
+    if (!modsizes || !symcounts || !symsizes || !modnames || !modsyms)
+        error("out of memory");
+
+    /* scan all object files */
+    for (i = 0; i < nfiles; i++) {
+        modsizes[i] = ht_scan_object(files[i]);
+        symcounts[i] = nsyms;
+
+        /* calculate symbol size: flag + name + null for each */
+        symsizes[i] = 0;
+        for (j = 0; j < nsyms; j++) {
+            symsizes[i] += 1 + strlen(symtab[j].name) + 1;
+        }
+
+        /* save symbols */
+        modsyms[i] = (struct htsym *)malloc(nsyms * sizeof(struct htsym));
+        if (!modsyms[i])
+            error("out of memory");
+        memcpy(modsyms[i], symtab, nsyms * sizeof(struct htsym));
+
+        /* extract basename */
+        basename = files[i];
+        for (j = 0; files[i][j]; j++) {
+            if (files[i][j] == '/')
+                basename = &files[i][j + 1];
+        }
+        modnames[i] = (char *)malloc(strlen(basename) + 1);
+        strcpy(modnames[i], basename);
+
+        if (verbose)
+            printf("a - %s (%d symbols)\n", modnames[i], symcounts[i]);
+    }
+
+    /* calculate total symbol directory size */
+    total_symdir = 0;
+    for (i = 0; i < nfiles; i++) {
+        /* 12-byte header + module name + null + symbols */
+        total_symdir += 12 + strlen(modnames[i]) + 1 + symsizes[i];
+    }
+
+    /* create temp file for module data */
+    tmpfp = fopen("wslib.tmp", "wb");
+    if (!tmpfp)
+        error("cannot create temp file");
+
+    /* write module data to temp file */
+    for (i = 0; i < nfiles; i++) {
+        int fd;
+        unsigned char *buf;
+
+        fd = open(files[i], O_RDONLY);
+        if (fd < 0)
+            error2("cannot open", files[i]);
+
+        buf = (unsigned char *)malloc(modsizes[i]);
+        if (!buf)
+            error("out of memory");
+
+        if (read(fd, buf, modsizes[i]) != modsizes[i]) {
+            free(buf);
+            error2("read error", files[i]);
+        }
+        close(fd);
+
+        fwrite(buf, 1, modsizes[i], tmpfp);
+        free(buf);
+    }
+    fclose(tmpfp);
+
+    /* create library file */
+    fp = fopen(archive, "wb");
+    if (!fp)
+        error2("cannot create", archive);
+
+    /* write library header */
+    hdr[0] = total_symdir & 0xff;
+    hdr[1] = (total_symdir >> 8) & 0xff;
+    hdr[2] = nfiles & 0xff;
+    hdr[3] = (nfiles >> 8) & 0xff;
+    fwrite(hdr, 1, 4, fp);
+
+    /* write symbol directory */
+    for (i = 0; i < nfiles; i++) {
+        /* module header: symsize, symcnt, modsize, unused */
+        hdr[0] = symsizes[i] & 0xff;
+        hdr[1] = (symsizes[i] >> 8) & 0xff;
+        hdr[2] = symcounts[i] & 0xff;
+        hdr[3] = (symcounts[i] >> 8) & 0xff;
+        hdr[4] = modsizes[i] & 0xff;
+        hdr[5] = (modsizes[i] >> 8) & 0xff;
+        hdr[6] = (modsizes[i] >> 16) & 0xff;
+        hdr[7] = (modsizes[i] >> 24) & 0xff;
+        hdr[8] = 0;
+        hdr[9] = 0;
+        hdr[10] = 0;
+        hdr[11] = 0;
+        fwrite(hdr, 1, 12, fp);
+
+        /* module name */
+        namelen = strlen(modnames[i]) + 1;
+        fwrite(modnames[i], 1, namelen, fp);
+
+        /* symbols */
+        for (j = 0; j < symcounts[i]; j++) {
+            fputc(modsyms[i][j].flags, fp);
+            fwrite(modsyms[i][j].name, 1, strlen(modsyms[i][j].name) + 1, fp);
+        }
+    }
+
+    /* append module data from temp file */
+    tmpfp = fopen("wslib.tmp", "rb");
+    if (tmpfp) {
+        unsigned char buf[512];
+        int n;
+        while ((n = fread(buf, 1, 512, tmpfp)) > 0) {
+            fwrite(buf, 1, n, fp);
+        }
+        fclose(tmpfp);
+        unlink("wslib.tmp");
+    }
+
+    fclose(fp);
+
+    /* cleanup */
+    for (i = 0; i < nfiles; i++) {
+        free(modsyms[i]);
+        free(modnames[i]);
+    }
+    free(modsizes);
+    free(symcounts);
+    free(symsizes);
+    free(modnames);
+    free(modsyms);
+}
+
+/*
+ * Check if file is HiTech library format
+ */
+int
+is_hitech_lib(buf, size)
+unsigned char *buf;
+long size;
+{
+    unsigned short sym_size, num_mods;
+    long mod_data_off;
+
+    if (size < 20)
+        return 0;
+
+    sym_size = buf[0] | (buf[1] << 8);
+    num_mods = buf[2] | (buf[3] << 8);
+    mod_data_off = 4 + sym_size;
+
+    /* check sanity and that first module is valid HiTech object */
+    if (num_mods > 0 && num_mods < 1000 &&
+        mod_data_off > 4 && mod_data_off < size &&
+        size >= mod_data_off + 13 &&
+        HT_IS_HITECH(buf + mod_data_off)) {
+        return 1;
+    }
+    return 0;
+}
+
+/*
+ * list HiTech library contents
+ */
+void
+ht_list(archive)
+char *archive;
+{
+    int fd;
+    long size;
+    unsigned char *buf;
+    unsigned short sym_size, num_mods;
+    unsigned short symSize, symCnt;
+    unsigned long moduleSize;
+    long off;
+    int i, j, len;
+    char name[256];
+    long total = 0;
+    int count = 0;
+
+    fd = open(archive, O_RDONLY);
+    if (fd < 0)
+        error2("cannot open", archive);
+
+    size = lseek(fd, 0, SEEK_END);
+    lseek(fd, 0, SEEK_SET);
+
+    buf = (unsigned char *)malloc(size);
+    if (!buf)
+        error("out of memory");
+
+    if (read(fd, buf, size) != size)
+        error2("read error", archive);
+    close(fd);
+
+    if (!is_hitech_lib(buf, size)) {
+        free(buf);
+        error2("not a HiTech library", archive);
+    }
+
+    sym_size = buf[0] | (buf[1] << 8);
+    num_mods = buf[2] | (buf[3] << 8);
+
+    off = 4;
+    for (i = 0; i < num_mods && off < size; i++) {
+        if (off + 12 > size) break;
+
+        symSize = buf[off] | (buf[off+1] << 8);
+        symCnt = buf[off+2] | (buf[off+3] << 8);
+        moduleSize = buf[off+4] | (buf[off+5] << 8) |
+                     ((unsigned long)buf[off+6] << 16) |
+                     ((unsigned long)buf[off+7] << 24);
+        off += 12;
+
+        /* read module name */
+        for (len = 0; len < 255 && off + len < size; len++) {
+            name[len] = buf[off + len];
+            if (name[len] == '\0') break;
+        }
+        name[len] = '\0';
+        off += len + 1;
+
+        if (verbose)
+            printf("%6lu %s\n", moduleSize, name);
+        else
+            printf("%s\n", name);
+
+        total += moduleSize;
+        count++;
+
+        /* skip symbols */
+        for (j = 0; j < symCnt && off < size; j++) {
+            off++;  /* skip flags */
+            while (off < size && buf[off]) off++;
+            off++;  /* skip null */
+        }
+    }
+
+    if (verbose)
+        printf("total %ld bytes in %d modules\n", total, count);
+
+    free(buf);
+}
+
+/*
+ * extract modules from HiTech library
+ */
+void
+ht_extract(archive, files, nfiles)
+char *archive;
+char **files;
+int nfiles;
+{
+    int fd, outfd;
+    long size;
+    unsigned char *buf;
+    unsigned short sym_size, num_mods;
+    unsigned short symSize, symCnt;
+    unsigned long moduleSize;
+    long symOff, modDataOff;
+    int i, j, len;
+    char name[256];
+    int extract_all;
+
+    extract_all = (nfiles == 0);
+
+    fd = open(archive, O_RDONLY);
+    if (fd < 0)
+        error2("cannot open", archive);
+
+    size = lseek(fd, 0, SEEK_END);
+    lseek(fd, 0, SEEK_SET);
+
+    buf = (unsigned char *)malloc(size);
+    if (!buf)
+        error("out of memory");
+
+    if (read(fd, buf, size) != size)
+        error2("read error", archive);
+    close(fd);
+
+    if (!is_hitech_lib(buf, size)) {
+        free(buf);
+        error2("not a HiTech library", archive);
+    }
+
+    sym_size = buf[0] | (buf[1] << 8);
+    num_mods = buf[2] | (buf[3] << 8);
+
+    modDataOff = 4 + sym_size;
+    symOff = 4;
+
+    for (i = 0; i < num_mods && symOff < size; i++) {
+        if (symOff + 12 > size) break;
+
+        symSize = buf[symOff] | (buf[symOff+1] << 8);
+        symCnt = buf[symOff+2] | (buf[symOff+3] << 8);
+        moduleSize = buf[symOff+4] | (buf[symOff+5] << 8) |
+                     ((unsigned long)buf[symOff+6] << 16) |
+                     ((unsigned long)buf[symOff+7] << 24);
+        symOff += 12;
+
+        /* read module name */
+        for (len = 0; len < 255 && symOff + len < size; len++) {
+            name[len] = buf[symOff + len];
+            if (name[len] == '\0') break;
+        }
+        name[len] = '\0';
+        symOff += len + 1;
+
+        /* skip symbols */
+        for (j = 0; j < symCnt && symOff < size; j++) {
+            symOff++;
+            while (symOff < size && buf[symOff]) symOff++;
+            symOff++;
+        }
+
+        /* check if we should extract this module */
+        if (extract_all || name_in_list(name, files, nfiles)) {
+            if (verbose)
+                printf("x - %s\n", name);
+
+            if (modDataOff + moduleSize <= size) {
+                outfd = open(name, O_WRONLY | O_CREAT | O_TRUNC, 0666);
+                if (outfd < 0)
+                    error2("cannot create", name);
+
+                if (write(outfd, buf + modDataOff, moduleSize) != moduleSize)
+                    error("write error");
+
+                close(outfd);
+            }
+        }
+
+        modDataOff += moduleSize;
+    }
+
+    free(buf);
+}
+
 int
 main(argc, argv)
 int argc;
@@ -531,6 +1031,7 @@ char **argv;
                 case 'r': mode = 4; break;
                 case 't': mode = 5; break;
                 case 'v': verbose = 1; break;
+                case 'H': hitech_mode = 1; break;
                 default: usage();
                 }
                 p++;
@@ -547,8 +1048,54 @@ char **argv;
     files = &argv[i];
     nfiles = argc - i;
 
+    /* detect archive type for read operations */
+    if (mode == 2 || mode == 5) {
+        int fd;
+        unsigned char hdr[20];
+        int is_hitech = 0;
+
+        fd = open(archive, O_RDONLY);
+        if (fd >= 0) {
+            long size = lseek(fd, 0, SEEK_END);
+            lseek(fd, 0, SEEK_SET);
+            if (read(fd, hdr, 20) == 20) {
+                unsigned short sym_size = hdr[0] | (hdr[1] << 8);
+                unsigned short num_mods = hdr[2] | (hdr[3] << 8);
+                long mod_off = 4 + sym_size;
+
+                /* check for Whitesmith archive first */
+                if ((hdr[0] | (hdr[1] << 8)) == AR_MAGIC) {
+                    is_hitech = 0;
+                }
+                /* then check for HiTech library */
+                else if (num_mods > 0 && num_mods < 1000 &&
+                         mod_off > 4 && mod_off < size) {
+                    unsigned char ident[13];
+                    lseek(fd, mod_off, SEEK_SET);
+                    if (read(fd, ident, 13) == 13 && HT_IS_HITECH(ident)) {
+                        is_hitech = 1;
+                    }
+                }
+            }
+            close(fd);
+        }
+
+        if (is_hitech) {
+            switch (mode) {
+            case 2: ht_extract(archive, files, nfiles); break;
+            case 5: ht_list(archive); break;
+            }
+            return 0;
+        }
+    }
+
     switch (mode) {
-    case 1: do_create(archive, files, nfiles); break;
+    case 1:
+        if (hitech_mode)
+            ht_create(archive, files, nfiles);
+        else
+            do_create(archive, files, nfiles);
+        break;
     case 2: do_extract(archive, files, nfiles); break;
     case 3: do_append(archive, files, nfiles); break;
     case 4:
@@ -557,7 +1104,10 @@ char **argv;
             int fd = open(archive, O_RDONLY);
             if (fd < 0) {
                 /* archive doesn't exist, create it */
-                do_create(archive, files, nfiles);
+                if (hitech_mode)
+                    ht_create(archive, files, nfiles);
+                else
+                    do_create(archive, files, nfiles);
             } else {
                 close(fd);
                 do_replace(archive, files, nfiles);
