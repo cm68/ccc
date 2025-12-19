@@ -50,16 +50,18 @@ util.o: ../util.c $(HEADERS)
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 # Stage1: compile with cross ccc to Z80 .o files
+# Use -I. flag only - not gcc flags like -m32
+CCCFLAGS = -I.
 stage1: $(GENERATED)
 	mkdir -p $(OUTDIR)
 	@for f in $(SOURCES); do \
 	  b=$${f%.c}; \
 	  printf "%-20s" "$$f: "; \
-	  $(CCC) $(CFLAGS) -k -P -c $$f 2> $(OUTDIR)/$$b.err 1>&2 && { echo "ok"; rm -f $(OUTDIR)/$$b.err; } || echo "FAIL"; \
+	  $(CCC) $(CCCFLAGS) -k -P -c $$f 2> $(OUTDIR)/$$b.err 1>&2 && { echo "ok"; rm -f $(OUTDIR)/$$b.err; } || echo "FAIL"; \
 	  mv $$b.i $$b.l $$b.s $$b.o $$b.ast $$b.pp $(OUTDIR) 2>/dev/null ; \
 	done
 	@printf "%-20s" "../util.c: "
-	@$(CCC) $(CFLAGS) -k -P -c ../util.c 2> $(OUTDIR)/util.err 1>&2 && { echo "ok"; rm -f $(OUTDIR)/util.err; } || echo "FAIL"
+	@$(CCC) $(CCCFLAGS) -k -P -c ../util.c 2> $(OUTDIR)/util.err 1>&2 && { echo "ok"; rm -f $(OUTDIR)/util.err; } || echo "FAIL"
 	@mv util.i util.l util.s util.o util.ast util.pp $(OUTDIR) 2>/dev/null
 
 # Size report for stage1 objects
@@ -104,6 +106,10 @@ clobber: clean
 	rm -f ./cc1
 
 install: cc1
-	cp cc1 $(ROOTDIR)/bin
 
 .PHONY: all clean regen stage1 install clobber sizefile
+
+#
+# vim: tabstop=4 shiftwidth=4 expandtab:
+#	cp cc1 $(ROOTDIR)/bin
+

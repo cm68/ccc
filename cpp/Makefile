@@ -58,3 +58,6 @@ install: cpp
 	cp cpp $(ROOTDIR)/bin
 
 .PHONY: all clean install stage1 sizefile
+#
+# vim: tabstop=4 shiftwidth=4 expandtab:
+#

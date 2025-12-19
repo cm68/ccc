@@ -20,3 +20,6 @@ clobber:
 	
 clean:
 	@for d in $(DIRS) ; do $(MAKE) -C $$d clean ; done
+#
+# vim: tabstop=4 shiftwidth=4 expandtab:
+#

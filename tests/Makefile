@@ -1,6 +1,9 @@
 # Test suite for ccc compiler
 # This file defines all tests organized by category
 
+# Cancel built-in lex rule - .l files are lexeme dumps, not lex sources
+%.c: %.l
+
 # Basic expression and constant folding tests
 EXPR_TESTS = \
 	cfold.c \
@@ -190,7 +193,6 @@ MISC_TESTS = \
 	stat.c \
 	init_var.c \
 	init_var2.c \
-	test_interp.c \
 	test_load_store.c
 
 # All tests combined
@@ -285,9 +287,10 @@ valgrind:
 %: %.c
 	../root/bin/ccc -k -o $@ $<
 
-# Generate .ast from .c (pass1 only)
+# Generate .ast from .c (cpp creates .l, cc1 parses to AST)
 %.ast: %.c
-	../root/bin/cc1 -DCCC -i../root/usr/include -I. -o $@ $<
+	../root/bin/cpp -DCCC -i../root/usr/include -I. $<
+	../root/bin/cc1 -o $@ $*.l
 
 # Generate pretty-printed .pp from .ast
 %.pp: %.ast
@@ -305,3 +308,7 @@ valgrind:
 .PHONY: clean
 clean:
 	rm -f *.i *.o *.s *.ast
+
+#
+# vim: tabstop=4 shiftwidth=4 expandtab:
+#

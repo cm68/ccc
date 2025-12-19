@@ -3,12 +3,16 @@
 #
 # Invokes sub-makes for pass1 (cc1) and pass2 (cc2)
 #
+
+# Cancel built-in lex rule - .l files are lexeme dumps, not lex sources
+%.c: %.l
+
 CC = gcc
 
 ASM = root/bin/asz
 ASMOPTS =
 
-CCCFLAGS = -DCCC -DASMKWLOOK -ilibsrc/include -I.
+CPPFLAGS = -DCCC -DASMKWLOOK -ilibsrc/include -I.
 
 ifeq ($(CC),gcc)
 DEFINES = -DDEBUG
@@ -70,8 +74,10 @@ install: cpp cc1 cc2 ccc astpp
 	$(MAKE) -C libsrc install ROOTDIR=$(CURDIR)/$(ROOTDIR)
 
 # Suffix rules using installed binaries
-%.ast: %.c cc1
-	./$(ROOTDIR)/bin/cc1 $(CCCFLAGS) -o $@ $<
+# cpp preprocesses to lexeme stream (.l), cc1 parses to AST
+%.ast: %.c cpp cc1
+	./$(ROOTDIR)/bin/cpp $(CPPFLAGS) $<
+	./$(ROOTDIR)/bin/cc1 -o $@ $*.l
 
 %.s: %.ast cc2
 	./$(ROOTDIR)/bin/cc2 $<
@@ -88,9 +94,10 @@ astpp: astpp.c
 # Pattern rules for stage1 directory
 .PRECIOUS: stage1/%.ast stage1/%.s
 
-stage1/%.ast: %.c cc1 FORCE
+stage1/%.ast: %.c cpp cc1 FORCE
 	@mkdir -p stage1
-	./$(ROOTDIR)/bin/cc1 $(CCCFLAGS) -o $@ $<
+	./$(ROOTDIR)/bin/cpp $(CPPFLAGS) -o stage1/$* $<
+	./$(ROOTDIR)/bin/cc1 -o $@ stage1/$*.l
 
 stage1/%.s: stage1/%.ast cc2 FORCE
 	./$(ROOTDIR)/bin/cc2 -o $@ $<
@@ -149,3 +156,6 @@ clobber: clean
 	rm -f $(BINS) tags doc.pdf prev.size
 
 .PHONY: all install clean clobber regen tags
+#
+# vim: tabstop=4 shiftwidth=4 expandtab:
+#

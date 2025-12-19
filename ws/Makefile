@@ -4,7 +4,9 @@
 # wsnm   - object/archive dump
 # wslib  - archive librarian
 # wssize - display object sizes
+
 ROOTDIR = ../root
+CCC = ../root/bin/ccc
 
 CC = gcc
 CFLAGS = -m32 -g -Wall -std=c90 -pedantic -Dlinux -std=c89
@@ -68,7 +70,7 @@ test: all
 
 clean:
 	rm -f *.o tests/*.out tests/test.a tests/ctest.o
-	rm -f stage1/*.ast stage1/*.s stage1/*.o
+	rm -f stage1/*
 
 clobber: clean
 	rm -f $(ALL)
@@ -77,38 +79,17 @@ install: all
 	mkdir -p $(ROOTDIR)/bin
 	cp $(ALL) $(ROOTDIR)/bin
 
-# Stage1 build - compile ws tools to native Z80
-# Uses ../cc1, ../cc2, ./asz from host build
-
-CC1 = ../cc1
-CC2 = ../cc2
-ASZ = ./asz
 CCCFLAGS = -DCCC -i../native/include
 
-STAGE1_SRCS = asm.c asz.c wsld.c wslib.c wsnm.c wsobj.c wssize.c
-STAGE1_OBJS = $(addprefix stage1/, $(STAGE1_SRCS:.c=.o))
+SRCS = asm.c asz.c wsld.c wslib.c wsnm.c wsobj.c wssize.c
 
-stage1: $(CC1) $(CC2) $(ASZ)
-	@mkdir -p stage1
-	for f in $(STAGE1_SRCS); do \
-	  b=$$(basename $$f .c) ; \
-	  printf "%-12s" "$$f:"; \
-	  $(CC1) $(CCCFLAGS) -o stage1/$$b.ast $$f 2>stage1/$$b.err ; \
-	  if [ $$? -ne 0 ]; then \
-	    echo "FAIL (parse)"; \
-	  else \
-	    $(CC2) -o stage1/$$b.s stage1/$$b.ast 2>>stage1/$$b.err ; \
-	    if [ $$? -ne 0 ]; then \
-	      echo "FAIL (codegen)"; \
-	    else \
-	      $(ASZ) -o stage1/$$b.o stage1/$$b.s 2>>stage1/$$b.err ; \
-	      if [ $$? -ne 0 ]; then \
-	        echo "FAIL (asm)"; \
-	      else \
-	        echo "PASS"; \
-	      fi; \
-	    fi; \
-	  fi; \
+stage1: 
+	mkdir -p stage1
+	@for f in $(SRCS); do \
+		b=$${f%.c}; \
+		printf "%-20s" "$$f: "; \
+		$(CCC) -DCCC -k -P -c $$f 2> stage1/$$b.err 1>&2 && { echo "ok"; rm -f stage1/$$b.err; } || echo "FAIL"; \
+		mv $$b.l $$b.i $$b.s $$b.o $$b.ast $$b.pp stage1 2>/dev/null ; \
 	done
 	@echo "Stage1 complete"
 
@@ -141,3 +122,7 @@ link: stage1/asz stage1/wsld stage1/wsnm stage1/wslib stage1/wssize
 	@ls -la stage1/asz stage1/wsld stage1/wsnm stage1/wslib stage1/wssize
 
 .PHONY: all clean clobber test install stage1 sizecheck link
+
+#
+# vim: tabstop=4 shiftwidth=4 expandtab:
+#
