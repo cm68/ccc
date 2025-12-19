@@ -27,6 +27,7 @@ ER_D_UT		bad decl token
 ER_D_TL		bad sclass
 ER_D_OF		too many names
 ER_D_DN		dup name
+ER_D_IN		bad init
 
 # parse errors
 ER_P_SC		bad sclass

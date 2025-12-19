@@ -44,6 +44,18 @@ typedef unsigned long dword;
 #include "error.h"
 
 /*
+ * Allocation counters for tracking memory usage
+ */
+#ifdef DEBUG
+extern int nameAllocCnt;
+extern int nameCurCnt;
+extern int nameHighWater;
+extern int exprAllocCnt;
+extern int exprCurCnt;
+extern int exprHighWater;
+#endif
+
+/*
  * expressions hold computations
  */
 struct expr {
@@ -277,63 +289,30 @@ extern unsigned char shadowCtr;  // counter for shadowed locals
 /* AST output control */
 extern unsigned char astFd;         // where to write AST output
 
-/* kw.c */
-extern unsigned char cppkw[];
-extern unsigned char ckw[];
-extern char kwlook(unsigned char *str, unsigned char *table);
-
-/* lex.c */
-extern cstring nextstr;
-
-struct token {				// lexeme
+/* lexread.c - lexeme stream reader */
+struct token {
 	token_t type;
 	union {
-		long numeric;		// char, short, int, long
-		float fval;			// float, double
-		char *name;			// if we have a symbol
-		cstring str;		// counted literal string
+		long numeric;
+		float fval;
+		char *name;
+		cstring str;
 	} v;
 };
 
 extern struct token cur, next;
 extern char strbuf[];
 extern char match(token_t t);
-extern void gettoken();
-extern void skipws1();
-extern void skipws();
-extern char issym();
+extern void gettoken(void);
+extern void lexOpen(char *filename);
 
-/* io.c */
-struct textbuf {
-	int fd;                 // if == -1, macro buffer
-	char *name;             // filename or macro name
-	char *storage;          // data - free when done
-	short offset;           // always points at nextchar.
-	short valid;            // total valid in buffer
-	short lineno;           // current line # in file
-	short saved_column;     // saved column position for parent file
-	struct textbuf *prev;	// a stack
-};
-
-extern void pushfile(char *name);
-extern void insertmacro(char *name, char *macbuf);
-extern void insertfile(char *name, int sysdirs);
-extern void advance();
-void ioinit();
-void addInclude(char *name);
-void cppOut(char *s, int len);
-
-extern unsigned char curchar;
-extern unsigned char nextchar;
+/* Error reporting (stubs in lexread.c) */
 extern int lineno;
 extern char *filename;
-extern int column;
 extern char linebuf[];
 extern char prevline[];
 extern int linepos;
-extern char *sysIncPath;
-extern struct textbuf *tbtop;
-extern int exitCode;  /* Global exit code: 0=success, 1=errors occurred */
+extern int exitCode;
 
 /* cc1.c */
 extern void gripe(error_t errcode);
@@ -344,22 +323,6 @@ extern void expect(token_t check, error_t errcode);
 int main(int argc, char **argv);
 void process(char *f);
 void usage(char *complaint, char *p);
-
-/* macro.c */
-struct macro {
-	unsigned char parmcount;
-	char *name;
-	char **parms;
-	char *mactext;
-	struct macro *next;
-};
-extern struct macro *macros;
-extern char *macbuffer;
-void macdefine(char *s);
-void macundefine(char *s);
-char macexpand(char *s);
-struct macro *maclookup(char *s);
-void addDefine(char *s);
 
 /* util.c */
 extern unsigned char lookupc(char *s, char c);
@@ -375,22 +338,6 @@ int fdprintf(unsigned char fd, const char *fmt, ...);
 extern short verbose;
 #else
 #define VERBOSE(x) (0)
-#endif
-
-/* lexer flags */
-extern unsigned char tflags;
-#define ONELINE     0x01
-#define CPPFUNCS    0x02
-#define ASM_BLOCK   0x04  /* Special mode for asm blocks */
-
-/* Track newlines for statement separation */
-extern unsigned char lineend;
-
-#ifdef ASMKWLOOK
-/* Test inline assembly with asm { } syntax */
-#define ASMFUNC
-#define ASMSTART asm {
-#define ASMEND }
 #endif
 
 #if defined(CCC)

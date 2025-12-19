@@ -1,6 +1,9 @@
 #
 # Makefile for cc1 (pass 1 - parser)
 #
+# Disable built-in lex rule (.l -> .c) to avoid conflicts with lexeme files
+%.c: %.l
+
 ROOTDIR = ../root
 
 CC = gcc
@@ -14,16 +17,14 @@ CFLAGS = -m32 $(DEBUG) $(DEFINES) $(WARNS) -I.
 LDFLAGS = -m32 $(DEBUG)
 endif
 
+CCC = $(ROOTDIR)/bin/ccc
+OUTDIR = stage1
+
 ifeq ($(CC),ccc)
 CFLAGS = -I.
-CCC1 = $(ROOTDIR)/bin/cc1
-CCC2 = $(ROOTDIR)/bin/cc2
-ASZ = $(ROOTDIR)/bin/asz
-OUTDIR = ../stage1
-CCC = $(ROOTDIR)/bin/ccc
 endif
 
-SOURCES = pass1.c error.c lex.c io.c macro.c kw.c tokenlist.c \
+SOURCES = pass1.c error.c lexread.c tokenlist.c \
 	expr.c parse.c type.c declare.c outast.c
 
 OBJECTS = $(SOURCES:.c=.o)
@@ -55,17 +56,17 @@ stage1: $(GENERATED)
 	  b=$${f%.c}; \
 	  printf "%-20s" "$$f: "; \
 	  $(CCC) $(CFLAGS) -k -P -c $$f 2> $(OUTDIR)/$$b.err 1>&2 && { echo "ok"; rm -f $(OUTDIR)/$$b.err; } || echo "FAIL"; \
-	  mv $$b.s $$b.o $$b.ast $$b.pp $(OUTDIR) 2>/dev/null ; \
+	  mv $$b.i $$b.l $$b.s $$b.o $$b.ast $$b.pp $(OUTDIR) 2>/dev/null ; \
 	done
 	@printf "%-20s" "../util.c: "
 	@$(CCC) $(CFLAGS) -k -P -c ../util.c 2> $(OUTDIR)/util.err 1>&2 && { echo "ok"; rm -f $(OUTDIR)/util.err; } || echo "FAIL"
-	@mv util.s util.o util.ast util.pp $(OUTDIR) 2>/dev/null
+	@mv util.i util.l util.s util.o util.ast util.pp $(OUTDIR) 2>/dev/null
 
 # Size report for stage1 objects
 STAGE1_OBJS = $(SOURCES:.c=.o) util.o
 sizefile: Makefile
 	$(MAKE) stage1 CC=ccc
-	@$(ROOTDIR)/bin/wssize $(addprefix ../stage1/,$(STAGE1_OBJS)) | \
+	@$(ROOTDIR)/bin/wssize $(addprefix $(OUTDIR)/,$(STAGE1_OBJS)) | \
 	awk \
 		'{ t+=$$1 ; d+=$$2 ; b+=$$3 ; a+=$$4; print } \
 		END {printf "%7d %7d %7d %7d %19s\n", t, d, b, a, "pass1 total" }' \

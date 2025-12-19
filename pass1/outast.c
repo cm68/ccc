@@ -1583,13 +1583,19 @@ emitGv(struct name *var)
 	 * Skip strings inside INITLIST (struct initializers) - those will
 	 * be emitted inline as bytes for embedded char arrays.
 	 */
-	if ((var->type->flags & TF_ARRAY) && var->u.init && var->u.init->next) {
+	if ((var->type->flags & TF_ARRAY) && var->u.init) {
+		struct expr *init = var->u.init;
 		struct expr *item;
-		for (item = var->u.init; item; item = item->next) {
-			if (item->op == STRING && item->var) {
-				emitStrLit((struct name *)item->var);
+		/* Unwrap INITLIST if present */
+		if (init->op == INITLIST)
+			init = init->left;
+		if (init->next) {
+			for (item = init; item; item = item->next) {
+				if (item->op == STRING && item->var) {
+					emitStrLit((struct name *)item->var);
+				}
+				/* Skip INITLIST - strings in structs are emitted inline */
 			}
-			/* Skip INITLIST - strings in structs are emitted inline */
 		}
 	}
 
@@ -1608,13 +1614,17 @@ emitGv(struct name *var)
 
 	fdprintf(astFd, "%02x", var->u.init ? 1 : 0);
 	if (var->u.init) {
-		if (var->u.init->next) {
-			struct type *elem_type =
-			    (var->type && (var->type->flags & TF_ARRAY)) ?
-			    var->type->sub : var->type;
-			emitInitList(var->u.init, elem_type);
+		struct expr *init = var->u.init;
+		struct type *elem_type =
+		    (var->type && (var->type->flags & TF_ARRAY)) ?
+		    var->type->sub : var->type;
+		/* INITLIST wrapper indicates brace-enclosed list */
+		if (init->op == INITLIST)
+			init = init->left;
+		if (init->next) {
+			emitInitList(init, elem_type);
 		} else {
-			emitExpr(var->u.init);
+			emitExpr(init);
 		}
 	}
 	fdprintf(astFd, "\n");

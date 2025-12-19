@@ -116,9 +116,9 @@ process(char *f)
     } else {
         basenameStart = f;
     }
-    /* Find .c extension and copy everything before it */
+    /* Find extension and copy basename without it */
     dot = strrchr(basenameStart, '.');
-    if (dot && strcmp(dot, ".c") == 0) {
+    if (dot) {
         len = dot - basenameStart;
     } else {
         len = strlen(basenameStart);
@@ -127,10 +127,8 @@ process(char *f)
     strncpy(srcFileRoot, basenameStart, len);
     srcFileRoot[len] = '\0';
 
-    insertfile(f, 0);
-    ioinit();
-    cur.type = next.type = NONE;
-
+    /* Read from preprocessed lexeme stream */
+    lexOpen(f);
     parse();
 }
 
@@ -236,8 +234,10 @@ usage(char *complaint, char *p)
 int
 main(int argc, char **argv)
 {
-	char *s;
+    char *s;
+#ifdef DEBUG
     int i;
+#endif
 
 #ifndef CCC
     /* Set up timeout handler to catch infinite loops */
@@ -245,8 +245,7 @@ main(int argc, char **argv)
     alarm(5);  /* 5 second timeout */
 #endif
 
-    astFd = 1;  // default AST output to stdout (fd 1)
-    addInclude("");    // the null include prefix
+    astFd = 1;  /* default AST output to stdout (fd 1) */
 
     progname = *argv++;
     argc--;
@@ -266,18 +265,6 @@ main(int argc, char **argv)
             switch (*s++) {
             case 'h':
                 usage("", progname);
-                break;
-            case 'I':
-                addInclude(s);
-                s="";
-                break;
-            case 'i':
-                sysIncPath = s;
-                s="";
-                break;
-            case 'D':
-                addDefine(s);
-                s="";
                 break;
 #ifdef DEBUG
             case 'v':
@@ -347,6 +334,12 @@ main(int argc, char **argv)
     if (astFd > 1) {
         close(astFd);
     }
+
+    /* Report allocation counts */
+#ifdef DEBUG
+    fdprintf(2, "names: %d/%d exprs: %d/%d\n",
+        nameAllocCnt, nameHighWater, exprAllocCnt, exprHighWater);
+#endif
 
     return exitCode;  /* Return 0 if no errors, 1 if errors occurred */
 }

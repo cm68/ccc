@@ -38,6 +38,12 @@
 
 #include "cc1.h"
 
+#ifdef DEBUG
+int nameAllocCnt = 0;
+int nameCurCnt = 0;
+int nameHighWater = 0;
+#endif
+
 #ifndef CCC
 char *kindname[] = {
     "prim", "etag", "stag", "utag", "vari", "elem", "tdef", "fdef",
@@ -280,6 +286,12 @@ newName(char *name, kind k, struct type *t, unsigned char is_tag)
     n->is_tag = is_tag;
     n->kind = k;
     namesAdd(n);
+#ifdef DEBUG
+    nameAllocCnt++;
+    nameCurCnt++;
+    if (nameCurCnt > nameHighWater)
+        nameHighWater = nameCurCnt;
+#endif
     return n;
 }
 
