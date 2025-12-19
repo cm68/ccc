@@ -663,8 +663,8 @@ doInitlzr(void)
     gettoken(); /* consume = token */
 
     if (cur.type == BEGIN) {
-        /* Handle {...} style initializer list */
-        init = parseInitList();
+        /* Handle {...} style initializer list - wrap in INITLIST */
+        init = mkexpr(INITLIST, parseInitList());
     } else {
         /*
          * Handle simple expression initializer
@@ -714,6 +714,10 @@ void
 parsefunc(struct name *f)
 {
 	struct name *param;
+
+#ifdef DEBUG
+	fdprintf(2, "func %s: exprs=%d\n", f->name, exprCurCnt);
+#endif
 
 	// Set current function context for static variable name mangling
 	curFunc = f;
@@ -974,6 +978,9 @@ declaration()
                     frStmt(v->u.body);
                     v->u.body = 0;  /* Mark as freed */
                 }
+#ifdef DEBUG
+                fdprintf(2, "  after free: exprs=%d\n", exprCurCnt);
+#endif
 
                 v->next = global;
                 global = v;
@@ -1009,6 +1016,23 @@ declaration()
             int len;
 
             v->u.init = doInitlzr();
+
+            /*
+             * Check initializer compatibility
+             * Arrays of non-char must use brace-enclosed list
+             * Exception: char[] = "string" is valid
+             */
+            if (v->type && (v->type->flags & TF_ARRAY) && v->u.init) {
+                struct type *elem = v->type->sub;
+                int isCharArr = elem && !(elem->flags & TF_POINTER) &&
+                    (elem == chartype || elem == uchartype);
+                /* String init only valid for char arrays */
+                if (v->u.init->op == STRING && !isCharArr) {
+                    gripe(ER_D_IN);  /* bad init */
+                    frExp(v->u.init);
+                    v->u.init = NULL;
+                }
+            }
 
             /*
              * Fix array size for char[] = "string" syntax
@@ -1270,9 +1294,13 @@ frStmt(struct stmt *st)
 		}
 	}
 
-	/* Note: Don't free st->left, st->right, st->middle (expressions)
-	 * as they may be shared or owned elsewhere.
-	 * A full implementation would need expression reference counting. */
+	/* Free expression trees */
+	if (st->left)
+		frExp(st->left);
+	if (st->right)
+		frExp(st->right);
+	if (st->middle)
+		frExp(st->middle);
 
 	free(st);
 }
@@ -1291,10 +1319,20 @@ cleanupParse(void)
 	while (names && names->level > 0) {
 		n = names;
 		names = n->chain;
-		if (n->u.body)
-			frStmt(n->u.body);
-		if (n->kind != funarg)
+		/* u.body (for fdef) and u.init (for var) share a union */
+		if (n->kind == fdef) {
+			if (n->u.body)
+				frStmt(n->u.body);
+		} else {
+			if (n->u.init)
+				frExp(n->u.init);
+		}
+		if (n->kind != funarg) {
 			free(n);
+#ifdef DEBUG
+			nameCurCnt--;
+#endif
+		}
 	}
 	/* names now points to first basic type (level 0) */
 

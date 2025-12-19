@@ -3,6 +3,12 @@
  */
 #include "cc1.h"
 
+#ifdef DEBUG
+int exprAllocCnt = 0;
+int exprCurCnt = 0;
+int exprHighWater = 0;
+#endif
+
 /*
  * Combined operator priority and flags table
  * Table covers 0x20-0x7f (96 bytes), indexed by (tok - 0x20)
@@ -101,6 +107,12 @@ mkexpr(unsigned char op, struct expr *left)
 	e = calloc(1, sizeof(*e));  // Zero-initialize all fields
 	e->op = op;
 	e->left = left;
+#ifdef DEBUG
+	exprAllocCnt++;
+	exprCurCnt++;
+	if (exprCurCnt > exprHighWater)
+		exprHighWater = exprCurCnt;
+#endif
 	return e;
 }
 
@@ -165,7 +177,27 @@ frExp(struct expr *e)
 	if (e->right) {
 		frExp(e->right);
 	}
+	/* Free linked list (e.g., function call arguments) */
+	if (e->next) {
+		frExp(e->next);
+	}
+	/* For STRING expressions, free the synthetic name and its init expr */
+	if (e->op == STRING && e->var) {
+		struct name *strname = (struct name *)e->var;
+		if (strname->u.init) {
+			frExp(strname->u.init);
+			strname->u.init = NULL;
+		}
+		/* Free the counted string data */
+		if (e->v) {
+			free((void *)e->v);
+		}
+		free(strname);
+	}
 	free(e);
+#ifdef DEBUG
+	exprCurCnt--;
+#endif
 }
 
 /*
@@ -194,9 +226,17 @@ mkIncDec(struct expr *operand, unsigned char inc_op, unsigned char is_postfix)
     struct expr *e;
 
     if (operand && operand->op == DEREF) {
+        struct expr *deref = operand;
         operand = operand->left;
+        /* Free the orphaned DEREF node (but not its children) */
+        deref->left = NULL;
+        free(deref);
+#ifdef DEBUG
+        exprCurCnt--;
+#endif
     } else {
         gripe(ER_E_LV);
+        frExp(operand);
         operand = NULL;
     }
     e = mkexpr(inc_op, operand);
@@ -335,17 +375,21 @@ parseExpr(unsigned char pri, struct stmt *st)
         struct name *strname;
         char namebuf[32];
         unsigned char *combined_str;
-        unsigned char first_len;
+        unsigned char *src_str;
         unsigned char total_len;
         int i;
 
         /* string literals have type char* (pointer to char) */
         e = mkexprI(STRING, 0, getType(TF_POINTER, chartype, 0), 0, 0);
 
-        /* Concatenate adjacent string literals */
-        combined_str = (unsigned char *)cur.v.str;
-        first_len = combined_str[0];
-        total_len = first_len;
+        /* Copy first string - always allocate so we own the memory */
+        src_str = (unsigned char *)cur.v.str;
+        total_len = src_str[0];
+        combined_str = (unsigned char *)malloc(total_len + 1);
+        combined_str[0] = total_len;
+        for (i = 0; i < total_len; i++) {
+            combined_str[i + 1] = src_str[i + 1];
+        }
 
         gettoken();
 
@@ -370,10 +414,8 @@ parseExpr(unsigned char pri, struct stmt *st)
                 temp[total_len + i + 1] = ((unsigned char *)cur.v.str)[i + 1];
             }
 
-            /* Free old combined string if it was allocated */
-            if (total_len != first_len) {
-                free(combined_str);
-            }
+            /* Free old combined string */
+            free(combined_str);
 
             combined_str = temp;
             total_len = temp[0];
@@ -615,7 +657,14 @@ parseExpr(unsigned char pri, struct stmt *st)
             ((struct name *)e->left->var)->addr_taken = 1;
         /* Optimize: &(DEREF x) = x, since SYM already gives address */
         if (e && e->op == DEREF) {
+            struct expr *deref = e;
             e = e->left;
+            /* Free the orphaned DEREF node (but not its children) */
+            deref->left = NULL;
+            free(deref);
+#ifdef DEBUG
+            exprCurCnt--;
+#endif
         } else if (e && e->type && (e->type->flags & TF_ARRAY)) {
             /* &array = array (just change type to pointer-to-array) */
             e->type = getType(TF_POINTER, e->type, 0);
@@ -717,9 +766,16 @@ parseExpr(unsigned char pri, struct stmt *st)
              * but save the dereferenced type
              */
             if (e && e->op == DEREF) {
+                struct expr *deref = e;
                 /* Save the actual type (not the address type) */
                 base_type = e->type;
                 e = e->left;
+                /* Free the orphaned DEREF node (but not its children) */
+                deref->left = NULL;
+                free(deref);
+#ifdef DEBUG
+                exprCurCnt--;
+#endif
             } else {
                 base_type = e->type;
             }
@@ -868,7 +924,14 @@ parseExpr(unsigned char pri, struct stmt *st)
             } else {
                 // Unwrap DEREF to get address
                 if (e && e->op == DEREF) {
+                    struct expr *deref = e;
                     base = e->left;
+                    /* Free the orphaned DEREF node (but not its children) */
+                    deref->left = NULL;
+                    free(deref);
+#ifdef DEBUG
+                    exprCurCnt--;
+#endif
                 } else {
                     base = e;
                 }
@@ -1036,6 +1099,7 @@ parseExpr(unsigned char pri, struct stmt *st)
 
         if (is_assignment) {
             if (e && e->op == DEREF) {
+                struct expr *deref = e;
 #ifdef DEBUG
                 if (VERBOSE(V_ASSIGN)) {
                     if (e->type) {
@@ -1054,7 +1118,14 @@ parseExpr(unsigned char pri, struct stmt *st)
                 /* Save the type before unwrapping */
                 assign_type = e->type;
                 e = e->left;  // unwrap to get address
+                /* Free the orphaned DEREF node (but not its children) */
+                deref->left = NULL;
+                free(deref);
+#ifdef DEBUG
+                exprCurCnt--;
+#endif
             } else if (e && e->op == BFEXTRACT) {
+                struct expr *bfextr = e;
                 // Bitfield assignment - change to BFASSIGN
                 /* Save the type before unwrapping */
                 assign_type = e->type;
@@ -1064,6 +1135,12 @@ parseExpr(unsigned char pri, struct stmt *st)
                  */
                 member_info = e->var;
                 e = e->left;  // unwrap to get address
+                /* Free the orphaned BFEXTRACT node (but not its children) */
+                bfextr->left = NULL;
+                free(bfextr);
+#ifdef DEBUG
+                exprCurCnt--;
+#endif
                 /*
                  * Store member info temporarily - we'll use it when
                  * creating BFASSIGN. Pass through member info
@@ -1083,7 +1160,7 @@ parseExpr(unsigned char pri, struct stmt *st)
                  * Skip this operator: parse and discard right side,
                  * then return left side
                  */
-                parseExpr(p, st);  // Parse and discard right side
+                frExp(parseExpr(p, st));  // Parse and discard right side
                 return e;  // Return left side unchanged
             }
         }
@@ -1139,7 +1216,14 @@ parseExpr(unsigned char pri, struct stmt *st)
 
         // For COPY operator, unwrap DEREF from right side to get address
         if (e->op == COPY && e->right && e->right->op == DEREF) {
+            struct expr *deref = e->right;
             e->right = e->right->left;  // unwrap to get address
+            /* Free the orphaned DEREF node (but not its children) */
+            deref->left = NULL;
+            free(deref);
+#ifdef DEBUG
+            exprCurCnt--;
+#endif
         }
 
         /* For plain assignments, insert type conversion if needed.
@@ -1292,15 +1376,15 @@ parseExpr(unsigned char pri, struct stmt *st)
  *
  * Substitutes 'in' for 'out' in the expression tree, updating all linkages
  * (next, prev, up) to maintain tree connectivity. Preserves E_FUNARG flag
- * if it was set on the original node. Frees the old node and returns the
- * new replacement node.
+ * if it was set on the original node. Frees the old node and any orphaned
+ * children, then returns the new replacement node.
  *
  * This is used during constant folding and optimization passes to replace
  * complex expressions with simpler ones while maintaining the tree structure.
  *
  * Parameters:
  *   out - Expression node to be replaced (will be freed)
- *   in  - Replacement expression node
+ *   in  - Replacement expression node (must be child of out)
  *
  * Returns:
  *   The replacement node (in) with all linkages updated
@@ -1320,7 +1404,15 @@ xreplace(struct expr *out, struct expr *in)
     if (out->flags & E_FUNARG) {
         in->flags |= E_FUNARG;
     }
+    /* Free orphaned children - the one not being promoted */
+    if (out->left && out->left != in)
+        frExp(out->left);
+    if (out->right && out->right != in)
+        frExp(out->right);
     free(out);
+#ifdef DEBUG
+    exprCurCnt--;
+#endif
     return in;
 }
 
@@ -1399,11 +1491,13 @@ cfold(struct expr *e)
         if (left && lop == CONST && right && rop == COLON) {
             struct expr *result;
             if (left->v) {
-                // Condition is true, use true branch
+                /* Condition is true, use true branch */
                 result = right->left;
+                right->left = NULL;  /* prevent frExp from freeing result */
             } else {
-                // Condition is false, use false branch
+                /* Condition is false, use false branch */
                 result = right->right;
+                right->right = NULL;  /* prevent frExp from freeing result */
             }
             if (result) {
                 e = xreplace(e, result);
@@ -1784,6 +1878,7 @@ parseConst(unsigned char token)
     }
     if (!(e->flags & E_CONST)) {
         gripe(ER_C_CE);
+        frExp(e);
         return 0;
     }
     val = e->v;
