@@ -295,7 +295,7 @@ valgrind:
 
 # Generate .s from .ast (pass2)
 %.s: %.ast
-	../newpass2/cc2 -o $@ $<
+	../pass2/cc2 -o $@ $<
 
 # Generate .o from .s (assemble)
 %.o: %.s
