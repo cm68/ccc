@@ -81,3 +81,7 @@ test: cc2
 	./cc2 ../tests/expr.ast
 
 .PHONY: all clean test stage1 sizefile
+
+#
+# vim: tabstop=4 shiftwidth=4 expandtab:
+#
