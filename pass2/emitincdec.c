@@ -13,8 +13,16 @@ emitPreIncDec(struct expr *e)
     if (e->special == SP_INCR || e->special == SP_DECR) {
         char *ins = (e->special == SP_INCR) ? "inc" : "dec";
         unsigned char i;
-        for (i = 0; i < e->incr; i++)
-            emit("\t%s %r", ins, regnames[e->dest], e->offset);
+        if (e->dest == R_IYO) {
+            /* byte local via (iy+offset) */
+            char *rn = (e->left->aux == R_IX) ? "ix" : "iy";
+            for (i = 0; i < e->incr; i++)
+                emit("%s (%s%o)", ins, rn, e->offset);
+        } else {
+            /* regvar: b, c, bc, or ix */
+            for (i = 0; i < e->incr; i++)
+                emit("%s %s", ins, regnames[e->dest]);
+        }
     } else if (e->special == SP_INCGLOB) {
         char *ins = e->aux2 ? "inc" : "dec";
         unsigned char i;
@@ -23,8 +31,7 @@ emitPreIncDec(struct expr *e)
             emit("%s hl", ins);
         emit("ld (%s),hl", e->sym);
     } else {
-        comment("%c%c d=%d %s%s [", e->op, e->type, e->demand,
-            regnames[e->dest] ? regnames[e->dest] : "-", e->unused ? " U" : "");
+        comment("%c%c%s [", e->op, e->type, e->unused ? " U" : "");
         indent += 2;
         emitExpr(e->left);
         comment("incr=%d", e->aux2);
@@ -42,8 +49,6 @@ emitPreIncDec(struct expr *e)
                 emit("%s hl", ins);
             emit("ld (%s%o),l", rn, off);
             emit("ld (%s%o),h", rn, off + 1);
-            if (e->dest == R_TOS)
-                emit("push hl");
         } else if (e->left->op == 'V' && e->size == 4 && e->aux2 == 1) {
             char off = e->left->offset;
             char *rn = (e->left->aux == R_IX) ? "ix" : "iy";
@@ -63,12 +68,6 @@ emitPreIncDec(struct expr *e)
             emit("ld (%s%o),l", rn, off + 2);
             emit("ld (%s%o),h", rn, off + 3);
             emit("exx");
-            if (e->dest == R_TOS) {
-                emit("push hl");
-                emit("exx");
-                emit("push hl");
-                emit("exx");
-            }
         } else if (e->left->op == 'R' && e->left->aux == R_BC && e->size == 2) {
             /* pre-inc/dec BC register variable */
             comment("Rs %s bc", e->left->sym ? e->left->sym : "?");
@@ -92,12 +91,9 @@ emitPreIncDec(struct expr *e)
                 emit("ld b,h");
                 emit("ld c,l");
             }
-            if (e->dest == R_HL) {
-                emit("ld h,b");
-                emit("ld l,c");
-            } else if (e->dest == R_TOS) {
-                emit("push bc");
-            }
+            /* Result in BC, copy to HL */
+            emit("ld h,b");
+            emit("ld l,c");
         } else if (e->size == 2 && e->aux2 <= 4) {
             char *ins = (e->op == '(') ? "inc" : "dec";
             unsigned char i;
@@ -148,8 +144,7 @@ emitPreIncDec(struct expr *e)
 void
 emitPostInc(struct expr *e)
 {
-    comment("%c%c d=%d %s%s [", e->op, e->type, e->demand,
-        regnames[e->dest] ? regnames[e->dest] : "-", e->unused ? " U" : "");
+    comment("%c%c%s [", e->op, e->type, e->unused ? " U" : "");
     indent += 2;
     if (e->unused && e->left->op == 'R' && e->aux2 <= 4) {
         char *ins = (e->op == ')') ? "inc" : "dec";
@@ -219,8 +214,6 @@ emitPostInc(struct expr *e)
         emit("ld (hl),d");
         if (!e->unused)
             emit("pop hl");
-        if (e->dest == R_TOS && !e->unused)
-            emit("push hl");
     } else if (e->left->op == '$' && e->size == 1 && e->aux2 <= 4) {
         char *ins = (e->op == ')') ? "inc" : "dec";
         unsigned char i;
@@ -234,8 +227,6 @@ emitPostInc(struct expr *e)
         emit("ld (hl),a");
         if (!e->unused)
             emit("ld a,e");
-        if (e->dest == R_TOS && !e->unused)
-            emit("push af");
     } else if (e->size == 2 && e->aux2 <= 4) {
         char *ins = (e->op == ')') ? "inc" : "dec";
         unsigned char i;

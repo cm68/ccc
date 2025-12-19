@@ -18,6 +18,12 @@ int outfd;
 unsigned char curchar;
 int lineno = 1;
 
+/* Allocation counters (defined in parseast.c) */
+#ifdef DEBUG
+extern int exprAlloc;
+extern int exprFree;
+#endif
+
 /* Register names indexed by R_* constants */
 char *regnames[] = { 0, "b", "c", "bc", "ix", "de", "hl", "a", "iy",
                      "(ix)", "(iy)", "(ix%+d)", "(iy%+d)", "tos" };
@@ -123,6 +129,10 @@ main(int argc, char **argv)
 
     close(infd);
     if (outfd != 1) close(outfd);
+
+#ifdef DEBUG
+    fprintf(stderr, "exprs: %d/%d\n", exprAlloc, exprFree);
+#endif
 
     return 0;
 }

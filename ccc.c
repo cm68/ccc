@@ -14,7 +14,10 @@
 
 char *progname;
 
-char *rootdir;
+#define stringify2(s) #s
+#define stringify(s) stringify2(s)
+
+char *rootdir = stringify(ROOTDIR);
 
 void
 usage(void)
@@ -159,11 +162,14 @@ main(int argc, char **argv)
     int c_count = 0, s_count = 0, o_count = 0, a_count = 0;
     int o_input_count = 0;   /* .o files from cmdline (vs generated) */
 
+    char *cpp_base[MAX_ARGS];  /* Base cpp args (options only) */
     char *cc1_base[MAX_ARGS];  /* Base cc1 args (options only) */
     char *cc2_base[MAX_ARGS];  /* Base cc2 args (options only) */
+    int cpp_base_argc = 0;
     int cc1_base_argc = 0;
     int cc2_base_argc = 0;
 
+    char cpp_path[1024];
     char cc1_path[1024];
     char cc2_path[1024];
     char asm_path[1024];
@@ -180,9 +186,8 @@ main(int argc, char **argv)
 
     progname = argv[0];
 
-    rootdir = getroot(progname);
-
-    /* Build paths to cc1, cc2, assembler, linker, astpp */
+    /* Build paths to cpp, cc1, cc2, assembler, linker, astpp */
+    snprintf(cpp_path, sizeof(cpp_path), "%s/bin/cpp", rootdir);
     snprintf(cc1_path, sizeof(cc1_path), "%s/bin/cc1", rootdir);
     snprintf(cc2_path, sizeof(cc2_path), "%s/bin/cc2", rootdir);
     snprintf(asm_path, sizeof(asm_path), "%s/bin/asz", rootdir);
@@ -195,6 +200,7 @@ main(int argc, char **argv)
     snprintf(sysinc_path, sizeof(sysinc_path), "-i%s/usr/include", rootdir);
 
     /* Initialize base argument arrays with program names */
+    cpp_base[cpp_base_argc++] = cpp_path;
     cc1_base[cc1_base_argc++] = cc1_path;
     cc2_base[cc2_base_argc++] = cc2_path;
 
@@ -282,21 +288,21 @@ main(int argc, char **argv)
         } else if (argv[0][0] == '-' &&
                    (argv[0][1] == 'I' || argv[0][1] == 'i' ||
                     argv[0][1] == 'D')) {
-            /* Pass -I, -i, or -D options to cc1 */
-            if (cc1_base_argc >= MAX_ARGS) {
+            /* Pass -I, -i, or -D options to cpp */
+            if (cpp_base_argc >= MAX_ARGS) {
                 fprintf(stderr, "Error: too many arguments\n");
                 exit(1);
             }
-            cc1_base[cc1_base_argc++] = argv[0];
+            cpp_base[cpp_base_argc++] = argv[0];
             argc--;
             argv++;
         } else if (strcmp(argv[0], "-E") == 0) {
-            /* Pass -E to cc1 */
-            if (cc1_base_argc >= MAX_ARGS) {
+            /* Pass -E to cpp (preprocess only) */
+            if (cpp_base_argc >= MAX_ARGS) {
                 fprintf(stderr, "Error: too many arguments\n");
                 exit(1);
             }
-            cc1_base[cc1_base_argc++] = argv[0];
+            cpp_base[cpp_base_argc++] = argv[0];
             argc--;
             argv++;
         } else if (argv[0][0] == '-') {
@@ -342,21 +348,28 @@ main(int argc, char **argv)
     /* Track how many .o files existed before we generate more from .c files */
     o_input_count = o_count;
 
-    /* Process each .c file: cc1 -> cc2 -> asm */
+    /* Process each .c file: cpp -> cc1 -> cc2 -> asm */
     for (i = 0; i < c_count; i++) {
         char *src = c_files[i];
         char *base = getBaseNoExt(src);
+        char *lex_file;
+        char *prep_file;
         char *ast_file;
         char *asm_file;
         char *obj_file;
+        char *cpp_args[MAX_ARGS];
         char *cc1_args[MAX_ARGS];
         char *cc2_args[MAX_ARGS];
         char *as_args[8];
-        int cc1_argc, cc2_argc, j;
+        int cpp_argc, cc1_argc, cc2_argc, j;
 
         char *pp_file;
 
         /* Generate intermediate filenames */
+        lex_file = malloc(strlen(base) + 10);
+        sprintf(lex_file, "%s.l", base);
+        prep_file = malloc(strlen(base) + 10);
+        sprintf(prep_file, "%s.i", base);
         ast_file = malloc(strlen(base) + 10);
         sprintf(ast_file, "%s.ast", base);
         asm_file = malloc(strlen(base) + 10);
@@ -368,15 +381,34 @@ main(int argc, char **argv)
 
         if (!no_exec) printf("=== Compiling %s ===\n", src);
 
-        /* Build cc1 args: base options + -o ast_file + source */
+        /* Build cpp args: base options + -DCCC + sysinc + -o base + source */
+        cpp_argc = 0;
+        for (j = 0; j < cpp_base_argc; j++)
+            cpp_args[cpp_argc++] = cpp_base[j];
+        cpp_args[cpp_argc++] = "-DCCC";
+        cpp_args[cpp_argc++] = sysinc_path;
+        cpp_args[cpp_argc++] = "-o";
+        cpp_args[cpp_argc++] = base;
+        cpp_args[cpp_argc++] = src;
+        cpp_args[cpp_argc] = NULL;
+
+        if (print_cmds || no_exec)
+            printCommand(cpp_args);
+        if (!no_exec) {
+            status = execCommand(cpp_path, cpp_args);
+            if (status != 0) {
+                fprintf(stderr, "Error: cpp failed on %s\n", src);
+                exit(status);
+            }
+        }
+
+        /* Build cc1 args: -o ast_file + lex_file (cc1 only reads .l files) */
         cc1_argc = 0;
         for (j = 0; j < cc1_base_argc; j++)
             cc1_args[cc1_argc++] = cc1_base[j];
-	cc1_args[cc1_argc++] = "-DCCC";
-	cc1_args[cc1_argc++] = sysinc_path;
         cc1_args[cc1_argc++] = "-o";
         cc1_args[cc1_argc++] = ast_file;
-        cc1_args[cc1_argc++] = src;
+        cc1_args[cc1_argc++] = lex_file;
         cc1_args[cc1_argc] = NULL;
 
         if (print_cmds || no_exec)
@@ -388,6 +420,14 @@ main(int argc, char **argv)
                 exit(status);
             }
         }
+
+        /* Clean up .l and .i if they exist */
+        if (!keep_all && !no_exec) {
+            unlink(lex_file);
+            unlink(prep_file);
+        }
+        free(lex_file);
+        free(prep_file);
 
         /* Generate .pp file if -P */
         if (pp_gen && !no_exec) {

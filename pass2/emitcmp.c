@@ -37,8 +37,7 @@ emitCondJmp(char op, int aux2)
 void
 emitCompare(struct expr *e)
 {
-    comment("%c%c d=%d %s%s [", e->op, e->type, e->demand,
-        regnames[e->dest] ? regnames[e->dest] : "-", e->cond ? " C" : "");
+    comment("%c%c%s [", e->op, e->type, e->cond ? " C" : "");
     indent += 2;
     if (e->special == SP_CMPHL) {
         /* byte cmp with (hl): left is complex (addr in hl), right is simple */
@@ -145,19 +144,13 @@ emitCompare(struct expr *e)
     } else {
         /* General comparison - use operand type, not result type */
         unsigned char ctype = e->left->type;
-        unsigned char leftDeeper = treeDepth(e->left) >= treeDepth(e->right);
         /* Check if comparing subtraction result against 0 - sub sets flags */
         int subCmpZero = (e->left->op == '-' && e->right->op == '#' &&
                           e->right->v.s == 0);
         if (ISLONG(ctype)) {
             /* Long comparison: emit both, call lcmp */
-            if (leftDeeper) {
-                emitExpr(e->left);   /* dest=R_DE → _lL */
-                emitExpr(e->right);  /* dest=R_HL → _lR */
-            } else {
-                emitExpr(e->right);  /* dest=R_HL → _lR */
-                emitExpr(e->left);   /* dest=R_DE → _lL */
-            }
+            emitExpr(e->left);
+            emitExpr(e->right);
             emit("call lcmp");
         } else if (subCmpZero) {
             /* Subtraction compared to 0: sub already sets flags */
@@ -172,37 +165,27 @@ emitCompare(struct expr *e)
                 return;
             }
             goto cmpresult;
-        } else if (leftDeeper) {
-            emitExpr(e->left);
-            if (ISBYTE(ctype)) {
-                if (e->left->size == 2)
-                    emit("ld a,l");
-            } else if (ISWORD(ctype)) {
-                emit("ex de,hl");
-            }
-            if (ISBYTE(ctype) && e->right->op == '#') {
-                /* Byte compare with constant: use cp immediate */
-                emit("cp %d", e->right->v.c & 0xff);
-            } else {
-                emitExpr(e->right);
-            }
-            if (ISBYTE(ctype)) {
-                if (e->right->op != '#')
-                    emit("cp l");
-            } else if (ISWORD(ctype)) {
-                emit("ex de,hl");
-                emit("or a");
-                emit("sbc hl,de");
-            }
         } else {
-            emitExpr(e->right);
-            emit("ex de,hl");
+            /* Depth-first: emit left, save, emit right, compare */
             emitExpr(e->left);
             if (ISBYTE(ctype)) {
                 if (e->left->size == 2)
                     emit("ld a,l");
-                emit("cp e");
+                /* Byte compare with constant: use cp immediate */
+                if (e->right->op == '#') {
+                    emit("cp %d", e->right->v.c & 0xff);
+                } else {
+                    emit("ld e,a");  /* save left to E */
+                    emitExpr(e->right);
+                    /* A has right, E has left. Compare left - right = E - A */
+                    emit("ld b,a");
+                    emit("ld a,e");
+                    emit("cp b");
+                }
             } else if (ISWORD(ctype)) {
+                emit("ex de,hl");  /* save left to DE */
+                emitExpr(e->right);
+                emit("ex de,hl");  /* left to HL, right to DE */
                 emit("or a");
                 emit("sbc hl,de");
             }

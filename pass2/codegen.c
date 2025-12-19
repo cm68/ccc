@@ -46,45 +46,44 @@ treeDepth(struct expr *e)
 }
 
 /*
- * Calculate temporary demand for expression tree
- * Binop: sum of children, Unop/primary: 1
- * Returns demand, also stores in e->demand
+ * Annotate expression tree with special patterns
+ * No demand calculation - just pattern detection for optimization
  */
-unsigned char
-calcDemand(struct expr *e)
+void
+annotate(struct expr *e)
 {
-    unsigned char demand;
-    unsigned char op = e->op;
+    unsigned char op;
+    unsigned char size;
+    unsigned char count;
 
-    unsigned char size = e->size;
-    unsigned char count = e->aux2;
+    if (!e) return;
+    op = e->op;
+    if (!op) return;
 
-    if (!op) return 0;  /* sentinel */
+    size = e->size;
+    count = e->aux2;
 
-    /* special: =[BS] $var - assign to byte/short var is demand 1 */
-    /* if right is constant, use SP_STCONST for efficient store */
-    if (op == '=' && size <= 2 && e->left->op == '$') {
-        if (e->right->op == '#') {
-            e->special = SP_STCONST;
-        }
-        calcDemand(e->right);  /* still calc children for display */
-        demand = 1;
-        goto done;
+    /* Recursively annotate children first */
+    annotate(e->left);
+    annotate(e->right);
+
+    /* special: =[BS] $var #const - store constant to global */
+    if (op == '=' && size <= 2 && e->left->op == '$' && e->right->op == '#') {
+        e->special = SP_STCONST;
+        return;
     }
 
     /* =b Rb #const -> ld b,n or ld c,n; direct byte regvar assign */
-    if (op == '=' && e->size == 1 && e->left->op == 'R' &&
+    if (op == '=' && size == 1 && e->left->op == 'R' &&
         (e->left->aux == R_B || e->left->aux == R_C) && e->right->op == '#') {
         e->special = SP_STCONST;
-        demand = 0;
-        goto done;
+        return;
     }
 
     /* = V #const -> ld (iy+n),lo; ld (iy+n+1),hi; store const to local */
     if (op == '=' && e->left->op == 'V' && e->right->op == '#') {
         e->special = SP_STCONST;
-        demand = 0;
-        goto done;
+        return;
     }
 
     /* (s Rs reg -> inc reg; pre-inc/dec of regvar, incr <= 4 */
@@ -92,23 +91,7 @@ calcDemand(struct expr *e)
         e->special = (op == '(') ? SP_INCR : SP_DECR;
         e->incr = e->aux2;
         e->dest = e->left->aux;     /* R_B, R_C, R_BC, or R_IX */
-        demand = 0;
-        goto done;
-    }
-
-    /* )s Rs reg -> dec reg; post-inc/dec of regvar when unused, incr <= 4 */
-    if ((op == ')' || op == '}') && e->left->op == 'R' && count <= 4 && e->unused) {
-        e->incr = e->aux2;
-        e->dest = e->left->aux;     /* R_B, R_C, R_BC, or R_IX */
-        demand = 0;
-        goto done;
-    }
-
-    /* )s Vs ofs -> post-inc/dec of word local, incr <= 4 */
-    if ((op == ')' || op == '}') && e->left->op == 'V' && size == 2 && count <= 4) {
-        calcDemand(e->left);  /* calc child demand */
-        demand = e->unused ? 1 : 2;  /* need 2 if returning old value */
-        goto done;
+        return;
     }
 
     /* (b Vb ofs -> inc (iy+ofs); pre-inc/dec of byte local, incr <= 4 */
@@ -117,8 +100,7 @@ calcDemand(struct expr *e)
         e->incr = count;
         e->offset = e->left->aux2;  /* IY offset from V node */
         e->dest = R_IYO;            /* (iy+ofs) addressing */
-        demand = 0;
-        goto done;
+        return;
     }
 
     /* (s $sym -> ld hl,(_sym); inc hl; ld (_sym),hl; inc/dec global word */
@@ -128,29 +110,26 @@ calcDemand(struct expr *e)
         e->aux2 = (op == '(') ? 1 : 0;  /* 1=inc, 0=dec */
         e->sym = e->left->sym;          /* steal symbol */
         e->left->sym = 0;
-        demand = 0;
-        goto done;
+        return;
     }
 
     /* +s $sym #const -> ld hl,sym+offset */
-    if (op == '+' && e->size == 2 &&
+    if (op == '+' && size == 2 &&
         e->left->op == '$' && e->right->op == '#' && e->left->sym) {
         e->special = SP_SYMOFS;
         e->sym = e->left->sym;          /* steal symbol from child */
         e->left->sym = 0;               /* prevent double-free */
         e->offset = e->right->v.s;
-        demand = 1;
-        goto done;
+        return;
     }
 
     /* +s Ms[Rs bc] #const -> ld hl,const; add hl,bc */
-    if (op == '+' && e->size == 2 &&
+    if (op == '+' && size == 2 &&
         e->left->op == 'M' && e->left->left->op == 'R' &&
         e->left->left->aux == R_BC && e->right->op == '#') {
         e->special = SP_ADDBC;
         e->offset = e->right->v.s;
-        demand = 1;
-        goto done;
+        return;
     }
 
     /* M[+s $sym #const] -> ld hl,(sym+offset) */
@@ -161,8 +140,7 @@ calcDemand(struct expr *e)
         e->sym = e->left->left->sym;    /* steal symbol from grandchild */
         e->left->left->sym = 0;         /* prevent double-free */
         e->offset = e->left->right->v.s;
-        demand = 1;
-        goto done;
+        return;
     }
 
     /* Ms $sym -> ld hl,(sym); direct deref of global */
@@ -170,24 +148,7 @@ calcDemand(struct expr *e)
         e->special = SP_MSYM;
         e->sym = e->left->sym;          /* steal symbol */
         e->left->sym = 0;
-        demand = 1;
-        goto done;
-    }
-
-    /* N #const -> just use constant directly as byte */
-    if (op == 'N' && e->left->op == '#') {
-        e->left->type = e->type;  /* change child to byte type */
-        e->left->v.c = e->left->v.l & 0xff;
-        e->left->demand = 1;      /* child needs to emit */
-        demand = 1;
-        goto done;
-    }
-
-    /* General M: need at least 1 for result in HL */
-    if (op == 'M') {
-        int d = calcDemand(e->left);
-        demand = d > 0 ? d : 1;
-        goto done;
+        return;
     }
 
     /* *s expr #s 4 -> add hl,hl; multiply by power of 2 */
@@ -198,13 +159,12 @@ calcDemand(struct expr *e)
             while (n > 1) { shifts++; n >>= 1; }
             e->special = SP_MUL2;
             e->incr = shifts;
-            demand = calcDemand(e->left);
-            goto done;
+            return;
         }
     }
 
     /* &B M[(ix+ofs)] #pow2 -> bit n,(ix+ofs); bit test */
-    if (op == '&' && e->size == 1 && e->right->op == '#') {
+    if (op == '&' && size == 1 && e->right->op == '#') {
         long n = e->right->v.l & 0xff;
         /* check power of 2 (single bit) */
         if (n > 0 && (n & (n - 1)) == 0) {
@@ -219,325 +179,66 @@ calcDemand(struct expr *e)
                 e->special = SP_BITTEST;
                 e->offset = l->left->right->v.s;  /* ix offset */
                 e->incr = bit;                     /* bit number 0-7 */
-                demand = 0;
-                goto done;
+                return;
             }
         }
     }
 
-    /* gB Ms $sym #B 0 -> bit 7,(sym+ofs); sign test x >= 0 */
-    if (op == 'g' && e->left->op == 'M' && e->left->left->op == '$' &&
-        e->right->op == '#' && e->right->v.l == 0 && e->left->left->sym) {
-        e->special = SP_SIGN;
-        e->sym = e->left->left->sym;    /* steal symbol */
-        e->left->left->sym = 0;
-        e->offset = e->left->size - 1;  /* offset to high byte */
-        demand = 1;
-        goto done;
-    }
-
-    /* gB Ms[Rs bc] #0 -> bit 7,b; sign test regvar >= 0 */
-    if (op == 'g' && e->left->op == 'M' && e->left->left->op == 'R' &&
-        e->left->left->aux == R_BC && e->right->op == '#' && e->right->v.l == 0) {
-        e->special = SP_SIGNREG;
-        e->dest = e->left->left->aux;  /* R_BC */
-        demand = 0;
-        goto done;
-    }
-
     /* Word equality with small constant: == 0, == 1, == -1 */
-    /* Zero demand - just inc/dec/nop then test HL */
     if ((op == 'Q' || op == 'n') && ISWORD(e->left->type) &&
         e->right->op == '#') {
         long val = e->right->v.l;
         if (val == 0 || val == 1 || val == -1 || val == 0xffff) {
             e->special = SP_CMPEQ;
             e->incr = val;
-            demand = calcDemand(e->left);
-            goto done;
+            return;
         }
     }
 
     /* cmpB Vb #const -> ld a,const; cp (iy/ix+off) */
     /* cmpB Rb #const -> ld a,reg; cp const */
-    if ((op == '<' || op == '>' || op == 'Q' || op == 'n' ||
-         op == 'L' || op == 'g') && e->size == 1) {
+    if ((op == '<' || op == 'Q' || op == 'n') && size == 1) {
         struct expr *l = e->left, *r = e->right;
         if (l->op == 'V' && r->op == '#') {
             e->special = SP_CMPV;
             e->aux = l->aux;        /* R_IX or R_IY */
             e->offset = l->offset;  /* stack/struct offset */
             e->incr = r->v.c & 0xff; /* constant value */
-            demand = 0;
-            goto done;
+            return;
         }
         if (l->op == 'R' && r->op == '#') {
             e->special = SP_CMPR;
             e->aux = l->aux;        /* R_B or R_C */
             e->incr = r->v.c & 0xff; /* constant value */
-            demand = 0;
-            goto done;
+            return;
         }
     }
 
     /* cmpB with (hl): left is Mb[addr], right is simple (normalized) */
     /* Exclude Mb[Rp] - register pointer needs copy to HL first */
-    if ((op == '<' || op == '>' || op == 'Q' || op == 'n' ||
-         op == 'L' || op == 'g') && e->size == 1) {
+    if ((op == '<' || op == 'Q' || op == 'n') && size == 1) {
         struct expr *l = e->left, *r = e->right;
         if (l->op == 'M' && l->size == 1 && isSimpleByte(r) &&
             l->left->op != 'R') {
             e->special = SP_CMPHL;
-            demand = calcDemand(l->left) + 1;
-            goto done;
+            return;
         }
-    }
-
-    /* R in IX (reg=4) or BC (reg=3) is demand 0 - already in register */
-    if (op == 'R' && (e->aux == 3 || e->aux == 4)) {
-        demand = 0;
-        goto done;
-    }
-
-    if (op == '#' || op == '$' || op == 'R' || op == 'V') {
-        demand = 1;
-        goto done;
-    }
-
-    /* function call: max of all arg demands */
-    /* direct call ($funcname) has demand 0 for the func ref */
-    /* Args are wrapped in 'A' nodes; actual arg is in wrapper->left */
-    if (op == '@') {
-        struct expr *wrapper;
-        unsigned char d;
-        demand = (e->left->op == '$') ? 0 : calcDemand(e->left);
-        for (wrapper = e->right; wrapper && wrapper->op == 'A'; wrapper = wrapper->right) {
-            d = calcDemand(wrapper->left);  /* unwrap actual arg */
-            if (d > demand) demand = d;
-        }
-        goto done;
     }
 
     /* =type [M addr] [#const] -> ld (hl),n; store constant through HL */
     if (op == '=' && e->left->op == 'M' && e->right->op == '#') {
         e->special = SP_STCONST;
-        demand = calcDemand(e->left->left);  /* only need to compute address */
-        goto done;
+        return;
     }
 
     /* =type [+s addr] [#const] -> ld (hl),n; store constant through computed ptr */
     if (op == '=' && e->left->op == '+' && e->left->size == 2 &&
         e->right->op == '#') {
         e->special = SP_STCONST;
-        demand = calcDemand(e->left);  /* compute pointer address */
-        goto done;
+        return;
     }
-
-    /* comma: type indicates value child; ensure it has demand >= 1 */
-    if (op == ',') {
-        int ld = calcDemand(e->left);
-        int rd = calcDemand(e->right);
-        if (e->type == e->left->type) {
-            /* left is value */
-            if (ld < 1) ld = 1;
-            e->left->demand = ld;
-        } else {
-            /* right is value */
-            if (rd < 1) rd = 1;
-            e->right->demand = rd;
-        }
-        demand = ld > rd + 1 ? ld : rd + 1;
-        goto done;
-    }
-
-    /* Left-to-right: need left's temps, then 1 to hold result + right's temps */
-    {
-        int ld = calcDemand(e->left);
-        int rd = calcDemand(e->right);
-        demand = ld > rd + 1 ? ld : rd + 1;
-        /* Set spill if right child needs DE (demand > 1) */
-        if (rd > 1)
-            e->spill = 1;
-    }
-
-done:
-    e->demand  = demand;
-    return demand;
 }
 
-/*
- * Assign destination registers to expression nodes
- * dest: 'H'=HL, 'D'=DE, 'A'=A, 'E'=E
- * Only nodes with demand > 0 get a destination
- */
-void
-assignDest(struct expr *e, char dest)
-{
-    char op;
-
-    if (!e || !e->op) return;
-
-    op = e->op;
-
-    /* no destination for demand 0 nodes, except TOS still needs push */
-    /* Also don't return early for calls - args still need TOS assignment */
-    /* SP_INCR/SP_DECR have demand 0 but dest was set by calcDemand */
-    if (e->demand == 0 && dest != R_TOS && op != '@') {
-        if (e->special != SP_INCR && e->special != SP_DECR)
-            e->dest = 0;
-        return;
-    }
-
-    /* unused nodes don't need a destination, but children still do */
-    if (e->unused)
-        e->dest = 0;
-    else
-        e->dest = dest;
-
-    /* SP_STCONST: address to HL, no dest for constant */
-    if (e->special == SP_STCONST) {
-        if (e->left->op == 'M')
-            assignDest(e->left->left, R_HL);  /* addr of ptr to HL */
-        else if (e->left->op == '$')
-            assignDest(e->left, R_HL);  /* global addr to HL */
-        else
-            assignDest(e->left, R_HL);  /* computed address to HL */
-        return;
-    }
-
-    /* SP_CMPHL: complex addr to HL, simple operand to A */
-    if (e->special == SP_CMPHL) {
-        if (e->aux2 == 0) {
-            /* right needs (hl), left is simple */
-            assignDest(e->right->left, R_HL);  /* addr of right to HL */
-            assignDest(e->left, R_A);          /* left to A */
-        } else {
-            /* left needs (hl), right is simple */
-            assignDest(e->left->left, R_HL);   /* addr of left to HL */
-            assignDest(e->right, R_A);         /* right to A */
-        }
-        return;
-    }
-
-    /* determine child destinations based on operator */
-    if (op == 'Q' || op == 'n' || op == '<' || op == '>' ||
-        op == 'L' || op == 'g') {
-        /* comparison: for byte-byte, left->A, right->HL (compare A with L) */
-        /* for word-word: both to HL (deeper first, save to DE) */
-        unsigned char ltype = e->left->type;
-        unsigned char ldest = ISBYTE(ltype) ? R_A : R_HL;
-        /* right always goes to HL - for byte, we use L; for word, we save left to DE first */
-        if (treeDepth(e->left) >= treeDepth(e->right)) {
-            assignDest(e->left, ldest);
-            assignDest(e->right, R_HL);
-        } else {
-            assignDest(e->right, R_HL);
-            assignDest(e->left, ldest);
-        }
-    } else if (op == '-' || op == '/' || op == '%') {
-        /* non-commutative: left must be in HL for sbc/div/mod */
-        unsigned char hlDest = e->size == 1 ? R_A : R_HL;
-        assignDest(e->left, hlDest);
-        assignDest(e->right, R_DE);
-    } else if (op == '*') {
-        /* multiply register assignment */
-        /* Treat small constants (0-255) as bytes for efficiency */
-        unsigned char lbyte = e->left->size == 1 ||
-                    (e->left->op == '#' && (e->left->v.l & ~0xff) == 0);
-        unsigned char rbyte = e->right->size == 1 ||
-                    (e->right->op == '#' && (e->right->v.l & ~0xff) == 0);
-        if (lbyte && rbyte) {
-            /* byte × byte -> word: left to A, right to E, result in HL */
-            assignDest(e->left, R_A);
-            assignDest(e->right, R_DE);  /* will use E */
-        } else if (lbyte) {
-            /* byte × word: left (byte) to A, right (word) to HL */
-            assignDest(e->left, R_A);
-            assignDest(e->right, R_HL);
-        } else if (rbyte) {
-            /* word × byte: left (word) to HL, right (byte) to A */
-            assignDest(e->left, R_HL);
-            assignDest(e->right, R_A);
-        } else {
-            /* word × word: use _imul, left->DE, right->HL */
-            assignDest(e->left, R_DE);
-            assignDest(e->right, R_HL);
-        }
-    } else if (op == '+' || op == '&' || op == '|' || op == '^') {
-        /* commutative binop: higher demand child gets HL, emitted first */
-        unsigned char hlDest = e->size == 1 ? R_A : R_HL;
-        unsigned char ld = e->left->demand, rd = e->right->demand;
-        if (ld >= rd) {
-            assignDest(e->left, hlDest);
-            assignDest(e->right, R_DE);
-        } else {
-            assignDest(e->right, hlDest);
-            assignDest(e->left, R_DE);
-        }
-    } else if (op == '=' || op == 'y' || op == 'w' || op == 'z') {  /* assign, shifts */
-        /* non-commutative: left gets HL, right gets DE */
-        unsigned char hlDest = e->size == 1 ? R_A : R_HL;
-        assignDest(e->left, hlDest);
-        assignDest(e->right, R_DE);
-    } else if (op == 'R') {
-        /* regvar: byte regvar result goes to A */
-        if (e->size == 1)
-            e->dest = R_A;
-    } else if (op == 'M') {
-        /* deref: result goes to A for byte, HL for word - override parent's dest */
-        if (e->size == 1)
-            e->dest = R_A;
-        /* child produces address in HL */
-        /* For special cases (SP_MSYM, SP_SYMOFD), child isn't emitted */
-        if (e->special == SP_MSYM || e->special == SP_SYMOFD)
-            ;  /* no child assignment for specials */
-        else
-            assignDest(e->left, R_HL);  /* child computes address to HL */
-    } else if (op == 'N') {
-        /* narrow: if child is constant, pass dest through; else child to HL */
-        if (e->left->op == '#')
-            assignDest(e->left, dest);
-        else
-            assignDest(e->left, R_HL);
-    } else if (op == 'W' || op == 'x') {  /* widen/sext: byte to word */
-        /* child produces byte in A; widen puts word in HL (and pushes if TOS) */
-        assignDest(e->left, R_A);
-    } else if (op == '~' || op == '!' || op == '_' || op == '\\') {  /* unary ops */
-        /* unop: child to same dest */
-        assignDest(e->left, dest);
-    } else if (op == '(' || op == '{' || op == ')' || op == '}') {  /* inc/dec */
-        /* inc/dec: child is lvalue (address), always needs HL */
-        assignDest(e->left, R_HL);
-    } else if (op == '@') {
-        /* call: args go to TOS (stack) */
-        /* Args are wrapped in 'A' nodes; actual arg is in wrapper->left */
-        struct expr *wrapper;
-        for (wrapper = e->right; wrapper && wrapper->op == 'A'; wrapper = wrapper->right) {
-            assignDest(wrapper->left, R_TOS);  /* unwrap actual arg */
-        }
-        /* indirect call needs func ptr in HL */
-        if (e->left->op != '$') {
-            assignDest(e->left, R_HL);
-        }
-    } else if (op == '?') {
-        /* ternary: both branches to same dest */
-        assignDest(e->left, dest);  /* condition */
-        if (e->right) {
-            assignDest(e->right->left, dest);   /* then */
-            assignDest(e->right->right, dest);  /* else */
-        }
-    } else if (op == ',') {
-        /* comma: left is value, right is side effect (AST format) */
-        assignDest(e->right, 0);   /* right is side effect */
-        assignDest(e->left, dest);
-    } else if (op == 'j' || op == 'h') {
-        /* logical and/or: each child based on its type */
-        unsigned char ldest = e->left->size == 1 ? R_A : R_HL;
-        unsigned char rdest = e->right->size == 1 ? R_A : R_HL;
-        assignDest(e->left, ldest);
-        assignDest(e->right, rdest);
-    }
-}
 /*
  * vim: tabstop=4 shiftwidth=4 expandtab:
  */

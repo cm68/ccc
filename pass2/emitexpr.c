@@ -6,69 +6,50 @@
 
 /*
  * Emit memory dereference: M (load from address)
+ * Result: word in HL, byte in A
  */
 void
 emitDeref(struct expr *e)
 {
-    comment("M%c d=%d %s [", e->type, e->demand, regnames[e->dest] ? regnames[e->dest] : "-");
+    comment("M%c [", e->type);
     indent += 2;
     if (e->special == SP_MSYM) {
-        /* M $sym -> ld reg,(sym) */
+        /* M $sym -> ld hl,(sym) or ld a,(sym) */
         comment("$%s", e->sym);
-        if (e->dest == R_TOS) {
+        if (e->size == 1)
+            emit("ld a,(%s)", e->sym);
+        else
             emit("ld hl,(%s)", e->sym);
-            emit("push hl");
-        } else
-            emit("ld %s,(%s)", regnames[e->dest] ? regnames[e->dest] : "hl", e->sym);
     } else if (e->special == SP_SYMOFD) {
-        /* M[+p $sym #ofs] -> ld reg,(sym+ofs) */
+        /* M[+p $sym #ofs] -> ld hl,(sym+ofs) or ld a,(sym+ofs) */
         comment("+p $%s #%d", e->sym, e->offset);
-        if (e->dest == R_TOS) {
+        if (e->size == 1)
+            emit("ld a,(%s+%d)", e->sym, e->offset);
+        else
             emit("ld hl,(%s+%d)", e->sym, e->offset);
-            emit("push hl");
-        } else
-            emit("ld %s,(%s+%d)", regnames[e->dest] ? regnames[e->dest] : "hl", e->sym, e->offset);
     } else if (e->left->op == 'R' && e->left->aux == R_IX) {
         /* Mp [Rp IX] */
         comment("Rp ix");
-        if (e->dest == R_TOS) {
-            emit("push ix");
-        } else {
-            emit("push ix");
-            emit("pop hl");
-        }
+        emit("push ix");
+        emit("pop hl");
     } else if (e->left->op == 'R' && e->left->aux == R_BC) {
         /* Mp [Rp BC] or Ms [Rs BC] */
         comment("R%c bc", e->left->type);
-        if (e->dest == R_TOS) {
-            emit("push bc");
-        } else {
-            emit("ld h,b");
-            emit("ld l,c");
-        }
+        emit("ld h,b");
+        emit("ld l,c");
     } else {
         /* indirect: emit address, then deref */
         emitExpr(e->left);
         if (e->size == 1) {
             emit("ld a,(hl)");
-            if (e->dest == R_TOS)
-                emit("push af");
         } else if (e->size == 2) {
-            if (e->dest == R_DE) {
-                emit("ld e,(hl)");
-                emit("inc hl");
-                emit("ld d,(hl)");
-            } else {
-                emit("ld a,(hl)");
-                emit("inc hl");
-                emit("ld h,(hl)");
-                emit("ld l,a");
-                if (e->dest == R_TOS)
-                    emit("push hl");
-            }
+            emit("ld a,(hl)");
+            emit("inc hl");
+            emit("ld h,(hl)");
+            emit("ld l,a");
         } else if (e->size == 4) {
-            emitLLoad(e->dest);
-        } else if (e->demand > 0) {
+            emitLLoad(R_HL);
+        } else {
             emit("XXXXXXXXX M");
         }
     }
@@ -78,45 +59,20 @@ emitDeref(struct expr *e)
 
 /*
  * Emit primary expressions: constants, symbols, regvars, locals
+ * Result: word in HL, byte in A
  */
 void
 emitPrimary(struct expr *e)
 {
     switch (e->op) {
     case '#':
-        comment("#%c %ld d=%d %s", e->type, e->v.l, e->demand, regnames[e->dest] ? regnames[e->dest] : "-");
-        if (e->demand == 0)
-            break;
-        if (e->dest == R_TOS) {
-            if (e->size == 1) {
-                emit("ld a,%d", e->v.c & 0xff);
-                emit("push af");
-            } else if (e->size == 2) {
-                emit("ld hl,%d", e->v.s & 0xffff);
-                emit("push hl");
-            } else if (e->size == 4) {
-                /* Long to stack: push high word first, then low */
-                emit("ld hl,%d", (e->v.l >> 16) & 0xffff);
-                emit("push hl");
-                emit("ld hl,%d", e->v.s & 0xffff);
-                emit("push hl");
-            } else {
-                emit("XXXXXXXXX #tos");
-            }
-        } else if (e->dest == R_DE) {
-            if (e->size == 1)
-                emit("ld e,%d", e->v.c & 0xff);
-            else
-                emit("ld de,%d", e->v.s & 0xffff);
-        } else if (e->size == 1) {
-            emit("ld %s,%d", regnames[e->dest] ? regnames[e->dest] : "a", e->v.c & 0xff);
+        comment("#%c %ld", e->type, e->v.l);
+        if (e->size == 1) {
+            emit("ld a,%d", e->v.c & 0xff);
         } else if (e->size == 2) {
-            emit("ld %s,%d", regnames[e->dest] ? regnames[e->dest] : "hl", e->v.s & 0xffff);
+            emit("ld hl,%d", e->v.s & 0xffff);
         } else if (e->size == 4) {
-            if (e->dest == R_DE)
-                emitLImm(e->v.l);
-            else
-                emitLImmR(e->v.l);
+            emitLImmR(e->v.l);
         } else if (e->type == T_VOID) {
             /* void - no value */
         } else {
@@ -128,10 +84,7 @@ emitPrimary(struct expr *e)
             /* Indexed address: compute IX/IY + offset */
             char off = e->offset;
             char *rn = (e->aux == R_IX) ? "ix" : "iy";
-            comment("$%s %s%+d d=%d %s", e->sym ? e->sym : "?", rn, off,
-                    e->demand, regnames[e->dest] ? regnames[e->dest] : "-");
-            if (e->demand == 0 && e->dest != R_TOS)
-                break;
+            comment("$%s %s%+d", e->sym ? e->sym : "?", rn, off);
             emit("push %s", rn);
             emit("pop hl");
             if (off != 0) {
@@ -144,50 +97,29 @@ emitPrimary(struct expr *e)
                     emit("add hl,de");
                 }
             }
-            if (e->dest == R_TOS)
-                emit("push hl");
         } else {
-            comment("$%s d=%d %s", e->sym ? e->sym : "?", e->demand, regnames[e->dest] ? regnames[e->dest] : "-");
-            if (e->dest == R_TOS) {
-                emit("ld hl,%s", e->sym);
-                emit("push hl");
-            } else if (e->demand > 0)
-                emit("ld %s,%s", regnames[e->dest] ? regnames[e->dest] : "hl", e->sym);
+            comment("$%s", e->sym ? e->sym : "?");
+            emit("ld hl,%s", e->sym);
         }
         break;
     case 'R':  /* register var */
         {
             static char *rn[] = { "?", "b", "c", "bc", "ix" };
-            comment("R%c %s %s d=%d %s", e->type, e->sym ? e->sym : "?",
-                rn[e->aux < 5 ? e->aux : 0], e->demand, regnames[e->dest] ? regnames[e->dest] : "-");
-            /* Even with demand=0, TOS dest needs push */
-            if (e->demand == 0 && e->dest != R_TOS)
-                break;
+            comment("R%c %s %s", e->type, e->sym ? e->sym : "?",
+                rn[e->aux < 5 ? e->aux : 0]);
             if (e->size == 1) {
                 if (e->aux == R_B)
                     emit("ld a,b");
                 else if (e->aux == R_C)
                     emit("ld a,c");
-                if (e->dest == R_TOS)
-                    emit("push af");
             } else if (e->size == 2) {
                 if (e->aux == R_BC) {
-                    if (e->dest == R_TOS) {
-                        emit("push bc");
-                    } else {
-                        emit("ld h,b");
-                        emit("ld l,c");
-                    }
+                    emit("ld h,b");
+                    emit("ld l,c");
                 } else if (e->aux == R_IX) {
-                    if (e->dest == R_TOS) {
-                        emit("push ix");
-                    } else {
-                        emit("push ix");
-                        emit("pop hl");
-                    }
+                    emit("push ix");
+                    emit("pop hl");
                 }
-                if (e->dest == R_TOS && e->aux != R_BC && e->aux != R_IX)
-                    emit("push hl");
             }
         }
         break;
@@ -195,18 +127,12 @@ emitPrimary(struct expr *e)
         {
             char off = e->offset;
             char *rn = (e->aux == R_IX) ? "ix" : "iy";
-            comment("V%c %s %s%+d d=%d %s", e->type, e->sym ? e->sym : "?", rn, off, e->demand, regnames[e->dest] ? regnames[e->dest] : "-");
-            if (e->demand == 0)
-                break;
+            comment("V%c %s %s%+d", e->type, e->sym ? e->sym : "?", rn, off);
             if (e->size == 1) {
                 emit("ld a,(%s%o)", rn, off);
-                if (e->dest == R_TOS)
-                    emit("push af");
             } else if (e->size == 2) {
                 emit("ld l,(%s%o)", rn, off);
                 emit("ld h,(%s%o)", rn, off + 1);
-                if (e->dest == R_TOS)
-                    emit("push hl");
             } else if (e->size == 4) {
                 /* compute address: push ix/iy, pop hl, add offset */
                 emit("push %s", rn);
@@ -215,15 +141,7 @@ emitPrimary(struct expr *e)
                     emit("ld de,%d", (int)(char)off);
                     emit("add hl,de");
                 }
-                if (e->dest == R_TOS) {
-                    emit("call lldHL");
-                    emit("ld hl,(lL+2)");
-                    emit("push hl");
-                    emit("ld hl,(lL)");
-                    emit("push hl");
-                } else {
-                    emitLLoad(e->dest);
-                }
+                emitLLoad(R_HL);
             } else {
                 emit("XXXXXXXXX V");
             }
@@ -254,16 +172,16 @@ emitExpr(struct expr *e)
         emitDeref(e);
         break;
     case '=':
-        comment("=%c d=%d %s%s [", e->type, e->demand, regnames[e->dest] ? regnames[e->dest] : "-", e->unused ? " U" : "");
+        comment("=%c%s [", e->type, e->unused ? " U" : "");
         indent += 2;
         /* assign to IX or BC register var */
         if (e->left->op == 'R' && e->left->aux == R_IX) {
-            comment("Rp %s ix d=0 -", e->left->sym ? e->left->sym : "?");
+            comment("Rp %s ix", e->left->sym ? e->left->sym : "?");
             emitExpr(e->right);
             emit("push hl");
             emit("pop ix");
         } else if (e->left->op == 'R' && e->left->aux == R_BC) {
-            comment("R%c %s bc d=0 -", e->left->type, e->left->sym ? e->left->sym : "?");
+            comment("R%c %s bc", e->left->type, e->left->sym ? e->left->sym : "?");
             if (e->right->op == '#') {
                 emit("ld bc,%d", e->right->v.s & 0xffff);
             } else if (e->right->op == '$') {
@@ -404,15 +322,9 @@ emitExpr(struct expr *e)
         } else if (e->left->op == '+' || e->left->op == 'M') {
             /* assign through computed address: emit addr, save, emit value, store */
             emitExpr(e->left);  /* address to HL */
-            if (e->right->demand >= 2) {
-                /* value needs DE - save address to stack */
-                emit("push hl");
-                emitExpr(e->right); /* value to HL (or A for byte) */
-                emit("pop de");  /* restore address to DE */
-            } else {
-                emit("ex de,hl");   /* save address to DE */
-                emitExpr(e->right); /* value to HL (or A for byte) */
-            }
+            emit("push hl");    /* save address */
+            emitExpr(e->right); /* value to HL (or A for byte) */
+            emit("pop de");     /* restore address to DE */
             if (e->size == 1) {
                 /* byte value is already in A from emitExpr */
                 emit("ld (de),a");
@@ -435,19 +347,31 @@ emitExpr(struct expr *e)
         comment("]");
         break;
     case '@':
-        comment("@%c nargs=%d d=%d %s%s [", e->type, e->aux, e->demand, regnames[e->dest] ? regnames[e->dest] : "-", e->unused ? " U" : "");
+        comment("@%c nargs=%d%s [", e->type, e->aux, e->unused ? " U" : "");
         indent += 2;
-        /* Args already in reverse order from parser - just traverse and emit */
+        /* Args already in reverse order from parser - emit and push each */
         {
             struct expr *a = e->right;
             while (a && a->op == 'A') {
                 emitExpr(a->left);
+                /* Push result to stack */
+                if (a->left->size == 1) {
+                    emit("push af");
+                } else if (a->left->size == 2) {
+                    emit("push hl");
+                } else if (a->left->size == 4) {
+                    /* Long: push high word first, then low */
+                    emit("ld hl,(lR+2)");
+                    emit("push hl");
+                    emit("ld hl,(lR)");
+                    emit("push hl");
+                }
                 a = a->right;
             }
         }
         /* call */
         if (e->left->op == '$') {
-            comment("$%s d=%d", e->left->sym, e->left->demand);
+            comment("$%s", e->left->sym);
             emit("call %s", e->left->sym);
         } else {
             emitExpr(e->left);
@@ -458,7 +382,7 @@ emitExpr(struct expr *e)
         break;
     case ':':  /* ternary else part - handled by '?' case, should not reach here */
         /* If we somehow get here, just emit both children */
-        comment(":%c d=%d %s [", e->type, e->demand, regnames[e->dest] ? regnames[e->dest] : "-");
+        comment(":%c [", e->type);
         indent += 2;
         if (e->left) emitExpr(e->left);
         if (e->right) emitExpr(e->right);
@@ -468,7 +392,7 @@ emitExpr(struct expr *e)
     case '?':  /* ternary: cond ? then : else */
         {
             int lbl = labelCnt++;
-            comment("?%c d=%d %s [", e->type, e->demand, regnames[e->dest] ? regnames[e->dest] : "-");
+            comment("?%c [", e->type);
             indent += 2;
             /* emit condition */
             emitExpr(e->left);
@@ -499,7 +423,7 @@ emitExpr(struct expr *e)
         emitPostInc(e);
         break;
     case 'F':  /* bitfield */
-        comment("F%c off=%d wid=%d d=%d %s [", e->type, e->aux, e->aux2, e->demand, regnames[e->dest] ? regnames[e->dest] : "-");
+        comment("F%c off=%d wid=%d [", e->type, e->aux, e->aux2);
         indent += 2;
         emitExpr(e->left);
         emit("XXXXXXXXX F");
@@ -509,7 +433,7 @@ emitExpr(struct expr *e)
     case 'Y':  /* memory copy: left=dest, right=src, aux=len */
         {
             unsigned char len = e->aux;
-            comment("Y len=%d d=%d %s [", len, e->demand, regnames[e->dest] ? regnames[e->dest] : "-");
+            comment("Y len=%d [", len);
             indent += 2;
             emitExpr(e->right);  /* source address to HL */
             emit("push hl");
@@ -537,7 +461,7 @@ emitExpr(struct expr *e)
         }
         break;
     case '+':  /* add */
-        comment("+%c d=%d %s [", e->type, e->demand, regnames[e->dest] ? regnames[e->dest] : "-");
+        comment("+%c [", e->type);
         indent += 2;
         if (e->special == SP_SYMOFS) {
             /* +p $sym #const -> ld hl,sym+ofs */
@@ -548,33 +472,23 @@ emitExpr(struct expr *e)
                 emit("ld hl,%s%d", e->sym, e->offset);
             else
                 emit("ld hl,%s", e->sym);
-            if (e->dest == R_TOS)
-                emit("push hl");
         } else if (e->special == SP_ADDBC) {
             /* +p Mp[Rp bc] #const -> ld hl,const; add hl,bc */
             comment("bc+%d", e->offset);
             emit("ld hl,%d", e->offset);
             emit("add hl,bc");
-            if (e->dest == R_TOS)
-                emit("push hl");
         } else {
-            /* Emit higher-demand child first to avoid spilling */
-            unsigned char ld = e->left->demand, rd = e->right->demand;
-            if (ld >= rd) {
-                emitExpr(e->left);
-                emitExpr(e->right);
-            } else {
-                emitExpr(e->right);
-                emitExpr(e->left);
-            }
+            /* Depth-first: emit left, save, emit right, operate */
+            emitExpr(e->left);
+            if (e->size == 2)
+                emit("ex de,hl");
+            else if (e->size == 1)
+                emit("ld e,a");
+            emitExpr(e->right);
             if (e->size == 2) {
                 emit("add hl,de");
-                if (e->dest == R_TOS)
-                    emit("push hl");
             } else if (e->size == 1) {
                 emit("add a,e");
-                if (e->dest == R_TOS)
-                    emit("push af");
             } else if (e->size == 4) {
                 /* 32-bit add: lR = lL + lR */
                 emit("call ladd");
@@ -584,17 +498,13 @@ emitExpr(struct expr *e)
         comment("]");
         break;
     case '-':  /* subtract */
-        comment("-%c d=%d %s [", e->type, e->demand, regnames[e->dest] ? regnames[e->dest] : "-");
+        comment("-%c [", e->type);
         indent += 2;
         emitExpr(e->left);
-        /* Skip emitting right if byte immediate - use sub n directly */
-        if (!(e->size == 1 && e->right->op == '#'))
-            emitExpr(e->right);
         if (e->size == 2) {
-            /* Need HL = left - right. Check where left ended up */
-            if (e->left->dest == R_DE) {
-                emit("ex de,hl");  /* swap: left to HL, right to DE */
-            }
+            emit("ex de,hl");  /* save left to DE */
+            emitExpr(e->right);
+            emit("ex de,hl");  /* left to HL, right to DE */
             emit("or a");
             emit("sbc hl,de");
         } else if (e->size == 1) {
@@ -602,17 +512,16 @@ emitExpr(struct expr *e)
             if (e->right->op == '#') {
                 /* sub immediate: A = A - const */
                 emit("sub %d", e->right->v.c & 0xff);
-            } else if (e->left->dest == R_A) {
-                /* A has left, E has right. A = A - E. Good. */
-                emit("sub e");
             } else {
+                emit("ld e,a");  /* save left to E */
+                emitExpr(e->right);
                 /* A has right, E has left. Need left - right = E - A */
-                /* ld b,a; ld a,e; sub b */
                 emit("ld b,a");
                 emit("ld a,e");
                 emit("sub b");
             }
         } else if (e->size == 4) {
+            emitExpr(e->right);
             /* 32-bit sub: lR = lL - lR */
             emit("call lsub");
         }
@@ -620,13 +529,17 @@ emitExpr(struct expr *e)
         comment("]");
         break;
     case '&':  /* bitwise AND */
-        comment("&%c d=%d %s [", e->type, e->demand, regnames[e->dest] ? regnames[e->dest] : "-");
+        comment("&%c [", e->type);
         indent += 2;
         if (e->special == SP_BITTEST) {
             /* bit n,(ix+ofs) - no children emitted */
             emit("bit %d,(ix%o)", e->incr, e->offset);
         } else {
             emitExpr(e->left);
+            if (e->size == 2)
+                emit("ex de,hl");
+            else if (e->size == 1)
+                emit("ld e,a");
             emitExpr(e->right);
             if (e->size == 1) {
                 emitBOp('&');
@@ -640,9 +553,13 @@ emitExpr(struct expr *e)
         comment("]");
         break;
     case '|':  /* bitwise OR */
-        comment("|%c d=%d %s [", e->type, e->demand, regnames[e->dest] ? regnames[e->dest] : "-");
+        comment("|%c [", e->type);
         indent += 2;
         emitExpr(e->left);
+        if (e->size == 2)
+            emit("ex de,hl");
+        else if (e->size == 1)
+            emit("ld e,a");
         emitExpr(e->right);
         if (e->size == 1) {
             emitBOp('|');
@@ -655,9 +572,13 @@ emitExpr(struct expr *e)
         comment("]");
         break;
     case '^':  /* bitwise XOR */
-        comment("^%c d=%d %s [", e->type, e->demand, regnames[e->dest] ? regnames[e->dest] : "-");
+        comment("^%c [", e->type);
         indent += 2;
         emitExpr(e->left);
+        if (e->size == 2)
+            emit("ex de,hl");
+        else if (e->size == 1)
+            emit("ld e,a");
         emitExpr(e->right);
         if (e->size == 1) {
             emitBOp('^');
@@ -670,12 +591,12 @@ emitExpr(struct expr *e)
         comment("]");
         break;
     case '*':  /* multiply */
-        comment("*%c d=%d %s [", e->type, e->demand, regnames[e->dest] ? regnames[e->dest] : "-");
+        comment("*%c [", e->type);
         indent += 2;
         if (e->special == SP_MUL2) {
             unsigned char i;
             emitExpr(e->left);
-            comment("#%c %ld d=%d -", e->right->type, e->right->v.l, e->right->demand);
+            comment("#%c %ld", e->right->type, e->right->v.l);
             for (i = 0; i < e->incr; i++)
                 emit("add hl,hl");
         } else {
@@ -686,15 +607,27 @@ emitExpr(struct expr *e)
             unsigned char rbyte = e->right->size == 1 ||
                         (e->right->op == '#' && (e->right->v.l & ~0xff) == 0);
             emitExpr(e->left);
+            /* Save left result before emitting right */
+            if (lbyte && rbyte) {
+                emit("ld e,a");  /* save left byte to E */
+            } else if (lbyte) {
+                emit("ld e,a");  /* save left byte to E */
+            } else if (rbyte) {
+                emit("ex de,hl"); /* save left word to DE */
+            } else {
+                emit("ex de,hl"); /* save left word to DE */
+            }
             emitExpr(e->right);
             if (lbyte && rbyte) {
-                /* byte × byte -> word: A has left, E has right */
+                /* byte × byte -> word: E has left, A has right */
                 emit("call imulb");
             } else if (lbyte) {
-                /* byte × word: A has left (byte), HL has right (word) */
+                /* byte × word: E has left (byte), HL has right (word) */
+                emit("ld a,e");
                 emit("call imula");
             } else if (rbyte) {
-                /* word × byte: HL has left (word), A has right (byte) */
+                /* word × byte: DE has left (word), A has right (byte) */
+                emit("ex de,hl"); /* left to HL */
                 emit("call imula");
             } else {
                 /* word × word: DE has left, HL has right */
@@ -706,7 +639,7 @@ emitExpr(struct expr *e)
         break;
     case '/':  /* divide */
     case '%':  /* modulo */
-        comment("%c%c d=%d %s [", e->op, e->type, e->demand, regnames[e->dest] ? regnames[e->dest] : "-");
+        comment("%c%c [", e->op, e->type);
         indent += 2;
         {
             unsigned char lbyte = e->left->size == 1 ||
@@ -714,15 +647,26 @@ emitExpr(struct expr *e)
             unsigned char rbyte = e->right->size == 1 ||
                         (e->right->op == '#' && (e->right->v.l & ~0xff) == 0);
             emitExpr(e->left);
+            /* Save left before emitting right */
+            if (lbyte && rbyte) {
+                emit("ld e,a");
+            } else {
+                emit("ex de,hl");
+            }
             emitExpr(e->right);
             if (lbyte && rbyte) {
-                /* byte op byte */
+                /* byte op byte: E has left, A has right */
+                /* Need to swap: left in A, right in E for div/mod */
+                emit("ld b,a");
+                emit("ld a,e");
+                emit("ld e,b");
                 if (e->op == '/')
                     emit("call idivb");
                 else
                     emit("call imodb");
             } else {
-                /* word op word (or mixed) */
+                /* word op word (or mixed): DE has left, HL has right */
+                emit("ex de,hl"); /* left to HL, right to DE */
                 if (e->op == '/')
                     emit("call idiv");
                 else
@@ -733,7 +677,7 @@ emitExpr(struct expr *e)
         comment("]");
         break;
     case 'y':  /* left shift << */
-        comment("y%c d=%d %s [", e->type, e->demand, regnames[e->dest] ? regnames[e->dest] : "-");
+        comment("y%c [", e->type);
         indent += 2;
         emitExpr(e->left);
         if (e->right->op == '#') {
@@ -752,17 +696,17 @@ emitExpr(struct expr *e)
             }
         } else {
             /* variable shift count: call helper */
+            emit("ex de,hl");
             emitExpr(e->right);
-            if (e->size == 4)
-                emit("call lshl");
-            else
-                emit("call lshl");
+            emit("ld a,l");
+            emit("ex de,hl");
+            emit("call lshl");
         }
         indent -= 2;
         comment("]");
         break;
     case 'w':  /* right shift >> (signed) */
-        comment("w%c d=%d %s [", e->type, e->demand, regnames[e->dest] ? regnames[e->dest] : "-");
+        comment("w%c [", e->type);
         indent += 2;
         emitExpr(e->left);
         if (e->right->op == '#') {
@@ -783,7 +727,10 @@ emitExpr(struct expr *e)
             }
         } else {
             /* variable shift count: call helper */
+            emit("ex de,hl");
             emitExpr(e->right);
+            emit("ld a,l");
+            emit("ex de,hl");
             if (e->size == 4)
                 emit("call lashr");
             else
@@ -793,7 +740,7 @@ emitExpr(struct expr *e)
         comment("]");
         break;
     case 'z':  /* unsigned right shift >>> */
-        comment("z%c d=%d %s [", e->type, e->demand, regnames[e->dest] ? regnames[e->dest] : "-");
+        comment("z%c [", e->type);
         indent += 2;
         emitExpr(e->left);
         if (e->right->op == '#') {
@@ -814,17 +761,17 @@ emitExpr(struct expr *e)
             }
         } else {
             /* variable shift count: call helper */
+            emit("ex de,hl");
             emitExpr(e->right);
-            if (e->size == 4)
-                emit("call lshr");
-            else
-                emit("call lshr");
+            emit("ld a,l");
+            emit("ex de,hl");
+            emit("call lshr");
         }
         indent -= 2;
         comment("]");
         break;
     case '\\':  /* negation (unary minus) */
-        comment("\\%c d=%d %s [", e->type, e->demand, regnames[e->dest] ? regnames[e->dest] : "-");
+        comment("\\%c [", e->type);
         indent += 2;
         emitExpr(e->left);
         if (e->size == 1) {
@@ -845,7 +792,7 @@ emitExpr(struct expr *e)
         comment("]");
         break;
     case '~':  /* bitwise complement */
-        comment("~%c d=%d %s [", e->type, e->demand, regnames[e->dest] ? regnames[e->dest] : "-");
+        comment("~%c [", e->type);
         indent += 2;
         emitExpr(e->left);
         if (e->size == 1) {
@@ -863,7 +810,7 @@ emitExpr(struct expr *e)
         emitCompare(e);
         break;
     case '!':  /* logical not */
-        comment("!%c d=%d %s%s [", e->type, e->demand, regnames[e->dest] ? regnames[e->dest] : "-", e->cond ? " C" : "");
+        comment("!%c%s [", e->type, e->cond ? " C" : "");
         indent += 2;
         if (e->cond) {
             /* used as condition: just emit child, IF handler flips sense */
@@ -883,71 +830,59 @@ emitExpr(struct expr *e)
         comment("]");
         break;
     case 'W':  /* widen: byte to word, zero extend */
-        comment("W%c d=%d %s [", e->type, e->demand, regnames[e->dest] ? regnames[e->dest] : "-");
+        comment("W%c [", e->type);
         indent += 2;
         if (e->left->op == '#') {
             /* constant: widen at compile time */
             unsigned char val = e->left->v.c;
-            comment("#B %d d=%d", val, e->left->demand);
+            comment("#B %d", val);
             emit("ld hl,%d", val);
-            if (e->dest == R_TOS)
-                emit("push hl");
         } else {
             emitExpr(e->left);  /* byte value in A */
             emit("ld l,a");
             emit("ld h,0");
-            if (e->dest == R_TOS)
-                emit("push hl");
         }
         indent -= 2;
         comment("]");
         break;
     case 'N':  /* narrow: word to byte */
-        comment("N%c d=%d %s [", e->type, e->demand, regnames[e->dest] ? regnames[e->dest] : "-");
+        comment("N%c [", e->type);
         indent += 2;
         if (e->left->op == '#') {
-            /* constant was converted to byte in calcDemand */
-            emitExpr(e->left);
+            /* constant: just load byte value */
+            emit("ld a,%d", e->left->v.c & 0xff);
         } else if (e->left->op == 'V') {
             /* V node: just load the low byte directly */
             char *rn = (e->left->aux == R_IX) ? "ix" : "iy";
             comment("V%c %s%+d", e->left->type, rn, e->left->offset);
             emit("ld a,(%s%o)", rn, e->left->offset);
-            if (e->dest == R_TOS)
-                emit("push af");
         } else {
             emitExpr(e->left);  /* word value in HL */
             emit("ld a,l");
-            if (e->dest == R_TOS)
-                emit("push af");
         }
         indent -= 2;
         comment("]");
         break;
     case 'x':  /* sign extend: byte to word */
-        comment("x%c d=%d %s [", e->type, e->demand, regnames[e->dest] ? regnames[e->dest] : "-");
+        comment("x%c [", e->type);
         indent += 2;
         if (e->left->op == '#') {
             /* constant: sign extend at compile time */
             int val = (char)e->left->v.c;  /* sign extend to int */
-            comment("#B %d d=%d", e->left->v.c & 0xff, e->left->demand);
+            comment("#B %d", e->left->v.c & 0xff);
             emit("ld hl,%d", val & 0xffff);
-            if (e->dest == R_TOS)
-                emit("push hl");
         } else {
             emitExpr(e->left);  /* byte value in A */
             emit("ld l,a");
             emit("rlca");       /* sign bit to carry */
             emit("sbc a,a");    /* 0 or 0xff based on carry */
             emit("ld h,a");
-            if (e->dest == R_TOS)
-                emit("push hl");
         }
         indent -= 2;
         comment("]");
         break;
     case 'j':  /* logical and (&&) with short-circuit */
-        comment("j%c d=%d %s%s [", e->type, e->demand, regnames[e->dest] ? regnames[e->dest] : "-", e->cond ? " C" : "");
+        comment("j%c%s [", e->type, e->cond ? " C" : "");
         indent += 2;
         if (e->cond) {
             /* aux=1 means inside ||: use local label, fall through with Z for FALSE */
@@ -1003,7 +938,7 @@ emitExpr(struct expr *e)
         comment("]");
         break;
     case 'h':  /* logical or (||) with short-circuit */
-        comment("h%c d=%d %s%s [", e->type, e->demand, regnames[e->dest] ? regnames[e->dest] : "-", e->cond ? " C" : "");
+        comment("h%c%s [", e->type, e->cond ? " C" : "");
         indent += 2;
         if (e->cond) {
             /* For ||: if any child is true (nz), skip to ht (take then) */
@@ -1052,7 +987,7 @@ emitExpr(struct expr *e)
         comment("]");
         break;
     case ',':  /* comma: left is value, right is side effect (AST format) */
-        comment(",%c d=%d %s [", e->type, e->demand, regnames[e->dest] ? regnames[e->dest] : "-");
+        comment(",%c [", e->type);
         indent += 2;
         emitExpr(e->right);  /* side effect first */
         emitExpr(e->left);   /* then value */
@@ -1072,8 +1007,7 @@ emitExpr(struct expr *e)
         break;
     default:
         if (e->left && e->right) {
-            comment("%c%c d=%d %s%s%s [", e->op, e->type, e->demand, regnames[e->dest] ? regnames[e->dest] : "-",
-                e->unused ? " U" : "", e->cond ? " C" : "");
+            comment("%c%c%s%s [", e->op, e->type, e->unused ? " U" : "", e->cond ? " C" : "");
             indent += 2;
             emitExpr(e->left);
             emitExpr(e->right);
@@ -1081,16 +1015,14 @@ emitExpr(struct expr *e)
             indent -= 2;
             comment("]");
         } else if (e->left) {
-            comment("%c%c d=%d %s%s%s [", e->op, e->type, e->demand, regnames[e->dest] ? regnames[e->dest] : "-",
-                e->unused ? " U" : "", e->cond ? " C" : "");
+            comment("%c%c%s%s [", e->op, e->type, e->unused ? " U" : "", e->cond ? " C" : "");
             indent += 2;
             emitExpr(e->left);
             emit("XXXXXXXXX %c", e->op);
             indent -= 2;
             comment("]");
         } else {
-            comment("%c%c d=%d %s%s%s", e->op, e->type, e->demand, regnames[e->dest] ? regnames[e->dest] : "-",
-                e->unused ? " U" : "", e->cond ? " C" : "");
+            comment("%c%c%s%s", e->op, e->type, e->unused ? " U" : "", e->cond ? " C" : "");
             emit("XXXXXXXXX %c", e->op);
         }
         break;

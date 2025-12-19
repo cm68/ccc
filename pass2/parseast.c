@@ -10,6 +10,10 @@
  * Expression allocation
  */
 static struct expr sentinel = { 0 };  /* invalid op=0 marks unused */
+#ifdef DEBUG
+int exprAlloc = 0;
+int exprFree = 0;
+#endif
 
 struct expr *
 newExpr(char op, char type)
@@ -29,6 +33,9 @@ newExpr(char op, char type)
     e->special = 0;
     e->offset = 0;
     e->incr = 0;
+#ifdef DEBUG
+    exprAlloc++;
+#endif
     return e;
 }
 
@@ -40,6 +47,9 @@ freeExpr(struct expr *e)
     freeExpr(e->right);
     if (e->sym) free(e->sym);
     free(e);
+#ifdef DEBUG
+    exprFree++;
+#endif
 }
 
 /*
@@ -478,8 +488,7 @@ dumpStmt(void)
             indent += 2;
             cond = parseExpr();
             setCondLbl(cond, lbl);  /* propagate cond flag and label */
-            calcDemand(cond);
-            assignDest(cond, cond->size == 1 ? R_A : R_HL);
+            annotate(cond);
             emitExpr(cond);
             special = cond->special;
             {
@@ -556,8 +565,7 @@ dumpStmt(void)
         {
             struct expr *e = parseExpr();
             e->unused = 1;  /* result not used */
-            calcDemand(e);
-            assignDest(e, e->size == 1 ? R_A : R_HL);
+            annotate(e);
             comment("EXPR [");
             indent += 2;
             emitExpr(e);
@@ -572,9 +580,7 @@ dumpStmt(void)
             unsigned char hasVal = hex2();
             if (hasVal) {
                 struct expr *e = parseExpr();
-                char dest = ISBYTE(fnRetType) ? R_A : R_HL;
-                calcDemand(e);
-                assignDest(e, dest);
+                annotate(e);
                 comment("RETURN [");
                 indent += 2;
                 emitExpr(e);
@@ -619,14 +625,10 @@ dumpStmt(void)
             sw->endLabel = labelCnt++;
             /* Emit switch expression to A */
             e = parseExpr();
-            calcDemand(e);
-            if (e->size == 1) {
-                assignDest(e, R_A);
-                emitExpr(e);
-            } else {
-                /* Word expression - load to HL, then get low byte to A */
-                assignDest(e, R_HL);
-                emitExpr(e);
+            annotate(e);
+            emitExpr(e);
+            if (e->size != 1) {
+                /* Word expression - get low byte to A */
                 emit("ld a,l");
             }
             freeExpr(e);

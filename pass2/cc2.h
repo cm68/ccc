@@ -142,8 +142,7 @@ extern char fnRetType;
 extern int blockCnt;
 
 /* Scheduling */
-unsigned char calcDemand(struct expr *e);
-void assignDest(struct expr *e, char dest);
+void annotate(struct expr *e);
 unsigned char treeDepth(struct expr *e);
 unsigned char isSimpleByte(struct expr *e);
 

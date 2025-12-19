@@ -39,7 +39,7 @@ stage1:
 	  b=$${f%.c}; \
 	  printf "%-20s" "$$f: "; \
 	  $(CCC) -DCCC -k -P -c $$f 2> $(OUTDIR)/$$b.err 1>&2 && { echo "ok"; rm -f $(OUTDIR)/$$b.err; } || echo "FAIL"; \
-	  mv $$b.s $$b.o $$b.ast $$b.pp $(OUTDIR) 2>/dev/null ; \
+	  mv $$b.l $$b.i $$b.s $$b.o $$b.ast $$b.pp $(OUTDIR) 2>/dev/null ; \
 	done
 
 # Size report for stage1 objects
