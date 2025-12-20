@@ -2,7 +2,7 @@
  * cpp.h - C Preprocessor header
  *
  * Common definitions for the C preprocessor that produces
- * lexeme streams (.l) and preprocessed output (.i)
+ * lexeme streams (.x) and preprocessed output (.i)
  */
 
 #ifndef CPP_H
@@ -158,7 +158,7 @@ struct cond {
 };
 
 /* Global state */
-extern int lexFd;           /* .l output file descriptor */
+extern int lexFd;           /* .x output file descriptor */
 extern int ppFd;            /* .i output file descriptor */
 extern char *curFile;       /* current source file */
 extern int lineNo;          /* current line number (for errors) */

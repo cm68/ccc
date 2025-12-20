@@ -3,7 +3,7 @@
  *
  * Main driver for the preprocessor.
  * Produces two output files:
- *   <basename>.l - lexeme stream (compact token format)
+ *   <basename>.x - lexeme stream (compact token format)
  *   <basename>.i - preprocessed source (human readable)
  *
  * Uses lex.c for tokenization, io.c for file handling,
@@ -44,7 +44,7 @@ void
 usage(void)
 {
     fprintf(stderr, "usage: cpp [options] <source.c>\n");
-    fprintf(stderr, "  -o <base>      Output base name (produces <base>.l and <base>.i)\n");
+    fprintf(stderr, "  -o <base>      Output base name (produces <base>.x and <base>.i)\n");
     fprintf(stderr, "  -I<dir>        Add include directory\n");
     fprintf(stderr, "  -i<dir>        System include directory\n");
     fprintf(stderr, "  -D<name>[=val] Define macro\n");
@@ -53,7 +53,7 @@ usage(void)
 }
 
 /*
- * Process source file - lex all tokens and emit to .l stream
+ * Process source file - lex all tokens and emit to .x stream
  */
 void
 process(char *sourcefile)
@@ -127,7 +127,7 @@ main(int argc, char **argv)
     }
 
     /* Create output file names */
-    sprintf(lexFile, "%s.l", outbase);
+    sprintf(lexFile, "%s.x", outbase);
     sprintf(ppFile, "%s.i", outbase);
 
     /* Open output files */

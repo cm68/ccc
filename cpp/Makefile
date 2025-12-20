@@ -1,9 +1,9 @@
 # cpp - C Preprocessor
 #
-# Builds the preprocessor that produces .l and .i files
+# Builds the preprocessor that produces .x and .i files
 
-# Disable built-in lex rule (.l -> .c) to avoid conflicts with lexeme output files
-%.c: %.l
+# Disable built-in lex rule (.x -> .c) to avoid conflicts with lexeme output files
+%.c: %.x
 
 ROOTDIR = ../root
 
@@ -39,7 +39,7 @@ stage1:
 	  b=$${f%.c}; \
 	  printf "%-20s" "$$f: "; \
 	  $(CCC) -DCCC -k -P -c $$f 2> $(OUTDIR)/$$b.err 1>&2 && { echo "ok"; rm -f $(OUTDIR)/$$b.err; } || echo "FAIL"; \
-	  mv $$b.l $$b.i $$b.s $$b.o $$b.ast $$b.pp $(OUTDIR) 2>/dev/null ; \
+	  mv $$b.x $$b.i $$b.s $$b.o $$b.ast $$b.pp $(OUTDIR) 2>/dev/null ; \
 	done
 
 # Size report for stage1 objects

@@ -1,0 +1,9 @@
+   text	   data	    bss	    dec	    hex	filename
+    989	    361	     66	   1416	    588	stage1/cpp.o
+   4059	     58	    139	   4256	   10a0	stage1/lex.o
+   1620	    120	    646	   2386	    952	stage1/io.o
+   1997	      2	      0	   1999	    7cf	stage1/macro.o
+    492	      0	      0	    492	    1ec	stage1/kw.o
+   1393	    285	      0	   1678	    68e	stage1/emit.o
+   1688	    357	      0	   2045	    7fd	stage1/util.o
+  12238    1183     851   14272           cpp total

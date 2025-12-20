@@ -1,0 +1,10 @@
+   text	   data	    bss	    dec	    hex	filename
+    736	    163	      0	    899	    383	stage1/pass2.o
+   5624	    171	    553	   6348	   18cc	stage1/parseast.o
+   7761	    114	      9	   7884	   1ecc	stage1/codegen.o
+      6	      0	      0	      6	      6	stage1/dumpast.o
+   4412	   3156	      0	   7568	   1d90	stage1/emithelper.o
+   5850	    647	      0	   6497	   1961	stage1/emitexpr.o
+   9324	   1353	     31	  10708	   29d4	stage1/emitops.o
+   5830	    659	      0	   6489	   1959	stage1/emit.o
+  39543    6263     593   46399         pass2 total

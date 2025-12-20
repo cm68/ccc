@@ -4,8 +4,8 @@
 # Invokes sub-makes for pass1 (cc1) and pass2 (cc2)
 #
 
-# Cancel built-in lex rule - .l files are lexeme dumps, not lex sources
-%.c: %.l
+# Cancel built-in lex rule - .x files are lexeme dumps, not lex sources
+%.c: %.x
 
 CC = gcc
 
@@ -74,10 +74,10 @@ install: cpp cc1 cc2 ccc astpp
 	$(MAKE) -C libsrc install ROOTDIR=$(CURDIR)/$(ROOTDIR)
 
 # Suffix rules using installed binaries
-# cpp preprocesses to lexeme stream (.l), cc1 parses to AST
+# cpp preprocesses to lexeme stream (.x), cc1 parses to AST
 %.ast: %.c cpp cc1
 	./$(ROOTDIR)/bin/cpp $(CPPFLAGS) $<
-	./$(ROOTDIR)/bin/cc1 -o $@ $*.l
+	./$(ROOTDIR)/bin/cc1 -o $@ $*.x
 
 %.s: %.ast cc2
 	./$(ROOTDIR)/bin/cc2 $<
@@ -97,7 +97,7 @@ astpp: astpp.c
 stage1/%.ast: %.c cpp cc1 FORCE
 	@mkdir -p stage1
 	./$(ROOTDIR)/bin/cpp $(CPPFLAGS) -o stage1/$* $<
-	./$(ROOTDIR)/bin/cc1 -o $@ stage1/$*.l
+	./$(ROOTDIR)/bin/cc1 -o $@ stage1/$*.x
 
 stage1/%.s: stage1/%.ast cc2 FORCE
 	./$(ROOTDIR)/bin/cc2 -o $@ $<
@@ -149,7 +149,7 @@ doc.pdf: $(CFILES) $(HFILES) $(DOCFILES) Makefile
 clean:
 	$(MAKE) -C pass1 clean
 	$(MAKE) -C pass2 clean
-	rm -f ccc.o ccc tests/*.i *.ast *.s *.pp *.i
+	rm -f ccc.o ccc tests/*.i tests/*.x *.ast *.s *.pp *.i *.x
 	rm -rf stage1
 
 clobber: clean

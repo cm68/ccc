@@ -367,7 +367,7 @@ main(int argc, char **argv)
 
         /* Generate intermediate filenames */
         lex_file = malloc(strlen(base) + 10);
-        sprintf(lex_file, "%s.l", base);
+        sprintf(lex_file, "%s.x", base);
         prep_file = malloc(strlen(base) + 10);
         sprintf(prep_file, "%s.i", base);
         ast_file = malloc(strlen(base) + 10);
@@ -402,7 +402,7 @@ main(int argc, char **argv)
             }
         }
 
-        /* Build cc1 args: -o ast_file + lex_file (cc1 only reads .l files) */
+        /* Build cc1 args: -o ast_file + lex_file (cc1 reads .x files) */
         cc1_argc = 0;
         for (j = 0; j < cc1_base_argc; j++)
             cc1_args[cc1_argc++] = cc1_base[j];
@@ -421,7 +421,7 @@ main(int argc, char **argv)
             }
         }
 
-        /* Clean up .l and .i if they exist */
+        /* Clean up .x and .i if they exist */
         if (!keep_all && !no_exec) {
             unlink(lex_file);
             unlink(prep_file);

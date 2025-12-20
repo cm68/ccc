@@ -89,7 +89,7 @@ stage1:
 		b=$${f%.c}; \
 		printf "%-20s" "$$f: "; \
 		$(CCC) -DCCC -k -P -c $$f 2> stage1/$$b.err 1>&2 && { echo "ok"; rm -f stage1/$$b.err; } || echo "FAIL"; \
-		mv $$b.l $$b.i $$b.s $$b.o $$b.ast $$b.pp stage1 2>/dev/null ; \
+		mv $$b.x $$b.i $$b.s $$b.o $$b.ast $$b.pp stage1 2>/dev/null ; \
 	done
 	@echo "Stage1 complete"
 

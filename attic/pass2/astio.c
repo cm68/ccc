@@ -1,145 +1,109 @@
 /*
- * astio.c - Simple hex-based AST I/O
- *
- * All names/strings are <2-hex-len><hex-bytes>
- * All numbers are hex terminated by '.'
- * No whitespace scanning needed.
+ * astio.c - AST input/output functions
  */
+#include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <unistd.h>
-#include "astio.h"
 #include "cc2.h"
 
-#define BUFSIZE 256
-
-static unsigned char inFd;
-static unsigned char buf[BUFSIZE];
-static unsigned bufPos;
-static unsigned bufValid;
-
-unsigned lineNum = 1;
-unsigned char curchar;
-
-static unsigned char symbuf[64];
-
-void 
-initAstio(unsigned char fd) {
-	inFd = fd;
-	bufPos = 0;
-	bufValid = 0;
-	curchar = 0;
-	lineNum = 1;
+/*
+ * AST I/O
+ */
+void
+advance(void)
+{
+    char c;
+    if (read(infd, &c, 1) == 1) {
+        curchar = c;
+        if (c == '\n') lineno++;
+    } else {
+        curchar = ASTEOF;
+    }
 }
 
-unsigned char 
-nextchar(void) {
-	if (bufPos >= bufValid) {
-		int n = read(inFd, buf, BUFSIZE);
-		if (n <= 0) {
-			curchar = 0;
-			return 0;
-		}
-		bufValid = n;
-		bufPos = 0;
-	}
-	curchar = buf[bufPos++];
-	if (curchar == '\n') lineNum++;
-	return curchar;
+void
+skipWs(void)
+{
+    unsigned char c;
+
+top:
+    c = curchar;
+    if (c == ' ' || c == '\t' || c == '\n' || c == '\r') {
+        advance();
+        goto top;
+    } else {
+        return;
+    }
 }
 
-/* Convert hex char to value (0-15) */
-static unsigned char
-hval(unsigned char c) {
-    c |= 0x20;
-	if (c >= '0' && c <= '9') return c - '0';
-	if (c >= 'a' && c <= 'f') return c - ('a' - 10);
-	return 0;
-}
-
-/* Read 2 hex chars as byte */
+/*
+ * translate a character to it's hex value, case insenstive
+ */
 unsigned char
-readHex2(void) {
-	unsigned char v;
-	v = hval(curchar);
-	nextchar();
-	v <<= 4;
-	v |= hval(curchar);
-	nextchar();
-	return v;
-}
-
-/* Read 4 hex chars as unsigned 16-bit */
-unsigned short 
-readHex4(void) {
-    unsigned char i = 5;
-	unsigned short v = 0;
-	while (--i) {
-        v <<= 4;
-		v |= hval(curchar);
-		nextchar();
+hex()
+{
+	unsigned char c;
+    c = curchar;
+    advance();
+	c |= 0x20;
+    if (c >= '0' && c <= '9') {
+		c -= '0';
+	} else {
+		c -= 'a' - 10;
 	}
-	return v;
+	return c;
 }
 
-/* Read 8 hex chars as 32-bit (two's complement) */
-unsigned long 
-readHex8(void) {
-	unsigned long v = 0;
-	unsigned char i = 9;
-	while (--i) {
-		v <<= 4;
-		v |= hval(curchar);
-		nextchar();
-	}
-	return v;
+/* Read 2 hex digits */
+unsigned char
+hex2(void)
+{
+    return (hex() << 4) | hex();
 }
 
-/* Read hex-length-prefixed ASCII name into static buffer */
-unsigned char *
-readName(void) {
-	unsigned char len;
+/* Read 4 hex digits */
+unsigned int
+hex4(void)
+{
+    return (hex2() << 8) | hex2();
+}
+
+/* Read 8 hex digits */
+long
+hex8(void)
+{
+    long v = 0;
+    unsigned char neg = 0;
     unsigned char i;
 
-	len = readHex2();
-	for (i = 0; i < len && i < 63; i++) {
-		symbuf[i] = curchar;
-		nextchar();
-	}
-	symbuf[i] = 0;
-	return symbuf;
+    if (curchar == '-') {
+        neg = 1;
+        advance();
+    }
+    for (i = 0; i < 8; i++) {
+        v = v << 4 | hex();
+    }
+    return neg ? -v : v;
 }
 
-/* Read hex-length-prefixed hex-encoded string, return malloc'd copy */
-unsigned char *
-readStr(void) {
-	unsigned char len = readHex2();
-	unsigned char *s = malloc(len + 1);
-	unsigned char i;
-	for (i = 0; i < len; i++)
-		s[i] = readHex2();
-	s[len] = 0;
-	return s;
-}
+/* Read length-prefixed name */
+void
+readName(char *buf)
+{
+    unsigned char len, i;
 
-/* Read hex-encoded string (4-digit len + 2*len hex chars) */
-unsigned char *
-readHexStr(void) {
-	int len = readHex4();
-	unsigned char *s = malloc(len + 1);
-	int i;
-	for (i = 0; i < len; i++)
-		s[i] = readHex2();
-	s[len] = 0;
-	return s;
+    len = hex2();
+    for (i = 0; i < len && i < 13; i++) {
+        buf[i] = curchar;
+        advance();
+    }
+    buf[i] = 0;
+    while (i < len) {
+        advance();
+        i++;
+    }
 }
-
-/* Skip newlines */
-void 
-skipNL(void) {
-	while (curchar == '\n')
-		nextchar();
-}
-
 /*
  * vim: tabstop=4 shiftwidth=4 expandtab:
  */

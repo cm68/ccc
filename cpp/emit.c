@@ -1,7 +1,7 @@
 /*
  * emit.c - Lexeme stream and preprocessed output emission
  *
- * Outputs tokens to .l file and preprocessed source to .i file
+ * Outputs tokens to .x file and preprocessed source to .i file
  */
 #include "cpp.h"
 #include <unistd.h>
@@ -11,7 +11,7 @@ int lexFd = -1;
 int ppFd = -1;
 
 /*
- * Emit a simple token to .l file
+ * Emit a simple token to .x file
  */
 void
 emitToken(unsigned char tok)
@@ -179,7 +179,7 @@ tok2str(token_t t)
 }
 
 /*
- * Emit current token to .l stream and .i file
+ * Emit current token to .x stream and .i file
  * Called after each token is lexed
  */
 void
