@@ -1117,7 +1117,6 @@ geti()
 	return(i);
 }
 
-static
 outname(s)
 register char *s;
 {

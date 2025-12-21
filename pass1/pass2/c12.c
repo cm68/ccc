@@ -264,7 +264,7 @@ register union tree *tree;
 
 	constant:
 		if (tree->t.tr1->t.op==CON && tree->t.tr2->t.op==CON) {
-			const(op, &tree->t.tr1->c.value, tree->t.tr2->c.value, tree->t.type);
+			constfold(op, &tree->t.tr1->c.value, tree->t.tr2->c.value, tree->t.type);
 			return(tree->t.tr1);
 		}
 
@@ -672,7 +672,7 @@ register union tree *tree;
 			if (t2[0]->t.op==CON && t2[-1]->t.op==CON) {
 				acl.nextl--;
 				t2--;
-				const(op, &t2[0]->c.value, t2[1]->c.value, d);
+				constfold(op, &t2[0]->c.value, t2[1]->c.value, d);
 				t2[0]->t.type = d;
 			} else if (t = lconst(op, t2[-1], t2[0])) {
 				acl.nextl--;
@@ -871,7 +871,7 @@ union tree **p, **maxp;
 		*np = *(np+1);
 }
 
-const(op, vp, v, type)
+constfold(op, vp, v, type)
 register int *vp, v;
 {
 	switch (op) {

@@ -1,8 +1,8 @@
 #
-# Makefile for Ritchie C compiler - Pass 1 (parser/front end)
+# Makefile for Ritchie C compiler - Pass 2 (PDP-11 code generator)
 #
 
-ROOTDIR = ../root
+ROOTDIR = ../../root
 
 CC = gcc
 
@@ -23,24 +23,36 @@ ifeq ($(CC),ccc)
 CFLAGS = -I.
 endif
 
-# Pass 1 (front end) sources
-SOURCES = c00.c c01.c c02.c c03.c c04.c c05.c
+# Pass 2 (code generator) sources
+SOURCES = c10.c c11.c c12.c c13.c
 OBJECTS = $(SOURCES:.c=.o)
 
+ALL_SOURCES = $(SOURCES) cvopt.c
+ALL_OBJECTS = $(OBJECTS) table.o
+
 # Default target
-all: c0
+all: c1
 
-# Pass 1 - parser
-c0: $(OBJECTS)
-	$(CC) $(LDFLAGS) -o $@ $(OBJECTS)
+# Pass 2 - code generator
+c1: $(OBJECTS) table.o
+	$(CC) $(LDFLAGS) -o $@ $(OBJECTS) table.o
 
-$(OBJECTS): c0.h
+$(OBJECTS): c1.h
+
+# Instruction table - built from optable via cvopt
+table.o: optable cvopt
+	./cvopt < optable > junk.c
+	$(CC) $(CFLAGS) -c -o $@ junk.c
+	rm -f junk.c
+
+cvopt: cvopt.c
+	$(CC) $(CFLAGS) -o cvopt cvopt.c
 
 # Stage1: compile with cross ccc to Z80 .o files
 CCCFLAGS = -I.
 stage1:
 	mkdir -p $(OUTDIR)
-	@for f in $(SOURCES); do \
+	@for f in $(ALL_SOURCES); do \
 	  b=$${f%.c}; \
 	  printf "%-20s" "$$f: "; \
 	  $(CCC) $(CCCFLAGS) -k -P -c $$f 2> $(OUTDIR)/$$b.err 1>&2 && { echo "ok"; rm -f $(OUTDIR)/$$b.err; } || echo "FAIL"; \
@@ -48,24 +60,24 @@ stage1:
 	done
 
 # Size report for stage1 objects
-STAGE1_OBJS = $(SOURCES:.c=.o)
+STAGE1_OBJS = $(ALL_SOURCES:.c=.o)
 sizefile: Makefile
 	$(MAKE) stage1 CC=ccc
 	@$(ROOTDIR)/bin/wssize $(addprefix $(OUTDIR)/,$(STAGE1_OBJS)) | \
 	awk \
 		'{ t+=$$1 ; d+=$$2 ; b+=$$3 ; a+=$$4; print } \
-		END {printf "%7d %7d %7d %7d %19s\n", t, d, b, a, "pass1 total" }' \
+		END {printf "%7d %7d %7d %7d %19s\n", t, d, b, a, "pass2 total" }' \
 	 > sizefile
 
 clean:
-	rm -f $(OBJECTS)
+	rm -f $(ALL_OBJECTS) cvopt junk.c junk.s
 
 clobber: clean
-	rm -f c0
+	rm -f c1
 	rm -rf $(OUTDIR)
 
-install: c0
-	cp c0 $(ROOTDIR)/bin
+install: c1
+	cp c1 $(ROOTDIR)/bin
 
 .PHONY: all clean clobber stage1 install sizefile
 
