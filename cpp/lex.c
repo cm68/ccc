@@ -1045,24 +1045,8 @@ gettoken()
                     }
 #endif
                     /*
-                     * After processing #if/#elif with a TRUE condition,
-                     * break to return the token in next
-                     */
-                    /*
-                     * For FALSE conditions, the token in next should be
-                     * discarded by continuing to loop
-                     */
-                    if ((t == IF || t == ELIF) && cond &&
-                        (cond->flags & C_TRUE)) {
-                        /*
-                         * True block - next contains the first token,
-                         * return it
-                         */
-                        break;
-                    }
-                    /*
-                     * False block - continue looping, token skipping
-                     * will handle it
+                     * After processing any CPP directive, continue looping
+                     * to get the next real token.
                      */
                     continue;
                 }
@@ -1078,7 +1062,7 @@ gettoken()
             lineend = 1;
         }
         if ((tflags & ONELINE) && (curchar == '\n')) {
-            next.type = ';';
+            next.type = SEMI;
             /*
              * Don't advance - leave curchar at newline so next
              * gettoken() stops
