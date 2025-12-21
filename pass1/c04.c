@@ -284,7 +284,7 @@ nextchar()
 	/* SEMI=1 BEGIN=2 END=3 LBRACK=4 RBRACK=5 LPAR=6 RPAR=7 COLON=8 COMMA=9 */
 
 	if ((c = peekc) == 0) {
-		c = getc(xfile);
+		c = gettok();
 		if (c == EOF) c = 0;
 		peekc = c;  /* Store raw token for symbol() */
 	}

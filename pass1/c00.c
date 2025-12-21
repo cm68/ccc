@@ -133,6 +133,36 @@ readlong()
 }
 
 /*
+ * Read next token byte, filtering out line markers
+ */
+int
+gettok()
+{
+	int c;
+again:
+	c = getc(xfile);
+	if (c == EOF)
+		return c;
+	if (c == NEWLINE) {
+		line++;
+		goto again;
+	}
+	if (c == LINENO) {
+		int len, i;
+		line = getc(xfile) & 0xff;
+		line |= (getc(xfile) & 0xff) << 8;
+		len = getc(xfile) & 0xff;
+		for (i = 0; i < len && i < sizeof(filename)-1; i++)
+			filename[i] = getc(xfile);
+		filename[i] = 0;
+		while (i++ < len)
+			getc(xfile);
+		goto again;
+	}
+	return c;
+}
+
+/*
  * Read a symbol name from xfile into symbuf
  */
 static void
@@ -175,14 +205,13 @@ symbol()
 		c = peekc;
 		peekc = 0;
 	} else {
-		c = getc(xfile);
+		c = gettok();
 	}
 	if (c == EOF || c == EOFC) {
 		eof++;
 		return(EOFC);
 	}
 
-dispatch:
 	switch (c) {
 	case NAME:
 		/* NAME: len byte + name bytes */
@@ -254,47 +283,10 @@ dispatch:
 			return(SIZEOF);
 		return(KEYW);
 
-	case NEWLINE:
-		/* NEWLINE: increment line by 1 */
-		line++;
-		goto again;
-
-	case LINENO:
-		/* LINENO: 2-byte line + 1-byte len + filename bytes */
-		{
-			int len, i;
-			line = getc(xfile) & 0xff;
-			line |= (getc(xfile) & 0xff) << 8;
-			len = getc(xfile) & 0xff;
-			for (i = 0; i < len && i < sizeof(filename)-1; i++)
-				filename[i] = getc(xfile);
-			filename[i] = 0;
-			/* Skip excess bytes if name was too long */
-			while (i < len) {
-				getc(xfile);
-				i++;
-			}
-		}
-		/* Continue to get next real token */
-		goto again;
-
 	/* All other tokens are single bytes - return as-is */
 	default:
 		return(c);
 	}
-again:
-	/* Check peekc first (set by nextchar lookahead) */
-	if (peekc) {
-		c = peekc;
-		peekc = 0;
-	} else {
-		c = getc(xfile);
-	}
-	if (c == EOF || c == EOFC) {
-		eof++;
-		return(EOFC);
-	}
-	goto dispatch;
 }
 
 /*
