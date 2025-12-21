@@ -8,6 +8,66 @@
 #include "c0.h"
 
 /*
+ * Return true if token o starts a type specifier.
+ * Used to distinguish C90 from K&R function parameters.
+ */
+isatype(o)
+{
+	if (o == NAME && csym->hclass == TYPEDEF)
+		return 1;
+	if (o != KEYW)
+		return 0;
+	switch (cval) {
+	case INT: case CHAR: case FLOAT: case DOUBLE:
+	case LONG: case UNSIGN: case STRUCT: case UNION:
+	case VOID: case ENUM:
+		return 1;
+	}
+	return 0;
+}
+
+/*
+ * Parse C90/ANSI style parameters: (int a, char *b)
+ * Called from getype() when we detect a type keyword after '('
+ */
+ansiparams()
+{
+	struct nmlist typer;
+	int sclass;
+	int o;
+
+	paraml = NULL;
+	parame = NULL;
+
+	for (;;) {
+		sclass = ARG;
+		if (!getkeywords(&sclass, &typer)) {
+			/* No type - check for end of list */
+			if ((o = symbol()) == RPARN)
+				break;
+			error("Parameter type expected");
+			errflush(o);
+			return;
+		}
+		/* Parse declarator, add to param list */
+		decl1(ARG1, &typer, 0, (struct nmlist *)NULL);
+
+		/* Mark that this param already has its type */
+		if (defsym)
+			defsym->hclass = ARG;
+
+		o = symbol();
+		if (o == RPARN)
+			break;
+		if (o != COMMA) {
+			error("Expected ',' or ')' in parameter list");
+			errflush(o);
+			return;
+		}
+	}
+}
+
+/*
  * Process a sequence of declaration statements
  */
 declist(sclass)
@@ -608,7 +668,27 @@ struct nmlist *absname;
 			if (blklev==0) {
 				blklev++;
 				ds = defsym;
-				declare(ARG1, &argtype, 0);
+				/* Detect C90 vs K&R by looking at first token */
+				o = symbol();
+				if (o == RPARN) {
+					/* Empty params: f() */
+					;
+				} else if (o == KEYW && cval == VOID) {
+					/* Check for f(void) */
+					if ((o = symbol()) != RPARN) {
+						peeksym = o;
+						goto c90params;
+					}
+				} else if (isatype(o)) {
+					/* C90 style - type keyword seen */
+					peeksym = o;
+				c90params:
+					ansiparams();
+				} else {
+					/* K&R style - just names */
+					peeksym = o;
+					declare(ARG1, &argtype, 0);
+				}
 				defsym = ds;
 				blklev--;
 			} else

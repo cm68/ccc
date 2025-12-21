@@ -105,7 +105,9 @@ cfunc()
 	maxauto = STAUTO;
 	blklev = 1;
 	cb = locbase;
-	declist(ARG);
+	/* Only parse K&R-style declarations if params need types */
+	if (paraml && paraml->hclass == ARG1)
+		declist(ARG);
 	outcode("B", SAVE);
 	if (proflg)
 		outcode("BNS", PROFIL, isn++, funcsym->name);
