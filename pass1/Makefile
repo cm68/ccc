@@ -28,11 +28,15 @@ SOURCES = c00.c c01.c c02.c c03.c c04.c c05.c
 OBJECTS = $(SOURCES:.c=.o)
 
 # Default target
-all: c0
+all: c0 ppic
 
 # Pass 1 - parser
 c0: $(OBJECTS)
 	$(CC) $(LDFLAGS) -o $@ $(OBJECTS)
+
+# Pretty-print intermediate code
+ppic: ppic.c
+	$(CC) $(LDFLAGS) -o $@ ppic.c
 
 $(OBJECTS): c0.h
 
@@ -61,7 +65,7 @@ clean:
 	rm -f $(OBJECTS)
 
 clobber: clean
-	rm -f c0
+	rm -f c0 ppic
 	rm -rf $(OUTDIR)
 
 install: c0

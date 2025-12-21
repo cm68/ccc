@@ -69,6 +69,7 @@ ws/lib/
 root/
 pass1/sizefile
 pass1/c0
+pass1/ppic
 pass2/sizefile
 pass2/oldsize
 pass2/c1
