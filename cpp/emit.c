@@ -112,7 +112,17 @@ emitLabel(char *name)
 }
 
 /*
- * Emit line number to .x: LINENO(116) + 2-byte line + len byte + filename bytes
+ * Emit newline marker to .x: single NEWLINE byte (means line++)
+ */
+void
+emitNewline(void)
+{
+    unsigned char c = NEWLINE;
+    write(lexFd, &c, 1);
+}
+
+/*
+ * Emit line number with file to .x: LINENO(116) + 2-byte line + len byte + filename
  */
 void
 emitLine(int line, char *file)
@@ -249,14 +259,21 @@ emitCurToken(void)
     char buf[32];
     char *op;
 
-    /* Emit LINENO to .x when line or file changes */
-    if (lineno != lastLine || lastName != filename) {
+    /* Emit line info to .x when line or file changes */
+    if (lastName != filename) {
+        /* File changed - emit full LINENO with filename */
         emitLine(lineno, filename ? filename : "");
-        /* Emit # directive to .i only on file change */
-        if (lastName != filename)
-            emitLinePP(lineno, filename ? filename : "");
+        emitLinePP(lineno, filename ? filename : "");
         lastLine = lineno;
         lastName = filename;
+    } else if (lineno == lastLine + 1) {
+        /* Line incremented by 1 - emit single NEWLINE byte */
+        emitNewline();
+        lastLine = lineno;
+    } else if (lineno != lastLine) {
+        /* Line jumped - emit full LINENO */
+        emitLine(lineno, filename ? filename : "");
+        lastLine = lineno;
     }
 
     /* Emit to lexeme stream */

@@ -320,6 +320,7 @@ int	mossym;
 #define	RLABEL	114
 #define	STRASG	115
 #define	LINENO	116	/* line number marker from cpp */
+#define	NEWLINE	117	/* line++ marker from cpp */
 #define	ITOC	109
 #define	SEOF	200	/* stack EOF marker in expr compilation */
 

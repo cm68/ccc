@@ -309,6 +309,11 @@ dispatch:
 			return(SIZEOF);
 		return(KEYW);
 
+	case NEWLINE:
+		/* NEWLINE: increment line by 1 */
+		line++;
+		goto again;
+
 	case LINENO:
 		/* LINENO: 2-byte line + 1-byte len + filename bytes */
 		{

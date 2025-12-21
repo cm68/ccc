@@ -28,6 +28,7 @@ enum {
     SYM = 20, NUMBER = 21, STRING = 22, FNUMBER = 23, LNUMBER = 25,
     LABEL = 112,    /* c0.h LABEL */
     LINENO = 116,   /* line number marker: LINENO + 2-byte line + len + filename */
+    NEWLINE = 117,  /* increment line by 1 (single byte, no payload) */
 
     /* Unary/Binary operators */
     INCR = 30, DECR = 31,           /* INCBEF, DECBEF */

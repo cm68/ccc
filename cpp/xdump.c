@@ -73,6 +73,7 @@
 
 #define LABEL   112
 #define LINENO  116
+#define NEWLINE 117
 
 /* Keyword values */
 static char *kwnames[] = {
@@ -218,7 +219,13 @@ main(int argc, char **argv)
             printf("%s: ", buf);
             break;
 
+        case NEWLINE:
+            /* Line increment by 1 */
+            printf("# +1\n");
+            break;
+
         case LINENO:
+            /* Full line+file: LINENO + 2-byte line + len + filename */
             val = fgetc(f) & 0xff;
             val |= (fgetc(f) & 0xff) << 8;
             len = fgetc(f);
