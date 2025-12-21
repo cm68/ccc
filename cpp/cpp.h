@@ -52,7 +52,7 @@ enum {
     /* Statement keywords */
     KW_GOTO = 20, KW_RETURN = 21, KW_IF = 22, KW_WHILE = 23, KW_ELSE = 24,
     KW_SWITCH = 25, KW_CASE = 26, KW_BREAK = 27, KW_CONTINUE = 28, KW_DO = 29,
-    KW_DEFAULT = 30, KW_FOR = 31, KW_ENUM = 32, KW_ASM = 33,
+    KW_DEFAULT = 30, KW_FOR = 31, KW_ENUM = 32, KW_ASM = 33, KW_CONST = 34,
     /* Special - sizeof is an operator, not a keyword */
     KW_SIZEOF = 127,    /* marker: emit SIZEOF(91) token instead of KEYW */
 

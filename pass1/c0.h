@@ -383,6 +383,7 @@ int	mossym;
 #define	FOR	31
 #define	ENUM	32
 #define	ASM	33
+#define	CONST	34
 
 /*
   characters

@@ -19,8 +19,8 @@ isatype(o)
 		return 0;
 	switch (cval) {
 	case INT: case CHAR: case FLOAT: case DOUBLE:
-	case LONG: case UNSIGN: case SIGNED: case STRUCT: case UNION:
-	case VOID: case ENUM:
+	case LONG: case UNSIGN: case SIGNED: case CONST:
+	case STRUCT: case UNION: case VOID: case ENUM:
 		return 1;
 	}
 	return 0;
@@ -137,7 +137,8 @@ struct nmlist *tptr;
 			break;
 
 		case SIGNED:
-			break;	/* signed is default, no-op */
+		case CONST:
+			break;	/* ignored - no-op */
 
 		case LONG:
 			longf++;

@@ -38,6 +38,7 @@ struct keyword keywords[] = {
 	{ "struct",   "KW_STRUCT",    4 },
 	{ "unsigned", "KW_UNSIGNED",  7 },
 	{ "signed",   "KW_SIGNED",     5 },
+	{ "const",    "KW_CONST",     34 },
 	{ "long",     "KW_LONG",      6 },
 	{ "short",    "KW_SHORT",     0 },
 	{ "switch",   "KW_SWITCH",   25 },
