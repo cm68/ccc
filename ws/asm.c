@@ -120,25 +120,23 @@ char *tokname[] = {
     /* 39 */ "NAME", "NUM", "STR", "EOF"
 };
 
-enum type {
-	END=0,
-	BASIC,		/* 1 byte instruction, no args */
-	BASIC_EXT,	/* 2 byte instruction, no arg */
-	ARITH,		/* arithmetic operation group */
-	INCR,		/* increment / decrement group */
-	BITSH,		/* bit / shift instruction */
-	STACK,		/* stack pop / push */
-	RET,		/* return program flow */
-	JMP,		/* jump program flow */
-	JRL,		/* jump relative program flow */
-	CALL,		/* call program flow */
-	RST,		/* rst program flow */
-	IN,			/* i/o in instruction */
-	OUT,		/* i/o out instruction */
-	EXCH,		/* exchange instruction */
-	INTMODE,	/* interrupt mode instruction */
-	LOAD		/* load instruction */
-};
+#define IEND        0   /* end marker */
+#define IBASIC      1   /* 1 byte instruction, no args */
+#define IBASIC_EXT  2   /* 2 byte instruction, no arg */
+#define IARITH      3   /* arithmetic operation group */
+#define IINCR       4   /* increment / decrement group */
+#define IBITSH      5   /* bit / shift instruction */
+#define ISTACK      6   /* stack pop / push */
+#define IRET        7   /* return program flow */
+#define IJMP        8   /* jump program flow */
+#define IJRL        9   /* jump relative program flow */
+#define ICALL       10  /* call program flow */
+#define IRST        11  /* rst program flow */
+#define IIN         12  /* i/o in instruction */
+#define IOUT        13  /* i/o out instruction */
+#define IEXCH       14  /* exchange instruction */
+#define IINTMODE    15  /* interrupt mode instruction */
+#define ILOAD       16  /* load instruction */
 
 #define UNARY 0
 #define CARRY 1
@@ -189,7 +187,7 @@ struct oprnd op_table[] = {
  * instruction table
  */
 struct instruct {
-	enum type type;
+	char type;
 	char *mnem;
 	unsigned char opcode;
 	unsigned char arg;
@@ -197,106 +195,106 @@ struct instruct {
 
 struct instruct isr_table[] = {
 	/* basic instructions */
-	{ BASIC, "nop", 0x00, 0 },
-	{ BASIC, "rlca", 0x07, 0 },
-	{ BASIC, "rrca", 0x0F, 0 },
-	{ BASIC, "rla", 0x17, 0 },
-	{ BASIC, "rra", 0x1F, 0 },
-	{ BASIC, "daa", 0x27, 0 },
-	{ BASIC, "cpl", 0x2F, 0 },
-	{ BASIC, "scf", 0x37, 0 },
-	{ BASIC, "ccf", 0x3F, 0 },
-	{ BASIC, "halt", 0x76, 0 },
-	{ BASIC, "exx", 0xD9, 0 },
-	{ BASIC, "di", 0xF3, 0 },
-	{ BASIC, "ei", 0xFB, 0 },
+	{ IBASIC, "nop", 0x00, 0 },
+	{ IBASIC, "rlca", 0x07, 0 },
+	{ IBASIC, "rrca", 0x0F, 0 },
+	{ IBASIC, "rla", 0x17, 0 },
+	{ IBASIC, "rra", 0x1F, 0 },
+	{ IBASIC, "daa", 0x27, 0 },
+	{ IBASIC, "cpl", 0x2F, 0 },
+	{ IBASIC, "scf", 0x37, 0 },
+	{ IBASIC, "ccf", 0x3F, 0 },
+	{ IBASIC, "halt", 0x76, 0 },
+	{ IBASIC, "exx", 0xD9, 0 },
+	{ IBASIC, "di", 0xF3, 0 },
+	{ IBASIC, "ei", 0xFB, 0 },
 	
 	/* extended basic instructions */
-	{ BASIC_EXT, "neg", 0x44, 0xED },
-	{ BASIC_EXT, "retn", 0x44, 0xED },
-	{ BASIC_EXT, "reti", 0x4D, 0xED },
-	{ BASIC_EXT, "rrd", 0x67, 0xED },
-	{ BASIC_EXT, "rld", 0x6F, 0xED },
-	{ BASIC_EXT, "ldi", 0xA0, 0xED },
-	{ BASIC_EXT, "cpi", 0xA1, 0xED },
-	{ BASIC_EXT, "ini", 0xA2, 0xED },
-	{ BASIC_EXT, "outi", 0xA3, 0xED },
-	{ BASIC_EXT, "ldd", 0xA8, 0xED },
-	{ BASIC_EXT, "cpd", 0xA9, 0xED },
-	{ BASIC_EXT, "ind", 0xAA, 0xED },
-	{ BASIC_EXT, "outd", 0xAB, 0xED },
-	{ BASIC_EXT, "ldir", 0xB0, 0xED },
-	{ BASIC_EXT, "cpir", 0xB1, 0xED },
-	{ BASIC_EXT, "inir", 0xB2, 0xED },
-	{ BASIC_EXT, "otir", 0xB3, 0xED },
-	{ BASIC_EXT, "lddr", 0xB8, 0xED },
-	{ BASIC_EXT, "cpdr", 0xB9, 0xED },
-	{ BASIC_EXT, "indr", 0xBA, 0xED },
-	{ BASIC_EXT, "otdr", 0xBB, 0xED },
+	{ IBASIC_EXT, "neg", 0x44, 0xED },
+	{ IBASIC_EXT, "retn", 0x44, 0xED },
+	{ IBASIC_EXT, "reti", 0x4D, 0xED },
+	{ IBASIC_EXT, "rrd", 0x67, 0xED },
+	{ IBASIC_EXT, "rld", 0x6F, 0xED },
+	{ IBASIC_EXT, "ldi", 0xA0, 0xED },
+	{ IBASIC_EXT, "cpi", 0xA1, 0xED },
+	{ IBASIC_EXT, "ini", 0xA2, 0xED },
+	{ IBASIC_EXT, "outi", 0xA3, 0xED },
+	{ IBASIC_EXT, "ldd", 0xA8, 0xED },
+	{ IBASIC_EXT, "cpd", 0xA9, 0xED },
+	{ IBASIC_EXT, "ind", 0xAA, 0xED },
+	{ IBASIC_EXT, "outd", 0xAB, 0xED },
+	{ IBASIC_EXT, "ldir", 0xB0, 0xED },
+	{ IBASIC_EXT, "cpir", 0xB1, 0xED },
+	{ IBASIC_EXT, "inir", 0xB2, 0xED },
+	{ IBASIC_EXT, "otir", 0xB3, 0xED },
+	{ IBASIC_EXT, "lddr", 0xB8, 0xED },
+	{ IBASIC_EXT, "cpdr", 0xB9, 0xED },
+	{ IBASIC_EXT, "indr", 0xBA, 0xED },
+	{ IBASIC_EXT, "otdr", 0xBB, 0xED },
 	
 	/* arithmetic */
-	{ ARITH, "add", 0x80, ADD },
-	{ ARITH, "adc", 0x88, CARRY },
-	{ ARITH, "sub", 0x90, UNARY },
-	{ ARITH, "sbc", 0x98, CARRY },
-	{ ARITH, "and", 0xA0, UNARY },
-	{ ARITH, "xor", 0xA8, UNARY },
-	{ ARITH, "or", 0xB0, UNARY },
-	{ ARITH, "cp", 0xB8, UNARY },
+	{ IARITH, "add", 0x80, ADD },
+	{ IARITH, "adc", 0x88, CARRY },
+	{ IARITH, "sub", 0x90, UNARY },
+	{ IARITH, "sbc", 0x98, CARRY },
+	{ IARITH, "and", 0xA0, UNARY },
+	{ IARITH, "xor", 0xA8, UNARY },
+	{ IARITH, "or", 0xB0, UNARY },
+	{ IARITH, "cp", 0xB8, UNARY },
 	
 	/* inc / dec */
-	{ INCR, "inc", 0x04, 0x03 },
-	{ INCR, "dec", 0x05, 0x0B },
+	{ IINCR, "inc", 0x04, 0x03 },
+	{ IINCR, "dec", 0x05, 0x0B },
 	
 	/* bit / shift */
-	{ BITSH, "rlc", 0x00, 0 },
-	{ BITSH, "rrc", 0x08, 0 },
-	{ BITSH, "rl", 0x10, 0 },
-	{ BITSH, "rr", 0x18, 0 },
-	{ BITSH, "sla", 0x20, 0 },
-	{ BITSH, "sra", 0x28, 0 },
-	{ BITSH, "sll", 0x30, 0 },
-	{ BITSH, "srl", 0x38, 0 },
-	{ BITSH, "bit", 0x40, 1 },
-	{ BITSH, "res", 0x80, 1 },
-	{ BITSH, "set", 0xC0, 1 },
+	{ IBITSH, "rlc", 0x00, 0 },
+	{ IBITSH, "rrc", 0x08, 0 },
+	{ IBITSH, "rl", 0x10, 0 },
+	{ IBITSH, "rr", 0x18, 0 },
+	{ IBITSH, "sla", 0x20, 0 },
+	{ IBITSH, "sra", 0x28, 0 },
+	{ IBITSH, "sll", 0x30, 0 },
+	{ IBITSH, "srl", 0x38, 0 },
+	{ IBITSH, "bit", 0x40, 1 },
+	{ IBITSH, "res", 0x80, 1 },
+	{ IBITSH, "set", 0xC0, 1 },
 	
 	/* stack ops */
-	{ STACK, "pop", 0xC1, 0 },
-	{ STACK, "push", 0xC5, 0 },
+	{ ISTACK, "pop", 0xC1, 0 },
+	{ ISTACK, "push", 0xC5, 0 },
 	
 	/* return */
-	{ RET, "ret", 0xC0, 0xC9 },
+	{ IRET, "ret", 0xC0, 0xC9 },
 	
 	/* jump */
-	{ JMP, "jp", 0xC2, 0xE9 },
+	{ IJMP, "jp", 0xC2, 0xE9 },
 	
 	/* jump relative */
-	{ JRL, "jr", 0x18, 1 },
-	{ JRL, "djnz", 0x10, 0},
+	{ IJRL, "jr", 0x18, 1 },
+	{ IJRL, "djnz", 0x10, 0},
 	
 	/* call */
-	{ CALL, "call", 0xC4, 0xCD },
+	{ ICALL, "call", 0xC4, 0xCD },
 	
 	/* rst */
-	{ RST, "rst", 0xC7, 0 },
+	{ IRST, "rst", 0xC7, 0 },
 	
 	/* in */
-	{ IN, "in", 0xDB, 0x40 },
+	{ IIN, "in", 0xDB, 0x40 },
 	
 	/* out */
-	{ OUT, "out", 0xD3, 0x41 },
+	{ IOUT, "out", 0xD3, 0x41 },
 	
 	/* exchange */
-	{ EXCH, "ex", 0xE3, 0x08 },
+	{ IEXCH, "ex", 0xE3, 0x08 },
 	
 	/* interrupt mode */
-	{ INTMODE, "im", 0x46, 0x5E },
+	{ IINTMODE, "im", 0x46, 0x5E },
 	
 	/* load instructions */
-	{ LOAD, "ld", 0x00, 0x00 },
+	{ ILOAD, "ld", 0x00, 0x00 },
 	
-	{ END, "", 0x00, 0x00}
+	{ IEND, "", 0x00, 0x00}
 };
 
 #define TOKLEN 19
@@ -364,7 +362,11 @@ struct rhead {
  */
 struct expval {
     struct symbol *sym;
-    unsigned long num;
+    union {
+        unsigned long l;
+        unsigned int w;
+        unsigned char b;
+    } num;
     unsigned char hilo;     /* RELOC_WORD/LO/HI */
 };
 
@@ -1426,7 +1428,7 @@ struct expval *vp;
 		/*
 		 * hi() or lo() byte extraction from symbol
 		 */
-		unsigned short val = vp->num + (vp->sym ? vp->sym->value : 0);
+		unsigned short val = vp->num.w + (vp->sym ? vp->sym->value : 0);
 		if (vp->hilo == RELOC_HI)
 			val >>= 8;
 		emitbyte(val & 0xff);
@@ -1456,7 +1458,7 @@ struct expval *vp;
 			else
 				gripe("relative out of bounds");
 		} else {
-			emitbyte(vp->num);
+			emitbyte(vp->num.b);
 		}
 
 	} else {
@@ -1475,7 +1477,7 @@ struct expval *vp;
 		}
 		/* emit symbol value + offset for internal symbols */
 		/* external symbols have value 0, linker fills in */
-		emitword(vp->num + (vp->sym ? vp->sym->value : 0));
+		emitword(vp->num.w + (vp->sym ? vp->sym->value : 0));
 	}
 }
 
@@ -1497,7 +1499,7 @@ struct expval *vp;
 		gripe("must be absolute");
 	}
 
-	emitbyte(vp->num);
+	emitbyte(vp->num.b);
 }
 
 /*
@@ -1582,7 +1584,7 @@ dl()
 		if (value.sym && pass == 1) {
 			gripe("cannot use symbol in .dl");
 		}
-		emitlong(value.num);
+		emitlong(value.num.l);
 		if (peekchar() != ',')
 			break;
 		else
@@ -1600,7 +1602,7 @@ ds()
     if (c != T_PLAIN && (value.sym != 0)) {
         gripe("ds requires absolute argument");
     }
-    fill(value.num);
+    fill(value.num.w);
 }
 
 /*
@@ -1618,7 +1620,7 @@ struct expval *vp;
 	unsigned char ret;
     int indir = 0;
 
-    vp->num = 0;
+    vp->num.l = 0;
     vp->sym = 0;
     vp->hilo = RELOC_WORD;
 
@@ -1697,9 +1699,9 @@ struct expval *vp;
                     	gripe("index displacement missing");
                 	}
                 	if (c == '-') {
-                    	vp->num = -token_val;
+                    	vp->num.w = -token_val;
                 	} else {
-                    	vp->num = token_val;
+                    	vp->num.w = token_val;
                 	}
 				} else {
 					ret = (ret - T_IX_D) + T_IX_I;
@@ -1723,15 +1725,15 @@ struct expval *vp;
             }
 	    }
     } else if (cur_token == T_NUM) {
-		vp->num = token_val;
+		vp->num.w = token_val;
     } else if (cur_token == '$') {
-		vp->num = cur_address;
+		vp->num.w = cur_address;
     } else if (cur_token == '-') {
 		get_token();
 		if (cur_token == T_NUM) {
-			vp->num = -token_val;
+			vp->num.w = -token_val;
 		} else if (cur_token == '$') {
-			vp->num = -cur_address;
+			vp->num.w = -cur_address;
 		} else {
 			gripe("expected number or $ after -");
 		}
@@ -1745,7 +1747,7 @@ struct expval *vp;
 		nextchar();
 		get_token();
 		if (cur_token == T_NUM) {
-			vp->num += token_val;
+			vp->num.w += token_val;
 		} else {
 			gripe("expected number after +");
 		}
@@ -1753,7 +1755,7 @@ struct expval *vp;
 		nextchar();
 		get_token();
 		if (cur_token == T_NUM) {
-			vp->num -= token_val;
+			vp->num.w -= token_val;
 		} else {
 			gripe("expected number after -");
 		}
@@ -2058,15 +2060,15 @@ struct instruct *isr;
 			emitbyte(0xDD);
 			emitbyte(isr->opcode + (arg - T_IXH) + 4);
 			if (arg == T_IX_D)
-				emitbyte(value.num & 0xFF);
+				emitbyte(value.num.b);
 		} else if (arg >= T_IYH && arg <= T_IY_D) {
 			emitbyte(0xFD);
 			emitbyte(isr->opcode + (arg - T_IYH) + 4);
 			if (arg == T_IY_D)
-				emitbyte(value.num & 0xFF);
+				emitbyte(value.num.b);
 		} else if (arg == T_PLAIN) {
 			emitbyte(isr->opcode + 0x46);
-			emitbyte(value.num);
+			emitbyte(value.num.b);
 		} else
 			return 1;
 	} else if (prim == 1) {
@@ -2123,12 +2125,12 @@ struct instruct *isr;
 		emitbyte(0xDD);
 		emitbyte(isr->opcode + ((arg - T_IXH + 4) << 3));
 		if (arg == T_IX_D)
-			emitbyte(value.num & 0xFF);
+			emitbyte(value.num.b);
 	} else if (arg >= T_IYH && arg <= T_IY_D) {
 		emitbyte(0xFD);
 		emitbyte(isr->opcode + ((arg - T_IYH + 4) << 3));
 		if (arg == T_IY_D)
-			emitbyte(value.num & 0xFF);
+			emitbyte(value.num.b);
 	} else
 		return 1;
 	return 0;
@@ -2148,10 +2150,10 @@ struct instruct *isr;
 		if (arg != T_PLAIN || value.sym)
 			return 1;
 
-		if (value.num > 7)
+		if (value.num.b > 7)
 			return 1;
 
-		reg = value.num;
+		reg = value.num.b;
 
 		need(',');
 		arg = operand(&value);
@@ -2254,7 +2256,7 @@ struct instruct *isr;
 
 		/* record jump for relaxation */
 		addr = cur_address;
-		add_jump(addr, value.sym, value.num, cond);
+		add_jump(addr, value.sym, value.num.w, cond);
 
 		/* check if relaxed to jr */
 		j = find_jump(addr);
@@ -2264,9 +2266,9 @@ struct instruct *isr;
 			emitbyte(0x20 + ((cond - T_NZ) << 3));
 			/* calculate relative offset */
 			if (value.sym)
-				target = value.sym->value + value.num;
+				target = value.sym->value + value.num.w;
 			else
-				target = value.num;
+				target = value.num.w;
 			dist = target - (cur_address + 1);
 			emitbyte(dist & 0xff);
 		} else {
@@ -2276,16 +2278,16 @@ struct instruct *isr;
 	} else if (arg == T_NUM || arg == T_PLAIN) {
 		/* unconditional jp */
 		addr = cur_address;
-		add_jump(addr, value.sym, value.num, 0);
+		add_jump(addr, value.sym, value.num.w, 0);
 
 		j = find_jump(addr);
 		if (j && j->is_jr) {
 			/* emit jr offset */
 			emitbyte(0x18);
 			if (value.sym)
-				target = value.sym->value + value.num;
+				target = value.sym->value + value.num.w;
 			else
-				target = value.num;
+				target = value.num.w;
 			dist = target - (cur_address + 1);
 			emitbyte(dist & 0xff);
 		} else {
@@ -2333,9 +2335,9 @@ struct instruct *isr;
 	emitbyte(isr->opcode + reg);
 	/* compute PC-relative offset: target - (PC after 2-byte jr) */
 	if (value.sym)
-		target = value.sym->value + value.num;
+		target = value.sym->value + value.num.w;
 	else
-		target = value.num;
+		target = value.num.w;
 	dist = target - (cur_address + 1);
 	if (pass == 1 && (dist < -128 || dist > 127))
 		gripe("relative jump out of range");
@@ -2376,10 +2378,10 @@ struct instruct *isr;
 
 	arg = operand(&value);
 
-	if (arg != T_PLAIN || value.num & 0x7 || value.num > 0x38)
+	if (arg != T_PLAIN || value.num.b & 0x7 || value.num.b > 0x38)
 		return 1;
 
-	emitbyte(isr->opcode + value.num);
+	emitbyte(isr->opcode + value.num.b);
 	return 0;
 }
 
@@ -2426,7 +2428,7 @@ struct instruct *isr;
 	arg = operand(&value);
 
 	if (arg == T_INDIR) {
-		reg = value.num;
+		reg = value.num.b;
 		need(',');
 		arg = operand(&value);
 
@@ -2441,7 +2443,7 @@ struct instruct *isr;
 
 		if (arg == T_HL_I)
 			return 1;
-		if (arg == T_PLAIN && !value.num)
+		if (arg == T_PLAIN && !value.num.w)
 			arg = T_HL_I;
 
 		if (arg > T_A)
@@ -2509,10 +2511,10 @@ struct instruct *isr;
 		return 1;
 
 	emitbyte(0xED);
-	switch (value.num) {
+	switch (value.num.w) {
 	case 0:
 	case 1:
-		emitbyte(isr->opcode + (value.num << 4));
+		emitbyte(isr->opcode + (value.num.b << 4));
 		break;
 
 	case 2:
@@ -2576,9 +2578,7 @@ struct instruct *isr;
 	return 0;
 }
 
-typedef char (*isr_handler)(struct instruct *);
-
-static isr_handler isr_handlers[] = {
+static char (*isr_handlers[])() = {
 	0,
 	do_basic,
 	do_basic_ext,
@@ -2611,7 +2611,7 @@ char *in;
 	int i;
 	struct instruct *isr;
 
-	for (i = 0; isr_table[i].type != END; i++) {
+	for (i = 0; isr_table[i].type != IEND; i++) {
 		if (match(in, isr_table[i].mnem)) {
 			isr = &isr_table[i];
 			if (isr_handlers[isr->type](isr))

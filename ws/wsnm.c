@@ -12,6 +12,8 @@
 #include <fcntl.h>
 #else
 #include <stdio.h>
+#include <fcntl.h>
+#include <unistd.h>
 #endif
 
 #include "wsobj.h"
@@ -262,7 +264,7 @@ int nrelrefs = 0;
 /* forward declarations */
 int find_reloc();
 char *reloc_name();
-char *reloc_name_byte();
+char *relocNmByte();
 
 /*
  * find data reference index, returns -1 if not found
@@ -408,7 +410,7 @@ int offset;
  * free synthetic references
  */
 void
-free_synth_refs()
+freeSynthRef()
 {
     if (datarefs) {
         free(datarefs);
@@ -489,7 +491,7 @@ unsigned long offset;
  * find relocation in uobj relocation table for given segment
  */
 int
-find_obj_reloc(offset, segment)
+findObjRloc(offset, segment)
 unsigned long offset;
 int segment;
 {
@@ -568,7 +570,7 @@ unsigned char val;
     if (disasm_pc >= 0 && reltab) {
         ri = find_reloc(disasm_pc);
         if (ri >= 0 && reltab[ri].hilo != 0) {
-            reloc_name_byte(reltab[ri].symidx, val, reltab[ri].hilo, symbuf);
+            relocNmByte(reltab[ri].symidx, val, reltab[ri].hilo, symbuf);
             sprintf(buf, "%s(%s)", reltab[ri].hilo == 1 ? "lo" : "hi", symbuf);
             return;
         }
@@ -1231,7 +1233,7 @@ int num_syms;
     int pos = 0;
     int symidx, hilo;
     int count = 0;
-    char *segtab[] = { "text", "data", "bss", "abs" };
+    static char *segtab[] = { "text", "data", "bss", "abs" };
 
     printf("\n%s relocations:\n", name);
     printf("  Offset  Size  Segment  Target\n");
@@ -1400,7 +1402,7 @@ char *buf;
  * hilo: 1=lo, 2=hi
  */
 char *
-reloc_name_byte(symidx, val, hilo, buf)
+relocNmByte(symidx, val, hilo, buf)
 int symidx;
 unsigned char val;
 int hilo;
@@ -1434,7 +1436,7 @@ char *buf;
  * When gflag is set, output goes to a .s file
  */
 void
-gen_uobj_sfile(name)
+genUobjSfl(name)
 char *name;
 {
     int pc, i, len, ri, ref_idx;
@@ -1522,7 +1524,7 @@ char *name;
             }
 
             /* check for relocation at this address */
-            ri = find_obj_reloc(pc, USEG_TEXT);
+            ri = findObjRloc(pc, USEG_TEXT);
             if (ri >= 0) {
                 if (uobj.relocs[ri].size == 2) {
                     if (dflag) {
@@ -1591,7 +1593,7 @@ char *name;
             }
 
             /* check for relocation at this address */
-            ri = find_obj_reloc(pc, USEG_DATA);
+            ri = findObjRloc(pc, USEG_DATA);
             if (ri >= 0) {
                 if (uobj.relocs[ri].size == 2) {
                     if (dflag) {
@@ -1635,7 +1637,7 @@ char *name;
                     /* check for symbol, data ref, or relocation - must break line */
                     if (pc > line_start && (usym_lookup(pc, USEG_DATA) ||
                                    find_data_ref(pc) >= 0 ||
-                                   find_obj_reloc(pc, USEG_DATA) >= 0)) {
+                                   findObjRloc(pc, USEG_DATA) >= 0)) {
                         break;
                     }
 
@@ -1737,6 +1739,9 @@ long objsize;
     int addend;
     int text_relocs, data_relocs, total_relocs;
     char nbuf[80];
+    struct reloc *text_reltab;
+    int text_nrels;
+    int idx;
 
     uobj_init();
 
@@ -1819,8 +1824,8 @@ long objsize;
         text_relocs = nrels;
 
         /* save text relocs temporarily */
-        struct reloc *text_reltab = reltab;
-        int text_nrels = nrels;
+        text_reltab = reltab;
+        text_nrels = nrels;
         reltab = NULL;
         nrels = 0;
 
@@ -1842,7 +1847,7 @@ long objsize;
 
                 /* resolve target name */
                 if (text_reltab[i].hilo) {
-                    reloc_name_byte(text_reltab[i].symidx,
+                    relocNmByte(text_reltab[i].symidx,
                                    uobj.text[text_reltab[i].offset],
                                    text_reltab[i].hilo, nbuf);
                 } else {
@@ -1856,7 +1861,7 @@ long objsize;
 
             /* convert data relocations */
             for (i = 0; i < data_relocs; i++) {
-                int idx = text_nrels + i;
+                idx = text_nrels + i;
                 uobj.relocs[idx].offset = reltab[i].offset;
                 uobj.relocs[idx].hilo = reltab[i].hilo;
                 uobj.relocs[idx].size = reltab[i].hilo ? 1 : 2;
@@ -1864,7 +1869,7 @@ long objsize;
 
                 /* resolve target name */
                 if (reltab[i].hilo) {
-                    reloc_name_byte(reltab[i].symidx,
+                    relocNmByte(reltab[i].symidx,
                                    uobj.data[reltab[i].offset],
                                    reltab[i].hilo, nbuf);
                 } else {
@@ -1907,11 +1912,11 @@ long objsize;
     ws_load_uobj(base, objsize);
 
     /* generate output using unified function */
-    gen_uobj_sfile(name);
+    genUobjSfl(name);
 
     /* cleanup */
     uobj_free();
-    free_synth_refs();
+    freeSynthRef();
 }
 
 /*
@@ -2190,11 +2195,11 @@ int nsyms;
     ht_load_uobj(textbuf, textsize, databuf, datasize, bsssize, relocs, nrelocs, syms, nsyms);
 
     /* generate output using unified function */
-    gen_uobj_sfile(name);
+    genUobjSfl(name);
 
     /* cleanup */
     uobj_free();
-    free_synth_refs();
+    freeSynthRef();
 }
 
 /*
@@ -2586,7 +2591,7 @@ char *name;
  * process HiTech library file (.LIB)
  */
 void
-processHitechLib(name)
+procHTLib(name)
 char *name;
 {
     long off;
@@ -2753,7 +2758,7 @@ char *filename;
             mod_data_off > 4 && mod_data_off < filesize &&
             filesize >= mod_data_off + 13 &&
             HT_IS_HITECH(filebuf + mod_data_off)) {
-            processHitechLib(filename);
+            procHTLib(filename);
         } else {
             error2("bad magic", filename);
         }
