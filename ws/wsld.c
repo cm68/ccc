@@ -14,6 +14,7 @@
 #define INIT
 #else
 #include <stdio.h>
+#include <fcntl.h>
 #define INIT = 0
 #endif
 

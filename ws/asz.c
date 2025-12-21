@@ -26,6 +26,9 @@
 #include <signal.h>
 #define INIT
 #else
+#include <stdio.h>
+#include <fcntl.h>
+#include <unistd.h>
 #define INIT = 0
 #endif
 

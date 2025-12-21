@@ -23,6 +23,7 @@
 #include <fcntl.h>
 #else
 #include <stdio.h>
+#include <fcntl.h>
 #endif
 
 #include "wsobj.h"
@@ -523,7 +524,7 @@ next_entry:
  * Returns file size, fills symtab[] and sets nsyms
  */
 long
-ht_scan_object(filename)
+htScanObj(filename)
 char *filename;
 {
     int fd;
@@ -607,7 +608,7 @@ char *filename;
                 if ((flags & 0x10) && (flags & 0x0f) == 0) {
                     /* global defined symbol */
                     strcpy(symtab[nsyms].name, symname);
-                    symtab[nsyms].flags = HT_SYM_DEFINED;
+                    symtab[nsyms].flags = HT_SYM_DEF;
                     nsyms++;
                 } else if ((flags & 0x0f) == 2) {
                     /* common */
@@ -669,7 +670,7 @@ int nfiles;
 
     /* scan all object files */
     for (i = 0; i < nfiles; i++) {
-        modsizes[i] = ht_scan_object(files[i]);
+        modsizes[i] = htScanObj(files[i]);
         symcounts[i] = nsyms;
 
         /* calculate symbol size: flag + name + null for each */

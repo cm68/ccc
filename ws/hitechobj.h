@@ -54,8 +54,8 @@
  * 9-12    4     Machine type "Z80\0"
  */
 #define HT_IDENT_LEN    10
-#define HT_IDENT_MAGIC  0x00010203
-#define HT_IDENT_MAGIC16 0x0100
+#define HT_ID_MAGIC     0x00010203
+#define HT_ID_MAG16     0x0100
 
 /*
  * Record header structure
@@ -97,11 +97,11 @@
  *   2 = common
  *   6 = undefined (extern)
  */
-#define HT_LIB_HDR_SIZE     4
-#define HT_LIB_MOD_HDR_SIZE 12
+#define HT_LIBHDRSZ     4
+#define HT_MODHDRSZ     12
 
 /* Symbol types in library */
-#define HT_SYM_DEFINED  0   /* D - defined/public */
+#define HT_SYM_DEF      0   /* D - defined/public */
 #define HT_SYM_COMMON   2   /* C - common */
 #define HT_SYM_UNDEF    6   /* U - undefined/extern */
 
