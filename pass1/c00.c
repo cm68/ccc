@@ -20,43 +20,6 @@ struct	tnode	funcblk = { NAME };
 char	strbuf[4096];
 int	strbuflen;
 
-struct kwtab {
-	char	*kwname;
-	int	kwval;
-} kwtab[] = {
-	"int",		INT,
-	"char",		CHAR,
-	"float",	FLOAT,
-	"double",	DOUBLE,
-	"struct",	STRUCT,
-	"long",		LONG,
-	"unsigned",	UNSIGN,
-	"union",	UNION,
-	"short",	INT,
-	"void",		VOID,
-	"auto",		AUTO,
-	"extern",	EXTERN,
-	"static",	STATIC,
-	"register",	REG,
-	"goto",		GOTO,
-	"return",	RETURN,
-	"if",		IF,
-	"while",	WHILE,
-	"else",		ELSE,
-	"switch",	SWITCH,
-	"case",		CASE,
-	"break",	BREAK,
-	"continue",	CONTIN,
-	"do",		DO,
-	"default",	DEFAULT,
-	"for",		FOR,
-	"sizeof",	SIZEOF,
-	"typedef",	TYPEDEF,
-	"enum",		ENUM,
-	"asm",		ASM,
-	0,		0,
-};
-
 union	tree *cmst[CMSIZ];
 union	tree **cp = cmst;
 int	Wflag;			/* print warning messages */
@@ -65,8 +28,6 @@ main(argc, argv)
 int	argc;
 char	*argv[];
 {
-	register unsigned i;
-	register struct kwtab *ip;
 	char	buf2[BUFSIZ];
 
 	if (argc>1 && strcmp(argv[1], "-u")==0) {
@@ -108,16 +69,6 @@ char	*argv[];
 		}
 		argc--; argv++;
 	}
-	/*
-	 * The hash table locations of the keywords
-	 * are marked; if an identifier hashes to one of
-	 * these locations, it is looked up in in the keyword
-	 * table first.
-	 */
-	for (ip=kwtab; ip->kwname; ip++) {
-		i = hash(ip->kwname);
-		kwhash[i/LNBPW] |= 1 << (i%LNBPW);
-	}
 	coremax = locbase = sbrk(0);
 	while(!eof)
 		extdef();
@@ -131,8 +82,6 @@ char	*argv[];
 
 /*
  * Look up the identifier in symbuf in the symbol table.
- * If it hashes to the same spot as a keyword, try the keyword table
- * first.
  * Return is a ptr to the symbol table entry.
  */
 lookup()
@@ -141,9 +90,6 @@ lookup()
 	register struct nmlist *rp;
 
 	ihash = hash(symbuf);
-	if (kwhash[ihash/LNBPW] & (1 << (ihash%LNBPW)))
-		if (findkw())
-			return(KEYW);
 	rp = hshtab[ihash];
 	while (rp) {
 		if (strcmp(symbuf, rp->name) != 0)
@@ -171,23 +117,6 @@ lookup()
 	csym = rp;
 	return(NAME);
 }
-
-/*
- * Search the keyword table.
- */
-findkw()
-{
-	register struct kwtab *kp;
-
-	for (kp=kwtab; kp->kwname; kp++) {
-		if (strcmp(symbuf, kp->kwname) == 0) {
-			cval = kp->kwval;
-			return(1);
-		}
-	}
-	return(0);
-}
-
 
 /*
  * Read a 32-bit little-endian long from xfile

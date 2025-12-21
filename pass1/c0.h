@@ -167,7 +167,6 @@ extern int	opdope[];
 extern char	ctab[];
 char	symbuf[MAXCPS+2];
 struct	nmlist	*hshtab[HSHSIZ];
-int	kwhash[(HSHSIZ+LNBPW-1)/LNBPW];
 union	tree **cp;
 int	isn;
 struct	swtab	swtab[SWSIZ];
