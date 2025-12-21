@@ -772,36 +772,31 @@ isstring()
 
 /*
  * character to token translation for single char tokens
- * the enum for these is the actual character seen.  
- * no need to translate, just recognize.
+ * simpleChars has the characters, simpleToks has their token values
  */
-char simple[] = {
-    BEGIN, END, LBRACK, RBRACK, LPAR, RPAR, SEMI, COMMA,
-    ASSIGN, DOT, PLUS, MINUS, DIV, MOD, AND, OR, XOR,
-    LT, GT, BANG, TWIDDLE, QUES, COLON, STAR, 0
+char simpleChars[] = "{},[]();=.+-/*%&|^<>!~?:";
+char simpleToks[] = {
+    BEGIN, END, COMMA, LBRACK, RBRACK, LPAR, RPAR, SEMI,
+    ASSIGN, DOT, PLUS, MINUS, DIV, STAR, MOD, AND, OR, XOR,
+    LT, GT, BANG, TWIDDLE, QUES, COLON, 0
 };
 
 /*
- * list of tokens that can be doubled, and the resulting token
+ * list of characters that can be doubled, and the resulting token
  */
-char dblAble[] = {
-    PLUS, MINUS, OR, AND, ASSIGN, GT, LT, 0
-};
+char dblChars[] = "+-|&=><";
 char dbltok[] = {
     INCR, DECR, LOR, LAND, EQ, RSHIFT, LSHIFT, 0
 };
 
 /*
- * list of tokens that can have '=' appended
+ * list of characters that can have '=' appended
  * and then, what token that turns them into
  */
-char eqAble[] = {
-    PLUS, MINUS, STAR, DIV, MOD, AND, OR, XOR,
-    GT, LT, BANG, LOR, LAND, RSHIFT, LSHIFT, 0
-};
+char eqChars[] = "+-*/%&|^><!";
 char eqtok[] = {
     PLUSEQ, SUBEQ, MULTEQ, DIVEQ, MODEQ, ANDEQ, OREQ, XOREQ,
-    GE, LE, NEQ, LOREQ, LANDEQ, RSHIFTEQ, LSHIFTEQ, 0
+    GE, LE, NEQ, 0
 };
 
 /*
@@ -1014,7 +1009,7 @@ gettoken()
                     fdprintf(2,"CPP keyword: '%s' -> %d\n", strbuf, t);
                 }
 #endif
-                if (t) {
+                if (t != 0xff) {
                     advance();
                     /*
                      * In false block, only process conditional directives.
@@ -1145,11 +1140,11 @@ gettoken()
             }
             advance();
             t = kwlook((unsigned char *)strbuf, ckw);
-            if (t) {
-                next.type = t;
-                next.v.name = 0;  /* keywords don't have names */
+            if (t != 0xff) {
+                next.type = KEYW;
+                next.v.numeric = t;
                 /* Special handling for asm { } - capture raw text */
-                if (t == ASM) {
+                if (t == KW_ASM) {
                     /* Skip whitespace to find { */
                     while (curchar == ' ' || curchar == '\t' || curchar == '\n')
                         advance();
@@ -1213,28 +1208,34 @@ gettoken()
         }
 
         /* from here, it had better be an operator */
-        t = lookupc(simple, curchar);
+        t = lookupc(simpleChars, curchar);
         if (t == 0xff) {
             gripe(ER_C_UT);
             curchar= ';';
+            t = lookupc(simpleChars, ';');
         }
 
-        next.type = simple[t];
+        next.type = simpleToks[t];
         c = curchar;	// save what we saw
         advance();
 
         /* see if the character is doubled.  this can be an operator */
         if (curchar == c) {
-            t = lookupc(dblAble, c);
+            t = lookupc(dblChars, c);
             if (t != 0xff) {
-                c = next.type = dbltok[t];
+                next.type = dbltok[t];
                 advance();
+                /* check for >>= or <<= */
+                if (curchar == '=' && (c == '>' || c == '<')) {
+                    next.type = (c == '>') ? RSHIFTEQ : LSHIFTEQ;
+                    advance();
+                }
             }
         }
 
         /* see if the character has an '=' appended.  this can be an operator */
         if (curchar == '=') {
-            t = lookupc(eqAble, c);
+            t = lookupc(eqChars, c);
             if (t != 0xff) {
                 next.type = eqtok[t];
                 advance();

@@ -2,7 +2,7 @@
 # Makefile for Ritchie C compiler - Pass 2 (PDP-11 code generator)
 #
 
-ROOTDIR = ../../root
+ROOTDIR = ../root
 
 CC = gcc
 

@@ -3,7 +3,8 @@
  *	2.1	(2.11BSD)	1996/01/04
  *
  * Called from cc:
- *   c0 source temp1 temp2 [ profileflag ]
+ *   c0 source.x temp1 temp2 [ profileflag ]
+ * Reads pre-tokenized .x file from cpp.
  * temp1 gets most of the intermediate code;
  * strings are put on temp2, which c1 reads after temp1.
  */
@@ -62,8 +63,7 @@ char	*argv[];
 {
 	register unsigned i;
 	register struct kwtab *ip;
-	char	buf1[BUFSIZ],
-		buf2[BUFSIZ];
+	char	buf2[BUFSIZ];
 
 	if (argc>1 && strcmp(argv[1], "-u")==0) {
 		argc--;
@@ -74,11 +74,11 @@ char	*argv[];
 		error("Arg count");
 		exit(1);
 	}
-	if (freopen(argv[1], "r", stdin)==NULL) {
+	/* Open .x file (binary tokenized input from cpp) */
+	if ((xfile = fopen(argv[1], "rb")) == NULL) {
 		error("Can't find %s", argv[1]);
 		exit(1);
 	}
-	setbuf(stdin,buf1);	/* stdio sbrk problems */
 	if (freopen(argv[2], "w", stdout)==NULL || (sbufp=fopen(argv[3],"w"))==NULL) {
 		error("Can't create temp");
 		exit(1);
@@ -121,6 +121,7 @@ char	*argv[];
 	strflg++;
 	outcode("B", EOFC);
 	blkend();
+	fclose(xfile);
 	exit(nerror!=0);
 }
 
@@ -185,17 +186,45 @@ findkw()
 
 
 /*
+ * Read a 32-bit little-endian long from xfile
+ */
+static long
+readlong()
+{
+	long v;
+	v = getc(xfile) & 0xff;
+	v |= (getc(xfile) & 0xff) << 8;
+	v |= (long)(getc(xfile) & 0xff) << 16;
+	v |= (long)(getc(xfile) & 0xff) << 24;
+	return v;
+}
+
+/*
+ * Read a symbol name from xfile into symbuf
+ */
+static void
+readsym()
+{
+	int len, i;
+	len = getc(xfile);
+	for (i = 0; i < len && i < MAXCPS; i++)
+		symbuf[i] = getc(xfile);
+	symbuf[i] = '\0';
+	/* skip any remaining bytes if name was truncated */
+	while (i++ < len)
+		getc(xfile);
+}
+
+/*
  * Return the next symbol from the input.
- * peeksym is a pushed-back symbol, peekc is a pushed-back
- * character (after peeksym).
+ * Reads pre-tokenized binary .x file from cpp.
+ * peeksym is a pushed-back symbol.
  * mosflg means that the next symbol, if an identifier,
  * is a member of structure or a structure tag or an enum tag
  */
 symbol()
 {
 	register c;
-	register char *sp;
-	register tline;
 
 	if (peeksym>=0) {
 		c = peeksym;
@@ -204,141 +233,85 @@ symbol()
 			mosflg = 0;
 		return(c);
 	}
+
+	if (eof)
+		return(EOFC);
+
+	/* Check peekc first (set by nextchar lookahead) */
 	if (peekc) {
 		c = peekc;
 		peekc = 0;
-	} else
-		if (eof)
-			return(EOFC);
-		else
-			c = getchar();
-loop:
-	if (c==EOF) {
+	} else {
+		c = getc(xfile);
+	}
+	if (c == EOF || c == EOFC) {
 		eof++;
 		return(EOFC);
 	}
-	switch(ctab[c]) {
 
-	case SHARP:
-		if ((c=symbol())!=CON) {
-			error("Illegal #");
-			return(c);
-		}
-		tline = cval;
-		while (ctab[peekc]==SPACE)
-			peekc = getchar();
-		if (peekc=='"') {
-			sp = filename;
-			while ((c = mapch('"')) >= 0)
-				*sp++ = c;
-			*sp++ = 0;
-			peekc = getchar();
-		}
-		if (peekc != '\n') {
-			error("Illegal #");
-			while (getchar()!='\n' && eof==0)
-				;
-		}
-		peekc = 0;
-		line = tline;
-		return(symbol());
-
-	case NEWLN:
-		line++;
-
-	case SPACE:
-		c = getchar();
-		goto loop;
-
-	case PLUS:
-		return(subseq(c,PLUS,INCBEF));
-
-	case MINUS:
-		if (subseq(c, 0, 1))
-			return(DECBEF);
-		return(subseq('>', MINUS, ARROW));
-
-	case ASSIGN:
-		return(subseq(c, ASSIGN, EQUAL));
-
-	case LESS:
-		if (subseq(c,0,1))
-			return(LSHIFT);
-		return(subseq('=',LESS,LESSEQ));
-
-	case GREAT:
-		if (subseq(c,0,1))
-			return(RSHIFT);
-		return(subseq('=',GREAT,GREATEQ));
-
-	case EXCLA:
-		return(subseq('=',EXCLA,NEQUAL));
-
-	case BSLASH:
-		if (subseq('/', 0, 1))
-			return(MAX);
-		goto unkn;
-
-	case DIVIDE:
-		if (subseq('\\', 0, 1))
-			return(MIN);
-		if (subseq('*',1,0))
-			return(DIVIDE);
-		while ((c = spnextchar()) != EOFC) {
-			peekc = 0;
-			if (c=='*') {
-				if (spnextchar() == '/') {
-					peekc = 0;
-					c = getchar();
-					goto loop;
-				}
-			}
-		}
-		eof++;
-		error("Nonterminated comment");
-		return(0);
-
-	case PERIOD:
-	case DIGIT:
-		peekc = c;
-		return(getnum());
-
-	case DQUOTE:
-		cval = isn++;
-		return(STRING);
-
-	case SQUOTE:
-		return(getcc());
-
-	case LETTER:
-		sp = symbuf;
-		while (ctab[c]==LETTER || ctab[c]==DIGIT) {
-			if (sp < symbuf + MAXCPS)
-				*sp++ = c;
-			c = getchar();
-		}
-		*sp++ = '\0';
+	switch (c) {
+	case NAME:
+		/* NAME: len byte + name bytes */
+		readsym();
 		mossym = mosflg;
 		mosflg = 0;
-		peekc = c;
-		if ((c=lookup())==KEYW && cval==SIZEOF)
-			c = SIZEOF;
+		return(lookup());
+
+	case CON:
+		/* CON: 4-byte little-endian value */
+		lcval = readlong();
+		cval = lcval;
+		if (lcval < 0 || lcval > MAXINT)
+			return(LCON);
+		return(CON);
+
+	case LCON:
+		/* LCON: 4-byte little-endian value */
+		lcval = readlong();
+		cval = lcval;
+		return(LCON);
+
+	case STRING:
+		/* STRING: len byte + string bytes - store label */
+		cval = isn++;
+		{
+			int len = getc(xfile);
+			int i;
+			/* Write string data to string file */
+			strflg++;
+			outcode("BNB", LABEL, cval, BDATA);
+			for (i = 0; i < len; i++) {
+				if (i % 15 == 0 && i > 0)
+					outcode("0B", BDATA);
+				outcode("1N", getc(xfile) & 0377);
+			}
+			/* null terminator */
+			outcode("10");
+			outcode("0");
+			strflg = 0;
+			nchstr = len + 1;
+		}
+		return(STRING);
+
+	case FCON:
+		/* FCON: 4-byte IEEE754 float */
+		lcval = readlong();
+		/* Store float string representation for fblock */
+		sprintf(numbuf, "%g", *(float *)&lcval);
+		cval = strlen(numbuf) + 1;
+		return(FCON);
+
+	case KEYW:
+		/* KEYW: 1-byte keyword value */
+		cval = getc(xfile);
+		if (cval == SIZEOF)
+			return(SIZEOF);
+		return(KEYW);
+
+	/* All other tokens are single bytes - return as-is */
+	default:
 		return(c);
-
-	case AND:
-		return(subseq('&', AND, LOGAND));
-
-	case OR:
-		return(subseq('|', OR, LOGOR));
-
-	case UNKN:
-	unkn:
-		error("Unknown character");
-		c = getchar();
-		goto loop;
-
 	}
-	return(ctab[c]);
 }
 
 /*
@@ -644,33 +617,10 @@ advanc:
 
 	/* fake a static char array */
 	case STRING:
-/*
- * This hack is to compensate for a bit of simplemindedness I'm not sure how
- * else to fix.  
- *
- *	i = sizeof ("foobar");
- *
- * or
- *	i = sizeof "foobar";
- *
- * would generate ".byte 'f,'o','o,'b,'a,'r,0" into the data segment!
- *
- * What I did here was to scan to "operator" stack looking for left parens
- * "(" preceeded by a "sizeof".  If both are seen and in that order or only
- * a SIZEOF is sedn then the string is inside a 'sizeof' and should not 
- * generate any data to the object file.
-*/
-		xop = op;
-		while	(xop > opst)
-			{
-			xo = *xop--;
-			if	(xo != LPARN)
-				break;
-			}
-		if	(xo == SIZEOF)
-			cntstr();
-		else
-			putstr(cval, 0);
+		/*
+		 * String data already read and output by symbol().
+		 * nchstr and cval (label) are set there.
+		 */
 		cs = (struct nmlist *)Tblock(sizeof(struct nmlist));
 		cs->hclass = STATIC;
 		cs->hoffset = cval;

@@ -1,7 +1,7 @@
 /*
  * emit.c - Lexeme stream and preprocessed output emission
  *
- * Outputs tokens to .x file and preprocessed source to .i file
+ * Binary .x format - all data as raw bytes (no hex encoding)
  */
 #include "cpp.h"
 #include <unistd.h>
@@ -11,91 +11,110 @@ int lexFd = -1;
 int ppFd = -1;
 
 /*
- * Emit a simple token to .x file
+ * Emit a simple token to .x file (1 byte)
  */
 void
 emitToken(unsigned char tok)
 {
-    char buf[2];
-    buf[0] = tok;
-    write(lexFd, buf, 1);
+    write(lexFd, &tok, 1);
 }
 
 /*
- * Emit symbol: '5' + 2-hex length + bytes
+ * Emit keyword: KEYW(19) + kwval byte
+ */
+void
+emitKeyword(unsigned char kwval)
+{
+    unsigned char buf[2];
+    buf[0] = KEYW;
+    buf[1] = kwval;
+    write(lexFd, buf, 2);
+}
+
+/*
+ * Emit symbol: SYM(20) + len byte + name bytes
  */
 void
 emitSym(char *name)
 {
-    char buf[256];
+    unsigned char hdr[2];
     int len = strlen(name);
     if (len > 255) len = 255;
-    sprintf(buf, "5%02x", len);
-    write(lexFd, buf, 3);
+    hdr[0] = SYM;
+    hdr[1] = len;
+    write(lexFd, hdr, 2);
     write(lexFd, name, len);
 }
 
 /*
- * Emit number: '9' + 8-hex value
+ * Emit number: NUMBER(21) + 4-byte little-endian value
  */
 void
 emitNumber(long val)
 {
-    char buf[16];
-    sprintf(buf, "9%08lx", (unsigned long)val);
-    write(lexFd, buf, 9);
+    unsigned char buf[5];
+    buf[0] = NUMBER;
+    buf[1] = val & 0xff;
+    buf[2] = (val >> 8) & 0xff;
+    buf[3] = (val >> 16) & 0xff;
+    buf[4] = (val >> 24) & 0xff;
+    write(lexFd, buf, 5);
 }
 
 /*
- * Emit float: 'b' + 8-hex IEEE754 bits
+ * Emit float: FNUMBER(23) + 4-byte IEEE754 bits (little-endian)
  */
 void
 emitFNumber(float val)
 {
-    char buf[16];
+    unsigned char buf[5];
     union { float f; unsigned long l; } u;
     u.f = val;
-    sprintf(buf, "b%08lx", u.l);
-    write(lexFd, buf, 9);
+    buf[0] = FNUMBER;
+    buf[1] = u.l & 0xff;
+    buf[2] = (u.l >> 8) & 0xff;
+    buf[3] = (u.l >> 16) & 0xff;
+    buf[4] = (u.l >> 24) & 0xff;
+    write(lexFd, buf, 5);
 }
 
 /*
- * Emit string: '"' + 2-hex length + bytes
+ * Emit string: STRING(22) + len byte + string bytes
  */
 void
 emitString(char *str, int len)
 {
-    char buf[4];
-    sprintf(buf, "\"%02x", len);
-    write(lexFd, buf, 3);
+    unsigned char hdr[2];
+    if (len > 255) len = 255;
+    hdr[0] = STRING;
+    hdr[1] = len;
+    write(lexFd, hdr, 2);
     write(lexFd, str, len);
 }
 
 /*
- * Emit label: '3' + 2-hex length + bytes
+ * Emit label: LABEL(112) + len byte + name bytes
  */
 void
 emitLabel(char *name)
 {
-    char buf[4];
+    unsigned char hdr[2];
     int len = strlen(name);
     if (len > 255) len = 255;
-    sprintf(buf, "3%02x", len);
-    write(lexFd, buf, 3);
+    hdr[0] = LABEL;
+    hdr[1] = len;
+    write(lexFd, hdr, 2);
     write(lexFd, name, len);
 }
 
 /*
- * Emit asm block: 'A' + 4-hex length + bytes (16-bit length for large blocks)
+ * Emit asm block: KW_ASM as keyword + STRING with asm text
  */
 void
 emitAsm(char *text, int len)
 {
-    char buf[8];
-    if (len > 65535) len = 65535;
-    sprintf(buf, "A%04x", len);
-    write(lexFd, buf, 5);
-    write(lexFd, text, len);
+    emitKeyword(KW_ASM);
+    emitString(text, len);
 }
 
 /*
@@ -116,42 +135,51 @@ emitPPStr(char *text)
 }
 
 /*
- * Token to human-readable string for .i output
+ * Keyword value to string for .i output
  */
 static char *
-tok2str(token_t t)
+kw2str(unsigned char kw)
+{
+    switch (kw) {
+    case KW_INT: return "int";
+    case KW_CHAR: return "char";
+    case KW_LONG: return "long";
+    case KW_FLOAT: return "float";
+    case KW_DOUBLE: return "double";
+    case KW_VOID: return "void";
+    case KW_UNSIGNED: return "unsigned";
+    case KW_STATIC: return "static";
+    case KW_EXTERN: return "extern";
+    case KW_AUTO: return "auto";
+    case KW_REGISTER: return "register";
+    case KW_TYPEDEF: return "typedef";
+    case KW_STRUCT: return "struct";
+    case KW_UNION: return "union";
+    case KW_ENUM: return "enum";
+    case KW_IF: return "if";
+    case KW_ELSE: return "else";
+    case KW_WHILE: return "while";
+    case KW_DO: return "do";
+    case KW_FOR: return "for";
+    case KW_SWITCH: return "switch";
+    case KW_CASE: return "case";
+    case KW_DEFAULT: return "default";
+    case KW_BREAK: return "break";
+    case KW_CONTINUE: return "continue";
+    case KW_RETURN: return "return";
+    case KW_GOTO: return "goto";
+    case KW_ASM: return "asm";
+    default: return "?kw?";
+    }
+}
+
+/*
+ * Operator token to string for .i output
+ */
+static char *
+op2str(token_t t)
 {
     switch (t) {
-    case INT: return "int";
-    case CHAR: return "char";
-    case LONG: return "long";
-    case SHORT: return "short";
-    case FLOAT: return "float";
-    case DOUBLE: return "double";
-    case VOID: return "void";
-    case UNSIGNED: return "unsigned";
-    case CONST: return "const";
-    case STATIC: return "static";
-    case EXTERN: return "extern";
-    case AUTO: return "auto";
-    case REGISTER: return "register";
-    case VOLATILE: return "volatile";
-    case TYPEDEF: return "typedef";
-    case STRUCT: return "struct";
-    case UNION: return "union";
-    case ENUM: return "enum";
-    case IF: return "if";
-    case ELSE: return "else";
-    case WHILE: return "while";
-    case DO: return "do";
-    case FOR: return "for";
-    case SWITCH: return "switch";
-    case CASE: return "case";
-    case DEFAULT: return "default";
-    case BREAK: return "break";
-    case CONTINUE: return "continue";
-    case RETURN: return "return";
-    case GOTO: return "goto";
     case SIZEOF: return "sizeof";
     case EQ: return "==";
     case NEQ: return "!=";
@@ -186,10 +214,17 @@ void
 emitCurToken(void)
 {
     char buf[32];
-    char *kw;
+    char *op;
 
     /* Emit to lexeme stream */
     switch (cur.type) {
+    case KEYW:
+        /* sizeof is an operator in cc1, not a keyword */
+        if (cur.v.numeric == KW_SIZEOF)
+            emitToken(SIZEOF);
+        else
+            emitKeyword(cur.v.numeric);
+        break;
     case SYM:
         emitSym(cur.v.name);
         break;
@@ -206,13 +241,6 @@ emitCurToken(void)
     case LABEL:
         emitLabel(cur.v.name);
         break;
-    case ASM:
-        /* cur.v.str is null-terminated asm text */
-        if (cur.v.str)
-            emitAsm(cur.v.str, strlen(cur.v.str));
-        else
-            emitAsm("", 0);
-        break;
     case E_O_F:
         emitToken(E_O_F);
         break;
@@ -223,9 +251,15 @@ emitCurToken(void)
     }
 
     /* Emit to preprocessed output */
-    kw = tok2str(cur.type);
-    if (kw) {
-        emitPPStr(kw);
+    if (cur.type == KEYW) {
+        if (cur.v.numeric == KW_SIZEOF)
+            emitPPStr("sizeof ");
+        else {
+            emitPPStr(kw2str(cur.v.numeric));
+            emitPPStr(" ");
+        }
+    } else if ((op = op2str(cur.type)) != NULL) {
+        emitPPStr(op);
         emitPPStr(" ");
     } else {
         switch (cur.type) {
@@ -250,12 +284,6 @@ emitCurToken(void)
             emitPPStr(cur.v.name);
             emitPPStr(": ");
             break;
-        case ASM:
-            emitPPStr("asm { ");
-            if (cur.v.str)
-                emitPPStr(cur.v.str);
-            emitPPStr(" }\n");
-            break;
         case SEMI:
             emitPPStr(";\n");
             break;
@@ -268,11 +296,36 @@ emitCurToken(void)
         case E_O_F:
             break;
         default:
-            /* Single char token */
-            buf[0] = cur.type;
-            buf[1] = ' ';
-            buf[2] = 0;
-            emitPPStr(buf);
+            /* Operator tokens that aren't multi-char */
+            buf[0] = 0;
+            switch (cur.type) {
+            case PLUS: buf[0] = '+'; break;
+            case MINUS: buf[0] = '-'; break;
+            case STAR: case TIMES: buf[0] = '*'; break;
+            case DIV: buf[0] = '/'; break;
+            case MOD: buf[0] = '%'; break;
+            case AMPER: case AND: buf[0] = '&'; break;
+            case OR: buf[0] = '|'; break;
+            case XOR: buf[0] = '^'; break;
+            case LT: buf[0] = '<'; break;
+            case GT: buf[0] = '>'; break;
+            case BANG: buf[0] = '!'; break;
+            case TWIDDLE: buf[0] = '~'; break;
+            case QUES: buf[0] = '?'; break;
+            case COLON: buf[0] = ':'; break;
+            case DOT: buf[0] = '.'; break;
+            case ASSIGN: buf[0] = '='; break;
+            case LPAR: buf[0] = '('; break;
+            case RPAR: buf[0] = ')'; break;
+            case LBRACK: buf[0] = '['; break;
+            case RBRACK: buf[0] = ']'; break;
+            case COMMA: buf[0] = ','; break;
+            }
+            if (buf[0]) {
+                buf[1] = ' ';
+                buf[2] = 0;
+                emitPPStr(buf);
+            }
             break;
         }
     }

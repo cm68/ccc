@@ -272,32 +272,40 @@ simplegoto()
 
 /*
  * Return the next non-white-space character
+ * Now reads from tokenized .x file and maps tokens to characters
+ * peekc holds the RAW token value (for symbol() to consume)
+ * but we return the MAPPED character value (for parser comparisons)
  */
 nextchar()
 {
-	while (spnextchar()==' ')
-		peekc = 0;
-	return(peekc);
+	register c, mapped;
+	static char tokmap[] = "X;{}[]():#";
+	/*                      0123456789 */
+	/* SEMI=1 BEGIN=2 END=3 LBRACK=4 RBRACK=5 LPAR=6 RPAR=7 COLON=8 COMMA=9 */
+
+	if ((c = peekc) == 0) {
+		c = getc(xfile);
+		if (c == EOF) c = 0;
+		peekc = c;  /* Store raw token for symbol() */
+	}
+
+	/* Map token values to ASCII characters for parser comparisons */
+	if (c >= 0 && c <= 9)
+		mapped = tokmap[c];
+	else if (c == 20)  /* NAME */
+		mapped = ' ';
+	else
+		mapped = c;
+
+	return(mapped);
 }
 
 /*
- * Return the next character, translating all white space
- * to blank and handling line-ends.
+ * spnextchar is no longer used - nextchar handles everything
  */
 spnextchar()
 {
-	register c;
-
-	if ((c = peekc)==0)
-		c = getchar();
-	if (c=='\t' || c=='\014')	/* FF */
-		c = ' ';
-	else if (c=='\n') {
-		c = ' ';
-		line++;
-	}
-	peekc = c;
-	return(c);
+	return nextchar();
 }
 
 /*

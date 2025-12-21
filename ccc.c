@@ -1,7 +1,7 @@
 /*
  * ccc - Two-pass C compiler driver
  *
- * Orchestrates cc1 (parser/AST generator) and cc2 (code generator)
+ * Orchestrates cpp, c0 (parser), and c1 (code generator)
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -27,8 +27,7 @@ usage(void)
     printf("  -o <output>    Output file (default: a.out)\n");
     printf("  -c             Compile and assemble only, keep .o\n");
     printf("  -s             Compile only, keep .s (no assembly)\n");
-    printf("  -k             Keep all intermediates (.ast, .s, .o)\n");
-    printf("  -P             Generate pretty-printed .pp from .ast\n");
+    printf("  -k             Keep all intermediates (.x, .1, .2, .s, .o)\n");
     printf("  -S             Strip symbols from output\n");
     printf("  -9             Use 9-char symbols in output\n");
     printf("  -v <level>     Verbosity level (passed to cc1)\n");
@@ -152,7 +151,6 @@ main(int argc, char **argv)
     int no_exec = 0;         /* -n: don't execute (dry run) */
     int strip_syms = 0;      /* -S: strip symbols from output */
     int nine_char = 0;       /* -9: use 9-char symbols */
-    int pp_gen = 0;          /* -P: generate .pp file */
 
     /* Input files by type */
     char *c_files[MAX_ARGS];
@@ -186,10 +184,10 @@ main(int argc, char **argv)
 
     progname = argv[0];
 
-    /* Build paths to cpp, cc1, cc2, assembler, linker, astpp */
+    /* Build paths to cpp, pass1 (c0), pass2 (c1), assembler, linker */
     snprintf(cpp_path, sizeof(cpp_path), "%s/bin/cpp", rootdir);
-    snprintf(cc1_path, sizeof(cc1_path), "%s/bin/cc1", rootdir);
-    snprintf(cc2_path, sizeof(cc2_path), "%s/bin/cc2", rootdir);
+    snprintf(cc1_path, sizeof(cc1_path), "%s/bin/c0", rootdir);
+    snprintf(cc2_path, sizeof(cc2_path), "%s/bin/c1", rootdir);
     snprintf(asm_path, sizeof(asm_path), "%s/bin/asz", rootdir);
     snprintf(ld_path, sizeof(ld_path), "%s/bin/wsld", rootdir);
     snprintf(astpp_path, sizeof(astpp_path), "%s/bin/astpp", rootdir);
@@ -239,10 +237,6 @@ main(int argc, char **argv)
             argv++;
         } else if (strcmp(argv[0], "-9") == 0) {
             nine_char = 1;
-            argc--;
-            argv++;
-        } else if (strcmp(argv[0], "-P") == 0) {
-            pp_gen = 1;
             argc--;
             argv++;
         } else if (strcmp(argv[0], "-x") == 0) {
@@ -348,13 +342,14 @@ main(int argc, char **argv)
     /* Track how many .o files existed before we generate more from .c files */
     o_input_count = o_count;
 
-    /* Process each .c file: cpp -> cc1 -> cc2 -> asm */
+    /* Process each .c file: cpp -> c0 -> c1 -> asm */
     for (i = 0; i < c_count; i++) {
         char *src = c_files[i];
         char *base = getBaseNoExt(src);
         char *lex_file;
         char *prep_file;
-        char *ast_file;
+        char *temp1_file;
+        char *temp2_file;
         char *asm_file;
         char *obj_file;
         char *cpp_args[MAX_ARGS];
@@ -370,8 +365,10 @@ main(int argc, char **argv)
         sprintf(lex_file, "%s.x", base);
         prep_file = malloc(strlen(base) + 10);
         sprintf(prep_file, "%s.i", base);
-        ast_file = malloc(strlen(base) + 10);
-        sprintf(ast_file, "%s.ast", base);
+        temp1_file = malloc(strlen(base) + 10);
+        sprintf(temp1_file, "%s.1", base);
+        temp2_file = malloc(strlen(base) + 10);
+        sprintf(temp2_file, "%s.2", base);
         asm_file = malloc(strlen(base) + 10);
         sprintf(asm_file, "%s.s", base);
         obj_file = malloc(strlen(base) + 10);
@@ -402,13 +399,13 @@ main(int argc, char **argv)
             }
         }
 
-        /* Build cc1 args: -o ast_file + lex_file (cc1 reads .x files) */
+        /* Build pass1 args: c0 lex_file temp1 temp2 */
         cc1_argc = 0;
         for (j = 0; j < cc1_base_argc; j++)
             cc1_args[cc1_argc++] = cc1_base[j];
-        cc1_args[cc1_argc++] = "-o";
-        cc1_args[cc1_argc++] = ast_file;
         cc1_args[cc1_argc++] = lex_file;
+        cc1_args[cc1_argc++] = temp1_file;
+        cc1_args[cc1_argc++] = temp2_file;
         cc1_args[cc1_argc] = NULL;
 
         if (print_cmds || no_exec)
@@ -416,7 +413,7 @@ main(int argc, char **argv)
         if (!no_exec) {
             status = execCommand(cc1_path, cc1_args);
             if (status != 0) {
-                fprintf(stderr, "Error: cc1 failed on %s\n", src);
+                fprintf(stderr, "Error: c0 failed on %s\n", src);
                 exit(status);
             }
         }
@@ -429,45 +426,13 @@ main(int argc, char **argv)
         free(lex_file);
         free(prep_file);
 
-        /* Generate .pp file if -P */
-        if (pp_gen && !no_exec) {
-            char *pp_args[4];
-            FILE *pp_fp;
-            int pp_pid, pp_status;
-
-            pp_args[0] = astpp_path;
-            pp_args[1] = ast_file;
-            pp_args[2] = NULL;
-
-            if (print_cmds) {
-                printCommand(pp_args);
-                printf(" > %s\n", pp_file);
-            }
-
-            pp_fp = fopen(pp_file, "w");
-            if (!pp_fp) {
-                perror(pp_file);
-            } else {
-                pp_pid = fork();
-                if (pp_pid == 0) {
-                    dup2(fileno(pp_fp), 1);
-                    fclose(pp_fp);
-                    execv(astpp_path, pp_args);
-                    perror(astpp_path);
-                    exit(1);
-                }
-                fclose(pp_fp);
-                waitpid(pp_pid, &pp_status, 0);
-            }
-        }
-
-        /* Build cc2 args: base options + -o asm_file + ast_file */
+        /* Build pass2 args: c1 temp1 temp2 asm_file */
         cc2_argc = 0;
         for (j = 0; j < cc2_base_argc; j++)
             cc2_args[cc2_argc++] = cc2_base[j];
-        cc2_args[cc2_argc++] = "-o";
+        cc2_args[cc2_argc++] = temp1_file;
+        cc2_args[cc2_argc++] = temp2_file;
         cc2_args[cc2_argc++] = asm_file;
-        cc2_args[cc2_argc++] = ast_file;
         cc2_args[cc2_argc] = NULL;
 
         if (print_cmds || no_exec)
@@ -475,15 +440,18 @@ main(int argc, char **argv)
         if (!no_exec) {
             status = execCommand(cc2_path, cc2_args);
             if (status != 0) {
-                fprintf(stderr, "Error: cc2 failed on %s\n", ast_file);
+                fprintf(stderr, "Error: c1 failed on %s\n", src);
                 exit(status);
             }
         }
 
-        /* Clean up AST unless -k or -n */
-        if (!keep_all && !no_exec)
-            unlink(ast_file);
-        free(ast_file);
+        /* Clean up temp files unless -k or -n */
+        if (!keep_all && !no_exec) {
+            unlink(temp1_file);
+            unlink(temp2_file);
+        }
+        free(temp1_file);
+        free(temp2_file);
         free(pp_file);
 
         /* If -s, we're done with this file */

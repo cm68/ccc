@@ -572,6 +572,7 @@ struct nmlist *absname;
 	type = 0;
 	switch(o=symbol()) {
 
+	case STAR:
 	case TIMES:
 		type = getype(dimp, absname);
 		if (type==-1)

@@ -539,7 +539,7 @@ lintyp(t)
  * Report an error.
  */
 
-extern int Wflag = 0;	/* Non-zero means do not print warnings */
+int Wflag = 0;	/* Non-zero means do not print warnings */
 
 /* VARARGS1 */
 werror(s, p1, p2, p3, p4, p5, p6)
