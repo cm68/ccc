@@ -1,5 +1,6 @@
 # Test suite for ccc compiler
 # This file defines all tests organized by category
+VERBOSE = -s
 
 # Cancel built-in lex rule - .x files are lexeme dumps, not lex sources
 %.c: %.x

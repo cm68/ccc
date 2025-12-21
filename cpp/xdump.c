@@ -72,6 +72,7 @@
 #define SIZEOF  91
 
 #define LABEL   112
+#define LINENO  116
 
 /* Keyword values */
 static char *kwnames[] = {
@@ -215,6 +216,16 @@ main(int argc, char **argv)
                 buf[i] = fgetc(f);
             buf[len] = 0;
             printf("%s: ", buf);
+            break;
+
+        case LINENO:
+            val = fgetc(f) & 0xff;
+            val |= (fgetc(f) & 0xff) << 8;
+            len = fgetc(f);
+            for (i = 0; i < len; i++)
+                buf[i] = fgetc(f);
+            buf[len] = 0;
+            printf("# %ld \"%s\"\n", val, buf);
             break;
 
         case INCR:   printf("++ "); break;

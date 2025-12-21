@@ -253,6 +253,7 @@ symbol()
 		return(EOFC);
 	}
 
+dispatch:
 	switch (c) {
 	case NAME:
 		/* NAME: len byte + name bytes */
@@ -308,10 +309,42 @@ symbol()
 			return(SIZEOF);
 		return(KEYW);
 
+	case LINENO:
+		/* LINENO: 2-byte line + 1-byte len + filename bytes */
+		{
+			int len, i;
+			line = getc(xfile) & 0xff;
+			line |= (getc(xfile) & 0xff) << 8;
+			len = getc(xfile) & 0xff;
+			for (i = 0; i < len && i < sizeof(filename)-1; i++)
+				filename[i] = getc(xfile);
+			filename[i] = 0;
+			/* Skip excess bytes if name was too long */
+			while (i < len) {
+				getc(xfile);
+				i++;
+			}
+		}
+		/* Continue to get next real token */
+		goto again;
+
 	/* All other tokens are single bytes - return as-is */
 	default:
 		return(c);
 	}
+again:
+	/* Check peekc first (set by nextchar lookahead) */
+	if (peekc) {
+		c = peekc;
+		peekc = 0;
+	} else {
+		c = getc(xfile);
+	}
+	if (c == EOF || c == EOFC) {
+		eof++;
+		return(EOFC);
+	}
+	goto dispatch;
 }
 
 /*

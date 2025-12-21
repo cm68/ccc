@@ -10,6 +10,10 @@
 int lexFd = -1;
 int ppFd = -1;
 
+/* Line tracking for LINENO emission */
+static int lastLine = 0;
+static char *lastName = NULL;
+
 /*
  * Emit a simple token to .x file (1 byte)
  */
@@ -105,6 +109,30 @@ emitLabel(char *name)
     hdr[1] = len;
     write(lexFd, hdr, 2);
     write(lexFd, name, len);
+}
+
+/*
+ * Emit line number: LINENO(116) + 2-byte line + len byte + filename bytes
+ * Also emits # line "file" to .i file
+ */
+void
+emitLine(int line, char *file)
+{
+    unsigned char hdr[4];
+    int len = strlen(file);
+    char buf[300];
+
+    if (len > 255) len = 255;
+    hdr[0] = LINENO;
+    hdr[1] = line & 0xff;
+    hdr[2] = (line >> 8) & 0xff;
+    hdr[3] = len;
+    write(lexFd, hdr, 4);
+    write(lexFd, file, len);
+
+    /* Also emit to .i file */
+    sprintf(buf, "# %d \"%s\"\n", line, file);
+    emitPPStr(buf);
 }
 
 /*
@@ -215,6 +243,13 @@ emitCurToken(void)
 {
     char buf[32];
     char *op;
+
+    /* Emit LINENO when file changes (start of file, includes) */
+    if (lastName != filename) {
+        emitLine(lineno, filename ? filename : "");
+        lastLine = lineno;
+        lastName = filename;
+    }
 
     /* Emit to lexeme stream */
     switch (cur.type) {

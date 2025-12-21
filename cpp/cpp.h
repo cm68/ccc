@@ -27,6 +27,7 @@ enum {
     KEYW = 19,
     SYM = 20, NUMBER = 21, STRING = 22, FNUMBER = 23, LNUMBER = 25,
     LABEL = 112,    /* c0.h LABEL */
+    LINENO = 116,   /* line number marker: LINENO + 2-byte line + len + filename */
 
     /* Unary/Binary operators */
     INCR = 30, DECR = 31,           /* INCBEF, DECBEF */
@@ -206,6 +207,7 @@ extern void emitNumber(long val);
 extern void emitFNumber(float val);
 extern void emitString(char *str, int len);
 extern void emitLabel(char *name);
+extern void emitLine(int line, char *file);
 extern void emitPP(char *text, int len);
 extern void emitPPStr(char *text);
 extern void emitCurToken(void);

@@ -13,13 +13,15 @@ not_k=true
 expect_fail=false
 do_link=false
 do_run=false
-while getopts hkflrv:V: flag; do
+compile_only=false
+while getopts hkflrsv:V: flag; do
 	case $flag in
 	h)
 		echo -v verbosity for cc1
 		echo -V verbosity for cc2
 		echo -k continue after failure
 		echo -f expect failure
+		echo -s compile only, no assembly
 		echo -l link the .o file
 		echo -r run under simulation \(implies -l\)
 		exit
@@ -30,6 +32,9 @@ while getopts hkflrv:V: flag; do
 	r)
 		do_link=true
 		do_run=true
+		;;
+	s)
+		compile_only=true
 		;;
 	k)
 		not_k=false
@@ -71,10 +76,12 @@ for t in "${TESTS[@]}" ; do
 	echo "======= source ========"
 	cat "$t"
 	echo "======== ccc ========"
-	echo $CCC -DTEST=$t -I.. $VERBOSE -P -k -c $t
+	CCC_OPTS="-DTEST=$t -I.. $VERBOSE -P -k -c"
+	if $compile_only ; then CCC_OPTS="$CCC_OPTS -s" ; fi
+	echo $CCC $CCC_OPTS $t
 
-	# Run ccc with -P -k -c to compile and keep intermediates
-	if $CCC -DTEST=$t -I.. $VERBOSE -P -k -c "$t" 2>&1; then
+	# Run ccc with -k -c to compile and keep intermediates
+	if $CCC $CCC_OPTS "$t" 2>&1; then
 		if $expect_fail ; then
 			echo "*** UNEXPECTED PASS *** Test was expected to fail but passed!"
 			if $not_k ; then exit 1 ; fi
