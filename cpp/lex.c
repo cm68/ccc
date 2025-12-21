@@ -10,6 +10,9 @@
 static unsigned char incomment = 0;
 /* Track comment state across gettoken() calls */
 
+static char *pendingAsm = NULL;
+/* Pending asm text to emit as STRING after ASM keyword */
+
 struct token cur, next;
 
 /*
@@ -930,6 +933,14 @@ gettoken()
     next.v.str = 0;
     next.type = NONE;
 
+    /* If pending asm text, return it as ASMSTR token */
+    if (pendingAsm) {
+        next.type = ASMSTR;
+        next.v.name = pendingAsm;  /* raw null-terminated string */
+        pendingAsm = NULL;
+        return;
+    }
+
     while (1) {
         if (curchar == 0) {
             next.type = E_O_F;
@@ -1154,7 +1165,7 @@ gettoken()
                         }
                         buf[buflen] = 0;
                         if (curchar == '}') advance();
-                        /* Trim whitespace */
+                        /* Trim leading/trailing whitespace */
                         while (buflen > 0 && (buf[buflen-1] == ' ' ||
                                buf[buflen-1] == '\t' || buf[buflen-1] == '\n'))
                             buf[--buflen] = 0;
@@ -1163,7 +1174,8 @@ gettoken()
                             while (*p == ' ' || *p == '\t' || *p == '\n') p++;
                             if (p != buf) memmove(buf, p, strlen(p) + 1);
                         }
-                        next.v.str = buf;  /* Store raw text */
+                        /* Store asm text for next token */
+                        pendingAsm = buf;
                     }
                 }
                 break;

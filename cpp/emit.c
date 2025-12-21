@@ -97,6 +97,22 @@ emitString(char *str, int len)
 }
 
 /*
+ * Emit asm string: ASMSTR(118) + 2-byte len + string bytes
+ * Supports up to 65535 bytes for large asm blocks
+ */
+void
+emitAsmString(char *str, int len)
+{
+    unsigned char hdr[3];
+    if (len > 65535) len = 65535;
+    hdr[0] = ASMSTR;
+    hdr[1] = len & 0xff;
+    hdr[2] = (len >> 8) & 0xff;
+    write(lexFd, hdr, 3);
+    write(lexFd, str, len);
+}
+
+/*
  * Emit label: LABEL(112) + len byte + name bytes
  */
 void
@@ -297,6 +313,10 @@ emitCurToken(void)
     case STRING:
         /* cur.v.str is a counted string - first byte is length */
         emitString(cur.v.str + 1, (unsigned char)cur.v.str[0]);
+        break;
+    case ASMSTR:
+        /* cur.v.name is a raw null-terminated string */
+        emitAsmString(cur.v.name, strlen(cur.v.name));
         break;
     case LABEL:
         emitLabel(cur.v.name);

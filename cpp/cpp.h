@@ -29,6 +29,7 @@ enum {
     LABEL = 112,    /* c0.h LABEL */
     LINENO = 116,   /* line number marker: LINENO + 2-byte line + len + filename */
     NEWLINE = 117,  /* increment line by 1 (single byte, no payload) */
+    ASMSTR = 118,   /* asm string: ASMSTR + 2-byte len + text (up to 65535 bytes) */
 
     /* Unary/Binary operators */
     INCR = 30, DECR = 31,           /* INCBEF, DECBEF */

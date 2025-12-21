@@ -74,6 +74,7 @@
 #define LABEL   112
 #define LINENO  116
 #define NEWLINE 117
+#define ASMSTR  118
 
 /* Keyword values */
 static char *kwnames[] = {
@@ -217,6 +218,21 @@ main(int argc, char **argv)
                 buf[i] = fgetc(f);
             buf[len] = 0;
             printf("%s: ", buf);
+            break;
+
+        case ASMSTR:
+            /* 2-byte little-endian length + text */
+            len = fgetc(f) & 0xff;
+            len |= (fgetc(f) & 0xff) << 8;
+            printf("{ ");
+            for (i = 0; i < len; i++) {
+                int ch = fgetc(f);
+                if (ch == '\n') printf("\\n");
+                else if (ch == '\t') printf("\\t");
+                else if (ch >= 32 && ch < 127) putchar(ch);
+                else printf("\\x%02x", ch);
+            }
+            printf(" } ");
             break;
 
         case NEWLINE:
