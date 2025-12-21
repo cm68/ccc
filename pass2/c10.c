@@ -70,7 +70,7 @@ char	*argv[];
 	/*
 	 * tack on the string file.
 	 */
-	printf(".globl\n.data\n");
+	printf(".data\n");
 	if (*argv[2] != '-') {
 		if (freopen(argv[2], "r", stdin)==NULL) {
 			error("Missing temp file");

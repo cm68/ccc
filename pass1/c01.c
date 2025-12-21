@@ -816,6 +816,10 @@ union tree *p2;
 		v1 = ~ v1;
 		break;
 
+	case EXCLA:
+		v1 = !v1;
+		break;
+
 	case LSHIFT:
 		v1 <<= v2;
 		break;

@@ -53,8 +53,10 @@ extdef()
 				cfunc();
 				return;
 			}
-			if (paraml)
-				error("Inappropriate parameters");
+			/* ANSI prototypes - clean up parameter symbols */
+			blklev = 1;
+			blkend();  /* removes symbols with hblklev > 0 */
+			paraml = NULL;
 		} else if ((o=symbol())==COMMA || o==SEMI) {
 			peeksym = o;
 			o = (length((union tree *)ds)+ALIGN) & ~ALIGN;

@@ -20,11 +20,9 @@ int modern1(int x);
 int modern2(int a, char b, float c);
 char *modern3(char *s, int n);
 
-// TODO: Multi-parameter K&R functions not yet fully supported
-// The parser has issues with multiple K&R parameters - needs more work
-// int multi(a, b, c)
-// int a;
-// char b;
-// float c;
-// {
-// }
+int multi(a, b, c)
+int a;
+char b;
+float c;
+{
+}
