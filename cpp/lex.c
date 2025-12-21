@@ -777,7 +777,7 @@ isstring()
 char simpleChars[] = "{},[]();=.+-/*%&|^<>!~?:";
 char simpleToks[] = {
     BEGIN, END, COMMA, LBRACK, RBRACK, LPAR, RPAR, SEMI,
-    ASSIGN, DOT, PLUS, MINUS, DIV, STAR, MOD, AND, OR, XOR,
+    ASSIGN, DOT, PLUS, MINUS, DIV, TIMES, MOD, AND, OR, XOR,
     LT, GT, BANG, TWIDDLE, QUES, COLON, 0
 };
 
