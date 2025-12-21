@@ -330,6 +330,7 @@ int	mossym;
 #define	FLOAT	2
 #define	DOUBLE	3
 #define	STRUCT	4
+#define	SIGNED	5
 #define	LONG	6
 #define	UNSIGN	7
 #define	UNCHAR	8

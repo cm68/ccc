@@ -46,7 +46,7 @@ enum {
     /* Keyword cval values (emitted after KEYW token) */
     /* Type keywords */
     KW_INT = 0, KW_CHAR = 1, KW_FLOAT = 2, KW_DOUBLE = 3, KW_STRUCT = 4,
-    KW_LONG = 6, KW_UNSIGNED = 7, KW_VOID = 10, KW_UNION = 8, KW_SHORT = 0,
+    KW_SIGNED = 5, KW_LONG = 6, KW_UNSIGNED = 7, KW_VOID = 10, KW_UNION = 8, KW_SHORT = 0,
     /* Storage class keywords */
     KW_TYPEDEF = 9, KW_AUTO = 11, KW_EXTERN = 12, KW_STATIC = 13, KW_REGISTER = 14,
     /* Statement keywords */
