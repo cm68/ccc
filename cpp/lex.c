@@ -1004,7 +1004,7 @@ gettoken()
                 continue;
             }
         }
-        if ((curchar == '/') && (nextchar == '/')) {
+        if (!incomment && (curchar == '/') && (nextchar == '/')) {
             skiptoeol();
             continue;
         }
@@ -1228,9 +1228,45 @@ gettoken()
             }
         }
         if (isstring()) {
+            char *s1;
+            int len1;
             next.type = STRING;
-            next.v.str = malloc(strbuf[0] + 1);
-            memcpy(next.v.str, strbuf, strbuf[0] + 1);
+            /* Concatenate adjacent string literals (C89/C90 feature) */
+            len1 = (unsigned char)strbuf[0];
+            s1 = malloc(len1 + 1);
+            memcpy(s1, strbuf, len1 + 1);
+            /* Skip whitespace/comments and check for another string */
+        strcat:
+            while (curchar == ' ' || curchar == '\t' || curchar == '\n')
+                advance();
+            /* Skip C-style comments */
+            if (curchar == '/' && nextchar == '*') {
+                advance(); advance();
+                while (!(curchar == '*' && nextchar == '/')) {
+                    if (curchar == 0) break;
+                    advance();
+                }
+                advance(); advance();
+                goto strcat;
+            }
+            /* Skip C++ comments */
+            if (curchar == '/' && nextchar == '/') {
+                while (curchar != '\n' && curchar != 0)
+                    advance();
+                goto strcat;
+            }
+            while (curchar == '"') {
+                int len2;
+                if (!isstring())
+                    break;
+                len2 = (unsigned char)strbuf[0];
+                s1 = realloc(s1, len1 + len2 + 1);
+                memcpy(s1 + 1 + len1, strbuf + 1, len2);
+                len1 += len2;
+                s1[0] = len1;
+                goto strcat;
+            }
+            next.v.str = s1;
             break;
         }
 

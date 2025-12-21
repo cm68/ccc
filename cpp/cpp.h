@@ -17,53 +17,127 @@
  */
 typedef unsigned char token_t;
 
-enum {
-    /* Delimiters - match c0.h exactly */
-    E_O_F = 0,
-    SEMI = 1, BEGIN = 2, END = 3, LBRACK = 4, RBRACK = 5,
-    LPAR = 6, RPAR = 7, COLON = 8, COMMA = 9,
+/* Token types - using #defines for Ritchie C compatibility */
+/* Delimiters - match c0.h exactly */
+#define E_O_F 0
+#define SEMI 1
+#define BEGIN 2
+#define END 3
+#define LBRACK 4
+#define RBRACK 5
+#define LPAR 6
+#define RPAR 7
+#define COLON 8
+#define COMMA 9
 
-    /* Terminals */
-    KEYW = 19,
-    SYM = 20, NUMBER = 21, STRING = 22, FNUMBER = 23, LNUMBER = 25,
-    LABEL = 112,    /* c0.h LABEL */
-    LINENO = 116,   /* line number marker: LINENO + 2-byte line + len + filename */
-    NEWLINE = 117,  /* increment line by 1 (single byte, no payload) */
-    ASMSTR = 118,   /* asm string: ASMSTR + 2-byte len + text (up to 65535 bytes) */
+/* Terminals */
+#define KEYW 19
+#define SYM 20
+#define NUMBER 21
+#define STRING 22
+#define FNUMBER 23
+#define LNUMBER 25
+#define LABEL 112
+#define LINENO 116
+#define NEWLINE 117
+#define ASMSTR 118
 
-    /* Unary/Binary operators */
-    INCR = 30, DECR = 31,           /* INCBEF, DECBEF */
-    BANG = 34, AMPER = 35, STAR = 36, TWIDDLE = 38,  /* EXCLA, AMPER, STAR, COMPL */
-    DOT = 39, PLUS = 40, MINUS = 41, TIMES = 42, DIV = 43, MOD = 44,
-    RSHIFT = 45, LSHIFT = 46, AND = 47, OR = 48, XOR = 49, ARROW = 50,
-    LAND = 53, LOR = 54,            /* LOGAND, LOGOR */
+/* Unary/Binary operators */
+#define INCR 30
+#define DECR 31
+#define BANG 34
+#define AMPER 35
+#define STAR 36
+#define TWIDDLE 38
+#define DOT 39
+#define PLUS 40
+#define MINUS 41
+#define TIMES 42
+#define DIV 43
+#define MOD 44
+#define RSHIFT 45
+#define LSHIFT 46
+#define AND 47
+#define OR 48
+#define XOR 49
+#define ARROW 50
+#define LAND 53
+#define LOR 54
 
-    /* Relational */
-    EQ = 60, NEQ = 61, LE = 62, LT = 63, GE = 64, GT = 65,
+/* Relational */
+#define EQ 60
+#define NEQ 61
+#define LE 62
+#define LT 63
+#define GE 64
+#define GT 65
 
-    /* Assignment operators */
-    PLUSEQ = 70, SUBEQ = 71, MULTEQ = 72, DIVEQ = 73, MODEQ = 74,
-    RSHIFTEQ = 75, LSHIFTEQ = 76, ANDEQ = 77, OREQ = 78, XOREQ = 79,
-    ASSIGN = 80, QUES = 90, SIZEOF = 91, ELLIPSIS = 92,
+/* Assignment operators */
+#define PLUSEQ 70
+#define SUBEQ 71
+#define MULTEQ 72
+#define DIVEQ 73
+#define MODEQ 74
+#define RSHIFTEQ 75
+#define LSHIFTEQ 76
+#define ANDEQ 77
+#define OREQ 78
+#define XOREQ 79
+#define ASSIGN 80
+#define QUES 90
+#define SIZEOF 91
+#define ELLIPSIS 92
 
-    /* Keyword cval values (emitted after KEYW token) */
-    /* Type keywords */
-    KW_INT = 0, KW_CHAR = 1, KW_FLOAT = 2, KW_DOUBLE = 3, KW_STRUCT = 4,
-    KW_SIGNED = 5, KW_LONG = 6, KW_UNSIGNED = 7, KW_VOID = 10, KW_UNION = 8, KW_SHORT = 0,
-    /* Storage class keywords */
-    KW_TYPEDEF = 9, KW_AUTO = 11, KW_EXTERN = 12, KW_STATIC = 13, KW_REGISTER = 14,
-    /* Statement keywords */
-    KW_GOTO = 20, KW_RETURN = 21, KW_IF = 22, KW_WHILE = 23, KW_ELSE = 24,
-    KW_SWITCH = 25, KW_CASE = 26, KW_BREAK = 27, KW_CONTINUE = 28, KW_DO = 29,
-    KW_DEFAULT = 30, KW_FOR = 31, KW_ENUM = 32, KW_ASM = 33, KW_CONST = 34,
-    /* Special - sizeof is an operator, not a keyword */
-    KW_SIZEOF = 127,    /* marker: emit SIZEOF(91) token instead of KEYW */
+/* Keyword cval values (emitted after KEYW token) */
+/* Type keywords */
+#define KW_INT 0
+#define KW_CHAR 1
+#define KW_FLOAT 2
+#define KW_DOUBLE 3
+#define KW_STRUCT 4
+#define KW_SIGNED 5
+#define KW_LONG 6
+#define KW_UNSIGNED 7
+#define KW_UNION 8
+#define KW_TYPEDEF 9
+#define KW_VOID 10
+#define KW_SHORT 0
 
-    /* CPP-only directives (not emitted to .x) */
-    INCLUDE = 128, DEFINE = 129, UNDEF = 130,
-    IF = 131, IFDEF = 132, IFNDEF = 133, ENDIF = 134, ELIF = 135, ELSE = 136,
-    NONE = 255
-};
+/* Storage class keywords */
+#define KW_AUTO 11
+#define KW_EXTERN 12
+#define KW_STATIC 13
+#define KW_REGISTER 14
+
+/* Statement keywords */
+#define KW_GOTO 20
+#define KW_RETURN 21
+#define KW_IF 22
+#define KW_WHILE 23
+#define KW_ELSE 24
+#define KW_SWITCH 25
+#define KW_CASE 26
+#define KW_BREAK 27
+#define KW_CONTINUE 28
+#define KW_DO 29
+#define KW_DEFAULT 30
+#define KW_FOR 31
+#define KW_ENUM 32
+#define KW_ASM 33
+#define KW_CONST 34
+#define KW_SIZEOF 127
+
+/* CPP-only directives (not emitted to .x) */
+#define INCLUDE 128
+#define DEFINE 129
+#define UNDEF 130
+#define IF 131
+#define IFDEF 132
+#define IFNDEF 133
+#define ENDIF 134
+#define ELIF 135
+#define ELSE 136
+#define NONE 255
 
 /*
  * Basic types

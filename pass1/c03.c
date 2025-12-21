@@ -125,8 +125,28 @@ struct nmlist *tptr;
 		mosflg = isadecl? ismos: 0;
 		o = symbol();
 		if (o==NAME && csym->hclass==TYPEDEF) {
-			if (tkw >= 0)
+			if (tkw >= 0) {
+				/* If redefining same typedef, let it be declarator */
+				/* Compute effective type with modifiers */
+				int etype = tkw;
+				if (unsignf) {
+					if (etype==INT) etype = UNSIGN;
+					else if (etype==CHAR) etype = UNCHAR;
+					else if (etype==LONG) etype = UNLONG;
+				}
+				if (longf) {
+					if (etype==FLOAT) etype = DOUBLE;
+					else if (etype==INT) etype = LONG;
+					else if (etype==UNSIGN) etype = UNLONG;
+				}
+				if (skw==TYPEDEF && csym->htype==etype) {
+					peeksym = o;
+					*scptr = skw;
+					tptr->htype = etype;
+					return(1);
+				}
 				error("type clash");
+			}
 			tkw = csym->htype;
 			tptr->hsubsp = csym->hsubsp;
 			tptr->hstrp = csym->hstrp;
@@ -496,7 +516,8 @@ struct nmlist *atptr, *absname;
 	}
 	if (!(dsym->hclass==0
 	   || ((skw==ARG||skw==AREG) && dsym->hclass==ARG1)
-	   || (skw==EXTERN && dsym->hclass==EXTERN && dsym->htype==type))) {
+	   || (skw==EXTERN && dsym->hclass==EXTERN && dsym->htype==type)
+	   || (skw==TYPEDEF && dsym->hclass==TYPEDEF && dsym->htype==type))) {
 		redec();
 		goto syntax;
 	}
