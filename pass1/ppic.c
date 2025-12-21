@@ -325,8 +325,19 @@ void ppfile(FILE *in, FILE *out)
 			break;
 
 		case 200: /* BDATA */
-			n = getword(in);
-			fprintf(out, " %d", n & 0xff);
+			/* BDATA has no immediate argument, but is followed by
+			 * pairs of words: (flag, value) where flag=1 means
+			 * data byte, flag=0 means end of data sequence */
+			fprintf(out, " \"");
+			while ((n = getword(in)) == 1) {
+				n2 = getword(in);
+				if (n2 >= 32 && n2 < 127 && n2 != '"' && n2 != '\\')
+					fprintf(out, "%c", n2);
+				else
+					fprintf(out, "\\x%02x", n2);
+			}
+			fprintf(out, "\"");
+			/* n==0 means end of data, we already consumed it */
 			break;
 
 		case 205: /* CSPACE */

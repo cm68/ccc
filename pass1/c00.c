@@ -16,6 +16,10 @@ int	peeksym	= -1;
 int	line	= 1;
 struct	tnode	funcblk = { NAME };
 
+/* Buffer for string literals from tokenized input */
+char	strbuf[4096];
+int	strbuflen;
+
 struct kwtab {
 	char	*kwname;
 	int	kwval;
@@ -272,23 +276,19 @@ symbol()
 		return(LCON);
 
 	case STRING:
-		/* STRING: len byte + string bytes - store label */
+		/* STRING: len byte + string bytes
+		 * Buffer the string for later output by putstr() or here
+		 * for pointer initializers.
+		 */
 		cval = isn++;
 		{
 			int len = getc(xfile);
 			int i;
-			/* Write string data to string file */
-			strflg++;
-			outcode("BNB", LABEL, cval, BDATA);
-			for (i = 0; i < len; i++) {
-				if (i % 15 == 0 && i > 0)
-					outcode("0B", BDATA);
-				outcode("1N", getc(xfile) & 0377);
-			}
-			/* null terminator */
-			outcode("10");
-			outcode("0");
-			strflg = 0;
+			/* Buffer the string data */
+			strbuflen = len;
+			for (i = 0; i < len && i < sizeof(strbuf)-1; i++)
+				strbuf[i] = getc(xfile);
+			strbuf[i] = 0;
 			nchstr = len + 1;
 		}
 		return(STRING);
@@ -422,29 +422,34 @@ subseq(c,a,b)
 putstr(lab, max)
 register max;
 {
-	register int c;
+	register int i;
 
-	nchstr = 0;
+	/*
+	 * Output buffered string data from symbol().
+	 * lab=0 means inline (for arrays), lab>0 means to a label (for pointers).
+	 */
 	if (lab) {
 		strflg++;
 		outcode("BNB", LABEL, lab, BDATA);
 		max = 10000;
-	} else
+	} else {
 		outcode("B", BDATA);
-	while ((c = mapch('"')) >= 0) {
-		if (nchstr < max) {
-			nchstr++;
-			if (nchstr%15 == 0)
-				outcode("0B", BDATA);
-			outcode("1N", c & 0377);
-		}
 	}
-	if (nchstr < max) {
-		nchstr++;
+
+	for (i = 0; i < strbuflen && i < max; i++) {
+		if (i % 15 == 0 && i > 0)
+			outcode("0B", BDATA);
+		outcode("1N", strbuf[i] & 0377);
+	}
+	/* null terminator if room */
+	if (i < max) {
+		if (i % 15 == 0 && i > 0)
+			outcode("0B", BDATA);
 		outcode("10");
 	}
 	outcode("0");
 	strflg = 0;
+	nchstr = i + 1;
 }
 
 cntstr()
@@ -618,9 +623,10 @@ advanc:
 	/* fake a static char array */
 	case STRING:
 		/*
-		 * String data already read and output by symbol().
-		 * nchstr and cval (label) are set there.
+		 * String is buffered by symbol().
+		 * Output to .2 file with label for pointer use.
 		 */
+		putstr(cval, 10000);
 		cs = (struct nmlist *)Tblock(sizeof(struct nmlist));
 		cs->hclass = STATIC;
 		cs->hoffset = cval;
