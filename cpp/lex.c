@@ -277,6 +277,8 @@ static char escval[] = {
     '\n', 0, 0, 0, '\r', 0, '\t', 0, '\v', 0, 0, 0, 0
 };
 
+static unsigned char termin;  /* String terminator (' or ") */
+
 static unsigned char
 getlit()
 {
@@ -290,7 +292,16 @@ top:
         c = curchar;
     } else {
         advance();
-        if (curchar == '\n') { lineno++; goto top; }
+        /* Backslash-newline continuation: skip and get next char.
+         * Don't increment lineno here - advance() already did when it
+         * processed the newline character.
+         * If the next char after continuation is the string terminator,
+         * return 0xff to signal end-of-content (caller checks for this). */
+        if (curchar == '\n') {
+            advance();
+            if (curchar == termin) return 0xff;
+            goto top;
+        }
         if (curchar >= '0' && curchar <= '7') return getint(8);
         if ((curchar | 0x20) == 'x') { advance(); return getint(16); }
         if (curchar == 'B') { advance(); return getint(2); }
@@ -348,8 +359,10 @@ isnumber()
     char *p;
 
     if (charmatch('\'')) {
+        termin = '\'';  /* Tell getlit() what terminates this literal */
         next.v.numeric = getlit();
-        if (curchar != '\'') {
+        /* Note: getlit() returns 0xff for "terminator after backslash-newline" */
+        if (next.v.numeric == 0xff || curchar != '\'') {
             gripe(ER_C_CD);
         }
         advance();
@@ -757,14 +770,22 @@ char
 isstring()
 {
 	char *s = strbuf;
+	unsigned char c;
 
     if (!charmatch('\"')) {
         return 0;
     }
+    termin = '"';  /* Tell getlit() what terminates this string */
 	*s++ = 0;
     while (!charmatch('\"')) {
+        c = getlit();
+        if (c == 0xff) {
+            /* Backslash-newline before terminator - consume the quote */
+            advance();
+            break;
+        }
     	strbuf[0]++;
-        *s++ = getlit();
+        *s++ = c;
     }
     *s = 0;
 #ifdef DEBUG

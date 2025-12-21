@@ -17,6 +17,7 @@
 char *curFile;
 int lineNo;
 int exitCode = 0;
+int noLineMarkers = 0;  /* -N flag: suppress LINENO/NEWLINE in .x */
 
 /* Include path list */
 #define MAX_INCLUDES 32
@@ -105,6 +106,8 @@ main(int argc, char **argv)
             addDefine(argv[i] + 2);
         } else if (strcmp(argv[i], "-E") == 0) {
             ppOnly = 1;
+        } else if (strcmp(argv[i], "-N") == 0) {
+            noLineMarkers = 1;
         } else if (argv[i][0] == '-') {
             fprintf(stderr, "Unknown option: %s\n", argv[i]);
             usage();

@@ -303,6 +303,15 @@ main(int argc, char **argv)
             cpp_base[cpp_base_argc++] = argv[0];
             argc--;
             argv++;
+        } else if (strcmp(argv[0], "-N") == 0) {
+            /* Pass -N to cpp (suppress line markers) */
+            if (cpp_base_argc >= MAX_ARGS) {
+                fprintf(stderr, "Error: too many arguments\n");
+                exit(1);
+            }
+            cpp_base[cpp_base_argc++] = argv[0];
+            argc--;
+            argv++;
         } else if (strcmp(argv[0], "-P") == 0) {
             pretty_print = 1;
             argc--;

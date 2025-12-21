@@ -186,6 +186,32 @@ emitPP(char *text, int len)
         write(ppFd, text, len);
 }
 
+/*
+ * Emit string to .i file with escape sequences restored
+ */
+void
+emitPPString(char *text, int len)
+{
+    int i;
+    char c, esc[3];
+
+    if (ppFd < 0) return;
+
+    esc[0] = '\\';
+    esc[2] = 0;
+    for (i = 0; i < len; i++) {
+        c = text[i];
+        switch (c) {
+        case '\n': esc[1] = 'n'; write(ppFd, esc, 2); break;
+        case '\t': esc[1] = 't'; write(ppFd, esc, 2); break;
+        case '\r': esc[1] = 'r'; write(ppFd, esc, 2); break;
+        case '\\': esc[1] = '\\'; write(ppFd, esc, 2); break;
+        case '"':  esc[1] = '"'; write(ppFd, esc, 2); break;
+        default:   write(ppFd, &c, 1); break;
+        }
+    }
+}
+
 void
 emitPPStr(char *text)
 {
@@ -275,21 +301,23 @@ emitCurToken(void)
     char buf[32];
     char *op;
 
-    /* Emit line info to .x when line or file changes */
-    if (lastName != filename) {
-        /* File changed - emit full LINENO with filename */
-        emitLine(lineno, filename ? filename : "");
-        emitLinePP(lineno, filename ? filename : "");
-        lastLine = lineno;
-        lastName = filename;
-    } else if (lineno == lastLine + 1) {
-        /* Line incremented by 1 - emit single NEWLINE byte */
-        emitNewline();
-        lastLine = lineno;
-    } else if (lineno != lastLine) {
-        /* Line jumped - emit full LINENO */
-        emitLine(lineno, filename ? filename : "");
-        lastLine = lineno;
+    /* Emit line info to .x when line or file changes (unless -N) */
+    if (!noLineMarkers) {
+        if (lastName != filename) {
+            /* File changed - emit full LINENO with filename */
+            emitLine(lineno, filename ? filename : "");
+            emitLinePP(lineno, filename ? filename : "");
+            lastLine = lineno;
+            lastName = filename;
+        } else if (lineno == lastLine + 1) {
+            /* Line incremented by 1 - emit single NEWLINE byte */
+            emitNewline();
+            lastLine = lineno;
+        } else if (lineno != lastLine) {
+            /* Line jumped - emit full LINENO */
+            emitLine(lineno, filename ? filename : "");
+            lastLine = lineno;
+        }
     }
 
     /* Emit to lexeme stream */
@@ -357,7 +385,7 @@ emitCurToken(void)
             break;
         case STRING:
             emitPPStr("\"");
-            emitPP(cur.v.str + 1, (unsigned char)cur.v.str[0]);
+            emitPPString(cur.v.str + 1, (unsigned char)cur.v.str[0]);
             emitPPStr("\" ");
             break;
         case LABEL:

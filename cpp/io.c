@@ -521,6 +521,18 @@ done:
         nextcol++;
     }
     if (nextchar == '\t') nextchar = ' ';
+
+    /* Handle backslash-newline line continuation (C translation phase 2).
+     * When we see '\' followed by '\n', skip both and get the next char.
+     * This makes line continuations invisible to the rest of the lexer.
+     * First advance() skips the backslash and processes the newline (updating
+     * lineno), second advance() gets the real next character. */
+    if (curchar == '\\' && nextchar == '\n') {
+        advance();  /* Skip '\', get '\n' as curchar (lineno++ in done:) */
+        advance();  /* Skip '\n', get next real char as curchar */
+        return;
+    }
+
 #ifdef DEBUG
     if (VERBOSE(V_IO)) {
         fdprintf(2,

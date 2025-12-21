@@ -109,6 +109,7 @@ typedef int error_t;
  */
 struct token {
     token_t type;
+    int lineno;             /* line number where token was scanned */
     union {
         long numeric;       /* char, short, int, long */
         float fval;         /* float, double */
@@ -158,6 +159,7 @@ extern int lexFd;           /* .x output file descriptor */
 extern int ppFd;            /* .i output file descriptor */
 extern char *curFile;       /* current source file */
 extern int lineNo;          /* current line number (for errors) */
+extern int noLineMarkers;   /* -N flag: suppress LINENO/NEWLINE */
 
 extern unsigned char curchar;
 extern unsigned char nextchar;
