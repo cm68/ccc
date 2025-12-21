@@ -112,15 +112,13 @@ emitLabel(char *name)
 }
 
 /*
- * Emit line number: LINENO(116) + 2-byte line + len byte + filename bytes
- * Also emits # line "file" to .i file
+ * Emit line number to .x: LINENO(116) + 2-byte line + len byte + filename bytes
  */
 void
 emitLine(int line, char *file)
 {
     unsigned char hdr[4];
     int len = strlen(file);
-    char buf[300];
 
     if (len > 255) len = 255;
     hdr[0] = LINENO;
@@ -129,9 +127,16 @@ emitLine(int line, char *file)
     hdr[3] = len;
     write(lexFd, hdr, 4);
     write(lexFd, file, len);
+}
 
-    /* Also emit to .i file */
-    sprintf(buf, "# %d \"%s\"\n", line, file);
+/*
+ * Emit # line directive to .i file only
+ */
+void
+emitLinePP(int line, char *file)
+{
+    char buf[300];
+    sprintf(buf, "\n# %d \"%s\"\n", line, file);
     emitPPStr(buf);
 }
 
@@ -244,9 +249,12 @@ emitCurToken(void)
     char buf[32];
     char *op;
 
-    /* Emit LINENO when file changes (start of file, includes) */
-    if (lastName != filename) {
+    /* Emit LINENO to .x when line or file changes */
+    if (lineno != lastLine || lastName != filename) {
         emitLine(lineno, filename ? filename : "");
+        /* Emit # directive to .i only on file change */
+        if (lastName != filename)
+            emitLinePP(lineno, filename ? filename : "");
         lastLine = lineno;
         lastName = filename;
     }
