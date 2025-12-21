@@ -49,6 +49,13 @@ ansiparams()
 			errflush(o);
 			return;
 		}
+		/* Check for f(void) - void alone means no params */
+		if (typer.htype == VOID) {
+			o = symbol();
+			if (o == RPARN)
+				break;  /* RPARN consumed, no params */
+			peeksym = o;
+		}
 		/* Parse declarator, add to param list */
 		decl1(ARG1, &typer, 0, (struct nmlist *)NULL);
 
@@ -686,12 +693,6 @@ struct nmlist *absname;
 				if (o == RPARN) {
 					/* Empty params: f() */
 					;
-				} else if (o == KEYW && cval == VOID) {
-					/* Check for f(void) */
-					if ((o = symbol()) != RPARN) {
-						peeksym = o;
-						goto c90params;
-					}
 				} else if (isatype(o)) {
 					/* C90 style - type keyword seen */
 					peeksym = o;
