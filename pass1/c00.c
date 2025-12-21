@@ -294,6 +294,22 @@ dispatch:
 		}
 		return(STRING);
 
+	case ASMSTR:
+		/* ASMSTR: 2-byte len + string bytes */
+		{
+			int len = getc(xfile) & 0xff;
+			int i;
+			len |= (getc(xfile) & 0xff) << 8;
+			strbuflen = len;
+			for (i = 0; i < len && i < sizeof(strbuf)-1; i++)
+				strbuf[i] = getc(xfile);
+			/* Skip remaining if too long */
+			for (; i < len; i++)
+				getc(xfile);
+			strbuf[i < sizeof(strbuf) ? i : sizeof(strbuf)-1] = 0;
+		}
+		return(ASMSTR);
+
 	case FCON:
 		/* FCON: 4-byte IEEE754 float */
 		lcval = readlong();

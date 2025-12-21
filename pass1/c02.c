@@ -345,20 +345,10 @@ stmt:
 			goto semi;
 
 		case ASM:
-		{
-			char	tmp[80],	/* tmp for line buffer */
-				*p;
-
-			if (symbol() != LPARN || (o1 = symbol()) != STRING)
+			if (symbol() != ASMSTR)
 				goto syntax;
-			for (p = tmp; (o1 = mapch('"')) >= 0; )
-				*p++ = o1&0177;
-			*p = '\0';
-			if (symbol() != RPARN)
-				goto syntax;
-			outcode("BF", ASSEM, tmp);
+			outcode("BF", ASSEM, strbuf);
 			goto semi;
-		}
 
 		case IF: {
 			register o2;

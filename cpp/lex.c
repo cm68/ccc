@@ -12,6 +12,8 @@ static unsigned char incomment = 0;
 
 static char *pendingAsm = NULL;
 /* Pending asm text to emit as STRING after ASM keyword */
+static char pendingSemi = 0;
+/* Emit SEMI after ASMSTR */
 
 struct token cur, next;
 
@@ -933,11 +935,19 @@ gettoken()
     next.v.str = 0;
     next.type = NONE;
 
+    /* Emit SEMI after ASMSTR */
+    if (pendingSemi) {
+        pendingSemi = 0;
+        next.type = SEMI;
+        return;
+    }
+
     /* If pending asm text, return it as ASMSTR token */
     if (pendingAsm) {
         next.type = ASMSTR;
         next.v.name = pendingAsm;  /* raw null-terminated string */
         pendingAsm = NULL;
+        pendingSemi = 1;  /* emit SEMI on next call */
         return;
     }
 

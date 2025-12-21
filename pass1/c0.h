@@ -201,6 +201,7 @@ int	strflg;
 int	mosflg;
 int	initflg;
 char	sbuf[BUFSIZ];
+extern	char	strbuf[];
 FILE	*sbufp;
 FILE	*xfile;		/* .x input file from cpp */
 int	regvar;
@@ -321,6 +322,7 @@ int	mossym;
 #define	STRASG	115
 #define	LINENO	116	/* line number marker from cpp */
 #define	NEWLINE	117	/* line++ marker from cpp */
+#define	ASMSTR	118	/* asm string: 2-byte len + text */
 #define	ITOC	109
 #define	SEOF	200	/* stack EOF marker in expr compilation */
 
