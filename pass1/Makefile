@@ -68,8 +68,8 @@ clobber: clean
 	rm -f c0 ppic
 	rm -rf $(OUTDIR)
 
-install: c0
-	cp c0 $(ROOTDIR)/bin
+install: c0 ppic
+	cp c0 ppic $(ROOTDIR)/bin
 
 .PHONY: all clean clobber stage1 install sizefile
 
