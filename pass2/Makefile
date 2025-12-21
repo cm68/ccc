@@ -55,8 +55,8 @@ stage1:
 	@for f in $(ALL_SOURCES); do \
 	  b=$${f%.c}; \
 	  printf "%-20s" "$$f: "; \
-	  $(CCC) $(CCCFLAGS) -k -P -c $$f 2> $(OUTDIR)/$$b.err 1>&2 && { echo "ok"; rm -f $(OUTDIR)/$$b.err; } || echo "FAIL"; \
-	  mv $$b.i $$b.x $$b.s $$b.o $$b.ast $$b.pp $(OUTDIR) 2>/dev/null ; \
+	  $(CCC) $(CCCFLAGS) -k -P -s $$f 2> $(OUTDIR)/$$b.err 1>&2 && { echo "ok"; rm -f $(OUTDIR)/$$b.err; } || echo "FAIL"; \
+	  mv $$b.i $$b.x $$b.1 $$b.2 $$b.pp $$b.s $$b.o $(OUTDIR) 2>/dev/null || true; \
 	done
 
 # Size report for stage1 objects

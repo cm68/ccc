@@ -8,6 +8,7 @@
 #define	LTYPE	long	/* change to int for no long consts */
 #define	TNULL	(union tree *)NULL
 #define	UNS(x)	((unsigned short)(x))
+#define	MAX(a,b)	((a)>(b)?(a):(b))
 
 /*
  *  Tree node for unary and binary

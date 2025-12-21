@@ -3,7 +3,7 @@
  */
 
 #include "c1.h"
-#include <sys/param.h>		/* for MAX */
+/* #include <sys/param.h> */	/* for MAX - commented out, define locally */
 
 union tree *
 optim(tree)
