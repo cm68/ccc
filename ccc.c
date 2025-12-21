@@ -37,6 +37,7 @@ usage(void)
         "default /usr/include)\n");
     printf("  -D<var>[=val]  Define macro (passed to cc1)\n");
     printf("  -E             Preprocess only (not yet implemented)\n");
+    printf("  -P             Run pretty printer after parse (produces .pp)\n");
     printf("  -x             Print commands as they execute\n");
     printf("  -n             Print commands without executing (dry run)\n");
     exit(1);
@@ -151,6 +152,7 @@ main(int argc, char **argv)
     int no_exec = 0;         /* -n: don't execute (dry run) */
     int strip_syms = 0;      /* -S: strip symbols from output */
     int nine_char = 0;       /* -9: use 9-char symbols */
+    int pretty_print = 0;    /* -P: run ppic after parse */
 
     /* Input files by type */
     char *c_files[MAX_ARGS];
@@ -173,6 +175,7 @@ main(int argc, char **argv)
     char asm_path[1024];
     char ld_path[1024];
     char astpp_path[1024];
+    char ppic_path[1024];
 
     char chdr_path[1024];
     char libc_path[1024];
@@ -191,6 +194,7 @@ main(int argc, char **argv)
     snprintf(asm_path, sizeof(asm_path), "%s/bin/asz", rootdir);
     snprintf(ld_path, sizeof(ld_path), "%s/bin/wsld", rootdir);
     snprintf(astpp_path, sizeof(astpp_path), "%s/bin/astpp", rootdir);
+    snprintf(ppic_path, sizeof(ppic_path), "%s/bin/ppic", rootdir);
 
     snprintf(chdr_path, sizeof(chdr_path), "%s/lib/crt0.o", rootdir);
     snprintf(libc_path, sizeof(libc_path), "%s/lib/libc.a", rootdir);
@@ -297,6 +301,10 @@ main(int argc, char **argv)
                 exit(1);
             }
             cpp_base[cpp_base_argc++] = argv[0];
+            argc--;
+            argv++;
+        } else if (strcmp(argv[0], "-P") == 0) {
+            pretty_print = 1;
             argc--;
             argv++;
         } else if (argv[0][0] == '-') {
@@ -425,6 +433,24 @@ main(int argc, char **argv)
         }
         free(lex_file);
         free(prep_file);
+
+        /* Run ppic if -P was specified */
+        if (pretty_print) {
+            char *ppic_args[4];
+            ppic_args[0] = ppic_path;
+            ppic_args[1] = base;
+            ppic_args[2] = NULL;
+
+            if (print_cmds || no_exec)
+                printCommand(ppic_args);
+            if (!no_exec) {
+                status = execCommand(ppic_path, ppic_args);
+                if (status != 0) {
+                    fprintf(stderr, "Error: ppic failed on %s\n", src);
+                    exit(status);
+                }
+            }
+        }
 
         /* Build pass2 args: c1 temp1 temp2 asm_file */
         cc2_argc = 0;
