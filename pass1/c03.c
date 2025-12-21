@@ -64,6 +64,15 @@ ansiparams()
 			errflush(o);
 			return;
 		}
+		/* Check for ... after comma */
+		if ((o = symbol()) == ELLIPSIS) {
+			if (symbol() != RPARN) {
+				error("Expected ')' after ...");
+				errflush(o);
+			}
+			break;
+		}
+		peeksym = o;
 	}
 }
 

@@ -70,6 +70,7 @@
 #define ASSIGN  80
 #define QUES    90
 #define SIZEOF  91
+#define ELLIPSIS 92
 
 #define LABEL   112
 #define LINENO  116
@@ -292,6 +293,7 @@ main(int argc, char **argv)
         case ASSIGN:  printf("= "); break;
         case QUES:    printf("? "); break;
         case SIZEOF:  printf("sizeof "); break;
+        case ELLIPSIS: printf("... "); break;
 
         default:
             printf("?%d? ", c);

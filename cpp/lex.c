@@ -1225,6 +1225,16 @@ gettoken()
         c = curchar;	// save what we saw
         advance();
 
+        /* check for ellipsis ... */
+        if (c == '.' && curchar == '.') {
+            advance();
+            if (curchar == '.') {
+                advance();
+                next.type = ELLIPSIS;
+            }
+            /* else two dots is an error, but we'll let parser catch it */
+        }
+
         /* see if the character is doubled.  this can be an operator */
         if (curchar == c) {
             t = lookupc(dblChars, c);

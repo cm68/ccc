@@ -245,6 +245,7 @@ int	mossym;
 #define	XNULLOP	218	/* interface version */
 
 #define	SIZEOF	91
+#define	ELLIPSIS 92
 #define	INCBEF	30
 #define	DECBEF	31
 #define	INCAFT	32

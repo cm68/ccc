@@ -44,7 +44,7 @@ enum {
     /* Assignment operators */
     PLUSEQ = 70, SUBEQ = 71, MULTEQ = 72, DIVEQ = 73, MODEQ = 74,
     RSHIFTEQ = 75, LSHIFTEQ = 76, ANDEQ = 77, OREQ = 78, XOREQ = 79,
-    ASSIGN = 80, QUES = 90, SIZEOF = 91,
+    ASSIGN = 80, QUES = 90, SIZEOF = 91, ELLIPSIS = 92,
 
     /* Keyword cval values (emitted after KEYW token) */
     /* Type keywords */
