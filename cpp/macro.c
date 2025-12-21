@@ -540,6 +540,16 @@ macexpand(char *s)	/* the symbol we are looking up as a macro */
     }
     *d = 0;
 
+    /*
+     * Add trailing space to prevent token concatenation with following text.
+     * Without this, "LTYPE lcval" where LTYPE=long becomes "longlcval".
+     * Don't add if expansion is empty or already ends with whitespace.
+     */
+    if (d > macbuffer && d[-1] != ' ' && d[-1] != '\t') {
+        *d++ = ' ';
+        *d = 0;
+    }
+
     // printf("insertmacro: %s %s\n", m->name, macbuffer);
 
     insertmacro(m->name, macbuffer);
