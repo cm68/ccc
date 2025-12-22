@@ -7,6 +7,7 @@
 
 ROOTDIR = ../root
 CCC = ../root/bin/ccc
+OUTDIR = stage1
 
 CC = gcc
 CFLAGS = -m32 -g -Wall -std=c90 -pedantic -Dlinux -std=c89
@@ -69,8 +70,8 @@ test: all
 	./wsnm tests/test.out
 
 clean:
-	rm -f *.o tests/*.out tests/test.a tests/ctest.o
-	rm -f stage1/*
+	rm -f *.a *.o tests/*.out tests/*.a tests/*.o
+	rm -f stage1/* core
 
 clobber: clean
 	rm -f $(ALL)
@@ -89,7 +90,7 @@ stage1:
 		b=$${f%.c}; \
 		printf "%-20s" "$$f: "; \
 		$(CCC) -DCCC -k -P -c $$f 2> stage1/$$b.err 1>&2 && { echo "ok"; rm -f stage1/$$b.err; } || echo "FAIL"; \
-		mv $$b.x $$b.i $$b.s $$b.o $$b.ast $$b.pp stage1 2>/dev/null ; \
+        mv $$b.i $$b.x $$b.1 $$b.2 $$b.pp $$b.s $$b.o $(OUTDIR) 2>/dev/null ; true ;\
 	done
 	@echo "Stage1 complete"
 

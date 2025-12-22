@@ -38,7 +38,7 @@ CFILES = $(CC1_SOURCES) $(CC2_SOURCES) util.c ccc.c \
 	pass1/tokenlist.c pass1/debugtags.c
 HFILES = pass2/cc2.h pass1/cc1.h pass1/token.h
 
-BINS = cpp/cpp pass1/cc1 pass2/cc2 ccc astpp
+BINS = cpp/cpp pass1/cc1 pass2/cc2 ccc
 
 # Documentation files
 DOCFILES = README.md TODO.md CLAUDE.md AST_FORMAT.md ASTPP.md \
@@ -64,46 +64,14 @@ ccc.o: ccc.c
 ccc: ccc.o
 	$(LD) $(LDFLAGS) ccc ccc.o
 
-install: cpp cc1 cc2 ccc astpp
+install: cpp cc1 cc2 ccc
 	mkdir -p $(ROOTDIR)/bin
-	cp ccc astpp $(ROOTDIR)/bin
+	cp ccc $(ROOTDIR)/bin
 	$(MAKE) -C cpp install ROOTDIR=$(CURDIR)/$(ROOTDIR)
 	$(MAKE) -C pass1 install ROOTDIR=$(CURDIR)/$(ROOTDIR)
 	$(MAKE) -C pass2 install ROOTDIR=$(CURDIR)/$(ROOTDIR)
 	$(MAKE) -C ws install ROOTDIR=$(CURDIR)/$(ROOTDIR)
 	$(MAKE) -C libsrc install ROOTDIR=$(CURDIR)/$(ROOTDIR)
-
-# Suffix rules using installed binaries
-# cpp preprocesses to lexeme stream (.x), cc1 parses to AST
-%.ast: %.c cpp cc1
-	./$(ROOTDIR)/bin/cpp $(CPPFLAGS) $<
-	./$(ROOTDIR)/bin/cc1 -o $@ $*.x
-
-%.s: %.ast cc2
-	./$(ROOTDIR)/bin/cc2 $<
-
-astpp: astpp.c
-	$(CC) -Wall -o $@ $<
-
-%.pp: %.ast astpp
-	./astpp $< > $@
-
-%.obj: %.s
-	$(ASM) $(ASMOPTS) -o $@ $<
-
-# Pattern rules for stage1 directory
-.PRECIOUS: stage1/%.ast stage1/%.s
-
-stage1/%.ast: %.c cpp cc1 FORCE
-	@mkdir -p stage1
-	./$(ROOTDIR)/bin/cpp $(CPPFLAGS) -o stage1/$* $<
-	./$(ROOTDIR)/bin/cc1 -o $@ stage1/$*.x
-
-stage1/%.s: stage1/%.ast cc2 FORCE
-	./$(ROOTDIR)/bin/cc2 -o $@ $<
-
-stage1/%.o: stage1/%.s FORCE
-	$(ASM) $(ASMOPTS) -o $@ $<
 
 FORCE:
 
@@ -126,13 +94,11 @@ sizecheck:
 .PHONY: stage1
 stage1: cc1 cc2 install
 	@echo "Building stage1 with cross ccc"
+	$(MAKE) -C ws CC=ccc ROOTDIR=$(CURDIR)/$(ROOTDIR)
+	$(MAKE) -C cpp CC=ccc ROOTDIR=$(CURDIR)/$(ROOTDIR)
 	$(MAKE) -C pass1 CC=ccc ROOTDIR=$(CURDIR)/$(ROOTDIR)
 	$(MAKE) -C pass2 CC=ccc ROOTDIR=$(CURDIR)/$(ROOTDIR)
 	@echo "Stage1 build complete"
-
-regen:
-	$(MAKE) -C pass1 regen
-	$(MAKE) -C pass2 regen
 
 tags:
 	ctags pass1/*.c pass2/*.c *.c

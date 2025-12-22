@@ -301,14 +301,6 @@ nextchar()
 }
 
 /*
- * spnextchar is no longer used - nextchar handles everything
- */
-spnextchar()
-{
-	return nextchar();
-}
-
-/*
  * is a break or continue legal?
  */
 chconbrk(l)

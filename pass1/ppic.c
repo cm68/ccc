@@ -112,10 +112,6 @@ char *getop(int op)
 	switch (op) {
 	case 90: return "QUEST";
 	case 91: return "SIZEOF";
-	case 93: return "MAX";
-	case 94: return "MAXP";
-	case 95: return "MIN";
-	case 96: return "MINP";
 	case 97: return "SEQNC";
 	case 100: return "CALL";
 	case 101: return "MCALL";

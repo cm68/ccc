@@ -281,11 +281,9 @@ build(op)
 		if (leftc)
 			cvn = leftc;
 		leftc = 0;
-	} else if (op==COLON || op==MAX || op==MIN) {
+	} else if (op==COLON) {
 		if (t1>=PTR && t1==t2)
 			cvn = 0;
-		if (op!=COLON && (t1>=PTR || t2>=PTR))
-			op += MAXP-MAX;
 		/*
 		 * Allow "e ? i : p" and "e ? p : i" with warning.
 		 */

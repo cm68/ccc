@@ -48,8 +48,8 @@ stage1:
 	@for f in $(SRCS); do \
 	  b=$${f%.c}; \
 	  printf "%-20s" "$$f: "; \
-	  $(CCC) -DCCC -k -P -c $$f 2> $(OUTDIR)/$$b.err 1>&2 && { echo "ok"; rm -f $(OUTDIR)/$$b.err; } || echo "FAIL"; \
-	  mv $$b.x $$b.i $$b.s $$b.o $$b.ast $$b.pp $(OUTDIR) 2>/dev/null ; \
+	  $(CCC) -DCCC -k -P -s $$f 2> $(OUTDIR)/$$b.err 1>&2 && { echo "ok"; rm -f $(OUTDIR)/$$b.err; } || echo "FAIL"; \
+      mv $$b.i $$b.x $$b.1 $$b.2 $$b.pp $$b.s $$b.o $(OUTDIR) 2>/dev/null ; \
 	done
 
 # Size report for stage1 objects

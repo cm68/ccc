@@ -1,6 +1,7 @@
 /*
  *		C compiler, part 2
- * 
+ *		Z80 target version
+ *
  * (long)btodb(l) produced 'no code table error for op: >>(17) type: 6'
  * allow both long and ulong at line ~341.  1996/6/19
 */
@@ -10,6 +11,9 @@ static	char	sccsid[] = "@(#)c10.c	2.1 (2.11BSD GTE) 10/4/94";
 #endif
 
 #include "c1.h"
+#include "z80.h"
+
+extern char *regname[];		/* Z80 register names from c11.c */
 
 #ifdef	DEBUG
 #define	dbprint(op)	printf("	/ %s", opntab[op])
@@ -34,7 +38,7 @@ struct tname sfuncr = { NAME, STRUCT, STATIC, 0, 0, 0 };
 
 struct	table	*cregtab;
 
-int	nreg	= 3;
+int	nreg	= NREG;		/* Z80: BC and IX available */
 int	isn	= 10000;
 
 main(argc, argv)
@@ -411,15 +415,22 @@ again:
 			dbprint(tree->t.op);
 			if (table==sptab || table==lsptab) {
 				if (tree->t.type==LONG || tree->t.type==UNLONG){
-					printf("mov\tr%d,-(sp)\n",r+1);
+					/* Push low word first for Z80 long */
+					printf("\tpush de\n");
 					nstack++;
 				}
-				printf("mov%s	r%d,%s(sp)\n", modf=='f'?"f":"", r,
-					table==sptab? "-":"");
+				if (modf=='f')
+					printf("\tcall fpush\n");
+				else
+					printf("\tpush hl\n");
 				nstack++;
 			}
-			if (table==cctab || table==cregtab)
-				printf("tst%s	r%d\n", modf=='f'?"f":"", r);
+			if (table==cctab || table==cregtab) {
+				if (modf=='f')
+					printf("\tcall fcmp0\n");
+				else
+					printf("\tld a,h\n\tor l\n");
+			}
 			return(r);
 		}
 	}
@@ -580,8 +591,8 @@ struct table *table;
 	string = opt->tabstring;
 	p1 = tree->t.tr1;
 	if (p1->t.op==FCON && p1->f.value>0) {
-/* nonportable */
-		printf(".data\nL%d:%o;%o;%o;%o\n.text\n", p1->f.value,
+/* nonportable - emit float constant in data segment */
+		printf(".data\nL%d:\t.dw %o,%o,%o,%o\n.text\n", p1->f.value,
 			((unsigned short *)&(p1->f.fvalue))[0],
 			((unsigned short *)&(p1->f.fvalue))[1],
 			((unsigned short *)&(p1->f.fvalue))[2],
@@ -593,7 +604,7 @@ struct table *table;
 		p2 = tree->t.tr2;
 		if (p2->t.op==FCON && p2->f.value>0) {
 /* nonportable */
-			printf(".data\nL%d:%o;%o;%o;%o\n.text\n", p2->f.value,
+			printf(".data\nL%d:\t.dw %o,%o,%o,%o\n.text\n", p2->f.value,
 				((unsigned short *)&(p2->f.fvalue))[0],
 				((unsigned short *)&(p2->f.fvalue))[1],
 				((unsigned short *)&(p2->f.fvalue))[2],
@@ -621,7 +632,7 @@ loop:
 				reg--;
 		if (table==regtab && (opdope[tree->t.op]&ASSGOP)) {
 			if (tree->t.tr1->t.type==CHAR)
-				printf("movb	r%d,r%d\n", reg, reg);
+				printf("\tld h,0\n");  /* sign extend byte in L */
 		}
 		return(reg);
 
@@ -781,13 +792,14 @@ loop:
 			string++;
 			r++;
 		}
-		if (r>nreg || r>=4 && tree->t.type==DOUBLE) {
+		if (r>nreg) {
 			if (regpanic)
 				error("Register overflow: simplify expression");
 			else
 				longjmp(jmpbuf, 1);
 		}
-		printf("r%d", r);
+		/* Z80: emit register name from table */
+		printf("%s", regname[r]);
 		goto loop;
 
 	case '-':		/* check -(sp) */
@@ -830,25 +842,25 @@ loop:
 
 	/*
 	 * Certain adjustments for / %
+	 * Z80 uses helper functions for divide
 	 */
 	case 'T':
-		c = reg-1;
-		if (uns(p1) || uns(p2)) {
-			printf("clr	r%d\n", c);
-			goto loop;
+		/* Z80: Division handled by call to helper functions */
+		/* For unsigned, just proceed; for signed, check sign */
+		if (!(uns(p1) || uns(p2))) {
+			/* Signed division - may need sign handling */
+			if (dcalc(p1, 5)>12 && !match(p1, cctab, 10, 0))
+				printf("\tld a,h\n\tor l\n");
 		}
-		if (dcalc(p1, 5)>12 && !match(p1, cctab, 10, 0))
-			printf("tst	r%d\n", reg);
-		printf("sxt	r%d\n", c);
 		goto loop;
 
-	case 'V':	/* adc sbc, clr, or sxt as required for longs */
+	case 'V':	/* adc sbc for longs on Z80 */
 		switch(tree->t.op) {
 		case PLUS:
 		case ASPLUS:
 		case INCBEF:
 		case INCAFT:
-			printf("adc");
+			printf("adc hl,de");
 			break;
 
 		case MINUS:
@@ -856,7 +868,7 @@ loop:
 		case NEG:
 		case DECBEF:
 		case DECAFT:
-			printf("sbc");
+			printf("sbc hl,de");
 			break;
 
 		case ASSIGN:
@@ -870,9 +882,9 @@ loop:
 		lcasev:
 			if (p->t.type!=LONG && p->t.type!=UNLONG) {
 				if (uns(p) || uns(tree->t.tr2))
-					printf("clr");
+					printf("ld de,0");
 				else
-					printf("sxt");
+					printf("call sxt16");  /* sign extend HL into DE */
 				goto loop;
 			}
 		default:
@@ -1214,12 +1226,12 @@ int *flagp;
 		size >>= 1;
 		if (size <= 5) {
 			for (i=0; i<size; i++)
-				printf("mov	-(r%d),-(sp)\n", retval);
+				printf("\tdec hl\n\tld d,(hl)\n\tdec hl\n\tld e,(hl)\n\tpush de\n");
 		} else {
-			if (retval!=0)
-				printf("mov	r%d,r0\n", retval);
-			printf("mov	$%o,r1\n", UNS(size));
-			printf("L%d:mov	-(r0),-(sp)\ndec\tr1\njne\tL%d\n", isn, isn);
+			/* Use loop for large structures */
+			printf("\tld bc,%o\n", UNS(size));
+			printf("L%d:\tdec hl\n\tld d,(hl)\n\tdec hl\n\tld e,(hl)\n\tpush de\n", isn);
+			printf("\tdec bc\n\tld a,b\n\tor c\n\tjp nz,L%d\n", isn);
 			isn++;
 		}
 		nstack++;
@@ -1259,7 +1271,7 @@ register union tree *tree;
 	long lval;
 
 	if (type==CHAR || type==UNCHAR) {
-		printf(".byte ");
+		printf(".db ");
 		if (tree->t.type&XTYPE)
 			goto illinit;
 		type = INT;
@@ -1284,8 +1296,9 @@ register union tree *tree;
 			tree->c.value = lval;
 		}
 		if (tree->t.op == CON)
-			printf("%o\n", UNS(tree->c.value));
+			printf(".dw\t%o\n", UNS(tree->c.value));
 		else if (tree->t.op==AMPER) {
+			printf(".dw\t");
 			pname(tree->t.tr1, 0);
 			putchar('\n');
 		} else
@@ -1310,11 +1323,11 @@ register union tree *tree;
 		if (type==FLOAT) {
 			sfval = fval;
 /* nonportable */
-			printf("%o; %o\n",
+			printf(".dw\t%o,%o\n",
 				((unsigned short *)&sfval)[0],
 				((unsigned short *)&sfval)[1] );
 		} else
-			printf("%o; %o; %o; %o\n",
+			printf(".dw\t%o,%o,%o,%o\n",
 				((unsigned short *)&fval)[0],
 				((unsigned short *)&fval)[1],
 				((unsigned short *)&fval)[2],
@@ -1341,8 +1354,8 @@ register union tree *tree;
 			lval = tree->l.lvalue;
 		else
 			goto illinit;
-/* nonportable */
-		printf("%o; %o\n", UNS((lval>>16)), UNS(lval));
+/* nonportable - Z80 is little-endian, low word first */
+		printf(".dw\t%o,%o\n", UNS(lval), UNS((lval>>16)));
 		return;
 	}
 illinit:
@@ -1352,22 +1365,18 @@ illinit:
 movreg(r0, r1, tree)
 union tree *tree;
 {
-	register char *s;
-	char c;
-
 	if (r0==r1)
 		return;
 	if (tree->t.type==LONG || tree->t.type == UNLONG) {
 		if (r0>=nreg || r1>=nreg) {
 			error("register overflow: compiler error");
 		}
-		s = "mov	r%d,r%d\nmov	r%d,r%d\n";
-		if (r0 < r1)
-			printf(s, r0+1,r1+1,r0,r1);
-		else
-			printf(s, r0,r1,r0+1,r1+1);
+		/* Z80 long is in HLDE pair - move both halves */
+		printf("\tpush hl\n\tpush de\n\tpop hl\n\tex (sp),hl\n\tpop de\n");
 		return;
 	}
-	c = isfloat(tree);
-	printf("mov%.1s	r%d,r%d\n", &c, r0, r1);
+	if (isfloat(tree))
+		printf("\tcall fmov\n");  /* float in HLHL' -> move helper */
+	else
+		printf("\tex de,hl\n");  /* swap HL and DE */
 }

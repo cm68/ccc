@@ -1,146 +1,159 @@
 /*
  * C second pass -- tables
+ * Z80 target version
  */
-
-#if	!defined(lint) && defined(DOSCCS)
-static	char	sccsid[] = "@(#)c13.c	2.1 (2.11BSD GTE) 10/4/94";
-#endif
 
 #include "c1.h"
+#include "z80.h"
 /*
- * Operator dope table-- see description in c0.
+ * Operator dope table.
+ * Each entry encodes precedence and flags for one operator.
+ *
+ * Flag bits (low 9 bits):
+ *   BINARY  (001) - binary operator
+ *   LVALUE  (002) - left operand must be lvalue
+ *   RELAT   (004) - relational operator
+ *   ASSGOP  (010) - assignment operator
+ *   LWORD   (020) - left operand must be integer
+ *   RWORD   (040) - right operand must be integer
+ *   COMMUTE (0100) - commutative
+ *   RASSOC  (0200) - right associative
+ *   LEAF    (0400) - leaf node (constant, name)
+ *   CNVRT   (01000) - conversion operator
+ *
+ * Precedence (bits 9-13): use PREC(level) macro
  */
 int opdope[] = {
-	000000,	/* EOFC (0) */
-	000000,	/* ; */
-	000000,	/* { */
-	000000,	/* } */
-	036000,	/* [ */
-	002000,	/* ] */
-	036000,	/* ( */
-	002000,	/* ) */
-	014201,	/* : */
-	007001,	/* , */
-	000000,	/* field selection (10) */
-	000000,	/* reverse field selection */
-	000001,	/* temporary field selection */
-	000001,	/* int->ptr */
-	000001,	/* ptr->int */
-	000001,	/* long->ptr */
-	000001,	/* field assignment */
-	000001,	/* >> unsigned */
-	000001,	/* >>= unsigned */
-	000000,	/* keyword */
-	000400,	/* name (20) */
-	000400,	/* short constant */
-	000400,	/* string */
-	000400,	/* float */
-	000400,	/* double */
-	000400,	/* long const */
-	000400,	/* long const <= 16 bits */
-	000400,	/* autoi, *r++ */
-	000400,	/* autod, *--r */
-	000400,	/* () empty arglist */
-	034213,	/* ++pre (30) */
-	034213,	/* --pre */
-	034213,	/* ++post */
-	034213,	/* --post */
-	034220,	/* !un */
-	034202,	/* &un */
-	034220,	/* *un */
-	034200,	/* -un */
-	034220,	/* ~un */
-	036001,	/* . (structure reference) */
-	030101,	/* + (40) */
-	030001,	/* - */
-	032101,	/* * */
-	032001,	/* / */
-	032001,	/* % */
-	026061,	/* >> */
-	026061,	/* << */
-	020161,	/* & */
-	016161,	/* | */
-	016161,	/* ^ */
-	036001,	/* -> (50) */
-	001000,	/* int -> double */
-	001000,	/* double -> int */
-	000001,	/* && */
-	000001,	/* || */
-	030001, /* &~ */
-	001000,	/* double -> long */
-	001000,	/* long -> double */
-	001000,	/* integer -> long */
-	000000,	/* long -> integer */
-	022005,	/* == (60) */
-	022005,	/* != */
-	024005,	/* <= */
-	024005,	/* < */
-	024005,	/* >= */
-	024005,	/* > */
-	024005,	/* <p */
-	024005,	/* <=p */
-	024005,	/* >p */
-	024005,	/* >=p */
-	012213,	/* += (70) */
-	012213,	/* -= */
-	012213,	/* *= */
-	012213,	/* /= */
-	012213,	/* %= */
-	012253,	/* >>= */
-	012253,	/* <<= */
-	012253,	/* &= */
-	012253,	/* |= */
-	012253,	/* ^= */
-	012213,	/* = (80) */
-	030001, /* & for tests */
-	032001,	/*  * (long) */
-	032001,	/*  / (long) */
-	032001,	/* % (long) */
-	012253,	/* &= ~ */
-	012213,	/* *= (long) */
-	012213,	/* /= (long) */
-	012213,	/* %= (long) */
-	000000,	/* (89) */
-	014201,	/* question '?' (90) */
-	026061,	/* long << */
-	012253,	/* long <<= */
-	000101,	/* max */
-	000101,	/* maxp */
-	000101,	/* min */
-	000101,	/* minp */
-	000001,	/* , */
-	000000,	/* call1 */
-	000000,	/* call2 */
-	036001,	/* call (100) */
-	036000,	/* mcall */
-	000000,	/* goto */
-	000000,	/* jump cond */
-	000000,	/* branch cond */
-	000400,	/* set nregs */
-	000000, /* load */
-	030001,	/* ptoi1 */
-	000000,	/* (108) */
-	000000,	/* int->char */
-	000000,	/* force r0 (110) */
-	000000,	/* branch */
-	000000,	/* label */
-	000000,	/* nlabel */
-	000000,	/* rlabel */
-	000000,	/* structure assign */
-	000001,	/* struct assignment setup */
-	032001,	/* unsigned / */
-	032001,	/* unsigned % */
-	012213,	/* unsigned /= */
-	012213,	/* unsigned %= (120) */
-	032001, /* unsigned long * */
-	032001, /* unsigned long / */
-	032001, /* unsigned long % */
-	012213, /* unsigned long *= */
-	012213, /* unsigned long /= */
-	012213, /* unsigned long %= */
-	01000,  /* unsigned long -> float(double) */
-	026061, /* unsigned long >> */
-	012253, /* unsigned long >>= (129) */
+	/* 0: EOFC */	0,
+	/* 1: SEMI */	0,
+	/* 2: LBRACE */	0,
+	/* 3: RBRACE */	0,
+	/* 4: LBRACK */	PREC(PREC_POSTFX),
+	/* 5: RBRACK */	0,
+	/* 6: LPARN */	PREC(PREC_POSTFX),
+	/* 7: RPARN */	0,
+	/* 8: COLON */	PREC(PREC_COND) | RASSOC | BINARY,
+	/* 9: COMMA */	PREC(PREC_COMMA) | BINARY,
+	/* 10: FSEL */	0,
+	/* 11: FSELR */	0,
+	/* 12: FSELT */	BINARY,
+	/* 13: ITOP */	BINARY,
+	/* 14: PTOI */	BINARY,
+	/* 15: LTOP */	BINARY,
+	/* 16: FSELA */	BINARY,
+	/* 17: ULSH */	BINARY,
+	/* 18: ASULSH */	BINARY,
+	/* 19: KEYW */	0,
+	/* 20: NAME */	LEAF,
+	/* 21: CON */	LEAF,
+	/* 22: STRING */	LEAF,
+	/* 23: FCON */	LEAF,
+	/* 24: SFCON */	LEAF,
+	/* 25: LCON */	LEAF,
+	/* 26: SLCON */	LEAF,
+	/* 27: AUTOI */	LEAF,
+	/* 28: AUTOD */	LEAF,
+	/* 29: NULLOP */	LEAF,
+	/* 30: INCBEF */	RASSOC | ASSGOP | LVALUE | BINARY,
+	/* 31: DECBEF */	RASSOC | ASSGOP | LVALUE | BINARY,
+	/* 32: INCAFT */	RASSOC | ASSGOP | LVALUE | BINARY,
+	/* 33: DECAFT */	RASSOC | ASSGOP | LVALUE | BINARY,
+	/* 34: EXCLA */	RASSOC | LWORD,
+	/* 35: AMPER */	RASSOC | LVALUE,
+	/* 36: STAR */	RASSOC | LWORD,
+	/* 37: NEG */	RASSOC,
+	/* 38: COMPL */	RASSOC | LWORD,
+	/* 39: DOT */	PREC(PREC_POSTFX) | BINARY,
+	/* 40: PLUS */	PREC(PREC_ADD) | COMMUTE | BINARY,
+	/* 41: MINUS */	PREC(PREC_ADD) | BINARY,
+	/* 42: TIMES */	PREC(PREC_MUL) | COMMUTE | BINARY,
+	/* 43: DIVIDE */	PREC(PREC_MUL) | BINARY,
+	/* 44: MOD */	PREC(PREC_MUL) | BINARY,
+	/* 45: RSHIFT */	PREC(PREC_SHIFT) | RWORD | LWORD | BINARY,
+	/* 46: LSHIFT */	PREC(PREC_SHIFT) | RWORD | LWORD | BINARY,
+	/* 47: AND */	PREC(PREC_BAND) | COMMUTE | RWORD | LWORD | BINARY,
+	/* 48: OR */	PREC(PREC_BOR) | COMMUTE | RWORD | LWORD | BINARY,
+	/* 49: EXOR */	PREC(PREC_BOR) | COMMUTE | RWORD | LWORD | BINARY,
+	/* 50: ARROW */	PREC(PREC_POSTFX) | BINARY,
+	/* 51: ITOF */	CNVRT,
+	/* 52: FTOI */	CNVRT,
+	/* 53: LOGAND */	BINARY,
+	/* 54: LOGOR */	BINARY,
+	/* 55: ANDN */	PREC(PREC_ADD) | BINARY,
+	/* 56: FTOL */	CNVRT,
+	/* 57: LTOF */	CNVRT,
+	/* 58: ITOL */	CNVRT,
+	/* 59: LTOI */	0,
+	/* 60: EQUAL */	PREC(PREC_EQ) | RELAT | BINARY,
+	/* 61: NEQUAL */	PREC(PREC_EQ) | RELAT | BINARY,
+	/* 62: LESSEQ */	PREC(PREC_REL) | RELAT | BINARY,
+	/* 63: LESS */	PREC(PREC_REL) | RELAT | BINARY,
+	/* 64: GREATEQ */	PREC(PREC_REL) | RELAT | BINARY,
+	/* 65: GREAT */	PREC(PREC_REL) | RELAT | BINARY,
+	/* 66: LESSEQP */	PREC(PREC_REL) | RELAT | BINARY,
+	/* 67: LESSP */	PREC(PREC_REL) | RELAT | BINARY,
+	/* 68: GREATQP */	PREC(PREC_REL) | RELAT | BINARY,
+	/* 69: GREATP */	PREC(PREC_REL) | RELAT | BINARY,
+	/* 70: ASPLUS */	PREC(PREC_ASGN) | RASSOC | ASSGOP | LVALUE | BINARY,
+	/* 71: ASMINUS */	PREC(PREC_ASGN) | RASSOC | ASSGOP | LVALUE | BINARY,
+	/* 72: ASTIMES */	PREC(PREC_ASGN) | RASSOC | ASSGOP | LVALUE | BINARY,
+	/* 73: ASDIV */	PREC(PREC_ASGN) | RASSOC | ASSGOP | LVALUE | BINARY,
+	/* 74: ASMOD */	PREC(PREC_ASGN) | RASSOC | ASSGOP | LVALUE | BINARY,
+	/* 75: ASRSH */	PREC(PREC_ASGN) | RASSOC | RWORD | ASSGOP | LVALUE | BINARY,
+	/* 76: ASLSH */	PREC(PREC_ASGN) | RASSOC | RWORD | ASSGOP | LVALUE | BINARY,
+	/* 77: ASAND */	PREC(PREC_ASGN) | RASSOC | RWORD | ASSGOP | LVALUE | BINARY,
+	/* 78: ASOR */	PREC(PREC_ASGN) | RASSOC | RWORD | ASSGOP | LVALUE | BINARY,
+	/* 79: ASXOR */	PREC(PREC_ASGN) | RASSOC | RWORD | ASSGOP | LVALUE | BINARY,
+	/* 80: ASSIGN */	PREC(PREC_ASGN) | RASSOC | ASSGOP | LVALUE | BINARY,
+	/* 81: TAND */	PREC(PREC_ADD) | BINARY,
+	/* 82: LTIMES */	PREC(PREC_MUL) | BINARY,
+	/* 83: LDIV */	PREC(PREC_MUL) | BINARY,
+	/* 84: LMOD */	PREC(PREC_MUL) | BINARY,
+	/* 85: ASANDN */	PREC(PREC_ASGN) | RASSOC | RWORD | ASSGOP | LVALUE | BINARY,
+	/* 86: LASTIMES */	PREC(PREC_ASGN) | RASSOC | ASSGOP | LVALUE | BINARY,
+	/* 87: LASDIV */	PREC(PREC_ASGN) | RASSOC | ASSGOP | LVALUE | BINARY,
+	/* 88: LASMOD */	PREC(PREC_ASGN) | RASSOC | ASSGOP | LVALUE | BINARY,
+	/* 89 */	0,
+	/* 90: QUEST */	PREC(PREC_COND) | RASSOC | BINARY,
+	/* 91: LLSHIFT */	PREC(PREC_SHIFT) | RWORD | LWORD | BINARY,
+	/* 92: ASLSHL */	PREC(PREC_ASGN) | RASSOC | RWORD | ASSGOP | LVALUE | BINARY,
+	/* 93 */	0,
+	/* 94 */	0,
+	/* 95 */	0,
+	/* 96 */	0,
+	/* 97: SEQNC */	BINARY,
+	/* 98: CALL1 */	0,
+	/* 99: CALL2 */	0,
+	/* 100: CALL */	PREC(PREC_POSTFX) | BINARY,
+	/* 101: MCALL */	PREC(PREC_POSTFX),
+	/* 102: JUMP */	0,
+	/* 103: CBRANCH */	0,
+	/* 104: INIT */	0,
+	/* 105: SETREG */	LEAF,
+	/* 106: LOAD */	0,
+	/* 107: PTOI1 */	PREC(PREC_ADD) | BINARY,
+	/* 108 */	0,
+	/* 109: ITOC */	0,
+	/* 110: RFORCE */	0,
+	/* 111: BRANCH */	0,
+	/* 112: LABEL */	0,
+	/* 113: NLABEL */	0,
+	/* 114: RLABEL */	0,
+	/* 115: STRASG */	0,
+	/* 116: STRSET */	BINARY,
+	/* 117: UDIV */	PREC(PREC_MUL) | BINARY,
+	/* 118: UMOD */	PREC(PREC_MUL) | BINARY,
+	/* 119: ASUDIV */	PREC(PREC_ASGN) | RASSOC | ASSGOP | LVALUE | BINARY,
+	/* 120: ASUMOD */	PREC(PREC_ASGN) | RASSOC | ASSGOP | LVALUE | BINARY,
+	/* 121: ULTIMES */	PREC(PREC_MUL) | BINARY,
+	/* 122: ULDIV */	PREC(PREC_MUL) | BINARY,
+	/* 123: ULMOD */	PREC(PREC_MUL) | BINARY,
+	/* 124: ULASTIMES */	PREC(PREC_ASGN) | RASSOC | ASSGOP | LVALUE | BINARY,
+	/* 125: ULASDIV */	PREC(PREC_ASGN) | RASSOC | ASSGOP | LVALUE | BINARY,
+	/* 126: ULASMOD */	PREC(PREC_ASGN) | RASSOC | ASSGOP | LVALUE | BINARY,
+	/* 127: ULTOF */	CNVRT,
+	/* 128: ULLSHIFT */	PREC(PREC_SHIFT) | RWORD | LWORD | BINARY,
+	/* 129: UASLSHL */	PREC(PREC_ASGN) | RASSOC | RWORD | ASSGOP | LVALUE | BINARY,
 };
 
 char	*opntab[] = {
@@ -237,10 +250,10 @@ char	*opntab[] = {
 	"?",			/* 90 */
 	"<<",
 	"<<=",
-	"\\/",
-	"\\/",
-	"/\\",
-	"/\\",
+	0,
+	0,
+	0,
+	0,
 	",",
 	"call1",
 	"call2",
@@ -278,62 +291,64 @@ char	*opntab[] = {
 
 /*
  * Strings for instruction tables.
+ * Z80 target mnemonics
  */
-char	mov[]	= "mov";
-char	clr[]	= "clr";
-char	cmp[]	= "cmp";
-char	tst[]	= "tst";
-char	add[]	= "add";
-char	sub[]	= "sub";
-char	inc[]	= "inc";
-char	dec[]	= "dec";
-char	mul[]	= "mul";
-char	div[]	= "div";
-char	asr[]	= "asr";
-char	ash[]	= "ash";
-char	asl[]	= "asl";
-char	bic[]	= "bic";
-char	bic1[]	= "bic $1,";
-char	bit[]	= "bit";
-char	bit1[]	= "bit $1,";
-char	bis[]	= "bis";
-char	bis1[]	= "bis $1,";
-char	xor[]	= "xor";
-char	neg[]	= "neg";
-char	com[]	= "com";
-char	stdol[]	= "*$";
-char	ashc[]	= "ashc";
-char	slmul[]	= "lmul";
-char	sldiv[]	= "ldiv";
-char	slrem[]	= "lrem";
-char	uldiv[] = "uldiv";
-char	ulrem[] = "ulrem";
-char	ualdiv[] = "ualdiv";
-char	ualrem[] = "ualrem";
-char	ultof[] = "ultof";
-char	ulsh[] = "ulsh";
-char	ualsh[] = "ualsh";
-char	almul[]	= "almul";
-char	aldiv[]	= "aldiv";
-char	alrem[]	= "alrem";
-char	udiv[]	= "udiv";
-char	urem[]	= "urem";
-char	jeq[]	= "jeq";
-char	jne[]	= "jne";
-char	jle[]	= "jle";
-char	jgt[]	= "jgt";
-char	jlt[]	= "jlt";
-char	jge[]	= "jge";
-char	jlos[]	= "jlos";
-char	jhi[]	= "jhi";
-char	jlo[]	= "jlo";
-char	jhis[]	= "jhis";
-char	nop[]	= "/nop";
-char	jbr[]	= "jbr";
-char	jpl[] = "jpl";
-char	jmi[] = "jmi";
-char	jmijne[] = "jmi\tL%d\njne";
-char	jmijeq[] = "jmi\tL%d\njeq";
+char	ld[]	= "ld";
+char	clr[]	= "ld hl,0";
+char	cmp[]	= "call cmp16";   /* compare HL vs DE */
+char	tst[]	= "ld a,h\n\tor l"; /* test HL for zero */
+char	add[]	= "add hl,de";
+char	sub[]	= "or a\n\tsbc hl,de";
+char	inc[]	= "inc hl";
+char	dec[]	= "dec hl";
+char	mul[]	= "call mul16";   /* HL = HL * DE */
+char	idiv[]	= "call div16";   /* HL = HL / DE */
+char	asr[]	= "sra h\n\trr l"; /* arithmetic shift right */
+char	shl[]	= "add hl,hl";    /* shift left */
+char	andn[]	= "call andn16";  /* HL = HL & ~DE */
+char	and1[]	= "call and116";
+char	tand[]	= "call tand16";  /* test HL & DE */
+char	tand1[]	= "call tand116";
+char	or[]	= "call or16";    /* HL = HL | DE */
+char	or1[]	= "call or116";
+char	xor[]	= "call xor16";   /* HL = HL ^ DE */
+char	neg16[]	= "call neg16";   /* HL = -HL */
+char	com16[]	= "call com16";   /* HL = ~HL */
+char	stdol[]	= "call (hl)";    /* indirect call */
+char	ashc[]	= "call lshl";    /* long shift */
+char	slmul[]	= "call lmul";    /* long multiply */
+char	sldiv[]	= "call ldiv";    /* long divide */
+char	slrem[]	= "call lmod";    /* long modulo */
+char	uldiv[] = "call uldiv";   /* unsigned long divide */
+char	ulrem[] = "call ulmod";   /* unsigned long modulo */
+char	ualdiv[] = "call ualdiv";
+char	ualrem[] = "call ualmod";
+char	ultof[] = "call ultof";
+char	ulsh[] = "call lushl";
+char	ualsh[] = "call ualsh";
+char	almul[]	= "call almul";
+char	aldiv[]	= "call aldiv";
+char	alrem[]	= "call almod";
+char	udiv[]	= "call udiv16";
+char	urem[]	= "call umod16";
+
+/* Z80 branch instructions */
+char	jeq[]	= "jp z,";
+char	jne[]	= "jp nz,";
+char	jle[]	= "call jle";     /* signed <= needs helper */
+char	jgt[]	= "call jgt";     /* signed > needs helper */
+char	jlt[]	= "jp m,";        /* signed < */
+char	jge[]	= "jp p,";        /* signed >= */
+char	jlos[]	= "call jlos";    /* unsigned <= needs helper */
+char	jhi[]	= "call jhi";     /* unsigned > needs helper */
+char	jlo[]	= "jp c,";        /* unsigned < */
+char	jhis[]	= "jp nc,";       /* unsigned >= */
+char	nop[]	= "; nop";
+char	jbr[]	= "jp ";
+char	jpl[]   = "jp p,";
+char	jmi[]   = "jp m,";
+char	jmijne[] = "jp m,L%d\n\tjp nz,";
+char	jmijeq[] = "jp m,L%d\n\tjp z,";
 
 /*
  * Instruction tables, accessed by
@@ -341,8 +356,8 @@ char	jmijeq[] = "jmi\tL%d\njeq";
  */
 
 struct instab instab[] = {
-	LOAD,	mov,	tst,
-	ASSIGN,	mov,	clr,
+	LOAD,	ld,	tst,
+	ASSIGN,	ld,	clr,
 	EQUAL,	cmp,	tst,
 	NEQUAL,	cmp,	tst,
 	LESSEQ,	cmp,	tst,
@@ -363,25 +378,25 @@ struct instab instab[] = {
 	DECAFT,	sub,	dec,
 	TIMES,	mul,	mul,
 	ASTIMES,mul,	mul,
-	DIVIDE,	div,	div,
-	ASDIV,	div,	div,
-	MOD,	div,	div,
-	ASMOD,	div,	div,
-	PTOI,	div,	div,
-	RSHIFT,	ash,	asr,
-	ASRSH,	ash,	asr,
-	LSHIFT,	ash,	asl,
-	ASLSH,	ash,	asl,
-	AND,	bic,	bic1,
-	ANDN,	bic,	bic1,
-	ASANDN,	bic,	bic1,
-	TAND,	bit,	bit1,
-	OR,	bis,	bis1,
-	ASOR,	bis,	bis1,
+	DIVIDE,	idiv,	idiv,
+	ASDIV,	idiv,	idiv,
+	MOD,	idiv,	idiv,
+	ASMOD,	idiv,	idiv,
+	PTOI,	idiv,	idiv,
+	RSHIFT,	asr,	asr,
+	ASRSH,	asr,	asr,
+	LSHIFT,	shl,	shl,
+	ASLSH,	shl,	shl,
+	AND,	andn,	and1,
+	ANDN,	andn,	and1,
+	ASANDN,	andn,	and1,
+	TAND,	tand,	tand1,
+	OR,	or,	or1,
+	ASOR,	or,	or1,
 	EXOR,	xor,	xor,
 	ASXOR,	xor,	xor,
-	NEG,	neg,	neg,
-	COMPL,	com,	com,
+	NEG,	neg16,	neg16,
+	COMPL,	com16,	com16,
 	CALL1,	stdol,	stdol,
 	CALL2,	"",	"",
 	LLSHIFT,ashc,	ashc,

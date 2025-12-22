@@ -269,10 +269,6 @@ int	xlab1, xlab2, xop, xzero;
 #define	LASMOD	88
 
 #define	QUEST	90
-/* #define	MAX	93	/* not used; wanted macros in param.h */
-#define	MAXP	94
-/* #define	MIN	95	/* not used; wanted macros in param.h */
-#define	MINP	96
 #define	LLSHIFT	91
 #define	ASLSHL	92
 #define	SEQNC	97
@@ -385,3 +381,25 @@ int	xlab1, xlab2, xop, xzero;
 #define	RASSOC	0200
 #define	LEAF	0400
 #define	CNVRT	01000
+
+/*
+ * Precedence levels for operators (4 bits, 0-15).
+ * Use PREC(level) to shift into position in opdope entries.
+ * Unary operators don't need precedence (identified by !BINARY).
+ */
+#define	PREC_NONE	0	/* not an operator */
+#define	PREC_COMMA	1	/* , (sequencing) */
+#define	PREC_ASGN	2	/* = += -= etc */
+#define	PREC_COND	3	/* ?: */
+#define	PREC_LOR	4	/* || */
+#define	PREC_LAND	5	/* && */
+#define	PREC_BOR	6	/* | ^ */
+#define	PREC_BAND	7	/* & */
+#define	PREC_EQ		8	/* == != */
+#define	PREC_REL	9	/* < <= > >= */
+#define	PREC_SHIFT	10	/* << >> */
+#define	PREC_ADD	11	/* + - */
+#define	PREC_MUL	12	/* * / % */
+#define	PREC_POSTFX	13	/* . -> [] call */
+
+#define	PREC(n)		((n) << 9)

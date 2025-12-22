@@ -1,9 +1,27 @@
 %{
 /*
- * c code tables-- compile to register
+ * C code tables for Z80 target
+ * Converted from PDP-11 optable
+ *
+ * Register model:
+ *   R (HL)  - primary accumulator, function return
+ *   R1 (DE) - secondary accumulator
+ *   R+ (DE) - high word of long (HLDE pair, HL=low, DE=high)
+ *   IY      - frame pointer
+ *   BC, IX  - register variables
+ *
+ * Addressing:
+ *   A1, A2    - addressible operand (symbol, constant, stack offset)
+ *   #1(R)     - offset from pointer in HL (need to load to HL first)
+ *   (iy+n)    - stack local/arg access
+ *
+ * Z80 vs PDP-11:
+ *   - Operand order: Z80 is ld dst,src (opposite of PDP-11 mov src,dst)
+ *   - Limited addressing: can't do arith directly on memory
+ *   - No autoincrement/autodecrement except push/pop
  */
 #if	!defined(lint) && defined(DOSCCS)
-static	char	sccsid[] = "@(#)optable	2.1 (2.11BSD GTE) 10/4/94";
+static	char	sccsid[] = "@(#)optable.z80 - Z80 target";
 #endif
 
 struct table regtab[] = {
@@ -78,68 +96,80 @@ struct table regtab[] = {
 /* goto */
 cr102:
 %a,n
-	jmp	A1
+	jp	A1
 
 %n*,n
 	F*
-	jmp	#1(R)
+	jp	(hl)
 
-/* call */
+/* call - Z80 uses 'call' not 'jsr pc,' */
 cr100:
 %a,n
-	jsr	pc,IA1
+	call	IA1
 
 %n*,n
 	F*
-	jsr	pc,#1(R)
+	call	jphl
 
 %n,n
 	F
-	jsr	pc,(R)
+	call	jphl
 
-/* addressible */
+/* addressible - load value into register */
 cr106:
 %z,n
-	clr	R
+	ld	R,0
 
 %zf,n
-	clrf	R
+	call	fclr
 
 %aub,n
-	clr	R
-	bisb	A1,R
+	ld	a,(A1)
+	ld	l,a
+	ld	h,0
 
 %a,n
 %ad,n
-	movB1	A1,R
+	ld	R,A1
 
 %af,n
-	movof	A1,R
+	call	fldA1
 
 %nub*,n
 	F*
-	movb	#1(R),R
-	bic	$!377,R
+	ld	a,(hl)
+	ld	l,a
+	ld	h,0
 
 %n*,n
 %nd*,n
 	F*
-	movB1	#1(R),R
+	ld	a,(hl)
+	inc	hl
+	ld	h,(hl)
+	ld	l,a
 
 %nf*,n
 	F*
-	movof	#1(R),R
+	call	fldi
 
 %al,n
 %aul,n
-	mov	A1+,R+
-	mov	A1,R
+	ld	hl,A1
+	ld	e,(hl)
+	inc	hl
+	ld	d,(hl)
+	inc	hl
+	ld	a,(hl)
+	inc	hl
+	ld	h,(hl)
+	ld	l,a
+	ex	de,hl
 
 %nl*,n
 %nul*,n
 	F*
-	mov	#1+2(R),R+
-	mov	#1(R),R
+	call	lld
 
 %n,n
 	F
@@ -147,169 +177,301 @@ cr106:
 /* ++,-- postfix */
 cr32:
 %a,1
-	movB1	A1',R
-	I'B1	A1''
+	ld	R,(A1)
+	I'	(A1)
 
 %aw,n
-	mov	A1',R
-	I	A2,A1''
+	ld	R,(A1)
+	ld	de,A2
+	push	hl
+	ld	hl,(A1)
+	I
+	ld	(A1),hl
+	pop	hl
 
 %aub,n
-	clr	R
-	bisb	A1',R
-	I'b	A1''
+	ld	a,(A1)
+	ld	l,a
+	ld	h,0
+	push	hl
+	I'	a
+	ld	(A1),a
+	pop	hl
 
 %e*,1
 	F1*
-	movB1	#1(R1),R
-	I'B1	#1(R1)
+	push	de
+	ld	a,(de)
+	inc	de
+	ld	h,(de)
+	ld	l,a
+	ex	(sp),hl
+	ld	a,(hl)
+	I'	a
+	ld	(hl),a
+	inc	hl
+	ld	a,(hl)
+	V	a
+	ld	(hl),a
+	pop	hl
 
 %n*,1
 	F*
-	movB1	#1(R),-(sp)
-	I'B1	#1(R)
-	movB1	(sp)+,R
+	push	hl
+	ld	e,(hl)
+	inc	hl
+	ld	d,(hl)
+	ex	(sp),hl
+	ld	a,(hl)
+	I'	a
+	ld	(hl),a
+	inc	hl
+	ld	a,(hl)
+	V	a
+	ld	(hl),a
+	ex	de,hl
 
 %ew*,n
 	F1*
-	mov	#1(R1),R
-	I	A2,#1(R1)
+	push	de
+	ld	a,(de)
+	inc	de
+	ld	h,(de)
+	ld	l,a
+	ld	de,A2
+	ex	(sp),hl
+	push	hl
+	ld	a,(hl)
+	inc	hl
+	ld	h,(hl)
+	ld	l,a
+	I
+	ex	de,hl
+	pop	hl
+	ld	(hl),e
+	inc	hl
+	ld	(hl),d
+	pop	hl
 
 %eub*,n
 	F1*
-	clr	R
-	bisb	#1(R1),R
-	I'b	#1(R1)
+	push	de
+	ld	a,(de)
+	ld	l,a
+	ld	h,0
+	ex	(sp),hl
+	ld	a,(hl)
+	I'	a
+	ld	(hl),a
+	pop	hl
 
 %nw*,n
 	F*
-	mov	#1(R),-(sp)
-	I	A2,#1(R)
-	mov	(sp)+,R
+	push	hl
+	ld	e,(hl)
+	inc	hl
+	ld	d,(hl)
+	push	de
+	ld	de,A2
+	ld	a,(hl)
+	dec	hl
+	ld	l,(hl)
+	ld	h,a
+	I
+	ex	de,hl
+	pop	hl
+	ld	(hl),e
+	inc	hl
+	ld	(hl),d
+	pop	hl
 
 %nub*,n
 	F*
-	movb	(R),-(sp)
-	I'b	(R)
-	clr	R
-	bisb	(sp)+,R
+	push	hl
+	ld	a,(hl)
+	push	af
+	I'	a
+	ld	(hl),a
+	pop	af
+	ld	l,a
+	ld	h,0
+	pop	de
 
 %al,1
 %aul,1
 	F
-	I	$1,A1+
-	V	A1
+	ld	hl,A1
+	inc	hl
+	inc	hl
+	ld	a,(hl)
+	I'	a
+	ld	(hl),a
+	inc	hl
+	ld	a,(hl)
+	V	a
+	ld	(hl),a
+	dec	hl
+	ld	a,(hl)
+	dec	hl
+	ld	h,(hl)
+	ld	l,a
 
 %el*,1
 %eul*,1
 	F1*
-	mov	#1+2(R1),R+
-	mov	#1(R1),R
-	I	$1,#1+2(R1)
-	V	#1(R1)
+	push	de
+	ld	a,(de)
+	inc	de
+	ld	h,(de)
+	ld	l,a
+	inc	de
+	ld	a,(de)
+	inc	de
+	push	af
+	ld	a,(de)
+	pop	bc
+	ld	c,a
+	push	bc
+	push	hl
+	pop	de
+	pop	hl
+	ex	(sp),hl
+	inc	hl
+	inc	hl
+	ld	a,(hl)
+	I'	a
+	ld	(hl),a
+	inc	hl
+	ld	a,(hl)
+	V	a
+	ld	(hl),a
+	pop	hl
 
 %nl*,1
 %nul*,1
 	F*
-	mov	#1+2(R),-(sp)
-	mov	#1(R),-(sp)
-	I	$1,#1+2(R)
-	V	#1(R)
-	mov	(sp)+,R
-	mov	(sp)+,R+
+	push	hl
+	call	lld
+	push	hl
+	push	de
+	ex	(sp),hl
+	inc	hl
+	inc	hl
+	ld	a,(hl)
+	I'	a
+	ld	(hl),a
+	inc	hl
+	ld	a,(hl)
+	V	a
+	ld	(hl),a
+	pop	de
+	pop	hl
 
 /* - unary, ~ */
 cr37:
 %n,n
 %nf,n
 	F
-	IBF	R
+	I
 
 %nl,n
 %nul,n
 	F
-	I	R
-	I	R+
-	V	R
+	call	I
 
-/* = */
+/* = assignment */
 cr80:
 %a,n
 %ad,nf
 	S
-	movB1	R,A1
+	ld	(A1),R
 
 %aub,n
 	S
-	movB1	R,A1
-	bic	$!377,R
+	ld	a,l
+	ld	(A1),a
 
 %af,nf
 	S
-	movfo	R,A1
+	call	fstA1
 
 %nd*,af
 	F*
 	S
-	movf	R,#1(R)
+	call	fsti
 
 %n*,aw
 	F*
-	movB1	A2,#1(R)
-	movB1	#1(R),R
+	ld	de,A2
+	ld	(hl),e
+	inc	hl
+	ld	(hl),d
+	ex	de,hl
 
 %nf*,af
 	F*
 	S
-	movfo	R,#1(R)
+	call	fsti
 
 %n*,e
 	F*
 	S1
-	movB1	R1,#1(R)
-	movB1	R1,R
+	ld	(hl),e
+	inc	hl
+	ld	(hl),d
+	ex	de,hl
 
 %nub*,e
 	F*
 	S1
-	movB1	R1,#1(R)
-	clr	R
-	bisb	R1,R
+	ld	a,e
+	ld	(hl),a
+	ld	l,a
+	ld	h,0
 
 %ed*,nf
 	S
 	F1*
-	movf	R,#1(R1)
+	call	fstde
 
 %ef*,nf
 	S
 	F1*
-	movfo	R,#1(R1)
+	call	fstde
 
 %n*,n
 %nd*,nf
 	FS*
 	S
-	movB1	R,*(sp)+
+	pop	de
+	ld	(de),l
+	inc	de
+	ld	a,h
+	ld	(de),a
 
 %nub*,n
 	FS*
 	S
-	movB1	R,*(sp)+
-	bic	$!377,R
+	pop	de
+	ld	a,l
+	ld	(de),a
 
 %nf*,nf
 	FS*
 	S
-	movfo	R,*(sp)+
+	pop	de
+	call	fstde
 
 %al,nl
 %al,nul
 %aul,nl
 %aul,nul
 	S
-	mov	R+,A1+
-	mov	R,A1
+	ld	(A1),hl
+	ld	hl,A1+2
+	ld	(hl),e
+	inc	hl
+	ld	(hl),d
 
 %el*,nl
 %el*,nul
@@ -317,8 +479,16 @@ cr80:
 %eul*,nul
 	S
 	F1*
-	mov	R+,2+#1(R1)
-	mov	R,#1(R1)
+	ex	de,hl
+	ld	(hl),e
+	inc	hl
+	ld	(hl),d
+	inc	hl
+	pop	de
+	ld	(hl),e
+	inc	hl
+	ld	(hl),d
+	pop	hl
 
 %nl*,nl
 %nl*,nul
@@ -326,16 +496,26 @@ cr80:
 %nul*,nul
 	FS*
 	S
-	mov	R,*(sp)
-	add	$2,(sp)
-	mov	R+,*(sp)+
+	pop	bc
+	ld	(bc),l
+	inc	bc
+	ld	a,h
+	ld	(bc),a
+	inc	bc
+	ld	a,e
+	ld	(bc),a
+	inc	bc
+	ld	a,d
+	ld	(bc),a
 
-/* field assign, value in reg. */
+/* field assign */
 cr16:
 %a,n
 	S
-	bicB1	Z,A1'
-	bisB1	R,A1''
+	ld	a,(A1)
+	and	Z
+	or	l
+	ld	(A1),a
 
 %e*,n
 %	[fas1]
@@ -343,9 +523,13 @@ cr16:
 %n*,n
 	SS
 	F*
-	bicB1	Z,#1(R)
-	bisB1	(sp),#1(R)
-	mov	(sp)+,R
+	ld	a,(hl)
+	pop	de
+	and	Z
+	or	e
+	ld	(hl),a
+	ld	l,e
+	ld	h,0
 
 /* +, -, |, &~, << */
 cr40:
@@ -354,65 +538,96 @@ cr40:
 
 %n,1
 	F
-	I'	R
+	I'
 
 %[add1:]
 %n,aw
 %nf,ad
 	F
-	IB2	A2,R
+	ld	de,A2
+	I
 
 %[add2:]
 %n,ew*
 %nf,ed*
 	F
 	S1*
-	IB2	#2(R1),R
+	push	hl
+	ld	a,(de)
+	inc	de
+	ld	h,(de)
+	ld	l,a
+	ex	de,hl
+	pop	hl
+	I
 
 %[add3:]
 %n,e
 %nf,ef
 	F
 	S1
-	IBF	R1,R
+	I
 
 %[add4:]
 %n,nw*
 %nf,nd*
 	SS*
 	F
-	IB2	*(sp)+,R
+	pop	de
+	push	hl
+	ld	a,(de)
+	inc	de
+	ld	h,(de)
+	ld	l,a
+	ex	de,hl
+	pop	hl
+	I
 
 %[add5:]
 %n,n
 %nf,nf
 	SS
 	F
-	IBF	(sp)+,R
+	pop	de
+	I
 
 %nl,c
 %nl,au
 %nul,c
 %nul,au
 	F
-	I	A2,R+
-	V	R
+	ld	bc,A2
+	add	hl,bc
+	ex	de,hl
+	ld	hl,0
+	V
+	ex	de,hl
 
 %nl,eu
 %nul,eu
 	F
 	S1
-	I	R1,R+
-	V	R
+	add	hl,de
+	ex	de,hl
+	ld	hl,0
+	V
+	ex	de,hl
 
 %nl,al
 %nl,aul
 %nul,al
 %nul,aul
 	F
-	I	A2,R
-	I	A2+,R+
-	V	R
+	push	de
+	ld	de,(A2)
+	add	hl,de
+	pop	de
+	push	hl
+	ld	hl,(A2+2)
+	ex	de,hl
+	V
+	ex	de,hl
+	pop	hl
 
 %[addl1:]
 %nl,el
@@ -421,9 +636,7 @@ cr40:
 %nul,eul
 	F
 	S1
-	I	R1+,R+
-	V	R
-	I	R1,R
+	I
 
 %[addl2:]
 %nl,nl
@@ -432,9 +645,7 @@ cr40:
 %nul,nul
 	SS
 	F
-	I	(sp)+,R
-	I	(sp)+,R+
-	V	R
+	call	I
 
 /* ^ -- xor */
 cr49:
@@ -444,8 +655,8 @@ cr49:
 %n,n
 	FS
 	S
-	xor	R,(sp)
-	mov	(sp)+,R
+	pop	de
+	call	xor16
 
 %nl,el
 %nl,eul
@@ -459,18 +670,16 @@ cr49:
 %nul,nul
 	SS
 	F
-	I	R,(sp)
-	mov	(sp)+,R
-	I	R+,(sp)
-	mov	(sp)+,R+
+	call	lxor
 
-/* >> (all complicated cases taken care of by << -) */
+/* >> */
 cr45:
 %n,1
 	F
-	asr	R
+	sra	h
+	rr	l
 
-/* * -- R must be odd on integers */
+/* * multiply */
 cr42:
 %n,aw
 %nf,ad
@@ -488,30 +697,35 @@ cr42:
 %nf,nf
 %	[add5]
 
-/* / and >> R must be odd on integers */
+/* / divide and % mod */
 cr43:
 %n,aw
 	F
-	T
-	I	A2,R-
+	ld	de,A2
+	call	I
 
 %n,ew*
 	F
-	T
 	S1*
-	I	#2(R1),R-
+	push	hl
+	ld	a,(de)
+	inc	de
+	ld	h,(de)
+	ld	l,a
+	ex	de,hl
+	pop	hl
+	call	I
 
 %n,e
 	F
-	T
 	S1
-	I	R1,R-
+	call	I
 
 %n,n
 	SS
 	F
-	T
-	I	(sp)+,R-
+	pop	de
+	call	I
 
 %nf,ad
 %	[add1]
@@ -525,150 +739,260 @@ cr43:
 %nf,nf
 %	[add5]
 
-/* PTOI */
+/* PTOI - pointer difference divided by size */
 cr14:
 %nl,a
 %nul,a
 	F!
-	div	A2,R
+	ld	de,A2
+	call	div16
 
-/* =+, =- */
+/* =+, =- compound assignment */
 cr70:
 %[addq1:]
 %aw,aw
-	I	A2,A1'
-	mov	A1'',R
+	ld	hl,(A1)
+	ld	de,A2
+	I
+	ld	(A1),hl
 
 %[addq20:]
 %aub,aw
-	clr	R
-	bisb	A1',R
-	I	A2,R
-	movb	R,A1''
-	bic	$!377,R
+	ld	a,(A1)
+	ld	l,a
+	ld	h,0
+	ld	de,A2
+	I
+	ld	a,l
+	ld	(A1),a
 
 %[addq1a:]
 %a,aw
 %ad,ad
-	movB1	A1',R
-	IBF	A2,R
-	movB1	R,A1''
+	ld	R,(A1)
+	ld	de,A2
+	I
+	ld	(A1),R
 
 %[addq2:]
 %aw,nw*
 	S*
-	I	#2(R),A1'
-	mov	A1'',R
+	push	hl
+	ld	a,(de)
+	inc	de
+	ld	h,(de)
+	ld	l,a
+	ex	de,hl
+	ld	hl,(A1)
+	I
+	ld	(A1),hl
+	pop	de
 
 %[addq3:]
 %aw,n
 	S
-	I	R,A1'
-	mov	A1'',R
+	ex	de,hl
+	ld	hl,(A1)
+	I
+	ld	(A1),hl
 
 %[addq21:]
 %aub,n
 	SS
-	clr	R
-	bisb	A1',R
-	I	(sp)+,R
-	movb	R,A1''
-	bic	$!377,R
+	ld	a,(A1)
+	ld	l,a
+	ld	h,0
+	pop	de
+	I
+	ld	a,l
+	ld	(A1),a
 
 %[addq4:]
 %ew*,nw*
 	S*
 	F1*
-	I	#2(R),#1(R1)
-	mov	#1(R1),R
+	push	de
+	push	hl
+	ld	a,(de)
+	inc	de
+	ld	h,(de)
+	ld	l,a
+	pop	de
+	push	de
+	push	hl
+	ld	a,(de)
+	inc	de
+	ld	h,(de)
+	ld	l,a
+	ex	de,hl
+	pop	hl
+	I
+	pop	de
+	ld	(de),l
+	inc	de
+	ld	a,h
+	ld	(de),a
+	pop	de
 
 %[addq4a:]
 %ad,ef
-	movf	A1',R
+	call	fldA1
 	S1
-	IBF	R1,R
-	movf	R,A1''
+	I
+	call	fstA1
 
 %[addq5:]
 %a,n
 %ad,nf
 	SS
-	movB1	A1',R
-	IBF	(sp)+,R
-	movB1	R,A1''
+	ld	R,(A1)
+	pop	de
+	I
+	ld	(A1),R
 
 %[addq6:]
 %af,nf
 	SS
-	movof	A1',R
-	IBF	(sp)+,R
-	movfo	R,A1''
+	call	fldA1
+	pop	de
+	I
+	call	fstA1
 
 %[addq7:]
 %ew*,n
 	S
 	F1*
-	I	R,#1(R1)
-	mov	#1(R1),R
+	push	hl
+	push	de
+	ld	a,(de)
+	inc	de
+	ld	h,(de)
+	ld	l,a
+	ex	de,hl
+	pop	hl
+	I
+	pop	de
+	ld	(de),l
+	inc	de
+	ld	a,h
+	ld	(de),a
 
 %[addq8:]
 %nw*,n
 	SS
 	F*
-	I	(sp)+,#1(R)
-	mov	#1(R),R
+	push	hl
+	pop	de
+	push	hl
+	ld	a,(hl)
+	inc	hl
+	ld	h,(hl)
+	ld	l,a
+	pop	bc
+	ex	(sp),hl
+	ex	de,hl
+	I
+	push	bc
+	pop	de
+	ld	(de),l
+	inc	de
+	ld	a,h
+	ld	(de),a
 
 %[addq9:]
 %n*,n
 	FS*
 	SS
-	movB1	*2(sp),R
-	IBF	(sp)+,R
-	movB1	R,*(sp)+
+	pop	hl
+	push	hl
+	ld	a,(hl)
+	inc	hl
+	ld	h,(hl)
+	ld	l,a
+	pop	de
+	ex	(sp),hl
+	ex	de,hl
+	I
+	pop	de
+	ld	(de),l
+	inc	de
+	ld	a,h
+	ld	(de),a
 
 %[addq22:]
 %nub*,n
 	FS*
 	SS
-	clr	R
-	bisb	*2(sp),R
-	I	(sp)+,R
-	movb	R,*(sp)+
-	bic	$!377,R
+	pop	hl
+	ld	a,(hl)
+	push	hl
+	ld	l,a
+	ld	h,0
+	pop	de
+	ex	(sp),hl
+	ex	de,hl
+	I
+	pop	de
+	ld	a,l
+	ld	(de),a
 
 %[addq9a:]
 %nd*,nf
 	SS
 	F*
-	movB1	#1(R),R
-	IBF	(sp)+,R
-	movB1	R,#1(R)
+	push	hl
+	ld	a,(hl)
+	inc	hl
+	ld	h,(hl)
+	ld	l,a
+	pop	de
+	ex	(sp),hl
+	ex	de,hl
+	I
+	pop	de
+	ld	(de),l
+	inc	de
+	ld	a,h
+	ld	(de),a
 
 %[addq10:]
 %nf*,nf
 	SS
 	F*
-	movof	#1(R),R1
-	IBF	(sp)+,R1
-	movfo	R1,#1(R)
-	movf	R1,R
+	push	hl
+	call	fldi
+	pop	de
+	ex	(sp),hl
+	ex	de,hl
+	I
+	pop	de
+	call	fstde
 
 %[addq11:]
 %al,c
 %aul,c
-	I	A2,A1+
-	V	A1
-	F
+	ld	hl,(A1+2)
+	ld	de,A2
+	I
+	ld	(A1+2),hl
+	V	(A1)
+	ld	hl,(A1)
+	ld	de,(A1+2)
 
 %[addq12:]
 %al,al
 %al,aul
 %aul,al
 %aul,aul
-	I	A2+,A1+
-	V	A1
-	I	A2,A1
-	F
+	ld	hl,(A1+2)
+	ld	de,(A2+2)
+	I
+	ld	(A1+2),hl
+	ld	hl,(A1)
+	ld	de,(A2)
+	V
+	ld	(A1),hl
+	ld	de,(A1+2)
 
 %[addq13:]
 %al,nl
@@ -676,19 +1000,55 @@ cr70:
 %aul,nl
 %aul,nul
 	S
-	I	R+,A1+
-	V	A1
-	I	R,A1
-	F
+	push	hl
+	push	de
+	ld	hl,(A1+2)
+	ex	(sp),hl
+	I
+	ld	(A1+2),hl
+	pop	hl
+	ld	de,(A1)
+	V
+	ld	(A1),hl
+	ld	de,(A1+2)
 
 %[addq14:]
 %nl*,c
 %nul*,c
 	F*
-	I	A2,#1+2(R)
-	V	#1(R)
-	mov	#1+2(R),R+
-	mov	#1(R),R
+	push	hl
+	inc	hl
+	inc	hl
+	ld	de,A2
+	push	de
+	ld	e,(hl)
+	inc	hl
+	ld	d,(hl)
+	ex	de,hl
+	pop	de
+	I
+	pop	de
+	push	hl
+	inc	de
+	inc	de
+	ld	(de),l
+	inc	de
+	ld	a,h
+	ld	(de),a
+	dec	de
+	dec	de
+	dec	de
+	ld	a,(de)
+	inc	de
+	ld	h,(de)
+	ld	l,a
+	V
+	dec	de
+	ld	(de),l
+	inc	de
+	ld	a,h
+	ld	(de),a
+	pop	de
 
 %[addq15:]
 %nl*,al
@@ -696,11 +1056,38 @@ cr70:
 %nul*,al
 %nul*,aul
 	F*
-	I	A2+,#1+2(R)
-	V	#1(R)
-	I	A2,#1(R)
-	mov	#1+2(R),R+
-	mov	#1(R),R
+	push	hl
+	inc	hl
+	inc	hl
+	ld	e,(hl)
+	inc	hl
+	ld	d,(hl)
+	ex	de,hl
+	ld	de,(A2+2)
+	I
+	pop	bc
+	push	hl
+	push	bc
+	inc	bc
+	inc	bc
+	ld	(bc),l
+	inc	bc
+	ld	a,h
+	ld	(bc),a
+	pop	hl
+	push	hl
+	ld	e,(hl)
+	inc	hl
+	ld	d,(hl)
+	ex	de,hl
+	ld	de,(A2)
+	V
+	pop	de
+	ld	(de),l
+	inc	de
+	ld	a,h
+	ld	(de),a
+	pop	de
 
 %[addq16:]
 %nl*,nl
@@ -709,13 +1096,13 @@ cr70:
 %nul*,nul
 	SS
 	F*
-	I	(sp)+,#1(R)
-	I	(sp)+,#1+2(R)
-	V	#1(R)
-	mov	#1+2(R),R+
-	mov	#1(R),R
+	push	hl
+	call	lld
+	call	ladd
+	pop	de
+	call	lstde
 
-/* *=, <<= (for integer multiply, R must be odd) */
+/* *= */
 cr72:
 %a,aw
 %ad,ad
@@ -749,55 +1136,83 @@ cr72:
 %nf*,nf
 %	[addq10]
 
-/* =/ ;  R must be odd on integers */
+/* /= */
 cr73:
 %a,aw
-	movB1	A1',R
-	V	R-
-	IBF	A2,R-
-	movB1	R-,A1''
+	ld	R,(A1)
+	ld	de,A2
+	call	I
+	ld	(A1),R
 
 %a,n
 	SS
-	movB1	A1',R
-	V	R-
-	I	(sp)+,R-
-	movB1	R-,A1''
+	ld	R,(A1)
+	pop	de
+	call	I
+	ld	(A1),R
 
 %aub,n
 	SS
-	clr	R
-	bisB1	A1',R
-	V	R-
-	I	(sp)+,R-
-	movB1	R-,A1''
-	bic	$!377,R-
+	ld	a,(A1)
+	ld	l,a
+	ld	h,0
+	pop	de
+	call	I
+	ld	a,l
+	ld	(A1),a
 
 %e*,n
 	SS
 	F1*
-	movB1	#1(R1),R
-	V	R-
-	I	(sp)+,R-
-	movB1	R-,#1(R1)
+	push	de
+	ld	a,(de)
+	inc	de
+	ld	h,(de)
+	ld	l,a
+	pop	de
+	ex	(sp),hl
+	ex	de,hl
+	call	I
+	pop	de
+	ld	(de),l
+	inc	de
+	ld	a,h
+	ld	(de),a
 
 %n*,n
 	FS*
 	SS
-	movB1	*2(sp),R
-	V	R-
-	I	(sp)+,R-
-	movB1	R-,*(sp)+
+	pop	hl
+	push	hl
+	ld	a,(hl)
+	inc	hl
+	ld	h,(hl)
+	ld	l,a
+	pop	de
+	ex	(sp),hl
+	ex	de,hl
+	call	I
+	pop	de
+	ld	(de),l
+	inc	de
+	ld	a,h
+	ld	(de),a
 
 %nub*,n
 	FS*
 	SS
-	clr	R
-	bisB1	*2(sp),R
-	V	R-
-	I	(sp)+,R-
-	movB1	R-,*(sp)+
-	bic	$!377,R-
+	pop	hl
+	ld	a,(hl)
+	push	hl
+	ld	l,a
+	ld	h,0
+	pop	de
+	ex	(sp),hl
+	ex	de,hl
+	call	I
+	pop	de
+	ld	a,l
+	ld	(de),a
 
 %ad,ad
 %	[addq1a]
@@ -817,114 +1232,171 @@ cr73:
 %nf*,nf
 %	[addq10]
 
-/* >>= and =mod; R must be odd on integers */
+/* %= and >>= */
 cr74:
 %a,aw
-	movB1	A1',R
-	V	R-
-	I	A2,R-
-	movB1	R,A1''
+	ld	R,(A1)
+	ld	de,A2
+	call	I
+	ld	(A1),R
 
 %a,n
 	SS
-	movB1	A1',R
-	V	R-
-	I	(sp)+,R-
-	movB1	R,A1''
+	ld	R,(A1)
+	pop	de
+	call	I
+	ld	(A1),R
 
 %aub,n
 	SS
-	clr	R
-	bisB1	A1',R
-	V	R-
-	I	(sp)+,R-
-	movB1	R,A1''
-	bic	$!377,R
+	ld	a,(A1)
+	ld	l,a
+	ld	h,0
+	pop	de
+	call	I
+	ld	a,l
+	ld	(A1),a
 
 %e*,n
 	SS
 	F1*
-	movB1	#1(R1),R
-	V	R-
-	I	(sp)+,R-
-	movB1	R,#1(R1)
+	push	de
+	ld	a,(de)
+	inc	de
+	ld	h,(de)
+	ld	l,a
+	pop	de
+	ex	(sp),hl
+	ex	de,hl
+	call	I
+	pop	de
+	ld	(de),l
+	inc	de
+	ld	a,h
+	ld	(de),a
 
 %n*,n
 	FS*
 	SS
-	movB1	*2(sp),R
-	V	R-
-	I	(sp)+,R-
-	movB1	R,*(sp)+
+	pop	hl
+	push	hl
+	ld	a,(hl)
+	inc	hl
+	ld	h,(hl)
+	ld	l,a
+	pop	de
+	ex	(sp),hl
+	ex	de,hl
+	call	I
+	pop	de
+	ld	(de),l
+	inc	de
+	ld	a,h
+	ld	(de),a
 
 %nub*,n
 	FS*
 	SS
-	clr	R
-	bisB1	*2(sp),R
-	V	R-
-	I	(sp)+,R-
-	movB1	R,*(sp)+
-	bic	$!377,R
+	pop	hl
+	ld	a,(hl)
+	push	hl
+	ld	l,a
+	ld	h,0
+	pop	de
+	ex	(sp),hl
+	ex	de,hl
+	call	I
+	pop	de
+	ld	a,l
+	ld	(de),a
 
-/* =^ -- =xor */
+/* ^= */
 cr79:
 %aw,n
 %	[addq3]
 
 %ab,n
 	SS
-	movb	A1',R
-	xor	R,(sp)
-	mov	(sp)+,R
-	movb	R,A1''
+	ld	a,(A1)
+	ld	l,a
+	ld	h,0
+	pop	de
+	call	xor16
+	ld	a,l
+	ld	(A1),a
 
 %aub,n
 	SS
-	movb	A1',R
-	xor	R,(sp)
-	clr	R
-	bisb	(sp)+,R
-	movb	R,A1''
+	ld	a,(A1)
+	ld	l,a
+	ld	h,0
+	pop	de
+	call	xor16
+	ld	a,l
+	ld	(A1),a
 
 %n*,n
 	FS*
-	movB1	*(sp),-(sp)
+	pop	hl
+	push	hl
+	ld	a,(hl)
+	inc	hl
+	ld	h,(hl)
+	ld	l,a
 	S
-	xor	R,(sp)
-	movB1	(sp)+,R
-	movB1	R,*(sp)+
+	pop	de
+	call	xor16
+	pop	de
+	ld	(de),l
+	inc	de
+	ld	a,h
+	ld	(de),a
 
 %nub*,n
 	FS*
-	clr	-(sp)
-	bisb	*2(sp),(sp)
+	pop	hl
+	ld	a,(hl)
+	push	hl
+	ld	l,a
+	ld	h,0
 	S
-	xor	R,(sp)
-	mov	(sp)+,R
-	movb	R,*(sp)+
-	bic	$!377,R
+	pop	de
+	call	xor16
+	pop	de
+	ld	a,l
+	ld	(de),a
 
-/* =>> (all complicated cases done by =<< -) */
+/* >>= (simple cases) */
 cr75:
 %a,1
-	asrB1	A1'
-	movB1	A1'',R
+	ld	hl,(A1)
+	sra	h
+	rr	l
+	ld	(A1),hl
 
 %n*,1
 	F*
-	asrB1	#1(R)
-	movB1	#1(R),R
+	ld	e,(hl)
+	inc	hl
+	ld	d,(hl)
+	sra	d
+	rr	e
+	ld	(hl),d
+	dec	hl
+	ld	(hl),e
+	ex	de,hl
 
-/* =|, =&~ */
+/* |=, &~= */
 cr78:
 %aw,aw
 %	[addq1]
 
 %aub,a
-	IBE	A2,A1'
-	clr	R
-	bisb	A1'',R
+	ld	a,(A1)
+	I	A2
+	ld	(A1),a
+	ld	l,a
+	ld	h,0
 
 %a,aw
 %ad,ad
@@ -938,9 +1410,13 @@ cr78:
 
 %aub,n
 	SS
-	IBE	(sp)+,A1'
-	clr	R
-	bisb	A1'',R
+	ld	a,(A1)
+	ld	l,a
+	ld	h,0
+	pop	de
+	I
+	ld	a,l
+	ld	(A1),a
 
 %ew*,nw*
 %	[addq4]
@@ -967,10 +1443,16 @@ cr78:
 %nub*,n
 	FS*
 	SS
-	IBE	(sp),*2(sp)
-	tst	(sp)+
-	clr	R
-	bisb	*(sp)+,R
+	pop	hl
+	ld	a,(hl)
+	push	hl
+	pop	de
+	ex	(sp),hl
+	I	a
+	pop	hl
+	ld	(hl),a
+	ld	l,a
+	ld	h,0
 
 %nd*,nf
 %	[addq9a]
@@ -1038,117 +1520,125 @@ cr128:
 %nul,n
 	SS
 	F
-	jsr	pc,I
-	tst	(sp)+
+	pop	de
+	ld	a,e
+	call	lushr
 
-/* >>= for unsigned long  */
+/* >>= for unsigned long */
 cr129:
 %n,n
 	SS
 	FS
-	jsr	pc,I
-	cmp	(sp)+,(sp)+
+	pop	de
+	ld	a,e
+	call	lushr
+	pop	de
 
 /* int -> float */
 cr51:
 %aw,n
-	movif	A1,R
+	ld	hl,A1
+	call	itof
 
 %nw*,n
 	F*
-	movif	#1(R),R
+	ld	a,(hl)
+	inc	hl
+	ld	h,(hl)
+	ld	l,a
+	call	itof
 
 %n,n
 	F
-	movif	R,R
+	call	itof
 
-/* float, double -> int */
+/* float -> int */
 cr52:
 %nf,n
 	F
-	movfi	R,R
+	call	ftoi
 
-/* double (float) to long */
+/* float to long */
 cr56:
 %nf,n
 	F
-	setl
-	movfi	R,-(sp)
-	mov	(sp)+,R
-	mov	(sp)+,R+
-	seti
+	call	ftol
 
-/* long to double */
+/* long to float */
 cr57:
 %al,n
-	setl
-	movif	A1,R
-	seti
+	ld	hl,(A1)
+	ld	de,(A1+2)
+	call	ltof
 
 %nl*,n
 	F*
-	setl
-	movif	#1(R),R
-	seti
+	call	lld
+	call	ltof
 
 %nl,n
 	FS
-	setl
-	movif	(sp)+,R
-	seti
+	call	ltof
 
-/* unsigned long to float(double) */
+/* unsigned long to float */
 cr127:
 %aul,n
-	mov	A1+,-(sp)
-	mov	A1,-(sp)
-	jsr	pc,I
-	cmp	(sp)+,(sp)+
+	ld	hl,(A1)
+	ld	de,(A1+2)
+	call	ultof
 
 %nul*,n
 	F*
-	mov	#1+2(R),-(sp)
-	mov	#1(R),-(sp)
-	jsr	pc,I
-	cmp	(sp)+,(sp)+
+	call	lld
+	call	ultof
 
 %nul,n
 	FS
-	jsr	pc,I
-	cmp	(sp)+,(sp)+
+	call	ultof
 
 /* integer to long */
 cr58:
 %eu,n
 	F1!
-	clr	R
+	ld	de,0
 
 %nu,n
 	F
-	mov	R,R1
-	clr	R
+	ex	de,hl
+	ld	hl,0
 
 %e,n
 	F1!
-	sxt	R
+	ld	a,d
+	rla
+	sbc	a,a
+	ld	d,a
+	ld	e,a
 
 %n,n
 	F
-	mov	R,R1
-	sxt	R
+	ex	de,hl
+	ld	a,d
+	rla
+	sbc	a,a
+	ld	h,a
+	ld	l,a
 
 /* long to integer */
 cr59:
 %al,n
 %aul,n
-	mov	A1+,R
+	ld	hl,(A1)
 
 %nl*,n
 %nul*,n
 	F*
-	mov	#1+2(R),R
+	ld	a,(hl)
+	inc	hl
+	ld	h,(hl)
+	ld	l,a
 
-/* *, /, remainder for longs. */
+/* *, /, % for longs */
 cr82:
 %[l82:]
 %nl,nl
@@ -1157,10 +1647,9 @@ cr82:
 %nul,nul
 	SS
 	FS
-	jsr	pc,I
-	add	$10,sp
+	call	I
 
-/* *, /, rem for unsigned long */
+/* *, /, % for unsigned long */
 cr121:
 %nul,nl
 %nl,nul
@@ -1176,90 +1665,110 @@ cr124:
 %	[l86]
 
 /* *=, /=, %= for longs */
-/* Operands of the form &x op y, so stack space is known. */
 cr86:
 %[l86:]
 %n,nl
 %n,nul
 	SS
 	FS
-	jsr	pc,I
-	add	$6,sp
+	call	I
 
 /* convert integer to character (sign extend) */
 cr109:
 %n,n
 	F
-	movb	R,R
+	ld	a,l
+	rla
+	sbc	a,a
+	ld	h,a
 
-/* divide, remainder for unsigned */
+/* divide, mod for unsigned */
 cr117:
 %n,e
 	F!
 	S1!
-	jsr	pc,I
+	call	I
 
 %n,n
 	SS
 	F!
-	mov	(sp)+,R1
-	jsr	pc,I
+	pop	de
+	call	I
 
-/* /= mod for unsigned */
+/* /= %= for unsigned */
 cr119:
 %aw,e
 %ab,e
-	movB1	A1',R
+	ld	hl,(A1)
 	S1!
-	jsr	pc,I
-	movB1	R,A1''
+	call	I
+	ld	(A1),hl
 
 %aub,e
-	clr	R
-	bisB1	A1',R
+	ld	a,(A1)
+	ld	l,a
+	ld	h,0
 	S1!
-	jsr	pc,I
-	movb	R,A1''
+	call	I
+	ld	a,l
+	ld	(A1),a
 
 %aw,n
 %ab,n
 	SS
-	movB1	A1',R
-	mov	(sp)+,R1
-	jsr	pc,I
-	movB1	R,A1''
+	ld	hl,(A1)
+	pop	de
+	call	I
+	ld	(A1),hl
 
 %nw*,n
 %nb*,n
 	FS*
 	S!
-	mov	R,R1
-	movB1	*(sp),R
-	jsr	pc,I
-	movB1	R,*(sp)+
+	ex	de,hl
+	pop	hl
+	push	hl
+	ld	a,(hl)
+	inc	hl
+	ld	h,(hl)
+	ld	l,a
+	call	I
+	pop	de
+	ld	(de),l
+	inc	de
+	ld	a,h
+	ld	(de),a
 
 %aub,n
 	SS
-	clr	R
-	bisB1	A1',R
-	mov	(sp)+,R1
-	jsr	pc,I
-	movB1	R,A1''
+	ld	a,(A1)
+	ld	l,a
+	ld	h,0
+	pop	de
+	call	I
+	ld	a,l
+	ld	(A1),a
 
 %nub*,n
 	FS*
 	S!
-	mov	R,R1
-	clr	R
-	bisb	*(sp),R
-	jsr	pc,I
-	movB1	R,*(sp)+
+	ex	de,hl
+	pop	hl
+	ld	a,(hl)
+	push	hl
+	ld	l,a
+	ld	h,0
+	call	I
+	pop	de
+	ld	a,l
+	ld	(de),a
 
 /* (int *) - (int *) */
 cr107:
 %n,n
 	F?
-	ror	R
+	sra	h
+	rr	l
 
 %{
 /*
@@ -1286,20 +1795,22 @@ struct table efftab[] = {
 };
 %}
 
-/* = */
+/* = assignment for effect */
 ci80:
 %[move1:]
 %a,z
 %ad,zf
 %aub,z
-	I'B1	A1
+	ld	(A1),0
 
 %[move2:]
 %n*,z
 %nd*,zf
 %nub*,z
 	F*
-	I'B1	#1(R)
+	ld	(hl),0
+	inc	hl
+	ld	(hl),0
 
 %[move3:]
 %a,aw
@@ -1307,27 +1818,35 @@ ci80:
 %ab,aub
 %aub,a
 %aub,ab
-	IBE	A2,A1
+	ld	hl,A2
+	ld	(A1),hl
 
 %[move4:]
 %ab,n*
 %a,nw*
 %aub,n*
 	S*
-	IBE	#2(R),A1
+	ld	a,(de)
+	inc	de
+	ld	h,(de)
+	ld	l,a
+	ld	(A1),hl
 
 %[move5:]
 %a,n
 %aub,n
 	S
-	IB1	R,A1
+	ld	(A1),hl
 
 %[move6:]
 %n*,aw
 %nb*,a
 %nub*,a
 	F*
-	IBE	A2,#1(R)
+	ld	de,A2
+	ld	(hl),e
+	inc	hl
+	ld	(hl),d
 
 %[move7:]
 %n*,ew*
@@ -1335,14 +1854,25 @@ ci80:
 %nub*,e*
 	F*
 	S1*
-	IBE	#2(R1),#1(R)
+	push	hl
+	ld	a,(de)
+	inc	de
+	ld	h,(de)
+	ld	l,a
+	ex	de,hl
+	pop	hl
+	ld	(hl),e
+	inc	hl
+	ld	(hl),d
 
 %[move8:]
 %n*,e
 %nub*,e
 	F*
 	S1
-	IB1	R1,#1(R)
+	ld	(hl),e
+	inc	hl
+	ld	(hl),d
 
 %[move9:]
 %e*,nw*
@@ -1350,14 +1880,26 @@ ci80:
 %eub*,n*
 	S*
 	F1*
-	IBE	#2(R),#1(R1)
+	push	de
+	ld	a,(hl)
+	inc	hl
+	ld	h,(hl)
+	ld	l,a
+	ex	de,hl
+	pop	hl
+	ld	(hl),e
+	inc	hl
+	ld	(hl),d
 
 %[move10:]
 %e*,n
 %eub*,n
 	S
 	F1*
-	IB1	R,#1(R1)
+	ex	de,hl
+	ld	(hl),e
+	inc	hl
+	ld	(hl),d
 
 %[move11:]
 %n*,nw*
@@ -1365,76 +1907,128 @@ ci80:
 %nub*,n*
 	FS*
 	S*
-	IBE	#2(R),*(sp)+
+	push	hl
+	ld	a,(de)
+	inc	de
+	ld	h,(de)
+	ld	l,a
+	ex	de,hl
+	pop	hl
+	ld	(hl),e
+	inc	hl
+	ld	(hl),d
 
 %[move12:]
 %n*,n
 %nub*,n
 	FS*
 	S
-	IB1	R,*(sp)+
+	pop	de
+	ld	(de),l
+	inc	de
+	ld	a,h
+	ld	(de),a
 
 %aw,nf
 	S
-	movfi	R,A1
+	call	ftoi
+	ld	(A1),hl
 
 %ew*,nf
 	S
 	F1*
-	movfi	R,#1(R1)
+	call	ftoi
+	ex	de,hl
+	ld	(hl),e
+	inc	hl
+	ld	(hl),d
 
 %al,z
 %aul,z
-	clr	A1
-	clr	A1+
+	ld	hl,0
+	ld	(A1),hl
+	ld	(A1+2),hl
 
 %nl*,z
 %nul*,z
 	F*
-	clr	#1(R)
-	clr	2+#1(R)
+	ld	(hl),0
+	inc	hl
+	ld	(hl),0
+	inc	hl
+	ld	(hl),0
+	inc	hl
+	ld	(hl),0
 
 %[move13a:]
 %al,aw
 %aul,aw
-	I	A2,A1+
-	V	A1
+	ld	hl,A2
+	ld	(A1),hl
+	ld	a,h
+	rla
+	sbc	a,a
+	ld	h,a
+	ld	l,a
+	ld	(A1+2),hl
 
 %al,nw*
 %aul,nw*
 	S*
-	mov	#2(R),A1+
-	V	A1
+	ld	a,(de)
+	inc	de
+	ld	h,(de)
+	ld	l,a
+	ld	(A1),hl
+	ld	a,h
+	rla
+	sbc	a,a
+	ld	h,a
+	ld	l,a
+	ld	(A1+2),hl
 
 %al,n
 %aul,n
 	S
-	mov	R,A1+
-	V	A1
+	ld	(A1),hl
+	ld	a,h
+	rla
+	sbc	a,a
+	ld	h,a
+	ld	l,a
+	ld	(A1+2),hl
 
 %al,nf
 %aul,nf
 	S
-	setl
-	movfi	R,A1
-	seti
+	call	ftol
+	ld	(A1),hl
+	ld	(A1+2),de
 
 %el*,nf
 %eul*,nf
 	S
 	F1*
-	setl
-	movfi	R,#1(R1)
-	seti
+	call	ftol
+	ex	de,hl
+	ld	(hl),e
+	inc	hl
+	ld	(hl),d
+	inc	hl
+	pop	de
+	ld	(hl),e
+	inc	hl
+	ld	(hl),d
 
 %[move13:]
 %al,al
 %al,aul
 %aul,al
 %aul,aul
-	I	A2,A1
-	I	A2+,A1+
-	V	A1
+	ld	hl,(A2)
+	ld	(A1),hl
+	ld	hl,(A2+2)
+	ld	(A1+2),hl
 
 %[move14:]
 %al,nl*
@@ -1442,9 +2036,9 @@ ci80:
 %aul,nl*
 %aul,nul*
 	S*
-	I	#2(R),A1
-	I	#2+2(R),A1+
-	V	A1
+	call	lldde
+	ld	(A1),hl
+	ld	(A1+2),de
 
 %[move15:]
 %al,nl
@@ -1452,16 +2046,24 @@ ci80:
 %aul,nl
 %aul,nul
 	S
-	I	R,A1
-	I	R+,A1+
-	V	A1
+	ld	(A1),hl
+	ld	(A1+2),de
 
 %[move14a:]
 %nl*,aw
 %nul*,aw
 	F*
-	I	A2,#1+2(R)
-	V	#1(R)
+	ld	de,A2
+	ld	(hl),e
+	inc	hl
+	ld	(hl),d
+	inc	hl
+	ld	a,d
+	rla
+	sbc	a,a
+	ld	(hl),a
+	inc	hl
+	ld	(hl),a
 
 %[move16a:]
 %nl*,al
@@ -1469,9 +2071,15 @@ ci80:
 %nul*,al
 %nul*,aul
 	F*
-	I	A2+,#1+2(R)
-	V	#1(R)
-	I	A2,#1(R)
+	ld	de,(A2)
+	ld	(hl),e
+	inc	hl
+	ld	(hl),d
+	inc	hl
+	ld	de,(A2+2)
+	ld	(hl),e
+	inc	hl
+	ld	(hl),d
 
 %[move16:]
 %el*,nl
@@ -1480,16 +2088,31 @@ ci80:
 %eul*,nul
 	S
 	F1*
-	I	R+,#1+2(R1)
-	V	#1(R1)
-	I	R,#1(R1)
+	ex	de,hl
+	ld	(hl),e
+	inc	hl
+	ld	(hl),d
+	inc	hl
+	pop	de
+	ld	(hl),e
+	inc	hl
+	ld	(hl),d
 
 %nl*,n
 %nul*,n
 	SS
 	F*
-	mov	(sp)+,#1+2(R)
-	V	#1(R)
+	pop	de
+	ld	(hl),e
+	inc	hl
+	ld	(hl),d
+	inc	hl
+	ld	a,d
+	rla
+	sbc	a,a
+	ld	(hl),a
+	inc	hl
+	ld	(hl),a
 
 %[move17:]
 %nl*,nl
@@ -1498,11 +2121,17 @@ ci80:
 %nul*,nul
 	SS
 	F*
-	I	(sp)+,#1(R)
-	I	(sp)+,#1+2(R)
-	V	#1(R)
+	pop	de
+	ld	(hl),e
+	inc	hl
+	ld	(hl),d
+	inc	hl
+	pop	de
+	ld	(hl),e
+	inc	hl
+	ld	(hl),d
 
-/* =| and =& ~ */
+/* =| and =&~ */
 ci78:
 %a,a
 %a,ab
@@ -1517,7 +2146,9 @@ ci78:
 
 %aub,n
 	S
-	IBE	R,A1
+	ld	a,l
+	I	(A1)
+	ld	(A1),a
 
 %a,n
 %	[move5]
@@ -1617,18 +2248,31 @@ ci79:
 %nul*,nul
 	FS*
 	S
-	I	R,*(sp)
-	mov	(sp)+,R
-	I	R+,2(R)
+	pop	bc
+	ld	a,(bc)
+	xor	l
+	ld	(bc),a
+	inc	bc
+	ld	a,(bc)
+	xor	h
+	ld	(bc),a
+	inc	bc
+	ld	a,(bc)
+	xor	e
+	ld	(bc),a
+	inc	bc
+	ld	a,(bc)
+	xor	d
+	ld	(bc),a
 
-/* =+ */
+/* =+ for effect */
 ci70:
 %n*,z
 %a,z
 %ab,1
 %aub,1
 %a,1
-	I'B1	A1
+	I'	(A1)
 
 %aw,aw
 %	[move3]
@@ -1648,22 +2292,28 @@ ci70:
 
 %a,ew*
 	S*
-	movB1	A1',R1
-	I	#2(R),R1
-	movB1	R1,A1''
+	push	de
+	ld	hl,(A1)
+	ld	a,(de)
+	inc	de
+	ld	d,(de)
+	ld	e,a
+	I
+	ld	(A1),hl
+	pop	de
 
 %a,n
 	S
-	movB1	A1',R1
-	I	R,R1
-	movB1	R1,A1''
+	ex	de,hl
+	ld	hl,(A1)
+	I
+	ld	(A1),hl
 
 %aub,n
 	S
-	clr	R1
-	bisB1	A1',R1
-	I	R,R1
-	movB1	R1,A1''
+	ld	a,(A1)
+	I	l
+	ld	(A1),a
 
 %ew*,n
 %	[move10]
@@ -1674,17 +2324,36 @@ ci70:
 %n*,n
 	SS
 	F*
-	movB1	#1(R),R1
-	I	(sp)+,R1
-	movB1	R1,#1(R)
+	push	hl
+	ld	e,(hl)
+	inc	hl
+	ld	d,(hl)
+	ex	de,hl
+	pop	de
+	ex	(sp),hl
+	ex	de,hl
+	I
+	pop	de
+	ld	(de),l
+	inc	de
+	ld	a,h
+	ld	(de),a
 
 %nub*,n
 	SS
 	F*
-	clr	R1
-	bisB1	#1(R),R1
-	I	(sp)+,R1
-	movB1	R1,#1(R)
+	ld	a,(hl)
+	push	hl
+	push	af
+	pop	hl
+	ld	h,0
+	pop	de
+	ex	(sp),hl
+	ex	de,hl
+	I
+	pop	de
+	ld	a,l
+	ld	(de),a
 
 %al,c
 %al,au
@@ -1734,109 +2403,160 @@ ci70:
 %nul*,nul
 %	[move17]
 
-/* =>> (all harder cases handled by =<< -) */
+/* >>= (simple) */
 ci75:
 %a,1
-	asrB1	A1
+	ld	hl,(A1)
+	sra	h
+	rr	l
+	ld	(A1),hl
 
 %aub,1
-	clc
-	rorB1	A1
+	ld	a,(A1)
+	srl	a
+	ld	(A1),a
 
 %n*,1
 	F*
-	asrB1	#1(R)
+	ld	e,(hl)
+	inc	hl
+	ld	d,(hl)
+	sra	d
+	rr	e
+	ld	(hl),d
+	dec	hl
+	ld	(hl),e
 
 %nub*,1
 	F*
-	clc
-	rorB1	#1(R)
+	ld	a,(hl)
+	srl	a
+	ld	(hl),a
 
-/* =<< */
+/* <<= */
 ci76:
 %a,1
 %aub,1
-	aslB1	A1
+	ld	hl,(A1)
+	add	hl,hl
+	ld	(A1),hl
 
 %n*,1
 %nub*,1
 	F*
-	aslB1	#1(R)
+	ld	e,(hl)
+	inc	hl
+	ld	d,(hl)
+	ex	de,hl
+	add	hl,hl
+	ex	de,hl
+	ld	(hl),d
+	dec	hl
+	ld	(hl),e
 
 %r,aw
-	ash	A2,A1
+	ld	hl,(A1)
+	ld	a,A2
+	call	shl16
 
 %r,nw*
 	S*
-	ash	#2(R),A1
+	ld	a,(de)
+	ld	hl,(A1)
+	call	shl16
+	ld	(A1),hl
 
 %r,n
 	S
-	ash	R,A1
+	ld	a,l
+	ld	hl,(A1)
+	call	shl16
+	ld	(A1),hl
 
-/* =<< for longs */
+/* <<= for longs */
 cr92:
 %al,aw
 %aul,aw
-	F
-	ashc	A2,R
-	mov	R,A1
-	mov	R+,A1+
+	ld	hl,(A1)
+	ld	de,(A1+2)
+	ld	a,A2
+	call	lshl
+	ld	(A1),hl
+	ld	(A1+2),de
 
 %al,n
 %aul,n
 	SS
-	F
-	ashc	(sp)+,R
-	mov	R,A1
-	mov	R+,A1+
+	ld	hl,(A1)
+	ld	de,(A1+2)
+	pop	bc
+	ld	a,c
+	call	lshl
+	ld	(A1),hl
+	ld	(A1+2),de
 
 %nl*,n
 %nul*,n
 	FS*
 	SS
-	mov	2(sp),R
-	mov	2(R),R+
-	mov	(R),R
-	ashc	(sp)+,R
-	mov	R,*(sp)
-	add	$2,(sp)
-	mov	R+,*(sp)+
+	pop	hl
+	push	hl
+	call	lld
+	pop	bc
+	ld	a,c
+	call	lshl
+	pop	de
+	call	lstde
 
 /* field = ... */
 ci16:
 %a,a
-	bicB1	Z,A1'
-	bisB1	A2,A1''
+	ld	a,(A1)
+	and	Z
+	ld	hl,A2
+	or	l
+	ld	(A1),a
 
 %a,n
 	S
-	bicB1	Z,A1'
-	bisB1	R,A1''
+	ld	a,(A1)
+	and	Z
+	or	l
+	ld	(A1),a
 
 %n*,a
 	F*
-	bicB1	Z,#1(R)
-	bisB1	A2,#1(R)
+	ld	a,(hl)
+	and	Z
+	ld	de,A2
+	or	e
+	ld	(hl),a
 
 %[fas1:]
 %e*,n
 	S
 	F1*
-	bicB1	Z,#1(R1)
-	bisB1	R,#1(R1)
+	ld	a,(de)
+	and	Z
+	or	l
+	ld	(de),a
 
 %n*,e
 	F*
 	S1
-	bicB1	Z,#1(R)
-	bisB1	R1,#1(R)
+	ld	a,(hl)
+	and	Z
+	or	e
+	ld	(hl),a
 
 %n*,n
 	SS
 	F*
-	bicB1	Z,#1(R)
-	bisB1	(sp)+,#1(R)
+	pop	de
+	ld	a,(hl)
+	and	Z
+	or	e
+	ld	(hl),a
 
 %{
 /*
@@ -1878,19 +2598,26 @@ cc60:
 %a,z
 %ad,zf
 %aub,z
-%	[move1]
+	ld	hl,(A1)
+	ld	a,h
+	or	l
 
 %af,z
-	movof	A1,R
+	call	fldA1
+	call	ftst
 
 %n*,z
 %nd*,zf
 %nub*,z
-%	[move2]
+	F*
+	ld	a,(hl)
+	inc	hl
+	or	(hl)
 
 %nf*,z
 	F*
-	movof	#1(R),R
+	call	fldi
+	call	ftst
 
 %n,z
 %nf,zf
@@ -1900,12 +2627,22 @@ cc60:
 %ab,ab
 %aub,a
 %aub,aub
-%	[move3]
+	ld	hl,A1
+	ld	de,A2
+	or	a
+	sbc	hl,de
 
 %nw*,aw
 %nb*,ab
 %nub*,aub
-%	[move6]
+	F*
+	ld	a,(hl)
+	inc	hl
+	ld	h,(hl)
+	ld	l,a
+	ld	de,A2
+	or	a
+	sbc	hl,de
 
 %n,aw
 %nf,ad
@@ -1914,10 +2651,31 @@ cc60:
 %nw*,ew*
 %nb*,eb*
 %nub*,eub*
-%	[move7]
+	F*
+	S1*
+	push	hl
+	ld	a,(de)
+	inc	de
+	ld	h,(de)
+	ld	l,a
+	ex	de,hl
+	pop	hl
+	ld	a,(hl)
+	inc	hl
+	ld	h,(hl)
+	ld	l,a
+	or	a
+	sbc	hl,de
 
 %nw*,e
-%	[move8]
+	F*
+	S1
+	ld	a,(hl)
+	inc	hl
+	ld	h,(hl)
+	ld	l,a
+	or	a
+	sbc	hl,de
 
 %n,ew*
 %nf,ed*
@@ -1930,10 +2688,34 @@ cc60:
 %nw*,nw*
 %nb*,nb*
 %nub*,nub*
-%	[move11]
+	FS*
+	S*
+	push	hl
+	ld	a,(de)
+	inc	de
+	ld	h,(de)
+	ld	l,a
+	ex	de,hl
+	pop	hl
+	ld	a,(hl)
+	inc	hl
+	ld	h,(hl)
+	ld	l,a
+	or	a
+	sbc	hl,de
 
 %nw*,n
-%	[move12]
+	FS*
+	S
+	pop	de
+	ld	a,(de)
+	inc	de
+	push	af
+	ld	a,(de)
+	pop	de
+	ld	d,a
+	or	a
+	sbc	hl,de
 
 %n,n
 %nf,nf
@@ -1941,18 +2723,27 @@ cc60:
 
 %al,z
 %aul,z
-	tst	A1
+	ld	hl,(A1)
+	ld	a,h
+	or	l
 	X0
-	tst	A1+
+	ld	hl,(A1+2)
+	ld	a,h
+	or	l
 	X1
 
 %al,c
 %al,au
 %aul,c
 %aul,au
-	tst	A1
+	ld	hl,(A1)
+	ld	a,h
+	or	l
 	X0
-	cmp	A1+,A2
+	ld	hl,(A1+2)
+	ld	de,A2
+	or	a
+	sbc	hl,de
 	X1
 
 %[lcmp1:]
@@ -1960,17 +2751,26 @@ cc60:
 %al,aul
 %aul,al
 %aul,aul
-	I	A1,A2
+	ld	hl,(A1)
+	ld	de,(A2)
+	I
 	X0
-	I	A1+,A2+
+	ld	hl,(A1+2)
+	ld	de,(A2+2)
+	I
 	X1
 
 %nl*,z
 %nul*,z
 	F*
-	tst	#1(R)
+	ld	a,(hl)
+	inc	hl
+	or	(hl)
+	inc	hl
 	X0
-	tst	#1+2(R)
+	ld	a,(hl)
+	inc	hl
+	or	(hl)
 	X1
 
 %nl*,c
@@ -1978,9 +2778,18 @@ cc60:
 %nl*,au
 %nul*,au
 	F*
-	tst	#1(R)
+	ld	a,(hl)
+	inc	hl
+	or	(hl)
+	inc	hl
 	X0
-	cmp	#1+2(R),A2
+	ld	a,(hl)
+	inc	hl
+	ld	h,(hl)
+	ld	l,a
+	ld	de,A2
+	or	a
+	sbc	hl,de
 	X1
 
 %[lcmp2:]
@@ -1989,17 +2798,33 @@ cc60:
 %nul*,al
 %nl*,aul
 	F*
-	I	#1(R),A2
+	push	hl
+	ld	e,(hl)
+	inc	hl
+	ld	d,(hl)
+	ld	hl,(A2)
+	ex	de,hl
+	I
 	X0
-	I	#1+2(R),A2+
+	pop	hl
+	inc	hl
+	inc	hl
+	ld	e,(hl)
+	inc	hl
+	ld	d,(hl)
+	ld	hl,(A2+2)
+	ex	de,hl
+	I
 	X1
 
 %nl,z
 %nul,z
 	F
-	tst	R
+	ld	a,h
+	or	l
 	X0
-	tst	R+
+	ld	a,d
+	or	e
 	X1
 
 %nl,c
@@ -2007,9 +2832,13 @@ cc60:
 %nl,au
 %nul,au
 	F
-	tst	R
+	ld	a,h
+	or	l
 	X0
-	cmp	R+,A2
+	ld	hl,A2
+	ex	de,hl
+	or	a
+	sbc	hl,de
 	X1
 
 %[lcmp3:]
@@ -2018,9 +2847,13 @@ cc60:
 %nul,al
 %nul,aul
 	F
-	I	R,A2
+	push	de
+	ld	de,(A2)
+	I
 	X0
-	I	R+,A2+
+	pop	hl
+	ld	de,(A2+2)
+	I
 	X1
 
 %[lcmp4:]
@@ -2030,9 +2863,37 @@ cc60:
 %nul*,eul*
 	F*
 	S1*
-	I	#1(R),#2(R1)
+	push	hl
+	push	de
+	ld	e,(hl)
+	inc	hl
+	ld	d,(hl)
+	pop	hl
+	push	de
+	ld	e,(hl)
+	inc	hl
+	ld	d,(hl)
+	pop	hl
+	I
 	X0
-	I	#1+2(R),#2+2(R1)
+	pop	hl
+	pop	de
+	inc	hl
+	inc	hl
+	inc	de
+	inc	de
+	push	hl
+	push	de
+	ld	e,(hl)
+	inc	hl
+	ld	d,(hl)
+	pop	hl
+	push	de
+	ld	e,(hl)
+	inc	hl
+	ld	d,(hl)
+	pop	hl
+	I
 	X1
 
 %[lcmp5:]
@@ -2042,9 +2903,27 @@ cc60:
 %nul,eul*
 	F
 	S1*
-	I	R,#2(R1)
+	push	hl
+	push	de
+	ld	a,(de)
+	inc	de
+	ld	h,(de)
+	ld	l,a
+	ex	de,hl
+	pop	hl
+	I
 	X0
-	I	R+,#2+2(R1)
+	pop	hl
+	inc	de
+	inc	de
+	push	de
+	ld	a,(de)
+	inc	de
+	ld	h,(de)
+	ld	l,a
+	ex	de,hl
+	pop	de
+	I
 	X1
 
 %[lcmp6:]
@@ -2054,15 +2933,14 @@ cc60:
 %nul,nul
 	FS
 	S
-	mov	R,-(sp)
-	mov	4(sp),R
-	mov	(sp)+,2(sp)
-	I	(sp)+,(sp)+
+	pop	de
+	I
 	X0
-	I	R,R+
+	pop	de
+	I
 	X1
 
-/* & as in "if ((a&b) ==0)" */
+/* & as in "if ((a&b)==0)" */
 cc81:
 %a,a
 %a,ab
@@ -2073,23 +2951,38 @@ cc81:
 %aub,a
 %aub,ab
 %aub,aub
-%	[move3]
+	ld	hl,A1
+	ld	de,A2
+	ld	a,l
+	and	e
+	ld	l,a
+	ld	a,h
+	and	d
+	or	l
 
-/*
-   special case. apparently "u_char b; [u_]char a; if (b & a)..." was
-   too complicated.  the resulting code was horrid.  this cuts the
-   waste by 33%
-*/
-   
 %a,e
 %aub,e
 	S
-	IBE	R,A1
+	ld	de,(A1)
+	ld	a,l
+	and	e
+	ld	l,a
+	ld	a,h
+	and	d
+	or	l
 
 %n*,a
 %nu*,a
 %nub*,a
-%	[move6]
+	F*
+	ld	de,A2
+	ld	a,(hl)
+	and	e
+	ld	e,a
+	inc	hl
+	ld	a,(hl)
+	and	d
+	or	e
 
 %n,a
 %	[add1]
@@ -2104,7 +2997,14 @@ cc81:
 %aul,c
 %al,au
 %aul,au
-	bit	A2,A1+
+	ld	hl,(A1+2)
+	ld	de,A2
+	ld	a,l
+	and	e
+	ld	l,a
+	ld	a,h
+	and	d
+	or	l
 	X1
 
 %nl*,c
@@ -2112,7 +3012,16 @@ cc81:
 %nl*,au
 %nul*,au
 	F*
-	bit	A2,#2+2(R)
+	inc	hl
+	inc	hl
+	ld	de,A2
+	ld	a,(hl)
+	and	e
+	ld	e,a
+	inc	hl
+	ld	a,(hl)
+	and	d
+	or	e
 	X1
 
 %al,al
@@ -2156,7 +3065,13 @@ cc81:
 %nl,au
 %nul,au
 	F
-	bit	A2,R+
+	ld	hl,A2
+	ld	a,l
+	and	e
+	ld	l,a
+	ld	a,h
+	and	d
+	or	l
 	X1
 
 /* set codes right */
@@ -2182,29 +3097,39 @@ struct table sptab[] = {
 };
 %}
 
-/* name */
+/* name - push to stack */
 cs106:
 %z,n
 %zf,n
-	clrB1	-(sp)
+	ld	hl,0
+	push	hl
 
 %aw,n
-	mov	A1,-(sp)
+	ld	hl,(A1)
+	push	hl
 
 %aub,n
-	clr	-(sp)
-	bisb	A1,(sp)
+	ld	a,(A1)
+	ld	l,a
+	ld	h,0
+	push	hl
 
 %nw*,n
 	F*
-	mov	#1(R),-(sp)
+	ld	a,(hl)
+	inc	hl
+	ld	h,(hl)
+	ld	l,a
+	push	hl
 
 %al,n
 %aul,n
-	mov	A1+,-(sp)
-	mov	A1,-(sp)
+	ld	hl,(A1+2)
+	push	hl
+	ld	hl,(A1)
+	push	hl
 
-/* +, -, |, &~ */
+/* +, -, |, &~ to stack */
 cs40:
 %a,1
 	FS
@@ -2212,35 +3137,57 @@ cs40:
 
 %a,aw
 	FS
-	I	A2,(sp)
+	ld	de,A2
+	pop	hl
+	I
+	push	hl
 
 %a,nw*
 	FS
 	S*
-	I	#2(R),(sp)
+	push	hl
+	ld	a,(de)
+	inc	de
+	ld	h,(de)
+	ld	l,a
+	ex	de,hl
+	pop	hl
+	ex	(sp),hl
+	I
+	push	hl
 
 %a,n
 	FS
 	S
-	I	R,(sp)
+	pop	de
+	ex	(sp),hl
+	I
+	push	hl
 
-/* integer to long */
+/* integer to long - push */
 cs58:
 %nu,n
 	FS
-	clr	-(sp)
+	ld	hl,0
+	push	hl
 
 %aw,n
-	mov	A1,-(sp)
-	sxt	-(sp)
+	ld	hl,(A1)
+	ld	a,h
+	rla
+	sbc	a,a
+	ld	d,a
+	ld	e,a
+	push	de
+	push	hl
 
-/* float to long */
+/* float to long - push */
 cs56:
 %nf,n
 	F
-	setl
-	movfi	R,-(sp)
-	seti
+	call	ftol
+	push	de
+	push	hl
 
 /* setup for structure assign */
 ci116:
@@ -2251,5 +3198,5 @@ ci116:
 %n,n
 	SS
 	F!
-	mov	(sp)+,r1
+	pop	de
 
