@@ -1,8 +1,10 @@
 /*
  *  C compiler
+ *  Z80 target version
  */
 
 #include "c1.h"
+#include "z80.h"
 
 degree(t)
 register union tree *t;
@@ -29,6 +31,11 @@ register union tree *t;
 	return(t->t.degree);
 }
 
+/*
+ * Z80 register names for output
+ */
+char *regname[] = { "hl", "de", "bc", "ix", "iy", "a", "sp" };
+
 pname(p, flag)
 register union tree *p;
 {
@@ -38,17 +45,19 @@ loop:
 	switch(p->t.op) {
 
 	case LCON:
-		printf("$%o", flag<=10? UNS(p->l.lvalue>>16):
+		/* Long constant - high or low word */
+		printf("%o", flag<=10? UNS(p->l.lvalue>>16):
 		   UNS(p->l.lvalue));
 		return;
 
 	case SFCON:
 	case CON:
-		printf("$");
+		/* Integer constant */
 		psoct(p->c.value);
 		return;
 
 	case FCON:
+		/* Float constant label */
 		printf("L%d", (p->c.value>0? p->c.value: -p->c.value));
 		return;
 
@@ -56,30 +65,30 @@ loop:
 		i = p->n.offset;
 		if (flag>10)
 			i += 2;
-		if (i) {
-			psoct(i);
-			if (p->n.class!=OFFS)
-				putchar('+');
-			if (p->n.class==REG)
-				error("Illegal use of register");
-		}
 		switch(p->n.class) {
 
 		case SOFFS:
 		case XOFFS:
+			/* Static/extern with offset from frame */
 			pbase(p);
+			if (i)
+				printf("+%d", i);
+			return;
 
 		case OFFS:
-			printf("(r%d)", p->n.regno);
+			/* Stack frame offset via IY */
+			printf("(iy%+d)", i);
 			return;
 
 		case EXTERN:
 		case STATIC:
 			pbase(p);
+			if (i)
+				printf("+%d", i);
 			return;
 
 		case REG:
-			printf("r%d", p->n.nloc);
+			printf("%s", regname[p->n.nloc]);
 			return;
 
 		}
@@ -87,24 +96,29 @@ loop:
 		return;
 
 	case AMPER:
-		putchar('$');
+		/* Address-of: handled by caller loading address */
 		p = p->t.tr1;
 		if (p->t.op==NAME && p->n.class==REG)
 			error("Illegal use of register");
 		goto loop;
 
 	case AUTOI:
-		printf("(r%d)%s", p->n.nloc, flag==1?"":"+");
+		/* Auto-increment (hl)+ - Z80 doesn't have this */
+		printf("(%s)", regname[p->n.nloc]);
 		return;
 
 	case AUTOD:
-		printf("%s(r%d)", flag==2?"":"-", p->n.nloc);
+		/* Auto-decrement -(hl) - Z80 doesn't have this */
+		printf("(%s)", regname[p->n.nloc]);
 		return;
 
 	case STAR:
+		/* Indirection */
 		p = p->t.tr1;
-		putchar('*');
-		goto loop;
+		printf("(");
+		pname(p, flag);
+		printf(")");
+		return;
 
 	}
 	error("compiler error: bad pname");
@@ -339,21 +353,37 @@ arlength(t)
  * This is useful in overlays to reduce the size of data space load.
  * wfj 5/80 
  */
+/* Z80 direct switch - compare, bounds check, jump table */
 char	dirsw[] = {"\
-cmp	r0,$%o\n\
-jhi	L%d\n\
-asl	r0\n\
-jmp	*L%d(r0)\n\
+\tld de,%o\n\
+\tor a\n\
+\tsbc hl,de\n\
+\tjp c,L%d\n\
+\tadd hl,hl\n\
+\tld de,L%d\n\
+\tadd hl,de\n\
+\tld e,(hl)\n\
+\tinc hl\n\
+\tld d,(hl)\n\
+\tex de,hl\n\
+\tjp (hl)\n\
 \t.data\n\
 L%d:\
 " };
 
+/* Z80 hash switch - modulo and jump table */
 char	hashsw[] = {"\
-mov	r0,r1\n\
-clr	r0\n\
-div	$%o,r0\n\
-asl	r1\n\
-jmp	*L%d(r1)\n\
+\tex de,hl\n\
+\tld hl,%o\n\
+\tcall umod16\n\
+\tadd hl,hl\n\
+\tld de,L%d\n\
+\tadd hl,de\n\
+\tld e,(hl)\n\
+\tinc hl\n\
+\tld d,(hl)\n\
+\tex de,hl\n\
+\tjp (hl)\n\
 \t.data\n\
 L%d:\
 "};
@@ -373,7 +403,7 @@ struct swtab *afp, *alp;
 	fp = afp;
 	lp = alp;
 	if (fp==lp) {
-		printf("jbr	L%d\n", deflab);
+		printf("\tjp\tL%d\n", deflab);
 		return;
 	}
 	isn++;
@@ -385,26 +415,26 @@ struct swtab *afp, *alp;
 	/* direct switch */
 	if (range>0 && range <= 3*ncase) {
 		if (fp->swval)
-			printf("sub	$%o,r0\n", UNS(fp->swval));
+			printf("\tld\tde,%o\n\tor\ta\n\tsbc\thl,de\n", UNS(fp->swval));
 		printf(dirsw, UNS(range), deflab, isn, isn);
 		isn++;
 		for (i=fp->swval; ; i++) {
 			if (i==fp->swval) {
-				printf("L%d\n", fp->swlab);
+				printf("\t.dw\tL%d\n", fp->swlab);
 				if (fp==lp)
 					break;
 				fp++;
 			} else
-				printf("L%d\n", deflab);
+				printf("\t.dw\tL%d\n", deflab);
 		}
-		printf(".text\n");
+		printf("\t.text\n");
 		return;
 	}
 	/* simple switch */
 	if (ncase<10) {
 		for (fp = afp; fp<=lp; fp++)
 			breq(fp->swval, fp->swlab);
-		printf("jbr	L%d\n", deflab);
+		printf("\tjp\tL%d\n", deflab);
 		return;
 	}
 	/* hash switch */
@@ -414,7 +444,6 @@ struct swtab *afp, *alp;
 		for (j=0; j<i; j++)
 			poctab[j] = 0;
 		for (swp=fp; swp<=lp; swp++)
-			/* lrem(0, swp->swval, i) */
 			poctab[(unsigned)swp->swval%i]++;
 		worst = 0;
 		for (j=0; j<i; j++)
@@ -429,28 +458,26 @@ struct swtab *afp, *alp;
 	printf(hashsw, UNS(tabs), i, i);
 	isn++;
 	for (i=0; i<tabs; i++)
-		printf("L%d\n", isn+i);
-	printf(".text\n");
+		printf("\t.dw\tL%d\n", isn+i);
+	printf("\t.text\n");
 	for (i=0; i<tabs; i++) {
 		printf("L%d:", isn++);
 		for (swp=fp; swp<=lp; swp++) {
-			/* lrem(0, swp->swval, tabs) */
 			if ((unsigned)swp->swval%tabs == i) {
-				/* ldiv(0, swp->swval, tabs) */
 				breq((int)((unsigned)swp->swval/tabs), swp->swlab);
 			}
 		}
-		printf("jbr	L%d\n", deflab);
+		printf("\tjp\tL%d\n", deflab);
 	}
 }
 
 breq(v, l)
 {
 	if (v==0)
-		printf("tst	r0\n");
+		printf("\tld\ta,h\n\tor\tl\n");
 	else
-		printf("cmp	r0,$%o\n", UNS(v));
-	printf("jeq	L%d\n", l);
+		printf("\tld\tde,%o\n\tor\ta\n\tsbc\thl,de\n\tadd\thl,de\n", UNS(v));
+	printf("\tjp\tz,L%d\n", l);
 }
 
 sort(afp, alp)
@@ -655,7 +682,7 @@ branch(lbl, aop, c)
 	if(op = aop) {
 		skip = prins(op, c, branchtab, lbl);
 	} else {
-		printf("jbr");
+		printf("\tjp");
 		skip = 0;
 	}
 	if (skip)
@@ -777,14 +804,14 @@ popstk(a)
 		return;
 
 	case 2:
-		printf("tst	(sp)+\n");
+		printf("\tpop\tde\n");
 		return;
 
 	case 4:
-		printf("cmp	(sp)+,(sp)+\n");
+		printf("\tpop\tde\n\tpop\tde\n");
 		return;
 	}
-	printf("add	$%o,sp\n", UNS(a));
+	printf("\tld\thl,%o\n\tadd\thl,sp\n\tld\tsp,hl\n", UNS(a));
 }
 
 werror(s)
@@ -903,22 +930,23 @@ getree()
 		break;
 
 	case SAVE:
-		printf("jsr	r5,csv\n");
+		/* Z80 function prologue */
+		printf("\tpush\tiy\n\tld\tiy,0\n\tadd\tiy,sp\n");
 		break;
 
 	case SETSTK:
 		t = geti();
 		if (t==2)
-			printf("tst	-(sp)\n");
+			printf("\tdec\tsp\n\tdec\tsp\n");
 		else if (t != 0)
-			printf("sub	$%o,sp\n", UNS(t));
+			printf("\tld\thl,-%o\n\tadd\thl,sp\n\tld\tsp,hl\n", UNS(t));
 		break;
 
 	case PROFIL:
 		t = geti();
 		outname(s);
-		printf("mov	$L%d,r0\njsr	pc,mcount\n", t);
-		printf(".data\nL%d:%s+1\n.text\n", t, s);
+		printf("\tld\thl,L%d\n\tcall\tmcount\n", t);
+		printf("\t.data\nL%d:\t.dw\t%s+1\n\t.text\n", t, s);
 		break;
 
 	case ASSEM:
@@ -938,7 +966,7 @@ getree()
 
 	case RNAME:
 		outname(s);
-		printf("~%s=r%d\n", s+1, geti());
+		printf("~%s=%s\n", s+1, regname[geti()]);
 		break;
 
 	case SWIT:
@@ -985,14 +1013,15 @@ getree()
 		else {
 			if (tp->t.type==LONG || tp->t.type==UNLONG) {
 				rcexpr(tnode(RFORCE, tp->t.type, tp, TNULL), efftab, 0);
-				printf("ashc	$0,r0\n");
+				/* Z80: test long result in HLHL' */
+				printf("\tcall\tltsthl\n");
 			} else {
 				rcexpr(tp, cctab, 0);
 				if (isfloat(tp))
-					printf("cfcc\n");
+					printf("\tcall\tfcmp0\n");
 			}
-			printf("jgt	L%d\n", lbl3);
-			printf("jlt	L%d\njbr	L%d\n", lbl, lbl2);
+			printf("\tjp\tp,L%d\n", lbl3);
+			printf("\tjp\tm,L%d\n\tjp\tL%d\n", lbl, lbl2);
 		}
 		curbase = funcbase;
 		break;
@@ -1143,12 +1172,12 @@ union tree *atp;
 		if (tp->t.op==RFORCE) {	/* function return */
 			if (sfuncr.nloc==0) {
 				sfuncr.nloc = isn++;
-				printf(".bss\nL%d:.=.+%o\n.text\n", sfuncr.nloc,
+				printf("\t.bss\nL%d:\t.ds\t%o\n\t.text\n", sfuncr.nloc,
 					UNS(nwords*sizeof(short)));
 			}
 			atp->t.tr1 = tnode(ASSIGN, STRUCT, (union tree *)&sfuncr, tp->t.tr1);
 			strasg(atp);
-			printf("mov	$L%d,r0\n", sfuncr.nloc);
+			printf("\tld\thl,L%d\n", sfuncr.nloc);
 			return;
 		}
 		if (tp->t.op==CALL) {
@@ -1175,18 +1204,18 @@ union tree *atp;
 		tp->t.type = STRUCT+PTR;
 		tp = optim(tp);
 		rcexpr(tp, efftab, 0);
+		/* Z80: DE=dest, HL=src after STRSET */
 		if (nwords < 7) {
 			for (i=0; i<nwords; i++)
-				printf("mov	(r1)+,(r0)+\n");
+				printf("\tld\ta,(hl)\n\tld\t(de),a\n\tinc\thl\n\tinc\tde\n\tld\ta,(hl)\n\tld\t(de),a\n\tinc\thl\n\tinc\tde\n");
 			return;
 		}
 		if (nreg<=1)
-			printf("mov	r2,-(sp)\n");
-		printf("mov	$%o,r2\n", UNS(nwords));
-		printf("L%d:mov	(r1)+,(r0)+\ndec\tr2\njne\tL%d\n", isn, isn);
-		isn++;
+			printf("\tpush\tbc\n");
+		printf("\tld\tbc,%o\n", UNS(nwords*2));
+		printf("\tldir\n");
 		if (nreg<=1)
-			printf("mov	(sp)+,r2\n");
+			printf("\tpop\tbc\n");
 		return;
 	}
 	rcexpr(tp, efftab, 0);

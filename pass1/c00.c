@@ -290,106 +290,6 @@ symbol()
 }
 
 /*
- * Read a number.  Return kind.
- */
-getnum()
-{
-	register char *np;
-	register c, base;
-	int expseen, sym, ndigit;
-	char *nsyn;
-	int maxdigit;
-
-	nsyn = "Number syntax";
-	lcval = 0;
-	base = 10;
-	maxdigit = 0;
-	np = numbuf;
-	ndigit = 0;
-	sym = CON;
-	expseen = 0;
-	if ((c=spnextchar()) == '0')
-		base = 8;
-	for (;; c = getchar()) {
-		*np++ = c;
-		if (ctab[c]==DIGIT || (base==16) && ('a'<=c&&c<='f'||'A'<=c&&c<='F')) {
-			if (base==8)
-				lcval <<= 3;
-			else if (base==10)
-				lcval = ((lcval<<2) + lcval)<<1;
-			else
-				lcval <<= 4;
-			if (ctab[c]==DIGIT)
-				c -= '0';
-			else if (c>='a')
-				c -= 'a'-10;
-			else
-				c -= 'A'-10;
-			lcval += c;
-			ndigit++;
-			if (c>maxdigit)
-				maxdigit = c;
-			continue;
-		}
-		if (c=='.') {
-			if (base==16 || sym==FCON)
-				error(nsyn);
-			sym = FCON;
-			base = 10;
-			continue;
-		}
-		if (ndigit==0) {
-			sym = DOT;
-			break;
-		}
-		if ((c=='e'||c=='E') && expseen==0) {
-			expseen++;
-			sym = FCON;
-			if (base==16 || maxdigit>=10)
-				error(nsyn);
-			base = 10;
-			*np++ = c = getchar();
-			if (c!='+' && c!='-' && ctab[c]!=DIGIT)
-				break;
-		} else if (c=='x' || c=='X') {
-			if (base!=8 || lcval!=0 || sym!=CON)
-				error(nsyn);
-			base = 16;
-		} else if ((c=='l' || c=='L') && sym==CON) {
-			c = getchar();
-			sym = LCON;
-			break;
-		} else
-			break;
-	}
-	peekc = c;
-	if (maxdigit >= base)
-		error(nsyn);
-	if (sym==FCON) {
-		np[-1] = 0;
-		cval = np-numbuf;
-		return(FCON);
-	}
-	if (sym==CON && (lcval<0 || lcval>MAXINT&&base==10 || (lcval>>1)>MAXINT)) {
-		sym = LCON;
-	}
-	cval = lcval;
-	return(sym);
-}
-
-/*
- * If the next input character is c, return b and advance.
- * Otherwise push back the character and return a.
- */
-subseq(c,a,b)
-{
-	if (spnextchar() != c)
-		return(a);
-	peekc = 0;
-	return(b);
-}
-
-/*
  * Write out a string, either in-line
  * or in the string temp file labelled by
  * lab.
@@ -427,110 +327,6 @@ register max;
 	nchstr = i + 1;
 }
 
-cntstr()
-{
-	register int c;
-
-	nchstr = 1;
-	while ((c = mapch('"')) >= 0) {
-		nchstr++;
-	}
-}
-
-/*
- * read a single-quoted character constant.
- * The routine is sensitive to the layout of
- * characters in a word.
- */
-getcc()
-{
-	register int c, cc;
-	register char *ccp;
-	char realc;
-
-	cval = 0;
-	ccp = (char *)&cval;
-	cc = 0;
-	while((c=mapch('\'')) >= 0)
-		if(cc++ < LNCPW)
-			*ccp++ = c;
-	if (cc>LNCPW)
-		error("Long character constant");
-	if (cc==1) {
-		realc = cval;
-		cval = realc;
-	}
-	return(CON);
-}
-
-/*
- * Read a character in a string or character constant,
- * detecting the end of the string.
- * It implements the escape sequences.
- */
-mapch(ac)
-{
-	register int a, c, n;
-	static mpeek;
-
-	c = ac;
-	if (a = mpeek)
-		mpeek = 0;
-	else
-		a = getchar();
-loop:
-	if (a==c)
-		return(-1);
-	switch(a) {
-
-	case '\n':
-	case '\0':
-		error("Nonterminated string");
-		peekc = a;
-		return(-1);
-
-	case '\\':
-		switch (a=getchar()) {
-
-		case 't':
-			return('\t');
-
-		case 'n':
-			return('\n');
-
-		case 'b':
-			return('\b');
-
-		case 'f':
-			return('\014');
-
-		case 'v':
-			return('\013');
-
-		case '0': case '1': case '2': case '3':
-		case '4': case '5': case '6': case '7':
-			n = 0;
-			c = 0;
-			while (++c<=3 && '0'<=a && a<='7') {
-				n <<= 3;
-				n += a-'0';
-				a = getchar();
-			}
-			mpeek = a;
-			return(n);
-
-		case 'r':
-			return('\r');
-
-		case '\n':
-			line++;
-			a = getchar();
-			goto loop;
-		}
-	}
-	return(a);
-}
-
 /*
  * Read an expression and return a pointer to its tree.
  * It's the classical bottom-up, priority-driven scheme.
@@ -552,7 +348,7 @@ tree(eflag)
 	op = opst;
 	pp = prst;
 	*op = SEOF;
-	*pp = 06;
+	*pp = 0;
 	andflg = 0;
 
 advanc:
@@ -704,7 +500,7 @@ advanc:
 	andflg = 0;
 
 oponst:
-	p = (opdope[o]>>9) & 037;
+	p = (opdope[o]>>9) & 017;
 opon1:
 	if (o==COLON && op[0]==COLON && op[-1]==QUEST) {
 		build(*op--);
@@ -717,18 +513,18 @@ opon1:
 
 		case INCAFT:
 		case DECAFT:
-			p = 37;
+			p = 15;
 			break;
 		case LPARN:
 		case LBRACK:
 		case CALL:
-			p = 04;
+			p = 0;
 		}
 		if (initflg) {
 			if ((o==COMMA && *op!=LPARN && *op!=CALL)
 			 || (o==COLON && *op!=QUEST)) {
-				p = 00;
-				goto opon1;
+				/* End expression early - force reduction */
+				goto reduce;
 			}
 		}
 		if (op >= &opst[SSIZE-1]) {
@@ -739,9 +535,10 @@ opon1:
 		*++pp = p;
 		goto advanc;
 	}
+reduce:
 	--pp;
 	os = *op--;
-	if (andflg==0 && p>5 && ((opdope[o]&BINARY)==0 || o>=INCBEF&&o<=DECAFT) && opdope[os]&BINARY)
+	if (andflg==0 && p && ((opdope[o]&BINARY)==0 || o>=INCBEF&&o<=DECAFT) && opdope[os]&BINARY)
 		goto syntax;
 	switch (os) {
 

@@ -164,7 +164,6 @@ struct swtab {
 char	cvtab[4][4];
 char	filename[64];
 extern int	opdope[];
-extern char	ctab[];
 char	symbuf[MAXCPS+2];
 struct	nmlist	*hshtab[HSHSIZ];
 union	tree **cp;
@@ -303,10 +302,6 @@ int	mossym;
 #define	ASSIGN	80
 
 #define	QUEST	90
-#define	MAX	93
-#define	MAXP	94
-#define	MIN	95
-#define	MINP	96
 #define	SEQNC	97
 #define	CALL	100
 #define	MCALL	101
@@ -390,21 +385,6 @@ int	mossym;
 #define	CONST	34
 
 /*
-  characters
-*/
-#define	BSLASH	117
-#define	SHARP	118
-#define	INSERT	119
-#define	PERIOD	120
-#define	SQUOTE	121
-#define	DQUOTE	122
-#define	LETTER	123
-#define	DIGIT	124
-#define	NEWLN	125
-#define	SPACE	126
-#define	UNKN	127
-
-/*
  * Special operators in intermediate code
  */
 #define	BDATA	200
@@ -442,6 +422,29 @@ int	mossym;
 #define	RASSOC	0200
 #define	LEAF	0400
 #define	PCVOK	040000
+
+/*
+ * Precedence levels for operators (4 bits, 0-15).
+ * Use PREC(level) to shift into position in opdope entries.
+ * Unary operators don't need precedence (identified by !BINARY).
+ */
+#define	PREC_NONE	0	/* not an operator */
+#define	PREC_COMMA	1	/* , (sequencing) */
+#define	PREC_ASGN	2	/* = += -= etc */
+#define	PREC_COND	3	/* ?: */
+#define	PREC_LOR	4	/* || */
+#define	PREC_LAND	5	/* && */
+#define	PREC_BOR	6	/* | ^ */
+#define	PREC_BAND	7	/* & */
+#define	PREC_EQ		8	/* == != */
+#define	PREC_REL	9	/* < <= > >= */
+#define	PREC_SHIFT	10	/* << >> */
+#define	PREC_ADD	11	/* + - */
+#define	PREC_MUL	12	/* * / % */
+#define	PREC_UNARY	13	/* prefix: ! ~ - * & sizeof */
+#define	PREC_POSTFX	14	/* . -> [] () call */
+
+#define	PREC(n)		((n) << 9)
 
 /*
  * Conversion codes

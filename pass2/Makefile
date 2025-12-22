@@ -49,7 +49,7 @@ cvopt: cvopt.c
 	$(CC) $(CFLAGS) -o cvopt cvopt.c
 
 # Stage1: compile with cross ccc to Z80 .o files
-CCCFLAGS = -I.
+CCCFLAGS = -I. -i$(ROOTDIR)/usr/include
 stage1:
 	mkdir -p $(OUTDIR)
 	@for f in $(ALL_SOURCES); do \

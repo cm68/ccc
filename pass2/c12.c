@@ -1,8 +1,10 @@
 /*
  *		C compiler part 2 -- expression optimizer
+ *		Z80 target version
  */
 
 #include "c1.h"
+#include "z80.h"
 /* #include <sys/param.h> */	/* for MAX - commented out, define locally */
 
 union tree *
@@ -20,7 +22,7 @@ register union tree *tree;
 		return(tree);
 	if (op==NAME && tree->n.class==AUTO) {
 		tree->n.class = OFFS;
-		tree->n.regno = 5;
+		tree->n.regno = R_IY;	/* Z80: IY is frame pointer */
 		tree->n.offset = tree->n.nloc;
 	}
 	dope = opdope[op];
@@ -394,14 +396,14 @@ register union tree *tree;
 			return(subtre);
 
 		case NAME:
-			subtre->n.offset += 2;
+			/* Z80 is little-endian: low word is at offset 0 */
 			subtre->t.type = tree->t.type;
 			return(subtre);
 
 		case STAR:
+			/* Z80 is little-endian: low word is at offset 0 */
 			subtre->t.type = tree->t.type;
 			subtre->t.tr1->t.type = tree->t.type+PTR;
-			subtre->t.tr1 = tnode(PLUS, tree->t.type, subtre->t.tr1, tconst(2, INT));
 			return(optim(subtre));
 
 		case ITOL:
@@ -931,9 +933,9 @@ register int *vp, v;
 					*vp %= v;
 			else
 				if (op==DIVIDE || op==UDIV)
-					*(unsigned *)vp /= (unsigned)v;
+					*vp = (unsigned)*vp / (unsigned)v;
 				else
-					*(unsigned *)vp %= (unsigned)v;
+					*vp = (unsigned)*vp % (unsigned)v;
 			return;
 
 	case RSHIFT:
@@ -945,7 +947,7 @@ register int *vp, v;
 		if (type==INT)
 			*vp >>= v;
 		else
-			*(unsigned *)vp >>= (unsigned)v;
+			*vp = (unsigned)*vp >> (unsigned)v;
 		return;
 
 	case ULSH:
@@ -960,7 +962,7 @@ register int *vp, v;
 		if (type==INT)
 			*vp <<= v;
 		else
-			*(unsigned *)vp <<= (unsigned)v;
+			*vp = (unsigned)*vp << (unsigned)v;
 		return;
 
 	case ANDN:

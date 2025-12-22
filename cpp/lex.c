@@ -784,6 +784,13 @@ isstring()
             advance();
             break;
         }
+        if (s >= strbuf + STRBUFSIZE - 1) {
+            error("string too long (max 254)");
+            /* consume rest of string to avoid cascading errors */
+            while (!charmatch('\"'))
+                getlit();
+            break;
+        }
     	strbuf[0]++;
         *s++ = c;
     }

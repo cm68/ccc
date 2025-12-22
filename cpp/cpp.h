@@ -152,7 +152,7 @@ typedef unsigned long dword;
  */
 #define MAXPARMS 10         /* macro parameters */
 #define TBSIZE 1024         /* text buffer size for includes/macros */
-#define STRBUFSIZE 128      /* string/symbol/identifier buffer */
+#define STRBUFSIZE 256      /* string/symbol/identifier buffer */
 #define MAXSYMLEN 32        /* maximum symbol/identifier length */
 
 /*
