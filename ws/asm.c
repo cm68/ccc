@@ -10,7 +10,7 @@
  * 
  * /usr/src/cmd/asz/asm.c 
  *
- * Changed: <2025-11-20 08:09:18 curt>
+ * Changed: <2025-12-22 05:20:21 curt>
  *
  * vim: tabstop=4 shiftwidth=4 noexpandtab:
  */
@@ -19,10 +19,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-#define INIT
 #else
 #include <stdio.h>
-#define INIT = 0
 #endif
 
 #include "asm.h"
@@ -120,27 +118,7 @@ char *tokname[] = {
     /* 39 */ "NAME", "NUM", "STR", "EOF"
 };
 
-#define IEND        0   /* end marker */
-#define IBASIC      1   /* 1 byte instruction, no args */
-#define IBASIC_EXT  2   /* 2 byte instruction, no arg */
-#define IARITH      3   /* arithmetic operation group */
-#define IINCR       4   /* increment / decrement group */
-#define IBITSH      5   /* bit / shift instruction */
-#define ISTACK      6   /* stack pop / push */
-#define IRET        7   /* return program flow */
-#define IJMP        8   /* jump program flow */
-#define IJRL        9   /* jump relative program flow */
-#define ICALL       10  /* call program flow */
-#define IRST        11  /* rst program flow */
-#define IIN         12  /* i/o in instruction */
-#define IOUT        13  /* i/o out instruction */
-#define IEXCH       14  /* exchange instruction */
-#define IINTMODE    15  /* interrupt mode instruction */
-#define ILOAD       16  /* load instruction */
-
-#define UNARY 0
-#define CARRY 1
-#define ADD 2
+extern char asm_instr();
 
 /*
  * operand table
@@ -182,121 +160,6 @@ struct oprnd op_table[] = {
 	{ 255, "" }
 };
 
-
-/*
- * instruction table
- */
-struct instruct {
-	char type;
-	char *mnem;
-	unsigned char opcode;
-	unsigned char arg;
-};
-
-struct instruct isr_table[] = {
-	/* basic instructions */
-	{ IBASIC, "nop", 0x00, 0 },
-	{ IBASIC, "rlca", 0x07, 0 },
-	{ IBASIC, "rrca", 0x0F, 0 },
-	{ IBASIC, "rla", 0x17, 0 },
-	{ IBASIC, "rra", 0x1F, 0 },
-	{ IBASIC, "daa", 0x27, 0 },
-	{ IBASIC, "cpl", 0x2F, 0 },
-	{ IBASIC, "scf", 0x37, 0 },
-	{ IBASIC, "ccf", 0x3F, 0 },
-	{ IBASIC, "halt", 0x76, 0 },
-	{ IBASIC, "exx", 0xD9, 0 },
-	{ IBASIC, "di", 0xF3, 0 },
-	{ IBASIC, "ei", 0xFB, 0 },
-	
-	/* extended basic instructions */
-	{ IBASIC_EXT, "neg", 0x44, 0xED },
-	{ IBASIC_EXT, "retn", 0x44, 0xED },
-	{ IBASIC_EXT, "reti", 0x4D, 0xED },
-	{ IBASIC_EXT, "rrd", 0x67, 0xED },
-	{ IBASIC_EXT, "rld", 0x6F, 0xED },
-	{ IBASIC_EXT, "ldi", 0xA0, 0xED },
-	{ IBASIC_EXT, "cpi", 0xA1, 0xED },
-	{ IBASIC_EXT, "ini", 0xA2, 0xED },
-	{ IBASIC_EXT, "outi", 0xA3, 0xED },
-	{ IBASIC_EXT, "ldd", 0xA8, 0xED },
-	{ IBASIC_EXT, "cpd", 0xA9, 0xED },
-	{ IBASIC_EXT, "ind", 0xAA, 0xED },
-	{ IBASIC_EXT, "outd", 0xAB, 0xED },
-	{ IBASIC_EXT, "ldir", 0xB0, 0xED },
-	{ IBASIC_EXT, "cpir", 0xB1, 0xED },
-	{ IBASIC_EXT, "inir", 0xB2, 0xED },
-	{ IBASIC_EXT, "otir", 0xB3, 0xED },
-	{ IBASIC_EXT, "lddr", 0xB8, 0xED },
-	{ IBASIC_EXT, "cpdr", 0xB9, 0xED },
-	{ IBASIC_EXT, "indr", 0xBA, 0xED },
-	{ IBASIC_EXT, "otdr", 0xBB, 0xED },
-	
-	/* arithmetic */
-	{ IARITH, "add", 0x80, ADD },
-	{ IARITH, "adc", 0x88, CARRY },
-	{ IARITH, "sub", 0x90, UNARY },
-	{ IARITH, "sbc", 0x98, CARRY },
-	{ IARITH, "and", 0xA0, UNARY },
-	{ IARITH, "xor", 0xA8, UNARY },
-	{ IARITH, "or", 0xB0, UNARY },
-	{ IARITH, "cp", 0xB8, UNARY },
-	
-	/* inc / dec */
-	{ IINCR, "inc", 0x04, 0x03 },
-	{ IINCR, "dec", 0x05, 0x0B },
-	
-	/* bit / shift */
-	{ IBITSH, "rlc", 0x00, 0 },
-	{ IBITSH, "rrc", 0x08, 0 },
-	{ IBITSH, "rl", 0x10, 0 },
-	{ IBITSH, "rr", 0x18, 0 },
-	{ IBITSH, "sla", 0x20, 0 },
-	{ IBITSH, "sra", 0x28, 0 },
-	{ IBITSH, "sll", 0x30, 0 },
-	{ IBITSH, "srl", 0x38, 0 },
-	{ IBITSH, "bit", 0x40, 1 },
-	{ IBITSH, "res", 0x80, 1 },
-	{ IBITSH, "set", 0xC0, 1 },
-	
-	/* stack ops */
-	{ ISTACK, "pop", 0xC1, 0 },
-	{ ISTACK, "push", 0xC5, 0 },
-	
-	/* return */
-	{ IRET, "ret", 0xC0, 0xC9 },
-	
-	/* jump */
-	{ IJMP, "jp", 0xC2, 0xE9 },
-	
-	/* jump relative */
-	{ IJRL, "jr", 0x18, 1 },
-	{ IJRL, "djnz", 0x10, 0},
-	
-	/* call */
-	{ ICALL, "call", 0xC4, 0xCD },
-	
-	/* rst */
-	{ IRST, "rst", 0xC7, 0 },
-	
-	/* in */
-	{ IIN, "in", 0xDB, 0x40 },
-	
-	/* out */
-	{ IOUT, "out", 0xD3, 0x41 },
-	
-	/* exchange */
-	{ IEXCH, "ex", 0xE3, 0x08 },
-	
-	/* interrupt mode */
-	{ IINTMODE, "im", 0x46, 0x5E },
-	
-	/* load instructions */
-	{ ILOAD, "ld", 0x00, 0x00 },
-	
-	{ IEND, "", 0x00, 0x00}
-};
-
 #define TOKLEN 19
 
 /* use wsSegNames from wsobj.c */
@@ -326,14 +189,6 @@ struct instruct isr_table[] = {
  * assigned an index in pass 1 of 0, otherwise 0xffff.
  *
  */
-struct symbol {
-    unsigned char seg;              /* SEG_* */
-    unsigned short index;           /* object file ordinal */
-    unsigned short value;           /* segment relative */
-    char name[SYMLEN+1];			/* zero padded */
-    struct symbol *next;
-};
-
 /*
  * relocs are chained off of headers and need to stay
  * ordered.
@@ -355,57 +210,40 @@ struct rhead {
     struct reloc *tail;
 };
 
-/*
- * expressions can take values of this:
- * if both sym and num are present, this is a biased symbol
- * something like .dw  foo+34
- */
-struct expval {
-    struct symbol *sym;
-    union {
-        unsigned long l;
-        unsigned int w;
-        unsigned char b;
-    } num;
-    unsigned char hilo;     /* RELOC_WORD/LO/HI */
-};
-
-unsigned char *lineptr = (unsigned char *)"";
-unsigned char linebuf[256];
-#define FILEBUFSIZE 512
-unsigned char filebuf[FILEBUFSIZE+1];
+extern unsigned char *lineptr;
+extern unsigned char linebuf[];
 
 /*
  * token buffer 
  */
-char token_buf[TOKLEN] INIT;
-char sym_name[TOKLEN] INIT;
+char token_buf[TOKLEN];
+char sym_name[TOKLEN];
 unsigned long token_val;
 unsigned char cur_token;
 
 /*
  * current assembly address 
  */
-unsigned short cur_address INIT;
+unsigned short cur_address;
 
 /*
  * segment tops 
  */
-unsigned short text_top INIT;
-unsigned short data_top INIT;
-unsigned short bss_top INIT;
+unsigned short text_top;
+unsigned short data_top;
+unsigned short bss_top;
 
 /*
  * sizes for header
  */
-unsigned short text_size INIT;
-unsigned short mem_size INIT;
-unsigned short data_size INIT;
-unsigned short bss_size INIT;
+unsigned short text_size;
+unsigned short mem_size;
+unsigned short data_size;
+unsigned short bss_size;
 
-char pass INIT;
+char pass;
 
-char segment INIT;
+char segment;
 
 struct rhead textr = { "text" };
 struct rhead datar = { "data" };
@@ -414,38 +252,15 @@ struct rhead datar = { "data" };
  * jump records for jp->jr relaxation
  * only jp instructions with resolvable targets in text segment
  */
-struct jump {
-    unsigned short addr;        /* address of jp instruction */
-    struct symbol *sym;         /* target symbol (NULL for absolute) */
-    unsigned short offset;      /* target offset */
-    unsigned char cond;         /* condition (T_NZ..T_CR) or 0 for unconditional */
-    unsigned char is_jr;        /* 1 if converted to jr */
-    struct jump *next;
-};
+struct jump *jumps;
 
-struct jump *jumps INIT;
+struct symbol *symbols;
+struct symbol *symbols_tail;  /* for append order */
 
-struct symbol *symbols INIT;
-struct symbol *symbols_tail INIT;  /* for append order */
-
-/*
- * if looking at whitespace, skip it
- */
-unsigned char
-skipwhite()
-{
-	unsigned char c;
-
-	while(1) {
-		c = peekchar();
-		if ((c == '\t') || (c == ' ')) {
-			c = nextchar();
-		} else {
-			break;
-		}
-	}
-	return c;
-}
+extern unsigned char skipwhite();
+extern char alpha();
+extern char symchar();
+extern char escape();
 
 /*
  * convert token to register number
@@ -469,55 +284,10 @@ unsigned char tok;
 	return tok;
 }
 
-/*
- * checks if a string is equal
- * string a is read as lower case
- */
-char
-match(a, b)
-char *a;
-char *b;
-{
-	char lower;
-
-	while (*b) {
-		lower = *a;
-		if (lower >= 'A' && lower <= 'Z')
-			lower += 'a' - 'A';
-
-		if (*a != *b)
-			return 0;
-
-		a++;
-		b++;
-	}
-
-	return *a == *b;
-}
-
-/*
- * prints out an error message and exits
- *
- * msg = error message
- */
-void
-gripe(msg)
-char *msg;
-{
-	printf("%s:%d %s\n%s", 
-        infile, lineNum, msg, linebuf);
-	exit(1);
-}
-
-void
-gripe2(msg, arg)
-char *msg;
-char *arg;
-{
-	printf("%s:%d %s%s\n%s", 
-        infile, lineNum, msg, arg, linebuf);
-	exit(1);
-}
+extern char match();
+extern unsigned long parsenum();
+extern void gripe();
+extern void gripe2();
 
 void
 save_symn()
@@ -533,233 +303,10 @@ save_symn()
     sym_name[i] = '\0';
 }
 
-/*
- * is this an alphabetic or underscore
- */
-char
-alpha(in)
-char in;
-{
-	return (in >= 'A' && in <= 'Z') || (in >= 'a' && in <= 'z')
-		|| in == '_';
-}
-
-/*
- * is this a valid inner symbol character (includes '.')
- */
-char
-symchar(in)
-char in;
-{
-	return alpha(in) || (in >= '0' && in <= '9') || in == '.';
-}
-
-/*
- * converts an escaped char into its value
- *
- * \[bernetv] = c escape for control chars
- * \000 (octal) = 
- * \<anything else> = same
- */
-char
-escape()
-{
-    char c;
-    int i = 0;
-
-    c = nextchar();
-	switch (c) {
-	case 'b':
-		return '\b';
-	case 'e':
-		return 0x1B;
-	case 'r':
-		return '\r';
-	case 'n':
-		return '\n';
-	case 't':
-		return '\t';
-	case 'v':
-		return 0x0B;
-    case '0': case '1': case '2': case '3':
-    case '4': case '5': case '6': case '7':
-        i = c - '0';
-        while (1) {
-            c = peekchar();
-            if (c > '7' || c < '0') break;
-            c = nextchar();
-            i = (i << 3) + c - '0';
-        }
-        return i;    
-	default:
-		return c;
-	}
-}
-
-/*
- * parse number - handles quite a few formats:
- * decimal: 20, 78
- * hex:  0x0, 0X00, 000H, 00h
- * octal: 06, 003, 05o, 06O
- * binary: 0b0001010 000100B 01010b
- */
-unsigned long
-parsenum(s)
-char *s;
-{
-    int i = strlen(s);
-    unsigned long val = 0;
-    int base = 10;
-    char c;
-
-    /* Check 0x/0b prefix FIRST (before trailing radix check) */
-    if (*s == '0' && s[1]) {
-        c = s[1] | 0x20;
-        if (c == 'x') {
-            base = 16;
-            s += 2;
-        } else if (c == 'b') {
-            base = 2;
-            s += 2;
-        } else {
-            /* Leading 0 but not 0x/0b - check for trailing radix or octal */
-            c = s[i-1] | 0x20;
-            if (c == 'h') {
-                base = 16;
-                s[i-1] = '\0';
-            } else if (c == 'o') {
-                base = 8;
-                s[i-1] = '\0';
-            } else if (c == 'b') {
-                base = 2;
-                s[i-1] = '\0';
-            } else {
-                base = 8;
-                s++;
-            }
-        }
-    } else {
-        /* No leading 0 - check for trailing radix marker */
-        c = s[i-1] | 0x20;
-        if (c == 'h') {
-            base = 16;
-            s[i-1] = '\0';
-        } else if (c == 'o') {
-            base = 8;
-            s[i-1] = '\0';
-        } else if (c == 'b') {
-            base = 2;
-            s[i-1] = '\0';
-        }
-    }
-
-    while (*s) {
-        int d;
-        val *= base;
-        c = *s | 0x20;
-        d = c - '0';
-        if ((base == 16) && (d > 9))
-            d -= ('a' - '0') - 10;
-        if ((d >= base) || (d < 0)) {
-            gripe("numeric digit out of range");
-        }
-        val += d;
-        s++;
-    }
-    return val;
-}
-
-unsigned char *limit = 0;
-unsigned char *inptr = 0;
-
-int
-fillbuf()
-{
-    int i;
-
-    i = read(infd, filebuf, FILEBUFSIZE);
-    if (i < 0) {
-        gripe("io error on read"); 
-    } else if (i == 0) {
-        return 0;
-    } else {
-        inptr = filebuf;
-        limit = &filebuf[i];
-    }
-    if (pass == 0 && infd == 0) {
-        write(inbuffd, filebuf, i);
-    }
-    return i;
-}
-
-/*
- * read an entire line into a null-terminated C string
- * the line will end with a newline.
- * comments and trailing whitespace are stripped.
- */
-void
-get_line()
-{
-    int i;
-    unsigned char c;
-    unsigned char *p;
-
-    lineptr = linebuf;
-	for (i = 0; i < sizeof(linebuf); i++) {
-        if (inptr >= limit) {
-            if (fillbuf() == 0) {
-                *lineptr++ = T_EOF;
-                break;
-            }
-        }
-        c = *inptr++;
-		*lineptr++ = c;
-		if (c == '\n') {
-			break;
-		}
-	}
-	*lineptr = '\0';
-    lineNum++;
-
-    /* strip comments: find ; outside of strings and truncate */
-    {
-        int in_string = 0;
-        for (p = linebuf; *p; p++) {
-            if (*p == '"' && (p == linebuf || p[-1] != '\\')) {
-                in_string = !in_string;
-            } else if (*p == ';' && !in_string) {
-                *p++ = '\n';
-                *p = '\0';
-                break;
-            }
-        }
-    }
-
-    /* strip trailing whitespace before newline */
-    i = strlen((char *)linebuf);
-    while (i >= 2 && (linebuf[i - 2] == ' ' || linebuf[i - 2] == '\t' ||
-                      linebuf[i - 2] == '\r')) {
-        linebuf[i - 2] = '\n';
-        linebuf[i - 1] = '\0';
-        i--;
-    }
-
-	lineptr = linebuf;
-}
-
-/*
- * get the next character that we would read, but don't advance
- */
-unsigned char
-peekchar()
-{
-    unsigned char c;
-
-    c = *lineptr;
-    if (verbose > 5)
-        printf("peekchar: %d \'%c\'\n", c, (c > ' ') ? c : ' ');
-    return (c);
-}
+extern void get_line();
+extern unsigned char peekchar();
+extern unsigned char nextchar();
+extern void consume();
 
 char *tokenname(t)
 unsigned char t;
@@ -783,34 +330,6 @@ unsigned char t;
         return tokname[t - T_BIAS];
     }
     return tbuf;
-}
-
-/*
- * returns the next character in the source, or -1 if complete
- */
-unsigned char
-nextchar()
-{
-    unsigned char c;
-
-    if (!*lineptr)
-        get_line();
-    
-    c = *lineptr;
-    if (c != T_EOF) {
-        lineptr++;
-    }
-
-    return c;
-}
-
-/*
- * consumes to end of line
- */
-void
-consume()
-{
-    *lineptr = '\0';
 }
 
 /*
@@ -1559,7 +1078,7 @@ dw()
 {
     struct expval value;
 
-	while (peekchar() != '\n' && peekchar() != -1) {
+	while ((peekchar() != '\n') && (peekchar() != T_EOF)) {
         if (operand(&value) != T_PLAIN) {
             gripe("unexpected value");
         }
@@ -1576,7 +1095,7 @@ dl()
 {
     struct expval value;
 
-	while (peekchar() != '\n' && peekchar() != -1) {
+	while (peekchar() != '\n' && peekchar() != T_EOF) {
         if (operand(&value) != T_PLAIN) {
             gripe("unexpected value");
         }
@@ -1628,7 +1147,7 @@ struct expval *vp;
 	 * check if there is anything next
 	 */
     c = peekchar();
-	if (c == '\n' || c == -1)
+	if ((c == '\n') || (c == -1))
 		return 255;
 
 	/*
@@ -1768,858 +1287,6 @@ struct expval *vp;
 	if (vp->hilo != RELOC_WORD)
 		need(')');
 	return T_PLAIN;
-}
-
-/*
- * load indirect
- */
-int
-do_stax(vp)
-struct expval *vp;
-{
-	unsigned char arg;
-	struct expval value;
-
-	need(',');
-	arg = operand(&value);
-
-	switch (arg) {
-	case T_HL:					/* ld (nn), hl */
-		emitbyte(0x22);
-		break;
-
-	case T_A:					/* ld (nn), a */
-		emitbyte(0x32);
-		break;
-
-	case T_IX:					/* ld (nn), ix */
-		emitbyte(0xDD);
-		emitbyte(0x22);
-		break;
-
-	case T_IY:					/* ld (nn), iy */
-		emitbyte(0xFD);
-		emitbyte(0x22);
-		break;
-
-	case T_BC:					/* ld (nn), bc */
-	case T_DE:					/* ld (nn), de */
-	case T_SP:					/* ld (nn), sp */
-		emitbyte(0xED);
-		emitbyte(0x43 + ((arg - T_BC) << 4));
-		break;
-
-	default:
-		return 1;
-	}
-	emit_exp(2, vp);
-	return 0;
-}
-
-/*
- * 16 bit load
- */
-int
-do_16i(reg)
-unsigned char reg;
-{
-	unsigned char arg;
-	struct expval value;
-
-	/*
-	 * correct for ix,iy into hl 
-	 */
-	if (reg == T_IX) {
-		emitbyte(0xDD);
-		reg = T_HL;
-	} else if (reg == T_IY) {
-		emitbyte(0xFD);
-		reg = T_HL;
-	}
-
-	/*
-	 * grab a direct or deferred word 
-	 */
-	need(',');
-	arg = operand(&value);
-
-	if (arg == T_PLAIN) {
-		/*
-		 * ld bc|de|hl|sp, nn 
-		 */
-		emitbyte(0x01 + ((reg - T_BC) << 4));
-		emit_exp(2, &value);
-	} else if (arg == T_INDIR) {
-		if (reg == T_HL) {
-			emitbyte(0x2A);
-		} else {
-			/*
-			 * ld bc|de|sp, (nn) 
-			 */
-			emitbyte(0xED);
-			emitbyte(0x4B + ((reg - T_BC) << 4));
-		}
-		emit_exp(2, &value);
-	} else if (reg == T_SP) {
-		/*
-		 * ld sp,hl|ix|iy specials 
-		 */
-		switch (arg) {
-		case T_HL:
-			emitbyte(0xF9);
-			break;
-		case T_IX:
-			emitbyte(0xDD);
-			emitbyte(0xF9);
-			break;
-		case T_IY:
-			emitbyte(0xFD);
-			emitbyte(0xF9);
-			break;
-		default:
-			return 1;
-		}
-	} else
-		return 1;
-	return 0;
-}
-
-/*
- * if there is a passed in expval, it's a displacement for the first arg
- * cases:
- * ld a|b|c|d|e|h|l|(hl)|(ix+d)|(iy+d), a|b|c|d|e|h|l|(hl)|(ix+d)|(iy+d)
- * ld a,(bc)|(de)|(nnnn)|i|r
- */
-int
-do_ldr8(arg, disp)
-unsigned char arg;
-struct expval *disp;
-{
-	unsigned char reg;
-    struct expval value;
-	struct expval *disp_ptr;
-	unsigned char arg_reg, reg_reg;
-    value.sym = 0;
-    disp->sym = 0;
-
-	disp_ptr = 0;
-
-	if (arg == T_IX_D || arg == T_IY_D) {
-        disp_ptr = disp;
-	}
-	need(',');
-
-	reg = operand(&value);
-
-	if (arg >= T_IXH && arg <= T_IY_D) {
-		if (arg <= T_IX_D) {
-			emitbyte(0xDD);
-            /* lose on ld ix*, iy* or ld ix[hl], (ix+d) */
-            if (reg >= T_IYH && reg <= T_IY_D)
-                return 1;
-            if (arg != T_IX_D && reg == T_IX_D)
-                return 1;
-		} else {
-			emitbyte(0xFD);
-            /* lose on ld iy*, ix* or ld iy[hl], (iy+d) */
-            if (reg >= T_IXH && reg <= T_IX_D)
-                return 1;
-            if (arg != T_IY_D && reg == T_IY_D)
-                return 1;
-		}
-	} else if (reg >= T_IXH && reg <= T_IY_D) {
-		if (arg == T_HL_I)
-			return 1;
-
-		if (reg <= T_IX_D) {
-			emitbyte(0xDD);
-		} else {
-			emitbyte(0xFD);
-		}
-		if (reg == T_IX_D || reg == T_IY_D) {
-            disp_ptr = &value;
-		} else if (tok2reg(arg) == 4 || tok2reg(arg) == 5)
-            /* lose on ld [hl], ix[hl] */
-			return 1;
-	}
-
-	/*
-	 * no (hl),(hl)
-	 */
-	if (arg == T_HL_I && reg == T_HL_I)
-		return 1;
-
-	/* Convert tokens to register numbers for opcode calculation */
-	arg_reg = tok2reg(arg);
-	reg_reg = tok2reg(reg);
-
-	if (arg_reg <= 7 && reg_reg <= 7) {
-		/* reg8->reg8 */
-		emitbyte(0x40 + (arg_reg << 3) + reg_reg);
-		if (disp_ptr)
-			emit_imm(disp_ptr);
-	} else if (arg_reg <= 7 && (reg == T_PLAIN)) {
-		/* ld reg8, n */
-		emitbyte(0x06 + (arg_reg << 3));
-		if (disp_ptr)
-			emit_imm(disp_ptr);
-		emit_imm(&value);
-	} else if (arg == T_A) {
-		/*
-		 * special a loads 
-		 */
-		switch (reg) {
-		case T_BC_I:
-			emitbyte(0x0A);
-			break;
-
-		case T_DE_I:
-			emitbyte(0x1A);
-			break;
-
-		case T_INDIR:
-			emitbyte(0x3A);
-			emit_exp(2, &value);
-			break;
-
-		case T_I:
-			emitbyte(0xED);
-			emitbyte(0x57);
-			break;
-
-		case T_R:
-			emitbyte(0xED);
-			emitbyte(0x5F);
-			break;
-
-		default:
-			return 1;
-		}
-	} else
-		return 1;
-	return 0;
-}
-
-static char
-do_basic(isr)
-struct instruct *isr;
-{
-	emitbyte(isr->opcode);
-	return 0;
-}
-
-static char
-do_basic_ext(isr)
-struct instruct *isr;
-{
-	emitbyte(isr->arg);
-	emitbyte(isr->opcode);
-	return 0;
-}
-
-static char
-do_arith(isr)
-struct instruct *isr;
-{
-	unsigned char prim = 0, arg, reg;
-	struct expval value;
-
-	arg = operand(&value);
-
-	if (isr->arg == CARRY) {
-		if (arg == T_HL) {
-			prim = 1;
-		} else if (arg != T_A)
-			return 1;
-
-		need(',');
-		arg = operand(&value);
-	} else if (isr->arg == ADD) {
-		if (arg == T_HL) {
-			prim = 2;
-		} else if (arg == T_IX || arg == T_IY) {
-			prim = 3;
-			reg = arg;
-		} else if (arg != T_A)
-			return 1;
-
-		need(',');
-		arg = operand(&value);
-
-		if (prim == 3 && arg == T_HL)
-			return 1;
-
-		if (prim == 3 && arg == reg)
-			arg = T_HL;
-	}
-
-	if (prim == 0) {
-		if (arg <= T_A) {
-			emitbyte(isr->opcode + (arg - T_B));
-		} else if (arg >= T_IXH && arg <= T_IX_D) {
-			emitbyte(0xDD);
-			emitbyte(isr->opcode + (arg - T_IXH) + 4);
-			if (arg == T_IX_D)
-				emitbyte(value.num.b);
-		} else if (arg >= T_IYH && arg <= T_IY_D) {
-			emitbyte(0xFD);
-			emitbyte(isr->opcode + (arg - T_IYH) + 4);
-			if (arg == T_IY_D)
-				emitbyte(value.num.b);
-		} else if (arg == T_PLAIN) {
-			emitbyte(isr->opcode + 0x46);
-			emitbyte(value.num.b);
-		} else
-			return 1;
-	} else if (prim == 1) {
-		if (arg >= T_BC && arg <= T_SP) {
-			emitbyte(0xED);
-			emitbyte((0x42 + (isr->opcode == 0x88 ? 8 : 0)) +
-					 ((arg - 8) << 4));
-		} else
-			return 1;
-	} else if (prim == 2) {
-		if (arg >= T_BC && arg <= T_SP) {
-			emitbyte(0x09 + ((arg - 8) << 4));
-		} else
-			return 1;
-	} else if (prim == 3) {
-		if (arg == T_HL)
-			arg = reg;
-		if (arg == reg)
-			arg = T_HL;
-
-		if (reg == T_IX)
-			emitbyte(0xDD);
-		else
-			emitbyte(0xFD);
-
-		if (arg >= T_BC && arg <= T_SP) {
-			emitbyte(0x09 + ((arg - 8) << 4));
-		} else
-			return 1;
-	}
-	return 0;
-}
-
-static char
-do_incr(isr)
-struct instruct *isr;
-{
-	unsigned char arg;
-	struct expval value;
-
-	arg = operand(&value);
-
-	if (arg <= T_A) {
-		emitbyte(isr->opcode + ((arg) << 3));
-	} else if (arg <= T_SP) {
-		emitbyte(isr->arg + ((arg - T_BC) << 4));
-	} else if (arg == T_IX) {
-		emitbyte(0xDD);
-		emitbyte(isr->arg + 0x20);
-	} else if (arg == T_IY) {
-		emitbyte(0xFD);
-		emitbyte(isr->arg + 0x20);
-	} else if (arg >= T_IXH && arg <= T_IX_D) {
-		emitbyte(0xDD);
-		emitbyte(isr->opcode + ((arg - T_IXH + 4) << 3));
-		if (arg == T_IX_D)
-			emitbyte(value.num.b);
-	} else if (arg >= T_IYH && arg <= T_IY_D) {
-		emitbyte(0xFD);
-		emitbyte(isr->opcode + ((arg - T_IYH + 4) << 3));
-		if (arg == T_IY_D)
-			emitbyte(value.num.b);
-	} else
-		return 1;
-	return 0;
-}
-
-static char
-do_bitsh(isr)
-struct instruct *isr;
-{
-	unsigned char arg, reg;
-	struct expval value;
-
-	arg = operand(&value);
-
-	reg = 0;
-	if (isr->arg) {
-		if (arg != T_PLAIN || value.sym)
-			return 1;
-
-		if (value.num.b > 7)
-			return 1;
-
-		reg = value.num.b;
-
-		need(',');
-		arg = operand(&value);
-	}
-
-	if (arg == T_IX_D || arg == T_IY_D) {
-
-		if (arg == T_IX_D)
-			emitbyte(0xDD);
-		else
-			emitbyte(0xFD);
-
-		emitbyte(0xCB);
-
-		emitbyte(&value);
-
-		arg = T_HL_I;
-		if (peekchar() == ',') {
-			need(',');
-			arg = operand(&value);
-
-			if (arg == 6)
-				arg = 8;
-		}
-	} else
-		emitbyte(0xCB);
-
-	/* Convert register token to register code (0-7) */
-	if (arg >= T_B && arg <= T_A)
-		arg -= T_B;
-	else if (arg == T_HL_I)
-		arg = 6;
-	else if (arg > 7)
-		return 1;
-
-	emitbyte(isr->opcode + arg + (reg << 3));
-	return 0;
-}
-
-static char
-do_stack(isr)
-struct instruct *isr;
-{
-	unsigned char arg;
-	struct expval value;
-
-	arg = operand(&value);
-	if (arg == T_AF)
-		arg = T_SP;
-
-	if (arg >= T_BC && arg <= T_SP) {
-		emitbyte(isr->opcode + ((arg - T_BC) << 4));
-	} else if (arg == T_IX) {
-		emitbyte(0xDD);
-		emitbyte(isr->opcode + 0x20);
-	} else if (arg == T_IY) {
-		emitbyte(0xFD);
-		emitbyte(isr->opcode + 0x20);
-	} else
-		return 1;
-	return 0;
-}
-
-static char
-do_ret(isr)
-struct instruct *isr;
-{
-	unsigned char arg;
-	struct expval value;
-
-	arg = operand(&value);
-
-	if (arg == T_C) arg = T_CR;  /* 'c' means carry, not register C */
-	if (arg >= T_NZ && arg <= T_M) {
-		emitbyte(isr->opcode + ((arg - T_NZ) << 3));
-	} else if (arg == 255) {
-		emitbyte(isr->arg);
-	} else
-		return 1;
-	return 0;
-}
-
-static char
-do_jmp(isr)
-struct instruct *isr;
-{
-	unsigned char arg, cond;
-	struct expval value;
-	struct jump *j;
-	unsigned short addr;
-	int target, dist;
-
-	arg = operand(&value);
-
-	if (arg == T_C) arg = T_CR;
-	if (arg >= T_NZ && arg <= T_M) {
-		cond = arg;
-		need(',');
-		arg = operand(&value);
-
-		/* record jump for relaxation */
-		addr = cur_address;
-		add_jump(addr, value.sym, value.num.w, cond);
-
-		/* check if relaxed to jr */
-		j = find_jump(addr);
-		if (j && j->is_jr) {
-			/* emit jr cc, offset */
-			/* jr nz=20, z=28, nc=30, c=38 */
-			emitbyte(0x20 + ((cond - T_NZ) << 3));
-			/* calculate relative offset */
-			if (value.sym)
-				target = value.sym->value + value.num.w;
-			else
-				target = value.num.w;
-			dist = target - (cur_address + 1);
-			emitbyte(dist & 0xff);
-		} else {
-			emitbyte(isr->opcode + ((cond - T_NZ) << 3));
-			emit_exp(2, &value);
-		}
-	} else if (arg == T_NUM || arg == T_PLAIN) {
-		/* unconditional jp */
-		addr = cur_address;
-		add_jump(addr, value.sym, value.num.w, 0);
-
-		j = find_jump(addr);
-		if (j && j->is_jr) {
-			/* emit jr offset */
-			emitbyte(0x18);
-			if (value.sym)
-				target = value.sym->value + value.num.w;
-			else
-				target = value.num.w;
-			dist = target - (cur_address + 1);
-			emitbyte(dist & 0xff);
-		} else {
-			emitbyte(isr->opcode + 1);
-			emit_exp(2, &value);
-		}
-	} else if (arg == T_HL_I) {
-		emitbyte(isr->arg);
-	} else if (arg == T_IX_I) {
-		emitbyte(0xDD);
-		emitbyte(isr->arg);
-	} else if (arg == T_IY_I) {
-		emitbyte(0xFD);
-		emitbyte(isr->arg);
-	} else
-		return 1;
-	return 0;
-}
-
-static char
-do_jrl(isr)
-struct instruct *isr;
-{
-	unsigned char arg, reg;
-	struct expval value;
-	int target, dist;
-
-	arg = operand(&value);
-
-	reg = 0;
-	if (isr->arg) {
-		if (arg == T_C) arg = T_CR;  /* 'c' means carry, not register C */
-		if (arg >= T_NZ && arg <= T_CR) {
-			/* conditional jr: base opcode 0x20 + (cond * 8) */
-			reg = 0x08 + ((arg - T_NZ) << 3);
-			need(',');
-			arg = operand(&value);
-		} else if (arg != T_NUM && arg != T_PLAIN)
-			return 1;
-	}
-
-	if (arg != T_PLAIN)
-		return 1;
-
-	emitbyte(isr->opcode + reg);
-	/* compute PC-relative offset: target - (PC after 2-byte jr) */
-	if (value.sym)
-		target = value.sym->value + value.num.w;
-	else
-		target = value.num.w;
-	dist = target - (cur_address + 1);
-	if (pass == 1 && (dist < -128 || dist > 127))
-		gripe("relative jump out of range");
-	emitbyte(dist & 0xff);
-	return 0;
-}
-
-static char
-do_call(isr)
-struct instruct *isr;
-{
-	unsigned char arg;
-	struct expval value;
-
-	arg = operand(&value);
-
-	if (arg == T_C) arg = T_CR;  /* 'c' means carry, not register C */
-	if (arg == 1) arg = T_CR;
-	if (arg >= T_NZ && arg <= T_M) {
-		emitbyte(isr->opcode + ((arg - T_NZ) << 3));
-		need(',');
-		operand(&value);  /* get the address */
-		emit_exp(2, &value);
-	} else if (arg == T_PLAIN) {
-		emitbyte(isr->arg);
-		emit_exp(2, &value);
-	} else
-		return 1;
-	return 0;
-}
-
-static char
-do_rst(isr)
-struct instruct *isr;
-{
-	unsigned char arg;
-	struct expval value;
-
-	arg = operand(&value);
-
-	if (arg != T_PLAIN || value.num.b & 0x7 || value.num.b > 0x38)
-		return 1;
-
-	emitbyte(isr->opcode + value.num.b);
-	return 0;
-}
-
-static char
-do_in(isr)
-struct instruct *isr;
-{
-	unsigned char arg, reg;
-	struct expval value;
-
-	arg = operand(&value);
-
-	if (arg == T_C_I) {
-		emitbyte(0xED);
-		emitbyte(0x70);
-		return 0;
-	}
-
-	if (arg == T_HL_I || arg > T_A)
-		return 1;
-
-	reg = arg;
-	need(',');
-	arg = operand(&value);
-
-	if (reg == T_A && arg == T_INDIR) {
-		emitbyte(isr->opcode);
-		emitbyte(&value);
-	} else if (arg == T_C_I) {
-		emitbyte(0xED);
-		emitbyte(0x40 + (reg << 3));
-	} else
-		return 1;
-	return 0;
-}
-
-static char
-do_out(isr)
-struct instruct *isr;
-{
-	unsigned char arg, reg;
-	struct expval value;
-
-	arg = operand(&value);
-
-	if (arg == T_INDIR) {
-		reg = value.num.b;
-		need(',');
-		arg = operand(&value);
-
-		if (arg != T_A)
-			return 1;
-
-		emitbyte(isr->opcode);
-		emitbyte(reg);
-	} else if (arg == T_C_I) {
-		need(',');
-		arg = operand(&value);
-
-		if (arg == T_HL_I)
-			return 1;
-		if (arg == T_PLAIN && !value.num.w)
-			arg = T_HL_I;
-
-		if (arg > T_A)
-			return 1;
-
-		emitbyte(0xED);
-		emitbyte(0x41 + (arg << 3));
-	} else
-		return 1;
-	return 0;
-}
-
-static char
-do_exch(isr)
-struct instruct *isr;
-{
-	unsigned char arg, reg;
-	struct expval value;
-
-	reg = operand(&value);
-	need(',');
-	arg = operand(&value);
-
-	if (reg == T_AF) {
-		if (arg == T_AF) {
-			need('\'');
-			emitbyte(isr->arg);
-		} else
-			return 1;
-	}
-	else if (reg == T_DE) {
-		if (arg == T_HL) {
-			emitbyte(isr->opcode + 0x08);
-		} else
-			return 1;
-	}
-	else if (reg == T_SP_I) {
-		switch (arg) {
-		case T_HL:
-			break;
-		case T_IX:
-			emitbyte(0xDD);
-			break;
-		case T_IY:
-			emitbyte(0xFD);
-			break;
-		default:
-			return 1;
-		}
-		emitbyte(isr->opcode);
-	}
-	return 0;
-}
-
-static char
-do_intmode(isr)
-struct instruct *isr;
-{
-	unsigned char arg;
-	struct expval value;
-
-	arg = operand(&value);
-
-	if (arg != T_PLAIN)
-		return 1;
-
-	emitbyte(0xED);
-	switch (value.num.w) {
-	case 0:
-	case 1:
-		emitbyte(isr->opcode + (value.num.b << 4));
-		break;
-
-	case 2:
-		emitbyte(isr->arg);
-		break;
-
-	default:
-		return 1;
-	}
-	return 0;
-}
-
-static char
-do_load(isr)
-struct instruct *isr;
-{
-	unsigned char arg, reg;
-	struct expval value;
-
-	arg = operand(&value);
-
-	if (arg == T_INDIR) {
-		return do_stax(&value);
-	}
-
-	if (arg <= T_A || (arg >= T_IXH && arg <= T_IY_D)) {
-		return do_ldr8(arg, &value);
-	}
-
-	if ((arg >= T_BC && arg <= T_SP) || (arg == T_IX || arg == T_IY)) {
-		return do_16i(arg);
-	}
-
-	if (arg >= T_BC_I && arg <= T_R) {
-		need(',');
-		reg = operand(&value);
-		if (reg != T_A)
-			return 1;
-
-		switch (arg) {
-		case T_BC_I:
-			emitbyte(0x02);
-			break;
-
-		case T_DE_I:
-			emitbyte(0x12);
-			break;
-
-		case T_I:
-			emitbyte(0xED);
-			emitbyte(0x47);
-			break;
-
-		case T_R:
-			emitbyte(0xED);
-			emitbyte(0x4F);
-			break;
-		}
-	} else
-		return 1;
-	return 0;
-}
-
-static char (*isr_handlers[])() = {
-	0,
-	do_basic,
-	do_basic_ext,
-	do_arith,
-	do_incr,
-	do_bitsh,
-	do_stack,
-	do_ret,
-	do_jmp,
-	do_jrl,
-	do_call,
-	do_rst,
-	do_in,
-	do_out,
-	do_exch,
-	do_intmode,
-	do_load
-};
-
-/*
- * attempts to assemble an instruction assuming a symbol has just been tokenized
- *
- * in = pointer to string
- * returns 0 if an instruction is not matched, 1 if it is
- */
-char
-asm_instr(in)
-char *in;
-{
-	int i;
-	struct instruct *isr;
-
-	for (i = 0; isr_table[i].type != IEND; i++) {
-		if (match(in, isr_table[i].mnem)) {
-			isr = &isr_table[i];
-			if (isr_handlers[isr->type](isr))
-				gripe("invalid operand");
-			return 1;
-		}
-	}
-	return 0;
 }
 
 /*
@@ -2905,7 +1572,9 @@ assemble()
                     sym->value += text_size;
                 }
                 if (sym->seg == SEG_BSS) {
-                    sym->value += text_size + data_size;
+                    /* sym->value += text_size + data_size; */
+                    sym->value += text_size;
+                    sym->value += data_size;
                 }
             }
 

@@ -16,8 +16,11 @@ ALL = asz wsld wsnm wslib wssize
 
 all: $(ALL)
 
-asz: asz.o asm.o wsobj.o
-	$(CC) $(CFLAGS) -o asz asz.o asm.o wsobj.o
+asz: asz.o asm.o asmz80.o wsobj.o
+	$(CC) $(CFLAGS) -o asz asz.o asm.o asmz80.o wsobj.o
+
+asmz80.o: asmz80.c asm.h
+	$(CC) $(CFLAGS) -c asmz80.c
 
 asz.o: asz.c asm.h
 	$(CC) $(CFLAGS) -c asz.c
@@ -82,7 +85,7 @@ install: all
 
 CCCFLAGS = -DCCC -i../native/include
 
-SRCS = asm.c asz.c wsld.c wslib.c wsnm.c wsobj.c wssize.c
+SRCS = asm.c asmz80.c asz.c wsld.c wslib.c wsnm.c wsobj.c wssize.c
 
 stage1: 
 	mkdir -p stage1
@@ -103,8 +106,8 @@ sizecheck: stage1
 WSLD = ./wsld
 LIBCCC = ../native/lib/libccc.a
 
-stage1/asz: stage1/asz.o stage1/asm.o stage1/wsobj.o $(LIBCCC)
-	$(WSLD) -r -o $@ stage1/asz.o stage1/asm.o stage1/wsobj.o $(LIBCCC)
+stage1/asz: stage1/asz.o stage1/asm.o stage1/asmz80.o stage1/wsobj.o $(LIBCCC)
+	$(WSLD) -r -o $@ stage1/asz.o stage1/asm.o stage1/asmz80.o stage1/wsobj.o $(LIBCCC)
 
 stage1/wsld: stage1/wsld.o stage1/wsobj.o $(LIBCCC)
 	$(WSLD) -r -o $@ stage1/wsld.o stage1/wsobj.o $(LIBCCC)
