@@ -1,4 +1,7 @@
    text	   data	    bss	    dec	    hex	filename
-      0       0       0       0         pass1 total
+      0	    286	   2568	   2854	    b26	stage1/c05.o
+      0     286    2568    2854         pass1 total
    text	   data	    bss	    dec	    hex	filename
-      0       0       0       0         pass2 total
+      0	   2212	     66	   2278	    8e6	stage1/c13.o
+      0	  15675	     66	  15741	   3d7d	stage1/table.o
+      0   17887     132   18019         pass2 total
