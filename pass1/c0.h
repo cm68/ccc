@@ -166,8 +166,8 @@ char	filename[64];
 extern int	opdope[];
 char	symbuf[MAXCPS+2];
 struct	nmlist	*hshtab[HSHSIZ];
-union	tree **cp;
-int	isn;
+extern	union	tree **cp;
+extern	int	isn;
 struct	swtab	swtab[SWSIZ];
 int	unscflg;
 struct	swtab	*swp;
@@ -177,10 +177,10 @@ int	retlab;
 int	deflab;
 unsigned autolen;		/* make these int if necessary */
 unsigned maxauto;		/* ... will only cause trouble rarely */
-int	peeksym;
+extern	int	peeksym;
 int	peekc;
 int	eof;
-int	line;
+extern	int	line;
 char	*locbase;
 char	*treebase;
 char	*treebot;
@@ -204,7 +204,7 @@ FILE	*sbufp;
 FILE	*xfile;		/* .x input file from cpp */
 int	regvar;
 int	bitoffs;
-struct	tnode	funcblk;
+extern	struct	tnode	funcblk;
 extern char	cvntab[];
 char	numbuf[64];
 struct	nmlist **memlist;

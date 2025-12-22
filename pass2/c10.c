@@ -646,6 +646,260 @@ loop:
 		p = p2;
 		goto adr;
 
+	/* LA1 - load ADDRESS of operand 1 into HL */
+	case '\005':
+		p = p1;
+		goto laddr;
+
+	/* LA2 - load ADDRESS of operand 2 into HL */
+	case '\006':
+		p = p2;
+
+	laddr:
+		/* Load address of operand into HL */
+		if (p->t.op == NAME) {
+			switch (p->n.class) {
+			case OFFS:
+				/* IY or IX indexed: compute reg+offset into HL */
+				/* Z80 can't add hl,iy directly, need to go through DE */
+				printf("\tpush\t%s\n\tpop\thl",
+					regname[p->n.regno]);
+				if (p->n.offset) {
+					printf("\n\tld\tde,%d\n\tadd\thl,de",
+						p->n.offset);
+				}
+				break;
+			case EXTERN:
+			case XOFFS:
+				/* External symbol */
+				printf("\tld\thl,%s", p->x.name);
+				if (p->n.offset) printf("+%d", p->n.offset);
+				break;
+			case STATIC:
+			case SOFFS:
+				/* Static/local label */
+				printf("\tld\thl,L%d", p->n.nloc);
+				if (p->n.offset) printf("+%d", p->n.offset);
+				break;
+			case REG:
+				/* Register - copy to HL */
+				if (p->n.nloc != R_HL) {
+					if (p->n.nloc == R_IX || p->n.nloc == R_IY)
+						printf("\tpush\t%s\n\tpop\thl",
+							regname[p->n.nloc]);
+					else
+						printf("\tld\thl,%s", regname[p->n.nloc]);
+				}
+				break;
+			default:
+				error("LA: bad class %d", p->n.class);
+			}
+		} else if (p->t.op == AMPER) {
+			/* Already address-of - recurse */
+			p = p->t.tr1;
+			goto laddr;
+		} else {
+			error("LA: bad op %d", p->t.op);
+		}
+		goto loop;
+
+	/* P1 - smart word store from HL to operand 1 */
+	case '\003':
+		p = p1;
+		c = 0;
+		goto pstore;
+
+	/* P2 - smart word store from HL to operand 2 */
+	case '\004':
+		p = p2;
+		c = 0;
+		goto pstore;
+
+	/* PD1 - smart word store from DE to operand 1 */
+	case '\001':
+		p = p1;
+		c = 1;
+		goto pstore;
+
+	/* PD2 - smart word store from DE to operand 2 */
+	case '\002':
+		p = p2;
+		c = 1;
+
+	pstore:
+		/* Emit store based on operand class */
+		/* c=0: store from HL, c=1: store from DE */
+		{
+		char *rp = c ? "de" : "hl";
+		char rlo = c ? 'e' : 'l';
+		char rhi = c ? 'd' : 'h';
+		if (p->t.op == NAME) {
+			register i;
+			i = p->n.offset;
+			switch (p->n.class) {
+			case OFFS:
+				/* IY or IX indexed: byte-by-byte */
+				printf("\tld\t(%s%+d),%c\n",
+					regname[p->n.regno], i, rlo);
+				printf("\tld\t(%s%+d),%c",
+					regname[p->n.regno], i+1, rhi);
+				break;
+			case EXTERN:
+			case XOFFS:
+				/* External symbol */
+				printf("\tld\t(%s", p->x.name);
+				if (i) printf("+%d", i);
+				printf("),%s", rp);
+				break;
+			case STATIC:
+			case SOFFS:
+				/* Static/local label */
+				printf("\tld\t(L%d", p->n.nloc);
+				if (i) printf("+%d", i);
+				printf("),%s", rp);
+				break;
+			case REG:
+				/* Store to register */
+				if (p->n.nloc != (c ? R_DE : R_HL))
+					printf("\tld\t%s,%s", regname[p->n.nloc], rp);
+				break;
+			default:
+				error("P: bad class %d", p->n.class);
+			}
+		} else if (p->t.op == STAR) {
+			/* Pointer dereference: evaluate pointer, then store */
+			/* Save source reg if needed, get addr into HL, then store */
+			if (c) {
+				/* Store DE through pointer - push DE, get addr, pop, store */
+				printf("\tpush\tde\n");
+				rcexpr(p->t.tr1, regtab, R_HL);
+				printf("\n\tpop\tde\n");
+				printf("\tld\t(hl),e\n\tinc\thl\n\tld\t(hl),d");
+			} else {
+				/* Store HL through pointer - need temp */
+				printf("\tex\tde,hl\n");
+				rcexpr(p->t.tr1, regtab, R_HL);
+				printf("\n\tld\t(hl),e\n\tinc\thl\n\tld\t(hl),d");
+			}
+		} else {
+			error("P: bad op %d", p->t.op);
+		}
+		}
+		goto loop;
+
+	/* Q1 - smart word load from operand 1 to HL */
+	case 'Q':
+		p = p1;
+		c = 0;
+		goto qload;
+
+	/* Q2 - smart word load from operand 2 to HL */
+	case 'W':
+		p = p2;
+		c = 0;
+		goto qload;
+
+	/* QD1 - smart word load from operand 1 to DE */
+	case 'q':
+		p = p1;
+		c = 1;
+		goto qload;
+
+	/* QD2 - smart word load from operand 2 to DE */
+	case 'w':
+		p = p2;
+		c = 1;
+
+	qload:
+		/* Emit load based on operand class */
+		/* c=0: load to HL, c=1: load to DE */
+		{
+		char *rp = c ? "de" : "hl";
+		char rlo = c ? 'e' : 'l';
+		char rhi = c ? 'd' : 'h';
+		int targ = c ? R_DE : R_HL;
+		if (p->t.op == NAME) {
+			register i;
+			i = p->n.offset;
+			switch (p->n.class) {
+			case OFFS:
+				/* IY or IX indexed: byte-by-byte */
+				printf("\tld\t%c,(%s%+d)\n",
+					rlo, regname[p->n.regno], i);
+				printf("\tld\t%c,(%s%+d)",
+					rhi, regname[p->n.regno], i+1);
+				break;
+			case EXTERN:
+			case XOFFS:
+				/* External symbol */
+				printf("\tld\t%s,(%s", rp, p->x.name);
+				if (i) printf("+%d", i);
+				putchar(')');
+				break;
+			case STATIC:
+			case SOFFS:
+				/* Static/local label */
+				printf("\tld\t%s,(L%d", rp, p->n.nloc);
+				if (i) printf("+%d", i);
+				putchar(')');
+				break;
+			case REG:
+				/* Already in a register - copy if different */
+				if (p->n.nloc != targ) {
+					if (p->n.nloc == R_IX || p->n.nloc == R_IY)
+						printf("\tpush\t%s\n\tpop\t%s",
+							regname[p->n.nloc], rp);
+					else
+						printf("\tld\t%s,%s", rp, regname[p->n.nloc]);
+				}
+				break;
+			default:
+				error("Q: bad class %d", p->n.class);
+			}
+		} else if (p->t.op == CON) {
+			printf("\tld\t%s,%d", rp, p->c.value);
+		} else if (p->t.op == AMPER) {
+			/* Address-of: load address */
+			p = p->t.tr1;
+			if (p->t.op == NAME) {
+				switch (p->n.class) {
+				case OFFS:
+					printf("\tld\t%s,%d\n\tadd\t%s,%s",
+						rp, p->n.offset, rp, regname[p->n.regno]);
+					break;
+				case EXTERN:
+				case XOFFS:
+					printf("\tld\t%s,%s", rp, p->x.name);
+					if (p->n.offset) printf("+%d", p->n.offset);
+					break;
+				case STATIC:
+				case SOFFS:
+					printf("\tld\t%s,L%d", rp, p->n.nloc);
+					if (p->n.offset) printf("+%d", p->n.offset);
+					break;
+				default:
+					error("Q&: bad class");
+				}
+			} else {
+				error("Q&: not NAME");
+			}
+		} else if (p->t.op == STAR) {
+			/* Pointer dereference: evaluate pointer, then load */
+			/* For now, fall back to evaluating ptr into HL, load from (HL) */
+			rcexpr(p->t.tr1, regtab, R_HL);
+			if (c) {
+				/* Load to DE from (HL) */
+				printf("\n\tld\te,(hl)\n\tinc\thl\n\tld\td,(hl)");
+			} else {
+				/* Load to HL from (HL) */
+				printf("\n\tld\ta,(hl)\n\tinc\thl\n\tld\th,(hl)\n\tld\tl,a");
+			}
+		} else {
+			error("Q: bad op %d", p->t.op);
+		}
+		}
+		goto loop;
+
 	adr:
 		c = 0;
 		while (*string=='\'') {

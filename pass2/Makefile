@@ -39,11 +39,11 @@ c1: $(OBJECTS) table.o
 
 $(OBJECTS): c1.h
 
-# Instruction table - built from optable via cvopt
-table.o: optable cvopt
-	./cvopt < optable > junk.c
-	$(CC) $(CFLAGS) -c -o $@ junk.c
-	rm -f junk.c
+table.c: optable cvopt
+	./cvopt < optable > table.c
+
+table.o: table.c
+	$(CC) $(CFLAGS) -c -o $@ table.c
 
 cvopt: cvopt.c
 	$(CC) $(CFLAGS) -o cvopt cvopt.c
@@ -55,7 +55,7 @@ stage1:
 	@for f in $(ALL_SOURCES); do \
 	  b=$${f%.c}; \
 	  printf "%-20s" "$$f: "; \
-	  $(CCC) $(CCCFLAGS) -k -P -s $$f 2> $(OUTDIR)/$$b.err 1>&2 && { echo "ok"; rm -f $(OUTDIR)/$$b.err; } || echo "FAIL"; \
+	  $(CCC) $(CCCFLAGS) -k -P -c $$f 2> $(OUTDIR)/$$b.err 1>&2 && { echo "ok"; rm -f $(OUTDIR)/$$b.err; } || echo "FAIL"; \
 	  mv $$b.i $$b.x $$b.1 $$b.2 $$b.pp $$b.s $$b.o $(OUTDIR) 2>/dev/null || true; \
 	done
 

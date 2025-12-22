@@ -874,7 +874,7 @@ getree()
 		switch(op &= 0377) {
 
 	case SINIT:
-		printf("%o\n", UNS(geti()));
+		printf(".dw %o\n", UNS(geti()));
 		break;
 
 	case EOFC:
@@ -882,7 +882,7 @@ getree()
 
 	case BDATA:
 		if (geti() == 1) {
-			printf(".byte ");
+			printf(".db ");
 			for (;;)  {
 				printf("%o", UNS(geti()));
 				if (geti() != 1)
@@ -912,21 +912,22 @@ getree()
 		break;
 
 	case RETRN:
-		printf("jmp\tcret\n");
+		/* Z80 function epilogue */
+		printf("\tld\tsp,iy\n\tpop\tiy\n\tret\n");
 		break;
 
 	case CSPACE:
 		outname(s);
-		printf(".comm\t%s,%o\n", s, UNS(geti()));
+		printf(".bss\n%s:\t.ds %d\n", s, UNS(geti()));
 		break;
 
 	case SSPACE:
-		printf(".=.+%o\n", UNS(t=geti()));
+		printf(".ds %d\n", UNS(t=geti()));
 		totspace += (unsigned)t;
 		break;
 
 	case EVEN:
-		printf(".even\n");
+		/* Z80 doesn't need alignment */
 		break;
 
 	case SAVE:
@@ -956,17 +957,17 @@ getree()
 
 	case SNAME:
 		outname(s);
-		printf("~%s=L%d\n", s+1, geti());
+		printf("; %s=L%d\n", s+1, geti());
 		break;
 
 	case ANAME:
 		outname(s);
-		printf("~%s=%o\n", s+1, UNS(geti()));
+		printf("; %s=%o\n", s+1, UNS(geti()));
 		break;
 
 	case RNAME:
 		outname(s);
-		printf("~%s=%s\n", s+1, regname[geti()]);
+		printf("; %s=%s\n", s+1, regname[geti()]);
 		break;
 
 	case SWIT:
@@ -1111,7 +1112,7 @@ getree()
 
 	case RLABEL:
 		outname(s);
-		printf("%s:\n~~%s:\n", s, s+1);
+		printf("%s:\n", s);
 		break;
 
 	case BRANCH:
