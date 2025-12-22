@@ -24,7 +24,7 @@ CFLAGS = -I.
 endif
 
 # Pass 2 (code generator) sources
-SOURCES = c10.c c11.c c12.c c13.c
+SOURCES = c10.c c11.c c12.c c13.c table.c
 OBJECTS = $(SOURCES:.c=.o)
 
 ALL_SOURCES = $(SOURCES) cvopt.c
@@ -34,8 +34,8 @@ ALL_OBJECTS = $(OBJECTS) table.o
 all: c1
 
 # Pass 2 - code generator
-c1: $(OBJECTS) table.o
-	$(CC) $(LDFLAGS) -o $@ $(OBJECTS) table.o
+c1: $(OBJECTS)
+	$(CC) $(LDFLAGS) -o $@ $(OBJECTS)
 
 $(OBJECTS): c1.h
 
@@ -52,7 +52,7 @@ cvopt: cvopt.c
 CCCFLAGS = -I. -i$(ROOTDIR)/usr/include
 stage1:
 	mkdir -p $(OUTDIR)
-	@for f in $(ALL_SOURCES); do \
+	@for f in $(SOURCES); do \
 	  b=$${f%.c}; \
 	  printf "%-20s" "$$f: "; \
 	  $(CCC) $(CCCFLAGS) -k -P -c $$f 2> $(OUTDIR)/$$b.err 1>&2 && { echo "ok"; rm -f $(OUTDIR)/$$b.err; } || echo "FAIL"; \

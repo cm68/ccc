@@ -2798,70 +2798,70 @@ struct optab optab[]={
  * for 32-bit values).
  */
 struct table regtab[] = {
-	{106,rname},	/* NAME - load value into register */
-	{30,rasadd},	/* PREINC ++ - uses compound assignment patterns */
-	{31,rasadd},	/* PREDEC -- - uses compound assignment patterns */
-	{32,rpostinc},	/* POSTINC ++ - return old value, then increment */
-	{33,rpostinc},	/* POSTDEC -- - return old value, then decrement */
-	{37,runary},	/* NEG - unary minus */
-	{38,runary},	/* COMPL ~ - bitwise complement */
-	{98,rcall},	/* MCALL - member function call */
-	{99,rcall},	/* CALL - function call */
-	{80,rassign},	/* ASSIGN = - simple assignment */
-	{40,radd},	/* PLUS + - addition */
-	{41,radd},	/* MINUS - - subtraction (uses same patterns as +) */
-	{42,rmul},	/* TIMES * - multiplication */
-	{43,rdiv},	/* DIVIDE / - signed division */
-	{14,rptoi},	/* PTOI - pointer difference / sizeof */
-	{44,rdiv},	/* MOD % - modulo (uses divide patterns) */
-	{45,rrsh},	/* RSHIFT >> - signed right shift */
-	{46,radd},	/* LSHIFT << - left shift (uses add patterns) */
-	{55,radd},	/* OR | - bitwise or (uses add patterns) */
-	{48,radd},	/* AND & - bitwise and (uses add patterns) */
-	{49,rxor},	/* XOR ^ - bitwise xor */
-	{70,rasadd},	/* ASPLUS += - compound add assignment */
-	{71,rasadd},	/* ASMINUS -= - compound subtract assignment */
-	{72,rasmul},	/* ASTIMES *= - compound multiply assignment */
-	{73,rasdiv},	/* ASDIV /= - compound divide assignment */
-	{74,rasmod},	/* ASMOD %= - compound modulo assignment */
-	{75,rasrsh},	/* ASRSH >>= - compound right shift assignment */
-	{76,rasmul},	/* ASLSH <<= - compound left shift assignment */
-	{78,rasor},	/* ASOR |= - compound or assignment */
-	{85,rasor},	/* ASAND &= - compound and assignment */
-	{79,rasxor},	/* ASXOR ^= - compound xor assignment */
-	{102,rjump},	/* JUMP - goto statement */
-	{51,ritof},	/* ITOF - int to float conversion */
-	{52,rftoi},	/* FTOI - float to int conversion */
-	{56,rftol},	/* FTOL - float to long conversion */
-	{57,rltof},	/* LTOF - long to float conversion */
-	{58,ritol},	/* ITOL - int to long conversion */
-	{59,rltoi},	/* LTOI - long to int conversion */
-	{91,rlshl},	/* LSHIFT (long) - 32-bit left shift */
-	{82,rlmul},	/* LTIMES - long multiply */
-	{83,rlmul},	/* LDIV - long divide */
-	{84,rlmul},	/* LMOD - long modulo */
-	{86,rlasmul},	/* LASTIMES - long compound *= */
-	{87,rlasmul},	/* LASDIV - long compound /= */
-	{88,rlasmul},	/* LASMOD - long compound %= */
-	{16,rfield},	/* FSEL - bitfield assignment */
-	{92,rlaslsh},	/* ASLSH (long) - long compound <<= */
-	{17,rdiv},	/* DIVIDE - uses same as rdiv */
-	{18,rasmod},	/* MOD - uses same as rasmod */
-	{109,ritoc},	/* ITOC - int to char (sign extend low byte) */
-	{117,rudiv},	/* UDIV - unsigned divide */
-	{118,rudiv},	/* UMOD - unsigned modulo */
-	{119,ruasdiv},	/* UASDIV - unsigned compound /= */
-	{120,ruasdiv},	/* UASMOD - unsigned compound %= */
-	{107,rptrdif},	/* PTRDIFF - (int*)-(int*) for int pointers */
-	{121,rulmul},	/* ULTIMES - unsigned long multiply */
-	{122,rulmul},	/* ULDIV - unsigned long divide */
-	{123,rulmul},	/* ULMOD - unsigned long modulo */
-	{124,rulasmul},	/* ULASTIMES - unsigned long compound *= */
-	{125,rulasmul},	/* ULASDIV - unsigned long compound /= */
-	{126,rulasmul},	/* ULASMOD - unsigned long compound %= */
-	{127,rultof},	/* ULTOF - unsigned long to float */
-	{128,rlushr},	/* LUSHR - unsigned long right shift */
-	{129,ralushr},	/* ALUSHR - unsigned long compound >>= */
+	{LOAD,rname},	/* NAME - load value into register */
+	{INCBEF,rasadd},	/* PREINC ++ - uses compound assignment patterns */
+	{DECBEF,rasadd},	/* PREDEC -- - uses compound assignment patterns */
+	{INCAFT,rpostinc},	/* POSTINC ++ - return old value, then increment */
+	{DECAFT,rpostinc},	/* POSTDEC -- - return old value, then decrement */
+	{NEG,runary},	/* NEG - unary minus */
+	{COMPL,runary},	/* COMPL ~ - bitwise complement */
+	{CALL1,rcall},	/* MCALL - member function call */
+	{CALL2,rcall},	/* CALL - function call */
+	{ASSIGN,rassign},	/* ASSIGN = - simple assignment */
+	{PLUS,radd},	/* PLUS + - addition */
+	{MINUS,radd},	/* MINUS - - subtraction (uses same patterns as +) */
+	{TIMES,rmul},	/* TIMES * - multiplication */
+	{DIVIDE,rdiv},	/* DIVIDE / - signed division */
+	{PTOI,rptoi},	/* PTOI - pointer difference / sizeof */
+	{MOD,rdiv},	/* MOD % - modulo (uses divide patterns) */
+	{RSHIFT,rrsh},	/* RSHIFT >> - signed right shift */
+	{LSHIFT,radd},	/* LSHIFT << - left shift (uses add patterns) */
+	{ANDN,radd},	/* OR | - bitwise or (uses add patterns) */
+	{OR,radd},	/* AND & - bitwise and (uses add patterns) */
+	{EXOR,rxor},	/* XOR ^ - bitwise xor */
+	{ASPLUS,rasadd},	/* ASPLUS += - compound add assignment */
+	{ASMINUS,rasadd},	/* ASMINUS -= - compound subtract assignment */
+	{ASTIMES,rasmul},	/* ASTIMES *= - compound multiply assignment */
+	{ASDIV,rasdiv},	/* ASDIV /= - compound divide assignment */
+	{ASMOD,rasmod},	/* ASMOD %= - compound modulo assignment */
+	{ASRSH,rasrsh},	/* ASRSH >>= - compound right shift assignment */
+	{ASLSH,rasmul},	/* ASLSH <<= - compound left shift assignment */
+	{ASOR,rasor},	/* ASOR |= - compound or assignment */
+	{ASANDN,rasor},	/* ASAND &= - compound and assignment */
+	{ASXOR,rasxor},	/* ASXOR ^= - compound xor assignment */
+	{JUMP,rjump},	/* JUMP - goto statement */
+	{ITOF,ritof},	/* ITOF - int to float conversion */
+	{FTOI,rftoi},	/* FTOI - float to int conversion */
+	{FTOL,rftol},	/* FTOL - float to long conversion */
+	{LTOF,rltof},	/* LTOF - long to float conversion */
+	{ITOL,ritol},	/* ITOL - int to long conversion */
+	{LTOI,rltoi},	/* LTOI - long to int conversion */
+	{LLSHIFT,rlshl},	/* LSHIFT (long) - 32-bit left shift */
+	{LTIMES,rlmul},	/* LTIMES - long multiply */
+	{LDIV,rlmul},	/* LDIV - long divide */
+	{LMOD,rlmul},	/* LMOD - long modulo */
+	{LASTIMES,rlasmul},	/* LASTIMES - long compound *= */
+	{LASDIV,rlasmul},	/* LASDIV - long compound /= */
+	{LASMOD,rlasmul},	/* LASMOD - long compound %= */
+	{FSELA,rfield},	/* FSEL - bitfield assignment */
+	{ASLSHL,rlaslsh},	/* ASLSH (long) - long compound <<= */
+	{ULSH,rdiv},	/* DIVIDE - uses same as rdiv */
+	{ASULSH,rasmod},	/* MOD - uses same as rasmod */
+	{ITOC,ritoc},	/* ITOC - int to char (sign extend low byte) */
+	{UDIV,rudiv},	/* UDIV - unsigned divide */
+	{UMOD,rudiv},	/* UMOD - unsigned modulo */
+	{ASUDIV,ruasdiv},	/* UASDIV - unsigned compound /= */
+	{ASUMOD,ruasdiv},	/* UASMOD - unsigned compound %= */
+	{PTOI1,rptrdif},	/* PTRDIFF - (int*)-(int*) for int pointers */
+	{ULTIMES,rulmul},	/* ULTIMES - unsigned long multiply */
+	{ULDIV,rulmul},	/* ULDIV - unsigned long divide */
+	{ULMOD,rulmul},	/* ULMOD - unsigned long modulo */
+	{ULASTIMES,rulasmul},	/* ULASTIMES - unsigned long compound *= */
+	{ULASDIV,rulasmul},	/* ULASDIV - unsigned long compound /= */
+	{ULASMOD,rulasmul},	/* ULASMOD - unsigned long compound %= */
+	{ULTOF,rultof},	/* ULTOF - unsigned long to float */
+	{ULLSHIFT,rlushr},	/* LUSHR - unsigned long right shift */
+	{UASLSHL,ralushr},	/* ALUSHR - unsigned long compound >>= */
 	{0}		/* End of table marker */
 };
 
@@ -2886,20 +2886,20 @@ struct table regtab[] = {
  *   [moveN:] = named patterns for different assignment scenarios
  */
 struct table efftab[] = {
-	{30,easadd},	/* PREINC ++ */
-	{31,easadd},	/* PREDEC -- */
-	{32,easadd},	/* POSTINC ++ */
-	{33,easadd},	/* POSTDEC -- */
-	{80,eassign},	/* ASSIGN = */
-	{70,easadd},	/* ASPLUS += */
-	{71,easadd},	/* ASMINUS -= */
-	{78,easor},	/* ASOR |= */
-	{79,easxor},	/* ASXOR ^= */
-	{85,easor},	/* ASAND &= */
-	{75,easrsh},	/* ASRSH >>= */
-	{76,easlsh},	/* ASLSH <<= */
-	{16,efield},	/* FSEL - bitfield */
-	{116,estrasg},	/* STRASG - struct assignment */
+	{INCBEF,easadd},	/* PREINC ++ */
+	{DECBEF,easadd},	/* PREDEC -- */
+	{INCAFT,easadd},	/* POSTINC ++ */
+	{DECAFT,easadd},	/* POSTDEC -- */
+	{ASSIGN,eassign},	/* ASSIGN = */
+	{ASPLUS,easadd},	/* ASPLUS += */
+	{ASMINUS,easadd},	/* ASMINUS -= */
+	{ASOR,easor},	/* ASOR |= */
+	{ASXOR,easxor},	/* ASXOR ^= */
+	{ASANDN,easor},	/* ASAND &= */
+	{ASRSH,easrsh},	/* ASRSH >>= */
+	{ASLSH,easlsh},	/* ASLSH <<= */
+	{FSELA,efield},	/* FSEL - bitfield */
+	{STRSET,estrasg},	/* STRASG - struct assignment */
 	{0}
 };
 
@@ -2932,31 +2932,31 @@ struct table efftab[] = {
  *   Compare low words first (X0), if equal compare high words (X1).
  */
 struct table cctab[] = {
-	{106,ccmp},	/* NAME - compare/test value */
-	{28,rest},	/* QUEST ?: - evaluate for condition */
-	{55,rest},	/* OR | - evaluate for condition */
-	{34,rest},	/* EXCLA ! - evaluate for condition */
-	{35,rest},	/* AMPER & - evaluate for condition */
-	{36,rest},	/* STAR * - evaluate for condition */
-	{37,rest},	/* NEG - - evaluate for condition */
-	{40,rest},	/* PLUS + - evaluate for condition */
-	{41,rest},	/* MINUS - - evaluate for condition */
-	{43,rest},	/* DIVIDE / - evaluate for condition */
-	{81,candtst},	/* ANDAND && - bitwise AND test (a&b)==0 */
-	{48,rest},	/* AND & - evaluate for condition */
-	{60,ccmp},	/* EQ == */
-	{61,ccmp},	/* NE != */
-	{62,ccmp},	/* LT < (signed) */
-	{63,ccmp},	/* LE <= (signed) */
-	{64,ccmp},	/* GT > (signed) */
-	{65,ccmp},	/* GE >= (signed) */
-	{66,ccmp},	/* LO < (unsigned) */
-	{67,ccmp},	/* LS <= (unsigned) */
-	{68,ccmp},	/* HI > (unsigned) */
-	{69,ccmp},	/* HS >= (unsigned) */
-	{72,rest},	/* ASTIMES *= - evaluate for condition */
-	{73,rest},	/* ASDIV /= - evaluate for condition */
-	{79,rest},	/* ASXOR ^= - evaluate for condition */
+	{LOAD,ccmp},	/* NAME - compare/test value */
+	{AUTOD,rest},	/* QUEST ?: - evaluate for condition */
+	{ANDN,rest},	/* OR | - evaluate for condition */
+	{EXCLA,rest},	/* EXCLA ! - evaluate for condition */
+	{AMPER,rest},	/* AMPER & - evaluate for condition */
+	{STAR,rest},	/* STAR * - evaluate for condition */
+	{NEG,rest},	/* NEG - - evaluate for condition */
+	{PLUS,rest},	/* PLUS + - evaluate for condition */
+	{MINUS,rest},	/* MINUS - - evaluate for condition */
+	{DIVIDE,rest},	/* DIVIDE / - evaluate for condition */
+	{TAND,candtst},	/* ANDAND && - bitwise AND test (a&b)==0 */
+	{OR,rest},	/* AND & - evaluate for condition */
+	{EQUAL,ccmp},	/* EQ == */
+	{NEQUAL,ccmp},	/* NE != */
+	{LESSEQ,ccmp},	/* LT < (signed) */
+	{LESS,ccmp},	/* LE <= (signed) */
+	{GREATEQ,ccmp},	/* GT > (signed) */
+	{GREAT,ccmp},	/* GE >= (signed) */
+	{LESSEQP,ccmp},	/* LO < (unsigned) */
+	{LESSP,ccmp},	/* LS <= (unsigned) */
+	{GREATQP,ccmp},	/* HI > (unsigned) */
+	{GREATP,ccmp},	/* HS >= (unsigned) */
+	{ASTIMES,rest},	/* ASTIMES *= - evaluate for condition */
+	{ASDIV,rest},	/* ASDIV /= - evaluate for condition */
+	{ASXOR,rest},	/* ASXOR ^= - evaluate for condition */
 	{0}
 };
 
@@ -3007,12 +3007,12 @@ struct table cctab[] = {
  */
 
 struct table sptab[] = {
-	{106,sname},
-	{40,sadd},
-	{41,sadd},
-	{55,sadd},
-	{48,sadd},
-	{58,sitol},
-	{56,sftol},
+	{LOAD,sname},
+	{PLUS,sadd},
+	{MINUS,sadd},
+	{ANDN,sadd},
+	{OR,sadd},
+	{ITOL,sitol},
+	{FTOL,sftol},
 	{0}
 };

@@ -760,8 +760,14 @@ loop:
 				break;
 			case REG:
 				/* Store to register */
-				if (p->n.nloc != (c ? R_DE : R_HL))
-					printf("\tld\t%s,%s", regname[p->n.nloc], rp);
+				if (p->n.nloc != (c ? R_DE : R_HL)) {
+					if (p->n.nloc == R_IX || p->n.nloc == R_IY)
+						/* Can't ld ix,hl - use stack */
+						printf("\tpush\t%s\n\tpop\t%s",
+							rp, regname[p->n.nloc]);
+					else
+						printf("\tld\t%s,%s", regname[p->n.nloc], rp);
+				}
 				break;
 			default:
 				error("P: bad class %d", p->n.class);
