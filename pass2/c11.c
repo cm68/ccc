@@ -907,7 +907,8 @@ getree()
 
 	case SYMDEF:
 		outname(s);
-		printf(".globl\t%s\n", s);
+		if (*s)
+			printf(".globl\t%s\n", s);
 		sfuncr.nloc = 0;
 		break;
 
