@@ -110,6 +110,46 @@ loop:
 		ungetc(c, stdin);
 		goto loop;
 
+	case 'P':
+		/* P1/P2 - smart word store from HL */
+		/* PD1/PD2 - smart word store from DE */
+		c = getchar();
+		if (c=='D') {
+			c = getchar();
+			if (c=='1') { put('\001'); goto loop; }
+			if (c=='2') { put('\002'); goto loop; }
+		} else {
+			if (c=='1') { put('\003'); goto loop; }
+			if (c=='2') { put('\004'); goto loop; }
+		}
+		put('?');
+		goto loop;
+
+	case 'L':
+		/* LA1/LA2 - load ADDRESS of operand into HL */
+		if (getchar()=='A') {
+			c = getchar();
+			if (c=='1') { put('\005'); goto loop; }
+			if (c=='2') { put('\006'); goto loop; }
+		}
+		put('?');
+		goto loop;
+
+	case 'Q':
+		/* Q1/Q2 - smart word load to HL */
+		/* QD1/QD2 - smart word load to DE */
+		c = getchar();
+		if (c=='D') {
+			c = getchar();
+			if (c=='1') { put('q'); goto loop; }
+			if (c=='2') { put('w'); goto loop; }
+		} else {
+			if (c=='1') { put('Q'); goto loop; }
+			if (c=='2') { put('W'); goto loop; }
+		}
+		put('?');
+		goto loop;
+
 	case 'B':
 		switch (getchar()) {
 
@@ -417,8 +457,11 @@ put(c)
 	if (tabflg) {
 		tabflg = 0;
 		fprintf(curbuf, "\\%o", c+0200);
+	} else if (c < ' ' && c != '\t' && c != '\n') {
+		/* Escape control chars (except tab/newline) */
+		fprintf(curbuf, "\\%o", c & 0377);
 	} else {
-		if (c=='"') putc('\\',curbuf);
+		if (c == '"' || c == '\\') putc('\\', curbuf);
 		putc(c, curbuf);
 	}
 }
