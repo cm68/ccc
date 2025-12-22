@@ -37,6 +37,23 @@ struct jump {
 };
 
 /*
+ * local labels: numeric labels with forward/backward references
+ * each local label can have multiple definitions (occurrences)
+ * Nf = next occurrence forward, Nb = previous occurrence backward
+ * stored in hash table for memory efficiency
+ */
+#define LOCAL_HASH_SIZE 128
+#define MAX_LOCAL_OCCURS 128
+
+struct local_label {
+    unsigned short num;                      /* label number */
+    unsigned short addr[MAX_LOCAL_OCCURS];  /* addresses of each occurrence */
+    unsigned char seg[MAX_LOCAL_OCCURS];    /* segment of each occurrence */
+    unsigned char count;                     /* number of occurrences */
+    struct local_label *next;               /* hash chain */
+};
+
+/*
  * expressions can take values of this:
  * if both sym and num are present, this is a biased symbol
  * something like .dw  foo+34

@@ -15,19 +15,17 @@
  *   wslib -t archive.a                     list contents
  *   wslib -v                               verbose mode
  */
-#if defined(linux) || defined(__linux__)
 #include <stdio.h>
+
+#if defined(linux) || defined(__linux__)
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-#include <fcntl.h>
 #else
-#include <stdio.h>
-#include <fcntl.h>
 #endif
 
 #include "wsobj.h"
-#include "hitechobj.h"
+#include "hiobj.h"
 
 char *progname;
 int verbose;
@@ -124,13 +122,13 @@ int count;
  * write archive header
  */
 void
-write_header(fd)
-int fd;
+write_header(fp)
+FILE *fp;
 {
     unsigned char buf[2];
     buf[0] = AR_MAGIC & 0xFF;
     buf[1] = (AR_MAGIC >> 8) & 0xFF;
-    if (write(fd, buf, 2) != 2)
+    if (fwrite(buf, 1, 2, fp) != 2)
         error("write error");
 }
 
@@ -138,8 +136,8 @@ int fd;
  * write one archive entry
  */
 void
-write_entry(arfd, name, data, len)
-int arfd;
+write_entry(arfp, name, data, len)
+FILE *arfp;
 char *name;
 unsigned char *data;
 unsigned short len;
@@ -157,11 +155,11 @@ unsigned short len;
     buf[14] = len & 0xFF;
     buf[15] = (len >> 8) & 0xFF;
 
-    if (write(arfd, buf, 16) != 16)
+    if (fwrite(buf, 1, 16, arfp) != 16)
         error("write error");
 
     if (len > 0) {
-        if (write(arfd, data, len) != len)
+        if (fwrite(data, 1, len, arfp) != len)
             error("write error");
     }
 }
@@ -170,12 +168,12 @@ unsigned short len;
  * write end marker (null name entry)
  */
 void
-write_end(fd)
-int fd;
+write_end(fp)
+FILE *fp;
 {
     unsigned char buf[16];
     memset(buf, 0, 16);
-    if (write(fd, buf, 16) != 16)
+    if (fwrite(buf, 1, 16, fp) != 16)
         error("write error");
 }
 
@@ -183,21 +181,22 @@ int fd;
  * add object file to archive
  */
 void
-add_object(arfd, objname)
-int arfd;
+add_object(arfp, objname)
+FILE *arfp;
 char *objname;
 {
-    int fd;
+    FILE *fp;
     long size;
     unsigned char *data;
     char arname[15];
 
-    fd = open(objname, O_RDONLY);
-    if (fd < 0)
+    fp = fopen(objname, "rb");
+    if (fp == NULL)
         error2("cannot open", objname);
 
-    size = lseek(fd, 0, SEEK_END);
-    lseek(fd, 0, SEEK_SET);
+    fseek(fp, 0, SEEK_END);
+    size = ftell(fp);
+    fseek(fp, 0, SEEK_SET);
 
     if (size > 65535)
         error2("file too large", objname);
@@ -206,9 +205,9 @@ char *objname;
     if (!data)
         error("out of memory");
 
-    if (read(fd, data, size) != size)
+    if (fread(data, 1, size, fp) != size)
         error2("read error", objname);
-    close(fd);
+    fclose(fp);
 
     make_arname(arname, objname);
     arname[14] = '\0';
@@ -216,7 +215,7 @@ char *objname;
     if (verbose)
         printf("a - %s\n", arname);
 
-    write_entry(arfd, arname, data, (unsigned short)size);
+    write_entry(arfp, arname, data, (unsigned short)size);
     free(data);
 }
 
@@ -229,22 +228,23 @@ char *archive;
 char **files;
 int nfiles;
 {
-    int fd, i;
+    FILE *fp;
+    int i;
 
     if (nfiles == 0)
         error("no files to add");
 
-    fd = open(archive, O_WRONLY | O_CREAT | O_TRUNC, 0666);
-    if (fd < 0)
+    fp = fopen(archive, "wb");
+    if (fp == NULL)
         error2("cannot create", archive);
 
-    write_header(fd);
+    write_header(fp);
 
     for (i = 0; i < nfiles; i++)
-        add_object(fd, files[i]);
+        add_object(fp, files[i]);
 
-    write_end(fd);
-    close(fd);
+    write_end(fp);
+    fclose(fp);
 }
 
 /*
@@ -256,50 +256,52 @@ char *archive;
 char **files;
 int nfiles;
 {
-    int fd, i;
+    FILE *fp;
+    int i;
     long size;
     unsigned char buf[16];
 
     if (nfiles == 0)
         error("no files to add");
 
-    fd = open(archive, O_RDWR);
-    if (fd < 0)
+    fp = fopen(archive, "r+b");
+    if (fp == NULL)
         error2("cannot open", archive);
 
     /* verify magic */
-    if (read(fd, buf, 2) != 2)
+    if (fread(buf, 1, 2, fp) != 2)
         error2("read error", archive);
     if ((buf[0] | (buf[1] << 8)) != AR_MAGIC)
         error2("not an archive", archive);
 
     /* find end - look for null entry or EOF */
-    size = lseek(fd, 0, SEEK_END);
-    lseek(fd, 2, SEEK_SET);
+    fseek(fp, 0, SEEK_END);
+    size = ftell(fp);
+    fseek(fp, 2, SEEK_SET);
 
-    while (lseek(fd, 0, SEEK_CUR) < size) {
-        long pos = lseek(fd, 0, SEEK_CUR);
+    while (ftell(fp) < size) {
+        long pos = ftell(fp);
         unsigned short len;
 
-        if (read(fd, buf, 16) != 16)
+        if (fread(buf, 1, 16, fp) != 16)
             break;
 
         if (buf[0] == '\0') {
             /* found end marker - position before it */
-            lseek(fd, pos, SEEK_SET);
+            fseek(fp, pos, SEEK_SET);
             break;
         }
 
         len = buf[14] | (buf[15] << 8);
-        lseek(fd, len, SEEK_CUR);
+        fseek(fp, len, SEEK_CUR);
     }
 
     /* now at position to write new entries */
     for (i = 0; i < nfiles; i++)
-        add_object(fd, files[i]);
+        add_object(fp, files[i]);
 
-    write_end(fd);
-    close(fd);
+    write_end(fp);
+    fclose(fp);
 }
 
 /*
@@ -309,23 +311,23 @@ void
 do_list(archive)
 char *archive;
 {
-    int fd;
+    FILE *fp;
     unsigned char buf[16];
     char name[15];
     unsigned short len;
     long total = 0;
     int count = 0;
 
-    fd = open(archive, O_RDONLY);
-    if (fd < 0)
+    fp = fopen(archive, "rb");
+    if (fp == NULL)
         error2("cannot open", archive);
 
-    if (read(fd, buf, 2) != 2)
+    if (fread(buf, 1, 2, fp) != 2)
         error2("read error", archive);
     if ((buf[0] | (buf[1] << 8)) != AR_MAGIC)
         error2("not an archive", archive);
 
-    while (read(fd, buf, 16) == 16) {
+    while (fread(buf, 1, 16, fp) == 16) {
         if (buf[0] == '\0')
             break;
 
@@ -340,13 +342,13 @@ char *archive;
 
         total += len;
         count++;
-        lseek(fd, len, SEEK_CUR);
+        fseek(fp, len, SEEK_CUR);
     }
 
     if (verbose)
         printf("total %ld bytes in %d files\n", total, count);
 
-    close(fd);
+    fclose(fp);
 }
 
 /*
@@ -358,7 +360,7 @@ char *archive;
 char **files;
 int nfiles;
 {
-    int fd, outfd;
+    FILE *fp, *outfp;
     unsigned char buf[16];
     unsigned char *data;
     char name[15];
@@ -367,16 +369,16 @@ int nfiles;
 
     extract_all = (nfiles == 0);
 
-    fd = open(archive, O_RDONLY);
-    if (fd < 0)
+    fp = fopen(archive, "rb");
+    if (fp == NULL)
         error2("cannot open", archive);
 
-    if (read(fd, buf, 2) != 2)
+    if (fread(buf, 1, 2, fp) != 2)
         error2("read error", archive);
     if ((buf[0] | (buf[1] << 8)) != AR_MAGIC)
         error2("not an archive", archive);
 
-    while (read(fd, buf, 16) == 16) {
+    while (fread(buf, 1, 16, fp) == 16) {
         if (buf[0] == '\0')
             break;
 
@@ -392,24 +394,24 @@ int nfiles;
             if (!data)
                 error("out of memory");
 
-            if (read(fd, data, len) != len)
+            if (fread(data, 1, len, fp) != len)
                 error("read error");
 
-            outfd = open(name, O_WRONLY | O_CREAT | O_TRUNC, 0666);
-            if (outfd < 0)
+            outfp = fopen(name, "wb");
+            if (outfp == NULL)
                 error2("cannot create", name);
 
-            if (write(outfd, data, len) != len)
+            if (fwrite(data, 1, len, outfp) != len)
                 error("write error");
 
-            close(outfd);
+            fclose(outfp);
             free(data);
         } else {
-            lseek(fd, len, SEEK_CUR);
+            fseek(fp, len, SEEK_CUR);
         }
     }
 
-    close(fd);
+    fclose(fp);
 }
 
 /*
@@ -421,7 +423,8 @@ char *archive;
 char **files;
 int nfiles;
 {
-    int fd, tmpfd, i;
+    FILE *fp, *tmpfp;
+    int i;
     unsigned char buf[16];
     unsigned char *data;
     char name[15];
@@ -437,25 +440,25 @@ int nfiles;
     for (i = 0; i < nfiles; i++)
         replaced[i] = 0;
 
-    fd = open(archive, O_RDONLY);
-    if (fd < 0)
+    fp = fopen(archive, "rb");
+    if (fp == NULL)
         error2("cannot open", archive);
 
-    if (read(fd, buf, 2) != 2)
+    if (fread(buf, 1, 2, fp) != 2)
         error2("read error", archive);
     if ((buf[0] | (buf[1] << 8)) != AR_MAGIC)
         error2("not an archive", archive);
 
     /* create temp file */
     sprintf(tmpname, "%s.tmp", archive);
-    tmpfd = open(tmpname, O_WRONLY | O_CREAT | O_TRUNC, 0666);
-    if (tmpfd < 0)
+    tmpfp = fopen(tmpname, "wb");
+    if (tmpfp == NULL)
         error2("cannot create temp file", tmpname);
 
-    write_header(tmpfd);
+    write_header(tmpfp);
 
     /* copy archive, replacing matching files */
-    while (read(fd, buf, 16) == 16) {
+    while (fread(buf, 1, 16, fp) == 16) {
         if (buf[0] == '\0')
             break;
 
@@ -472,9 +475,9 @@ int nfiles;
                 /* replace with new file */
                 if (verbose)
                     printf("r - %s\n", name);
-                add_object(tmpfd, files[i]);
+                add_object(tmpfp, files[i]);
                 replaced[i] = 1;
-                lseek(fd, len, SEEK_CUR);  /* skip old data */
+                fseek(fp, len, SEEK_CUR);  /* skip old data */
                 goto next_entry;
             }
         }
@@ -484,10 +487,10 @@ int nfiles;
         if (!data)
             error("out of memory");
 
-        if (read(fd, data, len) != len)
+        if (fread(data, 1, len, fp) != len)
             error("read error");
 
-        write_entry(tmpfd, name, data, len);
+        write_entry(tmpfp, name, data, len);
         free(data);
 
 next_entry:
@@ -502,13 +505,13 @@ next_entry:
                 make_arname(arname, files[i]);
                 printf("a - %s\n", arname);
             }
-            add_object(tmpfd, files[i]);
+            add_object(tmpfp, files[i]);
         }
     }
 
-    write_end(tmpfd);
-    close(tmpfd);
-    close(fd);
+    write_end(tmpfp);
+    fclose(tmpfp);
+    fclose(fp);
 
     /* rename temp to archive */
     if (unlink(archive) < 0)
@@ -527,28 +530,29 @@ long
 htScanObj(filename)
 char *filename;
 {
-    int fd;
+    FILE *fp;
     long size;
     unsigned char *buf;
     long off;
     int reclen, rectype;
 
-    fd = open(filename, O_RDONLY);
-    if (fd < 0)
+    fp = fopen(filename, "rb");
+    if (fp == NULL)
         error2("cannot open", filename);
 
-    size = lseek(fd, 0, SEEK_END);
-    lseek(fd, 0, SEEK_SET);
+    fseek(fp, 0, SEEK_END);
+    size = ftell(fp);
+    fseek(fp, 0, SEEK_SET);
 
     buf = (unsigned char *)malloc(size);
     if (!buf)
         error("out of memory");
 
-    if (read(fd, buf, size) != size) {
+    if (fread(buf, 1, size, fp) != size) {
         free(buf);
         error2("read error", filename);
     }
-    close(fd);
+    fclose(fp);
 
     /* verify HiTech format */
     if (size < 13 || !HT_IS_HITECH(buf)) {
@@ -633,6 +637,8 @@ char *filename;
     return size;
 }
 
+unsigned char iobuf[512];
+
 /*
  * Create HiTech format library
  */
@@ -712,22 +718,22 @@ int nfiles;
 
     /* write module data to temp file */
     for (i = 0; i < nfiles; i++) {
-        int fd;
+        FILE *objfp;
         unsigned char *buf;
 
-        fd = open(files[i], O_RDONLY);
-        if (fd < 0)
+        objfp = fopen(files[i], "rb");
+        if (objfp == NULL)
             error2("cannot open", files[i]);
 
         buf = (unsigned char *)malloc(modsizes[i]);
         if (!buf)
             error("out of memory");
 
-        if (read(fd, buf, modsizes[i]) != modsizes[i]) {
+        if (fread(buf, 1, modsizes[i], objfp) != modsizes[i]) {
             free(buf);
             error2("read error", files[i]);
         }
-        close(fd);
+        fclose(objfp);
 
         fwrite(buf, 1, modsizes[i], tmpfp);
         free(buf);
@@ -777,10 +783,9 @@ int nfiles;
     /* append module data from temp file */
     tmpfp = fopen("wslib.tmp", "rb");
     if (tmpfp) {
-        unsigned char buf[512];
         int n;
-        while ((n = fread(buf, 1, 512, tmpfp)) > 0) {
-            fwrite(buf, 1, n, fp);
+        while ((n = fread(iobuf, 1, 512, tmpfp)) > 0) {
+            fwrite(iobuf, 1, n, fp);
         }
         fclose(tmpfp);
         unlink("wslib.tmp");
@@ -828,6 +833,8 @@ long size;
     return 0;
 }
 
+char namebuf[256];
+
 /*
  * list HiTech library contents
  */
@@ -835,7 +842,7 @@ void
 ht_list(archive)
 char *archive;
 {
-    int fd;
+    FILE *fp;
     long size;
     unsigned char *buf;
     unsigned short sym_size, num_mods;
@@ -843,24 +850,24 @@ char *archive;
     unsigned long moduleSize;
     long off;
     int i, j, len;
-    char name[256];
     long total = 0;
     int count = 0;
 
-    fd = open(archive, O_RDONLY);
-    if (fd < 0)
+    fp = fopen(archive, "rb");
+    if (fp == NULL)
         error2("cannot open", archive);
 
-    size = lseek(fd, 0, SEEK_END);
-    lseek(fd, 0, SEEK_SET);
+    fseek(fp, 0, SEEK_END);
+    size = ftell(fp);
+    fseek(fp, 0, SEEK_SET);
 
     buf = (unsigned char *)malloc(size);
     if (!buf)
         error("out of memory");
 
-    if (read(fd, buf, size) != size)
+    if (fread(buf, 1, size, fp) != size)
         error2("read error", archive);
-    close(fd);
+    fclose(fp);
 
     if (!is_hitech_lib(buf, size)) {
         free(buf);
@@ -883,16 +890,16 @@ char *archive;
 
         /* read module name */
         for (len = 0; len < 255 && off + len < size; len++) {
-            name[len] = buf[off + len];
-            if (name[len] == '\0') break;
+            namebuf[len] = buf[off + len];
+            if (namebuf[len] == '\0') break;
         }
-        name[len] = '\0';
+        namebuf[len] = '\0';
         off += len + 1;
 
         if (verbose)
-            printf("%6lu %s\n", moduleSize, name);
+            printf("%6lu %s\n", moduleSize, namebuf);
         else
-            printf("%s\n", name);
+            printf("%s\n", namebuf);
 
         total += moduleSize;
         count++;
@@ -920,7 +927,7 @@ char *archive;
 char **files;
 int nfiles;
 {
-    int fd, outfd;
+    FILE *fp, *outfp;
     long size;
     unsigned char *buf;
     unsigned short sym_size, num_mods;
@@ -928,25 +935,25 @@ int nfiles;
     unsigned long moduleSize;
     long symOff, modDataOff;
     int i, j, len;
-    char name[256];
     int extract_all;
 
     extract_all = (nfiles == 0);
 
-    fd = open(archive, O_RDONLY);
-    if (fd < 0)
+    fp = fopen(archive, "rb");
+    if (fp == NULL)
         error2("cannot open", archive);
 
-    size = lseek(fd, 0, SEEK_END);
-    lseek(fd, 0, SEEK_SET);
+    fseek(fp, 0, SEEK_END);
+    size = ftell(fp);
+    fseek(fp, 0, SEEK_SET);
 
     buf = (unsigned char *)malloc(size);
     if (!buf)
         error("out of memory");
 
-    if (read(fd, buf, size) != size)
+    if (fread(buf, 1, size, fp) != size)
         error2("read error", archive);
-    close(fd);
+    fclose(fp);
 
     if (!is_hitech_lib(buf, size)) {
         free(buf);
@@ -971,10 +978,10 @@ int nfiles;
 
         /* read module name */
         for (len = 0; len < 255 && symOff + len < size; len++) {
-            name[len] = buf[symOff + len];
-            if (name[len] == '\0') break;
+            namebuf[len] = buf[symOff + len];
+            if (namebuf[len] == '\0') break;
         }
-        name[len] = '\0';
+        namebuf[len] = '\0';
         symOff += len + 1;
 
         /* skip symbols */
@@ -985,19 +992,19 @@ int nfiles;
         }
 
         /* check if we should extract this module */
-        if (extract_all || name_in_list(name, files, nfiles)) {
+        if (extract_all || name_in_list(namebuf, files, nfiles)) {
             if (verbose)
-                printf("x - %s\n", name);
+                printf("x - %s\n", namebuf);
 
             if (modDataOff + moduleSize <= size) {
-                outfd = open(name, O_WRONLY | O_CREAT | O_TRUNC, 0666);
-                if (outfd < 0)
-                    error2("cannot create", name);
+                outfp = fopen(namebuf, "wb");
+                if (outfp == NULL)
+                    error2("cannot create", namebuf);
 
-                if (write(outfd, buf + modDataOff, moduleSize) != moduleSize)
+                if (fwrite(buf + modDataOff, 1, moduleSize, outfp) != moduleSize)
                     error("write error");
 
-                close(outfd);
+                fclose(outfp);
             }
         }
 
@@ -1051,15 +1058,17 @@ char **argv;
 
     /* detect archive type for read operations */
     if (mode == 2 || mode == 5) {
-        int fd;
+        FILE *fp;
         unsigned char hdr[20];
         int is_hitech = 0;
 
-        fd = open(archive, O_RDONLY);
-        if (fd >= 0) {
-            long size = lseek(fd, 0, SEEK_END);
-            lseek(fd, 0, SEEK_SET);
-            if (read(fd, hdr, 20) == 20) {
+        fp = fopen(archive, "rb");
+        if (fp != NULL) {
+            long size;
+            fseek(fp, 0, SEEK_END);
+            size = ftell(fp);
+            fseek(fp, 0, SEEK_SET);
+            if (fread(hdr, 1, 20, fp) == 20) {
                 unsigned short sym_size = hdr[0] | (hdr[1] << 8);
                 unsigned short num_mods = hdr[2] | (hdr[3] << 8);
                 long mod_off = 4 + sym_size;
@@ -1072,13 +1081,13 @@ char **argv;
                 else if (num_mods > 0 && num_mods < 1000 &&
                          mod_off > 4 && mod_off < size) {
                     unsigned char ident[13];
-                    lseek(fd, mod_off, SEEK_SET);
-                    if (read(fd, ident, 13) == 13 && HT_IS_HITECH(ident)) {
+                    fseek(fp, mod_off, SEEK_SET);
+                    if (fread(ident, 1, 13, fp) == 13 && HT_IS_HITECH(ident)) {
                         is_hitech = 1;
                     }
                 }
             }
-            close(fd);
+            fclose(fp);
         }
 
         if (is_hitech) {
@@ -1102,15 +1111,15 @@ char **argv;
     case 4:
         /* -cr: create if not exists, then replace */
         if (create_flag) {
-            int fd = open(archive, O_RDONLY);
-            if (fd < 0) {
+            FILE *fp = fopen(archive, "rb");
+            if (fp == NULL) {
                 /* archive doesn't exist, create it */
                 if (hitech_mode)
                     ht_create(archive, files, nfiles);
                 else
                     do_create(archive, files, nfiles);
             } else {
-                close(fd);
+                fclose(fp);
                 do_replace(archive, files, nfiles);
             }
         } else {

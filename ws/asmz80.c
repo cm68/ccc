@@ -613,7 +613,7 @@ struct instruct *isr;
 
 		emitbyte(0xCB);
 
-		emitbyte(&value);
+		emitbyte(value.num.b);
 
 		arg = T_HL_I;
 		if (peekchar() == ',') {
@@ -854,7 +854,7 @@ struct instruct *isr;
 
 	if (reg == T_A && arg == T_INDIR) {
 		emitbyte(isr->opcode);
-		emitbyte(&value);
+		emitbyte(value.num.b);
 	} else if (arg == T_C_I) {
 		emitbyte(0xED);
 		emitbyte(0x40 + (reg << 3));

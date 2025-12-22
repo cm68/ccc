@@ -20,33 +20,31 @@
 #ifdef linux
 #include <stdlib.h>
 #include <unistd.h>
-#include <fcntl.h>
 #include <stdio.h>
 #include <string.h>
 #include <signal.h>
-#define INIT
 #else
 #include <stdio.h>
-#include <fcntl.h>
-#include <unistd.h>
-#define INIT = 0
 #endif
 
 #include "asm.h"
 
-char verbose INIT;
-char m_flag INIT;
-char n_flag INIT;
-char no_relax INIT;  /* -8: no jp->jr relaxation (8080 mode) */
+#ifdef DEBUG
+char verbose;
+#endif
 
-char *progname INIT;
+char m_flag;
+char n_flag;
+char no_relax;  /* -8: no jp->jr relaxation (8080 mode) */
 
-int lineNum INIT;
+char *progname;
 
-int outfd;
-int tmpfd;
-int infd;
-int inbuffd;
+int lineNum;
+
+FILE *outfp;
+FILE *tmpfp;
+FILE *infp;
+FILE *inbuffp;
 
 /*
  * outputs a byte onto output file
@@ -57,9 +55,13 @@ void
 outbyte(out)
 char out;
 {
+
+#ifdef DEBUG
     if (verbose > 4)
         printf("outbyte: 0x%x\n", out);
-    write(outfd, &out, 1);
+#endif
+
+    fputc(out, outfp);
 }
 
 /*
@@ -71,9 +73,11 @@ void
 outtmp(tmp)
 char tmp;
 {
+#ifdef DEBUG
     if (verbose > 4)
         printf("outtmp: 0x%x\n", tmp);
-    write(tmpfd, &tmp, 1);
+#endif
+    fputc(tmp, tmpfp);
 }
 
 /*
@@ -119,6 +123,7 @@ unsigned char linebuf[256];
 unsigned char filebuf[FILEBUFSIZE+1];
 unsigned char *limit = 0;
 unsigned char *inptr = 0;
+char saw_eof;  /* set when CP/M EOF (^Z) encountered */
 
 extern char pass;
 
@@ -129,7 +134,10 @@ fillbuf()
 {
     int i;
 
-    i = read(infd, filebuf, FILEBUFSIZE);
+    if (saw_eof)
+        return 0;
+
+    i = fread(filebuf, 1, FILEBUFSIZE, infp);
     if (i < 0) {
         gripe("io error on read");
     } else if (i == 0) {
@@ -138,8 +146,8 @@ fillbuf()
         inptr = filebuf;
         limit = &filebuf[i];
     }
-    if (pass == 0 && infd == 0) {
-        write(inbuffd, filebuf, i);
+    if (pass == 0 && infp == stdin) {
+        fwrite(filebuf, 1, i, inbuffp);
     }
     return i;
 }
@@ -165,6 +173,12 @@ get_line()
             }
         }
         c = *inptr++;
+        /* CP/M EOF marker - treat rest of file as empty */
+        if (c == 0x1A) {
+            saw_eof = 1;
+            *lineptr++ = T_EOF;
+            break;
+        }
         *lineptr++ = c;
         if (c == '\n') {
             break;
@@ -208,8 +222,10 @@ peekchar()
     unsigned char c;
 
     c = *lineptr;
+#ifdef DEBUG
     if (verbose > 5)
         printf("peekchar: %d \'%c\'\n", c, (c > ' ') ? c : ' ');
+#endif
     return (c);
 }
 
@@ -239,6 +255,18 @@ void
 consume()
 {
     *lineptr = '\0';
+}
+
+/*
+ * reset input state for new pass
+ */
+void
+io_reset()
+{
+    saw_eof = 0;
+    lineptr = (unsigned char *)"";
+    inptr = 0;
+    limit = 0;
 }
 
 /*
@@ -354,7 +382,7 @@ char *b;
  * decimal: 20, 78
  * hex:  0x0, 0X00, 000H, 00h
  * octal: 06, 003, 05o, 06O
- * binary: 0b0001010 000100B 01010b
+ * binary: 0b0001010 0B0001010 01010B (lowercase 'b' suffix reserved for local labels)
  */
 unsigned long
 parsenum(s)
@@ -365,7 +393,7 @@ char *s;
     int base = 10;
     char c;
 
-    /* Check 0x/0b prefix FIRST (before trailing radix check) */
+    /* Check 0x/0b/0B prefix FIRST (before trailing radix check) */
     if (*s == '0' && s[1]) {
         c = s[1] | 0x20;
         if (c == 'x') {
@@ -376,14 +404,15 @@ char *s;
             s += 2;
         } else {
             /* Leading 0 but not 0x/0b - check for trailing radix or octal */
-            c = s[i-1] | 0x20;
-            if (c == 'h') {
+            c = s[i-1];
+            if (c == 'h' || c == 'H') {
                 base = 16;
                 s[i-1] = '\0';
-            } else if (c == 'o') {
+            } else if (c == 'o' || c == 'O') {
                 base = 8;
                 s[i-1] = '\0';
-            } else if (c == 'b') {
+            } else if (c == 'B') {
+                /* uppercase B only - lowercase b reserved for local labels */
                 base = 2;
                 s[i-1] = '\0';
             } else {
@@ -393,14 +422,15 @@ char *s;
         }
     } else {
         /* No leading 0 - check for trailing radix marker */
-        c = s[i-1] | 0x20;
-        if (c == 'h') {
+        c = s[i-1];
+        if (c == 'h' || c == 'H') {
             base = 16;
             s[i-1] = '\0';
-        } else if (c == 'o') {
+        } else if (c == 'o' || c == 'O') {
             base = 8;
             s[i-1] = '\0';
-        } else if (c == 'b') {
+        } else if (c == 'B') {
+            /* uppercase B only - lowercase b reserved for local labels */
             base = 2;
             s[i-1] = '\0';
         }
@@ -484,9 +514,11 @@ char **argv;
 				m_flag++;
 				break;
 
+#ifdef DEBUG
 			case 'v':
 				verbose++;
 				break;
+#endif
 
             case 'o':
                 outfile = *argv++;
@@ -499,16 +531,18 @@ char **argv;
 		}
 	}
 
+#ifdef DEBUG
     if (verbose) {
         printf("verbose: %d\n", verbose);
     }
+#endif
 
     if (infile) {
-        infd = open(infile, O_RDONLY);
-		if (infd == -1) {
+        infp = fopen(infile, "rb");
+		if (infp == NULL) {
             printf("cannot open source file %s\n", infile);
             exit(1);
-        } 
+        }
         if (!outfile) {
             outfile = malloc(strlen(infile)+2);
             strcpy(outfile, infile);
@@ -520,11 +554,11 @@ char **argv;
         }
     } else {
         /* no filename specified - use stdin */
-        infd = 0;
+        infp = stdin;
         if (!outfile)
             outfile = "a.out";
         sprintf(tmpbuf, "/tmp/atmi%d", getpid());
-        if ((inbuffd = open(tmpbuf, O_CREAT|O_TRUNC|O_RDWR, 0700)) == -1) {
+        if ((inbuffp = fopen(tmpbuf, "w+b")) == NULL) {
             printf("cannot open tmp input buffer file %s\n", tmpbuf);
             exit(1);
         }
@@ -533,7 +567,7 @@ char **argv;
 
 
 #ifdef linux
-    if (infd && !n_flag) {
+    if (infp != stdin && !n_flag) {
 	    /* Set up timeout handler to catch infinite loops */
 	    signal(SIGALRM, timeoutHdlr);
 	    alarm(5);  /* 5 second timeout */
@@ -541,34 +575,35 @@ char **argv;
 #endif
 
 	sprintf(tmpbuf, "/tmp/atm%d", getpid());
-    if ((tmpfd = open(tmpbuf, O_CREAT|O_TRUNC|O_RDWR, 0700)) == -1) {
+    if ((tmpfp = fopen(tmpbuf, "w+b")) == NULL) {
         printf("cannot open tmp file %s\n", tmpbuf);
         exit(1);
     }
     unlink(tmpbuf);
 
-    if ((outfd = creat(outfile, 0700)) == -1) {
-        printf("cannot open source file %s\n", outfile);
+    if ((outfp = fopen(outfile, "wb")) == NULL) {
+        printf("cannot create output file %s\n", outfile);
         exit(1);
     }
 
     assemble();
 
-    lseek(tmpfd, 0, SEEK_SET);
+    fseek(tmpfp, 0, SEEK_SET);
     do {
-        i = read(tmpfd, tmpbuf, sizeof(tmpbuf));
-        if (i == -1) {
+        i = fread(tmpbuf, 1, sizeof(tmpbuf), tmpfp);
+        if (i < 0) {
             perror("cannot read tmp file");
             exit(1);
         }
-        if (write(outfd, tmpbuf, i) != i) {
+        if (i > 0 && fwrite(tmpbuf, 1, i, outfp) != i) {
             perror("cannot write object file");
             exit(1);
         }
     } while (i == sizeof(tmpbuf));
-    close(outfd);
-    close(infd);
-    close(tmpfd);
+    fclose(outfp);
+    if (infp != stdin)
+        fclose(infp);
+    fclose(tmpfp);
     return 0;
 }
 

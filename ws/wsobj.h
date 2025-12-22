@@ -20,7 +20,7 @@
 /*
  * configuration byte flags (second byte of object file)
  */
-#define CONF_SYMLEN 0x07    /* mask: symbol length = (conf & 7) * 2 + 1 */
+#define CONF_SYMASK	0x07    /* mask: symbol length = (conf & 7) * 2 + 1 */
 #define CONF_INT32  0x08    /* 32-bit integers */
 #define CONF_LITTLE 0x10    /* little-endian */
 #define CONF_ALIGN  0x60    /* alignment mask */
@@ -29,8 +29,8 @@
 /*
  * common configurations
  */
-#define CONF_9      (CONF_LITTLE | (4 & CONF_SYMLEN))   /* 9 char syms */
-#define CONF_15     (CONF_LITTLE | (7 & CONF_SYMLEN))   /* 15 char syms */
+#define CONF_9      (CONF_LITTLE | (4 & CONF_SYMASK))   /* 9 char syms */
+#define CONF_15     (CONF_LITTLE | (7 & CONF_SYMASK))   /* 15 char syms */
 
 /*
  * maximum symbol length

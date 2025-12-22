@@ -5,49 +5,45 @@
  * Pass 1: assign addresses, resolve symbols
  * Pass 2: write output with relocations applied
  */
+#include <stdio.h>
+
 #ifdef linux
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
-#include <fcntl.h>
-#define INIT
-#else
-#include <stdio.h>
-#include <fcntl.h>
-#define INIT = 0
 #endif
 
 #include "wsobj.h"
+#include "hiobj.h"
 
 /* use wsSegNames from wsobj.c */
 
-char verbose INIT;
-char Vflag INIT;            /* -V: list object files */
-char rflag INIT;            /* -r: emit relocatable output */
-char sflag INIT;            /* -s: strip symbols */
-char out_symlen INIT;       /* output symbol length (0=15, set by -9) */
+char verbose;
+char Vflag;            /* -V: list object files */
+char rflag;            /* -r: emit relocatable output */
+char sflag;            /* -s: strip symbols */
+char out_symlen;       /* output symbol length (0=15, set by -9) */
 
 /*
  * segment base addresses (command line settable)
  */
-unsigned short text_base INIT;
-unsigned short data_base INIT;
-unsigned short bss_base INIT;
+unsigned short text_base;
+unsigned short data_base;
+unsigned short bss_base;
 
 /*
  * running totals for segment layout
  */
-unsigned short text_pos INIT;
-unsigned short data_pos INIT;
-unsigned short bss_pos INIT;
+unsigned short text_pos;
+unsigned short data_pos;
+unsigned short bss_pos;
 
 /*
  * final segment sizes
  */
-unsigned short total_text INIT;
-unsigned short total_data INIT;
-unsigned short total_bss INIT;
+unsigned short total_text;
+unsigned short total_data;
+unsigned short total_bss;
 
 /*
  * symbol table entry
@@ -61,15 +57,15 @@ struct symbol {
     struct symbol *next;
 };
 
-struct symbol *symbols INIT;
-int num_globals INIT;
+struct symbol *symbols;
+int num_globals;
 
 /*
  * object file info
  */
 struct object {
     char *name;
-    int fd;
+    FILE *fp;
     long file_base;                 /* base offset in file (for archives) */
     unsigned char config;
     unsigned char symlen;
@@ -90,11 +86,17 @@ struct object {
     long dataRelocOff;            /* file offset of data relocs */
     /* local symbol table for relocation lookups */
     struct symbol **symtab;         /* array indexed by symbol index */
+    /* Hi-Tech specific fields */
+    char is_hitech;                 /* 1 if Hi-Tech format */
+    unsigned char *ht_text;         /* collected text segment data */
+    unsigned char *ht_data;         /* collected data segment data */
+    struct ht_reloc *ht_relocs;     /* relocation array */
+    int ht_nrelocs;                 /* number of relocations */
     struct object *next;
 };
 
-struct object *objects INIT;
-struct object *objects_tail INIT;
+struct object *objects;
+struct object *objects_tail;
 
 /*
  * pending relocation for -r output
@@ -107,13 +109,45 @@ struct outreloc {
     struct outreloc *next;
 };
 
-struct outreloc *text_relocs INIT;
-struct outreloc *textRelocTl INIT;
-struct outreloc *data_relocs INIT;
-struct outreloc *dataRelocTl INIT;
+struct outreloc *text_relocs;
+struct outreloc *textRelocTl;
+struct outreloc *data_relocs;
+struct outreloc *dataRelocTl;
+
+/*
+ * Hi-Tech relocation entry for linking
+ */
+struct ht_reloc {
+    unsigned short offset;      /* offset within segment */
+    unsigned char type;         /* HT_RPSECT/HT_RNAME | HT_RBYTE/HT_RWORD */
+    unsigned char seg;          /* SEG_TEXT or SEG_DATA */
+    char target[16];            /* target name (symbol or psect) */
+};
 
 char *outfile = "a.out";
-int outfd INIT;
+FILE *outfp;
+
+/* linker-defined symbol patching */
+#define LSYM_LTEXT  0
+#define LSYM_HTEXT  1
+#define LSYM_LDATA  2
+#define LSYM_HDATA  3
+#define LSYM_LBSS   4
+#define LSYM_HBSS   5
+#define LSYM_COUNT  6
+
+struct lnksym {
+    char *name;
+    struct object *obj;
+    unsigned short off;
+} lnksyms[] = {
+    { "__Ltext", 0, 0 },
+    { "__Htext", 0, 0 },
+    { "__Ldata", 0, 0 },
+    { "__Hdata", 0, 0 },
+    { "__Lbss",  0, 0 },
+    { "__Hbss",  0, 0 },
+};
 
 void
 usage()
@@ -147,21 +181,22 @@ char *arg;
 }
 
 unsigned short
-read_word(fd)
-int fd;
+read_word(fp)
+FILE *fp;
 {
     unsigned char buf[2];
-    if (read(fd, buf, 2) != 2)
+    if (fread(buf, 1, 2, fp) != 2)
         error("read error");
     return buf[0] | (buf[1] << 8);
 }
 
 unsigned char
-read_byte(fd)
-int fd;
+read_byte(fp)
+FILE *fp;
 {
-    unsigned char c;
-    if (read(fd, &c, 1) != 1)
+    int c;
+    c = fgetc(fp);
+    if (c == EOF)
         error("read error");
     return c;
 }
@@ -170,7 +205,7 @@ void
 write_byte(b)
 unsigned char b;
 {
-    if (write(outfd, &b, 1) != 1)
+    if (fputc(b, outfp) == EOF)
         error("write error");
 }
 
@@ -268,35 +303,35 @@ char *name;
 {
     struct object *obj;
     struct symbol *gsym;
-    int fd;
+    FILE *fp;
     unsigned char magic;
     unsigned short val;
     unsigned char type, seg;
     char symname[16];
     int i;
 
-    fd = open(name, O_RDONLY);
-    if (fd < 0)
+    fp = fopen(name, "rb");
+    if (fp == NULL)
         error2("cannot open", name);
 
-    magic = read_byte(fd);
+    magic = read_byte(fp);
     if (magic != MAGIC)
         error2("bad magic", name);
 
     obj = (struct object *)malloc(sizeof(struct object));
     memset(obj, 0, sizeof(struct object));
     obj->name = name;
-    obj->fd = fd;
+    obj->fp = fp;
 
-    obj->config = read_byte(fd);
-    obj->symlen = (obj->config & CONF_SYMLEN) * 2 + 1;
-    obj->symtab_size = read_word(fd);
-    obj->text_size = read_word(fd);
-    obj->data_size = read_word(fd);
-    obj->bss_size = read_word(fd);
-    obj->heap_size = read_word(fd);
-    obj->hdr_text_off = read_word(fd);
-    obj->hdr_data_off = read_word(fd);
+    obj->config = read_byte(fp);
+    obj->symlen = (obj->config & CONF_SYMASK) * 2 + 1;
+    obj->symtab_size = read_word(fp);
+    obj->text_size = read_word(fp);
+    obj->data_size = read_word(fp);
+    obj->bss_size = read_word(fp);
+    obj->heap_size = read_word(fp);
+    obj->hdr_text_off = read_word(fp);
+    obj->hdr_data_off = read_word(fp);
 
     obj->num_syms = obj->symtab_size / (obj->symlen + 3);
 
@@ -321,13 +356,13 @@ char *name;
     obj->symtab = (struct symbol **)malloc(obj->num_syms * sizeof(struct symbol *));
 
     /* skip to symbol table: header(16) + text + data */
-    lseek(fd, 16 + obj->text_size + obj->data_size, SEEK_SET);
+    fseek(fp, 16 + obj->text_size + obj->data_size, SEEK_SET);
 
     /* read symbols */
     for (i = 0; i < obj->num_syms; i++) {
-        val = read_word(fd);
-        type = read_byte(fd);
-        read(fd, symname, obj->symlen);
+        val = read_word(fp);
+        type = read_byte(fp);
+        fread(symname, 1, obj->symlen, fp);
         symname[obj->symlen] = '\0';
         seg = decode_seg(type);
 
@@ -343,19 +378,19 @@ char *name;
     }
 
     /* record relocation table positions */
-    obj->textRelocOff = lseek(fd, 0, SEEK_CUR);
+    obj->textRelocOff = ftell(fp);
 
     /* skip text relocs to find data relocs */
     while (1) {
-        unsigned char b = read_byte(fd);
+        unsigned char b = read_byte(fp);
         if (b == 0) break;
-        if (b >= 32 && b < 64) read_byte(fd);  /* extended bump */
+        if (b >= 32 && b < 64) read_byte(fp);  /* extended bump */
         else if (b == 0xfc) {
-            b = read_byte(fd);
-            if (b >= 0x80) read_byte(fd);  /* extended symbol */
+            b = read_byte(fp);
+            if (b >= 0x80) read_byte(fp);  /* extended symbol */
         }
     }
-    obj->dataRelocOff = lseek(fd, 0, SEEK_CUR);
+    obj->dataRelocOff = ftell(fp);
 
     if (verbose > 1) {
         printf("  text_reloc@0x%lx data_reloc@0x%lx\n",
@@ -393,8 +428,8 @@ has_undefined()
  * any currently undefined symbol. returns 1 if it does.
  */
 int
-ar_needed(fd, base)
-int fd;
+ar_needed(fp, base)
+FILE *fp;
 long base;
 {
     unsigned char magic, config;
@@ -405,32 +440,32 @@ long base;
     int num_syms, i;
     int needed = 0;
 
-    lseek(fd, base, SEEK_SET);
+    fseek(fp, base, SEEK_SET);
 
-    magic = read_byte(fd);
+    magic = read_byte(fp);
     if (magic != MAGIC)
         return 0;
 
-    config = read_byte(fd);
-    symlen = (config & CONF_SYMLEN) * 2 + 1;
-    symtab_size = read_word(fd);
-    text_size = read_word(fd);
-    data_size = read_word(fd);
-    read_word(fd);  /* bss */
-    read_word(fd);  /* heap */
-    read_word(fd);  /* text_off */
-    read_word(fd);  /* data_off */
+    config = read_byte(fp);
+    symlen = (config & CONF_SYMASK) * 2 + 1;
+    symtab_size = read_word(fp);
+    text_size = read_word(fp);
+    data_size = read_word(fp);
+    read_word(fp);  /* bss */
+    read_word(fp);  /* heap */
+    read_word(fp);  /* text_off */
+    read_word(fp);  /* data_off */
 
     num_syms = symtab_size / (symlen + 3);
 
     /* seek to symbol table */
-    lseek(fd, base + 16 + text_size + data_size, SEEK_SET);
+    fseek(fp, base + 16 + text_size + data_size, SEEK_SET);
 
     /* scan symbols looking for definitions of undefined symbols */
     for (i = 0; i < num_syms; i++) {
-        read_word(fd);  /* skip value */
-        type = read_byte(fd);
-        read(fd, symname, symlen);
+        read_word(fp);  /* skip value */
+        type = read_byte(fp);
+        fread(symname, 1, symlen, fp);
         symname[symlen] = '\0';
         seg = decode_seg(type);
 
@@ -452,9 +487,9 @@ long base;
  * name is the archive member name for display
  */
 void
-read_ar_obj(arname, fd, base, membername)
+read_ar_obj(arname, fp, base, membername)
 char *arname;
-int fd;
+FILE *fp;
 long base;
 char *membername;
 {
@@ -467,9 +502,9 @@ char *membername;
     char *fullname;
     int i;
 
-    lseek(fd, base, SEEK_SET);
+    fseek(fp, base, SEEK_SET);
 
-    magic = read_byte(fd);
+    magic = read_byte(fp);
     if (magic != MAGIC) {
         fprintf(stderr, "wsld: %s(%s): bad magic\n", arname, membername);
         return;
@@ -482,18 +517,18 @@ char *membername;
     obj = (struct object *)malloc(sizeof(struct object));
     memset(obj, 0, sizeof(struct object));
     obj->name = fullname;
-    obj->fd = fd;
+    obj->fp = fp;
     obj->file_base = base;
 
-    obj->config = read_byte(fd);
-    obj->symlen = (obj->config & CONF_SYMLEN) * 2 + 1;
-    obj->symtab_size = read_word(fd);
-    obj->text_size = read_word(fd);
-    obj->data_size = read_word(fd);
-    obj->bss_size = read_word(fd);
-    obj->heap_size = read_word(fd);
-    obj->hdr_text_off = read_word(fd);
-    obj->hdr_data_off = read_word(fd);
+    obj->config = read_byte(fp);
+    obj->symlen = (obj->config & CONF_SYMASK) * 2 + 1;
+    obj->symtab_size = read_word(fp);
+    obj->text_size = read_word(fp);
+    obj->data_size = read_word(fp);
+    obj->bss_size = read_word(fp);
+    obj->heap_size = read_word(fp);
+    obj->hdr_text_off = read_word(fp);
+    obj->hdr_data_off = read_word(fp);
 
     obj->num_syms = obj->symtab_size / (obj->symlen + 3);
 
@@ -518,13 +553,13 @@ char *membername;
     obj->symtab = (struct symbol **)malloc(obj->num_syms * sizeof(struct symbol *));
 
     /* seek to symbol table */
-    lseek(fd, base + 16 + obj->text_size + obj->data_size, SEEK_SET);
+    fseek(fp, base + 16 + obj->text_size + obj->data_size, SEEK_SET);
 
     /* read symbols */
     for (i = 0; i < obj->num_syms; i++) {
-        val = read_word(fd);
-        type = read_byte(fd);
-        read(fd, symname, obj->symlen);
+        val = read_word(fp);
+        type = read_byte(fp);
+        fread(symname, 1, obj->symlen, fp);
         symname[obj->symlen] = '\0';
         seg = decode_seg(type);
 
@@ -539,19 +574,19 @@ char *membername;
     }
 
     /* record relocation table positions (relative to file, not archive) */
-    obj->textRelocOff = lseek(fd, 0, SEEK_CUR);
+    obj->textRelocOff = ftell(fp);
 
     /* skip text relocs to find data relocs */
     while (1) {
-        unsigned char b = read_byte(fd);
+        unsigned char b = read_byte(fp);
         if (b == 0) break;
-        if (b >= 32 && b < 64) read_byte(fd);
+        if (b >= 32 && b < 64) read_byte(fp);
         else if (b == 0xfc) {
-            b = read_byte(fd);
-            if (b >= 0x80) read_byte(fd);
+            b = read_byte(fp);
+            if (b >= 0x80) read_byte(fp);
         }
     }
-    obj->dataRelocOff = lseek(fd, 0, SEEK_CUR);
+    obj->dataRelocOff = ftell(fp);
 
     if (verbose > 1) {
         printf("  text_reloc@0x%lx data_reloc@0x%lx\n",
@@ -567,7 +602,7 @@ int
 read_archive(name)
 char *name;
 {
-    int fd;
+    FILE *fp;
     unsigned char buf[2];
     unsigned short magic16;
     long off;
@@ -576,11 +611,11 @@ char *name;
     int count = 0;
     long base;
 
-    fd = open(name, O_RDONLY);
-    if (fd < 0)
+    fp = fopen(name, "rb");
+    if (fp == NULL)
         error2("cannot open", name);
 
-    if (read(fd, buf, 2) != 2)
+    if (fread(buf, 1, 2, fp) != 2)
         error2("read error", name);
 
     magic16 = buf[0] | (buf[1] << 8);
@@ -594,8 +629,8 @@ char *name;
     off = 2;  /* skip magic */
     while (1) {
         /* read 14-byte name */
-        lseek(fd, off, SEEK_SET);
-        if (read(fd, membername, 14) != 14)
+        fseek(fp, off, SEEK_SET);
+        if (fread(membername, 1, 14, fp) != 14)
             break;
         membername[14] = '\0';
 
@@ -604,28 +639,629 @@ char *name;
             break;
 
         /* read length */
-        if (read(fd, buf, 2) != 2)
+        if (fread(buf, 1, 2, fp) != 2)
             break;
         len = buf[0] | (buf[1] << 8);
 
         base = off + 16;  /* object starts after name and length */
 
         /* check if this member satisfies any undefined symbol */
-        if (ar_needed(fd, base)) {
+        if (ar_needed(fp, base)) {
             if (verbose) {
                 printf("including %s(%s)\n", name, membername);
             }
-            read_ar_obj(name, fd, base, membername);
+            read_ar_obj(name, fp, base, membername);
             count++;
         }
 
         off = base + len;
     }
 
-    /* note: we don't close fd because objects keep it open for pass 2 */
+    /* note: we don't close fp because objects keep it open for pass 2 */
     if (count == 0) {
-        close(fd);
+        fclose(fp);
     }
+
+    return count;
+}
+
+/*
+ * map Hi-Tech psect name to Whitesmith segment
+ */
+unsigned char
+map_psect(psect)
+char *psect;
+{
+    if (strcmp(psect, "text") == 0)
+        return SEG_TEXT;
+    if (strcmp(psect, "data") == 0)
+        return SEG_DATA;
+    if (strcmp(psect, "bss") == 0)
+        return SEG_BSS;
+    /* empty or unknown psect maps to absolute */
+    return SEG_ABS;
+}
+
+/*
+ * read string from file (null-terminated, max len-1 chars)
+ */
+int
+read_str(fp, buf, maxlen)
+FILE *fp;
+char *buf;
+int maxlen;
+{
+    int i;
+    int c;
+    for (i = 0; i < maxlen - 1; i++) {
+        c = fgetc(fp);
+        if (c == EOF || c == '\0') {
+            buf[i] = '\0';
+            return i;
+        }
+        buf[i] = c;
+    }
+    buf[i] = '\0';
+    /* skip rest of string if truncated */
+    while ((c = fgetc(fp)) != EOF && c != '\0')
+        ;
+    return i;
+}
+
+/*
+ * read Hi-Tech object file
+ */
+void
+read_ht_object(name)
+char *name;
+{
+    struct object *obj;
+    FILE *fp;
+    unsigned char hdr[3];
+    int reclen, rectype;
+    long off, size;
+    unsigned char *textbuf = NULL;
+    unsigned char *databuf = NULL;
+    unsigned short textsize = 0, textalloc = 0;
+    unsigned short datasize = 0, dataalloc = 0;
+    unsigned short bsssize = 0;
+    struct ht_reloc *htrelocs = NULL;
+    int htreloc_alloc = 0, nhtrelocs = 0;
+    unsigned char cur_seg = SEG_TEXT;
+    unsigned short cur_off = 0;
+
+    fp = fopen(name, "rb");
+    if (fp == NULL)
+        error2("cannot open", name);
+
+    fseek(fp, 0, SEEK_END);
+    size = ftell(fp);
+    fseek(fp, 0, SEEK_SET);
+
+    obj = (struct object *)malloc(sizeof(struct object));
+    memset(obj, 0, sizeof(struct object));
+    obj->name = name;
+    obj->fp = fp;
+    obj->is_hitech = 1;
+
+    if (Vflag)
+        printf("%s (HiTech)\n", name);
+
+    /* add to object list */
+    if (!objects) {
+        objects = objects_tail = obj;
+    } else {
+        objects_tail->next = obj;
+        objects_tail = obj;
+    }
+
+    /* parse records */
+    off = 0;
+    while (off < size - 3) {
+        fseek(fp, off, SEEK_SET);
+        if (fread(hdr, 1, 3, fp) != 3)
+            break;
+
+        reclen = hdr[0] | (hdr[1] << 8);
+        rectype = hdr[2];
+        off += 3;
+
+        if (off + reclen > size)
+            break;
+
+        switch (rectype) {
+        case HT_IDENT:
+        case HT_PSECT:
+        case HT_START:
+            /* skip - not needed for linking */
+            break;
+
+        case HT_TEXT:
+            if (reclen >= 5) {
+                /* TEXT: 4-byte offset + psect name + data */
+                unsigned long toff;
+                char psect[64];
+                int plen, dlen;
+                unsigned char seg;
+                unsigned short endoff;
+
+                toff = read_word(fp);
+                toff |= (unsigned long)read_word(fp) << 16;
+                plen = read_str(fp, psect, 64);
+
+                dlen = reclen - 4 - plen - 1;
+                seg = map_psect(psect);
+                cur_seg = seg;
+                cur_off = (unsigned short)toff;
+
+                /* collect data into appropriate buffer */
+                if (seg == SEG_TEXT && dlen > 0) {
+                    endoff = cur_off + dlen;
+                    if (endoff > textsize) textsize = endoff;
+                    if (endoff > textalloc) {
+                        textalloc = endoff + 256;
+                        textbuf = realloc(textbuf, textalloc);
+                    }
+                    fread(textbuf + cur_off, 1, dlen, fp);
+                } else if (seg == SEG_DATA && dlen > 0) {
+                    endoff = cur_off + dlen;
+                    if (endoff > datasize) datasize = endoff;
+                    if (endoff > dataalloc) {
+                        dataalloc = endoff + 256;
+                        databuf = realloc(databuf, dataalloc);
+                    }
+                    fread(databuf + cur_off, 1, dlen, fp);
+                } else if (seg == SEG_BSS) {
+                    endoff = cur_off + dlen;
+                    if (endoff > bsssize) bsssize = endoff;
+                }
+            }
+            break;
+
+        case HT_RELOC:
+            /* RELOC records apply to most recent TEXT segment */
+            fseek(fp, off, SEEK_SET);
+            {
+                long rend = off + reclen;
+                while (ftell(fp) < rend) {
+                    unsigned short reloff;
+                    unsigned char reltype;
+                    char target[64];
+
+                    reloff = read_word(fp);
+                    reltype = read_byte(fp);
+                    read_str(fp, target, 64);
+
+                    /* grow reloc array if needed */
+                    if (nhtrelocs >= htreloc_alloc) {
+                        htreloc_alloc = htreloc_alloc ? htreloc_alloc * 2 : 32;
+                        htrelocs = realloc(htrelocs,
+                            htreloc_alloc * sizeof(struct ht_reloc));
+                    }
+
+                    /* record relocation */
+                    htrelocs[nhtrelocs].offset = cur_off + reloff;
+                    htrelocs[nhtrelocs].type = reltype;
+                    htrelocs[nhtrelocs].seg = cur_seg;
+                    strncpy(htrelocs[nhtrelocs].target, target, 15);
+                    htrelocs[nhtrelocs].target[15] = '\0';
+                    nhtrelocs++;
+                }
+            }
+            break;
+
+        case HT_SYMBOL:
+            /* parse symbol record */
+            fseek(fp, off, SEEK_SET);
+            {
+                long send = off + reclen;
+                while (ftell(fp) < send) {
+                    unsigned long val;
+                    unsigned short flags;
+                    char psect[64], symname[64];
+                    unsigned char seg, type;
+
+                    val = read_word(fp);
+                    val |= (unsigned long)read_word(fp) << 16;
+                    flags = read_word(fp);
+                    read_str(fp, psect, 64);
+                    read_str(fp, symname, 64);
+
+                    if (symname[0] == '\0')
+                        continue;
+
+                    /* overflow check for 32->16 bit */
+                    if (val > 0xFFFF && verbose) {
+                        fprintf(stderr, "wsld: warning: %s value truncated\n",
+                                symname);
+                    }
+
+                    /* determine segment */
+                    if ((flags & 0x0f) == 6) {
+                        seg = SEG_EXT;  /* undefined/external */
+                    } else if (flags & HT_F_ABS) {
+                        seg = SEG_ABS;
+                    } else {
+                        seg = map_psect(psect);
+                    }
+
+                    /* construct type byte for WS compatibility */
+                    type = 0;
+                    if (flags & HT_F_GLOBAL)
+                        type |= 0x08;  /* global flag */
+                    switch (seg) {
+                    case SEG_ABS:  type |= 4; break;
+                    case SEG_TEXT: type |= 5; break;
+                    case SEG_DATA: type |= 6; break;
+                    case SEG_BSS:  type |= 7; break;
+                    }
+
+                    /* register symbol (only globals for now) */
+                    if (flags & HT_F_GLOBAL) {
+                        sym_define(symname, (unsigned short)val, seg, type, obj);
+                    }
+
+                    if (verbose > 1) {
+                        printf("  %s: val=0x%04x seg=%s%s\n",
+                               symname, (unsigned short)val,
+                               wsSegNames[seg],
+                               (flags & HT_F_GLOBAL) ? " global" : "");
+                    }
+                }
+            }
+            break;
+
+        case HT_END:
+            goto done_parsing;
+        }
+
+        off += reclen;
+    }
+
+done_parsing:
+    /* store collected data in object */
+    obj->ht_text = textbuf;
+    obj->ht_data = databuf;
+    obj->text_size = textsize;
+    obj->data_size = datasize;
+    obj->bss_size = bsssize;
+    obj->ht_relocs = htrelocs;
+    obj->ht_nrelocs = nhtrelocs;
+
+    /* close file - data is now in memory buffers */
+    fclose(fp);
+    obj->fp = NULL;
+
+    if (verbose) {
+        printf("%s: text=%d data=%d bss=%d relocs=%d\n",
+               name, textsize, datasize, bsssize, nhtrelocs);
+    }
+}
+
+/*
+ * read Hi-Tech object from memory buffer (library member)
+ */
+void
+read_ht_ar_obj(arname, fp, base, msize, membername)
+char *arname;
+FILE *fp;
+long base;
+long msize;
+char *membername;
+{
+    struct object *obj;
+    unsigned char hdr[3];
+    int reclen, rectype;
+    long off, endpos;
+    unsigned char *textbuf = NULL;
+    unsigned char *databuf = NULL;
+    unsigned short textsize = 0, textalloc = 0;
+    unsigned short datasize = 0, dataalloc = 0;
+    unsigned short bsssize = 0;
+    struct ht_reloc *htrelocs = NULL;
+    int htreloc_alloc = 0, nhtrelocs = 0;
+    unsigned char cur_seg = SEG_TEXT;
+    unsigned short cur_off = 0;
+    char *fullname;
+
+    /* create "archive(member)" name */
+    fullname = malloc(strlen(arname) + strlen(membername) + 3);
+    sprintf(fullname, "%s(%s)", arname, membername);
+
+    obj = (struct object *)malloc(sizeof(struct object));
+    memset(obj, 0, sizeof(struct object));
+    obj->name = fullname;
+    obj->fp = fp;
+    obj->file_base = base;
+    obj->is_hitech = 1;
+
+    if (Vflag)
+        printf("%s (HiTech)\n", fullname);
+
+    /* add to object list */
+    if (!objects) {
+        objects = objects_tail = obj;
+    } else {
+        objects_tail->next = obj;
+        objects_tail = obj;
+    }
+
+    endpos = base + msize;
+    off = base;
+
+    /* parse records */
+    while (off < endpos - 3) {
+        fseek(fp, off, SEEK_SET);
+        if (fread(hdr, 1, 3, fp) != 3)
+            break;
+
+        reclen = hdr[0] | (hdr[1] << 8);
+        rectype = hdr[2];
+        off += 3;
+
+        if (off + reclen > endpos)
+            break;
+
+        switch (rectype) {
+        case HT_IDENT:
+        case HT_PSECT:
+        case HT_START:
+            break;
+
+        case HT_TEXT:
+            if (reclen >= 5) {
+                unsigned long toff;
+                char psect[64];
+                int plen, dlen;
+                unsigned char seg;
+                unsigned short endoff;
+
+                toff = read_word(fp);
+                toff |= (unsigned long)read_word(fp) << 16;
+                plen = read_str(fp, psect, 64);
+
+                dlen = reclen - 4 - plen - 1;
+                seg = map_psect(psect);
+                cur_seg = seg;
+                cur_off = (unsigned short)toff;
+
+                if (seg == SEG_TEXT && dlen > 0) {
+                    endoff = cur_off + dlen;
+                    if (endoff > textsize) textsize = endoff;
+                    if (endoff > textalloc) {
+                        textalloc = endoff + 256;
+                        textbuf = realloc(textbuf, textalloc);
+                    }
+                    fread(textbuf + cur_off, 1, dlen, fp);
+                } else if (seg == SEG_DATA && dlen > 0) {
+                    endoff = cur_off + dlen;
+                    if (endoff > datasize) datasize = endoff;
+                    if (endoff > dataalloc) {
+                        dataalloc = endoff + 256;
+                        databuf = realloc(databuf, dataalloc);
+                    }
+                    fread(databuf + cur_off, 1, dlen, fp);
+                } else if (seg == SEG_BSS) {
+                    endoff = cur_off + dlen;
+                    if (endoff > bsssize) bsssize = endoff;
+                }
+            }
+            break;
+
+        case HT_RELOC:
+            fseek(fp, off, SEEK_SET);
+            {
+                long rend = off + reclen;
+                while (ftell(fp) < rend) {
+                    unsigned short reloff;
+                    unsigned char reltype;
+                    char target[64];
+
+                    reloff = read_word(fp);
+                    reltype = read_byte(fp);
+                    read_str(fp, target, 64);
+
+                    if (nhtrelocs >= htreloc_alloc) {
+                        htreloc_alloc = htreloc_alloc ? htreloc_alloc * 2 : 32;
+                        htrelocs = realloc(htrelocs,
+                            htreloc_alloc * sizeof(struct ht_reloc));
+                    }
+
+                    htrelocs[nhtrelocs].offset = cur_off + reloff;
+                    htrelocs[nhtrelocs].type = reltype;
+                    htrelocs[nhtrelocs].seg = cur_seg;
+                    strncpy(htrelocs[nhtrelocs].target, target, 15);
+                    htrelocs[nhtrelocs].target[15] = '\0';
+                    nhtrelocs++;
+                }
+            }
+            break;
+
+        case HT_SYMBOL:
+            fseek(fp, off, SEEK_SET);
+            {
+                long send = off + reclen;
+                while (ftell(fp) < send) {
+                    unsigned long val;
+                    unsigned short flags;
+                    char psect[64], symname[64];
+                    unsigned char seg, type;
+
+                    val = read_word(fp);
+                    val |= (unsigned long)read_word(fp) << 16;
+                    flags = read_word(fp);
+                    read_str(fp, psect, 64);
+                    read_str(fp, symname, 64);
+
+                    if (symname[0] == '\0')
+                        continue;
+
+                    if ((flags & 0x0f) == 6) {
+                        seg = SEG_EXT;
+                    } else if (flags & HT_F_ABS) {
+                        seg = SEG_ABS;
+                    } else {
+                        seg = map_psect(psect);
+                    }
+
+                    type = 0;
+                    if (flags & HT_F_GLOBAL)
+                        type |= 0x08;
+                    switch (seg) {
+                    case SEG_ABS:  type |= 4; break;
+                    case SEG_TEXT: type |= 5; break;
+                    case SEG_DATA: type |= 6; break;
+                    case SEG_BSS:  type |= 7; break;
+                    }
+
+                    if (flags & HT_F_GLOBAL) {
+                        sym_define(symname, (unsigned short)val, seg, type, obj);
+                    }
+                }
+            }
+            break;
+
+        case HT_END:
+            goto done_ar_parsing;
+        }
+
+        off += reclen;
+    }
+
+done_ar_parsing:
+    obj->ht_text = textbuf;
+    obj->ht_data = databuf;
+    obj->text_size = textsize;
+    obj->data_size = datasize;
+    obj->bss_size = bsssize;
+    obj->ht_relocs = htrelocs;
+    obj->ht_nrelocs = nhtrelocs;
+
+    /* don't store fp - library manages it, data is in memory */
+    obj->fp = NULL;
+
+    if (verbose) {
+        printf("%s: text=%d data=%d bss=%d relocs=%d\n",
+               fullname, textsize, datasize, bsssize, nhtrelocs);
+    }
+}
+
+/*
+ * check if Hi-Tech library module defines any currently undefined symbol
+ * reads from symbol directory in library header
+ */
+int
+ht_ar_needed(fp, symoff, symcnt)
+FILE *fp;
+long symoff;
+int symcnt;
+{
+    int i;
+    unsigned char symflag;
+    char symname[64];
+    int c;
+
+    fseek(fp, symoff, SEEK_SET);
+
+    for (i = 0; i < symcnt; i++) {
+        symflag = fgetc(fp);
+
+        /* read symbol name */
+        read_str(fp, symname, 64);
+
+        /* check if this is a defined symbol that we need */
+        if (symflag == HT_SYM_DEF || symflag == HT_SYM_COMMON) {
+            if (is_undefined(symname)) {
+                if (verbose) {
+                    printf("  %s satisfies undefined\n", symname);
+                }
+                return 1;
+            }
+        }
+    }
+    return 0;
+}
+
+/*
+ * process Hi-Tech library file
+ * returns number of modules included
+ */
+int
+read_ht_archive(name)
+char *name;
+{
+    FILE *fp;
+    unsigned char buf[16];
+    unsigned short sym_size, num_mods;
+    long symoff, modoff;
+    int i, count = 0;
+
+    fp = fopen(name, "rb");
+    if (fp == NULL)
+        error2("cannot open", name);
+
+    /* read library header */
+    if (fread(buf, 1, 4, fp) != 4)
+        error2("read error", name);
+
+    sym_size = buf[0] | (buf[1] << 8);
+    num_mods = buf[2] | (buf[3] << 8);
+
+    if (verbose) {
+        printf("scanning HiTech library %s: %d modules\n", name, num_mods);
+    }
+
+    modoff = 4 + sym_size;  /* module data starts after symbol directory */
+    symoff = 4;             /* symbol directory starts after header */
+
+    /* scan each module */
+    for (i = 0; i < num_mods; i++) {
+        unsigned short symSize, symCnt;
+        unsigned long moduleSize;
+        char moduleName[256];
+        long mod_symoff;
+        int j;
+
+        fseek(fp, symoff, SEEK_SET);
+        if (fread(buf, 1, 12, fp) != 12)
+            break;
+
+        symSize = buf[0] | (buf[1] << 8);
+        symCnt = buf[2] | (buf[3] << 8);
+        moduleSize = buf[4] | (buf[5] << 8) |
+                     ((unsigned long)buf[6] << 16) |
+                     ((unsigned long)buf[7] << 24);
+        symoff += 12;
+
+        /* read module name */
+        read_str(fp, moduleName, 256);
+        symoff += strlen(moduleName) + 1;
+
+        mod_symoff = symoff;  /* remember symbol entries offset */
+
+        /* check if this module is needed */
+        if (ht_ar_needed(fp, mod_symoff, symCnt)) {
+            if (verbose) {
+                printf("including %s(%s)\n", name, moduleName);
+            }
+            read_ht_ar_obj(name, fp, modoff, moduleSize, moduleName);
+            count++;
+        }
+
+        /* skip past symbol entries */
+        fseek(fp, mod_symoff, SEEK_SET);
+        for (j = 0; j < symCnt; j++) {
+            fgetc(fp);  /* flags */
+            while (fgetc(fp) != '\0')  /* name */
+                ;
+        }
+        symoff = ftell(fp);
+
+        modoff += moduleSize;
+    }
+
+    /* always close - objects have data in memory buffers */
+    fclose(fp);
 
     return count;
 }
@@ -658,6 +1294,19 @@ pass1_layout()
     total_text = text_pos;
     total_data = data_pos;
     total_bss = bss_pos;
+
+    /* find linker-defined symbols and save original offsets BEFORE resolution */
+    {
+        int i;
+        for (i = 0; i < LSYM_COUNT; i++) {
+            s = sym_lookup(lnksyms[i].name);
+            if (s && s->seg == SEG_DATA && s->obj) {
+                lnksyms[i].obj = s->obj;
+                /* original value is text_size + data_offset */
+                lnksyms[i].off = s->value - s->obj->text_size;
+            }
+        }
+    }
 
     /* now resolve all symbol addresses */
     {
@@ -694,6 +1343,29 @@ pass1_layout()
     }
     if (undef_count && !rflag)
         exit(1);
+    }
+
+    /* set linker symbol values and change to absolute */
+    {
+        unsigned short vals[LSYM_COUNT];
+        int i;
+
+        vals[LSYM_LTEXT] = text_base;
+        vals[LSYM_HTEXT] = text_base + total_text;
+        vals[LSYM_LDATA] = data_base + total_text;
+        vals[LSYM_HDATA] = data_base + total_text + total_data;
+        vals[LSYM_LBSS]  = bss_base + total_text + total_data;
+        vals[LSYM_HBSS]  = bss_base + total_text + total_data + total_bss;
+
+        for (i = 0; i < LSYM_COUNT; i++) {
+            s = sym_lookup(lnksyms[i].name);
+            if (s) {
+                s->value = vals[i];
+                s->seg = SEG_ABS;
+                if (verbose)
+                    printf("%s = 0x%04x\n", lnksyms[i].name, vals[i]);
+            }
+        }
     }
 }
 
@@ -789,19 +1461,19 @@ struct outreloc *rlist;
 
     for (r = rlist; r; r = r->next) {
         bump = r->offset - last;
-        wsEncBump(outfd, bump);
+        wsEncBump(outfp, bump);
 
         if (r->sym) {
             /* symbol reference */
             int idx = findSymIdx(r->sym);
-            wsEncReloc(outfd, -1, idx, r->hilo);
+            wsEncReloc(outfp, -1, idx, r->hilo);
         } else {
             /* segment reference */
-            wsEncReloc(outfd, r->seg, 0, r->hilo);
+            wsEncReloc(outfp, r->seg, 0, r->hilo);
         }
         last = r->offset + (r->hilo ? 1 : 2);
     }
-    wsEndReloc(outfd);
+    wsEndReloc(outfp);
 }
 
 /*
@@ -831,17 +1503,17 @@ int is_text;
     int hilo;           /* 0=word, 1=lo, 2=hi */
     int size;           /* relocation size: 2 for word, 1 for lo/hi */
 
-    lseek(obj->fd, reloc_off, SEEK_SET);
+    fseek(obj->fp, reloc_off, SEEK_SET);
 
     while (1) {
-        b = read_byte(obj->fd);
+        b = read_byte(obj->fp);
         if (b == 0) break;  /* end of relocs */
 
         /* decode bump */
         if (b < 32) {
             bump = b;
         } else if (b < 64) {
-            bump = ((b - 32) << 8) + read_byte(obj->fd) + 32;
+            bump = ((b - 32) << 8) + read_byte(obj->fp) + 32;
         } else {
             /* control byte - determine relocation type */
             add = 0;
@@ -911,11 +1583,11 @@ int is_text;
             } else if ((b & ~3) == 0xfc) {
                 /* extended symbol encoding - low 2 bits are hilo */
                 hilo = b & 3;
-                b = read_byte(obj->fd);
+                b = read_byte(obj->fp);
                 if (b < 0x80) {
                     idx = b + 47 - 4;
                 } else {
-                    idx = ((b - 0x80) << 8) + read_byte(obj->fd) + 175 - 4;
+                    idx = ((b - 0x80) << 8) + read_byte(obj->fp) + 175 - 4;
                 }
                 if (idx < obj->num_syms) {
                     s = obj->symtab[idx];
@@ -993,6 +1665,112 @@ int is_text;
 }
 
 /*
+ * apply Hi-Tech relocations to segment data
+ */
+void
+apply_ht_relocs(obj, buf, seg, seg_size, seg_base)
+struct object *obj;
+unsigned char *buf;
+unsigned char seg;           /* SEG_TEXT or SEG_DATA */
+unsigned short seg_size;
+unsigned short seg_base;
+{
+    int i;
+    struct symbol *s;
+    unsigned short target_val;
+    unsigned short pos;
+    int rsize;
+
+    for (i = 0; i < obj->ht_nrelocs; i++) {
+        struct ht_reloc *r = &obj->ht_relocs[i];
+
+        if (r->seg != seg)
+            continue;
+
+        pos = r->offset;
+        if (pos >= seg_size)
+            continue;
+
+        rsize = r->type & HT_RSIZE_MASK;
+
+        /* get target value */
+        if (r->type & HT_RPSECT) {
+            /* psect-relative: target is segment name */
+            unsigned char tseg = map_psect(r->target);
+            switch (tseg) {
+            case SEG_TEXT:
+                target_val = text_base + obj->text_off;
+                break;
+            case SEG_DATA:
+                target_val = data_base + total_text + obj->data_off;
+                break;
+            case SEG_BSS:
+                target_val = bss_base + total_text + total_data + obj->bss_off;
+                break;
+            default:
+                target_val = 0;
+            }
+        } else {
+            /* symbol reference: lookup target name */
+            s = sym_lookup(r->target);
+            if (s == NULL) {
+                fprintf(stderr, "wsld: undefined symbol: %s\n", r->target);
+                target_val = 0;
+            } else {
+                target_val = s->value;
+            }
+        }
+
+        /* apply relocation */
+        if (rsize == HT_RWORD && pos + 1 < seg_size) {
+            unsigned short val = buf[pos] | (buf[pos+1] << 8);
+            val += target_val;
+            buf[pos] = val & 0xff;
+            buf[pos+1] = val >> 8;
+        } else if (rsize == HT_RBYTE) {
+            buf[pos] += target_val & 0xff;
+        }
+
+        if (verbose > 2) {
+            printf("  ht_reloc @%04x += %04x (%s)\n",
+                   seg_base + pos, target_val, r->target);
+        }
+    }
+}
+
+/*
+ * patch linker-defined symbols in data segment
+ * these are symbols like __Lbss/__Hbss that need their values written
+ * to the data location where they are defined
+ */
+void
+patch_linker_syms(obj, buf, seg_size)
+struct object *obj;
+unsigned char *buf;
+int seg_size;
+{
+    unsigned short vals[LSYM_COUNT];
+    int i;
+
+    vals[LSYM_LTEXT] = text_base;
+    vals[LSYM_HTEXT] = text_base + total_text;
+    vals[LSYM_LDATA] = data_base + total_text;
+    vals[LSYM_HDATA] = data_base + total_text + total_data;
+    vals[LSYM_LBSS]  = bss_base + total_text + total_data;
+    vals[LSYM_HBSS]  = bss_base + total_text + total_data + total_bss;
+
+    for (i = 0; i < LSYM_COUNT; i++) {
+        if (lnksyms[i].obj == obj && lnksyms[i].off + 1 < seg_size) {
+            buf[lnksyms[i].off] = vals[i] & 0xff;
+            buf[lnksyms[i].off + 1] = vals[i] >> 8;
+            if (verbose > 1)
+                printf("  patched %s at data+0x%04x = 0x%04x\n",
+                       lnksyms[i].name, lnksyms[i].off, vals[i]);
+        }
+    }
+}
+
+/*
  * copy segment data with relocations applied
  */
 void
@@ -1013,16 +1791,35 @@ int is_text;
     if (!buf)
         error("out of memory");
 
-    /* read segment data */
-    lseek(obj->fd, obj->file_base + seg_start, SEEK_SET);
-    if (read(obj->fd, buf, seg_size) != seg_size)
-        error("read error");
+    if (obj->is_hitech) {
+        /* Hi-Tech: copy from collected segment buffer */
+        if (is_text) {
+            if (obj->ht_text)
+                memcpy(buf, obj->ht_text, seg_size);
+            else
+                memset(buf, 0, seg_size);
+            apply_ht_relocs(obj, buf, SEG_TEXT, seg_size, seg_base);
+        } else {
+            if (obj->ht_data)
+                memcpy(buf, obj->ht_data, seg_size);
+            else
+                memset(buf, 0, seg_size);
+            apply_ht_relocs(obj, buf, SEG_DATA, seg_size, seg_base);
+            patch_linker_syms(obj, buf, seg_size);
+        }
+    } else {
+        /* Whitesmith: read from file */
+        fseek(obj->fp, obj->file_base + seg_start, SEEK_SET);
+        if (fread(buf, 1, seg_size, obj->fp) != seg_size)
+            error("read error");
 
-    /* apply relocations */
-    apply_relocs(obj, reloc_off, buf, seg_size, seg_base, is_text);
+        apply_relocs(obj, reloc_off, buf, seg_size, seg_base, is_text);
+        if (!is_text)
+            patch_linker_syms(obj, buf, seg_size);
+    }
 
     /* write to output */
-    if (write(outfd, buf, seg_size) != seg_size)
+    if (fwrite(buf, 1, seg_size, outfp) != seg_size)
         error("write error");
 
     free(buf);
@@ -1041,8 +1838,8 @@ pass2_output()
     /* default to 15-char symbols */
     symlen = out_symlen ? out_symlen : 15;
 
-    outfd = open(outfile, O_WRONLY | O_CREAT | O_TRUNC, 0666);
-    if (outfd < 0)
+    outfp = fopen(outfile, "wb");
+    if (outfp == NULL)
         error2("cannot create", outfile);
 
     /* write header */
@@ -1111,7 +1908,7 @@ pass2_output()
         write_relocs(data_relocs);
     }
 
-    close(outfd);
+    fclose(outfp);
 }
 
 /*
@@ -1184,28 +1981,101 @@ char *s;
 }
 
 /*
- * check if file is an archive (by reading magic)
+ * check if file is Hi-Tech object format
+ * looks for IDENT record: 0x0A 0x00 0x07 (len=10, type=7)
+ */
+int
+is_hitech_obj(name)
+char *name;
+{
+    FILE *fp;
+    unsigned char buf[3];
+    int result = 0;
+
+    fp = fopen(name, "rb");
+    if (fp == NULL)
+        return 0;
+
+    if (fread(buf, 1, 3, fp) == 3) {
+        result = HT_IS_HITECH(buf);
+    }
+    fclose(fp);
+    return result;
+}
+
+/*
+ * check if file is Hi-Tech library
+ * libraries have: 4-byte header, then module data starting with IDENT record
+ */
+int
+is_hitech_lib(name)
+char *name;
+{
+    FILE *fp;
+    unsigned char buf[20];
+    unsigned short sym_size, num_mods;
+    long size, mod_off;
+    int result = 0;
+
+    fp = fopen(name, "rb");
+    if (fp == NULL)
+        return 0;
+
+    fseek(fp, 0, SEEK_END);
+    size = ftell(fp);
+    fseek(fp, 0, SEEK_SET);
+
+    if (fread(buf, 1, 4, fp) == 4) {
+        sym_size = buf[0] | (buf[1] << 8);
+        num_mods = buf[2] | (buf[3] << 8);
+        mod_off = 4 + sym_size;
+
+        /* sanity check and verify first module is HT object */
+        if (num_mods > 0 && num_mods < 1000 &&
+            mod_off > 4 && mod_off < size) {
+            unsigned char ident[3];
+            fseek(fp, mod_off, SEEK_SET);
+            if (fread(ident, 1, 3, fp) == 3 && HT_IS_HITECH(ident)) {
+                result = 1;
+            }
+        }
+    }
+    fclose(fp);
+    return result;
+}
+
+/*
+ * check if file is an archive
+ * returns: 0 = not archive, 1 = WS archive, 2 = HT library
  */
 int
 is_archive(name)
 char *name;
 {
-    int fd;
+    FILE *fp;
     unsigned char buf[2];
     unsigned short magic16;
 
-    fd = open(name, O_RDONLY);
-    if (fd < 0)
+    /* check WS archive first (quick magic check) */
+    fp = fopen(name, "rb");
+    if (fp == NULL)
         return 0;
 
-    if (read(fd, buf, 2) != 2) {
-        close(fd);
+    if (fread(buf, 1, 2, fp) != 2) {
+        fclose(fp);
         return 0;
     }
-    close(fd);
+    fclose(fp);
 
     magic16 = buf[0] | (buf[1] << 8);
-    return magic16 == AR_MAGIC;
+    if (magic16 == AR_MAGIC)
+        return 1;
+
+    /* check Hi-Tech library */
+    if (is_hitech_lib(name))
+        return 2;
+
+    return 0;
 }
 
 /*
@@ -1217,8 +2087,8 @@ struct infile {
     struct infile *next;
 };
 
-struct infile *infiles INIT;
-struct infile *infiles_tail INIT;
+struct infile *infiles;
+struct infile *infiles_tail;
 
 void
 add_infile(name, is_ar)
@@ -1328,8 +2198,12 @@ char **argv;
     /* process input files, handling archives specially */
     /* first load all .o files unconditionally */
     for (f = infiles; f; f = f->next) {
-        if (!f->is_archive) {
-            read_object(f->name);
+        if (f->is_archive == 0) {
+            /* object file - auto-detect format */
+            if (is_hitech_obj(f->name))
+                read_ht_object(f->name);
+            else
+                read_object(f->name);
         }
     }
 
@@ -1338,8 +2212,12 @@ char **argv;
     do {
         added = 0;
         for (f = infiles; f; f = f->next) {
-            if (f->is_archive) {
+            if (f->is_archive == 1) {
+                /* Whitesmith archive */
                 added += read_archive(f->name);
+            } else if (f->is_archive == 2) {
+                /* Hi-Tech library */
+                added += read_ht_archive(f->name);
             }
         }
         pass++;
@@ -1367,7 +2245,8 @@ char **argv;
     {
         struct object *obj;
         for (obj = objects; obj; obj = obj->next) {
-            close(obj->fd);
+            if (obj->fp)
+                fclose(obj->fp);
         }
     }
 

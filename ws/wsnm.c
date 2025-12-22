@@ -8,18 +8,14 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
-#include <fcntl.h>
 #else
 #include <stdio.h>
-#include <fcntl.h>
-#include <unistd.h>
 #endif
 
 #include "wsobj.h"
-#include "hitechobj.h"
+#include "hiobj.h"
 
-int fd;
+FILE *fp;
 unsigned char *filebuf;
 long filesize;
 int bflag;      /* -b: hex dump segments */
@@ -239,8 +235,10 @@ struct usym {
 struct uobj {
     unsigned char *text;
     unsigned long textsize;
+    unsigned long textbase;     /* original base address for .org */
     unsigned char *data;
     unsigned long datasize;
+    unsigned long database;     /* original base address for .org */
     unsigned long bsssize;
     struct usym *syms;
     int nsyms;
@@ -1360,17 +1358,22 @@ char *buf;
         /* -1=text(5), -2=data(6), -3=bss(7) */
         seg = 5 - symidx - 1;  /* convert to type seg value */
 
-        /* adjust addend to be relative to segment start */
-        if (symidx == -1)
-            rel_off = addend - text_off_g;
-        else if (symidx == -2)
-            rel_off = addend - data_off_g;
-        else
-            rel_off = addend - bss_off_g;
+        /* addend is already segment-relative for segment relocations */
+        rel_off = addend;
 
         /* check for exact symbol match at this offset */
         for (i = 0; i < nsyms; i++) {
-            if ((symtab[i].type & 0x07) == seg && symtab[i].value == rel_off) {
+            int sym_off;
+            if ((symtab[i].type & 0x07) != seg)
+                continue;
+            /* normalize symbol value to segment-relative offset */
+            if (seg == 5)
+                sym_off = symtab[i].value - text_off_g;
+            else if (seg == 6)
+                sym_off = symtab[i].value - data_off_g;
+            else
+                sym_off = symtab[i].value - bss_off_g;
+            if (sym_off == rel_off) {
                 sprintf(buf, "%s", symtab[i].name);
                 return buf;
             }
@@ -1385,10 +1388,15 @@ char *buf;
             sprintf(buf, "B%d", add_bss_ref(rel_off));
         }
     } else if (symidx >= 0 && symidx < nsyms) {
-        if (addend)
-            sprintf(buf, "%s+%d", symtab[symidx].name, addend);
-        else
+        /* for undefined (external) symbols, ignore addend - it's just placeholder */
+        if ((symtab[symidx].type & 0x07) == 0 && addend) {
+            /* external symbol - addend is placeholder, ignore it */
             sprintf(buf, "%s", symtab[symidx].name);
+        } else if (addend) {
+            sprintf(buf, "%s+%d", symtab[symidx].name, addend);
+        } else {
+            sprintf(buf, "%s", symtab[symidx].name);
+        }
     } else {
         sprintf(buf, "?sym%d", symidx);
     }
@@ -1746,7 +1754,7 @@ long objsize;
     uobj_init();
 
     config = get_byte(base + 1);
-    symlen = (config & CONF_SYMLEN) * 2 + 1;
+    symlen = (config & CONF_SYMASK) * 2 + 1;
     symtab_size = get_word(base + 2);
     text_size = get_word(base + 4);
     data_size = get_word(base + 6);
@@ -1771,6 +1779,8 @@ long objsize;
     }
 
     uobj.bsssize = bss_size;
+    uobj.textbase = text_off_g;
+    uobj.database = data_off_g;
 
     /* load symbol table into legacy symtab for reloc_name to use */
     symtab_off = base + 16 + text_size + data_size;
@@ -1794,20 +1804,27 @@ long objsize;
         for (i = 0; i < nsyms; i++) {
             strncpy(uobj.syms[i].name, symtab[i].name, sizeof(uobj.syms[i].name) - 1);
             uobj.syms[i].name[sizeof(uobj.syms[i].name) - 1] = '\0';
-            uobj.syms[i].value = symtab[i].value;
 
             /* convert segment: WS uses 4=abs, 5=text, 6=data, 7=bss, <4=undef */
             seg = symtab[i].type & 0x07;
             if (seg < 4) {
                 uobj.syms[i].segment = USEG_UNDEF;
+                uobj.syms[i].value = symtab[i].value;
             } else if (seg == 4) {
                 uobj.syms[i].segment = USEG_ABS;
+                uobj.syms[i].value = symtab[i].value;
             } else if (seg == 5) {
                 uobj.syms[i].segment = USEG_TEXT;
+                /* normalize to segment-relative offset */
+                uobj.syms[i].value = symtab[i].value - text_off_g;
             } else if (seg == 6) {
                 uobj.syms[i].segment = USEG_DATA;
+                /* normalize to segment-relative offset */
+                uobj.syms[i].value = symtab[i].value - data_off_g;
             } else {
                 uobj.syms[i].segment = USEG_BSS;
+                /* normalize to segment-relative offset */
+                uobj.syms[i].value = symtab[i].value - bss_off_g;
             }
 
             /* global flag is bit 3 */
@@ -1955,7 +1972,7 @@ long objsize;
     }
 
     config = get_byte(base + 1);
-    symlen = (config & CONF_SYMLEN) * 2 + 1;
+    symlen = (config & CONF_SYMASK) * 2 + 1;
     symtab_size = get_word(base + 2);
     text_size = get_word(base + 4);
     data_size = get_word(base + 6);
@@ -2052,16 +2069,19 @@ long objsize;
  * generate relocation target name for HiTech
  */
 void
-ht_reloc_name(relocs, ri, syms, nsyms, addend, buf)
+ht_reloc_name(relocs, ri, syms, nsyms, addend, textbase, database, buf)
 struct ht_reloc *relocs;
 int ri;
 struct ht_sym *syms;
 int nsyms;
 int addend;
+unsigned long textbase;
+unsigned long database;
 char *buf;
 {
     int i;
     char *target = relocs[ri].target;
+    int norm_addend;
 
     if ((relocs[ri].type & 0xf0) == HT_RPSECT) {
         /* psect-relative: check for exact symbol match */
@@ -2072,23 +2092,21 @@ char *buf;
                 return;
             }
         }
-        /* no exact match - use synthetic local label */
+        /* no exact match - normalize addend and use synthetic local label */
         if (strcmp(target, "data") == 0) {
-            sprintf(buf, "D%d", add_data_ref(addend));
+            norm_addend = addend - database;
+            sprintf(buf, "D%d", add_data_ref(norm_addend));
         } else if (strcmp(target, "text") == 0) {
-            sprintf(buf, "T%d", add_text_ref(addend));
+            norm_addend = addend - textbase;
+            sprintf(buf, "T%d", add_text_ref(norm_addend));
         } else if (strcmp(target, "bss") == 0) {
             sprintf(buf, "B%d", add_bss_ref(addend));
         } else {
             sprintf(buf, "_.%s+%d", target, addend);
         }
     } else {
-        /* external symbol */
-        if (addend == 0) {
-            sprintf(buf, "%s", target);
-        } else {
-            sprintf(buf, "%s+%d", target, addend);
-        }
+        /* external symbol - addend is just placeholder value, ignore it */
+        sprintf(buf, "%s", target);
     }
 }
 
@@ -2096,10 +2114,12 @@ char *buf;
  * Load HiTech object data into unified object structure
  */
 void
-ht_load_uobj(textbuf, textsize, databuf, datasize, bsssize, relocs, nrelocs, syms, nsyms)
+ht_load_uobj(textbuf, textbase, textsize, databuf, database, datasize, bsssize, relocs, nrelocs, syms, nsyms)
 unsigned char *textbuf;
+unsigned long textbase;
 unsigned long textsize;
 unsigned char *databuf;
+unsigned long database;
 unsigned long datasize;
 unsigned long bsssize;
 struct ht_reloc *relocs;
@@ -2108,44 +2128,53 @@ struct ht_sym *syms;
 int nsyms;
 {
     int i, addend;
+    unsigned long tlen, dlen;
 
     uobj_init();
 
-    /* copy text segment */
-    if (textsize > 0) {
-        uobj.text = (unsigned char *)malloc(textsize);
-        memcpy(uobj.text, textbuf, textsize);
-        uobj.textsize = textsize;
+    /* copy text segment - normalize to start from 0 */
+    tlen = textsize > textbase ? textsize - textbase : 0;
+    if (tlen > 0) {
+        uobj.text = (unsigned char *)malloc(tlen);
+        memcpy(uobj.text, textbuf + textbase, tlen);
+        uobj.textsize = tlen;
+        uobj.textbase = textbase;
     }
 
-    /* copy data segment */
-    if (datasize > 0) {
-        uobj.data = (unsigned char *)malloc(datasize);
-        memcpy(uobj.data, databuf, datasize);
-        uobj.datasize = datasize;
+    /* copy data segment - normalize to start from 0 */
+    dlen = datasize > database ? datasize - database : 0;
+    if (dlen > 0) {
+        uobj.data = (unsigned char *)malloc(dlen);
+        memcpy(uobj.data, databuf + database, dlen);
+        uobj.datasize = dlen;
+        uobj.database = database;
     }
 
     uobj.bsssize = bsssize;
 
-    /* convert symbols */
+    /* convert symbols - adjust for base offset */
     if (nsyms > 0) {
         uobj.syms = (struct usym *)malloc(nsyms * sizeof(struct usym));
         for (i = 0; i < nsyms; i++) {
             strncpy(uobj.syms[i].name, syms[i].name, sizeof(uobj.syms[i].name) - 1);
             uobj.syms[i].name[sizeof(uobj.syms[i].name) - 1] = '\0';
-            uobj.syms[i].value = syms[i].value;
 
             /* convert segment */
             if ((syms[i].flags & 0x0f) == 6) {
                 uobj.syms[i].segment = USEG_UNDEF;
+                uobj.syms[i].value = syms[i].value;
             } else if (strcmp(syms[i].psect, "text") == 0) {
                 uobj.syms[i].segment = USEG_TEXT;
+                uobj.syms[i].value = syms[i].value - textbase;
             } else if (strcmp(syms[i].psect, "data") == 0) {
                 uobj.syms[i].segment = USEG_DATA;
+                uobj.syms[i].value = syms[i].value - database;
             } else if (strcmp(syms[i].psect, "bss") == 0) {
                 uobj.syms[i].segment = USEG_BSS;
+                uobj.syms[i].value = syms[i].value;
             } else {
                 uobj.syms[i].segment = USEG_ABS;
+                uobj.syms[i].value = syms[i].value;
             }
 
             /* convert scope */
@@ -2154,11 +2183,11 @@ int nsyms;
         uobj.nsyms = nsyms;
     }
 
-    /* convert relocations */
+    /* convert relocations - adjust for base offset */
     if (nrelocs > 0) {
         uobj.relocs = (struct ureloc *)malloc(nrelocs * sizeof(struct ureloc));
         for (i = 0; i < nrelocs; i++) {
-            uobj.relocs[i].offset = relocs[i].offset;
+            uobj.relocs[i].offset = relocs[i].offset - textbase;
             uobj.relocs[i].size = relocs[i].type & HT_RSIZE_MASK;
             uobj.relocs[i].hilo = 0;  /* HiTech doesn't have hi/lo byte relocs */
             uobj.relocs[i].segment = USEG_TEXT;  /* HiTech relocs are in text */
@@ -2169,7 +2198,7 @@ int nsyms;
                 addend |= textbuf[relocs[i].offset + 1] << 8;
 
             /* resolve target name */
-            ht_reloc_name(relocs, i, syms, nsyms, addend, uobj.relocs[i].target);
+            ht_reloc_name(relocs, i, syms, nsyms, addend, textbase, database, uobj.relocs[i].target);
         }
         uobj.nrelocs = nrelocs;
     }
@@ -2179,11 +2208,13 @@ int nsyms;
  * generate .s file from HiTech object - uses unified path
  */
 void
-gen_ht_sfile(name, textbuf, textsize, databuf, datasize, bsssize, relocs, nrelocs, syms, nsyms)
+gen_ht_sfile(name, textbuf, textbase, textsize, databuf, database, datasize, bsssize, relocs, nrelocs, syms, nsyms)
 char *name;
 unsigned char *textbuf;
+unsigned long textbase;
 unsigned long textsize;
 unsigned char *databuf;
+unsigned long database;
 unsigned long datasize;
 unsigned long bsssize;
 struct ht_reloc *relocs;
@@ -2192,7 +2223,7 @@ struct ht_sym *syms;
 int nsyms;
 {
     /* load into unified structure */
-    ht_load_uobj(textbuf, textsize, databuf, datasize, bsssize, relocs, nrelocs, syms, nsyms);
+    ht_load_uobj(textbuf, textbase, textsize, databuf, database, datasize, bsssize, relocs, nrelocs, syms, nsyms);
 
     /* generate output using unified function */
     genUobjSfl(name);
@@ -2227,9 +2258,11 @@ char *name;
     int in_text_psect = 0;           /* current TEXT record is "text" psect */
     unsigned char *textbuf = NULL;   /* combined text data */
     unsigned long textsize = 0;      /* total text size */
+    unsigned long textbase = 0xffffffff; /* base address of text */
     unsigned long textalloc = 0;     /* allocated size */
     unsigned char *databuf = NULL;   /* combined data segment */
     unsigned long datasize = 0;      /* total data size */
+    unsigned long database = 0xffffffff; /* base address of data */
     unsigned long dataalloc = 0;     /* allocated size */
     unsigned long bsssize = 0;       /* total bss size */
 
@@ -2271,12 +2304,15 @@ char *name;
             if (in_text_psect) {
                 endoff = cur_text_off + dlen;
                 if (endoff > textsize) textsize = endoff;
+                if (cur_text_off < textbase) textbase = cur_text_off;
 
-                /* grow buffer if needed */
+                /* grow buffer if needed, zero-init new bytes */
                 if (endoff > textalloc) {
+                    unsigned long oldalloc = textalloc;
                     textalloc = endoff + 1024;
                     textbuf = (unsigned char *)realloc(textbuf, textalloc);
                     if (!textbuf) { fprintf(stderr, "out of memory\n"); return; }
+                    memset(textbuf + oldalloc, 0, textalloc - oldalloc);
                 }
 
                 /* copy text data */
@@ -2286,12 +2322,15 @@ char *name;
             } else if (strcmp(psect, "data") == 0) {
                 endoff = cur_text_off + dlen;
                 if (endoff > datasize) datasize = endoff;
+                if (cur_text_off < database) database = cur_text_off;
 
-                /* grow buffer if needed */
+                /* grow buffer if needed, zero-init new bytes */
                 if (endoff > dataalloc) {
+                    unsigned long oldalloc = dataalloc;
                     dataalloc = endoff + 1024;
                     databuf = (unsigned char *)realloc(databuf, dataalloc);
                     if (!databuf) { fprintf(stderr, "out of memory\n"); return; }
+                    memset(databuf + oldalloc, 0, dataalloc - oldalloc);
                 }
 
                 /* copy data */
@@ -2394,7 +2433,9 @@ char *name;
 
     /* -g or -d mode: generate .s file (or stdout with hex dump) and return */
     if (gflag || dflag) {
-        gen_ht_sfile(name, textbuf, textsize, databuf, datasize, bsssize, relocs, nrelocs, htsyms, nhtsyms);
+        if (textbase == 0xffffffff) textbase = 0;
+        if (database == 0xffffffff) database = 0;
+        gen_ht_sfile(name, textbuf, textbase, textsize, databuf, database, datasize, bsssize, relocs, nrelocs, htsyms, nhtsyms);
         if (relocs) free(relocs);
         if (textbuf) free(textbuf);
         if (databuf) free(databuf);
@@ -2425,6 +2466,10 @@ char *name;
 
         if (off + reclen > filesize)
             break;
+
+        if (vflag) {
+            printf("[%04lx] rec type=%d len=%d\n", off - 3, rectype, reclen);
+        }
 
         switch (rectype) {
         case HT_IDENT:
@@ -2723,21 +2768,22 @@ char *filename;
 {
     unsigned short magic16;
 
-    fd = open(filename, O_RDONLY);
-    if (fd < 0)
+    fp = fopen(filename, "rb");
+    if (fp == NULL)
         error2("cannot open", filename);
 
     /* get file size */
-    filesize = lseek(fd, 0, SEEK_END);
-    lseek(fd, 0, SEEK_SET);
+    fseek(fp, 0, SEEK_END);
+    filesize = ftell(fp);
+    fseek(fp, 0, SEEK_SET);
 
     /* read entire file */
     filebuf = (unsigned char *)malloc(filesize);
     if (!filebuf)
         error("out of memory");
-    if (read(fd, filebuf, filesize) != filesize)
+    if (fread(filebuf, 1, filesize, fp) != filesize)
         error("read error");
-    close(fd);
+    fclose(fp);
 
     /* check for archive, HiTech, or Whitesmith object */
     magic16 = get_word(0);
@@ -2824,3 +2870,4 @@ char **argv;
 /*
  * vim: tabstop=4 shiftwidth=4 noexpandtab:
  */
+// TEMP DEBUG - add after uobj_init() in ht_load_uobj

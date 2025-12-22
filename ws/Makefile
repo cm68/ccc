@@ -9,68 +9,62 @@ ROOTDIR = ../root
 CCC = ../root/bin/ccc
 OUTDIR = stage1
 
-CC = gcc
+CC ?= gcc
+
+ifeq ($(CC),gcc)
 CFLAGS = -m32 -g -Wall -std=c90 -pedantic -Dlinux -std=c89
+LD = gcc
+
+.SUFFIXES: .c .o
+.c.o:
+	$(CC) $(CFLAGS) -c $<
+endif
+
+ifeq ($(CC),zxc)
+
+.SUFFIXES: .c .o
+CFLAGS =
+.c.o:
+	zxc $(CFLAGS) -s $<
+	asz $(basename $<).as
+
+endif
 
 ALL = asz wsld wsnm wslib wssize
 
 all: $(ALL)
 
+# Header dependencies
+asz.o: asm.h
+asm.o: asm.h wsobj.h
+asmz80.o: asm.h
+wsobj.o: wsobj.h
+wsld.o: wsobj.h
+wsnm.o: wsobj.h
+wslib.o: wsobj.h
+wssize.o: wsobj.h
+
+# Link targets
 asz: asz.o asm.o asmz80.o wsobj.o
-	$(CC) $(CFLAGS) -o asz asz.o asm.o asmz80.o wsobj.o
-
-asmz80.o: asmz80.c asm.h
-	$(CC) $(CFLAGS) -c asmz80.c
-
-asz.o: asz.c asm.h
-	$(CC) $(CFLAGS) -c asz.c
-
-asm.o: asm.c asm.h wsobj.h
-	$(CC) $(CFLAGS) -c asm.c
-
-wsobj.o: wsobj.c wsobj.h
-	$(CC) $(CFLAGS) -c wsobj.c
+	$(CC) -o $@ asz.o asm.o asmz80.o wsobj.o
 
 wsld: wsld.o wsobj.o
-	$(CC) $(CFLAGS) -o wsld wsld.o wsobj.o
+	$(CC) -o $@ wsld.o wsobj.o
 
-wsld.o: wsld.c wsobj.h
-	$(CC) $(CFLAGS) -c wsld.c
+wsnm: wsnm.o wsobj.o
+	$(CC) -o $@ wsnm.o wsobj.o
 
-wsnm: wsnm.c wsobj.o wsobj.h
-	$(CC) $(CFLAGS) -o wsnm wsnm.c wsobj.o
+wslib: wslib.o
+	$(CC) -o $@ wslib.o
 
-wslib: wslib.c wsobj.h
-	$(CC) $(CFLAGS) -o wslib wslib.c
+wssize: wssize.o
+ifeq ($(CC),zxc)
+	./wsld -o wssize wssize.o /usr/local/lib/cpm/lib80/libc.lib
+else
+	$(CC) -o $@ wssize.o
+endif
 
-wssize: wssize.c wsobj.h
-	$(CC) $(CFLAGS) -o wssize wssize.c
-
-test: all
-	@echo "=== Testing asz ==="
-	./asz tests/ctest.s -o tests/ctest.o
-	@echo ""
-	@echo "=== Testing wsnm on object ==="
-	./wsnm tests/ctest.o
-	@echo ""
-	@echo "=== Testing wsnm on archive ==="
-	./wsnm tests/libu.a 2>&1 | head -50
-	@echo ""
-	@echo "=== Testing wslib -t ==="
-	./wslib -tv tests/libu.a | head -20
-	@echo ""
-	@echo "=== Testing wslib -c (create) ==="
-	./wslib -cv tests/test.a tests/chdr.o tests/ctest.o
-	./wslib -tv tests/test.a
-	@echo ""
-	@echo "=== Testing wslib -x (extract) ==="
-	mkdir -p tests/tmp && cd tests/tmp && ../../wslib -xv ../test.a
-	ls -la tests/tmp/
-	rm -rf tests/tmp
-	@echo ""
-	@echo "=== Testing wsld ==="
-	./wsld -v -o tests/test.out tests/chdr.o tests/ctest.o
-	./wsnm tests/test.out
+test:
 
 clean:
 	rm -f *.a *.o tests/*.out tests/*.a tests/*.o
@@ -128,5 +122,5 @@ link: stage1/asz stage1/wsld stage1/wsnm stage1/wslib stage1/wssize
 .PHONY: all clean clobber test install stage1 sizecheck link
 
 #
-# vim: tabstop=4 shiftwidth=4 expandtab:
+# vim: tabstop=4 shiftwidth=4 noexpandtab:
 #

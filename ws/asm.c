@@ -10,7 +10,7 @@
  * 
  * /usr/src/cmd/asz/asm.c 
  *
- * Changed: <2025-12-22 05:20:21 curt>
+ * Changed: <2025-12-22 10:17:38 curt>
  *
  * vim: tabstop=4 shiftwidth=4 noexpandtab:
  */
@@ -18,7 +18,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
 #else
 #include <stdio.h>
 #endif
@@ -26,6 +25,8 @@
 #include "asm.h"
 #include "wsobj.h"
 
+#ifdef DEBUG
+extern char verbose;
 /*
  * verbosity levels:
  * 1 = file 
@@ -34,12 +35,12 @@
  * 4 = allocations/symbols/relocs
  * 5 - tokens
  */
+#endif
 
-extern int infd;
-extern int inbuffd;
+extern FILE *infp;
+extern FILE *inbuffp;
 extern int lineNum;
 extern char *infile;
-extern char verbose;
 extern char m_flag;
 
 void asm_reset();
@@ -107,16 +108,19 @@ unsigned char operand();
 #define T_NUM   (T_BIAS + 40)
 #define T_STR   (T_BIAS + 41)
 #define T_EOF   (T_BIAS + 42)
+#define T_LOCAL (T_BIAS + 43)  /* local label ref: Nf or Nb */
 
+#ifdef DEBUG
 char *tokname[] = {
     /*  0 */ "B", "C", "D", "E", "H", "L", "(HL)", "A",
     /*  8 */ "BC", "DE", "HL", "SP", "AF", "IX", "IY",
     /* 15 */ "NZ", "Z", "NC", "CR", "PO", "PE", "P", "M",
     /* 23 */ "IXH", "IXL", "(IX+d)", "IYH", "IYL", "(IY+d)",
-    /* 29 */ "SYMREF", "INDIR", 
+    /* 29 */ "SYMREF", "INDIR",
     /* 31 */ "(SP)", "(BC)", "(DE)", "(IX)", "(IY)", "(C)", "I", "R",
-    /* 39 */ "NAME", "NUM", "STR", "EOF"
+    /* 39 */ "NAME", "NUM", "STR", "EOF", "LOCAL"
 };
+#endif
 
 extern char asm_instr();
 
@@ -254,6 +258,12 @@ struct rhead datar = { "data" };
  */
 struct jump *jumps;
 
+/*
+ * local labels - numeric labels with forward/backward references
+ * stored in hash table for memory efficiency
+ */
+struct local_label *local_hash[LOCAL_HASH_SIZE];
+
 struct symbol *symbols;
 struct symbol *symbols_tail;  /* for append order */
 
@@ -303,11 +313,134 @@ save_symn()
     sym_name[i] = '\0';
 }
 
+/*
+ * reset local labels at start of each pass
+ */
+void
+local_reset()
+{
+    int i;
+    struct local_label *ll, *next;
+
+    for (i = 0; i < LOCAL_HASH_SIZE; i++) {
+        for (ll = local_hash[i]; ll; ll = next) {
+            next = ll->next;
+            free(ll);
+        }
+        local_hash[i] = 0;
+    }
+}
+
+/*
+ * lookup or create a local label entry
+ */
+struct local_label *
+local_lookup(n, create)
+int n;
+int create;
+{
+    int h;
+    struct local_label *ll;
+
+    h = n % LOCAL_HASH_SIZE;
+    for (ll = local_hash[h]; ll; ll = ll->next) {
+        if (ll->num == n)
+            return ll;
+    }
+    if (!create)
+        return 0;
+    ll = (struct local_label *)malloc(sizeof(struct local_label));
+    ll->num = n;
+    ll->count = 0;
+    ll->next = local_hash[h];
+    local_hash[h] = ll;
+    return ll;
+}
+
+/*
+ * define a local label occurrence
+ * only collect in pass 0, use collected addresses in pass 1
+ */
+void
+local_define(n, addr)
+int n;
+unsigned short addr;
+{
+    struct local_label *ll;
+
+    /* only collect definitions in pass 0 */
+    if (pass != 0)
+        return;
+
+    ll = local_lookup(n, 1);
+    if (ll->count >= MAX_LOCAL_OCCURS) {
+        gripe("too many occurrences of local label");
+    }
+    ll->seg[ll->count] = segment;
+    ll->addr[ll->count++] = addr;
+}
+
+/*
+ * resolve a local label reference
+ * dir: 'f' for forward, 'b' for backward
+ * addr: current address (where reference appears)
+ * returns target address or gripes on error
+ * in pass 0, returns 0 as placeholder (labels may not be defined yet)
+ */
+unsigned short
+local_resolve(n, dir, addr)
+int n;
+char dir;
+unsigned short addr;
+{
+    struct local_label *ll;
+    int i;
+
+    /* pass 0: return placeholder, labels not all defined yet */
+    if (pass == 0)
+        return 0;
+
+    ll = local_lookup(n, 0);
+    if (!ll || ll->count == 0) {
+        gripe("undefined local label");
+    }
+
+    if (dir == 'f' || dir == 'F') {
+        /* find first occurrence after addr */
+        for (i = 0; i < ll->count; i++) {
+            unsigned short abs_addr = ll->addr[i];
+            /* convert segment-relative to absolute for pass 1 */
+            if (ll->seg[i] == SEG_DATA)
+                abs_addr += text_size;
+            else if (ll->seg[i] == SEG_BSS)
+                abs_addr += text_size + data_size;
+            if (abs_addr > addr)
+                return abs_addr;
+        }
+        gripe("forward reference to undefined local label");
+    } else {
+        /* find last occurrence at or before addr */
+        for (i = ll->count - 1; i >= 0; i--) {
+            unsigned short abs_addr = ll->addr[i];
+            /* convert segment-relative to absolute for pass 1 */
+            if (ll->seg[i] == SEG_DATA)
+                abs_addr += text_size;
+            else if (ll->seg[i] == SEG_BSS)
+                abs_addr += text_size + data_size;
+            if (abs_addr <= addr)
+                return abs_addr;
+        }
+        gripe("backward reference to undefined local label");
+    }
+    return 0;  /* not reached */
+}
+
 extern void get_line();
 extern unsigned char peekchar();
 extern unsigned char nextchar();
 extern void consume();
 
+#ifdef DEBUG
 char *tokenname(t)
 unsigned char t;
 {
@@ -331,6 +464,7 @@ unsigned char t;
     }
     return tbuf;
 }
+#endif
 
 /*
  * the lexer. 
@@ -396,16 +530,46 @@ get_token()
         token_buf[i++] = nextchar();
         while (1) {
             c = peekchar();
-            if ((c == ')') || (c == ',') || (c == ' ') || 
+            if ((c == ')') || (c == ',') || (c == ' ') ||
                 (c == '\t') || (c == '\n') || (c == T_EOF) ||
-                (c == '+') || (c == '-')) {
+                (c == '+') || (c == '-') || (c == ':') || (c == '&')) {
                 break;
             }
             token_buf[i++] = nextchar();
         }
         token_buf[i++] = '\0';
-        token_val = parsenum(token_buf);
-        c = T_NUM;
+        /*
+         * check for local label reference: digits + f/b
+         * e.g., "1f" = forward ref to label 1, "19b" = backward ref to label 19
+         */
+        {
+            int len = i - 1;  /* length without null terminator */
+            char lastch = token_buf[len - 1];
+            if (len >= 2 && (lastch == 'f' || lastch == 'b' ||
+                             lastch == 'F' || lastch == 'B')) {
+                /* check if all chars before last are digits */
+                int j, alldigits = 1;
+                for (j = 0; j < len - 1; j++) {
+                    if (token_buf[j] < '0' || token_buf[j] > '9') {
+                        alldigits = 0;
+                        break;
+                    }
+                }
+                if (alldigits) {
+                    token_buf[len - 1] = '\0';  /* remove f/b */
+                    token_val = parsenum(token_buf);
+                    token_buf[0] = lastch;  /* direction f/b */
+                    token_buf[1] = '\0';
+                    c = T_LOCAL;
+                } else {
+                    token_val = parsenum(token_buf);
+                    c = T_NUM;
+                }
+            } else {
+                token_val = parsenum(token_buf);
+                c = T_NUM;
+            }
+        }
     }
 
     /*
@@ -462,6 +626,7 @@ get_token()
 
     cur_token = c;
 
+#ifdef DEBUG
     if (verbose > 5) {
         printf("get_token: %d %s", c, tokenname(c));
         if (c == T_NAME) {
@@ -471,6 +636,7 @@ get_token()
         }
         printf("\n");
     }
+#endif
 	return;
 }
 
@@ -602,6 +768,8 @@ freejumps()
  * this is what we run between assemblies.
  * it should clean out everything.
  */
+extern void io_reset();
+
 void
 asm_reset()
 {
@@ -615,6 +783,7 @@ asm_reset()
     freerelocs(&textr);
     freerelocs(&datar);
     freejumps();
+    io_reset();
 }
 
 /*
@@ -634,10 +803,12 @@ unsigned char hilo;
 	if (!pass)
 		return;
 
+#ifdef DEBUG
     if (verbose > 2)
         printf("add_reloc: %s %x %s %s\n",
             tab->segment, addr, sym ? sym->name : "nosym",
             hilo == RELOC_HI ? "hi" : hilo == RELOC_LO ? "lo" : "word");
+#endif
 
     if (sym->seg == SEG_ABS)
         return;
@@ -723,8 +894,10 @@ relax_jmp()
     if (no_relax)
         return;
 
+#ifdef DEBUG
     if (verbose > 1)
         printf("relaxing jumps\n");
+#endif
 
     do {
         changed = 0;
@@ -761,9 +934,11 @@ relax_jmp()
                 saved++;
                 conv_addr = j->addr;
 
+#ifdef DEBUG
                 if (verbose > 2)
                     printf("  convert jp at %04x to jr (target %04x, dist %d)\n",
                            j->addr, target, dist);
+#endif
 
                 /* adjust all symbols after this jp */
                 for (s = symbols; s; s = s->next) {
@@ -781,14 +956,30 @@ relax_jmp()
                         k->offset--;
                 }
 
+                /* adjust local label addresses after this jp */
+                {
+                    int h, lo;
+                    struct local_label *ll;
+                    for (h = 0; h < LOCAL_HASH_SIZE; h++) {
+                        for (ll = local_hash[h]; ll; ll = ll->next) {
+                            for (lo = 0; lo < ll->count; lo++) {
+                                if (ll->addr[lo] > conv_addr)
+                                    ll->addr[lo]--;
+                            }
+                        }
+                    }
+                }
+
                 /* adjust segment size */
                 text_top--;
             }
         }
     } while (changed);
 
+#ifdef DEBUG
     if (verbose && saved)
         fprintf(stderr, "relaxation: %d bytes saved\n", saved);
+#endif
 }
 
 /*
@@ -796,7 +987,7 @@ relax_jmp()
  *
  * tab = relocation table
  */
-extern int tmpfd;
+extern FILE *tmpfp;
 
 void
 reloc_out(r, base)
@@ -811,32 +1002,35 @@ unsigned short base;
 	while (r) {
 		seg = r->sym->seg;
 		size = (r->hilo == RELOC_WORD) ? 2 : 1;
+#ifdef DEBUG
 		if (verbose > 3) {
 			printf("reloc: base: %x addr: %x seg: %s(%d) %s %s\n",
 				   base, r->addr, segname[seg], seg, r->sym->name,
 				   r->hilo == RELOC_HI ? "hi" : r->hilo == RELOC_LO ? "lo" : "");
 		}
-
+#endif
 		bump = r->addr - last;
+#ifdef DEBUG
 		if (verbose > 4) {
 			printf("bump: %d\n", bump);
 		}
-		wsEncBump(tmpfd, bump);
+#endif
+		wsEncBump(tmpfp, bump);
 
 		if (seg == SEG_UNDEF) {
 			printf("reloc for undef\n");
 		} else if (seg >= SEG_TEXT && seg <= SEG_ABS &&
 				   r->sym->index == 0xffff) {
 			/* local symbol - segment-relative relocation */
-			wsEncReloc(tmpfd, seg, 0, r->hilo);
+			wsEncReloc(tmpfp, seg, 0, r->hilo);
 		} else {
 			/* global/extern symbol reference */
-			wsEncReloc(tmpfd, -1, r->sym->index, r->hilo);
+			wsEncReloc(tmpfp, -1, r->sym->index, r->hilo);
 		}
 		last += bump + size;
 		r = r->next;
 	}
-	wsEndReloc(tmpfd);
+	wsEndReloc(tmpfp);
 }
 
 /*
@@ -912,8 +1106,12 @@ void
 fill(size)
 unsigned short size;
 {
+
+#ifdef DEBUG
 	if (verbose > 3)
 		printf("fill segment: %d for %d\n", segment, size);
+#endif
+
 	while (size--)
 		emitbyte(0);
 }
@@ -947,11 +1145,23 @@ struct expval *vp;
 		/*
 		 * hi() or lo() byte extraction from symbol
 		 */
-		unsigned short val = vp->num.w + (vp->sym ? vp->sym->value : 0);
-		if (vp->hilo == RELOC_HI)
-			val >>= 8;
-		emitbyte(val & 0xff);
+		unsigned short val;
 		if (vp->sym && pass) {
+			/* for local symbols, emit segment-relative offset
+			 * for global/extern symbols, emit just the addend */
+			if (vp->sym->index == 0xffff) {
+				/* local symbol - convert absolute to segment-relative */
+				val = vp->num.w + vp->sym->value;
+				if (vp->sym->seg == SEG_DATA)
+					val -= text_size;
+				else if (vp->sym->seg == SEG_BSS)
+					val -= text_size + data_size;
+			} else {
+				val = vp->num.w;
+			}
+			if (vp->hilo == RELOC_HI)
+				val >>= 8;
+			emitbyte(val & 0xff);
 			switch (segment) {
 			case SEG_TEXT:
 				add_reloc(&textr, cur_address - 1, vp->sym, vp->hilo);
@@ -962,6 +1172,12 @@ struct expval *vp;
 			default:
 				gripe("invalid segment");
 			}
+		} else {
+			/* no relocation - emit full value */
+			val = vp->num.w + (vp->sym ? vp->sym->value : 0);
+			if (vp->hilo == RELOC_HI)
+				val >>= 8;
+			emitbyte(val & 0xff);
 		}
 	} else if (size == 1) {
 		/*
@@ -983,6 +1199,7 @@ struct expval *vp;
 	} else {
 
 		if (vp->sym && pass) {
+			unsigned short emit_val;
 			switch (segment) {
 			case SEG_TEXT:
 				add_reloc(&textr, cur_address, vp->sym, RELOC_WORD);
@@ -993,10 +1210,26 @@ struct expval *vp;
 			default:
 				gripe("invalid segment");
 			}
+			/* for local symbols, emit segment-relative offset
+			 * for global/extern symbols, emit just the addend */
+			if (vp->sym->index == 0xffff) {
+				/* local symbol - convert absolute to segment-relative */
+				emit_val = vp->num.w + vp->sym->value;
+				if (vp->sym->seg == SEG_DATA)
+					emit_val -= text_size;
+				else if (vp->sym->seg == SEG_BSS)
+					emit_val -= text_size + data_size;
+				emitword(emit_val);
+			} else {
+				emitword(vp->num.w);
+			}
+		} else if (vp->sym) {
+			/* absolute symbol - emit full value */
+			emitword(vp->num.w + vp->sym->value);
+		} else {
+			/* no symbol - emit literal value */
+			emitword(vp->num.w);
 		}
-		/* emit symbol value + offset for internal symbols */
-		/* external symbols have value 0, linker fills in */
-		emitword(vp->num.w + (vp->sym ? vp->sym->value : 0));
 	}
 }
 
@@ -1138,28 +1371,67 @@ struct expval *vp;
 	char c;
 	unsigned char ret;
     int indir = 0;
+    int hilo_paren = 0;  /* 1 if hi()/lo() style (needs closing paren) */
 
     vp->num.l = 0;
     vp->sym = 0;
     vp->hilo = RELOC_WORD;
 
 	/*
-	 * check if there is anything next
+	 * check if there is anything next (skip whitespace first)
 	 */
-    c = peekchar();
-	if ((c == '\n') || (c == -1))
+    c = skipwhite();
+	if ((c == '\n') || (c == T_EOF)) {
 		return 255;
+    }
+
+	/*
+	 * check for HiTech C style .low. or .high. prefix
+	 * can't use get_token() because symchar() includes '.'
+	 */
+	if (c == '.') {
+		char buf[6];
+		int bi = 0;
+		nextchar();  /* consume the dot */
+		/* read keyword manually (up to 5 chars) */
+		while (bi < 5) {
+			c = peekchar();
+			if (c >= 'a' && c <= 'z') {
+				buf[bi++] = nextchar();
+			} else if (c >= 'A' && c <= 'Z') {
+				buf[bi++] = nextchar() + ('a' - 'A');
+			} else {
+				break;
+			}
+		}
+		buf[bi] = '\0';
+		if (peekchar() != '.') {
+			gripe("expected .low. or .high.");
+		}
+		nextchar();  /* consume trailing dot */
+		if (match(buf, "low")) {
+			vp->hilo = RELOC_LO;
+		} else if (match(buf, "high")) {
+			vp->hilo = RELOC_HI;
+		} else {
+			gripe("expected .low. or .high.");
+		}
+		get_token();
+		goto have_token;
+	}
 
 	/*
 	 * read the token
 	 */
 	get_token();
+have_token:
 
 	/*
 	 * hi() or lo() byte extraction?
 	 */
 	if (cur_token == T_NAME && (match(token_buf, "hi") || match(token_buf, "lo"))) {
 		vp->hilo = (token_buf[0] == 'h') ? RELOC_HI : RELOC_LO;
+		hilo_paren = 1;  /* need closing paren */
 		need('(');
 		get_token();
 	}
@@ -1205,23 +1477,39 @@ struct expval *vp;
                 return T_DE_I;
             } else if (match(token_buf, "ix") || match(token_buf, "iy")) {
 				/*
-				 * (ix+d) (ix-d) (iy+d) (iy-d) 
+				 * (ix+d) (ix-d) (iy+d) (iy-d)
+				 * handle expressions like (ix+1+-2) = (ix-1)
 				 * populate displacement and eat ')'
 				 */
 				ret = token_buf[1] == 'x' ? T_IX_D : T_IY_D;
+				vp->num.w = 0;
 				c = skipwhite();
 				if ((c == '+') || (c == '-')) {
-					get_token();
-                	c = cur_token;
-                	get_token();
-                	if (cur_token != T_NUM) {
-                    	gripe("index displacement missing");
-                	}
-                	if (c == '-') {
-                    	vp->num.w = -token_val;
-                	} else {
-                    	vp->num.w = token_val;
-                	}
+					/* accumulate all +N and -N terms */
+					while ((c == '+') || (c == '-')) {
+						char op = c;
+						int sign = 1;
+						nextchar();  /* consume +/- */
+						c = skipwhite();
+						/* handle signed number like +-2 */
+						if (c == '-') {
+							sign = -1;
+							nextchar();
+						} else if (c == '+') {
+							nextchar();
+						}
+						get_token();
+						if (cur_token != T_NUM) {
+							gripe("index displacement missing");
+						}
+                        i = sign * token_val;
+						if (op == '-') {
+							vp->num.w -= i;
+						} else {
+							vp->num.w += i;
+						}
+						c = skipwhite();
+					}
 				} else {
 					ret = (ret - T_IX_D) + T_IX_I;
 				}
@@ -1245,6 +1533,9 @@ struct expval *vp;
 	    }
     } else if (cur_token == T_NUM) {
 		vp->num.w = token_val;
+    } else if (cur_token == T_LOCAL) {
+        /* local label ref: token_val = label number, token_buf[0] = direction */
+        vp->num.w = local_resolve(token_val, token_buf[0], cur_address);
     } else if (cur_token == '$') {
 		vp->num.w = cur_address;
     } else if (cur_token == '-') {
@@ -1262,29 +1553,40 @@ struct expval *vp;
 
 	c = skipwhite();
 
-	if (c == '+') {
+	/* accumulate +N, -N, and &N terms (handle +-N syntax) */
+	while ((c == '+') || (c == '-') || (c == '&')) {
+		char op = c;
+		int sign = 1;
 		nextchar();
+		c = skipwhite();
+		/* handle signed number like +-2 */
+		if (c == '-') {
+			sign = -1;
+			nextchar();
+		} else if (c == '+') {
+			nextchar();
+		}
 		get_token();
 		if (cur_token == T_NUM) {
-			vp->num.w += token_val;
+            i = sign * token_val;
+			if (op == '-') {
+				vp->num.w -= i;
+			} else if (op == '&') {
+				vp->num.w &= i;
+			} else {
+				vp->num.w += i;
+			}
 		} else {
-			gripe("expected number after +");
+			gripe("expected number after operator");
 		}
-	} else if (c == '-') {
-		nextchar();
-		get_token();
-		if (cur_token == T_NUM) {
-			vp->num.w -= token_val;
-		} else {
-			gripe("expected number after -");
-		}
+		c = skipwhite();
 	}
 
     if (indir) {
 	    need(')');
         return T_INDIR;
 	}
-	if (vp->hilo != RELOC_WORD)
+	if (hilo_paren)
 		need(')');
 	return T_PLAIN;
 }
@@ -1352,20 +1654,25 @@ assemble()
 	cur_address = 0;
 
 	/*
-	 * run passes 
+	 * run passes
 	 */
 	while (1) {
 
 		change_seg(SEG_TEXT);
 		cur_address = 0;
 		text_top = 0;
+		/* only reset local labels at start of pass 0 */
+		if (pass == 0)
+			local_reset();
 
+#ifdef DEBUG
 		if (verbose) {
 			printf("start of pass %d\n", pass);
 			printf
 				("text_top: %d data_top: %d bss_top: %d mem_size: %d\n",
 				 text_top, data_top, bss_top, mem_size);
 		}
+#endif
 
 		while (1) {
             get_token();
@@ -1374,8 +1681,10 @@ assemble()
                 break;
             }            
 
+#ifdef DEBUG
 			if (verbose > 4)
 				printf("line %d: %s", lineNum, linebuf);
+#endif
 
 			/*
 			 * command read 
@@ -1486,20 +1795,61 @@ assemble()
 			}
 
 			/*
-			 * symbol read 
+			 * symbol read
 			 */
 			else if (cur_token == T_NAME) {
 				/*
-				 * try to get the type of the symbol 
+				 * try to get the type of the symbol
 				 */
 				if (asm_instr(token_buf)) {
 					/*
-					 * it's an instruction 
+					 * it's an instruction
 					 */
+					consume();
+				}
+				/*
+				 * HiTech C style pseudo-ops (no leading dot)
+				 */
+				else if (match(token_buf, "psect")) {
+					get_token();
+					if (cur_token != T_NAME)
+						gripe("expected segment name");
+					next = 0;
+					if (match(token_buf, "text"))
+						next = 1;
+					else if (match(token_buf, "data"))
+						next = 2;
+					else if (match(token_buf, "bss"))
+						next = 3;
+					if (next)
+						change_seg(next);
+					consume();
+				} else if (match(token_buf, "defb")) {
+					db();
+					consume();
+				} else if (match(token_buf, "defw")) {
+					dw();
+					consume();
+				} else if (match(token_buf, "defs")) {
+					ds();
+					consume();
+				} else if (match(token_buf, "global")) {
+					while (1) {
+						get_token();
+						if (cur_token != T_NAME)
+							gripe("expected symbol");
+						if (pass == 0) {
+							sym = sym_update(token_buf, SEG_UNDEF, 0, 1);
+						}
+						if (peekchar() == ',')
+							need(',');
+						else
+							break;
+					}
 					consume();
 				} else if (peekchar() == '=') {
 					/*
-					 * it's a symbol definition 
+					 * it's a symbol definition
 					 */
 					save_symn();
 					get_token();
@@ -1523,7 +1873,29 @@ assemble()
 						sym_update(token_buf, segment, cur_address, visible);
 					}
 				} else {
-					gripe("unexpected symbol");
+					/*
+					 * might be "symbol equ value" - peek ahead
+					 */
+					save_symn();
+					get_token();
+					if (cur_token == T_NAME && match(token_buf, "equ")) {
+						type = operand(&result);
+						sym_update(sym_name, type, result, 0);
+						consume();
+					} else {
+						gripe("unexpected symbol");
+					}
+				}
+			}
+			/*
+			 * numeric label (local label) - e.g., "1:" or "19:"
+			 */
+			else if (cur_token == T_NUM) {
+				if (peekchar() == ':') {
+					nextchar();  /* consume : */
+					local_define(token_val, cur_address);
+				} else {
+					gripe("expected : after local label");
 				}
 			} else if (cur_token != '\n') {
 				gripe("unexpected token");
@@ -1532,12 +1904,14 @@ assemble()
 
 		change_seg(SEG_TEXT);
         
+#ifdef DEBUG
 		if (verbose) {
 			printf("end of pass %d\n", pass);
 			printf
 				("text_top: %d data_top: %d bss_top: %d mem_size: %d\n\n",
 				 text_top, data_top, bss_top, mem_size);
 		}
+#endif
 
 		pass++;
 
@@ -1588,11 +1962,13 @@ assemble()
 			outword(0);			/* textoff */
 			outword(text_size);	/* dataoff */
 
+#ifdef DEBUG
             if (verbose)
                 printf("magic %x text:%d data:%d bss:%d heap:%d "
                        "symbols:%d textoff:%x dataoff:%x\n",
                        m_flag ? 0x9914 : 0x9917, text_size, data_size, bss_size, 0,
                        next * ((m_flag ? 9 : 15) + 3), 0, text_size);
+#endif
 
 			/*
 			 * reset segment addresses to their final addresses
@@ -1604,11 +1980,11 @@ assemble()
 
             lineNum = 0;
 
-            *lineptr = '\0';
-            if (infd == 0) {
-                infd = inbuffd;
-            }	
-			lseek(infd, 0, SEEK_SET);
+            io_reset();
+            if (infp == stdin) {
+                infp = inbuffp;
+            }
+			fseek(infp, 0, SEEK_SET);
 
 			continue;
 		}
@@ -1643,10 +2019,14 @@ assemble()
 		default:
 			break;
 		}
+
+#ifdef DEBUG
 		if (verbose > 3) {
 			printf("sym: %9s index: %5d seg: %s(%d) type: %x\n",
 				sym->name, sym->index, segname[sym->seg], sym->seg, type);
 		}
+#endif
+
 		if (sym->index == 0xffff)
 			continue;
 		outtmp(sym->value & 0xff);

@@ -7,8 +7,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
-#include <fcntl.h>
 #else
 #include <stdio.h>
 #endif
@@ -117,7 +115,8 @@ main(argc, argv)
 int argc;
 char **argv;
 {
-    int fd, ret = 0, hdrPrinted = 0;
+    FILE *fp;
+    int ret = 0, hdrPrinted = 0;
     unsigned char *buf;
     long size;
     unsigned short magic;
@@ -131,32 +130,33 @@ char **argv;
     while (argc--) {
         char *name = *argv++;
 
-        fd = open(name, 0);
-        if (fd < 0) {
+        fp = fopen(name, "rb");
+        if (fp == NULL) {
             perror(name);
             ret = 1;
             continue;
         }
 
-        size = lseek(fd, 0, 2);
-        lseek(fd, 0, 0);
+        fseek(fp, 0, SEEK_END);
+        size = ftell(fp);
+        fseek(fp, 0, SEEK_SET);
 
         buf = (unsigned char *)malloc(size);
         if (!buf) {
             fprintf(stderr, "%s: out of memory\n", progname);
-            close(fd);
+            fclose(fp);
             ret = 1;
             continue;
         }
 
-        if (read(fd, buf, size) != size) {
+        if (fread(buf, 1, size, fp) != size) {
             perror(name);
             free(buf);
-            close(fd);
+            fclose(fp);
             ret = 1;
             continue;
         }
-        close(fd);
+        fclose(fp);
 
         if (!hdrPrinted) {
             printf("   text\t   data\t    bss\t    dec\t    hex\tfilename\n");
