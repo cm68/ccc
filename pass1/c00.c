@@ -72,6 +72,7 @@ char	*argv[];
 	coremax = locbase = sbrk(0);
 	while(!eof)
 		extdef();
+	emittent();	/* emit deferred tentative definitions */
 	outcode("B", EOFC);
 	strflg++;
 	outcode("B", EOFC);

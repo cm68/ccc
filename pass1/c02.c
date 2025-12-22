@@ -63,13 +63,18 @@ extdef()
 			if (sclass==STATIC) {
 				setinit(ds);
 				outcode("BSBBSBN", SYMDEF, "", BSS, NLABEL, ds->name, SSPACE, o);
-			} else if (scflag)
-				outcode("BSN", CSPACE, ds->name, o);
+			} else if (scflag) {
+				/* Defer CSPACE - mark tentative, store size */
+				ds->hflag |= FTENT;
+				ds->hoffset = o;
+			}
 		} else {
 			if (o!=ASSIGN) {
 				error("Declaration syntax");
 				peeksym = o;
 			}
+			/* Clear tentative flag - real definition supersedes */
+			ds->hflag &= ~FTENT;
 			setinit(ds);
 			if (sclass==EXTERN)
 				outcode("BS", SYMDEF, ds->name);
@@ -813,4 +818,24 @@ errflush(ao)
 		o = symbol();
 	}
 	peeksym  = o;
+}
+
+/*
+ * Emit CSPACE for tentative definitions that were never
+ * superseded by a real definition with initializer.
+ * Called at end of compilation unit.
+ */
+emittent()
+{
+	register struct nmlist *cs;
+	register i;
+
+	for (i = 0; i < HSHSIZ; i++) {
+		for (cs = hshtab[i]; cs; cs = cs->nextnm) {
+			if ((cs->hflag & FTENT) && cs->hclass == EXTERN) {
+				outcode("BSN", CSPACE, cs->name, cs->hoffset);
+				cs->hflag &= ~FTENT;
+			}
+		}
+	}
 }

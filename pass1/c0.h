@@ -473,6 +473,7 @@ int	mossym;
 #define	FFIELD	020
 #define	FINIT	040
 #define	FLABL	0100
+#define	FTENT	0200	/* tentative definition - defer CSPACE */
 
 /*
  * functions
