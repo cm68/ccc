@@ -62,6 +62,7 @@ do.ast
 !native/lib/*.s
 !libsrc/libc/*.s
 !libsrc/libu/*.s
+!libsrc/hitech/*.s
 core
 lib/*.O
 __pycache__/
