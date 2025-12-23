@@ -579,8 +579,8 @@ get_token()
     else if (c == '\'') {
         nextchar();  /* consume the ' */
         i = peekchar();
-        if (i == '\n' || i == ' ' || i == '\t' || i == -1) {
-            /* standalone ' - return as itself */
+        if (i == '\n' || i == -1) {
+            /* standalone ' at end of line - return as itself */
             /* c is already '\'' */
         } else {
             /* character literal 'X' */
@@ -1499,10 +1499,17 @@ have_token:
 							nextchar();
 						}
 						get_token();
-						if (cur_token != T_NUM) {
+						if (cur_token == T_NUM) {
+							i = sign * token_val;
+						} else if (cur_token == T_NAME) {
+							struct symbol *sym = sym_fetch(token_buf);
+							if (!sym || sym->seg != SEG_ABS) {
+								gripe("index displacement must be constant");
+							}
+							i = sign * sym->value;
+						} else {
 							gripe("index displacement missing");
 						}
-                        i = sign * token_val;
 						if (op == '-') {
 							vp->num.w -= i;
 						} else {
@@ -1511,7 +1518,8 @@ have_token:
 						c = skipwhite();
 					}
 				} else {
-					ret = (ret - T_IX_D) + T_IX_I;
+					/* no displacement - convert to indirect */
+					ret = (ret == T_IX_D) ? T_IX_I : T_IY_I;
 				}
 				need(')');
             	return ret;
@@ -1644,6 +1652,7 @@ assemble()
 	unsigned short result;
 	struct symbol *sym;
     unsigned short next;
+	struct expval eqval;
 
 	asm_reset();
 
@@ -1854,9 +1863,12 @@ assemble()
 					save_symn();
 					get_token();
 
-					type = operand(&result);
+					type = operand(&eqval);
+					/* plain constant is absolute */
+					if (type == T_PLAIN && !eqval.sym)
+						type = SEG_ABS;
 
-					sym_update(sym_name, type, result, 0);
+					sym_update(sym_name, type, eqval.num.w, 0);
 					consume();
 				} else if (peekchar() == ':') {
 					/*
@@ -1879,8 +1891,11 @@ assemble()
 					save_symn();
 					get_token();
 					if (cur_token == T_NAME && match(token_buf, "equ")) {
-						type = operand(&result);
-						sym_update(sym_name, type, result, 0);
+						type = operand(&eqval);
+						/* plain constant is absolute */
+						if (type == T_PLAIN && !eqval.sym)
+							type = SEG_ABS;
+						sym_update(sym_name, type, eqval.num.w, 0);
 						consume();
 					} else {
 						gripe("unexpected symbol");
