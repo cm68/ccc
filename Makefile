@@ -47,7 +47,10 @@ valgrind: install
 tags:
 	ctags cpp/*.c pass1/*.c pass2/*.c tools/*.c
 
-.PHONY: all install clean clobber stage1 test tests valgrind tags
+sizecheck:
+	@true
+
+.PHONY: all install clean clobber stage1 test tests valgrind tags sizecheck
 #
 # vim: tabstop=4 shiftwidth=4 noexpandtab:
 #
