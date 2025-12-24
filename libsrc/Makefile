@@ -1,25 +1,42 @@
-# CCC Runtime Library Makefile
-# Builds the Z80 runtime libraries for programs compiled with ccc
+#
+# generate the libraries and c startup objects
+#
 
-ROOTDIR ?= ../root
-DIRS = libc libu
+AS = asz
 
-.PHONY: all clean clobber install
+DIRS = libu libc libcpm
+STARTUP = crtcpm.o crt0.o
+DEST = $(realpath ../root/lib)
 
-all:
-	@for d in $(DIRS) ; do $(MAKE) -C $$d all ; done
+all: $(STARTUP)
+	for i in $(DIRS); do \
+		$(MAKE) -C $$i ; \
+	done
+
+crtcpm.o: crtcpm.s
+	$(AS) -o crtcpm.o crtcpm.s
+
+crt0.o: crt0.s
+	$(AS) -o crt0.o crt0.s
 
 install: all
-	mkdir -p $(ROOTDIR)/lib
-	mkdir -p $(ROOTDIR)/usr/include
-	cp libc/crt0.o libc/libc.a libu/libu.a $(ROOTDIR)/lib
-	cp include/*.h $(ROOTDIR)/usr/include
+	mkdir -p $(DEST)
+	for i in $(DIRS); do \
+		$(MAKE) -C $$i DEST=$(DEST) install ; \
+	done
+	cp $(STARTUP) $(DEST)
 
-clobber:
-	@for d in $(DIRS) ; do $(MAKE) -C $$d clobber ; done
-	
-clean:
-	@for d in $(DIRS) ; do $(MAKE) -C $$d clean ; done
+clobber: clean
+	rm -f $(STARTUP)
+	for i in $(DIRS); do \
+		$(MAKE) -C $$i clobber ; \
+	done
+
+clean: 
+	for i in $(DIRS); do \
+		$(MAKE) -C $$i clean ; \
+	done
+
 #
-# vim: tabstop=4 shiftwidth=4 expandtab:
+# vim: tabstop=4 shiftwidth=4 noexpandtab:
 #

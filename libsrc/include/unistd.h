@@ -16,7 +16,7 @@
 #define W_OK 2
 #define R_OK 4
 
-/* lseek() whence values */
+/* seek() whence values */
 #define SEEK_SET 0
 #define SEEK_CUR 1
 #define SEEK_END 2
@@ -48,6 +48,7 @@ extern int open(char *path, int flags);
 extern int pause(void);
 extern int pipe(int *fds);
 extern int read(unsigned char fd, char *buf, int count);
+extern long lseek(unsigned char fd, long offset, int whence);
 extern int seek(unsigned char fd, int offset, int whence);
 extern int setuid(int uid);
 extern void *sbrk(int incr);

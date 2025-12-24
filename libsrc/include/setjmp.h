@@ -1,27 +1,19 @@
-/*
- * setjmp.h - non-local jumps for ccc
- *
- * jmp_buf stores the context needed to restore execution:
- *   [0] SP (stack pointer)
- *   [1] return address
- *   [2] IY (frame pointer)
- */
+#if	z80
+typedef	int	jmp_buf[4];
+#endif
 
-#ifndef _SETJMP_H
-#define _SETJMP_H
+#if	i8086
+typedef	int	jmp_buf[8];
+#endif
 
-typedef int jmp_buf[3];
+#if	i8096
+typedef	int	jmp_buf[10];
+#endif
 
-/*
- * setjmp: Save current execution context in env.
- * Returns 0 when called directly, non-zero when returning via longjmp.
- */
-int setjmp(jmp_buf env);
+#if	m68k
+typedef	int	jmp_buf[10];
+#endif
 
-/*
- * longjmp: Restore execution context saved in env.
- * Causes setjmp to return with value val (or 1 if val is 0).
- */
-void longjmp(jmp_buf env, int val);
+extern	int	setjmp(jmp_buf);
+extern void	longjmp(jmp_buf, int);
 
-#endif /* _SETJMP_H */

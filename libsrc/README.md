@@ -1,1 +1,1 @@
-top level directory for the ccc runtime libraries
+top level directory for the runtime libraries

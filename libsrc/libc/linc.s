@@ -1,52 +1,59 @@
-;
-; linc.s - 32-bit in-memory pre-increment
-;
-.globl linc
+;	Long increment
 
-.text
+	psect	text
 
-;
-; long pre-increment: ++(*hl)
-; HL = address of long
-; Returns new value in HL'HL
-;
-linc::
-	push	de
-	; increment low byte
-	inc	(hl)
-	jr	nz,lincdone
-	; carry to byte 1
-	inc	hl
-	inc	(hl)
-	jr	nz,lincdone1
-	; carry to byte 2
-	inc	hl
-	inc	(hl)
-	jr	nz,lincdone2
-	; carry to byte 3
-	inc	hl
-	inc	(hl)
-	dec	hl
-lincdone2:
-	dec	hl
-lincdone1:
-	dec	hl
-lincdone:
-	; load result into hl'hl
-	ld	e,(hl)
-	inc	hl
-	ld	d,(hl)
-	inc	hl
-	push	de
-	ld	e,(hl)
-	inc	hl
-	ld	d,(hl)
+	global	lainc, llinc, ladec, lldec
+
+gval:
 	exx
+	pop	hl		;return address
+	exx
+	ld	e,(hl)
+	inc	hl
+	ld	d,(hl)
+	inc	hl
+	ld	c,(hl)
+	inc	hl
+	ld	b,(hl)
+	push	de		;lo word
+	push	bc		;hi word
+	push	bc
+	ex	(sp),hl
+	exx
+	push	hl		;return address
+	exx
+	ret
+
+lainc:
+llinc:
+	call	gval
+	ld	bc,1
 	ex	de,hl
-	exx
-	pop	hl
+	add	hl,bc
+	ex	de,hl
+	ld	c,0
+	adc	hl,bc
+
+sval:
+	ex	(sp),hl
+	pop	bc
+	ld	(hl),b
+	dec	hl
+	ld	(hl),c
+	dec	hl
+	ld	(hl),d
+	dec	hl
+	ld	(hl),e
+	pop	hl		;restore original value
 	pop	de
 	ret
-;
-; vim: tabstop=4 shiftwidth=4 noexpandtab:
-;
+
+lldec:
+ladec:
+	call	gval
+	ld	bc,-1
+	ex	de,hl
+	add	hl,bc
+	ex	de,hl
+	adc	hl,bc
+	jr	sval

@@ -1,18 +1,36 @@
-/* Minimal stdlib.h stub for self-hosting */
-#ifndef _STDLIB_H
-#define _STDLIB_H
+/*	Standard utility functions */
 
-typedef unsigned short size_t;
+#ifndef	_STDDEF
+typedef	int		ptrdiff_t;	/* result type of pointer difference */
+typedef	unsigned	size_t;		/* type yielded by sizeof */
 
-void *malloc(size_t size);
-void *calloc(size_t nmemb, size_t size);
-void *realloc(void *ptr, size_t size);
-void free(void *ptr);
+#define	offsetof(ty, mem)	((int)&(((ty *)0)->mem))
 
-void exit(int status);
-int atoi(char *nptr);
-long atol(char *nptr);
+#define	_STDDEF
 
-char *getenv(char *name);
+#ifndef	NULL
+#define	NULL	((void *)0)
+#endif	NULL
 
-#endif /* _STDLIB_H */
+extern int	errno;			/* system error number */
+#endif	_STDDEF
+
+#define	RAND_MAX	32767		/* max value returned by rand() */
+
+extern double	atof(char *);
+extern int	atoi(char *);
+extern long	atol(char *);
+extern int	rand(void);
+extern void	srand(unsigned int);
+extern void *	calloc(size_t, size_t);
+extern void	free(void *);
+extern void *	malloc(size_t);
+extern void *	realloc(void *, size_t);
+extern void	abort(void);
+extern void	exit(int);
+extern char *	getenv(char *);
+extern int	system(char *);
+extern void	qsort(void *, size_t, size_t, int (*)(void *, void *));
+extern int	abs(int);
+extern long	labs(long);
+

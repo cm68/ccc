@@ -1,45 +1,55 @@
-/* Minimal stdio.h stub for self-hosting */
-#ifndef _STDIO_H
-#define _STDIO_H
+#define	BUFSIZ		512
+#define	_NFILE		6
+# ifndef FILE
+#define	uchar	unsigned char
 
-typedef unsigned short size_t;
+extern	struct	_iobuf {
+	char *		_ptr;
+	int		_cnt;
+	char *		_base;
+	uchar		_flag;
+	char		_file;
+} _iob[_NFILE];
 
-typedef struct {
-    int fd;
-    int flags;
-} FILE;
+extern uchar _setup;
+
+# endif
+
+#define	_IOREAD		01	/* 0x01 */
+#define	_IOWRT		02	/* 0x02 */
+#define	_IORW		03	/* 0x03 */
+#define	_IONBF		04	/* 0x04 */
+#define	_IOMYBUF	010	/* 0x08 */
+#define	_IOEOF		020	/* 0x10 */
+#define	_IOERR		040	/* 0x20 */
+#define	_IOSTRG		0100	/* 0x40 */
+#define	_IOBINARY	0200	/* 0x80 */
+
+#ifndef NULL
+#define	NULL		(void *)0
+#endif
+
+#define	FILE		struct _iobuf
+#define	EOF		(-1)
+
+#define	getc(p)		fgetc(p)
+#define	getchar()	getc(stdin)
+#define	putc(x,p)	fputc(x,p)
+#define	putchar(x)	putc(x,stdout)
+#define	feof(p)		(((p)->_flag&_IOEOF)!=0)
+#define	ferror(p)	(((p)->_flag&_IOERR)!=0)
+#define	fileno(p)	((uchar)p->_file)
 
 extern FILE *stdin;
 extern FILE *stdout;
 extern FILE *stderr;
 
-#define NULL ((void *)0)
-#define EOF (-1)
-#define BUFSIZ 512
-
-#define SEEK_SET 0
-#define SEEK_CUR 1
-#define SEEK_END 2
-
-int printf(char *format, ...);
-int fprintf(FILE *stream, char *format, ...);
-int sprintf(char *str, char *format, ...);
-int snprintf(char *str, size_t size, char *format, ...);
-
-int putchar(int c);
-int puts(char *s);
-int fputs(char *s, FILE *stream);
-
-FILE *fopen(char *pathname, char *mode);
-int fclose(FILE *stream);
-size_t fread(void *ptr, size_t size, size_t nmemb, FILE *stream);
-size_t fwrite(void *ptr, size_t size, size_t nmemb, FILE *stream);
-int fseek(FILE *stream, long offset, int whence);
-long ftell(FILE *stream);
-
-int getchar(void);
-char *fgets(char *s, int size, FILE *stream);
-
-void perror(char *s);
-
-#endif /* _STDIO_H */
+FILE *		fopen();
+FILE *		freopen();
+FILE *		fdopen();
+long		ftell();
+char *		fgets();
+char *		_bufallo();
+int _flsbuf();
+char fgetc();
+char fputc();

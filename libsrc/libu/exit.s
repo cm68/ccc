@@ -10,10 +10,10 @@
 ;
 ; This call never returns.
 ;
-	.global _exit
+	.global __exit
 
 	.text
-_exit:
+__exit:
 	pop 	hl		; discard ret addr
 	pop 	hl		; status
 	rst 	08h
