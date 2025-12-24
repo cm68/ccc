@@ -62,12 +62,15 @@ sizefile: Makefile
 	 > sizefile
 
 clean:
-	rm -f cpp *.o mkkw kwtab.c
+	rm -f *.o
+
+clobber: clean
+	rm -f cpp mkkw kwtab.c
 
 install: cpp
 	cp cpp $(DEST)/bin
 
-.PHONY: all clean install stage1 sizefile
+.PHONY: all clean clobber install stage1 sizefile
 #
 # vim: tabstop=4 shiftwidth=4 expandtab:
 #
