@@ -6,10 +6,10 @@
 ARCHIVE = libcpm.a
 
 AS = asz
-CC = zc3
+CC ?= zc3
 LIB = wslib
 
-DEST = ../../root/lib
+DEST ?= ../../root/lib
 
 .SUFFIXES: .c .s .o
 

@@ -2241,12 +2241,19 @@ char **argv;
     /* Print load map */
     print_map();
 
-    /* close all object files */
+    /* close all object files (avoid double-close for archive members) */
     {
-        struct object *obj;
+        struct object *obj, *obj2;
         for (obj = objects; obj; obj = obj->next) {
-            if (obj->fp)
+            if (obj->fp) {
                 fclose(obj->fp);
+                /* clear fp from any other objects sharing the same handle */
+                for (obj2 = obj->next; obj2; obj2 = obj2->next) {
+                    if (obj2->fp == obj->fp)
+                        obj2->fp = NULL;
+                }
+                obj->fp = NULL;
+            }
         }
     }
 

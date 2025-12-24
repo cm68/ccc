@@ -5,7 +5,7 @@
 # Disable built-in lex rule (.x -> .c) to avoid conflicts with lexeme output files
 %.c: %.x
 
-ROOTDIR = ../root
+DEST ?= $(CURDIR)/../root
 
 CC ?= gcc
 WARNS = -Wdeclaration-after-statement -Werror=declaration-after-statement \
@@ -13,7 +13,7 @@ WARNS = -Wdeclaration-after-statement -Werror=declaration-after-statement \
 DEBUG = -ggdb3 -O0
 CFLAGS = -m32 -ggdb3 -O0 -Wall $(DEBUG) $(WARNS)
 
-CCC = $(ROOTDIR)/bin/ccc
+CCC = $(DEST)/bin/ccc
 OUTDIR = stage1
 
 # When building with ccc, use different flags
@@ -55,7 +55,7 @@ stage1:
 # Size report for stage1 objects
 sizefile: Makefile
 	$(MAKE) stage1 CC=ccc
-	@$(ROOTDIR)/bin/wssize $(addprefix $(OUTDIR)/,$(OBJS)) | \
+	@$(DEST)/bin/wssize $(addprefix $(OUTDIR)/,$(OBJS)) | \
 	awk \
 		'{ t+=$$1 ; d+=$$2 ; b+=$$3 ; a+=$$4; print } \
 		END {printf "%7d %7d %7d %7d %19s\n", t, d, b, a, "cpp total" }' \
@@ -65,7 +65,7 @@ clean:
 	rm -f cpp *.o mkkw kwtab.c
 
 install: cpp
-	cp cpp $(ROOTDIR)/bin
+	cp cpp $(DEST)/bin
 
 .PHONY: all clean install stage1 sizefile
 #

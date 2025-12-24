@@ -5,8 +5,8 @@
 # wslib  - archive librarian
 # wssize - display object sizes
 
-ROOTDIR = ../root
-CCC = ../root/bin/ccc
+DEST ?= $(CURDIR)/../root
+CCC = $(DEST)/bin/ccc
 OUTDIR = stage1
 
 CC ?= gcc
@@ -30,7 +30,7 @@ CFLAGS =
 
 endif
 
-ALL = asz wsld wsnm wslib wssize
+ALL = asz wsld wsnm wslib wssize ccc
 
 all: $(ALL)
 
@@ -64,6 +64,12 @@ else
 	$(CC) -o $@ wssize.o
 endif
 
+ccc.o: ccc.c
+	$(CC) $(CFLAGS) -DROOTDIR=$(DEST) -c -o $@ $<
+
+ccc: ccc.o
+	$(CC) -o $@ ccc.o
+
 test:
 
 clean:
@@ -74,8 +80,8 @@ clobber: clean
 	rm -f $(ALL)
 
 install: all
-	mkdir -p $(ROOTDIR)/bin
-	cp $(ALL) $(ROOTDIR)/bin
+	mkdir -p $(DEST)/bin
+	cp $(ALL) $(DEST)/bin
 
 CCCFLAGS = -DCCC -i../native/include
 
@@ -92,8 +98,8 @@ stage1:
 	@echo "Stage1 complete"
 
 sizecheck: stage1
-	@echo "=== ws tools stage1 sizes ==="
-	@../ws/wssize $(STAGE1_OBJS) | \
+	@echo "=== tools stage1 sizes ==="
+	@./wssize $(STAGE1_OBJS) | \
 	awk '($$1 != "text") {printf "%-12s %5d %5d %5d = %5d\n", substr($$6, 8), $$1, $$2, $$3, $$1+$$2+$$3}'
 
 # Link stage1 tools with libccc.a
