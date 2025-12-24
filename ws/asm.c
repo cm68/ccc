@@ -153,6 +153,10 @@ struct oprnd op_table[] = {
 	{ T_PE, "pe" },
 	{ T_P, "p" },
 	{ T_M, "m" },
+	{ T_M, "alt" },		/* Hi-Tech: arithmetic less than = negative */
+	{ T_CR, "llt" },	/* Hi-Tech: logical less than = carry */
+	{ T_P, "age" },		/* Hi-Tech: arithmetic greater or equal = positive */
+	{ T_NC, "lge" },	/* Hi-Tech: logical greater or equal = no carry */
 	{ T_IX, "ix" },
 	{ T_IY, "iy" },
 	{ T_IXH, "ixh" },
@@ -1499,17 +1503,18 @@ have_token:
 							nextchar();
 						}
 						get_token();
-						if (cur_token == T_NUM) {
-							i = sign * token_val;
-						} else if (cur_token == T_NAME) {
+						/* resolve absolute symbols to numbers */
+						if (cur_token == T_NAME) {
 							struct symbol *sym = sym_fetch(token_buf);
-							if (!sym || sym->seg != SEG_ABS) {
-								gripe("index displacement must be constant");
+							if (sym && sym->seg == SEG_ABS) {
+								token_val = sym->value;
+								cur_token = T_NUM;
 							}
-							i = sign * sym->value;
-						} else {
-							gripe("index displacement missing");
 						}
+						if (cur_token != T_NUM) {
+							gripe("index displacement must be constant");
+						}
+						i = sign * token_val;
 						if (op == '-') {
 							vp->num.w -= i;
 						} else {
@@ -1539,6 +1544,12 @@ have_token:
                 vp->sym = sym_update(token_buf, SEG_UNDEF, 0, 0);
             }
 	    }
+        /* If symbol is an absolute constant, convert to number */
+        if (vp->sym && vp->sym->seg == SEG_ABS) {
+            vp->num.w = vp->sym->value;
+            vp->sym = 0;
+            cur_token = T_NUM;
+        }
     } else if (cur_token == T_NUM) {
 		vp->num.w = token_val;
     } else if (cur_token == T_LOCAL) {
@@ -1577,15 +1588,22 @@ have_token:
 		get_token();
 		if (cur_token == T_NUM) {
             i = sign * token_val;
-			if (op == '-') {
-				vp->num.w -= i;
-			} else if (op == '&') {
-				vp->num.w &= i;
-			} else {
-				vp->num.w += i;
+		} else if (cur_token == T_NAME) {
+			/* handle absolute symbol in expression */
+			struct symbol *s = sym_fetch(token_buf);
+			if (!s || s->seg != SEG_ABS) {
+				gripe("expression operand must be absolute");
 			}
+			i = sign * s->value;
 		} else {
 			gripe("expected number after operator");
+		}
+		if (op == '-') {
+			vp->num.w -= i;
+		} else if (op == '&') {
+			vp->num.w &= i;
+		} else {
+			vp->num.w += i;
 		}
 		c = skipwhite();
 	}
