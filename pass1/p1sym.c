@@ -78,9 +78,9 @@ sym_t **lookup(char *buf) {
 
 /**************************************************
  * 105: 4E90 PMO +++
- * lookupOrCreateSym - Look up symbol or create if not found
+ * lookupOrAddSym - Look up symbol or create if not found
  **************************************************/
-sym_t *lookupOrCreateSym(register char *buf) {
+sym_t *lookupOrAddSym(register char *buf) {
     sym_t **ps = lookup(buf);
     if (*ps == 0)
         *ps = symAlloc(buf);

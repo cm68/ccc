@@ -14,7 +14,7 @@ int funcLocalSize[MAXFUN];                    /* local frame size per function *
 member_t *typeUChar;                          /* "uc" - uint8_t	   */
 uint16_t nstdpth;                             /* Current nesting depth   */
 int funcScopeDepth[MAXFUN];                   /* saved scope depth at function entry */
-int funcParamOffset[MAXFUN];                  /* parameter stack offset tracker */
+int funcParmOff[MAXFUN];                  /* parameter stack offset tracker */
 member_t *typeDouble;                         /* "d" - double 	   */
 member_t *typeChar;                           /* "c" - char 		   */
 member_t *funcSymbol[MAXFUN];                 /* function symbol per nesting level */

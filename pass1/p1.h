@@ -307,7 +307,6 @@ extern uint8_t defSClass;       /* a299 */
 extern uint8_t protoContext;    /* a29a - function prototype context */
 
 /* emit.c */
-void emitDependentVar(register sym_t *p);
 void prFuncBrace(uint8_t tok);
 void emitLocLabDef(int16_t p);
 void emitLabelDef(register sym_t *st);
@@ -324,7 +323,7 @@ void resetExprStack(void);
 /* expr.c */
 expr_t *parseExprMode(char p1);
 expr_t *parseConstExpr(uint8_t n);
-expr_t *parsePrimaryExpr(void);
+expr_t *parsePrimExpr(void);
 expr_t *parseExpr(uint8_t p1, register expr_t *lhs, expr_t *rhs);
 expr_t *newIntLeaf(long num, uint8_t p2);
 bool isZero(register expr_t *st);
@@ -361,7 +360,7 @@ void expectErr(char *p);
 void *xalloc(size_t size);
 
 /* program.c */
-void parseGlobalDecl(void);
+void parseGlobDecl(void);
 void parseInitBlock(sym_t *p1);
 
 /* stmt.c */
@@ -369,7 +368,7 @@ void parseFunction(void);
 
 /* sym.c */
 void initSymTable(void);
-sym_t *lookupOrCreateSym(register char *buf);
+sym_t *lookupOrAddSym(register char *buf);
 sym_t *declareSym(register sym_t *st, uint8_t p2, attr_t *p3, sym_t *p4);
 void defineArg(register sym_t *st);
 void markReferenced(register sym_t *st);
@@ -396,11 +395,11 @@ void delIndirection(register attr_t *st);
 
 /* type.c */
 void addIndir(register attr_t *st);
-void parseLocalDecls(uint8_t p1);
+void parseLocDecls(uint8_t p1);
 uint8_t parseTypeSpec(uint8_t *pscType, register attr_t *attr);
-sym_t *parseStructUnion(uint8_t p1);
+sym_t *parseStUnion(uint8_t p1);
 sym_t *parseEnumDef(void);
-sym_t *parseDeclarator(uint8_t p1, register attr_t *p2, uint8_t p3, sym_t *p4);
+sym_t *parseDeclr(uint8_t p1, register attr_t *p2, uint8_t p3, sym_t *p4);
 void emitAttr(register attr_t *st);
 
 

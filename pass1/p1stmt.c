@@ -58,7 +58,7 @@ void parseFunction(void) {
     uint8_t tok;
 
     enterScope();
-    parseLocalDecls(D_STACK);
+    parseLocDecls(D_STACK);
     defineFuncSig();
     if ((tok = yylex()) != T_LBRACE) {
         expectErr("{");
@@ -66,7 +66,7 @@ void parseFunction(void) {
     }
     emitLabelDef(curFuncNode);
     unreachable = false;
-    parseLocalDecls(0x14);
+    parseLocDecls(0x14);
     returnLabel = newTmpLabel();
     while ((tok = yylex()) != T_RBRACE) {
         ungetTok = tok;
@@ -149,7 +149,7 @@ void parseStmt(int16_t p1, int16_t p2, register case_t *p3, int16_t *p4) {
         /* FALLTHRU */
     default:
         ungetTok   = tok;
-        exprResult = parseExpr(T_EROOT, parsePrimaryExpr(), 0); /* dummy 3rd arg added */
+        exprResult = parseExpr(T_EROOT, parsePrimExpr(), 0); /* dummy 3rd arg added */
         emitCast(exprResult);
         freeExpr(exprResult);
         expect(T_SEMI, ";");
@@ -170,7 +170,7 @@ void parseCompound(int16_t p1, int16_t p2, case_t *p3, int16_t *p4) {
     if (haveDecl) {
         ungetTok = tok;
         enterScope();
-        parseLocalDecls(T_AUTO);
+        parseLocDecls(T_AUTO);
         tok = yylex();
     }
     while (tok != T_RBRACE) {
@@ -227,7 +227,7 @@ void parseWhileStmt(case_t *p3) {
     }
     emitJumpLabel(continueLabel = newTmpLabel());
     emitLocLabDef(loopLabel = newTmpLabel());
-    pe = parsePrimaryExpr();
+    pe = parsePrimExpr();
     if ((tok = yylex()) != T_RPAREN) {
         expectErr(")");
         ungetTok = tok;
@@ -267,7 +267,7 @@ void parseDoStmt(case_t *p3) {
         expectErr("(");
         ungetTok = tok;
     }
-    pe = parsePrimaryExpr();
+    pe = parsePrimExpr();
     expect(T_RPAREN, ")");
     emitCondBranch(loopLabel, pe, 1);
     emitLocLabDef(breakLabel);
@@ -291,7 +291,7 @@ void parseIfStmt(int16_t p1, int16_t p2, case_t *p3, int16_t *p4) {
         expectErr("(");
         ungetTok = tok;
     }
-    pe = parsePrimaryExpr();
+    pe = parsePrimExpr();
     if ((tok = yylex()) != T_RPAREN) {
         expectErr(")");
         ungetTok = tok;
@@ -334,7 +334,7 @@ void parseSwitch(int16_t p1) {
     haveBreak         = 0;
     caseInfo.defLabel = 0;
     caseInfo.caseCnt  = 0;
-    if ((caseInfo.switchExpr = parseExpr(T_EROOT, parsePrimaryExpr(), 0))) {
+    if ((caseInfo.switchExpr = parseExpr(T_EROOT, parsePrimExpr(), 0))) {
         ps = &caseInfo.switchExpr->attr;
         if (!isVarOfType(ps, DT_ENUM) && (!isIntType(ps) || ps->dataType >= DT_LONG))
             prError("illegal type for switch expression");
@@ -387,7 +387,7 @@ void parseForStmt(case_t *p1) {
 
     if ((tok = yylex()) != T_SEMI) {
         ungetTok = tok;
-        st       = parseExpr(T_EROOT, parsePrimaryExpr(), 0);
+        st       = parseExpr(T_EROOT, parsePrimExpr(), 0);
         emitCast(st);
         freeExpr(st);
         expect(T_SEMI, ";");
@@ -395,13 +395,13 @@ void parseForStmt(case_t *p1) {
     if ((tok = yylex()) != T_SEMI) {
         haveCond = true;
         ungetTok = tok;
-        condExpr = parsePrimaryExpr();
+        condExpr = parsePrimExpr();
         expect(T_SEMI, ";");
     } else
         condExpr = NULL;
     if ((tok = yylex()) != T_RPAREN) {
         ungetTok = tok;
-        stepExpr = parseExpr(T_EROOT, parsePrimaryExpr(), 0);
+        stepExpr = parseExpr(T_EROOT, parsePrimExpr(), 0);
         tok      = yylex();
         if (tok != T_RPAREN) {
             expectErr(")");
@@ -506,7 +506,7 @@ void parseReturn(void) {
     uint8_t tok;
     if ((tok = yylex()) != T_SEMI) {
         ungetTok = tok;
-        emitReturnExpr(parseExpr(T_EROOT, parsePrimaryExpr(), 0));
+        emitReturnExpr(parseExpr(T_EROOT, parsePrimExpr(), 0));
         if (yylex() != T_SEMI) {
             expectErr(";");
             ungetTok = tok;

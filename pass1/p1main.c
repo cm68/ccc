@@ -305,7 +305,7 @@ void mainParseLoop(void) {
 
     while ((tok = yylex()) != T_EOF) {
         ungetTok = tok;
-        parseGlobalDecl();
+        parseGlobDecl();
     }
     relScopeSym();
 }

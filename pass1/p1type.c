@@ -50,9 +50,9 @@ void addIndir(register attr_t *st) {
 
 /**************************************************
  * 133: 5C19 PMO +++
- * parseLocalDecls - Parse local declaration list
+ * parseLocDecls - Parse local declaration list
  **************************************************/
-void parseLocalDecls(uint8_t sclass) {
+void parseLocDecls(uint8_t sclass) {
     register sym_t *st; /* may not be needed */
     uint8_t tok;
 
@@ -90,7 +90,7 @@ void parseDeclStmt(void) {
         return;
     ungetTok = tok;
     for (;;) {
-        st   = parseDeclarator(scType, &attr, scFlags & ~1, 0); /* dummy last param */
+        st   = parseDeclr(scType, &attr, scFlags & ~1, 0); /* dummy last param */
         isFunc = st && (st->flags & S_VAR) && st->attr.nodeType == FUNCNODE;
         emitDef = (scFlags & 1) && scType != D_STACK && !isFunc;
         if ((tok = yylex()) == T_EQ) {
@@ -189,13 +189,13 @@ uint8_t parseTypeSpec(uint8_t *pscType, register attr_t *attr) {
                 break;
             case T_UNION:
                 dataType        = DT_UNION;
-                attr->nextSym = parseStructUnion(D_UNION);
+                attr->nextSym = parseStUnion(D_UNION);
                 if (attr->nextSym)
                     markReferenced(attr->nextSym);
                 break;
             case T_STRUCT:
                 dataType        = DT_STRUCT;
-                attr->nextSym = parseStructUnion(D_STRUCT);
+                attr->nextSym = parseStUnion(D_STRUCT);
                 if (attr->nextSym)
                     markReferenced(attr->nextSym);
                 break;
@@ -271,9 +271,9 @@ uint8_t parseTypeSpec(uint8_t *pscType, register attr_t *attr) {
 
 /**************************************************
  * 136: 60DB PMO +++
- * parseStructUnion - Parse struct/union definition
+ * parseStUnion - Parse struct/union definition
  **************************************************/
-sym_t *parseStructUnion(uint8_t p1) {
+sym_t *parseStUnion(uint8_t p1) {
     sym_t *pSym;
     sym_t **ppMembers;
     uint8_t tok;
@@ -305,7 +305,7 @@ sym_t *parseStructUnion(uint8_t p1) {
             parseTypeSpec(0, &attr);
             lexMember = true;
             do {
-                pSym = parseDeclarator(D_MEMBER, &attr, 0, st);
+                pSym = parseDeclr(D_MEMBER, &attr, 0, st);
                 if (pSym) {
                     if (pSym->attr.nodeType == FUNCNODE)
                         prError("members cannot be functions");
@@ -506,7 +506,7 @@ args_t *parseArgs(uint16_t p1) {
         if (scType != D_15 && scType != T_REGISTER)
             prError("bad storage class");
         scType = p1 ? D_15 : D_14;
-        st     = parseDeclarator(scType, &attr, scFlags & ~1, 0);
+        st     = parseDeclr(scType, &attr, scFlags & ~1, 0);
         pAttr  = &st->attr;
         if (pAttr->nodeType == FUNCNODE) {
             pAttr->nextSym   = declareSym(newTmpSym(), T_TYPEDEF, pAttr, 0);
@@ -565,9 +565,9 @@ args_t *parseArgs(uint16_t p1) {
 
 /**************************************************
  * 140: 69CA PMO +++
- * parseDeclarator - Parse declarator (name, pointer, array, function)
+ * parseDeclr - Parse declarator (name, pointer, array, function)
  **************************************************/
-sym_t *parseDeclarator(uint8_t p1, register attr_t *p2, uint8_t p3, sym_t *p4) {
+sym_t *parseDeclr(uint8_t p1, register attr_t *p2, uint8_t p3, sym_t *p4) {
     uint16_t indirection;
     sym_t *resultSym;
     decl_t *savDecl;

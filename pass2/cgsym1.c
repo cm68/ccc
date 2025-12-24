@@ -72,7 +72,7 @@ void parseVariable() {
                 fatalErr("Functions nested too deep");
 
             funcScopeDepth[lvlidx] = nstdpth; /* Save current nesting depth */
-            funcParamOffset[lvlidx] = 6;
+            funcParmOff[lvlidx] = 6;
             funcLocalSize[lvlidx] = 0;
             funcSymbol[lvlidx] = symbol;
         }

@@ -77,7 +77,7 @@ uint8_t yylex(void) {
         tok      = ungetTok;
         ungetTok = 0;
         if (tok == T_ID && lexMember)
-            yylval.ySym = lookupOrCreateSym(nameBuf);
+            yylval.ySym = lookupOrAddSym(nameBuf);
         return tok;
     }
     for (;;) {
@@ -444,7 +444,7 @@ uint8_t parseName(int8_t ch) {
         }
         return mid;
     }
-    yylval.ySym = lookupOrCreateSym(nameBuf);
+    yylval.ySym = lookupOrAddSym(nameBuf);
     return T_ID;
 }
 

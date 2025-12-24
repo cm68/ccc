@@ -20,10 +20,10 @@ void allocVar(register member_t *symbol, int storageClass) {
         }
         break;
     case 5:
-        symbol->offset = funcParamOffset[lvlidx];
-        funcParamOffset[lvlidx] += symbol->size;
+        symbol->offset = funcParmOff[lvlidx];
+        funcParmOff[lvlidx] += symbol->size;
         if (symbol->size == 1 && symbol->type->sclass != STRUCT && symbol->type->sclass != UNION)
-            funcParamOffset[lvlidx]++;
+            funcParmOff[lvlidx]++;
 
         if (!tryAllocReg(symbol, storageClass))
             symbol->tflag = 1;

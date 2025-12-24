@@ -84,7 +84,7 @@ expr_t *parseExprMode(char p1) {
 
     l1        = exprParseMode;
     exprParseMode = p1;
-    st        = parsePrimaryExpr();
+    st        = parsePrimExpr();
     exprParseMode = l1;
     return st;
 }
@@ -176,7 +176,7 @@ expr_t *parseConstExpr(uint8_t n) {
     register expr_t *st;
 
     exprParseMode = n;
-    if ((st = parseExpr(T_EROOT, parsePrimaryExpr(), 0))) { /* PMO added dummy arg3 */
+    if ((st = parseExpr(T_EROOT, parsePrimExpr(), 0))) { /* PMO added dummy arg3 */
         if (!isConstExpr(st))
             prError("constant expression required");
         else if (exprParseMode == 2) {
@@ -232,9 +232,9 @@ bool isStaticAddr(register expr_t *st) {
 
 /**************************************************
  * 22: 0BFC PMO +++
- * parsePrimaryExpr - Parse primary expression
+ * parsePrimExpr - Parse primary expression
  **************************************************/
-expr_t *parsePrimaryExpr(void) {
+expr_t *parsePrimExpr(void) {
     attr_t tmpAttr;
     expr_t *leaf FORCEINIT;
     opStk_t *savOpSP;
@@ -325,7 +325,7 @@ expr_t *parsePrimaryExpr(void) {
                 if (hasLhs)
                     goto error;
                 parseTypeSpec(0, &tmpAttr);
-                defineArg(st = parseDeclarator(T_CAST, &tmpAttr, 0, 0));
+                defineArg(st = parseDeclr(T_CAST, &tmpAttr, 0, 0));
                 markReferenced(st);
                 tok2 = yylex();
                 if (tok2 != T_RPAREN)

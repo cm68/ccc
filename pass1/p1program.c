@@ -42,9 +42,9 @@ int16_t parseInitial(register sym_t *st, bool p2);
 
 /**************************************************
  * 81: 3ADF +++
- * parseGlobalDecl - Parse global declaration
+ * parseGlobDecl - Parse global declaration
  **************************************************/
-void parseGlobalDecl(void) {
+void parseGlobDecl(void) {
     uint8_t tok;
     uint8_t scType;
     attr_t attr;
@@ -61,7 +61,7 @@ void parseGlobalDecl(void) {
 
     for (;;) {
         argListHead = 0;
-        st       = parseDeclarator(scType, &attr, scFlags & ~1, 0);
+        st       = parseDeclr(scType, &attr, scFlags & ~1, 0);
         tok      = yylex();
 
         if (st && (st->flags & S_VAR) && st->a_nodeType == FUNCNODE) {

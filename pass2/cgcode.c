@@ -106,14 +106,14 @@ void parseInit() {
  * emit_call_ncsv
  *********************************************************/
 void prFrameHead(int fId) {
-    static bool frameGlobalsEmitted; /* First call ncsv	   */
+    static bool frameGlobEmit; /* First call ncsv	   */
 
     prPsect(P_TEXT);
-    if (frameGlobalsEmitted == false) /* if first call	*/
+    if (frameGlobEmit == false) /* if first call	*/
         printf("global\tncsv, cret, indir\n");
 
     printf("call\tncsv\n");
-    frameGlobalsEmitted = true; /* first call is done	*/
+    frameGlobEmit = true; /* first call is done	*/
     printf("defw\tf%d\n", fId);
 }
 
