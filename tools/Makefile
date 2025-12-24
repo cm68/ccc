@@ -12,8 +12,11 @@ OUTDIR = stage1
 CC ?= gcc
 
 ifeq ($(CC),gcc)
-CFLAGS = -m32 -g -Wall -std=c90 -pedantic -Dlinux -std=c89
-LD = gcc
+WARNS = -Wall -Werror -pedantic \
+-Wdeclaration-after-statement -Werror=declaration-after-statement \
+-Werror=implicit-function-declaration
+CFLAGS = -m32 -std=c89 -g -O0 $(WARNS) -Dlinux
+LD = $(CC)
 
 .SUFFIXES: .c .o
 .c.o:

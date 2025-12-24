@@ -8,16 +8,17 @@
 DEST ?= $(CURDIR)/../root
 
 CC ?= gcc
-WARNS = -Wdeclaration-after-statement -Werror=declaration-after-statement \
--Werror=implicit-function-declaration -Wall -Werror
-DEBUG = -ggdb3 -O0
-CFLAGS = -m32 -ggdb3 -O0 -Wall $(DEBUG) $(WARNS)
 
 CCC = $(DEST)/bin/ccc
 OUTDIR = stage1
 
-# When building with ccc, use different flags
-ifeq ($(CC),ccc)
+# Compiler-specific flags
+ifeq ($(CC),gcc)
+WARNS = -Wall -Werror -pedantic \
+-Wdeclaration-after-statement -Werror=declaration-after-statement \
+-Werror=implicit-function-declaration
+CFLAGS = -m32 -std=c89 -g -O0 $(WARNS)
+else ifeq ($(CC),ccc)
 CFLAGS = -DCCC
 endif
 
