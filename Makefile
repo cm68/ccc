@@ -32,7 +32,7 @@ clobber:
 
 stage1: install
 	@echo "Building stage1 with cross ccc"
-	@for d in $(DIRS); do $(SUBMAKE) -C $$d stage1; done
+	@for d in $(DIRS); do $(MAKE) CC=ccc DEST=$(DEST) -C $$d stage1; done
 	@echo "Stage1 build complete"
 
 test: install
