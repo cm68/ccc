@@ -231,9 +231,9 @@ void fatalErr(char *fmt, ...) {
  * 75: 39C1 PMO
  **************************************************/
 void prWarning(char *fmt, ...) {
+    va_list args;
     if (w_opt)
         return;
-    va_list args;
     va_start(args, fmt);
     prMsg(fmt, args);
     va_end(args);

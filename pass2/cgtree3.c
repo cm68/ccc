@@ -144,7 +144,7 @@ uint8_t isPow2Bit(long value) {
 void freeExprTree(register node_t *node) {
     int opCount;
 
-    if (opCount = dopetab[node->op] & DOPE_OPCOUNT) {
+    if ((opCount = dopetab[node->op] & DOPE_OPCOUNT)) {
         freeExprTree(node->info.np[0]);
         if (opCount == DOPE_BINARY)
             freeExprTree(node->info.np[1]);
@@ -268,12 +268,13 @@ uint8_t testPattern(register node_t *node, int pattern) {
             goto dotp;
         break;
     case DOT:
-        if (nodesize(node->info.np[0]) == 4)
+        if (nodesize(node->info.np[0]) == 4) {
         dotp:
             if (getTypeClass(node) != 3)
                 return false;
             else
                 return getTypeClass(node->info.np[0]) == 1 || getTypeClass(node->info.np[0]) == 2;
+        }
         break;
     case LAND:
         return getTypeClass(node) == 3;

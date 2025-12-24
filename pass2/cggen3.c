@@ -12,7 +12,7 @@
  * one via emitCodePat.
  *********************************************************/
 void emitNodeCode(register node_t *node) {
-    char patIdx;
+    int patIdx;
     struct codeFrag_t *frag;
 
     emitOffset = 0;

@@ -123,7 +123,7 @@ void *allocMem(size_t size) {
     register char *ptr;
 
     do {
-        if (ptr = malloc(size))
+        if ((ptr = malloc(size)))
             goto done;
     } while (relNodeFrList());
     fatalErr("No room");

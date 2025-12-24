@@ -24,7 +24,7 @@ void emitCodePat(register node_t *node, char *pattern, char patIdx) {
     char cmd;
     int modifier;
     long sizeVal;
-    char targetPatIdx;
+    int targetPatIdx;
     char loopFlag;
     char *lineStart;
     uint32_t accumVal;

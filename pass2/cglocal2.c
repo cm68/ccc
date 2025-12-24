@@ -142,11 +142,8 @@ node_t *negAddToSub(register node_t *node) {
  *********************************************************/
 node_t *optimizeExpr(register node_t *node) {
 
-    int unused; /* Not used */
-
     warningMsg = 0;
     node         = subToAdd(node);
-    unused         = 0; /* Not used */
     do {
         treeChanged = false;
         node = constFold(localOptimize(node));
@@ -349,11 +346,12 @@ uint8_t findAvailReg(int availMask, int regSpec) {
     uint8_t *classPtr;
 
     regSpec &= ~CF_REGCONSTRAINT; /* Clear bit 6 */
-    if (regSpec < 24)
+    if (regSpec < 24) {
         if ((availMask & regBitMask[regSpec]) == regBitMask[regSpec])
             return regSpec;
         else
             return 0;
+    }
     regSpec -= 24;
     count = 6;
     classPtr = &regClassRegs[regSpec * 6];

@@ -50,7 +50,7 @@ node_t *constFold(register node_t *node) {
     node_t *childNode;
     int opCount;
 
-    if (opCount = dopetab[node->op] & DOPE_OPCOUNT)
+    if ((opCount = dopetab[node->op] & DOPE_OPCOUNT))
         node->info.np[0] = constFold(node->info.np[0]);
     if (opCount == DOPE_BINARY)
         node->info.np[1] = constFold(node->info.np[1]);
