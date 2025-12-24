@@ -157,6 +157,16 @@ struct oprnd op_table[] = {
 	{ T_CR, "llt" },	/* Hi-Tech: logical less than = carry */
 	{ T_P, "age" },		/* Hi-Tech: arithmetic greater or equal = positive */
 	{ T_NC, "lge" },	/* Hi-Tech: logical greater or equal = no carry */
+	{ T_NZ, "anz" },	/* Hi-Tech: arithmetic not zero */
+	{ T_Z, "az" },		/* Hi-Tech: arithmetic zero */
+	{ T_P, "fge" },		/* Hi-Tech: float greater or equal */
+	{ T_M, "flt" },		/* Hi-Tech: float less than */
+	{ T_NZ, "fnz" },	/* Hi-Tech: float not zero */
+	{ T_Z, "fz" },		/* Hi-Tech: float zero */
+	{ T_NZ, "lnz" },	/* Hi-Tech: logical not zero */
+	{ T_Z, "lz" },		/* Hi-Tech: logical zero */
+	{ T_PO, "no" },		/* Hi-Tech: no overflow */
+	{ T_PE, "o" },		/* Hi-Tech: overflow */
 	{ T_IX, "ix" },
 	{ T_IY, "iy" },
 	{ T_IXH, "ixh" },
@@ -300,6 +310,7 @@ unsigned char tok;
 
 extern char match();
 extern unsigned long parsenum();
+extern unsigned long parsefloat();
 extern void gripe();
 extern void gripe2();
 
@@ -1348,6 +1359,53 @@ dl()
 	}
 }
 
+/*
+ * .deff <float>[,...] - define float (IEEE 754 single precision)
+ * parses the float as raw text since get_token would choke on '.'
+ */
+void
+df()
+{
+    char fbuf[32];
+    int i;
+    char c;
+    unsigned long bits;
+
+    while (1) {
+        /* skip whitespace */
+        while ((c = peekchar()) == ' ' || c == '\t')
+            nextchar();
+
+        if (c == '\n' || c == T_EOF)
+            break;
+
+        /* collect the float literal */
+        i = 0;
+        while (1) {
+            c = peekchar();
+            if (c == ',' || c == ' ' || c == '\t' ||
+                c == '\n' || c == T_EOF)
+                break;
+            if (i < 31)
+                fbuf[i++] = nextchar();
+            else
+                nextchar();
+        }
+        fbuf[i] = '\0';
+
+        /* convert and emit */
+        bits = parsefloat(fbuf);
+        emitlong(bits);
+
+        /* check for more values */
+        while ((c = peekchar()) == ' ' || c == '\t')
+            nextchar();
+        if (c != ',')
+            break;
+        nextchar();  /* consume comma */
+    }
+}
+
 void
 ds()
 {
@@ -1816,6 +1874,16 @@ assemble()
 					continue;
 				}
 
+				/*
+				 * .deff <float>[,...] - IEEE 754 single precision
+				 */
+				if (match(token_buf, "deff") ||
+					match(token_buf, "df")) {
+					df();
+					consume();
+					continue;
+				}
+
 				printf("%s\n", token_buf);
 				gripe("unkown directive");
 				continue;
@@ -1859,6 +1927,9 @@ assemble()
 					consume();
 				} else if (match(token_buf, "defs")) {
 					ds();
+					consume();
+				} else if (match(token_buf, "deff")) {
+					df();
 					consume();
 				} else if (match(token_buf, "global")) {
 					while (1) {
