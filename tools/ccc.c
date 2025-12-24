@@ -10,7 +10,7 @@
 #include <sys/wait.h>
 #include <libgen.h>
 
-#define MAX_ARGS 2560  // command-line arguments (original: 256, tested: 2560)
+#define MAX_ARGS 2560
 
 char *progname;
 
@@ -18,6 +18,73 @@ char *progname;
 #define stringify(s) stringify2(s)
 
 char *rootdir = stringify(ROOTDIR);
+
+/*
+ * Duplicate a string (strdup is POSIX, not C99)
+ */
+char *
+strdup_(char *s)
+{
+    char *p = malloc(strlen(s) + 1);
+    if (p)
+        strcpy(p, s);
+    return p;
+}
+
+/*
+ * Resolve a path to an absolute path, handling . and .. components.
+ * Returns resolved path in 'resolved' buffer, or NULL on failure.
+ */
+char *
+realpath_(char *path, char *resolved)
+{
+    char *parts[64];
+    char temp[1024];
+    int nparts = 0;
+    char *p, *tok;
+    int i;
+
+    if (!path || !resolved)
+        return NULL;
+
+    /* Start with cwd for relative paths */
+    if (path[0] != '/') {
+        if (!getcwd(temp, sizeof(temp)))
+            return NULL;
+        strcat(temp, "/");
+        strcat(temp, path);
+    } else {
+        strcpy(temp, path);
+    }
+
+    /* Parse path components */
+    p = temp;
+    while ((tok = strtok(p, "/")) != NULL) {
+        p = NULL;
+        if (strcmp(tok, ".") == 0) {
+            continue;
+        } else if (strcmp(tok, "..") == 0) {
+            if (nparts > 0)
+                nparts--;
+        } else {
+            parts[nparts++] = tok;
+        }
+    }
+
+    /* Rebuild path */
+    resolved[0] = '\0';
+    for (i = 0; i < nparts; i++) {
+        strcat(resolved, "/");
+        strcat(resolved, parts[i]);
+    }
+    if (resolved[0] == '\0')
+        strcpy(resolved, "/");
+
+    return resolved;
+}
+
+#define strdup strdup_
+#define realpath realpath_
 
 void
 usage(void)
@@ -30,14 +97,10 @@ usage(void)
     printf("  -k             Keep all intermediates (.x, .1, .2, .s, .o)\n");
     printf("  -S             Strip symbols from output\n");
     printf("  -9             Use 9-char symbols in output\n");
-    printf("  -v <level>     Verbosity level (passed to cc1)\n");
-    printf("  -V <level>     Verbosity level (passed to cc2)\n");
-    printf("  -I<dir>        Include directory (passed to cc1)\n");
-    printf("  -i<dir>        System include directory (passed to cc1, "
-        "default /usr/include)\n");
-    printf("  -D<var>[=val]  Define macro (passed to cc1)\n");
-    printf("  -E             Preprocess only (not yet implemented)\n");
-    printf("  -P             Run pretty printer after parse (produces .pp)\n");
+    printf("  -I<dir>        Include directory\n");
+    printf("  -i<dir>        System include directory (default /usr/include)\n");
+    printf("  -D<var>[=val]  Define macro\n");
+    printf("  -E             Preprocess only\n");
     printf("  -x             Print commands as they execute\n");
     printf("  -n             Print commands without executing (dry run)\n");
     exit(1);
@@ -152,7 +215,6 @@ main(int argc, char **argv)
     int no_exec = 0;         /* -n: don't execute (dry run) */
     int strip_syms = 0;      /* -S: strip symbols from output */
     int nine_char = 0;       /* -9: use 9-char symbols */
-    int pretty_print = 0;    /* -P: run ppic after parse */
 
     /* Input files by type */
     char *c_files[MAX_ARGS];
@@ -175,7 +237,6 @@ main(int argc, char **argv)
     char asm_path[1024];
     char ld_path[1024];
     char astpp_path[1024];
-    char ppic_path[1024];
 
     char chdr_path[1024];
     char libc_path[1024];
@@ -188,18 +249,17 @@ main(int argc, char **argv)
     progname = argv[0];
 
     /* Build paths to cpp, pass1 (c0), pass2 (c1), assembler, linker */
-    snprintf(cpp_path, sizeof(cpp_path), "%s/bin/cpp", rootdir);
-    snprintf(cc1_path, sizeof(cc1_path), "%s/bin/c0", rootdir);
-    snprintf(cc2_path, sizeof(cc2_path), "%s/bin/c1", rootdir);
-    snprintf(asm_path, sizeof(asm_path), "%s/bin/asz", rootdir);
-    snprintf(ld_path, sizeof(ld_path), "%s/bin/wsld", rootdir);
-    snprintf(astpp_path, sizeof(astpp_path), "%s/bin/astpp", rootdir);
-    snprintf(ppic_path, sizeof(ppic_path), "%s/bin/ppic", rootdir);
+    sprintf(cpp_path, "%s/bin/cpp", rootdir);
+    sprintf(cc1_path, "%s/bin/c0", rootdir);
+    sprintf(cc2_path, "%s/bin/c1", rootdir);
+    sprintf(asm_path, "%s/bin/asz", rootdir);
+    sprintf(ld_path, "%s/bin/wsld", rootdir);
+    sprintf(astpp_path, "%s/bin/astpp", rootdir);
 
-    snprintf(chdr_path, sizeof(chdr_path), "%s/lib/crt0.o", rootdir);
-    snprintf(libc_path, sizeof(libc_path), "%s/lib/libc.a", rootdir);
-    snprintf(libu_path, sizeof(libu_path), "%s/lib/libu.a", rootdir);
-    snprintf(sysinc_path, sizeof(sysinc_path), "-i%s/usr/include", rootdir);
+    sprintf(chdr_path, "%s/lib/crt0.o", rootdir);
+    sprintf(libc_path, "%s/lib/libc.a", rootdir);
+    sprintf(libu_path, "%s/lib/libu.a", rootdir);
+    sprintf(sysinc_path, "-i%s/usr/include", rootdir);
 
     /* Initialize base argument arrays with program names */
     cpp_base[cpp_base_argc++] = cpp_path;
@@ -251,38 +311,6 @@ main(int argc, char **argv)
             no_exec = 1;
             argc--;
             argv++;
-        } else if (strcmp(argv[0], "-v") == 0) {
-            /* Pass -v and its argument to cc1 */
-            if (cc1_base_argc + 2 >= MAX_ARGS) {
-                fprintf(stderr, "Error: too many arguments\n");
-                exit(1);
-            }
-            cc1_base[cc1_base_argc++] = "-v";
-            argc--;
-            argv++;
-            if (argc == 0) {
-                fprintf(stderr, "Error: -v requires an argument\n");
-                usage();
-            }
-            cc1_base[cc1_base_argc++] = argv[0];
-            argc--;
-            argv++;
-        } else if (strcmp(argv[0], "-V") == 0) {
-            /* Pass -v and its argument to cc2 */
-            if (cc2_base_argc + 2 >= MAX_ARGS) {
-                fprintf(stderr, "Error: too many arguments\n");
-                exit(1);
-            }
-            cc2_base[cc2_base_argc++] = "-v";
-            argc--;
-            argv++;
-            if (argc == 0) {
-                fprintf(stderr, "Error: -V requires an argument\n");
-                usage();
-            }
-            cc2_base[cc2_base_argc++] = argv[0];
-            argc--;
-            argv++;
         } else if (argv[0][0] == '-' &&
                    (argv[0][1] == 'I' || argv[0][1] == 'i' ||
                     argv[0][1] == 'D')) {
@@ -310,10 +338,6 @@ main(int argc, char **argv)
                 exit(1);
             }
             cpp_base[cpp_base_argc++] = argv[0];
-            argc--;
-            argv++;
-        } else if (strcmp(argv[0], "-P") == 0) {
-            pretty_print = 1;
             argc--;
             argv++;
         } else if (argv[0][0] == '-') {
@@ -375,8 +399,6 @@ main(int argc, char **argv)
         char *as_args[8];
         int cpp_argc, cc1_argc, cc2_argc, j;
 
-        char *pp_file;
-
         /* Generate intermediate filenames */
         lex_file = malloc(strlen(base) + 10);
         sprintf(lex_file, "%s.x", base);
@@ -390,8 +412,6 @@ main(int argc, char **argv)
         sprintf(asm_file, "%s.s", base);
         obj_file = malloc(strlen(base) + 10);
         sprintf(obj_file, "%s.o", base);
-        pp_file = malloc(strlen(base) + 10);
-        sprintf(pp_file, "%s.pp", base);
 
         if (!no_exec) printf("=== Compiling %s ===\n", src);
 
@@ -443,24 +463,6 @@ main(int argc, char **argv)
         free(lex_file);
         free(prep_file);
 
-        /* Run ppic if -P was specified */
-        if (pretty_print) {
-            char *ppic_args[4];
-            ppic_args[0] = ppic_path;
-            ppic_args[1] = base;
-            ppic_args[2] = NULL;
-
-            if (print_cmds || no_exec)
-                printCommand(ppic_args);
-            if (!no_exec) {
-                status = execCommand(ppic_path, ppic_args);
-                if (status != 0) {
-                    fprintf(stderr, "Error: ppic failed on %s\n", src);
-                    exit(status);
-                }
-            }
-        }
-
         /* Build pass2 args: c1 temp1 temp2 asm_file */
         cc2_argc = 0;
         for (j = 0; j < cc2_base_argc; j++)
@@ -487,7 +489,6 @@ main(int argc, char **argv)
         }
         free(temp1_file);
         free(temp2_file);
-        free(pp_file);
 
         /* If -s, we're done with this file */
         if (asm_only) {

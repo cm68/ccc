@@ -15,7 +15,7 @@ ifeq ($(CC),gcc)
 WARNS = -Wall -Werror -pedantic \
 -Wdeclaration-after-statement -Werror=declaration-after-statement \
 -Werror=implicit-function-declaration
-CFLAGS = -m32 -std=c89 -g -O0 $(WARNS) -Dlinux
+CFLAGS = -m32 -std=c99 -g -O0 $(WARNS) -Dlinux
 LD = $(CC)
 
 .SUFFIXES: .c .o
@@ -71,7 +71,7 @@ ccc.o: ccc.c
 	$(CC) $(CFLAGS) -DROOTDIR=$(DEST) -c -o $@ $<
 
 ccc: ccc.o
-	$(CC) -o $@ ccc.o
+	$(CC) -m32 -o $@ ccc.o
 
 test:
 
