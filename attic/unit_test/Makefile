@@ -3,7 +3,7 @@
 #
 
 # Compiler settings - inherit from parent or set defaults
-CC ?= gcc
+CC = gcc
 CFLAGS ?= -m32 -ggdb3 -O0 -DDEBUG -Wno-implicit-function-declaration -Wall
 INCLUDES = -I..
 

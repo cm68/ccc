@@ -1,13 +1,11 @@
 #
 # compiler support and standard c library without system call dependencies
 #
-# vim: tabstop=4 shiftwidth=4 noexpandtab:
-#
 
 ARCHIVE = libc.a
 
 AS = asz
-CC ?= zc3
+CC = ccc
 LIB = wslib
 
 DEST ?= ../../root/lib
@@ -66,4 +64,6 @@ clean:
 
 clobber: clean
 	rm -f $(ARCHIVE)
+
+# vim: tabstop=4 shiftwidth=4 noexpandtab:
 

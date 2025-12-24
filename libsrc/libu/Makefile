@@ -6,7 +6,7 @@
 ARCHIVE = libu.a
 
 AS = asz
-CC ?= zc3
+CC = ccc
 LIB = wslib
 
 DEST ?= ../../root/lib

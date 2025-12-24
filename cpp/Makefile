@@ -7,7 +7,7 @@
 
 DEST ?= $(CURDIR)/../root
 
-CC ?= gcc
+CC = gcc
 
 CCC = $(DEST)/bin/ccc
 OUTDIR = stage1

@@ -9,7 +9,7 @@ DEST ?= $(CURDIR)/../root
 CCC = $(DEST)/bin/ccc
 OUTDIR = stage1
 
-CC ?= gcc
+CC = gcc
 
 ifeq ($(CC),gcc)
 WARNS = -Wall -Werror -pedantic \
