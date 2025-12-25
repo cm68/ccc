@@ -56,11 +56,12 @@ clean:
 
 clobber: clean
 	rm -f c0
+	rm -rf stage1
 
 install: c0
 	cp c0 $(DEST)/bin
 
 .PHONY: all clean clobber install stage1 sizefile
 #
-# vim: tabstop=4 shiftwidth=4 expandtab:
+# vim: tabstop=4 shiftwidth=4 noexpandtab:
 #
