@@ -436,7 +436,7 @@ main(int argc, char **argv)
             }
         }
 
-        /* Build pass1 args: c0 lex_file temp1 temp2 */
+        /* Build pass1 args: c0 input temp1 temp2 */
         cc1_argc = 0;
         for (j = 0; j < cc1_base_argc; j++)
             cc1_args[cc1_argc++] = cc1_base[j];
@@ -467,12 +467,11 @@ main(int argc, char **argv)
         free(lex_file);
         free(prep_file);
 
-        /* Build pass2 args: c1 temp1 temp2 asm_file */
+        /* Build pass2 args: c1 temp1 asm_file */
         cc2_argc = 0;
         for (j = 0; j < cc2_base_argc; j++)
             cc2_args[cc2_argc++] = cc2_base[j];
         cc2_args[cc2_argc++] = temp1_file;
-        cc2_args[cc2_argc++] = temp2_file;
         cc2_args[cc2_argc++] = asm_file;
         cc2_args[cc2_argc] = NULL;
 

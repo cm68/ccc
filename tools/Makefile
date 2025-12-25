@@ -16,7 +16,6 @@ WARNS = -Wall -Werror -pedantic \
 -Wdeclaration-after-statement -Werror=declaration-after-statement \
 -Werror=implicit-function-declaration
 CFLAGS = -m32 -std=c99 -g -O0 $(WARNS) -Dlinux
-LD = $(CC)
 
 .SUFFIXES: .c .o
 .c.o:
@@ -49,29 +48,22 @@ wssize.o: wsobj.h
 
 # Link targets
 asz: asz.o asm.o asmz80.o wsobj.o
-	$(CC) -o $@ asz.o asm.o asmz80.o wsobj.o
+	$(CC) $(CFLAGS) -o $@ asz.o asm.o asmz80.o wsobj.o
 
 wsld: wsld.o wsobj.o
-	$(CC) -o $@ wsld.o wsobj.o
+	$(CC) $(CFLAGS) -o $@ wsld.o wsobj.o
 
 wsnm: wsnm.o wsobj.o
-	$(CC) -o $@ wsnm.o wsobj.o
+	$(CC) $(CFLAGS) -o $@ wsnm.o wsobj.o
 
 wslib: wslib.o
-	$(CC) -o $@ wslib.o
+	$(CC) $(CFLAGS) -o $@ wslib.o
 
 wssize: wssize.o
-ifeq ($(CC),zxc)
-	./wsld -o wssize wssize.o /usr/local/lib/cpm/lib80/libc.lib
-else
-	$(CC) -o $@ wssize.o
-endif
+	$(CC) $(CFLAGS) -o $@ wssize.o
 
-ccc.o: ccc.c
-	$(CC) $(CFLAGS) -DROOTDIR=$(DEST) -c -o $@ $<
-
-ccc: ccc.o
-	$(CC) -m32 -o $@ ccc.o
+ccc: ccc.c
+	$(CC) $(CFLAGS) -DROOTDIR=$(DEST) -o $@ $<
 
 test:
 
