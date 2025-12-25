@@ -746,7 +746,7 @@ char stab4[] = {
     "4"                    /* 0x1CC */
 };
 
-/*********************************************************
+/*
  * dopetab - Operator property table
  *
  * Indexed by operator code (0-71), returns property flags.
@@ -754,7 +754,7 @@ char stab4[] = {
  *
  * Format of comments below:
  *   hex_value, binary, dec, hex, "token", NAME, [category]
- *********************************************************/
+ */
 uint16_t dopetab[72] = {
     0x000C, /*  0000 0000 0000 1100	 0  0	""      NULSTR		*/
     0x0227, /*  0000 0010 0010 0111	 1  1	"!"	NOT 		*/
@@ -837,7 +837,7 @@ char *regNames[] = {
     "", "a", "c", "b", "e", "d", "l", "h", "ix", "iy", "sp", "af", "bc", "de", "hl"
 };
 
-/*********************************************************
+/*
  * regBitMask - Register index to bitmask conversion table
  *
  * Converts register indices (matching regNames[]) to bitmasks
@@ -852,13 +852,13 @@ char *regNames[] = {
  *   12=bc(0x06), 13=de(0x18), 14=hl(0x60), 15=dehl(0x78), etc.
  *
  * Used by MapVal() macro to convert register indices to bitmasks.
- *********************************************************/
+ */
 /* clang-format off */
 int regBitMask[]     = { 0,     1,    2,    4,    8,    0x10, 0x20, 0x40, 0x80, 0x100,    /* 0-9 */
                          0x200, 1,    6,    0x18, 0x60, 0x78, 0x66, 0x7E, 0x7F, 0,        /* 10-19 */
                          0x79,  0x61, 0x19, 7,    0x7E, 0x1E, 0x3F, 0x3E, 0x7F, 0x1E };   /* 20-29 */
 
-/*********************************************************
+/*
  * regPairHiLo - Register pair decomposition table
  *
  * Indexed as regPairHiLo[reg * 2 + n] where n is 0 or 1.
@@ -869,14 +869,14 @@ int regBitMask[]     = { 0,     1,    2,    4,    8,    0x10, 0x20, 0x40, 0x80, 
  *   bc(12): [24]=c(2), [25]=b(3)
  *   de(13): [26]=e(4), [27]=d(5)
  *   hl(14): [28]=l(6), [29]=h(7)
- *********************************************************/
+ */
 uint8_t regPairHiLo[] = { 0,  0,  0,  0,  0,  0,  0,  0,  0, 0,
                          0,  0,  0,  0,  0,  0,  0,  0,  0, 0,
                          0,  0,  1,  0,  2,  3,  4,  5,  6, 7,
                          13, 14, 12, 14, 12, 15, 1,  17, 0, 0,
                          15, 1,  14, 1,  13, 1,  12, 1 };
 
-/*********************************************************
+/*
  * regClassRegs - Register class member lists
  *
  * Groups of 6 register indices, one group per register class
@@ -889,7 +889,7 @@ uint8_t regPairHiLo[] = { 0,  0,  0,  0,  0,  0,  0,  0,  0, 0,
  * Class 27: e,d,c,b,l     (byte regs excl a)
  * Class 28: 21,22,23      (composite indices)
  * Class 29: bc,de         (word regs for special ops)
- *********************************************************/
+ */
 uint8_t regClassRegs[] = { 14, 13, 12, 0, 0, 0,
                          13, 12, 0,  0, 0, 0,
                          1,  4,  5,  2, 3, 6,
@@ -899,3 +899,5 @@ uint8_t regClassRegs[] = { 14, 13, 12, 0, 0, 0,
 /* clang-format on */
 
 /* end of file data.c */
+
+/* vim: tabstop=4 shiftwidth=4 noexpandtab: */

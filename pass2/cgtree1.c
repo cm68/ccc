@@ -3,14 +3,14 @@
 /*
  * File - tree1.c Created 09.03.2019 Last Modified 17.06.2020
  */
-/*********************************************************
+/*
  * emitExpr - Emit code for an expression statement
  *
  * Optimizes the expression tree, handles special cases
  * (constant conditionals, increment/decrement operators),
  * then emits code via genExprCode. Deferred side-effect
  * expressions (from INCR/DECR conversion) are emitted after.
- *********************************************************/
+ */
 void emitExpr(register node_t *node) {
     uint16_t idx;
 
@@ -40,12 +40,12 @@ void emitExpr(register node_t *node) {
         genExprCode(deferList[idx]);
 }
 
-/*********************************************************
+/*
  * constFold - Fold constant expressions at compile time
  *
  * Recursively evaluates constant sub-expressions and
  * reduces them to single CONST nodes where possible.
- *********************************************************/
+ */
 node_t *constFold(register node_t *node) {
     node_t *childNode;
     int opCount;
@@ -127,9 +127,12 @@ node_t *constFold(register node_t *node) {
     }
 }
 
-/*********************************************************
+/*
  * mkConstNode - Create a CONST node with given value
- *********************************************************/
+ *
+ * Allocates and initializes a new constant expression node
+ * with type 'long' and the specified value.
+ */
 node_t *mkConstNode(long number) {
     register node_t *node;
     node         = allocNode();
@@ -140,3 +143,5 @@ node_t *mkConstNode(long number) {
 }
 
 /* end of file tree1.c */
+
+/* vim: tabstop=4 shiftwidth=4 noexpandtab: */

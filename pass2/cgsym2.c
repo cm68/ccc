@@ -17,7 +17,7 @@
 #endif
 /* clang-format on */
 
-/*********************************************************
+/*
  * codeFragLists - Code fragment index lookup table
  *
  * Contains packed lists of codeFrag[] indices. Each list is a
@@ -31,7 +31,7 @@
  *
  * Example: list starting at index 1: {9, -10} means try
  * codeFrag[9] then codeFrag[10], then stop.
- *********************************************************/
+ */
 static int codeFragLists[] = {
     0,    9,    -10,  25,   -28, 21,   25,   -28,  7,    21,   25,   28,   -29,  11,   12,
     13,   14,   -15,  4,    5,   21,   25,   -28,  6,    21,   25,   -28,  1,    21,   -28,
@@ -57,12 +57,25 @@ static int codeFragLists[] = {
     -106, 101,  -102, 101,  102, -103, 156,  -157, 138,  -140
 };
 
-/*********************************************************
+/*
  * matchEmitPat OK++ PMO	Used in: genExprCode
- * one small block of code moved by optimiser otherwise code
- * identical
- * Note needs standalone ported optimiser to optimise
- *********************************************************/
+ *
+ * Matches expression node against code fragment patterns for code generation.
+ * Iterates through codeFragLists[] trying each fragment until one matches.
+ * Handles register allocation, pattern validation, and recursive matching.
+ *
+ * Parameters:
+ *   node        - expression node to match
+ *   emitCode    - emit pattern code to use
+ *   availRegs   - bitmask of available registers
+ *   wantReg     - preferred result register (0 = any, TOPBIT set = mask)
+ *   usedRegsOut - output: bitmask of registers used by matched pattern
+ *
+ * Returns: 1 on match, -1 if no pattern matches
+ *
+ * Note: one small block of code moved by optimiser otherwise code identical.
+ * Needs standalone ported optimiser to optimise.
+ */
 int matchEmitPat(node_t *node, int emitCode, int availRegs, int wantReg, int *usedRegsOut) {
     int listIdx, leftUsed, rightUsed, rightRegs, fragVal, leftReg;
     uint16_t rightMask, leftMask;
@@ -234,3 +247,5 @@ int matchEmitPat(node_t *node, int emitCode, int availRegs, int wantReg, int *us
 }
 
 /* end of file sym2s.c */
+
+/* vim: tabstop=4 shiftwidth=4 noexpandtab: */

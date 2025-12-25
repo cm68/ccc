@@ -4,7 +4,7 @@
  * File - cgen1.c
  */
 
-/*********************************************************
+/*
  * genExprCode - Main code generation entry point for expressions
  *
  * Generates code for an expression tree:
@@ -14,7 +14,7 @@
  *   4. Frees the expression tree
  *
  * Fatal error if expression is too complex for available registers.
- *********************************************************/
+ */
 void genExprCode(register node_t *expr) {
     int usedRegs;
 
@@ -35,11 +35,11 @@ void genExprCode(register node_t *expr) {
     freeExprTree(expr);
 }
 
-/*********************************************************
+/*
  * signExtend - Sign-extend value based on node type size
  *
  * If node size < 4 bytes, extends sign bit to full long.
- *********************************************************/
+ */
 long signExtend(node_t *node, long value) {
     char bitWidth;
 
@@ -50,11 +50,13 @@ long signExtend(node_t *node, long value) {
     return value;
 }
 
-/*********************************************************
+/*
  * prSignedVal - Print sign-extended value for node
- *********************************************************/
+ */
 void prSignedVal(node_t *node, long value) {
 
     printf("%ld", signExtend(node, value));
 }
 /* end of cgen1.c */
+
+/* vim: tabstop=4 shiftwidth=4 noexpandtab: */

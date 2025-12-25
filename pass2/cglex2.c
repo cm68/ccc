@@ -4,12 +4,12 @@
  * File - lex2.c
  */
 
-/*********************************************************
+/*
  * lookupToken - Find token code by name (binary search)
  *
  * Searches tnames[] table using binary search algorithm.
  * Returns token code (0-71) or -1 if not found.
- *********************************************************/
+ */
 char lookupToken(register char *target) {
     uint8_t hi, lo, mid;
     char cmp;
@@ -43,7 +43,7 @@ char lookupToken(register char *target) {
     return (-1); /* Search terminates as unsuccessful */
 }
 
-/*********************************************************
+/*
  * gethashptr OK++ PMO		Used in: lookupSymbol, declareSymbol
  *
  * Convert name to a hash table pointer
@@ -66,7 +66,7 @@ char lookupToken(register char *target) {
  *   "ux" 	51 33h	- uint16_t ?
  *   "b"  	98 62h	- b ?
  *   "c"  	99 63h	- char
- **********************************************************/
+ */
 
 #define HASHTABSIZE 101
 
@@ -82,7 +82,7 @@ member_t **gethashptr(register char *str) {
     return &hashtab[key % HASHTABSIZE];
 }
 
-/*********************************************************
+/*
  * lookupSymbol OK++ PMO
  *
  * Looks up a symbol by name in the hash table.
@@ -95,7 +95,7 @@ member_t **gethashptr(register char *str) {
  * Used for: type names, identifier lookup, base type resolution.
  *
  * Returns: symbol table entry (member_t*), never NULL
- *********************************************************/
+ */
 member_t *lookupSymbol(char *str) {
     member_t **hashPtr;
     register member_t *symbol;
@@ -116,9 +116,16 @@ member_t *lookupSymbol(char *str) {
     return symbol;
 }
 
-/*********************************************************
+/*
  * getToken - Read next token from input stream
- *********************************************************/
+ *
+ * Reads whitespace-delimited tokens from input. Handles:
+ *   - Line number directives: "123 (sets lineno, expects filename)
+ *   - Filename tracking: stores in progname[]
+ *   - Comment pass-through: ;; prefix echoes rest of line
+ *
+ * Returns: pointer to token buffer, or (char*)~0 on EOF
+ */
 char *getToken() {
     int ch, expectName;
     register char *ptr;
@@ -152,11 +159,11 @@ char *getToken() {
     }
 }
 
-/*********************************************************
+/*
  * leaveBlock - Clean up symbols when leaving a scope block
  *
  * Removes and frees symbols that have gone out of scope.
- *********************************************************/
+ */
 void leaveBlock() {
     member_t **pHashEntry;
     int hashCount;
@@ -225,7 +232,7 @@ void leaveBlock() {
     }
 }
 
-/*********************************************************
+/*
  * parseTypeSpec OK++ PMO
  *
  * Parses a type descriptor string and extracts pointer/function modifiers.
@@ -244,7 +251,7 @@ void leaveBlock() {
  *   par - output: reversed modifier bits for processing
  *
  * Returns: base type's symbol table entry (member_t*)
- *********************************************************/
+ */
 member_t *parseTypeSpec(register char *ptr, uint16_t *modifiers) {
     uint16_t bits;
 
@@ -270,17 +277,17 @@ member_t *parseTypeSpec(register char *ptr, uint16_t *modifiers) {
     return lookupSymbol(ptr);
 }
 
-/*********************************************************
+/*
  * badIntCode - Fatal error for invalid intermediate code
- *********************************************************/
+ */
 void badIntCode() {
 
     fatalErr("Bad int. code");
 }
 
-/*********************************************************
+/*
  * parseStmt - Parse and compile intermediate code statements
- *********************************************************/
+ */
 void parseStmt() {
     register char *ch;
     int tok;
@@ -329,9 +336,9 @@ void parseStmt() {
     leaveBlock();
 }
 
-/*********************************************************
+/*
  * expect - Expect and consume a specific character
- *********************************************************/
+ */
 void expect(char par) {
     char ch;
 
@@ -343,9 +350,9 @@ void expect(char par) {
         badIntCode();
 }
 
-/*********************************************************
+/*
  * parseData - Parse and emit data block "[a" directive
- *********************************************************/
+ */
 void parseData() {
     char *token;
     char buf[1024];
@@ -364,3 +371,5 @@ void parseData() {
     prDefb(buf, (int)(ptr - buf)); /* Emit data "defb byte1, ..." ("ptr-buf" bytes from "buf")*/
 }
 /* end of lex2.c */
+
+/* vim: tabstop=4 shiftwidth=4 noexpandtab: */

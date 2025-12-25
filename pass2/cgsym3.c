@@ -4,7 +4,7 @@
  * File - sym3.c
  */
 
-/*********************************************************
+/*
  * calcUsedRegs - Calculate registers used by a code pattern
  *
  * Parses the code fragment pattern string at index 'par' and
@@ -16,7 +16,7 @@
  *
  * Returns bitmask of used registers ANDed with availRegs
  * (available registers).
- *********************************************************/
+ */
 int calcUsedRegs(register node_t *node, int patIdx) {
     char *ptr;
     struct codeFrag_t *frag;
@@ -112,13 +112,13 @@ int calcUsedRegs(register node_t *node, int patIdx) {
     return usedRegs & availRegs;
 }
 
-/*********************************************************
+/*
  * getUsedRegs - Get registers used by an expression node
  *
  * Returns bitmask of registers used by the node's selected
  * code pattern. For unmatched nodes (nPat == 0), recurses
  * into left child for LOGOP/QUEST nodes.
- *********************************************************/
+ */
 int getUsedRegs(register node_t *node) {
 
     if (node->nPat == 0) {
@@ -129,14 +129,14 @@ int getUsedRegs(register node_t *node) {
     return calcUsedRegs(node, node->nPat - 1);
 }
 
-/*********************************************************
+/*
  * getResultReg - Get the result register for an expression
  *
  * Determines which register will hold the result of evaluating
  * the expression. Uses the register constraint from the last
  * pattern match (wantReg), or falls back to lastResultReg set during
  * getUsedRegs traversal.
- *********************************************************/
+ */
 uint8_t getResultReg(register node_t *node) {
     uint8_t wantedReg;
     int usedRegs;
@@ -149,3 +149,5 @@ uint8_t getResultReg(register node_t *node) {
     return lastResultReg;
 }
 /* end of file sym3.c */
+
+/* vim: tabstop=4 shiftwidth=4 noexpandtab: */

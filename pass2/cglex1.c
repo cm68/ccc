@@ -170,14 +170,14 @@ static int16_t opEmitValues[] = {
     239,  251,  -57,  264,  -62,  -61,  -70,  -106, -102, -100, 0
 };
 
-/*********************************************************
+/*
  * lookupEmitCode	Ok++ PMO		Used in: matchEmitPat
  * This function wasn't optimised in original code hence
  * it is split out separately
  *
  * Looks up emit query code for given operator type.
  * Returns code fragment index from opEmitValues, or 0 if not found.
- *********************************************************/
+ */
 int lookupEmitCode(int queryCode, int opType) {
     int idx;
 
@@ -187,3 +187,5 @@ int lookupEmitCode(int queryCode, int opType) {
 }
 
 /* end of file lex1u.c */
+
+/* vim: tabstop=4 shiftwidth=4 noexpandtab: */

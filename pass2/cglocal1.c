@@ -3,7 +3,7 @@
  */
 #include "cgen.h"
 
-/*********************************************************
+/*
  * localOptimize - Local algebraic optimization pass
  *
  * Performs local (peephole-style) optimizations on expression trees:
@@ -16,7 +16,7 @@
  *   - Address/dereference cancellation (&* and *&)
  *
  * Called iteratively by optimizeExpr until no changes made.
- *********************************************************/
+ */
 node_t *localOptimize(register node_t *node) {
     node_t *tempNode;
     node_t *convNode;
@@ -207,3 +207,5 @@ node_t *localOptimize(register node_t *node) {
 }
 
 /* end of file local1s.c */
+
+/* vim: tabstop=4 shiftwidth=4 noexpandtab: */

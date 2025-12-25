@@ -28,6 +28,12 @@ static uint8_t *freeList; /* wB024 */
  * note the passed in size should account for the block size header
  * and the minimum data length
  */
+/*
+ * setSize - Encode block size in header
+ *
+ * Encodes data block size into header. Small blocks (<=127) use 1 byte,
+ * larger blocks use 3 bytes with 0x80 flag. Returns pointer to data area.
+ */
 static uint8_t *setSize(register uint8_t *blkPtr, short size) {
     if (size > MALLOC_LARGEFLAG) {
         *((uint16_t *)blkPtr) = size - 3;
@@ -40,6 +46,12 @@ static uint8_t *setSize(register uint8_t *blkPtr, short size) {
     return blkPtr;
 }
 
+/*
+ * pack - Coalesce adjacent free blocks
+ *
+ * Scans free list for adjacent memory blocks and merges them.
+ * Returns true if any blocks were merged, triggering rescan.
+ */
 static bool pack() {
     uint8_t *loblk;
     uint8_t *hiblkAddr;
@@ -74,9 +86,13 @@ rescan:
     return packed;
 }
 
-/*********************************************************
- * malloc v2 OK			Used in: allocMem
- *********************************************************/
+/*
+ * malloc v2 OK
+ *
+ * Custom memory allocator for CP/M. Searches free list for suitable
+ * block, consolidates fragmented memory if needed, or allocates new
+ * memory via sbrk. Splits large blocks to minimize waste.
+ */
 void *malloc(size_t size) {
     uint8_t *nextBlk;
     size_t blkLen;
@@ -115,12 +131,12 @@ void *malloc(size_t size) {
     return setSize(curBlk, size + blkLen);
 }
 
-/*********************************************************
- * free v6 OK  Used in: leaveBlock, freeNode, relNodeFrList
- *                       subToAdd, cmalloc
- * free the given block inserting on free chain in size order
+/*
+ * free v6 OK
  *
- *********************************************************/
+ * Returns block to free list, inserting in size order to optimize
+ * future allocations (best-fit strategy).
+ */
 void free(void *p) {
     register uint8_t *curBlk;
 
@@ -131,3 +147,5 @@ void free(void *p) {
 }
 #endif
 /* end of file malloc.c */
+
+/* vim: tabstop=4 shiftwidth=4 noexpandtab: */

@@ -2,9 +2,17 @@
  * File - tree2.c Created 09.03.2019 Last Modified 17.06.2020
  */
 #include "cgen.h"
-/*********************************************************
+/*
  * parseExpr - Parse an expression from input stream
- *********************************************************/
+ *
+ * Recursively parses tokens into an expression tree:
+ *   - Numbers (including negative) become CONST nodes
+ *   - Identifiers (_/alpha) become IDOP nodes, lookup symbol
+ *   - Type specs (`) become TYPE nodes
+ *   - Float literals (.) become FCONST nodes
+ *   - Operators are dispatched by operand count (leaf/unary/binary)
+ *   - Statement tokens (variables, enums, members) handled inline
+ */
 node_t *parseExpr() {
     node_t *leftNode;
     char *token;
@@ -84,3 +92,5 @@ node_t *parseExpr() {
 }
 
 /* end of file tree2.c */
+
+/* vim: tabstop=4 shiftwidth=4 noexpandtab: */

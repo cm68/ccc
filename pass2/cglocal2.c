@@ -4,11 +4,18 @@
  * File - local2.c
  */
 
-/*********************************************************
+/*
  * allocVar - Allocate storage for a local variable
  *
- * Assigns stack offset or register based on storage class.
- *********************************************************/
+ * Assigns stack offset or register based on tflag:
+ *   tflag 1: Local variable - allocate stack space or register
+ *   tflag 5: Function parameter - assign parameter offset
+ *   tflag 3/4: Static/extern - emit BSS definition
+ *
+ * Attempts register allocation first if optimization enabled,
+ * falls back to stack allocation with offset tracking.
+ * Warns if stack offset exceeds -128 for small types.
+ */
 void allocVar(register member_t *symbol, int storageClass) {
 
     switch (symbol->tflag) {
@@ -35,7 +42,7 @@ void allocVar(register member_t *symbol, int storageClass) {
     }
 }
 
-/*********************************************************
+/*
  * subToAdd - Normalize subtraction to addition with negation
  *
  * Pre-optimization pass that converts all subtractions to
@@ -46,7 +53,7 @@ void allocVar(register member_t *symbol, int storageClass) {
  *   MINUS_U(FCONST) -> prepend "-" to float string
  *
  * Called first in optimizeExpr; negAddToSub reverses at end.
- *********************************************************/
+ */
 node_t *subToAdd(register node_t *node) {
     char opCount;
     char *str;
@@ -85,7 +92,7 @@ node_t *subToAdd(register node_t *node) {
     return node;
 }
 
-/*********************************************************
+/*
  * negAddToSub - Convert additions with negated operands to subtractions
  *
  * Final cleanup pass that recursively transforms:
@@ -94,7 +101,7 @@ node_t *subToAdd(register node_t *node) {
  *   ASADD(x, -y) -> ASSUB(x, y)
  *
  * Called at end of optimizeExpr after constant folding.
- *********************************************************/
+ */
 node_t *negAddToSub(register node_t *node) {
     char opCount;
     node_t *temp;
@@ -123,7 +130,7 @@ node_t *negAddToSub(register node_t *node) {
     return node;
 }
 
-/*********************************************************
+/*
  * optimizeExpr OK++ PMO
  *
  * Main expression optimizer - simplifies and optimizes expression trees.
@@ -139,7 +146,7 @@ node_t *negAddToSub(register node_t *node) {
  * Collects and reports optimization warnings.
  *
  * Returns: optimized expression tree
- *********************************************************/
+ */
 node_t *optimizeExpr(register node_t *node) {
 
     warningMsg = 0;
@@ -155,11 +162,16 @@ node_t *optimizeExpr(register node_t *node) {
     return negAddToSub(node);
 }
 
-/*********************************************************
+/*
  * invertTest - Invert comparison operator
  *
- *********************************************************/
-
+ * Returns the logical inverse of a comparison operator:
+ *   EQL <-> NEQL
+ *   LT <-> GEQ
+ *   LEQ <-> GT
+ *
+ * Used for condition negation in control flow optimization.
+ */
 int invertTest(int op) {
 
 #ifdef DEBUG
@@ -183,9 +195,19 @@ int invertTest(int op) {
     return EQL;
 }
 
-/*********************************************************
+/*
  * constFits - Check if constant fits in target type range
- *********************************************************/
+ *
+ * Verifies that a constant value can be represented in the
+ * target node's type without overflow or loss of precision.
+ *
+ * Returns false if:
+ *   - constNode is not a CONST
+ *   - Value is negative for unsigned target
+ *   - Value exceeds type's max (based on size and signedness)
+ *
+ * Always returns true for 32-bit types (no range check needed).
+ */
 bool constFits(register node_t *constNode, node_t *targetNode) {
     long maxVal;
 
@@ -206,11 +228,20 @@ bool constFits(register node_t *constNode, node_t *targetNode) {
     return constNode->info.l < maxVal;
 }
 
-/*********************************************************
+/*
  * tryAllocReg - Try to allocate a register for variable
  *
+ * Attempts register allocation for auto/register variables when:
+ *   - Optimization enabled (!rflag)
+ *   - Storage class is uppercase (register hint)
+ *   - Variable has single reference (refl == 1)
+ *   - Not an array (nelem <= 1)
+ *
+ * Updates symbol tflag to 2 if successful, marks parameters
+ * for save/restore. Clears register from available pool.
+ *
  * Returns true if register was allocated, false otherwise.
- *********************************************************/
+ */
 bool tryAllocReg(register member_t *symbol, int storageClass) {
 
     if (!rflag && isupper(storageClass) && symbol->refl == 1 && symbol->nelem <= 1) {
@@ -227,27 +258,27 @@ bool tryAllocReg(register member_t *symbol, int storageClass) {
     return false;
 }
 
-/*********************************************************
+/*
  * sameType - Check if two nodes have matching types
  *
  * Returns true if both nodes have the same size and the
  * same type class (signed/unsigned/float).
- *********************************************************/
+ */
 bool sameType(node_t *node1, node_t *node2) {
 
     return nodesize(node1) == nodesize(node2) && getTypeClass(node1) == getTypeClass(node2);
 }
 
-/*********************************************************
+/*
  * bothSigned - Check if both nodes are signed integers
  *
  * Returns true if both nodes have type class 1 (signed).
- *********************************************************/
+ */
 bool bothSigned(node_t *node1, node_t *node2) {
     return getTypeClass(node1) == 1 && getTypeClass(node2) == 1;
 }
 
-/*********************************************************
+/*
  * constFitsType - Check if constant fits in type's range
  *
  * Returns true if the constant value in p2a fits within
@@ -256,7 +287,7 @@ bool bothSigned(node_t *node1, node_t *node2) {
  * Range for unsigned: [0, 2^bits)
  * Range for signed: [-2^(bits-1), 2^(bits-1))
  * 32-bit types: always returns true
- *********************************************************/
+ */
 bool constFitsType(register node_t *typeNode, node_t *constNode) {
     long maxVal, minVal;
     char bitWidth;
@@ -284,7 +315,7 @@ bool constFitsType(register node_t *typeNode, node_t *constNode) {
 #define MapVal(n) (TopBitSet(n)?~(n):regBitMask[n])
 #endif
 /* clang-format on */
-/*********************************************************
+/*
  * selCompatReg - Select compatible register
  *
  * Finds a register matching requirement p3 that is both
@@ -296,7 +327,7 @@ bool constFitsType(register node_t *typeNode, node_t *constNode) {
  *   p3: Required register or class (bit 6 modifier cleared)
  *
  * Returns: Register index if found, 0 otherwise
- *********************************************************/
+ */
 uint8_t selCompatReg(int availMask, int targetReg, int reqReg) {
     uint8_t resultReg;
     uint8_t tempReg;
@@ -327,7 +358,7 @@ uint8_t selCompatReg(int availMask, int targetReg, int reqReg) {
     return resultReg;
 }
 
-/*********************************************************
+/*
  * findAvailReg - Find available register matching requirement
  *
  * Given a bitmask of available registers (p1) and a register
@@ -340,7 +371,7 @@ uint8_t selCompatReg(int availMask, int targetReg, int reqReg) {
  * For single registers (p2 < 24): returns p2 if available, else 0
  * For register classes (p2 >= 24): returns first available register
  *   from the class, or 0 if none available
- *********************************************************/
+ */
 uint8_t findAvailReg(int availMask, int regSpec) {
     char count;
     uint8_t *classPtr;
@@ -362,7 +393,7 @@ uint8_t findAvailReg(int availMask, int regSpec) {
     return 0;
 }
 
-/*********************************************************
+/*
  * findRegPair - Find register pair containing a component
  *
  * Inverse of regPairHiLo lookup. Given a component register,
@@ -376,7 +407,7 @@ uint8_t findAvailReg(int availMask, int regSpec) {
  *
  * Examples: findRegPair(2,'0')=12 (c is low of bc)
  *           findRegPair(7,'1')=14 (h is high of hl)
- *********************************************************/
+ */
 uint16_t findRegPair(uint16_t compReg, uint8_t position) {
     uint16_t pairIdx;
 
@@ -389,7 +420,7 @@ uint16_t findRegPair(uint16_t compReg, uint8_t position) {
     return 0;
 }
 
-/*********************************************************
+/*
  * selResultReg - Select result register for code pattern
  *
  * Register selection for matchEmitPat. Finds suitable register
@@ -400,7 +431,7 @@ uint16_t findRegPair(uint16_t compReg, uint8_t position) {
  *   p4: Pattern string for register pair lookups ("01" = hi/lo)
  *
  * Returns selected register index, or 0 if none found.
- *********************************************************/
+ */
 int selResultReg(int reqClass, int prefReg, int availMask, char *patStr) {
     int16_t intersect, result;
     char *patPtr;
@@ -442,3 +473,5 @@ int selResultReg(int reqClass, int prefReg, int availMask, char *patStr) {
     return result;
 }
 /* end of local2.c*/
+
+/* vim: tabstop=4 shiftwidth=4 noexpandtab: */

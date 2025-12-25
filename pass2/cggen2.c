@@ -2,7 +2,7 @@
  * File - cgen2s.c	BIG size - problems compiling v3.09
  */
 #include "cgen.h"
-/*********************************************************
+/*
  * emitCodePat - Emit assembly code from a pattern string
  *
  * Interprets code pattern strings and emits assembly output.
@@ -13,7 +13,7 @@
  *   Z/B: Print node/element sizes
  *   ~: Stack offset calculations
  *   G/X: Other code generation directives
- *********************************************************/
+ */
 void emitCodePat(register node_t *node, char *pattern, char patIdx) {
     struct codeFrag_t *frag FORCEINIT;
     node_t *targetNode FORCEINIT;
@@ -263,3 +263,5 @@ void emitCodePat(register node_t *node, char *pattern, char patIdx) {
 }
 
 /* end of file cgen2s.c */
+
+/* vim: tabstop=4 shiftwidth=4 noexpandtab: */

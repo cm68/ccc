@@ -3,10 +3,14 @@
 /*
  * File - main.c
  */
-/*********************************************************
+/*
  * main OK++ PMO
  *
- *********************************************************/
+ * Compiler pass 2 entry point. Parses command line options (-w suppress
+ * warnings, -R enable rflag), opens input/output files, initializes
+ * built-in types, then runs the main parsing loop to process intermediate
+ * code and generate Z80 assembly output.
+ */
 int main(int argc, char **argv) {
 #ifdef CPM
     baseHeap = sbrk(0); /* Current highest memory */
@@ -64,9 +68,12 @@ int main(int argc, char **argv) {
  * ones with a variable number of parameters
  */
 
-/*********************************************************
+/*
  * fatalErr - Print error message and exit
- *********************************************************/
+ *
+ * Prints formatted error message to stderr with source location,
+ * closes output file, and exits with status 2.
+ */
 _Noreturn void fatalErr(char *fmt, ...) {
     va_list args;
     va_start(args, fmt);
@@ -77,9 +84,12 @@ _Noreturn void fatalErr(char *fmt, ...) {
     exit(2);
 }
 
-/*********************************************************
+/*
  * prWarning - Print warning message
- *********************************************************/
+ *
+ * Prints formatted warning message to stderr with source location,
+ * unless warnings are suppressed via -w flag.
+ */
 void prWarning(char *fmt, ...) {
     va_list args;
 
@@ -92,11 +102,12 @@ void prWarning(char *fmt, ...) {
     }
 }
 
-/*********************************************************
+/*
  * prError OK PMO
- * Nonfatal error
- * Difference due to use of stdarg
- *********************************************************/
+ *
+ * Prints non-fatal error message. Increments error count and calls
+ * fatalErr if too many errors have accumulated (MAXERR threshold).
+ */
 void prError(char *fmt, ...) {
     va_list args;
     va_start(args, fmt);
@@ -106,19 +117,24 @@ void prError(char *fmt, ...) {
         fatalErr("Too many errors");
 }
 
-/*********************************************************
- * prMsg OK PMO	      	  Used in: ferror, prError
- * Difference due to use of stdarg
- *********************************************************/
+/*
+ * prMsg OK PMO
+ *
+ * Core message printing function. Outputs source file name and line
+ * number prefix, then the formatted message to stderr.
+ */
 void prMsg(char *fmt, va_list args) {
     fprintf(stderr, "%s:%d:\t", progname, lineno);
     vfprintf(stderr, fmt, args);
     fputc('\n', stderr);
 }
 
-/*********************************************************
+/*
  * allocMem - Allocate memory, exits on failure
- *********************************************************/
+ *
+ * Allocates zeroed memory. If malloc fails, tries to release node
+ * free list before giving up. Fatal error if allocation fails.
+ */
 void *allocMem(size_t size) {
     register char *ptr;
 
@@ -133,3 +149,5 @@ done:
 }
 
 /* end of file main.c */
+
+/* vim: tabstop=4 shiftwidth=4 noexpandtab: */

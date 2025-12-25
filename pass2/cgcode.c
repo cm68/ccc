@@ -3,7 +3,7 @@
 /*
  * File - code.c
  */
-/*********************************************************
+/*
  * emitInitData - Emit data section initialization
  *
  * Recursively emits initialization data for variables:
@@ -14,7 +14,7 @@
  *
  * Pads with zeros if initializer < target size.
  * Returns total bytes emitted.
- *********************************************************/
+ */
 int emitInitData(register member_t *symbol, node_t *exprNode) {
     int16_t bytesEmitted;
     int16_t alignPad;
@@ -81,9 +81,16 @@ int emitInitData(register member_t *symbol, node_t *exprNode) {
     return bytesEmitted; /* m15: */
 }
 
-/*********************************************************
- * parseInit OK++ PMO			 Used in: parseStmt
- *********************************************************/
+/*
+ * parseInit - Parse and emit variable initialization
+ *
+ * Handles initialized data declarations:
+ *   - Emits data section and variable label
+ *   - Processes initializer expression tree
+ *   - Computes/updates array element count if needed
+ *
+ * OK++ PMO
+ */
 void parseInit() {
     register member_t *symbol;
     int bytesEmitted;
@@ -101,10 +108,17 @@ void parseInit() {
     expect(']');
 }
 
-/*********************************************************
- * prFrameHead OK++ PMO				Used in: genExprCode
- * emit_call_ncsv
- *********************************************************/
+/*
+ * prFrameHead - Emit function frame setup code
+ *
+ * Generates function prologue:
+ *   - Switches to text section
+ *   - Emits global declarations (first call only)
+ *   - Emits call to ncsv (stack frame setup)
+ *   - Emits frame size reference (defw f<id>)
+ *
+ * OK++ PMO
+ */
 void prFrameHead(int fId) {
     static bool frameGlobEmit; /* First call ncsv	   */
 
@@ -117,9 +131,15 @@ void prFrameHead(int fId) {
     printf("defw\tf%d\n", fId);
 }
 
-/*********************************************************
- * prFrameTail OK++ PMO				 Used in: leaveBlock
- *********************************************************/
+/*
+ * prFrameTail - Emit function frame cleanup code
+ *
+ * Generates function epilogue:
+ *   - Emits jump to cret (common return handler)
+ *   - Defines frame size constant (f<id> equ <size>)
+ *
+ * OK++ PMO
+ */
 void prFrameTail(int fId, int fSize) {
 
     prPsect(P_TEXT);
@@ -128,7 +148,7 @@ void prFrameTail(int fId, int fSize) {
            fId, fSize);
 }
 
-/*********************************************************
+/*
  * prStrcRetCpy - Emit struct-by-value return copy code
  *
  * Emits Z80 code for functions returning structs by value:
@@ -137,7 +157,7 @@ void prFrameTail(int fId, int fSize) {
  *   ldir         ; block copy
  *   ld hl,k<id>  ; return pointer in HL
  * Plus BSS storage: k<id>: defs <size>
- *********************************************************/
+ */
 void prStrcRetCpy(int kId, int size) {
 
     prPsect(P_TEXT);
@@ -150,18 +170,18 @@ void prStrcRetCpy(int kId, int size) {
     printf("k%d:defs\t%d\n", kId, size);
 }
 
-/*********************************************************
+/*
  * prGlobalDef - Emit "global name" directive
- *********************************************************/
+ */
 void prGlobalDef(register member_t *symbol) {
 
     printf("global\t%s\n", symbol->name);
     symbol->sflags |= B_SLOC_GLOBAL;
 }
 
-/*********************************************************
+/*
  * emitBssDef - Emit BSS variable definition
- *********************************************************/
+ */
 void emitBssDef(register member_t *symbol) {
 
     if ((symbol->sflags & B_SLOC_EMITTED) == 0 && symbol->nelem != 0 && (symbol->refl & B_REFL_FUNC) == 0) {
@@ -173,9 +193,9 @@ void emitBssDef(register member_t *symbol) {
     }
 }
 
-/*********************************************************
+/*
  * emitVarLbl - Emit variable label with optional global
- *********************************************************/
+ */
 void emitVarLbl(register member_t *symbol) {
 
     if ((symbol->sflags & B_SLOC_GLOBAL) == 0 && symbol->tflag == 3)
@@ -184,10 +204,10 @@ void emitVarLbl(register member_t *symbol) {
     printf("%s:\n", symbol->name);
 }
 
-/*********************************************************
+/*
  * prDefb0s OK++ PMO				 Used in: emitInitData
  * Emit "defb 0, ..." (num bytes)
- *********************************************************/
+ */
 void prDefb0s(int num) {
     char cnt;
 
@@ -207,11 +227,11 @@ void prDefb0s(int num) {
         fputchar('\n'); /* If line is incomplete, new line */
 }
 
-/*********************************************************
+/*
  * prPsect OK++ PMO     Used in: parseStmt, parseData, parseInit,
  *                           prFrameHead, prFrameTail, prStrcRetCpy
  * Select psect
- *********************************************************/
+ */
 void prPsect(int section) {
     static int curPsect;
     static char *psectNames[] = { "", "bss", "text", "data" };
@@ -220,10 +240,15 @@ void prPsect(int section) {
         printf("psect\t%s\n", psectNames[curPsect = section]);
 }
 
-/*********************************************************
- * sortCaseLabels OK++ PMO			 Used in: parseSwitch
+/*
+ * sortCaseLabels - Sort switch case values and labels
  *
- *********************************************************/
+ * Bubble sorts parallel arrays of case values and code labels.
+ * Detects duplicate case values and reports error.
+ * Used to prepare switch tables for jump table or linear search.
+ *
+ * OK++ PMO
+ */
 void sortCaseLabels(int *pCase, int *pLabel, int nCase) {
     bool changed;
     int *pl;
@@ -254,15 +279,17 @@ void sortCaseLabels(int *pCase, int *pLabel, int nCase) {
     return;
 }
 
-/*********************************************************
- * parseSwitch OK++ PMO		 Used in: parseStmt
- * Only minor code differences due to the declaration of
- * functions with char / uint8_t parameters rather than
- * defaulting to int.
- * One other change is where the compiler saves l to the high
- * and low byte, but as the optimiser detected that h and l
- * were both 0 this is not a problem
- *********************************************************/
+/*
+ * parseSwitch - Parse and emit switch statement code
+ *
+ * Generates optimal switch implementation based on case density:
+ *   - Dense cases: jump table (hl-indexed indirect jump)
+ *   - Sparse cases: linear compare/jump sequence
+ * Handles default label, sorts cases, validates uniqueness.
+ *
+ * OK++ PMO - Minor differences due to char/uint8_t parameters
+ * and optimizer detecting zero values in h/l registers.
+ */
 void parseSwitch() {
     node_t *switchExpr;
     int codeLabel, swTableLabel, caseRange, caseCnt, defaultCodeLabel;
@@ -424,21 +451,27 @@ void parseSwitch() {
     printf("jp\tl%d\n", defaultCodeLabel);
 }
 
-/*********************************************************
+/*
  * prCaseCmp - Print case comparison instruction
  *
  * Emits Z80 compare for switch/case value testing:
  *   non-zero: cp <value>
  *   zero:     or a  (tests A==0 without changing flags)
- *********************************************************/
+ */
 void prCaseCmp(int par) {
 
     printf((uint16_t)par ? "cp\t%d\n" : "or\ta\n", par);
 }
 
-/*********************************************************
- * prPush OK++ PMO			Used in: emitExprTree
- *********************************************************/
+/*
+ * prPush - Emit register push instruction
+ *
+ * Generates Z80 push for given register:
+ *   - Converts single regs to pairs (a->af, etc)
+ *   - Handles special DEHL case (push hl; push de)
+ *
+ * OK++ PMO
+ */
 void prPush(uint8_t reg) {
 
     if (reg == REG_DEHL) {
@@ -451,9 +484,15 @@ void prPush(uint8_t reg) {
     printf("push\t%s\n", regNames[reg]);
 }
 
-/*********************************************************
- * prPop OK++ PMO			Used in: emitExprTree
- *********************************************************/
+/*
+ * prPop - Emit register pop instruction
+ *
+ * Generates Z80 pop for given register:
+ *   - Converts single regs to pairs (a->af, etc)
+ *   - Handles special DEHL case (pop de; pop hl)
+ *
+ * OK++ PMO
+ */
 void prPop(uint8_t reg) {
 
     if (reg == REG_DEHL) {
@@ -466,12 +505,17 @@ void prPop(uint8_t reg) {
     printf("pop\t%s\n", regNames[reg]);
 }
 
-/*********************************************************
- * prIXnPush OK++ PMO			Used in: saveRegVars
+/*
+ * prIXnPush - Load IY register from stack frame parameter
  *
- * Assigning register "IY" value formal parameter with
- * type register
- *********************************************************/
+ * Emits code to load IY from a parameter stored in the IX-based
+ * stack frame. Used for register formal parameters:
+ *   ld l,(ix+offset)
+ *   ld h,(ix+offset+1)
+ *   push hl / pop iy
+ *
+ * OK++ PMO
+ */
 void prIXnPush(register member_t *symbol) {
 
     printf("ld\tl,(ix+%d)\n"
@@ -481,7 +525,7 @@ void prIXnPush(register member_t *symbol) {
            symbol->offset, symbol->offset + 1);
 }
 
-/*********************************************************
+/*
  * getTypeClass - Get type classification of expression node
  *
  * Returns a code indicating the type category:
@@ -492,7 +536,7 @@ void prIXnPush(register member_t *symbol) {
  *
  * Used for code generation to select appropriate instructions
  * and for type compatibility checking.
- *********************************************************/
+ */
 uint8_t getTypeClass(register node_t *node) {
 
     if (node->tFlags & T_FUNC)
@@ -504,9 +548,9 @@ uint8_t getTypeClass(register node_t *node) {
     return node->pm->tflag;
 }
 
-/*********************************************************
+/*
  * prTypeChar - Print type character (a=signed, l=unsigned, f=float)
- *********************************************************/
+ */
 void prTypeChar(register node_t *node) {
 
     static char typeChars[] = { 0, 'a', 'l', 'f' };
@@ -514,11 +558,16 @@ void prTypeChar(register node_t *node) {
     fputchar(typeChars[getTypeClass(node)]);
 }
 
-/*********************************************************
- * prDefb OK++ PMO			 Used in: parseData
+/*
+ * prDefb - Emit byte data definition
  *
- * Emit "defb byte1, ..." (from ptr num bytes)
- *********************************************************/
+ * Generates "defb" directives from buffer:
+ *   - Outputs bytes as unsigned decimal values
+ *   - Formats 16 bytes per line maximum
+ *   - Used for string literals and byte arrays
+ *
+ * OK++ PMO
+ */
 void prDefb(register char *ptr, int num) {
     char cnt;
 
@@ -539,21 +588,31 @@ void prDefb(register char *ptr, int num) {
         fputchar('\n'); /* If line is incomplete, new line */
 }
 
-/*********************************************************
- * xx1	 OK++ PMO		Used in: Explicit calls are absent
- *********************************************************/
+/*
+ * prJmpLabel - Emit local jump label
+ *
+ * Generates label for local jumps: j<number>:
+ * Used internally for control flow.
+ *
+ * OK++ PMO
+ */
 void prJmpLabel(int p) {
     printf("j%d:\n", p);
 }
 
-/*********************************************************
- * xx2	 OK++ PMO		Used in: Explicit calls are absent
- *********************************************************/
+/*
+ * prJump - Emit unconditional jump to local label
+ *
+ * Generates: jp j<number>
+ * Used for control flow to local labels.
+ *
+ * OK++ PMO
+ */
 void prJump(int p) {
     printf("jp\tj%d\n", p);
 }
 
-/*********************************************************
+/*
  * setEnumSize OK++ PMO			Used in: parseEnum
  *
  * Computes storage size and signedness for an enum type
@@ -567,7 +626,7 @@ void prJump(int p) {
  * Sets:
  *   b_flag: 1 = signed, 2 = unsigned
  *   b_size: 1 = fits in byte, 2 = needs 16-bit
- *********************************************************/
+ */
 void setEnumSize(register member_t *symbol, int hibnd, int lobnd) {
 
     if (hibnd >= 0) {
@@ -585,10 +644,10 @@ void setEnumSize(register member_t *symbol, int hibnd, int lobnd) {
     }
 }
 
-/*********************************************************
+/*
  * max OK++ PMO			Used in: layoutStruct
  * Find maximum between two numbers
- *********************************************************/
+ */
 int max(int num1, int num2) {
     return (num1 > num2) ? num1 : num2;
 }
@@ -602,9 +661,9 @@ struct tType {
     char t_flag;
 };
 
-/*********************************************************
+/*
  * initTypes - Initialize built-in type symbols
- *********************************************************/
+ */
 void initTypes() {
     member_t *symbol;
     int16_t cnt;
@@ -650,15 +709,15 @@ void initTypes() {
     lvlidx     = -1;
 }
 
-/*********************************************************
+/*
  * newLocal - Allocate a new local label number
- *********************************************************/
+ */
 int newLocal() {
     static int localLabelCnt;
     return ++localLabelCnt;
 }
 
-/*********************************************************
+/*
  * declareSymbol OK++ PMO
  *
  * Looks up or creates a symbol table entry for the given token.
@@ -670,7 +729,7 @@ int newLocal() {
  *   cls   - symbol class (VAR, STRUCT, UNION, ENUM, etc.)
  *
  * Returns: pointer to the symbol table entry (member_t)
- *********************************************************/
+ */
 member_t *declareSymbol(char *token, uint8_t cls) {
     member_t **hashPtr;
     register member_t *symbol;
@@ -689,3 +748,5 @@ member_t *declareSymbol(char *token, uint8_t cls) {
     return symbol;
 }
 /* end of code.c */
+
+/* vim: tabstop=4 shiftwidth=4 noexpandtab: */

@@ -3,9 +3,9 @@
 /*
  * File - sym1.c
  */
-/*********************************************************
+/*
  * parseVariable - Parse "[v" variable declaration
- *********************************************************/
+ */
 void parseVariable() {
     node_t *exprNode;
     int storageClass;
@@ -89,9 +89,9 @@ typedef struct {
     int16_t vals[257];
 } memberi_t;
 
-/*********************************************************
+/*
  * parseMembers - Parse struct/union member declarations
- *********************************************************/
+ */
 void parseMembers(int classCode) {
 
     size_t size;
@@ -136,9 +136,9 @@ void parseMembers(int classCode) {
     layoutStruct(structSymbol);
 }
 
-/*********************************************************
+/*
  * parseEnum - Parse enum type declaration
- *********************************************************/
+ */
 void parseEnum() {
     node_t *exprNode;
     memberi_t *pMember;
@@ -177,21 +177,25 @@ void parseEnum() {
     }
 }
 
-/*********************************************************
+/*
  * alignOffset OK++ PMO			Used in: layoutStruct
  *
  * Rounds offset up to alignment boundary.
  * alignOffset(off, align-1) aligns to 'align' bytes.
  * e.g., alignOffset(5, 1) = 6 (align to 2-byte boundary)
- *********************************************************/
+ */
 int alignOffset(int p1, int p2) {
 
     return (p1 + p2) & ~p2;
 }
 
-/*********************************************************
+/*
  * varSize OK++ PMO   Used in: parseInit, parseVariable, parseMembers
- *********************************************************/
+ *
+ * Calculate total size of a variable in bytes.
+ * For pointers (b_refl & B_REFL_PTR): nelem * 2 (pointer size)
+ * For other types: type->size * nelem (base type size * element count)
+ */
 int varSize(register member_t *symbol) {
 
     if (symbol->refl & B_REFL_PTR)
@@ -199,13 +203,13 @@ int varSize(register member_t *symbol) {
     return symbol->type->size * symbol->nelem;
 }
 
-/*********************************************************
+/*
  * memberAlign OK++ PMO	       Used in: emitInitData, layoutStruct
  *
  * Returns alignment requirement for a struct member.
  * Pointers (b_refl != 0) have no alignment requirement.
  * Otherwise returns the type's alignment from b_off.
- *********************************************************/
+ */
 int memberAlign(register member_t *symbol) {
 
     if (symbol->refl != 0)
@@ -213,13 +217,13 @@ int memberAlign(register member_t *symbol) {
     return symbol->type->offset;
 }
 
-/*********************************************************
+/*
  * layoutStruct OK++ PMO		Used in: parseMembers
  *
  * Computes struct/union layout: member offsets and total size.
  * - Unions: all members at offset 0, size = max member size
  * - Structs: sequential layout with alignment, bitfield packing
- *********************************************************/
+ */
 void layoutStruct(register member_t *symbol) {
     int offset;
     int memberIdx;
@@ -265,7 +269,7 @@ void layoutStruct(register member_t *symbol) {
     symbol->sclass = STRUCT;
 }
 
-/*********************************************************
+/*
  * saveRegVars OK++ PMO			Used in: genExprCode
  *
  * Emits code to save register variables in function prologue.
@@ -274,7 +278,7 @@ void layoutStruct(register member_t *symbol) {
  *   - Register variables (b_flag == 2)
  *   - Marked for saving (b_sloc & B_SLOC_SAVE)
  * Emits push instructions via prIXnPush() for each.
- *********************************************************/
+ */
 void saveRegVars() {
     member_t **hashPtr;
     register member_t *symbol;
@@ -288,3 +292,5 @@ void saveRegVars() {
 }
 
 /* end of file sym1.c */
+
+/* vim: tabstop=4 shiftwidth=4 noexpandtab: */

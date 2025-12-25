@@ -4,13 +4,13 @@
  * File - cgen3.c Created 09.03.2019 Last Modified 30.05.2020
  */
 
-/*********************************************************
+/*
  * emitNodeCode - Emit all code fragments for an expression node
  *
  * Iterates through the code fragments assigned to the node
  * (stored in pat[] array with nPat count) and emits each
  * one via emitCodePat.
- *********************************************************/
+ */
 void emitNodeCode(register node_t *node) {
     int patIdx;
     struct codeFrag_t *frag;
@@ -24,7 +24,7 @@ void emitNodeCode(register node_t *node) {
     }
 }
 
-/*********************************************************
+/*
  * emitExprTree - Recursively emit code for expression tree
  *
  * Walks the expression tree and emits code in correct order:
@@ -34,7 +34,7 @@ void emitNodeCode(register node_t *node) {
  *
  * The flags flags handle evaluation order and stack spills
  * when registers are insufficient.
- *********************************************************/
+ */
 void emitExprTree(register node_t *node) {
     int opCount;
 
@@ -61,12 +61,12 @@ void emitExprTree(register node_t *node) {
         exprNestDepth--;
 }
 
-/*********************************************************
+/*
  * freeNode - Free a single expression tree node
  *
  * Adds the node to the free list for reuse. For FCONST
  * (float constant) nodes, also frees the string data.
- *********************************************************/
+ */
 void freeNode(register node_t *node) {
 
     treeChanged = true;
@@ -76,11 +76,12 @@ void freeNode(register node_t *node) {
     nodeFreeList = node;
 }
 
-/*********************************************************
- * copyTree - Create deep copy of expression tree
+/*
+ * allocNode - Allocate a new expression tree node
  *
- *			     localOptimize
- *********************************************************/
+ * Returns a node from the free list if available, otherwise
+ * allocates a new node. Always zeros the node before returning.
+ */
 node_t *allocNode(void) {
     register node_t *node;
 
@@ -96,9 +97,9 @@ node_t *allocNode(void) {
     return node;
 }
 
-/*********************************************************
+/*
  * relNodeFrList - Release nodes from free list to system
- *********************************************************/
+ */
 bool relNodeFrList(void) {
     register node_t *node;
 
@@ -111,12 +112,12 @@ bool relNodeFrList(void) {
     return true;
 }
 
-/*********************************************************
+/*
  * copyTree - Deep copy an expression tree
  *
  * Recursively duplicates a tree node and all its children.
  * Used by deferPostInc to copy operand before deferring increment.
- *********************************************************/
+ */
 node_t *copyTree(node_t *src) {
     register node_t *copy;
 
@@ -130,12 +131,12 @@ node_t *copyTree(node_t *src) {
     return copy;
 }
 
-/*********************************************************
+/*
  * peelType - Unwrap one level of pointer/array indirection
  *
  * Shifts tFlags right by 2 bits, or walks type chain to
  * find the pointed-to type.
- *********************************************************/
+ */
 void peelType(register node_t *node) {
     member_t *typePtr;
 
@@ -150,21 +151,21 @@ void peelType(register node_t *node) {
     }
 }
 
-/*********************************************************
+/*
  * addPtrType - Add pointer indirection to node's type
  *
  * Sets tFlags = (tFlags * 4) | 1 to add pointer level.
- *********************************************************/
+ */
 void addPtrType(register node_t *node) {
     node->tFlags = (node->tFlags * 4) | 1;
 }
 
-/*********************************************************
+/*
  * derefSize - Get size of dereferenced type
  *
  * Peels one level of indirection, gets the size, then
  * restores the pointer type.
- *********************************************************/
+ */
 uint16_t derefSize(register node_t *node) {
     uint8_t size;
 
@@ -177,11 +178,11 @@ uint16_t derefSize(register node_t *node) {
     return size;
 }
 
-/*********************************************************
+/*
  * hasTypeFlag - Check if type chain has specified flag
  *
  * Tests tFlags and walks type chain checking b_refl for flag.
- *********************************************************/
+ */
 bool hasTypeFlag(node_t *node, int flag) {
     register member_t *typePtr;
 
@@ -199,30 +200,30 @@ bool hasTypeFlag(node_t *node, int flag) {
     return false;
 }
 
-/*********************************************************
+/*
  * isPointer - Check if node is a pointer type (not used)
- *********************************************************/
+ */
 bool isPointer(node_t *node) {
     return hasTypeFlag(node, 1);
 }
 
-/*********************************************************
+/*
  * isFuncType - Check if node is a function type (not used)
- *********************************************************/
+ */
 bool isFuncType(node_t *node) {
     return hasTypeFlag(node, 2);
 }
 
-/*********************************************************
+/*
  * isStructVal - Check if node is a struct value (not ptr)
- *********************************************************/
+ */
 bool isStructVal(register node_t *node) {
     return node->pm->sclass == STRUCT && (node->tFlags & T_PTR) == 0;
 }
 
-/*********************************************************
+/*
  * nodesize - Get size in bytes for a node's type
- *********************************************************/
+ */
 uint16_t nodesize(register node_t *node) {
 
     if (node->tFlags & T_FUNC)
@@ -233,11 +234,11 @@ uint16_t nodesize(register node_t *node) {
     return node->pm->size;
 }
 
-/*********************************************************
+/*
  * castConst - Cast constant node to target type
  *
  * Converts integer to float or propagates type with masking.
- *********************************************************/
+ */
 node_t *castConst(register node_t *node) {
     char buf[50];
 
@@ -256,12 +257,12 @@ node_t *castConst(register node_t *node) {
     return node->info.np[0];
 }
 
-/*********************************************************
+/*
  * setNodeType - Copy type from source to dest with value masking
  *
  * Masks/sign-extends value based on type size, then copies
  * type info (pm, tFlags) from source to destination node.
- *********************************************************/
+ */
 void setNodeType(register node_t *typeNode, node_t *destNode) {
     int bitWidth;
 
@@ -279,9 +280,9 @@ void setNodeType(register node_t *typeNode, node_t *destNode) {
     destNode->tFlags = typeNode->tFlags;
 }
 
-/*********************************************************
+/*
  * unsignedOp - Apply unsigned arithmetic operation in-place
- *********************************************************/
+ */
 void unsignedOp(register unsigned long *ptr, long operand, int operator) {
 
     switch (operator) {
@@ -298,9 +299,9 @@ void unsignedOp(register unsigned long *ptr, long operand, int operator) {
     }
 }
 
-/*********************************************************
+/*
  * signedOp - Apply signed arithmetic operation in-place
- *********************************************************/
+ */
 void signedOp(register long *ptr, long operand, int operator) {
 
     switch (operator) {
@@ -337,7 +338,7 @@ void signedOp(register long *ptr, long operand, int operator) {
     }
 }
 
-/*********************************************************
+/*
  * deferPostInc - Extract and defer post-increment/decrement
  *
  * Walks expression tree separating post-inc/dec side effects:
@@ -348,7 +349,7 @@ void signedOp(register long *ptr, long operand, int operator) {
  *
  * After this pass, emitExpr generates main expr first,
  * then emits deferred side effects from array_AFFD[].
- *********************************************************/
+ */
 node_t *deferPostInc(register node_t *node) {
     int dopeFlags;
 
@@ -375,3 +376,5 @@ node_t *deferPostInc(register node_t *node) {
 }
 
 /* end of file cgen3.c */
+
+/* vim: tabstop=4 shiftwidth=4 noexpandtab: */

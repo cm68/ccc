@@ -4,7 +4,7 @@
  * File - tree3.c Created 09.03.2019 Last Modified 17.06.2020
  */
 
-/*********************************************************
+/*
  * mkNode - Create expression tree node
  *
  * Allocates a new node, sets operator and children, and
@@ -22,7 +22,7 @@
  *   Default: inherit type from left child
  *
  * Special handling for DOT, CONV, GADDR, MUL_U, HASHSIGN, etc.
- *********************************************************/
+ */
 node_t *mkNode(uint8_t opCode, node_t *leftChild, node_t *rightChild) {
     member_t *member;
     long sizeVal;
@@ -111,7 +111,7 @@ node_t *mkNode(uint8_t opCode, node_t *leftChild, node_t *rightChild) {
     return node;
 }
 
-/*********************************************************
+/*
  * isPow2Bit - Check if value is power of 2, return bit position
  *
  * Returns 0 if p1 is not a power of 2 (or < 1).
@@ -120,7 +120,7 @@ node_t *mkNode(uint8_t opCode, node_t *leftChild, node_t *rightChild) {
  *
  * Used for strength reduction (div/mod -> shift/mask) and
  * bit offset calculations during code emission.
- *********************************************************/
+ */
 uint8_t isPow2Bit(long value) {
     uint8_t bitPos;
 
@@ -132,7 +132,7 @@ uint8_t isPow2Bit(long value) {
     return (bitPos + 1);
 }
 
-/*********************************************************
+/*
  * freeExprTree OK++ PMO
  *
  * Recursively frees an expression tree node and all its children.
@@ -140,7 +140,7 @@ uint8_t isPow2Bit(long value) {
  *   0 = leaf node (no children)
  *   4 = unary operator (one child in np[0])
  *   8 = binary operator (two children in np[0] and np[1])
- *********************************************************/
+ */
 void freeExprTree(register node_t *node) {
     int opCount;
 
@@ -152,7 +152,7 @@ void freeExprTree(register node_t *node) {
     freeNode(node);
 }
 
-/*********************************************************
+/*
  * testPattern - Test if node matches pattern requirements
  * The code optimisers generate many differences in the code
  * however the vast majority relate to the choice of the code
@@ -171,7 +171,7 @@ void freeExprTree(register node_t *node) {
  * Note removing the gotos was initially tried, but the optimiser
  * match was poorer. Similarly using compound returns rather
  * than if / break, also produced a poorer match.
- *********************************************************/
+ */
 uint8_t testPattern(register node_t *node, int pattern) {
     long value;
 
@@ -282,28 +282,28 @@ uint8_t testPattern(register node_t *node, int pattern) {
     return 0;
 }
 
-/*********************************************************
+/*
  * isAddrable - Check if node is a simple addressable expr
  *
  * Returns true for ID nodes, &ID, or ID+CONST combinations.
- *********************************************************/
+ */
 bool isAddrable(register node_t *node) {
     /* Any operator except "#", "..", "CONST" */
     return (dopetab[node->op] & DOPE_LEAF) || (node->op == GADDR && node->info.np[0]->op == IDOP) ||
            (node->op == ADD && node->info.np[1]->op == CONST && isAddrable(node->info.np[0]) != 0);
 }
 
-/*********************************************************
+/*
  * isZeroConst - Check if node is a zero constant
- *********************************************************/
+ */
 bool isZeroConst(register node_t *node) {
 
     return node->op == CONST && node->info.l == 0;
 }
 
-/*********************************************************
+/*
  * addrLevel - Get address complexity level for a node
- *********************************************************/
+ */
 int addrLevel(register node_t *node) {
     if (node->op == GADDR && node->info.np[0]->op == IDOP)
         return 1;
@@ -314,18 +314,18 @@ int addrLevel(register node_t *node) {
     return dopetab[node->op] & (DOPE_OPCOUNT | DOPE_RESCAT);
 }
 
-/*********************************************************
+/*
  * hasRegChild - Check if child operand uses a register
- *********************************************************/
+ */
 bool hasRegChild(node_t *node) {
     return node->info.np[0]->op == USEREG;
 }
 
-/*********************************************************
+/*
  * simplifyNot - Simplify NOT expressions
  *
  * Transforms: !!x -> x, !(a==b) -> a!=b, !(a&&b) -> !a||!b
- *********************************************************/
+ */
 node_t *simplifyNot(register node_t *node) {
     node_t *child;
 
@@ -351,12 +351,12 @@ node_t *simplifyNot(register node_t *node) {
     return node;
 }
 
-/*********************************************************
+/*
  * expandId - Expand identifier to address expression
  *
  * Converts auto/register variable references to address
  * calculations (IX+offset or register direct).
- *********************************************************/
+ */
 node_t *expandId(register node_t *node) {
     node_t *offsetNode;
 
@@ -380,11 +380,11 @@ node_t *expandId(register node_t *node) {
     return node;
 }
 
-/*********************************************************
+/*
  * mkArrayOp - Convert array subscript to pointer arithmetic
  *
  * Transforms array[index] into *(array + index) for codegen.
- *********************************************************/
+ */
 node_t *mkArrayOp(register node_t *node) {
     node_t *childNode;
 
@@ -407,13 +407,13 @@ node_t *mkArrayOp(register node_t *node) {
     return mkNode(MUL_U, node, 0);
 }
 
-/*********************************************************
+/*
  * dropRightOp - Drop right operand, return left
  *
  * Used for identity elimination: frees the right operand
  * subtree and operator node, returning just the left operand.
  * E.g., x+0 -> x, x*1 -> x, x&~0 -> x
- *********************************************************/
+ */
 node_t *dropRightOp(register node_t *node) {
 
     freeExprTree(node->info.np[1]);
@@ -421,7 +421,7 @@ node_t *dropRightOp(register node_t *node) {
     return node->info.np[0];
 }
 
-/*********************************************************
+/*
  * pow2ToShift - Strength reduce power-of-2 multiply/divide/mod
  *
  * Converts operations by powers of 2 into faster equivalents:
@@ -431,7 +431,7 @@ node_t *dropRightOp(register node_t *node) {
  *
  * For shifts, converts constant from power value to shift amount.
  * Division optimization only applies to unsigned types.
- *********************************************************/
+ */
 node_t *pow2ToShift(register node_t *node) {
 
     switch (node->op) {
@@ -465,11 +465,11 @@ node_t *pow2ToShift(register node_t *node) {
     return node;
 }
 
-/*********************************************************
+/*
  * optConv - Optimize type conversion expressions
  *
  * Eliminates redundant conversions and propagates types.
- *********************************************************/
+ */
 node_t *optConv(register node_t *node) {
     node_t *childNode;
     node_t *newNode;
@@ -533,7 +533,7 @@ node_t *optConv(register node_t *node) {
     return newNode;
 }
 
-/*********************************************************
+/*
  * canAddrDeref - Cancel address-of/dereference pairs
  *
  * Simplifies &(*p) and *(&x) expressions:
@@ -542,7 +542,7 @@ node_t *optConv(register node_t *node) {
  *   - Otherwise converts to a CONV (type cast) node
  *
  * Called from localOptimize for GADDR/MUL_U combinations.
- *********************************************************/
+ */
 node_t *canAddrDeref(register node_t *node) {
     node_t *innerNode;
 
@@ -565,3 +565,5 @@ node_t *canAddrDeref(register node_t *node) {
 }
 
 /* end of file tree3.c */
+
+/* vim: tabstop=4 shiftwidth=4 noexpandtab: */
