@@ -20,3 +20,4 @@ _strcpy:	pop	bc
 	ld	h,b
 	ret
 
+; vim: tabstop=4 shiftwidth=4 noexpandtab:

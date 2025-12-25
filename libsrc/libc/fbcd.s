@@ -164,3 +164,5 @@ sbcd:				;now store as ascii
 	psect	data
 ten:	deff	10.0
 tenth:	deff	0.1
+
+; vim: tabstop=4 shiftwidth=4 noexpandtab:

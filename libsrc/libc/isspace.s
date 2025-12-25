@@ -21,3 +21,5 @@ yes:
 	ret
 nix:	ld	hl,0
 	ret
+
+; vim: tabstop=4 shiftwidth=4 noexpandtab:

@@ -2,7 +2,6 @@
  *	Quicksort based on the algorithm given in
  *	"Algorithms + Data Structures = Programs" by N. Wirth.
  *
- * vim: tabstop=4 shiftwidth=4 noexpandtab:
  */
 
 qsort(base, nel, width, compar)
@@ -64,3 +63,5 @@ unsigned width,nel;
 	if (x != xbuf)
 		free(x);
 }
+
+/* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

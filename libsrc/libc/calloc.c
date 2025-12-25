@@ -1,7 +1,6 @@
 /*
  * calloc - alloc space for n items of size s, and clear it to nulls
  *
- * vim: tabstop=4 shiftwidth=4 noexpandtab:
  */
 
 extern char * malloc();
@@ -30,3 +29,4 @@ void *	s;
 	free(s);
 }
 
+/* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

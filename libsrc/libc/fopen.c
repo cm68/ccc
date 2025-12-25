@@ -1,7 +1,6 @@
 /*
  * fopen.c - stdio fopen 
  *
- * vim: tabstop=4 shiftwidth=4 noexpandtab:
  */
 
 #include	<stdio.h>
@@ -20,3 +19,5 @@ char *	name, * mode;
 		return((FILE *)NULL);
 	return freopen(name, mode, f);
 }
+
+/* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

@@ -20,3 +20,5 @@ _bmove:
 	push	hl
 	exx
 	jp	(hl)
+
+; vim: tabstop=4 shiftwidth=4 noexpandtab:

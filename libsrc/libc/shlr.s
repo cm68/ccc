@@ -20,3 +20,4 @@ shlr:
 	djnz	1b
 	ret
 
+; vim: tabstop=4 shiftwidth=4 noexpandtab:

@@ -55,3 +55,5 @@ mult8b:	ld	b,8
 	exx
 	djnz	3b
 	ret
+
+; vim: tabstop=4 shiftwidth=4 noexpandtab:

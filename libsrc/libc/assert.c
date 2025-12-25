@@ -2,7 +2,6 @@
  * print an assertion failure to stderr, 
  * passing a line number, file name and message
  *
- * vim: tabstop=4 shiftwidth=4 noexpandtab:
  */
 #include	<assert.h>
 #include	<stdio.h>
@@ -16,3 +15,5 @@ int	line;
 		file, line, exp);
 	abort();
 }
+
+/* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

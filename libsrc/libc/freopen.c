@@ -1,7 +1,6 @@
 /*
  * freopen.c - stdio freopen 
  *
- * vim: tabstop=4 shiftwidth=4 noexpandtab:
  */
 
 #include	<stdio.h>
@@ -68,3 +67,5 @@ register FILE *	iob;
 		fseek(iob, 0L, 2);
 	return iob;
 }
+
+/* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

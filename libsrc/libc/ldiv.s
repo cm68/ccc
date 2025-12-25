@@ -268,3 +268,5 @@ divide:
 	dec	a			;decrement loop count
 	jr	nz,3b
 	ret				;finished
+
+; vim: tabstop=4 shiftwidth=4 noexpandtab:

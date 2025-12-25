@@ -1,7 +1,6 @@
 /*
  * copy sp to dp for n bytes
  *
- * vim: tabstop=4 shiftwidth=4 noexpandtab:
  */
 blkcpy(dp, sp, n)
 	register char *dp, *sp;
@@ -11,3 +10,4 @@ blkcpy(dp, sp, n)
 		*dp++ = *sp++;
 }
 
+/* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

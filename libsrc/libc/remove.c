@@ -1,7 +1,6 @@
 /*
  * remove is just unlink
  *
- * vim: tabstop=4 shiftwidth=4 noexpandtab:
  */
 extern int	unlink();
 
@@ -10,3 +9,5 @@ char *	s;
 {
 	return unlink(s);
 }
+
+/* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

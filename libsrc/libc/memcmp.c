@@ -1,7 +1,6 @@
 /*
  * compare memory
  *
- * vim: tabstop=4 shiftwidth=4 noexpandtab:
  */
 
 memcmp(s1, s2, n)
@@ -15,3 +14,5 @@ register int	n;
 			return i;
 	return 0;
 }
+
+/* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

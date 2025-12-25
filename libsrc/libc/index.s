@@ -16,3 +16,5 @@ _index:	call	rcsv
 
 2:	ld	hl,0
 	jp	4b
+
+; vim: tabstop=4 shiftwidth=4 noexpandtab:

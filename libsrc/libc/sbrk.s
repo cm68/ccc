@@ -52,3 +52,4 @@ _checksp:
 	psect	bss
 memtop:	defs	2
 
+; vim: tabstop=4 shiftwidth=4 noexpandtab:

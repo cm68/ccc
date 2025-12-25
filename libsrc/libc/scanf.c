@@ -1,7 +1,6 @@
 /*
  * scanf - formatted input
  *
- * vim: tabstop=4 shiftwidth=4 noexpandtab:
  */
 
 #include	<stdio.h>
@@ -14,3 +13,5 @@ int	args;
 {
 	return _doscan(stdin, fmt, &args);
 }
+
+/* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

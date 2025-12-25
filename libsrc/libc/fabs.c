@@ -1,7 +1,6 @@
 /*
  * floating point absolute value
  *
- * vim: tabstop=4 shiftwidth=4 noexpandtab:
  */
 double
 fabs(d)
@@ -11,3 +10,5 @@ double	d;
 		return -d;
 	return d;
 }
+
+/* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

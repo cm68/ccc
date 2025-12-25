@@ -1,7 +1,6 @@
 /*
  * getenv - read environment file into environment array
  *
- * vim: tabstop=4 shiftwidth=4 noexpandtab:
  */
 #include	<stdio.h>
 #include	<string.h>
@@ -48,3 +47,5 @@ char *	s;
 			return *xp + i+1;
 	return (char *)0;
 }
+
+/* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

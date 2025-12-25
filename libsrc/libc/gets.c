@@ -1,7 +1,6 @@
 /*
  * gets and fgets from stdio stream
  *
- * vim: tabstop=4 shiftwidth=4 noexpandtab:
  */
 
 #include	<stdio.h>
@@ -32,3 +31,5 @@ char *	s;
 	s[strlen(s)-1] = 0;
 	return(s);
 }
+
+/* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

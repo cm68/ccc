@@ -1,7 +1,6 @@
 /*
  * sscanf - formatted input from string
  *
- * vim: tabstop=4 shiftwidth=4 noexpandtab:
  */
 
 #include	<stdio.h>
@@ -21,3 +20,5 @@ int	args;
 	file._flag = _IOSTRG|_IOBINARY|_IOREAD;
 	return _doscan(&file, fmt, &args);
 }
+
+/* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

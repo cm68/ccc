@@ -1,7 +1,6 @@
 /*
  * formatted output to string
  *
- * vim: tabstop=4 shiftwidth=4 noexpandtab:
  */
 #include	<stdio.h>
 
@@ -19,3 +18,5 @@ int	a;
 	*spf._ptr = 0;
 	return spf._ptr - wh;
 }
+
+/* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

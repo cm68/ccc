@@ -105,3 +105,5 @@ bfins:
 	ld	(hl),a
 	pop	hl		;get value back
 	ret			;finito!
+
+; vim: tabstop=4 shiftwidth=4 noexpandtab:

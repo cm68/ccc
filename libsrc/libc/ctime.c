@@ -1,7 +1,6 @@
 /*
  * Ctime for HI-TECH C - no daylight saving
  *
- * vim: tabstop=4 shiftwidth=4 noexpandtab:
  */
 
 #include	<time.h>
@@ -115,3 +114,5 @@ time_t *	tp;
 {
 	return asctime(localtime(tp));
 }
+
+/* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

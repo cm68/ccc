@@ -1,7 +1,6 @@
 /*
  * _filbuf - load up read buffer
  *
- * vim: tabstop=4 shiftwidth=4 noexpandtab:
  */
 
 extern int	read(int, void *, int);
@@ -32,3 +31,5 @@ register FILE *	f;
 	f->_cnt--;
 	return((unsigned)*f->_ptr++);
 }
+
+/* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

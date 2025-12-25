@@ -1,7 +1,6 @@
 /*
  * floating point evaluate a polynomial
  *
- * vim: tabstop=4 shiftwidth=4 noexpandtab:
  */
 double
 eval_poly(x, d, n)
@@ -16,3 +15,5 @@ int	n;
 		res = x * res + d[--i];
 	return res;
 }
+
+/* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

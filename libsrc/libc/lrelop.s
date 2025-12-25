@@ -35,3 +35,5 @@ lrelop:
 1:
 	exx			;get return address
 	jp	(hl)		;and return with stack clean
+
+; vim: tabstop=4 shiftwidth=4 noexpandtab:

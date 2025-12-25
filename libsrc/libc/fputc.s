@@ -93,3 +93,5 @@ _fputc:
 reteof:
 	ld	bc,-1
 	jr	3b
+
+; vim: tabstop=4 shiftwidth=4 noexpandtab:

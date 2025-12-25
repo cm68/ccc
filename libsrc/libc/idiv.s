@@ -92,3 +92,5 @@ negat:	ld	b,h
 	or	a
 	sbc	hl,bc
 	ret
+
+; vim: tabstop=4 shiftwidth=4 noexpandtab:

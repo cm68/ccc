@@ -1,7 +1,6 @@
 /*
  * Formatted number printing
  *
- * vim: tabstop=4 shiftwidth=4 noexpandtab:
  */
 
 #define	NDIG	30		/* max number of digits to be printed */
@@ -47,3 +46,5 @@ char	f, w;
 		putch(*cp++);
 	return fw;
 }
+
+/* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

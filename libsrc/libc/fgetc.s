@@ -126,3 +126,5 @@ reteof:
 	bit	7,h
 	jr	nz,reteof		;returned EOF
 	jr	2b
+
+; vim: tabstop=4 shiftwidth=4 noexpandtab:

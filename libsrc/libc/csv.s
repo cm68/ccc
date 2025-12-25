@@ -54,3 +54,5 @@ ncsv:
 	ld	sp,hl
 	ex	de,hl
 	jp	(hl)
+
+; vim: tabstop=4 shiftwidth=4 noexpandtab:

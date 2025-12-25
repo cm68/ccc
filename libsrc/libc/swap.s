@@ -26,3 +26,4 @@ __swap:
 	jr	nz,2b
 	jp	cret
 
+; vim: tabstop=4 shiftwidth=4 noexpandtab:

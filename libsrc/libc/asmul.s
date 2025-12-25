@@ -20,3 +20,4 @@ aslmul:
 	ex	de,hl		;return value in hl
 	ret
 
+; vim: tabstop=4 shiftwidth=4 noexpandtab:

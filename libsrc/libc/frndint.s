@@ -16,3 +16,5 @@ __frndint:
 	push	bc
 	call	ftol
 	jp	altof
+
+; vim: tabstop=4 shiftwidth=4 noexpandtab:

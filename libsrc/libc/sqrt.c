@@ -1,7 +1,6 @@
 /*
  * floating point square root
  *
- * vim: tabstop=4 shiftwidth=4 noexpandtab:
  */
 #include	<math.h>
 
@@ -30,3 +29,5 @@ double	x;
 	}
 	return og;
 }
+
+/* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

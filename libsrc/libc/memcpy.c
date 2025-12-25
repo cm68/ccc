@@ -1,7 +1,6 @@
 /*
  * copy n bytes from s to d
  *
- * vim: tabstop=4 shiftwidth=4 noexpandtab:
  */
 
 memcpy(d, s, n)
@@ -11,3 +10,5 @@ register int	n;
 	while(n--)
 		*d++ = *s++;
 }
+
+/* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

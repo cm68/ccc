@@ -1,7 +1,6 @@
 /*
  * floating point arc cosine
  *
- * vim: tabstop=4 shiftwidth=4 noexpandtab:
  */
 #include	<math.h>
 
@@ -15,3 +14,4 @@ double	x;
 	return atan(y/x);
 }
 
+/* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

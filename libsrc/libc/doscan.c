@@ -1,7 +1,6 @@
 /*
  * _doscan - implement scanf, fscanf, sscanf
  *
- * vim: tabstop=4 shiftwidth=4 noexpandtab:
  */
 
 #include	<stdio.h>
@@ -233,3 +232,5 @@ loop:
 	}
 	return n;
 }
+
+/* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

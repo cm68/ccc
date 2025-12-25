@@ -56,3 +56,5 @@ _ldexp:
 	ld	e,(ix+4)
 	pop	ix
 	ret
+
+; vim: tabstop=4 shiftwidth=4 noexpandtab:

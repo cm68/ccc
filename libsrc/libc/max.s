@@ -16,3 +16,4 @@ _max:
 	ex	de,hl		;otherwise returnt the other
 	ret
 
+; vim: tabstop=4 shiftwidth=4 noexpandtab:

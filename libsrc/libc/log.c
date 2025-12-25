@@ -1,7 +1,6 @@
 /*
  * floating point logarithm
  *
- * vim: tabstop=4 shiftwidth=4 noexpandtab:
  */
 #include	<math.h>
 
@@ -41,3 +40,5 @@ double	x;
 {
 	return log(x) * 0.4342944819;
 }
+
+/* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

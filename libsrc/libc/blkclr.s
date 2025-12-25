@@ -23,3 +23,5 @@ _blkclr:
 	inc	hl
 	dec	bc
 	jr	1b
+
+; vim: tabstop=4 shiftwidth=4 noexpandtab:

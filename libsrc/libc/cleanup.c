@@ -1,7 +1,6 @@
 /*
  * exit-time exit hook to close stdin, stdout, stderr
  *
- * vim: tabstop=4 shiftwidth=4 noexpandtab:
  */
 #include	<stdio.h>
 
@@ -51,3 +50,5 @@ FILE	_iob[_NFILE] =
 FILE *stdin = &_iob[0];
 FILE *stdout = &_iob[1];
 FILE *stderr = &_iob[2];
+
+/* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

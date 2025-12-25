@@ -1,7 +1,6 @@
 /*
  * ungetc - put a character back into stdio stream
  *
- * vim: tabstop=4 shiftwidth=4 noexpandtab:
  */
 #include	<stdio.h>
 
@@ -19,3 +18,5 @@ register FILE *	stream;
 	*--stream->_ptr = c;
 	return(c);
 }
+
+/* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

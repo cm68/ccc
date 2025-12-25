@@ -1,7 +1,6 @@
 /*
  * floating point ceiling.
  *
- * vim: tabstop=4 shiftwidth=4 noexpandtab:
  */
 
 #include	<math.h>
@@ -19,3 +18,5 @@ double	x;
 		return i + 1.0;
 	return i;
 }
+
+/* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

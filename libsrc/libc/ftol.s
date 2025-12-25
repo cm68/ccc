@@ -31,3 +31,5 @@ ftol:
 	jp	nc,alrsh	;and shift down one more
 	inc	hl		;add in carry first
 	jp	alrsh
+
+; vim: tabstop=4 shiftwidth=4 noexpandtab:

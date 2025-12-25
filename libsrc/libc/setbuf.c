@@ -1,7 +1,6 @@
 /*
  * Setbuf for stdio stream - pass in BUFSIZ buffer
  *
- * vim: tabstop=4 shiftwidth=4 noexpandtab:
  */
 
 #include	<stdio.h>
@@ -21,3 +20,5 @@ char *		c;
 	if (f->_flag & _IOWRT)
 		f->_cnt = BUFSIZ;
 }
+
+/* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

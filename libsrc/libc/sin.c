@@ -1,7 +1,6 @@
 /*
  * floating point sin
  *
- * vim: tabstop=4 shiftwidth=4 noexpandtab:
  */
 #include	<math.h>
 
@@ -51,3 +50,4 @@ double	f;
 	return y * eval_poly(y_squared, coeff_a, 4) / eval_poly(y_squared, coeff_b, 4);
 }
 
+/* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

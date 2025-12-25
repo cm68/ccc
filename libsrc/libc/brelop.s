@@ -23,3 +23,5 @@ brelop:
 	inc	a		;set sign flag as appropriate and reset Z flag
 	pop	de
 	ret
+
+; vim: tabstop=4 shiftwidth=4 noexpandtab:

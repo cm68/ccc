@@ -50,3 +50,5 @@ _atoi:	pop	bc	;return address
 	ld	hl,0
 	sbc	hl,de
 	ret
+
+; vim: tabstop=4 shiftwidth=4 noexpandtab:

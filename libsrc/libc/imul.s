@@ -31,3 +31,5 @@ mult8b:
 	ret	z		; if no more set bits
 	djnz	mult8b		; do 8
 	ret
+
+; vim: tabstop=4 shiftwidth=4 noexpandtab:

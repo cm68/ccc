@@ -1,7 +1,6 @@
 /*
  * floating point exponent
  *
- * vim: tabstop=4 shiftwidth=4 noexpandtab:
  */
 #include	<math.h>
 
@@ -54,3 +53,5 @@ double	x, y;
 	x = exp(log(x) * y);
 	return x;
 }
+
+/* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

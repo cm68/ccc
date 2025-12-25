@@ -60,3 +60,4 @@ __getargs:
 	psect	data
 nularg:	defb	0
 
+; vim: tabstop=4 shiftwidth=4 noexpandtab:

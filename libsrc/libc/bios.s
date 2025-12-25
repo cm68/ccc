@@ -27,3 +27,5 @@ _bios:
 	ld	l,a			;return value in a
 	ld	h,0
 	jp	cret
+
+; vim: tabstop=4 shiftwidth=4 noexpandtab:

@@ -1,7 +1,6 @@
 /*
  * routines for getchar and putchar, usually macros
  *
- * vim: tabstop=4 shiftwidth=4 noexpandtab:
  */
 
 #include	<stdio.h>
@@ -18,3 +17,5 @@ putchar(c)
 {
 	return(fputc(c, stdout));
 }
+
+/* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

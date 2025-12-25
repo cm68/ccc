@@ -1,7 +1,6 @@
 /*
  * allocate or free a buffer of BUFSIZ bytes
  *
- * vim: tabstop=4 shiftwidth=4 noexpandtab:
  */
 #include	<stdio.h>
 
@@ -34,3 +33,4 @@ char *	pp;
 	freep = up;
 }
 
+/* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

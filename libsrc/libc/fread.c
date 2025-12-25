@@ -1,7 +1,6 @@
 /*
  * fread - read from stdio file
  *
- * vim: tabstop=4 shiftwidth=4 noexpandtab:
  */
 #include	<stdio.h>
 
@@ -25,3 +24,5 @@ unsigned	size, nitems;
 		}
 	return(nitems - (count+size-1)/size);
 }
+
+/* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

@@ -19,3 +19,5 @@ lllsh:
 	adc	hl,hl
 	djnz	1b
 	ret
+
+; vim: tabstop=4 shiftwidth=4 noexpandtab:

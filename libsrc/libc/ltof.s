@@ -58,3 +58,4 @@ altof:
 	set	7,h		;set sign flag
 	ret
 
+; vim: tabstop=4 shiftwidth=4 noexpandtab:

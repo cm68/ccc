@@ -1,7 +1,6 @@
 /*
  * _fnum() - converts floating numbers to ascii decimal representations.
  *
- * vim: tabstop=4 shiftwidth=4 noexpandtab:
  */
 
 #define	uchar	unsigned char
@@ -198,3 +197,5 @@ loop:
 	}
 	return twid;
 }
+
+/* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

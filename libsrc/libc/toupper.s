@@ -18,3 +18,4 @@ _toupper:
 	ld	l,a
 	ret
 
+; vim: tabstop=4 shiftwidth=4 noexpandtab:

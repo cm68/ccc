@@ -2,7 +2,6 @@
  * ascii decimal string to long integer
  * skips leading white space
  *
- * vim: tabstop=4 shiftwidth=4 noexpandtab:
  */
 #include	<ctype.h>
 
@@ -27,3 +26,5 @@ register char *	s;
 		return -a;
 	return a;
 }
+
+/* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

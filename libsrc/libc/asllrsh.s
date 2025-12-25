@@ -18,3 +18,5 @@ asllrsh:
 	pop	bc
 	call	llrsh		;do the shift
 	jp	iregstore	;go store the value and return
+
+; vim: tabstop=4 shiftwidth=4 noexpandtab:

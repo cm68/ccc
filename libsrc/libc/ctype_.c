@@ -1,7 +1,6 @@
 /*
  * character type table used by ctype.h
  *
- * vim: tabstop=4 shiftwidth=4 noexpandtab:
  */
 #include	<ctype.h>
 
@@ -24,3 +23,5 @@ unsigned char _ctype_[] = {
 	_L,	_L,	_L,	_L,	_L,	_L,	_L,	_L,
 	_L,	_L,	_L,	_P,	_P,	_P,	_P,	_C
 };
+
+/* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

@@ -15,3 +15,5 @@ _abs:
 	or	a		;Clear carry
 	sbc	hl,de
 	ret
+
+; vim: tabstop=4 shiftwidth=4 noexpandtab:

@@ -1,7 +1,6 @@
 /*
  * initialize random number generator by prompting input
  *
- * vim: tabstop=4 shiftwidth=4 noexpandtab:
  */
 extern int	kbhit();
 
@@ -15,3 +14,5 @@ char *	s;
 		i++;
 	srand(i);
 }
+
+/* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

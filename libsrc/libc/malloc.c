@@ -1,7 +1,6 @@
 /*
  * malloc
  *
- * vim: tabstop=4 shiftwidth=4 noexpandtab:
  */
 
 #ifdef debug
@@ -176,3 +175,5 @@ showall()
 	printf("%d used, %d free, %4.4x end\n", used, free, alloct);
 }
 #endif
+
+/* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

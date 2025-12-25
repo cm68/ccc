@@ -1,7 +1,6 @@
 /*
  * ascii string to floating point
  *
- * vim: tabstop=4 shiftwidth=4 noexpandtab:
  */
 #include	<ctype.h>
 
@@ -60,3 +59,4 @@ register char *	s;
 	return l;
 }
 
+/* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

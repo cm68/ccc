@@ -1,7 +1,6 @@
 /*
  * write to stdio stream
  *
- * vim: tabstop=4 shiftwidth=4 noexpandtab:
  */
 #include	<stdio.h>
 
@@ -22,3 +21,5 @@ unsigned	size, nitems;
 			--count;
 	return(nitems - (count+size-1)/size);
 }
+
+/* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

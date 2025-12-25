@@ -1,7 +1,6 @@
 /*
  * floating point cosine
  *
- * vim: tabstop=4 shiftwidth=4 noexpandtab:
  */
 #include	<math.h>
 
@@ -13,3 +12,5 @@ double	f;
 
 	return sin(f + 1.570796326795);
 }
+
+/* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

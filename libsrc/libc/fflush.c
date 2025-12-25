@@ -1,7 +1,6 @@
 /*
  * fflush - write buffer if dirty
  *
- * vim: tabstop=4 shiftwidth=4 noexpandtab:
  */
 
 #include	<stdio.h>
@@ -28,3 +27,5 @@ register FILE *	f;
 		return(EOF);
 	return 0;
 }
+
+/* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

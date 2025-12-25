@@ -1,7 +1,6 @@
 /*
  * floating point arc tangent
  *
- * vim: tabstop=4 shiftwidth=4 noexpandtab:
  */
 #include	<math.h>
 
@@ -42,3 +41,4 @@ double	f;
 	return f < 0.0 ? -val : val;
 }
 
+/* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

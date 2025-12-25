@@ -1,7 +1,6 @@
 /*
  * _flsbuf - worker function for fputc
  *
- * vim: tabstop=4 shiftwidth=4 noexpandtab:
  */
 
 #include	<stdio.h>
@@ -33,3 +32,5 @@ uchar	c;
 		return(EOF);
 	return(c);
 }
+
+/* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

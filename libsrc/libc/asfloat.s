@@ -19,3 +19,5 @@ asfldiv:
 	call	iregset
 	call	fldiv
 	jp	iregstore
+
+; vim: tabstop=4 shiftwidth=4 noexpandtab:

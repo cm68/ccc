@@ -1,7 +1,6 @@
 /*
  * seek a stdio stream
  *
- * vim: tabstop=4 shiftwidth=4 noexpandtab:
  */
 #include <stdio.h>
 #include <unistd.h>
@@ -31,3 +30,5 @@ fseek(FILE *fp, long off, int whence)
 
 	return 0;
 }
+
+/* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

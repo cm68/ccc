@@ -46,3 +46,5 @@ _longjmp:
 	push	hl
 	ex	de,hl		;get arg into hl
 	ret
+
+; vim: tabstop=4 shiftwidth=4 noexpandtab:

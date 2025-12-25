@@ -21,3 +21,4 @@ _strncpy:
 2:	pop	hl
 	jp	cret
 
+; vim: tabstop=4 shiftwidth=4 noexpandtab:

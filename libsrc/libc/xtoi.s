@@ -52,3 +52,4 @@ _ishex:	pop	hl
 	inc	hl
 	ret
 
+; vim: tabstop=4 shiftwidth=4 noexpandtab:

@@ -1,7 +1,6 @@
 /*
  * puts and fputs
  *
- * vim: tabstop=4 shiftwidth=4 noexpandtab:
  */
 
 #include	<stdio.h>
@@ -20,3 +19,5 @@ char *		s;
 	fputs(s, stdout);
 	putchar('\n');
 }
+
+/* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

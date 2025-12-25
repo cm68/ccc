@@ -13,3 +13,4 @@ _strlen:	pop	hl
 	inc	de
 	jr	1b
 
+; vim: tabstop=4 shiftwidth=4 noexpandtab:

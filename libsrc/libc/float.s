@@ -464,3 +464,5 @@ fldiv:
 
 fperr:
 	defs	1		;floating over/underflow flag
+
+; vim: tabstop=4 shiftwidth=4 noexpandtab:

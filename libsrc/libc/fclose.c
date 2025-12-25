@@ -1,7 +1,6 @@
 /*
  * fclose - flush buffer if dirty, free buffer if allocated
  *
- * vim: tabstop=4 shiftwidth=4 noexpandtab:
  */
 
 #include	<stdio.h>
@@ -24,3 +23,5 @@ register FILE *	f;
 	else
 		return 0;
 }
+
+/* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

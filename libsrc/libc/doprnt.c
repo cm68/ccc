@@ -1,7 +1,6 @@
 /*
  * printf worker function
  *
- * vim: tabstop=4 shiftwidth=4 noexpandtab:
  */
 
 #include	<stdio.h>
@@ -166,3 +165,5 @@ dostring:
 				pputc(' ');
 		}
 }
+
+/* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

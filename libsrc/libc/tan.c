@@ -1,7 +1,6 @@
 /*
  * floating point tangent
  *
- * vim: tabstop=4 shiftwidth=4 noexpandtab:
  */
 #include	<math.h>
 
@@ -11,3 +10,5 @@ double	x;
 {
 	return sin(x)/cos(x);
 }
+
+/* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

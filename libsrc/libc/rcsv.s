@@ -14,3 +14,5 @@ rcsv:
 	ld	c,(ix+ARG+4)
 	ld	b,(ix+ARG+5)
 	jp	(iy)
+
+; vim: tabstop=4 shiftwidth=4 noexpandtab:

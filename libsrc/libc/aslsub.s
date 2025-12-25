@@ -6,3 +6,5 @@ asllsub:
 	call	iregset
 	call	alsub
 	jp	iregstore
+
+; vim: tabstop=4 shiftwidth=4 noexpandtab:

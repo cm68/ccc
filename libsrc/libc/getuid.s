@@ -26,3 +26,5 @@ _setuid:
 	call	entry
 	pop	ix
 	jp	cret
+
+; vim: tabstop=4 shiftwidth=4 noexpandtab:

@@ -47,3 +47,5 @@ one:
 	deff	1.0
 mone:
 	deff	-1.0
+
+; vim: tabstop=4 shiftwidth=4 noexpandtab:
