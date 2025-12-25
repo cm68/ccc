@@ -51,3 +51,5 @@ clean:
 	rm -f lex.yy.c *.o core ${ALL}
 
 install:
+
+# vim: tabstop=4 shiftwidth=4 noexpandtab:

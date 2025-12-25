@@ -59,3 +59,5 @@ test-insertmacro-verbose: test_insertmacro
 # Clean build artifacts
 clean:
 	rm -f $(TESTS) *.o
+
+# vim: tabstop=4 shiftwidth=4 noexpandtab:

@@ -110,6 +110,6 @@ install: cc1
 .PHONY: all clean regen stage1 install clobber sizefile
 
 #
-# vim: tabstop=4 shiftwidth=4 expandtab:
+# vim: tabstop=4 shiftwidth=4 noexpandtab:
 #	cp cc1 $(ROOTDIR)/bin
 

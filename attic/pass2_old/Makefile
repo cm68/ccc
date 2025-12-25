@@ -86,3 +86,5 @@ install: cc2
 	cp cc2 $(ROOTDIR)/bin
 
 .PHONY: all clean regen stage1 install clobber
+
+# vim: tabstop=4 shiftwidth=4 noexpandtab:

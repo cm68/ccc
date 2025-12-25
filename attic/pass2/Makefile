@@ -83,5 +83,5 @@ test: cc2
 .PHONY: all clean test stage1 sizefile
 
 #
-# vim: tabstop=4 shiftwidth=4 expandtab:
+# vim: tabstop=4 shiftwidth=4 noexpandtab:
 #

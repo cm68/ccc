@@ -73,5 +73,5 @@ install: cpp
 
 .PHONY: all clean clobber install stage1 sizefile
 #
-# vim: tabstop=4 shiftwidth=4 expandtab:
+# vim: tabstop=4 shiftwidth=4 noexpandtab:
 #
