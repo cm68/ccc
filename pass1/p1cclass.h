@@ -41,16 +41,14 @@ extern char ccClass[129];
 #define _X          8			/* hex digit */
 #define _S          16			/* whitespace */
 
-#define Isalpha(c)  ((ccClass + 1)[(unsigned char)(c)] & (_U|_L))
-#define Isupper(c)  ((ccClass + 1)[(unsigned char)(c)] & _U)
-#define Islower(c)  ((ccClass + 1)[(unsigned char)(c)] & _L)
-#define Isdigit(c)  ((ccClass + 1)[(unsigned char)(c)] & _D)
-#define Isxdigit(c) ((ccClass + 1)[(unsigned char)(c)] & _X)
-#define Isspace(c)  ((ccClass + 1)[(unsigned char)(c)] & _S)
-#define Isalnum(c)  ((ccClass + 1)[(unsigned char)(c)] & (_U|_L|_D))
+#define Isalpha(c)  ((ccClass + 1)[(char)(c)] & (_U|_L))
+#define Isupper(c)  ((ccClass + 1)[(char)(c)] & _U)
+#define Islower(c)  ((ccClass + 1)[(char)(c)] & _L)
+#define Isdigit(c)  ((ccClass + 1)[(char)(c)] & _D)
+#define Isxdigit(c) ((ccClass + 1)[(char)(c)] & _X)
+#define Isspace(c)  ((ccClass + 1)[(char)(c)] & _S)
+#define Isalnum(c)  ((ccClass + 1)[(char)(c)] & (_U|_L|_D))
 #define Tolower(c)  (Isupper(c) ? (c) + 0x20 : (c))
 #endif
 
-/*
- * vim: tabstop=4 shiftwidth=4 noexpandtab: 
- */
+/* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

@@ -749,4 +749,4 @@ member_t *declareSymbol(char *token, uint8_t cls) {
 }
 /* end of code.c */
 
-/* vim: tabstop=4 shiftwidth=4 noexpandtab: */
+/* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

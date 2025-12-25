@@ -900,4 +900,4 @@ uint8_t regClassRegs[] = { 14, 13, 12, 0, 0, 0,
 
 /* end of file data.c */
 
-/* vim: tabstop=4 shiftwidth=4 noexpandtab: */
+/* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

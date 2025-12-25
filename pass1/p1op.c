@@ -104,6 +104,4 @@ op_t opTable[68] = {
 	{ "",    0x00, 0x11, 0x0000, 0 }, /* 127 T_FCONST */
 };
 
-/*
- * vim: tabstop=4 shiftwidth=4 noexpandtab: 
- */
+/* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

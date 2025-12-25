@@ -293,6 +293,4 @@ parseInitial(register sym_t * st, bool p2)
 	return initCnt;
 }
 
-/*
- * vim: tabstop=4 shiftwidth=4 noexpandtab: 
- */
+/* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

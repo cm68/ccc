@@ -37,7 +37,7 @@
 #define CARRY   2
 
 struct instruct {
-	char type;
+	unsigned char type;
 	char *mnem;
 	unsigned char opcode;
 	unsigned char arg;
@@ -1067,3 +1067,4 @@ char *in;
 	return 0;
 }
 
+/* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

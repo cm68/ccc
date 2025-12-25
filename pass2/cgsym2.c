@@ -248,4 +248,4 @@ int matchEmitPat(node_t *node, int emitCode, int availRegs, int wantReg, int *us
 
 /* end of file sym2s.c */
 
-/* vim: tabstop=4 shiftwidth=4 noexpandtab: */
+/* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

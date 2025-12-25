@@ -148,4 +148,4 @@ void free(void *p) {
 #endif
 /* end of file malloc.c */
 
-/* vim: tabstop=4 shiftwidth=4 noexpandtab: */
+/* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

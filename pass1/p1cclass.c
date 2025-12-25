@@ -51,6 +51,4 @@ char ccClass[] = {
 	_L,    _L,    _L,    _Z,    _Z,    _Z,    _Z,    _Z		/* 78 */
 };
 
-/*
- * vim: tabstop=4 shiftwidth=4 noexpandtab: 
- */
+/* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

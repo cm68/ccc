@@ -29,8 +29,6 @@
  * Mark Ogden
  * 09-Jul-2022
  */
-#ifndef _P1_H
-#define _P1_H
 
 #include "p1cclass.h"
 #include <stdio.h>
@@ -61,7 +59,6 @@ typedef unsigned char bool;
  */
 #define rindex       strrchr
 #define blkclr(p, s) memset(p, 0, s);
-#endif
 
 #define HASHTABSIZE 271
 
@@ -428,6 +425,4 @@ extern char *_Hbss;
 
 #endif
 
-/*
- * vim: tabstop=4 shiftwidth=4 noexpandtab: 
- */
+/* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

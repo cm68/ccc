@@ -372,4 +372,4 @@ void parseData() {
 }
 /* end of lex2.c */
 
-/* vim: tabstop=4 shiftwidth=4 noexpandtab: */
+/* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

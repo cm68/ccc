@@ -1,5 +1,5 @@
 /*
- * ccc - Two-pass C compiler driver
+ * ccc - C compiler driver
  *
  * Orchestrates cpp, c0 (parser), and c1 (code generator)
  */
@@ -440,7 +440,11 @@ main(int argc, char **argv)
         cc1_argc = 0;
         for (j = 0; j < cc1_base_argc; j++)
             cc1_args[cc1_argc++] = cc1_base[j];
+#ifdef LEXFILE
         cc1_args[cc1_argc++] = lex_file;
+#else
+        cc1_args[cc1_argc++] = prep_file;
+#endif
         cc1_args[cc1_argc++] = temp1_file;
         cc1_args[cc1_argc++] = temp2_file;
         cc1_args[cc1_argc] = NULL;
@@ -630,3 +634,5 @@ main(int argc, char **argv)
 
     return 0;
 }
+
+/* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

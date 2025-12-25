@@ -150,4 +150,4 @@ uint8_t getResultReg(register node_t *node) {
 }
 /* end of file sym3.c */
 
-/* vim: tabstop=4 shiftwidth=4 noexpandtab: */
+/* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

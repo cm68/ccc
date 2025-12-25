@@ -1159,7 +1159,6 @@ int symcnt;
     int i;
     unsigned char symflag;
     char symname[64];
-    int c;
 
     fseek(fp, symoff, SEEK_SET);
 
@@ -1216,7 +1215,10 @@ char *name;
 
     /* scan each module */
     for (i = 0; i < num_mods; i++) {
-        unsigned short symSize, symCnt;
+#ifdef notdef
+        unsigned short symSize;
+#endif
+		unsigned short symCnt;
         unsigned long moduleSize;
         char moduleName[256];
         long mod_symoff;
@@ -1226,7 +1228,9 @@ char *name;
         if (fread(buf, 1, 12, fp) != 12)
             break;
 
+#ifdef notdef
         symSize = buf[0] | (buf[1] << 8);
+#endif
         symCnt = buf[2] | (buf[3] << 8);
         moduleSize = buf[4] | (buf[5] << 8) |
                      ((unsigned long)buf[6] << 16) |
@@ -2260,6 +2264,4 @@ char **argv;
     return 0;
 }
 
-/*
- * vim: tabstop=4 shiftwidth=4 noexpandtab:
- */
+/* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

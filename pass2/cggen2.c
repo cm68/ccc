@@ -264,4 +264,4 @@ void emitCodePat(register node_t *node, char *pattern, char patIdx) {
 
 /* end of file cgen2s.c */
 
-/* vim: tabstop=4 shiftwidth=4 noexpandtab: */
+/* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

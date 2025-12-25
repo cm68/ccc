@@ -261,6 +261,4 @@ kwlook(unsigned char *str, unsigned char *table)
 }
 #endif
 
-/*
- * vim: tabstop=4 shiftwidth=4 expandtab:
- */
+/* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

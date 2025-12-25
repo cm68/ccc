@@ -13,7 +13,7 @@ OUTDIR = stage1
 ifeq ($(CC),gcc)
 WARNS = -Wall -Werror -pedantic \
 -Wdeclaration-after-statement -Werror=declaration-after-statement \
--Werror=implicit-function-declaration
+-Werror=implicit-function-declaration -Wno-error=overlength-strings
 CFLAGS = -m32 -std=c89 -g -O0 $(WARNS)
 else ifeq ($(CC),ccc)
 CFLAGS = -DCCC
@@ -62,6 +62,5 @@ install: c1
 	cp c1 $(DEST)/bin
 
 .PHONY: all clean clobber install stage1 sizefile
-#
+
 # vim: tabstop=4 shiftwidth=4 noexpandtab:
-#

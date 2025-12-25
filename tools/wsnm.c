@@ -2641,7 +2641,10 @@ char *name;
 {
     long off;
     unsigned short size_symbols, num_modules;
-    unsigned short symSize, symCnt;
+#ifdef notdef
+    unsigned short symSize;
+#endif
+    unsigned short symCnt;
     unsigned long moduleSize;
     long modDataOff;
     char moduleName[256];
@@ -2670,7 +2673,9 @@ char *name;
     for (i = 0; i < num_modules && off < filesize; i++) {
         if (off + 12 > filesize) break;
 
+#ifdef notdef
         symSize = filebuf[off] | (filebuf[off+1] << 8);
+#endif
         symCnt = filebuf[off+2] | (filebuf[off+3] << 8);
         moduleSize = filebuf[off+4] | (filebuf[off+5] << 8) |
                      ((unsigned long)filebuf[off+6] << 16) |
@@ -2867,7 +2872,4 @@ char **argv;
     return 0;
 }
 
-/*
- * vim: tabstop=4 shiftwidth=4 noexpandtab:
- */
-// TEMP DEBUG - add after uobj_init() in ht_load_uobj
+/* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

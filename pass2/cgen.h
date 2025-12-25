@@ -564,4 +564,4 @@ void *allocMem(size_t);                  /* ok allocMem.c	*/
 /* End file cgen.h */
 #endif
 
-/* vim: tabstop=4 shiftwidth=4 noexpandtab: */
+/* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

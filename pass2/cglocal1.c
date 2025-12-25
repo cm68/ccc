@@ -208,4 +208,4 @@ node_t *localOptimize(register node_t *node) {
 
 /* end of file local1s.c */
 
-/* vim: tabstop=4 shiftwidth=4 noexpandtab: */
+/* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

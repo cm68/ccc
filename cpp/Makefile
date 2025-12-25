@@ -25,10 +25,13 @@ endif
 SRCS = cpp.c lex.c io.c macro.c kw.c emit.c util.c kwtab.c
 OBJS = $(SRCS:.c=.o)
 
-all: cpp
+all: cpp xdump
 
 cpp: $(OBJS)
 	$(CC) $(CFLAGS) -o cpp $(OBJS)
+
+xdump: xdump.c
+	$(CC) $(CFLAGS) -o xdump xdump.c
 
 # Generate skip-optimized keyword table
 mkkw: mkkw.c
@@ -66,7 +69,7 @@ clean:
 	rm -f *.o
 
 clobber: clean
-	rm -f cpp mkkw kwtab.c
+	rm -f cpp mkkw kwtab.c xdump
 
 install: cpp
 	cp cpp $(DEST)/bin

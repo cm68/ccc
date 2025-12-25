@@ -188,4 +188,4 @@ int lookupEmitCode(int queryCode, int opType) {
 
 /* end of file lex1u.c */
 
-/* vim: tabstop=4 shiftwidth=4 noexpandtab: */
+/* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

@@ -14,7 +14,8 @@ ifeq ($(CC),gcc)
 WARNS = -Wall -Werror -pedantic \
 -Wdeclaration-after-statement -Werror=declaration-after-statement \
 -Werror=implicit-function-declaration
-CFLAGS = -m32 -std=c89 -g -O0 $(WARNS)
+#CFLAGS = -m32 -std=c89 -g -O0 $(WARNS)
+CFLAGS = -m32 -std=c89
 else ifeq ($(CC),ccc)
 CFLAGS = -DCCC
 endif
@@ -62,6 +63,5 @@ install: c0
 	cp c0 $(DEST)/bin
 
 .PHONY: all clean clobber install stage1 sizefile
-#
+
 # vim: tabstop=4 shiftwidth=4 noexpandtab:
-#

@@ -1408,6 +1408,4 @@ incrExpr(register expr_t * st)
 	return st;					/* m4: */
 }
 
-/*
- * vim: tabstop=4 shiftwidth=4 noexpandtab: 
- */
+/* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

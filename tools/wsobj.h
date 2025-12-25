@@ -1,7 +1,6 @@
 /*
  * wsobj.h - Whitesmith's object file format definitions
  *
- * vim: tabstop=4 shiftwidth=4 noexpandtab:
  */
 #ifndef WSOBJ_H
 #define WSOBJ_H
@@ -164,3 +163,5 @@ void wsEndReloc();
  */
 
 #endif /* WSOBJ_H */
+
+/* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

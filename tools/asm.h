@@ -5,7 +5,6 @@
  *
  * Changed: <2023-08-02 08:56:38 curt>
  *
- * vim: tabstop=4 shiftwidth=4 expandtab:
  */
 #ifndef ASM_H
 #define ASM_H
@@ -79,3 +78,5 @@ void outbyte();
 void outtmp();
 
 #endif
+
+/* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

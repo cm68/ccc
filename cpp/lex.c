@@ -1538,7 +1538,4 @@ readcppconst()
     return val;
 }
 
-/*
- */
-
-/* vim: tabstop=4 shiftwidth=4 noexpandtab: */
+/* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

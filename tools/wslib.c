@@ -532,6 +532,9 @@ char *filename;
 {
     FILE *fp;
     long size;
+#ifdef notdef
+	long val;
+#endif
     unsigned char *buf;
     long off;
     int reclen, rectype;
@@ -578,16 +581,17 @@ char *filename;
             long send = off + reclen;
 
             while (soff < send && nsyms < MAX_SYMS) {
-                unsigned long val;
                 unsigned short flags;
                 int plen, nlen;
                 char psect[64], symname[64];
 
                 if (soff + 7 > send) break;
 
+#ifdef notdef
                 val = buf[soff] | (buf[soff+1] << 8) |
                       ((unsigned long)buf[soff+2] << 16) |
                       ((unsigned long)buf[soff+3] << 24);
+#endif
                 flags = buf[soff+4] | (buf[soff+5] << 8);
                 soff += 6;
 
@@ -845,8 +849,12 @@ char *archive;
     FILE *fp;
     long size;
     unsigned char *buf;
-    unsigned short sym_size, num_mods;
-    unsigned short symSize, symCnt;
+#ifdef notdef
+	unsigned short sym_size;
+    unsigned short symSize;
+#endif
+	unsigned short num_mods;
+	unsigned short symCnt;
     unsigned long moduleSize;
     long off;
     int i, j, len;
@@ -874,14 +882,18 @@ char *archive;
         error2("not a HiTech library", archive);
     }
 
+#ifdef notdef
     sym_size = buf[0] | (buf[1] << 8);
+#endif
     num_mods = buf[2] | (buf[3] << 8);
 
     off = 4;
     for (i = 0; i < num_mods && off < size; i++) {
         if (off + 12 > size) break;
 
+#ifdef notdef
         symSize = buf[off] | (buf[off+1] << 8);
+#endif
         symCnt = buf[off+2] | (buf[off+3] << 8);
         moduleSize = buf[off+4] | (buf[off+5] << 8) |
                      ((unsigned long)buf[off+6] << 16) |
@@ -931,7 +943,10 @@ int nfiles;
     long size;
     unsigned char *buf;
     unsigned short sym_size, num_mods;
-    unsigned short symSize, symCnt;
+#ifdef notdef
+    unsigned short symSize;
+#endif
+	unsigned short symCnt;
     unsigned long moduleSize;
     long symOff, modDataOff;
     int i, j, len;
@@ -969,7 +984,9 @@ int nfiles;
     for (i = 0; i < num_mods && symOff < size; i++) {
         if (symOff + 12 > size) break;
 
+#ifdef notdef
         symSize = buf[symOff] | (buf[symOff+1] << 8);
+#endif
         symCnt = buf[symOff+2] | (buf[symOff+3] << 8);
         moduleSize = buf[symOff+4] | (buf[symOff+5] << 8) |
                      ((unsigned long)buf[symOff+6] << 16) |
@@ -1132,6 +1149,4 @@ char **argv;
     return 0;
 }
 
-/*
- * vim: tabstop=4 shiftwidth=4 noexpandtab:
- */
+/* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

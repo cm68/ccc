@@ -377,4 +377,4 @@ node_t *deferPostInc(register node_t *node) {
 
 /* end of file cgen3.c */
 
-/* vim: tabstop=4 shiftwidth=4 noexpandtab: */
+/* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

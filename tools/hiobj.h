@@ -3,7 +3,6 @@
  *
  * See HITECHOBJ.md for full format documentation.
  *
- * vim: tabstop=4 shiftwidth=4 noexpandtab:
  */
 #ifndef HITECHOBJ_H
 #define HITECHOBJ_H
@@ -106,3 +105,5 @@
 #define HT_SYM_UNDEF    6   /* U - undefined/extern */
 
 #endif /* HITECHOBJ_H */
+
+/* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

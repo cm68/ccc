@@ -12,7 +12,6 @@
  *
  * Changed: <2025-12-22 10:17:38 curt>
  *
- * vim: tabstop=4 shiftwidth=4 noexpandtab:
  */
 #ifdef linux
 #include <stdio.h>
@@ -1725,7 +1724,6 @@ void
 assemble()
 {
     unsigned short type;
-	unsigned short result;
 	struct symbol *sym;
     unsigned short next;
 	struct expval eqval;
@@ -2145,6 +2143,4 @@ assemble()
 	reloc_out(datar.head, text_top);
 }
 
-/*
- * vim: tabstop=4 shiftwidth=4 expandtab:
- */
+/* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

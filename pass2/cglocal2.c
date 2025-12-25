@@ -474,4 +474,4 @@ int selResultReg(int reqClass, int prefReg, int availMask, char *patStr) {
 }
 /* end of local2.c*/
 
-/* vim: tabstop=4 shiftwidth=4 noexpandtab: */
+/* vim: set tabstop=4 shiftwidth=4 noexpandtab: */
