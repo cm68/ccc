@@ -6,6 +6,18 @@
 #include <unistd.h>
 
 /*
+ * Duplicate a string (strdup is POSIX, not C89)
+ */
+char *
+strdup(char *s)
+{
+    char *p = malloc(strlen(s) + 1);
+    if (p)
+        strcpy(p, s);
+    return p;
+}
+
+/*
  * Error messages for error codes
  */
 static char *errmsgs[] = {
@@ -21,6 +33,7 @@ static char *errmsgs[] = {
     "bad digit",                    /* ER_C_BD */
     "unknown token",                /* ER_C_UT */
     "defined requires identifier",  /* ER_C_DP */
+    "macro argument count mismatch", /* ER_C_MA */
     "symbol truncated (warning)",   /* ER_W_SYMTRUNC */
 };
 
@@ -34,7 +47,7 @@ gripe(error_t err)
 {
     char *msg = (err < sizeof(errmsgs)/sizeof(errmsgs[0])) ? errmsgs[err] : "unknown error";
     fprintf(stderr, "%s:%d: %s\n", filename ? filename : "?", lineno, msg);
-    if (err < 12)  /* Not a warning */
+    if (err < ER_LAST)  /* Not a warning */
         exitCode = 1;
 }
 
@@ -65,7 +78,7 @@ fdprintf(int fd, char *fmt, ...)
     int len;
 
     va_start(ap, fmt);
-    len = vsnprintf(buf, sizeof(buf), fmt, ap);
+    len = vsprintf(buf, fmt, ap);
     va_end(ap);
 
     write(fd, buf, len);
@@ -154,3 +167,5 @@ parseConst(token_t stop)
 
     return val;
 }
+
+/* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

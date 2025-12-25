@@ -176,7 +176,9 @@ typedef int error_t;
 #define ER_C_BD     9       /* bad digit */
 #define ER_C_UT     10      /* unknown token */
 #define ER_C_DP     11      /* defined requires identifier */
-#define ER_W_SYMTRUNC 12    /* symbol truncated */
+#define ER_C_MA     12      /* macro argument count mismatch */
+#define ER_W_SYMTRUNC 13    /* symbol truncated */
+#define ER_LAST     ER_W_SYMTRUNC
 
 /*
  * Token structure - lexeme with value
@@ -184,6 +186,7 @@ typedef int error_t;
 struct token {
     token_t type;
     int lineno;             /* line number where token was scanned */
+    char *filename;         /* file where token was scanned */
     union {
         long numeric;       /* char, short, int, long */
         float fval;         /* float, double */
@@ -278,6 +281,7 @@ extern void macundefine(char *s);
 extern void addDefine(char *s);
 
 /* emit.c - output functions */
+extern void emitFileStart(char *file);
 extern void emitToken(unsigned char tok);
 extern void emitKeyword(unsigned char kwval);
 extern void emitSym(char *name);
@@ -311,8 +315,11 @@ extern unsigned char lookupc(char *table, unsigned char c);
 /* Utility functions */
 extern int fdprintf(int fd, char *fmt, ...);
 extern long parseConst(token_t stop);
+extern char *strdup(char *s);
 
 /* Character classification */
 #define iswhite(c) ((c) == ' ' || (c) == '\t' || (c) == '\r')
 
 #endif /* CPP_H */
+
+/* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

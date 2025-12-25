@@ -16,15 +16,15 @@
  * the incoming character stream interface
  * a zero is EOF
  */
-unsigned char curchar;               // the current character
-unsigned char nextchar;              // the next char - can change if macro
-int lineno;                 // line number for error messages
-char *filename;             // current file name
-int column;                 // this is reset to 0 when we see a newline
+unsigned char curchar;               /* the current character */
+unsigned char nextchar;              /* the next char - can change if macro */
+int lineno;                 /* line number for error messages */
+char *filename;             /* current file name */
+int column;                 /* this is reset to 0 when we see a newline */
 int nextcol = 0;
 char namebuf[128];
-char linebuf[256];          // current line for error messages
-char prevline[256];         // previous line for error context
+char linebuf[256];          /* current line for error messages */
+char prevline[256];         /* previous line for error context */
 int linepos = 0;
 
 /*
@@ -320,7 +320,7 @@ insertmacro(char *name, char *macbuf)
     int l;
 
 
-    l = strlen(macbuf);         // our macro without the terminating null
+    l = strlen(macbuf);         /* our macro without the terminating null */
 #ifdef DEBUG
     if (VERBOSE(V_MACRO)) {
         fdprintf(2,"insert macro %s %d $%s$\n", name, l, macbuf);
@@ -445,11 +445,12 @@ again:
     if (t->fd != -1) {
         t->valid = read(t->fd, t->storage, TBSIZE);
         t->offset = 0;
-        if (t->valid > 0) { // read worked
+        if (t->valid > 0) { /* read worked */
             nextchar = t->storage[0];
             goto done;
         }
         close(t->fd);
+        curchar = 0;  /* EOF - don't count child's trailing newline for parent */
     }
     /* closed file or empty macro buffer - pop */
     tbtop = t->prev;

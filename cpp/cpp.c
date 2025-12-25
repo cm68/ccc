@@ -65,6 +65,9 @@ process(char *sourcefile)
     pushfile(sourcefile);
     ioinit();
 
+    /* Emit initial line directive for source file */
+    emitFileStart(sourcefile);
+
     /* Prime the lexer - two calls needed to fill cur and next */
     gettoken();
     gettoken();
@@ -161,3 +164,5 @@ main(int argc, char **argv)
 
     return exitCode;
 }
+
+/* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

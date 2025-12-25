@@ -220,6 +220,7 @@ macdefine(char *s)
 
     m->name = strdup(s);
     m->parmcount = 0;
+    m->parms = NULL;  /* NULL means object-like macro */
 
     /*
      * Check for function-like macro: '(' must be IMMEDIATELY after name
@@ -247,9 +248,12 @@ macdefine(char *s)
         }
         if (m->parmcount) {
             m->parms = malloc(sizeof(char *) * m->parmcount);
-        }
-        for (i = 0; i < m->parmcount; i++) {
-            m->parms[i] = parms[i];
+            for (i = 0; i < m->parmcount; i++) {
+                m->parms[i] = parms[i];
+            }
+        } else {
+            /* Function-like macro with 0 params: use sentinel */
+            m->parms = (char **)1;  /* Non-NULL to indicate function-like */
         }
         advance();
         skipws1();
@@ -311,9 +315,6 @@ macdefine(char *s)
     m->mactext = strdup(macbuffer);
     m->next = macros;
     macros = m;
-
-    // printf("macro %s defined\n", m->name);
-
 }
 
 /*
@@ -400,19 +401,23 @@ macexpand(char *s)	/* the symbol we are looking up as a macro */
         return 0;
     }
 
-    // printf("macro %s called\n", m->name);
-
     args = 0;
     d = macbuffer;
-    /* this will stop after nextchar is not white space */
-    while (iswhite(nextchar)) {
-        advance();
-    }
     plevel = 0;
+
     /*
-     * read the arguments from the invocation
+     * Only parse arguments for function-like macros (m->parms != NULL).
+     * Object-like macros should not consume following parentheses.
      */
-    if (nextchar == '(') {
+    if (m->parms != NULL) {
+        /* this will stop after nextchar is not white space */
+        while (iswhite(nextchar)) {
+            advance();
+        }
+        if (nextchar != '(') {
+            /* Function-like macro invoked without (), not an invocation */
+            return 0;
+        }
         advance();
         plevel = 1;
         advance();
@@ -463,10 +468,11 @@ macexpand(char *s)	/* the symbol we are looking up as a macro */
             *d = 0;
             advance();
         }
-    } // curchar should be ')'
+    } /* curchar should be ')' */
 
     if (args != m->parmcount) {
-        gripe(ER_C_DP);
+        gripe(ER_C_MA);
+        return 0;
     }
 
     /*
@@ -550,12 +556,11 @@ macexpand(char *s)	/* the symbol we are looking up as a macro */
         *d = 0;
     }
 
-    // printf("insertmacro: %s %s\n", m->name, macbuffer);
-
     insertmacro(m->name, macbuffer);
     return 1;
 }
 
 /*
- * vim: tabstop=4 shiftwidth=4 expandtab:
  */
+
+/* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

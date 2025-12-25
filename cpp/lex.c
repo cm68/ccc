@@ -41,8 +41,8 @@ unsigned char tflags;
  * the parser.
  *
  * Typical usage:
- *   if (match(SEMI)) { ... }  // consumes ';' if present
- *   while (match(COMMA)) { parseNext(); }  // loop over comma-separated list
+ *   if (match(SEMI)) { ... }  - consumes ';' if present
+ *   while (match(COMMA)) { parseNext(); }  - loop over comma-separated list
  *
  * Parameters:
  *   t - Token type to check for
@@ -487,10 +487,10 @@ issym()
         advance();
     }
 
-    /* Check identifier length limit (13 chars + 1 for asm underscore = 14 total) */
-    if ((s - strbuf) > 13) {
+    /* Check identifier length limit (14 chars + leading underscore = 15 total) */
+    if ((s - strbuf) > 14) {
         gripe(ER_C_TL);
-        fdprintf(2, "  Identifier '%s' exceeds 13 character limit\n", strbuf);
+        fdprintf(2, "  Identifier '%s' exceeds 14 character limit\n", strbuf);
     }
 
 #ifdef DEBUG
@@ -592,8 +592,8 @@ doCpp(unsigned char t)
             return;
         }
         advance();
-        v = (maclookup(strbuf) != 0);  // true if macro is defined
-        if (t == IFNDEF) v = !v;       // invert for ifndef
+        v = (maclookup(strbuf) != 0);  /* true if macro is defined */
+        if (t == IFNDEF) v = !v;       /* invert for ifndef */
         c = malloc(sizeof(*c));
         c->next = cond;
         cond = c;
@@ -644,12 +644,12 @@ doCpp(unsigned char t)
             gripe(ER_C_ME);
             return;
         }
-        cond->flags |= C_ELSESEEN;  // Mark that we've seen #else
+        cond->flags |= C_ELSESEEN;  /* Mark that we've seen #else */
         if (cond->flags & C_TRUESEEN) {
-            // Already had a true condition, #else block should be false
+            /* Already had a true condition, #else block should be false */
             cond->flags &= ~C_TRUE;
         } else {
-            // Haven't had a true condition yet, #else block should be true
+            /* Haven't had a true condition yet, #else block should be true */
             cond->flags |= (C_TRUE | C_TRUESEEN);
         }
         return;
@@ -1130,7 +1130,7 @@ gettoken()
 #endif
             skiptoeol();
             if (curchar == '\n') {
-                advance();  // consume the newline
+                advance();  /* consume the newline */
             }
             continue;
         }
@@ -1153,12 +1153,15 @@ gettoken()
                 if (!(cond->flags & C_TRUE)) {
                     skiptoeol();
                     if (curchar == '\n') {
-                        advance();  // consume the newline
+                        advance();  /* consume the newline */
                     }
                 }
             }
             continue;
         }
+        /* Capture line number and filename at start of token */
+        next.lineno = lineno;
+        next.filename = filename;
         if (issym()) {
             /* Check for defined() pseudofunction in #if expressions */
             if (cpppseudofunc()) {
@@ -1286,7 +1289,7 @@ gettoken()
         }
 
         next.type = simpleToks[t];
-        c = curchar;	// save what we saw
+        c = curchar;	/* save what we saw */
         advance();
 
         /* check for ellipsis ... */
@@ -1536,5 +1539,6 @@ readcppconst()
 }
 
 /*
- * vim: tabstop=4 shiftwidth=4 expandtab:
  */
+
+/* vim: tabstop=4 shiftwidth=4 noexpandtab: */

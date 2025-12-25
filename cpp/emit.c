@@ -11,8 +11,31 @@ int lexFd = -1;
 int ppFd = -1;
 
 /* Line tracking for LINENO emission */
-static int lastLine = 0;
+static int lastLine = 0;      /* for .x file */
+static int lastLinePP = 0;    /* for .i file */
 static char *lastName = NULL;
+
+/* Forward declarations */
+void emitLine(int line, char *file);
+void emitLinePP(int line, char *file);
+
+/*
+ * Initialize line tracking and emit initial line directive for source file
+ */
+void
+emitFileStart(char *file)
+{
+    char buf[300];
+    if (!noLineMarkers) {
+        emitLine(1, file);
+        /* Initial directive without leading newline */
+        sprintf(buf, "# %d \"%s\"\n", 1, file);
+        emitPPStr(buf);
+        lastLine = 1;
+        lastLinePP = 1;
+        lastName = filename;
+    }
+}
 
 /*
  * Emit a simple token to .x file (1 byte)
@@ -303,20 +326,26 @@ emitCurToken(void)
 
     /* Emit line info to .x when line or file changes (unless -N) */
     if (!noLineMarkers) {
-        if (lastName != filename) {
+        if (lastName != cur.filename) {
             /* File changed - emit full LINENO with filename */
-            emitLine(lineno, filename ? filename : "");
-            emitLinePP(lineno, filename ? filename : "");
-            lastLine = lineno;
-            lastName = filename;
-        } else if (lineno == lastLine + 1) {
+            emitLine(cur.lineno, cur.filename ? cur.filename : "");
+            emitLinePP(cur.lineno, cur.filename ? cur.filename : "");
+            lastLine = cur.lineno;
+            lastLinePP = cur.lineno;
+            lastName = cur.filename;
+        } else if (cur.lineno == lastLine + 1) {
             /* Line incremented by 1 - emit single NEWLINE byte */
             emitNewline();
-            lastLine = lineno;
-        } else if (lineno != lastLine) {
+            lastLine = cur.lineno;
+        } else if (cur.lineno != lastLine) {
             /* Line jumped - emit full LINENO */
-            emitLine(lineno, filename ? filename : "");
-            lastLine = lineno;
+            emitLine(cur.lineno, cur.filename ? cur.filename : "");
+            lastLine = cur.lineno;
+        }
+        /* Sync .i file line number with newlines */
+        while (lastLinePP < cur.lineno) {
+            emitPPStr("\n");
+            lastLinePP++;
         }
     }
 
@@ -393,13 +422,13 @@ emitCurToken(void)
             emitPPStr(": ");
             break;
         case SEMI:
-            emitPPStr(";\n");
+            emitPPStr("; ");
             break;
         case BEGIN:
-            emitPPStr("{\n");
+            emitPPStr("{ ");
             break;
         case END:
-            emitPPStr("}\n");
+            emitPPStr("} ");
             break;
         case E_O_F:
             break;
