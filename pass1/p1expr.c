@@ -32,21 +32,20 @@
 #include "p1.h"
 
 opStk_t *opSP = &opStk[20];		/* 8bc7 */
-int16_t strId = 0;				/* 8bd7 */
-uint8_t inStructTag = 0;		/* 8f85 - true when parsing struct/union
-								 * tag */
-bool lexMember = false;			/* 8f86 */
-int16_t tmpLabelId;				/* 968e */
+int16_t strId;				/* 8bd7 */
+uint8_t inStructTag;		/* 8f85 - true when parsing struct/union tag */
+bool lexMember;				/* 8f86 */
+int16_t tmpLabelId;			/* 968e */
 
-expr_t **exprSP;				/* 9cf1 */
-opStk_t opStk[20];				/* 9cf3 */
+expr_t **exprSP;			/* 9cf1 */
+opStk_t opStk[20];			/* 9cf3 */
 char pad9d00[27];
-expr_t eZero;					/* 9d1b */
-expr_t eOne;					/* 9d28 */
+expr_t eZero;				/* 9d1b */
+expr_t eOne;				/* 9d28 */
 
-expr_t *exprFreeList;			/* 9d35 */
-uint8_t exprParseMode;			/* 9d37 - expression parsing mode */
-expr_t *exprStk[20];			/* 9d38 */
+expr_t *exprFreeList;		/* 9d35 */
+uint8_t exprParseMode;		/* 9d37 - expression parsing mode */
+expr_t *exprStk[20];		/* 9d38 */
 
 /*
  * expr.c 
@@ -157,7 +156,7 @@ parseFuncArgs(register attr_t * pa)
 					argCnt = 0;
 				}
 				if (pa)
-					argExpr = assignType(argExpr, pa++, true);
+					argExpr = assignType(argExpr, pa++, 1);
 				else
 					argExpr = promoteArg(argExpr);
 				arr[argIdx++] = argExpr;
@@ -218,7 +217,7 @@ parseConstExpr(uint8_t n)
  * Locations of code to set return  values 1/0 swapped
  * rest of code adjusted accordingly
  *
- * Checks if expression is a compile-time constant. Returns true for
+ * Checks if expression is a compile-time constant. Returns 1 for
  * NULL, enum values, sizeof, address-of static, and arithmetic on
  * constants. Recursively checks subexpressions.
  */
@@ -228,19 +227,19 @@ isConstExpr(register expr_t * st)
 	uint8_t op, flags;
 
 	if (st == 0)
-		return true;
+		return 1;
 	op = st->tType;
 	if (op == T_ID)
 		return isVarOfType(&st->attr, DT_ENUM);
 	if (op == T_SIZEOF)
-		return true;
+		return 1;
 	if (op == D_ADDRESSOF && isStaticAddr(st->t_lhs))
-		return true;
+		return 1;
 	flags = opTable[(op - T_EROOT)].operandFlags;
 	if (!(flags & 0x10))
-		return false;
+		return 0;
 	if (flags & O_LEAF)
-		return true;
+		return 1;
 	return isConstExpr(st->t_lhs) && (!(flags & O_BINARY)
 									  || isConstExpr(st->t_rhs));
 }
@@ -278,7 +277,7 @@ expr_t *
 parsePrimExpr(void)
 {
 	attr_t tmpAttr;
-	expr_t *leaf FORCEINIT;
+	expr_t *leaf = 0;
 	opStk_t *savOpSP;
 	expr_t **savExprSP;
 	uint8_t tok;
@@ -294,11 +293,11 @@ parsePrimExpr(void)
 	savExprSP = exprSP;
 	savOpSP = opSP;
 	pushOp(T_EROOT);
-	hasLhs = false;
+	hasLhs = 0;
 	for (;;) {
 		hasMember = lexMember = opSP->op == T_DOT || opSP->op == T_POINTER;
 		tok = yylex();
-		lexMember = false;
+		lexMember = 0;
 		if (tok < T_EROOT || tok >= T_OPTOP) {
 			ungetTok = tok;
 			tok = T_EROOT;
@@ -362,7 +361,7 @@ parsePrimExpr(void)
 			 * d63 
 			 */
 			pushExpr(leaf);
-			hasLhs = true;
+			hasLhs = 1;
 			continue;
 		}						/* dfa */
 		switch (tok) {
@@ -382,7 +381,7 @@ parsePrimExpr(void)
 				pushExpr(newSTypeLeaf(&tmpAttr));
 				if (opSP->op == T_SIZEOF) {
 					opSP->prec = 100;
-					hasLhs = true;
+					hasLhs = 1;
 					continue;
 				} else
 					tok = T_CAST;
@@ -397,7 +396,7 @@ parsePrimExpr(void)
 			if (!hasLhs)
 				goto error;
 			tok = T_ARRAYIDX;
-			hasLhs = false;
+			hasLhs = 0;
 			break;
 		case T_RPAREN:
 		case T_RBRACK:
@@ -415,7 +414,7 @@ parsePrimExpr(void)
 			hasRhs = (opTable[tok - T_EROOT].operandFlags & O_BINARY) != 0;
 			if (hasRhs != hasLhs)
 				goto error;
-			hasLhs = false;
+			hasLhs = 0;
 			break;
 		}
 		/*
@@ -429,7 +428,7 @@ parsePrimExpr(void)
 		 * f8e 
 		 */
 		do {
-			more = false;
+			more = 0;
 			if (opSP->prec < prec ||
 				(opSP->prec == prec
 				 && (opTable[tok - T_EROOT].operandFlags & O_RTOL))) {
@@ -465,7 +464,7 @@ parsePrimExpr(void)
 						ungetTok = tok;
 					}
 				} else
-					more = true;
+					more = 1;
 				/*
 				 * 1037 
 				 */
@@ -492,7 +491,7 @@ done:
  *
  * Reduces operator from stack by applying it to operands. Handles
  * special cases: array indexing (adds deref), inc/dec, pointer->member,
- * sizeof, comma, and casts. Returns true on error.
+ * sizeof, comma, and casts. Returns 1 on error.
  */
 bool
 reduceOp(void)
@@ -500,17 +499,17 @@ reduceOp(void)
 	expr_t *rhsExpr;
 	expr_t *pe;
 	uint8_t op;
-	register expr_t *lhsExpr FORCEINIT;
+	register expr_t *lhsExpr = 0;
 
 	if ((op = popOp()) == T_LPAREN)
-		return false;
+		return 0;
 
 	rhsExpr = NULL;
 	if (op != T_120 &&
 		(((opTable[op - T_EROOT].operandFlags & O_BINARY)
 		  && (rhsExpr = popExpr()) == NULL)
 		 || (lhsExpr = popExpr()) == NULL))
-		return true;
+		return 1;
 
 	switch (op) {
 	case T_ARRAYIDX:
@@ -540,7 +539,7 @@ reduceOp(void)
 			pe = newIntLeaf((long) lhsExpr->t_chCnt + 1, DT_UINT);
 			freeExpr(lhsExpr);
 			pushExpr(pe);
-			return false;
+			return 0;
 		}
 		if (lhsExpr->tType != S_TYPE && lhsExpr->tType != T_ID) {
 			pe = newSTypeLeaf(&lhsExpr->attr);
@@ -570,12 +569,12 @@ reduceOp(void)
 		pushExpr(typeAlign
 				 (parseExpr(T_EROOT, rhsExpr, 0), &lhsExpr->attr));
 		freeExpr(lhsExpr);
-		return false;
+		return 0;
 	}
 	if ((op == T_QUEST) != (rhsExpr && rhsExpr->tType == T_COLON))
-		return true;
+		return 1;
 	pushExpr(parseExpr(op, lhsExpr, rhsExpr));
-	return false;
+	return 0;
 }
 
 /*
@@ -625,7 +624,7 @@ parseExpr(uint8_t p1, register expr_t * lhs, expr_t * rhs)
 {
 	attr_t tmpExpr;
 	expr_t *savedLhs;
-	expr_t *minusLhs FORCEINIT;
+	expr_t *minusLhs = 0;
 	bool hasRhs;
 	bool minusLhsValid;
 	int16_t operatorFlags;
@@ -640,7 +639,7 @@ parseExpr(uint8_t p1, register expr_t * lhs, expr_t * rhs)
 			freeExpr(rhs);
 		return NULL;
 	}
-	minusLhsValid = false;
+	minusLhsValid = 0;
 	operatorFlags = opTable[p1 - T_EROOT].operatorFlags;
 	if (p1 == D_ADDRESSOF && lhs->tType == T_ID
 		&& (lhs->t_pSym->flags & S_REG))
@@ -690,7 +689,7 @@ parseExpr(uint8_t p1, register expr_t * lhs, expr_t * rhs)
 		if (isVarOfType(&tmpExpr, DT_VOID))
 			prError("void function cannot return value");
 		else
-			lhs = assignType(lhs, &tmpExpr, true);
+			lhs = assignType(lhs, &tmpExpr, 1);
 		break;
 	}
 	if ((operatorFlags & (OP_LBOOL | OP_RBOOL))) {
@@ -720,7 +719,7 @@ parseExpr(uint8_t p1, register expr_t * lhs, expr_t * rhs)
 				prWarning("operands of %.3s not same pointer type", opStr);
 			else if (p1 == T_MINUS) {
 				minusLhs = lhs;
-				minusLhsValid = true;
+				minusLhsValid = 1;
 				lhs = convertToType(lhs, DT_CONST);
 				rhs = convertToType(rhs, DT_CONST);
 			}
@@ -1004,14 +1003,14 @@ isLvalue(register expr_t * st)
 
 	switch (st->tType) {
 	case D_DEREF:
-		return true;
+		return 1;
 	case T_ID:
 		return (st->t_pSym->flags & S_VAR) && st->t_pSym->sclass != D_CONST
 			&& st->attr.nodeType == SYMNODE;
 	case T_DOT:
 		return st->attr.nodeType == SYMNODE && isLvalue(st->t_lhs);
 	}
-	return false;
+	return 0;
 }
 
 /*
@@ -1072,14 +1071,14 @@ isZero(register expr_t * st)
 			return isZero(st->t_lhs);
 		break;
 	}
-	return false;
+	return 0;
 }
 
 /*
  * 40: 2157 PMO +++
  *
  * Releases all entries on expression free list back to heap. Called
- * during memory pressure to reclaim memory. Returns true if any
+ * during memory pressure to reclaim memory. Returns 1 if any
  * memory was freed.
  */
 bool
@@ -1088,12 +1087,12 @@ relExprList(void)
 	register expr_t *st;
 
 	if (exprFreeList == 0)
-		return false;
+		return 0;
 	while ((st = exprFreeList)) {
 		exprFreeList = st->t_lhs;
 		free(st);
 	}
-	return true;
+	return 1;
 }
 
 /*

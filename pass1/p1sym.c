@@ -281,7 +281,7 @@ defineFuncSig(void)
  * 110: 5356 PMO +++
  *
  * Releases all entries on symbol free list back to heap. Called during
- * memory pressure. Returns true if any memory was freed.
+ * memory pressure. Returns 1 if any memory was freed.
  */
 bool
 relSymFreeList(void)
@@ -289,13 +289,13 @@ relSymFreeList(void)
 	register sym_t *st;
 
 	if (!symFreeList)
-		return false;
+		return 0;
 
 	while ((st = symFreeList)) {
 		symFreeList = st->memberList;
 		free(st);
 	}
-	return true;
+	return 1;
 }
 
 char blank[] = "";
@@ -645,10 +645,10 @@ sameType(register attr_t * st, attr_t * p2)
 	int16_t argIdx;
 
 	if (st == p2)
-		return true;
+		return 1;
 	if (st->nodeType != p2->nodeType || st->dataType != p2->dataType ||
 		st->indirection != p2->indirection)
-		return false;
+		return 0;
 	switch (st->dataType) {
 	case DT_ENUM:
 	case DT_STRUCT:
@@ -658,16 +658,16 @@ sameType(register attr_t * st, attr_t * p2)
 		return sameType(st->nextAttr, p2->nextAttr);
 	}
 	if (st->nodeType != FUNCNODE || !st->pFargs || !p2->pFargs)
-		return true;
+		return 1;
 	if (st->pFargs->cnt != p2->pFargs->cnt)
-		return false;
+		return 0;
 	argIdx = st->pFargs->cnt;
 	do {
 		if (argIdx-- == 0)
-			return true;
+			return 1;
 	} while (sameType
 			 (&st->pFargs->argVec[argIdx], &p2->pFargs->argVec[argIdx]));
-	return false;
+	return 0;
 }
 
 /*

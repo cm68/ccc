@@ -173,7 +173,7 @@ parseTypeSpec(uint8_t * pscType, register attr_t * attr)
 	attr->nodeType = 0;
 	scType = dataType = 0;
 	sizeIndicator = 0;
-	isUnsigned = false;
+	isUnsigned = 0;
 	scFlags = 0;
 
 	for (;;) {
@@ -214,7 +214,7 @@ parseTypeSpec(uint8_t * pscType, register attr_t * attr)
 				sizeIndicator++;
 				break;
 			case T_UNSIGNED:
-				isUnsigned = true;
+				isUnsigned = 1;
 				break;
 			case T_UNION:
 				dataType = DT_UNION;
@@ -316,9 +316,9 @@ parseStUnion(uint8_t p1)
 	attr_t attr;
 	register sym_t *st;
 
-	inStructTag = true;
+	inStructTag = 1;
 	tok = yylex();
-	inStructTag = false;
+	inStructTag = 0;
 	if (tok == T_ID) {
 		st = yylval.ySym;
 		if (st->sclass != p1)
@@ -338,7 +338,7 @@ parseStUnion(uint8_t p1)
 		id = 0;
 		for (;;) {
 			parseTypeSpec(0, &attr);
-			lexMember = true;
+			lexMember = 1;
 			do {
 				pSym = parseDeclr(D_MEMBER, &attr, 0, st);
 				if (pSym) {
@@ -375,7 +375,7 @@ parseStUnion(uint8_t p1)
 					}
 				}
 			} while (tok == T_COMMA); /* 62f2 */
-			lexMember = false;
+			lexMember = 0;
 			if (tok != T_SEMI)
 				expectErr(";");
 			if ((tok = yylex()) == T_RBRACE) {
@@ -518,7 +518,7 @@ parseArgs(uint16_t p1)
 	attr_t attr;
 	attr_t *pAttr;
 	uint8_t tok;
-	sym_t *lastArg FORCEINIT;
+	sym_t *lastArg = 0;
 	uint8_t scFlags;
 	uint8_t savedSClass;
 	bool protoArg;
@@ -534,8 +534,8 @@ parseArgs(uint16_t p1)
 	savedSClass = defSClass;
 	defSClass = D_15;
 	args.cnt = 0;
-	nonProtoArg = false;
-	protoArg = false;
+	nonProtoArg = 0;
+	protoArg = 0;
 	defaultAttr.dataType = DT_INT;
 	defaultAttr.indirection = 0;
 	defaultAttr.pExpr = 0;
@@ -551,13 +551,13 @@ parseArgs(uint16_t p1)
 		}						/* 66db */
 		if (tok == T_ID && yylval.ySym->sclass != T_TYPEDEF)
 			if (p1)
-				nonProtoArg = true;
+				nonProtoArg = 1;
 			else
 				prError("type specifier reqd. for proto arg");
 		else
-			protoArg = true;
+			protoArg = 1;
 		if (protoArg && nonProtoArg) {
-			nonProtoArg = false;
+			nonProtoArg = 0;
 			prError("can't mix proto and non-proto args");
 		}
 		ungetTok = tok;
@@ -651,10 +651,10 @@ parseDeclr(uint8_t p1, register attr_t * p2, uint8_t p3, sym_t * p4)
 	curDecl->indirection = 0;
 	curDecl->pSym1 = NULL;
 	curDecl->pSym2 = NULL;
-	curDecl->uca = false;
-	curDecl->needDim = false;
-	curDecl->badInd = false;
-	curDecl->ucb = false;
+	curDecl->uca = 0;
+	curDecl->needDim = 0;
+	curDecl->badInd = 0;
+	curDecl->ucb = 0;
 	parseDecl(p1);
 	ungetTok = tok = yylex();
 	if (curDecl->ucb) {
@@ -671,7 +671,7 @@ parseDeclr(uint8_t p1, register attr_t * p2, uint8_t p3, sym_t * p4)
 
 	for (indirection = p2->indirection; indirection; indirection >>= 1) {
 		if (curDecl->indirection & 1) {
-			curDecl->badInd = true;
+			curDecl->badInd = 1;
 			break;
 		}
 		curDecl->indirection =
@@ -688,7 +688,7 @@ parseDeclr(uint8_t p1, register attr_t * p2, uint8_t p3, sym_t * p4)
 			for (indirection = curDecl->pAttr->nextAttr->indirection;
 				 indirection; indirection >>= 1) {
 				if (curDecl->indirection & 1) {
-					curDecl->badInd = true;
+					curDecl->badInd = 1;
 					break;
 				}
 				curDecl->indirection =
@@ -783,7 +783,7 @@ parseDecl(uint8_t p1)
 	uint8_t scopePushed;
 	register expr_t *st;
 
-	protoContext = false;
+	protoContext = 0;
 	sclass = 1;
 	for (starCnt = 0; (tok = yylex()) == T_STAR; starCnt++);
 	if (tok == T_ID) {
@@ -810,7 +810,7 @@ parseDecl(uint8_t p1)
 		if (tok == T_LPAREN) {
 			if (curDecl->needDim) {
 				prError("can't have array of functions");
-				curDecl->needDim = false;
+				curDecl->needDim = 0;
 			}
 			if (curDecl->pAttr->nodeType == FUNCNODE
 				&& curDecl->indirection == 0)
@@ -831,10 +831,10 @@ parseDecl(uint8_t p1)
 			curDecl->pAttr->nodeType = FUNCNODE;
 			protoContext = protoContext && !depth;
 			if (!protoContext) {
-				scopePushed = true;
+				scopePushed = 1;
 				depth++;
 			} else
-				scopePushed = false;
+				scopePushed = 0;
 			/*
 			 * 71cc 
 			 */
@@ -846,7 +846,7 @@ parseDecl(uint8_t p1)
 				expectErr(")");
 				skipStmt(tok);
 			}
-			protoContext = false;
+			protoContext = 0;
 			if (scopePushed) {
 				relScopeSym();
 				depth--;
@@ -856,7 +856,7 @@ parseDecl(uint8_t p1)
 			if (curDecl->pAttr->nodeType == FUNCNODE)
 				prError("functions can't return arrays");
 			if (curDecl->uca || (curDecl->indirection & 0x8000)) {
-				curDecl->uca = false;
+				curDecl->uca = 0;
 				curDecl->pAttr->dataType = DT_COMPLEX;
 				curDecl->pAttr->indirection =
 					normalIndir(curDecl->indirection);
@@ -870,7 +870,7 @@ parseDecl(uint8_t p1)
 				curDecl->pAttr = &curDecl->pSym2->attr;
 			}					/* 732a */
 			savLexMember = lexMember;
-			lexMember = false;
+			lexMember = 0;
 			if ((tok = yylex()) == T_RBRACK) {
 				if (curDecl->needDim)
 					prError("dimension required");
@@ -883,8 +883,8 @@ parseDecl(uint8_t p1)
 					skipStmt(tok);
 				}
 			}					/* 738a */
-			curDecl->uca = true;
-			curDecl->needDim = true;
+			curDecl->uca = 1;
+			curDecl->needDim = 1;
 			lexMember = savLexMember;
 			curDecl->pAttr->nodeType = EXPRNODE;
 			curDecl->pAttr->pExpr = st;
@@ -894,10 +894,10 @@ parseDecl(uint8_t p1)
 				curDecl->pSym1->sclass = 0;
 			if (!starCnt)
 				return;
-			curDecl->needDim = false;
+			curDecl->needDim = 0;
 			do {
 				if (curDecl->indirection & 1)
-					curDecl->badInd = true;
+					curDecl->badInd = 1;
 				else
 					curDecl->indirection = (curDecl->indirection >> 1) | 0x8000; /* rotate 
 																				  */

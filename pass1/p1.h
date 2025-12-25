@@ -39,39 +39,15 @@
 #include <stdlib.h>
 #include <string.h>
 
-#ifdef __GNUC__
 #include <unistd.h>
-#define _MAX_PATH PATH_MAX
-#endif
 
-#if defined(__STDC__) || defined(__STDC_VERSION__)
-#include <stdbool.h>
-#include <stdint.h>
-
-#if __STDC_VERSION__ < 201112L
-#define _Noreturn
-#endif
-
-#if __STDC_VERSION__ >= 201710L
-#define register
-#endif
-
-#else
 typedef unsigned short uint16_t;
 typedef short int16_t;
 typedef unsigned char uint8_t;
 typedef char int8_t;
 typedef unsigned long uint32_t;
 typedef long int32_t;
-
-#ifndef bool
-#define bool char
-#define true 1
-#define false 0
-#endif
-
-#define _Noreturn
-#endif
+typedef unsigned char bool; 
 
 /*
  * in certain functions the GCC and MSVC compilers reasonably complain
@@ -79,12 +55,7 @@ typedef long int32_t;
  * forces a 0 initialisation which will cause exceptions if the variable
  * is used, rather than rely on random data 
  */
-#ifdef CPM
-#define FORCEINIT
-#undef putchar
-int putchar(int ch);
-#else
-#define FORCEINIT    = 0
+
 /*
  * map some old HiTech functions 
  */
@@ -318,13 +289,13 @@ extern uint8_t protoContext;	/* a29a - function prototype context */
  */
 void prFuncBrace(uint8_t tok);
 void emitLocLabDef(int16_t p);
-void emitLabelDef(register sym_t * st);
+void emitLabelDef(sym_t * st);
 void emitCase(case_t * p1);
 void emitStruct(sym_t * p, char c);
-void emitCast(register expr_t * p);
-void emitVar(register sym_t * st);
-void emitDepVar(register sym_t * st);
-void emitAscii(register expr_t * st, char *pc);
+void emitCast(expr_t * p);
+void emitVar(sym_t * st);
+void emitDepVar(sym_t * st);
+void emitAscii(expr_t * st, char *pc);
 void emitExprLine(expr_t * p1);
 void emitEnumValue(expr_t * p1);
 void resetExprStack(void);
@@ -335,23 +306,23 @@ void resetExprStack(void);
 expr_t *parseExprMode(char p1);
 expr_t *parseConstExpr(uint8_t n);
 expr_t *parsePrimExpr(void);
-expr_t *parseExpr(uint8_t p1, register expr_t * lhs, expr_t * rhs);
+expr_t *parseExpr(uint8_t p1, expr_t * lhs, expr_t * rhs);
 expr_t *newIntLeaf(long num, uint8_t p2);
-bool isZero(register expr_t * st);
+bool isZero(expr_t * st);
 bool relExprList(void);
-expr_t *cloneExpr(register expr_t * st);
-expr_t *newIdLeaf(register sym_t * st);
+expr_t *cloneExpr(expr_t * st);
+expr_t *newIdLeaf(sym_t * st);
 expr_t *newIConstLeaf(long p1);
 expr_t *newSTypeLeaf(attr_t * p1);
 void pushExpr(expr_t * p1);
-void freeExpr(register expr_t * st);
-expr_t *incrExpr(register expr_t * st);
+void freeExpr(expr_t * st);
+expr_t *incrExpr(expr_t * st);
 
 /*
  * lex.c 
  */
 uint8_t yylex(void);
-void prMsgAt(register char *buf);
+void prMsgAt(char *buf);
 void emitSrcInfo(void);
 int16_t peekCh(void);
 void skipStmt(uint8_t tok);
@@ -390,11 +361,10 @@ void parseFunction(void);
  * sym.c 
  */
 void initSymTable(void);
-sym_t *lookupOrAddSym(register char *buf);
-sym_t *declareSym(register sym_t * st, uint8_t p2, attr_t * p3,
-				  sym_t * p4);
-void defineArg(register sym_t * st);
-void markReferenced(register sym_t * st);
+sym_t *lookupOrAddSym(char *buf);
+sym_t *declareSym(sym_t * st, uint8_t p2, attr_t * p3, sym_t * p4);
+void defineArg(sym_t * st);
+void markReferenced(sym_t * st);
 void defineFuncSig(void);
 bool relSymFreeList(void);
 void enterScope(void);
@@ -402,54 +372,60 @@ void exitScope(void);
 void relScopeSym(void);
 sym_t *newTmpSym(void);
 sym_t *findMember(sym_t * p1, char *p2);
-void emitSymName(register sym_t * st, FILE * fp);
+void emitSymName(sym_t * st, FILE * fp);
 int16_t newTmpLabel(void);
-args_t *cloneArgs(register args_t * p);
-void cloneAttr(register attr_t * st, attr_t * p2);
-bool sameType(register attr_t * st, attr_t * p2);
-bool isVoidStar(register attr_t * st);
-bool isVarOfType(register attr_t * st, uint8_t p2);
-bool isLogicalType(register attr_t * st);
-bool isSimpleType(register attr_t * st);
-bool isIntType(register attr_t * st);
-bool isFloatType(register attr_t * st);
-bool isValidIndex(register attr_t * st);
-void delIndirection(register attr_t * st);
+args_t *cloneArgs(args_t * p);
+void cloneAttr(attr_t * st, attr_t * p2);
+bool sameType(attr_t * st, attr_t * p2);
+bool isVoidStar(attr_t * st);
+bool isVarOfType(attr_t * st, uint8_t p2);
+bool isLogicalType(attr_t * st);
+bool isSimpleType(attr_t * st);
+bool isIntType(attr_t * st);
+bool isFloatType(attr_t * st);
+bool isValidIndex(attr_t * st);
+void delIndirection(attr_t * st);
 
 /*
  * type.c 
  */
-void addIndir(register attr_t * st);
+void addIndir(attr_t * st);
 void parseLocDecls(uint8_t p1);
-uint8_t parseTypeSpec(uint8_t * pscType, register attr_t * attr);
+uint8_t parseTypeSpec(uint8_t * pscType, attr_t * attr);
 sym_t *parseStUnion(uint8_t p1);
 sym_t *parseEnumDef(void);
-sym_t *parseDeclr(uint8_t p1, register attr_t * p2, uint8_t p3,
-				  sym_t * p4);
-void emitAttr(register attr_t * st);
+sym_t *parseDeclr(uint8_t p1, attr_t *p2, uint8_t p3, sym_t * p4);
+void emitAttr(attr_t * st);
 
-#ifdef _WIN32
-void initMemAddr(void);			/* for now only needed for windows */
+/*
+ * only needed for windows
+ */
+#if defined(_WIN32)
+void initMemAddr(void);
 #else
 #define initMemAddr()
 #endif
 
-#ifdef CPM
-extern char _Hbss;
+/*
+ * the work here is to define an abstraction for inData(p)
+ */
 
+#if defined(CPM)
+
+extern char _Hbss;
 #define inData(p) (((char *)p) < &_Hbss)
-#else
-#ifdef __APPLE__
+
+#elif defined(__APPLE__)
+
 #include <malloc/malloc.h>
-#define initMemAddr()
 #define inData(p) (!malloc_zone_from_ptr(p))
+
 #else
+
 extern char *_Ldata;
 extern char *_Hbss;
-
 #define inData(p) (_Ldata <= ((char *)p) && ((char *)p) < _Hbss)
-#endif
-#endif
+
 #endif
 
 /*

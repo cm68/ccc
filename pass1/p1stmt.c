@@ -74,7 +74,7 @@ parseFunction(void)
 		skipStmt(tok);
 	}
 	emitLabelDef(curFuncNode);
-	unreachable = false;
+	unreachable = 0;
 	parseLocDecls(0x14);
 	returnLabel = newTmpLabel();
 	while ((tok = yylex()) != T_RBRACE) {
@@ -108,7 +108,7 @@ parseStmt(int16_t p1, int16_t p2, register case_t * p3, int16_t * p4)
 		if (tok != T_CASE && tok != T_DEFAULT
 			&& (tok != T_ID || peekCh() != ':'))
 			prWarning("Unreachable code");
-		unreachable = false;
+		unreachable = 0;
 	}
 	switch (tok) {
 	case T_SEMI:
@@ -279,7 +279,7 @@ parseWhileStmt(case_t * p3)
 	emitLocLabDef(continueLabel);
 	emitCondBranch(loopLabel, pe, 1);
 	emitLocLabDef(breakLabel);
-	unreachable = false;
+	unreachable = 0;
 }
 
 /*
@@ -320,7 +320,7 @@ parseDoStmt(case_t * p3)
 	expect(T_RPAREN, ")");
 	emitCondBranch(loopLabel, pe, 1);
 	emitLocLabDef(breakLabel);
-	unreachable = false;
+	unreachable = 0;
 	if ((tok = yylex()) != T_SEMI)
 		expectErr(";");
 }
@@ -355,7 +355,7 @@ parseIfStmt(int16_t p1, int16_t p2, case_t * p3, int16_t * p4)
 	emitCondBranch(endIfLabel, pe, 0);
 	parseStmt(p1, p2, p3, p4);
 	endifUnreachable = unreachable;
-	unreachable = false;
+	unreachable = 0;
 	if ((tok = yylex()) == T_ELSE) {
 		emitJumpLabel(endElseLabel = newTmpLabel());
 		emitLocLabDef(endIfLabel);
@@ -409,11 +409,11 @@ parseSwitch(int16_t p1)
 	endLabel = newTmpLabel();
 	switchLabel = newTmpLabel();
 	emitJumpLabel(switchLabel);
-	unreachable = true;
+	unreachable = 1;
 	parseStmt(p1, endLabel, &caseInfo, &haveBreak);
 	if (caseInfo.defLabel == 0) {
 		caseInfo.defLabel = endLabel;
-		haveBreak = true;
+		haveBreak = 1;
 	}
 	emitJumpLabel(endLabel);
 	emitLocLabDef(switchLabel);
@@ -448,7 +448,7 @@ parseForStmt(case_t * p1)
 	expr_t *stepExpr;
 	register expr_t *st;
 
-	haveCond = false;
+	haveCond = 0;
 	tok = yylex();
 	if (tok != T_LPAREN)
 		expectErr("(");
@@ -461,7 +461,7 @@ parseForStmt(case_t * p1)
 		expect(T_SEMI, ";");
 	}
 	if ((tok = yylex()) != T_SEMI) {
-		haveCond = true;
+		haveCond = 1;
 		ungetTok = tok;
 		condExpr = parsePrimExpr();
 		expect(T_SEMI, ";");
@@ -513,7 +513,7 @@ parseBreak(int16_t label)
 
 	if (label) {
 		emitJumpLabel(label);
-		unreachable = true;
+		unreachable = 1;
 	} else
 		prError("inappropriate break/continue");
 	if ((tok = yylex()) != T_SEMI)
@@ -541,7 +541,7 @@ parseDefault(int16_t p1, int16_t p2, register case_t * p3, int16_t * p4)
 			emitLocLabDef(p3->defLabel = newTmpLabel());
 	else
 		prError("'default' not in switch");
-	unreachable = false;
+	unreachable = 0;
 	parseStmt(p1, p2, p3, p4);
 }
 
@@ -583,7 +583,7 @@ parseCastStmt(int16_t p1, int16_t p2, register case_t * p3, int16_t * p4)
 		}
 	} else
 		prError("'case' not in switch");
-	unreachable = false;
+	unreachable = 0;
 	parseStmt(p1, p2, p3, p4);
 }
 
@@ -610,7 +610,7 @@ parseReturn(void)
 	} else if (!voidReturn)
 		prWarning("non-void function returns no value");
 	emitJumpLabel(returnLabel);
-	unreachable = true;
+	unreachable = 1;
 }
 
 /*
@@ -635,7 +635,7 @@ parseGotoStmt(void)
 			emitJumpLabel(ps->a_labelId);
 			ps->flags |= 2;
 		}
-		unreachable = true;
+		unreachable = 1;
 		tok = yylex();
 		if (tok != T_SEMI)
 			expectErr(";");
@@ -658,7 +658,7 @@ parseStmtLabel(register sym_t * ps, int16_t p1, int16_t p2, case_t * p3,
 		emitLocLabDef(ps->a_labelId);
 		ps->flags |= 1;
 	}
-	unreachable = false;
+	unreachable = 0;
 	parseStmt(p1, p2, p3, p4);
 }
 

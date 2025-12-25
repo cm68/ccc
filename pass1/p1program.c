@@ -63,7 +63,7 @@ parseGlobDecl(void)
 	if ((tok = yylex()) == T_SEMI)
 		return;
 	ungetTok = tok;
-	isFirst = true;
+	isFirst = 1;
 
 	for (;;) {
 		argListHead = 0;
@@ -109,7 +109,7 @@ parseGlobDecl(void)
 			ungetTok = tok;
 		} else if (tok != T_COMMA)
 			break;
-		isFirst = false;
+		isFirst = 0;
 	}
 
 	if (tok != T_SEMI) {
@@ -138,7 +138,7 @@ parseInitBlock(sym_t * p1)
 		emitSymName(p1, stdout);
 		putchar('\n');
 		st = p1;
-		if ((initCnt = parseInitial(st, true)) < 0) {
+		if ((initCnt = parseInitial(st, 1)) < 0) {
 			prError("initialisation syntax");
 			skipToSemi();
 		} else if (st->a_nodeType == EXPRNODE && st->a_expr
@@ -205,7 +205,7 @@ parseInitial(register sym_t * st, bool p2)
 			if (st->a_indirection == 0 && st->a_dataType == DT_COMPLEX)
 				st = st->a_nextSym;
 			else
-				p2 = false;
+				p2 = 0;
 			initCnt = 0;
 			for (;;) {
 				if (parseInitial(st, p2) < 0)
@@ -239,7 +239,7 @@ parseInitial(register sym_t * st, bool p2)
 				ungetTok = tok;
 			pMember = pNextSym->memberList;
 			do {
-				if ((parseInitial(pMember, true) < 0))
+				if ((parseInitial(pMember, 1) < 0))
 					break;
 				if ((pMember = pMember->memberList) == pNextSym) /* end of 
 																  * circular 

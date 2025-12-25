@@ -92,15 +92,15 @@ main(int argc, char *argv[])
 			break;
 		case 'S':
 		case 's':
-			s_opt = true;
+			s_opt = 1;
 			break;
 		case 'W':
 		case 'w':
-			w_opt = true;
+			w_opt = 1;
 			break;
 		case 'L':
 		case 'l':
-			l_opt = true;
+			l_opt = 1;
 			break;
 		case 'C':
 		case 'c':

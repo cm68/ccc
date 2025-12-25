@@ -566,8 +566,8 @@ getCh(void)
 		} else if ((ch = inBuf[inCnt++]) == 0) {
 			if (s_opt)
 				emitSrcInfo();
-			sInfoEmitted = false;
-			lInfoEmitted = false;
+			sInfoEmitted = 0;
+			lInfoEmitted = 0;
 
 			if (!fgets(inBuf, 512, stdin))
 				return EOF;
@@ -613,7 +613,7 @@ prErrMsg(void)
 			strcpy(lastEmitFunc, iy);
 		}
 		fprintf(stderr, "%6d:\t%s", lineNo, inBuf);
-		lInfoEmitted = true;
+		lInfoEmitted = 1;
 	}
 }
 
@@ -664,7 +664,7 @@ emitSrcInfo(void)
 		if (*s && *s != '#')
 			printf(";; ;%s: %d: %s", srcFile, lineNo, inBuf);
 	}
-	sInfoEmitted = true;
+	sInfoEmitted = 1;
 }
 
 /*
