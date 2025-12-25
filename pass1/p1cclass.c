@@ -1,5 +1,4 @@
 /*
- *
  * The cclass.c file is part of the restored P1.COM program
  * from the Hi-Tech CP/M Z80 C v3.09
  *
@@ -23,30 +22,35 @@
  * Commercial use and distribution of recreated source codes without permission
  * from the copyright holderis strictly prohibited.
  *
- *
  * See the readme.md file for additional commentary
  *
  * Mark Ogden
  * 09-Jul-2022
  */
 #include "p1cclass.h"
-/* clang-format off */
-char ccClass[] = { /* 8134 */
-                   _Z,                                                                      /* EOF */
-                   _Z,      _Z,      _Z,      _Z,      _Z,      _Z,      _Z,      _Z,       /* 0  */
-                   _S,      _S,      _S,      _Z,      _S,      _S,      _Z,      _Z,       /* 8 */
-                   _Z,      _Z,      _Z,      _Z,      _Z,      _Z,      _Z,      _Z,       /* 10 */
-                   _Z,      _Z,      _Z,      _Z,      _Z,      _Z,      _Z,      _Z,       /* 18 */
-                   _S,      _Z,      _Z,      _Z,      _Z,      _Z,      _Z,      _Z,       /* 20 */
-                   _Z,      _Z,      _Z,      _Z,      _Z,      _Z,      _Z,      _Z,       /* 28 */
-                   _D | _X, _D | _X, _D | _X, _D | _X, _D | _X, _D | _X, _D | _X, _D | _X,  /* 30 */
-                   _D | _X, _D | _X, _Z,      _Z,      _Z,      _Z,      _Z,      _Z,       /* 38 */
-                   _Z,      _U | _X, _U | _X, _U | _X, _U | _X, _U | _X, _U | _X, _U,       /* 40 */
-                   _U,      _U,      _U,      _U,      _U,      _U,      _U,      _U,       /* 48 */
-                   _U,      _U,      _U,      _U,      _U,      _U,      _U,      _U,       /* 50 */
-                   _U,      _U,      _U,      _Z,      _Z,      _Z,      _Z,      _U,       /* 58 */
-                   _Z,      _L | _X, _L | _X, _L | _X, _L | _X, _L | _X, _L | _X, _L,       /* 60 */
-                   _L,      _L,      _L,      _L,      _L,      _L,      _L,      _L,       /* 68 */
-                   _L,      _L,      _L,      _L,      _L,      _L,      _L,      _L,       /* 70 */
-                   _L,      _L,      _L,      _Z,      _Z,      _Z,      _Z,      _Z        /* 78 */
+/*
+ * clang-format off 
+ */
+char ccClass[] = {
+	_Z,							/* EOF */
+	_Z,    _Z,    _Z,    _Z,    _Z,    _Z,    _Z,    _Z,	/* 0 */
+	_S,    _S,    _S,    _Z,    _S,    _S,    _Z,    _Z,	/* 8 */
+	_Z,    _Z,    _Z,    _Z,    _Z,    _Z,    _Z,    _Z,	/* 10 */
+	_Z,    _Z,    _Z,    _Z,    _Z,    _Z,    _Z,    _Z,	/* 18 */
+	_S,    _Z,    _Z,    _Z,    _Z,    _Z,    _Z,    _Z,	/* 20 */
+	_Z,    _Z,    _Z,    _Z,    _Z,    _Z,    _Z,    _Z,	/* 28 */
+	_D|_X, _D|_X, _D|_X, _D|_X, _D|_X, _D|_X, _D|_X, _D|_X,	/* 30 */
+	_D|_X, _D|_X, _Z,    _Z,    _Z,    _Z,    _Z,    _Z,	/* 38 */
+	_Z,    _U|_X, _U|_X, _U|_X, _U|_X, _U|_X, _U|_X, _U,	/* 40 */
+	_U,    _U,    _U,    _U,    _U,    _U,    _U,    _U,	/* 48 */
+	_U,    _U,    _U,    _U,    _U,    _U,    _U,    _U,	/* 50 */
+	_U,    _U,    _U,    _Z,    _Z,    _Z,    _Z,    _U,	/* 58 */
+	_Z,    _L|_X, _L|_X, _L|_X, _L|_X, _L|_X, _L|_X, _L,	/* 60 */
+	_L,    _L,    _L,    _L,    _L,    _L,    _L,    _L,	/* 68 */
+	_L,    _L,    _L,    _L,    _L,    _L,    _L,    _L,	/* 70 */
+	_L,    _L,    _L,    _Z,    _Z,    _Z,    _Z,    _Z		/* 78 */
 };
+
+/*
+ * vim: tabstop=4 shiftwidth=4 noexpandtab: 
+ */

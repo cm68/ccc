@@ -31,22 +31,23 @@
  */
 #include "p1.h"
 
-char *tmpFile = "p1.tmp"; /* 91db */
-char errBuf[512];         /* 9df7 */
-FILE *crfFp;              /* 9ff7 */
-char crfNameBuf[30];      /* 9ff9 */
-char srcFile[100];        /* a017 */
-char *crfFile;            /* a07b */
-bool s_opt;               /* a07d */
-bool w_opt;               /* a07e */
-int16_t lineNo;           /* a07f */
-char *srcFileArg;         /* a081 */
-bool l_opt;               /* a083 */
-FILE *tmpFp;              /* a084 */
-char inBuf[512];          /* a086 */
-int16_t errCnt;           /* a286 */
+char *tmpFile = "p1.tmp";		/* 91db */
+char errBuf[512];				/* 9df7 */
+FILE *crfFp;					/* 9ff7 */
+char crfNameBuf[30];			/* 9ff9 */
+char srcFile[100];				/* a017 */
+char *crfFile;					/* a07b */
+bool s_opt;						/* a07d */
+bool w_opt;						/* a07e */
+int16_t lineNo;					/* a07f */
+char *srcFileArg;				/* a081 */
+bool l_opt;						/* a083 */
+FILE *tmpFp;					/* a084 */
+char inBuf[512];				/* a086 */
+int16_t errCnt;					/* a286 */
 
 int main(int argc, char *argv[]);
+
 #if defined(CPM) || defined(MICRONIX)
 void prMsg(char *p1, int p2, int p3);
 #else
@@ -57,255 +58,342 @@ void copyTmp(void);
 void closeFiles(void);
 void mainParseLoop(void);
 
-/**************************************************
+/*
  * 71: 367E PMO +++
  * basic blocks located differently
  * strcpy 2nd arg optimisation missed
- **************************************************/
-int main(int argc, char *argv[]) {
-    register char *st;
+ *
+ * Compiler pass 1 entry point. Parses command line options:
+ *   -e<file>  Redirect stderr to file
+ *   -s        Enable s_opt (suppress certain output)
+ *   -w        Suppress warnings
+ *   -l        Enable l_opt (line number output)
+ *   -c<file>  Generate cross-reference file
+ * Opens input/output files, initializes symbol table and expression
+ * stack, runs the main parse loop, then copies temp file to output.
+ */
+int
+main(int argc, char *argv[])
+{
+	register char *st;
 
-    /* CHK_SHOW_VERSION(argc, argv); */
+	/*
+	 * CHK_SHOW_VERSION(argc, argv); 
+	 */
 
-    initMemAddr(); /* get data area range */
+	initMemAddr();				/* get data area range */
 
-    for (--argc, ++argv; argc && *argv[0] == '-'; --argc, argv++) {
-        switch (argv[0][1]) {
-        case 'E':
-        case 'e':
-            if (!freopen(*argv + 2, "a", stderr))
-                ;
-            setbuf(stderr, errBuf);
-            break;
-        case 'S':
-        case 's':
-            s_opt = true;
-            break;
-        case 'W':
-        case 'w':
-            w_opt = true;
-            break;
-        case 'L':
-        case 'l':
-            l_opt = true;
-            break;
-        case 'C':
-        case 'c':
-            if (argv[0][2])
-                crfFile = argv[0] + 2;
-            else
-                crfFile = crfNameBuf;
-            break;
-        }
-    }
-    initSymTable();
-    resetExprStack();
-    if (argc) {
-        if (freopen(argv[0], "r", stdin) == 0)
-            fatalErr("can't open %s", *argv);
-        srcFileArg = argv[0];
-        strcpy(srcFile, srcFileArg);
-        if (argc != 1 && freopen(argv[1], "w", stdout) == NULL)
-            fatalErr("can't open %s", argv[1]);
-        if (argc == 3)
-            tmpFile = argv[2];
-    } else
-        strcpy(srcFile, srcFileArg = "(stdin)");
+	for (--argc, ++argv; argc && *argv[0] == '-'; --argc, argv++) {
+		switch (argv[0][1]) {
+		case 'E':
+		case 'e':
+			if (!freopen(*argv + 2, "a", stderr));
+			setbuf(stderr, errBuf);
+			break;
+		case 'S':
+		case 's':
+			s_opt = true;
+			break;
+		case 'W':
+		case 'w':
+			w_opt = true;
+			break;
+		case 'L':
+		case 'l':
+			l_opt = true;
+			break;
+		case 'C':
+		case 'c':
+			if (argv[0][2])
+				crfFile = argv[0] + 2;
+			else
+				crfFile = crfNameBuf;
+			break;
+		}
+	}
+	initSymTable();
+	resetExprStack();
+	if (argc) {
+		if (freopen(argv[0], "r", stdin) == 0)
+			fatalErr("can't open %s", *argv);
+		srcFileArg = argv[0];
+		strcpy(srcFile, srcFileArg);
+		if (argc != 1 && freopen(argv[1], "w", stdout) == NULL)
+			fatalErr("can't open %s", argv[1]);
+		if (argc == 3)
+			tmpFile = argv[2];
+	} else
+		strcpy(srcFile, srcFileArg = "(stdin)");
 
-    if (crfFile) {
-        if (*crfFile == '\0') {
-            crfFile = crfNameBuf;
-            strcpy(crfNameBuf, srcFile);
-            if ((st = rindex(crfNameBuf, '.')))
-                strcpy(st, ".crf");
-            else
-                strcat(crfNameBuf, ".crf");
-        }
-        if (!(crfFp = fopen(crfFile, "a")))
-            prWarning("Can't create xref file %s", crfFile);
-        else
-            fprintf(crfFp, "~%s\n", srcFile);
-    }
-    if (!(tmpFp = fopen(tmpFile, "w")))
-        fatalErr("can't open %s", tmpFile);
+	if (crfFile) {
+		if (*crfFile == '\0') {
+			crfFile = crfNameBuf;
+			strcpy(crfNameBuf, srcFile);
+			if ((st = rindex(crfNameBuf, '.')))
+				strcpy(st, ".crf");
+			else
+				strcat(crfNameBuf, ".crf");
+		}
+		if (!(crfFp = fopen(crfFile, "a")))
+			prWarning("Can't create xref file %s", crfFile);
+		else
+			fprintf(crfFp, "~%s\n", srcFile);
+	}
+	if (!(tmpFp = fopen(tmpFile, "w")))
+		fatalErr("can't open %s", tmpFile);
 
-    eOne.tType    = T_ICONST;
-    eZero.tType         = T_ICONST;
-    eZero.attr.dataType = eOne.attr.dataType = DT_INT;
-    eZero.t_l      = 0;
-    eOne.t_l      = 1;
+	eOne.tType = T_ICONST;
+	eZero.tType = T_ICONST;
+	eZero.attr.dataType = eOne.attr.dataType = DT_INT;
+	eZero.t_l = 0;
+	eOne.t_l = 1;
 
-    mainParseLoop();
-    copyTmp();
+	mainParseLoop();
+	copyTmp();
 
-    if (fclose(stdout) == -1)
-        prError("close error (disk space?)");
-    closeFiles();
-    exit(errCnt != 0);
+	if (fclose(stdout) == -1)
+		prError("close error (disk space?)");
+	closeFiles();
+	exit(errCnt != 0);
 }
 
 #if defined(CPM) || defined(MICRONIX)
-/**************************************************
+
+/*
  * 72: 3936 PMO +++
- **************************************************/
-void prMsg(p1, p2, p3) char *p1;
+ *
+ * Formats a message using sprintf and prints it with source location
+ * via prMsgAt. This is the K&R-style version for CPM/MICRONIX.
+ */
+void
+prMsg(p1, p2, p3)
+char *p1;
 {
-    char buf[128];
+	char buf[128];
 
-    sprintf(buf, p1, p2, p3);
-    prMsgAt(buf);
+	sprintf(buf, p1, p2, p3);
+	prMsgAt(buf);
 }
 
-/**************************************************
+/*
  * 73: 396C PMO +++
- **************************************************/
-void prError(p1, p2, p3) char *p1;
+ *
+ * Prints an error message with source location. Increments the global
+ * error counter. K&R-style version for CPM/MICRONIX.
+ */
+void
+prError(p1, p2, p3)
+char *p1;
 {
 
-    ++errCnt;
-    prMsg(p1, p2, p3);
-    fputc('\n', stderr);
+	++errCnt;
+	prMsg(p1, p2, p3);
+	fputc('\n', stderr);
 }
 
-/**************************************************
+/*
  * 74: 399E PMO +++
- **************************************************/
-void fatalErr(p1, p2) char *p1;
+ *
+ * Prints a fatal error message, closes all files, and exits with
+ * status 1. Used for unrecoverable errors. K&R-style for CPM/MICRONIX.
+ */
+void
+fatalErr(p1, p2)
+char *p1;
 char *p2;
 {
 
-    prError(p1, p2);
-    closeFiles();
-    exit(1);
+	prError(p1, p2);
+	closeFiles();
+	exit(1);
 }
 
-/**************************************************
+/*
  * 75: 39C1 PMO +++
- **************************************************/
-void prWarning(p1, p2, p3) char *p1;
+ *
+ * Prints a warning message with source location, unless warnings are
+ * suppressed via -w option. K&R-style version for CPM/MICRONIX.
+ */
+void
+prWarning(p1, p2, p3)
+char *p1;
 {
-    if (w_opt)
-        return;
-    prMsg(p1, p2, p3);
-    fprintf(stderr, " (warning)\n");
+	if (w_opt)
+		return;
+	prMsg(p1, p2, p3);
+	fprintf(stderr, " (warning)\n");
 }
 
 #else
-/**************************************************
+
+/*
  * 72: 3936 PMO
- **************************************************/
-void prMsg(char *fmt, va_list args) {
-    char buf[128];
+ *
+ * Formats a message using vsprintf and prints it with source location
+ * via prMsgAt. This is the ANSI C version using stdarg.
+ */
+void
+prMsg(char *fmt, va_list args)
+{
+	char buf[128];
 
-    vsprintf(buf, fmt, args);
-    prMsgAt(buf);
+	vsprintf(buf, fmt, args);
+	prMsgAt(buf);
 }
 
-/**************************************************
+/*
  * 73: 396C PMO
- **************************************************/
-void prError(char *fmt, ...) {
-    va_list args;
-    va_start(args, fmt);
-    ++errCnt;
-    prMsg(fmt, args);
-    va_end(args);
-    fputc('\n', stderr);
+ *
+ * Prints an error message with source location. Increments the global
+ * error counter. ANSI C version using stdarg.
+ */
+void
+prError(char *fmt, ...)
+{
+	va_list args;
+
+	va_start(args, fmt);
+	++errCnt;
+	prMsg(fmt, args);
+	va_end(args);
+	fputc('\n', stderr);
 }
 
-/**************************************************
+/*
  * 74: 399E PMO
- **************************************************/
-void fatalErr(char *fmt, ...) {
-    va_list args;
-    va_start(args, fmt);
-    ++errCnt;
-    prMsg(fmt, args);
-    va_end(args);
-    fputc('\n', stderr);
-    closeFiles();
-    exit(1);
+ *
+ * Prints a fatal error message, closes all files, and exits with
+ * status 1. Used for unrecoverable errors. ANSI C version using stdarg.
+ */
+void
+fatalErr(char *fmt, ...)
+{
+	va_list args;
+
+	va_start(args, fmt);
+	++errCnt;
+	prMsg(fmt, args);
+	va_end(args);
+	fputc('\n', stderr);
+	closeFiles();
+	exit(1);
 }
 
-/**************************************************
+/*
  * 75: 39C1 PMO
- **************************************************/
-void prWarning(char *fmt, ...) {
-    va_list args;
-    if (w_opt)
-        return;
-    va_start(args, fmt);
-    prMsg(fmt, args);
-    va_end(args);
-    fprintf(stderr, " (warning)\n");
+ *
+ * Prints a warning message with source location, unless warnings are
+ * suppressed via -w option. ANSI C version using stdarg.
+ */
+void
+prWarning(char *fmt, ...)
+{
+	va_list args;
+
+	if (w_opt)
+		return;
+	va_start(args, fmt);
+	prMsg(fmt, args);
+	va_end(args);
+	fprintf(stderr, " (warning)\n");
 }
-
-
 
 #endif
 
-/**************************************************
+/*
  * 76: 39F3 PMO +++
- **************************************************/
-void expectErr(char *p) {
+ *
+ * Reports a syntax error indicating that a specific token or construct
+ * was expected. Formats message as "<p> expected".
+ */
+void
+expectErr(char *p)
+{
 
-    prError("%s expected", p);
+	prError("%s expected", p);
 }
 
-/**************************************************
+/*
  * 77: 3A07 PMO +++
- **************************************************/
-void copyTmp(void) {
-    int ch;
+ *
+ * Copies the temporary file to stdout. The temp file contains deferred
+ * output (function bodies, initializers) that must appear after all
+ * declarations have been emitted.
+ */
+void
+copyTmp(void)
+{
+	int ch;
 
-    fclose(tmpFp);
+	fclose(tmpFp);
 
-    if ((tmpFp = fopen(tmpFile, "r")) == NULL)
-        fatalErr("Can't reopen %s", tmpFile);
+	if ((tmpFp = fopen(tmpFile, "r")) == NULL)
+		fatalErr("Can't reopen %s", tmpFile);
 
-    while ((ch = fgetc(tmpFp)) != EOF)
-        fputc(ch, stdout);
+	while ((ch = fgetc(tmpFp)) != EOF)
+		fputc(ch, stdout);
 }
 
-/**************************************************
+/*
  * 78: 3A5E PMO +++
- **************************************************/
-void closeFiles(void) {
+ *
+ * Closes all open file handles and removes the temporary file.
+ * Called during normal exit and fatal error handling.
+ */
+void
+closeFiles(void)
+{
 
-    fclose(stdin);
-    fclose(stdout);
-    if (tmpFp) {
-        fclose(tmpFp);
-        unlink(tmpFile);
-    }
-    if (crfFp) /* PMO - close missing in original */
-        fclose(crfFp);
+	fclose(stdin);
+	fclose(stdout);
+	if (tmpFp) {
+		fclose(tmpFp);
+		unlink(tmpFile);
+	}
+	if (crfFp)					/* PMO - close missing in original */
+		fclose(crfFp);
 }
-/**************************************************
+
+/*
  * 79: 3A80 PMO +++
- **************************************************/
-void *xalloc(size_t size) {
-    register char *ptr;
+ *
+ * Allocates zeroed memory with automatic garbage collection retry.
+ * If malloc fails, tries freeing symbol and expression free lists
+ * before giving up. Fatal error if memory cannot be allocated.
+ */
+void *
+xalloc(size_t size)
+{
+	register char *ptr;
 
-    do {
-        if ((ptr = malloc(size)) != NULL)
-            goto done;
-    } while (relSymFreeList() || relExprList());
-    fatalErr("Out of memory");
+	do {
+		if ((ptr = malloc(size)) != NULL)
+			goto done;
+	} while (relSymFreeList() || relExprList());
+	fatalErr("Out of memory");
 done:
-    blkclr(ptr, size);
-    return ptr;
+	blkclr(ptr, size);
+	return ptr;
 }
 
-/**************************************************
+/*
  * 80: 3ABF PMO +++
- **************************************************/
-void mainParseLoop(void) {
-    uint8_t tok;
+ *
+ * Main parsing loop. Repeatedly reads tokens and parses global
+ * declarations until end of file. Releases scope symbols when done.
+ */
+void
+mainParseLoop(void)
+{
+	uint8_t tok;
 
-    while ((tok = yylex()) != T_EOF) {
-        ungetTok = tok;
-        parseGlobDecl();
-    }
-    relScopeSym();
+	while ((tok = yylex()) != T_EOF) {
+		ungetTok = tok;
+		parseGlobDecl();
+	}
+	relScopeSym();
 }
+
+/*
+ * vim: tabstop=4 shiftwidth=4 noexpandtab: 
+ */

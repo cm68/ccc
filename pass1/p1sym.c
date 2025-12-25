@@ -31,579 +31,756 @@
  */
 #include "p1.h"
 
-sym_t *tmpSyms;     /* as91 */
-sym_t *symFreeList; /* a293 */
-sym_t **hashtab;    /* a295 */
-decl_t *curDecl;    /* a297 */
-uint8_t defSClass;  /* a299 */
-uint8_t protoContext;  /* a29a - function prototype context */
+sym_t *tmpSyms;					/* as91 */
+sym_t *symFreeList;				/* a293 */
+sym_t **hashtab;				/* a295 */
+decl_t *curDecl;				/* a297 */
+uint8_t defSClass;				/* a299 */
+uint8_t protoContext;			/* a29a - function prototype context */
 
 sym_t **lookup(char *buf);
 sym_t *symAlloc(char *s);
-void reduceNodeRef(register sym_t *pn);
-void freeArgs(register args_t *st);
+void reduceNodeRef(register sym_t * pn);
+void freeArgs(register args_t * st);
 
-/**************************************************
+/*
  * 103: 4D92 PMO +++
- * initSymTable - Initialize symbol table
- **************************************************/
-void initSymTable(void) {
+ *
+ * Initializes the symbol table. Clears free list and allocates hash
+ * table with HASHTABSIZE entries.
+ */
+void
+initSymTable(void)
+{
 
-    symFreeList = tmpSyms = 0;
-    hashtab               = xalloc(HASHTABSIZE * sizeof(hashtab[0]));
+	symFreeList = tmpSyms = 0;
+	hashtab = xalloc(HASHTABSIZE * sizeof(hashtab[0]));
 }
 
-/**************************************************
+/*
  * 104: 4DA7 PMO +++
- **************************************************/
-sym_t **lookup(char *buf) {
-    sym_t **ps;
-    char *s;
-    uint16_t crc;
-    uint8_t sclass;
-    register sym_t *cp;
+ *
+ * Looks up symbol by name in hash table. Returns pointer to slot
+ * (either containing symbol or NULL for insertion point). Uses CRC
+ * hash of name. Respects context (struct tags, member access).
+ */
+sym_t **
+lookup(char *buf)
+{
+	sym_t **ps;
+	char *s;
+	uint16_t crc;
+	uint8_t sclass;
+	register sym_t *cp;
 
-    for (crc = 0, s = buf; *s; s++)
-        crc += crc + *(uint8_t *)s;
-    for (ps = &hashtab[crc % 271]; (cp = *ps); ps = &cp->symList) {
-        if (buf && strcmp(cp->nVName, buf) == 0) {
-            if (((inStructTag == ((sclass = cp->sclass) == D_STRUCT || sclass == D_UNION)) &&
-                 lexMember == (sclass == D_MEMBER)) ||
-                sclass == 0)
-                break;
-        }
-    }
-    return ps;
+	for (crc = 0, s = buf; *s; s++)
+		crc += crc + *(uint8_t *) s;
+	for (ps = &hashtab[crc % 271]; (cp = *ps); ps = &cp->symList) {
+		if (buf && strcmp(cp->nVName, buf) == 0) {
+			if (((inStructTag ==
+				  ((sclass = cp->sclass) == D_STRUCT || sclass == D_UNION))
+				 && lexMember == (sclass == D_MEMBER)) || sclass == 0)
+				break;
+		}
+	}
+	return ps;
 }
 
-/**************************************************
+/*
  * 105: 4E90 PMO +++
- * lookupOrAddSym - Look up symbol or create if not found
- **************************************************/
-sym_t *lookupOrAddSym(register char *buf) {
-    sym_t **ps = lookup(buf);
-    if (*ps == 0)
-        *ps = symAlloc(buf);
-    if (crfFp && buf)
-        fprintf(crfFp, "%s %d\n", buf, lineNo);
-    return *ps;
+ *
+ * Looks up symbol by name, creating new entry if not found. Logs
+ * cross-reference if enabled. Returns pointer to symbol.
+ */
+sym_t *
+lookupOrAddSym(register char *buf)
+{
+	sym_t **ps = lookup(buf);
+
+	if (*ps == 0)
+		*ps = symAlloc(buf);
+	if (crfFp && buf)
+		fprintf(crfFp, "%s %d\n", buf, lineNo);
+	return *ps;
 }
 
-/**************************************************
+/*
  * 106: 4EED PMO +++
- * declareSym - Declare or redefine a symbol
- **************************************************/
-sym_t *declareSym(register sym_t *st, uint8_t p2, attr_t *p3, sym_t *p4) {
-    sym_t **ppSym;
-    char *errMsg;
-    int16_t argIdx;
-    if (st->sclass) {
-        if (depth == st->level &&
-            (p2 != D_MEMBER || (st->sclass == D_MEMBER && st->memberList == p4))) {
-            errMsg = 0;
-            if (p2 != st->sclass)
-                errMsg = "storage class";
-            else if (st->flags & 0x10) {
-                if (!sameType(p3, &st->attr))
-                    errMsg = "type";
-                if (p3->nodeType == FUNCNODE) {
-                    if (p3->pFargs && !st->attr.pFargs)
-                        errMsg = "arguments";
-                    else if (p3->pFargs) {
-                        if (p3->pFargs->cnt != st->attr.pFargs->cnt)
-                            errMsg = "no. of arguments";
-                        else {
-                            argIdx = p3->pFargs->cnt;
-                            while (argIdx--) {
-                                if (!sameType(&p3->pFargs->argVec[argIdx],
-                                                      &st->attr.pFargs->argVec[argIdx])) {
-                                    errMsg = "arguments";
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                }
-            } /* 4fea */
-            if (errMsg)
-                prError("%s: %s redeclared", st->nVName, errMsg);
-            else if (p3->nodeType == EXPRNODE && p3->pExpr && p3->pExpr != st->attr.pExpr) {
-                freeExpr(st->attr.pExpr);
-                st->attr.pExpr = p3->pExpr;
-            } else if (p3->nodeType == FUNCNODE) {
-                if (!st->attr.pFargs)
-                    st->attr.pFargs = p3->pFargs;
-                else if (p3->pFargs && p3->pFargs != st->attr.pFargs) {
-                    freeArgs(st->attr.pFargs);
-                    st->attr.pFargs = p3->pFargs;
-                }
-            } /* 50d1 */
-            return st;
-        } /* 50d7 */
-        ppSym             = lookup(st->nVName);
-        *ppSym            = symAlloc(st->nVName);
-        (*ppSym)->symList = st;
-        st                = *ppSym;
-    } /* 5116 */
-    switch (st->sclass = p2) {
-    case DT_USHORT:
-    case DT_INT:
-    case DT_UINT:
-        st->attr.labelId = newTmpLabel();
-        return st;
-    case D_CONST:
-        st->flags |= 0x10;
-        /* FALLTHRU */
-    case DT_LONG:
-        st->memberList = p4;
-        break;
-    case DT_ULONG:
-        return st;
-    case T_TYPEDEF:
-        break;
-    default:
-        st->flags |= S_VAR;
-        break;
-    }
-    st->attr = *p3;
-    return st;
+ *
+ * Declares or redeclares a symbol. Checks for conflicting redeclarations
+ * (storage class, type, arguments). For new symbols at different scope,
+ * creates new entry shadowing outer scope. Sets appropriate flags and
+ * attributes based on storage class.
+ */
+sym_t *
+declareSym(register sym_t * st, uint8_t p2, attr_t * p3, sym_t * p4)
+{
+	sym_t **ppSym;
+	char *errMsg;
+	int16_t argIdx;
+
+	if (st->sclass) {
+		if (depth == st->level &&
+			(p2 != D_MEMBER
+			 || (st->sclass == D_MEMBER && st->memberList == p4))) {
+			errMsg = 0;
+			if (p2 != st->sclass)
+				errMsg = "storage class";
+			else if (st->flags & 0x10) {
+				if (!sameType(p3, &st->attr))
+					errMsg = "type";
+				if (p3->nodeType == FUNCNODE) {
+					if (p3->pFargs && !st->attr.pFargs)
+						errMsg = "arguments";
+					else if (p3->pFargs) {
+						if (p3->pFargs->cnt != st->attr.pFargs->cnt)
+							errMsg = "no. of arguments";
+						else {
+							argIdx = p3->pFargs->cnt;
+							while (argIdx--) {
+								if (!sameType(&p3->pFargs->argVec[argIdx],
+											  &st->attr.pFargs->
+											  argVec[argIdx])) {
+									errMsg = "arguments";
+									break;
+								}
+							}
+						}
+					}
+				}
+			}					/* 4fea */
+			if (errMsg)
+				prError("%s: %s redeclared", st->nVName, errMsg);
+			else if (p3->nodeType == EXPRNODE && p3->pExpr
+					 && p3->pExpr != st->attr.pExpr) {
+				freeExpr(st->attr.pExpr);
+				st->attr.pExpr = p3->pExpr;
+			} else if (p3->nodeType == FUNCNODE) {
+				if (!st->attr.pFargs)
+					st->attr.pFargs = p3->pFargs;
+				else if (p3->pFargs && p3->pFargs != st->attr.pFargs) {
+					freeArgs(st->attr.pFargs);
+					st->attr.pFargs = p3->pFargs;
+				}
+			}					/* 50d1 */
+			return st;
+		}						/* 50d7 */
+		ppSym = lookup(st->nVName);
+		*ppSym = symAlloc(st->nVName);
+		(*ppSym)->symList = st;
+		st = *ppSym;
+	}							/* 5116 */
+	switch (st->sclass = p2) {
+	case DT_USHORT:
+	case DT_INT:
+	case DT_UINT:
+		st->attr.labelId = newTmpLabel();
+		return st;
+	case D_CONST:
+		st->flags |= 0x10;
+		/*
+		 * FALLTHRU 
+		 */
+	case DT_LONG:
+		st->memberList = p4;
+		break;
+	case DT_ULONG:
+		return st;
+	case T_TYPEDEF:
+		break;
+	default:
+		st->flags |= S_VAR;
+		break;
+	}
+	st->attr = *p3;
+	return st;
 }
-/**************************************************
+
+/*
  * 107: 516C PMO +++
- **************************************************/
-void defineArg(register sym_t *st) {
-    if (st && !(st->flags & S_NAMEID)) {
-        if (st->flags & S_MEM)
-            prError("identifier redefined: %s", st->nVName);
-        st->flags |= S_MEM;
-        if (crfFp && st->nVName && !(st->flags & S_NAMEID)) {
-            fprintf(crfFp, "#%s %d\n", st->nVName, lineNo);
-        }
-    }
+ *
+ * Marks symbol as defined (S_MEM flag). Reports error if already
+ * defined. Logs cross-reference definition if enabled.
+ */
+void
+defineArg(register sym_t * st)
+{
+	if (st && !(st->flags & S_NAMEID)) {
+		if (st->flags & S_MEM)
+			prError("identifier redefined: %s", st->nVName);
+		st->flags |= S_MEM;
+		if (crfFp && st->nVName && !(st->flags & S_NAMEID)) {
+			fprintf(crfFp, "#%s %d\n", st->nVName, lineNo);
+		}
+	}
 }
 
-/**************************************************
+/*
  * 108: 51CF PMO +++
- * markReferenced - Mark symbol as referenced
- **************************************************/
-void markReferenced(register sym_t *st) {
-    if (st)
-        st->flags |= 2;
+ *
+ * Marks symbol as referenced (flag bit 2). Used to detect unused
+ * symbols for warning messages.
+ */
+void
+markReferenced(register sym_t * st)
+{
+	if (st)
+		st->flags |= 2;
 }
 
-/**************************************************
+/*
  * 109: 51E7 PMO +++
  * uin8_t param
- **************************************************/
-void defineFuncSig(void) {
-    int16_t cnt;
-    int16_t i;
-    args_t *argList;
-    register sym_t *st;
+ *
+ * Processes function parameter list. Converts array parameters to
+ * pointers, marks parameters as defined, emits declarations. Validates
+ * parameter list matches any prior prototype declaration.
+ */
+void
+defineFuncSig(void)
+{
+	int16_t cnt;
+	int16_t i;
+	args_t *argList;
+	register sym_t *st;
 
-    argList = curFuncNode->a_args;
-    for (st = argListHead; st; st = st->memberList) {
-        st->flags &= ~0x28;
-        if (argList)
-            st->flags |= S_ARG;
-        if (st->a_nodeType == EXPRNODE) {
-            freeExpr(st->a_expr);
-            st->a_expr     = 0;
-            st->a_nodeType = SYMNODE;
-            addIndir(&st->attr);
-        } /* 523d */
-        defineArg(st);
-        emitVar(st);
-    }
-    if (!argList)
-        return;
-    i   = 0;
-    cnt = argList->cnt;
-    if (cnt == 1 && isVarOfType(argList->argVec, DT_VOID) && !argListHead)
-        return;
-    for (st = argListHead; st && cnt--; st = st->memberList, i++) {
-        if (argList->argVec[i].dataType == DT_VARGS) {
-            st  = NULL;
-            cnt = 0;
-            break;
-        } else if (!sameType(&argList->argVec[i], &st->attr))
-            break;
-    }
-    if (st || (cnt && argList->argVec[i].dataType != DT_VARGS))
-        prError("argument list conflicts with prototype");
-    cnt = 1;
+	argList = curFuncNode->a_args;
+	for (st = argListHead; st; st = st->memberList) {
+		st->flags &= ~0x28;
+		if (argList)
+			st->flags |= S_ARG;
+		if (st->a_nodeType == EXPRNODE) {
+			freeExpr(st->a_expr);
+			st->a_expr = 0;
+			st->a_nodeType = SYMNODE;
+			addIndir(&st->attr);
+		}						/* 523d */
+		defineArg(st);
+		emitVar(st);
+	}
+	if (!argList)
+		return;
+	i = 0;
+	cnt = argList->cnt;
+	if (cnt == 1 && isVarOfType(argList->argVec, DT_VOID) && !argListHead)
+		return;
+	for (st = argListHead; st && cnt--; st = st->memberList, i++) {
+		if (argList->argVec[i].dataType == DT_VARGS) {
+			st = NULL;
+			cnt = 0;
+			break;
+		} else if (!sameType(&argList->argVec[i], &st->attr))
+			break;
+	}
+	if (st || (cnt && argList->argVec[i].dataType != DT_VARGS))
+		prError("argument list conflicts with prototype");
+	cnt = 1;
 }
 
-/**************************************************
+/*
  * 110: 5356 PMO +++
- **************************************************/
-bool relSymFreeList(void) {
-    register sym_t *st;
+ *
+ * Releases all entries on symbol free list back to heap. Called during
+ * memory pressure. Returns true if any memory was freed.
+ */
+bool
+relSymFreeList(void)
+{
+	register sym_t *st;
 
-    if (!symFreeList)
-        return false;
+	if (!symFreeList)
+		return false;
 
-    while ((st = symFreeList)) {
-        symFreeList = st->memberList;
-        free(st);
-    }
-    return true;
+	while ((st = symFreeList)) {
+		symFreeList = st->memberList;
+		free(st);
+	}
+	return true;
 }
 
 char blank[] = "";
-/**************************************************
- * 111: 5384 PMO +++
- **************************************************/
-sym_t *symAlloc(char *s) {
-    register sym_t *ps;
-    static int16_t symCnt = 0;
 
-    if (symFreeList) {
-        ps          = symFreeList;
-        symFreeList = ps->memberList;
-        blkclr(ps, sizeof(sym_t));
-    } else {
-        ps = xalloc(sizeof(sym_t));
-    }
-    ps->level   = depth;
-    ps->nRefCnt = 1;
-    ps->symId  = ++symCnt;
-    if (s) {
-        ps->nVName = (char *)xalloc(strlen(s) + 1);
-        strcpy(ps->nVName, s);
-    } else
-        ps->nVName = blank;
-    return ps;
+/*
+ * 111: 5384 PMO +++
+ *
+ * Allocates new symbol entry. Tries free list first, then heap.
+ * Initializes level, reference count, and unique symbol ID.
+ * Copies name string if provided.
+ */
+sym_t *
+symAlloc(char *s)
+{
+	register sym_t *ps;
+	static int16_t symCnt = 0;
+
+	if (symFreeList) {
+		ps = symFreeList;
+		symFreeList = ps->memberList;
+		blkclr(ps, sizeof(sym_t));
+	} else {
+		ps = xalloc(sizeof(sym_t));
+	}
+	ps->level = depth;
+	ps->nRefCnt = 1;
+	ps->symId = ++symCnt;
+	if (s) {
+		ps->nVName = (char *) xalloc(strlen(s) + 1);
+		strcpy(ps->nVName, s);
+	} else
+		ps->nVName = blank;
+	return ps;
 }
 
-/**************************************************
+/*
  * 112: 540C PMO +++
  * optimiser has better code for --pn->nRefCnt
- **************************************************/
-void reduceNodeRef(register sym_t *pn) {
-    /* printf("%p %d %d %s\n", pn, pn->level, pn->nRefCnt,
-           pn->a_nodeType == 0   ? (*pn->nVName ? pn->nVName : "blank")
-           : pn->a_nodeType == 1 ? "EXPR"
-                                 : "FUNC"
-                                 ); */
-    if (--pn->nRefCnt == 0) {
-        if (pn->sclass != 0 && pn->sclass != D_LABEL && pn->sclass != D_STRUCT &&
-            pn->sclass != D_UNION && pn->sclass != D_ENUM) {
-            if (pn->a_nodeType == FUNCNODE)
-                freeArgs(pn->a_args);
-            else if (pn->a_nodeType == EXPRNODE)
-                freeExpr(pn->a_expr);
+ *
+ * Decrements symbol reference count. When count reaches zero, frees
+ * associated resources (args, expressions, name string) and moves
+ * symbol to free list for reuse.
+ */
+void
+reduceNodeRef(register sym_t * pn)
+{
+	/*
+	 * printf("%p %d %d %s\n", pn, pn->level, pn->nRefCnt, pn->a_nodeType
+	 * == 0 ? (*pn->nVName ? pn->nVName : "blank") : pn->a_nodeType == 1 ? 
+	 * "EXPR" : "FUNC" ); 
+	 */
+	if (--pn->nRefCnt == 0) {
+		if (pn->sclass != 0 && pn->sclass != D_LABEL
+			&& pn->sclass != D_STRUCT && pn->sclass != D_UNION
+			&& pn->sclass != D_ENUM) {
+			if (pn->a_nodeType == FUNCNODE)
+				freeArgs(pn->a_args);
+			else if (pn->a_nodeType == EXPRNODE)
+				freeExpr(pn->a_expr);
 #if BUGGY
-            /* this code is prone to release symbols too early */
-            if (ps->a_dataType == DT_COMPLEX)
-                reduceNodeRef(ps->a_nextSym);
+			/*
+			 * this code is prone to release symbols too early 
+			 */
+			if (ps->a_dataType == DT_COMPLEX)
+				reduceNodeRef(ps->a_nextSym);
 #endif
-        }
-        if (pn->nVName != blank)
-            free(pn->nVName);
-        pn->memberList = symFreeList;
-        symFreeList    = pn;
-    }
+		}
+		if (pn->nVName != blank)
+			free(pn->nVName);
+		pn->memberList = symFreeList;
+		symFreeList = pn;
+	}
 }
 
-/**************************************************
+/*
  * 113: 549C PMO +++
  * use of uint8_t param
- **************************************************/
-void enterScope(void) {
+ *
+ * Enters new scope level. Emits opening brace for output and
+ * increments nesting depth counter.
+ */
+void
+enterScope(void)
+{
 
-    prFuncBrace(T_LBRACE);
-    ++depth;
+	prFuncBrace(T_LBRACE);
+	++depth;
 }
 
-/**************************************************
+/*
  * 114: 54AC PMO +++
  * use of uint8_t param
- **************************************************/
-void exitScope(void) {
+ *
+ * Exits current scope level. Releases symbols at this level, decrements
+ * depth, and emits closing brace.
+ */
+void
+exitScope(void)
+{
 
-    relScopeSym();
-    --depth;
-    prFuncBrace(T_RBRACE);
+	relScopeSym();
+	--depth;
+	prFuncBrace(T_RBRACE);
 }
 
-/**************************************************
+/*
  * 115: 54C0 PMO +++
- **************************************************/
-void relScopeSym(void) {
-    sym_t **pSlot;
-    sym_t **ppSym;
-    uint8_t sclass;
-    char *msg;
-    register sym_t *pSym;
+ *
+ * Releases all symbols at current scope level. Removes from hash table,
+ * checks for undefined labels and unused symbols (generating warnings),
+ * and decrements reference counts. Also cleans up temporary symbols.
+ */
+void
+relScopeSym(void)
+{
+	sym_t **pSlot;
+	sym_t **ppSym;
+	uint8_t sclass;
+	char *msg;
+	register sym_t *pSym;
 
-    for (pSlot = hashtab; pSlot < &hashtab[HASHTABSIZE]; pSlot++) {
-        ppSym = pSlot;
-        while ((pSym = *ppSym)) {
-            if (pSym->level == depth) {
-                msg    = 0;
-                sclass = pSym->sclass;
-                if ((pSym->flags & 3) == 2) {
-                    switch (sclass) {
-                    case D_LABEL:
-                        msg = "label";
-                        break;
-                    case D_STRUCT:
-                    case D_UNION:
-                    case T_EXTERN:
-                        break;
-                    default:
-                        msg = "variable";
-                        break;
-                    }
-                    if (msg)
-                        prError("undefined %s: %s", msg, pSym->nVName);
-                } else if ((depth || sclass == T_STATIC) && !(pSym->flags & 2)) { /* 5555  */
-                    switch (sclass) {
-                    case D_LABEL:
-                        msg = "label";
-                        break;
-                    case D_STRUCT:
-                        msg = "structure";
-                        break;
-                    case D_UNION:
-                        msg = "union";
-                        break;
-                    case D_MEMBER:
-                        msg = "member";
-                        break;
-                    case D_ENUM:
-                        msg = "enum";
-                        break;
-                    case D_CONST:
-                        msg = "constant";
-                        break;
-                    case T_TYPEDEF:
-                        msg = "typedef";
-                        break;
-                    case D_STACK:
-                        msg = 0;
-                        break;
-                    default:
-                        if (sclass) {
-                            if (pSym->flags & S_MEM)
-                                msg = "variable definition";
-                            else
-                                msg = "variable declaration";
-                        }
-                        break;
-                    }
-                    if (msg)
-                        prWarning("unused %s: %s", msg, pSym->nVName);
+	for (pSlot = hashtab; pSlot < &hashtab[HASHTABSIZE]; pSlot++) {
+		ppSym = pSlot;
+		while ((pSym = *ppSym)) {
+			if (pSym->level == depth) {
+				msg = 0;
+				sclass = pSym->sclass;
+				if ((pSym->flags & 3) == 2) {
+					switch (sclass) {
+					case D_LABEL:
+						msg = "label";
+						break;
+					case D_STRUCT:
+					case D_UNION:
+					case T_EXTERN:
+						break;
+					default:
+						msg = "variable";
+						break;
+					}
+					if (msg)
+						prError("undefined %s: %s", msg, pSym->nVName);
+				} else if ((depth || sclass == T_STATIC) && !(pSym->flags & 2)) { /* 5555 
+																				   */
+					switch (sclass) {
+					case D_LABEL:
+						msg = "label";
+						break;
+					case D_STRUCT:
+						msg = "structure";
+						break;
+					case D_UNION:
+						msg = "union";
+						break;
+					case D_MEMBER:
+						msg = "member";
+						break;
+					case D_ENUM:
+						msg = "enum";
+						break;
+					case D_CONST:
+						msg = "constant";
+						break;
+					case T_TYPEDEF:
+						msg = "typedef";
+						break;
+					case D_STACK:
+						msg = 0;
+						break;
+					default:
+						if (sclass) {
+							if (pSym->flags & S_MEM)
+								msg = "variable definition";
+							else
+								msg = "variable declaration";
+						}
+						break;
+					}
+					if (msg)
+						prWarning("unused %s: %s", msg, pSym->nVName);
 
-                } /* 55d2 */
-                *ppSym = pSym->symList;
-                reduceNodeRef(pSym);
-            } else
-                ppSym = &pSym->symList;
-        }
-    }
-    ppSym = &tmpSyms;
-    while ((pSym = *ppSym)) {
-        if (pSym->level == depth) {
-            *ppSym = pSym->symList; /* remove from list and reduce its ref count */
-            reduceNodeRef(pSym);
-        } else
-            ppSym = &pSym->symList; /* skip to next entry */
-    }
+				}				/* 55d2 */
+				*ppSym = pSym->symList;
+				reduceNodeRef(pSym);
+			} else
+				ppSym = &pSym->symList;
+		}
+	}
+	ppSym = &tmpSyms;
+	while ((pSym = *ppSym)) {
+		if (pSym->level == depth) {
+			*ppSym = pSym->symList;	/* remove from list and reduce its ref 
+									 * count */
+			reduceNodeRef(pSym);
+		} else
+			ppSym = &pSym->symList;	/* skip to next entry */
+	}
 }
 
-/**************************************************
+/*
  * 116: 56A4 PMO +++
- **************************************************/
-sym_t *newTmpSym(void) {
-    register sym_t *st;
+ *
+ * Creates new temporary (unnamed) symbol. Used for compiler-generated
+ * variables. Marks as defined and referenced. Adds to tmpSyms list.
+ */
+sym_t *
+newTmpSym(void)
+{
+	register sym_t *st;
 
-    st = symAlloc(0);
-    st->flags |= S_NAMEID + 2 + S_MEM;
-    st->symList = tmpSyms;
-    tmpSyms     = st;
-    return st;
+	st = symAlloc(0);
+	st->flags |= S_NAMEID + 2 + S_MEM;
+	st->symList = tmpSyms;
+	tmpSyms = st;
+	return st;
 }
 
-/**************************************************
+/*
  * 117: 56CD PMO +++
- **************************************************/
-sym_t *findMember(sym_t *pSym, char *name) {
-    register sym_t *ps;
+ *
+ * Searches struct/union member list for member by name. Returns member
+ * symbol or NULL with error message if not found. Member list is
+ * circular with struct as sentinel.
+ */
+sym_t *
+findMember(sym_t * pSym, char *name)
+{
+	register sym_t *ps;
 
-    for (ps = pSym->memberList; pSym != ps; ps = ps->memberList)
-        if (strcmp(ps->nVName, name) == 0)
-            return ps;
-    prError("%s is not a member of the struct/union %s", name, pSym->nVName);
-    return NULL;
+	for (ps = pSym->memberList; pSym != ps; ps = ps->memberList)
+		if (strcmp(ps->nVName, name) == 0)
+			return ps;
+	prError("%s is not a member of the struct/union %s", name,
+			pSym->nVName);
+	return NULL;
 }
 
-/**************************************************
+/*
  * 118: 573B PMO +++
- **************************************************/
-void emitSymName(register sym_t *st, FILE *fp) {
+ *
+ * Outputs symbol name to file. Temporary symbols output as "F<id>",
+ * named symbols output as "_<name>" (with underscore prefix for linker).
+ */
+void
+emitSymName(register sym_t * st, FILE * fp)
+{
 
-    if (st) {
-        if (st->flags & S_NAMEID)
-            fprintf(fp, "F%d", st->symId);
-        else
-            fprintf(fp, "_%s", st->nVName);
-    }
+	if (st) {
+		if (st->flags & S_NAMEID)
+			fprintf(fp, "F%d", st->symId);
+		else
+			fprintf(fp, "_%s", st->nVName);
+	}
 }
 
-/**************************************************
+/*
  * 119: 5785 PMO +++
- **************************************************/
-int16_t newTmpLabel(void) {
+ *
+ * Allocates new unique temporary label number. Used for local labels
+ * in generated code (loops, conditionals, etc.).
+ */
+int16_t
+newTmpLabel(void)
+{
 
-    return ++tmpLabelId;
+	return ++tmpLabelId;
 }
 
-/**************************************************
+/*
  * 120: 578D PMO +++
  * trivial optimiser differences
- **************************************************/
-args_t *cloneArgs(register args_t *pArgs) {
-    args_t *newList;
-    attr_t *pAttr;
-    int16_t i;
-    if (!pArgs)
-        return pArgs;
-    newList = xalloc(sizeof(args_t) + (pArgs->cnt - 1) * sizeof(attr_t));
-    i = newList->cnt = pArgs->cnt;
-    while (i--) {
-        pAttr  = &newList->argVec[i];
-        *pAttr = pArgs->argVec[i];
-        if (pAttr->dataType == DT_COMPLEX)
-            pAttr->nextSym->nRefCnt++;
-    }
-    return newList;
+ *
+ * Creates deep copy of function argument list. Allocates new args_t,
+ * copies all attributes, and increments reference counts for complex
+ * types.
+ */
+args_t *
+cloneArgs(register args_t * pArgs)
+{
+	args_t *newList;
+	attr_t *pAttr;
+	int16_t i;
+
+	if (!pArgs)
+		return pArgs;
+	newList = xalloc(sizeof(args_t) + (pArgs->cnt - 1) * sizeof(attr_t));
+	i = newList->cnt = pArgs->cnt;
+	while (i--) {
+		pAttr = &newList->argVec[i];
+		*pAttr = pArgs->argVec[i];
+		if (pAttr->dataType == DT_COMPLEX)
+			pAttr->nextSym->nRefCnt++;
+	}
+	return newList;
 }
 
-/**************************************************
+/*
  * 121: 583A PMO +++
- **************************************************/
-void freeArgs(register args_t *pArgs) {
-    attr_t *pAttr;
-    if (pArgs) {
-        for (pAttr = pArgs->argVec; pArgs->cnt--; pAttr++) {
-            if (pAttr->nodeType == FUNCNODE && pAttr->pFargs)
-                freeArgs(pAttr->pFargs);
-            if (pAttr->dataType == DT_COMPLEX)
-                reduceNodeRef(pAttr->nextSym);
-        }
-        free(pArgs);
-    }
+ *
+ * Frees function argument list. Recursively frees nested function
+ * arguments and decrements reference counts for complex types.
+ */
+void
+freeArgs(register args_t * pArgs)
+{
+	attr_t *pAttr;
+
+	if (pArgs) {
+		for (pAttr = pArgs->argVec; pArgs->cnt--; pAttr++) {
+			if (pAttr->nodeType == FUNCNODE && pAttr->pFargs)
+				freeArgs(pAttr->pFargs);
+			if (pAttr->dataType == DT_COMPLEX)
+				reduceNodeRef(pAttr->nextSym);
+		}
+		free(pArgs);
+	}
 }
 
-/**************************************************
+/*
  * 122: 58BD PMO +++
- **************************************************/
-void cloneAttr(register attr_t *st, attr_t *p2) {
-    *p2 = *st;
-    if (p2->nodeType == EXPRNODE)
-        p2->pExpr = cloneExpr(p2->pExpr);
-    else if (p2->nodeType == FUNCNODE)
-        p2->pFargs = cloneArgs(p2->pFargs);
+ *
+ * Creates copy of type attribute. Copies basic fields, then clones
+ * dimension expression for arrays or argument list for functions.
+ */
+void
+cloneAttr(register attr_t * st, attr_t * p2)
+{
+	*p2 = *st;
+	if (p2->nodeType == EXPRNODE)
+		p2->pExpr = cloneExpr(p2->pExpr);
+	else if (p2->nodeType == FUNCNODE)
+		p2->pFargs = cloneArgs(p2->pFargs);
 }
 
-/**************************************************
+/*
  * 123: 591D PMO +++
  * some optimiser differences including movement
  * of some basic blocks
- **************************************************/
-bool sameType(register attr_t *st, attr_t *p2) {
-    int16_t argIdx;
+ *
+ * Compares two type attributes for equality. Checks base type, node
+ * type, and indirection level. For complex types (struct/union/enum),
+ * compares tag symbols. For functions, compares argument lists.
+ */
+bool
+sameType(register attr_t * st, attr_t * p2)
+{
+	int16_t argIdx;
 
-    if (st == p2)
-        return true;
-    if (st->nodeType != p2->nodeType || st->dataType != p2->dataType ||
-        st->indirection != p2->indirection)
-        return false;
-    switch (st->dataType) {
-    case DT_ENUM:
-    case DT_STRUCT:
-    case DT_UNION:
-        return st->nextSym == p2->nextSym;
-    case DT_COMPLEX:
-        return sameType(st->nextAttr, p2->nextAttr);
-    }
-    if (st->nodeType != FUNCNODE || !st->pFargs || !p2->pFargs)
-        return true;
-    if (st->pFargs->cnt != p2->pFargs->cnt)
-        return false;
-    argIdx = st->pFargs->cnt;
-    do {
-        if (argIdx-- == 0)
-            return true;
-    } while (sameType(&st->pFargs->argVec[argIdx], &p2->pFargs->argVec[argIdx]));
-    return false;
+	if (st == p2)
+		return true;
+	if (st->nodeType != p2->nodeType || st->dataType != p2->dataType ||
+		st->indirection != p2->indirection)
+		return false;
+	switch (st->dataType) {
+	case DT_ENUM:
+	case DT_STRUCT:
+	case DT_UNION:
+		return st->nextSym == p2->nextSym;
+	case DT_COMPLEX:
+		return sameType(st->nextAttr, p2->nextAttr);
+	}
+	if (st->nodeType != FUNCNODE || !st->pFargs || !p2->pFargs)
+		return true;
+	if (st->pFargs->cnt != p2->pFargs->cnt)
+		return false;
+	argIdx = st->pFargs->cnt;
+	do {
+		if (argIdx-- == 0)
+			return true;
+	} while (sameType
+			 (&st->pFargs->argVec[argIdx], &p2->pFargs->argVec[argIdx]));
+	return false;
 }
 
-/**************************************************
+/*
  * 124: 5A4A PMO +++
- **************************************************/
-bool isVoidStar(register attr_t *st) {
-    return st->dataType == DT_VOID && st->indirection == 1;
+ *
+ * Checks if type is void pointer (void *). Used for generic pointer
+ * compatibility checks.
+ */
+bool
+isVoidStar(register attr_t * st)
+{
+	return st->dataType == DT_VOID && st->indirection == 1;
 }
 
-/**************************************************
+/*
  * 125: 5A76 PMO +++
- **************************************************/
-bool isVarOfType(register attr_t *st, uint8_t p2) {
+ *
+ * Checks if type is a scalar variable of specified base type (no
+ * indirection, not function or array).
+ */
+bool
+isVarOfType(register attr_t * st, uint8_t p2)
+{
 
-    return st->dataType == p2 && st->indirection == 0 && st->nodeType == SYMNODE;
+	return st->dataType == p2 && st->indirection == 0
+		&& st->nodeType == SYMNODE;
 }
 
-/**************************************************
+/*
  * 126: 5AA4 PMO +++
- **************************************************/
-bool isLogicalType(register attr_t *st) {
-    return st->nodeType == SYMNODE &&
-           (((st->indirection & 1) && st->nodeType == SYMNODE) || st->dataType < DT_VOID);
+ *
+ * Checks if type can be used in logical context. True for pointers
+ * and scalar types less than void (numeric types, bool, enum).
+ */
+bool
+isLogicalType(register attr_t * st)
+{
+	return st->nodeType == SYMNODE &&
+		(((st->indirection & 1) && st->nodeType == SYMNODE)
+		 || st->dataType < DT_VOID);
 }
 
-/**************************************************
+/*
  * 127: 5AD5 PMO +++
- **************************************************/
-bool isSimpleType(register attr_t *st) {
-    return st->nodeType == SYMNODE && st->indirection == 0 && st->dataType <= DT_ENUM;
+ *
+ * Checks if type is simple scalar (char through enum, no pointers).
+ * Excludes structs, unions, void, and complex types.
+ */
+bool
+isSimpleType(register attr_t * st)
+{
+	return st->nodeType == SYMNODE && st->indirection == 0
+		&& st->dataType <= DT_ENUM;
 }
 
-/**************************************************
+/*
  * 128: 5B08 PMO +++
- **************************************************/
-bool isIntType(register attr_t *st) {
-    return (st->nodeType == SYMNODE && st->indirection == 0 && st->dataType < DT_FLOAT);
+ *
+ * Checks if type is integral (char, short, int, long, signed/unsigned).
+ * Does not include float, double, or enum.
+ */
+bool
+isIntType(register attr_t * st)
+{
+	return (st->nodeType == SYMNODE && st->indirection == 0
+			&& st->dataType < DT_FLOAT);
 }
 
-/**************************************************
+/*
  * 129: 5B38 PMO +++
- **************************************************/
-bool isFloatType(register attr_t *st) {
-    return st->nodeType == SYMNODE && st->indirection == 0 &&
-           (st->dataType == DT_FLOAT || st->dataType == DT_DOUBLE);
+ *
+ * Checks if type is floating point (float or double).
+ */
+bool
+isFloatType(register attr_t * st)
+{
+	return st->nodeType == SYMNODE && st->indirection == 0 &&
+		(st->dataType == DT_FLOAT || st->dataType == DT_DOUBLE);
 }
 
-/**************************************************
+/*
  * 130: 5B69 PMO +++
- **************************************************/
-bool isValidIndex(register attr_t *st) {
+ *
+ * Checks if type is valid for array indexing. Accepts integral types
+ * and enums.
+ */
+bool
+isValidIndex(register attr_t * st)
+{
 
-    return isIntType(st) || isVarOfType(st, DT_ENUM);
+	return isIntType(st) || isVarOfType(st, DT_ENUM);
 }
 
-/**************************************************
+/*
  * 131: 5B99 PMO +++
  * uint8_t parameter
- **************************************************/
-void delIndirection(register attr_t *st) {
-    if (st->nodeType == FUNCNODE)
-        st->nodeType = SYMNODE;
-    else
-        st->indirection >>= 1;
+ *
+ * Removes one level of indirection from type (dereference). For
+ * functions, converts to regular symbol type. For pointers, shifts
+ * indirection. For complex types, unwraps to inner type.
+ */
+void
+delIndirection(register attr_t * st)
+{
+	if (st->nodeType == FUNCNODE)
+		st->nodeType = SYMNODE;
+	else
+		st->indirection >>= 1;
 
-    if (isVarOfType(st, DT_COMPLEX))
-        *st = *(st->nextAttr);
+	if (isVarOfType(st, DT_COMPLEX))
+		*st = *(st->nextAttr);
 }
+
+/*
+ * vim: tabstop=4 shiftwidth=4 noexpandtab: 
+ */

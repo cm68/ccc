@@ -122,9 +122,9 @@
 #define T_COLON     99
 #define T_EQ        100
 #define P1_EQPLUS    101
-#define P1_POSTINC  102 /* ? postfix variant */
+#define P1_POSTINC  102			/* ? postfix variant */
 #define P1_EQMINUS   103
-#define P1_POSTDEC  104 /* ? post fix variant */
+#define P1_POSTDEC  104			/* ? post fix variant */
 #define P1_EQMUL     105
 #define P1_EQDIV     106
 #define P1_EQMOD     107
@@ -150,7 +150,7 @@
 #define T_FCONST    127
 #define T_OPTOP     128
 
-#define DT_UNSIGNED 1 /* bit to indicate unsigned data type*/
+#define DT_UNSIGNED 1			/* bit to indicate unsigned data type */
 #define DT_BOOL     2
 #define DT_CHAR     4
 #define DT_UCHAR    5
@@ -171,9 +171,14 @@
 #define DT_STRUCT   26
 #define DT_UNION    28
 
-/* node types */
-#define FUNCNODE    2 /* function args node */
-#define EXPRNODE    1 /* expression node */
-#define SYMNODE     0 /* symbol node */
+/*
+ * node types 
+ */
+#define FUNCNODE    2			/* function args node */
+#define EXPRNODE    1			/* expression node */
+#define SYMNODE     0			/* symbol node */
 
 #endif
+/*
+ * vim: tabstop=4 shiftwidth=4 noexpandtab: 
+ */
