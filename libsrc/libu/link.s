@@ -44,6 +44,4 @@ scall:	.db 	0cfh
 old:	.dw 	0
 new:	.dw 	0
 
-;
 ; vim: tabstop=8 shiftwidth=8 noexpandtab:
-;

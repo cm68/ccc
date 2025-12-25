@@ -39,6 +39,4 @@ clean:
 		$(MAKE) -C $$i clean ; \
 	done
 
-#
 # vim: tabstop=4 shiftwidth=4 noexpandtab:
-#

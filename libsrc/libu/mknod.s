@@ -51,6 +51,4 @@ name:	.dw 	0
 mode:	.dw 	0
 addr:	.dw 	0
 
-;
 ; vim: tabstop=8 shiftwidth=8 noexpandtab:
-;

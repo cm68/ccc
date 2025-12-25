@@ -27,6 +27,4 @@ sbrk(unsigned short increment)
 	return (brk(memtop+increment));
 }
 
-/*
- * vim: tabstop=4 shiftwidth=4 expandtab:
- */
+/* vim: set tabstop=4 shiftwidth=4 expandtab: */

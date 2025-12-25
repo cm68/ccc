@@ -100,6 +100,4 @@ epipe:	.db	"Broken pipe",0
 colon:	.db	" : ", 0
 newln:	.db	"\n", 0
 
-;
 ; vim: tabstop=8 shiftwidth=8 noexpandtab:
-;

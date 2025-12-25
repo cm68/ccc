@@ -26,6 +26,4 @@ _alarm:
 scall:	.db 	0cfh
 	.db 	01bh
 
-;
 ; vim: tabstop=8 shiftwidth=8 noexpandtab:
-;

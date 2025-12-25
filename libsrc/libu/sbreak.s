@@ -181,6 +181,6 @@ _brk:
 	.data
 _.data:
 	.dw __memory
-;
+
 ; vim: tabstop=4 shiftwidth=4 noexpandtab:
-;
+

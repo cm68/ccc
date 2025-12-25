@@ -19,6 +19,4 @@ __exit:
 	rst 	08h
 	.db 	001h
 
-;
 ; vim: tabstop=8 shiftwidth=8 noexpandtab:
-;

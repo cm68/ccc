@@ -21,6 +21,4 @@ _pause:
 scall:	.db 	0cfh
 	.db 	01dh
 
-;
 ; vim: tabstop=8 shiftwidth=8 noexpandtab:
-;

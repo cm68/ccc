@@ -40,6 +40,4 @@ _time:
 	ld 	(bc),a
 	ret
 
-;
 ; vim: tabstop=8 shiftwidth=8 noexpandtab:
-;

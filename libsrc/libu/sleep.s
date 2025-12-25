@@ -22,6 +22,4 @@ _sleep:
 	ld 	hl,0
 	ret
 
-;
 ; vim: tabstop=8 shiftwidth=8 noexpandtab:
-;

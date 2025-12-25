@@ -138,6 +138,6 @@ _.data:
 	.db 000h
 	.db 000h
 	.db 000h
-;
+
 ; vim: tabstop=4 shiftwidth=4 noexpandtab:
-;
+

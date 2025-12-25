@@ -53,6 +53,4 @@ _execl:
 	pop 	af
 	ret
 
-;
 ; vim: tabstop=8 shiftwidth=8 noexpandtab:
-;

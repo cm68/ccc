@@ -38,6 +38,4 @@ scall:	.db 	0cfh
 	.db 	011h
 addr:	.dw 	0
 
-;
 ; vim: tabstop=8 shiftwidth=8 noexpandtab:
-;
