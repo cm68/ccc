@@ -861,7 +861,7 @@ align(type, offset, aflen)
 	if (flen == 0) {
 		a += (NBPC + bitoffs - 1) / NBPC;
 		bitoffs = 0;
-	} else if (flen) {
+	} else {
 		if (type == INT || type == UNSIGN) {
 			if (flen > NBPW)
 				error(ftl);
