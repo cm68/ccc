@@ -148,9 +148,6 @@ cfunc()
 	statement();
 	outcode("BNB", LABEL, retlab, RETRN);
 	label(sloc);
-	/*
-	 * add STAUTO; overlay bug fix, coupled with section in c11.c 
-	 */
 	if (-maxauto + STAUTO > 127)
 		werror("stack frame exceeds 127 bytes");
 	outcode("BN", SETSTK, -maxauto + STAUTO);

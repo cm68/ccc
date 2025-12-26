@@ -33,10 +33,7 @@
 #define	NCPW	2				/* chars per word, object machine */
 #define	LNCPW	2				/* chars per word, compiler's machine */
 #define	LNBPW	16				/* bits per word, compiler's machine */
-/*
- * dlf change #define STAUTO (-6) offset of first auto variable 
- */
-extern int STAUTO;
+extern int STAUTO;				/* offset of first auto variable */
 
 #define	STARG	4				/* offset of first argument */
 #define	DCLSLOP	512				/* Amount trees lie above declaration

@@ -1,5 +1,5 @@
 /*
- * C compiler 2.1 (2.11BSD) 1996/01/04 
+ * C compiler - pass 1 (front end)
  * Called from cc: c0 source.x temp1 temp2 [ profileflag ] 
  * Reads pre-tokenized .x file from cpp. 
  * temp1 gets most of the intermediate code; 
@@ -61,17 +61,11 @@ char *argv[];
 		fatal("Can't create temp");
 	setbuf(stdout, buf2);		/* stdio sbrk problems */
 	setbuf(sbufp, sbuf);
-	/*
-	 * Overlays: allow an extra word on the stack for
-	 * each stack from to store the overlay number.
-	 */
 	STAUTO = -8;
 	while (argc > 4) {
 		switch (argv[4][1]) {
 		case 'P':
 			proflg++;
-			break;
-		case 'V':				/* overlays; default, now */
 			break;
 		case 'w':
 		case 'W':				/* don't print warning messages */
