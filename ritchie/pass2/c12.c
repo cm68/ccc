@@ -1260,9 +1260,7 @@ union tree *tp;
 	register t;
 
 	t = tp->t.type;
-	if (t == UNSIGN || t == UNCHAR || t == UNLONG || t & XTYPE)
-		return (1);
-	return (0);
+	return (t >= UNSIGN && t <= UNLONG) || t >= PTR;
 }
 
 /*

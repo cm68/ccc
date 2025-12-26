@@ -1,8 +1,9 @@
 	psect	text
-	global	alxor, llxor
+	global	alxor, llxor, lxor
 
 alxor:
 llxor:
+lxor:
 	exx
 	pop	hl
 	exx

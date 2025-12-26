@@ -9,6 +9,7 @@
 #define	TNULL	(union tree *)NULL
 #define	UNS(x)	((unsigned short)(x))
 #define	MAX(a,b)	((a)>(b)?(a):(b))
+#define	oddreg(t, reg)	(reg)	/* Z80: no even/odd register pairs */
 
 /*
  *  Tree node for unary and binary

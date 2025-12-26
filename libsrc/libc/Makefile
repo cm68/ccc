@@ -27,9 +27,9 @@ SRCS = abs.s allsh.s alrsh.s asallsh.s asalrsh.s asar.s \
 	atoi.s bitfield.s blkclr.s bmove.s csv.s brelop.s \
 	wrelop.s frelop.s getsp.s idiv.s imul.s index.s inout.s \
 	iregset.s isalpha.s isdigit.s islower.s isspace.s isupper.s \
-	ladd.s land.s ldiv.s linc.s llrsh.s lmul.s \
-	longjmp.s lor.s lrelop.s lsub.s lxor.s max.s swap.s  \
-	rcsv.s rindex.s sbrk.s shar.s fbcd.s \
+	ladd.s land.s lcom.s ldiv.s linc.s lldst.s llrsh.s lmul.s \
+	longjmp.s lor.s lrelop.s lsub.s lushr.s lxor.s max.s swap.s  \
+	op16.s rcsv.s rindex.s sbrk.s shar.s shl16.s fbcd.s \
 	shll.s shlr.s strcat.s strchr.s strcmp.s strcpy.s \
 	strlen.s strncat.s strncmp.s strncpy.s strrchr.s \
 	tolower.s toupper.s xtoi.s float.s fputc.s fgetc.s \

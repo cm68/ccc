@@ -303,63 +303,14 @@ register union tree *t;
 	return (0);
 }
 
-oddreg(t, reg)
-register union tree *t;
-char reg;
-{
-
-	if (!isfloat(t)) {
-		if (opdope[t->t.op] & RELAT) {
-			if (t->t.tr1->t.type == LONG || t->t.tr1->t.type == UNLONG)
-				return ((reg + 1) & ~01);
-			return (reg);
-		}
-		switch (t->t.op) {
-		case ULLSHIFT:
-		case UASLSHL:
-		case LLSHIFT:
-		case ASLSHL:
-		case PTOI:
-			return ((reg + 1) & ~01);
-
-		case DIVIDE:
-		case MOD:
-		case ASDIV:
-		case ASMOD:
-		case ULSH:
-		case ASULSH:
-			reg++;
-
-		case TIMES:
-		case ASTIMES:
-			return (reg | 1);
-		}
-	}
-	return (reg);
-}
+/* Type lengths: INT,CHAR,UNSIGN,UNCHAR=2, LONG,UNLONG=4, FLOAT,DOUBLE=8 */
+static char arltab[] = { 2, 2, 8, 8, 0, 0, 4, 2, 2, 4, 0 };
 
 arlength(t)
 {
 	if (t >= PTR)
 		return (2);
-	switch (t) {
-
-	case INT:
-	case CHAR:
-	case UNSIGN:
-	case UNCHAR:
-		return (2);
-
-	case UNLONG:
-	case LONG:
-		return (4);
-
-	case FLOAT:
-	case DOUBLE:
-		return (8);
-	}
-	error("botch: peculiar type %d", t);
-	return (1024);
+	return arltab[t];
 }
 
 /*
@@ -702,8 +653,6 @@ again:
 		else
 			op = maprel[op - EQUAL];
 	}
-	if (isfloat(tree))
-		printf("cfcc\n");
 	branch(lbl, op, !cond);
 }
 
@@ -760,7 +709,7 @@ char cond, reg;
 	}
 	if (cexpr(tree, cctab, reg) < 0) {
 		reg = rcexpr(tree, regtab, reg);
-		printf("ashc	$0,r%d\n", reg);
+		printf("\tcall\tltsthl\n");
 		branch(xlab1, op, 0);
 	}
 	xlab1 = xl1;
@@ -1013,17 +962,29 @@ getree()
 
 		case SNAME:
 			outname(s);
+#ifdef DEBUG
 			printf("; %s=L%d\n", s + 1, geti());
+#else
+			geti();
+#endif
 			break;
 
 		case ANAME:
 			outname(s);
+#ifdef DEBUG
 			printf("; %s=%o\n", s + 1, UNS(geti()));
+#else
+			geti();
+#endif
 			break;
 
 		case RNAME:
 			outname(s);
+#ifdef DEBUG
 			printf("; %s=%s\n", s + 1, regname[geti()]);
+#else
+			geti();
+#endif
 			break;
 
 		case SWIT:

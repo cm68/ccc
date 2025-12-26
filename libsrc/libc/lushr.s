@@ -1,12 +1,11 @@
-;	arithmetic long left shift
+;	logical (unsigned) long right shift
 ;	value in HLDE, count in B
 
-	global	allsh, lllsh, lshl
+	global	lushr, ulrsh
 	psect	text
 
-allsh:
-lllsh:
-lshl:
+lushr:
+ulrsh:
 	ld	a,b		;check for zero shift
 	or	a
 	ret	z
@@ -14,10 +13,10 @@ lshl:
 	jr	c,1f		;limit shift to 32 bits
 	ld	b,32
 1:
-	ex	de,hl
-	add	hl,hl
-	ex	de,hl 
-	adc	hl,hl
+	srl	h		;logical shift (unsigned)
+	rr	l
+	rr	d
+	rr	e
 	djnz	1b
 	ret
 

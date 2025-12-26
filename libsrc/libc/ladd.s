@@ -1,8 +1,9 @@
 	psect	text
-	global	aladd, lladd
+	global	aladd, lladd, ladd
 
 aladd:
 lladd:
+ladd:
 	exx
 	pop	hl
 	exx
