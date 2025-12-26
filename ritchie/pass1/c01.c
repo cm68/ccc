@@ -23,7 +23,8 @@ build(op)
 	register int t1;
 	int t2, t;
 	register union tree *p1, *p2, *p3;
-	int dope, leftc, cvn, pcvn;
+	int dope;
+	char leftc, cvn, pcvn;
 
 	/*
 	 * a[i] => *(a+i)
@@ -395,7 +396,7 @@ structident(p1, p2)
 register union tree *p1, *p2;
 {
 	register struct nmlist *np;
-	int vartypes = 0, namesame = 1;
+	char vartypes = 0, namesame = 1;
 
 	np = (struct nmlist *) p2->t.tr1;
 	for (;;) {
@@ -435,7 +436,7 @@ union tree *
 convert(p, t, cvn, len)
 union tree *p;
 {
-	register int op;
+	char op;
 
 	if (cvn == 0)
 		return (p);

@@ -55,8 +55,7 @@ isatype(o)
 ansiparams()
 {
 	struct nmlist typer, anonparm;
-	char sclass;
-	int o;
+	char sclass, o;
 
 	paraml = NULL;
 	parame = NULL;
@@ -157,8 +156,7 @@ char *scptr;
 struct nmlist *tptr;
 {
 	char skw, tkw, longf;
-	int o;
-	char isadecl, ismos, unsignf;
+	char o, isadecl, ismos, unsignf;
 
 	isadecl = 0;
 	longf = 0;
@@ -178,9 +176,9 @@ struct nmlist *tptr;
 				 * If redefining same typedef, let it be declarator 
 				 */
 				/*
-				 * Compute effective type with modifiers 
+				 * Compute effective type with modifiers
 				 */
-				int etype = tkw;
+				char etype = tkw;
 
 				if (unsignf) {
 					if (etype == INT)
@@ -306,8 +304,9 @@ types:
 union str *
 strdec(mosf, kind)
 {
-	register elsize, o;
+	register elsize;
 	register struct nmlist *ssym;
+	char o;
 	char savebits;
 	struct nmlist **savememlist;
 	union str *savesparent;
@@ -748,8 +747,8 @@ struct nmlist *absname;
 {
 	static struct nmlist argtype;
 	int type;
-	register int o;
 	register struct nmlist *ds;
+	char o;
 
 	defsym = 0;
 	type = 0;
@@ -873,7 +872,8 @@ typov()
 int
 align(type, offset, aflen)
 {
-	register a, t, flen;
+	register a, t;
+	char flen;
 	char *ftl;
 
 	flen = aflen;

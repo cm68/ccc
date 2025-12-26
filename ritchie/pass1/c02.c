@@ -22,8 +22,7 @@ struct swtab swtab[SWSIZ];
  */
 extdef()
 {
-	register o;
-	char sclass, scflag;
+	char o, sclass, scflag;
 	struct nmlist typer;
 	register struct nmlist *ds;
 
@@ -169,7 +168,8 @@ struct nmlist *anp;
 {
 	struct nmlist np;
 	register nel, ninit;
-	int width, isarray, o, brace, realtype;
+	int width, realtype;
+	char o, isarray, brace;
 	union tree *s;
 
 	np = *anp;
@@ -277,7 +277,7 @@ struct nmlist *np;
 	static struct nmlist junk;
 	register struct nmlist **mlp;
 	static struct nmlist *zerloc = NULL;
-	register int o, brace;
+	char o, brace;
 
 	if ((mlp = np->hstrp->S.memlist) == NULL) {
 		mlp = &zerloc;
@@ -336,8 +336,8 @@ register struct nmlist *np;
  */
 statement()
 {
-	register o, o1;
-	int sauto, sreg;
+	char o, o1, sreg;
+	int sauto;
 
 stmt:
 	switch (o = symbol()) {
@@ -601,9 +601,9 @@ syntax:
 int
 forstmt()
 {
-	register int o;
 	register union tree *st;
 	register l;
+	char o;
 	char *ss;
 
 	if ((o = symbol()) != LPARN)
@@ -660,8 +660,8 @@ forstmt()
 union tree *
 pexpr(eflag)
 {
-	register o;
 	register union tree *t;
+	char o;
 
 	if ((o = symbol()) != LPARN)
 		goto syntax;
@@ -765,7 +765,7 @@ funchead()
 
 blockhead()
 {
-	register r;
+	char r;
 
 	r = regvar;
 	blklev++;
@@ -822,7 +822,7 @@ register struct nmlist *ocs, *cs;
 prste(cs)
 struct nmlist *cs;
 {
-	register nkind;
+	char nkind;
 
 	switch (cs->hclass) {
 	case REG:
@@ -850,7 +850,7 @@ struct nmlist *cs;
  */
 errflush(ao)
 {
-	register o;
+	char o;
 
 	o = ao;
 	while (o > RBRACE) {		/* ; { } */

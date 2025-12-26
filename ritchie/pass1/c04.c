@@ -67,7 +67,7 @@ treeout(tp, isstruct)
 register union tree *tp;
 {
 	register struct nmlist *hp;
-	register nextisstruct;
+	char nextisstruct;
 
 	if (tp == NULL || tp->t.op == NULLOP) {
 		outcode("B", XNULLOP);
@@ -275,7 +275,7 @@ simplegoto()
 int
 nextchar()
 {
-	register c, mapped;
+	register char c, mapped;
 	static char tokmap[] = "X;{}[]():#";
 
 	/*

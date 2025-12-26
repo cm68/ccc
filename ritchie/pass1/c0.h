@@ -179,8 +179,8 @@ extern int retlab;
 extern int deflab;
 extern unsigned autolen;		/* make these int if necessary */
 extern unsigned maxauto;		/* ... will only cause trouble rarely */
-extern int peeksym;
-extern int peekc;
+extern char peeksym;
+extern char peekc;
 extern char eof;
 extern int line;
 extern char *locbase;

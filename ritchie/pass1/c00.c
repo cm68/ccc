@@ -9,8 +9,8 @@
 #include "c0.h"
 
 int isn = 1;
-int peeksym = -1;
-int peekc;
+char peeksym = -1;
+char peekc;
 int line = 1;
 char eof;
 struct tnode funcblk = { NAME };
@@ -163,7 +163,7 @@ readlong()
 int
 gettok()
 {
-	int c;
+	char c;
 
 again:
 	c = getc(xfile);
@@ -217,7 +217,7 @@ readsym()
 int
 symbol()
 {
-	register c;
+	register char c;
 
 	if (peeksym >= 0) {
 		c = peeksym;
@@ -278,25 +278,7 @@ symbol()
 		 * output by putstr() or here for pointer initializers.
 		 */
 		cval = isn++;
-		{
-			int len = readword();
-			int i;
-			/*
-			 * Buffer the string data 
-			 */
-			strbuflen = len;
-			for (i = 0; i < len && i < sizeof(strbuf) - 1; i++)
-				strbuf[i] = getc(xfile);
-			/*
-			 * Skip remaining if too long 
-			 */
-			for (; i < len; i++)
-				getc(xfile);
-			strbuf[i < sizeof(strbuf) ? i : sizeof(strbuf) - 1] = 0;
-			nchstr = len + 1;
-		}
-		return (STRING);
-
+		/* FALLTHROUGH */
 	case ASMSTR:
 		/*
 		 * ASMSTR: 2-byte len + string bytes
@@ -309,13 +291,15 @@ symbol()
 			for (i = 0; i < len && i < sizeof(strbuf) - 1; i++)
 				strbuf[i] = getc(xfile);
 			/*
-			 * Skip remaining if too long 
+			 * Skip remaining if too long
 			 */
 			for (; i < len; i++)
 				getc(xfile);
 			strbuf[i < sizeof(strbuf) ? i : sizeof(strbuf) - 1] = 0;
+			if (c == STRING)
+				nchstr = len + 1;
 		}
-		return (ASMSTR);
+		return (c);
 
 	case FCON:
 		/*
@@ -396,11 +380,10 @@ register max;
 union tree *
 tree(eflag)
 {
-	static int opst[SSIZE], prst[SSIZE];
-	int *op, *pp;
-	register int andflg, o;
+	static unsigned char opst[SSIZE], prst[SSIZE];
+	unsigned char *op, *pp;
 	register struct nmlist *cs;
-	int p, ps, os, xo = 0, *xop;
+	unsigned char p, ps, os, andflg, o;
 	char *svtree;
 	static struct cnode garbage =
 		{ CON, INT, (int *) NULL, (union str *) NULL, 0 };
