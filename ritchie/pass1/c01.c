@@ -4,12 +4,29 @@
 
 #include "c0.h"
 
-char *locbase;
-char *coremax;
+/*
+ * Memory management:
+ *
+ * A single heap grows via sbrk(). Two allocators share it:
+ *
+ *   locbase  ---> [declarations]  (Dblock: symbols, types - permanent)
+ *                 [DCLSLOP gap]   (allows some Dblock during expressions)
+ *   treebot  ---> [expr trees]    (Tblock: AST nodes - temporary)
+ *   treebase --->
+ *                 [free space]
+ *   coremax  --->
+ *
+ * Dblock() allocates upward from locbase for permanent data.
+ * Tblock() allocates upward from treebase for expression trees.
+ * starttree() initializes tree area with DCLSLOP gap above locbase.
+ * endtree() resets treebase, reclaiming all tree memory.
+ */
+char *locbase;					/* next free byte for declarations */
+char *coremax;					/* top of heap */
 int nerror;
 char filename[64];
-char *treebase;
-char *treebot;
+char *treebase;					/* next free byte for trees (NULL if inactive) */
+char *treebot;					/* bottom of tree area */
 
 /*
  * Called from tree, this routine takes the top 1, 2, or 3
@@ -668,7 +685,7 @@ char *string;
 }
 
 /*
- * Grow memory pool
+ * Extend heap by 1KB
  */
 static
 growcore()
@@ -679,8 +696,8 @@ growcore()
 }
 
 /*
- * Assign a block for use in the
- * expression tree.
+ * Allocate n bytes for expression tree nodes.
+ * Must be within starttree()/endtree() bracket.
  */
 char *
 Tblock(n)
@@ -695,6 +712,11 @@ Tblock(n)
 	return (p);
 }
 
+/*
+ * Begin expression tree allocation.
+ * Returns handle for endtree() to reclaim memory.
+ * Nested calls return previous handle without reinitializing.
+ */
 char *
 starttree()
 {
@@ -706,6 +728,10 @@ starttree()
 	return (st);
 }
 
+/*
+ * End expression tree allocation, reclaim memory.
+ * Pass NULL to fully reset, or handle from starttree() for nesting.
+ */
 endtree(tp)
 char *tp;
 {
@@ -715,7 +741,8 @@ char *tp;
 }
 
 /*
- * Assign a block for use in a declaration
+ * Allocate n bytes for permanent declaration data (symbols, types).
+ * Protected from tree area by DCLSLOP gap.
  */
 char *
 Dblock(n)
