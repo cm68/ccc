@@ -665,3 +665,5 @@ copnum(len)
 	strcpy(s1, numbuf);
 	return (s1);
 }
+
+/* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

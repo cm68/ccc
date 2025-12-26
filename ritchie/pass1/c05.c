@@ -445,3 +445,5 @@ char cvtab[4][4] = {
 char cvntab[] = {
 	0, ITOF, ITOL, LTOF, ITOP, PTOI, FTOI, LTOI, FTOL, LTOP,
 };
+
+/* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

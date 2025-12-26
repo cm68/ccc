@@ -988,3 +988,5 @@ gentemp(type)
 		maxauto = autolen;
 	return (tp);
 }
+
+/* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

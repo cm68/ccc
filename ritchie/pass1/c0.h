@@ -524,3 +524,5 @@ int incref();
 int plength();
 int length();
 int simplegoto();
+
+/* vim: set tabstop=4 shiftwidth=4 noexpandtab: */
