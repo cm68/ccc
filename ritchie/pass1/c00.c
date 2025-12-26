@@ -61,7 +61,6 @@ char *argv[];
 		fatal("Can't create temp");
 	setbuf(stdout, buf2);		/* stdio sbrk problems */
 	setbuf(sbufp, sbuf);
-	STAUTO = -8;
 	while (argc > 4) {
 		switch (argv[4][1]) {
 		case 'P':

@@ -4,7 +4,6 @@
 
 #include "c0.h"
 
-int STAUTO;
 struct nmlist *funcsym;
 struct nmlist *paraml;
 char regvar;

@@ -651,31 +651,10 @@ struct nmlist *atptr, *absname;
 	else
 		peeksym = a;
 	if (skw == AUTO) {
-		/*
-		 * if (STAUTO < 0) { 
-		 */
 		autolen -= length((union tree *) dsym);
 		dsym->hoffset = autolen;
 		if (autolen < maxauto)
 			maxauto = autolen;
-		/*
-		 * } else { 
-		 */
-		/*
-		 * dsym->hoffset = autolen; 
-		 */
-		/*
-		 * autolen += rlength(dsym); 
-		 */
-		/*
-		 * if (autolen > maxauto) 
-		 */
-		/*
-		 * maxauto = autolen; 
-		 */
-		/*
-		 * } 
-		 */
 		if (isinit)
 			cinit(dsym, 0, AUTO);
 		isinit = 0;
