@@ -19,7 +19,7 @@ char	eof;
 struct	tnode	funcblk = { NAME };
 
 /* Buffer for string literals from tokenized input */
-char	strbuf[4096];
+char	strbuf[1024];
 int	strbuflen;
 
 union	tree *cmst[CMSIZ];
@@ -28,7 +28,7 @@ union	tree **cp = cmst;
 char	unscflg;
 FILE	*xfile;
 FILE	*sbufp;
-char	sbuf[BUFSIZ];
+char	sbuf[512];
 char	proflg;
 char	strflg;
 char	symbuf[MAXCPS+2];
@@ -50,19 +50,13 @@ char	*argv[];
 		argv++;
 		unscflg++;
 	}
-	if(argc<4) {
-		error("Arg count");
-		exit(1);
-	}
+	if(argc<4)
+		fatal("Arg count");
 	/* Open .x file (binary tokenized input from cpp) */
-	if ((xfile = fopen(argv[1], "rb")) == NULL) {
-		error("Can't find %s", argv[1]);
-		exit(1);
-	}
-	if (freopen(argv[2], "w", stdout)==NULL || (sbufp=fopen(argv[3],"w"))==NULL) {
-		error("Can't create temp");
-		exit(1);
-	}
+	if ((xfile = fopen(argv[1], "rb")) == NULL)
+		fatal("Can't find %s", argv[1]);
+	if (freopen(argv[2], "w", stdout)==NULL || (sbufp=fopen(argv[3],"w"))==NULL)
+		fatal("Can't create temp");
 	setbuf(stdout,buf2);	/* stdio sbrk problems */
 	setbuf(sbufp, sbuf);
 	/*
@@ -427,10 +421,8 @@ advanc:
 		  (union str *)NULL, (union tree *)cs, TNULL);
 
 	tand:
-		if(cp>=cmst+CMSIZ) {
-			error("Expression overflow");
-			exit(1);
-		}
+		if(cp>=cmst+CMSIZ)
+			fatal("Expression overflow");
 		if (andflg)
 			goto syntax;
 		andflg = 1;
@@ -549,10 +541,8 @@ opon1:
 				goto reduce;
 			}
 		}
-		if (op >= &opst[SSIZE-1]) {
-			error("expression overflow");
-			exit(1);
-		}
+		if (op >= &opst[SSIZE-1])
+			fatal("expression overflow");
 		*++op = o;
 		*++pp = p;
 		goto advanc;

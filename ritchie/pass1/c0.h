@@ -199,7 +199,7 @@ extern struct	nmlist *parame;
 extern char	strflg;
 extern char	mosflg;
 extern char	initflg;
-extern char	sbuf[BUFSIZ];
+extern char	sbuf[512];
 extern	char	strbuf[];
 extern FILE	*sbufp;
 extern FILE	*xfile;		/* .x input file from cpp */

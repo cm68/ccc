@@ -405,10 +405,8 @@ char *s;
 		continue;
 
 	case '\0':
-		if (ferror(bufp)) {
-			error("Write error on temp");
-			exit(1);
-		}
+		if (ferror(bufp))
+			fatal("Write error on temp");
 		return;
 
 	default:

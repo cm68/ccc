@@ -562,6 +562,14 @@ char *s;
 	errmsg("", s, p1, p2, p3, p4, p5, p6);
 }
 
+/* VARARGS1 */
+fatal(s, p1, p2, p3, p4, p5, p6)
+char *s;
+{
+	error(s, p1, p2, p3, p4, p5, p6);
+	exit(1);
+}
+
 /*
  * Generate a node in an expression tree,
  * setting the operator, type, dimen/struct table ptrs,
@@ -631,6 +639,17 @@ char *string;
 }
 
 /*
+ * Grow memory pool
+ */
+static
+growcore()
+{
+	if (sbrk(1024) == (char *)-1)
+		fatal("Out of space");
+	coremax += 1024;
+}
+
+/*
  * Assign a block for use in the
  * expression tree.
  */
@@ -640,17 +659,10 @@ Tblock(n)
 	register char *p;
 
 	p = treebase;
-	if (p==NULL) {
-		error("c0 internal error: Tblock");
-		exit(1);
-	}
-	if ((treebase += n) >= coremax) {
-		if (sbrk(1024) == (char *)-1) {
-			error("Out of space");
-			exit(1);
-		}
-		coremax += 1024;
-	}
+	if (p==NULL)
+		fatal("c0 internal error: Tblock");
+	if ((treebase += n) >= coremax)
+		growcore();
 	return(p);
 }
 
@@ -683,17 +695,10 @@ Dblock(n)
 
 	p = locbase;
 	locbase += n;
-	if (treebot && locbase > treebot) {
-		error("Too much declaring in an expression");
-		exit(1);
-	}
-	if (locbase > coremax) {
-		if (sbrk(1024) == (char *)-1) {
-			error("out of space");
-			exit(1);
-		}
-		coremax += 1024;
-	}
+	if (treebot && locbase > treebot)
+		fatal("Too much declaring in an expression");
+	if (locbase > coremax)
+		growcore();
 	return(p);
 }
 
