@@ -867,7 +867,7 @@ align(type, offset, aflen)
 		 * End of bitfield sequence - pad to storage unit boundary
 		 */
 		if (bitoffs) {
-			if (bftype == INT || bftype == UNSIGN)
+			if (bftype == INT)
 				a += NCPW;
 			else
 				a++;
