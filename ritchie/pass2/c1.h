@@ -121,31 +121,31 @@ struct swtab {
 
 extern char maprel[];
 extern char notrel[];
-int nreg;
-int isn;
-int line;
-int nerror;						/* number of hard errors */
+extern int nreg;
+extern int isn;
+extern int line;
+extern int nerror;				/* number of hard errors */
 extern struct table cctab[];
 extern struct table efftab[];
 extern struct table regtab[];
 extern struct table sptab[];
-struct table lsptab[1];
+extern struct table lsptab[];
 extern struct instab instab[];
 extern struct instab branchtab[];
 extern int opdope[];
 extern char *opntab[];
-int nstack;
-int nfloat;
-struct tname sfuncr;
-char *funcbase;
-char *curbase;
-char *coremax;
-struct tconst czero, cone;
-long totspace;
-int regpanic;					/* set when SU register alg. fails */
-int panicposs;					/* set when there might be need for
+extern int nstack;
+extern int nfloat;
+extern struct tname sfuncr;
+extern char *funcbase;
+extern char *curbase;
+extern char *coremax;
+extern struct tconst czero, cone;
+extern long totspace;
+extern int regpanic;			/* set when SU register alg. fails */
+extern int panicposs;			/* set when there might be need for
 								 * regpanic */
-jmp_buf jmpbuf;
+extern jmp_buf jmpbuf;
 long ftell();
 char *sbrk();
 struct optab *match();
@@ -164,12 +164,11 @@ union tree *lconst();
 union tree *acommute();
 union tree *lvfield();
 union tree *paint();
-long ftell();
 
 /*
  * Some special stuff for long comparisons
  */
-int xlab1, xlab2, xop, xzero;
+extern int xlab1, xlab2, xop, xzero;
 
 /*
  * operators 

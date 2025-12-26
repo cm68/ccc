@@ -42,6 +42,19 @@ struct table *cregtab;
 
 int nreg = NREG;				/* Z80: BC and IX available */
 int isn = 10000;
+int line;
+int nerror;
+struct table lsptab[1];
+int nstack;
+int nfloat;
+char *funcbase;
+char *curbase;
+char *coremax;
+long totspace;
+int regpanic;
+int panicposs;
+jmp_buf jmpbuf;
+int xlab1, xlab2, xop, xzero;
 
 main(argc, argv)
 int argc;
