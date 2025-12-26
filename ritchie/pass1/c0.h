@@ -207,6 +207,7 @@ extern FILE *sbufp;
 extern FILE *xfile;				/* .x input file from cpp */
 extern char regvar;
 extern char bitoffs;
+extern char bftype;
 extern struct tnode funcblk;
 extern char cvntab[];
 extern char numbuf[64];

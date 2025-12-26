@@ -13,6 +13,7 @@ struct nmlist *defsym;
 int cval;
 struct nmlist *parame;
 char bitoffs;
+char bftype;					/* base type of current bitfield: INT or CHAR */
 struct nmlist **memlist;
 union str *sparent;
 char nmems;
@@ -308,7 +309,7 @@ strdec(mosf, kind)
 	register elsize;
 	register struct nmlist *ssym;
 	char o;
-	char savebits;
+	char savebits, savebftype;
 	struct nmlist **savememlist;
 	union str *savesparent;
 	char savenmems;
@@ -362,6 +363,7 @@ strdec(mosf, kind)
 		ds = defsym;
 		mosflg = 0;
 		savebits = bitoffs;
+		savebftype = bftype;
 		savememlist = memlist;
 		savesparent = sparent;
 		savenmems = nmems;
@@ -369,6 +371,7 @@ strdec(mosf, kind)
 		sparent = strp;
 		nmems = 2;
 		bitoffs = 0;
+		bftype = 0;
 		if (kind == ENUM) {
 			typer.htype = INT;
 			typer.hstrp = strp;
@@ -376,6 +379,7 @@ strdec(mosf, kind)
 		} else
 			elsize = declist(kind == UNION ? MOU : MOS);
 		bitoffs = savebits;
+		bftype = savebftype;
 		defsym = ds;
 		if (strp->S.ssize)
 			error("%s redeclared", ssym->name);
@@ -859,23 +863,46 @@ align(type, offset, aflen)
 	a = offset;
 	ftl = "Field too long";
 	if (flen == 0) {
-		a += (NBPC + bitoffs - 1) / NBPC;
+		/*
+		 * End of bitfield sequence - pad to storage unit boundary
+		 */
+		if (bitoffs) {
+			if (bftype == INT || bftype == UNSIGN)
+				a += NCPW;
+			else
+				a++;
+		}
 		bitoffs = 0;
+		bftype = 0;
 	} else {
 		if (type == INT || type == UNSIGN) {
 			if (flen > NBPW)
 				error(ftl);
-			if (flen + bitoffs > NBPW) {
+			/*
+			 * Switching from char to int bitfield, or overflow
+			 */
+			if (bftype == CHAR || bftype == UNCHAR) {
+				a++;
 				bitoffs = 0;
+			} else if (flen + bitoffs > NBPW) {
 				a += NCPW;
+				bitoffs = 0;
 			}
+			bftype = INT;
 		} else if (type == CHAR || type == UNCHAR) {
 			if (flen > NBPC)
 				error(ftl);
-			if (flen + bitoffs > NBPC) {
+			/*
+			 * Switching from int to char bitfield, or overflow
+			 */
+			if (bftype == INT || bftype == UNSIGN) {
+				a += NCPW;
 				bitoffs = 0;
-				a += 1;
+			} else if (flen + bitoffs > NBPC) {
+				a++;
+				bitoffs = 0;
 			}
+			bftype = CHAR;
 		} else
 			error("Bad type for field");
 	}
