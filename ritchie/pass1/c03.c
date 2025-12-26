@@ -25,6 +25,7 @@ unsigned maxauto;
  * Used to distinguish C90 from K&R function parameters.
  */
 isatype(o)
+char o;
 {
 	if (o == NAME && csym->hclass == TYPEDEF)
 		return 1;
