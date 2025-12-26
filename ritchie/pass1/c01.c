@@ -76,7 +76,7 @@ build(op)
 						  TNULL, TNULL);
 			*cp++ = p2;
 			build(CAST);
-			*cp++ = cblock(0377);
+			*cp++ = cblock(CHARMASK);
 			build(AND);
 			return;
 		}
@@ -232,8 +232,8 @@ build(op)
 		cvn = 0;
 	} else
 		cvn = cvtab[lintyp(t1)][lintyp(t2)];
-	leftc = (cvn >> 4) & 017;
-	cvn &= 017;
+	leftc = (cvn >> CVT_SHIFT) & CVT_MASK;
+	cvn &= CVT_MASK;
 	t = leftc ? t2 : t1;
 	if ((t == INT || t == CHAR) && (t1 == UNSIGN || t2 == UNSIGN))
 		t = UNSIGN;

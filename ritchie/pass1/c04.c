@@ -392,7 +392,7 @@ char *s;
 				fputc('_', bufp);
 str:
 			while (n-- && *np) {
-				fputc(*np++ & 0177, bufp);
+				fputc(*np++ & ASCMASK, bufp);
 			}
 			fputc(0, bufp);
 			continue;

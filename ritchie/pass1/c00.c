@@ -355,7 +355,7 @@ register max;
 	for (i = 0; i < strbuflen && i < max; i++) {
 		if (i % 15 == 0 && i > 0)
 			outcode("0B", BDATA);
-		outcode("1N", strbuf[i] & 0377);
+		outcode("1N", strbuf[i] & CHARMASK);
 	}
 	/*
 	 * null terminator if room 
@@ -549,7 +549,7 @@ atype:
 	andflg = 0;
 
 oponst:
-	p = (opdope[o] >> 9) & 017;
+	p = (opdope[o] >> PREC_POS) & PREC_MASK;
 opon1:
 	if (o == COLON && op[0] == COLON && op[-1] == QUEST) {
 		build(*op--);
@@ -562,12 +562,12 @@ opon1:
 
 		case INCAFT:
 		case DECAFT:
-			p = 15;
+			p = PREC_HIGH;
 			break;
 		case LPARN:
 		case LBRACK:
 		case CALL:
-			p = 0;
+			p = PREC_NONE;
 		}
 		if (initflg) {
 			if ((o == COMMA && *op != LPARN && *op != CALL)

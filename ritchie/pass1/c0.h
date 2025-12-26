@@ -53,6 +53,12 @@ extern int STAUTO;
 #define	SZDOUB	8
 
 /*
+ * Character masks
+ */
+#define	CHARMASK	0377			/* 8-bit character mask */
+#define	ASCMASK		0177			/* 7-bit ASCII mask */
+
+/*
  * Structure of namelist
  */
 struct nmlist {
@@ -444,12 +450,18 @@ extern char mossym;
 #define	PREC_MUL	12			/* * / % */
 #define	PREC_UNARY	13			/* prefix: ! ~ - * & sizeof */
 #define	PREC_POSTFX	14			/* . -> [] () call */
+#define	PREC_HIGH	15			/* force immediate evaluation */
 
-#define	PREC(n)		((n) << 9)
+#define	PREC_POS	9			/* bit position of prec in opdope */
+#define	PREC_MASK	017			/* 4-bit precedence mask */
+#define	PREC(n)		((n) << PREC_POS)
 
 /*
- * Conversion codes
+ * Conversion codes (packed as pairs in cvtab: left<<4 | right)
  */
+#define	CVT_SHIFT	4			/* shift for left conversion */
+#define	CVT_MASK	017			/* 4-bit conversion mask */
+
 #define	ITF	1
 #define	ITL	2
 #define	LTF	3
