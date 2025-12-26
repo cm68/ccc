@@ -654,7 +654,7 @@ struct nmlist *atptr, *absname;
 		/*
 		 * if (STAUTO < 0) { 
 		 */
-		autolen -= rlength((union tree *) dsym);
+		autolen -= length((union tree *) dsym);
 		dsym->hoffset = autolen;
 		if (autolen < maxauto)
 			maxauto = autolen;
@@ -683,11 +683,10 @@ struct nmlist *atptr, *absname;
 		dsym->hoffset = isn;
 		if (isinit) {
 			outcode("BBN", DATA, LABEL, isn++);
-			if (cinit(dsym, 1, STATIC) & ALIGN)
-				outcode("B", EVEN);
+			cinit(dsym, 1, STATIC);
 		} else
 			outcode("BBNBN", BSS, LABEL, isn++, SSPACE,
-					rlength((union tree *) dsym));
+					length((union tree *) dsym));
 		outcode("B", PROG);
 		isinit = 0;
 	} else if (skw == REG && isinit) {
@@ -866,32 +865,23 @@ typov()
 }
 
 /*
- * Enforce alignment restrictions in structures,
- * including bit-field considerations.
+ * Handle bit-field considerations in structures.
+ * Z80 has no alignment restrictions.
  */
 int
 align(type, offset, aflen)
 {
-	register a, t;
+	register a;
 	char flen;
 	char *ftl;
 
 	flen = aflen;
 	a = offset;
-	t = type;
 	ftl = "Field too long";
 	if (flen == 0) {
 		a += (NBPC + bitoffs - 1) / NBPC;
 		bitoffs = 0;
-	}
-	while ((t & XTYPE) == ARRAY)
-		t = decref(t);
-	if (t != CHAR && t != UNCHAR) {
-		a = (a + ALIGN) & ~ALIGN;
-		if (a > offset)
-			bitoffs = 0;
-	}
-	if (flen) {
+	} else if (flen) {
 		if (type == INT || type == UNSIGN) {
 			if (flen > NBPW)
 				error(ftl);

@@ -229,16 +229,6 @@ union tree *cs;
 }
 
 /*
- * The number of bytes in an object, rounded up to a word.
- */
-int
-rlength(cs)
-union tree *cs;
-{
-	return ((length(cs) + ALIGN) & ~ALIGN);
-}
-
-/*
  * After an "if (...) goto", look to see if the transfer
  * is to a simple label.
  */

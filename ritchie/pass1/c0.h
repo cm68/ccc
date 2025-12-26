@@ -339,7 +339,6 @@ extern char mossym;
 #define	VOID	10
 #define	UNION	8				/* adjusted later to struct */
 
-#define	ALIGN	01
 #define	TYPE	017
 #define	BIGTYPE	060000
 #define	TYLEN	2
@@ -518,5 +517,4 @@ int decref();
 int incref();
 int plength();
 int length();
-int rlength();
 int simplegoto();

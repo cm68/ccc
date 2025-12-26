@@ -982,7 +982,7 @@ gentemp(type)
 	tp->hsubsp = NULL;
 	tp->hstrp = NULL;
 	tp->hblklev = blklev;
-	autolen -= rlength((union tree *) tp);
+	autolen -= length((union tree *) tp);
 	tp->hoffset = autolen;
 	if (autolen < maxauto)
 		maxauto = autolen;

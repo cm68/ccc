@@ -73,7 +73,7 @@ extdef()
 			paraml = NULL;
 		} else if ((o = symbol()) == COMMA || o == SEMI) {
 			peeksym = o;
-			o = (length((union tree *) ds) + ALIGN) & ~ALIGN;
+			o = length((union tree *) ds);
 			if (sclass == STATIC) {
 				setinit(ds);
 				outcode("BSBBSBN", SYMDEF, "", BSS, NLABEL, ds->name,
@@ -98,8 +98,7 @@ extdef()
 			if (sclass == EXTERN)
 				outcode("BS", SYMDEF, ds->name);
 			outcode("BBS", DATA, NLABEL, ds->name);
-			if (cinit(ds, 1, sclass) & ALIGN)
-				outcode("B", EVEN);
+			cinit(ds, 1, sclass);
 		}
 	} while ((o = symbol()) == COMMA);
 	if (o == SEMI)
@@ -297,10 +296,8 @@ struct nmlist *np;
 			cinit(&junk, 0, sclass);
 		} else
 			cinit(*mlp++, 0, sclass);
-		if (*mlp == &structhole) {
-			outcode("B", EVEN);
+		if (*mlp == &structhole)
 			mlp++;
-		}
 		/*
 		 * DAG -- union initialization bug fix 
 		 */
@@ -310,11 +307,8 @@ struct nmlist *np;
 				mlp++;			/* skip other members of union */
 		}
 	} while ((o = symbol()) == COMMA && (*mlp || brace));
-	if (sclass != AUTO && sclass != REG) {
-		if (*mlp)
-			outcode("BN", SSPACE, np->hstrp->S.ssize - (*mlp)->hoffset);
-		outcode("B", EVEN);
-	}
+	if (sclass != AUTO && sclass != REG && *mlp)
+		outcode("BN", SSPACE, np->hstrp->S.ssize - (*mlp)->hoffset);
 	if (o != RBRACE || brace == 0)
 		peeksym = o;
 }
@@ -737,7 +731,7 @@ funchead()
 			cs->htype -= (ARRAY - PTR);	/* set ptr */
 			cs->hsubsp++;		/* pop dims */
 		}
-		pl += rlength((union tree *) cs);
+		pl += length((union tree *) cs);
 		if (cs->hclass == AREG && (hreg.hoffset = goodreg(cs)) >= 0) {
 			st = starttree();
 			*cp++ = (union tree *) &areg;
