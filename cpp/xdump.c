@@ -199,7 +199,9 @@ main(int argc, char **argv)
             break;
 
         case STRING:
-            len = fgetc(f);
+            /* 2-byte little-endian length + text */
+            len = fgetc(f) & 0xff;
+            len |= (fgetc(f) & 0xff) << 8;
             printf("\"");
             for (i = 0; i < len; i++) {
                 int ch = fgetc(f);

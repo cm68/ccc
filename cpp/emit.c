@@ -106,33 +106,37 @@ emitFNumber(float val)
 }
 
 /*
- * Emit string: STRING(22) + len byte + string bytes
+ * Emit string with 2-byte length: token + 2-byte len + string bytes
+ * Used for both STRING and ASMSTR tokens
  */
-void
-emitString(char *str, int len)
-{
-    unsigned char hdr[2];
-    if (len > 255) len = 255;
-    hdr[0] = STRING;
-    hdr[1] = len;
-    write(lexFd, hdr, 2);
-    write(lexFd, str, len);
-}
-
-/*
- * Emit asm string: ASMSTR(118) + 2-byte len + string bytes
- * Supports up to 65535 bytes for large asm blocks
- */
-void
-emitAsmString(char *str, int len)
+static void
+emitStr2(unsigned char tok, char *str, int len)
 {
     unsigned char hdr[3];
     if (len > 65535) len = 65535;
-    hdr[0] = ASMSTR;
+    hdr[0] = tok;
     hdr[1] = len & 0xff;
     hdr[2] = (len >> 8) & 0xff;
     write(lexFd, hdr, 3);
     write(lexFd, str, len);
+}
+
+/*
+ * Emit string: STRING(22) + 2-byte len + string bytes
+ */
+void
+emitString(char *str, int len)
+{
+    emitStr2(STRING, str, len);
+}
+
+/*
+ * Emit asm string: ASMSTR(118) + 2-byte len + string bytes
+ */
+void
+emitAsmString(char *str, int len)
+{
+    emitStr2(ASMSTR, str, len);
 }
 
 /*
@@ -368,8 +372,12 @@ emitCurToken(void)
         emitFNumber(cur.v.fval);
         break;
     case STRING:
-        /* cur.v.str is a counted string - first byte is length */
-        emitString(cur.v.str + 1, (unsigned char)cur.v.str[0]);
+        /* cur.v.str has 2-byte length prefix */
+        {
+            int len = (unsigned char)cur.v.str[0] |
+                      ((unsigned char)cur.v.str[1] << 8);
+            emitString(cur.v.str + 2, len);
+        }
         break;
     case ASMSTR:
         /* cur.v.name is a raw null-terminated string */
@@ -413,9 +421,18 @@ emitCurToken(void)
             emitPPStr(buf);
             break;
         case STRING:
-            emitPPStr("\"");
-            emitPPString(cur.v.str + 1, (unsigned char)cur.v.str[0]);
-            emitPPStr("\" ");
+            {
+                int len = (unsigned char)cur.v.str[0] |
+                          ((unsigned char)cur.v.str[1] << 8);
+                emitPPStr("\"");
+                emitPPString(cur.v.str + 2, len);
+                emitPPStr("\" ");
+            }
+            break;
+        case ASMSTR:
+            emitPPStr("{ ");
+            emitPPString(cur.v.name, strlen(cur.v.name));
+            emitPPStr(" } ");
             break;
         case LABEL:
             emitPPStr(cur.v.name);

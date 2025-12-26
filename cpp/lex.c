@@ -23,6 +23,14 @@ struct token cur, next;
  */
 char strbuf[STRBUFSIZE];
 
+/*
+ * Large buffer for asm blocks and long concatenated strings
+ * BSS - uninitialized, doesn't bloat binary
+ */
+#define BIGBUFSIZE 8192
+static char bigbuf[BIGBUFSIZE];
+static int bigbuflen;
+
 unsigned long readcppconst();
 char cpppseudofunc();
 
@@ -369,6 +377,36 @@ isnumber()
         return 1;
     }
 
+    /* Check for float starting with . (e.g., .5) */
+    if (curchar == '.' && nextchar >= '0' && nextchar <= '9') {
+        p = strbuf;
+        *p++ = '0';  /* Prepend 0 for atof */
+        *p++ = '.';
+        advance();
+        while (curchar >= '0' && curchar <= '9') {
+            *p++ = curchar;
+            advance();
+        }
+        if ((curchar | 0x20) == 'e') {
+            *p++ = curchar;
+            advance();
+            if (curchar == '+' || curchar == '-') {
+                *p++ = curchar;
+                advance();
+            }
+            while (curchar >= '0' && curchar <= '9') {
+                *p++ = curchar;
+                advance();
+            }
+        }
+        *p = '\0';
+        next.v.fval = (float)atof(strbuf);
+        if ((curchar | 0x20) == 'f' || (curchar | 0x20) == 'l') {
+            advance();
+        }
+        return 2;
+    }
+
     if ((curchar < '0') || (curchar > '9')) {
         return 0;
     }
@@ -389,21 +427,35 @@ isnumber()
     }
     next.v.numeric = getint(base);
 
-    /* Check for float literal (requires decimal point) */
-    if (base == 10 && curchar == '.') {
-        /* Build float string: integer part + . + fractional + optional exp */
+    /* Check for float literal (decimal point or exponent) */
+    /* Treat . as float if followed by: digit, e/E, or non-identifier char */
+    /* This allows: 1.5, 1.e5, 1. but NOT 1.foo (member access) */
+    if (base == 10 && ((curchar == '.' && (
+            (nextchar >= '0' && nextchar <= '9') ||
+            (nextchar | 0x20) == 'e' ||
+            !((nextchar >= 'a' && nextchar <= 'z') ||
+              (nextchar >= 'A' && nextchar <= 'Z') ||
+              nextchar == '_')))
+                       || (curchar | 0x20) == 'e')) {
+        /* Build float string: integer part + optional . + frac + optional exp */
         p = strbuf;
         sprintf(p, "%ld", next.v.numeric);
         p += strlen(p);
-        *p++ = '.';
-        advance();
-        while (curchar >= '0' && curchar <= '9') {
-            *p++ = curchar;
+        if (curchar == '.') {
+            *p++ = '.';
             advance();
+            while (curchar >= '0' && curchar <= '9') {
+                *p++ = curchar;
+                advance();
+            }
         }
         if ((curchar | 0x20) == 'e') {
             *p++ = curchar;
             advance();
+            if (curchar == '+' || curchar == '-') {
+                *p++ = curchar;
+                advance();
+            }
             while (curchar >= '0' && curchar <= '9') {
                 *p++ = curchar;
                 advance();
@@ -734,49 +786,23 @@ doCpp(unsigned char t)
 }
 
 /*
- * Parse string literal into counted string buffer
+ * Parse string literal into bigbuf
  *
- * Processes double-quoted string literals with escape sequence handling.
- * Stores result as counted string (first byte is length, followed by data)
- * in strbuf, supporting embedded null characters.
- *
- * Counted string format:
- *   - strbuf[0]: Length byte (0-255)
- *   - strbuf[1..n]: String characters
- *   - strbuf[n+1]: Null terminator (for convenience, not counted)
- *
- * Escape processing:
- *   - Calls getlit() for each character
- *   - Handles all C escape sequences: \\n, \\t, \\", \\\, \\xNN, etc.
- *   - Supports multi-line strings with backslash-newline
- *
- * Embedded nulls:
- *   - Counted format allows embedded \\0 characters
- *   - Length tracking independent of null terminator
- *   - Example: "ab\\0cd" has length 5
- *
- * Parameters:
- *   None (reads from character stream, writes to strbuf)
+ * Appends to bigbuf starting at bigbuflen position, supporting
+ * string concatenation. Length tracked in bigbuflen (2-byte).
  *
  * Returns:
- *   1 if string parsed (result in strbuf), 0 if curchar not '\"'
- *
- * Side effects:
- *   - Consumes characters from '\"' to closing '\"'
- *   - Writes counted string to strbuf
- *   - strbuf[0] contains final length
+ *   1 if string parsed (appended to bigbuf), 0 if curchar not '\"'
  */
 char
 isstring()
 {
-	char *s = strbuf;
 	unsigned char c;
 
     if (!charmatch('\"')) {
         return 0;
     }
     termin = '"';  /* Tell getlit() what terminates this string */
-	*s++ = 0;
     while (!charmatch('\"')) {
         c = getlit();
         if (c == 0xff) {
@@ -784,20 +810,19 @@ isstring()
             advance();
             break;
         }
-        if (s >= strbuf + STRBUFSIZE - 1) {
-            error("string too long (max 254)");
+        if (bigbuflen >= BIGBUFSIZE - 1) {
+            error("string too long");
             /* consume rest of string to avoid cascading errors */
             while (!charmatch('\"'))
                 getlit();
             break;
         }
-    	strbuf[0]++;
-        *s++ = c;
+        bigbuf[bigbuflen++] = c;
     }
-    *s = 0;
+    bigbuf[bigbuflen] = 0;
 #ifdef DEBUG
     if (VERBOSE(V_STR)) {
-        fdprintf(2,"isstring: %s(%d)\n", &strbuf[1], strbuf[0]);
+        fdprintf(2,"isstring: %s(%d)\n", bigbuf, bigbuflen);
     }
 #endif
     return 1;
@@ -1186,9 +1211,8 @@ gettoken()
                         advance();
                     if (curchar == '{') {
                         int depth = 1;
-                        int bufsiz = 256;
-                        int buflen = 0;
-                        char *buf = malloc(bufsiz);
+                        char *p;
+                        bigbuflen = 0;
                         advance();  /* skip { */
                         /* Capture until matching } */
                         while (depth > 0 && curchar) {
@@ -1197,26 +1221,26 @@ gettoken()
                                 depth--;
                                 if (depth == 0) break;
                             }
-                            if (buflen + 1 >= bufsiz) {
-                                bufsiz *= 2;
-                                buf = realloc(buf, bufsiz);
-                            }
-                            buf[buflen++] = curchar;
+                            if (bigbuflen < BIGBUFSIZE - 1)
+                                bigbuf[bigbuflen++] = curchar;
                             advance();
                         }
-                        buf[buflen] = 0;
+                        bigbuf[bigbuflen] = 0;
                         if (curchar == '}') advance();
-                        /* Trim leading/trailing whitespace */
-                        while (buflen > 0 && (buf[buflen-1] == ' ' ||
-                               buf[buflen-1] == '\t' || buf[buflen-1] == '\n'))
-                            buf[--buflen] = 0;
-                        {
-                            char *p = buf;
-                            while (*p == ' ' || *p == '\t' || *p == '\n') p++;
-                            if (p != buf) memmove(buf, p, strlen(p) + 1);
+                        /* Trim trailing whitespace */
+                        while (bigbuflen > 0 && (bigbuf[bigbuflen-1] == ' ' ||
+                               bigbuf[bigbuflen-1] == '\t' ||
+                               bigbuf[bigbuflen-1] == '\n'))
+                            bigbuf[--bigbuflen] = 0;
+                        /* Trim leading whitespace */
+                        p = bigbuf;
+                        while (*p == ' ' || *p == '\t' || *p == '\n') p++;
+                        if (p != bigbuf) {
+                            bigbuflen = strlen(p);
+                            memmove(bigbuf, p, bigbuflen + 1);
                         }
-                        /* Store asm text for next token */
-                        pendingAsm = buf;
+                        /* Point to bigbuf for next token */
+                        pendingAsm = bigbuf;
                     }
                 }
                 break;
@@ -1237,14 +1261,11 @@ gettoken()
                 break;
             }
         }
+        /* String literal - uses bigbuf for concatenation */
+        bigbuflen = 0;
         if (isstring()) {
-            char *s1;
-            int len1;
             next.type = STRING;
             /* Concatenate adjacent string literals (C89/C90 feature) */
-            len1 = (unsigned char)strbuf[0];
-            s1 = malloc(len1 + 1);
-            memcpy(s1, strbuf, len1 + 1);
             /* Skip whitespace/comments and check for another string */
         strcat:
             while (curchar == ' ' || curchar == '\t' || curchar == '\n')
@@ -1265,18 +1286,17 @@ gettoken()
                     advance();
                 goto strcat;
             }
+            /* More strings to concatenate? isstring() appends to bigbuf */
             while (curchar == '"') {
-                int len2;
                 if (!isstring())
                     break;
-                len2 = (unsigned char)strbuf[0];
-                s1 = realloc(s1, len1 + len2 + 1);
-                memcpy(s1 + 1 + len1, strbuf + 1, len2);
-                len1 += len2;
-                s1[0] = len1;
                 goto strcat;
             }
-            next.v.str = s1;
+            /* Copy result with 2-byte length prefix */
+            next.v.str = malloc(bigbuflen + 3);
+            next.v.str[0] = bigbuflen & 0xff;
+            next.v.str[1] = (bigbuflen >> 8) & 0xff;
+            memcpy(next.v.str + 2, bigbuf, bigbuflen + 1);
             break;
         }
 
