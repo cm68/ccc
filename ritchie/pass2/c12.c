@@ -15,8 +15,8 @@ union tree *
 optim(tree)
 register union tree *tree;
 {
-	register op, dope;
-	int d1, d2;
+	char op, d1, d2;
+	int dope;
 	union tree *t;
 	union {
 		double dv;
@@ -690,7 +690,7 @@ acommute(tree)
 register union tree *tree;
 {
 	struct acl acl;
-	int d, i, op, flt, d1, type;
+	char d, i, op, flt, d1, type;
 	register union tree *t1, **t2;
 	union tree *t;
 
@@ -1108,11 +1108,11 @@ register union tree *lp, *rp;
 }
 
 insert(op, tree, list)
+char op;
 register union tree *tree;
 register struct acl *list;
 {
-	register d;
-	int d1, i;
+	char d, d1, i;
 	union tree *t;
 
 ins:

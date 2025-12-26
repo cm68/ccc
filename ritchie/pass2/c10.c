@@ -117,7 +117,8 @@ struct table *table;
 {
 #define	NOCVL	1
 #define	NOCVR	2
-	int op, d1, d2, dope;
+	char op, d1, d2;
+	int dope;
 	union tree *p2;
 	register union tree *p1;
 	register struct optab *opt;
@@ -205,9 +206,9 @@ struct table *table;
 rcexpr(atree, atable, reg)
 union tree *atree;
 struct table *atable;
+char reg;
 {
-	register r;
-	int modf, nargs, recurf;
+	char r, modf, nargs, recurf;
 	register union tree *tree;
 	register struct table *table;
 
@@ -471,9 +472,11 @@ fixup:
 	r = tree->t.op;
 	if (tree->t.type == STRUCT)
 		error("Illegal operation on structure");
+#ifdef DEBUG
 	else if (r > 0 && r < UASLSHL && opntab[r])
 		error("No code table for op: %s(%d) type: %d", opntab[r], r,
 			  tree->t.type);
+#endif
 	else
 		error("No code table for op %d", r);
 	return (reg);
@@ -491,13 +494,14 @@ fixup:
 cexpr(tree, table, areg)
 register union tree *tree;
 struct table *table;
+char areg;
 {
-	int c, r;
+	int c, opd;
+	char r, reg, reg1, rreg, flag;
 	register union tree *p, *p1;
 	struct table *ctable;
 	union tree *p2;
 	char *string;
-	int reg, reg1, rreg, flag, opd;
 	struct optab *opt;
 
 	reg = areg;
@@ -1338,8 +1342,9 @@ lcasev:
 reorder(treep, table, reg)
 union tree **treep;
 struct table *table;
+char reg;
 {
-	register r, o;
+	char r, o;
 	register union tree *p;
 
 	p = *treep;
@@ -1371,6 +1376,7 @@ struct table *table;
 sreorder(treep, table, reg, recurf)
 union tree **treep;
 struct table *table;
+char reg, recurf;
 {
 	register union tree *p, *p1;
 
@@ -1470,9 +1476,10 @@ OK:
 delay(treep, table, reg)
 union tree **treep;
 struct table *table;
+char reg;
 {
 	register union tree *p, *p1;
-	register r;
+	char r;
 
 	p = *treep;
 	if ((p->t.op == INCAFT || p->t.op == DECAFT)
@@ -1592,6 +1599,7 @@ register union tree *p;
 chkleaf(tree, table, reg)
 register union tree *tree;
 struct table *table;
+char reg;
 {
 	struct tnode lbuf;
 
@@ -1614,10 +1622,9 @@ struct table *table;
  */
 comarg(tree, flagp)
 register union tree *tree;
-int *flagp;
+char *flagp;
 {
-	register retval;
-	int i;
+	char retval, i;
 	int size;
 
 	if (tree->t.op == STRASG) {

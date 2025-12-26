@@ -14,9 +14,10 @@
  *  Tree node for unary and binary
  */
 struct tnode {
-	int op;
-	int type;
-	int degree;
+	char op;
+	char type;
+	char degree;
+	char pad;
 	union tree *tr1;
 	union tree *tr2;
 };
@@ -25,8 +26,8 @@ struct tnode {
  * tree names for locals
  */
 struct tname {
-	int op;
-	int type;
+	char op;
+	char type;
 	char class;
 	char regno;
 	int offset;
@@ -37,8 +38,8 @@ struct tname {
  * tree names for externals
  */
 struct xtname {
-	int op;
-	int type;
+	char op;
+	char type;
 	char class;
 	char regno;
 	int offset;
@@ -49,8 +50,8 @@ struct xtname {
  * short constants
  */
 struct tconst {
-	int op;
-	int type;
+	char op;
+	char type;
 	int value;
 };
 
@@ -58,8 +59,8 @@ struct tconst {
  * long constants
  */
 struct lconst {
-	int op;
-	int type;
+	char op;
+	char type;
 	LTYPE lvalue;
 };
 
@@ -67,8 +68,8 @@ struct lconst {
  * Floating constants
  */
 struct ftconst {
-	int op;
-	int type;
+	char op;
+	char type;
 	int value;
 	double fvalue;
 };
@@ -77,9 +78,10 @@ struct ftconst {
  * Node used for field assignments
  */
 struct fasgn {
-	int op;
-	int type;
-	int degree;
+	char op;
+	char type;
+	char degree;
+	char pad;
 	union tree *tr1;
 	union tree *tr2;
 	int mask;
@@ -104,12 +106,12 @@ struct optab {
 };
 
 struct table {
-	int tabop;
+	char tabop;
 	struct optab *tabp;
 };
 
 struct instab {
-	int iop;
+	char iop;
 	char *str1;
 	char *str2;
 };
@@ -133,7 +135,9 @@ extern struct table lsptab[];
 extern struct instab instab[];
 extern struct instab branchtab[];
 extern int opdope[];
+#ifdef DEBUG
 extern char *opntab[];
+#endif
 extern int nstack;
 extern int nfloat;
 extern struct tname sfuncr;

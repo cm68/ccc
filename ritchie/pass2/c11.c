@@ -305,7 +305,7 @@ register union tree *t;
 
 oddreg(t, reg)
 register union tree *t;
-register reg;
+char reg;
 {
 
 	if (!isfloat(t)) {
@@ -617,9 +617,11 @@ register union tree *tree;
 
 cbranch(atree, lbl, cond, reg)
 union tree *atree;
-register lbl, reg;
+int lbl;
+char cond, reg;
 {
-	int l1, op;
+	int l1;
+	char op;
 	register union tree *tree;
 
 again:
@@ -723,9 +725,11 @@ branch(lbl, aop, c)
 
 longrel(atree, lbl, cond, reg)
 union tree *atree;
+int lbl;
+char cond, reg;
 {
 	int xl1, xl2, xo, xz;
-	register int op, isrel;
+	char op, isrel;
 	register union tree *tree;
 
 	if (reg & 01)
@@ -810,8 +814,9 @@ char lrtab[2][3][10] = {
 };
 
 xlongrel(f)
+char f;
 {
-	register int op, bno;
+	char op, bno;
 
 	op = xop;
 	if (f == 0) {
