@@ -375,6 +375,7 @@ strdec(mosf, kind)
 		if (kind == ENUM) {
 			typer.htype = INT;
 			typer.hstrp = strp;
+			typer.hsubsp = NULL;
 			declare(ENUM, &typer, 0);
 		} else
 			elsize = declist(kind == UNION ? MOU : MOS);
@@ -861,7 +862,7 @@ typov()
  */
 int
 align(type, offset, aflen)
-char type;
+unsigned char type;
 {
 	register a;
 	char flen;

@@ -36,7 +36,7 @@ char *treebot;					/* bottom of tree area */
  * appropriate conversions.
  */
 build(op)
-char op;
+unsigned char op;
 {
 	register int t1;
 	int t2, t;
@@ -454,7 +454,7 @@ union tree *
 convert(p, t, cvn, len)
 union tree *p;
 {
-	char op;
+	unsigned char op;
 
 	if (cvn == 0)
 		return (p);
@@ -563,7 +563,7 @@ static char lintab[] = { 0, 0, 1, 1, 3, 3, 2, 0, 0, 2, 3 };
 
 int
 lintyp(t)
-char t;
+unsigned char t;
 {
 	return ((unsigned char) t <= VOID) ? lintab[t] : 3;
 }
@@ -623,7 +623,7 @@ char *s;
  */
 union tree *
 block(op, t, subs, str, p1, p2)
-char op, t;
+unsigned char op, t;
 int *subs;
 union str *str;
 union tree *p1, *p2;
@@ -781,7 +781,7 @@ register union tree *p;
  */
 int
 fold(op, p1, p2)
-char op;
+unsigned char op;
 register union tree *p1;
 union tree *p2;
 {
@@ -969,7 +969,7 @@ conexp()
  * Handle peculiar assignment ops that need a temporary.
  */
 assignop(op, p1, p2)
-char op;
+unsigned char op;
 register union tree *p1, *p2;
 {
 	register struct nmlist *np;
