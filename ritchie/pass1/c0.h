@@ -27,7 +27,7 @@
 #define	CMSIZ	40				/* size of expression stack */
 #define	SSIZE	40				/* size of other expression stack */
 #define	SWSIZ	300				/* size of switch table */
-#define	NMEMS	128				/* Number of members in a structure */
+#define	NMEMS	40				/* Number of members in a structure */
 #define	NBPW	16				/* bits per word, object machine */
 #define	NBPC	8				/* bits per character, object machine */
 #define	NCPW	2				/* chars per word, object machine */

@@ -41,7 +41,7 @@ main(argc, argv)
 int argc;
 char *argv[];
 {
-	char buf2[BUFSIZ];
+	static char buf2[BUFSIZ];
 
 	if (argc > 1 && strcmp(argv[1], "-u") == 0) {
 		argc--;

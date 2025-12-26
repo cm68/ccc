@@ -388,10 +388,13 @@ strdec(mosf, kind)
 			werror("struct/union size exceeds 127 bytes");
 		strp->S.ssize = elsize;
 		*memlist++ = NULL;
-		strp->S.memlist =
-			(struct nmlist **) Dblock((memlist - mems) * sizeof(*memlist));
-		for (o = 0; &mems[o] != memlist; o++)
-			strp->S.memlist[o] = mems[o];
+		{
+			struct nmlist **dp;
+			dp = (struct nmlist **) Dblock((memlist - mems) * sizeof(*memlist));
+			strp->S.memlist = dp;
+			for (o = 0; &mems[o] != memlist; o++)
+				*dp++ = mems[o];
+		}
 		memlist = savememlist;
 		sparent = savesparent;
 		nmems = savenmems;
