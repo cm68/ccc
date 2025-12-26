@@ -1,6 +1,6 @@
 /*
  * C compiler - pass 1 (front end)
- * Called from cc: c0 source.x temp1 temp2 [ profileflag ] 
+ * Called from cc: c0 source.x temp1 temp2 [ flags ] 
  * Reads pre-tokenized .x file from cpp. 
  * temp1 gets most of the intermediate code; 
  * strings are put on temp2, which c1 reads after temp1. 
@@ -28,7 +28,6 @@ char unscflg;
 FILE *xfile;
 FILE *sbufp;
 char sbuf[512];
-char proflg;
 char strflg;
 char symbuf[MAXCPS + 2];
 char mossym;
@@ -63,9 +62,6 @@ char *argv[];
 	setbuf(sbufp, sbuf);
 	while (argc > 4) {
 		switch (argv[4][1]) {
-		case 'P':
-			proflg++;
-			break;
 		case 'w':
 		case 'W':				/* don't print warning messages */
 			Wflag++;

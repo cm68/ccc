@@ -191,7 +191,6 @@ extern char *treebot;
 extern char *coremax;
 extern struct nmlist *defsym;
 extern struct nmlist *funcsym;
-extern char proflg;
 extern struct nmlist *csym;
 extern int cval;
 extern LTYPE lcval;
@@ -401,7 +400,6 @@ extern char mossym;
 #define	SAVE	208
 #define	RETRN	209
 #define	EVEN	210
-#define	PROFIL	212
 #define	SWIT	213
 #define	EXPR	214
 #define	SNAME	215

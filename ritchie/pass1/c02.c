@@ -135,8 +135,6 @@ cfunc()
 	if (paraml && paraml->hclass == ARG1)
 		declist(ARG);
 	outcode("B", SAVE);
-	if (proflg)
-		outcode("BNS", PROFIL, isn++, funcsym->name);
 	funchead();
 	branch(sloc);
 	label(sloc + 1);
