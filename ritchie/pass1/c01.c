@@ -36,6 +36,7 @@ char *treebot;					/* bottom of tree area */
  * appropriate conversions.
  */
 build(op)
+char op;
 {
 	register int t1;
 	int t2, t;
@@ -622,6 +623,7 @@ char *s;
  */
 union tree *
 block(op, t, subs, str, p1, p2)
+char op, t;
 int *subs;
 union str *str;
 union tree *p1, *p2;
@@ -779,6 +781,7 @@ register union tree *p;
  */
 int
 fold(op, p1, p2)
+char op;
 register union tree *p1;
 union tree *p2;
 {
@@ -966,6 +969,7 @@ conexp()
  * Handle peculiar assignment ops that need a temporary.
  */
 assignop(op, p1, p2)
+char op;
 register union tree *p1, *p2;
 {
 	register struct nmlist *np;
@@ -1014,6 +1018,8 @@ gentemp(type)
 	tp->hoffset = autolen;
 	if (autolen < maxauto)
 		maxauto = autolen;
+	if (tp->hoffset < -128)
+		error("Too many local variables");
 	return (tp);
 }
 

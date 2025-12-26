@@ -33,7 +33,20 @@
 #define	NCPW	2				/* chars per word, object machine */
 #define	LNCPW	2				/* chars per word, compiler's machine */
 #define	LNBPW	16				/* bits per word, compiler's machine */
-#define	STAUTO	(-8)			/* offset of first auto variable */
+/*
+ * Z80 stack frame layout (IY-based):
+ *   (iy+6,7...)  additional arguments
+ *   (iy+4,5)     first argument       <- STARG
+ *   (iy+2,3)     return address
+ *   (iy+0,1)     saved IY             <- IY points here after prologue
+ *   (iy-2,-1)    first local variable
+ *   (iy-4,-3)    second local, etc.
+ *
+ * IY indexed addressing uses signed 8-bit displacement:
+ *   args:   +4 to +127 (max ~123 bytes of arguments)
+ *   locals: -1 to -128 (max 128 bytes of locals)
+ */
+#define	STAUTO	0				/* autos grow down from (iy-2) */
 #define	STARG	4				/* offset of first argument */
 #define	DCLSLOP	512				/* Amount trees lie above declaration
 								 * stuff */

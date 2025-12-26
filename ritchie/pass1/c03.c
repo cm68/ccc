@@ -656,10 +656,17 @@ struct nmlist *atptr, *absname;
 	else
 		peeksym = a;
 	if (skw == AUTO) {
+		/*
+		 * Allocate stack space for auto variable.
+		 * autolen grows down from 0; first 2-byte var gets offset -2.
+		 * Z80 IY-indexed addressing limits offsets to -128..+127.
+		 */
 		autolen -= length((union tree *) dsym);
 		dsym->hoffset = autolen;
 		if (autolen < maxauto)
 			maxauto = autolen;
+		if (dsym->hoffset < -128)
+			error("Too many local variables");
 		if (isinit)
 			cinit(dsym, 0, AUTO);
 		isinit = 0;
@@ -854,6 +861,7 @@ typov()
  */
 int
 align(type, offset, aflen)
+char type;
 {
 	register a;
 	char flen;
