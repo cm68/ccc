@@ -539,8 +539,9 @@ struct nmlist *atptr, *absname;
 	}
 	if (defsym)
 		if (dsym->hblklev < blklev || dsym->hclass == MOS && skw == MOS) {
-			if (skw == MOS && dsym->sparent == sparent)
+			if (skw == MOS && dsym->sparent == sparent) {
 				redec();
+			}
 			defsym = dsym;
 			if (skw == EXTERN) {
 				for (; dsym != NULL; dsym = dsym->nextnm) {
@@ -577,7 +578,7 @@ struct nmlist *atptr, *absname;
 			if (a < dim.rank || (t1 & XTYPE) == ARRAY)
 				redec();
 		} else {
-			dp = (int *) Dblock(dim.rank * sizeof(dim.rank));
+			dp = (int *) Dblock(dim.rank * sizeof(*dp));
 			for (a = 0; a < dim.rank; a++)
 				dp[a] = dim.dimens[a];
 			dsym->hsubsp = dp;
