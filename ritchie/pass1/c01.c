@@ -515,30 +515,17 @@ union tree *p;
 
 /*
  *'linearize' a type for looking up in the
- * conversion table
+ * conversion table.
+ * Type values: INT=0,CHAR=1,FLOAT=2,DOUBLE=3,STRUCT=4,SIGNED=5,
+ *              LONG=6,UNSIGN=7,UNCHAR=8,UNLONG=9,VOID=10
+ * Returns: 0=int/char, 1=float/double, 2=long, 3=other
  */
+static char lintab[] = { 0,0,1,1,3,3,2,0,0,2,3 };
+
 int
 lintyp(t)
 {
-	switch(t) {
-
-	case INT:
-	case CHAR:
-	case UNSIGN:
-	case UNCHAR:
-		return(0);
-
-	case FLOAT:
-	case DOUBLE:
-		return(1);
-
-	case UNLONG:
-	case LONG:
-		return(2);
-
-	default:
-		return(3);
-	}
+	return ((unsigned)t <= VOID) ? lintab[t] : 3;
 }
 
 /*
@@ -547,17 +534,24 @@ lintyp(t)
 
 char Wflag = 0;	/* Non-zero means do not print warnings */
 
+static
+errmsg(prefix, s, p1, p2, p3, p4, p5, p6)
+char *prefix, *s;
+{
+	if (filename[0])
+		fprintf(stderr, "%s:", filename);
+	fprintf(stderr, "%d: %s", line, prefix);
+	fprintf(stderr, s, p1, p2, p3, p4, p5, p6);
+	fprintf(stderr, "\n");
+}
+
 /* VARARGS1 */
 werror(s, p1, p2, p3, p4, p5, p6)
 char *s;
 {
 	if (Wflag)
 		return;
-	if (filename[0])
-		fprintf(stderr, "%s:", filename);
-	fprintf(stderr, "%d: warning: ", line);
-	fprintf(stderr, s, p1, p2, p3, p4, p5, p6);
-	fprintf(stderr, "\n");
+	errmsg("warning: ", s, p1, p2, p3, p4, p5, p6);
 }
 
 /* VARARGS1 */
@@ -565,11 +559,7 @@ error(s, p1, p2, p3, p4, p5, p6)
 char *s;
 {
 	nerror++;
-	if (filename[0])
-		fprintf(stderr, "%s:", filename);
-	fprintf(stderr, "%d: ", line);
-	fprintf(stderr, s, p1, p2, p3, p4, p5, p6);
-	fprintf(stderr, "\n");
+	errmsg("", s, p1, p2, p3, p4, p5, p6);
 }
 
 /*

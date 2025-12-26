@@ -175,7 +175,23 @@ register union tree *p;
 /*
  * return the number of bytes in the object
  * whose tree node is acs.
+ * Type size table indexed by base type (0-10).
+ * 0 means special handling required (STRUCT, VOID).
  */
+static char tsize[] = {
+	SZINT,		/* INT=0 */
+	1,		/* CHAR=1 */
+	SZFLOAT,	/* FLOAT=2 */
+	SZDOUB,		/* DOUBLE=3 */
+	0,		/* STRUCT=4 (special) */
+	0,		/* SIGNED=5 (unused) */
+	SZLONG,		/* LONG=6 */
+	SZINT,		/* UNSIGN=7 */
+	1,		/* UNCHAR=8 */
+	SZLONG,		/* UNLONG=9 */
+	0		/* VOID=10 (special) */
+};
+
 int
 length(cs)
 union tree *cs;
@@ -195,40 +211,13 @@ union tree *cs;
 		return(0);
 	if (t>=PTR)
 		elsz = SZPTR;
-	else switch(t&TYPE) {
-
-	case VOID:
+	else if ((t&TYPE) == VOID) {
 		error("Illegal use of void object");
 		return(2);
-
-	case INT:
-	case UNSIGN:
-		elsz = SZINT;
-		break;
-
-	case CHAR:
-	case UNCHAR:
-		elsz = 1;
-		break;
-
-	case FLOAT:
-		elsz = SZFLOAT;
-		break;
-
-	case UNLONG:
-	case LONG:
-		elsz = SZLONG;
-		break;
-
-	case DOUBLE:
-		elsz = SZDOUB;
-		break;
-
-	case STRUCT:
+	} else if ((t&TYPE) == STRUCT) {
 		if ((elsz = cs->t.strp->S.ssize) == 0)
 			error("Undefined structure");
-		break;
-	default:
+	} else if ((elsz = tsize[t&TYPE]) == 0) {
 		error("Compiler error (length)");
 		return(0);
 	}
