@@ -562,8 +562,9 @@ static char lintab[] = { 0, 0, 1, 1, 3, 3, 2, 0, 0, 2, 3 };
 
 int
 lintyp(t)
+char t;
 {
-	return ((unsigned) t <= VOID) ? lintab[t] : 3;
+	return ((unsigned char) t <= VOID) ? lintab[t] : 3;
 }
 
 /*
