@@ -5,7 +5,7 @@
 ARCHIVE = libc.a
 
 AS = asz
-CC = ccc
+CC = zc3
 LIB = wslib
 
 DEST ?= ../../root/lib
@@ -32,7 +32,8 @@ SRCS = abs.s allsh.s alrsh.s asallsh.s asalrsh.s asar.s \
 	rcsv.s rindex.s sbrk.s shar.s fbcd.s \
 	shll.s shlr.s strcat.s strchr.s strcmp.s strcpy.s \
 	strlen.s strncat.s strncmp.s strncpy.s strrchr.s \
-	tolower.s toupper.s xtoi.s float.s fputc.s fgetc.s
+	tolower.s toupper.s xtoi.s float.s fputc.s fgetc.s \
+	ltof.s ftol.s frndint.s frexp.s finc.s asfloat.s
 
 CSRCS = \
 	rand.c srand1.c \
@@ -40,7 +41,7 @@ CSRCS = \
 	memcmp.c memcpy.c memset.c blkcpy.c ctype_.c exit.c cleanup.c \
 	fclose.c fflush.c filbuf.c flsbuf.c puts.c \
 	fopen.c fread.c freopen.c fwrite.c setbuf.c gets.c ungetc.c \
-	buf.c getenv.c pnum.c qsort.c remove.c rewind.c fseek.c \
+	buf.c getenv.c pnum.c qsort.c remove.c rewind.c fseek.c ftell.c \
 	fprintf.c sprintf.c printf.c doprnt.c putchar.c \
 	atol.c fscanf.c scanf.c sscanf.c doscan.c \
 	fnum.c acos.c asin.c atan2.c atan.c cos.c cosh.c sin.c sinh.c \
