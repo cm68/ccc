@@ -1,93 +1,96 @@
-/* C compiler
- *
- *	2.1	(2.11BSD)	1996/01/04
- *
- * Called from cc:
- *   c0 source.x temp1 temp2 [ profileflag ]
- * Reads pre-tokenized .x file from cpp.
- * temp1 gets most of the intermediate code;
- * strings are put on temp2, which c1 reads after temp1.
+/*
+ * C compiler 2.1 (2.11BSD) 1996/01/04 
+ * Called from cc: c0 source.x temp1 temp2 [ profileflag ] 
+ * Reads pre-tokenized .x file from cpp. 
+ * temp1 gets most of the intermediate code; 
+ * strings are put on temp2, which c1 reads after temp1. 
  */
 
 #include "c0.h"
 
-int	isn	= 1;
-int	peeksym	= -1;
-int	peekc;
-int	line	= 1;
-char	eof;
-struct	tnode	funcblk = { NAME };
+int isn = 1;
+int peeksym = -1;
+int peekc;
+int line = 1;
+char eof;
+struct tnode funcblk = { NAME };
 
-/* Buffer for string literals from tokenized input */
-char	strbuf[1024];
-int	strbuflen;
+/*
+ * Buffer for string literals from tokenized input 
+ */
+char strbuf[1024];
+int strbuflen;
 
-union	tree *cmst[CMSIZ];
-union	tree **cp = cmst;
+union tree *cmst[CMSIZ];
+union tree **cp = cmst;
 
-char	unscflg;
-FILE	*xfile;
-FILE	*sbufp;
-char	sbuf[512];
-char	proflg;
-char	strflg;
-char	symbuf[MAXCPS+2];
-char	mossym;
-LTYPE	lcval;
-int	nchstr;
-char	initflg;
-char	numbuf[64];
-extern char	Wflag;			/* print warning messages */
+char unscflg;
+FILE *xfile;
+FILE *sbufp;
+char sbuf[512];
+char proflg;
+char strflg;
+char symbuf[MAXCPS + 2];
+char mossym;
+LTYPE lcval;
+int nchstr;
+char initflg;
+char numbuf[64];
+extern char Wflag;				/* print warning messages */
 
 main(argc, argv)
-int	argc;
-char	*argv[];
+int argc;
+char *argv[];
 {
-	char	buf2[BUFSIZ];
+	char buf2[BUFSIZ];
 
-	if (argc>1 && strcmp(argv[1], "-u")==0) {
+	if (argc > 1 && strcmp(argv[1], "-u") == 0) {
 		argc--;
 		argv++;
 		unscflg++;
 	}
-	if(argc<4)
+	if (argc < 4)
 		fatal("Arg count");
-	/* Open .x file (binary tokenized input from cpp) */
+	/*
+	 * Open .x file (binary tokenized input from cpp) 
+	 */
 	if ((xfile = fopen(argv[1], "rb")) == NULL)
 		fatal("Can't find %s", argv[1]);
-	if (freopen(argv[2], "w", stdout)==NULL || (sbufp=fopen(argv[3],"w"))==NULL)
+	if (freopen(argv[2], "w", stdout) == NULL
+		|| (sbufp = fopen(argv[3], "w")) == NULL)
 		fatal("Can't create temp");
-	setbuf(stdout,buf2);	/* stdio sbrk problems */
+	setbuf(stdout, buf2);		/* stdio sbrk problems */
 	setbuf(sbufp, sbuf);
 	/*
 	 * Overlays: allow an extra word on the stack for
 	 * each stack from to store the overlay number.
 	 */
 	STAUTO = -8;
-	while (argc>4) {
+	while (argc > 4) {
 		switch (argv[4][1]) {
 		case 'P':
 			proflg++;
 			break;
-		case 'V':		/* overlays; default, now */
+		case 'V':				/* overlays; default, now */
 			break;
 		case 'w':
-		case 'W':		/* don't print warning messages */
+		case 'W':				/* don't print warning messages */
 			Wflag++;
 			break;
 		}
-		argc--; argv++;
+		argc--;
+		argv++;
 	}
 	coremax = locbase = sbrk(0);
-	while(!eof)
+	while (!eof)
 		extdef();
-	emittent();	/* emit deferred tentative definitions */
+	emittent();					/* emit deferred tentative definitions */
 	outcode("B", EOFC);
 	strflg++;
 	outcode("B", EOFC);
 	blkend();
 	fclose(xfile);
-	exit(nerror!=0);
+	exit(nerror != 0);
 }
 
 /*
@@ -104,14 +107,14 @@ lookup()
 	while (rp) {
 		if (strcmp(symbuf, rp->name) != 0)
 			goto no;
-		if (mossym != (rp->hflag&FKIND))
+		if (mossym != (rp->hflag & FKIND))
 			goto no;
 		csym = rp;
-		return(NAME);
-	no:
+		return (NAME);
+no:
 		rp = rp->nextnm;
 	}
-	rp = (struct nmlist *)Dblock(sizeof(struct nmlist));
+	rp = (struct nmlist *) Dblock(sizeof(struct nmlist));
 	rp->nextnm = hshtab[ihash];
 	hshtab[ihash] = rp;
 	rp->hclass = 0;
@@ -125,7 +128,20 @@ lookup()
 	rp->name = Dblock((strlen(symbuf) + 1 + LNCPW - 1) & ~(LNCPW - 1));
 	strcpy(rp->name, symbuf);
 	csym = rp;
-	return(NAME);
+	return (NAME);
+}
+
+/*
+ * Read a 16-bit little-endian word from xfile
+ */
+static int
+readword()
+{
+	int v;
+
+	v = getc(xfile) & 0xff;
+	v |= (getc(xfile) & 0xff) << 8;
+	return v;
 }
 
 /*
@@ -135,10 +151,9 @@ static long
 readlong()
 {
 	long v;
-	v = getc(xfile) & 0xff;
-	v |= (getc(xfile) & 0xff) << 8;
-	v |= (long)(getc(xfile) & 0xff) << 16;
-	v |= (long)(getc(xfile) & 0xff) << 24;
+
+	v = readword();
+	v |= (long) readword() << 16;
 	return v;
 }
 
@@ -149,6 +164,7 @@ int
 gettok()
 {
 	int c;
+
 again:
 	c = getc(xfile);
 	if (c == EOF)
@@ -158,11 +174,11 @@ again:
 		goto again;
 	}
 	if (c == LINENO) {
-		int len, i;
-		line = getc(xfile) & 0xff;
-		line |= (getc(xfile) & 0xff) << 8;
-		len = getc(xfile) & 0xff;
-		for (i = 0; i < len && i < sizeof(filename)-1; i++)
+		char len, i;
+
+		line = readword();
+		len = getc(xfile);
+		for (i = 0; i < len && i < sizeof(filename) - 1; i++)
 			filename[i] = getc(xfile);
 		filename[i] = 0;
 		while (i++ < len)
@@ -178,12 +194,15 @@ again:
 static void
 readsym()
 {
-	int len, i;
+	char len, i;
+
 	len = getc(xfile);
 	for (i = 0; i < len && i < MAXCPS; i++)
 		symbuf[i] = getc(xfile);
 	symbuf[i] = '\0';
-	/* skip any remaining bytes if name was truncated */
+	/*
+	 * skip any remaining bytes if name was truncated 
+	 */
 	while (i++ < len)
 		getc(xfile);
 }
@@ -200,18 +219,20 @@ symbol()
 {
 	register c;
 
-	if (peeksym>=0) {
+	if (peeksym >= 0) {
 		c = peeksym;
 		peeksym = -1;
-		if (c==NAME)
+		if (c == NAME)
 			mosflg = 0;
-		return(c);
+		return (c);
 	}
 
 	if (eof)
-		return(EOFC);
+		return (EOFC);
 
-	/* Check peekc first (set by nextchar lookahead) */
+	/*
+	 * Check peekc first (set by nextchar lookahead) 
+	 */
 	if (peekc) {
 		c = peekc;
 		peekc = 0;
@@ -220,87 +241,108 @@ symbol()
 	}
 	if (c == EOF || c == EOFC) {
 		eof++;
-		return(EOFC);
+		return (EOFC);
 	}
 
 	switch (c) {
 	case NAME:
-		/* NAME: len byte + name bytes */
+		/*
+		 * NAME: len byte + name bytes 
+		 */
 		readsym();
 		mossym = mosflg;
 		mosflg = 0;
-		return(lookup());
+		return (lookup());
 
 	case CON:
-		/* CON: 4-byte little-endian value */
+		/*
+		 * CON: 4-byte little-endian value 
+		 */
 		lcval = readlong();
 		cval = lcval;
 		if (lcval < 0 || lcval > MAXINT)
-			return(LCON);
-		return(CON);
+			return (LCON);
+		return (CON);
 
 	case LCON:
-		/* LCON: 4-byte little-endian value */
+		/*
+		 * LCON: 4-byte little-endian value 
+		 */
 		lcval = readlong();
 		cval = lcval;
-		return(LCON);
+		return (LCON);
 
 	case STRING:
-		/* STRING: 2-byte len + string bytes
-		 * Buffer the string for later output by putstr() or here
-		 * for pointer initializers.
+		/*
+		 * STRING: 2-byte len + string bytes Buffer the string for later
+		 * output by putstr() or here for pointer initializers.
 		 */
 		cval = isn++;
 		{
-			int len = getc(xfile) & 0xff;
+			int len = readword();
 			int i;
-			len |= (getc(xfile) & 0xff) << 8;
-			/* Buffer the string data */
+			/*
+			 * Buffer the string data 
+			 */
 			strbuflen = len;
-			for (i = 0; i < len && i < sizeof(strbuf)-1; i++)
+			for (i = 0; i < len && i < sizeof(strbuf) - 1; i++)
 				strbuf[i] = getc(xfile);
-			/* Skip remaining if too long */
+			/*
+			 * Skip remaining if too long 
+			 */
 			for (; i < len; i++)
 				getc(xfile);
-			strbuf[i < sizeof(strbuf) ? i : sizeof(strbuf)-1] = 0;
+			strbuf[i < sizeof(strbuf) ? i : sizeof(strbuf) - 1] = 0;
 			nchstr = len + 1;
 		}
-		return(STRING);
+		return (STRING);
 
 	case ASMSTR:
-		/* ASMSTR: 2-byte len + string bytes */
+		/*
+		 * ASMSTR: 2-byte len + string bytes
+		 */
 		{
-			int len = getc(xfile) & 0xff;
+			int len = readword();
 			int i;
-			len |= (getc(xfile) & 0xff) << 8;
+
 			strbuflen = len;
-			for (i = 0; i < len && i < sizeof(strbuf)-1; i++)
+			for (i = 0; i < len && i < sizeof(strbuf) - 1; i++)
 				strbuf[i] = getc(xfile);
-			/* Skip remaining if too long */
+			/*
+			 * Skip remaining if too long 
+			 */
 			for (; i < len; i++)
 				getc(xfile);
-			strbuf[i < sizeof(strbuf) ? i : sizeof(strbuf)-1] = 0;
+			strbuf[i < sizeof(strbuf) ? i : sizeof(strbuf) - 1] = 0;
 		}
-		return(ASMSTR);
+		return (ASMSTR);
 
 	case FCON:
-		/* FCON: 4-byte IEEE754 float */
+		/*
+		 * FCON: 4-byte IEEE754 float 
+		 */
 		lcval = readlong();
-		/* Store float string representation for fblock */
-		sprintf(numbuf, "%g", *(float *)&lcval);
+		/*
+		 * Store float string representation for fblock 
+		 */
+		sprintf(numbuf, "%g", *(float *) &lcval);
 		cval = strlen(numbuf) + 1;
-		return(FCON);
+		return (FCON);
 
 	case KEYW:
-		/* KEYW: 1-byte keyword value */
+		/*
+		 * KEYW: 1-byte keyword value 
+		 */
 		cval = getc(xfile);
 		if (cval == SIZEOF)
-			return(SIZEOF);
-		return(KEYW);
+			return (SIZEOF);
+		return (KEYW);
 
-	/* All other tokens are single bytes - return as-is */
+		/*
+		 * All other tokens are single bytes - return as-is 
+		 */
 	default:
-		return(c);
+		return (c);
 	}
 }
 
@@ -331,7 +373,9 @@ register max;
 			outcode("0B", BDATA);
 		outcode("1N", strbuf[i] & 0377);
 	}
-	/* null terminator if room */
+	/*
+	 * null terminator if room 
+	 */
 	if (i < max) {
 		if (i % 15 == 0 && i > 0)
 			outcode("0B", BDATA);
@@ -358,7 +402,8 @@ tree(eflag)
 	register struct nmlist *cs;
 	int p, ps, os, xo = 0, *xop;
 	char *svtree;
-	static struct cnode garbage = { CON, INT, (int *)NULL, (union str *)NULL, 0 };
+	static struct cnode garbage =
+		{ CON, INT, (int *) NULL, (union str *) NULL, 0 };
 
 	svtree = starttree();
 	op = opst;
@@ -368,25 +413,27 @@ tree(eflag)
 	andflg = 0;
 
 advanc:
-	switch (o=symbol()) {
+	switch (o = symbol()) {
 
 	case NAME:
 		cs = csym;
-		if (cs->hclass==TYPEDEF)
+		if (cs->hclass == TYPEDEF)
 			goto atype;
-		if (cs->hclass==ENUMCON) {
+		if (cs->hclass == ENUMCON) {
 			*cp++ = cblock(cs->hoffset);
 			goto tand;
 		}
-		if (cs->hclass==0 && cs->htype==0)
-			if(nextchar()=='(') {
-				/* set function */
+		if (cs->hclass == 0 && cs->htype == 0)
+			if (nextchar() == '(') {
+				/*
+				 * set function 
+				 */
 				cs->hclass = EXTERN;
 				cs->htype = FUNC;
 			} else {
 				cs->hclass = STATIC;
 				error("%s undefined; func. %s", cs->name,
-					funcsym ? funcsym->name : "(none)");
+					  funcsym ? funcsym->name : "(none)");
 			}
 		*cp++ = nblock(cs);
 		goto tand;
@@ -396,7 +443,7 @@ advanc:
 		goto tand;
 
 	case LCON:
-		*cp = (union tree *)Tblock(sizeof(struct lnode));
+		*cp = (union tree *) Tblock(sizeof(struct lnode));
 		(*cp)->l.op = LCON;
 		(*cp)->l.type = LONG;
 		(*cp)->l.lvalue = lcval;
@@ -407,21 +454,24 @@ advanc:
 		*cp++ = cblock(cval);
 		goto tand;
 
-	/* fake a static char array */
+		/*
+		 * fake a static char array 
+		 */
 	case STRING:
 		/*
 		 * String is buffered by symbol().
 		 * Output to .2 file with label for pointer use.
 		 */
 		putstr(cval, 10000);
-		cs = (struct nmlist *)Tblock(sizeof(struct nmlist));
+		cs = (struct nmlist *) Tblock(sizeof(struct nmlist));
 		cs->hclass = STATIC;
 		cs->hoffset = cval;
-		*cp++ = block(NAME, unscflg? ARRAY+UNCHAR:ARRAY+CHAR, &nchstr,
-		  (union str *)NULL, (union tree *)cs, TNULL);
+		*cp++ =
+			block(NAME, unscflg ? ARRAY + UNCHAR : ARRAY + CHAR, &nchstr,
+				  (union str *) NULL, (union tree *) cs, TNULL);
 
-	tand:
-		if(cp>=cmst+CMSIZ)
+tand:
+		if (cp >= cmst + CMSIZ)
 			fatal("Expression overflow");
 		if (andflg)
 			goto syntax;
@@ -429,12 +479,12 @@ advanc:
 		goto advanc;
 
 	case KEYW:
-	atype:
+atype:
 		if (*op != LPARN || andflg)
 			goto syntax;
 		peeksym = o;
 		*cp++ = xprtype();
-		if ((o=symbol()) != RPARN)
+		if ((o = symbol()) != RPARN)
 			goto syntax;
 		o = CAST;
 		--op;
@@ -469,7 +519,7 @@ advanc:
 	case TIMES:
 		if (andflg)
 			andflg = 0;
-		else if (o==AND)
+		else if (o == AND)
 			o = AMPER;
 		else
 			o = STAR;
@@ -478,7 +528,7 @@ advanc:
 	case LPARN:
 		if (andflg) {
 			o = symbol();
-			if (o==RPARN)
+			if (o == RPARN)
 				o = MCALL;
 			else {
 				peeksym = o;
@@ -500,7 +550,7 @@ advanc:
 		break;
 
 	case ASSIGN:
-		if (andflg==0 && PLUS<=*op && *op<=EXOR) {
+		if (andflg == 0 && PLUS <= *op && *op <= EXOR) {
 			o = *op-- + ASPLUS - PLUS;
 			pp--;
 			goto oponst;
@@ -508,21 +558,23 @@ advanc:
 		break;
 
 	}
-	/* binaries */
-	if (andflg==0)
+	/*
+	 * binaries 
+	 */
+	if (andflg == 0)
 		goto syntax;
 	andflg = 0;
 
 oponst:
-	p = (opdope[o]>>9) & 017;
+	p = (opdope[o] >> 9) & 017;
 opon1:
-	if (o==COLON && op[0]==COLON && op[-1]==QUEST) {
+	if (o == COLON && op[0] == COLON && op[-1] == QUEST) {
 		build(*op--);
 		build(*op--);
 		pp -= 2;
 	}
 	ps = *pp;
-	if (p>ps || p==ps && (opdope[o]&RASSOC)!=0) {
+	if (p > ps || p == ps && (opdope[o] & RASSOC) != 0) {
 		switch (o) {
 
 		case INCAFT:
@@ -535,13 +587,15 @@ opon1:
 			p = 0;
 		}
 		if (initflg) {
-			if ((o==COMMA && *op!=LPARN && *op!=CALL)
-			 || (o==COLON && *op!=QUEST)) {
-				/* End expression early - force reduction */
+			if ((o == COMMA && *op != LPARN && *op != CALL)
+				|| (o == COLON && *op != QUEST)) {
+				/*
+				 * End expression early - force reduction 
+				 */
 				goto reduce;
 			}
 		}
-		if (op >= &opst[SSIZE-1])
+		if (op >= &opst[SSIZE - 1])
 			fatal("expression overflow");
 		*++op = o;
 		*++pp = p;
@@ -550,16 +604,18 @@ opon1:
 reduce:
 	--pp;
 	os = *op--;
-	if (andflg==0 && p && ((opdope[o]&BINARY)==0 || o>=INCBEF&&o<=DECAFT) && opdope[os]&BINARY)
+	if (andflg == 0 && p
+		&& ((opdope[o] & BINARY) == 0 || o >= INCBEF && o <= DECAFT)
+		&& opdope[os] & BINARY)
 		goto syntax;
 	switch (os) {
 
 	case SEOF:
 		peeksym = o;
-		build(0);		/* flush conversions */
+		build(0);				/* flush conversions */
 		if (eflag)
 			endtree(svtree);
-		return(*--cp);
+		return (*--cp);
 
 	case COMMA:
 		if (*op != CALL)
@@ -567,14 +623,14 @@ reduce:
 		break;
 
 	case CALL:
-		if (o!=RPARN)
+		if (o != RPARN)
 			goto syntax;
 		build(os);
 		goto advanc;
 
 	case MCALL:
-		*cp++ = block(NULLOP, INT, (int *)NULL,
-		  (union str *)NULL, TNULL, TNULL);
+		*cp++ = block(NULLOP, INT, (int *) NULL,
+					  (union str *) NULL, TNULL, TNULL);
 		os = CALL;
 		break;
 
@@ -586,12 +642,12 @@ reduce:
 		break;
 
 	case LPARN:
-		if (o!=RPARN)
+		if (o != RPARN)
 			goto syntax;
 		goto advanc;
 
 	case LBRACK:
-		if (o!=RBRACK)
+		if (o != RBRACK)
 			goto syntax;
 		build(LBRACK);
 		goto advanc;
@@ -604,7 +660,7 @@ syntax:
 	errflush(o);
 	if (eflag)
 		endtree(svtree);
-	return((union tree *) &garbage);
+	return ((union tree *) &garbage);
 }
 
 union tree *
@@ -615,7 +671,7 @@ xprtype()
 	register union tree **scp;
 
 	scp = cp;
-	sc = DEFXTRN;		/* will cause error if class mentioned */
+	sc = DEFXTRN;				/* will cause error if class mentioned */
 	getkeywords(&sc, &typer);
 	absname.hclass = 0;
 	absname.hblklev = blklev;
@@ -624,8 +680,8 @@ xprtype()
 	absname.htype = 0;
 	decl1(sc, &typer, 0, &absname);
 	cp = scp;
-	return(block(ETYPE, absname.htype, absname.hsubsp,
-	   absname.hstrp, TNULL, TNULL));
+	return (block(ETYPE, absname.htype, absname.hsubsp,
+				  absname.hstrp, TNULL, TNULL));
 }
 
 char *
@@ -633,7 +689,7 @@ copnum(len)
 {
 	register char *s1;
 
-	s1 = Tblock((len+LNCPW-1) & ~(LNCPW-1));
+	s1 = Tblock((len + LNCPW - 1) & ~(LNCPW - 1));
 	strcpy(s1, numbuf);
-	return(s1);
+	return (s1);
 }

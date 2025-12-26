@@ -14,9 +14,9 @@ register int t;
 {
 	if ((t & ~TYPE) == 0) {
 		error("Illegal indirection");
-		return(t);
+		return (t);
 	}
-	return((t>>TYLEN) & ~TYPE | t&TYPE);
+	return ((t >> TYLEN) & ~TYPE | t & TYPE);
 }
 
 /*
@@ -27,7 +27,7 @@ int
 incref(t)
 register int t;
 {
-	return(((t&~TYPE)<<TYLEN) | (t&TYPE) | PTR);
+	return (((t & ~TYPE) << TYLEN) | (t & TYPE) | PTR);
 }
 
 /*
@@ -50,11 +50,11 @@ register union tree *tp;
 	/*
 	 * Special optimization
 	 */
-	if (tp->t.op==INIT && tp->t.tr1->t.op==CON) {
-		if (tp->t.type==CHAR || tp->t.type==UNCHAR) {
+	if (tp->t.op == INIT && tp->t.tr1->t.op == CON) {
+		if (tp->t.type == CHAR || tp->t.type == UNCHAR) {
 			outcode("B1N0", BDATA, tp->t.tr1->c.value);
 			return;
-		} else if (tp->t.type==INT || tp->t.type==UNSIGN) {
+		} else if (tp->t.type == INT || tp->t.type == UNSIGN) {
 			outcode("BN", SINIT, tp->t.tr1->c.value);
 			return;
 		}
@@ -69,27 +69,29 @@ register union tree *tp;
 	register struct nmlist *hp;
 	register nextisstruct;
 
-	if (tp == NULL || tp->t.op==NULLOP) {
+	if (tp == NULL || tp->t.op == NULLOP) {
 		outcode("B", XNULLOP);
 		return;
 	}
-	nextisstruct = tp->t.type==STRUCT;
-	switch(tp->t.op) {
+	nextisstruct = tp->t.type == STRUCT;
+	switch (tp->t.op) {
 
 	case NAME:
 		hp = &tp->t.tr1->n;
-		if (hp->hclass==TYPEDEF)
+		if (hp->hclass == TYPEDEF)
 			error("Illegal use of type name");
-		outcode("BNN", NAME, hp->hclass==0?STATIC:hp->hclass, tp->t.type);
-		if (hp->hclass==EXTERN)
+		outcode("BNN", NAME, hp->hclass == 0 ? STATIC : hp->hclass,
+				tp->t.type);
+		if (hp->hclass == EXTERN)
 			outcode("S", hp->name);
 		else
 			outcode("N", hp->hoffset);
 		break;
 
 	case LCON:
-		outcode("BNNN", tp->l.op, tp->l.type, (unsigned short)(tp->l.lvalue>>16),
-		   (unsigned short)tp->l.lvalue);
+		outcode("BNNN", tp->l.op, tp->l.type,
+				(unsigned short) (tp->l.lvalue >> 16),
+				(unsigned short) tp->l.lvalue);
 		break;
 
 	case CON:
@@ -107,7 +109,7 @@ register union tree *tp;
 	case FSEL:
 		treeout(tp->t.tr1, nextisstruct);
 		outcode("BNNN", tp->t.op, tp->t.type,
-		   tp->t.tr2->fld.bitoffs, tp->t.tr2->fld.flen);
+				tp->t.tr2->fld.bitoffs, tp->t.tr2->fld.flen);
 		break;
 
 	case ETYPE:
@@ -119,7 +121,6 @@ register union tree *tp;
 		outcode("BN", tp->t.op, tp->t.type);
 		break;
 
-
 	case CALL:
 		treeout(tp->t.tr1, 1);
 		treeout(tp->t.tr2, 0);
@@ -128,12 +129,12 @@ register union tree *tp;
 
 	default:
 		treeout(tp->t.tr1, nextisstruct);
-		if (opdope[tp->t.op]&BINARY)
+		if (opdope[tp->t.op] & BINARY)
 			treeout(tp->t.tr2, nextisstruct);
 		outcode("BN", tp->t.op, tp->t.type);
 		break;
 	}
-	if (nextisstruct && isstruct==0)
+	if (nextisstruct && isstruct == 0)
 		outcode("BNN", STRASG, STRUCT, tp->t.strp->S.ssize);
 }
 
@@ -164,12 +165,12 @@ register union tree *p;
 {
 	register t, l;
 
-	if (p==0 || ((t=p->t.type)&~TYPE) == 0)		/* not a reference */
-		return(1);
+	if (p == 0 || ((t = p->t.type) & ~TYPE) == 0) /* not a reference */
+		return (1);
 	p->t.type = decref(t);
 	l = length(p);
 	p->t.type = t;
-	return(l);
+	return (l);
 }
 
 /*
@@ -179,17 +180,17 @@ register union tree *p;
  * 0 means special handling required (STRUCT, VOID).
  */
 static char tsize[] = {
-	SZINT,		/* INT=0 */
-	1,		/* CHAR=1 */
-	SZFLOAT,	/* FLOAT=2 */
-	SZDOUB,		/* DOUBLE=3 */
-	0,		/* STRUCT=4 (special) */
-	0,		/* SIGNED=5 (unused) */
-	SZLONG,		/* LONG=6 */
-	SZINT,		/* UNSIGN=7 */
-	1,		/* UNCHAR=8 */
-	SZLONG,		/* UNLONG=9 */
-	0		/* VOID=10 (special) */
+	SZINT,						/* INT=0 */
+	1,							/* CHAR=1 */
+	SZFLOAT,					/* FLOAT=2 */
+	SZDOUB,						/* DOUBLE=3 */
+	0,							/* STRUCT=4 (special) */
+	0,							/* SIGNED=5 (unused) */
+	SZLONG,						/* LONG=6 */
+	SZINT,						/* UNSIGN=7 */
+	1,							/* UNCHAR=8 */
+	SZLONG,						/* UNLONG=9 */
+	0							/* VOID=10 (special) */
 };
 
 int
@@ -203,28 +204,28 @@ union tree *cs;
 	t = cs->t.type;
 	n = 1;
 	nd = 0;
-	while ((t&XTYPE) == ARRAY) {
+	while ((t & XTYPE) == ARRAY) {
 		t = decref(t);
 		n *= cs->t.subsp[nd++];
 	}
-	if ((t&~TYPE)==FUNC)
-		return(0);
-	if (t>=PTR)
+	if ((t & ~TYPE) == FUNC)
+		return (0);
+	if (t >= PTR)
 		elsz = SZPTR;
-	else if ((t&TYPE) == VOID) {
+	else if ((t & TYPE) == VOID) {
 		error("Illegal use of void object");
-		return(2);
-	} else if ((t&TYPE) == STRUCT) {
+		return (2);
+	} else if ((t & TYPE) == STRUCT) {
 		if ((elsz = cs->t.strp->S.ssize) == 0)
 			error("Undefined structure");
-	} else if ((elsz = tsize[t&TYPE]) == 0) {
+	} else if ((elsz = tsize[t & TYPE]) == 0) {
 		error("Compiler error (length)");
-		return(0);
+		return (0);
 	}
 	n *= elsz;
-	if (n >= (unsigned)50000)
+	if (n >= (unsigned) 50000)
 		werror("very large data structure");
-	return(n);
+	return (n);
 }
 
 /*
@@ -234,7 +235,7 @@ int
 rlength(cs)
 union tree *cs;
 {
-	return((length(cs)+ALIGN) & ~ALIGN);
+	return ((length(cs) + ALIGN) & ~ALIGN);
 }
 
 /*
@@ -246,23 +247,23 @@ simplegoto()
 {
 	register struct nmlist *csp;
 
-	if ((peeksym=symbol())==NAME && nextchar()==';') {
+	if ((peeksym = symbol()) == NAME && nextchar() == ';') {
 		csp = csym;
 		if (csp->hblklev == 0)
 			csp = pushdecl(csp);
-		if (csp->hclass==0 && csp->htype==0) {
+		if (csp->hclass == 0 && csp->htype == 0) {
 			csp->htype = ARRAY;
 			csp->hflag |= FLABL;
-			if (csp->hoffset==0)
+			if (csp->hoffset == 0)
 				csp->hoffset = isn++;
 		}
-		if ((csp->hclass==0||csp->hclass==STATIC)
-		 &&  csp->htype==ARRAY) {
+		if ((csp->hclass == 0 || csp->hclass == STATIC)
+			&& csp->htype == ARRAY) {
 			peeksym = -1;
-			return(csp->hoffset);
+			return (csp->hoffset);
 		}
 	}
-	return(0);
+	return (0);
 }
 
 /*
@@ -276,24 +277,33 @@ nextchar()
 {
 	register c, mapped;
 	static char tokmap[] = "X;{}[]():#";
-	/*                      0123456789 */
-	/* SEMI=1 BEGIN=2 END=3 LBRACK=4 RBRACK=5 LPAR=6 RPAR=7 COLON=8 COMMA=9 */
+
+	/*
+	 * 0123456789 
+	 */
+	/*
+	 * SEMI=1 BEGIN=2 END=3 LBRACK=4 RBRACK=5 LPAR=6 RPAR=7 COLON=8
+	 * COMMA=9 
+	 */
 
 	if ((c = peekc) == 0) {
 		c = gettok();
-		if (c == EOF) c = 0;
-		peekc = c;  /* Store raw token for symbol() */
+		if (c == EOF)
+			c = 0;
+		peekc = c;				/* Store raw token for symbol() */
 	}
 
-	/* Map token values to ASCII characters for parser comparisons */
+	/*
+	 * Map token values to ASCII characters for parser comparisons 
+	 */
 	if (c >= 0 && c <= 9)
 		mapped = tokmap[c];
-	else if (c == 20)  /* NAME */
+	else if (c == 20)			/* NAME */
 		mapped = ' ';
 	else
 		mapped = c;
 
-	return(mapped);
+	return (mapped);
 }
 
 /*
@@ -301,7 +311,7 @@ nextchar()
  */
 chconbrk(l)
 {
-	if (l==0)
+	if (l == 0)
 		error("Break/continue error");
 }
 
@@ -317,7 +327,7 @@ dogoto()
 	*cp++ = tree(0);
 	build(STAR);
 	chkw(np = *--cp, -1);
-	rcexpr(block(JUMP, 0, (int *)NULL, (union str *)NULL, np, TNULL));
+	rcexpr(block(JUMP, 0, (int *) NULL, (union str *) NULL, np, TNULL));
 	endtree(st);
 }
 
@@ -331,7 +341,7 @@ doret()
 		register char *st;
 
 		st = starttree();
-		*cp++ = (union tree *)&funcblk;
+		*cp++ = (union tree *) &funcblk;
 		*cp++ = tree(0);
 		build(ASSIGN);
 		cp[-1] = cp[-1]->t.tr2;
@@ -353,7 +363,9 @@ doret()
  *   1: number 1
  *   0: number 0
  */
-/* VARARGS1 */
+/*
+ * VARARGS1 
+ */
 outcode(s, a)
 char *s;
 {
@@ -366,52 +378,53 @@ char *s;
 	if (strflg)
 		bufp = sbufp;
 	ap = &a;
-	for (;;) switch(*s++) {
-	case 'B':
-		fputc(*ap++, bufp);
-		fputc(0376, bufp);
-		continue;
+	for (;;)
+		switch (*s++) {
+		case 'B':
+			fputc(*ap++, bufp);
+			fputc(0376, bufp);
+			continue;
 
-	case 'N':
-		fputc(*ap, bufp);
-		fputc(*ap++>>8, bufp);
-		continue;
+		case 'N':
+			fputc(*ap, bufp);
+			fputc(*ap++ >> 8, bufp);
+			continue;
 
-	case 'F':
-		np = (char *)*ap++;
-		n = 1000;
-		goto str;
+		case 'F':
+			np = (char *) *ap++;
+			n = 1000;
+			goto str;
 
-	case 'S':
-		np = (char *)*ap++;
-		n = MAXCPS-1;
-		if (*np)
-			fputc('_', bufp);
-	str:
-		while(n-- && *np) {
-			fputc(*np++ & 0177, bufp);
+		case 'S':
+			np = (char *) *ap++;
+			n = MAXCPS - 1;
+			if (*np)
+				fputc('_', bufp);
+str:
+			while (n-- && *np) {
+				fputc(*np++ & 0177, bufp);
+			}
+			fputc(0, bufp);
+			continue;
+
+		case '1':
+			fputc(1, bufp);
+			fputc(0, bufp);
+			continue;
+
+		case '0':
+			fputc(0, bufp);
+			fputc(0, bufp);
+			continue;
+
+		case '\0':
+			if (ferror(bufp))
+				fatal("Write error on temp");
+			return;
+
+		default:
+			error("Botch in outcode");
 		}
-		fputc(0, bufp);
-		continue;
-
-	case '1':
-		fputc(1, bufp);
-		fputc(0, bufp);
-		continue;
-
-	case '0':
-		fputc(0, bufp);
-		fputc(0, bufp);
-		continue;
-
-	case '\0':
-		if (ferror(bufp))
-			fatal("Write error on temp");
-		return;
-
-	default:
-		error("Botch in outcode");
-	}
 }
 
 unsigned int
@@ -425,5 +438,5 @@ register char *sp;
 		h += h;
 		h += *sp;
 	}
-	return(h%HSHSIZ);
+	return (h % HSHSIZ);
 }

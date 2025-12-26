@@ -7,18 +7,18 @@
 
 #include "c0.h"
 
-struct	nmlist	*csym;
-char	blklev;
-struct	nmlist	*defsym;
-int	cval;
-struct	nmlist	*parame;
-char	bitoffs;
-struct	nmlist	**memlist;
-union	str	*sparent;
-char	nmems;
-char	mosflg;
-unsigned	autolen;
-unsigned	maxauto;
+struct nmlist *csym;
+char blklev;
+struct nmlist *defsym;
+int cval;
+struct nmlist *parame;
+char bitoffs;
+struct nmlist **memlist;
+union str *sparent;
+char nmems;
+char mosflg;
+unsigned autolen;
+unsigned maxauto;
 
 /*
  * Return true if token o starts a type specifier.
@@ -31,9 +31,18 @@ isatype(o)
 	if (o != KEYW)
 		return 0;
 	switch (cval) {
-	case INT: case CHAR: case FLOAT: case DOUBLE:
-	case LONG: case UNSIGN: case SIGNED: case CONST:
-	case STRUCT: case UNION: case VOID: case ENUM:
+	case INT:
+	case CHAR:
+	case FLOAT:
+	case DOUBLE:
+	case LONG:
+	case UNSIGN:
+	case SIGNED:
+	case CONST:
+	case STRUCT:
+	case UNION:
+	case VOID:
+	case ENUM:
 		return 1;
 	}
 	return 0;
@@ -55,21 +64,27 @@ ansiparams()
 	for (;;) {
 		sclass = ARG;
 		if (!getkeywords(&sclass, &typer)) {
-			/* No type - check for end of list */
+			/*
+			 * No type - check for end of list 
+			 */
 			if ((o = symbol()) == RPARN)
 				break;
 			error("Parameter type expected");
 			errflush(o);
 			return;
 		}
-		/* Check for f(void) - void alone means no params */
+		/*
+		 * Check for f(void) - void alone means no params 
+		 */
 		if (typer.htype == VOID) {
 			o = symbol();
 			if (o == RPARN)
-				break;  /* RPARN consumed, no params */
+				break;			/* RPARN consumed, no params */
 			peeksym = o;
 		}
-		/* Setup dummy for anonymous params (e.g., "int" without name) */
+		/*
+		 * Setup dummy for anonymous params (e.g., "int" without name) 
+		 */
 		anonparm.hclass = 0;
 		anonparm.hflag = 0;
 		anonparm.htype = 0;
@@ -79,10 +94,14 @@ ansiparams()
 		anonparm.sparent = 0;
 		anonparm.hblklev = blklev;
 		anonparm.name = "";
-		/* Parse declarator, add to param list */
+		/*
+		 * Parse declarator, add to param list 
+		 */
 		decl1(ARG1, &typer, 0, &anonparm);
 
-		/* Mark that this param already has its type */
+		/*
+		 * Mark that this param already has its type 
+		 */
 		if (defsym)
 			defsym->hclass = ARG;
 
@@ -94,7 +113,9 @@ ansiparams()
 			errflush(o);
 			return;
 		}
-		/* Check for ... after comma */
+		/*
+		 * Check for ... after comma 
+		 */
 		if ((o = symbol()) == ELLIPSIS) {
 			if (symbol() != RPARN) {
 				error("Expected ')' after ...");
@@ -122,7 +143,7 @@ char sclass;
 		offset = declare(sclass, &typer, offset);
 		sclass = sc;
 	}
-	return(offset+align(INT, offset, 0));
+	return (offset + align(INT, offset, 0));
 }
 
 /*
@@ -147,30 +168,41 @@ struct nmlist *tptr;
 	tptr->hsubsp = NULL;
 	tkw = -1;
 	skw = *scptr;
-	ismos = skw==MOS||skw==MOU? FMOS: 0;
+	ismos = skw == MOS || skw == MOU ? FMOS : 0;
 	for (;;) {
-		mosflg = isadecl? ismos: 0;
+		mosflg = isadecl ? ismos : 0;
 		o = symbol();
-		if (o==NAME && csym->hclass==TYPEDEF) {
+		if (o == NAME && csym->hclass == TYPEDEF) {
 			if (tkw >= 0) {
-				/* If redefining same typedef, let it be declarator */
-				/* Compute effective type with modifiers */
+				/*
+				 * If redefining same typedef, let it be declarator 
+				 */
+				/*
+				 * Compute effective type with modifiers 
+				 */
 				int etype = tkw;
+
 				if (unsignf) {
-					if (etype==INT) etype = UNSIGN;
-					else if (etype==CHAR) etype = UNCHAR;
-					else if (etype==LONG) etype = UNLONG;
+					if (etype == INT)
+						etype = UNSIGN;
+					else if (etype == CHAR)
+						etype = UNCHAR;
+					else if (etype == LONG)
+						etype = UNLONG;
 				}
 				if (longf) {
-					if (etype==FLOAT) etype = DOUBLE;
-					else if (etype==INT) etype = LONG;
-					else if (etype==UNSIGN) etype = UNLONG;
+					if (etype == FLOAT)
+						etype = DOUBLE;
+					else if (etype == INT)
+						etype = LONG;
+					else if (etype == UNSIGN)
+						etype = UNLONG;
 				}
-				if (skw==TYPEDEF && csym->htype==etype) {
+				if (skw == TYPEDEF && csym->htype == etype) {
 					peeksym = o;
 					*scptr = skw;
 					tptr->htype = etype;
-					return(1);
+					return (1);
 				}
 				error("type clash");
 			}
@@ -180,14 +212,14 @@ struct nmlist *tptr;
 			isadecl++;
 			continue;
 		}
-		switch (o==KEYW? cval: -1) {
+		switch (o == KEYW ? cval : -1) {
 		case AUTO:
 		case STATIC:
 		case EXTERN:
 		case REG:
 		case TYPEDEF:
-			if (skw && skw!=cval) {
-				if (skw==ARG && cval==REG)
+			if (skw && skw != cval) {
+				if (skw == ARG && cval == REG)
 					cval = AREG;
 				else
 					error("Conflict in storage class");
@@ -201,7 +233,7 @@ struct nmlist *tptr;
 
 		case SIGNED:
 		case CONST:
-			break;	/* ignored - no-op */
+			break;				/* ignored - no-op */
 
 		case LONG:
 			longf++;
@@ -223,45 +255,45 @@ struct nmlist *tptr;
 		case FLOAT:
 		case DOUBLE:
 		case VOID:
-		types:
-			if (tkw>=0 && (tkw!=INT || cval!=INT))
+types:
+			if (tkw >= 0 && (tkw != INT || cval != INT))
 				error("Type clash");
 			tkw = cval;
-			if (unscflg && cval==CHAR)
+			if (unscflg && cval == CHAR)
 				unsignf++;
 			break;
 
 		default:
 			peeksym = o;
-			if (isadecl==0)
-				return(0);
-			if (tkw<0)
+			if (isadecl == 0)
+				return (0);
+			if (tkw < 0)
 				tkw = INT;
-			if (skw==0)
-				skw = blklev==0? DEFXTRN: AUTO;
+			if (skw == 0)
+				skw = blklev == 0 ? DEFXTRN : AUTO;
 			if (unsignf) {
-				if (tkw==INT)
+				if (tkw == INT)
 					tkw = UNSIGN;
-				else if (tkw==CHAR)
+				else if (tkw == CHAR)
 					tkw = UNCHAR;
-				else if (tkw==LONG)
+				else if (tkw == LONG)
 					tkw = UNLONG;
 				else
 					error("Misplaced 'unsigned'");
 			}
 			if (longf) {
-				if (tkw==FLOAT)
+				if (tkw == FLOAT)
 					tkw = DOUBLE;
-				else if (tkw==INT)
+				else if (tkw == INT)
 					tkw = LONG;
-				else if (tkw==UNSIGN)
+				else if (tkw == UNSIGN)
 					tkw = UNLONG;
 				else
 					error("Misplaced 'long'");
 			}
 			*scptr = skw;
 			tptr->htype = tkw;
-			return(1);
+			return (1);
 		}
 		isadecl++;
 	}
@@ -286,44 +318,44 @@ strdec(mosf, kind)
 	struct nmlist typer;
 	char tagkind;
 
-	if (kind!=ENUM) {
+	if (kind != ENUM) {
 		tagkind = STRTAG;
 		mosflg = FTAG;
-		if (kind==UNION)
+		if (kind == UNION)
 			mosflg = FUNION;
 	} else {
 		tagkind = ENUMTAG;
 		mosflg = FENUM;
 	}
 	ssym = 0;
-	if ((o=symbol())==NAME) {
+	if ((o = symbol()) == NAME) {
 		ssym = csym;
 		mosflg = mosf;
 		o = symbol();
-		if (o==LBRACE && ssym->hblklev<blklev)
+		if (o == LBRACE && ssym->hblklev < blklev)
 			ssym = pushdecl(ssym);
-		if (ssym->hclass && ssym->hclass!=tagkind) {
+		if (ssym->hclass && ssym->hclass != tagkind) {
 			defsym = ssym;
 			redec();
 			ssym = pushdecl(ssym);
 		}
-		if (ssym->hclass==0) {
+		if (ssym->hclass == 0) {
 			ssym->hclass = tagkind;
-			ssym->hstrp = (union str *)Dblock(sizeof(struct SS));
+			ssym->hstrp = (union str *) Dblock(sizeof(struct SS));
 			ssym->hstrp->S.ssize = 0;
 			ssym->hstrp->S.memlist = NULL;
 		}
 		strp = ssym->hstrp;
 	} else {
-		strp = (union str *)Dblock(sizeof(struct SS));
+		strp = (union str *) Dblock(sizeof(struct SS));
 		strp->S.ssize = 0;
 		strp->S.memlist = NULL;
 	}
 	mosflg = 0;
 	if (o != LBRACE) {
-		if (ssym==0)
+		if (ssym == 0)
 			goto syntax;
-		if (ssym->hclass!=tagkind)
+		if (ssym->hclass != tagkind)
 			error("Bad structure/union/enum name");
 		peeksym = o;
 	} else {
@@ -337,12 +369,12 @@ strdec(mosf, kind)
 		sparent = strp;
 		nmems = 2;
 		bitoffs = 0;
-		if (kind==ENUM) {
+		if (kind == ENUM) {
 			typer.htype = INT;
 			typer.hstrp = strp;
 			declare(ENUM, &typer, 0);
 		} else
-			elsize = declist(kind==UNION?MOU:MOS);
+			elsize = declist(kind == UNION ? MOU : MOS);
 		bitoffs = savebits;
 		defsym = ds;
 		if (strp->S.ssize)
@@ -351,8 +383,9 @@ strdec(mosf, kind)
 			werror("struct/union size exceeds 127 bytes");
 		strp->S.ssize = elsize;
 		*memlist++ = NULL;
-		strp->S.memlist = (struct nmlist **)Dblock((memlist-mems)*sizeof(*memlist));
-		for (o=0; &mems[o] != memlist; o++)
+		strp->S.memlist =
+			(struct nmlist **) Dblock((memlist - mems) * sizeof(*memlist));
+		for (o = 0; &mems[o] != memlist; o++)
 			strp->S.memlist[o] = mems[o];
 		memlist = savememlist;
 		sparent = savesparent;
@@ -360,10 +393,10 @@ strdec(mosf, kind)
 		if ((o = symbol()) != RBRACE)
 			goto syntax;
 	}
-	return(strp);
-   syntax:
+	return (strp);
+syntax:
 	decsyn(o);
-	return(0);
+	return (0);
 }
 
 /*
@@ -379,18 +412,18 @@ struct nmlist *tptr;
 
 	skw = askw;
 	isunion = 0;
-	if (skw==MOU) {
+	if (skw == MOU) {
 		skw = MOS;
 		isunion++;
 		mosflg = FMOS;
-		if ((peeksym=symbol()) == SEMI) {
-			o = length((union tree *)tptr);
-			if (o>offset)
+		if ((peeksym = symbol()) == SEMI) {
+			o = length((union tree *) tptr);
+			if (o > offset)
 				offset = o;
 		}
 	}
 	do {
-		if (skw==ENUM && (peeksym=symbol())==RBRACE) {
+		if (skw == ENUM && (peeksym = symbol()) == RBRACE) {
 			o = peeksym;
 			peeksym = -1;
 			break;
@@ -408,21 +441,21 @@ struct nmlist *tptr;
 			aptr = &abs;
 		} else
 			aptr = NULL;
-		o = decl1(skw, tptr, isunion?0:offset, aptr);
+		o = decl1(skw, tptr, isunion ? 0 : offset, aptr);
 		if (isunion) {
 			o += align(CHAR, o, 0);
-			if (o>offset)
+			if (o > offset)
 				offset = o;
 		} else
 			offset += o;
-	} while ((o=symbol()) == COMMA);
-	if (o==RBRACE) {
+	} while ((o = symbol()) == COMMA);
+	if (o == RBRACE) {
 		peeksym = o;
 		o = SEMI;
 	}
-	if (o!=SEMI && (o!=RPARN || skw!=ARG1))
+	if (o != SEMI && (o != RPARN || skw != ARG1))
 		decsyn(o);
-	return(offset);
+	return (offset);
 }
 
 /*
@@ -443,51 +476,52 @@ struct nmlist *atptr, *absname;
 
 	skw = askw;
 	tptr = atptr;
-	mosflg = skw==MOS? FMOS: 0;
+	mosflg = skw == MOS ? FMOS : 0;
 	dim.rank = 0;
-	if (((peeksym=symbol())==SEMI || peeksym==RPARN) && absname==NULL)
-		return(0);
+	if (((peeksym = symbol()) == SEMI || peeksym == RPARN)
+		&& absname == NULL)
+		return (0);
 	/*
 	 * Filler field
 	 */
-	if (peeksym==COLON && skw==MOS) {
+	if (peeksym == COLON && skw == MOS) {
 		peeksym = -1;
 		t1 = conexp();
-		if (t1<0) {
+		if (t1 < 0) {
 			error("Negative field width");
 			t1 = 0;
 		}
 		elsize = align(tptr->htype, offset, t1);
 		bitoffs += t1;
-		return(elsize);
+		return (elsize);
 	}
 	t1 = getype(&dim, absname);
 	if (t1 == -1)
-		return(0);
+		return (0);
 	if (defsym)
 		absname = NULL;
 	if (tptr->hsubsp) {
 		type = tptr->htype;
-		for (a=0; type&XTYPE;) {
-			if ((type&XTYPE)==ARRAY)
+		for (a = 0; type & XTYPE;) {
+			if ((type & XTYPE) == ARRAY)
 				dim.dimens[dim.rank++] = tptr->hsubsp[a++];
 			type >>= TYLEN;
 		}
 	}
 	type = tptr->htype & ~TYPE;
-	while (t1&XTYPE) {
-		if (type&BIGTYPE) {
+	while (t1 & XTYPE) {
+		if (type & BIGTYPE) {
 			typov();
 			type = t1 = 0;
 		}
-		type = type<<TYLEN | (t1 & XTYPE);
+		type = type << TYLEN | (t1 & XTYPE);
 		t1 >>= TYLEN;
 	}
-	type |= tptr->htype&TYPE;
-	if ((type&XTYPE) == FUNC) {
-		if (skw==AUTO)
+	type |= tptr->htype & TYPE;
+	if ((type & XTYPE) == FUNC) {
+		if (skw == AUTO)
 			skw = EXTERN;
-		if ((skw!=EXTERN && skw!=TYPEDEF) && absname==NULL)
+		if ((skw != EXTERN && skw != TYPEDEF) && absname == NULL)
 			error("Bad func. storage class");
 	}
 	if (defsym)
@@ -496,25 +530,25 @@ struct nmlist *atptr, *absname;
 		dsym = absname;
 	else {
 		error("Name required in declaration");
-		return(0);
+		return (0);
 	}
 	if (defsym)
-	if (dsym->hblklev<blklev || dsym->hclass==MOS && skw==MOS) {
-		if (skw==MOS && dsym->sparent==sparent)
-			redec();
-		defsym = dsym;
-		if (skw==EXTERN) {
-			for (; dsym!=NULL; dsym = dsym->nextnm) {
-				if (dsym->hclass==EXTERN
-				 && strcmp(dsym->name, defsym->name)==0) {
-					defsym = dsym;
-					break;
+		if (dsym->hblklev < blklev || dsym->hclass == MOS && skw == MOS) {
+			if (skw == MOS && dsym->sparent == sparent)
+				redec();
+			defsym = dsym;
+			if (skw == EXTERN) {
+				for (; dsym != NULL; dsym = dsym->nextnm) {
+					if (dsym->hclass == EXTERN
+						&& strcmp(dsym->name, defsym->name) == 0) {
+						defsym = dsym;
+						break;
+					}
 				}
-			}
-			dsym = defsym;
-		} else
-			defsym = dsym = pushdecl(dsym);
-	}
+				dsym = defsym;
+			} else
+				defsym = dsym = pushdecl(dsym);
+		}
 	if (dim.rank == 0)
 		dsym->hsubsp = NULL;
 	else {
@@ -524,9 +558,8 @@ struct nmlist *atptr, *absname;
 		 * and .c file both declare a variable.
 		 */
 		if (dsym->hsubsp) {
-			for (a=0, t1 = dsym->htype;
-			    a<dim.rank && (t1&XTYPE)==ARRAY;
-			    a++, t1 >>= TYLEN)
+			for (a = 0, t1 = dsym->htype;
+				 a < dim.rank && (t1 & XTYPE) == ARRAY; a++, t1 >>= TYLEN)
 				/*
 				 * If we haven't seen a declaration for this
 				 * dimension yet, take what's been given now.
@@ -534,58 +567,61 @@ struct nmlist *atptr, *absname;
 				if (!dsym->hsubsp[a])
 					dsym->hsubsp[a] = dim.dimens[a];
 				else if (dim.dimens[a]
-				    && dim.dimens[a] != dsym->hsubsp[a])
+						 && dim.dimens[a] != dsym->hsubsp[a])
 					redec();
-			if (a<dim.rank || (t1&XTYPE)==ARRAY)
+			if (a < dim.rank || (t1 & XTYPE) == ARRAY)
 				redec();
 		} else {
-			dp = (int *)Dblock(dim.rank*sizeof(dim.rank));
-			for (a=0; a<dim.rank; a++)
+			dp = (int *) Dblock(dim.rank * sizeof(dim.rank));
+			for (a = 0; a < dim.rank; a++)
 				dp[a] = dim.dimens[a];
 			dsym->hsubsp = dp;
 		}
 	}
-	if (!(dsym->hclass==0
-	   || ((skw==ARG||skw==AREG) && dsym->hclass==ARG1)
-	   || (skw==EXTERN && dsym->hclass==EXTERN && dsym->htype==type)
-	   || (skw==TYPEDEF && dsym->hclass==TYPEDEF && dsym->htype==type))) {
+	if (!(dsym->hclass == 0
+		  || ((skw == ARG || skw == AREG) && dsym->hclass == ARG1)
+		  || (skw == EXTERN && dsym->hclass == EXTERN
+			  && dsym->htype == type)
+		  || (skw == TYPEDEF && dsym->hclass == TYPEDEF
+			  && dsym->htype == type))) {
 		redec();
 		goto syntax;
 	}
-	if (dsym->hclass && (dsym->htype&TYPE)==STRUCT && (type&TYPE)==STRUCT)
+	if (dsym->hclass && (dsym->htype & TYPE) == STRUCT
+		&& (type & TYPE) == STRUCT)
 		if (dsym->hstrp != tptr->hstrp) {
 			error("structure redeclaration");
 		}
 	dsym->htype = type;
 	if (tptr->hstrp)
 		dsym->hstrp = tptr->hstrp;
-	if (skw==TYPEDEF) {
+	if (skw == TYPEDEF) {
 		dsym->hclass = TYPEDEF;
-		return(0);
+		return (0);
 	}
-	if (skw==ARG1) {
-		if (paraml==NULL)
+	if (skw == ARG1) {
+		if (paraml == NULL)
 			paraml = dsym;
 		else
-			parame->sparent = (union str *)dsym;
+			parame->sparent = (union str *) dsym;
 		parame = dsym;
 		dsym->hclass = skw;
-		return(0);
+		return (0);
 	}
 	elsize = 0;
-	if (skw==MOS) {
-		elsize = length((union tree *)dsym);
-		if ((peeksym = symbol())==COLON) {
+	if (skw == MOS) {
+		elsize = length((union tree *) dsym);
+		if ((peeksym = symbol()) == COLON) {
 			elsize = 0;
 			peeksym = -1;
 			t1 = conexp();
 			a = align(type, offset, t1);
-			if (dsym->hflag&FFIELD) {
-				if (dsym->hstrp->F.bitoffs!=bitoffs
-				 || dsym->hstrp->F.flen!=t1)
+			if (dsym->hflag & FFIELD) {
+				if (dsym->hstrp->F.bitoffs != bitoffs
+					|| dsym->hstrp->F.flen != t1)
 					redec();
 			} else {
-				dsym->hstrp = (union str *)Dblock(sizeof(struct FS));
+				dsym->hstrp = (union str *) Dblock(sizeof(struct FS));
 			}
 			dsym->hflag |= FFIELD;
 			dsym->hstrp->F.bitoffs = bitoffs;
@@ -597,8 +633,8 @@ struct nmlist *atptr, *absname;
 		offset += a;
 		if (++nmems >= NMEMS) {
 			error("Too many structure members");
-			nmems -= NMEMS/2;
-			memlist -= NMEMS/2;
+			nmems -= NMEMS / 2;
+			memlist -= NMEMS / 2;
 		}
 		if (a)
 			*memlist++ = &structhole;
@@ -606,31 +642,45 @@ struct nmlist *atptr, *absname;
 		*memlist++ = dsym;
 		dsym->sparent = sparent;
 	}
-	if (skw==REG)
+	if (skw == REG)
 		if ((dsym->hoffset = goodreg(dsym)) < 0)
 			skw = AUTO;
 	dsym->hclass = skw;
 	isinit = 0;
-	if ((a=symbol()) == ASSIGN)
+	if ((a = symbol()) == ASSIGN)
 		isinit++;
 	else
 		peeksym = a;
-	if (skw==AUTO) {
-	/*	if (STAUTO < 0) {	*/
-			autolen -= rlength((union tree *)dsym);
-			dsym->hoffset = autolen;
-			if (autolen < maxauto)
-				maxauto = autolen;
-	/*	} else { 			*/
-	/*		dsym->hoffset = autolen;	*/
-	/*		autolen += rlength(dsym);	*/
-	/*		if (autolen > maxauto)		*/
-	/*			maxauto = autolen;	*/
-	/*	}			*/
+	if (skw == AUTO) {
+		/*
+		 * if (STAUTO < 0) { 
+		 */
+		autolen -= rlength((union tree *) dsym);
+		dsym->hoffset = autolen;
+		if (autolen < maxauto)
+			maxauto = autolen;
+		/*
+		 * } else { 
+		 */
+		/*
+		 * dsym->hoffset = autolen; 
+		 */
+		/*
+		 * autolen += rlength(dsym); 
+		 */
+		/*
+		 * if (autolen > maxauto) 
+		 */
+		/*
+		 * maxauto = autolen; 
+		 */
+		/*
+		 * } 
+		 */
 		if (isinit)
 			cinit(dsym, 0, AUTO);
 		isinit = 0;
-	} else if (skw==STATIC) {
+	} else if (skw == STATIC) {
 		dsym->hoffset = isn;
 		if (isinit) {
 			outcode("BBN", DATA, LABEL, isn++);
@@ -638,28 +688,28 @@ struct nmlist *atptr, *absname;
 				outcode("B", EVEN);
 		} else
 			outcode("BBNBN", BSS, LABEL, isn++, SSPACE,
-			  rlength((union tree *)dsym));
+					rlength((union tree *) dsym));
 		outcode("B", PROG);
 		isinit = 0;
-	} else if (skw==REG && isinit) {
+	} else if (skw == REG && isinit) {
 		cinit(dsym, 0, REG);
 		isinit = 0;
-	} else if (skw==ENUM) {
-		if (type!=INT)
+	} else if (skw == ENUM) {
+		if (type != INT)
 			error("Illegal enumeration %s", dsym->name);
 		dsym->hclass = ENUMCON;
 		dsym->hoffset = offset;
 		if (isinit)
 			cinit(dsym, 0, ENUMCON);
-		elsize = dsym->hoffset-offset+1;
+		elsize = dsym->hoffset - offset + 1;
 		isinit = 0;
 	}
-	if (absname==0)
+	if (absname == 0)
 		prste(dsym);
 	if (isinit)
 		peeksym = ASSIGN;
 syntax:
-	return(elsize);
+	return (elsize);
 }
 
 /*
@@ -672,7 +722,7 @@ register struct nmlist *sp;
 {
 	register struct nmlist *nsp, **hsp;
 
-	nsp = (struct nmlist *)Dblock(sizeof(struct nmlist));
+	nsp = (struct nmlist *) Dblock(sizeof(struct nmlist));
 	*nsp = *sp;
 	nsp->hclass = 0;
 	nsp->hflag &= FKIND;
@@ -685,7 +735,7 @@ register struct nmlist *sp;
 	hsp = &hshtab[hash(sp->name)];
 	nsp->nextnm = *hsp;
 	*hsp = nsp;
-	return(nsp);
+	return (nsp);
 }
 
 /*
@@ -703,25 +753,25 @@ struct nmlist *absname;
 
 	defsym = 0;
 	type = 0;
-	switch(o=symbol()) {
+	switch (o = symbol()) {
 
 	case STAR:
 	case TIMES:
 		type = getype(dimp, absname);
-		if (type==-1)
-			return(type);
-		if (type&BIGTYPE) {
+		if (type == -1)
+			return (type);
+		if (type & BIGTYPE) {
 			typov();
 			type = 0;
 		}
-		return(type<<TYLEN | PTR);
+		return (type << TYLEN | PTR);
 
 	case LPARN:
-		if (absname==NULL || nextchar()!=')') {
+		if (absname == NULL || nextchar() != ')') {
 			type = getype(dimp, absname);
-			if (type==-1)
-				return(type);
-			if ((o=symbol()) != RPARN)
+			if (type == -1)
+				return (type);
+			if ((o = symbol()) != RPARN)
 				goto syntax;
 			goto getf;
 		}
@@ -734,71 +784,78 @@ struct nmlist *absname;
 
 	case NAME:
 		defsym = ds = csym;
-	getf:
-		switch(o=symbol()) {
+getf:
+		switch (o = symbol()) {
 
 		case LPARN:
-			if (blklev==0) {
+			if (blklev == 0) {
 				blklev++;
 				ds = defsym;
-				/* Detect C90 vs K&R by looking at first token */
+				/*
+				 * Detect C90 vs K&R by looking at first token 
+				 */
 				o = symbol();
 				if (o == RPARN) {
-					/* Empty params: f() */
+					/*
+					 * Empty params: f() 
+					 */
 					;
 				} else if (isatype(o)) {
-					/* C90 style - type keyword seen */
+					/*
+					 * C90 style - type keyword seen 
+					 */
 					peeksym = o;
-				c90params:
+c90params:
 					ansiparams();
 				} else {
-					/* K&R style - just names */
+					/*
+					 * K&R style - just names 
+					 */
 					peeksym = o;
 					declare(ARG1, &argtype, 0);
 				}
 				defsym = ds;
 				blklev--;
-			} else
-				if ((o=symbol()) != RPARN)
-					goto syntax;
-			if (type&BIGTYPE) {
+			} else if ((o = symbol()) != RPARN)
+				goto syntax;
+			if (type & BIGTYPE) {
 				typov();
 				type = 0;
 			}
-			type = type<<TYLEN | FUNC;
+			type = type << TYLEN | FUNC;
 			goto getf;
 
 		case LBRACK:
-			if (dimp->rank>=5) {
+			if (dimp->rank >= 5) {
 				error("Rank too large");
 				dimp->rank = 4;
 			}
-			if ((o=symbol()) != RBRACK) {
+			if ((o = symbol()) != RBRACK) {
 				peeksym = o;
 				ds = defsym;
 				cval = conexp();
 				defsym = ds;
-				if ((o=symbol())!=RBRACK)
+				if ((o = symbol()) != RBRACK)
 					goto syntax;
 			} else {
-				if (dimp->rank!=0)
+				if (dimp->rank != 0)
 					error("Null dimension");
 				cval = 0;
 			}
 			dimp->dimens[dimp->rank++] = cval;
-			if (type&BIGTYPE) {
+			if (type & BIGTYPE) {
 				typov();
 				type = 0;
 			}
-			type = type<<TYLEN | ARRAY;
+			type = type << TYLEN | ARRAY;
 			goto getf;
 		}
 		peeksym = o;
-		return(type);
+		return (type);
 	}
 syntax:
 	decsyn(o);
-	return(-1);
+	return (-1);
 }
 
 /*
@@ -823,36 +880,36 @@ align(type, offset, aflen)
 	a = offset;
 	t = type;
 	ftl = "Field too long";
-	if (flen==0) {
-		a += (NBPC+bitoffs-1) / NBPC;
+	if (flen == 0) {
+		a += (NBPC + bitoffs - 1) / NBPC;
 		bitoffs = 0;
 	}
-	while ((t&XTYPE)==ARRAY)
+	while ((t & XTYPE) == ARRAY)
 		t = decref(t);
-	if (t!=CHAR && t!=UNCHAR) {
-		a = (a+ALIGN) & ~ALIGN;
-		if (a>offset)
+	if (t != CHAR && t != UNCHAR) {
+		a = (a + ALIGN) & ~ALIGN;
+		if (a > offset)
 			bitoffs = 0;
 	}
 	if (flen) {
-		if (type==INT || type==UNSIGN) {
+		if (type == INT || type == UNSIGN) {
 			if (flen > NBPW)
 				error(ftl);
-			if (flen+bitoffs > NBPW) {
+			if (flen + bitoffs > NBPW) {
 				bitoffs = 0;
 				a += NCPW;
 			}
-		} else if (type==CHAR || type==UNCHAR) {
+		} else if (type == CHAR || type == UNCHAR) {
 			if (flen > NBPC)
 				error(ftl);
-			if (flen+bitoffs > NBPC) {
+			if (flen + bitoffs > NBPC) {
 				bitoffs = 0;
 				a += 1;
 			}
 		} else
 			error("Bad type for field");
 	}
-	return(a-offset);
+	return (a - offset);
 }
 
 /*
@@ -883,8 +940,8 @@ struct nmlist *hp;
 	int type;
 
 	type = hp->htype;
-	if ((type!=INT && type!=UNSIGN && (type&XTYPE)==0)
-	 || (type&XTYPE)>PTR || regvar<3)
-		return(-1);
-	return(--regvar);
+	if ((type != INT && type != UNSIGN && (type & XTYPE) == 0)
+		|| (type & XTYPE) > PTR || regvar < 3)
+		return (-1);
+	return (--regvar);
 }

@@ -1,5 +1,5 @@
 /*
- * 	C compiler-- first pass header
+ *  C compiler-- first pass header
  */
 
 #include <stdio.h>
@@ -16,29 +16,31 @@
  *
  * NOTE: The optimizer (c2) needs to be updated if the size of a symbol
  * changes.  See the file c2.h
-*/
+ */
 
-#define	MAXCPS	32	/* # chars per symbol */
+#define	MAXCPS	32				/* # chars per symbol */
 
-#define	LTYPE	long	/* change to int if no long consts */
-#define	MAXINT	077777	/* Largest positive short integer */
-#define	MAXUINT	0177777	/* largest unsigned integer */
-#define	HSHSIZ	300	/* # entries in hash table for names */
-#define	CMSIZ	40	/* size of expression stack */
-#define	SSIZE	40	/* size of other expression stack */
-#define	SWSIZ	300	/* size of switch table */
-#define	NMEMS	128	/* Number of members in a structure */
-#define	NBPW	16	/* bits per word, object machine */
-#define	NBPC	8	/* bits per character, object machine */
-#define	NCPW	2	/* chars per word, object machine */
-#define	LNCPW	2	/* chars per word, compiler's machine */
-#define	LNBPW	16	/* bits per word, compiler's machine */
-/* dlf change
-#define	STAUTO	(-6)	 offset of first auto variable */
-extern int	STAUTO;
-#define	STARG	4	/* offset of first argument */
-#define	DCLSLOP	512	/* Amount trees lie above declaration stuff */
+#define	LTYPE	long			/* change to int if no long consts */
+#define	MAXINT	077777			/* Largest positive short integer */
+#define	MAXUINT	0177777			/* largest unsigned integer */
+#define	HSHSIZ	300				/* # entries in hash table for names */
+#define	CMSIZ	40				/* size of expression stack */
+#define	SSIZE	40				/* size of other expression stack */
+#define	SWSIZ	300				/* size of switch table */
+#define	NMEMS	128				/* Number of members in a structure */
+#define	NBPW	16				/* bits per word, object machine */
+#define	NBPC	8				/* bits per character, object machine */
+#define	NCPW	2				/* chars per word, object machine */
+#define	LNCPW	2				/* chars per word, compiler's machine */
+#define	LNBPW	16				/* bits per word, compiler's machine */
+/*
+ * dlf change #define STAUTO (-6) offset of first auto variable 
+ */
+extern int STAUTO;
 
+#define	STARG	4				/* offset of first argument */
+#define	DCLSLOP	512				/* Amount trees lie above declaration
+								 * stuff */
 
 /*
  * # bytes in primitive types
@@ -54,16 +56,16 @@ extern int	STAUTO;
  * Structure of namelist
  */
 struct nmlist {
-	char	hclass;		/* storage class */
-	char	hflag;		/* various flags */
-	int	htype;		/* type */
-	int	*hsubsp;	/* subscript list */
-	union	str *hstrp;	/* structure description */
-	int	hoffset;	/* post-allocation location */
-	struct	nmlist *nextnm;	/* next name in chain */
-	union	str *sparent;	/* Structure of which this is member */
-	char	hblklev;	/* Block level of definition */
-	char	*name;		/* ASCII name */
+	char hclass;				/* storage class */
+	char hflag;					/* various flags */
+	int htype;					/* type */
+	int *hsubsp;				/* subscript list */
+	union str *hstrp;			/* structure description */
+	int hoffset;				/* post-allocation location */
+	struct nmlist *nextnm;		/* next name in chain */
+	union str *sparent;			/* Structure of which this is member */
+	char hblklev;				/* Block level of definition */
+	char *name;					/* ASCII name */
 };
 
 /*
@@ -74,12 +76,12 @@ struct nmlist {
  */
 union str {
 	struct SS {
-		int	ssize;			/* structure size */
-		struct nmlist **memlist;	/* member list */
+		int ssize;				/* structure size */
+		struct nmlist **memlist; /* member list */
 	} S;
 	struct FS {
-		char	flen;			/* field width in bits */
-		char	bitoffs;		/* shift count */
+		char flen;				/* field width in bits */
+		char bitoffs;			/* shift count */
 	} F;
 	struct nmlist P;
 };
@@ -88,23 +90,23 @@ union str {
  * Structure of tree nodes for operators
  */
 struct tnode {
-	unsigned char op;	/* operator */
-	int	type;		/* data type */
-	int	*subsp;		/* subscript list (for arrays) */
-	union	str *strp;	/* structure description for structs */
-	union	tree *tr1;	/* left operand */
-	union	tree *tr2;	/* right operand */
+	unsigned char op;			/* operator */
+	int type;					/* data type */
+	int *subsp;					/* subscript list (for arrays) */
+	union str *strp;			/* structure description for structs */
+	union tree *tr1;			/* left operand */
+	union tree *tr2;			/* right operand */
 };
 
 /*
  * Tree node for constants
  */
-struct	cnode {
+struct cnode {
 	unsigned char op;
-	int	type;
-	int	*subsp;
-	union	str *strp;
-	int	value;
+	int type;
+	int *subsp;
+	union str *strp;
+	int value;
 };
 
 /*
@@ -112,112 +114,111 @@ struct	cnode {
  */
 struct lnode {
 	unsigned char op;
-	int	type;
-	int	*subsp;
-	union	str *strp;
-	long	lvalue;
+	int type;
+	int *subsp;
+	union str *strp;
+	long lvalue;
 };
 
 /*
  * tree node for floating
  * constants
  */
-struct	fnode {
+struct fnode {
 	unsigned char op;
-	int	type;
-	int	*subsp;
-	union	str *strp;
-	char	*cstr;
+	int type;
+	int *subsp;
+	union str *strp;
+	char *cstr;
 };
 
 /*
  * All possibilities for tree nodes
  */
 union tree {
-	struct	tnode t;
-	struct	cnode c;
-	struct	lnode l;
-	struct	fnode f;
-	struct	nmlist n;
-	struct	FS fld;
+	struct tnode t;
+	struct cnode c;
+	struct lnode l;
+	struct fnode f;
+	struct nmlist n;
+	struct FS fld;
 };
-
 
 /*
  * Place used to keep dimensions
  * during declarations
  */
-struct	tdim {
-	char	rank;
-	int	dimens[5];
+struct tdim {
+	char rank;
+	int dimens[5];
 };
 
 /*
  * Table for recording switches.
  */
 struct swtab {
-	int	swlab;
-	int	swval;
+	int swlab;
+	int swval;
 };
 
 #define	TNULL	(union tree *)NULL
 
-extern char	cvtab[4][4];
-extern char	filename[64];
-extern int	opdope[];
-extern char	symbuf[MAXCPS+2];
-extern	struct	nmlist	*hshtab[HSHSIZ];
-extern	union	tree **cp;
-extern	int	isn;
-extern	struct	swtab	swtab[SWSIZ];
-extern char	unscflg;
-extern struct	swtab	*swp;
-extern int	contlab;
-extern int	brklab;
-extern int	retlab;
-extern int	deflab;
-extern unsigned autolen;	/* make these int if necessary */
-extern unsigned maxauto;	/* ... will only cause trouble rarely */
-extern	int	peeksym;
-extern int	peekc;
-extern char	eof;
-extern	int	line;
-extern char	*locbase;
-extern char	*treebase;
-extern char	*treebot;
-extern char	*coremax;
-extern struct	nmlist	*defsym;
-extern struct	nmlist	*funcsym;
-extern char	proflg;
-extern struct	nmlist	*csym;
-extern int	cval;
-extern LTYPE	lcval;
-extern int	nchstr;
-extern int	nerror;
-extern struct	nmlist *paraml;
-extern struct	nmlist *parame;
-extern char	strflg;
-extern char	mosflg;
-extern char	initflg;
-extern char	sbuf[512];
-extern	char	strbuf[];
-extern FILE	*sbufp;
-extern FILE	*xfile;		/* .x input file from cpp */
-extern char	regvar;
-extern char	bitoffs;
-extern	struct	tnode	funcblk;
-extern char	cvntab[];
-extern char	numbuf[64];
-extern struct	nmlist **memlist;
-extern union	str *sparent;
-extern char	nmems;
-extern struct	nmlist	structhole;
-extern char	blklev;
-extern char	mossym;
+extern char cvtab[4][4];
+extern char filename[64];
+extern int opdope[];
+extern char symbuf[MAXCPS + 2];
+extern struct nmlist *hshtab[HSHSIZ];
+extern union tree **cp;
+extern int isn;
+extern struct swtab swtab[SWSIZ];
+extern char unscflg;
+extern struct swtab *swp;
+extern int contlab;
+extern int brklab;
+extern int retlab;
+extern int deflab;
+extern unsigned autolen;		/* make these int if necessary */
+extern unsigned maxauto;		/* ... will only cause trouble rarely */
+extern int peeksym;
+extern int peekc;
+extern char eof;
+extern int line;
+extern char *locbase;
+extern char *treebase;
+extern char *treebot;
+extern char *coremax;
+extern struct nmlist *defsym;
+extern struct nmlist *funcsym;
+extern char proflg;
+extern struct nmlist *csym;
+extern int cval;
+extern LTYPE lcval;
+extern int nchstr;
+extern int nerror;
+extern struct nmlist *paraml;
+extern struct nmlist *parame;
+extern char strflg;
+extern char mosflg;
+extern char initflg;
+extern char sbuf[512];
+extern char strbuf[];
+extern FILE *sbufp;
+extern FILE *xfile;				/* .x input file from cpp */
+extern char regvar;
+extern char bitoffs;
+extern struct tnode funcblk;
+extern char cvntab[];
+extern char numbuf[64];
+extern struct nmlist **memlist;
+extern union str *sparent;
+extern char nmems;
+extern struct nmlist structhole;
+extern char blklev;
+extern char mossym;
 
 /*
-  operators
-*/
+ * operators 
+ */
 #define	EOFC	0
 #define	SEMI	1
 #define	LBRACE	2
@@ -241,7 +242,7 @@ extern char	mossym;
 #define	LCON	25
 #define	SLCON	26
 #define	NULLOP	29
-#define	XNULLOP	218	/* interface version */
+#define	XNULLOP	218				/* interface version */
 
 #define	SIZEOF	91
 #define	ELLIPSIS 92
@@ -316,15 +317,15 @@ extern char	mossym;
 #define	NLABEL	113
 #define	RLABEL	114
 #define	STRASG	115
-#define	LINENO	116	/* line number marker from cpp */
-#define	NEWLINE	117	/* line++ marker from cpp */
-#define	ASMSTR	118	/* asm string: 2-byte len + text */
+#define	LINENO	116				/* line number marker from cpp */
+#define	NEWLINE	117				/* line++ marker from cpp */
+#define	ASMSTR	118				/* asm string: 2-byte len + text */
 #define	ITOC	109
-#define	SEOF	200	/* stack EOF marker in expr compilation */
+#define	SEOF	200				/* stack EOF marker in expr compilation */
 
 /*
-  types
-*/
+ * types 
+ */
 #define	INT	0
 #define	CHAR	1
 #define	FLOAT	2
@@ -336,7 +337,7 @@ extern char	mossym;
 #define	UNCHAR	8
 #define	UNLONG	9
 #define	VOID	10
-#define	UNION	8		/* adjusted later to struct */
+#define	UNION	8				/* adjusted later to struct */
 
 #define	ALIGN	01
 #define	TYPE	017
@@ -348,8 +349,8 @@ extern char	mossym;
 #define	ARRAY	060
 
 /*
-  storage classes
-*/
+ * storage classes 
+ */
 #define	KEYWC	1
 #define	TYPEDEF	9
 #define	MOS	10
@@ -367,8 +368,8 @@ extern char	mossym;
 #define	ENUMCON	24
 
 /*
-  keywords
-*/
+ * keywords 
+ */
 #define	GOTO	20
 #define	RETURN	21
 #define	IF	22
@@ -410,8 +411,8 @@ extern char	mossym;
 #define	ASSEM	223
 
 /*
-  Flag bits
-*/
+ * Flag bits 
+ */
 
 #define	BINARY	01
 #define	LVALUE	02
@@ -429,21 +430,21 @@ extern char	mossym;
  * Use PREC(level) to shift into position in opdope entries.
  * Unary operators don't need precedence (identified by !BINARY).
  */
-#define	PREC_NONE	0	/* not an operator */
-#define	PREC_COMMA	1	/* , (sequencing) */
-#define	PREC_ASGN	2	/* = += -= etc */
-#define	PREC_COND	3	/* ?: */
-#define	PREC_LOR	4	/* || */
-#define	PREC_LAND	5	/* && */
-#define	PREC_BOR	6	/* | ^ */
-#define	PREC_BAND	7	/* & */
-#define	PREC_EQ		8	/* == != */
-#define	PREC_REL	9	/* < <= > >= */
-#define	PREC_SHIFT	10	/* << >> */
-#define	PREC_ADD	11	/* + - */
-#define	PREC_MUL	12	/* * / % */
-#define	PREC_UNARY	13	/* prefix: ! ~ - * & sizeof */
-#define	PREC_POSTFX	14	/* . -> [] () call */
+#define	PREC_NONE	0			/* not an operator */
+#define	PREC_COMMA	1			/* , (sequencing) */
+#define	PREC_ASGN	2			/* = += -= etc */
+#define	PREC_COND	3			/* ?: */
+#define	PREC_LOR	4			/* || */
+#define	PREC_LAND	5			/* && */
+#define	PREC_BOR	6			/* | ^ */
+#define	PREC_BAND	7			/* & */
+#define	PREC_EQ		8			/* == != */
+#define	PREC_REL	9			/* < <= > >= */
+#define	PREC_SHIFT	10			/* << >> */
+#define	PREC_ADD	11			/* + - */
+#define	PREC_MUL	12			/* * / % */
+#define	PREC_UNARY	13			/* prefix: ! ~ - * & sizeof */
+#define	PREC_POSTFX	14			/* . -> [] () call */
 
 #define	PREC(n)		((n) << 9)
 
@@ -474,31 +475,31 @@ extern char	mossym;
 #define	FFIELD	020
 #define	FINIT	040
 #define	FLABL	0100
-#define	FTENT	0200	/* tentative definition - defer CSPACE */
+#define	FTENT	0200			/* tentative definition - defer CSPACE */
 
 /*
  * functions
  */
-char	*sbrk();
-union	tree *tree();
-char	*copnum();
-union	tree *convert();
-union	tree *chkfun();
-union	tree *disarray();
-union	tree *block();
-union	tree *cblock();
-union	tree *fblock();
-char	*Dblock();
-char	*Tblock();
-char	*starttree();
-union	tree *pexpr();
-union	str *strdec();
-union	tree *xprtype();
-struct	nmlist *pushdecl();
+char *sbrk();
+union tree *tree();
+char *copnum();
+union tree *convert();
+union tree *chkfun();
+union tree *disarray();
+union tree *block();
+union tree *cblock();
+union tree *fblock();
+char *Dblock();
+char *Tblock();
+char *starttree();
+union tree *pexpr();
+union str *strdec();
+union tree *xprtype();
+struct nmlist *pushdecl();
 unsigned hash();
-union	tree *structident();
-struct	nmlist *gentemp();
-union	tree *nblock();
+union tree *structident();
+struct nmlist *gentemp();
+union tree *nblock();
 int nextchar();
 int gettok();
 int symbol();
