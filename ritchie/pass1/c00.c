@@ -59,7 +59,11 @@ char *argv[];
 		|| (sbufp = fopen(argv[3], "w")) == NULL)
 		fatal("Can't create temp");
 	setbuf(stdout, buf2);		/* stdio sbrk problems */
+#ifdef __linux__
+	setvbuf(sbufp, sbuf, _IOFBF, sizeof(sbuf));
+#else
 	setbuf(sbufp, sbuf);
+#endif
 	while (argc > 4) {
 		switch (argv[4][1]) {
 		case 'w':
