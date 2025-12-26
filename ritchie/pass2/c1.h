@@ -5,7 +5,7 @@
 #include <stdio.h>
 #include <setjmp.h>
 
-#define	LTYPE	long	/* change to int for no long consts */
+#define	LTYPE	long			/* change to int for no long consts */
 #define	TNULL	(union tree *)NULL
 #define	UNS(x)	((unsigned short)(x))
 #define	MAX(a,b)	((a)>(b)?(a):(b))
@@ -13,166 +13,167 @@
 /*
  *  Tree node for unary and binary
  */
-struct	tnode {
-	int	op;
-	int	type;
-	int	degree;
-	union	tree *tr1;
-	union	tree *tr2;
+struct tnode {
+	int op;
+	int type;
+	int degree;
+	union tree *tr1;
+	union tree *tr2;
 };
 
 /*
  * tree names for locals
  */
-struct	tname {
-	int	op;
-	int	type;
-	char	class;
-	char	regno;
-	int	offset;
-	int	nloc;
+struct tname {
+	int op;
+	int type;
+	char class;
+	char regno;
+	int offset;
+	int nloc;
 };
 
 /*
  * tree names for externals
  */
-struct	xtname {
-	int	op;
-	int	type;
-	char	class;
-	char	regno;
-	int	offset;
-	char	*name;
+struct xtname {
+	int op;
+	int type;
+	char class;
+	char regno;
+	int offset;
+	char *name;
 };
 
 /*
  * short constants
  */
-struct	tconst {
-	int	op;
-	int	type;
-	int	value;
+struct tconst {
+	int op;
+	int type;
+	int value;
 };
 
 /*
  * long constants
  */
-struct	lconst {
-	int	op;
-	int	type;
-	LTYPE	lvalue;
+struct lconst {
+	int op;
+	int type;
+	LTYPE lvalue;
 };
 
 /*
  * Floating constants
  */
-struct	ftconst {
-	int	op;
-	int	type;
-	int	value;
-	double	fvalue;
+struct ftconst {
+	int op;
+	int type;
+	int value;
+	double fvalue;
 };
 
 /*
  * Node used for field assignments
  */
-struct	fasgn {
-	int	op;
-	int	type;
-	int	degree;
-	union	tree *tr1;
-	union	tree *tr2;
-	int	mask;
+struct fasgn {
+	int op;
+	int type;
+	int degree;
+	union tree *tr1;
+	union tree *tr2;
+	int mask;
 };
 
-union	tree {
-	struct	tnode t;
+union tree {
+	struct tnode t;
 	struct tname n;
-	struct	xtname x;
-	struct	tconst c;
-	struct	lconst l;
-	struct	ftconst f;
-	struct	fasgn F;
+	struct xtname x;
+	struct tconst c;
+	struct lconst l;
+	struct ftconst f;
+	struct fasgn F;
 };
 
-struct	optab {
-	char	tabdeg1;
-	char	tabtyp1;
-	char	tabdeg2;
-	char	tabtyp2;
-	char	*tabstring;
+struct optab {
+	char tabdeg1;
+	char tabtyp1;
+	char tabdeg2;
+	char tabtyp2;
+	char *tabstring;
 };
 
-struct	table {
-	int	tabop;
-	struct	optab *tabp;
+struct table {
+	int tabop;
+	struct optab *tabp;
 };
 
-struct	instab {
-	int	iop;
-	char	*str1;
-	char	*str2;
+struct instab {
+	int iop;
+	char *str1;
+	char *str2;
 };
 
-struct	swtab {
-	int	swlab;
-	int	swval;
+struct swtab {
+	int swlab;
+	int swval;
 };
 
-extern char	maprel[];
-extern char	notrel[];
-int	nreg;
-int	isn;
-int	line;
-int	nerror;			/* number of hard errors */
-extern struct	table	cctab[];
-extern struct	table	efftab[];
-extern struct	table	regtab[];
-extern struct	table	sptab[];
-struct	table	lsptab[1];
-extern struct	instab	instab[];
-extern struct	instab	branchtab[];
-extern int	opdope[];
-extern char	*opntab[];
-int	nstack;
-int	nfloat;
-struct	tname	sfuncr;
-char	*funcbase;
-char	*curbase;
-char	*coremax;
-struct	tconst czero, cone;
-long	totspace;
-int	regpanic;		/* set when SU register alg. fails */
-int	panicposs;		/* set when there might be need for regpanic */
-jmp_buf	jmpbuf;
-long	ftell();
-char	*sbrk();
-struct	optab *match();
-union	tree *optim();
-union	tree *unoptim();
-union	tree *pow2();
-union	tree *tnode();
-union	tree *sdelay();
-union	tree *ncopy();
-union	tree *getblk();
-union	tree *strfunc();
-union	tree *isconstant();
-union	tree *tconst();
-union	tree *hardlongs();
-union	tree *lconst();
-union	tree *acommute();
-union	tree *lvfield();
-union	tree *paint();
-long	ftell();
+extern char maprel[];
+extern char notrel[];
+int nreg;
+int isn;
+int line;
+int nerror;						/* number of hard errors */
+extern struct table cctab[];
+extern struct table efftab[];
+extern struct table regtab[];
+extern struct table sptab[];
+struct table lsptab[1];
+extern struct instab instab[];
+extern struct instab branchtab[];
+extern int opdope[];
+extern char *opntab[];
+int nstack;
+int nfloat;
+struct tname sfuncr;
+char *funcbase;
+char *curbase;
+char *coremax;
+struct tconst czero, cone;
+long totspace;
+int regpanic;					/* set when SU register alg. fails */
+int panicposs;					/* set when there might be need for
+								 * regpanic */
+jmp_buf jmpbuf;
+long ftell();
+char *sbrk();
+struct optab *match();
+union tree *optim();
+union tree *unoptim();
+union tree *pow2();
+union tree *tnode();
+union tree *sdelay();
+union tree *ncopy();
+union tree *getblk();
+union tree *strfunc();
+union tree *isconstant();
+union tree *tconst();
+union tree *hardlongs();
+union tree *lconst();
+union tree *acommute();
+union tree *lvfield();
+union tree *paint();
+long ftell();
 
 /*
  * Some special stuff for long comparisons
  */
-int	xlab1, xlab2, xop, xzero;
+int xlab1, xlab2, xop, xzero;
 
 /*
-	operators
-*/
+ * operators 
+ */
 #define	EOFC	0
 #define	SEMI	1
 #define	LBRACE	2
@@ -298,15 +299,15 @@ int	xlab1, xlab2, xop, xzero;
 #define	UMOD	118
 #define	ASUDIV	119
 #define	ASUMOD	120
-#define	ULTIMES	121	/* present for symmetry */
+#define	ULTIMES	121				/* present for symmetry */
 #define	ULDIV	122
 #define	ULMOD	123
-#define	ULASTIMES 124	/* present for symmetry */
+#define	ULASTIMES 124			/* present for symmetry */
 #define	ULASDIV	125
 #define	ULASMOD	126
 #define	ULTOF	127
-#define	ULLSHIFT 128	/* << for unsigned long */
-#define	UASLSHL	129	/* <<= for unsigned long */
+#define	ULLSHIFT 128			/* << for unsigned long */
+#define	UASLSHL	129				/* <<= for unsigned long */
 
 #define	BDATA	200
 #define	PROG	202
@@ -331,7 +332,7 @@ int	xlab1, xlab2, xop, xzero;
 #define	ASSEM	223
 
 /*
- *	types
+ *  types
  */
 #define	INT	0
 #define	CHAR	1
@@ -353,8 +354,8 @@ int	xlab1, xlab2, xop, xzero;
 #define	ARRAY	060
 
 /*
-	storage	classes
-*/
+ * storage classes 
+ */
 #define	KEYWC	1
 #define	MOS	10
 #define	AUTO	11
@@ -368,8 +369,52 @@ int	xlab1, xlab2, xop, xzero;
 #define	SOFFS	22
 
 /*
-	Flag	bits
-*/
+ * Table degree field encoding (tabdeg1, tabdeg2)
+ * Low 6 bits = degree value, bit 6 = requires indirection
+ */
+#define	DEG_MASK	077			/* mask for degree value */
+#define	DEG_INDIR	0100		/* requires STAR (indirection) */
+
+/*
+ * Template string encoding
+ * High bit means output tab first, low 7 bits = character
+ */
+#define	STR_TAB		0200		/* output tab before character */
+#define	STR_CMASK	0177		/* mask for character value */
+
+/*
+ * Subtree evaluation flags (for G, K, H template chars)
+ * These are encoded as (char - 'A') after the G/K/H, plus modifiers.
+ * The modifier chars are: '!' = force register, '?' = force CC
+ */
+#define	SF_LEFT		01			/* use left subtree (tr1) */
+#define	SF_SPTAB	02			/* use stack push table */
+#define	SF_CCTAB	04			/* use condition code table */
+#define	SF_REG1		010			/* put result in reg1 */
+#define	SF_FORCEREG	020			/* force move to target register (!) */
+#define	SF_FORCECC	040			/* force condition code generation (?) */
+
+/*
+ * Template type flags (flag variable in subtre)
+ */
+#define	TF_G		01			/* 'G' template - left subtree to reg */
+#define	TF_K		02			/* 'K' template - right subtree to stack */
+#define	TF_H		04			/* 'H' template - full tree to CC reg */
+
+/*
+ * Register encoding flag for rcexpr
+ * Added to reg before passing with ~ to indicate special handling
+ */
+#define	REG_SPECIAL	020			/* special register handling */
+
+/*
+ * 16-bit value constants
+ */
+#define	SIGNBIT		0100000		/* 16-bit sign bit (0x8000) */
+
+/*
+ * Flag bits
+ */
 
 #define	BINARY	01
 #define	LVALUE	02
@@ -387,21 +432,23 @@ int	xlab1, xlab2, xop, xzero;
  * Use PREC(level) to shift into position in opdope entries.
  * Unary operators don't need precedence (identified by !BINARY).
  */
-#define	PREC_NONE	0	/* not an operator */
-#define	PREC_COMMA	1	/* , (sequencing) */
-#define	PREC_ASGN	2	/* = += -= etc */
-#define	PREC_COND	3	/* ?: */
-#define	PREC_LOR	4	/* || */
-#define	PREC_LAND	5	/* && */
-#define	PREC_BOR	6	/* | ^ */
-#define	PREC_BAND	7	/* & */
-#define	PREC_EQ		8	/* == != */
-#define	PREC_REL	9	/* < <= > >= */
-#define	PREC_SHIFT	10	/* << >> */
-#define	PREC_ADD	11	/* + - */
-#define	PREC_MUL	12	/* * / % */
-#define	PREC_POSTFX	13	/* . -> [] call */
+#define	PREC_NONE	0			/* not an operator */
+#define	PREC_COMMA	1			/* , (sequencing) */
+#define	PREC_ASGN	2			/* = += -= etc */
+#define	PREC_COND	3			/* ?: */
+#define	PREC_LOR	4			/* || */
+#define	PREC_LAND	5			/* && */
+#define	PREC_BOR	6			/* | ^ */
+#define	PREC_BAND	7			/* & */
+#define	PREC_EQ		8			/* == != */
+#define	PREC_REL	9			/* < <= > >= */
+#define	PREC_SHIFT	10			/* << >> */
+#define	PREC_ADD	11			/* + - */
+#define	PREC_MUL	12			/* * / % */
+#define	PREC_POSTFX	13			/* . -> [] call */
 
 #define	PREC(n)		((n) << 9)
 
-/* vim: set tabstop=4 shiftwidth=4 noexpandtab: */
+/*
+ * vim: set tabstop=4 shiftwidth=4 noexpandtab: 
+ */
