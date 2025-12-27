@@ -623,6 +623,9 @@ doCpp(unsigned char t)
         c = malloc(sizeof(*c));
         c->next = cond;
         cond = c;
+        /* Only set C_TRUE if this condition is true AND parent is true */
+        if (c->next && !(c->next->flags & C_TRUE))
+            v = 0;  /* parent is false, so we're false too */
         cond->flags = (v ? (C_TRUE|C_TRUESEEN) : 0);
 #ifdef DEBUG
         if (VERBOSE(V_CPP)) {
@@ -649,6 +652,9 @@ doCpp(unsigned char t)
         c = malloc(sizeof(*c));
         c->next = cond;
         cond = c;
+        /* Only set C_TRUE if this condition is true AND parent is true */
+        if (c->next && !(c->next->flags & C_TRUE))
+            v = 0;  /* parent is false, so we're false too */
         cond->flags = (v ? (C_TRUE|C_TRUESEEN) : 0);
         skiptoeol();
         return;

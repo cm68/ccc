@@ -185,6 +185,47 @@ FAIL_TESTS = \
 	$(CPP_FAIL_TESTS) \
 	$(STMT_FAIL_TESTS)
 
+# Syscall tests
+SYSCALL_TESTS = \
+	syscall_access.c \
+	syscall_alarm.c \
+	syscall_break.c \
+	syscall_chdir.c \
+	syscall_chmod.c \
+	syscall_chown.c \
+	syscall_close.c \
+	syscall_creat.c \
+	syscall_dup.c \
+	syscall_exec.c \
+	syscall_execv.c \
+	syscall_exit.c \
+	syscall_fork.c \
+	syscall_fstat.c \
+	syscall_getpid.c \
+	syscall_getuid.c \
+	syscall_gtty.c \
+	syscall_kill.c \
+	syscall_link.c \
+	syscall_mknod.c \
+	syscall_mount.c \
+	syscall_nice.c \
+	syscall_open.c \
+	syscall_pause.c \
+	syscall_pipe.c \
+	syscall_read.c \
+	syscall_seek.c \
+	syscall_setuid.c \
+	syscall_sleep.c \
+	syscall_stat.c \
+	syscall_stime.c \
+	syscall_stty.c \
+	syscall_sync.c \
+	syscall_time.c \
+	syscall_umount.c \
+	syscall_unlink.c \
+	syscall_wait.c \
+	syscall_write.c
+
 # Miscellaneous/regression tests
 MISC_TESTS = \
 	hang.c \
@@ -215,6 +256,7 @@ ALL_TESTS = \
 	$(PTR_COMPAT_TESTS) \
 	$(LVALUE_TESTS) \
 	$(MINIMAL_TESTS) \
+	$(SYSCALL_TESTS) \
 	$(MISC_TESTS)
 
 # Main test targets
@@ -236,7 +278,7 @@ test-all: test test-fail
 	@echo "=== All tests complete ==="
 
 # Test groups for selective testing
-.PHONY: test-expr test-decl test-cpp test-kr test-func test-stmt test-sizeof test-typedef test-cast test-string test-incr-decr test-ptr-compat test-lvalue test-struct
+.PHONY: test-expr test-decl test-cpp test-kr test-func test-stmt test-sizeof test-typedef test-cast test-string test-incr-decr test-ptr-compat test-lvalue test-struct test-syscall
 test-expr:
 	./runtest.sh -k $(VERBOSE) $(EXPR_TESTS)
 
@@ -306,9 +348,12 @@ valgrind:
 	../root/bin/wsas -o $@ $<
 
 # Clean test artifacts
-.PHONY: clean
+.PHONY: clean clobber
 clean:
-	rm -f *.i *.x *.o *.s *.ast
+	rm -f *.i *.x *.o *.s *.ast *.1 *.2
+
+clobber: clean
+	rm -f $(ALL_TESTS:.c=)
 
 #
 # vim: tabstop=4 shiftwidth=4 noexpandtab:

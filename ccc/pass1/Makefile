@@ -23,6 +23,7 @@ CPP = ../../cpp/cpp
 INC = -I../../libsrc/include
 CCC = $(DEST)/bin/ccc
 XDUMP = ../../cpp/xdump
+ASTPP = ~/src/ccc/ccc/astpp
 
 OUTDIR = stage1
 
@@ -91,7 +92,7 @@ stage1: c0
 		b=$${f%.c}; \
 		err=$(OUTDIR)/$$b.err ; \
 		printf "%-12s" "$$b: "; \
-		$(CPP) $(INC) -o $(OUTDIR)/$$b $$f 2> $$err && \
+		$(CPP) -DCCC $(INC) -o $(OUTDIR)/$$b $$f 2> $$err && \
 		$(XDUMP) $(OUTDIR)/$$b.x > $(OUTDIR)/$$b.xd 2>> $err && \
 		./c0 $(OUTDIR)/$$b.x $(OUTDIR)/$$b.1 $(OUTDIR)/$$b.2 2>> $$err && \
 		$(ASTPP) $(OUTDIR)/$$b.1 > $(OUTDIR)/$$b.pp 2>> $$err && \
