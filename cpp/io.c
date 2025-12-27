@@ -450,7 +450,7 @@ again:
             goto done;
         }
         close(t->fd);
-        curchar = 0;  /* EOF - don't count child's trailing newline for parent */
+        curchar = '\n';  /* Inject newline at EOF to reset column for parent */
     }
     /* closed file or empty macro buffer - pop */
     tbtop = t->prev;

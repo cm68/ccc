@@ -359,6 +359,8 @@ emitCurToken(void)
         /* sizeof is an operator in cc1, not a keyword */
         if (cur.v.numeric == KW_SIZEOF)
             emitToken(SIZEOF);
+        else if (cur.v.numeric == KW_CONST || cur.v.numeric == KW_VOLATILE)
+            return;  /* Skip const/volatile - not supported */
         else
             emitKeyword(cur.v.numeric);
         break;

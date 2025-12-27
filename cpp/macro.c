@@ -284,10 +284,11 @@ macdefine(char *s)
                     advance();  /* skip '/' */
                     break;
                 }
-                if (curchar == '\n' || curchar == 0) {
-                    /* Unterminated comment in macro - stop at newline */
+                if (curchar == 0) {
+                    /* Unterminated comment - EOF */
                     break;
                 }
+                /* Continue skipping through newlines in comment */
                 advance();
             }
             /* Replace comment with single space (to separate tokens) */

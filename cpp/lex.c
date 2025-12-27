@@ -885,12 +885,12 @@ char eqtok[] = {
 void
 freetoken()
 {
-    if (cur.type == SYM && cur.v.name) {
-    	free(cur.v.name);
-    	cur.v.name = NULL;  /* Prevent double-free */
-    }
-    /* Do not free STRING tokens - they are referenced in expressions and
-     * global variable initializers throughout compilation */
+    /*
+     * Symbol and string names are not freed because:
+     * 1. They may be referenced by tokens in saved state (readcppconst)
+     * 2. They are small and the memory is needed until compilation ends
+     * 3. Freeing causes use-after-free in recursive gettoken() calls
+     */
 }
 
 /*

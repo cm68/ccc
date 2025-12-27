@@ -125,6 +125,7 @@ typedef unsigned char token_t;
 #define KW_ENUM 32
 #define KW_ASM 33
 #define KW_CONST 34
+#define KW_VOLATILE 35
 #define KW_SIZEOF 127
 
 /* CPP-only directives (not emitted to .x) */
