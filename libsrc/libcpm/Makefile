@@ -9,7 +9,7 @@ AS = asz
 CC = ccc
 LIB = wslib
 
-DEST ?= ../../root/lib
+DEST = $(realpath ../../root/lib)
 
 .SUFFIXES: .c .s .o
 

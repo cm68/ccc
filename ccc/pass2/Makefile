@@ -56,7 +56,7 @@ else
 endif
 
 clean:
-	rm -f $(OBJECTS) c1
+	rm -f $(OBJECTS) c1 *.o *.1 *.2 *.x *.i *.pp
 
 clobber: clean
 	rm -f ./c1

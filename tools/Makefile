@@ -68,7 +68,7 @@ ccc: ccc.c
 test:
 
 clean:
-	rm -f *.a *.o tests/*.out tests/*.a tests/*.o
+	rm -f *.a *.o *.1 *.2 *.x *.i *.pp tests/*.out tests/*.a tests/*.o
 	rm -f stage1/* core
 
 clobber: clean

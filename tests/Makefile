@@ -350,7 +350,7 @@ valgrind:
 # Clean test artifacts
 .PHONY: clean clobber
 clean:
-	rm -f *.i *.x *.o *.s *.ast *.1 *.2
+	rm -f *.i *.x *.o *.s *.ast *.1 *.2 *.pp
 
 clobber: clean
 	rm -f $(ALL_TESTS:.c=)

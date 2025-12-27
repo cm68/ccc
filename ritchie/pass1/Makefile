@@ -59,7 +59,7 @@ C0 = ./c0
 C1 = ../pass2/c1
 CPPFLAGS = -I. -I../../libsrc/include
 
-# Stage1: run cpp and c0 on each source file
+# Stage1: run cpp, c0, and c1 on each source file
 stage1: c0
 	mkdir -p $(OUTDIR)
 	@for f in $(SOURCES); do \
@@ -67,6 +67,7 @@ stage1: c0
 	  printf "%-12s" "$$b: "; \
 	  $(CPP) $(CPPFLAGS) $$f -o $(OUTDIR)/$$b 2>$(OUTDIR)/$$b.err && \
 	  $(C0) $(OUTDIR)/$$b.x $(OUTDIR)/$$b.1 $(OUTDIR)/$$b.2 2>>$(OUTDIR)/$$b.err && \
+	  $(C1) $(OUTDIR)/$$b.1 $(OUTDIR)/$$b.2 $(OUTDIR)/$$b.s 2>>$(OUTDIR)/$$b.err && \
 	  { echo "ok"; rm -f $(OUTDIR)/$$b.err; } || { echo "FAIL"; cat $(OUTDIR)/$$b.err; }; \
 	done
 
@@ -92,7 +93,7 @@ sizefile: Makefile
 	 > sizefile
 
 clean:
-	rm -f $(OBJECTS)
+	rm -f $(OBJECTS) *.o *.1 *.2 *.x *.i *.pp
 
 clobber: clean
 	rm -f c0 ppic

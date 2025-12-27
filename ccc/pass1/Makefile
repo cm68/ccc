@@ -43,7 +43,7 @@ OBJECTS = $(SOURCES:.c=.o)
 
 HEADERS = cc1.h token.h enumlist.h error.h debug.h
 
-GENERATED = enumlist.h error.h debug.h
+GENERATED = enumlist.h error.h debug.h debugtags.c
 
 all: c0
 
@@ -56,7 +56,7 @@ enumlist.h: token.h Makefile
 	tr -d '[:blank:]' | \
 	awk '/[A-Z]+/ {printf("check(%s);\n", $$1);}' >>enumlist.h
 
-debug.h: ./makedebug.sh
+debugtags.c debug.h: ./makedebug.sh
 	./makedebug.sh
 
 error.h: errorcodes ./makeerror.awk
@@ -77,7 +77,7 @@ regen:
 	$(MAKE) $(GENERATED)
 
 clean:
-	rm -f $(OBJECTS) c0 $(GENERATED)
+	rm -f $(OBJECTS) c0 $(GENERATED) *.o *.1 *.2 *.x *.i *.pp
 
 clobber: clean
 	rm -f ./c0

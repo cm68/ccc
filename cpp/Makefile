@@ -66,7 +66,7 @@ sizefile: Makefile
 	 > sizefile
 
 clean:
-	rm -f *.o
+	rm -f *.o *.1 *.2 *.x *.i *.pp
 
 clobber: clean
 	rm -f cpp mkkw kwtab.c xdump
