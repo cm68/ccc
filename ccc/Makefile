@@ -1,7 +1,7 @@
 #
 # Makefile for ccc C compiler
 #
-# Builds pass1 (c0), pass2, and astpp
+# Builds pass1 (c0), pass2 (c1), and astpp
 #
 
 DEST = $(realpath ../root)
