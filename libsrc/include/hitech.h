@@ -67,3 +67,4 @@
 #define	REG3	register
 #endif	i8096 || m68k
 
+/* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

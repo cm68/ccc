@@ -106,3 +106,5 @@ extern uchar		setfcb(struct fcb *, char *);
 #define	CPMWRAN	34		/* write random record */
 #define	CPMCFS	35		/* compute file size */
 #define	CPMDSEG	51		/* set DMA segment */
+
+/* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

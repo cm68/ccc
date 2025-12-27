@@ -23,3 +23,4 @@ extern int	kbhit(void);
 extern char *	cgets(char *);
 extern void	cputs(char *);
 
+/* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

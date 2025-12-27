@@ -155,7 +155,6 @@ long ftell();
 char *sbrk();
 struct optab *match();
 union tree *optim();
-union tree *unoptim();
 union tree *pow2();
 union tree *tnode();
 union tree *sdelay();
@@ -165,9 +164,6 @@ union tree *strfunc();
 union tree *isconstant();
 union tree *tconst();
 union tree *hardlongs();
-union tree *lconst();
-union tree *acommute();
-union tree *lvfield();
 union tree *paint();
 
 /*
@@ -312,6 +308,16 @@ extern int xlab1, xlab2, xop, xzero;
 #define	ULTOF	127
 #define	ULLSHIFT 128			/* << for unsigned long */
 #define	UASLSHL	129				/* <<= for unsigned long */
+#define	LPLUS	130				/* + for long */
+#define	LMINUS	131				/* - for long */
+#define	LOR	132				/* | for long */
+#define	LAND	133				/* & for long */
+#define	LXOR	134				/* ^ for long */
+#define	LASPLUS	135				/* += for long */
+#define	LASMINUS 136			/* -= for long */
+#define	LASOR	137				/* |= for long */
+#define	LASAND	138				/* &= for long */
+#define	LASXOR	139				/* ^= for long */
 
 #define	BDATA	200
 #define	PROG	202

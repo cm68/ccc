@@ -28,3 +28,4 @@
 
 extern void (*	signal(int, void (*)(int)))(int);
 
+/* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

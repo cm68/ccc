@@ -567,12 +567,9 @@ char mul[] = "call mul16";		/* HL = HL * DE */
 char idiv[] = "call div16";		/* HL = HL / DE */
 char asr[] = "sra h\n\trr l";	/* arithmetic shift right */
 char shl[] = "add hl,hl";		/* shift left */
-char andn[] = "call andn16";	/* HL = HL & ~DE */
-char and1[] = "call and116";
+char andn[] = "call and16";		/* HL = HL & DE */
 char tand[] = "call tand16";	/* test HL & DE */
-char tand1[] = "call tand116";
 char or[] = "call or16";		/* HL = HL | DE */
-char or1[] = "call or116";
 char xor[] = "call xor16";		/* HL = HL ^ DE */
 char neg16[] = "call neg16";	/* HL = -HL */
 char com16[] = "call com16";	/* HL = ~HL */
@@ -581,6 +578,11 @@ char ashc[] = "call lshl";		/* long shift */
 char slmul[] = "call lmul";		/* long multiply */
 char sldiv[] = "call ldiv";		/* long divide */
 char slrem[] = "call lmod";		/* long modulo */
+char ladd[] = "call ladd";		/* long add */
+char lsub[] = "call lsub";		/* long sub */
+char lor[] = "call lor";		/* long or */
+char land[] = "call land";		/* long and */
+char lxor[] = "call lxor";		/* long xor */
 char uldiv[] = "call uldiv";	/* unsigned long divide */
 char ulrem[] = "call ulmod";	/* unsigned long modulo */
 char ualdiv[] = "call ualdiv";
@@ -648,17 +650,11 @@ struct instab instab[] = {
 	ASMOD, idiv, idiv,
 	PTOI, idiv, idiv,
 	RSHIFT, asr, asr,
-	ASRSH, asr, asr,
 	LSHIFT, shl, shl,
-	ASLSH, shl, shl,
-	AND, andn, and1,
-	ANDN, andn, and1,
-	ASANDN, andn, and1,
-	TAND, tand, tand1,
-	OR, or, or1,
-	ASOR, or, or1,
+	AND, andn, andn,
+	TAND, tand, tand,
+	OR, or, or,
 	EXOR, xor, xor,
-	ASXOR, xor, xor,
 	NEG, neg16, neg16,
 	COMPL, com16, com16,
 	CALL1, stdol, stdol,
@@ -686,6 +682,16 @@ struct instab instab[] = {
 	ULTOF, ultof, ultof,
 	ULLSHIFT, ulsh, ulsh,
 	UASLSHL, ualsh, ualsh,
+	LPLUS, ladd, ladd,
+	LMINUS, lsub, lsub,
+	LOR, lor, lor,
+	LAND, land, land,
+	LXOR, lxor, lxor,
+	LASPLUS, ladd, ladd,
+	LASMINUS, lsub, lsub,
+	LASOR, lor, lor,
+	LASAND, land, land,
+	LASXOR, lxor, lxor,
 	0, 0, 0
 };
 

@@ -66,3 +66,4 @@
 #define	LDBL_MAX	DBL_MAX
 #define	LDBL_MAX_10_EXP	DBL_MAX_10_EXP
 
+/* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

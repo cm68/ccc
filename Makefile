@@ -7,10 +7,15 @@
 CC = gcc
 
 # Installation destination - propagated to all submakes
-DEST = $(CURDIR)/root
+DEST = $(realpath $(CURDIR)/root)
+
+# Compiler implementation subdirectory
+# COMPILER = ritchie 
+# COMPILER = hitech 
+COMPILER = ccc 
 
 # Subdirectories to build
-DIRS = cpp pass1 pass2 tools libsrc
+DIRS = cpp $(COMPILER) tools libsrc
 
 SUBMAKE = $(MAKE) CC=$(CC) DEST=$(DEST)
 

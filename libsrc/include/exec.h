@@ -15,3 +15,4 @@
 #define	RM_FILE	0x8A
 #define	RM_EXIT	0x8B
 
+/* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

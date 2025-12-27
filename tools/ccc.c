@@ -101,30 +101,10 @@ usage(void)
     printf("  -i<dir>        System include directory (default /usr/include)\n");
     printf("  -D<var>[=val]  Define macro\n");
     printf("  -E             Preprocess only\n");
+    printf("  -H             Use .i (human-readable) input for pass1 instead of .x\n");
     printf("  -x             Print commands as they execute\n");
     printf("  -n             Print commands without executing (dry run)\n");
     exit(1);
-}
-
-/*
- * Get the directory above where this executable lives
- */
-char *
-getroot(char *argv0)
-{
-    char *path;
-    char *dir;
-    char resolved[1024];
-
-    /* Try to resolve the full path */
-    if (realpath(argv0, resolved)) {
-        path = strdup(resolved);
-    } else {
-        path = strdup(argv0);
-    }
-
-    dir = dirname(dirname(path));
-    return strdup(dir);
 }
 
 /*
@@ -215,6 +195,7 @@ main(int argc, char **argv)
     int no_exec = 0;         /* -n: don't execute (dry run) */
     int strip_syms = 0;      /* -S: strip symbols from output */
     int nine_char = 0;       /* -9: use 9-char symbols */
+    int use_prep = 0;        /* -H: use .i file for pass1 instead of .x */
 
     /* Input files by type */
     char *c_files[MAX_ARGS];
@@ -247,6 +228,18 @@ main(int argc, char **argv)
     int i;
 
     progname = argv[0];
+
+    /* Check for ROOTDIR env var override, normalize path */
+    {
+        char *env_rootdir;
+        char resolved[1024];
+
+        env_rootdir = getenv("ROOTDIR");
+        if (env_rootdir)
+            rootdir = env_rootdir;
+        if (realpath(rootdir, resolved))
+            rootdir = strdup(resolved);
+    }
 
     /* Build paths to cpp, pass1 (c0), pass2 (c1), assembler, linker */
     sprintf(cpp_path, "%s/bin/cpp", rootdir);
@@ -301,6 +294,10 @@ main(int argc, char **argv)
             argv++;
         } else if (strcmp(argv[0], "-9") == 0) {
             nine_char = 1;
+            argc--;
+            argv++;
+        } else if (strcmp(argv[0], "-H") == 0) {
+            use_prep = 1;
             argc--;
             argv++;
         } else if (strcmp(argv[0], "-x") == 0) {
@@ -436,15 +433,11 @@ main(int argc, char **argv)
             }
         }
 
-        /* Build pass1 args: c0 input temp1 temp2 */
+        /* Build pass1 args: c0 source.x temp1 temp2 (or .i with -H) */
         cc1_argc = 0;
         for (j = 0; j < cc1_base_argc; j++)
             cc1_args[cc1_argc++] = cc1_base[j];
-#ifdef LEXFILE
-        cc1_args[cc1_argc++] = lex_file;
-#else
-        cc1_args[cc1_argc++] = prep_file;
-#endif
+        cc1_args[cc1_argc++] = use_prep ? prep_file : lex_file;
         cc1_args[cc1_argc++] = temp1_file;
         cc1_args[cc1_argc++] = temp2_file;
         cc1_args[cc1_argc] = NULL;
@@ -467,11 +460,12 @@ main(int argc, char **argv)
         free(lex_file);
         free(prep_file);
 
-        /* Build pass2 args: c1 temp1 asm_file */
+        /* Build pass2 args: c1 temp1 temp2 asm_file */
         cc2_argc = 0;
         for (j = 0; j < cc2_base_argc; j++)
             cc2_args[cc2_argc++] = cc2_base[j];
         cc2_args[cc2_argc++] = temp1_file;
+        cc2_args[cc2_argc++] = temp2_file;
         cc2_args[cc2_argc++] = asm_file;
         cc2_args[cc2_argc] = NULL;
 

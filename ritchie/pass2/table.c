@@ -16,9 +16,9 @@ static char L8[]="ld\341,(A)\nld\354,a\nld\350,0\n";
 static char L9[]="Q\n";
 static char L10[]="call\346ldA\n";
 static char L11[]="GBld\341,(hl)\nld\354,a\nld\350,0\n";
-static char L12[]="GBld\341,(hl)\ninc\350l\nld\350,(hl)\nld\354,a\n";
+static char L12[]="GBcall\354di\n";
 static char L13[]="GBcall\346ldi\n";
-static char L14[]="\5\nld\345,(hl)\ninc\350l\nld\344,(hl)\ninc\350l\nld\341,(hl)\ninc\350l\nld\350,(hl)\nld\354,a\nex\344e,hl\n";
+static char L14[]="\5\ncall\354ld\n";
 static char L15[]="GBcall\354ld\n";
 static char L16[]="GA";
 #define rpostinc &optab[23]
@@ -28,9 +28,9 @@ static char L18[]="ld\311,(A)\nld\344e,B\npush\350l\nQ\nM\n\3\npop\350l\n";
 static char L19[]="ld\341,(A)\nld\354,a\nld\350,0\npush\350l\nM'\341\nld\250A),a\npop\350l\n";
 static char L20[]="GJpush\344e\nex\344e,hl\nld\345,(hl)\ninc\350l\nld\344,(hl)\nex\344e,hl\nex\250sp),hl\nld\341,(hl)\nM'\341\nld\250hl),a\ninc\350l\nld\341,(hl)\nV\341\nld\250hl),a\npop\350l\n";
 static char L21[]="GBpush\350l\nld\345,(hl)\ninc\350l\nld\344,(hl)\nex\250sp),hl\nld\341,(hl)\nM'\341\nld\250hl),a\ninc\350l\nld\341,(hl)\nV\341\nld\250hl),a\nex\344e,hl\n";
-static char L22[]="GJpush\344e\nex\344e,hl\nld\345,(hl)\ninc\350l\nld\344,(hl)\nex\344e,hl\nld\344e,B\nex\250sp),hl\npush\350l\nld\341,(hl)\ninc\350l\nld\350,(hl)\nld\354,a\nM\nex\344e,hl\npop\350l\nld\250hl),e\ninc\350l\nld\250hl),d\npop\350l\n";
+static char L22[]="GJpush\344e\nex\344e,hl\nld\345,(hl)\ninc\350l\nld\344,(hl)\nex\344e,hl\nld\344e,B\nex\250sp),hl\npush\350l\nld\341,(hl)\ninc\350l\nld\350,(hl)\nld\354,a\nM\nex\344e,hl\npop\350l\ncall\363tide\npop\350l\n";
 static char L23[]="GJpush\344e\nld\341,(de)\nld\354,a\nld\350,0\nex\250sp),hl\nld\341,(hl)\nM'\341\nld\250hl),a\npop\350l\n";
-static char L24[]="GBpush\350l\nld\345,(hl)\ninc\350l\nld\344,(hl)\npush\344e\nld\344e,B\nld\341,(hl)\ndec\350l\nld\354,(hl)\nld\350,a\nM\nex\344e,hl\npop\350l\nld\250hl),e\ninc\350l\nld\250hl),d\npop\350l\n";
+static char L24[]="GBpush\350l\nld\345,(hl)\ninc\350l\nld\344,(hl)\npush\344e\nld\344e,B\nld\341,(hl)\ndec\350l\nld\354,(hl)\nld\350,a\nM\nex\344e,hl\npop\350l\ncall\363tide\npop\350l\n";
 static char L25[]="GBpush\350l\nld\341,(hl)\npush\341f\nM'\341\nld\250hl),a\npop\341f\nld\354,a\nld\350,0\npop\344e\n";
 static char L26[]="GAQ\ninc\350l\ninc\350l\nld\341,(hl)\nM'\341\nld\250hl),a\ninc\350l\nld\341,(hl)\nV\341\nld\250hl),a\ndec\350l\nld\341,(hl)\ndec\350l\nld\350,(hl)\nld\354,a\n";
 static char L27[]="GJpush\344e\nex\344e,hl\nld\345,(hl)\ninc\350l\nld\344,(hl)\nex\344e,hl\ninc\344e\nld\341,(de)\ninc\344e\npush\341f\nld\341,(de)\npop\342c\nld\343,a\npush\342c\npush\350l\npop\344e\npop\350l\nex\250sp),hl\ninc\350l\ninc\350l\nld\341,(hl)\nM'\341\nld\250hl),a\ninc\350l\nld\341,(hl)\nV\341\nld\250hl),a\npop\350l\n";
@@ -45,17 +45,17 @@ static char L31[]="KAld\250A),I\n";
 static char L32[]="KAld\341,l\nld\250A),a\n";
 static char L33[]="KAcall\346stA\n";
 static char L34[]="GBKAcall\346sti\n";
-static char L35[]="GBld\344e,B\nld\250hl),e\ninc\350l\nld\250hl),d\nex\344e,hl\n";
+static char L35[]="GBld\344e,B\ncall\363tide\nex\344e,hl\n";
 static char L36[]="GBKAcall\346sti\n";
-static char L37[]="GBKIld\250hl),e\ninc\350l\nld\250hl),d\nex\344e,hl\n";
+static char L37[]="GBKIcall\363tide\nex\344e,hl\n";
 static char L38[]="GBKIld\341,e\nld\250hl),a\nld\354,a\nld\350,0\n";
 static char L39[]="KAGJcall\346stde\n";
 static char L40[]="KAGJcall\346stde\n";
 static char L41[]="GDKApop\344e\nld\250de),l\ninc\344e\nld\341,h\nld\250de),a\n";
 static char L42[]="GDKApop\344e\nld\341,l\nld\250de),a\n";
 static char L43[]="GDKApop\344e\ncall\346stde\n";
-static char L44[]="KA\3\nQ+2\nld\250hl),e\ninc\350l\nld\250hl),d\n";
-static char L45[]="KAGJex\344e,hl\nld\250hl),e\ninc\350l\nld\250hl),d\ninc\350l\npop\344e\nld\250hl),e\ninc\350l\nld\250hl),d\npop\350l\n";
+static char L44[]="KA\3\nQ+2\ncall\363tide\n";
+static char L45[]="KAGJex\344e,hl\ncall\363tide\npop\344e\ncall\363tide\npop\350l\n";
 static char L46[]="GDKApop\342c\nld\250bc),l\ninc\342c\nld\341,h\nld\250bc),a\ninc\342c\nld\341,e\nld\250bc),a\ninc\342c\nld\341,d\nld\250bc),a\n";
 #define rfield &optab[72]
 
@@ -82,301 +82,296 @@ static char L55[]="KDGApop\344e\npush\350l\nex\344e,hl\nld\345,(hl)\ninc\350l\nl
 #define add5 L56
 
 static char L56[]="KCGApop\344e\nM\n";
-static char L57[]="GAld\342c,B\nadd\350l,bc\nex\344e,hl\nld\350l,0\nV\nex\344e,hl\n";
-static char L58[]="GAKIadd\350l,de\nex\344e,hl\nld\350l,0\nV\nex\344e,hl\n";
-static char L59[]="GApush\344e\nw\nadd\350l,de\npop\344e\npush\350l\nld\350l,(B+2)\nex\344e,hl\nV\nex\344e,hl\npop\350l\n";
-#define addl1 L60
+#define rxor &optab[89]
 
-static char L60[]="GAKIM\n";
-#define addl2 L61
+#define L57 add3
 
-static char L61[]="KCGAcall\315\n";
-#define rxor &optab[107]
+static char L58[]="GCKApop\344e\ncall\370or16\n";
+#define rrsh &optab[92]
 
-#define L62 add3
+static char L59[]="GAsra\350\nrr\354\n";
+static char L60[]="GAld\344e,B\ncall\315\n";
+static char L61[]="GAKIcall\315\n";
+static char L62[]="KCGApop\344e\ncall\315\n";
+#define rmul &optab[97]
 
-static char L63[]="GCKApop\344e\ncall\370or16\n";
-#define L64 addl1
+#define L63 add1
 
-static char L65[]="KCGAcall\354xor\n";
-#define rrsh &optab[118]
+#define L64 add2
 
-static char L66[]="GAsra\350\nrr\354\n";
-#define rmul &optab[120]
+#define L65 add3
 
-#define L67 add1
+#define L66 add5
 
-#define L68 add2
+#define rdiv &optab[106]
 
-#define L69 add3
+static char L67[]="GAld\344e,B\ncall\315\n";
+static char L68[]="GAKJpush\350l\nex\344e,hl\nld\345,(hl)\ninc\350l\nld\344,(hl)\nex\344e,hl\nex\344e,hl\npop\350l\ncall\315\n";
+static char L69[]="GAKIcall\315\n";
+static char L70[]="KCGApop\344e\ncall\315\n";
+#define L71 add1
 
-#define L70 add5
+#define L72 add2
 
-#define rdiv &optab[129]
+#define L73 add3
 
-static char L71[]="GAld\344e,B\ncall\315\n";
-static char L72[]="GAKJpush\350l\nex\344e,hl\nld\345,(hl)\ninc\350l\nld\344,(hl)\nex\344e,hl\nex\344e,hl\npop\350l\ncall\315\n";
-static char L73[]="GAKIcall\315\n";
-static char L74[]="KCGApop\344e\ncall\315\n";
-#define L75 add1
+#define L74 add5
 
-#define L76 add2
+#define rptoi &optab[115]
 
-#define L77 add3
+static char L75[]="GA!ld\344e,B\ncall\344iv16\n";
+#define rasadd &optab[118]
 
-#define L78 add5
+#define addq1 L76
 
-#define rptoi &optab[138]
+static char L76[]="Q\nld\344e,B\nM\n\3\n";
+#define addq20 L77
 
-static char L79[]="GA!ld\344e,B\ncall\344iv16\n";
-#define rasadd &optab[141]
+static char L77[]="ld\341,(A)\nld\354,a\nld\350,0\nld\344e,B\nM\nld\341,l\nld\250A),a\n";
+#define addq1a L78
 
-#define addq1 L80
+static char L78[]="ld\311,(A)\nld\344e,B\nM\nld\250A),I\n";
+#define addq2 L79
 
-static char L80[]="Q\nld\344e,B\nM\n\3\n";
-#define addq20 L81
+static char L79[]="KBpush\350l\nex\344e,hl\nld\345,(hl)\ninc\350l\nld\344,(hl)\nex\344e,hl\nex\344e,hl\nQ\nM\n\3\npop\344e\n";
+#define addq3 L80
 
-static char L81[]="ld\341,(A)\nld\354,a\nld\350,0\nld\344e,B\nM\nld\341,l\nld\250A),a\n";
-#define addq1a L82
+static char L80[]="KAex\344e,hl\nQ\nM\n\3\n";
+#define addq21 L81
 
-static char L82[]="ld\311,(A)\nld\344e,B\nM\nld\250A),I\n";
-#define addq2 L83
+static char L81[]="KCld\341,(A)\nld\354,a\nld\350,0\npop\344e\nM\nld\341,l\nld\250A),a\n";
+#define addq4 L82
 
-static char L83[]="KBpush\350l\nex\344e,hl\nld\345,(hl)\ninc\350l\nld\344,(hl)\nex\344e,hl\nex\344e,hl\nQ\nM\n\3\npop\344e\n";
-#define addq3 L84
+static char L82[]="KBGJpush\344e\npush\350l\nex\344e,hl\nld\345,(hl)\ninc\350l\nld\344,(hl)\nex\344e,hl\npop\344e\npush\344e\npush\350l\nex\344e,hl\nld\345,(hl)\ninc\350l\nld\344,(hl)\nex\344e,hl\nex\344e,hl\npop\350l\nM\npop\344e\nld\250de),l\ninc\344e\nld\341,h\nld\250de),a\npop\344e\n";
+#define addq4a L83
 
-static char L84[]="KAex\344e,hl\nQ\nM\n\3\n";
-#define addq21 L85
+static char L83[]="call\346ldA\nKIM\ncall\346stA\n";
+#define addq5 L84
 
-static char L85[]="KCld\341,(A)\nld\354,a\nld\350,0\npop\344e\nM\nld\341,l\nld\250A),a\n";
-#define addq4 L86
+static char L84[]="KCld\311,(A)\npop\344e\nM\nld\250A),I\n";
+#define addq6 L85
 
-static char L86[]="KBGJpush\344e\npush\350l\nex\344e,hl\nld\345,(hl)\ninc\350l\nld\344,(hl)\nex\344e,hl\npop\344e\npush\344e\npush\350l\nex\344e,hl\nld\345,(hl)\ninc\350l\nld\344,(hl)\nex\344e,hl\nex\344e,hl\npop\350l\nM\npop\344e\nld\250de),l\ninc\344e\nld\341,h\nld\250de),a\npop\344e\n";
-#define addq4a L87
+static char L85[]="KCcall\346ldA\npop\344e\nM\ncall\346stA\n";
+#define addq7 L86
 
-static char L87[]="call\346ldA\nKIM\ncall\346stA\n";
-#define addq5 L88
+static char L86[]="KAGJpush\350l\npush\344e\nex\344e,hl\nld\345,(hl)\ninc\350l\nld\344,(hl)\nex\344e,hl\nex\344e,hl\npop\350l\nM\npop\344e\nld\250de),l\ninc\344e\nld\341,h\nld\250de),a\n";
+#define addq8 L87
 
-static char L88[]="KCld\311,(A)\npop\344e\nM\nld\250A),I\n";
-#define addq6 L89
+static char L87[]="KCGBpush\350l\npop\344e\npush\350l\nld\341,(hl)\ninc\350l\nld\350,(hl)\nld\354,a\npop\342c\nex\250sp),hl\nex\344e,hl\nM\npush\342c\npop\344e\nld\250de),l\ninc\344e\nld\341,h\nld\250de),a\n";
+#define addq9 L88
 
-static char L89[]="KCcall\346ldA\npop\344e\nM\ncall\346stA\n";
-#define addq7 L90
+static char L88[]="GDKCpop\350l\npush\350l\nld\341,(hl)\ninc\350l\nld\350,(hl)\nld\354,a\npop\344e\nex\250sp),hl\nex\344e,hl\nM\npop\344e\nld\250de),l\ninc\344e\nld\341,h\nld\250de),a\n";
+#define addq22 L89
 
-static char L90[]="KAGJpush\350l\npush\344e\nex\344e,hl\nld\345,(hl)\ninc\350l\nld\344,(hl)\nex\344e,hl\nex\344e,hl\npop\350l\nM\npop\344e\nld\250de),l\ninc\344e\nld\341,h\nld\250de),a\n";
-#define addq8 L91
+static char L89[]="GDKCpop\350l\nld\341,(hl)\npush\350l\nld\354,a\nld\350,0\npop\344e\nex\250sp),hl\nex\344e,hl\nM\npop\344e\nld\341,l\nld\250de),a\n";
+#define addq9a L90
 
-static char L91[]="KCGBpush\350l\npop\344e\npush\350l\nld\341,(hl)\ninc\350l\nld\350,(hl)\nld\354,a\npop\342c\nex\250sp),hl\nex\344e,hl\nM\npush\342c\npop\344e\nld\250de),l\ninc\344e\nld\341,h\nld\250de),a\n";
-#define addq9 L92
+static char L90[]="KCGBpush\350l\nld\341,(hl)\ninc\350l\nld\350,(hl)\nld\354,a\npop\344e\nex\250sp),hl\nex\344e,hl\nM\npop\344e\nld\250de),l\ninc\344e\nld\341,h\nld\250de),a\n";
+#define addq10 L91
 
-static char L92[]="GDKCpop\350l\npush\350l\nld\341,(hl)\ninc\350l\nld\350,(hl)\nld\354,a\npop\344e\nex\250sp),hl\nex\344e,hl\nM\npop\344e\nld\250de),l\ninc\344e\nld\341,h\nld\250de),a\n";
-#define addq22 L93
+static char L91[]="KCGBpush\350l\ncall\346ldi\npop\344e\nex\250sp),hl\nex\344e,hl\nM\npop\344e\ncall\346stde\n";
+#define addq11 L92
 
-static char L93[]="GDKCpop\350l\nld\341,(hl)\npush\350l\nld\354,a\nld\350,0\npop\344e\nex\250sp),hl\nex\344e,hl\nM\npop\344e\nld\341,l\nld\250de),a\n";
-#define addq9a L94
+static char L92[]="ld\350l,(A+2)\nld\344e,B\nM\nld\250A+2),hl\nV\250A)\nQ\nld\344e,(A+2)\n";
+#define addq12 L93
 
-static char L94[]="KCGBpush\350l\nld\341,(hl)\ninc\350l\nld\350,(hl)\nld\354,a\npop\344e\nex\250sp),hl\nex\344e,hl\nM\npop\344e\nld\250de),l\ninc\344e\nld\341,h\nld\250de),a\n";
-#define addq10 L95
+static char L93[]="ld\350l,(A+2)\nld\344e,(B+2)\nM\nld\250A+2),hl\nQ\nw\nV\n\3\nld\344e,(A+2)\n";
+#define addq13 L94
 
-static char L95[]="KCGBpush\350l\ncall\346ldi\npop\344e\nex\250sp),hl\nex\344e,hl\nM\npop\344e\ncall\346stde\n";
-#define addq11 L96
+static char L94[]="KApush\350l\npush\344e\nld\350l,(A+2)\nex\250sp),hl\nM\nld\250A+2),hl\npop\350l\nq\nV\n\3\nld\344e,(A+2)\n";
+#define addq14 L95
 
-static char L96[]="ld\350l,(A+2)\nld\344e,B\nM\nld\250A+2),hl\nV\250A)\nQ\nld\344e,(A+2)\n";
-#define addq12 L97
+static char L95[]="GBpush\350l\ninc\350l\ninc\350l\nld\344e,B\npush\344e\nld\345,(hl)\ninc\350l\nld\344,(hl)\nex\344e,hl\npop\344e\nM\npop\344e\npush\350l\ninc\344e\ninc\344e\nld\250de),l\ninc\344e\nld\341,h\nld\250de),a\ndec\344e\ndec\344e\ndec\344e\nex\344e,hl\nld\345,(hl)\ninc\350l\nld\344,(hl)\nex\344e,hl\nV\ndec\344e\nld\250de),l\ninc\344e\nld\341,h\nld\250de),a\npop\344e\n";
+#define addq15 L96
 
-static char L97[]="ld\350l,(A+2)\nld\344e,(B+2)\nM\nld\250A+2),hl\nQ\nw\nV\n\3\nld\344e,(A+2)\n";
-#define addq13 L98
+static char L96[]="GBpush\350l\ninc\350l\ninc\350l\nld\345,(hl)\ninc\350l\nld\344,(hl)\nex\344e,hl\nld\344e,(B+2)\nM\npop\342c\npush\350l\npush\342c\ninc\342c\ninc\342c\nld\250bc),l\ninc\342c\nld\341,h\nld\250bc),a\npop\350l\npush\350l\nld\345,(hl)\ninc\350l\nld\344,(hl)\nex\344e,hl\nw\nV\npop\344e\nld\250de),l\ninc\344e\nld\341,h\nld\250de),a\npop\344e\n";
+#define addq16 L97
 
-static char L98[]="KApush\350l\npush\344e\nld\350l,(A+2)\nex\250sp),hl\nM\nld\250A+2),hl\npop\350l\nq\nV\n\3\nld\344e,(A+2)\n";
-#define addq14 L99
+static char L97[]="KCGBpush\350l\ncall\354ld\ncall\354add\npop\344e\ncall\354stde\n";
+#define rasmul &optab[157]
 
-static char L99[]="GBpush\350l\ninc\350l\ninc\350l\nld\344e,B\npush\344e\nld\345,(hl)\ninc\350l\nld\344,(hl)\nex\344e,hl\npop\344e\nM\npop\344e\npush\350l\ninc\344e\ninc\344e\nld\250de),l\ninc\344e\nld\341,h\nld\250de),a\ndec\344e\ndec\344e\ndec\344e\nex\344e,hl\nld\345,(hl)\ninc\350l\nld\344,(hl)\nex\344e,hl\nV\ndec\344e\nld\250de),l\ninc\344e\nld\341,h\nld\250de),a\npop\344e\n";
-#define addq15 L100
+#define L98 addq1a
 
-static char L100[]="GBpush\350l\ninc\350l\ninc\350l\nld\345,(hl)\ninc\350l\nld\344,(hl)\nex\344e,hl\nld\344e,(B+2)\nM\npop\342c\npush\350l\npush\342c\ninc\342c\ninc\342c\nld\250bc),l\ninc\342c\nld\341,h\nld\250bc),a\npop\350l\npush\350l\nld\345,(hl)\ninc\350l\nld\344,(hl)\nex\344e,hl\nw\nV\npop\344e\nld\250de),l\ninc\344e\nld\341,h\nld\250de),a\npop\344e\n";
-#define addq16 L101
+#define L99 addq4a
 
-static char L101[]="KCGBpush\350l\ncall\354ld\ncall\354add\npop\344e\ncall\354stde\n";
-#define rasmul &optab[180]
+#define L100 addq5
 
-#define L102 addq1a
+#define L101 addq6
 
-#define L103 addq4a
+#define L102 addq20
 
-#define L104 addq5
+#define L103 addq21
 
-#define L105 addq6
+#define L104 addq9
 
-#define L106 addq20
+#define L105 addq22
 
-#define L107 addq21
+#define L106 addq9a
 
-#define L108 addq9
+#define L107 addq10
 
-#define L109 addq22
+#define rasdiv &optab[170]
 
-#define L110 addq9a
+static char L108[]="ld\311,(A)\nld\344e,B\ncall\315\nld\250A),I\n";
+static char L109[]="KCld\311,(A)\npop\344e\ncall\315\nld\250A),I\n";
+static char L110[]="KCld\341,(A)\nld\354,a\nld\350,0\npop\344e\ncall\315\nld\341,l\nld\250A),a\n";
+static char L111[]="KCGJpush\344e\nex\344e,hl\nld\345,(hl)\ninc\350l\nld\344,(hl)\nex\344e,hl\npop\344e\nex\250sp),hl\nex\344e,hl\ncall\315\npop\344e\nld\250de),l\ninc\344e\nld\341,h\nld\250de),a\n";
+static char L112[]="GDKCpop\350l\npush\350l\nld\341,(hl)\ninc\350l\nld\350,(hl)\nld\354,a\npop\344e\nex\250sp),hl\nex\344e,hl\ncall\315\npop\344e\nld\250de),l\ninc\344e\nld\341,h\nld\250de),a\n";
+static char L113[]="GDKCpop\350l\nld\341,(hl)\npush\350l\nld\354,a\nld\350,0\npop\344e\nex\250sp),hl\nex\344e,hl\ncall\315\npop\344e\nld\341,l\nld\250de),a\n";
+#define L114 addq1a
 
-#define L111 addq10
+#define L115 addq4a
 
-#define rasdiv &optab[193]
+#define L116 addq5
 
-static char L112[]="ld\311,(A)\nld\344e,B\ncall\315\nld\250A),I\n";
-static char L113[]="KCld\311,(A)\npop\344e\ncall\315\nld\250A),I\n";
-static char L114[]="KCld\341,(A)\nld\354,a\nld\350,0\npop\344e\ncall\315\nld\341,l\nld\250A),a\n";
-static char L115[]="KCGJpush\344e\nex\344e,hl\nld\345,(hl)\ninc\350l\nld\344,(hl)\nex\344e,hl\npop\344e\nex\250sp),hl\nex\344e,hl\ncall\315\npop\344e\nld\250de),l\ninc\344e\nld\341,h\nld\250de),a\n";
-static char L116[]="GDKCpop\350l\npush\350l\nld\341,(hl)\ninc\350l\nld\350,(hl)\nld\354,a\npop\344e\nex\250sp),hl\nex\344e,hl\ncall\315\npop\344e\nld\250de),l\ninc\344e\nld\341,h\nld\250de),a\n";
-static char L117[]="GDKCpop\350l\nld\341,(hl)\npush\350l\nld\354,a\nld\350,0\npop\344e\nex\250sp),hl\nex\344e,hl\ncall\315\npop\344e\nld\341,l\nld\250de),a\n";
-#define L118 addq1a
+#define L117 addq6
 
-#define L119 addq4a
+#define L118 addq9a
 
-#define L120 addq5
+#define L119 addq10
 
-#define L121 addq6
+#define rasmod &optab[183]
 
-#define L122 addq9a
+static char L120[]="ld\311,(A)\nld\344e,B\ncall\315\nld\250A),I\n";
+static char L121[]="KCld\311,(A)\npop\344e\ncall\315\nld\250A),I\n";
+static char L122[]="KCld\341,(A)\nld\354,a\nld\350,0\npop\344e\ncall\315\nld\341,l\nld\250A),a\n";
+static char L123[]="KCGJpush\344e\nex\344e,hl\nld\345,(hl)\ninc\350l\nld\344,(hl)\nex\344e,hl\npop\344e\nex\250sp),hl\nex\344e,hl\ncall\315\npop\344e\nld\250de),l\ninc\344e\nld\341,h\nld\250de),a\n";
+static char L124[]="GDKCpop\350l\npush\350l\nld\341,(hl)\ninc\350l\nld\350,(hl)\nld\354,a\npop\344e\nex\250sp),hl\nex\344e,hl\ncall\315\npop\344e\nld\250de),l\ninc\344e\nld\341,h\nld\250de),a\n";
+static char L125[]="GDKCpop\350l\nld\341,(hl)\npush\350l\nld\354,a\nld\350,0\npop\344e\nex\250sp),hl\nex\344e,hl\ncall\315\npop\344e\nld\341,l\nld\250de),a\n";
+#define rasxor &optab[190]
 
-#define L123 addq10
+#define L126 addq3
 
-#define rasmod &optab[206]
+static char L127[]="KCld\341,(A)\nld\354,a\nld\350,0\npop\344e\ncall\370or16\nld\341,l\nld\250A),a\n";
+static char L128[]="KCld\341,(A)\nld\354,a\nld\350,0\npop\344e\ncall\370or16\nld\341,l\nld\250A),a\n";
+static char L129[]="GDpop\350l\npush\350l\nld\341,(hl)\ninc\350l\nld\350,(hl)\nld\354,a\nKApop\344e\ncall\370or16\npop\344e\nld\250de),l\ninc\344e\nld\341,h\nld\250de),a\n";
+static char L130[]="GDpop\350l\nld\341,(hl)\npush\350l\nld\354,a\nld\350,0\nKApop\344e\ncall\370or16\npop\344e\nld\341,l\nld\250de),a\n";
+#define rasrsh &optab[196]
 
-static char L124[]="ld\311,(A)\nld\344e,B\ncall\315\nld\250A),I\n";
-static char L125[]="KCld\311,(A)\npop\344e\ncall\315\nld\250A),I\n";
-static char L126[]="KCld\341,(A)\nld\354,a\nld\350,0\npop\344e\ncall\315\nld\341,l\nld\250A),a\n";
-static char L127[]="KCGJpush\344e\nex\344e,hl\nld\345,(hl)\ninc\350l\nld\344,(hl)\nex\344e,hl\npop\344e\nex\250sp),hl\nex\344e,hl\ncall\315\npop\344e\nld\250de),l\ninc\344e\nld\341,h\nld\250de),a\n";
-static char L128[]="GDKCpop\350l\npush\350l\nld\341,(hl)\ninc\350l\nld\350,(hl)\nld\354,a\npop\344e\nex\250sp),hl\nex\344e,hl\ncall\315\npop\344e\nld\250de),l\ninc\344e\nld\341,h\nld\250de),a\n";
-static char L129[]="GDKCpop\350l\nld\341,(hl)\npush\350l\nld\354,a\nld\350,0\npop\344e\nex\250sp),hl\nex\344e,hl\ncall\315\npop\344e\nld\341,l\nld\250de),a\n";
-#define rasxor &optab[213]
+static char L131[]="Q\nsra\350\nrr\354\n\3\n";
+static char L132[]="GBld\345,(hl)\ninc\350l\nld\344,(hl)\nsra\344\nrr\345\nld\250hl),d\ndec\350l\nld\250hl),e\nex\344e,hl\n";
+static char L133[]="Q\nld\344e,B\ncall\315\n\3\n";
+static char L134[]="KCQ\npop\344e\ncall\315\n\3\n";
+static char L135[]="KCGBpush\350l\nld\345,(hl)\ninc\350l\nld\344,(hl)\nex\344e,hl\npop\344e\nex\250sp),hl\nex\344e,hl\ncall\315\npop\344e\nld\250de),l\ninc\344e\nld\341,h\nld\250de),a\n";
+#define rasor &optab[202]
 
-#define L130 addq3
+#define L136 addq1
 
-static char L131[]="KCld\341,(A)\nld\354,a\nld\350,0\npop\344e\ncall\370or16\nld\341,l\nld\250A),a\n";
-static char L132[]="KCld\341,(A)\nld\354,a\nld\350,0\npop\344e\ncall\370or16\nld\341,l\nld\250A),a\n";
-static char L133[]="GDpop\350l\npush\350l\nld\341,(hl)\ninc\350l\nld\350,(hl)\nld\354,a\nKApop\344e\ncall\370or16\npop\344e\nld\250de),l\ninc\344e\nld\341,h\nld\250de),a\n";
-static char L134[]="GDpop\350l\nld\341,(hl)\npush\350l\nld\354,a\nld\350,0\nKApop\344e\ncall\370or16\npop\344e\nld\341,l\nld\250de),a\n";
-#define rasrsh &optab[219]
+static char L137[]="ld\341,(A)\nM\302\nld\250A),a\nld\354,a\nld\350,0\n";
+#define L138 addq1a
 
-static char L135[]="Q\nsra\350\nrr\354\n\3\n";
-static char L136[]="GBld\345,(hl)\ninc\350l\nld\344,(hl)\nsra\344\nrr\345\nld\250hl),d\ndec\350l\nld\250hl),e\nex\344e,hl\n";
-#define rasor &optab[222]
+#define L139 addq2
 
-#define L137 addq1
+#define L140 addq3
 
-static char L138[]="ld\341,(A)\nM\302\nld\250A),a\nld\354,a\nld\350,0\n";
-#define L139 addq1a
+static char L141[]="KCld\341,(A)\nld\354,a\nld\350,0\npop\344e\nM\nld\341,l\nld\250A),a\n";
+#define L142 addq4
 
-#define L140 addq2
+#define L143 addq4a
 
-#define L141 addq3
+#define L144 addq5
 
-static char L142[]="KCld\341,(A)\nld\354,a\nld\350,0\npop\344e\nM\nld\341,l\nld\250A),a\n";
-#define L143 addq4
+#define L145 addq6
 
-#define L144 addq4a
+#define L146 addq7
 
-#define L145 addq5
+#define L147 addq8
 
-#define L146 addq6
+#define L148 addq9
 
-#define L147 addq7
+static char L149[]="GDKCpop\350l\nld\341,(hl)\npush\350l\npop\344e\nex\250sp),hl\nM\341\npop\350l\nld\250hl),a\nld\354,a\nld\350,0\n";
+#define L150 addq9a
 
-#define L148 addq8
+#define L151 addq10
 
-#define L149 addq9
+#define L152 addq11
 
-static char L150[]="GDKCpop\350l\nld\341,(hl)\npush\350l\npop\344e\nex\250sp),hl\nM\341\npop\350l\nld\250hl),a\nld\354,a\nld\350,0\n";
-#define L151 addq9a
+#define L153 addq12
 
-#define L152 addq10
+#define L154 addq13
 
-#define L153 addq11
+#define L155 addq14
 
-#define L154 addq12
+#define L156 addq15
 
-#define L155 addq13
+#define L157 addq16
 
-#define L156 addq14
+#define rlshl &optab[241]
 
-#define L157 addq15
+#define L158 add1
 
-#define L158 addq16
+#define L159 add2
 
-#define rlshl &optab[261]
+#define L160 add3
 
-#define L159 add1
+#define L161 add4
 
-#define L160 add2
+#define L162 add5
 
-#define L161 add3
+#define rlushr &optab[252]
 
-#define L162 add4
+static char L163[]="KCGApop\344e\nld\341,e\ncall\354ushr\n";
+#define ralushr &optab[255]
 
-#define L163 add5
+static char L164[]="KCGCpop\344e\nld\341,e\ncall\354ushr\npop\344e\n";
+#define ritof &optab[257]
 
-#define rlushr &optab[272]
+static char L165[]="Q\ncall\351tof\n";
+static char L166[]="GBld\341,(hl)\ninc\350l\nld\350,(hl)\nld\354,a\ncall\351tof\n";
+static char L167[]="GAcall\351tof\n";
+#define rftoi &optab[261]
 
-static char L164[]="KCGApop\344e\nld\341,e\ncall\354ushr\n";
-#define ralushr &optab[275]
+static char L168[]="GAcall\346toi\n";
+#define rftol &optab[263]
 
-static char L165[]="KCGCpop\344e\nld\341,e\ncall\354ushr\npop\344e\n";
-#define ritof &optab[277]
+static char L169[]="GAcall\346tol\n";
+#define rltof &optab[265]
 
-static char L166[]="Q\ncall\351tof\n";
-static char L167[]="GBld\341,(hl)\ninc\350l\nld\350,(hl)\nld\354,a\ncall\351tof\n";
-static char L168[]="GAcall\351tof\n";
-#define rftoi &optab[281]
+static char L170[]="Q\nld\344e,(A+2)\ncall\354tof\n";
+static char L171[]="GBcall\354ld\ncall\354tof\n";
+static char L172[]="GCcall\354tof\n";
+#define rultof &optab[269]
 
-static char L169[]="GAcall\346toi\n";
-#define rftol &optab[283]
+static char L173[]="Q\nld\344e,(A+2)\ncall\365ltof\n";
+static char L174[]="GBcall\354ld\ncall\365ltof\n";
+static char L175[]="GCcall\365ltof\n";
+#define ritol &optab[273]
 
-static char L170[]="GAcall\346tol\n";
-#define rltof &optab[285]
+static char L176[]="GI!ld\344e,0\n";
+static char L177[]="GAex\344e,hl\nld\350l,0\n";
+static char L178[]="GI!ld\341,d\nrla\nsbc\341,a\nld\344,a\nld\345,a\n";
+static char L179[]="GAex\344e,hl\nld\341,d\nrla\nsbc\341,a\nld\350,a\nld\354,a\n";
+#define rltoi &optab[278]
 
-static char L171[]="Q\nld\344e,(A+2)\ncall\354tof\n";
-static char L172[]="GBcall\354ld\ncall\354tof\n";
-static char L173[]="GCcall\354tof\n";
-#define rultof &optab[289]
+static char L180[]="Q\n";
+static char L181[]="GBld\341,(hl)\ninc\350l\nld\350,(hl)\nld\354,a\n";
+#define rlmul &optab[283]
 
-static char L174[]="Q\nld\344e,(A+2)\ncall\365ltof\n";
-static char L175[]="GBcall\354ld\ncall\365ltof\n";
-static char L176[]="GCcall\365ltof\n";
-#define ritol &optab[293]
+#define l82 L182
 
-static char L177[]="GI!ld\344e,0\n";
-static char L178[]="GAex\344e,hl\nld\350l,0\n";
-static char L179[]="GI!ld\341,d\nrla\nsbc\341,a\nld\344,a\nld\345,a\n";
-static char L180[]="GAex\344e,hl\nld\341,d\nrla\nsbc\341,a\nld\350,a\nld\354,a\n";
-#define rltoi &optab[298]
+static char L182[]="KCGCcall\315\n";
+#define rulmul &optab[288]
 
-static char L181[]="Q\n";
-static char L182[]="GBld\341,(hl)\ninc\350l\nld\350,(hl)\nld\354,a\n";
-#define rlmul &optab[303]
+#define L183 l82
 
-#define l82 L183
+#define rulasmul &optab[292]
 
-static char L183[]="KCGCcall\315\n";
-#define rulmul &optab[308]
+#define L184 l86
 
-#define L184 l82
+#define rlasmul &optab[297]
 
-#define rulasmul &optab[312]
+#define l86 L185
 
-#define L185 l86
+static char L185[]="KCGCcall\315\n";
+#define ritoc &optab[300]
 
-#define rlasmul &optab[317]
+static char L186[]="GAld\341,l\nrla\nsbc\341,a\nld\350,a\n";
+#define rudiv &optab[302]
 
-#define l86 L186
-
-static char L186[]="KCGCcall\315\n";
-#define ritoc &optab[320]
-
-static char L187[]="GAld\341,l\nrla\nsbc\341,a\nld\350,a\n";
-#define rudiv &optab[322]
-
+static char L187[]="GA!ld\344e,B\ncall\315\n";
 static char L188[]="GA!KI!call\315\n";
 static char L189[]="KCGA!pop\344e\ncall\315\n";
-#define ruasdiv &optab[325]
+#define ruasdiv &optab[306]
 
 static char L190[]="Q\nKI!call\315\n\3\n";
 static char L191[]="ld\341,(A)\nld\354,a\nld\350,0\nKI!call\315\nld\341,l\nld\250A),a\n";
@@ -384,10 +379,10 @@ static char L192[]="KCQ\npop\344e\ncall\315\n\3\n";
 static char L193[]="GDKA!ex\344e,hl\npop\350l\npush\350l\nld\341,(hl)\ninc\350l\nld\350,(hl)\nld\354,a\ncall\315\npop\344e\nld\250de),l\ninc\344e\nld\341,h\nld\250de),a\n";
 static char L194[]="KCld\341,(A)\nld\354,a\nld\350,0\npop\344e\ncall\315\nld\341,l\nld\250A),a\n";
 static char L195[]="GDKA!ex\344e,hl\npop\350l\nld\341,(hl)\npush\350l\nld\354,a\nld\350,0\ncall\315\npop\344e\nld\341,l\nld\250de),a\n";
-#define rptrdif &optab[335]
+#define rptrdif &optab[316]
 
 static char L196[]="GA?sra\350\nrr\354\n";
-#define eassign &optab[337]
+#define eassign &optab[318]
 
 #define move1 L197
 
@@ -406,27 +401,27 @@ static char L200[]="KBex\344e,hl\nld\345,(hl)\ninc\350l\nld\344,(hl)\nex\344e,hl
 static char L201[]="KA\3\n";
 #define move6 L202
 
-static char L202[]="GBld\344e,B\nld\250hl),e\ninc\350l\nld\250hl),d\n";
+static char L202[]="GBld\344e,B\ncall\363tide\n";
 #define move7 L203
 
-static char L203[]="GBKJpush\350l\nex\344e,hl\nld\345,(hl)\ninc\350l\nld\344,(hl)\nex\344e,hl\nex\344e,hl\npop\350l\nld\250hl),e\ninc\350l\nld\250hl),d\n";
+static char L203[]="GBKJpush\350l\nex\344e,hl\ncall\354di\nex\344e,hl\npop\350l\ncall\363tide\n";
 #define move8 L204
 
-static char L204[]="GBKIld\250hl),e\ninc\350l\nld\250hl),d\n";
+static char L204[]="GBKIcall\363tide\n";
 #define move9 L205
 
-static char L205[]="KBGJpush\344e\nld\341,(hl)\ninc\350l\nld\350,(hl)\nld\354,a\nex\344e,hl\npop\350l\nld\250hl),e\ninc\350l\nld\250hl),d\n";
+static char L205[]="KBGJpush\344e\ncall\354di\nex\344e,hl\npop\350l\ncall\363tide\n";
 #define move10 L206
 
-static char L206[]="KAGJex\344e,hl\nld\250hl),e\ninc\350l\nld\250hl),d\n";
+static char L206[]="KAGJex\344e,hl\ncall\363tide\n";
 #define move11 L207
 
-static char L207[]="GDKBpush\350l\nex\344e,hl\nld\345,(hl)\ninc\350l\nld\344,(hl)\nex\344e,hl\nex\344e,hl\npop\350l\nld\250hl),e\ninc\350l\nld\250hl),d\n";
+static char L207[]="GDKBpush\350l\nex\344e,hl\ncall\354di\nex\344e,hl\npop\350l\ncall\363tide\n";
 #define move12 L208
 
 static char L208[]="GDKApop\344e\nld\250de),l\ninc\344e\nld\341,h\nld\250de),a\n";
 static char L209[]="KAcall\346toi\n\3\n";
-static char L210[]="KAGJcall\346toi\nex\344e,hl\nld\250hl),e\ninc\350l\nld\250hl),d\n";
+static char L210[]="KAGJcall\346toi\nex\344e,hl\ncall\363tide\n";
 static char L211[]="ld\350l,0\n\3\nld\250A+2),hl\n";
 static char L212[]="GBld\250hl),0\ninc\350l\nld\250hl),0\ninc\350l\nld\250hl),0\ninc\350l\nld\250hl),0\n";
 #define move13a L213
@@ -447,18 +442,18 @@ static char L219[]="KBcall\354ldde\n\3\nld\250A+2),de\n";
 static char L220[]="KA\3\nld\250A+2),de\n";
 #define move14a L221
 
-static char L221[]="GBld\344e,B\nld\250hl),e\ninc\350l\nld\250hl),d\ninc\350l\nld\341,d\nrla\nsbc\341,a\nld\250hl),a\ninc\350l\nld\250hl),a\n";
+static char L221[]="GBld\344e,B\ncall\363tide\nld\341,d\nrla\nsbc\341,a\nld\250hl),a\ninc\350l\nld\250hl),a\n";
 #define move16a L222
 
-static char L222[]="GBw\nld\250hl),e\ninc\350l\nld\250hl),d\ninc\350l\nld\344e,(B+2)\nld\250hl),e\ninc\350l\nld\250hl),d\n";
+static char L222[]="GBw\ncall\363tide\nld\344e,(B+2)\ncall\363tide\n";
 #define move16 L223
 
-static char L223[]="KAGJex\344e,hl\nld\250hl),e\ninc\350l\nld\250hl),d\ninc\350l\npop\344e\nld\250hl),e\ninc\350l\nld\250hl),d\n";
-static char L224[]="KCGBpop\344e\nld\250hl),e\ninc\350l\nld\250hl),d\ninc\350l\nld\341,d\nrla\nsbc\341,a\nld\250hl),a\ninc\350l\nld\250hl),a\n";
+static char L223[]="KAGJex\344e,hl\ncall\363tide\npop\344e\ncall\363tide\n";
+static char L224[]="KCGBpop\344e\ncall\363tide\nld\341,d\nrla\nsbc\341,a\nld\250hl),a\ninc\350l\nld\250hl),a\n";
 #define move17 L225
 
-static char L225[]="KCGBpop\344e\nld\250hl),e\ninc\350l\nld\250hl),d\ninc\350l\npop\344e\nld\250hl),e\ninc\350l\nld\250hl),d\n";
-#define easor &optab[416]
+static char L225[]="KCGBpop\344e\ncall\363tide\npop\344e\ncall\363tide\n";
+#define easor &optab[397]
 
 #define L226 move3
 
@@ -495,14 +490,14 @@ static char L227[]="KAld\341,l\nM\250A)\nld\250A),a\n";
 
 #define L243 move17
 
-#define easxor &optab[473]
+#define easxor &optab[454]
 
 #define L244 move15
 
 #define L245 move16
 
 static char L246[]="GDKApop\342c\nld\341,(bc)\nxor\354\nld\250bc),a\ninc\342c\nld\341,(bc)\nxor\350\nld\250bc),a\ninc\342c\nld\341,(bc)\nxor\345\nld\250bc),a\ninc\342c\nld\341,(bc)\nxor\344\nld\250bc),a\n";
-#define easadd &optab[486]
+#define easadd &optab[467]
 
 static char L247[]="M'\250A)\n";
 #define L248 move3
@@ -540,25 +535,25 @@ static char L259[]="KCGBld\341,(hl)\npush\350l\npush\341f\npop\350l\nld\350,0\np
 
 #define L267 move17
 
-#define easrsh &optab[537]
+#define easrsh &optab[518]
 
 static char L268[]="Q\nsra\350\nrr\354\n\3\n";
 static char L269[]="ld\341,(A)\nsrl\341\nld\250A),a\n";
 static char L270[]="GBld\345,(hl)\ninc\350l\nld\344,(hl)\nsra\344\nrr\345\nld\250hl),d\ndec\350l\nld\250hl),e\n";
 static char L271[]="GBld\341,(hl)\nsrl\341\nld\250hl),a\n";
-#define easlsh &optab[542]
+#define easlsh &optab[523]
 
 static char L272[]="Q\nadd\350l,hl\n\3\n";
 static char L273[]="GBld\345,(hl)\ninc\350l\nld\344,(hl)\nex\344e,hl\nadd\350l,hl\nex\344e,hl\nld\250hl),d\ndec\350l\nld\250hl),e\n";
 static char L274[]="Q\nld\341,B\ncall\363hl16\n";
 static char L275[]="KBld\341,(de)\nQ\ncall\363hl16\n\3\n";
 static char L276[]="KAld\341,l\nQ\ncall\363hl16\n\3\n";
-#define rlaslsh &optab[550]
+#define rlaslsh &optab[531]
 
 static char L277[]="Q\nld\344e,(A+2)\nld\341,B\ncall\354shl\n\3\nld\250A+2),de\n";
 static char L278[]="KCQ\nld\344e,(A+2)\npop\342c\nld\341,c\ncall\354shl\n\3\nld\250A+2),de\n";
 static char L279[]="GDKCpop\350l\npush\350l\ncall\354ld\npop\342c\nld\341,c\ncall\354shl\npop\344e\ncall\354stde\n";
-#define efield &optab[557]
+#define efield &optab[538]
 
 static char L280[]="ld\341,(A)\nand\332\nld\350l,B\nor\354\nld\250A),a\n";
 static char L281[]="KAld\341,(A)\nand\332\nor\354\nld\250A),a\n";
@@ -568,7 +563,7 @@ static char L282[]="GBld\341,(hl)\nand\332\nld\344e,B\nor\345\nld\250hl),a\n";
 static char L283[]="KAGJld\341,(de)\nand\332\nor\354\nld\250de),a\n";
 static char L284[]="GBKIld\341,(hl)\nand\332\nor\345\nld\250hl),a\n";
 static char L285[]="KCGBpop\344e\nld\341,(hl)\nand\332\nor\345\nld\250hl),a\n";
-#define ccmp &optab[564]
+#define ccmp &optab[545]
 
 static char L286[]="Q\nld\341,h\nor\354\n";
 static char L287[]="call\346ldA\ncall\346tst\n";
@@ -613,7 +608,7 @@ static char L311[]="GAKJpush\350l\npush\344e\nex\344e,hl\nld\345,(hl)\ninc\350l\
 #define lcmp6 L312
 
 static char L312[]="GCKApop\344e\nM\nX0pop\344e\nM\nX1";
-#define candtst &optab[640]
+#define candtst &optab[621]
 
 static char L313[]="Q\nld\344e,B\nld\341,l\nand\345\nld\354,a\nld\341,h\nand\344\nor\354\n";
 static char L314[]="KAq\nld\341,l\nand\345\nld\354,a\nld\341,h\nand\344\nor\354\n";
@@ -639,30 +634,30 @@ static char L320[]="GBinc\350l\ninc\350l\nld\344e,B\nld\341,(hl)\nand\345\nld\34
 #define L326 lcmp6
 
 static char L327[]="GAld\350l,B\nld\341,l\nand\345\nld\354,a\nld\341,h\nand\344\nor\354\nX1";
-#define rest &optab[694]
+#define rest &optab[675]
 
 static char L328[]="HA";
-#define sname &optab[697]
+#define sname &optab[678]
 
 static char L329[]="ld\350l,0\npush\350l\n";
 static char L330[]="Q\npush\350l\n";
 static char L331[]="ld\341,(A)\nld\354,a\nld\350,0\npush\350l\n";
 static char L332[]="GBld\341,(hl)\ninc\350l\nld\350,(hl)\nld\354,a\npush\350l\n";
 static char L333[]="ld\350l,(A+2)\npush\350l\nQ\npush\350l\n";
-#define sadd &optab[705]
+#define sadd &optab[686]
 
 static char L334[]="GCM'\250sp)\n";
 static char L335[]="GCld\344e,B\npop\350l\nM\npush\350l\n";
 static char L336[]="GCKBpush\350l\nex\344e,hl\nld\345,(hl)\ninc\350l\nld\344,(hl)\nex\344e,hl\nex\344e,hl\npop\350l\nex\250sp),hl\nM\npush\350l\n";
 static char L337[]="GCKApop\344e\nex\250sp),hl\nM\npush\350l\n";
-#define sitol &optab[710]
+#define sitol &optab[691]
 
 static char L338[]="GCld\350l,0\npush\350l\n";
 static char L339[]="Q\nld\341,h\nrla\nsbc\341,a\nld\344,a\nld\345,a\npush\344e\npush\350l\n";
-#define sftol &optab[713]
+#define sftol &optab[694]
 
 static char L340[]="GAcall\346tol\npush\344e\npush\350l\n";
-#define estrasg &optab[715]
+#define estrasg &optab[696]
 
 static char L341[]="GA!KI!";
 static char L342[]="KCGA!pop\344e\n";
@@ -1319,60 +1314,10 @@ struct optab optab[]={
 	{63,0,63,0,L56},	/* 86 */
 	{63,4,63,4,L56},	/* 87 */
 /*
- * Long addition/subtraction - special handling for 32-bit
- * These patterns handle long + constant, long + unsigned, etc.
- * V = adc/sbc to propagate carry between low and high words.
+ * Long addition/subtraction now handled by LPLUS/LMINUS opcodes
+ * which use the rlmul pattern table with helper function calls.
  */
 
-/*
- * %nl,c / %nul,c / %nl,au / %nul,au - Long + small constant
- * Example: long_val + 5
- * Add to low word, propagate carry to high word.
- * Output:
- *   [code to load long into HLDE]
- *   ld bc,5       ; constant
- *   add hl,bc     ; add to low word
- *   ex de,hl
- *   ld hl,0       ; no carry-in to high word const
- *   adc hl,de     ; V = propagate carry
- *   ex de,hl      ; result in HLDE
- */
-	{63,8,8,0,L57},	/* 88 */
-	{63,8,16,9,L57},	/* 89 */
-	{63,11,8,0,L57},	/* 90 */
-	{63,11,16,9,L57},	/* 91 */
-/*
- * %nl,eu / %nul,eu - Long + unsigned expression
- * Example: long_val + unsigned_expr
- */
-	{63,8,20,9,L58},	/* 92 */
-	{63,11,20,9,L58},	/* 93 */
-/*
- * %nl,al ... - Long + addressible long
- * Example: long1 + long2 where both are variables
- * Add low words, then high words with carry.
- */
-	{63,8,16,8,L59},	/* 94 */
-	{63,8,16,11,L59},	/* 95 */
-	{63,11,16,8,L59},	/* 96 */
-	{63,11,16,11,L59},	/* 97 */
-/*
- * %[addl1:] - Long + expression long (already in registers)
- * The helper function handles the 32-bit operation.
- */
-	{63,8,20,8,L60},	/* 98 */
-	{63,8,20,11,L60},	/* 99 */
-	{63,11,20,8,L60},	/* 100 */
-	{63,11,20,11,L60},	/* 101 */
-/*
- * %[addl2:] - Long + any long (general case)
- * Must push one operand, evaluate other, call helper.
- * I = ladd (long add), lsub (long sub), lor, land, etc.
- */
-	{63,8,63,8,L61},	/* 102 */
-	{63,8,63,11,L61},	/* 103 */
-	{63,11,63,8,L61},	/* 104 */
-	{63,11,63,11,L61},	/* 105 */
 /*
  * =============================================================================
  * rxor: XOR (^) - Bitwise exclusive OR
@@ -1386,7 +1331,7 @@ struct optab optab[]={
  * %n,e - XOR with expression (already in register)
  * Uses shared [add3] pattern - works the same way.
  */
-	{63,0,20,0,L62},	/* 107 */
+	{63,0,20,0,L57},	/* 89 */
 
 
 /*
@@ -1396,20 +1341,11 @@ struct optab optab[]={
  * S = evaluate right into HL
  * Call helper since Z80 can't XOR HL and DE directly.
  */
-	{63,0,63,0,L63},	/* 108 */
+	{63,0,63,0,L58},	/* 90 */
 /*
- * Long XOR - 32-bit exclusive OR
+ * Long XOR now handled by LXOR opcode via rlmul pattern
  */
-	{63,8,20,8,L64},	/* 109 */
-	{63,8,20,11,L64},	/* 110 */
-	{63,11,20,8,L64},	/* 111 */
-	{63,11,20,11,L64},	/* 112 */
 
-
-	{63,8,63,8,L65},	/* 113 */
-	{63,8,63,11,L65},	/* 114 */
-	{63,11,63,8,L65},	/* 115 */
-	{63,11,63,11,L65},	/* 116 */
 /*
  * =============================================================================
  * rrsh: RSHIFT (>>) - Signed right shift
@@ -1431,7 +1367,25 @@ struct optab optab[]={
  *   rr l          ; rotate L right through carry
  * Result: HL = x >> 1 with sign preserved
  */
-	{63,0,5,0,L66},	/* 118 */
+	{63,0,5,0,L59},	/* 92 */
+/*
+ * %n,aw - Shift right by variable
+ * Example: x >> y where y is a variable
+ * F = load value into HL
+ * Load shift count into DE
+ * Call asr helper (arithmetic shift right)
+ */
+	{63,0,16,1,L60},	/* 93 */
+/*
+ * %n,e - Shift right by expression (already in register)
+ * Example: x >> expr where expr already evaluated
+ */
+	{63,0,20,0,L61},	/* 94 */
+/*
+ * %n,n - General shift right
+ * Example: expr1 >> expr2
+ */
+	{63,0,63,0,L62},	/* 95 */
 /*
  * =============================================================================
  * rmul: TIMES (*) - Multiplication
@@ -1447,20 +1401,20 @@ struct optab optab[]={
  * %n,aw / %nf,ad - Multiply by addressible operand
  * Uses [add1] pattern - load operands, call mul16.
  */
-	{63,0,16,1,L67},	/* 120 */
-	{63,4,16,5,L67},	/* 121 */
+	{63,0,16,1,L63},	/* 97 */
+	{63,4,16,5,L63},	/* 98 */
 
 
-	{63,0,84,1,L68},	/* 122 */
-	{63,4,84,5,L68},	/* 123 */
+	{63,0,84,1,L64},	/* 99 */
+	{63,4,84,5,L64},	/* 100 */
 
 
-	{63,0,20,0,L69},	/* 124 */
-	{63,4,20,4,L69},	/* 125 */
+	{63,0,20,0,L65},	/* 101 */
+	{63,4,20,4,L65},	/* 102 */
 
 
-	{63,0,63,0,L70},	/* 126 */
-	{63,4,63,4,L70},	/* 127 */
+	{63,0,63,0,L66},	/* 103 */
+	{63,4,63,4,L66},	/* 104 */
 
 
 /*
@@ -1489,34 +1443,34 @@ struct optab optab[]={
  *   ld de,(_y)
  *   call div16    ; HL = HL / DE, remainder in BC (for mod)
  */
-	{63,0,16,1,L71},	/* 129 */
+	{63,0,16,1,L67},	/* 106 */
 /*
  * %n,ew* - Divide by value through expression pointer
  * Example: x / *p where p is an expression
  */
-	{63,0,84,1,L72},	/* 130 */
+	{63,0,84,1,L68},	/* 107 */
 /*
  * %n,e - Divide by expression (already in register)
  */
-	{63,0,20,0,L73},	/* 131 */
+	{63,0,20,0,L69},	/* 108 */
 /*
  * %n,n - General divide
  * Example: expr1 / expr2
  */
-	{63,0,63,0,L74},	/* 132 */
+	{63,0,63,0,L70},	/* 109 */
 /*
  * Float division - uses same patterns as addition
  */
-	{63,4,16,5,L75},	/* 133 */
+	{63,4,16,5,L71},	/* 110 */
 
 
-	{63,4,84,5,L76},	/* 134 */
+	{63,4,84,5,L72},	/* 111 */
 
 
-	{63,4,20,4,L77},	/* 135 */
+	{63,4,20,4,L73},	/* 112 */
 
 
-	{63,4,63,4,L78},	/* 136 */
+	{63,4,63,4,L74},	/* 113 */
 
 
 /*
@@ -1533,8 +1487,8 @@ struct optab optab[]={
  */
 	{0},
 /* rptoi */
-	{63,8,16,0,L79},	/* 138 */
-	{63,11,16,0,L79},	/* 139 */
+	{63,8,16,0,L75},	/* 115 */
+	{63,11,16,0,L75},	/* 116 */
 /*
  * =============================================================================
  * rasadd: Compound Assignment (+=, -=, |=, &=)
@@ -1571,22 +1525,22 @@ struct optab optab[]={
  *   ld (_x),hl    ; P1: store result
  * Result: HL = new value
  */
-	{16,1,16,1,L80},	/* 141 */
+	{16,1,16,1,L76},	/* 118 */
 /*
  * %[addq20:] - Unsigned byte op= addressible word
  * %aub,aw
  * Example: unsigned char c; c += x;
  * Must zero-extend byte to word, operate, store byte back.
  */
-	{16,10,16,1,L81},	/* 142 */
+	{16,10,16,1,L77},	/* 119 */
 /*
  * %[addq1a:] - Generic addressible op= addressible
  * %a,aw / %ad,ad
  * Example: x += y;
  * Direct load/operate/store.
  */
-	{16,0,16,1,L82},	/* 143 */
-	{16,5,16,5,L82},	/* 144 */
+	{16,0,16,1,L78},	/* 120 */
+	{16,5,16,5,L78},	/* 121 */
 /*
  * %[addq2:] - Addressible word op= pointer-to-word
  * %aw,nw*
@@ -1594,7 +1548,7 @@ struct optab optab[]={
  * S* = evaluate RHS pointer, dereference
  * Need to save dereferenced value, load LHS, operate, store.
  */
-	{16,1,127,1,L83},	/* 145 */
+	{16,1,127,1,L79},	/* 122 */
 /*
  * %[addq3:] - Addressible word op= any expression
  * %aw,n
@@ -1602,27 +1556,27 @@ struct optab optab[]={
  * S = evaluate RHS into HL
  * Move to DE, load LHS, operate, store.
  */
-	{16,1,63,0,L84},	/* 146 */
+	{16,1,63,0,L80},	/* 123 */
 /*
  * %[addq21:] - Unsigned byte op= any expression
  * %aub,n
  * Example: unsigned char c; c += expr;
  */
-	{16,10,63,0,L85},	/* 147 */
+	{16,10,63,0,L81},	/* 124 */
 /*
  * %[addq4:] - Expression-pointer-to-word op= pointer-to-word
  * %ew*,nw*
  * Example: *p += *q; where p is an expression
  * Very complex: must save both pointers, load values, operate, store.
  */
-	{84,1,127,1,L86},	/* 148 */
+	{84,1,127,1,L82},	/* 125 */
 /*
  * %[addq4a:] - Addressible double/float op= expression float
  * %ad,ef
  * Example: double d; d += floatexpr;
  * Use float helper functions.
  */
-	{16,5,20,4,L87},	/* 149 */
+	{16,5,20,4,L83},	/* 126 */
 /*
  * %[addq5:] - Generic addressible op= any expression
  * %a,n / %ad,nf
@@ -1630,14 +1584,14 @@ struct optab optab[]={
  * SS = push RHS
  * Load LHS, pop RHS into DE, operate, store.
  */
-	{16,0,63,0,L88},	/* 150 */
-	{16,5,63,4,L88},	/* 151 */
+	{16,0,63,0,L84},	/* 127 */
+	{16,5,63,4,L84},	/* 128 */
 /*
  * %[addq6:] - Addressible float op= float expression
  * %af,nf
  * Example: float f; f += floatexpr;
  */
-	{16,4,63,4,L89},	/* 152 */
+	{16,4,63,4,L85},	/* 129 */
 /*
  * %[addq7:] - Expression-pointer-to-word op= any expression
  * %ew*,n
@@ -1646,7 +1600,7 @@ struct optab optab[]={
  * F1* = evaluate LHS pointer into DE
  * Load through pointer, operate, store back.
  */
-	{84,1,63,0,L90},	/* 153 */
+	{84,1,63,0,L86},	/* 130 */
 /*
  * %[addq8:] - Any-pointer-to-word op= any expression
  * %nw*,n
@@ -1655,7 +1609,7 @@ struct optab optab[]={
  * F* = evaluate LHS pointer
  * Complex register juggling to load, operate, store.
  */
-	{127,1,63,0,L91},	/* 154 */
+	{127,1,63,0,L87},	/* 131 */
 /*
  * %[addq9:] - General pointer op= any expression
  * %n*,n
@@ -1664,332 +1618,348 @@ struct optab optab[]={
  * SS = push RHS
  * Load through pointer, operate, store back.
  */
-	{127,0,63,0,L92},	/* 155 */
+	{127,0,63,0,L88},	/* 132 */
 /*
  * %[addq22:] - Pointer to unsigned byte op= any expression
  * %nub*,n
  * Example: *charptr += expr;
  * Byte load/store instead of word.
  */
-	{127,10,63,0,L93},	/* 156 */
+	{127,10,63,0,L89},	/* 133 */
 /*
  * %[addq9a:] - Pointer to double op= float expression
  * %nd*,nf
  * Example: *doubleptr += floatexpr;
  */
-	{127,5,63,4,L94},	/* 157 */
-	{127,4,63,4,L95},	/* 158 */
-	{16,8,8,0,L96},	/* 159 */
-	{16,11,8,0,L96},	/* 160 */
-	{16,8,16,8,L97},	/* 161 */
-	{16,8,16,11,L97},	/* 162 */
-	{16,11,16,8,L97},	/* 163 */
-	{16,11,16,11,L97},	/* 164 */
-	{16,8,63,8,L98},	/* 165 */
-	{16,8,63,11,L98},	/* 166 */
-	{16,11,63,8,L98},	/* 167 */
-	{16,11,63,11,L98},	/* 168 */
-	{127,8,8,0,L99},	/* 169 */
-	{127,11,8,0,L99},	/* 170 */
-	{127,8,16,8,L100},	/* 171 */
-	{127,8,16,11,L100},	/* 172 */
-	{127,11,16,8,L100},	/* 173 */
-	{127,11,16,11,L100},	/* 174 */
-	{127,8,63,8,L101},	/* 175 */
-	{127,8,63,11,L101},	/* 176 */
-	{127,11,63,8,L101},	/* 177 */
-	{127,11,63,11,L101},	/* 178 */
+	{127,5,63,4,L90},	/* 134 */
+	{127,4,63,4,L91},	/* 135 */
+	{16,8,8,0,L92},	/* 136 */
+	{16,11,8,0,L92},	/* 137 */
+	{16,8,16,8,L93},	/* 138 */
+	{16,8,16,11,L93},	/* 139 */
+	{16,11,16,8,L93},	/* 140 */
+	{16,11,16,11,L93},	/* 141 */
+	{16,8,63,8,L94},	/* 142 */
+	{16,8,63,11,L94},	/* 143 */
+	{16,11,63,8,L94},	/* 144 */
+	{16,11,63,11,L94},	/* 145 */
+	{127,8,8,0,L95},	/* 146 */
+	{127,11,8,0,L95},	/* 147 */
+	{127,8,16,8,L96},	/* 148 */
+	{127,8,16,11,L96},	/* 149 */
+	{127,11,16,8,L96},	/* 150 */
+	{127,11,16,11,L96},	/* 151 */
+	{127,8,63,8,L97},	/* 152 */
+	{127,8,63,11,L97},	/* 153 */
+	{127,11,63,8,L97},	/* 154 */
+	{127,11,63,11,L97},	/* 155 */
 /* *= */
 	{0},
 /* rasmul */
-	{16,0,16,1,L102},	/* 180 */
-	{16,5,16,5,L102},	/* 181 */
+	{16,0,16,1,L98},	/* 157 */
+	{16,5,16,5,L98},	/* 158 */
 
 
-	{16,5,20,4,L103},	/* 182 */
+	{16,5,20,4,L99},	/* 159 */
 
 
-	{16,0,63,0,L104},	/* 183 */
-	{16,5,63,4,L104},	/* 184 */
+	{16,0,63,0,L100},	/* 160 */
+	{16,5,63,4,L100},	/* 161 */
 
 
-	{16,4,63,4,L105},	/* 185 */
+	{16,4,63,4,L101},	/* 162 */
 
 
-	{16,10,16,1,L106},	/* 186 */
+	{16,10,16,1,L102},	/* 163 */
 
 
-	{16,10,63,0,L107},	/* 187 */
+	{16,10,63,0,L103},	/* 164 */
 
 
-	{127,0,63,0,L108},	/* 188 */
+	{127,0,63,0,L104},	/* 165 */
 
 
-	{127,10,63,0,L109},	/* 189 */
+	{127,10,63,0,L105},	/* 166 */
 
 
-	{127,5,63,4,L110},	/* 190 */
+	{127,5,63,4,L106},	/* 167 */
 
 
-	{127,4,63,4,L111},	/* 191 */
+	{127,4,63,4,L107},	/* 168 */
 
 
 /* /= */
 	{0},
 /* rasdiv */
-	{16,0,16,1,L112},	/* 193 */
-	{16,0,63,0,L113},	/* 194 */
-	{16,10,63,0,L114},	/* 195 */
-	{84,0,63,0,L115},	/* 196 */
-	{127,0,63,0,L116},	/* 197 */
-	{127,10,63,0,L117},	/* 198 */
-	{16,5,16,5,L118},	/* 199 */
+	{16,0,16,1,L108},	/* 170 */
+	{16,0,63,0,L109},	/* 171 */
+	{16,10,63,0,L110},	/* 172 */
+	{84,0,63,0,L111},	/* 173 */
+	{127,0,63,0,L112},	/* 174 */
+	{127,10,63,0,L113},	/* 175 */
+	{16,5,16,5,L114},	/* 176 */
 
 
-	{16,5,20,4,L119},	/* 200 */
+	{16,5,20,4,L115},	/* 177 */
 
 
-	{16,5,63,4,L120},	/* 201 */
+	{16,5,63,4,L116},	/* 178 */
 
 
-	{16,4,63,4,L121},	/* 202 */
+	{16,4,63,4,L117},	/* 179 */
 
 
-	{127,5,63,4,L122},	/* 203 */
+	{127,5,63,4,L118},	/* 180 */
 
 
-	{127,4,63,4,L123},	/* 204 */
+	{127,4,63,4,L119},	/* 181 */
 
 
 /* %= and >>= */
 	{0},
 /* rasmod */
-	{16,0,16,1,L124},	/* 206 */
-	{16,0,63,0,L125},	/* 207 */
-	{16,10,63,0,L126},	/* 208 */
-	{84,0,63,0,L127},	/* 209 */
-	{127,0,63,0,L128},	/* 210 */
-	{127,10,63,0,L129},	/* 211 */
+	{16,0,16,1,L120},	/* 183 */
+	{16,0,63,0,L121},	/* 184 */
+	{16,10,63,0,L122},	/* 185 */
+	{84,0,63,0,L123},	/* 186 */
+	{127,0,63,0,L124},	/* 187 */
+	{127,10,63,0,L125},	/* 188 */
 /* ^= */
 	{0},
 /* rasxor */
-	{16,1,63,0,L130},	/* 213 */
+	{16,1,63,0,L126},	/* 190 */
 
 
-	{16,3,63,0,L131},	/* 214 */
-	{16,10,63,0,L132},	/* 215 */
-	{127,0,63,0,L133},	/* 216 */
-	{127,10,63,0,L134},	/* 217 */
+	{16,3,63,0,L127},	/* 191 */
+	{16,10,63,0,L128},	/* 192 */
+	{127,0,63,0,L129},	/* 193 */
+	{127,10,63,0,L130},	/* 194 */
 /* >>= (simple cases) */
 	{0},
 /* rasrsh */
-	{16,0,5,0,L135},	/* 219 */
-	{127,0,5,0,L136},	/* 220 */
+	{16,0,5,0,L131},	/* 196 */
+	{127,0,5,0,L132},	/* 197 */
+/*
+ * %a,aw - Shift-assign by variable
+ * Example: x >>= y where y is a variable
+ */
+	{16,0,16,1,L133},	/* 198 */
+/*
+ * %a,n - Shift-assign by expression
+ * Example: x >>= expr
+ */
+	{16,0,63,0,L134},	/* 199 */
+/*
+ * %n*,n - Pointer dereference shift-assign by expression
+ * Example: *ptr >>= expr
+ */
+	{127,0,63,0,L135},	/* 200 */
 /* |=, &~= */
 	{0},
 /* rasor */
-	{16,1,16,1,L137},	/* 222 */
+	{16,1,16,1,L136},	/* 202 */
 
 
-	{16,10,16,0,L138},	/* 223 */
-	{16,0,16,1,L139},	/* 224 */
-	{16,5,16,5,L139},	/* 225 */
+	{16,10,16,0,L137},	/* 203 */
+	{16,0,16,1,L138},	/* 204 */
+	{16,5,16,5,L138},	/* 205 */
 
 
-	{16,1,127,1,L140},	/* 226 */
+	{16,1,127,1,L139},	/* 206 */
 
 
-	{16,1,63,0,L141},	/* 227 */
+	{16,1,63,0,L140},	/* 207 */
 
 
-	{16,10,63,0,L142},	/* 228 */
-	{84,1,127,1,L143},	/* 229 */
+	{16,10,63,0,L141},	/* 208 */
+	{84,1,127,1,L142},	/* 209 */
 
 
-	{16,5,20,4,L144},	/* 230 */
+	{16,5,20,4,L143},	/* 210 */
 
 
-	{16,0,63,0,L145},	/* 231 */
-	{16,5,63,4,L145},	/* 232 */
+	{16,0,63,0,L144},	/* 211 */
+	{16,5,63,4,L144},	/* 212 */
 
 
-	{16,4,63,4,L146},	/* 233 */
+	{16,4,63,4,L145},	/* 213 */
 
 
-	{84,1,63,0,L147},	/* 234 */
+	{84,1,63,0,L146},	/* 214 */
 
 
-	{127,1,63,0,L148},	/* 235 */
+	{127,1,63,0,L147},	/* 215 */
 
 
-	{127,0,63,0,L149},	/* 236 */
+	{127,0,63,0,L148},	/* 216 */
 
 
-	{127,10,63,0,L150},	/* 237 */
-	{127,5,63,4,L151},	/* 238 */
+	{127,10,63,0,L149},	/* 217 */
+	{127,5,63,4,L150},	/* 218 */
 
 
-	{127,4,63,4,L152},	/* 239 */
+	{127,4,63,4,L151},	/* 219 */
 
 
-	{16,8,8,0,L153},	/* 240 */
-	{16,11,8,0,L153},	/* 241 */
+	{16,8,8,0,L152},	/* 220 */
+	{16,11,8,0,L152},	/* 221 */
 
 
-	{16,8,16,8,L154},	/* 242 */
-	{16,8,16,11,L154},	/* 243 */
-	{16,11,16,8,L154},	/* 244 */
-	{16,11,16,11,L154},	/* 245 */
+	{16,8,16,8,L153},	/* 222 */
+	{16,8,16,11,L153},	/* 223 */
+	{16,11,16,8,L153},	/* 224 */
+	{16,11,16,11,L153},	/* 225 */
 
 
-	{16,8,63,8,L155},	/* 246 */
-	{16,8,63,11,L155},	/* 247 */
-	{16,11,63,8,L155},	/* 248 */
-	{16,11,63,11,L155},	/* 249 */
+	{16,8,63,8,L154},	/* 226 */
+	{16,8,63,11,L154},	/* 227 */
+	{16,11,63,8,L154},	/* 228 */
+	{16,11,63,11,L154},	/* 229 */
 
 
-	{127,8,8,0,L156},	/* 250 */
-	{127,11,8,0,L156},	/* 251 */
+	{127,8,8,0,L155},	/* 230 */
+	{127,11,8,0,L155},	/* 231 */
 
 
-	{127,8,16,8,L157},	/* 252 */
-	{127,8,16,11,L157},	/* 253 */
-	{127,11,16,8,L157},	/* 254 */
-	{127,11,16,11,L157},	/* 255 */
+	{127,8,16,8,L156},	/* 232 */
+	{127,8,16,11,L156},	/* 233 */
+	{127,11,16,8,L156},	/* 234 */
+	{127,11,16,11,L156},	/* 235 */
 
 
-	{127,8,63,8,L158},	/* 256 */
-	{127,8,63,11,L158},	/* 257 */
-	{127,11,63,8,L158},	/* 258 */
-	{127,11,63,11,L158},	/* 259 */
+	{127,8,63,8,L157},	/* 236 */
+	{127,8,63,11,L157},	/* 237 */
+	{127,11,63,8,L157},	/* 238 */
+	{127,11,63,11,L157},	/* 239 */
 
 
 /* << for longs */
 	{0},
 /* rlshl */
-	{63,8,16,1,L159},	/* 261 */
-	{63,11,16,1,L159},	/* 262 */
+	{63,8,16,1,L158},	/* 241 */
+	{63,11,16,1,L158},	/* 242 */
 
 
-	{63,8,84,1,L160},	/* 263 */
-	{63,11,84,1,L160},	/* 264 */
+	{63,8,84,1,L159},	/* 243 */
+	{63,11,84,1,L159},	/* 244 */
 
 
-	{63,8,20,0,L161},	/* 265 */
-	{63,11,20,0,L161},	/* 266 */
+	{63,8,20,0,L160},	/* 245 */
+	{63,11,20,0,L160},	/* 246 */
 
 
-	{63,8,127,1,L162},	/* 267 */
-	{63,11,127,1,L162},	/* 268 */
+	{63,8,127,1,L161},	/* 247 */
+	{63,11,127,1,L161},	/* 248 */
 
 
-	{63,8,63,0,L163},	/* 269 */
-	{63,11,63,0,L163},	/* 270 */
+	{63,8,63,0,L162},	/* 249 */
+	{63,11,63,0,L162},	/* 250 */
 
 
 /* >> for unsigned long */
 	{0},
 /* rlushr */
-	{63,8,63,0,L164},	/* 272 */
-	{63,11,63,0,L164},	/* 273 */
+	{63,8,63,0,L163},	/* 252 */
+	{63,11,63,0,L163},	/* 253 */
 /* >>= for unsigned long */
 	{0},
 /* ralushr */
-	{63,0,63,0,L165},	/* 275 */
+	{63,0,63,0,L164},	/* 255 */
 /* int -> float */
 	{0},
 /* ritof */
-	{16,1,63,0,L166},	/* 277 */
-	{127,1,63,0,L167},	/* 278 */
-	{63,0,63,0,L168},	/* 279 */
+	{16,1,63,0,L165},	/* 257 */
+	{127,1,63,0,L166},	/* 258 */
+	{63,0,63,0,L167},	/* 259 */
 /* float -> int */
 	{0},
 /* rftoi */
-	{63,4,63,0,L169},	/* 281 */
+	{63,4,63,0,L168},	/* 261 */
 /* float to long */
 	{0},
 /* rftol */
-	{63,4,63,0,L170},	/* 283 */
+	{63,4,63,0,L169},	/* 263 */
 /* long to float */
 	{0},
 /* rltof */
-	{16,8,63,0,L171},	/* 285 */
-	{127,8,63,0,L172},	/* 286 */
-	{63,8,63,0,L173},	/* 287 */
+	{16,8,63,0,L170},	/* 265 */
+	{127,8,63,0,L171},	/* 266 */
+	{63,8,63,0,L172},	/* 267 */
 /* unsigned long to float */
 	{0},
 /* rultof */
-	{16,11,63,0,L174},	/* 289 */
-	{127,11,63,0,L175},	/* 290 */
-	{63,11,63,0,L176},	/* 291 */
+	{16,11,63,0,L173},	/* 269 */
+	{127,11,63,0,L174},	/* 270 */
+	{63,11,63,0,L175},	/* 271 */
 /* integer to long */
 	{0},
 /* ritol */
-	{20,9,63,0,L177},	/* 293 */
-	{63,9,63,0,L178},	/* 294 */
-	{20,0,63,0,L179},	/* 295 */
-	{63,0,63,0,L180},	/* 296 */
+	{20,9,63,0,L176},	/* 273 */
+	{63,9,63,0,L177},	/* 274 */
+	{20,0,63,0,L178},	/* 275 */
+	{63,0,63,0,L179},	/* 276 */
 /* long to integer */
 	{0},
 /* rltoi */
-	{16,8,63,0,L181},	/* 298 */
-	{16,11,63,0,L181},	/* 299 */
-	{127,8,63,0,L182},	/* 300 */
-	{127,11,63,0,L182},	/* 301 */
+	{16,8,63,0,L180},	/* 278 */
+	{16,11,63,0,L180},	/* 279 */
+	{127,8,63,0,L181},	/* 280 */
+	{127,11,63,0,L181},	/* 281 */
 /* *, /, % for longs */
 	{0},
 /* rlmul */
-	{63,8,63,8,L183},	/* 303 */
-	{63,8,63,11,L183},	/* 304 */
-	{63,11,63,8,L183},	/* 305 */
-	{63,11,63,11,L183},	/* 306 */
+	{63,8,63,8,L182},	/* 283 */
+	{63,8,63,11,L182},	/* 284 */
+	{63,11,63,8,L182},	/* 285 */
+	{63,11,63,11,L182},	/* 286 */
 /* *, /, % for unsigned long */
 	{0},
 /* rulmul */
-	{63,11,63,8,L184},	/* 308 */
-	{63,8,63,11,L184},	/* 309 */
-	{63,11,63,11,L184},	/* 310 */
+	{63,11,63,8,L183},	/* 288 */
+	{63,8,63,11,L183},	/* 289 */
+	{63,11,63,11,L183},	/* 290 */
 
 
 /* *=, /=, %= for unsigned long */
 	{0},
 /* rulasmul */
-	{63,0,63,8,L185},	/* 312 */
-	{63,0,63,11,L185},	/* 313 */
-	{63,8,63,0,L185},	/* 314 */
-	{63,11,63,0,L185},	/* 315 */
+	{63,0,63,8,L184},	/* 292 */
+	{63,0,63,11,L184},	/* 293 */
+	{63,8,63,0,L184},	/* 294 */
+	{63,11,63,0,L184},	/* 295 */
 
 
 /* *=, /=, %= for longs */
 	{0},
 /* rlasmul */
-	{63,0,63,8,L186},	/* 317 */
-	{63,0,63,11,L186},	/* 318 */
+	{63,0,63,8,L185},	/* 297 */
+	{63,0,63,11,L185},	/* 298 */
 /* convert integer to character (sign extend) */
 	{0},
 /* ritoc */
-	{63,0,63,0,L187},	/* 320 */
+	{63,0,63,0,L186},	/* 300 */
 /* divide, mod for unsigned */
 	{0},
 /* rudiv */
-	{63,0,20,0,L188},	/* 322 */
-	{63,0,63,0,L189},	/* 323 */
+	{63,0,16,1,L187},	/* 302 */
+	{63,0,20,0,L188},	/* 303 */
+	{63,0,63,0,L189},	/* 304 */
 /* /= %= for unsigned */
 	{0},
 /* ruasdiv */
-	{16,1,20,0,L190},	/* 325 */
-	{16,3,20,0,L190},	/* 326 */
-	{16,10,20,0,L191},	/* 327 */
-	{16,1,63,0,L192},	/* 328 */
-	{16,3,63,0,L192},	/* 329 */
-	{127,1,63,0,L193},	/* 330 */
-	{127,3,63,0,L193},	/* 331 */
-	{16,10,63,0,L194},	/* 332 */
-	{127,10,63,0,L195},	/* 333 */
+	{16,1,20,0,L190},	/* 306 */
+	{16,3,20,0,L190},	/* 307 */
+	{16,10,20,0,L191},	/* 308 */
+	{16,1,63,0,L192},	/* 309 */
+	{16,3,63,0,L192},	/* 310 */
+	{127,1,63,0,L193},	/* 311 */
+	{127,3,63,0,L193},	/* 312 */
+	{16,10,63,0,L194},	/* 313 */
+	{127,10,63,0,L195},	/* 314 */
 /* (int *) - (int *) */
 	{0},
 /* rptrdif */
-	{63,0,63,0,L196},	/* 335 */
+	{63,0,63,0,L196},	/* 316 */
 
 
 /*
@@ -2002,314 +1972,314 @@ struct optab optab[]={
  */
 	{0},
 /* eassign */
-	{16,0,4,0,L197},	/* 337 */
-	{16,5,4,4,L197},	/* 338 */
-	{16,10,4,0,L197},	/* 339 */
-	{127,0,4,0,L198},	/* 340 */
-	{127,5,4,4,L198},	/* 341 */
-	{127,10,4,0,L198},	/* 342 */
-	{16,0,16,1,L199},	/* 343 */
-	{16,3,16,0,L199},	/* 344 */
-	{16,3,16,10,L199},	/* 345 */
-	{16,10,16,0,L199},	/* 346 */
-	{16,10,16,3,L199},	/* 347 */
-	{16,3,127,0,L200},	/* 348 */
-	{16,0,127,1,L200},	/* 349 */
-	{16,10,127,0,L200},	/* 350 */
-	{16,0,63,0,L201},	/* 351 */
-	{16,10,63,0,L201},	/* 352 */
-	{127,0,16,1,L202},	/* 353 */
-	{127,3,16,0,L202},	/* 354 */
-	{127,10,16,0,L202},	/* 355 */
-	{127,0,84,1,L203},	/* 356 */
-	{127,3,84,0,L203},	/* 357 */
-	{127,10,84,0,L203},	/* 358 */
-	{127,0,20,0,L204},	/* 359 */
-	{127,10,20,0,L204},	/* 360 */
-	{84,0,127,1,L205},	/* 361 */
-	{84,3,127,0,L205},	/* 362 */
-	{84,10,127,0,L205},	/* 363 */
-	{84,0,63,0,L206},	/* 364 */
-	{84,10,63,0,L206},	/* 365 */
-	{127,0,127,1,L207},	/* 366 */
-	{127,3,127,0,L207},	/* 367 */
-	{127,10,127,0,L207},	/* 368 */
-	{127,0,63,0,L208},	/* 369 */
-	{127,10,63,0,L208},	/* 370 */
-	{16,1,63,4,L209},	/* 371 */
-	{84,1,63,4,L210},	/* 372 */
-	{16,8,4,0,L211},	/* 373 */
-	{16,11,4,0,L211},	/* 374 */
-	{127,8,4,0,L212},	/* 375 */
-	{127,11,4,0,L212},	/* 376 */
-	{16,8,16,1,L213},	/* 377 */
-	{16,11,16,1,L213},	/* 378 */
-	{16,8,127,1,L214},	/* 379 */
-	{16,11,127,1,L214},	/* 380 */
-	{16,8,63,0,L215},	/* 381 */
-	{16,11,63,0,L215},	/* 382 */
-	{16,8,63,4,L216},	/* 383 */
-	{16,11,63,4,L216},	/* 384 */
-	{84,8,63,4,L217},	/* 385 */
-	{84,11,63,4,L217},	/* 386 */
-	{16,8,16,8,L218},	/* 387 */
-	{16,8,16,11,L218},	/* 388 */
-	{16,11,16,8,L218},	/* 389 */
-	{16,11,16,11,L218},	/* 390 */
-	{16,8,127,8,L219},	/* 391 */
-	{16,8,127,11,L219},	/* 392 */
-	{16,11,127,8,L219},	/* 393 */
-	{16,11,127,11,L219},	/* 394 */
-	{16,8,63,8,L220},	/* 395 */
-	{16,8,63,11,L220},	/* 396 */
-	{16,11,63,8,L220},	/* 397 */
-	{16,11,63,11,L220},	/* 398 */
-	{127,8,16,1,L221},	/* 399 */
-	{127,11,16,1,L221},	/* 400 */
-	{127,8,16,8,L222},	/* 401 */
-	{127,8,16,11,L222},	/* 402 */
-	{127,11,16,8,L222},	/* 403 */
-	{127,11,16,11,L222},	/* 404 */
-	{84,8,63,8,L223},	/* 405 */
-	{84,8,63,11,L223},	/* 406 */
-	{84,11,63,8,L223},	/* 407 */
-	{84,11,63,11,L223},	/* 408 */
-	{127,8,63,0,L224},	/* 409 */
-	{127,11,63,0,L224},	/* 410 */
-	{127,8,63,8,L225},	/* 411 */
-	{127,8,63,11,L225},	/* 412 */
-	{127,11,63,8,L225},	/* 413 */
-	{127,11,63,11,L225},	/* 414 */
+	{16,0,4,0,L197},	/* 318 */
+	{16,5,4,4,L197},	/* 319 */
+	{16,10,4,0,L197},	/* 320 */
+	{127,0,4,0,L198},	/* 321 */
+	{127,5,4,4,L198},	/* 322 */
+	{127,10,4,0,L198},	/* 323 */
+	{16,0,16,1,L199},	/* 324 */
+	{16,3,16,0,L199},	/* 325 */
+	{16,3,16,10,L199},	/* 326 */
+	{16,10,16,0,L199},	/* 327 */
+	{16,10,16,3,L199},	/* 328 */
+	{16,3,127,0,L200},	/* 329 */
+	{16,0,127,1,L200},	/* 330 */
+	{16,10,127,0,L200},	/* 331 */
+	{16,0,63,0,L201},	/* 332 */
+	{16,10,63,0,L201},	/* 333 */
+	{127,0,16,1,L202},	/* 334 */
+	{127,3,16,0,L202},	/* 335 */
+	{127,10,16,0,L202},	/* 336 */
+	{127,0,84,1,L203},	/* 337 */
+	{127,3,84,0,L203},	/* 338 */
+	{127,10,84,0,L203},	/* 339 */
+	{127,0,20,0,L204},	/* 340 */
+	{127,10,20,0,L204},	/* 341 */
+	{84,0,127,1,L205},	/* 342 */
+	{84,3,127,0,L205},	/* 343 */
+	{84,10,127,0,L205},	/* 344 */
+	{84,0,63,0,L206},	/* 345 */
+	{84,10,63,0,L206},	/* 346 */
+	{127,0,127,1,L207},	/* 347 */
+	{127,3,127,0,L207},	/* 348 */
+	{127,10,127,0,L207},	/* 349 */
+	{127,0,63,0,L208},	/* 350 */
+	{127,10,63,0,L208},	/* 351 */
+	{16,1,63,4,L209},	/* 352 */
+	{84,1,63,4,L210},	/* 353 */
+	{16,8,4,0,L211},	/* 354 */
+	{16,11,4,0,L211},	/* 355 */
+	{127,8,4,0,L212},	/* 356 */
+	{127,11,4,0,L212},	/* 357 */
+	{16,8,16,1,L213},	/* 358 */
+	{16,11,16,1,L213},	/* 359 */
+	{16,8,127,1,L214},	/* 360 */
+	{16,11,127,1,L214},	/* 361 */
+	{16,8,63,0,L215},	/* 362 */
+	{16,11,63,0,L215},	/* 363 */
+	{16,8,63,4,L216},	/* 364 */
+	{16,11,63,4,L216},	/* 365 */
+	{84,8,63,4,L217},	/* 366 */
+	{84,11,63,4,L217},	/* 367 */
+	{16,8,16,8,L218},	/* 368 */
+	{16,8,16,11,L218},	/* 369 */
+	{16,11,16,8,L218},	/* 370 */
+	{16,11,16,11,L218},	/* 371 */
+	{16,8,127,8,L219},	/* 372 */
+	{16,8,127,11,L219},	/* 373 */
+	{16,11,127,8,L219},	/* 374 */
+	{16,11,127,11,L219},	/* 375 */
+	{16,8,63,8,L220},	/* 376 */
+	{16,8,63,11,L220},	/* 377 */
+	{16,11,63,8,L220},	/* 378 */
+	{16,11,63,11,L220},	/* 379 */
+	{127,8,16,1,L221},	/* 380 */
+	{127,11,16,1,L221},	/* 381 */
+	{127,8,16,8,L222},	/* 382 */
+	{127,8,16,11,L222},	/* 383 */
+	{127,11,16,8,L222},	/* 384 */
+	{127,11,16,11,L222},	/* 385 */
+	{84,8,63,8,L223},	/* 386 */
+	{84,8,63,11,L223},	/* 387 */
+	{84,11,63,8,L223},	/* 388 */
+	{84,11,63,11,L223},	/* 389 */
+	{127,8,63,0,L224},	/* 390 */
+	{127,11,63,0,L224},	/* 391 */
+	{127,8,63,8,L225},	/* 392 */
+	{127,8,63,11,L225},	/* 393 */
+	{127,11,63,8,L225},	/* 394 */
+	{127,11,63,11,L225},	/* 395 */
 /* =| and =&~ */
 	{0},
 /* easor */
-	{16,0,16,0,L226},	/* 416 */
-	{16,0,16,3,L226},	/* 417 */
-	{16,0,16,10,L226},	/* 418 */
-	{16,3,16,0,L226},	/* 419 */
-	{16,3,16,3,L226},	/* 420 */
-	{16,3,16,10,L226},	/* 421 */
-	{16,10,16,0,L226},	/* 422 */
-	{16,10,16,3,L226},	/* 423 */
-	{16,10,16,10,L226},	/* 424 */
+	{16,0,16,0,L226},	/* 397 */
+	{16,0,16,3,L226},	/* 398 */
+	{16,0,16,10,L226},	/* 399 */
+	{16,3,16,0,L226},	/* 400 */
+	{16,3,16,3,L226},	/* 401 */
+	{16,3,16,10,L226},	/* 402 */
+	{16,10,16,0,L226},	/* 403 */
+	{16,10,16,3,L226},	/* 404 */
+	{16,10,16,10,L226},	/* 405 */
 
 
-	{16,10,63,0,L227},	/* 425 */
-	{16,0,63,0,L228},	/* 426 */
+	{16,10,63,0,L227},	/* 406 */
+	{16,0,63,0,L228},	/* 407 */
 
 
-	{127,0,16,1,L229},	/* 427 */
-	{127,3,16,0,L229},	/* 428 */
-	{127,10,16,0,L229},	/* 429 */
+	{127,0,16,1,L229},	/* 408 */
+	{127,3,16,0,L229},	/* 409 */
+	{127,10,16,0,L229},	/* 410 */
 
 
-	{127,0,84,1,L230},	/* 430 */
-	{127,3,84,0,L230},	/* 431 */
-	{127,10,84,0,L230},	/* 432 */
+	{127,0,84,1,L230},	/* 411 */
+	{127,3,84,0,L230},	/* 412 */
+	{127,10,84,0,L230},	/* 413 */
 
 
-	{127,0,20,0,L231},	/* 433 */
+	{127,0,20,0,L231},	/* 414 */
 
 
-	{84,0,127,1,L232},	/* 434 */
-	{84,3,127,0,L232},	/* 435 */
-	{84,10,127,0,L232},	/* 436 */
+	{84,0,127,1,L232},	/* 415 */
+	{84,3,127,0,L232},	/* 416 */
+	{84,10,127,0,L232},	/* 417 */
 
 
-	{84,0,63,0,L233},	/* 437 */
+	{84,0,63,0,L233},	/* 418 */
 
 
-	{127,0,127,1,L234},	/* 438 */
-	{127,3,127,0,L234},	/* 439 */
-	{127,10,127,0,L234},	/* 440 */
+	{127,0,127,1,L234},	/* 419 */
+	{127,3,127,0,L234},	/* 420 */
+	{127,10,127,0,L234},	/* 421 */
 
 
-	{127,0,63,0,L235},	/* 441 */
+	{127,0,63,0,L235},	/* 422 */
 
 
-	{16,8,8,0,L236},	/* 442 */
-	{16,8,16,9,L236},	/* 443 */
-	{16,11,8,0,L236},	/* 444 */
-	{16,11,16,9,L236},	/* 445 */
+	{16,8,8,0,L236},	/* 423 */
+	{16,8,16,9,L236},	/* 424 */
+	{16,11,8,0,L236},	/* 425 */
+	{16,11,16,9,L236},	/* 426 */
 
 
-	{16,8,16,8,L237},	/* 446 */
-	{16,8,16,11,L237},	/* 447 */
-	{16,11,16,8,L237},	/* 448 */
-	{16,11,16,11,L237},	/* 449 */
+	{16,8,16,8,L237},	/* 427 */
+	{16,8,16,11,L237},	/* 428 */
+	{16,11,16,8,L237},	/* 429 */
+	{16,11,16,11,L237},	/* 430 */
 
 
-	{16,8,127,8,L238},	/* 450 */
-	{16,8,127,11,L238},	/* 451 */
-	{16,11,127,8,L238},	/* 452 */
-	{16,11,127,11,L238},	/* 453 */
+	{16,8,127,8,L238},	/* 431 */
+	{16,8,127,11,L238},	/* 432 */
+	{16,11,127,8,L238},	/* 433 */
+	{16,11,127,11,L238},	/* 434 */
 
 
-	{16,8,63,8,L239},	/* 454 */
-	{16,8,63,11,L239},	/* 455 */
-	{16,11,63,8,L239},	/* 456 */
-	{16,11,63,11,L239},	/* 457 */
+	{16,8,63,8,L239},	/* 435 */
+	{16,8,63,11,L239},	/* 436 */
+	{16,11,63,8,L239},	/* 437 */
+	{16,11,63,11,L239},	/* 438 */
 
 
-	{127,8,8,0,L240},	/* 458 */
-	{127,11,8,0,L240},	/* 459 */
+	{127,8,8,0,L240},	/* 439 */
+	{127,11,8,0,L240},	/* 440 */
 
 
-	{127,8,16,8,L241},	/* 460 */
-	{127,8,16,11,L241},	/* 461 */
-	{127,11,16,8,L241},	/* 462 */
-	{127,11,16,11,L241},	/* 463 */
+	{127,8,16,8,L241},	/* 441 */
+	{127,8,16,11,L241},	/* 442 */
+	{127,11,16,8,L241},	/* 443 */
+	{127,11,16,11,L241},	/* 444 */
 
 
-	{84,8,63,8,L242},	/* 464 */
-	{84,8,63,11,L242},	/* 465 */
-	{84,11,63,8,L242},	/* 466 */
-	{84,11,63,11,L242},	/* 467 */
+	{84,8,63,8,L242},	/* 445 */
+	{84,8,63,11,L242},	/* 446 */
+	{84,11,63,8,L242},	/* 447 */
+	{84,11,63,11,L242},	/* 448 */
 
 
-	{127,8,63,8,L243},	/* 468 */
-	{127,8,63,11,L243},	/* 469 */
-	{127,11,63,8,L243},	/* 470 */
-	{127,11,63,11,L243},	/* 471 */
+	{127,8,63,8,L243},	/* 449 */
+	{127,8,63,11,L243},	/* 450 */
+	{127,11,63,8,L243},	/* 451 */
+	{127,11,63,11,L243},	/* 452 */
 
 
 /* =^ */
 	{0},
 /* easxor */
-	{16,8,63,8,L244},	/* 473 */
-	{16,8,63,11,L244},	/* 474 */
-	{16,11,63,8,L244},	/* 475 */
-	{16,11,63,11,L244},	/* 476 */
+	{16,8,63,8,L244},	/* 454 */
+	{16,8,63,11,L244},	/* 455 */
+	{16,11,63,8,L244},	/* 456 */
+	{16,11,63,11,L244},	/* 457 */
 
 
-	{84,8,63,8,L245},	/* 477 */
-	{84,8,63,11,L245},	/* 478 */
-	{84,11,63,8,L245},	/* 479 */
-	{84,11,63,11,L245},	/* 480 */
+	{84,8,63,8,L245},	/* 458 */
+	{84,8,63,11,L245},	/* 459 */
+	{84,11,63,8,L245},	/* 460 */
+	{84,11,63,11,L245},	/* 461 */
 
 
-	{127,8,63,8,L246},	/* 481 */
-	{127,8,63,11,L246},	/* 482 */
-	{127,11,63,8,L246},	/* 483 */
-	{127,11,63,11,L246},	/* 484 */
+	{127,8,63,8,L246},	/* 462 */
+	{127,8,63,11,L246},	/* 463 */
+	{127,11,63,8,L246},	/* 464 */
+	{127,11,63,11,L246},	/* 465 */
 /* =+ for effect */
 	{0},
 /* easadd */
-	{127,0,4,0,L247},	/* 486 */
-	{16,0,4,0,L247},	/* 487 */
-	{16,3,5,0,L247},	/* 488 */
-	{16,10,5,0,L247},	/* 489 */
-	{16,0,5,0,L247},	/* 490 */
-	{16,1,16,1,L248},	/* 491 */
+	{127,0,4,0,L247},	/* 467 */
+	{16,0,4,0,L247},	/* 468 */
+	{16,3,5,0,L247},	/* 469 */
+	{16,10,5,0,L247},	/* 470 */
+	{16,0,5,0,L247},	/* 471 */
+	{16,1,16,1,L248},	/* 472 */
 
 
-	{16,1,127,1,L249},	/* 492 */
+	{16,1,127,1,L249},	/* 473 */
 
 
-	{16,1,63,0,L250},	/* 493 */
+	{16,1,63,0,L250},	/* 474 */
 
 
-	{127,0,5,0,L251},	/* 494 */
-	{127,10,5,0,L251},	/* 495 */
+	{127,0,5,0,L251},	/* 475 */
+	{127,10,5,0,L251},	/* 476 */
 
 
-	{84,1,127,1,L252},	/* 496 */
+	{84,1,127,1,L252},	/* 477 */
 
 
-	{16,0,84,1,L253},	/* 497 */
-	{16,0,63,0,L254},	/* 498 */
-	{16,10,63,0,L255},	/* 499 */
-	{84,1,63,0,L256},	/* 500 */
+	{16,0,84,1,L253},	/* 478 */
+	{16,0,63,0,L254},	/* 479 */
+	{16,10,63,0,L255},	/* 480 */
+	{84,1,63,0,L256},	/* 481 */
 
 
-	{127,1,63,0,L257},	/* 501 */
+	{127,1,63,0,L257},	/* 482 */
 
 
-	{127,0,63,0,L258},	/* 502 */
-	{127,10,63,0,L259},	/* 503 */
-	{16,8,8,0,L260},	/* 504 */
-	{16,8,16,9,L260},	/* 505 */
-	{16,11,16,9,L260},	/* 506 */
-	{16,11,8,0,L260},	/* 507 */
+	{127,0,63,0,L258},	/* 483 */
+	{127,10,63,0,L259},	/* 484 */
+	{16,8,8,0,L260},	/* 485 */
+	{16,8,16,9,L260},	/* 486 */
+	{16,11,16,9,L260},	/* 487 */
+	{16,11,8,0,L260},	/* 488 */
 
 
-	{16,8,16,8,L261},	/* 508 */
-	{16,8,16,11,L261},	/* 509 */
-	{16,11,16,8,L261},	/* 510 */
-	{16,11,16,11,L261},	/* 511 */
+	{16,8,16,8,L261},	/* 489 */
+	{16,8,16,11,L261},	/* 490 */
+	{16,11,16,8,L261},	/* 491 */
+	{16,11,16,11,L261},	/* 492 */
 
 
-	{16,8,127,8,L262},	/* 512 */
-	{16,8,127,11,L262},	/* 513 */
-	{16,11,127,8,L262},	/* 514 */
-	{16,11,127,11,L262},	/* 515 */
+	{16,8,127,8,L262},	/* 493 */
+	{16,8,127,11,L262},	/* 494 */
+	{16,11,127,8,L262},	/* 495 */
+	{16,11,127,11,L262},	/* 496 */
 
 
-	{16,8,63,8,L263},	/* 516 */
-	{16,8,63,11,L263},	/* 517 */
-	{16,11,63,8,L263},	/* 518 */
-	{16,11,63,11,L263},	/* 519 */
+	{16,8,63,8,L263},	/* 497 */
+	{16,8,63,11,L263},	/* 498 */
+	{16,11,63,8,L263},	/* 499 */
+	{16,11,63,11,L263},	/* 500 */
 
 
-	{127,8,8,0,L264},	/* 520 */
-	{127,8,16,9,L264},	/* 521 */
-	{127,11,8,0,L264},	/* 522 */
-	{127,11,16,9,L264},	/* 523 */
+	{127,8,8,0,L264},	/* 501 */
+	{127,8,16,9,L264},	/* 502 */
+	{127,11,8,0,L264},	/* 503 */
+	{127,11,16,9,L264},	/* 504 */
 
 
-	{127,8,16,8,L265},	/* 524 */
-	{127,8,16,11,L265},	/* 525 */
-	{127,11,16,8,L265},	/* 526 */
-	{127,11,16,11,L265},	/* 527 */
+	{127,8,16,8,L265},	/* 505 */
+	{127,8,16,11,L265},	/* 506 */
+	{127,11,16,8,L265},	/* 507 */
+	{127,11,16,11,L265},	/* 508 */
 
 
-	{84,8,63,8,L266},	/* 528 */
-	{84,8,63,11,L266},	/* 529 */
-	{84,11,63,8,L266},	/* 530 */
-	{84,11,63,11,L266},	/* 531 */
+	{84,8,63,8,L266},	/* 509 */
+	{84,8,63,11,L266},	/* 510 */
+	{84,11,63,8,L266},	/* 511 */
+	{84,11,63,11,L266},	/* 512 */
 
 
-	{127,8,63,8,L267},	/* 532 */
-	{127,8,63,11,L267},	/* 533 */
-	{127,11,63,8,L267},	/* 534 */
-	{127,11,63,11,L267},	/* 535 */
+	{127,8,63,8,L267},	/* 513 */
+	{127,8,63,11,L267},	/* 514 */
+	{127,11,63,8,L267},	/* 515 */
+	{127,11,63,11,L267},	/* 516 */
 
 
 /* >>= (simple) */
 	{0},
 /* easrsh */
-	{16,0,5,0,L268},	/* 537 */
-	{16,10,5,0,L269},	/* 538 */
-	{127,0,5,0,L270},	/* 539 */
-	{127,10,5,0,L271},	/* 540 */
+	{16,0,5,0,L268},	/* 518 */
+	{16,10,5,0,L269},	/* 519 */
+	{127,0,5,0,L270},	/* 520 */
+	{127,10,5,0,L271},	/* 521 */
 /* <<= */
 	{0},
 /* easlsh */
-	{16,0,5,0,L272},	/* 542 */
-	{16,10,5,0,L272},	/* 543 */
-	{127,0,5,0,L273},	/* 544 */
-	{127,10,5,0,L273},	/* 545 */
-	{9,0,16,1,L274},	/* 546 */
-	{9,0,127,1,L275},	/* 547 */
-	{9,0,63,0,L276},	/* 548 */
+	{16,0,5,0,L272},	/* 523 */
+	{16,10,5,0,L272},	/* 524 */
+	{127,0,5,0,L273},	/* 525 */
+	{127,10,5,0,L273},	/* 526 */
+	{9,0,16,1,L274},	/* 527 */
+	{9,0,127,1,L275},	/* 528 */
+	{9,0,63,0,L276},	/* 529 */
 /* <<= for longs */
 	{0},
 /* rlaslsh */
-	{16,8,16,1,L277},	/* 550 */
-	{16,11,16,1,L277},	/* 551 */
-	{16,8,63,0,L278},	/* 552 */
-	{16,11,63,0,L278},	/* 553 */
-	{127,8,63,0,L279},	/* 554 */
-	{127,11,63,0,L279},	/* 555 */
+	{16,8,16,1,L277},	/* 531 */
+	{16,11,16,1,L277},	/* 532 */
+	{16,8,63,0,L278},	/* 533 */
+	{16,11,63,0,L278},	/* 534 */
+	{127,8,63,0,L279},	/* 535 */
+	{127,11,63,0,L279},	/* 536 */
 /* field = ... */
 	{0},
 /* efield */
-	{16,0,16,0,L280},	/* 557 */
-	{16,0,63,0,L281},	/* 558 */
-	{127,0,16,0,L282},	/* 559 */
-	{84,0,63,0,L283},	/* 560 */
-	{127,0,20,0,L284},	/* 561 */
-	{127,0,63,0,L285},	/* 562 */
+	{16,0,16,0,L280},	/* 538 */
+	{16,0,63,0,L281},	/* 539 */
+	{127,0,16,0,L282},	/* 540 */
+	{84,0,63,0,L283},	/* 541 */
+	{127,0,20,0,L284},	/* 542 */
+	{127,0,63,0,L285},	/* 543 */
 
 
 /*
@@ -2321,168 +2291,168 @@ struct optab optab[]={
  */
 	{0},
 /* ccmp */
-	{16,0,4,0,L286},	/* 564 */
-	{16,5,4,4,L286},	/* 565 */
-	{16,10,4,0,L286},	/* 566 */
-	{16,4,4,0,L287},	/* 567 */
-	{127,0,4,0,L288},	/* 568 */
-	{127,5,4,4,L288},	/* 569 */
-	{127,10,4,0,L288},	/* 570 */
-	{127,4,4,0,L289},	/* 571 */
-	{63,0,4,0,L290},	/* 572 */
-	{63,4,4,4,L290},	/* 573 */
-	{16,1,16,1,L291},	/* 574 */
-	{16,3,16,3,L291},	/* 575 */
-	{16,10,16,0,L291},	/* 576 */
-	{16,10,16,10,L291},	/* 577 */
-	{127,1,16,1,L292},	/* 578 */
-	{127,3,16,3,L292},	/* 579 */
-	{127,10,16,10,L292},	/* 580 */
-	{63,0,16,1,L293},	/* 581 */
-	{63,4,16,5,L293},	/* 582 */
+	{16,0,4,0,L286},	/* 545 */
+	{16,5,4,4,L286},	/* 546 */
+	{16,10,4,0,L286},	/* 547 */
+	{16,4,4,0,L287},	/* 548 */
+	{127,0,4,0,L288},	/* 549 */
+	{127,5,4,4,L288},	/* 550 */
+	{127,10,4,0,L288},	/* 551 */
+	{127,4,4,0,L289},	/* 552 */
+	{63,0,4,0,L290},	/* 553 */
+	{63,4,4,4,L290},	/* 554 */
+	{16,1,16,1,L291},	/* 555 */
+	{16,3,16,3,L291},	/* 556 */
+	{16,10,16,0,L291},	/* 557 */
+	{16,10,16,10,L291},	/* 558 */
+	{127,1,16,1,L292},	/* 559 */
+	{127,3,16,3,L292},	/* 560 */
+	{127,10,16,10,L292},	/* 561 */
+	{63,0,16,1,L293},	/* 562 */
+	{63,4,16,5,L293},	/* 563 */
 
 
-	{127,1,84,1,L294},	/* 583 */
-	{127,3,84,3,L294},	/* 584 */
-	{127,10,84,10,L294},	/* 585 */
-	{127,1,20,0,L295},	/* 586 */
-	{63,0,84,1,L296},	/* 587 */
-	{63,4,84,5,L296},	/* 588 */
+	{127,1,84,1,L294},	/* 564 */
+	{127,3,84,3,L294},	/* 565 */
+	{127,10,84,10,L294},	/* 566 */
+	{127,1,20,0,L295},	/* 567 */
+	{63,0,84,1,L296},	/* 568 */
+	{63,4,84,5,L296},	/* 569 */
 
 
-	{63,0,20,0,L297},	/* 589 */
-	{63,4,20,4,L297},	/* 590 */
+	{63,0,20,0,L297},	/* 570 */
+	{63,4,20,4,L297},	/* 571 */
 
 
-	{127,1,127,1,L298},	/* 591 */
-	{127,3,127,3,L298},	/* 592 */
-	{127,10,127,10,L298},	/* 593 */
-	{127,1,63,0,L299},	/* 594 */
-	{63,0,63,0,L300},	/* 595 */
-	{63,4,63,4,L300},	/* 596 */
+	{127,1,127,1,L298},	/* 572 */
+	{127,3,127,3,L298},	/* 573 */
+	{127,10,127,10,L298},	/* 574 */
+	{127,1,63,0,L299},	/* 575 */
+	{63,0,63,0,L300},	/* 576 */
+	{63,4,63,4,L300},	/* 577 */
 
 
-	{16,8,4,0,L301},	/* 597 */
-	{16,11,4,0,L301},	/* 598 */
-	{16,8,8,0,L302},	/* 599 */
-	{16,8,16,9,L302},	/* 600 */
-	{16,11,8,0,L302},	/* 601 */
-	{16,11,16,9,L302},	/* 602 */
-	{16,8,16,8,L303},	/* 603 */
-	{16,8,16,11,L303},	/* 604 */
-	{16,11,16,8,L303},	/* 605 */
-	{16,11,16,11,L303},	/* 606 */
-	{127,8,4,0,L304},	/* 607 */
-	{127,11,4,0,L304},	/* 608 */
-	{127,8,8,0,L305},	/* 609 */
-	{127,11,8,0,L305},	/* 610 */
-	{127,8,16,9,L305},	/* 611 */
-	{127,11,16,9,L305},	/* 612 */
-	{127,8,16,8,L306},	/* 613 */
-	{127,8,16,11,L306},	/* 614 */
-	{127,11,16,8,L306},	/* 615 */
-	{127,8,16,11,L306},	/* 616 */
-	{63,8,4,0,L307},	/* 617 */
-	{63,11,4,0,L307},	/* 618 */
-	{63,8,8,0,L308},	/* 619 */
-	{63,11,8,0,L308},	/* 620 */
-	{63,8,16,9,L308},	/* 621 */
-	{63,11,16,9,L308},	/* 622 */
-	{63,8,16,8,L309},	/* 623 */
-	{63,8,16,11,L309},	/* 624 */
-	{63,11,16,8,L309},	/* 625 */
-	{63,11,16,11,L309},	/* 626 */
-	{127,8,84,8,L310},	/* 627 */
-	{127,8,84,11,L310},	/* 628 */
-	{127,11,84,8,L310},	/* 629 */
-	{127,11,84,11,L310},	/* 630 */
-	{63,8,84,8,L311},	/* 631 */
-	{63,8,84,11,L311},	/* 632 */
-	{63,11,84,8,L311},	/* 633 */
-	{63,11,84,11,L311},	/* 634 */
-	{63,8,63,8,L312},	/* 635 */
-	{63,8,63,11,L312},	/* 636 */
-	{63,11,63,8,L312},	/* 637 */
-	{63,11,63,11,L312},	/* 638 */
+	{16,8,4,0,L301},	/* 578 */
+	{16,11,4,0,L301},	/* 579 */
+	{16,8,8,0,L302},	/* 580 */
+	{16,8,16,9,L302},	/* 581 */
+	{16,11,8,0,L302},	/* 582 */
+	{16,11,16,9,L302},	/* 583 */
+	{16,8,16,8,L303},	/* 584 */
+	{16,8,16,11,L303},	/* 585 */
+	{16,11,16,8,L303},	/* 586 */
+	{16,11,16,11,L303},	/* 587 */
+	{127,8,4,0,L304},	/* 588 */
+	{127,11,4,0,L304},	/* 589 */
+	{127,8,8,0,L305},	/* 590 */
+	{127,11,8,0,L305},	/* 591 */
+	{127,8,16,9,L305},	/* 592 */
+	{127,11,16,9,L305},	/* 593 */
+	{127,8,16,8,L306},	/* 594 */
+	{127,8,16,11,L306},	/* 595 */
+	{127,11,16,8,L306},	/* 596 */
+	{127,8,16,11,L306},	/* 597 */
+	{63,8,4,0,L307},	/* 598 */
+	{63,11,4,0,L307},	/* 599 */
+	{63,8,8,0,L308},	/* 600 */
+	{63,11,8,0,L308},	/* 601 */
+	{63,8,16,9,L308},	/* 602 */
+	{63,11,16,9,L308},	/* 603 */
+	{63,8,16,8,L309},	/* 604 */
+	{63,8,16,11,L309},	/* 605 */
+	{63,11,16,8,L309},	/* 606 */
+	{63,11,16,11,L309},	/* 607 */
+	{127,8,84,8,L310},	/* 608 */
+	{127,8,84,11,L310},	/* 609 */
+	{127,11,84,8,L310},	/* 610 */
+	{127,11,84,11,L310},	/* 611 */
+	{63,8,84,8,L311},	/* 612 */
+	{63,8,84,11,L311},	/* 613 */
+	{63,11,84,8,L311},	/* 614 */
+	{63,11,84,11,L311},	/* 615 */
+	{63,8,63,8,L312},	/* 616 */
+	{63,8,63,11,L312},	/* 617 */
+	{63,11,63,8,L312},	/* 618 */
+	{63,11,63,11,L312},	/* 619 */
 /* & as in "if ((a&b)==0)" */
 	{0},
 /* candtst */
-	{16,0,16,0,L313},	/* 640 */
-	{16,0,16,3,L313},	/* 641 */
-	{16,0,16,10,L313},	/* 642 */
-	{16,3,16,0,L313},	/* 643 */
-	{16,3,16,3,L313},	/* 644 */
-	{16,3,16,10,L313},	/* 645 */
-	{16,10,16,0,L313},	/* 646 */
-	{16,10,16,3,L313},	/* 647 */
-	{16,10,16,10,L313},	/* 648 */
-	{16,0,20,0,L314},	/* 649 */
-	{16,10,20,0,L314},	/* 650 */
-	{127,0,16,0,L315},	/* 651 */
-	{127,9,16,0,L315},	/* 652 */
-	{127,10,16,0,L315},	/* 653 */
-	{63,0,16,0,L316},	/* 654 */
+	{16,0,16,0,L313},	/* 621 */
+	{16,0,16,3,L313},	/* 622 */
+	{16,0,16,10,L313},	/* 623 */
+	{16,3,16,0,L313},	/* 624 */
+	{16,3,16,3,L313},	/* 625 */
+	{16,3,16,10,L313},	/* 626 */
+	{16,10,16,0,L313},	/* 627 */
+	{16,10,16,3,L313},	/* 628 */
+	{16,10,16,10,L313},	/* 629 */
+	{16,0,20,0,L314},	/* 630 */
+	{16,10,20,0,L314},	/* 631 */
+	{127,0,16,0,L315},	/* 632 */
+	{127,9,16,0,L315},	/* 633 */
+	{127,10,16,0,L315},	/* 634 */
+	{63,0,16,0,L316},	/* 635 */
 
 
-	{63,0,20,0,L317},	/* 655 */
+	{63,0,20,0,L317},	/* 636 */
 
 
-	{63,0,63,0,L318},	/* 656 */
+	{63,0,63,0,L318},	/* 637 */
 
 
-	{16,8,8,0,L319},	/* 657 */
-	{16,11,8,0,L319},	/* 658 */
-	{16,8,16,9,L319},	/* 659 */
-	{16,11,16,9,L319},	/* 660 */
-	{127,8,8,0,L320},	/* 661 */
-	{127,11,8,0,L320},	/* 662 */
-	{127,8,16,9,L320},	/* 663 */
-	{127,11,16,9,L320},	/* 664 */
-	{16,8,16,8,L321},	/* 665 */
-	{16,8,16,11,L321},	/* 666 */
-	{16,11,16,8,L321},	/* 667 */
-	{16,11,16,11,L321},	/* 668 */
+	{16,8,8,0,L319},	/* 638 */
+	{16,11,8,0,L319},	/* 639 */
+	{16,8,16,9,L319},	/* 640 */
+	{16,11,16,9,L319},	/* 641 */
+	{127,8,8,0,L320},	/* 642 */
+	{127,11,8,0,L320},	/* 643 */
+	{127,8,16,9,L320},	/* 644 */
+	{127,11,16,9,L320},	/* 645 */
+	{16,8,16,8,L321},	/* 646 */
+	{16,8,16,11,L321},	/* 647 */
+	{16,11,16,8,L321},	/* 648 */
+	{16,11,16,11,L321},	/* 649 */
 
 
-	{127,8,16,8,L322},	/* 669 */
-	{127,8,16,11,L322},	/* 670 */
-	{127,11,16,8,L322},	/* 671 */
-	{127,11,16,11,L322},	/* 672 */
+	{127,8,16,8,L322},	/* 650 */
+	{127,8,16,11,L322},	/* 651 */
+	{127,11,16,8,L322},	/* 652 */
+	{127,11,16,11,L322},	/* 653 */
 
 
-	{63,8,16,8,L323},	/* 673 */
-	{63,8,16,11,L323},	/* 674 */
-	{63,11,16,8,L323},	/* 675 */
-	{63,11,16,11,L323},	/* 676 */
+	{63,8,16,8,L323},	/* 654 */
+	{63,8,16,11,L323},	/* 655 */
+	{63,11,16,8,L323},	/* 656 */
+	{63,11,16,11,L323},	/* 657 */
 
 
-	{127,8,84,8,L324},	/* 677 */
-	{127,8,84,11,L324},	/* 678 */
-	{127,11,84,8,L324},	/* 679 */
-	{127,11,84,11,L324},	/* 680 */
+	{127,8,84,8,L324},	/* 658 */
+	{127,8,84,11,L324},	/* 659 */
+	{127,11,84,8,L324},	/* 660 */
+	{127,11,84,11,L324},	/* 661 */
 
 
-	{63,8,84,8,L325},	/* 681 */
-	{63,8,84,11,L325},	/* 682 */
-	{63,11,84,8,L325},	/* 683 */
-	{63,11,84,11,L325},	/* 684 */
+	{63,8,84,8,L325},	/* 662 */
+	{63,8,84,11,L325},	/* 663 */
+	{63,11,84,8,L325},	/* 664 */
+	{63,11,84,11,L325},	/* 665 */
 
 
-	{63,8,63,8,L326},	/* 685 */
-	{63,8,63,11,L326},	/* 686 */
-	{63,11,63,8,L326},	/* 687 */
-	{63,11,63,11,L326},	/* 688 */
+	{63,8,63,8,L326},	/* 666 */
+	{63,8,63,11,L326},	/* 667 */
+	{63,11,63,8,L326},	/* 668 */
+	{63,11,63,11,L326},	/* 669 */
 
 
-	{63,8,8,0,L327},	/* 689 */
-	{63,11,8,0,L327},	/* 690 */
-	{63,8,16,9,L327},	/* 691 */
-	{63,11,16,9,L327},	/* 692 */
+	{63,8,8,0,L327},	/* 670 */
+	{63,11,8,0,L327},	/* 671 */
+	{63,8,16,9,L327},	/* 672 */
+	{63,11,16,9,L327},	/* 673 */
 /* set codes right */
 	{0},
 /* rest */
-	{63,0,63,0,L328},	/* 694 */
-	{63,4,63,4,L328},	/* 695 */
+	{63,0,63,0,L328},	/* 675 */
+	{63,4,63,4,L328},	/* 676 */
 
 
 /*
@@ -2503,21 +2473,21 @@ struct optab optab[]={
 	{0},
 /* sname */
 /* Zero constant (int or float) - push 0 */
-	{4,0,63,0,L329},	/* 697 */
-	{4,4,63,0,L329},	/* 698 */
+	{4,0,63,0,L329},	/* 678 */
+	{4,4,63,0,L329},	/* 679 */
 /* Addressable word variable - smart load and push */
-	{16,1,63,0,L330},	/* 699 */
+	{16,1,63,0,L330},	/* 680 */
 /* Addressable unsigned byte - zero-extend to word and push */
 /* Result on stack is 16-bit with high byte = 0 */
-	{16,10,63,0,L331},	/* 700 */
+	{16,10,63,0,L331},	/* 681 */
 /* Word through pointer - eval pointer in HL, deref, push word */
 /* Pattern: F* gives us pointer in HL, then we load word at (HL) */
-	{127,1,63,0,L332},	/* 701 */
+	{127,1,63,0,L332},	/* 682 */
 /* Addressable long (signed or unsigned) - push as 32-bit (2 words) */
 /* Push order: high word first, then low word */
 /* Stack layout after: [low_word] <- SP, [high_word] <- SP+2 */
-	{16,8,63,0,L333},	/* 702 */
-	{16,11,63,0,L333},	/* 703 */
+	{16,8,63,0,L333},	/* 683 */
+	{16,11,63,0,L333},	/* 684 */
 /*
  * -----------------------------------------------------------------------------
  * sadd - Binary Arithmetic to Stack
@@ -2536,15 +2506,15 @@ struct optab optab[]={
 /* sadd */
 /* Any + constant 1: use in-place increment on stack top */
 /* FS pushes left operand, then I' operates on (sp) directly */
-	{16,0,5,0,L334},	/* 705 */
+	{16,0,5,0,L334},	/* 686 */
 /* Any + addressable word: push left, load right into DE, pop left, operate */
-	{16,0,16,1,L335},	/* 706 */
+	{16,0,16,1,L335},	/* 687 */
 /* Any + word through pointer: complex sequence to get both operands */
 /* Push left, eval right pointer, push it, deref to get word, operate */
-	{16,0,127,1,L336},	/* 707 */
+	{16,0,127,1,L336},	/* 688 */
 /* General case: push left, eval right, pop left into DE, operate, push */
 /* Uses ex (sp),hl to swap HL with stack top efficiently */
-	{16,0,63,0,L337},	/* 708 */
+	{16,0,63,0,L337},	/* 689 */
 /*
  * -----------------------------------------------------------------------------
  * sitol - Integer to Long, Push to Stack
@@ -2563,10 +2533,10 @@ struct optab optab[]={
 	{0},
 /* sitol */
 /* Unsigned integer: push already on stack, just add zero high word */
-	{63,9,63,0,L338},	/* 710 */
+	{63,9,63,0,L338},	/* 691 */
 /* Signed word: load, sign-extend to 32 bits, push both words */
 /* RLA gets sign bit into carry, SBC A,A gives 0x00 or 0xFF */
-	{16,1,63,0,L339},	/* 711 */
+	{16,1,63,0,L339},	/* 692 */
 /*
  * -----------------------------------------------------------------------------
  * sftol - Float to Long, Push to Stack
@@ -2579,7 +2549,7 @@ struct optab optab[]={
 	{0},
 /* sftol */
 /* Float expression: evaluate, call ftol helper, push 32-bit result */
-	{63,4,63,0,L340},	/* 713 */
+	{63,4,63,0,L340},	/* 694 */
 /*
  * -----------------------------------------------------------------------------
  * estrasg - Structure Assignment Setup
@@ -2597,10 +2567,10 @@ struct optab optab[]={
 /* estrasg */
 /* Left is source struct, right is constant size: load addresses for LDIR */
 /* F! loads source address, S1! loads dest address and size */
-	{63,0,20,0,L341},	/* 715 */
+	{63,0,20,0,L341},	/* 696 */
 /* Left is source, right is expression (computed size): push dest, load source */
 /* SS pushes right operand (size or dest), F! loads source address */
-	{63,0,63,0,L342},	/* 716 */
+	{63,0,63,0,L342},	/* 697 */
 	{0},
 };
 
@@ -2816,8 +2786,8 @@ struct table regtab[] = {
 	{MOD,rdiv},	/* MOD % - modulo (uses divide patterns) */
 	{RSHIFT,rrsh},	/* RSHIFT >> - signed right shift */
 	{LSHIFT,radd},	/* LSHIFT << - left shift (uses add patterns) */
-	{ANDN,radd},	/* OR | - bitwise or (uses add patterns) */
-	{OR,radd},	/* AND & - bitwise and (uses add patterns) */
+	{AND,radd},	/* AND & - bitwise and (uses add patterns) */
+	{OR,radd},	/* OR | - bitwise or (uses add patterns) */
 	{EXOR,rxor},	/* XOR ^ - bitwise xor */
 	{ASPLUS,rasadd},	/* ASPLUS += - compound add assignment */
 	{ASMINUS,rasadd},	/* ASMINUS -= - compound subtract assignment */
@@ -2827,7 +2797,7 @@ struct table regtab[] = {
 	{ASRSH,rasrsh},	/* ASRSH >>= - compound right shift assignment */
 	{ASLSH,rasmul},	/* ASLSH <<= - compound left shift assignment */
 	{ASOR,rasor},	/* ASOR |= - compound or assignment */
-	{ASANDN,rasor},	/* ASAND &= - compound and assignment */
+	{ASAND,rasor},	/* ASAND &= - compound and assignment */
 	{ASXOR,rasxor},	/* ASXOR ^= - compound xor assignment */
 	{JUMP,rjump},	/* JUMP - goto statement */
 	{ITOF,ritof},	/* ITOF - int to float conversion */
@@ -2862,6 +2832,16 @@ struct table regtab[] = {
 	{ULTOF,rultof},	/* ULTOF - unsigned long to float */
 	{ULLSHIFT,rlushr},	/* LUSHR - unsigned long right shift */
 	{UASLSHL,ralushr},	/* ALUSHR - unsigned long compound >>= */
+	{LPLUS,rlmul},	/* LPLUS - long add */
+	{LMINUS,rlmul},	/* LMINUS - long subtract */
+	{LOR,rlmul},	/* LOR - long or */
+	{LAND,rlmul},	/* LAND - long and */
+	{LXOR,rlmul},	/* LXOR - long xor */
+	{LASPLUS,rlasmul},	/* LASPLUS - long compound += */
+	{LASMINUS,rlasmul},	/* LASMINUS - long compound -= */
+	{LASOR,rlasmul},	/* LASOR - long compound |= */
+	{LASAND,rlasmul},	/* LASAND - long compound &= */
+	{LASXOR,rlasmul},	/* LASXOR - long compound ^= */
 	{0}		/* End of table marker */
 };
 
@@ -2895,7 +2875,7 @@ struct table efftab[] = {
 	{ASMINUS,easadd},	/* ASMINUS -= */
 	{ASOR,easor},	/* ASOR |= */
 	{ASXOR,easxor},	/* ASXOR ^= */
-	{ASANDN,easor},	/* ASAND &= */
+	{ASAND,easor},	/* ASAND &= */
 	{ASRSH,easrsh},	/* ASRSH >>= */
 	{ASLSH,easlsh},	/* ASLSH <<= */
 	{FSELA,efield},	/* FSEL - bitfield */
@@ -2934,7 +2914,7 @@ struct table efftab[] = {
 struct table cctab[] = {
 	{LOAD,ccmp},	/* NAME - compare/test value */
 	{AUTOD,rest},	/* QUEST ?: - evaluate for condition */
-	{ANDN,rest},	/* OR | - evaluate for condition */
+	{AND,rest},	/* AND & - evaluate for condition */
 	{EXCLA,rest},	/* EXCLA ! - evaluate for condition */
 	{AMPER,rest},	/* AMPER & - evaluate for condition */
 	{STAR,rest},	/* STAR * - evaluate for condition */
@@ -3010,11 +2990,9 @@ struct table sptab[] = {
 	{LOAD,sname},
 	{PLUS,sadd},
 	{MINUS,sadd},
-	{ANDN,sadd},
+	{AND,sadd},
 	{OR,sadd},
 	{ITOL,sitol},
 	{FTOL,sftol},
 	{0}
 };
-
-/* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

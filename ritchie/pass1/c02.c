@@ -558,6 +558,7 @@ hardif:
 						np->hoffset = 0;
 					} else {
 						defsym = np;
+						fprintf(stderr, "DBG561\n");
 						redec();
 						goto stmt;
 					}

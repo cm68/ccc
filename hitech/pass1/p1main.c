@@ -59,6 +59,21 @@ void closeFiles(void);
 void mainParseLoop(void);
 
 /*
+ * Print usage message and exit
+ */
+void
+usage(void)
+{
+	fprintf(stderr, "usage: c0 [options] <input.x> <output.1> <temp.2>\n");
+	fprintf(stderr, "  -e<file>  Redirect errors to file\n");
+	fprintf(stderr, "  -s        Suppress certain output\n");
+	fprintf(stderr, "  -w        Suppress warnings\n");
+	fprintf(stderr, "  -l        Enable line number output\n");
+	fprintf(stderr, "  -c<file>  Generate cross-reference file\n");
+	exit(1);
+}
+
+/*
  * 71: 367E PMO +++
  * basic blocks located differently
  * strcpy 2nd arg optimisation missed
@@ -85,6 +100,9 @@ main(int argc, char *argv[])
 
 	for (--argc, ++argv; argc && *argv[0] == '-'; --argc, argv++) {
 		switch (argv[0][1]) {
+		case 'h':
+			usage();
+			break;
 		case 'E':
 		case 'e':
 			if (!freopen(*argv + 2, "a", stderr));
@@ -113,17 +131,17 @@ main(int argc, char *argv[])
 	}
 	initSymTable();
 	resetExprStack();
-	if (argc) {
-		if (freopen(argv[0], "r", stdin) == 0)
-			fatalErr("can't open %s", *argv);
-		srcFileArg = argv[0];
-		strcpy(srcFile, srcFileArg);
-		if (argc != 1 && freopen(argv[1], "w", stdout) == NULL)
-			fatalErr("can't open %s", argv[1]);
-		if (argc == 3)
-			tmpFile = argv[2];
-	} else
-		strcpy(srcFile, srcFileArg = "(stdin)");
+
+	if (argc != 3)
+		usage();
+
+	if (freopen(argv[0], "r", stdin) == 0)
+		fatalErr("can't open %s", argv[0]);
+	srcFileArg = argv[0];
+	strcpy(srcFile, srcFileArg);
+	if (freopen(argv[1], "w", stdout) == NULL)
+		fatalErr("can't open %s", argv[1]);
+	tmpFile = argv[2];
 
 	if (crfFile) {
 		if (*crfFile == '\0') {

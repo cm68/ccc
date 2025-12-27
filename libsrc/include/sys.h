@@ -32,3 +32,4 @@ extern int	_argc_;
 extern int	inp(int);
 extern void	outp(int, int);
 
+/* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

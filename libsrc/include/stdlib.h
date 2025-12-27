@@ -34,3 +34,4 @@ extern void	qsort(void *, size_t, size_t, int (*)(void *, void *));
 extern int	abs(int);
 extern long	labs(long);
 
+/* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

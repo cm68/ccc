@@ -16,3 +16,4 @@ extern void	_fassert(int, char *, char *);
 #define	assert(exp)
 #endif
 
+/* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

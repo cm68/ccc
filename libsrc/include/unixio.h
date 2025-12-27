@@ -26,3 +26,4 @@ extern int	write(int, void *, int);
 extern int	isatty(int);
 extern int	chmod(char *, int);
 
+/* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

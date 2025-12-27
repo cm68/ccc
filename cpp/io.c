@@ -407,17 +407,6 @@ advance()
 again:
     t = tbtop;
 
-#ifdef DEBUG
-    if (VERBOSE(V_IO)) {
-        fdprintf(2,
-            "Top of again: curchar='%c'(0x%x) nextchar='%c'(0x%x) "
-            "offset=%d\n",
-            curchar >= 32 ? curchar : '?', curchar,
-            nextchar >= 32 ? nextchar : '?', nextchar,
-            t ? t->offset : -1);
-    }
-#endif
-
     curchar = nextchar;
 
     /* if no textbuf, are at eof */
@@ -450,7 +439,9 @@ again:
             goto done;
         }
         close(t->fd);
-        curchar = '\n';  /* Inject newline at EOF to reset column for parent */
+        t->fd = -1;  /* Mark as closed, will pop on next advance */
+        nextchar = 0;  /* No more chars after current */
+        goto done;  /* Return current char, pop on next call */
     }
     /* closed file or empty macro buffer - pop */
     tbtop = t->prev;
@@ -461,10 +452,9 @@ again:
                    t->name, column, t->saved_column);
         }
 #endif
-        /* Restore parent's state */
-        column = t->saved_column;
-        /* nextcol must match restored column */
-        nextcol = t->saved_column;
+        /* Restore parent's state - reset column to 0 so next # is recognized */
+        column = 0;
+        nextcol = 0;
         lineno = tbtop->lineno;
         filename = tbtop->name;
 

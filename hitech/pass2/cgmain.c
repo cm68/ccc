@@ -3,6 +3,19 @@
 /*
  * File - main.c
  */
+
+/*
+ * Print usage message and exit
+ */
+static void
+usage(void)
+{
+    fprintf(stderr, "usage: c1 [options] <input.1> <input.2> <output.s>\n");
+    fprintf(stderr, "  -w        Suppress warnings\n");
+    fprintf(stderr, "  -R        Enable rflag\n");
+    exit(1);
+}
+
 /*
  * main OK++ PMO
  *
@@ -18,12 +31,9 @@ int main(int argc, char **argv) {
     --argc, ++argv;
     while (argc > 0 && **argv == '-') { /* Parsing options */
         switch (argv[0][1]) {
-#if 0
-        case 'P':
-        case 'p':
-            pflag = true;
-            break; /* Not use */
-#endif
+        case 'h':
+            usage();
+            break;
         case 'W':
         case 'w':
             wflag = true;
@@ -31,29 +41,25 @@ int main(int argc, char **argv) {
         case 'R':
             rflag = true;
             break;
-#if 0
-        case 'B':
-            bflag = true;
-            break; /* Not use */
-        case 'E':
-            eflag = true;
-            break; /* Not use */
-        case 'H':
-            hflag = true;
-            break; /* Not use */
-#endif
         default:
             fatalErr("Illegal\tswitch %c", argv[0][1]);
             break;
         }
         argv++, argc--;
     }
-    if (argc-- > 0) {
-        if (freopen(*argv, "r", stdin) == NULL) /* Open input file */
-            fatalErr("Can't open %s", *argv);
-        else if (argc > 0 && freopen(argv[1], "w", stdout) == NULL) /* Open output file */
-            fatalErr("Can't create %s", argv[1]);
-    }
+
+    /*
+     * ccc convention: c1 <input.1> <input.2> <output.s>
+     * We ignore input.2 (the temp file) - pass1 merges it into input.1
+     */
+    if (argc != 3)
+        usage();
+
+    if (freopen(argv[0], "r", stdin) == NULL)
+        fatalErr("Can't open %s", argv[0]);
+    /* argv[1] is the .2 temp file - ignored */
+    if (freopen(argv[2], "w", stdout) == NULL)
+        fatalErr("Can't create %s", argv[2]);
     initTypes();                 /* Initialize built-in types */
     parseStmt();                 /* Compiling intermediate code */
     if (fclose(stdout) == EOF) { /* Close output file */

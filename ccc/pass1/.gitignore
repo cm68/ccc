@@ -4,4 +4,5 @@ c0
 enumlist.h
 error.h
 debug.h
+debugtags.c
 stage1/

@@ -17,3 +17,4 @@ typedef	int	jmp_buf[10];
 extern	int	setjmp(jmp_buf);
 extern void	longjmp(jmp_buf, int);
 
+/* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

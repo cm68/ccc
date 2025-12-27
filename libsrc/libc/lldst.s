@@ -54,13 +54,24 @@ ldi:
 	ld	l,a
 	ret
 
-; Store DE to (HL)
+; Store DE to (HL) and advance
 ; Entry: HL = pointer, DE = value
-; Exit: value stored
+; Exit: value stored, HL advanced by 2
 stide:
 	ld	(hl),e
 	inc	hl
 	ld	(hl),d
+	inc	hl
+	ret
+
+; Load 16-bit from (HL) into DE
+; Entry: HL = pointer
+; Exit: DE = 16-bit value, HL advanced by 2
+ldide:
+	ld	e,(hl)
+	inc	hl
+	ld	d,(hl)
+	inc	hl
 	ret
 
 ; vim: tabstop=4 shiftwidth=4 noexpandtab:

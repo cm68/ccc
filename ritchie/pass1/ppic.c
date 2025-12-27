@@ -10,7 +10,7 @@
  *   B (opcode): byte followed by 0xfe marker
  *   N (number): 16-bit little-endian
  *   S (symbol): '_' prefix + null-terminated string
- *   F (float):  null-terminated string
+ *   F (float):  null-terminated string (up to 1000 chars)
  */
 
 #include <stdio.h>
@@ -18,7 +18,7 @@
 #include <string.h>
 
 /*
- * Opcodes from c0.h 
+ * Opcodes from c0.h
  */
 char *opnames[] = {
 	"EOFC",						/* 0 */
@@ -104,7 +104,7 @@ char *opnames[] = {
 #define MAXOP 80
 
 /*
- * Special opcodes 90+ 
+ * Special opcodes 90+
  */
 char *
 getop(int op)
@@ -147,6 +147,10 @@ getop(int op)
 		return "RLABEL";
 	case 115:
 		return "STRASG";
+	case 116:
+		return "LINENO";
+	case 117:
+		return "NEWLINE";
 	case 200:
 		return "BDATA";
 	case 201:
@@ -196,7 +200,7 @@ getop(int op)
 }
 
 /*
- * Storage classes 
+ * Storage classes
  */
 char *
 getclass(int c)
@@ -236,7 +240,7 @@ getclass(int c)
 }
 
 /*
- * Type names 
+ * Type names
  */
 char *
 gettypebase(int t)
@@ -273,11 +277,11 @@ printtype(FILE * out, int t)
 	int xt;
 
 	/*
-	 * Print base type 
+	 * Print base type
 	 */
 	fprintf(out, "%s", gettypebase(t));
 	/*
-	 * Print modifiers 
+	 * Print modifiers
 	 */
 	t >>= 4;
 	while (t) {
@@ -317,7 +321,7 @@ getword(FILE * f)
 }
 
 /*
- * Read null-terminated string 
+ * Read null-terminated string
  */
 int
 getstr(FILE * f, char *buf, int max)
@@ -334,12 +338,12 @@ void
 ppfile(FILE * in, FILE * out)
 {
 	int c, op, n, n2, n3, type, class;
-	char buf[256];
+	char buf[1024];
 
 	while ((c = getbyte(in)) >= 0) {
 		op = c;
 		/*
-		 * Consume 0xfe marker after opcode 
+		 * Consume 0xfe marker after opcode
 		 */
 		if (getbyte(in) != 0xfe) {
 			fprintf(out, "ERROR: expected 0xfe after opcode %d\n", op);
@@ -348,6 +352,9 @@ ppfile(FILE * in, FILE * out)
 		fprintf(out, "%-10s", getop(op));
 
 		switch (op) {
+		/*
+		 * NAME: class(N) type(N) then either symbol(S) or offset(N)
+		 */
 		case 20:				/* NAME */
 			class = getword(in);
 			type = getword(in);
@@ -358,21 +365,22 @@ ppfile(FILE * in, FILE * out)
 				fprintf(out, "class=%d ", class);
 			printtype(out, type);
 			/*
-			 * Check if followed by string or number 
+			 * Check if followed by '_' (symbol) or number
 			 */
 			c = getbyte(in);
 			if (c == '_') {
 				getstr(in, buf, sizeof(buf));
 				fprintf(out, " _%s", buf);
 			} else if (c >= 0) {
-				/*
-				 * offset - put back and read as word 
-				 */
+				/* offset - put back and read as word */
 				n = c | (getbyte(in) << 8);
 				fprintf(out, " offset=%d", (short) n);
 			}
 			break;
 
+		/*
+		 * CON: type(N) value(N)
+		 */
 		case 21:				/* CON */
 			type = getword(in);
 			n = getword(in);
@@ -380,13 +388,30 @@ ppfile(FILE * in, FILE * out)
 			fprintf(out, " %d", (short) n);
 			break;
 
+		/*
+		 * STRING: type(N) label(N)
+		 */
+		case 22:				/* STRING */
+			type = getword(in);
+			n = getword(in);
+			printtype(out, type);
+			fprintf(out, " L%d", n);
+			break;
+
+		/*
+		 * FCON: type(N) string(F)
+		 */
 		case 23:				/* FCON */
+		case 24:				/* SFCON */
 			type = getword(in);
 			getstr(in, buf, sizeof(buf));
 			printtype(out, type);
 			fprintf(out, " %s", buf);
 			break;
 
+		/*
+		 * LCON/SLCON: type(N) lo(N) hi(N)
+		 */
 		case 25:				/* LCON */
 		case 26:				/* SLCON */
 			type = getword(in);
@@ -396,6 +421,9 @@ ppfile(FILE * in, FILE * out)
 			fprintf(out, " %ld", ((long) n2 << 16) | (n & 0xffff));
 			break;
 
+		/*
+		 * CBRANCH: label(N) cond(N) line(N)
+		 */
 		case 103:				/* CBRANCH */
 			n = getword(in);
 			n2 = getword(in);
@@ -403,160 +431,251 @@ ppfile(FILE * in, FILE * out)
 			fprintf(out, " L%d cond=%d line=%d", n, n2, n3);
 			break;
 
+		/*
+		 * SETREG: number(N) - count of available registers
+		 */
 		case 105:				/* SETREG */
-		case 111:				/* BRANCH */
-		case 112:				/* LABEL */
 			n = getword(in);
-			fprintf(out, " %d", n);
+			fprintf(out, " %d (", n);
+			/* Z80 regs: 0=hl, 1=de, 2=bc, 3=ix, 4=iy */
+			if (n >= 1) fprintf(out, "hl");
+			if (n >= 2) fprintf(out, ",de");
+			if (n >= 3) fprintf(out, ",bc");
+			if (n >= 4) fprintf(out, ",ix");
+			if (n >= 5) fprintf(out, ",iy");
+			fprintf(out, ")");
 			break;
 
+		/*
+		 * BRANCH/LABEL: number(N)
+		 */
+
+		case 111:				/* BRANCH */
+			n = getword(in);
+			fprintf(out, " L%d", n);
+			break;
+
+		case 112:				/* LABEL */
+			n = getword(in);
+			fprintf(out, " L%d", n);
+			break;
+
+		/*
+		 * NLABEL/RLABEL: string(S)
+		 */
 		case 113:				/* NLABEL */
 		case 114:				/* RLABEL */
 			getstr(in, buf, sizeof(buf));
 			fprintf(out, " %s", buf);
 			break;
 
+		/*
+		 * STRASG: type(N) size(N)
+		 */
 		case 115:				/* STRASG */
 			type = getword(in);
 			n = getword(in);
+			printtype(out, type);
 			fprintf(out, " size=%d", n);
 			break;
 
+		/*
+		 * LINENO: line(N) filename(S)
+		 */
+		case 116:				/* LINENO */
+			n = getword(in);
+			getstr(in, buf, sizeof(buf));
+			fprintf(out, " %d \"%s\"", n, buf);
+			break;
+
+		/*
+		 * NEWLINE: (no args, just increments line)
+		 */
+		case 117:				/* NEWLINE */
+			break;
+
+		/*
+		 * BDATA: pairs of (flag, value) until flag=0
+		 */
 		case 200:				/* BDATA */
-			/*
-			 * BDATA has no immediate argument, but is followed by pairs
-			 * of words: (flag, value) where flag=1 means data byte,
-			 * flag=0 means end of data sequence 
-			 */
 			fprintf(out, " \"");
 			while ((n = getword(in)) == 1) {
 				n2 = getword(in);
 				if (n2 >= 32 && n2 < 127 && n2 != '"' && n2 != '\\')
 					fprintf(out, "%c", n2);
 				else
-					fprintf(out, "\\x%02x", n2);
+					fprintf(out, "\\x%02x", n2 & 0xff);
 			}
 			fprintf(out, "\"");
-			/*
-			 * n==0 means end of data, we already consumed it 
-			 */
+			/* n==0 means end of data */
 			break;
 
+		/*
+		 * CSPACE: string(S) size(N)
+		 */
 		case 205:				/* CSPACE */
 			getstr(in, buf, sizeof(buf));
 			n = getword(in);
-			fprintf(out, " %s %d", buf, n);
+			fprintf(out, " %s size=%d", buf, n);
 			break;
 
+		/*
+		 * SSPACE: size(N)
+		 */
 		case 206:				/* SSPACE */
 			n = getword(in);
 			fprintf(out, " %d", n);
 			break;
 
+		/*
+		 * SYMDEF: string(S)
+		 */
 		case 207:				/* SYMDEF */
 			getstr(in, buf, sizeof(buf));
 			fprintf(out, " %s", buf);
 			break;
 
-		case 215:				/* SNAME */
-		case 216:				/* RNAME */
-		case 217:				/* ANAME */
-			getstr(in, buf, sizeof(buf));
+		/*
+		 * SWIT: deflab(N) line(N) then pairs of (label, value) until label=0
+		 */
+		case 213:				/* SWIT */
 			n = getword(in);
-			fprintf(out, " %s offset=%d", buf, n);
+			n2 = getword(in);
+			fprintf(out, " default=L%d line=%d cases:", n, n2);
+			while ((n = getword(in)) != 0) {
+				n2 = getword(in);
+				fprintf(out, " L%d=%d", n, (short)n2);
+			}
 			break;
 
+		/*
+		 * EXPR: line(N)
+		 */
 		case 214:				/* EXPR */
 			n = getword(in);
 			fprintf(out, " line=%d", n);
 			break;
 
+		/*
+		 * SNAME/RNAME/ANAME: string(S) offset(N)
+		 */
+		case 215:				/* SNAME */
+		case 216:				/* RNAME */
+		case 217:				/* ANAME */
+			getstr(in, buf, sizeof(buf));
+			n = getword(in);
+			fprintf(out, " %s offset=%d", buf, (short)n);
+			break;
+
+		/*
+		 * SETSTK: offset(N)
+		 */
 		case 219:				/* SETSTK */
 			n = getword(in);
 			fprintf(out, " %d", (short) n);
 			break;
 
+		/*
+		 * SINIT: value(N)
+		 */
 		case 220:				/* SINIT */
 			n = getword(in);
 			fprintf(out, " %d", n);
 			break;
 
-			/*
-			 * Operators with just type 
-			 */
-		case 9:				/* COMMA */
-		case 29:
-		case 30:
-		case 31:
-		case 32:
-		case 33:
-		case 34:
-		case 35:
-		case 36:
-		case 37:
-		case 38:
-		case 40:
-		case 41:
-		case 42:
-		case 43:
-		case 44:
-		case 45:
-		case 46:
-		case 47:
-		case 48:
-		case 49:
-		case 51:
-		case 52:
-		case 56:
-		case 57:
-		case 58:
-		case 59:
-		case 60:
-		case 61:
-		case 62:
-		case 63:
-		case 64:
-		case 65:
-		case 66:
-		case 67:
-		case 68:
-		case 69:
-		case 70:
-		case 71:
-		case 72:
-		case 73:
-		case 74:
-		case 75:
-		case 76:
-		case 77:
-		case 78:
-		case 79:
-		case 80:
-		case 90:
-		case 97:
-		case 100:
-		case 109:
-		case 110:
+		/*
+		 * ASSEM: string(F)
+		 */
+		case 223:				/* ASSEM */
+			getstr(in, buf, sizeof(buf));
+			fprintf(out, " \"%s\"", buf);
+			break;
+
+		/*
+		 * No arguments: PROG, DATA, BSS, SAVE, RETRN, EVEN, XNULLOP
+		 */
+		case 202:				/* PROG */
+		case 203:				/* DATA */
+		case 204:				/* BSS */
+		case 208:				/* SAVE */
+		case 209:				/* RETRN */
+		case 210:				/* EVEN */
+		case 218:				/* XNULLOP */
+			break;
+
+		/*
+		 * Operators with just type(N)
+		 */
+		case 9:					/* COMMA */
+		case 10:				/* FSEL */
+		case 11:				/* CAST */
+		case 12:				/* ETYPE */
+		case 13:				/* ITOP */
+		case 14:				/* PTOI */
+		case 15:				/* LTOP */
+		case 29:				/* NULLOP */
+		case 30:				/* INCBEF */
+		case 31:				/* DECBEF */
+		case 32:				/* INCAFT */
+		case 33:				/* DECAFT */
+		case 34:				/* EXCLA */
+		case 35:				/* AMPER */
+		case 36:				/* STAR */
+		case 37:				/* NEG */
+		case 38:				/* COMPL */
+		case 40:				/* PLUS */
+		case 41:				/* MINUS */
+		case 42:				/* TIMES */
+		case 43:				/* DIVIDE */
+		case 44:				/* MOD */
+		case 45:				/* RSHIFT */
+		case 46:				/* LSHIFT */
+		case 47:				/* AND */
+		case 48:				/* OR */
+		case 49:				/* EXOR */
+		case 51:				/* ITOF */
+		case 52:				/* FTOI */
+		case 53:				/* LOGAND */
+		case 54:				/* LOGOR */
+		case 56:				/* FTOL */
+		case 57:				/* LTOF */
+		case 58:				/* ITOL */
+		case 59:				/* LTOI */
+		case 60:				/* EQUAL */
+		case 61:				/* NEQUAL */
+		case 62:				/* LESSEQ */
+		case 63:				/* LESS */
+		case 64:				/* GREATEQ */
+		case 65:				/* GREAT */
+		case 66:				/* LESSEQP */
+		case 67:				/* LESSP */
+		case 68:				/* GREATQP */
+		case 69:				/* GREATP */
+		case 70:				/* ASPLUS */
+		case 71:				/* ASMINUS */
+		case 72:				/* ASTIMES */
+		case 73:				/* ASDIV */
+		case 74:				/* ASMOD */
+		case 75:				/* ASRSH */
+		case 76:				/* ASLSH */
+		case 77:				/* ASSAND */
+		case 78:				/* ASOR */
+		case 79:				/* ASXOR */
+		case 80:				/* ASSIGN */
+		case 90:				/* QUEST */
+		case 97:				/* SEQNC */
+		case 100:				/* CALL */
+		case 104:				/* INIT */
+		case 109:				/* ITOC */
+		case 110:				/* RFORCE */
 			type = getword(in);
 			fprintf(out, " ");
 			printtype(out, type);
 			break;
 
-			/*
-			 * No arguments 
-			 */
-		case 202:
-		case 203:
-		case 204:
-		case 208:
-		case 209:
-		case 210:
-		case 218:
-			break;
-
 		default:
 			/*
-			 * Try to read a type if it looks like an operator 
+			 * Unknown opcode - try to read a type if it looks like an operator
 			 */
 			if (op >= 10 && op < 120) {
 				type = getword(in);

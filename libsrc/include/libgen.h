@@ -10,3 +10,5 @@ extern char *basename(char *path);
 extern char *dirname(char *path);
 
 #endif /* _LIBGEN_H */
+
+/* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

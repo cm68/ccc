@@ -1,7 +1,6 @@
 #!/bin/bash
 echo "/* created by makedebug.sh */" > debug.h
 echo "/* created by makedebug.sh */" > debugtags.c
-echo "#ifdef DEBUG" >> debugtags.c
 echo "char *vopts[] = {" >> debugtags.c
 k=1
 tags=($(grep VERBOSE *.c | sed -e 's/^.*VERBOSE(//' -e 's/).*$//' | sort -u))
@@ -11,4 +10,3 @@ for tag in ${tags[@]}; do
 	(( k = k << 1 ))
 done
 echo "0 };" >> debugtags.c
-echo "#endif" >> debugtags.c

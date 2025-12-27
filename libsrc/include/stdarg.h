@@ -8,3 +8,4 @@ typedef void *	va_list[1];
 
 #define	va_end(ap)
 
+/* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

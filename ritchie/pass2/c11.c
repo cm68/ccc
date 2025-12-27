@@ -318,61 +318,16 @@ arlength(t)
  */
 
 /*
- * Modified Memorial day May 80 to uniquely identify switch tables
- * (as on Vax) so a shell script can optionally include them in RO code.
- * This is useful in overlays to reduce the size of data space load.
- * wfj 5/80 
- */
-/*
- * Z80 direct switch - compare, bounds check, jump table 
- */
-char dirsw[] = { "\
-\tld de,%o\n\
-\tor a\n\
-\tsbc hl,de\n\
-\tjp c,L%d\n\
-\tadd hl,hl\n\
-\tld de,L%d\n\
-\tadd hl,de\n\
-\tld e,(hl)\n\
-\tinc hl\n\
-\tld d,(hl)\n\
-\tex de,hl\n\
-\tjp (hl)\n\
-\t.data\n\
-L%d:\
-" };
-
-/*
- * Z80 hash switch - modulo and jump table 
- */
-char hashsw[] = { "\
-\tex de,hl\n\
-\tld hl,%o\n\
-\tcall umod16\n\
-\tadd hl,hl\n\
-\tld de,L%d\n\
-\tadd hl,de\n\
-\tld e,(hl)\n\
-\tinc hl\n\
-\tld d,(hl)\n\
-\tex de,hl\n\
-\tjp (hl)\n\
-\t.data\n\
-L%d:\
-" };
-
-/*
- * If the unsigned casts below won't compile,
- * try using the calls to lrem and ldiv.
+ * Switch statement code generation
  */
 
+/*
+ * Simple brute-force switch: compare each case value
+ */
 pswitch(afp, alp, deflab)
 struct swtab *afp, *alp;
 {
-	int ncase, i, j, tabs, worst, best, range;
-	register struct swtab *swp, *fp, *lp;
-	int *poctab;
+	register struct swtab *fp, *lp;
 
 	fp = afp;
 	lp = alp;
@@ -380,75 +335,12 @@ struct swtab *afp, *alp;
 		printf("\tjp\tL%d\n", deflab);
 		return;
 	}
-	isn++;
 	if (sort(fp, lp))
 		return;
-	ncase = lp - fp;
 	lp--;
-	range = lp->swval - fp->swval;
-	/*
-	 * direct switch 
-	 */
-	if (range > 0 && range <= 3 * ncase) {
-		if (fp->swval)
-			printf("\tld\tde,%o\n\tor\ta\n\tsbc\thl,de\n", UNS(fp->swval));
-		printf(dirsw, UNS(range), deflab, isn, isn);
-		isn++;
-		for (i = fp->swval;; i++) {
-			if (i == fp->swval) {
-				printf("\t.dw\tL%d\n", fp->swlab);
-				if (fp == lp)
-					break;
-				fp++;
-			} else
-				printf("\t.dw\tL%d\n", deflab);
-		}
-		printf("\t.text\n");
-		return;
-	}
-	/*
-	 * simple switch 
-	 */
-	if (ncase < 10) {
-		for (fp = afp; fp <= lp; fp++)
-			breq(fp->swval, fp->swlab);
-		printf("\tjp\tL%d\n", deflab);
-		return;
-	}
-	/*
-	 * hash switch 
-	 */
-	best = 077777;
-	poctab = (int *) getblk(((ncase + 2) / 2) * sizeof(*poctab));
-	for (i = ncase / 4; i <= ncase / 2; i++) {
-		for (j = 0; j < i; j++)
-			poctab[j] = 0;
-		for (swp = fp; swp <= lp; swp++)
-			poctab[(unsigned) swp->swval % i]++;
-		worst = 0;
-		for (j = 0; j < i; j++)
-			if (poctab[j] > worst)
-				worst = poctab[j];
-		if (i * worst < best) {
-			tabs = i;
-			best = i * worst;
-		}
-	}
-	i = isn++;
-	printf(hashsw, UNS(tabs), i, i);
-	isn++;
-	for (i = 0; i < tabs; i++)
-		printf("\t.dw\tL%d\n", isn + i);
-	printf("\t.text\n");
-	for (i = 0; i < tabs; i++) {
-		printf("L%d:", isn++);
-		for (swp = fp; swp <= lp; swp++) {
-			if ((unsigned) swp->swval % tabs == i) {
-				breq((int) ((unsigned) swp->swval / tabs), swp->swlab);
-			}
-		}
-		printf("\tjp\tL%d\n", deflab);
-	}
+	for (; fp <= lp; fp++)
+		breq(fp->swval, fp->swlab);
+	printf("\tjp\tL%d\n", deflab);
 }
 
 breq(v, l)

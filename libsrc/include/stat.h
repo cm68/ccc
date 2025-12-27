@@ -21,3 +21,4 @@ struct stat
 
 extern int	stat(char *, struct stat *);
 
+/* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

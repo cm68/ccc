@@ -284,19 +284,6 @@ again:
 		goto again;
 
 		/*
-		 * In the generated &~ operator,
-		 * fiddle things so a PDP-11 "bit"
-		 * instruction will be produced when cctab is used.
-		 */
-	case ANDN:
-		if (table == cctab) {
-			tree->t.op = TAND;
-			tree->t.tr2 =
-				optim(tnode(COMPL, tree->t.type, tree->t.tr2, TNULL));
-		}
-		break;
-
-		/*
 		 * Handle a subroutine call. It has to be done
 		 * here because if cexpr got called twice, the
 		 * arguments might be compiled twice.
@@ -383,6 +370,59 @@ again:
 			else
 				tree->t.op = LLSHIFT;
 		}
+		break;
+
+		/*
+		 * Convert long +, -, |, &, ^ to helper calls
+		 */
+	case PLUS:
+		if (tree->t.type == LONG || tree->t.type == UNLONG)
+			tree->t.op = LPLUS;
+		break;
+
+	case MINUS:
+		if (tree->t.type == LONG || tree->t.type == UNLONG)
+			tree->t.op = LMINUS;
+		break;
+
+	case OR:
+		if (tree->t.type == LONG || tree->t.type == UNLONG)
+			tree->t.op = LOR;
+		break;
+
+	case AND:
+		if (tree->t.type == LONG || tree->t.type == UNLONG)
+			tree->t.op = LAND;
+		break;
+
+	case EXOR:
+		if (tree->t.type == LONG || tree->t.type == UNLONG)
+			tree->t.op = LXOR;
+		break;
+
+	case ASPLUS:
+		if (tree->t.type == LONG || tree->t.type == UNLONG)
+			tree->t.op = LASPLUS;
+		break;
+
+	case ASMINUS:
+		if (tree->t.type == LONG || tree->t.type == UNLONG)
+			tree->t.op = LASMINUS;
+		break;
+
+	case ASOR:
+		if (tree->t.type == LONG || tree->t.type == UNLONG)
+			tree->t.op = LASOR;
+		break;
+
+	case ASAND:
+		if (tree->t.type == LONG || tree->t.type == UNLONG)
+			tree->t.op = LASAND;
+		break;
+
+	case ASXOR:
+		if (tree->t.type == LONG || tree->t.type == UNLONG)
+			tree->t.op = LASXOR;
 		break;
 
 		/*

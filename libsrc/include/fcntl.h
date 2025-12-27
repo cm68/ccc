@@ -21,3 +21,5 @@ extern int open(const char *path, int flags, ...);
 extern int creat(const char *path, int mode);
 
 #endif /* _FCNTL_H */
+
+/* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

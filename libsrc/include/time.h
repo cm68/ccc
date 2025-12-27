@@ -26,3 +26,4 @@ extern char *	ctime();	/* current local time in ascii form */
 extern struct tm *	gmtime();	/* Universal time */
 extern struct tm *	localtime();	/* local time */
 
+/* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

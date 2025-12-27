@@ -6,3 +6,4 @@ extern double frexp(double, int *), ldexp(double, int);
 extern double log(double), log10(double), pow(double, double), exp(double);
 extern double sinh(double), cosh(double), tanh(double);
 
+/* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

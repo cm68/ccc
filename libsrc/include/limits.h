@@ -16,3 +16,4 @@
 #define	LONG_MIN	-2147483648	/* min value */
 #define	ULONG_MAX	4294967295	/* unsigned long */
 
+/* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

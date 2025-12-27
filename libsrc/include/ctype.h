@@ -24,3 +24,4 @@ extern	unsigned char	_ctype_[];	/* in libc.lib */
 #define tolower(c)	((c)-'A'+'a')
 #define toascii(c)	((c)&0x7F)
 
+/* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

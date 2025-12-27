@@ -26,3 +26,5 @@ extern int stat(const char *path, struct stat *buf);
 extern int fstat(int fd, struct stat *buf);
 
 #endif /* _SYS_STAT_H */
+
+/* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

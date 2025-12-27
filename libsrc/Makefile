@@ -5,7 +5,9 @@
 DEST ?= $(CURDIR)/../root
 
 AS = asz
+ifeq ($(CC),gcc)
 CC = ccc
+endif
 
 DIRS = libu libc libcpm
 STARTUP = crtcpm.o crt0.o

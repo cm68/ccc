@@ -65,3 +65,5 @@ extern int write(unsigned char fd, char *buf, int count);
 extern int sleep(unsigned int seconds);
 
 #endif /* _UNISTD_H */
+
+/* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

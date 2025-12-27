@@ -1,62 +1,40 @@
 #include <stdio.h>
 
-int	tabflg;
-int	labno	= 1;
+int tabflg;
+int labno = 1;
 int opno;
-FILE	*curbuf;
-FILE	*obuf;
-FILE	*oobuf;
-char  oname[]="/tmp/cvoptaXXXXXX";
-char ooname[]="/tmp/cvoptbXXXXXX";
+FILE *curbuf;
+FILE *obuf;
+FILE *oobuf;
+char oname[] = "/tmp/cvoptaXXXXXX";
+char ooname[] = "/tmp/cvoptbXXXXXX";
 char lbuf[BUFSIZ];
 char *lbufp = lbuf;
 
 main(argc, argv)
 char **argv;
 {
-/*
-	A1 -> A
-	A2    B
-	A     O
-	B1    C
-	B2    D
-	BE    L
-	BF    P
-	C1    E
-	C2    F
-	F     G
-	H     H
-	R     I
-	R1    J
-	S     K
-	I     M
-	M     N
-
-		*	+1
-		S	+2
-		C	+4
-		1	+8
-
-	z  -> 4
-	c     10
-	a     14
-	e     20
-	n     63
-	*	+0100
-*/
+	/*
+	 * A1 -> A A2 B A O B1 C B2 D BE L BF P C1 E C2 F F G H H R I R1 J S K
+	 * I M M N
+	 * 
+	 * * +1 S +2 C +4 1 +8
+	 * 
+	 * z -> 4 c 10 a 14 e 20 n 63 * +0100 
+	 */
 
 	int c, snlflg, nlflg, t, smode, m, ssmode, peekc, side;
 
 	smode = nlflg = snlflg = ssmode = 0;
-	if (argc>1)
+	if (argc > 1)
 		if (freopen(argv[1], "r", stdin) == NULL) {
 			fprintf(stderr, "%s?\n", argv[1]);
-			return(1);
+			return (1);
 		}
-	if (argc>2) 
+	if (argc > 2)
 		if (freopen(argv[2], "w", stdout) == NULL) {
 			fprintf(stderr, "%s?\n", argv[2]);
-			return(1);
+			return (1);
 		}
 	mktemp(oname);
 	if ((obuf = fopen(oname, "w")) == NULL) {
@@ -72,20 +50,20 @@ char **argv;
 	curbuf = obuf;
 loop:
 	c = getchar();
-	if (c!='\n' && c!='\t')
+	if (c != '\n' && c != '\t')
 		nlflg = 0;
-	if (ssmode!=0 && c!='%') {
+	if (ssmode != 0 && c != '%') {
 		ssmode = 0;
 		curbuf = stdout;
 		fprintf(curbuf, "\nstatic char L%d[]=\"", labno++);
 	}
-	switch(c) {
+	switch (c) {
 
 	case EOF:
 		fprintf(obuf, "\t{0},\n};\n");
 		fclose(obuf);
 		if (freopen(oname, "r", stdin) == NULL) {
-			fprintf(stderr, "%s?\n",oname);
+			fprintf(stderr, "%s?\n", oname);
 			exit(1);
 		}
 		while ((c = getchar()) != EOF)
@@ -93,17 +71,17 @@ loop:
 		unlink(oname);
 		fclose(oobuf);
 		if (freopen(ooname, "r", stdin) == NULL) {
-			fprintf(stderr, "%s?\n",ooname);
+			fprintf(stderr, "%s?\n", ooname);
 			exit(1);
 		}
 		while ((c = getchar()) != EOF)
 			putchar(c);
 		unlink(ooname);
-		return(0);
+		return (0);
 
 	case 'A':
-		if ((c=getchar())=='1' || c=='2') {
-			put(c+'A'-'1');
+		if ((c = getchar()) == '1' || c == '2') {
+			put(c + 'A' - '1');
 			goto loop;
 		}
 		put('O');
@@ -111,41 +89,81 @@ loop:
 		goto loop;
 
 	case 'P':
-		/* P1/P2 - smart word store from HL */
-		/* PD1/PD2 - smart word store from DE */
+		/*
+		 * P1/P2 - smart word store from HL 
+		 */
+		/*
+		 * PD1/PD2 - smart word store from DE 
+		 */
 		c = getchar();
-		if (c=='D') {
+		if (c == 'D') {
 			c = getchar();
-			if (c=='1') { put('\001'); goto loop; }
-			if (c=='2') { put('\002'); goto loop; }
+			if (c == '1') {
+				put('\001');
+				goto loop;
+			}
+			if (c == '2') {
+				put('\002');
+				goto loop;
+			}
 		} else {
-			if (c=='1') { put('\003'); goto loop; }
-			if (c=='2') { put('\004'); goto loop; }
+			if (c == '1') {
+				put('\003');
+				goto loop;
+			}
+			if (c == '2') {
+				put('\004');
+				goto loop;
+			}
 		}
 		put('?');
 		goto loop;
 
 	case 'L':
-		/* LA1/LA2 - load ADDRESS of operand into HL */
-		if (getchar()=='A') {
+		/*
+		 * LA1/LA2 - load ADDRESS of operand into HL 
+		 */
+		if (getchar() == 'A') {
 			c = getchar();
-			if (c=='1') { put('\005'); goto loop; }
-			if (c=='2') { put('\006'); goto loop; }
+			if (c == '1') {
+				put('\005');
+				goto loop;
+			}
+			if (c == '2') {
+				put('\006');
+				goto loop;
+			}
 		}
 		put('?');
 		goto loop;
 
 	case 'Q':
-		/* Q1/Q2 - smart word load to HL */
-		/* QD1/QD2 - smart word load to DE */
+		/*
+		 * Q1/Q2 - smart word load to HL 
+		 */
+		/*
+		 * QD1/QD2 - smart word load to DE 
+		 */
 		c = getchar();
-		if (c=='D') {
+		if (c == 'D') {
 			c = getchar();
-			if (c=='1') { put('q'); goto loop; }
-			if (c=='2') { put('w'); goto loop; }
+			if (c == '1') {
+				put('q');
+				goto loop;
+			}
+			if (c == '2') {
+				put('w');
+				goto loop;
+			}
 		} else {
-			if (c=='1') { put('Q'); goto loop; }
-			if (c=='2') { put('W'); goto loop; }
+			if (c == '1') {
+				put('Q');
+				goto loop;
+			}
+			if (c == '2') {
+				put('W');
+				goto loop;
+			}
 		}
 		put('?');
 		goto loop;
@@ -173,7 +191,7 @@ loop:
 		goto loop;
 
 	case 'C':
-		put(getchar()+'E'-'1');
+		put(getchar() + 'E' - '1');
 		goto loop;
 
 	case 'F':
@@ -181,8 +199,9 @@ loop:
 		goto subtre;
 
 	case 'R':
-		if ((c=getchar()) == '1')
-		put('J'); else {
+		if ((c = getchar()) == '1')
+			put('J');
+		else {
 			put('I');
 			ungetc(c, stdin);
 		}
@@ -202,7 +221,7 @@ subtre:
 		snlflg = 1;
 		t = 'A';
 l1:
-		switch (c=getchar()) {
+		switch (c = getchar()) {
 
 		case '*':
 			t++;
@@ -229,30 +248,32 @@ l1:
 		goto loop;
 
 	case '#':
-		if(getchar()=='1')
-			put('#'); else
+		if (getchar() == '1')
+			put('#');
+		else
 			put('"');
 		goto loop;
 
 	case '%':
 		if (smode)
 			curbuf = obuf;
-		if (ssmode==0) {
-			if ((peekc=getchar())=='[') {
+		if (ssmode == 0) {
+			if ((peekc = getchar()) == '[') {
 				printf("\n#define ");
-				while((c=getchar())!=']' && c!=':')
+				while ((c = getchar()) != ']' && c != ':')
 					putchar(c);
-				printf(" L%d\n",labno);
-				if (c==':') getchar();
+				printf(" L%d\n", labno);
+				if (c == ':')
+					getchar();
 				getchar();
 				curbuf = obuf;
 				goto loop;
 			}
 			ungetc(peekc, stdin);
 		}
-		side=0;
+		side = 0;
 loop1:
-		switch (c=getchar()) {
+		switch (c = getchar()) {
 
 		case ' ':
 		case '\t':
@@ -263,7 +284,7 @@ loop1:
 			goto pf;
 
 		case ',':
-			side=1;
+			side = 1;
 			goto loop1;
 
 		case 'i':
@@ -299,18 +320,20 @@ loop1:
 			t = flag();
 			m = 63;
 pf:
-			if ((c=getchar())=='*')
-				m += 0100; else
+			if ((c = getchar()) == '*')
+				m += 0100;
+			else
 				ungetc(c, stdin);
-			if (side==0) {
-				if (opno==0) fprintf(curbuf,"\nstruct optab optab[]={\n");
-				fprintf(curbuf,"\t{");
+			if (side == 0) {
+				if (opno == 0)
+					fprintf(curbuf, "\nstruct optab optab[]={\n");
+				fprintf(curbuf, "\t{");
 			}
 			fprintf(curbuf, "%d,%d,", m, t);
 			goto loop1;
 		case '[':
 			printf("\n#define L%d ", labno++);
-			while ((c=getchar())!=']')
+			while ((c = getchar()) != ']')
 				putchar(c);
 			printf("\n");
 			ssmode = 0;
@@ -318,14 +341,19 @@ pf:
 			goto loop;
 
 		case '{':
-		for(;;) {
-			while ((c=getchar())!='%') putc(c,oobuf);
-			if ((c=getchar())=='}') goto loop;
-			else {putc('%',oobuf); putc(c,oobuf);}
-		}
-			
+			for (;;) {
+				while ((c = getchar()) != '%')
+					putc(c, oobuf);
+				if ((c = getchar()) == '}')
+					goto loop;
+				else {
+					putc('%', oobuf);
+					putc(c, oobuf);
+				}
+			}
+
 		case '\n':
-			fprintf(curbuf, "L%d},	/* %d */\n", labno,opno);
+			fprintf(curbuf, "L%d},	/* %d */\n", labno, opno);
 			++opno;
 			ssmode = 1;
 			nlflg = 1;
@@ -333,7 +361,8 @@ pf:
 			goto loop;
 
 		case '/':
-			comment(c); goto loop1;
+			comment(c);
+			goto loop1;
 
 		}
 		put(c);
@@ -352,8 +381,8 @@ pf:
 		goto loop;
 
 	case '\n':
-		lbufp=lbuf;
-		if (!smode)  {
+		lbufp = lbuf;
+		if (!smode) {
 			put('\n');
 			goto loop;
 		}
@@ -371,7 +400,8 @@ pf:
 		goto loop;
 
 	case '/':
-		comment(c); goto loop;
+		comment(c);
+		goto loop;
 
 	case 'X':
 	case 'Y':
@@ -380,26 +410,30 @@ pf:
 		break;
 
 	case ':':
-		fseek(curbuf,(long)(lbuf-lbufp),2);
-		*lbufp='\0';
-		if (opno!=0) {fprintf(curbuf,"\t{0},\n"); ++opno;}
-		printf("\n#define %s &optab[%d]\n",lbuf,opno);
-		fprintf(curbuf,"/* %s */",lbuf);
-		lbufp=lbuf;
+		fseek(curbuf, (long) (lbuf - lbufp), 2);
+		*lbufp = '\0';
+		if (opno != 0) {
+			fprintf(curbuf, "\t{0},\n");
+			++opno;
+		}
+		printf("\n#define %s &optab[%d]\n", lbuf, opno);
+		fprintf(curbuf, "/* %s */", lbuf);
+		lbufp = lbuf;
 		goto loop;
 
 	}
-	*lbufp++=c;
+	*lbufp++ = c;
 	put(c);
 	goto loop;
 }
 
-flag() {
+flag()
+{
 	register c, f;
 
 	f = 0;
 l1:
-	switch(c=getchar()) {
+	switch (c = getchar()) {
 
 	case 'w':
 		f = 1;
@@ -410,10 +444,10 @@ l1:
 		goto l1;
 
 	case 'b':
-		if (f==9)		/* unsigned word/int seen yet? */
-			f = 10;		/*  yes - it is unsigned byte */
+		if (f == 9)				/* unsigned word/int seen yet? */
+			f = 10;				/* yes - it is unsigned byte */
 		else
-			f = 3;		/*  no - it is regular (signed) byte */
+			f = 3;				/* no - it is regular (signed) byte */
 		goto l1;
 
 	case 'f':
@@ -425,12 +459,12 @@ l1:
 		goto l1;
 
 	case 'u':
-		if (f==3)		/* regular (signed) byte seen ? */
-			f = 10;		/*  yes - unsigned byte now */
-		else if (f == 8)	/* regular (signed) long seen? */
-			f = 11;		/*  yes - it is unsigned long now */
+		if (f == 3)				/* regular (signed) byte seen ? */
+			f = 10;				/* yes - unsigned byte now */
+		else if (f == 8)		/* regular (signed) long seen? */
+			f = 11;				/* yes - it is unsigned long now */
 		else
-			f = 9;		/* otherwise we have unsigned word */
+			f = 9;				/* otherwise we have unsigned word */
 		goto l1;
 
 	case 's':
@@ -438,10 +472,10 @@ l1:
 		goto l1;
 
 	case 'l':
-		if (f == 9)		/* seen unsigned yet? */
-			f = 11;		/*  yes - it is unsigned long now */
+		if (f == 9)				/* seen unsigned yet? */
+			f = 11;				/* yes - it is unsigned long now */
 		else
-			f = 8;		/*  no - it is unsigned word now */
+			f = 8;				/* no - it is unsigned word now */
 		goto l1;
 
 	case 'p':
@@ -449,19 +483,22 @@ l1:
 		goto l1;
 	}
 	ungetc(c, stdin);
-	return(f);
+	return (f);
 }
 
 put(c)
 {
 	if (tabflg) {
 		tabflg = 0;
-		fprintf(curbuf, "\\%o", c+0200);
+		fprintf(curbuf, "\\%o", c + 0200);
 	} else if (c < ' ' && c != '\t' && c != '\n') {
-		/* Escape control chars (except tab/newline) */
+		/*
+		 * Escape control chars (except tab/newline) 
+		 */
 		fprintf(curbuf, "\\%o", c & 0377);
 	} else {
-		if (c == '"' || c == '\\') putc('\\', curbuf);
+		if (c == '"' || c == '\\')
+			putc('\\', curbuf);
 		putc(c, curbuf);
 	}
 }
@@ -469,12 +506,21 @@ put(c)
 comment(c)
 register char c;
 {
-	putc(c,curbuf);
-	if ((c=getchar())=='*') for (;;) {
-		do putc(c,curbuf); while ((c=getchar())!='*');
-		putc(c,curbuf);
-		if ((c=getchar())=='/') {putc(c,curbuf); break;}
-	} else ungetc(c,stdin);
+	putc(c, curbuf);
+	if ((c = getchar()) == '*')
+		for (;;) {
+			do
+				putc(c, curbuf);
+			while ((c = getchar()) != '*');
+			putc(c, curbuf);
+			if ((c = getchar()) == '/') {
+				putc(c, curbuf);
+				break;
+			}
+	} else
+		ungetc(c, stdin);
 }
 
-/* vim: set tabstop=4 shiftwidth=4 noexpandtab: */
+/*
+ * vim: set tabstop=4 shiftwidth=4 noexpandtab: 
+ */

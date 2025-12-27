@@ -14,3 +14,5 @@ extern int waitpid(int pid, int *status, int options);
 extern int wait(int *status);
 
 #endif /* _SYS_WAIT_H */
+
+/* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

@@ -11,3 +11,4 @@ typedef	unsigned	size_t;		/* type yielded by sizeof */
 
 extern int	errno;			/* system error number */
 
+/* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

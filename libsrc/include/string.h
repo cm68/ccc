@@ -35,3 +35,4 @@ extern size_t	strlen(char *);
 extern char *	strchr(char *, int);
 extern char *	strrchr(char *, int);
 
+/* vim: set tabstop=4 shiftwidth=4 noexpandtab: */
