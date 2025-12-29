@@ -28,9 +28,9 @@ ASTPP = ~/src/ccc/ccc/astpp
 OUTDIR = stage1
 
 ifdef TRACE
-SETX = set -x ;
+SETX = set -x
 else
-SETX = @
+SETX = @ true
 endif
 
 ifeq ($(CC),ccc)
@@ -38,7 +38,7 @@ CFLAGS = -I.
 endif
 
 SOURCES = pass1.c error.c lexread.c \
-	expr.c cfold.c parse.c decl.c type.c declare.c outast.c util.c
+	expr.c cfold.c parse.c decl.c type.c declare.c outast.c regalloc.c util.c
 OBJECTS = $(SOURCES:.c=.o)
 
 HEADERS = cc1.h token.h enumlist.h error.h debug.h
@@ -88,7 +88,7 @@ install: c0
 # Stage1: run cpp, c0, and c1 on each source file
 stage1: c0
 	mkdir -p $(OUTDIR)
-	$(SETX) for f in $(SOURCES); do \
+	$(SETX) ; for f in $(SOURCES); do \
 		b=$${f%.c}; \
 		err=$(OUTDIR)/$$b.err ; \
 		printf "%-12s" "$$b: "; \
@@ -98,16 +98,19 @@ stage1: c0
 		$(ASTPP) $(OUTDIR)/$$b.1 > $(OUTDIR)/$$b.pp 2>> $$err && \
       	{ echo "ok"; } || { echo "FAIL"; } \
     done
-
+	
 sizecheck:
 	mkdir -p sizecheck
-	$(SETX) for f in $(SOURCES); do \
+	$(SETX) ; o="" ; for f in $(SOURCES); do \
 		b=$${f%.c}; \
 		err=sizecheck/$$b.err ; \
+		o="$$o sizecheck/$$b.o" ; \
 		printf "%-12s" "$$b: " ; \
 		zc3 -c -DCCC $(INC) -o sizecheck/$$b.o $$f && \
 		{ echo "ok"; } || { echo "FAIL"; } \
-	done
+	done ; \
+	wssize $$o | awk '{t+=$$1;d+=$$2;b+=$$3;a+=$$4} END {print t,d,b,a}'
+	#wsld -r -o sizecheck/c0 ../../root/lib/crt0.o $$o ../../root/lib/libc.a
 
 .PHONY: all clean regen stage1 install clobber sizefile sizecheck
 
