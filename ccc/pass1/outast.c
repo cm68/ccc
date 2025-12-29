@@ -479,24 +479,24 @@ countStmts(struct stmt *st)
 static void
 emitStmt(struct stmt *st)
 {
+	/* Hoisted locals for stack reuse */
+	struct stmt *sp, *sp2, *sp3;
+	unsigned char uc;
+	int n, n2;
+
 	if (!st)
 		return;
 
 	/* Output this statement */
 	switch (st->op) {
 	case BEGIN:
-		{
-			int stmt_count = countStmts(st->chain);
-			struct stmt *s;
-
-			/* Emit: B 00 stmt_count stmts...
-			 * All locals hoisted to function prolog, so decl_count=0 */
-			fdprintf(astFd, "B00%02x", stmt_count);
-
-			/* Emit statements */
-			for (s = st->chain; s; s = s->next)
-				emitStmt(s);
-		}
+		n = countStmts(st->chain);
+		/* Emit: B 00 stmt_count stmts...
+		 * All locals hoisted to function prolog, so decl_count=0 */
+		fdprintf(astFd, "B00%02x", n);
+		/* Emit statements */
+		for (sp = st->chain; sp; sp = sp->next)
+			emitStmt(sp);
 		break;
 
 	case IF:
@@ -510,8 +510,8 @@ emitStmt(struct stmt *st)
 			/* If: I flags nlabels cond then [else]
 			 * flags: bit 0 = has_else
 			 * nlabels: intermediate labels for ||/&& short-circuit */
-			unsigned char nlabels = cntCondLbls(st->left, CTX_TOP);
-			fdprintf(astFd, "I%02x%02x", st->otherwise ? 1 : 0, nlabels);
+			uc = cntCondLbls(st->left, CTX_TOP);
+			fdprintf(astFd, "I%02x%02x", st->otherwise ? 1 : 0, uc);
 			emitExpr(st->left);
 			if (st->chain)
 				emitStmt(st->chain);
@@ -524,162 +524,153 @@ emitStmt(struct stmt *st)
 	case WHILE:
 		/* Emit as labeled sequence wrapped in block
 		 * All loops have labels assigned by parse.c */
-		{
-			/* WHILE has no incr, so _continue goes straight to _top */
-			addJmpMap(mkLbl(st->label, "_continue"),
-			          mkLbl(st->label, "_top"));
-			/* while(0) - dead code, emit nothing */
-			if (st->left && (st->left->flags & E_CONST) &&
-			    st->left->v == 0) {
-				fdprintf(astFd, ";");  /* empty statement */
-			/* while(1) - constant true, no test needed */
-			} else if (st->left && (st->left->flags & E_CONST) &&
-			    st->left->v != 0) {
-				fdprintf(astFd, "B0005");
-				emitLabel(st->label, "_top");
-				if (st->chain)
-					emitStmt(st->chain);
-				else
-					fdprintf(astFd, ";");
-				emitLabel(st->label, "_continue");
-				emitGoto(st->label, "_top");
-				emitLabel(st->label, "_break");
-			} else {
-				unsigned char nlabels = cntCondLbls(st->left, CTX_TOP);
-				fdprintf(astFd, "B0005");
-				emitLabel(st->label, "_top");
-				fdprintf(astFd, "I01%02x", nlabels);  /* has else */
-				emitExpr(st->left);
-				if (st->chain)
-					emitStmt(st->chain);
-				else
-					fdprintf(astFd, ";");
-				/* else: block with goto break */
-				fdprintf(astFd, "B0001");
-				emitGoto(st->label, "_break");
-				emitLabel(st->label, "_continue");
-				emitGoto(st->label, "_top");
-				emitLabel(st->label, "_break");
-			}
+		/* WHILE has no incr, so _continue goes straight to _top */
+		addJmpMap(mkLbl(st->label, "_continue"),
+		          mkLbl(st->label, "_top"));
+		/* while(0) - dead code, emit nothing */
+		if (st->left && (st->left->flags & E_CONST) &&
+		    st->left->v == 0) {
+			fdprintf(astFd, ";");  /* empty statement */
+		/* while(1) - constant true, no test needed */
+		} else if (st->left && (st->left->flags & E_CONST) &&
+		    st->left->v != 0) {
+			fdprintf(astFd, "B0005");
+			emitLabel(st->label, "_top");
+			if (st->chain)
+				emitStmt(st->chain);
+			else
+				fdprintf(astFd, ";");
+			emitLabel(st->label, "_continue");
+			emitGoto(st->label, "_top");
+			emitLabel(st->label, "_break");
+		} else {
+			uc = cntCondLbls(st->left, CTX_TOP);
+			fdprintf(astFd, "B0005");
+			emitLabel(st->label, "_top");
+			fdprintf(astFd, "I01%02x", uc);  /* has else */
+			emitExpr(st->left);
+			if (st->chain)
+				emitStmt(st->chain);
+			else
+				fdprintf(astFd, ";");
+			/* else: block with goto break */
+			fdprintf(astFd, "B0001");
+			emitGoto(st->label, "_break");
+			emitLabel(st->label, "_continue");
+			emitGoto(st->label, "_top");
+			emitLabel(st->label, "_break");
 		}
 		break;
 
 	case DO:
 		/* Emit as labeled sequence wrapped in block
 		 * All loops have labels assigned by parse.c */
-		{
-			/* do {} while(0) - execute body once, no loop */
-			if (st->left && (st->left->flags & E_CONST) &&
-			    st->left->v == 0) {
-				if (st->chain)
-					emitStmt(st->chain);
-				else
-					fdprintf(astFd, ";");
-			/* do {} while(1) - constant true, no test needed */
-			} else if (st->left && (st->left->flags & E_CONST) &&
-			    st->left->v != 0) {
-				fdprintf(astFd, "B0005");
-				emitLabel(st->label, "_top");
-				if (st->chain)
-					emitStmt(st->chain);
-				else
-					fdprintf(astFd, ";");
-				emitLabel(st->label, "_test");
-				emitGoto(st->label, "_top");
-				emitLabel(st->label, "_break");
-			} else {
-				unsigned char nlabels = cntCondLbls(st->left, CTX_TOP);
-				fdprintf(astFd, "B0005");
-				emitLabel(st->label, "_top");
-				if (st->chain)
-					emitStmt(st->chain);
-				else
-					fdprintf(astFd, ";");
-				emitLabel(st->label, "_test");
-				fdprintf(astFd, "I00%02x", nlabels);  /* no else */
-				emitExpr(st->left);
-				emitGoto(st->label, "_top");
-				emitLabel(st->label, "_break");
-			}
+		/* do {} while(0) - execute body once, no loop */
+		if (st->left && (st->left->flags & E_CONST) &&
+		    st->left->v == 0) {
+			if (st->chain)
+				emitStmt(st->chain);
+			else
+				fdprintf(astFd, ";");
+		/* do {} while(1) - constant true, no test needed */
+		} else if (st->left && (st->left->flags & E_CONST) &&
+		    st->left->v != 0) {
+			fdprintf(astFd, "B0005");
+			emitLabel(st->label, "_top");
+			if (st->chain)
+				emitStmt(st->chain);
+			else
+				fdprintf(astFd, ";");
+			emitLabel(st->label, "_test");
+			emitGoto(st->label, "_top");
+			emitLabel(st->label, "_break");
+		} else {
+			uc = cntCondLbls(st->left, CTX_TOP);
+			fdprintf(astFd, "B0005");
+			emitLabel(st->label, "_top");
+			if (st->chain)
+				emitStmt(st->chain);
+			else
+				fdprintf(astFd, ";");
+			emitLabel(st->label, "_test");
+			fdprintf(astFd, "I00%02x", uc);  /* no else */
+			emitExpr(st->left);
+			emitGoto(st->label, "_top");
+			emitLabel(st->label, "_break");
 		}
 		break;
 
 	case FOR:
 		/* Emit as labeled sequence wrapped in block
 		 * All loops have labels assigned by parse.c */
-		{
-			unsigned char nlabels = cntCondLbls(st->middle, CTX_TOP);
-			/* Count statements: init? + top + (if or body) + continue + incr? + goto + break */
-			int stmt_count = 5;  /* top, (if or body), continue, goto, break */
-			if (st->left) stmt_count++;   /* init */
-			if (st->right) stmt_count++;  /* incr */
-			/* If no increment, _continue goes straight to _top */
-			if (!st->right)
-				addJmpMap(mkLbl(st->label, "_continue"),
-				          mkLbl(st->label, "_top"));
-			fdprintf(astFd, "B00%02x", stmt_count);
-			if (st->left) {
-				fdprintf(astFd, "E");
-				emitExpr(st->left);
-			}
-			emitLabel(st->label, "_top");
-			if (st->middle) {
-				fdprintf(astFd, "I01%02x", nlabels);  /* has else */
-				emitExpr(st->middle);
-				if (st->chain)
-					emitStmt(st->chain);
-				else
-					fdprintf(astFd, ";");
-				fdprintf(astFd, "B0001");
-				emitGoto(st->label, "_break");
-			} else {
-				if (st->chain)
-					emitStmt(st->chain);
-				else
-					fdprintf(astFd, ";");
-			}
-			emitLabel(st->label, "_continue");
-			if (st->right) {
-				fdprintf(astFd, "E");
-				emitExpr(st->right);
-			}
-			emitGoto(st->label, "_top");
-			emitLabel(st->label, "_break");
+		uc = cntCondLbls(st->middle, CTX_TOP);
+		/* Count statements: init? + top + (if or body) + continue + incr? + goto + break */
+		n = 5;  /* top, (if or body), continue, goto, break */
+		if (st->left) n++;   /* init */
+		if (st->right) n++;  /* incr */
+		/* If no increment, _continue goes straight to _top */
+		if (!st->right)
+			addJmpMap(mkLbl(st->label, "_continue"),
+			          mkLbl(st->label, "_top"));
+		fdprintf(astFd, "B00%02x", n);
+		if (st->left) {
+			fdprintf(astFd, "E");
+			emitExpr(st->left);
 		}
+		emitLabel(st->label, "_top");
+		if (st->middle) {
+			fdprintf(astFd, "I01%02x", uc);  /* has else */
+			emitExpr(st->middle);
+			if (st->chain)
+				emitStmt(st->chain);
+			else
+				fdprintf(astFd, ";");
+			fdprintf(astFd, "B0001");
+			emitGoto(st->label, "_break");
+		} else {
+			if (st->chain)
+				emitStmt(st->chain);
+			else
+				fdprintf(astFd, ";");
+		}
+		emitLabel(st->label, "_continue");
+		if (st->right) {
+			fdprintf(astFd, "E");
+			emitExpr(st->right);
+		}
+		emitGoto(st->label, "_top");
+		emitLabel(st->label, "_break");
 		break;
 
 	case SWITCH:
 		/* Switch: S has_label. [hexlabel] case_count. expr cases... */
-		{
-			struct stmt *s, *body, *t;
-			int case_count = 0, body_count;
-			for (s = st->chain; s; s = s->next)
-				if (s->op == CASE || s->op == DEFAULT)
-					case_count++;
-			fdprintf(astFd, "S%02x", st->label ? 1 : 0);
-			if (st->label)
-				emitHexName(st->label);
-			fdprintf(astFd, "%02x", case_count);
-			emitExpr(st->left);
-			for (s = st->chain; s; ) {
-				if (s->op == CASE || s->op == DEFAULT) {
-					body = s->next;
-					body_count = 0;
-					for (t = body; t && t->op != CASE && t->op != DEFAULT; t = t->next)
-						if (!isDCE(t))
-							body_count++;
-					fdprintf(astFd, "%c%02x", s->op == CASE ? 'C' : 'O', body_count);
-					if (s->op == CASE)
-						emitExpr(s->left);
-					for (t = body; t && t->op != CASE && t->op != DEFAULT; t = t->next)
-						emitStmt(t);
-					s = body;
-					while (s && s->op != CASE && s->op != DEFAULT)
-						s = s->next;
-				} else {
-					emitStmt(s);
-					s = s->next;
-				}
+		n = 0;
+		for (sp = st->chain; sp; sp = sp->next)
+			if (sp->op == CASE || sp->op == DEFAULT)
+				n++;
+		fdprintf(astFd, "S%02x", st->label ? 1 : 0);
+		if (st->label)
+			emitHexName(st->label);
+		fdprintf(astFd, "%02x", n);
+		emitExpr(st->left);
+		for (sp = st->chain; sp; ) {
+			if (sp->op == CASE || sp->op == DEFAULT) {
+				sp2 = sp->next;
+				n2 = 0;
+				for (sp3 = sp2; sp3 && sp3->op != CASE && sp3->op != DEFAULT; sp3 = sp3->next)
+					if (!isDCE(sp3))
+						n2++;
+				fdprintf(astFd, "%c%02x", sp->op == CASE ? 'C' : 'O', n2);
+				if (sp->op == CASE)
+					emitExpr(sp->left);
+				for (sp3 = sp2; sp3 && sp3->op != CASE && sp3->op != DEFAULT; sp3 = sp3->next)
+					emitStmt(sp3);
+				sp = sp2;
+				while (sp && sp->op != CASE && sp->op != DEFAULT)
+					sp = sp->next;
+			} else {
+				emitStmt(sp);
+				sp = sp->next;
 			}
 		}
 		break;
@@ -735,13 +726,10 @@ emitStmt(struct stmt *st)
 		break;
 
 	case ASM:
-		{
-			int len = st->label ? strlen(st->label) : 0;
-			int i;
-			fdprintf(astFd, "A%04x", len);
-			for (i = 0; i < len; i++)
-				fdprintf(astFd, "%02x", (unsigned char)st->label[i]);
-		}
+		n = st->label ? strlen(st->label) : 0;
+		fdprintf(astFd, "A%04x", n);
+		for (n2 = 0; n2 < n; n2++)
+			fdprintf(astFd, "%02x", (unsigned char)st->label[n2]);
 		break;
 
 	default:
