@@ -47,15 +47,12 @@ emitToken(unsigned char tok)
 }
 
 /*
- * Emit keyword: KEYW(19) + kwval byte
+ * Emit keyword token (single byte, 128-159 range)
  */
 void
-emitKeyword(unsigned char kwval)
+emitKeyword(unsigned char kwtok)
 {
-    unsigned char buf[2];
-    buf[0] = KEYW;
-    buf[1] = kwval;
-    write(lexFd, buf, 2);
+    write(lexFd, &kwtok, 1);
 }
 
 /*
@@ -199,7 +196,7 @@ emitLinePP(int line, char *file)
 void
 emitAsm(char *text, int len)
 {
-    emitKeyword(KW_ASM);
+    emitKeyword(ASM);
     emitString(text, len);
 }
 
@@ -253,34 +250,34 @@ static char *
 kw2str(unsigned char kw)
 {
     switch (kw) {
-    case KW_INT: return "int";
-    case KW_CHAR: return "char";
-    case KW_LONG: return "long";
-    case KW_FLOAT: return "float";
-    case KW_DOUBLE: return "double";
-    case KW_VOID: return "void";
-    case KW_UNSIGNED: return "unsigned";
-    case KW_STATIC: return "static";
-    case KW_EXTERN: return "extern";
-    case KW_AUTO: return "auto";
-    case KW_REGISTER: return "register";
-    case KW_TYPEDEF: return "typedef";
-    case KW_STRUCT: return "struct";
-    case KW_UNION: return "union";
-    case KW_ENUM: return "enum";
-    case KW_IF: return "if";
-    case KW_ELSE: return "else";
-    case KW_WHILE: return "while";
-    case KW_DO: return "do";
-    case KW_FOR: return "for";
-    case KW_SWITCH: return "switch";
-    case KW_CASE: return "case";
-    case KW_DEFAULT: return "default";
-    case KW_BREAK: return "break";
-    case KW_CONTINUE: return "continue";
-    case KW_RETURN: return "return";
-    case KW_GOTO: return "goto";
-    case KW_ASM: return "asm";
+    case INT: return "int";
+    case CHAR: return "char";
+    case LONG: return "long";
+    case FLOAT: return "float";
+    case DOUBLE: return "double";
+    case VOID: return "void";
+    case UNSIGNED: return "unsigned";
+    case STATIC: return "static";
+    case EXTERN: return "extern";
+    case AUTO: return "auto";
+    case REGISTER: return "register";
+    case TYPEDEF: return "typedef";
+    case STRUCT: return "struct";
+    case UNION: return "union";
+    case ENUM: return "enum";
+    case IF: return "if";
+    case ELSE: return "else";
+    case WHILE: return "while";
+    case DO: return "do";
+    case FOR: return "for";
+    case SWITCH: return "switch";
+    case CASE: return "case";
+    case DEFAULT: return "default";
+    case BREAK: return "break";
+    case CONTINUE: return "continue";
+    case RETURN: return "return";
+    case GOTO: return "goto";
+    case ASM: return "asm";
     default: return "?kw?";
     }
 }
@@ -354,16 +351,16 @@ emitCurToken(void)
     }
 
     /* Emit to lexeme stream */
-    switch (cur.type) {
-    case KEYW:
+    /* Check for keyword tokens (128-159) */
+    if (cur.type >= KW_FIRST && cur.type <= KW_LAST) {
         /* sizeof is an operator in cc1, not a keyword */
-        if (cur.v.numeric == KW_SIZEOF)
+        if (cur.type == SIZEOF_KW)
             emitToken(SIZEOF);
-        else if (cur.v.numeric == KW_CONST || cur.v.numeric == KW_VOLATILE)
+        else if (cur.type == CONST || cur.type == VOLATILE)
             return;  /* Skip const/volatile - not supported */
         else
-            emitKeyword(cur.v.numeric);
-        break;
+            emitKeyword(cur.type);
+    } else switch (cur.type) {
     case SYM:
         emitSym(cur.v.name);
         break;
@@ -398,11 +395,11 @@ emitCurToken(void)
     }
 
     /* Emit to preprocessed output */
-    if (cur.type == KEYW) {
-        if (cur.v.numeric == KW_SIZEOF)
+    if (cur.type >= KW_FIRST && cur.type <= KW_LAST) {
+        if (cur.type == SIZEOF_KW)
             emitPPStr("sizeof ");
         else {
-            emitPPStr(kw2str(cur.v.numeric));
+            emitPPStr(kw2str(cur.type));
             emitPPStr(" ");
         }
     } else if ((op = op2str(cur.type)) != NULL) {

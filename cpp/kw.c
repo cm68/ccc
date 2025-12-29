@@ -29,15 +29,15 @@
  * the C pre-processor
  */
 unsigned char cppkw[] = {
-    'd', 'e', 'f', 'i', 'n', 'e', 0xff, DEFINE,
-    'e'|HI, 17, 'l'|HI, 9, 's'|HI, 3, 'e', 0xff, ELSE,
-            'i', 'f', 0xff, ELIF,
-        'n', 'd', 'i', 'f', 0xff, ENDIF,
-    'i'|HI, 25, 'f'|HI, 15, 0xfe, IF,
-            'd'|HI, 4, 'e', 'f', 0xff, IFDEF,
-            'n'|HI, 5, 'd', 'e', 'f', 0xff, IFNDEF,
-        'n', 'c', 'l', 'u', 'd', 'e', 0xff, INCLUDE,
-    'u', 'n', 'd', 'e', 'f', 0xff, UNDEF,
+    'd', 'e', 'f', 'i', 'n', 'e', 0xff, PP_DEFINE,
+    'e'|HI, 17, 'l'|HI, 9, 's'|HI, 3, 'e', 0xff, PP_ELSE,
+            'i', 'f', 0xff, PP_ELIF,
+        'n', 'd', 'i', 'f', 0xff, PP_ENDIF,
+    'i'|HI, 25, 'f'|HI, 15, 0xfe, PP_IF,
+            'd'|HI, 4, 'e', 'f', 0xff, PP_IFDEF,
+            'n'|HI, 5, 'd', 'e', 'f', 0xff, PP_IFNDEF,
+        'n', 'c', 'l', 'u', 'd', 'e', 0xff, PP_INCLUDE,
+    'u', 'n', 'd', 'e', 'f', 0xff, PP_UNDEF,
     0   /* end of table */
 };
 

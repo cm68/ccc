@@ -26,39 +26,39 @@ struct keyword {
  * Most common keywords first: if, int, char, return, etc.
  */
 struct keyword keywords[] = {
-	{ "if",       "KW_IF",       22 },
-	{ "int",      "KW_INT",       0 },
-	{ "char",     "KW_CHAR",      1 },
-	{ "return",   "KW_RETURN",   21 },
-	{ "for",      "KW_FOR",      31 },
-	{ "while",    "KW_WHILE",    23 },
-	{ "else",     "KW_ELSE",     24 },
-	{ "void",     "KW_VOID",     10 },
-	{ "static",   "KW_STATIC",   13 },
-	{ "struct",   "KW_STRUCT",    4 },
-	{ "unsigned", "KW_UNSIGNED",  7 },
-	{ "signed",   "KW_SIGNED",     5 },
-	{ "const",    "KW_CONST",     34 },
-	{ "volatile", "KW_VOLATILE",  35 },
-	{ "long",     "KW_LONG",      6 },
-	{ "short",    "KW_SHORT",     0 },
-	{ "switch",   "KW_SWITCH",   25 },
-	{ "case",     "KW_CASE",     26 },
-	{ "break",    "KW_BREAK",    27 },
-	{ "continue", "KW_CONTINUE", 28 },
-	{ "default",  "KW_DEFAULT",  30 },
-	{ "do",       "KW_DO",       29 },
-	{ "double",   "KW_DOUBLE",    3 },
-	{ "enum",     "KW_ENUM",     32 },
-	{ "extern",   "KW_EXTERN",   12 },
-	{ "float",    "KW_FLOAT",     2 },
-	{ "goto",     "KW_GOTO",     20 },
-	{ "register", "KW_REGISTER", 14 },
-	{ "sizeof",   "KW_SIZEOF",  127 },
-	{ "typedef",  "KW_TYPEDEF",   9 },
-	{ "union",    "KW_UNION",     8 },
-	{ "auto",     "KW_AUTO",     11 },
-	{ "asm",      "KW_ASM",      33 },
+	{ "if",       "IF",       146 },
+	{ "int",      "INT",      128 },
+	{ "char",     "CHAR",     129 },
+	{ "return",   "RETURN",   145 },
+	{ "for",      "FOR",      155 },
+	{ "while",    "WHILE",    147 },
+	{ "else",     "ELSE",     148 },
+	{ "void",     "VOID",     138 },
+	{ "static",   "STATIC",   142 },
+	{ "struct",   "STRUCT",   132 },
+	{ "unsigned", "UNSIGNED", 135 },
+	{ "signed",   "SIGNED",   133 },
+	{ "const",    "CONST",    158 },
+	{ "volatile", "VOLATILE", 159 },
+	{ "long",     "LONG",     134 },
+	{ "short",    "SHORT",    139 },
+	{ "switch",   "SWITCH",   149 },
+	{ "case",     "CASE",     150 },
+	{ "break",    "BREAK",    151 },
+	{ "continue", "CONTINUE", 152 },
+	{ "default",  "DEFAULT",  154 },
+	{ "do",       "DO",       153 },
+	{ "double",   "DOUBLE",   131 },
+	{ "enum",     "ENUM",     156 },
+	{ "extern",   "EXTERN",   141 },
+	{ "float",    "FLOAT",    130 },
+	{ "goto",     "GOTO",     144 },
+	{ "register", "REGISTER", 143 },
+	{ "sizeof",   "SIZEOF_KW", 160 },
+	{ "typedef",  "TYPEDEF",  137 },
+	{ "union",    "UNION",    136 },
+	{ "auto",     "AUTO",     140 },
+	{ "asm",      "ASM",      157 },
 	{ NULL, NULL, 0 }
 };
 
@@ -288,13 +288,13 @@ printtable(void)
 			printf("0xff, ");
 		} else if (c == 0xfe) {
 			printf("0xfe, ");
+		} else if (istoken[i]) {
+			/* token value - print symbolic name */
+			printf("%s,\n", outnames[i]);
+			needindent = 1;
 		} else if (c & HI) {
 			printf("'%c'|HI, %d, ", c & 0x7f, outbuf[i+1]);
 			i++;  /* skip the skip byte */
-		} else if (istoken[i]) {
-			/* token value - end line after keyword */
-			printf("%s,\n", outnames[i]);
-			needindent = 1;
 		} else {
 			/* literal character */
 			printf("'%c', ", c);

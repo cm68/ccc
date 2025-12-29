@@ -1,74 +1,47 @@
 /*
- * these are keywords that are recognized by the lexer.
- * they all have values that are printable for debug
- * purposes and for cheap serializing into intermediate files
+ * Token values for pass1.
+ * Includes lexeme.h for CPP token values.
+ * Internal tokens (not from lexer) use values >= 200.
  */
+
+/* Get shared lexeme definitions from cpp */
+#include "../../cpp/lexeme.h"
+
 typedef unsigned char token_t;
 
+/* Alias for const - lexeme.h uses CONST, pass1 used KW_CONST */
+#define KW_CONST CONST
+
 enum {
-    E_O_F = 0,
-    NONE = ' ',
+    /* Internal tokens - not from lexer (200+) */
+    NONE = 200,
+    DEREF = 201,
+    EXPR = 202,
+    NEG = 203,
+    NOT = 204,
+    CALL = 205,
+    NARROW = 206,
+    WIDEN = 207,
+    SEXT = 208,
+    COPY = 209,
+    INITLIST = 210,
+    PREINC = 211,
+    POSTINC = 212,
+    PREDEC = 213,
+    POSTDEC = 214,
+    BFEXTRACT = 215,
+    BFASSIGN = 216,
+    /* Note: CONST (158) is a keyword from lexeme.h */
 
-    /* C keywords */
-    ASM = 'A', AUTO = 'o',
-    BREAK = 'B', 
-    CASE = 'C', CHAR = 'c', CONST = 'k', CONTINUE = 'N',
-    DEFAULT = 'O', DO = 'D', DOUBLE = 'd', 
-    ELSE = 'E', ENUM = 'e', EXTERN = 'x', 
-    FLOAT = 'f', FOR = 'F', 
-    GOTO = 'G',
-    IF = 'I', INT = 'i', 
-    LONG = 'l', 
-    REGISTER = 'r', RETURN = 'R', 
-    SIZEOF = 'z', SHORT = 's', STATIC = 'p', STRUCT = 'a', SWITCH = 'S',
-    TYPEDEF = 't',
-    UNION = 'm', UNSIGNED = 'u', 
-    VOID = 'v', VOLATILE = '4', 
-    WHILE = 'W',
-
-    /* syntactic cogs */
-    BEGIN = '{', END = '}',
-    LBRACK = '[', RBRACK = ']',
-    LPAR = '(', RPAR = ')',
-    SEMI = ';', COMMA = ',',
-    LABEL = '3', ELLIPSIS = 0xaa,
-
-    /* terminals */
-    SYM = '5', NUMBER = '9', FNUMBER = 'b', STRING = '\"',
-
-    /* operators */
-    ASSIGN = '=', DOT = '.', ARROW = 'q', DEREF = 'M',
-    PLUS = '+', MINUS = '-', STAR = '*', DIV = '/', MOD = '%',
-    AND = '&', OR = '|', XOR = '^',
-    LT = '<', GT = '>', BANG = '!', TWIDDLE = '~',
-    QUES = '?', COLON = ':',
-    INCR = 'U', DECR = 'V',
-    LSHIFT = 'y' , RSHIFT = 'w',
-    LOR = 'h', LAND = 'j',
-    EQ = 'Q', NEQ = 'n', LE = 'L', GE = 'g',
-    PLUSEQ = 'P', SUBEQ = 0xdf, MULTEQ = 'T', DIVEQ = '2', MODEQ = 0xfe,
-    ANDEQ = 0xc6, OREQ = '1', XOREQ = 'X',
-    LANDEQ = 'J', LOREQ = 'H',
-    RSHIFTEQ = '6', LSHIFTEQ = '0',
-    EXPR = '`', NEG = '\\', NOT = '\'', CALL = '@',
-    NARROW = '_', WIDEN = 0xb6, SEXT = 0xab, COPY = 0xbb, INITLIST = 0xb7,
-    PREINC = 0xcf, POSTINC = 0xef, PREDEC = 0xd6, POSTDEC = 0xf6,
-    BFEXTRACT = 0xa7, BFASSIGN = 0xdd,
-
-    /* AST operator aliases - reuse keyword values for .ast serialization */
-    AST_SEXT = 'x',         /* EXTERN - sign extend */
-    AST_PREINC = '(',       /* LPAR - pre-increment */
-    AST_POSTINC = ')',      /* RPAR - post-increment */
-    AST_PREDEC = '{',       /* BEGIN - pre-decrement */
-    AST_POSTDEC = '}',      /* END - post-decrement */
-    AST_SUBEQ = 'o',        /* AUTO - subtract-equals */
-    AST_ANDEQ = 'a',        /* STRUCT - and-equals */
-    AST_MODEQ = 'm',        /* UNION - mod-equals */
-    AST_BFEXTRACT = 'e',    /* ENUM - bitfield extract */
-    AST_BFASSIGN = 'f',     /* FLOAT - bitfield assign */
-
-    /* CPP */
-    INCLUDE = '#',
-    DEFINE = '$', UNDEF = 'K',
-    IFDEF = 'Y', IFNDEF = '7', ENDIF = 'Z', ELIF = '8'
+    /* AST operator aliases - printable chars for .ast serialization */
+    AST_SEXT = 'x',
+    AST_PREINC = '(',
+    AST_POSTINC = ')',
+    AST_PREDEC = '{',
+    AST_POSTDEC = '}',
+    AST_SUBEQ = 'o',
+    AST_ANDEQ = 'a',
+    AST_MODEQ = 'm',
+    AST_BFEXTRACT = 'e',
+    AST_BFASSIGN = 'f'
 };

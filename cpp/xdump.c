@@ -9,108 +9,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-/* Token types from c0.h */
-#define E_O_F   0
-#define SEMI    1
-#define BEGIN   2
-#define END     3
-#define LBRACK  4
-#define RBRACK  5
-#define LPAR    6
-#define RPAR    7
-#define COLON   8
-#define COMMA   9
-
-#define KEYW    19
-#define SYM     20
-#define NUMBER  21
-#define STRING  22
-#define FNUMBER 23
-#define LNUMBER 25
-
-#define INCR    30
-#define DECR    31
-#define BANG    34
-#define AMPER   35
-#define STAR    36
-#define TWIDDLE 38
-#define DOT     39
-#define PLUS    40
-#define MINUS   41
-#define TIMES   42
-#define DIV     43
-#define MOD     44
-#define RSHIFT  45
-#define LSHIFT  46
-#define AND     47
-#define OR      48
-#define XOR     49
-#define ARROW   50
-#define LAND    53
-#define LOR     54
-
-#define EQ      60
-#define NEQ     61
-#define LE      62
-#define LT      63
-#define GE      64
-#define GT      65
-
-#define PLUSEQ  70
-#define SUBEQ   71
-#define MULTEQ  72
-#define DIVEQ   73
-#define MODEQ   74
-#define RSHIFTEQ 75
-#define LSHIFTEQ 76
-#define ANDEQ   77
-#define OREQ    78
-#define XOREQ   79
-#define ASSIGN  80
-#define QUES    90
-#define SIZEOF  91
-#define ELLIPSIS 92
-
-#define LABEL   112
-#define LINENO  116
-#define NEWLINE 117
-#define ASMSTR  118
-
-/* Keyword values */
-static char *kwnames[] = {
-    "int",      /* 0 */
-    "char",     /* 1 */
-    "float",    /* 2 */
-    "double",   /* 3 */
-    "struct",   /* 4 */
-    NULL,       /* 5 */
-    "long",     /* 6 */
-    "unsigned", /* 7 */
-    "union",    /* 8 */
-    "typedef",  /* 9 */
-    "void",     /* 10 */
-    "auto",     /* 11 */
-    "extern",   /* 12 */
-    "static",   /* 13 */
-    "register", /* 14 */
-    NULL, NULL, NULL, NULL, NULL,  /* 15-19 */
-    "goto",     /* 20 */
-    "return",   /* 21 */
-    "if",       /* 22 */
-    "while",    /* 23 */
-    "else",     /* 24 */
-    "switch",   /* 25 */
-    "case",     /* 26 */
-    "break",    /* 27 */
-    "continue", /* 28 */
-    "do",       /* 29 */
-    "default",  /* 30 */
-    "for",      /* 31 */
-    "enum",     /* 32 */
-    "asm",      /* 33 */
-};
-#define NKEYWORDS (sizeof(kwnames)/sizeof(kwnames[0]))
+#include "lexeme.h"
 
 int
 main(int argc, char **argv)
@@ -165,13 +64,7 @@ main(int argc, char **argv)
             printf(", ");
             break;
 
-        case KEYW:
-            c = fgetc(f);
-            if (c < NKEYWORDS && kwnames[c])
-                printf("%s ", kwnames[c]);
-            else
-                printf("KW%d ", c);
-            break;
+        /* Keyword tokens (128-160) handled in default */
 
         case SYM:
             len = fgetc(f);
@@ -298,7 +191,46 @@ main(int argc, char **argv)
         case ELLIPSIS: printf("... "); break;
 
         default:
-            printf("?%d? ", c);
+            /* Handle keyword tokens (128-160) */
+            if (c >= KW_FIRST && c <= KW_LAST) {
+                switch (c) {
+                case INT: printf("int "); break;
+                case CHAR: printf("char "); break;
+                case FLOAT: printf("float "); break;
+                case DOUBLE: printf("double "); break;
+                case STRUCT: printf("struct "); break;
+                case LONG: printf("long "); break;
+                case UNSIGNED: printf("unsigned "); break;
+                case UNION: printf("union "); break;
+                case TYPEDEF: printf("typedef "); break;
+                case VOID: printf("void "); break;
+                case SHORT: printf("short "); break;
+                case AUTO: printf("auto "); break;
+                case EXTERN: printf("extern "); break;
+                case STATIC: printf("static "); break;
+                case REGISTER: printf("register "); break;
+                case GOTO: printf("goto "); break;
+                case RETURN: printf("return "); break;
+                case IF: printf("if "); break;
+                case WHILE: printf("while "); break;
+                case ELSE: printf("else "); break;
+                case SWITCH: printf("switch "); break;
+                case CASE: printf("case "); break;
+                case BREAK: printf("break "); break;
+                case CONTINUE: printf("continue "); break;
+                case DO: printf("do "); break;
+                case DEFAULT: printf("default "); break;
+                case FOR: printf("for "); break;
+                case ENUM: printf("enum "); break;
+                case ASM: printf("asm "); break;
+                case CONST: printf("const "); break;
+                case VOLATILE: printf("volatile "); break;
+                case SIZEOF_KW: printf("sizeof "); break;
+                default: printf("KW%d ", c); break;
+                }
+            } else {
+                printf("?%d? ", c);
+            }
             break;
         }
     }

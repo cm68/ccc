@@ -618,7 +618,7 @@ doCpp(unsigned char t)
 
 
     switch (t) {
-    case IF:
+    case PP_IF:
         v = readcppconst();
         c = malloc(sizeof(*c));
         c->next = cond;
@@ -638,8 +638,8 @@ doCpp(unsigned char t)
          * already advanced past the line
          */
         return;
-    case IFNDEF:
-    case IFDEF:
+    case PP_IFNDEF:
+    case PP_IFDEF:
         skipws1();
         if (!issym()) {
             gripe(ER_C_MN);
@@ -648,7 +648,7 @@ doCpp(unsigned char t)
         }
         advance();
         v = (maclookup(strbuf) != 0);  /* true if macro is defined */
-        if (t == IFNDEF) v = !v;       /* invert for ifndef */
+        if (t == PP_IFNDEF) v = !v;    /* invert for ifndef */
         c = malloc(sizeof(*c));
         c->next = cond;
         cond = c;
@@ -658,7 +658,7 @@ doCpp(unsigned char t)
         cond->flags = (v ? (C_TRUE|C_TRUESEEN) : 0);
         skiptoeol();
         return;
-    case ENDIF:
+    case PP_ENDIF:
         if (!(tflags & ONELINE)) {
             skiptoeol();
         }
@@ -690,7 +690,7 @@ doCpp(unsigned char t)
         }
 #endif
         return;
-    case ELSE:
+    case PP_ELSE:
         if (!(tflags & ONELINE)) {
             skiptoeol();
         }
@@ -711,7 +711,7 @@ doCpp(unsigned char t)
             cond->flags |= (C_TRUE | C_TRUESEEN);
         }
         return;
-    case ELIF:
+    case PP_ELIF:
         if (!cond) {
             skiptoeol();
             gripe(ER_C_CU);
@@ -732,7 +732,7 @@ doCpp(unsigned char t)
          * already advanced past the line
          */
         return;
-    case DEFINE:
+    case PP_DEFINE:
         skipws1();
         if (!issym()) {
             gripe(ER_C_MN);
@@ -741,7 +741,7 @@ doCpp(unsigned char t)
         advance();
         macdefine(strbuf);
         return;
-    case UNDEF:
+    case PP_UNDEF:
         skipws1();
         if (!issym()) {
             gripe(ER_C_MN);
@@ -750,7 +750,7 @@ doCpp(unsigned char t)
         advance();
         macundefine(strbuf);
         return;
-    case INCLUDE:
+    case PP_INCLUDE:
 #ifdef DEBUG
         if (VERBOSE(V_CPP)) {
             fdprintf(2,"Processing INCLUDE directive\n");
@@ -1096,27 +1096,27 @@ gettoken()
                      * Skip #include, #define, #undef, etc.
                      */
                     if (cond && !(cond->flags & C_TRUE)) {
-                        if (t != IF && t != IFDEF && t != IFNDEF &&
-                            t != ELIF && t != ELSE && t != ENDIF) {
+                        if (t != PP_IF && t != PP_IFDEF && t != PP_IFNDEF &&
+                            t != PP_ELIF && t != PP_ELSE && t != PP_ENDIF) {
                             skiptoeol();
                             continue;
                         }
                     }
 #ifdef DEBUG
-                    if (VERBOSE(V_CPP) && (t == IF || t == ELIF)) {
+                    if (VERBOSE(V_CPP) && (t == PP_IF || t == PP_ELIF)) {
                         fdprintf(2,
                             "Before doCpp(%s): cur.type=0x%02x "
                             "next.type=0x%02x\n",
-                            t == IF ? "IF" : "ELIF", cur.type, next.type);
+                            t == PP_IF ? "IF" : "ELIF", cur.type, next.type);
                     }
 #endif
                     doCpp(t);
 #ifdef DEBUG
-                    if (VERBOSE(V_CPP) && (t == IF || t == ELIF)) {
+                    if (VERBOSE(V_CPP) && (t == PP_IF || t == PP_ELIF)) {
                         fdprintf(2,
                             "After doCpp(%s): cur.type=0x%02x "
                             "next.type=0x%02x cond=%p\n",
-                            t == IF ? "IF" : "ELIF", cur.type, next.type,
+                            t == PP_IF ? "IF" : "ELIF", cur.type, next.type,
                             cond);
                         if (cond) {
                             fdprintf(2,"  cond->flags=0x%02x (C_TRUE=%d)\n",
@@ -1208,10 +1208,9 @@ gettoken()
             advance();
             t = kwlook((unsigned char *)strbuf, ckw);
             if (t != 0xff) {
-                next.type = KEYW;
-                next.v.numeric = t;
+                next.type = t;  /* keyword token directly */
                 /* Special handling for asm { } - capture raw text */
-                if (t == KW_ASM) {
+                if (t == ASM) {
                     /* Skip whitespace to find { */
                     while (curchar == ' ' || curchar == '\t' || curchar == '\n')
                         advance();
