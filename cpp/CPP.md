@@ -19,8 +19,9 @@ The preprocessor performs full C preprocessing including:
 | lex.c | 1460 | Lexer/tokenizer with embedded CPP directive handling |
 | macro.c | 552 | Macro definition, lookup, and expansion |
 | io.c | 567 | Unified character stream (files, includes, macros) |
-| emit.c | 280 | Token output to .x and .i files |
+| emit.c | 400 | Token output to .x and .i files |
 | kw.c | 276 | Compressed keyword lookup tables |
+| knr.c | 770 | K&R to ANSI function definition normalization |
 | util.c | 157 | Error reporting, expression parsing, utilities |
 | cpp.h | 245 | Common definitions and data structures |
 
@@ -46,11 +47,13 @@ cpp [options] <source.c>
 ### Processing Pipeline
 
 ```
-Source File → Character Stream → Lexer → Token Stream → Emitter → .x/.i
+Source File → Character Stream → Lexer → Token Stream → K&R Filter → Emitter → .x/.i
                     ↑                         |
               Include Files                   |
               Macro Expansions ←──────────────┘
 ```
+
+The K&R filter (`knr.c`) intercepts tokens between the lexer and emitter, detecting K&R-style function definitions and transforming them to ANSI style before output.
 
 ### Program Flow (cpp.c)
 
@@ -757,6 +760,7 @@ When `!(cond->flags & C_TRUE)`:
 | `MAXPARMS` | 10 | Maximum macro parameters |
 | `MAXSYMLEN` | 32 | Maximum symbol length (internal) |
 | Identifier | 13 | Practical limit (project constraint) |
+| Symbol name | 14 | Object file format limit (15 chars with `_` prefix) |
 
 ---
 
