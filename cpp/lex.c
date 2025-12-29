@@ -27,7 +27,7 @@ char strbuf[STRBUFSIZE];
  * Large buffer for asm blocks and long concatenated strings
  * BSS - uninitialized, doesn't bloat binary
  */
-#define BIGBUFSIZE 8192
+#define BIGBUFSIZE 2048
 static char bigbuf[BIGBUFSIZE];
 static int bigbuflen;
 
@@ -1272,7 +1272,7 @@ gettoken()
             next.type = STRING;
             /* Concatenate adjacent string literals (C89/C90 feature) */
             /* Skip whitespace/comments and check for another string */
-        strcat:
+        concat:
             while (curchar == ' ' || curchar == '\t' || curchar == '\n')
                 advance();
             /* Skip C-style comments */
@@ -1283,19 +1283,19 @@ gettoken()
                     advance();
                 }
                 advance(); advance();
-                goto strcat;
+                goto concat;
             }
             /* Skip C++ comments */
             if (curchar == '/' && nextchar == '/') {
                 while (curchar != '\n' && curchar != 0)
                     advance();
-                goto strcat;
+                goto concat;
             }
             /* More strings to concatenate? isstring() appends to bigbuf */
             while (curchar == '"') {
                 if (!isstring())
                     break;
-                goto strcat;
+                goto concat;
             }
             /* Copy result with 2-byte length prefix */
             next.v.str = malloc(bigbuflen + 3);

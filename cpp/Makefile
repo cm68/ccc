@@ -12,6 +12,12 @@ CC = gcc
 CCC = $(DEST)/bin/ccc
 OUTDIR = stage1
 
+ifdef TRACE
+SETX = set -x
+else
+SETX = @ true
+endif
+
 # Compiler-specific flags
 ifeq ($(CC),gcc)
 WARNS = -Wall -Werror -pedantic \
@@ -65,6 +71,20 @@ sizefile: Makefile
 		END {printf "%7d %7d %7d %7d %19s\n", t, d, b, a, "cpp total" }' \
 	 > sizefile
 
+# Compile with zc3 to check Z80 sizes
+INC = -I../libsrc/include
+sizecheck:
+	mkdir -p sizecheck
+	$(SETX) ; o="" ; for f in $(SRCS); do \
+		b=$${f%.c}; \
+		o="$$o sizecheck/$$b.o" ; \
+		printf "%-12s" "$$b: " ; \
+		zc3 -S -DCCC $(INC) $$f && mv $$b.as sizecheck ; \
+		zc3 -c -DCCC $(INC) -o sizecheck/$$b.o $$f && \
+		{ echo "ok"; } || { echo "FAIL"; } \
+	done ; \
+	wssize $$o | awk '{t+=$$1;d+=$$2;b+=$$3;a+=$$4} END {print t,d,b,a}'
+
 clean:
 	rm -f *.o *.1 *.2 *.x *.i *.pp
 
@@ -74,7 +94,7 @@ clobber: clean
 install: cpp
 	cp cpp $(DEST)/bin
 
-.PHONY: all clean clobber install stage1 sizefile
+.PHONY: all clean clobber install stage1 sizefile sizecheck
 #
 # vim: tabstop=4 shiftwidth=4 noexpandtab:
 #

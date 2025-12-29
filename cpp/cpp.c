@@ -137,13 +137,13 @@ main(int argc, char **argv)
     sprintf(ppFile, "%s.i", outbase);
 
     /* Open output files */
-    lexFd = open(lexFile, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    lexFd = creat(lexFile, 0644);
     if (lexFd < 0) {
         perror(lexFile);
         exit(1);
     }
 
-    ppFd = open(ppFile, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    ppFd = creat(ppFile, 0644);
     if (ppFd < 0) {
         perror(ppFile);
         exit(1);
