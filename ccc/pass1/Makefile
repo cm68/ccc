@@ -38,7 +38,7 @@ CFLAGS = -I.
 endif
 
 SOURCES = pass1.c error.c lexread.c \
-	expr.c parse.c type.c declare.c outast.c util.c
+	expr.c cfold.c parse.c decl.c type.c declare.c outast.c util.c
 OBJECTS = $(SOURCES:.c=.o)
 
 HEADERS = cc1.h token.h enumlist.h error.h debug.h
@@ -96,10 +96,20 @@ stage1: c0
 		$(XDUMP) $(OUTDIR)/$$b.x > $(OUTDIR)/$$b.xd 2>> $err && \
 		./c0 $(OUTDIR)/$$b.x $(OUTDIR)/$$b.1 $(OUTDIR)/$$b.2 2>> $$err && \
 		$(ASTPP) $(OUTDIR)/$$b.1 > $(OUTDIR)/$$b.pp 2>> $$err && \
-      	{ echo "ok"; rm -f $$err; } || { echo "FAIL"; } \
+      	{ echo "ok"; } || { echo "FAIL"; } \
     done
 
-.PHONY: all clean regen stage1 install clobber sizefile
+sizecheck:
+	mkdir -p sizecheck
+	$(SETX) for f in $(SOURCES); do \
+		b=$${f%.c}; \
+		err=sizecheck/$$b.err ; \
+		printf "%-12s" "$$b: " ; \
+		zc3 -c -DCCC $(INC) -o sizecheck/$$b.o $$f && \
+		{ echo "ok"; } || { echo "FAIL"; } \
+	done
+
+.PHONY: all clean regen stage1 install clobber sizefile sizecheck
 
 # vim: tabstop=4 shiftwidth=4 noexpandtab:
 

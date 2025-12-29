@@ -110,6 +110,8 @@ extern struct expr *mkexpr(unsigned char op, struct expr *left);
 extern struct expr *mkexprI(unsigned char op, struct expr *left,
     struct type *type, unsigned long v, int flags);
 extern struct expr *cfold(struct expr *e);
+extern struct expr *normalize(struct expr *e);
+extern struct type *constType(long v);
 extern struct expr *parseExpr(unsigned char priority, struct stmt *);
 extern int isTypeToken(unsigned char t);
 unsigned long parseConst(unsigned char priority);
@@ -137,8 +139,13 @@ struct stmt {
 	struct name *locals;    /* linked list of local variables in this scope */
 };
 
-extern struct stmt *newStmt(unsigned char op, struct expr *left);
-extern void frStm(struct stmt *s);
+extern struct stmt *makestmt(unsigned char op, struct expr *left);
+extern struct stmt *asmblock(void);
+extern struct stmt *statement(struct stmt *parent);
+extern void declaration(void);
+extern struct name *capLocals(void);
+extern void addDeclInit(struct name *v);
+extern void resetSwitches(void);
 extern void frStmt(struct stmt *s);
 extern void emitFuncPre(struct name *func);
 extern void emitOneStmt(struct stmt *st);
