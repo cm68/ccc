@@ -40,7 +40,7 @@ install: $(ARCHIVE)
 	cp $(ARCHIVE) $(DEST)
 
 clean:
-	rm -f $(OBJS)
+	rm -f $(OBJS) *.1 *.2 *.x *.i *.pp
 
 clobber: clean
 	rm -f $(ARCHIVE)

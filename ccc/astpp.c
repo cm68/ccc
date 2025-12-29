@@ -376,7 +376,7 @@ static void parseStmt(void) {
     if (c == -1) return;
     advance();
 
-    char lineBuf[512];
+    static char lineBuf[EXPR_BUF_SIZE + 256];
 
     /* Block */
     if (c == 'B') {
