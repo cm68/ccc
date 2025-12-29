@@ -452,17 +452,31 @@ coerceTypes(struct expr *e, struct type *tgt)
 struct expr *
 parseExpr(unsigned char pri, struct stmt *st)
 {
-	unsigned char op;
+	/* Hoisted locals for stack reuse */
+	unsigned char op, p, is_assignment, is_variadic, is_arrow;
+	unsigned char uop, inc_op, compatible;
+	unsigned char l_unsigned, r_unsigned;
 	struct expr *e = 0;
-    unsigned char p;
-	struct type *assign_type = NULL;
-	unsigned char is_assignment = 0;
-	struct var *member_info = NULL;
-	struct var *savMemberInf = NULL;
-	int l_ptr = 0;
-	int r_ptr = 0;
-	struct type *l_base = NULL;
-	struct type *r_base = NULL;
+	struct expr *e1, *e2, *e3, *e4;  /* temporaries for non-overlapping uses */
+	struct type *assign_type, *t, *tp, *t2, *t3;
+	struct var *vp;
+	struct name *np;  /* general-purpose name pointer */
+	char namebuf[32];
+	char *symname;
+	union { float f; unsigned long u; } fu;
+	long sval;
+	int src_size, tgt_size, src_unsigned, elem_size, size;
+	int l_ptr, r_ptr;
+	token_t cast_op;
+
+	/* Initialize variables that need specific values */
+	assign_type = NULL;
+	vp = NULL;
+	t2 = NULL;
+	t3 = NULL;
+	l_ptr = 0;
+	r_ptr = 0;
+	is_assignment = 0;
 
 	/* Phase 1: just consume tokens, don't build tree */
 	if (phase == 1) {
@@ -472,73 +486,26 @@ parseExpr(unsigned char pri, struct stmt *st)
 
 	switch (cur.type) {   // prefix
 
-    case NUMBER: {
-        long sval = cur.v.numeric;
+    case NUMBER:
+        sval = cur.v.numeric;
         e = mkexprI(CONST, 0, constType(sval), (unsigned long)sval, E_CONST);
         gettoken();
         break;
-    }
 
-    case FNUMBER: {
+    case FNUMBER:
         /* Store float bit pattern in v */
-        union { float f; unsigned long u; } fu;
         fu.f = cur.v.fval;
         e = mkexprI(CONST, 0, floattype, fu.u, E_CONST);
         gettoken();
         break;
-    }
 
-    case STRING: {
-        struct name *strname;
-        char namebuf[32];
-        unsigned char *combined_str;
-        unsigned char *src_str;
-        unsigned char total_len;
-        int i;
-
+    case STRING:
         /* string literals have type char* (pointer to char) */
+        /* Lexer already concatenates adjacent strings; copy since buffer reused */
         e = mkexprI(STRING, 0, getType(TF_POINTER, chartype, 0), 0, 0);
-
-        /* Copy first string - always allocate so we own the memory */
-        src_str = (unsigned char *)cur.v.str;
-        total_len = src_str[0];
-        combined_str = (unsigned char *)malloc(total_len + 1);
-        combined_str[0] = total_len;
-        for (i = 0; i < total_len; i++) {
-            combined_str[i + 1] = src_str[i + 1];
-        }
-
-        gettoken();
-
-        /* Check for adjacent string literals and concatenate them */
-        while (cur.type == STRING) {
-            unsigned char *temp;
-            unsigned char next_len;
-
-            next_len = ((unsigned char *)cur.v.str)[0];
-
-            /* Allocate new buffer for concatenated string */
-            temp = (unsigned char *)malloc(total_len + next_len + 1);
-            temp[0] = total_len + next_len;  /* new length */
-
-            /* Copy first string */
-            for (i = 0; i < total_len; i++) {
-                temp[i + 1] = combined_str[i + 1];
-            }
-
-            /* Append next string */
-            for (i = 0; i < next_len; i++) {
-                temp[total_len + i + 1] = ((unsigned char *)cur.v.str)[i + 1];
-            }
-
-            /* Free old combined string */
-            free(combined_str);
-
-            combined_str = temp;
-            total_len = temp[0];
-
-            gettoken();  /* consume the STRING token */
-        }
+        size = ((unsigned char *)cur.v.str)[0] + 1;  /* length byte + data */
+        symname = malloc(size);
+        memcpy(symname, cur.v.str, size);
 
         /* generate synthetic name for this string literal */
         sprintf(namebuf, "str%d", stringCtr++);
@@ -549,70 +516,64 @@ parseExpr(unsigned char pri, struct stmt *st)
          * looked up, only emitted to AST. We don't free these - small
          * and process will exit
          */
-        strname = (struct name *)calloc(1, sizeof(struct name));
-        if (strname) {
+        np = (struct name *)calloc(1, sizeof(struct name));
+        if (np) {
             /* Initialize in struct field order */
-            strncpy(strname->name, namebuf, 15);
-            strname->name[15] = 0;
-            strname->type = e->type;
+            strncpy(np->name, namebuf, 15);
+            np->name[15] = 0;
+            np->type = e->type;
             /* chain = 0 (not in symbol table) */
-            strname->kind = var;
-            strname->level = 1;  /* Global scope */
+            np->kind = var;
+            np->level = 1;  /* Global scope */
             /* store pointer to counted string in the name's init field */
-            strname->u.init = mkexprI(STRING, 0, NULL,
-					(unsigned long)combined_str, 0);
+            np->u.init = mkexprI(STRING, 0, NULL,
+					(unsigned long)symname, 0);
             /* also store in expression for immediate use */
-            e->v = (unsigned long)combined_str;
+            e->v = (unsigned long)symname;
             /* store reference to the named string in the expression */
-            e->var = (struct var *)strname;
+            e->var = (struct var *)np;
             /* String emission deferred until name is finalized */
         }
         e->flags = E_CONST;
+        gettoken();
         break;
-    }
 
-    case SYM: {
+    case SYM:
         /* Symbol reference - SYM = address
          * For variables: wrap in DEREF to get value
          * For functions: return address (decay to function pointer)
          */
-        struct name *n;
-        struct expr *sym;
-        char *symname;
-
         /* Save symbol name before gettoken() overwrites cur.v.name */
         symname = strdup(cur.v.name);
 
-        n = findName(symname, 0);
+        np = findName(symname, 0);
 
         /* Peek at next token to enable implicit function declarations */
         gettoken();
 
-        if (!n) {
+        if (!np) {
             /* Undefined symbol */
             /* K&R extension: if followed by '(', implicitly declare as
              * function returning int */
             if (cur.type == LPAR) {
-                struct type *functype;
-
                 /* Create implicit function declaration: int name() */
-                functype = calloc(1, sizeof(struct type));
-                functype->flags = TF_FUNC;
-                functype->sub = inttype;  /* Return type: int */
-                functype->elem = NULL;    /* No parameter info */
+                tp = calloc(1, sizeof(struct type));
+                tp->flags = TF_FUNC;
+                tp->sub = inttype;  /* Return type: int */
+                tp->elem = NULL;    /* No parameter info */
 
-                n = calloc(1, sizeof(struct name));
+                np = calloc(1, sizeof(struct name));
                 /* Initialize in struct field order */
-                strncpy(n->name, symname, 15);
-                n->name[15] = 0;
-                n->type = functype;
+                strncpy(np->name, symname, 15);
+                np->name[15] = 0;
+                np->type = tp;
                 /* chain set by addName */
-                n->kind = var;
-                n->level = 1;  /* Global scope */
+                np->kind = var;
+                np->level = 1;  /* Global scope */
                 /* is_tag = 0 from calloc */
-                n->sclass = SC_EXTERN;
+                np->sclass = SC_EXTERN;
 
-                addName(n);
+                addName(np);
 
 #ifdef DEBUG
                 if (VERBOSE(V_SYM)) {
@@ -630,36 +591,35 @@ parseExpr(unsigned char pri, struct stmt *st)
 
         /* Count references for register allocation (done in phase 1).
          * Only count locals and parameters, not globals or functions. */
-        if (phase == 1 && n->level > 1 && n->kind != elem &&
-            !(n->type && (n->type->flags & (TF_FUNC|TF_ARRAY)))) {
-            if (n->ref_count < 255)
-                n->ref_count++;
+        if (phase == 1 && np->level > 1 && np->kind != elem &&
+            !(np->type && (np->type->flags & (TF_FUNC|TF_ARRAY)))) {
+            if (np->ref_count < 255)
+                np->ref_count++;
         }
 
-        if (n->kind == elem) {
+        if (np->kind == elem) {
             // Enum constant: treat as integer constant
-            e = mkexprI(CONST, 0, inttype, n->offset, E_CONST);
+            e = mkexprI(CONST, 0, inttype, np->offset, E_CONST);
         } else {
-            sym = mkexprI(SYM, 0, n->type, 0, 0);
-            sym->var = (struct var *)n;
+            e1 = mkexprI(SYM, 0, np->type, 0, 0);
+            e1->var = (struct var *)np;
 
             // Functions and arrays decay to pointers (addresses)
             // Only wrap non-functions in DEREF to get their value
-            if (n->type && (n->type->flags & TF_FUNC)) {
+            if (np->type && (np->type->flags & TF_FUNC)) {
                 // Function name: return address (decay to function pointer)
-                e = sym;
-            } else if (n->type && (n->type->flags & TF_ARRAY)) {
+                e = e1;
+            } else if (np->type && (np->type->flags & TF_ARRAY)) {
                 // Array name: decays to pointer to first element
-                e = sym;
+                e = e1;
             } else {
                 // Variable: wrap in DEREF to get value
-                e = mkexprI(DEREF, sym, n->type, 0, 0);
+                e = mkexprI(DEREF, e1, np->type, 0, 0);
             }
         }
         free(symname);
         /* Note: gettoken() already called above for lookahead */
         break;
-    }
 
     /* unary operators */
     case LPAR:      // parenthesized expression or type cast
@@ -667,44 +627,39 @@ parseExpr(unsigned char pri, struct stmt *st)
 
         /* Check if this is a type cast: (type)expr */
         if (isCastStart()) {
-            struct type *cast_type;
-            struct expr *inner;
-
             /* Parse the type name */
-            cast_type = parseTypeName();
+            tp = parseTypeName();
             expect(RPAR, ER_E_SP);
 
             /* Parse the expression being cast */
             /* Cast has unary precedence */
-            inner = parseExpr(OP_PRI_MULT - 1, st);
+            e1 = parseExpr(OP_PRI_MULT - 1, st);
 
             /* Determine if cast needs runtime operation */
-            if (cast_type && inner && inner->type) {
+            if (tp && e1 && e1->type) {
                 /* Pointer-to-pointer casts are just type reinterpretation */
-                if ((cast_type->flags & TF_POINTER) &&
-						(inner->type->flags & TF_POINTER)) {
-                    inner->type = cast_type;
-                    e = inner;
+                if ((tp->flags & TF_POINTER) &&
+						(e1->type->flags & TF_POINTER)) {
+                    e1->type = tp;
+                    e = e1;
                 }
                 /* Scalar casts: determine which operation needed */
-                else if (!(cast_type->flags &
+                else if (!(tp->flags &
 						(TF_POINTER|TF_ARRAY|TF_FUNC)) &&
-                         !(inner->type->flags &
+                         !(e1->type->flags &
 						(TF_POINTER|TF_ARRAY|TF_FUNC))) {
-                    int src_size = inner->type->size;
-                    int tgt_size = cast_type->size;
-                    int src_unsigned = inner->type->flags & TF_UNSIGNED;
+                    src_size = e1->type->size;
+                    tgt_size = tp->size;
+                    src_unsigned = e1->type->flags & TF_UNSIGNED;
 
                     if (tgt_size == src_size) {
                         /*
                          * Same size: just reinterpret
                          * (e.g., int <-> unsigned int)
                          */
-                        inner->type = cast_type;
-                        e = inner;
+                        e1->type = tp;
+                        e = e1;
                     } else {
-                        token_t cast_op;
-
                         if (tgt_size < src_size) {
                             /* Narrowing: truncate to smaller type */
                             cast_op = NARROW;
@@ -717,26 +672,26 @@ parseExpr(unsigned char pri, struct stmt *st)
                             }
                         }
 
-                        e = mkexprI(cast_op, inner, cast_type, 0, 0);
+                        e = mkexprI(cast_op, e1, tp, 0, 0);
                     }
                 }
                 /* Mixed pointer/scalar casts: need conversion */
                 else {
-                    int src_size = inner->type->size;
-                    int tgt_size = cast_type->size;
+                    src_size = e1->type->size;
+                    tgt_size = tp->size;
 
                     if (tgt_size == src_size) {
                         /* Same size: just reinterpret */
-                        inner->type = cast_type;
-                        e = inner;
+                        e1->type = tp;
+                        e = e1;
                     } else {
-                        token_t cast_op = (tgt_size < src_size) ? NARROW : WIDEN;
-                        e = mkexprI(cast_op, inner, cast_type, 0, 0);
+                        cast_op = (tgt_size < src_size) ? NARROW : WIDEN;
+                        e = mkexprI(cast_op, e1, tp, 0, 0);
                     }
                 }
             } else {
                 /* Shouldn't happen, but create NARROW as fallback */
-                e = mkexprI(NARROW, inner, cast_type, 0, 0);
+                e = mkexprI(NARROW, e1, tp, 0, 0);
             }
         } else {
             /*
@@ -750,8 +705,8 @@ parseExpr(unsigned char pri, struct stmt *st)
 
     case MINUS:     // unary minus
     case TWIDDLE:   // bitwise not
-    case BANG: {    // logical not
-        unsigned char uop = (cur.type == MINUS) ? NEG : cur.type;
+    case BANG:      // logical not
+        uop = (cur.type == MINUS) ? NEG : cur.type;
         gettoken();
         e = mkexpr(uop, parseExpr(OP_PRI_MULT - 1, st));
         if (e->left) {
@@ -760,7 +715,6 @@ parseExpr(unsigned char pri, struct stmt *st)
         }
         e = cfold(e);
         break;
-    }
 
     case STAR:      // dereference (unary)
         gettoken();
@@ -786,7 +740,7 @@ parseExpr(unsigned char pri, struct stmt *st)
             ((struct name *)e->left->var)->addr_taken = 1;
         /* Optimize: &(DEREF x) = x, since SYM already gives address */
         if (e && e->op == DEREF) {
-            struct expr *deref = e;
+            e1 = e;
             e = e->left;
             /*
              * Wrap the type in a pointer. For &var where var is T,
@@ -796,8 +750,8 @@ parseExpr(unsigned char pri, struct stmt *st)
                 e->type = getType(TF_POINTER, e->type, 0);
             }
             /* Free the orphaned DEREF node (but not its children) */
-            deref->left = NULL;
-            free(deref);
+            e1->left = NULL;
+            free(e1);
 #ifdef DEBUG
             exprCurCnt--;
 #endif
@@ -805,14 +759,14 @@ parseExpr(unsigned char pri, struct stmt *st)
             /* &array = array (just change type to pointer-to-array) */
             e->type = getType(TF_POINTER, e->type, 0);
         } else {
-            struct expr *addr = mkexpr(AND, e);
+            e1 = mkexpr(AND, e);
             if (e) {
-                e->up = addr;
+                e->up = e1;
                 if (e->type) {
-                    addr->type = getType(TF_POINTER, e->type, 0);
+                    e1->type = getType(TF_POINTER, e->type, 0);
                 }
             }
-            e = addr;
+            e = e1;
         }
         break;
 
@@ -822,7 +776,6 @@ parseExpr(unsigned char pri, struct stmt *st)
         if (cur.type == LPAR) {
             // Could be sizeof(type) or sizeof(expr)
             // Try to parse as type first
-            struct type *t;
             gettoken();  // consume '('
 
             t = getbasetype();
@@ -846,7 +799,7 @@ parseExpr(unsigned char pri, struct stmt *st)
                 // Create constant expression with the size
                 // of the expression's type
                 if (e && e->type) {
-                    int size = e->type->size;
+                    size = e->type->size;
                     frExp(e);  // we only needed it for the type
                     e = mkexprI(CONST, 0, inttype, size, E_CONST);
                 } else {
@@ -856,10 +809,10 @@ parseExpr(unsigned char pri, struct stmt *st)
             }
         } else {
             // sizeof expr (without parentheses)
-            struct expr *operand = parseExpr(OP_PRI_MULT - 1, st);
-            if (operand && operand->type) {
-                int size = operand->type->size;
-                frExp(operand);
+            e1 = parseExpr(OP_PRI_MULT - 1, st);
+            if (e1 && e1->type) {
+                size = e1->type->size;
+                frExp(e1);
                 e = mkexprI(CONST, 0, inttype, size, E_CONST);
             } else {
                 gripe(ER_E_UO);
@@ -869,12 +822,11 @@ parseExpr(unsigned char pri, struct stmt *st)
         break;
 
     case INCR:      // prefix increment: ++i
-    case DECR: {    // prefix decrement: --i
-        unsigned char inc_op = cur.type;
+    case DECR:      // prefix decrement: --i
+        inc_op = cur.type;
         gettoken();
         e = mkIncDec(parseExpr(OP_PRI_MULT - 1, st), inc_op, 0);
         break;
-    }
 
 	default:
 		gripe(ER_E_UO);
@@ -889,12 +841,10 @@ parseExpr(unsigned char pri, struct stmt *st)
 			cur.type == ARROW || cur.type == INCR || cur.type == DECR) {
         if (cur.type == LBRACK) {
             // Array subscript: arr[idx] = DEREF(ADD(base, idx * sizeof))
-            struct expr *index, *scaled, *addr, *size_expr;
-            int elem_size;
-            struct type *base_type = NULL;
+            tp = NULL;
 
             gettoken();  // consume '['
-            index = parseExpr(0, st);
+            e1 = parseExpr(0, st);  /* index */
             expect(RBRACK, ER_E_SP);
 
             /*
@@ -902,68 +852,68 @@ parseExpr(unsigned char pri, struct stmt *st)
              * but save the dereferenced type
              */
             if (e && e->op == DEREF) {
-                struct expr *deref = e;
+                e2 = e;  /* deref - save for freeing */
                 /* Save the actual type (not the address type) */
-                base_type = e->type;
+                tp = e->type;
                 e = e->left;
                 /* Free the orphaned DEREF node (but not its children) */
-                deref->left = NULL;
-                free(deref);
+                e2->left = NULL;
+                free(e2);
 #ifdef DEBUG
                 exprCurCnt--;
 #endif
             } else {
-                base_type = e->type;
+                tp = e->type;
             }
 
             /*
              * Get element size from type
-             * (use base_type, not e->type which is the address)
+             * (use tp, not e->type which is the address)
              */
             elem_size = 2;  // default to short/int size
-            if (base_type) {
-                if (base_type->flags & TF_POINTER && base_type->sub) {
-                    elem_size = base_type->sub->size;
-                } else if (base_type->flags & TF_ARRAY && base_type->sub) {
-                    elem_size = base_type->sub->size;
+            if (tp) {
+                if (tp->flags & TF_POINTER && tp->sub) {
+                    elem_size = tp->sub->size;
+                } else if (tp->flags & TF_ARRAY && tp->sub) {
+                    elem_size = tp->sub->size;
                 }
             }
 
             // Scale index by element size: idx * sizeof(elem)
             if (elem_size == 1) {
-                scaled = index;
+                e2 = e1;  /* scaled = index */
             } else {
-                size_expr = mkexprI(CONST, 0, inttype,
-						elem_size, E_CONST);
+                e4 = mkexprI(CONST, 0, inttype,
+						elem_size, E_CONST);  /* size_expr */
 
-                scaled = mkexpr(STAR, index);
-                scaled->right = size_expr;
-                scaled->left->up = scaled;
-                scaled->right->up = scaled;
-                scaled->type = inttype;
-                scaled = cfold(scaled);
+                e2 = mkexpr(STAR, e1);  /* scaled */
+                e2->right = e4;
+                e2->left->up = e2;
+                e2->right->up = e2;
+                e2->type = inttype;
+                e2 = cfold(e2);
             }
 
             // Add scaled offset to base: base + (idx * sizeof)
-            addr = mkexpr(PLUS, e);
-            addr->right = scaled;
-            addr->left->up = addr;
-            addr->right->up = addr;
+            e3 = mkexpr(PLUS, e);  /* addr */
+            e3->right = e2;
+            e3->left->up = e3;
+            e3->right->up = e3;
             /* The ADD result is a pointer to the element type */
-            if (base_type && (base_type->flags & TF_ARRAY) &&
-					base_type->sub) {
-                addr->type = getType(TF_POINTER, base_type->sub, 0);
-            } else if (base_type && (base_type->flags & TF_POINTER)) {
-                addr->type = base_type;  // pointer + offset = same pointer type
+            if (tp && (tp->flags & TF_ARRAY) &&
+					tp->sub) {
+                e3->type = getType(TF_POINTER, tp->sub, 0);
+            } else if (tp && (tp->flags & TF_POINTER)) {
+                e3->type = tp;  // pointer + offset = same pointer type
             } else {
-                addr->type = base_type;
+                e3->type = tp;
             }
 
             // Fold nested constant offsets (e.g., (ptr + 2) + 0 -> ptr + 2)
-            addr = cfold(addr);
+            e3 = cfold(e3);
 
             // Dereference to get element value
-            e = mkexpr(DEREF, addr);
+            e = mkexpr(DEREF, e3);
             e->left->up = e;
             if (e->left->type) {
                 if ((e->left->type->flags & TF_POINTER) &&
@@ -976,62 +926,58 @@ parseExpr(unsigned char pri, struct stmt *st)
             }
         } else if (cur.type == LPAR) {
             // Function call: expr(arg1, arg2, ...)
-            struct expr *call, *arg, *lastarg;
-            struct name *param;
-            unsigned char is_variadic;
-
             gettoken();  // consume '('
 
             // Create CALL node with function expression as left operand
-            call = mkexpr(CALL, e);
-            call->left->up = call;
+            e1 = mkexpr(CALL, e);  /* call */
+            e1->left->up = e1;
 
             // Set return type from function type
             if (e->type && (e->type->flags & TF_FUNC) && e->type->sub) {
-                call->type = e->type->sub;
+                e1->type = e->type->sub;
             }
 
             // Get first parameter for type coercion
-            param = (e->type && (e->type->flags & TF_FUNC)) ? e->type->elem : 0;
+            np = (e->type && (e->type->flags & TF_FUNC)) ? e->type->elem : 0;
             is_variadic = e->type && (e->type->flags & TF_VARIADIC);
 
             // Parse argument list
-            lastarg = NULL;
+            e3 = NULL;  /* lastarg */
             if (cur.type != RPAR) {
                 // Parse first argument
-                arg = parseExpr(OP_PRI_COMMA, st);
-                if (arg) {
-                    arg->flags |= E_FUNARG;
+                e2 = parseExpr(OP_PRI_COMMA, st);  /* arg */
+                if (e2) {
+                    e2->flags |= E_FUNARG;
                     // Coerce argument to parameter type
-                    if (param && param->type)
-                        arg = coerceTypes(arg, param->type);
-                    else if (is_variadic && arg->type &&
-                             arg->type->size < 2)
-                        arg = mkConv(arg, inttype);
-                    call->right = arg;
-                    arg->up = call;
-                    lastarg = arg;
-                    if (param) param = param->next;
+                    if (np && np->type)
+                        e2 = coerceTypes(e2, np->type);
+                    else if (is_variadic && e2->type &&
+                             e2->type->size < 2)
+                        e2 = mkConv(e2, inttype);
+                    e1->right = e2;
+                    e2->up = e1;
+                    e3 = e2;
+                    if (np) np = np->next;
                 }
 
                 // Parse remaining arguments
                 while (cur.type == COMMA) {
                     gettoken();
-                    arg = parseExpr(OP_PRI_COMMA, st);
-                    if (arg) {
-                        arg->flags |= E_FUNARG;
+                    e2 = parseExpr(OP_PRI_COMMA, st);  /* arg */
+                    if (e2) {
+                        e2->flags |= E_FUNARG;
                         // Coerce argument to parameter type
-                        if (param && param->type)
-                            arg = coerceTypes(arg, param->type);
-                        else if (is_variadic && arg->type &&
-                                 arg->type->size < 2)
-                            arg = mkConv(arg, inttype);
-                        if (lastarg) {
-                            lastarg->next = arg;
-                            arg->prev = lastarg;
+                        if (np && np->type)
+                            e2 = coerceTypes(e2, np->type);
+                        else if (is_variadic && e2->type &&
+                                 e2->type->size < 2)
+                            e2 = mkConv(e2, inttype);
+                        if (e3) {
+                            e3->next = e2;
+                            e2->prev = e3;
                         }
-                        lastarg = arg;
-                        if (param) param = param->next;
+                        e3 = e2;
+                        if (np) np = np->next;
                     }
                 }
             }
@@ -1039,12 +985,10 @@ parseExpr(unsigned char pri, struct stmt *st)
             expect(RPAR, ER_E_SP);
 
             // Result type will be determined later from function signature
-            e = call;
+            e = e1;
         } else if (cur.type == DOT || cur.type == ARROW) {
             // Struct member access: s.x or p->x
-            struct expr *base, *offset_expr, *addr;
-            struct name *member;
-            unsigned char is_arrow = (cur.type == ARROW);
+            is_arrow = (cur.type == ARROW);
 
             gettoken();  // consume '.' or '->'
 
@@ -1056,27 +1000,27 @@ parseExpr(unsigned char pri, struct stmt *st)
             // For s.x: e is DEREF(SYM s), unwrap to get SYM s
             // For p->x: e is DEREF(SYM p), keep as-is (pointer value)
             if (is_arrow) {
-                base = e;  // pointer value
+                e1 = e;  /* base - pointer value */
             } else {
                 // Unwrap DEREF to get address
                 if (e && e->op == DEREF) {
-                    struct expr *deref = e;
-                    base = e->left;
+                    e2 = e;  /* deref - save for freeing */
+                    e1 = e->left;  /* base */
                     /* Free the orphaned DEREF node (but not its children) */
-                    deref->left = NULL;
-                    free(deref);
+                    e2->left = NULL;
+                    free(e2);
 #ifdef DEBUG
                     exprCurCnt--;
 #endif
                 } else {
-                    base = e;
+                    e1 = e;  /* base */
                 }
             }
 
             // Look up member in struct/union
-            member = NULL;
-            if (base && base->type) {
-                struct type *t = base->type;
+            np = NULL;  /* member */
+            if (e1 && e1->type) {
+                t = e1->type;
                 /*
                  * For both DOT and ARROW, if base type is pointer,
                  * get the pointed-to type (DOT after array subscript
@@ -1086,15 +1030,15 @@ parseExpr(unsigned char pri, struct stmt *st)
                     t = t->sub;
                 }
                 if (t && (t->flags & TF_AGGREGATE) && t->elem) {
-                    for (member = t->elem; member; member = member->next) {
-                        if (strcmp(member->name, cur.v.name) == 0) {
+                    for (np = t->elem; np; np = np->next) {
+                        if (strcmp(np->name, cur.v.name) == 0) {
                             break;
                         }
                     }
                 }
             }
 
-            if (!member) {
+            if (!np) {
                 gripe(ER_E_UO);
                 gettoken();
                 e = mkexprI(CONST, 0, NULL, 0, 0);
@@ -1105,51 +1049,51 @@ parseExpr(unsigned char pri, struct stmt *st)
              * Generate: DEREF(ADD(base, offset)) or BFEXTRACT
              * for bitfields
              */
-            offset_expr = mkexprI(CONST, 0, inttype,
-					member->offset, E_CONST);
+            e2 = mkexprI(CONST, 0, inttype,
+					np->offset, E_CONST);  /* offset_expr */
 
-            addr = mkexpr(PLUS, base);
-            addr->right = offset_expr;
-            addr->left->up = addr;
-            addr->right->up = addr;
+            e3 = mkexpr(PLUS, e1);  /* addr */
+            e3->right = e2;
+            e3->left->up = e3;
+            e3->right->up = e3;
             // addr is pointer to member, not pointer to base struct
-            addr->type = getType(TF_POINTER, member->type, 0);
+            e3->type = getType(TF_POINTER, np->type, 0);
 
             // Fold constant offset (e.g., x + 0 becomes x)
-            addr = cfold(addr);
+            e3 = cfold(e3);
 
             // Check if this is a bitfield access
-            if (member->kind == bitfield) {
+            if (np->kind == bitfield) {
                 /*
                  * Use BFEXTRACT operator with bitoff and
                  * width stored in expr
                  */
-                e = mkexprI(BFEXTRACT, addr, member->type, 0, 0);
+                e = mkexprI(BFEXTRACT, e3, np->type, 0, 0);
                 e->left->up = e;
                 /*
                  * Store bitfield info in the var field (repurpose it)
                  * We'll encode bitoff and width for the code generator
                  * Keep reference to member for bitoff/width
                  */
-                e->var = (struct var *)member;
-            } else if (member->type && (member->type->flags & TF_ARRAY)) {
+                e->var = (struct var *)np;
+            } else if (np->type && (np->type->flags & TF_ARRAY)) {
                 /*
                  * Array member: return address without DEREF
                  * Arrays decay to pointers but are not lvalues
                  * This prevents arr++ while allowing p = arr
                  */
-                e = addr;
-                e->type = member->type;  /* Keep array type for proper semantics */
+                e = e3;
+                e->type = np->type;  /* Keep array type for proper semantics */
             } else {
                 /* Non-array member: wrap in DEREF to get value */
-                e = mkexprI(DEREF, addr, member->type, 0, 0);
+                e = mkexprI(DEREF, e3, np->type, 0, 0);
                 e->left->up = e;
             }
 
             gettoken();
         } else if (cur.type == INCR || cur.type == DECR) {
             // Postfix increment/decrement: i++ or i--
-            unsigned char inc_op = cur.type;
+            inc_op = cur.type;
             gettoken();
             e = mkIncDec(e, inc_op, 1);
         }
@@ -1185,11 +1129,10 @@ parseExpr(unsigned char pri, struct stmt *st)
          * condition ? true : false
          */
         if (op == QUES) {
-            struct expr *condition = e;
-            struct expr *true_expr, *false_expr, *colon_node;
+            e1 = e;  /* condition */
 
             // Parse the true expression
-            true_expr = parseExpr(0, st);
+            e2 = parseExpr(0, st);  /* true_expr */
 
             // Expect and consume COLON
             expect(COLON, ER_E_SP);
@@ -1199,16 +1142,16 @@ parseExpr(unsigned char pri, struct stmt *st)
              * allow another ?: at same level). Use priority 0 to parse
              * everything, including nested ?: operators
              */
-            false_expr = parseExpr(0, st);
+            e3 = parseExpr(0, st);  /* false_expr */
 
             // Build tree: QUES(condition, COLON(true_expr, false_expr))
-            colon_node = mkexpr(COLON, true_expr);
-            colon_node->right = false_expr;
-            if (colon_node->left) colon_node->left->up = colon_node;
-            if (colon_node->right) colon_node->right->up = colon_node;
+            e4 = mkexpr(COLON, e2);  /* colon_node */
+            e4->right = e3;
+            if (e4->left) e4->left->up = e4;
+            if (e4->right) e4->right->up = e4;
 
-            e = mkexpr(QUES, condition);
-            e->right = colon_node;
+            e = mkexpr(QUES, e1);
+            e->right = e4;
             if (e->left) e->left->up = e;
             if (e->right) e->right->up = e;
 
@@ -1216,8 +1159,8 @@ parseExpr(unsigned char pri, struct stmt *st)
              * Type is the type of the result expressions
              * (should check compatibility)
              */
-            if (true_expr && true_expr->type) {
-                e->type = true_expr->type;
+            if (e2 && e2->type) {
+                e->type = e2->type;
             }
 
             e = cfold(e);
@@ -1235,7 +1178,7 @@ parseExpr(unsigned char pri, struct stmt *st)
 
         if (is_assignment) {
             if (e && e->op == DEREF) {
-                struct expr *deref = e;
+                e1 = e;  /* deref - save for freeing */
 #ifdef DEBUG
                 if (VERBOSE(V_ASSIGN)) {
                     if (e->type) {
@@ -1255,13 +1198,13 @@ parseExpr(unsigned char pri, struct stmt *st)
                 assign_type = e->type;
                 e = e->left;  // unwrap to get address
                 /* Free the orphaned DEREF node (but not its children) */
-                deref->left = NULL;
-                free(deref);
+                e1->left = NULL;
+                free(e1);
 #ifdef DEBUG
                 exprCurCnt--;
 #endif
             } else if (e && e->op == BFEXTRACT) {
-                struct expr *bfextr = e;
+                e1 = e;  /* bfextr - save for freeing */
                 // Bitfield assignment - change to BFASSIGN
                 /* Save the type before unwrapping */
                 assign_type = e->type;
@@ -1269,11 +1212,11 @@ parseExpr(unsigned char pri, struct stmt *st)
                  * Keep the var field which has the member info
                  * (bitoff, width)
                  */
-                member_info = e->var;
+                vp = e->var;
                 e = e->left;  // unwrap to get address
                 /* Free the orphaned BFEXTRACT node (but not its children) */
-                bfextr->left = NULL;
-                free(bfextr);
+                e1->left = NULL;
+                free(e1);
 #ifdef DEBUG
                 exprCurCnt--;
 #endif
@@ -1281,7 +1224,7 @@ parseExpr(unsigned char pri, struct stmt *st)
                  * Store member info temporarily - we'll use it when
                  * creating BFASSIGN. Pass through member info
                  */
-                e->var = member_info;
+                e->var = vp;
                 // Flag that we need BFASSIGN
                 if (op == ASSIGN) {
                     op = BFASSIGN;
@@ -1325,7 +1268,7 @@ parseExpr(unsigned char pri, struct stmt *st)
          * - For left-associative operators, use precedence p to prevent
          *   same-precedence from nesting right
          */
-        savMemberInf = (e && e->var) ? e->var : NULL;
+        vp = (e && e->var) ? e->var : NULL;
         e = mkexpr(op, e);
         e->left->up = e;
         if (is_assignment) {
@@ -1346,17 +1289,17 @@ parseExpr(unsigned char pri, struct stmt *st)
         }
 
         // For BFASSIGN, restore member info (bitoff, width)
-        if (op == BFASSIGN && savMemberInf) {
-            e->var = savMemberInf;
+        if (op == BFASSIGN && vp) {
+            e->var = vp;
         }
 
         // For COPY operator, unwrap DEREF from right side to get address
         if (e->op == COPY && e->right && e->right->op == DEREF) {
-            struct expr *deref = e->right;
+            e1 = e->right;  /* deref - save for freeing */
             e->right = e->right->left;  // unwrap to get address
             /* Free the orphaned DEREF node (but not its children) */
-            deref->left = NULL;
-            free(deref);
+            e1->left = NULL;
+            free(e1);
 #ifdef DEBUG
             exprCurCnt--;
 #endif
@@ -1367,58 +1310,56 @@ parseExpr(unsigned char pri, struct stmt *st)
          * can handle mixed sizes for the operation itself. */
         if (op == ASSIGN && e->left && e->right && e->left->type &&
 				e->right->type) {
-            struct type *ltype = assign_type ? assign_type : e->left->type;
-            struct type *rtype = e->right->type;
+            t = assign_type ? assign_type : e->left->type;
+            tp = e->right->type;
 
-            if (IS_SCALAR(ltype) && IS_SCALAR(rtype) &&
-					ltype->size != rtype->size) {
+            if (IS_SCALAR(t) && IS_SCALAR(tp) &&
+					t->size != tp->size) {
                 if (e->right->op == CONST) {
-                    e->right->type = ltype;
+                    e->right->type = t;
                 } else {
-                    e->right = mkConv(e->right, ltype);
+                    e->right = mkConv(e->right, t);
                     e->right->up = e;
                 }
             }
 
             // Check pointer type compatibility
-            l_ptr = (ltype->flags & (TF_POINTER|TF_ARRAY));
-            r_ptr = (rtype->flags & (TF_POINTER|TF_ARRAY));
+            l_ptr = (t->flags & (TF_POINTER|TF_ARRAY));
+            r_ptr = (tp->flags & (TF_POINTER|TF_ARRAY));
 
             if (l_ptr && r_ptr) {
-                l_base = ltype->sub;
-                r_base = rtype->sub;
+                t2 = t->sub;
+                t3 = tp->sub;
 
                 // Both must have base types
-                if (l_base && r_base) {
-                    unsigned char compatible = 0;
+                if (t2 && t3) {
+                    compatible = 0;
 
                     // void* is compatible with any pointer type
-                    if (l_base == voidtype || r_base == voidtype) {
+                    if (t2 == voidtype || t3 == voidtype) {
                         compatible = 1;
                     }
                     // Check if base types are compatible
-                    else if (l_base == r_base) {
+                    else if (t2 == t3) {
                         // Same type pointer - always compatible
                         compatible = 1;
-                    } else if ((l_base->flags & TF_AGGREGATE) &&
-							(r_base->flags & TF_AGGREGATE)) {
+                    } else if ((t2->flags & TF_AGGREGATE) &&
+							(t3->flags & TF_AGGREGATE)) {
                         /*
                          * Both point to struct/union - must be same type
                          * For now, just check if pointers are equal
                          * (type unification)
                          */
-                        compatible = (l_base == r_base);
-                    } else if (!(l_base->flags & TF_AGGREGATE) &&
-							!(r_base->flags & TF_AGGREGATE)) {
+                        compatible = (t2 == t3);
+                    } else if (!(t2->flags & TF_AGGREGATE) &&
+							!(t3->flags & TF_AGGREGATE)) {
                         /*
                          * Both point to non-aggregate types
                          * Check if they have same size and signedness
                          */
-                        if (l_base->size == r_base->size) {
-                            unsigned char l_unsigned =
-									(l_base->flags & TF_UNSIGNED);
-                            unsigned char r_unsigned =
-									(r_base->flags & TF_UNSIGNED);
+                        if (t2->size == t3->size) {
+                            l_unsigned = (t2->flags & TF_UNSIGNED);
+                            r_unsigned = (t3->flags & TF_UNSIGNED);
                             compatible = (l_unsigned == r_unsigned);
                         }
                     }
@@ -1426,31 +1367,31 @@ parseExpr(unsigned char pri, struct stmt *st)
                     if (!compatible) {
 #ifdef DEBUG
                         fdprintf(2, "INCOMPATIBLE POINTERS:\n");
-                        fdprintf(2, "  Left:  ltype=%p "
+                        fdprintf(2, "  Left:  t=%p "
 								"(flags=0x%x, size=%d)\n",
-								ltype, ltype->flags, ltype->size);
-                        fdprintf(2, "         l_base=%p "
+								t, t->flags, t->size);
+                        fdprintf(2, "         t2=%p "
 								"(flags=0x%x, size=%d)\n",
-								l_base, l_base->flags, l_base->size);
-                        if (l_base && (l_base->flags & TF_POINTER) &&
-								l_base->sub) {
-                            fdprintf(2, "         l_base->sub=%p "
+								t2, t2->flags, t2->size);
+                        if (t2 && (t2->flags & TF_POINTER) &&
+								t2->sub) {
+                            fdprintf(2, "         t2->sub=%p "
 									"(flags=0x%x, size=%d)\n",
-                                    l_base->sub, l_base->sub->flags,
-									l_base->sub->size);
+                                    t2->sub, t2->sub->flags,
+									t2->sub->size);
                         }
-                        fdprintf(2, "  Right: rtype=%p "
+                        fdprintf(2, "  Right: tp=%p "
 								"(flags=0x%x, size=%d)\n",
-								rtype, rtype->flags, rtype->size);
-                        fdprintf(2, "         r_base=%p "
+								tp, tp->flags, tp->size);
+                        fdprintf(2, "         t3=%p "
 								"(flags=0x%x, size=%d)\n",
-								r_base, r_base->flags, r_base->size);
-                        if (rtype && (rtype->flags & TF_POINTER) &&
-								rtype->sub) {
-                            fdprintf(2, "         rtype->sub=%p "
+								t3, t3->flags, t3->size);
+                        if (tp && (tp->flags & TF_POINTER) &&
+								tp->sub) {
+                            fdprintf(2, "         tp->sub=%p "
 									"(flags=0x%x, size=%d)\n",
-                                    rtype->sub, rtype->sub->flags,
-									rtype->sub->size);
+                                    tp->sub, tp->sub->flags,
+									tp->sub->size);
                         }
 #endif
                         gripe(ER_E_PT);  // incompatible pointer types
