@@ -205,6 +205,18 @@ extern int fdprintf(int fd, char *fmt, ...);
 extern long parseConst(token_t stop);
 extern char *strdup(char *s);
 
+/* knr.c - K&R to ANSI function definition normalization */
+extern void knrInit(void);
+extern void knrAddTypedef(char *name);
+extern void knrFilter(unsigned char type, long num, float fnum,
+                      char *str, int slen);
+extern void knrFilterToken(unsigned char type);
+extern void knrFiltKw(unsigned char kw);
+extern void knrFilterSym(char *name);
+extern void knrFiltNum(long val);
+extern void knrFiltFNum(float val);
+extern void knrFiltStr(char *str, int len);
+
 /* Character classification */
 #define iswhite(c) ((c) == ' ' || (c) == '\t' || (c) == '\r')
 

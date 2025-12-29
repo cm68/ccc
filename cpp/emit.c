@@ -316,7 +316,7 @@ op2str(token_t t)
 }
 
 /*
- * Emit current token to .x stream and .i file
+ * Emit current token to .x stream (via K&R filter) and .i file
  * Called after each token is lexed
  */
 void
@@ -350,47 +350,53 @@ emitCurToken(void)
         }
     }
 
-    /* Emit to lexeme stream */
+    /*
+     * Emit to lexeme stream via K&R filter.
+     * The filter buffers tokens when detecting potential K&R function
+     * definitions and transforms them to ANSI style.
+     */
     /* Check for keyword tokens (128-159) */
     if (cur.type >= KW_FIRST && cur.type <= KW_LAST) {
         /* sizeof is an operator in cc1, not a keyword */
         if (cur.type == SIZEOF_KW)
-            emitToken(SIZEOF);
+            knrFilterToken(SIZEOF);
         else if (cur.type == CONST || cur.type == VOLATILE)
-            return;  /* Skip const/volatile - not supported */
+            ;  /* Skip const/volatile - not supported */
         else
-            emitKeyword(cur.type);
+            knrFiltKw(cur.type);
     } else switch (cur.type) {
     case SYM:
-        emitSym(cur.v.name);
+        knrFilterSym(cur.v.name);
         break;
     case NUMBER:
-        emitNumber(cur.v.numeric);
+        knrFiltNum(cur.v.numeric);
         break;
     case FNUMBER:
-        emitFNumber(cur.v.fval);
+        knrFiltFNum(cur.v.fval);
         break;
     case STRING:
         /* cur.v.str has 2-byte length prefix */
         {
             int len = (unsigned char)cur.v.str[0] |
                       ((unsigned char)cur.v.str[1] << 8);
-            emitString(cur.v.str + 2, len);
+            knrFiltStr(cur.v.str + 2, len);
         }
         break;
     case ASMSTR:
         /* cur.v.name is a raw null-terminated string */
+        /* ASM blocks bypass the K&R filter */
         emitAsmString(cur.v.name, strlen(cur.v.name));
         break;
     case LABEL:
+        /* Labels bypass the K&R filter */
         emitLabel(cur.v.name);
         break;
     case E_O_F:
-        emitToken(E_O_F);
+        knrFilterToken(E_O_F);
         break;
     default:
-        /* Simple token - just emit the byte */
-        emitToken(cur.type);
+        /* Simple token - route through filter */
+        knrFilterToken(cur.type);
         break;
     }
 
