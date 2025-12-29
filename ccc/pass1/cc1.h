@@ -147,6 +147,19 @@ extern void emitGlobalAsm(struct stmt *st);
 extern void emitGv(struct name *var);
 extern void emitStrLit(struct name *strname);
 
+/* Streaming emit helpers */
+extern void emitExpr(struct expr *e);
+extern unsigned char cntCondLbls(struct expr *e, unsigned char ctx);
+extern void emitLbl(char prefix, int num);
+extern void emitHex(char *s);
+
+/* Context values for cntCondLbls */
+#define CTX_TOP       0
+#define CTX_OR_LEFT   1
+#define CTX_OR_RIGHT  2
+#define CTX_AND_LEFT  3
+#define CTX_AND_RIGHT 4
+
 /* statement flags used in parse.c */
 #define S_PARENT 0x01
 #define S_LABEL  0x02
@@ -210,32 +223,37 @@ typedef enum {
  * note that at the same scope, you can have
  * multiple instances of the same name with different namespaces.
  * this is a container for types, functions, variables, constants, and fields
+ *
+ * Fields ordered so basicnames[] static initializer needs no trailing zeros:
+ * name, type, chain are always set; remaining fields zero from calloc/elision
  */
 struct name {
+	/* Non-zero in basicnames[] - put first for trailing zero elision */
 	char name[16];          // symbol name (max 15 chars + null)
-    unsigned char is_tag;   // true if (enum, struct, union),
-                            // else false for var,enum elem,typedef
-    unsigned char emitted;  // true if string literal already emitted
-    unsigned char level;    // lexical level (0+)
-	struct name *next;		// all names in same container
 	struct type *type;
+	struct name *chain;     // symbol table chain (most recent first)
+
+	/* Zero in basicnames[], set dynamically elsewhere */
+	kind kind;
+	unsigned char level;    // lexical level (0+)
+	unsigned char is_tag;   // true if (enum, struct, union)
 	unsigned char sclass;   // storage class (SC_STATIC, SC_EXTERN, etc.)
+	unsigned char emitted;  // true if string literal already emitted
 	unsigned char offset;	// if inside a struct (0-255)
-    unsigned char bitoff;   // bit offset (0-7)
-    unsigned char width;    // bitfield width (1-32)
-    unsigned short static_id; // 0=normal, >0=static (emit as S<id-1>)
-    union {
-        struct expr *init;  // value of constant or initializer (for var)
-        struct stmt *body;  // function body (for fdef)
-    } u;
-    kind kind;
-    struct name *chain;   // symbol table chain (most recent first)
-    /* Variable usage tracking for register allocation (computed before AST emit) */
-    unsigned char ref_count;  // reference count (capped at 255)
-    unsigned char agg_refs;   // struct member access count (for IX allocation)
-    unsigned char reg;        // allocated register: 0=none, 1=B, 2=C, 3=BC, 4=IX
-    unsigned char addr_taken; // true if address taken (can't use register)
-    char frm_off;             // frame offset: params positive, locals negative
+	unsigned char bitoff;   // bit offset (0-7)
+	unsigned char width;    // bitfield width (1-32)
+	unsigned short static_id; // 0=normal, >0=static (emit as S<id-1>)
+	struct name *next;		// all names in same container
+	union {
+		struct expr *init;  // value of constant or initializer (for var)
+		struct stmt *body;  // function body (for fdef)
+	} u;
+	/* Variable usage tracking for register allocation */
+	unsigned char ref_count;  // reference count (capped at 255)
+	unsigned char agg_refs;   // struct member access count (for IX allocation)
+	unsigned char reg;        // allocated register: 0=none, 1=B, 2=C, 3=BC, 4=IX
+	unsigned char addr_taken; // true if address taken (can't use register)
+	char frm_off;             // frame offset: params positive, locals negative
 };
 
 /* Storage class specifiers (used in struct name sclass field) */
@@ -282,6 +300,54 @@ extern struct type *floattype;
 
 void parse();
 void cleanupParse();
+void resetLoopLbls();
+
+/*
+ * Switch statement collection (phase 1)
+ * Each function has a chain of switch headers.
+ * Each switch header has a chain of case entries.
+ */
+struct caseent {
+    struct caseent *next;
+    long value;
+    unsigned char isDef;  /* 1 if default case */
+};
+
+struct swhdr {
+    struct swhdr *next;       /* next switch in function */
+    struct caseent *cases;    /* chain of case entries */
+    unsigned char caseCnt;
+    unsigned char hasDef;
+    char label[8];            /* "S0", "S1", etc. */
+};
+
+extern struct swhdr *swList;  /* per-function switch chain */
+extern struct swhdr *curSw;   /* current switch (phase 1) */
+
+/*
+ * Label stack for break/continue resolution (phase 2)
+ * Labels are B<num> for break, C<num> for continue.
+ */
+struct lblfrm {
+    int num;                  /* label number */
+    unsigned char type;       /* WHILE, FOR, DO, SWITCH */
+};
+
+#define MAX_LBLDEPTH 16
+extern struct lblfrm lblStack[];
+extern int lblDepth;
+
+/*
+ * FOR loop context (phase 2)
+ * Saves increment expression until end of loop body.
+ */
+struct forctx {
+    struct expr *incr;        /* increment expression */
+};
+
+#define MAX_FORDEPTH 8
+extern struct forctx forStack[];
+extern int forDepth;
 
 /* Global context for static variable name mangling */
 extern struct name *curFunc;
@@ -350,23 +416,6 @@ int fdprintf(unsigned char fd, char *fmt, ...);
 extern short verbose;
 #else
 #define VERBOSE(x) (0)
-#endif
-
-#if defined(CCC)
-/*
- * this is a minimal unix library header file for use on compilers
- * that don't have unixlike libraries and includes
- */
-char *strdup(char *s);
-int open(char *filename, int mode);
-int close(int fd);
-int creat(char *filename, int mode);
-void perror(char *msg);
-void exit(int exitcode);
-int read(int fd, char *buf, int len);
-int write(int fd, char *buf, int len);
-long strtol(char *str, char **endptr, int base);
-void bcopy(void *src, void *dst, int len);
 #endif
 
 /*

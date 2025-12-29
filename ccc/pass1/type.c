@@ -79,17 +79,18 @@ struct type *floattype = &basictypes[7];
 /*
  * Static name entries for basic types - never freed
  * Chained via 'chain' field: [8]->[7]->...->[0]->NULL
+ * Fields: name, type, chain - remaining fields zero by elision
  */
 static struct name basicnames[] = {
-    { "_char_",   0,0,0, 0, &basictypes[0], 0,0,0,0, 0, {0}, prim, 0 },
-    { "_short_",  0,0,0, 0, &basictypes[1], 0,0,0,0, 0, {0}, prim, &basicnames[0] },
-    { "_long_",   0,0,0, 0, &basictypes[2], 0,0,0,0, 0, {0}, prim, &basicnames[1] },
-    { "_uchar_",  0,0,0, 0, &basictypes[3], 0,0,0,0, 0, {0}, prim, &basicnames[2] },
-    { "_ushort_", 0,0,0, 0, &basictypes[4], 0,0,0,0, 0, {0}, prim, &basicnames[3] },
-    { "_ulong_",  0,0,0, 0, &basictypes[5], 0,0,0,0, 0, {0}, prim, &basicnames[4] },
-    { "_void_",   0,0,0, 0, &basictypes[6], 0,0,0,0, 0, {0}, prim, &basicnames[5] },
-    { "_float_",  0,0,0, 0, &basictypes[7], 0,0,0,0, 0, {0}, prim, &basicnames[6] },
-    { "_double_", 0,0,0, 0, &basictypes[8], 0,0,0,0, 0, {0}, prim, &basicnames[7] },
+    { "_char_",   &basictypes[0], 0 },
+    { "_short_",  &basictypes[1], &basicnames[0] },
+    { "_long_",   &basictypes[2], &basicnames[1] },
+    { "_uchar_",  &basictypes[3], &basicnames[2] },
+    { "_ushort_", &basictypes[4], &basicnames[3] },
+    { "_ulong_",  &basictypes[5], &basicnames[4] },
+    { "_void_",   &basictypes[6], &basicnames[5] },
+    { "_float_",  &basictypes[7], &basicnames[6] },
+    { "_double_", &basictypes[8], &basicnames[7] },
 };
 
 /*
@@ -302,12 +303,14 @@ newName(char *name, kind k, struct type *t, unsigned char is_tag)
     }
 
     n = calloc(1, sizeof(*n));
+    /* Initialize in struct field order */
     strncpy(n->name, name, 15);
     n->name[15] = 0;
     n->type = t;
+    /* chain set by namesAdd */
+    n->kind = k;
     n->level = lexlevel;
     n->is_tag = is_tag;
-    n->kind = k;
     namesAdd(n);
 #ifdef DEBUG
     nameAllocCnt++;

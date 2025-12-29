@@ -569,10 +569,12 @@ parseExpr(unsigned char pri, struct stmt *st)
          */
         strname = (struct name *)calloc(1, sizeof(struct name));
         if (strname) {
+            /* Initialize in struct field order */
             strncpy(strname->name, namebuf, 15);
             strname->name[15] = 0;
-            strname->kind = var;
             strname->type = e->type;
+            /* chain = 0 (not in symbol table) */
+            strname->kind = var;
             strname->level = 1;  /* Global scope */
             /* store pointer to counted string in the name's init field */
             strname->u.init = mkexprI(STRING, 0, NULL,
@@ -618,13 +620,15 @@ parseExpr(unsigned char pri, struct stmt *st)
                 functype->elem = NULL;    /* No parameter info */
 
                 n = calloc(1, sizeof(struct name));
+                /* Initialize in struct field order */
                 strncpy(n->name, symname, 15);
                 n->name[15] = 0;
-                n->kind = var;
                 n->type = functype;
+                /* chain set by addName */
+                n->kind = var;
                 n->level = 1;  /* Global scope */
+                /* is_tag = 0 from calloc */
                 n->sclass = SC_EXTERN;
-                n->is_tag = 0;
 
                 addName(n);
 
@@ -2017,15 +2021,20 @@ parseConst(unsigned char token)
 {
     struct expr *e;
     unsigned long val;
+    unsigned char save_phase;
 
-    // Parse constant expression, stopping before comma operator (priority 15)
-    // This allows constants in contexts like enum { A = 10, B = 20 }
-    // where we want to stop at the comma
+    /*
+     * Parse constant expression, stopping before comma operator (priority 15)
+     * This allows constants in contexts like enum { A = 10, B = 20 }
+     * where we want to stop at the comma.
+     *
+     * We need to evaluate constants even in phase 1 (for case values).
+     * Temporarily set phase=2 so parseExpr builds an expression tree.
+     */
+    save_phase = phase;
+    phase = 2;
     e = parseExpr(15, 0);
-
-    /* Phase 1: expressions return NULL, just return 0 as placeholder */
-    if (phase == 1)
-        return 0;
+    phase = save_phase;
 
     if (!e) {
         gripe(ER_C_CE);
