@@ -499,10 +499,12 @@ declare(struct type **btp, unsigned char struct_elem)
 
                 // Handle array suffix (converts to pointer)
                 if (cur.type == LBRACK) {
+                    struct expr *sz;
                     gettoken();
                     if (cur.type != RBRACK) {
                         /* Array size (ignored for parameters) */
-                        parseExpr(0, NULL);
+                        sz = parseExpr(0, NULL);
+                        if (sz) frExp(sz);
                     }
                     expect(RBRACK, ER_D_FA);
                     param_type = getType(TF_POINTER,

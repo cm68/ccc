@@ -10,6 +10,20 @@ static struct name *global = 0;
 /* Loop label generation for control flow transformation */
 static int loopLblCnt = 0;
 
+void resetLoopLbls(void) { loopLblCnt = 0; }
+
+/* Switch statement collection (phase 1) - defined but not yet used */
+struct swhdr *swList = 0;
+struct swhdr *curSw = 0;
+
+/* Label stack for break/continue resolution (phase 2) */
+struct lblfrm lblStack[MAX_LBLDEPTH];
+int lblDepth = 0;
+
+/* FOR loop context (phase 2) */
+struct forctx forStack[MAX_FORDEPTH];
+int forDepth = 0;
+
 /*
  * Count storage for streaming AST emission
  * Phase 1 records counts (arg counts, case counts, stmt counts).
@@ -66,29 +80,204 @@ genLoopLabel(char *prefix)
 }
 
 /*
- * Find the enclosing loop or switch statement
- * Used by break/continue to find their target
- * For break: returns nearest WHILE/FOR/DO/SWITCH
- * For continue: returns nearest WHILE/FOR/DO (not SWITCH)
+ * Switch statement collection helpers (phase 1)
  */
-static struct stmt *
-findEnclLoop(struct stmt *parent, int is_continue)
+static struct swhdr *swStack[8];
+static int swDepth = 0;
+
+static void
+resetSwitches(void)
 {
-	while (parent) {
-		if (parent->op == WHILE || parent->op == FOR || parent->op == DO) {
-			return parent;
+	/* Free all switch headers and case entries */
+	struct swhdr *sh = swList;
+	while (sh) {
+		struct swhdr *next = sh->next;
+		struct caseent *ce = sh->cases;
+		while (ce) {
+			struct caseent *cnext = ce->next;
+			free(ce);
+			ce = cnext;
 		}
-		if (parent->op == SWITCH && !is_continue) {
-			return parent;
-		}
-		parent = parent->parent;
+		free(sh);
+		sh = next;
 	}
-	return NULL;
+	swList = 0;
+	curSw = 0;
+	swDepth = 0;
+}
+
+static struct swhdr *
+newSwitch(char *label)
+{
+	struct swhdr *sh = malloc(sizeof(struct swhdr));
+	sh->next = swList;
+	sh->cases = 0;
+	sh->caseCnt = 0;
+	sh->hasDef = 0;
+	strncpy(sh->label, label, 7);
+	sh->label[7] = 0;
+	swList = sh;
+	return sh;
+}
+
+static void
+pushSwitch(struct swhdr *sh)
+{
+	if (swDepth < 8) {
+		swStack[swDepth++] = curSw;
+	}
+	curSw = sh;
+}
+
+static void
+popSwitch(void)
+{
+	if (swDepth > 0) {
+		curSw = swStack[--swDepth];
+	} else {
+		curSw = 0;
+	}
+}
+
+static void
+addCase(long value, unsigned char isDef)
+{
+	struct caseent *ce;
+	if (!curSw) return;
+	ce = malloc(sizeof(struct caseent));
+	ce->value = value;
+	ce->isDef = isDef;
+	ce->next = curSw->cases;
+	curSw->cases = ce;
+	curSw->caseCnt++;
+	if (isDef) curSw->hasDef = 1;
+}
+
+/*
+ * Label stack helpers for phase 2 break/continue resolution
+ *
+ * Labels are simple: B<n> for break, C<n> for continue.
+ * Stack stores type (FOR/WHILE/DO/SWITCH) and label number.
+ */
+static int loopLblNum = 0;  /* counter for B/C labels */
+
+static void
+pushLabel(unsigned char type)
+{
+	if (lblDepth < MAX_LBLDEPTH) {
+		lblStack[lblDepth].type = type;
+		lblStack[lblDepth].num = loopLblNum++;
+		lblDepth++;
+	}
+}
+
+static void
+popLabel(void)
+{
+	if (lblDepth > 0)
+		lblDepth--;
+}
+
+/*
+ * Find break target - returns label number or -1
+ * Break can target: WHILE, FOR, DO, SWITCH
+ */
+static int
+findBreakLbl(void)
+{
+	int i;
+	for (i = lblDepth - 1; i >= 0; i--) {
+		unsigned char t = lblStack[i].type;
+		if (t == WHILE || t == FOR || t == DO || t == SWITCH)
+			return lblStack[i].num;
+	}
+	return -1;
+}
+
+/*
+ * Find continue target - returns label number or -1
+ * Continue can target: WHILE, FOR, DO (not SWITCH)
+ */
+static int
+findContLbl(void)
+{
+	int i;
+	for (i = lblDepth - 1; i >= 0; i--) {
+		unsigned char t = lblStack[i].type;
+		if (t == WHILE || t == FOR || t == DO)
+			return lblStack[i].num;
+	}
+	return -1;
 }
 
 struct stmt *makestmt(unsigned char op, struct expr *left);
 char *blockname(void);
 struct stmt *asmblock(void);
+
+/*
+ * Streaming emit helpers
+ * Parse expression, emit, free - no statement tree needed.
+ * These will be used as we convert to streaming emit.
+ */
+#ifdef STRM_EMIT  /* Enable when converting to streaming */
+
+/* Parse expression, emit it, free it. Returns 1 if expr existed. */
+static int
+strmExpr(void)
+{
+	struct expr *e = parseExpr(PRI_ALL, 0);
+	if (e) {
+		emitExpr(e);
+		frExp(e);
+		return 1;
+	}
+	return 0;
+}
+
+/* Parse condition expression with label counting, emit, free */
+static void
+strmCond(unsigned char *pnlabels)
+{
+	struct expr *e = parseExpr(PRI_ALL, 0);
+	if (e) {
+		*pnlabels = cntCondLbls(e, CTX_TOP);
+		emitExpr(e);
+		frExp(e);
+	} else {
+		*pnlabels = 0;
+		fdprintf(astFd, "_");
+	}
+}
+
+/* Emit break label: LB<num> */
+static void
+emitBreakLbl(int num)
+{
+	fdprintf(astFd, "LB%d", num);
+}
+
+/* Emit continue label: LC<num> */
+static void
+emitContLbl(int num)
+{
+	fdprintf(astFd, "LC%d", num);
+}
+
+/* Emit goto break: GB<num> */
+static void
+emitGotoBreak(int num)
+{
+	fdprintf(astFd, "GB%d", num);
+}
+
+/* Emit goto continue: GC<num> */
+static void
+emitGotoCont(int num)
+{
+	fdprintf(astFd, "GC%d", num);
+}
+
+#endif /* STRM_EMIT */
 
 /*
  * Capture local variables from the current scope level
@@ -154,7 +343,8 @@ addDeclInit(struct name *v)
 
 /*
  * Convert deferred local variable initializers to assignment statements
- * Returns head of statement list, updates *ppst to point to next pointer
+ * When parent == NULL (streaming mode), emit and free immediately.
+ * Otherwise, link into statement list and return head.
  */
 static struct stmt *
 emitDeclInits(struct stmt ***ppst, struct stmt *parent)
@@ -179,14 +369,22 @@ emitDeclInits(struct stmt ***ppst, struct stmt *parent)
 		v->u.init = NULL;
 
 		assign_st = makestmt(EXPR, assign_expr);
-		if (!*ppst) {
-			head = assign_st;
-			assign_st->flags |= S_PARENT;
+
+		if (!parent) {
+			/* Streaming mode: emit and free immediately */
+			emitOneStmt(assign_st);
+			frStmt(assign_st);
 		} else {
-			**ppst = assign_st;
+			/* Nested block: link into statement list */
+			if (!*ppst) {
+				head = assign_st;
+				assign_st->flags |= S_PARENT;
+			} else {
+				**ppst = assign_st;
+			}
+			*ppst = &assign_st->next;
+			assign_st->parent = parent;
 		}
-		*ppst = &assign_st->next;
-		assign_st->parent = parent;
 	}
 	declInitCnt = 0;
 	return head;
@@ -359,26 +557,38 @@ statement(struct stmt *parent)
                 stmt_count++;
                 if (parent) block = 0;
                 break;
-            case SWITCH:
+            case SWITCH: {
+                struct swhdr *sh;
+                char *label = genLoopLabel("S");
                 gettoken();
                 expect(LPAR, ER_S_NP);
                 parseExpr(PRI_ALL, parent);
                 expect(RPAR, ER_S_NP);
                 expect(BEGIN, ER_S_SB);
+                /* Create and push switch header for case collection */
+                sh = newSwitch(label);
+                pushSwitch(sh);
+                free(label);
                 statement(0);  /* switch body - will push its count */
+                popSwitch();
                 expect(END, ER_S_CC);
                 stmt_count++;
                 if (parent) block = 0;
                 break;
-            case CASE:
-                /* Case labels are part of switch, counted there */
+            }
+            case CASE: {
+                /* Collect case value for current switch */
+                long val;
                 gettoken();
-                parseExpr(13, parent);
+                val = parseConst(COLON);
+                addCase(val, 0);
                 expect(COLON, ER_S_NL);
                 stmt_count++;
                 break;
+            }
             case DEFAULT:
                 gettoken();
+                addCase(0, 1);  /* default case */
                 expect(COLON, ER_S_NL);
                 stmt_count++;
                 break;
@@ -461,17 +671,15 @@ statement(struct stmt *parent)
         case BREAK:
         case CONTINUE: {
             unsigned char is_cont = (cur.type == CONTINUE);
-            struct stmt *loop;
-            char *suffix;
+            int num;
             gettoken();
             expect(SEMI, ER_S_SN);
-            loop = findEnclLoop(parent, is_cont);
-            if (loop && loop->label) {
+            /* Use label stack: B<num> for break, C<num> for continue */
+            num = is_cont ? findContLbl() : findBreakLbl();
+            if (num >= 0) {
                 st = makestmt(GOTO, 0);
-                suffix = is_cont ? (loop->op == DO ? "_test" : "_continue")
-                                 : "_break";
-                st->label = malloc(strlen(loop->label) + 15);
-                sprintf(st->label, "%s%s", loop->label, suffix);
+                st->label = malloc(16);
+                sprintf(st->label, "%c%d", is_cont ? 'C' : 'B', num);
             } else {
                 st = makestmt(is_cont ? CONTINUE : BREAK, 0);
             }
@@ -584,7 +792,9 @@ statement(struct stmt *parent)
                 st->right = parseExpr(PRI_ALL, parent);
             }
             expect(RPAR, ER_S_NP);
+            pushLabel(FOR);
             st->chain = statement(st);
+            popLabel();
             break;
 
         case WHILE:     // while <condition> <statement> ;
@@ -596,7 +806,9 @@ statement(struct stmt *parent)
             /* Set parent before recursive call */
             st->parent = parent;
             expect(RPAR, ER_S_NP);
+            pushLabel(WHILE);
             st->chain = statement(st);
+            popLabel();
             break;
 
         case 'E':
@@ -613,7 +825,9 @@ statement(struct stmt *parent)
             st->parent = parent;
             expect(RPAR, ER_S_NP);
             expect(BEGIN, ER_S_SB);
+            pushLabel(SWITCH);
             st->chain = statement(st);
+            popLabel();
             expect(END, ER_S_CC);
             break;
 
@@ -654,7 +868,9 @@ statement(struct stmt *parent)
             st->label = genLoopLabel("D");
             /* Set parent before recursive call */
             st->parent = parent;
+            pushLabel(DO);
             st->chain = statement(st);
+            popLabel();
             if (cur.type != WHILE) {
                 gripe(ER_S_DO);
                 break;
@@ -1390,6 +1606,11 @@ declaration()
 			/* Skip function declarations - only emit actual variables */
 			if (!(v->type && (v->type->flags & TF_FUNC))) {
 				emitGv(v);
+				/* Free initializer after emission to avoid memory buildup */
+				if (v->u.init) {
+					frExp(v->u.init);
+					v->u.init = NULL;
+				}
 			}
 		}
 
@@ -1597,6 +1818,9 @@ cleanupParse(void)
 {
 	struct name *n;
 	struct type *t, *tnext;
+
+	/* Free switch headers and case entries */
+	resetSwitches();
 
 	/* Free non-basic names by traversing until we hit level 0 */
 	while (names && names->level > 0) {
