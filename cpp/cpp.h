@@ -87,13 +87,13 @@ struct token {
  * Text buffer - for file/macro buffer management
  */
 struct textbuf {
-    int fd;                 /* if == -1, macro buffer */
+    char fd;                /* if == -1, macro buffer */
     char *name;             /* filename or macro name */
     char *storage;          /* data - free when done */
     short offset;           /* always points at nextchar */
     short valid;            /* total valid in buffer */
     short lineno;           /* current line # in file */
-    short saved_column;     /* saved column position for parent file */
+    char saved_column;      /* saved column position for parent file */
     struct textbuf *prev;   /* a stack */
 };
 
@@ -112,7 +112,7 @@ struct macro {
  * CPP conditional state
  */
 struct cond {
-    int flags;
+    unsigned char flags;
 #define C_TRUE      0x01
 #define C_ELSESEEN  0x02
 #define C_TRUESEEN  0x04
@@ -120,20 +120,20 @@ struct cond {
 };
 
 /* Global state */
-extern int lexFd;           /* .x output file descriptor */
-extern int ppFd;            /* .i output file descriptor */
+extern char lexFd;          /* .x output file descriptor */
+extern char ppFd;           /* .i output file descriptor */
 extern char *curFile;       /* current source file */
 extern int lineNo;          /* current line number (for errors) */
-extern int noLineMarkers;   /* -N flag: suppress LINENO/NEWLINE */
+extern char noLineMarkers;  /* -N flag: suppress LINENO/NEWLINE */
 
 extern unsigned char curchar;
 extern unsigned char nextchar;
 extern int lineno;
 extern char *filename;
-extern int column;
+extern char column;
 extern char linebuf[];
 extern char prevline[];
-extern int linepos;
+extern unsigned char linepos;
 extern char *sysIncPath;
 extern struct textbuf *tbtop;
 

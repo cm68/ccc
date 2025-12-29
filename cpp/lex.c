@@ -92,7 +92,7 @@ match(token_t t)
  * Side effects:
  *   - Advances character stream if match succeeds (calls advance())
  */
-int
+char
 charmatch(unsigned char c)
 {
     if (curchar == c) {

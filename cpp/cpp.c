@@ -16,13 +16,13 @@
 /* Global state */
 char *curFile;
 int lineNo;
-int exitCode = 0;
-int noLineMarkers = 0;  /* -N flag: suppress LINENO/NEWLINE in .x */
+char exitCode = 0;
+char noLineMarkers = 0;  /* -N flag: suppress LINENO/NEWLINE in .x */
 
 /* Include path list */
 #define MAX_INCLUDES 32
 char *includePaths[MAX_INCLUDES];
-int numIncludes = 0;
+unsigned char numIncludes = 0;
 
 /*
  * Error reporting

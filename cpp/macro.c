@@ -47,7 +47,7 @@ addDefine(char *s)
 {
     struct macro *m;
     char *eq;
-    int namelen;
+    unsigned char namelen;
 
 
     if (!*s) {
@@ -391,7 +391,7 @@ macexpand(char *s)	/* the symbol we are looking up as a macro */
     unsigned char c;
     char *n;
     unsigned char i;
-    int stringify = 0;
+    char stringify = 0;
 
     if (!macbuffer) {
         macbuffer = malloc(1024);

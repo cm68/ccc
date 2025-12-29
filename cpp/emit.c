@@ -7,8 +7,8 @@
 #include <unistd.h>
 
 /* Global file descriptors */
-int lexFd = -1;
-int ppFd = -1;
+char lexFd = -1;
+char ppFd = -1;
 
 /* Line tracking for LINENO emission */
 static int lastLine = 0;      /* for .x file */

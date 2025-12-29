@@ -20,12 +20,12 @@ unsigned char curchar;               /* the current character */
 unsigned char nextchar;              /* the next char - can change if macro */
 int lineno;                 /* line number for error messages */
 char *filename;             /* current file name */
-int column;                 /* this is reset to 0 when we see a newline */
-int nextcol = 0;
+char column;                /* 0=after newline, 1=first char, 2=other */
+char nextcol = 0;
 char namebuf[128];
 char linebuf[256];          /* current line for error messages */
 char prevline[256];         /* previous line for error context */
-int linepos = 0;
+unsigned char linepos = 0;
 
 /*
  * the formal definition of offset is the first unread character.
@@ -509,7 +509,7 @@ done:
     } else {
         if (linepos < sizeof(linebuf) - 1)
             linebuf[linepos++] = curchar;
-        nextcol++;
+        if (nextcol < 2) nextcol++;
     }
     if (nextchar == '\t') nextchar = ' ';
 
@@ -562,6 +562,7 @@ ioinit()
     advance();
     advance();
     column = 0;
+    nextcol = 1;
 }
 
 /* vim: set tabstop=4 shiftwidth=4 expandtab: */
