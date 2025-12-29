@@ -147,19 +147,6 @@ extern void emitGlobalAsm(struct stmt *st);
 extern void emitGv(struct name *var);
 extern void emitStrLit(struct name *strname);
 
-/* Streaming emit helpers */
-extern void emitExpr(struct expr *e);
-extern unsigned char cntCondLbls(struct expr *e, unsigned char ctx);
-extern void emitLbl(char prefix, int num);
-extern void emitHex(char *s);
-
-/* Context values for cntCondLbls */
-#define CTX_TOP       0
-#define CTX_OR_LEFT   1
-#define CTX_OR_RIGHT  2
-#define CTX_AND_LEFT  3
-#define CTX_AND_RIGHT 4
-
 /* statement flags used in parse.c */
 #define S_PARENT 0x01
 #define S_LABEL  0x02

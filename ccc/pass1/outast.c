@@ -55,23 +55,6 @@ addJmpMap(char *from, char *to)
  * Walk expression/statement trees counting variable references
  */
 
-/* Find a local/param variable by name in function scope - currently unused
- * but kept for potential future use in pass1 optimizations */
-#if 0
-static struct name *
-findLocal(char *name, struct stmt *body)
-{
-	struct name *n;
-	if (!body || !body->locals || !name)
-		return NULL;
-	for (n = body->locals; n; n = n->next) {
-		if (n->name && strcmp(n->name, name) == 0)
-			return n;
-	}
-	return NULL;
-}
-#endif
-
 /*
  * Register allocation for local variables and parameters
  * ref_count is computed during phase 1 parseExpr
@@ -363,11 +346,12 @@ emitHexNum32(long v)
 
 /* Emit string as hex-length-prefixed ASCII */
 static void
-emitHexName(char *s)
+emitHex(char *s)
 {
 	int len = strlen(s);
 	fdprintf(astFd, "%02x%s", len, s);
 }
+#define emitHexName(s) emitHex(s)  /* alias for internal use */
 
 /* Helper: build label name from base+suffix (4 rotating buffers) */
 static char *
@@ -392,27 +376,23 @@ emitLG(char op, char *base, char *suffix)
 #define emitLabel(b,s) emitLG('L',b,s)
 #define emitGoto(b,s)  emitLG('G',b,s)
 
+static void emitExpr(struct expr *e);  /* forward decl */
+
 /*
  * Helper: emit child expression (if non-null)
  */
-static void emitExpr(struct expr *e);  /* forward declaration */
-
 static void
 emitChild(struct expr *e)
 {
 	if (e)
 		emitExpr(e);
 }
-
-/*
- * Context for counting intermediate labels in conditions.
- * See CONDITIONS.md for full explanation.
- */
-#define CTX_TOP      0  /* top-level condition */
-#define CTX_OR_LEFT  1  /* left child of || */
-#define CTX_OR_RIGHT 2  /* right child of || */
-#define CTX_AND_LEFT 3  /* left child of && */
-#define CTX_AND_RIGHT 4 /* right child of && */
+/* Context values for cntCondLbls */
+#define CTX_TOP       0
+#define CTX_OR_LEFT   1
+#define CTX_OR_RIGHT  2
+#define CTX_AND_LEFT  3
+#define CTX_AND_RIGHT 4
 
 /*
  * Count intermediate labels needed for short-circuit evaluation.
