@@ -219,10 +219,13 @@ cntCondLbls(struct expr *e, unsigned char ctx)
 static void
 emitExpr(struct expr *e)
 {
-	struct name *sym;
-	struct expr *left, *right;
+	/* Hoisted locals for stack reuse */
+	struct name *np;
+	struct expr *left, *right, *ep;
 	struct type *type;
-	unsigned char op;
+	unsigned char op, uc;
+	char fullname[32], c;
+	int n;
 
 	if (!e) {
 		fdprintf(astFd, "_");
@@ -242,18 +245,17 @@ emitExpr(struct expr *e)
 
 	case SYM:
 		if (e->var) {
-			char fullname[32];
-			sym = (struct name *)e->var;
+			np = (struct name *)e->var;
 			/* extern/global get underscore prefix */
-			if ((sym->sclass & SC_EXTERN) ||
-			    (sym->level == 1 && !(sym->sclass & SC_STATIC)))
-				snprintf(fullname, sizeof(fullname), "_%s", sym->name);
-			else if (sym->sclass & SC_STATIC)
-				snprintf(fullname, sizeof(fullname), "S%d", sym->static_id - 1);
-			else if (sym->static_id)
-				snprintf(fullname, sizeof(fullname), "L%d", sym->static_id - 1);
+			if ((np->sclass & SC_EXTERN) ||
+			    (np->level == 1 && !(np->sclass & SC_STATIC)))
+				snprintf(fullname, sizeof(fullname), "_%s", np->name);
+			else if (np->sclass & SC_STATIC)
+				snprintf(fullname, sizeof(fullname), "S%d", np->static_id - 1);
+			else if (np->static_id)
+				snprintf(fullname, sizeof(fullname), "L%d", np->static_id - 1);
 			else
-				snprintf(fullname, sizeof(fullname), "%s", sym->name);
+				snprintf(fullname, sizeof(fullname), "%s", np->name);
 			fdprintf(astFd, "$");
 			emitHexName(fullname);
 		} else {
@@ -264,12 +266,12 @@ emitExpr(struct expr *e)
 	case STRING:
 		/* String literals - emit the string data and reference it */
 		if (e->var) {
-			struct name *strname = (struct name *)e->var;
+			np = (struct name *)e->var;
 			/* Emit string literal if not already emitted */
-			emitStrLit(strname);
+			emitStrLit(np);
 			/* Synthetic string names are local - no _ prefix */
 			fdprintf(astFd, "$");
-			emitHexName(strname->name);
+			emitHexName(np->name);
 		} else {
 			/* Fallback to address if name not available */
 			fdprintf(astFd, "S");
@@ -279,31 +281,25 @@ emitExpr(struct expr *e)
 
 	case CALL:
 		/* Function call: @type count. func arg1 arg2 ... */
-		{
-			int argc = 0;
-			struct expr *arg;
-			char ret_type = typeSfx(type);
-			/* Count arguments from the expression tree */
-			for (arg = right; arg; arg = arg->next)
-				argc++;
-			fdprintf(astFd, "@%c%02x", ret_type, argc);
-			emitChild(left);
-			for (arg = right; arg; arg = arg->next)
-				emitChild(arg);
-		}
+		n = 0;
+		c = typeSfx(type);
+		/* Count arguments from the expression tree */
+		for (ep = right; ep; ep = ep->next)
+			n++;
+		fdprintf(astFd, "@%c%02x", c, n);
+		emitChild(left);
+		for (ep = right; ep; ep = ep->next)
+			emitChild(ep);
 		break;
 
 	case NARROW:
 	case WIDEN:
 	case SEXT:
 		/* Cast operators with destination width annotation */
-		{
-			char size_suffix = typeSfx(type);
-			unsigned char op_char = (op == NARROW) ? 'N' :
-			    (op == WIDEN) ? 'W' : AST_SEXT;
-			fdprintf(astFd, "%c%c", op_char, size_suffix);
-			emitChild(left);
-		}
+		c = typeSfx(type);
+		uc = (op == NARROW) ? 'N' : (op == WIDEN) ? 'W' : AST_SEXT;
+		fdprintf(astFd, "%c%c", uc, c);
+		emitChild(left);
 		break;
 
 	case COPY:
@@ -319,67 +315,51 @@ emitExpr(struct expr *e)
 		/* Increment/decrement operators: emit with increment amount */
 		/* For pointers, amount is size of pointed-to type */
 		/* For scalars, amount is 1 */
-		{
-			unsigned char op_char;
-			int amount = 1;
-			char size_suffix = typeSfx(type);
-
-			if (op == INCR) {
-				op_char = (e->flags & E_POSTFIX) ? AST_POSTINC : AST_PREINC;
-			} else {
-				op_char = (e->flags & E_POSTFIX) ? AST_POSTDEC : AST_PREDEC;
-			}
-
-			/* Calculate increment amount based on type */
-			if (type && (type->flags & TF_POINTER) && type->sub) {
-				amount = type->sub->size;
-			}
-
-			fdprintf(astFd, "%c%c", op_char, size_suffix);
-			emitChild(left);
-			emitHexNum(amount);
-		}
+		n = 1;
+		c = typeSfx(type);
+		if (op == INCR)
+			uc = (e->flags & E_POSTFIX) ? AST_POSTINC : AST_PREINC;
+		else
+			uc = (e->flags & E_POSTFIX) ? AST_POSTDEC : AST_PREDEC;
+		/* Calculate increment amount based on type */
+		if (type && (type->flags & TF_POINTER) && type->sub)
+			n = type->sub->size;
+		fdprintf(astFd, "%c%c", uc, c);
+		emitChild(left);
+		emitHexNum(n);
 		break;
 
 	case BFEXTRACT:
 		/* Bitfield extract: AST_BFEXTRACT offset width addr */
-		{
-			struct name *member = (struct name *)e->var;
-			fdprintf(astFd, "%c", AST_BFEXTRACT);
-			if (member) {
-				fdprintf(astFd, "%02x%02x", member->bitoff, member->width);
-			} else {
-				fdprintf(astFd, "0000");  /* fallback */
-			}
-			emitChild(left);
-		}
+		np = (struct name *)e->var;
+		fdprintf(astFd, "%c", AST_BFEXTRACT);
+		if (np)
+			fdprintf(astFd, "%02x%02x", np->bitoff, np->width);
+		else
+			fdprintf(astFd, "0000");  /* fallback */
+		emitChild(left);
 		break;
 
 	case BFASSIGN:
 		/* Bitfield assign: AST_BFASSIGN offset width addr value */
-		{
-			struct name *member = (struct name *)e->var;
-			fdprintf(astFd, "%c", AST_BFASSIGN);
-			if (member) {
-				fdprintf(astFd, "%02x%02x", member->bitoff, member->width);
-			} else {
-				fdprintf(astFd, "0000");  /* fallback */
-			}
-			emitChild(left);
-			emitChild(right);
-		}
+		np = (struct name *)e->var;
+		fdprintf(astFd, "%c", AST_BFASSIGN);
+		if (np)
+			fdprintf(astFd, "%02x%02x", np->bitoff, np->width);
+		else
+			fdprintf(astFd, "0000");  /* fallback */
+		emitChild(left);
+		emitChild(right);
 		break;
 
 	case QUES:
 		/* Ternary: ?w nlabels cond then else - flatten the COLON node */
-		{
-			unsigned char nlabels = cntCondLbls(left, CTX_TOP);
-			fdprintf(astFd, "?%c%02x", typeSfx(type), nlabels);
-			emitChild(left);
-			if (right && right->op == COLON) {
-				emitChild(right->left);
-				emitChild(right->right);
-			}
+		uc = cntCondLbls(left, CTX_TOP);
+		fdprintf(astFd, "?%c%02x", typeSfx(type), uc);
+		emitChild(left);
+		if (right && right->op == COLON) {
+			emitChild(right->left);
+			emitChild(right->right);
 		}
 		break;
 
@@ -387,26 +367,22 @@ emitExpr(struct expr *e)
 	case ANDEQ:
 	case MODEQ:
 		/* Compound assignment operators with high-bit tokens - map to ASCII */
-		{
-			unsigned char op_char = (op == SUBEQ) ? AST_SUBEQ :
-			    (op == ANDEQ) ? AST_ANDEQ : AST_MODEQ;
-			fdprintf(astFd, "%c%c", op_char, typeSfx(type));
-			emitChild(left);
-			emitChild(right);
-		}
+		uc = (op == SUBEQ) ? AST_SUBEQ :
+		    (op == ANDEQ) ? AST_ANDEQ : AST_MODEQ;
+		fdprintf(astFd, "%c%c", uc, typeSfx(type));
+		emitChild(left);
+		emitChild(right);
 		break;
 
 	case INITLIST:
 		/* Nested initializer list - emit contents */
-		{
-			struct expr *it;
-			int cnt = 0;
-			for (it = left; it; it = it->next) cnt++;
-			fdprintf(astFd, "{%02x", cnt);
-			for (it = left; it; it = it->next)
-				emitExpr(it);
-			fdprintf(astFd, "}");
-		}
+		n = 0;
+		for (ep = left; ep; ep = ep->next)
+			n++;
+		fdprintf(astFd, "{%02x", n);
+		for (ep = left; ep; ep = ep->next)
+			emitExpr(ep);
+		fdprintf(astFd, "}");
 		break;
 
 	default:
