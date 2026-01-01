@@ -199,6 +199,7 @@ main(int argc, char **argv)
                 case FLOAT: printf("float "); break;
                 case DOUBLE: printf("double "); break;
                 case STRUCT: printf("struct "); break;
+                case SIGNED: printf("signed "); break;
                 case LONG: printf("long "); break;
                 case UNSIGNED: printf("unsigned "); break;
                 case UNION: printf("union "); break;
