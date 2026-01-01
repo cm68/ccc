@@ -91,8 +91,8 @@ clean:
 clobber: clean
 	rm -f cpp mkkw kwtab.c xdump
 
-install: cpp
-	cp cpp $(DEST)/bin
+install: cpp xdump
+	cp cpp xdump $(DEST)/bin
 
 .PHONY: all clean clobber install stage1 sizefile sizecheck
 #
