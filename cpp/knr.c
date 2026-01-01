@@ -25,9 +25,36 @@
 #define ST_POSTPAREN 3		/* After ), checking for K&R decls */
 #define ST_DECLS     4		/* Parsing K&R declarations */
 #define ST_TYPEDEF   5		/* Parsing typedef to find name */
+#define ST_CTRL_COND 6		/* Inside control structure condition */
+#define ST_CTRL_PEND 7		/* After condition, checking for { */
+#define ST_CTRL_BODY 8		/* Inside synthetic block, waiting for ; */
+#define ST_DO_BRACE  9		/* Inside braced DO body, waiting for } */
 
 static unsigned char state = ST_NORMAL;
 static int brace_depth = 0;
+
+/*
+ * Control structure brace insertion state
+ * Normalizes single-statement bodies to blocks:
+ *   if (cond) stmt;  ->  if (cond) { stmt; }
+ *   while (cond) stmt;  ->  while (cond) { stmt; }
+ *   for (...) stmt;  ->  for (...) { stmt; }
+ *   do stmt; while  ->  do { stmt; } while
+ *   if (...) {...} else stmt;  ->  if (...) {...} else { stmt; }
+ */
+static int ctrl_paren_depth = 0;	/* Paren depth in condition */
+static int ctrl_body_depth = 0;		/* Brace/paren depth in synthetic body */
+static unsigned char ctrl_type = 0;	/* IF, WHILE, FOR, DO, or ELSE */
+static unsigned char saved_state = 0;	/* State to return to after ctrl */
+
+/* Stack for nested synthetic blocks */
+#define CTRL_STACK_SIZE 8
+struct ctrl_frame {
+	unsigned char ctrl_type;
+	int ctrl_body_depth;
+};
+static struct ctrl_frame ctrl_stack[CTRL_STACK_SIZE];
+static int ctrl_sp = 0;
 
 /*
  * Typedef parsing state
@@ -572,6 +599,30 @@ knrFilter(unsigned char type, long num, float fnum, char *str, int slen)
 				return;
 			}
 		}
+
+		/*
+		 * Control structure detection (inside functions only)
+		 * IF/WHILE/FOR have conditions in parens - track to find body
+		 * DO/ELSE have immediate body - check next token for {
+		 */
+		if (cur_depth > 0) {
+			if (type == IF || type == WHILE || type == FOR) {
+				realEmitToken(type);
+				ctrl_type = type;
+				ctrl_paren_depth = 0;
+				saved_state = state;
+				state = ST_CTRL_COND;
+				return;
+			}
+			if (type == DO || type == ELSE) {
+				realEmitToken(type);
+				ctrl_type = type;
+				saved_state = state;
+				state = ST_CTRL_PEND;
+				return;
+			}
+		}
+
 		/* Pass through - update brace depth */
 		if (type == BEGIN)
 			brace_depth++;
@@ -750,6 +801,199 @@ knrFilter(unsigned char type, long num, float fnum, char *str, int slen)
 		else
 			realEmitToken(type);
 		break;
+
+	case ST_CTRL_COND:
+		/*
+		 * Inside control structure condition (IF/WHILE/FOR)
+		 * Track parens to find end of condition, then check for {
+		 */
+		if (type == LPAR)
+			ctrl_paren_depth++;
+		else if (type == RPAR) {
+			ctrl_paren_depth--;
+			if (ctrl_paren_depth == 0) {
+				/* End of condition - emit ) and check next token */
+				realEmitToken(RPAR);
+				state = ST_CTRL_PEND;
+				return;
+			}
+		}
+		/* Emit the token */
+		if (type == SYM)
+			realEmitSym(str);
+		else if (type == NUMBER)
+			realEmitNumber(num);
+		else if (type == FNUMBER)
+			realEmitFNum(fnum);
+		else if (type == STRING)
+			realEmitString(str, slen);
+		else
+			realEmitToken(type);
+		break;
+
+	case ST_CTRL_PEND:
+		/*
+		 * After condition (or after DO/ELSE), check if next token is {
+		 * If not, insert synthetic { and track until statement ends
+		 * Exception: ctrl_type == 0 means do-while condition end, no body
+		 */
+		if (ctrl_type == 0) {
+			/* do-while condition ended - just emit and return to normal */
+			state = saved_state;
+			/* Fall through to emit this token normally */
+			if (type == SYM)
+				realEmitSym(str);
+			else if (type == NUMBER)
+				realEmitNumber(num);
+			else if (type == FNUMBER)
+				realEmitFNum(fnum);
+			else if (type == STRING)
+				realEmitString(str, slen);
+			else
+				realEmitToken(type);
+			break;
+		}
+		if (type == BEGIN) {
+			/* Already has braces - pass through */
+			realEmitToken(BEGIN);
+			brace_depth++;
+			if (ctrl_type == DO) {
+				/* DO with braces - track until } then WHILE */
+				ctrl_body_depth = 1;
+				state = ST_DO_BRACE;
+			} else {
+				state = saved_state;
+			}
+		} else {
+			/* No braces - insert { and track body */
+			realEmitToken(BEGIN);
+			brace_depth++;
+			ctrl_body_depth = 0;
+			state = ST_CTRL_BODY;
+			/* Now process this token as part of the body */
+			knrFilter(type, num, fnum, str, slen);
+		}
+		break;
+
+	case ST_CTRL_BODY:
+		/*
+		 * Inside synthetic block body - track until statement ends
+		 * For DO, we end at WHILE keyword; for others, at ; at depth 0
+		 */
+		if (type == BEGIN || type == LPAR || type == LBRACK)
+			ctrl_body_depth++;
+		else if (type == END || type == RPAR || type == RBRACK)
+			ctrl_body_depth--;
+
+		/* Check for end of single statement - do this first before nesting */
+		if (ctrl_body_depth == 0) {
+			if (ctrl_type == DO && type == WHILE) {
+				/* DO body ends at WHILE - insert } before it */
+				realEmitToken(END);
+				brace_depth--;
+				realEmitToken(WHILE);
+				/* Now we need to track the while condition */
+				ctrl_paren_depth = 0;
+				state = ST_CTRL_COND;
+				ctrl_type = 0;  /* After do-while, no body insertion */
+				return;
+			}
+			if (type == SEMI && ctrl_type != DO) {
+				/* Statement ends - emit ; then } */
+				/* (DO bodies end at WHILE, not SEMI) */
+				realEmitToken(SEMI);
+				realEmitToken(END);
+				brace_depth--;
+				/* Pop nested contexts that also end here (not DO) */
+				while (ctrl_sp > 0 &&
+				       ctrl_stack[ctrl_sp - 1].ctrl_type != DO) {
+					ctrl_sp--;
+					/* Each stacked body also ends - emit } */
+					realEmitToken(END);
+					brace_depth--;
+				}
+				/* If there's a DO on stack, stay in ST_CTRL_BODY */
+				if (ctrl_sp > 0) {
+					ctrl_sp--;
+					ctrl_type = ctrl_stack[ctrl_sp].ctrl_type;
+					ctrl_body_depth = ctrl_stack[ctrl_sp].ctrl_body_depth;
+					/* Don't return - continue in ST_CTRL_BODY */
+				} else {
+					state = saved_state;
+					return;
+				}
+				return;
+			}
+			/* Check for nested control structures */
+			if (type == IF || type == WHILE || type == FOR) {
+				/* Nested control with condition - push outer context */
+				if (ctrl_sp < CTRL_STACK_SIZE) {
+					ctrl_stack[ctrl_sp].ctrl_type = ctrl_type;
+					ctrl_stack[ctrl_sp].ctrl_body_depth = ctrl_body_depth;
+					ctrl_sp++;
+				}
+				realEmitToken(type);
+				ctrl_type = type;
+				ctrl_paren_depth = 0;
+				state = ST_CTRL_COND;
+				return;
+			}
+			if (type == DO || type == ELSE) {
+				/* Nested DO or ELSE - push outer context */
+				if (ctrl_sp < CTRL_STACK_SIZE) {
+					ctrl_stack[ctrl_sp].ctrl_type = ctrl_type;
+					ctrl_stack[ctrl_sp].ctrl_body_depth = ctrl_body_depth;
+					ctrl_sp++;
+				}
+				realEmitToken(type);
+				ctrl_type = type;
+				state = ST_CTRL_PEND;
+				return;
+			}
+		}
+
+		/* Emit the token */
+		if (type == SYM)
+			realEmitSym(str);
+		else if (type == NUMBER)
+			realEmitNumber(num);
+		else if (type == FNUMBER)
+			realEmitFNum(fnum);
+		else if (type == STRING)
+			realEmitString(str, slen);
+		else
+			realEmitToken(type);
+		break;
+
+	case ST_DO_BRACE:
+		/*
+		 * Inside braced DO body - track depth until matching }
+		 * Then look for WHILE to handle the do-while condition
+		 */
+		if (type == BEGIN)
+			ctrl_body_depth++;
+		else if (type == END)
+			ctrl_body_depth--;
+
+		/* Emit the token */
+		if (type == SYM)
+			realEmitSym(str);
+		else if (type == NUMBER)
+			realEmitNumber(num);
+		else if (type == FNUMBER)
+			realEmitFNum(fnum);
+		else if (type == STRING)
+			realEmitString(str, slen);
+		else
+			realEmitToken(type);
+
+		/* After matching }, look for WHILE */
+		if (type == END && ctrl_body_depth == 0) {
+			ctrl_type = 0;  /* No body insertion after do-while */
+			state = ST_CTRL_COND;
+			ctrl_paren_depth = 0;
+		}
+		break;
 	}
 }
 
@@ -766,6 +1010,11 @@ knrInit(void)
 	num_typedefs = 0;
 	typedef_depth = 0;
 	typedef_name[0] = 0;
+	ctrl_paren_depth = 0;
+	ctrl_body_depth = 0;
+	ctrl_type = 0;
+	saved_state = 0;
+	ctrl_sp = 0;
 }
 
 /* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

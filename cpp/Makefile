@@ -28,7 +28,7 @@ else ifeq ($(CC),ccc)
 CFLAGS = -DCCC
 endif
 
-SRCS = cpp.c lex.c io.c macro.c kw.c emit.c util.c kwtab.c
+SRCS = cpp.c lex.c io.c macro.c kw.c emit.c util.c kwtab.c knr.c
 OBJS = $(SRCS:.c=.o)
 
 all: cpp xdump
@@ -83,7 +83,7 @@ sizecheck:
 		zc3 -c -DCCC $(INC) -o sizecheck/$$b.o $$f && \
 		{ echo "ok"; } || { echo "FAIL"; } \
 	done ; \
-	wssize $$o | awk '{t+=$$1;d+=$$2;b+=$$3;a+=$$4} END {print t,d,b,a}'
+	wssize $$o | awk '{t+=$$1;d+=$$2;b+=$$3;a+=$$4} END {print t,d,b,a}' | tee -a sizefile
 
 clean:
 	rm -f *.o *.1 *.2 *.x *.i *.pp

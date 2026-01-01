@@ -155,6 +155,9 @@ main(int argc, char **argv)
         addInclude(includePaths[i]);
     }
 
+    /* Initialize K&R to ANSI filter */
+    knrInit();
+
     /* Process the source file */
     (void)ppOnly;  /* TODO: implement -E mode */
     process(source);
