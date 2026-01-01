@@ -864,6 +864,12 @@ knrFilter(unsigned char type, long num, float fnum, char *str, int slen)
 			} else {
 				state = saved_state;
 			}
+		} else if (ctrl_type == ELSE && type == IF) {
+			/* else if - don't insert block for else, the if is the body */
+			realEmitToken(IF);
+			ctrl_type = IF;
+			ctrl_paren_depth = 0;
+			state = ST_CTRL_COND;
 		} else {
 			/* No braces - insert { and track body */
 			realEmitToken(BEGIN);
@@ -936,6 +942,16 @@ knrFilter(unsigned char type, long num, float fnum, char *str, int slen)
 				ctrl_type = type;
 				ctrl_paren_depth = 0;
 				state = ST_CTRL_COND;
+				return;
+			}
+			if (type == ELSE && ctrl_type == IF) {
+				/* ELSE ends the current if's synthetic body */
+				realEmitToken(END);
+				brace_depth--;
+				/* Don't pop - stack has parent context */
+				realEmitToken(ELSE);
+				ctrl_type = ELSE;
+				state = ST_CTRL_PEND;
 				return;
 			}
 			if (type == DO || type == ELSE) {
