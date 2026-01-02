@@ -148,22 +148,20 @@ emitExpr(struct expr *e)
                     "%c%d", np->sclass & SC_STATIC ? 'S' : 'L', np->static_id - 1);
 			else
 				sprintf(fullname, "%s", np->name);
-			emit1('$');
+			emit1(AST_SYM);
 			emitS(fullname);
 		} else {
-			emit1('$');
+			emit1(AST_SYM);
 			emitS("?");
 		}
 		break;
 
 	case STRING:
-		/* String literals - emit the string data and reference it */
+		/* String literals - reference by name (already emitted in phase 1) */
 		if (e->var) {
 			np = (struct name *)e->var;
-			/* Emit string literal if not already emitted */
-			emitStrLit(np);
 			/* Synthetic string names are local - no _ prefix */
-			emit1('$');
+			emit1(AST_SYM);
 			emitS(np->name);
 		} else {
 			/* Fallback to address if name not available */
@@ -173,13 +171,13 @@ emitExpr(struct expr *e)
 		break;
 
 	case CALL:
-		/* Function call: @type count func arg1 arg2 ... */
+		/* Function call: CALL type count func arg1 arg2 ... */
 		n = 0;
 		c = typeSfx(type);
 		/* Count arguments from the expression tree */
 		for (ep = right; ep; ep = ep->next)
 			n++;
-		emit1('@');
+		emit1(CALL);
 		emit1(c);
 		emit1(n);
 		emitChild(left);
@@ -189,11 +187,15 @@ emitExpr(struct expr *e)
 
 	case NARROW:
 	case WIDEN:
-	case SEXT:
 		/* Cast operators with destination width annotation */
 		c = typeSfx(type);
-		uc = (op == NARROW) ? 'N' : (op == WIDEN) ? 'W' : AST_SEXT;
-		emit1(uc);
+		emit1(op);  /* NARROW=206, WIDEN=207 */
+		emit1(c);
+		emitChild(left);
+		break;
+	case SEXT:
+		c = typeSfx(type);
+		emit1(SEXT);
 		emit1(c);
 		emitChild(left);
 		break;
@@ -204,9 +206,9 @@ emitExpr(struct expr *e)
 		n = 1;
 		c = typeSfx(type);
 		if (op == INCR)
-			uc = (e->flags & E_POSTFIX) ? AST_POSTINC : AST_PREINC;
+			uc = (e->flags & E_POSTFIX) ? POSTINC : PREINC;
 		else
-			uc = (e->flags & E_POSTFIX) ? AST_POSTDEC : AST_PREDEC;
+			uc = (e->flags & E_POSTFIX) ? POSTDEC : PREDEC;
 		if (type && (type->flags & TF_POINTER) && type->sub)
 			n = type->sub->size;
 		emit1(uc);
@@ -216,18 +218,18 @@ emitExpr(struct expr *e)
 		break;
 
 	case BFEXTRACT:
-		/* Bitfield extract: AST_BFEXTRACT offset width addr */
+		/* Bitfield extract: offset width addr */
 		np = (struct name *)e->var;
-		emit1(AST_BFEXTRACT);
+		emit1(BFEXTRACT);
 		emit1(np ? np->bitoff : 0);
 		emit1(np ? np->width : 0);
 		emitChild(left);
 		break;
 
 	case BFASSIGN:
-		/* Bitfield assign: AST_BFASSIGN offset width addr value */
+		/* Bitfield assign: offset width addr value */
 		np = (struct name *)e->var;
-		emit1(AST_BFASSIGN);
+		emit1(BFASSIGN);
 		emit1(np ? np->bitoff : 0);
 		emit1(np ? np->width : 0);
 		emitChild(left);
@@ -235,8 +237,8 @@ emitExpr(struct expr *e)
 		break;
 
 	case QUES:
-		/* Ternary: ?w cond then else - flatten the COLON node */
-		emit1('?');
+		/* Ternary: QUES width cond then else - flatten the COLON node */
+		emit1(QUES);
 		emit1(typeSfx(type));
 		emitChild(left);
 		if (right && right->op == COLON) {
@@ -248,7 +250,8 @@ emitExpr(struct expr *e)
 	case SUBEQ:
 	case ANDEQ:
 	case MODEQ:
-		/* Compound assignment operators with high-bit tokens */
+	case OREQ:
+		/* Compound assignments - emit token value directly */
 		emit1(op);
 		emit1(typeSfx(type));
 		emitChild(left);
@@ -274,13 +277,13 @@ emitExpr(struct expr *e)
 			emit1(',');
 			emit1(typeSfx(type));
 			emitExpr(left);
-			emit1('M');
+			emit1(DEREF);
 			emit1(typeSfx(type));
 			emitExpr(left->left);
 			break;
 		}
-		/* Memory dereference: M type addr */
-		emit1('M');
+		/* Memory dereference */
+		emit1(DEREF);
 		emit1(typeSfx(type));
 		emitChild(left);
 		break;
@@ -560,7 +563,7 @@ emitLocals(struct stmt *body)
  * Format: A len data (same as inline asm but at top level)
  */
 void
-emitGlobalAsm(struct stmt *st)
+emitGlobalAsm(char *text)
 {
 	int len;
 
@@ -568,13 +571,13 @@ emitGlobalAsm(struct stmt *st)
 	if (phase == 1)
 		return;
 
-	if (!st || !st->label)
+	if (!text)
 		return;
-	len = strlen(st->label);
+	len = strlen(text);
 	emit1('A');
 	emit2(len);
 	if (len > 0)
-		write(astFd, st->label, len);
+		write(astFd, text, len);
 }
 
 /*
@@ -915,7 +918,7 @@ emitGv(struct name *var)
 	}
 
 	emit1('Z');
-	emit1('$');
+	emit1(AST_SYM);
 
 	/* Static uses S<id>, public gets underscore prefix */
 	if (var->sclass & SC_STATIC)

@@ -9,10 +9,93 @@ static unsigned char loopLblCnt = 0;
 
 void resetLoopLbls() { loopLblCnt = 0; }
 
-/* Switch case counting (phase 1) - counts CASE/DEFAULT in each switch */
-static unsigned char caseCnt = 0;      /* current switch case count */
-static unsigned char caseStack[8];     /* nested switch case counts */
-static unsigned char caseDepth = 0;    /* nesting depth */
+/* Switch statement table tracking (phase 1) */
+struct swtab swList[MAX_SWITCHES];
+unsigned char swCount = 0;          /* number of switches in function */
+unsigned char swStack[MAX_SWDEPTH]; /* nesting stack (indices into swList) */
+unsigned char swDepth = 0;          /* nesting depth */
+
+/* Global case pool - all switches share this */
+struct swcase casePool[MAX_ALLCASES];
+unsigned char casePoolIdx = 0;
+
+/* Phase 2 switch emission tracking */
+unsigned char swEmitIdx = 0;                /* next switch to emit */
+unsigned char swEmitStack[MAX_SWDEPTH];     /* stack of switch indices */
+unsigned char swEmitDepth = 0;              /* emit stack depth */
+unsigned char caseEmitIdx[MAX_SWITCHES];    /* case indices per switch */
+
+void resetSwitch(void) {
+    swCount = 0;
+    swDepth = 0;
+    swEmitIdx = 0;
+    swEmitDepth = 0;
+    casePoolIdx = 0;
+}
+
+void pushSwitch(void) {
+    if (swCount < MAX_SWITCHES && swDepth < MAX_SWDEPTH) {
+        unsigned char idx = swCount++;
+        swList[idx].cases = &casePool[casePoolIdx];
+        swList[idx].count = 0;
+        swList[idx].num = idx;
+        swList[idx].base_stmts = 0;
+        swStack[swDepth++] = idx;
+    }
+}
+
+void popSwitch(void) {
+    if (swDepth > 0)
+        swDepth--;
+}
+
+/* Finalize previous case's stmt count before starting a new case */
+void finishCase(unsigned char stmt_cnt) {
+    if (swDepth > 0) {
+        unsigned char idx = swStack[swDepth - 1];
+        struct swtab *sw = &swList[idx];
+        if (sw->count > 0) {
+            sw->cases[sw->count - 1].stmts = stmt_cnt - sw->base_stmts;
+        }
+        sw->base_stmts = stmt_cnt;
+    }
+}
+
+void addCase(long value, unsigned char stmt_cnt) {
+    if (swDepth > 0 && casePoolIdx < MAX_ALLCASES) {
+        unsigned char idx = swStack[swDepth - 1];
+        struct swtab *sw = &swList[idx];
+        /* Finalize previous case if any */
+        if (sw->count > 0) {
+            sw->cases[sw->count - 1].stmts = stmt_cnt - sw->base_stmts;
+        }
+        sw->base_stmts = stmt_cnt;
+        /* Add new case to pool */
+        sw->cases[sw->count].value = value;
+        sw->cases[sw->count].is_default = 0;
+        sw->cases[sw->count].stmts = 0;  /* will be set by next case or popSwitch */
+        sw->count++;
+        casePoolIdx++;
+    }
+}
+
+void addDefault(unsigned char stmt_cnt) {
+    if (swDepth > 0 && casePoolIdx < MAX_ALLCASES) {
+        unsigned char idx = swStack[swDepth - 1];
+        struct swtab *sw = &swList[idx];
+        /* Finalize previous case if any */
+        if (sw->count > 0) {
+            sw->cases[sw->count - 1].stmts = stmt_cnt - sw->base_stmts;
+        }
+        sw->base_stmts = stmt_cnt;
+        /* Add default to pool */
+        sw->cases[sw->count].value = 0;
+        sw->cases[sw->count].is_default = 1;
+        sw->cases[sw->count].stmts = 0;  /* will be set by next case or popSwitch */
+        sw->count++;
+        casePoolIdx++;
+    }
+}
 
 
 /* Function body statement count stack (separate from case counts) */
@@ -34,6 +117,42 @@ unsigned char popFuncCnt(void) {
 /* Reset function stmt count read pointer for phase 2 */
 void resetFuncIdx(void) {
     funcCntIdx = 0;
+}
+
+/* Block statement counts - pushed at END in phase 1, popped at BEGIN in phase 2 */
+#define MAX_BLKCNTS 256
+static unsigned char blkCnts[MAX_BLKCNTS];
+static unsigned short blkCntTop = 0;
+static unsigned short blkCntIdx = 0;
+
+void pushBlkCnt(unsigned char n) {
+    if (blkCntTop < MAX_BLKCNTS)
+        blkCnts[blkCntTop++] = n;
+}
+
+unsigned char popBlkCnt(void) {
+    if (blkCntIdx < blkCntTop)
+        return blkCnts[blkCntIdx++];
+    return 0;
+}
+
+/* Reverse the block counts for phase 2 (LIFO -> FIFO) */
+void flipBlkCnts(void) {
+    unsigned short i, j;
+    unsigned char tmp;
+    if (blkCntTop == 0)
+        return;
+    for (i = 0, j = blkCntTop - 1; i < j; i++, j--) {
+        tmp = blkCnts[i];
+        blkCnts[i] = blkCnts[j];
+        blkCnts[j] = tmp;
+    }
+    blkCntIdx = 0;
+}
+
+void resetBlkCnts(void) {
+    blkCntTop = 0;
+    blkCntIdx = 0;
 }
 
 
@@ -58,10 +177,12 @@ void
 pushCount(char c)
 {
 	if (countTop < MAX_COUNTS) {
+		countBuf[countTop] = (unsigned char)c;
 #ifdef DEBUG
-		fdprintf(2, "pushCount[%d] = %d\n", countTop, c);
+		fdprintf(2, "pushCount[%d] = %d @%p (verify=%d)\n", countTop, c,
+		         &countBuf[countTop], countBuf[countTop]);
 #endif
-		countBuf[countTop++] = (unsigned char)c;
+		countTop++;
 	}
 }
 
@@ -71,12 +192,12 @@ popCount(void)
 	if (countIdx < countTop) {
 		char c = countBuf[countIdx++];
 #ifdef DEBUG
-		fdprintf(2, "popCount[%d] = %d\n", countIdx - 1, c);
+		fdprintf(2, "popCount[%d] = %d @%p (top=%d)\n", countIdx - 1, c, &countBuf[countIdx-1], countTop);
 #endif
 		return c;
 	}
 #ifdef DEBUG
-	fdprintf(2, "popCount: UNDERFLOW!\n");
+	fdprintf(2, "popCount: UNDERFLOW! (idx=%d top=%d)\n", countIdx, countTop);
 #endif
 	return 0;
 }
@@ -122,15 +243,29 @@ struct stmt *statement(struct stmt *parent);
  * Parse a braced block body.
  * Used by control structures that now always have braces.
  * Handles scope push/pop and expects BEGIN...END.
+ * If emitHdr is true and phase==2, emit block header.
  */
 static void
-parseBlock(void)
+parseBlockEx(int emitHdr)
 {
 	expect(BEGIN, ER_S_SB);
 	pushScope(blockname());
+	/* In phase 2, emit block header since we consumed BEGIN */
+	if (emitHdr && phase == 2) {
+		unsigned char cnt = popBlkCnt();
+		emit1('B');
+		emit1(0);  /* no decls - hoisted to function */
+		emit1(cnt);
+	}
 	statement(0);
 	popScope();
 	expect(END, ER_S_CC);
+}
+
+static void
+parseBlock(void)
+{
+	parseBlockEx(1);  /* emit header by default */
 }
 
 /*
@@ -200,16 +335,18 @@ addDeclInit(struct name *v)
  * When parent == NULL (streaming mode), emit and free immediately.
  * Otherwise, link into statement list and return head.
  */
-static struct stmt *
-emitDeclInits(struct stmt ***ppst, struct stmt *parent)
+/*
+ * Emit declaration initializers directly (no stmt node needed)
+ * Called in phase 2 when declarations have initializers.
+ */
+static void
+emitDeclInits(void)
 {
-	struct stmt *head = NULL;
 	unsigned char i;
 
 	for (i = 0; i < declInitCnt; i++) {
 		struct name *v = declInits[i];
 		struct expr *lhs, *assign_expr;
-		struct stmt *assign_st;
 
 		lhs = mkexprI(SYM, 0, v->type, 0, 0);
 		lhs->var = (struct var *)v;
@@ -222,26 +359,12 @@ emitDeclInits(struct stmt ***ppst, struct stmt *parent)
 		assign_expr->right = v->u.init;
 		v->u.init = NULL;
 
-		assign_st = makestmt(EXPR, assign_expr);
-
-		if (!parent) {
-			/* Streaming mode: emit and free immediately */
-			emitOneStmt(assign_st);
-			frStmt(assign_st);
-		} else {
-			/* Nested block: link into statement list */
-			if (!*ppst) {
-				head = assign_st;
-				assign_st->flags |= S_PARENT;
-			} else {
-				**ppst = assign_st;
-			}
-			*ppst = &assign_st->next;
-			assign_st->parent = parent;
-		}
+		/* Emit directly: E expr */
+		emit1('E');
+		emitExpr(assign_expr);
+		FreeExpr(assign_expr);
 	}
 	declInitCnt = 0;
-	return head;
 }
 
 /*
@@ -306,14 +429,20 @@ statement(struct stmt *parent)
             switch (cur.type) {
             case END:
             case E_O_F:
-                /* Push statement count only for function body (lexlevel 2)
-                 * and not inside a switch (caseDepth == 0). */
+                /* Push statement count for blocks */
 #ifdef DEBUG
-                fdprintf(2, "END: lexlevel=%d stmt_count=%d caseDepth=%d\n",
-                         lexlevel, stmt_count, caseDepth);
+                fdprintf(2, "END: lexlevel=%d stmt_count=%d swDepth=%d\n",
+                         lexlevel, stmt_count, swDepth);
 #endif
-                if (lexlevel == 2 && caseDepth == 0)
+                /* Finalize last case when ending switch body */
+                if (swDepth > 0)
+                    finishCase(stmt_count);
+                /* Function body uses separate mechanism */
+                if (lexlevel == 2 && swDepth == 0)
                     pushFuncCnt(stmt_count);
+                /* Nested blocks (lexlevel > 2, not switch body) push to block counts */
+                else if (lexlevel > 2 && swDepth == 0)
+                    pushBlkCnt(stmt_count);
                 block = 0;
                 break;
             case BEGIN:
@@ -332,14 +461,18 @@ statement(struct stmt *parent)
             case UNSIGNED:
             case STATIC: case REGISTER: case AUTO:
             case EXTERN: case TYPEDEF:
+                declInitCnt = 0;
                 declaration();
+                stmt_count += declInitCnt;  /* initializers become statements */
                 break;
             case SYM:
                 /* Check typedef name for declaration */
                 {
                     struct name *pt = findName(cur.v.name, 0);
                     if (pt && pt->kind == tdef) {
+                        declInitCnt = 0;
                         declaration();
+                        stmt_count += declInitCnt;
                         break;
                     }
                 }
@@ -410,34 +543,34 @@ statement(struct stmt *parent)
                 if (parent) block = 0;
                 break;
             case SWITCH: {
+                unsigned char idx;
                 gettoken();
                 expect(LPAR, ER_S_NP);
                 parseExpr(PRI_ALL, parent);
                 expect(RPAR, ER_S_NP);
                 expect(BEGIN, ER_S_SB);
-                /* Push current case count, start new counter */
-                if (caseDepth < 8)
-                    caseStack[caseDepth++] = caseCnt;
-                caseCnt = 0;
-                statement(0);  /* switch body counts cases */
-                /* Push case count for phase 2 SWITCH */
-                pushCount(caseCnt);
-                if (caseDepth > 0)
-                    caseCnt = caseStack[--caseDepth];
+                pushSwitch();  /* start new switch table */
+                statement(0);  /* switch body - adds cases to table */
+                /* Push case count for phase 2 before popping */
+                idx = swStack[swDepth - 1];
+                pushCount(swList[idx].count);
+                popSwitch();
                 expect(END, ER_S_CC);
                 stmt_count++;
                 if (parent) block = 0;
                 break;
             }
-            case CASE:
+            case CASE: {
+                long val;
                 gettoken();
-                parseConst(COLON);
-                caseCnt++;  /* count case for current switch */
+                val = parseConst(COLON);
+                addCase(val, stmt_count);  /* add to current switch table */
                 expect(COLON, ER_S_NL);
                 break;
+            }
             case DEFAULT:
                 gettoken();
-                caseCnt++;  /* count default for current switch */
+                addDefault(stmt_count);  /* add default to current switch table */
                 expect(COLON, ER_S_NL);
                 break;
             case BREAK: case CONTINUE:
@@ -467,7 +600,7 @@ statement(struct stmt *parent)
                 stmt_count++;
                 if (parent) block = 0;
                 break;
-            case ';':
+            case SEMI:
                 gettoken();
                 stmt_count++;
                 if (parent) block = 0;
@@ -489,20 +622,22 @@ statement(struct stmt *parent)
             block = 0;
             break;
 
-        case BEGIN: // begin a block
+        case BEGIN: {  // begin a block
+            unsigned char cnt;
             gettoken();
             pushScope(blockname());
-
-            st = makestmt(BEGIN, 0);
-            st->parent = parent;
-            st->chain = statement(st);
-
-            /* Capture local variables before popping scope */
-            st->locals = capLocals();
-
+            /* Emit block header: B 0 stmt_count */
+            emit1('B');
+            emit1(0);  /* no decls - hoisted to function */
+            cnt = popBlkCnt();
+            emit1(cnt);
+            /* Stream body statements */
+            statement(parent);
             popScope();
             expect(END, ER_S_CC);
+            st = NULL;
             break;
+        }
 
         case IF:   /* if <condition> <statement> */
         handle_if2: {
@@ -544,7 +679,11 @@ statement(struct stmt *parent)
                 sprintf(lbl, "%c%d", prefix, lblStack[i].num);
                 break;
             }
-            emitGoto(lbl, "B");
+            /* Switch uses _break suffix (pass2 emits <label>_break:) */
+            if (lblStack[i].type == SWITCH)
+                emitGoto(lbl, "_break");
+            else
+                emitGoto(lbl, "B");
             st = NULL;
             break;
         }
@@ -604,11 +743,8 @@ statement(struct stmt *parent)
         case EXTERN:
             declInitCnt = 0;
             declaration();
-            if (declInitCnt > 0) {
-                struct stmt *init_head = emitDeclInits(&pst, parent);
-                if (init_head && !head)
-                    head = init_head;
-            }
+            if (declInitCnt > 0)
+                emitDeclInits();
             st = NULL;
             break;
 
@@ -635,11 +771,8 @@ statement(struct stmt *parent)
                 if (poss_typedef && poss_typedef->kind == tdef) {
                     declInitCnt = 0;
                     declaration();
-                    if (declInitCnt > 0) {
-                        struct stmt *init_head = emitDeclInits(&pst, parent);
-                        if (init_head && !head)
-                            head = init_head;
-                    }
+                    if (declInitCnt > 0)
+                        emitDeclInits();
                     st = NULL;
                     break;
                 }
@@ -711,7 +844,7 @@ statement(struct stmt *parent)
                 emit1(0);
                 emit1(2);
                 emitLabel(lbl, "Y");
-                parseBlock();
+                parseBlockEx(0);  /* no header - already emitted B above */
                 /* else: B 0 1 G<lbl>B */
                 emit1('B');
                 emit1(0);
@@ -723,7 +856,7 @@ statement(struct stmt *parent)
                 emit1(0);
                 emit1(2);
                 emitLabel(lbl, "Y");
-                parseBlock();
+                parseBlockEx(0);  /* no header - already emitted B above */
             }
             emitLabel(lbl, "C");
             if (incr_e) {
@@ -764,7 +897,7 @@ statement(struct stmt *parent)
             emit1(0);
             emit1(2);
             emitLabel(lbl, "Y");
-            parseBlock();
+            parseBlockEx(0);  /* no header - already emitted B above */
             /* else: B 0 1 G<lbl>B */
             emit1('B');
             emit1(0);
@@ -783,28 +916,59 @@ statement(struct stmt *parent)
             break;
 
         case SWITCH: {  // switch (<expr>) <block> ;
+            struct expr *e;
+            unsigned char idx, case_cnt;
             char lbl[16];
             int num;
             gettoken();
             expect(LPAR, ER_S_NP);
-            st = makestmt(SWITCH, parseExpr(PRI_ALL, parent));
+            e = parseExpr(PRI_ALL, parent);
             expect(RPAR, ER_S_NP);
             expect(BEGIN, ER_S_SB);
+            /* Get this switch's index and push onto emit stack */
+            idx = swEmitIdx++;
+            swEmitStack[swEmitDepth++] = idx;
+            caseEmitIdx[idx] = 0;
+            /* Get label number for break target */
             pushLabel(SWITCH);
             num = lblStack[lblDepth - 1].num;
             sprintf(lbl, "S%d", num);
-            st->label = strdup(lbl);
-            st->chain = statement(st);
+            /* Emit switch header: S has_label label case_count expr */
+            emit1('S');
+            emit1(1);  /* has label - pass2 will emit <label>_break */
+            emitS(lbl);
+            case_cnt = popCount();
+            emit1(case_cnt);
+            emitExpr(e);
+            FreeExpr(e);
+            /* Parse body - CASE/DEFAULT emit themselves */
+            statement(parent);
             popLabel();
+            swEmitDepth--;
             expect(END, ER_S_CC);
+            st = NULL;
             break;
         }
 
-        case CASE:
+        case CASE: {
+            unsigned char sw_idx, c_idx;
+            struct swcase *c;
+            struct expr *e;
             gettoken();
-            st = makestmt(CASE, parseExpr(13, parent));  /* stop at colon */
+            e = parseExpr(13, parent);  /* parse case value expression */
             expect(COLON, ER_S_NL);
+            /* Get current switch and case */
+            sw_idx = swEmitStack[swEmitDepth - 1];
+            c_idx = caseEmitIdx[sw_idx]++;
+            c = &swList[sw_idx].cases[c_idx];
+            /* Emit: C stmt_count value_expr */
+            emit1('C');
+            emit1(c->stmts);
+            emitExpr(e);
+            FreeExpr(e);
+            st = NULL;
             break;
+        }
 
         case GOTO: {
             char *lbl;
@@ -824,13 +988,23 @@ statement(struct stmt *parent)
             break;
         }
 
-        case DEFAULT:
+        case DEFAULT: {
+            unsigned char sw_idx, c_idx;
+            struct swcase *c;
             gettoken();
             expect(COLON, ER_S_NL);
-            st = makestmt(DEFAULT, NULL);
+            /* Get current switch and case */
+            sw_idx = swEmitStack[swEmitDepth - 1];
+            c_idx = caseEmitIdx[sw_idx]++;
+            c = &swList[sw_idx].cases[c_idx];
+            /* Emit: O stmt_count */
+            emit1('O');
+            emit1(c->stmts);
+            st = NULL;
             break;
+        }
 
-        case ';':
+        case SEMI:
             gettoken();
             emit1(';');
             st = NULL;
@@ -876,9 +1050,16 @@ statement(struct stmt *parent)
             break;
         }
 
-        case ASM:
-            st = asmblock();  /* asmblock() handles token advancement */
+        case ASM: {
+            /* Get asm text and emit directly */
+            char *text = cur.v.str;
+            cur.v.str = NULL;
+            gettoken();
+            emitGlobalAsm(text);
+            free(text);
+            st = NULL;
             break;
+        }
 
         default:
             gripe(ER_E_UO);
@@ -967,51 +1148,6 @@ makestmt(unsigned char op, struct expr *left)
 	st->op = op;
 	st->left = left;
 	return st;
-}
-
-/*
- * Parse an inline assembly block
- *
- * Handles the asm { ... } syntax for embedding raw assembly code in C
- * functions. The assembly text is captured verbatim (with proper brace
- * nesting) and stored in the statement tree for later emission.
- *
- * Assembly blocks can contain nested braces, which are tracked to find
- * the matching closing brace. The lexer's ASM_BLOCK flag enables special
- * token capture mode where all tokens are appended to asmCbuf.
- *
- * Post-processing:
- *   - Trailing spaces and semicolons are trimmed
- *   - The captured text is transferred to the statement's label field
- *   - The ASM_BLOCK flag is cleared to restore normal lexing
- *
- * Returns:
- *   ASM statement node with assembly text in label field, or NULL on error
- */
-struct stmt *
-asmblock(void)
-{
-    struct stmt *st;
-    char *text;
-
-    /* The ASM token should have raw text in cur.v.str (captured by lexer) */
-    if (!cur.v.str) {
-        gripe(ER_S_SB);  /* Expected asm block */
-        return NULL;
-    }
-
-    /* Take ownership of the raw text */
-    text = cur.v.str;
-    cur.v.str = NULL;
-
-    /* Get next token to continue parsing */
-    gettoken();
-
-    /* Create statement with assembly text */
-    st = makestmt(ASM, NULL);
-    st->label = text;
-
-    return st;
 }
 
 static char bnbuf[20];

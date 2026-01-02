@@ -119,6 +119,34 @@
 #define KW_FIRST    128
 #define KW_LAST     160
 
+/* Internal tokens - not from lexer, used in AST (200+) */
+#define TOK_NONE    200
+#define DEREF       201
+#define EXPR        202
+#define NEG         203
+#define NOT         204
+#define CALL        205
+#define NARROW      206
+#define WIDEN       207
+#define SEXT        208
+#define COPY        209
+#define INITLIST    210
+#define PREINC      211
+#define POSTINC     212
+#define PREDEC      213
+#define POSTDEC     214
+#define BFEXTRACT   215
+#define BFASSIGN    216
+
+/* AST markers that don't conflict with tokens (tokens use 30+) */
+#define AST_SYM     4     /* symbol reference marker */
+
+/* AST inc/dec use printable chars to distinguish pre/post */
+#define AST_PREINC  '('
+#define AST_POSTINC ')'
+#define AST_PREDEC  '{'
+#define AST_POSTDEC '}'
+
 #endif /* LEXEME_H */
 
 /* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

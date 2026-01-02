@@ -1,12 +1,12 @@
 /*
- * AST Pretty Printer for ccc compiler
- * Rewritten from astpp.py
+ * AST Pretty Printer for ccc compiler - binary format
  */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "../cpp/lexeme.h"
 
-static char *data;
+static unsigned char *data;
 static int pos, len;
 static int indent;
 static int blockCnt;
@@ -14,43 +14,29 @@ static int blockCnt;
 static int cur(void) { return pos < len ? data[pos] : -1; }
 static void advance(void) { if (pos < len) pos++; }
 
-static void skipWS(void) {
-    int c;
-    while ((c = cur()) == ' ' || c == '\t' || c == '\n' || c == '\r')
-        advance();
+static int read1(void) {
+    if (pos >= len) return 0;
+    return data[pos++];
 }
 
-static int hval(int c) {
-    if (c >= '0' && c <= '9') return c - '0';
-    if (c >= 'a' && c <= 'f') return 10 + c - 'a';
-    if (c >= 'A' && c <= 'F') return 10 + c - 'A';
-    return 0;
+static int read2(void) {
+    int lo = read1();
+    int hi = read1();
+    return lo | (hi << 8);
 }
 
-static int readHex2(void) {
-    int h = hval(cur()); advance();
-    int l = hval(cur()); advance();
-    return h * 16 + l;
-}
-
-static int readHex4(void) {
-    int i, v = 0;
-    for (i = 0; i < 4; i++) { v = v * 16 + hval(cur()); advance(); }
+static long read4(void) {
+    long v = read1();
+    v |= (long)read1() << 8;
+    v |= (long)read1() << 16;
+    v |= (long)read1() << 24;
     return v;
-}
-
-static long readHex8(void) {
-    int i, neg = 0;
-    long v = 0;
-    if (cur() == '-') { neg = 1; advance(); }
-    for (i = 0; i < 8; i++) { v = v * 16 + hval(cur()); advance(); }
-    return neg ? -v : v;
 }
 
 static char nameBuf[256];
 static char *readName(void) {
-    int i, n = readHex2();
-    for (i = 0; i < n && i < 255; i++) { nameBuf[i] = cur(); advance(); }
+    int i, n = read1();
+    for (i = 0; i < n && i < 255; i++) nameBuf[i] = read1();
     nameBuf[n < 255 ? n : 255] = 0;
     return nameBuf;
 }
@@ -91,62 +77,63 @@ static const char *regName(int r) {
 
 static const char *opName(int c) {
     switch (c) {
-    case 'M': return "DEREF";
-    case '=': return "ASSIGN";
-    case '+': return "ADD";
-    case '-': return "SUB";
-    case '*': return "MUL";
-    case '/': return "DIV";
-    case '%': return "MOD";
-    case '&': return "AND";
-    case '|': return "OR";
-    case '^': return "XOR";
-    case '~': return "NOT";
-    case 'y': return "LSHIFT";
-    case 'w': return "RSHIFT";
-    case '<': return "LT";
-    case '>': return "GT";
-    case 'L': return "LE";
-    case 'g': return "GE";
-    case 'Q': return "EQ";
-    case 'n': return "NE";
-    case 'j': return "LAND";
-    case 'h': return "LOR";
-    case '!': return "LNOT";
-    case 'N': return "NARROW";
-    case 'W': return "WIDEN";
-    case 'X': return "SEXT";
-    case '?': return "TERNARY";
-    case '@': return "CALL";
-    case 'Y': return "COPY";
-    case '\\': return "NEG";
-    case '\'': return "ADDR";
-    case 'P': return "+=";
-    case 'T': return "*=";
-    case '0': return "<<=";
-    case '1': return "|=";
-    case '2': return "/=";
-    case '6': return ">>=";
-    case ':': return "COLON";
-    case '(': return "++p";
-    case ')': return "p++";
-    case '{': return "--p";
-    case '}': return "p--";
-    case 'o': return "-=";
-    case 'm': return "%=";
-    case 'a': return "&=";
-    case 'e': return "BFEXT";
-    case 'x': return "SEXT";
-    default: { static char buf[2]; buf[0] = c; buf[1] = 0; return buf; }
+    /* Internal tokens (200+) */
+    case DEREF: return "DEREF";
+    case NEG: return "NEG";
+    case NOT: return "NOT";
+    case NARROW: return "NARROW";
+    case WIDEN: return "WIDEN";
+    case SEXT: return "SEXT";
+
+    /* Lexeme token values */
+    case COLON: return "COLON";
+    case BANG: return "LNOT";
+    case AMPER: return "ADDR";
+    case TWIDDLE: return "NOT";
+    case STAR: return "MUL";
+    case PLUS: return "ADD";
+    case MINUS: return "SUB";
+    case TIMES: return "MUL";
+    case DIV: return "DIV";
+    case MOD: return "MOD";
+    case RSHIFT: return "RSHIFT";
+    case LSHIFT: return "LSHIFT";
+    case AND: return "AND";
+    case OR: return "OR";
+    case XOR: return "XOR";
+    case LAND: return "LAND";
+    case LOR: return "LOR";
+    case EQ: return "EQ";
+    case NEQ: return "NE";
+    case LE: return "LE";
+    case LT: return "LT";
+    case GE: return "GE";
+    case GT: return "GT";
+    case PLUSEQ: return "+=";
+    case SUBEQ: return "-=";
+    case MULTEQ: return "*=";
+    case DIVEQ: return "/=";
+    case MODEQ: return "%=";
+    case RSHIFTEQ: return ">>=";
+    case LSHIFTEQ: return "<<=";
+    case ANDEQ: return "&=";
+    case OREQ: return "|=";
+    case XOREQ: return "^=";
+    case ASSIGN: return "ASSIGN";
+
+    default: { static char buf[8]; sprintf(buf, "?%d", c); return buf; }
     }
 }
 
 static int opArity(int c) {
-    if (c == '(' || c == ')' || c == '{' || c == '}') return -1; /* special */
-    if (c == 'e' || c == 'f') return -1; /* bitfield */
-    if (c == 'x') return 1;
-    if (c == 'M' || c == 'N' || c == 'W' || c == '!' || c == '~' || c == '\\' || c == '\'') return 1;
-    if (c == '@' || c == '?' || c == 'Y') return -1;
+    if (c == PREINC || c == POSTINC || c == PREDEC || c == POSTDEC)
+        return -1; /* inc/dec special */
+    if (c == BFEXTRACT || c == BFASSIGN) return -1;
+    if (c == CALL || c == COPY) return -1;
+    /* Unary operators */
+    if (c == DEREF || c == NARROW || c == WIDEN || c == SEXT) return 1;
+    if (c == NEG || c == NOT) return 1;
+    if (c == BANG || c == AMPER || c == TWIDDLE) return 1;
     return 2;
 }
 
@@ -172,14 +159,13 @@ static void exprAppNum(long n) {
 static void parseExpr(void);
 
 static void parseExpr(void) {
-    skipWS();
     int c = cur();
 
     if (c == -1) { exprApp("(EOF)"); return; }
     if (c == '_') { advance(); exprApp("()"); return; }
 
     /* Symbol reference */
-    if (c == '$') {
+    if (c == AST_SYM) {
         advance();
         exprApp("$");
         exprApp(readName());
@@ -189,29 +175,18 @@ static void parseExpr(void) {
     /* Stack offset */
     if (c == 'S') {
         advance();
-        int off = readHex4();
+        int off = read2();
         char buf[32];
         sprintf(buf, "SP[%d]", off);
         exprApp(buf);
         return;
     }
 
-    /* Inline string literal */
-    if (c == 'U') {
-        int i, n;
-        advance();
-        readName(); /* skip name */
-        n = readHex2();
-        for (i = 0; i < n; i++) { advance(); advance(); }
-        parseExpr();
-        return;
-    }
-
     /* Numeric constant */
     if (c == '#') {
         advance();
-        int w = cur(); advance();
-        long v = readHex8();
+        int w = read1();
+        long v = read4();
         exprAppNum(v);
         exprApp(":");
         exprApp(widthName(w));
@@ -219,17 +194,17 @@ static void parseExpr(void) {
     }
 
     /* Inc/Dec */
-    if (c == '(' || c == ')' || c == '{' || c == '}') {
-        const char *opn = (c == '(') ? "PREINC" : (c == ')') ? "POSTINC" : (c == '{') ? "PREDEC" : "POSTDEC";
+    if (c == PREINC || c == POSTINC || c == PREDEC || c == POSTDEC) {
+        const char *opn = (c == PREINC) ? "PREINC" : (c == POSTINC) ? "POSTINC" : (c == PREDEC) ? "PREDEC" : "POSTDEC";
         advance();
-        int w = cur(); advance();
+        int w = read1();
         exprApp("(");
         exprApp(opn);
         exprApp(":");
         exprApp(widthName(w));
         exprApp(" ");
         parseExpr();
-        int delta = readHex4();
+        int delta = read2();
         char buf[16];
         sprintf(buf, " %d)", delta);
         exprApp(buf);
@@ -237,10 +212,10 @@ static void parseExpr(void) {
     }
 
     /* Bitfield extract */
-    if (c == 'e') {
+    if (c == BFEXTRACT) {
         advance();
-        int off = readHex2();
-        int wid = readHex2();
+        int off = read1();
+        int wid = read1();
         exprApp("(BFEXT ");
         exprAppNum(off);
         exprApp(":");
@@ -252,10 +227,10 @@ static void parseExpr(void) {
     }
 
     /* Bitfield assign */
-    if (c == 'f') {
+    if (c == BFASSIGN) {
         advance();
-        int off = readHex2();
-        int wid = readHex2();
+        int off = read1();
+        int wid = read1();
         exprApp("(BFSET ");
         exprAppNum(off);
         exprApp(":");
@@ -269,9 +244,9 @@ static void parseExpr(void) {
     }
 
     /* Sign extend */
-    if (c == 'x') {
+    if (c == SEXT) {
         advance();
-        int w = cur(); advance();
+        int w = read1();
         exprApp("(SEXT:");
         exprApp(widthName(w));
         exprApp(" ");
@@ -285,9 +260,9 @@ static void parseExpr(void) {
     advance();
 
     /* Call */
-    if (opChar == '@') {
-        int i, retType = cur(); advance();
-        int argc = readHex2();
+    if (opChar == CALL) {
+        int i, retType = read1();
+        int argc = read1();
         exprApp("(CALL:");
         exprAppC(retType);
         exprApp(" ");
@@ -301,9 +276,8 @@ static void parseExpr(void) {
     }
 
     /* Ternary */
-    if (opChar == '?') {
-        int w = cur(); advance();
-        readHex2(); /* skip nlabels */
+    if (opChar == QUES) {
+        int w = read1();
         exprApp("(?:");
         exprApp(widthName(w));
         exprApp(" ");
@@ -317,8 +291,8 @@ static void parseExpr(void) {
     }
 
     /* Copy */
-    if (opChar == 'Y') {
-        int sz = readHex4();
+    if (opChar == COPY) {
+        int sz = read2();
         exprApp("(COPY:");
         exprAppNum(sz);
         exprApp(" ");
@@ -330,7 +304,7 @@ static void parseExpr(void) {
     }
 
     /* Regular operator with width */
-    int w = cur(); advance();
+    int w = read1();
     int arity = opArity(opChar);
 
     exprApp("(");
@@ -355,15 +329,14 @@ static char *getExpr(void) {
 static void parseStmt(void);
 
 static void parseDecl(void) {
-    skipWS();
     if (cur() != 'd') return;
     advance();
-    int typeChar = cur(); advance();
+    int typeChar = read1();
     char *name = readName();
     char nameCopy[256];
     strcpy(nameCopy, name);
-    int reg = readHex2();
-    int off = readHex2();
+    int reg = read1();
+    int off = read1();
     if (off > 127) off -= 256;
 
     prIndent();
@@ -371,7 +344,6 @@ static void parseDecl(void) {
 }
 
 static void parseStmt(void) {
-    skipWS();
     int c = cur();
     if (c == -1) return;
     advance();
@@ -380,8 +352,8 @@ static void parseStmt(void) {
 
     /* Block */
     if (c == 'B') {
-        int i, declCnt = readHex2();
-        int stmtCnt = readHex2();
+        int i, declCnt = read1();
+        int stmtCnt = read1();
         int blockNum = blockCnt++;
         sprintf(lineBuf, "BLOCK %d {", blockNum);
         prln(lineBuf);
@@ -395,10 +367,11 @@ static void parseStmt(void) {
 
     /* If */
     if (c == 'I') {
-        int hasElse = readHex2();
-        int nlabels = readHex2();
+        int hasElse = read1();
+        int nlabels = read1();
+        (void)nlabels;  /* used for code gen, not pretty printing */
         char *cond = getExpr();
-        sprintf(lineBuf, "IF [nlabels=%d] (%s)", nlabels, cond);
+        sprintf(lineBuf, "IF (%s)", cond);
         prln(lineBuf);
         indent++;
         parseStmt();
@@ -422,7 +395,7 @@ static void parseStmt(void) {
 
     /* Return */
     if (c == 'R') {
-        int hasVal = readHex2();
+        int hasVal = read1();
         if (hasVal == 1) {
             char *e = getExpr();
             sprintf(lineBuf, "RETURN %s", e);
@@ -451,12 +424,12 @@ static void parseStmt(void) {
 
     /* Switch */
     if (c == 'S') {
-        int i, hasLabel = readHex2();
+        int i, hasLabel = read1();
         char labelBuf[256] = "";
         int caseCnt;
         char *expr;
         if (hasLabel == 1) strcpy(labelBuf, readName());
-        caseCnt = readHex2();
+        caseCnt = read1();
         expr = getExpr();
         if (labelBuf[0])
             sprintf(lineBuf, "SWITCH [%s] (%s) {", labelBuf, expr);
@@ -472,7 +445,7 @@ static void parseStmt(void) {
 
     /* Case */
     if (c == 'C') {
-        int i, stmtCnt = readHex2();
+        int i, stmtCnt = read1();
         char *val = getExpr();
         sprintf(lineBuf, "CASE %s:", val);
         prln(lineBuf);
@@ -484,7 +457,7 @@ static void parseStmt(void) {
 
     /* Default */
     if (c == 'O') {
-        int i, stmtCnt = readHex2();
+        int i, stmtCnt = read1();
         prln("DEFAULT:");
         indent++;
         for (i = 0; i < stmtCnt; i++) parseStmt();
@@ -494,14 +467,10 @@ static void parseStmt(void) {
 
     /* Asm */
     if (c == 'A') {
-        int i, asmLen = readHex4();
+        int i, asmLen = read2();
         int hasNL = 0;
         char *asmBuf = malloc(asmLen + 1);
-        for (i = 0; i < asmLen; i++) {
-            int hi = hval(cur()); advance();
-            int lo = hval(cur()); advance();
-            asmBuf[i] = hi * 16 + lo;
-        }
+        for (i = 0; i < asmLen; i++) asmBuf[i] = read1();
         asmBuf[asmLen] = 0;
 
         /* Check for newlines */
@@ -536,47 +505,15 @@ static void parseStmt(void) {
     /* Continue */
     if (c == 'N') { prln("CONTINUE"); return; }
 
-    /* While */
-    if (c == 'W') {
-        readHex2(); /* nlabels */
-        char *cond = getExpr();
-        sprintf(lineBuf, "WHILE (%s)", cond);
-        prln(lineBuf);
-        indent++;
-        parseStmt();
-        indent--;
-        return;
-    }
-
-    /* Do-while */
-    if (c == 'D') {
-        readHex2(); /* nlabels */
-        prln("DO");
-        indent++;
-        parseStmt();
-        indent--;
-        char *cond = getExpr();
-        sprintf(lineBuf, "WHILE (%s)", cond);
+    /* Unknown statement */
+    if (c == 'X') {
+        int op = read1();
+        sprintf(lineBuf, "??? stmt op=%d", op);
         prln(lineBuf);
         return;
     }
 
-    /* For */
-    if (c == 'F') {
-        readHex2(); /* nlabels */
-        char initBuf[EXPR_BUF_SIZE], condBuf[EXPR_BUF_SIZE], incrBuf[EXPR_BUF_SIZE];
-        strcpy(initBuf, getExpr());
-        strcpy(condBuf, getExpr());
-        strcpy(incrBuf, getExpr());
-        prIndent();
-        printf("FOR (%s; %s; %s)\n", initBuf, condBuf, incrBuf);
-        indent++;
-        parseStmt();
-        indent--;
-        return;
-    }
-
-    sprintf(lineBuf, "??? stmt '%c'", c);
+    sprintf(lineBuf, "??? stmt '%c' (0x%02x)", c, c);
     prln(lineBuf);
 }
 
@@ -596,7 +533,6 @@ static void initAppNum(long n) {
 }
 
 static void parseInit(void) {
-    skipWS();
     int c = cur();
 
     /* Array */
@@ -604,7 +540,7 @@ static void parseInit(void) {
         int i, count;
         advance();
         advance(); /* elem type */
-        count = readHex2();
+        count = read1();
         initApp("[");
         for (i = 0; i < count; i++) {
             if (i > 0) initApp(", ");
@@ -619,7 +555,7 @@ static void parseInit(void) {
     if (c == '{') {
         int i, count;
         advance();
-        count = readHex2();
+        count = read1();
         initApp("{");
         for (i = 0; i < count; i++) {
             if (i > 0) initApp(", ");
@@ -633,8 +569,8 @@ static void parseInit(void) {
     /* Scalar */
     if (c == '#') {
         advance();
-        int w = cur(); advance();
-        long val = readHex8();
+        int w = read1();
+        long val = read4();
         initAppNum(val);
         initApp(":");
         initApp(widthName(w));
@@ -642,7 +578,7 @@ static void parseInit(void) {
     }
 
     /* Symbol */
-    if (c == '$') {
+    if (c == AST_SYM) {
         advance();
         initApp("$");
         initApp(readName());
@@ -652,7 +588,7 @@ static void parseInit(void) {
     /* Widened */
     if (c == 'W') {
         advance();
-        advance(); /* skip target type */
+        read1(); /* skip target type */
         initApp("(W ");
         parseInit();
         initApp(")");
@@ -662,7 +598,7 @@ static void parseInit(void) {
     /* ADD expression (for pointer arithmetic in initializers) */
     if (c == '+') {
         advance();
-        advance(); /* skip type suffix */
+        read1(); /* skip type suffix */
         initApp("(");
         parseInit();
         initApp(" + ");
@@ -683,14 +619,14 @@ static char *getInit(void) {
 }
 
 static void parseFunction(void) {
-    int retType = cur(); advance();
+    int retType = read1();
     char *name = readName();
     char nameCopy[256];
     strcpy(nameCopy, name);
 
-    int paramCnt = readHex2();
-    int localCnt = readHex2();
-    int frmSize = readHex2();
+    int paramCnt = read1();
+    int localCnt = read1();
+    int frmSize = read1();
 
     /* Params */
     char paramsBuf[1024] = "";
@@ -699,14 +635,13 @@ static void parseFunction(void) {
         int ptype, preg, poff;
         char *pname;
         char pnameCopy[256];
-        skipWS();
         if (cur() != 'd') continue;
         advance();
-        ptype = cur(); advance();
+        ptype = read1();
         pname = readName();
         strcpy(pnameCopy, pname);
-        preg = readHex2();
-        poff = readHex2();
+        preg = read1();
+        poff = read1();
         if (poff > 127) poff -= 256;
 
         if (plen > 0) { paramsBuf[plen++] = ','; paramsBuf[plen++] = ' '; }
@@ -724,14 +659,13 @@ static void parseFunction(void) {
         int ltype, lreg, loff;
         char *lname;
         char lnameCopy[256];
-        skipWS();
         if (cur() != 'd') continue;
         advance();
-        ltype = cur(); advance();
+        ltype = read1();
         lname = readName();
         strcpy(lnameCopy, lname);
-        lreg = readHex2();
-        loff = readHex2();
+        lreg = read1();
+        loff = read1();
         if (loff > 127) loff -= 256;
 
         if (llen > 0) { localsBuf[llen++] = ','; localsBuf[llen++] = ' '; }
@@ -746,14 +680,12 @@ static void parseFunction(void) {
     if (localsBuf[0]) printf("  LOCALS: %s\n", localsBuf);
     puts("{");
     indent = 1;
-    skipWS();
     parseStmt();
     puts("}");
 }
 
 static void parseGlobal(void) {
-    skipWS();
-    if (cur() == '$') advance();
+    if (cur() == AST_SYM) advance();
     char *name = readName();
     char nameCopy[256];
     strcpy(nameCopy, name);
@@ -761,9 +693,9 @@ static void parseGlobal(void) {
 
     /* Array */
     if (typeChar == 'a') {
-        int count = readHex4();
-        int elemSize = readHex4();
-        int hasInit = readHex2();
+        int count = read2();
+        int elemSize = read2();
+        int hasInit = read1();
         printf("GLOBAL %s : array[%d] of %d-byte", nameCopy, count, elemSize);
         if (hasInit == 1) {
             char *init = getInit();
@@ -776,8 +708,8 @@ static void parseGlobal(void) {
 
     /* Struct */
     if (typeChar == 'r') {
-        int size = readHex4();
-        int hasInit = readHex2();
+        int size = read2();
+        int hasInit = read1();
         printf("GLOBAL %s : struct[%d]", nameCopy, size);
         if (hasInit == 1) {
             char *init = getInit();
@@ -789,7 +721,7 @@ static void parseGlobal(void) {
     }
 
     /* Pointer or primitive */
-    int hasInit = readHex2();
+    int hasInit = read1();
     printf("GLOBAL %s : %s", nameCopy, widthName(typeChar));
     if (hasInit == 1) {
         char *init = getInit();
@@ -804,10 +736,10 @@ static void parseString(void) {
     char *name = readName();
     char nameCopy[256];
     strcpy(nameCopy, name);
-    n = readHex2();
+    n = read1();
     printf("STRING _%s = \"", nameCopy);
     for (i = 0; i < n; i++) {
-        int b = readHex2();
+        int b = read1();
         if (b >= 32 && b < 127 && b != '"' && b != '\\')
             putchar(b);
         else
@@ -817,7 +749,6 @@ static void parseString(void) {
 }
 
 static int parseTopLevel(void) {
-    skipWS();
     int c = cur();
     if (c == -1) return 0;
     advance();
@@ -825,8 +756,16 @@ static int parseTopLevel(void) {
     if (c == 'F') parseFunction();
     else if (c == 'Z') parseGlobal();
     else if (c == 'U') parseString();
-    else if (c == '\n') ; /* skip */
-    else printf("??? top-level: '%c'\n", c);
+    else if (c == 'A') {
+        /* Global asm */
+        int i, asmLen = read2();
+        char *asmBuf = malloc(asmLen + 1);
+        for (i = 0; i < asmLen; i++) asmBuf[i] = read1();
+        asmBuf[asmLen] = 0;
+        printf("ASM {\n%s\n}\n", asmBuf);
+        free(asmBuf);
+    }
+    else printf("??? top-level: '%c' (0x%02x)\n", c, c);
 
     return 1;
 }
@@ -864,7 +803,7 @@ int main(int argc, char **argv) {
     if (f != stdin) fclose(f);
 
     puts("========================================");
-    puts("AST Pretty Printer Output");
+    puts("AST Pretty Printer Output (binary)");
     puts("========================================");
 
     while (parseTopLevel())
