@@ -241,7 +241,6 @@ parsefunc(struct name *f)
 		 * f->u.body contains locals from phase 1 for register alloc. */
 		emitFuncPre(f);     /* Emit header, params, locals, block prefix */
 		statement(0);       /* Streams: parses, emits, frees each stmt */
-		emitFuncPost();     /* Emit trailing newline */
 	}
 
 	// Consume the function body's closing brace
@@ -292,8 +291,6 @@ parsefunc(struct name *f)
  *   - static:   Internal linkage or persistent local storage
  *   - auto:     Automatic (stack) storage (default for locals)
  *   - register: Request register allocation (hint only)
- *   - const:    Type qualifier (ignored by this compiler)
- *   - volatile: Type qualifier (ignored by this compiler)
  *   - typedef:  Type alias declaration
  *
  * Invalid combinations detected:
@@ -317,8 +314,6 @@ sclassBit(token_t t)
 	case EXTERN:   return SC_EXTERN;
 	case REGISTER: return SC_REGISTER;
 	case STATIC:   return SC_STATIC;
-	case CONST:    return SC_CONST;
-	case VOLATILE: return SC_VOLATILE;
 	case AUTO:     return SC_AUTO;
 	case TYPEDEF:  return SC_TYPEDEF;
 	default:       return 0;
@@ -523,7 +518,7 @@ declaration()
                 /* String init only valid for char arrays */
                 if (v->u.init->op == STRING && !isCharArr) {
                     gripe(ER_D_IN);  /* bad init */
-                    frExp(v->u.init);
+                    FreeExpr(v->u.init);
                     v->u.init = NULL;
                 }
             }
@@ -554,7 +549,7 @@ declaration()
                     if (v->u.init->var) {
                         struct name *strname = (struct name *)v->u.init->var;
                         if (v->static_id) {
-                            snprintf(strname->name, 16, "S%d", v->static_id - 1);
+                            sprintf(strname->name, "S%d", v->static_id - 1);
                         } else {
                             strname->name[0] = '_';
                             strncpy(strname->name + 1, v->name, 14);
@@ -581,10 +576,14 @@ declaration()
 
             /*
              * Track local variable initializers for conversion
-             * to assignments
+             * to assignments.
+             * In phase 1, v->u.init is NULL but we still need to count
+             * the initializer for statement counting.
              */
-            if (lexlevel > 1 && v->u.init && !(sclass & SC_STATIC)) {
-                addDeclInit(v);
+            if (lexlevel > 1 && !(sclass & SC_STATIC)) {
+                if (phase == 1 || v->u.init) {
+                    addDeclInit(v);
+                }
             }
         }
 
@@ -603,7 +602,7 @@ declaration()
 				emitGv(v);
 				/* Free initializer after emission to avoid memory buildup */
 				if (v->u.init) {
-					frExp(v->u.init);
+					FreeExpr(v->u.init);
 					v->u.init = NULL;
 				}
 			}
@@ -651,7 +650,7 @@ declaration()
  *
  * Error recovery:
  *   - Unrecognized tokens are skipped to prevent infinite loops
- *   - NONE tokens (from lexer errors) are consumed and ignored
+ *   - TOK_NONE tokens (from lexer errors) are consumed and ignored
  */
 void
 parse()
@@ -660,7 +659,7 @@ parse()
 
 	pushScope("global");
 	while (cur.type != E_O_F) {
-		while (cur.type == NONE) {
+		while (cur.type == TOK_NONE) {
 			gettoken();
 		}
 		/* Check if current token looks like start of a declaration */
@@ -673,17 +672,15 @@ parse()
 		if (isTypeToken(cur.type) ||
 			cur.type == STATIC || cur.type == REGISTER ||
 			cur.type == AUTO || cur.type == EXTERN ||
-			(poss_typedef && poss_typedef->kind == tdef) ||
-			(cur.type == SYM && next.type == LPAR)) {  /* K&R function */
+			(poss_typedef && poss_typedef->kind == tdef)) {
 			declaration();
 		} else if (cur.type == ASM) {
-			/* Global asm block */
-			struct stmt *st;
-			st = asmblock();  /* asmblock() handles token advancement */
-			if (st) {
-				emitGlobalAsm(st);
-				frStmt(st);
-			}
+			/* Global asm block - get text and emit directly */
+			char *text = cur.v.str;
+			cur.v.str = NULL;
+			gettoken();
+			emitGlobalAsm(text);
+			free(text);
 		} else {
 			/* Not a declaration - skip this token to avoid getting stuck */
 			gettoken();
@@ -773,11 +770,11 @@ frStmt(struct stmt *st)
 
 	/* Free expression trees */
 	if (st->left)
-		frExp(st->left);
+		FreeExpr(st->left);
 	if (st->right)
-		frExp(st->right);
+		FreeExpr(st->right);
 	if (st->middle)
-		frExp(st->middle);
+		FreeExpr(st->middle);
 
 	free(st);
 }
@@ -787,13 +784,10 @@ frStmt(struct stmt *st)
  * Traverse chain and free non-basic (level > 0) names
  */
 void
-cleanupParse(void)
+cleanupParse()
 {
 	struct name *n;
 	struct type *t, *tnext;
-
-	/* Free switch headers and case entries */
-	resetSwitches();
 
 	/* Free non-basic names by traversing until we hit level 0 */
 	while (names && names->level > 0) {
@@ -805,7 +799,7 @@ cleanupParse(void)
 				frStmt(n->u.body);
 		} else {
 			if (n->u.init)
-				frExp(n->u.init);
+				FreeExpr(n->u.init);
 		}
 		if (n->kind != funarg) {
 			free(n);

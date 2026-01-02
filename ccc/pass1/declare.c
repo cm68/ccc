@@ -10,12 +10,6 @@
  * Type construction:
  *   - char **      -> pointer to pointer to char
  *   - int ***      -> pointer to pointer to pointer to int
- *   - const char * -> pointer to const char (const consumed but not stored)
- *
- * Qualifier handling:
- *   - Skips const/volatile qualifiers after each '*'
- *   - Example: char *const volatile * parses correctly
- *   - Qualifiers are currently ignored (not stored in type system)
  *
  * Precedence with arrays/functions:
  *   - Pointers bind tighter than arrays: int *arr[10] is array of pointers
@@ -36,10 +30,6 @@ parsePtrPfx(struct type *basetype)
     struct type *t = basetype;
     while (cur.type == STAR) {
         gettoken();
-        // Skip const/volatile qualifiers after * (e.g., char *const)
-        while (cur.type == CONST || cur.type == VOLATILE) {
-            gettoken();
-        }
         t = getType(TF_POINTER, t, 0);
     }
     return t;
@@ -209,11 +199,7 @@ declare(struct type **btp, unsigned char struct_elem)
     struct name *nm, *arg, *param_tail;
     struct type *t, *prefix, *suffix, *rt;
     unsigned long i;
-    unsigned char is_typedef;
-    unsigned char kr_style;
     struct type *param_type;
-    struct name *p;
-    struct name *n;
     char *param_name;
 
     suffix = 0;
@@ -366,30 +352,14 @@ declare(struct type **btp, unsigned char struct_elem)
         // Function types need unique instances because we modify elem list
         suffix = calloc(1, sizeof(*suffix));
         suffix->flags = TF_FUNC;
-        // K&R: no return type defaults to int
         suffix->sub = prefix ? prefix : inttype;
 
-        /*
-         * Detect style: K&R if starts with SYM that's not a typedef,
-         * ANSI otherwise
-         */
-        // Check if current symbol is a typedef name
-        is_typedef = 0;
-        if (cur.type == SYM) {
-            n = findName(cur.v.name, 0);
-            if (n && n->kind == tdef) {
-                is_typedef = 1;
-            }
-        }
-        kr_style = (cur.type == SYM &&
-                    !isTypeToken(cur.type) &&
-                    !is_typedef);
-
-        // Parse parameter list
+        // Parse parameter list (ANSI style only)
         param_type = NULL;
         param_tail = NULL;
         while (cur.type != RPAR && cur.type != E_O_F) {
             char paramNameBuf[64];  /* Stack buffer for parameter names */
+            struct type *basetype;
             param_name = NULL;
             param_type = NULL;
 
@@ -400,127 +370,105 @@ declare(struct type **btp, unsigned char struct_elem)
                 break;  // exit parameter loop
             }
 
-            if (kr_style) {
-                // K&R style: just collect names (types come later)
-                param_name = parseParamNm(0, paramNameBuf,
-                                              sizeof(paramNameBuf));
-                if (!param_name) {
-                    gripe(ER_D_FA);
-                    break;
-                }
-            } else {
-                // ANSI style: parse full type + declarator
-                struct type *basetype = getbasetype();
-                if (!basetype) {
-                    gripe(ER_D_FA);
-                    break;
-                }
+            // ANSI style: parse full type + declarator
+            basetype = getbasetype();
+            if (!basetype) {
+                gripe(ER_D_FA);
+                break;
+            }
 
-                // Parse pointer prefix
-                param_type = parsePtrPfx(basetype);
+            // Parse pointer prefix
+            param_type = parsePtrPfx(basetype);
 
-                // Handle function pointer: type (*)(args) or type (*name)(args)
-                if (cur.type == LPAR) {
+            // Handle function pointer: type (*)(args) or type (*name)(args)
+            if (cur.type == LPAR) {
+                gettoken();
+                if (cur.type == STAR) {
+                    // (*) or (*name) - pointer to function
                     gettoken();
-                    if (cur.type == STAR) {
-                        // (*) or (*name) - pointer to function
+                    // Optional name inside (*)
+                    if (cur.type == SYM) {
+                        strncpy(paramNameBuf, cur.v.name,
+                            sizeof(paramNameBuf) - 1);
+                        paramNameBuf[sizeof(paramNameBuf) - 1] = '\0';
+                        param_name = paramNameBuf;
                         gettoken();
-                        // Skip optional const/volatile
-                        while (cur.type == CONST || cur.type == VOLATILE)
-                            gettoken();
-                        // Optional name inside (*)
-                        if (cur.type == SYM) {
-                            strncpy(paramNameBuf, cur.v.name,
-                                sizeof(paramNameBuf) - 1);
-                            paramNameBuf[sizeof(paramNameBuf) - 1] = '\0';
-                            param_name = paramNameBuf;
-                            gettoken();
-                        }
-                        expect(RPAR, ER_D_FA);
-                        // Now parse function parameter list
-                        if (cur.type == LPAR) {
-                            struct type *fn_type;
-                            struct name *inner_arg, *inner_tail;
-                            fn_type = calloc(1, sizeof(*fn_type));
-                            fn_type->flags = TF_FUNC;
-                            fn_type->sub = param_type;  // return type
-                            inner_tail = NULL;
-                            gettoken();  // consume (
-                            // Parse inner function's parameters
-                            while (cur.type != RPAR && cur.type != E_O_F) {
-                                struct type *inner_base, *inner_type;
-                                inner_base = getbasetype();
-                                if (!inner_base) {
-                                    if (cur.type == COMMA) {
-                                        gettoken();
-                                        continue;
-                                    }
-                                    break;
-                                }
-                                inner_type = parsePtrPfx(inner_base);
-                                // Skip optional inner parameter name
-                                if (cur.type == SYM)
-                                    gettoken();
-                                inner_arg = createPrmEnt(NULL, inner_type);
-                                inner_arg->next = NULL;
-                                if (inner_tail)
-                                    inner_tail->next = inner_arg;
-                                else
-                                    fn_type->elem = inner_arg;
-                                inner_tail = inner_arg;
+                    }
+                    expect(RPAR, ER_D_FA);
+                    // Now parse function parameter list
+                    if (cur.type == LPAR) {
+                        struct type *fn_type;
+                        struct name *inner_arg, *inner_tail;
+                        fn_type = calloc(1, sizeof(*fn_type));
+                        fn_type->flags = TF_FUNC;
+                        fn_type->sub = param_type;  // return type
+                        inner_tail = NULL;
+                        gettoken();  // consume (
+                        // Parse inner function's parameters
+                        while (cur.type != RPAR && cur.type != E_O_F) {
+                            struct type *inner_base, *inner_type;
+                            inner_base = getbasetype();
+                            if (!inner_base) {
                                 if (cur.type == COMMA) {
                                     gettoken();
                                     continue;
                                 }
                                 break;
                             }
-                            expect(RPAR, ER_D_FA);
-                            // Result: pointer to function type
-                            param_type = getType(TF_POINTER, fn_type, 0);
-                        } else {
-                            // Just (*) without function params - pointer type
-                            param_type = getType(TF_POINTER, param_type, 0);
+                            inner_type = parsePtrPfx(inner_base);
+                            // Skip optional inner parameter name
+                            if (cur.type == SYM)
+                                gettoken();
+                            inner_arg = createPrmEnt(NULL, inner_type);
+                            inner_arg->next = NULL;
+                            if (inner_tail)
+                                inner_tail->next = inner_arg;
+                            else
+                                fn_type->elem = inner_arg;
+                            inner_tail = inner_arg;
+                            if (cur.type == COMMA) {
+                                gettoken();
+                                continue;
+                            }
+                            break;
                         }
+                        expect(RPAR, ER_D_FA);
+                        // Result: pointer to function type
+                        param_type = getType(TF_POINTER, fn_type, 0);
                     } else {
-                        // Unexpected token after ( - try to recover
-                        gripe(ER_D_FA);
-                        // Skip to matching )
-                        while (cur.type != RPAR && cur.type != E_O_F)
-                            gettoken();
-                        if (cur.type == RPAR)
-                            gettoken();
+                        // Just (*) without function params - pointer type
+                        param_type = getType(TF_POINTER, param_type, 0);
                     }
                 } else {
-                    // Get parameter name (optional for ANSI declarations)
-                    /* Allow anonymous */
-                    param_name = parseParamNm(1, paramNameBuf,
-                                                  sizeof(paramNameBuf));
+                    // Unexpected token after ( - try to recover
+                    gripe(ER_D_FA);
+                    // Skip to matching )
+                    while (cur.type != RPAR && cur.type != E_O_F)
+                        gettoken();
+                    if (cur.type == RPAR)
+                        gettoken();
                 }
+            } else {
+                // Get parameter name (optional for ANSI declarations)
+                param_name = parseParamNm(1, paramNameBuf,
+                                              sizeof(paramNameBuf));
+            }
 
-                // Handle array suffix (converts to pointer)
-                if (cur.type == LBRACK) {
-                    struct expr *sz;
-                    gettoken();
-                    if (cur.type != RBRACK) {
-                        /* Array size (ignored for parameters) */
-                        sz = parseExpr(0, NULL);
-                        if (sz) frExp(sz);
-                    }
-                    expect(RBRACK, ER_D_FA);
-                    param_type = getType(TF_POINTER,
-                        param_type->sub ? param_type->sub : param_type, 0);
+            // Handle array suffix (converts to pointer)
+            if (cur.type == LBRACK) {
+                struct expr *sz;
+                gettoken();
+                if (cur.type != RBRACK) {
+                    /* Array size (ignored for parameters) */
+                    sz = parseExpr(0, NULL);
+                    if (sz) FreeExpr(sz);
                 }
+                expect(RBRACK, ER_D_FA);
+                param_type = getType(TF_POINTER,
+                    param_type->sub ? param_type->sub : param_type, 0);
             }
 
             // Create parameter entry for type->elem with actual name
-            /*
-             * Names are kept for K&R matching and for parsefunc() to
-             * add to namespace
-             */
-            /*
-             * Type comparison uses compatFnTyp() which
-             * ignores names
-             */
             arg = createPrmEnt(param_name, param_type);
             arg->next = NULL;
             if (param_tail) {
@@ -544,58 +492,6 @@ declare(struct type **btp, unsigned char struct_elem)
         }
 
         expect(RPAR, ER_D_FA);
-
-        // K&R style: parse type declarations after )
-        if (kr_style && isTypeToken(cur.type)) {
-            while (isTypeToken(cur.type) && cur.type != E_O_F &&
-                   cur.type != BEGIN) {
-                char paramNameBuf[64];  /* Stack buffer for parameter names */
-                struct type *basetype = getbasetype();
-                if (!basetype) {
-                    break;
-                }
-
-                // Parse declarator
-                param_type = parsePtrPfx(basetype);
-
-                // Get parameter name (required for K&R declarations)
-                param_name = parseParamNm(0, paramNameBuf,
-                                              sizeof(paramNameBuf));
-                if (!param_name) {
-                    gripe(ER_D_FM);
-                    break;
-                }
-
-                // Find matching parameter in suffix->elem and update its type
-                for (p = suffix->elem; p; p = p->next) {
-                    if (strcmp(p->name, param_name) == 0) {
-                        p->type = param_type;
-                        break;
-                    }
-                }
-                if (!p) {
-                    gripe(ER_D_FM);  // Parameter declared but not in list
-                }
-                /* Stack buffer automatically freed */
-
-                // Continue or stop
-                if (cur.type == SEMI) {
-                    gettoken();
-                    if (cur.type == BEGIN || !isTypeToken(cur.type)) {
-                        break;
-                    }
-                } else {
-                    break;
-                }
-            }
-
-            // Default undeclared K&R parameters to int
-            for (arg = suffix->elem; arg; arg = arg->next) {
-                if (arg->type == NULL) {
-                    arg->type = inttype;
-                }
-            }
-        }
     }                           // if cur.type == LPAR
 
     if ((cur.type != ASSIGN) && (cur.type != BEGIN) &&

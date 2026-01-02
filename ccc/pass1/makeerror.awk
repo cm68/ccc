@@ -14,7 +14,7 @@ END {
 	printf("\t\"%s\"\n", "unknown error");
 	print "};"; 
 	print "#else";
-	print "typedef enum error {";
+	print "typedef enum errorenum {";
 	for (i = 0; i < ci; i++) {
 		printf("\t%s,\n", codes[i]);
 	}

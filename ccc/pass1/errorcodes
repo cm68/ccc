@@ -40,6 +40,7 @@ ER_S_OE		orphan else
 ER_S_NC		case not const
 ER_S_NL		label :
 ER_S_DO		bad do
+ER_S_WH		need while
 ER_S_GL		goto label
 ER_S_SB		switch {
 ER_S_UK		bad stmt

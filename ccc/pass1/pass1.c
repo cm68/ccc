@@ -91,13 +91,19 @@ process(char *f, char *o1, char *o2)
 
     /* Open output file for AST (o1 from ccc: base.1) */
     astFd = creat(o1, 0644);
-    if (astFd < 0) {
+    if (astFd & 0x80) {
+#ifndef CCC
         perror(o1);
+#endif
         exit(1);
     }
 
     /* Read from preprocessed lexeme stream */
     lexOpen(f);
+
+    /* Reset string counters for this file */
+    funcStrCtr = 0;
+    globalStrCtr = 0;
 
     /* Phase 1: Build symbol table, validate types, accumulate counts */
     phase = 1;
@@ -106,6 +112,11 @@ process(char *f, char *o1, char *o2)
     /* Rewind lexeme stream for phase 2 */
     lexRewind();
     lexlevel = 0;  /* Reset scope level for phase 2 */
+    resetLoopLbls();  /* Reset label counter so phase 2 matches phase 1 */
+    resetFuncIdx();  /* Reset function stmt count read pointer for phase 2 */
+    flipBlkCnts();   /* Reverse block counts for phase 2 (inner-first -> outer-first) */
+    funcStrCtr = 0;  /* Reset function string counter so phase 2 matches phase 1 */
+    /* Note: globalStrCtr NOT reset - globals are only in phase 2 */
 
     /* Phase 2: Emit AST (uses counts pushed by phase 1 in LIFO order) */
     phase = 2;

@@ -10,6 +10,9 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#ifdef CCC
+#include <unixio.h>
+#endif
 
 /*
  * generated files
@@ -109,14 +112,12 @@ struct expr {
 extern struct expr *mkexpr(unsigned char op, struct expr *left);
 extern struct expr *mkexprI(unsigned char op, struct expr *left,
     struct type *type, unsigned long v, int flags);
-extern struct expr *cfold(struct expr *e);
-extern struct expr *normalize(struct expr *e);
-extern struct type *constType(long v);
 extern struct expr *parseExpr(unsigned char priority, struct stmt *);
 extern int isTypeToken(unsigned char t);
 unsigned long parseConst(unsigned char priority);
-extern struct expr *newExpr(unsigned char op);
-extern void frExp(struct expr *e);
+extern void FreeExpr(struct expr *e);
+extern char funcStrCtr;    /* function-local string counter (prefix "fs") */
+extern char globalStrCtr;  /* global string counter (prefix "str") */
 
 /*
  * a statement is the basic execution unit that is managed by the compiler
@@ -145,14 +146,16 @@ extern struct stmt *statement(struct stmt *parent);
 extern void declaration(void);
 extern struct name *capLocals(void);
 extern void addDeclInit(struct name *v);
-extern void resetSwitches(void);
 extern void frStmt(struct stmt *s);
 extern void emitFuncPre(struct name *func);
 extern void emitOneStmt(struct stmt *st);
-extern void emitFuncPost(void);
-extern void emitGlobalAsm(struct stmt *st);
+extern void emitGlobalAsm(char *text);
 extern void emitGv(struct name *var);
 extern void emitStrLit(struct name *strname);
+extern void emitExpr(struct expr *e);
+extern int cntCondLbls(struct expr *e);
+extern void emitLabel(char *base, char *suffix);
+extern void emitGoto(char *base, char *suffix);
 
 /* statement flags used in parse.c */
 #define S_PARENT 0x01
@@ -254,10 +257,8 @@ struct name {
 #define	SC_EXTERN	0x01
 #define	SC_REGISTER	0x02
 #define	SC_STATIC	0x04
-#define	SC_CONST	0x08
-#define	SC_VOLATILE	0x10
-#define	SC_AUTO		0x20
-#define	SC_TYPEDEF	0x40
+#define	SC_AUTO		0x08
+#define	SC_TYPEDEF	0x10
 
 /* Register allocation values (used in struct name reg field) */
 #define REG_NONE    0   /* Not allocated to a register (on stack) */
@@ -297,28 +298,6 @@ void cleanupParse();
 void resetLoopLbls();
 
 /*
- * Switch statement collection (phase 1)
- * Each function has a chain of switch headers.
- * Each switch header has a chain of case entries.
- */
-struct caseent {
-    struct caseent *next;
-    long value;
-    unsigned char isDef;  /* 1 if default case */
-};
-
-struct swhdr {
-    struct swhdr *next;       /* next switch in function */
-    struct caseent *cases;    /* chain of case entries */
-    unsigned char caseCnt;
-    unsigned char hasDef;
-    char label[8];            /* "S0", "S1", etc. */
-};
-
-extern struct swhdr *swList;  /* per-function switch chain */
-extern struct swhdr *curSw;   /* current switch (phase 1) */
-
-/*
  * Label stack for break/continue resolution (phase 2)
  * Labels are B<num> for break, C<num> for continue.
  */
@@ -329,7 +308,7 @@ struct lblfrm {
 
 #define MAX_LBLDEPTH 16
 extern struct lblfrm lblStack[];
-extern int lblDepth;
+extern unsigned char lblDepth;
 
 /*
  * FOR loop context (phase 2)
@@ -341,7 +320,50 @@ struct forctx {
 
 #define MAX_FORDEPTH 8
 extern struct forctx forStack[];
-extern int forDepth;
+extern unsigned char forDepth;
+
+/*
+ * Switch statement table tracking (phase 1)
+ * Accumulates case values and labels for each switch statement.
+ * Nested switches use swStack to track which switch is current.
+ */
+#define MAX_SWCASES 64      /* max cases per switch */
+#define MAX_SWITCHES 8      /* max switches per function */
+#define MAX_SWDEPTH 8       /* max switch nesting */
+
+struct swcase {
+    long value;             /* case constant value */
+    unsigned char is_default; /* 1 if default, 0 if case */
+    unsigned char stmts;    /* statement count for this case section */
+};
+
+struct swtab {
+    struct swcase *cases;   /* pointer into global case pool */
+    unsigned char count;    /* number of cases */
+    unsigned char num;      /* switch number (for labels) */
+    unsigned char base_stmts; /* stmt_count at start of current case */
+};
+
+/* Global case pool - all switches share this */
+#define MAX_ALLCASES 128
+extern struct swcase casePool[];
+extern unsigned char casePoolIdx;
+
+extern struct swtab swList[];
+extern unsigned char swCount;       /* number of switches in function */
+extern unsigned char swStack[];     /* nesting stack (indices into swList) */
+extern unsigned char swDepth;       /* nesting depth */
+extern unsigned char swEmitIdx;     /* phase 2: next switch to emit */
+extern unsigned char swEmitStack[]; /* phase 2: stack of switch indices */
+extern unsigned char swEmitDepth;   /* phase 2: emit stack depth */
+extern unsigned char caseEmitIdx[]; /* phase 2: case indices per switch */
+
+void resetSwitch(void);             /* reset for new function */
+void pushSwitch(void);              /* enter switch statement */
+void popSwitch(void);               /* exit switch statement */
+void addCase(long value, unsigned char stmt_cnt);  /* add case to current switch */
+void addDefault(unsigned char stmt_cnt);           /* add default to current switch */
+void finishCase(unsigned char stmt_cnt);           /* finalize current case stmt count */
 
 /* Global context for static variable name mangling */
 extern struct name *curFunc;
@@ -359,9 +381,18 @@ extern unsigned char phase;         // 1 = build symbol table, 2 = emit AST
  * Phase 1 computes counts (args, cases, stmts), phase 2 retrieves them.
  * Reset between functions, flip after phase 1 for LIFO retrieval.
  */
-void pushCount(int c);
-int popCount(void);
+void pushCount(char c);
+char popCount(void);
 void resetCounts(void);
+
+/* Block statement counts (phase 1 -> phase 2) */
+void pushBlkCnt(unsigned char n);
+unsigned char popBlkCnt(void);
+void flipBlkCnts(void);  /* reverse for phase 2 */
+void resetBlkCnts(void);
+void pushFuncCnt(unsigned char n);
+unsigned char popFuncCnt(void);
+void resetFuncIdx(void);
 
 /* lexread.c - lexeme stream reader */
 struct token {
@@ -398,11 +429,15 @@ void process(char *f, char *o1, char *o2);
 void usage(char *complaint);
 
 /* util.c */
-extern unsigned char lookupc(char *s, char c);
-extern void hexdump(char *tag, char *s, int len);
-char iswhite(unsigned char c);
+#ifndef CCC
 char *bitdef(unsigned char v, char **defs);
+#endif
 int fdprintf(unsigned char fd, char *fmt, ...);
+void emit1(unsigned char b);
+void emit2(unsigned short w);
+void emit4(unsigned long l);
+void emitN(char *s, unsigned char len);
+void emitS(char *s);
 
 /* debug options */
 #ifdef DEBUG

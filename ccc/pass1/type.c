@@ -209,8 +209,6 @@ dumpName(struct name *n)
 		if (n->sclass & SC_STATIC) printf("static ");
 		if (n->sclass & SC_REGISTER) printf("register ");
 		if (n->sclass & SC_AUTO) printf("auto ");
-		if (n->sclass & SC_CONST) printf("const ");
-		if (n->sclass & SC_VOLATILE) printf("volatile ");
 		if (n->sclass & SC_TYPEDEF) printf("typedef ");
 	}
 	fdprintf(2,"\n");
@@ -600,10 +598,6 @@ parsebasic()
             unsignedness = UN_SIGNED;
             continue;
 
-		case CONST:
-		case VOLATILE:
-			gettoken();
-			continue;
 
 		case DOUBLE:
 			misc++;

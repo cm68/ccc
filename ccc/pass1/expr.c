@@ -17,58 +17,64 @@ int exprHighWater = 0;
 #define TF_ASN 0x10   /* assignment op: = += -= etc */
 #define TF_CMP 0x20   /* comparison: < > <= >= == != */
 #define TF_LOG 0x40   /* logical: && || */
-#define TF_TYPE 0x80  /* type keyword */
 
 #define P(p) (p)                     /* priority only */
 #define F(f) (f)                     /* flags only */
 #define PF(p,f) ((p) | (f))          /* priority + flags */
 
+/*
+ * Indexed by (token - 0x20) where tokens are from lexeme.h
+ * Token values: STAR=36, PLUS=40, MINUS=41, DIV=43, MOD=44,
+ * RSHIFT=45, LSHIFT=46, AND=47, OR=48, XOR=49, LAND=53, LOR=54,
+ * EQ=60, NEQ=61, LE=62, LT=63, GE=64, GT=65, PLUSEQ=70..ASSIGN=80, QUES=90
+ */
 static unsigned char oppri[96] = {
-/*0x20  spc !  "  #  $  %    &    ' */  0,0,0,0,0,P(3),P(8),0,
-/*0x28  (  )  *    +    ,     -    .    / */  0,0,P(3),P(4),P(15),P(4),P(1),P(3),
-/*0x30  0             1             2             3  4            5  6             7 */
-        PF(14,TF_ASN),PF(14,TF_ASN),PF(14,TF_ASN),0,F(TF_TYPE),0,PF(14,TF_ASN),0,
-/*0x38  8  9  :  ;  <          =             >          ? */
-        0,0,0,0,PF(6,TF_CMP),PF(14,TF_ASN),PF(6,TF_CMP),P(13),
-/*0x40  @  A  B  C  D  E  F  G */  0,0,0,0,0,0,0,0,
-/*0x48  H             I  J             K  L          M    N  O */
-        PF(14,TF_ASN),0,PF(14,TF_ASN),0,PF(6,TF_CMP),P(1),0,0,
-/*0x50  P             Q             R  S  T             U  V  W */
-        PF(14,TF_ASN),PF(7,TF_CMP),0,0,PF(14,TF_ASN),0,0,0,
-/*0x58  X             Y  Z  [  \  ]  ^    _ */
-        PF(14,TF_ASN),0,0,0,0,0,P(9),0,
-/*0x60  `  a           b  c           d           e           f           g */
-        0,F(TF_TYPE),0,F(TF_TYPE),F(TF_TYPE),F(TF_TYPE),F(TF_TYPE),PF(6,TF_CMP),
-/*0x68  h              i           j              k           l           m           n             o */
-        PF(12,TF_LOG),F(TF_TYPE),PF(11,TF_LOG),F(TF_TYPE),F(TF_TYPE),F(TF_TYPE),PF(7,TF_CMP),0,
-/*0x70  p  q  r  s           t           u           v           w */
-        0,0,0,F(TF_TYPE),F(TF_TYPE),F(TF_TYPE),F(TF_TYPE),P(5),
-/*0x78  x  y     z  {  |      }  ~  DEL */  0,P(5),0,0,P(10),0,0,0
+/*0x20  32  33  34  35  STAR  37  38  39 */  0,0,0,0,P(3),0,0,0,
+/*0x28  PLUS MINUS 42  DIV   MOD   RSHIFT LSHIFT AND */
+        P(4),P(4),0,P(3),P(3),P(5),P(5),P(8),
+/*0x30  OR    XOR   50  51  52  LAND           LOR            55 */
+        P(10),P(9),0,0,0,PF(11,TF_LOG),PF(12,TF_LOG),0,
+/*0x38  56  57  58  59  EQ             NEQ            LE             LT */
+        0,0,0,0,PF(6,TF_CMP),PF(7,TF_CMP),PF(6,TF_CMP),PF(6,TF_CMP),
+/*0x40  GE             GT             66  67  68  69  PLUSEQ         SUBEQ */
+        PF(6,TF_CMP),PF(6,TF_CMP),0,0,0,0,PF(14,TF_ASN),PF(14,TF_ASN),
+/*0x48  MULTEQ         DIVEQ          MODEQ          RSHIFTEQ       LSHIFTEQ       ANDEQ          OREQ           XOREQ */
+        PF(14,TF_ASN),PF(14,TF_ASN),PF(14,TF_ASN),PF(14,TF_ASN),PF(14,TF_ASN),PF(14,TF_ASN),PF(14,TF_ASN),PF(14,TF_ASN),
+/*0x50  ASSIGN         81  82  83  84  85  86  87 */
+        PF(14,TF_ASN),0,0,0,0,0,0,0,
+/*0x58  88  89  QUES  91  92  93  94  95 */
+        0,0,P(13),0,0,0,0,0,
+/*0x60  96  97  98  99  100 101 102 103 */  0,0,0,0,0,0,0,0,
+/*0x68  104 105 106 107 108 109 110 111 */  0,0,0,0,0,0,0,0,
+/*0x70  112 113 114 115 116 117 118 119 */  0,0,0,0,0,0,0,0,
+/*0x78  120 121 122 123 124 125 126 127 */  0,0,0,0,0,0,0,0
 };
 #undef P
 #undef F
 #undef PF
 
-#define OPPRI(t) ((unsigned char)(t) < 0x80 ? oppri[(t) - 0x20] : 0)
+#define OPPRI(t) ((unsigned char)(t) >= 0x20 && (unsigned char)(t) < 0x80 ? oppri[(t) - 0x20] : 0)
 
-/* High-byte assignment operators: SUBEQ=0xdf MODEQ=0xfe ANDEQ=0xc6 */
-#define IS_ASSIGN(t) ((OPPRI(t) & TF_ASN) || (t) == 0xdf || (t) == 0xfe || (t) == 0xc6)
-#define IS_CMP(t)    (OPPRI(t) & TF_CMP)
-#define IS_LOG(t)    (OPPRI(t) & TF_LOG)
+/* Assignment operators all have TF_ASN flag in oppri table */
+#define IS_ASSIGN(t) (OPPRI(t) & TF_ASN)
 #define IS_CMPLOG(t) (OPPRI(t) & (TF_CMP | TF_LOG))
-#define IS_TYPE(t)   (OPPRI(t) & TF_TYPE)
 
 /* Check if token is a type keyword - exported for declare.c */
 int
 isTypeToken(unsigned char t)
 {
-    return IS_TYPE(t);
+    /* Type keywords are in range 128-139 (INT, CHAR, ... SHORT) */
+    return (t >= INT && t <= SHORT);
 }
 
 /*
- * counter for generating synthetic string literal names
+ * Counters for generating synthetic string literal names
+ * funcStrCtr: for function-local strings (prefix "fs")
+ * globalStrCtr: for global variable strings (prefix "str")
+ * Exported so they can be reset between phases
  */
-static int stringCtr = 0;
+char funcStrCtr = 0;
+char globalStrCtr = 0;
 
 /*
  * Create a new expression tree node
@@ -148,26 +154,26 @@ mkexprI(unsigned char op, struct expr *left, struct type *type,
  *   e - Root of expression tree to free (NULL-safe)
  */
 void
-frExp(struct expr *e)
+FreeExpr(struct expr *e)
 {
 	if (!e) {
 		return;
 	}
 	if (e->left) {
-		frExp(e->left);
+		FreeExpr(e->left);
 	}
 	if (e->right) {
-		frExp(e->right);
+		FreeExpr(e->right);
 	}
 	/* Free linked list (e.g., function call arguments) */
 	if (e->next) {
-		frExp(e->next);
+		FreeExpr(e->next);
 	}
 	/* For STRING expressions, free the synthetic name and its init expr */
 	if (e->op == STRING && e->var) {
 		struct name *strname = (struct name *)e->var;
 		if (strname->u.init) {
-			frExp(strname->u.init);
+			FreeExpr(strname->u.init);
 			strname->u.init = NULL;
 		}
 		/* Free the counted string data */
@@ -185,16 +191,17 @@ frExp(struct expr *e)
 /*
  * Get binary operator precedence priority
  * Uses combined oppri[] table (bits 0-3 = priority)
- * High-byte tokens (SUBEQ, MODEQ, ANDEQ) handled explicitly
+ * Lexeme.h token values handled explicitly since they don't match ASCII
  */
 unsigned char
 binopPri(unsigned char t)
 {
-    if (t < 0x80)
-        return (t >= 0x20) ? (oppri[t - 0x20] & 0x0f) : 0;
-    /* High-byte assignment operators: all priority 14 */
-    if (t == 0xdf || t == 0xfe || t == 0xc6)
-        return 14;
+    /* COMMA is below table range */
+    if (t == COMMA)
+        return 15;
+    /* Use table lookup for tokens in range 0x20-0x7f */
+    if (t >= 0x20 && t < 0x80)
+        return oppri[t - 0x20] & 0x0f;
     return 0;
 }
 
@@ -215,16 +222,57 @@ skipExpr(unsigned char pri)
         gettoken();
         break;
 
-    case STRING:
+    case STRING: {
+        /* Process function-local strings in phase 1 - emit 'U' record before function */
+        struct name *np;
+        char namebuf[32];
+        char *symname;
+        int size;
+
+        /* Copy string since buffer is reused */
+        size = ((unsigned char *)cur.v.str)[0] + 1;
+        symname = malloc(size);
+        memcpy(symname, cur.v.str, size);
         gettoken();
+
         /* Handle adjacent string concatenation */
         while (cur.type == STRING)
             gettoken();
-        break;
 
-    case SYM:
+        /* Generate synthetic name with "fs" prefix for function strings */
+        sprintf(namebuf, "fs%d", funcStrCtr++);
+
+        /* Create name structure for string literal */
+        np = (struct name *)calloc(1, sizeof(struct name));
+        if (np) {
+            strncpy(np->name, namebuf, 15);
+            np->name[15] = 0;
+            np->type = getType(TF_POINTER, chartype, 0);
+            np->kind = var;
+            np->level = 1;
+            np->u.init = mkexprI(STRING, 0, NULL, (unsigned long)symname, 0);
+            /* Emit string literal now (during phase 1, before function body) */
+            emitStrLit(np);
+            /* Free since we don't need it after emission */
+            if (np->u.init) {
+                free(np->u.init);
+            }
+            free(np);
+        }
+        free(symname);
+        break;
+    }
+
+    case SYM: {
+        struct name *np = findName(cur.v.name, 0);
+        if (np && np->level > 1 && np->kind != elem &&
+            !(np->type && (np->type->flags & (TF_FUNC|TF_ARRAY)))) {
+            if (np->ref_count < 255)
+                np->ref_count++;
+        }
         gettoken();
         break;
+    }
 
     case LPAR:
         gettoken();
@@ -256,15 +304,12 @@ skipExpr(unsigned char pri)
         gettoken();
         if (cur.type == LPAR) {
             gettoken();
-            if (isCastStart()) {
-                parseTypeName();
-                expect(RPAR, ER_E_SP);
-            } else {
-                skipExpr(0);
-                expect(RPAR, ER_E_SP);
-            }
-        } else {
-            skipExpr(OP_PRI_MULT - 1);
+            parseTypeName();  // handles types and typedef names
+            if (cur.type == SYM)
+                gettoken();  // sizeof(var)
+            expect(RPAR, ER_E_SP);
+        } else if (cur.type == SYM) {
+            gettoken();  // sizeof var
         }
         break;
 
@@ -347,7 +392,7 @@ mkIncDec(struct expr *operand, unsigned char inc_op, unsigned char is_postfix)
 #endif
     } else {
         gripe(ER_E_LV);
-        frExp(operand);
+        FreeExpr(operand);
         operand = NULL;
     }
     e = mkexpr(inc_op, operand);
@@ -465,8 +510,8 @@ parseExpr(unsigned char pri, struct stmt *st)
 	char *symname;
 	union { float f; unsigned long u; } fu;
 	long sval;
-	int src_size, tgt_size, src_unsigned, elem_size, size;
-	int l_ptr, r_ptr;
+	char src_size, tgt_size, src_unsigned, l_ptr, r_ptr;
+	int elem_size, size;
 	token_t cast_op;
 
 	/* Initialize variables that need specific values */
@@ -488,7 +533,16 @@ parseExpr(unsigned char pri, struct stmt *st)
 
     case NUMBER:
         sval = cur.v.numeric;
-        e = mkexprI(CONST, 0, constType(sval), (unsigned long)sval, E_CONST);
+        /* Inline: determine smallest type for constant */
+        if (sval < 0)
+            t = (sval >= -128) ? chartype : (sval >= -32768) ? inttype : longtype;
+        else if (sval <= 255)
+            t = uchartype;
+        else if (sval <= 65535)
+            t = ushorttype;
+        else
+            t = (sval <= 2147483647L) ? longtype : ulongtype;
+        e = mkexprI(CONST, 0, t, (unsigned long)sval, E_CONST);
         gettoken();
         break;
 
@@ -507,8 +561,14 @@ parseExpr(unsigned char pri, struct stmt *st)
         symname = malloc(size);
         memcpy(symname, cur.v.str, size);
 
-        /* generate synthetic name for this string literal */
-        sprintf(namebuf, "str%d", stringCtr++);
+        /* Different prefixes for function vs global strings */
+        if (lexlevel > 1) {
+            /* Function-local: "fs" prefix (emitted during phase 1) */
+            sprintf(namebuf, "fs%d", funcStrCtr++);
+        } else {
+            /* Global: "str" prefix (emitted during phase 2) */
+            sprintf(namebuf, "str%d", globalStrCtr++);
+        }
 
         /*
          * Allocate name structure directly without adding to
@@ -532,7 +592,7 @@ parseExpr(unsigned char pri, struct stmt *st)
             e->v = (unsigned long)symname;
             /* store reference to the named string in the expression */
             e->var = (struct var *)np;
-            /* String emission deferred until name is finalized */
+            /* String 'U' record already emitted during phase 1 */
         }
         e->flags = E_CONST;
         gettoken();
@@ -587,14 +647,6 @@ parseExpr(unsigned char pri, struct stmt *st)
                 free(symname);
                 break;
             }
-        }
-
-        /* Count references for register allocation (done in phase 1).
-         * Only count locals and parameters, not globals or functions. */
-        if (phase == 1 && np->level > 1 && np->kind != elem &&
-            !(np->type && (np->type->flags & (TF_FUNC|TF_ARRAY)))) {
-            if (np->ref_count < 255)
-                np->ref_count++;
         }
 
         if (np->kind == elem) {
@@ -713,7 +765,6 @@ parseExpr(unsigned char pri, struct stmt *st)
             e->type = e->left->type;
             e->left->up = e;
         }
-        e = cfold(e);
         break;
 
     case STAR:      // dereference (unary)
@@ -770,55 +821,28 @@ parseExpr(unsigned char pri, struct stmt *st)
         }
         break;
 
-    case SIZEOF:    // sizeof operator
+    case SIZEOF:    // sizeof(type) or sizeof(var) or sizeof var
         gettoken();
-        // Check if it's sizeof(type) or sizeof expr
         if (cur.type == LPAR) {
-            // Could be sizeof(type) or sizeof(expr)
-            // Try to parse as type first
             gettoken();  // consume '('
-
-            t = getbasetype();
-            if (t) {
-                // It's sizeof(type)
-                // Handle pointer modifiers (e.g., sizeof(int *))
-                while (cur.type == STAR) {
-                    gettoken();
-                    t = getType(TF_POINTER, t, 0);
-                }
-
-                expect(RPAR, ER_E_SP);
-
-                // Create constant expression with the size
-                e = mkexprI(CONST, 0, inttype, t->size, E_CONST);
-            } else {
-                // It's sizeof(expr) - parse as expression
-                e = parseExpr(0, st);
-                expect(RPAR, ER_E_SP);
-
-                // Create constant expression with the size
-                // of the expression's type
-                if (e && e->type) {
-                    size = e->type->size;
-                    frExp(e);  // we only needed it for the type
-                    e = mkexprI(CONST, 0, inttype, size, E_CONST);
-                } else {
-                    gripe(ER_E_UO);  // couldn't determine type
-                    e = mkexprI(CONST, 0, inttype, 0, E_CONST);
-                }
+            t = parseTypeName();  // handles types and typedef names
+            if (!t && cur.type == SYM) {
+                // sizeof(var) - look up variable
+                np = findName(cur.v.name, 0);
+                t = np ? np->type : NULL;
+                gettoken();
             }
+            expect(RPAR, ER_E_SP);
+        } else if (cur.type == SYM) {
+            // sizeof var (no parens)
+            np = findName(cur.v.name, 0);
+            t = np ? np->type : NULL;
+            gettoken();
         } else {
-            // sizeof expr (without parentheses)
-            e1 = parseExpr(OP_PRI_MULT - 1, st);
-            if (e1 && e1->type) {
-                size = e1->type->size;
-                frExp(e1);
-                e = mkexprI(CONST, 0, inttype, size, E_CONST);
-            } else {
-                gripe(ER_E_UO);
-                e = mkexprI(CONST, 0, inttype, 0, E_CONST);
-            }
+            t = NULL;
         }
+        e = mkexprI(CONST, 0, inttype, t ? t->size : 0, E_CONST);
+        if (!t) gripe(ER_E_UO);
         break;
 
     case INCR:      // prefix increment: ++i
@@ -891,7 +915,6 @@ parseExpr(unsigned char pri, struct stmt *st)
                 e2->left->up = e2;
                 e2->right->up = e2;
                 e2->type = inttype;
-                e2 = cfold(e2);
             }
 
             // Add scaled offset to base: base + (idx * sizeof)
@@ -908,9 +931,6 @@ parseExpr(unsigned char pri, struct stmt *st)
             } else {
                 e3->type = tp;
             }
-
-            // Fold nested constant offsets (e.g., (ptr + 2) + 0 -> ptr + 2)
-            e3 = cfold(e3);
 
             // Dereference to get element value
             e = mkexpr(DEREF, e3);
@@ -1059,9 +1079,6 @@ parseExpr(unsigned char pri, struct stmt *st)
             // addr is pointer to member, not pointer to base struct
             e3->type = getType(TF_POINTER, np->type, 0);
 
-            // Fold constant offset (e.g., x + 0 becomes x)
-            e3 = cfold(e3);
-
             // Check if this is a bitfield access
             if (np->kind == bitfield) {
                 /*
@@ -1163,7 +1180,6 @@ parseExpr(unsigned char pri, struct stmt *st)
                 e->type = e2->type;
             }
 
-            e = cfold(e);
             /* Skip the rest of the loop and continue with next operator */
             continue;
         }
@@ -1239,25 +1255,8 @@ parseExpr(unsigned char pri, struct stmt *st)
                  * Skip this operator: parse and discard right side,
                  * then return left side
                  */
-                frExp(parseExpr(p, st));  // Parse and discard right side
+                FreeExpr(parseExpr(p, st));  // Parse and discard right side
                 return e;  // Return left side unchanged
-            }
-        }
-
-        /*
-         * Check if this is a struct/array assignment requiring
-         * memory copy. For aggregates (structs, arrays), use COPY
-         * instead of ASSIGN. Check both direct aggregate type and
-         * dereferenced pointer to aggregate
-         */
-        if (op == ASSIGN && assign_type &&
-				(assign_type->flags & TF_AGGREGATE)) {
-            op = COPY;  // Change to memory copy operator
-        } else if (op == ASSIGN && e && e->type) {
-            // Direct aggregate (not dereferenced)
-            if (e->type->flags & TF_AGGREGATE) {
-                assign_type = e->type;
-                op = COPY;
             }
         }
 
@@ -1291,18 +1290,6 @@ parseExpr(unsigned char pri, struct stmt *st)
         // For BFASSIGN, restore member info (bitoff, width)
         if (op == BFASSIGN && vp) {
             e->var = vp;
-        }
-
-        // For COPY operator, unwrap DEREF from right side to get address
-        if (e->op == COPY && e->right && e->right->op == DEREF) {
-            e1 = e->right;  /* deref - save for freeing */
-            e->right = e->right->left;  // unwrap to get address
-            /* Free the orphaned DEREF node (but not its children) */
-            e1->left = NULL;
-            free(e1);
-#ifdef DEBUG
-            exprCurCnt--;
-#endif
         }
 
         /* For plain assignments, insert type conversion if needed.
@@ -1428,26 +1415,43 @@ parseExpr(unsigned char pri, struct stmt *st)
             } else if (e->right->type) {
                 e->type = e->right->type;
             }
-
-            // For COPY operator, store byte count in v field
-            if (e->op == COPY) {
-                if (assign_type) {
-                    e->v = assign_type->size;
-                    e->type = assign_type;  // Use the aggregate type
-                } else if (e->type) {
-                    e->v = e->type->size;
-                }
-            }
         } else if (e->left) {
             e->type = e->left->type;
         }
-
-        e = normalize(e);
-        e = cfold(e);
     }
     return e;
 }
 
+/*
+ * Parse and evaluate a constant expression
+ * Used for array sizes, case values, enum values, etc.
+ */
+unsigned long
+parseConst(unsigned char token)
+{
+	struct expr *e;
+	unsigned long val;
+	unsigned char save_phase;
+
+	/* Parse expression, stop before comma (for enum values) */
+	save_phase = phase;
+	phase = 2;
+	e = parseExpr(15, 0);
+	phase = save_phase;
+
+	if (!e) {
+		gripe(ER_C_CE);
+		return 0;
+	}
+	if (!(e->flags & E_CONST)) {
+		gripe(ER_C_CE);
+		FreeExpr(e);
+		return 0;
+	}
+	val = e->v;
+	FreeExpr(e);
+	return val;
+}
 
 /*
  * vim: tabstop=4 shiftwidth=4 expandtab:

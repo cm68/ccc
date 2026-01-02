@@ -7,6 +7,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <unistd.h>
+#include <stdlib.h>
 
 #ifndef PSIZE
 #define PSIZE 80
@@ -14,6 +15,18 @@
 
 /* Forward declaration */
 int fdprintf(unsigned char fd, char *fmt, ...);
+
+#ifdef CCC
+/* strdup not in CCC libc */
+char *
+strdup(char *s)
+{
+    char *d = malloc(strlen(s) + 1);
+    if (d)
+        strcpy(d, s);
+    return d;
+}
+#endif
 
 #ifndef CCC
 char patspace[PSIZE];
@@ -42,6 +55,7 @@ bitdef(unsigned char v, char **defs)
 }
 #endif
 
+#ifdef DEBUG
 /*
  * append string s at d
  */
@@ -65,7 +79,6 @@ iswhite(unsigned char c)
     }
 }
 
-#ifndef CCC
 char xxbuf[200];
 
 void
@@ -96,7 +109,6 @@ hexdump(char *tag, char *h, int l)
     }
     printf(" %s\n", xxbuf);
 }
-#endif
 
 /*
  * return the index in an array of the first occurrance of a char
@@ -114,7 +126,6 @@ lookupc(char *s, char c)
     return 0xff;
 }
 
-#ifndef CCC
 /*
  * fdprintf - printf-like function that writes to a Unix file descriptor
  * Uses sprintf to format to a static buffer, then writes via write() syscall
@@ -155,6 +166,44 @@ fdputs(unsigned char fd, char *s)
     return 0;
 }
 #endif
+
+/* Binary AST emission helpers */
+extern unsigned char astFd;
+
+void emit1(unsigned char b)
+{
+	write(astFd, &b, 1);
+}
+
+void emit2(unsigned short w)
+{
+	unsigned char buf[2];
+	buf[0] = w & 0xff;
+	buf[1] = (w >> 8) & 0xff;
+	write(astFd, buf, 2);
+}
+
+void emit4(unsigned long l)
+{
+	unsigned char buf[4];
+	buf[0] = l & 0xff;
+	buf[1] = (l >> 8) & 0xff;
+	buf[2] = (l >> 16) & 0xff;
+	buf[3] = (l >> 24) & 0xff;
+	write(astFd, buf, 4);
+}
+
+void emitN(char *s, unsigned char len)
+{
+	emit1(len);
+	if (len > 0)
+		write(astFd, s, len);
+}
+
+void emitS(char *s)
+{
+	emitN(s, strlen(s));
+}
 
 /*
  * vim: tabstop=4 shiftwidth=4 expandtab:
