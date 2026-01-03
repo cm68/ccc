@@ -3,29 +3,30 @@
  */
 #include <stdio.h>
 #include "cc2.h"
+#include "../../cpp/lexeme.h"
 
 /*
  * Emit conditional jump for comparison result
- * op: comparison operator (<, Q, n) - pass1 normalizes all others
+ * op: comparison operator (LT, EQ, NEQ) - pass1 normalizes all others
  * aux2: label info (negative = TRUE jump to ht, positive = FALSE jump to no)
  */
 void
-emitCondJmp(char op, int aux2)
+emitCondJmp(unsigned char op, int aux2)
 {
     if (aux2 < 0) {
         /* TRUE jump to ht{target} */
         int target = -aux2;
         switch (op) {
-        case 'Q': emit("jp z,ht%d_%d", target, fnIndex); break;
-        case 'n': emit("jp nz,ht%d_%d", target, fnIndex); break;
-        case '<': emit("jp c,ht%d_%d", target, fnIndex); break;
+        case EQ: emit("jp z,ht%d_%d", target, fnIndex); break;
+        case NEQ: emit("jp nz,ht%d_%d", target, fnIndex); break;
+        case LT: emit("jp c,ht%d_%d", target, fnIndex); break;
         }
     } else {
         /* FALSE jump to no{aux2} */
         switch (op) {
-        case 'Q': emit("jp nz,no%d_%d", aux2, fnIndex); break;
-        case 'n': emit("jp z,no%d_%d", aux2, fnIndex); break;
-        case '<': emit("jp nc,no%d_%d", aux2, fnIndex); break;
+        case EQ: emit("jp nz,no%d_%d", aux2, fnIndex); break;
+        case NEQ: emit("jp z,no%d_%d", aux2, fnIndex); break;
+        case LT: emit("jp nc,no%d_%d", aux2, fnIndex); break;
         }
     }
 }
@@ -46,17 +47,17 @@ emitCompare(struct expr *e)
         comment("CMPHL");
         emitExpr(complex->left);  /* address to HL */
         emit("ld a,(hl)");        /* load left operand */
-        if (simple->op == '#') {
+        if (simple->op == AST_CONST) {
             emit("cp %d", simple->v.c & 0xff);
-        } else if (simple->op == 'R') {
+        } else if (simple->op == REGVAR) {
             emit("cp %s", regnames[simple->aux]);
-        } else if (simple->op == 'V') {
+        } else if (simple->op == LOCALVAR) {
             char *rn = (simple->aux == R_IX) ? "ix" : "iy";
             emit("cp (%s%o)", rn, simple->offset);
-        } else if (simple->op == 'M' && simple->left->op == '$') {
+        } else if (simple->op == DEREF && simple->left->op == SYM) {
             emit("ld hl,%s", simple->left->sym);
             emit("cp (hl)");
-        } else if (simple->op == 'M' && simple->left->op == 'V') {
+        } else if (simple->op == DEREF && simple->left->op == LOCALVAR) {
             char *rn = (simple->left->aux == R_IX) ? "ix" : "iy";
             emit("cp (%s%o)", rn, simple->left->offset);
         } else {
@@ -123,11 +124,11 @@ emitCompare(struct expr *e)
         /* incr == 0: no modification, just test HL */
         if (!e->cond) {
             /* Not conditional - convert HL to boolean in A */
-            /* HL==0 means equal (true for Q, false for n) */
+            /* HL==0 means equal (true for EQ, false for NEQ) */
             int lbl = labelCnt++;
             emit("ld a,h");
             emit("or l");
-            if (e->op == 'Q') {
+            if (e->op == EQ) {
                 /* == : result is 1 if HL==0, else 0 */
                 emit("ld a,1");
                 emit("jr z,eq%d_%d", lbl, fnIndex);
@@ -145,7 +146,7 @@ emitCompare(struct expr *e)
         /* General comparison - use operand type, not result type */
         unsigned char ctype = e->left->type;
         /* Check if comparing subtraction result against 0 - sub sets flags */
-        int subCmpZero = (e->left->op == '-' && e->right->op == '#' &&
+        int subCmpZero = (e->left->op == MINUS && e->right->op == AST_CONST &&
                           e->right->v.s == 0);
         if (ISLONG(ctype)) {
             /* Long comparison: emit both, call lcmp */
@@ -172,7 +173,7 @@ emitCompare(struct expr *e)
                 if (e->left->size == 2)
                     emit("ld a,l");
                 /* Byte compare with constant: use cp immediate */
-                if (e->right->op == '#') {
+                if (e->right->op == AST_CONST) {
                     emit("cp %d", e->right->v.c & 0xff);
                 } else {
                     emit("ld e,a");  /* save left to E */
@@ -201,17 +202,17 @@ emitCompare(struct expr *e)
 cmpresult:
     if (!e->cond && e->special != SP_SIGN && e->special != SP_SIGNREG) {
         switch (e->op) {
-        case 'Q':  /* == */
+        case EQ:  /* == */
             emit("ld a,0");
             emit("jr nz,$+3");
             emit("inc a");
             break;
-        case 'n':  /* != */
+        case NEQ:  /* != */
             emit("ld a,0");
             emit("jr z,$+3");
             emit("inc a");
             break;
-        case '<':  /* < */
+        case LT:  /* < */
             emit("ld a,0");
             emit("jr nc,$+3");
             emit("inc a");

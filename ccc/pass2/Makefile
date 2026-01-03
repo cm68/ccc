@@ -23,7 +23,7 @@ CPP = ../../cpp/cpp
 INC = -I../../libsrc/include
 CCC = $(DEST)/bin/ccc
 XDUMP = ../../cpp/xdump
-ASTPP = ~/src/ccc/ccc/astpp
+ASTPP = ../astpp
 
 OUTDIR = stage1
 
@@ -38,7 +38,7 @@ CFLAGS = -I.
 endif
 
 SOURCES = cc2.c astio.c emit.c codegen.c parseast.c \
-	emitexpr.c emitcmp.c emitops.c emitincdec.c emitpat.c
+	emitexpr.c emitcmp.c emitops.c emitincdec.c emitpat.c pattern.c
 OBJECTS = $(SOURCES:.c=.o)
 
 HEADERS = cc2.h
@@ -56,7 +56,7 @@ else
 endif
 
 clean:
-	rm -f $(OBJECTS) c1 *.o *.1 *.2 *.x *.i *.pp
+	rm -f $(OBJECTS) c1 *.o *.1 *.2 *.x *.i *.pp core vgcore.*
 
 clobber: clean
 	rm -f ./c1
@@ -64,7 +64,7 @@ clobber: clean
 install: c1
 	cp c1 $(DEST)/bin
 
-# Stage1: run cpp, c0, and c1 on each source file
+# Stage1: run cpp, c0, c1 on each source file
 stage1: c1
 	mkdir -p $(OUTDIR)
 	$(SETX) for f in $(SOURCES); do \
@@ -72,9 +72,10 @@ stage1: c1
 		err=$(OUTDIR)/$$b.err ; \
 		printf "%-12s" "$$b: "; \
 		$(CPP) -DCCC $(INC) -o $(OUTDIR)/$$b $$f 2> $$err && \
-		$(XDUMP) $(OUTDIR)/$$b.x > $(OUTDIR)/$$b.xd 2>> $err && \
+		$(XDUMP) $(OUTDIR)/$$b.x > $(OUTDIR)/$$b.xd 2>> $$err && \
 		../pass1/c0 $(OUTDIR)/$$b.x $(OUTDIR)/$$b.1 $(OUTDIR)/$$b.2 2>> $$err && \
 		$(ASTPP) $(OUTDIR)/$$b.1 > $(OUTDIR)/$$b.pp 2>> $$err && \
+		./c1 -p $(OUTDIR)/$$b.1 -o $(OUTDIR)/$$b.s 2>> $$err && \
       	{ echo "ok"; rm -f $$err; } || { echo "FAIL"; } \
     done
 

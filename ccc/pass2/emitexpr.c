@@ -3,6 +3,7 @@
  */
 #include <stdio.h>
 #include "cc2.h"
+#include "../../cpp/lexeme.h"
 
 /*
  * Emit memory dereference: M (load from address)
@@ -27,12 +28,12 @@ emitDeref(struct expr *e)
             emit("ld a,(%s+%d)", e->sym, e->offset);
         else
             emit("ld hl,(%s+%d)", e->sym, e->offset);
-    } else if (e->left->op == 'R' && e->left->aux == R_IX) {
+    } else if (e->left->op == REGVAR && e->left->aux == R_IX) {
         /* Mp [Rp IX] */
         comment("Rp ix");
         emit("push ix");
         emit("pop hl");
-    } else if (e->left->op == 'R' && e->left->aux == R_BC) {
+    } else if (e->left->op == REGVAR && e->left->aux == R_BC) {
         /* Mp [Rp BC] or Ms [Rs BC] */
         comment("R%c bc", e->left->type);
         emit("ld h,b");
@@ -65,7 +66,7 @@ void
 emitPrimary(struct expr *e)
 {
     switch (e->op) {
-    case '#':
+    case AST_CONST:
         comment("#%c %ld", e->type, e->v.l);
         if (e->size == 1) {
             emit("ld a,%d", e->v.c & 0xff);
@@ -79,7 +80,7 @@ emitPrimary(struct expr *e)
             emit("XXXXXXXXX #?");
         }
         break;
-    case '$':
+    case SYM:
         if (e->aux == R_IY || e->aux == R_IX) {
             /* Indexed address: compute IX/IY + offset */
             char off = e->offset;
@@ -102,7 +103,7 @@ emitPrimary(struct expr *e)
             emit("ld hl,%s", e->sym);
         }
         break;
-    case 'R':  /* register var */
+    case REGVAR:  /* register var */
         {
             static char *rn[] = { "?", "b", "c", "bc", "ix" };
             comment("R%c %s %s", e->type, e->sym ? e->sym : "?",
@@ -123,7 +124,7 @@ emitPrimary(struct expr *e)
             }
         }
         break;
-    case 'V':  /* local/struct var via IY or IX */
+    case LOCALVAR:  /* local/struct var via IY or IX */
         {
             char off = e->offset;
             char *rn = (e->aux == R_IX) ? "ix" : "iy";
@@ -162,52 +163,52 @@ emitExpr(struct expr *e)
         comment("SPECIAL");
 
     switch (e->op) {
-    case '#':
-    case '$':
-    case 'R':
-    case 'V':
+    case AST_CONST:
+    case SYM:
+    case REGVAR:
+    case LOCALVAR:
         emitPrimary(e);
         break;
-    case 'M':
+    case DEREF:
         emitDeref(e);
         break;
-    case '=':
+    case ASSIGN:
         comment("=%c%s [", e->type, e->unused ? " U" : "");
         indent += 2;
         /* assign to IX or BC register var */
-        if (e->left->op == 'R' && e->left->aux == R_IX) {
+        if (e->left->op == REGVAR && e->left->aux == R_IX) {
             comment("Rp %s ix", e->left->sym ? e->left->sym : "?");
             emitExpr(e->right);
             emit("push hl");
             emit("pop ix");
-        } else if (e->left->op == 'R' && e->left->aux == R_BC) {
+        } else if (e->left->op == REGVAR && e->left->aux == R_BC) {
             comment("R%c %s bc", e->left->type, e->left->sym ? e->left->sym : "?");
-            if (e->right->op == '#') {
+            if (e->right->op == AST_CONST) {
                 emit("ld bc,%d", e->right->v.s & 0xffff);
-            } else if (e->right->op == '$') {
+            } else if (e->right->op == SYM) {
                 emit("ld bc,%s", e->right->sym);
             } else {
                 emitExpr(e->right);
                 emit("ld b,h");
                 emit("ld c,l");
             }
-        } else if (e->left->op == 'R' && e->left->aux == R_B) {
+        } else if (e->left->op == REGVAR && e->left->aux == R_B) {
             comment("Rb %s b", e->left->sym ? e->left->sym : "?");
-            if (e->special == SP_STCONST && e->right->op == '#') {
+            if (e->special == SP_STCONST && e->right->op == AST_CONST) {
                 emit("ld b,%d", e->right->v.c & 0xff);
             } else {
                 emitExpr(e->right);
                 emit("ld b,e");
             }
-        } else if (e->left->op == 'R' && e->left->aux == R_C) {
+        } else if (e->left->op == REGVAR && e->left->aux == R_C) {
             comment("Rb %s c", e->left->sym ? e->left->sym : "?");
-            if (e->special == SP_STCONST && e->right->op == '#') {
+            if (e->special == SP_STCONST && e->right->op == AST_CONST) {
                 emit("ld c,%d", e->right->v.c & 0xff);
             } else {
                 emitExpr(e->right);
                 emit("ld c,e");
             }
-        } else if (e->left->op == '$' && e->left->sym) {
+        } else if (e->left->op == SYM && e->left->sym) {
             /* assign to global symbol: emit value, then ld (sym),hl or ld (sym),a */
             comment("$%s", e->left->sym);
             emitExpr(e->right);
@@ -220,12 +221,12 @@ emitExpr(struct expr *e)
                 emit("ld hl,%s", e->left->sym);
                 emitLStoreR();
             }
-        } else if (e->left->op == 'V') {
+        } else if (e->left->op == LOCALVAR) {
             /* assign to local/struct var via IY or IX */
             char ofs = e->left->offset;
             char *rn = (e->left->aux == R_IX) ? "ix" : "iy";
             comment("V%c %s%+d", e->left->type, rn, ofs);
-            if (e->special == SP_STCONST && e->right->op == '#') {
+            if (e->special == SP_STCONST && e->right->op == AST_CONST) {
                 /* store constant directly */
                 long val = e->right->v.l;
                 if (e->size == 1) {
@@ -267,20 +268,20 @@ emitExpr(struct expr *e)
             /* store constant through HL: ld (hl),n; inc hl; ld (hl),n */
             long val = e->right->v.l;
             comment("STCONST %ld", val);
-            /* e->left is M[addr], $global, or +s - get storage address in HL */
-            if (e->left->op == 'M') {
-                /* Need to get storage address: emit child of M, then deref if global ptr */
+            /* e->left is DEREF[addr], $global, or +s - get storage address in HL */
+            if (e->left->op == DEREF) {
+                /* Need to get storage address: emit child of DEREF, then deref if global ptr */
                 emitExpr(e->left->left);
-                /* For global ptr ($), emitExpr gives address of ptr, need to load ptr value.
-                 * For local var (V), emitExpr already loads the value (the ptr itself). */
-                if (e->left->size == 2 && e->left->left->op == '$') {
-                    /* M[$global] pointer: child gave address of ptr, need ptr value */
+                /* For global ptr (SYM), emitExpr gives address of ptr, need to load ptr value.
+                 * For local var (LOCALVAR), emitExpr already loads the value (the ptr itself). */
+                if (e->left->size == 2 && e->left->left->op == SYM) {
+                    /* DEREF[SYM global] pointer: child gave address of ptr, need ptr value */
                     emit("ld a,(hl)");
                     emit("inc hl");
                     emit("ld h,(hl)");
                     emit("ld l,a");
                 }
-            } else if (e->left->op == '$') {
+            } else if (e->left->op == SYM) {
                 /* global symbol: load address directly */
                 emit("ld hl,%s", e->left->sym);
             } else {
@@ -302,7 +303,7 @@ emitExpr(struct expr *e)
                 emit("inc hl");
                 emit("ld (hl),%d", (int)((val >> 24) & 0xff));
             }
-        } else if (e->left->op == ')' || e->left->op == '}') {
+        } else if (e->left->op == POSTINC || e->left->op == POSTDEC) {
             /* assign through post-inc/dec address: emit addr (old value), store, inc happens in emitExpr */
             emitExpr(e->left);  /* address to HL, regvar incremented */
             emit("ex de,hl");   /* save address to DE */
@@ -319,7 +320,7 @@ emitExpr(struct expr *e)
                 emit("ex de,hl");
                 emitLStoreR();
             }
-        } else if (e->left->op == '+' || e->left->op == 'M') {
+        } else if (e->left->op == PLUS || e->left->op == DEREF) {
             /* assign through computed address: emit addr, save, emit value, store */
             emitExpr(e->left);  /* address to HL */
             emit("push hl");    /* save address */
@@ -346,13 +347,13 @@ emitExpr(struct expr *e)
         indent -= 2;
         comment("]");
         break;
-    case '@':
+    case CALL:
         comment("@%c nargs=%d%s [", e->type, e->aux, e->unused ? " U" : "");
         indent += 2;
         /* Args already in reverse order from parser - emit and push each */
         {
             struct expr *a = e->right;
-            while (a && a->op == 'A') {
+            while (a && a->op == ARGNODE) {
                 emitExpr(a->left);
                 /* Push result to stack */
                 if (a->left->size == 1) {
@@ -370,7 +371,7 @@ emitExpr(struct expr *e)
             }
         }
         /* call */
-        if (e->left->op == '$') {
+        if (e->left->op == SYM) {
             comment("$%s", e->left->sym);
             emit("call %s", e->left->sym);
         } else {
@@ -380,7 +381,7 @@ emitExpr(struct expr *e)
         indent -= 2;
         comment("]");
         break;
-    case ':':  /* ternary else part - handled by '?' case, should not reach here */
+    case TERNBRANCH:  /* ternary else part - handled by QUES case, should not reach here */
         /* If we somehow get here, just emit both children */
         comment(":%c [", e->type);
         indent += 2;
@@ -389,7 +390,7 @@ emitExpr(struct expr *e)
         indent -= 2;
         comment("]");
         break;
-    case '?':  /* ternary: cond ? then : else */
+    case QUES:  /* ternary: cond ? then : else */
         {
             int lbl = labelCnt++;
             comment("?%c [", e->type);
@@ -414,15 +415,15 @@ emitExpr(struct expr *e)
             comment("]");
         }
         break;
-    case '(':  /* pre-inc */
-    case '{':  /* pre-dec */
+    case PREINC:
+    case PREDEC:
         emitPreIncDec(e);
         break;
-    case ')':  /* post-inc */
-    case '}':  /* post-dec */
+    case POSTINC:
+    case POSTDEC:
         emitPostInc(e);
         break;
-    case 'F':  /* bitfield */
+    case BFEXTRACT:  /* bitfield */
         comment("F%c off=%d wid=%d [", e->type, e->aux, e->aux2);
         indent += 2;
         emitExpr(e->left);
@@ -430,7 +431,7 @@ emitExpr(struct expr *e)
         indent -= 2;
         comment("]");
         break;
-    case 'Y':  /* memory copy: left=dest, right=src, aux=len */
+    case COPY:  /* memory copy: left=dest, right=src, aux=len */
         {
             unsigned char len = e->aux;
             comment("Y len=%d [", len);
@@ -460,7 +461,7 @@ emitExpr(struct expr *e)
             comment("]");
         }
         break;
-    case '+':  /* add */
+    case PLUS:  /* add */
         comment("+%c [", e->type);
         indent += 2;
         if (e->special == SP_SYMOFS) {
@@ -497,7 +498,7 @@ emitExpr(struct expr *e)
         indent -= 2;
         comment("]");
         break;
-    case '-':  /* subtract */
+    case MINUS:  /* subtract */
         comment("-%c [", e->type);
         indent += 2;
         emitExpr(e->left);
@@ -509,7 +510,7 @@ emitExpr(struct expr *e)
             emit("sbc hl,de");
         } else if (e->size == 1) {
             /* For byte: check if right is immediate constant */
-            if (e->right->op == '#') {
+            if (e->right->op == AST_CONST) {
                 /* sub immediate: A = A - const */
                 emit("sub %d", e->right->v.c & 0xff);
             } else {
@@ -528,7 +529,7 @@ emitExpr(struct expr *e)
         indent -= 2;
         comment("]");
         break;
-    case '&':  /* bitwise AND */
+    case AND:  /* bitwise AND */
         comment("&%c [", e->type);
         indent += 2;
         if (e->special == SP_BITTEST) {
@@ -542,9 +543,9 @@ emitExpr(struct expr *e)
                 emit("ld e,a");
             emitExpr(e->right);
             if (e->size == 1) {
-                emitBOp('&');
+                emitBOp(AND);
             } else if (e->size == 2) {
-                emitWBit('&');
+                emitWBit(AND);
             } else if (e->size == 4) {
                 emit("call land");
             }
@@ -552,7 +553,7 @@ emitExpr(struct expr *e)
         indent -= 2;
         comment("]");
         break;
-    case '|':  /* bitwise OR */
+    case OR:  /* bitwise OR */
         comment("|%c [", e->type);
         indent += 2;
         emitExpr(e->left);
@@ -562,16 +563,16 @@ emitExpr(struct expr *e)
             emit("ld e,a");
         emitExpr(e->right);
         if (e->size == 1) {
-            emitBOp('|');
+            emitBOp(OR);
         } else if (e->size == 2) {
-            emitWBit('|');
+            emitWBit(OR);
         } else if (e->size == 4) {
             emit("call lor");
         }
         indent -= 2;
         comment("]");
         break;
-    case '^':  /* bitwise XOR */
+    case XOR:  /* bitwise XOR */
         comment("^%c [", e->type);
         indent += 2;
         emitExpr(e->left);
@@ -581,16 +582,16 @@ emitExpr(struct expr *e)
             emit("ld e,a");
         emitExpr(e->right);
         if (e->size == 1) {
-            emitBOp('^');
+            emitBOp(XOR);
         } else if (e->size == 2) {
-            emitWBit('^');
+            emitWBit(XOR);
         } else if (e->size == 4) {
             emit("call lxor");
         }
         indent -= 2;
         comment("]");
         break;
-    case '*':  /* multiply */
+    case STAR:  /* multiply */
         comment("*%c [", e->type);
         indent += 2;
         if (e->special == SP_MUL2) {
@@ -603,9 +604,9 @@ emitExpr(struct expr *e)
             /* non-power-of-2: call helper */
             /* Treat small constants (0-255) as bytes for efficiency */
             unsigned char lbyte = e->left->size == 1 ||
-                        (e->left->op == '#' && (e->left->v.l & ~0xff) == 0);
+                        (e->left->op == AST_CONST && (e->left->v.l & ~0xff) == 0);
             unsigned char rbyte = e->right->size == 1 ||
-                        (e->right->op == '#' && (e->right->v.l & ~0xff) == 0);
+                        (e->right->op == AST_CONST && (e->right->v.l & ~0xff) == 0);
             emitExpr(e->left);
             /* Save left result before emitting right */
             if (lbyte && rbyte) {
@@ -637,15 +638,15 @@ emitExpr(struct expr *e)
         indent -= 2;
         comment("]");
         break;
-    case '/':  /* divide */
-    case '%':  /* modulo */
+    case DIV:  /* divide */
+    case MOD:  /* modulo */
         comment("%c%c [", e->op, e->type);
         indent += 2;
         {
             unsigned char lbyte = e->left->size == 1 ||
-                        (e->left->op == '#' && (e->left->v.l & ~0xff) == 0);
+                        (e->left->op == AST_CONST && (e->left->v.l & ~0xff) == 0);
             unsigned char rbyte = e->right->size == 1 ||
-                        (e->right->op == '#' && (e->right->v.l & ~0xff) == 0);
+                        (e->right->op == AST_CONST && (e->right->v.l & ~0xff) == 0);
             emitExpr(e->left);
             /* Save left before emitting right */
             if (lbyte && rbyte) {
@@ -660,14 +661,14 @@ emitExpr(struct expr *e)
                 emit("ld b,a");
                 emit("ld a,e");
                 emit("ld e,b");
-                if (e->op == '/')
+                if (e->op == DIV)
                     emit("call idivb");
                 else
                     emit("call imodb");
             } else {
                 /* word op word (or mixed): DE has left, HL has right */
                 emit("ex de,hl"); /* left to HL, right to DE */
-                if (e->op == '/')
+                if (e->op == DIV)
                     emit("call idiv");
                 else
                     emit("call imod");
@@ -676,11 +677,11 @@ emitExpr(struct expr *e)
         indent -= 2;
         comment("]");
         break;
-    case 'y':  /* left shift << */
+    case LSHIFT:  /* left shift << */
         comment("y%c [", e->type);
         indent += 2;
         emitExpr(e->left);
-        if (e->right->op == '#') {
+        if (e->right->op == AST_CONST) {
             /* constant shift count */
             unsigned char cnt = e->right->v.c & 0x1f;
             comment("#B %d", cnt);
@@ -705,11 +706,11 @@ emitExpr(struct expr *e)
         indent -= 2;
         comment("]");
         break;
-    case 'w':  /* right shift >> (signed) */
+    case RSHIFT:  /* right shift >> (signed) */
         comment("w%c [", e->type);
         indent += 2;
         emitExpr(e->left);
-        if (e->right->op == '#') {
+        if (e->right->op == AST_CONST) {
             /* constant shift count */
             unsigned char cnt = e->right->v.c & 0x1f;
             comment("#B %d", cnt);
@@ -739,11 +740,11 @@ emitExpr(struct expr *e)
         indent -= 2;
         comment("]");
         break;
-    case 'z':  /* unsigned right shift >>> */
+    case URSHIFT:  /* unsigned right shift >>> */
         comment("z%c [", e->type);
         indent += 2;
         emitExpr(e->left);
-        if (e->right->op == '#') {
+        if (e->right->op == AST_CONST) {
             /* constant shift count */
             unsigned char cnt = e->right->v.c & 0x1f;
             comment("#B %d", cnt);
@@ -770,7 +771,7 @@ emitExpr(struct expr *e)
         indent -= 2;
         comment("]");
         break;
-    case '\\':  /* negation (unary minus) */
+    case NEG:  /* negation (unary minus) */
         comment("\\%c [", e->type);
         indent += 2;
         emitExpr(e->left);
@@ -791,7 +792,7 @@ emitExpr(struct expr *e)
         indent -= 2;
         comment("]");
         break;
-    case '~':  /* bitwise complement */
+    case TWIDDLE:  /* bitwise complement */
         comment("~%c [", e->type);
         indent += 2;
         emitExpr(e->left);
@@ -806,10 +807,10 @@ emitExpr(struct expr *e)
         indent -= 2;
         comment("]");
         break;
-    case '<': case 'Q': case 'n':  /* pass1 normalizes >, <=, >= to these */
+    case LT: case EQ: case NEQ:  /* pass1 normalizes >, <=, >= to these */
         emitCompare(e);
         break;
-    case '!':  /* logical not */
+    case BANG:  /* logical not */
         comment("!%c%s [", e->type, e->cond ? " C" : "");
         indent += 2;
         if (e->cond) {
@@ -829,10 +830,10 @@ emitExpr(struct expr *e)
         indent -= 2;
         comment("]");
         break;
-    case 'W':  /* widen: byte to word, zero extend */
+    case WIDEN:  /* widen: byte to word, zero extend */
         comment("W%c [", e->type);
         indent += 2;
-        if (e->left->op == '#') {
+        if (e->left->op == AST_CONST) {
             /* constant: widen at compile time */
             unsigned char val = e->left->v.c;
             comment("#B %d", val);
@@ -845,13 +846,13 @@ emitExpr(struct expr *e)
         indent -= 2;
         comment("]");
         break;
-    case 'N':  /* narrow: word to byte */
+    case NARROW:  /* narrow: word to byte */
         comment("N%c [", e->type);
         indent += 2;
-        if (e->left->op == '#') {
+        if (e->left->op == AST_CONST) {
             /* constant: just load byte value */
             emit("ld a,%d", e->left->v.c & 0xff);
-        } else if (e->left->op == 'V') {
+        } else if (e->left->op == LOCALVAR) {
             /* V node: just load the low byte directly */
             char *rn = (e->left->aux == R_IX) ? "ix" : "iy";
             comment("V%c %s%+d", e->left->type, rn, e->left->offset);
@@ -863,10 +864,10 @@ emitExpr(struct expr *e)
         indent -= 2;
         comment("]");
         break;
-    case 'x':  /* sign extend: byte to word */
+    case SEXT:  /* sign extend: byte to word */
         comment("x%c [", e->type);
         indent += 2;
-        if (e->left->op == '#') {
+        if (e->left->op == AST_CONST) {
             /* constant: sign extend at compile time */
             int val = (char)e->left->v.c;  /* sign extend to int */
             comment("#B %d", e->left->v.c & 0xff);
@@ -881,16 +882,16 @@ emitExpr(struct expr *e)
         indent -= 2;
         comment("]");
         break;
-    case 'j':  /* logical and (&&) with short-circuit */
+    case LAND:  /* logical and (&&) with short-circuit */
         comment("j%c%s [", e->type, e->cond ? " C" : "");
         indent += 2;
         if (e->cond) {
             /* aux=1 means inside ||: use local label, fall through with Z for FALSE */
             /* aux=0 means not inside ||: jump to no{aux2} on FALSE */
-            char lop = e->left->op, rop = e->right->op;
+            unsigned char lop = e->left->op, rop = e->right->op;
             /* Check if children are comparisons that emit their own jumps */
-            int leftIsCmp = (lop == '<' || lop == 'Q' || lop == 'n') && e->left->cond;
-            int rightIsCmp = (rop == '<' || rop == 'Q' || rop == 'n') && e->right->cond;
+            int leftIsCmp = (lop == LT || lop == EQ || lop == NEQ) && e->left->cond;
+            int rightIsCmp = (rop == LT || rop == EQ || rop == NEQ) && e->right->cond;
             if (e->aux) {
                 /* Inside ||: use unique local label */
                 int localLbl = labelCnt++;
@@ -937,7 +938,7 @@ emitExpr(struct expr *e)
         indent -= 2;
         comment("]");
         break;
-    case 'h':  /* logical or (||) with short-circuit */
+    case LOR:  /* logical or (||) with short-circuit */
         comment("h%c%s [", e->type, e->cond ? " C" : "");
         indent += 2;
         if (e->cond) {
@@ -945,10 +946,10 @@ emitExpr(struct expr *e)
             /* aux=1 means nested inside another ||: fall through, parent emits ht */
             /* aux=0 means not nested: emit ht label here */
             int htLabel = e->aux2 + 1;
-            char lop = e->left->op, rop = e->right->op;
+            unsigned char lop = e->left->op, rop = e->right->op;
             /* Check if children are comparisons that emit their own jumps */
-            int leftIsCmp = (lop == '<' || lop == 'Q' || lop == 'n') && e->left->cond;
-            int rightIsCmp = (rop == '<' || rop == 'Q' || rop == 'n') && e->right->cond;
+            int leftIsCmp = (lop == LT || lop == EQ || lop == NEQ) && e->left->cond;
+            int rightIsCmp = (rop == LT || rop == EQ || rop == NEQ) && e->right->cond;
             emitExpr(e->left);
             if (!leftIsCmp) {
                 emitTestExpr(e->left);
@@ -986,7 +987,7 @@ emitExpr(struct expr *e)
         indent -= 2;
         comment("]");
         break;
-    case ',':  /* comma: left is value, right is side effect (AST format) */
+    case COMMA:  /* comma operator: left is value, right is side effect */
         comment(",%c [", e->type);
         indent += 2;
         emitExpr(e->right);  /* side effect first */
@@ -994,15 +995,15 @@ emitExpr(struct expr *e)
         indent -= 2;
         comment("]");
         break;
-    case 'P': case 'o': case '1': case 'a': case 'X': case 'm':
+    case PLUSEQ: case SUBEQ: case OREQ: case ANDEQ: case XOREQ: case MODEQ:
         emitCmpArith(e);
         break;
-    case '0':  /* <<= */
-    case '6':  /* >>= */
+    case LSHIFTEQ:  /* <<= */
+    case RSHIFTEQ:  /* >>= */
         emitCmpShift(e);
         break;
-    case 'T':  /* *= compound multiply */
-    case '2':  /* /= compound divide */
+    case MULTEQ:  /* *= compound multiply */
+    case DIVEQ:   /* /= compound divide */
         emitCmpMulDiv(e);
         break;
     default:

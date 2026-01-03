@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "cc2.h"
+#include "../../cpp/lexeme.h"
 
 /*
  * Expression allocation
@@ -16,7 +17,7 @@ int exprFree = 0;
 #endif
 
 struct expr *
-newExpr(char op, char type)
+newExpr(unsigned char op, char type)
 {
     struct expr *e = malloc(sizeof(struct expr));
     e->op = op;
@@ -64,13 +65,13 @@ setCondLbl2(struct expr *e, int lbl, int inOr)
 {
     if (!e || e == &sentinel) return;
     e->cond = 1;
-    if (e->op == 'h') {  /* LOR */
+    if (e->op == LOR) {
         /* || children emit TRUE jumps to merge label */
         e->aux2 = lbl;
         e->aux = inOr;  /* save context: 1 if nested inside another || */
         setCondLbl2(e->left, lbl, 1);   /* inside || */
         setCondLbl2(e->right, lbl, 1);
-    } else if (e->op == 'j') {  /* LAND */
+    } else if (e->op == LAND) {
         /* && children emit FALSE jumps */
         e->aux2 = lbl;
         e->aux = inOr;  /* save context: 1 if inside ||, 0 if not */
@@ -89,9 +90,9 @@ static void
 setCondLbl(struct expr *e, int lbl)
 {
     if (!e || e == &sentinel) return;
-    if (e->op == 'h')
+    if (e->op == LOR)
         setCondLbl2(e, lbl, 0);  /* || at root: not nested (aux=0) */
-    else if (e->op == 'j')
+    else if (e->op == LAND)
         setCondLbl2(e, lbl, 0);  /* && at root: not inside || */
     else {
         e->cond = 1;
@@ -100,15 +101,30 @@ setCondLbl(struct expr *e, int lbl)
 }
 
 /*
- * Convert $ node with aux (indexed local) to V node.
+ * Emit expression: either as pattern comment (-p mode) or as code
+ */
+static void
+emitExprOrPat(struct expr *e)
+{
+    if (patternOnly) {
+        struct pattern p;
+        patFromExpr(&p, e);
+        patEmitComment(&p);
+    } else {
+        emitExpr(e);
+    }
+}
+
+/*
+ * Convert SYM node with aux (indexed local) to LOCALVAR node.
  * For compound ops, the left operand is an address but we load/modify/store,
- * so it's effectively a V node. Unifies IX/IY handling in emit code.
+ * so it's effectively a LOCALVAR node. Unifies IX/IY handling in emit code.
  */
 static struct expr *
 dollarToV(struct expr *e)
 {
-    if (e->op == '$' && e->aux) {
-        e->op = 'V';
+    if (e->op == SYM && e->aux) {
+        e->op = LOCALVAR;
         /* keep aux, offset, sym - they transfer directly */
     }
     return e;
@@ -122,15 +138,15 @@ static int
 exprCmplx(struct expr *e)
 {
     switch (e->op) {
-    case '#': return 0;  /* constant - simplest */
-    case 'R': return 1;  /* register variable */
-    case 'V': return 2;  /* local variable */
-    case '$': return 2;  /* global variable */
-    case 'M':            /* dereference */
-        if (e->left->op == '$' || e->left->op == 'V' || e->left->op == 'R')
-            return 3;    /* simple deref */
-        return 5;        /* complex deref */
-    default:  return 5;  /* complex expression */
+    case AST_CONST: return 0;  /* constant - simplest */
+    case REGVAR: return 1;     /* register variable */
+    case LOCALVAR: return 2;   /* local variable */
+    case SYM: return 2;        /* global variable */
+    case DEREF:                /* dereference */
+        if (e->left->op == SYM || e->left->op == LOCALVAR || e->left->op == REGVAR)
+            return 3;          /* simple deref */
+        return 5;              /* complex deref */
+    default:  return 5;        /* complex expression */
     }
 }
 
@@ -164,50 +180,52 @@ normBinop(struct expr *e)
 struct expr *
 parseExpr(void)
 {
-    char c, type;
+    unsigned char c;
+    char type;
     char name[14];
     struct expr *e, *arg;
     unsigned char nargs, i;
 
-    skipWs();
+    /* binary format - no whitespace */
     c = curchar;
+    fprintf(stderr, "parseExpr: op='%c' (0x%02x)\n", c >= ' ' && c < 127 ? c : '?', c);
     advance();
 
     switch (c) {
-    case '#':  /* constant */
+    case AST_CONST:  /* constant */
         type = curchar;
         advance();
-        e = newExpr('#', type);
-        e->v.l = hex8();
+        e = newExpr(AST_CONST, type);
+        e->v.l = read4();
         return e;
 
-    case '$':  /* symbol ref - convert locals to V node */
+    case SYM:  /* symbol ref - convert locals to LOCALVAR node */
         readName(name);
         {
             struct sym *s = findLocal(name);
             if (s && s->reg) {
-                e = newExpr('R', s->type);  /* register var */
+                e = newExpr(REGVAR, s->type);  /* register var */
                 e->aux = s->reg;
             } else if (s) {
-                /* Local variable - use V node with IY offset */
-                e = newExpr('V', s->type);
+                /* Local variable - use LOCALVAR node with IY offset */
+                e = newExpr(LOCALVAR, s->type);
                 e->aux = R_IY;
                 e->offset = s->off;
             } else {
-                e = newExpr('$', 0);        /* global */
+                e = newExpr(SYM, 0);           /* global */
             }
             e->sym = strdup(name);
         }
         return e;
 
-    case 'M':  /* deref */
+    case DEREF:  /* deref */
         type = curchar;
         advance();
-        e = newExpr('M', type);
+        e = newExpr(DEREF, type);
         e->left = parseExpr();
-        /* Collapse M[$local] to V node - indexed load from IY */
-        if (e->left->op == '$' && e->left->aux == R_IY) {
-            struct expr *v = newExpr('V', type);
+        /* Collapse DEREF[SYM local] to LOCALVAR node - indexed load from IY */
+        if (e->left->op == SYM && e->left->aux == R_IY) {
+            struct expr *v = newExpr(LOCALVAR, type);
             v->aux = R_IY;
             v->offset = e->left->offset;
             v->sym = e->left->sym;
@@ -215,20 +233,20 @@ parseExpr(void)
             freeExpr(e);
             return v;
         }
-        /* Collapse M[V] and M[R] when sizes match - V/R already load value */
-        if ((e->left->op == 'V' || e->left->op == 'R') &&
+        /* Collapse DEREF[LOCALVAR] and DEREF[REGVAR] when sizes match */
+        if ((e->left->op == LOCALVAR || e->left->op == REGVAR) &&
             e->size == e->left->size) {
             struct expr *child = e->left;
             free(e);
             return child;
         }
-        /* Collapse M[+p Mp[Rp(ix)] #ofs] to V with reg=IX */
-        if (e->left->op == '+' && e->left->size == 2 &&
-            e->left->left->op == 'M' && e->left->left->size == 2 &&
-            e->left->left->left->op == 'R' &&
+        /* Collapse DEREF[+p DEREF[REGVAR(ix)] #ofs] to LOCALVAR with reg=IX */
+        if (e->left->op == PLUS && e->left->size == 2 &&
+            e->left->left->op == DEREF && e->left->left->size == 2 &&
+            e->left->left->left->op == REGVAR &&
             e->left->left->left->aux == R_IX &&
-            e->left->right->op == '#') {
-            struct expr *v = newExpr('V', type);
+            e->left->right->op == AST_CONST) {
+            struct expr *v = newExpr(LOCALVAR, type);
             v->aux = R_IX;
             v->offset = e->left->right->v.s;
             freeExpr(e);
@@ -236,106 +254,99 @@ parseExpr(void)
         }
         return e;
 
-    case '=':  /* assign */
+    case ASSIGN:  /* assign */
         type = curchar;
         advance();
-        e = newExpr('=', type);
+        e = newExpr(ASSIGN, type);
         e->left = parseExpr();
         e->right = parseExpr();
         return e;
 
-    case '@':  /* call */
+    case CALL:  /* call */
         type = curchar;
         advance();
-        nargs = hex2();
-        e = newExpr('@', type);
+        nargs = read1();
+        e = newExpr(CALL, type);
         e->aux = nargs;
         e->left = parseExpr();  /* func */
         /* chain args in reverse order for C calling convention (right-to-left) */
         for (i = 0; i < nargs; i++) {
-            arg = newExpr('A', 0);  /* wrapper node */
-            arg->left = parseExpr();  /* actual argument */
-            arg->right = e->right;    /* link to previous head */
-            e->right = arg;           /* new head */
+            arg = newExpr(ARGNODE, 0);  /* wrapper node */
+            arg->left = parseExpr();    /* actual argument */
+            arg->right = e->right;      /* link to previous head */
+            e->right = arg;             /* new head */
         }
         return e;
 
-    case 'W':  /* widen */
-    case 'N':  /* narrow */
-    case 'x':  /* sign extend */
+    case WIDEN:
+    case NARROW:
+    case SEXT:
         type = curchar;
         advance();
         e = newExpr(c, type);
         e->left = parseExpr();
         return e;
 
-    case '(':  /* pre-inc */
-    case ')':  /* post-inc */
-    case '{':  /* pre-dec */
-    case '}':  /* post-dec */
+    case PREINC:
+    case POSTINC:
+    case PREDEC:
+    case POSTDEC:
         type = curchar;
         advance();
         e = newExpr(c, type);
         e->left = dollarToV(parseExpr());
-        e->aux2 = hex4();  /* increment amount */
+        e->aux2 = read2();  /* increment amount */
         return e;
 
-    case '!':  /* logical not */
-    case '~':  /* bitwise not */
-    case '_':  /* unary minus */
-    case '\\': /* negation (NEG) */
+    case BANG:  /* logical not */
+    case TWIDDLE:  /* bitwise not */
+    case NEG:  /* unary minus/negation */
         type = curchar;
         advance();
         e = newExpr(c, type);
         e->left = parseExpr();
         return e;
 
-    case '+': case '-': case '*': case '/': case '%':
-    case '<': case 'Q': case 'n':  /* pass1 normalizes >, <=, >= to these */
-    case '|': case '^': case '&': case 'y': case 'w':
-    case 'j': case 'h':  /* logical and/or */
-    case 'D': case 'O': case 'z':  /* unsigned ops */
-    case 'o': case 'a': case 'm':  /* compound assign -=, &=, %= */
-    case 'P': case '1': case 'X':  /* +=, |=, ^= */
-    case 'T': case '2': case '6': case '0':  /* *=, /=, >>=, <<= */
-    case ',':  /* comma */
+    case PLUS: case MINUS: case STAR: case DIV: case MOD:
+    case LT: case LE:  /* comparisons */
+    case EQ: case NEQ:  /* equality */
+    case OR: case XOR: case AND: case LSHIFT: case RSHIFT:
+    case LAND: case LOR:  /* logical and/or */
+    case SUBEQ: case ANDEQ: case MODEQ:  /* compound assign -=, &=, %= */
+    case PLUSEQ: case OREQ: case XOREQ:  /* +=, |=, ^= */
+    case MULTEQ: case DIVEQ: case RSHIFTEQ: case LSHIFTEQ:  /* *=, /=, >>=, <<= */
+    case COMMA:  /* comma */
         /* binary operators */
         type = curchar;
         advance();
         e = newExpr(c, type);
         e->left = parseExpr();
         /* Collapse $local to V for compound ops - unifies IX/IY handling */
-        if (c == 'o' || c == 'a' || c == 'm' || c == 'P' || c == '1' ||
-            c == 'X' || c == 'T' || c == '2' || c == '6' || c == '0')
+        if (c == SUBEQ || c == ANDEQ || c == MODEQ || c == PLUSEQ || c == OREQ ||
+            c == XOREQ || c == MULTEQ || c == DIVEQ || c == RSHIFTEQ || c == LSHIFTEQ)
             e->left = dollarToV(e->left);
         e->right = parseExpr();
         /* Normalize: put simpler operand on right for commutative/comparison ops */
-        if (c == '+' || c == '*' || c == '&' || c == '|' || c == '^' ||
-            c == '<' || c == '>' || c == 'L' || c == 'g' ||
-            c == 'Q' || c == 'n' || c == 'j' || c == 'h')
+        if (c == PLUS || c == STAR || c == AND || c == OR || c == XOR ||
+            c == LT || c == LE ||
+            c == EQ || c == NEQ || c == LAND || c == LOR)
             normBinop(e);
-        /* Transform <= n to < n+1, >= n to > n-1 when safe */
-        if ((e->op == 'L' || e->op == 'g') && e->right->op == '#') {
+        /* Transform <= n to < n+1 when safe */
+        if (e->op == LE && e->right->op == AST_CONST) {
             long val = e->right->v.l;
-            if (e->op == 'L' && e->size == 1 && val < 127) {
-                e->op = '<';
+            if (e->size == 1 && val < 127) {
+                e->op = LT;
                 e->right->v.l = val + 1;
-            } else if (e->op == 'L' && e->size == 2 && val < 32767) {
-                e->op = '<';
+            } else if (e->size == 2 && val < 32767) {
+                e->op = LT;
                 e->right->v.l = val + 1;
-            } else if (e->op == 'g' && e->size == 1 && val > -128) {
-                e->op = '>';
-                e->right->v.l = val - 1;
-            } else if (e->op == 'g' && e->size == 2 && val > -32768) {
-                e->op = '>';
-                e->right->v.l = val - 1;
             }
         }
-        /* Collapse +p [R(ix/iy) #ofs] to V node (constant always on right after normalize) */
-        if (c == '+' && e->size == 2 &&
-            e->left->op == 'R' && (e->left->aux == R_IX || e->left->aux == R_IY) &&
-            e->right->op == '#') {
-            struct expr *v = newExpr('V', type);
+        /* Collapse +p [REGVAR(ix/iy) #ofs] to LOCALVAR node */
+        if (c == PLUS && e->size == 2 &&
+            e->left->op == REGVAR && (e->left->aux == R_IX || e->left->aux == R_IY) &&
+            e->right->op == AST_CONST) {
+            struct expr *v = newExpr(LOCALVAR, type);
             v->aux = e->left->aux;
             v->offset = e->right->v.s;
             freeExpr(e);
@@ -343,31 +354,41 @@ parseExpr(void)
         }
         return e;
 
-    case '?':  /* ternary: cond in left, then/else as left/right of right */
+    case QUES:  /* ternary: cond in left, then/else as left/right of right */
         type = curchar;
         advance();
-        e = newExpr('?', type);
-        e->aux = hex2();  /* nlabels */
+        e = newExpr(QUES, type);
+        e->aux = read1();  /* nlabels */
         e->left = parseExpr();  /* cond */
-        e->right = newExpr(':', type);
+        e->right = newExpr(TERNBRANCH, type);
         e->right->left = parseExpr();   /* then */
         e->right->right = parseExpr();  /* else */
         return e;
 
-    case 'F':  /* bitfield */
+    case BFEXTRACT:  /* bitfield extract */
         type = curchar;
         advance();
-        e = newExpr('F', type);
-        e->aux = hex2();   /* offset */
-        e->aux2 = hex2();  /* width */
+        e = newExpr(BFEXTRACT, type);
+        e->aux = read1();   /* offset */
+        e->aux2 = read1();  /* width */
         e->left = parseExpr();
         return e;
 
-    case 'Y':  /* memory copy */
-        e = newExpr('Y', 0);
-        e->aux = hex4();  /* length */
+    case COPY:  /* memory copy */
+        e = newExpr(COPY, 0);
+        e->aux = read2();  /* length */
         e->left = parseExpr();   /* dest */
         e->right = parseExpr();  /* src */
+        return e;
+
+    case BFASSIGN:  /* bitfield assign */
+        type = curchar;
+        advance();
+        e = newExpr(BFASSIGN, type);
+        e->aux = read1();   /* offset */
+        e->aux2 = read1();  /* width */
+        e->left = parseExpr();
+        e->right = parseExpr();
         return e;
 
     case 'U':  /* inline string - emit definition, parse actual expr */
@@ -392,25 +413,25 @@ emitInit(void)
     unsigned char count, i;
     char symname[14];
 
-    skipWs();
-    if (curchar == '[') {
+    /* binary format - no whitespace */
+    if (curchar == LBRACK) {
         advance();
         advance();
-        count = hex2();
+        count = read1();
         for (i = 0; i < count; i++)
             emitInit();
-    } else if (curchar == '{') {
+    } else if (curchar == BEGIN) {
         advance();
-        count = hex2();
+        count = read1();
         for (i = 0; i < count; i++)
             emitInit();
-        skipWs();
-        if (curchar == '}') advance();
-    } else if (curchar == '#') {
+        /* binary format - no whitespace */
+        if (curchar == END) advance();
+    } else if (curchar == AST_CONST) {
         advance();
         ftype = curchar;
         advance();
-        lval = hex8();
+        lval = read4();
         if (ftype == 'b' || ftype == 'B')
             emit("\t.db %d", (int)(lval & 0xff));
         else if (ftype == 'l' || ftype == 'f') {
@@ -418,11 +439,11 @@ emitInit(void)
             emit("\t.dw %d", (int)((lval >> 16) & 0xffff));
         } else
             emit("\t.dw %d", (int)(lval & 0xffff));
-    } else if (curchar == '$') {
+    } else if (curchar == SYM) {
         advance();
         readName(symname);
         emit("\t.dw %s", symname);
-    } else if (curchar == 'W' || curchar == 'N' || curchar == 'x') {
+    } else if (curchar == WIDEN || curchar == NARROW || curchar == SEXT) {
         advance();
         advance();
         emitInit();
@@ -441,28 +462,29 @@ dumpStmt(void)
     unsigned char ndecls, nstmts, hasElse, nlabels;
     unsigned char ncases, nstmt, i;
 
-    skipWs();
+    /* binary format - no whitespace */
     c = curchar;
+    fprintf(stderr, "dumpStmt: stmt='%c' (0x%02x)\n", c >= ' ' && c < 127 ? c : '?', (unsigned char)c);
     advance();
 
     switch (c) {
     case 'B':  /* block */
-        ndecls = hex2();
-        nstmts = hex2();
+        ndecls = read1();
+        nstmts = read1();
         comment("BLOCK %d decls=%d stmts=%d {", blockCnt++, ndecls, nstmts);
         indent += 2;
         /* parse decls: 'd' type name reg off */
         for (i = 0; i < ndecls; i++) {
             char dtype, dname[14];
             unsigned char dreg, doff;
-            skipWs();
+            /* binary format - no whitespace */
             if (curchar == 'd') {
                 advance();
                 dtype = curchar;
                 advance();
                 readName(dname);
-                dreg = hex2();
-                doff = hex2();
+                dreg = read1();
+                doff = read1();
                 addLocal(dname, dtype, dreg, doff);
                 comment("decl %c %s reg=%d off=%d", dtype, dname, dreg, (char)(doff));
             }
@@ -473,88 +495,103 @@ dumpStmt(void)
         comment("}");
         break;
 
-    case 'I':  /* if */
+    case 'I':  /* if - format: I nlabels cond then has_else [else] */
         {
-            int lbl, lbl2;
+            int lbl, lbl2 = 0;
             struct expr *cond;
-            unsigned char special;
-            hasElse = hex2();
-            nlabels = hex2();
+            /* New format: nlabels first, hasElse comes after then-body */
+            nlabels = read1();
             lbl = labelCnt++;
             labelCnt += nlabels;  /* reserve intermediate labels */
-            if (hasElse)
-                lbl2 = labelCnt++;
-            comment("IF else=%d labels=%d lbl=%d [", hasElse, nlabels, lbl);
+            comment("IF labels=%d lbl=%d [", nlabels, lbl);
             indent += 2;
             cond = parseExpr();
-            setCondLbl(cond, lbl);  /* propagate cond flag and label */
-            annotate(cond);
-            emitExpr(cond);
-            special = cond->special;
-            {
-                char cop = cond->op;
-                char csz = cond->size;
-                char ccond = cond->cond;  /* save cond flag */
+            if (patternOnly) {
+                fprintf(stderr, "IF: before emitExprOrPat\n");
+                emitExprOrPat(cond);
+                fprintf(stderr, "IF: after emitExprOrPat, before freeExpr\n");
                 freeExpr(cond);
-                /* emit conditional jump to skip then block */
-                /* If cond had cond=1, it already emitted its own jump */
-                if (ccond && (special == SP_CMPHL || special == SP_CMPV ||
-                              special == SP_CMPR || cop == 'j' || cop == 'h' ||
-                              cop == '<' || cop == 'Q' || cop == 'n')) {
-                    /* cond node already emitted jumps, nothing to do */
-                } else if (special == SP_BITTEST) {
-                    /* bit n,(ix+ofs): Z=1 if bit is 0; skip then if Z (false) */
-                    emit("jp z,no%d_%d", lbl, fnIndex);
-                } else if (special == SP_SIGN || special == SP_SIGNREG) {
-                    /* >= 0: Z=true, NZ=false; jump to no on NZ */
-                    emit("jp nz,no%d_%d", lbl, fnIndex);
-                } else if (special == SP_CMPEQ) {
-                    /* Word equality: HL==0 means equal; test HL for zero */
-                    emit("ld a,h");
-                    emit("or l");
-                    if (cop == 'Q')  /* == : skip when NOT equal (NZ) */
-                        emit("jp nz,no%d_%d", lbl, fnIndex);
-                    else             /* != : skip when equal (Z) */
+                fprintf(stderr, "IF: after freeExpr\n");
+            } else {
+                unsigned char special;
+                setCondLbl(cond, lbl);  /* propagate cond flag and label */
+                annotate(cond);
+                emitExpr(cond);
+                special = cond->special;
+                {
+                    char cop = cond->op;
+                    char csz = cond->size;
+                    char ccond = cond->cond;  /* save cond flag */
+                    freeExpr(cond);
+                    /* emit conditional jump to skip then block */
+                    /* If cond had cond=1, it already emitted its own jump */
+                    if (ccond && (special == SP_CMPHL || special == SP_CMPV ||
+                                  special == SP_CMPR || cop == LAND || cop == LOR ||
+                                  cop == LT || cop == EQ || cop == NEQ)) {
+                        /* cond node already emitted jumps, nothing to do */
+                    } else if (special == SP_BITTEST) {
+                        /* bit n,(ix+ofs): Z=1 if bit is 0; skip then if Z (false) */
                         emit("jp z,no%d_%d", lbl, fnIndex);
-                } else if (cop == '<' || cop == '>' || cop == 'L' || cop == 'g' ||
-                           cop == 'Q' || cop == 'n') {
-                    /* General comparison: emit FALSE jump to no{lbl} */
-                    emitCondJmp(cop, lbl);
-                } else if (cop == 'h') {
-                    /* || chain: emit merge label, then FALSE jump */
-                    /* All TRUE paths jumped to ht, FALSE falls through */
-                    emit("ht%d_%d:", lbl + 1, fnIndex);
-                    /* Last comparison's flags: skip then if FALSE (NZ for ==) */
-                    emit("jp nz,no%d_%d", lbl, fnIndex);
-                } else if (cop == '!') {
-                    /* !expr: test child for zero, jump if NON-zero */
-                    if (csz == 1) {
-                        emit("or a");
-                    } else {
+                    } else if (special == SP_SIGN || special == SP_SIGNREG) {
+                        /* >= 0: Z=true, NZ=false; jump to no on NZ */
+                        emit("jp nz,no%d_%d", lbl, fnIndex);
+                    } else if (special == SP_CMPEQ) {
+                        /* Word equality: HL==0 means equal; test HL for zero */
                         emit("ld a,h");
                         emit("or l");
-                    }
-                    emit("jp nz,no%d_%d", lbl, fnIndex);
-                } else {
-                    /* general: test HL/A for zero, jump if zero */
-                    if (csz == 1) {
-                        emit("or a");
+                        if (cop == EQ)  /* == : skip when NOT equal (NZ) */
+                            emit("jp nz,no%d_%d", lbl, fnIndex);
+                        else            /* != : skip when equal (Z) */
+                            emit("jp z,no%d_%d", lbl, fnIndex);
+                    } else if (cop == LT || cop == GT || cop == LE || cop == GE ||
+                               cop == EQ || cop == NEQ) {
+                        /* General comparison: emit FALSE jump to no{lbl} */
+                        emitCondJmp(cop, lbl);
+                    } else if (cop == LOR) {
+                        /* || chain: emit merge label, then FALSE jump */
+                        /* All TRUE paths jumped to ht, FALSE falls through */
+                        emit("ht%d_%d:", lbl + 1, fnIndex);
+                        /* Last comparison's flags: skip then if FALSE (NZ for ==) */
+                        emit("jp nz,no%d_%d", lbl, fnIndex);
+                    } else if (cop == BANG) {
+                        /* !expr: test child for zero, jump if NON-zero */
+                        if (csz == 1) {
+                            emit("or a");
+                        } else {
+                            emit("ld a,h");
+                            emit("or l");
+                        }
+                        emit("jp nz,no%d_%d", lbl, fnIndex);
                     } else {
-                        emit("ld a,h");
-                        emit("or l");
+                        /* general: test HL/A for zero, jump if zero */
+                        if (csz == 1) {
+                            emit("or a");
+                        } else {
+                            emit("ld a,h");
+                            emit("or l");
+                        }
+                        emit("jp z,no%d_%d", lbl, fnIndex);
                     }
-                    emit("jp z,no%d_%d", lbl, fnIndex);
                 }
             }
+            fprintf(stderr, "IF: before dumpStmt THEN\n");
             dumpStmt();  /* then */
+            fprintf(stderr, "IF: after dumpStmt THEN\n");
+            /* hasElse now comes AFTER the then-body */
+            hasElse = read1();
             if (hasElse) {
-                emit("\tjp no%d_%d", lbl2, fnIndex);
-                emit("no%d_%d:", lbl, fnIndex);  /* alias for el - condition FALSE jumps here */
-                emit("el%d_%d:", lbl, fnIndex);
+                lbl2 = labelCnt++;
+                if (!patternOnly) {
+                    emit("\tjp no%d_%d", lbl2, fnIndex);
+                    emit("no%d_%d:", lbl, fnIndex);
+                    emit("el%d_%d:", lbl, fnIndex);
+                }
                 dumpStmt();  /* else */
-                emit("no%d_%d:", lbl2, fnIndex);
+                if (!patternOnly)
+                    emit("no%d_%d:", lbl2, fnIndex);
             } else {
-                emit("no%d_%d:", lbl, fnIndex);
+                if (!patternOnly)
+                    emit("no%d_%d:", lbl, fnIndex);
             }
             indent -= 2;
             comment("]");
@@ -565,10 +602,14 @@ dumpStmt(void)
         {
             struct expr *e = parseExpr();
             e->unused = 1;  /* result not used */
-            annotate(e);
             comment("EXPR [");
             indent += 2;
-            emitExpr(e);
+            if (patternOnly) {
+                emitExprOrPat(e);
+            } else {
+                annotate(e);
+                emitExpr(e);
+            }
             indent -= 2;
             comment("]");
             freeExpr(e);
@@ -577,44 +618,54 @@ dumpStmt(void)
 
     case 'R':  /* return */
         {
-            unsigned char hasVal = hex2();
+            unsigned char hasVal = read1();
             if (hasVal) {
                 struct expr *e = parseExpr();
-                annotate(e);
                 comment("RETURN [");
                 indent += 2;
-                emitExpr(e);
+                if (patternOnly) {
+                    emitExprOrPat(e);
+                } else {
+                    annotate(e);
+                    emitExpr(e);
+                }
                 indent -= 2;
                 comment("]");
                 freeExpr(e);
             } else {
                 comment("RETURN (void)");
             }
-            if (hasFrame)
-                emit("jp framefree");
-            else
-                emit("ret");
+            if (!patternOnly) {
+                if (hasFrame)
+                    emit("jp framefree");
+                else
+                    emit("ret");
+            }
         }
         break;
 
     case 'L':  /* label */
         readName(name);
-        emitLabel(name);
+        if (!patternOnly)
+            emitLabel(name);
+        else
+            comment("LABEL %s", name);
         break;
 
     case 'G':  /* goto */
         readName(name);
         comment("GOTO %s", name);
-        emit("jp %s", name);
+        if (!patternOnly)
+            emit("jp %s", name);
         break;
 
     case 'S':  /* switch */
         {
             struct expr *e;
             struct swctx *sw;
-            unsigned char hasLabel = hex2();
+            unsigned char hasLabel = read1();
             if (hasLabel) readName(name);
-            ncases = hex2();
+            ncases = read1();
             comment("SWITCH label=%s cases=%d [", hasLabel ? name : "(none)", ncases);
             indent += 2;
             /* Push switch context */
@@ -625,34 +676,43 @@ dumpStmt(void)
             sw->endLabel = labelCnt++;
             /* Emit switch expression to A */
             e = parseExpr();
-            annotate(e);
-            emitExpr(e);
-            if (e->size != 1) {
-                /* Word expression - get low byte to A */
-                emit("ld a,l");
+            if (patternOnly) {
+                emitExprOrPat(e);
+            } else {
+                annotate(e);
+                emitExpr(e);
+                if (e->size != 1) {
+                    /* Word expression - get low byte to A */
+                    emit("ld a,l");
+                }
             }
             freeExpr(e);
-            /* Jump to switch table */
-            emit("ld hl,sw%d_%d", sw->tblLabel, fnIndex);
-            emit("jp switch");
+            if (!patternOnly) {
+                /* Jump to switch table */
+                emit("ld hl,sw%d_%d", sw->tblLabel, fnIndex);
+                emit("jp switch");
+            }
             /* Process all cases - they record themselves in sw */
             for (i = 0; i < ncases; i++)
                 dumpStmt();
             /* Emit switch end label */
-            emit("swe%d_%d:", sw->endLabel, fnIndex);
-            if (hasLabel)
-                emit("%s_break:", name);  /* alias for break statements */
-            /* Emit jump table inline in text segment */
-            emit("sw%d_%d:", sw->tblLabel, fnIndex);
-            emit("\t.db %d", sw->ncases);
-            for (i = 0; i < sw->ncases; i++) {
-                emit("\t.db %d", sw->vals[i]);
-                emit("\t.dw swc%d_%d", sw->labels[i], fnIndex);
+            if (!patternOnly)
+                emit("swe%d_%d:", sw->endLabel, fnIndex);
+            if (!patternOnly) {
+                if (hasLabel)
+                    emit("%s_break:", name);  /* alias for break statements */
+                /* Emit jump table inline in text segment */
+                emit("sw%d_%d:", sw->tblLabel, fnIndex);
+                emit("\t.db %d", sw->ncases);
+                for (i = 0; i < sw->ncases; i++) {
+                    emit("\t.db %d", sw->vals[i]);
+                    emit("\t.dw swc%d_%d", sw->labels[i], fnIndex);
+                }
+                if (sw->hasdef)
+                    emit("\t.dw swd%d_%d", sw->defLabel, fnIndex);
+                else
+                    emit("\t.dw swe%d_%d", sw->endLabel, fnIndex);
             }
-            if (sw->hasdef)
-                emit("\t.dw swd%d_%d", sw->defLabel, fnIndex);
-            else
-                emit("\t.dw swe%d_%d", sw->endLabel, fnIndex);
             /* Pop switch context */
             swdepth--;
             indent -= 2;
@@ -665,7 +725,7 @@ dumpStmt(void)
             struct expr *e;
             struct swctx *sw = &swstack[swdepth - 1];
             int lbl = labelCnt++;
-            nstmt = hex2();
+            nstmt = read1();
             /* Parse case value (must be constant) */
             e = parseExpr();
             /* Record case in switch context */
@@ -678,7 +738,8 @@ dumpStmt(void)
             freeExpr(e);
             indent += 2;
             /* Emit case label */
-            emit("swc%d_%d:", lbl, fnIndex);
+            if (!patternOnly)
+                emit("swc%d_%d:", lbl, fnIndex);
             for (i = 0; i < nstmt; i++)
                 dumpStmt();
             indent -= 2;
@@ -690,12 +751,13 @@ dumpStmt(void)
         {
             struct swctx *sw = &swstack[swdepth - 1];
             int lbl = labelCnt++;
-            nstmt = hex2();
+            nstmt = read1();
             sw->hasdef = 1;
             sw->defLabel = lbl;
             comment("DEFAULT [");
             indent += 2;
-            emit("swd%d_%d:", lbl, fnIndex);
+            if (!patternOnly)
+                emit("swd%d_%d:", lbl, fnIndex);
             for (i = 0; i < nstmt; i++)
                 dumpStmt();
             indent -= 2;
@@ -709,7 +771,7 @@ dumpStmt(void)
 
     case 'A':  /* inline asm */
         {
-            unsigned len = hex4();
+            unsigned len = read2();
             comment("ASM len=%d", len);
             while (len-- > 0) {
                 advance();
@@ -740,24 +802,24 @@ parseGlobal(void)
     unsigned char hasInit;
     unsigned count, elemsize, size;
 
-    skipWs();
-    if (curchar != '$') {
-        fprintf(stderr, "cc2: expected $ in global\n");
+    /* binary format - no whitespace */
+    if (curchar != SYM) {
+        fprintf(stderr, "cc2: expected SYM in global\n");
         return;
     }
     advance();
 
     readName(name);
 
-    skipWs();
+    /* binary format - no whitespace */
     type = curchar;
     advance();
 
     if (type == 'a') {
-        count = hex4();
-        elemsize = hex4();
+        count = read2();
+        elemsize = read2();
         size = count * elemsize;
-        hasInit = hex2();
+        hasInit = read1();
         emit("\t.globl %s", name);
         if (hasInit) {
             emitLabel(name);
@@ -772,8 +834,8 @@ parseGlobal(void)
     }
 
     if (type == 'r') {
-        size = hex4();
-        hasInit = hex2();
+        size = read2();
+        hasInit = read1();
         emit("\t.globl %s", name);
         if (hasInit) {
             emitLabel(name);
@@ -787,7 +849,7 @@ parseGlobal(void)
         return;
     }
 
-    hasInit = hex2();
+    hasInit = read1();
     emit("\t.globl %s", name);
     if (hasInit) {
         emitLabel(name);
@@ -814,11 +876,11 @@ parseString(void)
     unsigned char bytes[256];  /* store decoded bytes */
 
     readName(name);
-    len = hex2();
+    len = read1();
 
     /* First decode all bytes */
     for (i = 0; i < len; i++) {
-        bytes[i] = hex2();
+        bytes[i] = read1();
     }
 
     emit("\t.data");
@@ -895,14 +957,14 @@ parseString(void)
 void
 parseGlobAsm(void)
 {
-    unsigned len = hex4();
+    unsigned len = read2();
     unsigned i;
     char asmline[256];
     unsigned char asmpos = 0;
 
     for (i = 0; i < len; i++) {
 	unsigned char ch;
-	ch = hex2();
+	ch = read1();
         if (ch == '\n' || asmpos >= 250) {
             asmline[asmpos] = 0;
             if (asmpos > 0) emit("%s", asmline);
@@ -937,9 +999,9 @@ parseFunc(void)
     advance();
     readName(name);
 
-    nparams = hex2();
-    nlocals = hex2();
-    fsize = hex2();
+    nparams = read1();
+    nlocals = read1();
+    fsize = read1();
 
     emit("\t.globl %s", name);
     emitLabel(name);
@@ -952,14 +1014,14 @@ parseFunc(void)
     for (i = 0; i < nparams; i++) {
         char ptype, pname[14];
         unsigned char preg, poff;
-        skipWs();
+        /* binary format - no whitespace */
         if (curchar == 'd') {
             advance();
             ptype = curchar;
             advance();
             readName(pname);
-            preg = hex2();
-            poff = hex2();
+            preg = read1();
+            poff = read1();
             /* Byte params pushed via AF have value in high byte of stack word */
             if (ISBYTE(ptype) && preg == 0 && poff > 0)
                 poff++;
@@ -972,14 +1034,14 @@ parseFunc(void)
     for (i = 0; i < nlocals; i++) {
         char ltype, lname[14];
         unsigned char lreg, loff;
-        skipWs();
+        /* binary format - no whitespace */
         if (curchar == 'd') {
             advance();
             ltype = curchar;
             advance();
             readName(lname);
-            lreg = hex2();
-            loff = hex2();
+            lreg = read1();
+            loff = read1();
             addLocal(lname, ltype, lreg, loff);
             comment("local %c %s %s off=%d", ltype, lname, regnames[lreg] ? regnames[lreg] : "-", (char)(loff));
         }
@@ -1006,7 +1068,7 @@ void
 parseAst(void)
 {
     while (curchar != ASTEOF) {
-        skipWs();
+        /* binary format - no whitespace */
         if (curchar == ASTEOF) break;
 
         switch (curchar) {

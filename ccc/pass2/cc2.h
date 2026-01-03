@@ -59,10 +59,10 @@ struct sym *findLocal(char *name);
 
 /*
  * Expression tree node
- * op: '#'=const, '$'=global, 'R'=regvar, 'V'=local, 'M'=deref, etc.
+ * op: uses token constants from lexeme.h (AST_CONST, SYM, REGVAR, LOCALVAR, DEREF, etc.)
  */
 struct expr {
-    char op;                /* operator: '#', '$', 'R', 'V', 'M', '=', '@', '+', etc. */
+    unsigned char op;       /* operator: lexeme.h tokens (SYM, DEREF, ASSIGN, CALL, etc.) */
     char size;              /* size in bytes */
     char type;              /* type suffix: 'b', 's', 'l', 'p', etc. */
     struct expr *left;      /* left/first child */
@@ -106,7 +106,7 @@ struct expr {
 #define SP_CMPR     19      /* cmpB Rb #const -> ld a,reg; cp const */
 
 /* Expression allocation */
-struct expr *newExpr(char op, char type);
+struct expr *newExpr(unsigned char op, char type);
 void freeExpr(struct expr *e);
 
 /* Expression parsing */
@@ -118,14 +118,14 @@ extern int outfd;
 #define ASTEOF 255
 extern unsigned char curchar;
 extern int lineno;
+extern int patternOnly;  /* -p flag: emit patterns as comments only */
 
-/* AST I/O */
+/* AST I/O (binary format) */
 void advance(void);
-unsigned char hex2(void);
-unsigned int hex4(void);
-long hex8(void);
+unsigned char read1(void);
+unsigned int read2(void);
+long read4(void);
 void readName(char *buf);
-void skipWs(void);
 
 /* Output */
 void emit(char *fmt, ...);
@@ -149,7 +149,7 @@ unsigned char isSimpleByte(struct expr *e);
 /* Code emission */
 void emitExpr(struct expr *e);
 void emitCompare(struct expr *e);
-void emitCondJmp(char op, int aux2);
+void emitCondJmp(unsigned char op, int aux2);
 void emitCmpArith(struct expr *e);
 void emitCmpShift(struct expr *e);
 void emitCmpMulDiv(struct expr *e);
@@ -198,6 +198,41 @@ void parseString(void);
 void parseGlobAsm(void);
 void parseFunc(void);
 void parseAst(void);
+
+/*
+ * Pattern-based expression representation (pattern.c)
+ * Format: operators are 2 chars (op + size)
+ * $ and # add 2 hex digits for operand index
+ * Example: "=s$s02+s$s00#s01" for x = y + 5
+ */
+#define MAX_OPERANDS 256
+#define MAX_PATTERN  512
+
+struct pattern {
+	char str[MAX_PATTERN];
+	int len;
+	void *ops[MAX_OPERANDS];
+	int nops;
+};
+
+void patInit(struct pattern *p);
+void patSym(struct pattern *p, char size, char *name);
+void patConst(struct pattern *p, char size, long val);
+void patLocal(struct pattern *p, char size, int offset);
+void patReg(struct pattern *p, char size, int reg);
+void patUnary(struct pattern *p, char op, char size, struct pattern *child);
+void patBinary(struct pattern *p, char op, char size,
+	       struct pattern *left, struct pattern *right);
+void patCall(struct pattern *p, char retsize, int nargs,
+	     struct pattern *func, struct pattern *args[], int narg);
+void patPrint(struct pattern *p);
+void *patGetOp(struct pattern *p, char *pos);
+char *patGetSym(struct pattern *p, char *pos);
+long patGetConst(struct pattern *p, char *pos);
+int patGetLocal(struct pattern *p, char *pos);
+int patGetReg(struct pattern *p, char *pos);
+void patFromExpr(struct pattern *p, struct expr *e);
+void patEmitComment(struct pattern *p);
 
 #endif
 

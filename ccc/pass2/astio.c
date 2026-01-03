@@ -1,5 +1,5 @@
 /*
- * astio.c - AST input/output functions
+ * astio.c - AST input/output functions (binary format)
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -8,92 +8,55 @@
 #include "cc2.h"
 
 /*
- * AST I/O
+ * AST I/O - binary format
  */
 void
 advance(void)
 {
-    char c;
+    unsigned char c;
     if (read(infd, &c, 1) == 1) {
         curchar = c;
-        if (c == '\n') lineno++;
     } else {
         curchar = ASTEOF;
     }
 }
 
-void
-skipWs(void)
-{
-    unsigned char c;
-
-top:
-    c = curchar;
-    if (c == ' ' || c == '\t' || c == '\n' || c == '\r') {
-        advance();
-        goto top;
-    } else {
-        return;
-    }
-}
-
-/*
- * translate a character to it's hex value, case insenstive
- */
+/* Read 1 byte directly */
 unsigned char
-hex()
+read1(void)
 {
-	unsigned char c;
-    c = curchar;
+    unsigned char c = curchar;
     advance();
-	c |= 0x20;
-    if (c >= '0' && c <= '9') {
-		c -= '0';
-	} else {
-		c -= 'a' - 10;
-	}
-	return c;
+    return c;
 }
 
-/* Read 2 hex digits */
-unsigned char
-hex2(void)
-{
-    return (hex() << 4) | hex();
-}
-
-/* Read 4 hex digits */
+/* Read 2 bytes little-endian */
 unsigned int
-hex4(void)
+read2(void)
 {
-    return (hex2() << 8) | hex2();
+    unsigned int lo = read1();
+    unsigned int hi = read1();
+    return lo | (hi << 8);
 }
 
-/* Read 8 hex digits */
+/* Read 4 bytes little-endian */
 long
-hex8(void)
+read4(void)
 {
-    long v = 0;
-    unsigned char neg = 0;
-    unsigned char i;
-
-    if (curchar == '-') {
-        neg = 1;
-        advance();
-    }
-    for (i = 0; i < 8; i++) {
-        v = v << 4 | hex();
-    }
-    return neg ? -v : v;
+    long v = read1();
+    v |= (long)read1() << 8;
+    v |= (long)read1() << 16;
+    v |= (long)read1() << 24;
+    return v;
 }
 
-/* Read length-prefixed name */
+/* Read length-prefixed name (binary: 1 byte len + raw chars) */
 void
 readName(char *buf)
 {
     unsigned char len, i;
 
-    len = hex2();
+    len = read1();
     for (i = 0; i < len && i < 13; i++) {
         buf[i] = curchar;
         advance();

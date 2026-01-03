@@ -137,15 +137,15 @@
 #define POSTDEC     214
 #define BFEXTRACT   215
 #define BFASSIGN    216
+#define REGVAR      217   /* pass2: register variable */
+#define LOCALVAR    218   /* pass2: local variable (IY/IX indexed) */
+#define ARGNODE     219   /* pass2: function call argument wrapper */
+#define TERNBRANCH  220   /* pass2: ternary then/else container */
+#define URSHIFT     221   /* unsigned right shift >>> */
 
-/* AST markers that don't conflict with tokens (tokens use 30+) */
-#define AST_SYM     4     /* symbol reference marker */
-
-/* AST inc/dec use printable chars to distinguish pre/post */
-#define AST_PREINC  '('
-#define AST_POSTINC ')'
-#define AST_PREDEC  '{'
-#define AST_POSTDEC '}'
+/* AST format uses lexeme token values directly (SYM, DEREF, BANG, etc.) */
+/* Special markers for AST that have no lexeme equivalent */
+#define AST_CONST   '#'   /* numeric constant marker */
 
 #endif /* LEXEME_H */
 
