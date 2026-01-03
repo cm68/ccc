@@ -15,27 +15,27 @@ emitDeref(struct expr *e)
     comment("M%c [", e->type);
     indent += 2;
     if (e->special == SP_MSYM) {
-        /* M $sym -> ld hl,(sym) or ld a,(sym) */
-        comment("$%s", e->sym);
+        /* DEREF[SYM] -> ld hl,(sym) or ld a,(sym) */
+        comment("SYM %s", e->sym);
         if (e->size == 1)
             emit("ld a,(%s)", e->sym);
         else
             emit("ld hl,(%s)", e->sym);
     } else if (e->special == SP_SYMOFD) {
-        /* M[+p $sym #ofs] -> ld hl,(sym+ofs) or ld a,(sym+ofs) */
-        comment("+p $%s #%d", e->sym, e->offset);
+        /* DEREF[PLUS SYM AST_CONST] -> ld hl,(sym+ofs) */
+        comment("PLUS SYM %s AST_CONST %d", e->sym, e->offset);
         if (e->size == 1)
             emit("ld a,(%s+%d)", e->sym, e->offset);
         else
             emit("ld hl,(%s+%d)", e->sym, e->offset);
     } else if (e->left->op == REGVAR && e->left->aux == R_IX) {
-        /* Mp [Rp IX] */
-        comment("Rp ix");
+        /* DEREF[REGVAR(IX)] */
+        comment("REGVAR ix");
         emit("push ix");
         emit("pop hl");
     } else if (e->left->op == REGVAR && e->left->aux == R_BC) {
-        /* Mp [Rp BC] or Ms [Rs BC] */
-        comment("R%c bc", e->left->type);
+        /* DEREF[REGVAR(BC)] */
+        comment("REGVAR bc");
         emit("ld h,b");
         emit("ld l,c");
     } else {
@@ -268,7 +268,7 @@ emitExpr(struct expr *e)
             /* store constant through HL: ld (hl),n; inc hl; ld (hl),n */
             long val = e->right->v.l;
             comment("STCONST %ld", val);
-            /* e->left is DEREF[addr], $global, or +s - get storage address in HL */
+            /* e->left is DEREF[addr], SYM, or PLUS - get storage address in HL */
             if (e->left->op == DEREF) {
                 /* Need to get storage address: emit child of DEREF, then deref if global ptr */
                 emitExpr(e->left->left);
@@ -285,7 +285,7 @@ emitExpr(struct expr *e)
                 /* global symbol: load address directly */
                 emit("ld hl,%s", e->left->sym);
             } else {
-                /* left is address expression like +p, emit directly */
+                /* left is address expression like PLUS, emit directly */
                 emitExpr(e->left);
             }
             if (e->size == 1) {
@@ -465,8 +465,8 @@ emitExpr(struct expr *e)
         comment("+%c [", e->type);
         indent += 2;
         if (e->special == SP_SYMOFS) {
-            /* +p $sym #const -> ld hl,sym+ofs */
-            comment("$%s #%d", e->sym ? e->sym : "?", e->offset);
+            /* PLUS SYM AST_CONST -> ld hl,sym+ofs */
+            comment("SYM %s AST_CONST %d", e->sym ? e->sym : "?", e->offset);
             if (e->offset > 0)
                 emit("ld hl,%s+%d", e->sym, e->offset);
             else if (e->offset < 0)
@@ -474,8 +474,8 @@ emitExpr(struct expr *e)
             else
                 emit("ld hl,%s", e->sym);
         } else if (e->special == SP_ADDBC) {
-            /* +p Mp[Rp bc] #const -> ld hl,const; add hl,bc */
-            comment("bc+%d", e->offset);
+            /* PLUS DEREF[REGVAR(BC)] AST_CONST -> ld hl,const; add hl,bc */
+            comment("REGVAR bc + %d", e->offset);
             emit("ld hl,%d", e->offset);
             emit("add hl,bc");
         } else {

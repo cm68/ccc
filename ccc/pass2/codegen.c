@@ -22,11 +22,11 @@ isSimpleByte(struct expr *e)
     if (op == AST_CONST) return 1;  /* constant */
     if (op == REGVAR) return 1;  /* regvar */
 
-    /* Mb $sym - direct global byte */
+    /* DEREF[SYM] - direct global byte */
     if (op == DEREF && e->left->op == SYM)
         return 1;
 
-    /* Mb Vb - stack byte via (iy+d) */
+    /* DEREF[LOCALVAR] - stack byte via (iy+d) */
     if (op == DEREF && e->left->op == LOCALVAR)
         return 1;
 
@@ -68,26 +68,26 @@ annotate(struct expr *e)
     annotate(e->left);
     annotate(e->right);
 
-    /* special: =[BS] $var #const - store constant to global */
+    /* ASSIGN SYM AST_CONST - store constant to global */
     if (op == ASSIGN && size <= 2 && e->left->op == SYM && e->right->op == AST_CONST) {
         e->special = SP_STCONST;
         return;
     }
 
-    /* =b Rb #const -> ld b,n or ld c,n; direct byte regvar assign */
+    /* ASSIGN REGVAR AST_CONST -> ld b,n or ld c,n; direct byte regvar assign */
     if (op == ASSIGN && size == 1 && e->left->op == REGVAR &&
         (e->left->aux == R_B || e->left->aux == R_C) && e->right->op == AST_CONST) {
         e->special = SP_STCONST;
         return;
     }
 
-    /* = V #const -> ld (iy+n),lo; ld (iy+n+1),hi; store const to local */
+    /* ASSIGN LOCALVAR AST_CONST -> ld (iy+n),lo; store const to local */
     if (op == ASSIGN && e->left->op == LOCALVAR && e->right->op == AST_CONST) {
         e->special = SP_STCONST;
         return;
     }
 
-    /* (s Rs reg -> inc reg; pre-inc/dec of regvar, incr <= 4 */
+    /* PREINC/PREDEC REGVAR -> inc reg; pre-inc/dec of regvar, incr <= 4 */
     if ((op == PREINC || op == PREDEC) && e->left->op == REGVAR && count <= 4) {
         e->special = (op == PREINC) ? SP_INCR : SP_DECR;
         e->incr = e->aux2;
@@ -95,7 +95,7 @@ annotate(struct expr *e)
         return;
     }
 
-    /* (b Vb ofs -> inc (iy+ofs); pre-inc/dec of byte local, incr <= 4 */
+    /* PREINC/PREDEC LOCALVAR -> inc (iy+ofs); byte local, incr <= 4 */
     if ((op == PREINC || op == PREDEC) && e->left->op == LOCALVAR && size == 1 && count <= 4) {
         e->special = (op == PREINC) ? SP_INCR : SP_DECR;
         e->incr = count;
@@ -104,7 +104,7 @@ annotate(struct expr *e)
         return;
     }
 
-    /* (s $sym -> ld hl,(_sym); inc hl; ld (_sym),hl; inc/dec global word */
+    /* PREINC/PREDEC SYM -> ld hl,(_sym); inc hl; ld (_sym),hl; global word */
     if ((op == PREINC || op == PREDEC) && e->left->op == SYM && size == 2 && count <= 4) {
         e->special = SP_INCGLOB;
         e->incr = count;
@@ -114,7 +114,7 @@ annotate(struct expr *e)
         return;
     }
 
-    /* +s $sym #const -> ld hl,sym+offset */
+    /* PLUS SYM AST_CONST -> ld hl,sym+offset */
     if (op == PLUS && size == 2 &&
         e->left->op == SYM && e->right->op == AST_CONST && e->left->sym) {
         e->special = SP_SYMOFS;
@@ -124,7 +124,7 @@ annotate(struct expr *e)
         return;
     }
 
-    /* +s Ms[Rs bc] #const -> ld hl,const; add hl,bc */
+    /* PLUS DEREF[REGVAR(BC)] AST_CONST -> ld hl,const; add hl,bc */
     if (op == PLUS && size == 2 &&
         e->left->op == DEREF && e->left->left->op == REGVAR &&
         e->left->left->aux == R_BC && e->right->op == AST_CONST) {
@@ -133,7 +133,7 @@ annotate(struct expr *e)
         return;
     }
 
-    /* M[+s $sym #const] -> ld hl,(sym+offset) */
+    /* DEREF[PLUS SYM AST_CONST] -> ld hl,(sym+offset) */
     if (op == DEREF && e->left->op == PLUS && e->left->size == 2 &&
         e->left->left->op == SYM && e->left->right->op == AST_CONST &&
         e->left->left->sym) {
@@ -144,7 +144,7 @@ annotate(struct expr *e)
         return;
     }
 
-    /* Ms $sym -> ld hl,(sym); direct deref of global */
+    /* DEREF[SYM] -> ld hl,(sym); direct deref of global */
     if (op == DEREF && e->left->op == SYM && e->left->sym) {
         e->special = SP_MSYM;
         e->sym = e->left->sym;          /* steal symbol */
@@ -152,7 +152,7 @@ annotate(struct expr *e)
         return;
     }
 
-    /* *s expr #s 4 -> add hl,hl; multiply by power of 2 */
+    /* STAR AST_CONST (power of 2) -> add hl,hl; multiply by shifts */
     if (op == STAR && e->right->op == AST_CONST) {
         long n = e->right->v.l;
         if (n > 0 && (n & (n - 1)) == 0) {
@@ -164,7 +164,7 @@ annotate(struct expr *e)
         }
     }
 
-    /* &B M[(ix+ofs)] #pow2 -> bit n,(ix+ofs); bit test */
+    /* AND DEREF[PLUS DEREF[REGVAR(IX)] AST_CONST] AST_CONST -> bit test */
     if (op == AND && size == 1 && e->right->op == AST_CONST) {
         long n = e->right->v.l & 0xff;
         /* check power of 2 (single bit) */
@@ -196,8 +196,8 @@ annotate(struct expr *e)
         }
     }
 
-    /* cmpB Vb #const -> ld a,const; cp (iy/ix+off) */
-    /* cmpB Rb #const -> ld a,reg; cp const */
+    /* LT/EQ/NEQ LOCALVAR AST_CONST -> ld a,const; cp (iy/ix+off) */
+    /* LT/EQ/NEQ REGVAR AST_CONST -> ld a,reg; cp const */
     if ((op == LT || op == EQ || op == NEQ) && size == 1) {
         struct expr *l = e->left, *r = e->right;
         if (l->op == LOCALVAR && r->op == AST_CONST) {
@@ -215,8 +215,8 @@ annotate(struct expr *e)
         }
     }
 
-    /* cmpB with (hl): left is Mb[addr], right is simple (normalized) */
-    /* Exclude Mb[Rp] - register pointer needs copy to HL first */
+    /* LT/EQ/NEQ DEREF[addr] simpleByte -> cp (hl) */
+    /* Exclude DEREF[REGVAR] - register pointer needs copy to HL first */
     if ((op == LT || op == EQ || op == NEQ) && size == 1) {
         struct expr *l = e->left, *r = e->right;
         if (l->op == DEREF && l->size == 1 && isSimpleByte(r) &&
@@ -226,13 +226,13 @@ annotate(struct expr *e)
         }
     }
 
-    /* =type [M addr] [#const] -> ld (hl),n; store constant through HL */
+    /* ASSIGN DEREF AST_CONST -> ld (hl),n; store constant through HL */
     if (op == ASSIGN && e->left->op == DEREF && e->right->op == AST_CONST) {
         e->special = SP_STCONST;
         return;
     }
 
-    /* =type [+s addr] [#const] -> ld (hl),n; store constant through computed ptr */
+    /* ASSIGN PLUS AST_CONST -> ld (hl),n; store constant through computed ptr */
     if (op == ASSIGN && e->left->op == PLUS && e->left->size == 2 &&
         e->right->op == AST_CONST) {
         e->special = SP_STCONST;

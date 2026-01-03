@@ -8,6 +8,14 @@
 #include "../../cpp/lexeme.h"
 
 /*
+ * Static buffers to reduce stack usage (Z80 IY-indexed limit is 127)
+ */
+static char ps_line[80];       /* parseString line buffer */
+static char ps_strbuf[64];     /* parseString string accumulator */
+static unsigned char ps_bytes[256]; /* parseString decoded bytes */
+static char pga_line[256];     /* parseGlobAsm line buffer */
+
+/*
  * Expression allocation
  */
 static struct expr sentinel = { 0 };  /* invalid op=0 marks unused */
@@ -240,7 +248,7 @@ parseExpr(void)
             free(e);
             return child;
         }
-        /* Collapse DEREF[+p DEREF[REGVAR(ix)] #ofs] to LOCALVAR with reg=IX */
+        /* Collapse DEREF[PLUS DEREF[REGVAR(IX)] AST_CONST] to LOCALVAR */
         if (e->left->op == PLUS && e->left->size == 2 &&
             e->left->left->op == DEREF && e->left->left->size == 2 &&
             e->left->left->left->op == REGVAR &&
@@ -342,7 +350,7 @@ parseExpr(void)
                 e->right->v.l = val + 1;
             }
         }
-        /* Collapse +p [REGVAR(ix/iy) #ofs] to LOCALVAR node */
+        /* Collapse PLUS REGVAR(IX/IY) AST_CONST to LOCALVAR node */
         if (c == PLUS && e->size == 2 &&
             e->left->op == REGVAR && (e->left->aux == R_IX || e->left->aux == R_IY) &&
             e->right->op == AST_CONST) {
@@ -870,83 +878,78 @@ void
 parseString(void)
 {
     char name[14];
-    char line[80];
-    char strbuf[64];
+    char item[70];
     unsigned char len, i, col, strpos;
-    unsigned char bytes[256];  /* store decoded bytes */
+    unsigned char val, isprintable, itemlen;
 
     readName(name);
     len = read1();
 
-    /* First decode all bytes */
+    /* First decode all bytes into static buffer */
     for (i = 0; i < len; i++) {
-        bytes[i] = read1();
+        ps_bytes[i] = read1();
     }
 
     emit("\t.data");
     emitLabel(name);
-    col = sprintf(line, "\t.db ");
+    col = sprintf(ps_line, "\t.db ");
     strpos = 0;
-    strbuf[0] = 0;
+    ps_strbuf[0] = 0;
 
     for (i = 0; i <= len; i++) {  /* <= to include null terminator */
-        unsigned char val = (i < len) ? bytes[i] : 0;
-        unsigned char isprintable = (val >= 0x20 && val <= 0x7e && val != '"' && val != '\\') ||
+        val = (i < len) ? ps_bytes[i] : 0;
+        isprintable = (val >= 0x20 && val <= 0x7e && val != '"' && val != '\\') ||
                           val == '\t' || val == '\n' || val == '\r';
 
         if (isprintable && i < len) {
             /* Accumulate into string buffer */
             if (val == '\t') {
-                strbuf[strpos++] = '\\';
-                strbuf[strpos++] = 't';
+                ps_strbuf[strpos++] = '\\';
+                ps_strbuf[strpos++] = 't';
             } else if (val == '\n') {
-                strbuf[strpos++] = '\\';
-                strbuf[strpos++] = 'n';
+                ps_strbuf[strpos++] = '\\';
+                ps_strbuf[strpos++] = 'n';
             } else if (val == '\r') {
-                strbuf[strpos++] = '\\';
-                strbuf[strpos++] = 'r';
+                ps_strbuf[strpos++] = '\\';
+                ps_strbuf[strpos++] = 'r';
             } else {
-                strbuf[strpos++] = val;
+                ps_strbuf[strpos++] = val;
             }
-            strbuf[strpos] = 0;
+            ps_strbuf[strpos] = 0;
         } else {
             /* Flush string buffer if any */
             if (strpos > 0) {
-                char item[70];
-                unsigned char itemlen = sprintf(item, "\"%s\"", strbuf);
+                itemlen = sprintf(item, "\"%s\"", ps_strbuf);
                 if (col + itemlen + 1 > 70 && col > 6) {
-                    line[col] = 0;
-                    emit("%s", line);
-                    col = sprintf(line, "\t.db ");
+                    ps_line[col] = 0;
+                    emit("%s", ps_line);
+                    col = sprintf(ps_line, "\t.db ");
                 }
                 if (col > 6)
-                    line[col++] = ',';
-                strcpy(line + col, item);
+                    ps_line[col++] = ',';
+                strcpy(ps_line + col, item);
                 col += itemlen;
                 strpos = 0;
-                strbuf[0] = 0;
+                ps_strbuf[0] = 0;
             }
             /* Emit hex value */
-            {
-                char item[8];
-                unsigned char itemlen = sprintf(item, "0x%x", val);
-                if (col + itemlen + 1 > 70 && col > 6) {
-                    line[col] = 0;
-                    emit("%s", line);
-                    col = sprintf(line, "\t.db ");
-                }
-                if (col > 6)
-                    line[col++] = ',';
-                strcpy(line + col, item);
-                col += itemlen;
+            itemlen = sprintf(item, "0x%x", val);
+            if (col + itemlen + 1 > 70 && col > 6) {
+                ps_line[col] = 0;
+                emit("%s", ps_line);
+                col = sprintf(ps_line, "\t.db ");
             }
+            if (col > 6)
+                ps_line[col++] = ',';
+            strcpy(ps_line + col, item);
+            col += itemlen;
         }
     }
 
     /* Emit final line */
     if (col > 6) {
-        line[col] = 0;
-        emit("%s", line);
+        ps_line[col] = 0;
+        emit("%s", ps_line);
     }
     emit("\t.text");
 }
@@ -959,23 +962,22 @@ parseGlobAsm(void)
 {
     unsigned len = read2();
     unsigned i;
-    char asmline[256];
     unsigned char asmpos = 0;
+    unsigned char ch;
 
     for (i = 0; i < len; i++) {
-	unsigned char ch;
-	ch = read1();
+        ch = read1();
         if (ch == '\n' || asmpos >= 250) {
-            asmline[asmpos] = 0;
-            if (asmpos > 0) emit("%s", asmline);
+            pga_line[asmpos] = 0;
+            if (asmpos > 0) emit("%s", pga_line);
             asmpos = 0;
         } else {
-            asmline[asmpos++] = ch;
+            pga_line[asmpos++] = ch;
         }
     }
     if (asmpos > 0) {
-        asmline[asmpos] = 0;
-        emit("%s", asmline);
+        pga_line[asmpos] = 0;
+        emit("%s", pga_line);
     }
 }
 

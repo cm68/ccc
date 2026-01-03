@@ -131,7 +131,7 @@ emitExpr(struct expr *e)
 
 	switch (op) {
 	case CONST:
-		emit1('#');
+		emit1(AST_CONST);
 		emit1(typeSfx(type));
 		emit4(e->v);
 		break;
@@ -144,14 +144,14 @@ emitExpr(struct expr *e)
 			    (np->level == 1 && !(np->sclass & SC_STATIC)))
 				sprintf(fullname, "_%s", np->name);
 			else if (np->static_id)
-				sprintf(fullname, 
+				sprintf(fullname,
                     "%c%d", np->sclass & SC_STATIC ? 'S' : 'L', np->static_id - 1);
 			else
 				sprintf(fullname, "%s", np->name);
-			emit1(AST_SYM);
+			emit1(SYM);
 			emitS(fullname);
 		} else {
-			emit1(AST_SYM);
+			emit1(SYM);
 			emitS("?");
 		}
 		break;
@@ -161,7 +161,7 @@ emitExpr(struct expr *e)
 		if (e->var) {
 			np = (struct name *)e->var;
 			/* Synthetic string names are local - no _ prefix */
-			emit1(AST_SYM);
+			emit1(SYM);
 			emitS(np->name);
 		} else {
 			/* Fallback to address if name not available */
@@ -247,34 +247,23 @@ emitExpr(struct expr *e)
 		}
 		break;
 
-	case SUBEQ:
-	case ANDEQ:
-	case MODEQ:
-	case OREQ:
-		/* Compound assignments - emit token value directly */
-		emit1(op);
-		emit1(typeSfx(type));
-		emitChild(left);
-		emitChild(right);
-		break;
-
 	case INITLIST:
 		/* Nested initializer list - emit contents */
 		n = 0;
 		for (ep = left; ep; ep = ep->next)
 			n++;
-		emit1('{');
+		emit1(BEGIN);
 		emit1(n);
 		for (ep = left; ep; ep = ep->next)
 			emitExpr(ep);
-		emit1('}');
+		emit1(END);
 		break;
 
 	case DEREF:
 		/* Optimize: *++p -> (++p, *p) using comma operator */
 		if (left && (left->op == INCR || left->op == DECR) &&
 		    !(left->flags & E_POSTFIX)) {
-			emit1(',');
+			emit1(COMMA);
 			emit1(typeSfx(type));
 			emitExpr(left);
 			emit1(DEREF);
@@ -282,9 +271,30 @@ emitExpr(struct expr *e)
 			emitExpr(left->left);
 			break;
 		}
-		/* Memory dereference */
-		emit1(DEREF);
+		/* fall through - standard unary */
+
+	case BANG:
+	case NEG:
+	case TWIDDLE:
+		/* Unary operators */
+		emit1(op);
 		emit1(typeSfx(type));
+		emitChild(left);
+		break;
+
+	case GT:
+		/* Greater than - normalize to < by swapping operands */
+		emit1(LT);
+		emit1(typeSfx(type));
+		emitChild(right);
+		emitChild(left);
+		break;
+
+	case GE:
+		/* Greater or equal - normalize to <= by swapping */
+		emit1(LE);
+		emit1(typeSfx(type));
+		emitChild(right);
 		emitChild(left);
 		break;
 
@@ -723,7 +733,7 @@ emitStInit(struct expr *init, struct type *stype)
 			fields[nfields++] = field;
 	}
 
-	emit1('{');
+	emit1(BEGIN);
 	emit1(count);
 
 	/* Emit each initializer with corresponding field's type */
@@ -732,7 +742,7 @@ emitStInit(struct expr *init, struct type *stype)
 		field = (i >= 0) ? fields[i--] : NULL;
 		emitInit(val, field ? field->type : NULL);
 	}
-	emit1('}');
+	emit1(END);
 }
 
 /*
@@ -762,7 +772,7 @@ emitInit(struct expr *init, struct type *type)
 			struct name *strname = (struct name *)init->var;
 			strname->emitted = 1;
 		}
-		emit1('[');
+		emit1(LBRACK);
 		emit1('b');
 		emit1(arrlen);
 		for (i = 0; i < arrlen; i++) {
@@ -771,7 +781,7 @@ emitInit(struct expr *init, struct type *type)
 			emit1('b');
 			emit4(b);
 		}
-		emit1(']');
+		emit1(RBRACK);
 	} else if (init->op == CONST && type) {
 		/* Scalar constant - use declared type */
 		struct type *saved = init->type;
@@ -794,13 +804,13 @@ emitInitList(struct expr *init, struct type *elem_type)
 		count++;
 	width = typeSfx(elem_type);
 
-	emit1('[');
+	emit1(LBRACK);
 	emit1(width);
 	emit1(count);
 	for (item = init; item; item = item->next) {
 		emitInit(item, elem_type);
 	}
-	emit1(']');
+	emit1(RBRACK);
 }
 
 /*
@@ -918,7 +928,7 @@ emitGv(struct name *var)
 	}
 
 	emit1('Z');
-	emit1(AST_SYM);
+	emit1('$');
 
 	/* Static uses S<id>, public gets underscore prefix */
 	if (var->sclass & SC_STATIC)

@@ -91,7 +91,7 @@ main(int argc, char **argv)
 
     /* argv[2] is temp2, currently unused */
 
-    outfd = open(argv[3], O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    outfd = creat(argv[3], 0644);
     if (outfd < 0) {
         perror(argv[3]);
         return 1;

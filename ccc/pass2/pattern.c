@@ -16,6 +16,11 @@
 
 static char hexdigit[16] = "0123456789abcdef";
 
+/* Static buffers to reduce stack usage (Z80 IY-indexed limit is 127) */
+static struct pattern pat_result;  /* shared result buffer */
+static int pat_argoffs[16];        /* patCall argument offsets */
+static char pat_combuf[MAX_PATTERN + 256];  /* patEmitComment buffer */
+
 /*
  * Initialize a pattern
  */
@@ -156,17 +161,16 @@ static void patAppendChild(struct pattern *p, struct pattern *child, int offset)
  */
 void patUnary(struct pattern *p, char op, char size, struct pattern *child)
 {
-	struct pattern result;
 	int offset;
 
-	patInit(&result);
-	patAppend(&result, op);
-	patAppend(&result, size);
+	patInit(&pat_result);
+	patAppend(&pat_result, op);
+	patAppend(&pat_result, size);
 
-	offset = patMergeOps(&result, child);
-	patAppendChild(&result, child, offset);
+	offset = patMergeOps(&pat_result, child);
+	patAppendChild(&pat_result, child, offset);
 
-	*p = result;
+	*p = pat_result;
 }
 
 /*
@@ -177,7 +181,6 @@ static int patBinCnt = 0;
 void patBinary(struct pattern *p, char op, char size,
 	       struct pattern *left, struct pattern *right)
 {
-	struct pattern result;
 	int loff, roff;
 
 	patBinCnt++;
@@ -185,17 +188,17 @@ void patBinary(struct pattern *p, char op, char size,
 		fprintf(stderr, "patBinary: cnt=%d op=%c left=%d right=%d\n",
 			patBinCnt, op, left->len, right->len);
 
-	patInit(&result);
-	patAppend(&result, op);
-	patAppend(&result, size);
+	patInit(&pat_result);
+	patAppend(&pat_result, op);
+	patAppend(&pat_result, size);
 
-	loff = patMergeOps(&result, left);
-	roff = patMergeOps(&result, right);
+	loff = patMergeOps(&pat_result, left);
+	roff = patMergeOps(&pat_result, right);
 
-	patAppendChild(&result, left, loff);
-	patAppendChild(&result, right, roff);
+	patAppendChild(&pat_result, left, loff);
+	patAppendChild(&pat_result, right, roff);
 
-	*p = result;
+	*p = pat_result;
 }
 
 /*
@@ -204,24 +207,22 @@ void patBinary(struct pattern *p, char op, char size,
 void patCall(struct pattern *p, char retsize, int nargs,
 	     struct pattern *func, struct pattern *args[], int narg)
 {
-	struct pattern result;
 	int foff, i;
-	int argoffs[16];
 
-	patInit(&result);
-	patAppend(&result, '@');
-	patAppend(&result, retsize);
-	patAppendIdx(&result, nargs);
+	patInit(&pat_result);
+	patAppend(&pat_result, '@');
+	patAppend(&pat_result, retsize);
+	patAppendIdx(&pat_result, nargs);
 
-	foff = patMergeOps(&result, func);
+	foff = patMergeOps(&pat_result, func);
 	for (i = 0; i < narg && i < 16; i++)
-		argoffs[i] = patMergeOps(&result, args[i]);
+		pat_argoffs[i] = patMergeOps(&pat_result, args[i]);
 
-	patAppendChild(&result, func, foff);
+	patAppendChild(&pat_result, func, foff);
 	for (i = 0; i < narg && i < 16; i++)
-		patAppendChild(&result, args[i], argoffs[i]);
+		patAppendChild(&pat_result, args[i], pat_argoffs[i]);
 
-	*p = result;
+	*p = pat_result;
 }
 
 /*
@@ -386,8 +387,7 @@ void patFromExpr(struct pattern *p, struct expr *e)
  */
 void patEmitComment(struct pattern *p)
 {
-	char buf[MAX_PATTERN + 256];
-	char *out = buf;
+	char *out = pat_combuf;
 	int i;
 
 	/* Build: pattern [op0, op1, ...] */
@@ -400,5 +400,5 @@ void patEmitComment(struct pattern *p)
 	*out++ = ']';
 	*out = '\0';
 
-	emit("; PAT: %s", buf);
+	emit("; PAT: %s", pat_combuf);
 }

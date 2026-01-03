@@ -89,21 +89,21 @@ struct expr {
 #define SP_NONE     0
 #define SP_INCR     1       /* inc regvar (incr <= 4) */
 #define SP_DECR     2       /* dec regvar (incr <= 4) */
-#define SP_SYMOFS   3       /* +p $sym #const -> ld hl,sym+ofs */
-#define SP_SYMOFD   4       /* M[+p $sym #const] -> ld hl,(sym+ofs) */
-#define SP_MUL2     5       /* * #pow2 -> add hl,hl (incr = shift count) */
-#define SP_SIGN     6       /* M$sym >= 0 -> bit 7, result in NZ */
-#define SP_MSYM     7       /* Ms $sym -> ld hl,(sym) */
+#define SP_SYMOFS   3       /* PLUS SYM AST_CONST -> ld hl,sym+ofs */
+#define SP_SYMOFD   4       /* DEREF[PLUS SYM AST_CONST] -> ld hl,(sym+ofs) */
+#define SP_MUL2     5       /* STAR AST_CONST (pow2) -> add hl,hl */
+#define SP_SIGN     6       /* DEREF[SYM] >= 0 -> bit 7, result in NZ */
+#define SP_MSYM     7       /* DEREF[SYM] -> ld hl,(sym) */
 /* SP_IXOD, SP_CMPIX, SP_CMPIY, SP_STIX removed - IX/IY patterns collapsed to V node */
-#define SP_CMPHL    11      /* cmpB where one operand needs (hl) */
-#define SP_STCONST  12      /* =type [M addr] [#const] -> ld (hl),n */
-#define SP_INCGLOB  13      /* (s $sym -> ld hl,(_sym); inc hl; ld (_sym),hl */
-#define SP_SIGNREG  14      /* Ms[Rs bc] >= 0 -> bit 7,b; sign test regvar */
-#define SP_BITTEST  15      /* &B (ix+ofs) #pow2 -> bit n,(ix+ofs) */
-#define SP_ADDBC    16      /* +p Mp[Rp bc] #const -> ld hl,const; add hl,bc */
-#define SP_CMPEQ    17      /* Qs/ns expr #0/1/-1 -> inc/dec/nop then test HL */
-#define SP_CMPV     18      /* cmpB Vb #const -> ld a,const; cp (iy/ix+off) */
-#define SP_CMPR     19      /* cmpB Rb #const -> ld a,reg; cp const */
+#define SP_CMPHL    11      /* cmp byte where one operand needs (hl) */
+#define SP_STCONST  12      /* ASSIGN DEREF AST_CONST -> ld (hl),n */
+#define SP_INCGLOB  13      /* PREINC/PREDEC SYM -> load/inc/store global */
+#define SP_SIGNREG  14      /* DEREF[REGVAR(BC)] >= 0 -> bit 7,b */
+#define SP_BITTEST  15      /* AND DEREF[(ix+ofs)] AST_CONST(pow2) -> bit */
+#define SP_ADDBC    16      /* PLUS DEREF[REGVAR(BC)] AST_CONST -> add hl,bc */
+#define SP_CMPEQ    17      /* EQ/NEQ expr AST_CONST(0/1/-1) -> test HL */
+#define SP_CMPV     18      /* LT/EQ/NEQ LOCALVAR AST_CONST -> cp (iy+off) */
+#define SP_CMPR     19      /* LT/EQ/NEQ REGVAR AST_CONST -> cp reg */
 
 /* Expression allocation */
 struct expr *newExpr(unsigned char op, char type);
@@ -205,14 +205,14 @@ void parseAst(void);
  * $ and # add 2 hex digits for operand index
  * Example: "=s$s02+s$s00#s01" for x = y + 5
  */
-#define MAX_OPERANDS 256
-#define MAX_PATTERN  512
+#define MAX_OPERANDS 32
+#define MAX_PATTERN  128
 
 struct pattern {
 	char str[MAX_PATTERN];
-	int len;
+	unsigned char len;
 	void *ops[MAX_OPERANDS];
-	int nops;
+	unsigned char nops;
 };
 
 void patInit(struct pattern *p);

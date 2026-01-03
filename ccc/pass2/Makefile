@@ -79,6 +79,19 @@ stage1: c1
       	{ echo "ok"; rm -f $$err; } || { echo "FAIL"; } \
     done
 
-.PHONY: all clean stage1 install clobber
+sizecheck:
+	mkdir -p sizecheck
+	$(SETX) o="" ; for f in $(SOURCES); do \
+		b=$${f%.c}; \
+		err=sizecheck/$$b.err ; \
+		o="$$o sizecheck/$$b.o" ; \
+		printf "%-12s" "$$b: " ; \
+		zc3 -S -DCCC $(INC) $$f && mv $$b.as sizecheck ; \
+		zc3 -c -DCCC $(INC) -o sizecheck/$$b.o $$f && \
+		{ echo "ok"; } || { echo "FAIL"; } \
+	done ; \
+	wssize $$o | awk '{t+=$$1;d+=$$2;b+=$$3;a+=$$4} END {print t,d,b,a}' | tee -a sizefile
+
+.PHONY: all clean stage1 install clobber sizecheck
 
 # vim: tabstop=4 shiftwidth=4 noexpandtab:
