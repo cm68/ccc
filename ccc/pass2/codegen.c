@@ -3,6 +3,7 @@
  */
 #include <stdio.h>
 #include "cc2.h"
+#include "match.h"
 #include "../../cpp/lexeme.h"
 
 /*
@@ -48,124 +49,102 @@ treeDepth(struct expr *e)
 
 /*
  * Annotate expression tree with special patterns
- * No demand calculation - just pattern detection for optimization
+ * Uses bytecode pattern matcher for structural matching,
+ * with post-match handlers for complex cases.
  */
 void
 annotate(struct expr *e)
 {
     unsigned char op;
-    unsigned char size;
-    unsigned char count;
+    int result;
 
     if (!e) return;
     op = e->op;
     if (!op) return;
 
-    size = e->size;
-    count = e->aux2;
-
     /* Recursively annotate children first */
     annotate(e->left);
     annotate(e->right);
 
-    /* ASSIGN SYM AST_CONST - store constant to global */
-    if (op == ASSIGN && size <= 2 && e->left->op == SYM && e->right->op == AST_CONST) {
-        e->special = SP_STCONST;
-        return;
-    }
+    /* Try bytecode pattern matcher */
+    result = exprMatch(e, exprPatterns);
+    if (result) {
+        /* Apply common field copying from action table */
+        applyAction(e, result);
 
-    /* ASSIGN REGVAR AST_CONST -> ld b,n or ld c,n; direct byte regvar assign */
-    if (op == ASSIGN && size == 1 && e->left->op == REGVAR &&
-        (e->left->aux == R_B || e->left->aux == R_C) && e->right->op == AST_CONST) {
-        e->special = SP_STCONST;
-        return;
-    }
+        /* Handle result-specific post-processing */
+        switch (result) {
+        case SP_STCONST:
+            /* No extra processing needed */
+            break;
 
-    /* ASSIGN LOCALVAR AST_CONST -> ld (iy+n),lo; store const to local */
-    if (op == ASSIGN && e->left->op == LOCALVAR && e->right->op == AST_CONST) {
-        e->special = SP_STCONST;
-        return;
-    }
+        case SP_INCR:
+            /* Pattern matches both PREINC and PREDEC */
+            if (op == PREDEC)
+                e->special = SP_DECR;
+            /* LOCALVAR variant needs different dest handling */
+            if (e->left->op == LOCALVAR) {
+                e->offset = e->left->aux2;  /* IY offset */
+                e->dest = R_IYO;
+            }
+            break;
 
-    /* PREINC/PREDEC REGVAR -> inc reg; pre-inc/dec of regvar, incr <= 4 */
-    if ((op == PREINC || op == PREDEC) && e->left->op == REGVAR && count <= 4) {
-        e->special = (op == PREINC) ? SP_INCR : SP_DECR;
-        e->incr = e->aux2;
-        e->dest = e->left->aux;     /* R_B, R_C, R_BC, or R_IX */
-        return;
-    }
+        case SP_INCGLOB:
+            /* Need to set aux2 for inc/dec flag */
+            e->aux2 = (op == PREINC) ? 1 : 0;
+            break;
 
-    /* PREINC/PREDEC LOCALVAR -> inc (iy+ofs); byte local, incr <= 4 */
-    if ((op == PREINC || op == PREDEC) && e->left->op == LOCALVAR && size == 1 && count <= 4) {
-        e->special = (op == PREINC) ? SP_INCR : SP_DECR;
-        e->incr = count;
-        e->offset = e->left->aux2;  /* IY offset from V node */
-        e->dest = R_IYO;            /* (iy+ofs) addressing */
-        return;
-    }
+        case SP_MUL2:
+            /* Compute shift count from power of 2 */
+            {
+                long n = e->right->v.l;
+                unsigned char shifts = 0;
+                while (n > 1) { shifts++; n >>= 1; }
+                e->incr = shifts;
+            }
+            break;
 
-    /* PREINC/PREDEC SYM -> ld hl,(_sym); inc hl; ld (_sym),hl; global word */
-    if ((op == PREINC || op == PREDEC) && e->left->op == SYM && size == 2 && count <= 4) {
-        e->special = SP_INCGLOB;
-        e->incr = count;
-        e->aux2 = (op == PREINC) ? 1 : 0;  /* 1=inc, 0=dec */
-        e->sym = e->left->sym;          /* steal symbol */
-        e->left->sym = 0;
-        return;
-    }
+        case SP_CMPEQ:
+            /* Verify value is 0, 1, or -1, else reject match */
+            {
+                long val = e->right->v.l;
+                if (val == 0 || val == 1 || val == -1 || val == 0xffff) {
+                    e->incr = val;
+                } else {
+                    e->special = SP_NONE;  /* reject */
+                }
+            }
+            break;
 
-    /* PLUS SYM AST_CONST -> ld hl,sym+offset */
-    if (op == PLUS && size == 2 &&
-        e->left->op == SYM && e->right->op == AST_CONST && e->left->sym) {
-        e->special = SP_SYMOFS;
-        e->sym = e->left->sym;          /* steal symbol from child */
-        e->left->sym = 0;               /* prevent double-free */
-        e->offset = e->right->v.s;
-        return;
-    }
+        case SP_CMPV:
+            /* Copy fields from LOCALVAR child */
+            e->aux = e->left->aux;          /* R_IX or R_IY */
+            e->offset = e->left->offset;    /* stack offset */
+            e->incr = e->right->v.c & 0xff; /* constant */
+            break;
 
-    /* PLUS DEREF[REGVAR(BC)] AST_CONST -> ld hl,const; add hl,bc */
-    if (op == PLUS && size == 2 &&
-        e->left->op == DEREF && e->left->left->op == REGVAR &&
-        e->left->left->aux == R_BC && e->right->op == AST_CONST) {
-        e->special = SP_ADDBC;
-        e->offset = e->right->v.s;
-        return;
-    }
+        case SP_CMPR:
+            /* Copy fields from REGVAR child */
+            e->aux = e->left->aux;          /* R_B or R_C */
+            e->incr = e->right->v.c & 0xff; /* constant */
+            break;
 
-    /* DEREF[PLUS SYM AST_CONST] -> ld hl,(sym+offset) */
-    if (op == DEREF && e->left->op == PLUS && e->left->size == 2 &&
-        e->left->left->op == SYM && e->left->right->op == AST_CONST &&
-        e->left->left->sym) {
-        e->special = SP_SYMOFD;
-        e->sym = e->left->left->sym;    /* steal symbol from grandchild */
-        e->left->left->sym = 0;         /* prevent double-free */
-        e->offset = e->left->right->v.s;
-        return;
-    }
-
-    /* DEREF[SYM] -> ld hl,(sym); direct deref of global */
-    if (op == DEREF && e->left->op == SYM && e->left->sym) {
-        e->special = SP_MSYM;
-        e->sym = e->left->sym;          /* steal symbol */
-        e->left->sym = 0;
-        return;
-    }
-
-    /* STAR AST_CONST (power of 2) -> add hl,hl; multiply by shifts */
-    if (op == STAR && e->right->op == AST_CONST) {
-        long n = e->right->v.l;
-        if (n > 0 && (n & (n - 1)) == 0) {
-            unsigned char shifts = 0;
-            while (n > 1) { shifts++; n >>= 1; }
-            e->special = SP_MUL2;
-            e->incr = shifts;
-            return;
+        case SP_CMPHL:
+            /* Verify isSimpleByte(right), left->left->op != REGVAR, and
+             * left DEREF doesn't have its own special (SP_MSYM/SP_SYMOFD) */
+            if (!isSimpleByte(e->right) || e->left->left->op == REGVAR ||
+                e->left->special)
+                e->special = SP_NONE;  /* reject */
+            break;
         }
+        if (e->special)
+            return;
     }
+
+    /* Complex patterns not handled by bytecode matcher */
 
     /* AND DEREF[PLUS DEREF[REGVAR(IX)] AST_CONST] AST_CONST -> bit test */
-    if (op == AND && size == 1 && e->right->op == AST_CONST) {
+    if (op == AND && e->size == 1 && e->right->op == AST_CONST) {
         long n = e->right->v.l & 0xff;
         /* check power of 2 (single bit) */
         if (n > 0 && (n & (n - 1)) == 0) {
@@ -184,62 +163,8 @@ annotate(struct expr *e)
             }
         }
     }
-
-    /* Word equality with small constant: == 0, == 1, == -1 */
-    if ((op == EQ || op == NEQ) && ISWORD(e->left->type) &&
-        e->right->op == AST_CONST) {
-        long val = e->right->v.l;
-        if (val == 0 || val == 1 || val == -1 || val == 0xffff) {
-            e->special = SP_CMPEQ;
-            e->incr = val;
-            return;
-        }
-    }
-
-    /* LT/EQ/NEQ LOCALVAR AST_CONST -> ld a,const; cp (iy/ix+off) */
-    /* LT/EQ/NEQ REGVAR AST_CONST -> ld a,reg; cp const */
-    if ((op == LT || op == EQ || op == NEQ) && size == 1) {
-        struct expr *l = e->left, *r = e->right;
-        if (l->op == LOCALVAR && r->op == AST_CONST) {
-            e->special = SP_CMPV;
-            e->aux = l->aux;        /* R_IX or R_IY */
-            e->offset = l->offset;  /* stack/struct offset */
-            e->incr = r->v.c & 0xff; /* constant value */
-            return;
-        }
-        if (l->op == REGVAR && r->op == AST_CONST) {
-            e->special = SP_CMPR;
-            e->aux = l->aux;        /* R_B or R_C */
-            e->incr = r->v.c & 0xff; /* constant value */
-            return;
-        }
-    }
-
-    /* LT/EQ/NEQ DEREF[addr] simpleByte -> cp (hl) */
-    /* Exclude DEREF[REGVAR] - register pointer needs copy to HL first */
-    if ((op == LT || op == EQ || op == NEQ) && size == 1) {
-        struct expr *l = e->left, *r = e->right;
-        if (l->op == DEREF && l->size == 1 && isSimpleByte(r) &&
-            l->left->op != REGVAR) {
-            e->special = SP_CMPHL;
-            return;
-        }
-    }
-
-    /* ASSIGN DEREF AST_CONST -> ld (hl),n; store constant through HL */
-    if (op == ASSIGN && e->left->op == DEREF && e->right->op == AST_CONST) {
-        e->special = SP_STCONST;
-        return;
-    }
-
-    /* ASSIGN PLUS AST_CONST -> ld (hl),n; store constant through computed ptr */
-    if (op == ASSIGN && e->left->op == PLUS && e->left->size == 2 &&
-        e->right->op == AST_CONST) {
-        e->special = SP_STCONST;
-        return;
-    }
 }
 
 /*
- * vim: tabstop=4 shiftwidth=4 expandtab:
+ * vim: tabstop=4 shiftwidth=4 noexpandtab:
  */
