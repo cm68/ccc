@@ -194,9 +194,15 @@ parseExpr(void)
     struct expr *e, *arg;
     unsigned char nargs, i;
 
+    /* Check for EOF before processing */
+    if (curchar == ASTEOF)
+        return 0;
+
     /* binary format - no whitespace */
     c = curchar;
+#ifdef DEBUG
     fprintf(stderr, "parseExpr: op='%c' (0x%02x)\n", c >= ' ' && c < 127 ? c : '?', c);
+#endif
     advance();
 
     switch (c) {
@@ -470,9 +476,15 @@ dumpStmt(void)
     unsigned char ndecls, nstmts, hasElse, nlabels;
     unsigned char ncases, nstmt, i;
 
+    /* Check for EOF before processing */
+    if (curchar == ASTEOF)
+        return;
+
     /* binary format - no whitespace */
     c = curchar;
+#ifdef DEBUG
     fprintf(stderr, "dumpStmt: stmt='%c' (0x%02x)\n", c >= ' ' && c < 127 ? c : '?', (unsigned char)c);
+#endif
     advance();
 
     switch (c) {
@@ -515,11 +527,8 @@ dumpStmt(void)
             indent += 2;
             cond = parseExpr();
             if (patternOnly) {
-                fprintf(stderr, "IF: before emitExprOrPat\n");
                 emitExprOrPat(cond);
-                fprintf(stderr, "IF: after emitExprOrPat, before freeExpr\n");
                 freeExpr(cond);
-                fprintf(stderr, "IF: after freeExpr\n");
             } else {
                 unsigned char special;
                 setCondLbl(cond, lbl);  /* propagate cond flag and label */
@@ -582,9 +591,7 @@ dumpStmt(void)
                     }
                 }
             }
-            fprintf(stderr, "IF: before dumpStmt THEN\n");
             dumpStmt();  /* then */
-            fprintf(stderr, "IF: after dumpStmt THEN\n");
             /* hasElse now comes AFTER the then-body */
             hasElse = read1();
             if (hasElse) {
@@ -674,6 +681,10 @@ dumpStmt(void)
             unsigned char hasLabel = read1();
             if (hasLabel) readName(name);
             ncases = read1();
+            if (swdepth >= MAXSWDEPTH) {
+                comment("??? switch nesting too deep");
+                break;
+            }
             comment("SWITCH label=%s cases=%d [", hasLabel ? name : "(none)", ncases);
             indent += 2;
             /* Push switch context */
@@ -731,8 +742,14 @@ dumpStmt(void)
     case 'C':  /* case */
         {
             struct expr *e;
-            struct swctx *sw = &swstack[swdepth - 1];
-            int lbl = labelCnt++;
+            struct swctx *sw;
+            int lbl;
+            if (swdepth == 0) {
+                comment("??? case outside switch");
+                break;
+            }
+            sw = &swstack[swdepth - 1];
+            lbl = labelCnt++;
             nstmt = read1();
             /* Parse case value (must be constant) */
             e = parseExpr();
@@ -757,8 +774,14 @@ dumpStmt(void)
 
     case 'O':  /* default */
         {
-            struct swctx *sw = &swstack[swdepth - 1];
-            int lbl = labelCnt++;
+            struct swctx *sw;
+            int lbl;
+            if (swdepth == 0) {
+                comment("??? default outside switch");
+                break;
+            }
+            sw = &swstack[swdepth - 1];
+            lbl = labelCnt++;
             nstmt = read1();
             sw->hasdef = 1;
             sw->defLabel = lbl;
