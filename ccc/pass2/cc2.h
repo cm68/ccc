@@ -205,8 +205,12 @@ void parseAst(void);
  * $ and # add 2 hex digits for operand index
  * Example: "=s$s02+s$s00#s01" for x = y + 5
  */
-#define MAX_OPERANDS 32
-#define MAX_PATTERN  128
+/*
+ * Sized to fit in 127 bytes for Z80 IY-indexed addressing:
+ * 64 + 1 + 30*2 + 1 = 126 bytes
+ */
+#define MAX_OPERANDS 30
+#define MAX_PATTERN  64
 
 struct pattern {
 	char str[MAX_PATTERN];

@@ -73,27 +73,50 @@ findLocal(char *name)
 }
 
 /*
- * Main: cc2 input.ast temp2 output.s
+ * Main: cc2 [-p] input.ast [-o output.s]
+ * Or legacy: cc2 input.ast temp2 output.s
  */
 int
 main(int argc, char **argv)
 {
-    if (argc != 4) {
-        fprintf(stderr, "usage: cc2 input.ast temp2 output.s\n");
+    char *infile = 0;
+    char *outfile = 0;
+    int i;
+
+    for (i = 1; i < argc; i++) {
+        if (argv[i][0] == '-') {
+            switch (argv[i][1]) {
+            case 'p':
+                patternOnly = 1;
+                break;
+            case 'o':
+                if (++i < argc)
+                    outfile = argv[i];
+                break;
+            }
+        } else if (!infile) {
+            infile = argv[i];
+        } else if (!outfile) {
+            /* legacy: second positional is temp2 (ignored), third is output */
+            if (i + 1 < argc)
+                outfile = argv[++i];
+        }
+    }
+
+    if (!infile || !outfile) {
+        fprintf(stderr, "usage: cc2 [-p] input.ast -o output.s\n");
         return 1;
     }
 
-    infd = open(argv[1], O_RDONLY);
+    infd = open(infile, O_RDONLY);
     if (infd < 0) {
-        perror(argv[1]);
+        perror(infile);
         return 1;
     }
 
-    /* argv[2] is temp2, currently unused */
-
-    outfd = creat(argv[3], 0644);
+    outfd = creat(outfile, 0644);
     if (outfd < 0) {
-        perror(argv[3]);
+        perror(outfile);
         return 1;
     }
 
