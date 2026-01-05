@@ -5,8 +5,25 @@
 #include <unistd.h>
 
 /* Forward declarations */
-static void emitTypeInfo(struct type *type);
 extern int analyzeFunc(struct name *func);  /* regalloc.c */
+
+/* Current function's locals from phase 1 - for frm_off/reg lookup */
+static struct name *curFuncLocals = NULL;
+
+/*
+ * Look up a local variable by name in phase 1 captured locals.
+ * Returns the captured name struct with correct frm_off/reg, or NULL.
+ */
+static struct name *
+findInLocals(char *name)
+{
+	struct name *n;
+	for (n = curFuncLocals; n; n = n->next) {
+		if (strcmp(n->name, name) == 0)
+			return n;
+	}
+	return NULL;
+}
 
 /*
  * Get size suffix for memory operations based on type
@@ -139,6 +156,23 @@ emitExpr(struct expr *e)
 	case SYM:
 		if (e->var) {
 			np = (struct name *)e->var;
+			/* Local variables: emit LOCALVAR/REGVAR directly */
+			if (np->level > 1 && !(np->sclass & SC_EXTERN)) {
+				/* Look up frm_off/reg from phase 1 captured locals */
+				struct name *local = findInLocals(np->name);
+				char reg = local ? local->reg : np->reg;
+				char off = local ? local->frm_off : np->frm_off;
+				if (reg) {
+					emit1(REGVAR);
+					emit1(typeSfx(e->type));
+					emit1(reg);
+				} else {
+					emit1(LOCALVAR);
+					emit1(typeSfx(e->type));
+					emit1(off);
+				}
+				break;
+			}
 			/* extern/global get underscore prefix */
 			if ((np->sclass & SC_EXTERN) ||
 			    (np->level == 1 && !(np->sclass & SC_STATIC)))
@@ -306,38 +340,6 @@ emitExpr(struct expr *e)
 		emitChild(right);
 		break;
 	}
-}
-
-/*
- * Output type information for AST
- */
-static void
-emitTypeInfo(struct type *type)
-{
-	/* For arrays: a count elemsize */
-	if (type->flags & TF_ARRAY) {
-		int elemsize = type->sub ? type->sub->size : 0;
-		emit1('a');
-		emit2(type->count);
-		emit2(elemsize);
-		return;
-	}
-
-	/* For pointers: p */
-	if (type->flags & TF_POINTER) {
-		emit1('p');
-		return;
-	}
-
-	/* For aggregates: r size */
-	if (type->flags & TF_AGGREGATE) {
-		emit1('r');
-		emit2(type->size);
-		return;
-	}
-
-	/* For primitives: size char */
-	emit1(typeSfx(type));
 }
 
 /*
@@ -569,25 +571,18 @@ emitLocals(struct stmt *body)
 }
 
 /*
- * Output a global asm block in AST format
- * Format: A len data (same as inline asm but at top level)
+ * Output a global asm block - write directly to assembly file
  */
 void
 emitGlobalAsm(char *text)
 {
-	int len;
-
 	/* Phase 1: don't emit */
 	if (phase == 1)
 		return;
 
 	if (!text)
 		return;
-	len = strlen(text);
-	emit1('A');
-	emit2(len);
-	if (len > 0)
-		write(astFd, text, len);
+	asmLine(text);
 }
 
 /*
@@ -608,6 +603,10 @@ emitFuncPre(struct name *func)
 
 	/* Analyze variable usage and allocate registers BEFORE emission */
 	frm_size = analyzeFunc(func);
+
+	/* Store body->locals for lookup during expression emission.
+	 * Phase 2 creates new name structs; we need frm_off from phase 1 captures. */
+	curFuncLocals = func->u.body->locals;
 
 	/* Static functions use S<id>, public get underscore prefix */
 	if (func->sclass & SC_STATIC)
@@ -669,52 +668,6 @@ emitOneStmt(struct stmt *st)
  */
 static void emitInit(struct expr *init, struct type *type);
 static void emitInitList(struct expr *init, struct type *elem_type);
-
-/*
- * Pre-scan initializer to mark strings that will be inlined.
- * Must be called before emission so emitStrLit knows to skip them.
- */
-static void markInlStr(struct expr *init, struct type *type);
-
-static void
-markInlStIn(struct expr *init, struct type *stype)
-{
-	struct expr *val;
-	struct name *field, *fields[32];
-	int nfields = 0, i;
-
-	if (stype && (stype->flags & TF_AGGREGATE)) {
-		for (field = stype->elem; field && nfields < 32; field = field->next)
-			fields[nfields++] = field;
-	}
-	i = nfields - 1;
-	for (val = init; val; val = val->next) {
-		field = (i >= 0) ? fields[i--] : NULL;
-		markInlStr(val, field ? field->type : NULL);
-	}
-}
-
-static void
-markInlStr(struct expr *init, struct type *type)
-{
-	if (init->op == INITLIST) {
-		if (type && (type->flags & TF_AGGREGATE)) {
-			markInlStIn(init->left, type);
-		} else if (type && (type->flags & TF_ARRAY)) {
-			struct expr *item;
-			for (item = init->left; item; item = item->next)
-				markInlStr(item, type->sub);
-		}
-	} else if (init->op == STRING && type &&
-		   (type->flags & TF_ARRAY) && type->sub &&
-		   type->sub->size == 1) {
-		/* String initializing char array - mark as inlined */
-		if (init->var) {
-			struct name *strname = (struct name *)init->var;
-			strname->emitted = 1;
-		}
-	}
-}
 
 static void
 emitStInit(struct expr *init, struct type *stype)
@@ -814,9 +767,9 @@ emitInitList(struct expr *init, struct type *elem_type)
 }
 
 /*
- * Emit a single string literal immediately
- * Called when string literal is created during parsing
- * Format: U name len data
+ * Emit a single string literal as assembly
+ * Output: label: .db 'c','c',...,0
+ * Only emits during phase 2; global strings are handled by streaming.
  */
 void
 emitStrLit(struct name *strname)
@@ -824,6 +777,11 @@ emitStrLit(struct name *strname)
 	cstring str;
 	unsigned char len;
 	unsigned char *data;
+	int i;
+
+	/* Only emit in phase 2 */
+	if (phase != 2)
+		return;
 
 	if (!strname || !strname->u.init || strname->u.init->op != STRING)
 		return;
@@ -840,24 +798,22 @@ emitStrLit(struct name *strname)
 	len = (unsigned char)str[0];
 	data = (unsigned char *)str + 1;
 
-	/* Output: U name len data */
-	emit1('U');
-	emitS(strname->name);
-	emit1(len);
-	if (len > 0)
-		write(astFd, data, len);
-
-	/* Don't free string data - needed for array size inference in char[] = "str" */
+	/* Output label and string bytes */
+	asmLabel(strname->name);
+	for (i = 0; i < len; i++)
+		asmDb(data[i]);
+	asmDb(0);  /* null terminator */
 }
 
 /*
- * Output a global variable declaration with optional initializer
- * Format: Z $ name type has_init [init-expr]
+ * Output an uninitialized global variable declaration
+ * Initialized globals are handled by streaming in doInitlzr()
  */
 void
 emitGv(struct name *var)
 {
 	char fullname[32];
+	int size;
 
 	/* Phase 1: don't emit, just build symbol table */
 	if (phase == 1)
@@ -866,94 +822,27 @@ emitGv(struct name *var)
 	if (!var || !var->type)
 		return;
 
-	/*
-	 * Pre-scan struct array initializers to mark strings that will be
-	 * inlined as bytes. Must happen before any emitStrLit calls.
-	 */
-	if ((var->type->flags & TF_ARRAY) && var->u.init) {
-		struct expr *item;
-		for (item = var->u.init; item; item = item->next) {
-			if (item->op == INITLIST)
-				markInlStr(item, var->type->sub);
-		}
-	}
-
-	/*
-	 * For char[] = "string", emit the string directly with var name
-	 * and skip the Z record
-	 */
-	if ((var->type->flags & TF_ARRAY) && var->type->sub &&
-	    var->type->sub->size == 1 &&
-	    var->u.init && var->u.init->op == STRING && !var->u.init->next) {
-		/* Emit string literal with the variable's name */
-		struct name *strname = (struct name *)var->u.init->var;
-		if (strname) {
-			emitStrLit(strname);
-		}
-		return;
-	}
-
-	/*
-	 * For pointers initialized to string literals, emit the string
-	 * BEFORE the Z record so it doesn't interrupt the record
-	 */
-	if ((var->type->flags & TF_POINTER) &&
-	    var->u.init && var->u.init->op == STRING && !var->u.init->next) {
-		struct name *strname = (struct name *)var->u.init->var;
-		if (strname) {
-			emitStrLit(strname);
-		}
-	}
-
-	/*
-	 * For arrays with initializer lists containing strings, emit all
-	 * strings BEFORE the Z record so they don't interrupt it.
-	 * Skip strings inside INITLIST (struct initializers) - those will
-	 * be emitted inline as bytes for embedded char arrays.
-	 */
-	if ((var->type->flags & TF_ARRAY) && var->u.init) {
-		struct expr *init = var->u.init;
-		struct expr *item;
-		/* Unwrap INITLIST if present */
-		if (init->op == INITLIST)
-			init = init->left;
-		if (init->next) {
-			for (item = init; item; item = item->next) {
-				if (item->op == STRING && item->var) {
-					emitStrLit((struct name *)item->var);
-				}
-				/* Skip INITLIST - strings in structs are emitted inline */
-			}
-		}
-	}
-
-	emit1('Z');
-	emit1('$');
-
-	/* Static uses S<id>, public gets underscore prefix */
+	/* Build name: static uses S<id>, public gets underscore prefix */
 	if (var->sclass & SC_STATIC)
 		sprintf(fullname, "S%d", var->static_id - 1);
 	else
 		sprintf(fullname, "_%s", var->name);
-	emitS(fullname);
 
-	emitTypeInfo(var->type);
+	/* Calculate total size */
+	if (var->type->flags & TF_ARRAY)
+		size = var->type->count * var->type->sub->size;
+	else
+		size = var->type->size;
 
-	emit1(var->u.init ? 1 : 0);
-	if (var->u.init) {
-		struct expr *init = var->u.init;
-		struct type *elem_type =
-		    (var->type && (var->type->flags & TF_ARRAY)) ?
-		    var->type->sub : var->type;
-		/* INITLIST wrapper indicates brace-enclosed list */
-		if (init->op == INITLIST)
-			init = init->left;
-		if (init->next) {
-			emitInitList(init, elem_type);
-		} else {
-			emitExpr(init);
-		}
-	}
+	/* Emit .globl for non-static */
+	if (!(var->sclass & SC_STATIC))
+		asmGlobl(fullname);
+
+	/* Uninitialized variable - use .bss */
+	asmLine("\t.bss");
+	asmLabel(fullname);
+	asmDs(size);
+	asmLine("\t.text");
 }
 
 /*

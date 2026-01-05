@@ -205,6 +205,59 @@ void emitS(char *s)
 	emitN(s, strlen(s));
 }
 
+/* Assembly output helpers - write to asmFd */
+extern unsigned char asmFd;
+
+void asmStr(char *s)
+{
+	write(asmFd, s, strlen(s));
+}
+
+void asmLine(char *s)
+{
+	asmStr(s);
+	write(asmFd, "\n", 1);
+}
+
+void asmGlobl(char *name)
+{
+	asmStr("\t.globl ");
+	asmLine(name);
+}
+
+void asmLabel(char *name)
+{
+	asmStr(name);
+	asmLine(":");
+}
+
+void asmDb(int val)
+{
+	char buf[16];
+	sprintf(buf, "\t.db %d", val & 0xff);
+	asmLine(buf);
+}
+
+void asmDw(int val)
+{
+	char buf[16];
+	sprintf(buf, "\t.dw %d", val & 0xffff);
+	asmLine(buf);
+}
+
+void asmDwSym(char *name)
+{
+	asmStr("\t.dw ");
+	asmLine(name);
+}
+
+void asmDs(int size)
+{
+	char buf[16];
+	sprintf(buf, "\t.ds %d", size);
+	asmLine(buf);
+}
+
 /*
  * vim: tabstop=4 shiftwidth=4 expandtab:
  */

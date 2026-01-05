@@ -54,6 +54,7 @@ unsigned char shadowCtr = 0;  /* Counter for shadowed variable mangling */
 
 /* AST output control */
 unsigned char astFd;  // set by process() to output file from argv[1]
+unsigned char asmFd;  // set by process() to output file from argv[2]
 
 /* Two-phase parsing control */
 unsigned char phase;  // 1 = build symbol table, 2 = emit AST
@@ -74,7 +75,7 @@ unsigned char phase;  // 1 = build symbol table, 2 = emit AST
  * Parameters:
  *   f  - Input lexeme file (preprocessed .x file from cpp)
  *   o1 - Output AST file (base.1)
- *   o2 - Temp file (base.2) - currently unused
+ *   o2 - Assembly file for global data (base.2)
  *
  * Side effects:
  *   - Opens and writes to o1
@@ -98,6 +99,15 @@ process(char *f, char *o1, char *o2)
         exit(1);
     }
 
+    /* Open output file for global data assembly (o2 from ccc: base.2) */
+    asmFd = creat(o2, 0644);
+    if (asmFd & 0x80) {
+#ifndef CCC
+        perror(o2);
+#endif
+        exit(1);
+    }
+
     /* Read from preprocessed lexeme stream */
     lexOpen(f);
 
@@ -115,8 +125,8 @@ process(char *f, char *o1, char *o2)
     resetLoopLbls();  /* Reset label counter so phase 2 matches phase 1 */
     resetFuncIdx();  /* Reset function stmt count read pointer for phase 2 */
     flipBlkCnts();   /* Reverse block counts for phase 2 (inner-first -> outer-first) */
-    funcStrCtr = 0;  /* Reset function string counter so phase 2 matches phase 1 */
-    /* Note: globalStrCtr NOT reset - globals are only in phase 2 */
+    funcStrCtr = 0;    /* Reset function string counter so phase 2 matches phase 1 */
+    globalStrCtr = 0;  /* Reset global string counter so phase 2 matches phase 1 */
 
     /* Phase 2: Emit AST (uses counts pushed by phase 1 in LIFO order) */
     phase = 2;
@@ -124,6 +134,7 @@ process(char *f, char *o1, char *o2)
 
     lexClose();
     close(astFd);
+    close(asmFd);
 }
 
 /*

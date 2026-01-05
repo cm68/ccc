@@ -304,12 +304,15 @@ skipExpr(unsigned char pri)
         gettoken();
         if (cur.type == LPAR) {
             gettoken();
-            parseTypeName();  // handles types and typedef names
-            if (cur.type == SYM)
-                gettoken();  // sizeof(var)
-            expect(RPAR, ER_E_SP);
-        } else if (cur.type == SYM) {
-            gettoken();  // sizeof var
+            if (isCastStart()) {
+                parseTypeName();  /* sizeof(type) */
+                expect(RPAR, ER_E_SP);
+            } else {
+                skipExpr(0);  /* sizeof(expr) */
+                expect(RPAR, ER_E_SP);
+            }
+        } else {
+            skipExpr(OP_PRI_MULT - 1);  /* sizeof expr */
         }
         break;
 
@@ -794,10 +797,12 @@ parseExpr(unsigned char pri, struct stmt *st)
             e1 = e;
             e = e->left;
             /*
-             * Wrap the type in a pointer. For &var where var is T,
-             * the result type should be T* (pointer to T).
+             * Type handling depends on what's being addressed:
+             * - &(*p) where p is pointer: no wrap, result is p's type
+             * - &var (SYM): wrap in pointer, result is address of var
              */
-            if (e->type) {
+            if (e && e->op == SYM && e->type) {
+                /* Taking address of variable - wrap type in pointer */
                 e->type = getType(TF_POINTER, e->type, 0);
             }
             /* Free the orphaned DEREF node (but not its children) */
@@ -821,25 +826,26 @@ parseExpr(unsigned char pri, struct stmt *st)
         }
         break;
 
-    case SIZEOF:    // sizeof(type) or sizeof(var) or sizeof var
+    case SIZEOF:    /* sizeof(type), sizeof(expr), or sizeof expr */
         gettoken();
         if (cur.type == LPAR) {
-            gettoken();  // consume '('
-            t = parseTypeName();  // handles types and typedef names
-            if (!t && cur.type == SYM) {
-                // sizeof(var) - look up variable
-                np = findName(cur.v.name, 0);
-                t = np ? np->type : NULL;
-                gettoken();
+            gettoken();  /* consume '(' */
+            if (isCastStart()) {
+                /* sizeof(type) */
+                t = parseTypeName();
+                expect(RPAR, ER_E_SP);
+            } else {
+                /* sizeof(expr) */
+                e1 = parseExpr(0, st);
+                t = e1 ? e1->type : NULL;
+                FreeExpr(e1);
+                expect(RPAR, ER_E_SP);
             }
-            expect(RPAR, ER_E_SP);
-        } else if (cur.type == SYM) {
-            // sizeof var (no parens)
-            np = findName(cur.v.name, 0);
-            t = np ? np->type : NULL;
-            gettoken();
         } else {
-            t = NULL;
+            /* sizeof expr (no parens) */
+            e1 = parseExpr(OP_PRI_MULT - 1, st);
+            t = e1 ? e1->type : NULL;
+            FreeExpr(e1);
         }
         e = mkexprI(CONST, 0, inttype, t ? t->size : 0, E_CONST);
         if (!t) gripe(ER_E_UO);

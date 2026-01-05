@@ -36,52 +36,6 @@ parsePtrPfx(struct type *basetype)
 }
 
 /*
- * Parse optional parameter name into stack-allocated buffer
- *
- * Reads a parameter name from the token stream if present, storing it in
- * the provided stack buffer. Supports both named and anonymous parameters
- * depending on context (ANSI declarations allow anonymous, K&R requires names).
- *
- * Anonymous parameter handling:
- *   - ANSI prototypes: int foo(int, char *) - anonymous allowed
- *   - ANSI definitions: int foo(int x, char *p) - names required for body
- *   - K&R declarations: int foo(x, p) - names always required
- *
- * Buffer usage:
- *   - Uses caller-provided stack buffer to avoid heap allocation
- *   - Prevents memory leaks from temporary parameter name storage
- *   - Typical buffer size: 64 bytes (sufficient for C identifiers)
- *
- * Parameters:
- *   allow_anon - 1 to allow anonymous params, 0 to require name
- *   buf             - Stack buffer to store parameter name
- *   bufsize         - Size of buffer (prevents overflow)
- *
- * Returns:
- *   Pointer to buf containing name if SYM token found
- *   Pointer to buf containing "" if anonymous and allowed
- *   NULL if name required but not found
- *
- * Side effects:
- *   - Consumes SYM token if present
- */
-static char *
-parseParamNm(unsigned char allow_anon, char *buf, int bufsize)
-{
-    if (cur.type == SYM) {
-        strncpy(buf, cur.v.name, bufsize - 1);
-        buf[bufsize - 1] = '\0';
-        gettoken();
-        return buf;
-    }
-    if (allow_anon) {
-        buf[0] = '\0';
-        return buf;
-    }
-    return NULL;
-}
-
-/*
  * Create function parameter name entry for type signature
  *
  * Allocates and initializes a name structure to represent a function parameter
@@ -201,6 +155,7 @@ declare(struct type **btp, unsigned char struct_elem)
     unsigned long i;
     struct type *param_type;
     char *param_name;
+    static char paramNameBuf[16];
 
     suffix = 0;
 
@@ -358,10 +313,10 @@ declare(struct type **btp, unsigned char struct_elem)
         param_type = NULL;
         param_tail = NULL;
         while (cur.type != RPAR && cur.type != E_O_F) {
-            char paramNameBuf[64];  /* Stack buffer for parameter names */
             struct type *basetype;
-            param_name = NULL;
+            param_name = paramNameBuf;
             param_type = NULL;
+            paramNameBuf[0] = '\0';
 
             // Check for variadic ...
             if (cur.type == ELLIPSIS) {
@@ -388,10 +343,7 @@ declare(struct type **btp, unsigned char struct_elem)
                     gettoken();
                     // Optional name inside (*)
                     if (cur.type == SYM) {
-                        strncpy(paramNameBuf, cur.v.name,
-                            sizeof(paramNameBuf) - 1);
-                        paramNameBuf[sizeof(paramNameBuf) - 1] = '\0';
-                        param_name = paramNameBuf;
+                        strcpy(paramNameBuf, cur.v.name);
                         gettoken();
                     }
                     expect(RPAR, ER_D_FA);
@@ -449,9 +401,11 @@ declare(struct type **btp, unsigned char struct_elem)
                         gettoken();
                 }
             } else {
-                // Get parameter name (optional for ANSI declarations)
-                param_name = parseParamNm(1, paramNameBuf,
-                                              sizeof(paramNameBuf));
+                /* get param name */
+                if (cur.type == SYM) {
+                    strcpy(paramNameBuf, cur.v.name);
+                    gettoken();
+                }
             }
 
             // Handle array suffix (converts to pointer)

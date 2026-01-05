@@ -50,15 +50,16 @@ static int lexValid = 0;
 
 /*
  * Read a byte from the lexeme stream
+ * Returns E_O_F (0) on end of file
  */
-static int
+static unsigned char
 readByte(void)
 {
 	if (lexPos >= lexValid) {
 		lexValid = read(lexFd, lexBuf, sizeof(lexBuf));
 		lexPos = 0;
 		if (lexValid <= 0)
-			return -1;
+			return E_O_F;
 	}
 	return lexBuf[lexPos++];
 }
@@ -66,16 +67,12 @@ readByte(void)
 /*
  * Read N bytes into buffer
  */
-static int
+static void
 readBytes(char *buf, int n)
 {
 	int i;
-	for (i = 0; i < n; i++) {
-		int c = readByte();
-		if (c < 0) return -1;
-		buf[i] = c;
-	}
-	return n;
+	for (i = 0; i < n; i++)
+		buf[i] = readByte();
 }
 
 /*
@@ -84,9 +81,8 @@ readBytes(char *buf, int n)
 static int
 readLE2(void)
 {
-	int lo = readByte();
-	int hi = readByte();
-	if (lo < 0 || hi < 0) return -1;
+	unsigned char lo = readByte();
+	unsigned char hi = readByte();
 	return lo | (hi << 8);
 }
 
@@ -98,11 +94,8 @@ readLE4(void)
 {
 	unsigned long val = 0;
 	int i;
-	for (i = 0; i < 4; i++) {
-		int c = readByte();
-		if (c < 0) return 0;
-		val |= ((unsigned long)c) << (i * 8);
-	}
+	for (i = 0; i < 4; i++)
+		val |= ((unsigned long)readByte()) << (i * 8);
 	return val;
 }
 
@@ -134,21 +127,19 @@ freeToken(struct token *t)
 static void
 readNextToken(void)
 {
-	int c;
+	unsigned char c;
 	int len;
 	char *s;
 	union { unsigned long l; float f; } u;
 
 again:
 	c = readByte();
-	if (c < 0) {
-		next.type = E_O_F;
-		return;
-	}
-
 	next.v.name = NULL;
 
 	switch (c) {
+	case E_O_F:
+		next.type = E_O_F;
+		return;
 	/* Line tracking - transparent to parser */
 	case CPP_LINENO:
 		lineno = readLE2();
@@ -177,7 +168,7 @@ again:
 	/* Symbol - has length + bytes */
 	case SYM:
 		len = readByte();
-		if (len < 0 || len >= STRBUFSIZE) {
+		if (len >= STRBUFSIZE) {
 			next.type = E_O_F;
 			return;
 		}
@@ -205,7 +196,7 @@ again:
 	/* String - 2-byte length + bytes */
 	case STRING:
 		len = readLE2();
-		if (len < 0 || len >= STRBUFSIZE - 1) {
+		if (len >= STRBUFSIZE - 1) {
 			next.type = E_O_F;
 			return;
 		}
@@ -219,7 +210,7 @@ again:
 	/* Label - 1-byte length + bytes */
 	case LABEL:
 		len = readByte();
-		if (len < 0 || len >= STRBUFSIZE) {
+		if (len >= STRBUFSIZE) {
 			next.type = E_O_F;
 			return;
 		}
@@ -233,10 +224,6 @@ again:
 	/* Inline assembly - 2-byte length + bytes */
 	case CPP_ASMSTR:
 		len = readLE2();
-		if (len < 0) {
-			next.type = E_O_F;
-			return;
-		}
 		s = malloc(len + 1);
 		readBytes(s, len);
 		s[len] = '\0';

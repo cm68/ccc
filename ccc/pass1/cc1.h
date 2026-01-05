@@ -36,7 +36,6 @@ typedef unsigned long dword;
 #define STRBUFSIZE 128         // string/symbol/identifier buffer
 #define MAXSYMLEN 32           // maximum symbol/identifier length
 #define PSIZE 80               // max string containing bitdefs
-#define MAX_DECL_INI 32        // local variable initializers
 #define MAXBITS 32             // maximum size of bitfield
 #define MAX_COUNTS 256         // pre-computed counts for streaming AST
 
@@ -145,7 +144,6 @@ extern struct stmt *asmblock(void);
 extern struct stmt *statement(struct stmt *parent);
 extern void declaration(void);
 extern struct name *capLocals(void);
-extern void addDeclInit(struct name *v);
 extern void frStmt(struct stmt *s);
 extern void emitFuncPre(struct name *func);
 extern void emitOneStmt(struct stmt *st);
@@ -253,12 +251,15 @@ struct name {
 	char frm_off;             // frame offset: params positive, locals negative
 };
 
-/* Storage class specifiers (used in struct name sclass field) */
-#define	SC_EXTERN	0x01
-#define	SC_REGISTER	0x02
-#define	SC_STATIC	0x04
-#define	SC_AUTO		0x08
-#define	SC_TYPEDEF	0x10
+/*
+ * Storage class specifiers (used in struct name sclass field)
+ * these are in the same order as the storage class lexemes
+ */
+#define	SC_TYPEDEF	0x01
+#define	SC_AUTO		0x02
+#define	SC_EXTERN	0x04
+#define	SC_STATIC	0x08
+#define	SC_REGISTER	0x10
 
 /* Register allocation values (used in struct name reg field) */
 #define REG_NONE    0   /* Not allocated to a register (on stack) */
@@ -372,6 +373,7 @@ extern unsigned char shadowCtr;  // counter for shadowed locals
 
 /* AST output control */
 extern unsigned char astFd;         // where to write AST output
+extern unsigned char asmFd;         // where to write global data assembly
 
 /* Two-phase parsing control */
 extern unsigned char phase;         // 1 = build symbol table, 2 = emit AST
@@ -438,6 +440,16 @@ void emit2(unsigned short w);
 void emit4(unsigned long l);
 void emitN(char *s, unsigned char len);
 void emitS(char *s);
+
+/* Assembly output helpers (write to asmFd) */
+void asmStr(char *s);
+void asmLine(char *s);
+void asmGlobl(char *name);
+void asmLabel(char *name);
+void asmDb(int val);
+void asmDw(int val);
+void asmDwSym(char *name);
+void asmDs(int size);
 
 /* debug options */
 #ifdef DEBUG

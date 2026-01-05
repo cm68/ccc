@@ -25,12 +25,20 @@ unsigned char swEmitStack[MAX_SWDEPTH];     /* stack of switch indices */
 unsigned char swEmitDepth = 0;              /* emit stack depth */
 unsigned char caseEmitIdx[MAX_SWITCHES];    /* case indices per switch */
 
+/* If/else tracking: store has_else flag for each if statement */
+#define MAX_IFS 128
+static unsigned char ifHasElse[MAX_IFS];    /* 1 if if #N has else, 0 otherwise */
+static unsigned char ifCount = 0;           /* phase 1: count of if statements */
+static unsigned char ifEmitIdx = 0;         /* phase 2: next if to emit */
+
 void resetSwitch(void) {
     swCount = 0;
     swDepth = 0;
     swEmitIdx = 0;
     swEmitDepth = 0;
     casePoolIdx = 0;
+    ifCount = 0;
+    ifEmitIdx = 0;
 }
 
 void pushSwitch(void) {
@@ -305,68 +313,6 @@ capLocals(void)
 	return locals_list;
 }
 
-/* Track variables declared with initializers for local scope */
-static struct name *declInits[MAX_DECL_INI];
-static unsigned char declInitCnt = 0;
-
-/*
- * Add a variable with an initializer to the deferred initialization list
- *
- * Local variables with initializers (e.g., int x = 10;) need special
- * handling because their initialization must occur as executable code
- * in the function body, not as data in the variable declaration.
- *
- * This function tracks these variables so they can be converted to
- * assignment statements later by statement().
- *
- * Parameters:
- *   v - Variable name entry with initializer in v->u.init field
- */
-void
-addDeclInit(struct name *v)
-{
-	if (declInitCnt < MAX_DECL_INI) {
-		declInits[declInitCnt++] = v;
-	}
-}
-
-/*
- * Convert deferred local variable initializers to assignment statements
- * When parent == NULL (streaming mode), emit and free immediately.
- * Otherwise, link into statement list and return head.
- */
-/*
- * Emit declaration initializers directly (no stmt node needed)
- * Called in phase 2 when declarations have initializers.
- */
-static void
-emitDeclInits(void)
-{
-	unsigned char i;
-
-	for (i = 0; i < declInitCnt; i++) {
-		struct name *v = declInits[i];
-		struct expr *lhs, *assign_expr;
-
-		lhs = mkexprI(SYM, 0, v->type, 0, 0);
-		lhs->var = (struct var *)v;
-
-		if (v->type && (v->type->flags & TF_ARRAY) && v->u.init) {
-			assign_expr = mkexprI(COPY, lhs, v->type, v->type->count, 0);
-		} else {
-			assign_expr = mkexprI(ASSIGN, lhs, v->type, 0, 0);
-		}
-		assign_expr->right = v->u.init;
-		v->u.init = NULL;
-
-		/* Emit directly: E expr */
-		emit1('E');
-		emitExpr(assign_expr);
-		FreeExpr(assign_expr);
-	}
-	declInitCnt = 0;
-}
-
 /*
  * Parse statements recursively - the heart of the compiler frontend
  *
@@ -409,7 +355,18 @@ statement(struct stmt *parent)
     struct stmt *st, **pst = 0;
     struct stmt *head = 0;
     unsigned char block = 1;
-    char stmt_count = 0;  /* Count statements for streaming (phase 1) */
+    char stmt_count = 0;       /* Count statements for streaming (phase 1) */
+    /* Hoisted locals - shared across cases to reduce stack frame */
+    char lbl[16];              /* Label buffer for control statements */
+    char prefix;               /* Prefix for label generation */
+    char *lblptr;              /* Label pointer for GOTO */
+    char *text;                /* Text pointer for ASM */
+    int i, num, n;             /* Loop/label counters */
+    unsigned char cnt;         /* Shared count (body_cnt, case_cnt, etc) */
+    unsigned char hasElse;     /* If statement has else branch */
+    unsigned char sw_idx, c_idx; /* Switch/case indices */
+    struct swcase *sc;         /* Switch case pointer */
+    struct expr *e1, *e2, *e3; /* Shared expression pointers */
 
     while (block) {
         st = NULL;  // Initialize st to NULL for each iteration
@@ -461,18 +418,14 @@ statement(struct stmt *parent)
             case UNSIGNED:
             case STATIC: case REGISTER: case AUTO:
             case EXTERN: case TYPEDEF:
-                declInitCnt = 0;
                 declaration();
-                stmt_count += declInitCnt;  /* initializers become statements */
                 break;
             case SYM:
                 /* Check typedef name for declaration */
                 {
                     struct name *pt = findName(cur.v.name, 0);
                     if (pt && pt->kind == tdef) {
-                        declInitCnt = 0;
                         declaration();
-                        stmt_count += declInitCnt;
                         break;
                     }
                 }
@@ -491,21 +444,26 @@ statement(struct stmt *parent)
                 if (parent) block = 0;
                 break;
             case IF:
-            handle_if:
+            handle_if: {
+                unsigned char thisIf = ifCount++;
                 gettoken();
                 expect(LPAR, ER_S_NP);
                 parseExpr(PRI_ALL, parent);
                 expect(RPAR, ER_S_NP);
                 parseBlock();
                 if (cur.type == ELSE) {
+                    ifHasElse[thisIf] = 1;
                     gettoken();
                     if (cur.type == IF)
                         goto handle_if;  /* else if */
                     parseBlock();
+                } else {
+                    ifHasElse[thisIf] = 0;
                 }
                 stmt_count++;
                 if (parent) block = 0;
                 break;
+            }
             case WHILE:
                 gettoken();
                 expect(LPAR, ER_S_NP);
@@ -622,8 +580,7 @@ statement(struct stmt *parent)
             block = 0;
             break;
 
-        case BEGIN: {  // begin a block
-            unsigned char cnt;
+        case BEGIN:  // begin a block
             gettoken();
             pushScope(blockname());
             /* Emit block header: B 0 stmt_count */
@@ -637,42 +594,36 @@ statement(struct stmt *parent)
             expect(END, ER_S_CC);
             st = NULL;
             break;
-        }
 
         case IF:   /* if <condition> <statement> */
-        handle_if2: {
-            struct expr *cond;
+        handle_if2:
+            hasElse = ifHasElse[ifEmitIdx++];
             gettoken();
             expect(LPAR, ER_S_NP);
-            cond = parseExpr(PRI_ALL, parent);
+            e1 = parseExpr(PRI_ALL, parent);
             expect(RPAR, ER_S_NP);
-            /* Emit: I has_else nlabels cond then [else] */
+            /* Emit: I nlabels cond then has_else [else] */
             emit1('I');
-            emit1(1);  /* always has else slot */
-            emit1(cntCondLbls(cond));
-            emitExpr(cond);
-            FreeExpr(cond);
+            emit1(cntCondLbls(e1));
+            emitExpr(e1);
+            FreeExpr(e1);
             parseBlock();
+            emit1(hasElse);  /* has_else comes after then block */
             if (cur.type == ELSE) {
                 gettoken();
                 if (cur.type == IF)
                     goto handle_if2;  /* else if */
                 parseBlock();
-            } else {
-                emit1(';');  /* empty else */
             }
             st = NULL;
             break;
-        }
-        case BREAK: {
+        case BREAK:
             /* Emit goto to innermost loop/switch break label */
-            char lbl[16];
-            int i;
             gettoken();
             expect(SEMI, ER_S_SN);
             /* Find innermost loop or switch */
             for (i = lblDepth - 1; i >= 0; i--) {
-                char prefix = 'W';
+                prefix = 'W';
                 if (lblStack[i].type == FOR) prefix = 'F';
                 else if (lblStack[i].type == DO) prefix = 'D';
                 else if (lblStack[i].type == SWITCH) prefix = 'S';
@@ -686,44 +637,40 @@ statement(struct stmt *parent)
                 emitGoto(lbl, "B");
             st = NULL;
             break;
-        }
 
-        case CONTINUE: {
+        case CONTINUE:
             /* Emit goto to innermost loop continue label (skip switches) */
-            char lbl[16];
-            int i;
             gettoken();
             expect(SEMI, ER_S_SN);
             /* Find innermost loop (not switch) */
             for (i = lblDepth - 1; i >= 0; i--) {
                 if (lblStack[i].type == SWITCH)
                     continue;  /* continue doesn't apply to switch */
-                char prefix = 'W';
+                prefix = 'W';
                 if (lblStack[i].type == FOR) prefix = 'F';
                 else if (lblStack[i].type == DO) prefix = 'D';
                 sprintf(lbl, "%c%d", prefix, lblStack[i].num);
                 break;
             }
-            emitGoto(lbl, "C");
+            /* WHILE: continue goes to top (T), others go to C */
+            emitGoto(lbl, lblStack[i].type == WHILE ? "T" : "C");
             st = NULL;
             break;
-        }
-        case RETURN: {
-            struct expr *ret_expr = NULL;
+        case RETURN:
+            e1 = NULL;
             gettoken();
             if (cur.type != SEMI)
-                ret_expr = parseExpr(PRI_ALL, parent);
+                e1 = parseExpr(PRI_ALL, parent);
             expect(SEMI, ER_S_SN);
             /* Emit: R has_value [expr] */
             emit1('R');
-            emit1(ret_expr ? 1 : 0);
-            if (ret_expr) {
-                emitExpr(ret_expr);
-                FreeExpr(ret_expr);
+            emit1(e1 ? 1 : 0);
+            if (e1) {
+                emitExpr(e1);
+                FreeExpr(e1);
             }
             st = NULL;
             break;
-        }
 
         /* Local declarations - type keywords */
         case INT:
@@ -741,10 +688,7 @@ statement(struct stmt *parent)
         case REGISTER:
         case AUTO:
         case EXTERN:
-            declInitCnt = 0;
             declaration();
-            if (declInitCnt > 0)
-                emitDeclInits();
             st = NULL;
             break;
 
@@ -769,10 +713,7 @@ statement(struct stmt *parent)
             {
                 struct name *poss_typedef = findName(cur.v.name, 0);
                 if (poss_typedef && poss_typedef->kind == tdef) {
-                    declInitCnt = 0;
                     declaration();
-                    if (declInitCnt > 0)
-                        emitDeclInits();
                     st = NULL;
                     break;
                 }
@@ -799,136 +740,120 @@ statement(struct stmt *parent)
             break;
         }
 
-        case FOR: { // for (<expr>; <expr>; <expr>) <statement> ;
-            struct expr *init_e = NULL, *cond_e = NULL, *incr_e = NULL;
-            char lbl[16];
-            int num, n;
+        case FOR: /* for (<expr>; <expr>; <expr>) <statement> ; */
+            e1 = e2 = e3 = NULL;
             gettoken();
             expect(LPAR, ER_S_NP);
             /* Init expression - optional */
             if (cur.type != SEMI)
-                init_e = parseExpr(PRI_ALL, parent);
+                e1 = parseExpr(PRI_ALL, parent);
             expect(SEMI, ER_S_SN);
             /* Condition expression - optional */
             if (cur.type != SEMI)
-                cond_e = parseExpr(PRI_ALL, parent);
+                e2 = parseExpr(PRI_ALL, parent);
             expect(SEMI, ER_S_SN);
             /* Increment expression - optional */
             if (cur.type != RPAR)
-                incr_e = parseExpr(PRI_ALL, parent);
+                e3 = parseExpr(PRI_ALL, parent);
             expect(RPAR, ER_S_NP);
             pushLabel(FOR);
             num = lblStack[lblDepth - 1].num;
             sprintf(lbl, "F%d", num);
-            /* Count: top + if + continue + goto + break = 5 base */
-            n = 5;
-            if (init_e) n++;
-            if (incr_e) n++;
+            cnt = popBlkCnt();  /* get body stmt count from phase 1 */
+            /* Structure: [init] L<T> [IF NOT(cond) goto B] body L<C> [incr] G<T> L<B> */
+            /* Count: L<T> + body + L<C> + G<T> + L<B> = 4 base */
+            n = 4 + cnt;
+            if (e1) n++;
+            if (e2) n++;
+            if (e3) n++;
             emit1('B');
             emit1(0);
             emit1(n);
-            if (init_e) {
+            if (e1) {
                 emit1('E');
-                emitExpr(init_e);
-                FreeExpr(init_e);
+                emitExpr(e1);
+                FreeExpr(e1);
             }
             emitLabel(lbl, "T");
-            if (cond_e) {
+            if (e2) {
+                /* Wrap condition in NOT for "if NOT(cond) goto break" */
+                e2 = mkexpr(BANG, e2);
+                e2->type = e2->left->type;
+                e2->left->up = e2;
                 emit1('I');
-                emit1(1);  /* has else */
-                emit1(cntCondLbls(cond_e));
-                emitExpr(cond_e);
-                FreeExpr(cond_e);
-                /* then: B 0 2 L<lbl>Y body */
-                emit1('B');
-                emit1(0);
-                emit1(2);
-                emitLabel(lbl, "Y");
-                parseBlockEx(0);  /* no header - already emitted B above */
-                /* else: B 0 1 G<lbl>B */
+                emit1(cntCondLbls(e2));
+                emitExpr(e2);
+                FreeExpr(e2);
                 emit1('B');
                 emit1(0);
                 emit1(1);
                 emitGoto(lbl, "B");
-            } else {
-                /* No condition - body executes unconditionally */
-                emit1('B');
-                emit1(0);
-                emit1(2);
-                emitLabel(lbl, "Y");
-                parseBlockEx(0);  /* no header - already emitted B above */
+                emit1(0);  /* has_else=0 (after then block) */
             }
+            /* body in outer block */
+            parseBlockEx(0);
             emitLabel(lbl, "C");
-            if (incr_e) {
+            if (e3) {
                 emit1('E');
-                emitExpr(incr_e);
-                FreeExpr(incr_e);
+                emitExpr(e3);
+                FreeExpr(e3);
             }
             emitGoto(lbl, "T");
             emitLabel(lbl, "B");
             popLabel();
             st = NULL;
             break;
-        }
 
-        case WHILE: {   // while <condition> <statement> ;
-            struct expr *cond;
-            char lbl[16];
-            int num;
+        case WHILE:   /* while <condition> <statement> ; */
             gettoken();
             expect(LPAR, ER_S_NP);
-            cond = parseExpr(PRI_ALL, parent);
+            e1 = parseExpr(PRI_ALL, parent);
             expect(RPAR, ER_S_NP);
             pushLabel(WHILE);
             num = lblStack[lblDepth - 1].num;
             sprintf(lbl, "W%d", num);
-            /* Structure: B 0 5 L<T> I{B 0 2 L<Y> body}{B 0 1 G<B>} L<C> G<T> L<B> */
+            cnt = popBlkCnt();  /* get body stmt count from phase 1 */
+            /* Wrap condition in NOT for "if NOT(cond) goto break" */
+            e1 = mkexpr(BANG, e1);
+            e1->type = e1->left->type;
+            e1->left->up = e1;
+            /* Structure: B 0 (4+body) L<T> I(NOT cond){goto B} body G<T> L<B> */
             emit1('B');
             emit1(0);
-            emit1(5);
+            emit1(4 + cnt);
             emitLabel(lbl, "T");
             emit1('I');
-            emit1(1);  /* has else */
-            emit1(cntCondLbls(cond));
-            emitExpr(cond);
-            FreeExpr(cond);
-            /* then: B 0 2 L<lbl>Y body */
-            emit1('B');
-            emit1(0);
-            emit1(2);
-            emitLabel(lbl, "Y");
-            parseBlockEx(0);  /* no header - already emitted B above */
-            /* else: B 0 1 G<lbl>B */
+            emit1(cntCondLbls(e1));
+            emitExpr(e1);
+            FreeExpr(e1);
+            /* then: B 0 1 G<B> */
             emit1('B');
             emit1(0);
             emit1(1);
             emitGoto(lbl, "B");
-            emitLabel(lbl, "C");
+            emit1(0);  /* has_else=0 (after then block) */
+            /* body in outer block */
+            parseBlockEx(0);
             emitGoto(lbl, "T");
             emitLabel(lbl, "B");
             popLabel();
             st = NULL;
             break;
-        }
 
         case ELSE:
             recover(SEMI, ER_S_OE);
             break;
 
-        case SWITCH: {  // switch (<expr>) <block> ;
-            struct expr *e;
-            unsigned char idx, case_cnt;
-            char lbl[16];
-            int num;
+        case SWITCH:  /* switch (<expr>) <block> ; */
             gettoken();
             expect(LPAR, ER_S_NP);
-            e = parseExpr(PRI_ALL, parent);
+            e1 = parseExpr(PRI_ALL, parent);
             expect(RPAR, ER_S_NP);
             expect(BEGIN, ER_S_SB);
             /* Get this switch's index and push onto emit stack */
-            idx = swEmitIdx++;
-            swEmitStack[swEmitDepth++] = idx;
-            caseEmitIdx[idx] = 0;
+            sw_idx = swEmitIdx++;
+            swEmitStack[swEmitDepth++] = sw_idx;
+            caseEmitIdx[sw_idx] = 0;
             /* Get label number for break target */
             pushLabel(SWITCH);
             num = lblStack[lblDepth - 1].num;
@@ -937,10 +862,10 @@ statement(struct stmt *parent)
             emit1('S');
             emit1(1);  /* has label - pass2 will emit <label>_break */
             emitS(lbl);
-            case_cnt = popCount();
-            emit1(case_cnt);
-            emitExpr(e);
-            FreeExpr(e);
+            cnt = popCount();
+            emit1(cnt);
+            emitExpr(e1);
+            FreeExpr(e1);
             /* Parse body - CASE/DEFAULT emit themselves */
             statement(parent);
             popLabel();
@@ -948,61 +873,51 @@ statement(struct stmt *parent)
             expect(END, ER_S_CC);
             st = NULL;
             break;
-        }
 
-        case CASE: {
-            unsigned char sw_idx, c_idx;
-            struct swcase *c;
-            struct expr *e;
+        case CASE:
             gettoken();
-            e = parseExpr(13, parent);  /* parse case value expression */
+            e1 = parseExpr(13, parent);  /* parse case value expression */
             expect(COLON, ER_S_NL);
             /* Get current switch and case */
             sw_idx = swEmitStack[swEmitDepth - 1];
             c_idx = caseEmitIdx[sw_idx]++;
-            c = &swList[sw_idx].cases[c_idx];
+            sc = &swList[sw_idx].cases[c_idx];
             /* Emit: C stmt_count value_expr */
             emit1('C');
-            emit1(c->stmts);
-            emitExpr(e);
-            FreeExpr(e);
+            emit1(sc->stmts);
+            emitExpr(e1);
+            FreeExpr(e1);
             st = NULL;
             break;
-        }
 
-        case GOTO: {
-            char *lbl;
+        case GOTO:
             gettoken();
             if (cur.type != SYM) {
                 recover(ER_S_GL, SEMI);
                 st = NULL;
                 break;
             }
-            lbl = cur.v.name;
+            lblptr = cur.v.name;
             gettoken();
             expect(SEMI, ER_S_SN);
             /* Emit: G label */
             emit1('G');
-            emitS(lbl);
+            emitS(lblptr);
             st = NULL;
             break;
-        }
 
-        case DEFAULT: {
-            unsigned char sw_idx, c_idx;
-            struct swcase *c;
+        case DEFAULT:
             gettoken();
             expect(COLON, ER_S_NL);
             /* Get current switch and case */
             sw_idx = swEmitStack[swEmitDepth - 1];
             c_idx = caseEmitIdx[sw_idx]++;
-            c = &swList[sw_idx].cases[c_idx];
+            sc = &swList[sw_idx].cases[c_idx];
             /* Emit: O stmt_count */
             emit1('O');
-            emit1(c->stmts);
+            emit1(sc->stmts);
             st = NULL;
             break;
-        }
 
         case SEMI:
             gettoken();
@@ -1010,10 +925,7 @@ statement(struct stmt *parent)
             st = NULL;
             break;
 
-        case DO: {  // do <statement> while <condition> ;
-            struct expr *cond;
-            char lbl[16];
-            int num;
+        case DO:  /* do <statement> while <condition> ; */
             gettoken();
             pushLabel(DO);
             num = lblStack[lblDepth - 1].num;
@@ -1034,32 +946,30 @@ statement(struct stmt *parent)
             }
             gettoken();
             expect(LPAR, ER_S_NP);
-            cond = parseExpr(PRI_ALL, parent);
+            e1 = parseExpr(PRI_ALL, parent);
             need(RPAR, SEMI, ER_S_NP);
             expect(SEMI, ER_S_SN);
             /* if(cond) goto T - no else needed */
             emit1('I');
             emit1(0);  /* no else */
-            emit1(cntCondLbls(cond));
-            emitExpr(cond);
-            FreeExpr(cond);
+            emit1(cntCondLbls(e1));
+            emitExpr(e1);
+            FreeExpr(e1);
             emitGoto(lbl, "T");    /* loop back if true */
             emitLabel(lbl, "B");   /* break point */
             popLabel();
             st = NULL;
             break;
-        }
 
-        case ASM: {
+        case ASM:
             /* Get asm text and emit directly */
-            char *text = cur.v.str;
+            text = cur.v.str;
             cur.v.str = NULL;
             gettoken();
             emitGlobalAsm(text);
             free(text);
             st = NULL;
             break;
-        }
 
         default:
             gripe(ER_E_UO);
