@@ -891,12 +891,14 @@ char eqtok[] = {
 void
 freetoken()
 {
-    /*
-     * Symbol and string names are not freed because:
-     * 1. They may be referenced by tokens in saved state (readcppconst)
-     * 2. They are small and the memory is needed until compilation ends
-     * 3. Freeing causes use-after-free in recursive gettoken() calls
-     */
+    if (cur.type == SYM && cur.v.name) {
+        free(cur.v.name);
+        cur.v.name = NULL;
+    }
+    if (cur.type == STRING && cur.v.str) {
+        free(cur.v.str);
+        cur.v.str = NULL;
+    }
 }
 
 /*
@@ -1505,6 +1507,15 @@ readcppconst()
     struct token saved_cur;
 
     memcpy(&saved_cur, &cur, sizeof(cur));
+    /* Copy string data so freetoken() in inner gettoken() calls is safe */
+    if (cur.type == SYM && cur.v.name)
+        saved_cur.v.name = strdup(cur.v.name);
+    if (cur.type == STRING && cur.v.str) {
+        int len = (unsigned char)cur.v.str[0] |
+                  ((unsigned char)cur.v.str[1] << 8);
+        saved_cur.v.str = malloc(len + 3);
+        memcpy(saved_cur.v.str, cur.v.str, len + 3);
+    }
 
     tflags = ONELINE | CPPFUNCS;
 

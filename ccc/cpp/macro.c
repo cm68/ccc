@@ -473,6 +473,8 @@ macexpand(char *s)	/* the symbol we are looking up as a macro */
 
     if (args != m->parmcount) {
         gripe(ER_C_MA);
+        for (i = 0; i < args; i++)
+            free(parms[i]);
         return 0;
     }
 
@@ -558,6 +560,10 @@ macexpand(char *s)	/* the symbol we are looking up as a macro */
     }
 
     insertmacro(m->name, macbuffer);
+
+    for (i = 0; i < args; i++)
+        free(parms[i]);
+
     return 1;
 }
 
