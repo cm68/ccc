@@ -95,6 +95,7 @@ clean:
 
 clobber: clean
 	rm -f ./c0
+	rm -rf sizecheck sizecheck1 stage1 stage2
 
 install: c0
 	cp c0 $(DEST)/bin
@@ -113,7 +114,7 @@ stage1: c0
       	{ echo "ok"; } || { echo "FAIL"; } \
     done
 
-sizecheck:
+sizecheck: $(GENERATED)
 	mkdir -p sizecheck
 	$(SETX) ; o="" ; for f in $(SOURCES); do \
 		b=$${f%.c}; \
@@ -127,7 +128,7 @@ sizecheck:
 	wssize $$o | awk '{t+=$$1;d+=$$2;b+=$$3;a+=$$4} END {print t,d,b,a}' | tee -a sizefile
 	#wsld -r -o sizecheck/c0 ../../root/lib/crt0.o $$o ../../root/lib/libc.a
 
-sizecheck1:
+sizecheck1: $(GENERATED)
 	mkdir -p sizecheck1
 	$(SETX) ; o="" ; for f in $(SOURCES); do \
 		b=$${f%.c}; \
