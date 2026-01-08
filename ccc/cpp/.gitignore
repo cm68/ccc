@@ -4,4 +4,7 @@ xdump
 mkkw
 kwtab.c
 *.o
+*.as
 stage1/
+sizecheck/
+sizecheck1/

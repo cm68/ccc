@@ -180,14 +180,16 @@ static int num_loop_incr = 0;
 static int for_part = 0;			/* 0=init, 1=cond, 2=incr */
 
 /*
- * Switch statement tracking - break inside switch should NOT be transformed.
- * We use a simple stack to track switch body brace depths. When the brace depth
- * drops to a level where a switch started, that switch has ended.
+ * Switch statement tracking - break inside switch is lowered to goto.
+ * We track switch body brace depths and label numbers. When BREAK is seen
+ * inside a switch, emit goto __S<n>B. When switch body ends, emit __S<n>B: label.
  */
 #define MAX_SWITCH_DEPTH 8
 static int switchBraceStk[MAX_SWITCH_DEPTH];  /* Brace depths where switches started */
+static int switchNumStk[MAX_SWITCH_DEPTH];    /* Label numbers for each switch */
 static int switchStkTop = 0;
-static int switchParen = 0;  /* Paren depth in switch condition (>0 = waiting for body) */
+static int switchLblNum = 0;  /* Counter for switch labels */
+static int switchParen = 0;   /* Paren depth in switch condition (>0 = waiting for body) */
 
 /*
  * We use the emit functions from emit.c for actual .x output.
@@ -802,6 +804,28 @@ emitContGoto(int idx)
 	sprintf(buf, "__%c%d%c", c, loop_stack[idx].label_num, suffix);
 	realEmitKw(GOTO);
 	realEmitSym(buf);
+}
+
+/* Emit goto for switch break (to __S<n>B) */
+/* Does NOT emit trailing semicolon - original SEMI from break; is reused */
+static void
+swBrkGoto(int num)
+{
+	char buf[16];
+	sprintf(buf, "__S%dB", num);
+	realEmitKw(GOTO);
+	realEmitSym(buf);
+}
+
+/* Emit switch break label (__S<n>B:) after switch body */
+static void
+swBrkLabel(int num)
+{
+	char buf[16];
+	sprintf(buf, "__S%dB", num);
+	realEmitSym(buf);
+	realEmitToken(COLON);
+	realEmitToken(SEMI);  /* empty statement after label */
 }
 
 /*
@@ -1872,7 +1896,7 @@ knrFilter(unsigned char type, long num, float fnum, char *str, int slen)
 		}
 
 		/*
-		 * Track switch statements - break inside switch should not transform.
+		 * Track switch statements - break inside switch lowered to goto.
 		 * switchParen: -1 = not tracking, 0+ = counting parens in condition
 		 */
 		if (type == SWITCH) {
@@ -1886,30 +1910,41 @@ knrFilter(unsigned char type, long num, float fnum, char *str, int slen)
 				switchParen--;
 				/* When switchParen == 0, next BEGIN is switch body */
 			} else if (type == BEGIN && switchParen == 0) {
-				/* Entering switch body - push brace depth */
-				if (switchStkTop < MAX_SWITCH_DEPTH)
-					switchBraceStk[switchStkTop++] = loop_stack[loop_sp - 1].body_depth;
+				/* Entering switch body - push brace depth and label num */
+				if (switchStkTop < MAX_SWITCH_DEPTH) {
+					switchBraceStk[switchStkTop] = loop_stack[loop_sp - 1].body_depth;
+					switchNumStk[switchStkTop] = switchLblNum++;
+					switchStkTop++;
+				}
 				switchParen = -1;  /* Done tracking this switch */
 			}
 		}
 		/* Check if END closes a switch body (body_depth already decremented) */
 		if (type == END && switchStkTop > 0) {
 			/* body_depth was decremented at top, so add 1 to compare with what we pushed */
-			if (loop_stack[loop_sp - 1].body_depth + 1 == switchBraceStk[switchStkTop - 1])
+			if (loop_stack[loop_sp - 1].body_depth + 1 == switchBraceStk[switchStkTop - 1]) {
+				/* Emit END first, then break label after switch */
+				realEmitToken(END);
+				swBrkLabel(switchNumStk[switchStkTop - 1]);
 				switchStkTop--;
+				return;
+			}
 		}
 
-		/* Handle break/continue inside loop - but not inside switch for break */
+		/* Handle break/continue - switch break also lowered now */
 		if (type == BREAK) {
-			/* Only transform if not inside a switch */
-			if (switchStkTop == 0) {
+			if (switchStkTop > 0) {
+				/* Inside switch - emit goto to switch break label */
+				swBrkGoto(switchNumStk[switchStkTop - 1]);
+				return;
+			} else {
+				/* Inside loop (not switch) - emit goto to loop break */
 				int idx = findInnerLoop();
 				if (idx >= 0) {
 					emitBreakGoto(idx);
 					return;
 				}
 			}
-			/* Inside switch - pass break through unchanged */
 		}
 		if (type == CONTINUE) {
 			int idx = findInnerLoop();
@@ -1993,7 +2028,7 @@ knrFilter(unsigned char type, long num, float fnum, char *str, int slen)
 		}
 
 		/*
-		 * Track switch statements - break inside switch should not transform.
+		 * Track switch statements - break inside switch lowered to goto.
 		 */
 		if (type == SWITCH) {
 			switchParen = 0;
@@ -2003,19 +2038,31 @@ knrFilter(unsigned char type, long num, float fnum, char *str, int slen)
 			} else if (type == RPAR) {
 				switchParen--;
 			} else if (type == BEGIN && switchParen == 0) {
-				if (switchStkTop < MAX_SWITCH_DEPTH)
-					switchBraceStk[switchStkTop++] = loop_stack[loop_sp - 1].body_depth;
+				if (switchStkTop < MAX_SWITCH_DEPTH) {
+					switchBraceStk[switchStkTop] = loop_stack[loop_sp - 1].body_depth;
+					switchNumStk[switchStkTop] = switchLblNum++;
+					switchStkTop++;
+				}
 				switchParen = -1;
 			}
 		}
 		if (type == END && switchStkTop > 0) {
-			if (loop_stack[loop_sp - 1].body_depth + 1 == switchBraceStk[switchStkTop - 1])
+			if (loop_stack[loop_sp - 1].body_depth + 1 == switchBraceStk[switchStkTop - 1]) {
+				/* Emit END first, then break label after switch */
+				realEmitToken(END);
+				swBrkLabel(switchNumStk[switchStkTop - 1]);
 				switchStkTop--;
+				return;
+			}
 		}
 
-		/* Handle break/continue inside do body - but not inside switch for break */
+		/* Handle break/continue inside do body - switch break also lowered */
 		if (type == BREAK) {
-			if (switchStkTop == 0) {
+			if (switchStkTop > 0) {
+				/* Inside switch - emit goto to switch break label */
+				swBrkGoto(switchNumStk[switchStkTop - 1]);
+				return;
+			} else {
 				int idx = findInnerLoop();
 				if (idx >= 0) {
 					emitBreakGoto(idx);
@@ -2142,6 +2189,7 @@ knrInit(void)
 	lastEmitLine = 0;
 	/* Switch tracking */
 	switchStkTop = 0;
+	switchLblNum = 0;
 	switchParen = -1;
 }
 
