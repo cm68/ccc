@@ -8,6 +8,8 @@ VERBOSE = -s
 # Basic expression and constant folding tests
 EXPR_TESTS = \
 	cfold.c \
+	cfold_test.c \
+	offsetof_test.c \
 	simpleexpr.c \
 	with_add.c \
 	type_conversions.c \
