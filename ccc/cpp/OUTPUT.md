@@ -1,9 +1,6 @@
-# Unified I/O Buffer Architecture (Design)
+# Output Buffer Stack (io.c)
 
-**Note:** This document describes a proposed architecture for future implementation.
-The current cpp uses simpler buffer management.
-
-The input and output buffer stacks share the same underlying mechanism. Reading from a spilled output buffer during replay is structurally identical to reading an include file.
+The output buffer stack enables out-of-order token emission for transformations like loop lowering. It shares the `struct textbuf` infrastructure with the input stack.
 
 ## Buffer Size
 
@@ -11,162 +8,169 @@ The input and output buffer stacks share the same underlying mechanism. Reading 
 #define TBSIZE 512      /* Matches Micronix disk block size */
 ```
 
-Using the native disk block size (512 bytes) ensures efficient I/O without partial block reads/writes.
+Using the native disk block size ensures efficient I/O without partial block reads/writes.
 
-## Unified Data Structure
+## Data Structure
 
-Extend the existing `struct textbuf` to handle both directions:
+The output stack reuses `struct textbuf` from the input system:
 
 ```c
 struct textbuf {
-    char fd;                /* file descriptor, -1 for memory-only */
-    char *name;             /* filename or macro/buffer name */
-    char *storage;          /* buffer memory */
-    short offset;           /* current position (read or write) */
-    short valid;            /* valid bytes (read) or capacity marker */
-    long file_size;         /* bytes in file (for output spill) */
-    char saved_column;      /* parent's column (for input) */
-    char direction;         /* 'r' = reading, 'w' = writing */
-    struct textbuf *prev;   /* stack link */
+    int fd;                   /* file descriptor, -1 for memory-only */
+    char *name;               /* filename or buffer name */
+    char *storage;            /* buffer memory */
+    short offset;             /* current write position */
+    short valid;              /* bytes written to file (spill tracking) */
+    short lineno;             /* not used for output */
+    short saved_column;       /* not used for output */
+    struct textbuf *prev;     /* stack link */
 };
 
-static struct textbuf *tbtop;   /* Input stack top (existing) */
-static struct textbuf *obtop;   /* Output stack top */
+static struct textbuf *obtop = NULL;   /* Output stack top */
 ```
 
-## Shared Operations
-
-### Buffer Allocation
-Same for both input and output:
+## API
 
 ```c
-struct textbuf *tbAlloc(char dir) {
+void outbufPush(void);              /* Start buffering to new level */
+void outbufPop(void);               /* Replay buffer and free */
+void outbufWrite(char *s, int len); /* Write to current buffer */
+```
+
+## Operation
+
+### Push
+
+`outbufPush()` allocates a new buffer and pushes it onto the output stack:
+
+```c
+void outbufPush(void) {
     struct textbuf *t = malloc(sizeof(*t));
     t->fd = -1;
     t->storage = malloc(TBSIZE);
     t->offset = 0;
     t->valid = 0;
-    t->file_size = 0;
-    t->direction = dir;
-    t->prev = NULL;
-    return t;
+    t->prev = obtop;
+    obtop = t;
 }
 ```
 
-### File Fill (Input) / Spill (Output)
+### Write
 
-The file I/O is nearly identical:
+`outbufWrite()` appends data to the current buffer, spilling to a temp file if needed:
 
 ```c
-/* Fill buffer from file (input direction) */
-int tbFill(struct textbuf *t) {
-    if (t->fd < 0) return 0;
-    t->valid = read(t->fd, t->storage, TBSIZE);
-    t->offset = 0;
-    return t->valid;
-}
-
-/* Spill buffer to file (output direction) */
-void tbSpill(struct textbuf *t) {
-    if (t->fd < 0) {
-        char tmp[] = "/tmp/cppXXXXXX";
-        t->fd = mkstemp(tmp);
-        unlink(tmp);
+void outbufWrite(char *s, int len) {
+    if (!obtop) {
+        /* No buffer - write directly to output */
+        write(lexFd, s, len);
+        return;
     }
-    write(t->fd, t->storage, t->offset);
-    t->file_size += t->offset;
-    t->offset = 0;
+    while (len > 0) {
+        int space = TBSIZE - obtop->offset;
+        int chunk = (len < space) ? len : space;
+        memcpy(obtop->storage + obtop->offset, s, chunk);
+        obtop->offset += chunk;
+        s += chunk;
+        len -= chunk;
+        if (obtop->offset >= TBSIZE) {
+            /* Spill to temp file */
+            if (obtop->fd < 0) {
+                char tmp[] = "/tmp/cppXXXXXX";
+                obtop->fd = mkstemp(tmp);
+                unlink(tmp);
+            }
+            write(obtop->fd, obtop->storage, obtop->offset);
+            obtop->valid += obtop->offset;
+            obtop->offset = 0;
+        }
+    }
 }
 ```
 
-### Replay = Reading from Output Buffer
+### Pop (Replay)
 
-When replaying an output buffer, we're doing exactly what we do for include files:
+`outbufPop()` replays the buffered content to the parent level:
 
 ```c
-void tbReplay(struct textbuf *t, struct textbuf **stack) {
-    /* Pop from output stack */
-    *stack = t->prev;
+void outbufPop(void) {
+    struct textbuf *t = obtop;
+    obtop = t->prev;
 
-    /* Replay file portion (if any) by reading it back */
+    /* Replay file portion (if spilled) */
     if (t->fd >= 0) {
+        char buf[TBSIZE];
+        int n;
         lseek(t->fd, 0, SEEK_SET);
-        while (tbFill(t) > 0) {
-            /* Write to parent output buffer or direct */
-            outbufWrite(t->storage, t->valid);
-        }
+        while ((n = read(t->fd, buf, TBSIZE)) > 0)
+            outbufWrite(buf, n);
         close(t->fd);
     }
+
     /* Replay memory portion */
-    if (t->offset > 0) {
+    if (t->offset > 0)
         outbufWrite(t->storage, t->offset);
-    }
 
     free(t->storage);
     free(t);
 }
 ```
 
-## Parallel Usage
-
-| Operation        | Input Stack (tbtop)    | Output Stack (obtop)    |
-|------------------|------------------------|-------------------------|
-| Push file        | `insertfile()`         | n/a                     |
-| Push macro       | `insertmacro()`        | n/a                     |
-| Push buffer      | n/a                    | `outbufPush()`          |
-| Read char        | `advance()` + `tbFill` | n/a                     |
-| Write data       | n/a                    | `outbufWrite()` + spill |
-| Pop              | auto in `advance()`    | `outbufPop()`           |
-| Replay           | n/a                    | `tbReplay()` uses fill  |
-
-## Key Insight
-
-**Replay uses the same `tbFill()` as include file reading.**
-
-When we spill an output buffer to a temp file and later replay it:
-1. `lseek(fd, 0, SEEK_SET)` - rewind to start
-2. `tbFill()` - read 512-byte block into buffer (same as include file)
-3. Write block to parent/output
-4. Repeat until exhausted
-5. Close and free
-
-This is structurally identical to processing an include file, just with output destination instead of lexer input.
-
-## API
-
-```c
-/* Shared helpers */
-struct textbuf *tbAlloc(char dir);
-void tbFree(struct textbuf *t);
-int tbFill(struct textbuf *t);      /* read from fd into storage */
-void tbSpill(struct textbuf *t);    /* write storage to fd */
-
-/* Input-specific (existing) */
-void insertfile(char *name, int sys);
-void insertmacro(char *name, char *text);
-void advance(void);
-
-/* Output-specific (new) */
-void outbufPush(void);
-void outbufWrite(char *data, int len);
-void outbufReplay(void);
-void outbufPop(void);
-```
-
 ## Use Cases
 
-All diversions use the output stack:
+### Loop Lowering
 
-1. **Loop lowering** - buffer body, emit prefix/suffix around replay
-2. **Declaration init splitting** - buffer init exprs, emit after decls
-3. **Block declarations** - hoist decls to block start
-4. **Any reordering** - general mechanism for out-of-order emission
+The primary use case is loop lowering in knr.c:
+
+```c
+/* WHILE loop transformation */
+while (cond) { body }
+
+/* Becomes: */
+{
+    __W1T:
+    if (!(cond)) goto __W1B;
+    { body }           /* <- body buffered, replayed here */
+    goto __W1T;
+    __W1B: ;
+}
+```
+
+The loop body must be buffered because we need to emit the opening brace, label, and condition test before the body, but we don't see those until after we've started processing the body tokens.
+
+### Nesting
+
+Output buffers nest correctly for nested loops:
+
+```c
+while (a) {
+    while (b) { inner }
+}
+```
+
+Each nested loop pushes its own buffer. When the inner loop completes, its buffer is replayed into the outer loop's buffer.
 
 ## Memory Model
 
-- **TBSIZE**: 512 bytes (Micronix disk block size)
-- **File spill**: Both input includes and output diversions can exceed memory
-- **Stack depth**: Malloc-limited, typically 8+ levels sufficient
-- **Per-level cost**: ~520 bytes (struct + buffer)
+- **Per-level cost**: ~520 bytes (struct + TBSIZE buffer)
+- **Spill threshold**: 512 bytes triggers temp file creation
+- **Stack depth**: Limited only by malloc (typically 8+ levels sufficient)
+- **Temp files**: Auto-deleted via unlink() after mkstemp()
 
-The unified approach ensures consistent behavior and shares tested code between the input and output paths.
+## Integration
+
+The emit functions in emit.c check for an active output buffer:
+
+```c
+void emitToken(token_t t) {
+    char buf[2];
+    buf[0] = t;
+    buf[1] = 0;
+    if (obtop)
+        outbufWrite(buf, 1);
+    else
+        write(lexFd, buf, 1);
+}
+```
+
+This allows transparent buffering - the token filter can push/pop buffers without the emit layer needing special handling.

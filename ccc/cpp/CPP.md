@@ -15,15 +15,15 @@ The preprocessor performs full C preprocessing including:
 
 | File | Lines | Purpose |
 |------|-------|---------|
-| cpp.c | 161 | Main entry point, command-line processing |
-| lex.c | 1460 | Lexer/tokenizer with embedded CPP directive handling |
-| macro.c | 552 | Macro definition, lookup, and expansion |
-| io.c | 567 | Unified character stream (files, includes, macros) |
-| emit.c | 400 | Token output to .x and .i files |
-| kw.c | 276 | Compressed keyword lookup tables |
-| knr.c | 1915 | Token filter: K&R conversion, brace insertion, loop lowering |
-| util.c | 157 | Error reporting, expression parsing, utilities |
-| cpp.h | 245 | Common definitions and data structures |
+| cpp.c | 173 | Main entry point, command-line processing |
+| lex.c | 1566 | Lexer/tokenizer with embedded CPP directive handling |
+| macro.c | 567 | Macro definition, lookup, and expansion |
+| io.c | 718 | Unified character stream (files, includes, macros), output buffer stack |
+| emit.c | 483 | Token output to .x and .i files |
+| kw.c | 264 | Compressed keyword lookup tables |
+| knr.c | 2148 | Token filter: K&R conversion, brace insertion, loop lowering |
+| util.c | 171 | Error reporting, expression parsing, utilities |
+| cpp.h | 234 | Common definitions and data structures |
 
 ## Command Line
 
@@ -581,6 +581,16 @@ Core I/O function - advances character stream:
 - Restore parent's filename
 - Read nextchar from parent buffer
 
+## Output Buffer Stack
+
+For loop lowering and other transformations that require out-of-order emission, io.c provides an output buffer stack:
+
+- `outbufPush()` - Start buffering output to a new level
+- `outbufWrite()` - Write data to current buffer (spills to temp file if needed)
+- `outbufPop()` - Replay buffered content to parent and free
+
+The output stack uses the same `struct textbuf` as input, with `fd=-1` for memory-only buffers that spill to temp files when exceeding `TBSIZE` (512 bytes).
+
 ---
 
 # Lexer (lex.c)
@@ -919,12 +929,27 @@ When `!(cond->flags & C_TRUE)`:
 
 | Constant | Value | Description |
 |----------|-------|-------------|
-| `TBSIZE` | 1024 | Text buffer size for files/macros |
-| `STRBUFSIZE` | 128 | String/symbol/identifier buffer |
+| `TBSIZE` | 512 | Text buffer size (matches Micronix disk block) |
+| `STRBUFSIZE` | 256 | String/symbol/identifier buffer |
+| `BIGBUFSIZE` | 1024 | Asm blocks and concatenated strings |
 | `MAXPARMS` | 10 | Maximum macro parameters |
-| `MAXSYMLEN` | 32 | Maximum symbol length (internal) |
-| Identifier | 13 | Practical limit (project constraint) |
-| Symbol name | 14 | Object file format limit (15 chars with `_` prefix) |
+| `MAXSYMLEN` | 16 | Symbol buffer size (15 chars + null) |
+| Identifier | 14 | C-level limit (object file: 15 with `_` prefix) |
+| `MAX_TOKENS` | 256 | K&R token buffer (dynamic) |
+| `MAX_LOOP_TOKS` | 64 | Loop condition/init/incr buffers (dynamic) |
+| `LOOP_STACK_SIZE` | 8 | Nested loop depth |
+
+## Memory Management
+
+To minimize BSS for the Z80 target, large buffers are allocated dynamically on first use:
+
+- **params** - K&R parameter list (linked list, ~28 bytes/param)
+- **typedefs** - Typedef name tracking (linked list)
+- **tokbuf** - K&R token buffer (allocated on demand)
+- **loop_cond/init/incr** - Loop lowering buffers (allocated on demand)
+- **decl_toks** - K&R declaration parsing (allocated on demand)
+
+Static BSS reduced from ~18KB to ~2.7KB through dynamic allocation.
 
 ---
 
