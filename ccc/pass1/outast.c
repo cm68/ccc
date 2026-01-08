@@ -343,130 +343,6 @@ emitExpr(struct expr *e)
 }
 
 /*
- * Count statements in a chain
- */
-static char
-countStmts(struct stmt *st)
-{
-	char count = 0;
-	while (st) {
-		count++;
-		st = st->next;
-	}
-	return count;
-}
-
-/*
- * Output a statement in paren-free format
- * Each statement type has its own format with counted children
- */
-static void
-emitStmt(struct stmt *st)
-{
-	/* Hoisted locals for stack reuse */
-	struct stmt *sp, *sp2, *sp3;
-	int n, n2;
-
-	if (!st)
-		return;
-
-	/* Output this statement */
-	switch (st->op) {
-	case BEGIN:
-		n = countStmts(st->chain);
-		/* Emit: B 00 stmt_count stmts...
-		 * All locals hoisted to function prolog, so decl_count=0 */
-		emit1('B');
-		emit1(0);
-		emit1(n);
-		/* Emit statements */
-		for (sp = st->chain; sp; sp = sp->next)
-			emitStmt(sp);
-		break;
-
-	/* IF, WHILE, DO, FOR are emitted directly in phase 2 - no stmt nodes */
-
-	case SWITCH:
-		/* Switch: S has_label [label] case_count expr cases... */
-		/* Case count was pre-computed in phase 1 and stored via pushCount */
-		n = popCount();
-#ifdef DEBUG
-		fdprintf(2, "SWITCH: popCount=%d, emitting case_count=%d\n", n, n);
-#endif
-		emit1('S');
-		emit1(st->label ? 1 : 0);
-		if (st->label)
-			emitS(st->label);
-		emit1(n);
-		emitExpr(st->left);
-		for (sp = st->chain; sp; ) {
-			if (sp->op == CASE || sp->op == DEFAULT) {
-				sp2 = sp->next;
-				n2 = 0;
-				for (sp3 = sp2; sp3 && sp3->op != CASE && sp3->op != DEFAULT; sp3 = sp3->next)
-					n2++;
-				emit1(sp->op == CASE ? 'C' : 'O');
-				emit1(n2);
-				if (sp->op == CASE)
-					emitExpr(sp->left);
-				for (sp3 = sp2; sp3 && sp3->op != CASE && sp3->op != DEFAULT; sp3 = sp3->next)
-					emitStmt(sp3);
-				sp = sp2;
-				while (sp && sp->op != CASE && sp->op != DEFAULT)
-					sp = sp->next;
-			} else {
-				emitStmt(sp);
-				sp = sp->next;
-			}
-		}
-		break;
-
-	case CASE:
-		/* Case labels are handled by SWITCH - this shouldn't be called directly */
-		emit1('C');
-		emit1(0);
-		emitExpr(st->left);
-		break;
-
-	case DEFAULT:
-		/* Default labels are handled by SWITCH - this shouldn't be called directly */
-		emit1('O');
-		emit1(0);
-		break;
-
-	/* RETURN, BREAK, CONTINUE, GOTO, LABEL emitted directly in phase 2 */
-
-	case EXPR:
-		/* Convert postinc/postdec to preinc/predec since result unused */
-		if (st->left && (st->left->op == INCR || st->left->op == DECR) &&
-		    (st->left->flags & E_POSTFIX)) {
-			st->left->flags &= ~E_POSTFIX;  /* Make it prefix */
-		}
-		emit1('E');
-		emitExpr(st->left);
-		break;
-
-	case ';':
-		emit1(';');
-		break;
-
-	case ASM:
-		n = st->label ? strlen(st->label) : 0;
-		emit1('A');
-		emit2(n);
-		if (n > 0)
-			write(astFd, st->label, n);
-		break;
-
-	default:
-		emit1('X');
-		emit1(st->op);
-		break;
-	}
-	/* Note: st->next is handled by caller (block counts statements) */
-}
-
-/*
  * Count function parameters
  */
 static char
@@ -491,7 +367,7 @@ countParams(struct type *functype)
  * off is 1 byte: signed frame offset (params positive, locals negative)
  */
 static void
-emitPrmDecls(struct type *functype, struct stmt *body)
+emitPrmDecls(struct type *functype, struct name *locals)
 {
 	struct name *param, *local, *found;
 
@@ -500,10 +376,10 @@ emitPrmDecls(struct type *functype, struct stmt *body)
 			/* Skip void parameters - (void) means no params */
 			if (param->type && param->type->size == 0)
 				continue;
-			/* Look up register/offset from body locals */
+			/* Look up register/offset from locals */
 			found = NULL;
-			if (body && body->locals && param->name[0]) {
-				for (local = body->locals; local; local = local->next) {
+			if (locals && param->name[0]) {
+				for (local = locals; local; local = local->next) {
 					if (strcmp(local->name, param->name) == 0) {
 						found = local;
 						break;
@@ -525,15 +401,15 @@ emitPrmDecls(struct type *functype, struct stmt *body)
 
 /* Count local variables (non-params) */
 static char
-countLocals(struct stmt *body)
+countLocals(struct name *locals)
 {
 	struct name *local;
 	char count = 0;
 
-	if (!body || !body->locals)
+	if (!locals)
 		return 0;
 
-	for (local = body->locals; local; local = local->next) {
+	for (local = locals; local; local = local->next) {
 		if (local->kind != funarg)
 			count++;
 	}
@@ -545,14 +421,14 @@ countLocals(struct stmt *body)
  * All locals are hoisted to function level - no scope tracking needed
  */
 static void
-emitLocals(struct stmt *body)
+emitLocals(struct name *locals)
 {
 	struct name *local;
 
-	if (!body || !body->locals)
+	if (!locals)
 		return;
 
-	for (local = body->locals; local; local = local->next) {
+	for (local = locals; local; local = local->next) {
 		char lbuf[32];
 		if (local->kind == funarg)
 			continue;  /* params already emitted */
@@ -598,15 +474,15 @@ emitFuncPre(struct name *func)
 	char frm_size, param_count, local_count;
 	char stmt_count;
 
-	if (!func || !func->u.body)
+	if (!func || !func->type)
 		return;
 
 	/* Analyze variable usage and allocate registers BEFORE emission */
 	frm_size = analyzeFunc(func);
 
-	/* Store body->locals for lookup during expression emission.
+	/* Store locals for lookup during expression emission.
 	 * Phase 2 creates new name structs; we need frm_off from phase 1 captures. */
-	curFuncLocals = func->u.body->locals;
+	curFuncLocals = func->u.locals;
 
 	/* Static functions use S<id>, public get underscore prefix */
 	if (func->sclass & SC_STATIC)
@@ -626,17 +502,17 @@ emitFuncPre(struct name *func)
 
 	/* Output param count, local count, and frame size */
 	param_count = func->type ? countParams(func->type) : 0;
-	local_count = countLocals(func->u.body);
+	local_count = countLocals(func->u.locals);
 	emit1(param_count);
 	emit1(local_count);
 	emit1(frm_size);
 
 	/* Emit parameter declarations */
 	if (func->type)
-		emitPrmDecls(func->type, func->u.body);
+		emitPrmDecls(func->type, func->u.locals);
 
 	/* Emit local variable declarations (hoisted from all blocks) */
-	emitLocals(func->u.body);
+	emitLocals(func->u.locals);
 
 	/* Output block header with statement count from phase 1 */
 	stmt_count = popFuncCnt();
@@ -644,18 +520,6 @@ emitFuncPre(struct name *func)
 	emit1(0);
 	emit1(stmt_count);
 }
-
-/*
- * Emit a single statement (called during streaming)
- * Wraps the internal emitStmt for external use.
- */
-void
-emitOneStmt(struct stmt *st)
-{
-	if (st)
-		emitStmt(st);
-}
-
 
 /*
  * Emit an initializer list (linked via next pointers)

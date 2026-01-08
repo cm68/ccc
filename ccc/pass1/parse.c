@@ -158,12 +158,6 @@ void resetBlkCnts(void) {
     blkCntIdx = 0;
 }
 
-
-/* Label stack for switch break resolution (phase 2) */
-/* Loops handled by cpp loop lowering - only switch uses this now */
-struct lblfrm lblStack[MAX_LBLDEPTH];
-unsigned char lblDepth = 0;
-
 /*
  * Count storage for streaming AST emission
  * Phase 1 records counts (arg counts, case counts, stmt counts).
@@ -209,35 +203,8 @@ resetCounts(void)
 	countIdx = 0;
 }
 
-/*
- * Label stack helpers for phase 2 switch break resolution
- * (Loops handled by cpp loop lowering - only switch uses labels now)
- */
-static unsigned char loopLblNum = 0;  /* counter for switch labels */
-
-void resetLoopLbls() { loopLblNum = 0; }
-
-static void
-pushLabel(unsigned char type)
-{
-	if (lblDepth < MAX_LBLDEPTH) {
-		lblStack[lblDepth].type = type;
-		lblStack[lblDepth].num = loopLblNum++;
-		lblDepth++;
-	}
-}
-
-static void
-popLabel(void)
-{
-	if (lblDepth > 0)
-		lblDepth--;
-}
-
-
 /* Forward declarations */
 static char *blockname(void);
-struct stmt *statement(struct stmt *parent);
 
 /*
  * Parse a braced block body.
@@ -257,7 +224,7 @@ parseBlockEx(int emitHdr)
 		emit1(0);  /* no decls - hoisted to function */
 		emit1(cnt);
 	}
-	statement(0);
+	statement();
 	popScope();
 	expect(END, ER_S_CC);
 }
@@ -310,12 +277,12 @@ capLocals(void)
  *
  * This function implements the statement parser for C, handling all control
  * flow structures, expressions, declarations, and blocks. It uses recursive
- * descent to parse nested statements and builds a statement tree.
+ * descent to parse nested statements.
  *
  * Statement types handled:
  *   - Blocks: { ... } with lexical scoping
- *   - Control flow: if/else, while, do-while, for, switch/case/default
- *   - Jumps: break, continue, return, goto, labels
+ *   - Control flow: if/else, switch/case/default (loops handled by cpp)
+ *   - Jumps: return, goto, labels (break/continue handled by cpp)
  *   - Expressions: function calls, assignments, operators
  *   - Declarations: local variables, typedefs (scoped to current block)
  *   - Inline assembly: asm { ... }
@@ -325,34 +292,18 @@ capLocals(void)
  *   - Local variables are captured before scope pop to preserve metadata
  *   - Nested blocks can shadow outer names
  *
- * Local variable initialization:
- *   - Scalar initializers (e.g., int x = 10;) are converted by cpp to assignments
- *   - Aggregate auto initialization (arrays, structs) is not supported
- *   - Static locals are initialized in data section
- *
- * Switch statement handling:
- *   - break inside switch is transformed to goto
- *   - Labels are S<n>_break for switch exit
- *   - Loops (while/for/do) handled by cpp loop lowering
- *
- * Parameters:
- *   parent - Enclosing statement (for break/continue target lookup, scope)
- *
- * Returns:
- *   Statement tree head, or NULL if no statements parsed
+ * Two-phase operation:
+ *   Phase 1: Build symbol table, count statements for streaming
+ *   Phase 2: Emit AST bytecode using counts from phase 1
  */
-struct stmt*
-statement(struct stmt *parent)
+void
+statement(void)
 {
-    struct stmt *st, **pst = 0;
-    struct stmt *head = 0;
     unsigned char block = 1;
     char stmt_count = 0;       /* Count statements for streaming (phase 1) */
     /* Hoisted locals - shared across cases to reduce stack frame */
-    char lbl[16];              /* Label buffer for control statements */
     char *lblptr;              /* Label pointer for GOTO */
     char *text;                /* Text pointer for ASM */
-    int i, num;                /* Loop/label counters */
     unsigned char cnt;         /* Shared count (body_cnt, case_cnt, etc) */
     unsigned char hasElse;     /* If statement has else branch */
     unsigned char sw_idx, c_idx; /* Switch/case indices */
@@ -360,8 +311,6 @@ statement(struct stmt *parent)
     struct expr *e1;           /* Shared expression pointer */
 
     while (block) {
-        st = NULL;  // Initialize st to NULL for each iteration
-
 #ifdef DEBUG
         if (phase == 2)
             fdprintf(2, "statement() phase=%d cur.type=%d (%c)\n",
@@ -396,11 +345,10 @@ statement(struct stmt *parent)
             case BEGIN:
                 gettoken();
                 pushScope(blockname());
-                statement(0);  /* recurse for nested block */
+                statement();  /* recurse for nested block */
                 popScope();
                 expect(END, ER_S_CC);
                 stmt_count++;  /* BEGIN counts as one statement */
-                if (parent) block = 0;
                 break;
             /* Declarations - process for symbol table but don't count */
             case INT: case CHAR: case SHORT: case LONG:
@@ -429,17 +377,16 @@ statement(struct stmt *parent)
                 /* Fall through to expression statement */
             case NUMBER: case STRING: case LPAR:
             case STAR: case INCR: case DECR:
-                parseExpr(PRI_ALL, parent);
+                parseExpr(PRI_ALL);
                 expect(SEMI, ER_S_SN);
                 stmt_count++;
-                if (parent) block = 0;
                 break;
             case IF:
             handle_if: {
                 unsigned char thisIf = ifCount++;
                 gettoken();
                 expect(LPAR, ER_S_NP);
-                parseExpr(PRI_ALL, parent);
+                parseExpr(PRI_ALL);
                 expect(RPAR, ER_S_NP);
                 parseBlock();
                 if (cur.type == ELSE) {
@@ -452,7 +399,6 @@ statement(struct stmt *parent)
                     ifHasElse[thisIf] = 0;
                 }
                 stmt_count++;
-                if (parent) block = 0;
                 break;
             }
             /* WHILE/DO/FOR handled by cpp loop lowering */
@@ -460,18 +406,17 @@ statement(struct stmt *parent)
                 unsigned char idx;
                 gettoken();
                 expect(LPAR, ER_S_NP);
-                parseExpr(PRI_ALL, parent);
+                parseExpr(PRI_ALL);
                 expect(RPAR, ER_S_NP);
                 expect(BEGIN, ER_S_SB);
                 pushSwitch();  /* start new switch table */
-                statement(0);  /* switch body - adds cases to table */
+                statement();  /* switch body - adds cases to table */
                 /* Push case count for phase 2 before popping */
                 idx = swStack[swDepth - 1];
                 pushCount(swList[idx].count);
                 popSwitch();
                 expect(END, ER_S_CC);
                 stmt_count++;
-                if (parent) block = 0;
                 break;
             }
             case CASE: {
@@ -491,15 +436,13 @@ statement(struct stmt *parent)
                 gettoken();
                 expect(SEMI, ER_S_SN);
                 stmt_count++;
-                if (parent) block = 0;
                 break;
             case RETURN:
                 gettoken();
                 if (cur.type != SEMI)
-                    parseExpr(PRI_ALL, parent);
+                    parseExpr(PRI_ALL);
                 expect(SEMI, ER_S_SN);
                 stmt_count++;
-                if (parent) block = 0;
                 break;
             case GOTO:
                 gettoken();
@@ -507,17 +450,14 @@ statement(struct stmt *parent)
                     gettoken();
                 expect(SEMI, ER_S_SN);
                 stmt_count++;
-                if (parent) block = 0;
                 break;
             case ASM:
                 gettoken();  /* asmblock consumes the text in cur.v.str */
                 stmt_count++;
-                if (parent) block = 0;
                 break;
             case SEMI:
                 gettoken();
                 stmt_count++;
-                if (parent) block = 0;
                 break;
             default:
                 gettoken();  /* skip unknown token */
@@ -545,10 +485,9 @@ statement(struct stmt *parent)
             cnt = popBlkCnt();
             emit1(cnt);
             /* Stream body statements */
-            statement(parent);
+            statement();
             popScope();
             expect(END, ER_S_CC);
-            st = NULL;
             break;
 
         case IF:   /* if <condition> <statement> */
@@ -556,7 +495,7 @@ statement(struct stmt *parent)
             hasElse = ifHasElse[ifEmitIdx++];
             gettoken();
             expect(LPAR, ER_S_NP);
-            e1 = parseExpr(PRI_ALL, parent);
+            e1 = parseExpr(PRI_ALL);
             expect(RPAR, ER_S_NP);
             /* Emit: I nlabels cond then has_else [else] */
             emit1('I');
@@ -571,30 +510,15 @@ statement(struct stmt *parent)
                     goto handle_if2;  /* else if */
                 parseBlock();
             }
-            st = NULL;
-            break;
-        case BREAK:
-            /* Break only valid in switch - loop breaks handled by cpp */
-            gettoken();
-            expect(SEMI, ER_S_SN);
-            /* Find innermost switch */
-            for (i = lblDepth - 1; i >= 0; i--) {
-                if (lblStack[i].type == SWITCH) {
-                    sprintf(lbl, "S%d", lblStack[i].num);
-                    emitGoto(lbl, "_break");
-                    break;
-                }
-            }
-            st = NULL;
             break;
 
-        /* CONTINUE handled by cpp loop lowering - should not appear here */
+        /* BREAK/CONTINUE handled by cpp - lowered to goto */
 
         case RETURN:
             e1 = NULL;
             gettoken();
             if (cur.type != SEMI)
-                e1 = parseExpr(PRI_ALL, parent);
+                e1 = parseExpr(PRI_ALL);
             expect(SEMI, ER_S_SN);
             /* Emit: R has_value [expr] */
             emit1('R');
@@ -603,7 +527,6 @@ statement(struct stmt *parent)
                 emitExpr(e1);
                 FreeExpr(e1);
             }
-            st = NULL;
             break;
 
         /* Local declarations - type keywords */
@@ -623,13 +546,11 @@ statement(struct stmt *parent)
         case AUTO:
         case EXTERN:
             declaration();
-            st = NULL;
             break;
 
         case TYPEDEF:
             /* typedef inside function body - scoped to current block */
             declaration();
-            st = NULL;  /* declaration() doesn't return a statement */
             break;
 
         case SYM:
@@ -640,16 +561,14 @@ statement(struct stmt *parent)
                 emitS(cur.v.name);
                 gettoken();
                 gettoken();
-                st = NULL;
-                break;
+                    break;
             }
             /* Check if it's a typedef name used in a declaration */
             {
                 struct name *poss_typedef = findName(cur.v.name, 0);
                 if (poss_typedef && poss_typedef->kind == tdef) {
                     declaration();
-                    st = NULL;
-                    break;
+                            break;
                 }
             }
             /* fall through to expression */
@@ -659,7 +578,7 @@ statement(struct stmt *parent)
         case STAR:
         case INCR:
         case DECR: {
-            struct expr *expr = parseExpr(PRI_ALL, parent);
+            struct expr *expr = parseExpr(PRI_ALL);
             expect(SEMI, ER_S_SN);
             /* Convert postinc/postdec to preinc/predec since result unused */
             if (expr && (expr->op == INCR || expr->op == DECR) &&
@@ -670,7 +589,6 @@ statement(struct stmt *parent)
             emit1('E');
             emitExpr(expr);
             FreeExpr(expr);
-            st = NULL;
             break;
         }
 
@@ -683,36 +601,30 @@ statement(struct stmt *parent)
         case SWITCH:  /* switch (<expr>) <block> ; */
             gettoken();
             expect(LPAR, ER_S_NP);
-            e1 = parseExpr(PRI_ALL, parent);
+            e1 = parseExpr(PRI_ALL);
             expect(RPAR, ER_S_NP);
             expect(BEGIN, ER_S_SB);
             /* Get this switch's index and push onto emit stack */
             sw_idx = swEmitIdx++;
             swEmitStack[swEmitDepth++] = sw_idx;
             caseEmitIdx[sw_idx] = 0;
-            /* Get label number for break target */
-            pushLabel(SWITCH);
-            num = lblStack[lblDepth - 1].num;
-            sprintf(lbl, "S%d", num);
-            /* Emit switch header: S has_label label case_count expr */
+            /* Emit switch header: S has_label case_count expr */
+            /* has_label=0 since cpp handles break lowering */
             emit1('S');
-            emit1(1);  /* has label - pass2 will emit <label>_break */
-            emitS(lbl);
+            emit1(0);  /* no label - cpp lowered break to goto */
             cnt = popCount();
             emit1(cnt);
             emitExpr(e1);
             FreeExpr(e1);
             /* Parse body - CASE/DEFAULT emit themselves */
-            statement(parent);
-            popLabel();
+            statement();
             swEmitDepth--;
             expect(END, ER_S_CC);
-            st = NULL;
             break;
 
         case CASE:
             gettoken();
-            e1 = parseExpr(13, parent);  /* parse case value expression */
+            e1 = parseExpr(13);  /* parse case value expression */
             expect(COLON, ER_S_NL);
             /* Get current switch and case */
             sw_idx = swEmitStack[swEmitDepth - 1];
@@ -723,15 +635,13 @@ statement(struct stmt *parent)
             emit1(sc->stmts);
             emitExpr(e1);
             FreeExpr(e1);
-            st = NULL;
             break;
 
         case GOTO:
             gettoken();
             if (cur.type != SYM) {
                 recover(ER_S_GL, SEMI);
-                st = NULL;
-                break;
+                    break;
             }
             lblptr = cur.v.name;
             gettoken();
@@ -739,7 +649,6 @@ statement(struct stmt *parent)
             /* Emit: G label */
             emit1('G');
             emitS(lblptr);
-            st = NULL;
             break;
 
         case DEFAULT:
@@ -752,13 +661,11 @@ statement(struct stmt *parent)
             /* Emit: O stmt_count */
             emit1('O');
             emit1(sc->stmts);
-            st = NULL;
             break;
 
         case SEMI:
             gettoken();
             emit1(';');
-            st = NULL;
             break;
 
         case ASM:
@@ -768,96 +675,13 @@ statement(struct stmt *parent)
             gettoken();
             emitGlobalAsm(text);
             free(text);
-            st = NULL;
             break;
 
         default:
             gripe(ER_E_UO);
             break;
         }
-        /*
-         * Handle statement result
-         */
-        if (st) {
-#ifdef DEBUG
-            if (phase == 2)
-                fdprintf(2, "  -> st=%p op=%d, head=%p\n", st, st->op, head);
-#endif
-            /*
-             * Streaming mode: when parsing function body (parent == NULL)
-             * or single-statement mode (parent == 1), emit and free each
-             * statement immediately instead of building a linked list.
-             */
-            if (!parent || parent == (struct stmt *)1) {
-                /* Stream emit and free */
-                emitOneStmt(st);
-                frStmt(st);
-#ifdef DEBUG
-                if (phase == 2)
-                    fdprintf(2, "  after free: exprs=%d\n", exprCurCnt);
-#endif
-            } else {
-                /* Nested block - build linked list as usual */
-                if (!pst) {
-                    head = st;
-                    st->flags |= S_PARENT;
-                } else {
-                    *pst = st;  // Link previous statement to this one
-                }
-                pst = &st->next;
-                st->parent = parent;
-            }
-        }
-#ifdef DEBUG
-        else if (phase == 2) {
-            fdprintf(2, "  -> st=NULL (streaming)\n");
-        }
-#endif
-
-        /*
-         * If we're parsing a single-statement body for a control
-         * structure (if/while/for/etc), return after parsing one
-         * statement. Don't return for block statements (BEGIN),
-         * switch statements (SWITCH), or top-level (parent ==
-         * NULL/function body).
-         *
-         * For streaming statements (st=NULL), we still need to exit
-         * after one statement when in single-statement mode.
-         */
-        if (parent && parent != (struct stmt *)1 &&
-            parent->op != BEGIN && parent->op != SWITCH) {
-            block = 0;  // Exit the while loop
-        } else if (parent == (struct stmt *)1) {
-            /* Special marker for single-statement mode */
-            block = 0;
-        }
-    } // while
-    return head;
-}
-
-/*
- * Create a new statement node
- *
- * Allocates and zero-initializes a statement structure with the specified
- * operator and left expression. This is the basic statement node allocator
- * used throughout the parser.
- *
- * Parameters:
- *   op   - Statement operator (e.g., IF, WHILE, EXPR, BEGIN)
- *   left - Left expression (condition for IF/WHILE, expression for EXPR, etc.)
- *
- * Returns:
- *   Pointer to newly allocated and initialized statement node
- */
-struct stmt*
-makestmt(unsigned char op, struct expr *left)
-{
-	struct stmt *st;
-
-	st = calloc(1, sizeof(*st));  // Zero-initialize all fields
-	st->op = op;
-	st->left = left;
-	return st;
+    }
 }
 
 static char bnbuf[20];

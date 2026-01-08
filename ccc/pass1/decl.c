@@ -97,7 +97,7 @@ streamInitVal(struct type *type)
         gettoken();
     } else {
         /* Parse single expression, emit, free */
-        e = parseExpr(OP_PRI_COMMA, NULL);
+        e = parseExpr(OP_PRI_COMMA);
         if (e) {
             if (e->op == CONST) {
                 val = (long)e->v;  /* e->v IS the value, not a pointer */
@@ -181,7 +181,7 @@ doInitlzr(struct name *v)
             }
             gettoken();
         } else {
-            parseExpr(15, NULL);  /* skip expression */
+            parseExpr(15);  /* skip expression */
         }
         return;
     }
@@ -248,19 +248,18 @@ parsefunc(struct name *f)
 	struct name *phase1_func = NULL;
 
 	/* In phase 2, lookup the function definition from phase 1 to get
-	 * its u.body which contains locals for register allocation.
-	 * The 'f' from declare() might be a new entry without u.body. */
+	 * its u.locals which contains locals for register allocation.
+	 * The 'f' from declare() might be a new entry without u.locals. */
 	if (phase == 2) {
 		struct name *n;
 		for (n = names; n; n = n->chain) {
-			if (n->kind == fdef && strcmp(n->name, f->name) == 0 &&
-			    n->u.body) {
+			if (n->kind == fdef && strcmp(n->name, f->name) == 0) {
 				phase1_func = n;
 				break;
 			}
 		}
 		if (phase1_func) {
-			f = phase1_func;  /* Use the phase 1 version with u.body */
+			f = phase1_func;  /* Use the phase 1 version with u.locals */
 		}
 	}
 
@@ -293,19 +292,17 @@ parsefunc(struct name *f)
 	expect(BEGIN, ER_S_CC);
 
 	if (phase == 1) {
-		/* Phase 1: Skip statement parsing (returns NULL), but capture locals.
+		/* Phase 1: Skip statement parsing, but capture locals.
 		 * Locals have ref_count populated during parseExpr. */
-		statement(0);  /* Skips through function body */
-		f->u.body = makestmt(BEGIN, 0);
-		f->u.body->flags |= S_FUNC;
+		statement();  /* Skips through function body */
 		f->kind = fdef;
-		f->u.body->locals = capLocals();  /* Capture before popScope */
+		f->u.locals = capLocals();  /* Capture before popScope */
 	} else {
 		/* Phase 2: Streaming emit - parse one statement at a time,
-		 * emit immediately, free immediately. No full tree built.
-		 * f->u.body contains locals from phase 1 for register alloc. */
+		 * emit immediately, free immediately.
+		 * f->u.locals contains locals from phase 1 for register alloc. */
 		emitFuncPre(f);     /* Emit header, params, locals, block prefix */
-		statement(0);       /* Streams: parses, emits, frees each stmt */
+		statement();        /* Streams: parses, emits each stmt */
 	}
 
 	// Consume the function body's closing brace
@@ -531,16 +528,6 @@ declaration()
 
                 parsefunc(v);
 
-                /* Free the statement tree stub after phase 2 (phase 1 stub
-                 * with locals is needed for phase 2 register allocation) */
-                if (phase == 2 && v->u.body) {
-                    frStmt(v->u.body);
-                    v->u.body = 0;  /* Mark as freed */
-                }
-#ifdef DEBUG
-                fdprintf(2, "  after free: exprs=%d\n", exprCurCnt);
-#endif
-
                 v->next = global;
                 global = v;
                 break;
@@ -720,60 +707,17 @@ parse()
 }
 
 /*
- * Free a statement tree recursively
- *
- * Deallocates a statement tree and all its child nodes, including:
- *   - chain: Child/body statement (e.g., body of if/while/for/block)
- *   - otherwise: Else branch (for if statements)
- *   - next: Sibling statement in sequence
- *   - label: Synthetic labels or captured asm text
- *   - locals: Captured local variable list (for blocks)
- *
- * Note: Expression trees (left, right, middle) are NOT freed here as they
- * may be shared or owned elsewhere. A full implementation would need
- * reference counting for expressions.
- *
- * Parameters:
- *   st - Statement tree root to free (NULL-safe)
+ * Free a function's locals list
  */
-void
-frStmt(struct stmt *st)
+static void
+freeLocals(struct name *local)
 {
-	if (!st)
-		return;
-
-	/* Free child statements */
-	if (st->chain)
-		frStmt(st->chain);
-	if (st->otherwise)
-		frStmt(st->otherwise);
-	if (st->next)
-		frStmt(st->next);
-
-	/* Free label string if present */
-	if (st->label)
-		free(st->label);
-
-	/* Free locals list */
-	if (st->locals) {
-		struct name *local = st->locals;
-		struct name *next;
-		while (local) {
-			next = local->next;
-			free(local);
-			local = next;
-		}
+	struct name *next;
+	while (local) {
+		next = local->next;
+		free(local);
+		local = next;
 	}
-
-	/* Free expression trees */
-	if (st->left)
-		FreeExpr(st->left);
-	if (st->right)
-		FreeExpr(st->right);
-	if (st->middle)
-		FreeExpr(st->middle);
-
-	free(st);
 }
 
 /*
@@ -790,10 +734,10 @@ cleanupParse()
 	while (names && names->level > 0) {
 		n = names;
 		names = n->chain;
-		/* u.body (for fdef) and u.init (for var) share a union */
+		/* u.locals (for fdef) and u.init (for var) share a union */
 		if (n->kind == fdef) {
-			if (n->u.body)
-				frStmt(n->u.body);
+			if (n->u.locals)
+				freeLocals(n->u.locals);
 		} else {
 			if (n->u.init)
 				FreeExpr(n->u.init);

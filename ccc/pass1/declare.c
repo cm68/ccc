@@ -25,9 +25,8 @@
  *   - Consumes '*' and qualifier tokens from input stream
  */
 static struct type *
-parsePtrPfx(struct type *basetype)
+parsePtrPfx(struct type *t)
 {
-    struct type *t = basetype;
     while (cur.type == STAR) {
         gettoken();
         t = getType(TF_POINTER, t, 0);
@@ -46,7 +45,6 @@ parsePtrPfx(struct type *basetype)
  * Parameter name handling:
  *   - Always duplicates name string to prevent dangling pointers
  *   - Anonymous parameters get empty string "" (not NULL)
- *   - K&R style uses names for matching type declarations to parameter list
  *   - compatFnTyp() ignores names when comparing signatures
  *
  * Level and scope:
@@ -109,9 +107,7 @@ createPrmEnt(char *name, struct type *type)
  *   - Final type attached to name entry
  *
  * Function parameter handling:
- *   - Detects K&R vs ANSI style automatically
- *   - K&R: foo(x, y) followed by int x; char *y;
- *   - ANSI: foo(int x, char *y)
+ *   - ANSI style only (K&R style is converted by cpp preprocessor)
  *   - Parameters stored in type->elem as linked list
  *   - Variadic functions detected (...) and marked with TF_VARIADIC
  *
@@ -162,7 +158,7 @@ declare(struct type **btp, unsigned char struct_elem)
     nm = 0;
 
     /*
-     * this will be primitive, enum, struct/union 
+     * this will be primitive, enum, struct/union
      */
     t = getbasetype();
     if (t && *btp) {
@@ -190,6 +186,7 @@ declare(struct type **btp, unsigned char struct_elem)
             *btp = rt;
         }
     }
+
     if (cur.type == RPAR) {
         if (!nm) {
             for (t = prefix; t && t->sub; t = t->sub) {
@@ -199,6 +196,7 @@ declare(struct type **btp, unsigned char struct_elem)
         }
         return nm;
     }
+
     if (cur.type == SYM) {      // symbol name
         if (nm) {
             gripe(ER_D_MV);
@@ -221,7 +219,6 @@ declare(struct type **btp, unsigned char struct_elem)
             nm->bitoff = 0;
             nm->next = 0;
             nm->u.init = 0;
-            nm->u.body = 0;
 #ifdef DEBUG
             if (VERBOSE(V_SYM)) {
                 fdprintf(2, "struct_elem: %s (not added to names[])\n",
@@ -238,7 +235,7 @@ declare(struct type **btp, unsigned char struct_elem)
                  * function prototype
                  */
                 if (existing->type && (existing->type->flags & TF_FUNC) &&
-                    !existing->u.body) {
+                    !existing->u.locals) {
                     /* Reuse existing function declaration (prototype) */
                     nm = existing;
                     /*
@@ -414,7 +411,7 @@ declare(struct type **btp, unsigned char struct_elem)
                 gettoken();
                 if (cur.type != RBRACK) {
                     /* Array size (ignored for parameters) */
-                    sz = parseExpr(0, NULL);
+                    sz = parseExpr(0);
                     if (sz) FreeExpr(sz);
                 }
                 expect(RBRACK, ER_D_FA);
@@ -548,8 +545,8 @@ isCastStart(void)
  *   - No array dimensions in casts: (int[])x doesn't work
  *   - No function pointer casts: (int(*)(void))x doesn't work
  *
- * K&R default type:
- *   - If no type specified, defaults to int (K&R C behavior)
+ * Default type:
+ *   - If no type specified, defaults to int
  *   - Enables implicit int casts (rare in practice)
  *
  * Examples:
@@ -576,7 +573,7 @@ parseTypeName(void)
     /* Parse base type (int, char, struct foo, typedef, etc.) */
     base_type = getbasetype();
     if (!base_type) {
-        /* No type specified - default to int (K&R style) */
+        /* No type specified - default to int */
         base_type = inttype;
     }
 

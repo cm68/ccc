@@ -111,42 +111,17 @@ struct expr {
 extern struct expr *mkexpr(unsigned char op, struct expr *left);
 extern struct expr *mkexprI(unsigned char op, struct expr *left,
     struct type *type, unsigned long v, int flags);
-extern struct expr *parseExpr(unsigned char priority, struct stmt *);
+extern struct expr *parseExpr(unsigned char priority);
 extern int isTypeToken(unsigned char t);
 unsigned long parseConst(unsigned char priority);
 extern void FreeExpr(struct expr *e);
 extern char funcStrCtr;    /* function-local string counter (prefix "fs") */
 extern char globalStrCtr;  /* global string counter (prefix "str") */
 
-/*
- * a statement is the basic execution unit that is managed by the compiler
- * it has a parent statement, and is linked to all the other statements that
- * belong to the same parent
- */
-struct stmt {
-	struct stmt *parent;
-	struct stmt *next;
-	struct expr *left;
-	struct expr *right;
-	unsigned char op;
-	int flags;
-	char *label;
-	/* extended fields used by parser */
-	struct stmt *chain;     /* child / body statement */
-	struct stmt *otherwise; /* else branch */
-	struct expr *middle;    /* for for-loop middle expression */
-	struct name *function;  /* owning function */
-	struct name *locals;    /* linked list of local variables in this scope */
-};
-
-extern struct stmt *makestmt(unsigned char op, struct expr *left);
-extern struct stmt *asmblock(void);
-extern struct stmt *statement(struct stmt *parent);
+extern void statement(void);
 extern void declaration(void);
 extern struct name *capLocals(void);
-extern void frStmt(struct stmt *s);
 extern void emitFuncPre(struct name *func);
-extern void emitOneStmt(struct stmt *st);
 extern void emitGlobalAsm(char *text);
 extern void emitGv(struct name *var);
 extern void emitStrLit(struct name *strname);
@@ -154,11 +129,6 @@ extern void emitExpr(struct expr *e);
 extern int cntCondLbls(struct expr *e);
 extern void emitLabel(char *base, char *suffix);
 extern void emitGoto(char *base, char *suffix);
-
-/* statement flags used in parse.c */
-#define S_PARENT 0x01
-#define S_LABEL  0x02
-#define S_FUNC   0x04
 
 /*
  * synthetic type information like enum, struct, union, etc goes away as soon
@@ -241,7 +211,7 @@ struct name {
 	struct name *next;		// all names in same container
 	union {
 		struct expr *init;  // value of constant or initializer (for var)
-		struct stmt *body;  // function body (for fdef)
+		struct name *locals; // local variables (for fdef)
 	} u;
 	/* Variable usage tracking for register allocation */
 	unsigned char ref_count;  // reference count (capped at 255)
@@ -296,32 +266,6 @@ extern struct type *floattype;
 
 void parse();
 void cleanupParse();
-void resetLoopLbls();
-
-/*
- * Label stack for break/continue resolution (phase 2)
- * Labels are B<num> for break, C<num> for continue.
- */
-struct lblfrm {
-    int num;                  /* label number */
-    unsigned char type;       /* WHILE, FOR, DO, SWITCH */
-};
-
-#define MAX_LBLDEPTH 16
-extern struct lblfrm lblStack[];
-extern unsigned char lblDepth;
-
-/*
- * FOR loop context (phase 2)
- * Saves increment expression until end of loop body.
- */
-struct forctx {
-    struct expr *incr;        /* increment expression */
-};
-
-#define MAX_FORDEPTH 8
-extern struct forctx forStack[];
-extern unsigned char forDepth;
 
 /*
  * Switch statement table tracking (phase 1)

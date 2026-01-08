@@ -63,8 +63,8 @@ static unsigned char oppri[96] = {
 int
 isTypeToken(unsigned char t)
 {
-    /* Type keywords are in range 128-139 (INT, CHAR, ... SHORT) */
-    return (t >= INT && t <= SHORT);
+    /* Type keywords are in range 128-139 (INT, CHAR, ... ENUM) */
+    return (t >= INT && t <= ENUM);
 }
 
 /*
@@ -492,13 +492,12 @@ coerceTypes(struct expr *e, struct type *tgt)
  * Parameters:
  *   pri - Minimum operator priority to parse (0 = parse any expression,
  *         higher values stop at lower-precedence operators)
- *   st  - Containing statement (for context, can be NULL)
  *
  * Returns:
  *   Expression tree root, or NULL on parse error
  */
 struct expr *
-parseExpr(unsigned char pri, struct stmt *st)
+parseExpr(unsigned char pri)
 {
 	/* Hoisted locals for stack reuse */
 	unsigned char op, p, is_assignment, is_variadic, is_arrow;
@@ -688,7 +687,7 @@ parseExpr(unsigned char pri, struct stmt *st)
 
             /* Parse the expression being cast */
             /* Cast has unary precedence */
-            e1 = parseExpr(OP_PRI_MULT - 1, st);
+            e1 = parseExpr(OP_PRI_MULT - 1);
 
             /* Determine if cast needs runtime operation */
             if (tp && e1 && e1->type) {
@@ -753,7 +752,7 @@ parseExpr(unsigned char pri, struct stmt *st)
              * Parenthesized expression: (expr)
              * parse inner expression with lowest precedence
              */
-            e = parseExpr(0, st);
+            e = parseExpr(0);
             expect(RPAR, ER_E_SP);
         }
         break;
@@ -763,7 +762,7 @@ parseExpr(unsigned char pri, struct stmt *st)
     case BANG:      // logical not
         uop = (cur.type == MINUS) ? NEG : cur.type;
         gettoken();
-        e = mkexpr(uop, parseExpr(OP_PRI_MULT - 1, st));
+        e = mkexpr(uop, parseExpr(OP_PRI_MULT - 1));
         if (e->left) {
             e->type = e->left->type;
             e->left->up = e;
@@ -772,7 +771,7 @@ parseExpr(unsigned char pri, struct stmt *st)
 
     case STAR:      // dereference (unary)
         gettoken();
-        e = mkexpr(DEREF, parseExpr(OP_PRI_MULT - 1, st));
+        e = mkexpr(DEREF, parseExpr(OP_PRI_MULT - 1));
         if (e->left) {
             e->left->up = e;
             // type will be determined later when we have full type info
@@ -787,7 +786,7 @@ parseExpr(unsigned char pri, struct stmt *st)
 
     case AND:       // address-of (unary)
         gettoken();
-        e = parseExpr(OP_PRI_MULT - 1, st);
+        e = parseExpr(OP_PRI_MULT - 1);
         /* Mark variable as address-taken (can't use register) */
         if (e && e->op == DEREF && e->left && e->left->op == SYM &&
             e->left->var)
@@ -836,14 +835,14 @@ parseExpr(unsigned char pri, struct stmt *st)
                 expect(RPAR, ER_E_SP);
             } else {
                 /* sizeof(expr) */
-                e1 = parseExpr(0, st);
+                e1 = parseExpr(0);
                 t = e1 ? e1->type : NULL;
                 FreeExpr(e1);
                 expect(RPAR, ER_E_SP);
             }
         } else {
             /* sizeof expr (no parens) */
-            e1 = parseExpr(OP_PRI_MULT - 1, st);
+            e1 = parseExpr(OP_PRI_MULT - 1);
             t = e1 ? e1->type : NULL;
             FreeExpr(e1);
         }
@@ -855,7 +854,7 @@ parseExpr(unsigned char pri, struct stmt *st)
     case DECR:      // prefix decrement: --i
         inc_op = cur.type;
         gettoken();
-        e = mkIncDec(parseExpr(OP_PRI_MULT - 1, st), inc_op, 0);
+        e = mkIncDec(parseExpr(OP_PRI_MULT - 1), inc_op, 0);
         break;
 
 	default:
@@ -874,7 +873,7 @@ parseExpr(unsigned char pri, struct stmt *st)
             tp = NULL;
 
             gettoken();  // consume '['
-            e1 = parseExpr(0, st);  /* index */
+            e1 = parseExpr(0);  /* index */
             expect(RBRACK, ER_E_SP);
 
             /*
@@ -971,7 +970,7 @@ parseExpr(unsigned char pri, struct stmt *st)
             e3 = NULL;  /* lastarg */
             if (cur.type != RPAR) {
                 // Parse first argument
-                e2 = parseExpr(OP_PRI_COMMA, st);  /* arg */
+                e2 = parseExpr(OP_PRI_COMMA);  /* arg */
                 if (e2) {
                     e2->flags |= E_FUNARG;
                     // Coerce argument to parameter type
@@ -989,7 +988,7 @@ parseExpr(unsigned char pri, struct stmt *st)
                 // Parse remaining arguments
                 while (cur.type == COMMA) {
                     gettoken();
-                    e2 = parseExpr(OP_PRI_COMMA, st);  /* arg */
+                    e2 = parseExpr(OP_PRI_COMMA);  /* arg */
                     if (e2) {
                         e2->flags |= E_FUNARG;
                         // Coerce argument to parameter type
@@ -1155,7 +1154,7 @@ parseExpr(unsigned char pri, struct stmt *st)
             e1 = e;  /* condition */
 
             // Parse the true expression
-            e2 = parseExpr(0, st);  /* true_expr */
+            e2 = parseExpr(0);  /* true_expr */
 
             // Expect and consume COLON
             expect(COLON, ER_E_SP);
@@ -1165,7 +1164,7 @@ parseExpr(unsigned char pri, struct stmt *st)
              * allow another ?: at same level). Use priority 0 to parse
              * everything, including nested ?: operators
              */
-            e3 = parseExpr(0, st);  /* false_expr */
+            e3 = parseExpr(0);  /* false_expr */
 
             // Build tree: QUES(condition, COLON(true_expr, false_expr))
             e4 = mkexpr(COLON, e2);  /* colon_node */
@@ -1261,7 +1260,7 @@ parseExpr(unsigned char pri, struct stmt *st)
                  * Skip this operator: parse and discard right side,
                  * then return left side
                  */
-                FreeExpr(parseExpr(p, st));  // Parse and discard right side
+                FreeExpr(parseExpr(p));  // Parse and discard right side
                 return e;  // Return left side unchanged
             }
         }
@@ -1281,13 +1280,13 @@ parseExpr(unsigned char pri, struct stmt *st)
              * Right-associative: parse at lowest precedence
              * to allow a = b = c
              */
-            e->right = parseExpr(0, st);
+            e->right = parseExpr(0);
         } else {
             /*
              * Left-associative: parse at same precedence to prevent
              * (a + b) + c from becoming a + (b + c)
              */
-            e->right = parseExpr(p, st);
+            e->right = parseExpr(p);
         }
         if (e->right) {
             e->right->up = e;
@@ -1442,7 +1441,7 @@ parseConst(unsigned char token)
 	/* Parse expression, stop before comma (for enum values) */
 	save_phase = phase;
 	phase = 2;
-	e = parseExpr(15, 0);
+	e = parseExpr(15);
 	phase = save_phase;
 
 	if (!e) {
