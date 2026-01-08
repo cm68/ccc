@@ -39,25 +39,6 @@
 extern char *regnames[];
 
 /*
- * Symbol table entry for locals/register vars
- */
-struct sym {
-    char name[14];
-    char type;          /* type suffix */
-    char reg;           /* register (0=stack) */
-    char off;		/* stack offset */
-};
-
-#define MAXLOCALS 64
-extern struct sym locals[];
-extern unsigned char nlocals;
-
-/* Symbol table operations */
-void clearLocals(void);
-void addLocal(char *name, char type, char reg, char off);
-struct sym *findLocal(char *name);
-
-/*
  * Expression tree node
  * op: uses token constants from lexeme.h (AST_CONST, SYM, REGVAR, LOCALVAR, DEREF, etc.)
  */
@@ -148,6 +129,7 @@ unsigned char isSimpleByte(struct expr *e);
 
 /* Code emission */
 void emitExpr(struct expr *e);
+int pemitExpr(struct expr *e);  /* pattern-driven emission, returns 1 if handled */
 void emitCompare(struct expr *e);
 void emitCondJmp(unsigned char op, int aux2);
 void emitCmpArith(struct expr *e);
@@ -155,7 +137,6 @@ void emitCmpShift(struct expr *e);
 void emitCmpMulDiv(struct expr *e);
 void emitPreIncDec(struct expr *e);
 void emitPostInc(struct expr *e);
-void emitDeref(struct expr *e);
 void emitPrimary(struct expr *e);
 void dumpStmt(void);
 void emitInit(void);
@@ -202,9 +183,16 @@ void parseAst(void);
 /*
  * Pattern-based expression representation (pattern.c)
  * Format: operators are 2 chars (op + size)
- * $ and # add 2 hex digits for operand index
- * Example: "=s$s02+s$s00#s01" for x = y + 5
+ * Markers add 2 hex digits for operand index
+ * Example: "=sSs02+sSs00Ts01" for x = y + 5
  */
+
+/* Pattern markers - values 81-89 don't conflict with lexeme.h tokens */
+#define PAT_SYM    83   /* global symbol */
+#define PAT_CONST  84   /* constant value */
+#define PAT_LOCAL  86   /* local variable */
+#define PAT_REG    82   /* register variable */
+
 /*
  * Sized to fit in 127 bytes for Z80 IY-indexed addressing:
  * 64 + 1 + 30*2 + 1 = 126 bytes

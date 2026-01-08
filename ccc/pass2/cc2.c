@@ -29,48 +29,9 @@ extern int exprFree;
 char *regnames[] = { 0, "b", "c", "bc", "ix", "de", "hl", "a", "iy",
                      "(ix)", "(iy)", "(ix%+d)", "(iy%+d)", "tos" };
 
-/* Symbol table for locals/register vars */
-struct sym locals[MAXLOCALS];
-unsigned char nlocals;
-
 /* Switch statement stack */
 struct swctx swstack[MAXSWDEPTH];
 unsigned char swdepth;
-
-void
-clearLocals(void)
-{
-    nlocals = 0;
-}
-
-void
-addLocal(char *name, char type, char reg, char off)
-{
-    struct sym *s;
-    if (nlocals < MAXLOCALS) {
-        s = &locals[nlocals];
-        strncpy(s->name, name, 13);
-        s->name[13] = 0;
-        s->type = type;
-        s->reg = reg;
-        s->off = off;
-        nlocals++;
-    }
-}
-
-struct sym *
-findLocal(char *name)
-{
-    unsigned char i = nlocals;
-    struct sym *s = locals;
-
-    while (i--) {
-        if (strcmp(s->name, name) == 0)
-            return s;
-        s++;
-    }
-    return 0;
-}
 
 /*
  * Main: cc2 [-p] input.ast [-o output.s]
