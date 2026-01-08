@@ -78,22 +78,26 @@ static const char *regName(int r) {
 static const char *opName(int c) {
     switch (c) {
     /* Internal tokens (200+) */
-    case DEREF: return "DEREF";
-    case NEG: return "NEG";
-    case NOT: return "NOT";
     case NARROW: return "NARROW";
     case WIDEN: return "WIDEN";
     case SEXT: return "SEXT";
+    case DEREF: return "DEREF";
+    case NEG: return "NEG";
+    case CALL: return "CALL";
+    case COPY: return "COPY";
+    case PREINC: return "PREINC";
+    case POSTINC: return "POSTINC";
+    case PREDEC: return "PREDEC";
+    case POSTDEC: return "POSTDEC";
+    case BFEXTRACT: return "BFEXT";
+    case BFASSIGN: return "BFSET";
 
-    /* Lexeme token values */
-    case COLON: return "COLON";
-    case BANG: return "LNOT";
-    case AMPER: return "ADDR";
+    /* Lexeme tokens */
     case TWIDDLE: return "NOT";
-    case STAR: return "MUL";
+    case BANG: return "LNOT";
     case PLUS: return "ADD";
     case MINUS: return "SUB";
-    case TIMES: return "MUL";
+    case STAR: return "MUL";
     case DIV: return "DIV";
     case MOD: return "MOD";
     case RSHIFT: return "RSHIFT";
@@ -107,19 +111,8 @@ static const char *opName(int c) {
     case NEQ: return "NE";
     case LE: return "LE";
     case LT: return "LT";
-    case GE: return "GE";
-    case GT: return "GT";
-    case PLUSEQ: return "+=";
-    case SUBEQ: return "-=";
-    case MULTEQ: return "*=";
-    case DIVEQ: return "/=";
-    case MODEQ: return "%=";
-    case RSHIFTEQ: return ">>=";
-    case LSHIFTEQ: return "<<=";
-    case ANDEQ: return "&=";
-    case OREQ: return "|=";
-    case XOREQ: return "^=";
     case ASSIGN: return "ASSIGN";
+    case COMMA: return "COMMA";
 
     default: { static char buf[8]; sprintf(buf, "?%d", c); return buf; }
     }
@@ -132,8 +125,7 @@ static int opArity(int c) {
     if (c == CALL || c == COPY) return -1;
     /* Unary operators */
     if (c == DEREF || c == NARROW || c == WIDEN || c == SEXT) return 1;
-    if (c == NEG || c == NOT) return 1;
-    if (c == BANG || c == AMPER || c == TWIDDLE) return 1;
+    if (c == NEG || c == TWIDDLE || c == BANG) return 1;
     return 2;
 }
 
@@ -165,7 +157,7 @@ static void parseExpr(void) {
     if (c == '_') { advance(); exprApp("()"); return; }
 
     /* Symbol reference */
-    if (c == AST_SYM) {
+    if (c == '$') {
         advance();
         exprApp("$");
         exprApp(readName());
@@ -578,7 +570,7 @@ static void parseInit(void) {
     }
 
     /* Symbol */
-    if (c == AST_SYM) {
+    if (c == '$') {
         advance();
         initApp("$");
         initApp(readName());
@@ -586,7 +578,7 @@ static void parseInit(void) {
     }
 
     /* Widened */
-    if (c == 'W') {
+    if (c == WIDEN) {
         advance();
         read1(); /* skip target type */
         initApp("(W ");
@@ -685,7 +677,7 @@ static void parseFunction(void) {
 }
 
 static void parseGlobal(void) {
-    if (cur() == AST_SYM) advance();
+    if (cur() == '$') advance();
     char *name = readName();
     char nameCopy[256];
     strcpy(nameCopy, name);

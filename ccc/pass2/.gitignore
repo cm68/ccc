@@ -2,3 +2,4 @@
 c1
 *.o
 stage1/
+sizecheck/

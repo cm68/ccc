@@ -4,6 +4,19 @@
 
 Pass1 is the C compiler frontend that parses C source code and emits an intermediate AST representation for pass2 (code generation).
 
+**Input preprocessing by cpp:** Before pass1 sees any code, the cpp preprocessor
+has already performed:
+- Macro expansion and conditional compilation
+- K&R to ANSI function definition conversion
+- Brace insertion around single-statement if/else bodies
+- Loop lowering: while/for/do converted to if/goto/label sequences
+- Break/continue resolution to goto statements
+- Local declaration initializer splitting (`int x = 5;` → `int x; x = 5;`)
+
+This means pass1 only handles `if` and `goto` for control flow (no loops),
+all if/else bodies have explicit braces, and all declarations are separate
+from their initializers.
+
 ## Architecture
 
 ### Two-Phase Parsing
@@ -133,13 +146,27 @@ if (phase == 1) {
 
 ### Control Structure Requirements
 
-All control structures require braces:
-- `if (cond) { ... }` - braces required
-- `while (cond) { ... }` - braces required
-- `for (...) { ... }` - braces required
-- `do { ... } while (cond);` - braces required
+After cpp preprocessing:
+- `if (cond) { ... }` - braces guaranteed by cpp
+- `if (cond) { ... } else { ... }` - both branches have braces
+- Loops (while/for/do) are eliminated - converted to if/goto/label sequences
+- break/continue statements are converted to goto
 
-This simplifies the streaming model since block boundaries are explicit.
+The cpp preprocessor's token filter (`knr.c`) handles all loop lowering and
+brace insertion. Pass1 only needs to handle `if`, `goto`, and labels for
+control flow.
+
+### Declaration Initializer Handling
+
+Local variable initializers are split by cpp:
+```c
+// cpp transforms:
+int x = 5;          // → int x; x = 5;
+char *p = "hello";  // → char *p; p = "hello";
+```
+
+This allows pass1 to handle all declarations uniformly without tracking
+initializer expressions during declaration parsing.
 
 ### Expression Lifetime
 
@@ -179,26 +206,20 @@ static unsigned char ifEmitIdx = 0;       /* phase 2: next if to emit */
 
 ### Phase 2 Stacks
 
-**Label Stack** - for break/continue resolution:
+**Label Stack** - for switch break resolution:
 ```c
 struct lblfrm {
     int num;                 /* label number */
-    unsigned char type;      /* WHILE, FOR, DO, SWITCH */
+    unsigned char type;      /* SWITCH only (loops lowered by cpp) */
 };
 struct lblfrm lblStack[MAX_LBLDEPTH];
 unsigned char lblDepth;
 ```
 
-Labels are: `W<n>` for WHILE, `F<n>` for FOR, `D<n>` for DO, `S<n>` for SWITCH.
-Break suffix: `B` (or `_break` for switch). Continue suffix: `T` (WHILE) or `C` (FOR/DO).
+Labels are: `S<n>` for SWITCH. Break uses `_break` suffix.
 
-**FOR Stack** - saves increment expression during body:
-```c
-struct forctx {
-    struct expr *incr;       /* increment expr, freed at loop end */
-};
-struct forctx forStack[MAX_FORDEPTH];
-```
+Note: Loop labels (`__W<n>`, `__F<n>`, `__D<n>`) and break/continue resolution
+are handled by cpp during loop lowering. Pass1 only tracks switch contexts.
 
 ## Statement Types
 
@@ -206,70 +227,36 @@ struct forctx forStack[MAX_FORDEPTH];
 |-------|------|-------------|
 | BEGIN | `{`  | Block statement |
 | IF    | `I`  | Conditional |
-| WHILE | (lowered) | While loop (emitted as labels/gotos) |
-| DO    | (lowered) | Do-while loop (emitted as labels/gotos) |
-| FOR   | (lowered) | For loop (emitted as labels/gotos) |
 | SWITCH| `S`  | Switch statement |
 | CASE  | `C`  | Case label |
 | DEFAULT| `O` | Default label |
-| BREAK | `G`  | Lowered to goto |
-| CONTINUE| `G`| Lowered to goto |
 | RETURN| `R`  | Return |
-| GOTO  | `G`  | Goto |
-| LABEL | `L`  | User label |
+| GOTO  | `G`  | Goto (includes lowered break/continue) |
+| LABEL | `L`  | Label (includes cpp-generated loop labels) |
 | EXPR  | `E`  | Expression statement |
 | ASM   | `A`  | Inline assembly |
 
-## Control Flow Lowering
+Note: WHILE, FOR, DO, CONTINUE are never seen by pass1 - they are
+lowered to if/goto/label sequences by cpp. BREAK is still seen inside
+switch statements (cpp only transforms loop breaks).
 
-Loops are lowered to labeled if/goto sequences in phase 2:
+## Control Flow
 
-**WHILE loop:**
-```
-B 0 (4+body)              ; Block
-  L W<n>T:                ; Top label
-  I nlabels NOT(cond)     ; IF NOT(condition)
-    B 0 1                 ; Then: break block
-      G W<n>B             ; Goto break
-    0                     ; has_else=0
-  <body>                  ; Body in outer block
-  G W<n>T                 ; Goto top
-  L W<n>B:                ; Break label
-```
+Loops are lowered by cpp before pass1 sees the code. Pass1 receives:
+- Labels (`__W<n>T`, `__F<n>B`, etc.) as regular LABEL tokens
+- Gotos as regular GOTO tokens
+- If statements with negated conditions for loop exit tests
 
-**FOR loop:**
-```
-B 0 N                     ; Block (N = 4 + body + optionals)
-  E <init>                ; Init (optional)
-  L F<n>T:                ; Top label
-  I nlabels NOT(cond)     ; IF NOT(condition) (optional)
-    B 0 1
-      G F<n>B
-    0
-  <body>
-  L F<n>C:                ; Continue label
-  E <incr>                ; Increment (optional)
-  G F<n>T                 ; Goto top
-  L F<n>B:                ; Break label
-```
+Pass1 emits these constructs directly to the AST without special loop handling.
 
-**DO loop:**
-```
-B 0 5                     ; Block
-  L D<n>T:                ; Top (body start)
-  <body>
-  L D<n>C:                ; Continue (before test)
-  I 0 nlabels cond        ; IF(condition)
-    G D<n>T               ; Goto top if true
-  L D<n>B:                ; Break label
-```
-
-**SWITCH:**
+**SWITCH** (handled by pass1):
 ```
 S has_label label case_count expr
   C stmt_count value_expr   ; Each CASE
   O stmt_count              ; DEFAULT
 ```
+
+See `cpp/CPP.md` for details on the loop lowering transformations.
 
 ## Short-Circuit Evaluation
 

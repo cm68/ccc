@@ -39,10 +39,10 @@ endif
 
 SOURCES = cc2.c astio.c emit.c codegen.c parseast.c \
 	emitexpr.c emitcmp.c emitops.c emitincdec.c emitpat.c pattern.c \
-	match.c patterns.c
+	match.c patterns.c templates.c pemit.c
 OBJECTS = $(SOURCES:.c=.o)
 
-HEADERS = cc2.h match.h
+HEADERS = cc2.h match.h templates.h
 
 all: c1
 

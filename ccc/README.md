@@ -35,10 +35,20 @@ complete; small programs run in simulation.
 
 ## Architecture
 
-This is a 2-pass compiler:
+This is a multi-stage compiler:
 
-**Pass 1 (cc1)**: Recursive descent parser with embedded C preprocessor
-- Parses and validates C source code
+**Preprocessor (cpp)**: C preprocessor with token filter
+- Full macro expansion and conditional compilation
+- K&R to ANSI function definition conversion
+- Brace insertion around single-statement if/else bodies
+- Loop lowering: while/for/do converted to if/goto/label sequences
+- Break/continue resolution to goto statements
+- Local declaration initializer splitting (`int x = 5;` → `int x; x = 5;`)
+- Outputs binary lexeme stream (.x file)
+
+**Pass 1 (cc1)**: Recursive descent parser
+- Parses preprocessed lexeme stream (loops lowered, braces present)
+- Only handles `if` and `goto` for control flow (no loop constructs)
 - Outputs AST in compact paren-free hex format
 - Uses Unix syscalls (write) instead of stdio for output
 - ~7,500 lines of C code
@@ -54,19 +64,28 @@ This is a 2-pass compiler:
 
 ## File Organization
 
+**Preprocessor (cpp) files:** (in cpp/)
+- cpp.c - Main entry point, command-line processing
+- lex.c - Lexer/tokenizer with directive handling
+- macro.c - Macro definition, lookup, and expansion
+- io.c - Character I/O and include stack
+- emit.c - Token output to .x and .i files
+- knr.c - Token filter: K&R conversion, brace insertion, init splitting
+- kw.c - Compressed keyword lookup tables
+- util.c - Error reporting, expression parsing
+
 **Pass 1 (cc1) files:** (in pass1/)
 - pass1.c - Main entry point, orchestration
-- lex.c - Lexical analyzer (tokenizer)
-- parse.c - Statement and declaration parsing
+- lexread.c - Lexeme stream reader
+- parse.c - Statement parsing and streaming emission
 - expr.c - Expression parsing with precedence
 - type.c - Type system management
-- declare.c - Declaration processing
+- decl.c - Top-level declaration parsing
+- declare.c - Declarator parsing
 - outast.c - AST emission in compact hex format
-- macro.c - CPP macro definition and expansion
-- io.c - Character I/O and file stack management
+- regalloc.c - Register allocation analysis
 - error.c - Error reporting
-- util.c - Utilities (fdprintf, bitdef, etc.)
-- kw.c - Keyword lookup tables
+- util.c - Utilities
 
 **Pass 2 (cc2) files:** (in pass2/)
 - cc2.c - Main entry point, command-line processing
@@ -95,23 +114,22 @@ This is a 2-pass compiler:
 
 ```
 ccc/
-├── pass1/            # Pass 1 source (cc1 - parser)
-├── pass2/         # Pass 2 source (cc2 - code generator)
-├── ws/               # Whitesmith's object tools (asz, wsld, wsnm, wslib)
+├── cpp/              # C preprocessor (cpp)
+├── ccc/
+│   ├── pass1/        # Pass 1 source (cc1 - parser)
+│   └── pass2/        # Pass 2 source (cc2 - code generator)
+├── tools/            # Whitesmith's object tools (asz, wsld, wsnm, wslib)
 ├── libsrc/           # Runtime library source
 │   ├── include/      # System headers for target
 │   ├── libc/         # C library (printf, malloc, etc.)
 │   └── libu/         # Unix syscall wrappers
 ├── tests/            # Test suite
-├── attic/            # Obsolete code (pass2/, astpp.py, unit_test/)
+├── attic/            # Obsolete code
 ├── root/             # Installed toolchain (after make install)
-│   ├── bin/          # Executables (cc1, cc2, ccc, asz, wsld, astpp, etc.)
+│   ├── bin/          # Executables (cpp, c0, c1, ccc, asz, wsld, astpp)
 │   ├── lib/          # Runtime libraries (crt0.o, libc.a, libu.a)
 │   └── usr/include/  # Installed headers
-├── stage1/           # Cross-compiled Z80 object files
-├── astpp.c           # AST pretty printer
-├── ccc.c             # Compiler driver
-└── util.c            # Shared utilities
+└── stage1/           # Cross-compiled Z80 object files
 ```
 
 ## Command Line Reference

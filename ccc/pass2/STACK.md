@@ -1,162 +1,265 @@
-# Stack Calling Convention Experiment
+# Stack Frame and Calling Convention
 
-This document describes an experiment comparing two stack cleanup strategies
-for function calls.
+This document describes the stack layout and calling convention used by pass2.
 
-## Background
+## Stack Frame Layout
 
-When a function is called with arguments:
-1. Arguments are pushed onto the stack (right-to-left)
-2. CALL instruction pushes return address
-3. Callee executes and returns value in HL
-4. **Someone** must clean up the pushed arguments
-
-The question: who cleans up?
-
-## Option 1: CALLER_FREE (Current Model)
+For functions with local variables (frame size > 0):
 
 ```
-caller:
-    push arg2
-    push arg1
-    call func
-    pop de        ; cleanup arg1
-    pop de        ; cleanup arg2
-    ; use result in HL
+High addresses
+    +----------------+
+    | arg N          |  IY + 4 + (N-1)*2
+    | ...            |
+    | arg 1          |  IY + 4
+    +----------------+
+    | return address |  IY + 2
+    +----------------+
+    | saved IY       |  IY + 0  <- IY points here after framealloc
+    +----------------+
+    | local N        |  IY - 2
+    | ...            |
+    | local 1        |  IY - framesize
+    +----------------+  <- SP after framealloc
+Low addresses
 ```
 
-**Advantages:**
-- No coordination needed between caller/callee
-- Callee doesn't need to know argument count
-- Works with variadic functions naturally
-- Simple function epilog (just RET)
+## Frame Allocation
 
-**Disadvantages:**
-- Cleanup code at every call site (code size)
-- If cleanup is deferred (via framefree), args accumulate on stack
+Functions with locals call `framealloc` with frame size in A:
 
-**Current implementation:**
-- cc2 generates push instructions for args
-- For functions with frames: framefree does bulk cleanup via `ld sp, iy`
-- For leaf functions: explicit pop instructions after call
-
-## Option 2: CALLEE_FREE
-
-```
-caller:
-    push arg2
-    push arg1
-    call func
-    ; args already cleaned by callee
-    ; use result in HL
-
-func:
-    ; ... body ...
-    ret 4         ; return and pop 4 bytes of args
-```
-
-**Advantages:**
-- Single cleanup site per function (smaller code overall)
-- Stack stays cleaner during execution
-- Z80 has no `ret n` but can be emulated
-
-**Disadvantages:**
-- Callee must know exact argument size
-- Variadic functions need special handling
-- Mismatched arg counts cause stack corruption
-- More complex function epilog
-
-**Implementation approach for Z80 (no RET n instruction):**
 ```asm
-; Option A: Manual cleanup before return
-func_epilog:
-    pop hl        ; save return address
-    pop de        ; discard arg1
-    pop de        ; discard arg2
-    jp (hl)       ; return
-
-; Option B: Adjust SP then return
-func_epilog:
-    ld hl, 4      ; arg size
-    add hl, sp
-    ld sp, hl
-    ret           ; but this returns to wrong address!
-
-; Option C: Use IX/IY to hold return address
-func_epilog:
-    pop ix        ; save return address
-    ld sp, iy     ; restore SP (cleans locals + args if IY set right)
-    jp (ix)       ; return via IX
+foo:
+    ld a,12           ; frame size (bytes for locals)
+    call framealloc
+    ; function body, locals at (iy-1), (iy-2), etc.
+    jp framefree      ; or just 'ret' for void functions
 ```
 
-## Interaction with framealloc/framefree
+The `framealloc` helper:
+1. Pushes IY (saves caller's frame pointer)
+2. Copies SP to IY (establishes new frame)
+3. Subtracts A from SP (allocates local space)
 
-Current framealloc sets IY to point at saved-IY location:
-```
-SP -> [locals]
-      [saved IY]    <- IY points here
-      [ret addr]    <- IY + 2
-      [args]        <- IY + 4
-```
-
-For CALLEE_FREE, framefree would need to also skip args:
 ```asm
-; framefree with arg cleanup
-; A = arg bytes to clean
-framefree_args:
-    ld l, a
-    ld h, 0
-    add hl, sp      ; HL = SP + args
-    ex de, hl       ; DE = new SP target
-    ld sp, iy       ; SP = IY (at saved IY)
-    pop iy          ; restore IY, SP now at ret addr
-    pop hl          ; HL = return address
-    ld sp, de       ; skip args
-    jp (hl)         ; return
+framealloc:
+    push iy
+    ld iy,0
+    add iy,sp         ; IY = SP (at saved IY)
+    ld l,a
+    ld h,0
+    ex de,hl
+    ld hl,0
+    add hl,sp
+    or a
+    sbc hl,de         ; HL = SP - framesize
+    ld sp,hl          ; allocate locals
+    ret
 ```
 
-## Build Configuration
+## Frame Deallocation
 
-Use preprocessor flags to select model:
+The `framefree` helper restores SP and IY, then returns:
+
+```asm
+framefree:
+    ld sp,iy          ; discard locals
+    pop iy            ; restore caller's IY
+    ret
+```
+
+Return statements in framed functions use `jp framefree` instead of `ret`.
+
+## Leaf Functions
+
+Functions without locals (frame size = 0) skip frame setup:
+
+```asm
+bar:
+    ; no framealloc call
+    ; function body
+    ret               ; direct return
+```
+
+## Argument Passing
+
+Arguments are pushed right-to-left before the call:
+
+| Type | Size | Push Method |
+|------|------|-------------|
+| byte | 1 | `push af` (value in A, F is garbage) |
+| word | 2 | `push hl` |
+| long | 4 | `push hl` twice (high word first) |
+
+```asm
+    ; call foo(a, b, c) where a=byte, b=word, c=word
+    ; push right to left: c, b, a
+    ld hl,(c)
+    push hl           ; arg 3 (word)
+    ld hl,(b)
+    push hl           ; arg 2 (word)
+    ld a,(a)
+    push af           ; arg 1 (byte, in high byte of stack word)
+    call foo
+```
+
+### Byte Parameter Stack Position
+
+Byte parameters pushed via `push af` have the value in the high byte of the
+stack word (A is pushed, F occupies low byte). Pass2 adjusts the IY offset:
 
 ```c
-#ifdef CALLER_FREE
-// Current model - caller pops args after call
-#endif
-
-#ifdef CALLEE_FREE
-// Experimental - callee pops args before return
-#endif
+// In parseFunc():
+if (ISBYTE(ptype) && preg == 0 && poff > 0)
+    poff++;  // access byte at IY+offset+1 (high byte of word)
 ```
 
-## Variadic Functions (stdarg)
+## Return Values
 
-CALLER_FREE is natural for variadics - caller knows how many args it pushed.
+| Type | Location |
+|------|----------|
+| byte | A register |
+| word | HL register |
+| long | lR memory (4 bytes at fixed address) |
 
-CALLEE_FREE requires variadics to use CALLER_FREE convention, or pass arg
-count explicitly. Common approaches:
-1. Mark variadic functions to use caller-cleanup
-2. Last fixed parameter tells callee the arg count
-3. Sentinel value marks end of args
+## Argument Access
 
-## Alloca Consideration
+Within a function, arguments are accessed via positive IY offsets:
 
-alloca() dynamically allocates stack space. Both models interact:
+```asm
+    ld a,(iy+5)       ; first byte arg (at IY+4, +1 for high byte)
+    ld l,(iy+6)       ; second word arg low byte
+    ld h,(iy+7)       ; second word arg high byte
+```
 
-- CALLER_FREE: alloca'd space must be freed before function returns
-- CALLEE_FREE: alloca'd space complicates the callee's cleanup calculation
+## Local Variable Access
 
-Not yet addressed in this experiment.
+Locals are accessed via negative IY offsets:
 
-## Test Plan
+```asm
+    ld a,(iy-1)       ; first local byte
+    ld l,(iy-2)       ; second local word low byte
+    ld h,(iy-1)       ; second local word high byte (overlaps!)
+```
 
-1. Implement CALLEE_FREE variant in cc2
-2. Create framefree_args helper
-3. Measure code size difference on test suite
-4. Verify correctness in simulator
-5. Document findings
+Note: Pass1 assigns offsets to avoid overlap; the example above is illustrative.
 
-## Status
+## Register Variables
 
-- [x] CALLER_FREE: current working implementation
-- [ ] CALLEE_FREE: experimental, not yet implemented
+Some locals are allocated to registers instead of the stack:
+
+| Register | Type | Usage |
+|----------|------|-------|
+| B | byte | First eligible byte local |
+| C | byte | Second eligible byte local |
+| BC | word | First eligible word local |
+| IX | pointer | Struct pointer parameter |
+
+Register variables don't consume stack space. Pass1 decides allocation based
+on usage patterns and loop nesting.
+
+## IX Register Usage
+
+IX is reserved for struct pointer parameters. When a function has a struct
+pointer parameter in IX:
+
+```c
+void foo(struct bar *p) {
+    p->field = 5;  // access via IX+offset
+}
+```
+
+```asm
+foo:
+    ; p is in IX (not on stack)
+    ld (ix+4),5       ; p->field at offset 4
+    ret
+```
+
+Fields are accessed via `(ix+offset)` addressing mode, which pass2 optimizes
+by collapsing `DEREF[+p DEREF[REGVAR(ix)] #ofs]` patterns to LOCALVAR nodes.
+
+## Stack Cleanup
+
+The caller is responsible for cleaning up pushed arguments. However, pass2
+does not emit explicit cleanup code after calls. Instead:
+
+1. **Framed functions**: `framefree` resets SP to IY, discarding both locals
+   and any accumulated argument pushes
+2. **Leaf functions**: Typically don't make calls, so no cleanup needed
+
+This means argument space accumulates on the stack during nested calls within
+a function, but is reclaimed when the function returns.
+
+## Long (32-bit) Operations
+
+Long values use memory temporaries since Z80 lacks 32-bit registers:
+
+- `lL` - left operand (4 bytes)
+- `lR` - right operand / result (4 bytes)
+
+Long arguments are pushed as two words (high first):
+```asm
+    ld hl,(longval+2) ; high word
+    push hl
+    ld hl,(longval)   ; low word
+    push hl
+    call func_taking_long
+```
+
+Long locals are accessed by computing address, then using helper:
+```asm
+    push iy
+    pop hl
+    ld de,-8          ; offset to long local
+    add hl,de
+    call lldHLR       ; load 4 bytes from (HL) to lR
+```
+
+## Helper Functions
+
+| Helper | Purpose |
+|--------|---------|
+| `framealloc` | Allocate stack frame (A = size) |
+| `framefree` | Deallocate frame and return |
+| `callhl` | Call function pointer in HL |
+| `switch` | Dispatch switch via table at HL |
+| `lldHL` | Load long from (HL) to lL |
+| `lldHLR` | Load long from (HL) to lR |
+| `lstHL` | Store long from lL to (HL) |
+| `lstHLR` | Store long from lR to (HL) |
+| `ladd/lsub` | Long add/subtract (lR = lL op lR) |
+| `land/lor/lxor` | Long bitwise ops |
+| `lneg/lcom` | Long negate/complement |
+| `lcmp` | Long compare (sets flags) |
+| `lshl/lashr/lshr` | Long shifts (A = count) |
+| `imul/idiv/imod` | Word multiply/divide/modulo |
+| `imulb/idivb/imodb` | Byte multiply/divide/modulo |
+| `imula` | Multiply HL by A |
+
+## Example: Complete Function
+
+```c
+int add(int a, int b) {
+    int sum;
+    sum = a + b;
+    return sum;
+}
+```
+
+```asm
+    .globl add
+add:
+    ld a,2            ; frame size for 'sum'
+    call framealloc
+    ; sum at (iy-2), a at (iy+4), b at (iy+6)
+    ld l,(iy+4)
+    ld h,(iy+5)       ; load a
+    ld e,(iy+6)
+    ld d,(iy+7)       ; load b
+    add hl,de         ; a + b
+    ld (iy-2),l
+    ld (iy-1),h       ; store to sum
+    ; return sum (already in HL)
+    jp framefree
+```

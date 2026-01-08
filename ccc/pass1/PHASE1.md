@@ -8,6 +8,16 @@ without building expression or statement trees. This allows phase 2 to have
 complete type information when parsing expressions and to know counts
 (case counts, statement counts, has-else flags) before emitting AST.
 
+**Note:** The lexeme stream has already been preprocessed by cpp, which:
+- Inserts braces around single-statement if/else bodies
+- Lowers while/for/do loops to if/goto/label sequences
+- Converts break/continue to goto statements
+- Splits local declaration initializers (`int x = 5;` → `int x; x = 5;`)
+- Converts K&R function definitions to ANSI style
+
+Phase 1 therefore only handles `if` and `goto` for control flow (no loops),
+and can assume all if/else bodies have explicit braces.
+
 ## Entry Point
 
 In `pass1.c`, `process()` orchestrates both phases:
@@ -101,7 +111,7 @@ if (phase == 1) {
         }
         stmt_count++;
         break;
-    // ... similar for WHILE, FOR, DO, SWITCH
+    // ... similar for SWITCH (WHILE, FOR, DO handled by cpp)
     }
     continue;  // Skip tree-building path
 }

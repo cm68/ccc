@@ -15,7 +15,7 @@ DEST = $(realpath $(CURDIR)/root)
 COMPILER = ccc 
 
 # Subdirectories to build
-DIRS = cpp $(COMPILER) tools libsrc
+DIRS = $(COMPILER) tools libsrc
 
 SUBMAKE = $(MAKE) CC=$(CC) DEST=$(DEST)
 
@@ -50,7 +50,7 @@ valgrind: install
 	$(SUBMAKE) -C tests valgrind
 
 tags:
-	ctags cpp/*.c pass1/*.c pass2/*.c tools/*.c
+	ctags ccc/cpp/*.c ccc/pass1/*.c ccc/pass2/*.c tools/*.c
 
 sizecheck:
 	@true

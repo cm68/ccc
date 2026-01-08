@@ -6,3 +6,5 @@ error.h
 debug.h
 debugtags.c
 stage1/
+sizecheck/
+sizecheck1/
