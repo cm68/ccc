@@ -28,6 +28,7 @@ else ifeq ($(CC),ccc)
 CFLAGS = -DCCC
 endif
 
+INC = -I../../libsrc/include
 SRCS = cpp.c lex.c io.c macro.c kw.c emit.c util.c kwtab.c knr.c
 OBJS = $(SRCS:.c=.o)
 
@@ -72,7 +73,6 @@ sizefile: Makefile
 	 > sizefile
 
 # Compile with zc3 to check Z80 sizes
-INC = -I../../libsrc/include
 sizecheck:
 	mkdir -p sizecheck
 	$(SETX) ; o="" ; for f in $(SRCS); do \
@@ -89,7 +89,7 @@ clean:
 	rm -f *.o *.1 *.2 *.x *.i *.pp
 
 clobber: clean
-	rm -f cpp mkkw kwtab.c xdump
+	rm -f cpp mkkw kwtab.c xdump stage1 stage2 sizecheck sizecheck1
 
 install: cpp xdump
 	cp cpp xdump $(DEST)/bin
