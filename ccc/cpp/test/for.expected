@@ -1,0 +1,33 @@
+# 1 "for.c"
+# +1
+# +1
+main ( ) {
+# +1
+int i ;
+# +1
+int sum ;
+# +1
+sum = 0 ;
+# +1
+{
+# 7 "for.c"
+i = 0 ;
+__F1T : ;
+if ( ! ( i < 10 ) ) {
+goto __F1B ;
+}
+{
+# +1
+sum = sum + i ;
+# +1
+}
+__F1C : ;
+# 7 "for.c"
+i = i + 1 ;
+goto __F1T ;
+__F1B : ;
+}
+# +1
+return sum ;
+# +1
+}

@@ -1,0 +1,52 @@
+# 1 "nested.c"
+# +1
+# +1
+main ( ) {
+# +1
+int i ;
+# +1
+int j ;
+# +1
+{
+# 6 "nested.c"
+i = 0 ;
+__F1T : ;
+if ( ! ( i < 5 ) ) {
+goto __F1B ;
+}
+{
+# +1
+{
+# 7 "nested.c"
+j = 0 ;
+__F2T : ;
+if ( ! ( j < 5 ) ) {
+goto __F2B ;
+}
+{
+# +1
+if ( j == 3 ) {
+# +1
+goto __F2B ;
+# +1
+}
+# +1
+}
+__F2C : ;
+# 7 "nested.c"
+j = j + 1 ;
+goto __F2T ;
+__F2B : ;
+}
+# +1
+}
+__F1C : ;
+# 6 "nested.c"
+i = i + 1 ;
+goto __F1T ;
+__F1B : ;
+}
+# +1
+return i ;
+# +1
+}

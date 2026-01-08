@@ -1,0 +1,65 @@
+# 1 "mixed_loops.c"
+# +1
+# +1
+main ( ) {
+# +1
+int i ;
+# +1
+int j ;
+# +1
+int k ;
+# +1
+{
+# 7 "mixed_loops.c"
+i = 0 ;
+__F1T : ;
+if ( ! ( i < 3 ) ) {
+goto __F1B ;
+}
+{
+# +1
+j = 0 ;
+# +1
+{
+__W2T : ;
+if ( ! ( # 9 "mixed_loops.c"
+j < 3 ) ) {
+goto __W2B ;
+}
+{
+# +1
+k = 0 ;
+# +1
+{
+__D3T : ;
+{
+# +1
+k = k + 1 ;
+# +1
+}
+__D3C : ;
+if ( # 13 "mixed_loops.c"
+k < 2 ) {
+goto __D3T ;
+}
+__D3B : ;
+}
+# +1
+j = j + 1 ;
+# +1
+}
+goto __W2T ;
+__W2B : ;
+}
+# +1
+}
+__F1C : ;
+# 7 "mixed_loops.c"
+i = i + 1 ;
+goto __F1T ;
+__F1B : ;
+}
+# +1
+return i ;
+# +1
+}

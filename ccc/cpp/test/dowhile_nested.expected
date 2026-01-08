@@ -1,0 +1,46 @@
+# 1 "dowhile_nested.c"
+# +1
+# +1
+main ( ) {
+# +1
+int i ;
+# +1
+int j ;
+# +1
+i = 0 ;
+# +1
+{
+__D1T : ;
+{
+# +1
+j = 0 ;
+# +1
+{
+__D2T : ;
+{
+# +1
+j = j + 1 ;
+# +1
+}
+__D2C : ;
+if ( # 11 "dowhile_nested.c"
+j < 3 ) {
+goto __D2T ;
+}
+__D2B : ;
+}
+# +1
+i = i + 1 ;
+# +1
+}
+__D1C : ;
+if ( # 13 "dowhile_nested.c"
+i < 5 ) {
+goto __D1T ;
+}
+__D1B : ;
+}
+# +1
+return i ;
+# +1
+}
