@@ -172,6 +172,39 @@ initializer expressions during declaration parsing.
 
 Expressions are allocated, emitted, and freed within a single statement.
 
+### Constant Folding
+
+Pass1 performs limited compile-time constant folding for common C idioms:
+
+**Binary operations** - When both operands are constants (E_CONST flag set):
+- Arithmetic: `+`, `-`, `*`, `/`, `%`
+- Bitwise: `&`, `|`, `^`
+- Shifts: `<<`, `>>`
+
+**Unary operations** - When operand is constant:
+- Negation: `-x`
+- Bitwise NOT: `~x`
+- Logical NOT: `!x`
+
+**Type casts** - E_CONST flag preserved through NARROW/WIDEN operations.
+
+**Member access** - Struct member offset added to base is folded when base is constant.
+
+This enables two important C idioms to resolve at compile time:
+
+```c
+/* Array element count */
+int count = sizeof(arr) / sizeof(arr[0]);
+
+/* Struct member offset (offsetof pattern) */
+int off = (int)&((struct foo *)0)->member;
+```
+
+The `foldConst()` function in expr.c handles binary folding. Unary folding
+is inline in the NEG/TWIDDLE/BANG case. Cast folding preserves E_CONST
+through type conversions. Member access folding occurs after creating
+the PLUS node for base + offset.
+
 ## Key Data Structures
 
 ### Switch Statement Tracking
