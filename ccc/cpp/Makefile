@@ -5,7 +5,7 @@
 # Disable built-in lex rule (.x -> .c) to avoid conflicts with lexeme output files
 %.c: %.x
 
-DEST ?= $(CURDIR)/../root
+DEST ?= $(CURDIR)/../../root
 
 CC = gcc
 
