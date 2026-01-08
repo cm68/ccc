@@ -464,6 +464,70 @@ coerceTypes(struct expr *e, struct type *tgt)
 }
 
 /*
+ * Constant folding for binary operations
+ * Folds arithmetic, shift, and bitwise ops when both operands are constants.
+ * Used for sizeof(arr)/sizeof(arr[0]) and address calculations.
+ * Returns folded CONST expr, or original expr if not foldable.
+ */
+static struct expr *
+foldConst(struct expr *e)
+{
+    unsigned long lv, rv, result;
+    struct expr *left, *right;
+
+    if (!e || !e->left || !e->right)
+        return e;
+
+    left = e->left;
+    right = e->right;
+
+    /* Both operands must be constants */
+    if (!(left->flags & E_CONST) || !(right->flags & E_CONST))
+        return e;
+
+    lv = left->v;
+    rv = right->v;
+
+    switch (e->op) {
+    case PLUS:   result = lv + rv; break;
+    case MINUS:  result = lv - rv; break;
+    case STAR:   /* binary * uses STAR token */
+    case TIMES:  result = lv * rv; break;
+    case DIV:    result = rv ? lv / rv : 0; break;
+    case MOD:    result = rv ? lv % rv : 0; break;
+    case LSHIFT: result = lv << rv; break;
+    case RSHIFT: result = lv >> rv; break;
+    case AND:
+    case AMPER:  result = lv & rv; break;  /* binary & uses AMPER */
+    case OR:     result = lv | rv; break;
+    case XOR:    result = lv ^ rv; break;
+    default:
+        return e;  /* Not a foldable operator */
+    }
+
+    /* Replace with constant - reuse left node, free right */
+    left->op = CONST;
+    left->v = result;
+    left->type = e->type ? e->type : inttype;
+    left->flags = E_CONST;
+    left->left = NULL;
+    left->right = NULL;
+
+    /* Free right operand */
+    FreeExpr(right);
+
+    /* Free the binary op node (not its children - left is reused) */
+    e->left = NULL;
+    e->right = NULL;
+    free(e);
+#ifdef DEBUG
+    exprCurCnt--;
+#endif
+
+    return left;
+}
+
+/*
  * Parse an expression using precedence climbing algorithm
  *
  * Recursive descent parser for C expressions that implements operator
@@ -713,6 +777,23 @@ parseExpr(unsigned char pri)
                          */
                         e1->type = tp;
                         e = e1;
+                    } else if (e1->flags & E_CONST) {
+                        /* Fold cast of constant */
+                        unsigned long v = e1->v;
+                        if (tgt_size < src_size) {
+                            /* Narrow: mask to target size */
+                            if (tgt_size == 1) v &= 0xFF;
+                            else if (tgt_size == 2) v &= 0xFFFF;
+                        } else if (!src_unsigned && tgt_size > src_size) {
+                            /* Sign extend */
+                            if (src_size == 1 && (v & 0x80))
+                                v |= 0xFFFFFF00L;
+                            else if (src_size == 2 && (v & 0x8000))
+                                v |= 0xFFFF0000L;
+                        }
+                        e1->v = v;
+                        e1->type = tp;
+                        e = e1;
                     } else {
                         if (tgt_size < src_size) {
                             /* Narrowing: truncate to smaller type */
@@ -736,6 +817,16 @@ parseExpr(unsigned char pri)
 
                     if (tgt_size == src_size) {
                         /* Same size: just reinterpret */
+                        e1->type = tp;
+                        e = e1;
+                    } else if (e1->flags & E_CONST) {
+                        /* Fold cast of constant */
+                        unsigned long v = e1->v;
+                        if (tgt_size < src_size) {
+                            if (tgt_size == 1) v &= 0xFF;
+                            else if (tgt_size == 2) v &= 0xFFFF;
+                        }
+                        e1->v = v;
                         e1->type = tp;
                         e = e1;
                     } else {
@@ -766,6 +857,22 @@ parseExpr(unsigned char pri)
         if (e->left) {
             e->type = e->left->type;
             e->left->up = e;
+            /* Fold unary ops on constants */
+            if (e->left->flags & E_CONST) {
+                struct expr *folded = e->left;
+                unsigned long v = folded->v;
+                if (uop == NEG) v = -v;
+                else if (uop == TWIDDLE) v = ~v;
+                else if (uop == BANG) v = !v;
+                folded->v = v;
+                folded->up = NULL;
+                e->left = NULL;
+                free(e);
+#ifdef DEBUG
+                exprCurCnt--;
+#endif
+                e = folded;
+            }
         }
         break;
 
@@ -1083,6 +1190,7 @@ parseExpr(unsigned char pri)
             e3->right->up = e3;
             // addr is pointer to member, not pointer to base struct
             e3->type = getType(TF_POINTER, np->type, 0);
+            e3 = foldConst(e3);  /* fold constant offsets */
 
             // Check if this is a bitfield access
             if (np->kind == bitfield) {
@@ -1423,6 +1531,9 @@ parseExpr(unsigned char pri)
         } else if (e->left) {
             e->type = e->left->type;
         }
+
+        /* Constant folding for arithmetic/bitwise operations */
+        e = foldConst(e);
     }
     return e;
 }
