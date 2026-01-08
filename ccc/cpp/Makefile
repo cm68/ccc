@@ -31,6 +31,7 @@ endif
 INC = -I../../libsrc/include
 SRCS = cpp.c lex.c io.c macro.c kw.c emit.c util.c kwtab.c knr.c
 OBJS = $(SRCS:.c=.o)
+GENERATED = kwtab.c
 
 all: cpp xdump
 
@@ -63,17 +64,8 @@ stage1:
       mv $$b.i $$b.x $$b.1 $$b.2 $$b.pp $$b.s $$b.o $(OUTDIR) 2>/dev/null ; \
 	done
 
-# Size report for stage1 objects
-sizefile: Makefile
-	$(MAKE) stage1 CC=ccc
-	@$(DEST)/bin/wssize $(addprefix $(OUTDIR)/,$(OBJS)) | \
-	awk \
-		'{ t+=$$1 ; d+=$$2 ; b+=$$3 ; a+=$$4; print } \
-		END {printf "%7d %7d %7d %7d %19s\n", t, d, b, a, "cpp total" }' \
-	 > sizefile
-
 # Compile with zc3 to check Z80 sizes
-sizecheck:
+sizecheck: $(GENERATED)
 	mkdir -p sizecheck
 	$(SETX) ; o="" ; for f in $(SRCS); do \
 		b=$${f%.c}; \
@@ -89,7 +81,8 @@ clean:
 	rm -f *.o *.1 *.2 *.x *.i *.pp
 
 clobber: clean
-	rm -f cpp mkkw kwtab.c xdump stage1 stage2 sizecheck sizecheck1
+	rm -f cpp mkkw kwtab.c xdump sizefile
+	rm -rf stage1 stage2 sizecheck sizecheck1
 
 install: cpp xdump
 	cp cpp xdump $(DEST)/bin
