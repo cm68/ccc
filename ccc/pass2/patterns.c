@@ -2,7 +2,7 @@
  * patterns.c - Expression pattern bytecode tables
  */
 #include "match.h"
-#include "../../cpp/lexeme.h"
+#include "../cpp/lexeme.h"
 
 /*
  * Pattern bytecode table

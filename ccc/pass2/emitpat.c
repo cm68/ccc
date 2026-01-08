@@ -6,29 +6,28 @@
  */
 #include <stdio.h>
 #include "cc2.h"
+#include "../cpp/lexeme.h"
 
 /*
  * Operation table for compound arithmetic/bitwise ops.
  * Maps operator codes to instruction strings for byte/word operations.
- *
- * Operators: P(+=), o(-=), 1(|=), a(&=), X(^=), m(%=)
  */
 struct opEntry {
-    char op;            /* operator character */
+    char op;            /* operator code from lexeme.h */
     char *byteImm;      /* byte: A op imm */
     char *byteReg;      /* byte: A op E */
     char *wordOp;       /* word: for emitWBit */
 };
 
 static struct opEntry opTab[] = {
-    { 'P', "add a,%d", "add a,e", 0 },
-    { 'o', "sub %d",   "sub e",   0 },
-    { '1', "or %d",    "or e",    "or" },
-    { 'a', "and %d",   "and e",   "and" },
-    { 'X', "xor %d",   "xor e",   "xor" },
-    { '&', 0,          "and e",   "and" },
-    { '|', 0,          "or e",    "or" },
-    { '^', 0,          "xor e",   "xor" },
+    { PLUSEQ, "add a,%d", "add a,e", 0 },
+    { SUBEQ,  "sub %d",   "sub e",   0 },
+    { OREQ,   "or %d",    "or e",    "or" },
+    { ANDEQ,  "and %d",   "and e",   "and" },
+    { XOREQ,  "xor %d",   "xor e",   "xor" },
+    { AND,    0,          "and e",   "and" },
+    { OR,     0,          "or e",    "or" },
+    { XOR,    0,          "xor e",   "xor" },
     { 0 }
 };
 

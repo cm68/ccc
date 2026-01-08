@@ -1,29 +1,33 @@
 # pass2 Architecture
 
-The pass2 code generator translates AST input from cc1 into Z80 assembly.
+The pass2 code generator translates binary AST input from pass1 into Z80 assembly.
 
 ## Streaming Model
 
 The AST is **not** ingested into a complete tree. Instead, processing is
-streaming: each expression is parsed, scheduled, emitted, and freed before
+streaming: each expression is parsed, annotated, emitted, and freed before
 the next. This keeps memory footprint minimal for the 64KB target.
 
 ```
-AST stream ──┬── globals ──→ emit .db/.dw/.ds
+AST stream ──┬── globals (Z) ──→ emit .db/.dw/.ds
              │
-             └── functions ──→ for each statement:
-                                  parseExpr() → build tree
-                                  calcDemand() → bottom-up scheduling
-                                  assignDest() → top-down register alloc
-                                  emitExpr() → generate assembly
-                                  freeExpr() → release memory
+             ├── strings (U) ──→ emit .db with quoted/hex data
+             │
+             ├── inline asm (A) ──→ pass through verbatim
+             │
+             └── functions (F) ──→ for each statement:
+                                      parseExpr() → build tree
+                                      annotate() → detect patterns
+                                      emitExpr() → generate assembly
+                                      freeExpr() → release memory
 ```
 
 **Parse-time work:**
-- Symbol resolution: `$name` in AST becomes `R` (regvar), `V` (local), or
-  stays `$` (global) based on the current function's symbol table
-- Type/size computation: `e->size` set from type suffix
-- Argument list reversal: `@` call args built in reverse order
+- Symbol resolution: `SYM` nodes become `REGVAR` (register variable),
+  `LOCALVAR` (stack variable via IY/IX+offset), or stay `SYM` (global)
+- Type/size computation: `e->size` set from type suffix via `TSIZE()`
+- Argument list reversal: `CALL` args built in reverse order via `ARGNODE` chain
+- Pattern collapsing: `DEREF[LOCALVAR]` and `+p[REGVAR #ofs]` collapse to `LOCALVAR`
 
 **No intermediate representation** - the expression tree exists only
 briefly between parseExpr() and freeExpr().
@@ -34,130 +38,98 @@ The core data structure is `struct expr`:
 
 ```c
 struct expr {
-    char op;          /* operator: '#' '$' 'R' 'V' 'M' '=' '+' '@' ... */
-    char size;        /* result size in bytes (1, 2, 4) */
-    char type;        /* type suffix from AST ('b' 's' 'l' 'B' 'S' 'L') */
+    unsigned char op;   /* operator: lexeme.h tokens */
+    char size;          /* result size in bytes (1, 2, 4) */
+    char type;          /* type suffix from AST ('b' 's' 'l' 'B' 'S' 'L') */
     struct expr *left, *right;
     union { long l; short s; char c; } v;  /* constant value */
-    char *sym;        /* symbol name */
-    unsigned char aux, aux2;  /* operator-specific */
-    unsigned char demand;     /* temp register demand */
-    unsigned char dest;       /* destination register */
-    unsigned char special;    /* optimization pattern */
-    char offset;              /* indexed addressing offset */
-    short incr;               /* inc/dec amount */
+    char *sym;          /* symbol name (malloc'd) */
+    unsigned char aux;  /* nargs for call, width for bitfield, register */
+    short aux2;         /* offset for bitfield, incr amount, label */
+    unsigned char demand;   /* (unused - for future scheduling) */
+    unsigned char dest;     /* destination register for specials */
+    unsigned char spill;    /* (unused - for future scheduling) */
+    unsigned char unused;   /* result is unused (expr stmt, void call) */
+    unsigned char cond;     /* used as condition (emit flags, not value) */
+    unsigned char special;  /* optimization pattern type */
+    char offset;            /* IY/IX-relative offset */
+    short incr;             /* increment amount for inc/dec specials */
 };
 ```
 
-### Operator Codes
+### Operator Codes (from lexeme.h)
 
 **Primary:**
-- `#` - constant (value in `v`)
-- `$` - global symbol (name in `sym`)
-- `R` - register variable (register in `aux`)
-- `V` - local/stack variable (IY offset in `aux2`)
+- `AST_CONST` - constant (value in `v`)
+- `SYM` - global symbol (name in `sym`)
+- `REGVAR` - register variable (register in `aux`: R_B, R_C, R_BC, R_IX)
+- `LOCALVAR` - local/stack variable (IY/IX offset in `offset`, register in `aux`)
 
 **Unary:**
-- `M` - memory dereference
-- `W` - widen (zero-extend byte to word)
-- `N` - narrow (truncate word to byte)
-- `x` - sign-extend (byte to word)
-- `~` - bitwise complement
-- `!` - logical not
-- `\` - unary minus (negation)
+- `DEREF` - memory dereference
+- `WIDEN` - zero-extend byte to word
+- `NARROW` - truncate word to byte
+- `SEXT` - sign-extend byte to word
+- `TWIDDLE` - bitwise complement (~)
+- `BANG` - logical not (!)
+- `NEG` - unary minus (negation)
 
 **Inc/Dec:**
-- `(` - pre-increment
-- `)` - post-increment
-- `{` - pre-decrement
-- `}` - post-decrement
+- `PREINC` - pre-increment (++x)
+- `POSTINC` - post-increment (x++)
+- `PREDEC` - pre-decrement (--x)
+- `POSTDEC` - post-decrement (x--)
 
-**Binary:**
-- `+ - * / %` - arithmetic
-- `& | ^` - bitwise
-- `y` - left shift (`<<`)
-- `w` - signed right shift (`>>`)
-- `z` - unsigned right shift
-- `< > Q n L g` - comparisons (`< > == != <= >=`)
-- `j h` - logical and/or (`&& ||`)
-- `=` - assignment
+**Binary Arithmetic:**
+- `PLUS MINUS STAR DIV MOD` - arithmetic (+, -, *, /, %)
+
+**Binary Bitwise:**
+- `AND OR XOR` - bitwise (&, |, ^)
+- `LSHIFT RSHIFT` - shifts (<<, >>)
+
+**Comparisons:**
+- `LT EQ NEQ` - (<, ==, !=) - pass1 normalizes >, <=, >= to these
+
+**Logical:**
+- `LAND LOR` - logical and/or (&&, ||)
+
+**Assignment:**
+- `ASSIGN` - simple assignment (=)
 
 **Compound Assignment:**
-- `P o 1 a X m` - `+= -= |= &= ^= %=`
-- `T 2` - `*= /=`
-- `0 6` - `<<= >>=`
+- `PLUSEQ SUBEQ` - (+=, -=)
+- `OREQ ANDEQ XOREQ MODEQ` - (|=, &=, ^=, %=)
+- `MULTEQ DIVEQ` - (*=, /=)
+- `LSHIFTEQ RSHIFTEQ` - (<<=, >>=)
 
 **Other:**
-- `@` - function call (nargs in `aux`)
-- `?` - ternary (`:` node holds then/else branches)
-- `,` - comma operator
-- `Y` - memory copy (length in `aux`)
-- `F` - bitfield access
+- `CALL` - function call (nargs in `aux`, args in ARGNODE chain via `right`)
+- `QUES` - ternary (TERNBRANCH node holds then/else branches)
+- `COMMA` - comma operator
+- `BFEXTRACT BFASSIGN` - bitfield access
 
-## Per-Expression Scheduling
+## Pattern Detection
 
-Each expression tree goes through three phases before being freed:
+The `annotate()` function walks the tree detecting optimization patterns,
+setting `e->special`:
 
-### Phase 1: Demand Calculation (bottom-up)
-
-`calcDemand()` walks the tree bottom-up computing register pressure:
-
-- **Primaries** (`# $ R V`): demand = 1
-- **Unary ops**: demand = child's demand
-- **Binary ops**: demand = max(left, right+1)
-- **Function calls**: demand = max of all args
-
-Sets `e->spill = 1` when right subtree needs more than 1 temp
-(indicating DE must be pushed before evaluating right child).
-
-Also detects optimization patterns, setting `e->special`:
-
-| Pattern | Code |
-|---------|------|
-| SP_SYMOFS | `+s $sym #const` → `ld hl,sym+ofs` |
-| SP_SYMOFD | `Ms[+s $sym #const]` → `ld hl,(sym+ofs)` |
-| SP_MSYM | `Ms $sym` → `ld hl,(sym)` |
-| SP_MUL2 | `*s expr #pow2` → `add hl,hl` repeated |
-| SP_STCONST | `= [M addr] #const` → `ld (hl),n` |
-| SP_INCR/DECR | `(s Rs reg` → `inc reg` |
-| SP_INCGLOB | `(s $sym` → `ld hl,(sym); inc hl; ld (sym),hl` |
-| SP_SIGN | `gs Ms $sym #0` → `bit 7,(sym+n)` |
-| SP_SIGNREG | `gs Ms[Rs bc] #0` → `bit 7,b` |
-| SP_BITTEST | `&B M[(ix+ofs)] #pow2` → `bit n,(ix+ofs)` |
-| SP_CMPxx | Byte compare with indexed/indirect operand |
-| SP_ADDBC | `+s Ms[Rs bc] #const` → `ld hl,const; add hl,bc` |
-
-### Phase 2: Destination Assignment (top-down)
-
-`assignDest()` walks top-down assigning target registers:
-
-**Register model:**
-- `R_HL` (6) - primary accumulator for word results
-- `R_DE` (5) - secondary accumulator (left operand of binops)
-- `R_A` (7) - byte accumulator
-- `R_BC` (3) - register variable (word)
-- `R_B/R_C` (1/2) - register variable (byte)
-- `R_IX` (4) - struct pointer register variable
-- `R_IY` (8) - frame pointer (IY+offset for locals)
-- `R_TOS` (13) - push to stack (function arguments)
-- `R_IXO/R_IYO` - indexed addressing mode
-
-**Assignment rules:**
-- Binary ops: left→DE, right→HL (commutative ops may swap based on demand)
-- Comparisons: left→A (bytes) or HL (words), right→HL
-- Function args: all→TOS
-- Unary ops: child gets parent's dest
-- Byte results: dest=A unless parent expects word
-- Word results: dest=HL
-
-### Phase 3: Emission
-
-`emitExpr()` walks the tree with destinations already assigned:
-
-1. Check `special` pattern, emit optimized code if set
-2. Otherwise emit children based on demand ordering
-3. Emit operation instruction
-4. Result lands in assigned `dest` register
+| Pattern | Code | Description |
+|---------|------|-------------|
+| SP_SYMOFS | `+p $sym #const` | `ld hl,sym+ofs` |
+| SP_SYMOFD | `M[+p $sym #const]` | `ld hl,(sym+ofs)` |
+| SP_MSYM | `M $sym` | `ld hl,(sym)` |
+| SP_MUL2 | `* expr #pow2` | `add hl,hl` repeated |
+| SP_STCONST | `= [target] #const` | `ld (hl),n` or direct store |
+| SP_INCR/DECR | `++/-- regvar` | `inc/dec reg` (incr <= 4) |
+| SP_INCGLOB | `++/-- $sym` | load/inc/store global word |
+| SP_BITTEST | `& M[(ix+ofs)] #pow2` | `bit n,(ix+ofs)` |
+| SP_CMPEQ | `== expr #0/1/-1` | inc/dec then test HL |
+| SP_CMPV | `cmp Vb #const` | `ld a,const; cp (iy+off)` |
+| SP_CMPR | `cmp Rb #const` | `ld a,const; cp reg` |
+| SP_CMPHL | `cmp Mb[addr] simple` | `ld a,(hl); cp operand` |
+| SP_ADDBC | `+p M[Rp bc] #const` | `ld hl,const; add hl,bc` |
+| SP_SIGN | `>= M$sym #0` | `bit 7,(sym+n)` |
+| SP_SIGNREG | `>= M[Rs bc] #0` | `bit 7,b` |
 
 ## Symbol Table
 
@@ -172,41 +144,116 @@ struct sym {
 };
 ```
 
-During expression parsing, `$symbol` references are resolved:
-- If local with reg≠0 → `R` node (register variable)
-- If local with reg=0 → `V` node (stack variable via IY+offset)
-- Otherwise → `$` node (global symbol)
+During expression parsing, `SYM` references are resolved:
+- If local with reg!=0 → `REGVAR` node (register variable)
+- If local with reg=0 → `LOCALVAR` node (stack variable via IY+offset)
+- Otherwise → `SYM` node (global symbol)
+
+## Register Model
+
+- `R_HL` (6) - primary accumulator for word results
+- `R_DE` (5) - secondary (left operand saved here before right)
+- `R_A` (7) - byte accumulator
+- `R_BC` (3) - register variable (word)
+- `R_B/R_C` (1/2) - register variable (byte)
+- `R_IX` (4) - struct pointer register variable
+- `R_IY` (8) - frame pointer (IY+offset for locals)
+- `R_IYO/R_IXO` (11/12) - indexed addressing mode (iy+d)/(ix+d)
+- `R_TOS` (13) - push to stack (function arguments)
 
 ## Calling Convention
 
 - Arguments pushed right-to-left (parser builds arg list in reverse)
 - Word results in HL
 - Byte results in A
-- Long results in HL:HL' (using shadow registers)
+- Long results in lR (memory location, with HL:HL' for some ops)
 - Caller cleans stack after call returns
+- Frame allocation via `framealloc` helper, cleanup via `framefree`
+
+## Statement Processing
+
+Statements are processed by `dumpStmt()`:
+
+| Code | Statement | Handling |
+|------|-----------|----------|
+| B | block | Parse decls (add to locals), process stmts |
+| I | if | Parse cond, emit conditional jump, then/else bodies |
+| E | expression | Parse expr, emit, mark `unused=1` |
+| R | return | Parse value, emit, jump to `framefree` or `ret` |
+| L | label | Emit label |
+| G | goto | Emit `jp label` |
+| S | switch | Emit expr to A, jump to table, process cases |
+| C | case | Record value/label in switch context |
+| O | default | Record default label in switch context |
+| ; | empty | Nothing |
+| A | inline asm | Skip (length-prefixed) |
+| U | string | Parse inline string literal |
+
+## Condition Code Generation
+
+For `if` statements, conditions use short-circuit evaluation:
+
+- `cond` flag propagates through LAND/LOR trees
+- `aux2` encodes jump target: positive = FALSE jump to `no{n}`, negative = TRUE jump to `ht{n}`
+- Comparisons emit conditional jumps directly when `cond=1`
+- LAND: both sides must be true, FALSE jumps to `no{label}`
+- LOR: either side true, TRUE jumps to `ht{label}`, FALSE falls through
 
 ## File Organization
 
 | File | Purpose |
 |------|---------|
-| cc2.h | Shared definitions, struct expr |
+| cc2.h | Shared definitions, struct expr, struct sym |
 | cc2.c | Main, symbol table management |
-| astio.c | Low-level AST reading |
-| parseast.c | Expression/statement parsing |
-| codegen.c | calcDemand(), assignDest() |
-| emitexpr.c | emitExpr() and helpers |
-| emit.c | emit(), comment(), output formatting |
+| astio.c | Binary AST reading (read1, read2, read4, readName) |
+| parseast.c | Expression/statement parsing, global/function handling |
+| codegen.c | annotate() pattern detection, helper functions |
+| emit.c | emit(), emitLabel(), comment() output formatting |
+| emitexpr.c | emitExpr() main expression emission |
+| emitcmp.c | emitCompare(), emitCondJmp() comparison emission |
+| emitincdec.c | emitPreIncDec(), emitPostInc() inc/dec emission |
+| emitops.c | emitCmpArith(), emitCmpShift(), emitCmpMulDiv() compound ops |
+| emitpat.c | Table-driven helpers: emitBOp(), emitWBit(), emitLLoad(), etc. |
+| pattern.c | Pattern string builder for -p debug mode |
 
 ## Output Format
 
 Assembly output uses custom format specifiers in `emit()`:
 - `%o` - signed offset with explicit sign: `+5` or `-3`
 - `%r` - register name with optional offset: `bc` or `(iy+5)`
+- `%d` - decimal integer
+- `%s` - string
+- `%c` - character
 
-Comments include scheduling annotations:
+Comments include expression structure:
 ```asm
-; +s d=2 hl [        ; op=+, type=s, demand=2, dest=hl
-;   $foo d=1 hl      ; symbol foo, demand 1, dest hl
-;   #s 10 d=1 de     ; const 10, demand 1, dest de
+; +s [                ; operator, type
+;   $foo              ; symbol foo
+;   #s 10             ; const 10
 ; ]
+```
+
+## Long (32-bit) Support
+
+Long values use memory temporaries `lL` and `lR`:
+- `emitLLoad()` - load 4 bytes from (HL) to lL or lR
+- `emitLStore()` - store 4 bytes from lL to (HL)
+- `emitLImm()` - load immediate to lL or lR
+- Runtime helpers: `ladd`, `lsub`, `land`, `lor`, `lxor`, `lneg`, `lcom`, `lcmp`
+- Shift helpers: `lshl`, `lashr`, `lshr`
+
+## Switch Statement Implementation
+
+Switch uses a runtime `switch` helper with inline jump table:
+```asm
+    ld a,l              ; expression value to A
+    ld hl,sw{n}_{fn}    ; table address
+    jp switch           ; runtime dispatch
+...
+sw{n}_{fn}:
+    .db {ncases}        ; case count
+    .db {val0}          ; case value
+    .dw swc{lbl}_{fn}   ; case label
+    ...
+    .dw {default/end}   ; default or end label
 ```

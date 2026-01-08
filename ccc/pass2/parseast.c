@@ -5,7 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "cc2.h"
-#include "../../cpp/lexeme.h"
+#include "../cpp/lexeme.h"
 
 /*
  * Static buffers to reduce stack usage (Z80 IY-indexed limit is 127)
@@ -213,23 +213,25 @@ parseExpr(void)
         e->v.l = read4();
         return e;
 
-    case SYM:  /* symbol ref - convert locals to LOCALVAR node */
+    case SYM:  /* global symbol */
         readName(name);
-        {
-            struct sym *s = findLocal(name);
-            if (s && s->reg) {
-                e = newExpr(REGVAR, s->type);  /* register var */
-                e->aux = s->reg;
-            } else if (s) {
-                /* Local variable - use LOCALVAR node with IY offset */
-                e = newExpr(LOCALVAR, s->type);
-                e->aux = R_IY;
-                e->offset = s->off;
-            } else {
-                e = newExpr(SYM, 0);           /* global */
-            }
-            e->sym = strdup(name);
-        }
+        e = newExpr(SYM, 0);
+        e->sym = strdup(name);
+        return e;
+
+    case LOCALVAR:  /* local variable (IY-indexed) */
+        type = curchar;
+        advance();
+        e = newExpr(LOCALVAR, type);
+        e->aux = R_IY;
+        e->offset = read1();
+        return e;
+
+    case REGVAR:  /* register variable */
+        type = curchar;
+        advance();
+        e = newExpr(REGVAR, type);
+        e->aux = read1();
         return e;
 
     case DEREF:  /* deref */
@@ -237,16 +239,6 @@ parseExpr(void)
         advance();
         e = newExpr(DEREF, type);
         e->left = parseExpr();
-        /* Collapse DEREF[SYM local] to LOCALVAR node - indexed load from IY */
-        if (e->left->op == SYM && e->left->aux == R_IY) {
-            struct expr *v = newExpr(LOCALVAR, type);
-            v->aux = R_IY;
-            v->offset = e->left->offset;
-            v->sym = e->left->sym;
-            e->left->sym = 0;  /* prevent double-free */
-            freeExpr(e);
-            return v;
-        }
         /* Collapse DEREF[LOCALVAR] and DEREF[REGVAR] when sizes match */
         if ((e->left->op == LOCALVAR || e->left->op == REGVAR) &&
             e->size == e->left->size) {
@@ -388,13 +380,6 @@ parseExpr(void)
         e->left = parseExpr();
         return e;
 
-    case COPY:  /* memory copy */
-        e = newExpr(COPY, 0);
-        e->aux = read2();  /* length */
-        e->left = parseExpr();   /* dest */
-        e->right = parseExpr();  /* src */
-        return e;
-
     case BFASSIGN:  /* bitfield assign */
         type = curchar;
         advance();
@@ -505,7 +490,6 @@ dumpStmt(void)
                 readName(dname);
                 dreg = read1();
                 doff = read1();
-                addLocal(dname, dtype, dreg, doff);
                 comment("decl %c %s reg=%d off=%d", dtype, dname, dreg, (char)(doff));
             }
         }
@@ -1017,7 +1001,6 @@ parseFunc(void)
 
     labelCnt = 0;
     fnIndex++;
-    clearLocals();
 
     type = curchar;
     fnRetType = type;
@@ -1047,10 +1030,6 @@ parseFunc(void)
             readName(pname);
             preg = read1();
             poff = read1();
-            /* Byte params pushed via AF have value in high byte of stack word */
-            if (ISBYTE(ptype) && preg == 0 && poff > 0)
-                poff++;
-            addLocal(pname, ptype, preg, poff);
             comment("param %c %s %s off=%d", ptype, pname, regnames[preg] ? regnames[preg] : "-", (char)(poff));
         }
     }
@@ -1067,7 +1046,6 @@ parseFunc(void)
             readName(lname);
             lreg = read1();
             loff = read1();
-            addLocal(lname, ltype, lreg, loff);
             comment("local %c %s %s off=%d", ltype, lname, regnames[lreg] ? regnames[lreg] : "-", (char)(loff));
         }
     }

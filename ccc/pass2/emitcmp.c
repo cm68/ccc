@@ -3,7 +3,8 @@
  */
 #include <stdio.h>
 #include "cc2.h"
-#include "../../cpp/lexeme.h"
+#include "templates.h"
+#include "../cpp/lexeme.h"
 
 /*
  * Emit conditional jump for comparison result
@@ -56,7 +57,7 @@ emitCompare(struct expr *e)
             emit("cp (%s%o)", rn, simple->offset);
         } else if (simple->op == DEREF && simple->left->op == SYM) {
             emit("ld hl,%s", simple->left->sym);
-            emit("cp (hl)");
+            emitT(T_CPHL);
         } else if (simple->op == DEREF && simple->left->op == LOCALVAR) {
             char *rn = (simple->left->aux == R_IX) ? "ix" : "iy";
             emit("cp (%s%o)", rn, simple->left->offset);
@@ -94,23 +95,23 @@ emitCompare(struct expr *e)
             emit("ld hl,%s+%d", e->sym, e->offset);
         else
             emit("ld hl,%s", e->sym);
-        emit("bit 7,(hl)");
+        emitT(T_BIT7HL);
         if (!e->cond) {
             int lbl = labelCnt++;
-            emit("ld a,0");
+            emitT(T_LDA0);
             emit("jp nz,sg%d_%d", lbl, fnIndex);
-            emit("inc a");
+            emitT(T_INCA);
             emit("sg%d_%d:", lbl, fnIndex);
         }
     } else if (e->special == SP_SIGNREG) {
         /* sign test regvar BC: bit 7,b */
         comment("SIGNREG bc");
-        emit("bit 7,b");
+        emitT(T_BIT7B);
         if (!e->cond) {
             int lbl = labelCnt++;
-            emit("ld a,0");
+            emitT(T_LDA0);
             emit("jp nz,sg%d_%d", lbl, fnIndex);
-            emit("inc a");
+            emitT(T_INCA);
             emit("sg%d_%d:", lbl, fnIndex);
         }
     } else if (e->special == SP_CMPEQ) {
@@ -130,14 +131,14 @@ emitCompare(struct expr *e)
             emit("or l");
             if (e->op == EQ) {
                 /* == : result is 1 if HL==0, else 0 */
-                emit("ld a,1");
+                emitT(T_LDA1);
                 emit("jr z,eq%d_%d", lbl, fnIndex);
                 emit("xor a");
             } else {
                 /* != : result is 0 if HL==0, else 1 */
-                emit("ld a,0");
+                emitT(T_LDA0);
                 emit("jr z,eq%d_%d", lbl, fnIndex);
-                emit("inc a");
+                emitT(T_INCA);
             }
             emit("eq%d_%d:", lbl, fnIndex);
         }
@@ -157,7 +158,7 @@ emitCompare(struct expr *e)
             /* Subtraction compared to 0: sub already sets flags */
             emitExpr(e->left);
             if (ISBYTE(ctype) && e->left->size == 2)
-                emit("ld a,l");
+                emitT(T_LDAL);
             /* No comparison needed - sub/sbc already set Z flag */
             if (e->cond) {
                 emitCondJmp(e->op, e->aux2);
@@ -171,7 +172,7 @@ emitCompare(struct expr *e)
             emitExpr(e->left);
             if (ISBYTE(ctype)) {
                 if (e->left->size == 2)
-                    emit("ld a,l");
+                    emitT(T_LDAL);
                 /* Byte compare with constant: use cp immediate */
                 if (e->right->op == AST_CONST) {
                     emit("cp %d", e->right->v.c & 0xff);
@@ -181,12 +182,12 @@ emitCompare(struct expr *e)
                     /* A has right, E has left. Compare left - right = E - A */
                     emit("ld b,a");
                     emit("ld a,e");
-                    emit("cp b");
+                    emitT(T_CPB);
                 }
             } else if (ISWORD(ctype)) {
-                emit("ex de,hl");  /* save left to DE */
+                emitT(T_EXDE);  /* save left to DE */
                 emitExpr(e->right);
-                emit("ex de,hl");  /* left to HL, right to DE */
+                emitT(T_EXDE);  /* left to HL, right to DE */
                 emit("or a");
                 emit("sbc hl,de");
             }
@@ -203,19 +204,19 @@ cmpresult:
     if (!e->cond && e->special != SP_SIGN && e->special != SP_SIGNREG) {
         switch (e->op) {
         case EQ:  /* == */
-            emit("ld a,0");
+            emitT(T_LDA0);
             emit("jr nz,$+3");
-            emit("inc a");
+            emitT(T_INCA);
             break;
         case NEQ:  /* != */
-            emit("ld a,0");
+            emitT(T_LDA0);
             emit("jr z,$+3");
-            emit("inc a");
+            emitT(T_INCA);
             break;
         case LT:  /* < */
-            emit("ld a,0");
+            emitT(T_LDA0);
             emit("jr nc,$+3");
-            emit("inc a");
+            emitT(T_INCA);
             break;
         }
     }

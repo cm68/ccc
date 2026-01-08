@@ -3,7 +3,8 @@
  */
 #include <stdio.h>
 #include "cc2.h"
-#include "../../cpp/lexeme.h"
+#include "templates.h"
+#include "../cpp/lexeme.h"
 
 /*
  * Emit compound assignment: +=, -=, |=, &=, ^=, %=
@@ -29,7 +30,7 @@ emitCmpArith(struct expr *e)
             case XOREQ: emit("xor %d", val); break;
             }
         } else {
-            emit("ld e,a");
+            emitT(T_LDEA);
             emit("ld a,%s", rname);
             emitBOp(e->op);
         }
@@ -38,10 +39,10 @@ emitCmpArith(struct expr *e)
         unsigned char r = e->left->aux;
         comment("R%c %s %s", e->left->type, e->left->sym ? e->left->sym : "?", regnames[r]);
         emitExpr(e->right);
-        emit("ex de,hl");
+        emitT(T_EXDE);
         if (r == R_BC) {
-            emit("ld h,b");
-            emit("ld l,c");
+            emitT(T_LDHB);
+            emitT(T_LDLC);
         } else if (r == R_IX) {
             emit("push ix");
             emit("pop hl");
@@ -81,7 +82,7 @@ emitCmpArith(struct expr *e)
     } else if (e->size == 1 && e->right->op == AST_CONST) {
         unsigned char val = e->right->v.c;
         emitExpr(e->left);
-        emit("ld a,(hl)");
+        emitT(T_LDAHL);
         switch (e->op) {
         case PLUSEQ: emit("add a,%d", val); break;
         case SUBEQ: emit("sub %d", val); break;
@@ -89,23 +90,23 @@ emitCmpArith(struct expr *e)
         case ANDEQ: emit("and %d", val); break;
         case XOREQ: emit("xor %d", val); break;
         }
-        emit("ld (hl),a");
+        emitT(T_STHLA);
     } else if (e->size == 1) {
         /* byte compound assign to computed address with non-const operand */
         emitExpr(e->right);  /* operand to A (via L if word) */
         if (e->right->size == 2)
             emit("ld a,l");
-        emit("ld e,a");      /* save operand in E */
+        emitT(T_LDEA);      /* save operand in E */
         emitExpr(e->left);   /* address to HL */
-        emit("ld a,(hl)");   /* current value to A */
+        emitT(T_LDAHL);   /* current value to A */
         emitBOp(e->op);
-        emit("ld (hl),a");
+        emitT(T_STHLA);
     } else if (e->left->op == LOCALVAR && e->size == 2) {
         char ofs = e->left->offset;
         char *rn = (e->left->aux == R_IX) ? "ix" : "iy";
         comment("V%c %s%+d", e->left->type, rn, ofs);
         emitExpr(e->right);
-        emit("ex de,hl");
+        emitT(T_EXDE);
         emit("ld l,(%s%o)", rn, ofs);
         emit("ld h,(%s%o)", rn, ofs + 1);
         switch (e->op) {
@@ -126,7 +127,7 @@ emitCmpArith(struct expr *e)
         emit("pop hl");
         if (ofs != 0) {
             emit("ld de,%d", (int)(char)ofs);
-            emit("add hl,de");
+            emitT(T_ADDHLDE);
         }
         emit("call lldHL");  /* load (HL) to _lL */
         switch (e->op) {
@@ -141,7 +142,7 @@ emitCmpArith(struct expr *e)
         emit("pop hl");
         if (ofs != 0) {
             emit("ld de,%d", (int)(char)ofs);
-            emit("add hl,de");
+            emitT(T_ADDHLDE);
         }
         emit("call lstHLR");
     } else if (e->size == 2 && e->right->op == AST_CONST) {
@@ -151,12 +152,12 @@ emitCmpArith(struct expr *e)
         emit("inc hl");
         emit("ld d,(hl)");
         emit("dec hl");
-        emit("ex de,hl");
+        emitT(T_EXDE);
         switch (e->op) {
         case PLUSEQ: case SUBEQ: emitWSubBC(e->op, val); break;
         case OREQ: case ANDEQ: case XOREQ: emitWBitImm(e->op, val); break;
         }
-        emit("ex de,hl");
+        emitT(T_EXDE);
         emit("ld (hl),e");
         emit("inc hl");
         emit("ld (hl),d");
@@ -169,7 +170,7 @@ emitCmpArith(struct expr *e)
         emit("ld d,(hl)");
         emit("dec hl");
         emit("push hl");
-        emit("ex de,hl");
+        emitT(T_EXDE);
         emit("pop de");
         emit("pop bc");
         switch (e->op) {
@@ -177,7 +178,7 @@ emitCmpArith(struct expr *e)
         case SUBEQ: emit("or a"); emit("sbc hl,bc"); break;
         case OREQ: case ANDEQ: case XOREQ: emitWBitBC(e->op); break;
         }
-        emit("ex de,hl");
+        emitT(T_EXDE);
         emit("ld (hl),e");
         emit("inc hl");
         emit("ld (hl),d");
@@ -204,8 +205,8 @@ emitCmpShift(struct expr *e)
         unsigned char cnt = e->right->v.c & 0xf;
         comment("R%c %s bc", e->left->type, e->left->sym ? e->left->sym : "?");
         comment("#%c %d d=%d -", e->right->type, cnt, e->right->demand);
-        emit("ld h,b");
-        emit("ld l,c");
+        emitT(T_LDHB);
+        emitT(T_LDLC);
         if (e->op == LSHIFTEQ) {
             /* left shift: add hl,hl */
             while (cnt--)
@@ -248,7 +249,7 @@ emitCmpShift(struct expr *e)
         emit("pop hl");
         if (ofs != 0) {
             emit("ld de,%d", (int)(char)ofs);
-            emit("add hl,de");
+            emitT(T_ADDHLDE);
         }
         emit("call lldHLR");  /* load (HL) to _lR */
         emit("ld a,%d", cnt);
@@ -261,7 +262,7 @@ emitCmpShift(struct expr *e)
         emit("pop hl");
         if (ofs != 0) {
             emit("ld de,%d", (int)(char)ofs);
-            emit("add hl,de");
+            emitT(T_ADDHLDE);
         }
         emit("call lstHLR");
     } else {
@@ -286,7 +287,7 @@ emitCmpMulDiv(struct expr *e)
         char *rname = (e->left->aux == R_B) ? "b" : "c";
         comment("R%c %s %s", e->left->type, e->left->sym ? e->left->sym : "?", rname);
         emitExpr(e->right);
-        emit("ld e,a");
+        emitT(T_LDEA);
         emit("ld a,%s", rname);
         if (e->op == MULTEQ)
             emit("call imulb");
@@ -297,10 +298,10 @@ emitCmpMulDiv(struct expr *e)
         unsigned char r = e->left->aux;
         comment("R%c %s %s", e->left->type, e->left->sym ? e->left->sym : "?", regnames[r]);
         emitExpr(e->right);
-        emit("ex de,hl");
+        emitT(T_EXDE);
         if (r == R_BC) {
-            emit("ld h,b");
-            emit("ld l,c");
+            emitT(T_LDHB);
+            emitT(T_LDLC);
         } else if (r == R_IX) {
             emit("push ix");
             emit("pop hl");
@@ -321,7 +322,7 @@ emitCmpMulDiv(struct expr *e)
         char *rn = (e->left->aux == R_IX) ? "ix" : "iy";
         comment("V%c %s%+d", e->left->type, rn, ofs);
         emitExpr(e->right);
-        emit("ld e,a");
+        emitT(T_LDEA);
         emit("ld a,(%s%o)", rn, ofs);
         if (e->op == MULTEQ)
             emit("call imulb");
@@ -334,7 +335,7 @@ emitCmpMulDiv(struct expr *e)
         char *rn = (e->left->aux == R_IX) ? "ix" : "iy";
         comment("V%c %s%+d", e->left->type, rn, ofs);
         emitExpr(e->right);
-        emit("ex de,hl");
+        emitT(T_EXDE);
         emit("ld l,(%s%o)", rn, ofs);
         emit("ld h,(%s%o)", rn, ofs + 1);
         if (e->op == MULTEQ)

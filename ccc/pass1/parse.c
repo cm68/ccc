@@ -4,11 +4,6 @@
 
 #include "cc1.h"
 
-/* Loop label generation for control flow transformation */
-static unsigned char loopLblCnt = 0;
-
-void resetLoopLbls() { loopLblCnt = 0; }
-
 /* Switch statement table tracking (phase 1) */
 struct swtab swList[MAX_SWITCHES];
 unsigned char swCount = 0;          /* number of switches in function */
@@ -164,13 +159,10 @@ void resetBlkCnts(void) {
 }
 
 
-/* Label stack for break/continue resolution (phase 2) */
+/* Label stack for switch break resolution (phase 2) */
+/* Loops handled by cpp loop lowering - only switch uses this now */
 struct lblfrm lblStack[MAX_LBLDEPTH];
 unsigned char lblDepth = 0;
-
-/* FOR loop context (phase 2) */
-struct forctx forStack[MAX_FORDEPTH];
-unsigned char forDepth = 0;
 
 /*
  * Count storage for streaming AST emission
@@ -218,12 +210,12 @@ resetCounts(void)
 }
 
 /*
- * Label stack helpers for phase 2 break/continue resolution
- *
- * Labels are simple: B<n> for break, C<n> for continue.
- * Stack stores type (FOR/WHILE/DO/SWITCH) and label number.
+ * Label stack helpers for phase 2 switch break resolution
+ * (Loops handled by cpp loop lowering - only switch uses labels now)
  */
-static unsigned char loopLblNum = 0;  /* counter for B/C labels */
+static unsigned char loopLblNum = 0;  /* counter for switch labels */
+
+void resetLoopLbls() { loopLblNum = 0; }
 
 static void
 pushLabel(unsigned char type)
@@ -334,14 +326,14 @@ capLocals(void)
  *   - Nested blocks can shadow outer names
  *
  * Local variable initialization:
- *   - Initializers (e.g., int x = 10;) are converted to assignment statements
- *   - Arrays use COPY operator for aggregate initialization
- *   - Static locals are initialized in data section, not converted
+ *   - Scalar initializers (e.g., int x = 10;) are converted by cpp to assignments
+ *   - Aggregate auto initialization (arrays, structs) is not supported
+ *   - Static locals are initialized in data section
  *
- * Loop/switch transformation:
- *   - break/continue are transformed to goto statements
- *   - Synthetic labels are generated (L0, D1, S2, etc.)
- *   - Label format: <prefix><number>_<break|continue|test>
+ * Switch statement handling:
+ *   - break inside switch is transformed to goto
+ *   - Labels are S<n>_break for switch exit
+ *   - Loops (while/for/do) handled by cpp loop lowering
  *
  * Parameters:
  *   parent - Enclosing statement (for break/continue target lookup, scope)
@@ -358,15 +350,14 @@ statement(struct stmt *parent)
     char stmt_count = 0;       /* Count statements for streaming (phase 1) */
     /* Hoisted locals - shared across cases to reduce stack frame */
     char lbl[16];              /* Label buffer for control statements */
-    char prefix;               /* Prefix for label generation */
     char *lblptr;              /* Label pointer for GOTO */
     char *text;                /* Text pointer for ASM */
-    int i, num, n;             /* Loop/label counters */
+    int i, num;                /* Loop/label counters */
     unsigned char cnt;         /* Shared count (body_cnt, case_cnt, etc) */
     unsigned char hasElse;     /* If statement has else branch */
     unsigned char sw_idx, c_idx; /* Switch/case indices */
     struct swcase *sc;         /* Switch case pointer */
-    struct expr *e1, *e2, *e3; /* Shared expression pointers */
+    struct expr *e1;           /* Shared expression pointer */
 
     while (block) {
         st = NULL;  // Initialize st to NULL for each iteration
@@ -464,42 +455,7 @@ statement(struct stmt *parent)
                 if (parent) block = 0;
                 break;
             }
-            case WHILE:
-                gettoken();
-                expect(LPAR, ER_S_NP);
-                parseExpr(PRI_ALL, parent);
-                expect(RPAR, ER_S_NP);
-                parseBlock();
-                stmt_count++;
-                if (parent) block = 0;
-                break;
-            case DO:
-                gettoken();
-                parseBlock();
-                expect(WHILE, ER_S_WH);
-                expect(LPAR, ER_S_NP);
-                parseExpr(PRI_ALL, parent);
-                expect(RPAR, ER_S_NP);
-                expect(SEMI, ER_S_SN);
-                stmt_count++;
-                if (parent) block = 0;
-                break;
-            case FOR:
-                gettoken();
-                expect(LPAR, ER_S_NP);
-                if (cur.type != SEMI)
-                    parseExpr(PRI_ALL, parent);
-                expect(SEMI, ER_S_SN);
-                if (cur.type != SEMI)
-                    parseExpr(PRI_ALL, parent);
-                expect(SEMI, ER_S_SN);
-                if (cur.type != RPAR)
-                    parseExpr(PRI_ALL, parent);
-                expect(RPAR, ER_S_NP);
-                parseBlock();
-                stmt_count++;
-                if (parent) block = 0;
-                break;
+            /* WHILE/DO/FOR handled by cpp loop lowering */
             case SWITCH: {
                 unsigned char idx;
                 gettoken();
@@ -531,7 +487,7 @@ statement(struct stmt *parent)
                 addDefault(stmt_count);  /* add default to current switch table */
                 expect(COLON, ER_S_NL);
                 break;
-            case BREAK: case CONTINUE:
+            case BREAK:  /* only in switch - loop breaks handled by cpp */
                 gettoken();
                 expect(SEMI, ER_S_SN);
                 stmt_count++;
@@ -618,44 +574,22 @@ statement(struct stmt *parent)
             st = NULL;
             break;
         case BREAK:
-            /* Emit goto to innermost loop/switch break label */
+            /* Break only valid in switch - loop breaks handled by cpp */
             gettoken();
             expect(SEMI, ER_S_SN);
-            /* Find innermost loop or switch */
+            /* Find innermost switch */
             for (i = lblDepth - 1; i >= 0; i--) {
-                prefix = 'W';
-                if (lblStack[i].type == FOR) prefix = 'F';
-                else if (lblStack[i].type == DO) prefix = 'D';
-                else if (lblStack[i].type == SWITCH) prefix = 'S';
-                sprintf(lbl, "%c%d", prefix, lblStack[i].num);
-                break;
+                if (lblStack[i].type == SWITCH) {
+                    sprintf(lbl, "S%d", lblStack[i].num);
+                    emitGoto(lbl, "_break");
+                    break;
+                }
             }
-            /* Switch uses _break suffix (pass2 emits <label>_break:) */
-            if (lblStack[i].type == SWITCH)
-                emitGoto(lbl, "_break");
-            else
-                emitGoto(lbl, "B");
             st = NULL;
             break;
 
-        case CONTINUE:
-            /* Emit goto to innermost loop continue label (skip switches) */
-            gettoken();
-            expect(SEMI, ER_S_SN);
-            /* Find innermost loop (not switch) */
-            for (i = lblDepth - 1; i >= 0; i--) {
-                if (lblStack[i].type == SWITCH)
-                    continue;  /* continue doesn't apply to switch */
-                prefix = 'W';
-                if (lblStack[i].type == FOR) prefix = 'F';
-                else if (lblStack[i].type == DO) prefix = 'D';
-                sprintf(lbl, "%c%d", prefix, lblStack[i].num);
-                break;
-            }
-            /* WHILE: continue goes to top (T), others go to C */
-            emitGoto(lbl, lblStack[i].type == WHILE ? "T" : "C");
-            st = NULL;
-            break;
+        /* CONTINUE handled by cpp loop lowering - should not appear here */
+
         case RETURN:
             e1 = NULL;
             gettoken();
@@ -740,105 +674,7 @@ statement(struct stmt *parent)
             break;
         }
 
-        case FOR: /* for (<expr>; <expr>; <expr>) <statement> ; */
-            e1 = e2 = e3 = NULL;
-            gettoken();
-            expect(LPAR, ER_S_NP);
-            /* Init expression - optional */
-            if (cur.type != SEMI)
-                e1 = parseExpr(PRI_ALL, parent);
-            expect(SEMI, ER_S_SN);
-            /* Condition expression - optional */
-            if (cur.type != SEMI)
-                e2 = parseExpr(PRI_ALL, parent);
-            expect(SEMI, ER_S_SN);
-            /* Increment expression - optional */
-            if (cur.type != RPAR)
-                e3 = parseExpr(PRI_ALL, parent);
-            expect(RPAR, ER_S_NP);
-            pushLabel(FOR);
-            num = lblStack[lblDepth - 1].num;
-            sprintf(lbl, "F%d", num);
-            cnt = popBlkCnt();  /* get body stmt count from phase 1 */
-            /* Structure: [init] L<T> [IF NOT(cond) goto B] body L<C> [incr] G<T> L<B> */
-            /* Count: L<T> + body + L<C> + G<T> + L<B> = 4 base */
-            n = 4 + cnt;
-            if (e1) n++;
-            if (e2) n++;
-            if (e3) n++;
-            emit1('B');
-            emit1(0);
-            emit1(n);
-            if (e1) {
-                emit1('E');
-                emitExpr(e1);
-                FreeExpr(e1);
-            }
-            emitLabel(lbl, "T");
-            if (e2) {
-                /* Wrap condition in NOT for "if NOT(cond) goto break" */
-                e2 = mkexpr(BANG, e2);
-                e2->type = e2->left->type;
-                e2->left->up = e2;
-                emit1('I');
-                emit1(cntCondLbls(e2));
-                emitExpr(e2);
-                FreeExpr(e2);
-                emit1('B');
-                emit1(0);
-                emit1(1);
-                emitGoto(lbl, "B");
-                emit1(0);  /* has_else=0 (after then block) */
-            }
-            /* body in outer block */
-            parseBlockEx(0);
-            emitLabel(lbl, "C");
-            if (e3) {
-                emit1('E');
-                emitExpr(e3);
-                FreeExpr(e3);
-            }
-            emitGoto(lbl, "T");
-            emitLabel(lbl, "B");
-            popLabel();
-            st = NULL;
-            break;
-
-        case WHILE:   /* while <condition> <statement> ; */
-            gettoken();
-            expect(LPAR, ER_S_NP);
-            e1 = parseExpr(PRI_ALL, parent);
-            expect(RPAR, ER_S_NP);
-            pushLabel(WHILE);
-            num = lblStack[lblDepth - 1].num;
-            sprintf(lbl, "W%d", num);
-            cnt = popBlkCnt();  /* get body stmt count from phase 1 */
-            /* Wrap condition in NOT for "if NOT(cond) goto break" */
-            e1 = mkexpr(BANG, e1);
-            e1->type = e1->left->type;
-            e1->left->up = e1;
-            /* Structure: B 0 (4+body) L<T> I(NOT cond){goto B} body G<T> L<B> */
-            emit1('B');
-            emit1(0);
-            emit1(4 + cnt);
-            emitLabel(lbl, "T");
-            emit1('I');
-            emit1(cntCondLbls(e1));
-            emitExpr(e1);
-            FreeExpr(e1);
-            /* then: B 0 1 G<B> */
-            emit1('B');
-            emit1(0);
-            emit1(1);
-            emitGoto(lbl, "B");
-            emit1(0);  /* has_else=0 (after then block) */
-            /* body in outer block */
-            parseBlockEx(0);
-            emitGoto(lbl, "T");
-            emitLabel(lbl, "B");
-            popLabel();
-            st = NULL;
-            break;
+        /* FOR/WHILE/DO handled by cpp loop lowering - should not appear here */
 
         case ELSE:
             recover(SEMI, ER_S_OE);
@@ -922,42 +758,6 @@ statement(struct stmt *parent)
         case SEMI:
             gettoken();
             emit1(';');
-            st = NULL;
-            break;
-
-        case DO:  /* do <statement> while <condition> ; */
-            gettoken();
-            pushLabel(DO);
-            num = lblStack[lblDepth - 1].num;
-            sprintf(lbl, "D%d", num);
-            /* Structure: B 0 5 L<T> body L<C> I{G<T>} L<B> */
-            /* DO structure matches source order: body first, then test */
-            emit1('B');
-            emit1(0);
-            emit1(5);
-            emitLabel(lbl, "T");   /* top of body */
-            parseBlock();          /* body */
-            emitLabel(lbl, "C");   /* continue point (before test) */
-            if (cur.type != WHILE) {
-                gripe(ER_S_WH);
-                popLabel();
-                st = NULL;
-                break;
-            }
-            gettoken();
-            expect(LPAR, ER_S_NP);
-            e1 = parseExpr(PRI_ALL, parent);
-            need(RPAR, SEMI, ER_S_NP);
-            expect(SEMI, ER_S_SN);
-            /* if(cond) goto T - no else needed */
-            emit1('I');
-            emit1(0);  /* no else */
-            emit1(cntCondLbls(e1));
-            emitExpr(e1);
-            FreeExpr(e1);
-            emitGoto(lbl, "T");    /* loop back if true */
-            emitLabel(lbl, "B");   /* break point */
-            popLabel();
             st = NULL;
             break;
 

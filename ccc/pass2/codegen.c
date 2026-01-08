@@ -4,7 +4,7 @@
 #include <stdio.h>
 #include "cc2.h"
 #include "match.h"
-#include "../../cpp/lexeme.h"
+#include "../cpp/lexeme.h"
 
 /*
  * Check if byte expr can load to A without using HL

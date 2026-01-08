@@ -3,60 +3,8 @@
  */
 #include <stdio.h>
 #include "cc2.h"
-#include "../../cpp/lexeme.h"
-
-/*
- * Emit memory dereference: M (load from address)
- * Result: word in HL, byte in A
- */
-void
-emitDeref(struct expr *e)
-{
-    comment("M%c [", e->type);
-    indent += 2;
-    if (e->special == SP_MSYM) {
-        /* DEREF[SYM] -> ld hl,(sym) or ld a,(sym) */
-        comment("SYM %s", e->sym);
-        if (e->size == 1)
-            emit("ld a,(%s)", e->sym);
-        else
-            emit("ld hl,(%s)", e->sym);
-    } else if (e->special == SP_SYMOFD) {
-        /* DEREF[PLUS SYM AST_CONST] -> ld hl,(sym+ofs) */
-        comment("PLUS SYM %s AST_CONST %d", e->sym, e->offset);
-        if (e->size == 1)
-            emit("ld a,(%s+%d)", e->sym, e->offset);
-        else
-            emit("ld hl,(%s+%d)", e->sym, e->offset);
-    } else if (e->left->op == REGVAR && e->left->aux == R_IX) {
-        /* DEREF[REGVAR(IX)] */
-        comment("REGVAR ix");
-        emit("push ix");
-        emit("pop hl");
-    } else if (e->left->op == REGVAR && e->left->aux == R_BC) {
-        /* DEREF[REGVAR(BC)] */
-        comment("REGVAR bc");
-        emit("ld h,b");
-        emit("ld l,c");
-    } else {
-        /* indirect: emit address, then deref */
-        emitExpr(e->left);
-        if (e->size == 1) {
-            emit("ld a,(hl)");
-        } else if (e->size == 2) {
-            emit("ld a,(hl)");
-            emit("inc hl");
-            emit("ld h,(hl)");
-            emit("ld l,a");
-        } else if (e->size == 4) {
-            emitLLoad(R_HL);
-        } else {
-            emit("XXXXXXXXX M");
-        }
-    }
-    indent -= 2;
-    comment("]");
-}
+#include "templates.h"
+#include "../cpp/lexeme.h"
 
 /*
  * Emit primary expressions: constants, symbols, regvars, locals
@@ -87,7 +35,7 @@ emitPrimary(struct expr *e)
             char *rn = (e->aux == R_IX) ? "ix" : "iy";
             comment("$%s %s%+d", e->sym ? e->sym : "?", rn, off);
             emit("push %s", rn);
-            emit("pop hl");
+            emitT(T_POPHL);
             if (off != 0) {
                 if (off >= -4 && off <= 4) {
                     /* Small offset: use inc/dec hl */
@@ -95,7 +43,7 @@ emitPrimary(struct expr *e)
                     while (off < 0) { emit("dec hl"); off++; }
                 } else {
                     emit("ld de,%d", off);
-                    emit("add hl,de");
+                    emitT(T_ADDHLDE);
                 }
             }
         } else {
@@ -115,11 +63,11 @@ emitPrimary(struct expr *e)
                     emit("ld a,c");
             } else if (e->size == 2) {
                 if (e->aux == R_BC) {
-                    emit("ld h,b");
-                    emit("ld l,c");
+                    emitT(T_LDHB);
+                    emitT(T_LDLC);
                 } else if (e->aux == R_IX) {
                     emit("push ix");
-                    emit("pop hl");
+                    emitT(T_POPHL);
                 }
             }
         }
@@ -137,10 +85,10 @@ emitPrimary(struct expr *e)
             } else if (e->size == 4) {
                 /* compute address: push ix/iy, pop hl, add offset */
                 emit("push %s", rn);
-                emit("pop hl");
+                emitT(T_POPHL);
                 if (off != 0) {
                     emit("ld de,%d", (int)(char)off);
-                    emit("add hl,de");
+                    emitT(T_ADDHLDE);
                 }
                 emitLLoad(R_HL);
             } else {
@@ -167,185 +115,9 @@ emitExpr(struct expr *e)
     case SYM:
     case REGVAR:
     case LOCALVAR:
-        emitPrimary(e);
-        break;
     case DEREF:
-        emitDeref(e);
-        break;
     case ASSIGN:
-        comment("=%c%s [", e->type, e->unused ? " U" : "");
-        indent += 2;
-        /* assign to IX or BC register var */
-        if (e->left->op == REGVAR && e->left->aux == R_IX) {
-            comment("Rp %s ix", e->left->sym ? e->left->sym : "?");
-            emitExpr(e->right);
-            emit("push hl");
-            emit("pop ix");
-        } else if (e->left->op == REGVAR && e->left->aux == R_BC) {
-            comment("R%c %s bc", e->left->type, e->left->sym ? e->left->sym : "?");
-            if (e->right->op == AST_CONST) {
-                emit("ld bc,%d", e->right->v.s & 0xffff);
-            } else if (e->right->op == SYM) {
-                emit("ld bc,%s", e->right->sym);
-            } else {
-                emitExpr(e->right);
-                emit("ld b,h");
-                emit("ld c,l");
-            }
-        } else if (e->left->op == REGVAR && e->left->aux == R_B) {
-            comment("Rb %s b", e->left->sym ? e->left->sym : "?");
-            if (e->special == SP_STCONST && e->right->op == AST_CONST) {
-                emit("ld b,%d", e->right->v.c & 0xff);
-            } else {
-                emitExpr(e->right);
-                emit("ld b,e");
-            }
-        } else if (e->left->op == REGVAR && e->left->aux == R_C) {
-            comment("Rb %s c", e->left->sym ? e->left->sym : "?");
-            if (e->special == SP_STCONST && e->right->op == AST_CONST) {
-                emit("ld c,%d", e->right->v.c & 0xff);
-            } else {
-                emitExpr(e->right);
-                emit("ld c,e");
-            }
-        } else if (e->left->op == SYM && e->left->sym) {
-            /* assign to global symbol: emit value, then ld (sym),hl or ld (sym),a */
-            comment("$%s", e->left->sym);
-            emitExpr(e->right);
-            if (e->size == 1) {
-                emit("ld (%s),a", e->left->sym);
-            } else if (e->size == 2) {
-                emit("ld (%s),hl", e->left->sym);
-            } else if (e->size == 4) {
-                /* long: store from lR to symbol */
-                emit("ld hl,%s", e->left->sym);
-                emitLStoreR();
-            }
-        } else if (e->left->op == LOCALVAR) {
-            /* assign to local/struct var via IY or IX */
-            char ofs = e->left->offset;
-            char *rn = (e->left->aux == R_IX) ? "ix" : "iy";
-            comment("V%c %s%+d", e->left->type, rn, ofs);
-            if (e->special == SP_STCONST && e->right->op == AST_CONST) {
-                /* store constant directly */
-                long val = e->right->v.l;
-                if (e->size == 1) {
-                    emit("ld (%s%o),%d", rn, ofs, (int)(val & 0xff));
-                } else if (e->size == 2) {
-                    if (val == 0) {
-                        emit("xor a");
-                        emit("ld (%s%o),a", rn, ofs);
-                        emit("ld (%s%o),a", rn, ofs + 1);
-                    } else {
-                        emit("ld (%s%o),%d", rn, ofs, (int)(val & 0xff));
-                        emit("ld (%s%o),%d", rn, ofs + 1, (int)((val >> 8) & 0xff));
-                    }
-                } else if (e->size == 4) {
-                    emit("ld (%s%o),%d", rn, ofs, (int)(val & 0xff));
-                    emit("ld (%s%o),%d", rn, ofs + 1, (int)((val >> 8) & 0xff));
-                    emit("ld (%s%o),%d", rn, ofs + 2, (int)((val >> 16) & 0xff));
-                    emit("ld (%s%o),%d", rn, ofs + 3, (int)((val >> 24) & 0xff));
-                }
-            } else {
-                emitExpr(e->right);
-                if (e->size == 1) {
-                    emit("ld (%s%o),a", rn, ofs);
-                } else if (e->size == 2) {
-                    emit("ld (%s%o),l", rn, ofs);
-                    emit("ld (%s%o),h", rn, ofs + 1);
-                } else if (e->size == 4) {
-                    /* long: compute addr, store from lR */
-                    emit("push %s", rn);
-                    emit("pop hl");
-                    if (ofs != 0) {
-                        emit("ld de,%d", (int)(char)ofs);
-                        emit("add hl,de");
-                    }
-                    emitLStoreR();
-                }
-            }
-        } else if (e->special == SP_STCONST) {
-            /* store constant through HL: ld (hl),n; inc hl; ld (hl),n */
-            long val = e->right->v.l;
-            comment("STCONST %ld", val);
-            /* e->left is DEREF[addr], SYM, or PLUS - get storage address in HL */
-            if (e->left->op == DEREF) {
-                /* Need to get storage address: emit child of DEREF, then deref if global ptr */
-                emitExpr(e->left->left);
-                /* For global ptr (SYM), emitExpr gives address of ptr, need to load ptr value.
-                 * For local var (LOCALVAR), emitExpr already loads the value (the ptr itself). */
-                if (e->left->size == 2 && e->left->left->op == SYM) {
-                    /* DEREF[SYM global] pointer: child gave address of ptr, need ptr value */
-                    emit("ld a,(hl)");
-                    emit("inc hl");
-                    emit("ld h,(hl)");
-                    emit("ld l,a");
-                }
-            } else if (e->left->op == SYM) {
-                /* global symbol: load address directly */
-                emit("ld hl,%s", e->left->sym);
-            } else {
-                /* left is address expression like PLUS, emit directly */
-                emitExpr(e->left);
-            }
-            if (e->size == 1) {
-                emit("ld (hl),%d", (int)(val & 0xff));
-            } else if (e->size == 2) {
-                emit("ld (hl),%d", (int)(val & 0xff));
-                emit("inc hl");
-                emit("ld (hl),%d", (int)((val >> 8) & 0xff));
-            } else if (e->size == 4) {
-                emit("ld (hl),%d", (int)(val & 0xff));
-                emit("inc hl");
-                emit("ld (hl),%d", (int)((val >> 8) & 0xff));
-                emit("inc hl");
-                emit("ld (hl),%d", (int)((val >> 16) & 0xff));
-                emit("inc hl");
-                emit("ld (hl),%d", (int)((val >> 24) & 0xff));
-            }
-        } else if (e->left->op == POSTINC || e->left->op == POSTDEC) {
-            /* assign through post-inc/dec address: emit addr (old value), store, inc happens in emitExpr */
-            emitExpr(e->left);  /* address to HL, regvar incremented */
-            emit("ex de,hl");   /* save address to DE */
-            emitExpr(e->right); /* value to HL (or A for byte) */
-            if (e->size == 1) {
-                emit("ld (de),a");
-            } else if (e->size == 2) {
-                emit("ex de,hl");
-                emit("ld (hl),e");
-                emit("inc hl");
-                emit("ld (hl),d");
-            } else if (e->size == 4) {
-                /* long: addr in DE, value in lR */
-                emit("ex de,hl");
-                emitLStoreR();
-            }
-        } else if (e->left->op == PLUS || e->left->op == DEREF) {
-            /* assign through computed address: emit addr, save, emit value, store */
-            emitExpr(e->left);  /* address to HL */
-            emit("push hl");    /* save address */
-            emitExpr(e->right); /* value to HL (or A for byte) */
-            emit("pop de");     /* restore address to DE */
-            if (e->size == 1) {
-                /* byte value is already in A from emitExpr */
-                emit("ld (de),a");
-            } else if (e->size == 2) {
-                emit("ex de,hl");  /* addr back to HL, value to DE */
-                emit("ld (hl),e");
-                emit("inc hl");
-                emit("ld (hl),d");
-            } else if (e->size == 4) {
-                /* long: addr in DE, value in lR */
-                emit("ex de,hl");
-                emitLStoreR();
-            }
-        } else {
-            emitExpr(e->left);
-            emitExpr(e->right);
-            emit("XXXXXXXXX =");
-        }
-        indent -= 2;
-        comment("]");
+        pemitExpr(e);
         break;
     case CALL:
         comment("@%c nargs=%d%s [", e->type, e->aux, e->unused ? " U" : "");
@@ -359,13 +131,13 @@ emitExpr(struct expr *e)
                 if (a->left->size == 1) {
                     emit("push af");
                 } else if (a->left->size == 2) {
-                    emit("push hl");
+                    emitT(T_PUSHHL);
                 } else if (a->left->size == 4) {
                     /* Long: push high word first, then low */
                     emit("ld hl,(lR+2)");
-                    emit("push hl");
+                    emitT(T_PUSHHL);
                     emit("ld hl,(lR)");
-                    emit("push hl");
+                    emitT(T_PUSHHL);
                 }
                 a = a->right;
             }
@@ -417,11 +189,9 @@ emitExpr(struct expr *e)
         break;
     case PREINC:
     case PREDEC:
-        emitPreIncDec(e);
-        break;
     case POSTINC:
     case POSTDEC:
-        emitPostInc(e);
+        pemitExpr(e);
         break;
     case BFEXTRACT:  /* bitfield */
         comment("F%c off=%d wid=%d [", e->type, e->aux, e->aux2);
@@ -431,314 +201,18 @@ emitExpr(struct expr *e)
         indent -= 2;
         comment("]");
         break;
-    case COPY:  /* memory copy: left=dest, right=src, aux=len */
-        {
-            unsigned char len = e->aux;
-            comment("Y len=%d [", len);
-            indent += 2;
-            emitExpr(e->right);  /* source address to HL */
-            emit("push hl");
-            emitExpr(e->left);   /* dest address to HL */
-            emit("ex de,hl");    /* DE = dest */
-            emit("pop hl");      /* HL = source */
-            if (len <= 4) {
-                /* inline small copy */
-                unsigned char i;
-                for (i = 0; i < len; i++) {
-                    emit("ld a,(hl)");
-                    emit("ld (de),a");
-                    if (i < len - 1) {
-                        emit("inc hl");
-                        emit("inc de");
-                    }
-                }
-            } else {
-                /* use LDIR for larger copies */
-                emit("ld bc,%d", len);
-                emit("ldir");
-            }
-            indent -= 2;
-            comment("]");
-        }
-        break;
-    case PLUS:  /* add */
-        comment("+%c [", e->type);
-        indent += 2;
-        if (e->special == SP_SYMOFS) {
-            /* PLUS SYM AST_CONST -> ld hl,sym+ofs */
-            comment("SYM %s AST_CONST %d", e->sym ? e->sym : "?", e->offset);
-            if (e->offset > 0)
-                emit("ld hl,%s+%d", e->sym, e->offset);
-            else if (e->offset < 0)
-                emit("ld hl,%s%d", e->sym, e->offset);
-            else
-                emit("ld hl,%s", e->sym);
-        } else if (e->special == SP_ADDBC) {
-            /* PLUS DEREF[REGVAR(BC)] AST_CONST -> ld hl,const; add hl,bc */
-            comment("REGVAR bc + %d", e->offset);
-            emit("ld hl,%d", e->offset);
-            emit("add hl,bc");
-        } else {
-            /* Depth-first: emit left, save, emit right, operate */
-            emitExpr(e->left);
-            if (e->size == 2)
-                emit("ex de,hl");
-            else if (e->size == 1)
-                emit("ld e,a");
-            emitExpr(e->right);
-            if (e->size == 2) {
-                emit("add hl,de");
-            } else if (e->size == 1) {
-                emit("add a,e");
-            } else if (e->size == 4) {
-                /* 32-bit add: lR = lL + lR */
-                emit("call ladd");
-            }
-        }
-        indent -= 2;
-        comment("]");
-        break;
-    case MINUS:  /* subtract */
-        comment("-%c [", e->type);
-        indent += 2;
-        emitExpr(e->left);
-        if (e->size == 2) {
-            emit("ex de,hl");  /* save left to DE */
-            emitExpr(e->right);
-            emit("ex de,hl");  /* left to HL, right to DE */
-            emit("or a");
-            emit("sbc hl,de");
-        } else if (e->size == 1) {
-            /* For byte: check if right is immediate constant */
-            if (e->right->op == AST_CONST) {
-                /* sub immediate: A = A - const */
-                emit("sub %d", e->right->v.c & 0xff);
-            } else {
-                emit("ld e,a");  /* save left to E */
-                emitExpr(e->right);
-                /* A has right, E has left. Need left - right = E - A */
-                emit("ld b,a");
-                emit("ld a,e");
-                emit("sub b");
-            }
-        } else if (e->size == 4) {
-            emitExpr(e->right);
-            /* 32-bit sub: lR = lL - lR */
-            emit("call lsub");
-        }
-        indent -= 2;
-        comment("]");
-        break;
-    case AND:  /* bitwise AND */
-        comment("&%c [", e->type);
-        indent += 2;
-        if (e->special == SP_BITTEST) {
-            /* bit n,(ix+ofs) - no children emitted */
-            emit("bit %d,(ix%o)", e->incr, e->offset);
-        } else {
-            emitExpr(e->left);
-            if (e->size == 2)
-                emit("ex de,hl");
-            else if (e->size == 1)
-                emit("ld e,a");
-            emitExpr(e->right);
-            if (e->size == 1) {
-                emitBOp(AND);
-            } else if (e->size == 2) {
-                emitWBit(AND);
-            } else if (e->size == 4) {
-                emit("call land");
-            }
-        }
-        indent -= 2;
-        comment("]");
-        break;
-    case OR:  /* bitwise OR */
-        comment("|%c [", e->type);
-        indent += 2;
-        emitExpr(e->left);
-        if (e->size == 2)
-            emit("ex de,hl");
-        else if (e->size == 1)
-            emit("ld e,a");
-        emitExpr(e->right);
-        if (e->size == 1) {
-            emitBOp(OR);
-        } else if (e->size == 2) {
-            emitWBit(OR);
-        } else if (e->size == 4) {
-            emit("call lor");
-        }
-        indent -= 2;
-        comment("]");
-        break;
-    case XOR:  /* bitwise XOR */
-        comment("^%c [", e->type);
-        indent += 2;
-        emitExpr(e->left);
-        if (e->size == 2)
-            emit("ex de,hl");
-        else if (e->size == 1)
-            emit("ld e,a");
-        emitExpr(e->right);
-        if (e->size == 1) {
-            emitBOp(XOR);
-        } else if (e->size == 2) {
-            emitWBit(XOR);
-        } else if (e->size == 4) {
-            emit("call lxor");
-        }
-        indent -= 2;
-        comment("]");
-        break;
-    case STAR:  /* multiply */
-        comment("*%c [", e->type);
-        indent += 2;
-        if (e->special == SP_MUL2) {
-            unsigned char i;
-            emitExpr(e->left);
-            comment("#%c %ld", e->right->type, e->right->v.l);
-            for (i = 0; i < e->incr; i++)
-                emit("add hl,hl");
-        } else {
-            /* non-power-of-2: call helper */
-            /* Treat small constants (0-255) as bytes for efficiency */
-            unsigned char lbyte = e->left->size == 1 ||
-                        (e->left->op == AST_CONST && (e->left->v.l & ~0xff) == 0);
-            unsigned char rbyte = e->right->size == 1 ||
-                        (e->right->op == AST_CONST && (e->right->v.l & ~0xff) == 0);
-            emitExpr(e->left);
-            /* Save left result before emitting right */
-            if (lbyte && rbyte) {
-                emit("ld e,a");  /* save left byte to E */
-            } else if (lbyte) {
-                emit("ld e,a");  /* save left byte to E */
-            } else if (rbyte) {
-                emit("ex de,hl"); /* save left word to DE */
-            } else {
-                emit("ex de,hl"); /* save left word to DE */
-            }
-            emitExpr(e->right);
-            if (lbyte && rbyte) {
-                /* byte × byte -> word: E has left, A has right */
-                emit("call imulb");
-            } else if (lbyte) {
-                /* byte × word: E has left (byte), HL has right (word) */
-                emit("ld a,e");
-                emit("call imula");
-            } else if (rbyte) {
-                /* word × byte: DE has left (word), A has right (byte) */
-                emit("ex de,hl"); /* left to HL */
-                emit("call imula");
-            } else {
-                /* word × word: DE has left, HL has right */
-                emit("call imul");
-            }
-        }
-        indent -= 2;
-        comment("]");
-        break;
-    case DIV:  /* divide */
-    case MOD:  /* modulo */
-        comment("%c%c [", e->op, e->type);
-        indent += 2;
-        {
-            unsigned char lbyte = e->left->size == 1 ||
-                        (e->left->op == AST_CONST && (e->left->v.l & ~0xff) == 0);
-            unsigned char rbyte = e->right->size == 1 ||
-                        (e->right->op == AST_CONST && (e->right->v.l & ~0xff) == 0);
-            emitExpr(e->left);
-            /* Save left before emitting right */
-            if (lbyte && rbyte) {
-                emit("ld e,a");
-            } else {
-                emit("ex de,hl");
-            }
-            emitExpr(e->right);
-            if (lbyte && rbyte) {
-                /* byte op byte: E has left, A has right */
-                /* Need to swap: left in A, right in E for div/mod */
-                emit("ld b,a");
-                emit("ld a,e");
-                emit("ld e,b");
-                if (e->op == DIV)
-                    emit("call idivb");
-                else
-                    emit("call imodb");
-            } else {
-                /* word op word (or mixed): DE has left, HL has right */
-                emit("ex de,hl"); /* left to HL, right to DE */
-                if (e->op == DIV)
-                    emit("call idiv");
-                else
-                    emit("call imod");
-            }
-        }
-        indent -= 2;
-        comment("]");
-        break;
-    case LSHIFT:  /* left shift << */
-        comment("y%c [", e->type);
-        indent += 2;
-        emitExpr(e->left);
-        if (e->right->op == AST_CONST) {
-            /* constant shift count */
-            unsigned char cnt = e->right->v.c & 0x1f;
-            comment("#B %d", cnt);
-            if (e->size == 1) {
-                while (cnt--)
-                    emit("add a,a");
-            } else if (e->size == 2) {
-                while (cnt--)
-                    emit("add hl,hl");
-            } else if (e->size == 4) {
-                emit("ld a,%d", cnt);
-                emit("call lshl");
-            }
-        } else {
-            /* variable shift count: call helper */
-            emit("ex de,hl");
-            emitExpr(e->right);
-            emit("ld a,l");
-            emit("ex de,hl");
-            emit("call lshl");
-        }
-        indent -= 2;
-        comment("]");
-        break;
-    case RSHIFT:  /* right shift >> (signed) */
-        comment("w%c [", e->type);
-        indent += 2;
-        emitExpr(e->left);
-        if (e->right->op == AST_CONST) {
-            /* constant shift count */
-            unsigned char cnt = e->right->v.c & 0x1f;
-            comment("#B %d", cnt);
-            if (e->size == 1) {
-                while (cnt--)
-                    emit("sra a");
-            } else if (e->size == 2) {
-                while (cnt--) {
-                    emit("sra h");
-                    emit("rr l");
-                }
-            } else if (e->size == 4) {
-                emit("ld a,%d", cnt);
-                emit("call lashr");
-            }
-        } else {
-            /* variable shift count: call helper */
-            emit("ex de,hl");
-            emitExpr(e->right);
-            emit("ld a,l");
-            emit("ex de,hl");
-            if (e->size == 4)
-                emit("call lashr");
-            else
-                emit("call ashr");
-        }
-        indent -= 2;
-        comment("]");
+    case PLUS:
+    case MINUS:
+    case STAR:
+    case DIV:
+    case MOD:
+    case AND:
+    case OR:
+    case XOR:
+    case LSHIFT:
+    case RSHIFT:
+        /* Pattern-driven binary operators */
+        pemitExpr(e);
         break;
     case URSHIFT:  /* unsigned right shift >>> */
         comment("z%c [", e->type);
@@ -762,10 +236,10 @@ emitExpr(struct expr *e)
             }
         } else {
             /* variable shift count: call helper */
-            emit("ex de,hl");
+            emitT(T_EXDE);
             emitExpr(e->right);
-            emit("ld a,l");
-            emit("ex de,hl");
+            emitT(T_LDAL);
+            emitT(T_EXDE);
             emit("call lshr");
         }
         indent -= 2;
@@ -776,15 +250,15 @@ emitExpr(struct expr *e)
         indent += 2;
         emitExpr(e->left);
         if (e->size == 1) {
-            emit("neg");
+            emitT(T_NEG);
         } else if (e->size == 2) {
             /* HL = -HL = 0 - HL */
-            emit("xor a");
+            emitT(T_XORA);
             emit("sub l");
-            emit("ld l,a");
+            emitT(T_LDLA);
             emit("sbc a,a");
             emit("sub h");
-            emit("ld h,a");
+            emitT(T_LDHA);
         } else if (e->size == 4) {
             /* 32-bit negation: lR = -lR */
             emit("call lneg");
@@ -797,7 +271,7 @@ emitExpr(struct expr *e)
         indent += 2;
         emitExpr(e->left);
         if (e->size == 1) {
-            emit("cpl");
+            emitT(T_CPL);
         } else if (e->size == 2) {
             emitWCpl();
         } else if (e->size == 4) {
@@ -808,7 +282,7 @@ emitExpr(struct expr *e)
         comment("]");
         break;
     case LT: case EQ: case NEQ:  /* pass1 normalizes >, <=, >= to these */
-        emitCompare(e);
+        pemitExpr(e);
         break;
     case BANG:  /* logical not */
         comment("!%c%s [", e->type, e->cond ? " C" : "");
@@ -840,7 +314,7 @@ emitExpr(struct expr *e)
             emit("ld hl,%d", val);
         } else {
             emitExpr(e->left);  /* byte value in A */
-            emit("ld l,a");
+            emitT(T_LDLA);
             emit("ld h,0");
         }
         indent -= 2;
@@ -859,7 +333,7 @@ emitExpr(struct expr *e)
             emit("ld a,(%s%o)", rn, e->left->offset);
         } else {
             emitExpr(e->left);  /* word value in HL */
-            emit("ld a,l");
+            emitT(T_LDAL);
         }
         indent -= 2;
         comment("]");
@@ -874,10 +348,10 @@ emitExpr(struct expr *e)
             emit("ld hl,%d", val & 0xffff);
         } else {
             emitExpr(e->left);  /* byte value in A */
-            emit("ld l,a");
+            emitT(T_LDLA);
             emit("rlca");       /* sign bit to carry */
             emit("sbc a,a");    /* 0 or 0xff based on carry */
-            emit("ld h,a");
+            emitT(T_LDHA);
         }
         indent -= 2;
         comment("]");
@@ -996,15 +470,9 @@ emitExpr(struct expr *e)
         comment("]");
         break;
     case PLUSEQ: case SUBEQ: case OREQ: case ANDEQ: case XOREQ: case MODEQ:
-        emitCmpArith(e);
-        break;
-    case LSHIFTEQ:  /* <<= */
-    case RSHIFTEQ:  /* >>= */
-        emitCmpShift(e);
-        break;
-    case MULTEQ:  /* *= compound multiply */
-    case DIVEQ:   /* /= compound divide */
-        emitCmpMulDiv(e);
+    case LSHIFTEQ: case RSHIFTEQ:
+    case MULTEQ: case DIVEQ:
+        pemitExpr(e);
         break;
     default:
         if (e->left && e->right) {

@@ -566,10 +566,19 @@ declaration()
         }
 
         if (cur.type == ASSIGN) {
-            /* Auto initializers handled by cpp, so only globals/statics reach here */
+            /* Auto initializers only for scalars - cpp splits them into decl + assign.
+             * Aggregate auto init (arrays, structs) is not supported. */
+            if (lexlevel > 1 && !(sclass & SC_STATIC) && v->type &&
+                (v->type->flags & (TF_AGGREGATE | TF_ARRAY))) {
+                gripe(ER_D_AI);
+                /* skip the initializer */
+                while (cur.type != SEMI && cur.type != COMMA && cur.type != E_O_F)
+                    gettoken();
+                goto next_decl;
+            }
             doInitlzr(v);
             v->emitted = 1;
-            goto next_declarator;
+            goto next_decl;
         }
 
 		/* Emit global variables and static locals immediately */
@@ -594,7 +603,7 @@ declaration()
 			}
 		}
 
-next_declarator:
+next_decl:
 		if (cur.type == COMMA) {
 			gettoken();
 			continue;
@@ -659,6 +668,7 @@ parse()
 		if (isTypeToken(cur.type) ||
 			cur.type == STATIC || cur.type == REGISTER ||
 			cur.type == AUTO || cur.type == EXTERN ||
+			cur.type == TYPEDEF ||
 			(poss_typedef && poss_typedef->kind == tdef)) {
 			declaration();
 		} else if (cur.type == ASM) {

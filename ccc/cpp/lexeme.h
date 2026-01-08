@@ -133,19 +133,18 @@
 #define NARROW      206
 #define WIDEN       207
 #define SEXT        208
-#define COPY        209
-#define INITLIST    210
-#define PREINC      211
-#define POSTINC     212
-#define PREDEC      213
-#define POSTDEC     214
-#define BFEXTRACT   215
-#define BFASSIGN    216
-#define REGVAR      217   /* pass2: register variable */
-#define LOCALVAR    218   /* pass2: local variable (IY/IX indexed) */
-#define ARGNODE     219   /* pass2: function call argument wrapper */
-#define TERNBRANCH  220   /* pass2: ternary then/else container */
-#define URSHIFT     221   /* unsigned right shift >>> */
+#define INITLIST    209
+#define PREINC      210
+#define POSTINC     211
+#define PREDEC      212
+#define POSTDEC     213
+#define BFEXTRACT   214
+#define BFASSIGN    215
+#define REGVAR      216   /* pass2: register variable */
+#define LOCALVAR    217   /* pass2: local variable (IY/IX indexed) */
+#define ARGNODE     218   /* pass2: function call argument wrapper */
+#define TERNBRANCH  219   /* pass2: ternary then/else container */
+#define URSHIFT     220   /* unsigned right shift >>> */
 
 /* AST format uses lexeme token values directly (SYM, DEREF, BANG, etc.) */
 /* Special markers for AST that have no lexeme equivalent */

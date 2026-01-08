@@ -12,14 +12,18 @@
 #include <stdlib.h>
 #include <string.h>
 #include "cc2.h"
-#include "../../cpp/lexeme.h"
+#include "../cpp/lexeme.h"
 
 static char hexdigit[16] = "0123456789abcdef";
 
 /* Static buffers to reduce stack usage (Z80 IY-indexed limit is 127) */
 static struct pattern pat_result;  /* shared result buffer */
 static int pat_argoffs[16];        /* patCall argument offsets */
-static char pat_combuf[MAX_PATTERN + 256];  /* patEmitComment buffer */
+static char pat_combuf[320];  /* patEmitComment buffer (MAX_PATTERN + 256) */
+
+/* Pool of patterns for recursive patFromExpr (3 per depth level) */
+#define PAT_MAXDEPTH 16
+static struct pattern pat_pool[48];  /* PAT_MAXDEPTH(16) * 3: [depth*3+0]=left, +1=right, +2=func */
 
 /*
  * Initialize a pattern
@@ -63,47 +67,47 @@ static int patAddOp(struct pattern *p, void *val)
 }
 
 /*
- * Build a symbol reference: $<size><index>
+ * Build a symbol reference: PAT_SYM<size><index>
  */
 void patSym(struct pattern *p, char size, char *name)
 {
 	int idx = patAddOp(p, name ? name : "(null)");
-	patAppend(p, '$');
+	patAppend(p, PAT_SYM);
 	patAppend(p, size);
 	patAppendIdx(p, idx);
 }
 
 /*
- * Build a constant: #<size><index>
+ * Build a constant: PAT_CONST<size><index>
  */
 void patConst(struct pattern *p, char size, long val)
 {
 	int idx = patAddOp(p, (void *)val);
-	patAppend(p, '#');
+	patAppend(p, PAT_CONST);
 	patAppend(p, size);
 	patAppendIdx(p, idx);
 }
 
 /*
- * Build a local variable reference: V<size><index>
+ * Build a local variable reference: PAT_LOCAL<size><index>
  * Operand is the IY offset
  */
 void patLocal(struct pattern *p, char size, int offset)
 {
 	int idx = patAddOp(p, (void *)(long)offset);
-	patAppend(p, 'V');
+	patAppend(p, PAT_LOCAL);
 	patAppend(p, size);
 	patAppendIdx(p, idx);
 }
 
 /*
- * Build a register variable reference: R<size><index>
+ * Build a register variable reference: PAT_REG<size><index>
  * Operand is the register number (R_B, R_C, R_BC, R_IX)
  */
 void patReg(struct pattern *p, char size, int reg)
 {
 	int idx = patAddOp(p, (void *)(long)reg);
-	patAppend(p, 'R');
+	patAppend(p, PAT_REG);
 	patAppend(p, size);
 	patAppendIdx(p, idx);
 }
@@ -134,8 +138,8 @@ static void patAppendChild(struct pattern *p, struct pattern *child, int offset)
 		char c = child->str[i++];
 		patAppend(p, c);
 
-		/* After $ # V R, copy size then adjust index */
-		if (c == '$' || c == '#' || c == 'V' || c == 'R') {
+		/* After PAT_SYM/CONST/LOCAL/REG, copy size then adjust index */
+		if (c == PAT_SYM || c == PAT_CONST || c == PAT_LOCAL || c == PAT_REG) {
 			/* Copy size */
 			if (i < child->len)
 				patAppend(p, child->str[i++]);
@@ -296,22 +300,27 @@ static int patDepth = 0;
 
 void patFromExpr(struct pattern *p, struct expr *e)
 {
-	struct pattern left, right;
-	struct pattern func;
+	struct pattern *left, *right, *func;
 	struct pattern *args[16];
-	int i;
-
-	patDepth++;
+	int i, base;
 
 	if (!e) {
 		patInit(p);
-		patDepth--;
 		return;
 	}
 
-	if (patDepth > 100) {
+	if (patDepth >= PAT_MAXDEPTH) {
 		fprintf(stderr, "patFromExpr: depth %d, op=%c\n", patDepth, e->op);
+		patInit(p);
+		return;
 	}
+
+	/* Get patterns from pool for this depth level */
+	base = patDepth * 3;
+	left = &pat_pool[base];
+	right = &pat_pool[base + 1];
+	func = &pat_pool[base + 2];
+	patDepth++;
 
 	switch (e->op) {
 	case AST_CONST:	/* constant */
@@ -336,7 +345,7 @@ void patFromExpr(struct pattern *p, struct expr *e)
 		break;
 
 	case CALL:	/* function call */
-		patFromExpr(&func, e->left);
+		patFromExpr(func, e->left);
 		/* args are wrapped in ARGNODE nodes linked via right pointers */
 		i = 0;
 		{
@@ -348,7 +357,7 @@ void patFromExpr(struct pattern *p, struct expr *e)
 				arg = arg->right;
 			}
 		}
-		patCall(p, e->type ? e->type : 'v', e->aux, &func, args, i);
+		patCall(p, e->type ? e->type : 'v', e->aux, func, args, i);
 		while (--i >= 0)
 			free(args[i]);
 		break;
@@ -360,8 +369,8 @@ void patFromExpr(struct pattern *p, struct expr *e)
 	case NARROW:	/* narrow */
 	case WIDEN:	/* widen */
 	case SEXT:	/* sign extend */
-		patFromExpr(&left, e->left);
-		patUnary(p, e->op, e->type, &left);
+		patFromExpr(left, e->left);
+		patUnary(p, e->op, e->type, left);
 		break;
 
 	case PREINC:	/* pre-increment */
@@ -369,14 +378,14 @@ void patFromExpr(struct pattern *p, struct expr *e)
 	case PREDEC:	/* pre-decrement */
 	case POSTDEC:	/* post-decrement */
 		/* encode as unary with increment in aux operand */
-		patFromExpr(&left, e->left);
-		patUnary(p, e->op, e->type, &left);
+		patFromExpr(left, e->left);
+		patUnary(p, e->op, e->type, left);
 		break;
 
 	default:	/* binary operators */
-		patFromExpr(&left, e->left);
-		patFromExpr(&right, e->right);
-		patBinary(p, e->op, e->type, &left, &right);
+		patFromExpr(left, e->left);
+		patFromExpr(right, e->right);
+		patBinary(p, e->op, e->type, left, right);
 		break;
 	}
 	patDepth--;

@@ -3,7 +3,7 @@
  */
 #include <stdio.h>
 #include "cc2.h"
-#include "../../cpp/lexeme.h"
+#include "../cpp/lexeme.h"
 
 /*
  * Emit pre-increment/decrement: (, {
