@@ -75,14 +75,14 @@ mkLbl(char *base, char *suffix)
 void
 emitLabel(char *base, char *suffix)
 {
-	emit1('L');
+	emit1(LABEL);
 	emitS(mkLbl(base, suffix));
 }
 
 void
 emitGoto(char *base, char *suffix)
 {
-	emit1('G');
+	emit1(GOTO);
 	emitS(mkLbl(base, suffix));
 }
 
@@ -148,7 +148,7 @@ emitExpr(struct expr *e)
 
 	switch (op) {
 	case CONST:
-		emit1(AST_CONST);
+		emit1(NUMBER);
 		emit1(typeSfx(type));
 		emit4(e->v);
 		break;
@@ -385,6 +385,10 @@ emitFuncPre(struct name *func)
 
 	if (!func)
 		return;
+#ifdef DEBUG
+	if (VERBOSE(V_EMIT))
+		fdprintf(2, "EMIT func %s\n", func->name);
+#endif
 
 	frm_size = analyzeFunc(func);
 	curFuncLocals = func->u.locals;
@@ -404,7 +408,7 @@ emitFuncPre(struct name *func)
 		fmtstr(func_name, "S%d", func->static_id - 1);
 	else
 		fmtstr(func_name, "_%s", func->name);
-	emit1('F');
+	emit1(AST_FUNC);
 	emit1(func->type->sub ? typeSfx(func->type->sub) : 'v');
 	emitS(func_name);
 	emit1(param_count);
@@ -416,115 +420,9 @@ emitFuncPre(struct name *func)
 	emitLocals(func->u.locals);
 
 	/* Block header */
-	emit1('B');
+	emit1(AST_BLOCK);
 	emit1(0);
 	emit1(popFuncCnt());
-}
-
-/*
- * Emit an initializer list (linked via next pointers)
- * Used for array/struct initializers like {1, 2, 3}
- * elem_type: type of array elements for width annotation
- * Format: [ width count. items...
- */
-/*
- * Emit struct initializer with field types from struct definition
- */
-static void emitInit(struct expr *init, struct type *type);
-static void emitInitList(struct expr *init, struct type *elem_type);
-
-static void
-emitStInit(struct expr *init, struct type *stype)
-{
-	struct expr *val;
-	struct name *field, *fields[32];
-	int count = 0, nfields = 0, i;
-
-	/* Count initializer items */
-	for (val = init; val; val = val->next)
-		count++;
-
-	/* Build forward-order field array (struct elem list is reversed) */
-	if (stype && (stype->flags & TF_AGGREGATE)) {
-		for (field = stype->elem; field && nfields < 32; field = field->next)
-			fields[nfields++] = field;
-	}
-
-	emit1(BEGIN);
-	emit1(count);
-
-	/* Emit each initializer with corresponding field's type */
-	i = nfields - 1;  /* Start from last field (first in source order) */
-	for (val = init; val; val = val->next) {
-		field = (i >= 0) ? fields[i--] : NULL;
-		emitInit(val, field ? field->type : NULL);
-	}
-	emit1(END);
-}
-
-/*
- * Recursively emit an initializer with expected type
- * type: expected type from declaration (array element type or struct field type)
- */
-static void
-emitInit(struct expr *init, struct type *type)
-{
-	if (init->op == INITLIST) {
-		/* Nested aggregate - type tells us struct vs array */
-		if (type->flags & TF_AGGREGATE) {
-			emitStInit(init->left, type);
-		} else if (type->flags & TF_ARRAY) {
-			emitInitList(init->left, type->sub);
-		}
-	} else if (init->op == STRING && type &&
-		   (type->flags & TF_ARRAY) && type->sub &&
-		   type->sub->size == 1) {
-		/* String literal initializing char array - emit bytes inline */
-		unsigned char *str = (unsigned char *)init->v;
-		int slen = str ? str[0] : 0;
-		int arrlen = type->count;
-		int i;
-		/* Mark string as emitted so it won't be emitted separately */
-		((struct name *)init->var)->emitted = 1;
-		emit1(LBRACK);
-		emit1('b');
-		emit1(arrlen);
-		for (i = 0; i < arrlen; i++) {
-			int b = (i < slen) ? str[i + 1] : 0;
-			emit1('#');
-			emit1('b');
-			emit4(b);
-		}
-		emit1(RBRACK);
-	} else if (init->op == CONST && type) {
-		/* Scalar constant - use declared type */
-		struct type *saved = init->type;
-		init->type = type;
-		emitExpr(init);
-		init->type = saved;
-	} else {
-		emitExpr(init);
-	}
-}
-
-static void
-emitInitList(struct expr *init, struct type *elem_type)
-{
-	struct expr *item;
-	char width, count = 0;
-
-	/* Count items and get element width */
-	for (item = init; item; item = item->next)
-		count++;
-	width = typeSfx(elem_type);
-
-	emit1(LBRACK);
-	emit1(width);
-	emit1(count);
-	for (item = init; item; item = item->next) {
-		emitInit(item, elem_type);
-	}
-	emit1(RBRACK);
 }
 
 /*
