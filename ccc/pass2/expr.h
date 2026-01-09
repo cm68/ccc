@@ -59,6 +59,7 @@ Expr	*readexpr(void);
 
 #ifdef DEBUG
 void	dumpexpr(Expr *e);
+char	*opname(int op);
 #endif
 
 #endif

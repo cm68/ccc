@@ -354,7 +354,7 @@ readexpr(void)
 
 #ifdef DEBUG
 
-static char *
+char *
 opname(int op)
 {
 	switch (op) {

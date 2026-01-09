@@ -7,6 +7,24 @@
 
 #ifdef DEBUG
 #include "debug.h"
+
+static char *
+stmtname(int op)
+{
+	switch (op) {
+	case 'B': return "BLOCK";
+	case 'I': return "IF";
+	case 'R': return "RETURN";
+	case 'E': return "EXPR";
+	case 'L': return "LABEL";
+	case 'G': return "GOTO";
+	case 'S': return "SWITCH";
+	case 'C': return "CASE";
+	case 'O': return "DEFAULT";
+	case 'F': return "FUNC";
+	default:  return "???";
+	}
+}
 #endif
 
 static char buf[64];
@@ -20,8 +38,8 @@ parseStmt(void)
 
 #ifdef DEBUG
 	if (VERBOSE(V_STMT))
-		fprintf(stderr, "stmt op=%d '%c'\n", op, op);
-	out("; stmt op="); outd(op); out(" '"); outc(op); out("'\n");
+		fprintf(stderr, "stmt op=%s\n", stmtname(op));
+	out("; stmt "); out(stmtname(op)); outc('\n');
 #endif
 	switch (op) {
 	case 'B':
@@ -164,8 +182,8 @@ parse(void)
 	while ((op = read1()) != E_O_F) {
 #ifdef DEBUG
 		if (VERBOSE(V_PARSE))
-			fprintf(stderr, "parse: top op=%d '%c'\n", op, op);
-		out("; top op="); outd(op); out(" '"); outc(op); out("'\n");
+			fprintf(stderr, "parse: top op=%s\n", stmtname(op));
+		out("; top "); out(stmtname(op)); outc('\n');
 #endif
 		switch (op) {
 		case 'F':
