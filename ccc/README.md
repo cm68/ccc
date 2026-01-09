@@ -13,6 +13,20 @@ complete; small programs run in simulation.
 - All loops lowered to labeled if/goto for simplified code generation
 - See CLAUDE.md for detailed architecture and features
 
+## Memory Constraints (CP/M 2.2)
+
+The standard CP/M 2.2 TPA (Transient Program Area) on a 64KB system is 56KB.
+This must hold:
+- **Text** (code)
+- **Data** (initialized globals)
+- **BSS** (uninitialized globals)
+- **Heap** (malloc'd memory)
+- **Stack**
+
+With a static footprint (text + data + bss) of ~48KB, this leaves approximately
+8-10KB for heap and stack combined. The compiler passes are designed to fit
+within these constraints when compiled natively for Z80/CP/M.
+
 **Pass 2 (cc2) - Complete** (source in pass2/)
 - Stream code generator: builds one statement tree at a time, emits immediately
 - Three-phase per-expression: demand calculation, dest assignment, emit
