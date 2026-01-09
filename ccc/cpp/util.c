@@ -45,8 +45,10 @@ extern int exitCode;
 void
 gripe(error_t err)
 {
+    char buf[128];
     char *msg = (err < sizeof(errmsgs)/sizeof(errmsgs[0])) ? errmsgs[err] : "unknown error";
-    fprintf(stderr, "%s:%d: %s\n", filename ? filename : "?", lineno, msg);
+    fmtstr(buf, "%s:%d: %s\n", filename ? filename : "?", lineno, msg);
+    write(2, buf, strlen(buf));
     if (err < ER_LAST)  /* Not a warning */
         exitCode = 1;
 }
@@ -67,10 +69,94 @@ lookupc(char *s, unsigned char c)
     return 0xff;
 }
 
+/*
+ * Minimal formatter - handles %s, %d, %ld, %c, %g (no width/padding)
+ * Returns pointer to end of written string
+ */
+char *
+fmtstr(char *buf, char *fmt, ...)
+{
+    va_list ap;
+    char *p = buf;
+    char *s;
+    long n;
+    int neg;
+
+    va_start(ap, fmt);
+    while (*fmt) {
+        if (*fmt != '%') {
+            *p++ = *fmt++;
+            continue;
+        }
+        fmt++;
+        if (*fmt == 'l') {
+            fmt += 2;  /* skip 'l' and 'd' */
+            n = va_arg(ap, long);
+            goto donum;
+        }
+        switch (*fmt++) {
+        case 's':
+            s = va_arg(ap, char *);
+            while (*s) *p++ = *s++;
+            break;
+        case 'd':
+            n = va_arg(ap, int);
+        donum:
+            if ((neg = (n < 0))) n = -n;
+            s = p;
+            do { *p++ = '0' + (n % 10); n /= 10; } while (n);
+            if (neg) *p++ = '-';
+            /* reverse */
+            for (n = 0; n < (p - s) / 2; n++) {
+                char t = s[n]; s[n] = p[-1-n]; p[-1-n] = t;
+            }
+            break;
+        case 'g':
+            {
+                double f = va_arg(ap, double);
+                long ipart, fpart;
+                int i;
+                if (f < 0) { *p++ = '-'; f = -f; }
+                ipart = (long)f;
+                /* output integer part */
+                s = p;
+                do { *p++ = '0' + (ipart % 10); ipart /= 10; } while (ipart);
+                for (n = 0; n < (p - s) / 2; n++) {
+                    char t = s[n]; s[n] = p[-1-n]; p[-1-n] = t;
+                }
+                /* fractional part - 6 digits */
+                f = f - (long)f;
+                fpart = (long)(f * 1000000 + 0.5);
+                if (fpart) {
+                    *p++ = '.';
+                    for (i = 5; i >= 0 && (fpart % 10) == 0; i--)
+                        fpart /= 10;
+                    s = p;
+                    while (i-- >= 0) { *p++ = '0' + (fpart % 10); fpart /= 10; }
+                    for (n = 0; n < (p - s) / 2; n++) {
+                        char t = s[n]; s[n] = p[-1-n]; p[-1-n] = t;
+                    }
+                }
+            }
+            break;
+        case 'c':
+            *p++ = (char)va_arg(ap, int);
+            break;
+        case '%':
+            *p++ = '%';
+            break;
+        }
+    }
+    va_end(ap);
+    *p = 0;
+    return p;
+}
+
 char printbuf[128];
 /*
- * Simple fdprintf implementation
+ * Simple fdprintf implementation (debug only)
  */
+#ifdef DEBUG
 int
 fdprintf(int fd, char *fmt, ...)
 {
@@ -84,6 +170,7 @@ fdprintf(int fd, char *fmt, ...)
     write(fd, printbuf, len);
     return len;
 }
+#endif
 
 /*
  * Parse constant expression for #if/#elif

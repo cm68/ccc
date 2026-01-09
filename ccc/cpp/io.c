@@ -148,7 +148,9 @@ pushfile(char *name)
     t = malloc(sizeof(*t));
     t->fd = open(name, 0);
     if (t->fd < 0) {
-        fdprintf(2, "cannot open: %s\n", name);
+        char buf[140];
+        fmtstr(buf, "cannot open: %s\n", name);
+        write(2, buf, strlen(buf));
         exit(1);
     }
     t->name = strdup(name);
@@ -248,8 +250,10 @@ insertfile(char *name, int sys)
         }
     }
     if (t->fd == -1) {
+        char buf[140];
         free(t);
-        fdprintf(2, "cannot find include file: %s\n", name);
+        fmtstr(buf, "cannot find include file: %s\n", name);
+        write(2, buf, strlen(buf));
         exit(1);
     }
 found:

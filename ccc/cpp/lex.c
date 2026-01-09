@@ -364,6 +364,8 @@ char
 isnumber()
 {
     unsigned char base;
+    unsigned char c;
+    unsigned char nc;
     char *p;
 
     if (charmatch('\'')) {
@@ -387,7 +389,8 @@ isnumber()
             *p++ = curchar;
             advance();
         }
-        if ((curchar | 0x20) == 'e') {
+        c = curchar | 0x20;
+        if (c == 'e') {
             *p++ = curchar;
             advance();
             if (curchar == '+' || curchar == '-') {
@@ -401,7 +404,8 @@ isnumber()
         }
         *p = '\0';
         next.v.fval = (float)atof(strbuf);
-        if ((curchar | 0x20) == 'f' || (curchar | 0x20) == 'l') {
+        c = curchar | 0x20;
+        if (c == 'f' || c == 'l') {
             advance();
         }
         return 2;
@@ -413,13 +417,14 @@ isnumber()
 
     base = 10;
     if (charmatch('0')) {
-        if ((curchar | 0x20) == 'x') {
+        c = curchar | 0x20;
+        if (c == 'x') {
             base = 16;
             advance();
-        } else if ((curchar | 0x20) == 'b') {
+        } else if (c == 'b') {
             base = 2;
             advance();
-        } else if ((curchar | 0x20) == 'd') {
+        } else if (c == 'd') {
             base = 10;
         } else {
             base = 8;
@@ -430,48 +435,49 @@ isnumber()
     /* Check for float literal (decimal point or exponent) */
     /* Treat . as float if followed by: digit, e/E, or non-identifier char */
     /* This allows: 1.5, 1.e5, 1. but NOT 1.foo (member access) */
-    if (base == 10 && ((curchar == '.' && (
-            (nextchar >= '0' && nextchar <= '9') ||
-            (nextchar | 0x20) == 'e' ||
-            !((nextchar >= 'a' && nextchar <= 'z') ||
-              (nextchar >= 'A' && nextchar <= 'Z') ||
-              nextchar == '_')))
-                       || (curchar | 0x20) == 'e')) {
-        /* Build float string: integer part + optional . + frac + optional exp */
-        p = strbuf;
-        sprintf(p, "%ld", next.v.numeric);
-        p += strlen(p);
-        if (curchar == '.') {
-            *p++ = '.';
-            advance();
-            while (curchar >= '0' && curchar <= '9') {
-                *p++ = curchar;
-                advance();
-            }
-        }
-        if ((curchar | 0x20) == 'e') {
-            *p++ = curchar;
-            advance();
-            if (curchar == '+' || curchar == '-') {
-                *p++ = curchar;
-                advance();
-            }
-            while (curchar >= '0' && curchar <= '9') {
-                *p++ = curchar;
-                advance();
-            }
-        }
-        *p = '\0';
-        next.v.fval = (float)atof(strbuf);
-        /* Skip optional f/F/l/L suffix */
-        if ((curchar | 0x20) == 'f' || (curchar | 0x20) == 'l') {
-            advance();
-        }
-        return 2;  /* Return 2 for float */
-    }
+    c = curchar | 0x20;
+	nc = nextchar | 0x20;
+	if (base == 10 && ((curchar == '.' && (
+			(nextchar >= '0' && nextchar <= '9') ||
+			nc == 'e' ||
+			!((nc >= 'a' && nc <= 'z') || nextchar == '_')))
+				   || c == 'e')) {
+
+		/* Build float string: integer part + optional . + frac + optional exp */
+		p = fmtstr(strbuf, "%ld", next.v.numeric);
+		if (curchar == '.') {
+			*p++ = '.';
+			advance();
+			while (curchar >= '0' && curchar <= '9') {
+				*p++ = curchar;
+				advance();
+			}
+		}
+		c = curchar | 0x20;
+		if (c == 'e') {
+			*p++ = curchar;
+			advance();
+			if (curchar == '+' || curchar == '-') {
+				*p++ = curchar;
+				advance();
+			}
+			while (curchar >= '0' && curchar <= '9') {
+				*p++ = curchar;
+				advance();
+			}
+		}
+		*p = '\0';
+		next.v.fval = (float)atof(strbuf);
+		/* Skip optional f/F/l/L suffix */
+		c = curchar | 0x20;
+		if (c == 'f' || c == 'l') {
+			advance();
+		}
+		return 2;  /* Return 2 for float */
+	}
 
     /* Skip optional 'L' or 'l' suffix for long constants */
-    if ((curchar == 'L') || (curchar == 'l')) {
+    if (c == 'l') {
         advance();
     }
 
@@ -541,8 +547,7 @@ issym()
 
     /* Check identifier length limit (14 chars + leading underscore = 15 total) */
     if ((s - strbuf) > 14) {
-        gripe(ER_C_TL);
-        fdprintf(2, "  Identifier '%s' exceeds 14 character limit\n", strbuf);
+        gripe(ER_W_SYMTRUNC);
     }
 
 #ifdef DEBUG
@@ -1244,7 +1249,7 @@ gettoken()
                         while (*p == ' ' || *p == '\t' || *p == '\n') p++;
                         if (p != bigbuf) {
                             bigbuflen = strlen(p);
-                            memmove(bigbuf, p, bigbuflen + 1);
+                            memcpy(bigbuf, p, bigbuflen + 1);
                         }
                         /* Point to bigbuf for next token */
                         pendingAsm = bigbuf;

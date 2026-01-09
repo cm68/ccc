@@ -29,7 +29,7 @@ CFLAGS = -DCCC
 endif
 
 INC = -I../../libsrc/include
-SRCS = cpp.c lex.c io.c macro.c kw.c emit.c util.c kwtab.c knr.c
+SRCS = cpp.c lex.c io.c macro.c kw.c emit.c util.c kwtab.c filter.c
 OBJS = $(SRCS:.c=.o)
 GENERATED = kwtab.c
 
@@ -75,7 +75,9 @@ sizecheck: $(GENERATED)
 		zc3 -c -DCCC $(INC) -o sizecheck/$$b.o $$f && \
 		{ echo "ok"; } || { echo "FAIL"; } \
 	done ; \
-	wssize $$o | awk '{t+=$$1;d+=$$2;b+=$$3;a+=$$4} END {print t,d,b,a}' | tee -a sizefile
+	wssize $$o | awk '{t+=$$1;d+=$$2;b+=$$3;a+=$$4} END {print t,d,b,a}' | tee -a sizefile ; \
+	wsld -r -o sizecheck/cpp ../../root/lib/crt0.o $$o ../../root/lib/libc.a ../../root/lib/libu.a > sizecheck/wsld.out ; \
+	wssize sizecheck/cpp
 
 clean:
 	rm -f *.o *.1 *.2 *.x *.i *.pp

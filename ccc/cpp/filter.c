@@ -1,17 +1,18 @@
 /*
- * knr.c - K&R to ANSI function definition normalization
+ * filter.c - token filter for normalization
  *
  * Operates as a filter between the lexer's emit calls and the
  * actual .x file output. Tokens flow through this layer which
- * detects K&R patterns and transforms them to ANSI.
+ * detects patterns and transforms them.
  *
  * Architecture:
- *   lexer -> emit*() -> knrFilter() -> actual .x write
+ *   lexer -> emit*() -> filter() -> actual .x write
  *
- * K&R:   int foo(a, b, c) int a; char *b; long c; { ... }
- * ANSI:  int foo(int a, char *b, long c) { ... }
- *
- * Unspecified parameter types default to int.
+ * Transformations:
+ * - K&R to ANSI: int foo(a, b) int a; char *b; { -> int foo(int a, char *b) {
+ * - Loop lowering: while/for/do -> label/goto/if
+ * - Brace insertion: if (x) stmt; -> if (x) { stmt; }
+ * - Local init split: int a = 1; -> int a; a = 1;
  */
 #include "cpp.h"
 #include <unistd.h>
@@ -192,56 +193,10 @@ static int switchLblNum = 0;  /* Counter for switch labels */
 static int switchParen = 0;   /* Paren depth in switch condition (>0 = waiting for body) */
 
 /*
- * We use the emit functions from emit.c for actual .x output.
- * These are declared in cpp.h: emitToken, emitKeyword, emitSym, etc.
- *
- * The filter intercepts tokens before they reach emit, buffers when
- * needed, and calls emit when ready to output.
- */
-
-/* Wrappers to call emit.c functions (avoids recursion when filter calls emit) */
-
-static void
-realEmitToken(unsigned char tok)
-{
-	emitToken(tok);
-}
-
-static void
-realEmitKw(unsigned char kw)
-{
-	emitKeyword(kw);
-}
-
-static void
-realEmitSym(char *name)
-{
-	emitSym(name);
-}
-
-static void
-realEmitNumber(long val)
-{
-	emitNumber(val);
-}
-
-static void
-realEmitFNum(float val)
-{
-	emitFNumber(val);
-}
-
-static void
-realEmitString(char *str, int len)
-{
-	emitString(str, len);
-}
-
-/*
  * Add typedef name to tracking list
  */
 void
-knrAddTypedef(char *name)
+filtAddTdef(char *name)
 {
 	struct typedef_node *node = malloc(sizeof(*node));
 	node->name = strdup(name);
@@ -282,6 +237,27 @@ isTypeTok(unsigned char type, char *name)
 }
 
 /*
+ * Fill a buftok with token data (core helper for all buffer functions)
+ */
+static void
+fillBufTok(struct buftok *t, unsigned char type, long num, float fnum,
+           char *str, int slen)
+{
+	t->type = type;
+	if (type == SYM) {
+		t->v.str = strdup(str);
+	} else if (type == STRING) {
+		t->v.str = malloc(slen + 1);
+		memcpy(t->v.str, str, slen);
+		t->v.str[slen] = 0;
+	} else if (type == NUMBER) {
+		t->v.num = num;
+	} else if (type == FNUMBER) {
+		t->v.fnum = fnum;
+	}
+}
+
+/*
  * Buffer a token
  */
 static void
@@ -291,20 +267,8 @@ bufToken(unsigned char type, long num, float fnum, char *str, int slen)
 		return;
 	if (!tokbuf)
 		tokbuf = malloc(MAX_TOKENS * sizeof(struct buftok));
-
-	tokbuf[num_tokens].type = type;
+	fillBufTok(&tokbuf[num_tokens], type, num, fnum, str, slen);
 	tokbuf[num_tokens].lineno = lineno;
-	if (type == SYM) {
-		tokbuf[num_tokens].v.str = strdup(str);
-	} else if (type == STRING) {
-		tokbuf[num_tokens].v.str = malloc(slen + 1);
-		memcpy(tokbuf[num_tokens].v.str, str, slen);
-		tokbuf[num_tokens].v.str[slen] = 0;
-	} else if (type == NUMBER) {
-		tokbuf[num_tokens].v.num = num;
-	} else if (type == FNUMBER) {
-		tokbuf[num_tokens].v.fnum = fnum;
-	}
 	num_tokens++;
 }
 
@@ -316,20 +280,35 @@ emitBufTok(struct buftok *t)
 {
 	switch (t->type) {
 	case SYM:
-		realEmitSym(t->v.str);
+		emitSym(t->v.str);
 		break;
 	case NUMBER:
-		realEmitNumber(t->v.num);
+		emitNumber(t->v.num);
 		break;
 	case FNUMBER:
-		realEmitFNum(t->v.fnum);
+		emitFNumber(t->v.fnum);
 		break;
 	case STRING:
-		realEmitString(t->v.str, strlen(t->v.str));
+		emitString(t->v.str, strlen(t->v.str));
 		break;
 	default:
-		realEmitToken(t->type);
+		emitToken(t->type);
 		break;
+	}
+}
+
+/*
+ * Emit a token by type (used throughout the filter)
+ */
+static void
+emitByType(unsigned char type, long num, float fnum, char *str, int slen)
+{
+	switch (type) {
+	case SYM:    emitSym(str); break;
+	case NUMBER: emitNumber(num); break;
+	case FNUMBER: emitFNumber(fnum); break;
+	case STRING: emitString(str, slen); break;
+	default:     emitToken(type); break;
 	}
 }
 
@@ -395,19 +374,7 @@ bufLocDecl(unsigned char type, long num, float fnum, char *str, int slen)
 		return;
 	if (!locDecl)
 		locDecl = malloc(MAX_LOC_DECL * sizeof(struct buftok));
-
-	locDecl[numLocDecl].type = type;
-	if (type == SYM) {
-		locDecl[numLocDecl].v.str = strdup(str);
-	} else if (type == STRING) {
-		locDecl[numLocDecl].v.str = malloc(slen + 1);
-		memcpy(locDecl[numLocDecl].v.str, str, slen);
-		locDecl[numLocDecl].v.str[slen] = 0;
-	} else if (type == NUMBER) {
-		locDecl[numLocDecl].v.num = num;
-	} else if (type == FNUMBER) {
-		locDecl[numLocDecl].v.fnum = fnum;
-	}
+	fillBufTok(&locDecl[numLocDecl], type, num, fnum, str, slen);
 	numLocDecl++;
 }
 
@@ -418,29 +385,15 @@ static void
 bufLocInit(unsigned char type, long num, float fnum, char *str, int slen)
 {
 	struct local_init *li;
-	int idx;
 
 	if (numLocInits == 0)
 		return;
 	li = &locInits[numLocInits - 1];
-	idx = li->num_inittoks;
-	if (idx >= MAX_LOC_INIT_TOKS)
+	if (li->num_inittoks >= MAX_LOC_INIT_TOKS)
 		return;
 	if (!li->inittoks)
 		li->inittoks = malloc(MAX_LOC_INIT_TOKS * sizeof(struct buftok));
-
-	li->inittoks[idx].type = type;
-	if (type == SYM) {
-		li->inittoks[idx].v.str = strdup(str);
-	} else if (type == STRING) {
-		li->inittoks[idx].v.str = malloc(slen + 1);
-		memcpy(li->inittoks[idx].v.str, str, slen);
-		li->inittoks[idx].v.str[slen] = 0;
-	} else if (type == NUMBER) {
-		li->inittoks[idx].v.num = num;
-	} else if (type == FNUMBER) {
-		li->inittoks[idx].v.fnum = fnum;
-	}
+	fillBufTok(&li->inittoks[li->num_inittoks], type, num, fnum, str, slen);
 	li->num_inittoks++;
 }
 
@@ -483,15 +436,15 @@ flushLocInits(void)
 	}
 	for (i = 0; i < numLocInits; i++) {
 		li = &locInits[i];
-		realEmitSym(li->name);
-		realEmitToken(ASSIGN);
+		emitSym(li->name);
+		emitToken(ASSIGN);
 		if (li->inittoks) {
 			for (j = 0; j < li->num_inittoks; j++) {
 				emitBufTok(&li->inittoks[j]);
 				freeBufTok(&li->inittoks[j]);
 			}
 		}
-		realEmitToken(SEMI);
+		emitToken(SEMI);
 		li->num_inittoks = 0;
 	}
 	numLocInits = 0;
@@ -526,19 +479,8 @@ bufLoopCond(unsigned char type, long num, float fnum, char *str, int slen)
 		return;
 	if (!loop_cond)
 		loop_cond = malloc(MAX_LOOP_TOKS * sizeof(struct buftok));
-	loop_cond[num_loop_cond].type = type;
+	fillBufTok(&loop_cond[num_loop_cond], type, num, fnum, str, slen);
 	loop_cond[num_loop_cond].lineno = lineno;
-	if (type == SYM) {
-		loop_cond[num_loop_cond].v.str = strdup(str);
-	} else if (type == STRING) {
-		loop_cond[num_loop_cond].v.str = malloc(slen + 1);
-		memcpy(loop_cond[num_loop_cond].v.str, str, slen);
-		loop_cond[num_loop_cond].v.str[slen] = 0;
-	} else if (type == NUMBER) {
-		loop_cond[num_loop_cond].v.num = num;
-	} else if (type == FNUMBER) {
-		loop_cond[num_loop_cond].v.fnum = fnum;
-	}
 	num_loop_cond++;
 }
 
@@ -550,19 +492,8 @@ bufLoopInit(unsigned char type, long num, float fnum, char *str, int slen)
 		return;
 	if (!loop_init)
 		loop_init = malloc(MAX_LOOP_TOKS * sizeof(struct buftok));
-	loop_init[num_loop_init].type = type;
+	fillBufTok(&loop_init[num_loop_init], type, num, fnum, str, slen);
 	loop_init[num_loop_init].lineno = lineno;
-	if (type == SYM) {
-		loop_init[num_loop_init].v.str = strdup(str);
-	} else if (type == STRING) {
-		loop_init[num_loop_init].v.str = malloc(slen + 1);
-		memcpy(loop_init[num_loop_init].v.str, str, slen);
-		loop_init[num_loop_init].v.str[slen] = 0;
-	} else if (type == NUMBER) {
-		loop_init[num_loop_init].v.num = num;
-	} else if (type == FNUMBER) {
-		loop_init[num_loop_init].v.fnum = fnum;
-	}
 	num_loop_init++;
 }
 
@@ -574,50 +505,19 @@ bufLoopIncr(unsigned char type, long num, float fnum, char *str, int slen)
 		return;
 	if (!loop_incr)
 		loop_incr = malloc(MAX_LOOP_TOKS * sizeof(struct buftok));
-	loop_incr[num_loop_incr].type = type;
+	fillBufTok(&loop_incr[num_loop_incr], type, num, fnum, str, slen);
 	loop_incr[num_loop_incr].lineno = lineno;
-	if (type == SYM) {
-		loop_incr[num_loop_incr].v.str = strdup(str);
-	} else if (type == STRING) {
-		loop_incr[num_loop_incr].v.str = malloc(slen + 1);
-		memcpy(loop_incr[num_loop_incr].v.str, str, slen);
-		loop_incr[num_loop_incr].v.str[slen] = 0;
-	} else if (type == NUMBER) {
-		loop_incr[num_loop_incr].v.num = num;
-	} else if (type == FNUMBER) {
-		loop_incr[num_loop_incr].v.fnum = fnum;
-	}
 	num_loop_incr++;
 }
 
-/* Clear loop condition buffer */
+/* Clear a buftok array */
 static void
-clearLoopCond(void)
+clearBufArr(struct buftok *buf, int *cnt)
 {
 	int i;
-	for (i = 0; i < num_loop_cond; i++)
-		freeBufTok(&loop_cond[i]);
-	num_loop_cond = 0;
-}
-
-/* Clear FOR init buffer */
-static void
-clearLoopInit(void)
-{
-	int i;
-	for (i = 0; i < num_loop_init; i++)
-		freeBufTok(&loop_init[i]);
-	num_loop_init = 0;
-}
-
-/* Clear FOR increment buffer */
-static void
-clearLoopIncr(void)
-{
-	int i;
-	for (i = 0; i < num_loop_incr; i++)
-		freeBufTok(&loop_incr[i]);
-	num_loop_incr = 0;
+	for (i = 0; i < *cnt; i++)
+		freeBufTok(&buf[i]);
+	*cnt = 0;
 }
 
 /*
@@ -633,38 +533,20 @@ syncLine(int line)
 	}
 }
 
-/* Emit buffered condition tokens with line tracking */
+/* Emit buffered tokens with line tracking */
 static void
-emitLoopCond(void)
+emitBufArr(struct buftok *buf, int cnt)
 {
 	int i;
-	for (i = 0; i < num_loop_cond; i++) {
-		syncLine(loop_cond[i].lineno);
-		emitBufTok(&loop_cond[i]);
+	for (i = 0; i < cnt; i++) {
+		syncLine(buf[i].lineno);
+		emitBufTok(&buf[i]);
 	}
 }
 
-/* Emit buffered FOR init tokens with line tracking */
-static void
-emitLoopInit(void)
-{
-	int i;
-	for (i = 0; i < num_loop_init; i++) {
-		syncLine(loop_init[i].lineno);
-		emitBufTok(&loop_init[i]);
-	}
-}
-
-/* Emit buffered FOR increment tokens with line tracking */
-static void
-emitLoopIncr(void)
-{
-	int i;
-	for (i = 0; i < num_loop_incr; i++) {
-		syncLine(loop_incr[i].lineno);
-		emitBufTok(&loop_incr[i]);
-	}
-}
+#define emitLoopCond() emitBufArr(loop_cond, num_loop_cond)
+#define emitLoopInit() emitBufArr(loop_init, num_loop_init)
+#define emitLoopIncr() emitBufArr(loop_incr, num_loop_incr)
 
 /* Push a new loop frame, saving current state and parent's incr buffer */
 static void
@@ -724,32 +606,46 @@ loopLabelChar(void)
 	}
 }
 
-/* Emit a loop label: __<L><N><suffix> */
+/* Emit a loop label or goto: __<L><N><suffix> */
 static void
-emitLoopLabel(char suffix)
+emitLoopLG(char suffix, int isLabel)
 {
 	char buf[16];
 	if (loop_sp == 0)
 		return;
-	sprintf(buf, "__%c%d%c", loopLabelChar(),
+	fmtstr(buf, "__%c%d%c", loopLabelChar(),
 	        loop_stack[loop_sp - 1].label_num, suffix);
-	realEmitSym(buf);
-	realEmitToken(COLON);
-	realEmitToken(SEMI);
+	if (isLabel) {
+		emitSym(buf);
+		emitToken(COLON);
+		emitToken(SEMI);
+	} else {
+		emitKeyword(GOTO);
+		emitSym(buf);
+		emitToken(SEMI);
+	}
 }
 
-/* Emit goto to loop label */
+#define emitLoopLabel(s) emitLoopLG(s, 1)
+#define emitLoopGoto(s)  emitLoopLG(s, 0)
+
+/* Emit: if (!(cond)) { goto __X#B; } and clear cond buffer */
 static void
-emitLoopGoto(char suffix)
+emitCondJump(void)
 {
-	char buf[16];
-	if (loop_sp == 0)
-		return;
-	sprintf(buf, "__%c%d%c", loopLabelChar(),
-	        loop_stack[loop_sp - 1].label_num, suffix);
-	realEmitKw(GOTO);
-	realEmitSym(buf);
-	realEmitToken(SEMI);
+	if (num_loop_cond > 0) {
+		emitKeyword(IF);
+		emitToken(LPAR);
+		emitToken(BANG);
+		emitToken(LPAR);
+		emitLoopCond();
+		emitToken(RPAR);
+		emitToken(RPAR);
+		emitToken(BEGIN);
+		emitLoopGoto('B');
+		emitToken(END);
+	}
+	clearBufArr(loop_cond, &num_loop_cond);
 }
 
 /* Find innermost loop for break/continue (skip non-loop contexts) */
@@ -781,9 +677,9 @@ emitBreakGoto(int idx)
 	case DO:    c = 'D'; break;
 	default:    return;
 	}
-	sprintf(buf, "__%c%d%c", c, loop_stack[idx].label_num, 'B');
-	realEmitKw(GOTO);
-	realEmitSym(buf);
+	fmtstr(buf, "__%c%d%c", c, loop_stack[idx].label_num, 'B');
+	emitKeyword(GOTO);
+	emitSym(buf);
 }
 
 /* Emit goto for continue (to __<L><N>C for for/do, __<L><N>T for while) */
@@ -801,31 +697,132 @@ emitContGoto(int idx)
 	case DO:    c = 'D'; suffix = 'C'; break;  /* do continues to cond */
 	default:    return;
 	}
-	sprintf(buf, "__%c%d%c", c, loop_stack[idx].label_num, suffix);
-	realEmitKw(GOTO);
-	realEmitSym(buf);
+	fmtstr(buf, "__%c%d%c", c, loop_stack[idx].label_num, suffix);
+	emitKeyword(GOTO);
+	emitSym(buf);
 }
 
-/* Emit goto for switch break (to __S<n>B) */
-/* Does NOT emit trailing semicolon - original SEMI from break; is reused */
+/* Emit switch break label or goto (__S<n>B) */
 static void
-swBrkGoto(int num)
+emitSwBrk(int num, int isLabel)
 {
 	char buf[16];
-	sprintf(buf, "__S%dB", num);
-	realEmitKw(GOTO);
-	realEmitSym(buf);
+	fmtstr(buf, "__S%dB", num);
+	if (isLabel) {
+		emitSym(buf);
+		emitToken(COLON);
+		emitToken(SEMI);
+	} else {
+		emitKeyword(GOTO);
+		emitSym(buf);
+	}
 }
 
-/* Emit switch break label (__S<n>B:) after switch body */
-static void
-swBrkLabel(int num)
+#define swBrkGoto(n)  emitSwBrk(n, 0)
+#define swBrkLabel(n) emitSwBrk(n, 1)
+
+/*
+ * Handle nested loop keywords (WHILE/FOR/DO) inside loop bodies.
+ * Returns 1 if handled (caller should return), 0 otherwise.
+ */
+static int
+handleNestLoop(unsigned char type)
 {
-	char buf[16];
-	sprintf(buf, "__S%dB", num);
-	realEmitSym(buf);
-	realEmitToken(COLON);
-	realEmitToken(SEMI);  /* empty statement after label */
+	if (type == WHILE) {
+		pushLoop(WHILE);
+		num_loop_cond = 0;
+		loopParen = 0;
+		state = ST_LOOP_COND;
+		return 1;
+	}
+	if (type == FOR) {
+		pushLoop(FOR);
+		num_loop_init = 0;
+		num_loop_cond = 0;
+		num_loop_incr = 0;
+		loopParen = 0;
+		for_part = 0;
+		state = ST_LOOP_COND;
+		return 1;
+	}
+	if (type == DO) {
+		pushLoop(DO);
+		lastEmitLine = lineno;
+		emitToken(BEGIN);
+		brace_depth++;
+		emitLoopLabel('T');
+		outbufPush();
+		loop_stack[loop_sp - 1].body_depth = 0;
+		state = ST_DO_BODY;
+		return 1;
+	}
+	return 0;
+}
+
+/*
+ * Handle switch statement tracking inside loop bodies.
+ * Returns 1 if token was fully handled (caller should return), 0 otherwise.
+ */
+static int
+handleSwitch(unsigned char type)
+{
+	if (type == SWITCH) {
+		switchParen = 0;
+		return 0;  /* Pass through SWITCH keyword */
+	}
+	if (switchParen >= 0) {
+		if (type == LPAR) {
+			switchParen++;
+		} else if (type == RPAR) {
+			switchParen--;
+		} else if (type == BEGIN && switchParen == 0) {
+			if (switchStkTop < MAX_SWITCH_DEPTH) {
+				switchBraceStk[switchStkTop] = loop_stack[loop_sp - 1].body_depth;
+				switchNumStk[switchStkTop] = switchLblNum++;
+				switchStkTop++;
+			}
+			switchParen = -1;
+		}
+	}
+	/* Check if END closes a switch body */
+	if (type == END && switchStkTop > 0) {
+		if (loop_stack[loop_sp - 1].body_depth + 1 == switchBraceStk[switchStkTop - 1]) {
+			emitToken(END);
+			swBrkLabel(switchNumStk[switchStkTop - 1]);
+			switchStkTop--;
+			return 1;
+		}
+	}
+	return 0;
+}
+
+/*
+ * Handle break/continue inside loop bodies.
+ * Returns 1 if handled (caller should return), 0 otherwise.
+ */
+static int
+handleBrkCont(unsigned char type)
+{
+	if (type == BREAK) {
+		if (switchStkTop > 0) {
+			swBrkGoto(switchNumStk[switchStkTop - 1]);
+			return 1;
+		} else {
+			int idx = findInnerLoop();
+			if (idx >= 0) {
+				emitBreakGoto(idx);
+				return 1;
+			}
+		}
+	}
+	if (type == CONTINUE) {
+		int idx = findInnerLoop();
+		if (idx >= 0) {
+			emitContGoto(idx);
+			return 1;
+		}
+	}
+	return 0;
 }
 
 /*
@@ -858,13 +855,13 @@ emitAnsiHeader(void)
 		emitBufTok(&tokbuf[i]);
 	}
 
-	realEmitToken(LPAR);
+	emitToken(LPAR);
 
 	/* Emit parameters with types */
 	first = 1;
 	for (p = params; p; p = p->next) {
 		if (!first)
-			realEmitToken(COMMA);
+			emitToken(COMMA);
 		first = 0;
 
 		if (p->has_type) {
@@ -873,12 +870,12 @@ emitAnsiHeader(void)
 			}
 		} else {
 			/* Default to int */
-			realEmitKw(INT);
-			realEmitSym(p->name);
+			emitKeyword(INT);
+			emitSym(p->name);
 		}
 	}
 
-	realEmitToken(RPAR);
+	emitToken(RPAR);
 
 #ifdef DEBUG_KNR
 	fprintf(stderr, "KNR: emitted ANSI header with %d params\n", num_params);
@@ -953,7 +950,7 @@ procDeclTok(unsigned char type, long num, float fnum, char *str, int slen)
 	/* { ends the declarations */
 	if (type == BEGIN) {
 		emitAnsiHeader();
-		realEmitToken(BEGIN);
+		emitToken(BEGIN);
 		brace_depth++;
 		state = ST_NORMAL;
 		return 0;
@@ -1078,39 +1075,39 @@ procDeclTok(unsigned char type, long num, float fnum, char *str, int slen)
  * for K&R detection and transformation.
  */
 void
-knrFilterToken(unsigned char type)
+filtToken(unsigned char type)
 {
-	knrFilter(type, 0, 0.0, NULL, 0);
+	filter(type, 0, 0.0, NULL, 0);
 }
 
 void
-knrFiltKw(unsigned char kw)
+filtKw(unsigned char kw)
 {
-	knrFilter(kw, 0, 0.0, NULL, 0);
+	filter(kw, 0, 0.0, NULL, 0);
 }
 
 void
-knrFilterSym(char *name)
+filtSym(char *name)
 {
-	knrFilter(SYM, 0, 0.0, name, strlen(name));
+	filter(SYM, 0, 0.0, name, strlen(name));
 }
 
 void
-knrFiltNum(long val)
+filtNum(long val)
 {
-	knrFilter(NUMBER, val, 0.0, NULL, 0);
+	filter(NUMBER, val, 0.0, NULL, 0);
 }
 
 void
-knrFiltFNum(float val)
+filtFNum(float val)
 {
-	knrFilter(FNUMBER, 0, val, NULL, 0);
+	filter(FNUMBER, 0, val, NULL, 0);
 }
 
 void
-knrFiltStr(char *str, int len)
+filtStr(char *str, int len)
 {
-	knrFilter(STRING, 0, 0.0, str, len);
+	filter(STRING, 0, 0.0, str, len);
 }
 
 /*
@@ -1121,7 +1118,7 @@ knrFiltStr(char *str, int len)
  * - Not updated when buffering (buffered tokens update when flushed)
  */
 void
-knrFilter(unsigned char type, long num, float fnum, char *str, int slen)
+filter(unsigned char type, long num, float fnum, char *str, int slen)
 {
 	int cur_depth = brace_depth;  /* Depth BEFORE this token */
 
@@ -1149,7 +1146,7 @@ knrFilter(unsigned char type, long num, float fnum, char *str, int slen)
 				typedef_depth = 0;
 				typedef_name[0] = 0;
 				state = ST_TYPEDEF;
-				realEmitKw(TYPEDEF);
+				emitKeyword(TYPEDEF);
 				return;
 			}
 
@@ -1204,7 +1201,7 @@ knrFilter(unsigned char type, long num, float fnum, char *str, int slen)
 				/* Set baseline for line tracking before prefix */
 				lastEmitLine = lineno;
 				/* Emit: { __D<n>T: */
-				realEmitToken(BEGIN);
+				emitToken(BEGIN);
 				brace_depth++;
 				emitLoopLabel('T');
 				/* Push output buffer for body */
@@ -1215,7 +1212,7 @@ knrFilter(unsigned char type, long num, float fnum, char *str, int slen)
 			}
 			/* IF still uses brace insertion (not loop lowering) */
 			if (type == IF) {
-				realEmitToken(type);
+				emitToken(type);
 				ctrl_type = type;
 				ctrlParenDep = 0;
 				saved_state = state;
@@ -1224,7 +1221,7 @@ knrFilter(unsigned char type, long num, float fnum, char *str, int slen)
 			}
 			/* ELSE uses brace insertion */
 			if (type == ELSE) {
-				realEmitToken(type);
+				emitToken(type);
 				ctrl_type = type;
 				saved_state = state;
 				state = ST_CTRL_PEND;
@@ -1250,16 +1247,7 @@ knrFilter(unsigned char type, long num, float fnum, char *str, int slen)
 		else if (type == END)
 			brace_depth--;
 
-		if (type == SYM)
-			realEmitSym(str);
-		else if (type == NUMBER)
-			realEmitNumber(num);
-		else if (type == FNUMBER)
-			realEmitFNum(fnum);
-		else if (type == STRING)
-			realEmitString(str, slen);
-		else
-			realEmitToken(type);
+		emitByType(type, num, fnum, str, slen);
 		break;
 
 	case ST_BUFFERING:
@@ -1331,13 +1319,13 @@ knrFilter(unsigned char type, long num, float fnum, char *str, int slen)
 		if (type == BEGIN) {
 			/* K&R with no type declarations - all params default to int */
 			emitAnsiHeader();
-			realEmitToken(BEGIN);
+			emitToken(BEGIN);
 			brace_depth++;
 			state = ST_NORMAL;
 		} else if (type == SEMI) {
 			/* Prototype, not definition - emit as-is */
 			flushBuf();
-			realEmitToken(SEMI);
+			emitToken(SEMI);
 			state = ST_NORMAL;
 		} else if (isTypeTok(type, str)) {
 			/* Type token after ) - this is K&R! */
@@ -1354,16 +1342,7 @@ knrFilter(unsigned char type, long num, float fnum, char *str, int slen)
 			else if (type == END)
 				brace_depth--;
 
-			if (type == SYM)
-				realEmitSym(str);
-			else if (type == NUMBER)
-				realEmitNumber(num);
-			else if (type == FNUMBER)
-				realEmitFNum(fnum);
-			else if (type == STRING)
-				realEmitString(str, slen);
-			else
-				realEmitToken(type);
+			emitByType(type, num, fnum, str, slen);
 			state = ST_NORMAL;
 		}
 		break;
@@ -1401,7 +1380,7 @@ knrFilter(unsigned char type, long num, float fnum, char *str, int slen)
 		if (type == SEMI) {
 			/* End of typedef - register the name */
 			if (typedef_name[0]) {
-				knrAddTypedef(typedef_name);
+				filtAddTdef(typedef_name);
 #ifdef DEBUG_KNR
 				fprintf(stderr, "KNR: registered typedef '%s'\n", typedef_name);
 #endif
@@ -1417,16 +1396,7 @@ knrFilter(unsigned char type, long num, float fnum, char *str, int slen)
 		else if (type == END)
 			brace_depth--;
 
-		if (type == SYM)
-			realEmitSym(str);
-		else if (type == NUMBER)
-			realEmitNumber(num);
-		else if (type == FNUMBER)
-			realEmitFNum(fnum);
-		else if (type == STRING)
-			realEmitString(str, slen);
-		else
-			realEmitToken(type);
+		emitByType(type, num, fnum, str, slen);
 		break;
 
 	case ST_CTRL_COND:
@@ -1440,22 +1410,13 @@ knrFilter(unsigned char type, long num, float fnum, char *str, int slen)
 			ctrlParenDep--;
 			if (ctrlParenDep == 0) {
 				/* End of condition - emit ) and check next token */
-				realEmitToken(RPAR);
+				emitToken(RPAR);
 				state = ST_CTRL_PEND;
 				return;
 			}
 		}
 		/* Emit the token */
-		if (type == SYM)
-			realEmitSym(str);
-		else if (type == NUMBER)
-			realEmitNumber(num);
-		else if (type == FNUMBER)
-			realEmitFNum(fnum);
-		else if (type == STRING)
-			realEmitString(str, slen);
-		else
-			realEmitToken(type);
+		emitByType(type, num, fnum, str, slen);
 		break;
 
 	case ST_CTRL_PEND:
@@ -1468,21 +1429,12 @@ knrFilter(unsigned char type, long num, float fnum, char *str, int slen)
 			/* do-while condition ended - just emit and return to normal */
 			state = saved_state;
 			/* Fall through to emit this token normally */
-			if (type == SYM)
-				realEmitSym(str);
-			else if (type == NUMBER)
-				realEmitNumber(num);
-			else if (type == FNUMBER)
-				realEmitFNum(fnum);
-			else if (type == STRING)
-				realEmitString(str, slen);
-			else
-				realEmitToken(type);
+			emitByType(type, num, fnum, str, slen);
 			break;
 		}
 		if (type == BEGIN) {
 			/* Already has braces - pass through */
-			realEmitToken(BEGIN);
+			emitToken(BEGIN);
 			brace_depth++;
 			if (ctrl_type == DO) {
 				/* DO with braces - track until } then WHILE */
@@ -1493,18 +1445,18 @@ knrFilter(unsigned char type, long num, float fnum, char *str, int slen)
 			}
 		} else if (ctrl_type == ELSE && type == IF) {
 			/* else if - don't insert block for else, the if is the body */
-			realEmitToken(IF);
+			emitToken(IF);
 			ctrl_type = IF;
 			ctrlParenDep = 0;
 			state = ST_CTRL_COND;
 		} else {
 			/* No braces - insert { and track body */
-			realEmitToken(BEGIN);
+			emitToken(BEGIN);
 			brace_depth++;
 			ctrlBodyDep = 0;
 			state = ST_CTRL_BODY;
 			/* Now process this token as part of the body */
-			knrFilter(type, num, fnum, str, slen);
+			filter(type, num, fnum, str, slen);
 		}
 		break;
 
@@ -1522,9 +1474,9 @@ knrFilter(unsigned char type, long num, float fnum, char *str, int slen)
 		if (ctrlBodyDep == 0) {
 			if (ctrl_type == DO && type == WHILE) {
 				/* DO body ends at WHILE - insert } before it */
-				realEmitToken(END);
+				emitToken(END);
 				brace_depth--;
-				realEmitToken(WHILE);
+				emitToken(WHILE);
 				/* Now we need to track the while condition */
 				ctrlParenDep = 0;
 				state = ST_CTRL_COND;
@@ -1534,15 +1486,15 @@ knrFilter(unsigned char type, long num, float fnum, char *str, int slen)
 			if (type == SEMI && ctrl_type != DO) {
 				/* Statement ends - emit ; then } */
 				/* (DO bodies end at WHILE, not SEMI) */
-				realEmitToken(SEMI);
-				realEmitToken(END);
+				emitToken(SEMI);
+				emitToken(END);
 				brace_depth--;
 				/* Pop nested contexts that also end here (not DO) */
 				while (ctrl_sp > 0 &&
 				       ctrl_stack[ctrl_sp - 1].ctrl_type != DO) {
 					ctrl_sp--;
 					/* Each stacked body also ends - emit } */
-					realEmitToken(END);
+					emitToken(END);
 					brace_depth--;
 				}
 				/* If there's a DO on stack, stay in ST_CTRL_BODY */
@@ -1565,7 +1517,7 @@ knrFilter(unsigned char type, long num, float fnum, char *str, int slen)
 					ctrl_stack[ctrl_sp].ctrlBodyDep = ctrlBodyDep;
 					ctrl_sp++;
 				}
-				realEmitToken(type);
+				emitToken(type);
 				ctrl_type = type;
 				ctrlParenDep = 0;
 				state = ST_CTRL_COND;
@@ -1573,10 +1525,10 @@ knrFilter(unsigned char type, long num, float fnum, char *str, int slen)
 			}
 			if (type == ELSE && ctrl_type == IF) {
 				/* ELSE ends the current if's synthetic body */
-				realEmitToken(END);
+				emitToken(END);
 				brace_depth--;
 				/* Don't pop - stack has parent context */
-				realEmitToken(ELSE);
+				emitToken(ELSE);
 				ctrl_type = ELSE;
 				state = ST_CTRL_PEND;
 				return;
@@ -1588,7 +1540,7 @@ knrFilter(unsigned char type, long num, float fnum, char *str, int slen)
 					ctrl_stack[ctrl_sp].ctrlBodyDep = ctrlBodyDep;
 					ctrl_sp++;
 				}
-				realEmitToken(type);
+				emitToken(type);
 				ctrl_type = type;
 				state = ST_CTRL_PEND;
 				return;
@@ -1596,16 +1548,7 @@ knrFilter(unsigned char type, long num, float fnum, char *str, int slen)
 		}
 
 		/* Emit the token */
-		if (type == SYM)
-			realEmitSym(str);
-		else if (type == NUMBER)
-			realEmitNumber(num);
-		else if (type == FNUMBER)
-			realEmitFNum(fnum);
-		else if (type == STRING)
-			realEmitString(str, slen);
-		else
-			realEmitToken(type);
+		emitByType(type, num, fnum, str, slen);
 		break;
 
 	case ST_DO_BRACE:
@@ -1619,16 +1562,7 @@ knrFilter(unsigned char type, long num, float fnum, char *str, int slen)
 			ctrlBodyDep--;
 
 		/* Emit the token */
-		if (type == SYM)
-			realEmitSym(str);
-		else if (type == NUMBER)
-			realEmitNumber(num);
-		else if (type == FNUMBER)
-			realEmitFNum(fnum);
-		else if (type == STRING)
-			realEmitString(str, slen);
-		else
-			realEmitToken(type);
+		emitByType(type, num, fnum, str, slen);
 
 		/* After matching }, look for WHILE */
 		if (type == END && ctrlBodyDep == 0) {
@@ -1716,7 +1650,7 @@ knrFilter(unsigned char type, long num, float fnum, char *str, int slen)
 		state = ST_NORMAL;
 
 		/* Process this token normally (may be control struct, etc) */
-		knrFilter(type, num, fnum, str, slen);
+		filter(type, num, fnum, str, slen);
 		break;
 
 	case ST_LOOP_COND:
@@ -1743,48 +1677,16 @@ knrFilter(unsigned char type, long num, float fnum, char *str, int slen)
 				/* End of condition - emit prefix */
 				/* Set baseline for line tracking before prefix */
 				lastEmitLine = lineno;
-				if (loop_stack[loop_sp - 1].type == WHILE) {
-					/* WHILE: { __W#T: if (!(cond)) { goto __W#B; } */
-					realEmitToken(BEGIN);
-					brace_depth++;
-					emitLoopLabel('T');
-					if (num_loop_cond > 0) {
-						realEmitKw(IF);
-						realEmitToken(LPAR);
-						realEmitToken(BANG);
-						realEmitToken(LPAR);
-						emitLoopCond();
-						realEmitToken(RPAR);
-						realEmitToken(RPAR);
-						realEmitToken(BEGIN);
-						emitLoopGoto('B');
-						realEmitToken(END);
-					}
-					clearLoopCond();
-				} else {
-					/* FOR: { init; __F#T: if (!(cond)) { goto __F#B; } */
-					realEmitToken(BEGIN);
-					brace_depth++;
-					if (num_loop_init > 0) {
-						emitLoopInit();
-						realEmitToken(SEMI);
-					}
-					clearLoopInit();
-					emitLoopLabel('T');
-					if (num_loop_cond > 0) {
-						realEmitKw(IF);
-						realEmitToken(LPAR);
-						realEmitToken(BANG);
-						realEmitToken(LPAR);
-						emitLoopCond();
-						realEmitToken(RPAR);
-						realEmitToken(RPAR);
-						realEmitToken(BEGIN);
-						emitLoopGoto('B');
-						realEmitToken(END);
-					}
-					clearLoopCond();
+				/* Emit: { [init;] __X#T: if (!(cond)) { goto __X#B; } */
+				emitToken(BEGIN);
+				brace_depth++;
+				if (loop_stack[loop_sp - 1].type == FOR && num_loop_init > 0) {
+					emitLoopInit();
+					emitToken(SEMI);
+					clearBufArr(loop_init, &num_loop_init);
 				}
+				emitLoopLabel('T');
+				emitCondJump();
 				/* Push output buffer for body */
 				outbufPush();
 				loop_stack[loop_sp - 1].body_depth = 0;
@@ -1835,7 +1737,7 @@ knrFilter(unsigned char type, long num, float fnum, char *str, int slen)
 			loop_stack[loop_sp - 1].body_depth--;
 			if (loop_stack[loop_sp - 1].body_depth == 0) {
 				/* Body complete - emit the END to buffer first */
-				realEmitToken(END);
+				emitToken(END);
 				/* Replay body */
 				outbufReplay();
 				/* Emit suffix */
@@ -1850,13 +1752,13 @@ knrFilter(unsigned char type, long num, float fnum, char *str, int slen)
 						/* Reset line tracking - body may have changed it */
 						lastEmitLine = -1;
 						emitLoopIncr();
-						realEmitToken(SEMI);
+						emitToken(SEMI);
 					}
-					clearLoopIncr();
+					clearBufArr(loop_incr, &num_loop_incr);
 					emitLoopGoto('T');
 					emitLoopLabel('B');
 				}
-				realEmitToken(END);
+				emitToken(END);
 				brace_depth--;
 				/* Restore parent state before popping */
 				state = loop_stack[loop_sp - 1].savedState;
@@ -1865,106 +1767,16 @@ knrFilter(unsigned char type, long num, float fnum, char *str, int slen)
 			}
 		}
 
-		/* Handle nested loops - detect WHILE/FOR/DO and start lowering */
-		if (type == WHILE) {
-			pushLoop(WHILE);
-			num_loop_cond = 0;
-			loopParen = 0;
-			state = ST_LOOP_COND;
+		/* Handle nested loops, switch, break/continue */
+		if (handleNestLoop(type))
 			return;
-		}
-		if (type == FOR) {
-			pushLoop(FOR);
-			num_loop_init = 0;
-			num_loop_cond = 0;
-			num_loop_incr = 0;
-			loopParen = 0;
-			for_part = 0;
-			state = ST_LOOP_COND;
+		if (handleSwitch(type))
 			return;
-		}
-		if (type == DO) {
-			pushLoop(DO);
-			lastEmitLine = lineno;
-			realEmitToken(BEGIN);
-			brace_depth++;
-			emitLoopLabel('T');
-			outbufPush();
-			loop_stack[loop_sp - 1].body_depth = 0;
-			state = ST_DO_BODY;
+		if (handleBrkCont(type))
 			return;
-		}
-
-		/*
-		 * Track switch statements - break inside switch lowered to goto.
-		 * switchParen: -1 = not tracking, 0+ = counting parens in condition
-		 */
-		if (type == SWITCH) {
-			switchParen = 0;  /* Start tracking switch condition */
-			/* Pass through the SWITCH keyword */
-		} else if (switchParen >= 0) {
-			/* We're tracking switch condition */
-			if (type == LPAR) {
-				switchParen++;
-			} else if (type == RPAR) {
-				switchParen--;
-				/* When switchParen == 0, next BEGIN is switch body */
-			} else if (type == BEGIN && switchParen == 0) {
-				/* Entering switch body - push brace depth and label num */
-				if (switchStkTop < MAX_SWITCH_DEPTH) {
-					switchBraceStk[switchStkTop] = loop_stack[loop_sp - 1].body_depth;
-					switchNumStk[switchStkTop] = switchLblNum++;
-					switchStkTop++;
-				}
-				switchParen = -1;  /* Done tracking this switch */
-			}
-		}
-		/* Check if END closes a switch body (body_depth already decremented) */
-		if (type == END && switchStkTop > 0) {
-			/* body_depth was decremented at top, so add 1 to compare with what we pushed */
-			if (loop_stack[loop_sp - 1].body_depth + 1 == switchBraceStk[switchStkTop - 1]) {
-				/* Emit END first, then break label after switch */
-				realEmitToken(END);
-				swBrkLabel(switchNumStk[switchStkTop - 1]);
-				switchStkTop--;
-				return;
-			}
-		}
-
-		/* Handle break/continue - switch break also lowered now */
-		if (type == BREAK) {
-			if (switchStkTop > 0) {
-				/* Inside switch - emit goto to switch break label */
-				swBrkGoto(switchNumStk[switchStkTop - 1]);
-				return;
-			} else {
-				/* Inside loop (not switch) - emit goto to loop break */
-				int idx = findInnerLoop();
-				if (idx >= 0) {
-					emitBreakGoto(idx);
-					return;
-				}
-			}
-		}
-		if (type == CONTINUE) {
-			int idx = findInnerLoop();
-			if (idx >= 0) {
-				emitContGoto(idx);
-				return;
-			}
-		}
 
 		/* Emit token to output buffer (body content) */
-		if (type == SYM)
-			realEmitSym(str);
-		else if (type == NUMBER)
-			realEmitNumber(num);
-		else if (type == FNUMBER)
-			realEmitFNum(fnum);
-		else if (type == STRING)
-			realEmitString(str, slen);
-		else
-			realEmitToken(type);
+		emitByType(type, num, fnum, str, slen);
 		break;
 
 	case ST_DO_BODY:
@@ -1984,7 +1796,7 @@ knrFilter(unsigned char type, long num, float fnum, char *str, int slen)
 			loop_stack[loop_sp - 1].body_depth--;
 			if (loop_stack[loop_sp - 1].body_depth == 0) {
 				/* Body complete - emit END to buffer */
-				realEmitToken(END);
+				emitToken(END);
 				/* Replay body */
 				outbufReplay();
 				/* Emit continue label */
@@ -1996,99 +1808,16 @@ knrFilter(unsigned char type, long num, float fnum, char *str, int slen)
 			}
 		}
 
-		/* Handle nested loops - detect WHILE/FOR/DO and start lowering */
-		if (type == WHILE) {
-			pushLoop(WHILE);
-			num_loop_cond = 0;
-			loopParen = 0;
-			state = ST_LOOP_COND;
+		/* Handle nested loops, switch, break/continue */
+		if (handleNestLoop(type))
 			return;
-		}
-		if (type == FOR) {
-			pushLoop(FOR);
-			num_loop_init = 0;
-			num_loop_cond = 0;
-			num_loop_incr = 0;
-			loopParen = 0;
-			for_part = 0;
-			state = ST_LOOP_COND;
+		if (handleSwitch(type))
 			return;
-		}
-		/* Note: DO inside do-body - need to be careful about WHILE keyword */
-		if (type == DO) {
-			pushLoop(DO);
-			lastEmitLine = lineno;
-			realEmitToken(BEGIN);
-			brace_depth++;
-			emitLoopLabel('T');
-			outbufPush();
-			loop_stack[loop_sp - 1].body_depth = 0;
-			state = ST_DO_BODY;
+		if (handleBrkCont(type))
 			return;
-		}
-
-		/*
-		 * Track switch statements - break inside switch lowered to goto.
-		 */
-		if (type == SWITCH) {
-			switchParen = 0;
-		} else if (switchParen >= 0) {
-			if (type == LPAR) {
-				switchParen++;
-			} else if (type == RPAR) {
-				switchParen--;
-			} else if (type == BEGIN && switchParen == 0) {
-				if (switchStkTop < MAX_SWITCH_DEPTH) {
-					switchBraceStk[switchStkTop] = loop_stack[loop_sp - 1].body_depth;
-					switchNumStk[switchStkTop] = switchLblNum++;
-					switchStkTop++;
-				}
-				switchParen = -1;
-			}
-		}
-		if (type == END && switchStkTop > 0) {
-			if (loop_stack[loop_sp - 1].body_depth + 1 == switchBraceStk[switchStkTop - 1]) {
-				/* Emit END first, then break label after switch */
-				realEmitToken(END);
-				swBrkLabel(switchNumStk[switchStkTop - 1]);
-				switchStkTop--;
-				return;
-			}
-		}
-
-		/* Handle break/continue inside do body - switch break also lowered */
-		if (type == BREAK) {
-			if (switchStkTop > 0) {
-				/* Inside switch - emit goto to switch break label */
-				swBrkGoto(switchNumStk[switchStkTop - 1]);
-				return;
-			} else {
-				int idx = findInnerLoop();
-				if (idx >= 0) {
-					emitBreakGoto(idx);
-					return;
-				}
-			}
-		}
-		if (type == CONTINUE) {
-			int idx = findInnerLoop();
-			if (idx >= 0) {
-				emitContGoto(idx);
-				return;
-			}
-		}
 
 		/* Emit token to output buffer */
-		if (type == SYM)
-			realEmitSym(str);
-		else if (type == NUMBER)
-			realEmitNumber(num);
-		else if (type == FNUMBER)
-			realEmitFNum(fnum);
-		else if (type == STRING)
-			realEmitString(str, slen);
-		else
-			realEmitToken(type);
+		emitByType(type, num, fnum, str, slen);
 		break;
 
 	case ST_DO_COND:
@@ -2123,17 +1852,17 @@ knrFilter(unsigned char type, long num, float fnum, char *str, int slen)
 				if (num_loop_cond > 0) {
 					/* Reset line tracking - body may have changed it */
 					lastEmitLine = -1;
-					realEmitKw(IF);
-					realEmitToken(LPAR);
+					emitKeyword(IF);
+					emitToken(LPAR);
 					emitLoopCond();
-					realEmitToken(RPAR);
-					realEmitToken(BEGIN);
+					emitToken(RPAR);
+					emitToken(BEGIN);
 					emitLoopGoto('T');
-					realEmitToken(END);
+					emitToken(END);
 				}
-				clearLoopCond();
+				clearBufArr(loop_cond, &num_loop_cond);
 				emitLoopLabel('B');
-				realEmitToken(END);
+				emitToken(END);
 				brace_depth--;
 				/* Save parent state before popping, store in loopParen for SEMI */
 				loopParen = loop_stack[loop_sp - 1].savedState;
@@ -2158,7 +1887,7 @@ knrFilter(unsigned char type, long num, float fnum, char *str, int slen)
  * Initialize the filter
  */
 void
-knrInit(void)
+filterInit(void)
 {
 	state = ST_NORMAL;
 	brace_depth = 0;

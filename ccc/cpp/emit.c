@@ -29,7 +29,7 @@ emitFileStart(char *file)
     if (!noLineMarkers) {
         emitLine(1, file);
         /* Initial directive without leading newline */
-        sprintf(buf, "# %d \"%s\"\n", 1, file);
+        fmtstr(buf, "# %d \"%s\"\n", 1, file);
         emitPPStr(buf);
         lastLine = 1;
         lastLinePP = 1;
@@ -186,7 +186,7 @@ void
 emitLinePP(int line, char *file)
 {
     char buf[300];
-    sprintf(buf, "\n# %d \"%s\"\n", line, file);
+    fmtstr(buf, "\n# %d \"%s\"\n", line, file);
     emitPPStr(buf);
 }
 
@@ -316,7 +316,7 @@ op2str(token_t t)
 }
 
 /*
- * Emit current token to .x stream (via K&R filter) and .i file
+ * Emit current token to .x stream (via filter) and .i file
  * Called after each token is lexed
  */
 void
@@ -351,7 +351,7 @@ emitCurToken(void)
     }
 
     /*
-     * Emit to lexeme stream via K&R filter.
+     * Emit to lexeme stream via filter.
      * The filter buffers tokens when detecting potential K&R function
      * definitions and transforms them to ANSI style.
      */
@@ -359,44 +359,44 @@ emitCurToken(void)
     if (cur.type >= KW_FIRST && cur.type <= KW_LAST) {
         /* sizeof is an operator in cc1, not a keyword */
         if (cur.type == SIZEOF_KW)
-            knrFilterToken(SIZEOF);
+            filtToken(SIZEOF);
         else if (cur.type == CONST || cur.type == VOLATILE)
             ;  /* Skip const/volatile - not supported */
         else
-            knrFiltKw(cur.type);
+            filtKw(cur.type);
     } else switch (cur.type) {
     case SYM:
-        knrFilterSym(cur.v.name);
+        filtSym(cur.v.name);
         break;
     case NUMBER:
-        knrFiltNum(cur.v.numeric);
+        filtNum(cur.v.numeric);
         break;
     case FNUMBER:
-        knrFiltFNum(cur.v.fval);
+        filtFNum(cur.v.fval);
         break;
     case STRING:
         /* cur.v.str has 2-byte length prefix */
         {
             int len = (unsigned char)cur.v.str[0] |
                       ((unsigned char)cur.v.str[1] << 8);
-            knrFiltStr(cur.v.str + 2, len);
+            filtStr(cur.v.str + 2, len);
         }
         break;
     case ASMSTR:
         /* cur.v.name is a raw null-terminated string */
-        /* ASM blocks bypass the K&R filter */
+        /* ASM blocks bypass the filter */
         emitAsmString(cur.v.name, strlen(cur.v.name));
         break;
     case LABEL:
-        /* Labels bypass the K&R filter */
+        /* Labels bypass the filter */
         emitLabel(cur.v.name);
         break;
     case E_O_F:
-        knrFilterToken(E_O_F);
+        filtToken(E_O_F);
         break;
     default:
         /* Simple token - route through filter */
-        knrFilterToken(cur.type);
+        filtToken(cur.type);
         break;
     }
 
@@ -418,11 +418,11 @@ emitCurToken(void)
             emitPPStr(" ");
             break;
         case NUMBER:
-            sprintf(buf, "%ld ", cur.v.numeric);
+            fmtstr(buf, "%ld ", cur.v.numeric);
             emitPPStr(buf);
             break;
         case FNUMBER:
-            sprintf(buf, "%g ", cur.v.fval);
+            fmtstr(buf, "%g ", cur.v.fval);
             emitPPStr(buf);
             break;
         case STRING:

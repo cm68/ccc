@@ -208,23 +208,26 @@ extern char macexpand(char *name);
 extern unsigned char lookupc(char *table, unsigned char c);
 
 /* Utility functions */
+extern char *fmtstr(char *buf, char *fmt, ...);
+#ifdef DEBUG
 extern int fdprintf(int fd, char *fmt, ...);
+#endif
 extern long parseConst(token_t stop);
 #ifndef _XOPEN_SOURCE
 extern char *strdup(char *s);
 #endif
 
-/* knr.c - K&R to ANSI function definition normalization */
-extern void knrInit(void);
-extern void knrAddTypedef(char *name);
-extern void knrFilter(unsigned char type, long num, float fnum,
-                      char *str, int slen);
-extern void knrFilterToken(unsigned char type);
-extern void knrFiltKw(unsigned char kw);
-extern void knrFilterSym(char *name);
-extern void knrFiltNum(long val);
-extern void knrFiltFNum(float val);
-extern void knrFiltStr(char *str, int len);
+/* filter.c - token filter for normalization */
+extern void filterInit(void);
+extern void filtAddTdef(char *name);
+extern void filter(unsigned char type, long num, float fnum,
+                   char *str, int slen);
+extern void filtToken(unsigned char type);
+extern void filtKw(unsigned char kw);
+extern void filtSym(char *name);
+extern void filtNum(long val);
+extern void filtFNum(float val);
+extern void filtStr(char *str, int len);
 
 /* Character classification */
 #define iswhite(c) ((c) == ' ' || (c) == '\t' || (c) == '\r')

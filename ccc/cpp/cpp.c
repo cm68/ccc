@@ -27,29 +27,39 @@ unsigned char numIncludes = 0;
 /*
  * Error reporting
  */
+static void
+errout(char *buf)
+{
+    write(2, buf, strlen(buf));
+}
+
 void
 error(char *msg)
 {
-    fprintf(stderr, "%s:%d: error: %s\n", filename ? filename : curFile, lineno, msg);
+    char buf[256];
+    fmtstr(buf, "%s:%d: error: %s\n", filename ? filename : curFile, lineno, msg);
+    errout(buf);
     exitCode = 1;
 }
 
 void
 fatal(char *msg)
 {
-    fprintf(stderr, "%s:%d: fatal: %s\n", filename ? filename : curFile, lineno, msg);
+    char buf[256];
+    fmtstr(buf, "%s:%d: fatal: %s\n", filename ? filename : curFile, lineno, msg);
+    errout(buf);
     exit(1);
 }
 
 void
 usage(void)
 {
-    fprintf(stderr, "usage: cpp [options] <source.c>\n");
-    fprintf(stderr, "  -o <base>      Output base name (produces <base>.x and <base>.i)\n");
-    fprintf(stderr, "  -I<dir>        Add include directory\n");
-    fprintf(stderr, "  -i<dir>        System include directory\n");
-    fprintf(stderr, "  -D<name>[=val] Define macro\n");
-    fprintf(stderr, "  -E             Preprocess only (output to stdout)\n");
+    errout("usage: cpp [options] <source.c>\n");
+    errout("  -o <base>      Output base name (.x and .i)\n");
+    errout("  -I<dir>        Add include directory\n");
+    errout("  -i<dir>        System include directory\n");
+    errout("  -D<name>[=val] Define macro\n");
+    errout("  -E             Preprocess only (output to stdout)\n");
     exit(1);
 }
 
@@ -113,7 +123,9 @@ main(int argc, char **argv)
         } else if (strcmp(argv[i], "-N") == 0) {
             noLineMarkers = 1;
         } else if (argv[i][0] == '-') {
-            fprintf(stderr, "Unknown option: %s\n", argv[i]);
+            char buf[64];
+            fmtstr(buf, "Unknown option: %s\n", argv[i]);
+            errout(buf);
             usage();
         } else {
             source = argv[i];
@@ -121,7 +133,7 @@ main(int argc, char **argv)
     }
 
     if (!source) {
-        fprintf(stderr, "No source file specified\n");
+        errout("No source file specified\n");
         usage();
     }
 
@@ -134,19 +146,23 @@ main(int argc, char **argv)
     }
 
     /* Create output file names */
-    sprintf(lexFile, "%s.x", outbase);
-    sprintf(ppFile, "%s.i", outbase);
+    fmtstr(lexFile, "%s.x", outbase);
+    fmtstr(ppFile, "%s.i", outbase);
 
     /* Open output files */
     lexFd = creat(lexFile, 0644);
     if (lexFd < 0) {
-        perror(lexFile);
+        char buf[140];
+        fmtstr(buf, "cannot create: %s\n", lexFile);
+        errout(buf);
         exit(1);
     }
 
     ppFd = creat(ppFile, 0644);
     if (ppFd < 0) {
-        perror(ppFile);
+        char buf[140];
+        fmtstr(buf, "cannot create: %s\n", ppFile);
+        errout(buf);
         exit(1);
     }
 
@@ -156,8 +172,8 @@ main(int argc, char **argv)
         addInclude(includePaths[i]);
     }
 
-    /* Initialize K&R to ANSI filter */
-    knrInit();
+    /* Initialize token filter */
+    filterInit();
 
     /* Process the source file */
     (void)ppOnly;  /* TODO: implement -E mode */
