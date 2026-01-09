@@ -13,8 +13,59 @@
 #define PSIZE 80
 #endif
 
-/* Forward declaration */
+#ifdef DEBUG
+/* Forward declaration - only used for DEBUG builds */
 int fdprintf(unsigned char fd, char *fmt, ...);
+#endif
+
+/*
+ * Minimal formatter - handles %s, %d, %c, %% (no width/padding)
+ * Returns pointer to end of written string
+ */
+char *
+fmtstr(char *buf, char *fmt, ...)
+{
+	va_list ap;
+	char *p = buf;
+	char *s;
+	int n;
+	int neg;
+
+	va_start(ap, fmt);
+	while (*fmt) {
+		if (*fmt != '%') {
+			*p++ = *fmt++;
+			continue;
+		}
+		fmt++;
+		switch (*fmt++) {
+		case 's':
+			s = va_arg(ap, char *);
+			while (*s) *p++ = *s++;
+			break;
+		case 'd':
+			n = va_arg(ap, int);
+			if ((neg = (n < 0))) n = -n;
+			s = p;
+			do { *p++ = '0' + (n % 10); n /= 10; } while (n);
+			if (neg) *p++ = '-';
+			/* reverse */
+			for (n = 0; n < (p - s) / 2; n++) {
+				char t = s[n]; s[n] = p[-1-n]; p[-1-n] = t;
+			}
+			break;
+		case 'c':
+			*p++ = (char)va_arg(ap, int);
+			break;
+		case '%':
+			*p++ = '%';
+			break;
+		}
+	}
+	va_end(ap);
+	*p = 0;
+	return p;
+}
 
 #ifdef CCC
 /* strdup not in CCC libc */
@@ -234,14 +285,14 @@ void asmLabel(char *name)
 void asmDb(int val)
 {
 	char buf[16];
-	sprintf(buf, "\t.db %d", val & 0xff);
+	fmtstr(buf, "\t.db %d", val & 0xff);
 	asmLine(buf);
 }
 
 void asmDw(int val)
 {
 	char buf[16];
-	sprintf(buf, "\t.dw %d", val & 0xffff);
+	fmtstr(buf, "\t.dw %d", val & 0xffff);
 	asmLine(buf);
 }
 
@@ -254,7 +305,7 @@ void asmDwSym(char *name)
 void asmDs(int size)
 {
 	char buf[16];
-	sprintf(buf, "\t.ds %d", size);
+	fmtstr(buf, "\t.ds %d", size);
 	asmLine(buf);
 }
 

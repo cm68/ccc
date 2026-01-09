@@ -145,6 +145,7 @@ doInitlzr(struct name *v)
         if (cur.type == BEGIN) {
             /* Struct/array init - emit STRING data in phase 1 */
             int depth = 1;
+            gettoken();  /* consume initial { before loop */
             while (depth > 0 && cur.type != E_O_F) {
                 if (cur.type == BEGIN)
                     depth++;
@@ -294,7 +295,13 @@ parsefunc(struct name *f)
 	if (phase == 1) {
 		/* Phase 1: Skip statement parsing, but capture locals.
 		 * Locals have ref_count populated during parseExpr. */
+#ifdef DEBUG
+		fdprintf(2, "parsefunc phase1: %s entering statement()\n", f->name);
+#endif
 		statement();  /* Skips through function body */
+#ifdef DEBUG
+		fdprintf(2, "parsefunc phase1: %s done\n", f->name);
+#endif
 		f->kind = fdef;
 		f->u.locals = capLocals();  /* Capture before popScope */
 	} else {
@@ -454,6 +461,10 @@ declaration()
 	struct type *basetype;
 	struct name *v;
 
+#ifdef DEBUG
+	if (VERBOSE(V_PHASE1) && phase == 1)
+		fdprintf(2, "P1 decl start: cur.type=%d\n", cur.type);
+#endif
 	/* Parse storage class and base type once at the beginning */
 	sclass = parseSclass();
 	/* Initialize once, then shared across comma-separated declarators */
@@ -461,6 +472,10 @@ declaration()
 
 	while (1) {
         v = declare(&basetype, 0);
+#ifdef DEBUG
+	if (VERBOSE(V_PHASE1) && phase == 1 && v)
+		fdprintf(2, "P1 decl after declare(%s): cur.type=%d\n", v->name, cur.type);
+#endif
 
         /* error recovery: if declare failed, skip to next ; or , */
         if (!v) {
@@ -512,6 +527,11 @@ declaration()
         }
 
         if (v->type->flags & TF_FUNC) {
+#ifdef DEBUG
+            if ((VERBOSE(V_PHASE1) && phase == 1) || (VERBOSE(V_PHASE2) && phase == 2))
+                fdprintf(2, "P%d func %s: cur.type=%d (BEGIN=%d)\n",
+                         phase, v->name, cur.type, BEGIN);
+#endif
             if (cur.type == BEGIN) {
                 /* Assign storage class BEFORE parsing function body
                  * so it's available when emitting the AST */
@@ -643,6 +663,10 @@ parse()
 		while (cur.type == TOK_NONE) {
 			gettoken();
 		}
+#ifdef DEBUG
+		if (VERBOSE(V_PHASE1) && phase == 1 && cur.type == BEGIN)
+			fdprintf(2, "P1 parse() found BEGIN at global\n");
+#endif
 		/* Check if current token looks like start of a declaration */
 		/* Also check if it's a typedef name (SYM that's a typedef) */
 		poss_typedef = NULL;
@@ -665,6 +689,10 @@ parse()
 			free(text);
 		} else {
 			/* Not a declaration - skip this token to avoid getting stuck */
+#ifdef DEBUG
+			if (VERBOSE(V_PHASE1) && phase == 1)
+				fdprintf(2, "P1 parse() skip: cur.type=%d\n", cur.type);
+#endif
 			gettoken();
 		}
 	}

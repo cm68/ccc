@@ -190,7 +190,7 @@ findName(char *name, unsigned char is_tag)
     return 0;
 }
 
-#ifndef CCC
+#ifdef DEBUG
 char *typeBitdefs[] = {
 		"AGGREGATE", "INCOMPLETE", "UNSIGNED",
         "FUNC", "POINTER", "ARRAY", "FLOAT", "OLD"

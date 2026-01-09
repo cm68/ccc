@@ -12,31 +12,27 @@
 static int
 assignFrmOff(struct name *func)
 {
-	struct name *n;
-	struct name *locals;
+	struct name *n, *locals;
 	int off;
 
-	if (!func || !func->type || !func->u.locals)
+	if (!func->type || !func->u.locals)
 		return 0;
 	locals = func->u.locals;
 
 	/* Parameters: positive offsets starting at +4 (skip saved FP + ret addr) */
 	off = 4;
 	for (n = func->type->elem; n; n = n->next) {
-		if (n->type && n->type->size == 0)
+		if (n->type->size == 0)
 			continue;  /* skip void */
-		/* Find matching local to set its frm_off */
-		if (locals && n->name[0]) {
+		if (n->name[0]) {
 			struct name *local;
-			for (local = locals; local; local = local->next) {
+			for (local = locals; local; local = local->next)
 				if (strcmp(local->name, n->name) == 0) {
-					/* Params always need frame offset (passed on stack) */
 					local->frm_off = off;
 					break;
 				}
-			}
 		}
-		off += (n->type && n->type->size > 2) ? n->type->size : 2;
+		off += n->type->size > 2 ? n->type->size : 2;
 	}
 
 	/* Locals: negative offsets for non-register vars */
@@ -44,176 +40,96 @@ assignFrmOff(struct name *func)
 	for (n = locals; n; n = n->next) {
 		if (n->kind == funarg)
 			continue;
-		if (n->reg) {
-			n->frm_off = 0;  /* in register, not on stack */
-		} else {
-			int sz = (n->type) ? n->type->size : 2;
-			if (sz < 1) sz = 2;
-			off += sz;
+		if (n->reg)
+			n->frm_off = 0;
+		else {
+			off += n->type->size;
 			n->frm_off = -off;
 		}
 	}
 	return off;  /* frame size = total local stack space */
 }
 
-/*
- * Register allocation for local variables and parameters
- * ref_count is computed during phase 1 parseExpr
- *
- * Allocation priority:
- *   1. IX register: allocated to struct pointer with highest agg_refs
- *   2. BC register: allocated to word variable with highest ref_count
- *   3. B/C registers: allocated to byte variables by ref_count
- *
- * Variables excluded:
- *   - Arrays (must remain on stack for &arr[i])
- *   - Unused variables (ref_count == 0)
- *   - Single-use variables (ref_count == 1) - no benefit
- */
+/* Check if variable can be allocated to a register */
+static int
+canAlloc(struct name *n, int no_arg_regs)
+{
+	if (n->reg != REG_NONE || n->addr_taken)
+		return 0;
+	if (no_arg_regs && n->kind == funarg)
+		return 0;
+	return 1;
+}
+
+/* Register allocation for local variables */
 static void
 allocRegs(struct name *locals)
 {
 	struct name *n, *best;
-	int bc_used = 0;  /* BC allocated? (precludes B and C) */
-	int b_used = 0, c_used = 0;
-	int ix_used = 0;
-	int has_reg_hint = 0;
-	int no_arg_regs = 0;  /* any arg addr taken? then no arg regs */
+	char regs = 0;  /* bits: 1=IX, 2=BC, 4=B, 8=C */
+	int no_arg_regs = 0;
 
 	/* If any funarg has address taken, no funargs can use registers */
-	for (n = locals; n; n = n->next) {
+	for (n = locals; n; n = n->next)
 		if (n->kind == funarg && n->addr_taken)
 			no_arg_regs = 1;
-	}
 
-	/* Check if any locals have explicit 'register' storage class */
+	/* Allocate register-marked variables first */
 	for (n = locals; n; n = n->next) {
-		if (n->sclass & SC_REGISTER)
-			has_reg_hint = 1;
-	}
-
-	/* First: allocate register-marked variables with preferences */
-	if (has_reg_hint) {
-		int has_reg_byte = 0;
-		/* Check if any register-marked bytes exist */
-		for (n = locals; n; n = n->next) {
-			if ((n->sclass & SC_REGISTER) && n->type &&
-			    n->type->size == 1)
-				has_reg_byte = 1;
-		}
-		/* Pass 1: pointers prefer IX */
-		for (n = locals; n; n = n->next) {
-			if (!(n->sclass & SC_REGISTER) || n->reg != REG_NONE ||
-			    n->addr_taken || (no_arg_regs && n->kind == funarg))
-				continue;
-			if (n->type && (n->type->flags & TF_POINTER) && !ix_used) {
-				n->reg = REG_IX;
-				ix_used = 1;
-			}
-		}
-		/* Pass 2: words - prefer IX if bytes need B/C, else BC */
-		for (n = locals; n; n = n->next) {
-			if (!(n->sclass & SC_REGISTER) || n->reg != REG_NONE ||
-			    n->addr_taken || (no_arg_regs && n->kind == funarg))
-				continue;
-			if (n->type && n->type->size == 2) {
-				if (has_reg_byte && !ix_used) {
-					n->reg = REG_IX;
-					ix_used = 1;
-				} else if (!bc_used) {
-					n->reg = REG_BC;
-					bc_used = 1;
-				} else if (!ix_used) {
-					n->reg = REG_IX;
-					ix_used = 1;
-				}
-			}
-		}
-		/* Pass 3: bytes get B then C */
-		for (n = locals; n; n = n->next) {
-			if (!(n->sclass & SC_REGISTER) || n->reg != REG_NONE ||
-			    n->addr_taken || (no_arg_regs && n->kind == funarg))
-				continue;
-			if (n->type && n->type->size == 1 && !bc_used) {
-				if (!b_used) {
-					n->reg = REG_B;
-					b_used = 1;
-				} else if (!c_used) {
-					n->reg = REG_C;
-					c_used = 1;
-				}
-			}
+		if (!(n->sclass & SC_REGISTER) || !canAlloc(n, no_arg_regs))
+			continue;
+		if ((n->type->flags & TF_POINTER) && !(regs & 1)) {
+			n->reg = REG_IX;
+			regs |= 1;
+		} else if (n->type->size == 2 && !(regs & 2)) {
+			n->reg = REG_BC;
+			regs |= 2;
+		} else if (n->type->size == 1 && !(regs & 2)) {
+			if (!(regs & 4)) { n->reg = REG_B; regs |= 4; }
+			else if (!(regs & 8)) { n->reg = REG_C; regs |= 8; }
 		}
 	}
-
-	/* Second: allocate remaining registers to unmarked vars by usage */
 
 	/* IX to struct pointer with highest agg_refs */
-	if (!ix_used) {
+	if (!(regs & 1)) {
 		best = NULL;
 		for (n = locals; n; n = n->next) {
-			if (n->reg != REG_NONE ||
-			    n->addr_taken || (no_arg_regs && n->kind == funarg))
+			if (!canAlloc(n, no_arg_regs))
 				continue;
-			if (n->type && (n->type->flags & TF_POINTER) &&
-			    n->agg_refs > 0 && n->ref_count > 1) {
+			if ((n->type->flags & TF_POINTER) &&
+			    n->agg_refs > 0 && n->ref_count > 1)
 				if (!best || n->agg_refs > best->agg_refs)
 					best = n;
-			}
 		}
-		if (best) {
-			best->reg = REG_IX;
-			ix_used = 1;
-		}
+		if (best) { best->reg = REG_IX; regs |= 1; }
 	}
 
-	/* BC (or IX if BC taken) to word variable with highest ref_count */
-	if (!bc_used || !ix_used) {
+	/* BC to word variable with highest ref_count */
+	if (!(regs & 2)) {
 		best = NULL;
 		for (n = locals; n; n = n->next) {
-			if (n->reg != REG_NONE ||
-			    n->addr_taken || (no_arg_regs && n->kind == funarg))
+			if (!canAlloc(n, no_arg_regs))
 				continue;
-			if (n->type && (n->type->flags & (TF_ARRAY | TF_AGGREGATE)))
+			if (n->type->flags & (TF_ARRAY | TF_AGGREGATE))
 				continue;
-			if (n->ref_count <= 1)
-				continue;
-			if (n->type && n->type->size == 2) {
+			if (n->type->size == 2 && n->ref_count > 1)
 				if (!best || n->ref_count > best->ref_count)
 					best = n;
-			}
 		}
-		if (best) {
-			if (!bc_used) {
-				best->reg = REG_BC;
-				bc_used = 1;
-			} else {
-				best->reg = REG_IX;
-				ix_used = 1;
-			}
-		}
+		if (best) { best->reg = REG_BC; regs |= 2; }
 	}
 
-	/* B and C to byte variables (if BC not used as word) */
-	if (!bc_used) {
+	/* B and C to byte variables */
+	if (!(regs & 2)) {
 		for (n = locals; n; n = n->next) {
-			if (n->reg != REG_NONE ||
-			    n->addr_taken || (no_arg_regs && n->kind == funarg))
+			if (!canAlloc(n, no_arg_regs))
 				continue;
-			if (n->type && (n->type->flags & (TF_ARRAY | TF_AGGREGATE)))
+			if (n->type->flags & (TF_ARRAY | TF_AGGREGATE))
 				continue;
-			if (n->ref_count <= 1)
-				continue;
-			if (n->type && n->type->size == 1) {
-				if (!b_used) {
-					n->reg = REG_B;
-					b_used = 1;
-				} else if (!c_used) {
-					n->reg = REG_C;
-					c_used = 1;
-				}
-				if (b_used && c_used)
-					break;
+			if (n->type->size == 1 && n->ref_count > 1) {
+				if (!(regs & 4)) { n->reg = REG_B; regs |= 4; }
+				else if (!(regs & 8)) { n->reg = REG_C; regs |= 8; }
+				if ((regs & 12) == 12) break;
 			}
 		}
 	}

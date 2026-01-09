@@ -21,6 +21,10 @@
 #include <fcntl.h>
 #include <unistd.h>
 
+#ifdef DEBUG
+unsigned long lexTokenCount = 0;  /* Token counter for debugging */
+#endif
+
 /* CPP special token values (not simple pass-through) */
 #define CPP_LNUMBER 25
 #define CPP_AMPER   35      /* CPP uses AMPER, pass1 uses AND */
@@ -246,7 +250,9 @@ lexOpen(char *fn)
 {
 	lexFd = open(fn, O_RDONLY);
 	if (lexFd < 0) {
-		fdprintf(2, "cannot open lexeme file: %s\n", fn);
+		char buf[80], *p;
+		p = fmtstr(buf, "cannot open lexeme file: %s\n", fn);
+		write(2, buf, p - buf);
 		exit(1);
 	}
 
@@ -305,6 +311,9 @@ lexRewind(void)
 void
 gettoken(void)
 {
+#ifdef DEBUG
+	lexTokenCount++;
+#endif
 	/* Free old cur if it had allocated memory */
 	freeToken(&cur);
 

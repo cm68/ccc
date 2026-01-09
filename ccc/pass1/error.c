@@ -2,6 +2,7 @@
  * errors, messages, and recovery
  */
 #include "cc1.h"
+#include <unistd.h>
 
 #define DEF_ERRMSG
 #include "error.h"
@@ -9,12 +10,16 @@
 int error;
 int exitCode = 0;  /* Global exit code: 0=success, 1=errors occurred */
 
+static char errbuf[128];
+
 void
 gripe(error_t errcode)
 {
     int i = errcode;
+    char *p;
     if (i > ER_WTF) i = ER_WTF;
-    fdprintf(2, "%s:%d: %s\n", filename, lineno, errmsg[i]);
+    p = fmtstr(errbuf, "%s:%d: %s\n", filename, lineno, errmsg[i]);
+    write(2, errbuf, p - errbuf);
     error = errcode;
     exitCode = 1;
 }
@@ -26,7 +31,7 @@ void
 fatal(error_t errcode)
 {
     gripe(errcode);
-    fdprintf(2, "fatal\n");
+    write(2, "fatal\n", 6);
     exit(-errcode);
 }
 

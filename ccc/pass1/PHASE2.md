@@ -61,8 +61,8 @@ case IF: {
     expect(LPAR);
     cond = parseExpr(PRI_ALL, parent);
     expect(RPAR);
-    /* Emit: I nlabels cond then has_else [else] */
-    emit1('I');
+    /* Emit: IF nlabels cond then has_else [else] */
+    emit1(IF);
     emit1(cntCondLbls(cond));
     emitExpr(cond);
     FreeExpr(cond);
@@ -128,7 +128,7 @@ Phase 2 retrieves counts pushed by phase 1:
 **Function body stmt counts:**
 ```c
 stmt_count = popFuncCnt();
-emit1('B');
+emit1(AST_BLOCK);
 emit1(0);
 emit1(stmt_count);
 ```
@@ -136,7 +136,7 @@ emit1(stmt_count);
 **Block stmt counts:**
 ```c
 cnt = popBlkCnt();
-emit1('B');
+emit1(AST_BLOCK);
 emit1(0);
 emit1(cnt);
 ```
@@ -144,7 +144,7 @@ emit1(cnt);
 **Switch case counts:**
 ```c
 case_cnt = popCount();
-emit1('S');
+emit1(SWITCH);
 emit1(1);  // has_label
 emitS(lbl);
 emit1(case_cnt);
@@ -171,7 +171,7 @@ case SWITCH: {
     num = lblStack[lblDepth - 1].num;
     sprintf(lbl, "S%d", num);
     /* Emit switch header */
-    emit1('S');
+    emit1(SWITCH);
     emit1(1);  /* has label */
     emitS(lbl);
     case_cnt = popCount();
@@ -188,8 +188,8 @@ case CASE: {
     sw_idx = swEmitStack[swEmitDepth - 1];
     c_idx = caseEmitIdx[sw_idx]++;
     c = &swList[sw_idx].cases[c_idx];
-    /* Emit: C stmt_count value_expr */
-    emit1('C');
+    /* Emit: CASE stmt_count value_expr */
+    emit1(CASE);
     emit1(c->stmts);  /* pre-computed in phase 1 */
     emitExpr(e);
     FreeExpr(e);
@@ -199,8 +199,8 @@ case DEFAULT: {
     sw_idx = swEmitStack[swEmitDepth - 1];
     c_idx = caseEmitIdx[sw_idx]++;
     c = &swList[sw_idx].cases[c_idx];
-    /* Emit: O stmt_count */
-    emit1('O');
+    /* Emit: DEFAULT stmt_count */
+    emit1(DEFAULT);
     emit1(c->stmts);  /* pre-computed in phase 1 */
 }
 ```
@@ -210,25 +210,28 @@ case DEFAULT: {
 The AST is emitted as a compact binary format:
 
 ### Statement Opcodes
-- `F` - Function definition
-- `B` - Block (compound statement)
-- `I` - If statement
-- `G` - Goto
-- `L` - Label
-- `E` - Expression statement
-- `R` - Return
-- `S` - Switch
-- `C` - Case
-- `O` - Default (Originally "Otherwise")
-- `;` - Empty statement
-- `A` - Inline assembly
-- `U` - String literal (emitted in phase 1)
-- `Z` - Global variable
+- `AST_FUNC` (221) - Function definition
+- `AST_BLOCK` (222) - Block (compound statement)
+- `IF` (147) - If statement
+- `GOTO` (145) - Goto
+- `LABEL` (112) - Label
+- `EXPR` (202) - Expression statement
+- `RETURN` (146) - Return
+- `SWITCH` (150) - Switch
+- `CASE` (151) - Case
+- `DEFAULT` (155) - Default
+- `SEMI` (1) - Empty statement
+- `ASM` (157) - Inline assembly
+- `STRING` (22) - String literal (emitted in phase 1)
+- `AST_GLOBAL` (223) - Global variable
+- `AST_DECL` (224) - Variable/parameter declaration
+- `AST_EMPTY` (225) - Null/empty expression
 
 ### Expression Format
-- `#` - Constant (followed by type suffix and 4-byte value)
-- `$` - Symbol reference (followed by counted string)
-- `M` - Memory dereference (followed by type and address expr)
+- `NUMBER` (21) - Constant (followed by type suffix and 4-byte value)
+- `SYM` (20) - Symbol reference (followed by counted string)
+- `DEREF` (201) - Memory dereference (followed by type and address expr)
+- `AST_EMPTY` (225) - Null/empty expression placeholder
 - Operators use their token values with type suffix
 
 ### Type Suffixes

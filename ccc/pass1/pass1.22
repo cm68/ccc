@@ -1,0 +1,132 @@
+	.globl _value
+	.bss
+_value:
+	.ds 4
+	.text
+	.globl _stmt_cnt
+	.bss
+_stmt_cnt:
+	.ds 4
+	.text
+	.globl _stmt_cnt
+	.bss
+_stmt_cnt:
+	.ds 4
+	.text
+	.globl _stmt_cnt
+	.bss
+_stmt_cnt:
+	.ds 4
+	.text
+	.globl _c
+	.bss
+_c:
+	.ds 1
+	.text
+	.globl _n
+	.bss
+_n:
+	.ds 1
+	.text
+	.globl _n
+	.bss
+_n:
+	.ds 1
+	.text
+	.globl _f
+	.bss
+_f:
+	.ds 2
+	.text
+	.globl _o1
+	.bss
+_o1:
+	.ds 2
+	.text
+	.globl _o2
+	.bss
+_o2:
+	.ds 2
+	.text
+	.globl _complaint
+	.bss
+_complaint:
+	.ds 2
+	.text
+	.globl _b
+	.bss
+_b:
+	.ds 1
+	.text
+	.globl _w
+	.bss
+_w:
+	.ds 2
+	.text
+	.globl _l
+	.bss
+_l:
+	.ds 4
+	.text
+	.globl _s
+	.bss
+_s:
+	.ds 2
+	.text
+	.globl _len
+	.bss
+_len:
+	.ds 1
+	.text
+	.globl _s
+	.bss
+_s:
+	.ds 2
+	.text
+	.globl _s
+	.bss
+_s:
+	.ds 2
+	.text
+	.globl _s
+	.bss
+_s:
+	.ds 2
+	.text
+	.globl _name
+	.bss
+_name:
+	.ds 2
+	.text
+	.globl _name
+	.bss
+_name:
+	.ds 2
+	.text
+	.globl _val
+	.bss
+_val:
+	.ds 2
+	.text
+	.globl _val
+	.bss
+_val:
+	.ds 2
+	.text
+	.globl _name
+	.bss
+_name:
+	.ds 2
+	.text
+	.globl _size
+	.bss
+_size:
+	.ds 2
+	.text
+	.globl _progname
+	.bss
+_progname:
+	.ds 2
+	.text
+	.globl _curFunc
+_curFunc:

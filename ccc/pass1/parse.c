@@ -203,6 +203,13 @@ resetCounts(void)
 	countIdx = 0;
 }
 
+/* Reset read pointer for phase 2 (preserves pushed values) */
+void
+resetCountIdx(void)
+{
+	countIdx = 0;
+}
+
 /* Forward declarations */
 static char *blockname(void);
 
@@ -220,7 +227,7 @@ parseBlockEx(int emitHdr)
 	/* In phase 2, emit block header since we consumed BEGIN */
 	if (emitHdr && phase == 2) {
 		unsigned char cnt = popBlkCnt();
-		emit1('B');
+		emit1(AST_BLOCK);
 		emit1(0);  /* no decls - hoisted to function */
 		emit1(cnt);
 	}
@@ -312,9 +319,9 @@ statement(void)
 
     while (block) {
 #ifdef DEBUG
-        if (phase == 2)
-            fdprintf(2, "statement() phase=%d cur.type=%d (%c)\n",
-                     phase, cur.type, cur.type > 31 && cur.type < 127 ? cur.type : '?');
+        if ((VERBOSE(V_PHASE1) && phase == 1) || (VERBOSE(V_PHASE2) && phase == 2))
+            fdprintf(2, "stmt() P%d lev=%d cur.type=%d (%c)\n",
+                     phase, lexlevel, cur.type, cur.type > 31 && cur.type < 127 ? cur.type : '?');
 #endif
 
         /*
@@ -323,13 +330,18 @@ statement(void)
          * Also counts statements for streaming emission in phase 2.
          */
         if (phase == 1) {
+#ifdef DEBUG
+            if (VERBOSE(V_PHASE1) && cur.type == SWITCH)
+                fdprintf(2, "P1 SWITCH at lexlevel=%d\n", lexlevel);
+#endif
             switch (cur.type) {
             case END:
             case E_O_F:
                 /* Push statement count for blocks */
 #ifdef DEBUG
-                fdprintf(2, "END: lexlevel=%d stmt_count=%d swDepth=%d\n",
-                         lexlevel, stmt_count, swDepth);
+                if (VERBOSE(V_PHASE1))
+                    fdprintf(2, "P1 END: lev=%d cnt=%d sw=%d\n",
+                             lexlevel, stmt_count, swDepth);
 #endif
                 /* Finalize last case when ending switch body */
                 if (swDepth > 0)
@@ -479,8 +491,8 @@ statement(void)
         case BEGIN:  // begin a block
             gettoken();
             pushScope(blockname());
-            /* Emit block header: B 0 stmt_count */
-            emit1('B');
+            /* Emit block header: AST_BLOCK 0 stmt_count */
+            emit1(AST_BLOCK);
             emit1(0);  /* no decls - hoisted to function */
             cnt = popBlkCnt();
             emit1(cnt);
@@ -497,8 +509,8 @@ statement(void)
             expect(LPAR, ER_S_NP);
             e1 = parseExpr(PRI_ALL);
             expect(RPAR, ER_S_NP);
-            /* Emit: I nlabels cond then has_else [else] */
-            emit1('I');
+            /* Emit: IF nlabels cond then has_else [else] */
+            emit1(IF);
             emit1(cntCondLbls(e1));
             emitExpr(e1);
             FreeExpr(e1);
@@ -520,8 +532,8 @@ statement(void)
             if (cur.type != SEMI)
                 e1 = parseExpr(PRI_ALL);
             expect(SEMI, ER_S_SN);
-            /* Emit: R has_value [expr] */
-            emit1('R');
+            /* Emit: RETURN has_value [expr] */
+            emit1(RETURN);
             emit1(e1 ? 1 : 0);
             if (e1) {
                 emitExpr(e1);
@@ -556,8 +568,8 @@ statement(void)
         case SYM:
             /* Check if it's a label */
             if (next.type == COLON) {
-                /* Emit: L label */
-                emit1('L');
+                /* Emit: LABEL label */
+                emit1(LABEL);
                 emitS(cur.v.name);
                 gettoken();
                 gettoken();
@@ -585,8 +597,8 @@ statement(void)
                 (expr->flags & E_POSTFIX)) {
                 expr->flags &= ~E_POSTFIX;
             }
-            /* Emit: E expr */
-            emit1('E');
+            /* Emit: EXPR expr */
+            emit1(EXPR);
             emitExpr(expr);
             FreeExpr(expr);
             break;
@@ -608,9 +620,9 @@ statement(void)
             sw_idx = swEmitIdx++;
             swEmitStack[swEmitDepth++] = sw_idx;
             caseEmitIdx[sw_idx] = 0;
-            /* Emit switch header: S has_label case_count expr */
+            /* Emit switch header: SWITCH has_label case_count expr */
             /* has_label=0 since cpp handles break lowering */
-            emit1('S');
+            emit1(SWITCH);
             emit1(0);  /* no label - cpp lowered break to goto */
             cnt = popCount();
             emit1(cnt);
@@ -630,8 +642,8 @@ statement(void)
             sw_idx = swEmitStack[swEmitDepth - 1];
             c_idx = caseEmitIdx[sw_idx]++;
             sc = &swList[sw_idx].cases[c_idx];
-            /* Emit: C stmt_count value_expr */
-            emit1('C');
+            /* Emit: CASE stmt_count value_expr */
+            emit1(CASE);
             emit1(sc->stmts);
             emitExpr(e1);
             FreeExpr(e1);
@@ -646,8 +658,8 @@ statement(void)
             lblptr = cur.v.name;
             gettoken();
             expect(SEMI, ER_S_SN);
-            /* Emit: G label */
-            emit1('G');
+            /* Emit: GOTO label */
+            emit1(GOTO);
             emitS(lblptr);
             break;
 
@@ -658,14 +670,14 @@ statement(void)
             sw_idx = swEmitStack[swEmitDepth - 1];
             c_idx = caseEmitIdx[sw_idx]++;
             sc = &swList[sw_idx].cases[c_idx];
-            /* Emit: O stmt_count */
-            emit1('O');
+            /* Emit: DEFAULT stmt_count */
+            emit1(DEFAULT);
             emit1(sc->stmts);
             break;
 
         case SEMI:
             gettoken();
-            emit1(';');
+            emit1(SEMI);
             break;
 
         case ASM:
@@ -684,17 +696,13 @@ statement(void)
     }
 }
 
-static char bnbuf[20];
-
 /*
- * Generate a unique name for a block scope
+ * Generate a unique name for a block scope (dummy for debugging)
  */
 static char*
 blockname()
 {
-	static char blockid = 0;
-	sprintf(bnbuf, "block %d", blockid++);
-	return bnbuf;
+	return "blk";
 }
 
 /*

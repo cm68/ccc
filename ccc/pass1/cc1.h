@@ -330,6 +330,7 @@ extern unsigned char phase;         // 1 = build symbol table, 2 = emit AST
 void pushCount(char c);
 char popCount(void);
 void resetCounts(void);
+void resetCountIdx(void);  /* Reset read pointer for phase 2 */
 
 /* Block statement counts (phase 1 -> phase 2) */
 void pushBlkCnt(unsigned char n);
@@ -378,7 +379,10 @@ void usage(char *complaint);
 #ifndef CCC
 char *bitdef(unsigned char v, char **defs);
 #endif
+char *fmtstr(char *buf, char *fmt, ...);
+#ifdef DEBUG
 int fdprintf(unsigned char fd, char *fmt, ...);
+#endif
 void emit1(unsigned char b);
 void emit2(unsigned short w);
 void emit4(unsigned long l);
