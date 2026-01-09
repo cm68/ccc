@@ -17,8 +17,8 @@
 #define O_EXCL      0x0800
 
 /* Stub declarations - actual implementations in unixlib.c or system calls */
-extern int open(const char *path, int flags, ...);
-extern int creat(const char *path, int mode);
+extern int open(char *path, int flags);
+extern int creat(char *path, int mode);
 
 #endif /* _FCNTL_H */
 

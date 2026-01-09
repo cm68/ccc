@@ -15,15 +15,12 @@ typedef	unsigned	size_t;		/* type yielded by sizeof */
 
 extern int	errno;			/* system error number */
 
-extern int	open(char *, int);
-extern int	close(int);
-extern int	creat(char *, int);
-extern int	dup(int);
-extern long	lseek(int, long, int);
-extern int	read(int, void *, int);
-extern int	unlink(char *);
-extern int	write(int, void *, int);
-extern int	isatty(int);
-extern int	chmod(char *, int);
+#ifdef notdef
+/* Unix-style I/O functions */
+extern int read(int fd, void *buf, int len);
+extern int write(int fd, void *buf, int len);
+extern int close(int fd);
+extern long lseek(int fd, long offset, int whence);
+#endif
 
 /* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

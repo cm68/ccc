@@ -53,5 +53,8 @@ char *		_bufallo();
 int _flsbuf();
 char fgetc();
 char fputc();
+int printf(char *, ...);
+int fprintf(FILE *, char *, ...);
+int sprintf(char *, char *, ...);
 
 /* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

@@ -33,5 +33,6 @@ extern int	system(char *);
 extern void	qsort(void *, size_t, size_t, int (*)(void *, void *));
 extern int	abs(int);
 extern long	labs(long);
+extern int	mkstemp(char *);
 
 /* vim: set tabstop=4 shiftwidth=4 noexpandtab: */
