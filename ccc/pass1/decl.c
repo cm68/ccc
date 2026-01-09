@@ -60,7 +60,7 @@ streamInitVal(struct type *type)
             count++;
             /* Advance to next struct member by offset */
             if (is_struct && member) {
-                member_offset += member->type ? member->type->size : 2;
+                member_offset += member->type->size;
                 member = findMemberOff(type->elem, member_offset);
                 elem_type = member ? member->type : NULL;
             }
@@ -89,7 +89,7 @@ streamInitVal(struct type *type)
             count = slen + 1;  /* Array size for char[] = "..." */
         } else {
             /* Pointer to string - just emit reference (data emitted in phase 1) */
-            sprintf(buf, "str%d", globalStrCtr++);
+            fmtstr(buf, "str%d", globalStrCtr++);
             asmDwSym(buf);
             count = 1;
         }
@@ -105,12 +105,12 @@ streamInitVal(struct type *type)
                     asmDb((int)val);
                 else
                     asmDw((int)val);
-            } else if (e->op == SYM && e->var) {
+            } else if (e->op == SYM) {
                 member = (struct name *)e->var;
                 if (member->sclass & SC_STATIC)
-                    sprintf(buf, "S%d", member->static_id - 1);
+                    fmtstr(buf, "S%d", member->static_id - 1);
                 else
-                    sprintf(buf, "_%s", member->name);
+                    fmtstr(buf, "_%s", member->name);
                 asmDwSym(buf);
             } else {
                 /* Unsupported initializer - emit zero */
@@ -156,7 +156,7 @@ doInitlzr(struct name *v)
                     if (str) {
                         int slen = (unsigned char)str[0];
                         int i;
-                        sprintf(strname, "str%d", globalStrCtr++);
+                        fmtstr(strname, "str%d", globalStrCtr++);
                         asmLabel(strname);
                         for (i = 0; i < slen; i++)
                             asmDb((unsigned char)str[i + 1]);
@@ -173,7 +173,7 @@ doInitlzr(struct name *v)
             if (str) {
                 int slen = (unsigned char)str[0];
                 int i;
-                sprintf(strname, "str%d", globalStrCtr++);
+                fmtstr(strname, "str%d", globalStrCtr++);
                 asmLabel(strname);
                 for (i = 0; i < slen; i++)
                     asmDb((unsigned char)str[i + 1]);
@@ -190,9 +190,9 @@ doInitlzr(struct name *v)
 
     /* Build variable name */
     if (v->sclass & SC_STATIC)
-        sprintf(fullname, "S%d", v->static_id - 1);
+        fmtstr(fullname, "S%d", v->static_id - 1);
     else
-        sprintf(fullname, "_%s", v->name);
+        fmtstr(fullname, "_%s", v->name);
 
     /* Emit .globl for non-static */
     if (!(v->sclass & SC_STATIC))
@@ -204,7 +204,7 @@ doInitlzr(struct name *v)
     /* Stream initializer and fix array size if needed */
     {
         int count = streamInitVal(v->type);
-        if (v->type && (v->type->flags & TF_ARRAY) && v->type->count == -1)
+        if ((v->type->flags & TF_ARRAY) && v->type->count == -1)
             v->type = getType(TF_ARRAY|TF_POINTER, v->type->sub, count);
     }
 }
@@ -278,7 +278,7 @@ parsefunc(struct name *f)
 
 	// Install function parameters into the scope at level 2
 	// Read parameter info from f->type->elem but create NEW entries at level 2
-	if (f->type && (f->type->flags & TF_FUNC)) {
+	if (f->type->flags & TF_FUNC) {
 		for (param = f->type->elem; param; param = param->next) {
 			// Only add parameters with actual names (skip anonymous ones)
 			if (param->name[0] != '\0') {
@@ -511,9 +511,7 @@ declaration()
             break;
         }
 
-        if (v->type) {
-        }
-        if (v->type && (v->type->flags & TF_FUNC)) {
+        if (v->type->flags & TF_FUNC) {
             if (cur.type == BEGIN) {
                 /* Assign storage class BEFORE parsing function body
                  * so it's available when emitting the AST */
@@ -555,7 +553,7 @@ declaration()
         if (cur.type == ASSIGN) {
             /* Auto initializers only for scalars - cpp splits them into decl + assign.
              * Aggregate auto init (arrays, structs) is not supported. */
-            if (lexlevel > 1 && !(sclass & SC_STATIC) && v->type &&
+            if (lexlevel > 1 && !(sclass & SC_STATIC) &&
                 (v->type->flags & (TF_AGGREGATE | TF_ARRAY))) {
                 gripe(ER_D_AI);
                 /* skip the initializer */
@@ -580,7 +578,7 @@ declaration()
 		    v->kind != tdef && v->kind != fdef &&
 		    !(sclass & SC_EXTERN) && !v->emitted) {
 			/* Skip function declarations - only emit actual variables */
-			if (!(v->type && (v->type->flags & TF_FUNC))) {
+			if (!(v->type->flags & TF_FUNC)) {
 				emitGv(v);
 				/* Free initializer after emission to avoid memory buildup */
 				if (v->u.init) {

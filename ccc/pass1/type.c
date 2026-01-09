@@ -212,7 +212,7 @@ dumpName(struct name *n)
 		if (n->sclass & SC_TYPEDEF) printf("typedef ");
 	}
 	fdprintf(2,"\n");
-	if (n->type) dumpType(n->type, 0);
+	dumpType(n->type, 0);
     fdprintf(2,"\toffset: %d bitoff: %d width: %d\n",
         n->offset, n->bitoff, n->width);
 }
@@ -869,9 +869,8 @@ getbasetype()
             // calculate offset and size
             if (is_union) {
                 member->offset = 0;
-                if (member->type && member->type->size > t->size) {
+                if (member->type->size > t->size)
                     t->size = member->type->size;
-                }
             } else {
                 // Handle bitfield packing
                 if (member->kind == bitfield) {
@@ -906,10 +905,8 @@ getbasetype()
                     }
 
                     member->offset = off;
-                    if (member->type) {
-                        off += member->type->size;
-                        t->size = off;
-                    }
+                    off += member->type->size;
+                    t->size = off;
                 }
             }
 

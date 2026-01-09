@@ -68,7 +68,7 @@ static char lblBuf[16];
 static char *
 mkLbl(char *base, char *suffix)
 {
-	sprintf(lblBuf, "%s%s", base, suffix);
+	fmtstr(lblBuf, "%s%s", base, suffix);
 	return lblBuf;
 }
 
@@ -154,54 +154,42 @@ emitExpr(struct expr *e)
 		break;
 
 	case SYM:
-		if (e->var) {
-			np = (struct name *)e->var;
-			/* Local variables: emit LOCALVAR/REGVAR directly */
-			if (np->level > 1 && !(np->sclass & SC_EXTERN)) {
-				/* Look up frm_off/reg from phase 1 captured locals */
-				struct name *local = findInLocals(np->name);
-				char reg = local ? local->reg : np->reg;
-				char off = local ? local->frm_off : np->frm_off;
-				if (reg) {
-					emit1(REGVAR);
-					emit1(typeSfx(e->type));
-					emit1(reg);
-				} else {
-					emit1(LOCALVAR);
-					emit1(typeSfx(e->type));
-					emit1(off);
-				}
-				break;
+		np = (struct name *)e->var;
+		/* Local variables: emit LOCALVAR/REGVAR directly */
+		if (np->level > 1 && !(np->sclass & SC_EXTERN)) {
+			/* Look up frm_off/reg from phase 1 captured locals */
+			struct name *local = findInLocals(np->name);
+			char reg = local ? local->reg : np->reg;
+			char off = local ? local->frm_off : np->frm_off;
+			if (reg) {
+				emit1(REGVAR);
+				emit1(typeSfx(e->type));
+				emit1(reg);
+			} else {
+				emit1(LOCALVAR);
+				emit1(typeSfx(e->type));
+				emit1(off);
 			}
-			/* extern/global get underscore prefix */
-			if ((np->sclass & SC_EXTERN) ||
-			    (np->level == 1 && !(np->sclass & SC_STATIC)))
-				sprintf(fullname, "_%s", np->name);
-			else if (np->static_id)
-				sprintf(fullname,
-                    "%c%d", np->sclass & SC_STATIC ? 'S' : 'L', np->static_id - 1);
-			else
-				sprintf(fullname, "%s", np->name);
-			emit1(SYM);
-			emitS(fullname);
-		} else {
-			emit1(SYM);
-			emitS("?");
+			break;
 		}
+		/* extern/global get underscore prefix */
+		if ((np->sclass & SC_EXTERN) ||
+		    (np->level == 1 && !(np->sclass & SC_STATIC)))
+			fmtstr(fullname, "_%s", np->name);
+		else if (np->static_id)
+			fmtstr(fullname,
+			    "%c%d", np->sclass & SC_STATIC ? 'S' : 'L', np->static_id - 1);
+		else
+			fmtstr(fullname, "%s", np->name);
+		emit1(SYM);
+		emitS(fullname);
 		break;
 
 	case STRING:
 		/* String literals - reference by name (already emitted in phase 1) */
-		if (e->var) {
-			np = (struct name *)e->var;
-			/* Synthetic string names are local - no _ prefix */
-			emit1(SYM);
-			emitS(np->name);
-		} else {
-			/* Fallback to address if name not available */
-			emit1('S');
-			emit2(e->v);
-		}
+		np = (struct name *)e->var;
+		emit1(SYM);
+		emitS(np->name);
 		break;
 
 	case CALL:
@@ -219,20 +207,6 @@ emitExpr(struct expr *e)
 			emitChild(ep);
 		break;
 
-	case NARROW:
-	case WIDEN:
-		/* Cast operators with destination width annotation */
-		c = typeSfx(type);
-		emit1(op);  /* NARROW=206, WIDEN=207 */
-		emit1(c);
-		emitChild(left);
-		break;
-	case SEXT:
-		c = typeSfx(type);
-		emit1(SEXT);
-		emit1(c);
-		emitChild(left);
-		break;
 
 	case INCR:
 	case DECR:
@@ -275,10 +249,8 @@ emitExpr(struct expr *e)
 		emit1(QUES);
 		emit1(typeSfx(type));
 		emitChild(left);
-		if (right && right->op == COLON) {
-			emitChild(right->left);
-			emitChild(right->right);
-		}
+		emitChild(right->left);
+		emitChild(right->right);
 		break;
 
 	case INITLIST:
@@ -295,7 +267,7 @@ emitExpr(struct expr *e)
 
 	case DEREF:
 		/* Optimize: *++p -> (++p, *p) using comma operator */
-		if (left && (left->op == INCR || left->op == DECR) &&
+		if ((left->op == INCR || left->op == DECR) &&
 		    !(left->flags & E_POSTFIX)) {
 			emit1(COMMA);
 			emit1(typeSfx(type));
@@ -317,16 +289,9 @@ emitExpr(struct expr *e)
 		break;
 
 	case GT:
-		/* Greater than - normalize to < by swapping operands */
-		emit1(LT);
-		emit1(typeSfx(type));
-		emitChild(right);
-		emitChild(left);
-		break;
-
 	case GE:
-		/* Greater or equal - normalize to <= by swapping */
-		emit1(LE);
+		/* Normalize GT/GE to LT/LE by swapping operands */
+		emit1(op == GT ? LT : LE);
 		emit1(typeSfx(type));
 		emitChild(right);
 		emitChild(left);
@@ -342,102 +307,48 @@ emitExpr(struct expr *e)
 	}
 }
 
-/*
- * Count function parameters
- */
-static char
-countParams(struct type *functype)
-{
-	char count = 0;
-	struct name *param;
-	if (functype && (functype->flags & TF_FUNC)) {
-		for (param = functype->elem; param; param = param->next) {
-			if (param->type && param->type->size == 0)
-				continue;  /* skip void */
-			count++;
-		}
-	}
-	return count;
-}
-
-/*
- * Output function parameter declarations
- * Format: d suffix name reg off d suffix name reg off ...
- * reg is 1 byte: 0=none, 1=B, 2=C, 3=BC, 4=IX
- * off is 1 byte: signed frame offset (params positive, locals negative)
- */
+/* Emit function parameter declarations */
 static void
 emitPrmDecls(struct type *functype, struct name *locals)
 {
 	struct name *param, *local, *found;
 
-	if (functype && (functype->flags & TF_FUNC)) {
-		for (param = functype->elem; param; param = param->next) {
-			/* Skip void parameters - (void) means no params */
-			if (param->type && param->type->size == 0)
-				continue;
-			/* Look up register/offset from locals */
-			found = NULL;
-			if (locals && param->name[0]) {
-				for (local = locals; local; local = local->next) {
-					if (strcmp(local->name, param->name) == 0) {
-						found = local;
-						break;
-					}
+	if (!functype || !(functype->flags & TF_FUNC))
+		return;
+	for (param = functype->elem; param; param = param->next) {
+		if (param->type->size == 0)
+			continue;
+		found = NULL;
+		if (param->name[0])
+			for (local = locals; local; local = local->next)
+				if (strcmp(local->name, param->name) == 0) {
+					found = local;
+					break;
 				}
-			}
-			/* Emit as: d suffix name reg off */
-			emit1('d');
-			emit1(typeSfx(param->type));
-			if (param->name[0])
-				emitS(param->name);
-			else
-				emitS("_");  /* anonymous parameter */
-			emit1(found ? found->reg : 0);
-			emit1(found ? (unsigned char)found->frm_off : 0);
-		}
+		emit1('d');
+		emit1(typeSfx(param->type));
+		emitS(param->name[0] ? param->name : "_");
+		emit1(found ? found->reg : 0);
+		emit1(found ? (unsigned char)found->frm_off : 0);
 	}
 }
 
-/* Count local variables (non-params) */
-static char
-countLocals(struct name *locals)
-{
-	struct name *local;
-	char count = 0;
-
-	if (!locals)
-		return 0;
-
-	for (local = locals; local; local = local->next) {
-		if (local->kind != funarg)
-			count++;
-	}
-	return count;
-}
-
-/*
- * Emit local variable declarations (non-params) at function prolog
- * All locals are hoisted to function level - no scope tracking needed
- */
+/* Emit local variable declarations */
 static void
 emitLocals(struct name *locals)
 {
 	struct name *local;
-
-	if (!locals)
-		return;
+	char lbuf[32];
 
 	for (local = locals; local; local = local->next) {
-		char lbuf[32];
 		if (local->kind == funarg)
-			continue;  /* params already emitted */
+			continue;
 		if (local->sclass & SC_STATIC)
-			sprintf(lbuf, "S%d", local->static_id - 1);
+			fmtstr(lbuf, "S%d", local->static_id - 1);
 		else if (local->static_id)
-			sprintf(lbuf, "L%d", local->static_id - 1);
+			fmtstr(lbuf, "L%d", local->static_id - 1);
 		else
-			sprintf(lbuf, "%s", local->name);
+			fmtstr(lbuf, "%s", local->name);
 		emit1('d');
 		emit1(typeSfx(local->type));
 		emitS(lbuf);
@@ -462,63 +373,52 @@ emitGlobalAsm(char *text)
 }
 
 /*
- * Output function header in AST format (everything before statements)
+ * Output function header in AST format
  * Format: F rettype name param_count local_count frm_size params... locals...
- * Called before streaming statements.
  */
 void
 emitFuncPre(struct name *func)
 {
 	char func_name[32];
-	char ret_suffix;
 	char frm_size, param_count, local_count;
-	char stmt_count;
+	struct name *n;
 
-	if (!func || !func->type)
+	if (!func)
 		return;
 
-	/* Analyze variable usage and allocate registers BEFORE emission */
 	frm_size = analyzeFunc(func);
-
-	/* Store locals for lookup during expression emission.
-	 * Phase 2 creates new name structs; we need frm_off from phase 1 captures. */
 	curFuncLocals = func->u.locals;
 
-	/* Static functions use S<id>, public get underscore prefix */
+	/* Count params and locals first */
+	param_count = local_count = 0;
+	if (func->type->flags & TF_FUNC)
+		for (n = func->type->elem; n; n = n->next)
+			if (n->type->size > 0)
+				param_count++;
+	for (n = func->u.locals; n; n = n->next)
+		if (n->kind != funarg)
+			local_count++;
+
+	/* Emit function header */
 	if (func->sclass & SC_STATIC)
-		sprintf(func_name, "S%d", func->static_id - 1);
+		fmtstr(func_name, "S%d", func->static_id - 1);
 	else
-		sprintf(func_name, "_%s", func->name);
-
-	/* Get return type suffix (void uses 'v') */
-	if (func->type && func->type->sub)
-		ret_suffix = typeSfx(func->type->sub);
-	else
-		ret_suffix = 'v';  /* void */
-
+		fmtstr(func_name, "_%s", func->name);
 	emit1('F');
-	emit1(ret_suffix);
+	emit1(func->type->sub ? typeSfx(func->type->sub) : 'v');
 	emitS(func_name);
-
-	/* Output param count, local count, and frame size */
-	param_count = func->type ? countParams(func->type) : 0;
-	local_count = countLocals(func->u.locals);
 	emit1(param_count);
 	emit1(local_count);
 	emit1(frm_size);
 
-	/* Emit parameter declarations */
-	if (func->type)
-		emitPrmDecls(func->type, func->u.locals);
-
-	/* Emit local variable declarations (hoisted from all blocks) */
+	/* Emit declarations */
+	emitPrmDecls(func->type, func->u.locals);
 	emitLocals(func->u.locals);
 
-	/* Output block header with statement count from phase 1 */
-	stmt_count = popFuncCnt();
+	/* Block header */
 	emit1('B');
 	emit1(0);
-	emit1(stmt_count);
+	emit1(popFuncCnt());
 }
 
 /*
@@ -585,10 +485,7 @@ emitInit(struct expr *init, struct type *type)
 		int arrlen = type->count;
 		int i;
 		/* Mark string as emitted so it won't be emitted separately */
-		if (init->var) {
-			struct name *strname = (struct name *)init->var;
-			strname->emitted = 1;
-		}
+		((struct name *)init->var)->emitted = 1;
 		emit1(LBRACK);
 		emit1('b');
 		emit1(arrlen);
@@ -683,14 +580,14 @@ emitGv(struct name *var)
 	if (phase == 1)
 		return;
 
-	if (!var || !var->type)
+	if (!var)
 		return;
 
 	/* Build name: static uses S<id>, public gets underscore prefix */
 	if (var->sclass & SC_STATIC)
-		sprintf(fullname, "S%d", var->static_id - 1);
+		fmtstr(fullname, "S%d", var->static_id - 1);
 	else
-		sprintf(fullname, "_%s", var->name);
+		fmtstr(fullname, "_%s", var->name);
 
 	/* Calculate total size */
 	if (var->type->flags & TF_ARRAY)

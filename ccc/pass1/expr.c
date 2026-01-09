@@ -140,6 +140,38 @@ mkexprI(unsigned char op, struct expr *left, struct type *type,
 }
 
 /*
+ * Free just an expression node without its children
+ * Used when restructuring trees (e.g., unwrapping DEREF)
+ */
+static void
+freeNode(struct expr *e)
+{
+	if (!e) return;
+	free(e);
+#ifdef DEBUG
+	exprCurCnt--;
+#endif
+}
+
+/*
+ * Unwrap a DEREF node, returning the child and freeing the DEREF
+ * Saves the dereferenced type before unwrapping
+ * Returns: the unwrapped type (what was e->type before unwrapping)
+ */
+static struct type *
+unwrapDeref(struct expr **ep)
+{
+	struct expr *e = *ep;
+	struct type *t;
+	if (!e || e->op != DEREF) return e ? e->type : NULL;
+	t = e->type;
+	*ep = e->left;
+	e->left = NULL;
+	freeNode(e);
+	return t;
+}
+
+/*
  * Free an expression tree recursively
  *
  * Performs a post-order traversal of the expression tree, freeing all
@@ -156,30 +188,16 @@ mkexprI(unsigned char op, struct expr *left, struct type *type,
 void
 FreeExpr(struct expr *e)
 {
-	if (!e) {
+	if (!e)
 		return;
-	}
-	if (e->left) {
-		FreeExpr(e->left);
-	}
-	if (e->right) {
-		FreeExpr(e->right);
-	}
-	/* Free linked list (e.g., function call arguments) */
-	if (e->next) {
-		FreeExpr(e->next);
-	}
+	FreeExpr(e->left);
+	FreeExpr(e->right);
+	FreeExpr(e->next);
 	/* For STRING expressions, free the synthetic name and its init expr */
-	if (e->op == STRING && e->var) {
+	if (e->op == STRING) {
 		struct name *strname = (struct name *)e->var;
-		if (strname->u.init) {
-			FreeExpr(strname->u.init);
-			strname->u.init = NULL;
-		}
-		/* Free the counted string data */
-		if (e->v) {
-			free((void *)e->v);
-		}
+		FreeExpr(strname->u.init);
+		free((void *)e->v);
 		free(strname);
 	}
 	free(e);
@@ -213,7 +231,11 @@ binopPri(unsigned char t)
 static void
 skipExpr(unsigned char pri)
 {
-    unsigned char p;
+    unsigned char p, is_assign;
+    struct name *np;
+    char namebuf[32];
+    char *symname;
+    int size;
 
     /* Handle prefix/primary */
     switch (cur.type) {
@@ -222,63 +244,42 @@ skipExpr(unsigned char pri)
         gettoken();
         break;
 
-    case STRING: {
-        /* Process function-local strings in phase 1 - emit 'U' record before function */
-        struct name *np;
-        char namebuf[32];
-        char *symname;
-        int size;
-
-        /* Copy string since buffer is reused */
+    case STRING:
+        /* Process function-local strings in phase 1 - emit 'U' record */
         size = ((unsigned char *)cur.v.str)[0] + 1;
         symname = malloc(size);
         memcpy(symname, cur.v.str, size);
         gettoken();
-
-        /* Handle adjacent string concatenation */
         while (cur.type == STRING)
             gettoken();
-
-        /* Generate synthetic name with "fs" prefix for function strings */
-        sprintf(namebuf, "fs%d", funcStrCtr++);
-
-        /* Create name structure for string literal */
+        fmtstr(namebuf, "fs%d", funcStrCtr++);
         np = (struct name *)calloc(1, sizeof(struct name));
-        if (np) {
-            strncpy(np->name, namebuf, 15);
-            np->name[15] = 0;
-            np->type = getType(TF_POINTER, chartype, 0);
-            np->kind = var;
-            np->level = 1;
-            np->u.init = mkexprI(STRING, 0, NULL, (unsigned long)symname, 0);
-            /* Emit string literal now (during phase 1, before function body) */
-            emitStrLit(np);
-            /* Free since we don't need it after emission */
-            if (np->u.init) {
-                free(np->u.init);
-            }
-            free(np);
-        }
+        strncpy(np->name, namebuf, 15);
+        np->name[15] = 0;
+        np->type = getType(TF_POINTER, chartype, 0);
+        np->kind = var;
+        np->level = 1;
+        np->u.init = mkexprI(STRING, 0, NULL, (unsigned long)symname, 0);
+        emitStrLit(np);
+        free(np->u.init);
+        free(np);
         free(symname);
         break;
-    }
 
-    case SYM: {
-        struct name *np = findName(cur.v.name, 0);
+    case SYM:
+        np = findName(cur.v.name, 0);
         if (np && np->level > 1 && np->kind != elem &&
-            !(np->type && (np->type->flags & (TF_FUNC|TF_ARRAY)))) {
+            !(np->type->flags & (TF_FUNC|TF_ARRAY))) {
             if (np->ref_count < 255)
                 np->ref_count++;
         }
         gettoken();
         break;
-    }
 
     case LPAR:
         gettoken();
-        /* Check for cast: (type)expr */
         if (isCastStart()) {
-            parseTypeName();  /* consume type, still need symbol table */
+            parseTypeName();
             expect(RPAR, ER_E_SP);
             skipExpr(OP_PRI_MULT - 1);
         } else {
@@ -290,12 +291,10 @@ skipExpr(unsigned char pri)
     case MINUS:
     case TWIDDLE:
     case BANG:
-        gettoken();
-        skipExpr(OP_PRI_MULT - 1);
-        break;
-
     case STAR:
     case AND:
+    case INCR:
+    case DECR:
         gettoken();
         skipExpr(OP_PRI_MULT - 1);
         break;
@@ -305,25 +304,18 @@ skipExpr(unsigned char pri)
         if (cur.type == LPAR) {
             gettoken();
             if (isCastStart()) {
-                parseTypeName();  /* sizeof(type) */
+                parseTypeName();
                 expect(RPAR, ER_E_SP);
             } else {
-                skipExpr(0);  /* sizeof(expr) */
+                skipExpr(0);
                 expect(RPAR, ER_E_SP);
             }
         } else {
-            skipExpr(OP_PRI_MULT - 1);  /* sizeof expr */
+            skipExpr(OP_PRI_MULT - 1);
         }
         break;
 
-    case INCR:
-    case DECR:
-        gettoken();
-        skipExpr(OP_PRI_MULT - 1);
-        break;
-
     default:
-        /* In phase 1, don't gripe - errors will be caught in phase 2 */
         return;
     }
 
@@ -335,7 +327,6 @@ skipExpr(unsigned char pri)
             skipExpr(0);
             expect(RBRACK, ER_E_SP);
         } else if (cur.type == LPAR) {
-            /* Function call - skip arguments */
             gettoken();
             if (cur.type != RPAR) {
                 skipExpr(OP_PRI_COMMA);
@@ -349,7 +340,7 @@ skipExpr(unsigned char pri)
             gettoken();
             if (cur.type == SYM)
                 gettoken();
-        } else if (cur.type == INCR || cur.type == DECR) {
+        } else {
             gettoken();
         }
     }
@@ -357,18 +348,15 @@ skipExpr(unsigned char pri)
     /* Handle binary operators */
     while (1) {
         p = binopPri(cur.type);
-        if (p == 0)
+        if (p == 0 || (pri != 0 && p >= pri))
             break;
-        if (pri != 0 && p >= pri)
-            break;
-
         if (cur.type == QUES) {
             gettoken();
             skipExpr(0);
             expect(COLON, ER_E_SP);
             skipExpr(0);
         } else {
-            unsigned char is_assign = IS_ASSIGN(cur.type);
+            is_assign = IS_ASSIGN(cur.type);
             gettoken();
             skipExpr(is_assign ? 0 : p);
         }
@@ -381,87 +369,25 @@ skipExpr(unsigned char pri)
 static struct expr *
 mkIncDec(struct expr *operand, unsigned char inc_op, unsigned char is_postfix)
 {
-    struct type *value_type = operand ? operand->type : NULL;
+    struct type *value_type;
     struct expr *e;
 
-    if (operand && operand->op == DEREF) {
-        struct expr *deref = operand;
-        operand = operand->left;
-        /* Free the orphaned DEREF node (but not its children) */
-        deref->left = NULL;
-        free(deref);
-#ifdef DEBUG
-        exprCurCnt--;
-#endif
-    } else {
+    if (!operand || operand->op != DEREF) {
         gripe(ER_E_LV);
         FreeExpr(operand);
-        operand = NULL;
+        return NULL;
     }
+    value_type = unwrapDeref(&operand);
     e = mkexpr(inc_op, operand);
-    if (e->left) {
-        e->left->up = e;
-        e->type = value_type;
-    }
+    e->left->up = e;
+    e->type = value_type;
     if (is_postfix)
         e->flags |= E_POSTFIX;
     return e;
 }
 
-/*
- * Wrap expression in type conversion (NARROW/WIDEN/SEXT)
- * Fold constant conversions at compile time.
- */
-static struct expr *
-mkConv(struct expr *inner, struct type *tgt)
-{
-    struct type *src = inner->type;
-    token_t op;
-    struct expr *conv;
-
-    if (tgt->size < src->size)
-        op = NARROW;
-    else if (src->flags & TF_UNSIGNED)
-        op = WIDEN;
-    else
-        op = SEXT;
-
-    /* Fold constant conversions */
-    if (inner->op == CONST) {
-        if (op == SEXT) {
-            /* Sign extend based on source size */
-            if (src->size == 1 && (inner->v & 0x80))
-                inner->v |= 0xffffff00L;
-            else if (src->size == 2 && (inner->v & 0x8000))
-                inner->v |= 0xffff0000L;
-        }
-        inner->type = tgt;
-        return inner;
-    }
-
-    conv = mkexprI(op, inner, tgt, 0, 0);
-    conv->left->up = conv;
-    return conv;
-}
-
 /* Check if type is scalar (not pointer/array/func/aggregate) */
 #define IS_SCALAR(t) (!((t)->flags & (TF_POINTER|TF_ARRAY|TF_FUNC|TF_AGGREGATE)))
-
-/*
- * Coerce expression to target type if sizes differ
- */
-static struct expr *
-coerceTypes(struct expr *e, struct type *tgt)
-{
-    if (!e || !tgt || !e->type)
-        return e;
-    if (e->type->size == tgt->size)
-        return e;
-    /* Don't convert pointers/arrays */
-    if ((e->type->flags | tgt->flags) & (TF_POINTER|TF_ARRAY))
-        return e;
-    return mkConv(e, tgt);
-}
 
 /*
  * Constant folding for binary operations
@@ -472,7 +398,7 @@ coerceTypes(struct expr *e, struct type *tgt)
 static struct expr *
 foldConst(struct expr *e)
 {
-    unsigned long lv, rv, result;
+    unsigned lv, rv;
     struct expr *left, *right;
 
     if (!e || !e->left || !e->right)
@@ -489,41 +415,30 @@ foldConst(struct expr *e)
     rv = right->v;
 
     switch (e->op) {
-    case PLUS:   result = lv + rv; break;
-    case MINUS:  result = lv - rv; break;
-    case STAR:   /* binary * uses STAR token */
-    case TIMES:  result = lv * rv; break;
-    case DIV:    result = rv ? lv / rv : 0; break;
-    case MOD:    result = rv ? lv % rv : 0; break;
-    case LSHIFT: result = lv << rv; break;
-    case RSHIFT: result = lv >> rv; break;
+    case PLUS:   lv += rv; break;
+    case MINUS:  lv -= rv; break;
+    case DIV:    if (rv) lv /= rv; break;
+    case LSHIFT: lv <<= rv; break;
+    case RSHIFT: lv >>= rv; break;
     case AND:
-    case AMPER:  result = lv & rv; break;  /* binary & uses AMPER */
-    case OR:     result = lv | rv; break;
-    case XOR:    result = lv ^ rv; break;
+    case AMPER:  lv &= rv; break;
+    case OR:     lv |= rv; break;
+    case XOR:    lv ^= rv; break;
     default:
-        return e;  /* Not a foldable operator */
+        return e;
     }
 
-    /* Replace with constant - reuse left node, free right */
+    /* Reuse left node as constant */
     left->op = CONST;
-    left->v = result;
-    left->type = e->type ? e->type : inttype;
+    left->v = lv;
+    left->type = inttype;
     left->flags = E_CONST;
     left->left = NULL;
     left->right = NULL;
-
-    /* Free right operand */
     FreeExpr(right);
-
-    /* Free the binary op node (not its children - left is reused) */
     e->left = NULL;
     e->right = NULL;
-    free(e);
-#ifdef DEBUG
-    exprCurCnt--;
-#endif
-
+    freeNode(e);
     return left;
 }
 
@@ -565,28 +480,22 @@ parseExpr(unsigned char pri)
 {
 	/* Hoisted locals for stack reuse */
 	unsigned char op, p, is_assignment, is_variadic, is_arrow;
-	unsigned char uop, inc_op, compatible;
-	unsigned char l_unsigned, r_unsigned;
+	unsigned char uop, inc_op;
 	struct expr *e = 0;
-	struct expr *e1, *e2, *e3, *e4;  /* temporaries for non-overlapping uses */
-	struct type *assign_type, *t, *tp, *t2, *t3;
+	struct expr *e1, *e2, *e3, *e4;
+	struct type *assign_type, *t, *tp;
 	struct var *vp;
-	struct name *np;  /* general-purpose name pointer */
+	struct name *np;
 	char namebuf[32];
 	char *symname;
 	union { float f; unsigned long u; } fu;
+	unsigned long uval;
 	long sval;
-	char src_size, tgt_size, src_unsigned, l_ptr, r_ptr;
+	char src_size, tgt_size;
 	int elem_size, size;
-	token_t cast_op;
 
-	/* Initialize variables that need specific values */
 	assign_type = NULL;
 	vp = NULL;
-	t2 = NULL;
-	t3 = NULL;
-	l_ptr = 0;
-	r_ptr = 0;
 	is_assignment = 0;
 
 	/* Phase 1: just consume tokens, don't build tree */
@@ -630,10 +539,10 @@ parseExpr(unsigned char pri)
         /* Different prefixes for function vs global strings */
         if (lexlevel > 1) {
             /* Function-local: "fs" prefix (emitted during phase 1) */
-            sprintf(namebuf, "fs%d", funcStrCtr++);
+            fmtstr(namebuf, "fs%d", funcStrCtr++);
         } else {
             /* Global: "str" prefix (emitted during phase 2) */
-            sprintf(namebuf, "str%d", globalStrCtr++);
+            fmtstr(namebuf, "str%d", globalStrCtr++);
         }
 
         /*
@@ -643,23 +552,16 @@ parseExpr(unsigned char pri)
          * and process will exit
          */
         np = (struct name *)calloc(1, sizeof(struct name));
-        if (np) {
-            /* Initialize in struct field order */
-            strncpy(np->name, namebuf, 15);
-            np->name[15] = 0;
-            np->type = e->type;
-            /* chain = 0 (not in symbol table) */
-            np->kind = var;
-            np->level = 1;  /* Global scope */
-            /* store pointer to counted string in the name's init field */
-            np->u.init = mkexprI(STRING, 0, NULL,
-					(unsigned long)symname, 0);
-            /* also store in expression for immediate use */
-            e->v = (unsigned long)symname;
-            /* store reference to the named string in the expression */
-            e->var = (struct var *)np;
-            /* String 'U' record already emitted during phase 1 */
-        }
+        strncpy(np->name, namebuf, 15);
+        np->name[15] = 0;
+        np->type = e->type;
+        np->kind = var;
+        np->level = 1;  /* Global scope */
+        /* store pointer to counted string in the name's init field */
+        np->u.init = mkexprI(STRING, 0, NULL, (unsigned long)symname, 0);
+        /* also store in expression for immediate use */
+        e->v = (unsigned long)symname;
+        e->var = (struct var *)np;
         e->flags = E_CONST;
         gettoken();
         break;
@@ -724,16 +626,12 @@ parseExpr(unsigned char pri)
 
             // Functions and arrays decay to pointers (addresses)
             // Only wrap non-functions in DEREF to get their value
-            if (np->type && (np->type->flags & TF_FUNC)) {
-                // Function name: return address (decay to function pointer)
-                e = e1;
-            } else if (np->type && (np->type->flags & TF_ARRAY)) {
-                // Array name: decays to pointer to first element
-                e = e1;
-            } else {
-                // Variable: wrap in DEREF to get value
-                e = mkexprI(DEREF, e1, np->type, 0, 0);
-            }
+            if (np->type->flags & TF_FUNC)
+                e = e1;  // Function: return address
+            else if (np->type->flags & TF_ARRAY)
+                e = e1;  // Array: decays to pointer
+            else
+                e = mkexprI(DEREF, e1, np->type, 0, 0);  // Variable: wrap in DEREF
         }
         free(symname);
         /* Note: gettoken() already called above for lookahead */
@@ -753,90 +651,12 @@ parseExpr(unsigned char pri)
             /* Cast has unary precedence */
             e1 = parseExpr(OP_PRI_MULT - 1);
 
-            /* Determine if cast needs runtime operation */
-            if (tp && e1 && e1->type) {
-                /* Pointer-to-pointer casts are just type reinterpretation */
-                if ((tp->flags & TF_POINTER) &&
-						(e1->type->flags & TF_POINTER)) {
-                    e1->type = tp;
-                    e = e1;
-                }
-                /* Scalar casts: determine which operation needed */
-                else if (!(tp->flags &
-						(TF_POINTER|TF_ARRAY|TF_FUNC)) &&
-                         !(e1->type->flags &
-						(TF_POINTER|TF_ARRAY|TF_FUNC))) {
-                    src_size = e1->type->size;
-                    tgt_size = tp->size;
-                    src_unsigned = e1->type->flags & TF_UNSIGNED;
-
-                    if (tgt_size == src_size) {
-                        /*
-                         * Same size: just reinterpret
-                         * (e.g., int <-> unsigned int)
-                         */
-                        e1->type = tp;
-                        e = e1;
-                    } else if (e1->flags & E_CONST) {
-                        /* Fold cast of constant */
-                        unsigned long v = e1->v;
-                        if (tgt_size < src_size) {
-                            /* Narrow: mask to target size */
-                            if (tgt_size == 1) v &= 0xFF;
-                            else if (tgt_size == 2) v &= 0xFFFF;
-                        } else if (!src_unsigned && tgt_size > src_size) {
-                            /* Sign extend */
-                            if (src_size == 1 && (v & 0x80))
-                                v |= 0xFFFFFF00L;
-                            else if (src_size == 2 && (v & 0x8000))
-                                v |= 0xFFFF0000L;
-                        }
-                        e1->v = v;
-                        e1->type = tp;
-                        e = e1;
-                    } else {
-                        if (tgt_size < src_size) {
-                            /* Narrowing: truncate to smaller type */
-                            cast_op = NARROW;
-                        } else {
-                            /* Widening: extend to larger type */
-                            if (src_unsigned) {
-                                cast_op = WIDEN;  /* zero extend unsigned */
-                            } else {
-                                cast_op = SEXT;   /* sign extend signed */
-                            }
-                        }
-
-                        e = mkexprI(cast_op, e1, tp, 0, 0);
-                    }
-                }
-                /* Mixed pointer/scalar casts: need conversion */
-                else {
-                    src_size = e1->type->size;
-                    tgt_size = tp->size;
-
-                    if (tgt_size == src_size) {
-                        /* Same size: just reinterpret */
-                        e1->type = tp;
-                        e = e1;
-                    } else if (e1->flags & E_CONST) {
-                        /* Fold cast of constant */
-                        unsigned long v = e1->v;
-                        if (tgt_size < src_size) {
-                            if (tgt_size == 1) v &= 0xFF;
-                            else if (tgt_size == 2) v &= 0xFFFF;
-                        }
-                        e1->v = v;
-                        e1->type = tp;
-                        e = e1;
-                    } else {
-                        cast_op = (tgt_size < src_size) ? NARROW : WIDEN;
-                        e = mkexprI(cast_op, e1, tp, 0, 0);
-                    }
-                }
+            /* Cast just changes the type - pass2 handles conversions */
+            if (e1) {
+                e1->type = tp;
+                e = e1;
             } else {
-                /* Shouldn't happen, but create NARROW as fallback */
-                e = mkexprI(NARROW, e1, tp, 0, 0);
+                e = mkexprI(CONST, 0, tp, 0, 0);
             }
         } else {
             /*
@@ -853,81 +673,56 @@ parseExpr(unsigned char pri)
     case BANG:      // logical not
         uop = (cur.type == MINUS) ? NEG : cur.type;
         gettoken();
-        e = mkexpr(uop, parseExpr(OP_PRI_MULT - 1));
-        if (e->left) {
-            e->type = e->left->type;
-            e->left->up = e;
-            /* Fold unary ops on constants */
-            if (e->left->flags & E_CONST) {
-                struct expr *folded = e->left;
-                unsigned long v = folded->v;
-                if (uop == NEG) v = -v;
-                else if (uop == TWIDDLE) v = ~v;
-                else if (uop == BANG) v = !v;
-                folded->v = v;
-                folded->up = NULL;
-                e->left = NULL;
-                free(e);
-#ifdef DEBUG
-                exprCurCnt--;
-#endif
-                e = folded;
-            }
+        e1 = parseExpr(OP_PRI_MULT - 1);
+        if (!e1) break;
+        /* Fold unary ops on constants */
+        if (e1->flags & E_CONST) {
+            uval = e1->v;
+            if (uop == NEG) uval = -uval;
+            else if (uop == TWIDDLE) uval = ~uval;
+            else if (uop == BANG) uval = !uval;
+            e1->v = uval;
+            e = e1;
+        } else {
+            e = mkexpr(uop, e1);
+            e->type = e1->type;
+            e1->up = e;
         }
         break;
 
     case STAR:      // dereference (unary)
         gettoken();
-        e = mkexpr(DEREF, parseExpr(OP_PRI_MULT - 1));
-        if (e->left) {
-            e->left->up = e;
-            // type will be determined later when we have full type info
-            if (e->left->type && (e->left->type->flags & TF_POINTER) &&
-					e->left->type->sub) {
-                e->type = e->left->type->sub;
-            } else {
-                e->type = e->left->type;
-            }
-        }
+        e1 = parseExpr(OP_PRI_MULT - 1);
+        if (!e1) break;
+        e = mkexpr(DEREF, e1);
+        e1->up = e;
+        if ((e1->type->flags & TF_POINTER) && e1->type->sub)
+            e->type = e1->type->sub;
+        else
+            e->type = e1->type;
         break;
 
     case AND:       // address-of (unary)
         gettoken();
         e = parseExpr(OP_PRI_MULT - 1);
+        if (!e) break;
         /* Mark variable as address-taken (can't use register) */
-        if (e && e->op == DEREF && e->left && e->left->op == SYM &&
-            e->left->var)
+        if (e->op == DEREF && e->left->op == SYM)
             ((struct name *)e->left->var)->addr_taken = 1;
         /* Optimize: &(DEREF x) = x, since SYM already gives address */
-        if (e && e->op == DEREF) {
+        if (e->op == DEREF) {
             e1 = e;
             e = e->left;
-            /*
-             * Type handling depends on what's being addressed:
-             * - &(*p) where p is pointer: no wrap, result is p's type
-             * - &var (SYM): wrap in pointer, result is address of var
-             */
-            if (e && e->op == SYM && e->type) {
-                /* Taking address of variable - wrap type in pointer */
+            if (e->op == SYM)
                 e->type = getType(TF_POINTER, e->type, 0);
-            }
-            /* Free the orphaned DEREF node (but not its children) */
             e1->left = NULL;
-            free(e1);
-#ifdef DEBUG
-            exprCurCnt--;
-#endif
-        } else if (e && e->type && (e->type->flags & TF_ARRAY)) {
-            /* &array = array (just change type to pointer-to-array) */
+            freeNode(e1);
+        } else if (e->type->flags & TF_ARRAY) {
             e->type = getType(TF_POINTER, e->type, 0);
         } else {
             e1 = mkexpr(AND, e);
-            if (e) {
-                e->up = e1;
-                if (e->type) {
-                    e1->type = getType(TF_POINTER, e->type, 0);
-                }
-            }
+            e->up = e1;
+            e1->type = getType(TF_POINTER, e->type, 0);
             e = e1;
         }
         break;
@@ -969,6 +764,8 @@ parseExpr(unsigned char pri)
 		return 0;
     }
 
+    if (!e) return 0;
+
     /*
      * Handle postfix operators: function calls, array subscripts,
      * struct access, increment/decrement
@@ -977,43 +774,19 @@ parseExpr(unsigned char pri)
 			cur.type == ARROW || cur.type == INCR || cur.type == DECR) {
         if (cur.type == LBRACK) {
             // Array subscript: arr[idx] = DEREF(ADD(base, idx * sizeof))
-            tp = NULL;
-
             gettoken();  // consume '['
             e1 = parseExpr(0);  /* index */
             expect(RBRACK, ER_E_SP);
 
-            /*
-             * Unwrap DEREF to get base address,
-             * but save the dereferenced type
-             */
-            if (e && e->op == DEREF) {
-                e2 = e;  /* deref - save for freeing */
-                /* Save the actual type (not the address type) */
-                tp = e->type;
-                e = e->left;
-                /* Free the orphaned DEREF node (but not its children) */
-                e2->left = NULL;
-                free(e2);
-#ifdef DEBUG
-                exprCurCnt--;
-#endif
-            } else {
-                tp = e->type;
-            }
+            /* Unwrap DEREF to get base address, save dereferenced type */
+            tp = unwrapDeref(&e);
 
-            /*
-             * Get element size from type
-             * (use tp, not e->type which is the address)
-             */
+            /* Get element size from type */
             elem_size = 2;  // default to short/int size
-            if (tp) {
-                if (tp->flags & TF_POINTER && tp->sub) {
-                    elem_size = tp->sub->size;
-                } else if (tp->flags & TF_ARRAY && tp->sub) {
-                    elem_size = tp->sub->size;
-                }
-            }
+            if ((tp->flags & TF_POINTER) && tp->sub)
+                elem_size = tp->sub->size;
+            else if ((tp->flags & TF_ARRAY) && tp->sub)
+                elem_size = tp->sub->size;
 
             // Scale index by element size: idx * sizeof(elem)
             if (elem_size == 1) {
@@ -1035,27 +808,17 @@ parseExpr(unsigned char pri)
             e3->left->up = e3;
             e3->right->up = e3;
             /* The ADD result is a pointer to the element type */
-            if (tp && (tp->flags & TF_ARRAY) &&
-					tp->sub) {
+            if ((tp->flags & TF_ARRAY) && tp->sub)
                 e3->type = getType(TF_POINTER, tp->sub, 0);
-            } else if (tp && (tp->flags & TF_POINTER)) {
-                e3->type = tp;  // pointer + offset = same pointer type
-            } else {
+            else
                 e3->type = tp;
-            }
 
             // Dereference to get element value
             e = mkexpr(DEREF, e3);
             e->left->up = e;
-            if (e->left->type) {
-                if ((e->left->type->flags & TF_POINTER) &&
-						e->left->type->sub) {
-                    e->type = e->left->type->sub;
-                } else if ((e->left->type->flags & TF_ARRAY) &&
-						e->left->type->sub) {
-                    e->type = e->left->type->sub;
-                }
-            }
+            if ((e->left->type->flags & (TF_POINTER|TF_ARRAY)) &&
+                    e->left->type->sub)
+                e->type = e->left->type->sub;
         } else if (cur.type == LPAR) {
             // Function call: expr(arg1, arg2, ...)
             gettoken();  // consume '('
@@ -1065,51 +828,33 @@ parseExpr(unsigned char pri)
             e1->left->up = e1;
 
             // Set return type from function type
-            if (e->type && (e->type->flags & TF_FUNC) && e->type->sub) {
+            if ((e->type->flags & TF_FUNC) && e->type->sub)
                 e1->type = e->type->sub;
-            }
 
             // Get first parameter for type coercion
-            np = (e->type && (e->type->flags & TF_FUNC)) ? e->type->elem : 0;
-            is_variadic = e->type && (e->type->flags & TF_VARIADIC);
+            np = (e->type->flags & TF_FUNC) ? e->type->elem : 0;
+            is_variadic = e->type->flags & TF_VARIADIC;
 
-            // Parse argument list
-            e3 = NULL;  /* lastarg */
+            /* Parse argument list - pass2 handles type conversions */
+            e3 = NULL;
             if (cur.type != RPAR) {
-                // Parse first argument
-                e2 = parseExpr(OP_PRI_COMMA);  /* arg */
+                e2 = parseExpr(OP_PRI_COMMA);
                 if (e2) {
                     e2->flags |= E_FUNARG;
-                    // Coerce argument to parameter type
-                    if (np && np->type)
-                        e2 = coerceTypes(e2, np->type);
-                    else if (is_variadic && e2->type &&
-                             e2->type->size < 2)
-                        e2 = mkConv(e2, inttype);
                     e1->right = e2;
                     e2->up = e1;
                     e3 = e2;
-                    if (np) np = np->next;
                 }
-
-                // Parse remaining arguments
                 while (cur.type == COMMA) {
                     gettoken();
-                    e2 = parseExpr(OP_PRI_COMMA);  /* arg */
+                    e2 = parseExpr(OP_PRI_COMMA);
                     if (e2) {
                         e2->flags |= E_FUNARG;
-                        // Coerce argument to parameter type
-                        if (np && np->type)
-                            e2 = coerceTypes(e2, np->type);
-                        else if (is_variadic && e2->type &&
-                                 e2->type->size < 2)
-                            e2 = mkConv(e2, inttype);
                         if (e3) {
                             e3->next = e2;
                             e2->prev = e3;
                         }
                         e3 = e2;
-                        if (np) np = np->next;
                     }
                 }
             }
@@ -1135,38 +880,24 @@ parseExpr(unsigned char pri)
                 e1 = e;  /* base - pointer value */
             } else {
                 // Unwrap DEREF to get address
-                if (e && e->op == DEREF) {
-                    e2 = e;  /* deref - save for freeing */
-                    e1 = e->left;  /* base */
-                    /* Free the orphaned DEREF node (but not its children) */
-                    e2->left = NULL;
-                    free(e2);
-#ifdef DEBUG
-                    exprCurCnt--;
-#endif
-                } else {
-                    e1 = e;  /* base */
-                }
+                unwrapDeref(&e);
+                e1 = e;  /* base */
             }
 
             // Look up member in struct/union
             np = NULL;  /* member */
-            if (e1 && e1->type) {
-                t = e1->type;
-                /*
-                 * For both DOT and ARROW, if base type is pointer,
-                 * get the pointed-to type (DOT after array subscript
-                 * produces pointer type)
-                 */
-                if (t->flags & TF_POINTER) {
-                    t = t->sub;
-                }
-                if (t && (t->flags & TF_AGGREGATE) && t->elem) {
-                    for (np = t->elem; np; np = np->next) {
-                        if (strcmp(np->name, cur.v.name) == 0) {
-                            break;
-                        }
-                    }
+            t = e1->type;
+            /*
+             * For both DOT and ARROW, if base type is pointer,
+             * get the pointed-to type (DOT after array subscript
+             * produces pointer type)
+             */
+            if (t->flags & TF_POINTER)
+                t = t->sub;
+            if (t && (t->flags & TF_AGGREGATE) && t->elem) {
+                for (np = t->elem; np; np = np->next) {
+                    if (strcmp(np->name, cur.v.name) == 0)
+                        break;
                 }
             }
 
@@ -1206,14 +937,10 @@ parseExpr(unsigned char pri)
                  * Keep reference to member for bitoff/width
                  */
                 e->var = (struct var *)np;
-            } else if (np->type && (np->type->flags & TF_ARRAY)) {
-                /*
-                 * Array member: return address without DEREF
-                 * Arrays decay to pointers but are not lvalues
-                 * This prevents arr++ while allowing p = arr
-                 */
+            } else if (np->type->flags & TF_ARRAY) {
+                /* Array member: return address without DEREF */
                 e = e3;
-                e->type = np->type;  /* Keep array type for proper semantics */
+                e->type = np->type;
             } else {
                 /* Non-array member: wrap in DEREF to get value */
                 e = mkexprI(DEREF, e3, np->type, 0, 0);
@@ -1282,16 +1009,12 @@ parseExpr(unsigned char pri)
 
             e = mkexpr(QUES, e1);
             e->right = e4;
-            if (e->left) e->left->up = e;
-            if (e->right) e->right->up = e;
+            e1->up = e;
+            e4->up = e;
 
-            /*
-             * Type is the type of the result expressions
-             * (should check compatibility)
-             */
-            if (e2 && e2->type) {
+            /* Type is the type of the result expressions */
+            if (e2)
                 e->type = e2->type;
-            }
 
             /* Skip the rest of the loop and continue with next operator */
             continue;
@@ -1306,58 +1029,19 @@ parseExpr(unsigned char pri)
         is_assignment = IS_ASSIGN(op);
 
         if (is_assignment) {
-            if (e && e->op == DEREF) {
-                e1 = e;  /* deref - save for freeing */
-#ifdef DEBUG
-                if (VERBOSE(V_ASSIGN)) {
-                    if (e->type) {
-                        fdprintf(2, "ASSIGN: unwrapping DEREF, "
-								"type=%p (flags=0x%x, size=%d)\n",
-                                e->type, e->type->flags, e->type->size);
-                        if (e->type->sub) {
-                            fdprintf(2, "        "
-									"sub=%p (flags=0x%x, size=%d)\n",
-                                    e->type->sub, e->type->sub->flags,
-									e->type->sub->size);
-                        }
-                    }
-                }
-#endif
-                /* Save the type before unwrapping */
+            if (e->op == DEREF) {
+                assign_type = unwrapDeref(&e);
+            } else if (e->op == BFEXTRACT) {
+                // Bitfield assignment - save info and change to BFASSIGN
                 assign_type = e->type;
-                e = e->left;  // unwrap to get address
-                /* Free the orphaned DEREF node (but not its children) */
-                e1->left = NULL;
-                free(e1);
-#ifdef DEBUG
-                exprCurCnt--;
-#endif
-            } else if (e && e->op == BFEXTRACT) {
-                e1 = e;  /* bfextr - save for freeing */
-                // Bitfield assignment - change to BFASSIGN
-                /* Save the type before unwrapping */
-                assign_type = e->type;
-                /*
-                 * Keep the var field which has the member info
-                 * (bitoff, width)
-                 */
                 vp = e->var;
-                e = e->left;  // unwrap to get address
-                /* Free the orphaned BFEXTRACT node (but not its children) */
+                e1 = e;
+                e = e->left;
                 e1->left = NULL;
-                free(e1);
-#ifdef DEBUG
-                exprCurCnt--;
-#endif
-                /*
-                 * Store member info temporarily - we'll use it when
-                 * creating BFASSIGN. Pass through member info
-                 */
+                freeNode(e1);
                 e->var = vp;
-                // Flag that we need BFASSIGN
-                if (op == ASSIGN) {
+                if (op == ASSIGN)
                     op = BFASSIGN;
-                }
             } else {
                 /*
                  * Assignment requires an lvalue
@@ -1380,7 +1064,7 @@ parseExpr(unsigned char pri)
          * - For left-associative operators, use precedence p to prevent
          *   same-precedence from nesting right
          */
-        vp = (e && e->var) ? e->var : NULL;
+        vp = e->var;
         e = mkexpr(op, e);
         e->left->up = e;
         if (is_assignment) {
@@ -1405,130 +1089,17 @@ parseExpr(unsigned char pri)
             e->var = vp;
         }
 
-        /* For plain assignments, insert type conversion if needed.
-         * Compound assignments (|=, +=, etc.) don't need WIDEN - pass2
-         * can handle mixed sizes for the operation itself. */
-        if (op == ASSIGN && e->left && e->right && e->left->type &&
-				e->right->type) {
-            t = assign_type ? assign_type : e->left->type;
-            tp = e->right->type;
-
-            if (IS_SCALAR(t) && IS_SCALAR(tp) &&
-					t->size != tp->size) {
-                if (e->right->op == CONST) {
-                    e->right->type = t;
-                } else {
-                    e->right = mkConv(e->right, t);
-                    e->right->up = e;
-                }
-            }
-
-            // Check pointer type compatibility
-            l_ptr = (t->flags & (TF_POINTER|TF_ARRAY));
-            r_ptr = (tp->flags & (TF_POINTER|TF_ARRAY));
-
-            if (l_ptr && r_ptr) {
-                t2 = t->sub;
-                t3 = tp->sub;
-
-                // Both must have base types
-                if (t2 && t3) {
-                    compatible = 0;
-
-                    // void* is compatible with any pointer type
-                    if (t2 == voidtype || t3 == voidtype) {
-                        compatible = 1;
-                    }
-                    // Check if base types are compatible
-                    else if (t2 == t3) {
-                        // Same type pointer - always compatible
-                        compatible = 1;
-                    } else if ((t2->flags & TF_AGGREGATE) &&
-							(t3->flags & TF_AGGREGATE)) {
-                        /*
-                         * Both point to struct/union - must be same type
-                         * For now, just check if pointers are equal
-                         * (type unification)
-                         */
-                        compatible = (t2 == t3);
-                    } else if (!(t2->flags & TF_AGGREGATE) &&
-							!(t3->flags & TF_AGGREGATE)) {
-                        /*
-                         * Both point to non-aggregate types
-                         * Check if they have same size and signedness
-                         */
-                        if (t2->size == t3->size) {
-                            l_unsigned = (t2->flags & TF_UNSIGNED);
-                            r_unsigned = (t3->flags & TF_UNSIGNED);
-                            compatible = (l_unsigned == r_unsigned);
-                        }
-                    }
-
-                    if (!compatible) {
-#ifdef DEBUG
-                        fdprintf(2, "INCOMPATIBLE POINTERS:\n");
-                        fdprintf(2, "  Left:  t=%p "
-								"(flags=0x%x, size=%d)\n",
-								t, t->flags, t->size);
-                        fdprintf(2, "         t2=%p "
-								"(flags=0x%x, size=%d)\n",
-								t2, t2->flags, t2->size);
-                        if (t2 && (t2->flags & TF_POINTER) &&
-								t2->sub) {
-                            fdprintf(2, "         t2->sub=%p "
-									"(flags=0x%x, size=%d)\n",
-                                    t2->sub, t2->sub->flags,
-									t2->sub->size);
-                        }
-                        fdprintf(2, "  Right: tp=%p "
-								"(flags=0x%x, size=%d)\n",
-								tp, tp->flags, tp->size);
-                        fdprintf(2, "         t3=%p "
-								"(flags=0x%x, size=%d)\n",
-								t3, t3->flags, t3->size);
-                        if (tp && (tp->flags & TF_POINTER) &&
-								tp->sub) {
-                            fdprintf(2, "         tp->sub=%p "
-									"(flags=0x%x, size=%d)\n",
-                                    tp->sub, tp->sub->flags,
-									tp->sub->size);
-                        }
-#endif
-                        gripe(ER_E_PT);  // incompatible pointer types
-                    }
-                }
-            }
-        }
-
-        /*
-         * Don't widen operands of binary expressions here - pass2 can
-         * decide if widening is needed based on the operation. WIDEN is
-         * only required for assignments and function call arguments.
-         */
-
-        // try to determine result type
-        if (e->left && e->right) {
-            // For ASSIGN and compound assignments, use the saved assign_type
-            if (is_assignment && assign_type) {
+        /* Determine result type */
+        if (e->right) {
+            if (is_assignment && assign_type)
                 e->type = assign_type;
-            }
-            // Comparisons and logical ops produce boolean (byte) result
-            else if (IS_CMPLOG(op)) {
+            else if (IS_CMPLOG(op))
                 e->type = uchartype;
-            }
-            // For other operators, use the larger type as result type
-            else if (e->left->type && e->right->type) {
-                if (e->left->type->size >= e->right->type->size) {
-                    e->type = e->left->type;
-                } else {
-                    e->type = e->right->type;
-                }
-            } else if (e->left->type) {
+            else if (e->left->type->size >= e->right->type->size)
                 e->type = e->left->type;
-            } else if (e->right->type) {
+            else
                 e->type = e->right->type;
-            }
-        } else if (e->left) {
+        } else {
             e->type = e->left->type;
         }
 

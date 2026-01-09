@@ -234,8 +234,7 @@ declare(struct type **btp, unsigned char struct_elem)
                  * Name exists at current scope - check if it's a
                  * function prototype
                  */
-                if (existing->type && (existing->type->flags & TF_FUNC) &&
-                    !existing->u.locals) {
+                if ((existing->type->flags & TF_FUNC) && !existing->u.locals) {
                     /* Reuse existing function declaration (prototype) */
                     nm = existing;
                     /*
