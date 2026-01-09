@@ -104,6 +104,9 @@ usage(void)
     printf("  -H             Use .i (human-readable) input for pass1 instead of .x\n");
     printf("  -x             Print commands as they execute\n");
     printf("  -n             Print commands without executing (dry run)\n");
+    printf("  -C <flags>     Pass -v <flags> to cpp\n");
+    printf("  -1 <flags>     Pass -v <flags> to pass1 (c0)\n");
+    printf("  -2 <flags>     Pass -v <flags> to pass2 (c1)\n");
     exit(1);
 }
 
@@ -335,6 +338,54 @@ main(int argc, char **argv)
                 exit(1);
             }
             cpp_base[cpp_base_argc++] = argv[0];
+            argc--;
+            argv++;
+        } else if (strcmp(argv[0], "-C") == 0) {
+            /* Pass -v <flags> to cpp */
+            argc--;
+            argv++;
+            if (argc == 0) {
+                fprintf(stderr, "Error: -C requires an argument\n");
+                usage();
+            }
+            if (cpp_base_argc >= MAX_ARGS - 1) {
+                fprintf(stderr, "Error: too many arguments\n");
+                exit(1);
+            }
+            cpp_base[cpp_base_argc++] = "-v";
+            cpp_base[cpp_base_argc++] = argv[0];
+            argc--;
+            argv++;
+        } else if (strcmp(argv[0], "-1") == 0) {
+            /* Pass -v <flags> to pass1 */
+            argc--;
+            argv++;
+            if (argc == 0) {
+                fprintf(stderr, "Error: -1 requires an argument\n");
+                usage();
+            }
+            if (cc1_base_argc >= MAX_ARGS - 1) {
+                fprintf(stderr, "Error: too many arguments\n");
+                exit(1);
+            }
+            cc1_base[cc1_base_argc++] = "-v";
+            cc1_base[cc1_base_argc++] = argv[0];
+            argc--;
+            argv++;
+        } else if (strcmp(argv[0], "-2") == 0) {
+            /* Pass -v <flags> to pass2 */
+            argc--;
+            argv++;
+            if (argc == 0) {
+                fprintf(stderr, "Error: -2 requires an argument\n");
+                usage();
+            }
+            if (cc2_base_argc >= MAX_ARGS - 1) {
+                fprintf(stderr, "Error: too many arguments\n");
+                exit(1);
+            }
+            cc2_base[cc2_base_argc++] = "-v";
+            cc2_base[cc2_base_argc++] = argv[0];
             argc--;
             argv++;
         } else if (argv[0][0] == '-') {
