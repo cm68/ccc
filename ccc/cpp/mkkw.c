@@ -10,6 +10,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "lexeme.h"
 
 #define HI 0x80
 #define MAXKW 64
@@ -26,39 +27,39 @@ struct keyword {
  * Most common keywords first: if, int, char, return, etc.
  */
 struct keyword keywords[] = {
-	{ "if",       "IF",       146 },
-	{ "int",      "INT",      128 },
-	{ "char",     "CHAR",     129 },
-	{ "return",   "RETURN",   145 },
-	{ "for",      "FOR",      155 },
-	{ "while",    "WHILE",    147 },
-	{ "else",     "ELSE",     148 },
-	{ "void",     "VOID",     138 },
-	{ "static",   "STATIC",   142 },
-	{ "struct",   "STRUCT",   132 },
-	{ "unsigned", "UNSIGNED", 135 },
-	{ "signed",   "SIGNED",   133 },
-	{ "const",    "CONST",    158 },
-	{ "volatile", "VOLATILE", 159 },
-	{ "long",     "LONG",     134 },
-	{ "short",    "SHORT",    139 },
-	{ "switch",   "SWITCH",   149 },
-	{ "case",     "CASE",     150 },
-	{ "break",    "BREAK",    151 },
-	{ "continue", "CONTINUE", 152 },
-	{ "default",  "DEFAULT",  154 },
-	{ "do",       "DO",       153 },
-	{ "double",   "DOUBLE",   131 },
-	{ "enum",     "ENUM",     156 },
-	{ "extern",   "EXTERN",   141 },
-	{ "float",    "FLOAT",    130 },
-	{ "goto",     "GOTO",     144 },
-	{ "register", "REGISTER", 143 },
-	{ "sizeof",   "SIZEOF_KW", 160 },
-	{ "typedef",  "TYPEDEF",  137 },
-	{ "union",    "UNION",    136 },
-	{ "auto",     "AUTO",     140 },
-	{ "asm",      "ASM",      157 },
+	{ "if",       "IF",       IF },
+	{ "int",      "INT",      INT },
+	{ "char",     "CHAR",     CHAR },
+	{ "return",   "RETURN",   RETURN },
+	{ "for",      "FOR",      FOR },
+	{ "while",    "WHILE",    WHILE },
+	{ "else",     "ELSE",     ELSE },
+	{ "void",     "VOID",     VOID },
+	{ "static",   "STATIC",   STATIC },
+	{ "struct",   "STRUCT",   STRUCT },
+	{ "unsigned", "UNSIGNED", UNSIGNED },
+	{ "signed",   "SIGNED",   SIGNED },
+	{ "const",    "CONST",    CONST },
+	{ "volatile", "VOLATILE", VOLATILE },
+	{ "long",     "LONG",     LONG },
+	{ "short",    "SHORT",    SHORT },
+	{ "switch",   "SWITCH",   SWITCH },
+	{ "case",     "CASE",     CASE },
+	{ "break",    "BREAK",    BREAK },
+	{ "continue", "CONTINUE", CONTINUE },
+	{ "default",  "DEFAULT",  DEFAULT },
+	{ "do",       "DO",       DO },
+	{ "double",   "DOUBLE",   DOUBLE },
+	{ "enum",     "ENUM",     ENUM },
+	{ "extern",   "EXTERN",   EXTERN },
+	{ "float",    "FLOAT",    FLOAT },
+	{ "goto",     "GOTO",     GOTO },
+	{ "register", "REGISTER", REGISTER },
+	{ "sizeof",   "SIZEOF_KW", SIZEOF_KW },
+	{ "typedef",  "TYPEDEF",  TYPEDEF },
+	{ "union",    "UNION",    UNION },
+	{ "auto",     "AUTO",     AUTO },
+	{ "asm",      "ASM",      ASM },
 	{ NULL, NULL, 0 }
 };
 
@@ -267,6 +268,8 @@ printtable(void)
 	int needindent = 1;
 	int curdepth = 0;
 
+	printf("#include \"lexeme.h\"\n");
+	printf("#define HI 0x80\n\n");
 	printf("unsigned char ckw[] = {\n");
 
 	for (i = 0; i < outpos; i++) {

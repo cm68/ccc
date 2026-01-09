@@ -39,6 +39,7 @@
 
 static unsigned char state = ST_NORMAL;
 static int brace_depth = 0;
+static int exprParen = 0;	/* Paren depth in expressions (prevents local decl detect) */
 
 /*
  * Control structure brace insertion state
@@ -1229,8 +1230,10 @@ filter(unsigned char type, long num, float fnum, char *str, int slen)
 			/*
 			 * Local declaration detection - start buffering
 			 * type tokens to split off initializers.
+			 * Only trigger at paren depth 0 to avoid detecting
+			 * cast expressions like (void *) as declarations.
 			 */
-			if (isTypeTok(type, str)) {
+			if (exprParen == 0 && isTypeTok(type, str)) {
 				bufLocDecl(type, num, fnum, str, slen);
 				locDeclParen = 0;
 				locInInit = 0;
@@ -1240,11 +1243,18 @@ filter(unsigned char type, long num, float fnum, char *str, int slen)
 			}
 		}
 
-		/* Pass through - update brace depth */
+		/* Pass through - update brace/paren depth */
 		if (type == BEGIN)
 			brace_depth++;
 		else if (type == END)
 			brace_depth--;
+		else if (type == LPAR)
+			exprParen++;
+		else if (type == RPAR)
+			exprParen--;
+		/* Reset paren depth at statement boundaries */
+		if (type == SEMI)
+			exprParen = 0;
 
 		emitByType(type, num, fnum, str, slen);
 		break;
