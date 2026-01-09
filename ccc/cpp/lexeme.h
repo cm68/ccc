@@ -146,9 +146,15 @@
 #define TERNBRANCH  219   /* pass2: ternary then/else container */
 #define URSHIFT     220   /* unsigned right shift >>> */
 
-/* AST format uses lexeme token values directly (SYM, DEREF, BANG, etc.) */
-/* Special markers for AST that have no lexeme equivalent */
-#define AST_CONST   '#'   /* numeric constant marker */
+/*
+ * AST structure markers - only for concepts without existing lexemes.
+ * Values chosen to avoid collision with operator tokens (60-80).
+ */
+#define AST_FUNC    221     /* function header */
+#define AST_BLOCK   222     /* block/compound statement */
+#define AST_GLOBAL  223     /* global variable */
+#define AST_DECL    224     /* variable/parameter declaration */
+#define AST_EMPTY   225     /* null/empty expression */
 
 #endif /* LEXEME_H */
 

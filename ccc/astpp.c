@@ -4,7 +4,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "../cpp/lexeme.h"
+#include "cpp/lexeme.h"
 
 static unsigned char *data;
 static int pos, len;
@@ -156,28 +156,18 @@ static void parseExpr(void) {
     int c = cur();
 
     if (c == -1) { exprApp("(EOF)"); return; }
-    if (c == '_') { advance(); exprApp("()"); return; }
+    if (c == AST_EMPTY) { advance(); exprApp("()"); return; }
 
     /* Symbol reference */
-    if (c == '$') {
+    if (c == SYM) {
         advance();
         exprApp("$");
         exprApp(readName());
         return;
     }
 
-    /* Stack offset */
-    if (c == 'S') {
-        advance();
-        int off = read2();
-        char buf[32];
-        sprintf(buf, "SP[%d]", off);
-        exprApp(buf);
-        return;
-    }
-
     /* Numeric constant */
-    if (c == '#') {
+    if (c == NUMBER) {
         advance();
         int w = read1();
         long v = read4();
@@ -249,6 +239,31 @@ static void parseExpr(void) {
         return;
     }
 
+    /* Register variable (leaf node) */
+    if (c == REGVAR) {
+        advance();
+        int w = read1();
+        int reg = read1();
+        exprApp("(REGVAR:");
+        exprApp(widthName(w));
+        exprApp(" ");
+        exprApp(regName(reg));
+        exprApp(")");
+        return;
+    }
+
+    /* Local variable (leaf node) */
+    if (c == LOCALVAR) {
+        advance();
+        int w = read1();
+        int off = read1();
+        if (off > 127) off -= 256;
+        char buf[32];
+        sprintf(buf, "(LOCALVAR:%s IY%+d)", widthName(w), off);
+        exprApp(buf);
+        return;
+    }
+
     /* Regular operator */
     int opChar = c;
     advance();
@@ -310,7 +325,7 @@ static char *getExpr(void) {
 static void parseStmt(void);
 
 static void parseDecl(void) {
-    if (cur() != 'd') return;
+    if (cur() != AST_DECL) return;
     advance();
     int typeChar = read1();
     char *name = readName();
@@ -332,7 +347,7 @@ static void parseStmt(void) {
     static char lineBuf[EXPR_BUF_SIZE + 256];
 
     /* Block */
-    if (c == 'B') {
+    if (c == AST_BLOCK) {
         int i, declCnt = read1();
         int stmtCnt = read1();
         int blockNum = blockCnt++;
@@ -347,16 +362,17 @@ static void parseStmt(void) {
     }
 
     /* If */
-    if (c == 'I') {
-        int hasElse = read1();
-        int nlabels = read1();
-        (void)nlabels;  /* used for code gen, not pretty printing */
+    if (c == IF) {
+        int hasElse;
+        int nlabels = read1();  /* nlabels comes first, used for code gen */
         char *cond = getExpr();
+        (void)nlabels;
         sprintf(lineBuf, "IF (%s)", cond);
         prln(lineBuf);
         indent++;
         parseStmt();
         indent--;
+        hasElse = read1();  /* hasElse comes AFTER then block */
         if (hasElse == 1) {
             prln("ELSE");
             indent++;
@@ -367,7 +383,7 @@ static void parseStmt(void) {
     }
 
     /* Expression statement */
-    if (c == 'E') {
+    if (c == EXPR) {
         char *e = getExpr();
         sprintf(lineBuf, "EXPR %s", e);
         prln(lineBuf);
@@ -375,7 +391,7 @@ static void parseStmt(void) {
     }
 
     /* Return */
-    if (c == 'R') {
+    if (c == RETURN) {
         int hasVal = read1();
         if (hasVal == 1) {
             char *e = getExpr();
@@ -388,7 +404,7 @@ static void parseStmt(void) {
     }
 
     /* Label */
-    if (c == 'L') {
+    if (c == LABEL) {
         char *name = readName();
         sprintf(lineBuf, "LABEL %s:", name);
         prln(lineBuf);
@@ -396,7 +412,7 @@ static void parseStmt(void) {
     }
 
     /* Goto */
-    if (c == 'G') {
+    if (c == GOTO) {
         char *name = readName();
         sprintf(lineBuf, "GOTO %s", name);
         prln(lineBuf);
@@ -404,7 +420,7 @@ static void parseStmt(void) {
     }
 
     /* Switch */
-    if (c == 'S') {
+    if (c == SWITCH) {
         int i, hasLabel = read1();
         char labelBuf[256] = "";
         int caseCnt;
@@ -425,7 +441,7 @@ static void parseStmt(void) {
     }
 
     /* Case */
-    if (c == 'C') {
+    if (c == CASE) {
         int i, stmtCnt = read1();
         char *val = getExpr();
         sprintf(lineBuf, "CASE %s:", val);
@@ -437,7 +453,7 @@ static void parseStmt(void) {
     }
 
     /* Default */
-    if (c == 'O') {
+    if (c == DEFAULT) {
         int i, stmtCnt = read1();
         prln("DEFAULT:");
         indent++;
@@ -447,7 +463,7 @@ static void parseStmt(void) {
     }
 
     /* Asm */
-    if (c == 'A') {
+    if (c == ASM) {
         int i, asmLen = read2();
         int hasNL = 0;
         char *asmBuf = malloc(asmLen + 1);
@@ -478,13 +494,7 @@ static void parseStmt(void) {
     }
 
     /* Empty statement */
-    if (c == ';') { prln(";"); return; }
-
-    /* Break */
-    if (c == 'K') { prln("BREAK"); return; }
-
-    /* Continue */
-    if (c == 'N') { prln("CONTINUE"); return; }
+    if (c == SEMI) { prln(";"); return; }
 
     /* Unknown statement */
     if (c == 'X') {
@@ -517,7 +527,7 @@ static void parseInit(void) {
     int c = cur();
 
     /* Array */
-    if (c == '[') {
+    if (c == LBRACK) {
         int i, count;
         advance();
         advance(); /* elem type */
@@ -527,13 +537,13 @@ static void parseInit(void) {
             if (i > 0) initApp(", ");
             parseInit();
         }
-        if (cur() == ']') advance();
+        if (cur() == RBRACK) advance();
         initApp("]");
         return;
     }
 
     /* Aggregate */
-    if (c == '{') {
+    if (c == BEGIN) {
         int i, count;
         advance();
         count = read1();
@@ -542,13 +552,13 @@ static void parseInit(void) {
             if (i > 0) initApp(", ");
             parseInit();
         }
-        if (cur() == '}') advance();
+        if (cur() == END) advance();
         initApp("}");
         return;
     }
 
     /* Scalar */
-    if (c == '#') {
+    if (c == NUMBER) {
         advance();
         int w = read1();
         long val = read4();
@@ -559,7 +569,7 @@ static void parseInit(void) {
     }
 
     /* Symbol */
-    if (c == '$') {
+    if (c == SYM) {
         advance();
         initApp("$");
         initApp(readName());
@@ -577,7 +587,7 @@ static void parseInit(void) {
     }
 
     /* ADD expression (for pointer arithmetic in initializers) */
-    if (c == '+') {
+    if (c == PLUS) {
         advance();
         read1(); /* skip type suffix */
         initApp("(");
@@ -616,7 +626,7 @@ static void parseFunction(void) {
         int ptype, preg, poff;
         char *pname;
         char pnameCopy[256];
-        if (cur() != 'd') continue;
+        if (cur() != AST_DECL) continue;
         advance();
         ptype = read1();
         pname = readName();
@@ -640,7 +650,7 @@ static void parseFunction(void) {
         int ltype, lreg, loff;
         char *lname;
         char lnameCopy[256];
-        if (cur() != 'd') continue;
+        if (cur() != AST_DECL) continue;
         advance();
         ltype = read1();
         lname = readName();
@@ -734,10 +744,10 @@ static int parseTopLevel(void) {
     if (c == -1) return 0;
     advance();
 
-    if (c == 'F') parseFunction();
-    else if (c == 'Z') parseGlobal();
-    else if (c == 'U') parseString();
-    else if (c == 'A') {
+    if (c == AST_FUNC) parseFunction();
+    else if (c == AST_GLOBAL) parseGlobal();
+    else if (c == STRING) parseString();
+    else if (c == ASM) {
         /* Global asm */
         int i, asmLen = read2();
         char *asmBuf = malloc(asmLen + 1);

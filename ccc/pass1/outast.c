@@ -137,7 +137,7 @@ emitExpr(struct expr *e)
 	int n;
 
 	if (!e) {
-		emit1('_');
+		emit1(AST_EMPTY);
 		return;
 	}
 
@@ -325,7 +325,7 @@ emitPrmDecls(struct type *functype, struct name *locals)
 					found = local;
 					break;
 				}
-		emit1('d');
+		emit1(AST_DECL);
 		emit1(typeSfx(param->type));
 		emitS(param->name[0] ? param->name : "_");
 		emit1(found ? found->reg : 0);
@@ -349,7 +349,7 @@ emitLocals(struct name *locals)
 			fmtstr(lbuf, "L%d", local->static_id - 1);
 		else
 			fmtstr(lbuf, "%s", local->name);
-		emit1('d');
+		emit1(AST_DECL);
 		emit1(typeSfx(local->type));
 		emitS(lbuf);
 		emit1(local->reg);
