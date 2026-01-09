@@ -3,6 +3,8 @@ cpp
 xdump
 mkkw
 kwtab.c
+debug.h
+debugtags.c
 *.o
 *.as
 stage1/
