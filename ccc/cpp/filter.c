@@ -319,8 +319,7 @@ static void
 freeBufTok(struct buftok *t)
 {
 	if (t->type == SYM || t->type == STRING) {
-		if (t->v.str)
-			free(t->v.str);
+		free(t->v.str);
 		t->v.str = NULL;
 	}
 }

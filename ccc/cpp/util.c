@@ -12,8 +12,7 @@ char *
 strdup(char *s)
 {
     char *p = malloc(strlen(s) + 1);
-    if (p)
-        strcpy(p, s);
+    strcpy(p, s);
     return p;
 }
 
