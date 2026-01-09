@@ -143,9 +143,9 @@ main(int argc, char **argv)
             noLineMarkers = 1;
         } else if (strcmp(argv[i], "-h") == 0) {
             usage();
-#ifdef DEBUG
         } else if (strcmp(argv[i], "-v") == 0) {
             if (++i >= argc) usage();
+#ifdef DEBUG
             verbose = strtol(argv[i], 0, 0);
 #endif
         } else if (argv[i][0] == '-') {
