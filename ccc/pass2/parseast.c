@@ -1,7 +1,7 @@
 /*
  * parseast.c - AST parser with expression tree building
  */
-#include "cc2.h"
+#include "pass2.h"
 #include "expr.h"
 #include <stdio.h>
 

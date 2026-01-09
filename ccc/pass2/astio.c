@@ -1,7 +1,7 @@
 /*
  * astio.c - AST file I/O
  */
-#include "cc2.h"
+#include "pass2.h"
 #include <string.h>
 #include <unistd.h>
 #include <stdio.h>

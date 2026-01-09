@@ -1,8 +1,8 @@
 /*
- * cc2.h - Code generator header
+ * pass2.h - Code generator header
  */
-#ifndef CC2_H
-#define CC2_H
+#ifndef PASS2_H
+#define PASS2_H
 
 #include "../cpp/lexeme.h"
 
@@ -49,6 +49,6 @@ extern short verbose;
 #define VERBOSE(x) (0)
 #endif
 
-#endif /* CC2_H */
+#endif /* PASS2_H */
 
 /* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

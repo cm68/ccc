@@ -1,7 +1,7 @@
 /*
- * cc2.c - Code generator main
+ * pass2.c - Code generator main
  */
-#include "cc2.h"
+#include "pass2.h"
 #include <fcntl.h>
 #include <unistd.h>
 #include <string.h>

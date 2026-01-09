@@ -1,7 +1,7 @@
 /*
  * expr.c - expression tree builder and dumper
  */
-#include "cc2.h"
+#include "pass2.h"
 #include "expr.h"
 #include <stdlib.h>
 #include <string.h>
