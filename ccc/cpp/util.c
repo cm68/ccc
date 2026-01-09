@@ -38,16 +38,17 @@ static char *errmsgs[] = {
 
 extern int exitCode;
 
+char printbuf[128];
+
 /*
  * Report an error by code
  */
 void
 gripe(error_t err)
 {
-    char buf[128];
     char *msg = (err < sizeof(errmsgs)/sizeof(errmsgs[0])) ? errmsgs[err] : "unknown error";
-    fmtstr(buf, "%s:%d: %s\n", filename ? filename : "?", lineno, msg);
-    write(2, buf, strlen(buf));
+    fmtstr(printbuf, "%s:%d: %s\n", filename ? filename : "?", lineno, msg);
+    write(2, printbuf, strlen(printbuf));
     if (err < ER_LAST)  /* Not a warning */
         exitCode = 1;
 }
@@ -151,7 +152,6 @@ fmtstr(char *buf, char *fmt, ...)
     return p;
 }
 
-char printbuf[128];
 /*
  * Simple fdprintf implementation (debug only)
  */
