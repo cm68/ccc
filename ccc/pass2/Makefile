@@ -37,16 +37,26 @@ ifeq ($(CC),ccc)
 CFLAGS = -I.
 endif
 
-SOURCES = cc2.c astio.c emit.c codegen.c parseast.c \
-	emitexpr.c emitcmp.c emitops.c emitincdec.c emitpat.c pattern.c \
-	match.c patterns.c templates.c pemit.c
+SOURCES = cc2.c astio.c parseast.c expr.c
 OBJECTS = $(SOURCES:.c=.o)
 
-HEADERS = cc2.h match.h templates.h
+HEADERS = cc2.h expr.h
+
+ifeq ($(DEFINES),-DDEBUG)
+DBGFILES = debugtags.c debug.h
+else
+DBGFILES =
+endif
 
 all: c1
 
+debugtags.c debug.h: ./makedebug.sh $(SOURCES)
+	./makedebug.sh
+
 %.o: %.c $(HEADERS)
+	$(CC) $(CFLAGS) -c $< -o $@
+
+cc2.o: cc2.c $(HEADERS) $(DBGFILES)
 	$(CC) $(CFLAGS) -c $< -o $@
 
 c1: $(OBJECTS)
@@ -57,10 +67,11 @@ else
 endif
 
 clean:
-	rm -f $(OBJECTS) c1 *.o *.1 *.2 *.x *.i *.pp core vgcore.*
+	rm -f $(OBJECTS) c1 *.o *.1 *.2 *.x *.i *.pp core vgcore.* debugtags.c debug.h
 
 clobber: clean
 	rm -f ./c1
+	rm -rf stage1 stage1 sizecheck sizecheck1
 
 install: c1
 	cp c1 $(DEST)/bin
