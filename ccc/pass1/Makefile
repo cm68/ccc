@@ -125,8 +125,8 @@ sizecheck: $(GENERATED)
 		zc3 -c -DCCC $(INC) -o sizecheck/$$b.o $$f && \
 		{ echo "ok"; } || { echo "FAIL"; } \
 	done ; \
-	wssize $$o | awk '{t+=$$1;d+=$$2;b+=$$3;a+=$$4} END {print t,d,b,a}' | tee -a sizefile
-	#wsld -r -o sizecheck/c0 ../../root/lib/crt0.o $$o ../../root/lib/libc.a
+	wssize $$o | awk '{t+=$$1;d+=$$2;b+=$$3;a+=$$4} END {print t,d,b,a}' | tee -a sizefile ; \
+	wsld -r -o sizecheck/c0 ../../root/lib/crt0.o $$o ../../root/lib/libc.a ../../root/lib/libu.a
 
 sizecheck1: $(GENERATED)
 	mkdir -p sizecheck1

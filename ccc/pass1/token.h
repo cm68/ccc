@@ -3,7 +3,7 @@
  * All token definitions are now in lexeme.h.
  */
 
-#include "../../cpp/lexeme.h"
+#include "../cpp/lexeme.h"
 
 typedef unsigned char token_t;
 

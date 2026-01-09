@@ -122,7 +122,6 @@ process(char *f, char *o1, char *o2)
     /* Rewind lexeme stream for phase 2 */
     lexRewind();
     lexlevel = 0;  /* Reset scope level for phase 2 */
-    resetLoopLbls();  /* Reset label counter so phase 2 matches phase 1 */
     resetFuncIdx();  /* Reset function stmt count read pointer for phase 2 */
     flipBlkCnts();   /* Reverse block counts for phase 2 (inner-first -> outer-first) */
     funcStrCtr = 0;    /* Reset function string counter so phase 2 matches phase 1 */

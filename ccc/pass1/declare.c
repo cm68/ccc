@@ -447,7 +447,9 @@ declare(struct type **btp, unsigned char struct_elem)
 
     if ((cur.type != ASSIGN) && (cur.type != BEGIN) &&
         (cur.type != COMMA) && (cur.type != SEMI) && (cur.type != RPAR)) {
+#ifdef DEBUG
         fprintf(stderr, "token: %d $%c$\n", cur.type, cur.type);
+#endif
         gripe(ER_D_UT);
         nm = 0;
     }
