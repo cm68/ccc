@@ -1,15 +1,22 @@
 /*
  * xdump.c - Convert binary .x lexeme stream to readable text
  *
- * Usage: xdump file.x
+ * Usage: xdump [-N] [-h] file.x
  *
  * Reads binary lexeme stream and outputs text that semantically
  * matches the preprocessed .i file.
+ *
+ * Options:
+ *   -N  Suppress line number and file change reports
+ *   -h  Show usage
  */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include "lexeme.h"
+
+int nflag;      /* suppress line number reports */
+int needline;   /* need newline before next output */
 
 int
 main(int argc, char **argv)
@@ -19,15 +26,34 @@ main(int argc, char **argv)
     long val;
     union { float f; unsigned long l; } u;
     char buf[256];
+    char *fname;
 
-    if (argc != 2) {
-        fprintf(stderr, "Usage: %s file.x\n", argv[0]);
-        return 1;
+    /* parse options */
+    while (argc > 1 && argv[1][0] == '-') {
+        if (argv[1][1] == 'N' && argv[1][2] == 0) {
+            nflag = 1;
+        } else if (argv[1][1] == 'h' && argv[1][2] == 0) {
+            goto usage;
+        } else {
+            fprintf(stderr, "Unknown option: %s\n", argv[1]);
+            return 1;
+        }
+        argc--;
+        argv++;
     }
 
-    f = fopen(argv[1], "rb");
+    if (argc != 2) {
+usage:
+        fprintf(stderr, "Usage: %s [-N] [-h] file.x\n", argv[0]);
+        fprintf(stderr, "  -N  Suppress line number reports\n");
+        fprintf(stderr, "  -h  Show this help\n");
+        return 1;
+    }
+    fname = argv[1];
+
+    f = fopen(fname, "rb");
     if (!f) {
-        perror(argv[1]);
+        perror(fname);
         return 1;
     }
 
@@ -38,13 +64,16 @@ main(int argc, char **argv)
 
         case SEMI:
             printf(";\n");
-            break;
+            needline = 0;
+            continue;
         case BEGIN:
             printf("{\n");
-            break;
+            needline = 0;
+            continue;
         case END:
             printf("}\n");
-            break;
+            needline = 0;
+            continue;
         case LBRACK:
             printf("[ ");
             break;
@@ -133,8 +162,12 @@ main(int argc, char **argv)
 
         case NEWLINE:
             /* Line increment by 1 */
-            printf("# +1\n");
-            break;
+            if (!nflag) {
+                if (needline) putchar('\n');
+                printf("# +1\n");
+            }
+            needline = 0;
+            continue;
 
         case LINENO:
             /* Full line+file: LINENO + 2-byte line + len + filename */
@@ -144,8 +177,12 @@ main(int argc, char **argv)
             for (i = 0; i < len; i++)
                 buf[i] = fgetc(f);
             buf[len] = 0;
-            printf("# %ld \"%s\"\n", val, buf);
-            break;
+            if (!nflag) {
+                if (needline) putchar('\n');
+                printf("# %ld \"%s\"\n", val, buf);
+            }
+            needline = 0;
+            continue;
 
         case INCR:   printf("++ "); break;
         case DECR:   printf("-- "); break;
@@ -234,6 +271,7 @@ main(int argc, char **argv)
             }
             break;
         }
+        needline = 1;
     }
 
 done:
