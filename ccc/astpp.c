@@ -84,13 +84,15 @@ static const char *opName(int c) {
     case DEREF: return "DEREF";
     case NEG: return "NEG";
     case CALL: return "CALL";
-    case COPY: return "COPY";
     case PREINC: return "PREINC";
     case POSTINC: return "POSTINC";
     case PREDEC: return "PREDEC";
     case POSTDEC: return "POSTDEC";
     case BFEXTRACT: return "BFEXT";
     case BFASSIGN: return "BFSET";
+    case REGVAR: return "REGVAR";
+    case LOCALVAR: return "LOCALVAR";
+    case URSHIFT: return "URSHIFT";
 
     /* Lexeme tokens */
     case TWIDDLE: return "NOT";
@@ -122,7 +124,7 @@ static int opArity(int c) {
     if (c == PREINC || c == POSTINC || c == PREDEC || c == POSTDEC)
         return -1; /* inc/dec special */
     if (c == BFEXTRACT || c == BFASSIGN) return -1;
-    if (c == CALL || c == COPY) return -1;
+    if (c == CALL) return -1;
     /* Unary operators */
     if (c == DEREF || c == NARROW || c == WIDEN || c == SEXT) return 1;
     if (c == NEG || c == TWIDDLE || c == BANG) return 1;
@@ -274,19 +276,6 @@ static void parseExpr(void) {
         exprApp(widthName(w));
         exprApp(" ");
         parseExpr();
-        exprApp(" ");
-        parseExpr();
-        exprApp(" ");
-        parseExpr();
-        exprApp(")");
-        return;
-    }
-
-    /* Copy */
-    if (opChar == COPY) {
-        int sz = read2();
-        exprApp("(COPY:");
-        exprAppNum(sz);
         exprApp(" ");
         parseExpr();
         exprApp(" ");
