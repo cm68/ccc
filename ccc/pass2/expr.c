@@ -32,7 +32,7 @@ Expr *
 mkconst(char width, long val)
 {
 	Expr *e = alloc();
-	e->op = AST_CONST;
+	e->op = NUMBER;
 	e->width = width;
 	e->u.val = val;
 	return e;
@@ -197,7 +197,7 @@ readexpr(void)
 #endif
 		return NULL;
 
-	case AST_CONST:
+	case NUMBER:
 		t = read1();
 		v = read4();
 #ifdef DEBUG
@@ -358,7 +358,7 @@ char *
 opname(int op)
 {
 	switch (op) {
-	case AST_CONST: return "CONST";
+	case NUMBER: return "CONST";
 	case SYM:       return "SYM";
 	case LOCALVAR:  return "LOCAL";
 	case REGVAR:    return "REG";
@@ -446,7 +446,7 @@ dumpnode(Expr *e, int depth)
 	out(destname(e->dest));
 
 	switch (e->op) {
-	case AST_CONST:
+	case NUMBER:
 		out(" v=");
 		outd(e->u.val);
 		break;

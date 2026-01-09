@@ -60,7 +60,7 @@ struct expr {
 ### Operator Codes (from lexeme.h)
 
 **Primary:**
-- `AST_CONST` - constant (value in `v`)
+- `NUMBER` - constant (value in `v`)
 - `SYM` - global symbol (name in `sym`)
 - `REGVAR` - register variable (register in `aux`: R_B, R_C, R_BC, R_IX)
 - `LOCALVAR` - local/stack variable (IY/IX offset in `offset`, register in `aux`)
