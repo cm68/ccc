@@ -169,6 +169,37 @@ fdprintf(int fd, char *fmt, ...)
     write(fd, printbuf, len);
     return len;
 }
+
+char xxbuf[200];
+
+void
+hexdump(char *tag, char *h, int l)
+{
+    int i;
+    char *z = xxbuf;
+    unsigned char c;
+
+    strcpy(xxbuf, tag);
+
+    for (i = 0; i < l; i++) {
+        c = h[i];
+        if ((i % 16) == 0) {
+            fdprintf(2, " %s\n%04x  ", xxbuf, i);
+            z = xxbuf;
+            *z = 0;
+        }
+        fdprintf(2, "%02x ", c);
+        if ((i % 4) == 3) printf(" ");
+        if ((c < ' ') || (c > 0x7e)) c = '.';
+        *z++ = c;
+        *z = 0;
+    }
+    while ((i++ % 16) != 0) {
+        if ((i % 4) == 3) printf(" ");
+        fdprintf(2, "   ");
+    }
+    printf(" %s\n", xxbuf);
+}
 #endif
 
 /*

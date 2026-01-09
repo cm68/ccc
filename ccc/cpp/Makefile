@@ -20,10 +20,11 @@ endif
 
 # Compiler-specific flags
 ifeq ($(CC),gcc)
+DEFINES = -DDEBUG
 WARNS = -Wall -Werror -pedantic \
 -Wdeclaration-after-statement -Werror=declaration-after-statement \
 -Werror=implicit-function-declaration
-CFLAGS = -m32 -std=c89 -g -O0 $(WARNS)
+CFLAGS = -m32 -std=c89 -g -O0 $(DEFINES) $(WARNS)
 else ifeq ($(CC),ccc)
 CFLAGS = -DCCC
 endif
@@ -31,7 +32,7 @@ endif
 INC = -I../../libsrc/include
 SRCS = cpp.c lex.c io.c macro.c kw.c emit.c util.c kwtab.c filter.c
 OBJS = $(SRCS:.c=.o)
-GENERATED = kwtab.c
+GENERATED = kwtab.c debug.h debugtags.c
 
 all: cpp xdump
 
@@ -51,7 +52,10 @@ kwtab.c: mkkw
 	@echo '#define HI 0x80' >> kwtab.c
 	./mkkw >> kwtab.c
 
-%.o: %.c cpp.h
+debugtags.c debug.h: ./makedebug.sh
+	./makedebug.sh
+
+%.o: %.c cpp.h debug.h
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 # Stage: compile with cross ccc to Z80 .o files

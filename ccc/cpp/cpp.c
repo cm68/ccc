@@ -13,11 +13,18 @@
 #include <fcntl.h>
 #include <unistd.h>
 
+#ifdef DEBUG
+#include "debugtags.c"
+#endif
+
 /* Global state */
 char *curFile;
 int lineNo;
 char exitCode = 0;
 char noLineMarkers = 0;  /* -N flag: suppress LINENO/NEWLINE in .x */
+#ifdef DEBUG
+short verbose;
+#endif
 
 /* Include path list */
 #define MAX_INCLUDES 32
@@ -60,6 +67,18 @@ usage(void)
     errout("  -i<dir>        System include directory\n");
     errout("  -D<name>[=val] Define macro\n");
     errout("  -E             Preprocess only (output to stdout)\n");
+    errout("  -h             Show this help\n");
+#ifdef DEBUG
+    errout("  -v <mask>      Set verbosity (hex bitmask)\n");
+#ifndef CCC
+    {
+        int i;
+        for (i = 0; vopts[i]; i++) {
+            fdprintf(2, "\t%x %s\n", 1 << i, vopts[i]);
+        }
+    }
+#endif
+#endif
     exit(1);
 }
 
@@ -122,6 +141,13 @@ main(int argc, char **argv)
             ppOnly = 1;
         } else if (strcmp(argv[i], "-N") == 0) {
             noLineMarkers = 1;
+        } else if (strcmp(argv[i], "-h") == 0) {
+            usage();
+#ifdef DEBUG
+        } else if (strcmp(argv[i], "-v") == 0) {
+            if (++i >= argc) usage();
+            verbose = strtol(argv[i], 0, 0);
+#endif
         } else if (argv[i][0] == '-') {
             char buf[64];
             fmtstr(buf, "Unknown option: %s\n", argv[i]);
@@ -148,6 +174,33 @@ main(int argc, char **argv)
     /* Create output file names */
     fmtstr(lexFile, "%s.x", outbase);
     fmtstr(ppFile, "%s.i", outbase);
+
+#ifdef DEBUG
+#ifndef CCC
+    if (verbose) {
+        int j = 0;
+
+        for (i = 0; i < 32; i++) {
+            if (!vopts[i])
+                break;
+            if (verbose & (1 << i))
+                j |= (1 << i);
+        }
+
+        fdprintf(2, "verbose: %x (", j);
+        for (i = 0; vopts[i]; i++) {
+            if (j & (1 << i)) {
+                fdprintf(2, "%s", vopts[i]);
+                j ^= (1 << i);
+                if (j) {
+                    fdprintf(2, " ");
+                }
+            }
+        }
+        fdprintf(2, ")\n");
+    }
+#endif
+#endif
 
     /* Open output files */
     lexFd = creat(lexFile, 0644);

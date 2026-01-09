@@ -13,6 +13,13 @@
 #include <string.h>
 #include "lexeme.h"
 
+/*
+ * generated files
+ */
+#ifdef DEBUG
+#include "debug.h"
+#endif
+
 typedef unsigned char token_t;
 
 /* CPP-only directives (not emitted to .x) */
@@ -211,8 +218,17 @@ extern unsigned char lookupc(char *table, unsigned char c);
 extern char *fmtstr(char *buf, char *fmt, ...);
 #ifdef DEBUG
 extern int fdprintf(int fd, char *fmt, ...);
+extern void hexdump(char *tag, char *h, int l);
 #endif
 extern long parseConst(token_t stop);
+
+/* debug options */
+#ifdef DEBUG
+#define VERBOSE(x) (verbose & (x))
+extern short verbose;
+#else
+#define VERBOSE(x) (0)
+#endif
 #ifndef _XOPEN_SOURCE
 extern char *strdup(char *s);
 #endif
