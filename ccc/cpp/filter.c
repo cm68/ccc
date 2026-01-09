@@ -40,6 +40,7 @@
 static unsigned char state = ST_NORMAL;
 static int brace_depth = 0;
 static int exprParen = 0;	/* Paren depth in expressions (prevents local decl detect) */
+static unsigned char prevTok = 0;	/* Previous token type (expr context detection) */
 
 /*
  * Control structure brace insertion state
@@ -138,6 +139,7 @@ static int numLocDecl = 0;
 
 /* State within local declaration parsing */
 static int locDeclParen = 0;	/* Paren depth within declaration */
+static int locDeclBrace = 0;	/* Brace depth within declaration (struct/union) */
 static int locInInit = 0;		/* 1 if capturing init expr (after =) */
 static char locCurName[16];		/* Current declarator name */
 
@@ -157,7 +159,9 @@ struct loop_frame {
 	unsigned char type;		/* WHILE, FOR, or DO */
 	unsigned char savedState;	/* State to restore when loop ends */
 	int label_num;			/* Unique label number */
-	int body_depth;			/* Brace depth when body started */
+	int body_depth;			/* Brace depth in body */
+	int inner_depth;		/* Paren/bracket depth in body (single-stmt) */
+	unsigned char single_stmt;	/* 1 if body is single statement (no braces) */
 	int saved_brace;		/* Saved brace_depth for restoration */
 	/* Saved parent's FOR increment (for nested loops) */
 	struct buftok *savedIncr;	/* Pointer to saved incr buffer (malloc) */
@@ -336,13 +340,15 @@ flushBuf(void)
 	for (i = 0; i < num_tokens; i++) {
 		if (tokbuf[i].type == BEGIN) {
 			brace_depth++;
-#ifdef DEBUG_KNR_CTRL
-			fprintf(stderr, "KNR: flushBuf BEGIN, depth now %d\n", brace_depth);
+#ifdef DEBUG
+			if (VERBOSE(V_FILTER))
+				fprintf(stderr, "FILTER: flushBuf BEGIN, depth now %d\n", brace_depth);
 #endif
 		} else if (tokbuf[i].type == END) {
 			brace_depth--;
-#ifdef DEBUG_KNR_CTRL
-			fprintf(stderr, "KNR: flushBuf END, depth now %d\n", brace_depth);
+#ifdef DEBUG
+			if (VERBOSE(V_FILTER))
+				fprintf(stderr, "FILTER: flushBuf END, depth now %d\n", brace_depth);
 #endif
 		}
 		emitBufTok(&tokbuf[i]);
@@ -753,9 +759,98 @@ handleNestLoop(unsigned char type)
 		emitLoopLabel('T');
 		outbufPush();
 		loop_stack[loop_sp - 1].body_depth = 0;
+		loop_stack[loop_sp - 1].inner_depth = 0;
+		loop_stack[loop_sp - 1].single_stmt = 1;
 		state = ST_DO_BODY;
 		return 1;
 	}
+	return 0;
+}
+
+/*
+ * Handle IF/ELSE inside loop bodies for brace insertion.
+ * Returns 1 if handled (caller should return), 0 otherwise.
+ */
+static int
+handleNestIf(unsigned char type)
+{
+	if (type == IF) {
+#ifdef DEBUG
+		if (VERBOSE(V_FILTER))
+			fprintf(stderr, "FILTER: handleNestIf IF -> ST_CTRL_COND\n");
+#endif
+		emitToken(IF);
+		ctrl_type = IF;
+		ctrlParenDep = 0;
+		saved_state = state;
+		state = ST_CTRL_COND;
+		return 1;
+	}
+	if (type == ELSE) {
+#ifdef DEBUG
+		if (VERBOSE(V_FILTER))
+			fprintf(stderr, "FILTER: handleNestIf ELSE -> ST_CTRL_PEND\n");
+#endif
+		emitToken(ELSE);
+		ctrl_type = ELSE;
+		saved_state = state;
+		state = ST_CTRL_PEND;
+		return 1;
+	}
+	return 0;
+}
+
+/*
+ * Handle loop body token (for WHILE/FOR/DO).
+ * Handles both braced and single-statement bodies.
+ * Returns: 0 = continue with token, 1 = token consumed, 2 = body complete
+ */
+static int
+handleLoopBody(unsigned char type)
+{
+	/* First token determines if braced or single-statement */
+	if (loop_stack[loop_sp - 1].single_stmt == 1) {
+		if (type == BEGIN) {
+			/* Braced body - switch to brace tracking */
+			loop_stack[loop_sp - 1].single_stmt = 0;
+			loop_stack[loop_sp - 1].body_depth = 1;
+			emitToken(BEGIN);
+			return 1;
+		}
+		/* Single-statement body - insert opening brace */
+		emitToken(BEGIN);
+		loop_stack[loop_sp - 1].single_stmt = 2;  /* Mark: brace inserted */
+	}
+
+	/* Single-statement body: track inner depth, complete on SEMI */
+	if (loop_stack[loop_sp - 1].single_stmt == 2) {
+		if (type == LPAR || type == LBRACK || type == BEGIN)
+			loop_stack[loop_sp - 1].inner_depth++;
+		else if (type == RPAR || type == RBRACK || type == END)
+			loop_stack[loop_sp - 1].inner_depth--;
+
+		if (type == SEMI && loop_stack[loop_sp - 1].inner_depth == 0) {
+			/* Body complete - emit SEMI and closing brace */
+			emitToken(SEMI);
+			emitToken(END);
+			return 2;
+		}
+	}
+
+	/* Braced body: track brace depth */
+	if (loop_stack[loop_sp - 1].single_stmt == 0) {
+		if (type == BEGIN) {
+			loop_stack[loop_sp - 1].body_depth++;
+		} else if (type == END) {
+			loop_stack[loop_sp - 1].body_depth--;
+			if (loop_stack[loop_sp - 1].body_depth == 0) {
+				/* Body complete - emit the END */
+				emitToken(END);
+				return 2;
+			}
+		}
+	}
+
 	return 0;
 }
 
@@ -766,10 +861,16 @@ handleNestLoop(unsigned char type)
 static int
 handleSwitch(unsigned char type)
 {
+	int cur_depth;
+
 	if (type == SWITCH) {
 		switchParen = 0;
 		return 0;  /* Pass through SWITCH keyword */
 	}
+
+	/* Get current body depth - use loop body depth if in loop, else brace_depth */
+	cur_depth = (loop_sp > 0) ? loop_stack[loop_sp - 1].body_depth : brace_depth;
+
 	if (switchParen >= 0) {
 		if (type == LPAR) {
 			switchParen++;
@@ -777,7 +878,7 @@ handleSwitch(unsigned char type)
 			switchParen--;
 		} else if (type == BEGIN && switchParen == 0) {
 			if (switchStkTop < MAX_SWITCH_DEPTH) {
-				switchBraceStk[switchStkTop] = loop_stack[loop_sp - 1].body_depth;
+				switchBraceStk[switchStkTop] = cur_depth;
 				switchNumStk[switchStkTop] = switchLblNum++;
 				switchStkTop++;
 			}
@@ -786,7 +887,9 @@ handleSwitch(unsigned char type)
 	}
 	/* Check if END closes a switch body */
 	if (type == END && switchStkTop > 0) {
-		if (loop_stack[loop_sp - 1].body_depth + 1 == switchBraceStk[switchStkTop - 1]) {
+		/* brace_depth already decremented, so +1 gives depth before END */
+		int depth_before = (loop_sp > 0) ? loop_stack[loop_sp - 1].body_depth + 1 : brace_depth + 1;
+		if (depth_before == switchBraceStk[switchStkTop - 1]) {
 			emitToken(END);
 			swBrkLabel(switchNumStk[switchStkTop - 1]);
 			switchStkTop--;
@@ -819,8 +922,12 @@ handleBrkCont(unsigned char type)
 		int idx = findInnerLoop();
 		if (idx >= 0) {
 			emitContGoto(idx);
-			return 1;
+		} else {
+			/* Emit goto to non-existent label; pass1 will report error */
+			emitKeyword(GOTO);
+			emitSym("__BADCONT");
 		}
+		return 1;
 	}
 	return 0;
 }
@@ -1122,11 +1229,13 @@ filter(unsigned char type, long num, float fnum, char *str, int slen)
 {
 	int cur_depth = brace_depth;  /* Depth BEFORE this token */
 
-#ifdef DEBUG_KNR_CTRL
-	if (type == IF || type == WHILE || type == FOR || type == DO || type == ELSE)
-		fprintf(stderr, "KNR: ctrl tok=%d state=%d depth=%d\n", type, state, cur_depth);
-	if (type == BEGIN || type == END)
-		fprintf(stderr, "KNR: brace tok=%d state=%d depth=%d\n", type, state, cur_depth);
+#ifdef DEBUG
+	if (VERBOSE(V_FILTER)) {
+		if (type == IF || type == WHILE || type == FOR || type == DO || type == ELSE)
+			fprintf(stderr, "FILTER: ctrl tok=%d state=%d depth=%d\n", type, state, cur_depth);
+		if (type == BEGIN || type == END)
+			fprintf(stderr, "FILTER: brace tok=%d state=%d depth=%d\n", type, state, cur_depth);
+	}
 #endif
 
 	/* State machine */
@@ -1207,11 +1316,17 @@ filter(unsigned char type, long num, float fnum, char *str, int slen)
 				/* Push output buffer for body */
 				outbufPush();
 				loop_stack[loop_sp - 1].body_depth = 0;
+				loop_stack[loop_sp - 1].inner_depth = 0;
+				loop_stack[loop_sp - 1].single_stmt = 1;
 				state = ST_DO_BODY;
 				return;
 			}
 			/* IF still uses brace insertion (not loop lowering) */
 			if (type == IF) {
+#ifdef DEBUG
+				if (VERBOSE(V_FILTER))
+					fprintf(stderr, "FILTER: IF in ST_NORMAL, depth=%d -> ST_CTRL_COND\n", cur_depth);
+#endif
 				emitToken(type);
 				ctrl_type = type;
 				ctrlParenDep = 0;
@@ -1232,10 +1347,15 @@ filter(unsigned char type, long num, float fnum, char *str, int slen)
 			 * type tokens to split off initializers.
 			 * Only trigger at paren depth 0 to avoid detecting
 			 * cast expressions like (void *) as declarations.
+			 * Also check previous token to avoid detecting
+			 * member access like np->kind as declarations.
 			 */
-			if (exprParen == 0 && isTypeTok(type, str)) {
+			if (exprParen == 0 && isTypeTok(type, str) &&
+			    prevTok != SYM && prevTok != DOT && prevTok != ARROW &&
+			    prevTok != RPAR && prevTok != RBRACK) {
 				bufLocDecl(type, num, fnum, str, slen);
 				locDeclParen = 0;
+				locDeclBrace = 0;
 				locInInit = 0;
 				locCurName[0] = 0;
 				state = ST_LOCAL_DECL;
@@ -1252,11 +1372,20 @@ filter(unsigned char type, long num, float fnum, char *str, int slen)
 			exprParen++;
 		else if (type == RPAR)
 			exprParen--;
-		/* Reset paren depth at statement boundaries */
-		if (type == SEMI)
+		/* Reset at statement boundaries */
+		if (type == SEMI || type == BEGIN || type == END) {
 			exprParen = 0;
+			prevTok = 0;
+		}
+
+		/* Handle switch tracking and break/continue */
+		if (handleSwitch(type))
+			return;
+		if (handleBrkCont(type))
+			return;
 
 		emitByType(type, num, fnum, str, slen);
+		prevTok = type;
 		break;
 
 	case ST_BUFFERING:
@@ -1434,6 +1563,10 @@ filter(unsigned char type, long num, float fnum, char *str, int slen)
 		 * If not, insert synthetic { and track until statement ends
 		 * Exception: ctrl_type == 0 means do-while condition end, no body
 		 */
+#ifdef DEBUG
+		if (VERBOSE(V_FILTER))
+			fprintf(stderr, "FILTER: ST_CTRL_PEND tok=%d ctrl_type=%d\n", type, ctrl_type);
+#endif
 		if (ctrl_type == 0) {
 			/* do-while condition ended - just emit and return to normal */
 			state = saved_state;
@@ -1443,6 +1576,10 @@ filter(unsigned char type, long num, float fnum, char *str, int slen)
 		}
 		if (type == BEGIN) {
 			/* Already has braces - pass through */
+#ifdef DEBUG
+			if (VERBOSE(V_FILTER))
+				fprintf(stderr, "FILTER: ST_CTRL_PEND has BEGIN -> saved_state\n");
+#endif
 			emitToken(BEGIN);
 			brace_depth++;
 			if (ctrl_type == DO) {
@@ -1451,6 +1588,14 @@ filter(unsigned char type, long num, float fnum, char *str, int slen)
 				state = ST_DO_BRACE;
 			} else {
 				state = saved_state;
+				/* If returning to loop body, count the BEGIN for depth tracking */
+				if ((saved_state == ST_LOOP_BODY || saved_state == ST_DO_BODY) &&
+				    loop_sp > 0) {
+					if (loop_stack[loop_sp - 1].single_stmt == 2)
+						loop_stack[loop_sp - 1].inner_depth++;
+					else if (loop_stack[loop_sp - 1].single_stmt == 0)
+						loop_stack[loop_sp - 1].body_depth++;
+				}
 			}
 		} else if (ctrl_type == ELSE && type == IF) {
 			/* else if - don't insert block for else, the if is the body */
@@ -1460,8 +1605,17 @@ filter(unsigned char type, long num, float fnum, char *str, int slen)
 			state = ST_CTRL_COND;
 		} else {
 			/* No braces - insert { and track body */
+#ifdef DEBUG
+			if (VERBOSE(V_FILTER))
+				fprintf(stderr, "FILTER: ST_CTRL_PEND no brace, inserting { -> ST_CTRL_BODY\n");
+#endif
 			emitToken(BEGIN);
 			brace_depth++;
+			/* If returning to loop body in single-stmt mode, count synthetic BEGIN */
+			if ((saved_state == ST_LOOP_BODY || saved_state == ST_DO_BODY) &&
+			    loop_sp > 0 && loop_stack[loop_sp - 1].single_stmt == 2) {
+				loop_stack[loop_sp - 1].inner_depth++;
+			}
 			ctrlBodyDep = 0;
 			state = ST_CTRL_BODY;
 			/* Now process this token as part of the body */
@@ -1514,6 +1668,37 @@ filter(unsigned char type, long num, float fnum, char *str, int slen)
 					/* Don't return - continue in ST_CTRL_BODY */
 				} else {
 					state = saved_state;
+					/* If returning to loop body in single-stmt mode, update tracking */
+					if ((saved_state == ST_LOOP_BODY || saved_state == ST_DO_BODY) &&
+					    loop_sp > 0 && loop_stack[loop_sp - 1].single_stmt == 2) {
+						loop_stack[loop_sp - 1].inner_depth--;
+						/* If inner_depth reached 0, the single statement is complete */
+						if (loop_stack[loop_sp - 1].inner_depth == 0) {
+							/* Complete the loop's single-stmt body */
+							emitToken(END);
+							outbufReplay();
+							if (loop_stack[loop_sp - 1].type == WHILE) {
+								emitLoopGoto('T');
+								emitLoopLabel('B');
+							} else if (loop_stack[loop_sp - 1].type == FOR) {
+								emitLoopLabel('C');
+								if (num_loop_incr > 0) {
+									lastEmitLine = -1;
+									emitLoopIncr();
+									emitToken(SEMI);
+								}
+								clearBufArr(loop_incr, &num_loop_incr);
+								emitLoopGoto('T');
+								emitLoopLabel('B');
+							} else { /* DO */
+								emitLoopLabel('C');
+							}
+							emitToken(END);
+							brace_depth--;
+							state = loop_stack[loop_sp - 1].savedState;
+							popLoop();
+						}
+					}
 					return;
 				}
 				return;
@@ -1556,6 +1741,12 @@ filter(unsigned char type, long num, float fnum, char *str, int slen)
 			}
 		}
 
+		/* Handle break/continue inside nested if within loop */
+		if (handleSwitch(type))
+			return;
+		if (handleBrkCont(type))
+			return;
+
 		/* Emit the token */
 		emitByType(type, num, fnum, str, slen);
 		break;
@@ -1591,14 +1782,18 @@ filter(unsigned char type, long num, float fnum, char *str, int slen)
 		 * - ASSIGN: start capturing init for current var
 		 * - COMMA at depth 0: end current declarator/init, buffer comma
 		 * - SEMI at depth 0: emit decl, enter ST_LOCAL_POST
-		 * - Parens: track depth for complex expressions
+		 * - Parens/braces: track depth for struct/union/complex expressions
 		 */
 		if (type == LPAR)
 			locDeclParen++;
 		else if (type == RPAR)
 			locDeclParen--;
+		else if (type == BEGIN)
+			locDeclBrace++;
+		else if (type == END)
+			locDeclBrace--;
 
-		if (locDeclParen == 0 && type == SEMI) {
+		if (locDeclParen == 0 && locDeclBrace == 0 && type == SEMI) {
 			/* End of declaration */
 			if (locInInit)
 				locInInit = 0;  /* End any pending init */
@@ -1609,7 +1804,7 @@ filter(unsigned char type, long num, float fnum, char *str, int slen)
 			return;
 		}
 
-		if (locDeclParen == 0 && type == COMMA) {
+		if (locDeclParen == 0 && locDeclBrace == 0 && type == COMMA) {
 			/* End current declarator, start next */
 			if (locInInit)
 				locInInit = 0;
@@ -1618,7 +1813,8 @@ filter(unsigned char type, long num, float fnum, char *str, int slen)
 			return;
 		}
 
-		if (locDeclParen == 0 && type == ASSIGN && !locInInit) {
+		if (locDeclParen == 0 && locDeclBrace == 0 &&
+		    type == ASSIGN && !locInInit) {
 			/* Start of initializer - save var name */
 			startLocInit(locCurName);
 			return;  /* Don't buffer the = */
@@ -1648,6 +1844,7 @@ filter(unsigned char type, long num, float fnum, char *str, int slen)
 			/* Another declaration - continue buffering */
 			bufLocDecl(type, num, fnum, str, slen);
 			locDeclParen = 0;
+			locDeclBrace = 0;
 			locInInit = 0;
 			locCurName[0] = 0;
 			state = ST_LOCAL_DECL;
@@ -1699,6 +1896,8 @@ filter(unsigned char type, long num, float fnum, char *str, int slen)
 				/* Push output buffer for body */
 				outbufPush();
 				loop_stack[loop_sp - 1].body_depth = 0;
+				loop_stack[loop_sp - 1].inner_depth = 0;
+				loop_stack[loop_sp - 1].single_stmt = 1;
 				state = ST_LOOP_BODY;
 				return;
 			}
@@ -1730,102 +1929,63 @@ filter(unsigned char type, long num, float fnum, char *str, int slen)
 		break;
 
 	case ST_LOOP_BODY:
-		/*
-		 * Inside loop body (for WHILE and FOR).
-		 * Body tokens go to output buffer.
-		 * Track brace depth; when we see END at depth 0, body is done.
-		 *
-		 * On body end:
-		 * - Replay buffered body
-		 * - WHILE: emit goto __W#T; __W#B:; }
-		 * - FOR: emit __F#C: incr; goto __F#T; __F#B:; }
-		 */
-		if (type == BEGIN) {
-			loop_stack[loop_sp - 1].body_depth++;
-		} else if (type == END) {
-			loop_stack[loop_sp - 1].body_depth--;
-			if (loop_stack[loop_sp - 1].body_depth == 0) {
-				/* Body complete - emit the END to buffer first */
-				emitToken(END);
-				/* Replay body */
-				outbufReplay();
-				/* Emit suffix */
-				if (loop_stack[loop_sp - 1].type == WHILE) {
-					/* goto __W#T; __W#B:; } */
-					emitLoopGoto('T');
-					emitLoopLabel('B');
-				} else {
-					/* __F#C: incr; goto __F#T; __F#B:; } */
-					emitLoopLabel('C');
-					if (num_loop_incr > 0) {
-						/* Reset line tracking - body may have changed it */
-						lastEmitLine = -1;
-						emitLoopIncr();
-						emitToken(SEMI);
-					}
-					clearBufArr(loop_incr, &num_loop_incr);
-					emitLoopGoto('T');
-					emitLoopLabel('B');
+		/* WHILE/FOR body - buffer tokens until body complete */
+		switch (handleLoopBody(type)) {
+		case 1: return;  /* Token consumed */
+		case 2: /* Body complete */
+			outbufReplay();
+			if (loop_stack[loop_sp - 1].type == WHILE) {
+				emitLoopGoto('T');
+				emitLoopLabel('B');
+			} else {
+				emitLoopLabel('C');
+				if (num_loop_incr > 0) {
+					lastEmitLine = -1;
+					emitLoopIncr();
+					emitToken(SEMI);
 				}
-				emitToken(END);
-				brace_depth--;
-				/* Restore parent state before popping */
-				state = loop_stack[loop_sp - 1].savedState;
-				popLoop();
-				return;
+				clearBufArr(loop_incr, &num_loop_incr);
+				emitLoopGoto('T');
+				emitLoopLabel('B');
 			}
+			emitToken(END);
+			brace_depth--;
+			state = loop_stack[loop_sp - 1].savedState;
+			popLoop();
+			return;
 		}
-
-		/* Handle nested loops, switch, break/continue */
+		/* Handle nested constructs */
 		if (handleNestLoop(type))
+			return;
+		if (handleNestIf(type))
 			return;
 		if (handleSwitch(type))
 			return;
 		if (handleBrkCont(type))
 			return;
-
-		/* Emit token to output buffer (body content) */
 		emitByType(type, num, fnum, str, slen);
 		break;
 
 	case ST_DO_BODY:
-		/*
-		 * Inside do body. Body tokens go to output buffer.
-		 * Track brace depth; when we see END at depth 0, body is done.
-		 * Then wait for WHILE keyword to start condition buffering.
-		 *
-		 * On body end:
-		 * - Replay buffered body
-		 * - Emit __D#C: label
-		 * - Transition to ST_DO_COND to buffer condition
-		 */
-		if (type == BEGIN) {
-			loop_stack[loop_sp - 1].body_depth++;
-		} else if (type == END) {
-			loop_stack[loop_sp - 1].body_depth--;
-			if (loop_stack[loop_sp - 1].body_depth == 0) {
-				/* Body complete - emit END to buffer */
-				emitToken(END);
-				/* Replay body */
-				outbufReplay();
-				/* Emit continue label */
-				emitLoopLabel('C');
-				/* Wait for WHILE keyword */
-				state = ST_DO_COND;
-				loopParen = -1;  /* -1 = waiting for WHILE */
-				return;
-			}
+		/* DO body - buffer tokens until body complete, then wait for WHILE */
+		switch (handleLoopBody(type)) {
+		case 1: return;  /* Token consumed */
+		case 2: /* Body complete */
+			outbufReplay();
+			emitLoopLabel('C');
+			state = ST_DO_COND;
+			loopParen = -1;
+			return;
 		}
-
-		/* Handle nested loops, switch, break/continue */
+		/* Handle nested constructs */
 		if (handleNestLoop(type))
+			return;
+		if (handleNestIf(type))
 			return;
 		if (handleSwitch(type))
 			return;
 		if (handleBrkCont(type))
 			return;
-
-		/* Emit token to output buffer */
 		emitByType(type, num, fnum, str, slen);
 		break;
 
@@ -1910,10 +2070,13 @@ filterInit(void)
 	ctrl_type = 0;
 	saved_state = 0;
 	ctrl_sp = 0;
+	exprParen = 0;
+	prevTok = 0;
 	/* Local declaration init splitting */
 	numLocInits = 0;
 	numLocDecl = 0;
 	locDeclParen = 0;
+	locDeclBrace = 0;
 	locInInit = 0;
 	locCurName[0] = 0;
 	/* Loop lowering */

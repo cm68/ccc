@@ -193,8 +193,8 @@ FreeExpr(struct expr *e)
 	FreeExpr(e->left);
 	FreeExpr(e->right);
 	FreeExpr(e->next);
-	/* For STRING expressions, free the synthetic name and its init expr */
-	if (e->op == STRING) {
+	/* For STRING expressions with synthetic name, free the name and init expr */
+	if (e->op == STRING && e->var) {
 		struct name *strname = (struct name *)e->var;
 		FreeExpr(strname->u.init);
 		free((void *)e->v);
@@ -479,7 +479,7 @@ struct expr *
 parseExpr(unsigned char pri)
 {
 	/* Hoisted locals for stack reuse */
-	unsigned char op, p, is_assignment, is_variadic, is_arrow;
+	unsigned char op, p, is_assignment, is_arrow;
 	unsigned char uop, inc_op;
 	struct expr *e = 0;
 	struct expr *e1, *e2, *e3, *e4;
@@ -491,7 +491,6 @@ parseExpr(unsigned char pri)
 	union { float f; unsigned long u; } fu;
 	unsigned long uval;
 	long sval;
-	char src_size, tgt_size;
 	int elem_size, size;
 
 	assign_type = NULL;
@@ -833,7 +832,6 @@ parseExpr(unsigned char pri)
 
             // Get first parameter for type coercion
             np = (e->type->flags & TF_FUNC) ? e->type->elem : 0;
-            is_variadic = e->type->flags & TF_VARIADIC;
 
             /* Parse argument list - pass2 handles type conversions */
             e3 = NULL;
