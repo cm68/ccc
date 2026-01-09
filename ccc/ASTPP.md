@@ -4,9 +4,9 @@ A standalone tool for formatting ccc compiler AST output in human-readable form.
 
 ## Purpose
 
-The AST pretty printer (`astpp`) converts the compact paren-free hex AST
-format into a nicely formatted, indented, and annotated representation that's
-easier to read and understand.
+The AST pretty printer (`astpp`) converts the compact binary AST format into a
+nicely formatted, indented, and annotated representation that's easier to read
+and understand.
 
 **Use cases:**
 - **Debugging the parser**: Visually inspect the AST structure to verify correct
@@ -75,17 +75,16 @@ The pretty printer outputs:
 1. **Function definitions** with parameters, return types, frame size, and register allocation
 2. **Statement structure** with proper indentation showing nesting
 3. **Expression trees** with operator names and type annotations
-4. **String literals** with their definitions
-5. **Global variables** with types and initializers
+4. **Global variables** with types and initializers (if present in AST)
 
 ### Example Output
 
 ```
 ========================================
-AST Pretty Printer Output
+AST Pretty Printer Output (binary)
 ========================================
 
-FUNCTION main(argc:short@IY+4, argv:ptr@BC) -> short [frame=0]
+FUNCTION _main(argc:short@IY+4, argv:ptr@BC) -> short [frame=0]
   LOCALS: result:short@IY-2
 {
   BLOCK {
@@ -115,81 +114,81 @@ Stack offsets are shown as `IY+N` or `IY-N`.
 
 ### Operator Translation
 
-The pretty printer translates single-character operators to readable names:
+The pretty printer translates binary token values to readable names:
 
-| AST | Pretty Name | Description |
-|-----|-------------|-------------|
-| `M` | DEREF | Dereference (memory read) |
-| `=` | ASSIGN | Assignment |
-| `+` | ADD | Addition |
-| `-` | SUB | Subtraction |
-| `*` | MUL | Multiplication |
-| `/` | DIV | Division |
-| `%` | MOD | Modulo |
-| `&` | AND | Bitwise AND |
-| `\|` | OR | Bitwise OR |
-| `^` | XOR | Bitwise XOR |
-| `~` | NOT | Bitwise NOT |
-| `y` | LSHIFT | Left shift |
-| `w` | RSHIFT | Right shift |
-| `<` | LT | Less than |
-| `>` | GT | Greater than |
-| `L` | LE | Less or equal |
-| `g` | GE | Greater or equal |
-| `Q` | EQ | Equal |
-| `n` | NE | Not equal |
-| `j` | LAND | Logical AND |
-| `h` | LOR | Logical OR |
-| `!` | LNOT | Logical NOT |
-| `N` | NARROW | Narrow type conversion |
-| `X` | SEXT | Sign extend |
-| `W` | WIDEN | Widen type |
-| `?` | TERNARY | Ternary conditional |
-| `@` | CALL | Function call |
-| `Y` | COPY | Structure copy |
-| `\` | NEG | Unary negation |
-| `'` | ADDR | Address-of |
-| `(` | PREINC | Pre-increment |
-| `)` | POSTINC | Post-increment |
-| `{` | PREDEC | Pre-decrement |
-| `}` | POSTDEC | Post-decrement |
-| `e` | BFEXT | Bitfield extract |
-| `f` | BFSET | Bitfield set |
+| Token | Pretty Name | Description |
+|-------|-------------|-------------|
+| 201 | DEREF | Dereference (memory read) |
+| 80 | ASSIGN | Assignment |
+| 40 | ADD | Addition |
+| 41 | SUB | Subtraction |
+| 36 | MUL | Multiplication |
+| 43 | DIV | Division |
+| 44 | MOD | Modulo |
+| 47 | AND | Bitwise AND |
+| 48 | OR | Bitwise OR |
+| 49 | XOR | Bitwise XOR |
+| 38 | NOT | Bitwise NOT |
+| 46 | LSHIFT | Left shift |
+| 45 | RSHIFT | Right shift |
+| 220 | URSHIFT | Unsigned right shift |
+| 63 | LT | Less than |
+| 62 | LE | Less or equal |
+| 60 | EQ | Equal |
+| 61 | NE | Not equal |
+| 53 | LAND | Logical AND |
+| 54 | LOR | Logical OR |
+| 34 | LNOT | Logical NOT |
+| 206 | NARROW | Narrow type conversion |
+| 208 | SEXT | Sign extend |
+| 207 | WIDEN | Widen type |
+| 90 | TERNARY | Ternary conditional |
+| 205 | CALL | Function call |
+| 203 | NEG | Unary negation |
+| 210 | PREINC | Pre-increment |
+| 211 | POSTINC | Post-increment |
+| 212 | PREDEC | Pre-decrement |
+| 213 | POSTDEC | Post-decrement |
+| 214 | BFEXT | Bitfield extract |
+| 215 | BFSET | Bitfield set |
+| 216 | REGVAR | Register variable |
+| 217 | LOCALVAR | Local variable (stack) |
+
+**Note**: GT (>) and GE (>=) are normalized to LT (<) and LE (<=) by cc1,
+so they never appear in the AST.
 
 ### Compound Assignment Operators
 
-| AST | Pretty Name |
-|-----|-------------|
-| `P` | += |
-| `T` | *= |
-| `o` | -= |
-| `m` | %= |
-| `a` | &= |
-| `0` | <<= |
-| `1` | \|= |
-| `2` | /= |
-| `6` | >>= |
+| Token | Pretty Name |
+|-------|-------------|
+| 70 | += |
+| 71 | -= |
+| 72 | *= |
+| 73 | /= |
+| 74 | %= |
+| 75 | >>= |
+| 76 | <<= |
+| 77 | &= |
+| 78 | \|= |
+| 79 | ^= |
 
 ### Statement Types
 
-| AST | Pretty Name | Description |
-|-----|-------------|-------------|
+| Opcode | Pretty Name | Description |
+|--------|-------------|-------------|
 | `B` | BLOCK | Block statement |
 | `E` | EXPR | Expression statement |
 | `R` | RETURN | Return statement |
 | `I` | IF | If/else conditional |
-| `W` | WHILE | While loop |
-| `F` | FOR | For loop |
-| `D` | DO | Do-while loop |
 | `S` | SWITCH | Switch statement |
 | `C` | CASE | Case label |
 | `O` | DEFAULT | Default label |
-| `K` | BREAK | Break statement |
-| `N` | CONTINUE | Continue statement |
 | `G` | GOTO | Goto statement |
 | `L` | LABEL | Label definition |
-| `A` | ASM | Inline assembly |
 | `d` | DECL | Variable declaration |
+
+**Note**: Loop statements (WHILE, FOR, DO) are lowered to if/goto sequences
+by the preprocessor and do not appear in the AST.
 
 ### Type Width Annotations
 
@@ -228,12 +227,12 @@ make test.ast
 
 **Output:**
 ```
-FUNCTION main() -> short [frame=2]
+FUNCTION _main() -> short [frame=2]
   LOCALS: x:short@IY-2
 {
   BLOCK {
-    EXPR (ASSIGN:short $x 10:short)
-    RETURN (ADD:short (DEREF:short $x) 5:short)
+    EXPR (ASSIGN:short (LOCALVAR:short -2) 10:short)
+    RETURN (ADD:short (LOCALVAR:short -2) 5:short)
   }
 }
 ```
@@ -249,41 +248,25 @@ int add(int a, int b) {
 
 **Output:**
 ```
-FUNCTION add(a:short@IY+4, b:short@IY+6) -> short [frame=0]
+FUNCTION _add(a:short@IY+4, b:short@IY+6) -> short [frame=0]
 {
   BLOCK {
-    RETURN (ADD:short (DEREF:short $a) (DEREF:short $b))
+    RETURN (ADD:short (LOCALVAR:short 4) (LOCALVAR:short 6))
   }
 }
 ```
 
-### Example 3: Globals and Strings
-
-**Source:**
-```c
-int counter = 0;
-char *msg = "hello";
-```
-
-**Output:**
-```
-GLOBAL counter : short = 0:short
-STRING _str0 = "hello\x00"
-GLOBAL msg : ptr = $_str0
-```
-
 ## Implementation
 
-The pretty printer is implemented in C (~850 lines) and:
+The pretty printer is implemented in C (~800 lines) and:
 
-1. **Reads the AST** using a custom parser for the paren-free hex format
-2. **Handles hex-encoded names** with 2-digit length prefix
-3. **Translates widths** to readable names (`:s` -> `:short`)
+1. **Reads the binary AST** using single-byte and multi-byte readers
+2. **Handles length-prefixed names** (1 byte length + characters)
+3. **Translates token values** to readable operator names
 4. **Formats recursively** using indentation tracking
-5. **Annotates operators** with human-readable names
-6. **Shows register allocation** for parameters and locals
+5. **Shows register allocation** for parameters and locals
 
-Source: `astpp.c` in the project root.
+Source: `astpp.c` in the ccc/ directory.
 
 ## Debugging with Pretty Printer
 
@@ -305,7 +288,7 @@ For complex expressions, focus on specific parts:
 ./astpp program.ast | grep "GLOBAL"
 
 # Find specific variable references
-./astpp program.ast | grep "\$myvar"
+./astpp program.ast | grep "LOCALVAR"
 ```
 
 ### Compare ASTs

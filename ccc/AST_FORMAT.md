@@ -4,39 +4,125 @@ This document describes the binary AST format produced by cc1 and consumed by cc
 
 ## Overview
 
-The AST is a compact binary format with minimal whitespace. Numbers are hexadecimal.
-Names use length-prefixed format. All expressions carry type/size annotations.
+The AST is a **compact binary format** using single-byte opcodes and little-endian
+multi-byte values. Token values from `lexeme.h` are used directly as opcodes.
+Names are length-prefixed with a single byte.
 
 **Important**: cc1 performs all preprocessing internally. The AST output contains
 no preprocessor directives - all macros are expanded, conditionals resolved, and
-includes processed before AST emission. String literals are hex-encoded to avoid
-escape sequence issues in the binary format.
+includes processed before AST emission. Loops (while, do, for) are lowered to
+labeled if/goto sequences by the preprocessor.
 
 ## Encoding Primitives
 
+### Numbers
+- **1 byte**: `emit1(b)` - single unsigned byte
+- **2 bytes**: `emit2(w)` - little-endian 16-bit unsigned
+- **4 bytes**: `emit4(l)` - little-endian 32-bit signed (two's complement)
+
 ### Names
 ```
-<2-hex-len><ascii-chars>
+<1-byte-len><ascii-chars>
 ```
-Example: `05hello` = "hello" (5 characters)
-
-### Numbers
-- 2-digit hex: `%02x` format (0-255)
-- 4-digit hex: `%04lx` format (0-65535)
-- 8-digit hex (constants): `#%08lx` format (32-bit signed, two's complement)
+Emitted via `emitS(name)` - length byte followed by raw characters.
+Example: `\x05hello` = "hello" (5 characters)
 
 ### Type/Size Suffixes
-Single character after operators indicating operand type:
+Single ASCII character after operators indicating operand type:
 - `b` - signed byte (1 byte)
 - `B` - unsigned byte
 - `s` - signed short/int (2 bytes)
 - `S` - unsigned short/int
 - `l` - signed long (4 bytes)
 - `L` - unsigned long
-- `p` - pointer (2 bytes)
+- `p` - pointer (2 bytes, treated as short)
 - `f` - float (4 bytes)
 - `d` - double (4 bytes, same as float)
 - `v` - void
+
+Note: Pointers emit as `s` (short) since they're 16-bit on Z80.
+
+---
+
+## Token Values (from lexeme.h)
+
+Key token values used in the AST:
+
+### Delimiters
+| Value | Name | Description |
+|-------|------|-------------|
+| 0 | E_O_F | End of file |
+| 1 | SEMI | Semicolon |
+| 2 | BEGIN | `{` left brace |
+| 3 | END | `}` right brace |
+| 4 | LBRACK | `[` left bracket |
+| 5 | RBRACK | `]` right bracket |
+| 9 | COMMA | Comma |
+
+### Terminals
+| Value | Name | Description |
+|-------|------|-------------|
+| 20 | SYM | Symbol reference |
+| 35 (`#`) | AST_CONST | Numeric constant |
+
+### Operators
+| Value | Name | Description |
+|-------|------|-------------|
+| 30 | INCR | `++` |
+| 31 | DECR | `--` |
+| 34 | BANG | `!` logical NOT |
+| 36 | STAR | `*` multiply |
+| 38 | TWIDDLE | `~` bitwise NOT |
+| 40 | PLUS | `+` add |
+| 41 | MINUS | `-` subtract |
+| 43 | DIV | `/` divide |
+| 44 | MOD | `%` modulo |
+| 45 | RSHIFT | `>>` right shift |
+| 46 | LSHIFT | `<<` left shift |
+| 47 | AND | `&` bitwise AND |
+| 48 | OR | `\|` bitwise OR |
+| 49 | XOR | `^` bitwise XOR |
+| 53 | LAND | `&&` logical AND |
+| 54 | LOR | `\|\|` logical OR |
+| 60 | EQ | `==` equal |
+| 61 | NEQ | `!=` not equal |
+| 62 | LE | `<=` less or equal |
+| 63 | LT | `<` less than |
+| 80 | ASSIGN | `=` assignment |
+| 90 | QUES | `?:` ternary |
+
+### Compound Assignment
+| Value | Name |
+|-------|------|
+| 70 | PLUSEQ `+=` |
+| 71 | SUBEQ `-=` |
+| 72 | MULTEQ `*=` |
+| 73 | DIVEQ `/=` |
+| 74 | MODEQ `%=` |
+| 75 | RSHIFTEQ `>>=` |
+| 76 | LSHIFTEQ `<<=` |
+| 77 | ANDEQ `&=` |
+| 78 | OREQ `\|=` |
+| 79 | XOREQ `^=` |
+
+### Internal Tokens (200+)
+| Value | Name | Description |
+|-------|------|-------------|
+| 201 | DEREF | Memory dereference |
+| 203 | NEG | Unary minus |
+| 205 | CALL | Function call |
+| 206 | NARROW | Narrow (truncate to smaller type) |
+| 207 | WIDEN | Widen (zero-extend unsigned) |
+| 208 | SEXT | Sign-extend |
+| 210 | PREINC | Pre-increment `++x` |
+| 211 | POSTINC | Post-increment `x++` |
+| 212 | PREDEC | Pre-decrement `--x` |
+| 213 | POSTDEC | Post-decrement `x--` |
+| 214 | BFEXTRACT | Bitfield extract |
+| 215 | BFASSIGN | Bitfield assign |
+| 216 | REGVAR | Register variable |
+| 217 | LOCALVAR | Local variable (stack) |
+| 220 | URSHIFT | Unsigned right shift |
 
 ---
 
@@ -44,183 +130,102 @@ Single character after operators indicating operand type:
 
 ### Function Definition
 ```
-F<rettype><hexname><param_count><local_count><frm_size><params...><locals...><body>
+'F' <rettype> <name> <param_count> <local_count> <frm_size> <params...> <locals...> <body>
 ```
 
-- `rettype` - single char size suffix for return type
-- `hexname` - hex-length-prefixed function name
-- `param_count` - 2-digit hex count of parameters
-- `local_count` - 2-digit hex count of local variables (hoisted from all blocks)
-- `frm_size` - 2-digit hex frame size (bytes for stack locals)
+- `'F'` - literal byte 0x46
+- `rettype` - single byte type suffix for return type
+- `name` - length-prefixed function name
+- `param_count` - 1-byte count of parameters
+- `local_count` - 1-byte count of local variables (hoisted from all blocks)
+- `frm_size` - 1-byte frame size (bytes for stack locals)
 - `params` - sequence of parameter declarations
 - `locals` - sequence of local variable declarations
-- `body` - statement (usually a Block)
+- `body` - statement (always a Block)
 
-**Declaration format**: `d<type><hexname><reg><off>`
-- `type` - single char type suffix (b/s/l/p)
-- `hexname` - hex-length-prefixed name
-- `reg` - 2-digit hex register allocation (see Register Allocation below)
-- `off` - 2-digit hex frame offset (signed, params positive, locals negative)
+**Declaration format**: `'d' <type> <name> <reg> <off>`
+- `'d'` - literal byte 0x64
+- `type` - single byte type suffix
+- `name` - length-prefixed name
+- `reg` - 1-byte register allocation (see Register Allocation below)
+- `off` - 1-byte signed frame offset (params positive, locals negative)
 
-Example:
+Example binary (hex dump):
 ```
-Fs05_main0201 04 ds04argc0004 dp04argv0406 ds01x03fe
+46 73 06 5f 6d 61 69 6e 02 01 04
 ```
-= `int _main(int argc, char **argv) { int x; }` - returns short, 2 params, 1 local, 4-byte frame
-- argc: short, no register (00), offset +4
-- argv: pointer, allocated to IX (04), offset +6
-- x: short, allocated to BC (03), offset -2
-
-### Global Variable
-```
-Z$<hexname><type><has_init><init?>
-```
-
-- `type` - `p` (pointer), `a<count><elemsize>` (array), `r<size>` (aggregate), or size char
-- `has_init` - `00` (no init) or `01` (has init)
-- `init` - initializer expression if present
-
-### String Literal
-```
-U<hexname><len><hexdata>
-```
-
-- `hexname` - synthetic name like "str0", "str1"
-- `len` - 2-digit hex byte count
-- `hexdata` - hex-encoded string bytes (each byte as 2 hex digits)
-
-Example:
-```
-U04str00648656c6c6f00
-```
-= str0 containing "Hello\0" (6 bytes: 48='H', 65='e', 6c='l', 6c='l', 6f='o', 00='\0')
-
-**Note**: String data is hex-encoded because the AST is a text format and raw
-binary data (especially null bytes and control characters) would cause parsing
-issues. cc2's readStr() decodes the hex data back to binary.
-
-### Array Initializer (in global)
-```
-[<width><count><items...>
-```
-
-- `width` - element size suffix
-- `count` - 2-digit hex element count
-- `items` - constant expressions
+= `F` `s` `\x06_main` `\x02` `\x01` `\x04` = function returning short, named "_main", 2 params, 1 local, 4-byte frame
 
 ---
 
 ## Statements
 
+Statement opcodes use ASCII letters for readability in hex dumps.
+
 ### Block
 ```
-B00<stmt_count><stmts...>
+'B' 00 <stmt_count> <stmts...>
 ```
-
-- `decl_count` - always `00` (locals hoisted to function prolog)
-- `stmt_count` - 2-digit hex count of statements
-- `stmts` - sequence of statements
-
-Note: All local variable declarations are hoisted to the function prolog.
-Blocks no longer contain inline declarations.
-
-Example: `B0003` = block with 3 statements (decl_count always 0)
+- `'B'` - literal byte 0x42
+- `00` - always zero (locals hoisted to function prolog)
+- `stmt_count` - 1-byte count of statements
 
 ### If Statement
 ```
-I<has_else><nlabels><cond><then>[<else>]
+'I' <nlabels> <cond> <then> <has_else> [<else>]
 ```
-
-- `has_else` - `00` (no else) or `01` (has else)
-- `nlabels` - 2-digit hex count of intermediate labels for ||/&& short-circuit
+- `'I'` - literal byte 0x49
+- `nlabels` - 1-byte count of intermediate labels for ||/&& short-circuit
 - `cond` - condition expression
 - `then` - then-branch statement
-- `else` - else-branch statement (only if has_else=01)
+- `has_else` - 1-byte: 0x00 (no else) or 0x01 (has else)
+- `else` - else-branch statement (only if has_else=0x01)
 
-See CONDITIONS.md for details on label assignment for short-circuit evaluation.
-
-### While Loop (lowered to labels)
-```
-B0005L<top>I01<nlabels><cond><body>B0001G<break>L<continue>G<top>L<break>
-```
-
-Loops are lowered to a block containing:
-1. `L<label>_top` - loop top label
-2. `I01<nlabels><cond><body>B0001G<break>` - if with else that breaks
-3. `L<label>_continue` - continue label
-4. `G<label>_top` - goto top
-5. `L<label>_break` - break label
-
-### For Loop (lowered)
-```
-B00<count>[E<init>]L<top>[I01<nlabels><cond><body>B0001G<break>|<body>]L<continue>[E<incr>]G<top>L<break>
-```
-
-Note: All loops (while, do-while, for) are lowered to labeled if/goto sequences
-by cc1. There are no standalone W, D, or F loop statements in the emitted AST.
+**Note**: `has_else` comes AFTER the then block, not before.
 
 ### Expression Statement
 ```
-E<expr>
+'E' <expr>
 ```
 
 ### Return Statement
 ```
-R<has_value>[<expr>]
+'R' <has_value> [<expr>]
 ```
-
-- `has_value` - `00` (void return) or `01` (has value)
+- `has_value` - 0x00 (void return) or 0x01 (has value)
 
 ### Label
 ```
-L<hexname>
+'L' <name>
 ```
 
 ### Goto
 ```
-G<hexname>
+'G' <name>
 ```
 
 ### Switch Statement
 ```
-S<has_label>[<hexlabel>]<case_count><expr><cases...>
+'S' <has_label> <case_count> <expr> <cases...>
 ```
-
-- `has_label` - `00` or `01`
-- `case_count` - 2-digit hex count of case/default labels
+- `has_label` - always 0x00 (cpp handles break lowering)
+- `case_count` - 1-byte count of case/default labels
 
 ### Case Label
 ```
-C<stmt_count><value><stmts...>
+'C' <stmt_count> <value_expr> <stmts...>
 ```
 
 ### Default Label
 ```
-O<stmt_count><stmts...>
+'O' <stmt_count> <stmts...>
 ```
-
-### Inline Assembly
-```
-A<len4><hexdata>
-```
-
-- `len4` - 4-digit hex byte count
-- `hexdata` - hex-encoded assembly text (each byte as 2 hex digits)
 
 ### Empty Statement
 ```
-;
+';'
 ```
-
-### Break
-```
-K
-```
-
-### Continue
-```
-N
-```
+Literal byte 0x3B
 
 ---
 
@@ -230,213 +235,172 @@ All expressions use prefix notation with type suffix after the operator.
 
 ### Constants
 ```
-#<type><8-hex-digits>
+'#' <type> <4-byte-value>
 ```
+- `'#'` - literal byte 0x23 (AST_CONST)
+- `type` - single byte type suffix
+- `value` - 4-byte little-endian signed value
 
-Type suffix followed by 32-bit signed value in two's complement.
-Example: `#s00000042` = 66 (short), `#sffffffff` = -1 (short), `#l00000042` = 66 (long)
+Example: `23 73 42 00 00 00` = `#` `s` `66` = 66 as short
 
-### Symbol Reference
+### Symbol Reference (Global/Extern)
 ```
-$<hexname>
+SYM <name>
 ```
+- `SYM` - byte value 20 (0x14)
+- `name` - length-prefixed symbol name (with `_` prefix for globals)
 
-Example: `$05_main` = reference to _main
+### Local Variable (Stack)
+```
+LOCALVAR <type> <offset>
+```
+- `LOCALVAR` - byte value 217 (0xD9)
+- `type` - single byte type suffix
+- `offset` - 1-byte signed frame offset
+
+### Register Variable
+```
+REGVAR <type> <reg>
+```
+- `REGVAR` - byte value 216 (0xD8)
+- `type` - single byte type suffix
+- `reg` - 1-byte register number
 
 ### Null/Empty Expression
 ```
-_
+'_'
 ```
+Literal byte 0x5F
 
 ### Memory Dereference
 ```
-M<type><addr>
+DEREF <type> <addr>
 ```
-
-Example: `Mb$03foo` = byte load from foo
+- `DEREF` - byte value 201 (0xC9)
 
 ### Assignment
 ```
-=<type><lvalue><rvalue>
+ASSIGN <type> <lvalue> <rvalue>
 ```
-
-Example: `=s$01x#s00000005` = x = 5 (short)
+- `ASSIGN` - byte value 80 (0x50)
 
 ### Binary Operators
 ```
-<op><type><left><right>
+<op> <type> <left> <right>
 ```
+Type suffix followed by left and right operands.
 
-Operators:
-- `+` - add
-- `-` - subtract
-- `*` - multiply
-- `/` - divide
-- `%` - modulo
-- `&` - bitwise AND
-- `|` - bitwise OR
-- `^` - bitwise XOR
-- `y` - left shift
-- `w` - right shift (arithmetic)
-- `<` - less than
-- `>` - greater than
-- `Q` - equal (==)
-- `n` - not equal (!=)
-- `L` - less or equal (<=)
-- `g` - greater or equal (>=)
-- `h` - logical OR (||)
-- `j` - logical AND (&&)
+**Note**: GT (>) and GE (>=) are normalized to LT (<) and LE (<=) by swapping operands.
+The AST never contains GT or GE operators.
 
 ### Unary Operators
 ```
-<op><type><operand>
+<op> <type> <operand>
 ```
-
-- `M` - memory dereference
-- `!` - logical NOT
-- `~` - bitwise NOT
-- `\` - unary minus (negation)
-
-Note: Address-of (`&`) is implicit in the AST. Taking the address of a variable
-simply uses the symbol reference (`$name`) without a DEREF wrapper. The DEREF
-operator (`M`) converts an address to a value.
+- `DEREF` (201) - memory dereference
+- `BANG` (34) - logical NOT
+- `TWIDDLE` (38) - bitwise NOT
+- `NEG` (203) - unary minus (negation)
 
 ### Type Conversions
 ```
-N<type><expr>   - narrow (truncate to smaller type)
-W<type><expr>   - widen (zero-extend unsigned)
-x<type><expr>   - sign-extend (SEXT)
+NARROW <type> <expr>   - narrow (truncate to smaller type)
+WIDEN <type> <expr>    - widen (zero-extend unsigned)
+SEXT <type> <expr>     - sign-extend
 ```
 
 ### Increment/Decrement
 ```
-<op><type><expr><amount>
+<op> <type> <expr> <amount>
 ```
-
-- `(` - pre-increment (++x)
-- `)` - post-increment (x++)
-- `{` - pre-decrement (--x)
-- `}` - post-decrement (x--)
-- `amount` - 4-digit hex increment value
+- `op` - PREINC (210), POSTINC (211), PREDEC (212), POSTDEC (213)
+- `amount` - 2-byte little-endian increment value
 
 ### Function Call
 ```
-@<rettype><argc><func><args...>
+CALL <rettype> <argc> <func> <args...>
 ```
-
-- `rettype` - single char return type suffix (b/s/l/p/etc)
-- `argc` - 2-digit hex argument count
+- `CALL` - byte value 205 (0xCD)
+- `rettype` - single byte return type suffix
+- `argc` - 1-byte argument count
 - `func` - function expression
-- `args` - argument expressions wrapped in comma nodes
+- `args` - argument expressions (argc count)
 
 ### Ternary Operator
 ```
-?<type><nlabels><cond><then><else>
+QUES <type> <cond> <then> <else>
 ```
-
-- `type` - result type suffix
-- `nlabels` - 2-digit hex count of intermediate labels for ||/&& in condition
-
-### Memory Copy
-```
-Y<length><dest><src>
-```
-
-- `length` - 4-digit hex byte count
+- `QUES` - byte value 90 (0x5A)
 
 ### Bitfield Extract
 ```
-e<offset><width><addr>
+BFEXTRACT <offset> <width> <addr>
 ```
+- `BFEXTRACT` - byte value 214 (0xD6)
+- `offset` - 1-byte bit offset (0-7)
+- `width` - 1-byte bit width
 
 ### Bitfield Assign
 ```
-f<offset><width><addr><value>
+BFASSIGN <offset> <width> <addr> <value>
 ```
+- `BFASSIGN` - byte value 215 (0xD7)
 
 ### Comma Operator
 ```
-,<type><left><right>
+COMMA <type> <left> <right>
 ```
-
-Used for function argument lists.
+- `COMMA` - byte value 9 (0x09)
 
 ---
 
-## Example
+## Initializers
 
+### Array Initializer
 ```
-Fs05_main000100ds01x0300
-B0002E=s$01x#B0000000aR01Ms$01x
+LBRACK <width> <count> <items...> RBRACK
 ```
+- `LBRACK` - byte value 4 (0x04)
+- `width` - element type suffix
+- `count` - 1-byte element count
+- `items` - initializer expressions
+- `RBRACK` - byte value 5 (0x05)
 
-Parses as:
-```c
-int _main() {
-    int x;      // local hoisted to prolog: ds01x0300 (x in BC, offset 0)
-    x = 10;     // E=s$01x#B0000000a (constant type B = unsigned byte)
-    return x;   // R01Ms$01x
-}
+### Struct Initializer
 ```
-Function header: Fs (return short) 05_main (name) 00 (0 params) 01 (1 local) 00 (frame size 0)
-Local x: ds (short) 01x (name) 03 (BC register) 00 (offset 0, since in register)
-Block: B0002 (0 decls, 2 statements)
-
-Note: Constants use the smallest sufficient type - here 10 fits in unsigned byte (B).
+BEGIN <count> <items...> END
+```
+- `BEGIN` - byte value 2 (0x02)
+- `count` - 1-byte field count
+- `items` - field initializer expressions
+- `END` - byte value 3 (0x03)
 
 ---
 
-## Notes
+## What's NOT in the AST
 
-1. **Loop Lowering**: Loops are fully lowered to labeled if/goto sequences by cc1.
-   The labels use format `L<n>_top`, `L<n>_continue`, `L<n>_break`.
+The following are emitted directly to the assembly output file, not to the AST:
 
-2. **Name Mangling**:
-   - Global/extern symbols get `_` prefix
-   - Static symbols use mangled names
-   - Local variables have no prefix
-
-3. **Operator Encoding**: All AST operators use ASCII (0x21-0x7e) to avoid
-   encoding issues. Some operators reuse keyword character values since
-   keywords never appear in expression-operator context:
-   - `x` - sign-extend (SEXT) - reuses EXTERN
-   - `(` - pre-increment - reuses LPAR
-   - `)` - post-increment - reuses RPAR
-   - `{` - pre-decrement - reuses BEGIN
-   - `}` - post-decrement - reuses END
-   - `e` - bitfield extract - reuses ENUM
-   - `f` - bitfield assign - reuses FLOAT
-   - `o` - subtract-equals - reuses AUTO
-   - `a` - and-equals - reuses STRUCT
-   - `m` - mod-equals - reuses UNION
-   - `Y` - memory copy
-   - `W` - widen (zero-extend)
-   - `N` - narrow (truncate)
-
-4. **Width Annotations**: Operators that produce values have a type suffix
-   indicating the result size. This is used for code generation.
-
-5. **Expression Flags**: The type suffix also encodes signedness:
-   - Lowercase (b,s,l) = signed
-   - Uppercase (B,S,L) = unsigned
-   - `p` = pointer (unsigned)
+1. **String literals** - emitted as assembly `.db` directives via `asmLabel`/`asmDb`
+2. **Global variables** - emitted as assembly `.bss`/`.ds` directives
+3. **Inline assembly** - emitted directly to assembly output
+4. **Loop structures** - lowered to if/goto by preprocessor
 
 ---
 
 ## Register Allocation
 
 Register allocation is computed by pass1 (cc1) based on variable usage analysis
-and communicated to pass2 (cc2) via the AST. Each variable declaration includes
-a 2-digit hex register field.
+and communicated to pass2 (cc2) via the AST.
 
 ### Register Values
 | Value | Register | Description |
 |-------|----------|-------------|
-| `00`  | -        | No register (on stack) |
-| `01`  | B        | B register (byte) |
-| `02`  | C        | C register (byte) |
-| `03`  | BC       | BC register pair (word) |
-| `04`  | IX       | IX index register (struct pointer) |
+| 0 | - | No register (on stack) |
+| 1 | B | B register (byte) |
+| 2 | C | C register (byte) |
+| 3 | BC | BC register pair (word) |
+| 4 | IX | IX index register (struct pointer) |
 
 ### Allocation Strategy
 Pass1 analyzes variable usage to determine optimal register allocation:
@@ -450,7 +414,20 @@ Pass1 analyzes variable usage to determine optimal register allocation:
 3. **B/C registers**: Allocated to frequently referenced byte variables if BC
    is not already allocated as a pair.
 
-### Benefits
-- Eliminates redundant load/store operations
-- Enables efficient IX-indexed addressing for struct access
-- Pass2 receives allocation decisions and generates appropriate code
+---
+
+## Notes
+
+1. **Loop Lowering**: Loops are fully lowered to labeled if/goto sequences by cpp.
+   The labels use format `L<n>_top`, `L<n>_continue`, `L<n>_break`.
+
+2. **Name Mangling**:
+   - Global/extern symbols get `_` prefix
+   - Static symbols use `S<id>` format
+   - Local variables use LOCALVAR/REGVAR opcodes (no name in expression)
+
+3. **Operator Normalization**: GT and GE are normalized to LT and LE by
+   swapping operands. The AST never contains GT (65) or GE (64) operators.
+
+4. **Width Annotations**: All operators have a type suffix byte indicating
+   result type. Lowercase (b,s,l) = signed, Uppercase (B,S,L) = unsigned.
