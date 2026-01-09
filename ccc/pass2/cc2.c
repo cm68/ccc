@@ -24,13 +24,13 @@ errout(char *buf)
 	write(2, buf, strlen(buf));
 }
 
+static char *progname;
+
 static void
-usage(void)
+usage(char *complaint)
 {
-	errout("usage: c1 -p <ast> -o <out.s> [options]\n");
-	errout("  -p <file>    AST input file\n");
-	errout("  -o <file>    Assembly output file\n");
-	errout("  -h           Show this help\n");
+	errout(complaint);
+	errout("usage: c1 [options] <.ast> <inits.s> <out.s>\n");
 #ifdef DEBUG
 	errout("  -v <mask>    Set verbosity (hex bitmask)\n");
 #ifndef CCC
@@ -50,45 +50,50 @@ usage(void)
 int
 main(int argc, char **argv)
 {
-	char *astfile = NULL;
-	char *outfile = NULL;
-	int i;
+	char *s;
 
-	/* Parse arguments */
-	for (i = 1; i < argc; i++) {
-		if (strcmp(argv[i], "-p") == 0) {
-			if (++i >= argc) usage();
-			astfile = argv[i];
-		} else if (strcmp(argv[i], "-o") == 0) {
-			if (++i >= argc) usage();
-			outfile = argv[i];
-		} else if (strcmp(argv[i], "-h") == 0) {
-			usage();
-		} else if (strcmp(argv[i], "-v") == 0) {
-			if (++i >= argc) usage();
+	progname = *argv++;
+	argc--;
+
+	/* Parse options */
+	while (argc) {
+		s = *argv;
+		if (*s++ != '-')
+			break;
+		argv++;
+		argc--;
+
+		while (*s) {
+			switch (*s++) {
+			case 'h':
+				usage("");
+				break;
 #ifdef DEBUG
-			verbose = strtol(argv[i], 0, 0);
+			case 'v':
+				if (!argc--)
+					usage("verbosity not specified\n");
+				verbose = strtol(*argv++, 0, 0);
+				break;
 #endif
-		} else if (argv[i][0] == '-') {
-			char buf[64];
-			sprintf(buf, "Unknown option: %s\n", argv[i]);
-			errout(buf);
-			usage();
-		} else {
-			errout("Unexpected argument\n");
-			usage();
+			default:
+				{
+					char buf[64];
+					sprintf(buf, "bad flag %c\n", s[-1]);
+					errout(buf);
+				}
+				break;
+			}
 		}
 	}
 
-	if (!astfile || !outfile) {
-		errout("Missing required arguments\n");
-		usage();
+	if (argc != 3) {
+		usage("requires 3 file arguments\n");
 	}
 
 #ifdef DEBUG
 #ifndef CCC
 	if (verbose) {
-		int j = 0;
+		int i, j = 0;
 		char buf[128];
 
 		for (i = 0; i < 32; i++) {
@@ -114,13 +119,19 @@ main(int argc, char **argv)
 #endif
 #endif
 
-	infd = open(astfile, O_RDONLY);
+	infd = open(argv[0], O_RDONLY);
 	if (infd < 0) {
 		errout("cannot open AST file\n");
 		exit(1);
 	}
 
-	outfd = creat(outfile, 0644);
+	in2fd = open(argv[1], O_RDONLY);
+	if (in2fd < 0) {
+		errout("cannot open init file\n");
+		exit(1);
+	}
+
+	outfd = creat(argv[2], 0644);
 	if (outfd < 0) {
 		errout("cannot create output file\n");
 		exit(1);
@@ -129,6 +140,7 @@ main(int argc, char **argv)
 	parse();
 
 	close(infd);
+	close(in2fd);
 	close(outfd);
 	return 0;
 }

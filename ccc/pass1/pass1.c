@@ -37,7 +37,7 @@
 void
 timeoutHdlr(int sig)
 {
-    fdprintf(2,"\n\n*** TIMEOUT after 5 seconds ***\n");
+    write(2, "\n\n*** TIMEOUT after 5 seconds ***\n", 35);
     fatal(ER_WTF);
 }
 #endif
@@ -117,19 +117,46 @@ process(char *f, char *o1, char *o2)
 
     /* Phase 1: Build symbol table, validate types, accumulate counts */
     phase = 1;
+#ifdef DEBUG
+    if (VERBOSE(V_PHASE1))
+        fdprintf(2, "=== Starting phase 1 ===\n");
+#endif
     parse();
+#ifdef DEBUG
+    if (VERBOSE(V_PHASE1)) {
+        extern unsigned long lexTokenCount;
+        fdprintf(2, "=== Phase 1 done, tokens=%lu ===\n", lexTokenCount);
+    }
+#endif
 
     /* Rewind lexeme stream for phase 2 */
     lexRewind();
+#ifdef DEBUG
+    {
+        extern unsigned long lexTokenCount;
+        lexTokenCount = 0;  /* Reset for phase 2 */
+    }
+#endif
     lexlevel = 0;  /* Reset scope level for phase 2 */
     resetFuncIdx();  /* Reset function stmt count read pointer for phase 2 */
     flipBlkCnts();   /* Reverse block counts for phase 2 (inner-first -> outer-first) */
+    resetCountIdx(); /* Reset switch case count read pointer for phase 2 */
     funcStrCtr = 0;    /* Reset function string counter so phase 2 matches phase 1 */
     globalStrCtr = 0;  /* Reset global string counter so phase 2 matches phase 1 */
 
     /* Phase 2: Emit AST (uses counts pushed by phase 1 in LIFO order) */
     phase = 2;
+#ifdef DEBUG
+    if (VERBOSE(V_PHASE2))
+        fdprintf(2, "=== Starting phase 2 ===\n");
+#endif
     parse();
+#ifdef DEBUG
+    if (VERBOSE(V_PHASE2)) {
+        extern unsigned long lexTokenCount;
+        fdprintf(2, "=== Phase 2 done, tokens=%lu ===\n", lexTokenCount);
+    }
+#endif
 
     lexClose();
     close(astFd);
@@ -158,11 +185,15 @@ process(char *f, char *o1, char *o2)
  *   - Prints to stderr
  *   - Exits with status 1
  */
+static char usagebuf[80];
+
 void
 usage(char *complaint)
 {
-    fdprintf(2,"%s", complaint);
-    fdprintf(2,"usage: %s [<options>] lexfile out1 out2\n", progname);
+    char *p;
+    write(2, complaint, strlen(complaint));
+    p = fmtstr(usagebuf, "usage: %s [options] <.x> <.ast> <.s>\n", progname);
+    write(2, usagebuf, p - usagebuf);
 #ifdef DEBUG
     fdprintf(2,"\t-v <verbosity>\n");
 #ifndef CCC
@@ -266,7 +297,11 @@ main(int argc, char **argv)
                 break;
 #endif
             default:
-                fdprintf(2,"bad flag %c\n", (*s));
+                {
+                    char *p;
+                    p = fmtstr(usagebuf, "bad flag %c\n", s[-1]);
+                    write(2, usagebuf, p - usagebuf);
+                }
                 break;
             }
         }
@@ -302,8 +337,8 @@ main(int argc, char **argv)
     setvbuf(stdout, 0, _IONBF, 0);
 #endif
 
-    if (argc < 3) {
-        usage("file count\n");
+    if (argc != 3) {
+        usage("requires 3 file arguments\n");
     }
 
     process(argv[0], argv[1], argv[2]);
