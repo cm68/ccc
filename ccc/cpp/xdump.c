@@ -1,22 +1,58 @@
 /*
  * xdump.c - Convert binary .x lexeme stream to readable text
  *
- * Usage: xdump [-N] [-h] file.x
+ * Usage: xdump [-N] [-o outfile] [-h] file.x
  *
- * Reads binary lexeme stream and outputs text that semantically
- * matches the preprocessed .i file.
+ * Reads binary lexeme stream and outputs compact readable C source
+ * with periodic # line sync points for error reporting.
  *
  * Options:
- *   -N  Suppress line number and file change reports
- *   -h  Show usage
+ *   -o file  Write output to file instead of stdout
+ *   -N       Suppress line sync points (debug mode)
+ *   -h       Show usage
  */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include "lexeme.h"
 
-int nflag;      /* suppress line number reports */
-int needline;   /* need newline before next output */
+#define SYNC_INTERVAL 10  /* emit sync point every N output lines */
+
+int nflag;         /* suppress sync points */
+int outlines;      /* output line counter */
+int lastsync;      /* output line of last sync point */
+long srcline;      /* current source line from LINENO/NEWLINE */
+char srcfile[256]; /* current source file from LINENO */
+char lastfile[256];/* file at last sync point */
+
+/*
+ * Emit a sync point if needed (file changed or interval reached)
+ */
+static void
+maybesync(int force)
+{
+    if (nflag)
+        return;
+    /* Emit sync on file change or every SYNC_INTERVAL lines */
+    if (force || strcmp(srcfile, lastfile) != 0 ||
+        (outlines - lastsync >= SYNC_INTERVAL)) {
+        printf("# %ld \"%s\"\n", srcline, srcfile);
+        outlines++;
+        lastsync = outlines;
+        strcpy(lastfile, srcfile);
+    }
+}
+
+/*
+ * Output a newline and maybe emit sync point
+ */
+static void
+outnl(void)
+{
+    putchar('\n');
+    outlines++;
+    maybesync(0);
+}
 
 int
 main(int argc, char **argv)
@@ -27,11 +63,20 @@ main(int argc, char **argv)
     union { float f; unsigned long l; } u;
     char buf[256];
     char *fname;
+    char *outfile = NULL;
 
     /* parse options */
     while (argc > 1 && argv[1][0] == '-') {
         if (argv[1][1] == 'N' && argv[1][2] == 0) {
             nflag = 1;
+        } else if (argv[1][1] == 'o' && argv[1][2] == 0) {
+            if (argc < 3) {
+                fprintf(stderr, "-o requires argument\n");
+                return 1;
+            }
+            outfile = argv[2];
+            argc--;
+            argv++;
         } else if (argv[1][1] == 'h' && argv[1][2] == 0) {
             goto usage;
         } else {
@@ -44,9 +89,10 @@ main(int argc, char **argv)
 
     if (argc != 2) {
 usage:
-        fprintf(stderr, "Usage: %s [-N] [-h] file.x\n", argv[0]);
-        fprintf(stderr, "  -N  Suppress line number reports\n");
-        fprintf(stderr, "  -h  Show this help\n");
+        fprintf(stderr, "Usage: %s [-N] [-o outfile] [-h] file.x\n", argv[0]);
+        fprintf(stderr, "  -o file  Write to file instead of stdout\n");
+        fprintf(stderr, "  -N       Suppress line sync points\n");
+        fprintf(stderr, "  -h       Show this help\n");
         return 1;
     }
     fname = argv[1];
@@ -57,22 +103,28 @@ usage:
         return 1;
     }
 
+    /* Redirect stdout to outfile if specified */
+    if (outfile && !freopen(outfile, "w", stdout)) {
+        perror(outfile);
+        return 1;
+    }
+
     while ((c = fgetc(f)) != EOF) {
         switch (c) {
         case E_O_F:
             goto done;
 
         case SEMI:
-            printf(";\n");
-            needline = 0;
+            printf(";");
+            outnl();
             continue;
         case BEGIN:
-            printf("{\n");
-            needline = 0;
+            printf("{");
+            outnl();
             continue;
         case END:
-            printf("}\n");
-            needline = 0;
+            printf("}");
+            outnl();
             continue;
         case LBRACK:
             printf("[ ");
@@ -161,27 +213,21 @@ usage:
             break;
 
         case NEWLINE:
-            /* Line increment by 1 */
-            if (!nflag) {
-                if (needline) putchar('\n');
-                printf("# +1\n");
-            }
-            needline = 0;
+            /* Line increment by 1 - just track, don't output */
+            srcline++;
             continue;
 
         case LINENO:
             /* Full line+file: LINENO + 2-byte line + len + filename */
-            val = fgetc(f) & 0xff;
-            val |= (fgetc(f) & 0xff) << 8;
+            srcline = fgetc(f) & 0xff;
+            srcline |= (fgetc(f) & 0xff) << 8;
             len = fgetc(f);
             for (i = 0; i < len; i++)
-                buf[i] = fgetc(f);
-            buf[len] = 0;
-            if (!nflag) {
-                if (needline) putchar('\n');
-                printf("# %ld \"%s\"\n", val, buf);
-            }
-            needline = 0;
+                srcfile[i] = fgetc(f);
+            srcfile[len] = 0;
+            /* Force sync point on file change */
+            if (strcmp(srcfile, lastfile) != 0)
+                maybesync(1);
             continue;
 
         case INCR:   printf("++ "); break;
@@ -271,7 +317,6 @@ usage:
             }
             break;
         }
-        needline = 1;
     }
 
 done:

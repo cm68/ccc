@@ -1,6 +1,6 @@
 # cpp - C Preprocessor
 #
-# Builds the preprocessor that produces .x and .i files
+# Builds the preprocessor that produces .x lexeme stream files
 
 # Disable built-in lex rule (.x -> .c) to avoid conflicts with lexeme output files
 %.c: %.x
@@ -66,7 +66,7 @@ stage1:
 	  b=$${f%.c}; \
 	  printf "%-20s" "$$f: "; \
 	  $(CCC) -DCCC -k -P -s $$f 2> $(OUTDIR)/$$b.err 1>&2 && { echo "ok"; rm -f $(OUTDIR)/$$b.err; } || echo "FAIL"; \
-      mv $$b.i $$b.x $$b.1 $$b.2 $$b.pp $$b.s $$b.o $(OUTDIR) 2>/dev/null ; \
+      mv $$b.x $$b.1 $$b.2 $$b.pp $$b.s $$b.o $(OUTDIR) 2>/dev/null ; \
 	done
 
 # Compile with zc3 to check Z80 sizes
@@ -85,7 +85,7 @@ sizecheck: $(GENERATED)
 	wssize sizecheck/cpp | tee -a sizefile
 
 clean:
-	rm -f *.o *.1 *.2 *.x *.i *.pp
+	rm -f *.o *.1 *.2 *.x *.pp
 
 clobber: clean
 	rm -f cpp mkkw kwtab.c xdump sizefile

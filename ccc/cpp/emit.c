@@ -6,18 +6,15 @@
 #include "cpp.h"
 #include <unistd.h>
 
-/* Global file descriptors */
+/* Global file descriptor */
 char lexFd = -1;
-char ppFd = -1;
 
 /* Line tracking for LINENO emission */
-static int lastLine = 0;      /* for .x file */
-static int lastLinePP = 0;    /* for .i file */
+static int lastLine = 0;
 static char *lastName = NULL;
 
 /* Forward declarations */
 void emitLine(int line, char *file);
-void emitLinePP(int line, char *file);
 void emitStructTok(struct token *t);
 
 /*
@@ -26,14 +23,9 @@ void emitStructTok(struct token *t);
 void
 emitFileStart(char *file)
 {
-    char buf[300];
     if (!noLineMarkers) {
         emitLine(1, file);
-        /* Initial directive without leading newline */
-        fmtstr(buf, "# %d \"%s\"\n", 1, file);
-        emitPPStr(buf);
         lastLine = 1;
-        lastLinePP = 1;
         lastName = filename;
     }
 }
@@ -180,129 +172,9 @@ emitLine(int line, char *file)
     outbufWrite(file, len);
 }
 
-/*
- * Emit # line directive to .i file only
- */
-void
-emitLinePP(int line, char *file)
-{
-    char buf[300];
-    fmtstr(buf, "\n# %d \"%s\"\n", line, file);
-    emitPPStr(buf);
-}
 
 /*
- * Emit string to .i file with escape sequences restored
- */
-void
-emitPPString(char *text, int len)
-{
-    int i;
-    char c, esc[3];
-
-    if (ppFd < 0) return;
-
-    esc[0] = '\\';
-    esc[2] = 0;
-    for (i = 0; i < len; i++) {
-        c = text[i];
-        switch (c) {
-        case '\n': esc[1] = 'n'; write(ppFd, esc, 2); break;
-        case '\t': esc[1] = 't'; write(ppFd, esc, 2); break;
-        case '\r': esc[1] = 'r'; write(ppFd, esc, 2); break;
-        case '\\': esc[1] = '\\'; write(ppFd, esc, 2); break;
-        case '"':  esc[1] = '"'; write(ppFd, esc, 2); break;
-        default:   write(ppFd, &c, 1); break;
-        }
-    }
-}
-
-void
-emitPPStr(char *text)
-{
-    if (ppFd >= 0)
-        write(ppFd, text, strlen(text));
-}
-
-/*
- * Keyword value to string for .i output
- */
-static char *
-kw2str(unsigned char kw)
-{
-    switch (kw) {
-    case INT: return "int";
-    case CHAR: return "char";
-    case LONG: return "long";
-    case FLOAT: return "float";
-    case DOUBLE: return "double";
-    case VOID: return "void";
-    case UNSIGNED: return "unsigned";
-    case STATIC: return "static";
-    case EXTERN: return "extern";
-    case AUTO: return "auto";
-    case REGISTER: return "register";
-    case TYPEDEF: return "typedef";
-    case STRUCT: return "struct";
-    case UNION: return "union";
-    case ENUM: return "enum";
-    case IF: return "if";
-    case ELSE: return "else";
-    case WHILE: return "while";
-    case DO: return "do";
-    case FOR: return "for";
-    case SWITCH: return "switch";
-    case CASE: return "case";
-    case DEFAULT: return "default";
-    case BREAK: return "break";
-    case CONTINUE: return "continue";
-    case RETURN: return "return";
-    case GOTO: return "goto";
-    case ASM: return "asm";
-    case SIZEOF_KW: return "sizeof";
-    case CONST: return "const";
-    case VOLATILE: return "volatile";
-    case SIGNED: return "signed";
-    case SHORT: return "short";
-    default: return "?kw?";
-    }
-}
-
-/*
- * Operator token to string for .i output
- */
-static char *
-op2str(token_t t)
-{
-    switch (t) {
-    case SIZEOF: return "sizeof";
-    case EQ: return "==";
-    case NEQ: return "!=";
-    case LE: return "<=";
-    case GE: return ">=";
-    case LAND: return "&&";
-    case LOR: return "||";
-    case LSHIFT: return "<<";
-    case RSHIFT: return ">>";
-    case INCR: return "++";
-    case DECR: return "--";
-    case ARROW: return "->";
-    case PLUSEQ: return "+=";
-    case SUBEQ: return "-=";
-    case MULTEQ: return "*=";
-    case DIVEQ: return "/=";
-    case MODEQ: return "%=";
-    case ANDEQ: return "&=";
-    case OREQ: return "|=";
-    case XOREQ: return "^=";
-    case LSHIFTEQ: return "<<=";
-    case RSHIFTEQ: return ">>=";
-    default: return NULL;
-    }
-}
-
-/*
- * Emit current token to .x stream and .i file
+ * Emit current token to .x stream
  * Just calls emitStructTok with &cur
  */
 void
@@ -312,23 +184,17 @@ emitCurToken(void)
 }
 
 /*
- * Emit a token from struct (used by pull-based filter chain)
- * Similar to emitCurToken but takes token directly
+ * Emit a token from struct to .x stream (used by pull-based filter chain)
  */
 void
 emitStructTok(struct token *t)
 {
-    char buf[32];
-    char *op;
-
     /* Emit line info to .x when line or file changes (unless -N) */
     if (!noLineMarkers) {
         if (lastName != t->filename) {
             /* File changed - emit full LINENO with filename */
             emitLine(t->lineno, t->filename ? t->filename : "");
-            emitLinePP(t->lineno, t->filename ? t->filename : "");
             lastLine = t->lineno;
-            lastLinePP = t->lineno;
             lastName = t->filename;
         } else if (t->lineno == lastLine + 1) {
             /* Line incremented by 1 - emit single NEWLINE byte */
@@ -339,14 +205,9 @@ emitStructTok(struct token *t)
             emitLine(t->lineno, t->filename ? t->filename : "");
             lastLine = t->lineno;
         }
-        /* Sync .i file line number with newlines */
-        while (lastLinePP < t->lineno) {
-            emitPPStr("\n");
-            lastLinePP++;
-        }
     }
 
-    /* Emit to lexeme stream directly (no filter) */
+    /* Emit to lexeme stream */
     if (t->type >= KW_FIRST && t->type <= KW_LAST) {
         if (t->type == SIZEOF_KW)
             emitToken(SIZEOF);
@@ -386,73 +247,6 @@ emitStructTok(struct token *t)
     default:
         emitToken(t->type);
         break;
-    }
-
-    /* Emit to preprocessed output - skip if not generating .i file */
-    if (ppFd < 0)
-        return;
-
-    if (t->type >= KW_FIRST && t->type <= KW_LAST) {
-        emitPPStr(kw2str(t->type));
-        emitPPStr(" ");
-    } else if ((op = op2str(t->type)) != NULL) {
-        emitPPStr(op);
-        emitPPStr(" ");
-    } else {
-        switch (t->type) {
-        case SYM:
-        case LABEL:
-            emitPPStr(t->v.name);
-            emitPPStr(t->type == LABEL ? ": " : " ");
-            break;
-        case NUMBER:
-            fmtstr(buf, "%ld ", t->v.numeric);
-            emitPPStr(buf);
-            break;
-        case FNUMBER:
-            /* Output float as hex bits for .i file */
-            {
-                union { float f; unsigned long l; } u;
-                u.f = t->v.fval;
-                fmtstr(buf, "0x%x ", (unsigned)u.l);
-                emitPPStr(buf);
-            }
-            break;
-        case STRING:
-            {
-                int len = (unsigned char)t->v.str[0] |
-                          ((unsigned char)t->v.str[1] << 8);
-                emitPPStr("\"");
-                emitPPString(t->v.str + 2, len);
-                emitPPStr("\" ");
-            }
-            break;
-        case ASMSTR:
-            emitPPStr("{ ");
-            emitPPString(t->v.name, strlen(t->v.name));
-            emitPPStr(" } ");
-            break;
-        case SEMI: emitPPStr("; "); break;
-        case BEGIN: emitPPStr("{ "); break;
-        case END: emitPPStr("} "); break;
-        case E_O_F: break;
-        default:
-            /* Single-char operators - use lookup table from lex.c */
-            {
-                extern char simpleChars[], simpleToks[];
-                int i;
-                for (i = 0; simpleToks[i]; i++) {
-                    if (simpleToks[i] == t->type) {
-                        buf[0] = simpleChars[i];
-                        buf[1] = ' ';
-                        buf[2] = 0;
-                        emitPPStr(buf);
-                        break;
-                    }
-                }
-            }
-            break;
-        }
     }
 
     /* Free STRING memory after emission - only used once */

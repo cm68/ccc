@@ -157,7 +157,6 @@ struct cond {
 
 /* Global state */
 extern char lexFd;          /* .x output file descriptor */
-extern char ppFd;           /* .i output file descriptor */
 extern char *curFile;       /* current source file */
 extern int lineNo;          /* current line number (for errors) */
 extern char noLineMarkers;  /* -N flag: suppress LINENO/NEWLINE */
@@ -218,7 +217,6 @@ extern void emitFNumber(float val);
 extern void emitString(char *str, int len);
 extern void emitLabel(char *name);
 extern void emitLine(int line, char *file);
-extern void emitPPStr(char *text);
 extern void emitCurToken(void);
 extern void emitStructTok(struct token *t);
 

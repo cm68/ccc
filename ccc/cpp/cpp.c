@@ -2,9 +2,7 @@
  * cpp - C Preprocessor
  *
  * Main driver for the preprocessor.
- * Produces two output files:
- *   <basename>.x - lexeme stream (compact token format)
- *   <basename>.i - preprocessed source (human readable)
+ * Produces <basename>.x - lexeme stream (compact token format)
  *
  * Uses lex.c for tokenization, io.c for file handling,
  * and macro.c for macro processing.
@@ -12,6 +10,7 @@
 #include "cpp.h"
 #include <fcntl.h>
 #include <unistd.h>
+#include <sys/wait.h>
 
 #ifdef DEBUG
 #include "debugtags.c"
@@ -86,11 +85,13 @@ void
 usage(void)
 {
     errout("usage: cpp [options] <source.c>\n");
-    errout("  -o <base>      Output base name (.x and .i)\n");
+    errout("  -o <base>      Output base name (.x file)\n");
     errout("  -I<dir>        Add include directory\n");
     errout("  -i<dir>        System include directory\n");
     errout("  -D<name>[=val] Define macro\n");
-    errout("  -E             Preprocess only (output to stdout)\n");
+    errout("  -E             Preprocess and dump to stdout (runs xdump)\n");
+    errout("  -p             Also generate .i file (runs xdump)\n");
+    errout("  -N             Suppress line markers\n");
     errout("  -h             Show this help\n");
 #ifdef DEBUG
     errout("  -v <mask>      Set verbosity (hex bitmask)\n");
@@ -184,6 +185,7 @@ main(int argc, char **argv)
     char *outbase = NULL;
     int i;
     int ppOnly = 0;
+    int ppOutput = 0;
 
     /* Parse arguments */
     for (i = 1; i < argc; i++) {
@@ -202,6 +204,8 @@ main(int argc, char **argv)
             addDefine(argv[i] + 2);
         } else if (strcmp(argv[i], "-E") == 0) {
             ppOnly = 1;
+        } else if (strcmp(argv[i], "-p") == 0) {
+            ppOutput = 1;
         } else if (strcmp(argv[i], "-N") == 0) {
             noLineMarkers = 1;
         } else if (strcmp(argv[i], "-h") == 0) {
@@ -265,9 +269,8 @@ main(int argc, char **argv)
 #endif
 #endif
 
-    /* Open output files */
+    /* Open output file */
     lexFd = opcreat(lexFile);
-    ppFd = opcreat(ppFile);
 
     /* Add include paths - current directory first, then -I paths */
     addInclude("");  /* Current directory */
@@ -279,11 +282,42 @@ main(int argc, char **argv)
     filterInit();
 
     /* Process the source file */
-    (void)ppOnly;  /* TODO: implement -E mode */
     process(source);
 
     close(lexFd);
-    close(ppFd);
+
+    /* -p mode: fork xdump to generate .i file */
+    if (ppOutput) {
+        int pid = fork();
+        if (pid == 0) {
+            /* Child: exec xdump */
+            if (noLineMarkers)
+                execlp("xdump", "xdump", "-N", "-o", ppFile, lexFile, (char *)0);
+            else
+                execlp("xdump", "xdump", "-o", ppFile, lexFile, (char *)0);
+            perror("xdump");
+            _exit(1);
+        } else if (pid > 0) {
+            /* Parent: wait for xdump */
+            int status;
+            waitpid(pid, &status, 0);
+            if (!WIFEXITED(status) || WEXITSTATUS(status) != 0)
+                exitCode = 1;
+        } else {
+            perror("fork");
+            exitCode = 1;
+        }
+    }
+
+    /* -E mode: exec xdump to dump preprocessed output to stdout */
+    if (ppOnly) {
+        if (noLineMarkers)
+            execlp("xdump", "xdump", "-N", lexFile, (char *)0);
+        else
+            execlp("xdump", "xdump", lexFile, (char *)0);
+        perror("xdump");
+        return 1;
+    }
 
     return exitCode;
 }
