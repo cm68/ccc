@@ -1,7 +1,8 @@
 # 1 "spill_nested.c"
 # +1
+main ( ) 
 # +1
-main ( ) {
+{
 # +1
 int i ;
 # +1
@@ -10,14 +11,21 @@ int j ;
 int x ;
 # +1
 x = 0 ;
-# +1
+# 10 "spill_nested.c"
 {
 # 8 "spill_nested.c"
-i = 0 ;
-__F1T : ;
-if ( ! ( i < 5 ) ) {
+i = 0 
+# 10 "spill_nested.c"
+;
+__F1T: ;
+if ( ! ( 
+# 8 "spill_nested.c"
+i < 5 
+# 10 "spill_nested.c"
+) ) {
 goto __F1B ;
 }
+# 8 "spill_nested.c"
 {
 # 10 "spill_nested.c"
 x = x + 1 ;
@@ -25,14 +33,21 @@ x = x + 1 ;
 x = x + 2 ;
 # +1
 x = x + 3 ;
-# +1
+# 15 "spill_nested.c"
 {
 # 13 "spill_nested.c"
-j = 0 ;
-__F2T : ;
-if ( ! ( j < 5 ) ) {
+j = 0 
+# 15 "spill_nested.c"
+;
+__F2T: ;
+if ( ! ( 
+# 13 "spill_nested.c"
+j < 5 
+# 15 "spill_nested.c"
+) ) {
 goto __F2B ;
 }
+# 13 "spill_nested.c"
 {
 # 15 "spill_nested.c"
 x = x + 10 ;
@@ -98,13 +113,15 @@ x = x + 39 ;
 x = x + 40 ;
 # +1
 }
-__F2C : ;
-# 13 "spill_nested.c"
-j = j + 1 ;
-goto __F2T ;
-__F2B : ;
-}
 # 48 "spill_nested.c"
+__F2C: ;
+# 13 "spill_nested.c"
+j = j + 1 
+# 48 "spill_nested.c"
+;
+goto __F2T ;
+__F2B: ;
+}
 x = x + 4 ;
 # +1
 x = x + 5 ;
@@ -118,13 +135,15 @@ x = x + 8 ;
 x = x + 9 ;
 # +1
 }
-__F1C : ;
-# 8 "spill_nested.c"
-i = i + 1 ;
-goto __F1T ;
-__F1B : ;
-}
 # +1
+__F1C: ;
+# 13 "spill_nested.c"
+j = j + 1 
+# 55 "spill_nested.c"
+;
+goto __F1T ;
+__F1B: ;
+}
 return x ;
 # +1
 }

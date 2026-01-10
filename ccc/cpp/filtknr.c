@@ -28,6 +28,7 @@
 
 static int state = ST_NORMAL;
 static int paren_depth = 0;
+static int brace_depth = 0;  /* Track nesting - only parse K&R at file scope */
 
 /* Return type buffer */
 #define RTYPE_MAX 16
@@ -36,6 +37,9 @@ static int rtype_len = 0;
 
 /* Function name */
 static struct token func_name;
+
+/* Saved LPAR token for proper line numbers */
+static struct token saved_lpar;
 
 /* Parameter names from () */
 #define PARAM_MAX 10
@@ -74,6 +78,7 @@ filtknr_init(void (*up)(struct token *))
 #endif
 	upstream = up;
 	state = ST_NORMAL;
+	brace_depth = 0;
 	rtype_len = 0;
 	param_count = 0;
 	ptype_len = 0;
@@ -123,34 +128,35 @@ emit_ansi(void)
 	struct token tmp;
 
 	/* Emit return type */
-	for (i = 0; i < rtype_len; i++)
-		pend_push(&pb, &rtype_buf[i]);
+	pend_buf(&pb, rtype_buf, rtype_len);
 
 	/* Emit function name */
 	pend_push(&pb, &func_name);
 
-	/* Emit ( */
-	pend_tok(&pb, LPAR);
+	/* Emit ( - use func_name line info for synthesized tokens */
+	pend_tok_at(&pb, LPAR, &func_name);
 
 	/* Emit params with types */
 	for (i = 0; i < param_count; i++) {
 		if (params[i].type_len > 0) {
 			/* Type tokens */
-			for (j = 0; j < params[i].type_len; j++)
-				pend_push(&pb, &params[i].type[j]);
+			pend_buf(&pb, params[i].type, params[i].type_len);
 		} else {
 			/* K&R default: untyped params are int */
-			pend_tok(&pb, INT);
+			pend_tok_at(&pb, INT, &func_name);
 		}
 		/* Stars */
 		for (j = 0; j < params[i].stars; j++)
-			pend_tok(&pb, STAR);
+			pend_tok_at(&pb, TIMES, &func_name);
 		/* Name */
-		toksynthnam(&tmp, SYM, params[i].name);
+		tmp.type = SYM;
+		tmp.v.name = params[i].name;
+		tmp.lineno = func_name.lineno;
+		tmp.filename = func_name.filename;
 		pend_push(&pb, &tmp);
 		/* Comma if not last */
 		if (i < param_count - 1)
-			pend_tok(&pb, COMMA);
+			pend_tok_at(&pb, COMMA, &func_name);
 		/* Free type buffer */
 		if (params[i].type) {
 			free(params[i].type);
@@ -159,7 +165,7 @@ emit_ansi(void)
 	}
 
 	/* Emit ) */
-	pend_tok(&pb, RPAR);
+	pend_tok_at(&pb, RPAR, &func_name);
 }
 
 /*
@@ -171,10 +177,9 @@ abort_knr(void)
 	int i;
 	struct token tmp;
 
-	for (i = 0; i < rtype_len; i++)
-		pend_push(&pb, &rtype_buf[i]);
+	pend_buf(&pb, rtype_buf, rtype_len);
 	pend_push(&pb, &func_name);
-	pend_tok(&pb, LPAR);
+	pend_push(&pb, &saved_lpar);  /* Use saved LPAR with correct line info */
 	/* Emit any param names we collected (with commas) */
 	for (i = 0; i < param_count; i++) {
 		toksynthnam(&tmp, SYM, params[i].name);
@@ -210,33 +215,29 @@ void
 filtknr(struct token *out)
 {
 	struct token t;
-	int i;
 
-	if (pend_has(&pb)) {
 #ifdef DEBUG
-		if (VERBOSE(V_FILTER))
-			fdprintf(2, "filtknr: pop type=%d rd=%d wr=%d\n",
-				pb.buf[pb.rd].type, pb.rd, pb.wr);
+	if (pend_has(&pb) && VERBOSE(V_FILTER))
+		fdprintf(2, "filtknr: pop type=%d rd=%d wr=%d\n",
+			pb.buf[pb.rd].type, pb.rd, pb.wr);
 #endif
-		pend_pop(&pb, out);
+	if (filt_entry(&pb, out, upstream, &t))
 		return;
-	}
-
-	upstream(&t);
 #ifdef DEBUG
 	if (VERBOSE(V_FILTER))
 		fdprintf(2, "filtknr: up type=%d state=%d\n", t.type, state);
 #endif
 
-	if (t.type == 0) {
-		tokcpy(out, &t);
-		return;
-	}
+	/* Track brace depth - only parse K&R at file scope */
+	if (t.type == BEGIN)
+		brace_depth++;
+	else if (t.type == END)
+		brace_depth--;
 
 	switch (state) {
 	case ST_NORMAL:
-		/* Look for type keyword starting a function */
-		if (is_type_tok(&t)) {
+		/* Only look for K&R functions at file scope (brace_depth == 0) */
+		if (brace_depth == 0 && is_type_tok(&t)) {
 #ifdef DEBUG
 			if (VERBOSE(V_FILTER))
 				fdprintf(2, "filtknr: ST_NORMAL &rtype_len=%p buf type=%d at %d\n",
@@ -280,8 +281,7 @@ filtknr(struct token *out)
 			return;
 		}
 		/* Not a function - emit buffered and this token */
-		for (i = 0; i < rtype_len; i++)
-			pend_push(&pb, &rtype_buf[i]);
+		pend_buf(&pb, rtype_buf, rtype_len);
 		pend_push(&pb, &t);
 		rtype_len = 0;
 		state = ST_NORMAL;
@@ -291,6 +291,7 @@ filtknr(struct token *out)
 	case ST_NAME:
 		/* After potential function name, expect ( */
 		if (t.type == LPAR) {
+			tokcpy(&saved_lpar, &t);  /* Save for abort_knr */
 			state = ST_PARAMS;
 			paren_depth = 1;
 			param_count = 0;
@@ -303,8 +304,7 @@ filtknr(struct token *out)
 			fdprintf(2, "filtknr: ST_NAME &rtype_len=%p rtype_len=%d func_name.type=%d\n",
 				(void*)&rtype_len, rtype_len, func_name.type);
 #endif
-		for (i = 0; i < rtype_len; i++)
-			pend_push(&pb, &rtype_buf[i]);
+		pend_buf(&pb, rtype_buf, rtype_len);
 		pend_push(&pb, &func_name);
 		pend_push(&pb, &t);
 		rtype_len = 0;
@@ -324,22 +324,21 @@ filtknr(struct token *out)
 			}
 		} else if (t.type == LPAR) {
 			paren_depth++;
-		} else if (t.type == SYM) {
-			/* Parameter name */
-			if (param_count < PARAM_MAX) {
+		} else if (t.type != COMMA) {
+			/* Type token in params = ANSI style, abort */
+			if (is_type_tok(&t)) {
+				abort_knr();
+				pend_push(&pb, &t);
+				pend_pop(&pb, out);
+				return;
+			}
+			/* Plain SYM (not typedef) = parameter name */
+			if (t.type == SYM && param_count < PARAM_MAX) {
 				params[param_count].name = t.v.name;
 				params[param_count].type = 0;
 				params[param_count].type_len = 0;
 				params[param_count].stars = 0;
 				param_count++;
-			}
-		} else if (t.type != COMMA) {
-			/* Type token in params = ANSI style, abort */
-			if (is_type_kw(t.type)) {
-				abort_knr();
-				pend_push(&pb, &t);
-				pend_pop(&pb, out);
-				return;
 			}
 		}
 		/* Consume commas silently */
@@ -357,11 +356,19 @@ filtknr(struct token *out)
 			return;
 		}
 		if (t.type == SEMI) {
-			/* End of a param type declaration */
-			/* Save type to current param */
+			if (ptype_len == 0 && cur_pname == 0) {
+				/* No K&R declarations seen - this is a prototype */
+				emit_ansi();
+				pend_push(&pb, &t);
+				reset_state();
+				pend_pop(&pb, out);
+				return;
+			}
+			/* End of a K&R param type declaration */
 			if (cur_pname)
 				save_ptype(cur_pname, ptype_stars);
 			cur_pname = 0;
+			ptype_len = 0;  /* Reset for next declaration */
 			filtknr(out);
 			return;
 		}

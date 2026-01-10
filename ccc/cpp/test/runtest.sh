@@ -1,14 +1,20 @@
 #!/bin/sh
-# runtest.sh - Run loop lowering tests for cpp
+# runtest.sh - Run cpp filter tests
 #
 # Usage: ./runtest.sh [testname]
 #        ./runtest.sh              - run all tests
 #        ./runtest.sh while        - run only while.c test
 #        ./runtest.sh -g           - regenerate all expected outputs
+#        ./runtest.sh -f           - run only filter stress tests
 
 CPP=../cpp
 XDUMP=../xdump
+
+# Loop lowering tests (compare xdump output)
 TESTS="while for do nested break continue switch_in_loop dowhile_nested mixed_loops multiline_for spill_while spill_for spill_nested spill_do"
+
+# Filter stress tests (just check cpp succeeds + validate patterns)
+FILTER_TESTS="test_filtknr test_filtdecl test_filtbrace test_filtctrl"
 
 cd "$(dirname "$0")"
 
@@ -40,9 +46,18 @@ if [ "$1" = "-g" ]; then
     exit 0
 fi
 
+# Filter-only mode
+FILTER_ONLY=0
+if [ "$1" = "-f" ]; then
+    FILTER_ONLY=1
+    TESTS=""
+    shift
+fi
+
 # Single test mode
 if [ -n "$1" ]; then
     TESTS="$1"
+    FILTER_TESTS=""
 fi
 
 # Run tests
@@ -88,6 +103,65 @@ for t in $TESTS; do
 
     # Cleanup
     rm -f "$t.x" "$t.i" "$t.out"
+done
+
+# Run filter stress tests
+for t in $FILTER_TESTS; do
+    if [ ! -f "$t.c" ]; then
+        continue
+    fi
+
+    total=$((total + 1))
+
+    # Run cpp
+    $CPP -DCCC "$t.c" -o "$t" 2>"$t.err"
+    if [ $? -ne 0 ]; then
+        echo "FAIL: $t - cpp failed"
+        cat "$t.err"
+        fail=$((fail + 1))
+        rm -f "$t.err"
+        continue
+    fi
+
+    # Check output file exists and has content
+    if [ ! -s "$t.i" ]; then
+        echo "FAIL: $t - empty output"
+        fail=$((fail + 1))
+        rm -f "$t.x" "$t.i" "$t.err"
+        continue
+    fi
+
+    # Validate specific patterns for each filter
+    ok=1
+    case "$t" in
+        test_filtknr)
+            # K&R should convert to ANSI params
+            grep -q 'int simple (' "$t.i" && grep -q 'int a ,' "$t.i" || ok=0
+            ;;
+        test_filtdecl)
+            # Initializers should be separated
+            grep -q 'int x ;' "$t.i" && grep -q 'x = 5 ;' "$t.i" || ok=0
+            ;;
+        test_filtbrace)
+            # Single statements should get braces
+            grep -q 'if ( x > 0 ) {' "$t.i" || ok=0
+            ;;
+        test_filtctrl)
+            # Loops should become labels/gotos, long conditions preserved
+            grep -q '__W.*T:' "$t.i" && grep -q 'DECR' "$t.i" || ok=0
+            ;;
+    esac
+
+    if [ $ok -eq 1 ]; then
+        echo "PASS: $t"
+        pass=$((pass + 1))
+    else
+        echo "FAIL: $t - validation failed"
+        fail=$((fail + 1))
+    fi
+
+    # Cleanup
+    rm -f "$t.x" "$t.i" "$t.err"
 done
 
 echo ""

@@ -849,7 +849,7 @@ isstring()
 char simpleChars[] = "{},[]();=.+-/*%&|^<>!~?:";
 char simpleToks[] = {
     BEGIN, END, COMMA, LBRACK, RBRACK, LPAR, RPAR, SEMI,
-    ASSIGN, DOT, PLUS, MINUS, DIV, TIMES, MOD, AND, OR, XOR,
+    ASSIGN, DOT, PLUS, MINUS, DIV, STAR, MOD, AND, OR, XOR,
     LT, GT, BANG, TWIDDLE, QUES, COLON, 0
 };
 
@@ -903,10 +903,7 @@ freetoken()
         free(cur.v.name);
         cur.v.name = NULL;
     }
-    if (cur.type == STRING && cur.v.str) {
-        free(cur.v.str);
-        cur.v.str = NULL;
-    }
+    /* Don't free STRING memory - filter buffers may still reference it */
 }
 
 /*

@@ -1,27 +1,32 @@
 # 1 "while.c"
 # +1
+main ( ) 
 # +1
-main ( ) {
+{
 # +1
 int i ;
 # +1
 i = 0 ;
-# +1
+# 7 "while.c"
 {
-__W1T : ;
-if ( ! ( # 6 "while.c"
-i < 10 ) ) {
+__W1T: ;
+if ( ! ( 
+# 6 "while.c"
+i < 10 
+# +1
+) ) {
 goto __W1B ;
 }
+# 6 "while.c"
 {
 # +1
 i = i + 1 ;
 # +1
 }
-goto __W1T ;
-__W1B : ;
-}
 # +1
+goto __W1T ;
+__W1B: ;
+}
 return i ;
 # +1
 }

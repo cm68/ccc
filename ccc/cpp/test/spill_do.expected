@@ -1,14 +1,16 @@
 # 1 "spill_do.c"
 # +1
+main ( ) 
 # +1
-main ( ) {
+{
 # +1
 int x ;
 # +1
 x = 0 ;
-# +1
+# 8 "spill_do.c"
 {
-__D1T : ;
+__D1T: ;
+# 6 "spill_do.c"
 {
 # 8 "spill_do.c"
 x = x + 1 ;
@@ -112,14 +114,22 @@ x = x + 49 ;
 x = x + 50 ;
 # +1
 }
-__D1C : ;
-if ( # 58 "spill_do.c"
-x < 1000 ) {
+# +1
+if ( 
+# 58 "spill_do.c"
+x < 1000 
+# +1
+) {
 goto __D1T ;
 }
-__D1B : ;
+__D1B: ;
 }
+{
+# 58 "spill_do.c"
+;
 # +1
 return x ;
-# +1
+# 61 "spill_do.c"
+}
+# 60 "spill_do.c"
 }

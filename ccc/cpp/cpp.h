@@ -109,6 +109,12 @@ extern void pend_push(struct pendbuf *p, struct token *t);
 extern int pend_has(struct pendbuf *p);
 extern void pend_pop(struct pendbuf *p, struct token *out);
 extern void pend_tok(struct pendbuf *p, unsigned char type);
+extern void pend_tok_at(struct pendbuf *p, unsigned char type, struct token *ref);
+extern void pend_buf(struct pendbuf *p, struct token *buf, int len);
+extern int filt_entry(struct pendbuf *pb, struct token *out,
+                      void (*up)(struct token *), struct token *t);
+extern void emit_label(struct pendbuf *p, char pfx, int num, char sfx);
+extern void emit_goto(struct pendbuf *p, char pfx, int num, char sfx);
 
 /*
  * Text buffer - for file/macro buffer management and output diversions

@@ -24,9 +24,12 @@ extern void addTypedef(char *name);
 
 static int state = ST_NORMAL;
 static int brace_depth = 0;
+static int aggr_depth = 0;	/* Struct/union/enum brace depth */
 static int paren_depth = 0;
 static int init_depth = 0;
 static int in_typedef = 0;
+static int expect_tag = 0;	/* Expecting struct/union/enum tag name */
+static int in_aggr_def = 0;	/* In struct/union/enum definition */
 static char *typedef_name = 0;
 
 #define DECL_MAX 32
@@ -65,10 +68,14 @@ filtdecl_init(void (*up)(struct token *))
 	upstream = up;
 	state = ST_NORMAL;
 	brace_depth = 0;
+	aggr_depth = 0;
 	decl_len = 0;
 	name_count = 0;
 	assign_count = 0;
+	cur_stars = 0;
 	in_typedef = 0;
+	expect_tag = 0;
+	in_aggr_def = 0;
 	pend_init(&pb, pendbuf, PEND_MAX);
 }
 
@@ -77,34 +84,44 @@ emit_decl(void)
 {
 	int i, j;
 	struct token tmp;
+	struct token *ref = &decl_buf[0];  /* Reference for line info */
 
-	for (i = 0; i < decl_len; i++)
-		pend_push(&pb, &decl_buf[i]);
+	pend_buf(&pb, decl_buf, decl_len);
 
 	for (i = 0; i < name_count; i++) {
 		for (j = 0; j < names[i].star_count; j++)
-			pend_tok(&pb, STAR);
-		toksynthnam(&tmp, SYM, names[i].name);
+			pend_tok_at(&pb, STAR, ref);
+		/* Synthesize name token with proper line info */
+		tmp.type = SYM;
+		tmp.v.name = names[i].name;
+		tmp.lineno = ref->lineno;
+		tmp.filename = ref->filename;
 		pend_push(&pb, &tmp);
 		if (i < name_count - 1)
-			pend_tok(&pb, COMMA);
+			pend_tok_at(&pb, COMMA, ref);
 	}
-	pend_tok(&pb, SEMI);
+	pend_tok_at(&pb, SEMI, ref);
 }
 
 static void
 emit_assigns(void)
 {
-	int i, j;
+	int i;
 	struct token tmp;
+	struct token *ref;
 
 	for (i = 0; i < assign_count; i++) {
-		toksynthnam(&tmp, SYM, assigns[i].name);
+		/* Use first init token for line info */
+		ref = assigns[i].init_len > 0 ? &assigns[i].init[0] : &decl_buf[0];
+		/* Synthesize name token with proper line info */
+		tmp.type = SYM;
+		tmp.v.name = assigns[i].name;
+		tmp.lineno = ref->lineno;
+		tmp.filename = ref->filename;
 		pend_push(&pb, &tmp);
-		pend_tok(&pb, ASSIGN);
-		for (j = 0; j < assigns[i].init_len; j++)
-			pend_push(&pb, &assigns[i].init[j]);
-		pend_tok(&pb, SEMI);
+		pend_tok_at(&pb, ASSIGN, ref);
+		pend_buf(&pb, assigns[i].init, assigns[i].init_len);
+		pend_tok_at(&pb, SEMI, ref);
 		free(assigns[i].init);
 	}
 	assign_count = 0;
@@ -146,6 +163,7 @@ finish_decl(void)
 	decl_len = 0;
 	name_count = 0;
 	cur_stars = 0;
+	expect_tag = 0;
 	state = ST_NORMAL;
 }
 
@@ -155,40 +173,59 @@ filtdecl(struct token *out)
 	struct token t;
 	int i;
 
-	if (pend_has(&pb)) {
 #ifdef DEBUG
-		if (VERBOSE(V_FILTER))
-			fdprintf(2, "filtdecl: pop type=%d\n", pb.buf[pb.rd].type);
+	if (pend_has(&pb) && VERBOSE(V_FILTER))
+		fdprintf(2, "filtdecl: pop type=%d\n", pb.buf[pb.rd].type);
 #endif
-		pend_pop(&pb, out);
+	if (filt_entry(&pb, out, upstream, &t))
 		return;
-	}
-
-	upstream(&t);
 #ifdef DEBUG
 	if (VERBOSE(V_FILTER))
-		fdprintf(2, "filtdecl: up type=%d st=%d bd=%d\n", t.type, state, brace_depth);
+		fdprintf(2, "filtdecl: up type=%d st=%d bd=%d ad=%d\n", t.type, state, brace_depth, aggr_depth);
 #endif
-
-	if (t.type == 0) {
-		tokcpy(out, &t);
-		return;
-	}
 
 	if (t.type == BEGIN) {
 		brace_depth++;
+		if (in_aggr_def) {
+			/* Inside struct/union/enum definition */
+			aggr_depth++;
+			in_aggr_def = 0;
+			tokcpy(out, &t);
+			return;
+		}
 		if (state == ST_DECL || state == ST_NAME) {
-			for (i = 0; i < decl_len; i++)
-				pend_push(&pb, &decl_buf[i]);
+			/* Check if this is start of aggregate definition */
+			for (i = 0; i < decl_len; i++) {
+				if (decl_buf[i].type == STRUCT ||
+				    decl_buf[i].type == UNION ||
+				    decl_buf[i].type == ENUM) {
+					aggr_depth++;
+					break;
+				}
+			}
+			/* Push type tokens first, then BEGIN, so order is correct */
+			pend_buf(&pb, decl_buf, decl_len);
+			pend_push(&pb, &t);  /* BEGIN after type */
 			decl_len = 0;
 			name_count = 0;
+			cur_stars = 0;
 			state = ST_NORMAL;
+			pend_pop(&pb, out);
+			return;
 		}
 		tokcpy(out, &t);
 		return;
 	}
 	if (t.type == END) {
 		brace_depth--;
+		if (aggr_depth > 0)
+			aggr_depth--;
+		tokcpy(out, &t);
+		return;
+	}
+
+	/* Inside aggregate definition - pass through unchanged */
+	if (aggr_depth > 0) {
 		tokcpy(out, &t);
 		return;
 	}
@@ -205,6 +242,12 @@ filtdecl(struct token *out)
 			in_typedef = 0;
 			typedef_name = 0;
 		}
+		/* Track start of struct/union/enum definition */
+		if (t.type == STRUCT || t.type == UNION || t.type == ENUM)
+			in_aggr_def = 1;
+		else if (in_aggr_def && t.type != SYM && t.type != BEGIN)
+			/* Not a definition - just a type reference like "struct foo *p" */
+			in_aggr_def = 0;
 		tokcpy(out, &t);
 		return;
 	}
@@ -213,6 +256,8 @@ filtdecl(struct token *out)
 	case ST_NORMAL:
 		if (is_type_tok(&t)) {
 			in_typedef = (t.type == TYPEDEF);
+			expect_tag = (t.type == STRUCT || t.type == UNION ||
+			              t.type == ENUM);
 			tokcpy(&decl_buf[decl_len++], &t);
 			state = ST_DECL;
 			filtdecl(out);
@@ -221,25 +266,43 @@ filtdecl(struct token *out)
 		break;
 
 	case ST_DECL:
-		/* Note: lexer produces TIMES for * */
-		if (is_type_tok(&t) || t.type == STAR || t.type == TIMES) {
-			if (t.type == STAR || t.type == TIMES)
+		if (is_type_tok(&t) || t.type == STAR) {
+			if (t.type == STAR) {
 				cur_stars++;
-			else if (decl_len < DECL_MAX)
-				tokcpy(&decl_buf[decl_len++], &t);
+				expect_tag = 0;
+			} else {
+				/* Set expect_tag for struct/union/enum */
+				expect_tag = (t.type == STRUCT || t.type == UNION ||
+				              t.type == ENUM);
+				if (decl_len < DECL_MAX)
+					tokcpy(&decl_buf[decl_len++], &t);
+			}
 			filtdecl(out);
 			return;
 		}
 		if (t.type == SYM) {
+			if (expect_tag) {
+				/* Tag name - part of type, not variable name */
+				if (decl_len < DECL_MAX)
+					tokcpy(&decl_buf[decl_len++], &t);
+				expect_tag = 0;
+				filtdecl(out);
+				return;
+			}
 			save_name(t.v.name);
 			state = ST_NAME;
 			filtdecl(out);
 			return;
 		}
-		for (i = 0; i < decl_len; i++)
-			pend_push(&pb, &decl_buf[i]);
+		/* Not a valid declaration - flush type, stars, and current token */
+		pend_buf(&pb, decl_buf, decl_len);
+		/* Emit accumulated stars (e.g., for casts like (int *)) */
+		for (i = 0; i < cur_stars; i++)
+			pend_tok(&pb, STAR);
 		pend_push(&pb, &t);
 		decl_len = 0;
+		cur_stars = 0;
+		expect_tag = 0;
 		state = ST_NORMAL;
 		pend_pop(&pb, out);
 		return;
@@ -263,20 +326,27 @@ filtdecl(struct token *out)
 			pend_pop(&pb, out);
 			return;
 		}
-		if (t.type == STAR || t.type == TIMES) {
+		if (t.type == STAR) {
 			tokcpy(out, &t);
 			return;
 		}
 		if (t.type == LBRACK) {
 			struct token tmp;
-			toksynthnam(&tmp, SYM, names[name_count-1].name);
+			struct token *ref = decl_len > 0 ? &decl_buf[0] : &t;
+			/* Emit type first, then name, then array bracket */
+			pend_buf(&pb, decl_buf, decl_len);
+			/* Emit stars for this variable */
+			for (i = 0; i < names[name_count-1].star_count; i++)
+				pend_tok_at(&pb, STAR, ref);
+			tmp.type = SYM;
+			tmp.v.name = names[name_count-1].name;
+			tmp.lineno = ref->lineno;
+			tmp.filename = ref->filename;
 			pend_push(&pb, &tmp);
 			pend_push(&pb, &t);
 			name_count--;
-			state = ST_NORMAL;
-			for (i = 0; i < decl_len; i++)
-				pend_push(&pb, &decl_buf[i]);
 			decl_len = 0;
+			state = ST_NORMAL;
 			pend_pop(&pb, out);
 			return;
 		}

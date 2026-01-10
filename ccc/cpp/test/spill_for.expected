@@ -1,21 +1,29 @@
 # 1 "spill_for.c"
 # +1
+main ( ) 
 # +1
-main ( ) {
+{
 # +1
 int i ;
 # +1
 int x ;
 # +1
 x = 0 ;
-# +1
+# 9 "spill_for.c"
 {
 # 7 "spill_for.c"
-i = 0 ;
-__F1T : ;
-if ( ! ( i < 10 ) ) {
+i = 0 
+# 9 "spill_for.c"
+;
+__F1T: ;
+if ( ! ( 
+# 7 "spill_for.c"
+i < 10 
+# 9 "spill_for.c"
+) ) {
 goto __F1B ;
 }
+# 7 "spill_for.c"
 {
 # 9 "spill_for.c"
 x = x + 1 ;
@@ -119,13 +127,15 @@ x = x + 49 ;
 x = x + 50 ;
 # +1
 }
-__F1C : ;
-# 7 "spill_for.c"
-i = i + 1 ;
-goto __F1T ;
-__F1B : ;
-}
 # +1
+__F1C: ;
+# 7 "spill_for.c"
+i = i + 1 
+# 60 "spill_for.c"
+;
+goto __F1T ;
+__F1B: ;
+}
 return x ;
 # +1
 }

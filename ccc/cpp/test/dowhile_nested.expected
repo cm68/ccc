@@ -1,46 +1,64 @@
 # 1 "dowhile_nested.c"
 # +1
+main ( ) 
 # +1
-main ( ) {
+{
 # +1
 int i ;
 # +1
 int j ;
 # +1
 i = 0 ;
-# +1
+# 8 "dowhile_nested.c"
 {
-__D1T : ;
+__D1T: ;
+# 7 "dowhile_nested.c"
 {
 # +1
 j = 0 ;
-# +1
+# 10 "dowhile_nested.c"
 {
-__D2T : ;
+__D2T: ;
+# 9 "dowhile_nested.c"
 {
 # +1
 j = j + 1 ;
 # +1
 }
-__D2C : ;
-if ( # 11 "dowhile_nested.c"
-j < 3 ) {
+# +1
+if ( 
+# 11 "dowhile_nested.c"
+j < 3 
+# +1
+) {
 goto __D2T ;
 }
-__D2B : ;
+__D2B: ;
 }
+{
+# 11 "dowhile_nested.c"
+;
 # +1
 i = i + 1 ;
 # +1
 }
-__D1C : ;
-if ( # 13 "dowhile_nested.c"
-i < 5 ) {
+}
+# +1
+if ( 
+# 13 "dowhile_nested.c"
+i < 5 
+# +1
+) {
 goto __D1T ;
 }
-__D1B : ;
+__D1B: ;
 }
+{
+# 13 "dowhile_nested.c"
+;
 # +1
 return i ;
-# +1
+# 16 "dowhile_nested.c"
+}
+# 15 "dowhile_nested.c"
 }

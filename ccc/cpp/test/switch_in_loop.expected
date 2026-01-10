@@ -1,49 +1,68 @@
 # 1 "switch_in_loop.c"
 # +1
+main ( ) 
 # +1
-main ( ) {
+{
 # +1
 int i ;
 # +1
 int x ;
 # +1
 x = 0 ;
-# +1
+# 8 "switch_in_loop.c"
 {
 # 7 "switch_in_loop.c"
-i = 0 ;
-__F1T : ;
-if ( ! ( i < 10 ) ) {
+i = 0 
+# +1
+;
+__F1T: ;
+if ( ! ( 
+# 7 "switch_in_loop.c"
+i < 10 
+# +1
+) ) {
 goto __F1B ;
 }
+# 7 "switch_in_loop.c"
 {
 # +1
 switch ( i ) {
 # +1
-case 5 : # +1
-break ;
+case 5 : 
+# 11 "switch_in_loop.c"
+goto __S2B 
+# 10 "switch_in_loop.c"
+;
 # +1
-default : # +1
+default : 
+# +1
 x = x + i ;
-# +1
-break ;
+# 15 "switch_in_loop.c"
+goto __S2B 
+# 13 "switch_in_loop.c"
+;
 # +1
 }
 # +1
+__S2B: ;
 if ( i == 7 ) {
-# +1
-goto __F1B ;
+# 18 "switch_in_loop.c"
+goto __F1B 
+# 16 "switch_in_loop.c"
+;
 # +1
 }
 # +1
 }
-__F1C : ;
+# +1
+__F1C: ;
 # 7 "switch_in_loop.c"
-i = i + 1 ;
+i = i + 1 
+# 19 "switch_in_loop.c"
+;
 goto __F1T ;
-__F1B : ;
+__F1B: ;
 }
-# +1
 return x ;
 # +1
 }

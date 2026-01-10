@@ -1,52 +1,74 @@
 # 1 "nested.c"
 # +1
+main ( ) 
 # +1
-main ( ) {
+{
 # +1
 int i ;
 # +1
 int j ;
-# +1
+# 7 "nested.c"
 {
 # 6 "nested.c"
-i = 0 ;
-__F1T : ;
-if ( ! ( i < 5 ) ) {
+i = 0 
+# +1
+;
+__F1T: ;
+if ( ! ( 
+# 6 "nested.c"
+i < 5 
+# +1
+) ) {
 goto __F1B ;
 }
+# 6 "nested.c"
 {
-# +1
+# 8 "nested.c"
 {
 # 7 "nested.c"
-j = 0 ;
-__F2T : ;
-if ( ! ( j < 5 ) ) {
+j = 0 
+# +1
+;
+__F2T: ;
+if ( ! ( 
+# 7 "nested.c"
+j < 5 
+# +1
+) ) {
 goto __F2B ;
 }
+# 7 "nested.c"
 {
 # +1
 if ( j == 3 ) {
-# +1
-goto __F2B ;
+# 11 "nested.c"
+goto __F2B 
+# 9 "nested.c"
+;
 # +1
 }
 # +1
 }
-__F2C : ;
+# 13 "nested.c"
+__F2C: ;
 # 7 "nested.c"
-j = j + 1 ;
+j = j + 1 
+# 13 "nested.c"
+;
 goto __F2T ;
-__F2B : ;
+__F2B: ;
+}
+# 12 "nested.c"
 }
 # +1
-}
-__F1C : ;
-# 6 "nested.c"
-i = i + 1 ;
+__F1C: ;
+# 7 "nested.c"
+j = j + 1 
+# 13 "nested.c"
+;
 goto __F1T ;
-__F1B : ;
+__F1B: ;
 }
-# +1
 return i ;
 # +1
 }

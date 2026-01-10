@@ -31,54 +31,21 @@ static unsigned char ctrl_type = 0;
 
 /* Pending token queue */
 #define PEND_MAX 8
-static struct token pend[PEND_MAX];
-static int pend_rd = 0;
-static int pend_wr = 0;
+static struct token pendbuf[PEND_MAX];
+static struct pendbuf pb;
 
 /* Upstream token source */
-static struct token (*upstream)(void);
+static void (*upstream)(struct token *);
 
 void
-filtbrace_init(struct token (*up)(void))
+filtbrace_init(void (*up)(struct token *))
 {
 	upstream = up;
 	state = ST_NORMAL;
 	depth = 0;
 	ctrl_type = 0;
 	stk_sp = 0;
-	pend_rd = pend_wr = 0;
-}
-
-static void
-pend_push(struct token t)
-{
-	pend[pend_wr] = t;
-	pend_wr = (pend_wr + 1) % PEND_MAX;
-}
-
-static int
-pend_has(void)
-{
-	return pend_rd != pend_wr;
-}
-
-static struct token
-pend_pop(void)
-{
-	struct token t = pend[pend_rd];
-	pend_rd = (pend_rd + 1) % PEND_MAX;
-	return t;
-}
-
-static struct token
-synth(unsigned char type)
-{
-	struct token t;
-	t.type = type;
-	t.v.numeric = 0;
-	t.lineno = lineno;
-	t.filename = filename;
-	return t;
+	pend_init(&pb, pendbuf, PEND_MAX);
 }
 
 static void
@@ -108,22 +75,15 @@ pop_state(void)
 
 /*
  * Body complete - emit ; }, pop state, enter ST_ELSE_CHK
- * Cascade handled in ST_ELSE_CHK when we see non-ELSE token.
  */
 static void
-end_body(struct token semi)
+end_body(struct token *semi)
 {
-	/* Emit the semicolon and closing brace */
-	pend_push(semi);
-	pend_push(synth(END));
-
-	/* Pop to parent state */
+	pend_push(&pb, semi);
+	pend_tok(&pb, END);
 	pop_state();
-
-	/* If ctrl was IF and parent is ST_BODY, check for ELSE */
-	if (ctrl_type == IF && state == ST_BODY && depth == 0) {
+	if (ctrl_type == IF && state == ST_BODY && depth == 0)
 		state = ST_ELSE_CHK;
-	}
 }
 
 /*
@@ -134,9 +94,8 @@ cascade_close(void)
 {
 	while (state == ST_BODY && depth == 0 && stk_sp > 0 &&
 	       stk[stk_sp - 1].synthetic) {
-		pend_push(synth(END));
+		pend_tok(&pb, END);
 		pop_state();
-		/* If this was also IF, check for ELSE at this level */
 		if (ctrl_type == IF && state == ST_BODY && depth == 0) {
 			state = ST_ELSE_CHK;
 			return;
@@ -144,19 +103,13 @@ cascade_close(void)
 	}
 }
 
-struct token
-filtbrace(void)
+void
+filtbrace(struct token *out)
 {
 	struct token t;
 
-	if (pend_has())
-		return pend_pop();
-
-	t = upstream();
-
-	/* EOF - return it directly */
-	if (t.type == 0)
-		return t;
+	if (filt_entry(&pb, out, upstream, &t))
+		return;
 
 	switch (state) {
 	case ST_NORMAL:
@@ -168,7 +121,7 @@ filtbrace(void)
 			ctrl_type = t.type;
 			state = ST_PENDING;
 		}
-		return t;
+		break;
 
 	case ST_COND:
 		if (t.type == LPAR)
@@ -178,74 +131,65 @@ filtbrace(void)
 			if (depth == 0)
 				state = ST_PENDING;
 		}
-		return t;
+		break;
 
 	case ST_PENDING:
 		if (t.type == BEGIN) {
-			/* Already braced */
 			state = ST_NORMAL;
-			return t;
+			break;
 		}
 		if (ctrl_type == ELSE && t.type == IF) {
-			/* else if */
 			ctrl_type = IF;
 			state = ST_COND;
 			depth = 0;
-			return t;
+			break;
 		}
 		/* Insert { before this token */
-		pend_push(t);
+		pend_push(&pb, &t);
 		state = ST_BODY;
 		depth = 0;
-		return synth(BEGIN);
+		toksynth(out, BEGIN);
+		return;
 
 	case ST_BODY:
-		/* Track depth */
 		if (t.type == BEGIN || t.type == LPAR || t.type == LBRACK)
 			depth++;
 		else if (t.type == END || t.type == RPAR || t.type == RBRACK)
 			depth--;
 
-		/* Check for nested control */
 		if (depth == 0) {
 			if (t.type == IF || t.type == WHILE || t.type == FOR) {
 				push_state(1);
 				ctrl_type = t.type;
 				state = ST_COND;
 				depth = 0;
-				return t;
+				break;
 			}
 			if (t.type == ELSE || t.type == DO) {
 				push_state(1);
 				ctrl_type = t.type;
 				state = ST_PENDING;
-				return t;
+				break;
 			}
 			if (t.type == SEMI) {
-				end_body(t);
-				return pend_pop();
+				end_body(&t);
+				pend_pop(&pb, out);
+				return;
 			}
 		}
-		return t;
+		break;
 
 	case ST_ELSE_CHK:
-		/*
-		 * After IF body ended, check if ELSE follows.
-		 * If ELSE: it's part of this if-else, handle it.
-		 * If not: cascade close outer bodies.
-		 */
 		if (t.type == ELSE) {
-			/* ELSE binds to the IF we just closed */
 			ctrl_type = ELSE;
 			state = ST_PENDING;
-			return t;
+			break;
 		}
-		/* No ELSE - cascade close outer bodies */
 		cascade_close();
-		/* Reprocess this token in new state */
-		pend_push(t);
-		return pend_pop();
+		pend_push(&pb, &t);
+		pend_pop(&pb, out);
+		return;
 	}
 
-	return t;
+	tokcpy(out, &t);
 }

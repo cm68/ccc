@@ -51,7 +51,7 @@ static int next_label = 1;
 static unsigned char cur_ctx = 0;	/* Current context type */
 
 /* Token buffers */
-#define BUF_MAX 32
+#define BUF_MAX 64
 static struct token cond_buf[BUF_MAX];
 static int cond_len = 0;
 static struct token init_buf[BUF_MAX];
@@ -60,7 +60,7 @@ static struct token incr_buf[BUF_MAX];
 static int incr_len = 0;
 
 /* Output queue */
-#define PEND_MAX 16
+#define PEND_MAX 64
 static struct token pendbuf[PEND_MAX];
 static struct pendbuf pb;
 
@@ -73,14 +73,6 @@ filtctrl_init(void (*up)(struct token *))
 	state = ST_NORMAL;
 	stk_sp = 0;
 	pend_init(&pb, pendbuf, PEND_MAX);
-}
-
-static void
-synth_name(struct token *out, unsigned char type, char prefix, int num, char suffix)
-{
-	char buf[16];
-	fmtstr(buf, "__%c%d%c", prefix, num, suffix);
-	toksynthnam(out, type, strdup(buf));
 }
 
 static void push_ctx(unsigned char type, unsigned char saved) {
@@ -107,120 +99,92 @@ static void pop_ctx(void) {
 	}
 }
 
-static char ctx_prefix(unsigned char type) {
-	switch (type) {
-	case CTX_WHILE:  return 'W';
-	case CTX_FOR:    return 'F';
-	case CTX_DO:     return 'D';
-	case CTX_SWITCH: return 'S';
-	}
-	return 'X';
-}
+/* Lookup: CTX_WHILE=1->'W', CTX_FOR=2->'F', CTX_DO=3->'D', CTX_SWITCH=4->'S' */
+static char ctx_pfx[] = "XWFDS";
+static char ctx_prefix(unsigned char t) { return ctx_pfx[t]; }
 
-/* Emit buffered tokens */
-static void emit_buf(struct token *buf, int len) {
-	int i;
-	for (i = 0; i < len; i++)
-		pend_push(&pb, &buf[i]);
+/* Check if context is breakable (all loop types + switch) */
+static int is_breakable(unsigned char t) {
+	return t >= CTX_WHILE && t <= CTX_SWITCH;
 }
 
 /* Emit loop header: { [init;] __XnT: if (!(cond)) goto __XnB; */
 static void emitLoopHdr(char prefix) {
-	struct token tmp;
+#ifdef DEBUG
+	if (VERBOSE(V_FILTER))
+		fdprintf(2, "emitLoopHdr: pb.rd=%d pb.wr=%d\n", pb.rd, pb.wr);
+#endif
 	pend_tok(&pb, BEGIN);
 	if (init_len > 0) {
-		emit_buf(init_buf, init_len);
+		pend_buf(&pb, init_buf, init_len);
 		pend_tok(&pb, SEMI);
 	}
-	synth_name(&tmp, LABEL, prefix, label_num, 'T');
-	pend_push(&pb, &tmp);
-	pend_tok(&pb, SEMI);
+	emit_label(&pb, prefix, label_num, 'T');
 	if (cond_len > 0) {
 		pend_tok(&pb, IF);
 		pend_tok(&pb, LPAR);
 		pend_tok(&pb, BANG);
 		pend_tok(&pb, LPAR);
-		emit_buf(cond_buf, cond_len);
+		pend_buf(&pb, cond_buf, cond_len);
 		pend_tok(&pb, RPAR);
 		pend_tok(&pb, RPAR);
 		pend_tok(&pb, BEGIN);
-		pend_tok(&pb, GOTO);
-		synth_name(&tmp, SYM, prefix, label_num, 'B');
-		pend_push(&pb, &tmp);
+		emit_goto(&pb, prefix, label_num, 'B');
 		pend_tok(&pb, SEMI);
 		pend_tok(&pb, END);
 	}
+#ifdef DEBUG
+	if (VERBOSE(V_FILTER))
+		fdprintf(2, "emitLoopHdr done: pb.rd=%d pb.wr=%d\n", pb.rd, pb.wr);
+#endif
 }
 
 /* Emit WHILE trailer: goto __WnT; __WnB: } */
 static void emitWhileTrail(void) {
-	struct token tmp;
-	pend_tok(&pb, GOTO);
-	synth_name(&tmp, SYM, 'W', label_num, 'T');
-	pend_push(&pb, &tmp);
+	emit_goto(&pb, 'W', label_num, 'T');
 	pend_tok(&pb, SEMI);
-	synth_name(&tmp, LABEL, 'W', label_num, 'B');
-	pend_push(&pb, &tmp);
-	pend_tok(&pb, SEMI);
+	emit_label(&pb, 'W', label_num, 'B');
 	pend_tok(&pb, END);
 }
 
 /* Emit FOR trailer: __FnC: incr; goto __FnT; __FnB: } */
 static void emitForTrail(void) {
-	struct token tmp;
-	synth_name(&tmp, LABEL, 'F', label_num, 'C');
-	pend_push(&pb, &tmp);
-	pend_tok(&pb, SEMI);
+	emit_label(&pb, 'F', label_num, 'C');
 	if (incr_len > 0) {
-		emit_buf(incr_buf, incr_len);
+		pend_buf(&pb, incr_buf, incr_len);
 		pend_tok(&pb, SEMI);
 	}
-	pend_tok(&pb, GOTO);
-	synth_name(&tmp, SYM, 'F', label_num, 'T');
-	pend_push(&pb, &tmp);
+	emit_goto(&pb, 'F', label_num, 'T');
 	pend_tok(&pb, SEMI);
-	synth_name(&tmp, LABEL, 'F', label_num, 'B');
-	pend_push(&pb, &tmp);
-	pend_tok(&pb, SEMI);
+	emit_label(&pb, 'F', label_num, 'B');
 	pend_tok(&pb, END);
 }
 
 /* Emit DO header: { __DnT: */
 static void emitDoHdr(void) {
-	struct token tmp;
 	pend_tok(&pb, BEGIN);
-	synth_name(&tmp, LABEL, 'D', label_num, 'T');
-	pend_push(&pb, &tmp);
-	pend_tok(&pb, SEMI);
+	emit_label(&pb, 'D', label_num, 'T');
 }
 
 /* Emit DO trailer: if (cond) goto __DnT; __DnB: } */
 static void emitDoTrail(void) {
-	struct token tmp;
 	if (cond_len > 0) {
 		pend_tok(&pb, IF);
 		pend_tok(&pb, LPAR);
-		emit_buf(cond_buf, cond_len);
+		pend_buf(&pb, cond_buf, cond_len);
 		pend_tok(&pb, RPAR);
 		pend_tok(&pb, BEGIN);
-		pend_tok(&pb, GOTO);
-		synth_name(&tmp, SYM, 'D', label_num, 'T');
-		pend_push(&pb, &tmp);
+		emit_goto(&pb, 'D', label_num, 'T');
 		pend_tok(&pb, SEMI);
 		pend_tok(&pb, END);
 	}
-	synth_name(&tmp, LABEL, 'D', label_num, 'B');
-	pend_push(&pb, &tmp);
-	pend_tok(&pb, SEMI);
+	emit_label(&pb, 'D', label_num, 'B');
 	pend_tok(&pb, END);
 }
 
 /* Emit switch exit label: __SnB: */
 static void emitSwitchEnd(void) {
-	struct token tmp;
-	synth_name(&tmp, LABEL, 'S', label_num, 'B');
-	pend_push(&pb, &tmp);
-	pend_tok(&pb, SEMI);
+	emit_label(&pb, 'S', label_num, 'B');
 }
 
 /*
@@ -230,22 +194,15 @@ static void emitSwitchEnd(void) {
  */
 static int emit_break(void) {
 	int i;
-	struct token tmp;
 	/* Check current context first */
-	if (cur_ctx == CTX_WHILE || cur_ctx == CTX_FOR ||
-	    cur_ctx == CTX_DO || cur_ctx == CTX_SWITCH) {
-		pend_tok(&pb, GOTO);
-		synth_name(&tmp, SYM, ctx_prefix(cur_ctx), label_num, 'B');
-		pend_push(&pb, &tmp);
+	if (is_breakable(cur_ctx)) {
+		emit_goto(&pb, ctx_prefix(cur_ctx), label_num, 'B');
 		return 1;
 	}
 	/* Then check stack */
 	for (i = stk_sp - 1; i >= 0; i--) {
-		unsigned char t = stk[i].ctx_type;
-		if (t == CTX_WHILE || t == CTX_FOR || t == CTX_DO || t == CTX_SWITCH) {
-			pend_tok(&pb, GOTO);
-			synth_name(&tmp, SYM, ctx_prefix(t), stk[i].label_num, 'B');
-			pend_push(&pb, &tmp);
+		if (is_breakable(stk[i].ctx_type)) {
+			emit_goto(&pb, ctx_prefix(stk[i].ctx_type), stk[i].label_num, 'B');
 			return 1;
 		}
 	}
@@ -259,36 +216,26 @@ static int emit_break(void) {
  */
 static int emit_continue(void) {
 	int i;
-	struct token tmp;
 	/* Check current context first */
 	if (cur_ctx == CTX_WHILE || cur_ctx == CTX_DO) {
-		pend_tok(&pb, GOTO);
-		synth_name(&tmp, SYM, ctx_prefix(cur_ctx), label_num, 'T');
-		pend_push(&pb, &tmp);
+		emit_goto(&pb, ctx_prefix(cur_ctx), label_num, 'T');
 		return 1;
 	}
 	if (cur_ctx == CTX_FOR) {
-		pend_tok(&pb, GOTO);
-		synth_name(&tmp, SYM, 'F', label_num, 'C');
-		pend_push(&pb, &tmp);
+		emit_goto(&pb, 'F', label_num, 'C');
 		return 1;
 	}
 	/* Then check stack (skip current switch if any) */
 	for (i = stk_sp - 1; i >= 0; i--) {
 		unsigned char t = stk[i].ctx_type;
 		if (t == CTX_WHILE || t == CTX_DO) {
-			pend_tok(&pb, GOTO);
-			synth_name(&tmp, SYM, ctx_prefix(t), stk[i].label_num, 'T');
-			pend_push(&pb, &tmp);
+			emit_goto(&pb, ctx_prefix(t), stk[i].label_num, 'T');
 			return 1;
 		}
 		if (t == CTX_FOR) {
-			pend_tok(&pb, GOTO);
-			synth_name(&tmp, SYM, 'F', stk[i].label_num, 'C');
-			pend_push(&pb, &tmp);
+			emit_goto(&pb, 'F', stk[i].label_num, 'C');
 			return 1;
 		}
-		/* Skip switches - continue doesn't apply */
 	}
 	return 0;
 }
@@ -308,7 +255,7 @@ static int handle_body(struct token *t, unsigned char ctx_type) {
 	if (t->type == WHILE) {
 		push_ctx(ctx_type, state);
 		label_num = next_label++;
-		cond_len = 0;
+		init_len = cond_len = 0;
 		depth = 0;
 		state = ST_WHILE_C;
 		return 2;	/* Consumed, recurse */
@@ -353,24 +300,14 @@ filtctrl(struct token *out)
 	struct token t;
 	int r;
 
-	if (pend_has(&pb)) {
-		pend_pop(&pb, out);
+	if (filt_entry(&pb, out, upstream, &t))
 		return;
-	}
-
-	upstream(&t);
-
-	/* EOF - return it directly */
-	if (t.type == 0) {
-		tokcpy(out, &t);
-		return;
-	}
 
 	switch (state) {
 	case ST_NORMAL:
 		if (t.type == WHILE) {
 			label_num = next_label++;
-			cond_len = 0;
+			init_len = cond_len = 0;
 			depth = 0;
 			state = ST_WHILE_C;
 			filtctrl(out);
@@ -454,6 +391,11 @@ filtctrl(struct token *out)
 		if (t.type == RPAR) {
 			depth--;
 			if (depth == 0) {
+#ifdef DEBUG
+				if (VERBOSE(V_FILTER))
+					fdprintf(2, "filtctrl: FOR emit init=%d cond=%d incr=%d\n",
+						init_len, cond_len, incr_len);
+#endif
 				emitLoopHdr('F');
 				body_depth = 0;
 				cur_ctx = CTX_FOR;

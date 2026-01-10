@@ -17,6 +17,17 @@
 #include "debugtags.c"
 #endif
 
+/* Filter chain functions */
+extern void filtknr_init(void (*up)(struct token *));
+extern void filtknr(struct token *out);
+extern void filtdecl_init(void (*up)(struct token *));
+extern void filtdecl(struct token *out);
+extern void filtbrace_init(void (*up)(struct token *));
+extern void filtbrace(struct token *out);
+extern void filtctrl_init(void (*up)(struct token *));
+extern void filtctrl(struct token *out);
+extern void typedefReset(void);
+
 /* Global state */
 char *curFile;
 int lineNo;
@@ -38,6 +49,19 @@ static void
 errout(char *buf)
 {
     write(2, buf, strlen(buf));
+}
+
+static int
+opcreat(char *file)
+{
+    int fd = creat(file, 0644);
+    if (fd < 0) {
+        char buf[140];
+        fmtstr(buf, "cannot create: %s\n", file);
+        errout(buf);
+        exit(1);
+    }
+    return fd;
 }
 
 void
@@ -83,11 +107,41 @@ usage(void)
 }
 
 /*
+ * Lexer wrapper for pull-based filter chain
+ * Copies current token to output and advances lexer
+ */
+static void
+lex_get(struct token *out)
+{
+    tokcpy(out, &cur);
+#ifdef DEBUG
+    if (VERBOSE(V_FILTER))
+        fdprintf(2, "lex_get: type=%d\n", out->type);
+#endif
+    gettoken();
+}
+
+/*
+ * Initialize the filter pipeline
+ */
+void
+filterInit(void)
+{
+    typedefReset();
+    filtknr_init(lex_get);
+    filtdecl_init(filtknr);
+    filtbrace_init(filtdecl);
+    filtctrl_init(filtbrace);
+}
+
+/*
  * Process source file - lex all tokens and emit to .x stream
  */
 void
 process(char *sourcefile)
 {
+    struct token t;
+
     curFile = sourcefile;
 
     /* Push source file then initialize I/O (advance() needs tbtop) */
@@ -101,10 +155,19 @@ process(char *sourcefile)
     gettoken();
     gettoken();
 
-    /* Lex and emit all tokens */
-    while (cur.type != E_O_F) {
-        emitCurToken();
-        gettoken();
+    /* Pull tokens through filter chain and emit */
+    filtctrl(&t);
+#ifdef DEBUG
+    if (VERBOSE(V_FILTER))
+        fdprintf(2, "process: first=%d\n", t.type);
+#endif
+    while (t.type != E_O_F) {
+#ifdef DEBUG
+        if (VERBOSE(V_FILTER))
+            fdprintf(2, "process: emit=%d\n", t.type);
+#endif
+        emitStructTok(&t);
+        filtctrl(&t);
     }
 
     /* Emit EOF token */
@@ -203,21 +266,8 @@ main(int argc, char **argv)
 #endif
 
     /* Open output files */
-    lexFd = creat(lexFile, 0644);
-    if (lexFd < 0) {
-        char buf[140];
-        fmtstr(buf, "cannot create: %s\n", lexFile);
-        errout(buf);
-        exit(1);
-    }
-
-    ppFd = creat(ppFile, 0644);
-    if (ppFd < 0) {
-        char buf[140];
-        fmtstr(buf, "cannot create: %s\n", ppFile);
-        errout(buf);
-        exit(1);
-    }
+    lexFd = opcreat(lexFile);
+    ppFd = opcreat(ppFile);
 
     /* Add include paths - current directory first, then -I paths */
     addInclude("");  /* Current directory */

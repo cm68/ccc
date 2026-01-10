@@ -87,6 +87,15 @@ struct include {
     struct include *next;
 } *includes;
 
+static void
+die(char *fmt, char *arg)
+{
+    char buf[140];
+    fmtstr(buf, fmt, arg);
+    write(2, buf, strlen(buf));
+    exit(1);
+}
+
 /*
  * System include path for #include <foo.h>
  */
@@ -147,12 +156,8 @@ pushfile(char *name)
 
     t = malloc(sizeof(*t));
     t->fd = open(name, 0);
-    if (t->fd < 0) {
-        char buf[140];
-        fmtstr(buf, "cannot open: %s\n", name);
-        write(2, buf, strlen(buf));
-        exit(1);
-    }
+    if (t->fd < 0)
+        die("cannot open: %s\n", name);
     t->name = strdup(name);
     t->offset = t->valid = 0;
     t->lineno = 1;
@@ -223,39 +228,26 @@ insertfile(char *name, int sys)
      * For system includes (<foo.h>), try system include path first
      */
     if (sys && sysIncPath) {
-        strcpy(namebuf, sysIncPath);
-        strcat(namebuf, "/");
-        strcat(namebuf, name);
+        fmtstr(namebuf, "%s/%s", sysIncPath, name);
         t->fd = open(namebuf, 0);
-        if (t->fd > 0) {
+        if (t->fd > 0)
             goto found;
-        }
     }
 
     /*
      * try the filename in all the include path entries. first hit wins
      */
     for (i = includes; i; i = i->next) {
-        if (i->path[0]) {
-            strcpy(namebuf, i->path);
-            strcat(namebuf, "/");
-            strcat(namebuf, name);
-        } else {
-            /* Empty path means current directory - use name as-is */
+        if (i->path[0])
+            fmtstr(namebuf, "%s/%s", i->path, name);
+        else
             strcpy(namebuf, name);
-        }
         t->fd = open(namebuf, 0);
-        if (t->fd > 0) {
+        if (t->fd > 0)
             break;
-        }
     }
-    if (t->fd == -1) {
-        char buf[140];
-        free(t);
-        fmtstr(buf, "cannot find include file: %s\n", name);
-        write(2, buf, strlen(buf));
-        exit(1);
-    }
+    if (t->fd == -1)
+        die("cannot find include file: %s\n", name);
 found:
 	t->name = strdup(namebuf);
 	t->offset = 0;
@@ -480,10 +472,7 @@ again:
         }
     }
     free(t->storage);
-    if (tbtop) {
-        free(t->name);
-    }
-    /* else: keep t->name - filename still points to it */
+    /* Don't free t->name - tokens may still reference it */
     free(t);
     if (!tbtop) {
         /* No parent textbuf, we're at EOF */

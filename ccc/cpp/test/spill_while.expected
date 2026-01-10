@@ -1,18 +1,23 @@
 # 1 "spill_while.c"
 # +1
+main ( ) 
 # +1
-main ( ) {
+{
 # +1
 int x ;
 # +1
 x = 0 ;
-# +1
+# 8 "spill_while.c"
 {
-__W1T : ;
-if ( ! ( # 6 "spill_while.c"
-x < 100 ) ) {
+__W1T: ;
+if ( ! ( 
+# 6 "spill_while.c"
+x < 100 
+# 8 "spill_while.c"
+) ) {
 goto __W1B ;
 }
+# 6 "spill_while.c"
 {
 # 8 "spill_while.c"
 x = x + 1 ;
@@ -116,10 +121,10 @@ x = x + 49 ;
 x = x + 50 ;
 # +1
 }
-goto __W1T ;
-__W1B : ;
-}
 # +1
+goto __W1T ;
+__W1B: ;
+}
 return x ;
 # +1
 }

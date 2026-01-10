@@ -57,28 +57,37 @@ emitKeyword(unsigned char kwtok)
 }
 
 /*
- * Emit symbol: SYM(20) + len byte + name bytes
+ * Emit name token: tok + len byte + name bytes
  */
-void
-emitSym(char *name)
+static void
+emitName(unsigned char tok, char *name)
 {
     unsigned char hdr[2];
     int len = strlen(name);
     if (len > 255) len = 255;
-    hdr[0] = SYM;
+    hdr[0] = tok;
     hdr[1] = len;
     outbufWrite(hdr, 2);
     outbufWrite(name, len);
 }
 
 /*
- * Emit number: NUMBER(21) + 4-byte little-endian value
+ * Emit symbol: SYM(20) + len byte + name bytes
  */
 void
-emitNumber(long val)
+emitSym(char *name)
+{
+    emitName(SYM, name);
+}
+
+/*
+ * Emit 4-byte little-endian value with tag
+ */
+static void
+emit4(unsigned char tag, unsigned long val)
 {
     unsigned char buf[5];
-    buf[0] = NUMBER;
+    buf[0] = tag;
     buf[1] = val & 0xff;
     buf[2] = (val >> 8) & 0xff;
     buf[3] = (val >> 16) & 0xff;
@@ -86,21 +95,18 @@ emitNumber(long val)
     outbufWrite(buf, 5);
 }
 
-/*
- * Emit float: FNUMBER(23) + 4-byte IEEE754 bits (little-endian)
- */
+void
+emitNumber(long val)
+{
+    emit4(NUMBER, (unsigned long)val);
+}
+
 void
 emitFNumber(float val)
 {
-    unsigned char buf[5];
     union { float f; unsigned long l; } u;
     u.f = val;
-    buf[0] = FNUMBER;
-    buf[1] = u.l & 0xff;
-    buf[2] = (u.l >> 8) & 0xff;
-    buf[3] = (u.l >> 16) & 0xff;
-    buf[4] = (u.l >> 24) & 0xff;
-    outbufWrite(buf, 5);
+    emit4(FNUMBER, u.l);
 }
 
 /*
@@ -143,13 +149,7 @@ emitAsmString(char *str, int len)
 void
 emitLabel(char *name)
 {
-    unsigned char hdr[2];
-    int len = strlen(name);
-    if (len > 255) len = 255;
-    hdr[0] = LABEL;
-    hdr[1] = len;
-    outbufWrite(hdr, 2);
-    outbufWrite(name, len);
+    emitName(LABEL, name);
 }
 
 /*
@@ -259,6 +259,11 @@ kw2str(unsigned char kw)
     case RETURN: return "return";
     case GOTO: return "goto";
     case ASM: return "asm";
+    case SIZEOF_KW: return "sizeof";
+    case CONST: return "const";
+    case VOLATILE: return "volatile";
+    case SIGNED: return "signed";
+    case SHORT: return "short";
     default: return "?kw?";
     }
 }
@@ -448,5 +453,11 @@ emitStructTok(struct token *t)
             }
             break;
         }
+    }
+
+    /* Free STRING memory after emission - only used once */
+    if (t->type == STRING && t->v.str) {
+        free(t->v.str);
+        t->v.str = NULL;
     }
 }

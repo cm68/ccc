@@ -33,6 +33,10 @@ get_input(void)
 }
 
 /* External filter functions */
+extern void filtknr_init(struct token (*up)(void));
+extern struct token filtknr(void);
+extern void filtdecl_init(struct token (*up)(void));
+extern struct token filtdecl(void);
 extern void filtbrace_init(struct token (*up)(void));
 extern struct token filtbrace(void);
 extern void filtctrl_init(struct token (*up)(void));
@@ -70,6 +74,16 @@ static const char *tokname(int t)
 	case EQ: return "==";
 	case ASSIGN: return "=";
 	case PREINC: return "++";
+	case COMMA: return ",";
+	case STAR: return "*";
+	case INT: return "int";
+	case CHAR: return "char";
+	case VOID: return "void";
+	case SHORT: return "short";
+	case LONG: return "long";
+	case UNSIGNED: return "unsigned";
+	case STATIC: return "static";
+	case TYPEDEF: return "typedef";
 	default: return "?";
 	}
 }
@@ -117,6 +131,16 @@ parse_tok(const char *s)
 	else if (strcmp(s, "=") == 0) t.type = ASSIGN;
 	else if (strcmp(s, "++") == 0) t.type = PREINC;
 	else if (strcmp(s, "!") == 0) t.type = NOT;
+	else if (strcmp(s, ",") == 0) t.type = COMMA;
+	else if (strcmp(s, "*") == 0) t.type = STAR;
+	else if (strcmp(s, "int") == 0) t.type = INT;
+	else if (strcmp(s, "char") == 0) t.type = CHAR;
+	else if (strcmp(s, "void") == 0) t.type = VOID;
+	else if (strcmp(s, "short") == 0) t.type = SHORT;
+	else if (strcmp(s, "long") == 0) t.type = LONG;
+	else if (strcmp(s, "unsigned") == 0) t.type = UNSIGNED;
+	else if (strcmp(s, "static") == 0) t.type = STATIC;
+	else if (strcmp(s, "typedef") == 0) t.type = TYPEDEF;
 	else if (s[0] >= '0' && s[0] <= '9') {
 		t.type = NUMBER;
 		t.v.numeric = atol(s);
@@ -132,10 +156,13 @@ main(int argc, char **argv)
 {
 	char line[256];
 	struct token t;
-	int brace_only = 0;
+	int mode = 0;	/* 0=full, 1=brace, 2=decl, 3=knr */
 
-	if (argc > 1 && strcmp(argv[1], "-b") == 0)
-		brace_only = 1;
+	if (argc > 1) {
+		if (strcmp(argv[1], "-b") == 0) mode = 1;
+		else if (strcmp(argv[1], "-d") == 0) mode = 2;
+		else if (strcmp(argv[1], "-k") == 0) mode = 3;
+	}
 
 	/* Read tokens from stdin */
 	while (fgets(line, sizeof(line), stdin)) {
@@ -152,12 +179,29 @@ main(int argc, char **argv)
 	printf("\n");
 
 	/* Initialize filter chain */
-	filtbrace_init(get_input);
-	if (brace_only) {
+	if (mode == 3) {
+		/* K&R filter only */
+		filtknr_init(get_input);
+		printf("After filtknr: ");
+		while ((t = filtknr()).type != 0)
+			print_token(t);
+	} else if (mode == 2) {
+		/* Decl filter only */
+		filtdecl_init(get_input);
+		printf("After filtdecl: ");
+		while ((t = filtdecl()).type != 0)
+			print_token(t);
+	} else if (mode == 1) {
+		/* Brace filter only */
+		filtbrace_init(get_input);
 		printf("After filtbrace: ");
 		while ((t = filtbrace()).type != 0)
 			print_token(t);
 	} else {
+		/* Full pipeline: knr -> decl -> brace -> ctrl */
+		filtknr_init(get_input);
+		filtdecl_init(filtknr);
+		filtbrace_init(filtdecl);
 		filtctrl_init(filtbrace);
 		printf("After filtctrl: ");
 		while ((t = filtctrl()).type != 0)
