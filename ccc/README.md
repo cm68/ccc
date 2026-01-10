@@ -245,12 +245,9 @@ FUNCTION main() -> _short_
     DECL a : _short_
     DECL b : _short_
     DECL c : _short_
-    EXPR:
-      (ASSIGN:short $a (NARROW:short 10))
-    EXPR:
-      (ASSIGN:short $b (NARROW:short 20))
-    EXPR:
-      (ASSIGN:short $c (ADD (DEREF:short $a) (DEREF:short $b)))
+    (ASSIGN:short $a (NARROW:short 10))
+    (ASSIGN:short $b (NARROW:short 20))
+    (ASSIGN:short $c (ADD (DEREF:short $a) (DEREF:short $b)))
     RETURN (DEREF:short $c)
   }
 }

@@ -88,7 +88,7 @@ FUNCTION _main(argc:short@IY+4, argv:ptr@BC) -> short [frame=0]
   LOCALS: result:short@IY-2
 {
   BLOCK {
-    EXPR (ASSIGN:short $result 42:short)
+    (ASSIGN:short $result 42:short)
     RETURN (DEREF:short $result)
   }
 }
@@ -177,7 +177,6 @@ so they never appear in the AST.
 | Opcode | Pretty Name | Description |
 |--------|-------------|-------------|
 | `B` | BLOCK | Block statement |
-| `E` | EXPR | Expression statement |
 | `R` | RETURN | Return statement |
 | `I` | IF | If/else conditional |
 | `S` | SWITCH | Switch statement |
@@ -231,7 +230,7 @@ FUNCTION _main() -> short [frame=2]
   LOCALS: x:short@IY-2
 {
   BLOCK {
-    EXPR (ASSIGN:short (LOCALVAR:short -2) 10:short)
+    (ASSIGN:short (LOCALVAR:short -2) 10:short)
     RETURN (ADD:short (LOCALVAR:short -2) 5:short)
   }
 }

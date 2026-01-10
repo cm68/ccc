@@ -266,7 +266,6 @@ are handled by cpp during loop lowering. Pass1 only tracks switch contexts.
 | RETURN| `R`  | Return |
 | GOTO  | `G`  | Goto (includes lowered break/continue) |
 | LABEL | `L`  | Label (includes cpp-generated loop labels) |
-| EXPR  | `E`  | Expression statement |
 | ASM   | `A`  | Inline assembly |
 
 Note: WHILE, FOR, DO, CONTINUE are never seen by pass1 - they are

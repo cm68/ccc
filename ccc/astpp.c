@@ -487,11 +487,7 @@ static void parseStmt(void) {
 
     /* Expression statement - unrecognized opcode is start of expression */
     unread();
-    {
-        char *e = getExpr();
-        sprintf(lineBuf, "EXPR %s", e);
-        prln(lineBuf);
-    }
+    prln(getExpr());
 }
 
 static void parseInit(void);

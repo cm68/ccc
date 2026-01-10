@@ -215,7 +215,6 @@ The AST is emitted as a compact binary format:
 - `IF` (147) - If statement
 - `GOTO` (145) - Goto
 - `LABEL` (112) - Label
-- `EXPR` (202) - Expression statement
 - `RETURN` (146) - Return
 - `SWITCH` (150) - Switch
 - `CASE` (151) - Case

@@ -126,7 +126,6 @@
 /* Internal tokens - not from lexer, used in AST (200+) */
 #define TOK_NONE    200
 #define DEREF       201
-#define EXPR        202
 #define NEG         203
 #define NOT         204
 #define CALL        205
