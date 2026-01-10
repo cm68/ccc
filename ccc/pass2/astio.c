@@ -12,6 +12,7 @@
 
 int infd;
 int outfd;
+static int pushback = -1;
 
 void
 out(char *s)
@@ -41,13 +42,24 @@ unsigned char
 read1(void)
 {
 	unsigned char c;
-	c = read(infd, &c, 1) == 1 ? c : E_O_F;
+	if (pushback >= 0) {
+		c = pushback;
+		pushback = -1;
+	} else {
+		c = read(infd, &c, 1) == 1 ? c : E_O_F;
+	}
 #ifdef DEBUG
 	if (VERBOSE(V_IO))
 		fprintf(stderr, "read1: %d (0x%02x) '%c'\n", c, c,
 			(c >= 32 && c < 127) ? c : '.');
 #endif
 	return c;
+}
+
+void
+unread1(unsigned char c)
+{
+	pushback = c;
 }
 
 unsigned short

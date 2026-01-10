@@ -609,6 +609,9 @@ parseExpr(unsigned char pri)
 #endif
             } else {
                 /* Not a function call - report error */
+#ifdef DEBUG
+                fdprintf(2, "bad op (not fn): %d sym=%s\n", cur.type, symname);
+#endif
                 gripe(ER_E_UO);
                 e = mkexprI(CONST, 0, inttype, 0, 0);
                 free(symname);
@@ -748,6 +751,9 @@ parseExpr(unsigned char pri)
             FreeExpr(e1);
         }
         e = mkexprI(CONST, 0, inttype, t ? t->size : 0, E_CONST);
+#ifdef DEBUG
+        if (!t) fdprintf(2, "bad op (sizeof): no type\n");
+#endif
         if (!t) gripe(ER_E_UO);
         break;
 
@@ -759,6 +765,9 @@ parseExpr(unsigned char pri)
         break;
 
 	default:
+#ifdef DEBUG
+		fdprintf(2, "bad op (expr): %d\n", cur.type);
+#endif
 		gripe(ER_E_UO);
 		return 0;
     }
@@ -868,6 +877,9 @@ parseExpr(unsigned char pri)
             gettoken();  // consume '.' or '->'
 
             if (cur.type != SYM) {
+#ifdef DEBUG
+                fdprintf(2, "bad op (member): %d\n", cur.type);
+#endif
                 gripe(ER_E_UO);
                 break;
             }
@@ -900,6 +912,9 @@ parseExpr(unsigned char pri)
             }
 
             if (!np) {
+#ifdef DEBUG
+                fdprintf(2, "bad op (no member): %s\n", cur.v.name);
+#endif
                 gripe(ER_E_UO);
                 gettoken();
                 e = mkexprI(CONST, 0, NULL, 0, 0);

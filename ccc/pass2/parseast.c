@@ -3,6 +3,7 @@
  */
 #include "pass2.h"
 #include "expr.h"
+#include "../cpp/lexeme.h"
 #include <stdio.h>
 
 #ifdef DEBUG
@@ -12,17 +13,16 @@ static char *
 stmtname(int op)
 {
 	switch (op) {
-	case 'B': return "BLOCK";
-	case 'I': return "IF";
-	case 'R': return "RETURN";
-	case 'E': return "EXPR";
-	case 'L': return "LABEL";
-	case 'G': return "GOTO";
-	case 'S': return "SWITCH";
-	case 'C': return "CASE";
-	case 'O': return "DEFAULT";
-	case 'F': return "FUNC";
-	default:  return "???";
+	case AST_BLOCK: return "BLOCK";
+	case IF: return "IF";
+	case RETURN: return "RETURN";
+	case LABEL: return "LABEL";
+	case GOTO: return "GOTO";
+	case SWITCH: return "SWITCH";
+	case CASE: return "CASE";
+	case DEFAULT: return "DEFAULT";
+	case AST_FUNC: return "FUNC";
+	default:  return "EXPR";
 	}
 }
 #endif
@@ -42,7 +42,7 @@ parseStmt(void)
 	out("; stmt "); out(stmtname(op)); outc('\n');
 #endif
 	switch (op) {
-	case 'B':
+	case AST_BLOCK:
 		read1();
 		n = read1();
 #ifdef DEBUG
@@ -53,7 +53,7 @@ parseStmt(void)
 		for (i = 0; i < n; i++)
 			parseStmt();
 		return;
-	case 'I':
+	case IF:
 		n = read1();
 #ifdef DEBUG
 		if (VERBOSE(V_STMT))
@@ -72,7 +72,7 @@ parseStmt(void)
 		if (read1())
 			parseStmt();
 		return;
-	case 'R':
+	case RETURN:
 		n = read1();
 #ifdef DEBUG
 		if (VERBOSE(V_STMT))
@@ -90,22 +90,7 @@ parseStmt(void)
 			}
 		}
 		return;
-	case 'E':
-#ifdef DEBUG
-		if (VERBOSE(V_STMT))
-			fprintf(stderr, "  EXPR\n");
-		out("; EXPR\n");
-#endif
-		e = readexpr();
-		if (e) {
-			setdest(e, DEST_NONE);
-#ifdef DEBUG
-			dumpexpr(e);
-#endif
-			freeexpr(e);
-		}
-		return;
-	case 'L':
+	case LABEL:
 		readS(buf);
 #ifdef DEBUG
 		if (VERBOSE(V_STMT))
@@ -113,7 +98,7 @@ parseStmt(void)
 		out("; LABEL "); out(buf); outc('\n');
 #endif
 		return;
-	case 'G':
+	case GOTO:
 		readS(buf);
 #ifdef DEBUG
 		if (VERBOSE(V_STMT))
@@ -121,7 +106,7 @@ parseStmt(void)
 		out("; GOTO "); out(buf); outc('\n');
 #endif
 		return;
-	case 'S':
+	case SWITCH:
 		read1();
 		n = read1();
 #ifdef DEBUG
@@ -140,7 +125,7 @@ parseStmt(void)
 		for (i = 0; i < n; i++)
 			parseStmt();
 		return;
-	case 'C':
+	case CASE:
 		n = read1();
 #ifdef DEBUG
 		if (VERBOSE(V_STMT))
@@ -157,7 +142,7 @@ parseStmt(void)
 		for (i = 0; i < n; i++)
 			parseStmt();
 		return;
-	case 'O':
+	case DEFAULT:
 		n = read1();
 #ifdef DEBUG
 		if (VERBOSE(V_STMT))
@@ -166,6 +151,23 @@ parseStmt(void)
 #endif
 		for (i = 0; i < n; i++)
 			parseStmt();
+		return;
+	default:
+		/* Expression statement - op byte is start of expression */
+		unread1(op);
+#ifdef DEBUG
+		if (VERBOSE(V_STMT))
+			fprintf(stderr, "  EXPR\n");
+		out("; EXPR\n");
+#endif
+		e = readexpr();
+		if (e) {
+			setdest(e, DEST_NONE);
+#ifdef DEBUG
+			dumpexpr(e);
+#endif
+			freeexpr(e);
+		}
 		return;
 	}
 }
@@ -186,7 +188,7 @@ parse(void)
 		out("; top "); out(stmtname(op)); outc('\n');
 #endif
 		switch (op) {
-		case 'F':
+		case AST_FUNC:
 			t = read1();
 			readS(buf);
 #ifdef DEBUG
@@ -204,7 +206,7 @@ parse(void)
 #endif
 			n += i;
 			while (n--) {
-				read1();
+				read1();  /* AST_DECL */
 				t = read1();
 				readS(buf);
 #ifdef DEBUG

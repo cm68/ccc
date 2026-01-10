@@ -92,21 +92,21 @@ struct expr {
  */
 #define	PRI_ALL        0   /* parse all operators regardless of precedence */
 
-#define OP_PRI_NONE    0   /* not an operator */
-#define OP_PRI_PRIM 1   /* postfix/member access: . -> [] () */
-#define OP_PRI_MULT    3   /* multiplicative: * / % */
-#define OP_PRI_ADD     4   /* additive: + - */
-#define OP_PRI_SHIFT   5   /* bitwise shift: << >> */
-#define OP_PRI_REL     6   /* relational: < <= > >= */
-#define OP_PRI_EQUAL   7   /* equality: == != */
-#define OP_PRI_BITAND  8   /* bitwise AND: & */
-#define OP_PRI_BITXOR  9   /* bitwise XOR: ^ */
-#define OP_PRI_BITOR   10  /* bitwise OR: | */
-#define OP_PRI_LOGAND  11  /* logical AND: && */
-#define OP_PRI_LOGOR   12  /* logical OR: || */
-#define OP_PRI_COND    13  /* conditional: ?: */
-#define OP_PRI_ASSIGN  14  /* assignment: = += -= *= /= %= &= |= ^= <<= >>= */
-#define OP_PRI_COMMA   15  /* comma: , */
+#define OP_PRI_NONE     0   /* not an operator */
+#define OP_PRI_PRIM     1   /* postfix/member access: . -> [] () */
+#define OP_PRI_MULT     3   /* multiplicative: * / % */
+#define OP_PRI_ADD      4   /* additive: + - */
+#define OP_PRI_SHIFT    5   /* bitwise shift: << >> */
+#define OP_PRI_REL      6   /* relational: < <= > >= */
+#define OP_PRI_EQUAL    7   /* equality: == != */
+#define OP_PRI_BITAND   8   /* bitwise AND: & */
+#define OP_PRI_BITXOR   9   /* bitwise XOR: ^ */
+#define OP_PRI_BITOR   10   /* bitwise OR: | */
+#define OP_PRI_LOGAND  11   /* logical AND: && */
+#define OP_PRI_LOGOR   12   /* logical OR: || */
+#define OP_PRI_COND    13   /* conditional: ?: */
+#define OP_PRI_ASSIGN  14   /* assignment: = += -= *= /= %= &= |= ^= <<= >>= */
+#define OP_PRI_COMMA   15   /* comma: , */
 
 extern struct expr *mkexpr(unsigned char op, struct expr *left);
 extern struct expr *mkexprI(unsigned char op, struct expr *left,
@@ -287,6 +287,7 @@ struct swtab {
     unsigned char count;    /* number of cases */
     unsigned char num;      /* switch number (for labels) */
     unsigned char base_stmts; /* stmt_count at start of current case */
+    unsigned char final_cnt;  /* stmt_count when switch body ends */
 };
 
 /* Global case pool - all switches share this */
@@ -333,9 +334,10 @@ void resetCounts(void);
 void resetCountIdx(void);  /* Reset read pointer for phase 2 */
 
 /* Block statement counts (phase 1 -> phase 2) */
+void enterBlkCnt(void);  /* call when entering block in phase 1 */
 void pushBlkCnt(unsigned char n);
 unsigned char popBlkCnt(void);
-void flipBlkCnts(void);  /* reverse for phase 2 */
+void flipBlkCnts(void);  /* prepare for phase 2 */
 void resetBlkCnts(void);
 void pushFuncCnt(unsigned char n);
 unsigned char popFuncCnt(void);
@@ -392,12 +394,17 @@ void emitS(char *s);
 /* Assembly output helpers (write to asmFd) */
 void asmStr(char *s);
 void asmLine(char *s);
-void asmGlobl(char *name);
 void asmLabel(char *name);
 void asmDb(int val);
 void asmDw(int val);
 void asmDwSym(char *name);
 void asmDs(int size);
+
+/* Segment tracking */
+#define SEG_TEXT 0
+#define SEG_DATA 1
+#define SEG_BSS  2
+void setSeg(unsigned char seg);
 
 /* debug options */
 #ifdef DEBUG

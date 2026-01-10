@@ -158,6 +158,7 @@ doInitlzr(struct name *v)
                         int slen = (unsigned char)str[0];
                         int i;
                         fmtstr(strname, "str%d", globalStrCtr++);
+                        setSeg(SEG_TEXT);
                         asmLabel(strname);
                         for (i = 0; i < slen; i++)
                             asmDb((unsigned char)str[i + 1]);
@@ -175,6 +176,7 @@ doInitlzr(struct name *v)
                 int slen = (unsigned char)str[0];
                 int i;
                 fmtstr(strname, "str%d", globalStrCtr++);
+                setSeg(SEG_TEXT);
                 asmLabel(strname);
                 for (i = 0; i < slen; i++)
                     asmDb((unsigned char)str[i + 1]);
@@ -188,19 +190,14 @@ doInitlzr(struct name *v)
     }
 
     /* Phase 2: emit assembly directly */
+    setSeg(SEG_DATA);
 
-    /* Build variable name */
+    /* Build label: globals get ::, statics get : */
     if (v->sclass & SC_STATIC)
-        fmtstr(fullname, "S%d", v->static_id - 1);
+        fmtstr(fullname, "S%d:", v->static_id - 1);
     else
-        fmtstr(fullname, "_%s", v->name);
-
-    /* Emit .globl for non-static */
-    if (!(v->sclass & SC_STATIC))
-        asmGlobl(fullname);
-
-    /* Emit variable label */
-    asmLabel(fullname);
+        fmtstr(fullname, "_%s::", v->name);
+    asmLine(fullname);
 
     /* Stream initializer and fix array size if needed */
     {

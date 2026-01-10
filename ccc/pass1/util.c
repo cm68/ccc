@@ -270,12 +270,6 @@ void asmLine(char *s)
 	write(asmFd, "\n", 1);
 }
 
-void asmGlobl(char *name)
-{
-	asmStr("\t.globl ");
-	asmLine(name);
-}
-
 void asmLabel(char *name)
 {
 	asmStr(name);
@@ -307,6 +301,21 @@ void asmDs(int size)
 	char buf[16];
 	fmtstr(buf, "\t.ds %d", size);
 	asmLine(buf);
+}
+
+/* Segment tracking - emit .text/.data/.bss only when segment changes */
+static unsigned char curSeg = 0;  /* SEG_TEXT */
+
+void setSeg(unsigned char seg)
+{
+	if (seg == curSeg)
+		return;
+	curSeg = seg;
+	switch (seg) {
+	case 0: asmLine("\t.text"); break;  /* SEG_TEXT */
+	case 1: asmLine("\t.data"); break;  /* SEG_DATA */
+	case 2: asmLine("\t.bss"); break;   /* SEG_BSS */
+	}
 }
 
 /*

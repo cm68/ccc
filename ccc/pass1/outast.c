@@ -369,6 +369,7 @@ emitGlobalAsm(char *text)
 
 	if (!text)
 		return;
+	setSeg(SEG_TEXT);
 	asmLine(text);
 }
 
@@ -457,7 +458,8 @@ emitStrLit(struct name *strname)
 	len = (unsigned char)str[0];
 	data = (unsigned char *)str + 1;
 
-	/* Output label and string bytes */
+	/* Output label and string bytes in text segment */
+	setSeg(SEG_TEXT);
 	asmLabel(strname->name);
 	for (i = 0; i < len; i++)
 		asmDb(data[i]);
@@ -481,11 +483,11 @@ emitGv(struct name *var)
 	if (!var)
 		return;
 
-	/* Build name: static uses S<id>, public gets underscore prefix */
+	/* Build label: globals get ::, statics get : */
 	if (var->sclass & SC_STATIC)
-		fmtstr(fullname, "S%d", var->static_id - 1);
+		fmtstr(fullname, "S%d:", var->static_id - 1);
 	else
-		fmtstr(fullname, "_%s", var->name);
+		fmtstr(fullname, "_%s::", var->name);
 
 	/* Calculate total size */
 	if (var->type->flags & TF_ARRAY)
@@ -493,15 +495,10 @@ emitGv(struct name *var)
 	else
 		size = var->type->size;
 
-	/* Emit .globl for non-static */
-	if (!(var->sclass & SC_STATIC))
-		asmGlobl(fullname);
-
 	/* Uninitialized variable - use .bss */
-	asmLine("\t.bss");
-	asmLabel(fullname);
+	setSeg(SEG_BSS);
+	asmLine(fullname);
 	asmDs(size);
-	asmLine("\t.text");
 }
 
 /*

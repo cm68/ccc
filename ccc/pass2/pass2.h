@@ -29,6 +29,7 @@ extern int outfd;
 
 /* AST I/O */
 unsigned char read1(void);
+void unread1(unsigned char c);
 unsigned short read2(void);
 unsigned long read4(void);
 void readS(char *buf);
