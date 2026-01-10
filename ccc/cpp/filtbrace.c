@@ -154,6 +154,10 @@ filtbrace(void)
 
 	t = upstream();
 
+	/* EOF - return it directly */
+	if (t.type == 0)
+		return t;
+
 	switch (state) {
 	case ST_NORMAL:
 		if (t.type == IF || t.type == WHILE || t.type == FOR) {

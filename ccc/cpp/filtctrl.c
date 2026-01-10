@@ -100,22 +100,22 @@ static struct token synth(unsigned char type) {
 }
 
 static struct token synth_label(char prefix, int num, char suffix) {
-	static char buf[16];
+	char buf[16];
 	struct token t;
 	sprintf(buf, "__%c%d%c", prefix, num, suffix);
 	t.type = LABEL;
-	t.v.name = buf;
+	t.v.name = strdup(buf);
 	t.lineno = lineno;
 	t.filename = filename;
 	return t;
 }
 
 static struct token synth_sym(char prefix, int num, char suffix) {
-	static char buf[16];
+	char buf[16];
 	struct token t;
 	sprintf(buf, "__%c%d%c", prefix, num, suffix);
 	t.type = SYM;
-	t.v.name = buf;
+	t.v.name = strdup(buf);
 	t.lineno = lineno;
 	t.filename = filename;
 	return t;
@@ -246,10 +246,19 @@ static void emit_switch_end(void) {
 
 /*
  * Find innermost breakable context and emit appropriate goto.
+ * Check current context first, then stack.
  * Returns 1 if handled, 0 if no context (shouldn't happen).
  */
 static int emit_break(void) {
 	int i;
+	/* Check current context first */
+	if (cur_ctx == CTX_WHILE || cur_ctx == CTX_FOR ||
+	    cur_ctx == CTX_DO || cur_ctx == CTX_SWITCH) {
+		pend_push(synth(GOTO));
+		pend_push(synth_sym(ctx_prefix(cur_ctx), label_num, 'B'));
+		return 1;
+	}
+	/* Then check stack */
 	for (i = stk_sp - 1; i >= 0; i--) {
 		unsigned char t = stk[i].ctx_type;
 		if (t == CTX_WHILE || t == CTX_FOR || t == CTX_DO || t == CTX_SWITCH) {
@@ -263,10 +272,23 @@ static int emit_break(void) {
 
 /*
  * Find innermost loop and emit continue goto.
+ * Check current context first, then stack.
  * Returns 1 if handled, 0 if not in a loop.
  */
 static int emit_continue(void) {
 	int i;
+	/* Check current context first */
+	if (cur_ctx == CTX_WHILE || cur_ctx == CTX_DO) {
+		pend_push(synth(GOTO));
+		pend_push(synth_sym(ctx_prefix(cur_ctx), label_num, 'T'));
+		return 1;
+	}
+	if (cur_ctx == CTX_FOR) {
+		pend_push(synth(GOTO));
+		pend_push(synth_sym('F', label_num, 'C'));
+		return 1;
+	}
+	/* Then check stack (skip current switch if any) */
 	for (i = stk_sp - 1; i >= 0; i--) {
 		unsigned char t = stk[i].ctx_type;
 		if (t == CTX_WHILE || t == CTX_DO) {
@@ -348,6 +370,10 @@ filtctrl(void)
 		return pend_pop();
 
 	t = upstream();
+
+	/* EOF - return it directly */
+	if (t.type == 0)
+		return t;
 
 	switch (state) {
 	case ST_NORMAL:
@@ -495,6 +521,7 @@ filtctrl(void)
 			if (depth == 0) {
 				state = ST_SW_BODY;
 				body_depth = 0;
+				cur_ctx = CTX_SWITCH;
 			}
 		}
 		return t;
