@@ -21,9 +21,23 @@
 int nflag;         /* suppress sync points */
 int outlines;      /* output line counter */
 int lastsync;      /* output line of last sync point */
+int depth;         /* brace depth for indentation */
+int atbol = 1;     /* at beginning of line */
 long srcline;      /* current source line from LINENO/NEWLINE */
 char srcfile[256]; /* current source file from LINENO */
 char lastfile[256];/* file at last sync point */
+
+/*
+ * Emit indentation spaces
+ */
+static void
+doindent(void)
+{
+    int i;
+    for (i = 0; i < depth * 4; i++)
+        putchar(' ');
+    atbol = 0;
+}
 
 /*
  * Emit a sync point if needed (file changed or interval reached)
@@ -40,6 +54,7 @@ maybesync(int force)
         outlines++;
         lastsync = outlines;
         strcpy(lastfile, srcfile);
+        atbol = 1;
     }
 }
 
@@ -51,7 +66,18 @@ outnl(void)
 {
     putchar('\n');
     outlines++;
+    atbol = 1;
     maybesync(0);
+}
+
+/*
+ * Emit indent if at beginning of line
+ */
+static void
+needindent(void)
+{
+    if (atbol)
+        doindent();
 }
 
 int
@@ -115,33 +141,44 @@ usage:
             goto done;
 
         case SEMI:
+            needindent();
             printf(";");
             outnl();
             continue;
         case BEGIN:
+            needindent();
             printf("{");
+            depth++;
             outnl();
             continue;
         case END:
+            depth--;
+            needindent();
             printf("}");
             outnl();
             continue;
         case LBRACK:
+            needindent();
             printf("[ ");
             break;
         case RBRACK:
+            needindent();
             printf("] ");
             break;
         case LPAR:
+            needindent();
             printf("( ");
             break;
         case RPAR:
+            needindent();
             printf(") ");
             break;
         case COLON:
+            needindent();
             printf(": ");
             break;
         case COMMA:
+            needindent();
             printf(", ");
             break;
 
@@ -152,6 +189,7 @@ usage:
             for (i = 0; i < len; i++)
                 buf[i] = fgetc(f);
             buf[len] = 0;
+            needindent();
             printf("%s ", buf);
             break;
 
@@ -161,6 +199,7 @@ usage:
             val |= (fgetc(f) & 0xff) << 8;
             val |= (long)(fgetc(f) & 0xff) << 16;
             val |= (long)(fgetc(f) & 0xff) << 24;
+            needindent();
             printf("%ld ", val);
             break;
 
@@ -169,6 +208,7 @@ usage:
             u.l |= (fgetc(f) & 0xff) << 8;
             u.l |= (long)(fgetc(f) & 0xff) << 16;
             u.l |= (long)(fgetc(f) & 0xff) << 24;
+            needindent();
             printf("%g ", u.f);
             break;
 
@@ -176,6 +216,7 @@ usage:
             /* 2-byte little-endian length + text */
             len = fgetc(f) & 0xff;
             len |= (fgetc(f) & 0xff) << 8;
+            needindent();
             printf("\"");
             for (i = 0; i < len; i++) {
                 int ch = fgetc(f);
@@ -190,10 +231,17 @@ usage:
             break;
 
         case LABEL:
+            /* Labels outdented by one level */
             len = fgetc(f);
             for (i = 0; i < len; i++)
                 buf[i] = fgetc(f);
             buf[len] = 0;
+            if (atbol) {
+                int j;
+                for (j = 0; j < (depth - 1) * 4; j++)
+                    putchar(' ');
+                atbol = 0;
+            }
             printf("%s: ", buf);
             break;
 
@@ -201,6 +249,7 @@ usage:
             /* 2-byte little-endian length + text */
             len = fgetc(f) & 0xff;
             len |= (fgetc(f) & 0xff) << 8;
+            needindent();
             printf("{ ");
             for (i = 0; i < len; i++) {
                 int ch = fgetc(f);
@@ -230,51 +279,52 @@ usage:
                 maybesync(1);
             continue;
 
-        case INCR:   printf("++ "); break;
-        case DECR:   printf("-- "); break;
-        case BANG:   printf("! "); break;
-        case AMPER:  printf("& "); break;
-        case STAR:   printf("* "); break;
-        case TWIDDLE: printf("~ "); break;
-        case DOT:    printf(". "); break;
-        case PLUS:   printf("+ "); break;
-        case MINUS:  printf("- "); break;
-        case TIMES:  printf("* "); break;
-        case DIV:    printf("/ "); break;
-        case MOD:    printf("%% "); break;
-        case RSHIFT: printf(">> "); break;
-        case LSHIFT: printf("<< "); break;
-        case AND:    printf("& "); break;
-        case OR:     printf("| "); break;
-        case XOR:    printf("^ "); break;
-        case ARROW:  printf("-> "); break;
-        case LAND:   printf("&& "); break;
-        case LOR:    printf("|| "); break;
+        case INCR:   needindent(); printf("++ "); break;
+        case DECR:   needindent(); printf("-- "); break;
+        case BANG:   needindent(); printf("! "); break;
+        case AMPER:  needindent(); printf("& "); break;
+        case STAR:   needindent(); printf("* "); break;
+        case TWIDDLE: needindent(); printf("~ "); break;
+        case DOT:    needindent(); printf(". "); break;
+        case PLUS:   needindent(); printf("+ "); break;
+        case MINUS:  needindent(); printf("- "); break;
+        case TIMES:  needindent(); printf("* "); break;
+        case DIV:    needindent(); printf("/ "); break;
+        case MOD:    needindent(); printf("%% "); break;
+        case RSHIFT: needindent(); printf(">> "); break;
+        case LSHIFT: needindent(); printf("<< "); break;
+        case AND:    needindent(); printf("& "); break;
+        case OR:     needindent(); printf("| "); break;
+        case XOR:    needindent(); printf("^ "); break;
+        case ARROW:  needindent(); printf("-> "); break;
+        case LAND:   needindent(); printf("&& "); break;
+        case LOR:    needindent(); printf("|| "); break;
 
-        case EQ:     printf("== "); break;
-        case NEQ:    printf("!= "); break;
-        case LE:     printf("<= "); break;
-        case LT:     printf("< "); break;
-        case GE:     printf(">= "); break;
-        case GT:     printf("> "); break;
+        case EQ:     needindent(); printf("== "); break;
+        case NEQ:    needindent(); printf("!= "); break;
+        case LE:     needindent(); printf("<= "); break;
+        case LT:     needindent(); printf("< "); break;
+        case GE:     needindent(); printf(">= "); break;
+        case GT:     needindent(); printf("> "); break;
 
-        case PLUSEQ:  printf("+= "); break;
-        case SUBEQ:   printf("-= "); break;
-        case MULTEQ:  printf("*= "); break;
-        case DIVEQ:   printf("/= "); break;
-        case MODEQ:   printf("%%="); break;
-        case RSHIFTEQ: printf(">>= "); break;
-        case LSHIFTEQ: printf("<<= "); break;
-        case ANDEQ:   printf("&= "); break;
-        case OREQ:    printf("|= "); break;
-        case XOREQ:   printf("^= "); break;
-        case ASSIGN:  printf("= "); break;
-        case QUES:    printf("? "); break;
-        case SIZEOF:  printf("sizeof "); break;
-        case ELLIPSIS: printf("... "); break;
+        case PLUSEQ:  needindent(); printf("+= "); break;
+        case SUBEQ:   needindent(); printf("-= "); break;
+        case MULTEQ:  needindent(); printf("*= "); break;
+        case DIVEQ:   needindent(); printf("/= "); break;
+        case MODEQ:   needindent(); printf("%%="); break;
+        case RSHIFTEQ: needindent(); printf(">>= "); break;
+        case LSHIFTEQ: needindent(); printf("<<= "); break;
+        case ANDEQ:   needindent(); printf("&= "); break;
+        case OREQ:    needindent(); printf("|= "); break;
+        case XOREQ:   needindent(); printf("^= "); break;
+        case ASSIGN:  needindent(); printf("= "); break;
+        case QUES:    needindent(); printf("? "); break;
+        case SIZEOF:  needindent(); printf("sizeof "); break;
+        case ELLIPSIS: needindent(); printf("... "); break;
 
         default:
             /* Handle keyword tokens (128-160) */
+            needindent();
             if (c >= KW_FIRST && c <= KW_LAST) {
                 switch (c) {
                 case INT: printf("int "); break;
