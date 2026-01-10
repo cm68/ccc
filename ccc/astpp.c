@@ -13,6 +13,7 @@ static int blockCnt;
 
 static int cur(void) { return pos < len ? data[pos] : -1; }
 static void advance(void) { if (pos < len) pos++; }
+static void unread(void) { if (pos > 0) pos--; }
 
 static int read1(void) {
     if (pos >= len) return 0;
@@ -138,10 +139,6 @@ static int exprPos;
 static void exprReset(void) { exprPos = 0; exprBuf[0] = 0; }
 static void exprApp(const char *s) {
     while (*s && exprPos < EXPR_BUF_SIZE - 1) exprBuf[exprPos++] = *s++;
-    exprBuf[exprPos] = 0;
-}
-static void exprAppC(int c) {
-    if (exprPos < EXPR_BUF_SIZE - 1) exprBuf[exprPos++] = c;
     exprBuf[exprPos] = 0;
 }
 static void exprAppNum(long n) {
@@ -272,9 +269,9 @@ static void parseExpr(void) {
     if (opChar == CALL) {
         int i, retType = read1();
         int argc = read1();
-        exprApp("(CALL:");
-        exprAppC(retType);
-        exprApp(" ");
+        char buf[32];
+        sprintf(buf, "(CALL:%c/%d ", retType, argc);
+        exprApp(buf);
         parseExpr();
         for (i = 0; i < argc; i++) {
             exprApp(" ");
@@ -351,7 +348,7 @@ static void parseStmt(void) {
         int i, declCnt = read1();
         int stmtCnt = read1();
         int blockNum = blockCnt++;
-        sprintf(lineBuf, "BLOCK %d {", blockNum);
+        sprintf(lineBuf, "BLOCK %d (%d stmts) {", blockNum, stmtCnt);
         prln(lineBuf);
         indent++;
         for (i = 0; i < declCnt; i++) parseDecl();
@@ -366,8 +363,7 @@ static void parseStmt(void) {
         int hasElse;
         int nlabels = read1();  /* nlabels comes first, used for code gen */
         char *cond = getExpr();
-        (void)nlabels;
-        sprintf(lineBuf, "IF (%s)", cond);
+        sprintf(lineBuf, "IF [%d labels] (%s)", nlabels, cond);
         prln(lineBuf);
         indent++;
         parseStmt();
@@ -379,14 +375,6 @@ static void parseStmt(void) {
             parseStmt();
             indent--;
         }
-        return;
-    }
-
-    /* Expression statement */
-    if (c == EXPR) {
-        char *e = getExpr();
-        sprintf(lineBuf, "EXPR %s", e);
-        prln(lineBuf);
         return;
     }
 
@@ -429,9 +417,9 @@ static void parseStmt(void) {
         caseCnt = read1();
         expr = getExpr();
         if (labelBuf[0])
-            sprintf(lineBuf, "SWITCH [%s] (%s) {", labelBuf, expr);
+            sprintf(lineBuf, "SWITCH [%s] (%s) [%d cases] {", labelBuf, expr, caseCnt);
         else
-            sprintf(lineBuf, "SWITCH (%s) {", expr);
+            sprintf(lineBuf, "SWITCH (%s) [%d cases] {", expr, caseCnt);
         prln(lineBuf);
         indent++;
         for (i = 0; i < caseCnt; i++) parseStmt();
@@ -444,7 +432,7 @@ static void parseStmt(void) {
     if (c == CASE) {
         int i, stmtCnt = read1();
         char *val = getExpr();
-        sprintf(lineBuf, "CASE %s:", val);
+        sprintf(lineBuf, "CASE %s: [%d stmts]", val, stmtCnt);
         prln(lineBuf);
         indent++;
         for (i = 0; i < stmtCnt; i++) parseStmt();
@@ -455,7 +443,8 @@ static void parseStmt(void) {
     /* Default */
     if (c == DEFAULT) {
         int i, stmtCnt = read1();
-        prln("DEFAULT:");
+        sprintf(lineBuf, "DEFAULT: [%d stmts]", stmtCnt);
+        prln(lineBuf);
         indent++;
         for (i = 0; i < stmtCnt; i++) parseStmt();
         indent--;
@@ -496,16 +485,13 @@ static void parseStmt(void) {
     /* Empty statement */
     if (c == SEMI) { prln(";"); return; }
 
-    /* Unknown statement */
-    if (c == 'X') {
-        int op = read1();
-        sprintf(lineBuf, "??? stmt op=%d", op);
+    /* Expression statement - unrecognized opcode is start of expression */
+    unread();
+    {
+        char *e = getExpr();
+        sprintf(lineBuf, "EXPR %s", e);
         prln(lineBuf);
-        return;
     }
-
-    sprintf(lineBuf, "??? stmt '%c' (0x%02x)", c, c);
-    prln(lineBuf);
 }
 
 static void parseInit(void);

@@ -18,11 +18,12 @@ all:
 astpp: astpp.c
 	$(CC) $(CFLAGS) -o $@ $<
 
-install:
+install: astpp
 	$(MAKE) -C cpp DEST=$(DEST) install
 	$(MAKE) -C pass1 DEST=$(DEST) install
 	$(MAKE) -C pass2 DEST=$(DEST) install
-
+	cp astpp ../root/bin
+	
 clean:
 	$(MAKE) -C cpp clean
 	$(MAKE) -C pass1 clean
