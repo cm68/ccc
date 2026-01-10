@@ -17,6 +17,52 @@ strdup(char *s)
 }
 
 /*
+ * Copy token structure
+ * Note: duplicates name for SYM tokens to avoid dangling pointers
+ */
+void
+tokcpy(struct token *d, struct token *s)
+{
+#ifdef DEBUG
+    extern short verbose;
+    extern int fdprintf(int, char*, ...);
+    if ((verbose & 2) && s->type == SYM)
+        fdprintf(2, "tokcpy SYM: %s\n", s->v.name ? s->v.name : "(null)");
+#endif
+    d->type = s->type;
+    d->lineno = s->lineno;
+    d->filename = s->filename;
+    if (s->type == SYM && s->v.name)
+        d->v.name = strdup(s->v.name);
+    else
+        d->v.numeric = s->v.numeric;
+}
+
+/*
+ * Synthesize a simple token (no value)
+ */
+void
+toksynth(struct token *out, unsigned char type)
+{
+    out->type = type;
+    out->v.numeric = 0;
+    out->lineno = lineno;
+    out->filename = filename;
+}
+
+/*
+ * Synthesize a named token (SYM or LABEL)
+ */
+void
+toksynthnam(struct token *out, unsigned char type, char *name)
+{
+    out->type = type;
+    out->v.name = name;
+    out->lineno = lineno;
+    out->filename = filename;
+}
+
+/*
  * Error messages for error codes
  */
 static char *errmsgs[] = {
@@ -70,7 +116,7 @@ lookupc(char *s, unsigned char c)
 }
 
 /*
- * Minimal formatter - handles %s, %d, %ld, %c, %g (no width/padding)
+ * Minimal formatter - handles %s, %d, %ld, %x, %c, %% (no width/padding)
  * Returns pointer to end of written string
  */
 char *
@@ -111,32 +157,17 @@ fmtstr(char *buf, char *fmt, ...)
                 char t = s[n]; s[n] = p[-1-n]; p[-1-n] = t;
             }
             break;
-        case 'g':
-            {
-                double f = va_arg(ap, double);
-                long ipart, fpart;
-                int i;
-                if (f < 0) { *p++ = '-'; f = -f; }
-                ipart = (long)f;
-                /* output integer part */
-                s = p;
-                do { *p++ = '0' + (ipart % 10); ipart /= 10; } while (ipart);
-                for (n = 0; n < (p - s) / 2; n++) {
-                    char t = s[n]; s[n] = p[-1-n]; p[-1-n] = t;
-                }
-                /* fractional part - 6 digits */
-                f = f - (long)f;
-                fpart = (long)(f * 1000000 + 0.5);
-                if (fpart) {
-                    *p++ = '.';
-                    for (i = 5; i >= 0 && (fpart % 10) == 0; i--)
-                        fpart /= 10;
-                    s = p;
-                    while (i-- >= 0) { *p++ = '0' + (fpart % 10); fpart /= 10; }
-                    for (n = 0; n < (p - s) / 2; n++) {
-                        char t = s[n]; s[n] = p[-1-n]; p[-1-n] = t;
-                    }
-                }
+        case 'x':
+            n = va_arg(ap, unsigned);
+            s = p;
+            do {
+                int d = n & 0xf;
+                *p++ = d < 10 ? '0' + d : 'a' + d - 10;
+                n >>= 4;
+            } while (n);
+            /* reverse */
+            for (n = 0; n < (p - s) / 2; n++) {
+                char t = s[n]; s[n] = p[-1-n]; p[-1-n] = t;
             }
             break;
         case 'c':

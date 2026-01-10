@@ -13,7 +13,6 @@
 
 #include "cpp.h"
 #include "lexeme.h"
-#include <stdio.h>
 
 /* States */
 #define ST_NORMAL    0
@@ -34,7 +33,7 @@
 #define CTX_SWITCH 4
 
 /* Unified control context stack */
-#define STK_MAX 32
+#define STK_MAX 8
 static struct {
 	unsigned char ctx_type;		/* CTX_WHILE, CTX_FOR, CTX_DO, CTX_SWITCH */
 	unsigned char saved_state;
@@ -52,7 +51,7 @@ static int next_label = 1;
 static unsigned char cur_ctx = 0;	/* Current context type */
 
 /* Token buffers */
-#define BUF_MAX 128
+#define BUF_MAX 32
 static struct token cond_buf[BUF_MAX];
 static int cond_len = 0;
 static struct token init_buf[BUF_MAX];
@@ -61,64 +60,27 @@ static struct token incr_buf[BUF_MAX];
 static int incr_len = 0;
 
 /* Output queue */
-#define PEND_MAX 32
-static struct token pend[PEND_MAX];
-static int pend_rd = 0;
-static int pend_wr = 0;
+#define PEND_MAX 16
+static struct token pendbuf[PEND_MAX];
+static struct pendbuf pb;
 
-static struct token (*upstream)(void);
+static void (*upstream)(struct token *);
 
 void
-filtctrl_init(struct token (*up)(void))
+filtctrl_init(void (*up)(struct token *))
 {
 	upstream = up;
 	state = ST_NORMAL;
 	stk_sp = 0;
-	pend_rd = pend_wr = 0;
+	pend_init(&pb, pendbuf, PEND_MAX);
 }
 
-static void pend_push(struct token t) {
-	pend[pend_wr] = t;
-	pend_wr = (pend_wr + 1) % PEND_MAX;
-}
-
-static int pend_has(void) { return pend_rd != pend_wr; }
-
-static struct token pend_pop(void) {
-	struct token t = pend[pend_rd];
-	pend_rd = (pend_rd + 1) % PEND_MAX;
-	return t;
-}
-
-static struct token synth(unsigned char type) {
-	struct token t;
-	t.type = type;
-	t.v.numeric = 0;
-	t.lineno = lineno;
-	t.filename = filename;
-	return t;
-}
-
-static struct token synth_label(char prefix, int num, char suffix) {
+static void
+synth_name(struct token *out, unsigned char type, char prefix, int num, char suffix)
+{
 	char buf[16];
-	struct token t;
-	sprintf(buf, "__%c%d%c", prefix, num, suffix);
-	t.type = LABEL;
-	t.v.name = strdup(buf);
-	t.lineno = lineno;
-	t.filename = filename;
-	return t;
-}
-
-static struct token synth_sym(char prefix, int num, char suffix) {
-	char buf[16];
-	struct token t;
-	sprintf(buf, "__%c%d%c", prefix, num, suffix);
-	t.type = SYM;
-	t.v.name = strdup(buf);
-	t.lineno = lineno;
-	t.filename = filename;
-	return t;
+	fmtstr(buf, "__%c%d%c", prefix, num, suffix);
+	toksynthnam(out, type, strdup(buf));
 }
 
 static void push_ctx(unsigned char type, unsigned char saved) {
@@ -159,89 +121,106 @@ static char ctx_prefix(unsigned char type) {
 static void emit_buf(struct token *buf, int len) {
 	int i;
 	for (i = 0; i < len; i++)
-		pend_push(buf[i]);
+		pend_push(&pb, &buf[i]);
 }
 
 /* Emit loop header: { [init;] __XnT: if (!(cond)) goto __XnB; */
-static void emit_loop_header(char prefix) {
-	pend_push(synth(BEGIN));
+static void emitLoopHdr(char prefix) {
+	struct token tmp;
+	pend_tok(&pb, BEGIN);
 	if (init_len > 0) {
 		emit_buf(init_buf, init_len);
-		pend_push(synth(SEMI));
+		pend_tok(&pb, SEMI);
 	}
-	pend_push(synth_label(prefix, label_num, 'T'));
-	pend_push(synth(SEMI));
+	synth_name(&tmp, LABEL, prefix, label_num, 'T');
+	pend_push(&pb, &tmp);
+	pend_tok(&pb, SEMI);
 	if (cond_len > 0) {
-		pend_push(synth(IF));
-		pend_push(synth(LPAR));
-		pend_push(synth(NOT));
-		pend_push(synth(LPAR));
+		pend_tok(&pb, IF);
+		pend_tok(&pb, LPAR);
+		pend_tok(&pb, BANG);
+		pend_tok(&pb, LPAR);
 		emit_buf(cond_buf, cond_len);
-		pend_push(synth(RPAR));
-		pend_push(synth(RPAR));
-		pend_push(synth(BEGIN));
-		pend_push(synth(GOTO));
-		pend_push(synth_sym(prefix, label_num, 'B'));
-		pend_push(synth(SEMI));
-		pend_push(synth(END));
+		pend_tok(&pb, RPAR);
+		pend_tok(&pb, RPAR);
+		pend_tok(&pb, BEGIN);
+		pend_tok(&pb, GOTO);
+		synth_name(&tmp, SYM, prefix, label_num, 'B');
+		pend_push(&pb, &tmp);
+		pend_tok(&pb, SEMI);
+		pend_tok(&pb, END);
 	}
 }
 
 /* Emit WHILE trailer: goto __WnT; __WnB: } */
-static void emit_while_trailer(void) {
-	pend_push(synth(GOTO));
-	pend_push(synth_sym('W', label_num, 'T'));
-	pend_push(synth(SEMI));
-	pend_push(synth_label('W', label_num, 'B'));
-	pend_push(synth(SEMI));
-	pend_push(synth(END));
+static void emitWhileTrail(void) {
+	struct token tmp;
+	pend_tok(&pb, GOTO);
+	synth_name(&tmp, SYM, 'W', label_num, 'T');
+	pend_push(&pb, &tmp);
+	pend_tok(&pb, SEMI);
+	synth_name(&tmp, LABEL, 'W', label_num, 'B');
+	pend_push(&pb, &tmp);
+	pend_tok(&pb, SEMI);
+	pend_tok(&pb, END);
 }
 
 /* Emit FOR trailer: __FnC: incr; goto __FnT; __FnB: } */
-static void emit_for_trailer(void) {
-	pend_push(synth_label('F', label_num, 'C'));
-	pend_push(synth(SEMI));
+static void emitForTrail(void) {
+	struct token tmp;
+	synth_name(&tmp, LABEL, 'F', label_num, 'C');
+	pend_push(&pb, &tmp);
+	pend_tok(&pb, SEMI);
 	if (incr_len > 0) {
 		emit_buf(incr_buf, incr_len);
-		pend_push(synth(SEMI));
+		pend_tok(&pb, SEMI);
 	}
-	pend_push(synth(GOTO));
-	pend_push(synth_sym('F', label_num, 'T'));
-	pend_push(synth(SEMI));
-	pend_push(synth_label('F', label_num, 'B'));
-	pend_push(synth(SEMI));
-	pend_push(synth(END));
+	pend_tok(&pb, GOTO);
+	synth_name(&tmp, SYM, 'F', label_num, 'T');
+	pend_push(&pb, &tmp);
+	pend_tok(&pb, SEMI);
+	synth_name(&tmp, LABEL, 'F', label_num, 'B');
+	pend_push(&pb, &tmp);
+	pend_tok(&pb, SEMI);
+	pend_tok(&pb, END);
 }
 
 /* Emit DO header: { __DnT: */
-static void emit_do_header(void) {
-	pend_push(synth(BEGIN));
-	pend_push(synth_label('D', label_num, 'T'));
-	pend_push(synth(SEMI));
+static void emitDoHdr(void) {
+	struct token tmp;
+	pend_tok(&pb, BEGIN);
+	synth_name(&tmp, LABEL, 'D', label_num, 'T');
+	pend_push(&pb, &tmp);
+	pend_tok(&pb, SEMI);
 }
 
 /* Emit DO trailer: if (cond) goto __DnT; __DnB: } */
-static void emit_do_trailer(void) {
+static void emitDoTrail(void) {
+	struct token tmp;
 	if (cond_len > 0) {
-		pend_push(synth(IF));
-		pend_push(synth(LPAR));
+		pend_tok(&pb, IF);
+		pend_tok(&pb, LPAR);
 		emit_buf(cond_buf, cond_len);
-		pend_push(synth(RPAR));
-		pend_push(synth(BEGIN));
-		pend_push(synth(GOTO));
-		pend_push(synth_sym('D', label_num, 'T'));
-		pend_push(synth(SEMI));
-		pend_push(synth(END));
+		pend_tok(&pb, RPAR);
+		pend_tok(&pb, BEGIN);
+		pend_tok(&pb, GOTO);
+		synth_name(&tmp, SYM, 'D', label_num, 'T');
+		pend_push(&pb, &tmp);
+		pend_tok(&pb, SEMI);
+		pend_tok(&pb, END);
 	}
-	pend_push(synth_label('D', label_num, 'B'));
-	pend_push(synth(SEMI));
-	pend_push(synth(END));
+	synth_name(&tmp, LABEL, 'D', label_num, 'B');
+	pend_push(&pb, &tmp);
+	pend_tok(&pb, SEMI);
+	pend_tok(&pb, END);
 }
 
 /* Emit switch exit label: __SnB: */
-static void emit_switch_end(void) {
-	pend_push(synth_label('S', label_num, 'B'));
-	pend_push(synth(SEMI));
+static void emitSwitchEnd(void) {
+	struct token tmp;
+	synth_name(&tmp, LABEL, 'S', label_num, 'B');
+	pend_push(&pb, &tmp);
+	pend_tok(&pb, SEMI);
 }
 
 /*
@@ -251,19 +230,22 @@ static void emit_switch_end(void) {
  */
 static int emit_break(void) {
 	int i;
+	struct token tmp;
 	/* Check current context first */
 	if (cur_ctx == CTX_WHILE || cur_ctx == CTX_FOR ||
 	    cur_ctx == CTX_DO || cur_ctx == CTX_SWITCH) {
-		pend_push(synth(GOTO));
-		pend_push(synth_sym(ctx_prefix(cur_ctx), label_num, 'B'));
+		pend_tok(&pb, GOTO);
+		synth_name(&tmp, SYM, ctx_prefix(cur_ctx), label_num, 'B');
+		pend_push(&pb, &tmp);
 		return 1;
 	}
 	/* Then check stack */
 	for (i = stk_sp - 1; i >= 0; i--) {
 		unsigned char t = stk[i].ctx_type;
 		if (t == CTX_WHILE || t == CTX_FOR || t == CTX_DO || t == CTX_SWITCH) {
-			pend_push(synth(GOTO));
-			pend_push(synth_sym(ctx_prefix(t), stk[i].label_num, 'B'));
+			pend_tok(&pb, GOTO);
+			synth_name(&tmp, SYM, ctx_prefix(t), stk[i].label_num, 'B');
+			pend_push(&pb, &tmp);
 			return 1;
 		}
 	}
@@ -277,28 +259,33 @@ static int emit_break(void) {
  */
 static int emit_continue(void) {
 	int i;
+	struct token tmp;
 	/* Check current context first */
 	if (cur_ctx == CTX_WHILE || cur_ctx == CTX_DO) {
-		pend_push(synth(GOTO));
-		pend_push(synth_sym(ctx_prefix(cur_ctx), label_num, 'T'));
+		pend_tok(&pb, GOTO);
+		synth_name(&tmp, SYM, ctx_prefix(cur_ctx), label_num, 'T');
+		pend_push(&pb, &tmp);
 		return 1;
 	}
 	if (cur_ctx == CTX_FOR) {
-		pend_push(synth(GOTO));
-		pend_push(synth_sym('F', label_num, 'C'));
+		pend_tok(&pb, GOTO);
+		synth_name(&tmp, SYM, 'F', label_num, 'C');
+		pend_push(&pb, &tmp);
 		return 1;
 	}
 	/* Then check stack (skip current switch if any) */
 	for (i = stk_sp - 1; i >= 0; i--) {
 		unsigned char t = stk[i].ctx_type;
 		if (t == CTX_WHILE || t == CTX_DO) {
-			pend_push(synth(GOTO));
-			pend_push(synth_sym(ctx_prefix(t), stk[i].label_num, 'T'));
+			pend_tok(&pb, GOTO);
+			synth_name(&tmp, SYM, ctx_prefix(t), stk[i].label_num, 'T');
+			pend_push(&pb, &tmp);
 			return 1;
 		}
 		if (t == CTX_FOR) {
-			pend_push(synth(GOTO));
-			pend_push(synth_sym('F', stk[i].label_num, 'C'));
+			pend_tok(&pb, GOTO);
+			synth_name(&tmp, SYM, 'F', stk[i].label_num, 'C');
+			pend_push(&pb, &tmp);
 			return 1;
 		}
 		/* Skip switches - continue doesn't apply */
@@ -307,18 +294,18 @@ static int emit_continue(void) {
 }
 
 /* Handle body state for both loops and switches */
-static int handle_body(struct token t, unsigned char ctx_type) {
-	if (t.type == BEGIN)
+static int handle_body(struct token *t, unsigned char ctx_type) {
+	if (t->type == BEGIN)
 		body_depth++;
-	else if (t.type == END) {
+	else if (t->type == END) {
 		body_depth--;
 		if (body_depth == 0) {
-			pend_push(t);
+			pend_push(&pb, t);
 			return 1;	/* Body complete */
 		}
 	}
 	/* Nested control structures */
-	if (t.type == WHILE) {
+	if (t->type == WHILE) {
 		push_ctx(ctx_type, state);
 		label_num = next_label++;
 		cond_len = 0;
@@ -326,7 +313,7 @@ static int handle_body(struct token t, unsigned char ctx_type) {
 		state = ST_WHILE_C;
 		return 2;	/* Consumed, recurse */
 	}
-	if (t.type == FOR) {
+	if (t->type == FOR) {
 		push_ctx(ctx_type, state);
 		label_num = next_label++;
 		init_len = cond_len = incr_len = 0;
@@ -334,46 +321,50 @@ static int handle_body(struct token t, unsigned char ctx_type) {
 		state = ST_FOR_INIT;
 		return 2;
 	}
-	if (t.type == DO) {
+	if (t->type == DO) {
 		push_ctx(ctx_type, state);
 		label_num = next_label++;
-		emit_do_header();
+		emitDoHdr();
 		body_depth = 0;
 		state = ST_DO_BODY;
 		return 3;	/* Return pend_pop */
 	}
-	if (t.type == SWITCH) {
+	if (t->type == SWITCH) {
 		push_ctx(ctx_type, state);
 		label_num = next_label++;
 		depth = 0;
 		state = ST_SW_COND;
 		return 0;	/* Pass through */
 	}
-	if (t.type == BREAK) {
+	if (t->type == BREAK) {
 		if (emit_break())
 			return 3;
 	}
-	if (t.type == CONTINUE) {
+	if (t->type == CONTINUE) {
 		if (emit_continue())
 			return 3;
 	}
 	return 0;	/* Pass through */
 }
 
-struct token
-filtctrl(void)
+void
+filtctrl(struct token *out)
 {
 	struct token t;
 	int r;
 
-	if (pend_has())
-		return pend_pop();
+	if (pend_has(&pb)) {
+		pend_pop(&pb, out);
+		return;
+	}
 
-	t = upstream();
+	upstream(&t);
 
 	/* EOF - return it directly */
-	if (t.type == 0)
-		return t;
+	if (t.type == 0) {
+		tokcpy(out, &t);
+		return;
+	}
 
 	switch (state) {
 	case ST_NORMAL:
@@ -382,136 +373,174 @@ filtctrl(void)
 			cond_len = 0;
 			depth = 0;
 			state = ST_WHILE_C;
-			return filtctrl();
+			filtctrl(out);
+			return;
 		}
 		if (t.type == FOR) {
 			label_num = next_label++;
 			init_len = cond_len = incr_len = 0;
 			depth = 0;
 			state = ST_FOR_INIT;
-			return filtctrl();
+			filtctrl(out);
+			return;
 		}
 		if (t.type == DO) {
 			label_num = next_label++;
-			emit_do_header();
+			emitDoHdr();
 			body_depth = 0;
 			state = ST_DO_BODY;
-			return pend_pop();
+			pend_pop(&pb, out);
+			return;
 		}
 		if (t.type == SWITCH) {
 			label_num = next_label++;
 			depth = 0;
 			state = ST_SW_COND;
 		}
-		return t;
+		break;
 
 	case ST_WHILE_C:
 		if (t.type == LPAR) {
 			depth++;
-			if (depth == 1) return filtctrl();
+			if (depth == 1) {
+				filtctrl(out);
+				return;
+			}
 		} else if (t.type == RPAR) {
 			depth--;
 			if (depth == 0) {
-				emit_loop_header('W');
+				emitLoopHdr('W');
 				body_depth = 0;
 				cur_ctx = CTX_WHILE;
 				state = ST_LOOP_BODY;
-				return pend_pop();
+				pend_pop(&pb, out);
+				return;
 			}
 		}
 		if (depth > 0 && cond_len < BUF_MAX)
-			cond_buf[cond_len++] = t;
-		return filtctrl();
+			tokcpy(&cond_buf[cond_len++], &t);
+		filtctrl(out);
+		return;
 
 	case ST_FOR_INIT:
 		if (t.type == LPAR) {
 			depth++;
-			if (depth == 1) return filtctrl();
+			if (depth == 1) {
+				filtctrl(out);
+				return;
+			}
 		} else if (t.type == SEMI && depth == 1) {
 			state = ST_FOR_COND;
-			return filtctrl();
+			filtctrl(out);
+			return;
 		}
 		if (depth > 0 && init_len < BUF_MAX)
-			init_buf[init_len++] = t;
-		return filtctrl();
+			tokcpy(&init_buf[init_len++], &t);
+		filtctrl(out);
+		return;
 
 	case ST_FOR_COND:
 		if (t.type == SEMI) {
 			state = ST_FOR_INCR;
-			return filtctrl();
+			filtctrl(out);
+			return;
 		}
 		if (cond_len < BUF_MAX)
-			cond_buf[cond_len++] = t;
-		return filtctrl();
+			tokcpy(&cond_buf[cond_len++], &t);
+		filtctrl(out);
+		return;
 
 	case ST_FOR_INCR:
 		if (t.type == RPAR) {
 			depth--;
 			if (depth == 0) {
-				emit_loop_header('F');
+				emitLoopHdr('F');
 				body_depth = 0;
 				cur_ctx = CTX_FOR;
 				state = ST_LOOP_BODY;
-				return pend_pop();
+				pend_pop(&pb, out);
+				return;
 			}
 		} else if (t.type == LPAR) {
 			depth++;
 		}
 		if (incr_len < BUF_MAX)
-			incr_buf[incr_len++] = t;
-		return filtctrl();
+			tokcpy(&incr_buf[incr_len++], &t);
+		filtctrl(out);
+		return;
 
 	case ST_LOOP_BODY:
-		r = handle_body(t, cur_ctx);
+		r = handle_body(&t, cur_ctx);
 		if (r == 1) {
 			/* Body complete - emit trailer based on current context */
 			if (cur_ctx == CTX_FOR)
-				emit_for_trailer();
+				emitForTrail();
 			else
-				emit_while_trailer();
+				emitWhileTrail();
 			pop_ctx();
-			return pend_pop();
+			pend_pop(&pb, out);
+			return;
 		}
-		if (r == 2) return filtctrl();
-		if (r == 3) return pend_pop();
-		return t;
+		if (r == 2) {
+			filtctrl(out);
+			return;
+		}
+		if (r == 3) {
+			pend_pop(&pb, out);
+			return;
+		}
+		break;
 
 	case ST_DO_BODY:
-		r = handle_body(t, CTX_DO);
+		r = handle_body(&t, CTX_DO);
 		if (r == 1) {
 			state = ST_DO_COND;
 			depth = -1;
 			cond_len = 0;
-			return pend_pop();
+			pend_pop(&pb, out);
+			return;
 		}
-		if (r == 2) return filtctrl();
-		if (r == 3) return pend_pop();
-		return t;
+		if (r == 2) {
+			filtctrl(out);
+			return;
+		}
+		if (r == 3) {
+			pend_pop(&pb, out);
+			return;
+		}
+		break;
 
 	case ST_DO_COND:
 		if (depth == -1) {
 			if (t.type == WHILE) {
 				depth = 0;
-				return filtctrl();
+				filtctrl(out);
+				return;
 			}
-			return t;
+			break;
 		}
 		if (t.type == LPAR) {
 			depth++;
-			if (depth == 1) return filtctrl();
+			if (depth == 1) {
+				filtctrl(out);
+				return;
+			}
 		} else if (t.type == RPAR) {
 			depth--;
 			if (depth == 0) {
-				emit_do_trailer();
+				emitDoTrail();
 				pop_ctx();
-				t = upstream();
-				if (t.type != SEMI) pend_push(t);
-				return pend_pop();
+				upstream(&t);
+				if (t.type != SEMI)
+					pend_push(&pb, &t);
+				pend_pop(&pb, out);
+				return;
 			}
 		}
 		if (depth > 0 && cond_len < BUF_MAX)
-			cond_buf[cond_len++] = t;
-		return filtctrl();
+			tokcpy(&cond_buf[cond_len++], &t);
+		filtctrl(out);
+		return;
 
 	case ST_SW_COND:
 		if (t.type == LPAR)
@@ -524,19 +553,26 @@ filtctrl(void)
 				cur_ctx = CTX_SWITCH;
 			}
 		}
-		return t;
+		break;
 
 	case ST_SW_BODY:
-		r = handle_body(t, CTX_SWITCH);
+		r = handle_body(&t, CTX_SWITCH);
 		if (r == 1) {
-			emit_switch_end();
+			emitSwitchEnd();
 			pop_ctx();
-			return pend_pop();
+			pend_pop(&pb, out);
+			return;
 		}
-		if (r == 2) return filtctrl();
-		if (r == 3) return pend_pop();
-		return t;
+		if (r == 2) {
+			filtctrl(out);
+			return;
+		}
+		if (r == 3) {
+			pend_pop(&pb, out);
+			return;
+		}
+		break;
 	}
 
-	return t;
+	tokcpy(out, &t);
 }

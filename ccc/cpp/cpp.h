@@ -90,6 +90,26 @@ struct token {
     } v;
 };
 
+/* Copy token: d = destination ptr, s = source ptr */
+extern void tokcpy(struct token *d, struct token *s);
+extern void toksynth(struct token *out, unsigned char type);
+extern void toksynthnam(struct token *out, unsigned char type, char *name);
+
+/* Shared filter utilities */
+extern int is_type_kw(unsigned char type);
+extern int is_type_tok(struct token *t);
+
+/* Pending buffer for filters */
+struct pendbuf {
+	struct token *buf;
+	int max, rd, wr;
+};
+extern void pend_init(struct pendbuf *p, struct token *buf, int max);
+extern void pend_push(struct pendbuf *p, struct token *t);
+extern int pend_has(struct pendbuf *p);
+extern void pend_pop(struct pendbuf *p, struct token *out);
+extern void pend_tok(struct pendbuf *p, unsigned char type);
+
 /*
  * Text buffer - for file/macro buffer management and output diversions
  * Used for both input (includes/macros) and output (loop body buffering)
@@ -192,9 +212,9 @@ extern void emitFNumber(float val);
 extern void emitString(char *str, int len);
 extern void emitLabel(char *name);
 extern void emitLine(int line, char *file);
-extern void emitPP(char *text, int len);
 extern void emitPPStr(char *text);
 extern void emitCurToken(void);
+extern void emitStructTok(struct token *t);
 
 /* error handling */
 extern void error(char *msg);
