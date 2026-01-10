@@ -243,6 +243,32 @@ emit_do_header(void)
 }
 
 /*
+ * Emit break: goto __XnB
+ * Uses current loop_type and label_num
+ */
+static void
+emit_break(void)
+{
+	char prefix = (loop_type == WHILE) ? 'W' :
+	              (loop_type == FOR) ? 'F' : 'D';
+	pend_push(synth(GOTO));
+	pend_push(synth_sym(prefix, label_num, 'B'));
+}
+
+/*
+ * Emit continue: goto __XnT (WHILE/DO) or goto __FnC (FOR)
+ */
+static void
+emit_continue(void)
+{
+	char prefix = (loop_type == WHILE) ? 'W' :
+	              (loop_type == FOR) ? 'F' : 'D';
+	char suffix = (loop_type == FOR) ? 'C' : 'T';
+	pend_push(synth(GOTO));
+	pend_push(synth_sym(prefix, label_num, suffix));
+}
+
+/*
  * Emit DO trailer: if (cond) goto __DnT; __DnB: }
  */
 static void
@@ -390,6 +416,15 @@ filtloop(void)
 			pend_push(t);
 			return filtloop();
 		}
+		/* Handle break/continue */
+		if (t.type == BREAK) {
+			emit_break();
+			return pend_pop();
+		}
+		if (t.type == CONTINUE) {
+			emit_continue();
+			return pend_pop();
+		}
 		return t;
 
 	case ST_DO_BODY:
@@ -413,6 +448,15 @@ filtloop(void)
 			state = ST_NORMAL;
 			pend_push(t);
 			return filtloop();
+		}
+		/* Handle break/continue */
+		if (t.type == BREAK) {
+			emit_break();
+			return pend_pop();
+		}
+		if (t.type == CONTINUE) {
+			emit_continue();
+			return pend_pop();
 		}
 		return t;
 
