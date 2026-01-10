@@ -162,6 +162,7 @@ struct loop_frame {
 	int body_depth;			/* Brace depth in body */
 	int inner_depth;		/* Paren/bracket depth in body (single-stmt) */
 	unsigned char single_stmt;	/* 1 if body is single statement (no braces) */
+	unsigned char pendingEnd;	/* 1 if END may complete single-stmt, check for ELSE */
 	int saved_brace;		/* Saved brace_depth for restoration */
 	/* Saved parent's FOR increment (for nested loops) */
 	struct buftok *savedIncr;	/* Pointer to saved incr buffer (malloc) */
@@ -559,23 +560,31 @@ static void
 pushLoop(unsigned char type)
 {
 	int i;
+	struct loop_frame *l;
+
 	if (loop_sp >= LOOP_STACK_SIZE)
 		return;
-	loop_stack[loop_sp].type = type;
-	loop_stack[loop_sp].savedState = state;
-	loop_stack[loop_sp].label_num = next_loop_num++;
-	loop_stack[loop_sp].body_depth = 0;
-	loop_stack[loop_sp].saved_brace = brace_depth;
+
+	l = &loop_stack[loop_sp];
+
+	l->type = type;
+	l->savedState = state;
+	l->label_num = next_loop_num++;
+	l->body_depth = 0;
+	l->inner_depth = 0;
+	l->pendingEnd = 0;
+	l->saved_brace = brace_depth;
+
 	/* Save parent FOR's incr buffer if any */
 	if (num_loop_incr > 0) {
-		loop_stack[loop_sp].savedIncr = malloc(num_loop_incr * sizeof(struct buftok));
+		l->savedIncr = malloc(num_loop_incr * sizeof(struct buftok));
 		for (i = 0; i < num_loop_incr; i++)
-			loop_stack[loop_sp].savedIncr[i] = loop_incr[i];
-		loop_stack[loop_sp].numSavedIncr = num_loop_incr;
+			l->savedIncr[i] = loop_incr[i];
+		l->numSavedIncr = num_loop_incr;
 		num_loop_incr = 0;  /* Clear for nested loop */
 	} else {
-		loop_stack[loop_sp].savedIncr = NULL;
-		loop_stack[loop_sp].numSavedIncr = 0;
+		l->savedIncr = NULL;
+		l->numSavedIncr = 0;
 	}
 	loop_sp++;
 }
@@ -622,8 +631,7 @@ emitLoopLG(char suffix, int isLabel)
 	fmtstr(buf, "__%c%d%c", loopLabelChar(),
 	        loop_stack[loop_sp - 1].label_num, suffix);
 	if (isLabel) {
-		emitSym(buf);
-		emitToken(COLON);
+		emitLabel(buf);
 		emitToken(SEMI);
 	} else {
 		emitKeyword(GOTO);
@@ -659,10 +667,11 @@ static int
 findInnerLoop(void)
 {
 	int i;
+	unsigned char t;
+
 	for (i = loop_sp - 1; i >= 0; i--) {
-		if (loop_stack[i].type == WHILE ||
-		    loop_stack[i].type == FOR ||
-		    loop_stack[i].type == DO)
+		t = loop_stack[i].type;
+		if (t == WHILE || t == FOR || t == DO)
 			return i;
 	}
 	return -1;
@@ -715,8 +724,7 @@ emitSwBrk(int num, int isLabel)
 	char buf[16];
 	fmtstr(buf, "__S%dB", num);
 	if (isLabel) {
-		emitSym(buf);
-		emitToken(COLON);
+		emitLabel(buf);
 		emitToken(SEMI);
 	} else {
 		emitKeyword(GOTO);
@@ -803,47 +811,75 @@ handleNestIf(unsigned char type)
 /*
  * Handle loop body token (for WHILE/FOR/DO).
  * Handles both braced and single-statement bodies.
- * Returns: 0 = continue with token, 1 = token consumed, 2 = body complete
+ * Returns: 0 = continue with token, 1 = token consumed,
+ *          2 = body complete (token consumed),
+ *          3 = body complete (token NOT consumed - reprocess it)
  */
 static int
 handleLoopBody(unsigned char type)
 {
+	struct loop_frame *lf = &loop_stack[loop_sp - 1];
+
+	/*
+	 * Check for pending END completion from previous token.
+	 * If END brought inner_depth to 0, we check if ELSE follows.
+	 * If ELSE, continue (it's part of the if statement).
+	 * Otherwise, the single-stmt body is complete.
+	 * Emit END for the synthetic body, then return 3 so the current
+	 * token is reprocessed after loop completes.
+	 */
+	if (lf->pendingEnd) {
+		lf->pendingEnd = 0;
+		if (type != ELSE) {
+			/* No ELSE - single-stmt body complete */
+			emitToken(END);  /* Close synthetic body */
+			return 3;  /* Complete but reprocess current token */
+		}
+		/* ELSE follows - continue processing */
+	}
+
 	/* First token determines if braced or single-statement */
-	if (loop_stack[loop_sp - 1].single_stmt == 1) {
+	if (lf->single_stmt == 1) {
 		if (type == BEGIN) {
 			/* Braced body - switch to brace tracking */
-			loop_stack[loop_sp - 1].single_stmt = 0;
-			loop_stack[loop_sp - 1].body_depth = 1;
+			lf->single_stmt = 0;
+			lf->body_depth = 1;
 			emitToken(BEGIN);
 			return 1;
 		}
 		/* Single-statement body - insert opening brace */
 		emitToken(BEGIN);
-		loop_stack[loop_sp - 1].single_stmt = 2;  /* Mark: brace inserted */
+		lf->single_stmt = 2;  /* Mark: brace inserted */
 	}
 
 	/* Single-statement body: track inner depth, complete on SEMI */
-	if (loop_stack[loop_sp - 1].single_stmt == 2) {
+	if (lf->single_stmt == 2) {
 		if (type == LPAR || type == LBRACK || type == BEGIN)
-			loop_stack[loop_sp - 1].inner_depth++;
+			lf->inner_depth++;
 		else if (type == RPAR || type == RBRACK || type == END)
-			loop_stack[loop_sp - 1].inner_depth--;
+			lf->inner_depth--;
 
-		if (type == SEMI && loop_stack[loop_sp - 1].inner_depth == 0) {
+		if (type == SEMI && lf->inner_depth == 0) {
 			/* Body complete - emit SEMI and closing brace */
 			emitToken(SEMI);
 			emitToken(END);
 			return 2;
 		}
+
+		/* If END brought inner_depth to 0, might be end of compound stmt */
+		if (type == END && lf->inner_depth == 0) {
+			/* Set pending - check for ELSE on next token */
+			lf->pendingEnd = 1;
+		}
 	}
 
 	/* Braced body: track brace depth */
-	if (loop_stack[loop_sp - 1].single_stmt == 0) {
+	if (lf->single_stmt == 0) {
 		if (type == BEGIN) {
-			loop_stack[loop_sp - 1].body_depth++;
+			lf->body_depth++;
 		} else if (type == END) {
-			loop_stack[loop_sp - 1].body_depth--;
-			if (loop_stack[loop_sp - 1].body_depth == 0) {
+			lf->body_depth--;
+			if (lf->body_depth == 0) {
 				/* Body complete - emit the END */
 				emitToken(END);
 				return 2;
@@ -1704,8 +1740,23 @@ filter(unsigned char type, long num, float fnum, char *str, int slen)
 				return;
 			}
 			/* Check for nested control structures */
-			if (type == IF || type == WHILE || type == FOR) {
-				/* Nested control with condition - push outer context */
+			if (type == WHILE || type == FOR) {
+				/*
+				 * Nested WHILE/FOR must use loop lowering.
+				 * Save ctrl context on stack, then call handleNestLoop.
+				 * When loop completes (returns to ST_CTRL_BODY),
+				 * ctrl_type/ctrlBodyDep should still be valid.
+				 */
+				if (ctrl_sp < CTRL_STACK_SIZE) {
+					ctrl_stack[ctrl_sp].ctrl_type = ctrl_type;
+					ctrl_stack[ctrl_sp].ctrlBodyDep = ctrlBodyDep;
+					ctrl_sp++;
+				}
+				handleNestLoop(type);
+				return;
+			}
+			if (type == IF) {
+				/* Nested IF with condition - push outer context */
 				if (ctrl_sp < CTRL_STACK_SIZE) {
 					ctrl_stack[ctrl_sp].ctrl_type = ctrl_type;
 					ctrl_stack[ctrl_sp].ctrlBodyDep = ctrlBodyDep;
@@ -1727,8 +1778,21 @@ filter(unsigned char type, long num, float fnum, char *str, int slen)
 				state = ST_CTRL_PEND;
 				return;
 			}
-			if (type == DO || type == ELSE) {
-				/* Nested DO or ELSE - push outer context */
+			if (type == DO) {
+				/*
+				 * Nested DO must use loop lowering.
+				 * Save ctrl context, then call handleNestLoop.
+				 */
+				if (ctrl_sp < CTRL_STACK_SIZE) {
+					ctrl_stack[ctrl_sp].ctrl_type = ctrl_type;
+					ctrl_stack[ctrl_sp].ctrlBodyDep = ctrlBodyDep;
+					ctrl_sp++;
+				}
+				handleNestLoop(type);
+				return;
+			}
+			if (type == ELSE) {
+				/* Nested ELSE - push outer context */
 				if (ctrl_sp < CTRL_STACK_SIZE) {
 					ctrl_stack[ctrl_sp].ctrl_type = ctrl_type;
 					ctrl_stack[ctrl_sp].ctrlBodyDep = ctrlBodyDep;
@@ -1928,11 +1992,13 @@ filter(unsigned char type, long num, float fnum, char *str, int slen)
 		}
 		break;
 
-	case ST_LOOP_BODY:
+	case ST_LOOP_BODY: {
 		/* WHILE/FOR body - buffer tokens until body complete */
-		switch (handleLoopBody(type)) {
-		case 1: return;  /* Token consumed */
-		case 2: /* Body complete */
+		int result = handleLoopBody(type);
+		if (result == 1)
+			return;  /* Token consumed */
+		if (result == 2 || result == 3) {
+			/* Body complete */
 			outbufReplay();
 			if (loop_stack[loop_sp - 1].type == WHILE) {
 				emitLoopGoto('T');
@@ -1952,6 +2018,21 @@ filter(unsigned char type, long num, float fnum, char *str, int slen)
 			brace_depth--;
 			state = loop_stack[loop_sp - 1].savedState;
 			popLoop();
+			/*
+			 * If returning to ST_CTRL_BODY, the loop was the single
+			 * statement body. Complete the outer IF/ELSE body too.
+			 * Pop ctrl context we pushed before entering the loop.
+			 */
+			if (state == ST_CTRL_BODY && ctrl_sp > 0) {
+				ctrl_sp--;
+				emitToken(END);
+				brace_depth--;
+				state = saved_state;
+			}
+			if (result == 3) {
+				/* Token was not consumed - reprocess it in new state */
+				filter(type, num, fnum, str, slen);
+			}
 			return;
 		}
 		/* Handle nested constructs */
@@ -1965,6 +2046,7 @@ filter(unsigned char type, long num, float fnum, char *str, int slen)
 			return;
 		emitByType(type, num, fnum, str, slen);
 		break;
+	}
 
 	case ST_DO_BODY:
 		/* DO body - buffer tokens until body complete, then wait for WHILE */
@@ -2043,6 +2125,16 @@ filter(unsigned char type, long num, float fnum, char *str, int slen)
 			/* Trailing semicolon after do-while - consume it */
 			/* loopParen holds the saved parent state */
 			state = loopParen;
+			/*
+			 * If returning to ST_CTRL_BODY, the do-while was the
+			 * single statement body. Complete outer IF/ELSE too.
+			 */
+			if (state == ST_CTRL_BODY && ctrl_sp > 0) {
+				ctrl_sp--;
+				emitToken(END);
+				brace_depth--;
+				state = saved_state;
+			}
 			return;
 		}
 

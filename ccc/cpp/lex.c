@@ -10,6 +10,9 @@
 static unsigned char incomment = 0;
 /* Track comment state across gettoken() calls */
 
+static token_t prevTokType = 0;
+/* Previous token type - used to detect valid label positions */
+
 static char *pendingAsm = NULL;
 /* Pending asm text to emit as STRING after ASM keyword */
 static char pendingSemi = 0;
@@ -998,6 +1001,8 @@ gettoken()
     freetoken();
 
     memcpy(&cur, &next, sizeof(cur));
+    /* Track what just became cur for label detection on NEXT token */
+    prevTokType = cur.type;
     next.v.str = 0;
     next.type = NONE;
 
@@ -1257,7 +1262,25 @@ gettoken()
                 }
                 break;
             }
-            next.type = SYM;
+            /*
+             * Check for label: symbol followed by : (with optional whitespace).
+             * Labels only valid at statement start - after SEMI, BEGIN, COLON,
+             * LABEL, or at start. Not valid after ARROW, DOT, operators, etc.
+             */
+            {
+                char is_label = 0;
+                char can_be_label = (prevTokType == SEMI || prevTokType == BEGIN ||
+                                   prevTokType == COLON || prevTokType == LABEL ||
+                                   prevTokType == 0 || prevTokType == END);
+                /* Skip whitespace to check for colon */
+                while (curchar == ' ' || curchar == '\t')
+                    advance();
+                if (curchar == ':' && can_be_label) {
+                    is_label = 1;
+                    advance();  /* consume the colon */
+                }
+                next.type = is_label ? LABEL : SYM;
+            }
             /* Enforce symbol length limit with warning */
             if (strlen(strbuf) > MAXSYMLEN) {
                 gripe(ER_W_SYMTRUNC);
