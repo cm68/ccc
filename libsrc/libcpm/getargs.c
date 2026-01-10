@@ -55,6 +55,7 @@ char **
 _getargs(_str, _name)
 char *	_str, * _name;
 {
+#ifdef notdef
 	char **		argv;
 	struct fcb	fc, * fx;
 	register char *	ap;
@@ -174,6 +175,7 @@ char *	_str, * _name;
 	argv = (char **)alloc(i * sizeof *argv);
 	bmove(argbuf, argv, i * sizeof *argv);
 	return argv;
+#endif
 }
 
 static char

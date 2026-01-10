@@ -5,9 +5,7 @@
 DEST ?= $(CURDIR)/../root
 
 AS = asz
-ifeq ($(CC),gcc)
-CC = ccc
-endif
+override CC = ccc
 
 DIRS = libu libc libcpm
 STARTUP = crtcpm.o crt0.o

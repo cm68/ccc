@@ -76,7 +76,7 @@ for t in "${TESTS[@]}" ; do
 	echo "======= source ========"
 	cat "$t"
 	echo "======== ccc ========"
-	CCC_OPTS="-DTEST=$t -I.. $VERBOSE -P -k -c"
+	CCC_OPTS="-DTEST=$t -I.. $VERBOSE -k -c"
 	if $compile_only ; then CCC_OPTS="$CCC_OPTS -s" ; fi
 	echo $CCC $CCC_OPTS $t
 
