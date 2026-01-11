@@ -22,6 +22,16 @@
 #define ISLONG(t)  ((t) == T_LONG || (t) == T_ULONG || (t) == T_FLOAT)
 #define TSIZE(t)   (ISBYTE(t) ? 1 : ISWORD(t) ? 2 : ISLONG(t) ? 4 : 0)
 
+/* Register codes */
+#define R_B     1
+#define R_C     2
+#define R_BC    3
+#define R_IX    4
+#define R_DE    5
+#define R_HL    6
+#define R_A     7
+#define R_IY    8
+
 /* Global state */
 extern int infd;
 extern int in2fd;

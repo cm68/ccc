@@ -3,6 +3,7 @@
  */
 #include "pass2.h"
 #include "expr.h"
+#include "opcodes.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -66,6 +67,17 @@ mkregvar(char width, char reg)
 	e->op = REGVAR;
 	e->width = width;
 	e->u.var.reg = reg;
+	return e;
+}
+
+Expr *
+mkindex(char width, char reg, char off)
+{
+	Expr *e = alloc();
+	e->op = INDEX;
+	e->width = width;
+	e->u.var.reg = reg;
+	e->u.var.off = off;
 	return e;
 }
 
@@ -190,7 +202,7 @@ readexpr(void)
 #endif
 
 	switch (op) {
-	case '_':
+	case AST_EMPTY:
 #ifdef DEBUG
 		if (VERBOSE(V_EXPR))
 			fprintf(stderr, "  NULL expr\n");
@@ -354,145 +366,112 @@ readexpr(void)
 
 #ifdef DEBUG
 
-char *
-opname(int op)
-{
-	switch (op) {
-	case NUMBER: return "CONST";
-	case SYM:       return "SYM";
-	case LOCALVAR:  return "LOCAL";
-	case REGVAR:    return "REG";
-	case DEREF:     return "DEREF";
-	case ASSIGN:    return "ASSIGN";
-	case PLUS:      return "ADD";
-	case MINUS:     return "SUB";
-	case TIMES:     return "MUL";
-	case STAR:      return "MUL";
-	case DIV:       return "DIV";
-	case MOD:       return "MOD";
-	case AND:       return "AND";
-	case OR:        return "OR";
-	case XOR:       return "XOR";
-	case LSHIFT:    return "SHL";
-	case RSHIFT:    return "SHR";
-	case URSHIFT:   return "USHR";
-	case LT:        return "LT";
-	case GT:        return "GT";
-	case EQ:        return "EQ";
-	case NEQ:       return "NE";
-	case LE:        return "LE";
-	case GE:        return "GE";
-	case LOR:       return "LOR";
-	case LAND:      return "LAND";
-	case BANG:      return "NOT";
-	case NOT:       return "LNOT";
-	case TWIDDLE:   return "BNOT";
-	case NEG:       return "NEG";
-	case NARROW:    return "NARROW";
-	case WIDEN:     return "WIDEN";
-	case SEXT:      return "SEXT";
-	case PREINC:    return "PREINC";
-	case POSTINC:   return "POSTINC";
-	case PREDEC:    return "PREDEC";
-	case POSTDEC:   return "POSTDEC";
-	case CALL:      return "CALL";
-	case QUES:      return "TERNARY";
-	case TERNBRANCH:return "TERNBR";
-	case COMMA:     return "COMMA";
-	case BFEXTRACT: return "BFEXT";
-	case BFASSIGN:  return "BFASS";
-	case INITLIST:  return "INIT";
-	case PLUSEQ:    return "ADDEQ";
-	case SUBEQ:     return "SUBEQ";
-	case MULTEQ:    return "MULEQ";
-	case DIVEQ:     return "DIVEQ";
-	case MODEQ:     return "MODEQ";
-	case ANDEQ:     return "ANDEQ";
-	case OREQ:      return "OREQ";
-	case XOREQ:     return "XOREQ";
-	case LSHIFTEQ:  return "SHLEQ";
-	case RSHIFTEQ:  return "SHREQ";
-	default:        return "???";
-	}
-}
-
-static char *
-destname(char dest)
-{
-	switch (dest) {
-	case DEST_NONE:  return "none";
-	case DEST_FLAGS: return "flag";
-	case DEST_VALUE: return "val";
-	default:         return "???";
-	}
-}
+#include "../format.h"
 
 static void
-dumpnode(Expr *e, int depth)
+dumpnode(Expr *e)
 {
-	int i;
+	char buf[64];
 
-	if (!e)
+	if (!e) {
+		out("_");
 		return;
-
-	for (i = 0; i < depth; i++)
-		out("  ");
-
-	out("; ");
-	out(opname(e->op));
-	outc('/');
-	outc(e->width);
-	out(" d=");
-	out(destname(e->dest));
+	}
 
 	switch (e->op) {
 	case NUMBER:
-		out(" v=");
-		outd(e->u.val);
-		break;
+		sprintf(buf, "%ld:%s", e->u.val, widthName(e->width));
+		out(buf);
+		return;
 	case SYM:
-		out(" n=");
+		out("$");
 		out(e->u.name);
-		break;
+		return;
 	case LOCALVAR:
-		out(" off=");
-		outd(e->u.var.off);
-		break;
+		sprintf(buf, "(LOCALVAR:%s %s%+d)", widthName(e->width),
+		        regName(e->u.var.reg ? e->u.var.reg : R_IY),
+		        (int)(signed char)e->u.var.off);
+		out(buf);
+		return;
 	case REGVAR:
-		out(" r=");
-		outd(e->u.var.reg);
-		break;
+		sprintf(buf, "(REGVAR:%s %s)", widthName(e->width),
+		        regName(e->u.var.reg));
+		out(buf);
+		return;
+	case INDEX:
+		sprintf(buf, "(INDEX:%s %s%+d)", widthName(e->width),
+		        regName(e->u.var.reg),
+		        (int)(signed char)e->u.var.off);
+		out(buf);
+		return;
 	case CALL:
-		out(" argc=");
-		outd(e->u.call.argc);
-		break;
+		sprintf(buf, "(CALL:%s/%d ", widthName(e->width), e->u.call.argc);
+		out(buf);
+		dumpnode(e->left);
+		/* args are in right as COMMA chain */
+		if (e->right) {
+			out(" ");
+			dumpnode(e->right);
+		}
+		out(")");
+		return;
 	case PREINC:
 	case POSTINC:
 	case PREDEC:
 	case POSTDEC:
-		out(" amt=");
-		outd(e->u.incdec.amt);
-		break;
+		sprintf(buf, "(%s:%s/%d ", opName(e->op), widthName(e->width),
+		        e->u.incdec.amt);
+		out(buf);
+		dumpnode(e->left);
+		out(")");
+		return;
 	case BFEXTRACT:
+		sprintf(buf, "(BFEXT %d:%d ", e->u.bf.off, e->u.bf.wid);
+		out(buf);
+		dumpnode(e->left);
+		out(")");
+		return;
 	case BFASSIGN:
-		out(" o=");
-		outd(e->u.bf.off);
-		out(" w=");
-		outd(e->u.bf.wid);
-		break;
+		sprintf(buf, "(BFSET %d:%d ", e->u.bf.off, e->u.bf.wid);
+		out(buf);
+		dumpnode(e->left);
+		out(" ");
+		dumpnode(e->right);
+		out(")");
+		return;
+	case QUES:
+		out("(?:");
+		out(widthName(e->width));
+		out(" ");
+		dumpnode(e->left);
+		out(" ");
+		dumpnode(e->right->left);
+		out(" ");
+		dumpnode(e->right->right);
+		out(")");
+		return;
 	}
 
-	outc('\n');
-
-	dumpnode(e->left, depth + 1);
-	dumpnode(e->right, depth + 1);
+	/* regular unary/binary ops */
+	out("(");
+	out(opName(e->op));
+	out(":");
+	out(widthName(e->width));
+	out(" ");
+	dumpnode(e->left);
+	if (e->right) {
+		out(" ");
+		dumpnode(e->right);
+	}
+	out(")");
 }
 
 void
 dumpexpr(Expr *e)
 {
-	out("; --- expr ---\n");
-	dumpnode(e, 0);
+	out("; ");
+	dumpnode(e);
+	out("\n");
 }
 
 #endif

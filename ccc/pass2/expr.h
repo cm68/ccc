@@ -43,6 +43,7 @@ Expr	*mkconst(char width, long val);
 Expr	*mksym(char *name);
 Expr	*mklocalvar(char width, char reg, char off);
 Expr	*mkregvar(char width, char reg);
+Expr	*mkindex(char width, char reg, char off);
 Expr	*mkunary(int op, char width, Expr *child);
 Expr	*mkbinary(int op, char width, Expr *left, Expr *right);
 Expr	*mkcall(char width, int argc, Expr *func, Expr *args);
@@ -53,6 +54,7 @@ Expr	*mkbfass(char off, char wid, Expr *addr, Expr *val);
 /* tree operations */
 void	setdest(Expr *e, char dest);
 void	freeexpr(Expr *e);
+Expr	*rewrite(Expr *e);
 
 /* parser */
 Expr	*readexpr(void);

@@ -61,6 +61,7 @@ parseStmt(void)
 		out("; IF nlbl="); outd(n); outc('\n');
 #endif
 		e = readexpr();
+		e = rewrite(e);
 		if (e) {
 			setdest(e, DEST_FLAGS);
 #ifdef DEBUG
@@ -81,6 +82,7 @@ parseStmt(void)
 #endif
 		if (n) {
 			e = readexpr();
+			e = rewrite(e);
 			if (e) {
 				setdest(e, DEST_VALUE);
 #ifdef DEBUG
@@ -115,6 +117,7 @@ parseStmt(void)
 		out("; SWITCH n="); outd(n); outc('\n');
 #endif
 		e = readexpr();
+		e = rewrite(e);
 		if (e) {
 			setdest(e, DEST_VALUE);
 #ifdef DEBUG
@@ -133,6 +136,7 @@ parseStmt(void)
 		out("; CASE n="); outd(n); outc('\n');
 #endif
 		e = readexpr();
+		e = rewrite(e);
 		if (e) {
 #ifdef DEBUG
 			dumpexpr(e);
@@ -152,6 +156,14 @@ parseStmt(void)
 		for (i = 0; i < n; i++)
 			parseStmt();
 		return;
+	case SEMI:
+		/* Empty statement (bare semicolon) - no-op */
+#ifdef DEBUG
+		if (VERBOSE(V_STMT))
+			fprintf(stderr, "  SEMI (empty)\n");
+		out("; SEMI\n");
+#endif
+		return;
 	default:
 		/* Expression statement - op byte is start of expression */
 		unread1(op);
@@ -161,6 +173,7 @@ parseStmt(void)
 		out("; EXPR\n");
 #endif
 		e = readexpr();
+		e = rewrite(e);
 		if (e) {
 			setdest(e, DEST_NONE);
 #ifdef DEBUG

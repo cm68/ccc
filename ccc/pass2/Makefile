@@ -37,10 +37,10 @@ ifeq ($(CC),ccc)
 CFLAGS = -I.
 endif
 
-SOURCES = pass2.c astio.c parseast.c expr.c
+SOURCES = pass2.c astio.c parseast.c expr.c rewrite.c
 OBJECTS = $(SOURCES:.c=.o)
 
-HEADERS = pass2.h expr.h
+HEADERS = pass2.h expr.h opcodes.h
 
 ifeq ($(DEFINES),-DDEBUG)
 DBGFILES = debugtags.c debug.h
