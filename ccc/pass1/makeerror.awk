@@ -16,7 +16,10 @@ END {
 	print "#else";
 	print "typedef enum errorenum {";
 	for (i = 0; i < ci; i++) {
-		printf("\t%s,\n", codes[i]);
+		if (i == 0)
+			printf("\t%s = 1,\n", codes[i]);
+		else
+			printf("\t%s,\n", codes[i]);
 	}
 	printf("\t%s\n", "ER_WTF");
 	print "} error_t;"

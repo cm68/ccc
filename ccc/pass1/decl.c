@@ -323,7 +323,7 @@ parsefunc(struct name *f)
 	if (lexlevel != 1) {
 		fdprintf(2, "ASSERTION FAILED: lexlevel=%d after parsing "
 		         "function %s (expected 1)\n", lexlevel, f->name);
-		fatal(0);
+		fatal(ER_WTF);
 	}
 	/* Verify no local names remain in symbol table (phase 2 only) */
 	/* In phase 1, names are preserved for phase 2 lookup */
@@ -335,7 +335,7 @@ parsefunc(struct name *f)
 				         "'%s' at level %d after parsing "
 				         "function %s\n",
 				         n->name, n->level, f->name);
-				fatal(0);
+				fatal(ER_WTF);
 			}
 		}
 	}
@@ -704,7 +704,7 @@ parse()
 	if (lexlevel != 0) {
 		fdprintf(2, "ASSERTION FAILED: lexlevel=%d after parsing "
 		         "file (expected 0)\n", lexlevel);
-		fatal(0);
+		fatal(ER_WTF);
 	}
 	/* Verify only basic types remain in symbol table (level 0) */
 	/* Skip in phase 1: names are preserved for phase 2 lookup */
@@ -723,7 +723,7 @@ parse()
 		if (nonBasicCnt > 0) {
 			fdprintf(2, "ASSERTION FAILED: found %d non-basic "
 			         "names after parsing file\n", nonBasicCnt);
-			fatal(0);
+			fatal(ER_WTF);
 		}
 	}
 #endif

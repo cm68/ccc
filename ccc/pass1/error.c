@@ -15,9 +15,10 @@ static char errbuf[128];
 void
 gripe(error_t errcode)
 {
-    int i = errcode;
+    int i = errcode - 1;  /* error codes start at 1, array at 0 */
     char *p;
-    if (i > ER_WTF) i = ER_WTF;
+    if (i < 0) i = 0;
+    if (i > ER_WTF - 1) i = ER_WTF - 1;
     p = fmtstr(errbuf, "%s:%d: %s\n", filename, lineno, errmsg[i]);
     write(2, errbuf, p - errbuf);
     error = errcode;
