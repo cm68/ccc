@@ -390,13 +390,11 @@ mkIncDec(struct expr *operand, unsigned char inc_op, unsigned char is_postfix)
 #define IS_SCALAR(t) (!((t)->flags & (TF_POINTER|TF_ARRAY|TF_FUNC|TF_AGGREGATE)))
 
 /*
- * Constant folding for binary operations
- * Folds arithmetic, shift, and bitwise ops when both operands are constants.
- * Used for sizeof(arr)/sizeof(arr[0]) and address calculations.
+ * Fold a single node if both operands are constants.
  * Returns folded CONST expr, or original expr if not foldable.
  */
 static struct expr *
-foldConst(struct expr *e)
+foldNode(struct expr *e)
 {
     unsigned lv, rv;
     struct expr *left, *right;
@@ -417,7 +415,9 @@ foldConst(struct expr *e)
     switch (e->op) {
     case PLUS:   lv += rv; break;
     case MINUS:  lv -= rv; break;
+    case STAR:   lv *= rv; break;
     case DIV:    if (rv) lv /= rv; break;
+    case MOD:    if (rv) lv %= rv; break;
     case LSHIFT: lv <<= rv; break;
     case RSHIFT: lv >>= rv; break;
     case AND:
@@ -431,7 +431,7 @@ foldConst(struct expr *e)
     /* Reuse left node as constant */
     left->op = CONST;
     left->v = lv;
-    left->type = inttype;
+    left->type = e->type;
     left->flags = E_CONST;
     left->left = NULL;
     left->right = NULL;
@@ -440,6 +440,24 @@ foldConst(struct expr *e)
     e->right = NULL;
     freeNode(e);
     return left;
+}
+
+/*
+ * Walk expression tree bottom-up and fold constants.
+ * Called before emitting to AST.
+ */
+struct expr *
+foldTree(struct expr *e)
+{
+    struct expr **pp;
+
+    if (!e)
+        return NULL;
+    e->left = foldTree(e->left);
+    /* Walk right child and any next chain (function arguments) */
+    for (pp = &e->right; *pp; pp = &(*pp)->next)
+        *pp = foldTree(*pp);
+    return foldNode(e);
 }
 
 /*
@@ -934,7 +952,6 @@ parseExpr(unsigned char pri)
             e3->right->up = e3;
             // addr is pointer to member, not pointer to base struct
             e3->type = getType(TF_POINTER, np->type, 0);
-            e3 = foldConst(e3);  /* fold constant offsets */
 
             // Check if this is a bitfield access
             if (np->kind == bitfield) {
@@ -1115,9 +1132,6 @@ parseExpr(unsigned char pri)
         } else {
             e->type = e->left->type;
         }
-
-        /* Constant folding for arithmetic/bitwise operations */
-        e = foldConst(e);
     }
     return e;
 }

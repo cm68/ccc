@@ -136,6 +136,9 @@ emitExpr(struct expr *e)
 	char fullname[32], c;
 	int n;
 
+	/* Fold constants before emitting */
+	e = foldTree(e);
+
 	if (!e) {
 		emit1(AST_EMPTY);
 		return;

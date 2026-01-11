@@ -115,6 +115,7 @@ extern struct expr *parseExpr(unsigned char priority);
 extern int isTypeToken(unsigned char t);
 unsigned long parseConst(unsigned char priority);
 extern void FreeExpr(struct expr *e);
+extern struct expr *foldTree(struct expr *e);
 extern char funcStrCtr;    /* function-local string counter (prefix "fs") */
 extern char globalStrCtr;  /* global string counter (prefix "str") */
 
