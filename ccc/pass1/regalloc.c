@@ -96,10 +96,16 @@ allocRegs(struct name *locals)
 		for (n = locals; n; n = n->next) {
 			if (!canAlloc(n, no_arg_regs))
 				continue;
-			if ((n->type->flags & TF_POINTER) &&
-			    n->agg_refs > 0 && n->ref_count > 1)
+			if (!(n->type->flags & TF_POINTER))
+				continue;
+			/* Pointer to aggregate always prefers IX */
+			if (n->type->sub && (n->type->sub->flags & TF_AGGREGATE)) {
 				if (!best || n->agg_refs > best->agg_refs)
 					best = n;
+			} else if (n->agg_refs > 0 && n->ref_count > 1) {
+				if (!best || n->agg_refs > best->agg_refs)
+					best = n;
+			}
 		}
 		if (best) { best->reg = REG_IX; regs |= 1; }
 	}

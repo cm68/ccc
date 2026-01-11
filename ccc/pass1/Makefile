@@ -26,7 +26,6 @@ endif
 
 INC = -I../../libsrc/include
 CCC = $(DEST)/bin/ccc
-XDUMP = ../cpp/xdump
 ASTPP = ../astpp
 
 OUTDIR = stage1
@@ -106,13 +105,18 @@ stage1: c0
 		b=$${f%.c}; \
 		err=$(OUTDIR)/$$b.err ; \
 		printf "%-12s" "$$b: "; \
-		../cpp/cpp -DCCC $(INC) -o $(OUTDIR)/$$b $$f 2> $$err && \
-		$(XDUMP) $(OUTDIR)/$$b.x > $(OUTDIR)/$$b.xd 2>> $$err && \
-		./c0 $(OUTDIR)/$$b.x $(OUTDIR)/$$b.1 $(OUTDIR)/$$b.2 2>> $$err && \
-		$(ASTPP) $(OUTDIR)/$$b.1 > $(OUTDIR)/$$b.pp 2>> $$err && \
-		../pass2/c1 $(OUTDIR)/$$b.1 $(OUTDIR)/$$b.2 $(OUTDIR)/$$b.s 2>> $$err && \
-      	{ echo "ok"; } || { echo "FAIL"; } \
-    done
+		if ! ../cpp/cpp -DCCC $(INC) -p -o $(OUTDIR)/$$b $$f 2> $$err; then \
+			echo "FAIL (cpp)"; \
+		elif ! ./c0 $(OUTDIR)/$$b.x $(OUTDIR)/$$b.1 $(OUTDIR)/$$b.2 2>> $$err; then \
+			echo "FAIL (c0)"; \
+		elif ! $(ASTPP) $(OUTDIR)/$$b.1 > $(OUTDIR)/$$b.pp 2>> $$err; then \
+			echo "FAIL (astpp)"; \
+		elif ! ../pass2/c1 $(OUTDIR)/$$b.1 $(OUTDIR)/$$b.2 $(OUTDIR)/$$b.s 2>> $$err; then \
+			echo "FAIL (c1)"; \
+		else \
+			echo "ok"; \
+		fi \
+	done
 
 sizecheck: $(GENERATED)
 	mkdir -p sizecheck
