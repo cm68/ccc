@@ -426,7 +426,7 @@ statement(void)
                     pushFuncCnt(stmt_count);
                 /* Nested blocks (lexlevel > 2) store to block counts */
                 /* Note: this can happen while inside a switch (swDepth > 0) */
-                if (lexlevel > 2)
+                if (lexlevel > 2 && !atSwBodyStmt())
                     pushBlkCnt(stmt_count);
                 block = 0;
                 break;
