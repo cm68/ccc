@@ -15,3 +15,10 @@
 
 - All symbol names (functions, globals, statics) must be 14 characters or less
 - The object file format limits symbols to 15 characters, and C's leading underscore uses one
+
+## Code Restrictions (see ccc/RESTRICTIONS.md)
+
+The compiler must self-host on Z80. Do NOT use:
+- Structure assignment or structure return
+- Auto aggregate initializers (`struct x = {...}` or `int a[] = {...}`)
+- `const` or `signed` qualifiers
