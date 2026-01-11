@@ -171,7 +171,8 @@ process(char *sourcefile)
         filtctrl(&t);
     }
 
-    /* Emit EOF token */
+    /* Check brace balance and emit EOF token */
+    emitCheckBraces();
     emitToken(E_O_F);
 }
 

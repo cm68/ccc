@@ -13,6 +13,9 @@ char lexFd = -1;
 static int lastLine = 0;
 static char *lastName = NULL;
 
+/* Brace balance tracking */
+static int braceCount = 0;
+
 /* Forward declarations */
 void emitLine(int line, char *file);
 void emitStructTok(struct token *t);
@@ -244,6 +247,14 @@ emitStructTok(struct token *t)
         break;
     case E_O_F:
         break;
+    case BEGIN:
+        braceCount++;
+        emitToken(t->type);
+        break;
+    case END:
+        braceCount--;
+        emitToken(t->type);
+        break;
     default:
         emitToken(t->type);
         break;
@@ -253,5 +264,18 @@ emitStructTok(struct token *t)
     if (t->type == STRING && t->v.str) {
         free(t->v.str);
         t->v.str = NULL;
+    }
+}
+
+/*
+ * Check brace balance at EOF - call before emitting E_O_F
+ */
+void
+emitCheckBraces(void)
+{
+    if (braceCount != 0) {
+        fdprintf(2, "cpp: brace mismatch at EOF: %d unmatched {\n",
+                 braceCount);
+        exit(1);
     }
 }
