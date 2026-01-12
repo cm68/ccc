@@ -32,6 +32,12 @@
 #define R_A     7
 #define R_IY    8
 
+/* Flag codes (for comparison results) */
+#define F_Z     16      /* zero flag */
+#define F_NZ    17      /* not zero */
+#define F_C     18      /* carry flag */
+#define F_NC    19      /* not carry */
+
 /* Global state */
 extern int infd;
 extern int in2fd;

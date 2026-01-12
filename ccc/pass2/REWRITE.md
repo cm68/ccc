@@ -50,6 +50,8 @@ struct rule {
     char *rsrc;     /* right child source path */
     char *dsrc;     /* data source path (for reg/off) */
     unsigned char flags;
+    char *asmtpl;   /* assembly template (NULL = rewrite only) */
+    unsigned char destval; /* result register (R_HL, R_A, etc.) */
 };
 ```
 
@@ -108,3 +110,25 @@ Pattern suffix `:f` matches DEST_FLAGS context.
 `+(S,N)` → SYMREF: symbol plus constant offset folds into a single
 node that code generation can emit as `symbol+N`, resolved at link time.
 This handles array indexing with constant offsets, struct field access, etc.
+
+## Code Generation
+
+Rules with `asmtpl` emit assembly and replace the matched tree with a CODE node.
+The CODE node indicates where the result is (destval = R_HL, R_A, etc.).
+
+Assembly templates use `$` interpolation:
+- `$L` - emit left child value
+- `$R` - emit right child value
+- `$LL` - emit left->left value
+- Other `$X` paths navigate the tree before the template is applied
+
+Interpolation emits:
+- NUMBER nodes: the decimal value
+- SYMREF nodes: `name` or `name+offset` / `name-offset`
+
+Example rule with template:
+```c
+{"+(H,E):s", "+", "L", "R", "", 0, "\tadd hl,de\n", R_HL}
+```
+This matches short PLUS(INHL, INDE), emits `add hl,de`, and returns
+CODE node with result in HL.

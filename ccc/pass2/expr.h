@@ -58,6 +58,7 @@ Expr	*mkincdec(int op, char width, Expr *e, int amt);
 Expr	*mkbfext(char off, char wid, Expr *addr);
 Expr	*mkbfass(char off, char wid, Expr *addr, Expr *val);
 Expr	*mksymref(char *name, short off);
+Expr	*mkcode(char width, char reg);
 
 /* tree operations */
 void	setdest(Expr *e, char dest);

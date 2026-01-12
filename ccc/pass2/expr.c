@@ -191,6 +191,16 @@ mksymref(char *name, short off)
 	return e;
 }
 
+Expr *
+mkcode(char width, char reg)
+{
+	Expr *e = alloc();
+	e->op = CODE;
+	e->width = width;
+	e->u.var.reg = reg;
+	return e;
+}
+
 void
 setdest(Expr *e, char dest)
 {
@@ -506,6 +516,11 @@ dumpnode(Expr *e)
 		return;
 	case SYMREF:
 		sprintf(buf, "(SYMREF %s%+d)", e->u.symref.name, e->u.symref.off);
+		out(buf);
+		return;
+	case CODE:
+		sprintf(buf, "(CODE:%s%s @%s)", widthName(e->width),
+		        destName(e->dest), regName(e->u.var.reg));
 		out(buf);
 		return;
 	case QUES:

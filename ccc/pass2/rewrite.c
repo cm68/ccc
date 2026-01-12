@@ -174,73 +174,128 @@ struct rule {
 	char *rsrc;     /* right child source path */
 	char *dsrc;     /* data source path (for reg/off) */
 	unsigned char flags;
+	char *asmtpl;   /* asm template: $L/$R/$LL/etc for interpolation */
+	unsigned char destval; /* result location: R_HL, R_A, etc (0=none) */
 };
+
+/*
+ * Interpolate asm template, emitting to output
+ * $X where X is path (L, R, LL, LR, etc) interpolates that node
+ */
+static void
+emitasm(char *tpl, Expr *e)
+{
+	char *p = tpl;
+	char path[8];
+	int i;
+	Expr *n;
+
+	while (*p) {
+		if (*p == '$') {
+			p++;
+			/* collect path chars */
+			for (i = 0; i < 7 && (*p == 'L' || *p == 'R'); i++)
+				path[i] = *p++;
+			path[i] = 0;
+			/* navigate to node */
+			n = e;
+			for (i = 0; path[i] && n; i++) {
+				if (path[i] == 'L') n = n->left;
+				else n = n->right;
+			}
+			/* emit based on node type */
+			if (n) {
+				if (n->op == NUMBER) {
+					outd(n->u.val);
+				} else if (n->op == SYMREF) {
+					out(n->u.symref.name);
+					if (n->u.symref.off != 0) {
+						if (n->u.symref.off > 0)
+							outc('+');
+						outd(n->u.symref.off);
+					}
+				}
+			}
+		} else {
+			outc(*p++);
+		}
+	}
+}
 
 static struct rule rules[] = {
 	/* LOCALVAR -> INDEX */
-	{"L", "I", "", "", "", 0},
+	{"L", "I", "", "", "", 0, NULL, 0},
 
 	/* PLUS(DEREF(REGVAR), NUM) -> INDEX [normalized: const on right] */
-	{"+(D(V),N)", "I", "", "", "LL", RF_IXIY},
+	{"+(D(V),N)", "I", "", "", "LL", RF_IXIY, NULL, 0},
 
 	/* STAR(any, POW2) -> LSHIFT [normalized: const on right] */
-	{"*(_,P)", "<", "L", "R", "", RF_POW2},
+	{"*(_,P)", "<", "L", "R", "", RF_POW2, NULL, 0},
 
 	/* byte store to indexed: ld (ix+d), n */
-	{"=(I,N)", "=", "L", "R", "", 0},
+	{"=(I,N)", "=", "L", "R", "", 0, NULL, 0},
 
 	/* byte store to indexed: ld (ix+d), a */
-	{"=(I,A)", "=", "L", "R", "", 0},
+	{"=(I,A)", "=", "L", "R", "", 0, NULL, 0},
 
 	/* byte store to (hl): ld (hl), n */
-	{"=(H,N)", "=", "L", "R", "", 0},
+	{"=(H,N)", "=", "L", "R", "", 0, NULL, 0},
 
 	/* byte store to (hl): ld (hl), a */
-	{"=(H,A)", "=", "L", "R", "", 0},
+	{"=(H,A)", "=", "L", "R", "", 0, NULL, 0},
 
 	/* byte load from (hl): ld a, (hl) */
-	{"D(H)", "D", "L", "", "", 0},
+	{"D(H)", "D", "L", "", "", 0, NULL, 0},
 
 	/* byte load from indexed: ld a, (ix+d) */
-	{"D(I)", "D", "L", "", "", 0},
+	{"D(I)", "D", "L", "", "", 0, NULL, 0},
 
 	/* 16-bit add: add hl, de */
-	{"+(H,E)", "+", "L", "R", "", 0},
+	{"+(H,E)", "+", "L", "R", "", 0, NULL, 0},
 
 	/* byte add immediate: add a, n */
-	{"+(A,N)", "+", "L", "R", "", 0},
+	{"+(A,N)", "+", "L", "R", "", 0, NULL, 0},
 
 	/* byte sub immediate: sub n */
-	{"-(A,N)", "-", "L", "R", "", 0},
+	{"-(A,N)", "-", "L", "R", "", 0, NULL, 0},
 
-	/* compare equal: cp n (Z flag) */
-	{"Q(A,N):f", "Q", "L", "R", "", 0},
+	/* compare equal: cp n (Z flag) - value already in A */
+	{"Q(A,N):f", "Q", "L", "R", "", 0, NULL, 0},
 
-	/* compare less than: cp n (C flag) */
-	{"T(A,N):f", "T", "L", "R", "", 0},
+	/* compare equal: ld a,(sym); cp n (Z flag) */
+	{"Q(D(O),N):f", "Q", "L", "R", "", 0, "\tld a,($LL)\n\tcp $R\n", F_Z},
+
+	/* compare less than: cp n (C flag) - value already in A */
+	{"T(A,N):f", "T", "L", "R", "", 0, NULL, 0},
+
+	/* compare less than: ld a,(sym); cp n (C flag) */
+	{"T(D(O),N):f", "T", "L", "R", "", 0, "\tld a,($LL)\n\tcp $R\n", F_C},
 
 	/* NEQ -> BANG(EQ): normalize for conditional jumps */
-	{"U(_,_)", "!", "L", "R", "", RF_NOTEQ},
+	{"U(_,_)", "!", "L", "R", "", RF_NOTEQ, NULL, 0},
 
-	/* GE: cp n, jp nc (cheap - direct flag) */
-	{"Y(A,N):f", "Y", "L", "R", "", 0},
+	/* GE: cp n, jp nc (cheap - direct flag) - value already in A */
+	{"Y(A,N):f", "Y", "L", "R", "", 0, NULL, 0},
+
+	/* GE: ld a,(sym); cp n (NC flag) */
+	{"Y(D(O),N):f", "Y", "L", "R", "", 0, "\tld a,($LL)\n\tcp $R\n", F_NC},
 
 	/* GT(a,n) -> GE(a,n+1): a > n iff a >= n+1 */
-	{"G(_,N)", "Y", "L", "R", "", RF_INC1},
+	{"G(_,N)", "Y", "L", "R", "", RF_INC1, NULL, 0},
 
 	/* LE(a,n) -> LT(a,n+1): a <= n iff a < n+1 */
-	{"W(_,N)", "T", "L", "R", "", RF_INC1},
+	{"W(_,N)", "T", "L", "R", "", RF_INC1, NULL, 0},
 
 	/* SYM + NUMBER -> SYMREF (linker-resolvable) */
-	{"+(S,N)", "O", "", "", "", 0},
+	{"+(S,N)", "O", "", "", "", 0, NULL, 0},
 
 	/* SYMREF + NUMBER -> SYMREF with combined offset */
-	{"+(O,N)", "O", "", "", "", 0},
+	{"+(O,N)", "O", "", "", "", 0, NULL, 0},
 
 	/* bare SYM -> SYMREF with offset 0 */
-	{"S", "O", "", "", "", 0},
+	{"S", "O", "", "", "", 0, NULL, 0},
 
-	{NULL, NULL, NULL, NULL, NULL, 0}
+	{NULL, NULL, NULL, NULL, NULL, 0, NULL, 0}
 };
 
 /*
@@ -358,6 +413,15 @@ tryrule(struct rule *rp, Expr *e)
 		e->right->u.val++;
 	}
 
+	/* Emit assembly and create CODE node if template present */
+	if (rp->asmtpl) {
+		emitasm(rp->asmtpl, e);
+		n = mkcode(e->width, rp->destval);
+		n->dest = e->dest;
+		freeexpr(e);
+		return n;
+	}
+
 	return e;
 }
 
@@ -392,6 +456,21 @@ normalize(Expr *e)
 }
 
 /*
+ * Flip flag code: Z<->NZ, C<->NC
+ */
+static unsigned char
+flipflag(unsigned char f)
+{
+	switch (f) {
+	case F_Z:  return F_NZ;
+	case F_NZ: return F_Z;
+	case F_C:  return F_NC;
+	case F_NC: return F_C;
+	}
+	return f;
+}
+
+/*
  * Rewrite single node
  */
 static Expr *
@@ -406,6 +485,17 @@ rewrite1(Expr *e)
 	e->right = rewrite1(e->right);
 
 	normalize(e);
+
+	/* BANG(CODE) in flag context: flip the flag */
+	if (e->op == BANG && e->dest == DEST_FLAGS &&
+	    e->left && e->left->op == CODE) {
+		n = e->left;
+		n->u.var.reg = flipflag(n->u.var.reg);
+		n->dest = e->dest;
+		e->left = NULL;
+		freeexpr(e);
+		return n;
+	}
 
 	for (rp = rules; rp->pat; rp++) {
 		n = tryrule(rp, e);
