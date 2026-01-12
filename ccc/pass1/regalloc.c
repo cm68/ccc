@@ -90,7 +90,7 @@ allocRegs(struct name *locals)
 		}
 	}
 
-	/* IX to struct pointer with highest agg_refs */
+	/* IX to pointer with highest agg_refs (only if used for field access) */
 	if (!(regs & 1)) {
 		best = NULL;
 		for (n = locals; n; n = n->next) {
@@ -98,11 +98,8 @@ allocRegs(struct name *locals)
 				continue;
 			if (!(n->type->flags & TF_POINTER))
 				continue;
-			/* Pointer to aggregate always prefers IX */
-			if (n->type->sub && (n->type->sub->flags & TF_AGGREGATE)) {
-				if (!best || n->agg_refs > best->agg_refs)
-					best = n;
-			} else if (n->agg_refs > 0 && n->ref_count > 1) {
+			/* Only use IX if pointer is used for field access */
+			if (n->agg_refs > 0) {
 				if (!best || n->agg_refs > best->agg_refs)
 					best = n;
 			}

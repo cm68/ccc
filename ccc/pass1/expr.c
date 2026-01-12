@@ -229,7 +229,7 @@ static void
 skipExpr(unsigned char pri)
 {
     unsigned char p, is_assign;
-    struct name *np;
+    struct name *np = NULL;
     char namebuf[32];
     char *symname;
     int size;
@@ -325,6 +325,9 @@ skipExpr(unsigned char pri)
             }
             expect(RPAR, ER_E_SP);
         } else if (cur.type == DOT || cur.type == ARROW) {
+            /* Track aggregate ref for register allocation */
+            if (np && np->level > 1 && np->agg_refs < 255)
+                np->agg_refs++;
             gettoken();
             if (cur.type == SYM)
                 gettoken();
@@ -870,10 +873,22 @@ parseExpr(unsigned char pri)
             // For p->x: e is DEREF(SYM p), keep as-is (pointer value)
             if (is_arrow) {
                 e1 = e;  /* base - pointer value */
+                /* Track aggregate ref for register allocation */
+                if (e1->op == DEREF && e1->left && e1->left->op == SYM) {
+                    struct name *vn = (struct name *)e1->left->var;
+                    if (vn && vn->level > 1 && vn->agg_refs < 255)
+                        vn->agg_refs++;
+                }
             } else {
                 // Unwrap DEREF to get address
                 unwrapDeref(&e);
                 e1 = e;  /* base */
+                /* Track aggregate ref for register allocation */
+                if (e1->op == SYM) {
+                    struct name *vn = (struct name *)e1->var;
+                    if (vn && vn->level > 1 && vn->agg_refs < 255)
+                        vn->agg_refs++;
+                }
             }
 
             // Look up member in struct/union
