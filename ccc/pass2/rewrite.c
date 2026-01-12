@@ -132,17 +132,21 @@ pmatch(char *p, Expr *e)
 		p++;
 	}
 
-	/* Check width/dest suffix */
+	/* Check width/dest suffix: :w or :F or :wF (width + flags) */
 	if (*p == ':') {
 		p++;
-		if (*p == 'f') {
-			/* :f = flag context (dest == DEST_FLAGS) */
+		/* check width first (b/B/s/S/l/L/p/f or _ for any) */
+		if (*p != 'F' && *p != '\0' && *p != ')' && *p != ',') {
+			if (*p != '_' && e && e->width != *p)
+				return NULL;
+			p++;
+		}
+		/* check flag context (F) */
+		if (*p == 'F') {
 			if (!e || e->dest != DEST_FLAGS)
 				return NULL;
-		} else if (*p != '_' && e && e->width != *p) {
-			return NULL;
+			p++;
 		}
-		p++;
 	}
 	return p;
 }
@@ -179,16 +183,35 @@ struct rule {
 };
 
 /*
+ * Emit index register name
+ */
+static char *
+idxregname(unsigned char reg)
+{
+	switch (reg) {
+	case R_IX: return "ix";
+	case R_IY: return "iy";
+	}
+	return "??";
+}
+
+/*
  * Interpolate asm template, emitting to output
  * $X where X is path (L, R, LL, LR, etc) interpolates that node
+ * Modifiers after path:
+ *   l - low byte of number
+ *   h - high byte of number
+ *   + - increment index offset by 1
  */
 static void
 emitasm(char *tpl, Expr *e)
 {
 	char *p = tpl;
 	char path[8];
-	int i;
+	int i, offadj;
+	char mod;
 	Expr *n;
+	long val;
 
 	while (*p) {
 		if (*p == '$') {
@@ -197,6 +220,16 @@ emitasm(char *tpl, Expr *e)
 			for (i = 0; i < 7 && (*p == 'L' || *p == 'R'); i++)
 				path[i] = *p++;
 			path[i] = 0;
+			/* check for modifier */
+			mod = 0;
+			offadj = 0;
+			if (*p == 'l' || *p == 'h') {
+				mod = *p++;
+			}
+			if (*p == '+') {
+				offadj = 1;
+				p++;
+			}
 			/* navigate to node */
 			n = e;
 			for (i = 0; path[i] && n; i++) {
@@ -206,7 +239,10 @@ emitasm(char *tpl, Expr *e)
 			/* emit based on node type */
 			if (n) {
 				if (n->op == NUMBER) {
-					outd(n->u.val);
+					val = n->u.val;
+					if (mod == 'l') val = val & 0xff;
+					else if (mod == 'h') val = (val >> 8) & 0xff;
+					outd(val);
 				} else if (n->op == SYMREF) {
 					out(n->u.symref.name);
 					if (n->u.symref.off != 0) {
@@ -214,6 +250,11 @@ emitasm(char *tpl, Expr *e)
 							outc('+');
 						outd(n->u.symref.off);
 					}
+				} else if (n->op == INDEX) {
+					out(idxregname(n->u.var.reg));
+					val = (signed char)n->u.var.off + offadj;
+					if (val >= 0) outc('+');
+					outd(val);
 				}
 			}
 		} else {
@@ -233,7 +274,10 @@ static struct rule rules[] = {
 	{"*(_,P)", "<", "L", "R", "", RF_POW2, NULL, 0},
 
 	/* byte store to indexed: ld (ix+d), n */
-	{"=(I,N)", "=", "L", "R", "", 0, NULL, 0},
+	{"=(I,N):b", "=", "L", "R", "", 0, "\tld ($L),$R\n", 0},
+
+	/* short store to indexed: ld (ix+d), low; ld (ix+d+1), hi */
+	{"=(I,N):s", "=", "L", "R", "", 0, "\tld ($L),$Rl\n\tld ($L+),$Rh\n", 0},
 
 	/* byte store to indexed: ld (ix+d), a */
 	{"=(I,A)", "=", "L", "R", "", 0, NULL, 0},
@@ -247,8 +291,14 @@ static struct rule rules[] = {
 	/* byte load from (hl): ld a, (hl) */
 	{"D(H)", "D", "L", "", "", 0, NULL, 0},
 
-	/* byte load from indexed: ld a, (ix+d) */
-	{"D(I)", "D", "L", "", "", 0, NULL, 0},
+	/* byte deref indexed for flags: ld a,(ix+d); or a -> Z */
+	{"D(I):bF", "D", "L", "", "", 0, "\tld a,($L)\n\tor a\n", F_Z},
+
+	/* short deref indexed for flags: or low,hi -> Z */
+	{"D(I):sF", "D", "L", "", "", 0, "\tld a,($L)\n\tor a,($L+)\n", F_Z},
+
+	/* byte load from indexed for value: ld a, (ix+d) */
+	{"D(I):b", "D", "L", "", "", 0, NULL, 0},
 
 	/* 16-bit add: add hl, de */
 	{"+(H,E)", "+", "L", "R", "", 0, NULL, 0},
@@ -260,25 +310,25 @@ static struct rule rules[] = {
 	{"-(A,N)", "-", "L", "R", "", 0, NULL, 0},
 
 	/* compare equal: cp n (Z flag) - value already in A */
-	{"Q(A,N):f", "Q", "L", "R", "", 0, NULL, 0},
+	{"Q(A,N):F", "Q", "L", "R", "", 0, NULL, 0},
 
 	/* compare equal: ld a,(sym); cp n (Z flag) */
-	{"Q(D(O),N):f", "Q", "L", "R", "", 0, "\tld a,($LL)\n\tcp $R\n", F_Z},
+	{"Q(D(O),N):F", "Q", "L", "R", "", 0, "\tld a,($LL)\n\tcp $R\n", F_Z},
 
 	/* compare less than: cp n (C flag) - value already in A */
-	{"T(A,N):f", "T", "L", "R", "", 0, NULL, 0},
+	{"T(A,N):F", "T", "L", "R", "", 0, NULL, 0},
 
 	/* compare less than: ld a,(sym); cp n (C flag) */
-	{"T(D(O),N):f", "T", "L", "R", "", 0, "\tld a,($LL)\n\tcp $R\n", F_C},
+	{"T(D(O),N):F", "T", "L", "R", "", 0, "\tld a,($LL)\n\tcp $R\n", F_C},
 
 	/* NEQ -> BANG(EQ): normalize for conditional jumps */
 	{"U(_,_)", "!", "L", "R", "", RF_NOTEQ, NULL, 0},
 
 	/* GE: cp n, jp nc (cheap - direct flag) - value already in A */
-	{"Y(A,N):f", "Y", "L", "R", "", 0, NULL, 0},
+	{"Y(A,N):F", "Y", "L", "R", "", 0, NULL, 0},
 
 	/* GE: ld a,(sym); cp n (NC flag) */
-	{"Y(D(O),N):f", "Y", "L", "R", "", 0, "\tld a,($LL)\n\tcp $R\n", F_NC},
+	{"Y(D(O),N):F", "Y", "L", "R", "", 0, "\tld a,($LL)\n\tcp $R\n", F_NC},
 
 	/* GT(a,n) -> GE(a,n+1): a > n iff a >= n+1 */
 	{"G(_,N)", "Y", "L", "R", "", RF_INC1, NULL, 0},
