@@ -484,7 +484,7 @@ dumpnode(Expr *e)
 	case LOCALVAR:
 		sprintf(buf, "(LOCALVAR:%s %s%+d)", widthName(e->width),
 		        regName(e->u.var.reg ? e->u.var.reg : R_IY),
-		        (int)(signed char)e->u.var.off);
+		        (int)(char)e->u.var.off);
 		out(buf);
 		return;
 	case REGVAR:
@@ -495,7 +495,7 @@ dumpnode(Expr *e)
 	case INDEX:
 		sprintf(buf, "(INDEX:%s %s%+d)", widthName(e->width),
 		        regName(e->u.var.reg),
-		        (int)(signed char)e->u.var.off);
+		        (int)(char)e->u.var.off);
 		out(buf);
 		return;
 	case CALL:

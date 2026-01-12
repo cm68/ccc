@@ -84,7 +84,7 @@ ispow2(unsigned long n)
 	int i;
 	if (n == 0) return -1;
 	for (i = 0; i < 32; i++)
-		if (n == (1UL << i))
+		if (n == (1 << i))
 			return i;
 	return -1;
 }
@@ -256,7 +256,7 @@ emitasm(char *tpl, Expr *e)
 					}
 				} else if (n->op == INDEX) {
 					out(idxregname(n->u.var.reg));
-					val = (signed char)n->u.var.off + offadj;
+					val = (char)n->u.var.off + offadj;
 					if (val >= 0) outc('+');
 					outd(val);
 				}
@@ -310,8 +310,14 @@ static struct rule rules[] = {
 	/* byte add immediate: add a, n */
 	{"+(A,N)", "+", "L", "R", "", 0, NULL, 0},
 
+	/* byte add indexed + constant: ld a,(ix+d); add a,n */
+	{"+(D(I),N):b", "+", "L", "R", "", 0, "\tld a,($LL)\n\tadd a,$R\n", R_A},
+
 	/* byte sub immediate: sub n */
 	{"-(A,N)", "-", "L", "R", "", 0, NULL, 0},
+
+	/* byte sub indexed - constant: ld a,(ix+d); sub n */
+	{"-(D(I),N):b", "-", "L", "R", "", 0, "\tld a,($LL)\n\tsub $R\n", R_A},
 
 	/* compare equal: cp n (Z flag) - value already in A */
 	{"Q(A,N):F", "Q", "L", "R", "", 0, NULL, 0},
