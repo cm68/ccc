@@ -113,7 +113,7 @@ switch context.
 For each function, phase 2:
 
 1. Looks up the function's phase 1 definition to get locals
-2. Calls `analyzeFunc()` to perform register allocation
+2. Calls `analyzeFunc()` to perform register allocation (see below)
 3. Calls `emitFuncPre()` to emit:
    - Function header (name, return type)
    - Parameter count, local count, frame size
@@ -129,6 +129,32 @@ if (phase == 2) {
     statement(0);     // Streams: parses, emits, frees each stmt
 }
 ```
+
+### Register Allocation Policy
+
+The Z80 has limited registers available for local variables:
+
+- **IX** - Index register, used for struct/union field access (`p->field`)
+- **BC** - General 16-bit register pair
+- **B, C** - Individual 8-bit registers
+
+Allocation priority:
+
+1. **Explicit `register` keyword** - Variables marked `register` get first choice
+2. **IX for pointers with field access** - Only pointers actually used for
+   member access (`p->field` or `s.member`) are allocated to IX. A struct
+   pointer that's just passed around without field access goes to BC instead.
+   This is tracked via `agg_refs` count during expression parsing.
+3. **BC for high-use word variables** - 16-bit variables with highest `ref_count`
+4. **B/C for byte variables** - 8-bit variables with `ref_count > 1`
+
+The `agg_refs` field is incremented during phase 1 (`skipExpr`) when DOT or
+ARROW operators are encountered on a local variable. This ensures the count
+is available when `analyzeFunc()` runs at the start of phase 2.
+
+Example: In `foo(struct bar *p) { other(p, 0); }`, `p` has no field access
+so `agg_refs=0` and it goes to BC. In `foo(struct bar *p) { return p->x; }`,
+`p` has `agg_refs=1` and goes to IX.
 
 ### 6. Count Retrieval
 
