@@ -315,11 +315,17 @@ static struct rule rules[] = {
 	/* compare equal: ld a,(sym); cp n (Z flag) */
 	{"Q(D(O),N):F", "Q", "L", "R", "", 0, "\tld a,($LL)\n\tcp $R\n", F_Z},
 
+	/* compare equal byte indexed: ld a,(ix+d); cp n (Z flag) */
+	{"Q(D(I),N):bF", "Q", "L", "R", "", 0, "\tld a,($LL)\n\tcp $R\n", F_Z},
+
 	/* compare less than: cp n (C flag) - value already in A */
 	{"T(A,N):F", "T", "L", "R", "", 0, NULL, 0},
 
 	/* compare less than: ld a,(sym); cp n (C flag) */
 	{"T(D(O),N):F", "T", "L", "R", "", 0, "\tld a,($LL)\n\tcp $R\n", F_C},
+
+	/* compare less than byte indexed: ld a,(ix+d); cp n (C flag) */
+	{"T(D(I),N):bF", "T", "L", "R", "", 0, "\tld a,($LL)\n\tcp $R\n", F_C},
 
 	/* NEQ -> BANG(EQ): normalize for conditional jumps */
 	{"U(_,_)", "!", "L", "R", "", RF_NOTEQ, NULL, 0},
@@ -329,6 +335,9 @@ static struct rule rules[] = {
 
 	/* GE: ld a,(sym); cp n (NC flag) */
 	{"Y(D(O),N):F", "Y", "L", "R", "", 0, "\tld a,($LL)\n\tcp $R\n", F_NC},
+
+	/* GE byte indexed: ld a,(ix+d); cp n (NC flag) */
+	{"Y(D(I),N):bF", "Y", "L", "R", "", 0, "\tld a,($LL)\n\tcp $R\n", F_NC},
 
 	/* GT(a,n) -> GE(a,n+1): a > n iff a >= n+1 */
 	{"G(_,N)", "Y", "L", "R", "", RF_INC1, NULL, 0},
