@@ -221,6 +221,25 @@ setdest(Expr *e, char dest)
 	}
 }
 
+Expr *
+dupexpr(Expr *e)
+{
+	Expr *n;
+	if (!e)
+		return NULL;
+	n = malloc(sizeof(Expr));
+	if (!n) {
+		out("!OOM\n");
+		exit(1);
+	}
+	*n = *e;
+	n->left = dupexpr(e->left);
+	n->right = dupexpr(e->right);
+	if (e->op == SYM || e->op == SYMREF)
+		n->u.name = strdup(e->u.name);
+	return n;
+}
+
 void
 freeexpr(Expr *e)
 {
@@ -228,7 +247,7 @@ freeexpr(Expr *e)
 		return;
 	freeexpr(e->left);
 	freeexpr(e->right);
-	if (e->op == SYM)
+	if (e->op == SYM || e->op == SYMREF)
 		free(e->u.name);
 	free(e);
 }

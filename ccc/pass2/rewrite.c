@@ -65,6 +65,10 @@ chartopc(char c)
 	case 'N': return P_NUM;
 	case 'P': return P_POW2;
 	case 'S': return SYM;
+	case 'i': return PREINC;
+	case 'j': return POSTINC;
+	case 'k': return PREDEC;
+	case 'm': return POSTDEC;
 	case '_': return P_ANY;
 	case '0': return P_NULL;
 	}
@@ -344,6 +348,18 @@ static struct rule rules[] = {
 
 	/* LE(a,n) -> LT(a,n+1): a <= n iff a < n+1 */
 	{"W(_,N)", "T", "L", "R", "", RF_INC1, NULL, 0},
+
+	/* byte pre-increment indexed: inc then load new value */
+	{"i(I):b", "i", "L", "", "", 0, "\tinc ($L)\n\tld a,($L)\n", R_A},
+
+	/* byte post-increment indexed: load old value then inc */
+	{"j(I):b", "j", "L", "", "", 0, "\tld a,($L)\n\tinc ($L)\n", R_A},
+
+	/* byte pre-decrement indexed: dec then load new value */
+	{"k(I):b", "k", "L", "", "", 0, "\tdec ($L)\n\tld a,($L)\n", R_A},
+
+	/* byte post-decrement indexed: load old value then dec */
+	{"m(I):b", "m", "L", "", "", 0, "\tld a,($L)\n\tdec ($L)\n", R_A},
 
 	/* SYM + NUMBER -> SYMREF (linker-resolvable) */
 	{"+(S,N)", "O", "", "", "", 0, NULL, 0},

@@ -62,6 +62,7 @@ Expr	*mkcode(char width, char reg);
 
 /* tree operations */
 void	setdest(Expr *e, char dest);
+Expr	*dupexpr(Expr *e);
 void	freeexpr(Expr *e);
 Expr	*rewrite(Expr *e);
 
