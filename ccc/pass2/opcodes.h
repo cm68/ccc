@@ -8,5 +8,9 @@
 #define OPCODES_H
 
 #define INDEX       226     /* register+offset addressing (ix+d), (iy+d) */
+#define INHL        227     /* value is in HL */
+#define INDE        228     /* value is in DE */
+#define INA         229     /* value is in A (accumulator) */
+#define SYMREF      230     /* symbol+offset (linker-resolvable address) */
 
 #endif

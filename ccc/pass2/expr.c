@@ -82,6 +82,36 @@ mkindex(char width, char reg, char off)
 }
 
 Expr *
+mkinhl(char width, Expr *child)
+{
+	Expr *e = alloc();
+	e->op = INHL;
+	e->width = width;
+	e->left = child;
+	return e;
+}
+
+Expr *
+mkinde(char width, Expr *child)
+{
+	Expr *e = alloc();
+	e->op = INDE;
+	e->width = width;
+	e->left = child;
+	return e;
+}
+
+Expr *
+mkina(char width, Expr *child)
+{
+	Expr *e = alloc();
+	e->op = INA;
+	e->width = width;
+	e->left = child;
+	return e;
+}
+
+Expr *
 mkunary(int op, char width, Expr *child)
 {
 	Expr *e = alloc();
@@ -150,10 +180,35 @@ mkbfass(char off, char wid, Expr *addr, Expr *val)
 	return e;
 }
 
+Expr *
+mksymref(char *name, short off)
+{
+	Expr *e = alloc();
+	e->op = SYMREF;
+	e->width = 'p';
+	e->u.symref.name = strdup(name);
+	e->u.symref.off = off;
+	return e;
+}
+
 void
 setdest(Expr *e, char dest)
 {
+	if (!e) return;
 	e->dest = dest;
+
+	/* Propagate flag context to logical/comparison ops */
+	if (dest == DEST_FLAGS) {
+		switch (e->op) {
+		case LAND: case LOR:
+			setdest(e->left, DEST_FLAGS);
+			setdest(e->right, DEST_FLAGS);
+			break;
+		case BANG:
+			setdest(e->left, DEST_FLAGS);
+			break;
+		}
+	}
 }
 
 void
@@ -368,6 +423,16 @@ readexpr(void)
 
 #include "../format.h"
 
+static char *
+destName(int d)
+{
+	switch (d) {
+	case DEST_FLAGS: return "/f";
+	case DEST_VALUE: return "/v";
+	default: return "";
+	}
+}
+
 static void
 dumpnode(Expr *e)
 {
@@ -439,6 +504,10 @@ dumpnode(Expr *e)
 		dumpnode(e->right);
 		out(")");
 		return;
+	case SYMREF:
+		sprintf(buf, "(SYMREF %s%+d)", e->u.symref.name, e->u.symref.off);
+		out(buf);
+		return;
 	case QUES:
 		out("(?:");
 		out(widthName(e->width));
@@ -457,6 +526,7 @@ dumpnode(Expr *e)
 	out(opName(e->op));
 	out(":");
 	out(widthName(e->width));
+	out(destName(e->dest));
 	out(" ");
 	dumpnode(e->left);
 	if (e->right) {

@@ -12,23 +12,33 @@ Single-character operator codes:
 | `*`  | STAR (mul) | `V`  | REGVAR    |
 | `-`  | MINUS      | `L`  | LOCALVAR  |
 | `/`  | DIV        | `I`  | INDEX     |
-| `%`  | MOD        | `N`  | NUMBER    |
-| `&`  | AND        | `P`  | POW2      |
-| `\|` | OR         | `_`  | any       |
-| `^`  | XOR        | `0`  | null      |
-| `<`  | LSHIFT     | `=`  | ASSIGN    |
-| `>`  | RSHIFT     |      |           |
+| `%`  | MOD        | `H`  | INHL      |
+| `&`  | AND        | `E`  | INDE      |
+| `\|` | OR         | `N`  | NUMBER    |
+| `^`  | XOR        | `P`  | POW2      |
+| `<`  | LSHIFT     | `_`  | any       |
+| `>`  | RSHIFT     | `0`  | null      |
+| `=`  | ASSIGN     | `A`  | INA       |
+| `Q`  | EQ         | `T`  | LT        |
+| `U`  | NEQ        | `G`  | GT        |
+| `W`  | LE         | `Y`  | GE        |
+| `!`  | BANG       | `S`  | SYM       |
+| `O`  | SYMREF     |      |           |
 
 Pattern syntax:
 - `op` - match leaf node
 - `op(child)` - match unary with child pattern
 - `op(left,right)` - match binary with child patterns
+- `:w` suffix - match width (b=byte, s=short, l=long, p=ptr, _=any) or dest (f=flags)
 
 Examples:
 - `L` matches LOCALVAR
 - `D(V)` matches DEREF(REGVAR)
 - `+(D(V),N)` matches PLUS(DEREF(REGVAR), NUMBER)
 - `*(_,P)` matches STAR(any, POW2)
+- `=(I,N):b` matches byte ASSIGN(INDEX, NUMBER)
+- `+(H,E):s` matches short PLUS(INHL, INDE)
+- `==(A,N):f` matches flag-context EQ(INA, NUMBER)
 
 ## Rule Table
 
@@ -54,25 +64,8 @@ Source paths use `L` and `R` to navigate:
 Flags:
 - `RF_POW2` - transform NUMBER value through log2
 - `RF_IXIY` - require data source reg is IX or IY
-
-## Current Rules
-
-```c
-{"L",         "I", "",  "",  "",   0}
-```
-LOCALVAR -> INDEX: Convert frame-relative variable to indexed addressing.
-
-```c
-{"+(D(V),N)", "I", "",  "",  "LL", RF_IXIY}
-```
-ADD(DEREF(REGVAR), NUM) -> INDEX: Pointer+offset to indexed addressing.
-Only when REGVAR is IX or IY. Data (reg) comes from left->left.
-
-```c
-{"*(_,P)",    "<", "L", "R", "",   RF_POW2}
-```
-MUL(x, POW2) -> LSHIFT(x, log2): Strength reduction.
-Left child from L, right child from R (value transformed to shift count).
+- `RF_NOTEQ` - NEQ→BANG(EQ): wrap children in EQ node
+- `RF_INC1` - increment right constant by 1 (for GT→GE, LE→LT)
 
 ## Normalization
 
@@ -82,3 +75,36 @@ version instead of two.
 
 Commutative ops: `+ * & | ^ == != && ||`
 Non-commutative (not swapped): `- / %`
+
+## Comparisons
+
+Z80 `cp a, n` sets flags:
+- Z if a == n
+- C if a < n (unsigned)
+
+Cheap comparisons (single cp + conditional jump):
+- EQ: `cp n`, `jp z`
+- NEQ: `cp n`, `jp nz` (via BANG(EQ))
+- LT: `cp n`, `jp c`
+- GE: `cp n`, `jp nc`
+
+GT and LE to constants rewritten to use cheap ops:
+- GT(a,n) → GE(a,n+1): `cp n+1`, `jp nc`
+- LE(a,n) → LT(a,n+1): `cp n+1`, `jp c`
+
+## Destination Context
+
+Expressions marked with destination before rewriting:
+- IF condition: DEST_FLAGS (boolean result in flags)
+- RETURN value: DEST_VALUE
+- SWITCH expr: DEST_VALUE
+- Expression statement: DEST_NONE (discard result)
+
+DEST_FLAGS propagates through LAND, LOR, BANG.
+Pattern suffix `:f` matches DEST_FLAGS context.
+
+## Linker-Resolvable Addresses
+
+`+(S,N)` → SYMREF: symbol plus constant offset folds into a single
+node that code generation can emit as `symbol+N`, resolved at link time.
+This handles array indexing with constant offsets, struct field access, etc.

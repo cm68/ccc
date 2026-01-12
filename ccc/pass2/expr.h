@@ -35,6 +35,10 @@ typedef struct Expr {
 			unsigned char	off;	/* bitfield offset */
 			unsigned char	wid;	/* bitfield width */
 		} bf;
+		struct {
+			char		*name;	/* symbol name */
+			short		off;	/* constant offset */
+		} symref;
 	} u;
 } Expr;
 
@@ -44,12 +48,16 @@ Expr	*mksym(char *name);
 Expr	*mklocalvar(char width, char reg, char off);
 Expr	*mkregvar(char width, char reg);
 Expr	*mkindex(char width, char reg, char off);
+Expr	*mkinhl(char width, Expr *child);
+Expr	*mkinde(char width, Expr *child);
+Expr	*mkina(char width, Expr *child);
 Expr	*mkunary(int op, char width, Expr *child);
 Expr	*mkbinary(int op, char width, Expr *left, Expr *right);
 Expr	*mkcall(char width, int argc, Expr *func, Expr *args);
 Expr	*mkincdec(int op, char width, Expr *e, int amt);
 Expr	*mkbfext(char off, char wid, Expr *addr);
 Expr	*mkbfass(char off, char wid, Expr *addr, Expr *val);
+Expr	*mksymref(char *name, short off);
 
 /* tree operations */
 void	setdest(Expr *e, char dest);

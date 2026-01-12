@@ -27,6 +27,8 @@
 /* Replacement flags */
 #define RF_POW2  0x01    /* transform constant through log2 */
 #define RF_IXIY  0x02    /* require reg is IX or IY */
+#define RF_NOTEQ 0x04    /* NEQ->BANG(EQ): wrap children in EQ node */
+#define RF_INC1  0x08    /* increment right constant by 1 */
 
 /*
  * Map single char to opcode (or special pattern value)
@@ -50,8 +52,19 @@ chartopc(char c)
 	case 'V': return REGVAR;
 	case 'L': return LOCALVAR;
 	case 'I': return INDEX;
+	case 'H': return INHL;
+	case 'E': return INDE;
+	case 'A': return INA;
+	case 'O': return SYMREF;
+	case 'Q': return EQ;
+	case 'U': return NEQ;
+	case 'T': return LT;
+	case 'G': return GT;
+	case 'W': return LE;
+	case 'Y': return GE;
 	case 'N': return P_NUM;
 	case 'P': return P_POW2;
+	case 'S': return SYM;
 	case '_': return P_ANY;
 	case '0': return P_NULL;
 	}
@@ -89,6 +102,7 @@ opmatch(unsigned char pat, Expr *e)
  * Parse and match pattern string against expression
  * Returns pointer past matched pattern, or NULL if no match
  * Pattern: op or op(left) or op(left,right)
+ * Width suffix: :b :s :l :p :f (or :_ for any)
  */
 static char *
 pmatch(char *p, Expr *e)
@@ -115,6 +129,19 @@ pmatch(char *p, Expr *e)
 			if (!p) return NULL;
 		}
 		if (*p != ')') return NULL;
+		p++;
+	}
+
+	/* Check width/dest suffix */
+	if (*p == ':') {
+		p++;
+		if (*p == 'f') {
+			/* :f = flag context (dest == DEST_FLAGS) */
+			if (!e || e->dest != DEST_FLAGS)
+				return NULL;
+		} else if (*p != '_' && e && e->width != *p) {
+			return NULL;
+		}
 		p++;
 	}
 	return p;
@@ -159,6 +186,60 @@ static struct rule rules[] = {
 	/* STAR(any, POW2) -> LSHIFT [normalized: const on right] */
 	{"*(_,P)", "<", "L", "R", "", RF_POW2},
 
+	/* byte store to indexed: ld (ix+d), n */
+	{"=(I,N)", "=", "L", "R", "", 0},
+
+	/* byte store to indexed: ld (ix+d), a */
+	{"=(I,A)", "=", "L", "R", "", 0},
+
+	/* byte store to (hl): ld (hl), n */
+	{"=(H,N)", "=", "L", "R", "", 0},
+
+	/* byte store to (hl): ld (hl), a */
+	{"=(H,A)", "=", "L", "R", "", 0},
+
+	/* byte load from (hl): ld a, (hl) */
+	{"D(H)", "D", "L", "", "", 0},
+
+	/* byte load from indexed: ld a, (ix+d) */
+	{"D(I)", "D", "L", "", "", 0},
+
+	/* 16-bit add: add hl, de */
+	{"+(H,E)", "+", "L", "R", "", 0},
+
+	/* byte add immediate: add a, n */
+	{"+(A,N)", "+", "L", "R", "", 0},
+
+	/* byte sub immediate: sub n */
+	{"-(A,N)", "-", "L", "R", "", 0},
+
+	/* compare equal: cp n (Z flag) */
+	{"Q(A,N):f", "Q", "L", "R", "", 0},
+
+	/* compare less than: cp n (C flag) */
+	{"T(A,N):f", "T", "L", "R", "", 0},
+
+	/* NEQ -> BANG(EQ): normalize for conditional jumps */
+	{"U(_,_)", "!", "L", "R", "", RF_NOTEQ},
+
+	/* GE: cp n, jp nc (cheap - direct flag) */
+	{"Y(A,N):f", "Y", "L", "R", "", 0},
+
+	/* GT(a,n) -> GE(a,n+1): a > n iff a >= n+1 */
+	{"G(_,N)", "Y", "L", "R", "", RF_INC1},
+
+	/* LE(a,n) -> LT(a,n+1): a <= n iff a < n+1 */
+	{"W(_,N)", "T", "L", "R", "", RF_INC1},
+
+	/* SYM + NUMBER -> SYMREF (linker-resolvable) */
+	{"+(S,N)", "O", "", "", "", 0},
+
+	/* SYMREF + NUMBER -> SYMREF with combined offset */
+	{"+(O,N)", "O", "", "", "", 0},
+
+	/* bare SYM -> SYMREF with offset 0 */
+	{"S", "O", "", "", "", 0},
+
 	{NULL, NULL, NULL, NULL, NULL, 0}
 };
 
@@ -199,6 +280,16 @@ tryrule(struct rule *rp, Expr *e)
 	p = rp->rsrc;
 	rc = (*p) ? getpath(e, &p) : NULL;
 
+	/* Handle NEQ -> BANG(EQ) */
+	if (rp->flags & RF_NOTEQ) {
+		Expr *eq = mkbinary(EQ, e->width, e->left, e->right);
+		eq->dest = e->dest;
+		e->op = BANG;
+		e->left = eq;
+		e->right = NULL;
+		return e;
+	}
+
 	/* Handle INDEX specially */
 	if (newop == INDEX) {
 		if (e->op == LOCALVAR) {
@@ -212,6 +303,30 @@ tryrule(struct rule *rp, Expr *e)
 			off = num ? (char)num->u.val : 0;
 		}
 		n = mkindex(e->width, reg, off);
+		freeexpr(e);
+		return n;
+	}
+
+	/* Handle SYMREF: SYM, SYM+NUMBER, or SYMREF+NUMBER */
+	if (newop == SYMREF) {
+		char *name;
+		short soff;
+		if (e->op == SYM) {
+			/* bare SYM -> SYMREF+0 */
+			name = e->u.name;
+			soff = 0;
+		} else if (e->left->op == SYMREF) {
+			/* SYMREF + NUMBER -> combine offsets */
+			name = e->left->u.symref.name;
+			soff = e->left->u.symref.off;
+			if (e->right)
+				soff += (short)e->right->u.val;
+		} else {
+			/* SYM + NUMBER */
+			name = e->left->u.name;
+			soff = e->right ? (short)e->right->u.val : 0;
+		}
+		n = mksymref(name, soff);
 		freeexpr(e);
 		return n;
 	}
@@ -236,6 +351,11 @@ tryrule(struct rule *rp, Expr *e)
 		shift = ispow2(e->right->u.val);
 		if (shift > 0)
 			e->right->u.val = shift;
+	}
+
+	/* Increment constant by 1 (for GT->GE, LE->LT transforms) */
+	if ((rp->flags & RF_INC1) && e->right && e->right->op == NUMBER) {
+		e->right->u.val++;
 	}
 
 	return e;
