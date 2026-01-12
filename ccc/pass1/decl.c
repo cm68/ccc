@@ -156,13 +156,10 @@ doInitlzr(struct name *v)
                     cstring str = cur.v.str;
                     if (str) {
                         int slen = (unsigned char)str[0];
-                        int i;
                         fmtstr(strname, "str%d", globalStrCtr++);
                         setSeg(SEG_TEXT);
                         asmLabel(strname);
-                        for (i = 0; i < slen; i++)
-                            asmDb((unsigned char)str[i + 1]);
-                        asmDb(0);
+                        asmDbStr((unsigned char *)str + 1, slen);
                     }
                 }
                 if (depth > 0)
@@ -174,13 +171,10 @@ doInitlzr(struct name *v)
             cstring str = cur.v.str;
             if (str) {
                 int slen = (unsigned char)str[0];
-                int i;
                 fmtstr(strname, "str%d", globalStrCtr++);
                 setSeg(SEG_TEXT);
                 asmLabel(strname);
-                for (i = 0; i < slen; i++)
-                    asmDb((unsigned char)str[i + 1]);
-                asmDb(0);
+                asmDbStr((unsigned char *)str + 1, slen);
             }
             gettoken();
         } else {

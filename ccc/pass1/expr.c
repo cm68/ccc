@@ -68,12 +68,9 @@ isTypeToken(unsigned char t)
 }
 
 /*
- * Counters for generating synthetic string literal names
- * funcStrCtr: for function-local strings (prefix "fs")
- * globalStrCtr: for global variable strings (prefix "str")
- * Exported so they can be reset between phases
+ * Counter for generating synthetic string literal names (prefix "str")
+ * Exported so it can be reset between phases
  */
-char funcStrCtr = 0;
 char globalStrCtr = 0;
 
 /*
@@ -245,25 +242,16 @@ skipExpr(unsigned char pri)
         break;
 
     case STRING:
-        /* Process function-local strings in phase 1 - emit 'U' record */
-        size = ((unsigned char *)cur.v.str)[0] + 1;
-        symname = malloc(size);
-        memcpy(symname, cur.v.str, size);
+        /* Phase 1: emit string literal data */
+        size = (unsigned char)cur.v.str[0];
+        symname = (char *)cur.v.str + 1;
+        fmtstr(namebuf, "str%d", globalStrCtr++);
+        setSeg(SEG_TEXT);
+        asmLabel(namebuf);
+        asmDbStr((unsigned char *)symname, size);
         gettoken();
         while (cur.type == STRING)
             gettoken();
-        fmtstr(namebuf, "fs%d", funcStrCtr++);
-        np = (struct name *)calloc(1, sizeof(struct name));
-        strncpy(np->name, namebuf, 15);
-        np->name[15] = 0;
-        np->type = getType(TF_POINTER, chartype, 0);
-        np->kind = var;
-        np->level = 1;
-        np->u.init = mkexprI(STRING, 0, NULL, (unsigned long)symname, 0);
-        emitStrLit(np);
-        free(np->u.init);
-        free(np);
-        free(symname);
         break;
 
     case SYM:
@@ -509,7 +497,7 @@ parseExpr(unsigned char pri)
 	union { float f; unsigned long u; } fu;
 	unsigned long uval;
 	long sval;
-	int elem_size, size;
+	int elem_size;
 
 	assign_type = NULL;
 	vp = NULL;
@@ -546,40 +534,16 @@ parseExpr(unsigned char pri)
         break;
 
     case STRING:
-        /* string literals have type char* (pointer to char) */
-        /* Lexer already concatenates adjacent strings; copy since buffer reused */
-        e = mkexprI(STRING, 0, getType(TF_POINTER, chartype, 0), 0, 0);
-        size = ((unsigned char *)cur.v.str)[0] + 1;  /* length byte + data */
-        symname = malloc(size);
-        memcpy(symname, cur.v.str, size);
-
-        /* Different prefixes for function vs global strings */
-        if (lexlevel > 1) {
-            /* Function-local: "fs" prefix (emitted during phase 1) */
-            fmtstr(namebuf, "fs%d", funcStrCtr++);
-        } else {
-            /* Global: "str" prefix (emitted during phase 2) */
-            fmtstr(namebuf, "str%d", globalStrCtr++);
-        }
-
-        /*
-         * Allocate name structure directly without adding to
-         * names[] lookup table. String literal names don't need to be
-         * looked up, only emitted to AST. We don't free these - small
-         * and process will exit
-         */
+        /* Phase 2: create expression referencing string emitted in phase 1 */
+        fmtstr(namebuf, "str%d", globalStrCtr++);
         np = (struct name *)calloc(1, sizeof(struct name));
         strncpy(np->name, namebuf, 15);
         np->name[15] = 0;
-        np->type = e->type;
+        np->type = getType(TF_POINTER, chartype, 0);
         np->kind = var;
-        np->level = 1;  /* Global scope */
-        /* store pointer to counted string in the name's init field */
-        np->u.init = mkexprI(STRING, 0, NULL, (unsigned long)symname, 0);
-        /* also store in expression for immediate use */
-        e->v = (unsigned long)symname;
+        np->level = 1;
+        e = mkexprI(STRING, 0, np->type, 0, E_CONST);
         e->var = (struct var *)np;
-        e->flags = E_CONST;
         gettoken();
         break;
 

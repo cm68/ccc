@@ -430,46 +430,6 @@ emitFuncPre(struct name *func)
 }
 
 /*
- * Emit a single string literal as assembly
- * Output: label: .db 'c','c',...,0
- * Only emits during phase 2; global strings are handled by streaming.
- */
-void
-emitStrLit(struct name *strname)
-{
-	cstring str;
-	unsigned char len;
-	unsigned char *data;
-	int i;
-
-	/* Only emit in phase 2 */
-	if (phase != 2)
-		return;
-
-	if (!strname || !strname->u.init || strname->u.init->op != STRING)
-		return;
-
-	/* Only emit once */
-	if (strname->emitted)
-		return;
-	strname->emitted = 1;
-
-	str = (cstring)strname->u.init->v;
-	if (!str)
-		return;
-
-	len = (unsigned char)str[0];
-	data = (unsigned char *)str + 1;
-
-	/* Output label and string bytes in text segment */
-	setSeg(SEG_TEXT);
-	asmLabel(strname->name);
-	for (i = 0; i < len; i++)
-		asmDb(data[i]);
-	asmDb(0);  /* null terminator */
-}
-
-/*
  * Output an uninitialized global variable declaration
  * Initialized globals are handled by streaming in doInitlzr()
  */

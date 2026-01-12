@@ -111,8 +111,7 @@ process(char *f, char *o1, char *o2)
     /* Read from preprocessed lexeme stream */
     lexOpen(f);
 
-    /* Reset string counters for this file */
-    funcStrCtr = 0;
+    /* Reset string counter for this file */
     globalStrCtr = 0;
 
     /* Phase 1: Build symbol table, validate types, accumulate counts */
@@ -141,8 +140,7 @@ process(char *f, char *o1, char *o2)
     resetFuncIdx();  /* Reset function stmt count read pointer for phase 2 */
     flipBlkCnts();   /* Reverse block counts for phase 2 (inner-first -> outer-first) */
     resetCountIdx(); /* Reset switch case count read pointer for phase 2 */
-    funcStrCtr = 0;    /* Reset function string counter so phase 2 matches phase 1 */
-    globalStrCtr = 0;  /* Reset global string counter so phase 2 matches phase 1 */
+    globalStrCtr = 0;  /* Reset string counter so phase 2 matches phase 1 */
 
     /* Phase 2: Emit AST (uses counts pushed by phase 1 in LIFO order) */
     phase = 2;

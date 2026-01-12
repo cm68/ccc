@@ -31,7 +31,7 @@ lexlevel = 0;     // Reset scope level
 resetLoopLbls();  // Reset label counter (must match phase 1)
 resetFuncIdx();   // Reset function stmt count read pointer
 flipBlkCnts();    // Reverse block counts for phase 2
-funcStrCtr = 0;   // Reset function string counter
+globalStrCtr = 0; // Reset string counter so phase 2 matches
 
 phase = 2;
 parse();          // Phase 2: emit AST
@@ -53,21 +53,35 @@ if (phase == 1) {
 The `skipExpr()` function consumes tokens matching expression syntax but
 doesn't allocate any `struct expr` nodes. This saves memory and time.
 
-**Exception: String literals**. Function-local strings are emitted during
-phase 1 with "fs" prefix names. This allows the string data to be output
-before the function body.
+**Exception: String literals**. All string literals (global and function-local)
+are emitted during phase 1 with "str" prefix names. These are written to the
+**.2 file** (assembly output via `asmFd`), not the .1 AST file. Phase 2 then
+references these labels when building expressions for the AST.
 
 ```c
 case STRING:
-    /* Create synthetic name and emit immediately */
-    sprintf(namebuf, "fs%d", funcStrCtr++);
-    np = calloc(1, sizeof(struct name));
-    strncpy(np->name, namebuf, 15);
-    np->u.init = mkexprI(STRING, 0, NULL, (unsigned long)symname, 0);
-    emitStrLit(np);  /* Emit 'U' record now */
-    free(np);
+    /* Phase 1: emit string literal data to .2 file */
+    size = (unsigned char)cur.v.str[0];
+    symname = (char *)cur.v.str + 1;
+    fmtstr(namebuf, "str%d", globalStrCtr++);
+    setSeg(SEG_TEXT);
+    asmLabel(namebuf);
+    asmDbStr((unsigned char *)symname, size);
+    gettoken();
     break;
 ```
+
+String data is output as ASCII literals with hex for non-printable characters:
+```
+str0:
+	.db 'hello world', 0x00
+str1:
+	.db 'line1', 0x0a, 'line2', 0x00
+```
+
+The .2 file contains all data that can be emitted as raw assembly without
+needing pass2 processing: string literals, initialized globals, and
+uninitialized global reservations.
 
 ### 2. Statements Are Counted, Not Built
 
@@ -273,7 +287,7 @@ After phase 1 completes:
 6. **Switch tables** - `swList[]` with case values and per-case stmt counts
 7. **If/else flags** - `ifHasElse[]` with has-else for each if
 8. **Function stubs** - Each function has `u.body->locals` with local variables
-9. **String literals** - Function-local strings emitted as 'U' records
+9. **String literals** - All strings emitted with `str<n>` labels
 
 ## What Phase 1 Does NOT Produce
 

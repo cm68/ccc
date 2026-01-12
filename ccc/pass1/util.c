@@ -283,6 +283,74 @@ void asmDb(int val)
 	asmLine(buf);
 }
 
+/*
+ * Check if a character is printable ASCII for string literals.
+ * Excludes single quote (needs escaping) and backslash.
+ */
+static int
+isPrintable(unsigned char c)
+{
+	return c >= 0x20 && c <= 0x7e && c != '\'' && c != '\\';
+}
+
+/*
+ * Emit a string as .db with ASCII literals and hex for non-printable.
+ * Groups printable chars up to 60, breaks on non-printable.
+ * Format: .db 'text', 0x##, 'more text', 0x0
+ */
+void asmDbStr(unsigned char *data, int len)
+{
+	char buf[128];
+	char *p;
+	int i, start, runlen;
+	unsigned char c;
+	int needcomma;
+
+	asmStr("\t.db ");
+	needcomma = 0;
+
+	i = 0;
+	while (i <= len) {  /* <= to include null terminator */
+		c = (i < len) ? data[i] : 0;
+
+		/* Check for printable run */
+		if (isPrintable(c)) {
+			start = i;
+			runlen = 0;
+			while (i <= len && runlen < 60) {
+				c = (i < len) ? data[i] : 0;
+				if (!isPrintable(c))
+					break;
+				runlen++;
+				i++;
+			}
+			/* Emit the printable run as 'string' */
+			if (needcomma)
+				asmStr(", ");
+			asmStr("'");
+			p = buf;
+			while (start < i) {
+				*p++ = data[start++];
+			}
+			*p = 0;
+			asmStr(buf);
+			asmStr("'");
+			needcomma = 1;
+		} else {
+			/* Emit non-printable as hex */
+			if (needcomma)
+				asmStr(", ");
+			fmtstr(buf, "0x%c%c",
+			    "0123456789abcdef"[(c >> 4) & 0xf],
+			    "0123456789abcdef"[c & 0xf]);
+			asmStr(buf);
+			needcomma = 1;
+			i++;
+		}
+	}
+	asmStr("\n");
+}
+
 void asmDw(int val)
 {
 	char buf[16];

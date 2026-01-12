@@ -116,8 +116,7 @@ extern int isTypeToken(unsigned char t);
 unsigned long parseConst(unsigned char priority);
 extern void FreeExpr(struct expr *e);
 extern struct expr *foldTree(struct expr *e);
-extern char funcStrCtr;    /* function-local string counter (prefix "fs") */
-extern char globalStrCtr;  /* global string counter (prefix "str") */
+extern char globalStrCtr;  /* string literal counter (prefix "str") */
 
 extern void statement(void);
 extern void declaration(void);
@@ -125,7 +124,6 @@ extern struct name *capLocals(void);
 extern void emitFuncPre(struct name *func);
 extern void emitGlobalAsm(char *text);
 extern void emitGv(struct name *var);
-extern void emitStrLit(struct name *strname);
 extern void emitExpr(struct expr *e);
 extern int cntCondLbls(struct expr *e);
 extern void emitLabel(char *base, char *suffix);
@@ -397,6 +395,7 @@ void asmStr(char *s);
 void asmLine(char *s);
 void asmLabel(char *name);
 void asmDb(int val);
+void asmDbStr(unsigned char *data, int len);
 void asmDw(int val);
 void asmDwSym(char *name);
 void asmDs(int size);

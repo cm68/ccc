@@ -11,6 +11,15 @@ expression nodes. Phase 2 relies on:
 3. If/else flags recorded by phase 1
 4. Local variable information captured in function stubs
 5. Switch tables with per-case statement counts
+6. String literals already emitted to .2 file by phase 1
+
+**Output files:** Pass1 produces two output files:
+- **.1 file** (`astFd`): Binary AST for functions, emitted by phase 2
+- **.2 file** (`asmFd`): Assembly for data (strings, globals), emitted by both phases
+
+String literals are emitted to the .2 file during phase 1. Phase 2 emits
+references to these `str<n>` labels in the AST when it encounters string
+expressions.
 
 **Note:** The cpp preprocessor has already:
 - Inserted braces around single-statement if/else bodies
@@ -31,7 +40,7 @@ lexlevel = 0;        // Reset scope level
 resetLoopLbls();     // Reset label counter (must match phase 1)
 resetFuncIdx();      // Reset function stmt count read pointer
 flipBlkCnts();       // Reverse block counts for phase 2
-funcStrCtr = 0;      // Reset string counter (phase 2 uses same sequence)
+globalStrCtr = 0;    // Reset string counter so phase 2 matches
 
 phase = 2;
 parse();             // Phase 2: emit AST
@@ -267,8 +276,7 @@ Break inside switch emits `G S<n>_break`.
 - Static global: `S<id>` (S0, S1, ...)
 - Static local: `S<id>` (same sequence as global statics)
 - Shadowed local: `L<id>` (when local shadows outer name)
-- Function-local string: `fs<n>` (fs0, fs1, ...)
-- Global string: `str<n>` (str0, str1, ...)
+- String literal: `str<n>` (str0, str1, ...) - all strings use same counter
 
 ## Memory Management
 
@@ -292,5 +300,4 @@ Debug counters track allocations:
 - `outast.c:emitExpr()` - Expression emission
 - `outast.c:emitFuncPre()` - Function header emission
 - `outast.c:emitGv()` - Global variable emission
-- `outast.c:emitStrLit()` - String literal emission
 - `regalloc.c:analyzeFunc()` - Register allocation and frame layout
