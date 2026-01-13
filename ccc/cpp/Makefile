@@ -10,6 +10,11 @@ DEST ?= $(CURDIR)/../../root
 CC = gcc
 
 CCC = $(DEST)/bin/ccc
+
+ASTPP = ../astpp
+C0 = ../pass1/c0
+C1 = ../pass2/c1
+
 OUTDIR = stage1
 
 ifdef TRACE
@@ -96,10 +101,6 @@ install: cpp xdump
 
 # Individual stage1 file rules
 .SECONDARY:
-
-C0 = ../pass1/c0
-C1 = ../pass2/c1
-ASTPP = ../astpp
 
 $(C0):
 	$(MAKE) -C ../pass1 c0
