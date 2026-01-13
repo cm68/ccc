@@ -9,21 +9,23 @@ DEST = $(realpath ../../root)
 
 CC = gcc
 
+LIBCCC = ../lib/libccc.a
+
 ifeq ($(CC),gcc)
 DEFINES = -DDEBUG
 WARNS = -Wall -Werror -Wno-builtin-declaration-mismatch
 DEBUG = -g -O0
-CFLAGS = -m32 -std=c89 $(DEBUG) $(DEFINES) $(WARNS) -I.
+CFLAGS = -m32 -std=c89 $(DEBUG) $(DEFINES) $(WARNS) -I. -I../lib
 LDFLAGS = -m32 $(DEBUG)
 endif
 
 ifeq ($(CC),zc3)
-CFLAGS = -I../../libsrc/include
+CFLAGS = -I../../libsrc/include -I../lib
 LDFLAGS =
 endif
 
 ifeq ($(CC),sdcc)
-CFLAGS = -mz80 -DCCC -I../../libsrc/include
+CFLAGS = -mz80 -DCCC -I../../libsrc/include -I../lib
 SDCC_OBJS = $(SOURCES:.c=.rel)
 endif
 
@@ -43,7 +45,7 @@ SETX = @ true
 endif
 
 ifeq ($(CC),ccc)
-CFLAGS = -I.
+CFLAGS = -I. -I../lib
 endif
 
 SOURCES = cpp.c lex.c io.c macro.c kw.c emit.c util.c kwtab.c \
@@ -80,13 +82,16 @@ cpp: $(SDCC_OBJS)
 	@echo "SDCC compile complete. $(words $(SDCC_OBJS)) object files ready."
 	@echo "Link with: sdcc -mz80 --no-std-crt0 -o cpp.ihx $(SDCC_OBJS) <libc.rel>"
 else
-cpp: $(OBJECTS)
+cpp: $(OBJECTS) $(LIBCCC)
 ifeq ($(CC),gcc)
-	$(CC) $(LDFLAGS) -o $@ $(OBJECTS)
+	$(CC) $(LDFLAGS) -o $@ $(OBJECTS) $(LIBCCC)
 else
-	ccc -o cpp $(OBJECTS)
+	ccc -o cpp $(OBJECTS) $(LIBCCC)
 endif
 endif
+
+$(LIBCCC):
+	$(MAKE) -C ../lib
 
 xdump: xdump.c
 	$(CC) $(CFLAGS) -o xdump xdump.c
@@ -137,7 +142,7 @@ sizecheck: $(GENERATED)
 		{ echo "ok"; } || { echo "FAIL"; } \
 	done ; \
 	wssize $$o | awk '{t+=$$1;d+=$$2;b+=$$3;a+=$$4} END {print t,d,b,a}' | tee -a sizefile ; \
-	wsld -r -o sizecheck/cpp ../../root/lib/crt0.o $$o ../../root/lib/libc.a ../../root/lib/libu.a ; \
+	wsld -r -o sizecheck/cpp ../../root/lib/crt0.o $$o -L../../root/lib -L../lib -lccc -lc -lu ; \
 	wssize sizecheck/cpp | tee -a sizefile
 
 sizecheck1: $(GENERATED)
