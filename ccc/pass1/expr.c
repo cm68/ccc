@@ -388,7 +388,7 @@ static struct expr *
 foldNode(struct expr *e)
 {
     unsigned lv, rv;
-    struct expr *left, *right;
+    struct expr *left, *right, *result;
 
     if (!e || !e->left || !e->right)
         return e;
@@ -396,7 +396,38 @@ foldNode(struct expr *e)
     left = e->left;
     right = e->right;
 
-    /* Both operands must be constants */
+    /* Identity folding: x + 0 -> x, x * 1 -> x, etc. */
+    if (right->flags & E_CONST) {
+        rv = right->v;
+        result = NULL;
+        switch (e->op) {
+        case PLUS:
+        case MINUS:
+        case OR:
+        case XOR:
+        case LSHIFT:
+        case RSHIFT:
+            if (rv == 0) result = left;  /* x +/- 0 -> x */
+            break;
+        case STAR:
+        case DIV:
+            if (rv == 1) result = left;  /* x * 1 -> x */
+            break;
+        case AND:
+        case AMPER:
+            if (rv == ~0u) result = left;  /* x & ~0 -> x */
+            break;
+        }
+        if (result) {
+            e->left = NULL;
+            FreeExpr(right);
+            e->right = NULL;
+            freeNode(e);
+            return result;
+        }
+    }
+
+    /* Both operands must be constants for full folding */
     if (!(left->flags & E_CONST) || !(right->flags & E_CONST))
         return e;
 

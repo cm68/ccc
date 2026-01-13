@@ -23,6 +23,8 @@ alloc(void)
 	e->op = 0;
 	e->width = 0;
 	e->dest = DEST_NONE;
+	e->regs = 0;
+	e->tgt = 0;
 	e->left = NULL;
 	e->right = NULL;
 	e->u.val = 0;
@@ -348,15 +350,12 @@ readexpr(void)
 			fprintf(stderr, "  CALL type=%c argc=%d\n", t, n);
 #endif
 		e = readexpr();
+		/* chain args in reverse order for C calling convention */
 		args = NULL;
-		arg = NULL;
 		for (i = 0; i < n; i++) {
-			if (!args) {
-				args = arg = mkarg(readexpr());
-			} else {
-				arg->right = mkarg(readexpr());
-				arg = arg->right;
-			}
+			arg = mkarg(readexpr());
+			arg->right = args;  /* prepend to chain */
+			args = arg;
 		}
 		return mkcall(t, n, e, args);
 
@@ -490,33 +489,50 @@ dumpnode(Expr *e)
 
 	switch (e->op) {
 	case NUMBER:
-		sprintf(buf, "%ld:%s", e->u.val, widthName(e->width));
+		sprintf(buf, "%ld:%s%s", e->u.val, widthName(e->width),
+		        destName(e->dest));
 		out(buf);
+		if (e->regs) { sprintf(buf, "#%d", e->regs); out(buf); }
+		if (e->tgt) { sprintf(buf, "->%s", regName(e->tgt)); out(buf); }
 		return;
 	case SYM:
 		out("$");
 		out(e->u.name);
 		return;
 	case LOCALVAR:
-		sprintf(buf, "(LOCALVAR:%s %s%+d)", widthName(e->width),
+		sprintf(buf, "(LOCALVAR:%s%s %s%+d", widthName(e->width),
+		        destName(e->dest),
 		        regName(e->u.var.reg ? e->u.var.reg : R_IY),
 		        (int)(char)e->u.var.off);
 		out(buf);
+		if (e->regs) { sprintf(buf, "#%d", e->regs); out(buf); }
+		if (e->tgt) { sprintf(buf, "->%s", regName(e->tgt)); out(buf); }
+		out(")");
 		return;
 	case REGVAR:
-		sprintf(buf, "(REGVAR:%s %s)", widthName(e->width),
-		        regName(e->u.var.reg));
+		sprintf(buf, "(REGVAR:%s%s %s", widthName(e->width),
+		        destName(e->dest), regName(e->u.var.reg));
 		out(buf);
+		if (e->regs) { sprintf(buf, "#%d", e->regs); out(buf); }
+		if (e->tgt) { sprintf(buf, "->%s", regName(e->tgt)); out(buf); }
+		out(")");
 		return;
 	case INDEX:
-		sprintf(buf, "(INDEX:%s %s%+d)", widthName(e->width),
-		        regName(e->u.var.reg),
+		sprintf(buf, "(INDEX:%s%s %s%+d", widthName(e->width),
+		        destName(e->dest), regName(e->u.var.reg),
 		        (int)(char)e->u.var.off);
 		out(buf);
+		if (e->regs) { sprintf(buf, "#%d", e->regs); out(buf); }
+		if (e->tgt) { sprintf(buf, "->%s", regName(e->tgt)); out(buf); }
+		out(")");
 		return;
 	case CALL:
-		sprintf(buf, "(CALL:%s/%d ", widthName(e->width), e->u.call.argc);
+		sprintf(buf, "(CALL:%s%s/%d", widthName(e->width),
+		        destName(e->dest), e->u.call.argc);
 		out(buf);
+		if (e->regs) { sprintf(buf, "#%d", e->regs); out(buf); }
+		if (e->tgt) { sprintf(buf, "->%s", regName(e->tgt)); out(buf); }
+		out(" ");
 		dumpnode(e->left);
 		/* args are wrapped in ARGNODE, linked via right */
 		for (n = e->right; n && n->op == ARGNODE; n = n->right) {
@@ -529,9 +545,12 @@ dumpnode(Expr *e)
 	case POSTINC:
 	case PREDEC:
 	case POSTDEC:
-		sprintf(buf, "(%s:%s/%d ", opName(e->op), widthName(e->width),
-		        e->u.incdec.amt);
+		sprintf(buf, "(%s:%s%s/%d", opName(e->op), widthName(e->width),
+		        destName(e->dest), e->u.incdec.amt);
 		out(buf);
+		if (e->regs) { sprintf(buf, "#%d", e->regs); out(buf); }
+		if (e->tgt) { sprintf(buf, "->%s", regName(e->tgt)); out(buf); }
+		out(" ");
 		dumpnode(e->left);
 		out(")");
 		return;
@@ -550,33 +569,54 @@ dumpnode(Expr *e)
 		out(")");
 		return;
 	case SYMREF:
-		sprintf(buf, "(SYMREF %s%+d)", e->u.symref.name, e->u.symref.off);
+		sprintf(buf, "(SYMREF%s%s %s%+d", widthName(e->width),
+		        destName(e->dest), e->u.symref.name, e->u.symref.off);
 		out(buf);
+		if (e->regs) { sprintf(buf, "#%d", e->regs); out(buf); }
+		if (e->tgt) { sprintf(buf, "->%s", regName(e->tgt)); out(buf); }
+		out(")");
 		return;
 	case CODE:
-		sprintf(buf, "(CODE:%s%s @%s)", widthName(e->width),
+		sprintf(buf, "(CODE:%s%s @%s", widthName(e->width),
 		        destName(e->dest), regName(e->u.var.reg));
 		out(buf);
+		if (e->regs) { sprintf(buf, "#%d", e->regs); out(buf); }
+		if (e->tgt) { sprintf(buf, "->%s", regName(e->tgt)); out(buf); }
+		out(")");
 		return;
 	case INHL:
-		sprintf(buf, "(HL:%s%s)", widthName(e->width), destName(e->dest));
+		sprintf(buf, "(HL:%s%s", widthName(e->width), destName(e->dest));
 		out(buf);
+		if (e->regs) { sprintf(buf, "#%d", e->regs); out(buf); }
+		if (e->tgt) { sprintf(buf, "->%s", regName(e->tgt)); out(buf); }
+		out(")");
 		return;
 	case INDE:
-		sprintf(buf, "(DE:%s%s)", widthName(e->width), destName(e->dest));
+		sprintf(buf, "(DE:%s%s", widthName(e->width), destName(e->dest));
 		out(buf);
+		if (e->regs) { sprintf(buf, "#%d", e->regs); out(buf); }
+		if (e->tgt) { sprintf(buf, "->%s", regName(e->tgt)); out(buf); }
+		out(")");
 		return;
 	case INBC:
-		sprintf(buf, "(BC:%s%s)", widthName(e->width), destName(e->dest));
+		sprintf(buf, "(BC:%s%s", widthName(e->width), destName(e->dest));
 		out(buf);
+		if (e->regs) { sprintf(buf, "#%d", e->regs); out(buf); }
+		if (e->tgt) { sprintf(buf, "->%s", regName(e->tgt)); out(buf); }
+		out(")");
 		return;
 	case INA:
-		sprintf(buf, "(A:%s%s)", widthName(e->width), destName(e->dest));
+		sprintf(buf, "(A:%s%s", widthName(e->width), destName(e->dest));
 		out(buf);
+		if (e->regs) { sprintf(buf, "#%d", e->regs); out(buf); }
+		if (e->tgt) { sprintf(buf, "->%s", regName(e->tgt)); out(buf); }
+		out(")");
 		return;
 	case QUES:
-		out("(?:");
-		out(widthName(e->width));
+		sprintf(buf, "(?:%s%s", widthName(e->width), destName(e->dest));
+		out(buf);
+		if (e->regs) { sprintf(buf, "#%d", e->regs); out(buf); }
+		if (e->tgt) { sprintf(buf, "->%s", regName(e->tgt)); out(buf); }
 		out(" ");
 		dumpnode(e->left);
 		out(" ");
@@ -593,6 +633,14 @@ dumpnode(Expr *e)
 	out(":");
 	out(widthName(e->width));
 	out(destName(e->dest));
+	if (e->regs) {
+		sprintf(buf, "#%d", e->regs);
+		out(buf);
+	}
+	if (e->tgt) {
+		sprintf(buf, "->%s", regName(e->tgt));
+		out(buf);
+	}
 	out(" ");
 	dumpnode(e->left);
 	if (e->right) {

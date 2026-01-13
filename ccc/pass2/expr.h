@@ -17,6 +17,8 @@ typedef struct Expr {
 	unsigned char	op;	/* operator (lexeme token) */
 	unsigned char	width;	/* type: b/B/s/S/l/L/p/v */
 	unsigned char	dest;	/* destination */
+	unsigned char	regs;	/* Sethi-Ullman label: regs needed */
+	unsigned char	tgt;	/* target register (R_HL, R_DE, 0=any) */
 	struct Expr	*left;	/* left child (unary: only child) */
 	struct Expr	*right;	/* right child (binary ops only) */
 	union {
@@ -64,6 +66,8 @@ Expr	*mkcode(char width, char reg);
 
 /* tree operations */
 void	setdest(Expr *e, char dest);
+void	label(Expr *e);	/* Sethi-Ullman register labeling */
+void	assign(Expr *e, unsigned char tgt);	/* register assignment */
 Expr	*dupexpr(Expr *e);
 void	freeexpr(Expr *e);
 Expr	*rewrite(Expr *e);

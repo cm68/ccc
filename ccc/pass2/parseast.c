@@ -3,6 +3,7 @@
  */
 #include "pass2.h"
 #include "expr.h"
+#include "opcodes.h"
 #include "../cpp/lexeme.h"
 #include <stdio.h>
 #include <string.h>
@@ -29,6 +30,10 @@ stmtname(int op)
 #endif
 
 static char buf[64];
+
+/* Label generation */
+static int labelcnt;		/* per-function label counter */
+static int fnindex;		/* function index for unique labels */
 
 /* Current function state */
 static char funcname[16];	/* function name */
@@ -185,11 +190,14 @@ parseStmt(void)
 		for (i = 0; i < n; i++)
 			parseStmt();
 		return;
-	case IF:
-		n = read1();
+	case IF: {
+		int lbl, hasel;
+		n = read1();		/* nlabels for short-circuit */
+		lbl = labelcnt++;
+		labelcnt += n;		/* reserve intermediate labels */
 #ifdef DEBUG
 		if (VERBOSE(V_STMT))
-			fprintf(stderr, "  IF nlbl=%d\n", n);
+			fprintf(stderr, "  IF nlbl=%d lbl=%d\n", n, lbl);
 		out("; IF nlbl="); outd(n); outc('\n');
 #endif
 		e = readexpr();
@@ -199,12 +207,41 @@ parseStmt(void)
 #ifdef DEBUG
 			dumpexpr(e);
 #endif
+			/* Emit conditional jump: if false, skip then-body */
+			out("\tjp z,no");
+			outd(lbl);
+			outc('_');
+			outd(fnindex);
+			outc('\n');
 			freeexpr(e);
 		}
-		parseStmt();
-		if (read1())
-			parseStmt();
+		parseStmt();		/* then-body */
+		hasel = read1();
+		if (hasel) {
+			/* Jump over else */
+			out("\tjp no");
+			outd(lbl + 1);
+			outc('_');
+			outd(fnindex);
+			outc('\n');
+		}
+		/* Emit false label */
+		out("no");
+		outd(lbl);
+		outc('_');
+		outd(fnindex);
+		out(":\n");
+		if (hasel) {
+			parseStmt();	/* else-body */
+			/* Emit end label */
+			out("no");
+			outd(lbl + 1);
+			outc('_');
+			outd(fnindex);
+			out(":\n");
+		}
 		return;
+	}
 	case RETURN:
 		n = read1();
 #ifdef DEBUG
@@ -215,12 +252,17 @@ parseStmt(void)
 		if (n) {
 			e = readexpr();
 			if (e) {
-				setdest(e, DEST_VALUE);
-				e = rewrite(e);
+				Expr *hl, *assign;
+				/* Wrap in ASSIGN to HL for return value */
+				hl = mkcode(e->width, R_HL);
+				hl->op = INHL;
+				assign = mkbinary(ASSIGN, e->width, hl, e);
+				setdest(assign, DEST_VALUE);
+				assign = rewrite(assign);
 #ifdef DEBUG
-				dumpexpr(e);
+				dumpexpr(assign);
 #endif
-				freeexpr(e);
+				freeexpr(assign);
 			}
 		}
 		/* Jump to function epilogue */
@@ -343,6 +385,8 @@ parse(void)
 		case AST_FUNC:
 			t = read1();
 			readS(funcname);
+			labelcnt = 0;
+			fnindex++;
 #ifdef DEBUG
 			if (VERBOSE(V_PARSE))
 				fprintf(stderr, "parse: FUNC %s type=%c\n", funcname, t);

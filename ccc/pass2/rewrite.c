@@ -11,7 +11,219 @@
 #include "pass2.h"
 #include "expr.h"
 #include "opcodes.h"
+#include "../cpp/lexeme.h"
 #include <stdlib.h>
+
+/* Label counter for short-circuit jumps */
+static int labelcnt;
+
+/*
+ * Sethi-Ullman labeling: compute registers needed for each node
+ * With only HL and DE available:
+ *   0 = already in register (INHL, INDE, some REGVAR)
+ *   1 = needs one register
+ *   2 = needs both HL and DE
+ *   3+ = needs spill to stack
+ */
+void
+label(Expr *e)
+{
+	unsigned char l, r;
+
+	if (!e) return;
+
+	/* Label children first (post-order) */
+	label(e->left);
+	label(e->right);
+
+	switch (e->op) {
+	/* Already in register: 0 */
+	case INHL:
+	case INDE:
+	case INA:
+	case INBC:
+	case CODE:
+		e->regs = 0;
+		return;
+
+	/* REGVAR: 0 if HL/DE, 1 if BC/IX (needs move) */
+	case REGVAR:
+		if (e->u.var.reg == R_HL || e->u.var.reg == R_DE)
+			e->regs = 0;
+		else
+			e->regs = 1;
+		return;
+
+	/* Leaves that need loading: 1 */
+	case NUMBER:
+	case SYM:
+	case SYMREF:
+	case LOCALVAR:
+	case INDEX:
+		e->regs = 1;
+		return;
+
+	/* DEREF: depends on address complexity */
+	case DEREF:
+		l = e->left ? e->left->regs : 1;
+		e->regs = l > 1 ? l : 1;
+		return;
+
+	/* ASSIGN: lvalue doesn't consume reg, only rvalue */
+	case ASSIGN:
+		e->regs = e->right ? e->right->regs : 1;
+		if (e->regs < 1) e->regs = 1;
+		return;
+
+	/* CALL: args pushed separately, result in HL */
+	case CALL:
+		e->regs = 1;
+		return;
+
+	/* ARGNODE: each arg independent, pushed to stack */
+	case ARGNODE:
+		e->regs = e->left ? e->left->regs : 1;
+		return;
+
+	/* Short-circuit: sides evaluated separately */
+	case LAND:
+	case LOR:
+		l = e->left ? e->left->regs : 1;
+		r = e->right ? e->right->regs : 1;
+		e->regs = l > r ? l : r;
+		return;
+
+	/* Ternary: condition, then, else all separate */
+	case QUES:
+	case TERNBRANCH:
+		l = e->left ? e->left->regs : 1;
+		r = e->right ? e->right->regs : 1;
+		e->regs = l > r ? l : r;
+		return;
+
+	/* Unary ops: same as child, min 1 */
+	case BANG:
+	case NEG:
+	case NOT:
+	case PREINC:
+	case POSTINC:
+	case PREDEC:
+	case POSTDEC:
+		e->regs = e->left ? e->left->regs : 1;
+		if (e->regs < 1) e->regs = 1;
+		return;
+
+	/* Binary ops: Sethi-Ullman formula */
+	default:
+		l = e->left ? e->left->regs : 1;
+		r = e->right ? e->right->regs : 1;
+		if (l == r)
+			e->regs = l + 1;
+		else
+			e->regs = l > r ? l : r;
+		return;
+	}
+}
+
+/*
+ * Register assignment: top-down pass to set target registers
+ * Most ops are HL-centric on Z80, so:
+ *   - Binary ops: left→HL, right→DE
+ *   - Unary ops: child inherits parent's target
+ *   - Result may need move if parent wants different reg
+ */
+void
+assign(Expr *e, unsigned char tgt)
+{
+	if (!e) return;
+
+	e->tgt = tgt;
+
+	switch (e->op) {
+	/* Already in register: no children */
+	case INHL:
+	case INDE:
+	case INA:
+	case INBC:
+	case CODE:
+	case NUMBER:
+	case SYM:
+	case SYMREF:
+	case LOCALVAR:
+	case INDEX:
+	case REGVAR:
+		return;
+
+	/* Unary: child inherits target */
+	case DEREF:
+	case BANG:
+	case NEG:
+	case NOT:
+	case PREINC:
+	case POSTINC:
+	case PREDEC:
+	case POSTDEC:
+		assign(e->left, tgt);
+		return;
+
+	/* ASSIGN: lvalue doesn't need target, rvalue→tgt */
+	case ASSIGN:
+		assign(e->left, 0);  /* lvalue, no target */
+		assign(e->right, tgt);
+		return;
+
+	/* CALL: args go to stack, result in HL */
+	case CALL:
+		assign(e->left, 0);  /* function address */
+		/* args handled specially */
+		return;
+
+	/* ARGNODE: each arg evaluated to HL, then pushed */
+	case ARGNODE:
+		assign(e->left, R_HL);
+		if (e->right)
+			assign(e->right, R_HL);
+		return;
+
+	/* Short-circuit: each side independent, wants flags */
+	case LAND:
+	case LOR:
+		assign(e->left, R_HL);
+		assign(e->right, R_HL);
+		return;
+
+	/* Ternary: condition→flags, branches→tgt */
+	case QUES:
+		assign(e->left, R_HL);  /* condition */
+		if (e->right) {
+			assign(e->right->left, tgt);   /* then */
+			assign(e->right->right, tgt);  /* else */
+		}
+		return;
+
+	case TERNBRANCH:
+		assign(e->left, tgt);
+		assign(e->right, tgt);
+		return;
+
+	/* Binary ops: left→HL, right→DE (Z80 is HL-centric) */
+	default:
+		if (e->regs >= 3) {
+			/* Need spill: both children compute to HL */
+			assign(e->left, R_HL);
+			assign(e->right, R_HL);
+		} else if (e->regs == 2) {
+			/* Need both registers */
+			assign(e->left, R_HL);
+			assign(e->right, R_DE);
+		} else {
+			/* Only need one, propagate target */
+			assign(e->left, tgt);
+			assign(e->right, tgt);
+		}
+		return;
+	}
+}
 
 #ifdef DEBUG
 #include "debug.h"
@@ -24,12 +236,17 @@
 #define P_NUM    254
 #define P_POW2   253
 #define P_ZERO   252
+#define P_SMALL  251    /* 1-4: can use inc/dec */
 
 /* Replacement flags */
 #define RF_POW2  0x01    /* transform constant through log2 */
 #define RF_IXIY  0x02    /* require reg is IX or IY */
 #define RF_NOTEQ 0x04    /* NEQ->BANG(EQ): wrap children in EQ node */
 #define RF_INC1  0x08    /* increment right constant by 1 */
+#define RF_BC    0x10    /* require reg is BC */
+#define RF_DE    0x20    /* require reg is DE */
+#define RF_HL    0x40    /* require reg is HL */
+#define RF_IX    0x80    /* require reg is IX */
 
 /*
  * Map single char to opcode (or special pattern value)
@@ -67,6 +284,7 @@ chartopc(char c)
 	case 'N': return P_NUM;
 	case 'P': return P_POW2;
 	case 'Z': return P_ZERO;
+	case 'M': return P_SMALL;
 	case 'S': return SYM;
 	case 'i': return PREINC;
 	case 'j': return POSTINC;
@@ -74,6 +292,7 @@ chartopc(char c)
 	case 'm': return POSTDEC;
 	case 'a': return ARGNODE;
 	case 'C': return CODE;
+	case 'o': return OREQ;
 	case '_': return P_ANY;
 	case '0': return P_NULL;
 	}
@@ -105,6 +324,7 @@ opmatch(unsigned char pat, Expr *e)
 	if (pat == P_NUM) return e && e->op == NUMBER;
 	if (pat == P_POW2) return e && e->op == NUMBER && ispow2(e->u.val) > 0;
 	if (pat == P_ZERO) return e && e->op == NUMBER && e->u.val == 0;
+	if (pat == P_SMALL) return e && e->op == NUMBER && e->u.val >= 1 && e->u.val <= 4;
 	return e && e->op == pat;
 }
 
@@ -142,18 +362,25 @@ pmatch(char *p, Expr *e)
 		p++;
 	}
 
-	/* Check width/dest suffix: :w or :F or :wF (width + flags) */
+	/* Check width/dest suffix: :w or :F or :V or :wF (width + dest) */
 	if (*p == ':') {
 		p++;
 		/* check width first (b/B/s/S/l/L/p/f or _ for any) */
-		if (*p != 'F' && *p != '\0' && *p != ')' && *p != ',') {
-			if (*p != '_' && e && e->width != *p)
+		/* case-insensitive: b matches B, s matches S, etc. */
+		if (*p != 'F' && *p != 'V' && *p != '\0' && *p != ')' && *p != ',') {
+			if (*p != '_' && e && (e->width | 0x20) != (*p | 0x20))
 				return NULL;
 			p++;
 		}
 		/* check flag context (F) */
 		if (*p == 'F') {
 			if (!e || e->dest != DEST_FLAGS)
+				return NULL;
+			p++;
+		}
+		/* check value context (V) */
+		if (*p == 'V') {
+			if (!e || e->dest != DEST_VALUE)
 				return NULL;
 			p++;
 		}
@@ -212,6 +439,11 @@ idxregname(unsigned char reg)
  *   l - low byte of number
  *   h - high byte of number
  *   + - increment index offset by 1
+ * Special:
+ *   $t - target low register (l or e based on e->tgt)
+ *   $u - target high register (h or d based on e->tgt)
+ *   $T - target register pair (hl or de)
+ *   %(text) - repeat text N times where N is right operand value
  */
 static void
 emitasm(char *tpl, Expr *e)
@@ -222,10 +454,46 @@ emitasm(char *tpl, Expr *e)
 	char mod;
 	Expr *n;
 	long val;
+	int cnt;
+	char *start;
 
 	while (*p) {
+		/* %(text) - repeat text N times where N is right operand */
+		if (*p == '%' && *(p+1) == '(') {
+			p += 2;
+			start = p;
+			/* find closing paren */
+			while (*p && *p != ')') p++;
+			/* get count from right operand */
+			cnt = (e->right && e->right->op == NUMBER) ?
+			      (int)e->right->u.val : 1;
+			/* emit the enclosed text cnt times */
+			for (i = 0; i < cnt; i++) {
+				char *q;
+				for (q = start; q < p; q++)
+					outc(*q);
+			}
+			if (*p == ')') p++;
+			continue;
+		}
 		if (*p == '$') {
 			p++;
+			/* Target register substitution */
+			if (*p == 't') {
+				outc(e->tgt == R_DE ? 'e' : 'l');
+				p++;
+				continue;
+			}
+			if (*p == 'u') {
+				outc(e->tgt == R_DE ? 'd' : 'h');
+				p++;
+				continue;
+			}
+			if (*p == 'T') {
+				out(e->tgt == R_DE ? "de" : "hl");
+				p++;
+				continue;
+			}
 			/* collect path chars */
 			for (i = 0; i < 7 && (*p == 'L' || *p == 'R'); i++)
 				path[i] = *p++;
@@ -277,8 +545,40 @@ static struct rule rules[] = {
 	/* LOCALVAR -> INDEX */
 	{"L", "I", "", "", "", 0, NULL, 0},
 
+	/* REGVAR -> IN* (value is in register) */
+	{"V", "B", "", "", "", RF_BC, NULL, 0},
+	{"V", "E", "", "", "", RF_DE, NULL, 0},
+	{"V", "H", "", "", "", RF_HL, NULL, 0},
+
+	/* REGVAR IX in flag context: test for zero */
+	{"V:F", "V", "", "", "", RF_IX, "\tld a,ixl\n\tor a,ixh\n", F_NZ},
+
+	/* INBC in flag context: test for zero */
+	{"B:F", "B", "", "", "", 0, "\tld a,c\n\tor a,b\n", F_NZ},
+
+	/* INHL in flag context: test for zero */
+	{"H:F", "H", "", "", "", 0, "\tld a,l\n\tor a,h\n", F_NZ},
+
+	/* INDE in flag context: test for zero */
+	{"E:F", "E", "", "", "", 0, "\tld a,e\n\tor a,d\n", F_NZ},
+
+	/* copy IX to HL (must use push/pop) */
+	{"=(H,V)", "=", "L", "R", "R", RF_IX, "\tpush ix\n\tpop hl\n", R_HL},
+
+	/* copy IX to BC */
+	{"=(B,V)", "=", "L", "R", "R", RF_IX, "\tld c,ixl\n\tld b,ixh\n", R_BC},
+
+	/* copy IX to DE */
+	{"=(E,V)", "=", "L", "R", "R", RF_IX, "\tld e,ixl\n\tld d,ixh\n", R_DE},
+
+	/* PLUS(REGVAR IX, NUM) -> INDEX (ix+offset addressing) */
+	{"+(V,N)", "I", "", "", "L", RF_IX, NULL, 0},
+
 	/* PLUS(DEREF(REGVAR), NUM) -> INDEX [normalized: const on right] */
 	{"+(D(V),N)", "I", "", "", "LL", RF_IXIY, NULL, 0},
+
+	/* PLUS(INDEX, NUM) -> INDEX (combine offsets) */
+	{"+(I,N)", "I", "", "", "L", 0, NULL, 0},
 
 	/* STAR(any, POW2) -> LSHIFT [normalized: const on right] */
 	{"*(_,P)", "<", "L", "R", "", RF_POW2, NULL, 0},
@@ -292,23 +592,89 @@ static struct rule rules[] = {
 	/* short store HL to indexed */
 	{"=(I,H):s", "=", "L", "R", "", 0, "\tld ($L),l\n\tld ($L+),h\n", 0},
 
+	/* short copy INDEX to INDEX: load then store */
+	{"=(I,I):s", "=", "L", "R", "", 0, "\tld l,($R)\n\tld h,($R+)\n\tld ($L),l\n\tld ($L+),h\n", R_HL},
+
 	/* short store DE to indexed */
 	{"=(I,E):s", "=", "L", "R", "", 0, "\tld ($L),e\n\tld ($L+),d\n", 0},
+
+	/* byte store to symref: ld (sym), a */
+	{"=(O,A):b", "=", "L", "R", "", 0, "\tld ($L),a\n", R_A},
+
+	/* byte store constant to symref */
+	{"=(O,N):b", "=", "L", "R", "", 0, "\tld a,$R\n\tld ($L),a\n", R_A},
+
+	/* short store HL to symref */
+	{"=(O,H):s", "=", "L", "R", "", 0, "\tld ($L),hl\n", R_HL},
+
+	/* short store constant to symref */
+	{"=(O,N):s", "=", "L", "R", "", 0, "\tld hl,$R\n\tld ($L),hl\n", R_HL},
 
 	/* short store BC to indexed */
 	{"=(I,B):s", "=", "L", "R", "", 0, "\tld ($L),c\n\tld ($L+),b\n", 0},
 
+	/* load constant to register variable */
+	{"=(V,N)", "=", "L", "R", "L", RF_IX, "\tld ix,$R\n", R_IX},
+	{"=(V,N)", "=", "L", "R", "L", RF_BC, "\tld bc,$R\n", R_BC},
+	{"=(V,N)", "=", "L", "R", "L", RF_DE, "\tld de,$R\n", R_DE},
+	{"=(V,N)", "=", "L", "R", "L", RF_HL, "\tld hl,$R\n", R_HL},
+
+	/* load constant to register (already converted) */
+	{"=(B,N)", "=", "L", "R", "", 0, "\tld bc,$R\n", R_BC},
+	{"=(E,N)", "=", "L", "R", "", 0, "\tld de,$R\n", R_DE},
+	{"=(H,N)", "=", "L", "R", "", 0, "\tld hl,$R\n", R_HL},
+
+	/* assign to IX register variable */
+	{"=(V,H)", "=", "L", "R", "L", RF_IX, "\tpush hl\n\tpop ix\n", R_IX},
+	{"=(V,E)", "=", "L", "R", "L", RF_IX, "\tpush de\n\tpop ix\n", R_IX},
+	{"=(V,B)", "=", "L", "R", "L", RF_IX, "\tpush bc\n\tpop ix\n", R_IX},
+
+	/* register-to-register moves */
+	{"=(B,H)", "=", "L", "R", "", 0, "\tld c,l\n\tld b,h\n", R_BC},
+	{"=(E,H)", "=", "L", "R", "", 0, "\tex de,hl\n", R_DE},
+	{"=(H,E)", "=", "L", "R", "", 0, "\tex de,hl\n", R_HL},
+	{"=(H,B)", "=", "L", "R", "", 0, "\tld l,c\n\tld h,b\n", R_HL},
+	{"=(B,E)", "=", "L", "R", "", 0, "\tld c,e\n\tld b,d\n", R_BC},
+	{"=(E,B)", "=", "L", "R", "", 0, "\tld e,c\n\tld d,b\n", R_DE},
+	{"=(B,B)", "=", "L", "R", "", 0, "", R_BC},  /* nop */
+	{"=(E,E)", "=", "L", "R", "", 0, "", R_DE},  /* nop */
+	{"=(H,H)", "=", "L", "R", "", 0, "", R_HL},  /* nop */
+
+	/* assign register to CODE - result already in place */
+	{"=(C,H)", "=", "L", "R", "", 0, "", R_HL},  /* nop */
+	{"=(C,E)", "=", "L", "R", "", 0, "", R_DE},  /* nop */
+	{"=(C,B)", "=", "L", "R", "", 0, "", R_BC},  /* nop */
+	{"=(C,A)", "=", "L", "R", "", 0, "", R_A},   /* nop */
+
 	/* byte store to indexed: ld (ix+d), a */
-	{"=(I,A)", "=", "L", "R", "", 0, NULL, 0},
+	{"=(I,A)", "=", "L", "R", "", 0, "\tld ($L),a\n", R_A},
 
 	/* byte store to (hl): ld (hl), n */
 	{"=(H,N)", "=", "L", "R", "", 0, NULL, 0},
 
-	/* byte store to (hl): ld (hl), a */
-	{"=(H,A)", "=", "L", "R", "", 0, NULL, 0},
+	/* byte assign A to HL: ld l,a (for byte returns) */
+	{"=(H,A):b", "=", "L", "R", "", 0, "\tld l,a\n", R_HL},
+
+	/* byte store REGVAR B to (HL) - store low byte of BC */
+	{"=(H,V):b", "=", "L", "R", "R", RF_BC, "\tld (hl),c\n", 0},
 
 	/* byte load from (hl): ld a, (hl) */
-	{"D(H)", "D", "L", "", "", 0, NULL, 0},
+	{"D(H):b", "D", "L", "", "", 0, "\tld a,(hl)\n", R_A},
+
+	/* short load from (hl) to BC: ld c,(hl); inc hl; ld b,(hl) */
+	{"=(B,D(H)):s", "=", "L", "R", "", 0, "\tld c,(hl)\n\tinc hl\n\tld b,(hl)\n", R_BC},
+
+	/* short load from (hl) to DE: ld e,(hl); inc hl; ld d,(hl) */
+	{"=(E,D(H)):s", "=", "L", "R", "", 0, "\tld e,(hl)\n\tinc hl\n\tld d,(hl)\n", R_DE},
+
+	/* short load from (hl) to HL: need temp */
+	{"=(H,D(H)):s", "=", "L", "R", "", 0, "\tld a,(hl)\n\tinc hl\n\tld h,(hl)\n\tld l,a\n", R_HL},
+
+	/* short store DEREF(HL) to indexed */
+	{"=(I,D(H)):s", "=", "L", "R", "", 0, "\tld a,(hl)\n\tld ($L),a\n\tinc hl\n\tld a,(hl)\n\tld ($L+),a\n", 0},
+
+	/* byte or-equals on (hl): ld a,(hl); or N; ld (hl),a */
+	{"o(H,N):b", "o", "L", "R", "", 0, "\tld a,(hl)\n\tor $R\n\tld (hl),a\n", R_A},
 
 	/* byte deref indexed for flags: ld a,(ix+d); or a -> Z */
 	{"D(I):bF", "D", "L", "", "", 0, "\tld a,($L)\n\tor a\n", F_Z},
@@ -316,14 +682,29 @@ static struct rule rules[] = {
 	/* short deref indexed for flags: or low,hi -> Z */
 	{"D(I):sF", "D", "L", "", "", 0, "\tld a,($L)\n\tor a,($L+)\n", F_Z},
 
-	/* short load from indexed for value: ld l,(ix+d); ld h,(ix+d+1) */
-	{"D(I):s", "D", "L", "", "", 0, "\tld l,($L)\n\tld h,($L+)\n", R_HL},
+	/* short load from indexed for value: ld t,(ix+d); ld u,(ix+d+1) */
+	{"D(I):s", "D", "L", "", "", 0, "\tld $t,($L)\n\tld $u,($L+)\n", 0},
 
 	/* byte load from indexed for value: ld a, (ix+d) */
 	{"D(I):b", "D", "L", "", "", 0, NULL, 0},
 
+	/* byte load from symref: ld a, (sym) */
+	{"D(O):b", "D", "L", "", "", 0, "\tld a,($L)\n", R_A},
+
+	/* short load from symref: ld hl, (sym) */
+	{"D(O):s", "D", "L", "", "", 0, "\tld hl,($L)\n", R_HL},
+
 	/* 16-bit add: add hl, de */
-	{"+(H,E)", "+", "L", "R", "", 0, NULL, 0},
+	{"+(H,E)", "+", "L", "R", "", 0, "\tadd hl,de\n", R_HL},
+
+	/* small increment/decrement: use inc/dec instructions */
+	{"+(H,M)", "+", "L", "R", "", 0, "%(\tinc hl\n)", R_HL},
+	{"-(H,M)", "-", "L", "R", "", 0, "%(\tdec hl\n)", R_HL},
+	{"+(A,M)", "+", "L", "R", "", 0, "%(\tinc a\n)", R_A},
+	{"-(A,M)", "-", "L", "R", "", 0, "%(\tdec a\n)", R_A},
+
+	/* add constant to HL using DE */
+	{"+(H,N)", "+", "L", "R", "", 0, "\tld de,$R\n\tadd hl,de\n", R_HL},
 
 	/* byte add immediate: add a, n */
 	{"+(A,N)", "+", "L", "R", "", 0, NULL, 0},
@@ -350,7 +731,7 @@ static struct rule rules[] = {
 	{"^(D(I),N):b", "^", "L", "R", "", 0, "\tld a,($LL)\n\txor $R\n", R_A},
 
 	/* compare equal: cp n (Z flag) - value already in A */
-	{"Q(A,N):F", "Q", "L", "R", "", 0, NULL, 0},
+	{"Q(A,N):F", "Q", "L", "R", "", 0, "\tcp $R\n", F_Z},
 
 	/* compare equal: ld a,(sym); cp n (Z flag) */
 	{"Q(D(O),N):F", "Q", "L", "R", "", 0, "\tld a,($LL)\n\tcp $R\n", F_Z},
@@ -359,7 +740,10 @@ static struct rule rules[] = {
 	{"Q(D(I),N):bF", "Q", "L", "R", "", 0, "\tld a,($LL)\n\tcp $R\n", F_Z},
 
 	/* compare less than: cp n (C flag) - value already in A */
-	{"T(A,N):F", "T", "L", "R", "", 0, NULL, 0},
+	{"T(A,N):F", "T", "L", "R", "", 0, "\tcp $R\n", F_C},
+
+	/* compare 0 < A: just test A for nonzero */
+	{"T(Z,A):F", "T", "L", "R", "", 0, "\tor a\n", F_NZ},
 
 	/* compare less than: ld a,(sym); cp n (C flag) */
 	{"T(D(O),N):F", "T", "L", "R", "", 0, "\tld a,($LL)\n\tcp $R\n", F_C},
@@ -385,6 +769,12 @@ static struct rule rules[] = {
 	/* LE(a,n) -> LT(a,n+1): a <= n iff a < n+1 */
 	{"W(_,N)", "T", "L", "R", "", RF_INC1, NULL, 0},
 
+	/* byte pre-increment through (hl) */
+	{"i(H):b", "i", "L", "", "", 0, "\tinc (hl)\n\tld a,(hl)\n", R_A},
+
+	/* byte post-increment through (hl) */
+	{"j(H):b", "j", "L", "", "", 0, "\tld a,(hl)\n\tinc (hl)\n", R_A},
+
 	/* byte pre-increment indexed: inc then load new value */
 	{"i(I):b", "i", "L", "", "", 0, "\tinc ($L)\n\tld a,($L)\n", R_A},
 
@@ -397,6 +787,18 @@ static struct rule rules[] = {
 	/* byte post-decrement indexed: load old value then dec */
 	{"m(I):b", "m", "L", "", "", 0, "\tld a,($L)\n\tdec ($L)\n", R_A},
 
+	/* byte pre-increment symref: inc then load new value */
+	{"i(O):b", "i", "L", "", "", 0, "\tld hl,$L\n\tinc (hl)\n\tld a,(hl)\n", R_A},
+
+	/* byte post-increment symref: load old value then inc */
+	{"j(O):b", "j", "L", "", "", 0, "\tld hl,$L\n\tld a,(hl)\n\tinc (hl)\n", R_A},
+
+	/* byte pre-decrement symref: dec then load new value */
+	{"k(O):b", "k", "L", "", "", 0, "\tld hl,$L\n\tdec (hl)\n\tld a,(hl)\n", R_A},
+
+	/* byte post-decrement symref: load old value then dec */
+	{"m(O):b", "m", "L", "", "", 0, "\tld hl,$L\n\tld a,(hl)\n\tdec (hl)\n", R_A},
+
 	/* SYM + NUMBER -> SYMREF (linker-resolvable) */
 	{"+(S,N)", "O", "", "", "", 0, NULL, 0},
 
@@ -405,6 +807,27 @@ static struct rule rules[] = {
 
 	/* bare SYM -> SYMREF with offset 0 */
 	{"S", "O", "", "", "", 0, NULL, 0},
+
+	/* NUMBER in value context: load into register */
+	{"N:bV", "C", "", "", "", 0, "\tld a,$\n", R_A},
+	{"N:sV", "C", "", "", "", 0, "\tld hl,$\n", R_HL},
+
+	/* ARGNODE: push register pairs */
+	{"a(H)", "a", "L", "", "", 0, "\tpush hl\n", 0},
+	{"a(E)", "a", "L", "", "", 0, "\tpush de\n", 0},
+	{"a(B)", "a", "L", "", "", 0, "\tpush bc\n", 0},
+
+	/* ARGNODE: push constant */
+	{"a(N)", "a", "L", "", "", 0, "\tld hl,$L\n\tpush hl\n", 0},
+
+	/* ARGNODE: push symbol address */
+	{"a(O)", "a", "L", "", "", 0, "\tld hl,$L\n\tpush hl\n", 0},
+
+	/* ARGNODE: push register variable */
+	{"a(V)", "a", "L", "", "L", RF_BC, "\tpush bc\n", 0},
+	{"a(V)", "a", "L", "", "L", RF_DE, "\tpush de\n", 0},
+	{"a(V)", "a", "L", "", "L", RF_HL, "\tpush hl\n", 0},
+	{"a(V)", "a", "L", "", "L", RF_IX, "\tpush ix\n", 0},
 
 	{NULL, NULL, NULL, NULL, NULL, 0, NULL, 0}
 };
@@ -425,16 +848,27 @@ tryrule(struct rule *rp, Expr *e)
 	if (!pmatch(rp->pat, e))
 		return NULL;
 
-	/* Check IX/IY constraint */
-	if (rp->flags & RF_IXIY) {
+	/* Check register constraints */
+	if (rp->flags & (RF_IXIY | RF_BC | RF_DE | RF_HL | RF_IX)) {
 		p = rp->dsrc;
 		src = getpath(e, &p);
-		if (!src || (src->u.var.reg != R_IX && src->u.var.reg != R_IY))
+		if (!src)
+			return NULL;
+		if ((rp->flags & RF_IXIY) &&
+		    src->u.var.reg != R_IX && src->u.var.reg != R_IY)
+			return NULL;
+		if ((rp->flags & RF_BC) && src->u.var.reg != R_BC)
+			return NULL;
+		if ((rp->flags & RF_DE) && src->u.var.reg != R_DE)
+			return NULL;
+		if ((rp->flags & RF_HL) && src->u.var.reg != R_HL)
+			return NULL;
+		if ((rp->flags & RF_IX) && src->u.var.reg != R_IX)
 			return NULL;
 	}
 
 #ifdef DEBUG
-	if (VERBOSE(V_REWRITE))
+	if (VERBOSE(V_RULES))
 		fprintf(stderr, "rewrite: %s -> %s\n", rp->pat, rp->rep);
 #endif
 
@@ -470,6 +904,9 @@ tryrule(struct rule *rp, Expr *e)
 			reg = src ? src->u.var.reg : R_IY;
 			num = e->right;
 			off = num ? (char)num->u.val : 0;
+			/* If source is INDEX, combine offsets */
+			if (src && src->op == INDEX)
+				off += src->u.var.off;
 		}
 		n = mkindex(e->width, reg, off);
 		freeexpr(e);
@@ -535,8 +972,11 @@ tryrule(struct rule *rp, Expr *e)
 
 	/* Emit assembly and create CODE node if template present */
 	if (rp->asmtpl) {
+		unsigned char dest;
 		emitasm(rp->asmtpl, e);
-		n = mkcode(e->width, rp->destval);
+		/* Use rule's destval, or target register if destval is 0 */
+		dest = rp->destval ? rp->destval : e->tgt;
+		n = mkcode(e->width, dest);
 		n->dest = e->dest;
 		freeexpr(e);
 		return n;
@@ -625,24 +1065,6 @@ step(Expr *e)
 		return n;
 	}
 
-	/* ARGNODE: push register pair values */
-	if (e->op == ARGNODE && e->left) {
-		n = e->left;
-		if (n->op == INHL) {
-			out("\tpush hl\n");
-		} else if (n->op == INDE) {
-			out("\tpush de\n");
-		} else if (n->op == INBC) {
-			out("\tpush bc\n");
-		} else {
-			goto no_push;
-		}
-		e->left = NULL;
-		freeexpr(e);
-		return n;
-	}
-no_push:
-
 	/* CALL(SYMREF, args...): emit call, result in HL */
 	if (e->op == CALL && e->left && e->left->op == SYMREF) {
 		out("\tcall ");
@@ -654,52 +1076,14 @@ no_push:
 		return n;
 	}
 
-	/* ASSIGN(REGVAR, INHL/INDE/INBC): move result to register variable */
-	if (e->op == ASSIGN && e->left && e->left->op == REGVAR && e->right) {
-		unsigned char dst = e->left->u.var.reg;
-		unsigned char src = 0;
-		if (e->right->op == INHL) src = R_HL;
-		else if (e->right->op == INDE) src = R_DE;
-		else if (e->right->op == INBC) src = R_BC;
-		else goto no_regmove;
-		if (dst == R_BC && src == R_HL) {
-			out("\tld c,l\n\tld b,h\n");
-		} else if (dst == R_DE && src == R_HL) {
-			out("\tex de,hl\n");
-		} else if (dst == R_HL && src == R_DE) {
-			out("\tex de,hl\n");
-		} else if (dst == R_HL && src == R_BC) {
-			out("\tld l,c\n\tld h,b\n");
-		} else if (dst == R_IX && src == R_HL) {
-			out("\tpush hl\n\tpop ix\n");
-		} else if (dst == R_IX && src == R_DE) {
-			out("\tpush de\n\tpop ix\n");
-		} else if (dst == R_IX && src == R_BC) {
-			out("\tpush bc\n\tpop ix\n");
-		} else if (dst == R_HL && src == R_IX) {
-			out("\tpush ix\n\tpop hl\n");
-		} else if (dst == R_DE && src == R_IX) {
-			out("\tpush ix\n\tpop de\n");
-		} else if (dst == R_BC && src == R_IX) {
-			out("\tpush ix\n\tpop bc\n");
-		} else if (dst == src) {
-			/* already there */
-		} else {
-			goto no_regmove;
-		}
-		n = mkcode(e->width, dst);
-		n->dest = e->dest;
-		freeexpr(e);
-		return n;
-	}
-no_regmove:
 
-	/* CODE -> INHL/INDE/INBC: convert to typed register nodes */
+	/* CODE -> INHL/INDE/INBC/INA: convert to typed register nodes */
 	if (e->op == CODE) {
 		unsigned char reg = e->u.var.reg;
 		if (reg == R_HL) e->op = INHL;
 		else if (reg == R_DE) e->op = INDE;
 		else if (reg == R_BC) e->op = INBC;
+		else if (reg == R_A) e->op = INA;
 		else goto no_regconv;
 		return e;
 	}
@@ -715,20 +1099,154 @@ no_regconv:
 
 /*
  * Rewrite node: depth-first, fixed-point at each level
+ * ARGNODE handled specially: right chain processed after push
  */
 static Expr *
 rewrite1(Expr *e)
 {
-	Expr *n;
+	Expr *n, *next;
 
 	if (!e) return NULL;
 
-	/* Rewrite children first (depth-first) */
-	e->left = rewrite1(e->left);
-	e->right = rewrite1(e->right);
+	/* ARGNODE: evaluate left, push, then process right chain */
+	if (e->op == ARGNODE) {
+		e->left = rewrite1(e->left);
+		next = e->right;
+		e->right = NULL;  /* detach chain before step */
+		/* Fixed-point on this ARGNODE */
+		for (;;) {
+			n = step(e);
+			if (!n)
+				break;
+			n->left = rewrite1(n->left);
+			e = n;
+		}
+		/* Now process next argument */
+		if (next)
+			rewrite1(next);
+		return e;
+	}
+
+	/* LAND in flag context: short-circuit AND */
+	if (e->op == LAND && e->dest == DEST_FLAGS) {
+		int lbl = labelcnt++;
+		/* Evaluate left operand */
+		e->left->dest = DEST_FLAGS;
+		e->left = rewrite1(e->left);
+		/* If left is false (Z), jump to false label */
+		out("\tjp z,_L");
+		outd(lbl);
+		out("\n");
+		/* Evaluate right operand */
+		e->right->dest = DEST_FLAGS;
+		e->right = rewrite1(e->right);
+		/* Emit false label */
+		out("_L");
+		outd(lbl);
+		out(":\n");
+		/* Result is Z flag from right (or jumped with Z set) */
+		n = mkcode(e->width, F_NZ);
+		n->dest = DEST_FLAGS;
+		freeexpr(e);
+		return n;
+	}
+
+	/* LOR in flag context: short-circuit OR */
+	if (e->op == LOR && e->dest == DEST_FLAGS) {
+		int lbl = labelcnt++;
+		/* Evaluate left operand */
+		e->left->dest = DEST_FLAGS;
+		e->left = rewrite1(e->left);
+		/* If left is true (NZ), jump to true label */
+		out("\tjp nz,_L");
+		outd(lbl);
+		out("\n");
+		/* Evaluate right operand */
+		e->right->dest = DEST_FLAGS;
+		e->right = rewrite1(e->right);
+		/* Emit true label */
+		out("_L");
+		outd(lbl);
+		out(":\n");
+		/* Result is NZ if either was true */
+		n = mkcode(e->width, F_NZ);
+		n->dest = DEST_FLAGS;
+		freeexpr(e);
+		return n;
+	}
+
+	/* QUES (ternary): cond ? then : else */
+	if (e->op == QUES && e->right && e->right->op == TERNBRANCH) {
+		int lbl = labelcnt++;
+		Expr *tb = e->right;
+		unsigned char dest = e->dest;
+		/* Evaluate condition in flag context */
+		e->left->dest = DEST_FLAGS;
+		e->left = rewrite1(e->left);
+		/* If false, jump to else */
+		out("\tjp z,_T");
+		outd(lbl);
+		out("\n");
+		/* Evaluate then-expression */
+		tb->left->dest = dest;
+		tb->left = rewrite1(tb->left);
+		n = tb->left;
+		/* Jump over else */
+		out("\tjp _E");
+		outd(lbl);
+		out("\n");
+		/* Emit else label */
+		out("_T");
+		outd(lbl);
+		out(":\n");
+		/* Evaluate else-expression */
+		tb->right->dest = dest;
+		tb->right = rewrite1(tb->right);
+		/* Emit end label */
+		out("_E");
+		outd(lbl);
+		out(":\n");
+		/* Result is from whichever branch was taken */
+		/* Return the then result node (both branches should produce same type) */
+		e->left = NULL;
+		tb->left = NULL;
+		tb->right = NULL;
+		freeexpr(e);
+		return n;
+	}
+
+	/* Handle spill for expressions needing > 2 registers */
+	/* Exclude ASSIGN - left side is target, not operand */
+	if (e->regs >= 3 && e->left && e->right && e->op != ASSIGN) {
+		/* Evaluate left subtree (result in HL) */
+		e->left = rewrite1(e->left);
+		/* Spill left result to stack */
+		out("\tpush hl\n");
+		/* Evaluate right subtree (result in HL) */
+		e->right = rewrite1(e->right);
+		/* Pop left result, exchange so left in HL, right in DE */
+		out("\tpop de\n");
+		out("\tex de,hl\n");
+		/* Now left in HL, right in DE - convert children to register nodes */
+		freeexpr(e->left);
+		freeexpr(e->right);
+		e->left = mkcode(e->width, R_HL);
+		e->left->op = INHL;
+		e->right = mkcode(e->width, R_DE);
+		e->right->op = INDE;
+		/* Fall through to step() to apply operation */
+	} else {
+		/* Rewrite children first (depth-first) */
+		e->left = rewrite1(e->left);
+		e->right = rewrite1(e->right);
+	}
 
 	/* Fixed-point: keep rewriting until no change */
 	for (;;) {
+		unsigned char tgt = e->tgt;
+		/* Re-label and re-assign after transformations */
+		label(e);
+		assign(e, tgt);
 		n = step(e);
 		if (!n)
 			break;
@@ -747,16 +1265,39 @@ Expr *
 rewrite(Expr *e)
 {
 	Expr *r;
+
 #ifdef DEBUG
 	if (VERBOSE(V_REWRITE)) {
-		out("; --- before rewrite ---\n");
+		out("; --- raw ---\n");
 		dumpexpr(e);
 	}
 #endif
-	r = rewrite1(e);
+
+	/* Label nodes with register requirements */
+	label(e);
+
+	/* Assign target registers based on labels */
+	assign(e, R_HL);  /* root expression targets HL */
+
 #ifdef DEBUG
 	if (VERBOSE(V_REWRITE)) {
-		out("; --- after rewrite ---\n");
+		out("; --- labeled ---\n");
+		dumpexpr(e);
+	}
+#endif
+
+	r = rewrite1(e);
+
+	/* Check if code generation is incomplete */
+	if (r && r->op != CODE && r->op != INHL && r->op != INDE &&
+	    r->op != INBC && r->op != INA) {
+		out("; XXXXXX incomplete: ");
+		dumpexpr(r);
+	}
+
+#ifdef DEBUG
+	if (VERBOSE(V_REWRITE)) {
+		out("; --- rewritten ---\n");
 		dumpexpr(r);
 	}
 #endif

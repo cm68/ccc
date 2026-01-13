@@ -26,6 +26,24 @@ findInLocals(char *name)
 }
 
 /*
+ * Check if expression is a SYM that maps to a REGVAR.
+ * Returns the register number if so, 0 otherwise.
+ */
+static char
+isRegvar(struct expr *e)
+{
+	struct name *np, *local;
+	if (!e || e->op != SYM)
+		return 0;
+	np = (struct name *)e->var;
+	if (np->level > 1 && !(np->sclass & SC_EXTERN)) {
+		local = findInLocals(np->name);
+		return local ? local->reg : np->reg;
+	}
+	return 0;
+}
+
+/*
  * Get size suffix for memory operations based on type
  * Returns: 'b' (byte), 's' (short/int), 'l' (long),
  * 'f' (float), 'd' (double), 'v' (void)
@@ -269,6 +287,11 @@ emitExpr(struct expr *e)
 		break;
 
 	case DEREF:
+		/* DEREF(REGVAR) is just the value - skip the DEREF */
+		if (isRegvar(left)) {
+			emitExpr(left);
+			break;
+		}
 		/* Optimize: *++p -> (++p, *p) using comma operator */
 		if ((left->op == INCR || left->op == DECR) &&
 		    !(left->flags & E_POSTFIX)) {
