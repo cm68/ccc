@@ -151,6 +151,8 @@ mkarg(Expr *expr)
 	e->op = ARGNODE;
 	e->width = expr ? expr->width : 'v';
 	e->left = expr;
+	if (expr)
+		expr->dest = DEST_STACK;
 	return e;
 }
 
@@ -470,6 +472,7 @@ destName(int d)
 	switch (d) {
 	case DEST_FLAGS: return "/f";
 	case DEST_VALUE: return "/v";
+	case DEST_STACK: return "/s";
 	default: return "";
 	}
 }

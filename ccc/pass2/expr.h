@@ -10,6 +10,7 @@
 #define DEST_NONE	0	/* statement expression, discard result */
 #define DEST_FLAGS	1	/* result needed in flags (conditionals) */
 #define DEST_VALUE	2	/* result needed as value */
+#define DEST_STACK	3	/* result pushed to stack (call args) */
 
 /* expression node */
 typedef struct Expr {
