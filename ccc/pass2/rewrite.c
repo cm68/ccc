@@ -56,6 +56,7 @@ chartopc(char c)
 	case 'H': return INHL;
 	case 'E': return INDE;
 	case 'A': return INA;
+	case 'B': return INBC;
 	case 'O': return SYMREF;
 	case 'Q': return EQ;
 	case 'U': return NEQ;
@@ -288,6 +289,15 @@ static struct rule rules[] = {
 	/* short store to indexed: ld (ix+d), low; ld (ix+d+1), hi */
 	{"=(I,N):s", "=", "L", "R", "", 0, "\tld ($L),$Rl\n\tld ($L+),$Rh\n", 0},
 
+	/* short store HL to indexed */
+	{"=(I,H):s", "=", "L", "R", "", 0, "\tld ($L),l\n\tld ($L+),h\n", 0},
+
+	/* short store DE to indexed */
+	{"=(I,E):s", "=", "L", "R", "", 0, "\tld ($L),e\n\tld ($L+),d\n", 0},
+
+	/* short store BC to indexed */
+	{"=(I,B):s", "=", "L", "R", "", 0, "\tld ($L),c\n\tld ($L+),b\n", 0},
+
 	/* byte store to indexed: ld (ix+d), a */
 	{"=(I,A)", "=", "L", "R", "", 0, NULL, 0},
 
@@ -305,6 +315,9 @@ static struct rule rules[] = {
 
 	/* short deref indexed for flags: or low,hi -> Z */
 	{"D(I):sF", "D", "L", "", "", 0, "\tld a,($L)\n\tor a,($L+)\n", F_Z},
+
+	/* short load from indexed for value: ld l,(ix+d); ld h,(ix+d+1) */
+	{"D(I):s", "D", "L", "", "", 0, "\tld l,($L)\n\tld h,($L+)\n", R_HL},
 
 	/* byte load from indexed for value: ld a, (ix+d) */
 	{"D(I):b", "D", "L", "", "", 0, NULL, 0},
@@ -615,17 +628,12 @@ step(Expr *e)
 	/* ARGNODE: push register pair values */
 	if (e->op == ARGNODE && e->left) {
 		n = e->left;
-		if (n->op == CODE) {
-			switch (n->u.var.reg) {
-			case R_HL: out("\tpush hl\n"); break;
-			case R_DE: out("\tpush de\n"); break;
-			case R_BC: out("\tpush bc\n"); break;
-			default: goto no_push;
-			}
-		} else if (n->op == INHL) {
+		if (n->op == INHL) {
 			out("\tpush hl\n");
 		} else if (n->op == INDE) {
 			out("\tpush de\n");
+		} else if (n->op == INBC) {
+			out("\tpush bc\n");
 		} else {
 			goto no_push;
 		}
@@ -646,11 +654,14 @@ no_push:
 		return n;
 	}
 
-	/* ASSIGN(REGVAR, CODE): move result to register variable */
-	if (e->op == ASSIGN && e->left && e->left->op == REGVAR &&
-	    e->right && e->right->op == CODE) {
+	/* ASSIGN(REGVAR, INHL/INDE/INBC): move result to register variable */
+	if (e->op == ASSIGN && e->left && e->left->op == REGVAR && e->right) {
 		unsigned char dst = e->left->u.var.reg;
-		unsigned char src = e->right->u.var.reg;
+		unsigned char src = 0;
+		if (e->right->op == INHL) src = R_HL;
+		else if (e->right->op == INDE) src = R_DE;
+		else if (e->right->op == INBC) src = R_BC;
+		else goto no_regmove;
 		if (dst == R_BC && src == R_HL) {
 			out("\tld c,l\n\tld b,h\n");
 		} else if (dst == R_DE && src == R_HL) {
@@ -682,6 +693,17 @@ no_push:
 		return n;
 	}
 no_regmove:
+
+	/* CODE -> INHL/INDE/INBC: convert to typed register nodes */
+	if (e->op == CODE) {
+		unsigned char reg = e->u.var.reg;
+		if (reg == R_HL) e->op = INHL;
+		else if (reg == R_DE) e->op = INDE;
+		else if (reg == R_BC) e->op = INBC;
+		else goto no_regconv;
+		return e;
+	}
+no_regconv:
 
 	for (rp = rules; rp->pat; rp++) {
 		n = tryrule(rp, e);

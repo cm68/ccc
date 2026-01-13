@@ -233,16 +233,19 @@ parseStmt(void)
 #ifdef DEBUG
 		if (VERBOSE(V_STMT))
 			fprintf(stderr, "  LABEL %s\n", buf);
-		out("; LABEL "); out(buf); outc('\n');
 #endif
+		out(buf);
+		out(":\n");
 		return;
 	case GOTO:
 		readS(buf);
 #ifdef DEBUG
 		if (VERBOSE(V_STMT))
 			fprintf(stderr, "  GOTO %s\n", buf);
-		out("; GOTO "); out(buf); outc('\n');
 #endif
+		out("\tjp ");
+		out(buf);
+		outc('\n');
 		return;
 	case SWITCH:
 		read1();

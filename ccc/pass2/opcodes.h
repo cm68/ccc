@@ -11,8 +11,9 @@
 #define INHL        227     /* value is in HL */
 #define INDE        228     /* value is in DE */
 #define INA         229     /* value is in A (accumulator) */
-#define SYMREF      230     /* symbol+offset (linker-resolvable address) */
-#define CODE        231     /* emitted assembly code */
+#define INBC        230     /* value is in BC */
+#define SYMREF      231     /* symbol+offset (linker-resolvable address) */
+#define CODE        232     /* emitted assembly code */
 /* ARGNODE is defined in lexeme.h (218) */
 
 #endif

@@ -558,6 +558,22 @@ dumpnode(Expr *e)
 		        destName(e->dest), regName(e->u.var.reg));
 		out(buf);
 		return;
+	case INHL:
+		sprintf(buf, "(HL:%s%s)", widthName(e->width), destName(e->dest));
+		out(buf);
+		return;
+	case INDE:
+		sprintf(buf, "(DE:%s%s)", widthName(e->width), destName(e->dest));
+		out(buf);
+		return;
+	case INBC:
+		sprintf(buf, "(BC:%s%s)", widthName(e->width), destName(e->dest));
+		out(buf);
+		return;
+	case INA:
+		sprintf(buf, "(A:%s%s)", widthName(e->width), destName(e->dest));
+		out(buf);
+		return;
 	case QUES:
 		out("(?:");
 		out(widthName(e->width));
