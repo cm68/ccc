@@ -102,6 +102,8 @@ usage(void)
     printf("  -D<var>[=val]  Define macro\n");
     printf("  -E             Preprocess only\n");
     printf("  -H             Use .i (human-readable) input for pass1 instead of .x\n");
+    printf("  -l<lib>        Link with library lib<lib>.a\n");
+    printf("  -L<dir>        Add <dir> to library search path\n");
     printf("  -x             Print commands as they execute\n");
     printf("  -n             Print commands without executing (dry run)\n");
     printf("  -C <flags>     Pass -v <flags> to cpp\n");
@@ -207,6 +209,12 @@ main(int argc, char **argv)
     char *a_files[MAX_ARGS];
     int c_count = 0, s_count = 0, o_count = 0, a_count = 0;
     int o_input_count = 0;   /* .o files from cmdline (vs generated) */
+
+    /* Linker options */
+    char *ld_libs[MAX_ARGS];  /* -l<lib> options */
+    char *ld_paths[MAX_ARGS]; /* -L<dir> options */
+    int ld_lib_count = 0;
+    int ld_path_count = 0;
 
     char *cpp_base[MAX_ARGS];  /* Base cpp args (options only) */
     char *cc1_base[MAX_ARGS];  /* Base cc1 args (options only) */
@@ -386,6 +394,24 @@ main(int argc, char **argv)
             }
             cc2_base[cc2_base_argc++] = "-v";
             cc2_base[cc2_base_argc++] = argv[0];
+            argc--;
+            argv++;
+        } else if (argv[0][0] == '-' && argv[0][1] == 'l') {
+            /* -l<lib>: pass to linker */
+            if (argv[0][2] == '\0') {
+                fprintf(stderr, "Error: -l requires a library name\n");
+                usage();
+            }
+            ld_libs[ld_lib_count++] = argv[0];
+            argc--;
+            argv++;
+        } else if (argv[0][0] == '-' && argv[0][1] == 'L') {
+            /* -L<dir>: pass to linker */
+            if (argv[0][2] == '\0') {
+                fprintf(stderr, "Error: -L requires a directory\n");
+                usage();
+            }
+            ld_paths[ld_path_count++] = argv[0];
             argc--;
             argv++;
         } else if (argv[0][0] == '-') {
@@ -635,6 +661,10 @@ main(int argc, char **argv)
 
 	ld_args[ld_argc++] = "-Ttext=0x100";
 
+	/* Add library search paths (-L options) */
+	for (i = 0; i < ld_path_count; i++)
+	    ld_args[ld_argc++] = ld_paths[i];
+
 	/* c object header */
 	ld_args[ld_argc++] = chdr_path;
 
@@ -647,6 +677,10 @@ main(int argc, char **argv)
         /* Add library files */
         for (i = 0; i < a_count; i++)
             ld_args[ld_argc++] = a_files[i];
+
+        /* Add user-specified libraries (-l options) */
+        for (i = 0; i < ld_lib_count; i++)
+            ld_args[ld_argc++] = ld_libs[i];
 
         ld_args[ld_argc++] = libu_path;
         ld_args[ld_argc++] = libc_path;

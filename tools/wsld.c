@@ -127,6 +127,11 @@ struct ht_reloc {
 char *outfile = "a.out";
 FILE *outfp;
 
+/* library search paths */
+#define MAX_LIBPATHS 64
+char *libpaths[MAX_LIBPATHS];
+int nlibpaths;
+
 /* linker-defined symbol patching */
 #define LSYM_LTEXT  0
 #define LSYM_HTEXT  1
@@ -152,15 +157,44 @@ struct lnksym {
 void
 usage()
 {
-    fprintf(stderr, "usage: wsld [-vV9rs] [-o outfile] [-Ttext=addr] [-Tdata=addr] [-Tbss=addr] file...\n");
+    fprintf(stderr, "usage: wsld [-vV9rs] [-o outfile] [-L<dir>] [-l<lib>] [-Ttext=addr] [-Tdata=addr] [-Tbss=addr] file...\n");
     fprintf(stderr, "  -V            list object files linked\n");
     fprintf(stderr, "  -r            emit relocatable output (for subsequent links)\n");
     fprintf(stderr, "  -s            strip symbol table from output\n");
     fprintf(stderr, "  -9            use 9-char symbols in output (default 15)\n");
+    fprintf(stderr, "  -L<dir>       add <dir> to library search path\n");
+    fprintf(stderr, "  -l<lib>       link with library lib<lib>.a\n");
     fprintf(stderr, "  -Ttext=addr   set text segment base address\n");
     fprintf(stderr, "  -Tdata=addr   set data segment base address\n");
     fprintf(stderr, "  -Tbss=addr    set bss segment base address\n");
     exit(1);
+}
+
+/*
+ * find library file in search paths
+ * given "foo", searches for "libfoo.a" in each -L directory
+ * returns allocated path string or NULL if not found
+ */
+char *
+findlib(name)
+char *name;
+{
+    char path[1024];
+    char *result;
+    int i;
+    FILE *fp;
+
+    for (i = 0; i < nlibpaths; i++) {
+        sprintf(path, "%s/lib%s.a", libpaths[i], name);
+        fp = fopen(path, "rb");
+        if (fp) {
+            fclose(fp);
+            result = malloc(strlen(path) + 1);
+            strcpy(result, path);
+            return result;
+        }
+    }
+    return 0;
 }
 
 void
@@ -2156,6 +2190,29 @@ char **argv;
                     outfile = argv[i];
                 else
                     usage();
+                break;
+
+            case 'L':
+                /* -L<dir>: add to library search path */
+                if (arg[2]) {
+                    if (nlibpaths < MAX_LIBPATHS)
+                        libpaths[nlibpaths++] = &arg[2];
+                } else {
+                    usage();
+                }
+                break;
+
+            case 'l':
+                /* -l<lib>: find and add library */
+                if (arg[2]) {
+                    char *libpath = findlib(&arg[2]);
+                    if (libpath == 0)
+                        error2("library not found", &arg[2]);
+                    add_infile(libpath, is_archive(libpath));
+                    nfiles++;
+                } else {
+                    usage();
+                }
                 break;
 
             case 'T':
