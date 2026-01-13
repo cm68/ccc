@@ -145,6 +145,16 @@ mkcall(char width, int argc, Expr *func, Expr *args)
 }
 
 Expr *
+mkarg(Expr *expr)
+{
+	Expr *e = alloc();
+	e->op = ARGNODE;
+	e->width = expr ? expr->width : 'v';
+	e->left = expr;
+	return e;
+}
+
+Expr *
 mkincdec(int op, char width, Expr *child, int amt)
 {
 	Expr *e = alloc();
@@ -337,12 +347,14 @@ readexpr(void)
 #endif
 		e = readexpr();
 		args = NULL;
+		arg = NULL;
 		for (i = 0; i < n; i++) {
-			arg = readexpr();
-			if (!args)
-				args = arg;
-			else
-				args = mkbinary(COMMA, arg->width, args, arg);
+			if (!args) {
+				args = arg = mkarg(readexpr());
+			} else {
+				arg->right = mkarg(readexpr());
+				arg = arg->right;
+			}
 		}
 		return mkcall(t, n, e, args);
 
@@ -466,6 +478,7 @@ static void
 dumpnode(Expr *e)
 {
 	char buf[64];
+	Expr *n;
 
 	if (!e) {
 		out("_");
@@ -502,10 +515,10 @@ dumpnode(Expr *e)
 		sprintf(buf, "(CALL:%s/%d ", widthName(e->width), e->u.call.argc);
 		out(buf);
 		dumpnode(e->left);
-		/* args are in right as COMMA chain */
-		if (e->right) {
+		/* args are wrapped in ARGNODE, linked via right */
+		for (n = e->right; n && n->op == ARGNODE; n = n->right) {
 			out(" ");
-			dumpnode(e->right);
+			dumpnode(n->left);
 		}
 		out(")");
 		return;

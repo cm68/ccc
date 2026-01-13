@@ -13,5 +13,6 @@
 #define INA         229     /* value is in A (accumulator) */
 #define SYMREF      230     /* symbol+offset (linker-resolvable address) */
 #define CODE        231     /* emitted assembly code */
+/* ARGNODE is defined in lexeme.h (218) */
 
 #endif

@@ -54,6 +54,7 @@ Expr	*mkina(char width, Expr *child);
 Expr	*mkunary(int op, char width, Expr *child);
 Expr	*mkbinary(int op, char width, Expr *left, Expr *right);
 Expr	*mkcall(char width, int argc, Expr *func, Expr *args);
+Expr	*mkarg(Expr *expr);
 Expr	*mkincdec(int op, char width, Expr *e, int amt);
 Expr	*mkbfext(char off, char wid, Expr *addr);
 Expr	*mkbfass(char off, char wid, Expr *addr, Expr *val);
