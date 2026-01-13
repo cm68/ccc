@@ -646,6 +646,31 @@ no_push:
 		return n;
 	}
 
+	/* ASSIGN(REGVAR, CODE): move result to register variable */
+	if (e->op == ASSIGN && e->left && e->left->op == REGVAR &&
+	    e->right && e->right->op == CODE) {
+		unsigned char dst = e->left->u.var.reg;
+		unsigned char src = e->right->u.var.reg;
+		if (dst == R_BC && src == R_HL) {
+			out("\tld c,l\n\tld b,h\n");
+		} else if (dst == R_DE && src == R_HL) {
+			out("\tex de,hl\n");
+		} else if (dst == R_HL && src == R_DE) {
+			out("\tex de,hl\n");
+		} else if (dst == R_HL && src == R_BC) {
+			out("\tld l,c\n\tld h,b\n");
+		} else if (dst == src) {
+			/* already there */
+		} else {
+			goto no_regmove;
+		}
+		n = mkcode(e->width, dst);
+		n->dest = e->dest;
+		freeexpr(e);
+		return n;
+	}
+no_regmove:
+
 	for (rp = rules; rp->pat; rp++) {
 		n = tryrule(rp, e);
 		if (n)
