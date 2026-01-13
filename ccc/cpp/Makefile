@@ -94,6 +94,35 @@ clobber: clean
 install: cpp xdump
 	cp cpp xdump $(DEST)/bin
 
+# Individual stage1 file rules
+.SECONDARY:
+
+C0 = ../pass1/c0
+C1 = ../pass2/c1
+ASTPP = ../astpp
+
+$(C0):
+	$(MAKE) -C ../pass1 c0
+
+$(C1):
+	$(MAKE) -C ../pass2 c1
+
+$(ASTPP):
+	$(MAKE) -C .. astpp
+
+$(OUTDIR)/%.x: %.c cpp.h debug.h cpp
+	@mkdir -p $(OUTDIR)
+	./cpp -DCCC $(INC) -p -o $(OUTDIR)/$* $<
+
+$(OUTDIR)/%.1 $(OUTDIR)/%.2: $(OUTDIR)/%.x $(C0)
+	$(C0) $< $(OUTDIR)/$*.1 $(OUTDIR)/$*.2
+
+$(OUTDIR)/%.pp: $(OUTDIR)/%.1 $(ASTPP)
+	$(ASTPP) $< > $@
+
+$(OUTDIR)/%.s: $(OUTDIR)/%.1 $(OUTDIR)/%.2 $(C1)
+	$(C1) $(OUTDIR)/$*.1 $(OUTDIR)/$*.2 $@
+
 .PHONY: all clean clobber install stage1 sizefile sizecheck
 #
 # vim: tabstop=4 shiftwidth=4 noexpandtab:

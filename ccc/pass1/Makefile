@@ -111,7 +111,7 @@ stage1: c0
 			echo "FAIL (c0)"; \
 		elif ! $(ASTPP) $(OUTDIR)/$$b.1 > $(OUTDIR)/$$b.pp 2>> $$err; then \
 			echo "FAIL (astpp)"; \
-		elif ! ../pass2/c1 $(OUTDIR)/$$b.1 $(OUTDIR)/$$b.2 $(OUTDIR)/$$b.s 2>> $$err; then \
+		elif ! ../pass2/c1 -v 8 $(OUTDIR)/$$b.1 $(OUTDIR)/$$b.2 $(OUTDIR)/$$b.s 2>> $$err; then \
 			echo "FAIL (c1)"; \
 		else \
 			echo "ok"; \
@@ -131,7 +131,7 @@ sizecheck: $(GENERATED)
 	done ; \
 	wssize $$o | awk '{t+=$$1;d+=$$2;b+=$$3;a+=$$4} END {print t,d,b,a}' | tee -a sizefile ; \
 	wsld -r -o sizecheck/c0 ../../root/lib/crt0.o $$o ../../root/lib/libc.a ../../root/lib/libu.a ; \
-	wssize sizecheck/c0
+	wssize sizecheck/c0 | tee -a sizefile
 
 sizecheck1: $(GENERATED)
 	mkdir -p sizecheck1
@@ -145,7 +145,34 @@ sizecheck1: $(GENERATED)
 	done ; \
 	sdcc -mz80 -o sizecheck1/c0 sizecheck1/*.rel
 
+# Individual stage1 file rules
+.SECONDARY:
+
+CPP = ../cpp/cpp
+C1 = ../pass2/c1
+
+$(CPP):
+	$(MAKE) -C ../cpp cpp
+
+$(C1):
+	$(MAKE) -C ../pass2 c1
+
+$(ASTPP):
+	$(MAKE) -C .. astpp
+
+$(OUTDIR)/%.x: %.c $(HEADERS) $(CPP)
+	@mkdir -p $(OUTDIR)
+	$(CPP) -DCCC $(INC) -p -o $(OUTDIR)/$* $<
+
+$(OUTDIR)/%.1 $(OUTDIR)/%.2: $(OUTDIR)/%.x c0
+	./c0 $< $(OUTDIR)/$*.1 $(OUTDIR)/$*.2
+
+$(OUTDIR)/%.pp: $(OUTDIR)/%.1 $(ASTPP)
+	$(ASTPP) $< > $@
+
+$(OUTDIR)/%.s: $(OUTDIR)/%.1 $(OUTDIR)/%.2 $(C1)
+	$(C1) -v 8 $(OUTDIR)/$*.1 $(OUTDIR)/$*.2 $@
+
 .PHONY: all clean regen stage1 install clobber sizefile sizecheck sizecheck1
 
 # vim: tabstop=4 shiftwidth=4 noexpandtab:
-

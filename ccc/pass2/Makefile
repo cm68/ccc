@@ -19,11 +19,12 @@ CFLAGS = -I../../libsrc/include
 LDFLAGS =
 endif
 
-CPP = ../../cpp/cpp
+CPP = ../cpp/cpp
 INC = -I../../libsrc/include
 CCC = $(DEST)/bin/ccc
-XDUMP = ../../cpp/xdump
+XDUMP = ../cpp/xdump
 ASTPP = ../astpp
+C0 = ../pass1/c0
 
 OUTDIR = stage1
 
@@ -102,7 +103,34 @@ sizecheck:
 		zc3 -c -DCCC $(INC) -o sizecheck/$$b.o $$f && \
 		{ echo "ok"; } || { echo "FAIL"; } \
 	done ; \
-	wssize $$o | awk '{t+=$$1;d+=$$2;b+=$$3;a+=$$4} END {print t,d,b,a}' | tee -a sizefile
+	wssize $$o | awk '{t+=$$1;d+=$$2;b+=$$3;a+=$$4} END {print t,d,b,a}' | tee -a sizefile ; \
+	wsld -r -o sizecheck/c1 ../../root/lib/crt0.o $$o ../../root/lib/libc.a ../../root/lib/libu.a ; \
+	wssize sizecheck/c1 | tee -a sizefile
+
+# Individual stage1 file rules
+.SECONDARY:
+
+$(CPP):
+	$(MAKE) -C ../cpp cpp
+
+$(C0):
+	$(MAKE) -C ../pass1 c0
+
+$(ASTPP):
+	$(MAKE) -C .. astpp
+
+$(OUTDIR)/%.x: %.c $(HEADERS) $(CPP)
+	@mkdir -p $(OUTDIR)
+	$(CPP) -DCCC $(INC) -p -o $(OUTDIR)/$* $<
+
+$(OUTDIR)/%.1 $(OUTDIR)/%.2: $(OUTDIR)/%.x $(C0)
+	$(C0) $< $(OUTDIR)/$*.1 $(OUTDIR)/$*.2
+
+$(OUTDIR)/%.pp: $(OUTDIR)/%.1 $(ASTPP)
+	$(ASTPP) $< > $@
+
+$(OUTDIR)/%.s: $(OUTDIR)/%.1 $(OUTDIR)/%.2 c1
+	./c1 $(OUTDIR)/$*.1 $(OUTDIR)/$*.2 $@
 
 .PHONY: all clean stage1 install clobber sizecheck
 
