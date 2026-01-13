@@ -71,6 +71,8 @@ chartopc(char c)
 	case 'j': return POSTINC;
 	case 'k': return PREDEC;
 	case 'm': return POSTDEC;
+	case 'a': return ARGNODE;
+	case 'C': return CODE;
 	case '_': return P_ANY;
 	case '0': return P_NULL;
 	}
@@ -609,6 +611,29 @@ step(Expr *e)
 		freeexpr(e);
 		return n;
 	}
+
+	/* ARGNODE: push register pair values */
+	if (e->op == ARGNODE && e->left) {
+		n = e->left;
+		if (n->op == CODE) {
+			switch (n->u.var.reg) {
+			case R_HL: out("\tpush hl\n"); break;
+			case R_DE: out("\tpush de\n"); break;
+			case R_BC: out("\tpush bc\n"); break;
+			default: goto no_push;
+			}
+		} else if (n->op == INHL) {
+			out("\tpush hl\n");
+		} else if (n->op == INDE) {
+			out("\tpush de\n");
+		} else {
+			goto no_push;
+		}
+		e->left = NULL;
+		freeexpr(e);
+		return n;
+	}
+no_push:
 
 	for (rp = rules; rp->pat; rp++) {
 		n = tryrule(rp, e);
