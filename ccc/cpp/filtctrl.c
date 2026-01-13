@@ -66,6 +66,10 @@ static struct pendbuf pb;
 
 static void (*upstream)(struct token *);
 
+#ifdef DEBUG
+static int ctrl_balance = 0;  /* Track output brace balance */
+#endif
+
 void
 filtctrl_init(void (*up)(struct token *))
 {
@@ -73,6 +77,50 @@ filtctrl_init(void (*up)(struct token *))
 	state = ST_NORMAL;
 	stk_sp = 0;
 	pend_init(&pb, pendbuf, PEND_MAX);
+#ifdef DEBUG
+	ctrl_balance = 0;
+#endif
+}
+
+#ifdef DEBUG
+static void
+track_ctrl(struct token *t)
+{
+	if (t->type == BEGIN) {
+		ctrl_balance++;
+		if (VERBOSE(V_FILTER))
+			fdprintf(2, "CTRL: out BEGIN bal=%d\n", ctrl_balance);
+	} else if (t->type == END) {
+		ctrl_balance--;
+		if (VERBOSE(V_FILTER))
+			fdprintf(2, "CTRL: out END bal=%d\n", ctrl_balance);
+	}
+}
+#endif
+
+/* Wrapper: pop from pending and track output */
+static void
+pop_out(struct token *out)
+{
+	pend_pop(&pb, out);
+#ifdef DEBUG
+	track_ctrl(out);
+#endif
+}
+
+void
+filtctrl_check(void)
+{
+#ifdef DEBUG
+	if (VERBOSE(V_FILTER))
+		fdprintf(2, "CTRL: EOF balance=%d stk=%d\n",
+			 ctrl_balance, stk_sp);
+	if (ctrl_balance != 0)
+		fdprintf(2, "CTRL: WARNING balance=%d at EOF\n",
+			 ctrl_balance);
+	if (stk_sp != 0)
+		fdprintf(2, "CTRL: WARNING stk_sp=%d at EOF\n", stk_sp);
+#endif
 }
 
 static void push_ctx(unsigned char type, unsigned char saved) {
@@ -108,13 +156,13 @@ static int is_breakable(unsigned char t) {
 	return t >= CTX_WHILE && t <= CTX_SWITCH;
 }
 
-/* Emit loop header: { [init;] __XnT: if (!(cond)) goto __XnB; */
+/* Emit loop header: [init;] __XnT: if (!(cond)) goto __XnB; */
 static void emitLoopHdr(char prefix) {
 #ifdef DEBUG
 	if (VERBOSE(V_FILTER))
 		fdprintf(2, "emitLoopHdr: pb.rd=%d pb.wr=%d\n", pb.rd, pb.wr);
 #endif
-	pend_tok(&pb, BEGIN);
+	/* No wrapper braces - filtbrace guarantees braced body */
 	if (init_len > 0) {
 		pend_buf(&pb, init_buf, init_len);
 		pend_tok(&pb, SEMI);
@@ -139,15 +187,14 @@ static void emitLoopHdr(char prefix) {
 #endif
 }
 
-/* Emit WHILE trailer: goto __WnT; __WnB: } */
+/* Emit WHILE trailer: goto __WnT; __WnB: */
 static void emitWhileTrail(void) {
 	emit_goto(&pb, 'W', label_num, 'T');
 	pend_tok(&pb, SEMI);
 	emit_label(&pb, 'W', label_num, 'B');
-	pend_tok(&pb, END);
 }
 
-/* Emit FOR trailer: __FnC: incr; goto __FnT; __FnB: } */
+/* Emit FOR trailer: __FnC: incr; goto __FnT; __FnB: */
 static void emitForTrail(void) {
 	emit_label(&pb, 'F', label_num, 'C');
 	if (incr_len > 0) {
@@ -157,16 +204,14 @@ static void emitForTrail(void) {
 	emit_goto(&pb, 'F', label_num, 'T');
 	pend_tok(&pb, SEMI);
 	emit_label(&pb, 'F', label_num, 'B');
-	pend_tok(&pb, END);
 }
 
-/* Emit DO header: { __DnT: */
+/* Emit DO header: __DnT: */
 static void emitDoHdr(void) {
-	pend_tok(&pb, BEGIN);
 	emit_label(&pb, 'D', label_num, 'T');
 }
 
-/* Emit DO trailer: if (cond) goto __DnT; __DnB: } */
+/* Emit DO trailer: if (cond) { goto __DnT; } __DnB: */
 static void emitDoTrail(void) {
 	if (cond_len > 0) {
 		pend_tok(&pb, IF);
@@ -179,7 +224,6 @@ static void emitDoTrail(void) {
 		pend_tok(&pb, END);
 	}
 	emit_label(&pb, 'D', label_num, 'B');
-	pend_tok(&pb, END);
 }
 
 /* Emit switch exit label: __SnB: */
@@ -242,10 +286,18 @@ static int emit_continue(void) {
 
 /* Handle body state for both loops and switches */
 static int handle_body(struct token *t, unsigned char ctx_type) {
-	if (t->type == BEGIN)
+	if (t->type == BEGIN) {
 		body_depth++;
-	else if (t->type == END) {
+#ifdef DEBUG
+		if (VERBOSE(V_FILTER))
+			fdprintf(2, "CTRL: body BEGIN depth=%d\n", body_depth);
+#endif
+	} else if (t->type == END) {
 		body_depth--;
+#ifdef DEBUG
+		if (VERBOSE(V_FILTER))
+			fdprintf(2, "CTRL: body END depth=%d\n", body_depth);
+#endif
 		if (body_depth == 0) {
 			pend_push(&pb, t);
 			return 1;	/* Body complete */
@@ -300,8 +352,12 @@ filtctrl(struct token *out)
 	struct token t;
 	int r;
 
-	if (filt_entry(&pb, out, upstream, &t))
+	if (filt_entry(&pb, out, upstream, &t)) {
+#ifdef DEBUG
+		track_ctrl(out);
+#endif
 		return;
+	}
 
 	switch (state) {
 	case ST_NORMAL:
@@ -326,7 +382,7 @@ filtctrl(struct token *out)
 			emitDoHdr();
 			body_depth = 0;
 			state = ST_DO_BODY;
-			pend_pop(&pb, out);
+			pop_out(out);
 			return;
 		}
 		if (t.type == SWITCH) {
@@ -350,7 +406,7 @@ filtctrl(struct token *out)
 				body_depth = 0;
 				cur_ctx = CTX_WHILE;
 				state = ST_LOOP_BODY;
-				pend_pop(&pb, out);
+				pop_out(out);
 				return;
 			}
 		}
@@ -400,7 +456,7 @@ filtctrl(struct token *out)
 				body_depth = 0;
 				cur_ctx = CTX_FOR;
 				state = ST_LOOP_BODY;
-				pend_pop(&pb, out);
+				pop_out(out);
 				return;
 			}
 		} else if (t.type == LPAR) {
@@ -420,7 +476,7 @@ filtctrl(struct token *out)
 			else
 				emitWhileTrail();
 			pop_ctx();
-			pend_pop(&pb, out);
+			pop_out(out);
 			return;
 		}
 		if (r == 2) {
@@ -428,7 +484,7 @@ filtctrl(struct token *out)
 			return;
 		}
 		if (r == 3) {
-			pend_pop(&pb, out);
+			pop_out(out);
 			return;
 		}
 		break;
@@ -439,7 +495,7 @@ filtctrl(struct token *out)
 			state = ST_DO_COND;
 			depth = -1;
 			cond_len = 0;
-			pend_pop(&pb, out);
+			pop_out(out);
 			return;
 		}
 		if (r == 2) {
@@ -447,7 +503,7 @@ filtctrl(struct token *out)
 			return;
 		}
 		if (r == 3) {
-			pend_pop(&pb, out);
+			pop_out(out);
 			return;
 		}
 		break;
@@ -475,7 +531,7 @@ filtctrl(struct token *out)
 				upstream(&t);
 				if (t.type != SEMI)
 					pend_push(&pb, &t);
-				pend_pop(&pb, out);
+				pop_out(out);
 				return;
 			}
 		}
@@ -502,7 +558,7 @@ filtctrl(struct token *out)
 		if (r == 1) {
 			emitSwitchEnd();
 			pop_ctx();
-			pend_pop(&pb, out);
+			pop_out(out);
 			return;
 		}
 		if (r == 2) {
@@ -510,11 +566,14 @@ filtctrl(struct token *out)
 			return;
 		}
 		if (r == 3) {
-			pend_pop(&pb, out);
+			pop_out(out);
 			return;
 		}
 		break;
 	}
 
 	tokcpy(out, &t);
+#ifdef DEBUG
+	track_ctrl(out);
+#endif
 }

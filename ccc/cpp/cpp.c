@@ -23,8 +23,10 @@ extern void filtdecl_init(void (*up)(struct token *));
 extern void filtdecl(struct token *out);
 extern void filtbrace_init(void (*up)(struct token *));
 extern void filtbrace(struct token *out);
+extern void filtbrace_check(void);
 extern void filtctrl_init(void (*up)(struct token *));
 extern void filtctrl(struct token *out);
+extern void filtctrl_check(void);
 extern void typedefReset(void);
 
 /* Global state */
@@ -172,6 +174,8 @@ process(char *sourcefile)
     }
 
     /* Check brace balance and emit EOF token */
+    filtbrace_check();
+    filtctrl_check();
     emitCheckBraces();
     emitToken(E_O_F);
 }
