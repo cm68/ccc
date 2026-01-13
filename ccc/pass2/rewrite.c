@@ -237,6 +237,19 @@ assign(Expr *e, unsigned char tgt)
 #define P_POW2   253
 #define P_ZERO   252
 #define P_SMALL  251    /* 1-4: can use inc/dec */
+#define P_MUL3   250    /* constant 3 */
+#define P_MUL5   249    /* constant 5 */
+#define P_MUL6   248    /* constant 6 */
+#define P_MUL7   247    /* constant 7 */
+#define P_MUL9   246    /* constant 9 */
+#define P_MUL10  245    /* constant 10 */
+#define P_MUL11  244    /* constant 11 */
+#define P_MUL12  243    /* constant 12 */
+#define P_MUL14  242    /* constant 14 */
+#define P_MUL15  241    /* constant 15 */
+#define P_MUL20  240    /* constant 20 */
+#define P_MUL24  239    /* constant 24 */
+#define P_MUL40  238    /* constant 40 */
 
 /* Replacement flags */
 #define RF_POW2  0x01    /* transform constant through log2 */
@@ -295,6 +308,19 @@ chartopc(char c)
 	case 'o': return OREQ;
 	case '_': return P_ANY;
 	case '0': return P_NULL;
+	case '3': return P_MUL3;
+	case '5': return P_MUL5;
+	case '6': return P_MUL6;
+	case '7': return P_MUL7;
+	case '9': return P_MUL9;
+	case 'x': return P_MUL10;
+	case 'e': return P_MUL11;
+	case 'w': return P_MUL12;
+	case 'f': return P_MUL14;
+	case 'n': return P_MUL15;
+	case 'y': return P_MUL20;
+	case 'q': return P_MUL24;
+	case 'z': return P_MUL40;
 	}
 	return P_ANY;
 }
@@ -325,6 +351,19 @@ opmatch(unsigned char pat, Expr *e)
 	if (pat == P_POW2) return e && e->op == NUMBER && ispow2(e->u.val) > 0;
 	if (pat == P_ZERO) return e && e->op == NUMBER && e->u.val == 0;
 	if (pat == P_SMALL) return e && e->op == NUMBER && e->u.val >= 1 && e->u.val <= 4;
+	if (pat == P_MUL3) return e && e->op == NUMBER && e->u.val == 3;
+	if (pat == P_MUL5) return e && e->op == NUMBER && e->u.val == 5;
+	if (pat == P_MUL6) return e && e->op == NUMBER && e->u.val == 6;
+	if (pat == P_MUL7) return e && e->op == NUMBER && e->u.val == 7;
+	if (pat == P_MUL9) return e && e->op == NUMBER && e->u.val == 9;
+	if (pat == P_MUL10) return e && e->op == NUMBER && e->u.val == 10;
+	if (pat == P_MUL11) return e && e->op == NUMBER && e->u.val == 11;
+	if (pat == P_MUL12) return e && e->op == NUMBER && e->u.val == 12;
+	if (pat == P_MUL14) return e && e->op == NUMBER && e->u.val == 14;
+	if (pat == P_MUL15) return e && e->op == NUMBER && e->u.val == 15;
+	if (pat == P_MUL20) return e && e->op == NUMBER && e->u.val == 20;
+	if (pat == P_MUL24) return e && e->op == NUMBER && e->u.val == 24;
+	if (pat == P_MUL40) return e && e->op == NUMBER && e->u.val == 40;
 	return e && e->op == pat;
 }
 
@@ -582,6 +621,34 @@ static struct rule rules[] = {
 
 	/* STAR(any, POW2) -> LSHIFT [normalized: const on right] */
 	{"*(_,P)", "<", "L", "R", "", RF_POW2, NULL, 0},
+
+	/* STAR by small constants with few set bits */
+	/* hl*3 = hl + hl*2 */
+	{"*(H,3)", "*", "L", "", "", 0, "\tld d,h\n\tld e,l\n\tadd hl,hl\n\tadd hl,de\n", R_HL},
+	/* hl*5 = hl + hl*4 */
+	{"*(H,5)", "*", "L", "", "", 0, "\tld d,h\n\tld e,l\n\tadd hl,hl\n\tadd hl,hl\n\tadd hl,de\n", R_HL},
+	/* hl*6 = (hl*3)*2 */
+	{"*(H,6)", "*", "L", "", "", 0, "\tld d,h\n\tld e,l\n\tadd hl,hl\n\tadd hl,de\n\tadd hl,hl\n", R_HL},
+	/* hl*7 = hl + (hl*3)*2 */
+	{"*(H,7)", "*", "L", "", "", 0, "\tld d,h\n\tld e,l\n\tadd hl,hl\n\tadd hl,de\n\tadd hl,hl\n\tadd hl,de\n", R_HL},
+	/* hl*9 = hl + hl*8 */
+	{"*(H,9)", "*", "L", "", "", 0, "\tld d,h\n\tld e,l\n\tadd hl,hl\n\tadd hl,hl\n\tadd hl,hl\n\tadd hl,de\n", R_HL},
+	/* hl*10 = (hl*5)*2 */
+	{"*(H,x)", "*", "L", "", "", 0, "\tld d,h\n\tld e,l\n\tadd hl,hl\n\tadd hl,hl\n\tadd hl,de\n\tadd hl,hl\n", R_HL},
+	/* hl*11 = hl*10 + hl */
+	{"*(H,e)", "*", "L", "", "", 0, "\tld d,h\n\tld e,l\n\tadd hl,hl\n\tadd hl,hl\n\tadd hl,de\n\tadd hl,hl\n\tadd hl,de\n", R_HL},
+	/* hl*12 = (hl*3)*4 */
+	{"*(H,w)", "*", "L", "", "", 0, "\tld d,h\n\tld e,l\n\tadd hl,hl\n\tadd hl,de\n\tadd hl,hl\n\tadd hl,hl\n", R_HL},
+	/* hl*14 = (hl*7)*2 */
+	{"*(H,f)", "*", "L", "", "", 0, "\tld d,h\n\tld e,l\n\tadd hl,hl\n\tadd hl,de\n\tadd hl,hl\n\tadd hl,de\n\tadd hl,hl\n", R_HL},
+	/* hl*15 = hl*14 + hl */
+	{"*(H,n)", "*", "L", "", "", 0, "\tld d,h\n\tld e,l\n\tadd hl,hl\n\tadd hl,de\n\tadd hl,hl\n\tadd hl,de\n\tadd hl,hl\n\tadd hl,de\n", R_HL},
+	/* hl*20 = (hl*5)*4 */
+	{"*(H,y)", "*", "L", "", "", 0, "\tld d,h\n\tld e,l\n\tadd hl,hl\n\tadd hl,hl\n\tadd hl,de\n\tadd hl,hl\n\tadd hl,hl\n", R_HL},
+	/* hl*24 = (hl*3)*8 */
+	{"*(H,q)", "*", "L", "", "", 0, "\tld d,h\n\tld e,l\n\tadd hl,hl\n\tadd hl,de\n\tadd hl,hl\n\tadd hl,hl\n\tadd hl,hl\n", R_HL},
+	/* hl*40 = (hl*5)*8 */
+	{"*(H,z)", "*", "L", "", "", 0, "\tld d,h\n\tld e,l\n\tadd hl,hl\n\tadd hl,hl\n\tadd hl,de\n\tadd hl,hl\n\tadd hl,hl\n\tadd hl,hl\n", R_HL},
 
 	/* byte store to indexed: ld (ix+d), n */
 	{"=(I,N):b", "=", "L", "R", "", 0, "\tld ($L),$R\n", 0},
