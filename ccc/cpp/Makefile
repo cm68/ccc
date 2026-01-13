@@ -1,14 +1,33 @@
-# cpp - C Preprocessor
 #
-# Builds the preprocessor that produces .x lexeme stream files
+# Makefile for ccc preprocessor
+#
 
 # Disable built-in lex rule (.x -> .c) to avoid conflicts with lexeme output files
 %.c: %.x
 
-DEST ?= $(CURDIR)/../../root
+DEST = $(realpath ../../root)
 
 CC = gcc
 
+ifeq ($(CC),gcc)
+DEFINES = -DDEBUG
+WARNS = -Wall -Werror -Wno-builtin-declaration-mismatch
+DEBUG = -g -O0
+CFLAGS = -m32 -std=c89 $(DEBUG) $(DEFINES) $(WARNS) -I.
+LDFLAGS = -m32 $(DEBUG)
+endif
+
+ifeq ($(CC),zc3)
+CFLAGS = -I../../libsrc/include
+LDFLAGS =
+endif
+
+ifeq ($(CC),sdcc)
+CFLAGS = -mz80 -DCCC -I../../libsrc/include
+SDCC_OBJS = $(SOURCES:.c=.rel)
+endif
+
+INC = -I../../libsrc/include
 CCC = $(DEST)/bin/ccc
 
 ASTPP = ../astpp
@@ -23,32 +42,21 @@ else
 SETX = @ true
 endif
 
-# Compiler-specific flags
-ifeq ($(CC),gcc)
-DEFINES = -DDEBUG
-WARNS = -Wall -Werror -pedantic \
--Wdeclaration-after-statement -Werror=declaration-after-statement \
--Werror=implicit-function-declaration
-CFLAGS = -m32 -std=c89 -g -O0 $(DEFINES) $(WARNS)
-else ifeq ($(CC),ccc)
-CFLAGS = -DCCC
+ifeq ($(CC),ccc)
+CFLAGS = -I.
 endif
 
-INC = -I../../libsrc/include
-SRCS = cpp.c lex.c io.c macro.c kw.c emit.c util.c kwtab.c \
-       filtknr.c filtdecl.c filtbrace.c filtctrl.c filtutil.c typetab.c
-OBJS = $(SRCS:.c=.o)
+SOURCES = cpp.c lex.c io.c macro.c kw.c emit.c util.c kwtab.c \
+	filtknr.c filtdecl.c filtbrace.c filtctrl.c filtutil.c typetab.c
+OBJECTS = $(SOURCES:.c=.o)
+
+HEADERS = cpp.h debug.h
+
 GENERATED = kwtab.c debug.h debugtags.c
 
 all: cpp xdump
 
-cpp: $(OBJS)
-	$(CC) $(CFLAGS) -o cpp $(OBJS)
-
-xdump: xdump.c
-	$(CC) $(CFLAGS) -o xdump xdump.c
-
-# Generate skip-optimized keyword table
+# Generated file rules
 mkkw: mkkw.c
 	$(CC) -o mkkw mkkw.c
 
@@ -61,24 +69,67 @@ kwtab.c: mkkw
 debugtags.c debug.h: ./makedebug.sh
 	./makedebug.sh
 
-%.o: %.c cpp.h debug.h
-	$(CC) $(CFLAGS) -c -o $@ $<
+%.o: %.c $(HEADERS)
+	$(CC) $(CFLAGS) -c $< -o $@
 
-# Stage: compile with cross ccc to Z80 .o files
-stage1:
+%.rel: %.c $(HEADERS)
+	$(CC) $(CFLAGS) -c $<
+
+ifeq ($(CC),sdcc)
+cpp: $(SDCC_OBJS)
+	@echo "SDCC compile complete. $(words $(SDCC_OBJS)) object files ready."
+	@echo "Link with: sdcc -mz80 --no-std-crt0 -o cpp.ihx $(SDCC_OBJS) <libc.rel>"
+else
+cpp: $(OBJECTS)
+ifeq ($(CC),gcc)
+	$(CC) $(LDFLAGS) -o $@ $(OBJECTS)
+else
+	ccc -o cpp $(OBJECTS)
+endif
+endif
+
+xdump: xdump.c
+	$(CC) $(CFLAGS) -o xdump xdump.c
+
+regen:
+	rm -f $(GENERATED)
+	$(MAKE) $(GENERATED)
+
+clean:
+	rm -f $(OBJECTS) cpp $(GENERATED) *.o *.rel *.sym *.lst *.asm *.ihx *.lk *.map *.mem *.noi *.1 *.2 *.x *.i *.pp
+
+clobber: clean
+	rm -f ./cpp mkkw xdump
+	rm -rf sizecheck sizecheck1 stage1 stage2
+
+install: cpp xdump
+	cp cpp xdump $(DEST)/bin
+
+# Stage1: run cpp, c0, and c1 on each source file
+stage1: cpp
 	mkdir -p $(OUTDIR)
-	@for f in $(SRCS); do \
-	  b=$${f%.c}; \
-	  printf "%-20s" "$$f: "; \
-	  $(CCC) -DCCC -k -P -s $$f 2> $(OUTDIR)/$$b.err 1>&2 && { echo "ok"; rm -f $(OUTDIR)/$$b.err; } || echo "FAIL"; \
-      mv $$b.x $$b.1 $$b.2 $$b.pp $$b.s $$b.o $(OUTDIR) 2>/dev/null ; \
+	$(SETX) ; for f in $(SOURCES); do \
+		b=$${f%.c}; \
+		err=$(OUTDIR)/$$b.err ; \
+		printf "%-12s" "$$b: "; \
+		if ! ./cpp -DCCC $(INC) -p -o $(OUTDIR)/$$b $$f 2> $$err; then \
+			echo "FAIL (cpp)"; \
+		elif ! $(C0) $(OUTDIR)/$$b.x $(OUTDIR)/$$b.1 $(OUTDIR)/$$b.2 2>> $$err; then \
+			echo "FAIL (c0)"; \
+		elif ! $(ASTPP) $(OUTDIR)/$$b.1 > $(OUTDIR)/$$b.pp 2>> $$err; then \
+			echo "FAIL (astpp)"; \
+		elif ! $(C1) $(OUTDIR)/$$b.1 $(OUTDIR)/$$b.2 $(OUTDIR)/$$b.s 2>> $$err; then \
+			echo "FAIL (c1)"; \
+		else \
+			echo "ok"; \
+		fi \
 	done
 
-# Compile with zc3 to check Z80 sizes
 sizecheck: $(GENERATED)
 	mkdir -p sizecheck
-	$(SETX) ; o="" ; for f in $(SRCS); do \
+	$(SETX) ; o="" ; for f in $(SOURCES); do \
 		b=$${f%.c}; \
+		err=sizecheck/$$b.err ; \
 		o="$$o sizecheck/$$b.o" ; \
 		printf "%-12s" "$$b: " ; \
 		zc3 -S -DCCC $(INC) $$f && mv $$b.as sizecheck ; \
@@ -86,18 +137,20 @@ sizecheck: $(GENERATED)
 		{ echo "ok"; } || { echo "FAIL"; } \
 	done ; \
 	wssize $$o | awk '{t+=$$1;d+=$$2;b+=$$3;a+=$$4} END {print t,d,b,a}' | tee -a sizefile ; \
-	wsld -r -o sizecheck/cpp ../../root/lib/crt0.o $$o ../../root/lib/libc.a ../../root/lib/libu.a > sizecheck/wsld.out ; \
+	wsld -r -o sizecheck/cpp ../../root/lib/crt0.o $$o ../../root/lib/libc.a ../../root/lib/libu.a ; \
 	wssize sizecheck/cpp | tee -a sizefile
 
-clean:
-	rm -f *.o *.1 *.2 *.x *.pp
-
-clobber: clean
-	rm -f cpp mkkw kwtab.c xdump sizefile
-	rm -rf stage1 stage2 sizecheck sizecheck1
-
-install: cpp xdump
-	cp cpp xdump $(DEST)/bin
+sizecheck1: $(GENERATED)
+	mkdir -p sizecheck1
+	$(SETX) ; o="" ; for f in $(SOURCES); do \
+		b=$${f%.c}; \
+		err=sizecheck/$$b.err ; \
+		o="$$o sizecheck1/$$b.o" ; \
+		printf "%-12s" "$$b: " ; \
+		sdcc --sdcccall 0 -c -mz80 -DCCC -I../../libsrc/include $$f && mv $$b.??? sizecheck1 ; \
+		{ echo "ok"; } || { echo "FAIL"; } \
+	done ; \
+	sdcc -mz80 -o sizecheck1/cpp sizecheck1/*.rel
 
 # Individual stage1 file rules
 .SECONDARY:
@@ -111,7 +164,7 @@ $(C1):
 $(ASTPP):
 	$(MAKE) -C .. astpp
 
-$(OUTDIR)/%.x: %.c cpp.h debug.h cpp
+$(OUTDIR)/%.x: %.c $(HEADERS) cpp
 	@mkdir -p $(OUTDIR)
 	./cpp -DCCC $(INC) -p -o $(OUTDIR)/$* $<
 
@@ -124,7 +177,6 @@ $(OUTDIR)/%.pp: $(OUTDIR)/%.1 $(ASTPP)
 $(OUTDIR)/%.s: $(OUTDIR)/%.1 $(OUTDIR)/%.2 $(C1)
 	$(C1) $(OUTDIR)/$*.1 $(OUTDIR)/$*.2 $@
 
-.PHONY: all clean clobber install stage1 sizefile sizecheck
-#
+.PHONY: all clean regen stage1 install clobber sizefile sizecheck sizecheck1
+
 # vim: tabstop=4 shiftwidth=4 noexpandtab:
-#
