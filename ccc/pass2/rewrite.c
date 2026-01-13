@@ -23,6 +23,7 @@
 #define P_NULL   255
 #define P_NUM    254
 #define P_POW2   253
+#define P_ZERO   252
 
 /* Replacement flags */
 #define RF_POW2  0x01    /* transform constant through log2 */
@@ -64,6 +65,7 @@ chartopc(char c)
 	case 'Y': return GE;
 	case 'N': return P_NUM;
 	case 'P': return P_POW2;
+	case 'Z': return P_ZERO;
 	case 'S': return SYM;
 	case 'i': return PREINC;
 	case 'j': return POSTINC;
@@ -99,6 +101,7 @@ opmatch(unsigned char pat, Expr *e)
 	if (pat == P_NULL) return e == NULL;
 	if (pat == P_NUM) return e && e->op == NUMBER;
 	if (pat == P_POW2) return e && e->op == NUMBER && ispow2(e->u.val) > 0;
+	if (pat == P_ZERO) return e && e->op == NUMBER && e->u.val == 0;
 	return e && e->op == pat;
 }
 
@@ -319,6 +322,18 @@ static struct rule rules[] = {
 	/* byte sub indexed - constant: ld a,(ix+d); sub n */
 	{"-(D(I),N):b", "-", "L", "R", "", 0, "\tld a,($LL)\n\tsub $R\n", R_A},
 
+	/* byte bit test indexed: bit n,(ix+d) - Z=0 if bit set */
+	{"&(D(I),P):bF", "&", "L", "R", "", RF_POW2, "\tbit $R,($LL)\n", F_NZ},
+
+	/* byte AND indexed: ld a,(ix+d); and n */
+	{"&(D(I),N):b", "&", "L", "R", "", 0, "\tld a,($LL)\n\tand $R\n", R_A},
+
+	/* byte OR indexed: ld a,(ix+d); or n */
+	{"|(D(I),N):b", "|", "L", "R", "", 0, "\tld a,($LL)\n\tor $R\n", R_A},
+
+	/* byte XOR indexed: ld a,(ix+d); xor n */
+	{"^(D(I),N):b", "^", "L", "R", "", 0, "\tld a,($LL)\n\txor $R\n", R_A},
+
 	/* compare equal: cp n (Z flag) - value already in A */
 	{"Q(A,N):F", "Q", "L", "R", "", 0, NULL, 0},
 
@@ -388,8 +403,8 @@ tryrule(struct rule *rp, Expr *e)
 	Expr *n, *src, *num, *lc, *rc;
 	char *p;
 	char reg, off;
-	int shift;
-	unsigned char newop;
+	int shift, changed;
+	unsigned char newop, oldop;
 
 	/* Match pattern */
 	if (!pmatch(rp->pat, e))
@@ -408,7 +423,9 @@ tryrule(struct rule *rp, Expr *e)
 		fprintf(stderr, "rewrite: %s -> %s\n", rp->pat, rp->rep);
 #endif
 
+	oldop = e->op;
 	newop = chartopc(rp->rep[0]);
+	changed = 0;
 
 	/* Get replacement children */
 	p = rp->lsrc;
@@ -416,14 +433,15 @@ tryrule(struct rule *rp, Expr *e)
 	p = rp->rsrc;
 	rc = (*p) ? getpath(e, &p) : NULL;
 
-	/* Handle NEQ -> BANG(EQ) */
+	/* Handle NEQ -> BANG(EQ) - caller must rewrite result */
 	if (rp->flags & RF_NOTEQ) {
 		Expr *eq = mkbinary(EQ, e->width, e->left, e->right);
 		eq->dest = e->dest;
 		e->op = BANG;
+		e->dest = DEST_FLAGS;
 		e->left = eq;
 		e->right = NULL;
-		return e;
+		return e;  /* tagged for re-rewrite */
 	}
 
 	/* Handle INDEX specially */
@@ -468,8 +486,11 @@ tryrule(struct rule *rp, Expr *e)
 	}
 
 	/* Reuse node, change op */
+	if (newop != oldop)
+		changed = 1;
 	e->op = newop;
 	if (lc != e->left || rc != e->right) {
+		changed = 1;
 		/* Detach children we're keeping */
 		if (lc == e->left) e->left = NULL;
 		if (lc == e->right) e->right = NULL;
@@ -485,13 +506,16 @@ tryrule(struct rule *rp, Expr *e)
 	/* Transform POW2 to shift amount */
 	if ((rp->flags & RF_POW2) && e->right && e->right->op == NUMBER) {
 		shift = ispow2(e->right->u.val);
-		if (shift > 0)
+		if (shift > 0) {
 			e->right->u.val = shift;
+			changed = 1;
+		}
 	}
 
 	/* Increment constant by 1 (for GT->GE, LE->LT transforms) */
 	if ((rp->flags & RF_INC1) && e->right && e->right->op == NUMBER) {
 		e->right->u.val++;
+		changed = 1;
 	}
 
 	/* Emit assembly and create CODE node if template present */
@@ -503,7 +527,7 @@ tryrule(struct rule *rp, Expr *e)
 		return n;
 	}
 
-	return e;
+	return changed ? e : NULL;
 }
 
 /*
@@ -552,18 +576,16 @@ flipflag(unsigned char f)
 }
 
 /*
- * Rewrite single node
+ * Apply one rewrite step to node (not children)
+ * Returns new node if changed, NULL if no change
  */
 static Expr *
-rewrite1(Expr *e)
+step(Expr *e)
 {
 	struct rule *rp;
 	Expr *n;
 
 	if (!e) return NULL;
-
-	e->left = rewrite1(e->left);
-	e->right = rewrite1(e->right);
 
 	normalize(e);
 
@@ -578,9 +600,47 @@ rewrite1(Expr *e)
 		return n;
 	}
 
+	/* EQ(x, 0) in flag context: just test x for zero */
+	if (e->op == EQ && e->dest == DEST_FLAGS &&
+	    e->right && e->right->op == NUMBER && e->right->u.val == 0) {
+		n = e->left;
+		n->dest = DEST_FLAGS;
+		e->left = NULL;
+		freeexpr(e);
+		return n;
+	}
+
 	for (rp = rules; rp->pat; rp++) {
 		n = tryrule(rp, e);
-		if (n) return n;
+		if (n)
+			return n;
+	}
+	return NULL;  /* no change */
+}
+
+/*
+ * Rewrite node: depth-first, fixed-point at each level
+ */
+static Expr *
+rewrite1(Expr *e)
+{
+	Expr *n;
+
+	if (!e) return NULL;
+
+	/* Rewrite children first (depth-first) */
+	e->left = rewrite1(e->left);
+	e->right = rewrite1(e->right);
+
+	/* Fixed-point: keep rewriting until no change */
+	for (;;) {
+		n = step(e);
+		if (!n)
+			break;
+		/* Transformation may create new children - rewrite them */
+		n->left = rewrite1(n->left);
+		n->right = rewrite1(n->right);
+		e = n;
 	}
 	return e;
 }
