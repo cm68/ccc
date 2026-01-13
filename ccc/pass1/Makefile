@@ -26,7 +26,10 @@ endif
 
 INC = -I../../libsrc/include
 CCC = $(DEST)/bin/ccc
+
 ASTPP = ../astpp
+CPP = ../cpp/cpp
+C1 = ../pass2/c1
 
 OUTDIR = stage1
 
@@ -111,7 +114,7 @@ stage1: c0
 			echo "FAIL (c0)"; \
 		elif ! $(ASTPP) $(OUTDIR)/$$b.1 > $(OUTDIR)/$$b.pp 2>> $$err; then \
 			echo "FAIL (astpp)"; \
-		elif ! ../pass2/c1 -v 8 $(OUTDIR)/$$b.1 $(OUTDIR)/$$b.2 $(OUTDIR)/$$b.s 2>> $$err; then \
+		elif ! $(C1) $(OUTDIR)/$$b.1 $(OUTDIR)/$$b.2 $(OUTDIR)/$$b.s 2>> $$err; then \
 			echo "FAIL (c1)"; \
 		else \
 			echo "ok"; \
@@ -147,9 +150,6 @@ sizecheck1: $(GENERATED)
 
 # Individual stage1 file rules
 .SECONDARY:
-
-CPP = ../cpp/cpp
-C1 = ../pass2/c1
 
 $(CPP):
 	$(MAKE) -C ../cpp cpp
