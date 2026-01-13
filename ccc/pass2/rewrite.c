@@ -659,6 +659,18 @@ no_push:
 			out("\tex de,hl\n");
 		} else if (dst == R_HL && src == R_BC) {
 			out("\tld l,c\n\tld h,b\n");
+		} else if (dst == R_IX && src == R_HL) {
+			out("\tpush hl\n\tpop ix\n");
+		} else if (dst == R_IX && src == R_DE) {
+			out("\tpush de\n\tpop ix\n");
+		} else if (dst == R_IX && src == R_BC) {
+			out("\tpush bc\n\tpop ix\n");
+		} else if (dst == R_HL && src == R_IX) {
+			out("\tpush ix\n\tpop hl\n");
+		} else if (dst == R_DE && src == R_IX) {
+			out("\tpush ix\n\tpop de\n");
+		} else if (dst == R_BC && src == R_IX) {
+			out("\tpush ix\n\tpop bc\n");
 		} else if (dst == src) {
 			/* already there */
 		} else {
