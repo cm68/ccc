@@ -635,6 +635,17 @@ step(Expr *e)
 	}
 no_push:
 
+	/* CALL(SYMREF, args...): emit call, result in HL */
+	if (e->op == CALL && e->left && e->left->op == SYMREF) {
+		out("\tcall ");
+		out(e->left->u.symref.name);
+		out("\n");
+		n = mkcode(e->width, R_HL);
+		n->dest = e->dest;
+		freeexpr(e);
+		return n;
+	}
+
 	for (rp = rules; rp->pat; rp++) {
 		n = tryrule(rp, e);
 		if (n)
