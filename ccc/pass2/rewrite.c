@@ -260,6 +260,8 @@ assign(Expr *e, unsigned char tgt)
 #define RF_DE    0x20    /* require reg is DE */
 #define RF_HL    0x40    /* require reg is HL */
 #define RF_IX    0x80    /* require reg is IX */
+#define RF_C     0x100   /* require reg is C (low byte of BC) */
+#define RF_B     0x200   /* require reg is B (high byte of BC) */
 
 /*
  * Map single char to opcode (or special pattern value)
@@ -306,6 +308,9 @@ chartopc(char c)
 	case 'a': return ARGNODE;
 	case 'C': return CODE;
 	case 'o': return OREQ;
+	case 'g': return NEG;
+	case '~': return NOT;
+	case '!': return BANG;
 	case '_': return P_ANY;
 	case '0': return P_NULL;
 	case '3': return P_MUL3;
@@ -453,7 +458,7 @@ struct rule {
 	char *lsrc;     /* left child source path */
 	char *rsrc;     /* right child source path */
 	char *dsrc;     /* data source path (for reg/off) */
-	unsigned char flags;
+	unsigned short flags;
 	char *asmtpl;   /* asm template: $L/$R/$LL/etc for interpolation */
 	unsigned char destval; /* result location: R_HL, R_A, etc (0=none) */
 };
@@ -595,11 +600,50 @@ static struct rule rules[] = {
 	/* INBC in flag context: test for zero */
 	{"B:F", "B", "", "", "", 0, "\tld a,c\n\tor a,b\n", F_NZ},
 
+	/* REGVAR byte C in flag context */
+	{"V:bF", "V", "", "", "", RF_C, "\tld a,c\n\tor a\n", F_NZ},
+
+	/* REGVAR byte B in flag context */
+	{"V:bF", "V", "", "", "", RF_B, "\tld a,b\n\tor a\n", F_NZ},
+
+	/* assign constant to REGVAR C */
+	{"=(V,N):b", "=", "L", "R", "L", RF_C, "\tld c,$R\n", R_A},
+
+	/* assign constant to REGVAR B */
+	{"=(V,N):b", "=", "L", "R", "L", RF_B, "\tld b,$R\n", R_A},
+
+	/* assign A to REGVAR C */
+	{"=(V,A):b", "=", "L", "R", "L", RF_C, "\tld c,a\n", R_A},
+
+	/* assign A to REGVAR B */
+	{"=(V,A):b", "=", "L", "R", "L", RF_B, "\tld b,a\n", R_A},
+
+	/* assign HL (low byte) to REGVAR C */
+	{"=(V,H):b", "=", "L", "R", "L", RF_C, "\tld c,l\n", R_HL},
+
+	/* assign HL (low byte) to REGVAR B */
+	{"=(V,H):b", "=", "L", "R", "L", RF_B, "\tld b,l\n", R_HL},
+
+	/* load REGVAR C to HL (zero-extended) */
+	{"=(H,V):b", "=", "L", "R", "R", RF_C, "\tld l,c\n\tld h,0\n", R_HL},
+
+	/* load REGVAR B to HL (zero-extended) */
+	{"=(H,V):b", "=", "L", "R", "R", RF_B, "\tld l,b\n\tld h,0\n", R_HL},
+
+	/* REGVAR C -> INA (value in C, byte context) */
+	{"V:b", "A", "", "", "", RF_C, "\tld a,c\n", R_A},
+
+	/* REGVAR B -> INA (value in B, byte context) */
+	{"V:b", "A", "", "", "", RF_B, "\tld a,b\n", R_A},
+
 	/* INHL in flag context: test for zero */
 	{"H:F", "H", "", "", "", 0, "\tld a,l\n\tor a,h\n", F_NZ},
 
 	/* INDE in flag context: test for zero */
 	{"E:F", "E", "", "", "", 0, "\tld a,e\n\tor a,d\n", F_NZ},
+
+	/* INA in flag context: test for zero */
+	{"A:F", "A", "", "", "", 0, "\tor a\n", F_NZ},
 
 	/* copy IX to HL (must use push/pop) */
 	{"=(H,V)", "=", "L", "R", "R", RF_IX, "\tpush ix\n\tpop hl\n", R_HL},
@@ -649,6 +693,15 @@ static struct rule rules[] = {
 	{"*(H,q)", "*", "L", "", "", 0, "\tld d,h\n\tld e,l\n\tadd hl,hl\n\tadd hl,de\n\tadd hl,hl\n\tadd hl,hl\n\tadd hl,hl\n", R_HL},
 	/* hl*40 = (hl*5)*8 */
 	{"*(H,z)", "*", "L", "", "", 0, "\tld d,h\n\tld e,l\n\tadd hl,hl\n\tadd hl,hl\n\tadd hl,de\n\tadd hl,hl\n\tadd hl,hl\n\tadd hl,hl\n", R_HL},
+
+	/* general HL*DE: call runtime multiply */
+	{"*(H,E)", "*", "L", "R", "", 0, "\tcall __mul16\n", R_HL},
+
+	/* general HL/DE: call runtime divide */
+	{"/(H,E)", "/", "L", "R", "", 0, "\tcall __div16\n", R_HL},
+
+	/* general HL%DE: call runtime modulo */
+	{"%(H,E)", "%", "L", "R", "", 0, "\tcall __mod16\n", R_HL},
 
 	/* byte store to indexed: ld (ix+d), n */
 	{"=(I,N):b", "=", "L", "R", "", 0, "\tld ($L),$R\n", 0},
@@ -713,6 +766,54 @@ static struct rule rules[] = {
 	{"=(C,B)", "=", "L", "R", "", 0, "", R_BC},  /* nop */
 	{"=(C,A)", "=", "L", "R", "", 0, "", R_A},   /* nop */
 
+	/* assign A (zero-extended) to BC: ld c,a; ld b,0 */
+	{"=(B,A)", "=", "L", "R", "", 0, "\tld c,a\n\tld b,0\n", R_BC},
+
+	/* assign A (zero-extended) to HL: ld l,a; ld h,0 */
+	{"=(H,A)", "=", "L", "R", "", 0, "\tld l,a\n\tld h,0\n", R_HL},
+
+	/* assign A (zero-extended) to DE: ld e,a; ld d,0 */
+	{"=(E,A)", "=", "L", "R", "", 0, "\tld e,a\n\tld d,0\n", R_DE},
+
+	/* BC + constant -> HL (for struct member access via BC pointer) */
+	{"+(B,N)", "+", "L", "R", "", 0, "\tld l,c\n\tld h,b\n\tld de,$R\n\tadd hl,de\n", R_HL},
+
+	/* BC + small constant -> HL (more efficient for 1-4) */
+	{"+(B,M)", "+", "L", "R", "", 0, "\tld l,c\n\tld h,b\n%(\tinc hl\n)", R_HL},
+
+	/* DE + constant -> HL */
+	{"+(E,N)", "+", "L", "R", "", 0, "\tex de,hl\n\tld de,$R\n\tadd hl,de\n", R_HL},
+
+	/* DE + small constant -> HL (more efficient for 1-4) */
+	{"+(E,M)", "+", "L", "R", "", 0, "\tex de,hl\n%(\tinc hl\n)", R_HL},
+
+	/* NEG BC: negate BC register (result in HL) */
+	{"g(B)", "g", "L", "", "", 0, "\tld a,0\n\tsub c\n\tld l,a\n\tld a,0\n\tsbc a,b\n\tld h,a\n", R_HL},
+
+	/* NEG HL: negate HL register */
+	{"g(H)", "g", "L", "", "", 0, "\txor a\n\tsub l\n\tld l,a\n\tld a,0\n\tsbc a,h\n\tld h,a\n", R_HL},
+
+	/* NEG DE: negate DE register (result in HL) */
+	{"g(E)", "g", "L", "", "", 0, "\tld a,0\n\tsub e\n\tld l,a\n\tld a,0\n\tsbc a,d\n\tld h,a\n", R_HL},
+
+	/* PREINC BC: ++bc (result in HL) */
+	{"i(B)", "i", "L", "", "", 0, "\tinc bc\n\tld l,c\n\tld h,b\n", R_HL},
+
+	/* PREDEC BC: --bc (result in HL) */
+	{"k(B)", "k", "L", "", "", 0, "\tdec bc\n\tld l,c\n\tld h,b\n", R_HL},
+
+	/* PREINC indexed short: ++(ix+d) */
+	{"i(I):s", "i", "L", "", "", 0, "\tld l,($L)\n\tld h,($L+)\n\tinc hl\n\tld ($L),l\n\tld ($L+),h\n", R_HL},
+
+	/* PREDEC indexed short: --(ix+d) */
+	{"k(I):s", "k", "L", "", "", 0, "\tld l,($L)\n\tld h,($L+)\n\tdec hl\n\tld ($L),l\n\tld ($L+),h\n", R_HL},
+
+	/* PREINC indexed byte: ++(ix+d) - result in A */
+	{"i(I):b", "i", "L", "", "", 0, "\tld a,($L)\n\tinc a\n\tld ($L),a\n", R_A},
+
+	/* PREDEC indexed byte: --(ix+d) - result in A */
+	{"k(I):b", "k", "L", "", "", 0, "\tld a,($L)\n\tdec a\n\tld ($L),a\n", R_A},
+
 	/* byte store to indexed: ld (ix+d), a */
 	{"=(I,A)", "=", "L", "R", "", 0, "\tld ($L),a\n", R_A},
 
@@ -728,8 +829,65 @@ static struct rule rules[] = {
 	/* byte load from (hl): ld a, (hl) */
 	{"D(H):b", "D", "L", "", "", 0, "\tld a,(hl)\n", R_A},
 
+	/* byte load from (bc): move to hl, then load */
+	{"D(B):b", "D", "L", "", "", 0, "\tld l,c\n\tld h,b\n\tld a,(hl)\n", R_A},
+
+	/* short load from (bc): move to hl, load */
+	{"D(B):s", "D", "L", "", "", 0, "\tld l,c\n\tld h,b\n\tld a,(hl)\n\tinc hl\n\tld h,(hl)\n\tld l,a\n", R_HL},
+
+	/* byte load from (de): move to hl, then load */
+	{"D(E):b", "D", "L", "", "", 0, "\tex de,hl\n\tld a,(hl)\n", R_A},
+
+	/* short load from (de): move to hl, load */
+	{"D(E):s", "D", "L", "", "", 0, "\tex de,hl\n\tld e,(hl)\n\tinc hl\n\tld d,(hl)\n\tex de,hl\n", R_HL},
+
+	/* byte store A to *bc (indirect through BC) */
+	{"=(D(B),A):b", "=", "L", "R", "", 0, "\tld l,c\n\tld h,b\n\tld (hl),a\n", 0},
+
+	/* byte store A to *de (indirect through DE) */
+	{"=(D(E),A):b", "=", "L", "R", "", 0, "\tex de,hl\n\tld (hl),a\n\tex de,hl\n", 0},
+
+	/* short store HL to *bc (indirect through BC) */
+	{"=(D(B),H):s", "=", "L", "R", "", 0, "\tpush hl\n\tld l,c\n\tld h,b\n\tpop de\n\tld (hl),e\n\tinc hl\n\tld (hl),d\n", 0},
+
+	/* short store HL to *de (indirect through DE) */
+	{"=(D(E),H):s", "=", "L", "R", "", 0, "\tex de,hl\n\tpush de\n\tld (hl),e\n\tinc hl\n\tld (hl),d\n\tpop hl\n", 0},
+
+	/* byte store constant to *hl */
+	{"=(D(H),N):b", "=", "L", "R", "", 0, "\tld (hl),$R\n", 0},
+
+	/* short store DE to *hl */
+	{"=(D(H),E):s", "=", "L", "R", "", 0, "\tld (hl),e\n\tinc hl\n\tld (hl),d\n", 0},
+
+	/* byte store constant to *bc */
+	{"=(D(B),N):b", "=", "L", "R", "", 0, "\tld l,c\n\tld h,b\n\tld (hl),$R\n", 0},
+
+	/* short store constant to *hl */
+	{"=(D(H),N):s", "=", "L", "R", "", 0, "\tld (hl),$Rl\n\tinc hl\n\tld (hl),$Rh\n", 0},
+
+	/* short store BC to *hl */
+	{"=(D(H),B):s", "=", "L", "R", "", 0, "\tld (hl),c\n\tinc hl\n\tld (hl),b\n", 0},
+
+	/* pointer deref for flags (test if pointer is null) */
+	{"D(H):pF", "D", "L", "", "", 0, "\tld a,(hl)\n\tor a,(hl)\n", F_NZ},
+
 	/* short load from (hl) to BC: ld c,(hl); inc hl; ld b,(hl) */
 	{"=(B,D(H)):s", "=", "L", "R", "", 0, "\tld c,(hl)\n\tinc hl\n\tld b,(hl)\n", R_BC},
+
+	/* load indexed address into BC: copy IX+offset to BC */
+	{"=(B,I)", "=", "L", "R", "", 0, "\tld c,($R)\n\tld b,($R+)\n", R_BC},
+
+	/* load SYMREF address into BC */
+	{"=(B,O)", "=", "L", "R", "", 0, "\tld bc,$R\n", R_BC},
+
+	/* short load from symref into BC: must go via A */
+	{"=(B,D(O)):s", "=", "L", "R", "", 0, "\tld a,($RL)\n\tld c,a\n\tld a,($RL+)\n\tld b,a\n", R_BC},
+
+	/* short load from symref into DE */
+	{"=(E,D(O)):s", "=", "L", "R", "", 0, "\tld de,($RL)\n", R_DE},
+
+	/* short load from symref into HL */
+	{"=(H,D(O)):s", "=", "L", "R", "", 0, "\tld hl,($RL)\n", R_HL},
 
 	/* short load from (hl) to DE: ld e,(hl); inc hl; ld d,(hl) */
 	{"=(E,D(H)):s", "=", "L", "R", "", 0, "\tld e,(hl)\n\tinc hl\n\tld d,(hl)\n", R_DE},
@@ -785,6 +943,33 @@ static struct rule rules[] = {
 	/* byte sub indexed - constant: ld a,(ix+d); sub n */
 	{"-(D(I),N):b", "-", "L", "R", "", 0, "\tld a,($LL)\n\tsub $R\n", R_A},
 
+	/* 16-bit subtract: HL - DE */
+	{"-(H,E)", "-", "L", "R", "", 0, "\tor a\n\tsbc hl,de\n", R_HL},
+
+	/* 16-bit subtract constant: HL - N */
+	{"-(H,N)", "-", "L", "R", "", 0, "\tld de,$R\n\tor a\n\tsbc hl,de\n", R_HL},
+
+	/* 16-bit left shift by constant: use add hl,hl */
+	{"<(H,N)", "<", "L", "R", "", 0, "%(\tadd hl,hl\n)", R_HL},
+
+	/* byte left shift: sla a N times */
+	{"<(A,N):b", "<", "L", "R", "", 0, "%(\tsla a\n)", R_A},
+
+	/* byte right shift (logical): srl a N times */
+	{">(A,N):b", ">", "L", "R", "", 0, "%(\tsrl a\n)", R_A},
+
+	/* 16-bit right shift by small constant (1-4): srl h; rr l repeated */
+	{">(H,M)", ">", "L", "R", "", 0, "%(\tsrl h\n\trr l\n)", R_HL},
+
+	/* assign indexed byte to A */
+	{"=(A,D(I)):b", "=", "L", "R", "", 0, "\tld a,($RL)\n", R_A},
+
+	/* assign symref byte to A */
+	{"=(A,D(O)):b", "=", "L", "R", "", 0, "\tld a,($RL)\n", R_A},
+
+	/* assign A to A: nop */
+	{"=(A,A)", "=", "L", "R", "", 0, "", R_A},
+
 	/* byte bit test indexed: bit n,(ix+d) - Z=0 if bit set */
 	{"&(D(I),P):bF", "&", "L", "R", "", RF_POW2, "\tbit $R,($LL)\n", F_NZ},
 
@@ -796,6 +981,36 @@ static struct rule rules[] = {
 
 	/* byte XOR indexed: ld a,(ix+d); xor n */
 	{"^(D(I),N):b", "^", "L", "R", "", 0, "\tld a,($LL)\n\txor $R\n", R_A},
+
+	/* byte AND A with constant */
+	{"&(A,N):b", "&", "L", "R", "", 0, "\tand $R\n", R_A},
+
+	/* byte OR A with constant */
+	{"|(A,N):b", "|", "L", "R", "", 0, "\tor $R\n", R_A},
+
+	/* byte XOR A with constant */
+	{"^(A,N):b", "^", "L", "R", "", 0, "\txor $R\n", R_A},
+
+	/* 16-bit AND: HL & DE */
+	{"&(H,E)", "&", "L", "R", "", 0, "\tld a,l\n\tand e\n\tld l,a\n\tld a,h\n\tand d\n\tld h,a\n", R_HL},
+
+	/* 16-bit OR: HL | DE */
+	{"|(H,E)", "|", "L", "R", "", 0, "\tld a,l\n\tor e\n\tld l,a\n\tld a,h\n\tor d\n\tld h,a\n", R_HL},
+
+	/* 16-bit XOR: HL ^ DE */
+	{"^(H,E)", "^", "L", "R", "", 0, "\tld a,l\n\txor e\n\tld l,a\n\tld a,h\n\txor d\n\tld h,a\n", R_HL},
+
+	/* 16-bit AND with constant */
+	{"&(H,N)", "&", "L", "R", "", 0, "\tld a,l\n\tand $Rl\n\tld l,a\n\tld a,h\n\tand $Rh\n\tld h,a\n", R_HL},
+
+	/* 16-bit OR with constant */
+	{"|(H,N)", "|", "L", "R", "", 0, "\tld a,l\n\tor $Rl\n\tld l,a\n\tld a,h\n\tor $Rh\n\tld h,a\n", R_HL},
+
+	/* 16-bit XOR with constant */
+	{"^(H,N)", "^", "L", "R", "", 0, "\tld a,l\n\txor $Rl\n\tld l,a\n\tld a,h\n\txor $Rh\n\tld h,a\n", R_HL},
+
+	/* bitwise NOT on A */
+	{"~(A):b", "~", "L", "", "", 0, "\tcpl\n", R_A},
 
 	/* compare equal: cp n (Z flag) - value already in A */
 	{"Q(A,N):F", "Q", "L", "R", "", 0, "\tcp $R\n", F_Z},
@@ -818,6 +1033,24 @@ static struct rule rules[] = {
 	/* compare less than byte indexed: ld a,(ix+d); cp n (C flag) */
 	{"T(D(I),N):bF", "T", "L", "R", "", 0, "\tld a,($LL)\n\tcp $R\n", F_C},
 
+	/* compare equal HL with constant: sub and test for zero */
+	{"Q(H,N):F", "Q", "L", "R", "", 0, "\tld a,l\n\tsub $Rl\n\tld a,h\n\tsbc a,$Rh\n\tor a\n", F_Z},
+
+	/* compare equal BC with constant */
+	{"Q(B,N):F", "Q", "L", "R", "", 0, "\tld a,c\n\tsub $Rl\n\tld a,b\n\tsbc a,$Rh\n\tor a\n", F_Z},
+
+	/* compare less than HL < constant: unsigned 16-bit compare */
+	{"T(H,N):F", "T", "L", "R", "", 0, "\tld a,l\n\tsub $Rl\n\tld a,h\n\tsbc a,$Rh\n", F_C},
+
+	/* compare less than BC < constant */
+	{"T(B,N):F", "T", "L", "R", "", 0, "\tld a,c\n\tsub $Rl\n\tld a,b\n\tsbc a,$Rh\n", F_C},
+
+	/* compare GE HL >= constant: unsigned 16-bit compare */
+	{"Y(H,N):F", "Y", "L", "R", "", 0, "\tld a,l\n\tsub $Rl\n\tld a,h\n\tsbc a,$Rh\n", F_NC},
+
+	/* compare GE BC >= constant */
+	{"Y(B,N):F", "Y", "L", "R", "", 0, "\tld a,c\n\tsub $Rl\n\tld a,b\n\tsbc a,$Rh\n", F_NC},
+
 	/* NEQ -> BANG(EQ): normalize for conditional jumps */
 	{"U(_,_)", "!", "L", "R", "", RF_NOTEQ, NULL, 0},
 
@@ -835,6 +1068,30 @@ static struct rule rules[] = {
 
 	/* LE(a,n) -> LT(a,n+1): a <= n iff a < n+1 */
 	{"W(_,N)", "T", "L", "R", "", RF_INC1, NULL, 0},
+
+	/* short pre-increment through (hl): load, inc, store, return new */
+	{"i(H):s", "i", "L", "", "", 0, "\tld e,(hl)\n\tinc hl\n\tld d,(hl)\n\tinc de\n\tld (hl),d\n\tdec hl\n\tld (hl),e\n\tex de,hl\n", R_HL},
+
+	/* short post-increment through (hl): load, store inc'd, return old */
+	{"j(H):s", "j", "L", "", "", 0, "\tld e,(hl)\n\tinc hl\n\tld d,(hl)\n\tpush de\n\tinc de\n\tld (hl),d\n\tdec hl\n\tld (hl),e\n\tpop hl\n", R_HL},
+
+	/* short pre-decrement through (hl) */
+	{"k(H):s", "k", "L", "", "", 0, "\tld e,(hl)\n\tinc hl\n\tld d,(hl)\n\tdec de\n\tld (hl),d\n\tdec hl\n\tld (hl),e\n\tex de,hl\n", R_HL},
+
+	/* short post-decrement through (hl) */
+	{"m(H):s", "m", "L", "", "", 0, "\tld e,(hl)\n\tinc hl\n\tld d,(hl)\n\tpush de\n\tdec de\n\tld (hl),d\n\tdec hl\n\tld (hl),e\n\tpop hl\n", R_HL},
+
+	/* short post-increment symref */
+	{"j(O):s", "j", "L", "", "", 0, "\tld hl,($L)\n\tinc hl\n\tld ($L),hl\n\tdec hl\n", R_HL},
+
+	/* short pre-increment symref */
+	{"i(O):s", "i", "L", "", "", 0, "\tld hl,($L)\n\tinc hl\n\tld ($L),hl\n", R_HL},
+
+	/* short pre-decrement symref */
+	{"k(O):s", "k", "L", "", "", 0, "\tld hl,($L)\n\tdec hl\n\tld ($L),hl\n", R_HL},
+
+	/* short post-decrement symref */
+	{"m(O):s", "m", "L", "", "", 0, "\tld hl,($L)\n\tdec hl\n\tld ($L),hl\n\tinc hl\n", R_HL},
 
 	/* byte pre-increment through (hl) */
 	{"i(H):b", "i", "L", "", "", 0, "\tinc (hl)\n\tld a,(hl)\n", R_A},
@@ -876,8 +1133,13 @@ static struct rule rules[] = {
 	{"S", "O", "", "", "", 0, NULL, 0},
 
 	/* NUMBER in value context: load into register */
-	{"N:bV", "C", "", "", "", 0, "\tld a,$\n", R_A},
-	{"N:sV", "C", "", "", "", 0, "\tld hl,$\n", R_HL},
+	{"N:bV", "C", "", "", "", 0, NULL, R_A},
+	{"N:sV", "C", "", "", "", 0, NULL, R_HL},
+
+	/* NUMBER without context: still load into register */
+	{"N:b", "C", "", "", "", 0, NULL, R_A},
+	{"N:s", "C", "", "", "", 0, NULL, R_HL},
+	{"N:p", "C", "", "", "", 0, NULL, R_HL},
 
 	/* ARGNODE: push register pairs */
 	{"a(H)", "a", "L", "", "", 0, "\tpush hl\n", 0},
@@ -895,6 +1157,39 @@ static struct rule rules[] = {
 	{"a(V)", "a", "L", "", "L", RF_DE, "\tpush de\n", 0},
 	{"a(V)", "a", "L", "", "L", RF_HL, "\tpush hl\n", 0},
 	{"a(V)", "a", "L", "", "L", RF_IX, "\tpush ix\n", 0},
+
+	/* ARGNODE: push byte A (extend to 16-bit, push) */
+	{"a(A)", "a", "L", "", "", 0, "\tld l,a\n\tld h,0\n\tpush hl\n", 0},
+
+	/* ARGNODE: push byte index value (extend to 16-bit) */
+	{"a(D(I)):b", "a", "L", "", "", 0, "\tld l,($LL)\n\tld h,0\n\tpush hl\n", 0},
+
+	/* ARGNODE: push short index value */
+	{"a(D(I)):s", "a", "L", "", "", 0, "\tld l,($LL)\n\tld h,($LL+)\n\tpush hl\n", 0},
+
+	/* ARGNODE: push symref deref short */
+	{"a(D(O)):s", "a", "L", "", "", 0, "\tld hl,($LL)\n\tpush hl\n", 0},
+
+	/* ARGNODE: push symref deref byte */
+	{"a(D(O)):b", "a", "L", "", "", 0, "\tld a,($LL)\n\tld l,a\n\tld h,0\n\tpush hl\n", 0},
+
+	/* Store HL to indexed (pointer width) */
+	{"=(I,H):p", "=", "L", "R", "", 0, "\tld ($L),l\n\tld ($L+),h\n", 0},
+
+	/* Store HL to symref (pointer width) */
+	{"=(O,H):p", "=", "L", "R", "", 0, "\tld ($L),hl\n", R_HL},
+
+	/* Load symref pointer to HL */
+	{"D(O):p", "D", "L", "", "", 0, "\tld hl,($L)\n", R_HL},
+
+	/* Load indexed pointer to HL */
+	{"D(I):p", "D", "L", "", "", 0, "\tld l,($L)\n\tld h,($L+)\n", R_HL},
+
+	/* assign constant to A */
+	{"=(A,N):b", "=", "L", "R", "", 0, "\tld a,$R\n", R_A},
+
+	/* short assign BC to symref */
+	{"=(O,B):s", "=", "L", "R", "", 0, "\tld a,c\n\tld ($L),a\n\tld a,b\n\tld ($L+),a\n", 0},
 
 	{NULL, NULL, NULL, NULL, NULL, 0, NULL, 0}
 };
@@ -916,7 +1211,7 @@ tryrule(struct rule *rp, Expr *e)
 		return NULL;
 
 	/* Check register constraints */
-	if (rp->flags & (RF_IXIY | RF_BC | RF_DE | RF_HL | RF_IX)) {
+	if (rp->flags & (RF_IXIY | RF_BC | RF_C | RF_B | RF_DE | RF_HL | RF_IX)) {
 		p = rp->dsrc;
 		src = getpath(e, &p);
 		if (!src)
@@ -925,6 +1220,10 @@ tryrule(struct rule *rp, Expr *e)
 		    src->u.var.reg != R_IX && src->u.var.reg != R_IY)
 			return NULL;
 		if ((rp->flags & RF_BC) && src->u.var.reg != R_BC)
+			return NULL;
+		if ((rp->flags & RF_C) && src->u.var.reg != R_C)
+			return NULL;
+		if ((rp->flags & RF_B) && src->u.var.reg != R_B)
 			return NULL;
 		if ((rp->flags & RF_DE) && src->u.var.reg != R_DE)
 			return NULL;
@@ -976,6 +1275,26 @@ tryrule(struct rule *rp, Expr *e)
 				off += src->u.var.off;
 		}
 		n = mkindex(e->width, reg, off);
+		freeexpr(e);
+		return n;
+	}
+
+	/* Handle NUMBER -> CODE: emit load instruction */
+	if (newop == CODE && oldop == NUMBER) {
+		long val = e->u.val;
+		char w = e->width;
+		if (w == 'b' || w == 'B') {
+			out("\tld a,");
+			outd(val);
+			out("\n");
+			n = mkcode('b', R_A);
+		} else {
+			out("\tld hl,");
+			outd(val);
+			out("\n");
+			n = mkcode(e->width, R_HL);
+		}
+		n->dest = e->dest;
 		freeexpr(e);
 		return n;
 	}
@@ -1359,7 +1678,9 @@ rewrite(Expr *e)
 	if (r && r->op != CODE && r->op != INHL && r->op != INDE &&
 	    r->op != INBC && r->op != INA) {
 		out("; XXXXXX incomplete: ");
+#ifdef DEBUG
 		dumpexpr(r);
+#endif
 	}
 
 #ifdef DEBUG

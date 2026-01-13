@@ -2,11 +2,14 @@
  * pass2.c - Code generator main
  */
 #include "pass2.h"
+#include "../lib/libutil.h"
 #include <fcntl.h>
 #include <unistd.h>
 #include <string.h>
 #include <stdlib.h>
+#ifdef DEBUG
 #include <stdio.h>
+#endif
 
 #ifdef DEBUG
 #include "debugtags.c"
@@ -78,7 +81,7 @@ main(int argc, char **argv)
 			default:
 				{
 					char buf[64];
-					sprintf(buf, "bad flag %c\n", s[-1]);
+					fmtstr(buf, "bad flag %c\n", s[-1]);
 					errout(buf);
 				}
 				break;
