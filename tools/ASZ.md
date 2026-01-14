@@ -244,6 +244,78 @@ Conditions `po`, `pe`, `p`, `m` cannot be relaxed (no `jr` variants).
 
 Use `-8` option to disable relaxation (8080 compatibility mode).
 
+## Local Labels
+
+Local labels provide a way to define temporary labels that can be reused within
+a file. They're useful for short jumps where inventing unique names is tedious.
+
+### Syntax
+
+- `N:` - Define local label N (where N is any number)
+- `Nf` - Reference next (forward) definition of N
+- `Nb` - Reference previous (backward) definition of N
+
+```
+    jr nz,1f        ; jump forward to next 1:
+    xor a
+1:                  ; first definition of local 1
+    dec b
+    jr nz,1b        ; jump backward to the 1: above
+    jr 2f           ; jump forward to next 2:
+1:                  ; second definition of local 1 (shadows first)
+    inc c
+2:
+    ret
+```
+
+### Implementation: Synthetic Name Architecture
+
+Local labels are converted to synthetic global symbols during assembly. This
+allows unlimited reuse without fixed array limits.
+
+**State per label number (stored in hash table):**
+- `pending` - Synthetic symbol awaiting next `N:` definition (for `Nf` refs)
+- `last` - Symbol from most recent `N:` definition (for `Nb` refs)
+- `local_seq` - Global counter for unique synthetic names
+
+**Algorithm:**
+
+When `Nf` is encountered:
+1. If `pending[N]` is null, create new synthetic symbol `__LN_seq++`
+2. Return `pending[N]` (may be shared by multiple forward refs)
+
+When `N:` is encountered:
+1. If `pending[N]` exists, define it with current address, clear it
+2. Create symbol for this definition, set `last[N]` to it
+
+When `Nb` is encountered:
+1. Return `last[N]` (error if null)
+
+**Example transformation:**
+
+```
+Source:                     Synthetic:
+------                      ----------
+    jr 1f                   jr __L1_001     ; create pending[1]=__L1_001
+    jr 1f                   jr __L1_001     ; reuse pending[1]
+1:                          __L1_001:       ; define pending[1], clear it
+    jr 1b                   jr __L1_001     ; use last[1]
+    jr 1f                   jr __L1_002     ; create pending[1]=__L1_002
+1:                          __L1_002:       ; define pending[1], clear it
+```
+
+**Two-pass consistency:**
+
+State is reset at the start of each pass. Since source order is deterministic,
+the same sequence of `Nf` and `N:` generates identical synthetic names in both
+passes:
+
+- Pass 0: Creates and defines synthetic symbols in symbol table
+- Pass 1: Regenerates same names, looks up pre-defined addresses
+
+Synthetic symbols are internal (not exported) and don't appear in the object
+file symbol table.
+
 ## Undocumented Instructions
 
 Index half-register access is supported:

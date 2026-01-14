@@ -272,10 +272,11 @@ struct rhead datar = { "data" };
 struct jump *jumps;
 
 /*
- * local labels - numeric labels with forward/backward references
- * stored in hash table for memory efficiency
+ * local labels - synthetic name architecture
+ * hash table mapping label number to pending/last symbols
  */
-struct local_label *local_hash[LOCAL_HASH_SIZE];
+struct local_state *local_hash[LOCAL_HASH_SIZE];
+int local_seq;
 
 struct symbol *symbols;
 struct symbol *symbols_tail;  /* for append order */
@@ -284,6 +285,7 @@ extern unsigned char skipwhite();
 extern char alpha();
 extern char symchar();
 extern char escape();
+extern struct symbol *sym_update();
 
 /*
  * convert token to register number
@@ -328,125 +330,120 @@ save_symn()
 }
 
 /*
- * reset local labels at start of each pass
+ * reset local label state at start of each pass
+ * deterministic reset ensures same synthetic names in both passes
  */
 void
 local_reset()
 {
     int i;
-    struct local_label *ll, *next;
+    struct local_state *ls, *next;
 
     for (i = 0; i < LOCAL_HASH_SIZE; i++) {
-        for (ll = local_hash[i]; ll; ll = next) {
-            next = ll->next;
-            free(ll);
+        for (ls = local_hash[i]; ls; ls = next) {
+            next = ls->next;
+            free(ls);
         }
         local_hash[i] = 0;
     }
+    local_seq = 0;
 }
 
 /*
- * lookup or create a local label entry
+ * lookup or create local state for label number n
  */
-struct local_label *
+struct local_state *
 local_lookup(n, create)
 int n;
 int create;
 {
     int h;
-    struct local_label *ll;
+    struct local_state *ls;
 
     h = n % LOCAL_HASH_SIZE;
-    for (ll = local_hash[h]; ll; ll = ll->next) {
-        if (ll->num == n)
-            return ll;
+    for (ls = local_hash[h]; ls; ls = ls->next) {
+        if (ls->num == n)
+            return ls;
     }
     if (!create)
         return 0;
-    ll = (struct local_label *)malloc(sizeof(struct local_label));
-    ll->num = n;
-    ll->count = 0;
-    ll->next = local_hash[h];
-    local_hash[h] = ll;
-    return ll;
+    ls = (struct local_state *)malloc(sizeof(struct local_state));
+    ls->num = n;
+    ls->pending = 0;
+    ls->last = 0;
+    ls->next = local_hash[h];
+    local_hash[h] = ls;
+    return ls;
 }
 
 /*
- * define a local label occurrence
- * only collect in pass 0, use collected addresses in pass 1
+ * create a new synthetic symbol for local label n
+ * name format: __LN_seq (e.g., __L1_001)
+ */
+struct symbol *
+local_mksym(n)
+int n;
+{
+    char name[16];
+
+    sprintf(name, "__L%d_%04d", n, local_seq++);
+    return sym_update(name, SEG_UNDEF, 0, 0);
+}
+
+/*
+ * define a local label occurrence (N:)
+ * if pending forward refs exist, define that symbol
+ * always create a new symbol for backward refs
  */
 void
 local_define(n, addr)
 int n;
 unsigned short addr;
 {
-    struct local_label *ll;
+    struct local_state *ls;
+    struct symbol *sym;
 
-    /* only collect definitions in pass 0 */
-    if (pass != 0)
-        return;
+    ls = local_lookup(n, 1);
 
-    ll = local_lookup(n, 1);
-    if (ll->count >= MAX_LOCAL_OCCURS) {
-        gripe("too many occurrences of local label");
+    if (ls->pending) {
+        /* define the pending forward reference symbol */
+        sym = ls->pending;
+        sym_update(sym->name, segment, addr, 0);
+        ls->pending = 0;
+    } else {
+        /* no pending forward refs, create symbol for backward refs */
+        sym = local_mksym(n);
+        sym_update(sym->name, segment, addr, 0);
     }
-    ll->seg[ll->count] = segment;
-    ll->addr[ll->count++] = addr;
+    ls->last = sym;
 }
 
 /*
- * resolve a local label reference
- * dir: 'f' for forward, 'b' for backward
- * addr: current address (where reference appears)
- * returns target address or gripes on error
- * in pass 0, returns 0 as placeholder (labels may not be defined yet)
+ * resolve a local label reference (Nf or Nb)
+ * returns symbol pointer for the reference
  */
-unsigned short
-local_resolve(n, dir, addr)
+struct symbol *
+local_resolve(n, dir)
 int n;
 char dir;
-unsigned short addr;
 {
-    struct local_label *ll;
-    int i;
+    struct local_state *ls;
 
-    /* pass 0: return placeholder, labels not all defined yet */
-    if (pass == 0)
-        return 0;
-
-    ll = local_lookup(n, 0);
-    if (!ll || ll->count == 0) {
-        gripe("undefined local label");
-    }
+    ls = local_lookup(n, 1);
 
     if (dir == 'f' || dir == 'F') {
-        /* find first occurrence after addr */
-        for (i = 0; i < ll->count; i++) {
-            unsigned short abs_addr = ll->addr[i];
-            /* convert segment-relative to absolute for pass 1 */
-            if (ll->seg[i] == SEG_DATA)
-                abs_addr += text_size;
-            else if (ll->seg[i] == SEG_BSS)
-                abs_addr += text_size + data_size;
-            if (abs_addr > addr)
-                return abs_addr;
+        /* forward reference: create or reuse pending symbol */
+        if (!ls->pending) {
+            ls->pending = local_mksym(n);
         }
-        gripe("forward reference to undefined local label");
+        return ls->pending;
     } else {
-        /* find last occurrence at or before addr */
-        for (i = ll->count - 1; i >= 0; i--) {
-            unsigned short abs_addr = ll->addr[i];
-            /* convert segment-relative to absolute for pass 1 */
-            if (ll->seg[i] == SEG_DATA)
-                abs_addr += text_size;
-            else if (ll->seg[i] == SEG_BSS)
-                abs_addr += text_size + data_size;
-            if (abs_addr <= addr)
-                return abs_addr;
+        /* backward reference: use last defined symbol */
+        if (!ls->last) {
+            gripe("backward reference to undefined local label");
         }
-        gripe("backward reference to undefined local label");
+        return ls->last;
     }
-    return 0;  /* not reached */
 }
 
 extern void get_line();
@@ -970,19 +967,7 @@ relax_jmp()
                         k->offset--;
                 }
 
-                /* adjust local label addresses after this jp */
-                {
-                    int h, lo;
-                    struct local_label *ll;
-                    for (h = 0; h < LOCAL_HASH_SIZE; h++) {
-                        for (ll = local_hash[h]; ll; ll = ll->next) {
-                            for (lo = 0; lo < ll->count; lo++) {
-                                if (ll->addr[lo] > conv_addr)
-                                    ll->addr[lo]--;
-                            }
-                        }
-                    }
-                }
+                /* local labels are now symbols, adjusted in symbol loop above */
 
                 /* adjust segment size */
                 text_top--;
@@ -1611,7 +1596,7 @@ have_token:
 		vp->num.w = token_val;
     } else if (cur_token == T_LOCAL) {
         /* local label ref: token_val = label number, token_buf[0] = direction */
-        vp->num.w = local_resolve(token_val, token_buf[0], cur_address);
+        vp->sym = local_resolve(token_val, token_buf[0]);
     } else if (cur_token == '$') {
 		vp->num.w = cur_address;
     } else if (cur_token == '-') {
@@ -1744,9 +1729,8 @@ assemble()
 		change_seg(SEG_TEXT);
 		cur_address = 0;
 		text_top = 0;
-		/* only reset local labels at start of pass 0 */
-		if (pass == 0)
-			local_reset();
+		/* reset local labels at start of each pass for deterministic names */
+		local_reset();
 
 #ifdef DEBUG
 		if (verbose) {

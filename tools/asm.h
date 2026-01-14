@@ -37,19 +37,23 @@ struct jump {
 
 /*
  * local labels: numeric labels with forward/backward references
- * each local label can have multiple definitions (occurrences)
  * Nf = next occurrence forward, Nb = previous occurrence backward
- * stored in hash table for memory efficiency
+ *
+ * Synthetic name architecture: local labels are converted to synthetic
+ * symbols (__L0_001, __L1_002, etc.) allowing unlimited reuse.
+ *
+ * State per label number:
+ *   pending - synthetic symbol awaiting next N: definition (for Nf refs)
+ *   last    - symbol from most recent N: definition (for Nb refs)
+ * Stored in hash table keyed by label number.
  */
-#define LOCAL_HASH_SIZE 128
-#define MAX_LOCAL_OCCURS 128
+#define LOCAL_HASH_SIZE 32
 
-struct local_label {
-    unsigned short num;                      /* label number */
-    unsigned short addr[MAX_LOCAL_OCCURS];  /* addresses of each occurrence */
-    unsigned char seg[MAX_LOCAL_OCCURS];    /* segment of each occurrence */
-    unsigned char count;                     /* number of occurrences */
-    struct local_label *next;               /* hash chain */
+struct local_state {
+    int num;                    /* label number */
+    struct symbol *pending;     /* pending forward ref symbol */
+    struct symbol *last;        /* most recent definition */
+    struct local_state *next;   /* hash chain */
 };
 
 /*
