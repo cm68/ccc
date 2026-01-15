@@ -10,7 +10,9 @@
 #include "cpp.h"
 #include <fcntl.h>
 #include <unistd.h>
+#ifndef CCC
 #include <sys/wait.h>
+#endif
 
 #ifdef DEBUG
 #include "debugtags.c"
@@ -181,9 +183,7 @@ process(char *sourcefile)
 }
 
 char lexFile[128];
-#ifndef CCC
 char ppFile[128];
-#endif
 
 int
 main(int argc, char **argv)
@@ -191,10 +191,8 @@ main(int argc, char **argv)
     char *source = NULL;
     char *outbase = NULL;
     int i;
-#ifndef CCC
     int ppOnly = 0;
     int ppOutput = 0;
-#endif
 
     /* Parse arguments */
     for (i = 1; i < argc; i++) {
@@ -211,12 +209,10 @@ main(int argc, char **argv)
         } else if (argv[i][0] == '-' && argv[i][1] == 'D') {
             /* Define macro */
             addDefine(argv[i] + 2);
-#ifndef CCC
         } else if (strcmp(argv[i], "-E") == 0) {
             ppOnly = 1;
         } else if (strcmp(argv[i], "-p") == 0) {
             ppOutput = 1;
-#endif
         } else if (strcmp(argv[i], "-N") == 0) {
             noLineMarkers = 1;
         } else if (strcmp(argv[i], "-h") == 0) {
@@ -251,9 +247,7 @@ main(int argc, char **argv)
 
     /* Create output file names */
     fmtstr(lexFile, "%s.x", outbase);
-#ifndef CCC
     fmtstr(ppFile, "%s.i", outbase);
-#endif
 
 #ifdef DEBUG
 #ifndef CCC
@@ -299,24 +293,38 @@ main(int argc, char **argv)
 
     close(lexFd);
 
-#ifndef CCC
     /* -p mode: fork xdump to generate .i file */
     if (ppOutput) {
         int pid = fork();
         if (pid == 0) {
             /* Child: exec xdump */
+#ifdef CCC
+            if (noLineMarkers)
+                execl("/bin/xdump", "xdump", "-N", "-o", ppFile, lexFile, (char *)0);
+            else
+                execl("/bin/xdump", "xdump", "-o", ppFile, lexFile, (char *)0);
+            perror("xdump");
+            exit(1);
+#else
             if (noLineMarkers)
                 execlp("xdump", "xdump", "-N", "-o", ppFile, lexFile, (char *)0);
             else
                 execlp("xdump", "xdump", "-o", ppFile, lexFile, (char *)0);
             perror("xdump");
             _exit(1);
+#endif
         } else if (pid > 0) {
             /* Parent: wait for xdump */
             int status;
+#ifdef CCC
+            wait(&status);
+            if (status != 0)
+                exitCode = 1;
+#else
             waitpid(pid, &status, 0);
             if (!WIFEXITED(status) || WEXITSTATUS(status) != 0)
                 exitCode = 1;
+#endif
         } else {
             perror("fork");
             exitCode = 1;
@@ -325,14 +333,20 @@ main(int argc, char **argv)
 
     /* -E mode: exec xdump to dump preprocessed output to stdout */
     if (ppOnly) {
+#ifdef CCC
+        if (noLineMarkers)
+            execl("/bin/xdump", "xdump", "-N", lexFile, (char *)0);
+        else
+            execl("/bin/xdump", "xdump", lexFile, (char *)0);
+#else
         if (noLineMarkers)
             execlp("xdump", "xdump", "-N", lexFile, (char *)0);
         else
             execlp("xdump", "xdump", lexFile, (char *)0);
+#endif
         perror("xdump");
         return 1;
     }
-#endif
 
     return exitCode;
 }
