@@ -43,8 +43,8 @@ static struct {
 	unsigned char saved_ctx;	/* Saved cur_ctx */
 	int label_num;
 	int body_depth;
-	/* Saved FOR increment buffer (overwritten by nested loops) */
-	struct token saved_incr[BUF_MAX];
+	/* Saved FOR increment buffer (dynamically allocated when needed) */
+	struct token *saved_incr;
 	int saved_incr_len;
 } stk[STK_MAX];
 static int stk_sp = 0;
@@ -78,8 +78,16 @@ static int ctrl_balance = 0;  /* Track output brace balance */
 void
 filtctrl_init(void (*up)(struct token *))
 {
+	int i;
 	upstream = up;
 	state = ST_NORMAL;
+	/* Free any leftover saved_incr buffers from previous run */
+	for (i = 0; i < stk_sp; i++) {
+		if (stk[i].saved_incr) {
+			free(stk[i].saved_incr);
+			stk[i].saved_incr = 0;
+		}
+	}
 	stk_sp = 0;
 	pend_init(&pb, pendbuf, PEND_MAX);
 #ifdef DEBUG
@@ -137,11 +145,13 @@ static void push_ctx(unsigned char type, unsigned char saved) {
 		stk[stk_sp].label_num = label_num;
 		stk[stk_sp].body_depth = body_depth;
 		/* Save FOR increment buffer (overwritten by nested loops) */
-		if (cur_ctx == CTX_FOR) {
-			for (i = 0; i < incr_len && i < BUF_MAX; i++)
+		if (cur_ctx == CTX_FOR && incr_len > 0) {
+			stk[stk_sp].saved_incr = malloc(incr_len * sizeof(struct token));
+			for (i = 0; i < incr_len; i++)
 				tokcpy(&stk[stk_sp].saved_incr[i], &incr_buf[i]);
 			stk[stk_sp].saved_incr_len = incr_len;
 		} else {
+			stk[stk_sp].saved_incr = 0;
 			stk[stk_sp].saved_incr_len = 0;
 		}
 		stk_sp++;
@@ -157,10 +167,12 @@ static void pop_ctx(void) {
 		cur_ctx = stk[stk_sp].saved_ctx;
 		state = stk[stk_sp].saved_state;
 		/* Restore FOR increment buffer if saved */
-		if (stk[stk_sp].saved_incr_len > 0) {
+		if (stk[stk_sp].saved_incr) {
 			incr_len = stk[stk_sp].saved_incr_len;
 			for (i = 0; i < incr_len; i++)
 				tokcpy(&incr_buf[i], &stk[stk_sp].saved_incr[i]);
+			free(stk[stk_sp].saved_incr);
+			stk[stk_sp].saved_incr = 0;
 		}
 	} else {
 		state = ST_NORMAL;

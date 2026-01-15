@@ -271,11 +271,13 @@ emitStructTok(struct token *t)
  * Check brace balance at EOF - call before emitting E_O_F
  */
 void
-emitCheckBraces(void)
+emitChkBraces(void)
 {
     if (braceCount != 0) {
-        fdprintf(2, "cpp: brace mismatch at EOF: %d unmatched {\n",
-                 braceCount);
+        char buf[64];
+        fmtstr(buf, "cpp: brace mismatch at EOF: %d unmatched {\n",
+               braceCount);
+        write(2, buf, strlen(buf));
         exit(1);
     }
 }

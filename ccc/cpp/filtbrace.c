@@ -458,7 +458,7 @@ filtbrace(struct token *out)
  * Call this before emitting E_O_F to catch filtbrace bugs.
  */
 void
-filtbrace_check(void)
+filtbraceChk(void)
 {
 #ifdef DEBUG
 	if (VERBOSE(V_FILTER))
