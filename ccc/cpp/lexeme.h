@@ -155,6 +155,8 @@
 #define AST_DECL    224     /* variable/parameter declaration */
 #define AST_EMPTY   225     /* null/empty expression */
 
+/* 226+ reserved for pass2 synthetic opcodes (see pass2/opcodes.h) */
+
 #endif /* LEXEME_H */
 
 /* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

@@ -19,6 +19,7 @@ typedef struct Expr {
 	unsigned char	dest;	/* destination */
 	unsigned char	regs;	/* Sethi-Ullman label: regs needed */
 	unsigned char	tgt;	/* target register (R_HL, R_DE, 0=any) */
+	unsigned char	nored;	/* don't reduce: preserve for parent rule */
 	struct Expr	*left;	/* left child (unary: only child) */
 	struct Expr	*right;	/* right child (binary ops only) */
 	union {

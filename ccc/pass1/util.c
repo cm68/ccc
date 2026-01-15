@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <unistd.h>
 #include <stdlib.h>
+#include "libutil.h"
 
 #ifndef PSIZE
 #define PSIZE 80
@@ -16,67 +17,6 @@
 #ifdef DEBUG
 /* Forward declaration - only used for DEBUG builds */
 int fdprintf(unsigned char fd, char *fmt, ...);
-#endif
-
-/*
- * Minimal formatter - handles %s, %d, %c, %% (no width/padding)
- * Returns pointer to end of written string
- */
-char *
-fmtstr(char *buf, char *fmt, ...)
-{
-	va_list ap;
-	char *p = buf;
-	char *s;
-	int n;
-	int neg;
-
-	va_start(ap, fmt);
-	while (*fmt) {
-		if (*fmt != '%') {
-			*p++ = *fmt++;
-			continue;
-		}
-		fmt++;
-		switch (*fmt++) {
-		case 's':
-			s = va_arg(ap, char *);
-			while (*s) *p++ = *s++;
-			break;
-		case 'd':
-			n = va_arg(ap, int);
-			if ((neg = (n < 0))) n = -n;
-			s = p;
-			do { *p++ = '0' + (n % 10); n /= 10; } while (n);
-			if (neg) *p++ = '-';
-			/* reverse */
-			for (n = 0; n < (p - s) / 2; n++) {
-				char t = s[n]; s[n] = p[-1-n]; p[-1-n] = t;
-			}
-			break;
-		case 'c':
-			*p++ = (char)va_arg(ap, int);
-			break;
-		case '%':
-			*p++ = '%';
-			break;
-		}
-	}
-	va_end(ap);
-	*p = 0;
-	return p;
-}
-
-#ifdef CCC
-/* strdup not in CCC libc */
-char *
-strdup(char *s)
-{
-    char *d = malloc(strlen(s) + 1);
-    if (d)
-        strcpy(d, s);
-    return d;
-}
 #endif
 
 #ifndef CCC
@@ -293,6 +233,7 @@ isPrintable(unsigned char c)
 	return c >= 0x20 && c <= 0x7e && c != '\'' && c != '\\';
 }
 
+char asciibuf[128];
 /*
  * Emit a string as .db with ASCII literals and hex for non-printable.
  * Groups printable chars up to 60, breaks on non-printable.
@@ -300,7 +241,6 @@ isPrintable(unsigned char c)
  */
 void asmDbStr(unsigned char *data, int len)
 {
-	char buf[128];
 	char *p;
 	int i, start, runlen;
 	unsigned char c;
@@ -328,22 +268,22 @@ void asmDbStr(unsigned char *data, int len)
 			if (needcomma)
 				asmStr(", ");
 			asmStr("'");
-			p = buf;
+			p = asciibuf;
 			while (start < i) {
 				*p++ = data[start++];
 			}
 			*p = 0;
-			asmStr(buf);
+			asmStr(asciibuf);
 			asmStr("'");
 			needcomma = 1;
 		} else {
 			/* Emit non-printable as hex */
 			if (needcomma)
 				asmStr(", ");
-			fmtstr(buf, "0x%c%c",
+			fmtstr(asciibuf, "0x%c%c",
 			    "0123456789abcdef"[(c >> 4) & 0xf],
 			    "0123456789abcdef"[c & 0xf]);
-			asmStr(buf);
+			asmStr(asciibuf);
 			needcomma = 1;
 			i++;
 		}

@@ -35,6 +35,12 @@ addTypedef(char *name)
 	unsigned h = hash(name);
 	struct tdef *t;
 
+#ifdef DEBUG
+	extern short verbose;
+	extern int fdprintf(int, char *, ...);
+	if (verbose & 0x100)
+		fdprintf(2, "addTypedef(%s) h=%d\n", name, h);
+#endif
 	/* Check if already present */
 	for (t = table[h]; t; t = t->next)
 		if (strcmp(t->name, name) == 0)
@@ -55,9 +61,24 @@ isTypedef(char *name)
 	unsigned h = hash(name);
 	struct tdef *t;
 
+#ifdef DEBUG
+	extern short verbose;
+	extern int fdprintf(int, char *, ...);
+	if (verbose & 0x100)
+		fdprintf(2, "isTypedef(%s) h=%d\n", name, h);
+#endif
 	for (t = table[h]; t; t = t->next)
-		if (strcmp(t->name, name) == 0)
+		if (strcmp(t->name, name) == 0) {
+#ifdef DEBUG
+			if (verbose & 0x100)
+				fdprintf(2, "  -> found\n");
+#endif
 			return 1;
+		}
+#ifdef DEBUG
+	if (verbose & 0x100)
+		fdprintf(2, "  -> NOT found\n");
+#endif
 	return 0;
 }
 

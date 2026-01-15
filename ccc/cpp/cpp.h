@@ -239,8 +239,8 @@ extern char macexpand(char *name);
 /* util.c exports */
 extern unsigned char lookupc(char *table, unsigned char c);
 
-/* Utility functions */
-extern char *fmtstr(char *buf, char *fmt, ...);
+/* Utility functions - from lib/libutil.h */
+#include "libutil.h"
 #ifdef DEBUG
 extern int fdprintf(int fd, char *fmt, ...);
 extern void hexdump(char *tag, char *h, int l);

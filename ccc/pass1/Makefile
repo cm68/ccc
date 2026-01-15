@@ -26,7 +26,7 @@ CFLAGS = -mz80 -DCCC -I../../libsrc/include -I../lib
 SDCC_OBJS = $(SOURCES:.c=.rel)
 endif
 
-INC = -I../../libsrc/include
+INC = -I../../libsrc/include -I../lib
 CCC = $(DEST)/bin/ccc
 
 ASTPP = ../astpp

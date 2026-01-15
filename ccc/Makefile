@@ -10,6 +10,7 @@ CC = gcc
 CFLAGS = -m32 -g -O0 -Wall -Werror
 
 all:
+	$(MAKE) -C lib
 	$(MAKE) -C cpp
 	$(MAKE) -C pass1
 	$(MAKE) -C pass2
@@ -19,17 +20,20 @@ astpp: astpp.c
 	$(CC) $(CFLAGS) -o $@ $<
 
 install: astpp
+	$(MAKE) -C lib DEST=$(DEST) install
 	$(MAKE) -C cpp DEST=$(DEST) install
 	$(MAKE) -C pass1 DEST=$(DEST) install
 	$(MAKE) -C pass2 DEST=$(DEST) install
 	cp astpp ../root/bin
 	
 clean:
+	$(MAKE) -C lib clean
 	$(MAKE) -C cpp clean
 	$(MAKE) -C pass1 clean
 	$(MAKE) -C pass2 clean
 
 clobber:
+	$(MAKE) -C lib clean
 	$(MAKE) -C cpp clobber
 	$(MAKE) -C pass1 clobber
 	$(MAKE) -C pass2 clobber

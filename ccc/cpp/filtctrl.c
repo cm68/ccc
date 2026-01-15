@@ -32,6 +32,9 @@
 #define CTX_DO     3
 #define CTX_SWITCH 4
 
+/* Token buffer size */
+#define BUF_MAX 64
+
 /* Unified control context stack */
 #define STK_MAX 8
 static struct {
@@ -40,6 +43,9 @@ static struct {
 	unsigned char saved_ctx;	/* Saved cur_ctx */
 	int label_num;
 	int body_depth;
+	/* Saved FOR increment buffer (overwritten by nested loops) */
+	struct token saved_incr[BUF_MAX];
+	int saved_incr_len;
 } stk[STK_MAX];
 static int stk_sp = 0;
 
@@ -51,7 +57,6 @@ static int next_label = 1;
 static unsigned char cur_ctx = 0;	/* Current context type */
 
 /* Token buffers */
-#define BUF_MAX 64
 static struct token cond_buf[BUF_MAX];
 static int cond_len = 0;
 static struct token init_buf[BUF_MAX];
@@ -124,23 +129,39 @@ filtctrl_check(void)
 }
 
 static void push_ctx(unsigned char type, unsigned char saved) {
+	int i;
 	if (stk_sp < STK_MAX) {
 		stk[stk_sp].ctx_type = type;
 		stk[stk_sp].saved_state = saved;
 		stk[stk_sp].saved_ctx = cur_ctx;
 		stk[stk_sp].label_num = label_num;
 		stk[stk_sp].body_depth = body_depth;
+		/* Save FOR increment buffer (overwritten by nested loops) */
+		if (cur_ctx == CTX_FOR) {
+			for (i = 0; i < incr_len && i < BUF_MAX; i++)
+				tokcpy(&stk[stk_sp].saved_incr[i], &incr_buf[i]);
+			stk[stk_sp].saved_incr_len = incr_len;
+		} else {
+			stk[stk_sp].saved_incr_len = 0;
+		}
 		stk_sp++;
 	}
 }
 
 static void pop_ctx(void) {
+	int i;
 	if (stk_sp > 0) {
 		stk_sp--;
 		label_num = stk[stk_sp].label_num;
 		body_depth = stk[stk_sp].body_depth;
 		cur_ctx = stk[stk_sp].saved_ctx;
 		state = stk[stk_sp].saved_state;
+		/* Restore FOR increment buffer if saved */
+		if (stk[stk_sp].saved_incr_len > 0) {
+			incr_len = stk[stk_sp].saved_incr_len;
+			for (i = 0; i < incr_len; i++)
+				tokcpy(&incr_buf[i], &stk[stk_sp].saved_incr[i]);
+		}
 	} else {
 		state = ST_NORMAL;
 		cur_ctx = 0;

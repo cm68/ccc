@@ -31,6 +31,10 @@
 #define R_HL    6
 #define R_A     7
 #define R_IY    8
+#define R_E     9       /* low byte of DE */
+#define R_D     10      /* high byte of DE */
+#define R_L     11      /* low byte of HL */
+#define R_H     12      /* high byte of HL */
 
 /* Flag codes (for comparison results) */
 #define F_Z     16      /* zero flag */

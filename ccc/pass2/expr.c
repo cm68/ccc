@@ -612,6 +612,13 @@ dumpnode(Expr *e)
 		if (e->tgt) { sprintf(buf, "->%s", regName(e->tgt)); out(buf); }
 		out(")");
 		return;
+	case INE:
+		sprintf(buf, "(E:%s%s", widthName(e->width), destName(e->dest));
+		out(buf);
+		if (e->regs) { sprintf(buf, "#%d", e->regs); out(buf); }
+		if (e->tgt) { sprintf(buf, "->%s", regName(e->tgt)); out(buf); }
+		out(")");
+		return;
 	case QUES:
 		sprintf(buf, "(?:%s%s", widthName(e->width), destName(e->dest));
 		out(buf);

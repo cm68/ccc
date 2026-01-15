@@ -46,10 +46,10 @@ ifeq ($(CC),ccc)
 CFLAGS = -I. -I../lib
 endif
 
-SOURCES = pass2.c astio.c parseast.c expr.c rewrite.c
+SOURCES = pass2.c astio.c parseast.c expr.c rewrite.c rules.c
 OBJECTS = $(SOURCES:.c=.o)
 
-HEADERS = pass2.h expr.h opcodes.h
+HEADERS = pass2.h expr.h opcodes.h rules.h
 
 ifeq ($(DEFINES),-DDEBUG)
 DBGFILES = debugtags.c debug.h

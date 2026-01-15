@@ -217,8 +217,14 @@ filtbrace(struct token *out)
 
 	case ST_PENDING:
 		if (t.type == BEGIN) {
-			/* User wrote braces - pass through */
-			state = ST_NORMAL;
+			/* User wrote braces */
+			if (stk_sp > 0) {
+				/* Inside synthetic body - track nested user-braced control */
+				state = ST_BODY;
+				depth = 1;	/* Count this BEGIN */
+			} else {
+				state = ST_NORMAL;
+			}
 			break;
 		}
 		if (ctrl_type == ELSE && t.type == IF) {
@@ -274,6 +280,33 @@ filtbrace(struct token *out)
 				state = ST_PENDING;
 				break;
 			}
+			if (t.type == END) {
+				/*
+				 * User-braced control ended inside synthetic body.
+				 * This control was the synthetic body's statement.
+				 */
+				if (ctrl_type == IF) {
+					/* Check for else first */
+					state = ST_ELSE_CHK;
+				} else {
+					/* Body complete - close synthetic body */
+					pend_push(&pb, &t);
+					queue_end();
+					pop_body();
+					/* Check if outer level needs else-check */
+					if (stk_sp > 0 && stk[stk_sp - 1].ctrl_type == IF &&
+					    !stk[stk_sp - 1].is_else)
+						state = ST_ELSE_CHK;
+					else
+						state = (stk_sp > 0) ? ST_BODY : ST_NORMAL;
+					pend_pop(&pb, out);
+#ifdef DEBUG
+					track_out(out);
+#endif
+					return;
+				}
+				break;
+			}
 			if (t.type == SEMI) {
 				/* Body complete */
 				pend_push(&pb, &t);
@@ -281,7 +314,12 @@ filtbrace(struct token *out)
 					/* Else body - emit }, pop and cascade */
 					queue_end();
 					pop_body();
-					state = ST_ELSE_CHK;
+					/* Check if outer IF needs else-check */
+					if (stk_sp > 0 && stk[stk_sp - 1].ctrl_type == IF &&
+					    !stk[stk_sp - 1].is_else)
+						state = ST_ELSE_CHK;
+					else
+						state = (stk_sp > 0) ? ST_BODY : ST_NORMAL;
 				} else if (stk_sp > 0 && stk[stk_sp - 1].ctrl_type == IF) {
 					/* If body - don't emit } yet, check for else */
 					state = ST_ELSE_CHK;
@@ -324,7 +362,32 @@ filtbrace(struct token *out)
 #endif
 			return;
 		}
-		/* No else - close all pending bodies */
+		/* No else found */
+		if (stk_sp > 0 && stk[stk_sp - 1].ctrl_type != IF) {
+			/*
+			 * User-braced IF inside synthetic body (FOR/WHILE/DO).
+			 * The IF was the synthetic body's single statement.
+			 * Close the synthetic body, then check if outer level
+			 * needs else-check.
+			 */
+			queue_end();
+			pop_body();
+			if (stk_sp > 0 && stk[stk_sp - 1].ctrl_type == IF &&
+			    !stk[stk_sp - 1].is_else) {
+				/* Outer level is IF - check for else */
+				tokcpy(&saved_ctrl, &t);
+				has_saved = 1;
+				state = ST_ELSE_CHK;
+				pend_pop(&pb, out);
+#ifdef DEBUG
+				track_out(out);
+#endif
+				return;
+			}
+			state = (stk_sp > 0) ? ST_BODY : ST_NORMAL;
+			break;
+		}
+		/* Close all pending bodies */
 		while (stk_sp > 0) {
 			if (stk[stk_sp - 1].ctrl_type == IF && !stk[stk_sp - 1].is_else) {
 				/* IF without else - close it */

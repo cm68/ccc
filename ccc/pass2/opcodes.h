@@ -14,6 +14,8 @@
 #define INBC        230     /* value is in BC */
 #define SYMREF      231     /* symbol+offset (linker-resolvable address) */
 #define CODE        232     /* emitted assembly code */
+#define INE         233     /* value is in E (low byte of DE) */
+#define INL         234     /* value is in L (low byte of HL) */
 /* ARGNODE is defined in lexeme.h (218) */
 
 #endif

@@ -49,79 +49,10 @@ static void prIndent(void) {
 
 static void prln(const char *s) { prIndent(); puts(s); }
 
-static const char *widthName(int c) {
-    switch (c) {
-    case 'b': return "byte";
-    case 'B': return "ubyte";
-    case 's': return "short";
-    case 'S': return "ushort";
-    case 'l': return "long";
-    case 'L': return "ulong";
-    case 'p': return "ptr";
-    case 'f': return "float";
-    case 'd': return "double";
-    case 'v': return "void";
-    default: { static char buf[2]; buf[0] = c; buf[1] = 0; return buf; }
-    }
-}
+#include "format.h"
 
-static const char *regName(int r) {
-    switch (r) {
-    case 0: return "-";
-    case 1: return "B";
-    case 2: return "C";
-    case 3: return "BC";
-    case 4: return "IX";
-    default: return "?";
-    }
-}
-
-static const char *opName(int c) {
-    switch (c) {
-    /* Internal tokens (200+) */
-    case NARROW: return "NARROW";
-    case WIDEN: return "WIDEN";
-    case SEXT: return "SEXT";
-    case DEREF: return "DEREF";
-    case NEG: return "NEG";
-    case CALL: return "CALL";
-    case PREINC: return "PREINC";
-    case POSTINC: return "POSTINC";
-    case PREDEC: return "PREDEC";
-    case POSTDEC: return "POSTDEC";
-    case BFEXTRACT: return "BFEXT";
-    case BFASSIGN: return "BFSET";
-    case REGVAR: return "REGVAR";
-    case LOCALVAR: return "LOCALVAR";
-    case URSHIFT: return "URSHIFT";
-
-    /* Lexeme tokens */
-    case TWIDDLE: return "NOT";
-    case BANG: return "LNOT";
-    case PLUS: return "ADD";
-    case MINUS: return "SUB";
-    case STAR: return "MUL";
-    case DIV: return "DIV";
-    case MOD: return "MOD";
-    case RSHIFT: return "RSHIFT";
-    case LSHIFT: return "LSHIFT";
-    case AND: return "AND";
-    case OR: return "OR";
-    case XOR: return "XOR";
-    case LAND: return "LAND";
-    case LOR: return "LOR";
-    case EQ: return "EQ";
-    case NEQ: return "NE";
-    case LE: return "LE";
-    case LT: return "LT";
-    case ASSIGN: return "ASSIGN";
-    case COMMA: return "COMMA";
-
-    default: { static char buf[8]; sprintf(buf, "?%d", c); return buf; }
-    }
-}
-
-static int opArity(int c) {
+/* opArity returns -1 for special cases handled separately in parseExpr */
+static int opArityPP(int c) {
     if (c == PREINC || c == POSTINC || c == PREDEC || c == POSTDEC)
         return -1; /* inc/dec special */
     if (c == BFEXTRACT || c == BFASSIGN) return -1;
@@ -298,7 +229,7 @@ static void parseExpr(void) {
 
     /* Regular operator with width */
     int w = read1();
-    int arity = opArity(opChar);
+    int arity = opArityPP(opChar);
 
     exprApp("(");
     exprApp(opName(opChar));

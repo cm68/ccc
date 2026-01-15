@@ -415,7 +415,7 @@ foldNode(struct expr *e)
             break;
         case AND:
         case AMPER:
-            if (rv == ~0u) result = left;  /* x & ~0 -> x */
+            if (rv == 0xffff) result = left;  /* x & ~0 -> x */
             break;
         }
         if (result) {
