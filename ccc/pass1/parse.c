@@ -4,23 +4,19 @@
 
 #include "cc1.h"
 
-/* Switch statement table tracking (phase 1) */
-struct swtab swList[MAX_SWITCHES];
+/* Switch statement table tracking (phase 1) - dynamically allocated */
+struct swtab *swList = 0;           /* dynamically allocated switch array */
 unsigned char swCount = 0;          /* number of switches in function */
+unsigned char swCapacity = 0;       /* allocated size of swList */
 unsigned char swStack[MAX_SWDEPTH]; /* nesting stack (indices into swList) */
 unsigned char swStmtDepth[MAX_SWDEPTH]; /* statement() depth at which each switch started */
 unsigned char swDepth = 0;          /* nesting depth */
 static unsigned char stmtNest = 0;  /* current statement() nesting depth */
 
-/* Global case pool - all switches share this */
-struct swcase casePool[MAX_ALLCASES];
-unsigned char casePoolIdx = 0;
-
 /* Phase 2 switch emission tracking */
 unsigned char swEmitIdx = 0;                /* next switch to emit */
 unsigned char swEmitStack[MAX_SWDEPTH];     /* stack of switch indices */
 unsigned char swEmitDepth = 0;              /* emit stack depth */
-unsigned char caseEmitIdx[MAX_SWITCHES];    /* case indices per switch */
 
 /* If/else tracking: store has_else flag for each if statement */
 #define MAX_IFS 128
@@ -29,25 +25,54 @@ static unsigned char ifCount = 0;           /* phase 1: count of if statements *
 static unsigned char ifEmitIdx = 0;         /* phase 2: next if to emit */
 
 void resetSwitch(void) {
+    int i;
+    /* Free all allocated switch case arrays */
+    for (i = 0; i < swCount; i++) {
+        if (swList[i].cases)
+            free(swList[i].cases);
+    }
+    /* Free the switch list itself */
+    if (swList) {
+        free(swList);
+        swList = 0;
+    }
     swCount = 0;
+    swCapacity = 0;
     swDepth = 0;
     swEmitIdx = 0;
     swEmitDepth = 0;
-    casePoolIdx = 0;
     ifCount = 0;
     ifEmitIdx = 0;
 }
 
 void pushSwitch(void) {
-    if (swCount < MAX_SWITCHES && swDepth < MAX_SWDEPTH) {
-        unsigned char idx = swCount++;
-        swList[idx].cases = &casePool[casePoolIdx];
-        swList[idx].count = 0;
-        swList[idx].num = idx;
-        swList[idx].base_stmts = 0;
-        swStmtDepth[swDepth] = stmtNest;  /* record statement() depth at switch start */
-        swStack[swDepth++] = idx;
+    unsigned char idx;
+    struct swtab *sw;
+
+    if (swDepth >= MAX_SWDEPTH)
+        return;  /* nesting too deep */
+
+    /* Grow swList if needed */
+    if (swCount >= swCapacity) {
+        unsigned char newcap = swCapacity ? swCapacity * 2 : 8;
+        struct swtab *newlist = realloc(swList, newcap * sizeof(struct swtab));
+        if (!newlist)
+            return;  /* allocation failed */
+        swList = newlist;
+        swCapacity = newcap;
     }
+
+    idx = swCount++;
+    sw = &swList[idx];
+    /* Allocate case array for this switch */
+    sw->cases = malloc(SW_INIT_CASES * sizeof(struct swcase));
+    sw->count = 0;
+    sw->capacity = SW_INIT_CASES;
+    sw->num = idx;
+    sw->base_stmts = 0;
+    sw->emitIdx = 0;
+    swStmtDepth[swDepth] = stmtNest;  /* record statement() depth at switch start */
+    swStack[swDepth++] = idx;
 }
 
 /* Check if we're in the innermost switch's body statement() (not nested deeper) */
@@ -85,57 +110,85 @@ void finishCase(unsigned char stmt_cnt) {
 }
 
 void addCase(long value, unsigned char stmt_cnt) {
-    if (swDepth > 0 && casePoolIdx < MAX_ALLCASES) {
-        unsigned char idx = swStack[swDepth - 1];
-        struct swtab *sw = &swList[idx];
-        /* Finalize previous case if any */
-        if (sw->count > 0) {
-            sw->cases[sw->count - 1].stmts = stmt_cnt - sw->base_stmts;
-#ifdef DEBUG
-            fdprintf(2, "addCase: finalize sw[%d].cases[%d].stmts = %d - %d = %d\n",
-                     idx, sw->count - 1, stmt_cnt, sw->base_stmts,
-                     sw->cases[sw->count - 1].stmts);
-#endif
-        }
-        sw->base_stmts = stmt_cnt;
-        /* Add new case to pool */
-        sw->cases[sw->count].value = value;
-        sw->cases[sw->count].is_default = 0;
-        sw->cases[sw->count].stmts = 0;  /* will be set by next case or popSwitch */
-#ifdef DEBUG
-        fdprintf(2, "addCase: add sw[%d].cases[%d] val=%ld base=%d\n",
-                 idx, sw->count, value, sw->base_stmts);
-#endif
-        sw->count++;
-        casePoolIdx++;
+    unsigned char idx;
+    struct swtab *sw;
+
+    if (swDepth == 0)
+        return;
+
+    idx = swStack[swDepth - 1];
+    sw = &swList[idx];
+
+    /* Grow cases array if needed */
+    if (sw->count >= sw->capacity) {
+        unsigned char newcap = sw->capacity * 2;
+        struct swcase *newcases = realloc(sw->cases, newcap * sizeof(struct swcase));
+        if (!newcases)
+            return;  /* allocation failed */
+        sw->cases = newcases;
+        sw->capacity = newcap;
     }
+
+    /* Finalize previous case if any */
+    if (sw->count > 0) {
+        sw->cases[sw->count - 1].stmts = stmt_cnt - sw->base_stmts;
+#ifdef DEBUG
+        fdprintf(2, "addCase: finalize sw[%d].cases[%d].stmts = %d - %d = %d\n",
+                 idx, sw->count - 1, stmt_cnt, sw->base_stmts,
+                 sw->cases[sw->count - 1].stmts);
+#endif
+    }
+    sw->base_stmts = stmt_cnt;
+    /* Add new case */
+    sw->cases[sw->count].value = value;
+    sw->cases[sw->count].is_default = 0;
+    sw->cases[sw->count].stmts = 0;  /* will be set by next case or popSwitch */
+#ifdef DEBUG
+    fdprintf(2, "addCase: add sw[%d].cases[%d] val=%ld base=%d\n",
+             idx, sw->count, value, sw->base_stmts);
+#endif
+    sw->count++;
 }
 
 void addDefault(unsigned char stmt_cnt) {
-    if (swDepth > 0 && casePoolIdx < MAX_ALLCASES) {
-        unsigned char idx = swStack[swDepth - 1];
-        struct swtab *sw = &swList[idx];
-        /* Finalize previous case if any */
-        if (sw->count > 0) {
-            sw->cases[sw->count - 1].stmts = stmt_cnt - sw->base_stmts;
-#ifdef DEBUG
-            fdprintf(2, "addDefault: finalize sw[%d].cases[%d].stmts = %d - %d = %d\n",
-                     idx, sw->count - 1, stmt_cnt, sw->base_stmts,
-                     sw->cases[sw->count - 1].stmts);
-#endif
-        }
-        sw->base_stmts = stmt_cnt;
-        /* Add default to pool */
-        sw->cases[sw->count].value = 0;
-        sw->cases[sw->count].is_default = 1;
-        sw->cases[sw->count].stmts = 0;  /* will be set by next case or popSwitch */
-#ifdef DEBUG
-        fdprintf(2, "addDefault: add sw[%d].cases[%d] base=%d\n",
-                 idx, sw->count, sw->base_stmts);
-#endif
-        sw->count++;
-        casePoolIdx++;
+    unsigned char idx;
+    struct swtab *sw;
+
+    if (swDepth == 0)
+        return;
+
+    idx = swStack[swDepth - 1];
+    sw = &swList[idx];
+
+    /* Grow cases array if needed */
+    if (sw->count >= sw->capacity) {
+        unsigned char newcap = sw->capacity * 2;
+        struct swcase *newcases = realloc(sw->cases, newcap * sizeof(struct swcase));
+        if (!newcases)
+            return;  /* allocation failed */
+        sw->cases = newcases;
+        sw->capacity = newcap;
     }
+
+    /* Finalize previous case if any */
+    if (sw->count > 0) {
+        sw->cases[sw->count - 1].stmts = stmt_cnt - sw->base_stmts;
+#ifdef DEBUG
+        fdprintf(2, "addDefault: finalize sw[%d].cases[%d].stmts = %d - %d = %d\n",
+                 idx, sw->count - 1, stmt_cnt, sw->base_stmts,
+                 sw->cases[sw->count - 1].stmts);
+#endif
+    }
+    sw->base_stmts = stmt_cnt;
+    /* Add default */
+    sw->cases[sw->count].value = 0;
+    sw->cases[sw->count].is_default = 1;
+    sw->cases[sw->count].stmts = 0;  /* will be set by next case or popSwitch */
+#ifdef DEBUG
+    fdprintf(2, "addDefault: add sw[%d].cases[%d] base=%d\n",
+             idx, sw->count, sw->base_stmts);
+#endif
+    sw->count++;
 }
 
 
@@ -493,6 +546,9 @@ statement(void)
             /* WHILE/DO/FOR handled by cpp loop lowering */
             case SWITCH: {
                 unsigned char idx;
+#ifdef DEBUG
+                fdprintf(2, "P1 SWITCH: cur=%d line=%d\n", cur.type, lineno);
+#endif
                 gettoken();
                 expect(LPAR, ER_S_NP);
                 parseExpr(PRI_ALL);
@@ -695,7 +751,7 @@ statement(void)
             /* Get this switch's index and push onto emit stack */
             sw_idx = swEmitIdx++;
             swEmitStack[swEmitDepth++] = sw_idx;
-            caseEmitIdx[sw_idx] = 0;
+            swList[sw_idx].emitIdx = 0;
             /* Emit switch header: SWITCH has_label case_count expr */
             /* has_label=0 since cpp handles break lowering */
             emit1(SWITCH);
@@ -716,7 +772,7 @@ statement(void)
             expect(COLON, ER_S_NL);
             /* Get current switch and case */
             sw_idx = swEmitStack[swEmitDepth - 1];
-            c_idx = caseEmitIdx[sw_idx]++;
+            c_idx = swList[sw_idx].emitIdx++;
             sc = &swList[sw_idx].cases[c_idx];
 #ifdef DEBUG
             fdprintf(2, "P2 CASE: sw_idx=%d c_idx=%d stmts=%d\n",
@@ -753,7 +809,7 @@ statement(void)
             expect(COLON, ER_S_NL);
             /* Get current switch and case */
             sw_idx = swEmitStack[swEmitDepth - 1];
-            c_idx = caseEmitIdx[sw_idx]++;
+            c_idx = swList[sw_idx].emitIdx++;
             sc = &swList[sw_idx].cases[c_idx];
 #ifdef DEBUG
             fdprintf(2, "P2 DEFAULT: sw_idx=%d c_idx=%d stmts=%d\n",

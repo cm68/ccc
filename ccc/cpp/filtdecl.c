@@ -186,8 +186,8 @@ filtdecl(struct token *out)
 
 	if (t.type == BEGIN) {
 		brace_depth++;
-		if (in_aggr_def) {
-			/* Inside struct/union/enum definition */
+		if (in_aggr_def || aggr_depth > 0) {
+			/* Inside struct/union/enum definition (or nested aggregate) */
 			aggr_depth++;
 			in_aggr_def = 0;
 			tokcpy(out, &t);

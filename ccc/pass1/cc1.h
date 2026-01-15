@@ -270,10 +270,10 @@ void cleanupParse();
  * Switch statement table tracking (phase 1)
  * Accumulates case values and labels for each switch statement.
  * Nested switches use swStack to track which switch is current.
+ * Dynamically allocated - no fixed limits on switch count.
  */
-#define MAX_SWCASES 64      /* max cases per switch */
-#define MAX_SWITCHES 8      /* max switches per function */
 #define MAX_SWDEPTH 8       /* max switch nesting */
+#define SW_INIT_CASES 8     /* initial cases per switch */
 
 struct swcase {
     long value;             /* case constant value */
@@ -282,26 +282,24 @@ struct swcase {
 };
 
 struct swtab {
-    struct swcase *cases;   /* pointer into global case pool */
+    struct swcase *cases;   /* allocated case array for this switch */
     unsigned char count;    /* number of cases */
+    unsigned char capacity; /* allocated size of cases array */
     unsigned char num;      /* switch number (for labels) */
     unsigned char base_stmts; /* stmt_count at start of current case */
     unsigned char final_cnt;  /* stmt_count when switch body ends */
+    unsigned char emitIdx;  /* phase 2: current case being emitted */
 };
 
-/* Global case pool - all switches share this */
-#define MAX_ALLCASES 128
-extern struct swcase casePool[];
-extern unsigned char casePoolIdx;
-
-extern struct swtab swList[];
+/* Dynamic switch list */
+extern struct swtab *swList;
 extern unsigned char swCount;       /* number of switches in function */
+extern unsigned char swCapacity;    /* allocated size of swList */
 extern unsigned char swStack[];     /* nesting stack (indices into swList) */
 extern unsigned char swDepth;       /* nesting depth */
 extern unsigned char swEmitIdx;     /* phase 2: next switch to emit */
 extern unsigned char swEmitStack[]; /* phase 2: stack of switch indices */
 extern unsigned char swEmitDepth;   /* phase 2: emit stack depth */
-extern unsigned char caseEmitIdx[]; /* phase 2: case indices per switch */
 
 void resetSwitch(void);             /* reset for new function */
 void pushSwitch(void);              /* enter switch statement */
