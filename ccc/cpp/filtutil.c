@@ -43,7 +43,7 @@ pend_init(struct pendbuf *p, int initial)
 {
 	if (initial < 8) initial = 8;
 	p->buf = malloc(initial * sizeof(struct token));
-	p->max = initial;
+	p->size = initial;
 	p->rd = p->wr = 0;
 }
 
@@ -53,7 +53,7 @@ pend_grow(struct pendbuf *p)
 	struct token *newbuf;
 	int newmax, count, i;
 
-	newmax = p->max * 2;
+	newmax = p->size * 2;
 	newbuf = malloc(newmax * sizeof(struct token));
 
 	/* Copy elements in order from rd to wr */
@@ -61,12 +61,12 @@ pend_grow(struct pendbuf *p)
 	i = p->rd;
 	while (i != p->wr) {
 		tokcpy(&newbuf[count++], &p->buf[i]);
-		i = (i + 1) % p->max;
+		i = (i + 1) % p->size;
 	}
 
 	free(p->buf);
 	p->buf = newbuf;
-	p->max = newmax;
+	p->size = newmax;
 	p->rd = 0;
 	p->wr = count;
 }
@@ -74,11 +74,11 @@ pend_grow(struct pendbuf *p)
 void
 pend_push(struct pendbuf *p, struct token *t)
 {
-	int next = (p->wr + 1) % p->max;
+	int next = (p->wr + 1) % p->size;
 	if (next == p->rd)
 		pend_grow(p);
 	tokcpy(&p->buf[p->wr], t);
-	p->wr = (p->wr + 1) % p->max;
+	p->wr = (p->wr + 1) % p->size;
 }
 
 int
@@ -91,7 +91,7 @@ void
 pend_pop(struct pendbuf *p, struct token *out)
 {
 	tokcpy(out, &p->buf[p->rd]);
-	p->rd = (p->rd + 1) % p->max;
+	p->rd = (p->rd + 1) % p->size;
 }
 
 void
@@ -180,29 +180,29 @@ tarr_init(struct tokarray *a, int initial)
 {
 	if (initial < 8) initial = 8;
 	a->buf = malloc(initial * sizeof(struct token));
-	a->len = 0;
-	a->cap = initial;
+	a->count = 0;
+	a->alloc = initial;
 }
 
 void
 tarr_push(struct tokarray *a, struct token *t)
 {
-	if (a->len >= a->cap) {
+	if (a->count >= a->alloc) {
 		struct token *newbuf;
-		int newcap = a->cap * 2;
+		int newcap = a->alloc * 2;
 		int i;
 		newbuf = malloc(newcap * sizeof(struct token));
-		for (i = 0; i < a->len; i++)
+		for (i = 0; i < a->count; i++)
 			tokcpy(&newbuf[i], &a->buf[i]);
 		free(a->buf);
 		a->buf = newbuf;
-		a->cap = newcap;
+		a->alloc = newcap;
 	}
-	tokcpy(&a->buf[a->len++], t);
+	tokcpy(&a->buf[a->count++], t);
 }
 
 void
 tarr_reset(struct tokarray *a)
 {
-	a->len = 0;
+	a->count = 0;
 }

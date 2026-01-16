@@ -147,11 +147,11 @@ static void push_ctx(unsigned char type, unsigned char saved) {
 		stk[stk_sp].label_num = label_num;
 		stk[stk_sp].body_depth = body_depth;
 		/* Save FOR increment buffer (overwritten by nested loops) */
-		if (cur_ctx == CTX_FOR && incr_arr.len > 0) {
-			stk[stk_sp].saved_incr = malloc(incr_arr.len * sizeof(struct token));
-			for (i = 0; i < incr_arr.len; i++)
+		if (cur_ctx == CTX_FOR && incr_arr.count > 0) {
+			stk[stk_sp].saved_incr = malloc(incr_arr.count * sizeof(struct token));
+			for (i = 0; i < incr_arr.count; i++)
 				tokcpy(&stk[stk_sp].saved_incr[i], &incr_arr.buf[i]);
-			stk[stk_sp].saved_incr_len = incr_arr.len;
+			stk[stk_sp].saved_incr_len = incr_arr.count;
 		} else {
 			stk[stk_sp].saved_incr = 0;
 			stk[stk_sp].saved_incr_len = 0;
@@ -170,8 +170,8 @@ static void pop_ctx(void) {
 		state = stk[stk_sp].saved_state;
 		/* Restore FOR increment buffer if saved */
 		if (stk[stk_sp].saved_incr) {
-			incr_arr.len = stk[stk_sp].saved_incr_len;
-			for (i = 0; i < incr_arr.len; i++)
+			incr_arr.count = stk[stk_sp].saved_incr_len;
+			for (i = 0; i < incr_arr.count; i++)
 				tokcpy(&incr_arr.buf[i], &stk[stk_sp].saved_incr[i]);
 			free(stk[stk_sp].saved_incr);
 			stk[stk_sp].saved_incr = 0;
@@ -198,17 +198,17 @@ static void emitLoopHdr(char prefix) {
 		fdprintf(2, "emitLoopHdr: pb.rd=%d pb.wr=%d\n", pb.rd, pb.wr);
 #endif
 	/* No wrapper braces - filtbrace guarantees braced body */
-	if (init_arr.len > 0) {
-		pend_buf(&pb, init_arr.buf, init_arr.len);
+	if (init_arr.count > 0) {
+		pend_buf(&pb, init_arr.buf, init_arr.count);
 		pend_tok(&pb, SEMI);
 	}
 	emit_label(&pb, prefix, label_num, 'T');
-	if (cond_arr.len > 0) {
+	if (cond_arr.count > 0) {
 		pend_tok(&pb, IF);
 		pend_tok(&pb, LPAR);
 		pend_tok(&pb, BANG);
 		pend_tok(&pb, LPAR);
-		pend_buf(&pb, cond_arr.buf, cond_arr.len);
+		pend_buf(&pb, cond_arr.buf, cond_arr.count);
 		pend_tok(&pb, RPAR);
 		pend_tok(&pb, RPAR);
 		pend_tok(&pb, BEGIN);
@@ -232,8 +232,8 @@ static void emitWhileTrail(void) {
 /* Emit FOR trailer: __FnC: incr; goto __FnT; __FnB: */
 static void emitForTrail(void) {
 	emit_label(&pb, 'F', label_num, 'C');
-	if (incr_arr.len > 0) {
-		pend_buf(&pb, incr_arr.buf, incr_arr.len);
+	if (incr_arr.count > 0) {
+		pend_buf(&pb, incr_arr.buf, incr_arr.count);
 		pend_tok(&pb, SEMI);
 	}
 	emit_goto(&pb, 'F', label_num, 'T');
@@ -248,10 +248,10 @@ static void emitDoHdr(void) {
 
 /* Emit DO trailer: if (cond) { goto __DnT; } __DnB: */
 static void emitDoTrail(void) {
-	if (cond_arr.len > 0) {
+	if (cond_arr.count > 0) {
 		pend_tok(&pb, IF);
 		pend_tok(&pb, LPAR);
-		pend_buf(&pb, cond_arr.buf, cond_arr.len);
+		pend_buf(&pb, cond_arr.buf, cond_arr.count);
 		pend_tok(&pb, RPAR);
 		pend_tok(&pb, BEGIN);
 		emit_goto(&pb, 'D', label_num, 'T');
@@ -490,7 +490,7 @@ filtctrl(struct token *out)
 #ifdef DEBUG
 				if (VERBOSE(V_FILTER))
 					fdprintf(2, "filtctrl: FOR emit init=%d cond=%d incr=%d\n",
-						init_arr.len, cond_arr.len, incr_arr.len);
+						init_arr.count, cond_arr.count, incr_arr.count);
 #endif
 				emitLoopHdr('F');
 				body_depth = 0;

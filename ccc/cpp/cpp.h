@@ -102,13 +102,16 @@ extern int is_type_tok(struct token *t);
 /* Pending buffer for filters (circular, for output queues) */
 struct pendbuf {
 	struct token *buf;
-	int max, rd, wr;
+	int size;
+	int rd;
+	int wr;
 };
 
 /* Dynamic token array (linear, for collecting tokens) */
 struct tokarray {
 	struct token *buf;
-	int len, cap;
+	int count;
+	int alloc;
 };
 extern void pend_init(struct pendbuf *p, int initial);
 extern void pend_push(struct pendbuf *p, struct token *t);

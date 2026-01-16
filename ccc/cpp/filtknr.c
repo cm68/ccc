@@ -68,7 +68,7 @@ filtknr_init(void (*up)(struct token *))
 	extern short verbose;
 	extern int fdprintf(int, char *, ...);
 	if (verbose & V_FILTER)
-		fdprintf(2, "filtknr_init: &rtype_arr.len=%p\n", (void*)&rtype_arr.len);
+		fdprintf(2, "filtknr_init: &rtype_arr.count=%p\n", (void*)&rtype_arr.count);
 #endif
 	upstream = up;
 	state = ST_NORMAL;
@@ -106,12 +106,12 @@ static void
 save_ptype(char *name, int stars)
 {
 	int idx = find_param(name);
-	if (idx >= 0 && ptype_arr.len > 0) {
+	if (idx >= 0 && ptype_arr.count > 0) {
 		int i;
-		params[idx].type = malloc(ptype_arr.len * sizeof(struct token));
-		for (i = 0; i < ptype_arr.len; i++)
+		params[idx].type = malloc(ptype_arr.count * sizeof(struct token));
+		for (i = 0; i < ptype_arr.count; i++)
 			tokcpy(&params[idx].type[i], &ptype_arr.buf[i]);
-		params[idx].type_len = ptype_arr.len;
+		params[idx].type_len = ptype_arr.count;
 		params[idx].stars = stars;
 	}
 	tarr_reset(&ptype_arr);
@@ -128,7 +128,7 @@ emit_ansi(void)
 	struct token tmp;
 
 	/* Emit return type */
-	pend_buf(&pb, rtype_arr.buf, rtype_arr.len);
+	pend_buf(&pb, rtype_arr.buf, rtype_arr.count);
 
 	/* Emit function name */
 	pend_push(&pb, &func_name);
@@ -177,7 +177,7 @@ abort_knr(void)
 	int i;
 	struct token tmp;
 
-	pend_buf(&pb, rtype_arr.buf, rtype_arr.len);
+	pend_buf(&pb, rtype_arr.buf, rtype_arr.count);
 	pend_push(&pb, &func_name);
 	pend_push(&pb, &saved_lpar);  /* Use saved LPAR with correct line info */
 	/* Emit any param names we collected (with commas) */
@@ -240,13 +240,13 @@ filtknr(struct token *out)
 		if (brace_depth == 0 && is_type_tok(&t)) {
 #ifdef DEBUG
 			if (VERBOSE(V_FILTER))
-				fdprintf(2, "filtknr: ST_NORMAL &rtype_arr.len=%p buf type=%d at %d\n",
-					(void*)&rtype_arr.len, t.type, rtype_arr.len);
+				fdprintf(2, "filtknr: ST_NORMAL &rtype_arr.count=%p buf type=%d at %d\n",
+					(void*)&rtype_arr.count, t.type, rtype_arr.count);
 #endif
 			tarr_push(&rtype_arr, &t);
 #ifdef DEBUG
 			if (VERBOSE(V_FILTER))
-				fdprintf(2, "filtknr: after buf rtype_arr.len=%d\n", rtype_arr.len);
+				fdprintf(2, "filtknr: after buf rtype_arr.count=%d\n", rtype_arr.count);
 #endif
 			state = ST_RTYPE;
 			filtknr(out);
@@ -261,7 +261,7 @@ filtknr(struct token *out)
 #ifdef DEBUG
 			if (VERBOSE(V_FILTER))
 				fdprintf(2, "filtknr: ST_RTYPE buf type=%d at %d\n",
-					t.type, rtype_arr.len);
+					t.type, rtype_arr.count);
 #endif
 			tarr_push(&rtype_arr, &t);
 			filtknr(out);
@@ -271,7 +271,7 @@ filtknr(struct token *out)
 			/* Could be function name */
 #ifdef DEBUG
 			if (VERBOSE(V_FILTER))
-				fdprintf(2, "filtknr: ST_RTYPE SYM rtype_arr.len=%d\n", rtype_arr.len);
+				fdprintf(2, "filtknr: ST_RTYPE SYM rtype_arr.count=%d\n", rtype_arr.count);
 #endif
 			tokcpy(&func_name, &t);
 			state = ST_NAME;
@@ -279,7 +279,7 @@ filtknr(struct token *out)
 			return;
 		}
 		/* Not a function - emit buffered and this token */
-		pend_buf(&pb, rtype_arr.buf, rtype_arr.len);
+		pend_buf(&pb, rtype_arr.buf, rtype_arr.count);
 		pend_push(&pb, &t);
 		tarr_reset(&rtype_arr);
 		state = ST_NORMAL;
@@ -299,10 +299,10 @@ filtknr(struct token *out)
 		/* Not a function - emit return type, name, and this token */
 #ifdef DEBUG
 		if (VERBOSE(V_FILTER))
-			fdprintf(2, "filtknr: ST_NAME &rtype_arr.len=%p rtype_arr.len=%d func_name.type=%d\n",
-				(void*)&rtype_arr.len, rtype_arr.len, func_name.type);
+			fdprintf(2, "filtknr: ST_NAME &rtype_arr.count=%p rtype_arr.count=%d func_name.type=%d\n",
+				(void*)&rtype_arr.count, rtype_arr.count, func_name.type);
 #endif
-		pend_buf(&pb, rtype_arr.buf, rtype_arr.len);
+		pend_buf(&pb, rtype_arr.buf, rtype_arr.count);
 		pend_push(&pb, &func_name);
 		pend_push(&pb, &t);
 		tarr_reset(&rtype_arr);
@@ -354,7 +354,7 @@ filtknr(struct token *out)
 			return;
 		}
 		if (t.type == SEMI) {
-			if (ptype_arr.len == 0 && cur_pname == 0) {
+			if (ptype_arr.count == 0 && cur_pname == 0) {
 				/* No K&R declarations seen - this is a prototype */
 				emit_ansi();
 				pend_push(&pb, &t);

@@ -90,7 +90,7 @@ emit_decl(void)
 	struct token tmp;
 	struct token *ref = &decl_arr.buf[0];  /* Reference for line info */
 
-	pend_buf(&pb, decl_arr.buf, decl_arr.len);
+	pend_buf(&pb, decl_arr.buf, decl_arr.count);
 
 	for (i = 0; i < name_count; i++) {
 		for (j = 0; j < names[i].star_count; j++)
@@ -134,13 +134,13 @@ emit_assigns(void)
 static void
 save_init(char *name)
 {
-	if (assign_count < ASSIGN_MAX && init_arr.len > 0) {
+	if (assign_count < ASSIGN_MAX && init_arr.count > 0) {
 		int i;
 		assigns[assign_count].name = name;
-		assigns[assign_count].init = malloc(init_arr.len * sizeof(struct token));
-		for (i = 0; i < init_arr.len; i++)
+		assigns[assign_count].init = malloc(init_arr.count * sizeof(struct token));
+		for (i = 0; i < init_arr.count; i++)
 			tokcpy(&assigns[assign_count].init[i], &init_arr.buf[i]);
-		assigns[assign_count].init_len = init_arr.len;
+		assigns[assign_count].init_len = init_arr.count;
 		assign_count++;
 	}
 	tarr_reset(&init_arr);
@@ -199,7 +199,7 @@ filtdecl(struct token *out)
 		}
 		if (state == ST_DECL || state == ST_NAME) {
 			/* Check if this is start of aggregate definition */
-			for (i = 0; i < decl_arr.len; i++) {
+			for (i = 0; i < decl_arr.count; i++) {
 				if (decl_arr.buf[i].type == STRUCT ||
 				    decl_arr.buf[i].type == UNION ||
 				    decl_arr.buf[i].type == ENUM) {
@@ -208,7 +208,7 @@ filtdecl(struct token *out)
 				}
 			}
 			/* Push type tokens first, then BEGIN, so order is correct */
-			pend_buf(&pb, decl_arr.buf, decl_arr.len);
+			pend_buf(&pb, decl_arr.buf, decl_arr.count);
 			pend_push(&pb, &t);  /* BEGIN after type */
 			tarr_reset(&decl_arr);
 			name_count = 0;
@@ -297,7 +297,7 @@ filtdecl(struct token *out)
 			return;
 		}
 		/* Not a valid declaration - flush type, stars, and current token */
-		pend_buf(&pb, decl_arr.buf, decl_arr.len);
+		pend_buf(&pb, decl_arr.buf, decl_arr.count);
 		/* Emit accumulated stars (e.g., for casts like (int *)) */
 		for (i = 0; i < cur_stars; i++)
 			pend_tok(&pb, STAR);
@@ -334,9 +334,9 @@ filtdecl(struct token *out)
 		}
 		if (t.type == LBRACK) {
 			struct token tmp;
-			struct token *ref = decl_arr.len > 0 ? &decl_arr.buf[0] : &t;
+			struct token *ref = decl_arr.count > 0 ? &decl_arr.buf[0] : &t;
 			/* Emit type first, then name, then array bracket */
-			pend_buf(&pb, decl_arr.buf, decl_arr.len);
+			pend_buf(&pb, decl_arr.buf, decl_arr.count);
 			/* Emit stars for this variable */
 			for (i = 0; i < names[name_count-1].star_count; i++)
 				pend_tok_at(&pb, STAR, ref);
