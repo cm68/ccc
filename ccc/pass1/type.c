@@ -844,73 +844,75 @@ getbasetype()
 
             /*
              * parse member declaration (struct_elem=true to avoid global
-             * namespace pollution)
+             * namespace pollution). Loop handles comma-separated declarators
+             * sharing the same base type: int a, *b, c[3];
              */
-            member = declare(&member_type, 1);
-            if (!member) {
-                // skip to semicolon or end
-                while (cur.type != SEMI && cur.type != END &&
-                       cur.type != E_O_F) {
-                    gettoken();
+            do {
+                member = declare(&member_type, 1);
+                if (!member) {
+                    // skip to semicolon or end
+                    while (cur.type != SEMI && cur.type != END &&
+                           cur.type != E_O_F) {
+                        gettoken();
+                    }
+                    break;
                 }
-                if (cur.type == SEMI) gettoken();
-                continue;
-            }
 
-            // add to member list
-            member->next = t->elem;
-            t->elem = member;
+                // add to member list
+                member->next = t->elem;
+                t->elem = member;
 
-            // Set kind if not already set (bitfields are already marked)
-            if (member->kind != bitfield) {
-                member->kind = elem;
-            }
+                // Set kind if not already set (bitfields are already marked)
+                if (member->kind != bitfield) {
+                    member->kind = elem;
+                }
 
-            // calculate offset and size
-            if (is_union) {
-                member->offset = 0;
-                if (member->type->size > t->size)
-                    t->size = member->type->size;
-            } else {
-                // Handle bitfield packing
-                if (member->kind == bitfield) {
-                    // Bitfield - pack into current word
-                    /*
-                     * Check if bitfield fits in current word (assume
-                     * 16-bit words for now)
-                     */
-                    if (bitoff_accum + member->width > 16) {
-                        // Move to next word
-                        off += 2;  // Advance to next word (2 bytes)
-                        bitoff_accum = 0;
-                    }
-
-                    member->offset = off;
-                    member->bitoff = bitoff_accum;
-                    bitoff_accum += member->width;
-
-                    // Update struct size if we're using a new word
-                    if (off + 2 > t->size) {
-                        t->size = off + 2;
-                    }
+                // calculate offset and size
+                if (is_union) {
+                    member->offset = 0;
+                    if (member->type->size > t->size)
+                        t->size = member->type->size;
                 } else {
-                    // Regular member - reset bitfield accumulator
-                    if (bitoff_accum > 0) {
+                    // Handle bitfield packing
+                    if (member->kind == bitfield) {
+                        // Bitfield - pack into current word
                         /*
-                         * Finish current bitfield word before adding
-                         * regular member
+                         * Check if bitfield fits in current word (assume
+                         * 16-bit words for now)
                          */
-                        off += 2;
-                        bitoff_accum = 0;
+                        if (bitoff_accum + member->width > 16) {
+                            // Move to next word
+                            off += 2;  // Advance to next word (2 bytes)
+                            bitoff_accum = 0;
+                        }
+
+                        member->offset = off;
+                        member->bitoff = bitoff_accum;
+                        bitoff_accum += member->width;
+
+                        // Update struct size if we're using a new word
+                        if (off + 2 > t->size) {
+                            t->size = off + 2;
+                        }
+                    } else {
+                        // Regular member - reset bitfield accumulator
+                        if (bitoff_accum > 0) {
+                            /*
+                             * Finish current bitfield word before adding
+                             * regular member
+                             */
+                            off += 2;
+                            bitoff_accum = 0;
+                        }
+
+                        member->offset = off;
+                        off += member->type->size;
+                        t->size = off;
                     }
-
-                    member->offset = off;
-                    off += member->type->size;
-                    t->size = off;
                 }
-            }
+            } while (cur.type == COMMA && (gettoken(), 1));
 
-            // expect semicolon after member
+            // expect semicolon after member(s)
             if (cur.type == SEMI) {
                 gettoken();
             } else if (cur.type != END) {
