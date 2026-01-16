@@ -470,10 +470,23 @@ declare(struct type **btp, unsigned char struct_elem)
      *   - suffix is function type
      *   - Need: nm->type = suffix (function type, with sub=return type)
      */
-    if (suffix) {
+    if (suffix && phase == 1) {
+        /*
+         * Only apply suffix in phase 1. In phase 2, nm may be reused from
+         * phase 1 with its type already correctly set. Re-applying suffix
+         * would overwrite the correct type (e.g., pointer-to-function)
+         * with just the suffix (function type).
+         */
         if (nm->type && (nm->type->flags & TF_POINTER) &&
-            !(nm->type->flags & TF_ARRAY) && (suffix->flags & TF_FUNC)) {
-            /* Function pointer: create proper pointer-to-function type */
+            !(nm->type->flags & TF_ARRAY) && (suffix->flags & TF_FUNC) &&
+            !nm->type->sub) {
+            /*
+             * Function pointer: create proper pointer-to-function type.
+             * This case arises from recursive parsing of (*fp)(args) where
+             * nm->type is an anonymous pointer (sub=NULL) from parsing (*fp).
+             * For functions returning pointers like int *func(), nm->type->sub
+             * is the base type (int), so we just use suffix directly.
+             */
             nm->type = getType(TF_POINTER, suffix, 0);
         } else {
             nm->type = suffix;
