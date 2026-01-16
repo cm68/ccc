@@ -1575,15 +1575,14 @@ int is_text;
                     }
                     break;
                 case 0x48:  /* data segment */
-                    add = data_base + total_text + obj->data_off - obj->text_size;
+                    add = data_base + total_text + obj->data_off;
                     if (rflag) {
                         need_reloc = 1;
                         outseg = SEG_DATA;
                     }
                     break;
                 case 0x4c:  /* bss segment */
-                    add = bss_base + total_text + total_data + obj->bss_off
-                          - obj->text_size - obj->data_size;
+                    add = bss_base + total_text + total_data + obj->bss_off;
                     if (rflag) {
                         need_reloc = 1;
                         outseg = SEG_BSS;
