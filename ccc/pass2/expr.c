@@ -246,7 +246,7 @@ dupexpr(Expr *e)
 		out("!OOM\n");
 		exit(1);
 	}
-	*n = *e;
+	memcpy(n, e, sizeof(Expr));
 	n->left = dupexpr(e->left);
 	n->right = dupexpr(e->right);
 	if (e->op == SYM || e->op == SYMREF)

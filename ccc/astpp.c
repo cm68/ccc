@@ -47,7 +47,7 @@ static void prIndent(void) {
     for (i = 0; i < indent; i++) printf("  ");
 }
 
-static void prln(const char *s) { prIndent(); puts(s); }
+static void prln(char *s) { prIndent(); puts(s); }
 
 #include "format.h"
 
@@ -68,7 +68,7 @@ static char exprBuf[EXPR_BUF_SIZE];
 static int exprPos;
 
 static void exprReset(void) { exprPos = 0; exprBuf[0] = 0; }
-static void exprApp(const char *s) {
+static void exprApp(char *s) {
     while (*s && exprPos < EXPR_BUF_SIZE - 1) exprBuf[exprPos++] = *s++;
     exprBuf[exprPos] = 0;
 }
@@ -107,7 +107,7 @@ static void parseExpr(void) {
 
     /* Inc/Dec */
     if (c == PREINC || c == POSTINC || c == PREDEC || c == POSTDEC) {
-        const char *opn = (c == PREINC) ? "PREINC" : (c == POSTINC) ? "POSTINC" : (c == PREDEC) ? "PREDEC" : "POSTDEC";
+        char *opn = (c == PREINC) ? "PREINC" : (c == POSTINC) ? "POSTINC" : (c == PREDEC) ? "PREDEC" : "POSTDEC";
         advance();
         int w = read1();
         exprApp("(");
@@ -426,7 +426,7 @@ static char initBuf[4096];
 static int initPos;
 
 static void initReset(void) { initPos = 0; initBuf[0] = 0; }
-static void initApp(const char *s) {
+static void initApp(char *s) {
     while (*s && initPos < 4095) initBuf[initPos++] = *s++;
     initBuf[initPos] = 0;
 }

@@ -179,6 +179,7 @@ emit(struct tnode *n)
 	int start = outpos;
 	int hassib;
 	int mydepth = emitdepth;
+	int skipstart, skipend, skippos, skip;
 
 	if (!n)
 		return 0;
@@ -188,15 +189,14 @@ emit(struct tnode *n)
 	/* emit character, with HI bit if has siblings */
 	if (hassib) {
 		/* calculate skip distance to sibling */
-		int skipstart = outpos + 2;  /* after char and skip byte */
-		int skipend;
+		skipstart = outpos + 2;  /* after char and skip byte */
 
 		/* emit char with HI bit */
 		outdepth[outpos] = mydepth;
 		outbuf[outpos++] = n->c | HI;
 
 		/* placeholder for skip - fill in later */
-		int skippos = outpos++;
+		skippos = outpos++;
 
 		/* emit terminal if this is end of word */
 		if (n->token >= 0) {
@@ -220,7 +220,7 @@ emit(struct tnode *n)
 		skipend = outpos;
 
 		/* fill in skip distance */
-		int skip = skipend - skipstart;
+		skip = skipend - skipstart;
 		if (skip > 127) {
 			fprintf(stderr, "skip too large: %d\n", skip);
 			exit(1);
@@ -264,16 +264,17 @@ emit(struct tnode *n)
 void
 printtable(void)
 {
-	int i;
+	int i, j;
 	int needindent = 1;
 	int curdepth = 0;
+	unsigned char c;
 
 	printf("#include \"lexeme.h\"\n");
 	printf("#define HI 0x80\n\n");
 	printf("unsigned char ckw[] = {\n");
 
 	for (i = 0; i < outpos; i++) {
-		unsigned char c = outbuf[i];
+		c = outbuf[i];
 
 		/* update depth from any char position (HI or literal) */
 		if ((c & HI) || (c != 0xff && c != 0xfe && !istoken[i])) {
@@ -282,7 +283,7 @@ printtable(void)
 
 		if (needindent) {
 			printf("\t");
-			for (int j = 0; j < curdepth; j++)
+			for (j = 0; j < curdepth; j++)
 				printf("  ");
 			needindent = 0;
 		}
@@ -315,10 +316,12 @@ printtable(void)
 void
 dumptrie(struct tnode *n, int depth)
 {
+	int i;
+
 	if (!n)
 		return;
 
-	for (int i = 0; i < depth; i++)
+	for (i = 0; i < depth; i++)
 		printf("  ");
 	printf("%c", n->c);
 	if (n->token >= 0)
@@ -383,6 +386,8 @@ testtable(void)
 	struct keyword *kw;
 	int errors = 0;
 	unsigned char result;
+	char **p;
+	static char *nonkw[] = { "foo", "iffy", "integer", "i", "in", "ret", "", NULL };
 
 	/* add terminator */
 	outbuf[outpos] = 0;
@@ -398,8 +403,6 @@ testtable(void)
 	}
 
 	/* test non-keywords */
-	char *nonkw[] = { "foo", "iffy", "integer", "i", "in", "ret", "", NULL };
-	char **p;
 	for (p = nonkw; *p; p++) {
 		result = kwlook((unsigned char *)*p, outbuf);
 		if (result != 0xff) {
@@ -430,8 +433,9 @@ main(int argc, char **argv)
 	struct keyword *kw;
 	int debug = 0;
 	int test = 0;
+	int i;
 
-	for (int i = 1; i < argc; i++) {
+	for (i = 1; i < argc; i++) {
 		if (strcmp(argv[i], "-d") == 0)
 			debug = 1;
 		else if (strcmp(argv[i], "-t") == 0)

@@ -21,29 +21,34 @@ static struct token input_toks[INPUT_MAX];
 static int input_len = 0;
 static int input_pos = 0;
 
-/* Get token from input queue */
-static struct token
-get_input(void)
+/* Get token from input queue - pointer-out style */
+static void
+get_input(struct token *out)
 {
-	if (input_pos < input_len)
-		return input_toks[input_pos++];
+	if (input_pos < input_len) {
+		tokcpy(out, &input_toks[input_pos++]);
+		return;
+	}
 	/* EOF */
-	struct token t = {0};
-	return t;
+	out->type = 0;
+	out->v.numeric = 0;
+	out->lineno = lineno;
+	out->filename = filename;
 }
 
-/* External filter functions */
-extern void filtknr_init(struct token (*up)(void));
-extern struct token filtknr(void);
-extern void filtdecl_init(struct token (*up)(void));
-extern struct token filtdecl(void);
-extern void filtbrace_init(struct token (*up)(void));
-extern struct token filtbrace(void);
-extern void filtctrl_init(struct token (*up)(void));
-extern struct token filtctrl(void);
+/* External filter functions - pointer-out style */
+extern void filtknr_init(void (*up)(struct token *));
+extern void filtknr(struct token *out);
+extern void filtdecl_init(void (*up)(struct token *));
+extern void filtdecl(struct token *out);
+extern void filtbrace_init(void (*up)(struct token *));
+extern void filtbrace(struct token *out);
+extern void filtctrl_init(void (*up)(struct token *));
+extern void filtctrl(struct token *out);
 
 /* Token name table */
-static const char *tokname(int t)
+static char *
+tokname(int t)
 {
 	switch (t) {
 	case 0: return "EOF";
@@ -89,66 +94,66 @@ static const char *tokname(int t)
 }
 
 static void
-print_token(struct token t)
+print_token(struct token *t)
 {
-	if (t.type == SYM || t.type == LABEL)
-		printf("%s:%s ", tokname(t.type), t.v.name ? t.v.name : "?");
-	else if (t.type == NUMBER)
-		printf("%ld ", t.v.numeric);
+	if (t->type == SYM || t->type == LABEL)
+		printf("%s:%s ", tokname(t->type), t->v.name ? t->v.name : "?");
+	else if (t->type == NUMBER)
+		printf("%ld ", t->v.numeric);
 	else
-		printf("%s ", tokname(t.type));
+		printf("%s ", tokname(t->type));
 }
 
-/* Parse simple token description */
-static struct token
-parse_tok(const char *s)
+/* Parse simple token description into output token */
+static void
+parse_tok(char *s, struct token *out)
 {
-	struct token t = {0};
-	t.lineno = lineno;
-	t.filename = filename;
+	out->type = 0;
+	out->v.numeric = 0;
+	out->lineno = lineno;
+	out->filename = filename;
 
-	if (strcmp(s, "if") == 0) t.type = IF;
-	else if (strcmp(s, "else") == 0) t.type = ELSE;
-	else if (strcmp(s, "while") == 0) t.type = WHILE;
-	else if (strcmp(s, "for") == 0) t.type = FOR;
-	else if (strcmp(s, "do") == 0) t.type = DO;
-	else if (strcmp(s, "switch") == 0) t.type = SWITCH;
-	else if (strcmp(s, "case") == 0) t.type = CASE;
-	else if (strcmp(s, "default") == 0) t.type = DEFAULT;
-	else if (strcmp(s, "break") == 0) t.type = BREAK;
-	else if (strcmp(s, "continue") == 0) t.type = CONTINUE;
-	else if (strcmp(s, "goto") == 0) t.type = GOTO;
-	else if (strcmp(s, "return") == 0) t.type = RETURN;
-	else if (strcmp(s, "{") == 0) t.type = BEGIN;
-	else if (strcmp(s, "}") == 0) t.type = END;
-	else if (strcmp(s, "(") == 0) t.type = LPAR;
-	else if (strcmp(s, ")") == 0) t.type = RPAR;
-	else if (strcmp(s, ";") == 0) t.type = SEMI;
-	else if (strcmp(s, ":") == 0) t.type = COLON;
-	else if (strcmp(s, "<") == 0) t.type = LT;
-	else if (strcmp(s, ">") == 0) t.type = GT;
-	else if (strcmp(s, "==") == 0) t.type = EQ;
-	else if (strcmp(s, "=") == 0) t.type = ASSIGN;
-	else if (strcmp(s, "++") == 0) t.type = PREINC;
-	else if (strcmp(s, "!") == 0) t.type = NOT;
-	else if (strcmp(s, ",") == 0) t.type = COMMA;
-	else if (strcmp(s, "*") == 0) t.type = STAR;
-	else if (strcmp(s, "int") == 0) t.type = INT;
-	else if (strcmp(s, "char") == 0) t.type = CHAR;
-	else if (strcmp(s, "void") == 0) t.type = VOID;
-	else if (strcmp(s, "short") == 0) t.type = SHORT;
-	else if (strcmp(s, "long") == 0) t.type = LONG;
-	else if (strcmp(s, "unsigned") == 0) t.type = UNSIGNED;
-	else if (strcmp(s, "static") == 0) t.type = STATIC;
-	else if (strcmp(s, "typedef") == 0) t.type = TYPEDEF;
+	if (strcmp(s, "if") == 0) out->type = IF;
+	else if (strcmp(s, "else") == 0) out->type = ELSE;
+	else if (strcmp(s, "while") == 0) out->type = WHILE;
+	else if (strcmp(s, "for") == 0) out->type = FOR;
+	else if (strcmp(s, "do") == 0) out->type = DO;
+	else if (strcmp(s, "switch") == 0) out->type = SWITCH;
+	else if (strcmp(s, "case") == 0) out->type = CASE;
+	else if (strcmp(s, "default") == 0) out->type = DEFAULT;
+	else if (strcmp(s, "break") == 0) out->type = BREAK;
+	else if (strcmp(s, "continue") == 0) out->type = CONTINUE;
+	else if (strcmp(s, "goto") == 0) out->type = GOTO;
+	else if (strcmp(s, "return") == 0) out->type = RETURN;
+	else if (strcmp(s, "{") == 0) out->type = BEGIN;
+	else if (strcmp(s, "}") == 0) out->type = END;
+	else if (strcmp(s, "(") == 0) out->type = LPAR;
+	else if (strcmp(s, ")") == 0) out->type = RPAR;
+	else if (strcmp(s, ";") == 0) out->type = SEMI;
+	else if (strcmp(s, ":") == 0) out->type = COLON;
+	else if (strcmp(s, "<") == 0) out->type = LT;
+	else if (strcmp(s, ">") == 0) out->type = GT;
+	else if (strcmp(s, "==") == 0) out->type = EQ;
+	else if (strcmp(s, "=") == 0) out->type = ASSIGN;
+	else if (strcmp(s, "++") == 0) out->type = PREINC;
+	else if (strcmp(s, "!") == 0) out->type = NOT;
+	else if (strcmp(s, ",") == 0) out->type = COMMA;
+	else if (strcmp(s, "*") == 0) out->type = STAR;
+	else if (strcmp(s, "int") == 0) out->type = INT;
+	else if (strcmp(s, "char") == 0) out->type = CHAR;
+	else if (strcmp(s, "void") == 0) out->type = VOID;
+	else if (strcmp(s, "short") == 0) out->type = SHORT;
+	else if (strcmp(s, "long") == 0) out->type = LONG;
+	else if (strcmp(s, "unsigned") == 0) out->type = UNSIGNED;
+	else if (strcmp(s, "static") == 0) out->type = STATIC;
+	else if (strcmp(s, "typedef") == 0) out->type = TYPEDEF;
 	else if (s[0] >= '0' && s[0] <= '9') {
-		t.type = NUMBER;
-		t.v.numeric = atol(s);
+		out->type = NUMBER;
+		out->v.numeric = atol(s);
 	} else {
-		t.type = SYM;
-		t.v.name = strdup(s);
+		out->type = SYM;
+		out->v.name = strdup(s);
 	}
-	return t;
 }
 
 int
@@ -156,7 +161,11 @@ main(int argc, char **argv)
 {
 	char line[256];
 	struct token t;
-	int mode = 0;	/* 0=full, 1=brace, 2=decl, 3=knr */
+	int mode;
+	int i;
+	char *p;
+
+	mode = 0;	/* 0=full, 1=brace, 2=decl, 3=knr */
 
 	if (argc > 1) {
 		if (strcmp(argv[1], "-b") == 0) mode = 1;
@@ -166,16 +175,16 @@ main(int argc, char **argv)
 
 	/* Read tokens from stdin */
 	while (fgets(line, sizeof(line), stdin)) {
-		char *p = strtok(line, " \t\n");
+		p = strtok(line, " \t\n");
 		while (p && input_len < INPUT_MAX) {
-			input_toks[input_len++] = parse_tok(p);
+			parse_tok(p, &input_toks[input_len++]);
 			p = strtok(NULL, " \t\n");
 		}
 	}
 
 	printf("Input: ");
-	for (int i = 0; i < input_len; i++)
-		print_token(input_toks[i]);
+	for (i = 0; i < input_len; i++)
+		print_token(&input_toks[i]);
 	printf("\n");
 
 	/* Initialize filter chain */
@@ -183,20 +192,29 @@ main(int argc, char **argv)
 		/* K&R filter only */
 		filtknr_init(get_input);
 		printf("After filtknr: ");
-		while ((t = filtknr()).type != 0)
-			print_token(t);
+		filtknr(&t);
+		while (t.type != 0) {
+			print_token(&t);
+			filtknr(&t);
+		}
 	} else if (mode == 2) {
 		/* Decl filter only */
 		filtdecl_init(get_input);
 		printf("After filtdecl: ");
-		while ((t = filtdecl()).type != 0)
-			print_token(t);
+		filtdecl(&t);
+		while (t.type != 0) {
+			print_token(&t);
+			filtdecl(&t);
+		}
 	} else if (mode == 1) {
 		/* Brace filter only */
 		filtbrace_init(get_input);
 		printf("After filtbrace: ");
-		while ((t = filtbrace()).type != 0)
-			print_token(t);
+		filtbrace(&t);
+		while (t.type != 0) {
+			print_token(&t);
+			filtbrace(&t);
+		}
 	} else {
 		/* Full pipeline: knr -> decl -> brace -> ctrl */
 		filtknr_init(get_input);
@@ -204,8 +222,11 @@ main(int argc, char **argv)
 		filtbrace_init(filtdecl);
 		filtctrl_init(filtbrace);
 		printf("After filtctrl: ");
-		while ((t = filtctrl()).type != 0)
-			print_token(t);
+		filtctrl(&t);
+		while (t.type != 0) {
+			print_token(&t);
+			filtctrl(&t);
+		}
 	}
 	printf("\n");
 
