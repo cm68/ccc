@@ -29,7 +29,7 @@ CFLAGS = -mz80 -DCCC -I../../libsrc/include -I../lib
 SDCC_OBJS = $(SOURCES:.c=.rel)
 endif
 
-INC = -I../../libsrc/include
+INC = -I../../libsrc/include -I. -I../lib
 CCC = $(DEST)/bin/ccc
 
 ASTPP = ../astpp
@@ -45,7 +45,7 @@ SETX = @ true
 endif
 
 ifeq ($(CC),ccc)
-CFLAGS = -I. -I../lib
+CFLAGS = -I../../libsrc/include -I. -I../lib
 endif
 
 SOURCES = cpp.c lex.c io.c macro.c kw.c emit.c util.c kwtab.c \
@@ -169,7 +169,7 @@ $(C1):
 $(ASTPP):
 	$(MAKE) -C .. astpp
 
-$(OUTDIR)/%.x: %.c $(HEADERS) cpp
+$(OUTDIR)/%.x $(OUTDIR)/%.i: %.c $(HEADERS) cpp
 	@mkdir -p $(OUTDIR)
 	./cpp -DCCC $(INC) -p -o $(OUTDIR)/$* $<
 

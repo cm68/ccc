@@ -457,12 +457,27 @@ declare(struct type **btp, unsigned char struct_elem)
     }
 
     /*
-     * Handle function types: connect suffix (function type) to nm
-     * Note: The original type assembly code here was corrupted during
-     * retyping from paper printout and caused infinite loops.
+     * Handle suffix types (function or array) and connect to nm
+     *
+     * For function pointers like void (*fp)(args):
+     *   - nm->type is pointer with sub=NULL (from recursion with (*fp))
+     *   - suffix is function type
+     *   - Need: pointer -> function type
+     *   - Create new pointer type (don't modify cached type)
+     *
+     * For regular functions like void foo(args):
+     *   - nm->type is the base type (void)
+     *   - suffix is function type
+     *   - Need: nm->type = suffix (function type, with sub=return type)
      */
     if (suffix) {
-        nm->type = suffix;
+        if (nm->type && (nm->type->flags & TF_POINTER) &&
+            !(nm->type->flags & TF_ARRAY) && (suffix->flags & TF_FUNC)) {
+            /* Function pointer: create proper pointer-to-function type */
+            nm->type = getType(TF_POINTER, suffix, 0);
+        } else {
+            nm->type = suffix;
+        }
     }
 
     return nm;

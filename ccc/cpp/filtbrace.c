@@ -17,18 +17,21 @@
 #define ST_DO_WHILE  5	/* After DO body, waiting for while (cond) */
 
 #ifdef DEBUG
-static const char *stname[] = {
+static char *stname[] = {
 	"NORMAL", "COND", "PENDING", "BODY", "ELSE_CHK", "DO_WHILE"
 };
 #endif
 
-/* State stack for nested control structures */
-#define STK_MAX 16
-static struct {
+/* State stack entry for nested control structures */
+struct stkent {
 	unsigned char ctrl_type;
 	unsigned char is_else;		/* 1 if this is an else body */
-} stk[STK_MAX];
-static int stk_sp = 0;
+};
+
+/* Dynamic state stack */
+static struct stkent *stk;
+static int stk_sp;
+static int stk_alloc;
 
 static int state = ST_NORMAL;
 static int depth = 0;
@@ -56,6 +59,8 @@ filtbrace_init(void (*up)(struct token *))
 	depth = 0;
 	ctrl_type = 0;
 	stk_sp = 0;
+	stk_alloc = 8;
+	stk = malloc(stk_alloc * sizeof(struct stkent));
 	has_saved = 0;
 	pend_init(&pb, 8);
 #ifdef DEBUG
@@ -77,7 +82,7 @@ track_out(struct token *t)
 #endif
 
 #ifdef DEBUG
-static const char *
+static char *
 ctrlname(unsigned char c)
 {
 	switch (c) {
@@ -95,16 +100,24 @@ ctrlname(unsigned char c)
 static void
 push_body(unsigned char ctrl, unsigned char is_else)
 {
-	if (stk_sp < STK_MAX) {
-		stk[stk_sp].ctrl_type = ctrl;
-		stk[stk_sp].is_else = is_else;
-		stk_sp++;
-#ifdef DEBUG
-		if (VERBOSE(V_FILTER))
-			fdprintf(2, "BRACE: push(%s,%d) sp=%d\n",
-				 ctrlname(ctrl), is_else, stk_sp);
-#endif
+	if (stk_sp >= stk_alloc) {
+		struct stkent *newstk;
+		int newalloc;
+		newalloc = stk_alloc * 2;
+		newstk = malloc(newalloc * sizeof(struct stkent));
+		memcpy(newstk, stk, stk_sp * sizeof(struct stkent));
+		free(stk);
+		stk = newstk;
+		stk_alloc = newalloc;
 	}
+	stk[stk_sp].ctrl_type = ctrl;
+	stk[stk_sp].is_else = is_else;
+	stk_sp++;
+#ifdef DEBUG
+	if (VERBOSE(V_FILTER))
+		fdprintf(2, "BRACE: push(%s,%d) sp=%d\n",
+			 ctrlname(ctrl), is_else, stk_sp);
+#endif
 }
 
 /* Pop body entry */
@@ -273,7 +286,25 @@ filtbrace(struct token *out)
 				depth = 0;
 				break;
 			}
-			if (t.type == ELSE || t.type == DO) {
+			if (t.type == ELSE) {
+				/*
+				 * ELSE after single-stmt body (like `if (a) ; else`).
+				 * Close the IF body first, then process ELSE.
+				 */
+				if (stk_sp > 0 && stk[stk_sp - 1].ctrl_type == IF) {
+					queue_end();
+					pop_body();
+				}
+				ctrl_type = ELSE;
+				state = ST_PENDING;
+				pend_push(&pb, &t);
+				pend_pop(&pb, out);
+#ifdef DEBUG
+				track_out(out);
+#endif
+				return;
+			}
+			if (t.type == DO) {
 				ctrl_type = t.type;
 				state = ST_PENDING;
 				break;
@@ -383,6 +414,16 @@ filtbrace(struct token *out)
 				return;
 			}
 			state = (stk_sp > 0) ? ST_BODY : ST_NORMAL;
+			/* Drain pending END before returning current token */
+			if (pend_has(&pb)) {
+				tokcpy(&saved_ctrl, &t);
+				has_saved = 1;
+				pend_pop(&pb, out);
+#ifdef DEBUG
+				track_out(out);
+#endif
+				return;
+			}
 			break;
 		}
 		/* Close all pending bodies */
