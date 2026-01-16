@@ -32,9 +32,6 @@
 #define CTX_DO     3
 #define CTX_SWITCH 4
 
-/* Token buffer size */
-#define BUF_MAX 64
-
 /* Unified control context stack */
 #define STK_MAX 8
 static struct {
@@ -56,17 +53,12 @@ static int label_num = 0;
 static int next_label = 1;
 static unsigned char cur_ctx = 0;	/* Current context type */
 
-/* Token buffers */
-static struct token cond_buf[BUF_MAX];
-static int cond_len = 0;
-static struct token init_buf[BUF_MAX];
-static int init_len = 0;
-static struct token incr_buf[BUF_MAX];
-static int incr_len = 0;
+/* Token buffers - dynamically allocated */
+static struct tokarray cond_arr;
+static struct tokarray init_arr;
+static struct tokarray incr_arr;
 
-/* Output queue */
-#define PEND_MAX 64
-static struct token pendbuf[PEND_MAX];
+/* Output queue - dynamically allocated */
 static struct pendbuf pb;
 
 static void (*upstream)(struct token *);
@@ -89,7 +81,17 @@ filtctrl_init(void (*up)(struct token *))
 		}
 	}
 	stk_sp = 0;
-	pend_init(&pb, pendbuf, PEND_MAX);
+	/* Initialize dynamic buffers (first call only) */
+	if (!cond_arr.buf) {
+		tarr_init(&cond_arr, 16);
+		tarr_init(&init_arr, 16);
+		tarr_init(&incr_arr, 16);
+		pend_init(&pb, 32);
+	} else {
+		tarr_reset(&cond_arr);
+		tarr_reset(&init_arr);
+		tarr_reset(&incr_arr);
+	}
 #ifdef DEBUG
 	ctrl_balance = 0;
 #endif
@@ -145,11 +147,11 @@ static void push_ctx(unsigned char type, unsigned char saved) {
 		stk[stk_sp].label_num = label_num;
 		stk[stk_sp].body_depth = body_depth;
 		/* Save FOR increment buffer (overwritten by nested loops) */
-		if (cur_ctx == CTX_FOR && incr_len > 0) {
-			stk[stk_sp].saved_incr = malloc(incr_len * sizeof(struct token));
-			for (i = 0; i < incr_len; i++)
-				tokcpy(&stk[stk_sp].saved_incr[i], &incr_buf[i]);
-			stk[stk_sp].saved_incr_len = incr_len;
+		if (cur_ctx == CTX_FOR && incr_arr.len > 0) {
+			stk[stk_sp].saved_incr = malloc(incr_arr.len * sizeof(struct token));
+			for (i = 0; i < incr_arr.len; i++)
+				tokcpy(&stk[stk_sp].saved_incr[i], &incr_arr.buf[i]);
+			stk[stk_sp].saved_incr_len = incr_arr.len;
 		} else {
 			stk[stk_sp].saved_incr = 0;
 			stk[stk_sp].saved_incr_len = 0;
@@ -168,9 +170,9 @@ static void pop_ctx(void) {
 		state = stk[stk_sp].saved_state;
 		/* Restore FOR increment buffer if saved */
 		if (stk[stk_sp].saved_incr) {
-			incr_len = stk[stk_sp].saved_incr_len;
-			for (i = 0; i < incr_len; i++)
-				tokcpy(&incr_buf[i], &stk[stk_sp].saved_incr[i]);
+			incr_arr.len = stk[stk_sp].saved_incr_len;
+			for (i = 0; i < incr_arr.len; i++)
+				tokcpy(&incr_arr.buf[i], &stk[stk_sp].saved_incr[i]);
 			free(stk[stk_sp].saved_incr);
 			stk[stk_sp].saved_incr = 0;
 		}
@@ -196,17 +198,17 @@ static void emitLoopHdr(char prefix) {
 		fdprintf(2, "emitLoopHdr: pb.rd=%d pb.wr=%d\n", pb.rd, pb.wr);
 #endif
 	/* No wrapper braces - filtbrace guarantees braced body */
-	if (init_len > 0) {
-		pend_buf(&pb, init_buf, init_len);
+	if (init_arr.len > 0) {
+		pend_buf(&pb, init_arr.buf, init_arr.len);
 		pend_tok(&pb, SEMI);
 	}
 	emit_label(&pb, prefix, label_num, 'T');
-	if (cond_len > 0) {
+	if (cond_arr.len > 0) {
 		pend_tok(&pb, IF);
 		pend_tok(&pb, LPAR);
 		pend_tok(&pb, BANG);
 		pend_tok(&pb, LPAR);
-		pend_buf(&pb, cond_buf, cond_len);
+		pend_buf(&pb, cond_arr.buf, cond_arr.len);
 		pend_tok(&pb, RPAR);
 		pend_tok(&pb, RPAR);
 		pend_tok(&pb, BEGIN);
@@ -230,8 +232,8 @@ static void emitWhileTrail(void) {
 /* Emit FOR trailer: __FnC: incr; goto __FnT; __FnB: */
 static void emitForTrail(void) {
 	emit_label(&pb, 'F', label_num, 'C');
-	if (incr_len > 0) {
-		pend_buf(&pb, incr_buf, incr_len);
+	if (incr_arr.len > 0) {
+		pend_buf(&pb, incr_arr.buf, incr_arr.len);
 		pend_tok(&pb, SEMI);
 	}
 	emit_goto(&pb, 'F', label_num, 'T');
@@ -246,10 +248,10 @@ static void emitDoHdr(void) {
 
 /* Emit DO trailer: if (cond) { goto __DnT; } __DnB: */
 static void emitDoTrail(void) {
-	if (cond_len > 0) {
+	if (cond_arr.len > 0) {
 		pend_tok(&pb, IF);
 		pend_tok(&pb, LPAR);
-		pend_buf(&pb, cond_buf, cond_len);
+		pend_buf(&pb, cond_arr.buf, cond_arr.len);
 		pend_tok(&pb, RPAR);
 		pend_tok(&pb, BEGIN);
 		emit_goto(&pb, 'D', label_num, 'T');
@@ -340,7 +342,8 @@ static int handle_body(struct token *t, unsigned char ctx_type) {
 	if (t->type == WHILE) {
 		push_ctx(ctx_type, state);
 		label_num = next_label++;
-		init_len = cond_len = 0;
+		tarr_reset(&init_arr);
+		tarr_reset(&cond_arr);
 		depth = 0;
 		state = ST_WHILE_C;
 		return 2;	/* Consumed, recurse */
@@ -348,7 +351,9 @@ static int handle_body(struct token *t, unsigned char ctx_type) {
 	if (t->type == FOR) {
 		push_ctx(ctx_type, state);
 		label_num = next_label++;
-		init_len = cond_len = incr_len = 0;
+		tarr_reset(&init_arr);
+		tarr_reset(&cond_arr);
+		tarr_reset(&incr_arr);
 		depth = 0;
 		state = ST_FOR_INIT;
 		return 2;
@@ -396,7 +401,8 @@ filtctrl(struct token *out)
 	case ST_NORMAL:
 		if (t.type == WHILE) {
 			label_num = next_label++;
-			init_len = cond_len = 0;
+			tarr_reset(&init_arr);
+			tarr_reset(&cond_arr);
 			depth = 0;
 			state = ST_WHILE_C;
 			filtctrl(out);
@@ -404,7 +410,9 @@ filtctrl(struct token *out)
 		}
 		if (t.type == FOR) {
 			label_num = next_label++;
-			init_len = cond_len = incr_len = 0;
+			tarr_reset(&init_arr);
+			tarr_reset(&cond_arr);
+			tarr_reset(&incr_arr);
 			depth = 0;
 			state = ST_FOR_INIT;
 			filtctrl(out);
@@ -443,8 +451,8 @@ filtctrl(struct token *out)
 				return;
 			}
 		}
-		if (depth > 0 && cond_len < BUF_MAX)
-			tokcpy(&cond_buf[cond_len++], &t);
+		if (depth > 0)
+			tarr_push(&cond_arr, &t);
 		filtctrl(out);
 		return;
 
@@ -460,8 +468,8 @@ filtctrl(struct token *out)
 			filtctrl(out);
 			return;
 		}
-		if (depth > 0 && init_len < BUF_MAX)
-			tokcpy(&init_buf[init_len++], &t);
+		if (depth > 0)
+			tarr_push(&init_arr, &t);
 		filtctrl(out);
 		return;
 
@@ -471,8 +479,7 @@ filtctrl(struct token *out)
 			filtctrl(out);
 			return;
 		}
-		if (cond_len < BUF_MAX)
-			tokcpy(&cond_buf[cond_len++], &t);
+		tarr_push(&cond_arr, &t);
 		filtctrl(out);
 		return;
 
@@ -483,7 +490,7 @@ filtctrl(struct token *out)
 #ifdef DEBUG
 				if (VERBOSE(V_FILTER))
 					fdprintf(2, "filtctrl: FOR emit init=%d cond=%d incr=%d\n",
-						init_len, cond_len, incr_len);
+						init_arr.len, cond_arr.len, incr_arr.len);
 #endif
 				emitLoopHdr('F');
 				body_depth = 0;
@@ -495,8 +502,7 @@ filtctrl(struct token *out)
 		} else if (t.type == LPAR) {
 			depth++;
 		}
-		if (incr_len < BUF_MAX)
-			tokcpy(&incr_buf[incr_len++], &t);
+		tarr_push(&incr_arr, &t);
 		filtctrl(out);
 		return;
 
@@ -527,7 +533,7 @@ filtctrl(struct token *out)
 		if (r == 1) {
 			state = ST_DO_COND;
 			depth = -1;
-			cond_len = 0;
+			tarr_reset(&cond_arr);
 			pop_out(out);
 			return;
 		}
@@ -568,8 +574,8 @@ filtctrl(struct token *out)
 				return;
 			}
 		}
-		if (depth > 0 && cond_len < BUF_MAX)
-			tokcpy(&cond_buf[cond_len++], &t);
+		if (depth > 0)
+			tarr_push(&cond_arr, &t);
 		filtctrl(out);
 		return;
 

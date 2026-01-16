@@ -30,10 +30,8 @@ static int state = ST_NORMAL;
 static int paren_depth = 0;
 static int brace_depth = 0;  /* Track nesting - only parse K&R at file scope */
 
-/* Return type buffer */
-#define RTYPE_MAX 16
-static struct token rtype_buf[RTYPE_MAX];
-static int rtype_len = 0;
+/* Return type buffer - dynamically allocated */
+static struct tokarray rtype_arr;
 
 /* Function name */
 static struct token func_name;
@@ -51,15 +49,11 @@ static struct {
 } params[PARAM_MAX];
 static int param_count = 0;
 
-/* Current param type being parsed */
-#define PTYPE_MAX 16
-static struct token ptype_buf[PTYPE_MAX];
-static int ptype_len = 0;
+/* Current param type being parsed - dynamically allocated */
+static struct tokarray ptype_arr;
 static int ptype_stars = 0;
 
-/* Output queue */
-#define PEND_MAX 32
-static struct token pendbuf[PEND_MAX];
+/* Output queue - dynamically allocated */
 static struct pendbuf pb;
 
 /* Current param name being typed */
@@ -74,16 +68,22 @@ filtknr_init(void (*up)(struct token *))
 	extern short verbose;
 	extern int fdprintf(int, char *, ...);
 	if (verbose & V_FILTER)
-		fdprintf(2, "filtknr_init: &rtype_len=%p\n", (void*)&rtype_len);
+		fdprintf(2, "filtknr_init: &rtype_arr.len=%p\n", (void*)&rtype_arr.len);
 #endif
 	upstream = up;
 	state = ST_NORMAL;
 	brace_depth = 0;
-	rtype_len = 0;
 	param_count = 0;
-	ptype_len = 0;
 	cur_pname = 0;
-	pend_init(&pb, pendbuf, PEND_MAX);
+	/* Initialize dynamic buffers (first call only) */
+	if (!rtype_arr.buf) {
+		tarr_init(&rtype_arr, 16);
+		tarr_init(&ptype_arr, 16);
+		pend_init(&pb, 16);
+	} else {
+		tarr_reset(&rtype_arr);
+		tarr_reset(&ptype_arr);
+	}
 }
 
 /*
@@ -106,15 +106,15 @@ static void
 save_ptype(char *name, int stars)
 {
 	int idx = find_param(name);
-	if (idx >= 0 && ptype_len > 0) {
+	if (idx >= 0 && ptype_arr.len > 0) {
 		int i;
-		params[idx].type = malloc(ptype_len * sizeof(struct token));
-		for (i = 0; i < ptype_len; i++)
-			tokcpy(&params[idx].type[i], &ptype_buf[i]);
-		params[idx].type_len = ptype_len;
+		params[idx].type = malloc(ptype_arr.len * sizeof(struct token));
+		for (i = 0; i < ptype_arr.len; i++)
+			tokcpy(&params[idx].type[i], &ptype_arr.buf[i]);
+		params[idx].type_len = ptype_arr.len;
 		params[idx].stars = stars;
 	}
-	ptype_len = 0;
+	tarr_reset(&ptype_arr);
 	ptype_stars = 0;
 }
 
@@ -128,7 +128,7 @@ emit_ansi(void)
 	struct token tmp;
 
 	/* Emit return type */
-	pend_buf(&pb, rtype_buf, rtype_len);
+	pend_buf(&pb, rtype_arr.buf, rtype_arr.len);
 
 	/* Emit function name */
 	pend_push(&pb, &func_name);
@@ -177,7 +177,7 @@ abort_knr(void)
 	int i;
 	struct token tmp;
 
-	pend_buf(&pb, rtype_buf, rtype_len);
+	pend_buf(&pb, rtype_arr.buf, rtype_arr.len);
 	pend_push(&pb, &func_name);
 	pend_push(&pb, &saved_lpar);  /* Use saved LPAR with correct line info */
 	/* Emit any param names we collected (with commas) */
@@ -188,7 +188,7 @@ abort_knr(void)
 	}
 	/* Don't emit RPAR - let the rest of input flow through */
 
-	rtype_len = 0;
+	tarr_reset(&rtype_arr);
 	param_count = 0;
 	state = ST_NORMAL;
 }
@@ -205,9 +205,9 @@ reset_state(void)
 			free(params[i].type);
 		params[i].type = 0;
 	}
-	rtype_len = 0;
+	tarr_reset(&rtype_arr);
 	param_count = 0;
-	ptype_len = 0;
+	tarr_reset(&ptype_arr);
 	state = ST_NORMAL;
 }
 
@@ -240,13 +240,13 @@ filtknr(struct token *out)
 		if (brace_depth == 0 && is_type_tok(&t)) {
 #ifdef DEBUG
 			if (VERBOSE(V_FILTER))
-				fdprintf(2, "filtknr: ST_NORMAL &rtype_len=%p buf type=%d at %d\n",
-					(void*)&rtype_len, t.type, rtype_len);
+				fdprintf(2, "filtknr: ST_NORMAL &rtype_arr.len=%p buf type=%d at %d\n",
+					(void*)&rtype_arr.len, t.type, rtype_arr.len);
 #endif
-			tokcpy(&rtype_buf[rtype_len++], &t);
+			tarr_push(&rtype_arr, &t);
 #ifdef DEBUG
 			if (VERBOSE(V_FILTER))
-				fdprintf(2, "filtknr: after buf rtype_len=%d\n", rtype_len);
+				fdprintf(2, "filtknr: after buf rtype_arr.len=%d\n", rtype_arr.len);
 #endif
 			state = ST_RTYPE;
 			filtknr(out);
@@ -258,14 +258,12 @@ filtknr(struct token *out)
 		/* Buffering return type, look for function name */
 		/* Note: lexer produces TIMES (42) for *, not STAR (36) */
 		if (is_type_tok(&t) || t.type == STAR || t.type == TIMES) {
-			if (rtype_len < RTYPE_MAX) {
 #ifdef DEBUG
-				if (VERBOSE(V_FILTER))
-					fdprintf(2, "filtknr: ST_RTYPE buf type=%d at %d\n",
-						t.type, rtype_len);
+			if (VERBOSE(V_FILTER))
+				fdprintf(2, "filtknr: ST_RTYPE buf type=%d at %d\n",
+					t.type, rtype_arr.len);
 #endif
-				tokcpy(&rtype_buf[rtype_len++], &t);
-			}
+			tarr_push(&rtype_arr, &t);
 			filtknr(out);
 			return;
 		}
@@ -273,7 +271,7 @@ filtknr(struct token *out)
 			/* Could be function name */
 #ifdef DEBUG
 			if (VERBOSE(V_FILTER))
-				fdprintf(2, "filtknr: ST_RTYPE SYM rtype_len=%d\n", rtype_len);
+				fdprintf(2, "filtknr: ST_RTYPE SYM rtype_arr.len=%d\n", rtype_arr.len);
 #endif
 			tokcpy(&func_name, &t);
 			state = ST_NAME;
@@ -281,9 +279,9 @@ filtknr(struct token *out)
 			return;
 		}
 		/* Not a function - emit buffered and this token */
-		pend_buf(&pb, rtype_buf, rtype_len);
+		pend_buf(&pb, rtype_arr.buf, rtype_arr.len);
 		pend_push(&pb, &t);
-		rtype_len = 0;
+		tarr_reset(&rtype_arr);
 		state = ST_NORMAL;
 		pend_pop(&pb, out);
 		return;
@@ -301,13 +299,13 @@ filtknr(struct token *out)
 		/* Not a function - emit return type, name, and this token */
 #ifdef DEBUG
 		if (VERBOSE(V_FILTER))
-			fdprintf(2, "filtknr: ST_NAME &rtype_len=%p rtype_len=%d func_name.type=%d\n",
-				(void*)&rtype_len, rtype_len, func_name.type);
+			fdprintf(2, "filtknr: ST_NAME &rtype_arr.len=%p rtype_arr.len=%d func_name.type=%d\n",
+				(void*)&rtype_arr.len, rtype_arr.len, func_name.type);
 #endif
-		pend_buf(&pb, rtype_buf, rtype_len);
+		pend_buf(&pb, rtype_arr.buf, rtype_arr.len);
 		pend_push(&pb, &func_name);
 		pend_push(&pb, &t);
-		rtype_len = 0;
+		tarr_reset(&rtype_arr);
 		state = ST_NORMAL;
 		pend_pop(&pb, out);
 		return;
@@ -356,7 +354,7 @@ filtknr(struct token *out)
 			return;
 		}
 		if (t.type == SEMI) {
-			if (ptype_len == 0 && cur_pname == 0) {
+			if (ptype_arr.len == 0 && cur_pname == 0) {
 				/* No K&R declarations seen - this is a prototype */
 				emit_ansi();
 				pend_push(&pb, &t);
@@ -368,13 +366,13 @@ filtknr(struct token *out)
 			if (cur_pname)
 				save_ptype(cur_pname, ptype_stars);
 			cur_pname = 0;
-			ptype_len = 0;  /* Reset for next declaration */
+			tarr_reset(&ptype_arr);  /* Reset for next declaration */
 			filtknr(out);
 			return;
 		}
 		if (is_type_tok(&t)) {
 			/* Start of param type declaration */
-			tokcpy(&ptype_buf[ptype_len++], &t);
+			tarr_push(&ptype_arr, &t);
 			state = ST_PTYPE;
 			filtknr(out);
 			return;
@@ -388,8 +386,7 @@ filtknr(struct token *out)
 	case ST_PTYPE:
 		/* Buffering param type, may have seen a name (cur_pname) */
 		if (is_type_tok(&t)) {
-			if (ptype_len < PTYPE_MAX)
-				tokcpy(&ptype_buf[ptype_len++], &t);
+			tarr_push(&ptype_arr, &t);
 			filtknr(out);
 			return;
 		}

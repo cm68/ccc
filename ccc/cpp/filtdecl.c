@@ -32,9 +32,8 @@ static int expect_tag = 0;	/* Expecting struct/union/enum tag name */
 static int in_aggr_def = 0;	/* In struct/union/enum definition */
 static char *typedef_name = 0;
 
-#define DECL_MAX 32
-static struct token decl_buf[DECL_MAX];
-static int decl_len = 0;
+/* Declaration buffer - dynamically allocated */
+static struct tokarray decl_arr;
 
 #define NAME_MAX 16
 static struct {
@@ -44,9 +43,8 @@ static struct {
 static int name_count = 0;
 static int cur_stars = 0;
 
-#define INIT_MAX 32
-static struct token init_buf[INIT_MAX];
-static int init_len = 0;
+/* Initializer buffer - dynamically allocated */
+static struct tokarray init_arr;
 
 #define ASSIGN_MAX 16
 static struct {
@@ -56,8 +54,7 @@ static struct {
 } assigns[ASSIGN_MAX];
 static int assign_count = 0;
 
-#define PEND_MAX 32
-static struct token pendbuf[PEND_MAX];
+/* Pending token queue - dynamically allocated */
 static struct pendbuf pb;
 
 static void (*upstream)(struct token *);
@@ -69,14 +66,21 @@ filtdecl_init(void (*up)(struct token *))
 	state = ST_NORMAL;
 	brace_depth = 0;
 	aggr_depth = 0;
-	decl_len = 0;
 	name_count = 0;
 	assign_count = 0;
 	cur_stars = 0;
 	in_typedef = 0;
 	expect_tag = 0;
 	in_aggr_def = 0;
-	pend_init(&pb, pendbuf, PEND_MAX);
+	/* Initialize dynamic buffers (first call only) */
+	if (!decl_arr.buf) {
+		tarr_init(&decl_arr, 16);
+		tarr_init(&init_arr, 32);
+		pend_init(&pb, 16);
+	} else {
+		tarr_reset(&decl_arr);
+		tarr_reset(&init_arr);
+	}
 }
 
 static void
@@ -84,9 +88,9 @@ emit_decl(void)
 {
 	int i, j;
 	struct token tmp;
-	struct token *ref = &decl_buf[0];  /* Reference for line info */
+	struct token *ref = &decl_arr.buf[0];  /* Reference for line info */
 
-	pend_buf(&pb, decl_buf, decl_len);
+	pend_buf(&pb, decl_arr.buf, decl_arr.len);
 
 	for (i = 0; i < name_count; i++) {
 		for (j = 0; j < names[i].star_count; j++)
@@ -112,7 +116,7 @@ emit_assigns(void)
 
 	for (i = 0; i < assign_count; i++) {
 		/* Use first init token for line info */
-		ref = assigns[i].init_len > 0 ? &assigns[i].init[0] : &decl_buf[0];
+		ref = assigns[i].init_len > 0 ? &assigns[i].init[0] : &decl_arr.buf[0];
 		/* Synthesize name token with proper line info */
 		tmp.type = SYM;
 		tmp.v.name = assigns[i].name;
@@ -130,16 +134,16 @@ emit_assigns(void)
 static void
 save_init(char *name)
 {
-	if (assign_count < ASSIGN_MAX && init_len > 0) {
+	if (assign_count < ASSIGN_MAX && init_arr.len > 0) {
 		int i;
 		assigns[assign_count].name = name;
-		assigns[assign_count].init = malloc(init_len * sizeof(struct token));
-		for (i = 0; i < init_len; i++)
-			tokcpy(&assigns[assign_count].init[i], &init_buf[i]);
-		assigns[assign_count].init_len = init_len;
+		assigns[assign_count].init = malloc(init_arr.len * sizeof(struct token));
+		for (i = 0; i < init_arr.len; i++)
+			tokcpy(&assigns[assign_count].init[i], &init_arr.buf[i]);
+		assigns[assign_count].init_len = init_arr.len;
 		assign_count++;
 	}
-	init_len = 0;
+	tarr_reset(&init_arr);
 }
 
 static void
@@ -160,7 +164,7 @@ finish_decl(void)
 		emit_decl();
 		emit_assigns();
 	}
-	decl_len = 0;
+	tarr_reset(&decl_arr);
 	name_count = 0;
 	cur_stars = 0;
 	expect_tag = 0;
@@ -195,18 +199,18 @@ filtdecl(struct token *out)
 		}
 		if (state == ST_DECL || state == ST_NAME) {
 			/* Check if this is start of aggregate definition */
-			for (i = 0; i < decl_len; i++) {
-				if (decl_buf[i].type == STRUCT ||
-				    decl_buf[i].type == UNION ||
-				    decl_buf[i].type == ENUM) {
+			for (i = 0; i < decl_arr.len; i++) {
+				if (decl_arr.buf[i].type == STRUCT ||
+				    decl_arr.buf[i].type == UNION ||
+				    decl_arr.buf[i].type == ENUM) {
 					aggr_depth++;
 					break;
 				}
 			}
 			/* Push type tokens first, then BEGIN, so order is correct */
-			pend_buf(&pb, decl_buf, decl_len);
+			pend_buf(&pb, decl_arr.buf, decl_arr.len);
 			pend_push(&pb, &t);  /* BEGIN after type */
-			decl_len = 0;
+			tarr_reset(&decl_arr);
 			name_count = 0;
 			cur_stars = 0;
 			state = ST_NORMAL;
@@ -258,7 +262,7 @@ filtdecl(struct token *out)
 			in_typedef = (t.type == TYPEDEF);
 			expect_tag = (t.type == STRUCT || t.type == UNION ||
 			              t.type == ENUM);
-			tokcpy(&decl_buf[decl_len++], &t);
+			tarr_push(&decl_arr, &t);
 			state = ST_DECL;
 			filtdecl(out);
 			return;
@@ -274,8 +278,7 @@ filtdecl(struct token *out)
 				/* Set expect_tag for struct/union/enum */
 				expect_tag = (t.type == STRUCT || t.type == UNION ||
 				              t.type == ENUM);
-				if (decl_len < DECL_MAX)
-					tokcpy(&decl_buf[decl_len++], &t);
+				tarr_push(&decl_arr, &t);
 			}
 			filtdecl(out);
 			return;
@@ -283,8 +286,7 @@ filtdecl(struct token *out)
 		if (t.type == SYM) {
 			if (expect_tag) {
 				/* Tag name - part of type, not variable name */
-				if (decl_len < DECL_MAX)
-					tokcpy(&decl_buf[decl_len++], &t);
+				tarr_push(&decl_arr, &t);
 				expect_tag = 0;
 				filtdecl(out);
 				return;
@@ -295,12 +297,12 @@ filtdecl(struct token *out)
 			return;
 		}
 		/* Not a valid declaration - flush type, stars, and current token */
-		pend_buf(&pb, decl_buf, decl_len);
+		pend_buf(&pb, decl_arr.buf, decl_arr.len);
 		/* Emit accumulated stars (e.g., for casts like (int *)) */
 		for (i = 0; i < cur_stars; i++)
 			pend_tok(&pb, STAR);
 		pend_push(&pb, &t);
-		decl_len = 0;
+		tarr_reset(&decl_arr);
 		cur_stars = 0;
 		expect_tag = 0;
 		state = ST_NORMAL;
@@ -312,7 +314,7 @@ filtdecl(struct token *out)
 			state = ST_INIT;
 			paren_depth = 0;
 			init_depth = 0;
-			init_len = 0;
+			tarr_reset(&init_arr);
 			filtdecl(out);
 			return;
 		}
@@ -332,9 +334,9 @@ filtdecl(struct token *out)
 		}
 		if (t.type == LBRACK) {
 			struct token tmp;
-			struct token *ref = decl_len > 0 ? &decl_buf[0] : &t;
+			struct token *ref = decl_arr.len > 0 ? &decl_arr.buf[0] : &t;
 			/* Emit type first, then name, then array bracket */
-			pend_buf(&pb, decl_buf, decl_len);
+			pend_buf(&pb, decl_arr.buf, decl_arr.len);
 			/* Emit stars for this variable */
 			for (i = 0; i < names[name_count-1].star_count; i++)
 				pend_tok_at(&pb, STAR, ref);
@@ -345,7 +347,7 @@ filtdecl(struct token *out)
 			pend_push(&pb, &tmp);
 			pend_push(&pb, &t);
 			name_count--;
-			decl_len = 0;
+			tarr_reset(&decl_arr);
 			state = ST_NORMAL;
 			pend_pop(&pb, out);
 			return;
@@ -377,8 +379,7 @@ filtdecl(struct token *out)
 			pend_pop(&pb, out);
 			return;
 		}
-		if (init_len < INIT_MAX)
-			tokcpy(&init_buf[init_len++], &t);
+		tarr_push(&init_arr, &t);
 		filtdecl(out);
 		return;
 	}

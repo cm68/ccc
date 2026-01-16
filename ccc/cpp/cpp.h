@@ -99,12 +99,18 @@ extern void toksynthnam(struct token *out, unsigned char type, char *name);
 extern int is_type_kw(unsigned char type);
 extern int is_type_tok(struct token *t);
 
-/* Pending buffer for filters */
+/* Pending buffer for filters (circular, for output queues) */
 struct pendbuf {
 	struct token *buf;
 	int max, rd, wr;
 };
-extern void pend_init(struct pendbuf *p, struct token *buf, int max);
+
+/* Dynamic token array (linear, for collecting tokens) */
+struct tokarray {
+	struct token *buf;
+	int len, cap;
+};
+extern void pend_init(struct pendbuf *p, int initial);
 extern void pend_push(struct pendbuf *p, struct token *t);
 extern int pend_has(struct pendbuf *p);
 extern void pend_pop(struct pendbuf *p, struct token *out);
@@ -115,6 +121,11 @@ extern int filt_entry(struct pendbuf *pb, struct token *out,
                       void (*up)(struct token *), struct token *t);
 extern void emit_label(struct pendbuf *p, char pfx, int num, char sfx);
 extern void emit_goto(struct pendbuf *p, char pfx, int num, char sfx);
+
+/* Dynamic token array functions */
+extern void tarr_init(struct tokarray *a, int initial);
+extern void tarr_push(struct tokarray *a, struct token *t);
+extern void tarr_reset(struct tokarray *a);
 
 /*
  * Text buffer - for file/macro buffer management and output diversions

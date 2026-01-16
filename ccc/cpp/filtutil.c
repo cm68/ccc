@@ -36,19 +36,47 @@ is_type_tok(struct token *t)
 }
 
 /*
- * Pending buffer operations
+ * Pending buffer operations - dynamic growth
  */
 void
-pend_init(struct pendbuf *p, struct token *buf, int max)
+pend_init(struct pendbuf *p, int initial)
 {
-	p->buf = buf;
-	p->max = max;
+	if (initial < 8) initial = 8;
+	p->buf = malloc(initial * sizeof(struct token));
+	p->max = initial;
 	p->rd = p->wr = 0;
+}
+
+static void
+pend_grow(struct pendbuf *p)
+{
+	struct token *newbuf;
+	int newmax, count, i;
+
+	newmax = p->max * 2;
+	newbuf = malloc(newmax * sizeof(struct token));
+
+	/* Copy elements in order from rd to wr */
+	count = 0;
+	i = p->rd;
+	while (i != p->wr) {
+		tokcpy(&newbuf[count++], &p->buf[i]);
+		i = (i + 1) % p->max;
+	}
+
+	free(p->buf);
+	p->buf = newbuf;
+	p->max = newmax;
+	p->rd = 0;
+	p->wr = count;
 }
 
 void
 pend_push(struct pendbuf *p, struct token *t)
 {
+	int next = (p->wr + 1) % p->max;
+	if (next == p->rd)
+		pend_grow(p);
 	tokcpy(&p->buf[p->wr], t);
 	p->wr = (p->wr + 1) % p->max;
 }
@@ -142,4 +170,39 @@ emit_goto(struct pendbuf *p, char pfx, int num, char sfx)
 	fmtstr(buf, "__%c%d%c", pfx, num, sfx);
 	toksynthnam(&tmp, SYM, strdup(buf));
 	pend_push(p, &tmp);
+}
+
+/*
+ * Dynamic token array - linear growable array
+ */
+void
+tarr_init(struct tokarray *a, int initial)
+{
+	if (initial < 8) initial = 8;
+	a->buf = malloc(initial * sizeof(struct token));
+	a->len = 0;
+	a->cap = initial;
+}
+
+void
+tarr_push(struct tokarray *a, struct token *t)
+{
+	if (a->len >= a->cap) {
+		struct token *newbuf;
+		int newcap = a->cap * 2;
+		int i;
+		newbuf = malloc(newcap * sizeof(struct token));
+		for (i = 0; i < a->len; i++)
+			tokcpy(&newbuf[i], &a->buf[i]);
+		free(a->buf);
+		a->buf = newbuf;
+		a->cap = newcap;
+	}
+	tokcpy(&a->buf[a->len++], t);
+}
+
+void
+tarr_reset(struct tokarray *a)
+{
+	a->len = 0;
 }

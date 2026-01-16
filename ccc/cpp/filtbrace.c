@@ -36,9 +36,7 @@ static unsigned char ctrl_type = 0;
 static struct token saved_ctrl;	/* Control keyword deferred from ST_PENDING */
 static int has_saved = 0;
 
-/* Pending token queue */
-#define PEND_MAX 8
-static struct token pendbuf[PEND_MAX];
+/* Pending token queue - dynamically allocated */
 static struct pendbuf pb;
 
 /* Upstream token source */
@@ -59,7 +57,7 @@ filtbrace_init(void (*up)(struct token *))
 	ctrl_type = 0;
 	stk_sp = 0;
 	has_saved = 0;
-	pend_init(&pb, pendbuf, PEND_MAX);
+	pend_init(&pb, 8);
 #ifdef DEBUG
 	synth_balance = 0;
 	out_balance = 0;
