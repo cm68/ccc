@@ -1536,7 +1536,7 @@ char *name;
             if (ri >= 0) {
                 if (uobj.relocs[ri].size == 2) {
                     if (dflag) {
-                        fprintf(gfile, "  %04x  %02x %02x        ", pc,
+                        fprintf(gfile, "  %04x  %02x %02x        ", (int)(pc + uobj.textbase),
                                 uobj.text[pc], uobj.text[pc+1]);
                     } else {
                         fprintf(gfile, "\t");
@@ -1545,7 +1545,7 @@ char *name;
                     pc += 2;
                 } else {
                     if (dflag) {
-                        fprintf(gfile, "  %04x  %02x           ", pc, uobj.text[pc]);
+                        fprintf(gfile, "  %04x  %02x           ", (int)(pc + uobj.textbase), uobj.text[pc]);
                     } else {
                         fprintf(gfile, "\t");
                     }
@@ -1562,7 +1562,7 @@ char *name;
                 disasm_pc = -1;
                 len = disasm(pc, pc, nbuf);
                 if (dflag) {
-                    fprintf(gfile, "  %04x  ", pc);
+                    fprintf(gfile, "  %04x  ", (int)(pc + uobj.textbase));
                     for (i = 0; i < 4; i++) {
                         if (i < len)
                             fprintf(gfile, "%02x ", uobj.text[pc + i]);
@@ -1605,7 +1605,7 @@ char *name;
             if (ri >= 0) {
                 if (uobj.relocs[ri].size == 2) {
                     if (dflag) {
-                        fprintf(gfile, "  %04x  %02x %02x        ", pc,
+                        fprintf(gfile, "  %04x  %02x %02x        ", (int)(pc + uobj.database),
                                 uobj.data[pc], uobj.data[pc+1]);
                     } else {
                         fprintf(gfile, "\t");
@@ -1614,7 +1614,7 @@ char *name;
                     pc += 2;
                 } else {
                     if (dflag) {
-                        fprintf(gfile, "  %04x  %02x           ", pc, uobj.data[pc]);
+                        fprintf(gfile, "  %04x  %02x           ", (int)(pc + uobj.database), uobj.data[pc]);
                     } else {
                         fprintf(gfile, "\t");
                     }
@@ -1632,7 +1632,7 @@ char *name;
             if (dflag) {
                 /* dflag mode: emit one byte per line with hex dump */
                 c = uobj.data[pc];
-                fprintf(gfile, "  %04x  %02x           .db 0%02xh\n", pc, c, c);
+                fprintf(gfile, "  %04x  %02x           .db 0%02xh\n", (int)(pc + uobj.database), c, c);
                 pc++;
             } else {
                 /* no relocation - emit raw bytes with string detection */
