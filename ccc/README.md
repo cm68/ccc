@@ -6,12 +6,12 @@ complete; small programs run in simulation.
 ## Project Status
 
 **Pass 1 (cc1) - Complete** Tagged as **cc1_complete** and **self-parse**
-- Full C preprocessor (embedded, no separate cpp output), type system,
-  expression/statement parsing, AST emission
+- Two-phase design: phase 1 builds symbol table and counts, phase 2 streams AST
+- Constant folding, register allocation (IX for struct pointers, BC for words)
 - 142 tests passing, 18/18 source files self-host
 - Binary size under 40KB (target: <64KB for native Z80 build)
-- All loops lowered to labeled if/goto for simplified code generation
-- See CLAUDE.md for detailed architecture and features
+- All loops lowered to labeled if/goto by cpp filter pipeline
+- See PHASE1.md, PHASE2.md for detailed architecture
 
 ## Memory Constraints (CP/M 2.2)
 
@@ -51,30 +51,35 @@ within these constraints when compiled natively for Z80/CP/M.
 
 This is a multi-stage compiler:
 
-**Preprocessor (cpp)**: C preprocessor with token filter
+**Preprocessor (cpp)**: C preprocessor with pull-based filter pipeline
 - Full macro expansion and conditional compilation
-- K&R to ANSI function definition conversion
-- Brace insertion around single-statement if/else bodies
-- Loop lowering: while/for/do converted to if/goto/label sequences
-- Break/continue resolution to goto statements
-- Local declaration initializer splitting (`int x = 5;` → `int x; x = 5;`)
+- Filter pipeline: `lex -> filtknr -> filtdecl -> filtbrace -> filtctrl -> emit`
+  - **filtknr**: K&R to ANSI function definition conversion
+  - **filtdecl**: Declaration initializer splitting (`int x = 5;` → `int x; x = 5;`)
+  - **filtbrace**: Brace insertion around single-statement control bodies
+  - **filtctrl**: Loop lowering (while/for/do → if/goto/label), break/continue resolution
+- Typedef tracking across filters for type-aware parsing
 - Outputs binary lexeme stream (.x file)
+- See cpp/FILTERS.md for pipeline details
 
-**Pass 1 (cc1)**: Recursive descent parser
-- Parses preprocessed lexeme stream (loops lowered, braces present)
-- Only handles `if` and `goto` for control flow (no loop constructs)
+**Pass 1 (cc1)**: Two-phase recursive descent parser
+- Phase 1: builds symbol table, counts statements/cases/blocks, tracks if/else
+- Phase 2: streams AST directly as each construct is parsed (no statement trees)
+- Bottom-up constant folding before AST emission
+- Register allocation: IX for struct pointers with field access, BC for words
+- Only handles `if` and `goto` for control flow (loops lowered by cpp)
 - Outputs AST in compact paren-free hex format
 - Uses Unix syscalls (write) instead of stdio for output
-- ~7,500 lines of C code
 
-**Pass 2 (cc2)**: Stream code generator targeting Z80
+**Pass 2 (cc2)**: Code generator targeting Z80
 - Reads AST from pass 1 (paren-free hex format)
-- Builds one statement tree at a time, emits code immediately
-- Three-phase per-expression: demand calculation, dest assignment, emit
-- Register assignments received from cc1 via AST declarations
+- Expression tree rewriting with compact pattern language
+- Pattern-based code generation via rules table
+- Strength reduction (multiply by small constants)
+- Sethi-Ullman register labeling for optimal evaluation order
 - Uses Unix syscalls (read/write) instead of stdio
-- Handles memory width annotations (:b :s :l :p :f :d)
 - Generates Z80 assembly code
+- See pass2/REWRITE.md, pass2/HELPERS.md for details
 
 ## File Organization
 
@@ -84,9 +89,15 @@ This is a multi-stage compiler:
 - macro.c - Macro definition, lookup, and expansion
 - io.c - Character I/O and include stack
 - emit.c - Token output to .x and .i files
-- knr.c - Token filter: K&R conversion, brace insertion, init splitting
+- filtknr.c - Filter: K&R to ANSI function conversion
+- filtdecl.c - Filter: declaration initializer splitting
+- filtbrace.c - Filter: brace insertion around control bodies
+- filtctrl.c - Filter: loop lowering and break/continue resolution
+- filtutil.c - Shared filter utilities (pending buffers, label emission)
+- typetab.c - Typedef name tracking across filters
 - kw.c - Compressed keyword lookup tables
 - util.c - Error reporting, expression parsing
+- xdump.c - Human-readable .i output tool
 
 **Pass 1 (cc1) files:** (in pass1/)
 - pass1.c - Main entry point, orchestration
@@ -102,15 +113,12 @@ This is a multi-stage compiler:
 - util.c - Utilities
 
 **Pass 2 (cc2) files:** (in pass2/)
-- cc2.c - Main entry point, command-line processing
-- parseast.c - AST parser, builds expression/statement trees
+- pass2.c - Main entry point, command-line processing
+- parseast.c - AST parser, builds expression trees
 - astio.c - Low-level AST I/O (character reading, hex parsing)
-- codegen.c - Scheduler: demand calculation, dest assignment, instruction selection
-- emitexpr.c - Expression emission dispatcher
-- emitops.c - Operation emitters (binop, shift, logical, etc.)
-- emitcmp.c - Comparison and short-circuit evaluation
-- emitincdec.c - Pre/post increment/decrement emission
-- emit.c - Statement emission (if, while, for, switch, etc.)
+- expr.c - Expression tree construction and manipulation
+- rewrite.c - Expression tree rewriting engine
+- rules.c - Pattern matching rules table for code generation
 
 **Auto-generated files:**
 - tokenlist.c, enumlist.h - Token definitions
@@ -128,10 +136,11 @@ This is a multi-stage compiler:
 
 ```
 ccc/
-├── cpp/              # C preprocessor (cpp)
+├── cpp/              # C preprocessor with filter pipeline
 ├── ccc/
-│   ├── pass1/        # Pass 1 source (cc1 - parser)
-│   └── pass2/        # Pass 2 source (cc2 - code generator)
+│   ├── pass1/        # Pass 1 source (cc1 - two-phase parser)
+│   ├── pass2/        # Pass 2 source (cc2 - code generator)
+│   └── lib/          # Shared library (libutil, libccc)
 ├── tools/            # Whitesmith's object tools (asz, wsld, wsnm, wslib)
 ├── libsrc/           # Runtime library source
 │   ├── include/      # System headers for target
