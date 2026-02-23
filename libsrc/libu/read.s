@@ -21,7 +21,7 @@
 	.text
 _read:
 	pop 	hl		; discard ret addr
-	pop 	af		; fd in a
+	pop 	de		; fd in e
 	pop 	hl		; buffer
 	ld 	(buf),hl
 	pop 	hl		; nbytes
@@ -31,7 +31,7 @@ _read:
 	add 	hl,sp
 	ld 	sp,hl
 
-	ld 	l,a		; fd in hl
+	ld 	l,e		; fd in hl
 	ld 	h,0
 	rst 	08h
 	.db 	000h

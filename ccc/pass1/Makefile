@@ -138,7 +138,7 @@ sizecheck: $(GENERATED)
 		{ echo "ok"; } || { echo "FAIL"; } \
 	done ; \
 	wssize $$o | awk '{t+=$$1;d+=$$2;b+=$$3;a+=$$4} END {print t,d,b,a}' | tee -a sizefile ; \
-	wsld -r -o sizecheck/c0 ../../root/lib/crt0.o $$o -L../../root/lib -L../lib -lccc -lc -lu ; \
+	wsld -r -o sizecheck/c0 -Ttext=0x100 ../../root/lib/crt0.o $$o -L../../root/lib -L../lib -lccc -lc -lu ; \
 	wssize sizecheck/c0 | tee -a sizefile
 
 sizecheck1: $(GENERATED)
