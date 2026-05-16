@@ -290,69 +290,26 @@ assign(Expr *e, unsigned char tgt)
 /*
  * Map single char to opcode (or special pattern value)
  */
+static const unsigned char op_table[256] = {
+	['+'] = PLUS, ['*'] = STAR, ['-'] = MINUS, ['/'] = DIV, ['%'] = MOD,
+	['&'] = AND, ['|'] = OR, ['^'] = XOR, ['<'] = LSHIFT, ['>'] = RSHIFT,
+	['='] = ASSIGN, ['D'] = DEREF, ['V'] = REGVAR, ['L'] = LOCALVAR,
+	['I'] = INDEX, ['H'] = INHL, ['E'] = INDE, ['A'] = INA, ['K'] = INE,
+	['B'] = INBC, ['O'] = SYMREF, ['Q'] = EQ, ['U'] = NEQ, ['T'] = LT,
+	['G'] = GT, ['W'] = LE, ['Y'] = GE, ['N'] = P_NUM, ['P'] = P_POW2,
+	['Z'] = P_ZERO, ['M'] = P_SMALL, ['S'] = SYM, ['i'] = PREINC,
+	['j'] = POSTINC, ['k'] = PREDEC, ['m'] = POSTDEC, ['a'] = ARGNODE,
+	['C'] = CODE, ['o'] = OREQ, ['g'] = NEG, ['~'] = NOT, ['!'] = BANG,
+	['_'] = P_ANY, ['0'] = P_NULL, ['3'] = P_MUL3, ['5'] = P_MUL5,
+	['6'] = P_MUL6, ['7'] = P_MUL7, ['9'] = P_MUL9, ['x'] = P_MUL10,
+	['e'] = P_MUL11, ['w'] = P_MUL12, ['f'] = P_MUL14, ['n'] = P_MUL15,
+	['y'] = P_MUL20, ['q'] = P_MUL24, ['z'] = P_MUL40
+};
+
 static unsigned char
 chartopc(char c)
 {
-	switch (c) {
-	case '+': return PLUS;
-	case '*': return STAR;
-	case '-': return MINUS;
-	case '/': return DIV;
-	case '%': return MOD;
-	case '&': return AND;
-	case '|': return OR;
-	case '^': return XOR;
-	case '<': return LSHIFT;
-	case '>': return RSHIFT;
-	case '=': return ASSIGN;
-	case 'D': return DEREF;
-	case 'V': return REGVAR;
-	case 'L': return LOCALVAR;
-	case 'I': return INDEX;
-	case 'H': return INHL;
-	case 'E': return INDE;
-	case 'A': return INA;
-	case 'K': return INE;
-	case 'B': return INBC;
-	case 'O': return SYMREF;
-	case 'Q': return EQ;
-	case 'U': return NEQ;
-	case 'T': return LT;
-	case 'G': return GT;
-	case 'W': return LE;
-	case 'Y': return GE;
-	case 'N': return P_NUM;
-	case 'P': return P_POW2;
-	case 'Z': return P_ZERO;
-	case 'M': return P_SMALL;
-	case 'S': return SYM;
-	case 'i': return PREINC;
-	case 'j': return POSTINC;
-	case 'k': return PREDEC;
-	case 'm': return POSTDEC;
-	case 'a': return ARGNODE;
-	case 'C': return CODE;
-	case 'o': return OREQ;
-	case 'g': return NEG;
-	case '~': return NOT;
-	case '!': return BANG;
-	case '_': return P_ANY;
-	case '0': return P_NULL;
-	case '3': return P_MUL3;
-	case '5': return P_MUL5;
-	case '6': return P_MUL6;
-	case '7': return P_MUL7;
-	case '9': return P_MUL9;
-	case 'x': return P_MUL10;
-	case 'e': return P_MUL11;
-	case 'w': return P_MUL12;
-	case 'f': return P_MUL14;
-	case 'n': return P_MUL15;
-	case 'y': return P_MUL20;
-	case 'q': return P_MUL24;
-	case 'z': return P_MUL40;
-	}
-	return P_ANY;
+	return op_table[(unsigned char)c];
 }
 
 /*
@@ -375,25 +332,22 @@ ispow2(unsigned long n)
 static int
 opmatch(unsigned char pat, Expr *e)
 {
+	static const unsigned char multab[] = {
+		[P_MUL3-238] = 3, [P_MUL5-238] = 5, [P_MUL6-238] = 6,
+		[P_MUL7-238] = 7, [P_MUL9-238] = 9, [P_MUL10-238] = 10,
+		[P_MUL11-238] = 11, [P_MUL12-238] = 12, [P_MUL14-238] = 14,
+		[P_MUL15-238] = 15, [P_MUL20-238] = 20, [P_MUL24-238] = 24,
+		[P_MUL40-238] = 40
+	};
+
 	if (pat == P_ANY) return 1;
 	if (pat == P_NULL) return e == NULL;
 	if (pat == P_NUM) return e && e->op == NUMBER;
 	if (pat == P_POW2) return e && e->op == NUMBER && ispow2(e->u.val) > 0;
 	if (pat == P_ZERO) return e && e->op == NUMBER && e->u.val == 0;
 	if (pat == P_SMALL) return e && e->op == NUMBER && e->u.val >= 1 && e->u.val <= 4;
-	if (pat == P_MUL3) return e && e->op == NUMBER && e->u.val == 3;
-	if (pat == P_MUL5) return e && e->op == NUMBER && e->u.val == 5;
-	if (pat == P_MUL6) return e && e->op == NUMBER && e->u.val == 6;
-	if (pat == P_MUL7) return e && e->op == NUMBER && e->u.val == 7;
-	if (pat == P_MUL9) return e && e->op == NUMBER && e->u.val == 9;
-	if (pat == P_MUL10) return e && e->op == NUMBER && e->u.val == 10;
-	if (pat == P_MUL11) return e && e->op == NUMBER && e->u.val == 11;
-	if (pat == P_MUL12) return e && e->op == NUMBER && e->u.val == 12;
-	if (pat == P_MUL14) return e && e->op == NUMBER && e->u.val == 14;
-	if (pat == P_MUL15) return e && e->op == NUMBER && e->u.val == 15;
-	if (pat == P_MUL20) return e && e->op == NUMBER && e->u.val == 20;
-	if (pat == P_MUL24) return e && e->op == NUMBER && e->u.val == 24;
-	if (pat == P_MUL40) return e && e->op == NUMBER && e->u.val == 40;
+	if (pat >= P_MUL40 && pat <= P_MUL3)
+		return e && e->op == NUMBER && e->u.val == multab[pat-238];
 	return e && e->op == pat;
 }
 
@@ -461,17 +415,13 @@ pmatch(char *p, Expr *e)
  * Get node by path string: L=left, R=right, LL=left->left, etc.
  */
 static Expr *
-getpath(Expr *e, char **pp)
+getpath(Expr *e, unsigned char p)
 {
-	char *p = *pp;
-	while (*p == 'L' || *p == 'R') {
-		if (!e) break;
-		if (*p == 'L') e = e->left;
-		else e = e->right;
-		p++;
-	}
-	*pp = p;
-	return e;
+	if (p == P_NONE) return e;
+	if (p == P_L) return e ? e->left : NULL;
+	if (p == P_R) return e ? e->right : NULL;
+	if (p == P_LL) return (e && e->left) ? e->left->left : NULL;
+	return NULL;
 }
 
 /*
@@ -563,11 +513,16 @@ emitasm(char *tpl, Expr *e)
 				offadj++;
 				p++;
 			}
-			/* navigate to node */
-			n = e;
-			for (i = 0; path[i] && n; i++) {
-				if (path[i] == 'L') n = n->left;
-				else n = n->right;
+			/* Special: $RL (right child name) */
+			if (path[0] == 'R' && path[1] == 'L') {
+				n = (e && e->right) ? e->right->left : NULL;
+			} else {
+				/* navigate to node */
+				n = e;
+				for (i = 0; path[i] && n; i++) {
+					if (path[i] == 'L') n = n->left;
+					else n = n->right;
+				}
 			}
 			/* emit based on node type */
 			if (n) {
@@ -604,7 +559,6 @@ static Expr *
 tryrule(struct rule *rp, Expr *e)
 {
 	Expr *n, *src, *num, *lc, *rc;
-	char *p;
 	char reg, off;
 	int shift, changed;
 	unsigned char newop, oldop;
@@ -615,8 +569,7 @@ tryrule(struct rule *rp, Expr *e)
 
 	/* Check register constraints */
 	if (rp->flags & (RF_IXIY | RF_BC | RF_C | RF_B | RF_DE | RF_HL | RF_IX)) {
-		p = rp->dsrc;
-		src = getpath(e, &p);
+		src = getpath(e, rp->dsrc);
 		if (!src)
 			return NULL;
 		if ((rp->flags & RF_IXIY) &&
@@ -638,18 +591,16 @@ tryrule(struct rule *rp, Expr *e)
 
 #ifdef DEBUG
 	if (VERBOSE(V_RULES))
-		fprintf(stderr, "rewrite: %s -> %s\n", rp->pat, rp->rep);
+		fprintf(stderr, "rewrite: %s -> %c\n", rp->pat, rp->rep);
 #endif
 
 	oldop = e->op;
-	newop = chartopc(rp->rep[0]);
+	newop = rp->rep;
 	changed = 0;
 
 	/* Get replacement children */
-	p = rp->lsrc;
-	lc = (*p) ? getpath(e, &p) : NULL;
-	p = rp->rsrc;
-	rc = (*p) ? getpath(e, &p) : NULL;
+	lc = rp->lsrc ? getpath(e, rp->lsrc) : NULL;
+	rc = rp->rsrc ? getpath(e, rp->rsrc) : NULL;
 
 	/* Handle NEQ -> BANG(EQ) - caller must rewrite result */
 	if (rp->flags & RF_NOTEQ) {
@@ -668,8 +619,7 @@ tryrule(struct rule *rp, Expr *e)
 			reg = e->u.var.reg ? e->u.var.reg : R_IY;
 			off = e->u.var.off;
 		} else {
-			p = rp->dsrc;
-			src = getpath(e, &p);
+			src = getpath(e, rp->dsrc);
 			reg = src ? src->u.var.reg : R_IY;
 			num = e->right;
 			off = num ? (char)num->u.val : 0;

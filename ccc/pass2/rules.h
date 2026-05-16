@@ -18,14 +18,22 @@
 #define RF_TDE   0x400   /* require TARGET is DE (for RHS of binary ops) */
 
 /*
+ * Path constants for compact navigation
+ */
+#define P_NONE   0
+#define P_L      1
+#define P_R      2
+#define P_LL     3
+
+/*
  * Rewrite rule
  */
 struct rule {
 	char *pat;      /* pattern string */
-	char *rep;      /* replacement: I=INDEX, <=LSHIFT, etc */
-	char *lsrc;     /* left child source path */
-	char *rsrc;     /* right child source path */
-	char *dsrc;     /* data source path (for reg/off) */
+	unsigned char rep; /* replacement op char */
+	unsigned char lsrc; /* left child source path */
+	unsigned char rsrc; /* right child source path */
+	unsigned char dsrc; /* data source path (for reg/off) */
 	unsigned short flags;
 	char *asmtpl;   /* asm template: $L/$R/$LL/etc for interpolation */
 	unsigned char destval; /* result location: R_HL, R_A, etc (0=none) */
