@@ -48,6 +48,9 @@ install: libccc.a
 	cp libccc.a $(DEST)/lib
 endif
 
-.PHONY: all clean install
+regression:
+	../../tests/regress.sh --filter ccc/lib/ $(REGRESS_FLAGS)
+
+.PHONY: all clean install regression
 
 # vim: tabstop=4 shiftwidth=4 noexpandtab:

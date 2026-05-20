@@ -1,0 +1,5 @@
+BRACE: WARNING synth_balance=1 at EOF
+BRACE: WARNING out_balance=1 at EOF
+BRACE: WARNING stk_sp=1 at EOF
+CTRL: WARNING balance=1 at EOF
+cpp: brace mismatch at EOF: 1 unmatched {

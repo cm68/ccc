@@ -49,7 +49,11 @@ sizecheck:
 	$(MAKE) -C pass1 sizecheck
 	$(MAKE) -C pass2 sizecheck
 
-.PHONY: all install clean clobber stage1 sizecheck
+# Regression - all ccc/ subtrees (cpp, pass1, pass2, lib, astpp)
+regression:
+	../tests/regress.sh --filter ccc/ $(REGRESS_FLAGS)
+
+.PHONY: all install clean clobber stage1 sizecheck regression
 
 #
 # vim: tabstop=4 shiftwidth=4 noexpandtab:

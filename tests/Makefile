@@ -328,6 +328,11 @@ test-struct:
 valgrind:
 	./runvalgrind.sh $(ALL_TESTS)
 
+# cpp regression harness, scoped to this directory's corpus
+.PHONY: regression
+regression:
+	./regress.sh --filter tests/ $(REGRESS_FLAGS)
+
 # Build executable from .c file using ccc
 %: %.c
 	../root/bin/ccc -k -o $@ $<

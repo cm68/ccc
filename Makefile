@@ -55,7 +55,12 @@ tags:
 sizecheck:
 	@true
 
-.PHONY: all install clean clobber stage1 test tests valgrind tags sizecheck
+# Run the cpp regression harness over the full corpus.
+# Pass REGRESS_FLAGS=--bless to regenerate the baseline.
+regression:
+	./tests/regress.sh $(REGRESS_FLAGS)
+
+.PHONY: all install clean clobber stage1 test tests valgrind tags sizecheck regression
 #
 # vim: tabstop=4 shiftwidth=4 noexpandtab:
 #

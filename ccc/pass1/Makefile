@@ -178,6 +178,9 @@ $(OUTDIR)/%.pp: $(OUTDIR)/%.1 $(ASTPP)
 $(OUTDIR)/%.s: $(OUTDIR)/%.1 $(OUTDIR)/%.2 $(C1)
 	$(C1) -v 8 $(OUTDIR)/$*.1 $(OUTDIR)/$*.2 $@
 
-.PHONY: all clean regen stage1 install clobber sizefile sizecheck sizecheck1
+regression:
+	../../tests/regress.sh --filter ccc/pass1/ $(REGRESS_FLAGS)
+
+.PHONY: all clean regen stage1 install clobber sizefile sizecheck sizecheck1 regression
 
 # vim: tabstop=4 shiftwidth=4 noexpandtab:

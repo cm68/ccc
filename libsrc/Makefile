@@ -34,9 +34,14 @@ clobber: clean
 		$(MAKE) -C $$i clobber ; \
 	done
 
-clean: 
+clean:
 	for i in $(DIRS); do \
 		$(MAKE) -C $$i clean ; \
 	done
+
+regression:
+	../tests/regress.sh --filter libsrc/ $(REGRESS_FLAGS)
+
+.PHONY: all install clobber clean regression
 
 # vim: tabstop=4 shiftwidth=4 noexpandtab:

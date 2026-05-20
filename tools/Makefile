@@ -120,7 +120,10 @@ link: stage1/asz stage1/wsld stage1/wsnm stage1/wslib stage1/wssize
 	@echo "=== Linked stage1 tools ==="
 	@ls -la stage1/asz stage1/wsld stage1/wsnm stage1/wslib stage1/wssize
 
-.PHONY: all clean clobber test install stage1 sizecheck link
+regression:
+	../tests/regress.sh --filter tools/ $(REGRESS_FLAGS)
+
+.PHONY: all clean clobber test install stage1 sizecheck link regression
 
 #
 # vim: tabstop=4 shiftwidth=4 noexpandtab:

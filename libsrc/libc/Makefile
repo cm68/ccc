@@ -66,5 +66,10 @@ clean:
 clobber: clean
 	rm -f $(ARCHIVE)
 
+regression:
+	../../tests/regress.sh --filter libsrc/libc/ $(REGRESS_FLAGS)
+
+.PHONY: regression
+
 # vim: tabstop=4 shiftwidth=4 noexpandtab:
 
