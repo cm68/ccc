@@ -52,8 +52,11 @@ valgrind: install
 tags:
 	ctags ccc/cpp/*.c ccc/pass1/*.c ccc/pass2/*.c tools/*.c
 
+# Native (Z80) compile of cpp/c0/c1.
+# Override Z80 compiler with: make sizecheck ZCC=zc3   (HiTech) or ZCC=ccc (default).
+ZCC = ccc
 sizecheck:
-	@true
+	$(MAKE) ZCC=$(ZCC) -C $(COMPILER) sizecheck
 
 # Run the cpp regression harness over the full corpus.
 # Pass REGRESS_FLAGS=--bless to regenerate the baseline.

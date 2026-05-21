@@ -46,6 +46,19 @@ ifeq ($(CC),ccc)
 CFLAGS = -I. -I../lib
 endif
 
+# Z80 compiler used by `sizecheck` (ccc | zc3)
+ZCC = ccc
+ZCFLAGS = -DCCC $(INC)
+ROOTDIR = $(realpath ../../root)
+ifeq ($(ZCC),zc3)
+ZCC_ASM = -S
+ZCC_ASMEXT = as
+endif
+ifeq ($(ZCC),ccc)
+ZCC_ASM = -s
+ZCC_ASMEXT = s
+endif
+
 SOURCES = pass2.c astio.c parseast.c expr.c rewrite.c rules.c
 OBJECTS = $(SOURCES:.c=.o)
 
@@ -126,17 +139,17 @@ stage1: c1
 
 sizecheck: $(GENERATED)
 	mkdir -p sizecheck
-	$(SETX) ; o="" ; for f in $(SOURCES); do \
+	$(SETX) ; export ROOTDIR=$(ROOTDIR) ; o="" ; for f in $(SOURCES); do \
 		b=$${f%.c}; \
 		err=sizecheck/$$b.err ; \
 		o="$$o sizecheck/$$b.o" ; \
 		printf "%-12s" "$$b: " ; \
-		zc3 -S -DCCC $(INC) $$f && mv $$b.as sizecheck ; \
-		zc3 -c -DCCC $(INC) -o sizecheck/$$b.o $$f && \
+		$(ZCC) $(ZCC_ASM) $(ZCFLAGS) $$f >$$err 2>&1 && mv $$b.$(ZCC_ASMEXT) sizecheck ; \
+		$(ZCC) -c $(ZCFLAGS) $$f >>$$err 2>&1 && mv $$b.o sizecheck/$$b.o && \
 		{ echo "ok"; } || { echo "FAIL"; } \
 	done ; \
 	wssize $$o | awk '{t+=$$1;d+=$$2;b+=$$3;a+=$$4} END {print t,d,b,a}' | tee -a sizefile ; \
-	wsld -r -o sizecheck/c1 ../../root/lib/crt0.o $$o -L../../root/lib -L../lib -lccc -lc -lu ; \
+	wsld -r -o sizecheck/c1 $(ROOTDIR)/lib/crt0.o $$o -L$(ROOTDIR)/lib -lccc -lc -lu ; \
 	wssize sizecheck/c1 | tee -a sizefile
 
 sizecheck1: $(GENERATED)

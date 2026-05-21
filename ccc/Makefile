@@ -44,10 +44,13 @@ stage1:
 	$(MAKE) -C pass1 DEST=$(DEST) stage1
 	$(MAKE) -C pass2 DEST=$(DEST) stage1
 
+# Native (Z80) compile of cpp/c0/c1.
+# Override Z80 compiler with: make sizecheck ZCC=zc3   (HiTech) or ZCC=ccc (default).
+ZCC = ccc
 sizecheck:
-	$(MAKE) -C cpp sizecheck
-	$(MAKE) -C pass1 sizecheck
-	$(MAKE) -C pass2 sizecheck
+	$(MAKE) ZCC=$(ZCC) -C cpp sizecheck
+	$(MAKE) ZCC=$(ZCC) -C pass1 sizecheck
+	$(MAKE) ZCC=$(ZCC) -C pass2 sizecheck
 
 # Regression - all ccc/ subtrees (cpp, pass1, pass2, lib, astpp)
 regression:

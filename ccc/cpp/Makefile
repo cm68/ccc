@@ -51,6 +51,7 @@ endif
 # Z80 compiler used by `sizecheck` (ccc | zc3)
 ZCC = ccc
 ZCFLAGS = -DCCC $(INC)
+ROOTDIR = $(realpath ../../root)
 ifeq ($(ZCC),zc3)
 ZCC_ASM = -S
 ZCC_ASMEXT = as
@@ -144,17 +145,17 @@ stage1: cpp
 
 sizecheck: $(GENERATED)
 	mkdir -p sizecheck
-	$(SETX) ; o="" ; for f in $(SOURCES); do \
+	$(SETX) ; export ROOTDIR=$(ROOTDIR) ; o="" ; for f in $(SOURCES); do \
 		b=$${f%.c}; \
 		err=sizecheck/$$b.err ; \
 		o="$$o sizecheck/$$b.o" ; \
 		printf "%-12s" "$$b: " ; \
-		$(ZCC) $(ZCC_ASM) $(ZCFLAGS) $$f && mv $$b.$(ZCC_ASMEXT) sizecheck ; \
-		$(ZCC) -c $(ZCFLAGS) -o sizecheck/$$b.o $$f && \
+		$(ZCC) $(ZCC_ASM) $(ZCFLAGS) $$f >$$err 2>&1 && mv $$b.$(ZCC_ASMEXT) sizecheck ; \
+		$(ZCC) -c $(ZCFLAGS) $$f >>$$err 2>&1 && mv $$b.o sizecheck/$$b.o && \
 		{ echo "ok"; } || { echo "FAIL"; } \
 	done ; \
 	wssize $$o | awk '{t+=$$1;d+=$$2;b+=$$3;a+=$$4} END {print t,d,b,a}' | tee -a sizefile ; \
-	wsld -r -o sizecheck/cpp ../../root/lib/crt0.o $$o -L../../root/lib -L../lib -lccc -lc -lu ; \
+	wsld -r -o sizecheck/cpp $(ROOTDIR)/lib/crt0.o $$o -L$(ROOTDIR)/lib -lccc -lc -lu ; \
 	wssize sizecheck/cpp | tee -a sizefile
 
 sizecheck1: $(GENERATED)
