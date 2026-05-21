@@ -29,9 +29,7 @@ struct stkent {
 };
 
 /* Dynamic state stack */
-static struct stkent *stk;
-static int stk_sp;
-static int stk_alloc;
+static struct filter_stack fs;
 
 static int state = ST_NORMAL;
 static int depth = 0;
@@ -58,9 +56,7 @@ filtbrace_init(void (*up)(struct token *))
 	state = ST_NORMAL;
 	depth = 0;
 	ctrl_type = 0;
-	stk_sp = 0;
-	stk_alloc = 8;
-	stk = malloc(stk_alloc * sizeof(struct stkent));
+	fstack_init(&fs, 8, sizeof(struct stkent));
 	has_saved = 0;
 	pend_init(&pb, 8);
 #ifdef DEBUG
@@ -100,23 +96,14 @@ ctrlname(unsigned char c)
 static void
 push_body(unsigned char ctrl, unsigned char is_else)
 {
-	if (stk_sp >= stk_alloc) {
-		struct stkent *newstk;
-		int newalloc;
-		newalloc = stk_alloc * 2;
-		newstk = malloc(newalloc * sizeof(struct stkent));
-		memcpy(newstk, stk, stk_sp * sizeof(struct stkent));
-		free(stk);
-		stk = newstk;
-		stk_alloc = newalloc;
-	}
-	stk[stk_sp].ctrl_type = ctrl;
-	stk[stk_sp].is_else = is_else;
-	stk_sp++;
+	struct stkent ent;
+	ent.ctrl_type = ctrl;
+	ent.is_else = is_else;
+	fstack_push(&fs, &ent);
 #ifdef DEBUG
 	if (VERBOSE(V_FILTER))
 		fdprintf(2, "BRACE: push(%s,%d) sp=%d\n",
-			 ctrlname(ctrl), is_else, stk_sp);
+			 ctrlname(ctrl), is_else, fs.sp);
 #endif
 }
 
@@ -124,13 +111,11 @@ push_body(unsigned char ctrl, unsigned char is_else)
 static void
 pop_body(void)
 {
-	if (stk_sp > 0) {
-		stk_sp--;
+	fstack_pop(&fs, NULL);
 #ifdef DEBUG
-		if (VERBOSE(V_FILTER))
-			fdprintf(2, "BRACE: pop() sp=%d\n", stk_sp);
+	if (VERBOSE(V_FILTER))
+		fdprintf(2, "BRACE: pop() sp=%d\n", fs.sp);
 #endif
-	}
 }
 
 /* Emit synthetic BEGIN and track balance */
@@ -163,6 +148,7 @@ void
 filtbrace(struct token *out)
 {
 	struct token t;
+	struct stkent *top;
 #ifdef DEBUG
 	int old_state = state;
 #endif
@@ -196,16 +182,16 @@ filtbrace(struct token *out)
 #ifdef DEBUG
 	if (VERBOSE(V_FILTER))
 		fdprintf(2, "BRACE: [%s] sp=%d depth=%d t=%d\n",
-			 stname[state], stk_sp, depth, t.type);
+			 stname[state], fs.sp, depth, t.type);
 #endif
 
 	switch (state) {
 	case ST_NORMAL:
-		if (t.type == IF || t.type == WHILE || t.type == FOR) {
+		if (token_props[t.type] & TF_COND) {
 			ctrl_type = t.type;
 			state = ST_COND;
 			depth = 0;
-		} else if (t.type == ELSE || t.type == DO) {
+		} else if (token_props[t.type] & (TF_ELSE | TF_DO)) {
 			ctrl_type = t.type;
 			state = ST_PENDING;
 		}
@@ -229,7 +215,7 @@ filtbrace(struct token *out)
 	case ST_PENDING:
 		if (t.type == BEGIN) {
 			/* User wrote braces */
-			if (stk_sp > 0) {
+			if (fs.sp > 0) {
 				/* Inside synthetic body - track nested user-braced control */
 				state = ST_BODY;
 				depth = 1;	/* Count this BEGIN */
@@ -247,7 +233,7 @@ filtbrace(struct token *out)
 		}
 		/* Insert { before this token */
 		push_body(ctrl_type, ctrl_type == ELSE ? 1 : 0);
-		if (t.type == IF || t.type == WHILE || t.type == FOR) {
+		if (token_props[t.type] & TF_COND) {
 			/* Nested control - save for processing after { */
 			tokcpy(&saved_ctrl, &t);
 			has_saved = 1;
@@ -257,7 +243,7 @@ filtbrace(struct token *out)
 			emit_begin(out);
 			return;
 		}
-		if (t.type == DO || t.type == ELSE) {
+		if (token_props[t.type] & (TF_DO | TF_ELSE)) {
 			/* Nested DO or ELSE - save for processing after { */
 			tokcpy(&saved_ctrl, &t);
 			has_saved = 1;
@@ -274,13 +260,13 @@ filtbrace(struct token *out)
 		return;
 
 	case ST_BODY:
-		if (t.type == BEGIN || t.type == LPAR || t.type == LBRACK)
+		if (token_props[t.type] & TF_OPEN)
 			depth++;
-		else if (t.type == END || t.type == RPAR || t.type == RBRACK)
+		else if (token_props[t.type] & TF_CLOSE)
 			depth--;
 
 		if (depth == 0) {
-			if (t.type == IF || t.type == WHILE || t.type == FOR) {
+			if (token_props[t.type] & TF_COND) {
 				ctrl_type = t.type;
 				state = ST_COND;
 				depth = 0;
@@ -291,7 +277,8 @@ filtbrace(struct token *out)
 				 * ELSE after single-stmt body (like `if (a) ; else`).
 				 * Close the IF body first, then process ELSE.
 				 */
-				if (stk_sp > 0 && stk[stk_sp - 1].ctrl_type == IF) {
+				top = fstack_top(&fs);
+				if (top && top->ctrl_type == IF) {
 					queue_end();
 					pop_body();
 				}
@@ -323,11 +310,11 @@ filtbrace(struct token *out)
 					queue_end();
 					pop_body();
 					/* Check if outer level needs else-check */
-					if (stk_sp > 0 && stk[stk_sp - 1].ctrl_type == IF &&
-					    !stk[stk_sp - 1].is_else)
+					top = fstack_top(&fs);
+					if (top && top->ctrl_type == IF && !top->is_else)
 						state = ST_ELSE_CHK;
 					else
-						state = (stk_sp > 0) ? ST_BODY : ST_NORMAL;
+						state = (fs.sp > 0) ? ST_BODY : ST_NORMAL;
 					pend_pop(&pb, out);
 #ifdef DEBUG
 					track_out(out);
@@ -339,29 +326,30 @@ filtbrace(struct token *out)
 			if (t.type == SEMI) {
 				/* Body complete */
 				pend_push(&pb, &t);
-				if (stk_sp > 0 && stk[stk_sp - 1].is_else) {
+				top = fstack_top(&fs);
+				if (top && top->is_else) {
 					/* Else body - emit }, pop and cascade */
 					queue_end();
 					pop_body();
 					/* Check if outer IF needs else-check */
-					if (stk_sp > 0 && stk[stk_sp - 1].ctrl_type == IF &&
-					    !stk[stk_sp - 1].is_else)
+					top = fstack_top(&fs);
+					if (top && top->ctrl_type == IF && !top->is_else)
 						state = ST_ELSE_CHK;
 					else
-						state = (stk_sp > 0) ? ST_BODY : ST_NORMAL;
-				} else if (stk_sp > 0 && stk[stk_sp - 1].ctrl_type == IF) {
+						state = (fs.sp > 0) ? ST_BODY : ST_NORMAL;
+				} else if (top && top->ctrl_type == IF) {
 					/* If body - don't emit } yet, check for else */
 					state = ST_ELSE_CHK;
-				} else if (stk_sp > 0 && stk[stk_sp - 1].ctrl_type == DO) {
+				} else if (top && top->ctrl_type == DO) {
 					/* Do body - emit }, wait for while */
 					queue_end();
 					pop_body();
 					state = ST_DO_WHILE;
-				} else if (stk_sp > 0) {
+				} else if (fs.sp > 0) {
 					/* Other (WHILE/FOR) - emit }, pop and continue */
 					queue_end();
 					pop_body();
-					state = (stk_sp > 0) ? ST_BODY : ST_NORMAL;
+					state = (fs.sp > 0) ? ST_BODY : ST_NORMAL;
 				} else {
 					/* No synthetic body - shouldn't happen */
 					state = ST_NORMAL;
@@ -378,7 +366,8 @@ filtbrace(struct token *out)
 	case ST_ELSE_CHK:
 		if (t.type == ELSE) {
 			/* Found else - close if body, pop it, start else */
-			if (stk_sp > 0 && stk[stk_sp - 1].ctrl_type == IF) {
+			top = fstack_top(&fs);
+			if (top && top->ctrl_type == IF) {
 				queue_end();
 				pop_body();
 			}
@@ -392,7 +381,8 @@ filtbrace(struct token *out)
 			return;
 		}
 		/* No else found */
-		if (stk_sp > 0 && stk[stk_sp - 1].ctrl_type != IF) {
+		top = fstack_top(&fs);
+		if (top && top->ctrl_type != IF) {
 			/*
 			 * User-braced IF inside synthetic body (FOR/WHILE/DO).
 			 * The IF was the synthetic body's single statement.
@@ -401,8 +391,8 @@ filtbrace(struct token *out)
 			 */
 			queue_end();
 			pop_body();
-			if (stk_sp > 0 && stk[stk_sp - 1].ctrl_type == IF &&
-			    !stk[stk_sp - 1].is_else) {
+			top = fstack_top(&fs);
+			if (top && top->ctrl_type == IF && !top->is_else) {
 				/* Outer level is IF - check for else */
 				tokcpy(&saved_ctrl, &t);
 				has_saved = 1;
@@ -413,7 +403,7 @@ filtbrace(struct token *out)
 #endif
 				return;
 			}
-			state = (stk_sp > 0) ? ST_BODY : ST_NORMAL;
+			state = (fs.sp > 0) ? ST_BODY : ST_NORMAL;
 			/* Drain pending END before returning current token */
 			if (pend_has(&pb)) {
 				tokcpy(&saved_ctrl, &t);
@@ -427,14 +417,15 @@ filtbrace(struct token *out)
 			break;
 		}
 		/* Close all pending bodies */
-		while (stk_sp > 0) {
-			if (stk[stk_sp - 1].ctrl_type == IF && !stk[stk_sp - 1].is_else) {
+		while (fs.sp > 0) {
+			top = fstack_top(&fs);
+			if (top->ctrl_type == IF && !top->is_else) {
 				/* IF without else - close it */
 				queue_end();
 				pop_body();
 				/* Check if next level needs else check */
-				if (stk_sp > 0 && stk[stk_sp - 1].ctrl_type == IF &&
-				    !stk[stk_sp - 1].is_else) {
+				top = fstack_top(&fs);
+				if (top && top->ctrl_type == IF && !top->is_else) {
 					/* More IF to check - save token, return } */
 					tokcpy(&saved_ctrl, &t);
 					has_saved = 1;
@@ -445,7 +436,7 @@ filtbrace(struct token *out)
 #endif
 					return;
 				}
-			} else if (stk[stk_sp - 1].is_else) {
+			} else if (top->is_else) {
 				/* Else body already closed, just pop */
 				pop_body();
 			} else {
@@ -502,14 +493,14 @@ filtbraceChk(void)
 #ifdef DEBUG
 	if (VERBOSE(V_FILTER))
 		fdprintf(2, "BRACE: EOF synth=%d out=%d stk=%d\n",
-			 synth_balance, out_balance, stk_sp);
+			 synth_balance, out_balance, fs.sp);
 	if (synth_balance != 0)
 		fdprintf(2, "BRACE: WARNING synth_balance=%d at EOF\n",
 			 synth_balance);
 	if (out_balance != 0)
 		fdprintf(2, "BRACE: WARNING out_balance=%d at EOF\n",
 			 out_balance);
-	if (stk_sp != 0)
-		fdprintf(2, "BRACE: WARNING stk_sp=%d at EOF\n", stk_sp);
+	if (fs.sp != 0)
+		fdprintf(2, "BRACE: WARNING stk_sp=%d at EOF\n", fs.sp);
 #endif
 }

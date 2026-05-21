@@ -177,6 +177,7 @@ filtdecl(struct token *out)
 	struct token t;
 	int i;
 
+restart:
 #ifdef DEBUG
 	if (pend_has(&pb) && VERBOSE(V_FILTER))
 		fdprintf(2, "filtdecl: pop type=%d\n", pb.buf[pb.rd].type);
@@ -264,8 +265,7 @@ filtdecl(struct token *out)
 			              t.type == ENUM);
 			tarr_push(&decl_arr, &t);
 			state = ST_DECL;
-			filtdecl(out);
-			return;
+			goto restart;
 		}
 		break;
 
@@ -280,21 +280,18 @@ filtdecl(struct token *out)
 				              t.type == ENUM);
 				tarr_push(&decl_arr, &t);
 			}
-			filtdecl(out);
-			return;
+			goto restart;
 		}
 		if (t.type == SYM) {
 			if (expect_tag) {
 				/* Tag name - part of type, not variable name */
 				tarr_push(&decl_arr, &t);
 				expect_tag = 0;
-				filtdecl(out);
-				return;
+				goto restart;
 			}
 			save_name(t.v.name);
 			state = ST_NAME;
-			filtdecl(out);
-			return;
+			goto restart;
 		}
 		/* Not a valid declaration - flush type, stars, and current token */
 		pend_buf(&pb, decl_arr.buf, decl_arr.count);
@@ -315,13 +312,11 @@ filtdecl(struct token *out)
 			paren_depth = 0;
 			init_depth = 0;
 			tarr_reset(&init_arr);
-			filtdecl(out);
-			return;
+			goto restart;
 		}
 		if (t.type == COMMA) {
 			state = ST_DECL;
-			filtdecl(out);
-			return;
+			goto restart;
 		}
 		if (t.type == SEMI) {
 			finish_decl();
@@ -370,8 +365,7 @@ filtdecl(struct token *out)
 		if (t.type == COMMA && paren_depth == 0 && init_depth == 0) {
 			save_init(names[name_count-1].name);
 			state = ST_DECL;
-			filtdecl(out);
-			return;
+			goto restart;
 		}
 		if (t.type == SEMI && paren_depth == 0 && init_depth == 0) {
 			save_init(names[name_count-1].name);
@@ -380,8 +374,7 @@ filtdecl(struct token *out)
 			return;
 		}
 		tarr_push(&init_arr, &t);
-		filtdecl(out);
-		return;
+		goto restart;
 	}
 
 	tokcpy(out, &t);

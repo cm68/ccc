@@ -11,3 +11,6 @@ wsld.c:1845: symbol truncated (warning)
 wsld.c:1855: symbol truncated (warning)
 wsld.c:1855: symbol truncated (warning)
 wsld.c:2280: symbol truncated (warning)
+CTRL: WARNING balance=2 at EOF
+CTRL: WARNING stk_sp=1 at EOF
+cpp: brace mismatch at EOF: 2 unmatched {

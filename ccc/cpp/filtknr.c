@@ -216,6 +216,7 @@ filtknr(struct token *out)
 {
 	struct token t;
 
+restart:
 #ifdef DEBUG
 	if (pend_has(&pb) && VERBOSE(V_FILTER))
 		fdprintf(2, "filtknr: pop type=%d rd=%d wr=%d\n",
@@ -249,8 +250,7 @@ filtknr(struct token *out)
 				fdprintf(2, "filtknr: after buf rtype_arr.count=%d\n", rtype_arr.count);
 #endif
 			state = ST_RTYPE;
-			filtknr(out);
-			return;
+			goto restart;
 		}
 		break;
 
@@ -264,8 +264,7 @@ filtknr(struct token *out)
 					t.type, rtype_arr.count);
 #endif
 			tarr_push(&rtype_arr, &t);
-			filtknr(out);
-			return;
+			goto restart;
 		}
 		if (t.type == SYM) {
 			/* Could be function name */
@@ -275,8 +274,7 @@ filtknr(struct token *out)
 #endif
 			tokcpy(&func_name, &t);
 			state = ST_NAME;
-			filtknr(out);
-			return;
+			goto restart;
 		}
 		/* Not a function - emit buffered and this token */
 		pend_buf(&pb, rtype_arr.buf, rtype_arr.count);
@@ -293,8 +291,7 @@ filtknr(struct token *out)
 			state = ST_PARAMS;
 			paren_depth = 1;
 			param_count = 0;
-			filtknr(out);
-			return;
+			goto restart;
 		}
 		/* Not a function - emit return type, name, and this token */
 #ifdef DEBUG
@@ -317,8 +314,7 @@ filtknr(struct token *out)
 			if (paren_depth == 0) {
 				/* End of param list - check what follows */
 				state = ST_PDECL;
-				filtknr(out);
-				return;
+				goto restart;
 			}
 		} else if (t.type == LPAR) {
 			paren_depth++;
@@ -340,8 +336,7 @@ filtknr(struct token *out)
 			}
 		}
 		/* Consume commas silently */
-		filtknr(out);
-		return;
+		goto restart;
 
 	case ST_PDECL:
 		/* After ), look for param type declarations or { */
@@ -367,15 +362,13 @@ filtknr(struct token *out)
 				save_ptype(cur_pname, ptype_stars);
 			cur_pname = 0;
 			tarr_reset(&ptype_arr);  /* Reset for next declaration */
-			filtknr(out);
-			return;
+			goto restart;
 		}
 		if (is_type_tok(&t)) {
 			/* Start of param type declaration */
 			tarr_push(&ptype_arr, &t);
 			state = ST_PTYPE;
-			filtknr(out);
-			return;
+			goto restart;
 		}
 		/* Unexpected - abort */
 		abort_knr();
@@ -387,20 +380,17 @@ filtknr(struct token *out)
 		/* Buffering param type, may have seen a name (cur_pname) */
 		if (is_type_tok(&t)) {
 			tarr_push(&ptype_arr, &t);
-			filtknr(out);
-			return;
+			goto restart;
 		}
 		/* Note: lexer produces TIMES for * */
 		if (t.type == STAR || t.type == TIMES) {
 			ptype_stars++;
-			filtknr(out);
-			return;
+			goto restart;
 		}
 		if (t.type == SYM) {
 			/* Param name - remember it, stay in ST_PTYPE for ,/; */
 			cur_pname = t.v.name;
-			filtknr(out);
-			return;
+			goto restart;
 		}
 		if (t.type == COMMA) {
 			/* Multiple params with same type: int a, b; */
@@ -409,8 +399,7 @@ filtknr(struct token *out)
 			cur_pname = 0;
 			/* Reset stars for next param but keep type */
 			ptype_stars = 0;
-			filtknr(out);
-			return;
+			goto restart;
 		}
 		if (t.type == SEMI) {
 			/* End of declaration */
@@ -418,8 +407,7 @@ filtknr(struct token *out)
 				save_ptype(cur_pname, ptype_stars);
 			cur_pname = 0;
 			state = ST_PDECL;
-			filtknr(out);
-			return;
+			goto restart;
 		}
 		/* Unexpected */
 		abort_knr();

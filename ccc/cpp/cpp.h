@@ -99,6 +99,16 @@ extern void toksynthnam(struct token *out, unsigned char type, char *name);
 extern int is_type_kw(unsigned char type);
 extern int is_type_tok(struct token *t);
 
+/* Generic stack for filters */
+struct filter_stack {
+	void *buf;
+	int sp, alloc, elemsize;
+};
+extern void fstack_init(struct filter_stack *s, int initial, int elemsize);
+extern void fstack_push(struct filter_stack *s, void *data);
+extern void fstack_pop(struct filter_stack *s, void *out);
+extern void *fstack_top(struct filter_stack *s);
+
 /* Pending buffer for filters (circular, for output queues) */
 struct pendbuf {
 	struct token *buf;
@@ -118,6 +128,7 @@ extern void pend_pop(struct pendbuf *p, struct token *out);
 extern void pend_tok(struct pendbuf *p, unsigned char type);
 extern void pend_tok_at(struct pendbuf *p, unsigned char type, struct token *ref);
 extern void pend_buf(struct pendbuf *p, struct token *buf, int len);
+extern void pend_seq(struct pendbuf *p, unsigned char *seq);
 extern int filt_entry(struct pendbuf *pb, struct token *out,
                       void (*up)(struct token *), struct token *t);
 extern void emit_label(struct pendbuf *p, char pfx, int num, char sfx);

@@ -9,8 +9,9 @@
 #include "lexeme.h"
 #include <string.h>
 
-/* Simple hash table for typedef names */
-#define HASH_SIZE 127
+/* Simple hash table for typedef names.  31 buckets keeps BSS small;
+ * self-compile rarely defines more than ~20 typedefs so chains stay short. */
+#define HASH_SIZE 31
 
 static struct tdef {
 	char *name;

@@ -71,6 +71,9 @@ if [ "$just_list" -eq 0 ] && [ ! -x "$cpp_bin" ]; then
     echo "Build it first (make -C ccc/cpp cpp) or pass --cpp PATH." >&2
     exit 2
 fi
+# Resolve to absolute path - the harness cd's into source dirs, so a
+# relative --cpp arg would break.
+[ -n "$cpp_bin" ] && cpp_bin="$(readlink -f "$cpp_bin")"
 
 #
 # Corpus: each line is "DIR | GLOB | EXTRA-FLAGS"

@@ -48,7 +48,19 @@ ifeq ($(CC),ccc)
 CFLAGS = -I../../libsrc/include -I. -I../lib
 endif
 
-SOURCES = cpp.c lex.c io.c macro.c kw.c emit.c util.c kwtab.c \
+# Z80 compiler used by `sizecheck` (ccc | zc3)
+ZCC = ccc
+ZCFLAGS = -DCCC $(INC)
+ifeq ($(ZCC),zc3)
+ZCC_ASM = -S
+ZCC_ASMEXT = as
+endif
+ifeq ($(ZCC),ccc)
+ZCC_ASM = -s
+ZCC_ASMEXT = s
+endif
+
+SOURCES = cpp.c lex.c io.c macro.c kw.c emit.c util.c kwtab.c lexdata.c \
 	filtknr.c filtdecl.c filtbrace.c filtctrl.c filtutil.c typetab.c
 OBJECTS = $(SOURCES:.c=.o)
 
@@ -137,8 +149,8 @@ sizecheck: $(GENERATED)
 		err=sizecheck/$$b.err ; \
 		o="$$o sizecheck/$$b.o" ; \
 		printf "%-12s" "$$b: " ; \
-		zc3 -S -DCCC $(INC) $$f && mv $$b.as sizecheck ; \
-		zc3 -c -DCCC $(INC) -o sizecheck/$$b.o $$f && \
+		$(ZCC) $(ZCC_ASM) $(ZCFLAGS) $$f && mv $$b.$(ZCC_ASMEXT) sizecheck ; \
+		$(ZCC) -c $(ZCFLAGS) -o sizecheck/$$b.o $$f && \
 		{ echo "ok"; } || { echo "FAIL"; } \
 	done ; \
 	wssize $$o | awk '{t+=$$1;d+=$$2;b+=$$3;a+=$$4} END {print t,d,b,a}' | tee -a sizefile ; \

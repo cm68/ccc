@@ -157,6 +157,19 @@
 
 /* 226+ reserved for pass2 synthetic opcodes (see pass2/opcodes.h) */
 
+/*
+ * Token properties bitmask for fast classification
+ */
+#define TF_TYPE     0x01    /* type keyword (INT, CHAR, etc) */
+#define TF_COND     0x02    /* conditional control (IF, WHILE, FOR, SWITCH) */
+#define TF_DO       0x04    /* DO keyword */
+#define TF_ELSE     0x08    /* ELSE keyword */
+#define TF_TERM     0x10    /* statement terminator (SEMI, END) */
+#define TF_OPEN     0x20    /* opening delimiter (LPAR, LBRACK, BEGIN) */
+#define TF_CLOSE    0x40    /* closing delimiter (RPAR, RBRACK, END) */
+
+extern unsigned char token_props[];
+
 #endif /* LEXEME_H */
 
 /* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

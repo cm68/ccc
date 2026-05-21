@@ -13,13 +13,7 @@ extern int isTypedef(char *name);
 int
 is_type_kw(unsigned char type)
 {
-	return type == INT || type == CHAR || type == SHORT ||
-	       type == LONG || type == UNSIGNED || type == SIGNED ||
-	       type == VOID || type == FLOAT || type == DOUBLE ||
-	       type == STRUCT || type == UNION || type == ENUM ||
-	       type == CONST || type == STATIC || type == EXTERN ||
-	       type == REGISTER || type == AUTO || type == VOLATILE ||
-	       type == TYPEDEF;
+	return token_props[type] & TF_TYPE;
 }
 
 /*
@@ -28,11 +22,51 @@ is_type_kw(unsigned char type)
 int
 is_type_tok(struct token *t)
 {
-	if (is_type_kw(t->type))
+	if (token_props[t->type] & TF_TYPE)
 		return 1;
 	if (t->type == SYM && t->v.name && isTypedef(t->v.name))
 		return 1;
 	return 0;
+}
+
+/*
+ * Generic filter stack operations
+ */
+void
+fstack_init(struct filter_stack *s, int initial, int elemsize)
+{
+	if (initial < 4) initial = 4;
+	s->buf = malloc(initial * elemsize);
+	s->sp = 0;
+	s->alloc = initial;
+	s->elemsize = elemsize;
+}
+
+void
+fstack_push(struct filter_stack *s, void *data)
+{
+	if (s->sp >= s->alloc) {
+		int newcap = s->alloc * 2;
+		s->buf = realloc(s->buf, newcap * s->elemsize);
+		s->alloc = newcap;
+	}
+	memcpy((char *)s->buf + (s->sp++ * s->elemsize), data, s->elemsize);
+}
+
+void
+fstack_pop(struct filter_stack *s, void *out)
+{
+	if (s->sp > 0) {
+		s->sp--;
+		if (out)
+			memcpy(out, (char *)s->buf + (s->sp * s->elemsize), s->elemsize);
+	}
+}
+
+void *
+fstack_top(struct filter_stack *s)
+{
+	return s->sp > 0 ? (char *)s->buf + ((s->sp - 1) * s->elemsize) : NULL;
 }
 
 /*
@@ -122,6 +156,17 @@ pend_buf(struct pendbuf *p, struct token *buf, int len)
 	int i;
 	for (i = 0; i < len; i++)
 		pend_push(p, &buf[i]);
+}
+
+/*
+ * Push a 0-terminated sequence of synthetic token types.
+ * (E_O_F is 0 and never appears in a sequence, so it doubles as terminator.)
+ */
+void
+pend_seq(struct pendbuf *p, unsigned char *seq)
+{
+	while (*seq)
+		pend_tok(p, *seq++);
 }
 
 /*

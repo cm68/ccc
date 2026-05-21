@@ -33,8 +33,7 @@
 #define CTX_SWITCH 4
 
 /* Unified control context stack */
-#define STK_MAX 8
-static struct {
+struct stkent {
 	unsigned char ctx_type;		/* CTX_WHILE, CTX_FOR, CTX_DO, CTX_SWITCH */
 	unsigned char saved_state;
 	unsigned char saved_ctx;	/* Saved cur_ctx */
@@ -43,8 +42,8 @@ static struct {
 	/* Saved FOR increment buffer (dynamically allocated when needed) */
 	struct token *saved_incr;
 	int saved_incr_len;
-} stk[STK_MAX];
-static int stk_sp = 0;
+};
+static struct filter_stack fs;
 
 static int state = ST_NORMAL;
 static int depth = 0;			/* Paren depth while buffering */
@@ -74,13 +73,15 @@ filtctrl_init(void (*up)(struct token *))
 	upstream = up;
 	state = ST_NORMAL;
 	/* Free any leftover saved_incr buffers from previous run */
-	for (i = 0; i < stk_sp; i++) {
-		if (stk[i].saved_incr) {
-			free(stk[i].saved_incr);
-			stk[i].saved_incr = 0;
+	for (i = 0; i < fs.sp; i++) {
+		struct stkent *ent = (struct stkent *)fs.buf + i;
+		if (ent->saved_incr) {
+			free(ent->saved_incr);
+			ent->saved_incr = 0;
 		}
 	}
-	stk_sp = 0;
+	fstack_init(&fs, 8, sizeof(struct stkent));
+
 	/* Initialize dynamic buffers (first call only) */
 	if (!cond_arr.buf) {
 		tarr_init(&cond_arr, 16);
@@ -129,52 +130,51 @@ filtctrl_check(void)
 #ifdef DEBUG
 	if (VERBOSE(V_FILTER))
 		fdprintf(2, "CTRL: EOF balance=%d stk=%d\n",
-			 ctrl_balance, stk_sp);
+			 ctrl_balance, fs.sp);
 	if (ctrl_balance != 0)
 		fdprintf(2, "CTRL: WARNING balance=%d at EOF\n",
 			 ctrl_balance);
-	if (stk_sp != 0)
-		fdprintf(2, "CTRL: WARNING stk_sp=%d at EOF\n", stk_sp);
+	if (fs.sp != 0)
+		fdprintf(2, "CTRL: WARNING stk_sp=%d at EOF\n", fs.sp);
 #endif
 }
 
 static void push_ctx(unsigned char type, unsigned char saved) {
 	int i;
-	if (stk_sp < STK_MAX) {
-		stk[stk_sp].ctx_type = type;
-		stk[stk_sp].saved_state = saved;
-		stk[stk_sp].saved_ctx = cur_ctx;
-		stk[stk_sp].label_num = label_num;
-		stk[stk_sp].body_depth = body_depth;
-		/* Save FOR increment buffer (overwritten by nested loops) */
-		if (cur_ctx == CTX_FOR && incr_arr.count > 0) {
-			stk[stk_sp].saved_incr = malloc(incr_arr.count * sizeof(struct token));
-			for (i = 0; i < incr_arr.count; i++)
-				tokcpy(&stk[stk_sp].saved_incr[i], &incr_arr.buf[i]);
-			stk[stk_sp].saved_incr_len = incr_arr.count;
-		} else {
-			stk[stk_sp].saved_incr = 0;
-			stk[stk_sp].saved_incr_len = 0;
-		}
-		stk_sp++;
+	struct stkent ent;
+	ent.ctx_type = type;
+	ent.saved_state = saved;
+	ent.saved_ctx = cur_ctx;
+	ent.label_num = label_num;
+	ent.body_depth = body_depth;
+	/* Save FOR increment buffer (overwritten by nested loops) */
+	if (cur_ctx == CTX_FOR && incr_arr.count > 0) {
+		ent.saved_incr = malloc(incr_arr.count * sizeof(struct token));
+		for (i = 0; i < incr_arr.count; i++)
+			tokcpy(&ent.saved_incr[i], &incr_arr.buf[i]);
+		ent.saved_incr_len = incr_arr.count;
+	} else {
+		ent.saved_incr = 0;
+		ent.saved_incr_len = 0;
 	}
+	fstack_push(&fs, &ent);
 }
 
 static void pop_ctx(void) {
 	int i;
-	if (stk_sp > 0) {
-		stk_sp--;
-		label_num = stk[stk_sp].label_num;
-		body_depth = stk[stk_sp].body_depth;
-		cur_ctx = stk[stk_sp].saved_ctx;
-		state = stk[stk_sp].saved_state;
+	struct stkent ent;
+	if (fs.sp > 0) {
+		fstack_pop(&fs, &ent);
+		label_num = ent.label_num;
+		body_depth = ent.body_depth;
+		cur_ctx = ent.saved_ctx;
+		state = ent.saved_state;
 		/* Restore FOR increment buffer if saved */
-		if (stk[stk_sp].saved_incr) {
-			incr_arr.count = stk[stk_sp].saved_incr_len;
+		if (ent.saved_incr) {
+			incr_arr.count = ent.saved_incr_len;
 			for (i = 0; i < incr_arr.count; i++)
-				tokcpy(&incr_arr.buf[i], &stk[stk_sp].saved_incr[i]);
-			free(stk[stk_sp].saved_incr);
-			stk[stk_sp].saved_incr = 0;
+				tokcpy(&incr_arr.buf[i], &ent.saved_incr[i]);
+			free(ent.saved_incr);
 		}
 	} else {
 		state = ST_NORMAL;
@@ -184,12 +184,20 @@ static void pop_ctx(void) {
 
 /* Lookup: CTX_WHILE=1->'W', CTX_FOR=2->'F', CTX_DO=3->'D', CTX_SWITCH=4->'S' */
 static char ctx_pfx[] = "XWFDS";
-static char ctx_prefix(unsigned char t) { return ctx_pfx[t]; }
 
-/* Check if context is breakable (all loop types + switch) */
-static int is_breakable(unsigned char t) {
-	return t >= CTX_WHILE && t <= CTX_SWITCH;
-}
+/*
+ * Per-ctx target suffix for break / continue.  0 = not applicable.
+ *      [0]=unused  WHILE  FOR  DO  SWITCH
+ */
+static char brk_sfx[] = { 0, 'B', 'B', 'B', 'B' };
+static char cnt_sfx[] = { 0, 'T', 'C', 'T',  0  };
+
+/* Token sequences for loop/condition emission */
+static unsigned char loop_cond_pre[] = { IF, LPAR, BANG, LPAR, 0 };
+static unsigned char loop_cond_mid[] = { RPAR, RPAR, BEGIN, 0 };
+static unsigned char loop_cond_end[] = { SEMI, END, 0 };
+static unsigned char do_cond_pre[]   = { IF, LPAR, 0 };
+static unsigned char do_cond_mid[]   = { RPAR, BEGIN, 0 };
 
 /* Emit loop header: [init;] __XnT: if (!(cond)) goto __XnB; */
 static void emitLoopHdr(char prefix) {
@@ -204,17 +212,11 @@ static void emitLoopHdr(char prefix) {
 	}
 	emit_label(&pb, prefix, label_num, 'T');
 	if (cond_arr.count > 0) {
-		pend_tok(&pb, IF);
-		pend_tok(&pb, LPAR);
-		pend_tok(&pb, BANG);
-		pend_tok(&pb, LPAR);
+		pend_seq(&pb, loop_cond_pre);
 		pend_buf(&pb, cond_arr.buf, cond_arr.count);
-		pend_tok(&pb, RPAR);
-		pend_tok(&pb, RPAR);
-		pend_tok(&pb, BEGIN);
+		pend_seq(&pb, loop_cond_mid);
 		emit_goto(&pb, prefix, label_num, 'B');
-		pend_tok(&pb, SEMI);
-		pend_tok(&pb, END);
+		pend_seq(&pb, loop_cond_end);
 	}
 #ifdef DEBUG
 	if (VERBOSE(V_FILTER))
@@ -249,14 +251,11 @@ static void emitDoHdr(void) {
 /* Emit DO trailer: if (cond) { goto __DnT; } __DnB: */
 static void emitDoTrail(void) {
 	if (cond_arr.count > 0) {
-		pend_tok(&pb, IF);
-		pend_tok(&pb, LPAR);
+		pend_seq(&pb, do_cond_pre);
 		pend_buf(&pb, cond_arr.buf, cond_arr.count);
-		pend_tok(&pb, RPAR);
-		pend_tok(&pb, BEGIN);
+		pend_seq(&pb, do_cond_mid);
 		emit_goto(&pb, 'D', label_num, 'T');
-		pend_tok(&pb, SEMI);
-		pend_tok(&pb, END);
+		pend_seq(&pb, loop_cond_end);
 	}
 	emit_label(&pb, 'D', label_num, 'B');
 }
@@ -267,67 +266,37 @@ static void emitSwitchEnd(void) {
 }
 
 /*
- * Find innermost breakable context and emit appropriate goto.
- * Check current context first, then stack.
- * Returns 1 if handled, 0 if no context (shouldn't happen).
+ * Find innermost context matching sfx_tab (brk_sfx for break, cnt_sfx
+ * for continue) and emit goto to its label.  Walks current ctx first,
+ * then stack inner-to-outer.  Returns 1 if emitted, 0 if no match.
  */
-static int emit_break(void) {
+static int emit_jump(char *sfx_tab) {
 	int i;
-	/* Check current context first */
-	if (is_breakable(cur_ctx)) {
-		emit_goto(&pb, ctx_prefix(cur_ctx), label_num, 'B');
-		return 1;
-	}
-	/* Then check stack */
-	for (i = stk_sp - 1; i >= 0; i--) {
-		if (is_breakable(stk[i].ctx_type)) {
-			emit_goto(&pb, ctx_prefix(stk[i].ctx_type), stk[i].label_num, 'B');
-			return 1;
-		}
-	}
-	return 0;
-}
+	struct stkent *ent;
+	unsigned char ct = cur_ctx;
+	int ln = label_num;
 
-/*
- * Find innermost loop and emit continue goto.
- * Check current context first, then stack.
- * Returns 1 if handled, 0 if not in a loop.
- */
-static int emit_continue(void) {
-	int i;
-	/* Check current context first */
-	if (cur_ctx == CTX_WHILE || cur_ctx == CTX_DO) {
-		emit_goto(&pb, ctx_prefix(cur_ctx), label_num, 'T');
-		return 1;
-	}
-	if (cur_ctx == CTX_FOR) {
-		emit_goto(&pb, 'F', label_num, 'C');
-		return 1;
-	}
-	/* Then check stack (skip current switch if any) */
-	for (i = stk_sp - 1; i >= 0; i--) {
-		unsigned char t = stk[i].ctx_type;
-		if (t == CTX_WHILE || t == CTX_DO) {
-			emit_goto(&pb, ctx_prefix(t), stk[i].label_num, 'T');
+	for (i = fs.sp; ; i--) {
+		if (ct >= CTX_WHILE && ct <= CTX_SWITCH && sfx_tab[ct]) {
+			emit_goto(&pb, ctx_pfx[ct], ln, sfx_tab[ct]);
 			return 1;
 		}
-		if (t == CTX_FOR) {
-			emit_goto(&pb, 'F', stk[i].label_num, 'C');
-			return 1;
-		}
+		if (i <= 0) return 0;
+		ent = (struct stkent *)fs.buf + i - 1;
+		ct = ent->ctx_type;
+		ln = ent->label_num;
 	}
-	return 0;
 }
 
 /* Handle body state for both loops and switches */
 static int handle_body(struct token *t, unsigned char ctx_type) {
-	if (t->type == BEGIN) {
+	if (token_props[t->type] & TF_OPEN) {
 		body_depth++;
 #ifdef DEBUG
 		if (VERBOSE(V_FILTER))
 			fdprintf(2, "CTRL: body BEGIN depth=%d\n", body_depth);
 #endif
-	} else if (t->type == END) {
+	} else if (token_props[t->type] & TF_CLOSE) {
 		body_depth--;
 #ifdef DEBUG
 		if (VERBOSE(V_FILTER))
@@ -339,26 +308,24 @@ static int handle_body(struct token *t, unsigned char ctx_type) {
 		}
 	}
 	/* Nested control structures */
-	if (t->type == WHILE) {
+	if (token_props[t->type] & TF_COND) {
 		push_ctx(ctx_type, state);
 		label_num = next_label++;
 		tarr_reset(&init_arr);
 		tarr_reset(&cond_arr);
 		depth = 0;
-		state = ST_WHILE_C;
+		if (t->type == SWITCH) {
+			state = ST_SW_COND;
+			return 0;	/* Pass through */
+		} else if (t->type == WHILE) {
+			state = ST_WHILE_C;
+		} else { /* FOR */
+			tarr_reset(&incr_arr);
+			state = ST_FOR_INIT;
+		}
 		return 2;	/* Consumed, recurse */
 	}
-	if (t->type == FOR) {
-		push_ctx(ctx_type, state);
-		label_num = next_label++;
-		tarr_reset(&init_arr);
-		tarr_reset(&cond_arr);
-		tarr_reset(&incr_arr);
-		depth = 0;
-		state = ST_FOR_INIT;
-		return 2;
-	}
-	if (t->type == DO) {
+	if (token_props[t->type] & TF_DO) {
 		push_ctx(ctx_type, state);
 		label_num = next_label++;
 		emitDoHdr();
@@ -366,19 +333,12 @@ static int handle_body(struct token *t, unsigned char ctx_type) {
 		state = ST_DO_BODY;
 		return 3;	/* Return pend_pop */
 	}
-	if (t->type == SWITCH) {
-		push_ctx(ctx_type, state);
-		label_num = next_label++;
-		depth = 0;
-		state = ST_SW_COND;
-		return 0;	/* Pass through */
-	}
 	if (t->type == BREAK) {
-		if (emit_break())
+		if (emit_jump(brk_sfx))
 			return 3;
 	}
 	if (t->type == CONTINUE) {
-		if (emit_continue())
+		if (emit_jump(cnt_sfx))
 			return 3;
 	}
 	return 0;	/* Pass through */
@@ -390,6 +350,7 @@ filtctrl(struct token *out)
 	struct token t;
 	int r;
 
+restart:
 	if (filt_entry(&pb, out, upstream, &t)) {
 #ifdef DEBUG
 		track_ctrl(out);
@@ -399,26 +360,22 @@ filtctrl(struct token *out)
 
 	switch (state) {
 	case ST_NORMAL:
-		if (t.type == WHILE) {
+		if (token_props[t.type] & TF_COND) {
 			label_num = next_label++;
 			tarr_reset(&init_arr);
 			tarr_reset(&cond_arr);
 			depth = 0;
-			state = ST_WHILE_C;
-			filtctrl(out);
-			return;
+			if (t.type == SWITCH) {
+				state = ST_SW_COND;
+			} else if (t.type == WHILE) {
+				state = ST_WHILE_C;
+			} else { /* FOR */
+				tarr_reset(&incr_arr);
+				state = ST_FOR_INIT;
+			}
+			goto restart;
 		}
-		if (t.type == FOR) {
-			label_num = next_label++;
-			tarr_reset(&init_arr);
-			tarr_reset(&cond_arr);
-			tarr_reset(&incr_arr);
-			depth = 0;
-			state = ST_FOR_INIT;
-			filtctrl(out);
-			return;
-		}
-		if (t.type == DO) {
+		if (token_props[t.type] & TF_DO) {
 			label_num = next_label++;
 			emitDoHdr();
 			body_depth = 0;
@@ -426,19 +383,13 @@ filtctrl(struct token *out)
 			pop_out(out);
 			return;
 		}
-		if (t.type == SWITCH) {
-			label_num = next_label++;
-			depth = 0;
-			state = ST_SW_COND;
-		}
 		break;
 
 	case ST_WHILE_C:
 		if (t.type == LPAR) {
 			depth++;
 			if (depth == 1) {
-				filtctrl(out);
-				return;
+				goto restart;
 			}
 		} else if (t.type == RPAR) {
 			depth--;
@@ -453,35 +404,29 @@ filtctrl(struct token *out)
 		}
 		if (depth > 0)
 			tarr_push(&cond_arr, &t);
-		filtctrl(out);
-		return;
+		goto restart;
 
 	case ST_FOR_INIT:
 		if (t.type == LPAR) {
 			depth++;
 			if (depth == 1) {
-				filtctrl(out);
-				return;
+				goto restart;
 			}
 		} else if (t.type == SEMI && depth == 1) {
 			state = ST_FOR_COND;
-			filtctrl(out);
-			return;
+			goto restart;
 		}
 		if (depth > 0)
 			tarr_push(&init_arr, &t);
-		filtctrl(out);
-		return;
+		goto restart;
 
 	case ST_FOR_COND:
 		if (t.type == SEMI) {
 			state = ST_FOR_INCR;
-			filtctrl(out);
-			return;
+			goto restart;
 		}
 		tarr_push(&cond_arr, &t);
-		filtctrl(out);
-		return;
+		goto restart;
 
 	case ST_FOR_INCR:
 		if (t.type == RPAR) {
@@ -503,8 +448,7 @@ filtctrl(struct token *out)
 			depth++;
 		}
 		tarr_push(&incr_arr, &t);
-		filtctrl(out);
-		return;
+		goto restart;
 
 	case ST_LOOP_BODY:
 		r = handle_body(&t, cur_ctx);
@@ -519,8 +463,7 @@ filtctrl(struct token *out)
 			return;
 		}
 		if (r == 2) {
-			filtctrl(out);
-			return;
+			goto restart;
 		}
 		if (r == 3) {
 			pop_out(out);
@@ -538,8 +481,7 @@ filtctrl(struct token *out)
 			return;
 		}
 		if (r == 2) {
-			filtctrl(out);
-			return;
+			goto restart;
 		}
 		if (r == 3) {
 			pop_out(out);
@@ -551,16 +493,14 @@ filtctrl(struct token *out)
 		if (depth == -1) {
 			if (t.type == WHILE) {
 				depth = 0;
-				filtctrl(out);
-				return;
+				goto restart;
 			}
 			break;
 		}
 		if (t.type == LPAR) {
 			depth++;
 			if (depth == 1) {
-				filtctrl(out);
-				return;
+				goto restart;
 			}
 		} else if (t.type == RPAR) {
 			depth--;
@@ -576,8 +516,7 @@ filtctrl(struct token *out)
 		}
 		if (depth > 0)
 			tarr_push(&cond_arr, &t);
-		filtctrl(out);
-		return;
+		goto restart;
 
 	case ST_SW_COND:
 		if (t.type == LPAR)
@@ -601,8 +540,7 @@ filtctrl(struct token *out)
 			return;
 		}
 		if (r == 2) {
-			filtctrl(out);
-			return;
+			goto restart;
 		}
 		if (r == 3) {
 			pop_out(out);
