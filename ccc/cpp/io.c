@@ -158,7 +158,7 @@ pushfile(char *name)
     t->fd = open(name, 0);
     if (t->fd < 0)
         die("cannot open: %s\n", name);
-    t->name = strdup(name);
+    t->name = intern(name);
     t->offset = t->valid = 0;
     t->lineno = 1;
     t->storage = malloc(TBSIZE);
@@ -249,7 +249,7 @@ insertfile(char *name, int sys)
     if (t->fd == -1)
         die("cannot find include file: %s\n", name);
 found:
-	t->name = strdup(namebuf);
+	t->name = intern(namebuf);
 	t->offset = 0;
 	t->lineno = 1;  /* New file starts at line 1 */
 	t->storage = malloc(TBSIZE);
@@ -336,7 +336,7 @@ insertmacro(char *name, char *macbuf)
     /* if it does not */
 	t = malloc(sizeof(*t));
 	t->fd = -1;
-	t->name = strdup(name);
+	t->name = intern(name);
 	t->lineno = lineno;
 	t->offset = 0;
 	t->storage = strdup(macbuf);
@@ -472,7 +472,7 @@ again:
         }
     }
     free(t->storage);
-    /* Don't free t->name - tokens may still reference it */
+    /* t->name is interned (pool-owned) - tokens may still reference it. */
     free(t);
     if (!tbtop) {
         /* No parent textbuf, we're at EOF */
@@ -549,163 +549,17 @@ ioinit()
 }
 
 /*
- * Output buffer stack - for deferred/reordered token emission
- *
- * Mirrors the input textbuf stack. Used for:
- *   - Loop lowering (buffer body, emit prefix/suffix around it)
- *   - Declaration init splitting (buffer inits, emit after decls)
- *   - Any transformation requiring out-of-order emission
- *
- * When buffer overflows, spills to temp file. Replay reads back
- * using same I/O pattern as include file reading.
- */
-struct textbuf *obtop = NULL;
-
-#define	SPILLPAT	"/tmp/cppXXXXXX"
-char spillfile[] = SPILLPAT;
-
-/*
- * Spill output buffer to temp file
- */
-static void
-tbSpill(struct textbuf *t)
-{
-    if (t->fd < 0) {
-		strcpy(spillfile, SPILLPAT);
-        t->fd = mkstemp(spillfile);
-        if (t->fd >= 0)
-            unlink(spillfile);  /* delete on close */
-    }
-    if (t->fd >= 0) {
-        write(t->fd, t->storage, t->offset);
-        t->file_size += t->offset;
-        t->offset = 0;
-    }
-}
-
-/*
- * Fill buffer from file (for replay)
- */
-static int
-tbFill(struct textbuf *t)
-{
-    if (t->fd < 0)
-        return 0;
-    t->valid = read(t->fd, t->storage, TBSIZE);
-    t->offset = 0;
-    return t->valid;
-}
-
-/*
- * Push new output buffer onto stack
- */
-void
-outbufPush(void)
-{
-    struct textbuf *t = malloc(sizeof(*t));
-    t->fd = -1;
-    t->name = NULL;
-    t->storage = malloc(TBSIZE);
-    t->offset = 0;
-    t->valid = 0;
-    t->lineno = 0;
-    t->file_size = 0;
-    t->saved_column = 0;
-    t->direction = 'w';
-    t->prev = obtop;
-    obtop = t;
-}
-
-/*
- * Write to current output buffer or direct to .x file
+ * Write straight to the lexeme stream.  An output-buffer stack
+ * (outbufPush/Pop/Replay + spill-to-tempfile) used to live here for
+ * deferred/reordered emission, but nothing ever pushed.  All token
+ * reordering is now done in the filter pipeline (pendbuf), so direct
+ * write is sufficient.
  */
 void
 outbufWrite(void *data, int len)
 {
     extern char lexFd;
-
-    if (!obtop) {
-        write(lexFd, data, len);
-        return;
-    }
-    /* Spill if this write would overflow */
-    if (obtop->offset + len > TBSIZE)
-        tbSpill(obtop);
-    /* If still won't fit (len > TBSIZE), write directly to file */
-    if (len > TBSIZE) {
-        if (obtop->fd < 0) {
-			strcpy(spillfile, SPILLPAT);
-            obtop->fd = mkstemp(spillfile);
-            if (obtop->fd >= 0)
-                unlink(spillfile);
-        }
-        if (obtop->fd >= 0) {
-            write(obtop->fd, data, len);
-            obtop->file_size += len;
-        }
-        return;
-    }
-    memcpy(obtop->storage + obtop->offset, data, len);
-    obtop->offset += len;
-}
-
-/*
- * Pop buffer and replay contents to parent or .x file
- */
-void
-outbufReplay(void)
-{
-    struct textbuf *t = obtop;
-    char *membuf = NULL;
-    int memlen = 0;
-
-    if (!t)
-        return;
-    obtop = t->prev;
-
-    /* Save in-memory portion before file replay overwrites storage */
-    if (t->fd >= 0 && t->offset > 0) {
-        memlen = t->offset;
-        membuf = malloc(memlen);
-        memcpy(membuf, t->storage, memlen);
-    }
-
-    /* Replay file portion (if any) */
-    if (t->fd >= 0) {
-        lseek(t->fd, 0, SEEK_SET);
-        while (tbFill(t) > 0)
-            outbufWrite(t->storage, t->valid);
-        close(t->fd);
-    }
-
-    /* Replay in-memory portion */
-    if (membuf) {
-        outbufWrite(membuf, memlen);
-        free(membuf);
-    } else if (t->offset > 0) {
-        /* No spill, just in-memory data */
-        outbufWrite(t->storage, t->offset);
-    }
-
-    free(t->storage);
-    free(t);
-}
-
-/*
- * Pop and discard buffer without replay
- */
-void
-outbufPop(void)
-{
-    struct textbuf *t = obtop;
-
-    if (!t)
-        return;
-    obtop = t->prev;
-    if (t->fd >= 0)
-        close(t->fd);
-    free(t->storage);
-    free(t);
+    write(lexFd, data, len);
 }
 
 /* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

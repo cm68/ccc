@@ -77,15 +77,6 @@ error(char *msg)
 }
 
 void
-fatal(char *msg)
-{
-    char buf[256];
-    fmtstr(buf, "%s:%d: fatal: %s\n", filename ? filename : curFile, lineno, msg);
-    errout(buf);
-    exit(1);
-}
-
-void
 usage(void)
 {
     errout("usage: cpp [options] <source.c>\n");

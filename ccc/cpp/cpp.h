@@ -95,6 +95,9 @@ extern void tokcpy(struct token *d, struct token *s);
 extern void toksynth(struct token *out, unsigned char type);
 extern void toksynthnam(struct token *out, unsigned char type, char *name);
 
+/* String interning - canonical pointer for SYM/LABEL names. */
+extern char *intern(char *s);
+
 /* Shared filter utilities */
 extern int is_type_kw(unsigned char type);
 extern int is_type_tok(struct token *t);
@@ -150,9 +153,7 @@ struct textbuf {
     short offset;           /* read/write position in storage */
     short valid;            /* valid bytes (input) */
     short lineno;           /* current line # (input only) */
-    long file_size;         /* bytes written to file (output spill) */
     char saved_column;      /* saved column position for parent file */
-    char direction;         /* 'r' = reading, 'w' = writing */
     struct textbuf *prev;   /* stack link */
 };
 
@@ -206,17 +207,14 @@ extern void advance();
 extern void ioinit();
 extern void addInclude(char *name);
 
-/* io.c - output buffer stack */
-extern struct textbuf *obtop;   /* output buffer stack top */
-extern void outbufPush(void);
-extern void outbufPop(void);
-extern void outbufReplay(void);
+/* io.c - .x stream writer */
 extern void outbufWrite(void *data, int len);
 
 /* lex.c */
 extern void gettoken();
 extern void skipws();
 extern void skipws1();
+extern void skipallws();
 extern char match(token_t t);
 extern char issym();
 
@@ -246,7 +244,6 @@ extern void emitChkBraces(void);
 
 /* error handling */
 extern void error(char *msg);
-extern void fatal(char *msg);
 extern void gripe(error_t err);
 
 /* lex.c additional exports */

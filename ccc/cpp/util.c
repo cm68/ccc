@@ -7,8 +7,46 @@
 #include <unistd.h>
 
 /*
- * Copy token structure
- * Note: duplicates name for SYM tokens to avoid dangling pointers
+ * String-intern pool for SYM and LABEL token names.
+ *
+ * Identifiers flow through 5+ pipeline stages and the same name is
+ * referenced many times.  Rather than strdup at every tokcpy (the
+ * pre-existing leak) or hand-maintain single-ownership at every drop
+ * site, we keep one canonical malloc'd copy per unique string in a
+ * small hash pool.  Every tokcpy is now a flat field copy.
+ *
+ * The pool is bounded by source vocabulary, not stream length, and
+ * is intentionally never freed (cpp is a single-shot tool).
+ */
+#define INTERN_HASH 127
+static struct ient {
+    char *str;
+    struct ient *next;
+} *ipool[INTERN_HASH];
+
+char *
+intern(char *s)
+{
+    unsigned h = 0;
+    char *p;
+    struct ient *e;
+
+    for (p = s; *p; p++)
+        h = h * 31 + (unsigned char)*p;
+    h %= INTERN_HASH;
+    for (e = ipool[h]; e; e = e->next)
+        if (strcmp(e->str, s) == 0)
+            return e->str;
+    e = malloc(sizeof(*e));
+    e->str = strdup(s);
+    e->next = ipool[h];
+    ipool[h] = e;
+    return e->str;
+}
+
+/*
+ * Copy token structure.  Names are interned (shared canonical pointers),
+ * so this is a flat field-by-field copy - no allocation, no free.
  */
 void
 tokcpy(struct token *d, struct token *s)
@@ -22,10 +60,7 @@ tokcpy(struct token *d, struct token *s)
     d->type = s->type;
     d->lineno = s->lineno;
     d->filename = s->filename;
-    if (s->type == SYM && s->v.name)
-        d->v.name = strdup(s->v.name);
-    else
-        d->v.numeric = s->v.numeric;
+    d->v.numeric = s->v.numeric;
 }
 
 /*

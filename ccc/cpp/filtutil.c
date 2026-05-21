@@ -198,7 +198,7 @@ emit_label(struct pendbuf *p, char pfx, int num, char sfx)
 	struct token tmp;
 	char buf[16];
 	fmtstr(buf, "__%c%d%c", pfx, num, sfx);
-	toksynthnam(&tmp, LABEL, strdup(buf));
+	toksynthnam(&tmp, LABEL, intern(buf));
 	pend_push(p, &tmp);
 	pend_tok(p, SEMI);
 }
@@ -213,7 +213,7 @@ emit_goto(struct pendbuf *p, char pfx, int num, char sfx)
 	char buf[16];
 	pend_tok(p, GOTO);
 	fmtstr(buf, "__%c%d%c", pfx, num, sfx);
-	toksynthnam(&tmp, SYM, strdup(buf));
+	toksynthnam(&tmp, SYM, intern(buf));
 	pend_push(p, &tmp);
 }
 

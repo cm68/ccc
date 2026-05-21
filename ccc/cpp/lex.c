@@ -154,6 +154,14 @@ skipws1()
     }
 }
 
+/* Skip ' ', '\t', '\n' (used at lexer points where newlines aren't significant). */
+void
+skipallws()
+{
+    while (curchar == ' ' || curchar == '\t' || curchar == '\n')
+        advance();
+}
+
 /*
  * Skip to end of current line
  *
@@ -616,6 +624,22 @@ issym()
  *   - May insert files or macro definitions
  *   - Updates C_TRUE/C_ELSESEEN/C_TRUESEEN flags
  */
+/*
+ * Push a new conditional scope onto cond stack with truth-value v.
+ * Honors parent-false: if any enclosing #if is false, the new scope is
+ * also false regardless of its own value.
+ */
+static void
+push_cond(unsigned long v)
+{
+    struct cond *c = malloc(sizeof(*c));
+    c->next = cond;
+    cond = c;
+    if (c->next && !(c->next->flags & C_TRUE))
+        v = 0;
+    cond->flags = (v ? (C_TRUE | C_TRUESEEN) : 0);
+}
+
 void
 doCpp(unsigned char t)
 {
@@ -628,13 +652,7 @@ doCpp(unsigned char t)
     switch (t) {
     case PP_IF:
         v = readcppconst();
-        c = malloc(sizeof(*c));
-        c->next = cond;
-        cond = c;
-        /* Only set C_TRUE if this condition is true AND parent is true */
-        if (c->next && !(c->next->flags & C_TRUE))
-            v = 0;  /* parent is false, so we're false too */
-        cond->flags = (v ? (C_TRUE|C_TRUESEEN) : 0);
+        push_cond(v);
 #ifdef DEBUG
         if (VERBOSE(V_CPP)) {
             fdprintf(2,"#if %d: cond->flags = 0x%02x (C_TRUE=%d)\n",
@@ -657,13 +675,7 @@ doCpp(unsigned char t)
         advance();
         v = (maclookup(strbuf) != 0);  /* true if macro is defined */
         if (t == PP_IFNDEF) v = !v;    /* invert for ifndef */
-        c = malloc(sizeof(*c));
-        c->next = cond;
-        cond = c;
-        /* Only set C_TRUE if this condition is true AND parent is true */
-        if (c->next && !(c->next->flags & C_TRUE))
-            v = 0;  /* parent is false, so we're false too */
-        cond->flags = (v ? (C_TRUE|C_TRUESEEN) : 0);
+        push_cond(v);
         skiptoeol();
         return;
     case PP_ENDIF:
@@ -899,11 +911,8 @@ char eqtok[] = {
 void
 freetoken()
 {
-    if (cur.type == SYM && cur.v.name) {
-        free(cur.v.name);
-        cur.v.name = NULL;
-    }
-    /* Don't free STRING memory - filter buffers may still reference it */
+    /* SYM names are interned (pool-owned) - nothing to free here.
+     * STRING memory persists; filter buffers may still reference it. */
 }
 
 /*
@@ -1221,8 +1230,7 @@ gettoken()
                 /* Special handling for asm { } - capture raw text */
                 if (t == ASM) {
                     /* Skip whitespace to find { */
-                    while (curchar == ' ' || curchar == '\t' || curchar == '\n')
-                        advance();
+                    skipallws();
                     if (curchar == '{') {
                         int depth = 1;
                         char *p;
@@ -1270,8 +1278,7 @@ gettoken()
                                    prevTokType == COLON || prevTokType == LABEL ||
                                    prevTokType == 0 || prevTokType == END);
                 /* Skip whitespace to check for colon */
-                while (curchar == ' ' || curchar == '\t')
-                    advance();
+                skipws1();
                 if (curchar == ':' && can_be_label) {
                     is_label = 1;
                     advance();  /* consume the colon */
@@ -1283,7 +1290,7 @@ gettoken()
                 gripe(ER_W_SYMTRUNC);
                 strbuf[MAXSYMLEN] = '\0';
             }
-            next.v.name = strdup(strbuf);
+            next.v.name = intern(strbuf);
             break;
         }
         {
@@ -1300,8 +1307,7 @@ gettoken()
             /* Concatenate adjacent string literals (C89/C90 feature) */
             /* Skip whitespace/comments and check for another string */
         concat:
-            while (curchar == ' ' || curchar == '\t' || curchar == '\n')
-                advance();
+            skipallws();
             /* Skip C-style comments */
             if (curchar == '/' && nextchar == '*') {
                 advance(); advance();
@@ -1532,9 +1538,9 @@ readcppconst()
     struct token saved_cur;
 
     memcpy(&saved_cur, &cur, sizeof(cur));
-    /* Copy string data so freetoken() in inner gettoken() calls is safe */
-    if (cur.type == SYM && cur.v.name)
-        saved_cur.v.name = strdup(cur.v.name);
+    /* SYM names are interned - pointer copy via memcpy is sufficient.
+     * STRING memory needs a real clone (the freetoken call in inner gettoken
+     * may reuse the buffer). */
     if (cur.type == STRING && cur.v.str) {
         int len = (unsigned char)cur.v.str[0] |
                   ((unsigned char)cur.v.str[1] << 8);

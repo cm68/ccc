@@ -1,2 +1,3 @@
-CTRL: WARNING balance=1 at EOF
-cpp: brace mismatch at EOF: 1 unmatched {
+CTRL: WARNING balance=2 at EOF
+CTRL: WARNING stk_sp=1 at EOF
+cpp: brace mismatch at EOF: 2 unmatched {

@@ -16,6 +16,28 @@
 char *macbuffer;
 struct macro *macros;
 
+/* C identifier character classes - used by macexpand to scan ident tokens
+ * inside macro replacement text without dragging in ctype.h. */
+static int
+is_id_start(unsigned char c)
+{
+    return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || c == '_';
+}
+
+static int
+is_id_cont(unsigned char c)
+{
+    return is_id_start(c) || (c >= '0' && c <= '9');
+}
+
+/* Lazily allocate the shared expansion buffer (used by macdefine + macexpand). */
+static void
+macbuf_init(void)
+{
+    if (!macbuffer)
+        macbuffer = malloc(1024);
+}
+
 /*
  * Add a macro definition from command-line argument
  *
@@ -213,11 +235,7 @@ macdefine(char *s)
     struct macro *m = malloc(sizeof(*m));
     char *parms[MAXPARMS];
 
-
-    if (!macbuffer) {
-        macbuffer = malloc(1024);
-    }
-
+    macbuf_init();
     m->name = strdup(s);
     m->parmcount = 0;
     m->parms = NULL;  /* NULL means object-like macro */
@@ -393,10 +411,7 @@ macexpand(char *s)	/* the symbol we are looking up as a macro */
     unsigned char i;
     char stringify = 0;
 
-    if (!macbuffer) {
-        macbuffer = malloc(1024);
-    }
-
+    macbuf_init();
     m = maclookup(s);
     if (!m) {
         return 0;
@@ -514,15 +529,9 @@ macexpand(char *s)	/* the symbol we are looking up as a macro */
         }
 
         /* if macro text has something that looks like an arg */
-        if (((c >= 'A') && (c <= 'Z')) || 
-            ((c >= 'a') && (c <= 'z')) ||
-            (c == '_')) {
+        if (is_id_start(c)) {
             n = strbuf;
-            while ((c = *s) && 
-                   (((c >= 'A') && (c <= 'Z')) || 
-                    ((c >= 'a') && (c <= 'z')) ||
-                    ((c >= '0') && (c <= '9')) ||
-                    (c == '_'))) {
+            while ((c = *s) && is_id_cont(c)) {
                 *n++ = *s++;
             }
             *n++ = 0;
