@@ -2,7 +2,7 @@
  * c wrapper around _break system call 
  */
 
-unsigned short memtop;	/* no idea who initializes this */
+unsigned short memtop = 0;	/* initialized def: wsld does not allocate commons */
 
 int
 brk(unsigned short addr)

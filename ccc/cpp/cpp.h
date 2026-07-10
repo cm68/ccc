@@ -132,8 +132,25 @@ extern void pend_tok(struct pendbuf *p, unsigned char type);
 extern void pend_tok_at(struct pendbuf *p, unsigned char type, struct token *ref);
 extern void pend_buf(struct pendbuf *p, struct token *buf, int len);
 extern void pend_seq(struct pendbuf *p, unsigned char *seq);
+/*
+ * sdcc gives empty parens (void) semantics so it needs the full
+ * prototype; ccc pass2 cannot yet compile prototyped (or typedef'd)
+ * function-pointer parameters, so other builds use unspecified args.
+ */
+#ifdef __SDCC
 extern int filt_entry(struct pendbuf *pb, struct token *out,
                       void (*up)(struct token *), struct token *t);
+/* sdcc treats implicit declarations as (void): prototype the
+   process-control calls libsrc headers declare K&R style */
+extern int perror(char *msg);
+extern int fork(void);
+extern int wait(int *status);
+extern int execl(char *path, char *arg0, ...);
+extern int execlp(char *path, char *arg0, ...);
+#else
+extern int filt_entry(struct pendbuf *pb, struct token *out,
+                      void (*up)(), struct token *t);
+#endif
 extern void emit_label(struct pendbuf *p, char pfx, int num, char sfx);
 extern void emit_goto(struct pendbuf *p, char pfx, int num, char sfx);
 
