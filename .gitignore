@@ -31,8 +31,10 @@ tmp[0-9]*
 *.s
 core
 !libsrc/*/*.s
+!ccc/cpp/crt0cpm.s
 lib/*.O
 __pycache__/
 attic/
 root/
 .bashrc
+.aider*
