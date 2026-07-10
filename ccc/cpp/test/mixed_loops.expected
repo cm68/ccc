@@ -1,19 +1,41 @@
 # 1 "mixed_loops.c"
-
-main ( ) 
-{ 
-int i ; 
-int j ; 
-int k ; 
-
-{ i = 0 ; __F1T: ; if ( ! ( i < 3 ) ) { goto __F1B ; } { j = 0 ; 
-
-{ __W2T: ; if ( ! ( j < 3 ) ) { goto __W2B ; } { k = 0 ; 
-
-{ __D3T: ; { k = k + 1 ; 
-} 
-if ( k < 2 ) { goto __D3T ; } __D3B: ; } { ; j = j + 1 ; 
-
-
-} goto __W2T ; __W2B: ; } } __F1C: ; i = i + 1 ; goto __F1T ; __F1B: ; } } return i ; 
-} 
+main ( ) {
+    int i ;
+    int j ;
+    int k ;
+    i = 0 ;
+__F1T: ;
+    if ( ! ( i < 3 ) ) {
+        goto __F1B ;
+    }
+    {
+# 7 "mixed_loops.c"
+        j = 0 ;
+    __W2T: ;
+        if ( ! ( j < 3 ) ) {
+            goto __W2B ;
+        }
+        {
+            k = 0 ;
+        __D3T: ;
+            {
+                k = k + 1 ;
+# 12 "mixed_loops.c"
+            }
+        __D3C: ;
+            if ( k < 2 ) {
+                goto __D3T ;
+            }
+        __D3B: ;
+            j = j + 1 ;
+        }
+        goto __W2T ;
+    __W2B: ;
+# 17 "mixed_loops.c"
+    }
+__F1C: ;
+    i = i + 1 ;
+    goto __F1T ;
+__F1B: ;
+    return i ;
+}

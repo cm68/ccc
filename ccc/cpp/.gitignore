@@ -10,3 +10,6 @@ debugtags.c
 stage1/
 sizecheck/
 sizecheck1/
+langtest/
+comzc3/
+comsdcc/

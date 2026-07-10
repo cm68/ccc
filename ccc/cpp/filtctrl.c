@@ -190,7 +190,7 @@ static char ctx_pfx[] = "XWFDS";
  *      [0]=unused  WHILE  FOR  DO  SWITCH
  */
 static char brk_sfx[] = { 0, 'B', 'B', 'B', 'B' };
-static char cnt_sfx[] = { 0, 'T', 'C', 'T',  0  };
+static char cnt_sfx[] = { 0, 'T', 'C', 'C',  0  };
 
 /* Token sequences for loop/condition emission */
 static unsigned char loop_cond_pre[] = { IF, LPAR, BANG, LPAR, 0 };
@@ -248,8 +248,11 @@ static void emitDoHdr(void) {
 	emit_label(&pb, 'D', label_num, 'T');
 }
 
-/* Emit DO trailer: if (cond) { goto __DnT; } __DnB: */
+/* Emit DO trailer: __DnC: if (cond) { goto __DnT; } __DnB:
+ * __DnC precedes the condition so `continue` re-tests it (C semantics)
+ * instead of jumping to the top of the body. */
 static void emitDoTrail(void) {
+	emit_label(&pb, 'D', label_num, 'C');
 	if (cond_arr.count > 0) {
 		pend_seq(&pb, do_cond_pre);
 		pend_buf(&pb, cond_arr.buf, cond_arr.count);
@@ -307,8 +310,8 @@ static int handle_body(struct token *t, unsigned char ctx_type) {
 			return 1;	/* Body complete */
 		}
 	}
-	/* Nested control structures */
-	if (token_props[t->type] & TF_COND) {
+	/* Nested control structures (IF passes through to filtbrace) */
+	if (t->type == WHILE || t->type == FOR || t->type == SWITCH) {
 		push_ctx(ctx_type, state);
 		label_num = next_label++;
 		tarr_reset(&init_arr);
@@ -330,6 +333,7 @@ static int handle_body(struct token *t, unsigned char ctx_type) {
 		label_num = next_label++;
 		emitDoHdr();
 		body_depth = 0;
+		cur_ctx = CTX_DO;
 		state = ST_DO_BODY;
 		return 3;	/* Return pend_pop */
 	}
@@ -360,13 +364,19 @@ restart:
 
 	switch (state) {
 	case ST_NORMAL:
-		if (token_props[t.type] & TF_COND) {
+		/*
+		 * Only WHILE/FOR/SWITCH need lowering here; IF is also
+		 * flagged TF_COND but is handled entirely by filtbrace.
+		 */
+		if (t.type == WHILE || t.type == FOR || t.type == SWITCH) {
 			label_num = next_label++;
 			tarr_reset(&init_arr);
 			tarr_reset(&cond_arr);
 			depth = 0;
 			if (t.type == SWITCH) {
+				/* SWITCH itself passes through to the output */
 				state = ST_SW_COND;
+				break;
 			} else if (t.type == WHILE) {
 				state = ST_WHILE_C;
 			} else { /* FOR */
@@ -379,6 +389,7 @@ restart:
 			label_num = next_label++;
 			emitDoHdr();
 			body_depth = 0;
+			cur_ctx = CTX_DO;
 			state = ST_DO_BODY;
 			pop_out(out);
 			return;

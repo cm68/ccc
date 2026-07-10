@@ -118,7 +118,7 @@ clean:
 
 clobber: clean
 	rm -f ./cpp mkkw xdump
-	rm -rf sizecheck sizecheck1 stage1 stage2
+	rm -rf sizecheck sizecheck1 stage1 stage2 langtest comzc3 comsdcc
 
 install: cpp xdump
 	cp cpp xdump $(DEST)/bin
@@ -170,6 +170,76 @@ sizecheck1: $(GENERATED)
 	done ; \
 	sdcc -mz80 -o sizecheck1/cpp sizecheck1/*.rel
 
+# ---- CP/M .com builds (native memory footprint) -----------------------
+#
+# Each com-<cc> target builds cpp as a full CP/M .com image with a
+# different Z80 compiler and reports text/data/bss, so the native
+# footprint can be tracked against the 64KB budget.
+#
+#   com-zc3   Hi-Tech C v3.09 objects, wsld link against the ccc
+#             runtime (crtcpm + libccc/libcpm/libc/libu). Runnable
+#             in principle; fork/exec of xdump (-p/-E) will not work
+#             under CP/M.
+#   com-sdcc  sdcc objects + sdcc stdlib, custom crt0 (crt0cpm.s),
+#             syscall STUBS from sdccstub.c - size measurement only.
+#
+# Missing: com-ccc (blocked on pass1: lexdata.c array-bound folding).
+
+CPPDIR   = $(realpath .)
+LIBDIR   = $(realpath ../lib)
+LIBSRCINC = $(realpath ../../libsrc/include)
+
+com: com-zc3 com-sdcc
+
+# zc3 built MICRONIX-flavored emits .o (via asz); older builds emit .obj.
+# wsld links either.  PATH picks up asz/wsld for the driver's back end.
+ZC3 = zc3
+
+com-zc3: $(GENERATED)
+	@mkdir -p comzc3
+	@set -e; cd comzc3 ; export PATH=$(ROOTDIR)/bin:$$PATH ; \
+	for f in $(SOURCES); do \
+		b=$${f%.c}; \
+		printf "%-12s" "$$b: " ; \
+		if $(ZC3) -c -CPM -DCCC -I$(CPPDIR) -I$(LIBDIR) -I$(LIBSRCINC) \
+			$(CPPDIR)/$$f > $$b.log 2>&1 \
+			&& { [ -f $$b.o ] || [ -f $$b.obj ]; }; then \
+			echo ok; \
+		else echo FAIL; cat $$b.log; exit 1; fi \
+	done
+	cd comzc3 && $(ROOTDIR)/bin/wsld -s -o cpp.ws \
+		-Ttext=0x100 -Tdata=0x100 -Tbss=0x100 \
+		$(ROOTDIR)/lib/crtcpm.o $$(ls *.o *.obj 2>/dev/null) \
+		-L$(ROOTDIR)/lib -lccc -lcpm -lc -lu -lc
+	cd comzc3 && tail -c +17 cpp.ws > cpp-zc3.com
+	@$(ROOTDIR)/bin/wssize comzc3/cpp.ws | sed 's/cpp.ws/cpp-zc3.com/'
+
+com-sdcc: $(GENERATED)
+	@mkdir -p comsdcc
+	@set -e; cd comsdcc ; for f in $(SOURCES) sdccstub.c; do \
+		b=$${f%.c}; \
+		printf "%-12s" "$$b: " ; \
+		if sdcc -c -mz80 -DCCC -I$(CPPDIR) -I$(LIBDIR) -I$(LIBSRCINC) \
+			$(CPPDIR)/$$f > $$b.log 2>&1; then \
+			echo ok; \
+		else echo FAIL; cat $$b.log; exit 1; fi \
+	done
+	cd comsdcc && sdcc -c -mz80 -I$(LIBDIR) $(LIBDIR)/libutil.c
+	cd comsdcc && sdasz80 -o crt0cpm.rel $(CPPDIR)/crt0cpm.s
+	cd comsdcc && sdcc -mz80 --no-std-crt0 --code-loc 0x0148 --data-loc 0 \
+		-o cpp.ihx crt0cpm.rel $(SOURCES:.c=.rel) libutil.rel sdccstub.rel
+	cd comsdcc && makebin -p -s 65536 cpp.ihx cpp.bin && \
+		tail -c +257 cpp.bin > cpp-sdcc.com
+	@awk '$$1 ~ /^_(CODE|HOME|DATA|INITIALIZER|INITIALIZED|GSINIT|GSFINAL|HEAP)$$/ \
+		&& $$6 == "bytes" { sz[$$1] = $$5 + 0 } \
+		END { text = 72 + sz["_CODE"] + sz["_HOME"] + sz["_INITIALIZER"] \
+			+ sz["_GSINIT"] + sz["_GSFINAL"]; \
+		data = sz["_INITIALIZED"]; bss = sz["_DATA"] + sz["_HEAP"]; \
+		printf "%7s\t%7s\t%7s\t%7s\t%7s\t%s\n", "text", "data", "bss", "dec", "hex", "filename"; \
+		printf "%7d\t%7d\t%7d\t%7d\t%7x\t%s\n", text, data, bss, \
+			text+data+bss, text+data+bss, "cpp-sdcc.com (syscalls stubbed)" }' \
+		comsdcc/cpp.map
+
 # Individual stage1 file rules
 .SECONDARY:
 
@@ -198,6 +268,38 @@ $(OUTDIR)/%.s: $(OUTDIR)/%.1 $(OUTDIR)/%.2 $(C1)
 regression: cpp
 	../../tests/regress.sh --filter ccc/cpp/ $(REGRESS_FLAGS)
 
-.PHONY: all clean regen stage1 install clobber sizefile sizecheck sizecheck1 regression
+# Language conformance: run cpp over its own sources (self-compile check).
+# Each source must be legal input per INPUT.md (validate_src), cpp must
+# consume it, and the .x/.i output must be to-spec per OUTPUT.md for the
+# subsequent passes (validate_x, validate_i).
+langtest: cpp xdump
+	@mkdir -p langtest
+	@status=0 ; export PATH=.:$$PATH ; for f in $(SOURCES); do \
+		b=$${f%.c}; \
+		err=langtest/$$b.err ; \
+		printf "%-12s" "$$b: "; \
+		if ! python3 validate_src.py $$f > $$err 2>&1; then \
+			echo "FAIL (src)"; status=1; \
+		elif ! ./cpp -DCCC $(INC) -p -o langtest/$$b $$f 2>> $$err; then \
+			echo "FAIL (cpp)"; status=1; \
+		elif ! python3 validate_x.py langtest/$$b.x >> $$err 2>&1; then \
+			echo "FAIL (x)"; status=1; \
+		elif ! python3 validate_i.py langtest/$$b.i >> $$err 2>&1; then \
+			echo "FAIL (i)"; status=1; \
+		else \
+			echo "ok"; \
+			grep '^warning:' $$err || true; \
+			rm -f $$err; \
+		fi \
+	done ; \
+	if [ $$status -ne 0 ]; then \
+		echo "langtest FAILED - details in langtest/*.err" ; \
+	fi ; \
+	exit $$status
+
+test: langtest
+	cd test && ./runtest.sh
+
+.PHONY: all clean regen stage1 install clobber sizefile sizecheck sizecheck1 regression langtest test com com-zc3 com-sdcc
 
 # vim: tabstop=4 shiftwidth=4 noexpandtab:

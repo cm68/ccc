@@ -15,15 +15,25 @@ The preprocessor performs full C preprocessing including:
 
 | File | Lines | Purpose |
 |------|-------|---------|
-| cpp.c | 173 | Main entry point, command-line processing |
-| lex.c | 1566 | Lexer/tokenizer with embedded CPP directive handling |
-| macro.c | 567 | Macro definition, lookup, and expansion |
-| io.c | 718 | Unified character stream (files, includes, macros), output buffer stack |
-| emit.c | 483 | Token output to .x and .i files |
+| cpp.c | 345 | Main entry point, command-line processing, filter-chain wiring |
+| lex.c | 1608 | Lexer/tokenizer with embedded CPP directive handling |
+| macro.c | 582 | Macro definition, lookup, and expansion |
+| io.c | 565 | Unified character stream (files, includes, macros), output buffer stack |
+| emit.c | 283 | Binary token output to the `.x` stream |
 | kw.c | 264 | Compressed keyword lookup tables |
-| knr.c | 2148 | Token filter: K&R conversion, brace insertion, loop lowering |
-| util.c | 171 | Error reporting, expression parsing, utilities |
-| cpp.h | 234 | Common definitions and data structures |
+| filtknr.c | 420 | Filter: K&R → ANSI function-definition conversion |
+| filtdecl.c | 381 | Filter: local declaration/initializer separation, typedef tracking |
+| filtbrace.c | 545 | Filter: brace insertion around control-structure bodies |
+| filtctrl.c | 560 | Filter: control-flow lowering (loops → if/goto/label) |
+| filtutil.c | 253 | Shared filter helpers (pending buffers, stacks, label emit) |
+| util.c | 276 | Error reporting, expression parsing, utilities |
+| cpp.h | 298 | Common definitions and data structures |
+| lexeme.h | 175 | Token code definitions, shared with pass1 |
+
+> The token filter is a **pull-based pipeline** of four stages
+> (`filtknr → filtdecl → filtbrace → filtctrl`), not a single `knr.c` module.
+> See [FILTERS.md](FILTERS.md) for the pipeline detail and [OUTPUT.md](OUTPUT.md)
+> for the guarantees it places on the output stream.
 
 ## Command Line
 
@@ -32,51 +42,66 @@ cpp [options] <source.c>
 ```
 
 **Options:**
-- `-o <base>` - Output base name (produces `<base>.x` and `<base>.i`)
+- `-o <base>` - Output base name (produces `<base>.x`; `<base>.i` with `-p`)
 - `-I<dir>` - Add user include directory
 - `-i<dir>` - System include directory (default: `/usr/include` or `libsrc/include`)
 - `-D<name>[=val]` - Define macro (defaults to value `1` if no `=val`)
-- `-E` - Preprocess only (TODO: not yet implemented)
+- `-p` - Also emit a human-readable `<base>.i` (forks `xdump`)
+- `-E` - Preprocess and dump readable output to stdout (forks `xdump`)
+- `-N` - Suppress line markers (`LINENO`/`NEWLINE`) in the `.x` stream
 
 **Output Files:**
-- `<base>.x` - Binary lexeme stream for pass1 compiler
-- `<base>.i` - Human-readable preprocessed source
+- `<base>.x` - Binary lexeme stream for pass1 compiler (always written)
+- `<base>.i` - Human-readable preprocessed source (only with `-p`; rendered by `xdump`)
+
+The `.x` stream is the real output; the `.i` form is produced by decoding `.x`
+with `xdump`, not written directly by the preprocessor.
 
 ## Architecture
 
 ### Processing Pipeline
 
 ```
-Source File → Character Stream → Lexer → Token Stream → K&R Filter → Emitter → .x/.i
-                    ↑                         |
-              Include Files                   |
-              Macro Expansions ←──────────────┘
+Source File → Character Stream → Lexer → filtknr → filtdecl → filtbrace → filtctrl → Emitter → .x
+                    ↑                        └──────────── token filter pipeline ───────────┘
+              Include Files
+              Macro Expansions
 ```
 
-The token filter (`knr.c`) intercepts tokens between the lexer and emitter, performing several transformations:
-- K&R to ANSI function definition conversion
-- Brace insertion around single-statement if/else bodies
-- Loop lowering: while/for/do converted to if/goto/label sequences
-- Local declaration initializer splitting (`int x = 5;` → `int x; x = 5;`)
-- Break/continue resolution to goto statements
-- Typedef tracking for proper type token recognition
+The filter pipeline is **pull-based**: the main loop calls `filtctrl()`, which
+pulls from `filtbrace()`, which pulls from `filtdecl()`, then `filtknr()`, and
+finally the lexer wrapper `lex_get()`. Each stage performs one transformation:
+
+- `filtknr` - K&R to ANSI function-definition conversion (file scope only)
+- `filtdecl` - local declaration initializer splitting (`int x = 5;` →
+  `int x; x = 5;`); typedef tracking for type-name recognition
+- `filtbrace` - brace insertion around single-statement control bodies
+  (if/else/while/for/do)
+- `filtctrl` - loop lowering (while/for/do → if/goto/label) and
+  break/continue → goto resolution
+
+See [FILTERS.md](FILTERS.md) for stage-by-stage detail and [OUTPUT.md](OUTPUT.md)
+for the resulting output-language guarantees.
 
 ### Program Flow (cpp.c)
 
 ```c
 main() {
     1. Parse command-line arguments
-    2. Create output files: <basename>.x and <basename>.i
+    2. Create output file: <basename>.x
     3. Add include paths (current directory first, then -I paths)
-    4. Call process(sourcefile)
+    4. filterInit()            // Wire up the filtknr→filtdecl→filtbrace→filtctrl chain
+    5. Call process(sourcefile)
+    6. If -p/-E: fork xdump to render/dump the .i form
 }
 
 process(sourcefile) {
     1. pushfile(sourcefile)    // Push source onto textbuf stack
     2. ioinit()                // Prime lexer with first two characters
-    3. gettoken(); gettoken(); // Fill cur and next tokens
-    4. Loop: emitCurToken() and gettoken() until E_O_F
-    5. Emit final E_O_F token
+    3. emitFileStart()         // Emit initial LINENO marker
+    4. gettoken(); gettoken(); // Fill cur and next tokens
+    5. Loop: filtctrl(&t); emitStructTok(&t) until t.type == E_O_F
+    6. Brace-balance checks, then emit final E_O_F token
 }
 ```
 
@@ -84,256 +109,57 @@ process(sourcefile) {
 
 # Lexeme Stream Format (.x file)
 
-The lexeme stream is a compact binary format optimized for fast parsing by pass1. All numeric values are encoded as ASCII hexadecimal characters.
+The lexeme stream is a flat sequence of tokens in program order, terminated by a
+single `E_O_F` (0x00) byte. It is **raw little-endian binary** — token codes are
+the values defined in [`lexeme.h`](lexeme.h) and shared verbatim with pass1, and
+multi-byte fields are emitted as raw bytes (not ASCII hex).
+
+> **Authoritative spec:** the complete token-code tables, payload encodings, and
+> line-marker rules live in [OUTPUT.md](OUTPUT.md). This section is a summary;
+> if the two ever disagree, OUTPUT.md wins.
 
 ## Token Encoding Summary
 
-| Token Type | Prefix | Format | Description |
-|------------|--------|--------|-------------|
-| Simple | (none) | `<byte>` | Single byte token value |
-| Symbol | `5` | `5` + 2-hex-len + bytes | Identifier |
-| Number | `9` | `9` + 8-hex-value | Integer constant |
-| Float | `b` | `b` + 8-hex-ieee754 | IEEE 754 float bits |
-| String | `"` | `"` + 2-hex-len + bytes | String literal |
-| Label | `3` | `3` + 2-hex-len + bytes | Statement label |
-| Asm | `A` | `A` + 4-hex-len + bytes | Inline assembly block |
-| EOF | `\0` | `<0x00>` | End of file |
+| Token Type | Code | Format |
+|------------|-----:|--------|
+| Simple | (self) | 1 byte: the token code from `lexeme.h` |
+| Symbol (`SYM`) | 20 | code + 1-byte len + name bytes |
+| Number (`NUMBER`) | 21 | code + 4-byte LE integer |
+| String (`STRING`) | 22 | code + 2-byte LE len + bytes |
+| Float (`FNUMBER`) | 23 | code + 4-byte LE IEEE-754 bits |
+| Label (`LABEL`) | 112 | code + 1-byte len + name bytes |
+| Line marker (`LINENO`) | 116 | code + 2-byte LE line + 1-byte namelen + name |
+| Newline (`NEWLINE`) | 117 | 1 byte: "advance current line by 1" |
+| Asm string (`ASMSTR`) | 118 | code + 2-byte LE len + bytes |
+| Keyword | 128–160 | 1 byte: keyword code from `lexeme.h` |
+| EOF (`E_O_F`) | 0 | single `0x00` byte, ends the stream |
 
-## Detailed Token Formats
+Simple tokens cover delimiters (`SEMI`=1, `BEGIN`=2, …), operators
+(`PLUS`=40, `ASSIGN`=80, `ARROW`=50, …), and keywords (`INT`=128, `IF`=147, …).
+`SIZEOF_KW` is normalized to `SIZEOF` (91) on emission, and `CONST`/`VOLATILE`
+are silently dropped. All values are in `lexeme.h`.
 
-### Simple Tokens (1 byte)
-
-Keywords, operators, and punctuation are emitted as single bytes. The token value is typically the ASCII character or a predefined enum value.
-
-**C Keywords:**
-```
-Token   Byte  Char    Token     Byte  Char
-------  ----  ----    ------    ----  ----
-ASM     0x41  'A'     AUTO      0x6f  'o'
-BREAK   0x42  'B'     CASE      0x43  'C'
-CHAR    0x63  'c'     CONST     0x6b  'k'
-CONTINUE 0x4e 'N'     DEFAULT   0x4f  'O'
-DO      0x44  'D'     DOUBLE    0x64  'd'
-ELSE    0x45  'E'     ENUM      0x65  'e'
-EXTERN  0x78  'x'     FLOAT     0x66  'f'
-FOR     0x46  'F'     GOTO      0x47  'G'
-IF      0x49  'I'     INT       0x69  'i'
-LONG    0x6c  'l'     REGISTER  0x72  'r'
-RETURN  0x52  'R'     SHORT     0x73  's'
-SIZEOF  0x7a  'z'     STATIC    0x70  'p'
-STRUCT  0x61  'a'     SWITCH    0x53  'S'
-TYPEDEF 0x74  't'     UNION     0x6d  'm'
-UNSIGNED 0x75 'u'     VOID      0x76  'v'
-VOLATILE 0x34 '4'     WHILE     0x57  'W'
-```
-
-**Punctuation (literal ASCII):**
-```
-{  }  [  ]  (  )  ;  ,  .  :  ?
-```
-
-**Operators:**
-```
-Token    Byte  Char    Description
-------   ----  ----    -----------
-ASSIGN   0x3d  '='     Assignment
-PLUS     0x2b  '+'     Addition
-MINUS    0x2d  '-'     Subtraction
-STAR     0x2a  '*'     Multiply/pointer
-DIV      0x2f  '/'     Division
-MOD      0x25  '%'     Modulo
-AND      0x26  '&'     Bitwise AND
-OR       0x7c  '|'     Bitwise OR
-XOR      0x5e  '^'     Bitwise XOR
-LT       0x3c  '<'     Less than
-GT       0x3e  '>'     Greater than
-BANG     0x21  '!'     Logical NOT
-TWIDDLE  0x7e  '~'     Bitwise NOT
-
-INCR     0x55  'U'     ++
-DECR     0x56  'V'     --
-ARROW    0x71  'q'     ->
-EQ       0x51  'Q'     ==
-NEQ      0x6e  'n'     !=
-LE       0x4c  'L'     <=
-GE       0x67  'g'     >=
-LAND     0x6a  'j'     &&
-LOR      0x68  'h'     ||
-LSHIFT   0x79  'y'     <<
-RSHIFT   0x77  'w'     >>
-
-PLUSEQ   0x50  'P'     +=
-SUBEQ    0xdf  (n/a)   -=
-MULTEQ   0x54  'T'     *=
-DIVEQ    0x32  '2'     /=
-MODEQ    0xfe  (n/a)   %=
-ANDEQ    0xc6  (n/a)   &=
-OREQ     0x31  '1'     |=
-XOREQ    0x58  'X'     ^=
-LSHIFTEQ 0x30  '0'     <<=
-RSHIFTEQ 0x36  '6'     >>=
-```
-
-### Symbol Token (SYM = `5`)
-
-Format: `5` + 2-hex-length + symbol-bytes
-
-```
-5 LL BB BB BB ...
-│ │  └──────────── Symbol characters (LL bytes)
-│ └───────────────── Length as 2 hex digits (00-ff)
-└─────────────────── Token type marker
-
-Example: identifier "count"
-  5 05 c o u n t
-  │ │  └────────── "count" (5 bytes)
-  │ └───────────── Length = 05 hex
-  └─────────────── SYM token
-
-Hex bytes: 35 30 35 63 6f 75 6e 74
-          '5''0''5''c''o''u''n''t'
-```
-
-### Number Token (NUMBER = `9`)
-
-Format: `9` + 8-hex-value (32-bit unsigned, zero-padded)
-
-```
-9 HH HH HH HH
-│ └───────────── Value as 8 hex digits
-└─────────────── Token type marker
-
-Example: 255
-  9 00 00 00 ff
-  Hex bytes: 39 30 30 30 30 30 30 66 66
-
-Example: 0x1234
-  9 00 00 12 34
-  Hex bytes: 39 30 30 30 30 31 32 33 34
-
-Example: 'A' (character literal = 65)
-  9 00 00 00 41
-  Hex bytes: 39 30 30 30 30 30 30 34 31
-```
-
-### Float Token (FNUMBER = `b`)
-
-Format: `b` + 8-hex-ieee754-bits (32-bit IEEE 754 single precision)
-
-```
-b HH HH HH HH
-│ └───────────── IEEE 754 bits as 8 hex digits
-└─────────────── Token type marker
-
-Example: 3.14159 (IEEE 754: 0x40490fd0)
-  b 40 49 0f d0
-  Hex bytes: 62 34 30 34 39 30 66 64 30
-
-Example: 1.0 (IEEE 754: 0x3f800000)
-  b 3f 80 00 00
-  Hex bytes: 62 33 66 38 30 30 30 30 30
-```
-
-### String Token (STRING = `"`)
-
-Format: `"` + 2-hex-length + string-bytes
-
-**Note:** Strings use a counted format (first byte is length) internally, and can contain embedded null bytes.
-
-```
-" LL BB BB BB ...
-│ │  └───────────── String content (LL bytes, no null terminator)
-│ └────────────────── Length as 2 hex digits
-└──────────────────── Token type marker (ASCII 0x22)
-
-Example: "hello"
-  " 05 h e l l o
-  Hex bytes: 22 30 35 68 65 6c 6c 6f
-
-Example: "a\0b" (string with embedded null)
-  " 03 a <NUL> b
-  Hex bytes: 22 30 33 61 00 62
-```
-
-### Label Token (LABEL = `3`)
-
-Format: `3` + 2-hex-length + label-bytes
-
-```
-3 LL BB BB BB ...
-│ │  └───────────── Label name (LL bytes)
-│ └────────────────── Length as 2 hex digits
-└──────────────────── Token type marker
-
-Example: label "loop:"
-  3 04 l o o p
-  Hex bytes: 33 30 34 6c 6f 6f 70
-```
-
-### Asm Token (ASM = `A`)
-
-Format: `A` + 4-hex-length + asm-bytes
-
-Used for inline assembly blocks `asm { ... }`. Uses 4 hex digits for length to support larger assembly blocks.
-
-```
-A LL LL BB BB BB ...
-│ │    └───────────── Assembly text (LLLL bytes)
-│ └───────────────────── Length as 4 hex digits
-└─────────────────────── Token type marker
-
-Example: asm { nop }
-  A 00 03 n o p
-  Hex bytes: 41 30 30 30 33 6e 6f 70
-```
-
-### EOF Token
-
-Format: Single null byte `0x00`
-
-```
-Hex bytes: 00
-```
-
-## Complete Lexeme Stream Example
+## Worked Example
 
 Source code:
 ```c
 int x = 42;
 ```
 
-Lexeme stream breakdown:
+Emitted `.x` bytes (line markers omitted for clarity):
 ```
-i            INT keyword (0x69)
-5 01 x       SYM "x"
-=            ASSIGN (0x3d)
-9 00 00 00 2a NUMBER 42
-;            SEMI (0x3b)
-\0           EOF (0x00)
-```
-
-Raw hex bytes:
-```
-69 35 30 31 78 3d 39 30 30 30 30 30 30 32 61 3b 00
+80            INT        (128)
+14 01 78      SYM "x"    (20, len 1, 'x')
+50            ASSIGN     (80)
+15 2a 00 00 00  NUMBER 42 (21, value 0x0000002a little-endian)
+01            SEMI       (1)
+00            E_O_F      (0)
 ```
 
-## Source with Multiple Tokens
-
-Source code:
-```c
-char *p = "hello";
-```
-
-Lexeme stream:
-```
-c                    CHAR (0x63)
-*                    STAR (0x2a)
-5 01 p               SYM "p"
-=                    ASSIGN (0x3d)
-" 05 h e l l o       STRING "hello"
-;                    SEMI (0x3b)
-\0                   EOF (0x00)
-```
+Note `NUMBER 42` is five raw bytes (`15 2a 00 00 00`) — the tag plus a 4-byte
+little-endian value. It is **not** the tag followed by ASCII hex digits. The
+real bytes for a lowered `while` loop can be inspected with
+`od -An -tx1 <file>.x`; a decoded rendering is in `test/while.expected`.
 
 ---
 
@@ -728,9 +554,14 @@ Expansion steps:
 
 ---
 
-# Token Filter (knr.c)
+# Token Filter Pipeline
 
-The token filter sits between the lexer and the emitter, transforming the token stream before output. It operates as a state machine with multiple transformation modes.
+The token filter sits between the lexer and the emitter, transforming the token
+stream before output. It is a **pull-based pipeline of four stages** —
+`filtknr → filtdecl → filtbrace → filtctrl` — each a small state machine that
+performs one transformation and pulls tokens from the stage above it. The
+sections below describe those transformations by effect; for the per-stage
+state machines, buffers, and helper API see [FILTERS.md](FILTERS.md).
 
 ## K&R to ANSI Conversion
 
@@ -864,25 +695,22 @@ typedef int error_t;
 void gripe(error_t code) { ... }  // error_t recognized as type
 ```
 
-## State Machine
+## Pipeline Stages
 
-| State | Description |
-|-------|-------------|
-| ST_NORMAL | Default pass-through mode |
-| ST_BUFFERING | Buffering potential K&R function definition |
-| ST_PARAMS | Inside function parameter list |
-| ST_POSTPAREN | After `)`, checking for K&R declarations |
-| ST_DECLS | Parsing K&R type declarations |
-| ST_TYPEDEF | Parsing typedef to capture name |
-| ST_CTRL_COND | Inside if condition (for brace insertion) |
-| ST_CTRL_PEND | After if condition, checking for `{` |
-| ST_CTRL_BODY | Inside synthetic if block, waiting for `;` |
-| ST_LOCAL_DECL | Buffering local declaration |
-| ST_LOCAL_POST | After local decl `;`, checking for more |
-| ST_LOOP_COND | Buffering while/for loop condition |
-| ST_LOOP_BODY | Inside loop body, tracking brace depth |
-| ST_DO_BODY | Inside do body, waiting for while keyword |
-| ST_DO_COND | Buffering do-while condition |
+Each transformation above is a separate filter stage. Rather than one shared
+state machine, every stage keeps its own local state, token buffers, and (where
+needed) a context stack for nesting:
+
+| Stage | File | Responsibility | Scope |
+|-------|------|----------------|-------|
+| `filtknr` | filtknr.c | K&R → ANSI parameter lists | file scope |
+| `filtdecl` | filtdecl.c | initializer splitting; typedef tracking | function bodies |
+| `filtbrace` | filtbrace.c | brace insertion on control bodies | all |
+| `filtctrl` | filtctrl.c | loop lowering; break/continue → goto | all |
+
+The shared helpers (pending buffers, filter stacks, label/goto emission) live in
+`filtutil.c`. Per-stage state names and the helper API are documented in
+[FILTERS.md](FILTERS.md).
 
 ---
 
@@ -992,19 +820,34 @@ When compiled with `-DDEBUG`, verbose output controlled by `VERBOSE()` macro:
 1. **Macro text restrictions** - Values typically single tokens (more restrictive than standard cpp)
 2. **Function-like detection** - `(` must immediately follow name, no whitespace
 3. **No `signed` keyword** - Inherited from compiler limitation
-4. **Anonymous struct/union** - Don't work properly
-5. **Nested comments** - Not supported (first `*/` closes)
-6. **-E mode** - Not yet implemented
+4. **Nested comments** - Not supported (first `*/` closes)
 
 ---
 
 # Integration with Compiler
 
 The preprocessor produces:
-- `.x` file: Consumed by pass1 (cc1) parser
-- `.i` file: Human-readable for debugging
+- `.x` file: binary lexeme stream consumed by pass1 (always written)
+- `.i` file: human-readable form for debugging, produced on demand by decoding
+  `.x` with `xdump` (`-p` writes it, `-E` dumps it to stdout)
 
 Token encoding designed for:
-- Minimal size (compact hex encoding)
-- Fast parsing (fixed-format fields)
+- Minimal size (raw binary, no ASCII-hex expansion)
+- Fast parsing (fixed-format fields, token codes shared via `lexeme.h`)
 - Embedded nulls in strings (counted format)
+
+---
+
+# Testing
+
+- `make test` — language-conformance sweep (`langtest`) followed by the
+  filter/loop-lowering suite (`test/runtest.sh`).
+- `make langtest` — the self-compile contract: every file in `SOURCES` is
+  linted against the input language ([INPUT.md](INPUT.md), `validate_src.py`),
+  preprocessed with `-DCCC`, and the resulting `.x`/`.i` checked against the
+  output language ([OUTPUT.md](OUTPUT.md), `validate_x.py` wire format +
+  normalized grammar, `validate_i.py`). Failures leave details in
+  `langtest/<file>.err`.
+- `make regression` — byte-exact baseline harness (`tests/regress.sh`).
+- `test/runtest.sh -g` regenerates the expected outputs after an intentional
+  change to lowering shapes or `xdump` rendering.

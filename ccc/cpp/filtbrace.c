@@ -37,6 +37,19 @@ static unsigned char ctrl_type = 0;
 static struct token saved_ctrl;	/* Control keyword deferred from ST_PENDING */
 static int has_saved = 0;
 
+/*
+ * Tracking for user-braced `do { ... } while (cond);`.
+ * brace_depth counts every input { (+1) and } (-1) seen by filtbrace.
+ * do_stack[] holds the brace_depth value at each `do {` we are still inside.
+ * When } drops brace_depth back to (top - 1), the matching `}` has arrived
+ * and we transition to ST_DO_WHILE so the trailing `while (cond);` is not
+ * mis-parsed as a fresh while loop.
+ */
+#define DO_STACK_MAX 16
+static int brace_depth = 0;
+static int do_stack[DO_STACK_MAX];
+static int do_sp = 0;
+
 /* Pending token queue - dynamically allocated */
 static struct pendbuf pb;
 
@@ -59,6 +72,8 @@ filtbrace_init(void (*up)(struct token *))
 	fstack_init(&fs, 8, sizeof(struct stkent));
 	has_saved = 0;
 	pend_init(&pb, 8);
+	brace_depth = 0;
+	do_sp = 0;
 #ifdef DEBUG
 	synth_balance = 0;
 	out_balance = 0;
@@ -177,6 +192,11 @@ filtbrace(struct token *out)
 			tokcpy(out, &t);
 			return;
 		}
+		/* Track depth of user-written braces from the input stream. */
+		if (t.type == BEGIN)
+			brace_depth++;
+		else if (t.type == END)
+			brace_depth--;
 	}
 
 #ifdef DEBUG
@@ -187,6 +207,17 @@ filtbrace(struct token *out)
 
 	switch (state) {
 	case ST_NORMAL:
+		/*
+		 * Matching `}` of a user-braced `do { ... }` body: expect
+		 * the trailing while(cond);  brace_depth was already
+		 * decremented for this END.
+		 */
+		if (t.type == END && do_sp > 0 &&
+		    do_stack[do_sp - 1] == brace_depth + 1) {
+			do_sp--;
+			state = ST_DO_WHILE;
+			break;
+		}
 		if (token_props[t.type] & TF_COND) {
 			ctrl_type = t.type;
 			state = ST_COND;
@@ -215,6 +246,14 @@ filtbrace(struct token *out)
 	case ST_PENDING:
 		if (t.type == BEGIN) {
 			/* User wrote braces */
+			if (ctrl_type == DO && do_sp < DO_STACK_MAX) {
+				/*
+				 * `do {` - remember this brace depth so the
+				 * matching `}` switches to ST_DO_WHILE
+				 * regardless of fs.sp.
+				 */
+				do_stack[do_sp++] = brace_depth;
+			}
 			if (fs.sp > 0) {
 				/* Inside synthetic body - track nested user-braced control */
 				state = ST_BODY;

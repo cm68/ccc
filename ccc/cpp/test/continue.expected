@@ -1,51 +1,24 @@
 # 1 "continue.c"
-# +1
-main ( ) 
-# +1
-{
-# +1
-int i ;
-# +1
-int sum ;
-# +1
-sum = 0 ;
-# 8 "continue.c"
-{
-# 7 "continue.c"
-i = 0 
-# +1
-;
+main ( ) {
+    int i ;
+    int sum ;
+    sum = 0 ;
+    i = 0 ;
 __F1T: ;
-if ( ! ( 
+    if ( ! ( i < 10 ) ) {
+        goto __F1B ;
+    }
+    {
 # 7 "continue.c"
-i < 10 
-# +1
-) ) {
-goto __F1B ;
-}
-# 7 "continue.c"
-{
-# +1
-if ( i == 5 ) {
-# 11 "continue.c"
-goto __F1C 
-# 9 "continue.c"
-;
-# +1
-}
-# +1
-sum = sum + i ;
-# +1
-}
-# +1
+        if ( i == 5 ) {
+            goto __F1C ;
+        }
+        sum = sum + i ;
+    }
 __F1C: ;
-# 7 "continue.c"
-i = i + 1 
-# 13 "continue.c"
-;
-goto __F1T ;
+    i = i + 1 ;
+    goto __F1T ;
 __F1B: ;
-}
-return sum ;
-# +1
+    return sum ;
+# 13 "continue.c"
 }

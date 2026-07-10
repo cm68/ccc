@@ -1,41 +1,19 @@
 # 1 "multiline_for.c"
-# +1
-main ( ) 
-# +1
-{
-# +1
-int i ;
-# +1
-int x ;
-# 11 "multiline_for.c"
-{
-# 7 "multiline_for.c"
-i = 0 
-# 11 "multiline_for.c"
-;
+main ( ) {
+    int i ;
+    int x ;
+    i = 0 ;
 __F1T: ;
-if ( ! ( 
-# 8 "multiline_for.c"
-i < 10 
+    if ( ! ( i < 10 ) ) {
+        goto __F1B ;
+    }
+    {
+        x = i ;
 # 11 "multiline_for.c"
-) ) {
-goto __F1B ;
-}
-# 10 "multiline_for.c"
-{
-# +1
-x = i ;
-# +1
-}
-# +1
+    }
 __F1C: ;
-# 9 "multiline_for.c"
-i = i + 1 
-# 13 "multiline_for.c"
-;
-goto __F1T ;
+    i = i + 1 ;
+    goto __F1T ;
 __F1B: ;
-}
-return x ;
-# +1
+    return x ;
 }

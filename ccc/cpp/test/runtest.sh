@@ -18,6 +18,10 @@ FILTER_TESTS="test_filtknr test_filtdecl test_filtbrace test_filtctrl"
 
 cd "$(dirname "$0")"
 
+# cpp -p forks xdump via PATH
+PATH="$(cd .. && pwd):$PATH"
+export PATH
+
 # Check tools exist
 if [ ! -x "$CPP" ]; then
     echo "Error: cpp not found at $CPP"
@@ -86,6 +90,16 @@ for t in $TESTS; do
         continue
     fi
 
+    # Check output-language conformance (OUTPUT.md)
+    if ! python3 ../validate_x.py "$t.x" >"$t.xerr" 2>&1; then
+        echo "FAIL: $t - .x not to spec"
+        cat "$t.xerr"
+        fail=$((fail + 1))
+        rm -f "$t.x" "$t.i" "$t.xerr"
+        continue
+    fi
+    rm -f "$t.xerr"
+
     # Run xdump and compare
     $XDUMP "$t.x" > "$t.out" 2>/dev/null
 
@@ -113,13 +127,22 @@ for t in $FILTER_TESTS; do
 
     total=$((total + 1))
 
-    # Run cpp
-    $CPP -DCCC "$t.c" -o "$t" 2>"$t.err"
+    # Run cpp (-p generates the .i the pattern checks below read)
+    $CPP -DCCC -p "$t.c" -o "$t" 2>"$t.err"
     if [ $? -ne 0 ]; then
         echo "FAIL: $t - cpp failed"
         cat "$t.err"
         fail=$((fail + 1))
         rm -f "$t.err"
+        continue
+    fi
+
+    # Check output-language conformance (OUTPUT.md)
+    if ! python3 ../validate_x.py "$t.x" >>"$t.err" 2>&1; then
+        echo "FAIL: $t - .x not to spec"
+        cat "$t.err"
+        fail=$((fail + 1))
+        rm -f "$t.x" "$t.i" "$t.err"
         continue
     fi
 

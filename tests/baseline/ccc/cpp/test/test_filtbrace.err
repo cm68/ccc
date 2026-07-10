@@ -28,5 +28,3 @@ test_filtbrace.c:226: symbol truncated (warning)
 test_filtbrace.c:238: symbol truncated (warning)
 test_filtbrace.c:238: symbol truncated (warning)
 test_filtbrace.c:249: symbol truncated (warning)
-CTRL: WARNING balance=1 at EOF
-cpp: brace mismatch at EOF: 1 unmatched {

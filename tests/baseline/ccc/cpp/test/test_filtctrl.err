@@ -41,9 +41,3 @@ test_filtctrl.c:339: symbol truncated (warning)
 test_filtctrl.c:339: symbol truncated (warning)
 test_filtctrl.c:348: symbol truncated (warning)
 test_filtctrl.c:348: symbol truncated (warning)
-BRACE: WARNING synth_balance=1 at EOF
-BRACE: WARNING out_balance=1 at EOF
-BRACE: WARNING stk_sp=1 at EOF
-CTRL: WARNING balance=3 at EOF
-CTRL: WARNING stk_sp=1 at EOF
-cpp: brace mismatch at EOF: 3 unmatched {

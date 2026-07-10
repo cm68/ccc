@@ -1,149 +1,76 @@
 # 1 "spill_nested.c"
-# +1
-main ( ) 
-# +1
-{
-# +1
-int i ;
-# +1
-int j ;
-# +1
-int x ;
-# +1
-x = 0 ;
-# 10 "spill_nested.c"
-{
-# 8 "spill_nested.c"
-i = 0 
-# 10 "spill_nested.c"
-;
+main ( ) {
+    int i ;
+    int j ;
+    int x ;
+    x = 0 ;
+    i = 0 ;
 __F1T: ;
-if ( ! ( 
-# 8 "spill_nested.c"
-i < 5 
+    if ( ! ( i < 5 ) ) {
+        goto __F1B ;
+    }
 # 10 "spill_nested.c"
-) ) {
-goto __F1B ;
-}
-# 8 "spill_nested.c"
-{
-# 10 "spill_nested.c"
-x = x + 1 ;
-# +1
-x = x + 2 ;
-# +1
-x = x + 3 ;
-# 15 "spill_nested.c"
-{
+    {
+        x = x + 1 ;
+        x = x + 2 ;
+        x = x + 3 ;
+        j = 0 ;
+    __F2T: ;
+        if ( ! ( j < 5 ) ) {
+            goto __F2B ;
+        }
+        {
 # 13 "spill_nested.c"
-j = 0 
-# 15 "spill_nested.c"
-;
-__F2T: ;
-if ( ! ( 
-# 13 "spill_nested.c"
-j < 5 
-# 15 "spill_nested.c"
-) ) {
-goto __F2B ;
-}
-# 13 "spill_nested.c"
-{
-# 15 "spill_nested.c"
-x = x + 10 ;
-# +1
-x = x + 11 ;
-# +1
-x = x + 12 ;
-# +1
-x = x + 13 ;
-# +1
-x = x + 14 ;
-# +1
-x = x + 15 ;
-# +1
-x = x + 16 ;
-# +1
-x = x + 17 ;
-# +1
-x = x + 18 ;
-# +1
-x = x + 19 ;
-# +1
-x = x + 20 ;
-# +1
-x = x + 21 ;
-# +1
-x = x + 22 ;
-# +1
-x = x + 23 ;
-# +1
-x = x + 24 ;
-# +1
-x = x + 25 ;
-# +1
-x = x + 26 ;
-# +1
-x = x + 27 ;
-# +1
-x = x + 28 ;
-# +1
-x = x + 29 ;
-# +1
-x = x + 30 ;
-# +1
-x = x + 31 ;
-# +1
-x = x + 32 ;
-# +1
-x = x + 33 ;
-# +1
-x = x + 34 ;
-# +1
-x = x + 35 ;
-# +1
-x = x + 36 ;
-# +1
-x = x + 37 ;
-# +1
-x = x + 38 ;
-# +1
-x = x + 39 ;
-# +1
-x = x + 40 ;
-# +1
-}
-# 48 "spill_nested.c"
-__F2C: ;
-# 13 "spill_nested.c"
-j = j + 1 
-# 48 "spill_nested.c"
-;
-goto __F2T ;
-__F2B: ;
-}
-x = x + 4 ;
-# +1
-x = x + 5 ;
-# +1
-x = x + 6 ;
-# +1
-x = x + 7 ;
-# +1
-x = x + 8 ;
-# +1
-x = x + 9 ;
-# +1
-}
-# +1
+            x = x + 10 ;
+            x = x + 11 ;
+            x = x + 12 ;
+            x = x + 13 ;
+            x = x + 14 ;
+            x = x + 15 ;
+            x = x + 16 ;
+            x = x + 17 ;
+            x = x + 18 ;
+            x = x + 19 ;
+# 24 "spill_nested.c"
+            x = x + 20 ;
+            x = x + 21 ;
+            x = x + 22 ;
+            x = x + 23 ;
+            x = x + 24 ;
+            x = x + 25 ;
+            x = x + 26 ;
+            x = x + 27 ;
+            x = x + 28 ;
+            x = x + 29 ;
+# 34 "spill_nested.c"
+            x = x + 30 ;
+            x = x + 31 ;
+            x = x + 32 ;
+            x = x + 33 ;
+            x = x + 34 ;
+            x = x + 35 ;
+            x = x + 36 ;
+            x = x + 37 ;
+            x = x + 38 ;
+            x = x + 39 ;
+# 44 "spill_nested.c"
+            x = x + 40 ;
+        }
+    __F2C: ;
+        j = j + 1 ;
+        goto __F2T ;
+    __F2B: ;
+        x = x + 4 ;
+        x = x + 5 ;
+        x = x + 6 ;
+        x = x + 7 ;
+# 51 "spill_nested.c"
+        x = x + 8 ;
+        x = x + 9 ;
+    }
 __F1C: ;
-# 13 "spill_nested.c"
-j = j + 1 
-# 55 "spill_nested.c"
-;
-goto __F1T ;
+    i = i + 1 ;
+    goto __F1T ;
 __F1B: ;
-}
-return x ;
-# +1
+    return x ;
 }
