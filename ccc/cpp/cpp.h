@@ -98,6 +98,10 @@ extern void toksynthnam(struct token *out, unsigned char type, char *name);
 /* String interning - canonical pointer for SYM/LABEL names. */
 extern char *intern(char *s);
 
+/* Bump arena for never-freed objects (macros, typedefs, interns). */
+extern char *permalloc(int n);
+extern char *permdup(char *s);
+
 /* Shared filter utilities */
 extern int is_type_kw(unsigned char type);
 extern int is_type_tok(struct token *t);

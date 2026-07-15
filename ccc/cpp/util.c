@@ -7,12 +7,79 @@
 #include <unistd.h>
 
 /*
+ * Bump arena for permanent allocations (interned names, macro
+ * definitions, typedefs, include paths).  These live until exit, so
+ * there is no free: we carve them out of big malloc'd chunks with no
+ * per-object header.  On the Z80 this saves the allocator overhead of
+ * a thousand-plus tiny blocks; a #undef simply abandons its storage.
+ */
+#define PCHUNK 1024
+
+static char *pnext;			/* cursor into current chunk */
+static unsigned int pleft;	/* bytes left in current chunk */
+static char *pchain;		/* chunk bases, linked through word 0 */
+
+static void
+pgrab(int n)
+{
+    int chunk;
+    char *p;
+
+    n += sizeof(char *);
+    chunk = n > PCHUNK ? n : PCHUNK;
+    p = malloc(chunk);
+    if (p == 0) {
+        write(2, "cpp: out of memory\n", 19);
+        exit(1);
+    }
+    /* chain chunk bases so the arena stays walkable (and provably
+       reachable under valgrind) */
+    *(char **)p = pchain;
+    pchain = p;
+    pnext = p + sizeof(char *);
+    pleft = chunk - sizeof(char *);
+}
+
+/* aligned permanent allocation (structs, pointer arrays) */
+char *
+permalloc(int n)
+{
+    char *p;
+    int pad;
+
+    pad = (int)(sizeof(char *) - 1) & -(int)pnext;
+    if (n + pad > pleft) {
+        pgrab(n);
+        pad = 0;
+    }
+    p = pnext + pad;
+    pnext = p + n;
+    pleft -= n + pad;
+    return p;
+}
+
+/* permanent string copy (unaligned, packed tight) */
+char *
+permdup(char *s)
+{
+    int n = strlen(s) + 1;
+    char *p;
+
+    if (n > pleft)
+        pgrab(n);
+    p = pnext;
+    pnext += n;
+    pleft -= n;
+    return strcpy(p, s);
+}
+
+/*
  * String-intern pool for SYM and LABEL token names.
  *
  * Identifiers flow through 5+ pipeline stages and the same name is
  * referenced many times.  Rather than strdup at every tokcpy (the
  * pre-existing leak) or hand-maintain single-ownership at every drop
- * site, we keep one canonical malloc'd copy per unique string in a
+ * site, we keep one canonical arena copy per unique string in a
  * small hash pool.  Every tokcpy is now a flat field copy.
  *
  * The pool is bounded by source vocabulary, not stream length, and
@@ -37,8 +104,8 @@ intern(char *s)
     for (e = ipool[h]; e; e = e->next)
         if (strcmp(e->str, s) == 0)
             return e->str;
-    e = malloc(sizeof(*e));
-    e->str = strdup(s);
+    e = (struct ient *)permalloc(sizeof(*e));
+    e->str = permdup(s);
     e->next = ipool[h];
     ipool[h] = e;
     return e->str;

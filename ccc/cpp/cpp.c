@@ -231,7 +231,7 @@ main(int argc, char **argv)
     /* Derive output base from source if not specified */
     if (!outbase) {
         char *dot;
-        outbase = strdup(source);
+        outbase = permdup(source);
         dot = strrchr(outbase, '.');
         if (dot) *dot = '\0';
     }

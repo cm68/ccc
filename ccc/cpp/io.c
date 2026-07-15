@@ -127,8 +127,8 @@ void
 addInclude(char *s)
 {
     struct include *i, *ip;
-    i = malloc(sizeof(*i));
-    i->path = strdup(s);
+    i = (struct include *)permalloc(sizeof(*i));
+    i->path = permdup(s);
     i->next = 0;
     if (includes) {
         ip = includes;

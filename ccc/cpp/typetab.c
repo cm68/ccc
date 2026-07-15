@@ -47,8 +47,8 @@ addTypedef(char *name)
 		if (strcmp(t->name, name) == 0)
 			return;
 
-	t = malloc(sizeof(*t));
-	t->name = strdup(name);
+	t = (struct tdef *)permalloc(sizeof(*t));
+	t->name = permdup(name);
 	t->next = table[h];
 	table[h] = t;
 }
@@ -84,20 +84,14 @@ isTypedef(char *name)
 }
 
 /*
- * Reset table (for new compilation unit)
+ * Reset table (for new compilation unit).  Entries live in the
+ * permanent arena; abandoning them is fine - cpp handles one
+ * compilation unit per run.
  */
 void
 typedefReset(void)
 {
 	int i;
-	for (i = 0; i < HASH_SIZE; i++) {
-		struct tdef *t = table[i];
-		while (t) {
-			struct tdef *next = t->next;
-			free(t->name);
-			free(t);
-			t = next;
-		}
+	for (i = 0; i < HASH_SIZE; i++)
 		table[i] = 0;
-	}
 }

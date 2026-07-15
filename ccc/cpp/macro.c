@@ -76,7 +76,7 @@ addDefine(char *s)
         return;
     }
 
-    m = malloc(sizeof(*m));
+    m = (struct macro *)permalloc(sizeof(*m));
 
     /* Find '=' to separate name from value */
     eq = strchr(s, '=');
@@ -84,14 +84,14 @@ addDefine(char *s)
     if (eq) {
         /* NAME=value format */
         namelen = eq - s;
-        m->name = malloc(namelen + 1);
+        m->name = permalloc(namelen + 1);
         memcpy(m->name, s, namelen);
         m->name[namelen] = '\0';
-        m->mactext = strdup(eq + 1);  /* value after '=' */
+        m->mactext = permdup(eq + 1);  /* value after '=' */
     } else {
         /* Just NAME with no value (like -DDEBUG) */
-        m->name = strdup(s);
-        m->mactext = strdup("1");  /* default to "1" */
+        m->name = permdup(s);
+        m->mactext = permdup("1");  /* default to "1" */
     }
 
     m->parmcount = 0;
@@ -140,21 +140,9 @@ maclookup(char *name)
 /*
  * Remove a macro definition (#undef)
  *
- * Searches for and removes a macro from the macro list, freeing all
- * associated memory including parameter names and text. Implements the
- * #undef preprocessor directive.
- *
- * Memory cleanup:
- *   - Frees parameter name strings (if function-like macro)
- *   - Frees parameter array
- *   - Frees macro name string
- *   - Frees macro text string
- *   - Frees macro structure itself
- *
- * List maintenance:
- *   - Searches linearly for macro by name
- *   - Unlinks from list (updates prev->next or list head)
- *   - Handles both head and middle removal
+ * Unlinks the macro from the list.  Definitions live in the permanent
+ * arena, so the storage is simply abandoned - #undef is rare and the
+ * waste is bounded by the number of #undefs in a run.
  *
  * Silently succeeds if macro not found (standard C preprocessor behavior).
  *
@@ -164,7 +152,6 @@ maclookup(char *name)
 void
 macundefine(char *s)
 {
-    unsigned char i;
     struct macro *m, *p;
 
     m = maclookup(s);
@@ -178,13 +165,6 @@ macundefine(char *s)
         for (p = macros; p->next != m; p = p->next) ;
         p->next = m->next;
     }
-    for (i = 0; i < m->parmcount; i++) {
-        free(m->parms[i]);
-    }
-    free(m->parms);
-    free(m->name);
-    free(m->mactext);
-    free(m);
 }
 
 /*
@@ -232,11 +212,11 @@ void
 macdefine(char *s)
 {
     unsigned char i;
-    struct macro *m = malloc(sizeof(*m));
+    struct macro *m = (struct macro *)permalloc(sizeof(*m));
     char *parms[MAXPARMS];
 
     macbuf_init();
-    m->name = strdup(s);
+    m->name = permdup(s);
     m->parmcount = 0;
     m->parms = NULL;  /* NULL means object-like macro */
 
@@ -251,7 +231,7 @@ macdefine(char *s)
             skipws1();
             if (issym()) {
                 advance();
-                parms[m->parmcount++] = strdup(s);
+                parms[m->parmcount++] = permdup(s);
                 skipws1();
                 if (curchar == ',') {
                     advance();
@@ -265,7 +245,7 @@ macdefine(char *s)
             break;  /* Exit loop on error to avoid infinite loop */
         }
         if (m->parmcount) {
-            m->parms = malloc(sizeof(char *) * m->parmcount);
+            m->parms = (char **)permalloc(sizeof(char *) * m->parmcount);
             for (i = 0; i < m->parmcount; i++) {
                 m->parms[i] = parms[i];
             }
@@ -331,7 +311,7 @@ macdefine(char *s)
     }
 
     advance();  /* eat the newline */
-    m->mactext = strdup(macbuffer);
+    m->mactext = permdup(macbuffer);
     m->next = macros;
     macros = m;
 }
