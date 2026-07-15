@@ -118,7 +118,7 @@ clean:
 
 clobber: clean
 	rm -f ./cpp mkkw xdump
-	rm -rf sizecheck sizecheck1 stage1 stage2 langtest comzc3 comsdcc
+	rm -rf sizecheck sizecheck1 stage1 stage2 langtest comzc3 comsdcc valgrind
 
 install: cpp xdump
 	cp cpp xdump $(DEST)/bin
@@ -268,6 +268,30 @@ $(OUTDIR)/%.s: $(OUTDIR)/%.1 $(OUTDIR)/%.2 $(C1)
 regression: cpp
 	../../tests/regress.sh --filter ccc/cpp/ $(REGRESS_FLAGS)
 
+# Memory hygiene: run the host cpp over its own sources under valgrind,
+# failing on leaks (definite/possible) and invalid reads/writes.  Logs
+# for failing files are kept in valgrind/<base>.vg.
+valgrind: cpp
+	@command -v valgrind > /dev/null || \
+		{ echo "valgrind not installed"; exit 1; }
+	@mkdir -p valgrind
+	@status=0 ; for f in $(SOURCES); do \
+		b=$${f%.c}; \
+		printf "%-12s" "$$b: " ; \
+		if valgrind --leak-check=full \
+			--show-leak-kinds=definite,indirect \
+			--track-origins=yes --error-exitcode=99 \
+			--log-file=valgrind/$$b.vg \
+			./cpp -DCCC $(INC) -o valgrind/$$b $$f > /dev/null 2>&1; then \
+			echo "ok"; rm -f valgrind/$$b.vg; \
+		else \
+			echo "FAIL (valgrind/$$b.vg)"; \
+			grep -m1 'ERROR SUMMARY' valgrind/$$b.vg /dev/null | \
+				sed 's/^[^=]*==[0-9]*== */    /'; \
+			status=1; \
+		fi \
+	done ; exit $$status
+
 # Language conformance: run cpp over its own sources (self-compile check).
 # Each source must be legal input per INPUT.md (validate_src), cpp must
 # consume it, and the .x/.i output must be to-spec per OUTPUT.md for the
@@ -300,6 +324,6 @@ langtest: cpp xdump
 test: langtest
 	cd test && ./runtest.sh
 
-.PHONY: all clean regen stage1 install clobber sizefile sizecheck sizecheck1 regression langtest test com com-zc3 com-sdcc
+.PHONY: all clean regen stage1 install clobber sizefile sizecheck sizecheck1 regression langtest test com com-zc3 com-sdcc valgrind
 
 # vim: tabstop=4 shiftwidth=4 noexpandtab:
