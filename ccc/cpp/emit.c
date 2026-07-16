@@ -112,7 +112,13 @@ static void
 emitStr2(unsigned char tok, char *str, int len)
 {
     unsigned char hdr[3];
-    if (len > 65535) len = 65535;
+    /*
+     * Clamp to 32767, not 65535: the .x length field is 16 bits, but
+     * 65535 is -1 in a 16-bit int, so that comparison fired for EVERY
+     * string under the z80 compilers.  32767 is representable
+     * everywhere; on the z80 the test is simply never true.
+     */
+    if (len > 32767) len = 32767;
     hdr[0] = tok;
     hdr[1] = len & 0xff;
     hdr[2] = (len >> 8) & 0xff;
