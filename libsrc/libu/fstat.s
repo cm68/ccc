@@ -20,7 +20,8 @@
 	.text
 _fstat:
 	pop 	hl		; ret addr
-	pop 	af		; fd in a
+	pop 	hl		; fd in l (byte arg: high byte is junk)
+	ld 	a,l
 	pop 	hl		; buf
 	ld 	(buf),hl
 

@@ -23,7 +23,8 @@
 	.text
 _seek:
 	pop 	hl		; discard ret addr
-	pop 	af		; fd in a
+	pop 	hl		; fd in l (byte arg: high byte is junk)
+	ld 	a,l
 	pop 	hl		; offset
 	ld 	(offset),hl
 	pop 	hl		; whence

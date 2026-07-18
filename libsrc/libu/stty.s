@@ -18,11 +18,12 @@
 	.text
 _stty:
 	pop 	de		; ret addr
-	pop 	af		; fd in a
+	pop 	hl		; fd in l (byte arg: high byte is junk)
+	ld 	a,l
 	pop 	hl		; vec
 	ld 	(buf),hl
 	push 	hl
-	push 	af
+	push 	af		; slot filler (caller cleans; contents unused)
 	push 	de
 
 	ld 	h,0

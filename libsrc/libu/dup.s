@@ -22,12 +22,11 @@
 	.text
 _dup:
 	pop 	de		; ret addr
-	pop 	af		; fd in a
-	push 	af
+	pop 	hl		; fd in l (byte arg: high byte is junk)
+	push 	hl
 	push 	de
 
-	ld 	l,a		; fd in hl
-	ld 	h,0
+	ld 	h,0		; fd in hl
 	rst 	08h
 	.db 	029h
 	ret 	nc		; new fd in hl
