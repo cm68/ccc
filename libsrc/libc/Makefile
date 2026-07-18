@@ -21,7 +21,7 @@ DEST ?= ../../root/lib
 .s.o:
 	$(AS) $< -o $@
 
-SRCS = abs.s allsh.s alrsh.s asallsh.s asalrsh.s asar.s strdup.s \
+SRCS = abs.s allsh.s alrsh.s asallsh.s asalrsh.s asar.s strdup.s exit.s \
 	asdiv.s asladd.s asland.s asll.s asllrsh.s aslmul.s \
 	aslor.s aslr.s aslsub.s aslxor.s asmod.s asmul.s \
 	atoi.s bitfield.s blkclr.s bmove.s csv.s brelop.s \
@@ -38,7 +38,7 @@ SRCS = abs.s allsh.s alrsh.s asallsh.s asalrsh.s asar.s strdup.s \
 CSRCS = \
 	rand.c srand1.c mkstemp.c \
 	timezone.c ctime.c assert.c calloc.c malloc.c \
-	memcmp.c memcpy.c memset.c blkcpy.c ctype_.c exit.c cleanup.c \
+	memcmp.c memcpy.c memset.c blkcpy.c ctype_.c cleanup.c \
 	fclose.c fflush.c filbuf.c flsbuf.c puts.c \
 	fopen.c fread.c freopen.c fwrite.c setbuf.c gets.c ungetc.c \
 	buf.c getenv.c pnum.c qsort.c remove.c rewind.c fseek.c ftell.c \
