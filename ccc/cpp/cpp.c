@@ -45,6 +45,18 @@ short verbose;
 char *includePaths[MAX_INCLUDES];
 unsigned char numIncludes = 0;
 
+#ifdef CCC
+/*
+ * cpp does all io on raw file descriptors; without this stub, exit()
+ * drags in the stdio flush machinery (fclose/fflush/buf + __sibuf),
+ * about 1KB of text and bss we never use.
+ */
+void
+_cleanup(void)
+{
+}
+#endif
+
 /*
  * Error reporting
  */

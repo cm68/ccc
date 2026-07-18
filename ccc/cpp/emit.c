@@ -96,6 +96,7 @@ emitNumber(long val)
     emit4(NUMBER, (unsigned long)val);
 }
 
+#ifndef NOFLOAT
 void
 emitFNumber(float val)
 {
@@ -103,6 +104,7 @@ emitFNumber(float val)
     u.f = val;
     emit4(FNUMBER, u.l);
 }
+#endif
 
 /*
  * Emit string with 2-byte length: token + 2-byte len + string bytes
@@ -236,7 +238,9 @@ emitStructTok(struct token *t)
         emitNumber(t->v.numeric);
         break;
     case FNUMBER:
+#ifndef NOFLOAT
         emitFNumber(t->v.fval);
+#endif
         break;
     case STRING:
         {

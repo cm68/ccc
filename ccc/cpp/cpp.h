@@ -255,7 +255,9 @@ extern void emitToken(unsigned char tok);
 extern void emitKeyword(unsigned char kwval);
 extern void emitSym(char *name);
 extern void emitNumber(long val);
+#ifndef NOFLOAT
 extern void emitFNumber(float val);
+#endif
 extern void emitString(char *str, int len);
 extern void emitLabel(char *name);
 extern void emitLine(int line, char *file);

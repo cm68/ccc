@@ -193,7 +193,11 @@ com: com-zc3 com-sdcc
 
 # zc3 built MICRONIX-flavored emits .o (via asz); older builds emit .obj.
 # wsld links either.  PATH picks up asz/wsld for the driver's back end.
+# -O: peephole optimizer, ~23% smaller text (verified byte-identical).
+# -DNOFLOAT: float literals gripe instead of linking ~1.2KB of float
+# runtime the self-compile never exercises.
 ZC3 = zc3
+ZC3FLAGS = -O -DNOFLOAT
 
 com-zc3: $(GENERATED)
 	@mkdir -p comzc3
@@ -201,7 +205,7 @@ com-zc3: $(GENERATED)
 	for f in $(SOURCES); do \
 		b=$${f%.c}; \
 		printf "%-12s" "$$b: " ; \
-		if $(ZC3) -c -CPM -DCCC -I$(CPPDIR) -I$(LIBDIR) -I$(LIBSRCINC) \
+		if $(ZC3) -c $(ZC3FLAGS) -CPM -DCCC -I$(CPPDIR) -I$(LIBDIR) -I$(LIBSRCINC) \
 			$(CPPDIR)/$$f > $$b.log 2>&1 \
 			&& { [ -f $$b.o ] || [ -f $$b.obj ]; }; then \
 			echo ok; \
