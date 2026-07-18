@@ -327,6 +327,7 @@ langtest: cpp xdump
 
 test: langtest
 	cd test && ./runtest.sh
+	cd test && ./sweep.sh
 
 .PHONY: all clean regen stage1 install clobber sizefile sizecheck sizecheck1 regression langtest test com com-zc3 com-sdcc valgrind
 

@@ -31,6 +31,9 @@ char strbuf[STRBUFSIZE];
  * BSS - uninitialized, doesn't bloat binary
  */
 #define BIGBUFSIZE 1024
+
+/* getlit(): out-of-band "terminator after backslash-newline" marker */
+#define GL_END 0x100
 static char bigbuf[BIGBUFSIZE];
 static int bigbuflen;
 
@@ -298,7 +301,7 @@ static char escval[] = {
 
 static unsigned char termin;  /* String terminator (' or ") */
 
-static unsigned char
+static int
 getlit()
 {
     unsigned char c;
@@ -315,10 +318,11 @@ top:
          * Don't increment lineno here - advance() already did when it
          * processed the newline character.
          * If the next char after continuation is the string terminator,
-         * return 0xff to signal end-of-content (caller checks for this). */
+         * return the out-of-band GL_END to signal end-of-content
+         * (0xff is a valid byte value: '\377', '\xff'). */
         if (curchar == '\n') {
             advance();
-            if (curchar == termin) return 0xff;
+            if (curchar == termin) return GL_END;
             goto top;
         }
         if (curchar >= '0' && curchar <= '7') return getint(8);
@@ -382,8 +386,7 @@ isnumber()
     if (charmatch('\'')) {
         termin = '\'';  /* Tell getlit() what terminates this literal */
         next.v.numeric = getlit();
-        /* Note: getlit() returns 0xff for "terminator after backslash-newline" */
-        if (next.v.numeric == 0xff || curchar != '\'') {
+        if (next.v.numeric == GL_END || curchar != '\'') {
             gripe(ER_C_CD);
         }
         advance();
@@ -833,7 +836,7 @@ doCpp(unsigned char t)
 char
 isstring()
 {
-	unsigned char c;
+	int c;
 
     if (!charmatch('\"')) {
         return 0;
@@ -841,7 +844,7 @@ isstring()
     termin = '"';  /* Tell getlit() what terminates this string */
     while (!charmatch('\"')) {
         c = getlit();
-        if (c == 0xff) {
+        if (c == GL_END) {
             /* Backslash-newline before terminator - consume the quote */
             advance();
             break;

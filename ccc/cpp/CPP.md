@@ -849,5 +849,9 @@ Token encoding designed for:
   normalized grammar, `validate_i.py`). Failures leave details in
   `langtest/<file>.err`.
 - `make regression` — byte-exact baseline harness (`tests/regress.sh`).
+- `test/sweep.sh` (part of `make test`) — input-phase invariance: shifts
+  a construct-rich payload through all 512 phases of the input-buffer
+  block; output must be byte-identical at every phase.  Catches
+  position-dependent lexer/refill bugs.
 - `test/runtest.sh -g` regenerates the expected outputs after an intentional
   change to lowering shapes or `xdump` rendering.
