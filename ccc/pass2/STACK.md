@@ -114,6 +114,24 @@ if (ISBYTE(ptype) && preg == 0 && poff > 0)
     poff++;  // access byte at IY+offset+1 (high byte of word)
 ```
 
+### Interop warning: zc3/hitech uses the opposite byte convention
+
+The hitech compiler (zc3) puts a prototyped byte argument in the LOW
+byte of the stack word, with a junk high byte (it emits `ld l,(hl)` /
+`push hl`); unprototyped calls widen to a full 16-bit value.  The
+push-af convention above puts the value in the HIGH byte.  The two
+cannot share hand-written callees that take byte arguments.
+
+The libsrc/libu syscall wrappers currently implement the ZC3
+convention (low byte), because the running native toolchain is
+zc3-compiled - a `pop af` wrapper under zc3 reads the junk byte (this
+was a real bug: close() closed garbage descriptors and leaked fds).
+When ccc becomes the system compiler, the byte-argument wrappers
+(close, dup, read, write, seek, gtty, fstat, stty) need a
+ccc-convention variant tree built to this document.  Keep the two
+conventions in separate source trees rather than conditional
+assembly - asz stays a minimal back-end assembler.
+
 ## Return Values
 
 | Type | Location |
