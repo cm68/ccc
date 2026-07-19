@@ -160,7 +160,7 @@ unwrapDeref(struct expr **ep)
 {
 	struct expr *e = *ep;
 	struct type *t;
-	if (!e || e->op != DEREF) return e ? e->type : NULL;
+	if (!e || e->op != DEREF) return e ? e->type : (struct type *)0;
 	t = e->type;
 	*ep = e->left;
 	e->left = NULL;
@@ -515,33 +515,26 @@ foldTree(struct expr *e)
  * Returns:
  *   Expression tree root, or NULL on parse error
  */
-struct expr *
-parseExpr(unsigned char pri)
+/*
+ * parseExpr is split into parsePrefix / parsePostfix / the binary
+ * precedence climb below, mostly so each piece stays small enough
+ * for the hitech optimizer's fixed arenas.
+ *
+ * parsePrefix - terminals, prefix/unary operators, casts, sizeof.
+ */
+static struct expr *
+parsePrefix(void)
 {
-	/* Hoisted locals for stack reuse */
-	unsigned char op, p, is_assignment, is_arrow;
 	unsigned char uop, inc_op;
 	struct expr *e = 0;
-	struct expr *e1, *e2, *e3, *e4;
-	struct type *assign_type, *t, *tp;
-	struct var *vp;
+	struct expr *e1;
+	struct type *t, *tp;
 	struct name *np;
 	char namebuf[32];
 	char *symname;
 	union { float f; unsigned long u; } fu;
 	unsigned long uval;
 	long sval;
-	int elem_size;
-
-	assign_type = NULL;
-	vp = NULL;
-	is_assignment = 0;
-
-	/* Phase 1: just consume tokens, don't build tree */
-	if (phase == 1) {
-		skipExpr(pri);
-		return NULL;
-	}
 
 	switch (cur.type) {   // prefix
 
@@ -756,14 +749,14 @@ parseExpr(unsigned char pri)
             } else {
                 /* sizeof(expr) */
                 e1 = parseExpr(0);
-                t = e1 ? e1->type : NULL;
+                t = e1 ? e1->type : (struct type *)0;
                 FreeExpr(e1);
                 expect(RPAR, ER_E_SP);
             }
         } else {
             /* sizeof expr (no parens) */
             e1 = parseExpr(OP_PRI_MULT - 1);
-            t = e1 ? e1->type : NULL;
+            t = e1 ? e1->type : (struct type *)0;
             FreeExpr(e1);
         }
         e = mkexprI(CONST, 0, inttype, t ? t->size : 0, E_CONST);
@@ -788,7 +781,21 @@ parseExpr(unsigned char pri)
 		return 0;
     }
 
-    if (!e) return 0;
+    return e;
+}
+
+/*
+ * Postfix operators on a parsed operand: function calls, array
+ * subscripts, struct access, increment/decrement.
+ */
+static struct expr *
+parsePostfix(struct expr *e)
+{
+	unsigned char is_arrow, inc_op;
+	struct expr *e1, *e2, *e3, *e4;
+	struct type *t, *tp;
+	struct name *np;
+	int elem_size;
 
     /*
      * Handle postfix operators: function calls, array subscripts,
@@ -995,6 +1002,33 @@ parseExpr(unsigned char pri)
             e = mkIncDec(e, inc_op, 1);
         }
     }
+
+    return e;
+}
+
+struct expr *
+parseExpr(unsigned char pri)
+{
+	unsigned char op, p, is_assignment;
+	struct expr *e;
+	struct expr *e1, *e2, *e3, *e4;
+	struct type *assign_type;
+	struct var *vp;
+
+	assign_type = NULL;
+	is_assignment = 0;
+
+	/* Phase 1: just consume tokens, don't build tree */
+	if (phase == 1) {
+		skipExpr(pri);
+		return NULL;
+	}
+
+	e = parsePrefix();
+	if (!e) return 0;
+
+	e = parsePostfix(e);
+	if (!e) return 0;
 
     /*
      * the recursive nature of this expression parser will have exhausted
