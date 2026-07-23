@@ -63,7 +63,15 @@ sizecheck:
 regression:
 	./tests/regress.sh $(REGRESS_FLAGS)
 
-.PHONY: all install clean clobber stage1 test tests valgrind tags sizecheck regression
+# Native-vs-Z80 equivalence + memory footprint matrix: every cpp and
+# pass1 source through host cpp/c0 and sim cpp.mx/c0.mx, byte-compared,
+# with heap/stack high-water for both Z80 programs.
+footprint:
+	$(MAKE) -C ccc/cpp cpp xdump com-zc3
+	$(MAKE) -C ccc/pass1 c0 mx-zc3
+	python3 tests/footprint.py
+
+.PHONY: all install clean clobber stage1 test tests valgrind tags sizecheck regression footprint
 #
 # vim: tabstop=4 shiftwidth=4 noexpandtab:
 #

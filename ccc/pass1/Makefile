@@ -194,6 +194,32 @@ $(OUTDIR)/%.s: $(OUTDIR)/%.1 $(OUTDIR)/%.2 $(C1)
 regression:
 	../../tests/regress.sh --filter ccc/pass1/ $(REGRESS_FLAGS)
 
-.PHONY: all clean regen stage1 install clobber sizefile sizecheck sizecheck1 regression
+# Native Z80 build for simulator testing - same pattern as cpp's com-zc3.
+# Micronix flavor: crt0.o + libu syscalls; run with root/sim -d / mxzc3/c0.mx.
+# -O: zc3 peephole optimizer (parseExpr was split so optim3 can cope).
+ZC3 = zc3
+ZC3FLAGS = -O
+P1DIR = $(realpath .)
+LIBDIR = $(realpath ../lib)
+LIBSRCINC = $(realpath ../../libsrc/include)
+
+mx-zc3: $(GENERATED)
+	@mkdir -p mxzc3
+	@set -e; cd mxzc3 ; export PATH=$(ROOTDIR)/bin:$$PATH ; \
+	for f in $(SOURCES); do \
+		b=$${f%.c}; \
+		printf "%-12s" "$$b: " ; \
+		if $(ZC3) -c $(ZC3FLAGS) -CPM -DCCC -I$(P1DIR) -I$(LIBDIR) -I$(LIBSRCINC) \
+			$(P1DIR)/$$f > $$b.log 2>&1 \
+			&& { [ -f $$b.o ] || [ -f $$b.obj ]; }; then \
+			echo ok; \
+		else echo FAIL; cat $$b.log; exit 1; fi \
+	done
+	cd mxzc3 && $(ROOTDIR)/bin/wsld -s -o c0.mx -Ttext=0x100 \
+		$(ROOTDIR)/lib/crt0.o $$(ls *.o *.obj 2>/dev/null) \
+		-L$(ROOTDIR)/lib -lccc -lc -lu -lc
+	@$(ROOTDIR)/bin/wssize mxzc3/c0.mx
+
+.PHONY: all clean regen stage1 install clobber sizefile sizecheck sizecheck1 regression mx-zc3
 
 # vim: tabstop=4 shiftwidth=4 noexpandtab:
