@@ -1,11 +1,12 @@
 /*
  * lseek for micronix, which has only the v6 seek call.
  *
- * seek() does not return the file position, so the position
- * of each fd is tracked in _fdpos (fdpos.s), kept current by
- * the read, write, open, creat, and dup wrappers.  mixing raw
- * seek() calls with lseek() breaks the tracking, as do fds
- * inherited across fork/exec at a nonzero offset.
+ * the kernel seek does not return the file position, so the
+ * position of each fd is tracked in _fdpos (fdpos.s), kept
+ * current by the read, write, open, creat, and dup wrappers
+ * and by seek() (seek.c), which is a wrapper over lseek.
+ * fds inherited across fork/exec at a nonzero offset are
+ * still not tracked.
  *
  * SEEK_END takes the size from fstat, which fills in a raw
  * 36-byte v6 stat: high size byte at offset 9, low word at
@@ -17,6 +18,7 @@
 
 extern long _fdpos[];
 extern int errno;
+extern int seekraw(unsigned char fd, int offset, int whence);
 
 long
 lseek(unsigned char fd, long offset, int whence)
@@ -53,13 +55,13 @@ lseek(unsigned char fd, long offset, int whence)
 		return -1;
 	}
 	if (pos >> 9) {
-		if (seek(fd, (int)(pos >> 9), 3) < 0)
+		if (seekraw(fd, (int)(pos >> 9), 3) < 0)
 			return -1;
 		if ((int)pos & 511)
-			if (seek(fd, (int)pos & 511, 1) < 0)
+			if (seekraw(fd, (int)pos & 511, 1) < 0)
 				return -1;
 	} else {
-		if (seek(fd, (int)pos, 0) < 0)
+		if (seekraw(fd, (int)pos, 0) < 0)
 			return -1;
 	}
 	_fdpos[fd] = pos;

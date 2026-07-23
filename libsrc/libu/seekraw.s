@@ -1,7 +1,12 @@
 ;
-; seek system call
+; raw seek system call
 ;
-; seek(fd, offset, whence)
+; seekraw(fd, offset, whence)
+;
+; this is the bare kernel call, used only by lseek and the
+; seek() wrapper in seek.c, which keep the tracked file
+; position (_fdpos) current.  user code should not call it
+; directly, since it bypasses the tracking.
 ;
 ; Moves the read/write pointer of an open file:
 ;   whence 0: set to offset (from beginning)
@@ -18,10 +23,10 @@
 ; returns 0 on success, -1 on failure
 ;
 	.extern _errno
-	.global _seek
+	.global _seekraw
 
 	.text
-_seek:
+_seekraw:
 	pop 	hl		; discard ret addr
 	pop 	hl		; fd in l (byte arg: high byte is junk)
 	ld 	a,l

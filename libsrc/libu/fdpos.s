@@ -12,8 +12,9 @@
 ;
 ; limits: positions of fds inherited across fork or exec
 ; are not known, and offsets shared through dup diverge
-; once either fd moves.  mixing raw seek() calls with
-; lseek() also breaks the tracking.
+; once either fd moves.  seek() is a wrapper over lseek
+; (seek.c), so both calls keep the tracking current; only
+; the internal seekraw stub bypasses it.
 ;
 	.global _fdpos
 	.global fdadd

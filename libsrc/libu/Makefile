@@ -22,11 +22,11 @@ DEST ?= ../../root/lib
 SRCS = access.s alarm.s _break.s chdir.s chmod.s chown.s close.s \
 	creat.s dup.s errno.s exec.s execv.s exit.s fdpos.s fork.s fstat.s \
 	getpid.s getuid.s gtty.s kill.s link.s mknod.s mount.s nice.s open.s \
-	pause.s perror.s pipe.s read.s seek.s setuid.s _signal.s sleep.s stat.s \
+	pause.s perror.s pipe.s read.s seekraw.s setuid.s _signal.s sleep.s stat.s \
 	stime.s sbrk.s stty.s sync.s time.s umount.s uname.s unlink.s wait.s \
 	write.s
 
-CSRCS = signal.c lseek.c
+CSRCS = signal.c lseek.c seek.c
 
 OBJS = $(SRCS:.s=.o) $(CSRCS:.c=.o)
 
