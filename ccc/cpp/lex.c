@@ -220,10 +220,12 @@ skiptoeol()
  *   - May report error for empty hex/binary literals
  */
 static
-int
+long
 getint(unsigned char base)
 {
-    int i = 0;
+    long i = 0;
+    unsigned int b = base;  /* keep uchar out of long arithmetic (zc3) */
+    unsigned int d;
     unsigned char c;
     int len = 0;
 
@@ -243,8 +245,8 @@ getint(unsigned char base)
         if ((c+1) > base) {
             break;
         }
-        i *= base;
-        i += c;
+        d = c;
+        i = i * b + d;
         advance();
         len++;
     }
@@ -301,6 +303,23 @@ static char escval[] = {
 
 static unsigned char termin;  /* String terminator (' or ") */
 
+/*
+ * Numeric escape in a string/char literal: one byte.  Out-of-range
+ * values are diagnosed and masked so they can never collide with
+ * the out-of-band GL_END marker.
+ */
+static int
+escint(unsigned char base)
+{
+    int v = (int)getint(base);
+
+    if (v > 255) {
+        gripe(ER_C_NX);
+        v &= 0xff;
+    }
+    return v;
+}
+
 static int
 getlit()
 {
@@ -325,10 +344,10 @@ top:
             if (curchar == termin) return GL_END;
             goto top;
         }
-        if (curchar >= '0' && curchar <= '7') return getint(8);
-        if ((curchar | 0x20) == 'x') { advance(); return getint(16); }
-        if (curchar == 'B') { advance(); return getint(2); }
-        if (curchar == 'D') { advance(); return getint(10); }
+        if (curchar >= '0' && curchar <= '7') return escint(8);
+        if ((curchar | 0x20) == 'x') { advance(); return escint(16); }
+        if (curchar == 'B') { advance(); return escint(2); }
+        if (curchar == 'D') { advance(); return escint(10); }
         if (curchar >= 'a' && curchar <= 'z' && escval[curchar - 'a'])
             c = escval[curchar - 'a'];
         else
