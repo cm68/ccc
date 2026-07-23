@@ -176,7 +176,7 @@ again:
 			next.type = E_O_F;
 			return;
 		}
-		s = malloc(len + 1);
+		s = galloc(len + 1);
 		readBytes(s, len);
 		s[len] = '\0';
 		next.type = SYM;
@@ -218,7 +218,7 @@ again:
 			next.type = E_O_F;
 			return;
 		}
-		s = malloc(len + 1);
+		s = galloc(len + 1);
 		readBytes(s, len);
 		s[len] = '\0';
 		next.type = LABEL;
@@ -228,7 +228,7 @@ again:
 	/* Inline assembly - 2-byte length + bytes */
 	case CPP_ASMSTR:
 		len = readLE2();
-		s = malloc(len + 1);
+		s = galloc(len + 1);
 		readBytes(s, len);
 		s[len] = '\0';
 		next.type = ASM;

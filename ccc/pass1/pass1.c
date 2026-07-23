@@ -341,6 +341,8 @@ main(int argc, char **argv)
 
     process(argv[0], argv[1], argv[2]);
 
+    cleanupParse();
+
     /* Report allocation counts */
 #ifdef DEBUG
     fdprintf(2, "names: %d/%d exprs: %d/%d\n",

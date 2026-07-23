@@ -38,7 +38,7 @@ isRegvar(struct expr *e)
 	np = (struct name *)e->var;
 	if (np->level > 1 && !(np->sclass & SC_EXTERN)) {
 		local = findInLocals(np->name);
-		return local ? local->reg : np->reg;
+		return local ? local->w.r.reg : np->w.r.reg;
 	}
 	return 0;
 }
@@ -180,8 +180,8 @@ emitExpr(struct expr *e)
 		if (np->level > 1 && !(np->sclass & SC_EXTERN)) {
 			/* Look up frm_off/reg from phase 1 captured locals */
 			struct name *local = findInLocals(np->name);
-			char reg = local ? local->reg : np->reg;
-			char off = local ? local->frm_off : np->frm_off;
+			char reg = local ? local->w.r.reg : np->w.r.reg;
+			char off = local ? local->w.r.frm_off : np->w.r.frm_off;
 			if (reg) {
 				emit1(REGVAR);
 				emit1(typeSfx(e->type));
@@ -250,8 +250,8 @@ emitExpr(struct expr *e)
 		/* Bitfield extract: offset width addr */
 		np = (struct name *)e->var;
 		emit1(BFEXTRACT);
-		emit1(np ? np->bitoff : 0);
-		emit1(np ? np->width : 0);
+		emit1(np ? np->w.m.bitoff : 0);
+		emit1(np ? np->w.m.width : 0);
 		emitChild(left);
 		break;
 
@@ -259,8 +259,8 @@ emitExpr(struct expr *e)
 		/* Bitfield assign: offset width addr value */
 		np = (struct name *)e->var;
 		emit1(BFASSIGN);
-		emit1(np ? np->bitoff : 0);
-		emit1(np ? np->width : 0);
+		emit1(np ? np->w.m.bitoff : 0);
+		emit1(np ? np->w.m.width : 0);
 		emitChild(left);
 		emitChild(right);
 		break;
@@ -354,8 +354,8 @@ emitPrmDecls(struct type *functype, struct name *locals)
 		emit1(AST_DECL);
 		emit1(typeSfx(param->type));
 		emitS(param->name[0] ? param->name : "_");
-		emit1(found ? found->reg : 0);
-		emit1(found ? (unsigned char)found->frm_off : 0);
+		emit1(found ? found->w.r.reg : 0);
+		emit1(found ? (unsigned char)found->w.r.frm_off : 0);
 	}
 }
 
@@ -367,7 +367,7 @@ emitLocals(struct name *locals)
 	char lbuf[32];
 
 	for (local = locals; local; local = local->next) {
-		if (local->kind == funarg)
+		if (local->kind == kfunarg)
 			continue;
 		if (local->sclass & SC_STATIC)
 			fmtstr(lbuf, "S%d", local->static_id - 1);
@@ -378,8 +378,8 @@ emitLocals(struct name *locals)
 		emit1(AST_DECL);
 		emit1(typeSfx(local->type));
 		emitS(lbuf);
-		emit1(local->reg);
-		emit1((unsigned char)local->frm_off);
+		emit1(local->w.r.reg);
+		emit1((unsigned char)local->w.r.frm_off);
 	}
 }
 
@@ -427,7 +427,7 @@ emitFuncPre(struct name *func)
 			if (n->type->size > 0)
 				param_count++;
 	for (n = func->u.locals; n; n = n->next)
-		if (n->kind != funarg)
+		if (n->kind != kfunarg)
 			local_count++;
 
 	/* Emit function header */

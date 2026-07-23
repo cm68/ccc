@@ -14,7 +14,7 @@ static struct name *
 findMemberOff(struct name *members, int offset)
 {
     while (members) {
-        if (members->offset == offset)
+        if (members->w.m.offset == offset)
             return members;
         members = members->next;
     }
@@ -233,11 +233,14 @@ doInitlzr(struct name *v)
  * Parameters:
  *   f - Function name entry with type signature in f->type
  */
+static void freeLocals(struct name *local);
+
 void
 parsefunc(struct name *f)
 {
 	struct name *param;
 	struct name *phase1_func = NULL;
+	struct name *gravemark;
 
 	/* In phase 2, lookup the function definition from phase 1 to get
 	 * its u.locals which contains locals for register allocation.
@@ -245,7 +248,7 @@ parsefunc(struct name *f)
 	if (phase == 2) {
 		struct name *n;
 		for (n = names; n; n = n->chain) {
-			if (n->kind == fdef && strcmp(n->name, f->name) == 0) {
+			if (n->kind == kfdef && strcmp(n->name, f->name) == 0) {
 				phase1_func = n;
 				break;
 			}
@@ -265,6 +268,10 @@ parsefunc(struct name *f)
 	// staticCtr is file-global, not reset per function
 	shadowCtr = 0;
 
+	/* Snapshot the graveyard: everything popScope parks above this
+	 * point belongs to this function's scopes and dies with it. */
+	gravemark = deadNames;
+
 	// Push a new scope for the function body
 	pushScope(f->name);
 
@@ -275,7 +282,7 @@ parsefunc(struct name *f)
 			// Only add parameters with actual names (skip anonymous ones)
 			if (param->name[0] != '\0') {
 				// Create a NEW name entry at level 2 (don't reuse type->elem)
-				newName(param->name, funarg, param->type, 0);
+				newName(param->name, kfunarg, param->type, 0);
 			}
 		}
 	}
@@ -293,7 +300,7 @@ parsefunc(struct name *f)
 #ifdef DEBUG
 		fdprintf(2, "parsefunc phase1: %s done\n", f->name);
 #endif
-		f->kind = fdef;
+		f->kind = kfdef;
 		f->u.locals = capLocals();  /* Capture before popScope */
 	} else {
 		/* Phase 2: Streaming emit - parse one statement at a time,
@@ -308,6 +315,26 @@ parsefunc(struct name *f)
 
 	// Pop the function scope
 	popScope();
+
+	/* Free this function's scope names now instead of at exit: the
+	 * graveyard is LIFO, so entries above gravemark are all ours.
+	 * Phase 1 already captured copies in f->u.locals; initializer
+	 * exprs were freed when consumed; type->elem param entries are
+	 * never on the lookup chain, so none of these are referenced. */
+	while (deadNames != gravemark) {
+		param = deadNames;
+		deadNames = param->chain;
+		free(param);
+#ifdef DEBUG
+		nameCurCnt--;
+#endif
+	}
+	/* After phase 2 the function is fully emitted; the phase 1 local
+	 * copies have served register allocation and can go too. */
+	if (phase == 2 && f->kind == kfdef && f->u.locals) {
+		freeLocals(f->u.locals);
+		f->u.locals = NULL;
+	}
 
 	/*
 	 * Debug assertion: verify we're back at global scope and all
@@ -494,7 +521,8 @@ declaration()
                          "(sclass=0x%02x)\n", v->name, sclass);
             }
 #endif
-            v->kind = tdef;
+            v->kind = ktdef;
+            slimFnArgs(v->type);
             /* typedefs cannot have initializers or function bodies */
             if (cur.type == ASSIGN) {
                 gripe(ER_T_TD);
@@ -544,6 +572,17 @@ declaration()
         }
 
         /*
+         * Not a function definition: any function type in this
+         * declarator keeps only parameter types, not names.
+         * Never slim a type owned by a function definition, though:
+         * in phase 2 a prototype resolves to the phase 1 fdef entry,
+         * and its type still carries the parameter names the body
+         * needs (parsefunc/emitPrmDecls/regalloc bind by name).
+         */
+        if (v->kind != kfdef)
+            slimFnArgs(v->type);
+
+        /*
          * Assign storage class for variables (non-functions or
          * function prototypes)
          */
@@ -586,7 +625,7 @@ declaration()
 		 * Skip if already emitted via streaming (v->emitted).
 		 */
 		if ((lexlevel == 1 || (sclass & SC_STATIC)) &&
-		    v->kind != tdef && v->kind != fdef &&
+		    v->kind != ktdef && v->kind != kfdef &&
 		    !(sclass & SC_EXTERN) && !v->emitted) {
 			/* Skip function declarations - only emit actual variables */
 			if (!(v->type->flags & TF_FUNC)) {
@@ -669,7 +708,7 @@ parse()
 			cur.type == STATIC || cur.type == REGISTER ||
 			cur.type == AUTO || cur.type == EXTERN ||
 			cur.type == TYPEDEF ||
-			(poss_typedef && poss_typedef->kind == tdef)) {
+			(poss_typedef && poss_typedef->kind == ktdef)) {
 			declaration();
 		} else if (cur.type == ASM) {
 			/* Global asm block - get text and emit directly */
@@ -745,21 +784,20 @@ void
 cleanupParse()
 {
 	struct name *n;
-	struct type *t, *tnext;
 
 	/* Free non-basic names by traversing until we hit level 0 */
 	while (names && names->level > 0) {
 		n = names;
 		names = n->chain;
 		/* u.locals (for fdef) and u.init (for var) share a union */
-		if (n->kind == fdef) {
+		if (n->kind == kfdef) {
 			if (n->u.locals)
 				freeLocals(n->u.locals);
 		} else {
 			if (n->u.init)
 				FreeExpr(n->u.init);
 		}
-		if (n->kind != funarg) {
+		if (n->kind != kfunarg) {
 			free(n);
 #ifdef DEBUG
 			nameCurCnt--;
@@ -768,14 +806,21 @@ cleanupParse()
 	}
 	/* names now points to first basic type (level 0) */
 
-	/* Free non-basic types only */
-	t = types;
-	while (t && !isBasicType(t)) {
-		tnext = t->next;
-		free(t);
-		t = tnext;
+	/* Free the graveyard: names unlinked by popScope over the whole
+	 * run.  Nothing references them at exit.  fdef entries own their
+	 * u.locals copies; initializer exprs were freed when emitted. */
+	while (deadNames) {
+		n = deadNames;
+		deadNames = n->chain;
+		if (n->kind == kfdef && n->u.locals)
+			freeLocals(n->u.locals);
+		free(n);
+#ifdef DEBUG
+		nameCurCnt--;
+#endif
 	}
-	types = t;
+
+	/* Types live in the permalloc arena and are never freed. */
 }
 
 /*

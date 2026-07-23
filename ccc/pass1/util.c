@@ -294,7 +294,9 @@ void asmDbStr(unsigned char *data, int len)
 void asmDw(int val)
 {
 	char buf[16];
-	fmtstr(buf, "\t.dw %d", val & 0xffff);
+	/* mask in long so 16-bit and 32-bit int hosts print the same
+	 * string for negative values (65535, not -1) */
+	fmtstr(buf, "\t.dw %ld", (long)val & 0xffff);
 	asmLine(buf);
 }
 

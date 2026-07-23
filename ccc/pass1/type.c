@@ -54,15 +54,15 @@ char *kindname[] = {
  * Static basic types - chained together, never freed
  */
 static struct type basictypes[] = {
-    { "_char_",   1, 0, 0, 0, 0,           0 },             // 0
-    { "_short_",  2, 0, 0, 0, 0,           &basictypes[0] }, // 1
-    { "_long_",   4, 0, 0, 0, 0,           &basictypes[1] }, // 2
-    { "_uchar_",  1, 0, 0, 0, TF_UNSIGNED, &basictypes[2] }, // 3
-    { "_ushort_", 2, 0, 0, 0, TF_UNSIGNED, &basictypes[3] }, // 4
-    { "_ulong_",  4, 0, 0, 0, TF_UNSIGNED, &basictypes[4] }, // 5
-    { "_void_",   0, 0, 0, 0, 0,           &basictypes[5] }, // 6
-    { "_float_",  4, 0, 0, 0, TF_FLOAT,    &basictypes[6] }, // 7
-    { "_double_", 4, 0, 0, 0, TF_FLOAT,    &basictypes[7] }, // 8
+    { 1, 0, 0, 0, 0,           0 },              // 0 _char_
+    { 2, 0, 0, 0, 0,           &basictypes[0] }, // 1 _short_
+    { 4, 0, 0, 0, 0,           &basictypes[1] }, // 2 _long_
+    { 1, 0, 0, 0, TF_UNSIGNED, &basictypes[2] }, // 3 _uchar_
+    { 2, 0, 0, 0, TF_UNSIGNED, &basictypes[3] }, // 4 _ushort_
+    { 4, 0, 0, 0, TF_UNSIGNED, &basictypes[4] }, // 5 _ulong_
+    { 0, 0, 0, 0, 0,           &basictypes[5] }, // 6 _void_
+    { 4, 0, 0, 0, TF_FLOAT,    &basictypes[6] }, // 7 _float_
+    { 4, 0, 0, 0, TF_FLOAT,    &basictypes[7] }, // 8 _double_
 };
 #define N_BASIC (sizeof(basictypes)/sizeof(basictypes[0]))
 
@@ -101,7 +101,12 @@ static struct name basicnames[] = {
 unsigned char lexlevel;
 struct name *names = &basicnames[8];  /* head of chain, most recent first */
 
-#define ENUM_TYPE   "_uchar_"
+/*
+ * names unlinked by popScope may still be referenced by pending AST
+ * (e->var), so they cannot be freed on the spot.  they go on this
+ * graveyard chain instead and cleanupParse frees them at exit.
+ */
+struct name *deadNames;
 
 /*
  * Pop the current lexical scope
@@ -144,6 +149,8 @@ popScope()
             }
 #endif
             *pp = n->chain;  /* Unlink from list */
+            n->chain = deadNames;  /* park on graveyard for cleanupParse */
+            deadNames = n;
         } else {
             pp = &n->chain;  /* Move to next */
         }
@@ -197,6 +204,24 @@ char *typeBitdefs[] = {
 };
 void dumpType(struct type *t, int lv);
 
+/*
+ * Recover a printable name for a type.  Types don't carry names;
+ * basic types index into basicnames[], and tags/typedefs are found
+ * by scanning the symbol chain for an entry that points at t.
+ */
+static char *
+typeName(struct type *t)
+{
+    struct name *n;
+
+    if (isBasicType(t))
+        return basicnames[t - basictypes].name;
+    for (n = names; n; n = n->chain)
+        if (n->type == t && (n->is_tag || n->kind == ktdef))
+            return n->name;
+    return "unnamed";
+}
+
 void
 dumpName(struct name *n)
 {
@@ -214,7 +239,7 @@ dumpName(struct name *n)
 	fdprintf(2,"\n");
 	dumpType(n->type, 0);
     fdprintf(2,"\toffset: %d bitoff: %d width: %d\n",
-        n->offset, n->bitoff, n->width);
+        n->w.m.offset, n->w.m.bitoff, n->w.m.width);
 }
 
 void
@@ -232,8 +257,14 @@ dumpType(struct type *t, int lv)
     for (i = 0; i < lv; i++) fdprintf(2,"\t");
 
     if (t->flags & TF_FUNC) {
-        for (param = t->elem; param; param = param->next)
-            param_count++;
+        if (t->count) {
+            struct farg *fa;
+            for (fa = (struct farg *)t->elem; fa; fa = fa->next)
+                param_count++;
+        } else {
+            for (param = t->elem; param; param = param->next)
+                param_count++;
+        }
         fdprintf(2,"function: flags %x (%s) params %d\n",
             t->flags, bitdef(t->flags, typeBitdefs), param_count);
         if (t->sub) {
@@ -243,7 +274,7 @@ dumpType(struct type *t, int lv)
         }
     } else {
         fdprintf(2,"name %s flags %x (%s) count %x\n",
-            t->name[0] ? t->name : "unnamed",
+            typeName(t),
             t->flags, bitdef(t->flags, typeBitdefs), t->count);
         dumpType(t->sub, ++lv);
     }
@@ -294,13 +325,13 @@ newName(char *name, kind k, struct type *t, unsigned char is_tag)
             return n;
         if (n->sclass & SC_EXTERN)
             return n;
-        if (n->kind == tdef && t == n->type)
+        if (n->kind == ktdef && t == n->type)
             return n;
         gripe(ER_D_DN);
         return 0;
     }
 
-    n = calloc(1, sizeof(*n));
+    n = (struct name *)galloc(sizeof(*n));
     /* Initialize in struct field order */
     strncpy(n->name, name, 15);
     n->name[15] = 0;
@@ -320,9 +351,13 @@ newName(char *name, kind k, struct type *t, unsigned char is_tag)
 }
 
 /*
- * Add an existing name entry to the symbol table
+ * Add an existing name entry to the symbol table.
+ * Returns the canonical entry: when a duplicate already exists, n is
+ * freed and the duplicate returned - the caller must use the returned
+ * pointer, never n (the AST holds these pointers and usage tracking
+ * writes through them; a stale n would scribble on freed memory).
  */
-void
+struct name *
 addName(struct name *n)
 {
     struct name *dup;
@@ -332,21 +367,22 @@ addName(struct name *n)
         /* Phase 2: Name already exists from phase 1 */
         if (phase == 2) {
             free(n);
-            return;
+            return dup;
         }
         if (dup->sclass & SC_EXTERN) {
             dup->sclass = n->sclass;
             if (n->u.init)
                 dup->u.init = n->u.init;
             free(n);
-            return;
+            return dup;
         }
         gripe(ER_D_DN);
-        return;
+        return n;
     }
 
     n->level = lexlevel;
     namesAdd(n);
+    return n;
 }
 
 /*
@@ -369,23 +405,48 @@ isBasicType(struct type *t)
 }
 
 /*
- * Compare two function parameter lists for type equality
+ * Get parameter type i of a function type, or NULL past the end.
+ * Handles both elem shapes: full struct name entries (definitions)
+ * and slim farg nodes (declarations, count == 1).
+ */
+static struct type *
+fnArgType(struct type *t, unsigned char i)
+{
+    if (t->count) {
+        struct farg *fa = (struct farg *)t->elem;
+        while (fa && i--)
+            fa = fa->next;
+        return fa ? fa->type : NULL;
+    } else {
+        struct name *p = t->elem;
+        while (p && i--)
+            p = p->next;
+        return p ? p->type : NULL;
+    }
+}
+
+/*
+ * Compare two function types' parameter lists for type equality
  * Returns 1 if equal, 0 if different
  * Parameter names are ignored - only types matter
  */
 static int
-cmpParamLists(struct name *p1, struct name *p2)
+cmpParamLists(struct type *t1, struct type *t2)
 {
-    while (p1 && p2) {
-        // Compare parameter types, not names
-        if (p1->type != p2->type) {
+    unsigned char i;
+    struct type *a1, *a2;
+
+    for (i = 0; ; i++) {
+        a1 = fnArgType(t1, i);
+        a2 = fnArgType(t2, i);
+        if (a1 != a2) {
             return 0;
         }
-        p1 = p1->next;
-        p2 = p2->next;
+        if (!a1) {
+            // Both lists ended at the same time
+            return 1;
+        }
     }
-    // Both lists must end at the same time
-    return (p1 == NULL && p2 == NULL);
 }
 
 /*
@@ -406,7 +467,7 @@ compatFnTyp(struct type *t1, struct type *t2)
     if ((t1->flags & TF_VARIADIC) != (t2->flags & TF_VARIADIC)) return 0;
 
     // Compare parameter lists
-    return cmpParamLists(t1->elem, t2->elem);
+    return cmpParamLists(t1, t2);
 }
 
 /*
@@ -494,7 +555,7 @@ getType(
 #endif
     }
 
-    t = calloc(1, sizeof(*t));  // Zero-initialize all fields
+    t = (struct type *)permalloc(sizeof(*t));
     t->sub = sub;
     t->flags = flags;
     t->count = count;
@@ -674,10 +735,14 @@ getbasetype()
 {
     struct type *t;
     struct name *n;
-    unsigned long off = 0;
+    /*
+     * unsigned int, not long: offsets and enum values fit in 16 bits,
+     * and zc3 miscompiles uchar -> ulong promotions (the loaded byte
+     * gets clobbered), which broke every member offset and enum value.
+     */
+    unsigned int off = 0;
     char s_buf[64];  /* Stack buffer for tag names */
     char *s;
-    struct name *e;
     int bitoff_accum;
     struct type *member_type;
     struct name *member;
@@ -686,7 +751,7 @@ getbasetype()
     /* a typedef? */
     if (cur.type == SYM) {
         n = findName(cur.v.name, 0);
-        if (n && (n->kind == tdef)) {
+        if (n && (n->kind == ktdef)) {
             gettoken();
             return n->type;
         }
@@ -695,66 +760,8 @@ getbasetype()
     if (t) {
         return t;
     }
-    if ((cur.type != ENUM) && (cur.type != STRUCT) && (cur.type != UNION)) {
+    if ((cur.type != STRUCT) && (cur.type != UNION)) {
         return 0;
-    }
-
-    /*
-     * enum [name] { tag [= const], ... }
-     *
-     * Enums are just a way to define named integer constants in the global
-     * namespace. All enum variables are simply unsigned char.
-     * The tag name (if present) is ignored - it's just for documentation.
-     */
-    if (cur.type == ENUM) {
-        gettoken();
-
-        // optional enum tag name (ignored)
-        if (cur.type == SYM) {
-            gettoken();
-        }
-
-        // If no definition follows, just return unsigned char type
-        if (cur.type != BEGIN) {
-            return uchartype;
-        }
-
-        // parse enum constants: { name [= value], ... }
-        match(BEGIN);
-        off = 0;
-        while (cur.type != END && cur.type != E_O_F) {
-            if (cur.type != SYM) {
-                gripe(ER_T_ET);
-                break;
-            }
-
-            // create enum constant as a global name with elem kind
-            e = newName(cur.v.name, elem, uchartype, 0);
-            gettoken();
-
-            // optional = value
-            if (cur.type == ASSIGN) {
-                gettoken();
-                off = parseConst(PRI_ALL);
-            }
-
-            // newName() can return NULL if symbol table full or duplicate name
-            if (e) {
-                e->offset = off;  // store enum value in offset field
-            }
-            off++;
-
-            if (cur.type == COMMA) {
-                gettoken();
-                continue;
-            }
-            if (cur.type != END) {
-                gripe(ER_T_ED);
-                break;
-            }
-        }
-        match(END);
-        return uchartype;
     }
 
     /*
@@ -801,7 +808,7 @@ getbasetype()
             if (s) {
                 t = getType(TF_AGGREGATE | TF_INCOMPLETE, 0, 0);
                 t->size = 0;
-                n = newName(s, is_union ? utag : stag, t, 1);
+                n = newName(s, is_union ? kutag : kstag, t, 1);
                 return t;
             }
             // No tag name and no definition - error
@@ -824,7 +831,7 @@ getbasetype()
         if (s) {
             // create or update the tag
             if (!n) {
-                n = newName(s, is_union ? utag : stag, t, 1);
+                n = newName(s, is_union ? kutag : kstag, t, 1);
             } else if (n->type != t) {
                 // Only update if we created a new type (shouldn't happen now)
                 n->type = t;
@@ -863,32 +870,32 @@ getbasetype()
                 t->elem = member;
 
                 // Set kind if not already set (bitfields are already marked)
-                if (member->kind != bitfield) {
-                    member->kind = elem;
+                if (member->kind != kbitfield) {
+                    member->kind = kelem;
                 }
 
                 // calculate offset and size
                 if (is_union) {
-                    member->offset = 0;
+                    member->w.m.offset = 0;
                     if (member->type->size > t->size)
                         t->size = member->type->size;
                 } else {
                     // Handle bitfield packing
-                    if (member->kind == bitfield) {
+                    if (member->kind == kbitfield) {
                         // Bitfield - pack into current word
                         /*
                          * Check if bitfield fits in current word (assume
                          * 16-bit words for now)
                          */
-                        if (bitoff_accum + member->width > 16) {
+                        if (bitoff_accum + member->w.m.width > 16) {
                             // Move to next word
                             off += 2;  // Advance to next word (2 bytes)
                             bitoff_accum = 0;
                         }
 
-                        member->offset = off;
-                        member->bitoff = bitoff_accum;
-                        bitoff_accum += member->width;
+                        member->w.m.offset = off;
+                        member->w.m.bitoff = bitoff_accum;
+                        bitoff_accum += member->w.m.width;
 
                         // Update struct size if we're using a new word
                         if (off + 2 > t->size) {
@@ -905,7 +912,7 @@ getbasetype()
                             bitoff_accum = 0;
                         }
 
-                        member->offset = off;
+                        member->w.m.offset = off;
                         off += member->type->size;
                         t->size = off;
                     }

@@ -63,8 +63,9 @@ static unsigned char oppri[96] = {
 int
 isTypeToken(unsigned char t)
 {
-    /* Type keywords are in range 128-139 (INT, CHAR, ... ENUM) */
-    return (t >= INT && t <= ENUM);
+    /* Type keywords are in range 128-138 (INT, CHAR, ... VOID);
+     * ENUM never reaches pass1 - cpp lowers enums to unsigned char */
+    return (t >= INT && t <= VOID);
 }
 
 /*
@@ -92,7 +93,7 @@ mkexpr(unsigned char op, struct expr *left)
 {
 	struct expr *e;
 
-	e = calloc(1, sizeof(*e));  // Zero-initialize all fields
+	e = (struct expr *)galloc(sizeof(*e));
 	e->op = op;
 	e->left = left;
 #ifdef DEBUG
@@ -256,10 +257,10 @@ skipExpr(unsigned char pri)
 
     case SYM:
         np = findName(cur.v.name, 0);
-        if (np && np->level > 1 && np->kind != elem &&
+        if (np && np->level > 1 && np->kind != kelem &&
             !(np->type->flags & (TF_FUNC|TF_ARRAY))) {
-            if (np->ref_count < 255)
-                np->ref_count++;
+            if (np->w.r.ref_count < 255)
+                np->w.r.ref_count++;
         }
         gettoken();
         break;
@@ -326,8 +327,8 @@ skipExpr(unsigned char pri)
             expect(RPAR, ER_E_SP);
         } else if (cur.type == DOT || cur.type == ARROW) {
             /* Track aggregate ref for register allocation */
-            if (np && np->level > 1 && np->agg_refs < 255)
-                np->agg_refs++;
+            if (np && np->level > 1 && np->w.r.agg_refs < 255)
+                np->w.r.agg_refs++;
             gettoken();
             if (cur.type == SYM)
                 gettoken();
@@ -530,6 +531,7 @@ parsePrefix(void)
 	struct expr *e1;
 	struct type *t, *tp;
 	struct name *np;
+	unsigned int uofs;
 	char namebuf[32];
 	char *symname;
 	union { float f; unsigned long u; } fu;
@@ -548,7 +550,10 @@ parsePrefix(void)
         else if (sval <= 65535)
             t = ushorttype;
         else
-            t = (sval <= 2147483647L) ? longtype : ulongtype;
+            /* sval >= 0 always fits in long here; spelling this as
+             * sval <= 2147483647L trips a zc3 bug (rewritten to
+             * < LONG_MIN, always false) */
+            t = longtype;
         e = mkexprI(CONST, 0, t, (unsigned long)sval, E_CONST);
         gettoken();
         break;
@@ -563,11 +568,11 @@ parsePrefix(void)
     case STRING:
         /* Phase 2: create expression referencing string emitted in phase 1 */
         fmtstr(namebuf, "str%d", globalStrCtr++);
-        np = (struct name *)calloc(1, sizeof(struct name));
+        np = (struct name *)galloc(sizeof(struct name));
         strncpy(np->name, namebuf, 15);
         np->name[15] = 0;
         np->type = getType(TF_POINTER, chartype, 0);
-        np->kind = var;
+        np->kind = kvar;
         np->level = 1;
         e = mkexprI(STRING, 0, np->type, 0, E_CONST);
         e->var = (struct var *)np;
@@ -593,23 +598,23 @@ parsePrefix(void)
              * function returning int */
             if (cur.type == LPAR) {
                 /* Create implicit function declaration: int name() */
-                tp = calloc(1, sizeof(struct type));
+                tp = (struct type *)permalloc(sizeof(struct type));
                 tp->flags = TF_FUNC;
                 tp->sub = inttype;  /* Return type: int */
                 tp->elem = NULL;    /* No parameter info */
 
-                np = calloc(1, sizeof(struct name));
+                np = (struct name *)galloc(sizeof(struct name));
                 /* Initialize in struct field order */
                 strncpy(np->name, symname, 15);
                 np->name[15] = 0;
                 np->type = tp;
                 /* chain set by addName */
-                np->kind = var;
+                np->kind = kvar;
                 np->level = 1;  /* Global scope */
                 /* is_tag = 0 from calloc */
                 np->sclass = SC_EXTERN;
 
-                addName(np);
+                np = addName(np);
 
 #ifdef DEBUG
                 if (VERBOSE(V_SYM)) {
@@ -628,9 +633,13 @@ parsePrefix(void)
             }
         }
 
-        if (np->kind == elem) {
-            // Enum constant: treat as integer constant
-            e = mkexprI(CONST, 0, inttype, np->offset, E_CONST);
+        if (np->kind == kelem) {
+            /* Enum constant: treat as integer constant.
+             * uofs intermediate: zc3 miscompiles the direct
+             * uchar -> ulong argument promotion (clobbers the
+             * loaded byte), yielding 0 for every enum. */
+            uofs = np->w.m.offset;
+            e = mkexprI(CONST, 0, inttype, uofs, E_CONST);
         } else {
             e1 = mkexprI(SYM, 0, np->type, 0, 0);
             e1->var = (struct var *)np;
@@ -719,7 +728,7 @@ parsePrefix(void)
         if (!e) break;
         /* Mark variable as address-taken (can't use register) */
         if (e->op == DEREF && e->left->op == SYM)
-            ((struct name *)e->left->var)->addr_taken = 1;
+            ((struct name *)e->left->var)->w.r.addr_taken = 1;
         /* Optimize: &(DEREF x) = x, since SYM already gives address */
         if (e->op == DEREF) {
             e1 = e;
@@ -795,6 +804,7 @@ parsePostfix(struct expr *e)
 	struct expr *e1, *e2, *e3, *e4;
 	struct type *t, *tp;
 	struct name *np;
+	unsigned int uofs;
 	int elem_size;
 
     /*
@@ -882,7 +892,6 @@ parsePostfix(struct expr *e)
                         e2->flags |= E_FUNARG;
                         if (e3) {
                             e3->next = e2;
-                            e2->prev = e3;
                         }
                         e3 = e2;
                     }
@@ -914,8 +923,8 @@ parsePostfix(struct expr *e)
                 /* Track aggregate ref for register allocation */
                 if (e1->op == DEREF && e1->left && e1->left->op == SYM) {
                     struct name *vn = (struct name *)e1->left->var;
-                    if (vn && vn->level > 1 && vn->agg_refs < 255)
-                        vn->agg_refs++;
+                    if (vn && vn->level > 1 && vn->w.r.agg_refs < 255)
+                        vn->w.r.agg_refs++;
                 }
             } else {
                 // Unwrap DEREF to get address
@@ -924,8 +933,8 @@ parsePostfix(struct expr *e)
                 /* Track aggregate ref for register allocation */
                 if (e1->op == SYM) {
                     struct name *vn = (struct name *)e1->var;
-                    if (vn && vn->level > 1 && vn->agg_refs < 255)
-                        vn->agg_refs++;
+                    if (vn && vn->level > 1 && vn->w.r.agg_refs < 255)
+                        vn->w.r.agg_refs++;
                 }
             }
 
@@ -958,10 +967,12 @@ parsePostfix(struct expr *e)
 
             /*
              * Generate: DEREF(ADD(base, offset)) or BFEXTRACT
-             * for bitfields
+             * for bitfields.  uofs intermediate: zc3 miscompiles
+             * the direct uchar -> ulong argument promotion.
              */
+            uofs = np->w.m.offset;
             e2 = mkexprI(CONST, 0, inttype,
-					np->offset, E_CONST);  /* offset_expr */
+					uofs, E_CONST);  /* offset_expr */
 
             e3 = mkexpr(PLUS, e1);  /* addr */
             e3->right = e2;
@@ -971,7 +982,7 @@ parsePostfix(struct expr *e)
             e3->type = getType(TF_POINTER, np->type, 0);
 
             // Check if this is a bitfield access
-            if (np->kind == bitfield) {
+            if (np->kind == kbitfield) {
                 /*
                  * Use BFEXTRACT operator with bitoff and
                  * width stored in expr

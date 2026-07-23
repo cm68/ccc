@@ -379,11 +379,11 @@ capLocals(void)
 	/* Traverse chain - current level names are at head */
 	for (n = names; n && n->level == lexlevel; n = n->chain) {
 		/* Skip tags, typedefs, and functions */
-		if (n->is_tag || n->kind == tdef || n->kind == fdef)
+		if (n->is_tag || n->kind == ktdef || n->kind == kfdef)
 			continue;
 
 		/* Capture this variable (shallow copy) */
-		if (n->kind == var || n->kind == local || n->kind == funarg) {
+		if (n->kind == kvar || n->kind == klocal || n->kind == kfunarg) {
 			copy = (struct name *)galloc(sizeof(struct name));
 			memcpy(copy, n, sizeof(struct name));
 			copy->next = NULL;
@@ -497,7 +497,7 @@ statement(void)
             /* Declarations - process for symbol table but don't count */
             case INT: case CHAR: case SHORT: case LONG:
             case FLOAT: case DOUBLE: case VOID:
-            case STRUCT: case UNION: case ENUM:
+            case STRUCT: case UNION:
             case UNSIGNED:
             case STATIC: case REGISTER: case AUTO:
             case EXTERN: case TYPEDEF:
@@ -507,7 +507,7 @@ statement(void)
                 /* Check typedef name for declaration */
                 {
                     struct name *pt = findName(cur.v.name, 0);
-                    if (pt && pt->kind == tdef) {
+                    if (pt && pt->kind == ktdef) {
                         declaration();
                         break;
                     }
@@ -689,7 +689,6 @@ statement(void)
         case VOID:
         case STRUCT:
         case UNION:
-        case ENUM:
         case UNSIGNED:
         case STATIC:
         case REGISTER:
@@ -714,7 +713,7 @@ statement(void)
             /* Check if it's a typedef name used in a declaration */
             {
                 struct name *poss_typedef = findName(cur.v.name, 0);
-                if (poss_typedef && poss_typedef->kind == tdef) {
+                if (poss_typedef && poss_typedef->kind == ktdef) {
                     declaration();
                             break;
                 }

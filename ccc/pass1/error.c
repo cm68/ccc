@@ -37,6 +37,20 @@ fatal(error_t errcode)
 }
 
 /*
+ * checked allocation - parser data structures come from here.
+ * on a 64K machine we will run out; die cleanly rather than let
+ * a NULL return scribble over low memory.
+ */
+char *
+galloc(unsigned int size)
+{
+    char *p = calloc(1, size);
+    if (!p)
+        fatal(ER_NOMEM);
+    return p;
+}
+
+/*
  * throw an error message and discard tokens until we see the token we specify
  */
 void

@@ -65,7 +65,7 @@ parsePtrPfx(struct type *t)
 static struct name *
 createPrmEnt(char *name, struct type *type)
 {
-    struct name *arg = calloc(1, sizeof(*arg));
+    struct name *arg = (struct name *)galloc(sizeof(*arg));
     if (name) {
         strncpy(arg->name, name, 15);
         arg->name[15] = 0;
@@ -73,8 +73,55 @@ createPrmEnt(char *name, struct type *type)
     arg->type = type;
     arg->level = lexlevel + 1;
     arg->is_tag = 0;
-    arg->kind = funarg;
+    arg->kind = kfunarg;
     return arg;
+}
+
+/*
+ * Replace a declaration's parameter name entries with compact
+ * type-only nodes (struct farg), marking the shape with count = 1.
+ * Chases pointers, arrays and return types so function pointer
+ * declarators and functions returning function pointers get slimmed
+ * too, and recurses into parameter types for fn-pointer parameters.
+ * Safe to call on any type; no-op for non-functions and for types
+ * already slimmed.  Never called on a definition's own type.
+ */
+void
+slimFnArgs(struct type *t)
+{
+    struct name *p, *pnext;
+    struct farg *fa, *tail;
+
+    while (t && !(t->flags & TF_FUNC)) {
+        if (t->flags & (TF_POINTER | TF_ARRAY)) {
+            t = t->sub;
+        } else {
+            return;
+        }
+    }
+    if (!t || t->count) {
+        return;
+    }
+    t->count = 1;           /* elem is now a farg list */
+    p = t->elem;
+    t->elem = NULL;
+    tail = NULL;
+    while (p) {
+        pnext = p->next;
+        slimFnArgs(p->type);    /* fn-pointer parameter */
+        fa = (struct farg *)permalloc(sizeof(*fa));
+        fa->type = p->type;
+        fa->next = NULL;
+        if (tail) {
+            tail->next = fa;
+        } else {
+            t->elem = (struct name *)fa;
+        }
+        tail = fa;
+        free(p);
+        p = pnext;
+    }
+    slimFnArgs(t->sub);     /* function returning function pointer */
 }
 
 /*
@@ -123,7 +170,7 @@ createPrmEnt(char *name, struct type *type)
  *
  * Bitfield support:
  *   - Detected by ':' after identifier: unsigned flags : 3;
- *   - Width stored in name->width field
+ *   - Width stored in name->w.m.width field
  *   - Kind changed to bitfield
  *
  * Redeclaration handling:
@@ -207,16 +254,16 @@ declare(struct type **btp, unsigned char struct_elem)
              * struct members: create name but DON'T add to
              * global names[] array
              */
-            nm = calloc(1, sizeof(*nm));  // Zero-initialize all fields
+            nm = (struct name *)galloc(sizeof(*nm));
             strncpy(nm->name, cur.v.name, 15);
             nm->name[15] = 0;
             nm->type = prefix;
             nm->level = lexlevel;
             nm->is_tag = 0;
-            nm->kind = elem;  /* will be struct/union member */
-            nm->offset = 0;
-            nm->width = 0;
-            nm->bitoff = 0;
+            nm->kind = kelem;  /* will be struct/union member */
+            nm->w.m.offset = 0;
+            nm->w.m.width = 0;
+            nm->w.m.bitoff = 0;
             nm->next = 0;
             nm->u.init = 0;
 #ifdef DEBUG
@@ -244,7 +291,7 @@ declare(struct type **btp, unsigned char struct_elem)
                     /* But keep the existing name structure */
                 } else {
                     /* Not a function prototype - error on redeclaration */
-                    nm = newName(cur.v.name, var, prefix, 0);
+                    nm = newName(cur.v.name, kvar, prefix, 0);
                 }
             } else if (existing && existing->level < lexlevel) {
                 /*
@@ -252,11 +299,11 @@ declare(struct type **btp, unsigned char struct_elem)
                  * Assign static_id so cc2 can distinguish variables.
                  * Emitted as L<id> (not S<id> which is for statics).
                  */
-                nm = newName(cur.v.name, var, prefix, 0);
+                nm = newName(cur.v.name, kvar, prefix, 0);
                 nm->static_id = ++shadowCtr;
             } else {
                 /* New name - create it */
-                nm = newName(cur.v.name, var, prefix, 0);
+                nm = newName(cur.v.name, kvar, prefix, 0);
             }
         }
         gettoken();
@@ -268,8 +315,8 @@ declare(struct type **btp, unsigned char struct_elem)
             } else if (cur.v.numeric > MAXBITS) {
                 gripe(ER_D_BM);
             } else {
-                nm->kind = bitfield;
-                nm->width = cur.v.numeric;
+                nm->kind = kbitfield;
+                nm->w.m.width = cur.v.numeric;
             }
             gettoken();
         }
@@ -299,9 +346,29 @@ declare(struct type **btp, unsigned char struct_elem)
             suffix = 0;
         }
 
+        /*
+         * Phase 2 never attaches the suffix (see "suffix && phase == 1"
+         * below): the name entry keeps its phase 1 type.  Building the
+         * function type and its parameter entries again would only leak
+         * them, so just consume the parameter list and move on.
+         */
+        if (phase == 2) {
+            unsigned char pdepth = 1;
+            while (pdepth && cur.type != E_O_F) {
+                if (cur.type == LPAR)
+                    pdepth++;
+                else if (cur.type == RPAR)
+                    pdepth--;
+                if (pdepth)
+                    gettoken();
+            }
+            expect(RPAR, ER_D_FA);
+            goto params_done;
+        }
+
         // Create a new function type (don't use getType() which caches types)
         // Function types need unique instances because we modify elem list
-        suffix = calloc(1, sizeof(*suffix));
+        suffix = (struct type *)permalloc(sizeof(*suffix));
         suffix->flags = TF_FUNC;
         suffix->sub = prefix ? prefix : inttype;
 
@@ -347,7 +414,7 @@ declare(struct type **btp, unsigned char struct_elem)
                     if (cur.type == LPAR) {
                         struct type *fn_type;
                         struct name *inner_arg, *inner_tail;
-                        fn_type = calloc(1, sizeof(*fn_type));
+                        fn_type = (struct type *)permalloc(sizeof(*fn_type));
                         fn_type->flags = TF_FUNC;
                         fn_type->sub = param_type;  // return type
                         inner_tail = NULL;
@@ -442,6 +509,8 @@ declare(struct type **btp, unsigned char struct_elem)
         }
 
         expect(RPAR, ER_D_FA);
+params_done:
+        ;
     }                           // if cur.type == LPAR
 
     if ((cur.type != ASSIGN) && (cur.type != BEGIN) &&
@@ -539,7 +608,7 @@ isCastStart(void)
     /* Check if it's a typedef name */
     if (cur.type == SYM) {
         n = findName(cur.v.name, 0);
-        if (n && n->kind == tdef) {
+        if (n && n->kind == ktdef) {
             return 1;
         }
     }

@@ -71,7 +71,6 @@ struct expr {
 	struct expr *left;
 	struct expr *right;
 	struct expr *up;
-	struct expr *prev;
 	struct expr *next;
 
 	struct type *type;
@@ -81,8 +80,6 @@ struct expr {
 	unsigned long v;
 	unsigned char location;
 	unsigned char regs;
-	struct stmt *stmt;
-	struct inst *inst;
 };
 
 /*
@@ -157,14 +154,29 @@ extern void emitGoto(char *base, char *suffix);
  * this is a handle for types.
  */
 struct type {
-	char name[16];     		// the type name (embedded)
 	unsigned char size;		// how big is one of me (0-255)
-	int count;		    	// if we are an array, how many
+	int count;		    	// array: how many; function: 1 if elem is
+							// a slim farg list (see below), else 0
 	struct name *elem;		// element list (struct members, function parameters)
     struct type *sub;		// pointer to, array of, function return type
     unsigned char flags;
     struct type *next;
 };
+
+/*
+ * parameter names in a plain declaration are meaningless; only the
+ * types matter.  once a declarator turns out not to be a function
+ * definition, slimFnArgs() replaces the funarg name entries in a
+ * function type's elem list with these compact nodes and sets
+ * count = 1 to mark the shape.  a definition's own type keeps full
+ * struct name entries: parsefunc/emitPrmDecls/regalloc bind the
+ * body's parameters by name.
+ */
+struct farg {
+	struct type *type;
+	struct farg *next;
+};
+extern void slimFnArgs(struct type *t);
 #define TF_AGGREGATE	0x01
 #define TF_INCOMPLETE	0x02
 #define TF_UNSIGNED		0x04
@@ -179,8 +191,13 @@ extern int isBasicType(struct type *t);
 struct type *getType(char flags, struct type *sub, int count);
 extern char compatFnTyp(struct type *t1, struct type *t2);
 
-typedef enum { 
-    prim, etag, stag, utag, var, elem, tdef, fdef, bitfield, funarg, local 
+/*
+ * enum constants are lowered to #defines by cpp, so their names are
+ * global: prefix with k to keep them clear of member/variable names.
+ */
+typedef enum {
+    kprim, ketag, kstag, kutag, kvar, kelem, ktdef, kfdef, kbitfield,
+    kfunarg, klocal
 } kind;
 
 /*
@@ -203,21 +220,31 @@ struct name {
 	unsigned char is_tag;   // true if (enum, struct, union)
 	unsigned char sclass;   // storage class (SC_STATIC, SC_EXTERN, etc.)
 	unsigned char emitted;  // true if string literal already emitted
-	unsigned char offset;	// if inside a struct (0-255)
-	unsigned char bitoff;   // bit offset (0-7)
-	unsigned char width;    // bitfield width (1-32)
-	unsigned short static_id; // 0=normal, >0=static (emit as S<id-1>)
+	unsigned char static_id; // 0=normal, >0=static (emit as S<id-1>)
 	struct name *next;		// all names in same container
 	union {
 		struct expr *init;  // value of constant or initializer (for var)
 		struct name *locals; // local variables (for fdef)
 	} u;
-	/* Variable usage tracking for register allocation */
-	unsigned char ref_count;  // reference count (capped at 255)
-	unsigned char agg_refs;   // struct member access count (for IX allocation)
-	unsigned char reg;        // allocated register: 0=none, 1=B, 2=C, 3=BC, 4=IX
-	unsigned char addr_taken; // true if address taken (can't use register)
-	char frm_off;             // frame offset: params positive, locals negative
+	/*
+	 * struct members and bitfields (kind elem/bitfield) never reach
+	 * register allocation, and vars/locals/funargs are never struct
+	 * members, so the two field groups can share storage.
+	 */
+	union {
+		struct {
+			unsigned char offset;   // offset inside the struct (0-255)
+			unsigned char bitoff;   // bit offset (0-7)
+			unsigned char width;    // bitfield width (1-32)
+		} m;
+		struct {
+			unsigned char ref_count;  // reference count (capped at 255)
+			unsigned char agg_refs;   // struct member access count (for IX allocation)
+			unsigned char reg;        // allocated register: 0=none, 1=B, 2=C, 3=BC, 4=IX
+			unsigned char addr_taken; // true if address taken (can't use register)
+			char frm_off;             // frame offset: params positive, locals negative
+		} r;
+	} w;
 };
 
 /*
@@ -239,7 +266,7 @@ struct name {
 
 extern struct name *newName(char *name, kind k, struct type *t,
     unsigned char is_tag);
-extern void addName(struct name *n);
+extern struct name *addName(struct name *n);
 extern struct name *findName(char *name, unsigned char is_tag);
 extern struct name *findElement(char *name, struct type *t);
 extern void pushScope(char *name);
@@ -248,6 +275,7 @@ extern void popScope(void);
 /* declare.c */
 extern unsigned char lexlevel;
 extern struct name *names;
+extern struct name *deadNames;
 extern struct type *types;
 extern char *kindname[];
 extern struct name *declare(struct type **btp, unsigned char struct_elem);
@@ -367,6 +395,8 @@ extern int exitCode;
 /* cc1.c */
 extern void gripe(error_t errcode);
 extern void fatal(error_t errcode);
+extern char *galloc(unsigned int size);
+extern char *permalloc(unsigned int n);
 extern void recover(error_t errcode, token_t skipto);
 extern void need(token_t check, token_t skipto, error_t errcode);
 extern void expect(token_t check, error_t errcode);
