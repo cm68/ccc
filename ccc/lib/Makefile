@@ -28,11 +28,20 @@ endif
 SOURCES = libutil.c
 OBJECTS = $(SOURCES:.c=.o)
 
+# host builds get permalloc from its single source in libsrc/libc;
+# z80 links resolve it from libc.a, so keep it out of the z80 libccc
+ifeq ($(CC),gcc)
+OBJECTS += permalloc.o
+endif
+
 HEADERS = libutil.h
 
 all: libccc.a
 
 %.o: %.c $(HEADERS)
+	$(CC) $(CFLAGS) -c $< -o $@
+
+permalloc.o: ../../libsrc/libc/permalloc.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
 libccc.a: $(OBJECTS)

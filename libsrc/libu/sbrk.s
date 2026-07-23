@@ -11,6 +11,10 @@
 	.extern __break, __Hbss
 	.global _brk, _sbrk, _memtop
 
+; refuse to grow the break to within 1024 bytes of the current
+; stack pointer.  malloc sees -1 and returns NULL instead of the
+; heap silently growing up through the stack.
+
 	.text
 _brk:
 	pop	de		; return address
@@ -44,19 +48,32 @@ _sbrk:
 	or	e
 	jr	z,3f		; sbrk(0): return current break
 	push	hl		; save old break
-	add	hl,de
+	add	hl,de		; hl = new break
+	bit	7,d
+	jr	nz,2f		; negative increment: shrink, no guard
+	jr	c,4f		; wrapped past 64K: fail
+	ex	de,hl		; de = new break
+	ld	hl,0
+	add	hl,sp
+	ld	bc,-1024
+	add	hl,bc		; hl = sp - GUARD
+	or	a
+	sbc	hl,de		; carry if new break above guard line
+	ex	de,hl		; hl = new break
+	jr	c,4f		; would grow into the stack: fail
+2:
 	push	hl		; arg: new break
 	call	__break
 	pop	de		; clean arg; de = new break
 	ld	a,h
 	or	l
-	jr	z,2f
-	pop	hl		; unwind saved old break
-	ld	hl,-1		; failed
-	jr	3f
-2:
+	jr	nz,4f
 	ld	(_memtop),de
 	pop	hl		; return old break
+	jr	3f
+4:
+	pop	hl		; unwind saved old break
+	ld	hl,-1		; failed
 3:
 	pop	bc
 	ret

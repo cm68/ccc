@@ -35,6 +35,12 @@ char *s2 = "es\ncape\t\"quoted\" and \\ back";
 char c1 = 'x';
 char c2 = '\n';
 char c3 = '\377';
+char c7 = '\x41';
+int nums = 0xff + 0755 + 07 + 9;
+int longident14x = 5;
+struct pt { int x; };
+struct pt *pp;
+int deref = 0;
 int t1 = ZED;
 int t2 = ADDUP(ONE, 2);
 /* block comment * with stars ** inside */
@@ -55,6 +61,7 @@ int f(int n)
 		if (i == ZED)
 			continue;
 		sum = ADDUP(sum, i);
+		sum += pp->x;
 	}
 	while (sum > 100) {
 		sum -= ONE;

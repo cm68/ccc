@@ -14,8 +14,9 @@ fmtstr(char *buf, char *fmt, ...)
 	va_list ap;
 	char *p = buf;
 	char *s;
-	long n;
-	int neg;
+	long ln;
+	unsigned int n;
+	int neg, i;
 
 	va_start(ap, fmt);
 	while (*fmt) {
@@ -25,9 +26,14 @@ fmtstr(char *buf, char *fmt, ...)
 		}
 		fmt++;
 		if (*fmt == 'l') {
+			/* %ld: the only conversion that needs long arithmetic */
 			fmt += 2;  /* skip 'l' and 'd' */
-			n = va_arg(ap, long);
-			goto donum;
+			ln = va_arg(ap, long);
+			neg = ln < 0;
+			if (neg) ln = -ln;
+			s = p;
+			do { *p++ = '0' + (int)(ln % 10); ln /= 10; } while (ln);
+			goto revout;
 		}
 		switch (*fmt++) {
 		case 's':
@@ -35,28 +41,29 @@ fmtstr(char *buf, char *fmt, ...)
 			while (*s) *p++ = *s++;
 			break;
 		case 'd':
-			n = va_arg(ap, int);
-		donum:
-			if ((neg = (n < 0))) n = -n;
+			i = va_arg(ap, int);
+			neg = i < 0;
+			n = neg ? -(unsigned int)i : (unsigned int)i;
 			s = p;
 			do { *p++ = '0' + (n % 10); n /= 10; } while (n);
+		revout:
 			if (neg) *p++ = '-';
 			/* reverse */
-			for (n = 0; n < (p - s) / 2; n++) {
-				char t = s[n]; s[n] = p[-1-n]; p[-1-n] = t;
+			for (i = 0; i < (int)(p - s) / 2; i++) {
+				char t = s[i]; s[i] = p[-1-i]; p[-1-i] = t;
 			}
 			break;
 		case 'x':
 			n = va_arg(ap, unsigned);
 			s = p;
 			do {
-				int d = n & 0xf;
-				*p++ = d < 10 ? '0' + d : 'a' + d - 10;
+				i = n & 0xf;
+				*p++ = i < 10 ? '0' + i : 'a' + i - 10;
 				n >>= 4;
 			} while (n);
 			/* reverse */
-			for (n = 0; n < (p - s) / 2; n++) {
-				char t = s[n]; s[n] = p[-1-n]; p[-1-n] = t;
+			for (i = 0; i < (int)(p - s) / 2; i++) {
+				char t = s[i]; s[i] = p[-1-i]; p[-1-i] = t;
 			}
 			break;
 		case 'c':
