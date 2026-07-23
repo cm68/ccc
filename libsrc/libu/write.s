@@ -14,12 +14,15 @@
 ; returns -1 on error, else nbytes written
 ;
 	.extern _errno
+	.extern fdadd
 	.global _write
 
 	.text
 _write:
 	pop 	hl		; discard ret addr
 	pop 	de		; fd in e
+	ld 	a,e
+	ld 	(fd),a		; save fd for fdadd
 	pop 	hl		; buf
 	ld 	(buf),hl
 	pop 	hl		; nbytes
@@ -34,8 +37,10 @@ _write:
 	rst 	08h
 	.db 	000h
 	.dw 	scall
-	ret 	nc		; write count in hl
-	ld 	(_errno),hl
+	jr 	c,err		; write count in hl
+	ld 	a,(fd)
+	jp 	fdadd		; advance _fdpos[fd], count in hl
+err:	ld 	(_errno),hl
 	ld 	hl,-1
 	ret
 
@@ -44,5 +49,6 @@ scall:	.db 	0cfh
 	.db 	004h
 buf:	.dw 	0
 count:	.dw 	0
+fd:	.db 	0
 
 ; vim: tabstop=8 shiftwidth=8 noexpandtab:
