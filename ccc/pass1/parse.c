@@ -18,11 +18,11 @@ unsigned char swEmitIdx = 0;                /* next switch to emit */
 unsigned char swEmitStack[MAX_SWDEPTH];     /* stack of switch indices */
 unsigned char swEmitDepth = 0;              /* emit stack depth */
 
-/* If/else tracking: store has_else flag for each if statement */
-#define MAX_IFS 128
-static unsigned char ifHasElse[MAX_IFS];    /* 1 if if #N has else, 0 otherwise */
-static unsigned char ifCount = 0;           /* phase 1: count of if statements */
-static unsigned char ifEmitIdx = 0;         /* phase 2: next if to emit */
+/* If/else tracking: bitmap of has_else flags, one bit per if statement */
+#define MAX_IFS 256
+static unsigned char ifHasElse[MAX_IFS / 8]; /* bit N set: if #N has else */
+static unsigned short ifCount = 0;          /* phase 1: count of if statements */
+static unsigned short ifEmitIdx = 0;        /* phase 2: next if to emit */
 
 void resetSwitch(void) {
     int i;
@@ -57,7 +57,7 @@ void pushSwitch(void) {
         unsigned char newcap = swCapacity ? swCapacity * 2 : 8;
         struct swtab *newlist = realloc(swList, newcap * sizeof(struct swtab));
         if (!newlist)
-            return;  /* allocation failed */
+            fatal(ER_NOMEM);
         swList = newlist;
         swCapacity = newcap;
     }
@@ -65,7 +65,7 @@ void pushSwitch(void) {
     idx = swCount++;
     sw = &swList[idx];
     /* Allocate case array for this switch */
-    sw->cases = malloc(SW_INIT_CASES * sizeof(struct swcase));
+    sw->cases = (struct swcase *)galloc(SW_INIT_CASES * sizeof(struct swcase));
     sw->count = 0;
     sw->capacity = SW_INIT_CASES;
     sw->num = idx;
@@ -124,7 +124,7 @@ void addCase(long value, unsigned char stmt_cnt) {
         unsigned char newcap = sw->capacity * 2;
         struct swcase *newcases = realloc(sw->cases, newcap * sizeof(struct swcase));
         if (!newcases)
-            return;  /* allocation failed */
+            fatal(ER_NOMEM);
         sw->cases = newcases;
         sw->capacity = newcap;
     }
@@ -165,7 +165,7 @@ void addDefault(unsigned char stmt_cnt) {
         unsigned char newcap = sw->capacity * 2;
         struct swcase *newcases = realloc(sw->cases, newcap * sizeof(struct swcase));
         if (!newcases)
-            return;  /* allocation failed */
+            fatal(ER_NOMEM);
         sw->cases = newcases;
         sw->capacity = newcap;
     }
@@ -384,7 +384,7 @@ capLocals(void)
 
 		/* Capture this variable (shallow copy) */
 		if (n->kind == var || n->kind == local || n->kind == funarg) {
-			copy = malloc(sizeof(struct name));
+			copy = (struct name *)galloc(sizeof(struct name));
 			memcpy(copy, n, sizeof(struct name));
 			copy->next = NULL;
 
@@ -525,20 +525,22 @@ statement(void)
                 break;
             case IF:
             handle_if: {
-                unsigned char thisIf = ifCount++;
+                unsigned short thisIf = ifCount++;
+                if (thisIf >= MAX_IFS)
+                    fatal(ER_S_IF);
                 gettoken();
                 expect(LPAR, ER_S_NP);
                 parseExpr(PRI_ALL);
                 expect(RPAR, ER_S_NP);
                 parseBlock();
                 if (cur.type == ELSE) {
-                    ifHasElse[thisIf] = 1;
+                    ifHasElse[thisIf >> 3] |= 1 << (thisIf & 7);
                     gettoken();
                     if (cur.type == IF)
                         goto handle_if;  /* else if */
                     parseBlock();
                 } else {
-                    ifHasElse[thisIf] = 0;
+                    ifHasElse[thisIf >> 3] &= ~(1 << (thisIf & 7));
                 }
                 stmt_count++;
                 break;
@@ -639,7 +641,8 @@ statement(void)
 
         case IF:   /* if <condition> <statement> */
         handle_if2:
-            hasElse = ifHasElse[ifEmitIdx++];
+            hasElse = (ifHasElse[ifEmitIdx >> 3] >> (ifEmitIdx & 7)) & 1;
+            ifEmitIdx++;
             gettoken();
             expect(LPAR, ER_S_NP);
             e1 = parseExpr(PRI_ALL);

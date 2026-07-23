@@ -76,5 +76,11 @@ ER_E_UO		bad op
 ER_E_CF		no fold
 ER_E_PT		ptr compat
 
+# resource errors
+ER_NOMEM	out of memory
+
 # warnings
 ER_W_SYMTRUNC	sym truncated
+
+# limits
+ER_S_IF		too many ifs
