@@ -19,6 +19,8 @@
 #endif
 
 /* Filter chain functions */
+extern void filtenum_init(void (*up)(struct token *));
+extern void filtenum(struct token *out);
 extern void filtknr_init(void (*up)(struct token *));
 extern void filtknr(struct token *out);
 extern void filtdecl_init(void (*up)(struct token *));
@@ -136,7 +138,8 @@ void
 filterInit(void)
 {
     typedefReset();
-    filtknr_init(lex_get);
+    filtenum_init(lex_get);
+    filtknr_init(filtenum);
     filtdecl_init(filtknr);
     filtbrace_init(filtdecl);
     filtctrl_init(filtbrace);

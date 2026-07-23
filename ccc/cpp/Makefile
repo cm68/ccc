@@ -62,7 +62,7 @@ ZCC_ASMEXT = s
 endif
 
 SOURCES = cpp.c lex.c io.c macro.c kw.c emit.c util.c kwtab.c lexdata.c \
-	filtknr.c filtdecl.c filtbrace.c filtctrl.c filtutil.c typetab.c
+	filtenum.c filtknr.c filtdecl.c filtbrace.c filtctrl.c filtutil.c typetab.c
 OBJECTS = $(SOURCES:.c=.o)
 
 HEADERS = cpp.h debug.h

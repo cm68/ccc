@@ -72,7 +72,8 @@ typedef int error_t;
 #define ER_C_UT     10      /* unknown token */
 #define ER_C_DP     11      /* defined requires identifier */
 #define ER_C_MA     12      /* macro argument count mismatch */
-#define ER_W_SYMTRUNC 13    /* symbol truncated */
+#define ER_C_EV     13      /* bad enum */
+#define ER_W_SYMTRUNC 14    /* symbol truncated */
 #define ER_LAST     ER_W_SYMTRUNC
 
 /*
@@ -99,7 +100,7 @@ extern void toksynthnam(struct token *out, unsigned char type, char *name);
 extern char *intern(char *s);
 
 /* Bump arena for never-freed objects (macros, typedefs, interns). */
-extern char *permalloc(int n);
+extern char *permalloc(unsigned int n);
 extern char *permdup(char *s);
 
 /* Shared filter utilities */

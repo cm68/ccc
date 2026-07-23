@@ -113,10 +113,12 @@ Emitted as their single-byte code:
 | 136 | `UNION` | | 148 | `WHILE`* | | 158 | `CONST`† |
 | 137 | `SHORT` | | 149 | `ELSE` | | 159 | `VOLATILE`† |
 | 138 | `VOID` | | | | | 160 | `SIZEOF_KW`‡ |
-| 139 | `ENUM` | | | | | | |
+| 139 | `ENUM`* | | | | | | |
 
 \* Rewritten away by the filters — see §5; `WHILE`/`FOR`/`DO`/`BREAK`/
-`CONTINUE` do not survive to the output.
+`CONTINUE` do not survive to the output, and `ENUM` never does either:
+filtenum lowers every enum to `unsigned char`, entering the constants
+into the macro table so their uses emit as `NUMBER`.
 † `CONST`/`VOLATILE` are **never emitted** (silently dropped in `emit.c`).
 ‡ `SIZEOF_KW` is normalized to `SIZEOF` (91) on emission.
 

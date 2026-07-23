@@ -7,13 +7,29 @@ next token, calling its upstream filter to get input tokens.
 ## Pipeline
 
 ```
-lex -> filtknr -> filtdecl -> filtbrace -> filtctrl -> emit
+lex -> filtenum -> filtknr -> filtdecl -> filtbrace -> filtctrl -> emit
 ```
 
 Tokens flow right-to-left: `filtctrl()` is called by the main loop, which
 calls `filtbrace()`, which calls `filtdecl()`, and so on up to `lex_get()`.
 
 ## Filter Descriptions
+
+### filtenum.c - Enum Lowering
+
+Enum constants are glorified #defines: each constant is entered into the
+macro table as its numeric value (so later uses expand to `NUMBER` before
+they leave the lexer), and the enum type itself is rewritten to
+`unsigned char`.  A bare `enum tag { ... };` declaration vanishes
+entirely.  pass1 never sees the `ENUM` keyword.
+
+Because the constants become ordinary macros, their names are global for
+the rest of the file and must not be reused as identifiers (members,
+locals, tags) - the expansion is textual, exactly like `#define`.
+
+Constant expressions after `=` accept `NUMBER`, previously defined enum
+constants, unary `-` and `~`, parens, and `+ - *` with `*` binding
+tighter; anything richer is ER_C_EV "bad enum".
 
 ### filtknr.c - K&R Function Normalization
 

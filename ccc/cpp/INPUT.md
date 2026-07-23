@@ -42,6 +42,12 @@ Stripped before tokenization:
 
   ```
   int char float double struct signed long unsigned union short void enum
+
+Enums are accepted but lowered by cpp (see FILTERS.md): the constants
+become macro definitions - global, textual, `#define` semantics - so an
+enum constant's name must not be reused as any other identifier later in
+the file, and enum value expressions are limited to numbers, previously
+defined enum constants, unary `-`/`~`, parens, and `+ - *`.
   typedef auto extern static register
   goto return if while else switch case break continue do default for
   asm const volatile sizeof
