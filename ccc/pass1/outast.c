@@ -6,6 +6,7 @@
 
 /* Forward declarations */
 extern int analyzeFunc(struct name *func);  /* regalloc.c */
+extern int frameSaveBase;                   /* regalloc.c */
 
 /* Current function's locals from phase 1 - for frm_off/reg lookup */
 static struct name *curFuncLocals = NULL;
@@ -181,7 +182,7 @@ emitExpr(struct expr *e)
 			/* Look up frm_off/reg from phase 1 captured locals */
 			struct name *local = findInLocals(np->name);
 			char reg = local ? local->w.r.reg : np->w.r.reg;
-			char off = local ? local->w.r.frm_off : np->w.r.frm_off;
+			short off = local ? local->w.r.frm_off : np->w.r.frm_off;
 			if (reg) {
 				emit1(REGVAR);
 				emit1(typeSfx(e->type));
@@ -189,7 +190,7 @@ emitExpr(struct expr *e)
 			} else {
 				emit1(LOCALVAR);
 				emit1(typeSfx(e->type));
-				emit1(off);
+				emit2((unsigned short)off);
 			}
 			break;
 		}
@@ -379,7 +380,7 @@ emitLocals(struct name *locals)
 		emit1(typeSfx(local->type));
 		emitS(lbuf);
 		emit1(local->w.r.reg);
-		emit1((unsigned char)local->w.r.frm_off);
+		emit2((unsigned short)local->w.r.frm_off);
 	}
 }
 
@@ -401,13 +402,17 @@ emitGlobalAsm(char *text)
 
 /*
  * Output function header in AST format
- * Format: F rettype name param_count local_count frm_size params... locals...
+ * Format: F rettype name param_count local_count frm_size(2) savebase
+ *         params... locals...
+ * savebase = scalar area size; the callee-save slots sit at
+ * (iy-savebase-2)/(iy-savebase-4), with arrays below them.
  */
 void
 emitFuncPre(struct name *func)
 {
 	char func_name[32];
-	char frm_size, param_count, local_count;
+	int frm_size;
+	char param_count, local_count;
 	struct name *n;
 
 	if (!func)
@@ -440,7 +445,8 @@ emitFuncPre(struct name *func)
 	emitS(func_name);
 	emit1(param_count);
 	emit1(local_count);
-	emit1(frm_size);
+	emit2((unsigned short)frm_size);
+	emit1((unsigned char)frameSaveBase);
 
 	/* Emit declarations */
 	emitPrmDecls(func->type, func->u.locals);

@@ -75,11 +75,21 @@ label(Expr *e)
 			e->regs = 1;
 		return;
 
+	/* LOCALVAR past the (iy+d) window (big-array bases): the
+	 * address arithmetic needs HL and DE, not a free (iy+d)
+	 * operand, so cost it like a computed subexpression */
+	case LOCALVAR:
+		if (e->u.var.off < -126 || e->u.var.off > 124) {
+			e->regs = 2;
+			return;
+		}
+		e->regs = 1;
+		return;
+
 	/* Leaves that need loading: 1 */
 	case NUMBER:
 	case SYM:
 	case SYMREF:
-	case LOCALVAR:
 	case INDEX:
 		e->regs = 1;
 		return;
@@ -540,10 +550,23 @@ emitasm(char *tpl, Expr *e)
 					}
 				} else if (n->op == INDEX) {
 					out(idxregname(n->u.var.reg));
-					val = (char)n->u.var.off + offadj;
+					val = n->u.var.off + offadj;
 					if (val >= 0) outc('+');
 					outd(val);
+				} else if (n->op == LOCALVAR) {
+					/* raw frame offset, for address
+					 * arithmetic templates */
+					outd(n->u.var.off + offadj);
+				} else {
+					/* template navigated to a node the
+					 * emitter can't print - make the
+					 * assembler flag it loudly */
+					out("?op");
+					outd(n->op);
+					out("?");
 				}
+			} else {
+				out("?null?");
 			}
 		} else {
 			outc(*p++);
@@ -559,7 +582,8 @@ static Expr *
 tryrule(struct rule *rp, Expr *e)
 {
 	Expr *n, *src, *num, *lc, *rc;
-	char reg, off;
+	char reg;
+	int off;
 	int shift, changed;
 	unsigned char newop, oldop;
 
@@ -622,12 +646,41 @@ tryrule(struct rule *rp, Expr *e)
 			src = getpath(e, rp->dsrc);
 			reg = src ? src->u.var.reg : R_IY;
 			num = e->right;
-			off = num ? (char)num->u.val : 0;
+			off = num ? (short)num->u.val : 0;
 			/* If source is INDEX, combine offsets */
 			if (src && src->op == INDEX)
 				off += src->u.var.off;
 		}
+		/*
+		 * (iy+d) displacements are 7-bit signed; leave headroom
+		 * for +3 word/long adjustments.  Out-of-window accesses
+		 * (big arrays) must go through address arithmetic, so
+		 * refuse the INDEX form and let other rules apply.
+		 */
+		if (off < -126 || off > 124)
+			return NULL;
 		n = mkindex(e->width, reg, off);
+		freeexpr(e);
+		return n;
+	}
+
+	/* Far LOCALVAR -> CODE: form the frame address with 16-bit
+	 * arithmetic (big-array bases sit past the (iy+d) window) */
+	if (newop == CODE && oldop == LOCALVAR) {
+		off = e->u.var.off;
+		if (e->tgt == R_DE) {
+			/* sibling value lives in HL - preserve it */
+			out("\tpush hl\n\tpush iy\n\tpop hl\n\tld de,");
+			outd(off);
+			out("\n\tadd hl,de\n\tex de,hl\n\tpop hl\n");
+			n = mkcode(e->width, R_DE);
+		} else {
+			out("\tpush iy\n\tpop hl\n\tld de,");
+			outd(off);
+			out("\n\tadd hl,de\n");
+			n = mkcode(e->width, R_HL);
+		}
+		n->dest = e->dest;
 		freeexpr(e);
 		return n;
 	}

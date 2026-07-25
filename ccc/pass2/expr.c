@@ -52,7 +52,7 @@ mksym(char *name)
 }
 
 Expr *
-mklocalvar(char width, char reg, char off)
+mklocalvar(char width, char reg, int off)
 {
 	Expr *e = alloc();
 	e->op = LOCALVAR;
@@ -73,7 +73,7 @@ mkregvar(char width, char reg)
 }
 
 Expr *
-mkindex(char width, char reg, char off)
+mkindex(char width, char reg, int off)
 {
 	Expr *e = alloc();
 	e->op = INDEX;
@@ -324,14 +324,16 @@ readexpr(void)
 #endif
 		return mksym(buf);
 
-	case LOCALVAR:
+	case LOCALVAR: {
+		int off;
 		t = read1();
-		n = read1();
+		off = (short)read2();
 #ifdef DEBUG
 		if (VERBOSE(V_EXPR))
-			fprintf(stderr, "  LOCALVAR type=%c off=%d\n", t, n);
+			fprintf(stderr, "  LOCALVAR type=%c off=%d\n", t, off);
 #endif
-		return mklocalvar(t, 0, n);
+		return mklocalvar(t, 0, off);
+	}
 
 	case REGVAR:
 		t = read1();
@@ -503,7 +505,7 @@ dumpnode(Expr *e)
 		sprintf(buf, "(LOCALVAR:%s%s %s%+d", widthName(e->width),
 		        destName(e->dest),
 		        regName(e->u.var.reg ? e->u.var.reg : R_IY),
-		        (int)(char)e->u.var.off);
+		        (int)e->u.var.off);
 		out(buf);
 		if (e->regs) { sprintf(buf, "#%d", e->regs); out(buf); }
 		if (e->tgt) { sprintf(buf, "->%s", regName(e->tgt)); out(buf); }
@@ -520,7 +522,7 @@ dumpnode(Expr *e)
 	case INDEX:
 		sprintf(buf, "(INDEX:%s%s %s%+d", widthName(e->width),
 		        destName(e->dest), regName(e->u.var.reg),
-		        (int)(char)e->u.var.off);
+		        (int)e->u.var.off);
 		out(buf);
 		if (e->regs) { sprintf(buf, "#%d", e->regs); out(buf); }
 		if (e->tgt) { sprintf(buf, "->%s", regName(e->tgt)); out(buf); }

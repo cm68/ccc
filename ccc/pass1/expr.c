@@ -1212,6 +1212,7 @@ parseConst(unsigned char token)
 		gripe(ER_C_CE);
 		return 0;
 	}
+	e = foldTree(e);	/* SECSIZE+2 style bounds */
 	if (!(e->flags & E_CONST)) {
 		gripe(ER_C_CE);
 		FreeExpr(e);

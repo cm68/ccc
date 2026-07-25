@@ -84,3 +84,4 @@ ER_W_SYMTRUNC	sym truncated
 
 # limits
 ER_S_IF		too many ifs
+ER_D_FL		locals too large

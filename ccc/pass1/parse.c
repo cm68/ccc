@@ -648,6 +648,9 @@ statement(void)
             e1 = parseExpr(PRI_ALL);
             expect(RPAR, ER_S_NP);
             /* Emit: IF nlabels cond then has_else [else] */
+            /* fold first: emitExpr folds internally and may replace the
+             * root node, leaving our e1 dangling for FreeExpr */
+            e1 = foldTree(e1);
             emit1(IF);
             emit1(cntCondLbls(e1));
             emitExpr(e1);
@@ -671,6 +674,7 @@ statement(void)
                 e1 = parseExpr(PRI_ALL);
             expect(SEMI, ER_S_SN);
             /* Emit: RETURN has_value [expr] */
+            e1 = foldTree(e1);
             emit1(RETURN);
             emit1(e1 ? 1 : 0);
             if (e1) {
@@ -733,6 +737,7 @@ statement(void)
                 expr->flags &= ~E_POSTFIX;
             }
             /* Emit expression statement directly (no EXPR wrapper) */
+            expr = foldTree(expr);
             emitExpr(expr);
             FreeExpr(expr);
             break;
@@ -756,6 +761,7 @@ statement(void)
             swList[sw_idx].emitIdx = 0;
             /* Emit switch header: SWITCH has_label case_count expr */
             /* has_label=0 since cpp handles break lowering */
+            e1 = foldTree(e1);
             emit1(SWITCH);
             emit1(0);  /* no label - cpp lowered break to goto */
             cnt = popCount();
@@ -781,6 +787,7 @@ statement(void)
                      sw_idx, c_idx, sc->stmts);
 #endif
             /* Emit: CASE stmt_count value_expr */
+            e1 = foldTree(e1);
             emit1(CASE);
             emit1(sc->stmts);
             emitExpr(e1);

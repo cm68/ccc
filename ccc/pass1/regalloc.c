@@ -3,6 +3,10 @@
  */
 #include "cc1.h"
 
+/* scalar area size of the current function: the callee-save slots sit
+ * just below it (outast emits this as the FUNC header savebase) */
+int frameSaveBase;
+
 /*
  * Assign stack frame offsets to parameters and locals.
  * Params get positive offsets (above FP), locals get negative (below FP).
@@ -14,7 +18,9 @@ assignFrmOff(struct name *func)
 {
 	struct name *n, *locals;
 	int off;
+	unsigned char arrays;
 
+	frameSaveBase = 0;
 	if (!func->type || !func->u.locals)
 		return 0;
 	locals = func->u.locals;
@@ -35,17 +41,42 @@ assignFrmOff(struct name *func)
 		off += n->type->size > 2 ? n->type->size : 2;
 	}
 
-	/* Locals: negative offsets for non-register vars */
+	/*
+	 * Locals: negative offsets for non-register vars.
+	 * Scalars go first, nearest the frame pointer, so they stay
+	 * inside the 7-bit (iy+d) window.  Arrays follow, below a
+	 * 4-byte gap reserved for the callee-save slots: array bases
+	 * are formed with 16-bit address arithmetic, so they may sit
+	 * past the window.
+	 */
 	off = 0;
 	for (n = locals; n; n = n->next) {
 		if (n->kind == kfunarg)
 			continue;
-		if (n->w.r.reg)
+		if (n->w.r.reg) {
 			n->w.r.frm_off = 0;
-		else {
-			off += n->type->size;
-			n->w.r.frm_off = -off;
+			continue;
 		}
+		if (n->type->flags & TF_ARRAY)
+			continue;
+		off += n->type->size;
+		n->w.r.frm_off = -off;
+	}
+	frameSaveBase = off;
+	if (off > 120)
+		gripe(ER_D_FL);
+	arrays = 0;
+	for (n = locals; n; n = n->next) {
+		if (n->kind == kfunarg || n->w.r.reg)
+			continue;
+		if (!(n->type->flags & TF_ARRAY))
+			continue;
+		if (!arrays) {
+			arrays = 1;
+			off += 4;	/* callee-save slots */
+		}
+		off += n->type->size;
+		n->w.r.frm_off = -off;
 	}
 	return off;  /* frame size = total local stack space */
 }

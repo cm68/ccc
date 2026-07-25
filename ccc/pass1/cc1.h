@@ -187,6 +187,7 @@ extern void slimFnArgs(struct type *t);
 #define TF_VARIADIC     0x80    // for functions: has ... parameter
 
 extern struct type *getbasetype();
+extern unsigned char parseSclass();
 extern int isBasicType(struct type *t);
 struct type *getType(char flags, struct type *sub, int count);
 extern char compatFnTyp(struct type *t1, struct type *t2);
@@ -242,7 +243,9 @@ struct name {
 			unsigned char agg_refs;   // struct member access count (for IX allocation)
 			unsigned char reg;        // allocated register: 0=none, 1=B, 2=C, 3=BC, 4=IX
 			unsigned char addr_taken; // true if address taken (can't use register)
-			char frm_off;             // frame offset: params positive, locals negative
+			short frm_off;            // frame offset: params positive, locals
+			                          // negative; arrays sit below the save
+			                          // slots and may pass -128
 		} r;
 	} w;
 };

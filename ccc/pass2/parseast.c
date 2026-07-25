@@ -38,6 +38,7 @@ static int fnindex;		/* function index for unique labels */
 /* Current function state */
 static char funcname[16];	/* function name */
 static short framesize;		/* bytes of local stack frame */
+static short savebase;		/* scalar area size: save slots below it */
 static unsigned char regsused;	/* bitmask of callee-save regs */
 static short bcoff, ixoff;	/* IY-relative offsets for saved regs */
 
@@ -67,34 +68,49 @@ emitprolog(void)
 	bcoff = ixoff = 0;
 
 	{
-		short off;
+		short off, rest;
 		/* Set up frame pointer */
 		out("\tpush\tiy\n");
 		out("\tld\tiy,0\n");
 		out("\tadd\tiy,sp\n");
-		/* Allocate locals if any */
-		if (framesize > 0) {
+		/*
+		 * Allocate the scalar area, push callee-saves just below it
+		 * (so they stay within the 7-bit (iy+d) window), then
+		 * allocate the rest (big arrays live down there and are
+		 * addressed with 16-bit arithmetic, not (iy+d)).
+		 */
+		if (savebase > 0) {
 			out("\tld\thl,-");
-			outd(framesize);
+			outd(savebase);
 			outc('\n');
 			out("\tadd\thl,sp\n");
 			out("\tld\tsp,hl\n");
 		}
-		/* Push callee-saves below locals, track offsets */
-		off = -framesize;
+		off = -savebase;
 		if (regsused & USES_BC) {
 			out("\tpush\tbc\n");
 			off -= 2;
 			bcoff = off;
 			if (bcoff < -128)
-				out("\t.error frame too large for BC restore\n");
+				out("\t.error scalar frame too large for BC restore\n");
 		}
 		if (regsused & REGBIT(R_IX)) {
 			out("\tpush\tix\n");
 			off -= 2;
 			ixoff = off;
 			if (ixoff < -128)
-				out("\t.error frame too large for IX restore\n");
+				out("\t.error scalar frame too large for IX restore\n");
+		}
+		/* rest = arrays plus any unused save-slot bytes
+		 * (off is -savebase-pushed, so this is
+		 * framesize - savebase - pushed) */
+		rest = framesize + off;
+		if (rest > 0) {
+			out("\tld\thl,-");
+			outd(rest);
+			outc('\n');
+			out("\tadd\thl,sp\n");
+			out("\tld\tsp,hl\n");
 		}
 	}
 
@@ -394,7 +410,8 @@ parse(void)
 #endif
 			n = read1();		/* param count */
 			i = read1();		/* local count */
-			framesize = read1();	/* frame size */
+			framesize = read2();	/* frame size */
+			savebase = read1();	/* scalar area size */
 			regsused = 0;
 			nstage = 0;
 #ifdef DEBUG
@@ -434,7 +451,7 @@ parse(void)
 				t = read1();
 				readS(buf);
 				reg = read1();
-				read1();	/* offset */
+				read2();	/* offset */
 #ifdef DEBUG
 				if (VERBOSE(V_PARSE))
 					fprintf(stderr, "parse: local %s t=%c r=%d\n",

@@ -25,6 +25,12 @@ struct rule rules[] = {
 	/* LOCALVAR -> INDEX */
 	R("L", INDEX, P_NONE, P_NONE, P_NONE, 0, NULL, 0),
 
+	/* LOCALVAR past the 7-bit (iy+d) window (big-array bases live
+	 * below the callee-save slots): form the address with 16-bit
+	 * arithmetic (special-cased in tryrule).  Only reached when the
+	 * INDEX rule above refuses. */
+	R("L", CODE, P_NONE, P_NONE, P_NONE, 0, NULL, 0),
+
 	/* REGVAR -> IN* (value is in register) */
 	R("V", INBC, P_NONE, P_NONE, P_NONE, RF_BC, NULL, 0),
 	R("V", INDE, P_NONE, P_NONE, P_NONE, RF_DE, NULL, 0),
@@ -174,8 +180,11 @@ struct rule rules[] = {
 	/* pre-inc/dec */
 	R("i(B)", PREINC, P_L, P_NONE, P_NONE, 0, "\tinc bc\n\tld l,c\n\tld h,b\n", R_HL),
 	R("k(B)", PREDEC, P_L, P_NONE, P_NONE, 0, "\tdec bc\n\tld l,c\n\tld h,b\n", R_HL),
-	R("i(I):s", PREINC, P_L, P_NONE, P_NONE, 0, T_IDX_S_LD "\tinc hl\n" T_IDX_S_ST, R_HL),
-	R("k(I):s", PREDEC, P_L, P_NONE, P_NONE, 0, T_IDX_S_LD "\tdec hl\n" T_IDX_S_ST, R_HL),
+	/* unary: operand is the LEFT child (T_IDX_S_LD reads $R) */
+	R("i(I):s", PREINC, P_L, P_NONE, P_NONE, 0,
+	  "\tld l,($L)\n\tld h,($L+)\n\tinc hl\n" T_IDX_S_ST, R_HL),
+	R("k(I):s", PREDEC, P_L, P_NONE, P_NONE, 0,
+	  "\tld l,($L)\n\tld h,($L+)\n\tdec hl\n" T_IDX_S_ST, R_HL),
 	R("i(I):b", PREINC, P_L, P_NONE, P_NONE, 0, "\tld a,($L)\n\tinc a\n\tld ($L),a\n", R_A),
 	R("k(I):b", PREDEC, P_L, P_NONE, P_NONE, 0, "\tld a,($L)\n\tdec a\n\tld ($L),a\n", R_A),
 

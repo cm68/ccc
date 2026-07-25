@@ -389,6 +389,7 @@ declare(struct type **btp, unsigned char struct_elem)
             }
 
             // ANSI style: parse full type + declarator
+            parseSclass();      /* consume (ignore) register etc. */
             basetype = getbasetype();
             if (!basetype) {
                 gripe(ER_D_FA);
@@ -539,24 +540,47 @@ params_done:
      *   - suffix is function type
      *   - Need: nm->type = suffix (function type, with sub=return type)
      */
-    if (suffix && phase == 1) {
+    if (suffix && (phase == 1 ||
+        ((suffix->flags & TF_ARRAY) &&
+         !(nm->type && (nm->type->flags & TF_ARRAY))))) {
         /*
-         * Only apply suffix in phase 1. In phase 2, nm may be reused from
-         * phase 1 with its type already correctly set. Re-applying suffix
-         * would overwrite the correct type (e.g., pointer-to-function)
-         * with just the suffix (function type).
+         * Function suffixes are only applied in phase 1: in phase 2 a
+         * reused nm already has its type correctly set, and re-applying
+         * would overwrite pointer-to-function with just the function
+         * type.  Array suffixes must be applied in phase 2 as well when
+         * the name doesn't already carry one: locals are freed after
+         * phase 1, so phase 2 re-creates them with only the base type
+         * and would lose the array-ness.  Reused entries (globals) keep
+         * their phase 1 type - it has sizes inferred from initializers.
          */
         if (nm->type && (nm->type->flags & TF_POINTER) &&
             !(nm->type->flags & TF_ARRAY) && (suffix->flags & TF_FUNC) &&
-            !nm->type->sub) {
+            !nm->type->sub && suffix->sub != nm->type) {
             /*
              * Function pointer: create proper pointer-to-function type.
              * This case arises from recursive parsing of (*fp)(args) where
-             * nm->type is an anonymous pointer (sub=NULL) from parsing (*fp).
+             * nm->type is an anonymous pointer (sub=NULL) from parsing (*fp)
+             * and the (args) suffix was parsed at THIS outer level.
+             * (When suffix->sub == nm->type the suffix was built in the
+             * same level as the `*` - that's `*name(args)` inside parens,
+             * a function returning a pointer, handled below.)
              * For functions returning pointers like int *func(), nm->type->sub
              * is the base type (int), so we just use suffix directly.
              */
             nm->type = getType(TF_POINTER, suffix, 0);
+        } else if (nm->type && (nm->type->flags & TF_FUNC) &&
+                   nm->type->sub && (nm->type->sub->flags & TF_POINTER) &&
+                   !(nm->type->sub->flags & TF_ARRAY) &&
+                   !nm->type->sub->sub && (suffix->flags & TF_FUNC)) {
+            /*
+             * Function returning a function pointer:
+             * void (*signal(args))(args2).  The recursion produced
+             * fn(args) returning an incomplete pointer; this level's
+             * (args2) completes it: return type = ptr -> fn(args2).
+             * nm->type is a unique permalloc'd function type, so
+             * plugging its sub is safe (never a cached type).
+             */
+            nm->type->sub = getType(TF_POINTER, suffix, 0);
         } else {
             nm->type = suffix;
         }
@@ -678,12 +702,38 @@ parseTypeName(void)
     /* Parse pointer prefix (*, **, etc.) */
     result_type = parsePtrPfx(base_type);
 
-    /* TODO: Parse abstract declarator for arrays/function pointers
-     * For now, we handle simple types and pointers
-     * Full support would parse things like:
-     *   (*)[10]  - pointer to array
-     *   (*)()    - pointer to function
-     */
+    /* Abstract function-pointer declarator: (*)(args) - as in the
+     * SIG_IGN cast (void (*)(int))1.  The parameter types are only
+     * consumed; calls through the pointer don't need them. */
+    if (cur.type == LPAR) {
+        gettoken();
+        if (cur.type == STAR) {
+            struct type *fn;
+            gettoken();
+            while (cur.type == STAR)    /* (**)() etc. */
+                gettoken();
+            expect(RPAR, ER_D_DP);
+            fn = (struct type *)permalloc(sizeof(*fn));
+            fn->flags = TF_FUNC;
+            fn->sub = result_type;      /* return type */
+            if (cur.type == LPAR) {
+                unsigned char d = 1;
+                gettoken();
+                while (d && cur.type != E_O_F) {
+                    if (cur.type == LPAR)
+                        d++;
+                    else if (cur.type == RPAR)
+                        d--;
+                    if (d)
+                        gettoken();
+                }
+                expect(RPAR, ER_D_DP);
+            }
+            result_type = getType(TF_POINTER, fn, 0);
+        } else {
+            gripe(ER_D_DP);
+        }
+    }
 
     return result_type;
 }

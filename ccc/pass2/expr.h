@@ -30,7 +30,7 @@ typedef struct Expr {
 		} call;
 		struct {
 			unsigned char	reg;	/* register number */
-			char	off;	/* frame offset */
+			short	off;	/* frame offset (arrays pass -128) */
 		} var;
 		struct {
 			unsigned short	amt;	/* inc/dec amount */
@@ -49,9 +49,9 @@ typedef struct Expr {
 /* tree builder functions */
 Expr	*mkconst(char width, long val);
 Expr	*mksym(char *name);
-Expr	*mklocalvar(char width, char reg, char off);
+Expr	*mklocalvar(char width, char reg, int off);
 Expr	*mkregvar(char width, char reg);
-Expr	*mkindex(char width, char reg, char off);
+Expr	*mkindex(char width, char reg, int off);
 Expr	*mkinhl(char width, Expr *child);
 Expr	*mkinde(char width, Expr *child);
 Expr	*mkina(char width, Expr *child);
