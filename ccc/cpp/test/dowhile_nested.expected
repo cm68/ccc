@@ -1,5 +1,5 @@
 # 1 "dowhile_nested.c"
-main ( ) {
+int main ( ) {
     int i ;
     int j ;
     i = 0 ;

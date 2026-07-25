@@ -1,5 +1,5 @@
 # 1 "spill_nested.c"
-main ( ) {
+int main ( ) {
     int i ;
     int j ;
     int x ;

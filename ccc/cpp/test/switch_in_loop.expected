@@ -1,5 +1,5 @@
 # 1 "switch_in_loop.c"
-main ( ) {
+int main ( ) {
     int i ;
     int x ;
     x = 0 ;

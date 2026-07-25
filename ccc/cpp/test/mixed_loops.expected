@@ -1,5 +1,5 @@
 # 1 "mixed_loops.c"
-main ( ) {
+int main ( ) {
     int i ;
     int j ;
     int k ;

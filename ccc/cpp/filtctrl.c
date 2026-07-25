@@ -80,19 +80,12 @@ filtctrl_init(void (*up)(struct token *))
 			ent->saved_incr = 0;
 		}
 	}
-	fstack_init(&fs, 8, sizeof(struct stkent));
+	fstack_setup(&fs, 8, sizeof(struct stkent));
 
-	/* Initialize dynamic buffers (first call only) */
-	if (!cond_arr.buf) {
-		tarr_init(&cond_arr, 16);
-		tarr_init(&init_arr, 16);
-		tarr_init(&incr_arr, 16);
-		pend_init(&pb, 32);
-	} else {
-		tarr_reset(&cond_arr);
-		tarr_reset(&init_arr);
-		tarr_reset(&incr_arr);
-	}
+	tarr_setup(&cond_arr, 16);
+	tarr_setup(&init_arr, 16);
+	tarr_setup(&incr_arr, 16);
+	pend_setup(&pb, 32);
 #ifdef DEBUG
 	ctrl_balance = 0;
 #endif

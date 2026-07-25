@@ -1,5 +1,5 @@
 # 1 "while.c"
-main ( ) {
+int main ( ) {
     int i ;
     i = 0 ;
 __W1T: ;

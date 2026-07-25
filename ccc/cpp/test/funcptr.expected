@@ -1,0 +1,16 @@
+# 1 "funcptr.c"
+extern void ( * signal ( int , void ( * ) ( int ) ) ) ( int ) ;
+static void ( * where ) ( ) ;
+void ( * signal ( int sig , void ( * action ) ( int ) ) ) ( ) {
+    void ( * prev ) ( ) ;
+    prev = where ;
+    where = action ;
+    return prev ;
+}
+int apply ( int ( * fn ) ( int ) , int x ) {
+    return ( * fn ) ( x ) ;
+# 31 "funcptr.c"
+}
+int use ( int ( * cmp ) ( int , int ) , int a , int b ) {
+    return cmp ( a , b ) ;
+}

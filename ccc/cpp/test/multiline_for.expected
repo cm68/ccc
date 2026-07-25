@@ -1,5 +1,5 @@
 # 1 "multiline_for.c"
-main ( ) {
+int main ( ) {
     int i ;
     int x ;
     i = 0 ;

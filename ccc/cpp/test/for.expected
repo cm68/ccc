@@ -1,5 +1,5 @@
 # 1 "for.c"
-main ( ) {
+int main ( ) {
     int i ;
     int sum ;
     sum = 0 ;

@@ -1,5 +1,5 @@
 # 1 "do.c"
-main ( ) {
+int main ( ) {
     int i ;
     i = 0 ;
 __D1T: ;

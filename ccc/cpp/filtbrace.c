@@ -26,7 +26,14 @@ static char *stname[] = {
 struct stkent {
 	unsigned char ctrl_type;
 	unsigned char is_else;		/* 1 if this is an else body */
+	unsigned char owner;		/* USER_BRACE: ctrl owning the braces */
+	int bdepth;			/* brace_depth at push (USER_BRACE) */
 };
+
+/* Pseudo ctrl_type: user-braced body inside a synthetic body.  Its
+ * contents are processed normally in ST_NORMAL; the matching } closes
+ * the enclosing synthetic bodies. */
+#define USER_BRACE 255
 
 /* Dynamic state stack */
 static struct filter_stack fs;
@@ -34,6 +41,9 @@ static struct filter_stack fs;
 static int state = ST_NORMAL;
 static int depth = 0;
 static unsigned char ctrl_type = 0;
+/* ST_ELSE_CHK context: 1 = the if being checked had user braces (no
+ * synthetic body entry to close when an else is found) */
+static int else_user = 0;
 static struct token saved_ctrl;	/* Control keyword deferred from ST_PENDING */
 static int has_saved = 0;
 
@@ -69,9 +79,10 @@ filtbrace_init(void (*up)(struct token *))
 	state = ST_NORMAL;
 	depth = 0;
 	ctrl_type = 0;
-	fstack_init(&fs, 8, sizeof(struct stkent));
+	else_user = 0;
+	fstack_setup(&fs, 8, sizeof(struct stkent));
 	has_saved = 0;
-	pend_init(&pb, 8);
+	pend_setup(&pb, 8);
 	brace_depth = 0;
 	do_sp = 0;
 #ifdef DEBUG
@@ -114,12 +125,48 @@ push_body(unsigned char ctrl, unsigned char is_else)
 	struct stkent ent;
 	ent.ctrl_type = ctrl;
 	ent.is_else = is_else;
+	ent.owner = 0;
+	ent.bdepth = brace_depth;
 	fstack_push(&fs, &ent);
 #ifdef DEBUG
 	if (VERBOSE(V_FILTER))
 		fdprintf(2, "BRACE: push(%s,%d) sp=%d\n",
 			 ctrlname(ctrl), is_else, fs.sp);
 #endif
+}
+
+static void pop_body(void);
+static void queue_end(void);
+
+/*
+ * A synthetic body's single statement just completed: close every
+ * enclosing synthetic body too (its statement has equally completed),
+ * stopping at a user-braced block (it continues) or at an IF that
+ * still needs its else-check.  Sets state accordingly.
+ */
+static void
+cascade(void)
+{
+	struct stkent *top;
+
+	while ((top = fstack_top(&fs)) != NULL) {
+		unsigned char ct = top->ctrl_type;
+		if (ct == USER_BRACE)
+			break;	/* enclosing user block continues */
+		if (ct == IF && !top->is_else) {
+			/* defer its } until else-check */
+			state = ST_ELSE_CHK;
+			return;
+		}
+		queue_end();
+		pop_body();
+		if (ct == DO) {
+			/* the trailing while (cond) ; follows */
+			state = ST_DO_WHILE;
+			return;
+		}
+	}
+	state = ST_NORMAL;
 }
 
 /* Pop body entry */
@@ -159,6 +206,42 @@ queue_end(void)
 #endif
 }
 
+/*
+ * If t is the closing } of a USER_BRACE frame, consume it: pop the
+ * frame and close the enclosing synthetic bodies (pausing at an IF for
+ * its else-check).  Returns 1 with *out filled, 0 if t is not ours.
+ */
+static int
+user_end(struct token *t, struct token *out)
+{
+	struct stkent *top = fstack_top(&fs);
+	unsigned char owner;
+
+	if (t->type != END || !top || top->ctrl_type != USER_BRACE ||
+	    brace_depth != top->bdepth - 1)
+		return 0;
+	owner = top->owner;
+	pop_body();
+	if (owner == IF) {
+		/* an else may follow - defer closing the enclosing
+		 * synthetic bodies */
+		state = ST_ELSE_CHK;
+		else_user = 1;
+		tokcpy(out, t);
+#ifdef DEBUG
+		track_out(out);
+#endif
+		return 1;
+	}
+	pend_push(&pb, t);
+	cascade();
+	pend_pop(&pb, out);
+#ifdef DEBUG
+	track_out(out);
+#endif
+	return 1;
+}
+
 void
 filtbrace(struct token *out)
 {
@@ -193,10 +276,7 @@ filtbrace(struct token *out)
 			return;
 		}
 		/* Track depth of user-written braces from the input stream. */
-		if (t.type == BEGIN)
-			brace_depth++;
-		else if (t.type == END)
-			brace_depth--;
+		tok_depth(&t, &brace_depth);
 	}
 
 #ifdef DEBUG
@@ -205,6 +285,7 @@ filtbrace(struct token *out)
 			 stname[state], fs.sp, depth, t.type);
 #endif
 
+redispatch:
 	switch (state) {
 	case ST_NORMAL:
 		/*
@@ -218,6 +299,8 @@ filtbrace(struct token *out)
 			state = ST_DO_WHILE;
 			break;
 		}
+		if (user_end(&t, out))
+			return;
 		if (token_props[t.type] & TF_COND) {
 			ctrl_type = t.type;
 			state = ST_COND;
@@ -253,14 +336,24 @@ filtbrace(struct token *out)
 				 * regardless of fs.sp.
 				 */
 				do_stack[do_sp++] = brace_depth;
+				if (fs.sp > 0) {
+					/* legacy skip for do bodies */
+					state = ST_BODY;
+					depth = 1;	/* Count this BEGIN */
+				} else {
+					state = ST_NORMAL;
+				}
+				break;
 			}
 			if (fs.sp > 0) {
-				/* Inside synthetic body - track nested user-braced control */
-				state = ST_BODY;
-				depth = 1;	/* Count this BEGIN */
-			} else {
-				state = ST_NORMAL;
+				/* User-braced body inside a synthetic body:
+				 * process contents normally; the matching }
+				 * (see ST_NORMAL) closes the synthetic bodies */
+				push_body(USER_BRACE, 0);
+				top = fstack_top(&fs);
+				top->owner = ctrl_type;
 			}
+			state = ST_NORMAL;
 			break;
 		}
 		if (ctrl_type == ELSE && t.type == IF) {
@@ -291,10 +384,12 @@ filtbrace(struct token *out)
 			emit_begin(out);
 			return;
 		}
-		/* Regular token - queue it, return { */
+		/* Regular token - queue it, return {.  The queued token skips
+		 * ST_BODY's depth tracking, so count it here if it opens a
+		 * group (statement starting with parens: `(*p).f = 1;`) */
 		pend_push(&pb, &t);
 		state = ST_BODY;
-		depth = 0;
+		depth = (token_props[t.type] & TF_OPEN) ? 1 : 0;
 		emit_begin(out);
 		return;
 
@@ -323,8 +418,7 @@ filtbrace(struct token *out)
 				}
 				ctrl_type = ELSE;
 				state = ST_PENDING;
-				pend_push(&pb, &t);
-				pend_pop(&pb, out);
+				pend_thru(&pb, &t, out);
 #ifdef DEBUG
 				track_out(out);
 #endif
@@ -343,17 +437,13 @@ filtbrace(struct token *out)
 				if (ctrl_type == IF) {
 					/* Check for else first */
 					state = ST_ELSE_CHK;
+					else_user = 1;
 				} else {
 					/* Body complete - close synthetic body */
 					pend_push(&pb, &t);
 					queue_end();
 					pop_body();
-					/* Check if outer level needs else-check */
-					top = fstack_top(&fs);
-					if (top && top->ctrl_type == IF && !top->is_else)
-						state = ST_ELSE_CHK;
-					else
-						state = (fs.sp > 0) ? ST_BODY : ST_NORMAL;
+					cascade();
 					pend_pop(&pb, out);
 #ifdef DEBUG
 					track_out(out);
@@ -370,12 +460,7 @@ filtbrace(struct token *out)
 					/* Else body - emit }, pop and cascade */
 					queue_end();
 					pop_body();
-					/* Check if outer IF needs else-check */
-					top = fstack_top(&fs);
-					if (top && top->ctrl_type == IF && !top->is_else)
-						state = ST_ELSE_CHK;
-					else
-						state = (fs.sp > 0) ? ST_BODY : ST_NORMAL;
+					cascade();
 				} else if (top && top->ctrl_type == IF) {
 					/* If body - don't emit } yet, check for else */
 					state = ST_ELSE_CHK;
@@ -385,10 +470,10 @@ filtbrace(struct token *out)
 					pop_body();
 					state = ST_DO_WHILE;
 				} else if (fs.sp > 0) {
-					/* Other (WHILE/FOR) - emit }, pop and continue */
+					/* Other (WHILE/FOR) - emit }, pop and cascade */
 					queue_end();
 					pop_body();
-					state = (fs.sp > 0) ? ST_BODY : ST_NORMAL;
+					cascade();
 				} else {
 					/* No synthetic body - shouldn't happen */
 					state = ST_NORMAL;
@@ -404,87 +489,36 @@ filtbrace(struct token *out)
 
 	case ST_ELSE_CHK:
 		if (t.type == ELSE) {
-			/* Found else - close if body, pop it, start else */
+			/* Found else - close if body, pop it, start else.
+			 * A user-braced if has no synthetic entry: the top IF
+			 * (if any) belongs to an enclosing if - leave it. */
 			top = fstack_top(&fs);
-			if (top && top->ctrl_type == IF) {
+			if (!else_user && top && top->ctrl_type == IF) {
 				queue_end();
 				pop_body();
 			}
+			else_user = 0;
 			ctrl_type = ELSE;
 			state = ST_PENDING;
-			pend_push(&pb, &t);
-			pend_pop(&pb, out);
+			pend_thru(&pb, &t, out);
 #ifdef DEBUG
 			track_out(out);
 #endif
 			return;
 		}
-		/* No else found */
-		top = fstack_top(&fs);
-		if (top && top->ctrl_type != IF) {
-			/*
-			 * User-braced IF inside synthetic body (FOR/WHILE/DO).
-			 * The IF was the synthetic body's single statement.
-			 * Close the synthetic body, then check if outer level
-			 * needs else-check.
-			 */
-			queue_end();
-			pop_body();
+		/* No else found: close the checked if (when synthetic - a
+		 * user-braced if is already closed) and cascade.  cascade()
+		 * pauses at an outer IF, re-entering ST_ELSE_CHK with this
+		 * same token via the save/redispatch below. */
+		if (!else_user) {
 			top = fstack_top(&fs);
 			if (top && top->ctrl_type == IF && !top->is_else) {
-				/* Outer level is IF - check for else */
-				tokcpy(&saved_ctrl, &t);
-				has_saved = 1;
-				state = ST_ELSE_CHK;
-				pend_pop(&pb, out);
-#ifdef DEBUG
-				track_out(out);
-#endif
-				return;
-			}
-			state = (fs.sp > 0) ? ST_BODY : ST_NORMAL;
-			/* Drain pending END before returning current token */
-			if (pend_has(&pb)) {
-				tokcpy(&saved_ctrl, &t);
-				has_saved = 1;
-				pend_pop(&pb, out);
-#ifdef DEBUG
-				track_out(out);
-#endif
-				return;
-			}
-			break;
-		}
-		/* Close all pending bodies */
-		while (fs.sp > 0) {
-			top = fstack_top(&fs);
-			if (top->ctrl_type == IF && !top->is_else) {
-				/* IF without else - close it */
-				queue_end();
-				pop_body();
-				/* Check if next level needs else check */
-				top = fstack_top(&fs);
-				if (top && top->ctrl_type == IF && !top->is_else) {
-					/* More IF to check - save token, return } */
-					tokcpy(&saved_ctrl, &t);
-					has_saved = 1;
-					state = ST_ELSE_CHK;
-					pend_pop(&pb, out);
-#ifdef DEBUG
-					track_out(out);
-#endif
-					return;
-				}
-			} else if (top->is_else) {
-				/* Else body already closed, just pop */
-				pop_body();
-			} else {
-				/* WHILE/FOR body - close it */
 				queue_end();
 				pop_body();
 			}
 		}
-		state = ST_NORMAL;
+		else_user = 0;
+		cascade();
 		if (pend_has(&pb)) {
 			/* Save current token for re-processing after pending */
 			tokcpy(&saved_ctrl, &t);
@@ -495,7 +529,9 @@ filtbrace(struct token *out)
 #endif
 			return;
 		}
-		break;
+		/* Reprocess: the token may itself be a control keyword or
+		 * the closing } of an enclosing user-braced block */
+		goto redispatch;
 
 	case ST_DO_WHILE:
 		/* After DO body, wait for while (cond); */

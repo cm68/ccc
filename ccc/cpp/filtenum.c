@@ -38,7 +38,7 @@ void
 filtenum_init(void (*upstream)(struct token *))
 {
 	up = upstream;
-	pend_init(&epend, 8);
+	pend_setup(&epend, 8);
 }
 
 static long enum_expr(struct token *t);

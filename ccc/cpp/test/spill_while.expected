@@ -1,5 +1,5 @@
 # 1 "spill_while.c"
-main ( ) {
+int main ( ) {
     int x ;
     x = 0 ;
 __W1T: ;

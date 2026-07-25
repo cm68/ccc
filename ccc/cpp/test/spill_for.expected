@@ -1,5 +1,5 @@
 # 1 "spill_for.c"
-main ( ) {
+int main ( ) {
     int i ;
     int x ;
     x = 0 ;

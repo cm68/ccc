@@ -72,15 +72,9 @@ filtdecl_init(void (*up)(struct token *))
 	in_typedef = 0;
 	expect_tag = 0;
 	in_aggr_def = 0;
-	/* Initialize dynamic buffers (first call only) */
-	if (!decl_arr.buf) {
-		tarr_init(&decl_arr, 16);
-		tarr_init(&init_arr, 32);
-		pend_init(&pb, 16);
-	} else {
-		tarr_reset(&decl_arr);
-		tarr_reset(&init_arr);
-	}
+	tarr_setup(&decl_arr, 16);
+	tarr_setup(&init_arr, 32);
+	pend_setup(&pb, 16);
 }
 
 static void
@@ -327,6 +321,28 @@ restart:
 			tokcpy(out, &t);
 			return;
 		}
+		if (t.type == LPAR) {
+			struct token tmp;
+			struct token *ref = decl_arr.count > 0 ? &decl_arr.buf[0] : &t;
+			/* Function declarator (extern short f(), g();):
+			 * no initializer possible - emit type, stars, name,
+			 * paren; the rest of the declaration flows through
+			 * unchanged */
+			pend_buf(&pb, decl_arr.buf, decl_arr.count);
+			for (i = 0; i < names[name_count-1].star_count; i++)
+				pend_tok_at(&pb, STAR, ref);
+			tmp.type = SYM;
+			tmp.v.name = names[name_count-1].name;
+			tmp.lineno = ref->lineno;
+			tmp.filename = ref->filename;
+			pend_push(&pb, &tmp);
+			pend_push(&pb, &t);
+			name_count--;
+			tarr_reset(&decl_arr);
+			state = ST_NORMAL;
+			pend_pop(&pb, out);
+			return;
+		}
 		if (t.type == LBRACK) {
 			struct token tmp;
 			struct token *ref = decl_arr.count > 0 ? &decl_arr.buf[0] : &t;
@@ -348,8 +364,7 @@ restart:
 			return;
 		}
 		finish_decl();
-		pend_push(&pb, &t);
-		pend_pop(&pb, out);
+		pend_thru(&pb, &t, out);
 		return;
 
 	case ST_INIT:

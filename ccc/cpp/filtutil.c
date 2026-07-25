@@ -30,6 +30,78 @@ is_type_tok(struct token *t)
 }
 
 /*
+ * Queue t and emit the oldest pending token - the standard way for a
+ * filter to pass the current token through its output queue.
+ */
+void
+pend_thru(struct pendbuf *p, struct token *t, struct token *out)
+{
+	pend_push(p, t);
+	pend_pop(p, out);
+}
+
+/*
+ * First-call init / later-call reset for the static buffers every
+ * filter keeps.
+ */
+void
+tarr_setup(struct tokarray *a, int initial)
+{
+	if (!a->buf)
+		tarr_init(a, initial);
+	else
+		tarr_reset(a);
+}
+
+void
+pend_setup(struct pendbuf *p, int initial)
+{
+	if (!p->buf)
+		pend_init(p, initial);
+	else
+		p->rd = p->wr = 0;
+}
+
+/*
+ * First-call init / later-call reset for a filter stack.
+ */
+void
+fstack_setup(struct filter_stack *s, int initial, int elemsize)
+{
+	if (!s->buf)
+		fstack_init(s, initial, elemsize);
+	else
+		s->sp = 0;
+}
+
+/*
+ * Is the last buffered token a struct/union keyword?  (The SYM that
+ * follows is then a tag, part of the type, not a name.)
+ */
+int
+tag_pending(struct tokarray *a)
+{
+	unsigned char last;
+
+	if (a->count == 0)
+		return 0;
+	last = a->buf[a->count - 1].type;
+	return last == STRUCT || last == UNION;
+}
+
+/*
+ * Track BEGIN/END nesting depth.
+ */
+void
+tok_depth(struct token *t, int *depth)
+{
+	if (t->type == BEGIN)
+		(*depth)++;
+	else if (t->type == END)
+		(*depth)--;
+}
+
+/*
  * Generic filter stack operations
  */
 void

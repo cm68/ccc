@@ -1,5 +1,5 @@
 # 1 "spill_do.c"
-main ( ) {
+int main ( ) {
     int x ;
     x = 0 ;
 __D1T: ;

@@ -1,5 +1,5 @@
 # 1 "continue.c"
-main ( ) {
+int main ( ) {
     int i ;
     int sum ;
     sum = 0 ;

@@ -1,5 +1,5 @@
 # 1 "break.c"
-main ( ) {
+int main ( ) {
     int i ;
     i = 0 ;
 __F1T: ;
