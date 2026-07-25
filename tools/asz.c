@@ -165,7 +165,7 @@ get_line()
     unsigned char *p;
 
     lineptr = linebuf;
-    for (i = 0; i < sizeof(linebuf); i++) {
+    for (i = 0; i < sizeof(linebuf) - 2; i++) {
         if (inptr >= limit) {
             if (fillbuf() == 0) {
                 *lineptr++ = T_EOF;
@@ -182,6 +182,22 @@ get_line()
         *lineptr++ = c;
         if (c == '\n') {
             break;
+        }
+    }
+    if (i == sizeof(linebuf) - 2) {
+        /* line longer than the buffer (long debug comments from c1):
+         * truncate it and discard the rest of the physical line */
+        *lineptr++ = '\n';
+        while (1) {
+            if (inptr >= limit && fillbuf() == 0)
+                break;
+            c = *inptr++;
+            if (c == 0x1A) {
+                saw_eof = 1;
+                break;
+            }
+            if (c == '\n')
+                break;
         }
     }
     *lineptr = '\0';
