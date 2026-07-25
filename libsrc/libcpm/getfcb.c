@@ -62,17 +62,22 @@ register char *		name;
 struct fcb *	fc;
 {
 	uchar			i,j;
+	char			uc;
 
 	while(isspace(*name))
 		name++;
 	for(i = 0 ; i < NDNAMES ; i++)
-		for(j = 0 ; ;)
-			if(dnames[i][j] != upcase(name[j]))
+		for(j = 0 ; ;) {
+			/* hoist the call: c1 can't codegen a 2-D index
+			 * compared against a CALL in one expression */
+			uc = upcase(name[j]);
+			if(dnames[i][j] != uc)
 				break;
 			else if(++j == DNAMLEN) {
 				fc->use = i+U_CON;
 				return 1;
 			}
+		}
 	fc_parse(fc, name);
 	return 0;
 }

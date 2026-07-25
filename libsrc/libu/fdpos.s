@@ -16,7 +16,7 @@
 ; (seek.c), so both calls keep the tracking current; only
 ; the internal seekraw stub bypasses it.
 ;
-	.global _fdpos
+	.global __fdpos
 	.global fdadd
 	.global fdclr
 	.global fdcpy
@@ -33,7 +33,7 @@ fdadd:
 	add 	a,a		; fd * 4
 	ld 	e,a
 	ld 	d,0
-	ld 	hl,_fdpos
+	ld 	hl,__fdpos
 	add 	hl,de
 	pop 	de		; count
 	ld 	a,(hl)
@@ -64,7 +64,7 @@ fdclr:
 	add 	a,a		; fd * 4
 	ld 	e,a
 	ld 	d,0
-	ld 	hl,_fdpos
+	ld 	hl,__fdpos
 	add 	hl,de
 	xor 	a
 	ld 	(hl),a
@@ -90,7 +90,7 @@ fdcpy:
 	add 	a,a		; dest fd * 4
 	ld 	e,a
 	ld 	d,0
-	ld 	hl,_fdpos
+	ld 	hl,__fdpos
 	add 	hl,de
 	ex 	de,hl		; de = dest entry
 	ld 	a,b
@@ -98,7 +98,7 @@ fdcpy:
 	add 	a,a		; source fd * 4
 	ld 	c,a
 	ld 	b,0
-	ld 	hl,_fdpos
+	ld 	hl,__fdpos
 	add 	hl,bc		; hl = source entry
 	ld 	bc,4
 	ldir
@@ -107,6 +107,6 @@ fdcpy:
 	ret
 
 	.bss
-_fdpos:	.ds 64
+__fdpos:	.ds 64
 
 ; vim: tabstop=8 shiftwidth=8 noexpandtab:

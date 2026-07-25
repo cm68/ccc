@@ -6,7 +6,8 @@
 ARCHIVE = libu.a
 
 AS = asz
-CC = ccc
+# zc3, not ccc: pass2 codegen is still WIP (matches libc)
+CC = zc3
 LIB = wslib
 
 DEST ?= ../../root/lib
