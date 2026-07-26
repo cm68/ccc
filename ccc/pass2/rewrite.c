@@ -633,6 +633,14 @@ tryrule(struct rule *rp, Expr *e)
 	if ((rp->flags & RF_SIGNL) && (!e->left || !ISSIGNED(e->left->width)))
 		return NULL;
 
+	/*
+	 * Some forms only apply when the result is wanted in DE - a byte
+	 * heading for E as the right operand of a binary op, rather than
+	 * for A as the left.
+	 */
+	if ((rp->flags & RF_TDE) && e->tgt != R_DE)
+		return NULL;
+
 #ifdef DEBUG
 	if (VERBOSE(V_RULES))
 		fprintf(stderr, "rewrite: %s -> %c\n", rp->pat, rp->rep);

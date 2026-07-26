@@ -252,7 +252,16 @@ struct rule rules[] = {
 	R("D(I):sF", DEREF, P_L, P_NONE, P_NONE, 0, "\tld a,($L)\n\tor a,($L+)\n", F_Z),
 	R("D(I):s", DEREF, P_L, P_NONE, P_NONE, 0, "\tld $t,($L)\n\tld $u,($L+)\n", 0),
 	R("D(I):b", DEREF, P_L, P_NONE, P_NONE, 0, NULL, 0),
+	/*
+	 * Of the 8-bit registers only A can load from an absolute address,
+	 * but the pairs all can, so ld de,(nn) reaches E without touching
+	 * A or HL - either of which may hold the left operand.  It reads
+	 * the following byte into D as well; D is dead here, and one byte
+	 * of over-read is harmless in a flat memory model.
+	 */
+	R("D(O):b", DEREF, P_L, P_NONE, P_NONE, RF_TDE, "\tld de,($L)\n", R_E),
 	R("D(O):b", DEREF, P_L, P_NONE, P_NONE, 0, "\tld a,($L)\n", R_A),
+	R("D(I):b", DEREF, P_L, P_NONE, P_NONE, RF_TDE, "\tld e,($L)\n", R_E),
 	/* honour the target: as the right operand of a compare this has to
 	 * land in DE, or it overwrites the left operand in HL */
 	R("D(O):s", DEREF, P_L, P_NONE, P_NONE, 0, "\tld $T,($L)\n", 0),
@@ -301,6 +310,31 @@ struct rule rules[] = {
 	R("&(D(I),N):b", AND, P_L, P_R, P_NONE, 0, "\tld a,($LL)\n\tand $R\n", R_A),
 	R("|(D(I),N):b", OR, P_L, P_R, P_NONE, 0, "\tld a,($LL)\n\tor $R\n", R_A),
 	R("^(D(I),N):b", XOR, P_L, P_R, P_NONE, 0, "\tld a,($LL)\n\txor $R\n", R_A),
+	/*
+	 * Byte arithmetic against a memory operand.  These match on the
+	 * parent so that A is known to hold the left operand, which makes
+	 * HL free to point at the right one - a rule matching the DEREF
+	 * alone cannot know that, and would clobber a word left operand.
+	 * The Z80 operates directly on (hl) and (iy+d), so no temporary
+	 * register is needed at all.
+	 */
+	R("+(A,D(O)):b", PLUS, P_L, P_R, P_NONE, 0, "\tld hl,$RL\n\tadd a,(hl)\n", R_A),
+	R("-(A,D(O)):b", MINUS, P_L, P_R, P_NONE, 0, "\tld hl,$RL\n\tsub (hl)\n", R_A),
+	R("&(A,D(O)):b", AND, P_L, P_R, P_NONE, 0, "\tld hl,$RL\n\tand (hl)\n", R_A),
+	R("|(A,D(O)):b", OR, P_L, P_R, P_NONE, 0, "\tld hl,$RL\n\tor (hl)\n", R_A),
+	R("^(A,D(O)):b", XOR, P_L, P_R, P_NONE, 0, "\tld hl,$RL\n\txor (hl)\n", R_A),
+	R("+(A,D(I)):b", PLUS, P_L, P_R, P_NONE, 0, "\tadd a,($RL)\n", R_A),
+	R("-(A,D(I)):b", MINUS, P_L, P_R, P_NONE, 0, "\tsub ($RL)\n", R_A),
+	R("&(A,D(I)):b", AND, P_L, P_R, P_NONE, 0, "\tand ($RL)\n", R_A),
+	R("|(A,D(I)):b", OR, P_L, P_R, P_NONE, 0, "\tor ($RL)\n", R_A),
+	R("^(A,D(I)):b", XOR, P_L, P_R, P_NONE, 0, "\txor ($RL)\n", R_A),
+
+	/* byte arithmetic with both operands live: left in A, right in E */
+	R("+(A,K):b", PLUS, P_L, P_R, P_NONE, 0, "\tadd a,e\n", R_A),
+	R("-(A,K):b", MINUS, P_L, P_R, P_NONE, 0, "\tsub e\n", R_A),
+	R("&(A,K):b", AND, P_L, P_R, P_NONE, 0, "\tand e\n", R_A),
+	R("|(A,K):b", OR, P_L, P_R, P_NONE, 0, "\tor e\n", R_A),
+	R("^(A,K):b", XOR, P_L, P_R, P_NONE, 0, "\txor e\n", R_A),
 	R("&(A,N):b", AND, P_L, P_R, P_NONE, 0, "\tand $R\n", R_A),
 	R("&(A,K):bF", AND, P_L, P_R, P_NONE, 0, "\tand e\n", F_NZ),
 	R("|(A,N):b", OR, P_L, P_R, P_NONE, 0, "\tor $R\n", R_A),

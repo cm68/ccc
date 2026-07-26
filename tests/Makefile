@@ -71,7 +71,8 @@ STMT_TESTS = \
 	call_args.c \
 	conditions.c \
 	compound_mem.c \
-	ptr_store.c
+	ptr_store.c \
+	byte_arith.c
 
 # sizeof operator tests
 SIZEOF_TESTS = \
