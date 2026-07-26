@@ -1,3 +1,4 @@
+# Editors, IDEs, OS
 .gdbargs
 .settings
 .cproject
@@ -5,42 +6,84 @@
 .idea
 .nfs*
 .claude/
-stage1/
+.bashrc
+.aider*
 tags
-sizefile*
-oldsize
-vgcore.*
-tmp[0-9]*
-*.1
-*.2
+*.swp
+*~
+*.orig
+*.rej
+.DS_Store
+__pycache__/
+
+# Compiler pass intermediates.  The passes chain
+# .c -> .i (cpp text) -> .x (cpp lexemes) -> .1 (AST) + .2 (pass1 asm)
+# -> .s/.as (asm) -> .o/.obj (object) -> binary
 *.i
 *.x
+*.1
+*.2
+*.s
+*.as
+*.asm
 *.o
+*.obj
+*.rel
 *.a
 *.ast
 *.pp
-*.pdf
-*.ps
-*.swp
+
+# Linker and toolchain byproducts
 *.lst
 *.sym
-*.ihx
-*.cdb
 *.map
-*.asm
-*.s
+*.mem
+*.noi
+*.lk
+*.cdb
+*.d
+lib/*.O
+
+# Z80/CP/M images
+*.com
+*.ws
+*.bin
+*.hex
+*.ihx
+*.mx
+
+# Build logs, diagnostics and crash dumps
+*.log
+*.err
+*.out
+a.out
 core
 core.[0-9]*
-*.obj
-mxzc3/
+vgcore.*
+sizefile*
+oldsize
+tmp[0-9]*
+
+# Generated build directories
+stage1/
+stage2/
+sizecheck/
+sizecheck1/
+langtest/
 comzc3/
+comsdcc/
+mxzc3/
 ccctest/
-!libsrc/*/*.s
-!libsrc/*.s
-!ccc/cpp/crt0cpm.s
-lib/*.O
-__pycache__/
+valgrind/
 attic/
 root/
-.bashrc
-.aider*
+
+# Sources that share an extension with the intermediates above.
+# Assembly sources live in libsrc plus the one CP/M startup file.
+!libsrc/*.s
+!libsrc/*/*.s
+!ccc/cpp/crt0cpm.s
+
+# regress.sh baselines are checked in: .x lexeme dumps, .rc exit codes
+# and .err stderr, all of which the rules above would otherwise hide.
+!tests/baseline/**
