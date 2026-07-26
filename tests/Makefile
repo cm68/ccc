@@ -136,7 +136,8 @@ SCOPE_TESTS = \
 STRUCT_TESTS = \
 	struct.c \
 	ix_indexed.c \
-	struct_value.c
+	struct_value.c \
+	union_value.c
 
 # Minimal/smoke tests
 MINIMAL_TESTS = \

@@ -33,3 +33,18 @@ struct pt returning()
 {
 	return g1;		/* by value */
 }
+
+/* a union is an aggregate too, and goes the same way */
+union u { char c; int i; long l; };
+union u u1, u2;
+
+int uassign()
+{
+	u1 = u2;
+	return u1.i;
+}
+
+int upass()
+{
+	return taking(u1);
+}

@@ -250,6 +250,10 @@ struct rule rules[] = {
 	R("=(I,N):l", ASSIGN, P_L, P_R, P_NONE, 0,
 		"\tld ($L),$Rl\n\tld ($L+),$Rh\n"
 		"\tld ($L++),$R2\n\tld ($L+++),$R3\n", 0),
+	/* no ld (nn),n, so point HL at the global and walk it */
+	R("=(O,N):l", ASSIGN, P_L, P_R, P_NONE, 0,
+		"\tld hl,$L\n\tld (hl),$Rl\n\tinc hl\n\tld (hl),$Rh\n"
+		"\tinc hl\n\tld (hl),$R2\n\tinc hl\n\tld (hl),$R3\n", 0),
 	/* a long already in HL:DE is the return value as it stands */
 	R("=(H,C):l", ASSIGN, P_L, P_R, P_NONE, 0, "", R_HL),
 
@@ -436,6 +440,11 @@ struct rule rules[] = {
 	 * global.  Without it a byte local could only be read by the rules
 	 * that match its parent too, so SEXT of one had nothing to widen */
 	R("D(I):b", DEREF, P_L, P_NONE, P_NONE, 0, "\tld a,($L)\n", R_A),
+	/* a byte through a struct pointer in IX at offset zero - a
+	 * non-zero member offset folds into an INDEX first */
+	R("D(V):b", DEREF, P_L, P_NONE, P_L, RF_IX, "\tld a,(ix+0)\n", R_A),
+	R("D(V):s", DEREF, P_L, P_NONE, P_L, RF_IX,
+		"\tld $t,(ix+0)\n\tld $u,(ix+1)\n", 0),
 	/* honour the target: as the right operand of a compare this has to
 	 * land in DE, or it overwrites the left operand in HL */
 	R("D(O):s", DEREF, P_L, P_NONE, P_NONE, 0, "\tld $T,($L)\n", 0),
