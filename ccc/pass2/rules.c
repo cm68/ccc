@@ -80,6 +80,14 @@ struct rule rules[] = {
 	R("+(V,N)", INDEX, P_NONE, P_NONE, P_L, RF_IX, NULL, 0),
 	R("+(D(V),N)", INDEX, P_NONE, P_NONE, P_LL, RF_IXIY, NULL, 0),
 	R("+(I,N)", INDEX, P_NONE, P_NONE, P_L, 0, NULL, 0),
+	/*
+	 * Array element with a variable subscript: the base is a frame
+	 * slot and the scaled index is already in HL, so form the address
+	 * rather than let (ix+d) do it.  A constant subscript never gets
+	 * here - +(I,N) above folds it straight into the offset.
+	 */
+	R("+(I,H)", PLUS, P_L, P_R, P_NONE, 0,
+		"\tpush $Lr\n\tpop de\n\tadd hl,de\n\tld de,$Lo\n\tadd hl,de\n", R_HL),
 
 	/* symbol + constant offset folds into the SYMREF */
 	R("+(O,N)", SYMREF, P_NONE, P_NONE, P_NONE, 0, NULL, 0),

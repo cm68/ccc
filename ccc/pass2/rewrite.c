@@ -549,7 +549,8 @@ emitasm(char *tpl, Expr *e)
 			mod = 0;
 			offadj = 0;
 			if (*p == 'l' || *p == 'h' ||
-			    *p == '2' || *p == '3') {
+			    *p == '2' || *p == '3' ||
+			    *p == 'o' || *p == 'r') {
 				mod = *p++;
 			}
 			while (*p == '+') {
@@ -590,10 +591,20 @@ emitasm(char *tpl, Expr *e)
 						outd(val);
 					}
 				} else if (n->op == INDEX) {
-					out(idxregname(n->u.var.reg));
-					val = n->u.var.off + offadj;
-					if (val >= 0) outc('+');
-					outd(val);
+					/* o and r split it into the offset and
+					 * the register, for templates that
+					 * have to do the arithmetic themselves
+					 * rather than let (ix+d) do it */
+					if (mod == 'o') {
+						outd(n->u.var.off + offadj);
+					} else if (mod == 'r') {
+						out(idxregname(n->u.var.reg));
+					} else {
+						out(idxregname(n->u.var.reg));
+						val = n->u.var.off + offadj;
+						if (val >= 0) outc('+');
+						outd(val);
+					}
 				} else if (n->op == LOCALVAR) {
 					/* raw frame offset, for address
 					 * arithmetic templates */
@@ -1165,6 +1176,50 @@ no_regconv:
  * ARGNODE handled specially: right chain processed after push
  */
 /*
+ * Does this node name a location outright, rather than work out an
+ * address that a store then has to go through?
+ */
+static int
+islocdesc(Expr *e)
+{
+	if (!e)
+		return 0;
+	switch (e->op) {
+	case REGVAR:
+	case LOCALVAR:
+	case INDEX:
+	case SYM:
+	case SYMREF:
+		return 1;
+	}
+	return 0;
+}
+
+/*
+ * A register standing on the left of an assignment as the destination
+ * itself, rather than as somewhere to store through - which is how
+ * RETURN and the call-argument wrapper ask for a value in a given
+ * register.  Only meaningful before the lvalue is reduced; afterwards
+ * the same node means an address that was worked out.
+ */
+static int
+isdestreg(Expr *e)
+{
+	if (!e)
+		return 0;
+	switch (e->op) {
+	case INHL:
+	case INDE:
+	case INBC:
+	case INA:
+	case INE:
+	case CODE:
+		return 1;
+	}
+	return 0;
+}
+
+/*
  * Base operator behind a compound assignment: += is +, and so on.
  * Returns 0 for anything that is not a compound assignment.
  */
@@ -1642,6 +1697,22 @@ rewrite1(Expr *e)
 			 * and quietly turn the store into a fetch.
 			 */
 			e->left->left = rewrite1(e->left->left);
+		} else if (e->op == ASSIGN && e->left &&
+			   !islocdesc(e->left) && !isdestreg(e->left)) {
+			/*
+			 * An lvalue that is neither a location descriptor nor
+			 * a destination register is an address the tree works
+			 * out - an array element, say.  Reduce it, and unless
+			 * it folded into a descriptor of its own (a constant
+			 * subscript becomes a SYMREF) give it the DEREF the
+			 * store rules expect, so such a store needs no rules
+			 * of its own.
+			 */
+			Expr *addr = rewrite1(e->left);
+			if (islocdesc(addr))
+				e->left = addr;
+			else
+				e->left = mkunary(DEREF, e->width, addr);
 		} else if (!e->left || !e->left->nored) {
 			e->left = rewrite1(e->left);
 		}
