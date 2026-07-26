@@ -166,6 +166,17 @@ struct rule rules[] = {
 	R("=(E,E)", ASSIGN, P_L, P_R, P_NONE, 0, "", R_DE),
 	R("=(H,H)", ASSIGN, P_L, P_R, P_NONE, 0, "", R_HL),
 
+	/*
+	 * Comma: both sides have already emitted their code, in order,
+	 * and the value is the right one - so there is nothing left to do
+	 * but say where it ended up.  ';' rather than ',' because the
+	 * pattern parser uses the comma to separate children.
+	 */
+	R(";(_,H)", COMMA, P_L, P_R, P_NONE, 0, "", R_HL),
+	R(";(_,E)", COMMA, P_L, P_R, P_NONE, 0, "", R_DE),
+	R(";(_,B)", COMMA, P_L, P_R, P_NONE, 0, "", R_BC),
+	R(";(_,A)", COMMA, P_L, P_R, P_NONE, 0, "", R_A),
+
 	/* assign to CODE result */
 	R("=(C,H)", ASSIGN, P_L, P_R, P_NONE, 0, "", R_HL),
 	R("=(C,E)", ASSIGN, P_L, P_R, P_NONE, 0, "", R_DE),
