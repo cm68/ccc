@@ -30,6 +30,11 @@ tmp[0-9]*
 *.asm
 *.s
 core
+core.[0-9]*
+*.obj
+mxzc3/
+comzc3/
+ccctest/
 !libsrc/*/*.s
 !libsrc/*.s
 !ccc/cpp/crt0cpm.s
