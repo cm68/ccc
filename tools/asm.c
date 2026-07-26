@@ -242,6 +242,19 @@ unsigned char cur_token;
  * current assembly address 
  */
 unsigned short cur_address;
+/*
+ * Address of the statement being assembled.  cur_address advances as
+ * each byte is emitted, so by the time an operand is evaluated it has
+ * already stepped past the opcode - $ has to mean where the
+ * instruction started, so that jr $+2 lands on the next one.
+ */
+unsigned short insn_address;
+/*
+ * Set when the statement's operand mentioned $.  Such a jump must not
+ * be relaxed from jp to jr: the offset was written against the size
+ * this instruction has now, and shrinking it moves the target.
+ */
+char used_dollar;
 
 /*
  * segment tops 
@@ -858,6 +871,13 @@ unsigned char cond;
     if (pass != 0)
         return;
     if (segment != SEG_TEXT)
+        return;
+    /*
+     * No record means no relaxation, in both passes alike - which is
+     * what a $-relative target needs, since shrinking the instruction
+     * would move where $+n points.
+     */
+    if (used_dollar)
         return;
 
     j = (struct jump *)malloc(sizeof(struct jump));
@@ -1598,13 +1618,15 @@ have_token:
         /* local label ref: token_val = label number, token_buf[0] = direction */
         vp->sym = local_resolve(token_val, token_buf[0]);
     } else if (cur_token == '$') {
-		vp->num.w = cur_address;
+		vp->num.w = insn_address;
+		used_dollar = 1;
     } else if (cur_token == '-') {
 		get_token();
 		if (cur_token == T_NUM) {
 			vp->num.w = -token_val;
 		} else if (cur_token == '$') {
-			vp->num.w = -cur_address;
+			vp->num.w = -insn_address;
+			used_dollar = 1;
 		} else {
 			gripe("expected number or $ after -");
 		}
@@ -1742,11 +1764,14 @@ assemble()
 #endif
 
 		while (1) {
+            /* where this statement starts, for $ */
+            insn_address = cur_address;
+            used_dollar = 0;
             get_token();
 
             if (cur_token == T_EOF) {
                 break;
-            }            
+            }
 
 #ifdef DEBUG
 			if (verbose > 4)

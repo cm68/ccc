@@ -65,7 +65,8 @@ wssize: wssize.o
 ccc: ccc.c
 	$(CC) $(CFLAGS) -DROOTDIR=$(DEST) -o $@ $<
 
-test:
+test: asz
+	@sh tests/check-dollar.sh
 
 clean:
 	rm -f *.a *.o *.1 *.2 *.x *.i *.pp tests/*.out tests/*.a tests/*.o

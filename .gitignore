@@ -88,6 +88,7 @@ old/
 !libsrc/*.s
 !libsrc/*/*.s
 !ccc/cpp/crt0cpm.s
+!tools/tests/*.s
 
 # regress.sh baselines are checked in: .x lexeme dumps, .rc exit codes
 # and .err stderr, all of which the rules above would otherwise hide.

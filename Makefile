@@ -41,6 +41,7 @@ stage1: install
 	@echo "Stage1 build complete"
 
 test: install
+	$(SUBMAKE) -C tools test
 	$(SUBMAKE) -C libsrc/libcpm ccc-check
 	$(SUBMAKE) -C tests test
 
