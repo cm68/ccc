@@ -395,6 +395,14 @@ struct rule rules[] = {
 	R("U(H,B)", NEQ, P_L, P_R, P_NONE, 0, "\tor a\n\tsbc hl,bc\n", F_NZ),
 	R("T(H,B)", LT, P_L, P_R, P_NONE, 0, "\tor a\n\tsbc hl,bc\n", F_C),
 	R("Y(H,B)", GE, P_L, P_R, P_NONE, 0, "\tor a\n\tsbc hl,bc\n", F_NC),
+	/*
+	 * LE and GT answer the reversed question, and there is no
+	 * ex bc,hl - so copy BC into DE and swap that instead.
+	 */
+	R("W(H,B)", LE, P_L, P_R, P_NONE, 0,
+		"\tld e,c\n\tld d,b\n\tex de,hl\n\tor a\n\tsbc hl,de\n", F_NC),
+	R("G(H,B)", GT, P_L, P_R, P_NONE, 0,
+		"\tld e,c\n\tld d,b\n\tex de,hl\n\tor a\n\tsbc hl,de\n", F_C),
 	R("Q(B,E)", EQ, P_L, P_R, P_NONE, 0, T_BC_HL "\tor a\n\tsbc hl,de\n", F_Z),
 	R("U(B,E)", NEQ, P_L, P_R, P_NONE, 0, T_BC_HL "\tor a\n\tsbc hl,de\n", F_NZ),
 	R("T(B,E)", LT, P_L, P_R, P_NONE, 0, T_BC_HL "\tor a\n\tsbc hl,de\n", F_C),

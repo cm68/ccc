@@ -249,8 +249,16 @@ assign(Expr *e, unsigned char tgt)
 			/* Need both registers */
 			assign(e->left, R_HL);
 			assign(e->right, R_DE);
-			/* For byte comparisons, mark RHS as nored if preservable */
-			if ((e->width == 'b' || e->width == 'B') &&
+			/*
+			 * A byte comparison keeps its right operand whole so
+			 * rules like Q(A,N):F can still see a literal.  Test
+			 * the operand width, not the node's: a comparison
+			 * yields ubyte whatever it compared, so keying off
+			 * e->width preserved the right operand of every
+			 * comparison and stranded the ones that needed
+			 * reducing - a REGVAR never became INBC.
+			 */
+			if (e->left && ISBYTE(e->left->width) &&
 			    (e->op == EQ || e->op == NEQ || e->op == LT ||
 			     e->op == GT || e->op == LE || e->op == GE) &&
 			    e->right && shouldpres(e->right)) {
