@@ -160,6 +160,40 @@ demote(struct expr *e, struct type *t)
 		demote(e->right, t);
 }
 
+static int
+iscmpop(unsigned char op)
+{
+	switch (op) {
+	case EQ:
+	case NEQ:
+	case LT:
+	case GT:
+	case LE:
+	case GE:
+		return 1;
+	}
+	return 0;
+}
+
+/*
+ * The width an operator actually works at.  For most that is the node
+ * type, but a comparison yields int whatever it compared, so its own
+ * type says nothing about the operands - they meet at their common
+ * width instead.
+ */
+static struct type *
+opwidth(struct expr *e)
+{
+	if (!iscmpop(e->op))
+		return e->type;
+	if (!e->left)
+		return e->type;
+	if (!e->right)
+		return e->left->type;
+	return e->left->type->size >= e->right->type->size ?
+	    e->left->type : e->right->type;
+}
+
 /*
  * Get size suffix for memory operations based on type
  * Returns: 'b' (byte), 's' (short/int), 'l' (long),
@@ -249,6 +283,34 @@ emitChild(struct expr *e)
 {
 	if (e)
 		emitExpr(e);
+}
+
+/*
+ * Emit an operand of an operator that works at width t, widening it
+ * first if it is narrower.  Signed sources sign-extend and unsigned
+ * ones zero-extend, which is precisely why the tree has to carry the
+ * conversion rather than leaving pass2 to guess: the instructions
+ * differ, and the node type is the only thing that knows which.
+ */
+static void
+emitOperand(struct expr *e, struct type *t)
+{
+	if (!e)
+		return;
+	if (t && e->type && e->type->size < t->size) {
+		if (e->op == CONST) {
+			/*
+			 * A constant is the same value at any width, so it
+			 * just gets the wider type - wrapping it would break
+			 * every rule that wants a literal operand.
+			 */
+			e->type = t;
+		} else {
+			emit1((e->type->flags & TF_UNSIGNED) ? WIDEN : SEXT);
+			emit1(typeSfx(t));
+		}
+	}
+	emitExpr(e);
 }
 
 /*
@@ -470,9 +532,18 @@ emitExpr(struct expr *e)
 				demote(right, type);
 			/* mark the lvalue so DEREF above knows to keep itself */
 			inLvalue = 1;
+			emitChild(left);		/* a location, never widened */
+			emitOperand(right, type);	/* convert to the target */
+		} else {
+			struct type *w = opwidth(e);
+			emitOperand(left, w);
+			/* a shift count is promoted on its own, not to the
+			 * width of the value being shifted */
+			if (op == LSHIFT || op == RSHIFT)
+				emitChild(right);
+			else
+				emitOperand(right, w);
 		}
-		emitChild(left);
-		emitChild(right);
 		break;
 	}
 }

@@ -172,6 +172,16 @@ struct rule rules[] = {
 	R("=(C,B)", ASSIGN, P_L, P_R, P_NONE, 0, "", R_BC),
 	R("=(C,A)", ASSIGN, P_L, P_R, P_NONE, 0, "", R_A),
 
+	/*
+	 * Widening a byte to a word.  Unsigned zero-extends; signed puts
+	 * bit 7 into carry with rla, then sbc a,a turns that into 00 or
+	 * ff.  Both honour the target, since the widened value is as
+	 * often the right operand (DE) as the left (HL).
+	 */
+	R("J(A):s", WIDEN, P_L, P_NONE, P_NONE, 0, "\tld $t,a\n\tld $u,0\n", 0),
+	R("X(A):s", SEXT, P_L, P_NONE, P_NONE, 0,
+		"\tld $t,a\n\trla\n\tsbc a,a\n\tld $u,a\n", 0),
+
 	/* zero-extended loads */
 	R("=(B,A)", ASSIGN, P_L, P_R, P_NONE, 0, "\tld c,a\n\tld b,0\n", R_BC),
 	R("=(H,A)", ASSIGN, P_L, P_R, P_NONE, 0, "\tld l,a\n\tld h,0\n", R_HL),
