@@ -291,6 +291,10 @@ struct rule rules[] = {
 
 	/* loads from register addresses */
 	R("D(H):b", DEREF, P_L, P_NONE, P_NONE, 0, "\tld a,(hl)\n", R_A),
+	/* load a word through HL - A carries the low byte while HL is
+	 * walked, since the pointer and the result share the register */
+	R("D(H):s", DEREF, P_L, P_NONE, P_NONE, 0,
+		"\tld a,(hl)\n\tinc hl\n\tld h,(hl)\n\tld l,a\n", R_HL),
 	R("D(B):b", DEREF, P_L, P_NONE, P_NONE, 0, "\tld l,c\n\tld h,b\n\tld a,(hl)\n", R_A),
 	R("D(B):s", DEREF, P_L, P_NONE, P_NONE, 0, "\tld l,c\n\tld h,b\n\tld a,(hl)\n\tinc hl\n\tld h,(hl)\n\tld l,a\n", R_HL),
 	R("D(E):b", DEREF, P_L, P_NONE, P_NONE, 0, "\tex de,hl\n\tld a,(hl)\n", R_A),
@@ -333,6 +337,7 @@ struct rule rules[] = {
 	/* indirect stores via HL */
 	R("=(D(H),N):b", ASSIGN, P_L, P_R, P_NONE, 0, "\tld (hl),$R\n", 0),
 	R("=(D(H),E):s", ASSIGN, P_L, P_R, P_NONE, 0, "\tld (hl),e\n\tinc hl\n\tld (hl),d\n", 0),
+	R("=(D(H),E):b", ASSIGN, P_L, P_R, P_NONE, 0, "\tld (hl),e\n", 0),
 	R("=(D(B),N):b", ASSIGN, P_L, P_R, P_NONE, 0, "\tld l,c\n\tld h,b\n\tld (hl),$R\n", 0),
 	R("=(D(B),N):s", ASSIGN, P_L, P_R, P_NONE, 0,
 		T_BC_HL "\tld (hl),$Rl\n\tinc hl\n\tld (hl),$Rh\n", 0),

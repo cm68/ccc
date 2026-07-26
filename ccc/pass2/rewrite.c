@@ -1688,7 +1688,35 @@ rewrite1(Expr *e)
 	} else {
 		/* Rewrite children first (depth-first) */
 		/* Skip children marked nored (preserve for parent rules) */
-		if (e->op == ASSIGN && e->left && e->left->op == DEREF) {
+		if (e->op == ASSIGN && e->left && e->right &&
+		    !islocdesc(e->left) && !isdestreg(e->left) &&
+		    e->left->op != DEREF &&
+		    !islocdesc(e->right) && e->right->op != NUMBER) {
+			/*
+			 * Storing through an address the tree has to work out,
+			 * to a value it also has to work out - "arr[i] += n".
+			 * Both want HL, so the address waits on the stack
+			 * while the value is computed and comes back with the
+			 * value beside it in DE, which is what the
+			 * =(D(H),E) store rule expects.
+			 *
+			 * Only when the value really needs a register: a
+			 * constant stores straight through the address, and
+			 * spilling for that would just cost bytes.
+			 */
+			Expr *addr = rewrite1(e->left);
+			out("\tpush hl\n");
+			e->right = rewrite1(e->right);
+			out("\tpop de\n\tex de,hl\n");
+			freeexpr(addr);
+			freeexpr(e->right);
+			addr = mkcode(e->width, R_HL);
+			addr->op = INHL;
+			e->left = mkunary(DEREF, e->width, addr);
+			e->right = mkcode(e->width, R_DE);
+			e->right->op = INDE;
+			goto children_done;
+		} else if (e->op == ASSIGN && e->left && e->left->op == DEREF) {
 			/*
 			 * An assignment's lvalue is a location, not a value.
 			 * Reduce the address underneath but leave the DEREF
@@ -1718,6 +1746,7 @@ rewrite1(Expr *e)
 		}
 		if (!e->right || !e->right->nored)
 			e->right = rewrite1(e->right);
+	children_done: ;
 	}
 
 	/* Fixed-point: keep rewriting until no change */
