@@ -466,6 +466,33 @@ struct rule rules[] = {
 	R("Y(H,Z)", GE, P_L, P_R, P_NONE, RF_SIGNL, "\tld a,h\n\tor a\n", F_P),
 	R("T(B,Z)", LT, P_L, P_R, P_NONE, RF_SIGNL, "\tld a,b\n\tor a\n", F_M),
 	R("Y(B,Z)", GE, P_L, P_R, P_NONE, RF_SIGNL, "\tld a,b\n\tor a\n", F_P),
+	/*
+	 * "> 0" and "<= 0" are not a single flag the way "< 0" is - they
+	 * need the value to be non-negative AND non-zero.  Test the sign,
+	 * and on the negative side fall into an xor a that forces Z, so
+	 * both paths arrive with Z meaning false:
+	 *
+	 *   J+0  ld a,h   1
+	 *   J+1  or a     1   sign of the high byte
+	 *   J+2  jp m     3   negative, so false
+	 *   J+5  ld a,h   1
+	 *   J+6  or l     1   Z here means the whole value was zero
+	 *   J+7  jr       2   past the forced-false
+	 *   J+9  xor a    1
+	 *   J+10
+	 */
+	R("G(H,Z)", GT, P_L, P_R, P_NONE, RF_SIGNL,
+		"\tld a,h\n\tor a\n\tjp m,$$+7\n\tld a,h\n\tor l\n"
+		"\tjr $$+3\n\txor a\n", F_NZ),
+	R("W(H,Z)", LE, P_L, P_R, P_NONE, RF_SIGNL,
+		"\tld a,h\n\tor a\n\tjp m,$$+7\n\tld a,h\n\tor l\n"
+		"\tjr $$+3\n\txor a\n", F_Z),
+	R("G(B,Z)", GT, P_L, P_R, P_NONE, RF_SIGNL,
+		"\tld a,b\n\tor a\n\tjp m,$$+7\n\tld a,b\n\tor c\n"
+		"\tjr $$+3\n\txor a\n", F_NZ),
+	R("W(B,Z)", LE, P_L, P_R, P_NONE, RF_SIGNL,
+		"\tld a,b\n\tor a\n\tjp m,$$+7\n\tld a,b\n\tor c\n"
+		"\tjr $$+3\n\txor a\n", F_Z),
 
 	/* comparisons */
 	R("Q(H,E)", EQ, P_L, P_R, P_NONE, 0, "\tor a\n\tsbc hl,de\n", F_Z),

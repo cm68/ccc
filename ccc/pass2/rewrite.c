@@ -518,6 +518,13 @@ emitasm(char *tpl, Expr *e)
 		}
 		if (*p == '$') {
 			p++;
+			/* $$ escapes the assembler's own $, the address of
+			 * the current instruction */
+			if (*p == '$') {
+				outc('$');
+				p++;
+				continue;
+			}
 			/* Target register substitution */
 			if (*p == 't') {
 				outc(e->tgt == R_DE ? 'e' : 'l');
