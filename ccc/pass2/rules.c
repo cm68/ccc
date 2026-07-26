@@ -335,10 +335,16 @@ struct rule rules[] = {
 
 	/* loads from register addresses */
 	R("D(H):b", DEREF, P_L, P_NONE, P_NONE, 0, "\tld a,(hl)\n", R_A),
-	/* load a word through HL - A carries the low byte while HL is
-	 * walked, since the pointer and the result share the register */
-	R("D(H):s", DEREF, P_L, P_NONE, P_NONE, 0,
-		"\tld a,(hl)\n\tinc hl\n\tld h,(hl)\n\tld l,a\n", R_HL),
+	/*
+	 * Load a word through HL.  Where the result is wanted in DE it
+	 * can go straight there - three bytes instead of four, no
+	 * exchange, and A is left alone.  Only when it has to land back
+	 * in HL does A get used as the carrier, because then the pointer
+	 * and the result are the same register.
+	 */
+	R("D(H):s", DEREF, P_L, P_NONE, P_NONE, RF_TDE,
+		"\tld e,(hl)\n\tinc hl\n\tld d,(hl)\n", R_DE),
+	R("D(H):s", DEREF, P_L, P_NONE, P_NONE, 0, T_LD_IHL, R_HL),
 	R("D(B):b", DEREF, P_L, P_NONE, P_NONE, 0, "\tld l,c\n\tld h,b\n\tld a,(hl)\n", R_A),
 	R("D(B):s", DEREF, P_L, P_NONE, P_NONE, 0, "\tld l,c\n\tld h,b\n\tld a,(hl)\n\tinc hl\n\tld h,(hl)\n\tld l,a\n", R_HL),
 	R("D(E):b", DEREF, P_L, P_NONE, P_NONE, 0, "\tex de,hl\n\tld a,(hl)\n", R_A),
