@@ -70,7 +70,8 @@ STMT_TESTS = \
 	asm_global.c \
 	call_args.c \
 	conditions.c \
-	compound_mem.c
+	compound_mem.c \
+	ptr_store.c
 
 # sizeof operator tests
 SIZEOF_TESTS = \

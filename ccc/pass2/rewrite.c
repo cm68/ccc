@@ -1088,21 +1088,14 @@ sideeffect(Expr *e)
  * but a second call, or a second POSTINC, would be a real bug, which
  * is what "evaluate the lvalue once" forbids.
  *
- * A bare REGVAR is refused even though it is side-effect free.  pass1
- * strips the DEREF when it emits a compound-assign lvalue, so "i += 5"
- * with i in BC and "*p += 10" with p in BC both arrive as
- * OP=(REGVAR BC, n) - the register is the variable in the first and
- * the address of it in the second, and nothing in the tree tells them
- * apart.  Expanding the wrong one adds to the pointer instead of to
- * what it points at.  Until pass1 keeps the distinction, register
- * lvalues stay flagged rather than guessed at.
+ * pass1 keeps the DEREF on an lvalue, so a bare REGVAR here really is
+ * the variable ("i += 5" with i in BC) and DEREF(REGVAR) is the memory
+ * it points at ("*p += 10").  Both are fine to name twice.
  */
 static int
 dupableloc(Expr *e)
 {
-	if (!e || e->op == REGVAR)
-		return 0;
-	return !sideeffect(e);
+	return e && !sideeffect(e);
 }
 
 /*
@@ -1110,9 +1103,12 @@ dupableloc(Expr *e)
  * are reduced: once the lvalue has become a register, copying it would
  * re-emit whatever code produced it.
  *
- * pass1 leaves the lvalue as a location, not a value, so the copy on
- * the read side needs a DEREF - except for a register variable, where
- * the register is the storage and holds the value already.
+ * The read side is the same location read rather than written, which
+ * is not always the same expression:
+ *   REGVAR      the register is the storage - it already is the value
+ *   DEREF(a)    memory at a - as an expression this already loads it
+ *   everything else (INDEX, SYMREF, LOCALVAR) describes a location,
+ *               so reading it takes a DEREF
  */
 static Expr *
 lowercompound(Expr *e)
@@ -1130,8 +1126,9 @@ lowercompound(Expr *e)
 	e->left = e->right = NULL;
 	freeexpr(e);
 
-	/* the lvalue is a location, so the read side needs a load */
-	val = mkunary(DEREF, w, dupexpr(loc));
+	val = dupexpr(loc);
+	if (val->op != REGVAR && val->op != DEREF)
+		val = mkunary(DEREF, w, val);
 
 	return mkbinary(ASSIGN, w, loc, mkbinary(op, w, val, rhs));
 }
@@ -1508,8 +1505,18 @@ rewrite1(Expr *e)
 	} else {
 		/* Rewrite children first (depth-first) */
 		/* Skip children marked nored (preserve for parent rules) */
-		if (!e->left || !e->left->nored)
+		if (e->op == ASSIGN && e->left && e->left->op == DEREF) {
+			/*
+			 * An assignment's lvalue is a location, not a value.
+			 * Reduce the address underneath but leave the DEREF
+			 * standing, so the =(D(..),..) store rules can still
+			 * see it - reducing it here would apply a load rule
+			 * and quietly turn the store into a fetch.
+			 */
+			e->left->left = rewrite1(e->left->left);
+		} else if (!e->left || !e->left->nored) {
 			e->left = rewrite1(e->left);
+		}
 		if (!e->right || !e->right->nored)
 			e->right = rewrite1(e->right);
 	}

@@ -27,6 +27,35 @@ findInLocals(char *name)
 }
 
 /*
+ * Assignment operators: plain = plus the ten compound forms.
+ */
+static int
+isAssignOp(unsigned char op)
+{
+	switch (op) {
+	case ASSIGN:
+	case PLUSEQ:
+	case SUBEQ:
+	case MULTEQ:
+	case DIVEQ:
+	case MODEQ:
+	case RSHIFTEQ:
+	case LSHIFTEQ:
+	case ANDEQ:
+	case OREQ:
+	case XOREQ:
+		return 1;
+	}
+	return 0;
+}
+
+/*
+ * Set while emitting the lvalue of an assignment, and consumed by the
+ * first node emitted after that - see the DEREF case in emitExpr.
+ */
+static char inLvalue;
+
+/*
  * Check if expression is a SYM that maps to a REGVAR.
  * Returns the register number if so, 0 otherwise.
  */
@@ -152,7 +181,7 @@ emitExpr(struct expr *e)
 	struct expr *left, *right, *ep;
 	struct type *type;
 	unsigned char op, uc;
-	char fullname[32], c;
+	char fullname[32], c, lval;
 	int n;
 
 	/* Fold constants before emitting */
@@ -167,6 +196,10 @@ emitExpr(struct expr *e)
 	left = e->left;
 	right = e->right;
 	type = e->type;
+
+	/* consume the lvalue flag: it applies to this node only */
+	lval = inLvalue;
+	inLvalue = 0;
 
 	switch (op) {
 	case CONST:
@@ -288,8 +321,17 @@ emitExpr(struct expr *e)
 		break;
 
 	case DEREF:
-		/* DEREF(REGVAR) is just the value - skip the DEREF */
-		if (isRegvar(left)) {
+		/*
+		 * DEREF(REGVAR) is just the value - skip the DEREF.
+		 *
+		 * Not on an assignment's lvalue though.  The assignment
+		 * parser already unwrapped one DEREF to get the address, so
+		 * what is left says "the register holds the address of the
+		 * target".  Dropping it here emits the same REGVAR that
+		 * "i = x" on a register variable emits, and pass2 then has no
+		 * way to tell "*p = x" from "p = x".
+		 */
+		if (isRegvar(left) && !lval) {
 			emitExpr(left);
 			break;
 		}
@@ -328,6 +370,9 @@ emitExpr(struct expr *e)
 		/* All operators get width suffix */
 		emit1(op);
 		emit1(typeSfx(type));
+		/* mark the lvalue so DEREF above knows to keep itself */
+		if (isAssignOp(op))
+			inLvalue = 1;
 		emitChild(left);
 		emitChild(right);
 		break;
