@@ -382,6 +382,24 @@ mkIncDec(struct expr *operand, unsigned char inc_op, unsigned char is_postfix)
 #define IS_SCALAR(t) (!((t)->flags & (TF_POINTER|TF_ARRAY|TF_FUNC|TF_AGGREGATE)))
 
 /*
+ * A struct or union has no value here: it cannot be assigned, passed
+ * or returned.  Its address is the only handle on it, which is what
+ * the member operators work through.
+ *
+ * This has to be diagnosed rather than left alone.  Nothing downstream
+ * knows an aggregate from a scalar of the same size - the width is
+ * picked from the byte count, so a four byte struct became a long and
+ * anything of another size fell to the default and copied two bytes,
+ * quietly losing the rest.
+ */
+static int
+isaggr(struct type *t)
+{
+	return t && (t->flags & TF_AGGREGATE) &&
+	    !(t->flags & (TF_POINTER | TF_ARRAY | TF_FUNC));
+}
+
+/*
  * Fold a single node if both operands are constants.
  * Returns folded CONST expr, or original expr if not foldable.
  */
@@ -869,8 +887,12 @@ parsePostfix(struct expr *e)
             e1->left->up = e1;
 
             // Set return type from function type
-            if ((e->type->flags & TF_FUNC) && e->type->sub)
+            if ((e->type->flags & TF_FUNC) && e->type->sub) {
                 e1->type = e->type->sub;
+                /* a struct cannot come back by value either */
+                if (isaggr(e1->type))
+                    gripe(ER_E_AG);
+            }
 
             // Get first parameter for type coercion
             np = (e->type->flags & TF_FUNC) ? e->type->elem : 0;
@@ -880,6 +902,9 @@ parsePostfix(struct expr *e)
             if (cur.type != RPAR) {
                 e2 = parseExpr(OP_PRI_COMMA);
                 if (e2) {
+                    /* a struct cannot be passed - pass its address */
+                    if (isaggr(e2->type))
+                        gripe(ER_E_AG);
                     e2->flags |= E_FUNARG;
                     e1->right = e2;
                     e2->up = e1;
@@ -889,6 +914,8 @@ parsePostfix(struct expr *e)
                     gettoken();
                     e2 = parseExpr(OP_PRI_COMMA);
                     if (e2) {
+                        if (isaggr(e2->type))
+                            gripe(ER_E_AG);
                         e2->flags |= E_FUNARG;
                         if (e3) {
                             e3->next = e2;
@@ -1114,6 +1141,12 @@ parseExpr(unsigned char pri)
         is_assignment = IS_ASSIGN(op);
 
         if (is_assignment) {
+            if (e->op == DEREF && isaggr(e->type)) {
+                /* a struct is not an lvalue - take its address */
+                gripe(ER_E_AG);
+                FreeExpr(parseExpr(p));
+                return e;
+            }
             if (e->op == DEREF) {
                 assign_type = unwrapDeref(&e);
             } else if (e->op == BFEXTRACT) {

@@ -135,7 +135,8 @@ SCOPE_TESTS = \
 # Struct tests
 STRUCT_TESTS = \
 	struct.c \
-	ix_indexed.c
+	ix_indexed.c \
+	struct_value.c
 
 # Minimal/smoke tests
 MINIMAL_TESTS = \
@@ -172,7 +173,8 @@ LVALUE_TESTS = \
 LVALUE_FAIL_TESTS = \
 	lvalue_bad.c \
 	lvalue_const.c \
-	lvalue_errors.c
+	lvalue_errors.c \
+	struct_byvalue.c
 
 # Pointer compatibility tests (expected to fail - testing error detection)
 PTR_FAIL_TESTS = \

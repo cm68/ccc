@@ -697,6 +697,10 @@ statement(void)
             if (cur.type != SEMI)
                 e1 = parseExpr(PRI_ALL);
             expect(SEMI, ER_S_SN);
+            /* a struct has no value to return - return its address */
+            if (e1 && e1->type && (e1->type->flags & TF_AGGREGATE) &&
+                !(e1->type->flags & (TF_POINTER | TF_ARRAY | TF_FUNC)))
+                gripe(ER_E_AG);
             /* Emit: RETURN has_value [expr] */
             e1 = foldTree(e1);
             emit1(RETURN);
