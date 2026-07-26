@@ -471,6 +471,16 @@ struct rule rules[] = {
 	R("<(H,N)", LSHIFT, P_L, P_R, P_NONE, 0, "%(" T_ADD_HL_HL ")", R_HL),
 	R("<(A,N):b", LSHIFT, P_L, P_R, P_NONE, 0, "%(\tsla a\n)", R_A),
 	R(">(A,N):b", RSHIFT, P_L, P_R, P_NONE, 0, "%(\tsrl a\n)", R_A),
+	/*
+	 * A shift by a whole byte is a register move, not a loop - two
+	 * bytes against the thirty-two the repeated form would emit.  The
+	 * signed right shift has to put the sign back, since the byte
+	 * that moved down carries it.
+	 */
+	R(">(H,8)", RSHIFT, P_L, P_R, P_NONE, RF_SIGNL,
+		"\tld l,h\n\tld a,h\n\trla\n\tsbc a,a\n\tld h,a\n", R_HL),
+	R(">(H,8)", RSHIFT, P_L, P_R, P_NONE, 0, "\tld l,h\n\tld h,0\n", R_HL),
+	R("<(H,8)", LSHIFT, P_L, P_R, P_NONE, 0, "\tld h,l\n\tld l,0\n", R_HL),
 	R(">(H,M)", RSHIFT, P_L, P_R, P_NONE, 0, "%(\tsrl h\n\trr l\n)", R_HL),
 	R(">(B,M)", RSHIFT, P_L, P_R, P_NONE, 0, T_BC_HL "%(\tsrl h\n\trr l\n)", R_HL),
 

@@ -305,6 +305,7 @@ assign(Expr *e, unsigned char tgt)
 #define P_MUL20  240    /* constant 20 */
 #define P_MUL24  239    /* constant 24 */
 #define P_MUL40  238    /* constant 40 */
+#define P_EIGHT  237    /* constant 8: a shift by a whole byte */
 
 /*
  * Map single char to opcode (or special pattern value)
@@ -332,7 +333,8 @@ static struct opmap {
 	{'_', P_ANY}, {'0', P_NULL}, {'3', P_MUL3}, {'5', P_MUL5},
 	{'6', P_MUL6}, {'7', P_MUL7}, {'9', P_MUL9}, {'x', P_MUL10},
 	{'e', P_MUL11}, {'w', P_MUL12}, {'f', P_MUL14}, {'n', P_MUL15},
-	{'y', P_MUL20}, {'q', P_MUL24}, {'z', P_MUL40}
+	{'y', P_MUL20}, {'q', P_MUL24}, {'z', P_MUL40},
+	{'8', P_EIGHT}
 };
 
 void
@@ -381,6 +383,7 @@ opmatch(unsigned char pat, Expr *e)
 	if (pat == P_POW2) return e && e->op == NUMBER && ispow2(e->u.val) > 0;
 	if (pat == P_ZERO) return e && e->op == NUMBER && e->u.val == 0;
 	if (pat == P_SMALL) return e && e->op == NUMBER && e->u.val >= 1 && e->u.val <= 4;
+	if (pat == P_EIGHT) return e && e->op == NUMBER && e->u.val == 8;
 	if (pat >= P_MUL40 && pat <= P_MUL3)
 		return e && e->op == NUMBER && e->u.val == multab[pat-238];
 	return e && e->op == pat;
