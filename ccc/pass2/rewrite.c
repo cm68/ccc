@@ -541,7 +541,8 @@ emitasm(char *tpl, Expr *e)
 			/* check for modifier */
 			mod = 0;
 			offadj = 0;
-			if (*p == 'l' || *p == 'h') {
+			if (*p == 'l' || *p == 'h' ||
+			    *p == '2' || *p == '3') {
 				mod = *p++;
 			}
 			while (*p == '+') {
@@ -563,15 +564,23 @@ emitasm(char *tpl, Expr *e)
 			if (n) {
 				if (n->op == NUMBER) {
 					val = n->u.val;
+					/* l h 2 3 select the four bytes */
 					if (mod == 'l') val = val & 0xff;
 					else if (mod == 'h') val = (val >> 8) & 0xff;
+					else if (mod == '2') val = (val >> 16) & 0xff;
+					else if (mod == '3') val = (val >> 24) & 0xff;
 					outd(val);
 				} else if (n->op == SYMREF) {
+					/* honour $L+ here too - without it a
+					 * template reaching for the second
+					 * word of a long silently addressed
+					 * the first one again */
 					out(n->u.symref.name);
-					if (n->u.symref.off != 0) {
-						if (n->u.symref.off > 0)
+					val = n->u.symref.off + offadj;
+					if (val != 0) {
+						if (val > 0)
 							outc('+');
-						outd(n->u.symref.off);
+						outd(val);
 					}
 				} else if (n->op == INDEX) {
 					out(idxregname(n->u.var.reg));

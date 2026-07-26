@@ -182,6 +182,46 @@ struct rule rules[] = {
 	R("X(A):s", SEXT, P_L, P_NONE, P_NONE, 0,
 		"\tld $t,a\n\trla\n\tsbc a,a\n\tld $u,a\n", 0),
 
+	/*
+	 * 32-bit values live in HL:DE, high word in HL.
+	 *
+	 * Sign-extending into that means the value becomes the low word
+	 * and the high word becomes all sign bits - rla puts bit 15 (or
+	 * bit 7 for a byte) into carry and sbc a,a spreads it.
+	 */
+	R("X(H):l", SEXT, P_L, P_NONE, P_NONE, 0,
+		"\tex de,hl\n\tld a,d\n\trla\n\tsbc a,a\n\tld h,a\n\tld l,a\n", R_HL),
+	R("X(B):l", SEXT, P_L, P_NONE, P_NONE, 0,
+		"\tld e,c\n\tld d,b\n\tld a,b\n\trla\n\tsbc a,a\n"
+		"\tld h,a\n\tld l,a\n", R_HL),
+	R("X(A):l", SEXT, P_L, P_NONE, P_NONE, 0,
+		"\tld e,a\n\trla\n\tsbc a,a\n\tld d,a\n\tld h,a\n\tld l,a\n", R_HL),
+	R("J(A):l", WIDEN, P_L, P_NONE, P_NONE, 0,
+		"\tld e,a\n\tld d,0\n\tld h,d\n\tld l,d\n", R_HL),
+
+	/* storing one: a pair at a time to a global, a byte at a time to
+	 * a local, since only (hl) takes an immediate */
+	R("=(O,H):l", ASSIGN, P_L, P_R, P_NONE, 0,
+		"\tld ($L),de\n\tld ($L++),hl\n", 0),
+	R("=(I,H):l", ASSIGN, P_L, P_R, P_NONE, 0,
+		"\tld ($L),e\n\tld ($L+),d\n\tld ($L++),l\n\tld ($L+++),h\n", 0),
+	/* the long helpers hand back a CODE that never passed through the
+	 * step() loop that would have made it an INHL */
+	R("=(I,C):l", ASSIGN, P_L, P_R, P_NONE, 0,
+		"\tld ($L),e\n\tld ($L+),d\n\tld ($L++),l\n\tld ($L+++),h\n", 0),
+	R("=(O,C):l", ASSIGN, P_L, P_R, P_NONE, 0,
+		"\tld ($L),de\n\tld ($L++),hl\n", 0),
+	R("=(I,N):l", ASSIGN, P_L, P_R, P_NONE, 0,
+		"\tld ($L),$Rl\n\tld ($L+),$Rh\n"
+		"\tld ($L++),$R2\n\tld ($L+++),$R3\n", 0),
+	/* a long already in HL:DE is the return value as it stands */
+	R("=(H,C):l", ASSIGN, P_L, P_R, P_NONE, 0, "", R_HL),
+
+	/* test a long in memory for zero */
+	R("D(O):lF", DEREF, P_L, P_NONE, P_NONE, 0,
+		"\tld hl,$L\n\tld a,(hl)\n\tinc hl\n\tor (hl)\n\tinc hl\n"
+		"\tor (hl)\n\tinc hl\n\tor (hl)\n", F_NZ),
+
 	/* zero-extended loads */
 	R("=(B,A)", ASSIGN, P_L, P_R, P_NONE, 0, "\tld c,a\n\tld b,0\n", R_BC),
 	R("=(H,A)", ASSIGN, P_L, P_R, P_NONE, 0, "\tld l,a\n\tld h,0\n", R_HL),
