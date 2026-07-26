@@ -967,26 +967,29 @@ step(Expr *e)
 	    e->left && e->left->op == INHL && e->right &&
 	    (e->right->op == INA || e->right->op == INE ||
 	     e->right->op == INDE)) {
-		int lbl = labelcnt++;
-
 		if (e->right->op != INA)
 			out("\tld a,e\n");
-		out("\tor a\n\tjr z,_X");
-		outd(lbl);
-		out("\n_Y");
-		outd(lbl);
-		out(":\n");
+		/*
+		 * $ is the address of the instruction it appears in, so the
+		 * displacements below are counted from each jr itself:
+		 *
+		 *   J+0  jr z    2   skip the loop entirely
+		 *   J+2  body    1 for add hl,hl, 4 for the CB-prefixed pair
+		 *   J+3  dec a   1
+		 *   J+4  jr nz   2   back to the body at J+2
+		 *   J+6  ...
+		 *
+		 * Recount both if the body ever changes size.
+		 */
+		out("\tor a\n");
 		if (e->op == LSHIFT)
-			out("\tadd hl,hl\n");
+			out("\tjr z,$+6\n\tadd hl,hl\n");
 		else if (ISSIGNED(e->width))
-			out("\tsra h\n\trr l\n");
+			out("\tjr z,$+9\n\tsra h\n\trr l\n");
 		else
-			out("\tsrl h\n\trr l\n");
-		out("\tdec a\n\tjr nz,_Y");
-		outd(lbl);
-		out("\n_X");
-		outd(lbl);
-		out(":\n");
+			out("\tjr z,$+9\n\tsrl h\n\trr l\n");
+		out("\tdec a\n");
+		out(e->op == LSHIFT ? "\tjr nz,$-2\n" : "\tjr nz,$-5\n");
 
 		n = mkcode(e->width, R_HL);
 		n->op = INHL;
