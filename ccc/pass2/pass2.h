@@ -46,6 +46,7 @@
 extern int infd;
 extern int in2fd;
 extern int outfd;
+extern void initOpTab(void);	/* rewrite.c: fill op_table */
 
 /* AST I/O */
 unsigned char read1(void);
@@ -58,6 +59,7 @@ void readS(char *buf);
 void out(char *s);
 void outc(char c);
 void outd(int n);
+void copyinit(void);
 
 /* Parser */
 void parse(void);

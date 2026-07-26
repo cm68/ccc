@@ -120,6 +120,8 @@ extern void declaration(void);
 extern struct name *capLocals(void);
 extern void emitFuncPre(struct name *func);
 extern void emitGlobalAsm(char *text);
+extern void emitAsmStmt(char *text);
+extern char *getAsmText(void);
 extern void emitGv(struct name *var);
 extern void emitExpr(struct expr *e);
 extern int cntCondLbls(struct expr *e);
@@ -420,6 +422,7 @@ void emit2(unsigned short w);
 void emit4(unsigned long l);
 void emitN(char *s, unsigned char len);
 void emitS(char *s);
+void emitRaw(char *s, unsigned short len);
 
 /* Assembly output helpers (write to asmFd) */
 void asmStr(char *s);

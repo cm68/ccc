@@ -196,6 +196,13 @@ void emitS(char *s)
 	emitN(s, strlen(s));
 }
 
+/* raw bytes, no length prefix - caller emits the count */
+void emitRaw(char *s, unsigned short len)
+{
+	if (len > 0)
+		write(astFd, s, len);
+}
+
 /* Assembly output helpers - write to asmFd */
 extern unsigned char asmFd;
 
@@ -225,19 +232,21 @@ void asmDb(int val)
 
 /*
  * Check if a character is printable ASCII for string literals.
- * Excludes single quote (needs escaping) and backslash.
+ * Excludes the double quote that ends an asz string and the
+ * backslash that starts an escape inside one.
  */
 static int
 isPrintable(unsigned char c)
 {
-	return c >= 0x20 && c <= 0x7e && c != '\'' && c != '\\';
+	return c >= 0x20 && c <= 0x7e && c != '"' && c != '\\';
 }
 
 char asciibuf[128];
 /*
  * Emit a string as .db with ASCII literals and hex for non-printable.
  * Groups printable chars up to 60, breaks on non-printable.
- * Format: .db 'text', 0x##, 'more text', 0x0
+ * Format: .db "text", 0x##, "more text", 0x0
+ * asz takes strings in double quotes; single quotes are char literals.
  */
 void asmDbStr(unsigned char *data, int len)
 {
@@ -264,17 +273,17 @@ void asmDbStr(unsigned char *data, int len)
 				runlen++;
 				i++;
 			}
-			/* Emit the printable run as 'string' */
+			/* Emit the printable run as "string" */
 			if (needcomma)
 				asmStr(", ");
-			asmStr("'");
+			asmStr("\"");
 			p = asciibuf;
 			while (start < i) {
 				*p++ = data[start++];
 			}
 			*p = 0;
 			asmStr(asciibuf);
-			asmStr("'");
+			asmStr("\"");
 			needcomma = 1;
 		} else {
 			/* Emit non-printable as hex */

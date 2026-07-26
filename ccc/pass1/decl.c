@@ -712,9 +712,7 @@ parse()
 			declaration();
 		} else if (cur.type == ASM) {
 			/* Global asm block - get text and emit directly */
-			char *text = cur.v.str;
-			cur.v.str = NULL;
-			gettoken();
+			char *text = getAsmText();
 			emitGlobalAsm(text);
 			free(text);
 		} else {

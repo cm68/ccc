@@ -401,6 +401,27 @@ emitGlobalAsm(char *text)
 }
 
 /*
+ * Output an asm block inside a function body.  Unlike a global asm
+ * block this must stay in place relative to the generated code, so it
+ * rides in the AST stream and pass2 copies it to the output.
+ * Format: ASM len(2) text
+ */
+void
+emitAsmStmt(char *text)
+{
+	unsigned short len;
+
+	/* Phase 1: don't emit */
+	if (phase == 1)
+		return;
+
+	len = text ? strlen(text) : 0;
+	emit1(ASM);
+	emit2(len);
+	emitRaw(text, len);
+}
+
+/*
  * Output function header in AST format
  * Format: F rettype name param_count local_count frm_size(2) savebase
  *         params... locals...

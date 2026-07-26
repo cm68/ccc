@@ -5,14 +5,16 @@
 DEST ?= $(CURDIR)/../root
 
 AS = asz
-override CC = ccc
 
+# Each library Makefile sets its own CC (zc3: the archives are runtime
+# code and pass2 codegen is still WIP).  Compile-stress coverage of
+# these sources under ccc is the libcpm ccc-check target.
 DIRS = libu libc libcpm
 STARTUP = crtcpm.o crt0.o
 
 all: $(STARTUP)
 	for i in $(DIRS); do \
-		$(MAKE) CC=$(CC) -C $$i ; \
+		$(MAKE) -C $$i ; \
 	done
 
 crtcpm.o: crtcpm.s
@@ -27,6 +29,9 @@ install: all
 		$(MAKE) -C $$i DEST=$(DEST)/lib install ; \
 	done
 	cp $(STARTUP) $(DEST)/lib
+	mkdir -p $(DEST)/usr/include
+	cp include/*.h $(DEST)/usr/include
+	cp -r include/sys $(DEST)/usr/include
 
 clobber: clean
 	rm -f $(STARTUP)

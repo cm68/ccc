@@ -38,6 +38,23 @@ outd(int n)
 	out(p);
 }
 
+/*
+ * Copy pass1's assembly output (globals, string literals, file-scope
+ * asm) through to our output, then select .text for the code we are
+ * about to generate.  The .2 stream starts in .text and emits its own
+ * segment directives as it goes, so it needs no preamble.
+ */
+void
+copyinit(void)
+{
+	char buf[64];
+	int n;
+
+	while ((n = read(in2fd, buf, sizeof(buf))) > 0)
+		write(outfd, buf, n);
+	out("\t.text\n");
+}
+
 unsigned char
 read1(void)
 {

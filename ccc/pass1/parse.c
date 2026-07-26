@@ -403,6 +403,29 @@ capLocals(void)
 }
 
 /*
+ * Collect an asm block, leaving cur on the token after it.
+ * cpp emits three tokens for "asm { ... }": the ASM keyword, an
+ * ASM token carrying the raw text, then a SEMI.
+ * Call with cur on the keyword.  Returns malloc'd text (caller frees),
+ * or NULL for an empty block.
+ */
+char *
+getAsmText(void)
+{
+	char *text = NULL;
+
+	gettoken();			/* consume the keyword */
+	if (cur.type == ASM) {
+		text = cur.v.str;
+		cur.v.str = NULL;	/* we own it now */
+		gettoken();
+	}
+	if (cur.type == SEMI)
+		gettoken();
+	return text;
+}
+
+/*
  * Parse statements recursively - the heart of the compiler frontend
  *
  * This function implements the statement parser for C, handling all control
@@ -601,7 +624,8 @@ statement(void)
                 stmt_count++;
                 break;
             case ASM:
-                gettoken();  /* asmblock consumes the text in cur.v.str */
+                text = getAsmText();
+                free(text);
                 stmt_count++;
                 break;
             case SEMI:
@@ -835,11 +859,9 @@ statement(void)
             break;
 
         case ASM:
-            /* Get asm text and emit directly */
-            text = cur.v.str;
-            cur.v.str = NULL;
-            gettoken();
-            emitGlobalAsm(text);
+            /* Get asm text and stream it as a statement */
+            text = getAsmText();
+            emitAsmStmt(text);
             free(text);
             break;
 

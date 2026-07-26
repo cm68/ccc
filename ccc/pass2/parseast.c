@@ -23,6 +23,7 @@ stmtname(int op)
 	case SWITCH: return "SWITCH";
 	case CASE: return "CASE";
 	case DEFAULT: return "DEFAULT";
+	case ASM: return "ASM";
 	case AST_FUNC: return "FUNC";
 	default:  return "EXPR";
 	}
@@ -353,6 +354,20 @@ parseStmt(void)
 		for (i = 0; i < n; i++)
 			parseStmt();
 		return;
+	case ASM: {
+		/* Inline asm - copy the text through verbatim */
+		unsigned short len = read2();
+#ifdef DEBUG
+		if (VERBOSE(V_STMT))
+			fprintf(stderr, "  ASM len=%d\n", len);
+#endif
+		outc('\n');
+		outc('\t');
+		while (len--)
+			outc(read1());
+		outc('\n');
+		return;
+	}
 	case SEMI:
 		/* Empty statement (bare semicolon) - no-op */
 #ifdef DEBUG

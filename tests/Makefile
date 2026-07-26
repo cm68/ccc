@@ -66,7 +66,8 @@ STMT_TESTS = \
 	switch.c \
 	sw2.c \
 	asm_block.c \
-	asm_comprehensive.c
+	asm_comprehensive.c \
+	asm_global.c
 
 # sizeof operator tests
 SIZEOF_TESTS = \

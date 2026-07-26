@@ -300,21 +300,39 @@ assign(Expr *e, unsigned char tgt)
 /*
  * Map single char to opcode (or special pattern value)
  */
-static const unsigned char op_table[256] = {
-	['+'] = PLUS, ['*'] = STAR, ['-'] = MINUS, ['/'] = DIV, ['%'] = MOD,
-	['&'] = AND, ['|'] = OR, ['^'] = XOR, ['<'] = LSHIFT, ['>'] = RSHIFT,
-	['='] = ASSIGN, ['D'] = DEREF, ['V'] = REGVAR, ['L'] = LOCALVAR,
-	['I'] = INDEX, ['H'] = INHL, ['E'] = INDE, ['A'] = INA, ['K'] = INE,
-	['B'] = INBC, ['O'] = SYMREF, ['Q'] = EQ, ['U'] = NEQ, ['T'] = LT,
-	['G'] = GT, ['W'] = LE, ['Y'] = GE, ['N'] = P_NUM, ['P'] = P_POW2,
-	['Z'] = P_ZERO, ['M'] = P_SMALL, ['S'] = SYM, ['i'] = PREINC,
-	['j'] = POSTINC, ['k'] = PREDEC, ['m'] = POSTDEC, ['a'] = ARGNODE,
-	['C'] = CODE, ['o'] = OREQ, ['g'] = NEG, ['~'] = NOT, ['!'] = BANG,
-	['_'] = P_ANY, ['0'] = P_NULL, ['3'] = P_MUL3, ['5'] = P_MUL5,
-	['6'] = P_MUL6, ['7'] = P_MUL7, ['9'] = P_MUL9, ['x'] = P_MUL10,
-	['e'] = P_MUL11, ['w'] = P_MUL12, ['f'] = P_MUL14, ['n'] = P_MUL15,
-	['y'] = P_MUL20, ['q'] = P_MUL24, ['z'] = P_MUL40
+/*
+ * op_table is filled from op_map by initOpTab() at startup: designated
+ * initializers are C99 and zc3/ccc can't parse them.
+ */
+static unsigned char op_table[256];
+
+static struct opmap {
+	char c;
+	unsigned char op;
+} op_map[] = {
+	{'+', PLUS}, {'*', STAR}, {'-', MINUS}, {'/', DIV}, {'%', MOD},
+	{'&', AND}, {'|', OR}, {'^', XOR}, {'<', LSHIFT}, {'>', RSHIFT},
+	{'=', ASSIGN}, {'D', DEREF}, {'V', REGVAR}, {'L', LOCALVAR},
+	{'I', INDEX}, {'H', INHL}, {'E', INDE}, {'A', INA}, {'K', INE},
+	{'B', INBC}, {'O', SYMREF}, {'Q', EQ}, {'U', NEQ}, {'T', LT},
+	{'G', GT}, {'W', LE}, {'Y', GE}, {'N', P_NUM}, {'P', P_POW2},
+	{'Z', P_ZERO}, {'M', P_SMALL}, {'S', SYM}, {'i', PREINC},
+	{'j', POSTINC}, {'k', PREDEC}, {'m', POSTDEC}, {'a', ARGNODE},
+	{'C', CODE}, {'o', OREQ}, {'g', NEG}, {'~', NOT}, {'!', BANG},
+	{'_', P_ANY}, {'0', P_NULL}, {'3', P_MUL3}, {'5', P_MUL5},
+	{'6', P_MUL6}, {'7', P_MUL7}, {'9', P_MUL9}, {'x', P_MUL10},
+	{'e', P_MUL11}, {'w', P_MUL12}, {'f', P_MUL14}, {'n', P_MUL15},
+	{'y', P_MUL20}, {'q', P_MUL24}, {'z', P_MUL40}
 };
+
+void
+initOpTab(void)
+{
+	int i;
+
+	for (i = 0; i < sizeof(op_map) / sizeof(op_map[0]); i++)
+		op_table[(unsigned char)op_map[i].c] = op_map[i].op;
+}
 
 static unsigned char
 chartopc(char c)
@@ -342,12 +360,9 @@ ispow2(unsigned long n)
 static int
 opmatch(unsigned char pat, Expr *e)
 {
-	static const unsigned char multab[] = {
-		[P_MUL3-238] = 3, [P_MUL5-238] = 5, [P_MUL6-238] = 6,
-		[P_MUL7-238] = 7, [P_MUL9-238] = 9, [P_MUL10-238] = 10,
-		[P_MUL11-238] = 11, [P_MUL12-238] = 12, [P_MUL14-238] = 14,
-		[P_MUL15-238] = 15, [P_MUL20-238] = 20, [P_MUL24-238] = 24,
-		[P_MUL40-238] = 40
+	/* indexed by pat-238: P_MUL40 (238) up through P_MUL3 (250) */
+	static unsigned char multab[] = {
+		40, 24, 20, 15, 14, 12, 11, 10, 9, 7, 6, 5, 3
 	};
 
 	if (pat == P_ANY) return 1;
