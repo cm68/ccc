@@ -16,6 +16,7 @@
 #define RF_C     0x100   /* require reg is C (low byte of BC) */
 #define RF_B     0x200   /* require reg is B (high byte of BC) */
 #define RF_TDE   0x400   /* require TARGET is DE (for RHS of binary ops) */
+#define RF_SIGNL 0x800   /* require left operand has a signed width */
 
 /*
  * Path constants for compact navigation

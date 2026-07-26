@@ -16,6 +16,7 @@
 #define T_IX_TEST "\tld a,ixl\n\tor a,ixh\n"
 #define T_BC_TEST "\tld a,c\n\tor a,b\n"
 #define T_HL_TEST "\tld a,l\n\tor a,h\n"
+#define T_BC_HL "\tld l,c\n\tld h,b\n"
 #define T_DE_TEST "\tld a,e\n\tor a,d\n"
 
 #define R(pat, rep, l, r, d, f, tpl, dest) \
@@ -244,10 +245,16 @@ struct rule rules[] = {
 	R("D(I):s", DEREF, P_L, P_NONE, P_NONE, 0, "\tld $t,($L)\n\tld $u,($L+)\n", 0),
 	R("D(I):b", DEREF, P_L, P_NONE, P_NONE, 0, NULL, 0),
 	R("D(O):b", DEREF, P_L, P_NONE, P_NONE, 0, "\tld a,($L)\n", R_A),
-	R("D(O):s", DEREF, P_L, P_NONE, P_NONE, 0, "\tld hl,($L)\n", R_HL),
+	/* honour the target: as the right operand of a compare this has to
+	 * land in DE, or it overwrites the left operand in HL */
+	R("D(O):s", DEREF, P_L, P_NONE, P_NONE, 0, "\tld $T,($L)\n", 0),
 
 	/* 16-bit binary arithmetic */
 	R("+(H,E)", PLUS, P_L, P_R, P_NONE, 0, T_ADD_HL_DE, R_HL),
+	R("+(H,B)", PLUS, P_L, P_R, P_NONE, 0, "\tadd hl,bc\n", R_HL),
+	R("-(H,B)", MINUS, P_L, P_R, P_NONE, 0, "\tor a\n\tsbc hl,bc\n", R_HL),
+	R("+(B,E)", PLUS, P_L, P_R, P_NONE, 0, T_BC_HL T_ADD_HL_DE, R_HL),
+	R("-(B,E)", MINUS, P_L, P_R, P_NONE, 0, T_BC_HL "\tor a\n\tsbc hl,de\n", R_HL),
 	R("+(H,M)", PLUS, P_L, P_R, P_NONE, 0, "%(\tinc hl\n)", R_HL),
 	R("-(H,M)", MINUS, P_L, P_R, P_NONE, 0, "%(\tdec hl\n)", R_HL),
 	R("+(A,M)", PLUS, P_L, P_R, P_NONE, 0, "%(\tinc a\n)", R_A),
@@ -284,11 +291,44 @@ struct rule rules[] = {
 	R("|(H,E)", OR, P_L, P_R, P_NONE, 0, "\tld a,l\n\tor e\n\tld l,a\n\tld a,h\n\tor d\n\tld h,a\n", R_HL),
 	R("^(H,E)", XOR, P_L, P_R, P_NONE, 0, "\tld a,l\n\txor e\n\tld l,a\n\tld a,h\n\txor d\n\tld h,a\n", R_HL),
 
+	/*
+	 * Signed compare against zero is just the sign bit, and it has to
+	 * be: sbc hl,de sets carry on an unsigned borrow, so the generic
+	 * form below says "x < 0" is false for every x.  Must precede the
+	 * T/Y(H,N) rules - zero is a subset of NUMBER and first match wins.
+	 */
+	R("T(H,Z)", LT, P_L, P_R, P_NONE, RF_SIGNL, "\tld a,h\n\tor a\n", F_M),
+	R("Y(H,Z)", GE, P_L, P_R, P_NONE, RF_SIGNL, "\tld a,h\n\tor a\n", F_P),
+	R("T(B,Z)", LT, P_L, P_R, P_NONE, RF_SIGNL, "\tld a,b\n\tor a\n", F_M),
+	R("Y(B,Z)", GE, P_L, P_R, P_NONE, RF_SIGNL, "\tld a,b\n\tor a\n", F_P),
+
 	/* comparisons */
 	R("Q(H,E)", EQ, P_L, P_R, P_NONE, 0, "\tor a\n\tsbc hl,de\n", F_Z),
+	/* LE/GT have no cheap flag of their own: swap the operands so the
+	 * borrow from sbc answers the reversed question. */
+	R("W(H,E)", LE, P_L, P_R, P_NONE, 0, "\tex de,hl\n\tor a\n\tsbc hl,de\n", F_NC),
+	R("G(H,E)", GT, P_L, P_R, P_NONE, 0, "\tex de,hl\n\tor a\n\tsbc hl,de\n", F_C),
 	R("U(H,E)", NEQ, P_L, P_R, P_NONE, 0, "\tor a\n\tsbc hl,de\n", F_NZ),
 	R("T(H,E)", LT, P_L, P_R, P_NONE, 0, "\tor a\n\tsbc hl,de\n", F_C),
 	R("Y(H,E)", GE, P_L, P_R, P_NONE, 0, "\tor a\n\tsbc hl,de\n", F_NC),
+	/* BC operands: the Z80 has add/sbc hl,bc, so no shuffle needed */
+	R("Q(H,B)", EQ, P_L, P_R, P_NONE, 0, "\tor a\n\tsbc hl,bc\n", F_Z),
+	R("U(H,B)", NEQ, P_L, P_R, P_NONE, 0, "\tor a\n\tsbc hl,bc\n", F_NZ),
+	R("T(H,B)", LT, P_L, P_R, P_NONE, 0, "\tor a\n\tsbc hl,bc\n", F_C),
+	R("Y(H,B)", GE, P_L, P_R, P_NONE, 0, "\tor a\n\tsbc hl,bc\n", F_NC),
+	R("Q(B,E)", EQ, P_L, P_R, P_NONE, 0, T_BC_HL "\tor a\n\tsbc hl,de\n", F_Z),
+	R("U(B,E)", NEQ, P_L, P_R, P_NONE, 0, T_BC_HL "\tor a\n\tsbc hl,de\n", F_NZ),
+	R("T(B,E)", LT, P_L, P_R, P_NONE, 0, T_BC_HL "\tor a\n\tsbc hl,de\n", F_C),
+	R("Y(B,E)", GE, P_L, P_R, P_NONE, 0, T_BC_HL "\tor a\n\tsbc hl,de\n", F_NC),
+	R("Q(B,N)", EQ, P_L, P_R, P_NONE, 0,
+		T_BC_HL "\tld de,$R\n\tor a\n\tsbc hl,de\n", F_Z),
+	R("U(B,N)", NEQ, P_L, P_R, P_NONE, 0,
+		T_BC_HL "\tld de,$R\n\tor a\n\tsbc hl,de\n", F_NZ),
+	R("T(B,N)", LT, P_L, P_R, P_NONE, 0,
+		T_BC_HL "\tld de,$R\n\tor a\n\tsbc hl,de\n", F_C),
+	R("Y(B,N)", GE, P_L, P_R, P_NONE, 0,
+		T_BC_HL "\tld de,$R\n\tor a\n\tsbc hl,de\n", F_NC),
+
 	R("Q(H,N)", EQ, P_L, P_R, P_NONE, 0, "\tld de,$R\n\tor a\n\tsbc hl,de\n", F_Z),
 	R("U(H,N)", NEQ, P_L, P_R, P_NONE, 0, "\tld de,$R\n\tor a\n\tsbc hl,de\n", F_NZ),
 	R("T(H,N)", LT, P_L, P_R, P_NONE, 0, "\tld de,$R\n\tor a\n\tsbc hl,de\n", F_C),

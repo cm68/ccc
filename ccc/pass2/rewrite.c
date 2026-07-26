@@ -629,6 +629,10 @@ tryrule(struct rule *rp, Expr *e)
 			return NULL;
 	}
 
+	/* Sign-bit tests are only valid on a signed operand */
+	if ((rp->flags & RF_SIGNL) && (!e->left || !ISSIGNED(e->left->width)))
+		return NULL;
+
 #ifdef DEBUG
 	if (VERBOSE(V_RULES))
 		fprintf(stderr, "rewrite: %s -> %c\n", rp->pat, rp->rep);
@@ -866,6 +870,21 @@ normalize(Expr *e)
 }
 
 /*
+ * Normalize the whole tree before it is labeled.  step() normalizes
+ * each node too, but by the time it runs the children have already
+ * been reduced into concrete registers, so an operand swap there
+ * leaves the operand sitting in the wrong one.
+ */
+static void
+normtree(Expr *e)
+{
+	if (!e) return;
+	normalize(e);
+	normtree(e->left);
+	normtree(e->right);
+}
+
+/*
  * Flip flag code: Z<->NZ, C<->NC
  */
 static unsigned char
@@ -876,6 +895,8 @@ flipflag(unsigned char f)
 	case F_NZ: return F_Z;
 	case F_C:  return F_NC;
 	case F_NC: return F_C;
+	case F_M:  return F_P;
+	case F_P:  return F_M;
 	}
 	return f;
 }
@@ -905,13 +926,19 @@ step(Expr *e)
 		return n;
 	}
 
-	/* EQ(x, 0) in flag context: just test x for zero */
+	/*
+	 * EQ(x, 0) in flag context: testing x is cheaper than comparing
+	 * against zero, but the test is true when x is nonzero, so this
+	 * is !x - the BANG below flips the flag once x has been reduced.
+	 */
 	if (e->op == EQ && e->dest == DEST_FLAGS &&
 	    e->right && e->right->op == NUMBER && e->right->u.val == 0) {
 		n = e->left;
 		n->dest = DEST_FLAGS;
 		e->left = NULL;
 		freeexpr(e);
+		n = mkunary(BANG, 'b', n);
+		n->dest = DEST_FLAGS;
 		return n;
 	}
 
@@ -1404,6 +1431,9 @@ rewrite(Expr *e)
 		dumpexpr(e);
 	}
 #endif
+
+	/* Canonicalize operand order before anything is labeled */
+	normtree(e);
 
 	/* Label nodes with register requirements */
 	label(e);

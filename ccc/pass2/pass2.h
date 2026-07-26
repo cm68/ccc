@@ -41,6 +41,11 @@
 #define F_NZ    17      /* not zero */
 #define F_C     18      /* carry flag */
 #define F_NC    19      /* not carry */
+#define F_M     20      /* sign set: negative */
+#define F_P     21      /* sign clear: non-negative */
+
+/* signed widths are lower case, unsigned upper */
+#define ISSIGNED(w) ((w) == 'b' || (w) == 's' || (w) == 'l')
 
 /* Global state */
 extern int infd;

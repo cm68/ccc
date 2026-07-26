@@ -43,6 +43,8 @@ regName(int r)
 	case 17: return "NZ";
 	case 18: return "C";
 	case 19: return "NC";
+	case 20: return "M";
+	case 21: return "P";
 	default: return "?";
 	}
 }
