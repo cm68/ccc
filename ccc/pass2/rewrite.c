@@ -951,6 +951,50 @@ step(Expr *e)
 		return n;
 	}
 
+	/*
+	 * Shift by a count only known at runtime.  The Z80 has no
+	 * variable shift, so it loops - add hl,hl shifts left by one,
+	 * srl/sra h with rr l shifts right, arithmetic or logical
+	 * depending on the sign of the value.
+	 *
+	 * The count arrives in A already, or in E as a byte, or in DE as
+	 * a word of which only the low byte can matter; E is the low half
+	 * of DE, so the last two are the same load.  The zero guard is
+	 * not optional: C defines "x << 0" as x, and the loop body would
+	 * otherwise run once.
+	 */
+	if ((e->op == LSHIFT || e->op == RSHIFT) &&
+	    e->left && e->left->op == INHL && e->right &&
+	    (e->right->op == INA || e->right->op == INE ||
+	     e->right->op == INDE)) {
+		int lbl = labelcnt++;
+
+		if (e->right->op != INA)
+			out("\tld a,e\n");
+		out("\tor a\n\tjr z,_X");
+		outd(lbl);
+		out("\n_Y");
+		outd(lbl);
+		out(":\n");
+		if (e->op == LSHIFT)
+			out("\tadd hl,hl\n");
+		else if (ISSIGNED(e->width))
+			out("\tsra h\n\trr l\n");
+		else
+			out("\tsrl h\n\trr l\n");
+		out("\tdec a\n\tjr nz,_Y");
+		outd(lbl);
+		out("\n_X");
+		outd(lbl);
+		out(":\n");
+
+		n = mkcode(e->width, R_HL);
+		n->op = INHL;
+		n->dest = e->dest;
+		freeexpr(e);
+		return n;
+	}
+
 	/* CALL is handled up in rewrite1() - args must be pushed one at a
 	 * time, before the children are batch-rewritten. */
 
