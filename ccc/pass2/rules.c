@@ -17,6 +17,23 @@
 #define T_BC_TEST "\tld a,c\n\tor a,b\n"
 #define T_HL_TEST "\tld a,l\n\tor a,h\n"
 #define T_BC_HL "\tld l,c\n\tld h,b\n"
+/*
+ * Load a word through HL into HL.  A carries the low byte while HL is
+ * walked to the high one, because the pointer and the result share the
+ * register - which is also why anything that has to write back has to
+ * save the address first.
+ *
+ * CLOBBERS A.  ld e,(hl) / inc hl / ld d,(hl) / ex de,hl is the same
+ * four bytes and leaves A alone, but takes DE instead - and DE holds
+ * the second operand of a word expression far more often than A holds
+ * anything, so this is the safer default.  Anywhere A is live across a
+ * word load, that is the form to reach for.
+ */
+#define T_LD_IHL "\tld a,(hl)\n\tinc hl\n\tld h,(hl)\n\tld l,a\n"
+/* address on the stack, value in HL -> address in HL, value in DE */
+#define T_SWAP_ADDR "\tpop de\n\tex de,hl\n"
+/* store DE through HL, then bring the value back to HL */
+#define T_ST_IHL "\tld (hl),e\n\tinc hl\n\tld (hl),d\n\tex de,hl\n"
 #define T_DE_TEST "\tld a,e\n\tor a,d\n"
 
 #define R(pat, rep, l, r, d, f, tpl, dest) \
@@ -260,6 +277,33 @@ struct rule rules[] = {
 	/* pre-inc/dec */
 	R("i(B)", PREINC, P_L, P_NONE, P_NONE, 0, "\tinc bc\n\tld l,c\n\tld h,b\n", R_HL),
 	R("k(B)", PREDEC, P_L, P_NONE, P_NONE, 0, "\tdec bc\n\tld l,c\n\tld h,b\n", R_HL),
+	/* inc/dec a word global in place */
+	R("i(O):s", PREINC, P_L, P_NONE, P_NONE, 0,
+		"\tld hl,($L)\n\tinc hl\n\tld ($L),hl\n", R_HL),
+	R("k(O):s", PREDEC, P_L, P_NONE, P_NONE, 0,
+		"\tld hl,($L)\n\tdec hl\n\tld ($L),hl\n", R_HL),
+	R("j(O):s", POSTINC, P_L, P_NONE, P_NONE, 0,
+		"\tld hl,($L)\n\tinc hl\n\tld ($L),hl\n\tdec hl\n", R_HL),
+	R("m(O):s", POSTDEC, P_L, P_NONE, P_NONE, 0,
+		"\tld hl,($L)\n\tdec hl\n\tld ($L),hl\n\tinc hl\n", R_HL),
+
+	/*
+	 * inc/dec through an address in HL.  Reading the word costs the
+	 * pointer, so it goes on the stack first and comes back to do the
+	 * store.  Postfix then undoes the update to get its old value,
+	 * the same trick the memory forms use.
+	 */
+	R("i(H):s", PREINC, P_L, P_NONE, P_NONE, 0,
+		"\tpush hl\n" T_LD_IHL "\tinc hl\n" T_SWAP_ADDR T_ST_IHL, R_HL),
+	R("k(H):s", PREDEC, P_L, P_NONE, P_NONE, 0,
+		"\tpush hl\n" T_LD_IHL "\tdec hl\n" T_SWAP_ADDR T_ST_IHL, R_HL),
+	R("j(H):s", POSTINC, P_L, P_NONE, P_NONE, 0,
+		"\tpush hl\n" T_LD_IHL "\tinc hl\n" T_SWAP_ADDR T_ST_IHL
+		"\tdec hl\n", R_HL),
+	R("m(H):s", POSTDEC, P_L, P_NONE, P_NONE, 0,
+		"\tpush hl\n" T_LD_IHL "\tdec hl\n" T_SWAP_ADDR T_ST_IHL
+		"\tinc hl\n", R_HL),
+
 	/* postfix yields the old value, so read before updating */
 	R("j(B)", POSTINC, P_L, P_NONE, P_NONE, 0, "\tld l,c\n\tld h,b\n\tinc bc\n", R_HL),
 	R("m(B)", POSTDEC, P_L, P_NONE, P_NONE, 0, "\tld l,c\n\tld h,b\n\tdec bc\n", R_HL),
