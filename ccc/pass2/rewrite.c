@@ -1037,6 +1037,106 @@ no_regconv:
  * ARGNODE handled specially: right chain processed after push
  */
 /*
+ * Base operator behind a compound assignment: += is +, and so on.
+ * Returns 0 for anything that is not a compound assignment.
+ */
+static unsigned char
+baseop(unsigned char op)
+{
+	switch (op) {
+	case PLUSEQ:   return PLUS;
+	case SUBEQ:    return MINUS;
+	case MULTEQ:   return STAR;
+	case DIVEQ:    return DIV;
+	case MODEQ:    return MOD;
+	case RSHIFTEQ: return RSHIFT;
+	case LSHIFTEQ: return LSHIFT;
+	case ANDEQ:    return AND;
+	case OREQ:     return OR;
+	case XOREQ:    return XOR;
+	}
+	return 0;
+}
+
+/*
+ * Does evaluating this tree do anything besides produce a value?
+ */
+static int
+sideeffect(Expr *e)
+{
+	if (!e)
+		return 0;
+	switch (e->op) {
+	case CALL:
+	case ASSIGN:
+	case PREINC:
+	case POSTINC:
+	case PREDEC:
+	case POSTDEC:
+		return 1;
+	}
+	if (baseop(e->op))
+		return 1;
+	return sideeffect(e->left) || sideeffect(e->right);
+}
+
+/*
+ * Can this lvalue be named twice?  The expansion below reads the
+ * location and then writes it, so the location expression appears
+ * twice.  This runs before anything has been emitted for the subtree,
+ * so a second copy costs at most some recomputed address arithmetic -
+ * but a second call, or a second POSTINC, would be a real bug, which
+ * is what "evaluate the lvalue once" forbids.
+ *
+ * A bare REGVAR is refused even though it is side-effect free.  pass1
+ * strips the DEREF when it emits a compound-assign lvalue, so "i += 5"
+ * with i in BC and "*p += 10" with p in BC both arrive as
+ * OP=(REGVAR BC, n) - the register is the variable in the first and
+ * the address of it in the second, and nothing in the tree tells them
+ * apart.  Expanding the wrong one adds to the pointer instead of to
+ * what it points at.  Until pass1 keeps the distinction, register
+ * lvalues stay flagged rather than guessed at.
+ */
+static int
+dupableloc(Expr *e)
+{
+	if (!e || e->op == REGVAR)
+		return 0;
+	return !sideeffect(e);
+}
+
+/*
+ * Lower "x OP= y" to "x = x OP y".  This has to run before the children
+ * are reduced: once the lvalue has become a register, copying it would
+ * re-emit whatever code produced it.
+ *
+ * pass1 leaves the lvalue as a location, not a value, so the copy on
+ * the read side needs a DEREF - except for a register variable, where
+ * the register is the storage and holds the value already.
+ */
+static Expr *
+lowercompound(Expr *e)
+{
+	unsigned char op = baseop(e->op);
+	char w;
+	Expr *loc, *val, *rhs;
+
+	if (!op || !dupableloc(e->left))
+		return NULL;
+
+	w = e->width;
+	loc = e->left;
+	rhs = e->right;
+	e->left = e->right = NULL;
+	freeexpr(e);
+
+	/* the lvalue is a location, so the read side needs a load */
+	val = mkunary(DEREF, w, dupexpr(loc));
+
+	return mkbinary(ASSIGN, w, loc, mkbinary(op, w, val, rhs));
+}
+
+/*
  * Push one call argument, returning the stack bytes it consumed.
  * Wrapping the value in ASSIGN(INHL, value) reuses the whole =(H,...)
  * rule set to land it in HL, the same trick RETURN uses.  Scalars are
@@ -1136,6 +1236,20 @@ rewrite1(Expr *e)
 		n = docall(e);
 		if (n)
 			return n;
+	}
+
+	/* x OP= y -> x = x OP y, before the children are reduced */
+	if (baseop(e->op)) {
+		unsigned char tgt = e->tgt ? e->tgt : R_HL;
+		unsigned char dst = e->dest;
+
+		n = lowercompound(e);
+		if (n) {
+			setdest(n, dst);
+			label(n);
+			assign(n, tgt);
+			return rewrite1(n);
+		}
 	}
 
 	/* ARGNODE: evaluate left, push, then process right chain */

@@ -287,6 +287,13 @@ struct rule rules[] = {
 	R("&(A,K):bF", AND, P_L, P_R, P_NONE, 0, "\tand e\n", F_NZ),
 	R("|(A,N):b", OR, P_L, P_R, P_NONE, 0, "\tor $R\n", R_A),
 	R("^(A,N):b", XOR, P_L, P_R, P_NONE, 0, "\txor $R\n", R_A),
+	/* no 16-bit and/or/xor on the Z80 - do it a byte at a time */
+	R("&(H,N)", AND, P_L, P_R, P_NONE, 0,
+		"\tld a,l\n\tand $Rl\n\tld l,a\n\tld a,h\n\tand $Rh\n\tld h,a\n", R_HL),
+	R("|(H,N)", OR, P_L, P_R, P_NONE, 0,
+		"\tld a,l\n\tor $Rl\n\tld l,a\n\tld a,h\n\tor $Rh\n\tld h,a\n", R_HL),
+	R("^(H,N)", XOR, P_L, P_R, P_NONE, 0,
+		"\tld a,l\n\txor $Rl\n\tld l,a\n\tld a,h\n\txor $Rh\n\tld h,a\n", R_HL),
 	R("&(H,E)", AND, P_L, P_R, P_NONE, 0, "\tld a,l\n\tand e\n\tld l,a\n\tld a,h\n\tand d\n\tld h,a\n", R_HL),
 	R("|(H,E)", OR, P_L, P_R, P_NONE, 0, "\tld a,l\n\tor e\n\tld l,a\n\tld a,h\n\tor d\n\tld h,a\n", R_HL),
 	R("^(H,E)", XOR, P_L, P_R, P_NONE, 0, "\tld a,l\n\txor e\n\tld l,a\n\tld a,h\n\txor d\n\tld h,a\n", R_HL),
