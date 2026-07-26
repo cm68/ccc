@@ -5,3 +5,4 @@ debugtags.c
 *.o
 stage1/
 sizecheck/
+comzc3/

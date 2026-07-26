@@ -137,6 +137,35 @@ stage1: c1
 		fi \
 	done
 
+# CP/M .com footprint, built the way the shipped binary is: -O peephole
+# (~23% smaller text than sizecheck's unoptimised build) and no float
+# runtime.  This is the number to weigh against the TPA, not sizecheck's.
+ZC3 = zc3
+ZC3FLAGS = -O -DNOFLOAT
+LIBSRCINC = $(realpath ../../libsrc/include)
+
+com: $(GENERATED)
+	@mkdir -p comzc3
+	@set -e; cd comzc3 ; export PATH=$(ROOTDIR)/bin:$$PATH ; \
+	for f in $(SOURCES); do \
+		b=$${f%.c}; \
+		printf "%-12s" "$$b: " ; \
+		if $(ZC3) -c $(ZC3FLAGS) -CPM -DCCC -I.. -I../../lib -I$(LIBSRCINC) \
+			../$$f > $$b.log 2>&1 \
+			&& { [ -f $$b.o ] || [ -f $$b.obj ]; }; then \
+			echo ok; \
+		else echo FAIL; cat $$b.log; exit 1; fi \
+	done
+	cd comzc3 && $(ROOTDIR)/bin/wsld -s -o c1.ws \
+		-Ttext=0x100 -Tdata=0x100 -Tbss=0x100 \
+		$(ROOTDIR)/lib/crtcpm.o $$(ls *.o *.obj 2>/dev/null) \
+		-L$(ROOTDIR)/lib -lccc -lcpm -lc -lu -lc
+	cd comzc3 && tail -c +17 c1.ws > c1-zc3.com
+	@echo "--- per object (text data bss) ---"
+	@cd comzc3 && $(ROOTDIR)/bin/wssize $$(ls *.o *.obj 2>/dev/null)
+	@echo "--- linked image ---"
+	@$(ROOTDIR)/bin/wssize comzc3/c1.ws | sed 's/c1.ws/c1-zc3.com/'
+
 sizecheck: $(GENERATED)
 	mkdir -p sizecheck
 	$(SETX) ; export ROOTDIR=$(ROOTDIR) ; o="" ; for f in $(SOURCES); do \
