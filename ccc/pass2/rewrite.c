@@ -1541,6 +1541,48 @@ rewrite1(Expr *e)
 /*
  * Public entry point
  */
+/*
+ * A constant that survived as the whole expression.  This is only
+ * reachable at the root - as an operand a NUMBER has to stay a NUMBER
+ * for the ",N)" rules to match it, which is why there is no plain "N"
+ * rule in the table.  What it has to produce depends on where the
+ * value was wanted: nothing at all for a statement, a flag for a
+ * condition, HL for a value.
+ */
+static Expr *
+constresult(Expr *e)
+{
+	long v = e->u.val;
+	Expr *n;
+
+	switch (e->dest) {
+	case DEST_NONE:
+		/* a constant statement does nothing */
+		n = mkcode(e->width, 0);
+		break;
+	case DEST_FLAGS:
+		/*
+		 * Z means false.  xor a clears A and sets Z; inc a then
+		 * makes it nonzero for a true constant.
+		 */
+		out("\txor a\n");
+		if (v)
+			out("\tinc a\n");
+		n = mkcode(e->width, F_NZ);
+		break;
+	default:
+		out("\tld hl,");
+		outd((int)v);
+		outc('\n');
+		n = mkcode(e->width, R_HL);
+		n->op = INHL;
+		break;
+	}
+	n->dest = e->dest;
+	freeexpr(e);
+	return n;
+}
+
 Expr *
 rewrite(Expr *e)
 {
@@ -1570,6 +1612,10 @@ rewrite(Expr *e)
 #endif
 
 	r = rewrite1(e);
+
+	/* A constant is only left standing when it is the whole thing */
+	if (r && r->op == NUMBER)
+		r = constresult(r);
 
 	/* Check if code generation is incomplete */
 	if (r && r->op != CODE && r->op != INHL && r->op != INDE &&
