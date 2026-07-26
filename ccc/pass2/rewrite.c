@@ -910,6 +910,47 @@ flipflag(unsigned char f)
 	return f;
 }
 
+static int
+isflag(unsigned char r)
+{
+	return r >= F_Z && r <= F_P;
+}
+
+/*
+ * Turn a condition into the number 0 or 1 in A, for when a comparison
+ * was wanted as a value rather than as a branch.
+ *
+ * Carry is nearly free: ld a,0 leaves the flags alone, so adc a,a adds
+ * the carry into a cleared A - three bytes, and one more for a ccf to
+ * take the inverse.  The others need a branch over an inc, and jr can
+ * only test NZ/Z/NC/C, so sign has to go through jp.
+ */
+static void
+matflag(unsigned char r)
+{
+	switch (r) {
+	case F_C:
+		out("\tld a,0\n\tadc a,a\n");
+		return;
+	case F_NC:
+		out("\tccf\n\tld a,0\n\tadc a,a\n");
+		return;
+	/* jr is 2 bytes, so $+3 clears the inc; jp is 3, so $+4 does */
+	case F_Z:
+		out("\tld a,0\n\tjr nz,$+3\n\tinc a\n");
+		return;
+	case F_NZ:
+		out("\tld a,0\n\tjr z,$+3\n\tinc a\n");
+		return;
+	case F_M:
+		out("\tld a,0\n\tjp p,$+4\n\tinc a\n");
+		return;
+	case F_P:
+		out("\tld a,0\n\tjp m,$+4\n\tinc a\n");
+		return;
+	}
+}
+
 /*
  * Apply one rewrite step to node (not children)
  * Returns new node if changed, NULL if no change
@@ -1075,6 +1116,13 @@ step(Expr *e)
 		else if (reg == R_BC) e->op = INBC;
 		else if (reg == R_A) e->op = INA;
 		else if (reg == R_E) e->op = INE;
+		else if (isflag(reg) && e->dest != DEST_FLAGS) {
+			/* the condition was wanted as a number, not a jump */
+			matflag(reg);
+			e->op = INA;
+			e->width = 'B';
+			e->u.var.reg = R_A;
+		}
 		else goto no_regconv;
 		return e;
 	}
