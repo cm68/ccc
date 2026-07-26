@@ -30,6 +30,15 @@
  * word load, that is the form to reach for.
  */
 #define T_LD_IHL "\tld a,(hl)\n\tinc hl\n\tld h,(hl)\n\tld l,a\n"
+#define T_SUB_DE "\tor a\n\tsbc hl,de\n"
+#define T_SUB_BC "\tor a\n\tsbc hl,bc\n"
+/*
+ * Turn the result of a signed subtraction into a sign flag: the answer
+ * is sign exclusive-or overflow, so flip the top bit of the high byte
+ * when P/V says the subtraction overflowed, then let or a set S from
+ * it.  M means less than, P means greater or equal.
+ */
+#define T_SXORV "\tld a,h\n\tjp po,$$+5\n\txor 80h\n\tor a\n"
 /* address on the stack, value in HL -> address in HL, value in DE */
 #define T_SWAP_ADDR "\tpop de\n\tex de,hl\n"
 /* store DE through HL, then bring the value back to HL */
@@ -586,6 +595,44 @@ struct rule rules[] = {
 	R("W(B,Z)", LE, P_L, P_R, P_NONE, RF_SIGNL,
 		"\tld a,b\n\tor a\n\tjp m,$$+7\n\tld a,b\n\tor c\n"
 		"\tjr $$+3\n\txor a\n", F_Z),
+
+	/*
+	 * Signed relational comparison.  Carry answers the unsigned
+	 * question, so it cannot be used here: with a = -1 and b = 1 the
+	 * subtraction does not borrow, and carry would report that -1 is
+	 * not less than 1.
+	 *
+	 * The signed answer is sign exclusive-or overflow.  sbc hl,de
+	 * leaves the sign in bit 7 of H and the overflow in P/V, so take
+	 * the high byte, flip its top bit when the subtraction overflowed,
+	 * and let or a set the sign from the result.  M is then "less
+	 * than" and P is "greater or equal".
+	 *
+	 * Ten bytes against the three carry costs, which is why the
+	 * unsigned forms below keep using it, and why comparing against
+	 * zero stays on the sign-bit rules above - those are exact and
+	 * cheaper.
+	 */
+	R("T(H,E)", LT, P_L, P_R, P_NONE, RF_SIGNL, T_SUB_DE T_SXORV, F_M),
+	R("Y(H,E)", GE, P_L, P_R, P_NONE, RF_SIGNL, T_SUB_DE T_SXORV, F_P),
+	R("W(H,E)", LE, P_L, P_R, P_NONE, RF_SIGNL,
+		"\tex de,hl\n" T_SUB_DE T_SXORV, F_P),
+	R("G(H,E)", GT, P_L, P_R, P_NONE, RF_SIGNL,
+		"\tex de,hl\n" T_SUB_DE T_SXORV, F_M),
+	R("T(H,B)", LT, P_L, P_R, P_NONE, RF_SIGNL, T_SUB_BC T_SXORV, F_M),
+	R("Y(H,B)", GE, P_L, P_R, P_NONE, RF_SIGNL, T_SUB_BC T_SXORV, F_P),
+	R("W(H,B)", LE, P_L, P_R, P_NONE, RF_SIGNL,
+		"\tld e,c\n\tld d,b\n\tex de,hl\n" T_SUB_DE T_SXORV, F_P),
+	R("G(H,B)", GT, P_L, P_R, P_NONE, RF_SIGNL,
+		"\tld e,c\n\tld d,b\n\tex de,hl\n" T_SUB_DE T_SXORV, F_M),
+	R("T(H,N)", LT, P_L, P_R, P_NONE, RF_SIGNL,
+		"\tld de,$R\n" T_SUB_DE T_SXORV, F_M),
+	R("Y(H,N)", GE, P_L, P_R, P_NONE, RF_SIGNL,
+		"\tld de,$R\n" T_SUB_DE T_SXORV, F_P),
+	R("W(H,N)", LE, P_L, P_R, P_NONE, RF_SIGNL,
+		"\tld de,$R\n\tex de,hl\n" T_SUB_DE T_SXORV, F_P),
+	R("G(H,N)", GT, P_L, P_R, P_NONE, RF_SIGNL,
+		"\tld de,$R\n\tex de,hl\n" T_SUB_DE T_SXORV, F_M),
 
 	/* comparisons */
 	R("Q(H,E)", EQ, P_L, P_R, P_NONE, 0, "\tor a\n\tsbc hl,de\n", F_Z),

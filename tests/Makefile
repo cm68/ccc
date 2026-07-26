@@ -70,6 +70,7 @@ STMT_TESTS = \
 	asm_global.c \
 	call_args.c \
 	conditions.c \
+	signed_cmp.c \
 	compound_mem.c \
 	ptr_store.c \
 	byte_arith.c \
