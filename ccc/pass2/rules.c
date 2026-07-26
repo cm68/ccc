@@ -201,6 +201,21 @@ struct rule rules[] = {
 	/* pre-inc/dec */
 	R("i(B)", PREINC, P_L, P_NONE, P_NONE, 0, "\tinc bc\n\tld l,c\n\tld h,b\n", R_HL),
 	R("k(B)", PREDEC, P_L, P_NONE, P_NONE, 0, "\tdec bc\n\tld l,c\n\tld h,b\n", R_HL),
+	/* postfix yields the old value, so read before updating */
+	R("j(B)", POSTINC, P_L, P_NONE, P_NONE, 0, "\tld l,c\n\tld h,b\n\tinc bc\n", R_HL),
+	R("m(B)", POSTDEC, P_L, P_NONE, P_NONE, 0, "\tld l,c\n\tld h,b\n\tdec bc\n", R_HL),
+	/*
+	 * Postfix on a word in memory.  The old value is wanted as the
+	 * result and the new one in store, and rather than hold both, the
+	 * update is undone afterwards - one byte, against a push/pop pair
+	 * or a shuffle through DE.
+	 */
+	R("j(I):s", POSTINC, P_L, P_NONE, P_NONE, 0,
+	  "\tld $t,($L)\n\tld $u,($L+)\n\tinc $T\n"
+	  "\tld ($L),$t\n\tld ($L+),$u\n\tdec $T\n", 0),
+	R("m(I):s", POSTDEC, P_L, P_NONE, P_NONE, 0,
+	  "\tld $t,($L)\n\tld $u,($L+)\n\tdec $T\n"
+	  "\tld ($L),$t\n\tld ($L+),$u\n\tinc $T\n", 0),
 	/* unary: operand is the LEFT child (T_IDX_S_LD reads $R) */
 	R("i(I):s", PREINC, P_L, P_NONE, P_NONE, 0,
 	  "\tld l,($L)\n\tld h,($L+)\n\tinc hl\n" T_IDX_S_ST, R_HL),
