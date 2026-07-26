@@ -265,7 +265,6 @@ struct rule rules[] = {
 	R("D(I):bF", DEREF, P_L, P_NONE, P_NONE, 0, "\tld a,($L)\n\tor a\n", F_Z),
 	R("D(I):sF", DEREF, P_L, P_NONE, P_NONE, 0, "\tld a,($L)\n\tor a,($L+)\n", F_Z),
 	R("D(I):s", DEREF, P_L, P_NONE, P_NONE, 0, "\tld $t,($L)\n\tld $u,($L+)\n", 0),
-	R("D(I):b", DEREF, P_L, P_NONE, P_NONE, 0, NULL, 0),
 	/*
 	 * Of the 8-bit registers only A can load from an absolute address,
 	 * but the pairs all can, so ld de,(nn) reaches E without touching
@@ -276,6 +275,10 @@ struct rule rules[] = {
 	R("D(O):b", DEREF, P_L, P_NONE, P_NONE, RF_TDE, "\tld de,($L)\n", R_E),
 	R("D(O):b", DEREF, P_L, P_NONE, P_NONE, 0, "\tld a,($L)\n", R_A),
 	R("D(I):b", DEREF, P_L, P_NONE, P_NONE, RF_TDE, "\tld e,($L)\n", R_E),
+	/* the plain load: a byte local reaching A, as D(O):b does for a
+	 * global.  Without it a byte local could only be read by the rules
+	 * that match its parent too, so SEXT of one had nothing to widen */
+	R("D(I):b", DEREF, P_L, P_NONE, P_NONE, 0, "\tld a,($L)\n", R_A),
 	/* honour the target: as the right operand of a compare this has to
 	 * land in DE, or it overwrites the left operand in HL */
 	R("D(O):s", DEREF, P_L, P_NONE, P_NONE, 0, "\tld $T,($L)\n", 0),
