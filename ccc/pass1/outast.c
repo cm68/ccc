@@ -508,11 +508,16 @@ emitExpr(struct expr *e)
 
 	case GT:
 	case GE:
-		/* Normalize GT/GE to LT/LE by swapping operands */
-		emit1(op == GT ? LT : LE);
-		emit1(typeSfx(type));
-		emitChild(right);
-		emitChild(left);
+		/* Normalize GT/GE to LT/LE by swapping operands.  Still has
+		 * to convert them: swapping is not a reason to skip the
+		 * promotion the comparison would otherwise get. */
+		{
+			struct type *w = opwidth(e);
+			emit1(op == GT ? LT : LE);
+			emit1(typeSfx(type));
+			emitOperand(right, w);
+			emitOperand(left, w);
+		}
 		break;
 
 	default:
