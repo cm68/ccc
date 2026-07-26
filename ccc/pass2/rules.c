@@ -31,6 +31,9 @@ struct rule rules[] = {
 	 * INDEX rule above refuses. */
 	R("L", CODE, P_NONE, P_NONE, P_NONE, 0, NULL, 0),
 
+	/* bare SYM -> SYMREF+0, so the address rules below can see it */
+	R("S", SYMREF, P_NONE, P_NONE, P_NONE, 0, NULL, 0),
+
 	/* REGVAR -> IN* (value is in register) */
 	R("V", INBC, P_NONE, P_NONE, P_NONE, RF_BC, NULL, 0),
 	R("V", INDE, P_NONE, P_NONE, P_NONE, RF_DE, NULL, 0),
@@ -76,6 +79,9 @@ struct rule rules[] = {
 	R("+(V,N)", INDEX, P_NONE, P_NONE, P_L, RF_IX, NULL, 0),
 	R("+(D(V),N)", INDEX, P_NONE, P_NONE, P_LL, RF_IXIY, NULL, 0),
 	R("+(I,N)", INDEX, P_NONE, P_NONE, P_L, 0, NULL, 0),
+
+	/* symbol + constant offset folds into the SYMREF */
+	R("+(O,N)", SYMREF, P_NONE, P_NONE, P_NONE, 0, NULL, 0),
 
 	/* strength reduction */
 	R("*(_,P)", LSHIFT, P_L, P_R, P_NONE, RF_POW2, NULL, 0),
@@ -221,6 +227,8 @@ struct rule rules[] = {
 	R("=(B,D(H)):s", ASSIGN, P_L, P_R, P_NONE, 0, "\tld c,(hl)\n\tinc hl\n\tld b,(hl)\n", R_BC),
 	R("=(B,I)", ASSIGN, P_L, P_R, P_NONE, 0, "\tld c,($R)\n\tld b,($R+)\n", R_BC),
 	R("=(B,O)", ASSIGN, P_L, P_R, P_NONE, 0, "\tld bc,$R\n", R_BC),
+	R("=(H,O)", ASSIGN, P_L, P_R, P_NONE, 0, "\tld hl,$R\n", R_HL),
+	R("=(E,O)", ASSIGN, P_L, P_R, P_NONE, 0, "\tld de,$R\n", R_DE),
 	R("=(B,D(O)):s", ASSIGN, P_L, P_R, P_NONE, 0, "\tld a,($RL)\n\tld c,a\n\tld a,($RL+)\n\tld b,a\n", R_BC),
 	R("=(E,D(O)):s", ASSIGN, P_L, P_R, P_NONE, 0, "\tld de,($RL)\n", R_DE),
 	R("=(H,D(O)):s", ASSIGN, P_L, P_R, P_NONE, 0, "\tld hl,($RL)\n", R_HL),

@@ -67,7 +67,8 @@ STMT_TESTS = \
 	sw2.c \
 	asm_block.c \
 	asm_comprehensive.c \
-	asm_global.c
+	asm_global.c \
+	call_args.c
 
 # sizeof operator tests
 SIZEOF_TESTS = \

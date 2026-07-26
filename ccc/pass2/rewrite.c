@@ -20,6 +20,7 @@ static int labelcnt;
 
 /* Forward declarations */
 static char *pmatch(char *p, Expr *e);
+static Expr *rewrite1(Expr *e);
 
 /*
  * Check if expression matches any preserve pattern.
@@ -914,17 +915,8 @@ step(Expr *e)
 		return n;
 	}
 
-	/* CALL(SYMREF, args...): emit call, result in HL */
-	if (e->op == CALL && e->left && e->left->op == SYMREF) {
-		out("\tcall ");
-		out(e->left->u.symref.name);
-		out("\n");
-		n = mkcode(e->width, R_HL);
-		n->dest = e->dest;
-		freeexpr(e);
-		return n;
-	}
-
+	/* CALL is handled up in rewrite1() - args must be pushed one at a
+	 * time, before the children are batch-rewritten. */
 
 	/* Long unary operations */
 	if ((e->width == 'l' || e->width == 'L') && e->left) {
@@ -1017,12 +1009,107 @@ no_regconv:
  * Rewrite node: depth-first, fixed-point at each level
  * ARGNODE handled specially: right chain processed after push
  */
+/*
+ * Push one call argument, returning the stack bytes it consumed.
+ * Wrapping the value in ASSIGN(INHL, value) reuses the whole =(H,...)
+ * rule set to land it in HL, the same trick RETURN uses.  Scalars are
+ * widened to a word first: C promotes char arguments to int.
+ */
+static int
+pusharg(Expr *a)
+{
+	Expr *hl, *asn;
+	char w;
+
+	if (!a)
+		return 0;
+	w = a->width;
+	if (w != 'l' && w != 'L' && w != 'f')
+		w = 's';
+
+	hl = mkcode(w, R_HL);
+	hl->op = INHL;
+	asn = mkbinary(ASSIGN, w, hl, a);
+	setdest(asn, DEST_VALUE);
+	freeexpr(rewrite(asn));
+
+	if (w == 's') {
+		out("\tpush hl\n");
+		return 2;
+	}
+	/* long/float live in HL:DE, high word first */
+	out("\tpush hl\n\tpush de\n");
+	return 4;
+}
+
+/*
+ * Emit a call: arguments pushed right-to-left, then the call, then the
+ * caller drops the arguments.  The arg chain is already built
+ * last-to-first, which is push order.
+ */
+static Expr *
+docall(Expr *e)
+{
+	Expr *a, *next, *n;
+	int nbytes = 0;
+	int i;
+
+	/* Resolve the callee (emits nothing); SYM becomes SYMREF. */
+	e->left = rewrite1(e->left);
+	if (!e->left || e->left->op != SYMREF)
+		return NULL;		/* indirect call - not handled yet */
+
+	for (a = e->right; a && a->op == ARGNODE; a = next) {
+		Expr *v = a->left;
+		next = a->right;
+		a->left = a->right = NULL;
+		freeexpr(a);
+		nbytes += pusharg(v);
+	}
+	e->right = NULL;
+
+	out("\tcall ");
+	out(e->left->u.symref.name);
+	outc('\n');
+
+	/*
+	 * Drop the arguments.  inc sp costs a byte apiece and touches no
+	 * register; past a few words the HL form is smaller, but it has
+	 * to shuffle the result through DE.
+	 */
+	if (nbytes > 0 && nbytes <= 8) {
+		for (i = 0; i < nbytes; i++)
+			out("\tinc sp\n");
+	} else if (nbytes > 8) {
+		out("\tex de,hl\n\tld hl,");
+		outd(nbytes);
+		out("\n\tadd hl,sp\n\tld sp,hl\n\tex de,hl\n");
+	}
+
+	/* Result is in HL.  Hand back an INHL rather than a bare CODE:
+	 * we return straight to the caller, skipping the step() loop that
+	 * would otherwise do the CODE -> IN* conversion for us. */
+	n = mkcode(e->width, R_HL);
+	n->op = INHL;
+	n->dest = e->dest;
+	freeexpr(e);
+	return n;
+}
+
 static Expr *
 rewrite1(Expr *e)
 {
 	Expr *n, *next;
 
 	if (!e) return NULL;
+
+	/* CALL: args have to be pushed one at a time, not rewritten as a
+	 * batch - each one lands in HL and would clobber the last. */
+	if (e->op == CALL) {
+		n = docall(e);
+		if (n)
+			return n;
+	}
 
 	/* ARGNODE: evaluate left, push, then process right chain */
 	if (e->op == ARGNODE) {
