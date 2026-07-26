@@ -78,6 +78,11 @@ valgrind/
 attic/
 root/
 
+# Superseded sources kept for reference (ccc/pass2/old is the
+# pre-rewriter codegen).  The few files already tracked under
+# libsrc/old stay tracked - ignoring never untracks.
+old/
+
 # Sources that share an extension with the intermediates above.
 # Assembly sources live in libsrc plus the one CP/M startup file.
 !libsrc/*.s
