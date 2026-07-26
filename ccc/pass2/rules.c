@@ -228,6 +228,34 @@ struct rule rules[] = {
 	R("=(D(B),H):s", ASSIGN, P_L, P_R, P_NONE, 0, "\tpush hl\n\tld l,c\n\tld h,b\n\tpop de\n\tld (hl),e\n\tinc hl\n\tld (hl),d\n", 0),
 	R("=(D(E),H):s", ASSIGN, P_L, P_R, P_NONE, 0, "\tex de,hl\n\tpush de\n\tld (hl),e\n\tinc hl\n\tld (hl),d\n\tpop hl\n", 0),
 
+	/*
+	 * Store through a struct pointer in IX.  Only offset zero lands
+	 * here - a non-zero member offset folds into an INDEX first via
+	 * +(V,N), which is why these are the forms that were missing.
+	 */
+	R("=(D(V),N):s", ASSIGN, P_L, P_R, P_LL, RF_IX,
+		"\tld (ix+0),$Rl\n\tld (ix+1),$Rh\n", 0),
+	R("=(D(V),H):s", ASSIGN, P_L, P_R, P_LL, RF_IX,
+		"\tld (ix+0),l\n\tld (ix+1),h\n", 0),
+	R("=(D(V),B):s", ASSIGN, P_L, P_R, P_LL, RF_IX,
+		"\tld (ix+0),c\n\tld (ix+1),b\n", 0),
+	R("=(D(V),N):b", ASSIGN, P_L, P_R, P_LL, RF_IX, "\tld (ix+0),$R\n", 0),
+	R("=(D(V),A):b", ASSIGN, P_L, P_R, P_LL, RF_IX, "\tld (ix+0),a\n", 0),
+
+	/*
+	 * Store through a pointer that itself lives in memory - a pointer
+	 * parameter, say.  Load it first; the HL form has to shuffle
+	 * through DE because HL is holding the value.
+	 */
+	R("=(D(I),N):s", ASSIGN, P_L, P_R, P_NONE, 0,
+		"\tld l,($LL)\n\tld h,($LL+)\n\tld (hl),$Rl\n\tinc hl\n\tld (hl),$Rh\n", 0),
+	R("=(D(I),H):s", ASSIGN, P_L, P_R, P_NONE, 0,
+		"\tld e,($LL)\n\tld d,($LL+)\n\tex de,hl\n\tld (hl),e\n\tinc hl\n\tld (hl),d\n", 0),
+	R("=(D(I),N):b", ASSIGN, P_L, P_R, P_NONE, 0,
+		"\tld l,($LL)\n\tld h,($LL+)\n\tld (hl),$R\n", 0),
+	R("=(D(I),A):b", ASSIGN, P_L, P_R, P_NONE, 0,
+		"\tld l,($LL)\n\tld h,($LL+)\n\tld (hl),a\n", 0),
+
 	/* indirect stores via HL */
 	R("=(D(H),N):b", ASSIGN, P_L, P_R, P_NONE, 0, "\tld (hl),$R\n", 0),
 	R("=(D(H),E):s", ASSIGN, P_L, P_R, P_NONE, 0, "\tld (hl),e\n\tinc hl\n\tld (hl),d\n", 0),
