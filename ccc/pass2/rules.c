@@ -133,6 +133,10 @@ struct rule rules[] = {
 	R("=(O,A):b", ASSIGN, P_L, P_R, P_NONE, 0, "\tld ($L),a\n", R_A),
 	R("=(O,N):b", ASSIGN, P_L, P_R, P_NONE, 0, "\tld a,$R\n\tld ($L),a\n", R_A),
 	R("=(O,H):s", ASSIGN, P_L, P_R, P_NONE, 0, "\tld ($L),hl\n", R_HL),
+	/* narrowing store: a word result keeps only its low byte */
+	R("=(O,H):b", ASSIGN, P_L, P_R, P_NONE, 0, "\tld a,l\n\tld ($L),a\n", R_A),
+	R("=(O,B):b", ASSIGN, P_L, P_R, P_NONE, 0, "\tld a,c\n\tld ($L),a\n", R_A),
+	R("=(I,B):b", ASSIGN, P_L, P_R, P_NONE, 0, "\tld ($L),c\n", 0),
 	R("=(O,N):s", ASSIGN, P_L, P_R, P_NONE, 0, "\tld hl,$R\n\tld ($L),hl\n", R_HL),
 
 	/* load constant to register variable */

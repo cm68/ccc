@@ -72,7 +72,8 @@ STMT_TESTS = \
 	conditions.c \
 	compound_mem.c \
 	ptr_store.c \
-	byte_arith.c
+	byte_arith.c \
+	byte_demote.c
 
 # sizeof operator tests
 SIZEOF_TESTS = \

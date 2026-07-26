@@ -74,6 +74,93 @@ isRegvar(struct expr *e)
 }
 
 /*
+ * Truncation-transparent operators: the low n bits of the result
+ * depend only on the low n bits of the operands, whatever the signs.
+ * So if the value is about to be narrowed anyway, the whole
+ * computation can be done narrow.
+ *
+ * / and % need the full value to pick a quotient, >> pulls down bits
+ * from above, and a comparison yields int regardless of what its
+ * operands were - none of them belong here.
+ */
+static int
+truncok(unsigned char op)
+{
+	switch (op) {
+	case PLUS:
+	case MINUS:
+	/*
+	 * STAR belongs here on the maths - the low n bits of a product
+	 * depend only on the low n bits of the operands - but there is no
+	 * 8-bit multiply helper, so demoting one only produces a shape
+	 * nothing can generate.  Leave it wide and let the narrowing
+	 * store take the low byte.
+	 */
+	case AND:
+	case OR:
+	case XOR:
+	case LSHIFT:
+	case NEG:
+	case TWIDDLE:
+		return 1;
+	}
+	return 0;
+}
+
+/*
+ * Can this subtree be computed in 'size' bytes without changing the
+ * low 'size' bytes of its value?
+ */
+static int
+candemote(struct expr *e, int size)
+{
+	if (!e)
+		return 1;
+	if (e->type->size <= size)
+		return 1;
+	if (e->op == CONST)
+		return 1;
+	if (e->op == DEREF) {
+		/*
+		 * A narrower read takes the low bytes, which come first.
+		 * Not for a register variable though - it is emitted as the
+		 * whole register, with no addressable low part.
+		 */
+		return !(e->left && e->left->op == SYM && isRegvar(e->left));
+	}
+	if (!truncok(e->op))
+		return 0;
+	/* a shift count keeps its own width; only the value narrows */
+	if (e->op == LSHIFT)
+		return candemote(e->left, size);
+	return candemote(e->left, size) && candemote(e->right, size);
+}
+
+/*
+ * Retype a subtree that candemote() has approved.
+ */
+static void
+demote(struct expr *e, struct type *t)
+{
+	if (!e || e->type->size <= t->size)
+		return;
+	e->type = t;
+	if (e->op == CONST) {
+		/* truncate to match, so the emitted value fits the width */
+		if (t->size == 1)
+			e->v &= 0xff;
+		else if (t->size == 2)
+			e->v &= 0xffff;
+		return;
+	}
+	if (e->op == DEREF)
+		return;			/* narrower load, address unchanged */
+	demote(e->left, t);
+	if (e->op != LSHIFT)
+		demote(e->right, t);
+}
+
+/*
  * Get size suffix for memory operations based on type
  * Returns: 'b' (byte), 's' (short/int), 'l' (long),
  * 'f' (float), 'd' (double), 'v' (void)
@@ -370,9 +457,20 @@ emitExpr(struct expr *e)
 		/* All operators get width suffix */
 		emit1(op);
 		emit1(typeSfx(type));
-		/* mark the lvalue so DEREF above knows to keep itself */
-		if (isAssignOp(op))
+		if (isAssignOp(op)) {
+			/*
+			 * The result is about to be narrowed to the target, so
+			 * compute it narrow where that cannot change the stored
+			 * value.  This is the as-if rule standing in for the
+			 * integer promotions: C says "c1 + c2" is int
+			 * arithmetic, but if it lands in a char only the low
+			 * byte was ever observable.
+			 */
+			if (right && candemote(right, type->size))
+				demote(right, type);
+			/* mark the lvalue so DEREF above knows to keep itself */
 			inLvalue = 1;
+		}
 		emitChild(left);
 		emitChild(right);
 		break;
