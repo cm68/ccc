@@ -341,9 +341,10 @@ static void parseStmt(void) {
     /* Switch */
     if (c == SWITCH) {
         int i, hasLabel = read1();
-        char labelBuf[256] = "";
+        char labelBuf[256];
         int caseCnt;
         char *expr;
+        labelBuf[0] = 0;
         if (hasLabel == 1) strcpy(labelBuf, readName());
         caseCnt = read1();
         expr = getExpr();
@@ -533,8 +534,9 @@ static void parseFunction(void) {
     int frmSize = read1();
 
     /* Params */
-    char paramsBuf[1024] = "";
+    char paramsBuf[1024];
     int i, plen = 0;
+    paramsBuf[0] = 0;
     for (i = 0; i < paramCnt; i++) {
         int ptype, preg, poff;
         char *pname;
@@ -557,8 +559,9 @@ static void parseFunction(void) {
     }
 
     /* Locals */
-    char localsBuf[1024] = "";
+    char localsBuf[1024];
     int llen = 0;
+    localsBuf[0] = 0;
     for (i = 0; i < localCnt; i++) {
         int ltype, lreg, loff;
         char *lname;

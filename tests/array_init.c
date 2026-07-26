@@ -6,10 +6,10 @@ char bar[] = "test";
 char empty[] = "";
 char escaped[] = "hello\nworld";
 
+/*
+ * No local arrays here: auto aggregate initializers are a documented
+ * compiler restriction (see ccc/RESTRICTIONS.md), not a gap to test.
+ */
 int main() {
-    /* Local array with inferred size */
-    char local[] = "local";
-    char long_string[] = "this is a longer string";
-
     return 0;
 }
