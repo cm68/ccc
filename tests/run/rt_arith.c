@@ -24,10 +24,16 @@ main()
 	CHECK(4, (short)(c1 | c2), 23);
 	CHECK(5, (short)(c1 ^ c2), 19);
 
-	/* stored back into a char, so only the low byte is observable */
+	/*
+	 * Stored back into a char, so only the low byte is observable.
+	 * Masked, because whether plain char is signed is up to the
+	 * implementation - it is signed for the host and for zc3 and
+	 * unsigned for ccc - and the point here is the truncation, not
+	 * the signedness.
+	 */
 	c1 = 100; c2 = 100;
 	c3 = c1 + c2;
-	CHECK(6, c3, (char)200);
+	CHECK(6, c3 & 0xff, 200);
 
 	/* a char promoted against a short keeps its sign */
 	c1 = -1; s = 1;
@@ -46,7 +52,7 @@ main()
 	CHECK(12, c1, 0x34);
 	s2 = 0x7fff;
 	c2 = s2;
-	CHECK(13, c2, (char)0xff);
+	CHECK(13, c2 & 0xff, 0xff);
 
 	/* multiply, divide, remainder */
 	s = 7; s2 = 6;

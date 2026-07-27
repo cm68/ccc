@@ -19,12 +19,7 @@
 
 .PHONY: all native zc3 ccc one clean
 
-# zc3 is not in the default set yet.  Compiled and linked as below it
-# produces a binary that makes CP/M system calls, so it is targeting
-# CP/M rather than Micronix and the simulator gets nowhere.  The flag
-# that selects the target has to be found in the zc3 driver; until
-# then the target builds and runs but its results mean nothing.
-all: native ccc
+all: native zc3 ccc
 
 native:
 	@sh runtests.sh native

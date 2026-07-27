@@ -44,7 +44,8 @@ main()
 	g *= 3;  CHECK(12, g, 45);
 	cg = 10;
 	cg += 5;  CHECK(13, cg, 15);
-	cg |= 0x80;  CHECK(14, cg, (char)0x8f);
+	/* masked: plain char signedness is the implementation's choice */
+	cg |= 0x80;  CHECK(14, cg & 0xff, 0x8f);
 
 	/* and on an array element */
 	arr[2] = 100;

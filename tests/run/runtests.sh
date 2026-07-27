@@ -59,14 +59,19 @@ for t in $tests; do
 		gcc -w -std=gnu89 -o "$bin" "$src" >"$log" 2>&1 || built=no
 		;;
 	zc3)
-		# -O is what the shipped binaries are built with.  zc3 has no
-		# idea where this tree keeps its runtime, so compile only and
-		# link by hand, the way the com targets do.
+		# The same recipe as ccc/pass1's mx-zc3 target: compile only,
+		# then link by hand against this tree's runtime.  What makes
+		# the result Micronix rather than CP/M is the link - crt0 and
+		# libu - not -CPM, which is about the compiler's own
+		# assumptions and is what mx-zc3 passes too.  -Ttext=0x100
+		# matters: the simulator loads there, and without it the
+		# binary is laid out at zero and runs off into the header.
 		(cd "$work" &&
-		 PATH="$root/root/bin:$PATH" zc3 -O -c -I"$here" "$src" &&
-		 "$root/root/bin/wsld" -o "$bin" \
+		 PATH="$root/root/bin:$PATH" \
+		 zc3 -O -c -CPM -I"$here" "$src" &&
+		 "$root/root/bin/wsld" -o "$bin" -Ttext=0x100 \
 			"$root/root/lib/crt0.o" "$base.o" \
-			-L"$root/root/lib" -lc -lu) >"$log" 2>&1 || built=no
+			-L"$root/root/lib" -lc -lu -lc) >"$log" 2>&1 || built=no
 		;;
 	ccc)
 		(cd "$work" && "$CCC" -o "$bin" -I"$here" "$src") >"$log" 2>&1 ||
