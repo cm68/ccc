@@ -78,6 +78,7 @@ Expr	*rewrite(Expr *e);
  * with empty parens zc3 reads it as taking none and objects to the
  * definition. */
 char	*falsecc(Expr *e);
+char	*truecc(Expr *e);
 
 /* parser */
 Expr	*readexpr(void);

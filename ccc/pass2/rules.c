@@ -168,9 +168,9 @@ char *fragtab[] = {
 #define T_ADD_HL_HL	F_ADDHLHL
 #define T_IDX_S_ST	F_LDLL F_LDLH
 #define T_IDX_S_LD	"\tld l,($R)\n\tld h,($R+)\n"
-#define T_IX_TEST	"\tld a,ixl\n\tor a,ixh\n"
-#define T_BC_TEST	F_LDAC "\tor a,b\n"
-#define T_HL_TEST	F_LDAL "\tor a,h\n"
+#define T_IX_TEST	"\tld a,ixl\n\tor ixh\n"
+#define T_BC_TEST	F_LDAC "\tor b\n"
+#define T_HL_TEST	F_LDAL "\tor h\n"
 #define T_BC_HL	F_LDLC F_LDHB
 /*
  * Load a word through HL into HL.  A carries the low byte while HL is
@@ -222,7 +222,7 @@ char *fragtab[] = {
 #define T_SWAP_ADDR	F_POPDE F_EXDEHL
 /* store DE through HL, then bring the value back to HL */
 #define T_ST_IHL	F_LDHLE F_INCHL F_LDHLD F_EXDEHL
-#define T_DE_TEST	"\tld a,e\n\tor a,d\n"
+#define T_DE_TEST	"\tld a,e\n\tor d\n"
 
 #define R(pat, rep, l, r, d, f, tpl, dest) \
 	{pat, rep, l, r, d, f, tpl, dest}
@@ -400,6 +400,17 @@ struct rule rules[] = {
 	R("=(I,B):bV", ASSIGN, P_L, P_R, P_NONE, 0, F_LDAC F_LDLA1, R_A),
 	R("=(I,B):b", ASSIGN, P_L, P_R, P_NONE, 0, "\tld ($L),c\n", 0),
 	R("=(O,N):s", ASSIGN, P_L, P_R, P_NONE, 0, F_LDHLR F_LDLHL, R_HL),
+	/*
+	 * A byte in A stored to a word.  This is what a truth test or a
+	 * comparison used for its value comes to: the flag becomes a
+	 * nought or a one in A, and what it goes into is wider than
+	 * that.  Unsigned by construction, so the top half is zero;
+	 * anything genuinely signed arrives wrapped in a SEXT.
+	 */
+	R("=(O,A):s", ASSIGN, P_L, P_R, P_NONE, 0,
+		F_LDLA F_LDH0 F_LDLHL, R_HL),
+	R("=(I,A):s", ASSIGN, P_L, P_R, P_NONE, 0,
+		F_LDLA F_LDH0 T_IDX_S_ST, R_HL),
 
 	/* load constant to register variable */
 	R("=(V,N)", ASSIGN, P_L, P_R, P_L, RF_IX, "\tld ix,$R\n", R_IX),
@@ -663,10 +674,30 @@ struct rule rules[] = {
 	R("~(H):s", NOT, P_L, P_NONE, P_NONE, 0,
 		F_LDAL "\tcpl\n" F_LDLA F_LDAH "\tcpl\n" F_LDHA, R_HL),
 	R("~(A):b", NOT, P_L, P_NONE, P_NONE, 0, "\tcpl\n", R_A),
-	/* the truth test - all four bytes have to speak.
-	 * the width that matters is the operand's - "!" yields an int */
+	/*
+	 * The truth test.  "!x" is true when x is zero, so the answer is
+	 * the zero flag once the value has been tested - and testing is
+	 * all it takes, whatever the value is sitting in.
+	 *
+	 * A comparison already produces a flag and is handled before the
+	 * rules run, by inverting it; this is the other half, where the
+	 * operand is a value and nothing has set the flags.  It had no
+	 * rule at any width but long, so every "!x" on an ordinary value
+	 * reduced to nothing.
+	 *
+	 * The width that matters is the operand's: "!" yields an int
+	 * whatever it was applied to.
+	 */
 	R("!(H:l)", BANG, P_L, P_NONE, P_NONE, 0,
 		F_LDAH "\tor l\n\tor d\n\tor e\n", F_Z),
+	R("!(H:s)", BANG, P_L, P_NONE, P_NONE, 0, T_HL_TEST, F_Z),
+	R("!(H:b)", BANG, P_L, P_NONE, P_NONE, 0, F_LDAL F_ORA, F_Z),
+	R("!(A)", BANG, P_L, P_NONE, P_NONE, 0, F_ORA, F_Z),
+	R("!(B:s)", BANG, P_L, P_NONE, P_NONE, 0, T_BC_TEST, F_Z),
+	R("!(B:b)", BANG, P_L, P_NONE, P_NONE, 0, F_LDAC F_ORA, F_Z),
+	R("!(E:s)", BANG, P_L, P_NONE, P_NONE, 0, T_DE_TEST, F_Z),
+	R("!(K)", BANG, P_L, P_NONE, P_NONE, 0, "\tld a,e\n" F_ORA, F_Z),
+	R("!(V)", BANG, P_L, P_NONE, P_L, RF_IX, T_IX_TEST, F_Z),
 
 	/* zero-extended loads */
 	R("=(B,A)", ASSIGN, P_L, P_R, P_NONE, 0, "\tld c,a\n\tld b,0\n", R_BC),
@@ -853,7 +884,7 @@ struct rule rules[] = {
 	R("=(D(H),B):s", ASSIGN, P_L, P_R, P_NONE, 0, "\tld (hl),c\n" F_INCHL "\tld (hl),b\n", 0),
 
 	/* pointer testing */
-	R("D(H):pF", DEREF, P_L, P_NONE, P_NONE, 0, F_LDAHL "\tor a,(hl)\n", F_NZ),
+	R("D(H):pF", DEREF, P_L, P_NONE, P_NONE, 0, F_LDAHL "\tor (hl)\n", F_NZ),
 
 	/* structured loads to BC/DE/HL */
 	R("=(B,D(H)):s", ASSIGN, P_L, P_R, P_NONE, 0, "\tld c,(hl)\n" F_INCHL "\tld b,(hl)\n", R_BC),
@@ -878,8 +909,15 @@ struct rule rules[] = {
 	/* arithmetic/logical on indexed */
 	R("o(H,N):b", OREQ, P_L, P_R, P_NONE, 0, F_LDAHL "\tor $R\n" F_LDHLA, R_A),
 	R("o(I,K):b", OREQ, P_L, P_R, P_NONE, 0, F_LDAL1 "\tor e\n" F_LDLA1, R_A),
-	R("D(I):bF", DEREF, P_L, P_NONE, P_NONE, 0, F_LDAL1 F_ORA, F_Z),
-	R("D(I):sF", DEREF, P_L, P_NONE, P_NONE, 0, F_LDAL1 "\tor a,($L+)\n", F_Z),
+	/*
+	 * A frame variable as a truth value.  The flag named here is the
+	 * one that means true, and true is "not zero" - these said Z, so
+	 * "if (local)" ran its body exactly when the local was zero.
+	 * The register-variable rule above has always said NZ, which is
+	 * what made the disagreement visible.
+	 */
+	R("D(I):bF", DEREF, P_L, P_NONE, P_NONE, 0, F_LDAL1 F_ORA, F_NZ),
+	R("D(I):sF", DEREF, P_L, P_NONE, P_NONE, 0, F_LDAL1 "\tor ($L+)\n", F_NZ),
 	R("D(I):s", DEREF, P_L, P_NONE, P_NONE, 0, "\tld $t,($L)\n" F_LDUL, 0),
 	/*
 	 * Of the 8-bit registers only A can load from an absolute address,
@@ -976,6 +1014,15 @@ struct rule rules[] = {
 	R("=(A,D(O)):b", ASSIGN, P_L, P_R, P_NONE, 0, "\tld a,($RL)\n", R_A),
 	R("=(A,A)", ASSIGN, P_L, P_R, P_NONE, 0, "", R_A),
 	R("=(A,N):b", ASSIGN, P_L, P_R, P_NONE, 0, "\tld a,$R\n", R_A),
+	/*
+	 * A byte wanted in A that came back in HL, which is where the
+	 * wrapper that lands a value puts it.  Only the low half is
+	 * meaningful at this width, so it is one instruction - and it
+	 * was the single most repeated thing the compiler could not do.
+	 */
+	R("=(A,H):b", ASSIGN, P_L, P_R, P_NONE, 0, F_LDAL, R_A),
+	R("=(A,B):b", ASSIGN, P_L, P_R, P_NONE, 0, F_LDAC, R_A),
+	R("=(A,E):b", ASSIGN, P_L, P_R, P_NONE, 0, "\tld a,e\n", R_A),
 	/* a byte in A stepped in place */
 	R("i(A):b", PREINC, P_L, P_NONE, P_NONE, 0, "\tinc a\n", R_A),
 	R("k(A):b", PREDEC, P_L, P_NONE, P_NONE, 0, "\tdec a\n", R_A),

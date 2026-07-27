@@ -1465,11 +1465,34 @@ falsecc(Expr *e)
 	case F_M:  return "p";
 	case F_P:  return "m";
 	case R_A:  out("\tor a\n"); return "z";
-	case R_HL: out("\tld a,l\n\tor a,h\n"); return "z";
-	case R_DE: out("\tld a,e\n\tor a,d\n"); return "z";
-	case R_BC: out("\tld a,c\n\tor a,b\n"); return "z";
+	case R_HL: out("\tld a,l\n\tor h\n"); return "z";
+	case R_DE: out("\tld a,e\n\tor d\n"); return "z";
+	case R_BC: out("\tld a,c\n\tor b\n"); return "z";
 	}
 	return "z";
+}
+
+/*
+ * The other half: the condition that branches when a condition is
+ * true.  Same shape, same zero test where the answer came back as a
+ * value rather than a flag.
+ */
+char *
+truecc(Expr *e)
+{
+	switch (e ? e->u.var.reg : 0) {
+	case F_Z:  return "z";
+	case F_NZ: return "nz";
+	case F_C:  return "c";
+	case F_NC: return "nc";
+	case F_M:  return "m";
+	case F_P:  return "p";
+	case R_A:  out("\tor a\n"); return "nz";
+	case R_HL: out("\tld a,l\n\tor h\n"); return "nz";
+	case R_DE: out("\tld a,e\n\tor d\n"); return "nz";
+	case R_BC: out("\tld a,c\n\tor b\n"); return "nz";
+	}
+	return "nz";
 }
 
 /*
@@ -2094,50 +2117,75 @@ rewrite1(Expr *e)
 		return e;
 	}
 
-	/* LAND in flag context: short-circuit AND */
-	if (e->op == LAND && e->dest == DEST_FLAGS) {
-		int lbl = labelcnt++;
-		/* Evaluate left operand */
-		e->left->dest = DEST_FLAGS;
-		e->left = rewrite1(e->left);
-		/* If left is false (Z), jump to false label */
-		out("\tjp z,_L");
-		outd(lbl);
-		out("\n");
-		/* Evaluate right operand */
-		e->right->dest = DEST_FLAGS;
-		e->right = rewrite1(e->right);
-		/* Emit false label */
-		out("_L");
-		outd(lbl);
-		out(":\n");
-		/* Result is Z flag from right (or jumped with Z set) */
-		n = mkcode(e->width, F_NZ);
-		n->dest = DEST_FLAGS;
-		freeexpr(e);
-		return n;
-	}
+	/*
+	 * The short-circuit operators, in flag context.
+	 *
+	 * Both used to assume their operands answered in Z - jump on z
+	 * for "&&", on nz for "||" - and then to claim the result was in
+	 * NZ.  Neither holds.  A signed comparison answers in the sign
+	 * flag and an unsigned one in carry, so the branch went on a flag
+	 * that meant nothing; and where an operand short-circuits, the
+	 * flags arriving at the label are that operand's, in whatever
+	 * encoding it used, not the NZ the result claimed.
+	 *
+	 * So the branch asks each operand which flag it answers in, and
+	 * both paths are made to arrive with the same one: zero for
+	 * false, non-zero for true, which is what the result then names.
+	 */
+	if (e->op == LAND || e->op == LOR) {
+		int out_lbl = labelcnt++;
+		int end_lbl = labelcnt++;
+		int isand = (e->op == LAND);
+		char *cc;
 
-	/* LOR in flag context: short-circuit OR */
-	if (e->op == LOR && e->dest == DEST_FLAGS) {
-		int lbl = labelcnt++;
-		/* Evaluate left operand */
 		e->left->dest = DEST_FLAGS;
 		e->left = rewrite1(e->left);
-		/* If left is true (NZ), jump to true label */
-		out("\tjp nz,_L");
-		outd(lbl);
-		out("\n");
-		/* Evaluate right operand */
+		cc = isand ? falsecc(e->left) : truecc(e->left);
+		out("\tjp ");
+		out(cc);
+		out(",_L");
+		outd(out_lbl);
+		outc('\n');
+
 		e->right->dest = DEST_FLAGS;
 		e->right = rewrite1(e->right);
-		/* Emit true label */
+		cc = isand ? falsecc(e->right) : truecc(e->right);
+		out("\tjp ");
+		out(cc);
+		out(",_L");
+		outd(out_lbl);
+		outc('\n');
+
+		/* both operands agreed with the expression: force the
+		 * answer "&&" wants when true, "||" wants when false */
+		out(isand ? "\txor a\n\tinc a\n" : "\txor a\n");
+		out("\tjp _L");
+		outd(end_lbl);
+		outc('\n');
+
 		out("_L");
-		outd(lbl);
+		outd(out_lbl);
 		out(":\n");
-		/* Result is NZ if either was true */
-		n = mkcode(e->width, F_NZ);
-		n->dest = DEST_FLAGS;
+		out(isand ? "\txor a\n" : "\txor a\n\tinc a\n");
+
+		out("_L");
+		outd(end_lbl);
+		out(":\n");
+
+		/*
+		 * Both paths leave a definite nought or one in A, so this
+		 * serves either context: a flag for a branch, and the value
+		 * itself where a number was wanted - which had no rule at
+		 * all and reduced to nothing.
+		 */
+		if (e->dest == DEST_FLAGS) {
+			n = mkcode(e->width, F_NZ);
+			n->dest = DEST_FLAGS;
+		} else {
+			n = mkcode('B', R_A);
+			n->op = INA;
+			n->dest = e->dest;
+		}
 		freeexpr(e);
 		return n;
 	}
