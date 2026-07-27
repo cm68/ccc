@@ -238,6 +238,7 @@ skipExpr(unsigned char pri)
     /* Handle prefix/primary */
     switch (cur.type) {
     case NUMBER:
+    case LNUMBER:
     case FNUMBER:
         gettoken();
         break;
@@ -444,6 +445,7 @@ static struct expr *
 foldNode(struct expr *e)
 {
     unsigned lv, rv;
+    int rel = 0, sgn;
     struct expr *left, *right, *result;
 
     if (!e || !e->left || !e->right)
@@ -489,6 +491,8 @@ foldNode(struct expr *e)
 
     lv = left->v;
     rv = right->v;
+    sgn = !(left->type->flags & TF_UNSIGNED) &&
+          !(right->type->flags & TF_UNSIGNED);
 
     switch (e->op) {
     case PLUS:   lv += rv; break;
@@ -502,6 +506,22 @@ foldNode(struct expr *e)
     case AMPER:  lv &= rv; break;
     case OR:     lv |= rv; break;
     case XOR:    lv ^= rv; break;
+    /*
+     * Relations fold too, and have to: a comparison of two constants
+     * reaches pass2 as a comparison of two constants, which matches no
+     * rule and emits nothing.  The result is an int, not the type of
+     * what was compared, so the type is fixed up below.
+     *
+     * lv and rv are unsigned, so the signed relations need casting
+     * back.  Both operands being signed is what decides it: if either
+     * is unsigned the usual conversions make the comparison unsigned.
+     */
+    case EQ:     lv = (lv == rv); rel = 1; break;
+    case NEQ:    lv = (lv != rv); rel = 1; break;
+    case LT:     lv = sgn ? ((long)lv <  (long)rv) : (lv <  rv); rel = 1; break;
+    case GT:     lv = sgn ? ((long)lv >  (long)rv) : (lv >  rv); rel = 1; break;
+    case LE:     lv = sgn ? ((long)lv <= (long)rv) : (lv <= rv); rel = 1; break;
+    case GE:     lv = sgn ? ((long)lv >= (long)rv) : (lv >= rv); rel = 1; break;
     default:
         return e;
     }
@@ -509,7 +529,7 @@ foldNode(struct expr *e)
     /* Reuse left node as constant */
     left->op = CONST;
     left->v = lv;
-    left->type = e->type;
+    left->type = rel ? inttype : e->type;
     left->flags = E_CONST;
     left->left = NULL;
     left->right = NULL;
@@ -594,6 +614,13 @@ parsePrefix(void)
 	long sval;
 
 	switch (cur.type) {   // prefix
+
+    case LNUMBER:
+        /* the source said L, so it is a long however small it is */
+        e = mkexprI(CONST, 0, longtype, (unsigned long)cur.v.numeric,
+                    E_CONST);
+        gettoken();
+        break;
 
     case NUMBER:
         sval = cur.v.numeric;
