@@ -1390,6 +1390,55 @@ lowercompound(Expr *e)
 }
 
 /*
+ * One arm of a ternary, landed in HL.  Wrapping it in ASSIGN(INHL, v)
+ * reuses the whole =(H,...) rule set - which is what makes a constant
+ * arm emit anything at all, and what puts both arms in one register so
+ * the expression has a value wherever the branch went.
+ */
+static void
+branchval(Expr *v)
+{
+	Expr *hl, *asn;
+
+	if (!v)
+		return;
+	hl = mkcode(v->width, R_HL);
+	hl->op = INHL;
+	asn = mkbinary(ASSIGN, v->width, hl, v);
+	setdest(asn, DEST_VALUE);
+	freeexpr(rewrite(asn));
+}
+
+/*
+ * The condition code that branches when a condition is false, which is
+ * the inverse of the flag the condition produced.  A comparison leaves
+ * one of Z/NZ/C/NC/M/P; anything else came back as a value and has to
+ * be tested for zero first, which this emits.
+ *
+ * Both the if statement and the ternary need this.  The ternary used
+ * to assume Z meant false, which is only true of a value that has just
+ * been tested - a comparison leaves its answer somewhere else, and
+ * loading a register leaves the flags alone entirely.
+ */
+char *
+falsecc(Expr *e)
+{
+	switch (e ? e->u.var.reg : 0) {
+	case F_Z:  return "nz";
+	case F_NZ: return "z";
+	case F_C:  return "nc";
+	case F_NC: return "c";
+	case F_M:  return "p";
+	case F_P:  return "m";
+	case R_A:  out("\tor a\n"); return "z";
+	case R_HL: out("\tld a,l\n\tor a,h\n"); return "z";
+	case R_DE: out("\tld a,e\n\tor a,d\n"); return "z";
+	case R_BC: out("\tld a,c\n\tor a,b\n"); return "z";
+	}
+	return "z";
+}
+
+/*
  * A reduced operand does not always land where it was asked to: a byte
  * operation can only end in A and a call only in HL, whatever target
  * they were given.  Move it, for the cases where something else is
@@ -1978,44 +2027,62 @@ rewrite1(Expr *e)
 		return n;
 	}
 
-	/* QUES (ternary): cond ? then : else */
+	/*
+	 * QUES (ternary): cond ? then : else.
+	 *
+	 * Both arms have to leave their value in the same place for the
+	 * expression to have one, and returning whichever node the then
+	 * arm happened to reduce to did not arrange that.  Worse, a
+	 * constant arm reduces to itself - a bare NUMBER matches no rule,
+	 * because as an operand it has to stay a NUMBER for the ",N)"
+	 * rules - so "x ? 1 : 0" emitted two empty branches and handed
+	 * back the constant 1 as though it were the answer.
+	 *
+	 * Landing each arm in HL through ASSIGN(INHL, arm) settles both:
+	 * it reuses the whole =(H,...) rule set, which knows how to put a
+	 * constant there, and it puts both arms in the same register.
+	 * RETURN and argument pushing land a value the same way.
+	 */
 	if (e->op == QUES && e->right && e->right->op == TERNBRANCH) {
 		int lbl = labelcnt++;
 		Expr *tb = e->right;
 		unsigned char dest = e->dest;
-		/* Evaluate condition in flag context */
+		unsigned char tgt = e->tgt ? e->tgt : R_HL;
+		char *cc;
+
+		/* the condition, and the branch that skips the then arm.
+		 * falsecc may emit the zero test it needs, so it has to run
+		 * before any of the jump is written */
 		e->left->dest = DEST_FLAGS;
 		e->left = rewrite1(e->left);
-		/* If false, jump to else */
-		out("\tjp z,_T");
+		cc = falsecc(e->left);
+		out("\tjp ");
+		out(cc);
+		out(",_T");
 		outd(lbl);
-		out("\n");
-		/* Evaluate then-expression */
-		tb->left->dest = dest;
-		tb->left = rewrite1(tb->left);
-		n = tb->left;
-		/* Jump over else */
+		outc('\n');
+
+		branchval(tb->left);
 		out("\tjp _E");
 		outd(lbl);
-		out("\n");
-		/* Emit else label */
+		outc('\n');
+
 		out("_T");
 		outd(lbl);
 		out(":\n");
-		/* Evaluate else-expression */
-		tb->right->dest = dest;
-		tb->right = rewrite1(tb->right);
-		/* Emit end label */
+		branchval(tb->right);
 		out("_E");
 		outd(lbl);
 		out(":\n");
-		/* Result is from whichever branch was taken */
-		/* Return the then result node (both branches should produce same type) */
+
 		e->left = NULL;
 		tb->left = NULL;
 		tb->right = NULL;
+		n = mkcode(e->width, R_HL);
+		n->op = INHL;
+		n->dest = dest;
 		freeexpr(e);
-		return n;
+		return movetotgt(n, tgt);
 	}
 
 	/* Handle long (32-bit) binary operations */

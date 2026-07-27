@@ -52,6 +52,7 @@ extern int infd;
 extern int in2fd;
 extern int outfd;
 extern void initOpTab(void);	/* rewrite.c: fill op_table */
+extern char *falsecc();			/* rewrite.c: branch-if-false condition */
 
 /* AST I/O */
 unsigned char read1(void);

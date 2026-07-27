@@ -404,7 +404,21 @@ readexpr(void)
 		e->op = QUES;
 		e->width = t;
 		e->left = readexpr();
-		e->right = mkbinary(TERNBRANCH, t, readexpr(), readexpr());
+		{
+			/*
+			 * One read per statement.  These are two arguments to
+			 * one call, and C does not say which order arguments
+			 * are evaluated in - this compiler is built by one that
+			 * takes them right to left, so the else arm was read
+			 * out of the stream first and the two arms came back
+			 * swapped.  Every ternary took the wrong branch.
+			 */
+			Expr *then, *els;
+
+			then = readexpr();
+			els = readexpr();
+			e->right = mkbinary(TERNBRANCH, t, then, els);
+		}
 		return e;
 
 	case BEGIN:

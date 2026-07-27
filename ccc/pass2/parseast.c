@@ -192,21 +192,8 @@ emitepilog(void)
 static void
 jmpfalse(Expr *e, int lbl)
 {
-	char *cc;
+	char *cc = falsecc(e);
 
-	switch (e ? e->u.var.reg : 0) {
-	case F_Z:  cc = "nz"; break;
-	case F_NZ: cc = "z"; break;
-	case F_C:  cc = "nc"; break;
-	case F_NC: cc = "c"; break;
-	case F_M:  cc = "p"; break;
-	case F_P:  cc = "m"; break;
-	case R_A:  out("\tor a\n"); cc = "z"; break;
-	case R_HL: out("\tld a,l\n\tor a,h\n"); cc = "z"; break;
-	case R_DE: out("\tld a,e\n\tor a,d\n"); cc = "z"; break;
-	case R_BC: out("\tld a,c\n\tor a,b\n"); cc = "z"; break;
-	default:   cc = "z"; break;
-	}
 	out("\tjp ");
 	out(cc);
 	out(",no");

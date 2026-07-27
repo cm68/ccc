@@ -283,6 +283,20 @@ struct rule rules[] = {
 	 * often the right operand (DE) as the left (HL).
 	 */
 	R("J(A):s", WIDEN, P_L, P_NONE, P_NONE, 0, "\tld $t,a\n\tld $u,0\n", 0),
+	/*
+	 * A byte that is already in HL rather than in A - which is where
+	 * a ternary leaves its value, both arms having been landed in the
+	 * one register so the expression has a value whichever way the
+	 * branch went.  Only the low half is meaningful, so the high half
+	 * is cleared or filled with the sign.
+	 *
+	 * The width has to be pinned on the operand, not just the result:
+	 * a SEXT to short whose operand is already a short is a widening
+	 * of a pointer, and filling H with the sign of L destroys it.
+	 */
+	R("J(H:b):s", WIDEN, P_L, P_NONE, P_NONE, 0, "\tld h,0\n", R_HL),
+	R("X(H:b):s", SEXT, P_L, P_NONE, P_NONE, 0,
+		"\tld a,l\n\trla\n\tsbc a,a\n\tld h,a\n", R_HL),
 	R("X(A):s", SEXT, P_L, P_NONE, P_NONE, 0,
 		"\tld $t,a\n\trla\n\tsbc a,a\n\tld $u,a\n", 0),
 
