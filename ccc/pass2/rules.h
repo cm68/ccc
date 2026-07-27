@@ -46,6 +46,14 @@ extern struct rule rules[];
 /* Preserve patterns - subtrees matching these are not reduced */
 extern char *preserve[];
 
+/*
+ * The instruction sequences that templates share.  A template names one
+ * with a single byte, the high bit set and the low seven the index.
+ */
+extern char *fragtab[];
+/* longest template once its fragments are put back */
+#define TPLMAX 160
+
 #endif /* RULES_H */
 
 /* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

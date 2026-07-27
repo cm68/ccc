@@ -38,6 +38,27 @@ MODE = ccc
 one:
 	@sh runtests.sh $(MODE) $(T)
 
+# Snapshot the assembly ccc generates for a corpus, so that a change
+# meant to leave code generation alone can be shown to have done so:
+#	make asmsnap DIR=before
+#	...change something...
+#	make asmsnap DIR=after && diff -r before after
+# Byte-identical output is a stronger statement than a passing test,
+# because it covers the paths the tests do not reach.
+SNAPSRC = $(wildcard rt_*.c) \
+	  $(wildcard ../../libsrc/libcpm/*.c) \
+	  ../../libsrc/libc/atol.c ../../libsrc/libc/qsort.c \
+	  ../../libsrc/libc/doprnt.c ../../libsrc/libc/malloc.c
+DIR = asmsnap
+asmsnap:
+	@mkdir -p $(DIR)
+	@for f in $(SNAPSRC); do \
+		b=`basename $$f .c`; \
+		../../root/bin/ccc -s -I. -I../../libsrc/include $$f \
+			>/dev/null 2>&1; \
+		[ -f $$b.s ] && mv $$b.s $(DIR)/$$b.s; \
+	done; ls $(DIR) | wc -l
+
 clean:
 	rm -rf out
 

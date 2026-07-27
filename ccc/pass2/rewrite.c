@@ -518,10 +518,41 @@ idxregname(unsigned char reg)
  *   $T - target register pair (hl or de)
  *   %(text) - repeat text N times where N is right operand value
  */
+/*
+ * Put the shared sequences back.  A byte with the high bit set is an
+ * index into fragtab; everything else is itself.
+ *
+ * This runs before any interpolation rather than during it, because
+ * the repeat construct copies its span literally and would otherwise
+ * hand a raw index straight to the output.  Expanding first means
+ * nothing else in here has to know fragments exist.
+ */
+static void
+expandtpl(char *tpl, char *buf)
+{
+	unsigned char *s = (unsigned char *)tpl;
+	char *d = buf, *f;
+	char *end = buf + TPLMAX - 1;
+
+	while (*s) {
+		if (*s & 0x80) {
+			for (f = fragtab[*s & 0x7f]; *f && d < end; f++)
+				*d++ = *f;
+			s++;
+		} else if (d < end) {
+			*d++ = *s++;
+		} else {
+			break;
+		}
+	}
+	*d = 0;
+}
+
 static void
 emitasm(char *tpl, Expr *e)
 {
-	char *p = tpl;
+	char expbuf[TPLMAX];
+	char *p;
 	char path[8];
 	int i, offadj;
 	char mod;
@@ -529,6 +560,9 @@ emitasm(char *tpl, Expr *e)
 	long val;
 	int cnt;
 	char *start;
+
+	expandtpl(tpl, expbuf);
+	p = expbuf;
 
 	while (*p) {
 		/* %(text) - repeat text N times where N is right operand */
