@@ -103,8 +103,11 @@ for t in $tests; do
 		# so hand it a bare name from the directory it starts in.
 		# Under a timeout, because a miscompiled loop should be a
 		# failure rather than a wedged suite.
+		# stdin from /dev/null: the simulator opens it at startup
+		# and fails with a status of its own if the caller has none
+		# to give, which reads exactly like a failing check
 		(cd "$work" && timeout "$TMOUT" "$SIM" "$base.$mode") \
-			>>"$log" 2>&1 || rc=$?
+			>>"$log" 2>&1 </dev/null || rc=$?
 		[ "$rc" -eq 124 ] && { echo "TIMED OUT"; fail=$((fail + 1));
 			continue; }
 	fi

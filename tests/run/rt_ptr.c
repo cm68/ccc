@@ -16,14 +16,18 @@
 #include "rt.h"
 
 struct s { short a; short b; };
+struct t { short a; short b; char c; };	/* five bytes, so nothing hides */
 
 char cbuf[4];
 short sbuf[4];
 char *cp;
 short *sp;
 char *lit = "ab";
-struct s obj;
-struct s *op;
+struct s obj, obj2;
+struct s *op, *op2, *gsp;
+struct t ab[3];
+
+short taking(x) struct s *x; { return x->a; }
 
 /* a pointer parameter, which lands in a register rather than memory */
 setb(where, v) char *where; short v;
@@ -35,6 +39,8 @@ setb(where, v) char *where; short v;
 main()
 {
 	short i;
+	short *q;
+	struct t *xp;
 
 	cbuf[0] = 'x'; cbuf[1] = 'y';
 	sbuf[0] = 100; sbuf[1] = 200;
@@ -107,6 +113,59 @@ main()
 	setb(cbuf, 40);
 	CHECK(30, cbuf[0], 40);
 	CHECK(31, cbuf[1], 41);
+
+	/*
+	 * Pointer arithmetic counts in elements.  The subscript path
+	 * always scaled, so "p[2]" was right, but the same sum written
+	 * "p + 2" did not and landed two bytes along.  A char pointer
+	 * hides it, since its element is one byte - which is why the
+	 * shorts and the five-byte struct are the interesting ones.
+	 */
+	sbuf[0] = 10; sbuf[1] = 11; sbuf[2] = 12;
+	sp = sbuf;
+	CHECK(32, *(sp + 1), 11);
+	CHECK(33, *(sp + 2), 12);
+	i = 1;
+	CHECK(34, *(sp + i), 11);
+	CHECK(35, *(sp + 2 - 1), 11);
+
+	/* and a difference counts in elements too, so it divides */
+	q = sp + 2;
+	CHECK(36, q - sp, 2);
+	CHECK(37, *(q - 1), 11);
+	sp++;
+	CHECK(38, sp - sbuf, 1);
+	CHECK(39, *sp, 11);
+
+	/* stepping by something wider than a byte, which is what the
+	 * single inc the rules emitted could not do */
+	ab[0].a = 1; ab[1].a = 2; ab[2].a = 3;
+	xp = ab;
+	CHECK(40, (xp + 2)->a, 3);
+	xp++;
+	CHECK(41, xp->a, 2);
+	CHECK(42, xp - ab, 1);
+	xp--;
+	CHECK(43, xp->a, 1);
+
+	/*
+	 * A pointer used for field access is the one the allocator puts
+	 * in the index register, and the index register had almost no
+	 * rules for using the pointer as a value rather than a base.
+	 */
+	obj.a = 10; obj.b = 20;
+	op = &obj;
+	CHECK(44, op->a, 10);
+	gsp = op;
+	CHECK(45, gsp->b, 20);
+	op2 = op;
+	CHECK(46, op == op2, 1);
+	CHECK(47, op != op2, 0);
+	CHECK(48, taking(op), 10);
+	op = &obj2;
+	obj2.a = 77;
+	CHECK(49, op->a, 77);
+	CHECK(50, op == &obj2, 1);
 
 	return 0;
 }

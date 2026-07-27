@@ -221,6 +221,8 @@ binopPri(unsigned char t)
     return 0;
 }
 
+static struct expr *scaleptr(struct expr *e);
+
 /*
  * Skip an expression without building a tree (phase 1)
  * Consumes tokens to stay synchronized with the lexer.
@@ -1318,10 +1320,79 @@ parseExpr(unsigned char pri)
                 e->type = e->left->type;
             else
                 e->type = e->right->type;
+
+            /*
+             * Pointer arithmetic counts in elements, not bytes.  The
+             * subscript path has always scaled - "p[2]" is right -
+             * but the same sum written "p + 2" came through here and
+             * did not, so it landed two bytes along instead of two
+             * elements.  Done after the result type is settled,
+             * because a difference of two pointers is an int and has
+             * to say so.
+             */
+            if (op == PLUS || op == MINUS)
+                e = scaleptr(e);
         } else {
             e->type = e->left->type;
         }
     }
+    return e;
+}
+
+/*
+ * Scale the integer side of pointer arithmetic by the element size.
+ *
+ * "p + n" advances by n elements, so the n has to be multiplied by
+ * what p points at.  A difference between two pointers is the other
+ * way round: the byte difference is divided.  An element size of one
+ * needs neither, which is why char pointers always looked right.
+ */
+static struct expr *
+scaleptr(struct expr *e)
+{
+    struct type *lt = e->left->type, *rt = e->right->type;
+    int lp = (lt->flags & (TF_POINTER|TF_ARRAY)) != 0;
+    int rp = (rt->flags & (TF_POINTER|TF_ARRAY)) != 0;
+    struct type *pt = lp ? lt : rt;
+    struct expr *n, *scaled, **side;
+    int size;
+
+    if (!lp && !rp)
+        return e;                       /* ordinary arithmetic */
+    if (!pt->sub || (size = pt->sub->size) == 1)
+        return e;                       /* a byte needs no scaling */
+
+    if (lp && rp) {
+        /*
+         * One pointer less another is how many elements apart they
+         * are, so the byte difference is divided.  Anything else
+         * between two pointers is not arithmetic and is left alone.
+         */
+        if (e->op != MINUS)
+            return e;
+        n = mkexprI(CONST, 0, inttype, (unsigned long)size, E_CONST);
+        scaled = mkexpr(DIV, e);
+        scaled->right = n;
+        scaled->left->up = scaled;
+        scaled->right->up = scaled;
+        scaled->type = inttype;
+        return scaled;
+    }
+
+    /* the integer is whichever side is not the pointer */
+    side = lp ? &e->right : &e->left;
+    if ((*side)->flags & E_CONST) {
+        (*side)->v *= size;
+        return e;
+    }
+    n = mkexprI(CONST, 0, inttype, (unsigned long)size, E_CONST);
+    scaled = mkexpr(STAR, *side);
+    scaled->right = n;
+    scaled->left->up = scaled;
+    scaled->right->up = scaled;
+    scaled->type = inttype;
+    *side = scaled;
+    scaled->up = e;
     return e;
 }
 

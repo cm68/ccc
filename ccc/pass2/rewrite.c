@@ -1520,7 +1520,14 @@ docompound(Expr *e)
 	if (!op || !e->left || !e->right)
 		return NULL;
 
-	/* the address, once - the side effects happen here and only here */
+	/*
+	 * The address, once - the side effects happen here and only here.
+	 * Its value is wanted, and has to say so: a postfix step inside
+	 * it yields the value from before the step, and anything deciding
+	 * that from the destination would otherwise read "discarded" and
+	 * be free to hand back the one after.
+	 */
+	setdest(e->left, DEST_VALUE);
 	addr = rewrite1(e->left);
 	e->left = NULL;
 	if (!addr || (addr->op != INHL &&
@@ -1985,6 +1992,63 @@ rewrite1(Expr *e)
 		 */
 		if (islongop(e))
 			return e;
+	}
+
+	/*
+	 * A step of one is what inc and dec do; anything else is a
+	 * pointer to something wider, and "p++" means "p += sizeof".
+	 * The rules only ever emitted the single step, so stepping a
+	 * short pointer moved it one byte and landed between elements.
+	 *
+	 * It is a compound assignment, so make it one and let that path
+	 * have it - including the part that names a side-effecting
+	 * location only once.  A prefix yields the new value either way;
+	 * a postfix yields the old one, which this does not produce, so
+	 * that is only converted where the value is being thrown away.
+	 */
+	if (e->left && e->u.incdec.amt != 1 &&
+	    (e->op == PREINC || e->op == PREDEC ||
+	     ((e->op == POSTINC || e->op == POSTDEC) &&
+	      e->dest == DEST_NONE))) {
+		long amt = e->u.incdec.amt;
+		unsigned char nop =
+		    (e->op == PREINC || e->op == POSTINC) ? PLUSEQ : SUBEQ;
+
+		e->op = nop;
+		e->right = mkconst(e->width, amt);
+		label(e);
+		assign(e, e->tgt ? e->tgt : R_HL);
+	}
+
+	/*
+	 * The same step, postfix, where the value is wanted: that is the
+	 * value from before, so it has to be kept while the location is
+	 * updated.  The stack is the only temporary there is.
+	 */
+	if (e->left && e->u.incdec.amt != 1 &&
+	    (e->op == POSTINC || e->op == POSTDEC) &&
+	    dupableloc(e->left)) {
+		long amt = e->u.incdec.amt;
+		unsigned char nop = (e->op == POSTINC) ? PLUSEQ : SUBEQ;
+		Expr *loc = e->left;
+		Expr *val, *step;
+
+		val = locvalue(dupexpr(loc), e->width);
+		setdest(val, DEST_VALUE);
+		freeexpr(rewrite(val));
+		out("\tpush hl\n");
+
+		step = mkbinary(nop, e->width, loc, mkconst(e->width, amt));
+		setdest(step, DEST_NONE);
+		freeexpr(rewrite(step));
+		out("\tpop hl\n");
+
+		e->left = NULL;
+		n = mkcode(e->width, R_HL);
+		n->op = INHL;
+		n->dest = e->dest;
+		freeexpr(e);
+		return n;
 	}
 
 	/* x OP= y -> x = x OP y, before the children are reduced */

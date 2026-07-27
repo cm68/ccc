@@ -354,6 +354,16 @@ struct rule rules[] = {
 	R("*(H,E)", STAR, P_L, P_R, P_NONE, 0, "\tcall amul\n", R_HL),
 	R("/(H,E)", DIV, P_L, P_R, P_NONE, RF_SIGNL, "\tcall adiv\n", R_HL),
 	R("/(H,E)", DIV, P_L, P_R, P_NONE, 0, "\tcall ldiv\n", R_HL),
+	/* by a constant, which is what dividing a pointer difference by
+	 * the element size looks like */
+	R("/(H,N)", DIV, P_L, P_R, P_NONE, RF_SIGNL,
+		F_LDDER "\tcall adiv\n", R_HL),
+	R("/(H,N)", DIV, P_L, P_R, P_NONE, 0,
+		F_LDDER "\tcall ldiv\n", R_HL),
+	R("%(H,N)", MOD, P_L, P_R, P_NONE, RF_SIGNL,
+		F_LDDER "\tcall amod\n", R_HL),
+	R("%(H,N)", MOD, P_L, P_R, P_NONE, 0,
+		F_LDDER "\tcall lmod\n", R_HL),
 	R("%(H,E)", MOD, P_L, P_R, P_NONE, RF_SIGNL, "\tcall amod\n", R_HL),
 	R("%(H,E)", MOD, P_L, P_R, P_NONE, 0, "\tcall lmod\n", R_HL),
 
@@ -411,6 +421,53 @@ struct rule rules[] = {
 	R("=(H,N)", ASSIGN, P_L, P_R, P_NONE, 0, F_LDHLR, R_HL),
 
 	/* assign to IX register variable */
+	/*
+	 * The index register holds a pointer that is used for field
+	 * access, which is what it is chosen for - but the pointer is
+	 * still a value, and gets assigned, compared and passed like any
+	 * other.  Almost none of that had a rule.
+	 *
+	 * The index registers cannot be compared or arithmetic'd against
+	 * anything except through HL, so those go via the stack.  Loading
+	 * and storing them whole does not: ld ix,nn and ld (nn),ix exist.
+	 */
+	R("=(V,O)", ASSIGN, P_L, P_R, P_L, RF_IX, "\tld ix,$R\n", R_IX),
+	R("=(O,V)", ASSIGN, P_L, P_R, P_R, RF_IX, "\tld ($L),ix\n", R_IX),
+	R("=(I,V):s", ASSIGN, P_L, P_R, P_R, RF_IX,
+		"\tpush ix\n" F_POPHL T_IDX_S_ST, R_HL),
+	/*
+	 * "p + n" folds into an indexed location, so assigning one back
+	 * is how a pointer step arrives here.  The base register of that
+	 * location need not be the one being assigned to, so the address
+	 * is worked out rather than added in place.
+	 */
+	R("=(V,I)", ASSIGN, P_L, P_R, P_L, RF_IX,
+		"\tpush $Rr\n" F_POPHL "\tld de,$Ro\n" F_ADDHLDE
+		F_PUSHHL "\tpop ix\n", R_IX),
+	/*
+	 * Arithmetic on it comes out in HL, which "=(V,H)" then puts
+	 * back.  Only addition of a constant folds into an indexed
+	 * location; subtraction has to be done.
+	 */
+	R("-(V,N)", MINUS, P_L, P_R, P_L, RF_IX,
+		"\tpush ix\n" F_POPHL F_LDDER F_ORA F_SBCHLDE, R_HL),
+	R("-(V,O)", MINUS, P_L, P_R, P_L, RF_IX,
+		"\tpush ix\n" F_POPHL F_LDDER F_ORA F_SBCHLDE, R_HL),
+	R("+(V,O)", PLUS, P_L, P_R, P_L, RF_IX,
+		"\tpush ix\n" F_POPHL F_LDDER F_ADDHLDE, R_HL),
+	R("Q(V,O)", EQ, P_L, P_R, P_L, RF_IX,
+		"\tpush ix\n" F_POPHL "\tld de,$R\n" F_ORA F_SBCHLDE, F_Z),
+	R("U(V,O)", NEQ, P_L, P_R, P_L, RF_IX,
+		"\tpush ix\n" F_POPHL "\tld de,$R\n" F_ORA F_SBCHLDE, F_NZ),
+	R("Q(V,B)", EQ, P_L, P_R, P_L, RF_IX,
+		"\tpush ix\n" F_POPHL F_ORA "\tsbc hl,bc\n", F_Z),
+	R("U(V,B)", NEQ, P_L, P_R, P_L, RF_IX,
+		"\tpush ix\n" F_POPHL F_ORA "\tsbc hl,bc\n", F_NZ),
+	R("Q(V,H)", EQ, P_L, P_R, P_L, RF_IX,
+		"\tpush ix\n\tpop de\n" F_ORA F_SBCHLDE, F_Z),
+	R("U(V,H)", NEQ, P_L, P_R, P_L, RF_IX,
+		"\tpush ix\n\tpop de\n" F_ORA F_SBCHLDE, F_NZ),
+
 	R("=(V,H)", ASSIGN, P_L, P_R, P_L, RF_IX, F_PUSHHL "\tpop ix\n", R_IX),
 	R("=(V,E)", ASSIGN, P_L, P_R, P_L, RF_IX, "\tpush de\n\tpop ix\n", R_IX),
 	R("=(V,B)", ASSIGN, P_L, P_R, P_L, RF_IX, F_PUSHBC "\tpop ix\n", R_IX),
@@ -462,6 +519,13 @@ struct rule rules[] = {
 	 * of a pointer, and filling H with the sign of L destroys it.
 	 */
 	R("J(H:b):s", WIDEN, P_L, P_NONE, P_NONE, 0, F_LDH0, R_HL),
+	/* widening a word to a word, which the usual conversions ask for
+	 * between two pointers of the same size: nothing to do, except
+	 * where the word is in the index register and has to come out */
+	R("X(V):s", SEXT, P_L, P_NONE, P_L, RF_IX, "\tpush ix\n" F_POPHL, R_HL),
+	R("J(V):s", WIDEN, P_L, P_NONE, P_L, RF_IX, "\tpush ix\n" F_POPHL, R_HL),
+	R("X(H:s):s", SEXT, P_L, P_NONE, P_NONE, 0, "", R_HL),
+	R("J(H:s):s", WIDEN, P_L, P_NONE, P_NONE, 0, "", R_HL),
 	R("X(H:b):s", SEXT, P_L, P_NONE, P_NONE, 0,
 		F_LDAL F_RLA F_SBCAA F_LDHA, R_HL),
 	R("X(A):s", SEXT, P_L, P_NONE, P_NONE, 0,
@@ -874,6 +938,11 @@ struct rule rules[] = {
 	R("-(A,N):b", MINUS, P_L, P_R, P_NONE, 0, F_SUBR, R_A),
 	R("-(D(I),N):b", MINUS, P_L, P_R, P_NONE, 0, F_LDALL F_SUBR, R_A),
 	R("-(H,E)", MINUS, P_L, P_R, P_NONE, 0, F_ORA F_SBCHLDE, R_HL),
+	/* less a symbol's address, which is one half of a pointer
+	 * difference once the other half is in HL */
+	R("-(H,O)", MINUS, P_L, P_R, P_NONE, 0,
+		F_LDDER F_ORA F_SBCHLDE, R_HL),
+	R("+(H,O)", PLUS, P_L, P_R, P_NONE, 0, F_LDDER F_ADDHLDE, R_HL),
 	R("-(H,N)", MINUS, P_L, P_R, P_NONE, 0, F_LDDER F_ORA F_SBCHLDE, R_HL),
 
 	/* shifts */
@@ -1103,6 +1172,10 @@ struct rule rules[] = {
 	R("Y(B,N)", GE, P_L, P_R, P_NONE, 0,
 		T_BC_HL F_LDDER F_ORA F_SBCHLDE, F_NC),
 
+	/* against a symbol's address, which is what comparing a pointer
+	 * with "&thing" comes to */
+	R("Q(H,O)", EQ, P_L, P_R, P_NONE, 0, F_LDDER F_ORA F_SBCHLDE, F_Z),
+	R("U(H,O)", NEQ, P_L, P_R, P_NONE, 0, F_LDDER F_ORA F_SBCHLDE, F_NZ),
 	R("Q(H,N)", EQ, P_L, P_R, P_NONE, 0, F_LDDER F_ORA F_SBCHLDE, F_Z),
 	R("U(H,N)", NEQ, P_L, P_R, P_NONE, 0, F_LDDER F_ORA F_SBCHLDE, F_NZ),
 	R("T(H,N)", LT, P_L, P_R, P_NONE, 0, F_LDDER F_ORA F_SBCHLDE, F_C),
