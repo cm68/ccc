@@ -1,22 +1,28 @@
 ;	Long (32-bit) load/store helpers for code generator
-;	Long values stored as HLDE (HL=low, DE=high)
+;
+;	A long lives in HLDE with the HIGH word in HL, which is what
+;	ladd, lsub, lrelop and the rest of the runtime use and what the
+;	compiler emits.  This file used to claim the opposite in its
+;	header and lld used to end with an ex de,hl that made good on the
+;	claim, so a value loaded through it came back with its halves
+;	swapped.  Nothing called it, which is the only reason it never
+;	showed.  lstde was right all along.
 
 	psect	text
 	global	lld, lldde, lstde, ldi, stide
 
 ; Load 32-bit from (HL) into HLDE
 ; Entry: HL = pointer to long
-; Exit: HLDE = 32-bit value (HL=low, DE=high)
+; Exit: HLDE = 32-bit value, HL = high word, DE = low word
 lld:
-	ld	e,(hl)
+	ld	e,(hl)		; low word from the lower address
 	inc	hl
 	ld	d,(hl)
 	inc	hl
-	ld	a,(hl)
+	ld	a,(hl)		; high word from the higher one
 	inc	hl
 	ld	h,(hl)
 	ld	l,a
-	ex	de,hl		; now HL=low, DE=high
 	ret
 
 ; Load 32-bit from (DE) into HLDE
