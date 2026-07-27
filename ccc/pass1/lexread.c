@@ -183,10 +183,16 @@ again:
 		next.v.name = s;
 		break;
 
-	/* Numbers - have 4-byte value */
+	/* Numbers - have 4-byte value.  LNUMBER stays LNUMBER: it is the
+	 * only record that the source said L, and without it a constant
+	 * is sized by how big it happens to be. */
 	case NUMBER:
-	case CPP_LNUMBER:
 		next.type = NUMBER;
+		next.v.numeric = (long)readLE4();
+		break;
+
+	case CPP_LNUMBER:
+		next.type = LNUMBER;
 		next.v.numeric = (long)readLE4();
 		break;
 

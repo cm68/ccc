@@ -536,7 +536,7 @@ statement(void)
                     }
                 }
                 /* Fall through to expression statement */
-            case NUMBER: case STRING: case LPAR:
+            case NUMBER: case LNUMBER: case STRING: case LPAR:
             case STAR: case INCR: case DECR:
                 parseExpr(PRI_ALL);
                 expect(SEMI, ER_S_SN);
@@ -752,6 +752,7 @@ statement(void)
             }
             /* fall through to expression */
         case NUMBER:    // numeric literals can start expression statements
+        case LNUMBER:
         case STRING:    // string literals can start expression statements
         case LPAR:
         case STAR:

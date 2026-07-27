@@ -262,6 +262,7 @@ extern void emitToken(unsigned char tok);
 extern void emitKeyword(unsigned char kwval);
 extern void emitSym(char *name);
 extern void emitNumber(long val);
+extern void emitLNumber(long val);
 #ifndef NOFLOAT
 extern void emitFNumber(float val);
 #endif

@@ -96,6 +96,13 @@ emitNumber(long val)
     emit4(NUMBER, (unsigned long)val);
 }
 
+/* the same, but the source said L and that is the only way to know */
+void
+emitLNumber(long val)
+{
+    emit4(LNUMBER, (unsigned long)val);
+}
+
 #ifndef NOFLOAT
 void
 emitFNumber(float val)
@@ -236,6 +243,9 @@ emitStructTok(struct token *t)
         break;
     case NUMBER:
         emitNumber(t->v.numeric);
+        break;
+    case LNUMBER:
+        emitLNumber(t->v.numeric);
         break;
     case FNUMBER:
 #ifndef NOFLOAT

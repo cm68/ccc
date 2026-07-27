@@ -209,7 +209,9 @@ parseConst(token_t stop)
 
     while (cur.type != stop && cur.type != E_O_F) {
         /* Get term value */
-        if (cur.type == NUMBER) {
+        if (cur.type == NUMBER || cur.type == LNUMBER) {
+            /* the suffix says nothing here - a preprocessor
+             * expression is arithmetic on whatever it is handed */
             term = cur.v.numeric;
         } else if (cur.type == SYM) {
             /* Undefined macro evaluates to 0 */

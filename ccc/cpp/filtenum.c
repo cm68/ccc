@@ -66,7 +66,8 @@ enum_prim(struct token *t)
 			gripe(ER_C_EV);
 		return v;
 	}
-	if (t->type == NUMBER) {
+	/* an enum constant is an int however the value was spelled */
+	if (t->type == NUMBER || t->type == LNUMBER) {
 		v = t->v.numeric;
 		up(t);
 		return v;

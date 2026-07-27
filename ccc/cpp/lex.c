@@ -519,9 +519,17 @@ isnumber()
 		return 2;  /* Return 2 for float */
 	}
 
-    /* Skip optional 'L' or 'l' suffix for long constants */
+    /*
+     * An L suffix is what makes a constant a long, and the only thing
+     * that can: everything downstream sizes a constant by how big it
+     * is, so "5L" was a byte and passing one to a function put two
+     * bytes on the stack where the callee read four.  LNUMBER has been
+     * in the lexeme set and in pass1's reader all along, waiting for
+     * something to produce it.
+     */
     if (c == 'l') {
         advance();
+        return 3;
     }
 
     return 1;
@@ -1328,7 +1336,8 @@ gettoken()
         {
             char numtype = isnumber();
             if (numtype) {
-                next.type = (numtype == 2) ? FNUMBER : NUMBER;
+                next.type = (numtype == 2) ? FNUMBER :
+                            (numtype == 3) ? LNUMBER : NUMBER;
                 break;
             }
         }

@@ -310,7 +310,7 @@ declare(struct type **btp, unsigned char struct_elem)
 
         if (cur.type == COLON) {    // check for bitfield
             gettoken();
-            if (cur.type != NUMBER) {
+            if (cur.type != NUMBER && cur.type != LNUMBER) {
                 gripe(ER_D_BD);
             } else if (cur.v.numeric > MAXBITS) {
                 gripe(ER_D_BM);
