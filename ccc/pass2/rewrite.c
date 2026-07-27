@@ -1936,14 +1936,24 @@ dolongbin(Expr *e)
 static Expr *
 docall(Expr *e)
 {
-	Expr *a, *next, *n;
+	Expr *a, *next, *n, *fn;
 	int nbytes = 0;
 	int i;
+	int direct;
 
-	/* Resolve the callee (emits nothing); SYM becomes SYMREF. */
-	e->left = rewrite1(e->left);
-	if (!e->left || e->left->op != SYMREF)
-		return NULL;		/* indirect call - not handled yet */
+	/*
+	 * A name resolves to a SYMREF and emits nothing, so it can be
+	 * settled now.  Anything else is a pointer whose value has to be
+	 * loaded, and loading it here would only see it trampled by the
+	 * argument pushes - so it waits.
+	 */
+	fn = e->left;
+	direct = fn && (fn->op == SYM || fn->op == SYMREF);
+	if (direct) {
+		e->left = fn = rewrite1(fn);
+		if (!fn || fn->op != SYMREF)
+			return NULL;
+	}
 
 	for (a = e->right; a && a->op == ARGNODE; a = next) {
 		Expr *v = a->left;
@@ -1954,9 +1964,33 @@ docall(Expr *e)
 	}
 	e->right = NULL;
 
-	out("\tcall ");
-	out(e->left->u.symref.name);
-	outc('\n');
+	if (direct) {
+		out("\tcall ");
+		out(fn->u.symref.name);
+		outc('\n');
+	} else {
+		/*
+		 * Through a pointer.  The Z80 can jump to the address in HL
+		 * but not call it, and the whole difference is the return
+		 * address - so borrow one: call a trampoline that is
+		 * nothing but jp (hl).  The call pushes the return address,
+		 * the jump hands over, and the function's own ret comes
+		 * back here.  One byte of library and an ordinary call at
+		 * every site.
+		 */
+		Expr *hl, *asn;
+
+		e->left = NULL;
+		/* land the address in HL the way everything else does -
+		 * wrapping it in an assignment to HL reuses the whole
+		 * =(H,...) rule set, which knows every place it might be */
+		hl = mkcode('s', R_HL);
+		hl->op = INHL;
+		asn = mkbinary(ASSIGN, 's', hl, fn);
+		setdest(asn, DEST_VALUE);
+		freeexpr(rewrite(asn));
+		out("\tcall tramp\n");
+	}
 
 	/*
 	 * Drop the arguments.  inc sp costs a byte apiece and touches no

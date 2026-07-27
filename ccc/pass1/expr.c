@@ -813,6 +813,18 @@ parsePrefix(void)
         gettoken();
         e1 = parseExpr(OP_PRI_MULT - 1);
         if (!e1) break;
+        /*
+         * Dereferencing a pointer to a function is a no-op: what it
+         * yields is the function, and what you can do with that is
+         * call it, which needs the address the pointer already holds.
+         * Wrapping it in a load meant "(*fp)()" tried to fetch
+         * through the pointer and call whatever it found.
+         */
+        if (e1->type && (e1->type->flags & TF_POINTER) &&
+            e1->type->sub && (e1->type->sub->flags & TF_FUNC)) {
+            e = e1;
+            break;
+        }
         e = mkexpr(DEREF, e1);
         e1->up = e;
         if ((e1->type->flags & TF_POINTER) && e1->type->sub)
@@ -901,7 +913,7 @@ parsePostfix(struct expr *e)
 {
 	unsigned char is_arrow, inc_op;
 	struct expr *e1, *e2, *e3, *e4;
-	struct type *t, *tp;
+	struct type *t, *tp, *ft;
 	struct name *np;
 	unsigned int uofs;
 	int elem_size;
@@ -981,16 +993,38 @@ parsePostfix(struct expr *e)
             e1 = mkexpr(CALL, e);  /* call */
             e1->left->up = e1;
 
+            /*
+             * The thing being called is either a function or a
+             * pointer to one, and the return type is one step further
+             * down in the second case.  Only the first was looked
+             * for, so a call through a pointer had no type at all -
+             * which nothing minded until the result was used.
+             */
+            ft = e->type;
+            if (!(ft->flags & TF_FUNC) && (ft->flags & TF_POINTER) &&
+                ft->sub && (ft->sub->flags & TF_FUNC))
+                ft = ft->sub;
+
             // Set return type from function type
-            if ((e->type->flags & TF_FUNC) && e->type->sub) {
-                e1->type = e->type->sub;
+            if ((ft->flags & TF_FUNC) && ft->sub) {
+                e1->type = ft->sub;
                 /* a struct cannot come back by value either */
                 if (isaggr(e1->type))
                     gripe(ER_E_AG);
             }
+            /*
+             * Whatever was called, the call has a type.  Leaving it
+             * unset let a null type reach everything downstream, and
+             * calling something this could not read the return type
+             * of died the moment the answer was used - while throwing
+             * the answer away was fine, which is a poor way to find
+             * out.  A function of unknown type returns int.
+             */
+            if (!e1->type)
+                e1->type = inttype;
 
             // Get first parameter for type coercion
-            np = (e->type->flags & TF_FUNC) ? e->type->elem : 0;
+            np = (ft->flags & TF_FUNC) ? ft->elem : 0;
 
             /* Parse argument list - pass2 handles type conversions */
             e3 = NULL;

@@ -536,6 +536,10 @@ struct rule rules[] = {
 	R("X(V):s", SEXT, P_L, P_NONE, P_L, RF_IX, "\tpush ix\n" F_POPHL, R_HL),
 	R("J(V):s", WIDEN, P_L, P_NONE, P_L, RF_IX, "\tpush ix\n" F_POPHL, R_HL),
 	R("X(H:s):s", SEXT, P_L, P_NONE, P_NONE, 0, "", R_HL),
+	/* a symbol's address widened to a word, which is what taking a
+	 * function's address for a function pointer comes to */
+	R("X(O):s", SEXT, P_L, P_NONE, P_NONE, 0, "\tld $T,$L\n", 0),
+	R("J(O):s", WIDEN, P_L, P_NONE, P_NONE, 0, "\tld $T,$L\n", 0),
 	R("J(H:s):s", WIDEN, P_L, P_NONE, P_NONE, 0, "", R_HL),
 	R("X(H:b):s", SEXT, P_L, P_NONE, P_NONE, 0,
 		F_LDAL F_RLA F_SBCAA F_LDHA, R_HL),
