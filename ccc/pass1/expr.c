@@ -400,6 +400,43 @@ isaggr(struct type *t)
 }
 
 /*
+ * Assigning one pointer to another only means anything when they point
+ * at the same thing.  Arrays decay, so an array of T and a pointer to
+ * T count as the same here, and void goes with anything.
+ *
+ * Only fires when both sides are pointers, so pointer arithmetic like
+ * "p += 4" is left alone.
+ */
+static int
+ptrcompat(struct type *lt, struct type *rt)
+{
+	struct type *a, *b;
+
+	if (!lt || !rt)
+		return 1;
+	if (!(lt->flags & (TF_POINTER | TF_ARRAY)) ||
+	    !(rt->flags & (TF_POINTER | TF_ARRAY)))
+		return 1;
+	a = lt->sub;
+	b = rt->sub;
+	if (!a || !b || a == b)
+		return 1;
+	if (a->size == 0 || b->size == 0)
+		return 1;			/* void * */
+	/* a function pointer's sub is its return type - leave those */
+	if ((a->flags | b->flags) & TF_FUNC)
+		return 1;
+	if (a->size != b->size)
+		return 0;
+	if ((a->flags & TF_UNSIGNED) != (b->flags & TF_UNSIGNED))
+		return 0;
+	/* aggregates are not interned, so two of them are two types */
+	if ((a->flags | b->flags) & TF_AGGREGATE)
+		return 0;
+	return 1;
+}
+
+/*
  * Fold a single node if both operands are constants.
  * Returns folded CONST expr, or original expr if not foldable.
  */
@@ -1214,8 +1251,11 @@ parseExpr(unsigned char pri)
 
         /* Determine result type */
         if (e->right) {
-            if (is_assignment && assign_type)
+            if (is_assignment && assign_type) {
+                if (!ptrcompat(assign_type, e->right->type))
+                    gripe(ER_E_PT);
                 e->type = assign_type;
+            }
             else if (IS_CMPLOG(op))
                 e->type = uchartype;
             else if (e->left->type->size >= e->right->type->size)

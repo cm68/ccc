@@ -24,6 +24,7 @@ DECL_TESTS = \
 
 # Preprocessor tests
 CPP_TESTS = \
+	conditional.c \
 	macro.c \
 	include.c \
 	multistr.c \
@@ -59,6 +60,7 @@ STMT_TESTS = \
 	conditional_simple.c \
 	compound_ops.c \
 	compound_lvalue.c \
+	compound_precedence.c \
 	do.c \
 	cont.c \
 	no_switch.c \
@@ -165,7 +167,8 @@ INCR_DECR_TESTS = \
 
 # Pointer type compatibility tests (passing)
 PTR_COMPAT_TESTS = \
-	ptr_compat_ok.c
+	ptr_compat_ok.c \
+	array_struct_conflict.c
 
 # Lvalue validation tests (passing)
 LVALUE_TESTS = \
@@ -180,17 +183,14 @@ LVALUE_FAIL_TESTS = \
 
 # Pointer compatibility tests (expected to fail - testing error detection)
 PTR_FAIL_TESTS = \
-	ptr_compat.c \
-	array_struct_conflict.c
+	ptr_compat.c
 
 # Preprocessor tests (expected to fail - testing error detection)
 CPP_FAIL_TESTS = \
-	conditional.c \
 	undef_undefined.c
 
 # Statement tests (expected to fail - testing error detection)
-STMT_FAIL_TESTS = \
-	compound_precedence.c
+STMT_FAIL_TESTS =
 
 # All tests expected to fail (for testing error detection)
 FAIL_TESTS = \

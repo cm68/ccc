@@ -510,6 +510,13 @@ struct rule rules[] = {
 	R("=(A,D(I)):b", ASSIGN, P_L, P_R, P_NONE, 0, "\tld a,($RL)\n", R_A),
 	R("=(A,D(O)):b", ASSIGN, P_L, P_R, P_NONE, 0, "\tld a,($RL)\n", R_A),
 	R("=(A,A)", ASSIGN, P_L, P_R, P_NONE, 0, "", R_A),
+	R("=(A,N):b", ASSIGN, P_L, P_R, P_NONE, 0, "\tld a,$R\n", R_A),
+	/* a byte in A stepped in place */
+	R("i(A):b", PREINC, P_L, P_NONE, P_NONE, 0, "\tinc a\n", R_A),
+	R("k(A):b", PREDEC, P_L, P_NONE, P_NONE, 0, "\tdec a\n", R_A),
+	/* storing a word already in DE to a global, so a nested
+	 * assignment can be used for its value */
+	R("=(O,E):s", ASSIGN, P_L, P_R, P_NONE, 0, "\tld ($L),de\n", R_DE),
 
 	/* bit testing and logic */
 	R("&(D(I),P):bF", AND, P_L, P_R, P_NONE, RF_POW2, "\tbit $R,($LL)\n", F_NZ),
@@ -679,6 +686,11 @@ struct rule rules[] = {
 	R("Y(H,N)", GE, P_L, P_R, P_NONE, 0, "\tld de,$R\n\tor a\n\tsbc hl,de\n", F_NC),
 
 	/* byte comparisons */
+	/* byte comparison against another byte, in E */
+	R("Q(A,K):F", EQ, P_L, P_R, P_NONE, 0, "\tcp e\n", F_Z),
+	R("U(A,K):F", NEQ, P_L, P_R, P_NONE, 0, "\tcp e\n", F_NZ),
+	R("T(A,K):F", LT, P_L, P_R, P_NONE, 0, "\tcp e\n", F_C),
+	R("Y(A,K):F", GE, P_L, P_R, P_NONE, 0, "\tcp e\n", F_NC),
 	R("Q(A,N):F", EQ, P_L, P_R, P_NONE, 0, "\tcp $R\n", F_Z),
 	R("U(A,N):F", NEQ, P_L, P_R, P_NONE, 0, "\tcp $R\n", F_NZ),
 	R("T(A,N):F", LT, P_L, P_R, P_NONE, 0, "\tcp $R\n", F_C),
