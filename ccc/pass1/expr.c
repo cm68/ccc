@@ -1187,10 +1187,15 @@ parseExpr(unsigned char pri)
         e->left->up = e;
         if (is_assignment) {
             /*
-             * Right-associative: parse at lowest precedence
-             * to allow a = b = c
+             * Right-associative, so the right hand side has to admit
+             * another assignment for "a = b = c" - but not a comma.
+             * The right hand side of an assignment is an
+             * assignment-expression, so "a = b, c" is "(a = b), c",
+             * and in an argument list the comma separates arguments.
+             * Parsing this at 0 swallowed the comma, and
+             * "f(k += 4, l++)" became a call with one argument.
              */
-            e->right = parseExpr(0);
+            e->right = parseExpr(OP_PRI_COMMA);
         } else {
             /*
              * Left-associative: parse at same precedence to prevent

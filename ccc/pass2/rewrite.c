@@ -108,9 +108,16 @@ label(Expr *e)
 		if (e->regs < 1) e->regs = 1;
 		return;
 
-	/* CALL: args pushed separately, result in HL */
+	/*
+	 * CALL: the result comes back in HL and nowhere else - the ABI
+	 * leaves no choice - so a call cannot be evaluated into DE the
+	 * way a loadable operand can.  Costing it two makes two of them
+	 * add up to three, which takes the spill path and puts the first
+	 * result on the stack instead of letting the second call
+	 * overwrite it.
+	 */
 	case CALL:
-		e->regs = 1;
+		e->regs = 2;
 		return;
 
 	/* ARGNODE: each arg independent, pushed to stack */
