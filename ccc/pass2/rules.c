@@ -114,6 +114,10 @@ struct rule rules[] = {
 	 */
 	R("+(I,H)", PLUS, P_L, P_R, P_NONE, 0,
 		"\tpush $Lr\n\tpop de\n\tadd hl,de\n\tld de,$Lo\n\tadd hl,de\n", R_HL),
+	/* the same with the subscript already in DE, which is where the
+	 * reorder leaves it when the index is the costlier side */
+	R("+(I,E)", PLUS, P_L, P_R, P_NONE, 0,
+		"\tpush $Lr\n\tpop hl\n\tadd hl,de\n\tld de,$Lo\n\tadd hl,de\n", R_HL),
 
 	/* symbol + constant offset folds into the SYMREF */
 	R("+(O,N)", SYMREF, P_NONE, P_NONE, P_NONE, 0, NULL, 0),

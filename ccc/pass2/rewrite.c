@@ -1346,6 +1346,32 @@ lowercompound(Expr *e)
 }
 
 /*
+ * A reduced operand does not always land where it was asked to: a byte
+ * operation can only end in A and a call only in HL, whatever target
+ * they were given.  Move it, for the cases where something else is
+ * about to want that register.
+ *
+ * Only safe while the other operand has not been evaluated yet - the
+ * HL form goes through ex de,hl, which would trample it.
+ */
+static Expr *
+movetotgt(Expr *e, unsigned char tgt)
+{
+	if (!e || tgt != R_DE)
+		return e;
+	if (e->op == INA) {
+		out("\tld e,a\n");
+		e->op = INE;
+		e->u.var.reg = R_E;
+	} else if (e->op == INHL) {
+		out("\tex de,hl\n");
+		e->op = INDE;
+		e->u.var.reg = R_DE;
+	}
+	return e;
+}
+
+/*
  * Compound assignment whose lvalue has side effects, so the expansion
  * in lowercompound() cannot be used - naming "*p++" twice would
  * increment p twice.  The address is worked out once and waits on the
@@ -1845,6 +1871,27 @@ rewrite1(Expr *e)
 				e->left = addr;
 			else
 				e->left = mkunary(DEREF, e->width, addr);
+		} else if (e->op != COMMA && e->left && e->right &&
+			   e->left->regs <= 1 && e->right->regs > e->left->regs &&
+			   !e->left->nored && !e->right->nored) {
+			/*
+			 * Sethi-Ullman: work out the costlier side first, so
+			 * the cheaper one can follow without spilling.  Each
+			 * still ends up in the register it was assigned, so a
+			 * non-commutative operator is unaffected - only the
+			 * order of evaluation changes, which C leaves open.
+			 *
+			 * Held to a left side costing one register, because
+			 * that is the case that cannot disturb DE while the
+			 * right operand is sitting in it.  And never for the
+			 * comma, whose order is the whole point of it.
+			 */
+			unsigned char rtgt = e->right->tgt;
+
+			e->right = rewrite1(e->right);
+			e->right = movetotgt(e->right, rtgt);
+			e->left = rewrite1(e->left);
+			goto children_done;
 		} else if (!e->left || !e->left->nored) {
 			e->left = rewrite1(e->left);
 		}
