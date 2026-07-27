@@ -17,7 +17,7 @@
 # assuming something about widths it should not.
 #
 
-.PHONY: all native zc3 ccc clean
+.PHONY: all native zc3 ccc one clean
 
 # zc3 is not in the default set yet.  Compiled and linked as below it
 # produces a binary that makes CP/M system calls, so it is targeting
@@ -34,6 +34,14 @@ zc3:
 
 ccc:
 	@sh runtests.sh ccc
+
+# One file through one path, for narrowing a failure down:
+#	make one MODE=ccc T=rt_cmp.c
+# The file need not be an rt_ one, so a throwaway probe next to these
+# gets the same build and run without being picked up by the suite.
+MODE = ccc
+one:
+	@sh runtests.sh $(MODE) $(T)
 
 clean:
 	rm -rf out

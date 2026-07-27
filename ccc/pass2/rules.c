@@ -121,6 +121,14 @@ struct rule rules[] = {
 
 	/* symbol + constant offset folds into the SYMREF */
 	R("+(O,N)", SYMREF, P_NONE, P_NONE, P_NONE, 0, NULL, 0),
+	/*
+	 * The same for a global array, where the base is a link-time
+	 * constant and the scaled subscript is in a register - one add,
+	 * with the base loaded into whichever half is free.  A constant
+	 * subscript never reaches here: +(O,N) above folds it away.
+	 */
+	R("+(O,H)", PLUS, P_L, P_R, P_NONE, 0, "\tld de,$L\n\tadd hl,de\n", R_HL),
+	R("+(O,E)", PLUS, P_L, P_R, P_NONE, 0, "\tld hl,$L\n\tadd hl,de\n", R_HL),
 
 	/* strength reduction */
 	R("*(_,P)", LSHIFT, P_L, P_R, P_NONE, RF_POW2, NULL, 0),
@@ -170,14 +178,28 @@ struct rule rules[] = {
 	R("%(H,E)", MOD, P_L, P_R, P_NONE, RF_SIGNL, "\tcall amod\n", R_HL),
 	R("%(H,E)", MOD, P_L, P_R, P_NONE, 0, "\tcall lmod\n", R_HL),
 
-	/* store to indexed */
+	/*
+	 * Store to a frame slot.  A constant goes straight into the slot
+	 * without touching a register, which is the right thing for a
+	 * statement and the wrong thing for "i = k = 5": the assignment
+	 * has a value, and there has to be one somewhere for the outer
+	 * assignment to copy.  The :V forms pay for a register because
+	 * something is going to read it.
+	 */
+	R("=(I,N):bV", ASSIGN, P_L, P_R, P_NONE, 0, "\tld a,$R\n\tld ($L),a\n", R_A),
 	R("=(I,N):b", ASSIGN, P_L, P_R, P_NONE, 0, "\tld ($L),$R\n", 0),
+	R("=(I,N):sV", ASSIGN, P_L, P_R, P_NONE, 0, "\tld hl,$R\n" T_IDX_S_ST, R_HL),
 	R("=(I,N):s", ASSIGN, P_L, P_R, P_NONE, 0, "\tld ($L),$Rl\n\tld ($L+),$Rh\n", 0),
 	R("=(I,H):b", ASSIGN, P_L, P_R, P_NONE, 0, "\tld ($L),l\n", R_HL),
-	R("=(I,H):s", ASSIGN, P_L, P_R, P_NONE, 0, T_IDX_S_ST, 0),
+	/*
+	 * These stored from a register and left the value in it, so they
+	 * name it.  Claiming whatever register the node was aimed at
+	 * would hand the parent one that was never written.
+	 */
+	R("=(I,H):s", ASSIGN, P_L, P_R, P_NONE, 0, T_IDX_S_ST, R_HL),
 	R("=(I,I):s", ASSIGN, P_L, P_R, P_NONE, 0, T_IDX_S_LD T_IDX_S_ST, R_HL),
-	R("=(I,E):s", ASSIGN, P_L, P_R, P_NONE, 0, "\tld ($L),e\n\tld ($L+),d\n", 0),
-	R("=(I,B):s", ASSIGN, P_L, P_R, P_NONE, 0, "\tld ($L),c\n\tld ($L+),b\n", 0),
+	R("=(I,E):s", ASSIGN, P_L, P_R, P_NONE, 0, "\tld ($L),e\n\tld ($L+),d\n", R_DE),
+	R("=(I,B):s", ASSIGN, P_L, P_R, P_NONE, 0, "\tld ($L),c\n\tld ($L+),b\n", R_BC),
 
 	/* store to symref */
 	R("=(O,A):b", ASSIGN, P_L, P_R, P_NONE, 0, "\tld ($L),a\n", R_A),
@@ -186,6 +208,7 @@ struct rule rules[] = {
 	/* narrowing store: a word result keeps only its low byte */
 	R("=(O,H):b", ASSIGN, P_L, P_R, P_NONE, 0, "\tld a,l\n\tld ($L),a\n", R_A),
 	R("=(O,B):b", ASSIGN, P_L, P_R, P_NONE, 0, "\tld a,c\n\tld ($L),a\n", R_A),
+	R("=(I,B):bV", ASSIGN, P_L, P_R, P_NONE, 0, "\tld a,c\n\tld ($L),a\n", R_A),
 	R("=(I,B):b", ASSIGN, P_L, P_R, P_NONE, 0, "\tld ($L),c\n", 0),
 	R("=(O,N):s", ASSIGN, P_L, P_R, P_NONE, 0, "\tld hl,$R\n\tld ($L),hl\n", R_HL),
 
@@ -498,9 +521,14 @@ struct rule rules[] = {
 	R("+(A,M)", PLUS, P_L, P_R, P_NONE, 0, "%(\tinc a\n)", R_A),
 	R("-(A,M)", MINUS, P_L, P_R, P_NONE, 0, "%(\tdec a\n)", R_A),
 	R("+(H,N)", PLUS, P_L, P_R, P_NONE, 0, "\tld de,$R\n" T_ADD_HL_DE, R_HL),
-	R("+(A,N)", PLUS, P_L, P_R, P_NONE, 0, NULL, 0),
+	/*
+	 * A byte in A against a constant, once it is too big for the inc
+	 * and dec runs above.  Only at byte width: at word width A holds
+	 * the low half and the carry would have nowhere to go.
+	 */
+	R("+(A,N):b", PLUS, P_L, P_R, P_NONE, 0, "\tadd a,$R\n", R_A),
 	R("+(D(I),N):b", PLUS, P_L, P_R, P_NONE, 0, "\tld a,($LL)\n\tadd a,$R\n", R_A),
-	R("-(A,N)", MINUS, P_L, P_R, P_NONE, 0, NULL, 0),
+	R("-(A,N):b", MINUS, P_L, P_R, P_NONE, 0, "\tsub $R\n", R_A),
 	R("-(D(I),N):b", MINUS, P_L, P_R, P_NONE, 0, "\tld a,($LL)\n\tsub $R\n", R_A),
 	R("-(H,E)", MINUS, P_L, P_R, P_NONE, 0, "\tor a\n\tsbc hl,de\n", R_HL),
 	R("-(H,N)", MINUS, P_L, P_R, P_NONE, 0, "\tld de,$R\n\tor a\n\tsbc hl,de\n", R_HL),
@@ -508,6 +536,12 @@ struct rule rules[] = {
 	/* shifts */
 	R("<(H,N)", LSHIFT, P_L, P_R, P_NONE, 0, "%(" T_ADD_HL_HL ")", R_HL),
 	R("<(A,N):b", LSHIFT, P_L, P_R, P_NONE, 0, "%(\tsla a\n)", R_A),
+	/*
+	 * A signed right shift keeps the sign: sra copies bit 7 back into
+	 * itself where srl feeds in a zero.  The signed rule has to come
+	 * first, since the unsigned pattern matches either width.
+	 */
+	R(">(A,N):b", RSHIFT, P_L, P_R, P_NONE, RF_SIGNL, "%(\tsra a\n)", R_A),
 	R(">(A,N):b", RSHIFT, P_L, P_R, P_NONE, 0, "%(\tsrl a\n)", R_A),
 	/*
 	 * A shift by a whole byte is a register move, not a loop - two
@@ -519,7 +553,10 @@ struct rule rules[] = {
 		"\tld l,h\n\tld a,h\n\trla\n\tsbc a,a\n\tld h,a\n", R_HL),
 	R(">(H,8)", RSHIFT, P_L, P_R, P_NONE, 0, "\tld l,h\n\tld h,0\n", R_HL),
 	R("<(H,8)", LSHIFT, P_L, P_R, P_NONE, 0, "\tld h,l\n\tld l,0\n", R_HL),
+	R(">(H,M)", RSHIFT, P_L, P_R, P_NONE, RF_SIGNL, "%(\tsra h\n\trr l\n)", R_HL),
 	R(">(H,M)", RSHIFT, P_L, P_R, P_NONE, 0, "%(\tsrl h\n\trr l\n)", R_HL),
+	R(">(B,M)", RSHIFT, P_L, P_R, P_NONE, RF_SIGNL,
+		T_BC_HL "%(\tsra h\n\trr l\n)", R_HL),
 	R(">(B,M)", RSHIFT, P_L, P_R, P_NONE, 0, T_BC_HL "%(\tsrl h\n\trr l\n)", R_HL),
 
 	/* stores/loads with indexed/symref */

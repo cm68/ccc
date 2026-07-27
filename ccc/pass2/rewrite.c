@@ -953,6 +953,15 @@ normtree(Expr *e)
 {
 	if (!e) return;
 	normalize(e);
+	/*
+	 * What an assignment stores is wanted as a value whatever is done
+	 * with the assignment itself, and "i = k = 5" needs the inner one
+	 * to know it: a store rule that writes straight to memory leaves
+	 * nothing for the outer assignment to copy, and only the value
+	 * context tells it to pay for a register.
+	 */
+	if (e->op == ASSIGN && e->right && e->right->dest == DEST_NONE)
+		e->right->dest = DEST_VALUE;
 	normtree(e->left);
 	normtree(e->right);
 }
@@ -1311,16 +1320,41 @@ dupableloc(Expr *e)
 }
 
 /*
+ * The same location read rather than written.  A location and the
+ * value in it are different expressions, and the difference is one
+ * load for every level of indirection:
+ *
+ *   REGVAR      the register is the storage - it already is the value
+ *   DEREF(a)    the memory at a, so the value is a load from a's
+ *               value - and a is a location in its own right, so
+ *               this has to recur
+ *   everything else (SYMREF, LOCALVAR, or an address the tree works
+ *               out for itself) names a location, so reading it takes
+ *               a load
+ *
+ * The recursion is the whole point.  "*p" is DEREF(REGVAR) when p is
+ * in a register and DEREF(LOCALVAR) when it is in the frame; the
+ * first already reads memory, while the second reads only the frame
+ * slot and still owes the load the pointer stands for.  Treating the
+ * two alike read the pointer and used it as the value.
+ */
+static Expr *
+locvalue(Expr *e, char w)
+{
+	if (e->op == REGVAR)
+		return e;
+	if (e->op == DEREF) {
+		/* what it points through is an address: word sized */
+		e->left = locvalue(e->left, 's');
+		return e;
+	}
+	return mkunary(DEREF, w, e);
+}
+
+/*
  * Lower "x OP= y" to "x = x OP y".  This has to run before the children
  * are reduced: once the lvalue has become a register, copying it would
  * re-emit whatever code produced it.
- *
- * The read side is the same location read rather than written, which
- * is not always the same expression:
- *   REGVAR      the register is the storage - it already is the value
- *   DEREF(a)    memory at a - as an expression this already loads it
- *   everything else (INDEX, SYMREF, LOCALVAR) describes a location,
- *               so reading it takes a DEREF
  */
 static Expr *
 lowercompound(Expr *e)
@@ -1338,9 +1372,7 @@ lowercompound(Expr *e)
 	e->left = e->right = NULL;
 	freeexpr(e);
 
-	val = dupexpr(loc);
-	if (val->op != REGVAR && val->op != DEREF)
-		val = mkunary(DEREF, w, val);
+	val = locvalue(dupexpr(loc), w);
 
 	return mkbinary(ASSIGN, w, loc, mkbinary(op, w, val, rhs));
 }
@@ -1833,8 +1865,22 @@ rewrite1(Expr *e)
 			 * Only when the value really needs a register: a
 			 * constant stores straight through the address, and
 			 * spilling for that would just cost bytes.
+			 *
+			 * And only when the address really needs one, which
+			 * is not known until it has been reduced.  "arr[2]"
+			 * folds to a symbol and an offset and emits nothing
+			 * at all, so there would be nothing in HL to push:
+			 * the push would spill whatever the last statement
+			 * happened to leave there and the store would go to
+			 * that address.  A descriptor needs no register and
+			 * no temporary, so it is simply used where it is.
 			 */
 			Expr *addr = rewrite1(e->left);
+			if (islocdesc(addr)) {
+				e->left = addr;
+				e->right = rewrite1(e->right);
+				goto children_done;
+			}
 			out("\tpush hl\n");
 			e->right = rewrite1(e->right);
 			out("\tpop de\n\tex de,hl\n");
