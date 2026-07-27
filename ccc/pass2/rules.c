@@ -154,9 +154,21 @@ struct rule rules[] = {
 		T_SAVE_HL T_ADD_HL_HL T_ADD_HL_HL T_ADD_HL_DE T_ADD_HL_HL T_ADD_HL_HL T_ADD_HL_HL, R_HL),
 
 	/* runtime calls */
-	R("*(H,E)", STAR, P_L, P_R, P_NONE, 0, "\tcall __mul16\n", R_HL),
-	R("/(H,E)", DIV, P_L, P_R, P_NONE, 0, "\tcall __div16\n", R_HL),
-	R("%(H,E)", MOD, P_L, P_R, P_NONE, 0, "\tcall __mod16\n", R_HL),
+	/*
+	 * The 16-bit helpers take the left operand in HL and the right in
+	 * DE and return in HL.  a- is the signed form and l- the logical
+	 * one - not long, whatever the letter suggests elsewhere.
+	 *
+	 * These were named __mul16, __div16 and __mod16, which the
+	 * library has never defined.  Nothing noticed until a program was
+	 * linked and run, because a call to a symbol that does not exist
+	 * assembles perfectly well.
+	 */
+	R("*(H,E)", STAR, P_L, P_R, P_NONE, 0, "\tcall amul\n", R_HL),
+	R("/(H,E)", DIV, P_L, P_R, P_NONE, RF_SIGNL, "\tcall adiv\n", R_HL),
+	R("/(H,E)", DIV, P_L, P_R, P_NONE, 0, "\tcall ldiv\n", R_HL),
+	R("%(H,E)", MOD, P_L, P_R, P_NONE, RF_SIGNL, "\tcall amod\n", R_HL),
+	R("%(H,E)", MOD, P_L, P_R, P_NONE, 0, "\tcall lmod\n", R_HL),
 
 	/* store to indexed */
 	R("=(I,N):b", ASSIGN, P_L, P_R, P_NONE, 0, "\tld ($L),$R\n", 0),
@@ -471,12 +483,16 @@ struct rule rules[] = {
 	R("-(B,N)", MINUS, P_L, P_R, P_NONE, 0,
 		T_BC_HL "\tld de,$R\n\tor a\n\tsbc hl,de\n", R_HL),
 	R("<(B,N)", LSHIFT, P_L, P_R, P_NONE, 0, T_BC_HL "%(" T_ADD_HL_HL ")", R_HL),
+	R("/(B,N)", DIV, P_L, P_R, P_NONE, RF_SIGNL,
+		T_BC_HL "\tld de,$R\n\tcall adiv\n", R_HL),
 	R("/(B,N)", DIV, P_L, P_R, P_NONE, 0,
-		T_BC_HL "\tld de,$R\n\tcall __div16\n", R_HL),
+		T_BC_HL "\tld de,$R\n\tcall ldiv\n", R_HL),
+	R("%(B,N)", MOD, P_L, P_R, P_NONE, RF_SIGNL,
+		T_BC_HL "\tld de,$R\n\tcall amod\n", R_HL),
 	R("%(B,N)", MOD, P_L, P_R, P_NONE, 0,
-		T_BC_HL "\tld de,$R\n\tcall __mod16\n", R_HL),
+		T_BC_HL "\tld de,$R\n\tcall lmod\n", R_HL),
 	R("*(B,N)", STAR, P_L, P_R, P_NONE, 0,
-		T_BC_HL "\tld de,$R\n\tcall __mul16\n", R_HL),
+		T_BC_HL "\tld de,$R\n\tcall amul\n", R_HL),
 	R("+(H,M)", PLUS, P_L, P_R, P_NONE, 0, "%(\tinc hl\n)", R_HL),
 	R("-(H,M)", MINUS, P_L, P_R, P_NONE, 0, "%(\tdec hl\n)", R_HL),
 	R("+(A,M)", PLUS, P_L, P_R, P_NONE, 0, "%(\tinc a\n)", R_A),
