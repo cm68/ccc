@@ -58,3 +58,20 @@ int tFuncCall()
     *get_ptr() += 5;   /* counter should be incremented once (to 11), then += 5 makes it 16 */
     return counter;    /* should be 16, NOT 17 */
 }
+
+int takes2();
+
+/*
+ * Compound assignment and postfix as call arguments.  Each has to
+ * happen exactly once, and the value passed is the one the operator
+ * yields - the new k, the old l.  Both use the stack while the call is
+ * itself pushing arguments, so the two must nest cleanly.
+ */
+int tArgSide()
+{
+    int k, l;
+
+    k = 1;
+    l = 2;
+    return takes2(k += 4, l++);   /* passes 5 and 2; k = 5, l = 3 */
+}

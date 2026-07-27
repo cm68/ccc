@@ -21,6 +21,7 @@ static int labelcnt;
 /* Forward declarations */
 static char *pmatch(char *p, Expr *e);
 static Expr *rewrite1(Expr *e);
+static unsigned char baseop(unsigned char op);
 
 /*
  * Check if expression matches any preserve pattern.
@@ -153,6 +154,16 @@ label(Expr *e)
 			e->regs = l + 1;
 		else
 			e->regs = l > r ? l : r;
+		/*
+		 * A compound assignment holds the location while it works
+		 * out the value, so it needs two whatever its operands cost
+		 * - the expansion puts the address in HL and the value in
+		 * DE, and the side-effecting form keeps the address on the
+		 * stack and uses both on the way back.  Scoring it as one
+		 * would let a parent believe a register survives it.
+		 */
+		if (baseop(e->op) && e->regs < 2)
+			e->regs = 2;
 		return;
 	}
 }
@@ -777,6 +788,14 @@ tryrule(struct rule *rp, Expr *e)
 			outd((val >> 16) & 0xffff);
 			out("\n");
 			n = mkcode(w, R_HL);
+		} else if (e->tgt == R_DE) {
+			/* a word constant honours its target too - as the
+			 * right operand of a binary op it belongs in DE, and
+			 * putting it in HL would land on the left one */
+			out("\tld de,");
+			outd(val);
+			out("\n");
+			n = mkcode(e->width, R_DE);
 		} else {
 			out("\tld hl,");
 			outd(val);
@@ -1320,6 +1339,71 @@ lowercompound(Expr *e)
 }
 
 /*
+ * Compound assignment whose lvalue has side effects, so the expansion
+ * in lowercompound() cannot be used - naming "*p++" twice would
+ * increment p twice.  The address is worked out once and waits on the
+ * stack while the value is read, updated and written back, the stack
+ * standing in for the temporary the expression tree has no way to
+ * spell.
+ *
+ * Returns NULL if the address did not reduce to HL, leaving the node
+ * to be flagged rather than guessed at.
+ */
+static Expr *
+docompound(Expr *e)
+{
+	unsigned char op = baseop(e->op);
+	char w = e->width;
+	int isbyte = ISBYTE(w);
+	Expr *addr, *val, *rhs, *sum, *n;
+
+	if (!op || !e->left || !e->right)
+		return NULL;
+
+	/* the address, once - the side effects happen here and only here */
+	addr = rewrite1(e->left);
+	e->left = NULL;
+	if (!addr || (addr->op != INHL &&
+	    !(addr->op == CODE && addr->u.var.reg == R_HL))) {
+		e->left = addr;
+		return NULL;
+	}
+	freeexpr(addr);
+	out("\tpush hl\n");
+
+	/* read through it */
+	if (isbyte)
+		out("\tld a,(hl)\n");
+	else
+		out("\tld a,(hl)\n\tinc hl\n\tld h,(hl)\n\tld l,a\n");
+
+	/* apply the operator to what was there */
+	val = mkcode(w, isbyte ? R_A : R_HL);
+	val->op = isbyte ? INA : INHL;
+	rhs = e->right;
+	e->right = NULL;
+	sum = mkbinary(op, w, val, rhs);
+	setdest(sum, DEST_VALUE);
+	sum = rewrite(sum);
+
+	/* store it back through the address that was waiting */
+	if (isbyte) {
+		out("\tpop hl\n\tld (hl),a\n");
+		n = mkcode(w, R_A);
+		n->op = INA;
+	} else {
+		out("\tpop de\n\tex de,hl\n");
+		out("\tld (hl),e\n\tinc hl\n\tld (hl),d\n\tex de,hl\n");
+		n = mkcode(w, R_HL);
+		n->op = INHL;
+	}
+	freeexpr(sum);
+	n->dest = e->dest;
+	freeexpr(e);
+	return n;
+}
+
+/*
  * Push one call argument, returning the stack bytes it consumed.
  * Wrapping the value in ASSIGN(INHL, value) reuses the whole =(H,...)
  * rule set to land it in HL, the same trick RETURN uses.  Scalars are
@@ -1433,6 +1517,16 @@ rewrite1(Expr *e)
 			assign(n, tgt);
 			return rewrite1(n);
 		}
+		/*
+		 * The lvalue has side effects, so it cannot be named twice
+		 * the way the expansion above does - "*p++ += 5" has to
+		 * increment p once.  Work the address out once and keep it
+		 * on the stack, which serves as the temporary the tree has
+		 * no way to spell, then read, update and store through it.
+		 */
+		n = docompound(e);
+		if (n)
+			return n;
 	}
 
 	/* ARGNODE: evaluate left, push, then process right chain */
