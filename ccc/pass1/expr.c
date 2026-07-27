@@ -746,7 +746,15 @@ parsePrefix(void)
     case MINUS:     // unary minus
     case TWIDDLE:   // bitwise not
     case BANG:      // logical not
-        uop = (cur.type == MINUS) ? NEG : cur.type;
+        /*
+         * The lexeme and the AST node are not the same thing: unary
+         * minus becomes NEG, and "~" has to become NOT the same way.
+         * Leaving it as the TWIDDLE lexeme meant pass2 never saw an
+         * operator it recognised, so "~x" reduced to nothing at all -
+         * no code, at either width, for the life of the compiler.
+         */
+        uop = (cur.type == MINUS) ? NEG :
+              (cur.type == TWIDDLE) ? NOT : cur.type;
         gettoken();
         e1 = parseExpr(OP_PRI_MULT - 1);
         if (!e1) break;
@@ -754,13 +762,20 @@ parsePrefix(void)
         if (e1->flags & E_CONST) {
             uval = e1->v;
             if (uop == NEG) uval = -uval;
-            else if (uop == TWIDDLE) uval = ~uval;
+            else if (uop == NOT) uval = ~uval;
             else if (uop == BANG) uval = !uval;
             e1->v = uval;
             e = e1;
         } else {
             e = mkexpr(uop, e1);
-            e->type = e1->type;
+            /*
+             * Negation and complement give back what they were handed;
+             * "!" gives an int whatever it was applied to.  Taking the
+             * operand's type made "!lv" a long, so "!lv != 0" looked
+             * like 32-bit work and went looking for a helper to
+             * compare a truth value nothing had widened.
+             */
+            e->type = (uop == BANG) ? inttype : e1->type;
             e1->up = e;
         }
         break;

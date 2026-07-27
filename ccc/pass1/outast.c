@@ -101,7 +101,7 @@ truncok(unsigned char op)
 	case XOR:
 	case LSHIFT:
 	case NEG:
-	case TWIDDLE:
+	case NOT:
 		return 1;
 	}
 	return 0;
@@ -499,7 +499,7 @@ emitExpr(struct expr *e)
 
 	case BANG:
 	case NEG:
-	case TWIDDLE:
+	case NOT:
 		/* Unary operators */
 		emit1(op);
 		emit1(typeSfx(type));
