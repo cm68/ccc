@@ -330,6 +330,49 @@ struct rule rules[] = {
 		"\tld hl,$L\n\tld a,(hl)\n\tinc hl\n\tor (hl)\n\tinc hl\n"
 		"\tor (hl)\n\tinc hl\n\tor (hl)\n", F_NZ),
 
+	/*
+	 * Loading one, the mirror of the stores above: the low word lives
+	 * at the lower address, so it comes back in DE and the high word
+	 * in HL.  A global can move a pair at a time; a frame slot goes a
+	 * byte at a time, since (iy+d) is all that reaches it.
+	 */
+	R("D(O):l", DEREF, P_L, P_NONE, P_NONE, 0,
+		"\tld de,($L)\n\tld hl,($L++)\n", R_HL),
+	R("D(I):l", DEREF, P_L, P_NONE, P_NONE, 0,
+		"\tld e,($L)\n\tld d,($L+)\n\tld l,($L++)\n\tld h,($L+++)\n", R_HL),
+	/* through a pointer already in HL */
+	R("D(H):l", DEREF, P_L, P_NONE, P_NONE, 0, "\tcall lld\n", R_HL),
+
+	/*
+	 * Stepping a long in memory.  The helper takes the address in HL,
+	 * updates the value in place and hands back what was there before
+	 * - which is what a postfix wants and a prefix does not, so a
+	 * prefix that is used for its value reads the new one back.  As a
+	 * statement, which is nearly always, there is nothing to read.
+	 */
+	R("j(O):l", POSTINC, P_L, P_NONE, P_NONE, 0,
+		"\tld hl,$L\n\tcall lainc\n", R_HL),
+	R("m(O):l", POSTDEC, P_L, P_NONE, P_NONE, 0,
+		"\tld hl,$L\n\tcall ladec\n", R_HL),
+	R("i(O):lS", PREINC, P_L, P_NONE, P_NONE, 0,
+		"\tld hl,$L\n\tcall lainc\n", R_HL),
+	R("k(O):lS", PREDEC, P_L, P_NONE, P_NONE, 0,
+		"\tld hl,$L\n\tcall ladec\n", R_HL),
+	R("i(O):l", PREINC, P_L, P_NONE, P_NONE, 0,
+		"\tld hl,$L\n\tcall lainc\n\tld de,($L)\n\tld hl,($L++)\n", R_HL),
+	R("k(O):l", PREDEC, P_L, P_NONE, P_NONE, 0,
+		"\tld hl,$L\n\tcall ladec\n\tld de,($L)\n\tld hl,($L++)\n", R_HL),
+
+	/* complement of a word; the long form is handled in rewrite.c,
+	 * beside the long negation it shares its shape with */
+	R("~(H):s", NOT, P_L, P_NONE, P_NONE, 0,
+		"\tld a,l\n\tcpl\n\tld l,a\n\tld a,h\n\tcpl\n\tld h,a\n", R_HL),
+	R("~(A):b", NOT, P_L, P_NONE, P_NONE, 0, "\tcpl\n", R_A),
+	/* the truth test - all four bytes have to speak.
+	 * the width that matters is the operand's - "!" yields an int */
+	R("!(H:l)", BANG, P_L, P_NONE, P_NONE, 0,
+		"\tld a,h\n\tor l\n\tor d\n\tor e\n", F_Z),
+
 	/* zero-extended loads */
 	R("=(B,A)", ASSIGN, P_L, P_R, P_NONE, 0, "\tld c,a\n\tld b,0\n", R_BC),
 	R("=(H,A)", ASSIGN, P_L, P_R, P_NONE, 0, "\tld l,a\n\tld h,0\n", R_HL),

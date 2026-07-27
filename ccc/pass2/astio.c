@@ -26,14 +26,20 @@ outc(char c)
 	write(outfd, &c, 1);
 }
 
+/*
+ * Negating before converting cannot represent the most negative int,
+ * which stayed negative and turned every digit into whatever character
+ * sits that far below '0'.  Build the digits from the negative side
+ * instead, where every value is representable.
+ */
 void
 outd(int n)
 {
 	char buf[12], *p = buf + 11;
 	int neg = n < 0;
-	if (neg) n = -n;
+	if (!neg) n = -n;
 	*p = 0;
-	do { *--p = '0' + n % 10; n /= 10; } while (n);
+	do { *--p = '0' - n % 10; n /= 10; } while (n);
 	if (neg) *--p = '-';
 	out(p);
 }

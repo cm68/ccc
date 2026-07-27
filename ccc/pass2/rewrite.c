@@ -446,7 +446,8 @@ pmatch(char *p, Expr *e)
 		p++;
 		/* check width first (b/B/s/S/l/L/p/f or _ for any) */
 		/* case-insensitive: b matches B, s matches S, etc. */
-		if (*p != 'F' && *p != 'V' && *p != '\0' && *p != ')' && *p != ',') {
+		if (*p != 'F' && *p != 'V' && *p != 'S' &&
+		    *p != '\0' && *p != ')' && *p != ',') {
 			if (*p != '_' && e && (e->width | 0x20) != (*p | 0x20))
 				return NULL;
 			p++;
@@ -460,6 +461,17 @@ pmatch(char *p, Expr *e)
 		/* check value context (V) */
 		if (*p == 'V') {
 			if (!e || e->dest != DEST_VALUE)
+				return NULL;
+			p++;
+		}
+		/*
+		 * Statement context (S): the result is thrown away.  Worth
+		 * distinguishing where producing it costs something - a long
+		 * step returns the value from before the step, so wanting the
+		 * one after means reading it back.
+		 */
+		if (*p == 'S') {
+			if (!e || e->dest != DEST_NONE)
 				return NULL;
 			p++;
 		}
@@ -1501,6 +1513,291 @@ pusharg(Expr *a)
 	return 4;
 }
 
+/* a 32-bit integer, which the helpers handle - float is a separate set */
+#define ISLONGINT(t) ((t) == T_LONG || (t) == T_ULONG)
+
+/*
+ * Did this reduce to a 32-bit value sitting in HL:DE?  A rule hands one
+ * back as a register node, or as a CODE that has not been converted
+ * yet; either way the high word is in HL.
+ */
+static int
+islongreg(Expr *e)
+{
+	if (!e)
+		return 0;
+	if (e->op == INHL)
+		return 1;
+	return e->op == CODE && e->u.var.reg == R_HL;
+}
+
+static char *longhelper(unsigned char op, int sign);
+
+/*
+ * Is this one of the operators the long path above is responsible for?
+ * Only those, because only those have no rules of their own to fall
+ * back on - assignment and the conversions are handled in the table
+ * and must be left alone to reach it.
+ *
+ * A comparison is a byte wide whatever it compared, so it is the
+ * operand that says whether this is 32-bit work.
+ */
+static int
+islongop(Expr *e)
+{
+	if (!e || !e->left || !e->right)
+		return 0;
+	switch (e->op) {
+	case PLUS: case MINUS: case STAR: case DIV: case MOD:
+	case AND: case OR: case XOR: case LSHIFT: case RSHIFT:
+		return ISLONGINT(e->width);
+	case EQ: case NEQ: case LT: case GT: case LE: case GE:
+		return ISLONGINT(e->left->width);
+	}
+	return 0;
+}
+
+/*
+ * The two halves of a 32-bit constant, high word first.  A constant
+ * operand never reduces - it stays a NUMBER so the ",N)" rules can see
+ * it - so the long path has to place one itself.
+ */
+static void
+loadlongc(long v)
+{
+	out("\tld hl,");
+	outd((int)((v >> 16) & 0xffff));
+	out("\n\tld de,");
+	outd((int)(v & 0xffff));
+	outc('\n');
+}
+
+static void
+pushlongc(long v)
+{
+	out("\tld hl,");
+	outd((int)((v >> 16) & 0xffff));
+	out("\n\tpush hl\n\tld hl,");
+	outd((int)(v & 0xffff));
+	out("\n\tpush hl\n");
+}
+
+/*
+ * Will this operand end up as a 32-bit value in HL:DE?  Asked before
+ * any code is emitted, because the first operand of a helper call goes
+ * on the stack and there is no backing out after that.
+ *
+ * A constant is placed directly.  Anything else has to be a shape the
+ * long rules cover, or something that reduces to one - a nested long
+ * operator, or a widening of something narrower.
+ */
+static int
+longable(Expr *e)
+{
+	if (!e)
+		return 0;
+	if (e->op == NUMBER || islongreg(e))
+		return 1;
+	if (!ISLONGINT(e->width))
+		return 0;
+	switch (e->op) {
+	case DEREF:
+	case SEXT:
+	case WIDEN:
+	case CALL:
+		return 1;
+	case NOT:
+		/* complement has a rule of its own */
+		return 1;
+	case LSHIFT:
+	case RSHIFT:
+		/* handled here too, but by their own path - the count is not
+		 * a long and longhelper has no name for them */
+		return e->left && e->right;
+	}
+	/* a nested long operator, which recurses through this same path */
+	return longhelper(e->op, 1) != NULL && e->left && e->right;
+}
+
+/*
+ * The runtime helper for a 32-bit operator, or NULL if there is none.
+ *
+ * The library names these by what the operation means rather than what
+ * it is: the "a" forms are arithmetic and treat the top bit as a sign,
+ * the "ll" forms are logical and treat it as a value.  Add, subtract
+ * and the bitwise operators are the same either way and the library
+ * points both names at one routine; divide, remainder, right shift and
+ * comparison genuinely differ.
+ */
+static char *
+longhelper(unsigned char op, int sign)
+{
+	switch (op) {
+	case PLUS:   return "ladd";
+	case MINUS:  return sign ? "alsub" : "llsub";
+	case STAR:   return sign ? "almul" : "llmul";
+	case DIV:    return sign ? "aldiv" : "lldiv";
+	case MOD:    return sign ? "almod" : "llmod";
+	case AND:    return sign ? "aland" : "lland";
+	case OR:     return sign ? "alor"  : "llor";
+	case XOR:    return sign ? "alxor" : "llxor";
+	case EQ: case NEQ: case LT: case GT: case LE: case GE:
+		return sign ? "arelop" : "lrelop";
+	}
+	return NULL;
+}
+
+/*
+ * The flag a comparison helper leaves the answer in.
+ *
+ * arelop reports a signed comparison the way a subtraction would, in
+ * the sign flag; lrelop reports an unsigned one in carry, where the
+ * 16-bit code looks for it.  Neither gives "greater" or "at or below"
+ * as one flag, so those are had by swapping the operands, which the
+ * caller does by handing them over the other way round.
+ */
+static unsigned char
+longflag(unsigned char op, int sign)
+{
+	switch (op) {
+	case EQ:  return F_Z;
+	case NEQ: return F_NZ;
+	case LT: case GT:  return sign ? F_M : F_C;
+	case GE: case LE:  return sign ? F_P : F_NC;
+	}
+	return 0;
+}
+
+/*
+ * A binary operator on 32-bit values.  Both operands want HL:DE and
+ * there is only one of those, so the right one is worked out first and
+ * pushed - which is also what the helpers expect: left in HL:DE, right
+ * on the stack with its high word pushed first.
+ *
+ * "Greater than" and "at or below" have no flag of their own, so they
+ * are passed over as "less than" and "at or above" with the operands
+ * the other way round.  Evaluation order is already unspecified here,
+ * and the reorder elsewhere in this file relies on the same thing.
+ */
+static Expr *
+dolongbin(Expr *e)
+{
+	unsigned char op = e->op;
+	int iscmp = (longflag(op, 1) != 0);
+	Expr *opnd = iscmp ? e->left : e;
+	int swap = (op == GT || op == LE);
+	int sign;
+	char *fn;
+	Expr *l, *r, *n;
+
+	if (!e->left || !e->right)
+		return NULL;
+	if (!opnd || !ISLONGINT(opnd->width))
+		return NULL;
+	sign = ISSIGNED(opnd->width);
+
+	l = swap ? e->right : e->left;
+	r = swap ? e->left : e->right;
+
+	/*
+	 * A shift is not like the rest: the count is a plain int and goes
+	 * in B rather than on the stack.  Work it out first and park it,
+	 * because reducing the value may call a helper of its own and
+	 * those use BC.
+	 */
+	if (op == LSHIFT || op == RSHIFT) {
+		if (!longable(l))
+			return NULL;
+		e->left = e->right = NULL;
+		if (r->op == NUMBER) {
+			if (l->op == NUMBER)
+				loadlongc(l->u.val);
+			else
+				l = rewrite1(l);
+			out("\tld b,");
+			outd((int)(r->u.val & 0xff));
+			outc('\n');
+		} else {
+			/*
+			 * The count is an ordinary int and would have been aimed
+			 * at DE, being the right operand of a binary node.  It
+			 * has to come back in HL: that is where this parks it,
+			 * and DE belongs to the value.
+			 */
+			assign(r, R_HL);
+			r = rewrite1(r);
+			out("\tpush hl\n");
+			if (l->op == NUMBER)
+				loadlongc(l->u.val);
+			else
+				l = rewrite1(l);
+			/* the count came back in HL, so its low byte is in C */
+			out("\tpop bc\n\tld b,c\n");
+		}
+		freeexpr(l);
+		freeexpr(r);
+		out("\tcall ");
+		out(op == LSHIFT ? "allsh" : sign ? "alrsh" : "lushr");
+		outc('\n');
+		n = mkcode(e->width, R_HL);
+		n->op = INHL;
+		n->dest = e->dest;
+		freeexpr(e);
+		return n;
+	}
+
+	fn = longhelper(op, sign);
+	if (!fn)
+		return NULL;
+
+	/*
+	 * Both operands have to be shapes that end up in HL:DE, and that
+	 * has to be settled before anything is emitted - once the right
+	 * operand has been pushed there is no way back.
+	 */
+	if (!longable(l) || !longable(r))
+		return NULL;
+
+	e->left = e->right = NULL;
+
+	/*
+	 * Both want HL:DE, so neither can keep the target it was given as
+	 * one side of a binary node - the right operand would have been
+	 * aimed at DE, which is half of where it has to land.
+	 */
+	if (r->op == NUMBER) {
+		pushlongc(r->u.val);
+	} else {
+		assign(r, R_HL);
+		r = rewrite1(r);
+		out("\tpush hl\n\tpush de\n");
+	}
+	freeexpr(r);
+
+	/* then the left, which the helper wants where it lands */
+	if (l->op == NUMBER) {
+		loadlongc(l->u.val);
+	} else {
+		assign(l, R_HL);
+		l = rewrite1(l);
+	}
+	freeexpr(l);
+
+	out("\tcall ");
+	out(fn);
+	outc('\n');
+
+	if (iscmp) {
+		n = mkcode(e->width, longflag(op, sign));
+	} else {
+		n = mkcode(e->width, R_HL);
+		n->op = INHL;
+	}
+	n->dest = e->dest;
+	freeexpr(e);
+	return n;
+}
+
 /*
  * Emit a call: arguments pushed right-to-left, then the call, then the
  * caller drops the arguments.  The arg chain is already built
@@ -1568,6 +1865,26 @@ rewrite1(Expr *e)
 		n = docall(e);
 		if (n)
 			return n;
+	}
+
+	/*
+	 * A 32-bit binary operator, before the children are reduced: both
+	 * operands want HL:DE, so the ordinary depth-first walk would put
+	 * the second one on top of the first.
+	 */
+	if (e->left && e->right && !baseop(e->op)) {
+		n = dolongbin(e);
+		if (n)
+			return n;
+		/*
+		 * If that declined, stop here.  The arithmetic rules carry no
+		 * width in their patterns, so a 32-bit operator falls through
+		 * into them and is quietly done sixteen bits wide - "a << 31"
+		 * became seven add hl,hl and a comparison against the low
+		 * half of the constant.  Refusing leaves a marker instead.
+		 */
+		if (islongop(e))
+			return e;
 	}
 
 	/* x OP= y -> x = x OP y, before the children are reduced */

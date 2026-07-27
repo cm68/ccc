@@ -55,8 +55,12 @@ for t in $tests; do
 	case "$mode" in
 	native)
 		# gnu89 for the same reason the rest of the tree uses it:
-		# these are K&R declarations, which a modern default rejects
-		gcc -w -std=gnu89 -o "$bin" "$src" >"$log" 2>&1 || built=no
+		# these are K&R declarations, which a modern default rejects.
+		# -m32 so that long is 32 bits here as it is on the Z80 - on a
+		# 64-bit host it is 64, and a long test would be computing
+		# different answers in the two places and the reference would
+		# be worth nothing.  short and char are unaffected.
+		gcc -w -m32 -std=gnu89 -o "$bin" "$src" >"$log" 2>&1 || built=no
 		;;
 	zc3)
 		# The same recipe as ccc/pass1's mx-zc3 target: compile only,
