@@ -2318,14 +2318,30 @@ rewrite1(Expr *e)
 			}
 			out("\tpush hl\n");
 			e->right = rewrite1(e->right);
-			out("\tpop de\n\tex de,hl\n");
-			freeexpr(addr);
-			freeexpr(e->right);
+			/*
+			 * Where the value came back decides how to get the
+			 * address out from under it.  A byte operation ends in
+			 * A, which the address does not disturb, so the address
+			 * comes straight back to HL.  A word is in HL itself and
+			 * has to move aside.  Assuming the second made "p[i] +=
+			 * n" store the low half of the address.
+			 */
+			if (e->right && e->right->op == INA) {
+				out("\tpop hl\n");
+				freeexpr(addr);
+				freeexpr(e->right);
+				e->right = mkcode(e->width, R_A);
+				e->right->op = INA;
+			} else {
+				out("\tpop de\n\tex de,hl\n");
+				freeexpr(addr);
+				freeexpr(e->right);
+				e->right = mkcode(e->width, R_DE);
+				e->right->op = INDE;
+			}
 			addr = mkcode(e->width, R_HL);
 			addr->op = INHL;
 			e->left = mkunary(DEREF, e->width, addr);
-			e->right = mkcode(e->width, R_DE);
-			e->right->op = INDE;
 			goto children_done;
 		} else if (e->op == ASSIGN && e->left && e->left->op == DEREF) {
 			/*

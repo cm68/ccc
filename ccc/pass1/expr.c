@@ -916,8 +916,22 @@ parsePostfix(struct expr *e)
             e1 = parseExpr(0);  /* index */
             expect(RBRACK, ER_E_SP);
 
-            /* Unwrap DEREF to get base address, save dereferenced type */
-            tp = unwrapDeref(&e);
+            /*
+             * An array's name is its address, so the load comes off
+             * and the subscript is added to the address itself.  A
+             * pointer's name is not: its value has to be read first
+             * and the subscript added to that.
+             *
+             * Unwrapping both made "p[0]" the byte at the pointer
+             * rather than the byte it points at - the low half of the
+             * pointer itself.  "*p" was right all along, because that
+             * path never unwrapped anything.
+             */
+            if (e && e->op == DEREF && e->type &&
+                (e->type->flags & TF_ARRAY))
+                tp = unwrapDeref(&e);
+            else
+                tp = e ? e->type : (struct type *)0;
 
             /* Get element size from type */
             elem_size = 2;  // default to short/int size

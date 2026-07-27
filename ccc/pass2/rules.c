@@ -567,6 +567,27 @@ struct rule rules[] = {
 	 * was worked out.  There is no ld (nn),n for any width, so the
 	 * address has to be in HL either way.
 	 */
+	/*
+	 * Storing through a pointer that is itself a global: load the
+	 * pointer, then write through it.  Only the long form of this
+	 * existed, so "p[0] = c" had nowhere to go once the subscript
+	 * stopped being folded into the pointer's own address.
+	 *
+	 * The word form has to get the value out of HL first, since that
+	 * is where the address has to end up.
+	 */
+	R("=(D(O),N):b", ASSIGN, P_L, P_R, P_NONE, 0,
+		"\tld hl,($LL)\n\tld (hl),$R\n", 0),
+	R("=(D(O),N):s", ASSIGN, P_L, P_R, P_NONE, 0,
+		"\tld hl,($LL)\n\tld (hl),$Rl\n" F_INCHL "\tld (hl),$Rh\n", 0),
+	R("=(D(O),A):b", ASSIGN, P_L, P_R, P_NONE, 0,
+		"\tld hl,($LL)\n\tld (hl),a\n", R_A),
+	R("=(D(O),H):b", ASSIGN, P_L, P_R, P_NONE, 0,
+		F_LDAL "\tld hl,($LL)\n\tld (hl),a\n", R_A),
+	R("=(D(O),E):s", ASSIGN, P_L, P_R, P_NONE, 0,
+		"\tld hl,($LL)\n" F_LDHLE F_INCHL F_LDHLD, R_DE),
+	R("=(D(O),H):s", ASSIGN, P_L, P_R, P_NONE, 0,
+		F_EXDEHL "\tld hl,($LL)\n" F_LDHLE F_INCHL F_LDHLD F_EXDEHL, R_HL),
 	R("=(D(O),N):l", ASSIGN, P_L, P_R, P_NONE, 0,
 		"\tld hl,($LL)\n" T_ST_IHL_N, 0),
 	R("=(D(H),N):l", ASSIGN, P_L, P_R, P_NONE, 0, T_ST_IHL_N, 0),
@@ -708,11 +729,57 @@ struct rule rules[] = {
 		F_LDLLL F_LDHLL1 "\tld (hl),$R\n", 0),
 	R("=(D(I),A):b", ASSIGN, P_L, P_R, P_NONE, 0,
 		F_LDLLL F_LDHLL1 F_LDHLA, 0),
+	/*
+	 * A register variable stored through a pointer in a frame slot,
+	 * narrowing on the way - "where[0] = v" with v in BC.  Load the
+	 * value out of BC before the pointer, since the pointer wants HL.
+	 */
+	R("=(D(I),B):b", ASSIGN, P_L, P_R, P_NONE, 0,
+		F_LDAC F_LDLLL F_LDHLL1 F_LDHLA, R_A),
+	R("=(D(I),B):s", ASSIGN, P_L, P_R, P_NONE, 0,
+		F_LDLLL F_LDHLL1 "\tld (hl),c\n" F_INCHL "\tld (hl),b\n", R_BC),
+	R("=(D(I),E):b", ASSIGN, P_L, P_R, P_NONE, 0,
+		F_LDLLL F_LDHLL1 F_LDHLE, R_DE),
+	R("=(D(I),E):s", ASSIGN, P_L, P_R, P_NONE, 0,
+		F_LDLLL F_LDHLL1 F_LDHLE F_INCHL F_LDHLD, R_DE),
 
 	/* indirect stores via HL */
 	R("=(D(H),N):b", ASSIGN, P_L, P_R, P_NONE, 0, "\tld (hl),$R\n", 0),
 	R("=(D(H),E):s", ASSIGN, P_L, P_R, P_NONE, 0, F_LDHLE F_INCHL F_LDHLD, 0),
 	R("=(D(H),E):b", ASSIGN, P_L, P_R, P_NONE, 0, F_LDHLE, 0),
+	/* a byte worked out in A, stored through an address in HL - which
+	 * is where a compound assignment through a computed address ends
+	 * up, the value in A and the address recovered from the stack */
+	R("=(D(H),A):b", ASSIGN, P_L, P_R, P_NONE, 0, F_LDHLA, R_A),
+	/*
+	 * Stepping what an address in HL points at - "p[i]++" once the
+	 * subscript has been worked out.  A postfix wants the value from
+	 * before, which is what is already in A after the load, so it can
+	 * step memory directly and is a byte shorter.
+	 */
+	R("j(H):b", POSTINC, P_L, P_NONE, P_NONE, 0, "\tld a,(hl)\n\tinc (hl)\n", R_A),
+	R("m(H):b", POSTDEC, P_L, P_NONE, P_NONE, 0, "\tld a,(hl)\n\tdec (hl)\n", R_A),
+	R("i(H):b", PREINC, P_L, P_NONE, P_NONE, 0,
+		"\tld a,(hl)\n\tinc a\n" F_LDHLA, R_A),
+	R("k(H):b", PREDEC, P_L, P_NONE, P_NONE, 0,
+		"\tld a,(hl)\n\tdec a\n" F_LDHLA, R_A),
+	/*
+	 * The word forms carry between the halves, so they go through A
+	 * rather than inc (hl) and a branch.  They leave HL on the high
+	 * byte and so say nothing about the value: statements only.
+	 */
+	R("i(H):sS", PREINC, P_L, P_NONE, P_NONE, 0,
+		"\tld a,(hl)\n\tadd a,1\n" F_LDHLA F_INCHL
+		"\tld a,(hl)\n\tadc a,0\n" F_LDHLA, 0),
+	R("k(H):sS", PREDEC, P_L, P_NONE, P_NONE, 0,
+		"\tld a,(hl)\n\tsub 1\n" F_LDHLA F_INCHL
+		"\tld a,(hl)\n\tsbc a,0\n" F_LDHLA, 0),
+	R("j(H):sS", POSTINC, P_L, P_NONE, P_NONE, 0,
+		"\tld a,(hl)\n\tadd a,1\n" F_LDHLA F_INCHL
+		"\tld a,(hl)\n\tadc a,0\n" F_LDHLA, 0),
+	R("m(H):sS", POSTDEC, P_L, P_NONE, P_NONE, 0,
+		"\tld a,(hl)\n\tsub 1\n" F_LDHLA F_INCHL
+		"\tld a,(hl)\n\tsbc a,0\n" F_LDHLA, 0),
 	R("=(D(B),N):b", ASSIGN, P_L, P_R, P_NONE, 0, F_LDLC F_LDHB "\tld (hl),$R\n", 0),
 	R("=(D(B),N):s", ASSIGN, P_L, P_R, P_NONE, 0,
 		T_BC_HL F_LDHLRL F_INCHL F_LDHLRH, 0),
