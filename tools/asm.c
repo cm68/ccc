@@ -257,6 +257,21 @@ unsigned short insn_address;
 char used_dollar;
 
 /*
+ * $ is an address in the segment being assembled, not a constant, so
+ * the linker has to add the segment base to it exactly as it does for
+ * a label.  That means the operand needs a relocation, and a
+ * relocation record names a symbol.  These stand in for one: a symbol
+ * whose segment is the one $ appeared in and whose value is zero, so
+ * that the address $ contributes rides in the operand's addend.
+ *
+ * They are deliberately not on the symbol list.  Nothing ever makes
+ * them visible, so they keep index 0xffff, which is what marks a
+ * relocation as segment-relative and what keeps them out of the
+ * object's symbol table.
+ */
+struct symbol dollarsym[2];
+
+/*
  * segment tops 
  */
 unsigned short text_top;
@@ -1002,6 +1017,30 @@ relax_jmp()
 }
 
 /*
+ * the stand-in symbol for $ in the segment now being assembled.
+ * bss has no operands to relocate, so it gets none.
+ */
+struct symbol *
+segbase()
+{
+	struct symbol *sym;
+
+	if (segment == SEG_TEXT)
+		sym = &dollarsym[0];
+	else if (segment == SEG_DATA)
+		sym = &dollarsym[1];
+	else
+		return 0;
+
+	sym->seg = segment;
+	sym->index = 0xffff;
+	sym->value = 0;
+	sym->name[0] = '$';
+	sym->name[1] = 0;
+	return sym;
+}
+
+/*
  * outputs a relocation table to whitesmith's object
  *
  * tab = relocation table
@@ -1206,7 +1245,10 @@ struct expval *vp;
 			gripe("cannot extern byte");
 
 		if (seg == SEG_TEXT) {
-			rel = (vp->sym->value - cur_address) - 1;
+			/* the addend counts: jr foo+2, and jr $+2, where the
+			 * whole address is the addend and the symbol is only
+			 * there to say which segment it is in */
+			rel = ((vp->sym->value + vp->num.w) - cur_address) - 1;
 			if ((rel < 0x80) || (rel > 0xFF7F))
 				emitbyte(rel);
 			else
@@ -1619,6 +1661,7 @@ have_token:
         vp->sym = local_resolve(token_val, token_buf[0]);
     } else if (cur_token == '$') {
 		vp->num.w = insn_address;
+		vp->sym = segbase();
 		used_dollar = 1;
     } else if (cur_token == '-') {
 		get_token();
