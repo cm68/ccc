@@ -9,7 +9,7 @@
 ;	showed.  lstde was right all along.
 
 	psect	text
-	global	lld, lldde, lstde, ldi, stide
+	global	lld, lldde, lstde, ldw, stide
 
 ; Load 32-bit from (HL) into HLDE
 ; Entry: HL = pointer to long
@@ -53,7 +53,13 @@ lstde:
 ; Load 16-bit from (HL) into HL
 ; Entry: HL = pointer
 ; Exit: HL = 16-bit value
-ldi:
+;
+; Called ldw, not ldi: ldi is a Z80 instruction, so "ldi:" was
+; assembled as one and the label was never defined.  The global stayed
+; undefined and went out in the object that way, which nothing noticed
+; until the compiler first called lld and pulled this object into a
+; link.  Nothing calls this one yet; it is right so that it can be.
+ldw:
 	ld	a,(hl)
 	inc	hl
 	ld	h,(hl)
@@ -67,16 +73,6 @@ stide:
 	ld	(hl),e
 	inc	hl
 	ld	(hl),d
-	inc	hl
-	ret
-
-; Load 16-bit from (HL) into DE
-; Entry: HL = pointer
-; Exit: DE = 16-bit value, HL advanced by 2
-ldide:
-	ld	e,(hl)
-	inc	hl
-	ld	d,(hl)
 	inc	hl
 	ret
 

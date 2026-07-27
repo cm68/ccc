@@ -1735,6 +1735,7 @@ dolongbin(Expr *e)
 	int iscmp = (longflag(op, 1) != 0);
 	Expr *opnd = iscmp ? e->left : e;
 	int swap = (op == GT || op == LE);
+	int savebc = bcinuse();
 	int sign;
 	char *fn;
 	Expr *l, *r, *n;
@@ -1758,6 +1759,8 @@ dolongbin(Expr *e)
 		if (!longable(l))
 			return NULL;
 		e->left = e->right = NULL;
+		if (savebc)
+			out("\tpush bc\n");
 		if (r->op == NUMBER) {
 			if (l->op == NUMBER)
 				loadlongc(l->u.val);
@@ -1788,6 +1791,8 @@ dolongbin(Expr *e)
 		out("\tcall ");
 		out(op == LSHIFT ? "allsh" : sign ? "alrsh" : "lushr");
 		outc('\n');
+		if (savebc)
+			out("\tpop bc\n");
 		n = mkcode(e->width, R_HL);
 		n->op = INHL;
 		n->dest = e->dest;
@@ -1808,6 +1813,16 @@ dolongbin(Expr *e)
 		return NULL;
 
 	e->left = e->right = NULL;
+
+	/*
+	 * The helper takes its right operand off the stack with a pop bc,
+	 * so it destroys a register variable living there.  Save it
+	 * underneath the operand: the helper consumes exactly the two
+	 * words it was passed, so the copy is on top again when it
+	 * returns.  Only worth it where BC actually holds something.
+	 */
+	if (savebc)
+		out("\tpush bc\n");
 
 	/*
 	 * Both want HL:DE, so neither can keep the target it was given as
@@ -1835,6 +1850,8 @@ dolongbin(Expr *e)
 	out("\tcall ");
 	out(fn);
 	outc('\n');
+	if (savebc)
+		out("\tpop bc\n");
 
 	if (iscmp) {
 		n = mkcode(e->width, longflag(op, sign));

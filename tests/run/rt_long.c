@@ -19,12 +19,17 @@
  */
 #include "rt.h"
 
-long a, b, c;
+long a, b, c, arr[4], *lp;
 unsigned long ua, ub;
 short s;
 
+long idl(v) long v; { return v; }
+long addl(x, y) long x, y; { return x + y; }
+
 main()
 {
+	long loc, loc2;
+
 	/* it has to survive a round trip through memory first */
 	a = 0x12345678L;
 	CHECK(1, a == 0x12345678L, 1);
@@ -205,6 +210,62 @@ main()
 	CHECK(70, !a, 0);
 	a = 0L;
 	CHECK(71, !a, 1);
+
+	/*
+	 * Everything above lives in a global.  The storage a long is kept
+	 * in decides how it is reached, so the rest of the classes get
+	 * their own turn: a local, a parameter, a return value, a pointer
+	 * target and an array element.
+	 */
+	loc = 0x12345678L;
+	CHECK(72, loc == 0x12345678L, 1);
+	loc = loc + 1L;
+	CHECK(73, loc == 0x12345679L, 1);
+	loc2 = loc;
+	CHECK(74, loc2 == 0x12345679L, 1);
+
+	CHECK(75, idl(0x00010002L) == 0x00010002L, 1);
+	CHECK(76, addl(0x00010000L, 5L) == 0x00010005L, 1);
+	loc = 7L;
+	CHECK(77, idl(loc) == 7L, 1);
+
+	a = 0x0a0b0c0dL;
+	lp = &a;
+	CHECK(78, *lp == 0x0a0b0c0dL, 1);
+	*lp = 0x01020304L;
+	CHECK(79, a == 0x01020304L, 1);
+
+	arr[0] = 100L;
+	arr[1] = 200L;
+	CHECK(80, arr[0] == 100L, 1);
+	CHECK(81, arr[1] == 200L, 1);
+	s = 1;
+	CHECK(82, arr[s] == 200L, 1);
+	arr[s] = 300L;
+	CHECK(83, arr[1] == 300L, 1);
+	CHECK(84, arr[0] == 100L, 1);
+
+	/*
+	 * A comparison widened into a long.  Also the case that found the
+	 * helpers clobbering BC: s lives there, and every one of them
+	 * takes its second operand off the stack with a pop bc.
+	 */
+	s = 1;
+	loc = (s < 2);
+	CHECK(85, loc == 1L, 1);
+	loc = (s > 2);
+	CHECK(86, loc == 0L, 1);
+	loc = (1 < 2);
+	CHECK(87, loc == 1L, 1);
+
+	/* stepping a local, where the address has to be worked out */
+	loc = 0x0000ffffL;
+	loc++;
+	CHECK(88, loc == 0x00010000L, 1);
+	++loc;
+	CHECK(89, loc == 0x00010001L, 1);
+	loc--;
+	CHECK(90, loc == 0x00010000L, 1);
 
 	return 0;
 }

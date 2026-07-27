@@ -56,6 +56,19 @@ static unsigned char nstage;
 #define REGBIT(r) (1 << (r))
 #define USES_BC (REGBIT(R_B) | REGBIT(R_C) | REGBIT(R_BC))
 
+/*
+ * Does this function keep a variable in BC?  Every 32-bit runtime
+ * helper takes its second operand off the stack with a pop bc, so a
+ * call to one destroys whatever was there.  Ordinary calls do not:
+ * the prologue saves BC for any function that uses it, but the
+ * helpers are hand-written and save nothing.
+ */
+int
+bcinuse(void)
+{
+	return (regsused & USES_BC) != 0;
+}
+
 static void
 emitprolog(void)
 {
