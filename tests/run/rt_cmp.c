@@ -11,6 +11,17 @@
 
 short a, b;
 unsigned short ua, ub;
+char ca, cb;
+unsigned char uca, ucb;
+short r;
+
+/*
+ * A comparison used as a branch and the same one used as a value take
+ * different paths through the compiler - one wants a flag, the other
+ * a number - so both are worth asking.
+ */
+#define BR(n, cond, want) r = 0; if (cond) r = 1; CHECK(n, r, want)
+#define VA(n, cond, want) r = (cond); CHECK(n, r, want)
 
 short lt() { return a < b; }
 short gt() { return a > b; }
@@ -103,6 +114,91 @@ main()
 	a = -32768;
 	CHECK(43, a > 0, 0);
 	CHECK(44, a < 0, 1);
+
+	/*
+	 * The same ground a byte at a time.  A byte comparison goes
+	 * through cp rather than sbc, and cp answers the unsigned
+	 * question just as squarely: "c < 0" was false for every char in
+	 * the language, and none of it left a marker.
+	 */
+	ca = -1;
+	BR(45, ca < 0, 1);
+	BR(46, ca >= 0, 0);
+	BR(47, ca > 0, 0);
+	BR(48, ca <= 0, 1);
+	VA(49, ca < 0, 1);
+	VA(50, ca >= 0, 0);
+	VA(51, ca > 0, 0);
+	VA(52, ca <= 0, 1);
+
+	ca = 0;
+	BR(53, ca < 0, 0);
+	BR(54, ca > 0, 0);
+	BR(55, ca <= 0, 1);
+	BR(56, ca >= 0, 1);
+
+	ca = 1;
+	BR(57, ca < 0, 0);
+	BR(58, ca > 0, 1);
+	BR(59, ca <= 0, 0);
+	BR(60, ca >= 0, 1);
+
+	/* two bytes either side of zero */
+	ca = -1; cb = 1;
+	BR(61, ca < cb, 1);
+	BR(62, ca > cb, 0);
+	BR(63, ca <= cb, 1);
+	BR(64, ca >= cb, 0);
+	VA(65, ca < cb, 1);
+	ca = 1; cb = -1;
+	BR(66, ca < cb, 0);
+	BR(67, ca > cb, 1);
+
+	/* against a constant that is not zero */
+	ca = -1;
+	BR(68, ca < 1, 1);
+	BR(69, ca > 1, 0);
+	BR(70, ca >= 1, 0);
+	BR(71, ca <= 1, 1);
+
+	/*
+	 * The ends of the range, where turning "> n" into ">= n+1" has
+	 * nowhere to go: the increment wraps and the answer inverts.
+	 */
+	ca = 127;
+	BR(72, ca > 127, 0);
+	BR(73, ca <= 127, 1);
+	BR(74, ca >= 127, 1);
+	BR(75, ca < 127, 0);
+	ca = -128;
+	BR(76, ca < -128, 0);
+	BR(77, ca <= -128, 1);
+	BR(78, ca > -128, 0);
+	BR(79, ca >= -128, 1);
+	ca = -128; cb = 127;
+	BR(80, ca < cb, 1);
+	BR(81, ca >= cb, 0);
+
+	/* an unsigned char keeps the unsigned answers */
+	uca = 255; ucb = 1;
+	BR(82, uca > ucb, 1);
+	BR(83, uca < ucb, 0);
+	BR(84, uca >= ucb, 1);
+	BR(85, uca <= ucb, 0);
+	VA(86, uca > ucb, 1);
+	uca = 200;
+	BR(87, uca > 0, 1);
+	BR(88, uca < 0, 0);
+	BR(89, uca >= 0, 1);
+	BR(90, uca > 128, 1);
+	uca = 255;
+	BR(91, uca > 255, 0);
+	BR(92, uca <= 255, 1);
+
+	/* equality does not care about signedness either way */
+	ca = -1; cb = -1;
+	BR(93, ca == cb, 1);
+	BR(94, ca != cb, 0);
 
 	return 0;
 }

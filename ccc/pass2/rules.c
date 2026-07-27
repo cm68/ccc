@@ -39,6 +39,26 @@
  * it.  M means less than, P means greater or equal.
  */
 #define T_SXORV "\tld a,h\n\tjp po,$$+5\n\txor 80h\n\tor a\n"
+/*
+ * The same correction for a byte, where the difference is already in A
+ * so there is nothing to fetch first.  Note the subtraction has to be
+ * sub rather than cp: cp keeps A, but the top bit has to be flipped in
+ * the value for or a to read the corrected sign back out.  Nothing
+ * needs A afterwards - these only ever produce a flag.
+ */
+#define T_SXORA "\tjp po,$$+5\n\txor 80h\n\tor a\n"
+/*
+ * "greater than" and "less or equal" are not one flag the way "less
+ * than" is: they need the sign and the zero together.  Given S and Z
+ * set from a corrected difference, send the negative side into an
+ * xor a so that both paths arrive with Z meaning false.
+ *
+ *   J+0  jp m   3   negative
+ *   J+3  jr     2   otherwise Z already says whether it was equal
+ *   J+5  xor a  1
+ *   J+6
+ */
+#define T_SZTAIL "\tjp m,$$+5\n\tjr $$+3\n\txor a\n"
 /* address on the stack, value in HL -> address in HL, value in DE */
 #define T_SWAP_ADDR "\tpop de\n\tex de,hl\n"
 /* store DE through HL, then bring the value back to HL */
@@ -738,26 +758,103 @@ struct rule rules[] = {
 	R("T(H,N)", LT, P_L, P_R, P_NONE, 0, "\tld de,$R\n\tor a\n\tsbc hl,de\n", F_C),
 	R("Y(H,N)", GE, P_L, P_R, P_NONE, 0, "\tld de,$R\n\tor a\n\tsbc hl,de\n", F_NC),
 
+	/*
+	 * Signed byte comparisons.  These have to come before the
+	 * unsigned forms below, which match either signedness and answer
+	 * the unsigned question: cp sets carry on a borrow, and nothing
+	 * borrows against zero, so "c < 0" was false for every char in
+	 * the language.  Equality needs no signed form - the bits are
+	 * either equal or they are not.
+	 *
+	 * Against zero the sign bit is the whole answer, and or a puts it
+	 * in S for free.  Zero is a subset of NUMBER, so these must also
+	 * precede the T/Y(A,N) rules: first match wins.
+	 *
+	 * None of these ask for flag context, unlike the unsigned rules
+	 * below, which is what let a byte comparison used for its value
+	 * fall through to no rule at all.  A flag becomes a number by the
+	 * same path a word comparison uses.
+	 */
+	R("T(A,Z)", LT, P_L, P_R, P_NONE, RF_SIGNL, "\tor a\n", F_M),
+	R("Y(A,Z)", GE, P_L, P_R, P_NONE, RF_SIGNL, "\tor a\n", F_P),
+	/* or a sets S and Z together, which is what > 0 and <= 0 need */
+	R("G(A,Z)", GT, P_L, P_R, P_NONE, RF_SIGNL, "\tor a\n" T_SZTAIL, F_NZ),
+	R("W(A,Z)", LE, P_L, P_R, P_NONE, RF_SIGNL, "\tor a\n" T_SZTAIL, F_Z),
+	/*
+	 * Against anything else, the same sign-exclusive-or-overflow the
+	 * word rules use.  Seven bytes against cp's two, which is why the
+	 * unsigned forms below keep cp and why zero stays on the rules
+	 * above.
+	 *
+	 * > and <= go the long way round rather than becoming >= and <
+	 * against the constant plus one, the way the unsigned rules do.
+	 * That trick has nowhere to go at 127, where the increment wraps
+	 * to -128 and turns a test that is always false into one that is
+	 * always true.
+	 */
+	R("T(A,K)", LT, P_L, P_R, P_NONE, RF_SIGNL, "\tsub e\n" T_SXORA, F_M),
+	R("Y(A,K)", GE, P_L, P_R, P_NONE, RF_SIGNL, "\tsub e\n" T_SXORA, F_P),
+	R("G(A,K)", GT, P_L, P_R, P_NONE, RF_SIGNL,
+		"\tsub e\n" T_SXORA T_SZTAIL, F_NZ),
+	R("W(A,K)", LE, P_L, P_R, P_NONE, RF_SIGNL,
+		"\tsub e\n" T_SXORA T_SZTAIL, F_Z),
+	R("T(A,N)", LT, P_L, P_R, P_NONE, RF_SIGNL, "\tsub $R\n" T_SXORA, F_M),
+	R("Y(A,N)", GE, P_L, P_R, P_NONE, RF_SIGNL, "\tsub $R\n" T_SXORA, F_P),
+	R("G(A,N)", GT, P_L, P_R, P_NONE, RF_SIGNL,
+		"\tsub $R\n" T_SXORA T_SZTAIL, F_NZ),
+	R("W(A,N)", LE, P_L, P_R, P_NONE, RF_SIGNL,
+		"\tsub $R\n" T_SXORA T_SZTAIL, F_Z),
+	R("T(D(I),N):b", LT, P_L, P_R, P_NONE, RF_SIGNL,
+		"\tld a,($LL)\n\tsub $R\n" T_SXORA, F_M),
+	R("Y(D(I),N):b", GE, P_L, P_R, P_NONE, RF_SIGNL,
+		"\tld a,($LL)\n\tsub $R\n" T_SXORA, F_P),
+	R("G(D(I),N):b", GT, P_L, P_R, P_NONE, RF_SIGNL,
+		"\tld a,($LL)\n\tsub $R\n" T_SXORA T_SZTAIL, F_NZ),
+	R("W(D(I),N):b", LE, P_L, P_R, P_NONE, RF_SIGNL,
+		"\tld a,($LL)\n\tsub $R\n" T_SXORA T_SZTAIL, F_Z),
+
 	/* byte comparisons */
 	/* byte comparison against another byte, in E */
-	R("Q(A,K):F", EQ, P_L, P_R, P_NONE, 0, "\tcp e\n", F_Z),
-	R("U(A,K):F", NEQ, P_L, P_R, P_NONE, 0, "\tcp e\n", F_NZ),
-	R("T(A,K):F", LT, P_L, P_R, P_NONE, 0, "\tcp e\n", F_C),
-	R("Y(A,K):F", GE, P_L, P_R, P_NONE, 0, "\tcp e\n", F_NC),
-	R("Q(A,N):F", EQ, P_L, P_R, P_NONE, 0, "\tcp $R\n", F_Z),
-	R("U(A,N):F", NEQ, P_L, P_R, P_NONE, 0, "\tcp $R\n", F_NZ),
-	R("T(A,N):F", LT, P_L, P_R, P_NONE, 0, "\tcp $R\n", F_C),
-	R("Y(A,N):F", GE, P_L, P_R, P_NONE, 0, "\tcp $R\n", F_NC),
-	R("Q(D(I),N):bF", EQ, P_L, P_R, P_NONE, 0, "\tld a,($LL)\n\tcp $R\n", F_Z),
-	R("U(D(I),N):bF", NEQ, P_L, P_R, P_NONE, 0, "\tld a,($LL)\n\tcp $R\n", F_NZ),
-	R("T(D(I),N):bF", LT, P_L, P_R, P_NONE, 0, "\tld a,($LL)\n\tcp $R\n", F_C),
-	R("Y(D(I),N):bF", GE, P_L, P_R, P_NONE, 0, "\tld a,($LL)\n\tcp $R\n", F_NC),
+	R("Q(A,K)", EQ, P_L, P_R, P_NONE, 0, "\tcp e\n", F_Z),
+	R("U(A,K)", NEQ, P_L, P_R, P_NONE, 0, "\tcp e\n", F_NZ),
+	R("T(A,K)", LT, P_L, P_R, P_NONE, 0, "\tcp e\n", F_C),
+	R("Y(A,K)", GE, P_L, P_R, P_NONE, 0, "\tcp e\n", F_NC),
+	R("Q(A,N)", EQ, P_L, P_R, P_NONE, 0, "\tcp $R\n", F_Z),
+	R("U(A,N)", NEQ, P_L, P_R, P_NONE, 0, "\tcp $R\n", F_NZ),
+	R("T(A,N)", LT, P_L, P_R, P_NONE, 0, "\tcp $R\n", F_C),
+	R("Y(A,N)", GE, P_L, P_R, P_NONE, 0, "\tcp $R\n", F_NC),
+	R("Q(D(I),N):b", EQ, P_L, P_R, P_NONE, 0, "\tld a,($LL)\n\tcp $R\n", F_Z),
+	R("U(D(I),N):b", NEQ, P_L, P_R, P_NONE, 0, "\tld a,($LL)\n\tcp $R\n", F_NZ),
+	R("T(D(I),N):b", LT, P_L, P_R, P_NONE, 0, "\tld a,($LL)\n\tcp $R\n", F_C),
+	R("Y(D(I),N):b", GE, P_L, P_R, P_NONE, 0, "\tld a,($LL)\n\tcp $R\n", F_NC),
+
+	/*
+	 * Unsigned > and <=.  cp leaves the answer spread over two flags -
+	 * carry says below, zero says equal - and "at or below" wants
+	 * both.  Rather than branch twice, fold equality into the carry:
+	 * when the two were equal, set it.  Carry then means "at or
+	 * below" on its own, and its complement means "above".
+	 *
+	 *   J+0  cp     1   C = below, Z = equal
+	 *   J+1  jr nz  2   not equal, so carry already answers
+	 *   J+3  scf    1   equal, so make carry say so
+	 *   J+4
+	 *
+	 * This replaces turning "> n" into ">= n+1", which has nowhere to
+	 * go at 255: the increment wraps to zero and a test that is never
+	 * true becomes one that always is.  Two bytes more, and right at
+	 * both ends of the range.
+	 */
+	R("G(A,K)", GT, P_L, P_R, P_NONE, 0, "\tcp e\n\tjr nz,$$+3\n\tscf\n", F_NC),
+	R("W(A,K)", LE, P_L, P_R, P_NONE, 0, "\tcp e\n\tjr nz,$$+3\n\tscf\n", F_C),
+	R("G(A,N)", GT, P_L, P_R, P_NONE, 0, "\tcp $R\n\tjr nz,$$+3\n\tscf\n", F_NC),
+	R("W(A,N)", LE, P_L, P_R, P_NONE, 0, "\tcp $R\n\tjr nz,$$+3\n\tscf\n", F_C),
+	R("G(D(I),N):b", GT, P_L, P_R, P_NONE, 0,
+		"\tld a,($LL)\n\tcp $R\n\tjr nz,$$+3\n\tscf\n", F_NC),
+	R("W(D(I),N):b", LE, P_L, P_R, P_NONE, 0,
+		"\tld a,($LL)\n\tcp $R\n\tjr nz,$$+3\n\tscf\n", F_C),
 
 	/* relational transformations */
-	R("G(A,N):F", GE, P_L, P_R, P_NONE, RF_INC1, "\tcp $R\n", F_NC),
-	R("W(A,N):F", LT, P_L, P_R, P_NONE, RF_INC1, "\tcp $R\n", F_C),
-	R("G(D(I),N):bF", GE, P_L, P_R, P_NONE, RF_INC1, "\tld a,($LL)\n\tcp $R\n", F_NC),
-	R("W(D(I),N):bF", LT, P_L, P_R, P_NONE, RF_INC1, "\tld a,($LL)\n\tcp $R\n", F_C),
 	R("G(H,N)", GE, P_L, P_R, P_NONE, RF_INC1, "\tld de,$R\n\tor a\n\tsbc hl,de\n", F_NC),
 	R("W(H,N)", LT, P_L, P_R, P_NONE, RF_INC1, "\tld de,$R\n\tor a\n\tsbc hl,de\n", F_C),
 
