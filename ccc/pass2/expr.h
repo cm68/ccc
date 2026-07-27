@@ -72,6 +72,12 @@ void	assign(Expr *e, unsigned char tgt);	/* register assignment */
 Expr	*dupexpr(Expr *e);
 void	freeexpr(Expr *e);
 Expr	*rewrite(Expr *e);
+/* the condition that branches when a reduced condition is false,
+ * emitting the zero test first if the answer came back as a value.
+ * Declared here rather than in pass2.h because it needs Expr, and
+ * with empty parens zc3 reads it as taking none and objects to the
+ * definition. */
+char	*falsecc(Expr *e);
 
 /* parser */
 Expr	*readexpr(void);
