@@ -59,6 +59,11 @@
  *   J+6
  */
 #define T_SZTAIL "\tjp m,$$+5\n\tjr $$+3\n\txor a\n"
+/* the address of a frame slot, worked out into HL */
+#define T_IDX_ADDR "\tpush $Lr\n\tpop hl\n\tld de,$Lo\n\tadd hl,de\n"
+/* four bytes of a constant written through the address in HL */
+#define T_ST_IHL_N "\tld (hl),$Rl\n\tinc hl\n\tld (hl),$Rh\n\tinc hl\n" \
+	"\tld (hl),$R2\n\tinc hl\n\tld (hl),$R3\n"
 /* address on the stack, value in HL -> address in HL, value in DE */
 #define T_SWAP_ADDR "\tpop de\n\tex de,hl\n"
 /* store DE through HL, then bring the value back to HL */
@@ -239,6 +244,14 @@ struct rule rules[] = {
 	R("=(V,N)", ASSIGN, P_L, P_R, P_L, RF_HL, "\tld hl,$R\n", R_HL),
 
 	/* load constant to register (already converted) */
+	/*
+	 * A 32-bit constant first, since the rule below carries no width
+	 * and would otherwise take it and keep the low half.  That is how
+	 * a long constant passed as an argument arrived as its bottom two
+	 * bytes with DE left holding whatever was there before.
+	 */
+	R("=(H,N):l", ASSIGN, P_L, P_R, P_NONE, 0,
+		"\tld e,$Rl\n\tld d,$Rh\n\tld l,$R2\n\tld h,$R3\n", R_HL),
 	R("=(B,N)", ASSIGN, P_L, P_R, P_NONE, 0, "\tld bc,$R\n", R_BC),
 	R("=(E,N)", ASSIGN, P_L, P_R, P_NONE, 0, "\tld de,$R\n", R_DE),
 	R("=(H,N)", ASSIGN, P_L, P_R, P_NONE, 0, "\tld hl,$R\n", R_HL),
@@ -365,17 +378,46 @@ struct rule rules[] = {
 	 * statement, which is nearly always, there is nothing to read.
 	 */
 	R("j(O):l", POSTINC, P_L, P_NONE, P_NONE, 0,
-		"\tld hl,$L\n\tcall lainc\n", R_HL),
+		"\tld hl,$L\n\tpush bc\n\tcall lainc\n\tpop bc\n", R_HL),
 	R("m(O):l", POSTDEC, P_L, P_NONE, P_NONE, 0,
-		"\tld hl,$L\n\tcall ladec\n", R_HL),
+		"\tld hl,$L\n\tpush bc\n\tcall ladec\n\tpop bc\n", R_HL),
 	R("i(O):lS", PREINC, P_L, P_NONE, P_NONE, 0,
-		"\tld hl,$L\n\tcall lainc\n", R_HL),
+		"\tld hl,$L\n\tpush bc\n\tcall lainc\n\tpop bc\n", R_HL),
 	R("k(O):lS", PREDEC, P_L, P_NONE, P_NONE, 0,
-		"\tld hl,$L\n\tcall ladec\n", R_HL),
+		"\tld hl,$L\n\tpush bc\n\tcall ladec\n\tpop bc\n", R_HL),
 	R("i(O):l", PREINC, P_L, P_NONE, P_NONE, 0,
-		"\tld hl,$L\n\tcall lainc\n\tld de,($L)\n\tld hl,($L++)\n", R_HL),
+		"\tld hl,$L\n\tpush bc\n\tcall lainc\n\tpop bc\n\tld de,($L)\n\tld hl,($L++)\n", R_HL),
 	R("k(O):l", PREDEC, P_L, P_NONE, P_NONE, 0,
-		"\tld hl,$L\n\tcall ladec\n\tld de,($L)\n\tld hl,($L++)\n", R_HL),
+		"\tld hl,$L\n\tpush bc\n\tcall ladec\n\tpop bc\n\tld de,($L)\n\tld hl,($L++)\n", R_HL),
+	/*
+	 * The same for a frame slot, where the address has to be worked
+	 * out: (iy+d) reaches a byte at a time, and the helper wants the
+	 * whole address in HL.
+	 */
+	R("j(I):l", POSTINC, P_L, P_NONE, P_NONE, 0,
+		T_IDX_ADDR "\tpush bc\n\tcall lainc\n\tpop bc\n", R_HL),
+	R("m(I):l", POSTDEC, P_L, P_NONE, P_NONE, 0,
+		T_IDX_ADDR "\tpush bc\n\tcall ladec\n\tpop bc\n", R_HL),
+	R("i(I):lS", PREINC, P_L, P_NONE, P_NONE, 0,
+		T_IDX_ADDR "\tpush bc\n\tcall lainc\n\tpop bc\n", R_HL),
+	R("k(I):lS", PREDEC, P_L, P_NONE, P_NONE, 0,
+		T_IDX_ADDR "\tpush bc\n\tcall ladec\n\tpop bc\n", R_HL),
+	R("i(I):l", PREINC, P_L, P_NONE, P_NONE, 0,
+		T_IDX_ADDR "\tpush bc\n\tcall lainc\n\tpop bc\n" T_IDX_ADDR "\tcall lld\n", R_HL),
+	R("k(I):l", PREDEC, P_L, P_NONE, P_NONE, 0,
+		T_IDX_ADDR "\tpush bc\n\tcall ladec\n\tpop bc\n" T_IDX_ADDR "\tcall lld\n", R_HL),
+
+	/*
+	 * Storing a long constant through an address, which the four
+	 * (hl) writes reach whether it came from a pointer variable or
+	 * was worked out.  There is no ld (nn),n for any width, so the
+	 * address has to be in HL either way.
+	 */
+	R("=(D(O),N):l", ASSIGN, P_L, P_R, P_NONE, 0,
+		"\tld hl,($LL)\n" T_ST_IHL_N, 0),
+	R("=(D(H),N):l", ASSIGN, P_L, P_R, P_NONE, 0, T_ST_IHL_N, 0),
+	R("=(D(I),N):l", ASSIGN, P_L, P_R, P_NONE, 0,
+		"\tld l,($LL)\n\tld h,($LL+)\n" T_ST_IHL_N, 0),
 
 	/* complement of a word; the long form is handled in rewrite.c,
 	 * beside the long negation it shares its shape with */
@@ -535,6 +577,9 @@ struct rule rules[] = {
 	R("=(E,I)", ASSIGN, P_L, P_R, P_NONE, 0, "\tld e,($R)\n\tld d,($R+)\n", R_DE),
 	R("=(I,O)", ASSIGN, P_L, P_R, P_NONE, 0,
 		"\tld hl,$R\n" T_IDX_S_ST, R_HL),
+	/* one symbol's address into another symbol's storage - "lp = &g" */
+	R("=(O,O)", ASSIGN, P_L, P_R, P_NONE, 0,
+		"\tld hl,$R\n\tld ($L),hl\n", R_HL),
 	R("=(B,O)", ASSIGN, P_L, P_R, P_NONE, 0, "\tld bc,$R\n", R_BC),
 	R("=(H,O)", ASSIGN, P_L, P_R, P_NONE, 0, "\tld hl,$R\n", R_HL),
 	R("=(E,O)", ASSIGN, P_L, P_R, P_NONE, 0, "\tld de,$R\n", R_DE),
@@ -799,12 +844,39 @@ struct rule rules[] = {
 		"\tld e,c\n\tld d,b\n\tex de,hl\n\tor a\n\tsbc hl,de\n", F_C),
 	R("Q(B,E)", EQ, P_L, P_R, P_NONE, 0, T_BC_HL "\tor a\n\tsbc hl,de\n", F_Z),
 	R("U(B,E)", NEQ, P_L, P_R, P_NONE, 0, T_BC_HL "\tor a\n\tsbc hl,de\n", F_NZ),
+	/*
+	 * A register variable compared, signed.  The rules below answer
+	 * with carry, which is the unsigned question - the same fault the
+	 * HL forms had, in the register that fix did not reach.  A
+	 * variable that lives in BC and goes negative compared as though
+	 * it were large: "i < 2" was false for i = -1.
+	 *
+	 * Greater-than and at-or-below have no flag of their own, so the
+	 * operands are handed over the other way round, which is what the
+	 * ex de,hl is doing.
+	 */
+	R("T(B,E)", LT, P_L, P_R, P_NONE, RF_SIGNL,
+		T_BC_HL T_SUB_DE T_SXORV, F_M),
+	R("Y(B,E)", GE, P_L, P_R, P_NONE, RF_SIGNL,
+		T_BC_HL T_SUB_DE T_SXORV, F_P),
+	R("G(B,E)", GT, P_L, P_R, P_NONE, RF_SIGNL,
+		T_BC_HL "\tex de,hl\n" T_SUB_DE T_SXORV, F_M),
+	R("W(B,E)", LE, P_L, P_R, P_NONE, RF_SIGNL,
+		T_BC_HL "\tex de,hl\n" T_SUB_DE T_SXORV, F_P),
 	R("T(B,E)", LT, P_L, P_R, P_NONE, 0, T_BC_HL "\tor a\n\tsbc hl,de\n", F_C),
 	R("Y(B,E)", GE, P_L, P_R, P_NONE, 0, T_BC_HL "\tor a\n\tsbc hl,de\n", F_NC),
 	R("Q(B,N)", EQ, P_L, P_R, P_NONE, 0,
 		T_BC_HL "\tld de,$R\n\tor a\n\tsbc hl,de\n", F_Z),
 	R("U(B,N)", NEQ, P_L, P_R, P_NONE, 0,
 		T_BC_HL "\tld de,$R\n\tor a\n\tsbc hl,de\n", F_NZ),
+	R("T(B,N)", LT, P_L, P_R, P_NONE, RF_SIGNL,
+		T_BC_HL "\tld de,$R\n" T_SUB_DE T_SXORV, F_M),
+	R("Y(B,N)", GE, P_L, P_R, P_NONE, RF_SIGNL,
+		T_BC_HL "\tld de,$R\n" T_SUB_DE T_SXORV, F_P),
+	R("G(B,N)", GT, P_L, P_R, P_NONE, RF_SIGNL,
+		T_BC_HL "\tld de,$R\n\tex de,hl\n" T_SUB_DE T_SXORV, F_M),
+	R("W(B,N)", LE, P_L, P_R, P_NONE, RF_SIGNL,
+		T_BC_HL "\tld de,$R\n\tex de,hl\n" T_SUB_DE T_SXORV, F_P),
 	R("T(B,N)", LT, P_L, P_R, P_NONE, 0,
 		T_BC_HL "\tld de,$R\n\tor a\n\tsbc hl,de\n", F_C),
 	R("Y(B,N)", GE, P_L, P_R, P_NONE, 0,
@@ -914,6 +986,15 @@ struct rule rules[] = {
 	/* relational transformations */
 	R("G(H,N)", GE, P_L, P_R, P_NONE, RF_INC1, "\tld de,$R\n\tor a\n\tsbc hl,de\n", F_NC),
 	R("W(H,N)", LT, P_L, P_R, P_NONE, RF_INC1, "\tld de,$R\n\tor a\n\tsbc hl,de\n", F_C),
+	/* the same for a register variable, which had neither */
+	R("G(B,N)", GE, P_L, P_R, P_NONE, RF_INC1,
+		T_BC_HL "\tld de,$R\n\tor a\n\tsbc hl,de\n", F_NC),
+	R("W(B,N)", LT, P_L, P_R, P_NONE, RF_INC1,
+		T_BC_HL "\tld de,$R\n\tor a\n\tsbc hl,de\n", F_C),
+	R("G(B,E)", GT, P_L, P_R, P_NONE, 0,
+		T_BC_HL "\tex de,hl\n\tor a\n\tsbc hl,de\n", F_C),
+	R("W(B,E)", LE, P_L, P_R, P_NONE, 0,
+		T_BC_HL "\tex de,hl\n\tor a\n\tsbc hl,de\n", F_NC),
 
 	/* NEQ -> BANG(EQ) */
 	R("U(_,N)", 0, P_NONE, P_NONE, P_NONE, RF_NOTEQ, NULL, 0),

@@ -37,6 +37,10 @@ short uge() { return ua >= ub; }
 
 main()
 {
+	/* locals, so the compiler is free to keep them in registers */
+	short ra, rb;
+	unsigned short ura;
+
 	/* straddling zero - the case carry gets wrong */
 	a = -1; b = 1;
 	CHECK(1, lt(), 1);
@@ -199,6 +203,41 @@ main()
 	ca = -1; cb = -1;
 	BR(93, ca == cb, 1);
 	BR(94, ca != cb, 0);
+
+	/*
+	 * The same questions of a variable the compiler kept in a
+	 * register.  Everything above is a global, and BC had its own set
+	 * of comparison rules that the signed fix never reached: a
+	 * register variable that went negative compared as though it were
+	 * large, and "greater than" and "at or below" had no rule at all,
+	 * so they emitted nothing and answered with whatever the flags
+	 * happened to hold.
+	 */
+	ra = -1;
+	BR(95, ra < 2, 1);
+	BR(96, ra > 2, 0);
+	BR(97, ra >= 2, 0);
+	BR(98, ra <= 2, 1);
+	VA(99, ra < 2, 1);
+	VA(100, ra > 2, 0);
+	rb = 2;
+	BR(101, ra < rb, 1);
+	BR(102, ra > rb, 0);
+	BR(103, ra <= rb, 1);
+	BR(104, ra >= rb, 0);
+
+	ra = 5;
+	BR(105, ra > 2, 1);
+	BR(106, ra <= 2, 0);
+	BR(107, ra >= 5, 1);
+	BR(108, ra < 5, 0);
+
+	/* unsigned keeps the top bit a value here too */
+	ura = 65535;
+	BR(109, ura > 2, 1);
+	BR(110, ura < 2, 0);
+	BR(111, ura >= 2, 1);
+	BR(112, ura <= 2, 0);
 
 	return 0;
 }
