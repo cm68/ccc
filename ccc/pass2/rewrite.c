@@ -634,6 +634,31 @@ emitasm(char *tpl, Expr *e)
 				p++;
 				continue;
 			}
+			/*
+			 * $[ and $] bracket a call to one of the 16-bit
+			 * helpers, which take their second operand off the
+			 * stack with a pop bc and do not put it back.  A
+			 * register variable living in BC has to be saved
+			 * across that, and only here is it known whether
+			 * there is one - the table cannot say.
+			 *
+			 * Without it "t = a * a" in a function with a
+			 * register variable quietly destroyed the variable,
+			 * and when the variable was a loop subscript doing
+			 * the multiplying, the loop did not end.
+			 */
+			if (*p == '[') {
+				if (bcinuse())
+					out("\tpush bc\n");
+				p++;
+				continue;
+			}
+			if (*p == ']') {
+				if (bcinuse())
+					out("\tpop bc\n");
+				p++;
+				continue;
+			}
 			/* Target register substitution */
 			if (*p == 't') {
 				outc(e->tgt == R_DE ? 'e' : 'l');
@@ -2868,9 +2893,21 @@ rewrite(Expr *e)
 	if (r && r->op == NUMBER)
 		r = constresult(r);
 
-	/* Check if code generation is incomplete */
-	if (r && r->op != CODE && r->op != INHL && r->op != INDE &&
-	    r->op != INBC && r->op != INA && r->op != INE) {
+	/*
+	 * Check if code generation is incomplete.
+	 *
+	 * A tree that reduced is a single register node with nothing
+	 * under it, so children left standing mean a rule was missing
+	 * somewhere below - and only the root used to be looked at.  A
+	 * parent that still matched hid it: "arr[i] = i * a" with i in a
+	 * register has no rule for multiplying BC by DE, so the multiply
+	 * and its left operand emitted nothing, the store above them
+	 * matched anyway, and the wrong value went into the array with
+	 * nothing said.
+	 */
+	if (r && ((r->op != CODE && r->op != INHL && r->op != INDE &&
+	    r->op != INBC && r->op != INA && r->op != INE) ||
+	    r->left || r->right)) {
 		out("; XXXXXX incomplete: ");
 #ifdef DEBUG
 		dumpexpr(r);

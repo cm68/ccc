@@ -351,21 +351,45 @@ struct rule rules[] = {
 	 * linked and run, because a call to a symbol that does not exist
 	 * assembles perfectly well.
 	 */
-	R("*(H,E)", STAR, P_L, P_R, P_NONE, 0, "\tcall amul\n", R_HL),
-	R("/(H,E)", DIV, P_L, P_R, P_NONE, RF_SIGNL, "\tcall adiv\n", R_HL),
-	R("/(H,E)", DIV, P_L, P_R, P_NONE, 0, "\tcall ldiv\n", R_HL),
+	R("*(H,E)", STAR, P_L, P_R, P_NONE, 0, "$[\tcall amul\n$]", R_HL),
+	/*
+	 * The same with the left operand in BC, which a register variable
+	 * puts it in.  There was a form for BC times a constant and none
+	 * for BC times a value, so "i * a" with i in a register emitted
+	 * no multiply at all - and no marker either, the store above it
+	 * having matched.
+	 *
+	 * BC is saved across the call because amul takes its second
+	 * operand off the stack with a pop bc and does not put it back.
+	 * The register variable that was the left operand is still wanted
+	 * afterwards, and when it was the subscript of the loop doing the
+	 * multiplying the loop did not end.
+	 */
+	R("*(B,E)", STAR, P_L, P_R, P_NONE, 0,
+		"$[" T_BC_HL "\tcall amul\n$]", R_HL),
+	R("/(H,E)", DIV, P_L, P_R, P_NONE, RF_SIGNL, "$[\tcall adiv\n$]", R_HL),
+	R("/(H,E)", DIV, P_L, P_R, P_NONE, 0, "$[\tcall ldiv\n$]", R_HL),
+	/* and with the left operand in BC, as a register variable puts it */
+	R("/(B,E)", DIV, P_L, P_R, P_NONE, RF_SIGNL,
+		"$[" T_BC_HL "\tcall adiv\n$]", R_HL),
+	R("/(B,E)", DIV, P_L, P_R, P_NONE, 0,
+		"$[" T_BC_HL "\tcall ldiv\n$]", R_HL),
+	R("%(B,E)", MOD, P_L, P_R, P_NONE, RF_SIGNL,
+		"$[" T_BC_HL "\tcall amod\n$]", R_HL),
+	R("%(B,E)", MOD, P_L, P_R, P_NONE, 0,
+		"$[" T_BC_HL "\tcall lmod\n$]", R_HL),
 	/* by a constant, which is what dividing a pointer difference by
 	 * the element size looks like */
 	R("/(H,N)", DIV, P_L, P_R, P_NONE, RF_SIGNL,
-		F_LDDER "\tcall adiv\n", R_HL),
+		F_LDDER "$[\tcall adiv\n$]", R_HL),
 	R("/(H,N)", DIV, P_L, P_R, P_NONE, 0,
-		F_LDDER "\tcall ldiv\n", R_HL),
+		F_LDDER "$[\tcall ldiv\n$]", R_HL),
 	R("%(H,N)", MOD, P_L, P_R, P_NONE, RF_SIGNL,
-		F_LDDER "\tcall amod\n", R_HL),
+		F_LDDER "$[\tcall amod\n$]", R_HL),
 	R("%(H,N)", MOD, P_L, P_R, P_NONE, 0,
-		F_LDDER "\tcall lmod\n", R_HL),
-	R("%(H,E)", MOD, P_L, P_R, P_NONE, RF_SIGNL, "\tcall amod\n", R_HL),
-	R("%(H,E)", MOD, P_L, P_R, P_NONE, 0, "\tcall lmod\n", R_HL),
+		F_LDDER "$[\tcall lmod\n$]", R_HL),
+	R("%(H,E)", MOD, P_L, P_R, P_NONE, RF_SIGNL, "$[\tcall amod\n$]", R_HL),
+	R("%(H,E)", MOD, P_L, P_R, P_NONE, 0, "$[\tcall lmod\n$]", R_HL),
 
 	/*
 	 * Store to a frame slot.  A constant goes straight into the slot
@@ -1061,15 +1085,15 @@ struct rule rules[] = {
 		T_BC_HL F_LDDER F_ORA F_SBCHLDE, R_HL),
 	R("<(B,N)", LSHIFT, P_L, P_R, P_NONE, 0, T_BC_HL "%(" T_ADD_HL_HL ")", R_HL),
 	R("/(B,N)", DIV, P_L, P_R, P_NONE, RF_SIGNL,
-		T_BC_HL F_LDDER "\tcall adiv\n", R_HL),
+		T_BC_HL F_LDDER "$[\tcall adiv\n$]", R_HL),
 	R("/(B,N)", DIV, P_L, P_R, P_NONE, 0,
-		T_BC_HL F_LDDER "\tcall ldiv\n", R_HL),
+		T_BC_HL F_LDDER "$[\tcall ldiv\n$]", R_HL),
 	R("%(B,N)", MOD, P_L, P_R, P_NONE, RF_SIGNL,
-		T_BC_HL F_LDDER "\tcall amod\n", R_HL),
+		T_BC_HL F_LDDER "$[\tcall amod\n$]", R_HL),
 	R("%(B,N)", MOD, P_L, P_R, P_NONE, 0,
-		T_BC_HL F_LDDER "\tcall lmod\n", R_HL),
+		T_BC_HL F_LDDER "$[\tcall lmod\n$]", R_HL),
 	R("*(B,N)", STAR, P_L, P_R, P_NONE, 0,
-		T_BC_HL F_LDDER "\tcall amul\n", R_HL),
+		T_BC_HL F_LDDER "$[\tcall amul\n$]", R_HL),
 	R("+(H,M)", PLUS, P_L, P_R, P_NONE, 0, "%(\tinc hl\n)", R_HL),
 	R("-(H,M)", MINUS, P_L, P_R, P_NONE, 0, "%(\tdec hl\n)", R_HL),
 	R("+(A,M)", PLUS, P_L, P_R, P_NONE, 0, "%(\tinc a\n)", R_A),

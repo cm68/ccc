@@ -119,14 +119,8 @@ arrayblk(a) short a;
 		short arr[4];
 		short i;
 
-		/*
-		 * Added and not multiplied: a multiply on the value side of
-		 * an indexed store loses the multiply and then clobbers what
-		 * it computed.  That happens at function scope too and has
-		 * nothing to do with the block.
-		 */
 		for (i = 0; i < 4; i++)
-			arr[i] = i + a;
+			arr[i] = i * a;
 		r = arr[3];
 	}
 	return r;
@@ -152,8 +146,8 @@ main()
 	CHECK(12, three(0), 7);
 	CHECK(13, three(10), 17);
 
-	CHECK(14, arrayblk(2), 5);
-	CHECK(15, arrayblk(0), 3);
+	CHECK(14, arrayblk(2), 6);
+	CHECK(15, arrayblk(0), 0);
 
 	/* the frame survived all of that, so the caller is still here */
 	g = 1234;
