@@ -1008,6 +1008,16 @@ normtree(Expr *e)
 	 */
 	if (e->op == ASSIGN && e->right && e->right->dest == DEST_NONE)
 		e->right->dest = DEST_VALUE;
+	/*
+	 * A conversion is transparent: what it converts is wanted exactly
+	 * as much as the conversion is.  Without this the destination
+	 * stopped at the widening and everything under it read as
+	 * discarded - so "r = g++" took the form of the step that throws
+	 * its value away, and then widened the address it had left in HL.
+	 */
+	if ((e->op == SEXT || e->op == WIDEN) && e->left &&
+	    e->left->dest == DEST_NONE)
+		e->left->dest = e->dest;
 	normtree(e->left);
 	normtree(e->right);
 }

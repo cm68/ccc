@@ -778,6 +778,33 @@ struct rule rules[] = {
 	  "\tld l,($L)\n\tld h,($L+)\n" F_DECHL T_IDX_S_ST, R_HL),
 	R("i(I):b", PREINC, P_L, P_NONE, P_NONE, 0, F_LDAL1 "\tinc a\n" F_LDLA1, R_A),
 	R("k(I):b", PREDEC, P_L, P_NONE, P_NONE, 0, F_LDAL1 "\tdec a\n" F_LDLA1, R_A),
+	/* a postfix wants the value from before, so the step happens in
+	 * memory and the load beats it there */
+	R("j(I):b", POSTINC, P_L, P_NONE, P_NONE, 0, F_LDAL1 "\tinc ($L)\n", R_A),
+	R("m(I):b", POSTDEC, P_L, P_NONE, P_NONE, 0, F_LDAL1 "\tdec ($L)\n", R_A),
+
+	/*
+	 * Stepping a byte at a global.  There is no inc (nn), but there
+	 * is inc (hl), so the address goes in HL and the step happens in
+	 * memory - four bytes against the seven that loading, adding and
+	 * storing would take.
+	 *
+	 * Which side of the step the load falls on is the whole
+	 * difference between prefix and postfix, and a statement wants
+	 * neither: it is only the step.
+	 */
+	R("i(O):bS", PREINC, P_L, P_NONE, P_NONE, 0, F_LDHLL "\tinc (hl)\n", 0),
+	R("k(O):bS", PREDEC, P_L, P_NONE, P_NONE, 0, F_LDHLL "\tdec (hl)\n", 0),
+	R("j(O):bS", POSTINC, P_L, P_NONE, P_NONE, 0, F_LDHLL "\tinc (hl)\n", 0),
+	R("m(O):bS", POSTDEC, P_L, P_NONE, P_NONE, 0, F_LDHLL "\tdec (hl)\n", 0),
+	R("j(O):b", POSTINC, P_L, P_NONE, P_NONE, 0,
+		F_LDHLL F_LDAHL "\tinc (hl)\n", R_A),
+	R("m(O):b", POSTDEC, P_L, P_NONE, P_NONE, 0,
+		F_LDHLL F_LDAHL "\tdec (hl)\n", R_A),
+	R("i(O):b", PREINC, P_L, P_NONE, P_NONE, 0,
+		F_LDHLL "\tinc (hl)\n" F_LDAHL, R_A),
+	R("k(O):b", PREDEC, P_L, P_NONE, P_NONE, 0,
+		F_LDHLL "\tdec (hl)\n" F_LDAHL, R_A),
 
 	/* byte stores */
 	R("=(I,A)", ASSIGN, P_L, P_R, P_NONE, 0, F_LDLA1, R_A),
