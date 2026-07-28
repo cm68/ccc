@@ -77,6 +77,15 @@ looked at, and a parent that still matched hid the failure:
 `arr[i] = i * a` with `i` in a register emitted no multiply at all and
 put the wrong number in the array.
 
+**A lookup by name where names are not unique.**  Every local of a
+function is in one list, so a name declared in a nested block sits
+beside the one it shadows and both answer to the same string - the
+`L<n>` renaming is for what gets emitted, not for what gets looked up.
+`findInLocals` matched on the name alone and returned whichever came
+first, so both `v`s took the outer one's register.  The level and the
+block tell them apart; two variables of the same name cannot be
+declared in the same block.
+
 **A flag set after it is read.**  A variable whose address is taken
 cannot live in a register.  The flag saying so was set as phase 2
 walked the statements - after phase 2 had handed the registers out at
@@ -139,31 +148,6 @@ In rough order of how much they have earned:
 
 ## Open, roughly by how much they matter
 
-* **Shadowing an outer name from a nested block.**  Next up.  The
-  declaration is renamed to `L<n>` but the references are not, so the
-  inner variable is the outer one.  `rt_block.c` documents it and does
-  not test it.
-
-  What is known.  For
-
-		short v; v = 1; { short v; v = 100; g = v; } return v;
-
-  the FUNC header is right - `local v:s r=3` and `local L0:s r=0`, two
-  variables, one in BC and one in the frame - but the code is
-  `ld bc,1` then `ld bc,100`, so both references went to the outer one.
-  `outast.c:383` does emit `L%d` when `static_id` is set, so either the
-  reference resolved to the outer name or `static_id` was zero on the
-  entry phase 2 was looking at.
-
-  The lead: `shadowCtr` is reset per function (`decl.c:269`) and the id
-  is assigned in `declare.c` - the shadowing case in the `else if`
-  branch, block locals in the `else`.  Both increment it, so phase 1
-  and phase 2 have to walk the same declarations in the same order to
-  agree.  Check that they do; if phase 2 takes a different branch for
-  the inner declaration (because the outer is or is not visible at that
-  moment), the two phases number the same variable differently and the
-  reference emitted in phase 2 will not match the declaration emitted
-  in phase 1.  Dump both with `ccc -1 0x10` and compare.
 * **Multiply by an arbitrary constant** has no rule - only the named
   ones (3, 5, 6, 7, 9, 10, 11, 12, 14, 15, 20, 24, 40) and
   register-by-register.  `v * 100` emits nothing and says so.

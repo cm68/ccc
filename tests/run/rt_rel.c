@@ -138,9 +138,6 @@ main()
 short
 bytes()
 {
-	char lb;
-	unsigned char lub;
-
 	/*
 	 * A signed byte against zero, where the sign bit is the whole
 	 * answer, and against another byte.
@@ -179,13 +176,12 @@ bytes()
 
 	/*
 	 * A local byte against a constant, which is the byte sitting in
-	 * the frame rather than in a register.  Declared at the top of
-	 * the function and not in a block of its own: a local declared
-	 * in a nested block gets no frame slot, is written over the
-	 * saved IY, and the function returns into nowhere.  That is a
-	 * separate bug and still open.
+	 * the frame rather than in a register.
 	 */
 	{
+		char lb;
+		unsigned char lub;
+
 		lb = -1;
 		CHECK(81, lb >= 0, 0);
 		CHECK(82, lb < 0, 1);

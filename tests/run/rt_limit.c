@@ -66,11 +66,6 @@ short f39(x) short x; { return x + 39; }
  * Blocks are counted in the order they are entered, so a function with
  * many of them is what pushes that table over - the old one held 256
  * for a whole file and four sources here needed more.
- *
- * Nothing is declared inside them.  A local declared in a nested block
- * is a separate bug and still open - it is given no frame slot, so it
- * is written over the saved IY and the function returns into nowhere.
- * This file is about the counting; that wants its own.
  */
 short
 blocky(n) short n;

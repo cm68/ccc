@@ -16,13 +16,6 @@
  * to it overwrote the saved IY.  The function then returned into
  * nowhere.  Two test files in this directory had to declare their
  * locals at the top and say why.
- *
- * Two things a block local still cannot do, both older than the hoist
- * and neither checked here.  Shadowing an outer name renames the
- * declaration but not the references, so the inner variable is the
- * outer one.  And taking its address yields its value instead - "vp =
- * &v" stores what v holds.  Both were wrong before as well, and more
- * destructively, since there was no slot at all to be wrong about.
  */
 #include "rt.h"
 
@@ -108,6 +101,64 @@ three(a) short a;
 	return r;
 }
 
+/*
+ * A block local shadowing an outer name.  Both are called v and both
+ * are in the one list of the function's locals, so looking one up by
+ * name alone found whichever came first - and put both of them in the
+ * outer one's register.  Level and block tell them apart.
+ */
+short
+shadow(a) short a;
+{
+	short v;
+
+	v = 1;
+	{
+		short v;
+
+		v = 100;
+		g = v;
+	}
+	return v;
+}
+
+/* shadowed twice over, and the middle one read after the inner block */
+short
+shadow2(a) short a;
+{
+	short v;
+
+	v = 1;
+	{
+		short v;
+
+		v = 2;
+		{
+			short v;
+
+			v = 3;
+			g = v;
+		}
+		g2 = v;			/* the middle one, not the inner */
+	}
+	return v;			/* the outer one */
+}
+
+/* a parameter shadowed by a block local */
+short
+shadowp(v) short v;
+{
+	short t;
+
+	{
+		short v;
+
+		v = 50;
+		t = v;
+	}
+	return t + v;			/* the block's 50 plus the parameter */
+}
+
 /* an array in a block, which is allocated below the save slots */
 short
 arrayblk(a) short a;
@@ -149,11 +200,21 @@ main()
 	CHECK(14, arrayblk(2), 6);
 	CHECK(15, arrayblk(0), 0);
 
+	g = 0; g2 = 0;
+	CHECK(16, shadow(0), 1);
+	CHECK(17, g, 100);
+	g = 0; g2 = 0;
+	CHECK(18, shadow2(0), 1);
+	CHECK(19, g, 3);
+	CHECK(20, g2, 2);
+	CHECK(21, shadowp(7), 57);
+	CHECK(22, shadowp(0), 50);
+
 	/* the frame survived all of that, so the caller is still here */
 	g = 1234;
-	CHECK(16, g, 1234);
+	CHECK(23, g, 1234);
 	g2 = either(3) + twice(0) + deep(1);
-	CHECK(17, g2, 6 + 30 + 3);
+	CHECK(24, g2, 6 + 30 + 3);
 
 	return 0;
 }

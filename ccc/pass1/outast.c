@@ -12,15 +12,30 @@ extern int frameSaveBase;                   /* regalloc.c */
 static struct name *curFuncLocals = NULL;
 
 /*
- * Look up a local variable by name in phase 1 captured locals.
- * Returns the captured name struct with correct frm_off/reg, or NULL.
+ * Look up a local variable in phase 1's captured locals, to get the
+ * frame offset and register decided there.
+ *
+ * By name is not enough.  Every local of a function is in one list
+ * now, so a name declared in a nested block sits beside the one it
+ * shadows and both answer to the same string - the L<n> renaming is
+ * for what gets emitted, not for what is looked up.  Matching on the
+ * name alone returned whichever came first, so
+ *
+ *	short v; v = 1; { short v; v = 100; } return v;
+ *
+ * put both of them in the outer one's register.
+ *
+ * The level and the block say which is which: two variables of the
+ * same name cannot be declared in the same block.
  */
 static struct name *
-findInLocals(char *name)
+findInLocals(struct name *want)
 {
 	struct name *n;
 	for (n = curFuncLocals; n; n = n->next) {
-		if (strcmp(n->name, name) == 0)
+		if (strcmp(n->name, want->name) == 0 &&
+		    n->level == want->level &&
+		    n->w.r.blkid == want->w.r.blkid)
 			return n;
 	}
 	return NULL;
@@ -67,7 +82,7 @@ isRegvar(struct expr *e)
 		return 0;
 	np = (struct name *)e->var;
 	if (np->level > 1 && !(np->sclass & SC_EXTERN)) {
-		local = findInLocals(np->name);
+		local = findInLocals(np);
 		return local ? local->w.r.reg : np->w.r.reg;
 	}
 	return 0;
@@ -362,7 +377,7 @@ emitExpr(struct expr *e)
 		/* Local variables: emit LOCALVAR/REGVAR directly */
 		if (np->level > 1 && !(np->sclass & SC_EXTERN)) {
 			/* Look up frm_off/reg from phase 1 captured locals */
-			struct name *local = findInLocals(np->name);
+			struct name *local = findInLocals(np);
 			char reg = local ? local->w.r.reg : np->w.r.reg;
 			short off = local ? local->w.r.frm_off : np->w.r.frm_off;
 			if (reg) {
