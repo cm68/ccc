@@ -306,10 +306,39 @@ parseStmt(void)
 			e = readexpr();
 			if (e) {
 				Expr *hl, *assign;
-				/* Wrap in ASSIGN to HL for return value */
-				hl = mkcode(e->width, R_HL);
+				char w = e->width;
+
+				/*
+				 * Wrap in ASSIGN to HL for return value.
+				 *
+				 * A byte comes back in HL like everything
+				 * else, so it has to be widened first, and
+				 * a signed one has to carry its sign: the
+				 * assignment used to be byte-wide, took the
+				 * store rule that zeroes H, and a function
+				 * returning -1 as a char handed back 0x00ff.
+				 * Callers read the sign out of H and saw a
+				 * positive number.
+				 */
+				if (ISBYTE(w)) {
+					/*
+					 * A constant is already whatever
+					 * width it is asked to be, and there
+					 * is no rule for converting one -
+					 * "return 0" would have become a
+					 * widening of a literal and emitted
+					 * nothing.
+					 */
+					if (e->op == NUMBER)
+						e->width = 's';
+					else
+						e = mkunary(ISSIGNED(w) ?
+						    SEXT : WIDEN, 's', e);
+					w = 's';
+				}
+				hl = mkcode(w, R_HL);
 				hl->op = INHL;
-				assign = mkbinary(ASSIGN, e->width, hl, e);
+				assign = mkbinary(ASSIGN, w, hl, e);
 				setdest(assign, DEST_VALUE);
 				assign = rewrite(assign);
 #ifdef DEBUG

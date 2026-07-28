@@ -484,6 +484,15 @@ struct rule rules[] = {
 		"\tpush ix\n\tpop de\n" F_ORA F_SBCHLDE, F_Z),
 	R("U(V,H)", NEQ, P_L, P_R, P_L, RF_IX,
 		"\tpush ix\n\tpop de\n" F_ORA F_SBCHLDE, F_NZ),
+	/*
+	 * And against DE, which had no form at all.  A pointer register
+	 * variable compared with a local pointer emitted no code and the
+	 * branch after it went wherever the flags happened to point.
+	 */
+	R("Q(V,E)", EQ, P_L, P_R, P_L, RF_IX,
+		"\tpush ix\n" F_POPHL F_ORA F_SBCHLDE, F_Z),
+	R("U(V,E)", NEQ, P_L, P_R, P_L, RF_IX,
+		"\tpush ix\n" F_POPHL F_ORA F_SBCHLDE, F_NZ),
 	/* the same with the index register on the other side, which
 	 * normalize does not swap because equality is not a relation it
 	 * reorders by operand kind */
@@ -1452,14 +1461,23 @@ struct rule rules[] = {
 	R("W(D(I),N):b", LE, P_L, P_R, P_NONE, 0,
 		F_LDALL F_CPR F_JRNZ3 "\tscf\n", F_C),
 
-	/* relational transformations */
-	R("G(H,N)", GE, P_L, P_R, P_NONE, RF_INC1, F_LDDER F_ORA F_SBCHLDE, F_NC),
-	R("W(H,N)", LT, P_L, P_R, P_NONE, RF_INC1, F_LDDER F_ORA F_SBCHLDE, F_C),
+	/*
+	 * The same fold at word width.  These turned "> n" into ">= n+1"
+	 * until now, which the note above says has nowhere to go at the
+	 * top of the range - it was fixed for bytes at 255 and left here,
+	 * where the increment wraps at 65535 instead.  "u <= 0xffff" is
+	 * true of every unsigned short and came out false for all of
+	 * them.
+	 */
+	R("G(H,N)", GT, P_L, P_R, P_NONE, 0,
+		F_LDDER F_ORA F_SBCHLDE F_JRNZ3 "\tscf\n", F_NC),
+	R("W(H,N)", LE, P_L, P_R, P_NONE, 0,
+		F_LDDER F_ORA F_SBCHLDE F_JRNZ3 "\tscf\n", F_C),
 	/* the same for a register variable, which had neither */
-	R("G(B,N)", GE, P_L, P_R, P_NONE, RF_INC1,
-		T_BC_HL F_LDDER F_ORA F_SBCHLDE, F_NC),
-	R("W(B,N)", LT, P_L, P_R, P_NONE, RF_INC1,
-		T_BC_HL F_LDDER F_ORA F_SBCHLDE, F_C),
+	R("G(B,N)", GT, P_L, P_R, P_NONE, 0,
+		T_BC_HL F_LDDER F_ORA F_SBCHLDE F_JRNZ3 "\tscf\n", F_NC),
+	R("W(B,N)", LE, P_L, P_R, P_NONE, 0,
+		T_BC_HL F_LDDER F_ORA F_SBCHLDE F_JRNZ3 "\tscf\n", F_C),
 	R("G(B,E)", GT, P_L, P_R, P_NONE, 0,
 		T_BC_HL F_EXDEHL F_ORA F_SBCHLDE, F_C),
 	R("W(B,E)", LE, P_L, P_R, P_NONE, 0,

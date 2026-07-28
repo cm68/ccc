@@ -2159,6 +2159,7 @@ static Expr *
 rewrite1(Expr *e)
 {
 	Expr *n, *next;
+	char lw, rw;
 
 	if (!e) return NULL;
 
@@ -2568,12 +2569,22 @@ rewrite1(Expr *e)
 		/* Pop left result, exchange so left in HL, right in DE */
 		out("\tpop de\n");
 		out("\tex de,hl\n");
-		/* Now left in HL, right in DE - convert children to register nodes */
+		/*
+		 * Now left in HL, right in DE - convert children to register
+		 * nodes, each keeping the width it had.  Taking the parent's
+		 * made every operand of a comparison unsigned, because a
+		 * comparison yields ubyte whatever it compared: the signed
+		 * rules ask about the operand's width and stopped matching,
+		 * so "f(x) < g(y)" on two negative shorts read the carry and
+		 * answered an unsigned question.
+		 */
+		lw = e->left->width;
+		rw = e->right->width;
 		freeexpr(e->left);
 		freeexpr(e->right);
-		e->left = mkcode(e->width, R_HL);
+		e->left = mkcode(lw, R_HL);
 		e->left->op = INHL;
-		e->right = mkcode(e->width, R_DE);
+		e->right = mkcode(rw, R_DE);
 		e->right->op = INDE;
 		}
 		/* Fall through to step() to apply operation */
@@ -2686,6 +2697,21 @@ rewrite1(Expr *e)
 			      (n->op == REGVAR && n->u.var.reg == R_IX)))
 				e->left = rewrite1(e->left);
 			goto children_done;
+		} else if (e->op == ASSIGN && e->left &&
+			   e->left->op == REGVAR && ISBYTE(e->width)) {
+			/*
+			 * A byte register variable being assigned to.  Leave
+			 * the lvalue alone: reducing it turns it into A, the
+			 * =(V,..):b rules that would have written b or c
+			 * never match, and =(A,..):b matches instead - which
+			 * loads the value into A and stops there.  "c = -1"
+			 * came out as "ld a,b" and "ld a,-1", and c kept
+			 * whatever it had.
+			 *
+			 * Only bytes.  A word register variable reduces to
+			 * INBC and has a working family of its own.
+			 */
+			;
 		} else if (e->op == ASSIGN && e->left && e->left->op == DEREF) {
 			/*
 			 * An assignment's lvalue is a location, not a value.
