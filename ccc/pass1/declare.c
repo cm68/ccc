@@ -304,8 +304,20 @@ declare(struct type **btp, unsigned char struct_elem)
             } else {
                 /* New name - create it */
                 nm = newName(cur.v.name, kvar, prefix, 0);
+                /*
+                 * Anything declared inside a nested block gets a
+                 * distinct name too, shadowing or not.  All of a
+                 * function's locals are hoisted into one list, and two
+                 * sibling blocks each declaring "b" would arrive there
+                 * as the same name - pass2 binds by name and would give
+                 * both the first one's slot.
+                 */
+                if (lexlevel > 2 && !nm->is_tag)
+                    nm->static_id = ++shadowCtr;
             }
         }
+        if (nm && lexlevel >= 2)
+            nm->w.r.blkid = curblk();
         gettoken();
 
         if (cur.type == COLON) {    // check for bitfield

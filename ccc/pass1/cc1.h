@@ -245,6 +245,11 @@ struct name {
 			unsigned char agg_refs;   // struct member access count (for IX allocation)
 			unsigned char reg;        // allocated register: 0=none, 1=B, 2=C, 3=BC, 4=IX
 			unsigned char addr_taken; // true if address taken (can't use register)
+			unsigned char blkid;      // which block declared it (0 = function
+			                          // body).  With level, this is enough to
+			                          // walk the scope tree in declaration
+			                          // order and let sibling blocks share
+			                          // frame space.
 			short frm_off;            // frame offset: params positive, locals
 			                          // negative; arrays sit below the save
 			                          // slots and may pass -128
@@ -278,7 +283,16 @@ extern void pushScope(char *name);
 extern void popScope(void);
 
 /* declare.c */
+/*
+ * How deep the block numbering goes.  Past this a local keeps block 0
+ * and simply does not share, which costs frame space and nothing else.
+ */
+#define MAXBLKLVL 24
+
 extern unsigned char lexlevel;
+extern struct name *blockLocals;	/* nested-block locals awaiting hoist */
+extern unsigned char curblk(void);
+extern void clrblklocs(void);
 extern struct name *names;
 extern struct name *deadNames;
 extern struct type *types;

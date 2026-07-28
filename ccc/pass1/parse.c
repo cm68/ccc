@@ -440,6 +440,21 @@ capLocals(void)
 		}
 	}
 
+	/*
+	 * Then the ones declared in nested blocks, which popScope put
+	 * aside on its way out because this walk can only see one level.
+	 * They come in the order they were declared, which is the order
+	 * the blocks were entered, and that is what lets the frame
+	 * allocator overlay siblings in a single pass.
+	 */
+	if (blockLocals) {
+		if (tail)
+			tail->next = blockLocals;
+		else
+			locals_list = blockLocals;
+		clrblklocs();
+	}
+
 	return locals_list;
 }
 

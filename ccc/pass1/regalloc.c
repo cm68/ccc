@@ -17,8 +17,9 @@ static int
 assignFrmOff(struct name *func)
 {
 	struct name *n, *locals;
-	int off;
-	unsigned char arrays;
+	int off, maxoff, i;
+	int mark[MAXBLKLVL];
+	unsigned char arrays, prevlvl, prevblk;
 
 	frameSaveBase = 0;
 	if (!func->type || !func->u.locals)
@@ -49,7 +50,27 @@ assignFrmOff(struct name *func)
 	 * are formed with 16-bit address arithmetic, so they may sit
 	 * past the window.
 	 */
+	/*
+	 * Locals in nested blocks share space with their siblings.  Two
+	 * blocks at the same level cannot both be live, so "if (a) { int
+	 * b; } else { int c; }" wants one slot and not two.
+	 *
+	 * C puts declarations at the head of a block, so capLocals hands
+	 * them over in the order the blocks were entered: a block's own
+	 * locals, then the blocks inside it.  That is a depth-first walk
+	 * of the scope tree already, and one pass over it is enough.
+	 * mark[] remembers where each level started; going deeper sets
+	 * the mark, and a new block at the same level rewinds to it.
+	 *
+	 * The frame is the deepest the running offset ever reached, not
+	 * where it ended.
+	 */
 	off = 0;
+	maxoff = 0;
+	prevlvl = 2;
+	prevblk = 0;
+	for (i = 0; i < MAXBLKLVL; i++)
+		mark[i] = 0;
 	for (n = locals; n; n = n->next) {
 		if (n->kind == kfunarg)
 			continue;
@@ -59,9 +80,21 @@ assignFrmOff(struct name *func)
 		}
 		if (n->type->flags & TF_ARRAY)
 			continue;
+		if (n->level < MAXBLKLVL &&
+		    (n->level != prevlvl || n->w.r.blkid != prevblk)) {
+			if (n->level > prevlvl)
+				mark[n->level] = off;
+			else
+				off = mark[n->level];
+			prevlvl = n->level;
+			prevblk = n->w.r.blkid;
+		}
 		off += n->type->size;
 		n->w.r.frm_off = -off;
+		if (off > maxoff)
+			maxoff = off;
 	}
+	off = maxoff;
 	frameSaveBase = off;
 	if (off > 120)
 		gripe(ER_D_FL);

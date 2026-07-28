@@ -101,6 +101,17 @@ static struct name basicnames[] = {
 unsigned char lexlevel;
 struct name *names = &basicnames[8];  /* head of chain, most recent first */
 
+/* block numbering, one entry per open lexical level - see pushScope */
+static unsigned char blkIdAt[MAXBLKLVL];
+static unsigned char blkIdTop;
+
+/*
+ * Locals declared in a nested block, waiting to be hoisted into the
+ * function that encloses them.  popScope collects them on the way out,
+ * because by the time capLocals runs they are off the lookup chain.
+ */
+struct name *blockLocals;
+
 /*
  * names unlinked by popScope may still be referenced by pending AST
  * (e->var), so they cannot be freed on the spot.  they go on this
@@ -117,7 +128,7 @@ struct name *deadNames;
 void
 popScope()
 {
-    struct name **pp, *n;
+    struct name **pp, *n, *grabbed, *grabtail;
 
 #ifdef DEBUG
     if (VERBOSE(V_SCOPE)) {
@@ -139,6 +150,8 @@ popScope()
      * Scan entire list and remove names at popped level.
      * Names may be interleaved due to phase 1 preserving globals.
      */
+    grabbed = NULL;
+    grabtail = NULL;
     pp = &names;
     while ((n = *pp) != NULL) {
         if (n->level > lexlevel) {
@@ -148,12 +161,48 @@ popScope()
                     n->is_tag ? "tag:":"", n->name);
             }
 #endif
+            /*
+             * A local going out of a block inside a function has to be
+             * kept: the function still needs a frame slot for it, and
+             * capLocals cannot find it once it is off this chain - it
+             * only ever sees the level it is called at.  Without this
+             * the slot was never allocated, the variable was addressed
+             * at (iy+0), and writing to it overwrote the saved IY.
+             *
+             * Phase 1 only.  Phase 2 re-walks the same declarations and
+             * would collect them a second time.
+             */
+            if (phase == 1 && lexlevel >= 2 && !n->is_tag &&
+                (n->kind == kvar || n->kind == klocal)) {
+                struct name *copy =
+                    (struct name *)galloc(sizeof(struct name));
+
+                memcpy(copy, n, sizeof(struct name));
+                copy->next = NULL;
+                if (grabtail)
+                    grabtail->next = copy;
+                else
+                    grabbed = copy;
+                grabtail = copy;
+            }
             *pp = n->chain;  /* Unlink from list */
             n->chain = deadNames;  /* park on graveyard for cleanupParse */
             deadNames = n;
         } else {
             pp = &n->chain;  /* Move to next */
         }
+    }
+    /*
+     * In front of what is already there, not behind it.  Blocks are
+     * left innermost first, so appending would put a block's own
+     * locals after the ones declared inside it - and the frame
+     * allocator reads the list as a walk down the scope tree, where a
+     * block has to come before anything nested in it or the two share
+     * space they cannot share.  Going in front restores that order.
+     */
+    if (grabbed) {
+        grabtail->next = blockLocals;
+        blockLocals = grabbed;
     }
 }
 
@@ -176,6 +225,37 @@ pushScope(char *n)
     }
 #endif
     lexlevel++;
+    /*
+     * Number the blocks within a function as they are entered, so a
+     * local can say which one declared it.  Level alone cannot: two
+     * sibling blocks are both at the same level, and their locals have
+     * to share frame space rather than follow one another.
+     *
+     * Kept per level so that leaving a block returns to the enclosing
+     * block's number rather than to the deepest one reached.  The
+     * function body is 0 and the count restarts with each function.
+     */
+    if (lexlevel < MAXBLKLVL)
+        blkIdAt[lexlevel] = (lexlevel <= 2) ? (blkIdTop = 0) : ++blkIdTop;
+}
+
+/*
+ * The block a declaration made now belongs to.
+ */
+unsigned char
+curblk(void)
+{
+    return lexlevel < MAXBLKLVL ? blkIdAt[lexlevel] : 0;
+}
+
+/*
+ * Hand the pending block locals back, so the next function starts
+ * empty.  Called by capLocals once it has taken the list.
+ */
+void
+clrblklocs(void)
+{
+    blockLocals = NULL;
 }
 
 /*
