@@ -214,8 +214,10 @@ char *fragtab[] = {
  *   J+6
  */
 #define T_SZTAIL	F_JPM5 F_JR3 F_XORA
-/* the address of a frame slot, worked out into HL */
+/* the address of a frame slot, worked out into HL - left path */
 #define T_IDX_ADDR	F_PUSHLR F_POPHL F_LDDELO F_ADDHLDE
+/* the same for the right operand, which is where address-of puts it */
+#define T_IDX_R_ADDR	"\tpush $Rr\n" F_POPHL "\tld de,$Ro\n" F_ADDHLDE
 /* four bytes of a constant written through the address in HL */
 #define T_ST_IHL_N	F_LDHLRL F_INCHL F_LDHLRH F_INCHL F_LDHLR2 F_INCHL F_LDHLR3
 /* address on the stack, value in HL -> address in HL, value in DE */
@@ -410,7 +412,16 @@ struct rule rules[] = {
 	 * would hand the parent one that was never written.
 	 */
 	R("=(I,H):s", ASSIGN, P_L, P_R, P_NONE, 0, T_IDX_S_ST, R_HL),
-	R("=(I,I):s", ASSIGN, P_L, P_R, P_NONE, 0, T_IDX_S_LD T_IDX_S_ST, R_HL),
+	/*
+	 * A frame slot assigned a frame slot's address - "p = &v".  A
+	 * bare index is a place, not a value; reading one is a DEREF
+	 * around it, and a copy between two locals comes through here as
+	 * =(I,D(I)) with the load already done.  So this form only ever
+	 * arises from address-of, and loading through the right operand
+	 * made "p = &v" mean "p = v".
+	 */
+	R("=(I,I):s", ASSIGN, P_L, P_R, P_NONE, 0,
+		T_IDX_R_ADDR T_IDX_S_ST, R_HL),
 	R("=(I,E):s", ASSIGN, P_L, P_R, P_NONE, 0, "\tld ($L),e\n\tld ($L+),d\n", R_DE),
 	R("=(I,B):s", ASSIGN, P_L, P_R, P_NONE, 0, "\tld ($L),c\n\tld ($L+),b\n", R_BC),
 
@@ -1021,9 +1032,16 @@ struct rule rules[] = {
 
 	/* structured loads to BC/DE/HL */
 	R("=(B,D(H)):s", ASSIGN, P_L, P_R, P_NONE, 0, "\tld c,(hl)\n" F_INCHL "\tld b,(hl)\n", R_BC),
-	R("=(B,I)", ASSIGN, P_L, P_R, P_NONE, 0, "\tld c,($R)\n\tld b,($R+)\n", R_BC),
-	R("=(H,I)", ASSIGN, P_L, P_R, P_NONE, 0, "\tld l,($R)\n\tld h,($R+)\n", R_HL),
-	R("=(E,I)", ASSIGN, P_L, P_R, P_NONE, 0, "\tld e,($R)\n\tld d,($R+)\n", R_DE),
+	/*
+	 * A register given a frame slot's address - the other half of
+	 * "p = &v", where p happens to live in a register.  As above, a
+	 * bare index is a place: these loaded through it and turned every
+	 * address-of into a read of what was there.
+	 */
+	R("=(B,I)", ASSIGN, P_L, P_R, P_NONE, 0,
+		T_IDX_R_ADDR "\tld c,l\n\tld b,h\n", R_BC),
+	R("=(H,I)", ASSIGN, P_L, P_R, P_NONE, 0, T_IDX_R_ADDR, R_HL),
+	R("=(E,I)", ASSIGN, P_L, P_R, P_NONE, 0, T_IDX_R_ADDR F_EXDEHL, R_DE),
 	R("=(I,O)", ASSIGN, P_L, P_R, P_NONE, 0,
 		F_LDHLR T_IDX_S_ST, R_HL),
 	/* one symbol's address into another symbol's storage - "lp = &g" */

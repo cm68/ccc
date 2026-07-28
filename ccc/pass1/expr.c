@@ -285,11 +285,36 @@ skipExpr(unsigned char pri)
         }
         break;
 
+    case AND:
+        /*
+         * Address-of, in the pass that decides which locals get a
+         * register.  A variable whose address is taken cannot live in
+         * one, and phase 2 finds that out too late: allocation happens
+         * as the function header is emitted, before a statement has
+         * been looked at.  So the flag is set here, where it is still
+         * in time to be believed - "p = &v" used to leave v in BC and
+         * compile as "p = v".
+         *
+         * Explicitly register is not a thing to work around but a
+         * thing to refuse: it has no address to take.
+         */
+        gettoken();
+        if (cur.type == SYM) {
+            np = findName(cur.v.name, 0);
+            if (np && np->level > 1) {
+                if (np->sclass & SC_REGISTER)
+                    gripe(ER_E_RA);
+                else
+                    np->w.r.addr_taken = 1;
+            }
+        }
+        skipExpr(OP_PRI_MULT - 1);
+        break;
+
     case MINUS:
     case TWIDDLE:
     case BANG:
     case STAR:
-    case AND:
     case INCR:
     case DECR:
         gettoken();
@@ -842,7 +867,16 @@ parsePrefix(void)
         gettoken();
         e = parseExpr(OP_PRI_MULT - 1);
         if (!e) break;
-        /* Mark variable as address-taken (can't use register) */
+        /*
+         * Mark variable as address-taken (can't use register).
+         *
+         * Phase 1 has already done this, in skipExpr, and that is the
+         * one that counts - by the time this runs the registers have
+         * been handed out.  It is kept because the flag is also read
+         * for the parameters, and it complains about nothing: taking
+         * the address of a register variable is refused in phase 1,
+         * which still has the right line number for it.
+         */
         if (e->op == DEREF && e->left->op == SYM)
             ((struct name *)e->left->var)->w.r.addr_taken = 1;
         /* Optimize: &(DEREF x) = x, since SYM already gives address */
