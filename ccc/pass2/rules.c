@@ -1124,8 +1124,32 @@ struct rule rules[] = {
 	 * assignment can be used for its value */
 	R("=(O,E):s", ASSIGN, P_L, P_R, P_NONE, 0, "\tld ($L),de\n", R_DE),
 
-	/* bit testing and logic */
+	/*
+	 * Bit testing.  A single bit out of a byte is what bit does, in
+	 * two bytes and without touching A or the carry - against and,
+	 * which needs the byte in A first, costs two bytes itself and
+	 * then a third to set the flags, because and leaves Z meaning
+	 * the whole result rather than the bit.
+	 *
+	 * Only for a mask that is one bit: P matches a power of two, and
+	 * RF_POW2 turns the mask into the bit number the instruction
+	 * wants.  Neither admits 1, so bit 0 is still tested the long
+	 * way - ispow2 answers 0 for it and both guards read that as no.
+	 *
+	 * The indexed rule below wants "bit 4,(iy+3)", which is a byte
+	 * shorter again and leaves A alone.  It does not fire and never
+	 * has: an AND does not preserve its left operand, so the deref is
+	 * reduced to A before the AND is ever looked at, and the rule
+	 * that would have matched the descriptor has nothing to match.
+	 * Making it fire means preserving that operand the way a byte
+	 * comparison does, which is a change to assign() and not to this
+	 * table.  It stays because it is right, not because it is
+	 * reached.  The same is true of a byte register variable, where
+	 * "bit 4,c" would save two - there is no rule for it here
+	 * because there would be no way to reach one.
+	 */
 	R("&(D(I),P):bF", AND, P_L, P_R, P_NONE, RF_POW2, "\tbit $R,($LL)\n", F_NZ),
+	R("&(A,P):bF", AND, P_L, P_R, P_NONE, RF_POW2, "\tbit $R,a\n", F_NZ),
 	R("&(D(I),N):b", AND, P_L, P_R, P_NONE, 0, F_LDALL "\tand $R\n", R_A),
 	R("|(D(I),N):b", OR, P_L, P_R, P_NONE, 0, F_LDALL "\tor $R\n", R_A),
 	R("^(D(I),N):b", XOR, P_L, P_R, P_NONE, 0, F_LDALL "\txor $R\n", R_A),
