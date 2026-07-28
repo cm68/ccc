@@ -70,9 +70,14 @@ isTypeToken(unsigned char t)
 
 /*
  * Counter for generating synthetic string literal names (prefix "str")
- * Exported so it can be reset between phases
+ * Exported so it can be reset between phases.
+ *
+ * Not a char: plain char is signed here, so the 129th string in a file
+ * was named "str-128" and the assembler stopped at a label with a minus
+ * sign in it.  The ones after that reused names the earlier strings
+ * already had, which would have been worse had it got that far.
  */
-char globalStrCtr = 0;
+unsigned short globalStrCtr = 0;
 
 /*
  * Create a new expression tree node
@@ -1350,6 +1355,22 @@ parseExpr(unsigned char pri)
             }
             else if (IS_CMPLOG(op))
                 e->type = uchartype;
+            /*
+             * A pointer against an integer keeps the pointer type,
+             * whatever the two widths are.  Picking the wider one made
+             * "p + n" a long when n was, and the pointer-ness was gone:
+             * the subscript path then found neither TF_POINTER nor
+             * TF_ARRAY to take an element type from, left the node with
+             * no type at all, and the next thing to look at it died
+             * without a word.  A pointer is also the wider of the two
+             * against a short, which is why only long showed it.
+             */
+            else if ((e->left->type->flags & (TF_POINTER|TF_ARRAY)) &&
+                     !(e->right->type->flags & (TF_POINTER|TF_ARRAY)))
+                e->type = e->left->type;
+            else if ((e->right->type->flags & (TF_POINTER|TF_ARRAY)) &&
+                     !(e->left->type->flags & (TF_POINTER|TF_ARRAY)))
+                e->type = e->right->type;
             else if (e->left->type->size >= e->right->type->size)
                 e->type = e->left->type;
             else

@@ -37,7 +37,14 @@ static int labelcnt;		/* per-function label counter */
 static int fnindex;		/* function index for unique labels */
 
 /* Current function state */
-static char funcname[16];	/* function name */
+/*
+ * Function name, as it goes into the assembly - so with the leading
+ * underscore, which pass1 has already added.  A 15-character C
+ * identifier becomes 16 here, and 16 is what the old size held with no
+ * room for the terminator.  The object format's own limit is the
+ * assembler's to complain about, and it does.
+ */
+static char funcname[20];
 static short framesize;		/* bytes of local stack frame */
 static short savebase;		/* scalar area size: save slots below it */
 static unsigned char regsused;	/* bitmask of callee-save regs */
@@ -317,7 +324,7 @@ parseStmt(void)
 		outc('\n');
 		return;
 	case LABEL:
-		readS(buf);
+		readS(buf, sizeof(buf));
 #ifdef DEBUG
 		if (VERBOSE(V_STMT))
 			fprintf(stderr, "  LABEL %s\n", buf);
@@ -326,7 +333,7 @@ parseStmt(void)
 		out(":\n");
 		return;
 	case GOTO:
-		readS(buf);
+		readS(buf, sizeof(buf));
 #ifdef DEBUG
 		if (VERBOSE(V_STMT))
 			fprintf(stderr, "  GOTO %s\n", buf);
@@ -444,7 +451,7 @@ parse(void)
 		switch (op) {
 		case AST_FUNC:
 			t = read1();
-			readS(funcname);
+			readS(funcname, sizeof(funcname));
 			labelcnt = 0;
 			fnindex++;
 #ifdef DEBUG
@@ -470,7 +477,7 @@ parse(void)
 				unsigned char reg, off;
 				read1();	/* AST_DECL */
 				t = read1();
-				readS(buf);
+				readS(buf, sizeof(buf));
 				reg = read1();
 				off = read1();
 #ifdef DEBUG
@@ -493,7 +500,7 @@ parse(void)
 				unsigned char reg;
 				read1();	/* AST_DECL */
 				t = read1();
-				readS(buf);
+				readS(buf, sizeof(buf));
 				reg = read1();
 				read2();	/* offset */
 #ifdef DEBUG

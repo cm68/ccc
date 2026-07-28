@@ -317,7 +317,7 @@ readexpr(void)
 		return mkconst(t, (long)v);
 
 	case SYM:
-		readS(buf);
+		readS(buf, sizeof(buf));
 #ifdef DEBUG
 		if (VERBOSE(V_EXPR))
 			fprintf(stderr, "  SYM %s\n", buf);

@@ -88,7 +88,7 @@ stage1:
 	@for f in $(SRCS); do \
 		b=$${f%.c}; \
 		printf "%-20s" "$$f: "; \
-		$(CCC) -DCCC -k -P -c $$f 2> stage1/$$b.err 1>&2 && { echo "ok"; rm -f stage1/$$b.err; } || echo "FAIL"; \
+		$(CCC) -DCCC -k -c $$f 2> stage1/$$b.err 1>&2 && { echo "ok"; rm -f stage1/$$b.err; } || echo "FAIL"; \
         mv $$b.i $$b.x $$b.1 $$b.2 $$b.pp $$b.s $$b.o $(OUTDIR) 2>/dev/null ; true ;\
 	done
 	@echo "Stage1 complete"

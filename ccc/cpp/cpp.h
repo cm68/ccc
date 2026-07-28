@@ -73,7 +73,14 @@ typedef int error_t;
 #define ER_C_DP     11      /* defined requires identifier */
 #define ER_C_MA     12      /* macro argument count mismatch */
 #define ER_C_EV     13      /* bad enum */
-#define ER_W_SYMTRUNC 14    /* symbol truncated */
+#define ER_C_PC     14      /* too many parameters */
+/*
+ * Warnings last, and named as such.  What made one used to be being
+ * the highest-numbered code, so the next error added after it quietly
+ * turned the warning above it into a failure.
+ */
+#define ER_W_FIRST  15
+#define ER_W_SYMTRUNC 15    /* symbol truncated */
 #define ER_LAST     ER_W_SYMTRUNC
 
 /*

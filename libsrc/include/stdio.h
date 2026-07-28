@@ -32,6 +32,13 @@ extern uchar _setup;
 #define	FILE		struct _iobuf
 #define	EOF		(-1)
 
+/* whence values for fseek.  unistd.h has them too, for lseek */
+#ifndef SEEK_SET
+#define	SEEK_SET	0
+#define	SEEK_CUR	1
+#define	SEEK_END	2
+#endif
+
 #define	getc(p)		fgetc(p)
 #define	getchar()	getc(stdin)
 #define	putc(x,p)	fputc(x,p)

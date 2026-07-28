@@ -16,10 +16,12 @@
 #define W_OK 2
 #define R_OK 4
 
-/* seek() whence values */
+/* seek() whence values - stdio.h has these too, and C puts them there */
+#ifndef SEEK_SET
 #define SEEK_SET 0
 #define SEEK_CUR 1
 #define SEEK_END 2
+#endif
 
 /* System call prototypes */
 extern char access(char *pathname, unsigned char mode);

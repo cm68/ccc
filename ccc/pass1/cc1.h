@@ -113,7 +113,7 @@ extern int isTypeToken(unsigned char t);
 unsigned long parseConst(unsigned char priority);
 extern void FreeExpr(struct expr *e);
 extern struct expr *foldTree(struct expr *e);
-extern char globalStrCtr;  /* string literal counter (prefix "str") */
+extern unsigned short globalStrCtr;  /* string literal counter ("str") */
 
 extern void statement(void);
 extern void declaration(void);

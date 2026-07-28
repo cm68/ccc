@@ -1220,7 +1220,7 @@ int symcnt;
  * returns number of modules included
  */
 int
-read_ht_archive(name)
+read_ht_ar(name)
 char *name;
 {
     FILE *fp;
@@ -1705,7 +1705,7 @@ int is_text;
  * apply Hi-Tech relocations to segment data
  */
 void
-apply_ht_relocs(obj, buf, seg, seg_size, seg_base)
+apply_htrel(obj, buf, seg, seg_size, seg_base)
 struct object *obj;
 unsigned char *buf;
 unsigned char seg;           /* SEG_TEXT or SEG_DATA */
@@ -1781,7 +1781,7 @@ unsigned short seg_base;
  * to the data location where they are defined
  */
 void
-patch_linker_syms(obj, buf, seg_size)
+patch_lnksyms(obj, buf, seg_size)
 struct object *obj;
 unsigned char *buf;
 int seg_size;
@@ -1835,14 +1835,14 @@ int is_text;
                 memcpy(buf, obj->ht_text, seg_size);
             else
                 memset(buf, 0, seg_size);
-            apply_ht_relocs(obj, buf, SEG_TEXT, seg_size, seg_base);
+            apply_htrel(obj, buf, SEG_TEXT, seg_size, seg_base);
         } else {
             if (obj->ht_data)
                 memcpy(buf, obj->ht_data, seg_size);
             else
                 memset(buf, 0, seg_size);
-            apply_ht_relocs(obj, buf, SEG_DATA, seg_size, seg_base);
-            patch_linker_syms(obj, buf, seg_size);
+            apply_htrel(obj, buf, SEG_DATA, seg_size, seg_base);
+            patch_lnksyms(obj, buf, seg_size);
         }
     } else {
         /* Whitesmith: read from file */
@@ -1852,7 +1852,7 @@ int is_text;
 
         apply_relocs(obj, reloc_off, buf, seg_size, seg_base, is_text);
         if (!is_text)
-            patch_linker_syms(obj, buf, seg_size);
+            patch_lnksyms(obj, buf, seg_size);
     }
 
     /* write to output */
@@ -2277,7 +2277,7 @@ char **argv;
                 added += read_archive(f->name);
             } else if (f->is_archive == 2) {
                 /* Hi-Tech library */
-                added += read_ht_archive(f->name);
+                added += read_ht_ar(f->name);
             }
         }
         pass++;

@@ -18,8 +18,21 @@ unsigned char swEmitIdx = 0;                /* next switch to emit */
 unsigned char swEmitStack[MAX_SWDEPTH];     /* stack of switch indices */
 unsigned char swEmitDepth = 0;              /* emit stack depth */
 
-/* If/else tracking: bitmap of has_else flags, one bit per if statement */
-#define MAX_IFS 256
+/*
+ * If/else tracking: bitmap of has_else flags, one bit per if statement.
+ *
+ * The count runs for the whole file, not for one function.  Phase 1
+ * walks every function before phase 2 walks any of them, so the bit
+ * phase 1 records for an if has to still be there when phase 2 reaches
+ * it, and a per-function reset would have the next function's phase 1
+ * overwrite it.
+ *
+ * A bit apiece, so the limit is cheap to be generous with, and cpp
+ * lowers every while and for into an if - a source spends them much
+ * faster than its ifs alone suggest.  256 was not enough for a
+ * 2900-line one.
+ */
+#define MAX_IFS 4096
 static unsigned char ifHasElse[MAX_IFS / 8]; /* bit N set: if #N has else */
 static unsigned short ifCount = 0;          /* phase 1: count of if statements */
 static unsigned short ifEmitIdx = 0;        /* phase 2: next if to emit */

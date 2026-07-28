@@ -194,6 +194,41 @@ emit_begin(struct token *out)
 #endif
 }
 
+/*
+ * The statement that is a synthetic body has just ended.  Which body it
+ * was decides what happens next: an if holds its } back until the
+ * else-check, a do holds it until the trailing while, and anything else
+ * closes here and lets the enclosing bodies close with it.
+ */
+static void
+endbody(void)
+{
+	struct stkent *top = fstack_top(&fs);
+
+	if (top && top->is_else) {
+		/* Else body - emit }, pop and cascade */
+		queue_end();
+		pop_body();
+		cascade();
+	} else if (top && top->ctrl_type == IF) {
+		/* If body - don't emit } yet, check for else */
+		state = ST_ELSE_CHK;
+	} else if (top && top->ctrl_type == DO) {
+		/* Do body - emit }, wait for while */
+		queue_end();
+		pop_body();
+		state = ST_DO_WHILE;
+	} else if (fs.sp > 0) {
+		/* Other (WHILE/FOR) - emit }, pop and cascade */
+		queue_end();
+		pop_body();
+		cascade();
+	} else {
+		/* No synthetic body - shouldn't happen */
+		state = ST_NORMAL;
+	}
+}
+
 /* Queue synthetic END and track balance */
 static void
 queue_end(void)
@@ -388,6 +423,20 @@ redispatch:
 		 * ST_BODY's depth tracking, so count it here if it opens a
 		 * group (statement starting with parens: `(*p).f = 1;`) */
 		pend_push(&pb, &t);
+		if (t.type == SEMI) {
+			/*
+			 * The body is the empty statement, and the token that
+			 * is the whole of it was just queued past ST_BODY -
+			 * where a semicolon is the thing that closes a
+			 * synthetic body.  So nothing ever closed this one:
+			 * "while (fgetc(fp) != '\0')\n\t;" opened a brace that
+			 * stayed open, and pass1 reported the next function as
+			 * unbalanced.  Close it here instead.
+			 */
+			endbody();
+			emit_begin(out);
+			return;
+		}
 		state = ST_BODY;
 		depth = (token_props[t.type] & TF_OPEN) ? 1 : 0;
 		emit_begin(out);
@@ -455,29 +504,7 @@ redispatch:
 			if (t.type == SEMI) {
 				/* Body complete */
 				pend_push(&pb, &t);
-				top = fstack_top(&fs);
-				if (top && top->is_else) {
-					/* Else body - emit }, pop and cascade */
-					queue_end();
-					pop_body();
-					cascade();
-				} else if (top && top->ctrl_type == IF) {
-					/* If body - don't emit } yet, check for else */
-					state = ST_ELSE_CHK;
-				} else if (top && top->ctrl_type == DO) {
-					/* Do body - emit }, wait for while */
-					queue_end();
-					pop_body();
-					state = ST_DO_WHILE;
-				} else if (fs.sp > 0) {
-					/* Other (WHILE/FOR) - emit }, pop and cascade */
-					queue_end();
-					pop_body();
-					cascade();
-				} else {
-					/* No synthetic body - shouldn't happen */
-					state = ST_NORMAL;
-				}
+				endbody();
 				pend_pop(&pb, out);
 #ifdef DEBUG
 				track_out(out);

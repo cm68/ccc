@@ -59,7 +59,7 @@ unsigned char read1(void);
 void unread1(unsigned char c);
 unsigned short read2(void);
 unsigned long read4(void);
-void readS(char *buf);
+void readS(char *buf, int size);
 
 /* Output */
 void out(char *s);

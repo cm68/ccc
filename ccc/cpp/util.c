@@ -110,6 +110,7 @@ static char *errmsgs[] = {
     "defined requires identifier",  /* ER_C_DP */
     "macro argument count mismatch", /* ER_C_MA */
     "bad enum",                     /* ER_C_EV */
+    "too many parameters",          /* ER_C_PC */
     "symbol truncated (warning)",   /* ER_W_SYMTRUNC */
 };
 
@@ -126,7 +127,7 @@ gripe(error_t err)
     char *msg = (err < sizeof(errmsgs)/sizeof(errmsgs[0])) ? errmsgs[err] : "unknown error";
     fmtstr(printbuf, "%s:%d: %s\n", filename ? filename : "?", lineno, msg);
     write(2, printbuf, strlen(printbuf));
-    if (err < ER_LAST)  /* Not a warning */
+    if (err < ER_W_FIRST)  /* Not a warning */
         exitCode = 1;
 }
 

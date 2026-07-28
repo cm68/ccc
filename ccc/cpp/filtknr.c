@@ -49,8 +49,14 @@ static struct token saved_lpar;
 static int pre_open = 0;
 static struct tokarray tail_arr;
 
-/* Parameter names from () */
-#define PARAM_MAX 10
+/*
+ * Parameter names from ().  A K&R header names them all before any of
+ * them is typed, so they have to be held until the declarations that
+ * follow arrive - this is not a bound on how many a function may have,
+ * only on how many can be waiting at once, but it is the same number.
+ * Ten was under what the tools in this tree already use.
+ */
+#define PARAM_MAX 24
 static struct {
 	char *name;
 	struct token *type;	/* Type tokens for this param */
@@ -428,7 +434,18 @@ restart:
 				return;
 			}
 			/* Plain SYM (not typedef) = parameter name */
-			if (t.type == SYM && param_count < PARAM_MAX) {
+			if (t.type == SYM) {
+				/*
+				 * Past the limit the name used to be dropped and
+				 * nothing said.  Its declaration then had no
+				 * parameter to attach to, and the first use of it
+				 * came out of pass1 as an undefined symbol on a line
+				 * nowhere near the function header.
+				 */
+				if (param_count >= PARAM_MAX) {
+					gripe(ER_C_PC);
+					goto restart;
+				}
 				params[param_count].name = t.v.name;
 				params[param_count].type = 0;
 				params[param_count].type_len = 0;

@@ -114,12 +114,26 @@ read4(void)
 	return v;
 }
 
+/*
+ * Read a counted string.  The size is not optional: the length comes
+ * off the file as a byte, so it can say up to 255, and a name that
+ * exactly filled its buffer put the terminator one past the end.  What
+ * followed became part of the name - a 16-character label came out with
+ * a stray byte in the middle of it and the assembler stopped on a
+ * symbol nobody wrote.
+ */
 void
-readS(char *buf)
+readS(char *buf, int size)
 {
 	unsigned char len = read1();
-	read(infd, buf, len);
-	buf[len] = 0;
+	int keep = len < size - 1 ? len : size - 1;
+	int over = len - keep;
+	char waste;
+
+	read(infd, buf, keep);
+	buf[keep] = 0;
+	while (over-- > 0)		/* the rest still has to come off */
+		read(infd, &waste, 1);
 #ifdef DEBUG
 	if (VERBOSE(V_IO))
 		fprintf(stderr, "readS: \"%s\" (len=%d)\n", buf, len);
