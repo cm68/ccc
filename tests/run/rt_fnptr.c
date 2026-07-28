@@ -24,14 +24,8 @@ short neg(a) short a; { return -a; }
 short zero() { return 99; }
 long lret(a) short a; { return a * 1000L; }
 
-/*
- * At file scope the declarator is written out; a local goes through a
- * typedef.  "short (*fp)();" as a local gets an incomplete type in
- * pass1's second phase - the "()" suffix is built in the first phase
- * and not the second - so the explicit "(*fp)()" spelling derefs one
- * time too many.  That is a declarator fault of its own and is not
- * fixed here.
- */
+/* both spellings of the declarator, and both scopes: a local is
+ * built afresh in pass1's second phase and used to lose the "()" */
 typedef short (*SFP)();
 
 short (*gfp)();
@@ -42,7 +36,8 @@ short bump(a) short a; { calls++; return a + 1; }
 
 main()
 {
-	SFP fp;
+	short (*fp)();
+	SFP tfp;
 	short r;
 	long l;
 	short i;
@@ -105,9 +100,12 @@ main()
 	CHECK(17, fp(20, 22), 42);
 	CHECK(18, gfp(42), -42);
 
-	/* the explicit spelling through a local typedef */
+	/* the explicit spelling through a local, and a local typedef */
 	fp = add2;
 	CHECK(19, (*fp)(8, 9), 17);
+	tfp = neg;
+	CHECK(20, tfp(6), -6);
+	CHECK(21, (*tfp)(7), -7);
 
 	return 0;
 }

@@ -354,6 +354,28 @@ declare(struct type **btp, unsigned char struct_elem)
          */
         if (phase == 2) {
             unsigned char pdepth = 1;
+            /*
+             * Except for a local function pointer.  "(*fp)()" in a
+             * body is created afresh here - locals do not survive
+             * phase 1 - so it arrives holding only the pointer that
+             * "(*fp)" made, with nothing under it.  Without the
+             * function type that pointer points at nothing, and every
+             * use that consults the type is wrong: the call still
+             * works, because a call does not look, while "(*fp)()"
+             * dereferences one time too many because it does.
+             *
+             * A reused entry already has its phase 1 type and is left
+             * alone - that is what the pointer-with-no-target test
+             * distinguishes.  The parameters are not wanted either
+             * way, which is the leak the skip below exists to avoid;
+             * only the type of the thing pointed at is.
+             */
+            if (nm && nm->type && (nm->type->flags & TF_POINTER) &&
+                !nm->type->sub) {
+                suffix = (struct type *)permalloc(sizeof(*suffix));
+                suffix->flags = TF_FUNC;
+                suffix->sub = prefix ? prefix : inttype;
+            }
             while (pdepth && cur.type != E_O_F) {
                 if (cur.type == LPAR)
                     pdepth++;
@@ -542,7 +564,9 @@ params_done:
      */
     if (suffix && (phase == 1 ||
         ((suffix->flags & TF_ARRAY) &&
-         !(nm->type && (nm->type->flags & TF_ARRAY))))) {
+         !(nm->type && (nm->type->flags & TF_ARRAY))) ||
+        ((suffix->flags & TF_FUNC) && nm && nm->type &&
+         (nm->type->flags & TF_POINTER) && !nm->type->sub))) {
         /*
          * Function suffixes are only applied in phase 1: in phase 2 a
          * reused nm already has its type correctly set, and re-applying
