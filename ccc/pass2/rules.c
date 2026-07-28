@@ -397,6 +397,12 @@ struct rule rules[] = {
 	/* narrowing store: a word result keeps only its low byte */
 	R("=(O,H):b", ASSIGN, P_L, P_R, P_NONE, 0, F_LDAL F_LDLA1, R_A),
 	R("=(O,B):b", ASSIGN, P_L, P_R, P_NONE, 0, F_LDAC F_LDLA1, R_A),
+	/*
+	 * A register variable stored to a global.  ld (nn),bc is four
+	 * bytes and there was no rule for it at all, so "g = r" emitted
+	 * nothing and said so in a marker nobody had run into.
+	 */
+	R("=(O,B):s", ASSIGN, P_L, P_R, P_NONE, 0, "\tld ($L),bc\n", R_BC),
 	R("=(I,B):bV", ASSIGN, P_L, P_R, P_NONE, 0, F_LDAC F_LDLA1, R_A),
 	R("=(I,B):b", ASSIGN, P_L, P_R, P_NONE, 0, "\tld ($L),c\n", 0),
 	R("=(O,N):s", ASSIGN, P_L, P_R, P_NONE, 0, F_LDHLR F_LDLHL, R_HL),

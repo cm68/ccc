@@ -18,6 +18,48 @@
 /* Label counter for short-circuit jumps */
 static int labelcnt;
 
+#ifdef DEBUG
+#include <stdio.h>
+
+/*
+ * Which rules have fired.
+ *
+ * A rule that matches nothing is worse than absent: it reads as
+ * coverage that does not exist.  One sat in this table for a long time
+ * emitting bit n,(iy+d), correct and unreachable, because an AND
+ * reduced its left operand before any rule could see it - and every
+ * test passed the whole time, because the code that ran instead was
+ * right, only longer.
+ *
+ * Set CCC_RULEHITS to a file name and each run appends what it used.
+ * Debug build only: the counters are host-side bookkeeping and the
+ * Z80 build has never seen them.
+ */
+#define MAXRULES 1024
+static unsigned long rulehits[MAXRULES];
+
+void
+rulehit(int i)
+{
+	if (i >= 0 && i < MAXRULES)
+		rulehits[i]++;
+}
+
+void
+dumphits(void)
+{
+	char *path = getenv("CCC_RULEHITS");
+	FILE *f;
+	int i;
+
+	if (!path || !(f = fopen(path, "a")))
+		return;
+	for (i = 0; rules[i].pat && i < MAXRULES; i++)
+		fprintf(f, "%d\t%lu\t%s\n", i, rulehits[i], rules[i].pat);
+	fclose(f);
+}
+#endif
+
 /* Forward declarations */
 static char *pmatch(char *p, Expr *e);
 static Expr *rewrite1(Expr *e);
@@ -1024,6 +1066,31 @@ normtree(Expr *e)
 	if ((e->op == SEXT || e->op == WIDEN) && e->left &&
 	    e->left->dest == DEST_NONE)
 		e->left->dest = e->dest;
+	/*
+	 * The two above are the same rule found twice, one operator at a
+	 * time, so here it is once: what an operator operates on is
+	 * wanted as a value.  A node's destination starts as DEST_NONE
+	 * and only a statement root is ever told otherwise, so an operand
+	 * nobody had spoken for read as discarded - and a rule asking for
+	 * statement context with :S would match it.  "uc++ != 5" took the
+	 * statement form of the step, which increments the byte in memory
+	 * and leaves HL holding its address, and then compared the
+	 * address against five.
+	 *
+	 * Not an assignment, whose left side is a place rather than a
+	 * value and whose right side is handled above.  Not a comma,
+	 * whose left side really is discarded - that is what it is for.
+	 * And not the compound assignments, which are an assignment
+	 * wearing an operator's clothes.
+	 */
+	if (e->op != ASSIGN && e->op != COMMA && !baseop(e->op) &&
+	    e->op != PREINC && e->op != POSTINC &&
+	    e->op != PREDEC && e->op != POSTDEC) {
+		if (e->left && e->left->dest == DEST_NONE)
+			e->left->dest = DEST_VALUE;
+		if (e->right && e->right->dest == DEST_NONE)
+			e->right->dest = DEST_VALUE;
+	}
 	normtree(e->left);
 	normtree(e->right);
 }
@@ -1265,8 +1332,12 @@ no_regconv:
 
 	for (rp = rules; rp->pat; rp++) {
 		n = tryrule(rp, e);
-		if (n)
+		if (n) {
+#ifdef DEBUG
+			rulehit(rp - rules);
+#endif
 			return n;
+		}
 	}
 	return NULL;  /* no change */
 }

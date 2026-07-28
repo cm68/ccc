@@ -144,6 +144,9 @@ main(int argc, char **argv)
 	copyinit();
 	parse();
 
+#ifdef DEBUG
+	dumphits();
+#endif
 	close(infd);
 	close(in2fd);
 	close(outfd);

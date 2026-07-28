@@ -60,6 +60,10 @@ void unread1(unsigned char c);
 unsigned short read2(void);
 unsigned long read4(void);
 void readS(char *buf, int size);
+#ifdef DEBUG
+void rulehit(int i);		/* rule coverage, host build only */
+void dumphits(void);
+#endif
 
 /* Output */
 void out(char *s);

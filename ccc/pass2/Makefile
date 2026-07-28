@@ -230,6 +230,12 @@ $(OUTDIR)/%.s: $(OUTDIR)/%.1 $(OUTDIR)/%.2 c1
 regression:
 	../../tests/regress.sh --filter ccc/pass2/ $(REGRESS_FLAGS)
 
-.PHONY: all clean regen stage1 install clobber sizefile sizecheck sizecheck1 regression
+# Which rewrite rules ever match.  Needs c1 built with -DDEBUG, which
+# is the default here - the counters are host-side bookkeeping and the
+# z80 build has never seen them.  COVERFLAGS=-v also lists the hottest.
+coverage: c1
+	python3 ../../tests/rulecover.py $(COVERFLAGS)
+
+.PHONY: all clean regen stage1 install clobber sizefile sizecheck sizecheck1 regression coverage
 
 # vim: tabstop=4 shiftwidth=4 noexpandtab:
