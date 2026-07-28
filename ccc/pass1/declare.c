@@ -552,6 +552,17 @@ params_done:
          * phase 1, so phase 2 re-creates them with only the base type
          * and would lose the array-ness.  Reused entries (globals) keep
          * their phase 1 type - it has sizes inferred from initializers.
+         *
+         * A local function pointer falls between these and is still
+         * wrong: "short (*fp)();" inside a body reaches here with the
+         * "()" suffix in phase 1 and without it in phase 2, so the
+         * phase 2 entry keeps the bare pointer from "(*fp)" and never
+         * learns what it points at.  Calling it works - the call does
+         * not consult the type - but "(*fp)()" derefs one time too
+         * many, and at file scope or through a typedef both spellings
+         * are fine.  The suffix is missing before this point rather
+         * than being rejected here; adding a case for it here has no
+         * effect.
          */
         if (nm->type && (nm->type->flags & TF_POINTER) &&
             !(nm->type->flags & TF_ARRAY) && (suffix->flags & TF_FUNC) &&

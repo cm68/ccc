@@ -25,16 +25,17 @@ short zero() { return 99; }
 long lret(a) short a; { return a * 1000L; }
 
 /*
- * Declared through a typedef, and at file scope.  A local written
- * "short (*fp)();" does not parse - a separate fault in the
- * declarator, nothing to do with the call - so the local here goes
- * through the typedef, which does.
+ * At file scope the declarator is written out; a local goes through a
+ * typedef.  "short (*fp)();" as a local gets an incomplete type in
+ * pass1's second phase - the "()" suffix is built in the first phase
+ * and not the second - so the explicit "(*fp)()" spelling derefs one
+ * time too many.  That is a declarator fault of its own and is not
+ * fixed here.
  */
 typedef short (*SFP)();
-typedef long (*LFP)();
 
-SFP gfp;
-LFP glp;
+short (*gfp)();
+long (*glp)();
 short calls;
 
 short bump(a) short a; { calls++; return a + 1; }
@@ -103,6 +104,10 @@ main()
 	gfp = neg;
 	CHECK(17, fp(20, 22), 42);
 	CHECK(18, gfp(42), -42);
+
+	/* the explicit spelling through a local typedef */
+	fp = add2;
+	CHECK(19, (*fp)(8, 9), 17);
 
 	return 0;
 }
