@@ -271,6 +271,7 @@ extern void emitLabel(char *name);
 extern void emitLine(int line, char *file);
 extern void emitCurToken(void);
 extern void emitStructTok(struct token *t);
+extern void emitflstr(void);
 extern void emitChkBraces(void);
 
 /* error handling */

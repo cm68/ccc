@@ -249,6 +249,20 @@ again:
 }
 
 /*
+ * Shift the lookahead down.  A structure assignment is what this
+ * wants to be, and the compiler does not have those - they are on the
+ * list of things this tree may not use, precisely so that it can
+ * compile itself.  So the fields go across one at a time, the union
+ * through its widest member, which covers every other.
+ */
+static void
+shifttok(void)
+{
+	cur.type = next.type;
+	cur.v.numeric = next.v.numeric;
+}
+
+/*
  * Open lexeme file and prime the token stream
  */
 void
@@ -268,7 +282,7 @@ lexOpen(char *fn)
 	/* Prime the token stream - need two reads */
 	readNextToken();     /* Fill next */
 	/* Shift to cur, fill next */
-	cur = next;
+	shifttok();
 	readNextToken();
 }
 
@@ -307,7 +321,7 @@ lexRewind(void)
 
 	/* Re-prime the token stream */
 	readNextToken();
-	cur = next;
+	shifttok();
 	readNextToken();
 }
 
@@ -324,7 +338,7 @@ gettoken(void)
 	freeToken(&cur);
 
 	/* Shift next to cur */
-	cur = next;
+	shifttok();
 
 	/* Read new next */
 	readNextToken();

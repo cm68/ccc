@@ -1506,6 +1506,42 @@ truecc(Expr *e)
 }
 
 /*
+ * Both operands are bytes and both have to be worked out.  A is the
+ * only byte register the ALU works in, so there is no second one to
+ * assign and reducing the right operand lands it on top of the left.
+ * Nothing downstream notices: the tree reads (A) op (A), no rule
+ * matches a register against itself, and the code that came out
+ * applied the operator to the right operand and whatever was left
+ * over.
+ *
+ * So the left waits on the stack while the right is worked out, and
+ * the right comes back to E - the second operand every byte rule
+ * already expects.  Q(A,K), +(A,K) and the rest of that family were
+ * there all along with nothing able to reach them.
+ *
+ * Three bytes, and push af rather than a spare register because there
+ * is none: B and C may hold a register variable, and D and E are where
+ * the answer is going.  The flags ride along and come back, which
+ * costs nothing - the operator sets its own.
+ */
+static void
+bytepair(Expr *e)
+{
+	char w;
+
+	out("\tpush af\n");
+	e->right = rewrite1(e->right);
+	if (e->right && e->right->op == INA) {
+		w = e->right->width;
+		out("\tld e,a\n");
+		freeexpr(e->right);
+		e->right = mkcode(w, R_E);
+		e->right->op = INE;
+	}
+	out("\tpop af\n");
+}
+
+/*
  * A reduced operand does not always land where it was asked to: a byte
  * operation can only end in A and a call only in HL, whatever target
  * they were given.  Move it, for the cases where something else is
@@ -2439,6 +2475,15 @@ rewrite1(Expr *e)
 	if (e->regs >= 3 && e->left && e->right && e->op != ASSIGN) {
 		/* Evaluate left subtree (result in HL) */
 		e->left = rewrite1(e->left);
+		/*
+		 * Unless it is a byte, which lands in A whatever target it
+		 * was given.  Pushing HL then would spill the address the
+		 * value was read through, and the operator would be applied
+		 * to two addresses.
+		 */
+		if (e->left->op == INA) {
+			bytepair(e);
+		} else {
 		/* Spill left result to stack */
 		out("\tpush hl\n");
 		/* Evaluate right subtree (result in HL) */
@@ -2453,6 +2498,7 @@ rewrite1(Expr *e)
 		e->left->op = INHL;
 		e->right = mkcode(e->width, R_DE);
 		e->right->op = INDE;
+		}
 		/* Fall through to step() to apply operation */
 	} else {
 		/* Rewrite children first (depth-first) */
@@ -2581,8 +2627,14 @@ rewrite1(Expr *e)
 		} else if (!e->left || !e->left->nored) {
 			e->left = rewrite1(e->left);
 		}
-		if (!e->right || !e->right->nored)
-			e->right = rewrite1(e->right);
+		if (!e->right || !e->right->nored) {
+			if (e->left && e->left->op == INA && e->right &&
+			    e->op != ASSIGN && e->right->regs > 0 &&
+			    e->right->op != NUMBER && ISBYTE(e->right->width))
+				bytepair(e);
+			else
+				e->right = rewrite1(e->right);
+		}
 	children_done: ;
 	}
 

@@ -181,6 +181,9 @@ process(char *sourcefile)
         filtctrl(&t);
     }
 
+    /* A string literal at the very end is still being held */
+    emitflstr();
+
     /* Check brace balance and emit EOF token */
     filtbraceChk();
     filtctrl_check();

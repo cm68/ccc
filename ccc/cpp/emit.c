@@ -19,6 +19,15 @@ static int braceCount = 0;
 /* Forward declarations */
 void emitLine(int line, char *file);
 void emitStructTok(struct token *t);
+static void emit1tok(struct token *t);
+
+/*
+ * A string literal held back to see whether another one follows it.
+ * pendstr is the counted buffer, owned here; pendtok carries the
+ * position of the first literal, which is the one the run reports.
+ */
+static char *pendstr = NULL;
+static struct token pendtok;
 
 /*
  * Initialize line tracking and emit initial line directive for source file
@@ -202,10 +211,66 @@ emitCurToken(void)
 }
 
 /*
+ * Send out the string literal being held, if there is one.
+ */
+void
+emitflstr(void)
+{
+    if (!pendstr)
+        return;
+    pendtok.v.str = pendstr;
+    pendstr = NULL;
+    emit1tok(&pendtok);		/* frees the buffer for us */
+}
+
+/*
  * Emit a token from struct to .x stream (used by pull-based filter chain)
+ *
+ * Adjacent string literals are joined here rather than in the lexer.
+ * The lexer works on characters and so cannot see two literals that
+ * only became adjacent when a macro was expanded, which is most of
+ * them in this tree - the pass2 rule table is built out of named
+ * fragments written side by side.  C puts the concatenation after
+ * expansion for exactly that reason, and this is the first point in
+ * cpp that is after it.  So a string is held back until the token
+ * after it arrives: another string extends it, anything else releases
+ * it.
  */
 void
 emitStructTok(struct token *t)
+{
+    int oldlen, addlen;
+    char *joined;
+
+    if (t->type == STRING) {
+        addlen = (unsigned char)t->v.str[0] |
+                 ((unsigned char)t->v.str[1] << 8);
+        if (!pendstr) {
+            tokcpy(&pendtok, t);
+            pendstr = t->v.str;
+        } else {
+            oldlen = (unsigned char)pendstr[0] |
+                     ((unsigned char)pendstr[1] << 8);
+            joined = malloc(oldlen + addlen + 3);
+            joined[0] = (oldlen + addlen) & 0xff;
+            joined[1] = ((oldlen + addlen) >> 8) & 0xff;
+            memcpy(joined + 2, pendstr + 2, oldlen);
+            memcpy(joined + 2 + oldlen, t->v.str + 2, addlen);
+            joined[2 + oldlen + addlen] = '\0';
+            free(pendstr);
+            free(t->v.str);
+            pendstr = joined;
+        }
+        t->v.str = NULL;
+        return;
+    }
+
+    emitflstr();
+    emit1tok(t);
+}
+
+static void
+emit1tok(struct token *t)
 {
     /* Emit line info to .x when line or file changes (unless -N) */
     if (!noLineMarkers) {
