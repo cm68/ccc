@@ -4,19 +4,29 @@
 #ifndef RULES_H
 #define RULES_H
 
-/* Replacement flags */
+/*
+ * Replacement flags, in one byte.
+ *
+ * The five modifiers are bits.  The register requirements are not:
+ * they name which register the rule wants, and a rule cannot want two,
+ * so they are a value in the top three bits rather than a bit apiece.
+ * As bits they needed twelve, which meant a short, which cost the
+ * table 474 bytes to say nothing more.
+ */
 #define RF_POW2  0x01    /* transform constant through log2 */
-#define RF_IXIY  0x02    /* require reg is IX or IY */
-#define RF_NOTEQ 0x04    /* NEQ->BANG(EQ): wrap children in EQ node */
-#define RF_INC1  0x08    /* increment right constant by 1 */
-#define RF_BC    0x10    /* require reg is BC */
-#define RF_DE    0x20    /* require reg is DE */
-#define RF_HL    0x40    /* require reg is HL */
-#define RF_IX    0x80    /* require reg is IX */
-#define RF_C     0x100   /* require reg is C (low byte of BC) */
-#define RF_B     0x200   /* require reg is B (high byte of BC) */
-#define RF_TDE   0x400   /* require TARGET is DE (for RHS of binary ops) */
-#define RF_SIGNL 0x800   /* require left operand has a signed width */
+#define RF_NOTEQ 0x02    /* NEQ->BANG(EQ): wrap children in EQ node */
+#define RF_INC1  0x04    /* increment right constant by 1 */
+#define RF_TDE   0x08    /* require TARGET is DE (for RHS of binary ops) */
+#define RF_SIGNL 0x10    /* require left operand has a signed width */
+
+#define RF_REG   0xe0    /* the register requirement lives here */
+#define RF_IXIY  0x20    /* require reg is IX or IY */
+#define RF_BC    0x40    /* require reg is BC */
+#define RF_DE    0x60    /* require reg is DE */
+#define RF_HL    0x80    /* require reg is HL */
+#define RF_IX    0xa0    /* require reg is IX */
+#define RF_C     0xc0    /* require reg is C (low byte of BC) */
+#define RF_B     0xe0    /* require reg is B (high byte of BC) */
 
 /*
  * Path constants for compact navigation
@@ -27,18 +37,25 @@
 #define P_LL     3
 
 /*
- * Rewrite rule
+ * Rewrite rule.  Eight bytes: two pointers and four bytes, which is
+ * what the table is multiplied by 474 times.
+ *
+ * The three source paths share a byte - each is one of four values, so
+ * a byte apiece spent five bits saying nothing.  R() packs them, so
+ * the rules themselves are written the same way they always were.
  */
 struct rule {
 	char *pat;      /* pattern string */
-	unsigned char rep; /* replacement op char */
-	unsigned char lsrc; /* left child source path */
-	unsigned char rsrc; /* right child source path */
-	unsigned char dsrc; /* data source path (for reg/off) */
-	unsigned short flags;
 	char *asmtpl;   /* asm template: $L/$R/$LL/etc for interpolation */
+	unsigned char rep;   /* replacement op char */
+	unsigned char paths; /* lsrc | rsrc<<2 | dsrc<<4 */
+	unsigned char flags;
 	unsigned char destval; /* result location: R_HL, R_A, etc (0=none) */
 };
+
+#define RP_L(rp)  ((rp)->paths & 3)		/* left child source path */
+#define RP_R(rp)  (((rp)->paths >> 2) & 3)	/* right child source path */
+#define RP_D(rp)  (((rp)->paths >> 4) & 3)	/* data source path */
 
 /* Rule table (defined in rules.c) */
 extern struct rule rules[];

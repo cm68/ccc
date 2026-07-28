@@ -710,26 +710,32 @@ tryrule(struct rule *rp, Expr *e)
 	if (!pmatch(rp->pat, e))
 		return NULL;
 
-	/* Check register constraints */
-	if (rp->flags & (RF_IXIY | RF_BC | RF_C | RF_B | RF_DE | RF_HL | RF_IX)) {
-		src = getpath(e, rp->dsrc);
+	/*
+	 * Check the register constraint.  A rule names at most one, so
+	 * this is a value to compare rather than a set of bits to test.
+	 */
+	if (rp->flags & RF_REG) {
+		unsigned char want = rp->flags & RF_REG;
+
+		src = getpath(e, RP_D(rp));
 		if (!src)
 			return NULL;
-		if ((rp->flags & RF_IXIY) &&
-		    src->u.var.reg != R_IX && src->u.var.reg != R_IY)
-			return NULL;
-		if ((rp->flags & RF_BC) && src->u.var.reg != R_BC)
-			return NULL;
-		if ((rp->flags & RF_C) && src->u.var.reg != R_C)
-			return NULL;
-		if ((rp->flags & RF_B) && src->u.var.reg != R_B)
-			return NULL;
-		if ((rp->flags & RF_DE) && src->u.var.reg != R_DE)
-			return NULL;
-		if ((rp->flags & RF_HL) && src->u.var.reg != R_HL)
-			return NULL;
-		if ((rp->flags & RF_IX) && src->u.var.reg != R_IX)
-			return NULL;
+		if (want == RF_IXIY) {
+			if (src->u.var.reg != R_IX && src->u.var.reg != R_IY)
+				return NULL;
+		} else if (want == RF_BC) {
+			if (src->u.var.reg != R_BC) return NULL;
+		} else if (want == RF_C) {
+			if (src->u.var.reg != R_C) return NULL;
+		} else if (want == RF_B) {
+			if (src->u.var.reg != R_B) return NULL;
+		} else if (want == RF_DE) {
+			if (src->u.var.reg != R_DE) return NULL;
+		} else if (want == RF_HL) {
+			if (src->u.var.reg != R_HL) return NULL;
+		} else if (want == RF_IX) {
+			if (src->u.var.reg != R_IX) return NULL;
+		}
 	}
 
 	/* Sign-bit tests are only valid on a signed operand */
@@ -754,8 +760,8 @@ tryrule(struct rule *rp, Expr *e)
 	changed = 0;
 
 	/* Get replacement children */
-	lc = rp->lsrc ? getpath(e, rp->lsrc) : NULL;
-	rc = rp->rsrc ? getpath(e, rp->rsrc) : NULL;
+	lc = RP_L(rp) ? getpath(e, RP_L(rp)) : NULL;
+	rc = RP_R(rp) ? getpath(e, RP_R(rp)) : NULL;
 
 	/* Handle NEQ -> BANG(EQ) - caller must rewrite result */
 	if (rp->flags & RF_NOTEQ) {
@@ -774,7 +780,7 @@ tryrule(struct rule *rp, Expr *e)
 			reg = e->u.var.reg ? e->u.var.reg : R_IY;
 			off = e->u.var.off;
 		} else {
-			src = getpath(e, rp->dsrc);
+			src = getpath(e, RP_D(rp));
 			reg = src ? src->u.var.reg : R_IY;
 			num = e->right;
 			off = num ? (short)num->u.val : 0;

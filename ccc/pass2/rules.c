@@ -225,7 +225,7 @@ char *fragtab[] = {
 #define T_DE_TEST	"\tld a,e\n\tor d\n"
 
 #define R(pat, rep, l, r, d, f, tpl, dest) \
-	{pat, rep, l, r, d, f, tpl, dest}
+	{pat, tpl, rep, (l) | ((r) << 2) | ((d) << 4), f, dest}
 
 struct rule rules[] = {
 	/* LOCALVAR -> INDEX */
@@ -1436,7 +1436,7 @@ struct rule rules[] = {
 	R("U", 0, P_NONE, P_NONE, P_NONE, RF_NOTEQ, NULL, 0),
 
 	/* terminator */
-	{NULL, 0, 0, 0, 0, 0, NULL, 0}
+	{NULL, NULL, 0, 0, 0, 0}
 };
 
 /* Patterns that should not be reduced */
