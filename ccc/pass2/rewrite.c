@@ -2584,6 +2584,37 @@ rewrite1(Expr *e)
 			addr->op = INHL;
 			e->left = mkunary(DEREF, e->width, addr);
 			goto children_done;
+		} else if (e->op == AND && e->dest == DEST_FLAGS &&
+			   e->left && e->left->op == DEREF &&
+			   ISBYTE(e->left->width) &&
+			   e->right && e->right->op == NUMBER &&
+			   ispow2(e->right->u.val) > 0) {
+			/*
+			 * One bit of a byte in memory, asked for as a
+			 * condition.  The Z80 tests it where it lies - bit
+			 * 4,(ix+3) - but only if the rule can still see
+			 * where that is, and reducing the left operand the
+			 * usual way loads it into A first and leaves the
+			 * rule nothing to match.  So the address underneath
+			 * is reduced and the DEREF left standing, which is
+			 * what the ASSIGN lvalue below does for the same
+			 * reason.
+			 *
+			 * Where the address lands decides whether there is a
+			 * rule to match at all, so the DEREF is only left
+			 * standing for the three that have one.  Anything
+			 * else is reduced the ordinary way - a global among
+			 * them, whose "ld a,(nn)" is the shortest the Z80
+			 * has and which bit cannot address regardless.
+			 * Leaving it standing with nothing to match would
+			 * emit no code at all.
+			 */
+			n = rewrite1(e->left->left);
+			e->left->left = n;
+			if (!(n->op == INDEX || n->op == INHL ||
+			      (n->op == REGVAR && n->u.var.reg == R_IX)))
+				e->left = rewrite1(e->left);
+			goto children_done;
 		} else if (e->op == ASSIGN && e->left && e->left->op == DEREF) {
 			/*
 			 * An assignment's lvalue is a location, not a value.

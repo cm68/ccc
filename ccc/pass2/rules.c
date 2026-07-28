@@ -1136,19 +1136,23 @@ struct rule rules[] = {
 	 * wants.  Neither admits 1, so bit 0 is still tested the long
 	 * way - ispow2 answers 0 for it and both guards read that as no.
 	 *
-	 * The indexed rule below wants "bit 4,(iy+3)", which is a byte
-	 * shorter again and leaves A alone.  It does not fire and never
-	 * has: an AND does not preserve its left operand, so the deref is
-	 * reduced to A before the AND is ever looked at, and the rule
-	 * that would have matched the descriptor has nothing to match.
-	 * Making it fire means preserving that operand the way a byte
-	 * comparison does, which is a change to assign() and not to this
-	 * table.  It stays because it is right, not because it is
-	 * reached.  The same is true of a byte register variable, where
-	 * "bit 4,c" would save two - there is no rule for it here
-	 * because there would be no way to reach one.
+	 * The first two test the byte where it lies, through an index
+	 * register or through HL, and are a byte shorter again than
+	 * loading it into A first.  Reaching them takes more than a rule:
+	 * an AND reduces its left operand before it is itself looked at,
+	 * which loads the byte into A and leaves the address nowhere to
+	 * be seen, so rewrite1 has a case that reduces the address and
+	 * leaves the DEREF standing.  Without it the indexed rule sat
+	 * here for a long time matching nothing at all.
+	 *
+	 * A global keeps the third form.  "ld a,(nn)" is the only direct
+	 * absolute load the Z80 has and bit has no absolute form, so
+	 * pointing HL at it first would cost what it saved.
 	 */
 	R("&(D(I),P):bF", AND, P_L, P_R, P_NONE, RF_POW2, "\tbit $R,($LL)\n", F_NZ),
+	R("&(D(V),P):bF", AND, P_L, P_R, P_LL, RF_POW2 | RF_IX,
+		"\tbit $R,(ix+0)\n", F_NZ),
+	R("&(D(H),P):bF", AND, P_L, P_R, P_NONE, RF_POW2, "\tbit $R,(hl)\n", F_NZ),
 	R("&(A,P):bF", AND, P_L, P_R, P_NONE, RF_POW2, "\tbit $R,a\n", F_NZ),
 	R("&(D(I),N):b", AND, P_L, P_R, P_NONE, 0, F_LDALL "\tand $R\n", R_A),
 	R("|(D(I),N):b", OR, P_L, P_R, P_NONE, 0, F_LDALL "\tor $R\n", R_A),
