@@ -567,6 +567,12 @@ struct rule rules[] = {
 		F_LDHA F_LDLA, R_HL),
 	R("X(A):l", SEXT, P_L, P_NONE, P_NONE, 0,
 		"\tld e,a\n" F_RLA F_SBCAA "\tld d,a\n" F_LDHA F_LDLA, R_HL),
+	/* an unsigned word widened: it becomes the low half and the high
+	 * half is nothing, which is the whole difference from X(H) */
+	R("J(H):l", WIDEN, P_L, P_NONE, P_NONE, 0,
+		F_EXDEHL "\tld hl,0\n", R_HL),
+	R("J(B):l", WIDEN, P_L, P_NONE, P_NONE, 0,
+		"\tld e,c\n\tld d,b\n\tld hl,0\n", R_HL),
 	R("J(A):l", WIDEN, P_L, P_NONE, P_NONE, 0,
 		"\tld e,a\n\tld d,0\n\tld h,d\n\tld l,d\n", R_HL),
 
@@ -677,6 +683,20 @@ struct rule rules[] = {
 	R("=(D(O),N):l", ASSIGN, P_L, P_R, P_NONE, 0,
 		"\tld hl,($LL)\n" T_ST_IHL_N, 0),
 	R("=(D(H),N):l", ASSIGN, P_L, P_R, P_NONE, 0, T_ST_IHL_N, 0),
+	/*
+	 * A long value stored through a pointer.  The value fills HL:DE,
+	 * so there is nowhere to put the address except the stack - and
+	 * that is exactly how lstde wants it: value in the pair, address
+	 * pushed, which it consumes.
+	 *
+	 * ex (sp),hl does the swap without a spare register: push the
+	 * high word, load the pointer over it, then trade.
+	 */
+	R("=(D(O),H):l", ASSIGN, P_L, P_R, P_NONE, 0,
+		F_PUSHHL "\tld hl,($LL)\n\tex (sp),hl\n\tcall lstde\n", R_HL),
+	R("=(D(I),H):l", ASSIGN, P_L, P_R, P_NONE, 0,
+		F_PUSHHL "\tld l,($LL)\n\tld h,($LL+)\n\tex (sp),hl\n"
+		"\tcall lstde\n", R_HL),
 	R("=(D(I),N):l", ASSIGN, P_L, P_R, P_NONE, 0,
 		F_LDLLL F_LDHLL1 T_ST_IHL_N, 0),
 

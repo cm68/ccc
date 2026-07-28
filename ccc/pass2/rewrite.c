@@ -1928,7 +1928,23 @@ dolongbin(Expr *e)
 		out("\tpop bc\n");
 
 	if (iscmp) {
-		n = mkcode(e->width, longflag(op, sign));
+		/*
+		 * A comparison answers in a flag, and this returns straight
+		 * to the caller rather than through the loop that would
+		 * otherwise turn one into a number where a number is what
+		 * was asked for.  So do it here: everything downstream then
+		 * sees an ordinary byte, and a long comparison can be
+		 * assigned and widened like any other.
+		 */
+		unsigned char f = longflag(op, sign);
+
+		if (e->dest == DEST_FLAGS) {
+			n = mkcode(e->width, f);
+		} else {
+			matflag(f);
+			n = mkcode('B', R_A);
+			n->op = INA;
+		}
 	} else {
 		n = mkcode(e->width, R_HL);
 		n->op = INHL;
@@ -2482,6 +2498,23 @@ rewrite1(Expr *e)
 			 * has to move aside.  Assuming the second made "p[i] +=
 			 * n" store the low half of the address.
 			 */
+			if (ISLONGINT(e->width)) {
+				/*
+				 * A 32-bit value fills HL:DE, so there is no
+				 * register left for the address and no room to
+				 * shuffle it into one.  It is already on the
+				 * stack, which is where lstde wants it.
+				 */
+				out("\tcall lstde\n");
+				freeexpr(addr);
+				freeexpr(e->right);
+				e->left = e->right = NULL;
+				n = mkcode(e->width, R_HL);
+				n->op = INHL;
+				n->dest = e->dest;
+				freeexpr(e);
+				return n;
+			}
 			if (e->right && e->right->op == INA) {
 				out("\tpop hl\n");
 				freeexpr(addr);

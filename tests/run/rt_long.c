@@ -19,9 +19,12 @@
  */
 #include "rt.h"
 
-long a, b, c, arr[4], *lp;
+long a, b, c, arr[4], *lp, larr[4];
+unsigned short us;
 unsigned long ua, ub;
 short s;
+
+short more();
 
 long idl(v) long v; { return v; }
 long addl(x, y) long x, y; { return x + y; }
@@ -266,6 +269,80 @@ main()
 	CHECK(89, loc == 0x00010001L, 1);
 	loc--;
 	CHECK(90, loc == 0x00010000L, 1);
+
+	return more();
+}
+
+/*
+ * The rest, in a function of its own: zc3's peephole optimiser runs
+ * out of memory on a body much bigger than the one above, and this
+ * file is still growing.
+ */
+short
+more()
+{
+	long loc;
+
+	/*
+	 * Stored through a pointer, and through an address the tree has
+	 * to work out.  A 32-bit value fills HL:DE, so there is no
+	 * register left for the address and nowhere to shuffle it into -
+	 * it stays on the stack, which is where the store helper wants
+	 * it.
+	 */
+	a = 0x11223344L;
+	b = 0L;
+	lp = &b;
+	*lp = a;
+	CHECK(91, b == 0x11223344L, 1);
+	*lp = a + 1L;
+	CHECK(92, b == 0x11223345L, 1);
+
+	larr[0] = 0L; larr[1] = 0L; larr[2] = 0L;
+	s = 1;
+	larr[s] = a;
+	CHECK(93, larr[1] == 0x11223344L, 1);
+	CHECK(94, larr[0] == 0L, 1);		/* stayed in its own slot */
+	CHECK(95, larr[2] == 0L, 1);
+	larr[s] = a + 1L;
+	CHECK(96, larr[1] == 0x11223345L, 1);
+	s = 2;
+	larr[s] = larr[1];
+	CHECK(97, larr[2] == 0x11223345L, 1);
+	larr[s] = 10L;
+	larr[s] += 5L;
+	CHECK(98, larr[2] == 15L, 1);
+
+	/*
+	 * A comparison widened into a long.  The answer is a flag, and
+	 * turning one into a number is done on the way out of the long
+	 * path rather than by the loop that does it for everything else.
+	 */
+	a = -1L;
+	loc = (a < 0L);
+	CHECK(99, loc == 1L, 1);
+	loc = (a > 0L);
+	CHECK(100, loc == 0L, 1);
+	s = 1;
+	loc = (s < 2);
+	CHECK(101, loc == 1L, 1);
+
+	/* a long against a short, which has to widen before it compares */
+	a = 300L;
+	s = 5;
+	CHECK(102, a > s, 1);
+	CHECK(103, a < s, 0);
+	s = -1;
+	a = 0L;
+	CHECK(104, a > s, 1);
+
+	/* an unsigned word widens with nothing in the top half */
+	us = 65535;
+	a = us;
+	CHECK(105, a == 65535L, 1);
+	s = -1;
+	a = s;
+	CHECK(106, a == -1L, 1);
 
 	return 0;
 }
