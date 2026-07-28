@@ -7,4 +7,5 @@ debug.h
 debugtags.c
 stage1/
 sizecheck/
+sizecheck-*/
 sizecheck1/

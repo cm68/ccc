@@ -68,6 +68,7 @@ tmp[0-9]*
 stage1/
 stage2/
 sizecheck/
+sizecheck-*/
 sizecheck1/
 langtest/
 comzc3/

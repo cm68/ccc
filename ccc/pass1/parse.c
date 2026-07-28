@@ -205,17 +205,42 @@ void addDefault(unsigned char stmt_cnt) {
 }
 
 
-/* Function body statement count stack (separate from case counts) */
-static unsigned char funcCnts[32];   /* stmt counts for functions */
-static unsigned char funcCntTop = 0;    /* write pointer (phase 1) */
-static unsigned char funcCntIdx = 0;    /* read pointer (phase 2) */
+/*
+ * Function body statement count stack (separate from case counts).
+ *
+ * One entry per function in the file, for the same reason the if
+ * bitmap is file-wide: phase 1 counts every function's statements
+ * before phase 2 emits any of them.
+ *
+ * This held 32, and the 33rd function onward was dropped on the way in
+ * and read back as a count of zero on the way out.  A zero says the
+ * body is empty, so pass2 stopped reading statements for that function
+ * and took the ones that followed for top-level records - it did not
+ * lose one function, it lost its place, and everything after came out
+ * as whatever the bytes happened to decode to.  rewrite.c has 46
+ * functions and its own entry point was among the missing.
+ *
+ * The indices are shorts now: unsigned char ones would have wrapped at
+ * 256 and desynchronised in exactly the same silent way.
+ */
+#define MAX_FUNCCNTS 128	/* the largest source here has 46 */
+static unsigned char funcCnts[MAX_FUNCCNTS];  /* stmt counts for functions */
+static unsigned short funcCntTop = 0;   /* write pointer (phase 1) */
+static unsigned short funcCntIdx = 0;   /* read pointer (phase 2) */
 
 /*
  * Block statement counts - indexed by block ENTRY order (DFS)
  * Phase 1: assign entry ID when block starts, store count at ID when block ends
  * Phase 2: read count at current entry ID (deterministic DFS order matches)
  */
-#define MAX_BLKCNTS 256
+/*
+ * Also file-wide, also read back by position, so running out
+ * desynchronises rather than truncating - see funcCnts above.  This
+ * was 256 and four sources in this tree were over it, the largest
+ * needing 451.  A byte apiece, so there is room to be well clear of
+ * the worst rather than just past it.
+ */
+#define MAX_BLKCNTS 1024
 static unsigned char blkCnts[MAX_BLKCNTS];
 static unsigned short blkCntTop = 0;     /* next entry ID to assign (phase 1) */
 static unsigned short blkCntIdx = 0;     /* current read index (phase 2) */
@@ -227,7 +252,9 @@ static unsigned char blkIdSp = 0;  /* stack pointer */
 
 /* Called when entering a nested block in phase 1 */
 void enterBlkCnt(void) {
-    if (blkIdSp < MAX_BLK_DEPTH && blkCntTop < MAX_BLKCNTS) {
+    if (blkCntTop >= MAX_BLKCNTS || blkIdSp >= MAX_BLK_DEPTH)
+        fatal(ER_S_BLK);
+    {
 #ifdef DEBUG
         if (VERBOSE(V_PHASE1))
             fdprintf(2, "enterBlkCnt[%d] sp=%d\n", blkCntTop, blkIdSp);
@@ -249,8 +276,9 @@ void storeBlkCnt(unsigned char n) {
 }
 
 void pushFuncCnt(unsigned char n) {
-    if (funcCntTop < 32)
-        funcCnts[funcCntTop++] = n;
+    if (funcCntTop >= MAX_FUNCCNTS)
+        fatal(ER_S_FN);
+    funcCnts[funcCntTop++] = n;
 }
 
 unsigned char popFuncCnt(void) {

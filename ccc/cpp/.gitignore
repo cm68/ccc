@@ -9,6 +9,7 @@ debugtags.c
 *.as
 stage1/
 sizecheck/
+sizecheck-*/
 sizecheck1/
 langtest/
 comzc3/

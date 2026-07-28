@@ -61,6 +61,15 @@ ZCC_ASM = -s
 ZCC_ASMEXT = s
 endif
 
+#
+# Where a size build lands.  Keyed to the compiler that produced it:
+# these directories hold objects, and one directory shared between two
+# compilers means whatever ran last wins.  Reading zc3's objects and
+# calling them ccc's is an easy mistake to make and a hard one to see.
+#
+SIZEDIR = sizecheck-$(ZCC)
+SDCCDIR = sizecheck-sdcc
+
 SOURCES = cpp.c lex.c io.c macro.c kw.c emit.c util.c kwtab.c lexdata.c \
 	filtenum.c filtknr.c filtdecl.c filtbrace.c filtctrl.c filtutil.c typetab.c
 OBJECTS = $(SOURCES:.c=.o)
@@ -118,7 +127,7 @@ clean:
 
 clobber: clean
 	rm -f ./cpp mkkw xdump
-	rm -rf sizecheck sizecheck1 stage1 stage2 langtest comzc3 comsdcc valgrind
+	rm -rf sizecheck sizecheck1 sizecheck-* stage1 stage2 langtest comzc3 comsdcc valgrind
 
 install: cpp xdump
 	cp cpp xdump $(DEST)/bin
@@ -144,31 +153,31 @@ stage1: cpp
 	done
 
 sizecheck: $(GENERATED)
-	mkdir -p sizecheck
+	mkdir -p $(SIZEDIR)
 	$(SETX) ; export ROOTDIR=$(ROOTDIR) ; o="" ; for f in $(SOURCES); do \
 		b=$${f%.c}; \
-		err=sizecheck/$$b.err ; \
-		o="$$o sizecheck/$$b.o" ; \
+		err=$(SIZEDIR)/$$b.err ; \
+		o="$$o $(SIZEDIR)/$$b.o" ; \
 		printf "%-12s" "$$b: " ; \
-		$(ZCC) $(ZCC_ASM) $(ZCFLAGS) $$f >$$err 2>&1 && mv $$b.$(ZCC_ASMEXT) sizecheck ; \
-		$(ZCC) -c $(ZCFLAGS) $$f >>$$err 2>&1 && mv $$b.o sizecheck/$$b.o && \
+		$(ZCC) $(ZCC_ASM) $(ZCFLAGS) $$f >$$err 2>&1 && mv $$b.$(ZCC_ASMEXT) $(SIZEDIR) ; \
+		$(ZCC) -c $(ZCFLAGS) $$f >>$$err 2>&1 && mv $$b.o $(SIZEDIR)/$$b.o && \
 		{ echo "ok"; } || { echo "FAIL"; } \
 	done ; \
 	wssize $$o | awk '{t+=$$1;d+=$$2;b+=$$3;a+=$$4} END {print t,d,b,a}' | tee -a sizefile ; \
-	wsld -r -o sizecheck/cpp $(ROOTDIR)/lib/crt0.o $$o -L$(ROOTDIR)/lib -lccc -lc -lu ; \
-	wssize sizecheck/cpp | tee -a sizefile
+	wsld -r -o $(SIZEDIR)/cpp $(ROOTDIR)/lib/crt0.o $$o -L$(ROOTDIR)/lib -lccc -lc -lu ; \
+	wssize $(SIZEDIR)/cpp | tee -a sizefile
 
 sizecheck1: $(GENERATED)
-	mkdir -p sizecheck1
+	mkdir -p $(SDCCDIR)
 	$(SETX) ; o="" ; for f in $(SOURCES); do \
 		b=$${f%.c}; \
-		err=sizecheck/$$b.err ; \
-		o="$$o sizecheck1/$$b.o" ; \
+		err=$(SDCCDIR)/$$b.err ; \
+		o="$$o $(SDCCDIR)/$$b.o" ; \
 		printf "%-12s" "$$b: " ; \
-		sdcc --sdcccall 0 -c -mz80 -DCCC -I../../libsrc/include $$f && mv $$b.??? sizecheck1 ; \
+		sdcc --sdcccall 0 -c -mz80 -DCCC -I../../libsrc/include $$f && mv $$b.??? $(SDCCDIR) ; \
 		{ echo "ok"; } || { echo "FAIL"; } \
 	done ; \
-	sdcc -mz80 -o sizecheck1/cpp sizecheck1/*.rel
+	sdcc -mz80 -o $(SDCCDIR)/cpp $(SDCCDIR)/*.rel
 
 # ---- CP/M .com builds (native memory footprint) -----------------------
 #

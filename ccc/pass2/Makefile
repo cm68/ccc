@@ -59,6 +59,15 @@ ZCC_ASM = -s
 ZCC_ASMEXT = s
 endif
 
+#
+# Where a size build lands.  Keyed to the compiler that produced it:
+# these directories hold objects, and one directory shared between two
+# compilers means whatever ran last wins.  Reading zc3's objects and
+# calling them ccc's is an easy mistake to make and a hard one to see.
+#
+SIZEDIR = sizecheck-$(ZCC)
+SDCCDIR = sizecheck-sdcc
+
 SOURCES = pass2.c astio.c parseast.c expr.c rewrite.c rules.c
 OBJECTS = $(SOURCES:.c=.o)
 
@@ -112,7 +121,7 @@ clean:
 
 clobber: clean
 	rm -f ./c1
-	rm -rf sizecheck sizecheck1 stage1 stage2
+	rm -rf sizecheck sizecheck1 sizecheck-* stage1 stage2
 
 install: c1
 	cp c1 $(DEST)/bin
@@ -167,31 +176,31 @@ com: $(GENERATED)
 	@$(ROOTDIR)/bin/wssize comzc3/c1.ws | sed 's/c1.ws/c1-zc3.com/'
 
 sizecheck: $(GENERATED)
-	mkdir -p sizecheck
+	mkdir -p $(SIZEDIR)
 	$(SETX) ; export ROOTDIR=$(ROOTDIR) ; o="" ; for f in $(SOURCES); do \
 		b=$${f%.c}; \
-		err=sizecheck/$$b.err ; \
-		o="$$o sizecheck/$$b.o" ; \
+		err=$(SIZEDIR)/$$b.err ; \
+		o="$$o $(SIZEDIR)/$$b.o" ; \
 		printf "%-12s" "$$b: " ; \
-		$(ZCC) $(ZCC_ASM) $(ZCFLAGS) $$f >$$err 2>&1 && mv $$b.$(ZCC_ASMEXT) sizecheck ; \
-		$(ZCC) -c $(ZCFLAGS) $$f >>$$err 2>&1 && mv $$b.o sizecheck/$$b.o && \
+		$(ZCC) $(ZCC_ASM) $(ZCFLAGS) $$f >$$err 2>&1 && mv $$b.$(ZCC_ASMEXT) $(SIZEDIR) ; \
+		$(ZCC) -c $(ZCFLAGS) $$f >>$$err 2>&1 && mv $$b.o $(SIZEDIR)/$$b.o && \
 		{ echo "ok"; } || { echo "FAIL"; } \
 	done ; \
 	wssize $$o | awk '{t+=$$1;d+=$$2;b+=$$3;a+=$$4} END {print t,d,b,a}' | tee -a sizefile ; \
-	wsld -r -o sizecheck/c1 $(ROOTDIR)/lib/crt0.o $$o -L$(ROOTDIR)/lib -lccc -lc -lu ; \
-	wssize sizecheck/c1 | tee -a sizefile
+	wsld -r -o $(SIZEDIR)/c1 $(ROOTDIR)/lib/crt0.o $$o -L$(ROOTDIR)/lib -lccc -lc -lu ; \
+	wssize $(SIZEDIR)/c1 | tee -a sizefile
 
 sizecheck1: $(GENERATED)
-	mkdir -p sizecheck1
+	mkdir -p $(SDCCDIR)
 	$(SETX) ; o="" ; for f in $(SOURCES); do \
 		b=$${f%.c}; \
-		err=sizecheck/$$b.err ; \
-		o="$$o sizecheck1/$$b.o" ; \
+		err=$(SDCCDIR)/$$b.err ; \
+		o="$$o $(SDCCDIR)/$$b.o" ; \
 		printf "%-12s" "$$b: " ; \
-		sdcc --sdcccall 0 -c -mz80 -DCCC -I../../libsrc/include $$f && mv $$b.??? sizecheck1 ; \
+		sdcc --sdcccall 0 -c -mz80 -DCCC -I../../libsrc/include $$f && mv $$b.??? $(SDCCDIR) ; \
 		{ echo "ok"; } || { echo "FAIL"; } \
 	done ; \
-	sdcc -mz80 -o sizecheck1/c1 sizecheck1/*.rel
+	sdcc -mz80 -o $(SDCCDIR)/c1 $(SDCCDIR)/*.rel
 
 # Individual stage1 file rules
 .SECONDARY:
