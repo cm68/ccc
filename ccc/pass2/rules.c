@@ -478,6 +478,13 @@ struct rule rules[] = {
 		"\tpush ix\n\tpop de\n" F_ORA F_SBCHLDE, F_Z),
 	R("U(V,H)", NEQ, P_L, P_R, P_L, RF_IX,
 		"\tpush ix\n\tpop de\n" F_ORA F_SBCHLDE, F_NZ),
+	/* the same with the index register on the other side, which
+	 * normalize does not swap because equality is not a relation it
+	 * reorders by operand kind */
+	R("Q(H,V)", EQ, P_L, P_R, P_R, RF_IX,
+		"\tpush ix\n\tpop de\n" F_ORA F_SBCHLDE, F_Z),
+	R("U(H,V)", NEQ, P_L, P_R, P_R, RF_IX,
+		"\tpush ix\n\tpop de\n" F_ORA F_SBCHLDE, F_NZ),
 
 	R("=(V,H)", ASSIGN, P_L, P_R, P_L, RF_IX, F_PUSHHL "\tpop ix\n", R_IX),
 	R("=(V,E)", ASSIGN, P_L, P_R, P_L, RF_IX, "\tpush de\n\tpop ix\n", R_IX),
@@ -814,6 +821,28 @@ struct rule rules[] = {
 		"\tld (ix+0),c\n\tld (ix+1),b\n", 0),
 	R("=(D(V),N):b", ASSIGN, P_L, P_R, P_LL, RF_IX, "\tld (ix+0),$R\n", 0),
 	R("=(D(V),A):b", ASSIGN, P_L, P_R, P_LL, RF_IX, "\tld (ix+0),a\n", 0),
+	/* a word in HL narrowed on its way through the index register */
+	R("=(D(V),H):b", ASSIGN, P_L, P_R, P_LL, RF_IX,
+		F_LDAL "\tld (ix+0),a\n", R_A),
+
+	/*
+	 * The index register stored through a pointer, rather than used
+	 * as one.  It cannot be written to memory a half at a time - the
+	 * halves are only reachable by the undocumented byte forms and
+	 * not from (hl) at all - so it goes out through DE.
+	 */
+	R("=(D(H),V):s", ASSIGN, P_L, P_R, P_R, RF_IX,
+		"\tpush ix\n\tpop de\n" F_LDHLE F_INCHL F_LDHLD, 0),
+	R("=(D(H),V):b", ASSIGN, P_L, P_R, P_R, RF_IX,
+		"\tld a,ixl\n" F_LDHLA, R_A),
+	R("=(D(B),V):s", ASSIGN, P_L, P_R, P_R, RF_IX,
+		T_BC_HL "\tpush ix\n\tpop de\n" F_LDHLE F_INCHL F_LDHLD, 0),
+	R("=(D(I),V):s", ASSIGN, P_L, P_R, P_R, RF_IX,
+		F_LDLLL F_LDHLL1 "\tpush ix\n\tpop de\n"
+		F_LDHLE F_INCHL F_LDHLD, 0),
+	R("=(D(O),V):s", ASSIGN, P_L, P_R, P_R, RF_IX,
+		"\tld hl,($LL)\n\tpush ix\n\tpop de\n"
+		F_LDHLE F_INCHL F_LDHLD, 0),
 
 	/*
 	 * Store through a pointer that itself lives in memory - a pointer
@@ -850,6 +879,9 @@ struct rule rules[] = {
 	 * is where a compound assignment through a computed address ends
 	 * up, the value in A and the address recovered from the stack */
 	R("=(D(H),A):b", ASSIGN, P_L, P_R, P_NONE, 0, F_LDHLA, R_A),
+	/* a word narrowed to a byte on its way through an address */
+	R("=(D(H),B):b", ASSIGN, P_L, P_R, P_NONE, 0, F_LDAC F_LDHLA, R_A),
+	R("=(D(H),H):b", ASSIGN, P_L, P_R, P_NONE, 0, F_LDAL F_LDHLA, R_A),
 	/*
 	 * Stepping what an address in HL points at - "p[i]++" once the
 	 * subscript has been worked out.  A postfix wants the value from
