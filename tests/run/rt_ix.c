@@ -6,10 +6,12 @@
  * is still a value though - it gets assigned, compared, passed and
  * stored like any other - and almost none of that had a rule.
  *
- * Storing it is the awkward direction: IX cannot be written to memory
- * a half at a time, its halves being reachable only through the
- * undocumented byte forms and not from (hl) at all, so it has to go
- * out through DE.
+ * Storing it is the awkward direction.  The half-register forms are
+ * fine to use, and are used where they win - ld a,ixl for one byte,
+ * ld c,ixl and ld e,ixl to reach BC and DE - but they cannot reach
+ * HL: the DD prefix renames H and L for the whole instruction, so
+ * "ld l,ixl" has no encoding.  HL comes through the stack, which for
+ * a pair is a byte smaller than the half forms in any case.
  *
  * Nothing here is IX-specific by accident.  An indexed location
  * renders its own base register, so the same rules serve a frame

@@ -827,9 +827,20 @@ struct rule rules[] = {
 
 	/*
 	 * The index register stored through a pointer, rather than used
-	 * as one.  It cannot be written to memory a half at a time - the
-	 * halves are only reachable by the undocumented byte forms and
-	 * not from (hl) at all - so it goes out through DE.
+	 * as one.  It goes out through DE.
+	 *
+	 * The half-register forms are fine to use - they work on every
+	 * Z80 - and this file uses them wherever they win: ld a,ixl for
+	 * a single byte, and ld c,ixl / ld e,ixl to reach BC and DE.
+	 * What they cannot do is reach HL, because the DD prefix renames
+	 * H and L to IXH and IXL for the whole instruction, so "ld l,ixl"
+	 * has no encoding at all - the assembler rejects it.  HL can only
+	 * be had through the stack.
+	 *
+	 * For a pair the stack is smaller anyway: push ix / pop de and
+	 * the three stores is six bytes, against seven for ld e,ixl /
+	 * ld d,ixh, each half costing two for its prefix.  Going through
+	 * A a byte at a time is seven as well.
 	 */
 	R("=(D(H),V):s", ASSIGN, P_L, P_R, P_R, RF_IX,
 		"\tpush ix\n\tpop de\n" F_LDHLE F_INCHL F_LDHLD, 0),
