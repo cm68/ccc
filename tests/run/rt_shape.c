@@ -515,6 +515,63 @@ ptrstep(p) short *p;
 	return *p;
 }
 
+/*
+ * pass2/rules.c: reading through a pointer in BC when the answer is
+ * wanted in DE.  D(B):s moved the pointer into HL to read through it
+ * and landed there whatever it was asked for, so as the right operand
+ * of a comparison it overwrote the left one - and then nothing matched
+ * a comparison of HL against HL, which is what left the marker.  The
+ * label was right; the rule could not do as it was told.
+ *
+ * Two pointers, so the second is pushed out of IX into BC: read
+ * through IX the field goes straight to DE and nothing collides.
+ */
+struct dsym {
+	unsigned short value;
+	struct dsym *next;
+};
+
+struct dsym dsa, dsb, dsc;
+struct dsym *dsyms;
+struct dsym *dothers;
+
+short
+dcount(ca) unsigned short ca;
+{
+	struct dsym *s;
+	struct dsym *t;
+	short n;
+
+	n = 0;
+	for (t = dothers; t; t = t->next)
+		n += t->value;
+	for (s = dsyms; s; s = s->next) {
+		if (s->value > ca)
+			n++;
+	}
+	return n;
+}
+
+/* the pointer must survive the read: inc bc then dec bc */
+short
+dwalk()
+{
+	struct dsym *s;
+	struct dsym *t;
+	short n;
+
+	n = 0;
+	for (t = dothers; t; t = t->next)
+		n += t->value;
+	for (s = dsyms; s; s = s->next) {
+		if (s->value > 10)
+			n++;
+		if (s->value > 20)
+			n++;
+	}
+	return n;
+}
+
 main()
 {
 	lexBuf[0] = 10; lexBuf[1] = 20; lexBuf[2] = 30;
@@ -705,6 +762,18 @@ main()
 
 	pwbuf[0] = 1; pwbuf[1] = 2; pwbuf[2] = 3;
 	CHECK(100, ptrstep(pwbuf), 3);	/* stepping the pointer still works */
+
+	dsa.value = 5;  dsa.next = &dsb;
+	dsb.value = 25; dsb.next = &dsc;
+	dsc.value = 15; dsc.next = 0;
+	dsyms = &dsa;
+	dothers = 0;
+	CHECK(101, dcount(10), 2);	/* 25 and 15 are above 10 */
+	CHECK(102, dcount(20), 1);	/* only 25 */
+	CHECK(103, dcount(30), 0);
+	/* 5:none  25:both  15:one  -> 3, and the walk must still finish,
+	 * which it only does if BC came back from every read */
+	CHECK(104, dwalk(), 3);
 
 	return 0;
 }

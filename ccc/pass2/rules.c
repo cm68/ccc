@@ -994,6 +994,21 @@ struct rule rules[] = {
 		"\tld e,(hl)\n" F_INCHL "\tld d,(hl)\n", R_DE),
 	R("D(H):s", DEREF, P_L, P_NONE, P_NONE, 0, T_LD_IHL, R_HL),
 	R("D(B):b", DEREF, P_L, P_NONE, P_NONE, 0, F_LDLC F_LDHB F_LDAHL, R_A),
+	/*
+	 * Reading through BC when the answer is wanted in DE, which is
+	 * where the right operand of a binary node is asked to go.  The
+	 * rule below moves the pointer into HL to read through it and
+	 * lands there, whatever it was asked for - so as the right
+	 * operand of a comparison it overwrote the left one, and then
+	 * nothing matched a comparison of HL against HL.  The label was
+	 * right all along; the rule simply could not do as it was told.
+	 *
+	 * ld a,(bc) reads without HL at all.  BC steps forward for the
+	 * high byte and back again, so the pointer is as it was.
+	 */
+	R("D(B):s", DEREF, P_L, P_NONE, P_NONE, RF_TDE,
+		"\tld a,(bc)\n\tld e,a\n\tinc bc\n"
+		"\tld a,(bc)\n\tld d,a\n\tdec bc\n", R_DE),
 	R("D(B):s", DEREF, P_L, P_NONE, P_NONE, 0, F_LDLC F_LDHB F_LDAHL F_INCHL F_LDHHL F_LDLA, R_HL),
 	R("D(E):b", DEREF, P_L, P_NONE, P_NONE, 0, F_EXDEHL F_LDAHL, R_A),
 	R("D(E):s", DEREF, P_L, P_NONE, P_NONE, 0, F_EXDEHL "\tld e,(hl)\n" F_INCHL "\tld d,(hl)\n" F_EXDEHL, R_HL),
