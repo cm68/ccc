@@ -363,6 +363,57 @@ commaside()
 	return (a++, a);
 }
 
+/*
+ * pass2/rewrite.c: a long compared against something narrower.  The
+ * comparison carries the width of its answer, not of its operands, so
+ * reading only the left one meant "s < l" was judged by s; and nobody
+ * put the conversion in the tree, so even "l < s" reached the gate
+ * with an operand that could not land in HL:DE.  Both sides matter,
+ * and so does which conversion: a signed source sign-extends and an
+ * unsigned one does not, which is what separates -1 from 65535.
+ */
+long lbig, lneg;
+
+short
+cmpLU(l, u) long l; register unsigned short u;
+{
+	short n;
+
+	n = 0;
+	if (l <  u) n |= 1;
+	if (l <= u) n |= 2;
+	if (l >  u) n |= 4;
+	if (l >= u) n |= 8;
+	if (l == u) n |= 16;
+	if (l != u) n |= 32;
+	return n;
+}
+
+short
+cmpUL(u, l) register unsigned short u; long l;
+{
+	short n;
+
+	n = 0;
+	if (u <  l) n |= 1;
+	if (u <= l) n |= 2;
+	if (u >  l) n |= 4;
+	if (u >= l) n |= 8;
+	return n;
+}
+
+short
+cmpLS(l, s) long l; register short s;
+{
+	short n;
+
+	n = 0;
+	if (l <  s) n |= 1;
+	if (l >  s) n |= 2;
+	if (l == s) n |= 4;
+	return n;
+}
+
 main()
 {
 	lexBuf[0] = 10; lexBuf[1] = 20; lexBuf[2] = 30;
@@ -479,6 +530,34 @@ main()
 	CHECK(66, commafor(), 10);
 	CHECK(67, commaside(), 9);
 	CHECK(68, cwit, 14);		/* untouched since commabyte */
+
+	CHECK(69, cmpLU(100000L, 5), 4|8|32);
+	/*
+	 * A negative long against an unsigned short.  long can represent
+	 * every unsigned short, so both convert to signed long and -1 is
+	 * below 5.  zc3 takes the whole comparison unsigned because one
+	 * side is, making -1 read as 4294967295 and answer 44 where gcc
+	 * and ccc both answer 35 - so this one case is not asked of it.
+	 * Checked by hand against the promotion rules, not just against
+	 * the reference: two of three agreeing is not what settles it.
+	 */
+#ifndef RT_ZC3
+	CHECK(70, cmpLU(-1L, 5), 1|2|32);	/* the long stays signed */
+#endif
+	CHECK(71, cmpLU(65535L, 65535), 2|8|16);/* and 65535 is not -1 */
+	CHECK(72, cmpUL(5, 100000L), 1|2);
+	/* 12 not 10: sign-extending the unsigned side would make these
+	 * equal, and 65535 is above -1, not the same as it.  Not asked of
+	 * zc3 - the same unsigned-wins bug as check 70, operands the
+	 * other way round. */
+#ifndef RT_ZC3
+	CHECK(73, cmpUL(65535, -1L), 4|8);
+#endif
+	CHECK(74, cmpLS(-5L, -1), 1);
+	/* 2 not 4: the signed side must sign-extend, or -1 reads as
+	 * 65535 and compares equal to the long */
+	CHECK(75, cmpLS(65535L, -1), 2);
+	CHECK(76, cmpLS(-1L, -1), 4);
 
 	return 0;
 }

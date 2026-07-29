@@ -1980,6 +1980,25 @@ longflag(unsigned char op, int sign)
 }
 
 /*
+ * Widen an operand to a long, if it is not one already.  Signed sources
+ * sign-extend and unsigned ones do not, which is the whole difference
+ * between the SEXT and WIDEN rules at long width.  A constant is left
+ * as it is: the callers below load and push one directly, at whatever
+ * width it was written.
+ */
+static Expr *
+tolong(Expr *e, char w)
+{
+	Expr *n;
+
+	if (!e || e->op == NUMBER || ISLONGINT(e->width))
+		return e;
+	n = mkunary(ISSIGNED(e->width) ? SEXT : WIDEN, w, e);
+	n->dest = DEST_VALUE;
+	return n;
+}
+
+/*
  * A binary operator on 32-bit values.  Both operands want HL:DE and
  * there is only one of those, so the right one is worked out first and
  * pushed - which is also what the helpers expect: left in HL:DE, right
@@ -2004,6 +2023,15 @@ dolongbin(Expr *e)
 
 	if (!e->left || !e->right)
 		return NULL;
+	/*
+	 * A comparison carries the width of what it answers, not of what
+	 * it compares, so the operands are where to look - and either one
+	 * of them may be the long.  Reading only the left meant "s < l"
+	 * was judged by s and declined here, while "l < s" got as far as
+	 * the gate below and was declined there instead.
+	 */
+	if (iscmp && !ISLONGINT(opnd->width) && ISLONGINT(e->right->width))
+		opnd = e->right;
 	if (!opnd || !ISLONGINT(opnd->width))
 		return NULL;
 	sign = ISSIGNED(opnd->width);
@@ -2065,6 +2093,17 @@ dolongbin(Expr *e)
 	fn = longhelper(op, sign);
 	if (!fn)
 		return NULL;
+
+	/*
+	 * A long against something narrower.  C converts the narrow side,
+	 * and the rules for that conversion are already in the table - what
+	 * was missing is that nobody put the conversion in the tree, so the
+	 * gate below saw an operand that could not be made to land in HL:DE
+	 * and declined.  A constant is left alone: pushlongc and loadlongc
+	 * below take one at whatever width it is written.
+	 */
+	l = tolong(l, opnd->width);
+	r = tolong(r, opnd->width);
 
 	/*
 	 * Both operands have to be shapes that end up in HL:DE, and that

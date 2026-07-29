@@ -60,7 +60,7 @@ for t in $tests; do
 		# 64-bit host it is 64, and a long test would be computing
 		# different answers in the two places and the reference would
 		# be worth nothing.  short and char are unaffected.
-		gcc -w -m32 -std=gnu89 -o "$bin" "$src" >"$log" 2>&1 || built=no
+		gcc -w -m32 -std=gnu89 -DRT_NATIVE -o "$bin" "$src" >"$log" 2>&1 || built=no
 		;;
 	zc3)
 		# The same recipe as ccc/pass1's mx-zc3 target: compile only,
@@ -72,13 +72,13 @@ for t in $tests; do
 		# binary is laid out at zero and runs off into the header.
 		(cd "$work" &&
 		 PATH="$root/root/bin:$PATH" \
-		 zc3 -O -c -CPM -I"$here" "$src" &&
+		 zc3 -O -c -CPM -DRT_ZC3 -I"$here" "$src" &&
 		 "$root/root/bin/wsld" -o "$bin" -Ttext=0x100 \
 			"$root/root/lib/crt0.o" "$base.o" \
 			-L"$root/root/lib" -lc -lu -lc) >"$log" 2>&1 || built=no
 		;;
 	ccc)
-		(cd "$work" && "$CCC" -o "$bin" -I"$here" "$src") >"$log" 2>&1 ||
+		(cd "$work" && "$CCC" -DRT_CCC -o "$bin" -I"$here" "$src") >"$log" 2>&1 ||
 			built=no
 		;;
 	esac
