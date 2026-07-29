@@ -505,6 +505,13 @@ struct rule rules[] = {
 	 */
 	R("=(V,O)", ASSIGN, P_L, P_R, P_L, RF_IX, "\tld ix,$R\n", R_IX),
 	R("=(O,V)", ASSIGN, P_L, P_R, P_R, RF_IX, "\tld ($L),ix\n", R_IX),
+	/*
+	 * The same once the operand has been reduced.  IX has no register
+	 * node of its own - HL, DE, BC and the byte registers each do -
+	 * so a value in it stays a CODE node, and the rule above, which
+	 * asks for a REGVAR, no longer matches.
+	 */
+	R("=(O,C)", ASSIGN, P_L, P_R, P_R, RF_IX, "\tld ($L),ix\n", R_IX),
 	R("=(I,V):s", ASSIGN, P_L, P_R, P_R, RF_IX,
 		"\tpush ix\n" F_POPHL T_IDX_S_ST, R_HL),
 	/*
@@ -995,6 +1002,14 @@ struct rule rules[] = {
 		F_LDLLL F_LDHLL1 "\tld (hl),$R\n", 0),
 	R("=(D(I),A):b", ASSIGN, P_L, P_R, P_NONE, 0,
 		F_LDLLL F_LDHLL1 F_LDHLA, 0),
+	/*
+	 * The same with the value in HL, narrowing to its low byte.  The
+	 * word form above is here and the byte one was not, so storing a
+	 * byte through a pointer in a frame slot emitted nothing.  Take
+	 * the byte out of L before loading the pointer, which wants HL.
+	 */
+	R("=(D(I),H):b", ASSIGN, P_L, P_R, P_NONE, 0,
+		F_LDAL F_LDLLL F_LDHLL1 F_LDHLA, R_A),
 	/*
 	 * A register variable stored through a pointer in a frame slot,
 	 * narrowing on the way - "where[0] = v" with v in BC.  Load the
@@ -1511,6 +1526,15 @@ struct rule rules[] = {
 	R("Y(A,K)", GE, P_L, P_R, P_NONE, 0, F_CPE, F_NC),
 	R("Q(A,N)", EQ, P_L, P_R, P_NONE, 0, F_CPR, F_Z),
 	R("U(A,N)", NEQ, P_L, P_R, P_NONE, 0, F_CPR, F_NZ),
+	/*
+	 * Against a byte register variable, which lives in B or C.  cp
+	 * takes either directly; there were forms for E and for a
+	 * constant and none for these.
+	 */
+	R("Q(A,V)", EQ, P_L, P_R, P_R, RF_B, "\tcp b\n", F_Z),
+	R("U(A,V)", NEQ, P_L, P_R, P_R, RF_B, "\tcp b\n", F_NZ),
+	R("Q(A,V)", EQ, P_L, P_R, P_R, RF_C, "\tcp c\n", F_Z),
+	R("U(A,V)", NEQ, P_L, P_R, P_R, RF_C, "\tcp c\n", F_NZ),
 	R("T(A,N)", LT, P_L, P_R, P_NONE, 0, F_CPR, F_C),
 	R("Y(A,N)", GE, P_L, P_R, P_NONE, 0, F_CPR, F_NC),
 	R("Q(D(I),N):b", EQ, P_L, P_R, P_NONE, 0, F_LDALL F_CPR, F_Z),

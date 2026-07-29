@@ -242,6 +242,58 @@ plfill(p, n) long *p; short n;
 		*p++ = 9L;		/* steps by four */
 }
 
+
+/*
+ * pass1/expr.c: a byte stored through a pointer held in a frame slot.
+ * The word form of that store was in the table and the byte one was
+ * not.
+ */
+char sbuf[8];
+
+short
+bytestore(v) short v;
+{
+	char *p;
+
+	p = sbuf;
+	p[0] = v;			/* the value arrives in HL */
+	*p = v + 1;
+	return sbuf[0];
+}
+
+/*
+ * cpp/lex.c: A compared against a byte register variable.  cp takes b
+ * and c directly; there were forms for E and for a constant only.
+ */
+short
+bytecmp(c, d) register char c; char d;
+{
+	short n;
+
+	n = 0;
+	if (d == c) n += 1;
+	if (d != c) n += 2;
+	return n;
+}
+
+/*
+ * tools/wsld.c: a pointer register variable stored to a global.  IX
+ * has no register node of its own, so a value in it stays a CODE node
+ * and the rule asking for a REGVAR stopped matching once it had been
+ * reduced.
+ */
+struct snode { short v; struct snode *next; };
+struct snode sn1, sn2;
+struct snode *slist;
+
+void
+setlist(p) register struct snode *p;
+{
+	slist = p;
+	p->v = 5;
+	slist = p->next;
+}
+
 main()
 {
 	lexBuf[0] = 10; lexBuf[1] = 20; lexBuf[2] = 30;
@@ -329,6 +381,23 @@ main()
 	CHECK(47, plbuf[0] == 9L, 1);
 	CHECK(48, plbuf[1] == 9L, 1);
 	CHECK(49, plbuf[2] == 0L, 1);
+
+	sbuf[0] = 0;
+	CHECK(50, bytestore(65), 66);
+	CHECK(51, sbuf[0], 66);
+	CHECK(52, bytestore(0), 1);
+
+	CHECK(53, bytecmp(5, 5), 1);
+	CHECK(54, bytecmp(5, 6), 2);
+	CHECK(55, bytecmp(-1, -1), 1);
+	CHECK(56, bytecmp(0, 0), 1);
+
+	sn1.v = 1; sn1.next = &sn2;
+	sn2.v = 2; sn2.next = 0;
+	slist = 0;
+	setlist(&sn1);
+	CHECK(57, slist == &sn2, 1);
+	CHECK(58, sn1.v, 5);
 
 	return 0;
 }
