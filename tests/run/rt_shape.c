@@ -294,6 +294,75 @@ setlist(p) register struct snode *p;
 	slist = p->next;
 }
 
+/*
+ * pass2/rewrite.c: the comma operator.  A comma is its right operand
+ * once the left has been emitted, but no rule reduces a bare constant
+ * - a constant only becomes a load as part of a parent rule that
+ * names it - so a comma whose right was a constant or a frame slot
+ * matched nothing and emitted nothing.  The left must still happen:
+ * cwit witnesses that it did.
+ */
+short cwit;
+
+short
+commaconst()
+{
+	short r;
+
+	r = (cwit = 11, 0);		/* right is a constant */
+	return r;
+}
+
+short
+commaslot(v) short v;
+{
+	short slot;
+	short r;
+
+	slot = v;
+	r = (cwit = 12, slot);		/* right is a frame slot */
+	return r;
+}
+
+short
+commanest()
+{
+	short r;
+
+	r = (cwit = 13, (cwit = 14, 115));
+	return r;
+}
+
+short
+commabyte()
+{
+	char c;
+
+	c = (cwit = 14, 115);		/* byte width */
+	return c;
+}
+
+short
+commafor()
+{
+	short i, n;
+
+	n = 0;
+	for (i = 0; i < 5; i++, n++)	/* comma discarding its right */
+		;
+	return i + n;
+}
+
+short
+commaside()
+{
+	short a;
+
+	a = 8;
+	/* left is a step whose effect must survive the collapse */
+	return (a++, a);
+}
+
 main()
 {
 	lexBuf[0] = 10; lexBuf[1] = 20; lexBuf[2] = 30;
@@ -398,6 +467,18 @@ main()
 	setlist(&sn1);
 	CHECK(57, slist == &sn2, 1);
 	CHECK(58, sn1.v, 5);
+
+	cwit = 0;
+	CHECK(59, commaconst(), 0);
+	CHECK(60, cwit, 11);		/* the left still happened */
+	CHECK(61, commaslot(6), 6);
+	CHECK(62, cwit, 12);
+	CHECK(63, commanest(), 115);
+	CHECK(64, cwit, 14);
+	CHECK(65, commabyte(), 115);
+	CHECK(66, commafor(), 10);
+	CHECK(67, commaside(), 9);
+	CHECK(68, cwit, 14);		/* untouched since commabyte */
 
 	return 0;
 }

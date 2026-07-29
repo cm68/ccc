@@ -1144,6 +1144,16 @@ normtree(Expr *e)
 	    e->left->dest == DEST_NONE)
 		e->left->dest = e->dest;
 	/*
+	 * A comma's left really is discarded - that is what it is for -
+	 * but its right is the value, and is wanted exactly as much as the
+	 * comma itself.  Left out of the rule below along with the left,
+	 * it read as discarded: a constant or a frame slot there never
+	 * paid for a register, and the comma rules, which do nothing but
+	 * say where the value ended up, had nothing to name.
+	 */
+	if (e->op == COMMA && e->right && e->right->dest == DEST_NONE)
+		e->right->dest = e->dest;
+	/*
 	 * The two above are the same rule found twice, one operator at a
 	 * time, so here it is once: what an operator operates on is
 	 * wanted as a value.  A node's destination starts as DEST_NONE
@@ -2227,6 +2237,30 @@ rewrite1(Expr *e)
 	char lw, rw;
 
 	if (!e) return NULL;
+
+	/*
+	 * A comma is its right operand, once the left has been emitted for
+	 * whatever it does.  Collapse it rather than matching it: no rule
+	 * reduces a bare constant - a constant only ever becomes a load as
+	 * part of some parent rule that names it - so a comma whose right
+	 * was a constant or a frame slot had nothing to match, and the
+	 * ";(_,H)" family could only ever catch the cases that happened to
+	 * reduce to a register on their own.  Collapsing hands the right
+	 * operand to whatever encloses the comma, which has the rules for
+	 * it already.
+	 */
+	if (e->op == COMMA && e->left && e->right) {
+		Expr *val;
+
+		e->left->dest = DEST_NONE;
+		freeexpr(rewrite1(e->left));
+		val = e->right;
+		val->dest = e->dest;
+		val->tgt = e->tgt;
+		e->left = e->right = NULL;
+		freeexpr(e);
+		return rewrite1(val);
+	}
 
 	/* CALL: args have to be pushed one at a time, not rewritten as a
 	 * batch - each one lands in HL and would clobber the last. */
