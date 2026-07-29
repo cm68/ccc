@@ -2798,6 +2798,32 @@ rewrite1(Expr *e)
 			 * and quietly turn the store into a fetch.
 			 */
 			e->left->left = rewrite1(e->left->left);
+		} else if ((e->op == PREINC || e->op == PREDEC ||
+			    e->op == POSTINC || e->op == POSTDEC) &&
+			   e->left && e->left->op == DEREF &&
+			   e->left->left && e->left->left->op == REGVAR) {
+			/*
+			 * Stepping through a pointer kept in a register.
+			 *
+			 * Every other pointer works already, because the
+			 * ordinary reduction of DEREF(pointer variable) loads
+			 * the pointer, and a loaded pointer in HL is exactly
+			 * what "step through an address in HL" wants.  A
+			 * register variable has nothing to load: the reduction
+			 * applies a load rule anyway and fetches what p points
+			 * at, so the step ran on the value - and at short
+			 * width on that value used as an address again, making
+			 * "(*p)++" step what *p pointed at.
+			 *
+			 * Keeping the DEREF and reducing only underneath is
+			 * what the assignment above does, for the same reason:
+			 * dropping it leaves a bare INBC, and "i(B)" - step BC
+			 * itself - is a real rule that would then match, which
+			 * is the "no way to tell *p = x from p = x" that the
+			 * pass1 side of this warns about.  The ?(D(B)) rules
+			 * name the shape that is left.
+			 */
+			e->left->left = rewrite1(e->left->left);
 		} else if (e->op == ASSIGN && e->left &&
 			   !islocdesc(e->left) && !isdestreg(e->left)) {
 			/*

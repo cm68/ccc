@@ -739,6 +739,52 @@ struct rule rules[] = {
 		T_IDX_ADDR F_PUSHBC F_CALLLAINC F_POPBC T_IDX_ADDR "\tcall lld\n", R_HL),
 	R("k(I):l", PREDEC, P_L, P_NONE, P_NONE, 0,
 		T_IDX_ADDR F_PUSHBC F_CALLLADEC F_POPBC T_IDX_ADDR "\tcall lld\n", R_HL),
+	/*
+	 * And through a pointer, where the address is in HL already and
+	 * there is nothing to work out - "(*lp)++", which the short forms
+	 * had and these did not, so stepping a long through a pointer
+	 * emitted nothing at all.
+	 *
+	 * A prefix used for its value has to read the long back, and the
+	 * helper leaves the old one in HL:DE with the address gone, so the
+	 * address is kept on the stack under the saved BC.  lld preserves
+	 * BC, which is why it can come after the pop.
+	 */
+	R("j(H):l", POSTINC, P_L, P_NONE, P_NONE, 0,
+		F_PUSHBC F_CALLLAINC F_POPBC, R_HL),
+	R("m(H):l", POSTDEC, P_L, P_NONE, P_NONE, 0,
+		F_PUSHBC F_CALLLADEC F_POPBC, R_HL),
+	R("i(H):lS", PREINC, P_L, P_NONE, P_NONE, 0,
+		F_PUSHBC F_CALLLAINC F_POPBC, R_HL),
+	R("k(H):lS", PREDEC, P_L, P_NONE, P_NONE, 0,
+		F_PUSHBC F_CALLLADEC F_POPBC, R_HL),
+	R("i(H):l", PREINC, P_L, P_NONE, P_NONE, 0,
+		F_PUSHBC F_PUSHHL F_CALLLAINC F_POPHL F_POPBC
+		"\tcall lld\n", R_HL),
+	R("k(H):l", PREDEC, P_L, P_NONE, P_NONE, 0,
+		F_PUSHBC F_PUSHHL F_CALLLADEC F_POPHL F_POPBC
+		"\tcall lld\n", R_HL),
+	/*
+	 * And through a pointer kept in a register, where the DEREF is
+	 * still standing because rewrite1 left it there - see the step
+	 * branch that explains why.  The address is in BC and the helper
+	 * wants it in HL, which is the only difference from the forms
+	 * above.
+	 */
+	R("j(D(B)):l", POSTINC, P_L, P_NONE, P_NONE, 0,
+		T_BC_HL F_PUSHBC F_CALLLAINC F_POPBC, R_HL),
+	R("m(D(B)):l", POSTDEC, P_L, P_NONE, P_NONE, 0,
+		T_BC_HL F_PUSHBC F_CALLLADEC F_POPBC, R_HL),
+	R("i(D(B)):lS", PREINC, P_L, P_NONE, P_NONE, 0,
+		T_BC_HL F_PUSHBC F_CALLLAINC F_POPBC, R_HL),
+	R("k(D(B)):lS", PREDEC, P_L, P_NONE, P_NONE, 0,
+		T_BC_HL F_PUSHBC F_CALLLADEC F_POPBC, R_HL),
+	R("i(D(B)):l", PREINC, P_L, P_NONE, P_NONE, 0,
+		T_BC_HL F_PUSHBC F_CALLLAINC F_POPBC T_BC_HL
+		"\tcall lld\n", R_HL),
+	R("k(D(B)):l", PREDEC, P_L, P_NONE, P_NONE, 0,
+		T_BC_HL F_PUSHBC F_CALLLADEC F_POPBC T_BC_HL
+		"\tcall lld\n", R_HL),
 
 	/*
 	 * Storing a long constant through an address, which the four
@@ -861,6 +907,22 @@ struct rule rules[] = {
 		F_DECHL, R_HL),
 	R("m(H):s", POSTDEC, P_L, P_NONE, P_NONE, 0,
 		F_PUSHHL T_LD_IHL F_DECHL T_SWAP_ADDR T_ST_IHL
+		F_INCHL, R_HL),
+	/*
+	 * The same through a pointer kept in a register, where the DEREF
+	 * survives reduction and the address is in BC.  Without these,
+	 * "(*p)++" on a register pointer loaded the pointer, took that
+	 * for an address and stepped what it pointed at.
+	 */
+	R("i(D(B)):s", PREINC, P_L, P_NONE, P_NONE, 0,
+		T_BC_HL F_PUSHHL T_LD_IHL F_INCHL T_SWAP_ADDR T_ST_IHL, R_HL),
+	R("k(D(B)):s", PREDEC, P_L, P_NONE, P_NONE, 0,
+		T_BC_HL F_PUSHHL T_LD_IHL F_DECHL T_SWAP_ADDR T_ST_IHL, R_HL),
+	R("j(D(B)):s", POSTINC, P_L, P_NONE, P_NONE, 0,
+		T_BC_HL F_PUSHHL T_LD_IHL F_INCHL T_SWAP_ADDR T_ST_IHL
+		F_DECHL, R_HL),
+	R("m(D(B)):s", POSTDEC, P_L, P_NONE, P_NONE, 0,
+		T_BC_HL F_PUSHHL T_LD_IHL F_DECHL T_SWAP_ADDR T_ST_IHL
 		F_INCHL, R_HL),
 
 	/* postfix yields the old value, so read before updating */

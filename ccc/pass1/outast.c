@@ -438,6 +438,14 @@ emitExpr(struct expr *e)
 			n = type->sub->size;
 		emit1(uc);
 		emit1(c);
+		/*
+		 * What a step steps is a location, exactly as an assignment's
+		 * left side is, so the DEREF case below has to keep itself:
+		 * without this "(*p)++" on a register variable dropped the
+		 * DEREF and stepped the pointer instead of what it points at.
+		 * Clean code, no marker, wrong answer - and at both widths.
+		 */
+		inLvalue = 1;
 		emitChild(left);
 		emit2(n);
 		break;

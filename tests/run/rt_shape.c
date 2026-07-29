@@ -414,6 +414,107 @@ cmpLS(l, s) long l; register short s;
 	return n;
 }
 
+/*
+ * pass2/rules.c: stepping a long through a pointer - "(*lp)++", as in
+ * tools/wsnm.c's read_reloc.  The step rules had the global and the
+ * frame slot at long width and the pointer only at short, so this
+ * emitted nothing.  A prefix wanted for its value has to read the long
+ * back afterwards: lainc hands back what was there before and consumes
+ * the address, so the address is kept across the call.
+ */
+long lstepv;
+
+short
+lbumpst(p) long *p;
+{
+	(*p)++;			/* value unused */
+	return 1;
+}
+
+short
+lprest(p) long *p;
+{
+	++(*p);			/* value unused */
+	return 2;
+}
+
+long
+lprev(p) long *p;
+{
+	return ++(*p);		/* prefix yields the new value */
+}
+
+long
+lpostv(p) long *p;
+{
+	return (*p)++;		/* postfix yields the old one */
+}
+
+short
+ldropst(p) long *p;
+{
+	(*p)--;
+	--(*p);
+	return 3;
+}
+
+/*
+ * pass1/outast.c and pass2/rewrite.c: stepping through a pointer that
+ * the allocator put in a register.  Two uses is enough to promote it,
+ * which is why one-use functions above did not show this.
+ *
+ * pass1 dropped the DEREF on DEREF(REGVAR) unless it was an
+ * assignment's lvalue, so "(*p)++" became "p++" and stepped the
+ * pointer.  pass2 then had its own half: with the DEREF back, the
+ * ordinary reduction fetched what p points at and stepped that - and
+ * at short width took the fetched value for an address and stepped
+ * what *that* pointed at.  Neither left a marker.
+ */
+long lregv;
+short sregv;
+
+short
+lregstep(p) long *p;
+{
+	(*p)++;
+	(*p)++;
+	return 1;
+}
+
+short
+lregdrop(p) long *p;
+{
+	(*p)--;
+	(*p)--;
+	return 2;
+}
+
+short
+sregstep(p) short *p;
+{
+	(*p)++;
+	(*p)++;
+	return 3;
+}
+
+short
+sregdrop(p) short *p;
+{
+	(*p)--;
+	(*p)--;
+	return 4;
+}
+
+/* the pointer itself must still be steppable, which is the rule the
+ * lost DEREF was wrongly matching */
+short
+ptrstep(p) short *p;
+{
+	p++;
+	p++;
+	return *p;
+}
+
 main()
 {
 	lexBuf[0] = 10; lexBuf[1] = 20; lexBuf[2] = 30;
@@ -558,6 +659,52 @@ main()
 	 * 65535 and compares equal to the long */
 	CHECK(75, cmpLS(65535L, -1), 2);
 	CHECK(76, cmpLS(-1L, -1), 4);
+
+	lstepv = 5L;
+	CHECK(77, lbumpst(&lstepv), 1);
+	CHECK(78, lstepv == 6L, 1);
+	CHECK(79, lprest(&lstepv), 2);
+	CHECK(80, lstepv == 7L, 1);
+	CHECK(81, lprev(&lstepv) == 8L, 1);	/* new value */
+	CHECK(82, lpostv(&lstepv) == 8L, 1);	/* old value */
+	CHECK(83, lstepv == 9L, 1);
+	CHECK(84, ldropst(&lstepv), 3);
+	CHECK(85, lstepv == 7L, 1);
+
+	/* carry across the 16-bit halves, which a 32-bit step has to do
+	 * and a 16-bit one silently would not */
+	lstepv = 65535L;
+	lbumpst(&lstepv);
+	CHECK(86, lstepv == 65536L, 1);
+	lprest(&lstepv);
+	CHECK(87, lstepv == 65537L, 1);
+	lstepv = 65536L;
+	ldropst(&lstepv);
+	CHECK(88, lstepv == 65534L, 1);
+
+	/* and through zero, where the high word borrows */
+	lstepv = 0L;
+	ldropst(&lstepv);
+	CHECK(89, lstepv == -2L, 1);
+	lbumpst(&lstepv);
+	CHECK(90, lstepv == -1L, 1);
+	lbumpst(&lstepv);
+	CHECK(91, lstepv == 0L, 1);
+
+	lregv = 100000L;
+	CHECK(92, lregstep(&lregv), 1);
+	CHECK(93, lregv == 100002L, 1);	/* the long, not the pointer */
+	CHECK(94, lregdrop(&lregv), 2);
+	CHECK(95, lregv == 100000L, 1);
+
+	sregv = 40;
+	CHECK(96, sregstep(&sregv), 3);
+	CHECK(97, sregv, 42);
+	CHECK(98, sregdrop(&sregv), 4);
+	CHECK(99, sregv, 40);
+
+	pwbuf[0] = 1; pwbuf[1] = 2; pwbuf[2] = 3;
+	CHECK(100, ptrstep(pwbuf), 3);	/* stepping the pointer still works */
 
 	return 0;
 }
