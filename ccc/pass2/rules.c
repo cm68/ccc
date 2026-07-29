@@ -310,6 +310,13 @@ struct rule rules[] = {
 	 */
 	R("+(O,H)", PLUS, P_L, P_R, P_NONE, 0, "\tld de,$L\n" F_ADDHLDE, R_HL),
 	R("+(O,E)", PLUS, P_L, P_R, P_NONE, 0, F_LDHLL F_ADDHLDE, R_HL),
+	/*
+	 * The same with the subscript in BC, which a register variable
+	 * puts it in - "buf[i]" over a global array with i in a register.
+	 * There were forms for HL and DE and not for BC, so the address
+	 * was never worked out and nothing was emitted for it.
+	 */
+	R("+(O,B)", PLUS, P_L, P_R, P_NONE, 0, F_LDHLL "\tadd hl,bc\n", R_HL),
 
 	/* strength reduction */
 	R("*(_,P)", LSHIFT, P_L, P_R, P_NONE, RF_POW2, NULL, 0),
@@ -1169,6 +1176,17 @@ struct rule rules[] = {
 	R(">(B,M)", RSHIFT, P_L, P_R, P_NONE, RF_SIGNL,
 		T_BC_HL "%(\tsra h\n\trr l\n)", R_HL),
 	R(">(B,M)", RSHIFT, P_L, P_R, P_NONE, 0, T_BC_HL "%(\tsrl h\n\trr l\n)", R_HL),
+	/*
+	 * By any other count.  M is one to four and 8 has a form of its
+	 * own, so a shift by five, six, seven or more than eight matched
+	 * nothing at all - the left shifts have taken any count all
+	 * along, and these stopped at four.
+	 */
+	R(">(H,N)", RSHIFT, P_L, P_R, P_NONE, RF_SIGNL, "%(\tsra h\n\trr l\n)", R_HL),
+	R(">(H,N)", RSHIFT, P_L, P_R, P_NONE, 0, "%(\tsrl h\n\trr l\n)", R_HL),
+	R(">(B,N)", RSHIFT, P_L, P_R, P_NONE, RF_SIGNL,
+		T_BC_HL "%(\tsra h\n\trr l\n)", R_HL),
+	R(">(B,N)", RSHIFT, P_L, P_R, P_NONE, 0, T_BC_HL "%(\tsrl h\n\trr l\n)", R_HL),
 
 	/* stores/loads with indexed/symref */
 	R("=(A,D(I)):b", ASSIGN, P_L, P_R, P_NONE, 0, "\tld a,($RL)\n", R_A),

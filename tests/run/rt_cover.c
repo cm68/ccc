@@ -23,6 +23,7 @@
 
 short a, b, c;
 short arr[8];
+char ba[8];
 short *sp;
 long l1, l2;
 unsigned short u;
@@ -265,6 +266,29 @@ main()
 	CHECK(107, a, 11);
 	loc = r;
 	CHECK(108, loc, 11);
+
+	/*
+	 * A global array subscripted by a register variable, which puts
+	 * the subscript in BC.  There were forms for adding HL and DE to
+	 * a symbol's address and none for BC, so the address was never
+	 * worked out.
+	 */
+	arr[0] = 10; arr[1] = 20; arr[2] = 30; arr[3] = 40;
+	ba[0] = 1; ba[1] = 2; ba[2] = 3;
+	r = 2;
+	CHECK(109, arr[r], 30);
+	CHECK(110, ba[r], 3);
+	r = 0;
+	CHECK(111, arr[r], 10);
+	CHECK(112, ba[r], 1);
+	r = 1;
+	arr[r] = 99;
+	CHECK(113, arr[1], 99);
+	CHECK(114, arr[0], 10);
+	CHECK(115, arr[2], 30);
+	ba[r] = 7;
+	CHECK(116, ba[1], 7);
+	CHECK(117, ba[0], 1);
 
 	return 0;
 }
