@@ -468,21 +468,6 @@ char *s;
     return val;
 }
 
-/*
- * parse float literal and return IEEE 754 single-precision bits
- * handles: 0.0, 1.0, -2.5, 3.14159, etc.
- */
-unsigned long
-parsefloat(s)
-char *s;
-{
-    union {
-        float f;
-        unsigned long l;
-    } u;
-    u.f = atof(s);
-    return u.l;
-}
 
 /*
  * prints out an error message and exits

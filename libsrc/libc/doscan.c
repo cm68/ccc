@@ -7,7 +7,7 @@
 #include 	<ctype.h>
 
 static FILE *	fp;
-extern double	atof(char *);
+extern int	_atof();	/* stub in atof.c - see math.h */
 extern int	atoi(char *);
 
 static
@@ -118,11 +118,16 @@ loop:
 				if(sptr == buf)
 					return n ? n : feof(fp) ? EOF : 0;
 				n++;
+				/*
+				 * The digits were consumed and counted, but
+				 * nothing is stored: there is no float type
+				 * and so no _atof to convert to.  A program
+				 * with its own representation (see math.h)
+				 * links its own _atof taking the destination
+				 * by address.
+				 */
 				if(!noass)
-					if(len)
-						*(double *)*args++ = atof(buf);
-					else
-						*(float *)*args++ = atof(buf);
+					_atof(buf, *args++);
 				continue;
 
 			case 'l':

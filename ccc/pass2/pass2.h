@@ -13,13 +13,12 @@
 #define T_USHORT  'S'
 #define T_LONG    'l'
 #define T_ULONG   'L'
-#define T_FLOAT   'f'
 #define T_VOID    'v'
 
 /* Type size helpers */
 #define ISBYTE(t)  ((t) == T_BYTE || (t) == T_UBYTE)
 #define ISWORD(t)  ((t) == T_SHORT || (t) == T_USHORT)
-#define ISLONG(t)  ((t) == T_LONG || (t) == T_ULONG || (t) == T_FLOAT)
+#define ISLONG(t)  ((t) == T_LONG || (t) == T_ULONG)
 #define TSIZE(t)   (ISBYTE(t) ? 1 : ISWORD(t) ? 2 : ISLONG(t) ? 4 : 0)
 
 /* Register codes */

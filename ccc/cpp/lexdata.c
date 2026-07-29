@@ -37,8 +37,7 @@ unsigned char token_props[KW_LAST + 1] = {
 	0, 0, 0, 0, 0, 0, 0, 0,          /* 120-127 */
 	TF_TYPE,              /* 128 INT     */
 	TF_TYPE,              /* 129 CHAR    */
-	TF_TYPE,              /* 130 FLOAT   */
-	TF_TYPE,              /* 131 DOUBLE  */
+	0, 0,                 /* 130,131 reserved - see lexeme.h */
 	TF_TYPE,              /* 132 STRUCT  */
 	TF_TYPE,              /* 133 SIGNED  */
 	TF_TYPE,              /* 134 LONG    */

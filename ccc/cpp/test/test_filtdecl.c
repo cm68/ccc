@@ -20,7 +20,7 @@ typedef char *string;
 typedef struct node *nodeptr;
 
 struct point { int x, y; };
-union data { int i; float f; };
+union data { int i; long f; };
 enum color { RED, GREEN, BLUE };
 
 void test_simple_init(void)
@@ -88,7 +88,7 @@ void test_cast_not_decl(void)
 {
 	int x;
 	/* These are casts, not declarations */
-	x = (int)3.14;
+	x = (int)314L;
 	x = (int *)0;
 	x = (struct point *)0;
 	x = (unsigned long)p;

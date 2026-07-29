@@ -17,7 +17,7 @@ extern int	errno;			/* system error number */
 
 #define	RAND_MAX	32767		/* max value returned by rand() */
 
-extern double	atof(char *);
+/* no atof: there is no floating point - see math.h */
 extern int	atoi(char *);
 extern long	atol(char *);
 extern int	rand(void);

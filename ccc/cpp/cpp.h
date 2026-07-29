@@ -92,7 +92,6 @@ struct token {
     char *filename;         /* file where token was scanned */
     union {
         long numeric;       /* char, short, int, long */
-        float fval;         /* float, double */
         char *name;         /* if we have a symbol */
         cstring str;        /* counted literal string */
     } v;
@@ -270,9 +269,6 @@ extern void emitKeyword(unsigned char kwval);
 extern void emitSym(char *name);
 extern void emitNumber(long val);
 extern void emitLNumber(long val);
-#ifndef NOFLOAT
-extern void emitFNumber(float val);
-#endif
 extern void emitString(char *str, int len);
 extern void emitLabel(char *name);
 extern void emitLine(int line, char *file);
@@ -320,13 +316,10 @@ extern char *strdup(char *s);
 /* filter.c - token filter for normalization */
 extern void filterInit(void);
 extern void filtAddTdef(char *name);
-extern void filter(unsigned char type, long num, float fnum,
-                   char *str, int slen);
 extern void filtToken(unsigned char type);
 extern void filtKw(unsigned char kw);
 extern void filtSym(char *name);
 extern void filtNum(long val);
-extern void filtFNum(float val);
 extern void filtStr(char *str, int len);
 
 /* Character classification */

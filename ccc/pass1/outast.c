@@ -233,11 +233,9 @@ typeSfx(struct type *t)
 		c = 'b';  /* char/byte */
 	else if (t->size == 2)
 		c = 's';  /* short/int */
-	else if (t->size == 4) {
-		if (t->flags & TF_FLOAT)
-			return 'f';  /* float/double */
+	else if (t->size == 4)
 		c = 'l';  /* long */
-	} else
+	else
 		c = 's';  /* default to short */
 
 	/* Uppercase for unsigned */

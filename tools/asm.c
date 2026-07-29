@@ -339,7 +339,6 @@ unsigned char tok;
 
 extern char match();
 extern unsigned long parsenum();
-extern unsigned long parsefloat();
 extern void gripe();
 extern void gripe2();
 
@@ -1405,53 +1404,6 @@ dl()
 	}
 }
 
-/*
- * .deff <float>[,...] - define float (IEEE 754 single precision)
- * parses the float as raw text since get_token would choke on '.'
- */
-void
-df()
-{
-    char fbuf[32];
-    int i;
-    char c;
-    unsigned long bits;
-
-    while (1) {
-        /* skip whitespace */
-        while ((c = peekchar()) == ' ' || c == '\t')
-            nextchar();
-
-        if (c == '\n' || c == T_EOF)
-            break;
-
-        /* collect the float literal */
-        i = 0;
-        while (1) {
-            c = peekchar();
-            if (c == ',' || c == ' ' || c == '\t' ||
-                c == '\n' || c == T_EOF)
-                break;
-            if (i < 31)
-                fbuf[i++] = nextchar();
-            else
-                nextchar();
-        }
-        fbuf[i] = '\0';
-
-        /* convert and emit */
-        bits = parsefloat(fbuf);
-        emitlong(bits);
-
-        /* check for more values */
-        while ((c = peekchar()) == ' ' || c == '\t')
-            nextchar();
-        if (c != ',')
-            break;
-        nextchar();  /* consume comma */
-    }
-}
-
 void
 ds()
 {
@@ -1924,15 +1876,6 @@ assemble()
 					continue;
 				}
 
-				/*
-				 * .deff <float>[,...] - IEEE 754 single precision
-				 */
-				if (match(token_buf, "deff") ||
-					match(token_buf, "df")) {
-					df();
-					consume();
-					continue;
-				}
 
 				printf("%s\n", token_buf);
 				gripe("unkown directive");
@@ -1977,9 +1920,6 @@ assemble()
 					consume();
 				} else if (match(token_buf, "defs")) {
 					ds();
-					consume();
-				} else if (match(token_buf, "deff")) {
-					df();
 					consume();
 				} else if (match(token_buf, "global")) {
 					while (1) {

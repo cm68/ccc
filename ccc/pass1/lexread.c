@@ -10,7 +10,6 @@
  *   SYM (20):      20 + 1-byte length + name bytes
  *   NUMBER (21):   21 + 4-byte little-endian value
  *   STRING (22):   22 + 2-byte LE length + bytes
- *   FNUMBER (23):  23 + 4-byte IEEE754 bits
  *   LNUMBER (25):  25 + 4-byte little-endian value
  *   LABEL (112):   112 + 1-byte length + name bytes
  *   LINENO (116):  116 + 2-byte LE line + 1-byte len + filename
@@ -134,7 +133,6 @@ readNextToken(void)
 	unsigned char c;
 	int len;
 	char *s;
-	union { unsigned long l; float f; } u;
 
 again:
 	c = readByte();
@@ -194,13 +192,6 @@ again:
 	case CPP_LNUMBER:
 		next.type = LNUMBER;
 		next.v.numeric = (long)readLE4();
-		break;
-
-	/* Float number - 4-byte IEEE754 */
-	case FNUMBER:
-		next.type = FNUMBER;
-		u.l = readLE4();
-		next.v.fval = u.f;
 		break;
 
 	/* String - 2-byte length + bytes */

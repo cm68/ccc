@@ -946,8 +946,8 @@ tryrule(struct rule *rp, Expr *e)
 				out("\n");
 				n = mkcode('b', R_A);
 			}
-		} else if (w == 'l' || w == 'L' || w == 'f') {
-			/* Long/float: load into HLDE (DE=low, HL=high) */
+		} else if (w == 'l' || w == 'L') {
+			/* Long: load into HLDE (DE=low, HL=high) */
 			out("\tld de,");
 			outd(val & 0xffff);
 			out("\n\tld hl,");
@@ -1375,18 +1375,6 @@ step(Expr *e)
 		}
 	}
 
-	/* Float unary operations */
-	if (e->width == 'f' && e->left) {
-		/* Float negation: flip sign bit (bit 7 of H) */
-		if (e->op == NEG && e->left->op == INHL) {
-			out("\tld a,h\n\txor 80h\n\tld h,a\n");
-			n = mkcode('f', R_HL);
-			n->dest = e->dest;
-			freeexpr(e);
-			return n;
-		}
-	}
-
 	/* CODE -> INHL/INDE/INBC/INA/INE: convert to typed register nodes */
 	if (e->op == CODE) {
 		unsigned char reg = e->u.var.reg;
@@ -1808,7 +1796,7 @@ pusharg(Expr *a)
 	if (!a)
 		return 0;
 	w = a->width;
-	if (w != 'l' && w != 'L' && w != 'f')
+	if (w != 'l' && w != 'L')
 		w = 's';
 
 	hl = mkcode(w, R_HL);
@@ -1821,12 +1809,12 @@ pusharg(Expr *a)
 		out("\tpush hl\n");
 		return 2;
 	}
-	/* long/float live in HL:DE, high word first */
+	/* longs live in HL:DE, high word first */
 	out("\tpush hl\n\tpush de\n");
 	return 4;
 }
 
-/* a 32-bit integer, which the helpers handle - float is a separate set */
+/* a 32-bit integer, which the helpers handle */
 #define ISLONGINT(t) ((t) == T_LONG || (t) == T_ULONG)
 
 /*
@@ -2557,67 +2545,6 @@ rewrite1(Expr *e)
 			} else {
 				/* Result in HLDE, report as HL (high word) */
 				n = mkcode(e->width, R_HL);
-				n->dest = e->dest;
-			}
-			freeexpr(e);
-			return n;
-		}
-	}
-
-	/* Handle float (32-bit) binary operations */
-	/* Same HLDE convention as longs, different helpers */
-	if (e->width == 'f' && e->left && e->right) {
-		char *helper = NULL;
-		int iscompare = 0;
-		Expr *tmp;
-
-		/* GT and LE need operand swap */
-		if (e->op == GT || e->op == LE) {
-			tmp = e->left;
-			e->left = e->right;
-			e->right = tmp;
-		}
-
-		switch (e->op) {
-		case PLUS:   helper = "fladd"; break;
-		case MINUS:  helper = "flsub"; break;
-		case STAR:   helper = "flmul"; break;
-		case DIV:    helper = "fldiv"; break;
-		case EQ: case NEQ: case LT: case GT: case LE: case GE:
-			helper = "frelop";
-			iscompare = 1;
-			break;
-		}
-
-		if (helper) {
-			/* Evaluate right operand first (result in HLDE) */
-			e->right = rewrite1(e->right);
-			/* Push right operand: low word first, then high */
-			out("\tpush de\n");
-			out("\tpush hl\n");
-			/* Evaluate left operand (result in HLDE) */
-			e->left = rewrite1(e->left);
-			/* Call helper */
-			out("\tcall ");
-			out(helper);
-			out("\n");
-			/* For comparisons, result is in flags */
-			if (iscompare) {
-				unsigned char flag;
-				switch (e->op) {
-				case EQ:  flag = F_Z; break;
-				case NEQ: flag = F_NZ; break;
-				case LT:  flag = F_C; break;
-				case GE:  flag = F_NC; break;
-				case GT:  flag = F_C; break;   /* after swap */
-				case LE:  flag = F_NC; break;  /* after swap */
-				default:  flag = F_NZ; break;
-				}
-				n = mkcode('b', flag);
-				n->dest = DEST_FLAGS;
-			} else {
-				/* Result in HLDE */
-				n = mkcode('f', R_HL);
 				n->dest = e->dest;
 			}
 			freeexpr(e);

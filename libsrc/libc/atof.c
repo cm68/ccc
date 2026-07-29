@@ -1,62 +1,27 @@
 /*
- * ascii string to floating point
+ * _atof() - the %e %f %g conversion for _doscan().
  *
+ * This is a stub, and the counterpart of the one in fnum.c.  There is
+ * no floating point: ccc has no float or double type and no float
+ * constants, and there is no one Z80 float format worth building in.
+ *
+ * A program that wants scanf to read these declares its own
+ * representation (see math.h) and links its own _atof.  Its own
+ * object satisfies the reference before the linker reaches this
+ * archive member, so nothing here has to be removed for that to work.
+ *
+ * Both the text and the destination arrive by address, since a struct
+ * is neither passed by value nor returned.
+ *
+ * atof() itself is gone: it returned a double, so it cannot be
+ * declared, and stdlib.h no longer names it.
  */
-#include	<ctype.h>
 
-double
-atof(s)
-register char *	s;
+_atof(s, dest)
+char *	s;
+char *	dest;
 {
-	char	sign;
-	double	l;
-	short	exp;
-	short	eexp;
-	char	expsign;
-	double	ten;
-
-	ten = 10.0;
-	while(isspace(*s))
-		s++;
-	expsign = sign = 0;
-	if(*s == '-') {
-		s++;
-		sign = 1;
-	}
-	l = 0;
-	exp = 0;
-	while(isdigit(*s))
-		l = ten*l + (double)(*s++ - '0');
-	if(*s == '.')
-		while(isdigit(*++s)) {
-			exp--;
-			l = ten*l + (double)(*s - '0');
-		}
-	eexp = 0;
-	if(*s == 'e' || *s == 'E') {
-		if(*++s == '-') {
-			expsign = 1;
-			s++;
-		}
-		if(*s == '+')
-			s++;
-		while(isdigit(*s))
-			eexp = eexp*10 + *s++ - '0';
-		if(expsign)
-			eexp = -eexp;
-	}
-	exp += eexp;
-	while(exp < 0) {
-		l = l / ten;
-		exp++;
-	}
-	while(exp > 0) {
-		l = l * ten;
-		exp--;
-	}
-	if(sign)
-		return -l;
-	return l;
+	return 0;
 }
 
 /* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

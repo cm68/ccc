@@ -12,8 +12,8 @@ void func_void_ret(void);
 int func_one_int(int x);
 char func_one_char(char c);
 long func_one_long(long l);
-float func_one_float(float f);
-double funcOneDbl(double d);
+unsigned func_one_uns(unsigned u);
+unsigned long funcOneUlong(unsigned long d);
 
 /* Multiple parameters - same type */
 int func_two_ints(int a, int b);
@@ -22,7 +22,7 @@ int funcThreeI(int a, int b, int c);
 /* Multiple parameters - mixed types */
 int func_mixed_2(int x, char c);
 int func_mixed_3(int x, char c, long l);
-int func_mixed_4(int a, char b, long c, float d);
+int func_mixed_4(int a, char b, long c, unsigned d);
 
 /* Pointer parameters */
 int func_ptr_int(int *p);

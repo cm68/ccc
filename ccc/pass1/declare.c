@@ -281,7 +281,14 @@ declare(struct type **btp, unsigned char struct_elem)
                  * Name exists at current scope - check if it's a
                  * function prototype
                  */
-                if ((existing->type->flags & TF_FUNC) && !existing->u.locals) {
+                /*
+                 * A name can reach here with no type when an earlier
+                 * declaration was malformed - the entry was made and
+                 * then abandoned.  Treat it as a redeclaration rather
+                 * than dereferencing the missing type.
+                 */
+                if (existing->type &&
+                    (existing->type->flags & TF_FUNC) && !existing->u.locals) {
                     /* Reuse existing function declaration (prototype) */
                     nm = existing;
                     /*

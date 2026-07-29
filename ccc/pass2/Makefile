@@ -147,10 +147,10 @@ stage1: c1
 	done
 
 # CP/M .com footprint, built the way the shipped binary is: -O peephole
-# (~23% smaller text than sizecheck's unoptimised build) and no float
-# runtime.  This is the number to weigh against the TPA, not sizecheck's.
+# (~23% smaller text than sizecheck's unoptimised build).  This is the
+# number to weigh against the TPA, not sizecheck's.
 ZC3 = zc3
-ZC3FLAGS = -O -DNOFLOAT
+ZC3FLAGS = -O
 LIBSRCINC = $(realpath ../../libsrc/include)
 
 com: $(GENERATED)

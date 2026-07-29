@@ -575,7 +575,7 @@ statement(void)
                 break;
             /* Declarations - process for symbol table but don't count */
             case INT: case CHAR: case SHORT: case LONG:
-            case FLOAT: case DOUBLE: case VOID:
+            case VOID:
             case STRUCT: case UNION:
             case UNSIGNED:
             case STATIC: case REGISTER: case AUTO:
@@ -772,8 +772,6 @@ statement(void)
         case CHAR:
         case SHORT:
         case LONG:
-        case FLOAT:
-        case DOUBLE:
         case VOID:
         case STRUCT:
         case UNION:

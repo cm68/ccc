@@ -61,8 +61,6 @@ static struct type basictypes[] = {
     { 2, 0, 0, 0, TF_UNSIGNED, &basictypes[3] }, // 4 _ushort_
     { 4, 0, 0, 0, TF_UNSIGNED, &basictypes[4] }, // 5 _ulong_
     { 0, 0, 0, 0, 0,           &basictypes[5] }, // 6 _void_
-    { 4, 0, 0, 0, TF_FLOAT,    &basictypes[6] }, // 7 _float_
-    { 4, 0, 0, 0, TF_FLOAT,    &basictypes[7] }, // 8 _double_
 };
 #define N_BASIC (sizeof(basictypes)/sizeof(basictypes[0]))
 
@@ -74,7 +72,6 @@ struct type *uchartype = &basictypes[3];
 struct type *ushorttype = &basictypes[4];
 struct type *ulongtype = &basictypes[5];
 struct type *voidtype = &basictypes[6];
-struct type *floattype = &basictypes[7];
 
 /*
  * Static name entries for basic types - never freed
@@ -89,8 +86,6 @@ static struct name basicnames[] = {
     { "_ushort_", &basictypes[4], &basicnames[3] },
     { "_ulong_",  &basictypes[5], &basicnames[4] },
     { "_void_",   &basictypes[6], &basicnames[5] },
-    { "_float_",  &basictypes[7], &basicnames[6] },
-    { "_double_", &basictypes[8], &basicnames[7] },
 };
 
 /*
@@ -99,7 +94,7 @@ static struct name basicnames[] = {
  * inner blocks > 1
  */
 unsigned char lexlevel;
-struct name *names = &basicnames[8];  /* head of chain, most recent first */
+struct name *names = &basicnames[6];  /* head of chain, most recent first */
 
 /* block numbering, one entry per open lexical level - see pushScope */
 static unsigned char blkIdAt[MAXBLKLVL];
@@ -280,7 +275,7 @@ findName(char *name, unsigned char is_tag)
 #ifdef DEBUG
 char *typeBitdefs[] = {
 		"AGGREGATE", "INCOMPLETE", "UNSIGNED",
-        "FUNC", "POINTER", "ARRAY", "FLOAT", "OLD"
+        "FUNC", "POINTER", "ARRAY", "?", "OLD"
 };
 void dumpType(struct type *t, int lv);
 
@@ -740,10 +735,6 @@ parsebasic()
             continue;
 
 
-		case DOUBLE:
-			misc++;
-		case FLOAT:
-			misc++;
 		case VOID:
 			gettoken();
 			if (length + unsignedness) {

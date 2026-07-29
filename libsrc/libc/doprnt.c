@@ -29,6 +29,20 @@ register char *	cp;
 	return cp;
 }
 
+/*
+ * %e %f %g hand the argument to _fnum by address, not by value.
+ *
+ * There is no float type here, and no one Z80 float format to pick:
+ * the machines that shipped with a floating point unit disagreed, and
+ * so did the BASIC ROMs.  A program that wants these conversions
+ * declares its own representation (see math.h) and links its own
+ * _fnum; libc's is a stub that prints '?'.  Such a program sets
+ * FLTSIZE to the width of what varargs actually pushed.
+ */
+#ifndef FLTSIZE
+#define FLTSIZE 4
+#endif
+
 _doprnt(file, f, a)
 FILE *	file;
 register char *		f;
@@ -155,8 +169,8 @@ dostring:
 			if(prec < 0)
 				prec = 0;
 			if(ftype) {
-				width = _fnum(*(double *)a, prec, width, sign, pputc);
-				a += sizeof(double)/sizeof(*a);
+				width = _fnum((char *)a, prec, width, sign, pputc);
+				a += FLTSIZE/sizeof(*a);
 			} else {
 				width = _pnum((len == sizeof(int)/sizeof *a ? (sign ? (long)*a : (unsigned long)*a) : *(long *)a), prec, width, sign, base, pputc);
 				a += len;

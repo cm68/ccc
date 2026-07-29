@@ -86,7 +86,6 @@ main(int argc, char **argv)
     FILE *f;
     int c, len, i;
     long val;
-    union { float f; unsigned long l; } u;
     char buf[256];
     char *fname;
     char *outfile = NULL;
@@ -201,15 +200,6 @@ usage:
             val |= (long)(fgetc(f) & 0xff) << 24;
             needindent();
             printf("%ld ", val);
-            break;
-
-        case FNUMBER:
-            u.l = fgetc(f) & 0xff;
-            u.l |= (fgetc(f) & 0xff) << 8;
-            u.l |= (long)(fgetc(f) & 0xff) << 16;
-            u.l |= (long)(fgetc(f) & 0xff) << 24;
-            needindent();
-            printf("%g ", u.f);
             break;
 
         case STRING:
@@ -329,8 +319,6 @@ usage:
                 switch (c) {
                 case INT: printf("int "); break;
                 case CHAR: printf("char "); break;
-                case FLOAT: printf("float "); break;
-                case DOUBLE: printf("double "); break;
                 case STRUCT: printf("struct "); break;
                 case SIGNED: printf("signed "); break;
                 case LONG: printf("long "); break;

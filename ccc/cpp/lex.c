@@ -436,12 +436,8 @@ isnumber()
             }
         }
         *p = '\0';
-#ifdef NOFLOAT
         gripe(ER_C_CD);
         next.v.numeric = 0;
-#else
-        next.v.fval = (float)atof(strbuf);
-#endif
         c = curchar | 0x20;
         if (c == 'f' || c == 'l') {
             advance();
@@ -505,12 +501,8 @@ isnumber()
 			}
 		}
 		*p = '\0';
-#ifdef NOFLOAT
 		gripe(ER_C_CD);
 		next.v.numeric = 0;
-#else
-		next.v.fval = (float)atof(strbuf);
-#endif
 		/* Skip optional f/F/l/L suffix */
 		c = curchar | 0x20;
 		if (c == 'f' || c == 'l') {
@@ -1336,8 +1328,10 @@ gettoken()
         {
             char numtype = isnumber();
             if (numtype) {
-                next.type = (numtype == 2) ? FNUMBER :
-                            (numtype == 3) ? LNUMBER : NUMBER;
+                /* isnumber() returns 2 for a float literal; it has
+                 * already griped, so treat the zero it left as an
+                 * ordinary number and keep parsing. */
+                next.type = (numtype == 3) ? LNUMBER : NUMBER;
                 break;
             }
         }

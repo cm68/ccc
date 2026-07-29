@@ -17,12 +17,12 @@ int noparams()
 
 // Modern ANSI style for comparison (these work)
 int modern1(int x);
-int modern2(int a, char b, float c);
+int modern2(int a, char b, long c);
 char *modern3(char *s, int n);
 
 int multi(a, b, c)
 int a;
 char b;
-float c;
+long c;
 {
 }

@@ -25,15 +25,21 @@ SRCS = abs.s allsh.s alrsh.s asallsh.s asalrsh.s asar.s strdup.s exit.s \
 	asdiv.s asladd.s asland.s asll.s asllrsh.s aslmul.s \
 	aslor.s aslr.s aslsub.s aslxor.s asmod.s asmul.s \
 	atoi.s bitfield.s blkclr.s bmove.s csv.s brelop.s \
-	wrelop.s frelop.s getsp.s idiv.s imul.s index.s inout.s \
+	wrelop.s getsp.s idiv.s imul.s index.s inout.s \
 	iregset.s isalpha.s isdigit.s islower.s isspace.s isupper.s \
 	ladd.s land.s lcom.s ldiv.s linc.s lldst.s llrsh.s lmul.s \
 	longjmp.s lor.s lrelop.s lsub.s lushr.s lxor.s max.s swap.s  \
-	op16.s tramp.s rcsv.s rindex.s sbrk.s shar.s shl16.s fbcd.s \
+	op16.s tramp.s rcsv.s rindex.s sbrk.s shar.s shl16.s \
 	shll.s shlr.s strcat.s strchr.s strcmp.s strcpy.s \
 	strlen.s strncat.s strncmp.s strncpy.s strrchr.s \
-	tolower.s toupper.s xtoi.s float.s fputc.s fgetc.s \
-	ltof.s ftol.s frndint.s frexp.s finc.s asfloat.s
+	tolower.s toupper.s xtoi.s fputc.s fgetc.s
+#
+# asfloat.s fbcd.s finc.s float.s frelop.s frexp.s frndint.s ftol.s
+# ltof.s are not built.  pass2 no longer emits calls to any of them,
+# and fbcd.s and finc.s cannot even assemble: they use deff, which the
+# assembler no longer has, because there was never one Z80 float
+# format for it to assemble to.
+#
 
 CSRCS = \
 	rand.c srand1.c mkstemp.c permalloc.c \
@@ -44,9 +50,15 @@ CSRCS = \
 	buf.c getenv.c pnum.c qsort.c remove.c rewind.c fseek.c ftell.c \
 	fprintf.c sprintf.c printf.c doprnt.c putchar.c \
 	atol.c fscanf.c scanf.c sscanf.c doscan.c \
-	fnum.c acos.c asin.c atan2.c atan.c cos.c cosh.c sin.c sinh.c \
-	tan.c tanh.c exp.c log.c sqrt.c fabs.c ceil.c floor.c evalpoly.c \
-	fnum.c atof.c 
+	fnum.c atof.c
+#
+# acos asin atan atan2 ceil cos cosh evalpoly exp fabs floor log sin
+# sinh sqrt tan tanh are not built: they do double arithmetic with
+# binary operators and there is no float type.  The sources are kept
+# as a starting point for a rewrite against a program-supplied float
+# representation - see math.h.  fnum.c and atof.c are built, but as
+# stubs that a program can override by linking its own.
+#
 
 OBJS = $(SRCS:.s=.o) $(CSRCS:.c=.o)
 

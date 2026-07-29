@@ -112,16 +112,6 @@ emitLNumber(long val)
     emit4(LNUMBER, (unsigned long)val);
 }
 
-#ifndef NOFLOAT
-void
-emitFNumber(float val)
-{
-    union { float f; unsigned long l; } u;
-    u.f = val;
-    emit4(FNUMBER, u.l);
-}
-#endif
-
 /*
  * Emit string with 2-byte length: token + 2-byte len + string bytes
  * Used for both STRING and ASMSTR tokens
@@ -311,11 +301,6 @@ emit1tok(struct token *t)
         break;
     case LNUMBER:
         emitLNumber(t->v.numeric);
-        break;
-    case FNUMBER:
-#ifndef NOFLOAT
-        emitFNumber(t->v.fval);
-#endif
         break;
     case STRING:
         {

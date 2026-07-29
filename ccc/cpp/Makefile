@@ -203,10 +203,8 @@ com: com-zc3 com-sdcc
 # zc3 built MICRONIX-flavored emits .o (via asz); older builds emit .obj.
 # wsld links either.  PATH picks up asz/wsld for the driver's back end.
 # -O: peephole optimizer, ~23% smaller text (verified byte-identical).
-# -DNOFLOAT: float literals gripe instead of linking ~1.2KB of float
-# runtime the self-compile never exercises.
 ZC3 = zc3
-ZC3FLAGS = -O -DNOFLOAT
+ZC3FLAGS = -O
 
 com-zc3: $(GENERATED)
 	@mkdir -p comzc3

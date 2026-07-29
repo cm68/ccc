@@ -246,7 +246,6 @@ skipExpr(unsigned char pri)
     switch (cur.type) {
     case NUMBER:
     case LNUMBER:
-    case FNUMBER:
         gettoken();
         break;
 
@@ -641,7 +640,6 @@ parsePrefix(void)
 	unsigned int uofs;
 	char namebuf[32];
 	char *symname;
-	union { float f; unsigned long u; } fu;
 	unsigned long uval;
 	long sval;
 
@@ -669,13 +667,6 @@ parsePrefix(void)
              * < LONG_MIN, always false) */
             t = longtype;
         e = mkexprI(CONST, 0, t, (unsigned long)sval, E_CONST);
-        gettoken();
-        break;
-
-    case FNUMBER:
-        /* Store float bit pattern in v */
-        fu.f = cur.v.fval;
-        e = mkexprI(CONST, 0, floattype, fu.u, E_CONST);
         gettoken();
         break;
 

@@ -185,7 +185,6 @@ extern void slimFnArgs(struct type *t);
 #define TF_FUNC         0x08
 #define	TF_POINTER		0x10
 #define	TF_ARRAY		0x20
-#define	TF_FLOAT		0x40
 #define TF_VARIADIC     0x80    // for functions: has ... parameter
 
 extern struct type *getbasetype();
@@ -308,7 +307,6 @@ extern struct type *uchartype;
 extern struct type *ushorttype;
 extern struct type *ulongtype;
 extern struct type *voidtype;
-extern struct type *floattype;
 
 void parse();
 void cleanupParse();
@@ -392,7 +390,6 @@ struct token {
 	token_t type;
 	union {
 		long numeric;
-		float fval;
 		char *name;
 		cstring str;
 	} v;

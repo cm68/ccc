@@ -23,7 +23,6 @@
 #define SYM     20
 #define NUMBER  21
 #define STRING  22
-#define FNUMBER 23
 #define LNUMBER 25
 
 /* Unary/Binary operators (30-54) */
@@ -83,8 +82,13 @@
 /* Keyword tokens (128-160) */
 #define INT         128
 #define CHAR        129
-#define FLOAT       130
-#define DOUBLE      131
+/*
+ * 23, 130 and 131 held FNUMBER, FLOAT and DOUBLE.  ccc has no floating
+ * point, and float and double are deliberately not reserved words so a
+ * program can typedef them.  The numbers stay vacant rather than being
+ * reused: token_props is a positional table and .x streams carry these
+ * codes, so renumbering would silently reinterpret both.
+ */
 #define STRUCT      132
 #define SIGNED      133
 #define LONG        134
