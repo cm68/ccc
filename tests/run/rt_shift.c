@@ -16,10 +16,61 @@
 short a;
 unsigned short u;
 
+/*
+ * By a count only known at runtime.  The Z80 has no variable shift, so
+ * this is a loop, and the loop is a different path from every rule
+ * above - one that nothing in this file used to reach.
+ */
+short
+vsl(v, n) short v; short n;
+{
+	return v << n;
+}
+
+short
+vsr(v, n) short v; short n;
+{
+	return v >> n;			/* sra: the sign comes down */
+}
+
+unsigned short
+vur(v, n) unsigned short v; short n;
+{
+	return v >> n;			/* srl: zero comes in */
+}
+
+/*
+ * Shifting a variable by a variable, twice, so the allocator puts the
+ * value in a register.  That case had neither an inline path nor a
+ * rule, and emitted nothing.
+ */
+short
+selfsl(n) short n;
+{
+	short v;
+
+	v = 3;
+	v <<= n;
+	v <<= n;
+	return v;
+}
+
+short
+selfsr(n) short n;
+{
+	short v;
+
+	v = 64;
+	v >>= n;
+	v >>= n;
+	return v;
+}
+
 main()
 {
 	register short r;
 	register unsigned short ur;
+	short n;
 
 	/* right shift by every count, signed */
 	a = 0x4000;
@@ -64,6 +115,41 @@ main()
 	r = 1;
 	CHECK(26, r << 5, 32);
 	CHECK(27, r << 9, 512);
+
+	/*
+	 * By a count only known at runtime.  Everything above shifts by a
+	 * constant, so none of it reached the loop that a variable count
+	 * needs - which is why a whole register-variable case of it could
+	 * be missing and emit nothing without a test noticing.
+	 */
+	n = 2;
+	a = 3;
+	CHECK(28, vsl(a, n), 12);
+	CHECK(29, vsr(a, n), 0);
+	a = -16;
+	CHECK(30, vsr(a, n), -4);	/* signed: sign is carried down */
+	ur = 0xfff0;
+	CHECK(31, vur(ur, 4), 0x0fff);	/* unsigned: zero comes in */
+
+	/* by zero, which the loop has to skip rather than run once */
+	n = 0;
+	a = 7;
+	CHECK(32, vsl(a, n), 7);
+	CHECK(33, vsr(a, n), 7);
+	CHECK(34, vur(7, n), 7);
+
+	/* to the ends of the word */
+	a = 1;
+	CHECK(35, vsl(a, 14), 16384);
+	a = 16384;
+	CHECK(36, vsr(a, 14), 1);
+	ur = 0x8000;
+	CHECK(37, vur(ur, 15), 1);
+
+	/* and a variable shifting itself, twice, so it lands in a
+	 * register and the count is not the only thing that moves */
+	CHECK(38, selfsl(2), 48);
+	CHECK(39, selfsr(1), 16);
 
 	return 0;
 }

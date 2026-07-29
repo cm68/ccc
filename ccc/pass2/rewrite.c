@@ -1294,9 +1294,19 @@ step(Expr *e)
 	 * otherwise run once.
 	 */
 	if ((e->op == LSHIFT || e->op == RSHIFT) &&
-	    e->left && e->left->op == INHL && e->right &&
+	    e->left && (e->left->op == INHL || e->left->op == INBC) &&
+	    e->right &&
 	    (e->right->op == INA || e->right->op == INE ||
 	     e->right->op == INDE)) {
+		/*
+		 * The value shifts in HL, so a register variable comes over
+		 * first - the same move the constant-count rules make with
+		 * T_BC_HL.  Without it "v <<= n" on a variable the allocator
+		 * had put in BC matched nothing here and had no rule either,
+		 * and emitted nothing at all.
+		 */
+		if (e->left->op == INBC)
+			out("\tld l,c\n\tld h,b\n");
 		if (e->right->op != INA)
 			out("\tld a,e\n");
 		/*
