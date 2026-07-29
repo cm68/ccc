@@ -145,10 +145,10 @@ In rough order of how much they have earned:
 * **`make coverage`** (in `ccc/pass2`) - which rules ever match.  Needs
   `c1` built with `-DDEBUG`; the counters are host-side and the z80
   build has never seen them.
-* **The `XXXXXX incomplete` markers** - 55 over the tree's own
+* **The `XXXXXX incomplete` markers** - 49 over the tree's own
   sources.  Count them with
   `grep -rh '^; XXXXXX' ccc/*/stage1 tools/stage1 | wc -l`.
-* **`make regression`** - 365 baselines of cpp's lexeme output.  Catches
+* **`make regression`** - 367 baselines of cpp's lexeme output.  Catches
   unintended changes to what cpp emits; `REGRESS_FLAGS=--bless` to
   rebless after an intended one.
 
@@ -179,13 +179,51 @@ came from, so a regression leads back to the original.
   uses - `libcpm/getargs.s` next to `libcpm/getargs.c`.  A script that
   compiles a corpus must put back what it found.
 
+## Floating point is gone, and `float` is an ordinary word
+
+There is no float or double type, no float constants, no float rules
+and no float helpers.  The two words were taken out of the keyword
+table rather than left as types that gripe, so a program that has to
+port floating point code can name its own representation with them:
+
+	struct myflt { unsigned long bits; };
+	typedef struct myflt double;
+
+It gives up binary operators on the type - and structure assignment
+and structure return, which the compiler does not have anyway - so its
+arithmetic has to be calls taking pointers.  `libsrc/include/math.h`
+says so and nothing else; `float.h` could not have said anything, as
+every limit it defined was itself a float constant.
+
+The assembler lost `.deff` too.  It had been assembling float literals
+to IEEE 754, and that was never the right thing to build in: the Z80
+machines that shipped with a floating point unit did not agree on a
+format, and neither did the BASIC ROMs.  Choosing one in the assembler
+made a decision that belongs to the program.
+
+Three things worth knowing before touching this again:
+
+* **Token codes 23, 130 and 131 are vacant, not reused.**  `token_props`
+  is indexed by token number and `.x` streams carry these codes, so
+  renumbering would silently reinterpret both.
+* **The packed keyword recognizer regenerates.**  `mkkw` recomputes the
+  trie and its skip counts; removing an entry needs no hand editing.
+* **libc keeps the float sources but does not build them.**  `fnum.c`
+  and `atof.c` stay in as stubs so printf and scanf still link, and a
+  program overrides either by linking its own - its object satisfies
+  the reference before the linker reaches the archive.  `doprnt` hands
+  `%e %f %g` to `_fnum` by address, `doscan` likewise.
+
+The two tests for it are in `tests/`, not `tests/run`: a file that
+typedefs `double` cannot compile under gcc or zc3, where the word is
+still reserved, and everything in `tests/run` has to build under all
+three.
+
 ## Open, roughly by how much they matter
 
-* **153 rules of 485 never match.**  Some is float, which is unstarted.
-  The rest is shapes no source here takes, and each is code that has
-  never run.
-* **55 markers** over the tree's own sources.
-* **Float** is not started.
+* **153 rules of 485 never match.**  Shapes no source here takes, each
+  of them code that has never run.
+* **49 markers** over the tree's own sources.
 * **c0 could be single-phase.**  The two-phase structure is what forces
   the file-wide tables above, and `resetSwitch()` is declared "reset for
   new function" but is never called, because calling it would break the
