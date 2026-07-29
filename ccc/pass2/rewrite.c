@@ -64,6 +64,7 @@ dumphits(void)
 static char *pmatch(char *p, Expr *e);
 static Expr *rewrite1(Expr *e);
 static unsigned char baseop(unsigned char op);
+static int islocdesc(Expr *e);
 
 /*
  * Check if expression matches any preserve pattern.
@@ -286,7 +287,21 @@ assign(Expr *e, unsigned char tgt)
 
 	/* ASSIGN: lvalue doesn't need target, rvalue→tgt */
 	case ASSIGN:
-		assign(e->left, 0);  /* lvalue, no target */
+		/*
+		 * An lvalue that names a place needs no register.  One that
+		 * dereferences is an address the tree has to work out, and
+		 * the store rules want it in HL - saying no target left
+		 * whatever computed it with nowhere to go, and a rule whose
+		 * destination follows the target then produced a node with
+		 * no register at all.  "*p++ = 0" stepped the pointer, left
+		 * the old value in HL, and reported it as being nowhere.
+		 *
+		 * An assignment's left is a location, so "*p" as an lvalue is
+		 * just p and "*p++" is just the step - there is no DEREF to
+		 * look for, only the question of whether the location has to
+		 * be worked out before it can be stored through.
+		 */
+		assign(e->left, islocdesc(e->left) ? 0 : R_HL);
 		assign(e->right, tgt);
 		return;
 
@@ -1106,6 +1121,18 @@ normtree(Expr *e)
 	 */
 	if (e->op == ASSIGN && e->right && e->right->dest == DEST_NONE)
 		e->right->dest = DEST_VALUE;
+	/*
+	 * And the left, when it is not simply a place.  An lvalue that
+	 * has to be worked out is an address, and an address is a value:
+	 * "*p++ = 7" wants the pointer from before the step.  Read as
+	 * discarded, the step took the form that does not bother
+	 * producing one - which for a step of more than one is a
+	 * compound assignment that never undoes itself - and the store
+	 * went through the pointer after the step instead of before.
+	 */
+	if (e->op == ASSIGN && e->left && !islocdesc(e->left) &&
+	    e->left->dest == DEST_NONE)
+		e->left->dest = DEST_VALUE;
 	/*
 	 * A conversion is transparent: what it converts is wanted exactly
 	 * as much as the conversion is.  Without this the destination

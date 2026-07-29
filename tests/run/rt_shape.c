@@ -197,6 +197,51 @@ locidxw(n) short n;
 	return t;
 }
 
+
+/*
+ * cpp/macro.c and tools/asz.c: "*p++ = 0".
+ *
+ * An assignment's left is a location, so the lvalue here is the step
+ * itself and not a dereference of it.  Nothing said the location had
+ * to be worked out into a register, so the step reported its answer as
+ * being nowhere and the store had no address to use.
+ *
+ * The word case was worse and silent: read as discarded, a step of
+ * more than one took the form that does not produce the old pointer,
+ * and the store went through p after the step instead of before.
+ */
+char pbuf[8];
+short pwbuf[4];
+long plbuf[3];
+
+void
+pclear(p, n) char *p; short n;
+{
+	while (n-- > 0)
+		*p++ = 0;
+}
+
+void
+pfill(p, n, v) char *p; short n; char v;
+{
+	while (n-- > 0)
+		*p++ = v;
+}
+
+void
+pwfill(p, n) short *p; short n;
+{
+	while (n-- > 0)
+		*p++ = 7;		/* steps by two: the word case */
+}
+
+void
+plfill(p, n) long *p; short n;
+{
+	while (n-- > 0)
+		*p++ = 9L;		/* steps by four */
+}
+
 main()
 {
 	lexBuf[0] = 10; lexBuf[1] = 20; lexBuf[2] = 30;
@@ -262,6 +307,28 @@ main()
 	CHECK(34, locidx(8), 36);	/* 1..8 */
 	CHECK(35, locidxw(0), 100);
 	CHECK(36, locidxw(3), 100);
+
+	for (ei = 0; ei < 8; ei++)
+		pbuf[ei] = 99;
+	pclear(pbuf, 4);
+	CHECK(37, pbuf[0], 0);
+	CHECK(38, pbuf[3], 0);
+	CHECK(39, pbuf[4], 99);
+	pfill(pbuf, 3, 5);
+	CHECK(40, pbuf[0], 5);
+	CHECK(41, pbuf[2], 5);
+	CHECK(42, pbuf[3], 0);
+
+	pwfill(pwbuf, 3);
+	CHECK(43, pwbuf[0], 7);
+	CHECK(44, pwbuf[1], 7);
+	CHECK(45, pwbuf[2], 7);
+	CHECK(46, pwbuf[3], 0);
+
+	plfill(plbuf, 2);
+	CHECK(47, plbuf[0] == 9L, 1);
+	CHECK(48, plbuf[1] == 9L, 1);
+	CHECK(49, plbuf[2] == 0L, 1);
 
 	return 0;
 }
