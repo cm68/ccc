@@ -524,6 +524,16 @@ struct rule rules[] = {
 		"\tpush ix\n" F_POPHL F_LDDER F_ORA F_SBCHLDE, R_HL),
 	R("+(V,O)", PLUS, P_L, P_R, P_L, RF_IX,
 		"\tpush ix\n" F_POPHL F_LDDER F_ADDHLDE, R_HL),
+	/*
+	 * The index register plus a value rather than a constant or a
+	 * symbol - "p[i]" where p is a pointer register variable and i is
+	 * worked out.  A constant offset folds into an INDEX and never
+	 * reaches here, which is why this was missing: the shape only
+	 * turns up when the subscript is not known.  Eleven places in the
+	 * tools, counting the ones that then sign-extend the result.
+	 */
+	R("+(V,E)", PLUS, P_L, P_R, P_L, RF_IX,
+		"\tpush ix\n" F_POPHL F_ADDHLDE, R_HL),
 	R("Q(V,O)", EQ, P_L, P_R, P_L, RF_IX,
 		"\tpush ix\n" F_POPHL "\tld de,$R\n" F_ORA F_SBCHLDE, F_Z),
 	R("U(V,O)", NEQ, P_L, P_R, P_L, RF_IX,

@@ -119,6 +119,44 @@ mixlong(a) short a;
 	return a + (short)l;
 }
 
+
+/*
+ * tools/wslib.c: a pointer register variable subscripted by a
+ * variable.  A constant offset folds into an INDEX and never reaches
+ * the add, so the only rules for the index register plus something
+ * were for a constant and for a symbol - "p[i]" with i worked out had
+ * none, and emitted nothing.  Eleven places, counting the ones that
+ * then sign-extend what they read.
+ */
+struct ent { short a, b; };
+struct ent etab[4];
+char cbuf[8];
+short ei;
+
+short
+byidx(p, i) register struct ent *p; short i;
+{
+	return p[i].a;
+}
+
+short
+byidxb(p, i) register struct ent *p; short i;
+{
+	return p[i].b;
+}
+
+short
+bychar(p, i) register char *p; short i;
+{
+	return p[i] + 1;		/* sign-extended, which is the 7-site form */
+}
+
+void
+setidx(p, i, v) register struct ent *p; short i, v;
+{
+	p[i].a = v;
+}
+
 main()
 {
 	lexBuf[0] = 10; lexBuf[1] = 20; lexBuf[2] = 30;
@@ -152,6 +190,31 @@ main()
 	CHECK(17, atlong(31L), 31);
 	CHECK(18, mixlong(0), (short)0x86a0);
 	CHECK(19, mixlong(1), (short)0x86a1);
+
+	etab[0].a = 10; etab[0].b = 11;
+	etab[1].a = 20; etab[1].b = 21;
+	etab[2].a = 30; etab[2].b = 31;
+	ei = 1;
+	CHECK(20, byidx(etab, ei), 20);
+	CHECK(21, byidxb(etab, ei), 21);
+	ei = 0;
+	CHECK(22, byidx(etab, ei), 10);
+	ei = 2;
+	CHECK(23, byidx(etab, ei), 30);
+	CHECK(24, byidxb(etab, ei), 31);
+
+	cbuf[0] = 5; cbuf[1] = -3; cbuf[2] = 100;
+	ei = 0;
+	CHECK(25, bychar(cbuf, ei), 6);
+	ei = 1;
+	CHECK(26, bychar(cbuf, ei), -2);
+	ei = 2;
+	CHECK(27, bychar(cbuf, ei), 101);
+
+	setidx(etab, 1, 99);
+	CHECK(28, etab[1].a, 99);
+	CHECK(29, etab[0].a, 10);
+	CHECK(30, etab[2].a, 30);
 
 	return 0;
 }
