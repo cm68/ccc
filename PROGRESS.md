@@ -101,6 +101,20 @@ compiled as `x < n+1`.  Fixed for bytes at 255, left alone for words,
 where it wraps at 65535: `u <= 0xffff` was false for every unsigned
 short.
 
+**A cost that is not the truth.**  Sethi-Ullman is what avoids
+defensive spilling, and it works by knowing which side is dearer.  A
+shape whose rules can only put the answer in HL costs two registers,
+not one, because it cannot be held in DE while the other side is
+worked out.  Costing it one does not avoid the spill, it moves the
+collision somewhere the tables cannot see.  Calls were already costed
+that way; steps were not, and "buf[pos++]" added HL to itself.
+
+The table says which shapes are flexible: a template writing through
+`$t` and `$T` lands wherever it was asked, one naming `l` and `h` does
+not.  Cost from that, not from the storage class - the first attempt
+at this reasoned from "is it a global" and missed the register
+variable.
+
 **A rule for HL and DE but not BC.**  A register variable lives in BC,
 so any rule that takes an operand in HL or DE usually needs a third
 form.  Three separate gaps in a row were this: adding a subscript to a
@@ -131,7 +145,7 @@ In rough order of how much they have earned:
 * **`make coverage`** (in `ccc/pass2`) - which rules ever match.  Needs
   `c1` built with `-DDEBUG`; the counters are host-side and the z80
   build has never seen them.
-* **The `XXXXXX incomplete` markers** - 70 over the tree's own
+* **The `XXXXXX incomplete` markers** - 68 over the tree's own
   sources.  Count them with
   `grep -rh '^; XXXXXX' ccc/*/stage1 tools/stage1 | wc -l`.
 * **`make regression`** - 365 baselines of cpp's lexeme output.  Catches
@@ -170,7 +184,7 @@ came from, so a regression leads back to the original.
 * **153 rules of 485 never match.**  Some is float, which is unstarted.
   The rest is shapes no source here takes, and each is code that has
   never run.
-* **70 markers** over the tree's own sources.
+* **68 markers** over the tree's own sources.
 * **Float** is not started.
 * **c0 could be single-phase.**  The two-phase structure is what forces
   the file-wide tables above, and `resetSwitch()` is declared "reset for

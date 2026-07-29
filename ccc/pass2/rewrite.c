@@ -192,26 +192,29 @@ label(Expr *e)
 		return;
 
 	/*
-	 * Stepping a global comes back in HL and nowhere else - the rules
-	 * for it point HL at the variable and work in place - so it is
-	 * costed like a call, and for the same reason: an operand that
-	 * cannot go to DE has to be worked out before whatever is going
-	 * to sit there, and this number is what chooses that order.
+	 * A step whose rules can only put the answer in HL costs two, the
+	 * same as a call and for the same reason.  This number is what
+	 * chooses which side is worked out first, and an operand that
+	 * cannot be held in DE has to go before whatever is going to sit
+	 * there - saying it costs one is how the spill gets avoided by
+	 * accident instead of on purpose.
 	 *
-	 * Costed one, "buf[pos++]" put the array's address in HL, then
-	 * the step on top of it, and added HL to itself.
+	 * Costed one, "buf[pos++]" put the array's address in HL and then
+	 * the step on top of it, and "i <= ++j" over a register variable
+	 * did the same.
 	 *
-	 * A frame slot is not the same: the (iy+d) forms step it where it
-	 * lies and hand the value to whichever register was asked for, so
-	 * it stays at one and keeps the shorter code it already had.
+	 * A frame slot is the exception, and the table says so: those
+	 * templates write through $t and $T and so land wherever they
+	 * were asked to.  Everything else - a global, a register variable
+	 * - names l and h outright.
 	 */
 	case PREINC:
 	case POSTINC:
 	case PREDEC:
 	case POSTDEC:
 		e->regs = e->left ? e->left->regs : 1;
-		if (e->left && (e->left->op == SYM || e->left->op == SYMREF) &&
-		    e->regs < 2)
+		if (e->left && e->left->op != LOCALVAR &&
+		    e->left->op != INDEX && e->regs < 2)
 			e->regs = 2;
 		if (e->regs < 1)
 			e->regs = 1;
