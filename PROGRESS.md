@@ -111,7 +111,7 @@ call and expand to a push and pop only when BC holds something.
 
 In rough order of how much they have earned:
 
-* **`tests/run`** - the runtime suite.  20 files, run under three
+* **`tests/run`** - the runtime suite.  21 files, run under three
   toolchains: native (the reference), zc3, and ccc.  A disagreement
   between ccc and either other is a bug in ccc.  This finds what
   assembly inspection does not, because most of these bugs generate
@@ -125,12 +125,25 @@ In rough order of how much they have earned:
 * **`make coverage`** (in `ccc/pass2`) - which rules ever match.  Needs
   `c1` built with `-DDEBUG`; the counters are host-side and the z80
   build has never seen them.
-* **The `XXXXXX incomplete` markers** - 115 over the tree's own
+* **The `XXXXXX incomplete` markers** - 111 over the tree's own
   sources.  Count them with
   `grep -rh '^; XXXXXX' ccc/*/stage1 tools/stage1 | wc -l`.
 * **`make regression`** - 365 baselines of cpp's lexeme output.  Catches
   unintended changes to what cpp emits; `REGRESS_FLAGS=--bless` to
   rebless after an intended one.
+
+## Keep the probes
+
+A probe written to reproduce a marker is worth more than it looks and
+should go into `tests/run` rather than being deleted.  Reproducing one
+is usually the expensive part: the failing shape tends to be a
+particular combination of storage class, width and register that the
+obvious test does not reach, and two or three attempts compile cleanly
+before one matches what the real source does.  Thrown away, that work
+is spent again the next time something near it moves.
+
+`rt_shape.c` is where they go, each with a note saying which file it
+came from, so a regression leads back to the original.
 
 ## Traps in the harness itself
 
@@ -151,7 +164,7 @@ In rough order of how much they have earned:
 * **153 rules of 485 never match.**  Some is float, which is unstarted.
   The rest is shapes no source here takes, and each is code that has
   never run.
-* **115 markers** over the tree's own sources.
+* **111 markers** over the tree's own sources.
 * **Float** is not started.
 * **c0 could be single-phase.**  The two-phase structure is what forces
   the file-wide tables above, and `resetSwitch()` is declared "reset for

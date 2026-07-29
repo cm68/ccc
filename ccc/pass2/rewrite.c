@@ -187,12 +187,34 @@ label(Expr *e)
 	case BANG:
 	case NEG:
 	case NOT:
+		e->regs = e->left ? e->left->regs : 1;
+		if (e->regs < 1) e->regs = 1;
+		return;
+
+	/*
+	 * Stepping a global comes back in HL and nowhere else - the rules
+	 * for it point HL at the variable and work in place - so it is
+	 * costed like a call, and for the same reason: an operand that
+	 * cannot go to DE has to be worked out before whatever is going
+	 * to sit there, and this number is what chooses that order.
+	 *
+	 * Costed one, "buf[pos++]" put the array's address in HL, then
+	 * the step on top of it, and added HL to itself.
+	 *
+	 * A frame slot is not the same: the (iy+d) forms step it where it
+	 * lies and hand the value to whichever register was asked for, so
+	 * it stays at one and keeps the shorter code it already had.
+	 */
 	case PREINC:
 	case POSTINC:
 	case PREDEC:
 	case POSTDEC:
 		e->regs = e->left ? e->left->regs : 1;
-		if (e->regs < 1) e->regs = 1;
+		if (e->left && (e->left->op == SYM || e->left->op == SYMREF) &&
+		    e->regs < 2)
+			e->regs = 2;
+		if (e->regs < 1)
+			e->regs = 1;
 		return;
 
 	/* Binary ops: Sethi-Ullman formula */
