@@ -157,6 +157,46 @@ setidx(p, i, v) register struct ent *p; short i, v;
 	p[i].a = v;
 }
 
+
+/*
+ * tools/asm.c and wslib.c: a local array subscripted by a register
+ * variable.  The frame slot's address plus the subscript had forms for
+ * the subscript in HL and in DE and none for BC, so storing through it
+ * emitted nothing.  Six places, all of them clearing a buffer.
+ */
+short
+locidx(n) short n;
+{
+	char b[8];
+	register short i;
+	short t;
+
+	for (i = 0; i < 8; i++)
+		b[i] = 0;		/* a constant stored through it */
+	for (i = 0; i < n; i++)
+		b[i] = i + 1;
+	t = 0;
+	for (i = 0; i < 8; i++)
+		t += b[i];
+	return t;
+}
+
+short
+locidxw(n) short n;
+{
+	short w[4];
+	register short i;
+	short t;
+
+	for (i = 0; i < 4; i++)
+		w[i] = 0;
+	w[n] = 100;
+	t = 0;
+	for (i = 0; i < 4; i++)
+		t += w[i];
+	return t;
+}
+
 main()
 {
 	lexBuf[0] = 10; lexBuf[1] = 20; lexBuf[2] = 30;
@@ -215,6 +255,13 @@ main()
 	CHECK(28, etab[1].a, 99);
 	CHECK(29, etab[0].a, 10);
 	CHECK(30, etab[2].a, 30);
+
+	CHECK(31, locidx(0), 0);
+	CHECK(32, locidx(1), 1);
+	CHECK(33, locidx(3), 6);	/* 1+2+3 */
+	CHECK(34, locidx(8), 36);	/* 1..8 */
+	CHECK(35, locidxw(0), 100);
+	CHECK(36, locidxw(3), 100);
 
 	return 0;
 }

@@ -299,6 +299,9 @@ struct rule rules[] = {
 	 * reorder leaves it when the index is the costlier side */
 	R("+(I,E)", PLUS, P_L, P_R, P_NONE, 0,
 		F_PUSHLR F_POPHL F_ADDHLDE F_LDDELO F_ADDHLDE, R_HL),
+	/* and in BC, which is where a register variable subscript sits */
+	R("+(I,B)", PLUS, P_L, P_R, P_NONE, 0,
+		F_PUSHLR F_POPHL "\tadd hl,bc\n" F_LDDELO F_ADDHLDE, R_HL),
 
 	/* symbol + constant offset folds into the SYMREF */
 	R("+(O,N)", SYMREF, P_NONE, P_NONE, P_NONE, 0, NULL, 0),
