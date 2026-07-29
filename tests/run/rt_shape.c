@@ -572,8 +572,80 @@ dwalk()
 	return n;
 }
 
+/*
+ * pass2: stepping a byte that lives in B or C.
+ *
+ * A byte register variable reduces into A to be worked on, and the
+ * "k(A):b" rule then stepped it there and called that the answer - but
+ * A is a copy, so the variable never changed.  "while (--n)" did not
+ * terminate.  The assignment side of this was already guarded, with a
+ * comment saying "c = -1 came out as ld a,b and ld a,-1"; the steps
+ * were not.
+ *
+ * dec b and dec c set Z themselves, so a step used as a condition
+ * needs nothing after it.
+ */
+char stepbuf[40];
+
+char
+cdown(n) register char n;
+{
+	char s;
+
+	s = 0;
+	while (--n)			/* the loop that hung */
+		s += stepbuf[n];
+	return s;
+}
+
+char
+cupto(n) register char n;
+{
+	register char i;
+	char s;
+
+	s = 0;
+	i = 0;
+	while (++i <= n)		/* two byte register variables */
+		s += stepbuf[i];
+	return s;
+}
+
+char cpleft;			/* what the variable was left holding */
+
+short
+cpost(n) register char n;
+{
+	char a;
+
+	a = n--;			/* postfix yields the old value */
+	cpleft = n;
+	return a;
+}
+
+short
+cpre(n) register char n;
+{
+	char a;
+
+	a = --n;			/* prefix yields the new one */
+	cpleft = n;
+	return a;
+}
+
+/* the user's shape: a step used directly as a condition */
+short
+cif(n) register char n;
+{
+	if (--n)
+		return 1;
+	return 0;
+}
+
 main()
 {
+	short i;
+
 	lexBuf[0] = 10; lexBuf[1] = 20; lexBuf[2] = 30;
 	lexPos = 0;
 	lexValid = 3;
@@ -774,6 +846,19 @@ main()
 	/* 5:none  25:both  15:one  -> 3, and the walk must still finish,
 	 * which it only does if BC came back from every read */
 	CHECK(104, dwalk(), 3);
+
+	for (i = 0; i < 40; i++)
+		stepbuf[i] = i;
+	/* 5: buf[4]+buf[3]+buf[2]+buf[1] - and it has to stop */
+	CHECK(105, cdown(5), 10);
+	CHECK(106, cdown(1), 0);	/* --1 is zero, body never runs */
+	CHECK(107, cupto(4), 10);	/* buf[1..4] */
+	CHECK(108, cpost(7), 7);	/* postfix: the old value */
+	CHECK(109, cpleft, 6);		/* and the variable did change */
+	CHECK(110, cpre(7), 6);		/* prefix: the new value */
+	CHECK(111, cpleft, 6);
+	CHECK(112, cif(3), 1);
+	CHECK(113, cif(1), 0);		/* --1 is zero */
 
 	return 0;
 }

@@ -2784,16 +2784,20 @@ rewrite1(Expr *e)
 			      (n->op == REGVAR && n->u.var.reg == R_IX)))
 				e->left = rewrite1(e->left);
 			goto children_done;
-		} else if (e->op == ASSIGN && e->left &&
-			   e->left->op == REGVAR && ISBYTE(e->width)) {
+		} else if (e->left && e->left->op == REGVAR &&
+			   ISBYTE(e->width) &&
+			   (e->op == ASSIGN ||
+			    e->op == PREINC || e->op == PREDEC ||
+			    e->op == POSTINC || e->op == POSTDEC)) {
 			/*
-			 * A byte register variable being assigned to.  Leave
-			 * the lvalue alone: reducing it turns it into A, the
-			 * =(V,..):b rules that would have written b or c
-			 * never match, and =(A,..):b matches instead - which
-			 * loads the value into A and stops there.  "c = -1"
-			 * came out as "ld a,b" and "ld a,-1", and c kept
-			 * whatever it had.
+			 * A byte register variable being assigned to, or
+			 * stepped.  Leave it alone: reducing it turns it into
+			 * A, the ?(V,..):b rules that would have written b or
+			 * c never match, and the A forms match instead - which
+			 * work on a copy and stop there.  "c = -1" came out as
+			 * "ld a,b" and "ld a,-1", and c kept whatever it had;
+			 * "while (--n)" decremented A, tested that, and never
+			 * touched n, so it did not terminate.
 			 *
 			 * Only bytes.  A word register variable reduces to
 			 * INBC and has a working family of its own.

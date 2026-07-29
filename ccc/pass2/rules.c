@@ -1308,6 +1308,32 @@ struct rule rules[] = {
 	R("=(A,B):b", ASSIGN, P_L, P_R, P_NONE, 0, F_LDAC, R_A),
 	R("=(A,E):b", ASSIGN, P_L, P_R, P_NONE, 0, "\tld a,e\n", R_A),
 	/* a byte in A stepped in place */
+	/*
+	 * Stepping a byte that lives in B or C, in place.
+	 *
+	 * These have to come before the A forms below.  A byte register
+	 * variable reduces into A to be worked on, and "k(A):b" then
+	 * steps it there and calls that the answer - but A is a copy, and
+	 * the variable never changed.  "while (--n)" on one of these did
+	 * not terminate.
+	 *
+	 * dec b and dec c set Z themselves, so the flag forms need
+	 * nothing after them.  That is also what djnz is: dec b and a
+	 * relative jump, in one instruction and one byte less.
+	 */
+	R("i(V):bF", PREINC, P_L, P_NONE, P_L, RF_B, "\tinc b\n", F_NZ),
+	R("i(V):bF", PREINC, P_L, P_NONE, P_L, RF_C, "\tinc c\n", F_NZ),
+	R("k(V):bF", PREDEC, P_L, P_NONE, P_L, RF_B, "\tdec b\n", F_NZ),
+	R("k(V):bF", PREDEC, P_L, P_NONE, P_L, RF_C, "\tdec c\n", F_NZ),
+	R("i(V):b", PREINC, P_L, P_NONE, P_L, RF_B, "\tinc b\n\tld a,b\n", R_A),
+	R("i(V):b", PREINC, P_L, P_NONE, P_L, RF_C, "\tinc c\n\tld a,c\n", R_A),
+	R("k(V):b", PREDEC, P_L, P_NONE, P_L, RF_B, "\tdec b\n\tld a,b\n", R_A),
+	R("k(V):b", PREDEC, P_L, P_NONE, P_L, RF_C, "\tdec c\n\tld a,c\n", R_A),
+	/* postfix wants the old value, so take a copy before stepping */
+	R("j(V):b", POSTINC, P_L, P_NONE, P_L, RF_B, "\tld a,b\n\tinc b\n", R_A),
+	R("j(V):b", POSTINC, P_L, P_NONE, P_L, RF_C, "\tld a,c\n\tinc c\n", R_A),
+	R("m(V):b", POSTDEC, P_L, P_NONE, P_L, RF_B, "\tld a,b\n\tdec b\n", R_A),
+	R("m(V):b", POSTDEC, P_L, P_NONE, P_L, RF_C, "\tld a,c\n\tdec c\n", R_A),
 	R("i(A):b", PREINC, P_L, P_NONE, P_NONE, 0, "\tinc a\n", R_A),
 	R("k(A):b", PREDEC, P_L, P_NONE, P_NONE, 0, "\tdec a\n", R_A),
 	/* storing a word already in DE to a global, so a nested
