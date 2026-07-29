@@ -69,57 +69,79 @@ main()
 	a = 0;
 	CHECK(21, a * 11, 0);
 
+	/*
+	 * Any other constant, which the table does not name and which has
+	 * to go through the helper.  There was no rule for it at all, so
+	 * the multiply simply was not emitted.
+	 */
+	a = 7;
+	CHECK(22, a * 100, 700);
+	CHECK(23, a * 13, 91);
+	CHECK(24, a * 1000, 7000);
+	CHECK(25, a * 1, 7);
+	CHECK(26, a * 0, 0);
+	CHECK(27, 100 * a, 700);	/* and with the constant on the left */
+	a = -3;
+	CHECK(28, a * 100, -300);
+	CHECK(29, a * 13, -39);
+	a = 0;
+	CHECK(30, a * 100, 0);
+	/* a power of two still becomes a shift, and a named one its adds */
+	a = 7;
+	CHECK(31, a * 8, 56);
+	CHECK(32, a * 16, 112);
+
 	/* divide and modulo by a variable, not a constant */
 	a = 100; b = 7;
-	CHECK(22, a / b, 14);
-	CHECK(23, a % b, 2);
+	CHECK(33, a / b, 14);
+	CHECK(34, a % b, 2);
 	a = -100;
-	CHECK(24, a / b, -14);
-	CHECK(25, a % b, -2);
+	CHECK(35, a / b, -14);
+	CHECK(36, a % b, -2);
 
 	/* a register variable divided by a constant */
 	r = 100;
-	CHECK(26, r / 4, 25);
-	CHECK(27, r % 4, 0);
+	CHECK(37, r / 4, 25);
+	CHECK(38, r % 4, 0);
 	r = 103;
-	CHECK(28, r / 4, 25);
-	CHECK(29, r % 4, 3);
+	CHECK(39, r / 4, 25);
+	CHECK(40, r % 4, 3);
 
 	/*
 	 * Comparisons with both sides live, which is the form that has
 	 * to hold one operand somewhere while it works out the other.
 	 */
 	a = 3; b = 5;
-	CHECK(30, a > b, 0);
-	CHECK(31, a >= b, 0);
-	CHECK(32, b > a, 1);
-	CHECK(33, b >= a, 1);
-	CHECK(34, a >= a, 1);
+	CHECK(41, a > b, 0);
+	CHECK(42, a >= b, 0);
+	CHECK(43, b > a, 1);
+	CHECK(44, b >= a, 1);
+	CHECK(45, a >= a, 1);
 	a = -3; b = 5;
-	CHECK(35, a > b, 0);
-	CHECK(36, a >= b, 0);
-	CHECK(37, b >= a, 1);
+	CHECK(46, a > b, 0);
+	CHECK(47, a >= b, 0);
+	CHECK(48, b >= a, 1);
 	a = -5; b = -3;
-	CHECK(38, a > b, 0);
-	CHECK(39, b > a, 1);
-	CHECK(40, a >= b, 0);
+	CHECK(49, a > b, 0);
+	CHECK(50, b > a, 1);
+	CHECK(51, a >= b, 0);
 
 	/* a register variable against a computed value */
 	r = 7;
-	CHECK(41, r > idsh(3), 1);
-	CHECK(42, r >= idsh(7), 1);
-	CHECK(43, r > idsh(9), 0);
-	CHECK(44, r >= idsh(9), 0);
+	CHECK(52, r > idsh(3), 1);
+	CHECK(53, r >= idsh(7), 1);
+	CHECK(54, r > idsh(9), 0);
+	CHECK(55, r >= idsh(9), 0);
 
 	/* and against a constant, at the boundary */
 	r = 5;
-	CHECK(45, r <= 5, 1);
-	CHECK(46, r <= 4, 0);
-	CHECK(47, r > 4, 1);
-	CHECK(48, r >= 6, 0);
+	CHECK(56, r <= 5, 1);
+	CHECK(57, r <= 4, 0);
+	CHECK(58, r > 4, 1);
+	CHECK(59, r >= 6, 0);
 	a = 5;
-	CHECK(49, a <= 5, 1);
-	CHECK(50, a <= 4, 0);
+	CHECK(60, a <= 5, 1);
+	CHECK(61, a <= 4, 0);
 
 	/*
 	 * Stepping something other than a local: a global, and the thing
@@ -128,69 +150,69 @@ main()
 	 */
 	a = 10;
 	a--;
-	CHECK(51, a, 9);
-	CHECK(52, a--, 9);
-	CHECK(53, a, 8);
-	CHECK(54, --a, 7);
-	CHECK(55, a++, 7);
-	CHECK(56, ++a, 9);
+	CHECK(62, a, 9);
+	CHECK(63, a--, 9);
+	CHECK(64, a, 8);
+	CHECK(65, --a, 7);
+	CHECK(66, a++, 7);
+	CHECK(67, ++a, 9);
 
 	sp = &a;
 	*sp = 20;
 	(*sp)--;
-	CHECK(57, a, 19);
-	CHECK(58, (*sp)--, 19);
-	CHECK(59, a, 18);
-	CHECK(60, --(*sp), 17);
-	CHECK(61, (*sp)++, 17);
-	CHECK(62, ++(*sp), 19);
+	CHECK(68, a, 19);
+	CHECK(69, (*sp)--, 19);
+	CHECK(70, a, 18);
+	CHECK(71, --(*sp), 17);
+	CHECK(72, (*sp)++, 17);
+	CHECK(73, ++(*sp), 19);
 
 	/* a byte through a pointer */
 	uc = 5;
-	CHECK(63, uc++, 5);
-	CHECK(64, uc, 6);
-	CHECK(65, --uc, 5);
+	CHECK(74, uc++, 5);
+	CHECK(75, uc, 6);
+	CHECK(76, --uc, 5);
 
 	/* a long stepped in place */
 	l1 = 0x0000ffffL;
 	l1++;
-	CHECK(66, l1 == 0x00010000L, 1);
+	CHECK(77, l1 == 0x00010000L, 1);
 	l1--;
-	CHECK(67, l1 == 0x0000ffffL, 1);
+	CHECK(78, l1 == 0x0000ffffL, 1);
 	++l1;
-	CHECK(68, l1 == 0x00010000L, 1);
+	CHECK(79, l1 == 0x00010000L, 1);
 	--l1;
-	CHECK(69, l1 == 0x0000ffffL, 1);
+	CHECK(80, l1 == 0x0000ffffL, 1);
 
 	/*
 	 * The unary operators away from their usual operand: not, and
 	 * complement, on things that are not already in HL.
 	 */
 	r = 0;
-	CHECK(70, !r, 1);
+	CHECK(81, !r, 1);
 	r = 5;
-	CHECK(71, !r, 0);
+	CHECK(82, !r, 0);
 	a = 0;
-	CHECK(72, !a, 1);
+	CHECK(83, !a, 1);
 	uc = 0;
-	CHECK(73, !uc, 1);
+	CHECK(84, !uc, 1);
 	uc = 3;
-	CHECK(74, !uc, 0);
+	CHECK(85, !uc, 0);
 	ch = 0;
-	CHECK(75, !ch, 1);
+	CHECK(86, !ch, 1);
 
 	uc = 0x0f;
-	CHECK(76, (unsigned char)~uc, 0xf0);
+	CHECK(87, (unsigned char)~uc, 0xf0);
 	a = 0;
-	CHECK(77, ~a, -1);
+	CHECK(88, ~a, -1);
 	a = -1;
-	CHECK(78, ~a, 0);
+	CHECK(89, ~a, 0);
 
 	/* negation, of a register variable and a global */
 	r = 7;
-	CHECK(79, -r, -7);
+	CHECK(90, -r, -7);
 	a = -9;
-	CHECK(80, -a, 9);
+	CHECK(91, -a, 9);
 
 	/*
 	 * Widening an unsigned value, which carries no sign, from each
@@ -198,51 +220,51 @@ main()
 	 */
 	uc = 200;
 	a = uc;
-	CHECK(81, a, 200);
+	CHECK(92, a, 200);
 	u = 65535;
 	l1 = u;
-	CHECK(82, l1 == 65535L, 1);
+	CHECK(93, l1 == 65535L, 1);
 	ch = -1;
 	a = ch;
-	CHECK(83, a, -1);
+	CHECK(94, a, -1);
 
 	/* a pointer difference and a pointer against a symbol */
 	sp = &arr[5];
-	CHECK(84, sp - arr, 5);
+	CHECK(95, sp - arr, 5);
 	sp = arr;
-	CHECK(85, sp == arr, 1);
-	CHECK(86, sp != arr, 0);
+	CHECK(96, sp == arr, 1);
+	CHECK(97, sp != arr, 0);
 
 	/* shifts by eight, which move a whole byte */
 	a = 0x1234;
-	CHECK(87, (a >> 8) & 0xff, 0x12);
+	CHECK(98, (a >> 8) & 0xff, 0x12);
 	a = 0x0034;
-	CHECK(88, a << 8, 0x3400);
+	CHECK(99, a << 8, 0x3400);
 	u = 0x8000;
-	CHECK(89, u >> 8, 0x80);
+	CHECK(100, u >> 8, 0x80);
 
 	/* an array element stepped, and the index a register variable */
 	arr[0] = 1; arr[1] = 2; arr[2] = 3;
 	r = 1;
 	arr[r]++;
-	CHECK(90, arr[1], 3);
+	CHECK(101, arr[1], 3);
 	++arr[r];
-	CHECK(91, arr[1], 4);
+	CHECK(102, arr[1], 4);
 	arr[r]--;
-	CHECK(92, arr[1], 3);
+	CHECK(103, arr[1], 3);
 
 	/* a local kept in a register, assigned from everywhere */
 	loc = 3;
 	r = loc;
-	CHECK(93, r, 3);
+	CHECK(104, r, 3);
 	r = a;
-	CHECK(94, r, 0x0034);
+	CHECK(105, r, 0x0034);
 	r = idsh(11);
-	CHECK(95, r, 11);
+	CHECK(106, r, 11);
 	a = r;
-	CHECK(96, a, 11);
+	CHECK(107, a, 11);
 	loc = r;
-	CHECK(97, loc, 11);
+	CHECK(108, loc, 11);
 
 	return 0;
 }

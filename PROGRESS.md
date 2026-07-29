@@ -125,7 +125,7 @@ In rough order of how much they have earned:
 * **`make coverage`** (in `ccc/pass2`) - which rules ever match.  Needs
   `c1` built with `-DDEBUG`; the counters are host-side and the z80
   build has never seen them.
-* **The `XXXXXX incomplete` markers** - 160 over the tree's own
+* **The `XXXXXX incomplete` markers** - 128 over the tree's own
   sources.  Count them with
   `grep -rh '^; XXXXXX' ccc/*/stage1 tools/stage1 | wc -l`.
 * **`make regression`** - 365 baselines of cpp's lexeme output.  Catches
@@ -148,13 +148,10 @@ In rough order of how much they have earned:
 
 ## Open, roughly by how much they matter
 
-* **Multiply by an arbitrary constant** has no rule - only the named
-  ones (3, 5, 6, 7, 9, 10, 11, 12, 14, 15, 20, 24, 40) and
-  register-by-register.  `v * 100` emits nothing and says so.
-* **153 rules of 484 never match.**  Some is float, which is unstarted.
+* **153 rules of 485 never match.**  Some is float, which is unstarted.
   The rest is shapes no source here takes, and each is code that has
   never run.
-* **160 markers** over the tree's own sources.
+* **128 markers** over the tree's own sources.
 * **Float** is not started.
 * **c0 could be single-phase.**  The two-phase structure is what forces
   the file-wide tables above, and `resetSwitch()` is declared "reset for

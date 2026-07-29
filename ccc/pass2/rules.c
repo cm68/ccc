@@ -355,6 +355,16 @@ struct rule rules[] = {
 	 */
 	R("*(H,E)", STAR, P_L, P_R, P_NONE, 0, "$[\tcall amul\n$]", R_HL),
 	/*
+	 * Any other constant, which has to go through the helper like a
+	 * variable would.  The shift-and-add forms above are cheaper and
+	 * come first; this is what catches everything they do not name.
+	 * There was nothing here at all, so "v * 100" emitted no multiply
+	 * - and said so only after the marker learned to look below the
+	 * root of a statement.
+	 */
+	R("*(H,N)", STAR, P_L, P_R, P_NONE, 0,
+		F_LDDER "$[\tcall amul\n$]", R_HL),
+	/*
 	 * The same with the left operand in BC, which a register variable
 	 * puts it in.  There was a form for BC times a constant and none
 	 * for BC times a value, so "i * a" with i in a register emitted
