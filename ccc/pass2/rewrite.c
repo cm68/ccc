@@ -341,7 +341,20 @@ assign(Expr *e, unsigned char tgt)
 
 	/* Binary ops: left→HL, right→DE (Z80 is HL-centric) */
 	default:
-		if (e->regs >= 3) {
+		if (e->regs >= 3 && e->right && e->right->op == NUMBER) {
+			/*
+			 * A constant costs no register - the rule that names
+			 * it writes it into the instruction - so however dear
+			 * the other side is, there is nothing here to spill
+			 * for.  Sending it to HL with the left made the spill
+			 * path push the left operand, rewrite a bare constant
+			 * to nothing at all, and pop back a copy of what it
+			 * had just pushed: "(v & m) != 0" compared the result
+			 * against itself and was always equal.
+			 */
+			assign(e->left, R_HL);
+			assign(e->right, R_DE);
+		} else if (e->regs >= 3) {
 			/* Need spill: both children compute to HL */
 			assign(e->left, R_HL);
 			assign(e->right, R_HL);
@@ -2635,9 +2648,14 @@ rewrite1(Expr *e)
 		}
 	}
 
-	/* Handle spill for expressions needing > 2 registers */
-	/* Exclude ASSIGN - left side is target, not operand */
-	if (e->regs >= 3 && e->left && e->right && e->op != ASSIGN) {
+	/*
+	 * Handle spill for expressions needing > 2 registers.
+	 * Exclude ASSIGN - left side is target, not operand - and a
+	 * constant right operand, which needs no register and which
+	 * nothing would materialise if it were pushed and popped around.
+	 */
+	if (e->regs >= 3 && e->left && e->right && e->op != ASSIGN &&
+	    e->right->op != NUMBER) {
 		/* Evaluate left subtree (result in HL) */
 		e->left = rewrite1(e->left);
 		/*

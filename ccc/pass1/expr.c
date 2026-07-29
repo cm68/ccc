@@ -1402,6 +1402,27 @@ parseExpr(unsigned char pri)
                 e->type = e->right->type;
 
             /*
+             * The integer promotions.  Anything narrower than an int
+             * is an int the moment it is operated on, so the wider of
+             * the two operands is only the answer once both are at
+             * least that wide.  Stopping there made "c * 100" char
+             * arithmetic: seven hundred kept its low byte and came out
+             * as a hundred and eighty-eight.
+             *
+             * This is only where the width is decided.  outast.c
+             * narrows it again wherever the result is stored somewhere
+             * that cannot tell the difference - which is what keeps
+             * byte arithmetic byte-wide when it is safe, and is why
+             * the comment there calls itself the as-if rule standing
+             * in for these promotions.
+             */
+            if (!is_assignment && !IS_CMPLOG(op) &&
+                e->type && e->type->size > 0 &&
+                e->type->size < inttype->size &&
+                !(e->type->flags & (TF_POINTER | TF_ARRAY)))
+                e->type = inttype;
+
+            /*
              * Pointer arithmetic counts in elements, not bytes.  The
              * subscript path has always scaled - "p[2]" is right -
              * but the same sum written "p + 2" came through here and

@@ -14,6 +14,46 @@ unsigned char u1, u2, u3;
 short s, s2;
 unsigned short us;
 
+/*
+ * Integer promotions.  A binary operator's result is not the wider of
+ * its two operands: anything narrower than an int is an int first, so
+ * "c * 100" is int arithmetic even though both sides fit in a byte.
+ * Taking the wider of the two made seven hundred keep its low byte and
+ * come out as a hundred and eighty-eight.
+ */
+unsigned char pa, pb;
+
+short
+mul100(a, b) register char a; register char b;
+{
+	return (a * 100) + b;
+}
+
+short
+addch(a, b) char a; char b;
+{
+	return a + b;			/* 200 must not wrap into a byte */
+}
+
+/* and where it does land in a byte, it must still wrap */
+unsigned char
+narrow(a, b) unsigned char a; unsigned char b;
+{
+	unsigned char c;
+
+	c = a + b;
+	return c;
+}
+
+unsigned char
+narrowm(a, b) unsigned char a; unsigned char b;
+{
+	unsigned char c;
+
+	c = a * b;
+	return c;
+}
+
 main()
 {
 	/* byte arithmetic, both operands live */
@@ -115,6 +155,24 @@ main()
 	CHECK(42, !s, 0);
 	s = 0;
 	CHECK(43, !s, 1);
+
+	/*
+	 * The integer promotions.  Arithmetic on chars is done at int
+	 * width, so a product that does not fit in a char still comes out
+	 * right - the result type is not the wider of the two operands,
+	 * it is at least an int.  Byte arithmetic that lands back in a
+	 * byte is narrowed again where that cannot be told apart, so the
+	 * last two here must still wrap.
+	 */
+	CHECK(44, mul100(7, 6), 706);	/* 700 does not fit in a char */
+	CHECK(45, addch(100, 100), 200);
+	pa = 50; pb = 4;
+	CHECK(46, pa * pb, 200);
+	CHECK(47, (pa * pb) + 100, 300);
+	CHECK(48, pa * pb * 3, 600);
+	/* stored back into a byte, where wrapping is the right answer */
+	CHECK(49, narrow(200, 100), 44);
+	CHECK(50, narrowm(20, 20), 144);	/* 400 & 0xff */
 
 	return 0;
 }
