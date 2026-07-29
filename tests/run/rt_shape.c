@@ -79,6 +79,46 @@ bytod()
 	return sumtod(&lt);
 }
 
+
+/*
+ * tools/wssize.c byname(): a byte array subscripted by a long.  The
+ * sum of a pointer and a long is a pointer, so only the low word can
+ * reach the address - but the long operand was emitted at its own
+ * width and pass2 has no rule for adding the two together, so nothing
+ * came out.  Eight places in the tools did this.
+ */
+static unsigned char lbuf[32];
+static short li;
+
+short
+bylong(size) long size;
+{
+	long pos;
+	short n;
+
+	pos = 2;
+	n = 0;
+	for (li = 0; li < 4 && lbuf[pos + li]; li++)
+		n++;
+	return n;
+}
+
+short
+atlong(p) long p;
+{
+	return lbuf[p];
+}
+
+/* a long narrowed into short arithmetic, which must keep the low word */
+short
+mixlong(a) short a;
+{
+	long l;
+
+	l = 100000L;			/* 0x186a0 */
+	return a + (short)l;
+}
+
 main()
 {
 	lexBuf[0] = 10; lexBuf[1] = 20; lexBuf[2] = 30;
@@ -102,6 +142,16 @@ main()
 	CHECK(12, localstep(4), 15);
 
 	CHECK(13, bytod(), 7);
+
+	for (li = 0; li < 32; li++)
+		lbuf[li] = li;
+	lbuf[5] = 0;
+	CHECK(14, bylong(0L), 3);	/* [2],[3],[4] set, [5] clear */
+	CHECK(15, atlong(7L), 7);
+	CHECK(16, atlong(0L), 0);
+	CHECK(17, atlong(31L), 31);
+	CHECK(18, mixlong(0), (short)0x86a0);
+	CHECK(19, mixlong(1), (short)0x86a1);
 
 	return 0;
 }

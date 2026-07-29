@@ -556,6 +556,27 @@ emitExpr(struct expr *e)
 			emitOperand(right, type);	/* convert to the target */
 		} else {
 			struct type *w = opwidth(e);
+			/*
+			 * emitOperand widens a narrow operand and leaves a wide
+			 * one alone, which is right for everything except an
+			 * operand wider than the operator itself works at.
+			 * "buf[pos + i]" with pos a long adds a long to a
+			 * pointer and the sum is a pointer: only the low word
+			 * can reach the address, and pass2 has no rule for
+			 * adding the two widths together - it emitted nothing.
+			 *
+			 * So narrow it here, on the same terms the assignment
+			 * above narrows what it stores: only where the operator
+			 * cannot carry anything down from the bytes being
+			 * dropped.
+			 */
+			if (left && left->type->size > w->size &&
+			    candemote(left, w->size))
+				demote(left, w);
+			if (right && op != LSHIFT && op != RSHIFT &&
+			    right->type->size > w->size &&
+			    candemote(right, w->size))
+				demote(right, w);
 			emitOperand(left, w);
 			/* a shift count is promoted on its own, not to the
 			 * width of the value being shifted */
