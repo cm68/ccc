@@ -1626,6 +1626,42 @@ struct rule rules[] = {
 		F_EXDEHL T_SUB_DE T_SXORV, F_P),
 	R("G(H,E)", GT, P_L, P_R, P_NONE, RF_SIGNL,
 		F_EXDEHL T_SUB_DE T_SXORV, F_M),
+	/*
+	 * A symbol compared against a register.  A SYMREF is left
+	 * unreduced so the store and load rules can use it as an
+	 * address, so where its *value* is wanted it has to be loaded -
+	 * and here that is the whole difference.
+	 *
+	 * It only shows up on the left because "a > b" is canonicalised
+	 * to "b < a", which is what puts the symbol there.  "s == buf"
+	 * kept the symbol on the right, where it becomes DE and the
+	 * ordinary rules match, so equality worked and ordering did not:
+	 *
+	 *	while (s > macbuffer && ...)	never ran
+	 *
+	 * which is macro.c's trailing-whitespace trim, so a macro body
+	 * kept its trailing blanks - and an empty one walked off the end
+	 * of the definition and ate the next line.
+	 */
+	R("T(O,E)", LT, P_L, P_R, P_NONE, RF_SIGNL,
+		F_LDHLL T_SUB_DE T_SXORV, F_M),
+	R("Y(O,E)", GE, P_L, P_R, P_NONE, RF_SIGNL,
+		F_LDHLL T_SUB_DE T_SXORV, F_P),
+	R("W(O,E)", LE, P_L, P_R, P_NONE, RF_SIGNL,
+		F_LDHLL F_EXDEHL T_SUB_DE T_SXORV, F_P),
+	R("G(O,E)", GT, P_L, P_R, P_NONE, RF_SIGNL,
+		F_LDHLL F_EXDEHL T_SUB_DE T_SXORV, F_M),
+
+	/* and with the symbol on the other side, where it becomes DE */
+	R("T(H,O)", LT, P_L, P_R, P_NONE, RF_SIGNL,
+		F_LDDER T_SUB_DE T_SXORV, F_M),
+	R("Y(H,O)", GE, P_L, P_R, P_NONE, RF_SIGNL,
+		F_LDDER T_SUB_DE T_SXORV, F_P),
+	R("W(H,O)", LE, P_L, P_R, P_NONE, RF_SIGNL,
+		F_LDDER F_EXDEHL T_SUB_DE T_SXORV, F_P),
+	R("G(H,O)", GT, P_L, P_R, P_NONE, RF_SIGNL,
+		F_LDDER F_EXDEHL T_SUB_DE T_SXORV, F_M),
+
 	R("T(H,B)", LT, P_L, P_R, P_NONE, RF_SIGNL, T_SUB_BC T_SXORV, F_M),
 	R("Y(H,B)", GE, P_L, P_R, P_NONE, RF_SIGNL, T_SUB_BC T_SXORV, F_P),
 	R("W(H,B)", LE, P_L, P_R, P_NONE, RF_SIGNL,
@@ -1650,6 +1686,19 @@ struct rule rules[] = {
 	R("U(H,E)", NEQ, P_L, P_R, P_NONE, 0, F_ORA F_SBCHLDE, F_NZ),
 	R("T(H,E)", LT, P_L, P_R, P_NONE, 0, F_ORA F_SBCHLDE, F_C),
 	R("Y(H,E)", GE, P_L, P_R, P_NONE, 0, F_ORA F_SBCHLDE, F_NC),
+	/* the same four with a symbol on the left - see the signed set */
+	R("W(O,E)", LE, P_L, P_R, P_NONE, 0,
+		F_LDHLL F_EXDEHL F_ORA F_SBCHLDE, F_NC),
+	R("G(O,E)", GT, P_L, P_R, P_NONE, 0,
+		F_LDHLL F_EXDEHL F_ORA F_SBCHLDE, F_C),
+	R("T(O,E)", LT, P_L, P_R, P_NONE, 0, F_LDHLL F_ORA F_SBCHLDE, F_C),
+	R("Y(O,E)", GE, P_L, P_R, P_NONE, 0, F_LDHLL F_ORA F_SBCHLDE, F_NC),
+	R("W(H,O)", LE, P_L, P_R, P_NONE, 0,
+		F_LDDER F_EXDEHL F_ORA F_SBCHLDE, F_NC),
+	R("G(H,O)", GT, P_L, P_R, P_NONE, 0,
+		F_LDDER F_EXDEHL F_ORA F_SBCHLDE, F_C),
+	R("T(H,O)", LT, P_L, P_R, P_NONE, 0, F_LDDER F_ORA F_SBCHLDE, F_C),
+	R("Y(H,O)", GE, P_L, P_R, P_NONE, 0, F_LDDER F_ORA F_SBCHLDE, F_NC),
 	/* BC operands: the Z80 has add/sbc hl,bc, so no shuffle needed */
 	R("Q(H,B)", EQ, P_L, P_R, P_NONE, 0, F_ORA F_SBCHLBC, F_Z),
 	R("U(H,B)", NEQ, P_L, P_R, P_NONE, 0, F_ORA F_SBCHLBC, F_NZ),
