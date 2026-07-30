@@ -1242,6 +1242,16 @@ struct rule rules[] = {
 	R("-(H,B)", MINUS, P_L, P_R, P_NONE, 0, F_ORA F_SBCHLBC, R_HL),
 	R("+(B,E)", PLUS, P_L, P_R, P_NONE, 0, T_BC_HL T_ADD_HL_DE, R_HL),
 	R("-(B,E)", MINUS, P_L, P_R, P_NONE, 0, T_BC_HL F_ORA F_SBCHLDE, R_HL),
+	/*
+	 * A pointer in BC less the address of an array - "s - buf", the
+	 * ordinary pointer difference, when the array is declared with no
+	 * size.  Given a size, pass1 puts a conversion over the symbol
+	 * and this arrives as -(B,E) above; an array of unknown size has
+	 * size zero, the conversion is not inserted because nothing looks
+	 * wider than nothing, and the symbol reaches here bare.
+	 */
+	R("-(B,O)", MINUS, P_L, P_R, P_NONE, 0,
+		T_BC_HL F_LDDER F_ORA F_SBCHLDE, R_HL),
 	R("-(B,N)", MINUS, P_L, P_R, P_NONE, 0,
 		T_BC_HL F_LDDER F_ORA F_SBCHLDE, R_HL),
 	R("<(B,N)", LSHIFT, P_L, P_R, P_NONE, 0, T_BC_HL "%(" T_ADD_HL_HL ")", R_HL),

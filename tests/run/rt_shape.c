@@ -802,6 +802,40 @@ notbyte(c) unsigned char c;
 	return ~c;			/* -6, not 250 */
 }
 
+/*
+ * pass2/rules.c: a pointer difference against an array declared with
+ * no size.  Given a size, pass1 puts a conversion over the symbol and
+ * the subtraction arrives as -(B,E); an array of unknown size has size
+ * zero, so nothing looks wider than nothing, the conversion is not
+ * inserted, and the symbol reaches the rules bare - where there was a
+ * form for BC less DE and none for BC less a symbol.
+ *
+ * cpp.h declares strbuf this way, which is how it was found.
+ */
+extern char sizeless[];
+
+short
+ptrdiff(n) short n;
+{
+	register char *s;
+
+	s = sizeless;
+	s = s + n;
+	return (short)(s - sizeless);
+}
+
+short
+ptrdcmp(n) short n;
+{
+	register char *s;
+
+	s = sizeless;
+	s = s + n;
+	return (s - sizeless) > 3;
+}
+
+char sizeless[16];
+
 main()
 {
 	short i;
@@ -1057,6 +1091,11 @@ main()
 	CHECK(130, negbyte(5), -5);	/* promoted, so not 251 */
 	CHECK(131, notbyte(5), -6);	/* promoted, so not 250 */
 #endif
+
+	CHECK(132, ptrdiff(0), 0);
+	CHECK(133, ptrdiff(7), 7);
+	CHECK(134, ptrdcmp(7), 1);
+	CHECK(135, ptrdcmp(2), 0);
 
 	return 0;
 }
