@@ -762,7 +762,15 @@ statement(void)
             emit1(RETURN);
             emit1(e1 ? 1 : 0);
             if (e1) {
-                emitExpr(e1);
+                /*
+                 * The value has to arrive at the width the function
+                 * was declared to return, and only the tree knows
+                 * whether to sign- or zero-extend.  Without this,
+                 * "long f() { return 7; }" loaded HL alone - which is
+                 * the high half of a long, so it returned 458752 and
+                 * whatever DE happened to hold.
+                 */
+                emitOperand(e1, curFunc ? curFunc->type->sub : NULL);
                 FreeExpr(e1);
             }
             break;

@@ -124,6 +124,7 @@ extern void emitAsmStmt(char *text);
 extern char *getAsmText(void);
 extern void emitGv(struct name *var);
 extern void emitExpr(struct expr *e);
+extern void emitOperand(struct expr *e, struct type *t);
 extern int cntCondLbls(struct expr *e);
 extern void emitLabel(char *base, char *suffix);
 extern void emitGoto(char *base, char *suffix);

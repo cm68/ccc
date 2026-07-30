@@ -305,7 +305,7 @@ emitChild(struct expr *e)
  * conversion rather than leaving pass2 to guess: the instructions
  * differ, and the node type is the only thing that knows which.
  */
-static void
+void
 emitOperand(struct expr *e, struct type *t)
 {
 	if (!e)

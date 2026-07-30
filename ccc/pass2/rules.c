@@ -171,6 +171,8 @@ char *fragtab[] = {
 #define T_IX_TEST	"\tld a,ixl\n\tor ixh\n"
 #define T_BC_TEST	F_LDAC "\tor b\n"
 #define T_HL_TEST	F_LDAL "\tor h\n"
+/* a long lives in HL:DE, so all four bytes have to be in the test */
+#define T_HLDE_TEST	F_LDAH "\tor l\n\tor d\n\tor e\n"
 #define T_BC_HL	F_LDLC F_LDHB
 /*
  * Load a word through HL into HL.  A carries the low byte while HL is
@@ -273,7 +275,15 @@ struct rule rules[] = {
 	R("V:b", INA, P_NONE, P_NONE, P_NONE, RF_C, F_LDAC, R_A),
 	R("V:b", INA, P_NONE, P_NONE, P_NONE, RF_B, F_LDAB, R_A),
 
-	/* INHL/INDE/INA in flag context: test for zero */
+	/*
+	 * INHL/INDE/INA in flag context: test for zero.
+	 *
+	 * The long has to come first.  "H:F" carries no width, so it
+	 * matches one too - and testing HL alone tests the high word,
+	 * which is zero for every long that fits in an int.  "if (v)"
+	 * on a long was false for 1 and true for 65536.
+	 */
+	R("H:lF", INHL, P_NONE, P_NONE, P_NONE, 0, T_HLDE_TEST, F_NZ),
 	R("H:F", INHL, P_NONE, P_NONE, P_NONE, 0, T_HL_TEST, F_NZ),
 	R("E:F", INDE, P_NONE, P_NONE, P_NONE, 0, T_DE_TEST, F_NZ),
 	R("A:F", INA, P_NONE, P_NONE, P_NONE, 0, F_ORA, F_NZ),

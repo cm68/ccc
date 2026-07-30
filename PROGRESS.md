@@ -168,9 +168,11 @@ In rough order of how much they have earned:
 * **`make coverage`** (in `ccc/pass2`) - which rules ever match.  Needs
   `c1` built with `-DDEBUG`; the counters are host-side and the z80
   build has never seen them.
-* **The `XXXXXX incomplete` markers** - one left over the tree's own
+* **The `XXXXXX incomplete` markers** - none left over the tree's own
   sources, from 173.  Count them with
-  `grep -rh '^; XXXXXX' ccc/*/stage1 tools/stage1 | wc -l`.
+  `grep -rh '^; XXXXXX' ccc/*/stage1 tools/stage1 | wc -l`.  A zero
+  here means every shape the tree takes has a rule, not that the code
+  those rules emit is right; that is what `tests/run` is for.
 * **`make valgrind`** - c0 and c1 over the stage1 intermediates,
   looking for uninitialised reads rather than leaks.  Leaks cost these
   programs nothing; a field read before it is written changes what the
@@ -251,48 +253,24 @@ three.
 
 ## Open, roughly by how much they matter
 
-* **switch has no dispatch.**  pass2 reads the control expression,
-  rewrites it, frees the result, and then emits the case bodies one
-  after another.  Each `case` does the same with its own constant.
-  There is no comparison and there are no case labels - only the break
-  label, so the first case runs, breaks, and the switch is over.  Every
-  switch in generated Z80 code takes its first case whatever the value.
-
-      switch (v) { case 0: return 100; case 1: return 101; }
-
-  returns 100 for every v.  `goto` back over a switch then never
-  terminates, which is how it was found: cpp's filter chain is a state
-  machine of that shape, and the cpp that ccc built emitted a file
-  header and no tokens at all, for any input.
-
-  Nothing caught it.  stage1 only asks whether the sources compile.
-  None of the 21 runtime tests contains a `switch` - the one construct
-  the suite has no coverage of at all, and the compiler is written in a
-  language whose passes are full of them, compiled for the host by gcc
-  where they work.
-
-  Implementing it needs the control value kept somewhere, a comparison
-  and branch per case, a label per case, and the default arm.  pass1
-  already emits the case constants; pass2 reads them and drops them.
-
 * **153 rules of 485 never match.**  Shapes no source here takes, each
   of them code that has never run.
-* **One marker** over the tree's own sources, in `tools/wsnm.c`:
-
-    (ADD:short (HL:short) (HL:long))
-
-  a byte array subscripted by a long, where the pointer and the long
-  both want HL and neither rule nor cost can put one of them elsewhere.
-  This is the register pressure case rather than a missing form, and
-  the source is a stretch: `array[long]` is legal C when the value is
-  in range, but on a machine with 16-bit pointers the long half can
-  never reach an address, so the arithmetic is computed wide and then
-  thrown away.  Narrowing the offsets in the source is the cheaper
-  answer where it can be shown they fit - `wsnm.c`'s record offsets
-  now are, because they index one malloc and that malloc has to fit
-  the address space.  The remaining one indexes by a whole-file offset
-  and cannot be narrowed without deciding what the host tool does with
-  a file bigger than the target could ever hold.
+* **Arguments are not converted to the parameter type.**  These are
+  K&R definitions, so no prototype is in scope at the call and the
+  argument carries its own width: `f(0)` into `f(v) long v;` passes
+  two bytes to a four byte parameter, and the callee reads whatever
+  was above them.  zc3 does the same, so it is the language rather
+  than a defect, but it is the one place where a long is silently
+  wrong and the fix - `0L` - is invisible until something reads the
+  high word.  `rt_lret.c` says so where the calls are.
+* **No marker is left** over the tree's own sources, from 173.  Count
+  them with `grep -rh '^; XXXXXX' ccc/*/stage1 tools/stage1 | wc -l`.
+  The last one to go was `(ADD:short (HL:short) (HL:long))` in
+  `tools/wsnm.c`, a byte array subscripted by a long where the pointer
+  and the long both wanted HL.  It was register pressure rather than a
+  missing form, and it stopped appearing once return values were
+  converted to the declared return type - the long had been arriving
+  from a function that never widened it.
 * **c0 could be single-phase.**  The two-phase structure is what forces
   the file-wide tables above, and `resetSwitch()` is declared "reset for
   new function" but is never called, because calling it would break the
