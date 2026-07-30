@@ -17,6 +17,12 @@ COMPILER = ccc
 # Subdirectories to build
 DIRS = $(COMPILER) tools libsrc
 
+# libsrc has no stage1: it is the runtime, built for the target by
+# whichever compiler is driving, not compiled by ccc to be inspected.
+# Looping over DIRS for stage1 meant the target always ended in an
+# error after doing all of its work.
+STAGE1DIRS = $(COMPILER) tools
+
 SUBMAKE = $(MAKE) CC=$(CC) DEST=$(DEST)
 
 all:
@@ -37,7 +43,7 @@ clobber:
 
 stage1: install
 	@echo "Building stage1 with cross ccc"
-	@for d in $(DIRS); do $(MAKE) CC=ccc DEST=$(DEST) -C $$d stage1; done
+	@for d in $(STAGE1DIRS); do $(MAKE) CC=ccc DEST=$(DEST) -C $$d stage1; done
 	@echo "Stage1 build complete"
 
 test: install
@@ -48,8 +54,12 @@ test: install
 tests: install
 	$(SUBMAKE) -C tests tests
 
-valgrind: install
-	$(SUBMAKE) -C tests valgrind
+# Leaks are not what this is for: these programs read a file, write a
+# file and exit.  A field read before it is written is the thing that
+# matters, because it changes what the compiler emits and does it
+# differently depending on what was compiled before.  Needs stage1.
+valgrind: stage1
+	sh tests/vgsweep.sh
 
 tags:
 	ctags ccc/cpp/*.c ccc/pass1/*.c ccc/pass2/*.c tools/*.c

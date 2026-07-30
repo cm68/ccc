@@ -335,11 +335,6 @@ test-lvalue:
 test-struct:
 	./runtest.sh -k $(VERBOSE) $(STRUCT_TESTS)
 
-# Valgrind testing
-.PHONY: valgrind
-valgrind:
-	./runvalgrind.sh $(ALL_TESTS)
-
 # cpp regression harness, scoped to this directory's corpus
 .PHONY: regression
 regression:
