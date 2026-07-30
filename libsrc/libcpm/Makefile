@@ -9,7 +9,13 @@ AS = asz
 # zc3, not ccc: the installed archive is runtime code for the .com/.mx
 # builds and pass2 codegen is still WIP (matches libc/libu).  The ccc
 # compile coverage of these sources lives in the ccc-check target.
-CC = zc3
+# override: the top level drives everything with CC=gcc on the
+# command line, and a command-line variable beats a plain
+# assignment in every sub-make it reaches.  These are runtime
+# sources for the target and gcc cannot build them - a clean
+# tree failed here, and only built at all because the objects
+# from some earlier run were still lying about.
+override CC = zc3
 LIB = wslib
 
 DEST = $(realpath ../../root/lib)
