@@ -866,11 +866,24 @@ struct rule rules[] = {
 	 * ex (sp),hl does the swap without a spare register: push the
 	 * high word, load the pointer over it, then trade.
 	 */
+	/*
+	 * lstde carries the return address in BC across the stack
+	 * juggling and returns with it still there, so it needs the
+	 * same guard the arithmetic helpers have.  It did not have it:
+	 * a long stored through a pointer left a register variable
+	 * holding the address of the instruction after the call.
+	 *
+	 * The save goes outside the whole sequence rather than around
+	 * the call alone: lstde takes its destination off the stack, so
+	 * a push bc after the pointer was put there is what it stores
+	 * through.
+	 */
 	R("=(D(O),H):l", ASSIGN, P_L, P_R, P_NONE, 0,
-		F_PUSHHL "\tld hl,($LL)\n\tex (sp),hl\n\tcall lstde\n", R_HL),
+		"$[" F_PUSHHL "\tld hl,($LL)\n\tex (sp),hl\n\tcall lstde\n$]",
+		R_HL),
 	R("=(D(I),H):l", ASSIGN, P_L, P_R, P_NONE, 0,
-		F_PUSHHL "\tld l,($LL)\n\tld h,($LL+)\n\tex (sp),hl\n"
-		"\tcall lstde\n", R_HL),
+		"$[" F_PUSHHL "\tld l,($LL)\n\tld h,($LL+)\n\tex (sp),hl\n"
+		"\tcall lstde\n$]", R_HL),
 	R("=(D(I),N):l", ASSIGN, P_L, P_R, P_NONE, 0,
 		F_LDLLL F_LDHLL1 T_ST_IHL_N, 0),
 
