@@ -25,6 +25,20 @@ alloc(void)
 	e->dest = DEST_NONE;
 	e->regs = 0;
 	e->tgt = 0;
+	/*
+	 * Every field, and this one is why.  Nodes are freed with free()
+	 * and come back from malloc holding whatever the last occupant
+	 * left, so a node that had once been the right operand of a byte
+	 * comparison passed its "nored" on to whatever was allocated at
+	 * that address next.  Inherited by a child, it means the child is
+	 * never reduced: the shape that reaches the rules is the one that
+	 * was read in, and nothing matches it.
+	 *
+	 * Which nodes that happens to depends on the whole allocation
+	 * history of the file, so the same function compiled clean on its
+	 * own and left a marker in the file it came from.
+	 */
+	e->nored = 0;
 	e->left = NULL;
 	e->right = NULL;
 	e->u.val = 0;
