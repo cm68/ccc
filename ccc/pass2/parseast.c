@@ -250,8 +250,23 @@ parseStmt(void)
 	case IF: {
 		int lbl, hasel;
 		n = read1();		/* nlabels for short-circuit */
-		lbl = labelcnt++;
-		labelcnt += n;		/* reserve intermediate labels */
+		/*
+		 * Two, not one.  An if with an else emits "no<lbl>" for the
+		 * false branch and "no<lbl+1>" to jump over the else, but
+		 * only one was reserved - and whether there is an else is
+		 * not known until the then-body has been read, by which time
+		 * any if inside it has already taken the number.
+		 *
+		 * So "no<lbl+1>" was defined twice and every jump to it went
+		 * to whichever the assembler kept.  In an else-if chain the
+		 * body of a branch was simply skipped: cpp built this way
+		 * read its own "-o" and did nothing with the name after it.
+		 *
+		 * One number wasted per if without an else is nothing; they
+		 * are per function and start again at zero.
+		 */
+		lbl = labelcnt;
+		labelcnt += 2 + n;	/* lbl, lbl+1, and the short-circuits */
 #ifdef DEBUG
 		if (VERBOSE(V_STMT))
 			fprintf(stderr, "  IF nlbl=%d lbl=%d\n", n, lbl);
