@@ -96,8 +96,21 @@ streamInitVal(struct type *type)
         cur.v.str = NULL;
         gettoken();
     } else {
-        /* Parse single expression, emit, free */
-        e = parseExpr(OP_PRI_COMMA);
+        /*
+         * Parse single expression, emit, free.
+         *
+         * Folded first.  This streams straight to assembly instead of
+         * building an AST, so it never reached foldTree, and the test
+         * just below asks for a CONST node - which an unfolded "a | b"
+         * is not.  Every constant expression in a static initialiser
+         * took the unsupported branch and was written as zero, at both
+         * widths, while the same expression anywhere else folded fine.
+         *
+         * cpp's keyword tables are built out of "c | HI" entries, so
+         * every skip byte in its trie was nought and only the one
+         * directive spelled without them still matched.
+         */
+        e = foldTree(parseExpr(OP_PRI_COMMA));
         if (e) {
             if (e->op == CONST) {
                 val = (long)e->v;  /* e->v IS the value, not a pointer */
