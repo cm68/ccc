@@ -268,6 +268,26 @@ three.
   wrong one - but that was not run down.  `tests/diffcpp.sh` shows it
   as cpp.c differing where it had been identical.
 
+* **An empty function-like macro eats the next character.**  In the
+  cpp that ccc builds, and only there - zc3's is right:
+
+      #define c(x)		"int a;" after it comes out "nt a;"
+      #define c(x,y)		the same
+      #define c()		fine - zero parameters
+      #define c(x) x		fine - a body
+      #define c			fine
+
+  So it needs at least one parameter *and* an empty replacement list,
+  which in macdefine() is the permalloc of the parameter array
+  together with a permdup of an empty macbuffer.  A trailing space
+  after the empty body is worse: cpp then emits nothing at all.
+
+  Object-level bisection puts it in macro.o alone.  permalloc.c is
+  built by zc3 for both, so it is not that.  It is older than the
+  NARROW work - every cpp built during this session has it.  io.c has
+  such a macro, which is why its output carries "; endif" in front of
+  a struct; macro.c and util.c may be the same bug.
+
 * **153 rules of 485 never match.**  Shapes no source here takes, each
   of them code that has never run.
 * **Arguments are not converted to the parameter type.**  These are
