@@ -639,6 +639,9 @@ struct rule rules[] = {
 	 */
 	R("X(B:s):s", SEXT, P_L, P_NONE, P_NONE, 0, T_BC_HL, R_HL),
 	R("J(B:s):s", WIDEN, P_L, P_NONE, P_NONE, 0, T_BC_HL, R_HL),
+	/* and from a frame slot, where it is the same load D(I):s makes */
+	R("X(I:s):s", SEXT, P_L, P_NONE, P_NONE, 0, "\tld $t,($L)\n" F_LDUL, 0),
+	R("J(I:s):s", WIDEN, P_L, P_NONE, P_NONE, 0, "\tld $t,($L)\n" F_LDUL, 0),
 	/* a symbol's address widened to a word, which is what taking a
 	 * function's address for a function pointer comes to */
 	R("X(O):s", SEXT, P_L, P_NONE, P_NONE, 0, "\tld $T,$L\n", 0),

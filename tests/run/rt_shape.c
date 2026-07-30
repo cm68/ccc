@@ -713,6 +713,32 @@ sxreg(n) short n;
 	return d + 5;
 }
 
+/*
+ * pass2/rules.c: a byte reached through a pointer in a frame slot plus
+ * a register index.  The address is the slot sign-extended - nothing
+ * to extend, a word already - added to the index, and no rule named a
+ * sign extension whose operand was a frame slot.  Both the store and
+ * the test of what was stored stopped there.
+ */
+char sxb[16];
+
+short
+locptridx(n) short n;
+{
+	char *p;
+	register short i;
+	short t;
+
+	p = sxb;
+	for (i = 0; i < n; i++)
+		p[i] = 0;		/* store a byte through it */
+	t = 0;
+	for (i = 0; i < n; i++)
+		if (!p[i])		/* and read one back as a condition */
+			t++;
+	return t;
+}
+
 main()
 {
 	short i;
@@ -943,6 +969,12 @@ main()
 
 	CHECK(119, sxreg(0), 5);
 	CHECK(120, sxreg(7), 12);
+
+	for (i = 0; i < 16; i++)
+		sxb[i] = 9;
+	CHECK(121, locptridx(6), 6);	/* six cleared, six read back zero */
+	CHECK(122, sxb[5], 0);
+	CHECK(123, sxb[6], 9);		/* and it stopped where it should */
 
 	return 0;
 }
