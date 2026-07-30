@@ -836,6 +836,72 @@ ptrdcmp(n) short n;
 
 char sizeless[16];
 
+/*
+ * pass2/rules.c, three forms that had none.
+ *
+ * A pointer register variable compared against zero: the index
+ * register comparisons had forms against a symbol, BC, HL and DE, and
+ * none against a constant.
+ *
+ * A constant less a register variable.  Subtraction is not
+ * commutative, so the constant stays on the left and there was no
+ * form with it there.
+ *
+ * A byte shifted by a count only known at runtime - "1 << n", the
+ * ordinary way to make a mask.  Every other shift in the table spells
+ * itself out, which only works for a constant count; this one counts
+ * in B with djnz, entering at the djnz so that a count of nought
+ * shifts no times rather than once.
+ */
+struct ixn { short v; struct ixn *next; };
+struct ixn ixa, ixb;
+
+short
+ixnull(p) register struct ixn *p;
+{
+	short n;
+
+	n = 0;
+	if (p == 0)
+		n += 1;
+	if (p != 0)
+		n += 2;
+	p = p->next;			/* a second use, to keep it in IX */
+	if (p == 0)
+		n += 4;
+	return n;
+}
+
+short
+constsub(n) short n;
+{
+	register short r;
+
+	r = n;
+	return (5 - r) - 1;
+}
+
+unsigned char
+mkmask(n) short n;
+{
+	unsigned char m;
+
+	m = 0;
+	m |= 1 << n;			/* byte width, runtime count */
+	return m;
+}
+
+unsigned char
+mkmask2(a, b) short a; short b;
+{
+	unsigned char m;
+
+	m = 0;
+	m |= 1 << a;
+	m |= 1 << b;
+	return m;
+}
+
 main()
 {
 	short i;
@@ -1096,6 +1162,18 @@ main()
 	CHECK(133, ptrdiff(7), 7);
 	CHECK(134, ptrdcmp(7), 1);
 	CHECK(135, ptrdcmp(2), 0);
+
+	ixa.v = 1; ixa.next = 0;
+	CHECK(136, ixnull(&ixa), 2|4);	/* not null, then null after step */
+	ixb.v = 2; ixb.next = &ixa;
+	CHECK(137, ixnull(&ixb), 2);	/* not null either time */
+	CHECK(138, constsub(2), 2);	/* (5-2)-1 */
+	CHECK(139, constsub(0), 4);
+	CHECK(140, mkmask(0), 1);	/* a count of nought shifts none */
+	CHECK(141, mkmask(3), 8);
+	CHECK(142, mkmask(7), 128);
+	CHECK(143, mkmask2(0, 4), 17);
+	CHECK(144, mkmask2(2, 2), 4);
 
 	return 0;
 }

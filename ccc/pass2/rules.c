@@ -549,6 +549,20 @@ struct rule rules[] = {
 	 */
 	R("+(V,E)", PLUS, P_L, P_R, P_L, RF_IX,
 		"\tpush ix\n" F_POPHL F_ADDHLDE, R_HL),
+	/*
+	 * Against zero, which is what "p == 0" on a pointer register
+	 * variable comes to and had no form: testing the halves is
+	 * shorter than loading nought into DE to subtract it.
+	 */
+	R("Q(V,Z)", EQ, P_L, P_R, P_L, RF_IX,
+		"\tpush ix\n" F_POPHL T_HL_TEST, F_Z),
+	R("U(V,Z)", NEQ, P_L, P_R, P_L, RF_IX,
+		"\tpush ix\n" F_POPHL T_HL_TEST, F_NZ),
+	/* and against any other constant, the same as against a symbol */
+	R("Q(V,N)", EQ, P_L, P_R, P_L, RF_IX,
+		"\tpush ix\n" F_POPHL "\tld de,$R\n" F_ORA F_SBCHLDE, F_Z),
+	R("U(V,N)", NEQ, P_L, P_R, P_L, RF_IX,
+		"\tpush ix\n" F_POPHL "\tld de,$R\n" F_ORA F_SBCHLDE, F_NZ),
 	R("Q(V,O)", EQ, P_L, P_R, P_L, RF_IX,
 		"\tpush ix\n" F_POPHL "\tld de,$R\n" F_ORA F_SBCHLDE, F_Z),
 	R("U(V,O)", NEQ, P_L, P_R, P_L, RF_IX,
@@ -1240,6 +1254,11 @@ struct rule rules[] = {
 	R("+(H,E)", PLUS, P_L, P_R, P_NONE, 0, T_ADD_HL_DE, R_HL),
 	R("+(H,B)", PLUS, P_L, P_R, P_NONE, 0, "\tadd hl,bc\n", R_HL),
 	R("-(H,B)", MINUS, P_L, P_R, P_NONE, 0, F_ORA F_SBCHLBC, R_HL),
+	/* a constant less a register variable - "5 - n".  The subtraction
+	 * is not commutative, so normalize leaves the constant on the
+	 * left and there was no form with it there. */
+	R("-(N,B)", MINUS, P_L, P_R, P_NONE, 0,
+		"\tld hl,$L\n" F_ORA F_SBCHLBC, R_HL),
 	R("+(B,E)", PLUS, P_L, P_R, P_NONE, 0, T_BC_HL T_ADD_HL_DE, R_HL),
 	R("-(B,E)", MINUS, P_L, P_R, P_NONE, 0, T_BC_HL F_ORA F_SBCHLDE, R_HL),
 	/*
@@ -1294,6 +1313,21 @@ struct rule rules[] = {
 	/* shifts */
 	R("<(H,N)", LSHIFT, P_L, P_R, P_NONE, 0, "%(" T_ADD_HL_HL ")", R_HL),
 	R("<(A,N):b", LSHIFT, P_L, P_R, P_NONE, 0, "%(\tsla a\n)", R_A),
+	/*
+	 * A byte shifted by a count only known at runtime - "1 << n",
+	 * the ordinary way to make a mask.  Every other shift here
+	 * spells itself out, which only works for a constant count.
+	 *
+	 * The count is in E and the value in A, so B does the counting
+	 * and djnz walks it: one more than the count, then a jump
+	 * straight to the djnz, so a count of nought runs the body no
+	 * times rather than once.  Displacements are from each jump
+	 * itself - sla a is two bytes, so the entry jump clears it and
+	 * the djnz reaches back over it.
+	 */
+	R("<(N,K):b", LSHIFT, P_L, P_R, P_NONE, 0,
+		"$[\tld b,e\n\tld a,$L\n\tinc b\n"
+		"\tjr $+4\n\tsla a\n\tdjnz $-2\n$]", R_A),
 	/*
 	 * A signed right shift keeps the sign: sra copies bit 7 back into
 	 * itself where srl feeds in a zero.  The signed rule has to come
