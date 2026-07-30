@@ -439,7 +439,7 @@ static struct opmap {
 	{'I', INDEX}, {'H', INHL}, {'E', INDE}, {'A', INA}, {'K', INE},
 	{'B', INBC}, {'O', SYMREF}, {'Q', EQ}, {'U', NEQ}, {'T', LT},
 	{'G', GT}, {'W', LE}, {'Y', GE}, {'N', P_NUM}, {'P', P_POW2},
-	{'X', SEXT}, {'J', WIDEN}, {';', COMMA},
+	{'X', SEXT}, {'J', WIDEN}, {'R', NARROW}, {';', COMMA},
 	{'Z', P_ZERO}, {'M', P_SMALL}, {'S', SYM}, {'i', PREINC},
 	{'j', POSTINC}, {'k', PREDEC}, {'m', POSTDEC}, {'a', ARGNODE},
 	{'C', CODE}, {'o', OREQ}, {'g', NEG}, {'~', NOT}, {'!', BANG},

@@ -253,6 +253,21 @@ three.
 
 ## Open, roughly by how much they matter
 
+* **`#ifdef` of an undefined macro can read true, after NARROW.**  A
+  regression from emitting NARROW for narrowing casts, and the one
+  thing that got worse rather than better in that change.  It needs an
+  `#include` and then cpp's own `usage()` - the real one, with its ten
+  distinct `errout` strings - for `#ifdef NEVERDEFINED` to be taken:
+
+      sed -n '93,116p' ccc/cpp/cpp.c   preceded by any #include
+
+  Neither part alone does it, repeating one string ten times does not,
+  and padding the file to move the conditional does not, so it is not
+  a buffer boundary.  `maclookup` is a list walk over `strcmp` and
+  `issym` has no cast in it, so the name it is handed is likely the
+  wrong one - but that was not run down.  `tests/diffcpp.sh` shows it
+  as cpp.c differing where it had been identical.
+
 * **153 rules of 485 never match.**  Shapes no source here takes, each
   of them code that has never run.
 * **Arguments are not converted to the parameter type.**  These are

@@ -778,10 +778,33 @@ parsePrefix(void)
             /* Cast has unary precedence */
             e1 = parseExpr(OP_PRI_MULT - 1);
 
-            /* Cast just changes the type - pass2 handles conversions */
+            /*
+             * A cast that only renames the type can change it in
+             * place, and most do.  One that makes the value narrower
+             * cannot: the value is somewhere, and where its low half
+             * sits depends on how wide it was.  A long lives in HL:DE
+             * with the low word in DE, so "(int)f()" that just
+             * relabelled the call as an int left pass2 reading HL -
+             * the high word - and there was nothing left in the tree
+             * to say otherwise.
+             *
+             * NARROW says it explicitly.  It is unary and has been in
+             * the opcode table and the pretty-printer all along; only
+             * nobody emitted it.
+             */
             if (e1) {
-                e1->type = tp;
-                e = e1;
+                if (e1->type && tp && tp->size < e1->type->size &&
+                    !(tp->flags & (TF_POINTER | TF_ARRAY | TF_FUNC |
+                                   TF_AGGREGATE)) &&
+                    !(e1->type->flags & (TF_POINTER | TF_ARRAY | TF_FUNC |
+                                         TF_AGGREGATE)) &&
+                    !(e1->flags & E_CONST)) {
+                    e = mkexpr(NARROW, e1);
+                    e->type = tp;
+                } else {
+                    e1->type = tp;
+                    e = e1;
+                }
             } else {
                 e = mkexprI(CONST, 0, tp, 0, 0);
             }

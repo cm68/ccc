@@ -697,6 +697,31 @@ struct rule rules[] = {
 		"\tld $t,a\n" F_RLA F_SBCAA "\tld $u,a\n", 0),
 
 	/*
+	 * Narrowing, which is the other direction and is only ever a
+	 * question of where the low half already is.
+	 *
+	 * From a long it is in DE, so the exchange is the whole of the
+	 * work; the byte rules that follow take L, which is then the
+	 * lowest byte of the value.  From anything else the low half is
+	 * already where a narrower reader would look for it, and the
+	 * rule is there so that the cast emits nothing rather than
+	 * matching nothing.
+	 *
+	 * pass1 used to write the cast's type over the node and leave no
+	 * trace, so "(int)f()" on a long-returning f read HL - the high
+	 * word.  Every numeric escape in cpp came back zero, because
+	 * escint() is "(int)getint(base)".
+	 */
+	R("R(H:l):s", NARROW, P_L, P_NONE, P_NONE, 0, F_EXDEHL, R_HL),
+	R("R(H:l):b", NARROW, P_L, P_NONE, P_NONE, 0, F_EXDEHL F_LDAL, R_A),
+	R("R(H):b", NARROW, P_L, P_NONE, P_NONE, 0, F_LDAL, R_A),
+	R("R(B):b", NARROW, P_L, P_NONE, P_NONE, 0, F_LDAC, R_A),
+	R("R(E):b", NARROW, P_L, P_NONE, P_NONE, 0, "\tld a,e\n", R_A),
+	R("R(A)", NARROW, P_L, P_NONE, P_NONE, 0, "", R_A),
+	R("R(K)", NARROW, P_L, P_NONE, P_NONE, 0, "", R_E),
+	R("R(H)", NARROW, P_L, P_NONE, P_NONE, 0, "", R_HL),
+
+	/*
 	 * 32-bit values live in HL:DE, high word in HL.
 	 *
 	 * Sign-extending into that means the value becomes the low word
