@@ -49,7 +49,7 @@ link "$work/cpp-ccc.mx" "$cpp/comccc"
 
 echo "running both over $(echo $SRCS | wc -w) sources"
 echo
-printf '%-12s %8s  %s\n' file bytes result
+printf '%-12s %8s %8s  %s\n' file zc3 ccc result
 same=0; diff=0; err=0
 
 for b in $SRCS; do
@@ -59,18 +59,23 @@ for b in $SRCS; do
 	done
 
 	if [ ! -s "$work/$b.zc3.x" ] || [ ! -s "$work/$b.ccc.x" ]; then
-		printf '%-12s %8s  %s\n' "$b" - "NO OUTPUT"
+		printf '%-12s %8s %8s  %s\n' "$b" - - "NO OUTPUT"
 		err=$((err + 1))
 		continue
 	fi
 
-	sz=$(wc -c < "$work/$b.zc3.x")
+	zs=$(wc -c < "$work/$b.zc3.x")
+	cs=$(wc -c < "$work/$b.ccc.x")
 	if cmp -s "$work/$b.zc3.x" "$work/$b.ccc.x"; then
-		printf '%-12s %8d  same\n' "$b" "$sz"
+		printf '%-12s %8d %8d  same\n' "$b" "$zs" "$cs"
 		same=$((same + 1))
 	else
 		off=$(cmp "$work/$b.zc3.x" "$work/$b.ccc.x" 2>&1 | sed 's/.*byte //;s/,.*//')
-		printf '%-12s %8d  DIFFER at byte %s\n' "$b" "$sz" "$off"
+		# Both sizes, always.  Reporting only where they first differ
+		# read as a near miss when ccc was emitting a file header and
+		# stopping - the offset moved about as bugs were fixed and
+		# looked like progress inside the stream.
+		printf '%-12s %8d %8d  differ at %s\n' "$b" "$zs" "$cs" "$off"
 		diff=$((diff + 1))
 	fi
 done
