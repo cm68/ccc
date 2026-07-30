@@ -378,7 +378,9 @@ skipExpr(unsigned char pri)
             gettoken();
             skipExpr(0);
             expect(COLON, ER_E_SP);
-            skipExpr(0);
+            /* as parseExpr: the false arm stops at a comma, and the
+             * two phases have to walk the tokens the same way */
+            skipExpr(OP_PRI_COMMA);
         } else {
             is_assign = IS_ASSIGN(cur.type);
             gettoken();
@@ -1276,11 +1278,21 @@ parseExpr(unsigned char pri)
             expect(COLON, ER_E_SP);
 
             /*
-             * Parse the false expression (right-associative,
-             * allow another ?: at same level). Use priority 0 to parse
-             * everything, including nested ?: operators
+             * The false arm is a conditional-expression, not a full
+             * one: a nested ?: belongs to it and a comma does not.
+             * Parsed at priority 0 it took everything, so the comma
+             * separating the next argument of a call read as the comma
+             * operator and the whole rest of the argument list became
+             * part of the else branch.
+             *
+             *	printf("%s:%d: %s\n", f ? f : "?", line, msg)
+             *
+             * came through as a call of two arguments whose second was
+             * "f ? f : ("?", line, msg)", and printf was handed one
+             * value where it wanted three.  Every diagnostic gripe()
+             * printed had this shape.
              */
-            e3 = parseExpr(0);  /* false_expr */
+            e3 = parseExpr(OP_PRI_COMMA);  /* false_expr */
 
             // Build tree: QUES(condition, COLON(true_expr, false_expr))
             e4 = mkexpr(COLON, e2);  /* colon_node */
