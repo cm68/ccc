@@ -150,6 +150,56 @@ short a; short b;
 	return -1;
 }
 
+/*
+ * A register variable live across the dispatch.
+ *
+ * The chain clobbered nothing but the flags.  A helper is only a
+ * substitute for it if the same is true of every register the
+ * allocator can be using - B, C, BC and IX - so this keeps a value in
+ * one across each scheme and reads it back afterwards.
+ *
+ * The first version of swtab scanned with cpir, whose counter is BC,
+ * and this returned the leftover count instead of the variable: 3, 2
+ * and 0 for a match at index 0, 1 and 3 of 4, and 0 when the scan
+ * failed.  A first attempt at a test missed it by initialising the
+ * variable to zero, which is what a failed scan leaves behind anyway.
+ * Hence the 7.
+ */
+int sink;
+
+short
+bckept(v)
+short v;
+{
+	short r;			/* earns BC by being used enough */
+
+	r = 7;
+	switch (v) {			/* sparse: swtab */
+	case 0: sink = 1; break;
+	case 60: sink = 2; break;
+	case 120: sink = 3; break;
+	case 200: sink = 4; break;
+	}
+	return r;			/* 7 whatever happened */
+}
+
+short
+bckepti(v)
+short v;
+{
+	short r;
+
+	r = 7;
+	switch (v) {			/* dense: swidx */
+	case 10: sink = 1; break;
+	case 11: sink = 2; break;
+	case 12: sink = 3; break;
+	case 13: sink = 4; break;
+	case 14: sink = 5; break;
+	}
+	return r;
+}
+
 main()
 {
 	/* swtab: every entry, including the first and last of the scan */
@@ -216,6 +266,17 @@ main()
 	CHECK(44, mixed(2, 61), -2);
 	CHECK(45, mixed(4, 0), 4);
 	CHECK(46, mixed(5, 0), -1);
+
+	/* a register variable has to survive the dispatch */
+	CHECK(47, bckept(0), 7);	/* match at the first entry */
+	CHECK(48, bckept(60), 7);
+	CHECK(49, bckept(200), 7);	/* match at the last */
+	CHECK(50, bckept(7), 7);	/* no match: the scan runs out */
+	CHECK(51, bckept(300), 7);	/* rejected on the high byte */
+
+	CHECK(52, bckepti(10), 7);
+	CHECK(53, bckepti(14), 7);
+	CHECK(54, bckepti(99), 7);
 
 	return 0;
 }

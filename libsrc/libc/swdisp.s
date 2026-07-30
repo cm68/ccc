@@ -21,25 +21,45 @@
 ; Entry:  A = control value, return address -> table
 ; Table:  .db n / .db v0..v(n-1) / .dw L(n-1)..L0
 ;
-; The values are contiguous so the scan is one cpir rather than a
-; loop, which is 21 T-states a case against the chain's 17 - near
-; enough that the size comes free.
+; The scan counts down in E and keeps n in D, so the only registers
+; touched are A, D, E and HL.  cpir is the obvious instruction here and
+; is a third faster, but its counter is BC - and B, C and BC are where
+; the allocator puts register variables.  The chain this replaced
+; clobbered nothing but the flags, so a helper that took BC would not
+; be the same code: it cost a live variable, which is a wrong answer
+; rather than a slow one.  Saving BC around it works and is three
+; bytes, but not using it at all is the same size as cpir was and
+; leaves no contract to remember.  DE and HL are never register homes,
+; and the control value in A is dead once we have jumped.
 ;
-; cpir leaves HL just past the byte it matched and BC holding what was
-; left to scan, and HL+BC is the end of the value array however it
-; ended.  That is where the labels start.  With the labels stored in
-; reverse, the one wanted sits at HL+BC+2*BC, so the index never has
-; to be reconstructed - which is the whole reason they are backwards.
+; A match leaves HL just past the byte it matched and E holding n-i.
+; The labels start at the end of the values, and stored in reverse the
+; one wanted sits at HL+3*(E-1) - which is the whole reason they are
+; backwards: forwards, the index would have to be rebuilt from n.
 swtab:
 	pop	hl		; -> count
-	ld	c,(hl)
+	ld	e,(hl)
+	ld	d,e		; keep n for the no-match path
 	inc	hl		; -> values
-	ld	b,0
-	ld	e,c		; keep n for the no-match path
-	cpir
-	jr	nz,swtno
-	ld	d,b		; slot = hl + 3*bc
-	ld	e,c
+
+swtlp:
+	cp	(hl)
+	inc	hl
+	jr	z,swtfd
+	dec	e
+	jr	nz,swtlp
+
+; nothing matched: hl is the end of the values, so hl+2n is the end of
+; the table and the byte after it is the no-match label
+	ld	e,d
+	ld	d,0
+	add	hl,de
+	add	hl,de
+	jp	(hl)
+
+swtfd:
+	dec	e		; slot = hl + 3*(e-1)
+	ld	d,0
 	add	hl,de
 	add	hl,de
 	add	hl,de
@@ -47,14 +67,6 @@ swtab:
 	inc	hl
 	ld	h,(hl)
 	ld	l,a
-	jp	(hl)
-
-; nothing matched: hl is the end of the values, so hl+2n is the end of
-; the table and the byte after it is the no-match label
-swtno:
-	ld	d,0
-	add	hl,de
-	add	hl,de
 	jp	(hl)
 
 ; Dense dispatch: bias A and index straight into a table of labels.
