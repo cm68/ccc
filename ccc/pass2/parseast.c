@@ -98,6 +98,99 @@ swlabel(char k, int id, int n)
 	if (n >= 0) { out("_"); outd(n); }
 }
 
+/*
+ * Emit the dispatch for a switch whose cases have all been seen.
+ *
+ * Three shapes, and which is smallest is a matter of counting rather
+ * than taste.  With n cases spanning span values:
+ *
+ *	chain	5n		cp v / jp z,L per case
+ *	swtab	4 + 3n		call, count byte, value + label per case
+ *	swidx	5 + 2*span	call, lo, span, a label per slot
+ *
+ * So the chain wins to n=2, and above that it is swidx when the values
+ * are dense enough to beat the pair table - 2*span < 3n-1, which is a
+ * little over two thirds - and swtab when they are not.  Over the
+ * tree's own 85 switches that is 4175 bytes of dispatch down to 2705.
+ *
+ * The two live at opposite ends and both are needed: every switch with
+ * more than about twenty cases here is sparse (the largest, 125 cases
+ * in wsnm.c, spans the whole byte at 48%) and would want a 517 byte
+ * index against a 379 byte pair table, while the dense ones are nearly
+ * all small - and for those swidx is not just smaller but constant
+ * time instead of a scan.
+ *
+ * A count or span of 256 would store as a zero byte, so anything that
+ * large stays on the chain.  MAXSWCASE bounds it at 256 and a switch
+ * that big is theoretical; correctness is worth more than the bytes.
+ */
+static void
+swdispatch(struct swctx *sw)
+{
+	int i, j, n, lo, hi, span;
+
+	n = sw->ncase;
+	if (n == 0)
+		return;
+
+	lo = hi = (int)(sw->val[0] & 0xff);
+	for (i = 1; i < n; i++) {
+		j = (int)(sw->val[i] & 0xff);
+		if (j < lo) lo = j;
+		if (j > hi) hi = j;
+	}
+	span = hi - lo + 1;
+
+	if (n >= 3 && span <= 255 && 2 * span < 3 * n - 1) {
+		/* dense: bias and index, gaps pointing at no-match */
+		out("\tcall swidx\n\t.db ");
+		outd(lo);
+		out("\n\t.db ");
+		outd(span);
+		outc('\n');
+		for (i = 0; i < span; i++) {
+			out("\t.dw ");
+			for (j = 0; j < n; j++)
+				if ((int)(sw->val[j] & 0xff) == lo + i)
+					break;
+			if (j < n)
+				swlabel('K', sw->id, j);
+			else
+				swlabel('N', sw->id, -1);
+			outc('\n');
+		}
+		return;
+	}
+	if (n >= 3 && n <= 255) {
+		/*
+		 * Sparse: values together so the scan is one cpir, labels
+		 * after them and backwards, which is what lets the helper
+		 * find the slot from what cpir leaves in HL and BC.
+		 */
+		out("\tcall swtab\n\t.db ");
+		outd(n);
+		outc('\n');
+		for (i = 0; i < n; i++) {
+			out("\t.db ");
+			outd((int)(sw->val[i] & 0xff));
+			outc('\n');
+		}
+		for (i = n - 1; i >= 0; i--) {
+			out("\t.dw ");
+			swlabel('K', sw->id, i);
+			outc('\n');
+		}
+		return;
+	}
+	for (i = 0; i < n; i++) {
+		out("\tcp ");
+		outd((int)(sw->val[i] & 0xff));
+		out("\n\tjp z,");
+		swlabel('K', sw->id, i);
+		outc('\n');
+	}
+}
+
 /* Param staging: move from stack to register */
 #define MAXSTAGE 8
 static struct {
@@ -492,15 +585,10 @@ parseStmt(void)
 
 		swlabel('D', sw->id, -1);
 		out(":\n");
-		for (i = 0; i < sw->ncase; i++) {
-			out("\tcp ");
-			outd((int)(sw->val[i] & 0xff));
-			out("\n\tjp z,");
-			swlabel('K', sw->id, i);
-			outc('\n');
-		}
+		swdispatch(sw);
 		/* no case matched, and a word control that did not fit a
-		 * byte arrives here too */
+		 * byte arrives here too.  Both helpers fall out of their
+		 * table onto this label rather than storing its address */
 		swlabel('N', sw->id, -1);
 		out(":\n");
 		if (sw->hasdef) {
