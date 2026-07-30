@@ -739,6 +739,69 @@ locptridx(n) short n;
 	return t;
 }
 
+/*
+ * A batch of forms the table simply did not have: a byte stored
+ * through a pointer in BC with the value in HL, HL minus a frame slot,
+ * HL times BC, and unary minus on a byte.
+ *
+ * The last one is not a rule at all.  "-c" on a char is the negation
+ * of an int, not of a byte - a rule that negated the byte and widened
+ * afterwards would have answered 251 for -5 and emitted code for it,
+ * which is worse than the marker.  So the operator promotes, and what
+ * it is applied to promotes with it.
+ */
+char bcsb[8];
+char bcsb2[8];
+
+void
+stbcptr(v) short v;
+{
+	register char *q;
+	register char *p;
+
+	/* two pointers, so the second is out of IX and into BC - with
+	 * only one the allocator uses IX and the shape never appears */
+	q = bcsb2;
+	*q = 1;
+	q[1] = 2;
+	p = bcsb;
+	*p = v;
+	p[1] = v + 1;
+}
+
+short
+subslot(a) short a;
+{
+	short s0, s1, s2, s3, s4, s5, s6, s7, s8, s9;
+
+	s0=1; s1=2; s2=3; s3=4; s4=5; s5=6; s6=7; s7=8; s8=9; s9=a;
+	/* something computed in HL, less a frame slot */
+	return (s0 + s1 + s2 + s3 + s4 + s5 + s6 + s7 + s8) - s9;
+}
+
+short
+mulbc(a, n) short a; short n;
+{
+	register short r;
+	short t;
+
+	r = n;
+	t = a * r;			/* HL times BC */
+	return t + r;			/* and r has to survive it */
+}
+
+short
+negbyte(c) unsigned char c;
+{
+	return -c;			/* -5, not 251 */
+}
+
+short
+notbyte(c) unsigned char c;
+{
+	return ~c;			/* -6, not 250 */
+}
+
 main()
 {
 	short i;
@@ -975,6 +1038,25 @@ main()
 	CHECK(121, locptridx(6), 6);	/* six cleared, six read back zero */
 	CHECK(122, sxb[5], 0);
 	CHECK(123, sxb[6], 9);		/* and it stopped where it should */
+
+	bcsb[0] = 0; bcsb[1] = 0; bcsb2[0] = 0; bcsb2[1] = 0;
+	stbcptr(65);
+	CHECK(124, bcsb[0], 65);
+	CHECK(125, bcsb[1], 66);
+	CHECK(126, bcsb2[0], 1);
+	CHECK(127, bcsb2[1], 2);
+	CHECK(128, subslot(6), 39);	/* 45 - 6 */
+	CHECK(129, mulbc(7, 6), 48);	/* 42, plus the 6 that survived */
+	/*
+	 * Unary minus and complement promote, so these are the negation
+	 * of an int and not of a byte.  Not asked of zc3, which negates
+	 * in the byte and answers 251 and 250 - the same bug this pair
+	 * was written for, and gcc and ccc agree against it.
+	 */
+#ifndef RT_ZC3
+	CHECK(130, negbyte(5), -5);	/* promoted, so not 251 */
+	CHECK(131, notbyte(5), -6);	/* promoted, so not 250 */
+#endif
 
 	return 0;
 }

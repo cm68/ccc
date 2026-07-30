@@ -826,6 +826,16 @@ parsePrefix(void)
              * compare a truth value nothing had widened.
              */
             e->type = (uop == BANG) ? inttype : e1->type;
+            /*
+             * And these promote as the binary operators do: "-c" on a
+             * char is the negation of an int, not of a byte.  Taking
+             * the operand's width made it a byte negation widened
+             * afterwards, so "-(unsigned char)5" came out as 251.
+             */
+            if ((uop == NEG || uop == NOT) && e->type &&
+                e->type->size > 0 && e->type->size < inttype->size &&
+                !(e->type->flags & (TF_POINTER | TF_ARRAY)))
+                e->type = inttype;
             e1->up = e;
         }
         break;

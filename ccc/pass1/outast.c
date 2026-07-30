@@ -524,7 +524,21 @@ emitExpr(struct expr *e)
 		/* Unary operators */
 		emit1(op);
 		emit1(typeSfx(type));
-		emitChild(left);
+		/*
+		 * Negation and complement are done at the promoted width, so
+		 * what they are applied to has to get there too.  emitChild
+		 * hands the operand over as it found it, which left the
+		 * operator working at a width its operand was not: a byte in
+		 * A under a short negation, which no rule names.
+		 *
+		 * Not "!", whose answer is an int however narrow the thing
+		 * tested, and not DEREF, which falls through to here and
+		 * whose operand is an address rather than a value.
+		 */
+		if (op == NEG || op == NOT)
+			emitOperand(left, type);
+		else
+			emitChild(left);
 		break;
 
 	case GT:

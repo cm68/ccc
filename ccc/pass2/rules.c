@@ -364,6 +364,11 @@ struct rule rules[] = {
 	 * assembles perfectly well.
 	 */
 	R("*(H,E)", STAR, P_L, P_R, P_NONE, 0, "$[\tcall amul\n$]", R_HL),
+	/* the multiplier in BC: amul wants it in DE, and clobbers BC on
+	 * the way, so the save the $[ $] pair makes is what puts a
+	 * register variable back */
+	R("*(H,B)", STAR, P_L, P_R, P_NONE, 0,
+		"\tld e,c\n\tld d,b\n$[\tcall amul\n$]", R_HL),
 	/*
 	 * Any other constant, which has to go through the helper like a
 	 * variable would.  The shift-and-add forms above are cheaper and
@@ -1154,6 +1159,10 @@ struct rule rules[] = {
 		"\tld a,(hl)\n\tsub 1\n" F_LDHLA F_INCHL
 		"\tld a,(hl)\n\tsbc a,0\n" F_LDHLA, 0),
 	R("=(D(B),N):b", ASSIGN, P_L, P_R, P_NONE, 0, F_LDLC F_LDHB "\tld (hl),$R\n", 0),
+	/* the value in HL, which has to be taken out of the way before the
+	 * pointer comes over on top of it */
+	R("=(D(B),H):b", ASSIGN, P_L, P_R, P_NONE, 0,
+		F_LDAL F_LDLC F_LDHB F_LDHLA, R_A),
 	R("=(D(B),N):s", ASSIGN, P_L, P_R, P_NONE, 0,
 		T_BC_HL F_LDHLRL F_INCHL F_LDHLRH, 0),
 	R("=(D(E),N):s", ASSIGN, P_L, P_R, P_NONE, 0,
@@ -1267,6 +1276,10 @@ struct rule rules[] = {
 		F_LDDER F_ORA F_SBCHLDE, R_HL),
 	R("+(H,O)", PLUS, P_L, P_R, P_NONE, 0, F_LDDER F_ADDHLDE, R_HL),
 	R("-(H,N)", MINUS, P_L, P_R, P_NONE, 0, F_LDDER F_ORA F_SBCHLDE, R_HL),
+	/* and against a frame slot, which the other four widths of this
+	 * had and the subtraction did not */
+	R("-(H,I)", MINUS, P_L, P_R, P_NONE, 0,
+		"\tld e,($R)\n\tld d,($R+)\n" F_ORA F_SBCHLDE, R_HL),
 
 	/* shifts */
 	R("<(H,N)", LSHIFT, P_L, P_R, P_NONE, 0, "%(" T_ADD_HL_HL ")", R_HL),
