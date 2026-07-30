@@ -630,6 +630,15 @@ struct rule rules[] = {
 	R("X(V):s", SEXT, P_L, P_NONE, P_L, RF_IX, "\tpush ix\n" F_POPHL, R_HL),
 	R("J(V):s", WIDEN, P_L, P_NONE, P_L, RF_IX, "\tpush ix\n" F_POPHL, R_HL),
 	R("X(H:s):s", SEXT, P_L, P_NONE, P_NONE, 0, "", R_HL),
+	/*
+	 * The same for a word already in BC, where there is still nothing
+	 * to extend but it does have to come over.  Without these, a
+	 * pointer difference or a subscript on a register variable ran
+	 * into a sign extension from short to short that no rule named,
+	 * and stopped there.
+	 */
+	R("X(B:s):s", SEXT, P_L, P_NONE, P_NONE, 0, T_BC_HL, R_HL),
+	R("J(B:s):s", WIDEN, P_L, P_NONE, P_NONE, 0, T_BC_HL, R_HL),
 	/* a symbol's address widened to a word, which is what taking a
 	 * function's address for a function pointer comes to */
 	R("X(O):s", SEXT, P_L, P_NONE, P_NONE, 0, "\tld $T,$L\n", 0),
@@ -1418,6 +1427,20 @@ struct rule rules[] = {
 	R("&(H,E)", AND, P_L, P_R, P_NONE, 0, F_LDAL "\tand e\n" F_LDLA F_LDAH "\tand d\n" F_LDHA, R_HL),
 	R("|(H,E)", OR, P_L, P_R, P_NONE, 0, F_LDAL "\tor e\n" F_LDLA F_LDAH "\tor d\n" F_LDHA, R_HL),
 	R("^(H,E)", XOR, P_L, P_R, P_NONE, 0, F_LDAL "\txor e\n" F_LDLA F_LDAH "\txor d\n" F_LDHA, R_HL),
+	/*
+	 * The same with BC on one side or the other.  A word bitwise
+	 * operator had a form for HL against DE and no other, so one of
+	 * these on a register variable emitted nothing.  Against BC the
+	 * accumulator can take b and c directly; with the value in BC it
+	 * comes over to HL first, which is what the constant-count shifts
+	 * do a few rules down.
+	 */
+	R("&(H,B)", AND, P_L, P_R, P_NONE, 0, F_LDAL "\tand c\n" F_LDLA F_LDAH "\tand b\n" F_LDHA, R_HL),
+	R("|(H,B)", OR, P_L, P_R, P_NONE, 0, F_LDAL "\tor c\n" F_LDLA F_LDAH "\tor b\n" F_LDHA, R_HL),
+	R("^(H,B)", XOR, P_L, P_R, P_NONE, 0, F_LDAL "\txor c\n" F_LDLA F_LDAH "\txor b\n" F_LDHA, R_HL),
+	R("&(B,E)", AND, P_L, P_R, P_NONE, 0, T_BC_HL F_LDAL "\tand e\n" F_LDLA F_LDAH "\tand d\n" F_LDHA, R_HL),
+	R("|(B,E)", OR, P_L, P_R, P_NONE, 0, T_BC_HL F_LDAL "\tor e\n" F_LDLA F_LDAH "\tor d\n" F_LDHA, R_HL),
+	R("^(B,E)", XOR, P_L, P_R, P_NONE, 0, T_BC_HL F_LDAL "\txor e\n" F_LDLA F_LDAH "\txor d\n" F_LDHA, R_HL),
 
 	/*
 	 * Signed compare against zero is just the sign bit, and it has to

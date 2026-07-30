@@ -642,6 +642,77 @@ cif(n) register char n;
 	return 0;
 }
 
+/*
+ * pass2/rules.c: word bitwise operators with BC on one side.  There
+ * was a form for HL against DE and no other, so one of these on a
+ * register variable emitted nothing.  Two uses is what puts the
+ * variable in a register.
+ */
+unsigned short bitg;
+
+unsigned short
+andreg(a, b) unsigned short a; unsigned short b;
+{
+	register unsigned short r;
+
+	r = a;
+	r = r & b;			/* value in BC, other side in DE */
+	r = r & 0xff0f;
+	return r;
+}
+
+unsigned short
+orreg(a, b) unsigned short a; unsigned short b;
+{
+	register unsigned short r;
+
+	r = a;
+	r = r | b;
+	r = r | 0x0100;
+	return r;
+}
+
+unsigned short
+xorreg(a, b) unsigned short a; unsigned short b;
+{
+	register unsigned short r;
+
+	r = a;
+	r = r ^ b;
+	r = r ^ 0x00f0;
+	return r;
+}
+
+/* and with the register variable on the right instead */
+unsigned short
+andrhs(a, b) unsigned short a; unsigned short b;
+{
+	register unsigned short r;
+
+	r = b;
+	bitg = a & r;
+	return bitg & r;
+}
+
+/*
+ * A word in a register sign-extended to a word - nothing to extend,
+ * but it still has to come over to HL.  No rule named that, so a
+ * pointer difference or a cast on a register variable stopped there.
+ */
+char sxbuf[16];
+
+short
+sxreg(n) short n;
+{
+	register char *p;
+	short d;
+
+	p = sxbuf;
+	p = p + n;
+	d = (short)(p - sxbuf);
+	return d + 5;
+}
+
 main()
 {
 	short i;
@@ -859,6 +930,19 @@ main()
 	CHECK(111, cpleft, 6);
 	CHECK(112, cif(3), 1);
 	CHECK(113, cif(1), 0);		/* --1 is zero */
+
+	/* 0xf0f0 & 0x3333 = 0x3030, & 0xff0f = 0x3000 */
+	CHECK(114, andreg(0xf0f0, 0x3333) == 0x3000, 1);
+	/* 0xf000 | 0x000f = 0xf00f, | 0x0100 = 0xf10f */
+	CHECK(115, orreg(0xf000, 0x000f) == 0xf10f, 1);
+	/* 0xff00 ^ 0x0ff0 = 0xf0f0, ^ 0x00f0 = 0xf000 */
+	CHECK(116, xorreg(0xff00, 0x0ff0) == 0xf000, 1);
+	/* 0xfff0 & 0x0ff0 = 0x0ff0, & again is the same */
+	CHECK(117, andrhs(0xfff0, 0x0ff0) == 0x0ff0, 1);
+	CHECK(118, bitg == 0x0ff0, 1);
+
+	CHECK(119, sxreg(0), 5);
+	CHECK(120, sxreg(7), 12);
 
 	return 0;
 }
