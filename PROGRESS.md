@@ -261,12 +261,31 @@ three.
 
       sed -n '93,116p' ccc/cpp/cpp.c   preceded by any #include
 
-  Neither part alone does it, repeating one string ten times does not,
-  and padding the file to move the conditional does not, so it is not
-  a buffer boundary.  `maclookup` is a list walk over `strcmp` and
-  `issym` has no cast in it, so the name it is handed is likely the
-  wrong one - but that was not run down.  `tests/diffcpp.sh` shows it
-  as cpp.c differing where it had been identical.
+  Reduced since: it is a three-byte window in the *input*, at a string
+  length of 31 to 33 with the current binary, and zero everywhere else
+  from 0 to 79.  The zc3-built cpp has no window anywhere in that
+  range, and the host build is valgrind-clean on both the reduced case
+  and the real cpp.c and gets the right answer - so cpp's source is
+  not at fault and this is codegen.
+
+  `maclookup` is *not* the problem: traced, it returns "none" for
+  NEVERDEFINED at exactly the lengths that wrongly emit the body.  So
+  the failure is after it, in `push_cond` or the skip - and
+  `push_cond` opens with a `malloc`, which would explain the size
+  sensitivity.
+
+  It moves under observation, which is the thing to know before
+  starting.  Adding a two-line trace shifted the window from 31-33 to
+  61-63; adding a second trace moved it out of 0-79 altogether.
+  Swapping any single object to the zc3 build moves it too, which is
+  why the first object bisection came back empty - each hybrid was
+  tested at one input length rather than scanned.  Neither half of the
+  objects shows a window anywhere in 0-63; all sixteen does.
+
+  The simulator has watchpoints (`watchpoint_at` in micronix
+  usersim.c) and that is the tool for this: watch the write to
+  `cond->flags` rather than add code, since adding code moves the
+  target.
 
 * **An empty function-like macro eats the next character.**  In the
   cpp that ccc builds, and only there - zc3's is right:
