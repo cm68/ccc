@@ -50,6 +50,54 @@ static short savebase;		/* scalar area size: save slots below it */
 static unsigned char regsused;	/* bitmask of callee-save regs */
 static short bcoff, ixoff;	/* IY-relative offsets for saved regs */
 
+/*
+ * Switch dispatch.
+ *
+ * The stream is sequential - SWITCH, then each CASE with its value and
+ * its body - so the values are not all known before the first body has
+ * to be emitted.  So the control value is worked out, the bodies are
+ * jumped over, and the comparisons go after them, where every case
+ * label is known.  Nothing falls into that block: the last body jumps
+ * past it, and the bodies were jumped over rather than run, so the
+ * control value is still in the register when the comparisons are
+ * reached.
+ *
+ * Case values are bytes in this compiler, so the chain is a cp against
+ * A.  A control expression need not be one - a state machine over an
+ * int is the usual shape - so a word control tests its high byte once
+ * before comparing the low one, and any value that does not fit a byte
+ * cannot match and goes to the default.
+ */
+#define MAXSWNEST 8		/* nested switches */
+/*
+ * Case values are bytes, so a switch cannot have more than 256 of
+ * them and this cannot overflow.  wsnm's disassembler is the one that
+ * goes anywhere near it.
+ */
+#define MAXSWCASE 256
+static struct swctx {
+	int id;			/* label number for this switch */
+	int ncase;
+	int hasdef;
+	long val[MAXSWCASE];
+} swstk[MAXSWNEST];
+static int swtop;
+
+/*
+ * _Kn_f_m: case m of switch n in function f.  _Dn_f: the dispatch,
+ * _Nn_f: nothing matched, _Fn_f: the default, _Xn_f: past it all.
+ *
+ * The function index is not decoration.  labelcnt starts again at zero
+ * in every function, so without it the first switch of one function
+ * and the first of the next are both _D0.
+ */
+static void
+swlabel(char k, int id, int n)
+{
+	out("_"); outc(k); outd(id); outc('_'); outd(fnindex);
+	if (n >= 0) { out("_"); outd(n); }
+}
+
 /* Param staging: move from stack to register */
 #define MAXSTAGE 8
 static struct {
@@ -386,7 +434,10 @@ parseStmt(void)
 		out(buf);
 		outc('\n');
 		return;
-	case SWITCH:
+	case SWITCH: {
+		struct swctx *sw;
+		int isbyte;
+
 		read1();
 		n = read1();
 #ifdef DEBUG
@@ -394,6 +445,20 @@ parseStmt(void)
 			fprintf(stderr, "  SWITCH n=%d\n", n);
 		out("; SWITCH n="); outd(n); outc('\n');
 #endif
+		if (swtop >= MAXSWNEST) {
+			out("\t.error switches nested deeper than ");
+			outd(MAXSWNEST);
+			outc('\n');
+			swtop = MAXSWNEST - 1;
+		}
+		sw = &swstk[swtop++];
+		sw->id = labelcnt++;
+		sw->ncase = 0;
+		sw->hasdef = 0;
+
+		/* work out the control value, then jump over the bodies to
+		 * the comparisons - which is what keeps it live */
+		isbyte = 0;
 		e = readexpr();
 		if (e) {
 			setdest(e, DEST_VALUE);
@@ -401,39 +466,101 @@ parseStmt(void)
 #ifdef DEBUG
 			dumpexpr(e);
 #endif
+			isbyte = e && e->op == INA;
 			freeexpr(e);
 		}
+		if (isbyte) {
+			/* already in A, and a byte can never fail the high
+			 * byte test that a word needs */
+			;
+		} else {
+			out("\tld a,h\n\tor a\n\tjp nz,");
+			swlabel('N', sw->id, -1);
+			out("\n\tld a,l\n");
+		}
+		out("\tjp ");
+		swlabel('D', sw->id, -1);
+		outc('\n');
+
 		for (i = 0; i < n; i++)
 			parseStmt();
+
+		/* the last body must not fall into the comparisons */
+		out("\tjp ");
+		swlabel('X', sw->id, -1);
+		outc('\n');
+
+		swlabel('D', sw->id, -1);
+		out(":\n");
+		for (i = 0; i < sw->ncase; i++) {
+			out("\tcp ");
+			outd((int)(sw->val[i] & 0xff));
+			out("\n\tjp z,");
+			swlabel('K', sw->id, i);
+			outc('\n');
+		}
+		/* no case matched, and a word control that did not fit a
+		 * byte arrives here too */
+		swlabel('N', sw->id, -1);
+		out(":\n");
+		if (sw->hasdef) {
+			out("\tjp ");
+			swlabel('F', sw->id, -1);
+			outc('\n');
+		}
+		swlabel('X', sw->id, -1);
+		out(":\n");
+		swtop--;
 		return;
-	case CASE:
+	}
+	case CASE: {
+		struct swctx *sw = swtop ? &swstk[swtop - 1] : 0;
+
 		n = read1();
 #ifdef DEBUG
 		if (VERBOSE(V_STMT))
 			fprintf(stderr, "  CASE n=%d\n", n);
 		out("; CASE n="); outd(n); outc('\n');
 #endif
+		/* the value is a constant - pass1 folded it - so take it
+		 * rather than emitting code for it */
 		e = readexpr();
-		e = rewrite(e);
-		if (e) {
-#ifdef DEBUG
-			dumpexpr(e);
-#endif
-			freeexpr(e);
+		if (sw && e) {
+			if (sw->ncase >= MAXSWCASE) {
+				out("\t.error more than ");
+				outd(MAXSWCASE);
+				out(" cases in one switch\n");
+			} else {
+				sw->val[sw->ncase] = e->u.val;
+				swlabel('K', sw->id, sw->ncase);
+				out(":\n");
+				sw->ncase++;
+			}
 		}
+		if (e)
+			freeexpr(e);
 		for (i = 0; i < n; i++)
 			parseStmt();
 		return;
-	case DEFAULT:
+	}
+	case DEFAULT: {
+		struct swctx *sw = swtop ? &swstk[swtop - 1] : 0;
+
 		n = read1();
 #ifdef DEBUG
 		if (VERBOSE(V_STMT))
 			fprintf(stderr, "  DEFAULT n=%d\n", n);
 		out("; DEFAULT n="); outd(n); outc('\n');
 #endif
+		if (sw) {
+			sw->hasdef = 1;
+			swlabel('F', sw->id, -1);
+			out(":\n");
+		}
 		for (i = 0; i < n; i++)
 			parseStmt();
 		return;
+	}
 	case ASM: {
 		/* Inline asm - copy the text through verbatim */
 		unsigned short len = read2();
