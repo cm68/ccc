@@ -29,9 +29,13 @@ whatever ran last wins, which cost an afternoon once.
 
 | | ccc | zc3 | zc3 -O |
 |---|---:|---:|---:|
-| cpp | 44824 | 48688 | 39106 |
-| c0 | 46501 | 54600 | 43251 |
-| c1 | 46921 | 57926 | *cannot build* |
+| cpp | 40229 | 48688 | 39106 |
+| c0 | 44296 | 54600 | 43251 |
+| c1 | 44692 | 57926 | *cannot build* |
+
+These are text only, and they grew about 2KB when the integer
+promotions were done honestly - arithmetic on chars is int arithmetic,
+and only the part that lands back in a char is narrowed again.
 
 All three fit, with 17-20KB spare.  Against zc3 **without** `-O` ccc is
 about 13% smaller; against `zc3 -O` it is 8-19% larger, which is the
@@ -121,6 +125,25 @@ form.  Three separate gaps in a row were this: adding a subscript to a
 symbol, to an index register, and to a frame slot's address.  When
 writing one, ask whether BC needs it too.
 
+**A field read before it is written.**  `alloc()` in pass2 set every
+field of an `Expr` but one.  Nodes are freed with `free()` and come
+back from `malloc` holding what the last occupant left, so a node that
+had been the right operand of a byte comparison passed its `nored` on
+to whatever was allocated at that address next - and `nored` on a child
+means the child is never reduced, so the shape that reaches the rules
+is the one that was read in and nothing matches it.
+
+What makes this one worth remembering is the symptom: the same function
+compiled clean on its own and left a marker in the file it came from,
+because which nodes inherit the flag depends on the whole allocation
+history.  Identical labelled trees, different outcomes.  Probing the
+source cannot find that - thirty copies of the function in one file
+reproduced nothing - and reading the tree cannot either, because the
+tree is innocent.  `make valgrind` names it in one line, and gdb finds
+it in four breakpoints once the question is narrowed to "is this node
+ever passed to rewrite1".  Reach for those the moment a bug depends on
+what was compiled *before* it.
+
 **Registers clobbered by a helper.**  The 16-bit helpers take their
 second operand off the stack with `pop bc` and do not put it back.  A
 register variable lives in BC.  The long helpers had always saved it;
@@ -145,9 +168,16 @@ In rough order of how much they have earned:
 * **`make coverage`** (in `ccc/pass2`) - which rules ever match.  Needs
   `c1` built with `-DDEBUG`; the counters are host-side and the z80
   build has never seen them.
-* **The `XXXXXX incomplete` markers** - 49 over the tree's own
-  sources.  Count them with
+* **The `XXXXXX incomplete` markers** - one left over the tree's own
+  sources, from 173.  Count them with
   `grep -rh '^; XXXXXX' ccc/*/stage1 tools/stage1 | wc -l`.
+* **`make valgrind`** - c0 and c1 over the stage1 intermediates,
+  looking for uninitialised reads rather than leaks.  Leaks cost these
+  programs nothing; a field read before it is written changes what the
+  compiler emits and changes it differently depending on what was
+  compiled before.  The target it replaced had been driving `cc1`,
+  which has not existed since the passes were split, so it ran nothing
+  and passed for years.
 * **`make regression`** - 367 baselines of cpp's lexeme output.  Catches
   unintended changes to what cpp emits; `REGRESS_FLAGS=--bless` to
   rebless after an intended one.
@@ -223,7 +253,22 @@ three.
 
 * **153 rules of 485 never match.**  Shapes no source here takes, each
   of them code that has never run.
-* **49 markers** over the tree's own sources.
+* **One marker** over the tree's own sources, in `tools/wsnm.c`:
+
+    (ADD:short (HL:short) (HL:long))
+
+  a byte array subscripted by a long, where the pointer and the long
+  both want HL and neither rule nor cost can put one of them elsewhere.
+  This is the register pressure case rather than a missing form, and
+  the source is a stretch: `array[long]` is legal C when the value is
+  in range, but on a machine with 16-bit pointers the long half can
+  never reach an address, so the arithmetic is computed wide and then
+  thrown away.  Narrowing the offsets in the source is the cheaper
+  answer where it can be shown they fit - `wsnm.c`'s record offsets
+  now are, because they index one malloc and that malloc has to fit
+  the address space.  The remaining one indexes by a whole-file offset
+  and cannot be narrowed without deciding what the host tool does with
+  a file bigger than the target could ever hold.
 * **c0 could be single-phase.**  The two-phase structure is what forces
   the file-wide tables above, and `resetSwitch()` is declared "reset for
   new function" but is never called, because calling it would break the

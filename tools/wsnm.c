@@ -2343,8 +2343,17 @@ char *name;
                 if (endoff > bsssize) bsssize = endoff;
             }
         } else if (rectype == HT_RELOC && (rflag || gflag || dflag) && in_text_psect) {
-            long roff = off;
-            long rend = off + reclen;
+            /*
+             * Offsets into filebuf, which is one malloc: on a machine
+             * with 16-bit pointers the buffer cannot be bigger than
+             * the address space, so these fit a short by construction.
+             * Declared long, every subscript below became a 32-bit sum
+             * truncated to 16 bits to make an address - and the add of
+             * a short to a long wants both halves in HL, which is the
+             * one shape pass2 has no answer for.
+             */
+            unsigned short roff = off;
+            unsigned short rend = off + reclen;
 
             while (roff < rend) {
                 unsigned short reloff;
