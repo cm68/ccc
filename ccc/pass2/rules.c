@@ -287,6 +287,21 @@ struct rule rules[] = {
 	R("H:F", INHL, P_NONE, P_NONE, P_NONE, 0, T_HL_TEST, F_NZ),
 	R("E:F", INDE, P_NONE, P_NONE, P_NONE, 0, T_DE_TEST, F_NZ),
 	R("A:F", INA, P_NONE, P_NONE, P_NONE, 0, F_ORA, F_NZ),
+	/*
+	 * The same for a value that ended up in IX.  HL, DE, BC, A and E
+	 * each become a typed node before the table is reached; IX does
+	 * not, so it arrives as CODE and matched nothing at all.  No rule
+	 * matching normally leaves a marker, but this is a condition
+	 * rather than a value - the caller wanted flags and took whatever
+	 * was in them:
+	 *
+	 *	while ((top = fstack_top(&fs)) != NULL)
+	 *
+	 * with top in IX emitted push hl / pop ix, which sets no flags,
+	 * and then branched on what the call had left behind.  cpp's
+	 * filtbrace loops forever on any brace-less if, while or for.
+	 */
+	R("C:F", CODE, P_NONE, P_NONE, P_NONE, RF_IX, T_IX_TEST, F_NZ),
 
 	/* copy IX to HL/BC/DE */
 	R("=(H,V)", ASSIGN, P_L, P_R, P_R, RF_IX, "\tpush ix\n" F_POPHL, R_HL),

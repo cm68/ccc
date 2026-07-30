@@ -2952,6 +2952,28 @@ rewrite1(Expr *e)
 				e->right = rewrite1(e->right);
 		}
 	children_done: ;
+		/*
+		 * A long stored into something narrower.  The value is in
+		 * HL:DE with HL the high word, and every narrowing store
+		 * rule takes the low half of HL - which is the third byte
+		 * of the long, not the first.  There are ten of those rules
+		 * at byte width alone, so the conversion belongs here once
+		 * rather than in each of them: bring the low word into HL
+		 * and they are all correct as written.
+		 *
+		 * "buf[1] = val & 0xff" was right and "buf[2] = (val >> 8)
+		 * & 0xff" was not, which is what made it look like a shift
+		 * bug - the first reads the low byte straight out of memory
+		 * and never goes through a register pair at all.  cpp emits
+		 * every number this way, so every constant above 255 lost
+		 * its high bytes: 0644 arrived as 164 and 256 as 0.
+		 */
+		if (e->op == ASSIGN && !ISLONG(e->width) &&
+		    e->right && e->right->op == INHL &&
+		    ISLONG(e->right->width)) {
+			out("\tex de,hl\n");
+			e->right->width = T_SHORT;
+		}
 	}
 
 	/* Fixed-point: keep rewriting until no change */

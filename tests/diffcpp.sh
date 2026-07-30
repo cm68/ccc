@@ -52,11 +52,28 @@ echo
 printf '%-12s %8s %8s  %s\n' file zc3 ccc result
 same=0; diff=0; err=0
 
+# A wrong answer takes as long as a right one; an infinite loop does
+# not.  Without this the first hang blocked the whole sweep, and a run
+# that had made no progress in two hours looked the same from outside
+# as one that was working.  cpp's own sources take a second or two.
+TMO=${DIFFCPP_TIMEOUT:-120}
+
 for b in $SRCS; do
+	hung=
 	for who in zc3 ccc; do
-		"$root/root/sim" -d / "$work/cpp-$who.mx" -DCCC $INC \
-		    -o "$work/$b.$who" "$cpp/$b.c" >/dev/null 2>&1 || true
+		rc=0
+		timeout "$TMO" "$root/root/sim" -d / "$work/cpp-$who.mx" \
+		    -DCCC $INC -o "$work/$b.$who" "$cpp/$b.c" \
+		    >/dev/null 2>&1 || rc=$?
+		if [ "$rc" -eq 124 ]; then
+			hung="$hung $who"
+		fi
 	done
+	if [ -n "$hung" ]; then
+		printf '%-12s %8s %8s  HUNG:%s\n' "$b" - - "$hung"
+		err=$((err + 1))
+		continue
+	fi
 
 	if [ ! -s "$work/$b.zc3.x" ] || [ ! -s "$work/$b.ccc.x" ]; then
 		printf '%-12s %8s %8s  %s\n' "$b" - - "NO OUTPUT"
