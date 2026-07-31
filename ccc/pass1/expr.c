@@ -143,6 +143,21 @@ mkexprI(unsigned char op, struct expr *left, struct type *type,
 }
 
 /*
+ * Build a complete binary node: op over left and right with the type
+ * filled in.  Six places built one by hand, several statements each,
+ * every one a store through a frame pointer.  One call is cheaper.
+ */
+static struct expr *
+mkbin(unsigned char op, struct expr *l, struct expr *r, struct type *t)
+{
+    struct expr *e = mkexpr(op, l);
+
+    e->right = r;
+    e->type = t;
+    return e;
+}
+
+/*
  * Free just an expression node without its children
  * Used when restructuring trees (e.g., unwrapping DEREF)
  */
@@ -405,7 +420,6 @@ mkIncDec(struct expr *operand, unsigned char inc_op, unsigned char is_postfix)
     }
     value_type = unwrapDeref(&operand);
     e = mkexpr(inc_op, operand);
-    e->left->up = e;
     e->type = value_type;
     if (is_postfix)
         e->flags |= E_POSTFIX;
@@ -916,7 +930,6 @@ parsePrefix(void)
                 e->type->size > 0 && e->type->size < inttype->size &&
                 !(e->type->flags & (TF_POINTER | TF_ARRAY)))
                 e->type = inttype;
-            e1->up = e;
         }
         break;
 
@@ -937,7 +950,6 @@ parsePrefix(void)
             break;
         }
         e = mkexpr(DEREF, e1);
-        e1->up = e;
         if ((e1->type->flags & TF_POINTER) && e1->type->sub)
             e->type = e1->type->sub;
         else
@@ -972,7 +984,6 @@ parsePrefix(void)
             e->type = getType(TF_POINTER, e->type, 0);
         } else {
             e1 = mkexpr(AND, e);
-            e->up = e1;
             e1->type = getType(TF_POINTER, e->type, 0);
             e = e1;
         }
@@ -1146,28 +1157,17 @@ parsePostfix(struct expr *e)
             } else {
                 e4 = mkexprI(CONST, 0, inttype,
 						elem_size, E_CONST);  /* size_expr */
-
-                e2 = mkexpr(STAR, e1);  /* scaled */
-                e2->right = e4;
-                e2->left->up = e2;
-                e2->right->up = e2;
-                e2->type = inttype;
+                e2 = mkbin(STAR, e1, e4, inttype);  /* scaled */
             }
 
             // Add scaled offset to base: base + (idx * sizeof)
-            e3 = mkexpr(PLUS, e);  /* addr */
-            e3->right = e2;
-            e3->left->up = e3;
-            e3->right->up = e3;
             /* The ADD result is a pointer to the element type */
-            if ((tp->flags & TF_ARRAY) && tp->sub)
-                e3->type = getType(TF_POINTER, tp->sub, 0);
-            else
-                e3->type = tp;
+            e3 = mkbin(PLUS, e, e2,
+                ((tp->flags & TF_ARRAY) && tp->sub) ?
+                    getType(TF_POINTER, tp->sub, 0) : tp);  /* addr */
 
             // Dereference to get element value
             e = mkexpr(DEREF, e3);
-            e->left->up = e;
             if ((e->left->type->flags & (TF_POINTER|TF_ARRAY)) &&
                     e->left->type->sub)
                 e->type = e->left->type->sub;
@@ -1177,7 +1177,6 @@ parsePostfix(struct expr *e)
 
             // Create CALL node with function expression as left operand
             e1 = mkexpr(CALL, e);  /* call */
-            e1->left->up = e1;
 
             /*
              * The thing being called is either a function or a
@@ -1232,7 +1231,6 @@ parsePostfix(struct expr *e)
                             e3->next = e2;
                         } else {
                             e1->right = e2;
-                            e2->up = e1;
                         }
                         e3 = e2;
                     }
@@ -1319,12 +1317,8 @@ parsePostfix(struct expr *e)
             e2 = mkexprI(CONST, 0, inttype,
 					uofs, E_CONST);  /* offset_expr */
 
-            e3 = mkexpr(PLUS, e1);  /* addr */
-            e3->right = e2;
-            e3->left->up = e3;
-            e3->right->up = e3;
             // addr is pointer to member, not pointer to base struct
-            e3->type = getType(TF_POINTER, np->type, 0);
+            e3 = mkbin(PLUS, e1, e2, getType(TF_POINTER, np->type, 0));
 
             // Check if this is a bitfield access
             if (np->kind == kbitfield) {
@@ -1333,7 +1327,6 @@ parsePostfix(struct expr *e)
                  * width stored in expr
                  */
                 e = mkexprI(BFEXTRACT, e3, np->type, 0, 0);
-                e->left->up = e;
                 /*
                  * Store bitfield info in the var field (repurpose it)
                  * We'll encode bitoff and width for the code generator
@@ -1347,7 +1340,6 @@ parsePostfix(struct expr *e)
             } else {
                 /* Non-array member: wrap in DEREF to get value */
                 e = mkexprI(DEREF, e3, np->type, 0, 0);
-                e->left->up = e;
             }
 
             gettoken();
@@ -1442,19 +1434,9 @@ parseExpr(unsigned char pri)
             e3 = parseExpr(OP_PRI_COMMA);  /* false_expr */
 
             // Build tree: QUES(condition, COLON(true_expr, false_expr))
-            e4 = mkexpr(COLON, e2);  /* colon_node */
-            e4->right = e3;
-            if (e4->left) e4->left->up = e4;
-            if (e4->right) e4->right->up = e4;
-
-            e = mkexpr(QUES, e1);
-            e->right = e4;
-            e1->up = e;
-            e4->up = e;
-
+            e4 = mkbin(COLON, e2, e3, NULL);
             /* Type is the type of the result expressions */
-            if (e2)
-                e->type = e2->type;
+            e = mkbin(QUES, e1, e4, e2 ? e2->type : NULL);
 
             /* Skip the rest of the loop and continue with next operator */
             continue;
@@ -1512,7 +1494,6 @@ parseExpr(unsigned char pri)
          */
         vp = e->var;
         e = mkexpr(op, e);
-        e->left->up = e;
         if (is_assignment) {
             /*
              * Right-associative, so the right hand side has to admit
@@ -1532,7 +1513,6 @@ parseExpr(unsigned char pri)
             e->right = parseExpr(p);
         }
         if (e->right) {
-            e->right->up = e;
         }
 
         // For BFASSIGN, restore member info (bitoff, width)
@@ -1641,12 +1621,7 @@ scaleptr(struct expr *e)
         if (e->op != MINUS)
             return e;
         n = mkexprI(CONST, 0, inttype, (unsigned long)size, E_CONST);
-        scaled = mkexpr(DIV, e);
-        scaled->right = n;
-        scaled->left->up = scaled;
-        scaled->right->up = scaled;
-        scaled->type = inttype;
-        return scaled;
+        return mkbin(DIV, e, n, inttype);
     }
 
     /* the integer is whichever side is not the pointer */
@@ -1656,13 +1631,8 @@ scaleptr(struct expr *e)
         return e;
     }
     n = mkexprI(CONST, 0, inttype, (unsigned long)size, E_CONST);
-    scaled = mkexpr(STAR, *side);
-    scaled->right = n;
-    scaled->left->up = scaled;
-    scaled->right->up = scaled;
-    scaled->type = inttype;
+    scaled = mkbin(STAR, *side, n, inttype);
     *side = scaled;
-    scaled->up = e;
     return e;
 }
 

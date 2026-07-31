@@ -70,7 +70,12 @@ struct expr {
 	unsigned char op;
 	struct expr *left;
 	struct expr *right;
-	struct expr *up;
+	/*
+	 * There is no up.  There was, and every construction site wrote
+	 * it, but nothing in the tree ever read one - the walks all go
+	 * down.  Two bytes a node on the machine that runs out of nodes,
+	 * and a store or two at every place a node is built.
+	 */
 	struct expr *next;
 
 	struct type *type;
