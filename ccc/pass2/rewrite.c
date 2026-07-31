@@ -1465,6 +1465,32 @@ islocdesc(Expr *e)
 }
 
 /*
+ * Did this subtree actually reduce?  A tree that did is a single
+ * register node with nothing under it; anything else means a rule was
+ * missing somewhere below and no code came out for it.  The root
+ * check at the end of rewrite() asks the same question - this is that
+ * test, named, so the places that have to ask it earlier can.
+ */
+static int
+reduced(Expr *e)
+{
+	if (!e)
+		return 0;
+	if (e->left || e->right)
+		return 0;
+	switch (e->op) {
+	case CODE:
+	case INHL:
+	case INDE:
+	case INBC:
+	case INA:
+	case INE:
+		return 1;
+	}
+	return 0;
+}
+
+/*
  * A register standing on the left of an assignment as the destination
  * itself, rather than as somewhere to store through - which is how
  * RETURN and the call-argument wrapper ask for a value in a given
@@ -2798,6 +2824,52 @@ rewrite1(Expr *e)
 				e->right = rewrite1(e->right);
 				goto children_done;
 			}
+			/*
+			 * The address is only worth pushing if it is
+			 * actually in HL.  If the subtree did not reduce -
+			 * a rule missing somewhere below it - then nothing
+			 * put it there, and the push spills whatever the
+			 * last statement happened to leave: the store then
+			 * goes to that address and writes over something
+			 * unrelated.  The comment above says exactly this
+			 * about "arr[2]", and islocdesc was the whole test
+			 * for it, which only covers the shapes that reduce
+			 * to a descriptor rather than the ones that do not
+			 * reduce at all.
+			 *
+			 * That is not a case the root check can catch.  By
+			 * the time it looks, the address has been replaced
+			 * by the register nodes the store rule wants and
+			 * the tree reads as fully reduced - which is how
+			 *
+			 *	parms[m->parmcount++] = permdup(s);
+			 *
+			 * in cpp's macdefine came to store through a stale
+			 * HL, land on the input buffer, and eat a character
+			 * out of the next line of every source that defines
+			 * a function-like macro with an empty body.
+			 *
+			 * The right operand still has to be evaluated: it
+			 * is a call in the case that found this, and its
+			 * side effects are not optional.  Only the store is
+			 * dropped, and the marker says so.
+			 */
+			if (!reduced(addr)) {
+				e->right = rewrite1(e->right);
+				out("; XXXXXX incomplete: ");
+#ifdef DEBUG
+				dumpexpr(addr);
+#endif
+				outc('\n');
+				freeexpr(addr);
+				freeexpr(e->right);
+				e->left = e->right = NULL;
+				n = mkcode(e->width, R_HL);
+				n->op = INHL;
+				n->dest = e->dest;
+				freeexpr(e);
+				return n;
+			}
 			out("\tpush hl\n");
 			e->right = rewrite1(e->right);
 			/*
@@ -3108,9 +3180,7 @@ rewrite(Expr *e)
 	 * matched anyway, and the wrong value went into the array with
 	 * nothing said.
 	 */
-	if (r && ((r->op != CODE && r->op != INHL && r->op != INDE &&
-	    r->op != INBC && r->op != INA && r->op != INE) ||
-	    r->left || r->right)) {
+	if (r && !reduced(r)) {
 		out("; XXXXXX incomplete: ");
 #ifdef DEBUG
 		dumpexpr(r);

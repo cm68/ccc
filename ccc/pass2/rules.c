@@ -1071,6 +1071,26 @@ struct rule rules[] = {
 	R("m(I):b", POSTDEC, P_L, P_NONE, P_NONE, 0, F_LDAL1 "\tdec ($L)\n", R_A),
 
 	/*
+	 * The same through a pointer held in IX, where the member is the
+	 * first one and so needs no offset to add - "m->parmcount++"
+	 * with m in IX.  A member further in becomes +(D(V),N) and folds
+	 * to an INDEX, which the two rules above already take; only the
+	 * offset-free one arrived as a bare DEREF and matched nothing.
+	 *
+	 * It emitted no code and no marker, because the store above it
+	 * matched anyway - which is how cpp's macdefine came to write a
+	 * macro parameter through a stale HL.
+	 */
+	R("j(D(V)):b", POSTINC, P_L, P_NONE, P_LL, RF_IX,
+		"\tld a,(ix+0)\n\tinc (ix+0)\n", R_A),
+	R("m(D(V)):b", POSTDEC, P_L, P_NONE, P_LL, RF_IX,
+		"\tld a,(ix+0)\n\tdec (ix+0)\n", R_A),
+	R("i(D(V)):b", PREINC, P_L, P_NONE, P_LL, RF_IX,
+		"\tinc (ix+0)\n\tld a,(ix+0)\n", R_A),
+	R("k(D(V)):b", PREDEC, P_L, P_NONE, P_LL, RF_IX,
+		"\tdec (ix+0)\n\tld a,(ix+0)\n", R_A),
+
+	/*
 	 * Stepping a byte at a global.  There is no inc (nn), but there
 	 * is inc (hl), so the address goes in HL and the step happens in
 	 * memory - four bytes against the seven that loading, adding and
