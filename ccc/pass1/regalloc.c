@@ -120,6 +120,15 @@ canAlloc(struct name *n, int no_arg_regs)
 {
 	if (n->w.r.reg != REG_NONE || n->w.r.addr_taken)
 		return 0;
+	/*
+	 * A static local lives at a label, not in the frame and not in
+	 * a register: it has to survive the call, and a register does
+	 * not.  It is a local by level, which is what let it through
+	 * here - and being handed a register made a read of it come
+	 * back as the address.
+	 */
+	if (n->sclass & SC_STATIC)
+		return 0;
 	if (no_arg_regs && n->kind == kfunarg)
 		return 0;
 	return 1;

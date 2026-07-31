@@ -77,10 +77,50 @@ filtdecl_init(void (*up)(struct token *))
 	pend_setup(&pb, 16);
 }
 
+/*
+ * Does this declaration say static?
+ *
+ * It decides whether the initializer may be split off into an
+ * assignment.  A local's initializer is normally lowered that way -
+ * pass1 has no code path to run one, and a plain local is initialized
+ * every time the block is entered anyway, so an assignment is exactly
+ * what it means.  A static is not: its initializer is data, written
+ * once before the program runs, and lowering it to an assignment made
+ * it run on every call.  "static int n = 5; n++;" returned 6 for ever.
+ *
+ * An aggregate initializer is already left alone here, which is why a
+ * static array was right and a static scalar was not.
+ */
+static int
+decl_is_static(void)
+{
+	int i;
+
+	for (i = 0; i < decl_arr.count; i++)
+		if (decl_arr.buf[i].type == STATIC)
+			return 1;
+	return 0;
+}
+
+/*
+ * The initializer saved for this name, or -1.
+ */
+static int
+init_for(char *name)
+{
+	int i;
+
+	for (i = 0; i < assign_count; i++)
+		if (assigns[i].name == name)
+			return i;
+	return -1;
+}
+
 static void
 emit_decl(void)
 {
-	int i, j;
+	int i, j, k;
+	int keep = decl_is_static();
 	struct token tmp;
 	struct token *ref = &decl_arr.buf[0];  /* Reference for line info */
 
@@ -95,6 +135,10 @@ emit_decl(void)
 		tmp.lineno = ref->lineno;
 		tmp.filename = ref->filename;
 		pend_push(&pb, &tmp);
+		if (keep && (k = init_for(names[i].name)) >= 0) {
+			pend_tok_at(&pb, ASSIGN, ref);
+			pend_buf(&pb, assigns[k].init, assigns[k].init_len);
+		}
 		if (i < name_count - 1)
 			pend_tok_at(&pb, COMMA, ref);
 	}
@@ -122,6 +166,19 @@ emit_assigns(void)
 		pend_tok_at(&pb, SEMI, ref);
 		free(assigns[i].init);
 	}
+	assign_count = 0;
+}
+
+/*
+ * Throw away what emit_decl has already emitted inline.
+ */
+static void
+drop_assigns(void)
+{
+	int i;
+
+	for (i = 0; i < assign_count; i++)
+		free(assigns[i].init);
 	assign_count = 0;
 }
 
@@ -155,8 +212,13 @@ static void
 finish_decl(void)
 {
 	if (name_count > 0) {
+		int keep = decl_is_static();
+
 		emit_decl();
-		emit_assigns();
+		if (keep)
+			drop_assigns();
+		else
+			emit_assigns();
 	}
 	tarr_reset(&decl_arr);
 	name_count = 0;

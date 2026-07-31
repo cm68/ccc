@@ -81,7 +81,8 @@ isRegvar(struct expr *e)
 	if (!e || e->op != SYM)
 		return 0;
 	np = (struct name *)e->var;
-	if (np->level > 1 && !(np->sclass & SC_EXTERN)) {
+	/* a static is never in a register - see canAlloc */
+	if (np->level > 1 && !(np->sclass & (SC_EXTERN | SC_STATIC))) {
 		local = findInLocals(np);
 		return local ? local->w.r.reg : np->w.r.reg;
 	}
@@ -372,8 +373,19 @@ emitExpr(struct expr *e)
 
 	case SYM:
 		np = (struct name *)e->var;
-		/* Local variables: emit LOCALVAR/REGVAR directly */
-		if (np->level > 1 && !(np->sclass & SC_EXTERN)) {
+		/*
+		 * Local variables: emit LOCALVAR/REGVAR directly.
+		 *
+		 * Not a static one.  It is inside a function, so its level
+		 * is above one, but it is not in the frame: its storage is
+		 * emitted with the globals under an S<n> label, which the
+		 * name path below produces.  Coming here addressed it as a
+		 * frame slot instead, so the value did not survive the
+		 * call that set it and a static array read whatever was on
+		 * the stack - which is how pass1's own sclassBit, a static
+		 * table, made the c0 that ccc built reject every typedef.
+		 */
+		if (np->level > 1 && !(np->sclass & (SC_EXTERN | SC_STATIC))) {
 			/* Look up frm_off/reg from phase 1 captured locals */
 			struct name *local = findInLocals(np);
 			char reg = local ? local->w.r.reg : np->w.r.reg;
