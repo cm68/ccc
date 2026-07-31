@@ -816,13 +816,18 @@ emitasm(char *tpl, Expr *e)
 
 /*
  * Nearly every rewrite that has emitted its own code ends the same way:
- * make a node standing for the answer in HL, give it the destination the
- * original was asked for, and free what it replaced.  Written out, that
- * is four statements, and it was written out twelve times.
+ * make a node standing for the answer in HL, give it the destination
+ * the original was asked for, and free what it replaced.  Eleven copies
+ * of four statements became this.
  *
- * op is what the answer should be called - INHL where the rewrite names
- * the register outright, CODE where it leaves the typing to the pass
- * below that turns CODE into INHL/INDE/INA by its register.
+ * op is what to call the answer: INHL where the rewrite names the
+ * register outright, CODE where it leaves the typing to the pass below
+ * that turns CODE into INHL/INDE/INA by its register.
+ *
+ * The seven rewrites that build their node in a branch - a different
+ * register in each arm - keep their own tails.  Sharing just the last
+ * three statements with them was tried and cost two bytes: passing two
+ * pointers to a function is dearer than the stores it saves.
  */
 static Expr *
 donehl(Expr *e, unsigned char op)
@@ -1391,25 +1396,19 @@ step(Expr *e)
 			out("\tld a,0\n\tsbc a,h\n\tld h,a\n");
 			return donehl(e, CODE);
 		}
-		/* Long left shift: HLDE << B */
-		if (e->op == LSHIFT && e->left->op == INHL &&
-		    e->right && e->right->op == INA) {
-			out("\tld b,a\n");
-			out("\tcall lllsh\n");
-			return donehl(e, CODE);
-		}
-		/* Long right shift (signed): HLDE >> B */
-		if (e->op == RSHIFT && e->width == 'l' &&
+		/*
+		 * Long shift by a count worked out at runtime.  The three
+		 * forms - left, right signed, right unsigned - ask the same
+		 * question of the tree and differ only in which helper they
+		 * call.  The enclosing test has already established that the
+		 * width is long, so 'l' against 'L' is the sign.  The count
+		 * arrives in A and the helpers want it in B.
+		 */
+		if ((e->op == LSHIFT || e->op == RSHIFT) &&
 		    e->left->op == INHL && e->right && e->right->op == INA) {
 			out("\tld b,a\n");
-			out("\tcall alrsh\n");
-			return donehl(e, CODE);
-		}
-		/* Long right shift (unsigned): HLDE >> B */
-		if (e->op == RSHIFT && e->width == 'L' &&
-		    e->left->op == INHL && e->right && e->right->op == INA) {
-			out("\tld b,a\n");
-			out("\tcall llrsh\n");
+			out(e->op == LSHIFT ? "\tcall lllsh\n" :
+			    e->width == 'l' ? "\tcall alrsh\n" : "\tcall llrsh\n");
 			return donehl(e, CODE);
 		}
 	}

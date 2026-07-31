@@ -78,8 +78,6 @@ struct expr {
 	struct var *var;      
 
 	unsigned long v;
-	unsigned char location;
-	unsigned char regs;
 };
 
 /*
