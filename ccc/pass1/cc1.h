@@ -113,7 +113,15 @@ extern struct expr *mkexprI(unsigned char op, struct expr *left,
     struct type *type, unsigned long v, int flags);
 extern struct expr *parseExpr(unsigned char priority);
 extern int isTypeToken(unsigned char t);
-unsigned long parseConst(unsigned char priority);
+/*
+ * parseConst leaves its answer here rather than returning it.  A long
+ * return travels in HL:DE and costs every call site the unpacking;
+ * the value is consumed immediately after the call at both callers,
+ * so a single cell is enough - even a re-entrant call would have
+ * finished with it before the outer one stores its own.
+ */
+extern unsigned long constVal;
+void parseConst(unsigned char priority);
 extern void FreeExpr(struct expr *e);
 extern struct expr *foldTree(struct expr *e);
 extern unsigned short globalStrCtr;  /* string literal counter ("str") */
@@ -398,6 +406,7 @@ struct token {
 		long numeric;
 		char *name;
 		cstring str;
+		unsigned char b[4];	/* numeric, a byte at a time - see readLE4 */
 	} v;
 };
 

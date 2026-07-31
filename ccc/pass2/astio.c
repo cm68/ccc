@@ -99,19 +99,26 @@ read2(void)
 	return v;
 }
 
-unsigned long
+/*
+ * The four bytes land in val4 and the function returns nothing.  A
+ * long return travels in HL:DE, and the one caller stored it into a
+ * local just to push it again; longs are expensive here and rare in
+ * the source, so the value goes to memory once and stays there.
+ *
+ * No shifting either: the file is little-endian by definition -
+ * write4 on the other side puts the low byte first - and so is the
+ * machine, so the bytes are read to where they belong.
+ */
+unsigned long val4;
+
+void
 read4(void)
 {
-	unsigned char buf[4];
-	unsigned long v;
-	read(infd, buf, 4);
-	v = buf[0] | ((unsigned long)buf[1] << 8) |
-	    ((unsigned long)buf[2] << 16) | ((unsigned long)buf[3] << 24);
+	read(infd, (char *)&val4, 4);
 #ifdef DEBUG
 	if (VERBOSE(V_IO))
-		fprintf(stderr, "read4: %lu (0x%08lx)\n", v, v);
+		fprintf(stderr, "read4: %lu (0x%08lx)\n", val4, val4);
 #endif
-	return v;
 }
 
 /*

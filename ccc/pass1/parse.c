@@ -650,7 +650,8 @@ statement(void)
             case CASE: {
                 long val;
                 gettoken();
-                val = parseConst(COLON);
+                parseConst(COLON);
+                val = constVal;
                 addCase(val, stmt_count);  /* add to current switch table */
                 expect(COLON, ER_S_NL);
                 break;

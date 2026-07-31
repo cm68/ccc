@@ -323,12 +323,12 @@ readexpr(void)
 
 	case NUMBER:
 		t = read1();
-		v = read4();
+		read4();
 #ifdef DEBUG
 		if (VERBOSE(V_EXPR))
-			fprintf(stderr, "  CONST type=%c val=%lu\n", t, v);
+			fprintf(stderr, "  CONST type=%c val=%lu\n", t, val4);
 #endif
-		return mkconst(t, (long)v);
+		return mkconst(t, (long)val4);
 
 	case SYM:
 		readS(buf, sizeof(buf));

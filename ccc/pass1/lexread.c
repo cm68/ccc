@@ -90,45 +90,37 @@ readLE2(void)
 }
 
 /*
- * Read 4-byte little-endian value
+ * Read 4-byte little-endian value into next.v.numeric
+ *
+ * Placed rather than shifted, and delivered rather than returned.
+ * The obvious loop -
+ *
+ *	val |= ((unsigned long)readByte()) << (i * 8);
+ *
+ * - costs a call to the variable long shift helper and another to
+ * the long or on every pass.  Writing the bytes where they go costs
+ * the four reads, which are the only part that was ever necessary.
+ *
+ * It used to write them into a local union and return the long, but
+ * a long return travels in HL:DE and both callers immediately
+ * stored it in next.v.numeric - four register loads and four stores
+ * to move a value that was already sitting in memory.  Longs are
+ * expensive on this machine and rare in the source, so a function
+ * that produces one delivers it to memory and returns nothing.
+ *
+ * The byte order is not an assumption being smuggled in: the format
+ * is little-endian by definition - the function is named for it -
+ * the Z80 is little-endian, and so is every host this is built on.
+ * emit4 on cpp's side writes the same four bytes in the same order
+ * by hand.
  */
-static unsigned long
+static void
 readLE4(void)
 {
-	union {
-		unsigned long l;
-		unsigned char b[4];
-	} u;
-
-	/*
-	 * Placed rather than shifted.  The obvious loop -
-	 *
-	 *	val |= ((unsigned long)readByte()) << (i * 8);
-	 *
-	 * - costs a call to the variable long shift helper and another
-	 * to the long or on every pass: 61 instructions and twelve
-	 * calls to move four bytes.  Writing them where they go is 19
-	 * instructions and the four reads, which are the only part that
-	 * was ever necessary.
-	 *
-	 * The union is what makes that legal rather than a cast through
-	 * a pointer, and the byte order is not an assumption being
-	 * smuggled in: the format is little-endian by definition - the
-	 * function is named for it - the Z80 is little-endian, and so is
-	 * every host this is built on.  emit4 on cpp's side writes the
-	 * same four bytes in the same order by hand.
-	 *
-	 * Written out rather than looped because four iterations of a
-	 * loop cost twice the code here: the counter needs a signed
-	 * 16-bit compare with an overflow fixup and the element address
-	 * has to be recomputed each pass.  The loop form is still far
-	 * better than what it replaced - the helpers are what mattered.
-	 */
-	u.b[0] = readByte();
-	u.b[1] = readByte();
-	u.b[2] = readByte();
-	u.b[3] = readByte();
-	return u.l;
+	next.v.b[0] = readByte();
+	next.v.b[1] = readByte();
+	next.v.b[2] = readByte();
+	next.v.b[3] = readByte();
 }
 
 /*
@@ -215,12 +207,12 @@ again:
 	 * is sized by how big it happens to be. */
 	case NUMBER:
 		next.type = NUMBER;
-		next.v.numeric = (long)readLE4();
+		readLE4();
 		break;
 
 	case CPP_LNUMBER:
 		next.type = LNUMBER;
-		next.v.numeric = (long)readLE4();
+		readLE4();
 		break;
 
 	/* String - 2-byte length + bytes */

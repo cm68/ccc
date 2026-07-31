@@ -1640,11 +1640,12 @@ scaleptr(struct expr *e)
  * Parse and evaluate a constant expression
  * Used for array sizes, case values, enum values, etc.
  */
-unsigned long
+unsigned long constVal;
+
+void
 parseConst(unsigned char token)
 {
 	struct expr *e;
-	unsigned long val;
 	unsigned char save_phase;
 
 	/* Parse expression, stop before comma (for enum values) */
@@ -1653,19 +1654,24 @@ parseConst(unsigned char token)
 	e = parseExpr(15);
 	phase = save_phase;
 
+	constVal = 0;
 	if (!e) {
 		gripe(ER_C_CE);
-		return 0;
+		return;
 	}
 	e = foldTree(e);	/* SECSIZE+2 style bounds */
 	if (!(e->flags & E_CONST)) {
 		gripe(ER_C_CE);
-		FreeExpr(e);
-		return 0;
+	} else {
+		/*
+		 * Into the static before the node is freed.  The local that
+		 * used to carry it across the FreeExpr call cost four frame
+		 * stores and four loads; memory to memory is two of each,
+		 * and the return machinery is gone entirely.
+		 */
+		constVal = e->v;
 	}
-	val = e->v;
 	FreeExpr(e);
-	return val;
 }
 
 /*

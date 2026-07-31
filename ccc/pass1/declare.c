@@ -346,7 +346,8 @@ declare(struct type **btp, unsigned char struct_elem)
         if (cur.type == RBRACK) {
             i = -1;
         } else {
-            i = parseConst(RBRACK);
+            parseConst(RBRACK);
+            i = constVal;
         }
         /*
          * Arrays have both TF_ARRAY and TF_POINTER flags for array decay

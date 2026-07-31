@@ -57,7 +57,8 @@ extern int bcinuse(void);		/* parseast.c: BC holds a variable here */
 unsigned char read1(void);
 void unread1(unsigned char c);
 unsigned short read2(void);
-unsigned long read4(void);
+void read4(void);
+extern unsigned long val4;	/* read4 leaves its answer here */
 void readS(char *buf, int size);
 #ifdef DEBUG
 void rulehit(int i);		/* rule coverage, host build only */
