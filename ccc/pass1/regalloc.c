@@ -180,7 +180,22 @@ allocRegs(struct name *locals)
 		if (best) { best->w.r.reg = REG_IX; regs |= 1; }
 	}
 
-	/* BC to word variable with highest ref_count */
+	/*
+	 * BC to word variable with highest ref_count - and word before
+	 * byte is not an accident of ordering, it is the measured
+	 * answer.  Three attempts to be cleverer all made the compiler
+	 * bigger: weighting loop references 8x and 64x by depth cost
+	 * 855 bytes (a variable with fifteen sites lost BC to one with
+	 * two hot sites, and all fifteen got three bytes longer);
+	 * weighting them 2x cost 323; and giving B and C to the two
+	 * hottest bytes when their counts beat twice the best word's
+	 * cost 264 even with no weighting at all, because a word in BC
+	 * saves four bytes a site while a byte in B or C mostly reduces
+	 * through A and saves one or two.  This allocator is buying
+	 * bytes, not cycles: a reference site costs the same wherever
+	 * it sits in the loop structure, so count sites and give the
+	 * pair to the word.
+	 */
 	if (!(regs & 2)) {
 		best = NULL;
 		for (n = locals; n; n = n->next) {
