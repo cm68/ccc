@@ -125,6 +125,32 @@ streamInitVal(struct type *type)
                 else
                     fmtstr(buf, "_%s", member->name);
                 asmDwSym(buf);
+            } else if (e->op == PLUS && e->left && e->left->op == SYM &&
+                       e->right && (e->right->flags & E_CONST)) {
+                /*
+                 * The address of an element other than the first.
+                 * "&arr[0]" folds to the bare symbol and was taken by
+                 * the branch above; "&arr[n]" keeps the offset and is
+                 * a PLUS, which matched neither and was written as
+                 * zero.  The assembler takes label+offset, so say it.
+                 *
+                 * pass1's own type table is built this way:
+                 *
+                 *	{ 2, 0, 0, 0, 0, &basictypes[0] },
+                 *	{ 4, 0, 0, 0, 0, &basictypes[1] },
+                 *
+                 * so every link past the first was null and inttype,
+                 * longtype and voidtype were all zero.  The c0 that
+                 * ccc built could not name a type it had not been
+                 * given by a typedef.
+                 */
+                member = (struct name *)e->left->var;
+                if (member->sclass & SC_STATIC)
+                    fmtstr(buf, "S%d+%d", member->static_id - 1,
+                        (int)e->right->v);
+                else
+                    fmtstr(buf, "_%s+%d", member->name, (int)e->right->v);
+                asmDwSym(buf);
             } else {
                 /* Unsupported initializer - emit zero */
                 if (size == 1)
