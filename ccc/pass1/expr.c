@@ -954,7 +954,14 @@ parsePrefix(void)
             t = e1 ? e1->type : (struct type *)0;
             FreeExpr(e1);
         }
-        e = mkexprI(CONST, 0, inttype, t ? t->size : 0, E_CONST);
+        /*
+         * typesize, not t->size: the type node keeps its size in a
+         * byte, so an array of 256 or more records zero.  "unsigned
+         * char buf[512]" answered 0, and pass1's own
+         * read(fd, lexBuf, sizeof lexBuf) asked the kernel for no
+         * bytes and took the zero back for end of file.
+         */
+        e = mkexprI(CONST, 0, inttype, t ? typesize(t) : 0, E_CONST);
 #ifdef DEBUG
         if (!t) fdprintf(2, "bad op (sizeof): no type\n");
 #endif

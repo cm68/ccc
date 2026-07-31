@@ -577,6 +577,33 @@ compatFnTyp(struct type *t1, struct type *t2)
  * Returns:
  *   Pointer to type (existing if found, new if created)
  */
+/*
+ * How big is this type, as a number rather than as the byte the type
+ * node has room for.  struct type keeps size in an unsigned char,
+ * which covers everything a register can hold and not an array:
+ * "unsigned char buf[512]" records 0, and sizeof answered 0.  The
+ * element count survives, so an array is worked out from that.
+ *
+ * pass1's own lexBuf is 512 bytes, so read(fd, lexBuf, sizeof lexBuf)
+ * asked for none and the compiler read an empty file and said nothing
+ * - which is what this was found by.
+ */
+int
+typesize(struct type *t)
+{
+	if (!t)
+		return 0;
+	/*
+	 * An array carries TF_POINTER as well as TF_ARRAY - it decays -
+	 * so the pointer bit says nothing here.  A real array is the one
+	 * with a count, which an incomplete one ("char buf[]" as a
+	 * parameter) does not have.
+	 */
+	if ((t->flags & TF_ARRAY) && t->sub && t->count > 0)
+		return typesize(t->sub) * t->count;
+	return t->size;
+}
+
 struct type *
 getType(
     char flags,             // TF_whatever
@@ -641,6 +668,12 @@ getType(
     /* Calculate size for arrays and pointers */
     if (flags & TF_ARRAY) {
         if (sub && count > 0) {
+            /*
+             * Truncated on purpose - size is a byte, which is enough
+             * for anything a register holds and not enough for an
+             * array.  count is kept, so typesize() below can work the
+             * real number out when someone needs it.
+             */
             t->size = sub->size * count;
         } else {
             /*

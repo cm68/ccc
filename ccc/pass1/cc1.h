@@ -192,6 +192,7 @@ extern struct type *getbasetype();
 extern unsigned char parseSclass();
 extern int isBasicType(struct type *t);
 struct type *getType(char flags, struct type *sub, int count);
+int typesize(struct type *t);
 extern char compatFnTyp(struct type *t1, struct type *t2);
 
 /*
