@@ -274,6 +274,16 @@ three.
   `push_cond` opens with a `malloc`, which would explain the size
   sensitivity.
 
+  Narrowed further, and this is the useful part: *every* false
+  conditional leaks its body at that position, not just `#ifdef`.
+  `#if 0` does, `#ifndef` of a defined guard does.  So the condition
+  is being evaluated correctly and the skip is what fails.  There are
+  two skip paths in `gettoken`, one for a line starting with anything
+  and one for a line starting with whitespace, and both leak - so it
+  is not either path's own logic.  What they share is `cond &&
+  !(cond->flags & C_TRUE)`, which leaves the global `cond` reading as
+  NULL, or its flags reading as C_TRUE, at the moment of the test.
+
   It moves under observation, which is the thing to know before
   starting.  Adding a two-line trace shifted the window from 31-33 to
   61-63; adding a second trace moved it out of 0-79 altogether.
