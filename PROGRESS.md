@@ -297,8 +297,39 @@ three.
   `cond->flags` rather than add code, since adding code moves the
   target.
 
-* **An empty function-like macro eats the next character.**  In the
-  cpp that ccc builds, and only there - zc3's is right:
+* **An indexed store whose value is a call can lose its address.**
+  This is the empty-function-like-macro bug, run to ground:
+
+      parms[m->parmcount++] = permdup(s);
+
+  compiles to a `push hl` with nothing having been loaded into HL.
+  The left side emits no code at all - neither the address arithmetic
+  nor the post-increment - so the push spills whatever the previous
+  statement left, and the store goes to that address.  In cpp it
+  lands on the input buffer, which is why the next `advance()` came
+  back with 0xb7 instead of the next character.
+
+  rewrite.c around line 2750 already describes this failure exactly:
+  "the push would spill whatever the last statement happened to leave
+  there and the store would go to that address".  Its guard is
+  `islocdesc(addr)`, taken after `rewrite1(e->left)`, and this shape
+  gets past it - reduced to something that needs no code emitted but
+  is not a descriptor either.
+
+  Splitting it fixes it, and so does dropping the call:
+
+      tmp = permdup(s); parms[m->parmcount++] = tmp;   works
+      parms[m->parmcount++] = s;                       works
+
+  Not reproduced in isolation yet - `arr[n++] = f()` is fine on its
+  own, with a local or global array, a leaf call or a nested one, and
+  with the subscript a member through a pointer.  It needs
+  macdefine's own register pressure, so the way in is the generated
+  code rather than a small case.
+
+* **An empty function-like macro eats the next character**, which is
+  the symptom of the above.  In the cpp that ccc builds, and only
+  there - zc3's is right:
 
       #define c(x)		"int a;" after it comes out "nt a;"
       #define c(x,y)		the same
