@@ -509,18 +509,165 @@ getAsmText(void)
  *   Phase 1: Build symbol table, count statements for streaming
  *   Phase 2: Emit AST bytecode using counts from phase 1
  */
+/*
+ * The phase-2 statement arms, one worker each.  statement() carried
+ * a bank of "hoisted locals - shared across cases to reduce stack
+ * frame", which is the opposite of what this compiler wants: it does
+ * no lifetime analysis, by design, so sharing a frame is sharing two
+ * registers among locals that never coexist.  The function boundary
+ * is the lifetime analysis.
+ */
+
+/* the case the current switch is up to, shared by CASE and DEFAULT */
+static struct swcase *
+nextCase(void)
+{
+    unsigned char sw_idx, c_idx;
+
+    sw_idx = swEmitStack[swEmitDepth - 1];
+    c_idx = swList[sw_idx].emitIdx++;
+    return &swList[sw_idx].cases[c_idx];
+}
+
+/* if <condition> <statement> [else ...], cur on the IF */
+static void
+stIf2(void)
+{
+    unsigned char hasElse;
+    struct expr *e1;
+
+    for (;;) {
+        hasElse = (ifHasElse[ifEmitIdx >> 3] >> (ifEmitIdx & 7)) & 1;
+        ifEmitIdx++;
+        gettoken();
+        expect(LPAR, ER_S_NP);
+        e1 = parseExpr(PRI_ALL);
+        expect(RPAR, ER_S_NP);
+        /* Emit: IF nlabels cond then has_else [else] */
+        /* fold first: emitExpr folds internally and may replace the
+         * root node, leaving our e1 dangling for FreeExpr */
+        e1 = foldTree(e1);
+        emit1(IF);
+        emit1(cntCondLbls(e1));
+        emitExpr(e1);
+        FreeExpr(e1);
+        parseBlock();
+        emit1(hasElse);  /* has_else comes after then block */
+        if (cur.type == ELSE) {
+            gettoken();
+            if (cur.type == IF)
+                continue;       /* else if: run the arm again */
+            parseBlock();
+        }
+        return;
+    }
+}
+
+static void
+stRet2(void)
+{
+    struct expr *e1;
+
+    e1 = NULL;
+    gettoken();
+    if (cur.type != SEMI)
+        e1 = parseExpr(PRI_ALL);
+    expect(SEMI, ER_S_SN);
+    /* a struct has no value to return - return its address */
+    if (e1 && e1->type && (e1->type->flags & TF_AGGREGATE) &&
+        !(e1->type->flags & (TF_POINTER | TF_ARRAY | TF_FUNC)))
+        gripe(ER_E_AG);
+    /* Emit: RETURN has_value [expr] */
+    e1 = foldTree(e1);
+    emit1(RETURN);
+    emit1(e1 ? 1 : 0);
+    if (e1) {
+        /*
+         * The value has to arrive at the width the function
+         * was declared to return, and only the tree knows
+         * whether to sign- or zero-extend.  Without this,
+         * "long f() { return 7; }" loaded HL alone - which is
+         * the high half of a long, so it returned 458752 and
+         * whatever DE happened to hold.
+         */
+        emitOperand(e1, curFunc ? curFunc->type->sub : NULL);
+        FreeExpr(e1);
+    }
+}
+
+static void
+stSwitch2(void)
+{
+    struct expr *e1;
+    unsigned char sw_idx;
+
+    gettoken();
+    expect(LPAR, ER_S_NP);
+    e1 = parseExpr(PRI_ALL);
+    expect(RPAR, ER_S_NP);
+    expect(BEGIN, ER_S_SB);
+    /* Get this switch's index and push onto emit stack */
+    sw_idx = swEmitIdx++;
+    swEmitStack[swEmitDepth++] = sw_idx;
+    swList[sw_idx].emitIdx = 0;
+    /* Emit switch header: SWITCH has_label case_count expr */
+    /* has_label=0 since cpp handles break lowering */
+    e1 = foldTree(e1);
+    emit1(SWITCH);
+    emit1(0);  /* no label - cpp lowered break to goto */
+    emit1(popCount());
+    emitExpr(e1);
+    FreeExpr(e1);
+    /* Parse body - CASE/DEFAULT emit themselves */
+    statement();
+    swEmitDepth--;
+    expect(END, ER_S_CC);
+}
+
+static void
+stExpr2(void)
+{
+    struct expr *e;
+
+    e = parseExpr(PRI_ALL);
+    expect(SEMI, ER_S_SN);
+    /* Convert postinc/postdec to preinc/predec since result unused */
+    if (e && (e->op == INCR || e->op == DECR) && (e->flags & E_POSTFIX))
+        e->flags &= ~E_POSTFIX;
+    /* Emit expression statement directly (no EXPR wrapper) */
+    e = foldTree(e);
+    emitExpr(e);
+    FreeExpr(e);
+}
+
+static void
+stGoto2(void)
+{
+    char lblbuf[16];
+
+    gettoken();
+    if (cur.type != SYM) {
+        recover(ER_S_GL, SEMI);
+        return;
+    }
+    /* Copy label before gettoken overwrites cur.v.name */
+    strncpy(lblbuf, cur.v.name, 15);
+    lblbuf[15] = 0;
+    gettoken();
+    expect(SEMI, ER_S_SN);
+    /* Emit: GOTO label */
+    emit1(GOTO);
+    emitS(lblbuf);
+}
+
 void
 statement(void)
 {
     unsigned char block = 1;
     char stmt_count = 0;       /* Count statements for streaming (phase 1) */
-    /* Hoisted locals - shared across cases to reduce stack frame */
     char *text;                /* Text pointer for ASM */
-    unsigned char cnt;         /* Shared count (body_cnt, case_cnt, etc) */
-    unsigned char hasElse;     /* If statement has else branch */
-    unsigned char sw_idx, c_idx; /* Switch/case indices */
-    struct swcase *sc;         /* Switch case pointer */
-    struct expr *e1;           /* Shared expression pointer */
+    struct swcase *sc;         /* CASE/DEFAULT: the case up next */
+    struct expr *e1;           /* CASE: the value expression */
 
     stmtNest++;  /* Track statement() nesting depth */
 
@@ -716,8 +863,7 @@ statement(void)
             /* Emit block header: AST_BLOCK 0 stmt_count */
             emit1(AST_BLOCK);
             emit1(0);  /* no decls - hoisted to function */
-            cnt = popBlkCnt();
-            emit1(cnt);
+            emit1(popBlkCnt());
             /* Stream body statements */
             statement();
             popScope();
@@ -725,59 +871,13 @@ statement(void)
             break;
 
         case IF:   /* if <condition> <statement> */
-        handle_if2:
-            hasElse = (ifHasElse[ifEmitIdx >> 3] >> (ifEmitIdx & 7)) & 1;
-            ifEmitIdx++;
-            gettoken();
-            expect(LPAR, ER_S_NP);
-            e1 = parseExpr(PRI_ALL);
-            expect(RPAR, ER_S_NP);
-            /* Emit: IF nlabels cond then has_else [else] */
-            /* fold first: emitExpr folds internally and may replace the
-             * root node, leaving our e1 dangling for FreeExpr */
-            e1 = foldTree(e1);
-            emit1(IF);
-            emit1(cntCondLbls(e1));
-            emitExpr(e1);
-            FreeExpr(e1);
-            parseBlock();
-            emit1(hasElse);  /* has_else comes after then block */
-            if (cur.type == ELSE) {
-                gettoken();
-                if (cur.type == IF)
-                    goto handle_if2;  /* else if */
-                parseBlock();
-            }
+            stIf2();
             break;
 
         /* BREAK/CONTINUE handled by cpp - lowered to goto */
 
         case RETURN:
-            e1 = NULL;
-            gettoken();
-            if (cur.type != SEMI)
-                e1 = parseExpr(PRI_ALL);
-            expect(SEMI, ER_S_SN);
-            /* a struct has no value to return - return its address */
-            if (e1 && e1->type && (e1->type->flags & TF_AGGREGATE) &&
-                !(e1->type->flags & (TF_POINTER | TF_ARRAY | TF_FUNC)))
-                gripe(ER_E_AG);
-            /* Emit: RETURN has_value [expr] */
-            e1 = foldTree(e1);
-            emit1(RETURN);
-            emit1(e1 ? 1 : 0);
-            if (e1) {
-                /*
-                 * The value has to arrive at the width the function
-                 * was declared to return, and only the tree knows
-                 * whether to sign- or zero-extend.  Without this,
-                 * "long f() { return 7; }" loaded HL alone - which is
-                 * the high half of a long, so it returned 458752 and
-                 * whatever DE happened to hold.
-                 */
-                emitOperand(e1, curFunc ? curFunc->type->sub : NULL);
-                FreeExpr(e1);
-            }
+            stRet2();
             break;
 
         /* Local declarations - type keywords */
@@ -824,20 +924,9 @@ statement(void)
         case LPAR:
         case STAR:
         case INCR:
-        case DECR: {
-            struct expr *expr = parseExpr(PRI_ALL);
-            expect(SEMI, ER_S_SN);
-            /* Convert postinc/postdec to preinc/predec since result unused */
-            if (expr && (expr->op == INCR || expr->op == DECR) &&
-                (expr->flags & E_POSTFIX)) {
-                expr->flags &= ~E_POSTFIX;
-            }
-            /* Emit expression statement directly (no EXPR wrapper) */
-            expr = foldTree(expr);
-            emitExpr(expr);
-            FreeExpr(expr);
+        case DECR:
+            stExpr2();
             break;
-        }
 
         /* FOR/WHILE/DO handled by cpp loop lowering - should not appear here */
 
@@ -846,42 +935,14 @@ statement(void)
             break;
 
         case SWITCH:  /* switch (<expr>) <block> ; */
-            gettoken();
-            expect(LPAR, ER_S_NP);
-            e1 = parseExpr(PRI_ALL);
-            expect(RPAR, ER_S_NP);
-            expect(BEGIN, ER_S_SB);
-            /* Get this switch's index and push onto emit stack */
-            sw_idx = swEmitIdx++;
-            swEmitStack[swEmitDepth++] = sw_idx;
-            swList[sw_idx].emitIdx = 0;
-            /* Emit switch header: SWITCH has_label case_count expr */
-            /* has_label=0 since cpp handles break lowering */
-            e1 = foldTree(e1);
-            emit1(SWITCH);
-            emit1(0);  /* no label - cpp lowered break to goto */
-            cnt = popCount();
-            emit1(cnt);
-            emitExpr(e1);
-            FreeExpr(e1);
-            /* Parse body - CASE/DEFAULT emit themselves */
-            statement();
-            swEmitDepth--;
-            expect(END, ER_S_CC);
+            stSwitch2();
             break;
 
         case CASE:
             gettoken();
             e1 = parseExpr(13);  /* parse case value expression */
             expect(COLON, ER_S_NL);
-            /* Get current switch and case */
-            sw_idx = swEmitStack[swEmitDepth - 1];
-            c_idx = swList[sw_idx].emitIdx++;
-            sc = &swList[sw_idx].cases[c_idx];
-#ifdef DEBUG
-            fdprintf(2, "P2 CASE: sw_idx=%d c_idx=%d stmts=%d\n",
-                     sw_idx, c_idx, sc->stmts);
-#endif
+            sc = nextCase();
             /* Emit: CASE stmt_count value_expr */
             e1 = foldTree(e1);
             emit1(CASE);
@@ -891,35 +952,13 @@ statement(void)
             break;
 
         case GOTO:
-            gettoken();
-            if (cur.type != SYM) {
-                recover(ER_S_GL, SEMI);
-                    break;
-            }
-            /* Copy label before gettoken overwrites cur.v.name */
-            {
-                char lblbuf[16];
-                strncpy(lblbuf, cur.v.name, 15);
-                lblbuf[15] = 0;
-                gettoken();
-                expect(SEMI, ER_S_SN);
-                /* Emit: GOTO label */
-                emit1(GOTO);
-                emitS(lblbuf);
-            }
+            stGoto2();
             break;
 
         case DEFAULT:
             gettoken();
             expect(COLON, ER_S_NL);
-            /* Get current switch and case */
-            sw_idx = swEmitStack[swEmitDepth - 1];
-            c_idx = swList[sw_idx].emitIdx++;
-            sc = &swList[sw_idx].cases[c_idx];
-#ifdef DEBUG
-            fdprintf(2, "P2 DEFAULT: sw_idx=%d c_idx=%d stmts=%d\n",
-                     sw_idx, c_idx, sc->stmts);
-#endif
+            sc = nextCase();
             /* Emit: DEFAULT stmt_count */
             emit1(DEFAULT);
             emit1(sc->stmts);

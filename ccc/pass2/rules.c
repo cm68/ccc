@@ -1491,6 +1491,23 @@ struct rule rules[] = {
 		"$[\tld b,e\n\tld a,$L\n\tinc b\n"
 		"\tjr $$+4\n\tsla a\n\tdjnz $$-2\n$]", R_A),
 	/*
+	 * The same count arriving as a word, which is what an expression
+	 * count reduces to: "1 << (idx & 7)" works the AND out in HL and
+	 * the target machinery may swap it to DE.  Only the low byte
+	 * counts - a shift past eight of a byte is zero anyway, and the
+	 * loop delivers exactly that.  Without these two forms the shift
+	 * matched nothing, and matched nothing SILENTLY: the compound
+	 * assignment above it stored the count itself through the
+	 * address, so "map[i] |= 1 << (n & 7)" wrote n's low byte into
+	 * the bitmap and pass1's else-if bookkeeping read garbage.
+	 */
+	R("<(N,E):b", LSHIFT, P_L, P_R, P_NONE, 0,
+		"$[\tld b,e\n\tld a,$L\n\tinc b\n"
+		"\tjr $$+4\n\tsla a\n\tdjnz $$-2\n$]", R_A),
+	R("<(N,H):b", LSHIFT, P_L, P_R, P_NONE, 0,
+		"$[\tld b,l\n\tld a,$L\n\tinc b\n"
+		"\tjr $$+4\n\tsla a\n\tdjnz $$-2\n$]", R_A),
+	/*
 	 * A signed right shift keeps the sign: sra copies bit 7 back into
 	 * itself where srl feeds in a zero.  The signed rule has to come
 	 * first, since the unsigned pattern matches either width.
