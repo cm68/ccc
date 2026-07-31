@@ -1173,6 +1173,20 @@ struct rule rules[] = {
 	/* a word in HL narrowed on its way through the index register */
 	R("=(D(V),H):b", ASSIGN, P_L, P_R, P_LL, RF_IX,
 		F_LDAL "\tld (ix+0),a\n", R_A),
+	/*
+	 * And the same from BC, which is where a register variable
+	 * lives - the third form these rules keep needing.  Without it
+	 *
+	 *	t->size = off;
+	 *
+	 * with size a byte member and off a local word left a marker
+	 * and stored nothing, so type.c's member offsets stayed zero
+	 * and every struct came out either empty or "too big".
+	 */
+	R("=(D(V),B):b", ASSIGN, P_L, P_R, P_LL, RF_IX,
+		F_LDAC "\tld (ix+0),a\n", R_A),
+	R("=(D(V),E):b", ASSIGN, P_L, P_R, P_LL, RF_IX,
+		"\tld a,e\n\tld (ix+0),a\n", R_A),
 
 	/*
 	 * The index register stored through a pointer, rather than used
