@@ -154,7 +154,8 @@ allocRegs(struct name *locals)
 		if ((n->type->flags & TF_POINTER) && !(regs & 1)) {
 			n->w.r.reg = REG_IX;
 			regs |= 1;
-		} else if (n->type->size == 2 && !(regs & 2)) {
+		} else if (n->type->size == 2 && !(regs & 14)) {
+			/* the pair is free only if neither half is taken */
 			n->w.r.reg = REG_BC;
 			regs |= 2;
 		} else if (n->type->size == 1 && !(regs & 2)) {
@@ -196,7 +197,14 @@ allocRegs(struct name *locals)
 	 * it sits in the loop structure, so count sites and give the
 	 * pair to the word.
 	 */
-	if (!(regs & 2)) {
+	if (!(regs & 14)) {
+		/*
+		 * regs & 14, not regs & 2: B or C alone being taken - which
+		 * a register-class byte parameter can now cause - leaves no
+		 * pair to give.  Checking only the pair bit handed BC to a
+		 * word local while B was carrying a parameter, and the
+		 * initializer of one overwrote the staging of the other.
+		 */
 		best = NULL;
 		for (n = locals; n; n = n->next) {
 			if (!canAlloc(n, no_arg_regs))

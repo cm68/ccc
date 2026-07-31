@@ -313,7 +313,16 @@ skipExpr(unsigned char pri)
          * thing to refuse: it has no address to take.
          */
         gettoken();
-        if (cur.type == SYM) {
+        if (cur.type == SYM &&
+            next.type != ARROW && next.type != LBRACK) {
+            /*
+             * Only a bare &v pins v itself.  "&fc->name[8]" is the
+             * address of something fc points AT - fc is merely read,
+             * and refusing it broke every K&R source that walks a
+             * register struct pointer the day parameters started
+             * honoring the keyword.  "&s.x" stays strict: the dot
+             * means the object's own storage.
+             */
             np = findName(cur.v.name, 0);
             if (np && np->level > 1) {
                 if (np->sclass & SC_REGISTER)

@@ -348,7 +348,17 @@ parsefunc(struct name *f)
 			// Only add parameters with actual names (skip anonymous ones)
 			if (param->name[0] != '\0') {
 				// Create a NEW name entry at level 2 (don't reuse type->elem)
-				newName(param->name, kfunarg, param->type, 0);
+				struct name *pn;
+
+				pn = newName(param->name, kfunarg, param->type, 0);
+				/*
+				 * register survives the copy.  The declarator kept it
+				 * on the prototype entry; this is the entry the
+				 * allocator walks, and dropping it here is where the
+				 * keyword used to silently die.
+				 */
+				if (pn && (param->sclass & SC_REGISTER))
+					pn->sclass = SC_REGISTER;
 			}
 		}
 	}

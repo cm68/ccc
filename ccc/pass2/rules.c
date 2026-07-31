@@ -997,6 +997,26 @@ struct rule rules[] = {
 	R("g(H)", NEG, P_L, P_NONE, P_NONE, 0, F_XORA "\tsub l\n" F_LDLA F_LDA0 "\tsbc a,h\n" F_LDHA, R_HL),
 	R("g(E)", NEG, P_L, P_NONE, P_NONE, 0, F_LDA0 F_SUBE F_LDLA F_LDA0 "\tsbc a,d\n" F_LDHA, R_HL),
 
+	/*
+	 * Steps whose value nobody reads, for everything register-homed.
+	 * The forms below materialise the answer in HL or A, and a bare
+	 * "p++;" was paying those bytes to throw the answer away.  These
+	 * must sit above the context-less forms: first match wins, and a
+	 * pattern with no context suffix matches statement context too.
+	 */
+	R("i(B):S", PREINC, P_L, P_NONE, P_NONE, 0, "\tinc bc\n", 0),
+	R("k(B):S", PREDEC, P_L, P_NONE, P_NONE, 0, "\tdec bc\n", 0),
+	R("j(B):S", POSTINC, P_L, P_NONE, P_NONE, 0, "\tinc bc\n", 0),
+	R("m(B):S", POSTDEC, P_L, P_NONE, P_NONE, 0, "\tdec bc\n", 0),
+	R("i(V):bS", PREINC, P_L, P_NONE, P_L, RF_B, "\tinc b\n", 0),
+	R("i(V):bS", PREINC, P_L, P_NONE, P_L, RF_C, "\tinc c\n", 0),
+	R("k(V):bS", PREDEC, P_L, P_NONE, P_L, RF_B, "\tdec b\n", 0),
+	R("k(V):bS", PREDEC, P_L, P_NONE, P_L, RF_C, "\tdec c\n", 0),
+	R("j(V):bS", POSTINC, P_L, P_NONE, P_L, RF_B, "\tinc b\n", 0),
+	R("j(V):bS", POSTINC, P_L, P_NONE, P_L, RF_C, "\tinc c\n", 0),
+	R("m(V):bS", POSTDEC, P_L, P_NONE, P_L, RF_B, "\tdec b\n", 0),
+	R("m(V):bS", POSTDEC, P_L, P_NONE, P_L, RF_C, "\tdec c\n", 0),
+
 	/* pre-inc/dec */
 	R("i(B)", PREINC, P_L, P_NONE, P_NONE, 0, "\tinc bc\n" F_LDLC F_LDHB, R_HL),
 	R("k(B)", PREDEC, P_L, P_NONE, P_NONE, 0, "\tdec bc\n" F_LDLC F_LDHB, R_HL),

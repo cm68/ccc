@@ -419,6 +419,7 @@ declare(struct type **btp, unsigned char struct_elem)
         param_tail = NULL;
         while (cur.type != RPAR && cur.type != E_O_F) {
             struct type *basetype;
+            unsigned char psclass = 0;
             param_name = paramNameBuf;
             param_type = NULL;
             paramNameBuf[0] = '\0';
@@ -431,7 +432,13 @@ declare(struct type **btp, unsigned char struct_elem)
             }
 
             // ANSI style: parse full type + declarator
-            parseSclass();      /* consume (ignore) register etc. */
+            /*
+             * register is the one storage class that means something
+             * on a parameter, and it used to be consumed and thrown
+             * away right here - the keyword parsed, the allocator
+             * never heard about it.
+             */
+            psclass = parseSclass();
             basetype = getbasetype();
             if (!basetype) {
                 gripe(ER_D_FA);
@@ -530,6 +537,8 @@ declare(struct type **btp, unsigned char struct_elem)
 
             // Create parameter entry for type->elem with actual name
             arg = createPrmEnt(param_name, param_type);
+            if (psclass & SC_REGISTER)
+                arg->sclass = SC_REGISTER;
             arg->next = NULL;
             if (param_tail) {
                 param_tail->next = arg;
