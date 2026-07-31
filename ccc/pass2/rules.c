@@ -894,6 +894,30 @@ struct rule rules[] = {
 		"\tld hl,($LL)\n" F_LDHLE F_INCHL F_LDHLD, R_DE),
 	R("=(D(O),H):s", ASSIGN, P_L, P_R, P_NONE, 0,
 		F_EXDEHL "\tld hl,($LL)\n" F_LDHLE F_INCHL F_LDHLD F_EXDEHL, R_HL),
+	/*
+	 * Storing a symbol's own address - which is what a string
+	 * literal is, since pass1 turns one into a SYMREF for the label
+	 * it emitted.  A SYMREF is left unreduced so the load and store
+	 * rules can use it as an address, so where its value is wanted
+	 * it has to be loaded, and these are the store shapes that had
+	 * no form for it:
+	 *
+	 *	arr[i] = "lit";		nothing stored, marker left
+	 *	sp->f  = "lit";		the same
+	 *
+	 * A constant subscript folds to a plain symbol store and was
+	 * always right, and any non-literal value is in a register
+	 * already, so this only ever showed with a literal and a
+	 * subscript that had to be worked out.
+	 */
+	R("=(D(O),O):s", ASSIGN, P_L, P_R, P_NONE, 0,
+		F_LDDER "\tld hl,($LL)\n" F_LDHLE F_INCHL F_LDHLD, R_DE),
+	R("=(D(H),O):s", ASSIGN, P_L, P_R, P_NONE, 0,
+		F_LDDER F_LDHLE F_INCHL F_LDHLD, R_DE),
+	R("=(D(I),O):s", ASSIGN, P_L, P_R, P_NONE, 0,
+		F_LDDER "\tld l,($LL)\n\tld h,($LL+)\n"
+		F_LDHLE F_INCHL F_LDHLD, R_DE),
+
 	R("=(D(O),N):l", ASSIGN, P_L, P_R, P_NONE, 0,
 		"\tld hl,($LL)\n" T_ST_IHL_N, 0),
 	R("=(D(H),N):l", ASSIGN, P_L, P_R, P_NONE, 0, T_ST_IHL_N, 0),

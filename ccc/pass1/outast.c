@@ -575,6 +575,26 @@ emitExpr(struct expr *e)
 			inLvalue = 1;
 			emitChild(left);		/* a location, never widened */
 			emitOperand(right, type);	/* convert to the target */
+		} else if (op == LAND || op == LOR) {
+			/*
+			 * The two sides of && and || are each tested against
+			 * zero, separately, and short-circuited between - so
+			 * there is no common width for them to meet at and
+			 * nothing to convert them to.  The node's own type is
+			 * uchar, because the answer is 0 or 1, and narrowing
+			 * the operands to that drops exactly the bytes the
+			 * zero test needs:
+			 *
+			 *	256 && 1	was false
+			 *
+			 * and a pointer whose low byte happened to be zero
+			 * tested as null.  That last one is how it was found:
+			 * cpp's conditional stack is a malloc'd list, and when
+			 * the allocation landed on a 0x??00 address every
+			 * "#if" in the file leaked its body.
+			 */
+			emitChild(left);
+			emitChild(right);
 		} else {
 			struct type *w = opwidth(e);
 			/*

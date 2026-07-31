@@ -555,6 +555,16 @@ foldNode(struct expr *e)
     case GT:     lv = sgn ? ((long)lv >  (long)rv) : (lv >  rv); rel = 1; break;
     case LE:     lv = sgn ? ((long)lv <= (long)rv) : (lv <= rv); rel = 1; break;
     case GE:     lv = sgn ? ((long)lv >= (long)rv) : (lv >= rv); rel = 1; break;
+    /*
+     * && and || of two constants.  Folding them is worth a branch and
+     * two labels, but the reason they are here is that pass2 could not
+     * do anything with them: an operand that is still a NUMBER sets no
+     * flags, so the short-circuit branched on whatever the previous
+     * instruction left.  Like the relations, the answer is an int
+     * whatever was tested.
+     */
+    case LAND:   lv = (lv && rv); rel = 1; break;
+    case LOR:    lv = (lv || rv); rel = 1; break;
     default:
         return e;
     }

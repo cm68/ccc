@@ -1639,9 +1639,31 @@ branchval(Expr *v)
  * been tested - a comparison leaves its answer somewhere else, and
  * loading a register leaves the flags alone entirely.
  */
+/*
+ * A constant operand sets no flags, and u.var.reg on a NUMBER reads
+ * the value's own bytes out of the union - so the switch below picked
+ * a condition code out of the constant and emitted no test at all.
+ * "x && 1" branched on whatever the last instruction happened to
+ * leave.  Only && and || and the ternary reach here with a bare
+ * NUMBER: an if() goes through rewrite(), which folds a constant
+ * condition at the root.
+ */
+static int
+constflag(Expr *e)
+{
+	if (!e || e->op != NUMBER)
+		return 0;
+	out("\txor a\n");
+	if (e->u.val)
+		out("\tinc a\n");
+	return 1;
+}
+
 char *
 falsecc(Expr *e)
 {
+	if (constflag(e))
+		return "z";
 	switch (e ? e->u.var.reg : 0) {
 	case F_Z:  return "nz";
 	case F_NZ: return "z";
@@ -1665,6 +1687,8 @@ falsecc(Expr *e)
 char *
 truecc(Expr *e)
 {
+	if (constflag(e))
+		return "nz";
 	switch (e ? e->u.var.reg : 0) {
 	case F_Z:  return "z";
 	case F_NZ: return "nz";
