@@ -1629,6 +1629,9 @@ struct rule rules[] = {
 	R("&(A,K):b", AND, P_L, P_R, P_NONE, 0, "\tand e\n", R_A),
 	R("|(A,K):b", OR, P_L, P_R, P_NONE, 0, "\tor e\n", R_A),
 	R("^(A,K):b", XOR, P_L, P_R, P_NONE, 0, "\txor e\n", R_A),
+	/* the flag form first: and sets Z itself, so a test that only
+	 * wants the flag must not pay for a result register */
+	R("&(A,N):bF", AND, P_L, P_R, P_NONE, 0, "\tand $R\n", F_NZ),
 	R("&(A,N):b", AND, P_L, P_R, P_NONE, 0, "\tand $R\n", R_A),
 	R("&(A,K):bF", AND, P_L, P_R, P_NONE, 0, "\tand e\n", F_NZ),
 	R("|(A,N):b", OR, P_L, P_R, P_NONE, 0, "\tor $R\n", R_A),

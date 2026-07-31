@@ -1156,6 +1156,31 @@ normtree(Expr *e)
 	if (!e) return;
 	normalize(e);
 	/*
+	 * A byte tested against a byte-range mask is a byte test.  C
+	 * promoted the operand and emitOperand said so with a WIDEN or
+	 * SEXT, but in flag context the promotion buys nothing: a mask
+	 * under 256 zeroes the high byte whatever the extension put
+	 * there - zeroes for WIDEN, the sign for SEXT, either way
+	 * nothing survives the AND.  Dropping the widening is what lets
+	 * the byte rules see the test at all, and one of those rules is
+	 * the bit instruction.  "flags & TF_X" is the most repeated
+	 * expression in both compilers, and every one of them was
+	 * eleven instructions of word arithmetic.
+	 */
+	if (e->op == AND && e->dest == DEST_FLAGS &&
+	    e->right && e->right->op == NUMBER &&
+	    (e->right->u.val & ~0xffL) == 0 &&
+	    e->left && (e->left->op == WIDEN || e->left->op == SEXT) &&
+	    e->left->left && ISBYTE(e->left->left->width)) {
+		Expr *w = e->left;
+
+		e->left = w->left;
+		w->left = NULL;
+		freeexpr(w);
+		e->width = e->left->width;
+		e->right->width = e->left->width;
+	}
+	/*
 	 * What an assignment stores is wanted as a value whatever is done
 	 * with the assignment itself, and "i = k = 5" needs the inner one
 	 * to know it: a store rule that writes straight to memory leaves
