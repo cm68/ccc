@@ -318,13 +318,23 @@ emitepilog(void)
 	out(funcname + 1);
 	out(":\n");
 
-	/* Restore callee-saves via IY-relative loads (preserves HL) */
+	/*
+	 * Restore callee-saves without touching the return value.  The
+	 * IX restore went through DE - "preserves HL", said the comment,
+	 * which was the whole truth when everything came back in HL.  A
+	 * long comes back in HL:DE, so every long-returning function
+	 * that had saved IX returned its low word as the saved IX's
+	 * address.  parseConst is such a function, and "int a[5]"
+	 * reserved .ds <heap pointer> bytes.  A is the one register with
+	 * nothing in it here, and the half-index loads are why the
+	 * target list says "compatibles that do half register access".
+	 */
 	if (regsused & REGBIT(R_IX)) {
-		out("\tld\te,(iy");
+		out("\tld\ta,(iy");
 		outd(ixoff);
-		out(")\n\tld\td,(iy");
+		out(")\n\tld\tixl,a\n\tld\ta,(iy");
 		outd(ixoff + 1);
-		out(")\n\tpush\tde\n\tpop\tix\n");
+		out(")\n\tld\tixh,a\n");
 	}
 	if (regsused & USES_BC) {
 		out("\tld\tc,(iy");
