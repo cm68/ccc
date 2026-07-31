@@ -95,6 +95,7 @@ usage(void)
     printf("  -c             Compile and assemble only, keep .o\n");
     printf("  -s             Compile only, keep .s (no assembly)\n");
     printf("  -k             Keep all intermediates (.x, .1, .2, .s, .o)\n");
+    printf("  -O             Run the peephole optimizer over the assembly\n");
     printf("  -S             Strip symbols from output\n");
     printf("  -9             Use 9-char symbols in output\n");
     printf("  -I<dir>        Include directory\n");
@@ -201,6 +202,7 @@ main(int argc, char **argv)
     int strip_syms = 0;      /* -S: strip symbols from output */
     int nine_char = 0;       /* -9: use 9-char symbols */
     int use_prep = 0;        /* -H: use .i file for pass1 instead of .x */
+    int optimize = 0;        /* -O: run the peephole over c1's assembly */
 
     /* Input files by type */
     char *c_files[MAX_ARGS];
@@ -229,6 +231,7 @@ main(int argc, char **argv)
     char asm_path[1024];
     char ld_path[1024];
     char astpp_path[1024];
+    char peep_path[1024];
 
     char chdr_path[1024];
     char libc_path[1024];
@@ -259,6 +262,7 @@ main(int argc, char **argv)
     sprintf(asm_path, "%s/bin/asz", rootdir);
     sprintf(ld_path, "%s/bin/wsld", rootdir);
     sprintf(astpp_path, "%s/bin/astpp", rootdir);
+    sprintf(peep_path, "%s/bin/peep", rootdir);
 
     sprintf(chdr_path, "%s/lib/crt0.o", rootdir);
     sprintf(libc_path, "%s/lib/libc.a", rootdir);
@@ -297,6 +301,10 @@ main(int argc, char **argv)
             argv++;
         } else if (strcmp(argv[0], "-s") == 0) {
             asm_only = 1;
+            argc--;
+            argv++;
+        } else if (strcmp(argv[0], "-O") == 0) {
+            optimize = 1;
             argc--;
             argv++;
         } else if (strcmp(argv[0], "-S") == 0) {
@@ -563,6 +571,41 @@ main(int argc, char **argv)
         }
         free(temp1_file);
         free(temp2_file);
+
+        /*
+         * Peephole, if asked for.  It rewrites the assembly in place -
+         * through a temporary, so a failure leaves the original where
+         * it was rather than a half written file - which keeps .s
+         * meaning "the assembly that gets assembled" whether or not
+         * -O was given.  To see what it changed, compile twice.
+         */
+        if (optimize) {
+            char *peep_file;
+            char *peep_args[8];
+
+            peep_file = malloc(strlen(base) + 10);
+            sprintf(peep_file, "%s.ps", base);
+
+            peep_args[0] = peep_path;
+            peep_args[1] = asm_file;
+            peep_args[2] = peep_file;
+            peep_args[3] = NULL;
+
+            if (print_cmds || no_exec)
+                printCommand(peep_args);
+            if (!no_exec) {
+                status = execCommand(peep_path, peep_args);
+                if (status != 0) {
+                    fprintf(stderr, "Error: peep failed on %s\n", asm_file);
+                    exit(status);
+                }
+                if (rename(peep_file, asm_file) != 0) {
+                    fprintf(stderr, "Error: cannot replace %s\n", asm_file);
+                    exit(1);
+                }
+            }
+            free(peep_file);
+        }
 
         /* If -s, we're done with this file */
         if (asm_only) {

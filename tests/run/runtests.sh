@@ -21,6 +21,10 @@ work="$here/out"
 
 SIM=${SIM:-$root/root/sim}
 CCC=$root/root/bin/ccc
+# Extra flags for the ccc mode.  CCCFLAGS=-O runs the peephole, so the
+# suite can check that optimised code still computes the same answers -
+# which is the only test of the peephole that means anything.
+CCCFLAGS=${CCCFLAGS:-}
 TMOUT=${TMOUT:-10}
 
 mode=$1
@@ -78,7 +82,7 @@ for t in $tests; do
 			-L"$root/root/lib" -lc -lu -lc) >"$log" 2>&1 || built=no
 		;;
 	ccc)
-		(cd "$work" && "$CCC" -DRT_CCC -o "$bin" -I"$here" "$src") >"$log" 2>&1 ||
+		(cd "$work" && "$CCC" $CCCFLAGS -DRT_CCC -o "$bin" -I"$here" "$src") >"$log" 2>&1 ||
 			built=no
 		;;
 	esac

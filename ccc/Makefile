@@ -14,6 +14,7 @@ all:
 	$(MAKE) -C cpp
 	$(MAKE) -C pass1
 	$(MAKE) -C pass2
+	$(MAKE) -C peep
 	$(MAKE) astpp
 
 astpp: astpp.c
@@ -24,6 +25,7 @@ install: astpp
 	$(MAKE) -C cpp DEST=$(DEST) install
 	$(MAKE) -C pass1 DEST=$(DEST) install
 	$(MAKE) -C pass2 DEST=$(DEST) install
+	$(MAKE) -C peep DEST=$(DEST) install
 	cp astpp ../root/bin
 	
 clean:
@@ -31,18 +33,21 @@ clean:
 	$(MAKE) -C cpp clean
 	$(MAKE) -C pass1 clean
 	$(MAKE) -C pass2 clean
+	$(MAKE) -C peep clean
 
 clobber:
 	$(MAKE) -C lib clean
 	$(MAKE) -C cpp clobber
 	$(MAKE) -C pass1 clobber
 	$(MAKE) -C pass2 clobber
+	$(MAKE) -C peep clobber
 	rm -f astpp
 
 stage1:
 	$(MAKE) -C cpp DEST=$(DEST) stage1
 	$(MAKE) -C pass1 DEST=$(DEST) stage1
 	$(MAKE) -C pass2 DEST=$(DEST) stage1
+	$(MAKE) -C peep DEST=$(DEST) stage1
 
 # Native (Z80) compile of cpp/c0/c1.
 # Override Z80 compiler with: make sizecheck ZCC=zc3   (HiTech) or ZCC=ccc (default).
@@ -51,6 +56,7 @@ sizecheck:
 	$(MAKE) ZCC=$(ZCC) -C cpp sizecheck
 	$(MAKE) ZCC=$(ZCC) -C pass1 sizecheck
 	$(MAKE) ZCC=$(ZCC) -C pass2 sizecheck
+	$(MAKE) ZCC=$(ZCC) -C peep sizecheck
 
 # Regression - all ccc/ subtrees (cpp, pass1, pass2, lib, astpp)
 regression:

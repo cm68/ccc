@@ -240,7 +240,7 @@ mx-ccc: $(GENERATED)
 	for f in $(SOURCES); do \
 		b=$${f%.c}; \
 		printf "%-12s" "$$b: " ; \
-		if $(ROOTDIR)/bin/ccc -c -DCCC -i$(LIBSRCINC) \
+		if $(ROOTDIR)/bin/ccc $(CCCOPT) -c -DCCC -i$(LIBSRCINC) \
 			-I$(P1DIR) -I$(LIBDIR) $(P1DIR)/$$f > $$b.log 2>&1 \
 			&& [ -f $$b.o ]; then \
 			echo ok; \

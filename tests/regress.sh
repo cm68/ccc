@@ -90,6 +90,7 @@ ccc/cpp/test       | *.c | -DCCC -I.. -I../../../libsrc/include
 ccc/cpp            | cpp.c lex.c io.c macro.c kw.c emit.c util.c filtknr.c filtdecl.c filtbrace.c filtctrl.c filtutil.c typetab.c lexdata.c xdump.c | -DCCC -I. -I../lib -I../../libsrc/include
 ccc/pass1          | *.c | -DCCC -I. -I../lib -I../../libsrc/include
 ccc/pass2          | *.c | -DCCC -I. -I../lib -I../../libsrc/include
+ccc/peep           | *.c | -DCCC -I. -I../lib -I../../libsrc/include
 ccc/lib            | *.c | -DCCC -I../../libsrc/include
 ccc                | astpp.c | -DCCC -I. -I./lib -I./cpp -I../libsrc/include
 tools              | *.c | -I../libsrc/include
