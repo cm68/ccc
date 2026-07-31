@@ -1448,7 +1448,7 @@ struct rule rules[] = {
 	 */
 	R("<(N,K):b", LSHIFT, P_L, P_R, P_NONE, 0,
 		"$[\tld b,e\n\tld a,$L\n\tinc b\n"
-		"\tjr $+4\n\tsla a\n\tdjnz $-2\n$]", R_A),
+		"\tjr $$+4\n\tsla a\n\tdjnz $$-2\n$]", R_A),
 	/*
 	 * A signed right shift keeps the sign: sra copies bit 7 back into
 	 * itself where srl feeds in a zero.  The signed rule has to come
