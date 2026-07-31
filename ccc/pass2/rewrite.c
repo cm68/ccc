@@ -1875,7 +1875,31 @@ docompound(Expr *e)
 	e->right = NULL;
 	sum = mkbinary(op, w, val, rhs);
 	setdest(sum, DEST_VALUE);
+	/*
+	 * The left is already a byte in A.  Working the right side out
+	 * lands byte loads in A too - on top of the value - and the
+	 * fresh nodes here carry no labels, so the register machinery
+	 * that usually notices never runs.  bytepair() is exactly this
+	 * situation's tool: park A on the stack, reduce the right into
+	 * E, take A back.
+	 */
+	if (isbyte && rhs && rhs->op != NUMBER && !reduced(rhs))
+		bytepair(sum);
 	sum = rewrite(sum);
+	/*
+	 * The store below asserts the answer landed in A or HL.  When no
+	 * rule reduced the operator that assertion stored garbage - the
+	 * count of a shift, whatever a half-finished reduction left in
+	 * the register - and said nothing.  The else-if bitmap bug rode
+	 * exactly that silence one level up; this path gets the marker
+	 * it always owed.
+	 */
+	if (!sum || (isbyte ? sum->op != INA : sum->op != INHL)) {
+		out("; XXXXXX incomplete: compound rhs ");
+		if (sum)
+			dumpexpr(sum);
+		outc('\n');
+	}
 
 	/* store it back through the address that was waiting */
 	if (isbyte) {

@@ -1508,6 +1508,42 @@ struct rule rules[] = {
 		"$[\tld b,l\n\tld a,$L\n\tinc b\n"
 		"\tjr $$+4\n\tsla a\n\tdjnz $$-2\n$]", R_A),
 	/*
+	 * A byte VARIABLE shifted by a runtime count - the value already
+	 * reduced into A, the count into E, DE or HL.  The docompound
+	 * marker found these missing: "m[i++] >>= n" reduced its value
+	 * and its count and then had no rule to put them together.
+	 * Right shifts come in two kinds and the signed one must be
+	 * first, RF_SIGNL deciding: sra copies the sign bit back in
+	 * where srl feeds zero.
+	 */
+	R("<(A,K):b", LSHIFT, P_L, P_R, P_NONE, 0,
+		"$[\tld b,e\n\tinc b\n"
+		"\tjr $$+4\n\tsla a\n\tdjnz $$-2\n$]", R_A),
+	R("<(A,E):b", LSHIFT, P_L, P_R, P_NONE, 0,
+		"$[\tld b,e\n\tinc b\n"
+		"\tjr $$+4\n\tsla a\n\tdjnz $$-2\n$]", R_A),
+	R("<(A,H):b", LSHIFT, P_L, P_R, P_NONE, 0,
+		"$[\tld b,l\n\tinc b\n"
+		"\tjr $$+4\n\tsla a\n\tdjnz $$-2\n$]", R_A),
+	R(">(A,K):b", RSHIFT, P_L, P_R, P_NONE, RF_SIGNL,
+		"$[\tld b,e\n\tinc b\n"
+		"\tjr $$+4\n\tsra a\n\tdjnz $$-2\n$]", R_A),
+	R(">(A,E):b", RSHIFT, P_L, P_R, P_NONE, RF_SIGNL,
+		"$[\tld b,e\n\tinc b\n"
+		"\tjr $$+4\n\tsra a\n\tdjnz $$-2\n$]", R_A),
+	R(">(A,H):b", RSHIFT, P_L, P_R, P_NONE, RF_SIGNL,
+		"$[\tld b,l\n\tinc b\n"
+		"\tjr $$+4\n\tsra a\n\tdjnz $$-2\n$]", R_A),
+	R(">(A,K):b", RSHIFT, P_L, P_R, P_NONE, 0,
+		"$[\tld b,e\n\tinc b\n"
+		"\tjr $$+4\n\tsrl a\n\tdjnz $$-2\n$]", R_A),
+	R(">(A,E):b", RSHIFT, P_L, P_R, P_NONE, 0,
+		"$[\tld b,e\n\tinc b\n"
+		"\tjr $$+4\n\tsrl a\n\tdjnz $$-2\n$]", R_A),
+	R(">(A,H):b", RSHIFT, P_L, P_R, P_NONE, 0,
+		"$[\tld b,l\n\tinc b\n"
+		"\tjr $$+4\n\tsrl a\n\tdjnz $$-2\n$]", R_A),
+	/*
 	 * A signed right shift keeps the sign: sra copies bit 7 back into
 	 * itself where srl feeds in a zero.  The signed rule has to come
 	 * first, since the unsigned pattern matches either width.

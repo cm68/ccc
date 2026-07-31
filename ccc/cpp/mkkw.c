@@ -168,6 +168,18 @@ subtreesize(struct tnode *n)
 }
 
 /*
+ * Complete words ending in this subtree: the node's own terminal
+ * plus everything below and beside its child.
+ */
+int
+subterms(struct tnode *n)
+{
+	if (!n)
+		return 0;
+	return (n->token >= 0) + subterms(n->child) + subterms(n->sib);
+}
+
+/*
  * Emit a subtree, calculating skip distances
  * Returns number of bytes emitted
  */
@@ -182,7 +194,21 @@ emit(struct tnode *n)
 	if (!n)
 		return 0;
 
-	hassib = (n->sib != NULL);
+	/*
+	 * The skip byte is not only for siblings.  The matcher recovers
+	 * from a plain-literal mismatch by scanning to the first pattern
+	 * terminator and resuming with the string reset - which is only
+	 * sound if that terminator ends the whole entry.  A branching
+	 * subtree has terminators inside it, so a mismatch on its head
+	 * has to skip all of it at once or the recovery resumes in the
+	 * middle, reading a branch arm as a fresh entry.  auto/asm share
+	 * an 'a' that was emitted plain because nothing followed it, and
+	 * the identifier "sm" walked into the tail of "asm" and came
+	 * back a keyword.  With no sibling the skip just lands past the
+	 * subtree, on the next entry or the terminating zero.
+	 */
+	hassib = (n->sib != NULL) ||
+	    (n->token >= 0) + subterms(n->child) > 1;
 
 	/* emit character, with HI bit if has siblings */
 	if (hassib) {
