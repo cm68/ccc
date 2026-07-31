@@ -53,7 +53,7 @@ usage(char *complaint)
 int
 main(int argc, char **argv)
 {
-	char *s;
+	register char *s;
 
 	progname = *argv++;
 	argc--;

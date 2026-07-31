@@ -35,7 +35,8 @@ outc(char c)
 void
 outd(int n)
 {
-	char buf[12], *p = buf + 11;
+	char buf[12];
+	register char *p = buf + 11;
 	int neg = n < 0;
 	if (!neg) n = -n;
 	*p = 0;

@@ -256,7 +256,7 @@ usage(char *complaint)
 int
 main(int argc, char **argv)
 {
-    char *s;
+    register char *s;
 #ifdef DEBUG
     int i;
 #endif
