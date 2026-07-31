@@ -484,7 +484,7 @@ isBasicType(struct type *t)
  * Handles both elem shapes: full struct name entries (definitions)
  * and slim farg nodes (declarations, count == 1).
  */
-static struct type *
+struct type *
 fnArgType(struct type *t, unsigned char i)
 {
     if (t->count) {

@@ -229,6 +229,28 @@ mx-zc3: $(GENERATED)
 		-L$(ROOTDIR)/lib -lccc -lc -lu -lc
 	@$(ROOTDIR)/bin/wssize mxzc3/c0.mx
 
-.PHONY: all clean regen stage1 install clobber sizefile sizecheck sizecheck1 regression mx-zc3
+# The same build done by ccc itself.  tests/diffpass1.sh runs the two
+# c0.mx binaries against each other on identical lexeme streams, so
+# both have to exist and both have to be current; this target was a
+# sequence of commands typed by hand until a stale mxccc quietly
+# answered a question about a fix that had never been built into it.
+mx-ccc: $(GENERATED)
+	@mkdir -p mxccc
+	@set -e; cd mxccc ; export PATH=$(ROOTDIR)/bin:$$PATH ; \
+	for f in $(SOURCES); do \
+		b=$${f%.c}; \
+		printf "%-12s" "$$b: " ; \
+		if $(ROOTDIR)/bin/ccc -c -DCCC -i$(LIBSRCINC) \
+			-I$(P1DIR) -I$(LIBDIR) $(P1DIR)/$$f > $$b.log 2>&1 \
+			&& [ -f $$b.o ]; then \
+			echo ok; \
+		else echo FAIL; cat $$b.log; exit 1; fi \
+	done
+	cd mxccc && $(ROOTDIR)/bin/wsld -s -o c0.mx -Ttext=0x100 \
+		$(ROOTDIR)/lib/crt0.o $$(ls *.o 2>/dev/null) \
+		-L$(ROOTDIR)/lib -lccc -lc -lu -lc
+	@$(ROOTDIR)/bin/wssize mxccc/c0.mx
+
+.PHONY: all clean regen stage1 install clobber sizefile sizecheck sizecheck1 regression mx-zc3 mx-ccc
 
 # vim: tabstop=4 shiftwidth=4 noexpandtab:

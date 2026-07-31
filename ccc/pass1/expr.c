@@ -1032,12 +1032,71 @@ parsePrefix(void)
 }
 
 /*
+ * Convert an argument to the type the prototype declares for it.
+ *
+ * The argument list used to be handed to pass2 untouched, on the
+ * theory that pass2 did the conversions.  Pass2 never sees the
+ * prototype, so nothing did them, and an argument was pushed at
+ * whatever width it happened to have.  For int-to-int that costs
+ * nothing and hid the hole for a long time.  Crossing into a long
+ * is where it shows: unistd.h declares
+ *
+ *	long lseek(unsigned char fd, long offset, int whence);
+ *
+ * and lexRewind's lseek(lexFd, 0, SEEK_SET) pushed the 0 as two
+ * bytes.  The callee reads four, so its offset was the caller's
+ * whence pasted onto the constant and its own whence came from a
+ * slot nobody wrote - garbage, which fell through the switch to
+ * default, set EINVAL and returned -1 having seeked nowhere.  The
+ * return value is discarded there, so pass1 read its second pass
+ * from wherever the first had stopped: end of file.  It emitted an
+ * empty AST for every input and exited 0.
+ *
+ * Only widening is done here.  A narrower parameter is already
+ * right: everything is pushed in two-byte slots, the callee reads
+ * the low byte of one, and the machine is little-endian, so the
+ * byte it wants is the byte that is there.
+ */
+static struct expr *
+argcvt(struct expr *a, struct type *pt)
+{
+	struct expr *w;
+
+	if (!a || !pt || !a->type)
+		return a;
+
+	/* pointers, arrays, functions and aggregates keep their width */
+	if ((pt->flags & (TF_POINTER | TF_ARRAY | TF_FUNC | TF_AGGREGATE)) ||
+		(a->type->flags & (TF_POINTER | TF_ARRAY | TF_FUNC | TF_AGGREGATE)))
+		return a;
+
+	if (pt->size <= a->type->size)
+		return a;
+
+	/*
+	 * A constant is emitted at the width of its type, so widening it
+	 * is a relabel and costs no code.  Anything else has to be
+	 * extended, and which extension depends on the source: signed
+	 * sign-extends, unsigned pads with zeroes.
+	 */
+	if (a->flags & E_CONST) {
+		a->type = pt;
+		return a;
+	}
+
+	w = mkexpr((a->type->flags & TF_UNSIGNED) ? WIDEN : SEXT, a);
+	w->type = pt;
+	return w;
+}
+
+/*
  * Postfix operators on a parsed operand: function calls, array
  * subscripts, struct access, increment/decrement.
  */
 static struct expr *
 parsePostfix(struct expr *e)
 {
+	unsigned char argi;
 	unsigned char is_arrow, inc_op;
 	struct expr *e1, *e2, *e3, *e4;
 	struct type *t, *tp, *ft;
@@ -1150,34 +1209,37 @@ parsePostfix(struct expr *e)
             if (!e1->type)
                 e1->type = inttype;
 
-            // Get first parameter for type coercion
-            np = (ft->flags & TF_FUNC) ? ft->elem : 0;
-
-            /* Parse argument list - pass2 handles type conversions */
+            /*
+             * Parse the argument list, converting each argument to
+             * the type the prototype declares for it.  A function
+             * with no prototype, and the variadic tail past the
+             * declared parameters, get no type back and are passed
+             * as written.
+             */
+            argi = 0;
             e3 = NULL;
             if (cur.type != RPAR) {
-                e2 = parseExpr(OP_PRI_COMMA);
-                if (e2) {
-                    /* a struct cannot be passed - pass its address */
-                    if (isaggr(e2->type))
-                        gripe(ER_E_AG);
-                    e2->flags |= E_FUNARG;
-                    e1->right = e2;
-                    e2->up = e1;
-                    e3 = e2;
-                }
-                while (cur.type == COMMA) {
-                    gettoken();
+                for (;;) {
                     e2 = parseExpr(OP_PRI_COMMA);
                     if (e2) {
+                        /* a struct cannot be passed - pass its address */
                         if (isaggr(e2->type))
                             gripe(ER_E_AG);
+                        if (ft->flags & TF_FUNC)
+                            e2 = argcvt(e2, fnArgType(ft, argi));
                         e2->flags |= E_FUNARG;
                         if (e3) {
                             e3->next = e2;
+                        } else {
+                            e1->right = e2;
+                            e2->up = e1;
                         }
                         e3 = e2;
                     }
+                    argi++;
+                    if (cur.type != COMMA)
+                        break;
+                    gettoken();
                 }
             }
 
