@@ -232,9 +232,7 @@ emitprolog(void)
 	{
 		short off, rest;
 		/* Set up frame pointer */
-		out("\tpush\tiy\n");
-		out("\tld\tiy,0\n");
-		out("\tadd\tiy,sp\n");
+		out("\tpush\tiy\n\tld\tiy,0\n\tadd\tiy,sp\n");
 		/*
 		 * Allocate the scalar area, push callee-saves just below it
 		 * (so they stay within the 7-bit (iy+d) window), then
@@ -245,8 +243,7 @@ emitprolog(void)
 			out("\tld\thl,-");
 			outd(savebase);
 			outc('\n');
-			out("\tadd\thl,sp\n");
-			out("\tld\tsp,hl\n");
+			out("\tadd\thl,sp\n\tld\tsp,hl\n");
 		}
 		off = -savebase;
 		if (regsused & USES_BC) {
@@ -271,8 +268,7 @@ emitprolog(void)
 			out("\tld\thl,-");
 			outd(rest);
 			outc('\n');
-			out("\tadd\thl,sp\n");
-			out("\tld\tsp,hl\n");
+			out("\tadd\thl,sp\n\tld\tsp,hl\n");
 		}
 	}
 
@@ -338,8 +334,7 @@ emitepilog(void)
 		out(")\n");
 	}
 	/* Restore frame pointer */
-	out("\tld\tsp,iy\n");
-	out("\tpop\tiy\n");
+	out("\tld\tsp,iy\n\tpop\tiy\n");
 
 	out("\tret\n");
 }

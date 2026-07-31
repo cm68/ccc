@@ -1390,10 +1390,10 @@ step(Expr *e)
 		/* Long negation: -HLDE (two's complement) */
 		if (e->op == NEG && e->left->op == INHL) {
 			/* Negate DE, then HL with borrow */
-			out("\txor a\n\tsub e\n\tld e,a\n");
-			out("\tld a,0\n\tsbc a,d\n\tld d,a\n");
-			out("\tld a,0\n\tsbc a,l\n\tld l,a\n");
-			out("\tld a,0\n\tsbc a,h\n\tld h,a\n");
+			out("\txor a\n\tsub e\n\tld e,a\n"
+			    "\tld a,0\n\tsbc a,d\n\tld d,a\n"
+			    "\tld a,0\n\tsbc a,l\n\tld l,a\n"
+			    "\tld a,0\n\tsbc a,h\n\tld h,a\n");
 			return donehl(e, CODE);
 		}
 		/*
@@ -1858,8 +1858,7 @@ docompound(Expr *e)
 		n = mkcode(w, R_A);
 		n->op = INA;
 	} else {
-		out("\tpop de\n\tex de,hl\n");
-		out("\tld (hl),e\n\tinc hl\n\tld (hl),d\n\tex de,hl\n");
+		out("\tpop de\n\tex de,hl\n\tld (hl),e\n\tinc hl\n\tld (hl),d\n\tex de,hl\n");
 		n = mkcode(w, R_HL);
 		n->op = INHL;
 	}
@@ -2706,8 +2705,7 @@ rewrite1(Expr *e)
 			/* Evaluate right operand first (result in HLDE) */
 			e->right = rewrite1(e->right);
 			/* Push right operand: low word first, then high */
-			out("\tpush de\n");
-			out("\tpush hl\n");
+			out("\tpush de\n\tpush hl\n");
 			/* Evaluate left operand (result in HLDE) */
 			e->left = rewrite1(e->left);
 			/* Call helper */
@@ -2783,8 +2781,7 @@ rewrite1(Expr *e)
 		/* Evaluate right subtree (result in HL) */
 		e->right = rewrite1(e->right);
 		/* Pop left result, exchange so left in HL, right in DE */
-		out("\tpop de\n");
-		out("\tex de,hl\n");
+		out("\tpop de\n\tex de,hl\n");
 		/*
 		 * Now left in HL, right in DE - convert children to register
 		 * nodes, each keeping the width it had.  Taking the parent's
