@@ -684,21 +684,363 @@ foldTree(struct expr *e)
  *
  * parsePrefix - terminals, prefix/unary operators, casts, sizeof.
  */
+/*
+ * The prefix arms, one worker apiece.  parsePrefix was seventeen
+ * hundred instructions with eleven locals sharing one frame and one
+ * register allocation; this compiler does no lifetime analysis, by
+ * design, so locals that never overlap still fought for the same two
+ * registers.  A function boundary is the lifetime analysis: each
+ * arm's locals get the registers to themselves, and each frame holds
+ * one arm's worth of spill instead of the union of all of them.
+ */
+
+/* string literal: refer to the strN emitted in phase 1 */
+static struct expr *
+pfxString(void)
+{
+    char namebuf[32];
+    struct name *np;
+    struct expr *e;
+
+    fmtstr(namebuf, "str%d", globalStrCtr++);
+    np = (struct name *)galloc(sizeof(struct name));
+    strncpy(np->name, namebuf, 15);
+    np->name[15] = 0;
+    np->type = getType(TF_POINTER, chartype, 0);
+    np->kind = kvar;
+    np->level = 1;
+    e = mkexprI(STRING, 0, np->type, 0, E_CONST);
+    e->var = (struct var *)np;
+    gettoken();
+    return e;
+}
+
+/* Symbol reference - SYM = address
+ * For variables: wrap in DEREF to get value
+ * For functions: return address (decay to function pointer)
+ */
+static struct expr *
+pfxSym(void)
+{
+    struct expr *e, *e1;
+    struct type *tp;
+    struct name *np;
+    unsigned int uofs;
+    char *symname;
+
+    /* Save symbol name before gettoken() overwrites cur.v.name */
+    symname = strdup(cur.v.name);
+
+    np = findName(symname, 0);
+
+    /* Peek at next token to enable implicit function declarations */
+    gettoken();
+
+    if (!np) {
+        /* Undefined symbol */
+        /* K&R extension: if followed by '(', implicitly declare as
+         * function returning int */
+        if (cur.type == LPAR) {
+            /* Create implicit function declaration: int name() */
+            tp = (struct type *)permalloc(sizeof(struct type));
+            tp->flags = TF_FUNC;
+            tp->sub = inttype;  /* Return type: int */
+            tp->elem = NULL;    /* No parameter info */
+
+            np = (struct name *)galloc(sizeof(struct name));
+            /* Initialize in struct field order */
+            strncpy(np->name, symname, 15);
+            np->name[15] = 0;
+            np->type = tp;
+            /* chain set by addName */
+            np->kind = kvar;
+            np->level = 1;  /* Global scope */
+            /* is_tag = 0 from calloc */
+            np->sclass = SC_EXTERN;
+
+            np = addName(np);
+
+#ifdef DEBUG
+            if (VERBOSE(V_SYM)) {
+                fdprintf(2, "Implicit declaration: int %s()\n", symname);
+            }
+#endif
+        } else {
+            /* Not a function call - report error */
+#ifdef DEBUG
+            fdprintf(2, "bad op (not fn): %d sym=%s\n", cur.type, symname);
+#endif
+            gripe(ER_E_UO);
+            free(symname);
+            return mkexprI(CONST, 0, inttype, 0, 0);
+        }
+    }
+
+    if (np->kind == kelem) {
+        /* Enum constant: treat as integer constant.
+         * uofs intermediate: zc3 miscompiles the direct
+         * uchar -> ulong argument promotion (clobbers the
+         * loaded byte), yielding 0 for every enum. */
+        uofs = np->w.m.offset;
+        e = mkexprI(CONST, 0, inttype, uofs, E_CONST);
+    } else {
+        e1 = mkexprI(SYM, 0, np->type, 0, 0);
+        e1->var = (struct var *)np;
+
+        // Functions and arrays decay to pointers (addresses)
+        // Only wrap non-functions in DEREF to get their value
+        if (np->type->flags & TF_FUNC)
+            e = e1;  // Function: return address
+        else if (np->type->flags & TF_ARRAY)
+            e = e1;  // Array: decays to pointer
+        else
+            e = mkexprI(DEREF, e1, np->type, 0, 0);  // Variable: wrap in DEREF
+    }
+    free(symname);
+    /* Note: gettoken() already called above for lookahead */
+    return e;
+}
+
+/* parenthesized expression or type cast, the LPAR consumed */
+static struct expr *
+pfxCast(void)
+{
+    struct expr *e, *e1;
+    struct type *tp;
+
+    /* Check if this is a type cast: (type)expr */
+    if (isCastStart()) {
+        /* Parse the type name */
+        tp = parseTypeName();
+        expect(RPAR, ER_E_SP);
+
+        /* Parse the expression being cast */
+        /* Cast has unary precedence */
+        e1 = parseExpr(OP_PRI_MULT - 1);
+
+        /*
+         * A cast that only renames the type can change it in
+         * place, and most do.  One that makes the value narrower
+         * cannot: the value is somewhere, and where its low half
+         * sits depends on how wide it was.  A long lives in HL:DE
+         * with the low word in DE, so "(int)f()" that just
+         * relabelled the call as an int left pass2 reading HL -
+         * the high word - and there was nothing left in the tree
+         * to say otherwise.
+         *
+         * NARROW says it explicitly.  It is unary and has been in
+         * the opcode table and the pretty-printer all along; only
+         * nobody emitted it.
+         */
+        if (e1) {
+            int plain = e1->type && tp &&
+                !(tp->flags & (TF_POINTER | TF_ARRAY | TF_FUNC |
+                               TF_AGGREGATE)) &&
+                !(e1->type->flags & (TF_POINTER | TF_ARRAY | TF_FUNC |
+                                     TF_AGGREGATE)) &&
+                !(e1->flags & E_CONST);
+
+            if (plain && tp->size < e1->type->size) {
+                e = mkexpr(NARROW, e1);
+                e->type = tp;
+            } else if (plain && tp->size > e1->type->size) {
+                /*
+                 * And the other direction, which is the same
+                 * mistake read the other way: relabelling a byte
+                 * as a long does not put anything in the three
+                 * bytes above it.  Which of the two conversions it
+                 * is depends on the *source*: a signed value
+                 * sign-extends and an unsigned one zero-extends,
+                 * and the instructions differ.
+                 */
+                e = mkexpr((e1->type->flags & TF_UNSIGNED) ?
+                    WIDEN : SEXT, e1);
+                e->type = tp;
+            } else {
+                e1->type = tp;
+                e = e1;
+            }
+        } else {
+            e = mkexprI(CONST, 0, tp, 0, 0);
+        }
+    } else {
+        /*
+         * Parenthesized expression: (expr)
+         * parse inner expression with lowest precedence
+         */
+        e = parseExpr(0);
+        expect(RPAR, ER_E_SP);
+    }
+    return e;
+}
+
+/* unary minus, complement, logical not - the operator still in cur */
+static struct expr *
+pfxUnary(void)
+{
+    struct expr *e, *e1;
+    unsigned char uop;
+    unsigned long uval;
+
+    /*
+     * The lexeme and the AST node are not the same thing: unary
+     * minus becomes NEG, and "~" has to become NOT the same way.
+     * Leaving it as the TWIDDLE lexeme meant pass2 never saw an
+     * operator it recognised, so "~x" reduced to nothing at all -
+     * no code, at either width, for the life of the compiler.
+     */
+    uop = (cur.type == MINUS) ? NEG :
+          (cur.type == TWIDDLE) ? NOT : cur.type;
+    gettoken();
+    e1 = parseExpr(OP_PRI_MULT - 1);
+    if (!e1)
+        return 0;
+    /* Fold unary ops on constants */
+    if (e1->flags & E_CONST) {
+        uval = e1->v;
+        if (uop == NEG) uval = -uval;
+        else if (uop == NOT) uval = ~uval;
+        else if (uop == BANG) uval = !uval;
+        e1->v = uval;
+        return e1;
+    }
+    e = mkexpr(uop, e1);
+    /*
+     * Negation and complement give back what they were handed;
+     * "!" gives an int whatever it was applied to.  Taking the
+     * operand's type made "!lv" a long, so "!lv != 0" looked
+     * like 32-bit work and went looking for a helper to
+     * compare a truth value nothing had widened.
+     */
+    e->type = (uop == BANG) ? inttype : e1->type;
+    /*
+     * And these promote as the binary operators do: "-c" on a
+     * char is the negation of an int, not of a byte.  Taking
+     * the operand's width made it a byte negation widened
+     * afterwards, so "-(unsigned char)5" came out as 251.
+     */
+    if ((uop == NEG || uop == NOT) && e->type &&
+        e->type->size > 0 && e->type->size < inttype->size &&
+        !(e->type->flags & (TF_POINTER | TF_ARRAY)))
+        e->type = inttype;
+    return e;
+}
+
+/* unary dereference, the STAR consumed */
+static struct expr *
+pfxStar(void)
+{
+    struct expr *e, *e1;
+
+    e1 = parseExpr(OP_PRI_MULT - 1);
+    if (!e1)
+        return 0;
+    /*
+     * Dereferencing a pointer to a function is a no-op: what it
+     * yields is the function, and what you can do with that is
+     * call it, which needs the address the pointer already holds.
+     * Wrapping it in a load meant "(*fp)()" tried to fetch
+     * through the pointer and call whatever it found.
+     */
+    if (e1->type && (e1->type->flags & TF_POINTER) &&
+        e1->type->sub && (e1->type->sub->flags & TF_FUNC))
+        return e1;
+    e = mkexpr(DEREF, e1);
+    if ((e1->type->flags & TF_POINTER) && e1->type->sub)
+        e->type = e1->type->sub;
+    else
+        e->type = e1->type;
+    return e;
+}
+
+/* address-of, the AND consumed */
+static struct expr *
+pfxAddr(void)
+{
+    struct expr *e, *e1;
+
+    e = parseExpr(OP_PRI_MULT - 1);
+    if (!e)
+        return 0;
+    /*
+     * Mark variable as address-taken (can't use register).
+     *
+     * Phase 1 has already done this, in skipExpr, and that is the
+     * one that counts - by the time this runs the registers have
+     * been handed out.  It is kept because the flag is also read
+     * for the parameters, and it complains about nothing: taking
+     * the address of a register variable is refused in phase 1,
+     * which still has the right line number for it.
+     */
+    if (e->op == DEREF && e->left->op == SYM)
+        ((struct name *)e->left->var)->w.r.addr_taken = 1;
+    /* Optimize: &(DEREF x) = x, since SYM already gives address */
+    if (e->op == DEREF) {
+        e1 = e;
+        e = e->left;
+        if (e->op == SYM)
+            e->type = getType(TF_POINTER, e->type, 0);
+        e1->left = NULL;
+        freeNode(e1);
+    } else if (e->type->flags & TF_ARRAY) {
+        e->type = getType(TF_POINTER, e->type, 0);
+    } else {
+        e1 = mkexpr(AND, e);
+        e1->type = getType(TF_POINTER, e->type, 0);
+        e = e1;
+    }
+    return e;
+}
+
+/* sizeof(type), sizeof(expr), or sizeof expr - the keyword consumed */
+static struct expr *
+pfxSizeof(void)
+{
+    struct expr *e1;
+    struct type *t;
+
+    if (cur.type == LPAR) {
+        gettoken();  /* consume '(' */
+        if (isCastStart()) {
+            /* sizeof(type) */
+            t = parseTypeName();
+            expect(RPAR, ER_E_SP);
+        } else {
+            /* sizeof(expr) */
+            e1 = parseExpr(0);
+            t = e1 ? e1->type : (struct type *)0;
+            FreeExpr(e1);
+            expect(RPAR, ER_E_SP);
+        }
+    } else {
+        /* sizeof expr (no parens) */
+        e1 = parseExpr(OP_PRI_MULT - 1);
+        t = e1 ? e1->type : (struct type *)0;
+        FreeExpr(e1);
+    }
+    /*
+     * typesize, not t->size: the type node keeps its size in a
+     * byte, so an array of 256 or more records zero.  "unsigned
+     * char buf[512]" answered 0, and pass1's own
+     * read(fd, lexBuf, sizeof lexBuf) asked the kernel for no
+     * bytes and took the zero back for end of file.
+     */
+#ifdef DEBUG
+    if (!t) fdprintf(2, "bad op (sizeof): no type\n");
+#endif
+    if (!t) gripe(ER_E_UO);
+    return mkexprI(CONST, 0, inttype, t ? typesize(t) : 0, E_CONST);
+}
+
 static struct expr *
 parsePrefix(void)
 {
-	unsigned char uop, inc_op;
-	struct expr *e = 0;
-	struct expr *e1;
-	struct type *t, *tp;
-	struct name *np;
-	unsigned int uofs;
-	char namebuf[32];
-	char *symname;
-	unsigned long uval;
-	long sval;
+    unsigned char inc_op;
+    struct expr *e = 0;
+    struct type *t;
+    long sval;
 
-	switch (cur.type) {   // prefix
+    switch (cur.type) {   // prefix
 
     case LNUMBER:
         /* the source said L, so it is a long however small it is */
@@ -726,311 +1068,37 @@ parsePrefix(void)
         break;
 
     case STRING:
-        /* Phase 2: create expression referencing string emitted in phase 1 */
-        fmtstr(namebuf, "str%d", globalStrCtr++);
-        np = (struct name *)galloc(sizeof(struct name));
-        strncpy(np->name, namebuf, 15);
-        np->name[15] = 0;
-        np->type = getType(TF_POINTER, chartype, 0);
-        np->kind = kvar;
-        np->level = 1;
-        e = mkexprI(STRING, 0, np->type, 0, E_CONST);
-        e->var = (struct var *)np;
-        gettoken();
+        e = pfxString();
         break;
 
     case SYM:
-        /* Symbol reference - SYM = address
-         * For variables: wrap in DEREF to get value
-         * For functions: return address (decay to function pointer)
-         */
-        /* Save symbol name before gettoken() overwrites cur.v.name */
-        symname = strdup(cur.v.name);
-
-        np = findName(symname, 0);
-
-        /* Peek at next token to enable implicit function declarations */
-        gettoken();
-
-        if (!np) {
-            /* Undefined symbol */
-            /* K&R extension: if followed by '(', implicitly declare as
-             * function returning int */
-            if (cur.type == LPAR) {
-                /* Create implicit function declaration: int name() */
-                tp = (struct type *)permalloc(sizeof(struct type));
-                tp->flags = TF_FUNC;
-                tp->sub = inttype;  /* Return type: int */
-                tp->elem = NULL;    /* No parameter info */
-
-                np = (struct name *)galloc(sizeof(struct name));
-                /* Initialize in struct field order */
-                strncpy(np->name, symname, 15);
-                np->name[15] = 0;
-                np->type = tp;
-                /* chain set by addName */
-                np->kind = kvar;
-                np->level = 1;  /* Global scope */
-                /* is_tag = 0 from calloc */
-                np->sclass = SC_EXTERN;
-
-                np = addName(np);
-
-#ifdef DEBUG
-                if (VERBOSE(V_SYM)) {
-                    fdprintf(2, "Implicit declaration: int %s()\n", symname);
-                }
-#endif
-            } else {
-                /* Not a function call - report error */
-#ifdef DEBUG
-                fdprintf(2, "bad op (not fn): %d sym=%s\n", cur.type, symname);
-#endif
-                gripe(ER_E_UO);
-                e = mkexprI(CONST, 0, inttype, 0, 0);
-                free(symname);
-                break;
-            }
-        }
-
-        if (np->kind == kelem) {
-            /* Enum constant: treat as integer constant.
-             * uofs intermediate: zc3 miscompiles the direct
-             * uchar -> ulong argument promotion (clobbers the
-             * loaded byte), yielding 0 for every enum. */
-            uofs = np->w.m.offset;
-            e = mkexprI(CONST, 0, inttype, uofs, E_CONST);
-        } else {
-            e1 = mkexprI(SYM, 0, np->type, 0, 0);
-            e1->var = (struct var *)np;
-
-            // Functions and arrays decay to pointers (addresses)
-            // Only wrap non-functions in DEREF to get their value
-            if (np->type->flags & TF_FUNC)
-                e = e1;  // Function: return address
-            else if (np->type->flags & TF_ARRAY)
-                e = e1;  // Array: decays to pointer
-            else
-                e = mkexprI(DEREF, e1, np->type, 0, 0);  // Variable: wrap in DEREF
-        }
-        free(symname);
-        /* Note: gettoken() already called above for lookahead */
+        e = pfxSym();
         break;
 
-    /* unary operators */
-    case LPAR:      // parenthesized expression or type cast
+    case LPAR:
         gettoken();
-
-        /* Check if this is a type cast: (type)expr */
-        if (isCastStart()) {
-            /* Parse the type name */
-            tp = parseTypeName();
-            expect(RPAR, ER_E_SP);
-
-            /* Parse the expression being cast */
-            /* Cast has unary precedence */
-            e1 = parseExpr(OP_PRI_MULT - 1);
-
-            /*
-             * A cast that only renames the type can change it in
-             * place, and most do.  One that makes the value narrower
-             * cannot: the value is somewhere, and where its low half
-             * sits depends on how wide it was.  A long lives in HL:DE
-             * with the low word in DE, so "(int)f()" that just
-             * relabelled the call as an int left pass2 reading HL -
-             * the high word - and there was nothing left in the tree
-             * to say otherwise.
-             *
-             * NARROW says it explicitly.  It is unary and has been in
-             * the opcode table and the pretty-printer all along; only
-             * nobody emitted it.
-             */
-            if (e1) {
-                int plain = e1->type && tp &&
-                    !(tp->flags & (TF_POINTER | TF_ARRAY | TF_FUNC |
-                                   TF_AGGREGATE)) &&
-                    !(e1->type->flags & (TF_POINTER | TF_ARRAY | TF_FUNC |
-                                         TF_AGGREGATE)) &&
-                    !(e1->flags & E_CONST);
-
-                if (plain && tp->size < e1->type->size) {
-                    e = mkexpr(NARROW, e1);
-                    e->type = tp;
-                } else if (plain && tp->size > e1->type->size) {
-                    /*
-                     * And the other direction, which is the same
-                     * mistake read the other way: relabelling a byte
-                     * as a long does not put anything in the three
-                     * bytes above it.
-                     *
-                     *	val |= ((unsigned long)readByte()) << (i * 8);
-                     *
-                     * is how pass1 reads a four byte number out of the
-                     * lexeme stream, so every constant it read came
-                     * back with its low byte right and the rest
-                     * whatever had been in the register - and an array
-                     * dimension of 8 became 2.
-                     *
-                     * Which of the two conversions it is depends on
-                     * the *source*: a signed value sign-extends and an
-                     * unsigned one zero-extends, and the instructions
-                     * differ.
-                     */
-                    e = mkexpr((e1->type->flags & TF_UNSIGNED) ?
-                        WIDEN : SEXT, e1);
-                    e->type = tp;
-                } else {
-                    e1->type = tp;
-                    e = e1;
-                }
-            } else {
-                e = mkexprI(CONST, 0, tp, 0, 0);
-            }
-        } else {
-            /*
-             * Parenthesized expression: (expr)
-             * parse inner expression with lowest precedence
-             */
-            e = parseExpr(0);
-            expect(RPAR, ER_E_SP);
-        }
+        e = pfxCast();
         break;
 
-    case MINUS:     // unary minus
-    case TWIDDLE:   // bitwise not
-    case BANG:      // logical not
-        /*
-         * The lexeme and the AST node are not the same thing: unary
-         * minus becomes NEG, and "~" has to become NOT the same way.
-         * Leaving it as the TWIDDLE lexeme meant pass2 never saw an
-         * operator it recognised, so "~x" reduced to nothing at all -
-         * no code, at either width, for the life of the compiler.
-         */
-        uop = (cur.type == MINUS) ? NEG :
-              (cur.type == TWIDDLE) ? NOT : cur.type;
-        gettoken();
-        e1 = parseExpr(OP_PRI_MULT - 1);
-        if (!e1) break;
-        /* Fold unary ops on constants */
-        if (e1->flags & E_CONST) {
-            uval = e1->v;
-            if (uop == NEG) uval = -uval;
-            else if (uop == NOT) uval = ~uval;
-            else if (uop == BANG) uval = !uval;
-            e1->v = uval;
-            e = e1;
-        } else {
-            e = mkexpr(uop, e1);
-            /*
-             * Negation and complement give back what they were handed;
-             * "!" gives an int whatever it was applied to.  Taking the
-             * operand's type made "!lv" a long, so "!lv != 0" looked
-             * like 32-bit work and went looking for a helper to
-             * compare a truth value nothing had widened.
-             */
-            e->type = (uop == BANG) ? inttype : e1->type;
-            /*
-             * And these promote as the binary operators do: "-c" on a
-             * char is the negation of an int, not of a byte.  Taking
-             * the operand's width made it a byte negation widened
-             * afterwards, so "-(unsigned char)5" came out as 251.
-             */
-            if ((uop == NEG || uop == NOT) && e->type &&
-                e->type->size > 0 && e->type->size < inttype->size &&
-                !(e->type->flags & (TF_POINTER | TF_ARRAY)))
-                e->type = inttype;
-        }
+    case MINUS:
+    case TWIDDLE:
+    case BANG:
+        e = pfxUnary();
         break;
 
-    case STAR:      // dereference (unary)
+    case STAR:
         gettoken();
-        e1 = parseExpr(OP_PRI_MULT - 1);
-        if (!e1) break;
-        /*
-         * Dereferencing a pointer to a function is a no-op: what it
-         * yields is the function, and what you can do with that is
-         * call it, which needs the address the pointer already holds.
-         * Wrapping it in a load meant "(*fp)()" tried to fetch
-         * through the pointer and call whatever it found.
-         */
-        if (e1->type && (e1->type->flags & TF_POINTER) &&
-            e1->type->sub && (e1->type->sub->flags & TF_FUNC)) {
-            e = e1;
-            break;
-        }
-        e = mkexpr(DEREF, e1);
-        if ((e1->type->flags & TF_POINTER) && e1->type->sub)
-            e->type = e1->type->sub;
-        else
-            e->type = e1->type;
+        e = pfxStar();
         break;
 
-    case AND:       // address-of (unary)
+    case AND:
         gettoken();
-        e = parseExpr(OP_PRI_MULT - 1);
-        if (!e) break;
-        /*
-         * Mark variable as address-taken (can't use register).
-         *
-         * Phase 1 has already done this, in skipExpr, and that is the
-         * one that counts - by the time this runs the registers have
-         * been handed out.  It is kept because the flag is also read
-         * for the parameters, and it complains about nothing: taking
-         * the address of a register variable is refused in phase 1,
-         * which still has the right line number for it.
-         */
-        if (e->op == DEREF && e->left->op == SYM)
-            ((struct name *)e->left->var)->w.r.addr_taken = 1;
-        /* Optimize: &(DEREF x) = x, since SYM already gives address */
-        if (e->op == DEREF) {
-            e1 = e;
-            e = e->left;
-            if (e->op == SYM)
-                e->type = getType(TF_POINTER, e->type, 0);
-            e1->left = NULL;
-            freeNode(e1);
-        } else if (e->type->flags & TF_ARRAY) {
-            e->type = getType(TF_POINTER, e->type, 0);
-        } else {
-            e1 = mkexpr(AND, e);
-            e1->type = getType(TF_POINTER, e->type, 0);
-            e = e1;
-        }
+        e = pfxAddr();
         break;
 
-    case SIZEOF:    /* sizeof(type), sizeof(expr), or sizeof expr */
+    case SIZEOF:
         gettoken();
-        if (cur.type == LPAR) {
-            gettoken();  /* consume '(' */
-            if (isCastStart()) {
-                /* sizeof(type) */
-                t = parseTypeName();
-                expect(RPAR, ER_E_SP);
-            } else {
-                /* sizeof(expr) */
-                e1 = parseExpr(0);
-                t = e1 ? e1->type : (struct type *)0;
-                FreeExpr(e1);
-                expect(RPAR, ER_E_SP);
-            }
-        } else {
-            /* sizeof expr (no parens) */
-            e1 = parseExpr(OP_PRI_MULT - 1);
-            t = e1 ? e1->type : (struct type *)0;
-            FreeExpr(e1);
-        }
-        /*
-         * typesize, not t->size: the type node keeps its size in a
-         * byte, so an array of 256 or more records zero.  "unsigned
-         * char buf[512]" answered 0, and pass1's own
-         * read(fd, lexBuf, sizeof lexBuf) asked the kernel for no
-         * bytes and took the zero back for end of file.
-         */
-        e = mkexprI(CONST, 0, inttype, t ? typesize(t) : 0, E_CONST);
-#ifdef DEBUG
-        if (!t) fdprintf(2, "bad op (sizeof): no type\n");
-#endif
-        if (!t) gripe(ER_E_UO);
+        e = pfxSizeof();
         break;
 
     case INCR:      // prefix increment: ++i
