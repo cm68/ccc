@@ -72,6 +72,27 @@ streamInitVal(struct type *type)
             }
         }
         gettoken();  /* consume } */
+        /*
+         * Pad out the rest of the struct.  An initializer that names
+         * fewer members than the struct has still occupies all of it,
+         * and the next element of an array of these begins at sizeof
+         * - not where the initializers happened to stop.
+         *
+         * Without this, pass1's own basicnames[] - seven entries of
+         * "{ name, type, chain }" out of a struct with a dozen fields
+         * - sat 20 bytes apart in memory while every subscript was
+         * computed against sizeof, which is 37.  basicnames[1] read
+         * the middle of basicnames[0]'s name and came back null, so
+         * the c0 that ccc built could not name a basic type: "int"
+         * and "long" and "unsigned char" as parameters all answered
+         * "fn array".  Index 0 worked, having no stride to get wrong.
+         */
+        if (is_struct && type) {
+            while (member_offset < (int)type->size) {
+                asmDb(0);
+                member_offset++;
+            }
+        }
     } else if (cur.type == STRING) {
         /* String literal - check if initializing char array inline */
         str = cur.v.str;
