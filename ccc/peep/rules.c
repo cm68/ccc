@@ -331,8 +331,9 @@ void
 report(void)
 {
 	fprintf(stderr, "peep: frame %ld  incsp %ld  pushpop %ld  bounce %ld"
-		"  and0 %ld  invjp %ld = %ld bytes\n", n_frame, n_incsp,
-		n_pushpop, n_bounce, n_and0, n_invjp, saved);
+		"  and0 %ld  invjp %ld  pool %ld = %ld bytes\n", n_frame,
+		n_incsp, n_pushpop, n_bounce, n_and0, n_invjp, poolmerged,
+		saved);
 }
 
 /* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

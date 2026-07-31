@@ -191,10 +191,30 @@ main(int argc, char **argv)
 		exit(1);
 	}
 
+	/*
+	 * Before the window starts: find the literal blocks that spell
+	 * the same bytes and elect survivors.  The window then drops the
+	 * losers and rewrites every reference on the way out.
+	 */
+	poolscan(in);
+
 	fill();
 	while (nwin > 0) {
+		if (poolskip(win[0].key)) {
+			/* a merged literal: the label and its data go */
+			delline(0, 1);
+			fill();
+			while (nwin > 0 && pooldata(win[0].text)) {
+				delline(0, 1);
+				fill();
+			}
+			continue;
+		}
 		if (!applyrules()) {
-			fputs(win[0].text, out);
+			char mapped[LLEN + 32];
+
+			poolmap(win[0].text, mapped, sizeof(mapped));
+			fputs(mapped, out);
 			delline(0, 1);
 		}
 		fill();

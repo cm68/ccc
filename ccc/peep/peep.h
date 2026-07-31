@@ -13,7 +13,14 @@
  */
 
 #define WINDOW	16			/* lines held for matching */
-#define LLEN	128			/* longest line handled */
+/*
+ * Long enough for the longest line c1 emits, which is a .db carrying
+ * a whole rule template - 274 bytes in today's rules.s.  A line
+ * fgets splits in two is poison twice over: the pool's skip loop
+ * orphans the tail of a merged literal, and a rule could match
+ * across the seam.
+ */
+#define LLEN	512			/* longest line handled */
 
 /*
  * A window line.  The original text is kept so that lines nothing
@@ -76,5 +83,13 @@ extern int memok(char *p);
 /* rules.c */
 extern int applyrules(void);
 extern void report(void);
+
+/* pool.c */
+#include <stdio.h>
+extern void poolscan(FILE *f);
+extern int poolskip(char *line);
+extern int pooldata(char *line);
+extern void poolmap(char *line, char *out, int outsz);
+extern long poolmerged;
 
 /* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

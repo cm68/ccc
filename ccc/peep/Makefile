@@ -40,7 +40,7 @@ ZCC_ASMEXT = s
 endif
 SIZEDIR = sizecheck-$(ZCC)
 
-SOURCES = peep.c regs.c rules.c
+SOURCES = peep.c regs.c rules.c pool.c
 OBJECTS = $(SOURCES:.c=.o)
 HEADERS = peep.h
 
