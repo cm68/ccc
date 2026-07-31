@@ -253,6 +253,42 @@ three.
 
 ## Open, roughly by how much they matter
 
+* **A scalar parameter breaks the c0 that ccc builds.**  The pass1
+  differential (`tests/diffpass1.sh`) is blocked on this and nothing
+  else that is known.
+
+      int f(char *);   ok        int f(int);            fn array
+      int f(void *);   ok        int f(short);          fn array
+      int f(char);     ok        int f(long);           fn array
+      int f(void);     ok        int f(unsigned char);  fn array
+
+  `getbasetype` returns NULL for the parameter (marker at
+  declare.c:436), which means `parsebasic` did.  It reaches its VOID
+  or INT case and its `goto done` arrives, and `done` computes
+  `basicnames[unsignedness + length + misc].type`.
+
+  What has been ruled out, each by a probe that passes:
+
+    - the six-case sparse switch, with parsebasic's exact values
+    - indexing an array of 37-byte structs by a variable
+    - the same indexed by a sum of three unsigned chars
+    - splitting the index into three separate statements
+    - the multiply, the static tables, and their relocations
+    - `&arr[n]` initializers, which were a real bug and are fixed
+
+  The odd part, and the place to start: `char` (index 0) and `void`
+  (index 6) work while `int` (1), `long` (2) and `unsigned char` (3)
+  do not, through what is textually the same line.
+
+  Do not instrument with `write()`.  Three separate traces moved the
+  failure - adding one changed the message from "fn array" to "bad
+  type decl", and another turned a passing case into a stack
+  overflow.  The simulator's watchpoints do not perturb it; the
+  obstacle there is that pass1's statics are not in the symbol table,
+  so the address has to be worked out from a global that points into
+  the table (`_names` holds `&basicnames[6]`).
+
+
 The differential test passes.  `sh tests/diffcpp.sh` builds cpp with
 zc3 and with ccc, runs both over cpp's own sixteen sources under the
 simulator, and byte-compares the lexeme streams: all sixteen are
