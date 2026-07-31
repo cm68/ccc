@@ -510,7 +510,25 @@ foldNode(struct expr *e)
             break;
         }
         if (result) {
+            /*
+             * The node being dropped may be one of a chain.  next is
+             * how an argument list is threaded, and E_FUNARG is what
+             * says a node is on one, so both have to come across to
+             * whatever replaces it:
+             *
+             *	strncpy(n->name, name, 15);
+             *
+             * n->name is the first member, so its offset is zero,
+             * "base + 0" folds to base - and the arguments after it
+             * went out with the node that had been holding them.  The
+             * call was emitted with one argument and the other two
+             * were never pushed, so strncpy read its length from
+             * whatever was on the stack and wrote that many bytes.
+             */
+            result->next = e->next;
+            result->flags |= (e->flags & E_FUNARG);
             e->left = NULL;
+            e->next = NULL;
             FreeExpr(right);
             e->right = NULL;
             freeNode(e);
@@ -569,15 +587,17 @@ foldNode(struct expr *e)
         return e;
     }
 
-    /* Reuse left node as constant */
+    /* Reuse left node as constant - carrying the chain, as above */
     left->op = CONST;
     left->v = lv;
     left->type = rel ? inttype : e->type;
-    left->flags = E_CONST;
+    left->flags = E_CONST | (e->flags & E_FUNARG);
+    left->next = e->next;
     left->left = NULL;
     left->right = NULL;
     FreeExpr(right);
     e->left = NULL;
+    e->next = NULL;
     e->right = NULL;
     freeNode(e);
     return left;
