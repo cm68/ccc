@@ -101,6 +101,15 @@ label(Expr *e)
 	label(e->left);
 	label(e->right);
 
+	/*
+	 * What the children cost is wanted by most of what follows, and
+	 * every case used to fetch it again through the pointer it had
+	 * just finished testing.  Once, here.  A child that is not there
+	 * costs one: the operand still has to be loaded from somewhere.
+	 */
+	l = e->left ? e->left->regs : 1;
+	r = e->right ? e->right->regs : 1;
+
 	switch (e->op) {
 	/* Already in register: 0 */
 	case INHL:
@@ -141,14 +150,12 @@ label(Expr *e)
 
 	/* DEREF: depends on address complexity */
 	case DEREF:
-		l = e->left ? e->left->regs : 1;
 		e->regs = l > 1 ? l : 1;
 		return;
 
 	/* ASSIGN: lvalue doesn't consume reg, only rvalue */
 	case ASSIGN:
-		e->regs = e->right ? e->right->regs : 1;
-		if (e->regs < 1) e->regs = 1;
+		e->regs = r ? r : 1;
 		return;
 
 	/*
@@ -165,22 +172,18 @@ label(Expr *e)
 
 	/* ARGNODE: each arg independent, pushed to stack */
 	case ARGNODE:
-		e->regs = e->left ? e->left->regs : 1;
+		e->regs = l;
 		return;
 
 	/* Short-circuit: sides evaluated separately */
 	case LAND:
 	case LOR:
-		l = e->left ? e->left->regs : 1;
-		r = e->right ? e->right->regs : 1;
 		e->regs = l > r ? l : r;
 		return;
 
 	/* Ternary: condition, then, else all separate */
 	case QUES:
 	case TERNBRANCH:
-		l = e->left ? e->left->regs : 1;
-		r = e->right ? e->right->regs : 1;
 		e->regs = l > r ? l : r;
 		return;
 
@@ -188,8 +191,7 @@ label(Expr *e)
 	case BANG:
 	case NEG:
 	case NOT:
-		e->regs = e->left ? e->left->regs : 1;
-		if (e->regs < 1) e->regs = 1;
+		e->regs = l ? l : 1;
 		return;
 
 	/*
@@ -213,18 +215,16 @@ label(Expr *e)
 	case POSTINC:
 	case PREDEC:
 	case POSTDEC:
-		e->regs = e->left ? e->left->regs : 1;
+		e->regs = l;
 		if (e->left && e->left->op != LOCALVAR &&
 		    e->left->op != INDEX && e->regs < 2)
 			e->regs = 2;
-		if (e->regs < 1)
+		if (!e->regs)
 			e->regs = 1;
 		return;
 
 	/* Binary ops: Sethi-Ullman formula */
 	default:
-		l = e->left ? e->left->regs : 1;
-		r = e->right ? e->right->regs : 1;
 		if (l == r)
 			e->regs = l + 1;
 		else
@@ -815,6 +815,36 @@ emitasm(char *tpl, Expr *e)
 
 
 /*
+ * Nearly every rewrite that has emitted its own code ends the same way:
+ * make a node standing for the answer in HL, give it the destination the
+ * original was asked for, and free what it replaced.  Written out, that
+ * is four statements, and it was written out twelve times.
+ *
+ * op is what the answer should be called - INHL where the rewrite names
+ * the register outright, CODE where it leaves the typing to the pass
+ * below that turns CODE into INHL/INDE/INA by its register.
+ */
+static Expr *
+donehl(Expr *e, unsigned char op)
+{
+	Expr *n = mkcode(e->width, R_HL);
+
+	n->op = op;
+	n->dest = e->dest;
+	freeexpr(e);
+	return n;
+}
+
+/*
+ * The register each RF_REG value demands, indexed by the field shifted
+ * down.  Slot 1 is RF_IXIY, which accepts either index register and is
+ * tested by hand; slot 0 is no requirement at all and never reached.
+ */
+static char regwant[8] = {
+	0, 0, R_BC, R_DE, R_HL, R_IX, R_C, R_B
+};
+
+/*
  * Try to apply a rule
  */
 static Expr *
@@ -833,29 +863,24 @@ tryrule(struct rule *rp, Expr *e)
 	/*
 	 * Check the register constraint.  A rule names at most one, so
 	 * this is a value to compare rather than a set of bits to test.
+	 * RF_REG is a three bit field, so the register a rule demands is
+	 * a lookup rather than a ladder of seven comparisons - each of
+	 * which used to reload src->u.var.reg from memory.  RF_IXIY is
+	 * the one that accepts two, and stays written out.
 	 */
 	if (rp->flags & RF_REG) {
 		unsigned char want = rp->flags & RF_REG;
+		char have;
 
 		src = getpath(e, RP_D(rp));
 		if (!src)
 			return NULL;
+		have = src->u.var.reg;
 		if (want == RF_IXIY) {
-			if (src->u.var.reg != R_IX && src->u.var.reg != R_IY)
+			if (have != R_IX && have != R_IY)
 				return NULL;
-		} else if (want == RF_BC) {
-			if (src->u.var.reg != R_BC) return NULL;
-		} else if (want == RF_C) {
-			if (src->u.var.reg != R_C) return NULL;
-		} else if (want == RF_B) {
-			if (src->u.var.reg != R_B) return NULL;
-		} else if (want == RF_DE) {
-			if (src->u.var.reg != R_DE) return NULL;
-		} else if (want == RF_HL) {
-			if (src->u.var.reg != R_HL) return NULL;
-		} else if (want == RF_IX) {
-			if (src->u.var.reg != R_IX) return NULL;
-		}
+		} else if (have != regwant[want >> 5])
+			return NULL;
 	}
 
 	/* Sign-bit tests are only valid on a signed operand */
@@ -1344,11 +1369,7 @@ step(Expr *e)
 		out("\tdec a\n");
 		out(e->op == LSHIFT ? "\tjr nz,$-2\n" : "\tjr nz,$-5\n");
 
-		n = mkcode(e->width, R_HL);
-		n->op = INHL;
-		n->dest = e->dest;
-		freeexpr(e);
-		return n;
+		return donehl(e, INHL);
 	}
 
 	/* CALL is handled up in rewrite1() - args must be pushed one at a
@@ -1359,10 +1380,7 @@ step(Expr *e)
 		/* Long complement: ~HLDE */
 		if (e->op == NOT && e->left->op == INHL) {
 			out("\tcall lcom\n");
-			n = mkcode(e->width, R_HL);
-			n->dest = e->dest;
-			freeexpr(e);
-			return n;
+			return donehl(e, CODE);
 		}
 		/* Long negation: -HLDE (two's complement) */
 		if (e->op == NEG && e->left->op == INHL) {
@@ -1371,40 +1389,28 @@ step(Expr *e)
 			out("\tld a,0\n\tsbc a,d\n\tld d,a\n");
 			out("\tld a,0\n\tsbc a,l\n\tld l,a\n");
 			out("\tld a,0\n\tsbc a,h\n\tld h,a\n");
-			n = mkcode(e->width, R_HL);
-			n->dest = e->dest;
-			freeexpr(e);
-			return n;
+			return donehl(e, CODE);
 		}
 		/* Long left shift: HLDE << B */
 		if (e->op == LSHIFT && e->left->op == INHL &&
 		    e->right && e->right->op == INA) {
 			out("\tld b,a\n");
 			out("\tcall lllsh\n");
-			n = mkcode(e->width, R_HL);
-			n->dest = e->dest;
-			freeexpr(e);
-			return n;
+			return donehl(e, CODE);
 		}
 		/* Long right shift (signed): HLDE >> B */
 		if (e->op == RSHIFT && e->width == 'l' &&
 		    e->left->op == INHL && e->right && e->right->op == INA) {
 			out("\tld b,a\n");
 			out("\tcall alrsh\n");
-			n = mkcode(e->width, R_HL);
-			n->dest = e->dest;
-			freeexpr(e);
-			return n;
+			return donehl(e, CODE);
 		}
 		/* Long right shift (unsigned): HLDE >> B */
 		if (e->op == RSHIFT && e->width == 'L' &&
 		    e->left->op == INHL && e->right && e->right->op == INA) {
 			out("\tld b,a\n");
 			out("\tcall llrsh\n");
-			n = mkcode(e->width, R_HL);
-			n->dest = e->dest;
-			freeexpr(e);
-			return n;
+			return donehl(e, CODE);
 		}
 	}
 
@@ -2156,11 +2162,7 @@ dolongbin(Expr *e)
 		outc('\n');
 		if (savebc)
 			out("\tpop bc\n");
-		n = mkcode(e->width, R_HL);
-		n->op = INHL;
-		n->dest = e->dest;
-		freeexpr(e);
-		return n;
+		return donehl(e, INHL);
 	}
 
 	fn = longhelper(op, sign);
@@ -2262,7 +2264,7 @@ dolongbin(Expr *e)
 static Expr *
 docall(Expr *e)
 {
-	Expr *a, *next, *n, *fn;
+	Expr *a, *next, *fn;
 	int nbytes = 0;
 	int i;
 	int direct;
@@ -2382,11 +2384,7 @@ docall(Expr *e)
 	/* Result is in HL.  Hand back an INHL rather than a bare CODE:
 	 * we return straight to the caller, skipping the step() loop that
 	 * would otherwise do the CODE -> IN* conversion for us. */
-	n = mkcode(e->width, R_HL);
-	n->op = INHL;
-	n->dest = e->dest;
-	freeexpr(e);
-	return n;
+	return donehl(e, INHL);
 }
 
 static Expr *
@@ -2499,11 +2497,7 @@ rewrite1(Expr *e)
 		out("\tpop hl\n");
 
 		e->left = NULL;
-		n = mkcode(e->width, R_HL);
-		n->op = INHL;
-		n->dest = e->dest;
-		freeexpr(e);
-		return n;
+		return donehl(e, INHL);
 	}
 
 	/* x OP= y -> x = x OP y, before the children are reduced */
@@ -2885,11 +2879,7 @@ rewrite1(Expr *e)
 				freeexpr(addr);
 				freeexpr(e->right);
 				e->left = e->right = NULL;
-				n = mkcode(e->width, R_HL);
-				n->op = INHL;
-				n->dest = e->dest;
-				freeexpr(e);
-				return n;
+				return donehl(e, INHL);
 			}
 			out("\tpush hl\n");
 			e->right = rewrite1(e->right);
@@ -2912,11 +2902,7 @@ rewrite1(Expr *e)
 				freeexpr(addr);
 				freeexpr(e->right);
 				e->left = e->right = NULL;
-				n = mkcode(e->width, R_HL);
-				n->op = INHL;
-				n->dest = e->dest;
-				freeexpr(e);
-				return n;
+				return donehl(e, INHL);
 			}
 			if (e->right && e->right->op == INA) {
 				out("\tpop hl\n");
