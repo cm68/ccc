@@ -125,6 +125,346 @@ slimFnArgs(struct type *t)
 }
 
 /*
+ * declare()'s phases, one worker apiece.  It was the largest single
+ * function in c0 - seventeen hundred instructions - and this compiler
+ * does no lifetime analysis, by design: locals of phases that can
+ * never overlap still shared one frame and two registers.  The
+ * function boundary is the lifetime analysis.
+ */
+
+/*
+ * The name being declared: struct member, redeclaration, shadow or
+ * new entry, plus the bitfield width if one follows.  cur is on the
+ * SYM coming in and past the bitfield (if any) going out.
+ */
+static struct name *
+symDecl(struct type *prefix, unsigned char struct_elem)
+{
+    struct name *nm;
+
+    if (struct_elem) {
+        /*
+         * struct members: create name but DON'T add to
+         * global names[] array
+         */
+        nm = (struct name *)galloc(sizeof(*nm));
+        strncpy(nm->name, cur.v.name, 15);
+        nm->name[15] = 0;
+        nm->type = prefix;
+        nm->level = lexlevel;
+        nm->is_tag = 0;
+        nm->kind = kelem;  /* will be struct/union member */
+        nm->w.m.offset = 0;
+        nm->w.m.width = 0;
+        nm->w.m.bitoff = 0;
+        nm->next = 0;
+        nm->u.init = 0;
+#ifdef DEBUG
+        if (VERBOSE(V_SYM)) {
+            fdprintf(2, "struct_elem: %s (not added to names[])\n",
+                     nm->name);
+        }
+#endif
+    } else {
+        /* normal variable: add to global names[] array */
+        /* Check if this name already exists at this scope */
+        struct name *existing = findName(cur.v.name, 0);
+        if (existing && existing->level == lexlevel) {
+            /*
+             * Name exists at current scope - check if it's a
+             * function prototype
+             */
+            /*
+             * A name can reach here with no type when an earlier
+             * declaration was malformed - the entry was made and
+             * then abandoned.  Treat it as a redeclaration rather
+             * than dereferencing the missing type.
+             */
+            if (existing->type &&
+                (existing->type->flags & TF_FUNC) && !existing->u.locals) {
+                /* Reuse existing function declaration (prototype) */
+                nm = existing;
+                /*
+                 * Update type to the new one (definition may have
+                 * full param list)
+                 */
+                /* But keep the existing name structure */
+            } else {
+                /* Not a function prototype - error on redeclaration */
+                nm = newName(cur.v.name, kvar, prefix, 0);
+            }
+        } else if (existing && existing->level < lexlevel) {
+            /*
+             * Name exists at outer scope - this is shadowing.
+             * Assign static_id so cc2 can distinguish variables.
+             * Emitted as L<id> (not S<id> which is for statics).
+             */
+            nm = newName(cur.v.name, kvar, prefix, 0);
+            nm->static_id = ++shadowCtr;
+        } else {
+            /* New name - create it */
+            nm = newName(cur.v.name, kvar, prefix, 0);
+            /*
+             * Anything declared inside a nested block gets a
+             * distinct name too, shadowing or not.  All of a
+             * function's locals are hoisted into one list, and two
+             * sibling blocks each declaring "b" would arrive there
+             * as the same name - pass2 binds by name and would give
+             * both the first one's slot.
+             */
+            if (lexlevel > 2 && !nm->is_tag)
+                nm->static_id = ++shadowCtr;
+        }
+    }
+    if (nm && lexlevel >= 2)
+        nm->w.r.blkid = curblk();
+    gettoken();
+
+    if (cur.type == COLON) {    // check for bitfield
+        gettoken();
+        if (cur.type != NUMBER && cur.type != LNUMBER) {
+            gripe(ER_D_BD);
+        } else if (cur.v.numeric > MAXBITS) {
+            gripe(ER_D_BM);
+        } else {
+            nm->kind = kbitfield;
+            nm->w.m.width = cur.v.numeric;
+        }
+        gettoken();
+    }
+    return nm;
+}
+
+/*
+ * A function-pointer parameter, "(*name)(args)", its opening LPAR
+ * consumed.  Returns the finished parameter type; the name, if one
+ * was given, lands in namebuf.
+ */
+static struct type *
+prmFnPtr(struct type *param_type, char *namebuf)
+{
+    if (cur.type == STAR) {
+        // (*) or (*name) - pointer to function
+        gettoken();
+        // Optional name inside (*)
+        if (cur.type == SYM) {
+            strcpy(namebuf, cur.v.name);
+            gettoken();
+        }
+        expect(RPAR, ER_D_FA);
+        // Now parse function parameter list
+        if (cur.type == LPAR) {
+            struct type *fn_type;
+            struct name *inner_arg, *inner_tail;
+            fn_type = (struct type *)permalloc(sizeof(*fn_type));
+            fn_type->flags = TF_FUNC;
+            fn_type->sub = param_type;  // return type
+            inner_tail = NULL;
+            gettoken();  // consume (
+            // Parse inner function's parameters
+            while (cur.type != RPAR && cur.type != E_O_F) {
+                struct type *inner_base, *inner_type;
+                inner_base = getbasetype();
+                if (!inner_base) {
+                    if (cur.type == COMMA) {
+                        gettoken();
+                        continue;
+                    }
+                    break;
+                }
+                inner_type = parsePtrPfx(inner_base);
+                // Skip optional inner parameter name
+                if (cur.type == SYM)
+                    gettoken();
+                inner_arg = createPrmEnt(NULL, inner_type);
+                inner_arg->next = NULL;
+                if (inner_tail)
+                    inner_tail->next = inner_arg;
+                else
+                    fn_type->elem = inner_arg;
+                inner_tail = inner_arg;
+                if (cur.type == COMMA) {
+                    gettoken();
+                    continue;
+                }
+                break;
+            }
+            expect(RPAR, ER_D_FA);
+            // Result: pointer to function type
+            param_type = getType(TF_POINTER, fn_type, 0);
+        } else {
+            // Just (*) without function params - pointer type
+            param_type = getType(TF_POINTER, param_type, 0);
+        }
+    } else {
+        // Unexpected token after ( - try to recover
+        gripe(ER_D_FA);
+        // Skip to matching )
+        while (cur.type != RPAR && cur.type != E_O_F)
+            gettoken();
+        if (cur.type == RPAR)
+            gettoken();
+    }
+    return param_type;
+}
+
+/*
+ * One parameter declaration.  Returns the entry, or NULL when the
+ * list is malformed and the caller should stop.
+ */
+static struct name *
+prmDecl(void)
+{
+    char namebuf[16];
+    struct type *basetype, *param_type;
+    unsigned char psclass;
+    struct name *arg;
+
+    namebuf[0] = '\0';
+
+    // ANSI style: parse full type + declarator
+    /*
+     * register is the one storage class that means something
+     * on a parameter, and it used to be consumed and thrown
+     * away right here - the keyword parsed, the allocator
+     * never heard about it.
+     */
+    psclass = parseSclass();
+    basetype = getbasetype();
+    if (!basetype) {
+        gripe(ER_D_FA);
+        return NULL;
+    }
+
+    // Parse pointer prefix
+    param_type = parsePtrPfx(basetype);
+
+    // Handle function pointer: type (*)(args) or type (*name)(args)
+    if (cur.type == LPAR) {
+        gettoken();
+        param_type = prmFnPtr(param_type, namebuf);
+    } else {
+        /* get param name */
+        if (cur.type == SYM) {
+            strcpy(namebuf, cur.v.name);
+            gettoken();
+        }
+    }
+
+    // Handle array suffix (converts to pointer)
+    if (cur.type == LBRACK) {
+        struct expr *sz;
+        gettoken();
+        if (cur.type != RBRACK) {
+            /* Array size (ignored for parameters) */
+            sz = parseExpr(0);
+            if (sz) FreeExpr(sz);
+        }
+        expect(RBRACK, ER_D_FA);
+        param_type = getType(TF_POINTER,
+            param_type->sub ? param_type->sub : param_type, 0);
+    }
+
+    // Create parameter entry for type->elem with actual name
+    arg = createPrmEnt(namebuf, param_type);
+    if (psclass & SC_REGISTER)
+        arg->sclass = SC_REGISTER;
+    return arg;
+}
+
+/*
+ * The parameter list of a fresh declaration, cur just past the
+ * opening LPAR.  Builds and returns the function type.
+ */
+static struct type *
+fnParams(struct type *prefix)
+{
+    struct type *suffix;
+    struct name *arg, *param_tail;
+
+    // Create a new function type (don't use getType() which caches types)
+    // Function types need unique instances because we modify elem list
+    suffix = (struct type *)permalloc(sizeof(*suffix));
+    suffix->flags = TF_FUNC;
+    suffix->sub = prefix ? prefix : inttype;
+
+    param_tail = NULL;
+    while (cur.type != RPAR && cur.type != E_O_F) {
+        // Check for variadic ...
+        if (cur.type == ELLIPSIS) {
+            gettoken();
+            suffix->flags |= TF_VARIADIC;
+            break;  // exit parameter loop
+        }
+        arg = prmDecl();
+        if (!arg)
+            break;
+        arg->next = NULL;
+        if (param_tail) {
+            param_tail->next = arg;
+        } else {
+            suffix->elem = arg;
+        }
+        param_tail = arg;
+
+        // Handle comma or end of list
+        if (cur.type == COMMA) {
+            gettoken();
+            continue;
+        }
+        if (cur.type != RPAR) {
+            gripe(ER_D_FA);
+            break;
+        }
+    }
+    expect(RPAR, ER_D_FA);
+    return suffix;
+}
+
+/*
+ * Phase 2 never attaches the suffix (see "suffix && phase == 1" in
+ * declare()): the name entry keeps its phase 1 type.  Building the
+ * function type and its parameter entries again would only leak
+ * them, so just consume the parameter list and move on.
+ *
+ * Except for a local function pointer.  "(*fp)()" in a body is
+ * created afresh here - locals do not survive phase 1 - so it
+ * arrives holding only the pointer that "(*fp)" made, with nothing
+ * under it.  Without the function type that pointer points at
+ * nothing, and every use that consults the type is wrong: the call
+ * still works, because a call does not look, while "(*fp)()"
+ * dereferences one time too many because it does.
+ *
+ * A reused entry already has its phase 1 type and is left alone -
+ * that is what the pointer-with-no-target test distinguishes.  The
+ * parameters are not wanted either way, which is the leak the skip
+ * exists to avoid; only the type of the thing pointed at is.
+ */
+static struct type *
+skipParams(struct name *nm, struct type *prefix)
+{
+    struct type *suffix = NULL;
+    unsigned char pdepth = 1;
+
+    if (nm && nm->type && (nm->type->flags & TF_POINTER) &&
+        !nm->type->sub) {
+        suffix = (struct type *)permalloc(sizeof(*suffix));
+        suffix->flags = TF_FUNC;
+        suffix->sub = prefix ? prefix : inttype;
+    }
+    while (pdepth && cur.type != E_O_F) {
+        if (cur.type == LPAR)
+            pdepth++;
+        else if (cur.type == RPAR)
+            pdepth--;
+        if (pdepth)
+            gettoken();
+    }
+    expect(RPAR, ER_D_FA);
+    return suffix;
+}
+
+/*
  * Parse a complete C declarator and create symbol table entry
  *
  * This is the core declaration parser that handles all C declarator syntax:
@@ -193,12 +533,9 @@ slimFnArgs(struct type *t)
 struct name *
 declare(struct type **btp, unsigned char struct_elem)
 {
-    struct name *nm, *arg, *param_tail;
+    struct name *nm;
     struct type *t, *prefix, *suffix, *rt;
     unsigned long i;
-    struct type *param_type;
-    char *param_name;
-    static char paramNameBuf[16];
 
     suffix = 0;
 
@@ -248,97 +585,7 @@ declare(struct type **btp, unsigned char struct_elem)
         if (nm) {
             gripe(ER_D_MV);
         }
-
-        if (struct_elem) {
-            /*
-             * struct members: create name but DON'T add to
-             * global names[] array
-             */
-            nm = (struct name *)galloc(sizeof(*nm));
-            strncpy(nm->name, cur.v.name, 15);
-            nm->name[15] = 0;
-            nm->type = prefix;
-            nm->level = lexlevel;
-            nm->is_tag = 0;
-            nm->kind = kelem;  /* will be struct/union member */
-            nm->w.m.offset = 0;
-            nm->w.m.width = 0;
-            nm->w.m.bitoff = 0;
-            nm->next = 0;
-            nm->u.init = 0;
-#ifdef DEBUG
-            if (VERBOSE(V_SYM)) {
-                fdprintf(2, "struct_elem: %s (not added to names[])\n",
-                         nm->name);
-            }
-#endif
-        } else {
-            /* normal variable: add to global names[] array */
-            /* Check if this name already exists at this scope */
-            struct name *existing = findName(cur.v.name, 0);
-            if (existing && existing->level == lexlevel) {
-                /*
-                 * Name exists at current scope - check if it's a
-                 * function prototype
-                 */
-                /*
-                 * A name can reach here with no type when an earlier
-                 * declaration was malformed - the entry was made and
-                 * then abandoned.  Treat it as a redeclaration rather
-                 * than dereferencing the missing type.
-                 */
-                if (existing->type &&
-                    (existing->type->flags & TF_FUNC) && !existing->u.locals) {
-                    /* Reuse existing function declaration (prototype) */
-                    nm = existing;
-                    /*
-                     * Update type to the new one (definition may have
-                     * full param list)
-                     */
-                    /* But keep the existing name structure */
-                } else {
-                    /* Not a function prototype - error on redeclaration */
-                    nm = newName(cur.v.name, kvar, prefix, 0);
-                }
-            } else if (existing && existing->level < lexlevel) {
-                /*
-                 * Name exists at outer scope - this is shadowing.
-                 * Assign static_id so cc2 can distinguish variables.
-                 * Emitted as L<id> (not S<id> which is for statics).
-                 */
-                nm = newName(cur.v.name, kvar, prefix, 0);
-                nm->static_id = ++shadowCtr;
-            } else {
-                /* New name - create it */
-                nm = newName(cur.v.name, kvar, prefix, 0);
-                /*
-                 * Anything declared inside a nested block gets a
-                 * distinct name too, shadowing or not.  All of a
-                 * function's locals are hoisted into one list, and two
-                 * sibling blocks each declaring "b" would arrive there
-                 * as the same name - pass2 binds by name and would give
-                 * both the first one's slot.
-                 */
-                if (lexlevel > 2 && !nm->is_tag)
-                    nm->static_id = ++shadowCtr;
-            }
-        }
-        if (nm && lexlevel >= 2)
-            nm->w.r.blkid = curblk();
-        gettoken();
-
-        if (cur.type == COLON) {    // check for bitfield
-            gettoken();
-            if (cur.type != NUMBER && cur.type != LNUMBER) {
-                gripe(ER_D_BD);
-            } else if (cur.v.numeric > MAXBITS) {
-                gripe(ER_D_BM);
-            } else {
-                nm->kind = kbitfield;
-                nm->w.m.width = cur.v.numeric;
-            }
-            gettoken();
-        }
+        nm = symDecl(prefix, struct_elem);
     }
 
     while (cur.type == LBRACK) {        // array
@@ -365,205 +612,11 @@ declare(struct type **btp, unsigned char struct_elem)
             gripe(ER_D_FA);
             suffix = 0;
         }
-
-        /*
-         * Phase 2 never attaches the suffix (see "suffix && phase == 1"
-         * below): the name entry keeps its phase 1 type.  Building the
-         * function type and its parameter entries again would only leak
-         * them, so just consume the parameter list and move on.
-         */
-        if (phase == 2) {
-            unsigned char pdepth = 1;
-            /*
-             * Except for a local function pointer.  "(*fp)()" in a
-             * body is created afresh here - locals do not survive
-             * phase 1 - so it arrives holding only the pointer that
-             * "(*fp)" made, with nothing under it.  Without the
-             * function type that pointer points at nothing, and every
-             * use that consults the type is wrong: the call still
-             * works, because a call does not look, while "(*fp)()"
-             * dereferences one time too many because it does.
-             *
-             * A reused entry already has its phase 1 type and is left
-             * alone - that is what the pointer-with-no-target test
-             * distinguishes.  The parameters are not wanted either
-             * way, which is the leak the skip below exists to avoid;
-             * only the type of the thing pointed at is.
-             */
-            if (nm && nm->type && (nm->type->flags & TF_POINTER) &&
-                !nm->type->sub) {
-                suffix = (struct type *)permalloc(sizeof(*suffix));
-                suffix->flags = TF_FUNC;
-                suffix->sub = prefix ? prefix : inttype;
-            }
-            while (pdepth && cur.type != E_O_F) {
-                if (cur.type == LPAR)
-                    pdepth++;
-                else if (cur.type == RPAR)
-                    pdepth--;
-                if (pdepth)
-                    gettoken();
-            }
-            expect(RPAR, ER_D_FA);
-            goto params_done;
-        }
-
-        // Create a new function type (don't use getType() which caches types)
-        // Function types need unique instances because we modify elem list
-        suffix = (struct type *)permalloc(sizeof(*suffix));
-        suffix->flags = TF_FUNC;
-        suffix->sub = prefix ? prefix : inttype;
-
-        // Parse parameter list (ANSI style only)
-        param_type = NULL;
-        param_tail = NULL;
-        while (cur.type != RPAR && cur.type != E_O_F) {
-            struct type *basetype;
-            unsigned char psclass = 0;
-            param_name = paramNameBuf;
-            param_type = NULL;
-            paramNameBuf[0] = '\0';
-
-            // Check for variadic ...
-            if (cur.type == ELLIPSIS) {
-                gettoken();
-                suffix->flags |= TF_VARIADIC;
-                break;  // exit parameter loop
-            }
-
-            // ANSI style: parse full type + declarator
-            /*
-             * register is the one storage class that means something
-             * on a parameter, and it used to be consumed and thrown
-             * away right here - the keyword parsed, the allocator
-             * never heard about it.
-             */
-            psclass = parseSclass();
-            basetype = getbasetype();
-            if (!basetype) {
-                gripe(ER_D_FA);
-                break;
-            }
-
-            // Parse pointer prefix
-            param_type = parsePtrPfx(basetype);
-
-            // Handle function pointer: type (*)(args) or type (*name)(args)
-            if (cur.type == LPAR) {
-                gettoken();
-                if (cur.type == STAR) {
-                    // (*) or (*name) - pointer to function
-                    gettoken();
-                    // Optional name inside (*)
-                    if (cur.type == SYM) {
-                        strcpy(paramNameBuf, cur.v.name);
-                        gettoken();
-                    }
-                    expect(RPAR, ER_D_FA);
-                    // Now parse function parameter list
-                    if (cur.type == LPAR) {
-                        struct type *fn_type;
-                        struct name *inner_arg, *inner_tail;
-                        fn_type = (struct type *)permalloc(sizeof(*fn_type));
-                        fn_type->flags = TF_FUNC;
-                        fn_type->sub = param_type;  // return type
-                        inner_tail = NULL;
-                        gettoken();  // consume (
-                        // Parse inner function's parameters
-                        while (cur.type != RPAR && cur.type != E_O_F) {
-                            struct type *inner_base, *inner_type;
-                            inner_base = getbasetype();
-                            if (!inner_base) {
-                                if (cur.type == COMMA) {
-                                    gettoken();
-                                    continue;
-                                }
-                                break;
-                            }
-                            inner_type = parsePtrPfx(inner_base);
-                            // Skip optional inner parameter name
-                            if (cur.type == SYM)
-                                gettoken();
-                            inner_arg = createPrmEnt(NULL, inner_type);
-                            inner_arg->next = NULL;
-                            if (inner_tail)
-                                inner_tail->next = inner_arg;
-                            else
-                                fn_type->elem = inner_arg;
-                            inner_tail = inner_arg;
-                            if (cur.type == COMMA) {
-                                gettoken();
-                                continue;
-                            }
-                            break;
-                        }
-                        expect(RPAR, ER_D_FA);
-                        // Result: pointer to function type
-                        param_type = getType(TF_POINTER, fn_type, 0);
-                    } else {
-                        // Just (*) without function params - pointer type
-                        param_type = getType(TF_POINTER, param_type, 0);
-                    }
-                } else {
-                    // Unexpected token after ( - try to recover
-                    gripe(ER_D_FA);
-                    // Skip to matching )
-                    while (cur.type != RPAR && cur.type != E_O_F)
-                        gettoken();
-                    if (cur.type == RPAR)
-                        gettoken();
-                }
-            } else {
-                /* get param name */
-                if (cur.type == SYM) {
-                    strcpy(paramNameBuf, cur.v.name);
-                    gettoken();
-                }
-            }
-
-            // Handle array suffix (converts to pointer)
-            if (cur.type == LBRACK) {
-                struct expr *sz;
-                gettoken();
-                if (cur.type != RBRACK) {
-                    /* Array size (ignored for parameters) */
-                    sz = parseExpr(0);
-                    if (sz) FreeExpr(sz);
-                }
-                expect(RBRACK, ER_D_FA);
-                param_type = getType(TF_POINTER,
-                    param_type->sub ? param_type->sub : param_type, 0);
-            }
-
-            // Create parameter entry for type->elem with actual name
-            arg = createPrmEnt(param_name, param_type);
-            if (psclass & SC_REGISTER)
-                arg->sclass = SC_REGISTER;
-            arg->next = NULL;
-            if (param_tail) {
-                param_tail->next = arg;
-            } else {
-                suffix->elem = arg;
-            }
-            param_tail = arg;
-
-            /* Stack buffer automatically freed */
-
-            // Handle comma or end of list
-            if (cur.type == COMMA) {
-                gettoken();
-                continue;
-            }
-            if (cur.type != RPAR) {
-                gripe(ER_D_FA);
-                break;
-            }
-        }
-
-        expect(RPAR, ER_D_FA);
-params_done:
-        ;
-    }                           // if cur.type == LPAR
+        if (phase == 2)
+            suffix = skipParams(nm, prefix);
+        else
+            suffix = fnParams(prefix);
+    }
 
     if ((cur.type != ASSIGN) && (cur.type != BEGIN) &&
         (cur.type != COMMA) && (cur.type != SEMI) && (cur.type != RPAR)) {
