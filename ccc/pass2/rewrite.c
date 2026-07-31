@@ -2756,6 +2756,27 @@ rewrite1(Expr *e)
 		/* Evaluate left subtree (result in HL) */
 		e->left = rewrite1(e->left);
 		/*
+		 * A SYMREF is left unreduced on purpose, so the rules can
+		 * take it as an address rather than loading it.  That means
+		 * it emits no code, and the push below spills whatever the
+		 * last statement left in HL - which the other operand is
+		 * then added to, and the sum read as a pointer.
+		 */
+		if (e->left && e->left->op == SYMREF) {
+			out("\tld hl,");
+			out(e->left->u.symref.name);
+			if (e->left->u.symref.off) {
+				if (e->left->u.symref.off > 0)
+					outc('+');
+				outd(e->left->u.symref.off);
+			}
+			outc('\n');
+			lw = e->left->width;
+			freeexpr(e->left);
+			e->left = mkcode(lw, R_HL);
+			e->left->op = INHL;
+		}
+		/*
 		 * Unless it is a byte, which lands in A whatever target it
 		 * was given.  Pushing HL then would spill the address the
 		 * value was read through, and the operator would be applied
