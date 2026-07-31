@@ -253,100 +253,14 @@ three.
 
 ## Open, roughly by how much they matter
 
-* **`#ifdef` of an undefined macro can read true, after NARROW.**  A
-  regression from emitting NARROW for narrowing casts, and the one
-  thing that got worse rather than better in that change.  It needs an
-  `#include` and then cpp's own `usage()` - the real one, with its ten
-  distinct `errout` strings - for `#ifdef NEVERDEFINED` to be taken:
+The differential test passes.  `sh tests/diffcpp.sh` builds cpp with
+zc3 and with ccc, runs both over cpp's own sixteen sources under the
+simulator, and byte-compares the lexeme streams: all sixteen are
+identical.  That is a stronger question than "does ccc compile cpp",
+and it found six bugs nothing else did - each one hidden behind the
+last, and none of them visible to stage1, the runtime suite, the
+regression baselines or valgrind.
 
-      sed -n '93,116p' ccc/cpp/cpp.c   preceded by any #include
-
-  Reduced since: it is a three-byte window in the *input*, at a string
-  length of 31 to 33 with the current binary, and zero everywhere else
-  from 0 to 79.  The zc3-built cpp has no window anywhere in that
-  range, and the host build is valgrind-clean on both the reduced case
-  and the real cpp.c and gets the right answer - so cpp's source is
-  not at fault and this is codegen.
-
-  `maclookup` is *not* the problem: traced, it returns "none" for
-  NEVERDEFINED at exactly the lengths that wrongly emit the body.  So
-  the failure is after it, in `push_cond` or the skip - and
-  `push_cond` opens with a `malloc`, which would explain the size
-  sensitivity.
-
-  Narrowed further, and this is the useful part: *every* false
-  conditional leaks its body at that position, not just `#ifdef`.
-  `#if 0` does, `#ifndef` of a defined guard does.  So the condition
-  is being evaluated correctly and the skip is what fails.  There are
-  two skip paths in `gettoken`, one for a line starting with anything
-  and one for a line starting with whitespace, and both leak - so it
-  is not either path's own logic.  What they share is `cond &&
-  !(cond->flags & C_TRUE)`, which leaves the global `cond` reading as
-  NULL, or its flags reading as C_TRUE, at the moment of the test.
-
-  It moves under observation, which is the thing to know before
-  starting.  Adding a two-line trace shifted the window from 31-33 to
-  61-63; adding a second trace moved it out of 0-79 altogether.
-  Swapping any single object to the zc3 build moves it too, which is
-  why the first object bisection came back empty - each hybrid was
-  tested at one input length rather than scanned.  Neither half of the
-  objects shows a window anywhere in 0-63; all sixteen does.
-
-  The simulator has watchpoints (`watchpoint_at` in micronix
-  usersim.c) and that is the tool for this: watch the write to
-  `cond->flags` rather than add code, since adding code moves the
-  target.
-
-* **An indexed store whose value is a call can lose its address.**
-  This is the empty-function-like-macro bug, run to ground:
-
-      parms[m->parmcount++] = permdup(s);
-
-  compiles to a `push hl` with nothing having been loaded into HL.
-  The left side emits no code at all - neither the address arithmetic
-  nor the post-increment - so the push spills whatever the previous
-  statement left, and the store goes to that address.  In cpp it
-  lands on the input buffer, which is why the next `advance()` came
-  back with 0xb7 instead of the next character.
-
-  rewrite.c around line 2750 already describes this failure exactly:
-  "the push would spill whatever the last statement happened to leave
-  there and the store would go to that address".  Its guard is
-  `islocdesc(addr)`, taken after `rewrite1(e->left)`, and this shape
-  gets past it - reduced to something that needs no code emitted but
-  is not a descriptor either.
-
-  Splitting it fixes it, and so does dropping the call:
-
-      tmp = permdup(s); parms[m->parmcount++] = tmp;   works
-      parms[m->parmcount++] = s;                       works
-
-  Not reproduced in isolation yet - `arr[n++] = f()` is fine on its
-  own, with a local or global array, a leaf call or a nested one, and
-  with the subscript a member through a pointer.  It needs
-  macdefine's own register pressure, so the way in is the generated
-  code rather than a small case.
-
-* **An empty function-like macro eats the next character**, which is
-  the symptom of the above.  In the cpp that ccc builds, and only
-  there - zc3's is right:
-
-      #define c(x)		"int a;" after it comes out "nt a;"
-      #define c(x,y)		the same
-      #define c()		fine - zero parameters
-      #define c(x) x		fine - a body
-      #define c			fine
-
-  So it needs at least one parameter *and* an empty replacement list,
-  which in macdefine() is the permalloc of the parameter array
-  together with a permdup of an empty macbuffer.  A trailing space
-  after the empty body is worse: cpp then emits nothing at all.
-
-  Object-level bisection puts it in macro.o alone.  permalloc.c is
-  built by zc3 for both, so it is not that.  It is older than the
-  NARROW work - every cpp built during this session has it.  io.c has
-  such a macro, which is why its output carries "; endif" in front of
-  a struct; macro.c and util.c may be the same bug.
 
 * **153 rules of 485 never match.**  Shapes no source here takes, each
   of them code that has never run.
