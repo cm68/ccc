@@ -14,9 +14,10 @@
  *	ld a,<mem> then ld r,a		131 sites	 131 bytes
  *	ld a,r then and 0			 14 sites	  28 bytes
  *
- * Control flow was already clean - no dead jumps, no unreachable
- * instructions, no jump chains - so there is nothing here for the
- * branch rewrites a peephole usually carries.
+ * Control flow was almost clean - no dead jumps, no unreachable
+ * instructions, no jump chains.  The one branch shape worth having
+ * turned out to be the loop bottom: a conditional hop over the jump
+ * back, which inverting removes.
  */
 #include <string.h>
 #include <stdio.h>
@@ -27,6 +28,7 @@ long n_pushpop = 0;
 long n_bounce = 0;
 long n_and0 = 0;
 long n_frame = 0;
+long n_invjp = 0;
 long saved = 0;
 
 /* does the key at window line i match s exactly */
@@ -226,12 +228,93 @@ r_fexit(void)
 	return 1;
 }
 
+/*
+ * A conditional hop over an unconditional jump, landing on the very
+ * next label:
+ *
+ *	jp z,L1
+ *	jp L2
+ * L1:
+ *
+ * is "jp nz,L2" and the label.  Loop bottoms all look like this -
+ * the condition is emitted as "skip the jump back when false" - so
+ * every do-while and for pays the three bytes this returns.  The
+ * label stays: anything else may target it.
+ */
+static char *ccinv[] = {
+	"z", "nz", "nz", "z", "c", "nc", "nc", "c",
+	"m", "p", "p", "m", "pe", "po", "po", "pe", 0
+};
+
+/* the next line that is code or a label, skipping comments and
+ * blanks - they sit between every statement and must not blind a
+ * rule that spans one */
+static int
+nextsig(int i)
+{
+	for (i++; i < nwin; i++)
+		if (win[i].kind != L_BLANK)
+			return i;
+	return -1;
+}
+
+static int
+r_invjp(void)
+{
+	char cc[4];
+	char buf[LLEN + 8];
+	char *comma;
+	int i, n, j1, j2;
+
+	if (!starts(0, "jp "))
+		return 0;
+	j1 = nextsig(0);
+	if (j1 < 0 || win[j1].kind != L_INSN ||
+	    strncmp(win[j1].key, "jp ", 3) != 0)
+		return 0;
+	j2 = nextsig(j1);
+	if (j2 < 0 || win[j2].kind != L_LABEL)
+		return 0;
+	comma = strchr(win[0].key + 3, ',');
+	if (!comma)
+		return 0;
+	if (strchr(win[j1].key + 3, ','))
+		return 0;			/* second jump conditional: not ours */
+	n = comma - (win[0].key + 3);
+	if (n < 1 || n > 2)
+		return 0;
+	memcpy(cc, win[0].key + 3, n);
+	cc[n] = 0;
+
+	/* the label the hop targets must be the next one down */
+	n = strlen(comma + 1);
+	if (strncmp(win[j2].key, comma + 1, n) != 0 ||
+	    win[j2].key[n] != ':' || win[j2].key[n + 1] != '\0')
+		return 0;
+
+	for (i = 0; ccinv[i]; i += 2)
+		if (strcmp(cc, ccinv[i]) == 0)
+			break;
+	if (!ccinv[i])
+		return 0;
+
+	sprintf(buf, "\tjp %s,%s\n", ccinv[i + 1], win[j1].key + 3);
+	delline(j1, 1);
+	delline(0, 1);
+	insline(0, buf);
+	n_invjp++;
+	saved += 3;
+	return 1;
+}
+
 int
 applyrules(void)
 {
 	if (r_fenter())
 		return 1;
 	if (r_fexit())
+		return 1;
+	if (r_invjp())
 		return 1;
 	if (r_incsp())
 		return 1;
@@ -248,8 +331,8 @@ void
 report(void)
 {
 	fprintf(stderr, "peep: frame %ld  incsp %ld  pushpop %ld  bounce %ld"
-		"  and0 %ld = %ld bytes\n", n_frame, n_incsp, n_pushpop,
-		n_bounce, n_and0, saved);
+		"  and0 %ld  invjp %ld = %ld bytes\n", n_frame, n_incsp,
+		n_pushpop, n_bounce, n_and0, n_invjp, saved);
 }
 
 /* vim: set tabstop=4 shiftwidth=4 noexpandtab: */
