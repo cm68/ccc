@@ -1047,6 +1047,27 @@ struct rule rules[] = {
 	R("j(B)", POSTINC, P_L, P_NONE, P_NONE, 0, F_LDLC F_LDHB "\tinc bc\n", R_HL),
 	R("m(B)", POSTDEC, P_L, P_NONE, P_NONE, 0, F_LDLC F_LDHB "\tdec bc\n", R_HL),
 	/*
+	 * Stepping a pointer the allocator homed in IX.  The BC pointer
+	 * has had these all along; through-IX steps existed only fused
+	 * with a deref, so "p++" standing alone matched nothing, and a
+	 * scan loop over a register pointer read one byte forever - a
+	 * marker in the listing, an infinite loop on the machine.  The
+	 * statement forms come first: a step nobody wants the value of
+	 * is inc ix and not a byte more.
+	 */
+	R("i(V):S", PREINC, P_L, P_NONE, P_L, RF_IX, "\tinc ix\n", 0),
+	R("k(V):S", PREDEC, P_L, P_NONE, P_L, RF_IX, "\tdec ix\n", 0),
+	R("j(V):S", POSTINC, P_L, P_NONE, P_L, RF_IX, "\tinc ix\n", 0),
+	R("m(V):S", POSTDEC, P_L, P_NONE, P_L, RF_IX, "\tdec ix\n", 0),
+	R("i(V)", PREINC, P_L, P_NONE, P_L, RF_IX,
+		"\tinc ix\n\tpush ix\n" F_POPHL, R_HL),
+	R("k(V)", PREDEC, P_L, P_NONE, P_L, RF_IX,
+		"\tdec ix\n\tpush ix\n" F_POPHL, R_HL),
+	R("j(V)", POSTINC, P_L, P_NONE, P_L, RF_IX,
+		"\tpush ix\n" F_POPHL "\tinc ix\n", R_HL),
+	R("m(V)", POSTDEC, P_L, P_NONE, P_L, RF_IX,
+		"\tpush ix\n" F_POPHL "\tdec ix\n", R_HL),
+	/*
 	 * Postfix on a word in memory.  The old value is wanted as the
 	 * result and the new one in store, and rather than hold both, the
 	 * update is undone afterwards - one byte, against a push/pop pair
