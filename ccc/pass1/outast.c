@@ -531,6 +531,8 @@ emitExpr(struct expr *e)
 		/* fall through - standard unary */
 
 	case NARROW:
+	case WIDEN:
+	case SEXT:
 	case BANG:
 	case NEG:
 	case NOT:

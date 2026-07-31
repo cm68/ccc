@@ -823,13 +823,38 @@ parsePrefix(void)
              * nobody emitted it.
              */
             if (e1) {
-                if (e1->type && tp && tp->size < e1->type->size &&
+                int plain = e1->type && tp &&
                     !(tp->flags & (TF_POINTER | TF_ARRAY | TF_FUNC |
                                    TF_AGGREGATE)) &&
                     !(e1->type->flags & (TF_POINTER | TF_ARRAY | TF_FUNC |
                                          TF_AGGREGATE)) &&
-                    !(e1->flags & E_CONST)) {
+                    !(e1->flags & E_CONST);
+
+                if (plain && tp->size < e1->type->size) {
                     e = mkexpr(NARROW, e1);
+                    e->type = tp;
+                } else if (plain && tp->size > e1->type->size) {
+                    /*
+                     * And the other direction, which is the same
+                     * mistake read the other way: relabelling a byte
+                     * as a long does not put anything in the three
+                     * bytes above it.
+                     *
+                     *	val |= ((unsigned long)readByte()) << (i * 8);
+                     *
+                     * is how pass1 reads a four byte number out of the
+                     * lexeme stream, so every constant it read came
+                     * back with its low byte right and the rest
+                     * whatever had been in the register - and an array
+                     * dimension of 8 became 2.
+                     *
+                     * Which of the two conversions it is depends on
+                     * the *source*: a signed value sign-extends and an
+                     * unsigned one zero-extends, and the instructions
+                     * differ.
+                     */
+                    e = mkexpr((e1->type->flags & TF_UNSIGNED) ?
+                        WIDEN : SEXT, e1);
                     e->type = tp;
                 } else {
                     e1->type = tp;
