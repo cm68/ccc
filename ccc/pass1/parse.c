@@ -459,19 +459,23 @@ capLocals(void)
 }
 
 /*
- * Collect an asm block, leaving cur on the token after it.
- * cpp emits three tokens for "asm { ... }": the ASM keyword, an
- * ASM token carrying the raw text, then a SEMI.
- * Call with cur on the keyword.  Returns malloc'd text (caller frees),
- * or NULL for an empty block.
+ * Collect one slice of an asm block, leaving cur on the token after it.
+ * cpp emits the ASM keyword, then one or more ASM tokens carrying the
+ * raw text - a block over 255 bytes arrives in line-boundary slices,
+ * each its own statement - then a SEMI after the last.  The keyword
+ * and the text tokens share a type; the text is the one holding a
+ * string, which is how a second slice is told from a second block.
+ * Call with cur on the keyword or on a continuation slice.  Returns
+ * malloc'd text (caller frees), or NULL for an empty block.
  */
 char *
 getAsmText(void)
 {
 	char *text = NULL;
 
-	gettoken();			/* consume the keyword */
-	if (cur.type == ASM) {
+	if (!cur.v.str)
+		gettoken();		/* consume the keyword */
+	if (cur.type == ASM && cur.v.str) {
 		text = cur.v.str;
 		cur.v.str = NULL;	/* we own it now */
 		gettoken();

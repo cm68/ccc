@@ -68,13 +68,25 @@ readByte(void)
 }
 
 /*
- * Read N bytes into buffer
+ * Read N bytes into buffer.
+ *
+ * The count is a byte because every record that carries one says it
+ * in a byte: names and labels are counted in one, strings and
+ * filenames are capped under 256.  Inline assembly is the one
+ * record with a 16-bit count, and its case chunks the copy rather
+ * than making every other caller pay 16-bit loop arithmetic - the
+ * int counter this replaces was compared signed, a word at a time
+ * with an overflow fixup, once around a loop whose body is one
+ * call.  A byte counted down needs no compare at all: dec sets Z
+ * itself, and in B it is the top half of djnz.
  */
 static void
-readBytes(char *buf, int n)
+readBytes(char *buf, unsigned char n)
 {
-	int i;
-	for (i = 0; i < n; i++)
+	unsigned char i, m;
+
+	m = n;
+	for (i = 0; i != m; i++)
 		buf[i] = readByte();
 }
 
@@ -245,6 +257,16 @@ again:
 
 	/* Inline assembly - 2-byte length + bytes */
 	case CPP_ASMSTR:
+		/*
+		 * The length field is two bytes but the value never exceeds
+		 * 255: cpp splits asm text at line boundaries so that every
+		 * counted record in the stream fits the byte counter
+		 * readBytes runs on.  Not guarded - the buffer is sized from
+		 * the full value, so a stream that breaks the contract reads
+		 * as garbage tokens, not as a memory overrun, and a 16-bit
+		 * compare here would tax every asm record for a stream no
+		 * in-tree producer writes.
+		 */
 		len = readLE2();
 		s = galloc(len + 1);
 		readBytes(s, len);

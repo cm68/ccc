@@ -145,10 +145,32 @@ emitString(char *str, int len)
 
 /*
  * Emit asm string: ASMSTR(118) + 2-byte len + string bytes
+ *
+ * Never more than 255 bytes to a record.  pass1 copies every counted
+ * record with a byte counter - names and labels are counted in one
+ * byte, strings are capped by its buffer - and asm text was the one
+ * record that could outrun it, so the bound is enforced here where
+ * the text is whole.  Records split at line boundaries: each slice
+ * becomes its own asm statement on the far side, and since a slice
+ * ends on a newline the assembly reads back identically.  The length
+ * field stays two bytes, so the format itself is unchanged; only the
+ * guarantee is new.  No block in the tree comes within a factor of
+ * five of needing a split.
  */
 void
 emitAsmString(char *str, int len)
 {
+    int cut;
+
+    while (len > 255) {
+        for (cut = 255; cut > 0 && str[cut - 1] != '\n'; cut--)
+            ;
+        if (cut == 0)
+            cut = 255;      /* one enormous line: split it anyway */
+        emitStr2(ASMSTR, str, cut);
+        str += cut;
+        len -= cut;
+    }
     emitStr2(ASMSTR, str, len);
 }
 
