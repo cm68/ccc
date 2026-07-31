@@ -140,7 +140,7 @@ allocRegs(struct name *locals)
 {
 	struct name *n, *best;
 	char regs = 0;  /* bits: 1=IX, 2=BC, 4=B, 8=C */
-	int no_arg_regs = 0;
+	unsigned char no_arg_regs = 0;
 
 	/* If any funarg has address taken, no funargs can use registers */
 	for (n = locals; n; n = n->next)

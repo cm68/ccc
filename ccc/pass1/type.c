@@ -890,7 +890,7 @@ getbasetype()
             if (n && !(n->type->flags & TF_INCOMPLETE)) {
                 // In phase 2, the body tokens still need to be consumed
                 if (cur.type == BEGIN) {
-                    int depth = 1;
+                    unsigned char depth = 1;
                     gettoken();  // consume '{'
                     while (depth > 0 && cur.type != E_O_F) {
                         if (cur.type == BEGIN) depth++;

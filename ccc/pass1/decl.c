@@ -33,8 +33,14 @@ streamInitVal(struct type *type)
     int count = 0;
     struct type *elem_type;
     struct name *member;       /* also used as np in expr branch */
-    int member_offset;
-    int is_struct;
+    /*
+     * member_offset walks a struct, and a struct is at most 255
+     * bytes - type->size is itself a byte.  is_struct is a truth
+     * value.  Byte locals cost one load where an int costs two,
+     * and this function tests both in loops.
+     */
+    unsigned char member_offset;
+    unsigned char is_struct;
     cstring str;
     int slen, arrlen, i, b;
     char buf[20];              /* used as strname in STRING, buf in expr */
@@ -88,7 +94,7 @@ streamInitVal(struct type *type)
          * "fn array".  Index 0 worked, having no stride to get wrong.
          */
         if (is_struct && type) {
-            while (member_offset < (int)type->size) {
+            while (member_offset < type->size) {
                 asmDb(0);
                 member_offset++;
             }
@@ -204,7 +210,7 @@ doInitlzr(struct name *v)
     if (phase == 1) {
         if (cur.type == BEGIN) {
             /* Struct/array init - emit STRING data in phase 1 */
-            int depth = 1;
+            unsigned char depth = 1;
             gettoken();  /* consume initial { before loop */
             while (depth > 0 && cur.type != E_O_F) {
                 if (cur.type == BEGIN)
@@ -215,7 +221,7 @@ doInitlzr(struct name *v)
                     /* Emit string data now for pointer-to-string fields */
                     cstring str = cur.v.str;
                     if (str) {
-                        int slen = (unsigned char)str[0];
+                        unsigned char slen = str[0];
                         fmtstr(strname, "str%d", globalStrCtr++);
                         setSeg(SEG_TEXT);
                         asmLabel(strname);
@@ -230,7 +236,7 @@ doInitlzr(struct name *v)
             /* Simple string init for pointer - emit data in phase 1 */
             cstring str = cur.v.str;
             if (str) {
-                int slen = (unsigned char)str[0];
+                unsigned char slen = str[0];
                 fmtstr(strname, "str%d", globalStrCtr++);
                 setSeg(SEG_TEXT);
                 asmLabel(strname);

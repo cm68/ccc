@@ -38,7 +38,7 @@ static unsigned short ifCount = 0;          /* phase 1: count of if statements *
 static unsigned short ifEmitIdx = 0;        /* phase 2: next if to emit */
 
 void resetSwitch(void) {
-    int i;
+    unsigned char i;   /* swCount is a byte */
     /* Free all allocated switch case arrays */
     for (i = 0; i < swCount; i++) {
         if (swList[i].cases)

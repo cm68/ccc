@@ -278,7 +278,7 @@ void emitExpr(struct expr *e);  /* forward decl */
 int
 cntCondLbls(struct expr *e)
 {
-	int cnt = 0;
+	unsigned char cnt = 0;
 	if (!e) return 0;
 	/* Count in children first */
 	cnt += cntCondLbls(e->left);
@@ -345,7 +345,10 @@ emitExpr(struct expr *e)
 	struct type *type;
 	unsigned char op, uc;
 	char fullname[32], c, lval;
-	int n;
+	/* everything n carries fits a byte: an argument count, an
+	 * element size, an initializer count - and emit1 writes one
+	 * byte of it regardless */
+	unsigned char n;
 
 	/* Fold constants before emitting */
 	e = foldTree(e);
