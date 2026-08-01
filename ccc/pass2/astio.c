@@ -42,7 +42,16 @@ extern int seekraw();
 void
 nidopen(char *f1)
 {
-	char nf[256];
+	/*
+	 * Static, not a frame local: a 256-byte auto was the first
+	 * frame local past the IY displacement range anywhere in this
+	 * pass, and the layout put it on top of the caller's frame -
+	 * strcpy wrote the path across main's return address, and c1
+	 * under the simulator "returned" into two characters of the
+	 * filename.  The big-frame layout bug is pass1's to fix; this
+	 * buffer has no reason to be on the stack at all.
+	 */
+	static char nf[256];
 	int n = strlen(f1);
 
 	strcpy(nf, f1);
