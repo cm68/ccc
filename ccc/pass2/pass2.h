@@ -70,6 +70,7 @@ void dumphits(void);
 void out(char *s);
 void outc(char c);
 void outd(int n);
+void outf(char *fmt, ...);
 void copyinit(void);
 
 /* Parser */

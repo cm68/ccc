@@ -38,11 +38,13 @@ static unsigned short ifCount = 0;          /* phase 1: count of if statements *
 static unsigned short ifEmitIdx = 0;        /* phase 2: next if to emit */
 
 void resetSwitch(void) {
-    unsigned char i;   /* swCount is a byte */
+    register struct swtab *sw = swList;
+    unsigned char n = swCount;
     /* Free all allocated switch case arrays */
-    for (i = 0; i < swCount; i++) {
-        if (swList[i].cases)
-            free(swList[i].cases);
+    while (n--) {
+        if (sw->cases)
+            free(sw->cases);
+        sw++;
     }
     /* Free the switch list itself */
     if (swList) {
@@ -125,6 +127,7 @@ void finishCase(unsigned char stmt_cnt) {
 void addCase(long value, unsigned char stmt_cnt) {
     unsigned char idx;
     struct swtab *sw;
+    register struct swcase *cp;
 
     if (swDepth == 0)
         return;
@@ -142,20 +145,21 @@ void addCase(long value, unsigned char stmt_cnt) {
         sw->capacity = newcap;
     }
 
+    cp = &sw->cases[sw->count];
     /* Finalize previous case if any */
     if (sw->count > 0) {
-        sw->cases[sw->count - 1].stmts = stmt_cnt - sw->base_stmts;
+        cp[-1].stmts = stmt_cnt - sw->base_stmts;
 #ifdef DEBUG
         fdprintf(2, "addCase: finalize sw[%d].cases[%d].stmts = %d - %d = %d\n",
                  idx, sw->count - 1, stmt_cnt, sw->base_stmts,
-                 sw->cases[sw->count - 1].stmts);
+                 cp[-1].stmts);
 #endif
     }
     sw->base_stmts = stmt_cnt;
     /* Add new case */
-    sw->cases[sw->count].value = value;
-    sw->cases[sw->count].is_default = 0;
-    sw->cases[sw->count].stmts = 0;  /* will be set by next case or popSwitch */
+    cp->value = value;
+    cp->is_default = 0;
+    cp->stmts = 0;  /* will be set by next case or popSwitch */
 #ifdef DEBUG
     fdprintf(2, "addCase: add sw[%d].cases[%d] val=%ld base=%d\n",
              idx, sw->count, value, sw->base_stmts);
@@ -166,6 +170,7 @@ void addCase(long value, unsigned char stmt_cnt) {
 void addDefault(unsigned char stmt_cnt) {
     unsigned char idx;
     struct swtab *sw;
+    register struct swcase *cp;
 
     if (swDepth == 0)
         return;
@@ -183,20 +188,21 @@ void addDefault(unsigned char stmt_cnt) {
         sw->capacity = newcap;
     }
 
+    cp = &sw->cases[sw->count];
     /* Finalize previous case if any */
     if (sw->count > 0) {
-        sw->cases[sw->count - 1].stmts = stmt_cnt - sw->base_stmts;
+        cp[-1].stmts = stmt_cnt - sw->base_stmts;
 #ifdef DEBUG
         fdprintf(2, "addDefault: finalize sw[%d].cases[%d].stmts = %d - %d = %d\n",
                  idx, sw->count - 1, stmt_cnt, sw->base_stmts,
-                 sw->cases[sw->count - 1].stmts);
+                 cp[-1].stmts);
 #endif
     }
     sw->base_stmts = stmt_cnt;
     /* Add default */
-    sw->cases[sw->count].value = 0;
-    sw->cases[sw->count].is_default = 1;
-    sw->cases[sw->count].stmts = 0;  /* will be set by next case or popSwitch */
+    cp->value = 0;
+    cp->is_default = 1;
+    cp->stmts = 0;  /* will be set by next case or popSwitch */
 #ifdef DEBUG
     fdprintf(2, "addDefault: add sw[%d].cases[%d] base=%d\n",
              idx, sw->count, sw->base_stmts);
@@ -522,11 +528,10 @@ getAsmText(void)
 static struct swcase *
 nextCase(void)
 {
-    unsigned char sw_idx, c_idx;
+    register struct swtab *sw;
 
-    sw_idx = swEmitStack[swEmitDepth - 1];
-    c_idx = swList[sw_idx].emitIdx++;
-    return &swList[sw_idx].cases[c_idx];
+    sw = &swList[swEmitStack[swEmitDepth - 1]];
+    return &sw->cases[sw->emitIdx++];
 }
 
 /* if <condition> <statement> [else ...], cur on the IF */
@@ -776,7 +781,7 @@ statement(void)
             }
             /* WHILE/DO/FOR handled by cpp loop lowering */
             case SWITCH: {
-                unsigned char idx;
+                struct swtab *sw;
 #ifdef DEBUG
                 fdprintf(2, "P1 SWITCH: cur=%d line=%d\n", cur.type, lineno);
 #endif
@@ -788,10 +793,10 @@ statement(void)
                 pushSwitch();  /* start new switch table */
                 statement();  /* switch body - adds cases to table */
                 /* Finalize last case using stmt_count stored by END handler */
-                idx = swStack[swDepth - 1];
-                finishCase(swList[idx].final_cnt);
+                sw = &swList[swStack[swDepth - 1]];
+                finishCase(sw->final_cnt);
                 /* Push case count for phase 2 before popping */
-                pushCount(swList[idx].count);
+                pushCount(sw->count);
                 popSwitch();
                 expect(END, ER_S_CC);
                 stmt_count++;

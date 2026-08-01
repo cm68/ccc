@@ -200,45 +200,54 @@ main(int argc, char **argv)
 {
     char *source = NULL;
     char *outbase = NULL;
+    register char *a;
+    char **ap;
+    int n;
     int i;
     int ppOnly = 0;
     int ppOutput = 0;
 
     /* Parse arguments */
-    for (i = 1; i < argc; i++) {
-        if (strcmp(argv[i], "-o") == 0) {
-            if (++i >= argc) usage();
-            outbase = argv[i];
-        } else if (argv[i][0] == '-' && argv[i][1] == 'I') {
+    ap = argv + 1;
+    n = argc - 1;
+    while (n--) {
+        a = *ap++;
+        if (strcmp(a, "-o") == 0) {
+            if (n == 0) usage();
+            n--;
+            outbase = *ap++;
+        } else if (a[0] == '-' && a[1] == 'I') {
             /* Add to include path */
             if (numIncludes < MAX_INCLUDES)
-                includePaths[numIncludes++] = argv[i] + 2;
-        } else if (argv[i][0] == '-' && argv[i][1] == 'i') {
+                includePaths[numIncludes++] = a + 2;
+        } else if (a[0] == '-' && a[1] == 'i') {
             /* System include path */
-            sysIncPath = argv[i] + 2;
-        } else if (argv[i][0] == '-' && argv[i][1] == 'D') {
+            sysIncPath = a + 2;
+        } else if (a[0] == '-' && a[1] == 'D') {
             /* Define macro */
-            addDefine(argv[i] + 2);
-        } else if (strcmp(argv[i], "-E") == 0) {
+            addDefine(a + 2);
+        } else if (strcmp(a, "-E") == 0) {
             ppOnly = 1;
-        } else if (strcmp(argv[i], "-p") == 0) {
+        } else if (strcmp(a, "-p") == 0) {
             ppOutput = 1;
-        } else if (strcmp(argv[i], "-N") == 0) {
+        } else if (strcmp(a, "-N") == 0) {
             noLineMarkers = 1;
-        } else if (strcmp(argv[i], "-h") == 0) {
+        } else if (strcmp(a, "-h") == 0) {
             usage();
-        } else if (strcmp(argv[i], "-v") == 0) {
-            if (++i >= argc) usage();
+        } else if (strcmp(a, "-v") == 0) {
+            if (n == 0) usage();
+            n--;
 #ifdef DEBUG
-            verbose = strtol(argv[i], 0, 0);
+            verbose = strtol(*ap, 0, 0);
 #endif
-        } else if (argv[i][0] == '-') {
+            ap++;
+        } else if (a[0] == '-') {
             char buf[64];
-            fmtstr(buf, "Unknown option: %s\n", argv[i]);
+            fmtstr(buf, "Unknown option: %s\n", a);
             errout(buf);
             usage();
         } else {
-            source = argv[i];
+            source = a;
         }
     }
 
@@ -292,9 +301,10 @@ main(int argc, char **argv)
 
     /* Add include paths - current directory first, then -I paths */
     addInclude("");  /* Current directory */
-    for (i = 0; i < numIncludes; i++) {
-        addInclude(includePaths[i]);
-    }
+    ap = includePaths;
+    n = numIncludes;
+    while (n--)
+        addInclude(*ap++);
 
     /* Initialize token filter */
     filterInit();

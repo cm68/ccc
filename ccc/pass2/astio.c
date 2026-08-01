@@ -2,6 +2,7 @@
  * astio.c - AST file I/O
  */
 #include "pass2.h"
+#include <stdarg.h>
 #include <string.h>
 #include <unistd.h>
 #include <stdio.h>
@@ -107,6 +108,44 @@ void
 out(char *s)
 {
 	write(outfd, s, strlen(s));
+}
+
+/*
+ * Formatted emission.  One call where a chain of out/outd/outc calls
+ * stood: each call site in the code generator costs code.  Not a
+ * printf - the templates only ever splice a number, a name or a
+ * register letter into literal text, so %d, %s and %c are the whole
+ * vocabulary.
+ */
+void
+outf(char *fmt, ...)
+{
+	va_list ap;
+	register char *p = fmt;
+	char *q;
+
+	va_start(ap, fmt);
+	q = p;
+	while (*p) {
+		if (*p != '%') {
+			p++;
+			continue;
+		}
+		if (p > q)
+			write(outfd, q, p - q);
+		p++;
+		if (*p == 's')
+			out(va_arg(ap, char *));
+		else if (*p == 'c')
+			outc(va_arg(ap, int));
+		else
+			outd(va_arg(ap, int));
+		p++;
+		q = p;
+	}
+	if (p > q)
+		write(outfd, q, p - q);
+	va_end(ap);
 }
 
 void

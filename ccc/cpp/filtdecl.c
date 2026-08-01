@@ -40,23 +40,25 @@ static char *typedef_name = 0;
 static struct tokarray decl_arr;
 
 #define NAME_MAX 16
-static struct {
+struct dname {
 	char *name;
-	int star_count;
-} names[NAME_MAX];
-static int name_count = 0;
-static int cur_stars = 0;
+	char star_count;
+};
+static struct dname names[NAME_MAX];
+static unsigned char name_count = 0;
+static unsigned char cur_stars = 0;
 
 /* Initializer buffer - dynamically allocated */
 static struct tokarray init_arr;
 
 #define ASSIGN_MAX 16
-static struct {
+struct dinit {
 	char *name;
 	struct token *init;
 	int init_len;
-} assigns[ASSIGN_MAX];
-static int assign_count = 0;
+};
+static struct dinit assigns[ASSIGN_MAX];
+static unsigned char assign_count = 0;
 
 /* Pending token queue - dynamically allocated */
 static struct pendbuf pb;
@@ -98,53 +100,65 @@ filtdecl_init(void (*up)(struct token *))
 static int
 decl_is_static(void)
 {
-	int i;
+	register struct token *tp = decl_arr.buf;
+	int n = decl_arr.count;
 
-	for (i = 0; i < decl_arr.count; i++)
-		if (decl_arr.buf[i].type == STATIC)
+	while (n--) {
+		if (tp->type == STATIC)
 			return 1;
+		tp++;
+	}
 	return 0;
 }
 
 /*
- * The initializer saved for this name, or -1.
+ * The initializer saved for this name, or 0.
  */
-static int
+static struct dinit *
 init_for(char *name)
 {
-	int i;
+	register struct dinit *ap = assigns;
+	unsigned char n = assign_count;
 
-	for (i = 0; i < assign_count; i++)
-		if (assigns[i].name == name)
-			return i;
-	return -1;
+	while (n--) {
+		if (ap->name == name)
+			return ap;
+		ap++;
+	}
+	return 0;
 }
 
 static void
 emit_decl(void)
 {
-	int i, j, k;
+	register struct dname *np;
+	unsigned char n;
+	struct dinit *ap;
+	int j;
 	int keep = decl_is_static();
 	struct token tmp;
 	struct token *ref = &decl_arr.buf[0];  /* Reference for line info */
 
 	pend_buf(&pb, decl_arr.buf, decl_arr.count);
 
-	for (i = 0; i < name_count; i++) {
-		for (j = 0; j < names[i].star_count; j++)
+	np = names;
+	n = name_count;
+	while (n--) {
+		for (j = np->star_count; j > 0; j--)
 			pend_tok_at(&pb, STAR, ref);
 		/* Synthesize name token with proper line info */
 		tmp.type = SYM;
-		tmp.v.name = names[i].name;
+		tmp.v.name = np->name;
 		tmp.lineno = ref->lineno;
 		tmp.filename = ref->filename;
 		pend_push(&pb, &tmp);
-		if (keep && (k = init_for(names[i].name)) >= 0) {
+		if (keep && (ap = init_for(np->name))) {
 			pend_tok_at(&pb, ASSIGN, ref);
-			pend_buf(&pb, assigns[k].init, assigns[k].init_len);
+			pend_buf(&pb, ap->init, ap->init_len);
 		}
-		if (i < name_count - 1)
+		if (n)
 			pend_tok_at(&pb, COMMA, ref);
+		np++;
 	}
 	pend_tok_at(&pb, SEMI, ref);
 }
@@ -152,23 +166,27 @@ emit_decl(void)
 static void
 emit_assigns(void)
 {
-	int i;
+	register struct dinit *ap;
+	unsigned char n;
 	struct token tmp;
 	struct token *ref;
 
-	for (i = 0; i < assign_count; i++) {
+	ap = assigns;
+	n = assign_count;
+	while (n--) {
 		/* Use first init token for line info */
-		ref = assigns[i].init_len > 0 ? &assigns[i].init[0] : &decl_arr.buf[0];
+		ref = ap->init_len > 0 ? &ap->init[0] : &decl_arr.buf[0];
 		/* Synthesize name token with proper line info */
 		tmp.type = SYM;
-		tmp.v.name = assigns[i].name;
+		tmp.v.name = ap->name;
 		tmp.lineno = ref->lineno;
 		tmp.filename = ref->filename;
 		pend_push(&pb, &tmp);
 		pend_tok_at(&pb, ASSIGN, ref);
-		pend_buf(&pb, assigns[i].init, assigns[i].init_len);
+		pend_buf(&pb, ap->init, ap->init_len);
 		pend_tok_at(&pb, SEMI, ref);
-		free(assigns[i].init);
+		free(ap->init);
+		ap++;
 	}
 	assign_count = 0;
 }
@@ -179,10 +197,11 @@ emit_assigns(void)
 static void
 drop_assigns(void)
 {
-	int i;
+	register struct dinit *ap = assigns;
+	unsigned char n = assign_count;
 
-	for (i = 0; i < assign_count; i++)
-		free(assigns[i].init);
+	while (n--)
+		free((ap++)->init);
 	assign_count = 0;
 }
 
@@ -190,13 +209,19 @@ static void
 save_init(char *name)
 {
 	if (assign_count < ASSIGN_MAX && init_arr.count > 0) {
-		int i;
-		assigns[assign_count].name = name;
-		assigns[assign_count].init = malloc(init_arr.count * sizeof(struct token));
-		for (i = 0; i < init_arr.count; i++)
-			tokcpy(&assigns[assign_count].init[i], &init_arr.buf[i]);
-		assigns[assign_count].init_len = init_arr.count;
-		assign_count++;
+		register struct token *d;
+		struct token *s;
+		struct dinit *ap;
+		int n;
+
+		n = init_arr.count;
+		ap = &assigns[assign_count++];
+		ap->name = name;
+		d = ap->init = malloc(n * sizeof(struct token));
+		s = init_arr.buf;
+		while (n--)
+			tokcpy(d++, s++);
+		ap->init_len = init_arr.count;
 	}
 	tarr_reset(&init_arr);
 }
@@ -205,9 +230,10 @@ static void
 save_name(char *name)
 {
 	if (name_count < NAME_MAX) {
-		names[name_count].name = name;
-		names[name_count].star_count = cur_stars;
-		name_count++;
+		register struct dname *np = &names[name_count++];
+
+		np->name = name;
+		np->star_count = cur_stars;
 	}
 	cur_stars = 0;
 }
@@ -269,13 +295,16 @@ restart:
 		}
 		if (state == ST_DECL || state == ST_NAME) {
 			/* Check if this is start of aggregate definition */
-			for (i = 0; i < decl_arr.count; i++) {
-				if (decl_arr.buf[i].type == STRUCT ||
-				    decl_arr.buf[i].type == UNION ||
-				    decl_arr.buf[i].type == ENUM) {
+			register struct token *tp = decl_arr.buf;
+			int n = decl_arr.count;
+			while (n--) {
+				if (tp->type == STRUCT ||
+				    tp->type == UNION ||
+				    tp->type == ENUM) {
 					aggr_depth++;
 					break;
 				}
+				tp++;
 			}
 			/* Push type tokens first, then BEGIN, so order is correct */
 			pend_buf(&pb, decl_arr.buf, decl_arr.count);
@@ -403,16 +432,17 @@ restart:
 		}
 		if (t.type == LPAR) {
 			struct token tmp;
+			struct dname *np = &names[name_count-1];
 			struct token *ref = decl_arr.count > 0 ? &decl_arr.buf[0] : &t;
 			/* Function declarator (extern short f(), g();):
 			 * no initializer possible - emit type, stars, name,
 			 * paren; the rest of the declaration flows through
 			 * unchanged */
 			pend_buf(&pb, decl_arr.buf, decl_arr.count);
-			for (i = 0; i < names[name_count-1].star_count; i++)
+			for (i = np->star_count; i > 0; i--)
 				pend_tok_at(&pb, STAR, ref);
 			tmp.type = SYM;
-			tmp.v.name = names[name_count-1].name;
+			tmp.v.name = np->name;
 			tmp.lineno = ref->lineno;
 			tmp.filename = ref->filename;
 			pend_push(&pb, &tmp);
@@ -425,14 +455,15 @@ restart:
 		}
 		if (t.type == LBRACK) {
 			struct token tmp;
+			struct dname *np = &names[name_count-1];
 			struct token *ref = decl_arr.count > 0 ? &decl_arr.buf[0] : &t;
 			/* Emit type first, then name, then array bracket */
 			pend_buf(&pb, decl_arr.buf, decl_arr.count);
 			/* Emit stars for this variable */
-			for (i = 0; i < names[name_count-1].star_count; i++)
+			for (i = np->star_count; i > 0; i--)
 				pend_tok_at(&pb, STAR, ref);
 			tmp.type = SYM;
-			tmp.v.name = names[name_count-1].name;
+			tmp.v.name = np->name;
 			tmp.lineno = ref->lineno;
 			tmp.filename = ref->filename;
 			pend_push(&pb, &tmp);

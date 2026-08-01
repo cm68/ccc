@@ -800,9 +800,7 @@ emitasm(char *tpl, Expr *e)
 					/* template navigated to a node the
 					 * emitter can't print - make the
 					 * assembler flag it loudly */
-					out("?op");
-					outd(n->op);
-					out("?");
+					outf("?op%d?", n->op);
 				}
 			} else {
 				out("?null?");
@@ -957,14 +955,12 @@ tryrule(struct rule *rp, Expr *e)
 		off = e->u.var.off;
 		if (e->tgt == R_DE) {
 			/* sibling value lives in HL - preserve it */
-			out("\tpush hl\n\tpush iy\n\tpop hl\n\tld de,");
-			outd(off);
-			out("\n\tadd hl,de\n\tex de,hl\n\tpop hl\n");
+			outf("\tpush hl\n\tpush iy\n\tpop hl\n\tld de,%d\n\tadd hl,de\n\tex de,hl\n\tpop hl\n",
+			    off);
 			n = mkcode(e->width, R_DE);
 		} else {
-			out("\tpush iy\n\tpop hl\n\tld de,");
-			outd(off);
-			out("\n\tadd hl,de\n");
+			outf("\tpush iy\n\tpop hl\n\tld de,%d\n\tadd hl,de\n",
+			    off);
 			n = mkcode(e->width, R_HL);
 		}
 		n->dest = e->dest;
@@ -979,36 +975,25 @@ tryrule(struct rule *rp, Expr *e)
 		if (w == 'b' || w == 'B') {
 			/* Byte: load into A, or E if target is DE (for RHS of compare) */
 			if (e->tgt == R_DE) {
-				out("\tld e,");
-				outd(val);
-				out("\n");
+				outf("\tld e,%d\n", (int)val);
 				n = mkcode('b', R_E);
 			} else {
-				out("\tld a,");
-				outd(val);
-				out("\n");
+				outf("\tld a,%d\n", (int)val);
 				n = mkcode('b', R_A);
 			}
 		} else if (w == 'l' || w == 'L') {
 			/* Long: load into HLDE (DE=low, HL=high) */
-			out("\tld de,");
-			outd(val & 0xffff);
-			out("\n\tld hl,");
-			outd((val >> 16) & 0xffff);
-			out("\n");
+			outf("\tld de,%d\n\tld hl,%d\n",
+			    (int)(val & 0xffff), (int)((val >> 16) & 0xffff));
 			n = mkcode(w, R_HL);
 		} else if (e->tgt == R_DE) {
 			/* a word constant honours its target too - as the
 			 * right operand of a binary op it belongs in DE, and
 			 * putting it in HL would land on the left one */
-			out("\tld de,");
-			outd(val);
-			out("\n");
+			outf("\tld de,%d\n", (int)val);
 			n = mkcode(e->width, R_DE);
 		} else {
-			out("\tld hl,");
-			outd(val);
-			out("\n");
+			outf("\tld hl,%d\n", (int)val);
 			n = mkcode(e->width, R_HL);
 		}
 		n->dest = e->dest;
@@ -2006,21 +1991,15 @@ islongop(Expr *e)
 static void
 loadlongc(long v)
 {
-	out("\tld hl,");
-	outd((int)((v >> 16) & 0xffff));
-	out("\n\tld de,");
-	outd((int)(v & 0xffff));
-	outc('\n');
+	outf("\tld hl,%d\n\tld de,%d\n",
+	    (int)((v >> 16) & 0xffff), (int)(v & 0xffff));
 }
 
 static void
 pushlongc(long v)
 {
-	out("\tld hl,");
-	outd((int)((v >> 16) & 0xffff));
-	out("\n\tpush hl\n\tld hl,");
-	outd((int)(v & 0xffff));
-	out("\n\tpush hl\n");
+	outf("\tld hl,%d\n\tpush hl\n\tld hl,%d\n\tpush hl\n",
+	    (int)((v >> 16) & 0xffff), (int)(v & 0xffff));
 }
 
 /*
@@ -2186,9 +2165,7 @@ dolongbin(Expr *e)
 				loadlongc(l->u.val);
 			else
 				l = rewrite1(l);
-			out("\tld b,");
-			outd((int)(r->u.val & 0xff));
-			outc('\n');
+			outf("\tld b,%d\n", (int)(r->u.val & 0xff));
 		} else {
 			/*
 			 * The count is an ordinary int and would have been aimed
@@ -2208,9 +2185,8 @@ dolongbin(Expr *e)
 		}
 		freeexpr(l);
 		freeexpr(r);
-		out("\tcall ");
-		out(op == LSHIFT ? "allsh" : sign ? "alrsh" : "lushr");
-		outc('\n');
+		outf("\tcall %s\n",
+		    op == LSHIFT ? "allsh" : sign ? "alrsh" : "lushr");
 		if (savebc)
 			out("\tpop bc\n");
 		return donehl(e, INHL);
@@ -2274,9 +2250,7 @@ dolongbin(Expr *e)
 	}
 	freeexpr(l);
 
-	out("\tcall ");
-	out(fn);
-	outc('\n');
+	outf("\tcall %s\n", fn);
 	if (savebc)
 		out("\tpop bc\n");
 
@@ -2382,15 +2356,12 @@ docall(Expr *e)
 	/* the arguments may have moved it - the saved copy sits under
 	 * them, nbytes down */
 	if (savebc && argwrites) {
-		out("\tld hl,");
-		outd(nbytes);
-		out("\n\tadd hl,sp\n\tld (hl),c\n\tinc hl\n\tld (hl),b\n");
+		outf("\tld hl,%d\n\tadd hl,sp\n\tld (hl),c\n\tinc hl\n\tld (hl),b\n",
+		    nbytes);
 	}
 
 	if (direct) {
-		out("\tcall ");
-		out(fn->u.symref.name);
-		outc('\n');
+		outf("\tcall %s\n", fn->u.symref.name);
 	} else {
 		/*
 		 * Through a pointer.  The Z80 can jump to the address in HL
@@ -2424,9 +2395,8 @@ docall(Expr *e)
 		for (i = 0; i < nbytes; i++)
 			out("\tinc sp\n");
 	} else if (nbytes > 8) {
-		out("\tex de,hl\n\tld hl,");
-		outd(nbytes);
-		out("\n\tadd hl,sp\n\tld sp,hl\n\tex de,hl\n");
+		outf("\tex de,hl\n\tld hl,%d\n\tadd hl,sp\n\tld sp,hl\n\tex de,hl\n",
+		    nbytes);
 	}
 
 	if (savebc)
@@ -2681,36 +2651,20 @@ rewrite1(Expr *e)
 		e->left->dest = DEST_FLAGS;
 		e->left = rewrite1(e->left);
 		cc = isand ? falsecc(e->left) : truecc(e->left);
-		out("\tjp ");
-		out(cc);
-		out(",_L");
-		outd(out_lbl);
-		outc('\n');
+		outf("\tjp %s,_L%d\n", cc, out_lbl);
 
 		e->right->dest = DEST_FLAGS;
 		e->right = rewrite1(e->right);
 		cc = isand ? falsecc(e->right) : truecc(e->right);
-		out("\tjp ");
-		out(cc);
-		out(",_L");
-		outd(out_lbl);
-		outc('\n');
+		outf("\tjp %s,_L%d\n", cc, out_lbl);
 
 		/* both operands agreed with the expression: force the
 		 * answer "&&" wants when true, "||" wants when false */
 		out(isand ? "\txor a\n\tinc a\n" : "\txor a\n");
-		out("\tjp _L");
-		outd(end_lbl);
-		outc('\n');
-
-		out("_L");
-		outd(out_lbl);
-		out(":\n");
+		outf("\tjp _L%d\n_L%d:\n", end_lbl, out_lbl);
 		out(isand ? "\txor a\n" : "\txor a\n\tinc a\n");
 
-		out("_L");
-		outd(end_lbl);
-		out(":\n");
+		outf("_L%d:\n", end_lbl);
 
 		/*
 		 * Both paths leave a definite nought or one in A, so this
@@ -2759,24 +2713,12 @@ rewrite1(Expr *e)
 		e->left->dest = DEST_FLAGS;
 		e->left = rewrite1(e->left);
 		cc = falsecc(e->left);
-		out("\tjp ");
-		out(cc);
-		out(",_T");
-		outd(lbl);
-		outc('\n');
+		outf("\tjp %s,_T%d\n", cc, lbl);
 
 		branchval(tb->left);
-		out("\tjp _E");
-		outd(lbl);
-		outc('\n');
-
-		out("_T");
-		outd(lbl);
-		out(":\n");
+		outf("\tjp _E%d\n_T%d:\n", lbl, lbl);
 		branchval(tb->right);
-		out("_E");
-		outd(lbl);
-		out(":\n");
+		outf("_E%d:\n", lbl);
 
 		e->left = NULL;
 		tb->left = NULL;
@@ -2825,9 +2767,7 @@ rewrite1(Expr *e)
 			/* Evaluate left operand (result in HLDE) */
 			e->left = rewrite1(e->left);
 			/* Call helper */
-			out("\tcall ");
-			out(helper);
-			out("\n");
+			outf("\tcall %s\n", helper);
 			/* For comparisons, result is in flags */
 			if (iscompare) {
 				unsigned char flag;
@@ -3253,9 +3193,7 @@ constresult(Expr *e)
 		n = mkcode(e->width, F_NZ);
 		break;
 	default:
-		out("\tld hl,");
-		outd((int)v);
-		outc('\n');
+		outf("\tld hl,%d\n", (int)v);
 		n = mkcode(e->width, R_HL);
 		n->op = INHL;
 		break;
@@ -3287,11 +3225,7 @@ condleaf(Expr *e, char *lbl, int wf)
 	assign(e, R_HL);
 	e = rewrite1(e);
 	cc = wf ? falsecc(e) : truecc(e);
-	out("\tjp ");
-	out(cc);
-	outc(',');
-	out(lbl);
-	outc('\n');
+	outf("\tjp %s,%s\n", cc, lbl);
 	freeexpr(e);
 }
 
@@ -3317,8 +3251,7 @@ condgo(Expr *e, char *lbl, int wf)
 			fmtstr(sc, "_C%d", labelcnt++);
 			condgo(l, sc, !wf);
 			condgo(r, lbl, wf);
-			out(sc);
-			out(":\n");
+			outf("%s:\n", sc);
 		}
 		return;
 	}

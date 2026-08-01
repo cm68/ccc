@@ -94,8 +94,9 @@ static int swtop;
 static void
 swlabel(char k, int id, int n)
 {
-	out("_"); outc(k); outd(id); outc('_'); outd(fnindex);
-	if (n >= 0) { out("_"); outd(n); }
+	outf("_%c%d_%d", k, id, fnindex);
+	if (n >= 0)
+		outf("_%d", n);
 }
 
 /*
@@ -143,11 +144,7 @@ swdispatch(struct swctx *sw)
 
 	if (n >= 3 && span <= 255 && 2 * span < 3 * n - 1) {
 		/* dense: bias and index, gaps pointing at no-match */
-		out("\tcall swidx\n\t.db ");
-		outd(lo);
-		out("\n\t.db ");
-		outd(span);
-		outc('\n');
+		outf("\tcall swidx\n\t.db %d\n\t.db %d\n", lo, span);
 		for (i = 0; i < span; i++) {
 			out("\t.dw ");
 			for (j = 0; j < n; j++)
@@ -167,14 +164,9 @@ swdispatch(struct swctx *sw)
 		 * after them and backwards, which is what lets the helper
 		 * find the slot from what cpir leaves in HL and BC.
 		 */
-		out("\tcall swtab\n\t.db ");
-		outd(n);
-		outc('\n');
-		for (i = 0; i < n; i++) {
-			out("\t.db ");
-			outd((int)(sw->val[i] & 0xff));
-			outc('\n');
-		}
+		outf("\tcall swtab\n\t.db %d\n", n);
+		for (i = 0; i < n; i++)
+			outf("\t.db %d\n", (int)(sw->val[i] & 0xff));
 		for (i = n - 1; i >= 0; i--) {
 			out("\t.dw ");
 			swlabel('K', sw->id, i);
@@ -183,9 +175,7 @@ swdispatch(struct swctx *sw)
 		return;
 	}
 	for (i = 0; i < n; i++) {
-		out("\tcp ");
-		outd((int)(sw->val[i] & 0xff));
-		out("\n\tjp z,");
+		outf("\tcp %d\n\tjp z,", (int)(sw->val[i] & 0xff));
 		swlabel('K', sw->id, i);
 		outc('\n');
 	}
@@ -239,12 +229,9 @@ emitprolog(void)
 		 * allocate the rest (big arrays live down there and are
 		 * addressed with 16-bit arithmetic, not (iy+d)).
 		 */
-		if (savebase > 0) {
-			out("\tld\thl,-");
-			outd(savebase);
-			outc('\n');
-			out("\tadd\thl,sp\n\tld\tsp,hl\n");
-		}
+		if (savebase > 0)
+			outf("\tld\thl,-%d\n\tadd\thl,sp\n\tld\tsp,hl\n",
+			    savebase);
 		off = -savebase;
 		if (regsused & USES_BC) {
 			out("\tpush\tbc\n");
@@ -264,12 +251,9 @@ emitprolog(void)
 		 * (off is -savebase-pushed, so this is
 		 * framesize - savebase - pushed) */
 		rest = framesize + off;
-		if (rest > 0) {
-			out("\tld\thl,-");
-			outd(rest);
-			outc('\n');
-			out("\tadd\thl,sp\n\tld\tsp,hl\n");
-		}
+		if (rest > 0)
+			outf("\tld\thl,-%d\n\tadd\thl,sp\n\tld\tsp,hl\n",
+			    rest);
 	}
 
 	/* Stage params from stack to registers */
@@ -285,25 +269,17 @@ emitprolog(void)
 			case R_B: outc('b'); break;
 			case R_C: outc('c'); break;
 			}
-			out(",(iy+");
-			outd(off);
-			out(")\n");
+			outf(",(iy+%d)\n", off);
 		} else {
 			/* Word: load low then high */
 			switch (r) {
 			case R_BC:
-				out("\tld\tc,(iy+");
-				outd(off);
-				out(")\n\tld\tb,(iy+");
-				outd(off + 1);
-				out(")\n");
+				outf("\tld\tc,(iy+%d)\n\tld\tb,(iy+%d)\n",
+				    off, off + 1);
 				break;
 			case R_IX:
-				out("\tld\tl,(iy+");
-				outd(off);
-				out(")\n\tld\th,(iy+");
-				outd(off + 1);
-				out(")\n\tpush\thl\n\tpop\tix\n");
+				outf("\tld\tl,(iy+%d)\n\tld\th,(iy+%d)\n\tpush\thl\n\tpop\tix\n",
+				    off, off + 1);
 				break;
 			}
 		}
@@ -330,18 +306,12 @@ emitepilog(void)
 	 * target list says "compatibles that do half register access".
 	 */
 	if (regsused & REGBIT(R_IX)) {
-		out("\tld\ta,(iy");
-		outd(ixoff);
-		out(")\n\tld\tixl,a\n\tld\ta,(iy");
-		outd(ixoff + 1);
-		out(")\n\tld\tixh,a\n");
+		outf("\tld\ta,(iy%d)\n\tld\tixl,a\n\tld\ta,(iy%d)\n\tld\tixh,a\n",
+		    ixoff, ixoff + 1);
 	}
 	if (regsused & USES_BC) {
-		out("\tld\tc,(iy");
-		outd(bcoff);
-		out(")\n\tld\tb,(iy");
-		outd(bcoff + 1);
-		out(")\n");
+		outf("\tld\tc,(iy%d)\n\tld\tb,(iy%d)\n",
+		    bcoff, bcoff + 1);
 	}
 	/* Restore frame pointer */
 	out("\tld\tsp,iy\n\tpop\tiy\n");
@@ -415,26 +385,14 @@ parseStmt(void)
 		hasel = read1();
 		if (hasel) {
 			/* Jump over else */
-			out("\tjp no");
-			outd(lbl + 1);
-			outc('_');
-			outd(fnindex);
-			outc('\n');
+			outf("\tjp no%d_%d\n", lbl + 1, fnindex);
 		}
 		/* Emit false label */
-		out("no");
-		outd(lbl);
-		outc('_');
-		outd(fnindex);
-		out(":\n");
+		outf("no%d_%d:\n", lbl, fnindex);
 		if (hasel) {
 			parseStmt();	/* else-body */
 			/* Emit end label */
-			out("no");
-			outd(lbl + 1);
-			outc('_');
-			outd(fnindex);
-			out(":\n");
+			outf("no%d_%d:\n", lbl + 1, fnindex);
 		}
 		return;
 	}
@@ -526,9 +484,8 @@ parseStmt(void)
 		out("; SWITCH n="); outd(n); outc('\n');
 #endif
 		if (swtop >= MAXSWNEST) {
-			out("\t.error switches nested deeper than ");
-			outd(MAXSWNEST);
-			outc('\n');
+			outf("\t.error switches nested deeper than %d\n",
+			    MAXSWNEST);
 			swtop = MAXSWNEST - 1;
 		}
 		sw = &swstk[swtop++];
@@ -602,9 +559,8 @@ parseStmt(void)
 		e = readexpr();
 		if (sw && e) {
 			if (sw->ncase >= MAXSWCASE) {
-				out("\t.error more than ");
-				outd(MAXSWCASE);
-				out(" cases in one switch\n");
+				outf("\t.error more than %d cases in one switch\n",
+				    MAXSWCASE);
 			} else {
 				sw->val[sw->ncase] = e->u.val;
 				swlabel('K', sw->id, sw->ncase);

@@ -57,15 +57,16 @@ static struct tokarray tail_arr;
  * Ten was under what the tools in this tree already use.
  */
 #define PARAM_MAX 24
-static struct {
+struct param {
 	char *name;
 	struct token *type;	/* Type tokens for this param */
-	int type_len;
-	int stars;		/* Pointer depth */
+	char type_len;
+	char stars;		/* Pointer depth */
 	struct token *post;	/* fn-ptr declarator tail: `)(int)` */
-	int post_len;
-} params[PARAM_MAX];
-static int param_count = 0;
+	char post_len;
+};
+static struct param params[PARAM_MAX];
+static unsigned char param_count = 0;
 
 /* Current param type being parsed - dynamically allocated */
 static struct tokarray ptype_arr;
@@ -113,16 +114,20 @@ filtknr_init(void (*up)(struct token *))
 }
 
 /*
- * Find param index by name, -1 if not found
+ * Find param by name, 0 if not found
  */
-static int
+static struct param *
 find_param(char *name)
 {
-	int i;
-	for (i = 0; i < param_count; i++)
-		if (strcmp(params[i].name, name) == 0)
-			return i;
-	return -1;
+	register struct param *pp = params;
+	unsigned char n = param_count;
+
+	while (n--) {
+		if (strcmp(pp->name, name) == 0)
+			return pp;
+		pp++;
+	}
+	return 0;
 }
 
 /*
@@ -131,21 +136,27 @@ find_param(char *name)
 static void
 save_ptype(char *name, int stars)
 {
-	int idx = find_param(name);
-	if (idx >= 0 && ptype_arr.count > 0) {
-		int i;
-		params[idx].type = malloc(ptype_arr.count * sizeof(struct token));
-		for (i = 0; i < ptype_arr.count; i++)
-			tokcpy(&params[idx].type[i], &ptype_arr.buf[i]);
-		params[idx].type_len = ptype_arr.count;
-		params[idx].stars = stars;
-		if (ptail_arr.count > 0) {
+	register struct param *pp = find_param(name);
+	if (pp && ptype_arr.count > 0) {
+		register struct token *d;
+		struct token *s;
+		int n;
+
+		n = ptype_arr.count;
+		d = pp->type = malloc(n * sizeof(struct token));
+		s = ptype_arr.buf;
+		while (n--)
+			tokcpy(d++, s++);
+		pp->type_len = ptype_arr.count;
+		pp->stars = stars;
+		n = ptail_arr.count;
+		if (n > 0) {
 			/* fn-ptr declarator: tokens after the name */
-			params[idx].post = malloc(ptail_arr.count *
-						  sizeof(struct token));
-			for (i = 0; i < ptail_arr.count; i++)
-				tokcpy(&params[idx].post[i], &ptail_arr.buf[i]);
-			params[idx].post_len = ptail_arr.count;
+			d = pp->post = malloc(n * sizeof(struct token));
+			s = ptail_arr.buf;
+			while (n--)
+				tokcpy(d++, s++);
+			pp->post_len = ptail_arr.count;
 		}
 	}
 	tarr_reset(&ptail_arr);
@@ -159,7 +170,9 @@ save_ptype(char *name, int stars)
 static void
 emit_ansi(void)
 {
-	int i, j;
+	register struct param *pp;
+	unsigned char n;
+	int j;
 	struct token tmp;
 
 	/* Emit return type (synthesize implicit int: c0 requires one) */
@@ -175,39 +188,42 @@ emit_ansi(void)
 	pend_tok_at(&pb, LPAR, &func_name);
 
 	/* Emit params with types */
-	for (i = 0; i < param_count; i++) {
-		if (params[i].type_len > 0) {
+	pp = params;
+	n = param_count;
+	while (n--) {
+		if (pp->type_len > 0) {
 			/* Type tokens */
-			pend_buf(&pb, params[i].type, params[i].type_len);
+			pend_buf(&pb, pp->type, pp->type_len);
 		} else {
 			/* K&R default: untyped params are int */
 			pend_tok_at(&pb, INT, &func_name);
 		}
 		/* Stars */
-		for (j = 0; j < params[i].stars; j++)
+		for (j = pp->stars; j > 0; j--)
 			pend_tok_at(&pb, TIMES, &func_name);
 		/* Name */
 		tmp.type = SYM;
-		tmp.v.name = params[i].name;
+		tmp.v.name = pp->name;
 		tmp.lineno = func_name.lineno;
 		tmp.filename = func_name.filename;
 		pend_push(&pb, &tmp);
 		/* fn-ptr declarator tail: `)(int)` after the name */
-		if (params[i].post_len > 0)
-			pend_buf(&pb, params[i].post, params[i].post_len);
+		if (pp->post_len > 0)
+			pend_buf(&pb, pp->post, pp->post_len);
 		/* Comma if not last */
-		if (i < param_count - 1)
+		if (n)
 			pend_tok_at(&pb, COMMA, &func_name);
 		/* Free buffers */
-		if (params[i].type) {
-			free(params[i].type);
-			params[i].type = 0;
+		if (pp->type) {
+			free(pp->type);
+			pp->type = 0;
 		}
-		if (params[i].post) {
-			free(params[i].post);
-			params[i].post = 0;
-			params[i].post_len = 0;
+		if (pp->post) {
+			free(pp->post);
+			pp->post = 0;
+			pp->post_len = 0;
 		}
+		pp++;
 	}
 
 	/* Emit ) */
@@ -223,6 +239,8 @@ emit_ansi(void)
 static void
 abort_knr(void)
 {
+	register struct param *pp;
+	unsigned char n;
 	int i;
 	struct token tmp;
 
@@ -235,11 +253,14 @@ abort_knr(void)
 	pend_push(&pb, &func_name);
 	pend_push(&pb, &saved_lpar);  /* Use saved LPAR with correct line info */
 	/* Emit any param names we collected (with commas) */
-	for (i = 0; i < param_count; i++) {
-		toksynthnam(&tmp, SYM, params[i].name);
+	pp = params;
+	n = param_count;
+	while (n--) {
+		toksynthnam(&tmp, SYM, pp->name);
 		pend_push(&pb, &tmp);
-		if (i < param_count - 1 || state == ST_PARAMS)
+		if (n || state == ST_PARAMS)
 			pend_tok(&pb, COMMA);
+		pp++;
 	}
 	if (state == ST_PDECL || state == ST_PTYPE || state == ST_TAIL) {
 		/* ) was consumed on leaving ST_PARAMS - put it back, then
@@ -276,15 +297,18 @@ abort_knr(void)
 static void
 reset_state(void)
 {
-	int i;
-	for (i = 0; i < param_count; i++) {
-		if (params[i].type)
-			free(params[i].type);
-		params[i].type = 0;
-		if (params[i].post)
-			free(params[i].post);
-		params[i].post = 0;
-		params[i].post_len = 0;
+	register struct param *pp = params;
+	unsigned char n = param_count;
+
+	while (n--) {
+		if (pp->type)
+			free(pp->type);
+		pp->type = 0;
+		if (pp->post)
+			free(pp->post);
+		pp->post = 0;
+		pp->post_len = 0;
+		pp++;
 	}
 	tarr_reset(&rtype_arr);
 	param_count = 0;
@@ -446,13 +470,17 @@ restart:
 					gripe(ER_C_PC);
 					goto restart;
 				}
-				params[param_count].name = t.v.name;
-				params[param_count].type = 0;
-				params[param_count].type_len = 0;
-				params[param_count].stars = 0;
-				params[param_count].post = 0;
-				params[param_count].post_len = 0;
-				param_count++;
+				{
+					register struct param *pp;
+
+					pp = &params[param_count++];
+					pp->name = t.v.name;
+					pp->type = 0;
+					pp->type_len = 0;
+					pp->stars = 0;
+					pp->post = 0;
+					pp->post_len = 0;
+				}
 			}
 		}
 		/* Consume commas silently */
