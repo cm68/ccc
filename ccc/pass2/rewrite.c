@@ -2872,6 +2872,30 @@ rewrite1(Expr *e)
 		if (e->left && e->left->op == SYMREF)
 			e->left = symtohl(e->left);
 		/*
+		 * A register variable reduces to itself, not to HL - the
+		 * rules read it in place by design.  The spill below pushes
+		 * HL, so its VALUE has to actually be there first: without
+		 * this, "p += 1 + (w ? 2 : 1) + len" with p in BC pushed
+		 * whatever the condition had left in HL and marched p off
+		 * into it - which is how cpp's define store walked garbage
+		 * and wrote six interned names' ids over with it.
+		 */
+		if (e->left->op == INBC || e->left->op == INDE ||
+		    (e->left->op == REGVAR &&
+		     (e->left->u.var.reg == R_BC || e->left->u.var.reg == R_IX))) {
+			if (e->left->op == INDE)
+				out("\tld l,e\n\tld h,d\n");
+			else if (e->left->op == REGVAR &&
+			    e->left->u.var.reg == R_IX)
+				out("\tpush ix\n\tpop hl\n");
+			else
+				out("\tld l,c\n\tld h,b\n");
+			lw = e->left->width;
+			freeexpr(e->left);
+			e->left = mkcode(lw, R_HL);
+			e->left->op = INHL;
+		}
+		/*
 		 * Unless it is a byte, which lands in A whatever target it
 		 * was given.  Pushing HL then would spill the address the
 		 * value was read through, and the operator would be applied
