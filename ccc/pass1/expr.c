@@ -502,6 +502,7 @@ foldNode(struct expr *e)
 {
     unsigned lv, rv;
     int rel = 0, sgn;
+    unsigned char op;
     struct expr *left, *right, *result;
 
     if (!e || !e->left || !e->right)
@@ -509,12 +510,13 @@ foldNode(struct expr *e)
 
     left = e->left;
     right = e->right;
+    op = e->op;
 
     /* Identity folding: x + 0 -> x, x * 1 -> x, etc. */
     if (right->flags & E_CONST) {
         rv = right->v;
         result = NULL;
-        switch (e->op) {
+        switch (op) {
         case PLUS:
         case MINUS:
         case OR:
@@ -568,7 +570,7 @@ foldNode(struct expr *e)
     sgn = !(left->type->flags & TF_UNSIGNED) &&
           !(right->type->flags & TF_UNSIGNED);
 
-    switch (e->op) {
+    switch (op) {
     case PLUS:   lv += rv; break;
     case MINUS:  lv -= rv; break;
     case STAR:   lv *= rv; break;
@@ -800,17 +802,16 @@ pfxSym(void)
         uofs = np->w.m.offset;
         e = mkexprI(CONST, 0, inttype, uofs, E_CONST);
     } else {
-        e1 = mkexprI(SYM, 0, np->type, 0, 0);
+        tp = np->type;
+        e1 = mkexprI(SYM, 0, tp, 0, 0);
         e1->var = (struct var *)np;
 
         // Functions and arrays decay to pointers (addresses)
         // Only wrap non-functions in DEREF to get their value
-        if (np->type->flags & TF_FUNC)
-            e = e1;  // Function: return address
-        else if (np->type->flags & TF_ARRAY)
-            e = e1;  // Array: decays to pointer
+        if (tp->flags & (TF_FUNC | TF_ARRAY))
+            e = e1;  // address forms decay to the address
         else
-            e = mkexprI(DEREF, e1, np->type, 0, 0);  // Variable: wrap in DEREF
+            e = mkexprI(DEREF, e1, tp, 0, 0);  // Variable: wrap in DEREF
     }
     /* Note: gettoken() already called above for lookahead */
     return e;
@@ -1227,7 +1228,8 @@ static struct expr *
 pfxIndex(struct expr *e)
 {
     struct expr *e1, *e2, *e3, *e4;
-    struct type *tp;
+    struct type *tp, *sub;
+    unsigned short tf;
     int elem_size;
 
     gettoken();  // consume '['
@@ -1252,11 +1254,11 @@ pfxIndex(struct expr *e)
         tp = e ? e->type : (struct type *)0;
 
     /* Get element size from type */
+    tf = tp->flags;
+    sub = tp->sub;
     elem_size = 2;  // default to short/int size
-    if ((tp->flags & TF_POINTER) && tp->sub)
-        elem_size = tp->sub->size;
-    else if ((tp->flags & TF_ARRAY) && tp->sub)
-        elem_size = tp->sub->size;
+    if ((tf & (TF_POINTER | TF_ARRAY)) && sub)
+        elem_size = sub->size;
 
     // Scale index by element size: idx * sizeof(elem)
     if (elem_size == 1) {
@@ -1270,14 +1272,14 @@ pfxIndex(struct expr *e)
     // Add scaled offset to base: base + (idx * sizeof)
     /* The ADD result is a pointer to the element type */
     e3 = mkbin(PLUS, e, e2,
-        ((tp->flags & TF_ARRAY) && tp->sub) ?
-            getType(TF_POINTER, tp->sub, 0) : tp);  /* addr */
+        ((tf & TF_ARRAY) && sub) ?
+            getType(TF_POINTER, sub, 0) : tp);  /* addr */
 
     // Dereference to get element value
     e = mkexpr(DEREF, e3);
-    if ((e->left->type->flags & (TF_POINTER|TF_ARRAY)) &&
-            e->left->type->sub)
-        e->type = e->left->type->sub;
+    tp = e3->type;
+    if ((tp->flags & (TF_POINTER | TF_ARRAY)) && tp->sub)
+        e->type = tp->sub;
     return e;
 }
 

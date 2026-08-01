@@ -419,11 +419,11 @@ emitExpr(struct expr *e)
 			short off = local ? local->w.r.frm_off : np->w.r.frm_off;
 			if (reg) {
 				emit1(REGVAR);
-				emit1(typeSfx(e->type));
+				emit1(typeSfx(type));
 				emit1(reg);
 			} else {
 				emit1(LOCALVAR);
-				emit1(typeSfx(e->type));
+				emit1(typeSfx(type));
 				emit2((unsigned short)off);
 			}
 			break;

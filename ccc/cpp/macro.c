@@ -98,19 +98,20 @@ ndput(unsigned char *p, unsigned char w, int val)
 static unsigned char *
 ndeffind(char *name)
 {
-    unsigned char *slab, *p;
-    unsigned char h, len, w;
-    int nl = strlen(name);
+    unsigned char *slab;
+    register unsigned char *p;
+    unsigned char h, len, hlen;
+    unsigned char nl = strlen(name);
 
     for (slab = nslabs; slab; slab = *(unsigned char **)slab) {
         p = slab + sizeof(char *);
         while ((h = *p)) {
             len = h & 0x1f;
-            w = (h >> 5) & 3;
+            hlen = 1 + NDLEN((h >> 5) & 3);
             if (!(h & 0x80) && len == nl &&
-                memcmp((char *)p + 1 + NDLEN(w), name, len) == 0)
+                memcmp((char *)p + hlen, name, len) == 0)
                 return p;
-            p += 1 + NDLEN(w) + len;
+            p += hlen + len;
         }
     }
     return 0;
@@ -184,10 +185,11 @@ ndefval(char *name, long *out)
 static void
 ndefadd(char *name, long lval)
 {
-    unsigned char *p = ndeffind(name);
+    register unsigned char *p = ndeffind(name);
     int val = (int)lval;
     unsigned char w;
     unsigned char len;
+    unsigned char hlen;
 
     w = lval >= -128 && lval < 128 ? 0 : lval > 0 ? 1 : 2;
 
@@ -200,17 +202,19 @@ ndefadd(char *name, long lval)
         *p |= 0x80;		/* changed sign class: dead, re-append */
     }
     len = strlen(name);
-    if (!nslabs || nfree + 1 + NDLEN(w) + len >= nend) {
+    hlen = 1 + NDLEN(w);
+    if (!nslabs || nfree + hlen + len >= nend) {
         unsigned char *s = (unsigned char *)permalloc(NSLAB);
         *(unsigned char **)s = nslabs;
         nslabs = s;
         nfree = s + sizeof(char *);
         nend = s + NSLAB;
     }
-    *nfree = (w << 5) | len;
-    ndput(nfree + 1, w, val);
-    memcpy((char *)nfree + 1 + NDLEN(w), name, len);
-    nfree += 1 + NDLEN(w) + len;
+    p = nfree;
+    *p = (w << 5) | len;
+    ndput(p + 1, w, val);
+    memcpy((char *)p + hlen, name, len);
+    nfree = p + hlen + len;
 }
 
 /* remove from the numeric store, if present (#undef, redefinition) */
