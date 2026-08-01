@@ -38,8 +38,6 @@ static struct ient {
  * first EMISSION, not first sight, so the sidecar holds only names
  * the stream actually uses.  0 is reserved for "no name".
  */
-static struct ient **byid;      /* id-1 -> entry */
-static int byidcap;
 static unsigned short nextid = 1;
 
 char *
@@ -87,21 +85,8 @@ idOf(char *s)
             if (strcmp(e->str, s) == 0)
                 break;
     }
-    if (e->id == 0) {
+    if (e->id == 0)
         e->id = nextid++;
-        if (e->id > byidcap) {
-            struct ient **nb;
-            int ncap = byidcap ? byidcap * 2 : 128;
-            int i;
-
-            nb = (struct ient **)permalloc(ncap * sizeof(*nb));
-            for (i = 0; i < byidcap; i++)
-                nb[i] = byid[i];
-            byid = nb;
-            byidcap = ncap;
-        }
-        byid[e->id - 1] = e;
-    }
     return e->id;
 }
 
@@ -110,9 +95,15 @@ idOf(char *s)
  *
  *	2 bytes		count N, little-endian
  *	N * 2 bytes	offset of name i+1 from file start
- *	names		NUL-terminated, in id order
+ *	names		NUL-terminated
  *
  * Two seeks fetch any name; nothing is obliged to hold the file.
+ * The offset TABLE is in id order - readers index it - but the
+ * names behind it sit in whatever order the pool walk visits them,
+ * each offset seeked into its slot.  The id-to-entry array this
+ * replaces cost more than a kilobyte of doubling permallocs on the
+ * machine where cpp itself has to fit; two walks and a seek per
+ * name at exit cost nothing that matters.
  */
 int
 internWrite(char *fname)
@@ -121,6 +112,7 @@ internWrite(char *fname)
     unsigned int off;
     unsigned char b[2];
     int n = nextid - 1;
+    struct ient *e;
 
     fd = creat(fname, 0644);
     if (fd < 0)
@@ -129,14 +121,23 @@ internWrite(char *fname)
     b[1] = (n >> 8) & 0xff;
     write(fd, (char *)b, 2);
     off = 2 + 2 * n;
-    for (i = 0; i < n; i++) {
-        b[0] = off & 0xff;
-        b[1] = (off >> 8) & 0xff;
-        write(fd, (char *)b, 2);
-        off += strlen(byid[i]->str) + 1;
+    for (i = 0; i < INTERN_HASH; i++) {
+        for (e = ipool[i]; e; e = e->next) {
+            if (!e->id)
+                continue;
+            lseek(fd, (long)(2 + 2 * (e->id - 1)), 0);
+            b[0] = off & 0xff;
+            b[1] = (off >> 8) & 0xff;
+            write(fd, (char *)b, 2);
+            off += strlen(e->str) + 1;
+        }
     }
-    for (i = 0; i < n; i++)
-        write(fd, byid[i]->str, strlen(byid[i]->str) + 1);
+    /* second walk, same order: the names */
+    lseek(fd, (long)(2 + 2 * n), 0);
+    for (i = 0; i < INTERN_HASH; i++)
+        for (e = ipool[i]; e; e = e->next)
+            if (e->id)
+                write(fd, e->str, strlen(e->str) + 1);
     close(fd);
     return 0;
 }

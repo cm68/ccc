@@ -167,7 +167,10 @@ sizecheck: $(GENERATED)
 #
 # com-sdcc is gone: self-build is in reach, and a third compiler's
 # numbers stopped earning their upkeep.
-# Missing: com-ccc (blocked on pass1: lexdata.c array-bound folding).
+#
+#   mx-ccc    the self-build: ccc's own chain compiles cpp, linked
+#             as a Micronix binary for the simulator.  This is the
+#             cpp the self-build differential runs.
 
 CPPDIR   = $(realpath .)
 LIBDIR   = $(realpath ../lib)
@@ -199,6 +202,27 @@ com-zc3: $(GENERATED)
 		-L$(ROOTDIR)/lib -lccc -lcpm -lc -lu -lc
 	cd comzc3 && tail -c +17 cpp.ws > cpp-zc3.com
 	@$(ROOTDIR)/bin/wssize comzc3/cpp.ws | sed 's/cpp.ws/cpp-zc3.com/'
+
+# The same build done by ccc itself, mirroring pass1's mx-ccc: one
+# object per source through the driver, linked for the simulator.
+# CCCOPT=-O runs the peephole; the self-build differential compares
+# this cpp.mx against the host cpp on every tree source.
+mx-ccc: $(GENERATED)
+	@mkdir -p comccc
+	@set -e; cd comccc ; export PATH=$(ROOTDIR)/bin:$$PATH ; \
+	for f in $(SOURCES); do \
+		b=$${f%.c}; \
+		printf "%-12s" "$$b: " ; \
+		if $(ROOTDIR)/bin/ccc $(CCCOPT) -c -DCCC -i$(LIBSRCINC) \
+			-I$(CPPDIR) -I$(LIBDIR) $(CPPDIR)/$$f > $$b.log 2>&1 \
+			&& [ -f $$b.o ]; then \
+			echo ok; \
+		else echo FAIL; cat $$b.log; exit 1; fi \
+	done
+	cd comccc && $(ROOTDIR)/bin/wsld -s -o cpp.mx -Ttext=0x100 \
+		$(ROOTDIR)/lib/crt0.o $$(ls *.o 2>/dev/null) \
+		-L$(ROOTDIR)/lib -lccc -lc -lu -lc
+	@$(ROOTDIR)/bin/wssize comccc/cpp.mx
 
 # Individual stage1 file rules
 .SECONDARY:
@@ -285,6 +309,6 @@ test: langtest
 	cd test && ./runtest.sh
 	cd test && ./sweep.sh
 
-.PHONY: all clean regen stage1 install clobber sizefile sizecheck regression langtest test com com-zc3 valgrind
+.PHONY: all clean regen stage1 install clobber sizefile sizecheck regression langtest test com com-zc3 mx-ccc valgrind
 
 # vim: tabstop=4 shiftwidth=4 noexpandtab:
