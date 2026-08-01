@@ -93,7 +93,7 @@ tag_pending(struct tokarray *a)
  * Track BEGIN/END nesting depth.
  */
 void
-tok_depth(struct token *t, int *depth)
+tok_depth(struct token *t, unsigned char *depth)
 {
 	if (t->type == BEGIN)
 		(*depth)++;

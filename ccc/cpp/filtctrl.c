@@ -45,9 +45,17 @@ struct stkent {
 };
 static struct filter_stack fs;
 
-static int state = ST_NORMAL;
-static int depth = 0;			/* Paren depth while buffering */
-static int body_depth = 0;		/* Brace depth in body */
+static unsigned char state = ST_NORMAL;
+/*
+ * DEPTH_NONE marks "the while has not arrived yet" between a do
+ * body and its condition.  It used to be -1 in an int, but the
+ * range was never the point - depth is a paren count and 255 parens
+ * is not a program - so the sentinel is just a byte the count
+ * cannot reach.
+ */
+#define DEPTH_NONE 255
+static unsigned char depth = 0;		/* Paren depth while buffering */
+static unsigned char body_depth = 0;	/* Brace depth in body */
 static int label_num = 0;
 static int next_label = 1;
 static unsigned char cur_ctx = 0;	/* Current context type */
@@ -63,7 +71,7 @@ static struct pendbuf pb;
 static void (*upstream)(struct token *);
 
 #ifdef DEBUG
-static int ctrl_balance = 0;  /* Track output brace balance */
+static char ctrl_balance = 0;  /* output brace balance: nesting-bounded */
 #endif
 
 void
@@ -479,7 +487,7 @@ restart:
 		r = handle_body(&t, CTX_DO);
 		if (r == 1) {
 			state = ST_DO_COND;
-			depth = -1;
+			depth = DEPTH_NONE;
 			tarr_reset(&cond_arr);
 			pop_out(out);
 			return;
@@ -494,7 +502,7 @@ restart:
 		break;
 
 	case ST_DO_COND:
-		if (depth == -1) {
+		if (depth == DEPTH_NONE) {
 			if (t.type == WHILE) {
 				depth = 0;
 				goto restart;

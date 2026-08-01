@@ -1052,6 +1052,30 @@ struct rule rules[] = {
 	 * "(*p)++" on a register pointer loaded the pointer, took that
 	 * for an address and stepped what it pointed at.
 	 */
+	/*
+	 * The byte forms, which had never existed: "(*p)++" on a byte
+	 * through a register pointer emitted a marker, and through a
+	 * frame pointer too.  ld a,(bc) is one of the Z80's two
+	 * one-byte indirect loads, so the BC forms cost nothing extra;
+	 * the HL forms read and write through (hl) directly.  Postfix
+	 * parks the old value in E, which nothing owns here.
+	 */
+	R("i(D(B)):b", PREINC, P_L, P_NONE, P_NONE, 0,
+		"\tld a,(bc)\n\tinc a\n\tld (bc),a\n", R_A),
+	R("k(D(B)):b", PREDEC, P_L, P_NONE, P_NONE, 0,
+		"\tld a,(bc)\n\tdec a\n\tld (bc),a\n", R_A),
+	R("j(D(B)):b", POSTINC, P_L, P_NONE, P_NONE, 0,
+		"\tld a,(bc)\n\tld e,a\n\tinc a\n\tld (bc),a\n\tld a,e\n", R_A),
+	R("m(D(B)):b", POSTDEC, P_L, P_NONE, P_NONE, 0,
+		"\tld a,(bc)\n\tld e,a\n\tdec a\n\tld (bc),a\n\tld a,e\n", R_A),
+	R("i(D(H)):b", PREINC, P_L, P_NONE, P_NONE, 0,
+		"\tinc (hl)\n\tld a,(hl)\n", R_A),
+	R("k(D(H)):b", PREDEC, P_L, P_NONE, P_NONE, 0,
+		"\tdec (hl)\n\tld a,(hl)\n", R_A),
+	R("j(D(H)):b", POSTINC, P_L, P_NONE, P_NONE, 0,
+		"\tld a,(hl)\n\tinc (hl)\n", R_A),
+	R("m(D(H)):b", POSTDEC, P_L, P_NONE, P_NONE, 0,
+		"\tld a,(hl)\n\tdec (hl)\n", R_A),
 	R("i(D(B)):s", PREINC, P_L, P_NONE, P_NONE, 0,
 		T_BC_HL F_PUSHHL T_LD_IHL F_INCHL T_SWAP_ADDR T_ST_IHL, R_HL),
 	R("k(D(B)):s", PREDEC, P_L, P_NONE, P_NONE, 0,

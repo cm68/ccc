@@ -148,7 +148,7 @@ extern void pend_thru(struct pendbuf *p, struct token *t, struct token *out);
 extern void pend_setup(struct pendbuf *p, int initial);
 extern void tarr_setup(struct tokarray *a, int initial);
 extern int tag_pending(struct tokarray *a);
-extern void tok_depth(struct token *t, int *depth);
+extern void tok_depth(struct token *t, unsigned char *depth);
 /*
  * sdcc gives empty parens (void) semantics so it needs the full
  * prototype; ccc pass2 cannot yet compile prototyped (or typedef'd)

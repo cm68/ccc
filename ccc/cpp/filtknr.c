@@ -29,7 +29,7 @@
 
 static int state = ST_NORMAL;
 static int paren_depth = 0;
-static int brace_depth = 0;  /* Track nesting - only parse K&R at file scope */
+static unsigned char brace_depth = 0;  /* nesting - K&R only at file scope */
 
 /* Return type buffer - dynamically allocated */
 static struct tokarray rtype_arr;

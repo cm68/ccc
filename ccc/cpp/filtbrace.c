@@ -27,7 +27,7 @@ struct stkent {
 	unsigned char ctrl_type;
 	unsigned char is_else;		/* 1 if this is an else body */
 	unsigned char owner;		/* USER_BRACE: ctrl owning the braces */
-	int bdepth;			/* brace_depth at push (USER_BRACE) */
+	unsigned char bdepth;		/* brace_depth at push (USER_BRACE) */
 };
 
 /* Pseudo ctrl_type: user-braced body inside a synthetic body.  Its
@@ -38,8 +38,8 @@ struct stkent {
 /* Dynamic state stack */
 static struct filter_stack fs;
 
-static int state = ST_NORMAL;
-static int depth = 0;
+static unsigned char state = ST_NORMAL;
+static unsigned char depth = 0;
 static unsigned char ctrl_type = 0;
 /* ST_ELSE_CHK context: 1 = the if being checked had user braces (no
  * synthetic body entry to close when an else is found) */
@@ -56,7 +56,7 @@ static int has_saved = 0;
  * mis-parsed as a fresh while loop.
  */
 #define DO_STACK_MAX 16
-static int brace_depth = 0;
+static unsigned char brace_depth = 0;
 static int do_stack[DO_STACK_MAX];
 static int do_sp = 0;
 
