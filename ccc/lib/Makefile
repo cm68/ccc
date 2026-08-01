@@ -21,9 +21,6 @@ LIB = wslib
 LIBFLAGS = -cr
 endif
 
-ifeq ($(CC),sdcc)
-CFLAGS = -mz80 -DCCC -I../../libsrc/include
-endif
 
 SOURCES = libutil.c
 OBJECTS = $(SOURCES:.c=.o)

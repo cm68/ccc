@@ -21,10 +21,6 @@ CFLAGS = -I../../libsrc/include -I../lib
 LDFLAGS =
 endif
 
-ifeq ($(CC),sdcc)
-CFLAGS = -mz80 -DCCC -I../../libsrc/include -I../lib
-SDCC_OBJS = $(SOURCES:.c=.rel)
-endif
 
 INC = -I../../libsrc/include -I../lib
 CCC = $(DEST)/bin/ccc
@@ -66,7 +62,6 @@ endif
 # calling them ccc's is an easy mistake to make and a hard one to see.
 #
 SIZEDIR = sizecheck-$(ZCC)
-SDCCDIR = sizecheck-sdcc
 
 SOURCES = pass2.c astio.c parseast.c expr.c rewrite.c rules.c
 OBJECTS = $(SOURCES:.c=.o)
@@ -90,23 +85,14 @@ debugtags.c debug.h: ./makedebug.sh $(SOURCES)
 %.o: %.c $(HEADERS)
 	$(CC) $(CFLAGS) -c $< -o $@
 
-%.rel: %.c $(HEADERS)
-	$(CC) $(CFLAGS) -c $<
-
 pass2.o: pass2.c $(HEADERS) $(DBGFILES)
 	$(CC) $(CFLAGS) -c $< -o $@
 
-ifeq ($(CC),sdcc)
-c1: $(SDCC_OBJS)
-	@echo "SDCC compile complete. $(words $(SDCC_OBJS)) object files ready."
-	@echo "Link with: sdcc -mz80 --no-std-crt0 -o c1.ihx $(SDCC_OBJS) <libc.rel>"
-else
 c1: $(OBJECTS) $(LIBCCC)
 ifeq ($(CC),gcc)
 	$(CC) $(LDFLAGS) -o $@ $(OBJECTS) $(LIBCCC)
 else
 	ccc -o c1 $(OBJECTS) $(LIBCCC)
-endif
 endif
 
 $(LIBCCC):
@@ -121,7 +107,7 @@ clean:
 
 clobber: clean
 	rm -f ./c1
-	rm -rf sizecheck sizecheck1 sizecheck-* stage1 stage2
+	rm -rf sizecheck sizecheck-* stage1 stage2
 
 install: c1
 	cp c1 $(DEST)/bin
@@ -190,17 +176,6 @@ sizecheck: $(GENERATED)
 	wsld -r -o $(SIZEDIR)/c1 $(ROOTDIR)/lib/crt0.o $$o -L$(ROOTDIR)/lib -lccc -lc -lu ; \
 	wssize $(SIZEDIR)/c1 | tee -a sizefile
 
-sizecheck1: $(GENERATED)
-	mkdir -p $(SDCCDIR)
-	$(SETX) ; o="" ; for f in $(SOURCES); do \
-		b=$${f%.c}; \
-		err=$(SDCCDIR)/$$b.err ; \
-		o="$$o $(SDCCDIR)/$$b.o" ; \
-		printf "%-12s" "$$b: " ; \
-		sdcc --sdcccall 0 -c -mz80 -DCCC -I../../libsrc/include $$f && mv $$b.??? $(SDCCDIR) ; \
-		{ echo "ok"; } || { echo "FAIL"; } \
-	done ; \
-	sdcc -mz80 -o $(SDCCDIR)/c1 $(SDCCDIR)/*.rel
 
 # Individual stage1 file rules
 .SECONDARY:
@@ -236,6 +211,6 @@ regression:
 coverage: c1
 	python3 ../../tests/rulecover.py $(COVERFLAGS)
 
-.PHONY: all clean regen stage1 install clobber sizefile sizecheck sizecheck1 regression coverage
+.PHONY: all clean regen stage1 install clobber sizefile sizecheck regression coverage
 
 # vim: tabstop=4 shiftwidth=4 noexpandtab:

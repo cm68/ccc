@@ -24,10 +24,6 @@ CFLAGS = -I../../libsrc/include -I../lib
 LDFLAGS =
 endif
 
-ifeq ($(CC),sdcc)
-CFLAGS = -mz80 -DCCC -I../../libsrc/include -I../lib
-SDCC_OBJS = $(SOURCES:.c=.rel)
-endif
 
 INC = -I../../libsrc/include -I. -I../lib
 CCC = $(DEST)/bin/ccc
@@ -68,7 +64,6 @@ endif
 # calling them ccc's is an easy mistake to make and a hard one to see.
 #
 SIZEDIR = sizecheck-$(ZCC)
-SDCCDIR = sizecheck-sdcc
 
 SOURCES = cpp.c lex.c io.c macro.c kw.c emit.c util.c kwtab.c lexdata.c \
 	filtenum.c filtknr.c filtdecl.c filtbrace.c filtctrl.c filtutil.c typetab.c
@@ -96,20 +91,11 @@ debugtags.c debug.h: ./makedebug.sh
 %.o: %.c $(HEADERS)
 	$(CC) $(CFLAGS) -c $< -o $@
 
-%.rel: %.c $(HEADERS)
-	$(CC) $(CFLAGS) -c $<
-
-ifeq ($(CC),sdcc)
-cpp: $(SDCC_OBJS)
-	@echo "SDCC compile complete. $(words $(SDCC_OBJS)) object files ready."
-	@echo "Link with: sdcc -mz80 --no-std-crt0 -o cpp.ihx $(SDCC_OBJS) <libc.rel>"
-else
 cpp: $(OBJECTS) $(LIBCCC)
 ifeq ($(CC),gcc)
 	$(CC) $(LDFLAGS) -o $@ $(OBJECTS) $(LIBCCC)
 else
 	ccc -o cpp $(OBJECTS) $(LIBCCC)
-endif
 endif
 
 $(LIBCCC):
@@ -127,7 +113,7 @@ clean:
 
 clobber: clean
 	rm -f ./cpp mkkw xdump
-	rm -rf sizecheck sizecheck1 sizecheck-* stage1 stage2 langtest comzc3 comsdcc valgrind
+	rm -rf sizecheck sizecheck-* stage1 stage2 langtest comzc3 comsdcc valgrind
 
 install: cpp xdump
 	cp cpp xdump $(DEST)/bin
@@ -167,17 +153,6 @@ sizecheck: $(GENERATED)
 	wsld -r -o $(SIZEDIR)/cpp $(ROOTDIR)/lib/crt0.o $$o -L$(ROOTDIR)/lib -lccc -lc -lu ; \
 	wssize $(SIZEDIR)/cpp | tee -a sizefile
 
-sizecheck1: $(GENERATED)
-	mkdir -p $(SDCCDIR)
-	$(SETX) ; o="" ; for f in $(SOURCES); do \
-		b=$${f%.c}; \
-		err=$(SDCCDIR)/$$b.err ; \
-		o="$$o $(SDCCDIR)/$$b.o" ; \
-		printf "%-12s" "$$b: " ; \
-		sdcc --sdcccall 0 -c -mz80 -DCCC -I../../libsrc/include $$f && mv $$b.??? $(SDCCDIR) ; \
-		{ echo "ok"; } || { echo "FAIL"; } \
-	done ; \
-	sdcc -mz80 -o $(SDCCDIR)/cpp $(SDCCDIR)/*.rel
 
 # ---- CP/M .com builds (native memory footprint) -----------------------
 #
@@ -189,16 +164,16 @@ sizecheck1: $(GENERATED)
 #             runtime (crtcpm + libccc/libcpm/libc/libu). Runnable
 #             in principle; fork/exec of xdump (-p/-E) will not work
 #             under CP/M.
-#   com-sdcc  sdcc objects + sdcc stdlib, custom crt0 (crt0cpm.s),
-#             syscall STUBS from sdccstub.c - size measurement only.
 #
+# com-sdcc is gone: self-build is in reach, and a third compiler's
+# numbers stopped earning their upkeep.
 # Missing: com-ccc (blocked on pass1: lexdata.c array-bound folding).
 
 CPPDIR   = $(realpath .)
 LIBDIR   = $(realpath ../lib)
 LIBSRCINC = $(realpath ../../libsrc/include)
 
-com: com-zc3 com-sdcc
+com: com-zc3
 
 # zc3 built MICRONIX-flavored emits .o (via asz); older builds emit .obj.
 # wsld links either.  PATH picks up asz/wsld for the driver's back end.
@@ -224,32 +199,6 @@ com-zc3: $(GENERATED)
 		-L$(ROOTDIR)/lib -lccc -lcpm -lc -lu -lc
 	cd comzc3 && tail -c +17 cpp.ws > cpp-zc3.com
 	@$(ROOTDIR)/bin/wssize comzc3/cpp.ws | sed 's/cpp.ws/cpp-zc3.com/'
-
-com-sdcc: $(GENERATED)
-	@mkdir -p comsdcc
-	@set -e; cd comsdcc ; for f in $(SOURCES) sdccstub.c; do \
-		b=$${f%.c}; \
-		printf "%-12s" "$$b: " ; \
-		if sdcc -c -mz80 -DCCC -I$(CPPDIR) -I$(LIBDIR) -I$(LIBSRCINC) \
-			$(CPPDIR)/$$f > $$b.log 2>&1; then \
-			echo ok; \
-		else echo FAIL; cat $$b.log; exit 1; fi \
-	done
-	cd comsdcc && sdcc -c -mz80 -I$(LIBDIR) $(LIBDIR)/libutil.c
-	cd comsdcc && sdasz80 -o crt0cpm.rel $(CPPDIR)/crt0cpm.s
-	cd comsdcc && sdcc -mz80 --no-std-crt0 --code-loc 0x0148 --data-loc 0 \
-		-o cpp.ihx crt0cpm.rel $(SOURCES:.c=.rel) libutil.rel sdccstub.rel
-	cd comsdcc && makebin -p -s 65536 cpp.ihx cpp.bin && \
-		tail -c +257 cpp.bin > cpp-sdcc.com
-	@awk '$$1 ~ /^_(CODE|HOME|DATA|INITIALIZER|INITIALIZED|GSINIT|GSFINAL|HEAP)$$/ \
-		&& $$6 == "bytes" { sz[$$1] = $$5 + 0 } \
-		END { text = 72 + sz["_CODE"] + sz["_HOME"] + sz["_INITIALIZER"] \
-			+ sz["_GSINIT"] + sz["_GSFINAL"]; \
-		data = sz["_INITIALIZED"]; bss = sz["_DATA"] + sz["_HEAP"]; \
-		printf "%7s\t%7s\t%7s\t%7s\t%7s\t%s\n", "text", "data", "bss", "dec", "hex", "filename"; \
-		printf "%7d\t%7d\t%7d\t%7d\t%7x\t%s\n", text, data, bss, \
-			text+data+bss, text+data+bss, "cpp-sdcc.com (syscalls stubbed)" }' \
-		comsdcc/cpp.map
 
 # Individual stage1 file rules
 .SECONDARY:
@@ -336,6 +285,6 @@ test: langtest
 	cd test && ./runtest.sh
 	cd test && ./sweep.sh
 
-.PHONY: all clean regen stage1 install clobber sizefile sizecheck sizecheck1 regression langtest test com com-zc3 com-sdcc valgrind
+.PHONY: all clean regen stage1 install clobber sizefile sizecheck regression langtest test com com-zc3 valgrind
 
 # vim: tabstop=4 shiftwidth=4 noexpandtab:

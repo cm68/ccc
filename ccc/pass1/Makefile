@@ -21,10 +21,6 @@ CFLAGS = -I../../libsrc/include -I../lib
 LDFLAGS =
 endif
 
-ifeq ($(CC),sdcc)
-CFLAGS = -mz80 -DCCC -I../../libsrc/include -I../lib
-SDCC_OBJS = $(SOURCES:.c=.rel)
-endif
 
 INC = -I../../libsrc/include -I../lib
 CCC = $(DEST)/bin/ccc
@@ -65,7 +61,6 @@ endif
 # calling them ccc's is an easy mistake to make and a hard one to see.
 #
 SIZEDIR = sizecheck-$(ZCC)
-SDCCDIR = sizecheck-sdcc
 
 SOURCES = pass1.c error.c lexread.c \
 	expr.c parse.c decl.c type.c declare.c outast.c regalloc.c util.c
@@ -95,20 +90,11 @@ error.h: errorcodes ./makeerror.awk
 %.o: %.c $(HEADERS)
 	$(CC) $(CFLAGS) -c $< -o $@
 
-%.rel: %.c $(HEADERS)
-	$(CC) $(CFLAGS) -c $<
-
-ifeq ($(CC),sdcc)
-c0: $(SDCC_OBJS)
-	@echo "SDCC compile complete. $(words $(SDCC_OBJS)) object files ready."
-	@echo "Link with: sdcc -mz80 --no-std-crt0 -o c0.ihx $(SDCC_OBJS) <libc.rel>"
-else
 c0: $(OBJECTS) $(LIBCCC)
 ifeq ($(CC),gcc)
 	$(CC) $(LDFLAGS) -o $@ $(OBJECTS) $(LIBCCC)
 else
 	ccc -o c0 $(OBJECTS) $(LIBCCC)
-endif
 endif
 
 $(LIBCCC):
@@ -123,7 +109,7 @@ clean:
 
 clobber: clean
 	rm -f ./c0
-	rm -rf sizecheck sizecheck1 sizecheck-* stage1 stage2
+	rm -rf sizecheck sizecheck-* stage1 stage2
 
 install: c0
 	cp c0 $(DEST)/bin
@@ -163,17 +149,6 @@ sizecheck: $(GENERATED)
 	wsld -r -o $(SIZEDIR)/c0 -Ttext=0x100 $(ROOTDIR)/lib/crt0.o $$o -L$(ROOTDIR)/lib -lccc -lc -lu ; \
 	wssize $(SIZEDIR)/c0 | tee -a sizefile
 
-sizecheck1: $(GENERATED)
-	mkdir -p $(SDCCDIR)
-	$(SETX) ; o="" ; for f in $(SOURCES); do \
-		b=$${f%.c}; \
-		err=$(SDCCDIR)/$$b.err ; \
-		o="$$o $(SDCCDIR)/$$b.o" ; \
-		printf "%-12s" "$$b: " ; \
-		sdcc --sdcccall 0 -c -mz80 -DCCC -I../../libsrc/include $$f && mv $$b.??? $(SDCCDIR) ; \
-		{ echo "ok"; } || { echo "FAIL"; } \
-	done ; \
-	sdcc -mz80 -o $(SDCCDIR)/c0 $(SDCCDIR)/*.rel
 
 # Individual stage1 file rules
 .SECONDARY:
@@ -251,6 +226,6 @@ mx-ccc: $(GENERATED)
 		-L$(ROOTDIR)/lib -lccc -lc -lu -lc
 	@$(ROOTDIR)/bin/wssize mxccc/c0.mx
 
-.PHONY: all clean regen stage1 install clobber sizefile sizecheck sizecheck1 regression mx-zc3 mx-ccc
+.PHONY: all clean regen stage1 install clobber sizefile sizecheck regression mx-zc3 mx-ccc
 
 # vim: tabstop=4 shiftwidth=4 noexpandtab:

@@ -245,15 +245,9 @@ pend_seq(struct pendbuf *p, unsigned char *seq)
  * Filter entry: check pending, get upstream, handle EOF
  * Returns 1 if caller should return (out is set), 0 to continue
  */
-#ifdef __SDCC
-int
-filt_entry(struct pendbuf *pb, struct token *out,
-           void (*up)(struct token *), struct token *t)
-#else
 int
 filt_entry(struct pendbuf *pb, struct token *out,
            void (*up)(), struct token *t)
-#endif
 {
 	if (pend_has(pb)) {
 		pend_pop(pb, out);
