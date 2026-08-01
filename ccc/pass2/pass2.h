@@ -60,6 +60,7 @@ unsigned short read2(void);
 void read4(void);
 extern unsigned long val4;	/* read4 leaves its answer here */
 void readS(char *buf, int size);
+void nidopen(char *f1);		/* .n sidecar (cpp -j), from the .1 name */
 #ifdef DEBUG
 void rulehit(int i);		/* rule coverage, host build only */
 void dumphits(void);

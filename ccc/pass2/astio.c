@@ -5,6 +5,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <stdio.h>
+#include <fcntl.h>
 
 #ifdef DEBUG
 #include "debug.h"
@@ -13,6 +14,73 @@
 int infd;
 int outfd;
 static int pushback = -1;
+
+/*
+ * The .n sidecar, from cpp -j: identifiers crossed the front of the
+ * compiler as 2-byte ids and their spellings live here - a 2-byte
+ * count, a table of 2-byte offsets, then the names in id order,
+ * NUL-terminated.  Ids are 1-based; 0 is reserved.  Two seeks fetch
+ * any name, so nothing gets loaded.  c1 is where ids become symbols
+ * again: expansion happens as names are READ, so everything
+ * downstream - codegen, the peephole, our own diagnostics - sees
+ * real spellings and never knows the ids existed.
+ */
+static int nidfd = -1;
+
+void
+nidopen(char *f1)
+{
+	char nf[256];
+	int n = strlen(f1);
+
+	strcpy(nf, f1);
+	if (n > 2 && nf[n - 2] == '.')	/* base.1 -> base.n */
+		nf[n - 1] = 'n';
+	nidfd = open(nf, O_RDONLY);
+}
+
+/*
+ * Fetch a spelling.  The read overshoots into the following names;
+ * the first NUL marks the end.
+ */
+static void
+nidname(unsigned short id, char *buf, int size)
+{
+	unsigned char two[2];
+	int n, i;
+
+	lseek(nidfd, (long)2 + 2 * (id - 1), 0);
+	read(nidfd, (char *)two, 2);
+	lseek(nidfd, (long)(two[0] | (two[1] << 8)), 0);
+	n = read(nidfd, buf, size - 1);
+	for (i = 0; i < n; i++)
+		if (!buf[i])
+			return;
+	buf[i] = 0;
+}
+
+/*
+ * Replace @id - optionally behind the global underscore - with its
+ * spelling, in place.  Anything else passes through untouched:
+ * synthetics (S%d, L%d, str%d) and plain-mode names never contain
+ * '@'.
+ */
+static void
+nidxp(char *buf, int size)
+{
+	char *p = buf;
+	char *q;
+	unsigned short id;
+
+	if (*p == '_')
+		p++;
+	if (*p != '@' || nidfd < 0)
+		return;
+	id = 0;
+	for (q = p + 1; *q >= '0' && *q <= '9'; q++)
+		id = id * 10 + (*q - '0');
+	nidname(id, p, size - (p - buf));
+}
 
 void
 out(char *s)
@@ -51,14 +119,96 @@ outd(int n)
  * about to generate.  The .2 stream starts in .text and emits its own
  * segment directives as it goes, so it needs no preamble.
  */
+/*
+ * The id-expanding copy: @id becomes its spelling except inside
+ * string data, where an @ followed by digits is just text.  A
+ * backslash escapes the next character within quotes.  Output is
+ * batched - a write per character is a syscall per character, and
+ * under the simulator those are the whole bill.
+ */
+static char cxbuf[128];
+static int cxn;
+
+static void
+cxput(char c)
+{
+	cxbuf[cxn++] = c;
+	if (cxn == sizeof(cxbuf)) {
+		write(outfd, cxbuf, cxn);
+		cxn = 0;
+	}
+}
+
+static void
+copyxp(void)
+{
+	char buf[64];
+	char nam[20];
+	char *s;
+	int n, i;
+	char c;
+	char inq = 0, esc = 0;
+	char at = 0;		/* digits collected after '@', +1 */
+	unsigned short id = 0;
+
+	while ((n = read(in2fd, buf, sizeof(buf))) > 0) {
+		for (i = 0; i < n; i++) {
+			c = buf[i];
+			if (at) {
+				if (c >= '0' && c <= '9') {
+					id = id * 10 + (c - '0');
+					at = 2;
+					continue;
+				}
+				if (at > 1) {	/* a bare '@' is just text */
+					nidname(id, nam, sizeof(nam));
+					for (s = nam; *s; s++)
+						cxput(*s);
+				} else {
+					cxput('@');
+				}
+				at = 0;
+			}
+			if (inq) {
+				if (esc)
+					esc = 0;
+				else if (c == '\\')
+					esc = 1;
+				else if (c == '"')
+					inq = 0;
+			} else if (c == '"') {
+				inq = 1;
+			} else if (c == '@') {
+				at = 1;
+				id = 0;
+				continue;
+			}
+			cxput(c);
+		}
+	}
+	if (at > 1) {
+		nidname(id, nam, sizeof(nam));
+		for (s = nam; *s; s++)
+			cxput(*s);
+	} else if (at) {
+		cxput('@');
+	}
+	if (cxn)
+		write(outfd, cxbuf, cxn);
+}
+
 void
 copyinit(void)
 {
 	char buf[64];
 	int n;
 
-	while ((n = read(in2fd, buf, sizeof(buf))) > 0)
-		write(outfd, buf, n);
+	if (nidfd < 0) {
+		while ((n = read(in2fd, buf, sizeof(buf))) > 0)
+			write(outfd, buf, n);
+	} else {
+		copyxp();
+	}
 	out("\t.text\n");
 }
 
@@ -142,6 +292,7 @@ readS(char *buf, int size)
 	buf[keep] = 0;
 	while (over-- > 0)		/* the rest still has to come off */
 		read(infd, &waste, 1);
+	nidxp(buf, size);
 #ifdef DEBUG
 	if (VERBOSE(V_IO))
 		fprintf(stderr, "readS: \"%s\" (len=%d)\n", buf, len);

@@ -128,6 +128,7 @@ main(int argc, char **argv)
 		exit(1);
 	}
 
+	nidopen(argv[0]);
 	in2fd = open(argv[1], O_RDONLY);
 	if (in2fd < 0) {
 		errout("cannot open init file\n");
