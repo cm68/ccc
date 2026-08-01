@@ -1895,9 +1895,13 @@ docompound(Expr *e)
 	 * it always owed.
 	 */
 	if (!sum || (isbyte ? sum->op != INA : sum->op != INHL)) {
-		out("; XXXXXX incomplete: compound rhs ");
-		if (sum)
+		out("; XXXXXX incomplete: compound rhs");
+#ifdef DEBUG
+		if (sum) {
+			out(" ");
 			dumpexpr(sum);
+		}
+#endif
 		outc('\n');
 	}
 

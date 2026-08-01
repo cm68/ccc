@@ -211,6 +211,30 @@ regression:
 coverage: c1
 	python3 ../../tests/rulecover.py $(COVERFLAGS)
 
-.PHONY: all clean regen stage1 install clobber sizefile sizecheck regression coverage
+# Native Z80 c1 built by ccc itself, for the self-build run: the
+# other two passes have had differential builds for a while, and c1
+# was the one still only proven to compile, never to run.
+P2DIR = $(realpath .)
+LIBDIR = $(realpath ../lib)
+LIBSRCINC = $(realpath ../../libsrc/include)
+
+mx-ccc: $(GENERATED)
+	@mkdir -p mxccc
+	@set -e; cd mxccc ; export PATH=$(ROOTDIR)/bin:$$PATH ; \
+	for f in $(SOURCES); do \
+		b=$${f%.c}; \
+		printf "%-12s" "$$b: " ; \
+		if $(ROOTDIR)/bin/ccc $(CCCOPT) -c -DCCC -i$(LIBSRCINC) \
+			-I$(P2DIR) -I$(LIBDIR) $(P2DIR)/$$f > $$b.log 2>&1 \
+			&& [ -f $$b.o ]; then \
+			echo ok; \
+		else echo FAIL; cat $$b.log; exit 1; fi \
+	done
+	cd mxccc && $(ROOTDIR)/bin/wsld -s -o c1.mx -Ttext=0x100 \
+		$(ROOTDIR)/lib/crt0.o $$(ls *.o 2>/dev/null) \
+		-L$(ROOTDIR)/lib -lccc -lc -lu -lc
+	@$(ROOTDIR)/bin/wssize mxccc/c1.mx
+
+.PHONY: all clean regen stage1 install clobber sizefile sizecheck regression coverage mx-ccc
 
 # vim: tabstop=4 shiftwidth=4 noexpandtab:
