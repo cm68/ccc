@@ -323,9 +323,10 @@ list_line()
 		return;
 	if (lst_live && lstfp &&
 	    lst_text[0] != 0 && lst_text[0] != '\n') {
+		register unsigned char *bp = lst_bytes;
 		fprintf(lstfp, "%c %04x  ", "?tdb"[lst_seg], lst_addr);
-		for (i = 0; i < lst_have; i++)
-			fprintf(lstfp, "%02x ", lst_bytes[i]);
+		for (i = lst_have; i; i--)
+			fprintf(lstfp, "%02x ", *bp++);
 		if (lst_count > lst_have)
 			fprintf(lstfp, "+%d", lst_count - lst_have);
 		for (i = 3 * lst_have + (lst_count > lst_have ? 3 : 0);
@@ -351,9 +352,13 @@ list_take()
 
 	if (!l_flag || pass != 1)
 		return;
-	for (i = 0; i < 255 && linebuf[i]; i++)
-		lst_text[i] = linebuf[i];
-	lst_text[i] = 0;
+	{
+		register char *d = lst_text;
+		unsigned char *s = linebuf;
+		for (i = 255; i && *s; i--)
+			*d++ = *s++;
+		*d = 0;
+	}
 	/* a label at the line head defines at the CURRENT address */
 	lst_addr = cur_address;
 	lst_seg = segment;
@@ -429,15 +434,17 @@ extern void gripe2();
 void
 save_symn()
 {
-	int i;
-    char c;
+	register char *d = sym_name;
+	char *s = token_buf;
+	unsigned char i = SYMLEN + 1;
 
-	for (i = 0; i < SYMLEN; i++) {
-        c = token_buf[i];
-		sym_name[i] = c;
-        if (!c) break;
-    }
-    sym_name[i] = '\0';
+	while (--i) {
+		if (!(*d = *s))
+			return;
+		d++;
+		s++;
+	}
+	*d = '\0';
 }
 
 /*
@@ -450,12 +457,15 @@ local_reset()
     int i;
     struct local_state *ls, *next;
 
-    for (i = 0; i < LOCAL_HASH_SIZE; i++) {
-        for (ls = local_hash[i]; ls; ls = next) {
+    {
+    register struct local_state **bp = local_hash;
+    for (i = LOCAL_HASH_SIZE; i; i--, bp++) {
+        for (ls = *bp; ls; ls = next) {
             next = ls->next;
             free(ls);
         }
-        local_hash[i] = 0;
+        *bp = 0;
+    }
     }
     local_seq = 0;
 }
@@ -671,8 +681,9 @@ get_token()
                              lastch == 'F' || lastch == 'B')) {
                 /* check if all chars before last are digits */
                 int j, alldigits = 1;
-                for (j = 0; j < len - 1; j++) {
-                    if (token_buf[j] < '0' || token_buf[j] > '9') {
+                char *tp = token_buf;
+                for (j = len - 1; j; j--, tp++) {
+                    if (*tp < '0' || *tp > '9') {
                         alldigits = 0;
                         break;
                     }
@@ -787,20 +798,24 @@ sym_fetch(name)
 char *name;
 {
 	struct symbol *sym;
-	int i;
-	char equal;
+	register char *sp;
+	char *np;
+	unsigned char i;
 
 	for (sym = symbols; sym; sym = sym->next) {
-
-		equal = 1;
-		for (i = 0; i < SYMLEN; i++) {
-			if (sym->name[i] != name[i])
-				equal = 0;
-			if (!sym->name[i])
+		sp = sym->name;
+		np = name;
+		i = SYMLEN + 1;
+		while (--i) {
+			if (*sp != *np)
 				break;
+			if (!*sp)
+				return sym;
+			sp++;
+			np++;
 		}
-		if (equal)
-			return sym;
+		if (!i)
+			return sym;	/* equal through all SYMLEN chars */
 	}
 	return NULL;
 }
@@ -831,9 +846,13 @@ int visible;
 		symbols_tail = sym;
 		sym->seg = SEG_UNDEF;
 		sym->index = 0xffff;
-		for (i = 0; i < SYMLEN && name[i]; i++)
-			sym->name[i] = name[i];
-		sym->name[i] = 0;
+		{
+			register char *d = sym->name;
+			char *s = name;
+			for (i = SYMLEN; i && *s; i--)
+				*d++ = *s++;
+			*d = 0;
+		}
 	}
 
 	if ((sym->seg != SEG_UNDEF) && (seg == SEG_UNDEF)) {

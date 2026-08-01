@@ -260,7 +260,7 @@ unsigned short *relrefs = NULL;  /* relative jump targets */
 int nrelrefs = 0;
 
 /* forward declarations */
-int find_reloc();
+struct reloc *find_reloc();
 char *reloc_name();
 char *relocNmByte();
 
@@ -462,43 +462,54 @@ usym_lookup(val, seg)
 unsigned long val;
 int seg;
 {
-    int i;
-    for (i = 0; i < uobj.nsyms; i++) {
-        if (uobj.syms[i].segment == seg && uobj.syms[i].value == val)
-            return uobj.syms[i].name;
+    register struct usym *sp = uobj.syms;
+    int n = uobj.nsyms;
+
+    while (n--) {
+        if (sp->segment == seg && sp->value == val)
+            return sp->name;
+        sp++;
     }
     return NULL;
 }
 
 /*
- * find relocation in unified table
+ * find relocation in unified table, NULL if absent.  The entry is
+ * eighty-odd bytes, so handing back an index made every caller pay
+ * the multiply again for each field it read.
  */
-int
+struct ureloc *
 find_ureloc(offset)
 unsigned long offset;
 {
-    int i;
-    for (i = 0; i < nurels; i++) {
-        if (ureltab[i].offset == offset)
-            return i;
+    register struct ureloc *rp = ureltab;
+    int n = nurels;
+
+    while (n--) {
+        if (rp->offset == offset)
+            return rp;
+        rp++;
     }
-    return -1;
+    return NULL;
 }
 
 /*
  * find relocation in uobj relocation table for given segment
  */
-int
+struct ureloc *
 findObjRloc(offset, segment)
 unsigned long offset;
 int segment;
 {
-    int i;
-    for (i = 0; i < uobj.nrelocs; i++) {
-        if (uobj.relocs[i].offset == offset && uobj.relocs[i].segment == segment)
-            return i;
+    register struct ureloc *rp = uobj.relocs;
+    int n = uobj.nrelocs;
+
+    while (n--) {
+        if (rp->offset == offset && rp->segment == segment)
+            return rp;
+        rp++;
     }
-    return -1;
+    return NULL;
 }
 
 /*
@@ -511,22 +522,23 @@ fmt_addr(buf, val)
 char *buf;
 unsigned short val;
 {
-    int ri;
+    struct ureloc *up;
+    struct reloc *rp;
 
     /* check unified relocation table first */
     if (disasm_pc >= 0 && ureltab) {
-        ri = find_ureloc(disasm_pc);
-        if (ri >= 0 && ureltab[ri].size == 2) {
-            strcpy(buf, ureltab[ri].target);
+        up = find_ureloc(disasm_pc);
+        if (up && up->size == 2) {
+            strcpy(buf, up->target);
             return;
         }
     }
 
     /* check legacy Whitesmith relocation table */
     if (disasm_pc >= 0 && reltab) {
-        ri = find_reloc(disasm_pc);
-        if (ri >= 0) {
-            reloc_name(reltab[ri].symidx, val, buf);
+        rp = find_reloc(disasm_pc);
+        if (rp) {
+            reloc_name(rp->symidx, val, buf);
             return;
         }
     }
@@ -547,29 +559,30 @@ fmt_byte(buf, val)
 char *buf;
 unsigned char val;
 {
-    int ri;
+    struct ureloc *up;
+    struct reloc *rp;
     char symbuf[64];
 
     /* check unified relocation table first */
     if (disasm_pc >= 0 && ureltab) {
-        ri = find_ureloc(disasm_pc);
-        if (ri >= 0 && ureltab[ri].size == 1) {
-            if (ureltab[ri].hilo == 1)
-                sprintf(buf, "low(%s)", ureltab[ri].target);
-            else if (ureltab[ri].hilo == 2)
-                sprintf(buf, "high(%s)", ureltab[ri].target);
+        up = find_ureloc(disasm_pc);
+        if (up && up->size == 1) {
+            if (up->hilo == 1)
+                sprintf(buf, "low(%s)", up->target);
+            else if (up->hilo == 2)
+                sprintf(buf, "high(%s)", up->target);
             else
-                strcpy(buf, ureltab[ri].target);
+                strcpy(buf, up->target);
             return;
         }
     }
 
     /* check legacy Whitesmith relocation table */
     if (disasm_pc >= 0 && reltab) {
-        ri = find_reloc(disasm_pc);
-        if (ri >= 0 && reltab[ri].hilo != 0) {
-            relocNmByte(reltab[ri].symidx, val, reltab[ri].hilo, symbuf);
-            sprintf(buf, "%s(%s)", reltab[ri].hilo == 1 ? "lo" : "hi", symbuf);
+        rp = find_reloc(disasm_pc);
+        if (rp && rp->hilo != 0) {
+            relocNmByte(rp->symidx, val, rp->hilo, symbuf);
+            sprintf(buf, "%s(%s)", rp->hilo == 1 ? "lo" : "hi", symbuf);
             return;
         }
     }
@@ -1327,16 +1340,19 @@ long limit;
  * check if there's a relocation at given offset
  * returns relocation index or -1
  */
-int
+struct reloc *
 find_reloc(offset)
 int offset;
 {
-    int i;
-    for (i = 0; i < nrels; i++) {
-        if (reltab[i].offset == offset)
-            return i;
+    register struct reloc *rp = reltab;
+    int n = nrels;
+
+    while (n--) {
+        if (rp->offset == offset)
+            return rp;
+        rp++;
     }
-    return -1;
+    return NULL;
 }
 
 /*
@@ -1447,7 +1463,8 @@ void
 genUobjSfl(name)
 char *name;
 {
-    int pc, i, len, ri, ref_idx;
+    int pc, i, len, ref_idx;
+    struct ureloc *up;
     char nbuf[128];
     char *p, *sym;
     unsigned char *save_filebuf;
@@ -1532,16 +1549,16 @@ char *name;
             }
 
             /* check for relocation at this address */
-            ri = findObjRloc(pc, USEG_TEXT);
-            if (ri >= 0) {
-                if (uobj.relocs[ri].size == 2) {
+            up = findObjRloc(pc, USEG_TEXT);
+            if (up) {
+                if (up->size == 2) {
                     if (dflag) {
                         fprintf(gfile, "  %04x  %02x %02x        ", (int)(pc + uobj.textbase),
                                 uobj.text[pc], uobj.text[pc+1]);
                     } else {
                         fprintf(gfile, "\t");
                     }
-                    fprintf(gfile, ".dw %s\n", uobj.relocs[ri].target);
+                    fprintf(gfile, ".dw %s\n", up->target);
                     pc += 2;
                 } else {
                     if (dflag) {
@@ -1549,12 +1566,12 @@ char *name;
                     } else {
                         fprintf(gfile, "\t");
                     }
-                    if (uobj.relocs[ri].hilo == 1)
-                        fprintf(gfile, ".db low(%s)\n", uobj.relocs[ri].target);
-                    else if (uobj.relocs[ri].hilo == 2)
-                        fprintf(gfile, ".db high(%s)\n", uobj.relocs[ri].target);
+                    if (up->hilo == 1)
+                        fprintf(gfile, ".db low(%s)\n", up->target);
+                    else if (up->hilo == 2)
+                        fprintf(gfile, ".db high(%s)\n", up->target);
                     else
-                        fprintf(gfile, ".db %s\n", uobj.relocs[ri].target);
+                        fprintf(gfile, ".db %s\n", up->target);
                     pc += 1;
                 }
             } else {
@@ -1601,16 +1618,16 @@ char *name;
             }
 
             /* check for relocation at this address */
-            ri = findObjRloc(pc, USEG_DATA);
-            if (ri >= 0) {
-                if (uobj.relocs[ri].size == 2) {
+            up = findObjRloc(pc, USEG_DATA);
+            if (up) {
+                if (up->size == 2) {
                     if (dflag) {
                         fprintf(gfile, "  %04x  %02x %02x        ", (int)(pc + uobj.database),
                                 uobj.data[pc], uobj.data[pc+1]);
                     } else {
                         fprintf(gfile, "\t");
                     }
-                    fprintf(gfile, ".dw %s\n", uobj.relocs[ri].target);
+                    fprintf(gfile, ".dw %s\n", up->target);
                     pc += 2;
                 } else {
                     if (dflag) {
@@ -1618,12 +1635,12 @@ char *name;
                     } else {
                         fprintf(gfile, "\t");
                     }
-                    if (uobj.relocs[ri].hilo == 1)
-                        fprintf(gfile, ".db low(%s)\n", uobj.relocs[ri].target);
-                    else if (uobj.relocs[ri].hilo == 2)
-                        fprintf(gfile, ".db high(%s)\n", uobj.relocs[ri].target);
+                    if (up->hilo == 1)
+                        fprintf(gfile, ".db low(%s)\n", up->target);
+                    else if (up->hilo == 2)
+                        fprintf(gfile, ".db high(%s)\n", up->target);
                     else
-                        fprintf(gfile, ".db %s\n", uobj.relocs[ri].target);
+                        fprintf(gfile, ".db %s\n", up->target);
                     pc += 1;
                 }
                 continue;
@@ -1645,7 +1662,7 @@ char *name;
                     /* check for symbol, data ref, or relocation - must break line */
                     if (pc > line_start && (usym_lookup(pc, USEG_DATA) ||
                                    find_data_ref(pc) >= 0 ||
-                                   findObjRloc(pc, USEG_DATA) >= 0)) {
+                                   findObjRloc(pc, USEG_DATA) != NULL)) {
                         break;
                     }
 

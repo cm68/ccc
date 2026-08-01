@@ -424,6 +424,15 @@ restart:
 			if (depth == 1) {
 				goto restart;
 			}
+		} else if (t.type == RPAR) {
+			/*
+			 * A close paren inside the init clause - a call, a
+			 * cast, a parenthesized subexpression.  Without this
+			 * arm the depth never came back down, the first SEMI
+			 * was never at depth 1, and the filter swallowed the
+			 * rest of the function as "init".
+			 */
+			depth--;
 		} else if (t.type == SEMI && depth == 1) {
 			state = ST_FOR_COND;
 			goto restart;

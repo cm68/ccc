@@ -1,4 +1,4 @@
 asm.h:50: symbol truncated (warning)
-asm.c:306: symbol truncated (warning)
-asm.c:369: symbol truncated (warning)
-asm.c:390: symbol truncated (warning)
+asm.c:395: symbol truncated (warning)
+asm.c:462: symbol truncated (warning)
+asm.c:484: symbol truncated (warning)

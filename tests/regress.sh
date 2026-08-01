@@ -144,11 +144,14 @@ run_one() {
     echo "$rc" >"$out_rc"
     # .i file is debug-only - delete it (it's just xdump of .x and bloats /tmp)
     rm -f "$outdir/$base.i"
-    # Normalize stderr: strip environmental noise (ld.so LD_PRELOAD warnings)
-    # and absolute paths so the baseline is portable across users/machines.
+    # Normalize stderr: strip environmental noise (ld.so LD_PRELOAD warnings),
+    # DEBUG-build statistics (a non-DEBUG cpp prints none, and the baseline
+    # must not care which build ran), and absolute paths so the baseline is
+    # portable across users/machines.
     if [ -s "$out_err" ]; then
         sed -i \
             -e '/^ERROR: ld\.so: /d' \
+            -e '/^POOLSTATS/d' \
             -e "s|$REPO/||g" \
             -e "s|$WORK/||g" \
             "$out_err"

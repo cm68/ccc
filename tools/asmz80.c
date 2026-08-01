@@ -1053,12 +1053,10 @@ char
 asm_instr(in)
 char *in;
 {
-	int i;
-	struct instruct *isr;
+	register struct instruct *isr;
 
-	for (i = 0; isr_table[i].type != IEND; i++) {
-		if (match(in, isr_table[i].mnem)) {
-			isr = &isr_table[i];
+	for (isr = isr_table; isr->type != IEND; isr++) {
+		if (match(in, isr->mnem)) {
 			if ((*isr_handlers[isr->type])(isr))
 				gripe("invalid operand");
 			return 1;
