@@ -39,7 +39,7 @@ int lineNo;
 char exitCode = 0;
 char noLineMarkers = 0;  /* -N flag: suppress LINENO/NEWLINE in .x */
 char internIds = 0;      /* -j flag: identifiers as 2-byte ids + .n sidecar */
-static char idFile[256]; /* the sidecar's name */
+static char idFile[128]; /* the sidecar's name */
 #ifdef DEBUG
 short verbose;
 #endif

@@ -26,10 +26,18 @@
  */
 #define INTERN_HASH 127
 static struct ient {
-    char *str;
     unsigned short id;      /* -j: 2-byte identity, minted on first emit */
     struct ient *next;
+    char name[1];           /* the entry is cut to fit */
 } *ipool[INTERN_HASH];
+
+/*
+ * The name is embedded, so the entry is pointer arithmetic away
+ * from any canonical string - which makes minting an id O(1) once
+ * intern() has vouched for the pointer.
+ */
+#define IENTOF(s) ((struct ient *)((s) - \
+    ((char *)&((struct ient *)0)->name - (char *)0)))
 
 /*
  * The id side of the pool, for the -j format: identifiers travel
@@ -63,7 +71,7 @@ poolstats(void)
         }
     }
     for (i = 0; i < INTERN_HASH; i++)
-        for (e = ipool[i]; e; e = e->next) { ni++; ib += strlen(e->str)+1; }
+        for (e = ipool[i]; e; e = e->next) { ni++; ib += strlen(e->name)+1; }
     fdprintf(2, "POOLSTATS macros=%d names=%dB texts=%dB fnlike=%d parmB=%d numeric=%d(%dB) ndefs=%d intern=%d strB=%d\n",
         nm, nb, tb, pm, pb, en, etext, ndefstat(), ni, ib);
 }
@@ -80,13 +88,13 @@ intern(char *s)
         h = h * 31 + (unsigned char)*p;
     h %= INTERN_HASH;
     for (e = ipool[h]; e; e = e->next)
-        if (strcmp(e->str, s) == 0)
-            return e->str;
-    e = (struct ient *)permalloc(sizeof(*e));
-    e->str = permdup(s);
+        if (strcmp(e->name, s) == 0)
+            return e->name;
+    e = (struct ient *)permalloc(sizeof(*e) + strlen(s));
+    strcpy(e->name, s);
     e->next = ipool[h];
     ipool[h] = e;
-    return e->str;
+    return e->name;
 }
 
 /*
@@ -98,22 +106,9 @@ intern(char *s)
 unsigned short
 idOf(char *s)
 {
-    unsigned h = 0;
-    char *p;
     struct ient *e;
 
-    for (p = s; *p; p++)
-        h = h * 31 + (unsigned char)*p;
-    h %= INTERN_HASH;
-    for (e = ipool[h]; e; e = e->next)
-        if (strcmp(e->str, s) == 0)
-            break;
-    if (!e) {
-        intern(s);
-        for (e = ipool[h]; e; e = e->next)
-            if (strcmp(e->str, s) == 0)
-                break;
-    }
+    e = IENTOF(intern(s));
     if (e->id == 0)
         e->id = nextid++;
     return e->id;
@@ -158,7 +153,7 @@ internWrite(char *fname)
             b[0] = off & 0xff;
             b[1] = (off >> 8) & 0xff;
             write(fd, (char *)b, 2);
-            off += strlen(e->str) + 1;
+            off += strlen(e->name) + 1;
         }
     }
     /* second walk, same order: the names */
@@ -166,7 +161,7 @@ internWrite(char *fname)
     for (i = 0; i < INTERN_HASH; i++)
         for (e = ipool[i]; e; e = e->next)
             if (e->id)
-                write(fd, e->str, strlen(e->str) + 1);
+                write(fd, e->name, strlen(e->name) + 1);
     close(fd);
     return 0;
 }
