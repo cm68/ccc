@@ -29,6 +29,7 @@ long n_bounce = 0;
 long n_and0 = 0;
 long n_frame = 0;
 long n_invjp = 0;
+long n_outi = 0;
 long saved = 0;
 
 /* does the key at window line i match s exactly */
@@ -307,12 +308,71 @@ r_invjp(void)
 	return 1;
 }
 
+/*
+ * out() with a constant argument, which the code generator says 182
+ * times:
+ *
+ *	ld hl,strN
+ *	push hl
+ *	call _out
+ *	inc sp
+ *	inc sp
+ *
+ * is "call oarg" with the argument planted inline after the call -
+ * the swtab trick - and the libc helper feeds it to _out through
+ * the return address.  Nine bytes become five.  Must run before the
+ * inc sp rule turns the cleanup into a pop.  Only a constant
+ * operand qualifies: "ld hl,(sym)" is a load, and its value cannot
+ * be spelled in a .dw.
+ */
+static int
+r_outi(void)
+{
+	char buf[LLEN + 16];
+	int j1, j2, j3, j4;
+
+	if (win[0].kind != L_INSN ||
+	    !starts(0, "ld hl,") || win[0].key[6] == '(')
+		return 0;
+	j1 = nextsig(0);
+	if (j1 < 0 || win[j1].kind != L_INSN ||
+	    strcmp(win[j1].key, "push hl") != 0)
+		return 0;
+	j2 = nextsig(j1);
+	if (j2 < 0 || win[j2].kind != L_INSN ||
+	    strcmp(win[j2].key, "call _out") != 0)
+		return 0;
+	j3 = nextsig(j2);
+	if (j3 < 0 || win[j3].kind != L_INSN ||
+	    strcmp(win[j3].key, "inc sp") != 0)
+		return 0;
+	j4 = nextsig(j3);
+	if (j4 < 0 || win[j4].kind != L_INSN ||
+	    strcmp(win[j4].key, "inc sp") != 0)
+		return 0;
+
+	sprintf(buf, "\t.dw %s\n", win[0].key + 6);
+	/* back to front, so the indices stay true */
+	delline(j4, 1);
+	delline(j3, 1);
+	delline(j2, 1);
+	delline(j1, 1);
+	delline(0, 1);
+	insline(0, "\tcall oarg\n");
+	insline(1, buf);
+	n_outi++;
+	saved += 4;
+	return 1;
+}
+
 int
 applyrules(void)
 {
 	if (r_fenter())
 		return 1;
 	if (r_fexit())
+		return 1;
+	if (r_outi())
 		return 1;
 	if (r_invjp())
 		return 1;
@@ -331,9 +391,9 @@ void
 report(void)
 {
 	fprintf(stderr, "peep: frame %ld  incsp %ld  pushpop %ld  bounce %ld"
-		"  and0 %ld  invjp %ld  pool %ld = %ld bytes\n", n_frame,
-		n_incsp, n_pushpop, n_bounce, n_and0, n_invjp, poolmerged,
-		saved);
+		"  and0 %ld  invjp %ld  oarg %ld  pool %ld = %ld bytes\n",
+		n_frame, n_incsp, n_pushpop, n_bounce, n_and0, n_invjp,
+		n_outi, poolmerged, saved);
 }
 
 /* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

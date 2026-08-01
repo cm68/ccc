@@ -36,7 +36,7 @@ SRCS = abs.s allsh.s alrsh.s asallsh.s asalrsh.s asar.s strdup.s exit.s \
 	ladd.s land.s lcom.s ldiv.s linc.s lldst.s llrsh.s lmul.s \
 	longjmp.s lor.s lrelop.s lsub.s lushr.s lxor.s max.s swap.s  \
 	op16.s tramp.s rcsv.s rindex.s sbrk.s shar.s shl16.s \
-	shll.s shlr.s strcat.s strchr.s strcmp.s strcpy.s swdisp.s \
+	shll.s shlr.s strcat.s strchr.s strcmp.s strcpy.s swdisp.s oarg.s \
 	strlen.s strncat.s strncmp.s strncpy.s strrchr.s \
 	tolower.s toupper.s xtoi.s fputc.s fgetc.s
 #
