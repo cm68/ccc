@@ -8,6 +8,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <sys/wait.h>
+#include <fcntl.h>
 #include <libgen.h>
 
 #define MAX_ARGS 2560
@@ -188,6 +189,117 @@ execCommand(char *cmd, char **args)
         return WEXITSTATUS(status);
     } else {
         return 1;  /* Abnormal termination */
+    }
+}
+
+/*
+ * Under -j the passes know identifiers only as @id; their spellings
+ * sit in the .n sidecar.  The passes stay ignorant - the driver owns
+ * diagnostics, so it runs c0 and c1 with stderr through a pipe and
+ * rewrites @id to the name on the way past.  Lookup is two seeks,
+ * same as c1's: a 2-byte count, 2-byte offsets, NUL-terminated names
+ * in id order, ids 1-based.
+ */
+static int nfd = -1;
+
+static void
+nname(unsigned int id, char *buf, int size)
+{
+    unsigned char two[2];
+    int n, i;
+
+    lseek(nfd, (long)(2 + 2 * (id - 1)), 0);
+    read(nfd, (char *)two, 2);
+    lseek(nfd, (long)(two[0] | (two[1] << 8)), 0);
+    n = read(nfd, buf, size - 1);
+    for (i = 0; i < n; i++)
+        if (!buf[i])
+            return;
+    buf[i] = 0;
+}
+
+int
+execFiltered(char *cmd, char **args, char *nfile)
+{
+    int pfd[2];
+    int pid;
+    int status;
+    char buf[128];
+    char nam[20];
+    int n, i;
+    char c;
+    int at = 0;             /* digits seen after '@', +1 */
+    unsigned int id = 0;
+
+    nfd = nfile ? open(nfile, O_RDONLY) : -1;
+    if (nfd < 0)
+        return execCommand(cmd, args);
+
+    if (pipe(pfd) < 0) {
+        perror("pipe");
+        exit(1);
+    }
+
+    pid = fork();
+    if (pid < 0) {
+        perror("fork");
+        exit(1);
+    }
+
+    if (pid == 0) {
+        close(pfd[0]);
+        dup2(pfd[1], 2);
+        close(pfd[1]);
+        execv(cmd, args);
+        perror(cmd);
+        exit(1);
+    }
+
+    close(pfd[1]);
+    while ((n = read(pfd[0], buf, sizeof(buf))) > 0) {
+        for (i = 0; i < n; i++) {
+            c = buf[i];
+            if (at) {
+                if (c >= '0' && c <= '9') {
+                    id = id * 10 + (c - '0');
+                    at = 2;
+                    continue;
+                }
+                if (at > 1) {
+                    nname(id, nam, sizeof(nam));
+                    write(2, nam, strlen(nam));
+                } else {
+                    write(2, "@", 1);
+                }
+                at = 0;
+            }
+            if (c == '@') {
+                at = 1;
+                id = 0;
+                continue;
+            }
+            write(2, &c, 1);
+        }
+    }
+    if (at > 1) {
+        nname(id, nam, sizeof(nam));
+        write(2, nam, strlen(nam));
+    } else if (at) {
+        write(2, "@", 1);
+    }
+    close(pfd[0]);
+    close(nfd);
+    nfd = -1;
+
+    if (waitpid(pid, &status, 0) < 0) {
+        perror("waitpid");
+        exit(1);
+    }
+
+    if (WIFEXITED(status)) {
+        return WEXITSTATUS(status);
+    } else {
+        return 1;
     }
 }
 
@@ -541,7 +653,8 @@ main(int argc, char **argv)
         if (print_cmds || no_exec)
             printCommand(cc1_args);
         if (!no_exec) {
-            status = execCommand(cc1_path, cc1_args);
+            status = execFiltered(cc1_path, cc1_args,
+                                  intern_ids ? name_file : NULL);
             if (status != 0) {
                 fprintf(stderr, "Error: c0 failed on %s\n", src);
                 exit(status);
@@ -568,7 +681,8 @@ main(int argc, char **argv)
         if (print_cmds || no_exec)
             printCommand(cc2_args);
         if (!no_exec) {
-            status = execCommand(cc2_path, cc2_args);
+            status = execFiltered(cc2_path, cc2_args,
+                                  intern_ids ? name_file : NULL);
             if (status != 0) {
                 fprintf(stderr, "Error: c1 failed on %s\n", src);
                 exit(status);
