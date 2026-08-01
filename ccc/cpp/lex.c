@@ -128,7 +128,9 @@ charmatch(unsigned char c)
 void
 skipws()
 {
-    while ((curchar == ' ') || (curchar == '\n')) {
+    unsigned char c;
+
+    while ((c = curchar) == ' ' || c == '\n') {
         advance();
     }
 }
@@ -152,7 +154,9 @@ skipws()
 void
 skipws1()
 {
-    while (curchar == ' ' || curchar == '\t') {
+    unsigned char c;
+
+    while ((c = curchar) == ' ' || c == '\t') {
         advance();
     }
 }
@@ -161,7 +165,9 @@ skipws1()
 void
 skipallws()
 {
-    while (curchar == ' ' || curchar == '\t' || curchar == '\n')
+    unsigned char c;
+
+    while ((c = curchar) == ' ' || c == '\t' || c == '\n')
         advance();
 }
 
@@ -325,33 +331,35 @@ getlit()
 {
     unsigned char c;
 top:
-    if (curchar != '\\') {
-        if ((curchar < 0x20) || (curchar > 0x7e)) {
+    c = curchar;
+    if (c != '\\') {
+        if ((c < 0x20) || (c > 0x7e)) {
             gripe(ER_C_BC);
-            curchar = ' ';
+            c = curchar = ' ';
         }
-        c = curchar;
     } else {
         advance();
+        c = curchar;
         /* Backslash-newline continuation: skip and get next char.
          * Don't increment lineno here - advance() already did when it
          * processed the newline character.
          * If the next char after continuation is the string terminator,
          * return the out-of-band GL_END to signal end-of-content
          * (0xff is a valid byte value: '\377', '\xff'). */
-        if (curchar == '\n') {
+        if (c == '\n') {
             advance();
             if (curchar == termin) return GL_END;
             goto top;
         }
-        if (curchar >= '0' && curchar <= '7') return escint(8);
-        if ((curchar | 0x20) == 'x') { advance(); return escint(16); }
-        if (curchar == 'B') { advance(); return escint(2); }
-        if (curchar == 'D') { advance(); return escint(10); }
-        if (curchar >= 'a' && curchar <= 'z' && escval[curchar - 'a'])
-            c = escval[curchar - 'a'];
-        else
-            c = curchar;
+        if (c >= '0' && c <= '7') return escint(8);
+        if ((c | 0x20) == 'x') { advance(); return escint(16); }
+        if (c == 'B') { advance(); return escint(2); }
+        if (c == 'D') { advance(); return escint(10); }
+        if (c >= 'a' && c <= 'z') {
+            unsigned char v = escval[c - 'a'];
+            if (v)
+                c = v;
+        }
     }
     advance();
     return c;
@@ -418,8 +426,8 @@ isnumber()
         *p++ = '0';  /* Prepend 0 for atof */
         *p++ = '.';
         advance();
-        while (curchar >= '0' && curchar <= '9') {
-            *p++ = curchar;
+        while ((c = curchar) >= '0' && c <= '9') {
+            *p++ = c;
             advance();
         }
         c = curchar | 0x20;
@@ -430,8 +438,8 @@ isnumber()
                 *p++ = curchar;
                 advance();
             }
-            while (curchar >= '0' && curchar <= '9') {
-                *p++ = curchar;
+            while ((c = curchar) >= '0' && c <= '9') {
+                *p++ = c;
                 advance();
             }
         }
@@ -482,8 +490,8 @@ isnumber()
 		if (curchar == '.') {
 			*p++ = '.';
 			advance();
-			while (curchar >= '0' && curchar <= '9') {
-				*p++ = curchar;
+			while ((c = curchar) >= '0' && c <= '9') {
+				*p++ = c;
 				advance();
 			}
 		}
@@ -495,8 +503,8 @@ isnumber()
 				*p++ = curchar;
 				advance();
 			}
-			while (curchar >= '0' && curchar <= '9') {
-				*p++ = curchar;
+			while ((c = curchar) >= '0' && c <= '9') {
+				*p++ = c;
 				advance();
 			}
 		}
@@ -1034,7 +1042,7 @@ void
 gettoken()
 {
     token_t t;
-    unsigned char c;
+    register unsigned char c;
 
     freetoken();
 
@@ -1061,7 +1069,8 @@ gettoken()
     }
 
     while (1) {
-        if (curchar == 0) {
+        c = curchar;
+        if (c == 0) {
             next.type = E_O_F;
 #ifdef DEBUG
             if (VERBOSE(V_CPP)) {
@@ -1075,7 +1084,7 @@ gettoken()
             break;
         }
         /* Handle comments before checking for preprocessor directives */
-        if (curchar == '/') {
+        if (c == '/') {
             if (nextchar == '*') {
                 /*
                  * Always enter comment mode, even if already in one
@@ -1092,11 +1101,11 @@ gettoken()
                 continue;
             }
         }
-        if (!incomment && (curchar == '/') && (nextchar == '/')) {
+        if (!incomment && (c == '/') && (nextchar == '/')) {
             skiptoeol();
             continue;
         }
-        if ((incomment) && (curchar == '*') && (nextchar == '/')) {
+        if ((incomment) && (c == '*') && (nextchar == '/')) {
 #ifdef DEBUG
             if (VERBOSE(V_TOKEN)) {
                 fdprintf(2,
@@ -1114,7 +1123,8 @@ gettoken()
             continue;
         }
         /* Now safe to check for # - we know we're not in a comment */
-        if (charmatch('#')) {
+        if (c == '#') {
+            advance();
 #ifdef DEBUG
             if (VERBOSE(V_CPP)) {
                 fdprintf(2,"Found # at column=%d (will%s process) cond=%p",
@@ -1188,10 +1198,11 @@ gettoken()
                 continue;
             }
         }
-        if (curchar == '\n') {
+        c = curchar;	/* the # arm may have moved the stream */
+        if (c == '\n') {
             lineend = 1;
         }
-        if ((tflags & ONELINE) && (curchar == '\n')) {
+        if ((tflags & ONELINE) && (c == '\n')) {
             next.type = SEMI;
             /*
              * Don't advance - leave curchar at newline so next
@@ -1200,7 +1211,7 @@ gettoken()
             break;
         }
         if (!(tflags & ONELINE) && cond && !(cond->flags & C_TRUE) &&
-            curchar != '#') {
+            c != '#') {
 #ifdef DEBUG
             if (VERBOSE(V_CPP)) {
                 fdprintf(2,
@@ -1215,7 +1226,7 @@ gettoken()
             }
             continue;
         }
-        if ((curchar == ' ') || (curchar == '\t') || (curchar == '\n')) {
+        if ((c == ' ') || (c == '\t') || (c == '\n')) {
             advance();
 #ifdef DEBUG
             if (VERBOSE(V_CPP) && cond) {
@@ -1269,14 +1280,14 @@ gettoken()
                         bigbuflen = 0;
                         advance();  /* skip { */
                         /* Capture until matching } */
-                        while (depth > 0 && curchar) {
-                            if (curchar == '{') depth++;
-                            else if (curchar == '}') {
+                        while (depth > 0 && (c = curchar)) {
+                            if (c == '{') depth++;
+                            else if (c == '}') {
                                 depth--;
                                 if (depth == 0) break;
                             }
                             if (bigbuflen < BIGBUFSIZE - 1)
-                                bigbuf[bigbuflen++] = curchar;
+                                bigbuf[bigbuflen++] = c;
                             advance();
                         }
                         bigbuf[bigbuflen] = 0;
