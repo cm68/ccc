@@ -33,22 +33,33 @@ lldde:
 	call	lld
 	ret
 
-; Store HLDE to (DE)
+; Store HLDE to (dest), dest pointer on the stack
 ; Entry: HLDE = 32-bit value, stack has dest pointer
 ; Exit: value stored, pointer popped
+;
+; BC comes through ALIVE.  It is the register-variable home, and the
+; old body parked the return address there: every long store made by
+; a function keeping a pointer in BC - tokcpy, with the destination
+; token - handed that pointer back as a text address, and the fields
+; stored after the long went through it into whatever it now named.
+; That was cpp's intern pool, six-byte token strides at a time.  The
+; return address sits in a scratch word instead; this code has no
+; reentrancy to lose.
 lstde:
-	pop	bc		; return address
-	ex	(sp),hl		; get dest ptr, save low word
+	ex	(sp),hl		; hl = return address, TOS = high word
+	ld	(lsret),hl
+	pop	hl		; high word back
+	ex	(sp),hl		; hl = dest ptr, TOS = high word
 	ld	(hl),e
 	inc	hl
 	ld	(hl),d
 	inc	hl
-	pop	de		; get low word back
+	pop	de		; high word
 	ld	(hl),e
 	inc	hl
 	ld	(hl),d
-	push	bc		; return address
-	ret
+	ld	hl,(lsret)
+	jp	(hl)
 
 ; Load 16-bit from (HL) into HL
 ; Entry: HL = pointer
@@ -77,3 +88,6 @@ stide:
 	ret
 
 ; vim: tabstop=4 shiftwidth=4 noexpandtab:
+
+	.data
+lsret:	.dw	0
