@@ -410,18 +410,14 @@ struct token {
 };
 
 /*
- * Identifiers are 2-byte ids everywhere inside this pass.  Under
- * cpp -j they arrive that way and the spelling never enters this
- * address space at all; a plain stream is interned on arrival by
- * locid(), which keeps the only copy of each string.  nameOf() is
- * for output alone - the .1/.2 streams and diagnostics - and in id
- * mode it prints the @id form for c1 and the driver to undress.
- * Ids from cpp are 1-based; 0 means "no name" (anonymous params,
- * the basic types); SYNTH and up are pass1's own string literals.
+ * Identifiers are 2-byte ids everywhere inside this pass; the
+ * spelling never enters this address space at all.  nameOf() is
+ * for output alone - the .1/.2 streams and diagnostics - and
+ * prints the @id form for c1 and the driver to undress.  Ids from
+ * cpp are 1-based; 0 means "no name" (anonymous params, the basic
+ * types); SYNTH and up are pass1's own string literals.
  */
 #define SYNTH 0x8000		/* + n: the strn literal */
-extern char jmode;			/* the stream is cpp -j output */
-extern unsigned short locid(char *s);
 extern char *nameOf(unsigned short id);
 
 extern struct token cur, next;

@@ -36,6 +36,8 @@ NUMBER  = 21
 STRING  = 22
 FNUMBER = 23
 LNUMBER = 25
+SYMID   = 26        # 2-byte interned id; spelling in the .n sidecar
+LABELID = 27
 SIZEOF  = 91
 LABEL   = 112
 LINENO  = 116
@@ -75,6 +77,7 @@ FORBIDDEN = {
 TOKNAME = {
     SEMI: ';', BEGIN: '{', END: '}', LPAR: '(', RPAR: ')',
     SYM: 'SYM', NUMBER: 'NUMBER', STRING: 'STRING', LABEL: 'LABEL',
+    SYMID: 'SYMID', LABELID: 'LABELID',
     IF: 'if', ELSE: 'else', SWITCH: 'switch',
 }
 
@@ -126,6 +129,15 @@ def decode(data, filename, errors):
                 return toks
             srcfile = data[pos:pos + namelen].decode('latin-1')
             pos += namelen
+            continue
+
+        if code in (SYMID, LABELID):
+            if pos + 2 > n:
+                err("truncated %s payload" % tokname(code))
+                return toks
+            pos += 2
+            # the parser below treats these as their named forms
+            toks.append((SYM if code == SYMID else LABEL, line, srcfile))
             continue
 
         if code in (SYM, LABEL):

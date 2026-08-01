@@ -104,7 +104,6 @@ usage(void)
     printf("  -D<var>[=val]  Define macro\n");
     printf("  -E             Preprocess only\n");
     printf("  -H             Use .i (human-readable) input for pass1 instead of .x\n");
-    printf("  -j             Identifiers as 2-byte ids + .n name sidecar\n");
     printf("  -l<lib>        Link with library lib<lib>.a\n");
     printf("  -L<dir>        Add <dir> to library search path\n");
     printf("  -x             Print commands as they execute\n");
@@ -193,7 +192,7 @@ execCommand(char *cmd, char **args)
 }
 
 /*
- * Under -j the passes know identifiers only as @id; their spellings
+ * The passes know identifiers only as @id; their spellings
  * sit in the .n sidecar.  The passes stay ignorant - the driver owns
  * diagnostics, so it runs c0 and c1 with stderr through a pipe and
  * rewrites @id to the name on the way past.  Lookup is two seeks,
@@ -316,7 +315,6 @@ main(int argc, char **argv)
     int nine_char = 0;       /* -9: use 9-char symbols */
     int use_prep = 0;        /* -H: use .i file for pass1 instead of .x */
     int optimize = 0;        /* -O: run the peephole over c1's assembly */
-    int intern_ids = 0;      /* -j: 2-byte ids + .n name sidecar */
 
     /* Input files by type */
     char *c_files[MAX_ARGS];
@@ -427,10 +425,6 @@ main(int argc, char **argv)
             argv++;
         } else if (strcmp(argv[0], "-9") == 0) {
             nine_char = 1;
-            argc--;
-            argv++;
-        } else if (strcmp(argv[0], "-j") == 0) {
-            intern_ids = 1;
             argc--;
             argv++;
         } else if (strcmp(argv[0], "-H") == 0) {
@@ -622,8 +616,6 @@ main(int argc, char **argv)
         cpp_argc = 0;
         for (j = 0; j < cpp_base_argc; j++)
             cpp_args[cpp_argc++] = cpp_base[j];
-        if (intern_ids)
-            cpp_args[cpp_argc++] = "-j";
         cpp_args[cpp_argc++] = "-DCCC";
         cpp_args[cpp_argc++] = sysinc_path;
         cpp_args[cpp_argc++] = "-o";
@@ -653,8 +645,7 @@ main(int argc, char **argv)
         if (print_cmds || no_exec)
             printCommand(cc1_args);
         if (!no_exec) {
-            status = execFiltered(cc1_path, cc1_args,
-                                  intern_ids ? name_file : NULL);
+            status = execFiltered(cc1_path, cc1_args, name_file);
             if (status != 0) {
                 fprintf(stderr, "Error: c0 failed on %s\n", src);
                 exit(status);
@@ -681,8 +672,7 @@ main(int argc, char **argv)
         if (print_cmds || no_exec)
             printCommand(cc2_args);
         if (!no_exec) {
-            status = execFiltered(cc2_path, cc2_args,
-                                  intern_ids ? name_file : NULL);
+            status = execFiltered(cc2_path, cc2_args, name_file);
             if (status != 0) {
                 fprintf(stderr, "Error: c1 failed on %s\n", src);
                 exit(status);

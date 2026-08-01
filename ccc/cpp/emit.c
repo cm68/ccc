@@ -52,21 +52,6 @@ emitToken(unsigned char tok)
 }
 
 /*
- * Emit name token: tok + len byte + name bytes
- */
-static void
-emitName(unsigned char tok, char *name)
-{
-    unsigned char hdr[2];
-    int len = strlen(name);
-    if (len > 255) len = 255;
-    hdr[0] = tok;
-    hdr[1] = len;
-    outbufWrite(hdr, 2);
-    outbufWrite(name, len);
-}
-
-/*
  * Emit symbol: SYM(20) + len byte + name bytes - or, under -j,
  * SYMID(26) + 2-byte id, the name having gone to the .n sidecar.
  */
@@ -85,10 +70,7 @@ emitId(unsigned char tok, char *name)
 void
 emitSym(char *name)
 {
-    if (internIds)
-        emitId(SYMID, name);
-    else
-        emitName(SYM, name);
+    emitId(SYMID, name);
 }
 
 /*
@@ -187,10 +169,7 @@ emitAsmString(char *str, int len)
 void
 emitLabel(char *name)
 {
-    if (internIds)
-        emitId(LABELID, name);
-    else
-        emitName(LABEL, name);
+    emitId(LABELID, name);
 }
 
 /*
