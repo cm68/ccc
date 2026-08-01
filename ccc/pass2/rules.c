@@ -1445,6 +1445,21 @@ struct rule rules[] = {
 	 * left and there was no form with it there. */
 	R("-(N,B)", MINUS, P_L, P_R, P_NONE, 0,
 		"\tld hl,$L\n" F_ORA F_SBCHLBC, R_HL),
+	/*
+	 * And with the value in DE or HL, which is what "0 - (n % 10)"
+	 * reduces to: the helper's answer moved aside, the constant on
+	 * the left where normalize keeps it.  outd() spells its digits
+	 * exactly that way, so the self-built c1 printed every operand
+	 * of every instruction as an empty string.
+	 */
+	R("-(N,E)", MINUS, P_L, P_R, P_NONE, 0,
+		"\tld hl,$L\n" F_ORA F_SBCHLDE, R_HL),
+	R("-(N,H)", MINUS, P_L, P_R, P_NONE, 0,
+		"\tex de,hl\n\tld hl,$L\n" F_ORA F_SBCHLDE, R_HL),
+	R("-(N,K):b", MINUS, P_L, P_R, P_NONE, 0,
+		"\tld a,$L\n" F_SUBE, R_A),
+	R("-(N,A):b", MINUS, P_L, P_R, P_NONE, 0,
+		"\tld e,a\n\tld a,$L\n" F_SUBE, R_A),
 	R("+(B,E)", PLUS, P_L, P_R, P_NONE, 0, T_BC_HL T_ADD_HL_DE, R_HL),
 	R("-(B,E)", MINUS, P_L, P_R, P_NONE, 0, T_BC_HL F_ORA F_SBCHLDE, R_HL),
 	/*

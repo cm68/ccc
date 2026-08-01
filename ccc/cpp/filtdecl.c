@@ -21,12 +21,16 @@ extern void addTypedef(char *name);
 #define ST_DECL     1
 #define ST_NAME     2
 #define ST_INIT     3
+#define ST_ARR      4	/* inside an array declarator's brackets */
+#define ST_ARRE     5	/* just past the closing bracket */
+#define ST_AINIT    6	/* an array's inline initializer */
 
 static int state = ST_NORMAL;
 static int brace_depth = 0;
 static int aggr_depth = 0;	/* Struct/union/enum brace depth */
 static int paren_depth = 0;
 static int init_depth = 0;
+static int arr_depth = 0;	/* bracket nesting in ST_ARR */
 static int in_typedef = 0;
 static int expect_tag = 0;	/* Expecting struct/union/enum tag name */
 static int in_aggr_def = 0;	/* In struct/union/enum definition */
@@ -247,6 +251,15 @@ restart:
 
 	if (t.type == BEGIN) {
 		brace_depth++;
+		if (state == ST_AINIT) {
+			/* an array initializer's braces belong to the state
+			 * machine, not to the block tracking - this intercept
+			 * was emitting them straight to out, ahead of the
+			 * tokens pending behind them */
+			init_depth++;
+			pend_push(&pb, &t);
+			goto restart;
+		}
 		if (in_aggr_def || aggr_depth > 0) {
 			/* Inside struct/union/enum definition (or nested aggregate) */
 			aggr_depth++;
@@ -279,6 +292,11 @@ restart:
 	}
 	if (t.type == END) {
 		brace_depth--;
+		if (state == ST_AINIT) {
+			init_depth--;
+			pend_push(&pb, &t);
+			goto restart;
+		}
 		if (aggr_depth > 0)
 			aggr_depth--;
 		tokcpy(out, &t);
@@ -420,14 +438,95 @@ restart:
 			pend_push(&pb, &tmp);
 			pend_push(&pb, &t);
 			name_count--;
-			tarr_reset(&decl_arr);
-			state = ST_NORMAL;
-			pend_pop(&pb, out);
-			return;
+			/*
+			 * NOT the end of the declaration.  This used to reset
+			 * to ST_NORMAL here, so everything after the array -
+			 * ", *p = buf + 11 ;" - flowed through untouched and
+			 * the initializer reached pass1 unsplit, which drops
+			 * an auto initializer on the floor.  c1's own outd()
+			 * is that exact line: the self-build's c1 printed
+			 * every number as an empty string.  The type is kept
+			 * so declarators after the array still split.
+			 */
+			arr_depth = 1;
+			state = ST_ARR;
+			goto restart;
 		}
 		finish_decl();
 		pend_thru(&pb, &t, out);
 		return;
+
+	case ST_ARR:
+		/* the dimension flows through verbatim */
+		pend_push(&pb, &t);
+		if (t.type == LBRACK)
+			arr_depth++;
+		else if (t.type == RBRACK && --arr_depth == 0)
+			state = ST_ARRE;
+		goto restart;
+
+	case ST_ARRE:
+		if (t.type == LBRACK) {		/* next dimension */
+			pend_push(&pb, &t);
+			arr_depth = 1;
+			state = ST_ARR;
+			goto restart;
+		}
+		if (t.type == ASSIGN) {
+			/*
+			 * An array initializer stays inline: an aggregate
+			 * cannot be split into an assignment, and the only
+			 * legal homes for one - statics and file scope -
+			 * want it inline anyway.
+			 */
+			pend_push(&pb, &t);
+			paren_depth = 0;
+			init_depth = 0;
+			state = ST_AINIT;
+			goto restart;
+		}
+		if (t.type == COMMA) {
+			/* close the array's declaration and keep going with
+			 * the same type: "char buf[12], *p" becomes
+			 * "char buf[12]; char *p" */
+			pend_tok(&pb, SEMI);
+			state = ST_DECL;
+			goto restart;
+		}
+		if (t.type == SEMI) {
+			pend_tok(&pb, SEMI);
+			finish_decl();
+			pend_pop(&pb, out);
+			return;
+		}
+		/* not a shape this filter splits: flush and step aside */
+		pend_push(&pb, &t);
+		tarr_reset(&decl_arr);
+		name_count = 0;
+		state = ST_NORMAL;
+		pend_pop(&pb, out);
+		return;
+
+	case ST_AINIT:
+		/* braces are counted at the entry intercept, which owns
+		 * BEGIN and END for every state */
+		if (t.type == LPAR)
+			paren_depth++;
+		else if (t.type == RPAR)
+			paren_depth--;
+		if (t.type == COMMA && init_depth == 0 && paren_depth == 0) {
+			pend_tok(&pb, SEMI);
+			state = ST_DECL;
+			goto restart;
+		}
+		if (t.type == SEMI && init_depth == 0 && paren_depth == 0) {
+			pend_tok(&pb, SEMI);
+			finish_decl();
+			pend_pop(&pb, out);
+			return;
+		}
+		pend_push(&pb, &t);
+		goto restart;
 
 	case ST_INIT:
 		if (t.type == LPAR)
