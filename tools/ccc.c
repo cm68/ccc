@@ -103,6 +103,7 @@ usage(void)
     printf("  -D<var>[=val]  Define macro\n");
     printf("  -E             Preprocess only\n");
     printf("  -H             Use .i (human-readable) input for pass1 instead of .x\n");
+    printf("  -j             Identifiers as 2-byte ids + .n name sidecar\n");
     printf("  -l<lib>        Link with library lib<lib>.a\n");
     printf("  -L<dir>        Add <dir> to library search path\n");
     printf("  -x             Print commands as they execute\n");
@@ -203,6 +204,7 @@ main(int argc, char **argv)
     int nine_char = 0;       /* -9: use 9-char symbols */
     int use_prep = 0;        /* -H: use .i file for pass1 instead of .x */
     int optimize = 0;        /* -O: run the peephole over c1's assembly */
+    int intern_ids = 0;      /* -j: 2-byte ids + .n name sidecar */
 
     /* Input files by type */
     char *c_files[MAX_ARGS];
@@ -313,6 +315,10 @@ main(int argc, char **argv)
             argv++;
         } else if (strcmp(argv[0], "-9") == 0) {
             nine_char = 1;
+            argc--;
+            argv++;
+        } else if (strcmp(argv[0], "-j") == 0) {
+            intern_ids = 1;
             argc--;
             argv++;
         } else if (strcmp(argv[0], "-H") == 0) {
@@ -471,6 +477,7 @@ main(int argc, char **argv)
         char *base = getBaseNoExt(src);
         char *lex_file;
         char *prep_file;
+        char *name_file;
         char *temp1_file;
         char *temp2_file;
         char *asm_file;
@@ -486,6 +493,8 @@ main(int argc, char **argv)
         sprintf(lex_file, "%s.x", base);
         prep_file = malloc(strlen(base) + 10);
         sprintf(prep_file, "%s.i", base);
+        name_file = malloc(strlen(base) + 10);
+        sprintf(name_file, "%s.n", base);
         temp1_file = malloc(strlen(base) + 10);
         sprintf(temp1_file, "%s.1", base);
         temp2_file = malloc(strlen(base) + 10);
@@ -501,6 +510,8 @@ main(int argc, char **argv)
         cpp_argc = 0;
         for (j = 0; j < cpp_base_argc; j++)
             cpp_args[cpp_argc++] = cpp_base[j];
+        if (intern_ids)
+            cpp_args[cpp_argc++] = "-j";
         cpp_args[cpp_argc++] = "-DCCC";
         cpp_args[cpp_argc++] = sysinc_path;
         cpp_args[cpp_argc++] = "-o";
@@ -568,9 +579,11 @@ main(int argc, char **argv)
         if (!keep_all && !no_exec) {
             unlink(temp1_file);
             unlink(temp2_file);
+            unlink(name_file);
         }
         free(temp1_file);
         free(temp2_file);
+        free(name_file);
 
         /*
          * Peephole, if asked for.  It rewrites the assembly in place -

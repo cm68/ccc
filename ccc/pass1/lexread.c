@@ -26,6 +26,8 @@ unsigned long lexTokenCount = 0;  /* Token counter for debugging */
 
 /* CPP special token values (not simple pass-through) */
 #define CPP_LNUMBER 25
+#define CPP_SYMID   26
+#define CPP_LABELID 27
 #define CPP_AMPER   35      /* CPP uses AMPER, pass1 uses AND */
 #define CPP_TIMES   42      /* CPP uses TIMES, pass1 uses STAR */
 #define CPP_LINENO  116
@@ -198,6 +200,22 @@ again:
 	/* CPP uses TIMES (42) for *, pass1 uses STAR (36) */
 	case CPP_TIMES:
 		next.type = STAR;
+		break;
+
+	/*
+	 * The id forms, from cpp -j: the identifier travels as a 2-byte
+	 * id and the name lives in the .n sidecar.  For now the id is
+	 * dressed as the name "@%d", so everything downstream runs
+	 * unchanged and c1 (or the driver, for diagnostics) undresses
+	 * it; the real rekeying - struct name holding the id, lookups
+	 * comparing 16 bits - lands once this plumbing is proven.
+	 */
+	case CPP_SYMID:
+	case CPP_LABELID:
+		s = galloc(8);
+		fmtstr(s, "@%d", readLE2());
+		next.type = (c == CPP_SYMID) ? SYM : LABEL;
+		next.v.name = s;
 		break;
 
 	/* Symbol - has length + bytes */

@@ -33,6 +33,7 @@
  * to translate @{id} markers in the passes' stderr.
  */
 #define SYMID   26
+#define LABELID 27	/* LABEL's id form: 27 + 2-byte id */
 
 /* Unary/Binary operators (30-54) */
 #define INCR    30

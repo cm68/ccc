@@ -197,7 +197,7 @@ void
 emitLabel(char *name)
 {
     if (internIds)
-        emitId(LABEL, name);
+        emitId(LABELID, name);
     else
         emitName(LABEL, name);
 }
