@@ -38,6 +38,8 @@ char *curFile;
 int lineNo;
 char exitCode = 0;
 char noLineMarkers = 0;  /* -N flag: suppress LINENO/NEWLINE in .x */
+char internIds = 0;      /* -j flag: identifiers as 2-byte ids + .n sidecar */
+static char idFile[256]; /* the sidecar's name */
 #ifdef DEBUG
 short verbose;
 #endif
@@ -224,6 +226,8 @@ main(int argc, char **argv)
             ppOutput = 1;
         } else if (strcmp(argv[i], "-N") == 0) {
             noLineMarkers = 1;
+        } else if (strcmp(argv[i], "-j") == 0) {
+            internIds = 1;
         } else if (strcmp(argv[i], "-h") == 0) {
             usage();
         } else if (strcmp(argv[i], "-v") == 0) {
@@ -257,6 +261,7 @@ main(int argc, char **argv)
     /* Create output file names */
     fmtstr(lexFile, "%s.x", outbase);
     fmtstr(ppFile, "%s.i", outbase);
+    fmtstr(idFile, "%s.n", outbase);
 
 #ifdef DEBUG
 #ifndef CCC
@@ -299,6 +304,9 @@ main(int argc, char **argv)
 
     /* Process the source file */
     process(source);
+    /* the id-to-name sidecar, for c1 and the driver */
+    if (internIds)
+        internWrite(idFile);
 
     close(lexFd);
 

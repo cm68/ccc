@@ -19,11 +19,20 @@
 #define COLON   8
 #define COMMA   9
 
-/* Terminals (20-25) */
+/* Terminals (20-26) */
 #define SYM     20
 #define NUMBER  21
 #define STRING  22
 #define LNUMBER 25
+/*
+ * An interned identifier: 26 + 2-byte little-endian id.  Emitted in
+ * place of SYM (and of LABEL's name) when cpp runs with -j, in which
+ * case the id-to-name table travels beside the .x in a .n sidecar -
+ * cpp/INTERN.md has the format.  c0 never needs the names; c1 reads
+ * the sidecar to spell symbols in assembly, and the driver uses it
+ * to translate @{id} markers in the passes' stderr.
+ */
+#define SYMID   26
 
 /* Unary/Binary operators (30-54) */
 #define INCR    30

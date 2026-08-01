@@ -204,6 +204,18 @@ extern char *curFile;       /* current source file */
 extern int lineNo;          /* current line number (for errors) */
 extern char noLineMarkers;  /* -N flag: suppress LINENO/NEWLINE */
 
+/*
+ * -j: identifiers travel as 2-byte ids and the names go to the .n
+ * sidecar, for the two consumers that need spelling - c1, turning
+ * ids back into symbols, and the driver, translating @{id} markers
+ * in diagnostics.  c0 never looks: its lookups become 16-bit
+ * compares, which on this machine is also the difference between
+ * walking a 200-name chain with strcmp and walking it with sbc.
+ */
+extern char internIds;
+extern unsigned short idOf(char *name);
+extern int internWrite(char *fname);
+
 extern unsigned char curchar;
 extern unsigned char nextchar;
 extern int lineno;

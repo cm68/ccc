@@ -76,12 +76,28 @@ emitName(unsigned char tok, char *name)
 }
 
 /*
- * Emit symbol: SYM(20) + len byte + name bytes
+ * Emit symbol: SYM(20) + len byte + name bytes - or, under -j,
+ * SYMID(26) + 2-byte id, the name having gone to the .n sidecar.
  */
+static void
+emitId(unsigned char tok, char *name)
+{
+    unsigned char b[3];
+    unsigned short id = idOf(name);
+
+    b[0] = tok;
+    b[1] = id & 0xff;
+    b[2] = (id >> 8) & 0xff;
+    outbufWrite(b, 3);
+}
+
 void
 emitSym(char *name)
 {
-    emitName(SYM, name);
+    if (internIds)
+        emitId(SYMID, name);
+    else
+        emitName(SYM, name);
 }
 
 /*
@@ -180,7 +196,10 @@ emitAsmString(char *str, int len)
 void
 emitLabel(char *name)
 {
-    emitName(LABEL, name);
+    if (internIds)
+        emitId(LABEL, name);
+    else
+        emitName(LABEL, name);
 }
 
 /*

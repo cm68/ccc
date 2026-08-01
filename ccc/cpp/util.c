@@ -5,6 +5,7 @@
 #include "libutil.h"
 #include <stdarg.h>
 #include <unistd.h>
+#include <fcntl.h>
 
 /*
  * permalloc()/permdup() (interned names, macro definitions, typedefs,
@@ -26,8 +27,20 @@
 #define INTERN_HASH 127
 static struct ient {
     char *str;
+    unsigned short id;      /* -j: 2-byte identity, minted on first emit */
     struct ient *next;
 } *ipool[INTERN_HASH];
+
+/*
+ * The id side of the pool, for the -j format: identifiers travel
+ * through the passes as 2-byte ids, and the names live only here
+ * and in the .n sidecar internWrite() dumps.  Ids are minted at
+ * first EMISSION, not first sight, so the sidecar holds only names
+ * the stream actually uses.  0 is reserved for "no name".
+ */
+static struct ient **byid;      /* id-1 -> entry */
+static int byidcap;
+static unsigned short nextid = 1;
 
 char *
 intern(char *s)
@@ -47,6 +60,85 @@ intern(char *s)
     e->next = ipool[h];
     ipool[h] = e;
     return e->str;
+}
+
+/*
+ * The id for a name, minting one on first call.  The lexer interns
+ * every identifier it reads, so the entry is normally already
+ * there; a synthetic name that never went through the lexer gets
+ * pooled on the way.
+ */
+unsigned short
+idOf(char *s)
+{
+    unsigned h = 0;
+    char *p;
+    struct ient *e;
+
+    for (p = s; *p; p++)
+        h = h * 31 + (unsigned char)*p;
+    h %= INTERN_HASH;
+    for (e = ipool[h]; e; e = e->next)
+        if (strcmp(e->str, s) == 0)
+            break;
+    if (!e) {
+        intern(s);
+        for (e = ipool[h]; e; e = e->next)
+            if (strcmp(e->str, s) == 0)
+                break;
+    }
+    if (e->id == 0) {
+        e->id = nextid++;
+        if (e->id > byidcap) {
+            struct ient **nb;
+            int ncap = byidcap ? byidcap * 2 : 128;
+            int i;
+
+            nb = (struct ient **)permalloc(ncap * sizeof(*nb));
+            for (i = 0; i < byidcap; i++)
+                nb[i] = byid[i];
+            byid = nb;
+            byidcap = ncap;
+        }
+        byid[e->id - 1] = e;
+    }
+    return e->id;
+}
+
+/*
+ * Write the .n sidecar, the id-to-name table for c1 and the driver.
+ *
+ *	2 bytes		count N, little-endian
+ *	N * 2 bytes	offset of name i+1 from file start
+ *	names		NUL-terminated, in id order
+ *
+ * Two seeks fetch any name; nothing is obliged to hold the file.
+ */
+int
+internWrite(char *fname)
+{
+    int fd, i;
+    unsigned int off;
+    unsigned char b[2];
+    int n = nextid - 1;
+
+    fd = creat(fname, 0644);
+    if (fd < 0)
+        return -1;
+    b[0] = n & 0xff;
+    b[1] = (n >> 8) & 0xff;
+    write(fd, (char *)b, 2);
+    off = 2 + 2 * n;
+    for (i = 0; i < n; i++) {
+        b[0] = off & 0xff;
+        b[1] = (off >> 8) & 0xff;
+        write(fd, (char *)b, 2);
+        off += strlen(byid[i]->str) + 1;
+    }
+    for (i = 0; i < n; i++)
+        write(fd, byid[i]->str, strlen(byid[i]->str) + 1);
+    close(fd);
+    return 0;
 }
 
 /*
