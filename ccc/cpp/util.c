@@ -40,6 +40,35 @@ static struct ient {
  */
 static unsigned short nextid = 1;
 
+#ifdef DEBUG
+void
+poolstats(void)
+{
+    extern struct macro *macros;
+    struct macro *m;
+    struct ient *e;
+    int i, nm=0, nb=0, tb=0, pm=0, pb=0, ni=0, ib=0;
+    int etext=0, en=0;
+    extern int ndefstat(void);
+
+    for (m = macros; m; m = m->next) {
+        nm++;
+        nb += strlen(m->name) + 1;
+        if (m->mactext) tb += strlen(m->mactext) + 1;
+        if (m->parms) { pm++; pb += m->parmcount * 2; }
+        if (m->mactext) {
+            char *p = m->mactext; int dig = 1;
+            for (; *p; p++) if (!(*p>='0'&&*p<='9') && *p!='x' && *p!='-') { dig=0; break; }
+            if (dig) { en++; etext += strlen(m->mactext)+1; }
+        }
+    }
+    for (i = 0; i < INTERN_HASH; i++)
+        for (e = ipool[i]; e; e = e->next) { ni++; ib += strlen(e->str)+1; }
+    fdprintf(2, "POOLSTATS macros=%d names=%dB texts=%dB fnlike=%d parmB=%d numeric=%d(%dB) ndefs=%d intern=%d strB=%d\n",
+        nm, nb, tb, pm, pb, en, etext, ndefstat(), ni, ib);
+}
+#endif
+
 char *
 intern(char *s)
 {

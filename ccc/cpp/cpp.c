@@ -365,6 +365,9 @@ main(int argc, char **argv)
         return 1;
     }
 
+#ifdef DEBUG
+    { extern void poolstats(void); poolstats(); }
+#endif
     return exitCode;
 }
 

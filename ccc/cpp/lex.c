@@ -705,7 +705,7 @@ doCpp(unsigned char t)
             return;
         }
         advance();
-        v = (maclookup(strbuf) != 0);  /* true if macro is defined */
+        v = mdefined(strbuf);  /* true if macro is defined */
         if (t == PP_IFNDEF) v = !v;    /* invert for ifndef */
         push_cond(v);
         skiptoeol();
@@ -1495,7 +1495,7 @@ cpppseudofunc()
         advance();
         skipws1();
         if (issym()) {
-            r = (maclookup(strbuf) != 0);
+            r = mdefined(strbuf);
             advance();
         }
         skipws1();

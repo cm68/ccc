@@ -30,6 +30,129 @@ is_id_cont(unsigned char c)
     return is_id_start(c) || (c >= '0' && c <= '9');
 }
 
+/*
+ * Numeric defines get a compact store.  Most of what a real header
+ * defines is numbers - token codes, flags, filtenum's lowered enum
+ * constants - and for pass1.c that was 304 of 322 macros: a struct,
+ * a name copy, and the number spelled out as text, about twenty
+ * bytes each to hold a value that fits in four.  An ndef is the
+ * interned name (shared with the identifier pool the lexer already
+ * maintains), the value, and a link; expansion synthesizes digits
+ * back into the shared buffer.  Anything that is not a bare number
+ * - suffixed constants, expressions, anything function-like - still
+ * takes the full macro path.
+ */
+struct ndef {
+    long val;
+    struct ndef *next;
+    char name[1];           /* the entry is cut to fit */
+};
+static struct ndef *ndefs;
+
+/*
+ * A pure numeric body: [-]digits or [-]0x hex, nothing else - no
+ * suffixes, no expressions.  Those keep their text.
+ */
+static char
+numval(char *s, long *out)
+{
+    long v = 0;
+    char neg = 0;
+    unsigned char c;
+
+    if (*s == '-') {
+        neg = 1;
+        s++;
+    }
+    if (!*s)
+        return 0;
+    if (s[0] == '0' && (s[1] == 'x' || s[1] == 'X')) {
+        s += 2;
+        if (!*s)
+            return 0;
+        while ((c = *s++)) {
+            if (c >= '0' && c <= '9')
+                c -= '0';
+            else if (c >= 'a' && c <= 'f')
+                c -= 'a' - 10;
+            else if (c >= 'A' && c <= 'F')
+                c -= 'A' - 10;
+            else
+                return 0;
+            v = (v << 4) | c;
+        }
+    } else {
+        while ((c = *s++)) {
+            if (c < '0' || c > '9')
+                return 0;
+            v = v * 10 + (c - '0');
+        }
+    }
+    *out = neg ? -v : v;
+    return 1;
+}
+
+static struct ndef *
+ndeflookup(char *name)
+{
+    struct ndef *n;
+
+    for (n = ndefs; n; n = n->next)
+        if (strcmp(n->name, name) == 0)
+            return n;
+    return 0;
+}
+
+static void
+ndefadd(char *name, long val)
+{
+    struct ndef *n = ndeflookup(name);
+
+    if (!n) {
+        n = (struct ndef *)permalloc(sizeof(*n) + strlen(name));
+        strcpy(n->name, name);
+        n->next = ndefs;
+        ndefs = n;
+    }
+    n->val = val;
+}
+
+/* remove from the numeric store, if present (#undef, redefinition) */
+static void
+ndefundef(char *name)
+{
+    struct ndef *n, *q;
+
+    for (n = ndefs, q = 0; n; q = n, n = n->next) {
+        if (strcmp(n->name, name) == 0) {
+            if (q)
+                q->next = n->next;
+            else
+                ndefs = n->next;
+            return;
+        }
+    }
+}
+
+#ifdef DEBUG
+int
+ndefstat(void)
+{
+    struct ndef *n;
+    int c = 0;
+    for (n = ndefs; n; n = n->next)
+        c++;
+    return c;
+}
+#endif
+
+/* defined-ness, for #ifdef and defined(): either store counts */
+char
+mdefined(char *s)
+{
+    return maclookup(s) != 0 || ndeflookup(s) != 0;
+}
+
 /* Lazily allocate the shared expansion buffer (used by macdefine + macexpand). */
 static void
 macbuf_init(void)
@@ -70,30 +193,38 @@ addDefine(char *s)
     struct macro *m;
     char *eq;
     unsigned char namelen;
-
+    char nbuf[MAXSYMLEN];
+    char *text;
+    long v;
 
     if (!*s) {
         return;
     }
 
-    m = (struct macro *)permalloc(sizeof(*m));
-
     /* Find '=' to separate name from value */
     eq = strchr(s, '=');
 
     if (eq) {
-        /* NAME=value format */
         namelen = eq - s;
-        m->name = permalloc(namelen + 1);
-        memcpy(m->name, s, namelen);
-        m->name[namelen] = '\0';
-        m->mactext = permdup(eq + 1);  /* value after '=' */
+        if (namelen > MAXSYMLEN - 1)
+            namelen = MAXSYMLEN - 1;
+        memcpy(nbuf, s, namelen);
+        nbuf[namelen] = '\0';
+        text = eq + 1;
     } else {
-        /* Just NAME with no value (like -DDEBUG) */
-        m->name = permdup(s);
-        m->mactext = permdup("1");  /* default to "1" */
+        strncpy(nbuf, s, MAXSYMLEN - 1);
+        nbuf[MAXSYMLEN - 1] = '\0';
+        text = "1";  /* default (like -DDEBUG) */
     }
 
+    if (numval(text, &v)) {
+        ndefadd(nbuf, v);
+        return;
+    }
+
+    m = (struct macro *)permalloc(sizeof(*m));
+    m->name = permdup(nbuf);
+    m->mactext = permdup(text);
     m->parmcount = 0;
     m->parms = 0;
     m->next = macros;
@@ -154,6 +285,7 @@ macundefine(char *s)
 {
     struct macro *m, *p;
 
+    ndefundef(s);
     m = maclookup(s);
     if (!m) {
         return;
@@ -212,13 +344,18 @@ void
 macdefine(char *s)
 {
     unsigned char i;
-    struct macro *m = (struct macro *)permalloc(sizeof(*m));
+    struct macro *m;
     char *parms[MAXPARMS];
+    unsigned char parmcount = 0;
+    char fnlike = 0;
+    char nbuf[MAXSYMLEN];
+    long v;
 
     macbuf_init();
-    m->name = permdup(s);
-    m->parmcount = 0;
-    m->parms = NULL;  /* NULL means object-like macro */
+    /* s is the shared symbol buffer and the parameter scan below
+     * refills it - take the name before anything advances */
+    strncpy(nbuf, s, MAXSYMLEN - 1);
+    nbuf[MAXSYMLEN - 1] = 0;
 
     /*
      * Check for function-like macro: '(' must be IMMEDIATELY after name
@@ -226,12 +363,13 @@ macdefine(char *s)
      * If there's whitespace before '(', it's part of the replacement text
      */
     if (curchar == '(') {
+        fnlike = 1;
         advance();
         while (1) {
             skipws1();
             if (issym()) {
                 advance();
-                parms[m->parmcount++] = permdup(s);
+                parms[parmcount++] = permdup(s);
                 skipws1();
                 if (curchar == ',') {
                     advance();
@@ -243,15 +381,6 @@ macdefine(char *s)
             }
             gripe(ER_C_DP);
             break;  /* Exit loop on error to avoid infinite loop */
-        }
-        if (m->parmcount) {
-            m->parms = (char **)permalloc(sizeof(char *) * m->parmcount);
-            for (i = 0; i < m->parmcount; i++) {
-                m->parms[i] = parms[i];
-            }
-        } else {
-            /* Function-like macro with 0 params: use sentinel */
-            m->parms = (char **)1;  /* Non-NULL to indicate function-like */
         }
         advance();
         skipws1();
@@ -311,6 +440,29 @@ macdefine(char *s)
     }
 
     advance();  /* eat the newline */
+
+    /* an object-like macro whose body is a bare number is an ndef */
+    if (!fnlike && numval(macbuffer, &v)) {
+        ndefadd(nbuf, v);
+        return;
+    }
+
+    m = (struct macro *)permalloc(sizeof(*m));
+    m->name = permdup(nbuf);
+    m->parmcount = parmcount;
+    m->parms = NULL;  /* NULL means object-like macro */
+    if (fnlike) {
+        if (parmcount) {
+            m->parms = (char **)permalloc(sizeof(char *) * parmcount);
+            for (i = 0; i < parmcount; i++) {
+                m->parms[i] = parms[i];
+            }
+        } else {
+            /* Function-like macro with 0 params: use sentinel */
+            m->parms = (char **)1;  /* Non-NULL to indicate function-like */
+        }
+    }
+    ndefundef(nbuf);	/* a text body shadows an old numeric one */
     m->mactext = permdup(macbuffer);
     m->next = macros;
     macros = m;
@@ -391,7 +543,15 @@ macexpand(char *s)	/* the symbol we are looking up as a macro */
     unsigned char i;
     char stringify = 0;
 
+    struct ndef *nd;
+
     macbuf_init();
+    nd = ndeflookup(s);
+    if (nd) {
+        fmtstr(macbuffer, "%ld ", nd->val);
+        insertmacro(nd->name, macbuffer);
+        return 1;
+    }
     m = maclookup(s);
     if (!m) {
         return 0;

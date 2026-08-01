@@ -249,6 +249,10 @@ insertfile(char *name, int sys)
     if (t->fd == -1)
         die("cannot find include file: %s\n", name);
 found:
+#ifdef DEBUG
+    if (VERBOSE(V_IO))
+        fdprintf(2, "resolved: %s\n", namebuf);
+#endif
 	t->name = intern(namebuf);
 	t->offset = 0;
 	t->lineno = 1;  /* New file starts at line 1 */

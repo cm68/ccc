@@ -287,6 +287,7 @@ extern char cpppseudofunc(void);
 /* macro.c additional exports */
 extern struct macro *maclookup(char *name);
 extern char macexpand(char *name);
+extern char mdefined(char *name);	/* either store: macro or ndef */
 
 /* util.c exports */
 extern unsigned char lookupc(char *table, unsigned char c);
