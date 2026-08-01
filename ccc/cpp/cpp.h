@@ -46,7 +46,14 @@ typedef unsigned long dword;
  * Limits
  */
 #define MAXPARMS 10         /* macro parameters */
-#define TBSIZE 512          /* text buffer size - matches Micronix disk block */
+/*
+ * Text buffer size.  512 matched the Micronix disk block, but with
+ * three files open at the peak of a header closure the difference
+ * is 768 bytes of heap on the machine where cpp itself must fit;
+ * half-block reads cost a few extra syscalls and no correctness.
+ */
+#define TBSIZE 256
+#define MACBUF 512          /* macro line/expansion buffer - see macbuf_init */
 #define STRBUFSIZE 256      /* string/symbol/identifier buffer */
 #define MAXSYMLEN 16        /* symbol buffer size (15 chars + null) */
 
@@ -262,7 +269,6 @@ extern void addDefine(char *s);
 /* emit.c - output functions */
 extern void emitFileStart(char *file);
 extern void emitToken(unsigned char tok);
-extern void emitKeyword(unsigned char kwval);
 extern void emitSym(char *name);
 extern void emitNumber(long val);
 extern void emitLNumber(long val);

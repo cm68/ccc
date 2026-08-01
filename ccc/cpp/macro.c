@@ -42,16 +42,87 @@ is_id_cont(unsigned char c)
  * - suffixed constants, expressions, anything function-like - still
  * takes the full macro path.
  */
-struct ndef {
-    long val;
-    struct ndef *next;
-    char name[1];           /* the entry is cut to fit */
-};
-static struct ndef *ndefs;
+/*
+ * The store packs into 256-byte slabs: no per-entry link, no NUL,
+ * no alignment, and the value in as few bytes as it needs.
+ *
+ *	header	1 byte: bit 7 dead, bits 5-6 value width code
+ *		(0: 1 byte, 1: 2 bytes, 2: 4 bytes), bits 0-4 name length
+ *	value	that many bytes, little-endian, sign-extended on read
+ *	name	length bytes, no terminator
+ *
+ * permalloc zeroes, so a zero header ends a slab's used region; the
+ * appender always leaves at least one spare byte so the terminator
+ * exists even in a full slab.  A slab's first two bytes link to the
+ * older slab.
+ */
+#define NSLAB 256
+static unsigned char *nslabs;	/* newest slab; head links older */
+static unsigned char *nfree;	/* append cursor in newest slab */
+static unsigned char *nend;	/* its end */
+
+/*
+ * Width codes - everything numval admits fits in two bytes, so the
+ * codecs have no long arithmetic in them at all:
+ *	0: 1 byte, signed	(-128..127)
+ *	1: 2 bytes, unsigned	(128..65535)
+ *	2: 2 bytes, signed	(-32768..-129)
+ */
+static long
+ndget(unsigned char *p, unsigned char w)
+{
+    unsigned v;
+
+    if (w == 0)
+        return (char)p[0];
+    v = p[0] | (p[1] << 8);
+    if (w == 1)
+        return (long)v;
+    return (short)v;	/* (int) would not sign-extend on the host */
+}
+
+static void
+ndput(unsigned char *p, unsigned char w, int val)
+{
+    *p++ = val;
+    if (w)
+        *p = val >> 8;
+}
+
+#define NDWIDTH(v) ((v) >= -128 && (v) < 128 ? 0 : (v) > 0 ? 1 : 2)
+#define NDLEN(w) ((w) ? 2 : 1)
+
+/*
+ * Find a live entry.  Returns the header pointer, or 0.
+ */
+static unsigned char *
+ndeffind(char *name)
+{
+    unsigned char *slab, *p;
+    unsigned char h, len, w;
+    int nl = strlen(name);
+
+    for (slab = nslabs; slab; slab = *(unsigned char **)slab) {
+        p = slab + sizeof(char *);
+        while ((h = *p)) {
+            len = h & 0x1f;
+            w = (h >> 5) & 3;
+            if (!(h & 0x80) && len == nl &&
+                memcmp((char *)p + 1 + NDLEN(w), name, len) == 0)
+                return p;
+            p += 1 + NDLEN(w) + len;
+        }
+    }
+    return 0;
+}
 
 /*
  * A pure numeric body: [-]digits or [-]0x hex, nothing else - no
- * suffixes, no expressions.  Those keep their text.
+ * suffixes, no expressions, and nothing outside -32768..65535.
+ * Everything else keeps its text: a 32-bit value respelled through
+ * a long would print differently on the host and the Z80 (and a
+ * negative respelling splits one NUMBER token into MINUS NUMBER,
+ * which the original spelling of a big hex constant does not).
  */
 static char
 numval(char *s, long *out)
@@ -79,69 +150,96 @@ numval(char *s, long *out)
                 c -= 'A' - 10;
             else
                 return 0;
+            if (v > 4095L)
+                return 0;
             v = (v << 4) | c;
         }
     } else {
         while ((c = *s++)) {
             if (c < '0' || c > '9')
                 return 0;
+            if (v > 6553L)
+                return 0;
             v = v * 10 + (c - '0');
         }
     }
+    if (v > 65535L || (neg && v > 32768L))
+        return 0;
     *out = neg ? -v : v;
     return 1;
 }
 
-static struct ndef *
-ndeflookup(char *name)
+/* found + value out, for expansion and defined-ness */
+static char
+ndefval(char *name, long *out)
 {
-    struct ndef *n;
+    unsigned char *p = ndeffind(name);
 
-    for (n = ndefs; n; n = n->next)
-        if (strcmp(n->name, name) == 0)
-            return n;
-    return 0;
+    if (!p)
+        return 0;
+    *out = ndget(p + 1, (*p >> 5) & 3);
+    return 1;
 }
 
 static void
-ndefadd(char *name, long val)
+ndefadd(char *name, long lval)
 {
-    struct ndef *n = ndeflookup(name);
+    unsigned char *p = ndeffind(name);
+    int val = (int)lval;
+    unsigned char w;
+    unsigned char len;
 
-    if (!n) {
-        n = (struct ndef *)permalloc(sizeof(*n) + strlen(name));
-        strcpy(n->name, name);
-        n->next = ndefs;
-        ndefs = n;
+    w = lval >= -128 && lval < 128 ? 0 : lval > 0 ? 1 : 2;
+
+    if (p) {
+        unsigned char ow = (*p >> 5) & 3;
+        if (w == ow || (w == 0 && ow == 2)) {	/* re-encodable in place */
+            ndput(p + 1, ow, val);
+            return;
+        }
+        *p |= 0x80;		/* changed sign class: dead, re-append */
     }
-    n->val = val;
+    len = strlen(name);
+    if (!nslabs || nfree + 1 + NDLEN(w) + len >= nend) {
+        unsigned char *s = (unsigned char *)permalloc(NSLAB);
+        *(unsigned char **)s = nslabs;
+        nslabs = s;
+        nfree = s + sizeof(char *);
+        nend = s + NSLAB;
+    }
+    *nfree = (w << 5) | len;
+    ndput(nfree + 1, w, val);
+    memcpy((char *)nfree + 1 + NDLEN(w), name, len);
+    nfree += 1 + NDLEN(w) + len;
 }
 
 /* remove from the numeric store, if present (#undef, redefinition) */
 static void
 ndefundef(char *name)
 {
-    struct ndef *n, *q;
+    unsigned char *p = ndeffind(name);
 
-    for (n = ndefs, q = 0; n; q = n, n = n->next) {
-        if (strcmp(n->name, name) == 0) {
-            if (q)
-                q->next = n->next;
-            else
-                ndefs = n->next;
-            return;
-        }
-    }
+    if (p)
+        *p |= 0x80;
 }
 
 #ifdef DEBUG
 int
-ndefstat(void)
+ndefstat(int *bytes)
 {
-    struct ndef *n;
+    unsigned char *slab, *p;
+    unsigned char h;
     int c = 0;
-    for (n = ndefs; n; n = n->next)
-        c++;
+    *bytes = 0;
+    for (slab = nslabs; slab; slab = *(unsigned char **)slab) {
+        p = slab + sizeof(char *);
+        while ((h = *p)) {
+            if (!(h & 0x80))
+                c++;
+            *bytes += 1 + NDLEN((h >> 5) & 3) + (h & 0x1f);
+            p += 1 + NDLEN((h >> 5) & 3) + (h & 0x1f);
+        }
+    }
     return c;
 }
 #endif
@@ -150,15 +248,21 @@ ndefstat(void)
 char
 mdefined(char *s)
 {
-    return maclookup(s) != 0 || ndeflookup(s) != 0;
+    long v;
+
+    return maclookup(s) != 0 || ndefval(s, &v);
 }
+
+#ifdef DEBUG
+int macpeak;	/* macbuffer high-water */
+#endif
 
 /* Lazily allocate the shared expansion buffer (used by macdefine + macexpand). */
 static void
 macbuf_init(void)
 {
     if (!macbuffer)
-        macbuffer = malloc(1024);
+        macbuffer = malloc(MACBUF);
 }
 
 /*
@@ -428,6 +532,10 @@ macdefine(char *s)
             advance();
             curchar = ' ';
         }
+        if (s >= macbuffer + MACBUF - 2) {
+            gripe(ER_C_TL);
+            break;
+        }
         *s++ = curchar;
         advance();
     }
@@ -543,19 +651,20 @@ macexpand(char *s)	/* the symbol we are looking up as a macro */
     unsigned char i;
     char stringify = 0;
 
-    struct ndef *nd;
+    long ndv;
 
     macbuf_init();
-    nd = ndeflookup(s);
-    if (nd) {
-        fmtstr(macbuffer, "%ld ", nd->val);
-        insertmacro(nd->name, macbuffer);
+    if (ndefval(s, &ndv)) {
+        fmtstr(macbuffer, "%ld ", ndv);
+        insertmacro(s, macbuffer);	/* insertmacro interns the name */
         return 1;
     }
     m = maclookup(s);
     if (!m) {
         return 0;
     }
+
+    char *lim = macbuffer + MACBUF - 4;
 
     args = 0;
     d = macbuffer;
@@ -586,7 +695,7 @@ macexpand(char *s)	/* the symbol we are looking up as a macro */
                 c = curchar;
                 advance();
                 *d++ = c;
-                while (curchar != c) {
+                while (curchar != c && d < lim) {
                     *d++ = curchar;
                     if (curchar == '\\') {
                         advance();
@@ -620,6 +729,10 @@ macexpand(char *s)	/* the symbol we are looking up as a macro */
                 skipws();
                 continue;
             }
+            if (d >= lim) {
+                gripe(ER_C_TL);
+                break;
+            }
             *d++ = curchar;
             *d = 0;
             advance();
@@ -646,7 +759,7 @@ macexpand(char *s)	/* the symbol we are looking up as a macro */
         /* literals go straight across */
         if ((c == '\'') || (c == '\"')) {
             *d++ = *s++;
-            while (*s != c) {
+            while (*s != c && d < lim) {
                 /* don't notice literal next quote */
                 if (*s == '\\' && s[1] == c) {
                     *d++ = *s++;
@@ -686,13 +799,17 @@ macexpand(char *s)	/* the symbol we are looking up as a macro */
             if (stringify) {
                 *d++ = '\"';
             }
-            while (*n) {
+            while (*n && d < lim) {
                 *d++ = *n++;
             }
             if (stringify) {
                 *d++ = '\"';
             }
             continue;
+        }
+        if (d >= lim) {
+            gripe(ER_C_TL);
+            break;
         }
         *d++ = *s++;
     }
@@ -708,6 +825,10 @@ macexpand(char *s)	/* the symbol we are looking up as a macro */
         *d = 0;
     }
 
+#ifdef DEBUG
+    if (d - macbuffer > macpeak)
+        macpeak = d - macbuffer;
+#endif
     insertmacro(m->name, macbuffer);
 
     for (i = 0; i < args; i++)

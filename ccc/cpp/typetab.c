@@ -48,10 +48,26 @@ addTypedef(char *name)
 			return;
 
 	t = (struct tdef *)permalloc(sizeof(*t));
-	t->name = permdup(name);
+	t->name = intern(name);	/* typedef names flow as tokens: pooled */
 	t->next = table[h];
 	table[h] = t;
 }
+
+#ifdef DEBUG
+int
+tdefstat(int *bytes)
+{
+	int i, c = 0;
+	struct tdef *t;
+	*bytes = 0;
+	for (i = 0; i < HASH_SIZE; i++)
+		for (t = table[i]; t; t = t->next) {
+			c++;
+			*bytes += strlen(t->name) + 1;
+		}
+	return c;
+}
+#endif
 
 /*
  * Check if name is a typedef

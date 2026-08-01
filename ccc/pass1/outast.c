@@ -197,6 +197,20 @@ iscmpop(unsigned char op)
  * type says nothing about the operands - they meet at their common
  * width instead.
  */
+/*
+ * The width an operand's VALUE occupies - an array or function
+ * compares as its address, not its extent.  A comparison against a
+ * forty-byte array otherwise chose forty as the common width and
+ * sign-extended the pointer beside it into a long.
+ */
+static unsigned char
+valwidth(struct type *t)
+{
+	if (!t || (t->flags & (TF_POINTER | TF_ARRAY | TF_FUNC)))
+		return 2;
+	return t->size;
+}
+
 static struct type *
 opwidth(struct expr *e)
 {
@@ -206,7 +220,7 @@ opwidth(struct expr *e)
 		return e->type;
 	if (!e->right)
 		return e->left->type;
-	return e->left->type->size >= e->right->type->size ?
+	return valwidth(e->left->type) >= valwidth(e->right->type) ?
 	    e->left->type : e->right->type;
 }
 
@@ -224,8 +238,8 @@ typeSfx(struct type *t)
 	if (!t)
 		return 's';  /* default to short */
 
-	if (t->flags & TF_POINTER)
-		return 's';  /* pointers are 16-bit like short */
+	if (t->flags & (TF_POINTER | TF_ARRAY | TF_FUNC))
+		return 's';  /* address-valued: 16 bits, whatever the extent */
 
 	/* Check primitive types by size */
 	if (t->size == 0)
@@ -311,7 +325,17 @@ emitOperand(struct expr *e, struct type *t)
 {
 	if (!e)
 		return;
-	if (t && e->type && e->type->size < t->size) {
+	/*
+	 * Pointers, arrays, and functions keep their width: their value
+	 * is an address, whatever their element size says.  An array
+	 * member returned from a function otherwise picked up a SEXT of
+	 * its first element's width, and pass2 dutifully loaded the two
+	 * bytes the address pointed at instead of the address - which is
+	 * how cpp's intern() returned the spelling's first characters as
+	 * the canonical pointer.
+	 */
+	if (t && e->type && e->type->size < t->size &&
+	    !(e->type->flags & (TF_POINTER | TF_ARRAY | TF_FUNC))) {
 		if (e->op == CONST) {
 			/*
 			 * A constant is the same value at any width, so it

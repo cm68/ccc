@@ -82,6 +82,11 @@ cdump(char *tag)
 #define cdump(x)
 #endif
 
+#ifdef DEBUG
+int tbdepth, tbpeak;	/* live textbufs, high-water */
+int incstat(int *bytes);
+#endif
+
 struct include {
     char *path;
     struct include *next;
@@ -123,6 +128,21 @@ char *sysIncPath = "libsrc/include";
  * Parameters:
  *   s - Directory path to add (string is duplicated)
  */
+#ifdef DEBUG
+int
+incstat(int *bytes)
+{
+    struct include *i;
+    int c = 0;
+    *bytes = 0;
+    for (i = includes; i; i = i->next) {
+        c++;
+        *bytes += strlen(i->path) + 1;
+    }
+    return c;
+}
+#endif
+
 void
 addInclude(char *s)
 {
@@ -260,6 +280,9 @@ found:
 	t->saved_column = column;  /* Save parent's column */
 	t->prev = tbtop;
 	tbtop = t;
+#ifdef DEBUG
+	if (++tbdepth > tbpeak) tbpeak = tbdepth;
+#endif
     filename = t->name;  /* Use resolved path */
     lineno = 1;  /* Start at line 1 for new file */
     /* Read first chars from new file directly into curchar/nextchar */
@@ -340,7 +363,13 @@ insertmacro(char *name, char *macbuf)
     /* if it does not */
 	t = malloc(sizeof(*t));
 	t->fd = -1;
-	t->name = intern(name);
+	/*
+	 * The buffer keeps the PARENT's name: macro text has no file of
+	 * its own, and naming the buffer after the macro leaked markers
+	 * like '# 178 "NSEEK"' into the output mid-statement whenever an
+	 * expansion spilled here instead of fitting the rewind path.
+	 */
+	t->name = tbtop ? tbtop->name : filename;
 	t->lineno = lineno;
 	t->offset = 0;
 	t->storage = strdup(macbuf);
@@ -348,7 +377,9 @@ insertmacro(char *name, char *macbuf)
 	t->saved_column = column;  /* Save parent's column */
 	t->prev = tbtop;
 	tbtop = t;
-    filename = name;
+#ifdef DEBUG
+	if (++tbdepth > tbpeak) tbpeak = tbdepth;
+#endif
     /* Set curchar/nextchar to first characters of macro text */
     curchar = t->storage[t->offset++];
     nextchar = t->storage[t->offset];
@@ -478,6 +509,9 @@ again:
     free(t->storage);
     /* t->name is interned (pool-owned) - tokens may still reference it. */
     free(t);
+#ifdef DEBUG
+    tbdepth--;
+#endif
     if (!tbtop) {
         /* No parent textbuf, we're at EOF */
         nextchar = 0;

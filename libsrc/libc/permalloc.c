@@ -15,7 +15,13 @@
 #include <string.h>
 #include <unistd.h>
 
-#define PCHUNK 1024
+/*
+ * 512, not 1024: the grab size is also the granularity of the last
+ * allocation before the sbrk guard says no, and on the 64K machine
+ * that final kilobyte was the difference between cpp fitting a big
+ * header closure and dying a hundred bytes short.
+ */
+#define PCHUNK 512
 
 static char *pnext;			/* cursor into current chunk */
 static unsigned int pleft;	/* bytes left in current chunk */

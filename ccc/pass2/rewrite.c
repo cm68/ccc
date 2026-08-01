@@ -2438,6 +2438,32 @@ docall(Expr *e)
 	return donehl(e, INHL);
 }
 
+/*
+ * Load a SYMREF's address into HL and hand back the register node.
+ * A SYMREF is left unreduced so the store and load rules can use it
+ * as an address; the two places that need its VALUE staged share
+ * this.
+ */
+static Expr *
+symtohl(Expr *s)
+{
+	Expr *n;
+	char w = s->width;
+
+	out("\tld hl,");
+	out(s->u.symref.name);
+	if (s->u.symref.off) {
+		if (s->u.symref.off > 0)
+			outc('+');
+		outd(s->u.symref.off);
+	}
+	outc('\n');
+	freeexpr(s);
+	n = mkcode(w, R_HL);
+	n->op = INHL;
+	return n;
+}
+
 static Expr *
 rewrite1(Expr *e)
 {
@@ -2476,6 +2502,43 @@ rewrite1(Expr *e)
 		n = docall(e);
 		if (n)
 			return n;
+	}
+
+	/*
+	 * A compare whose left operand is a bare symbol.  The address is
+	 * the value, so load it up front and let the (H,x) forms carry
+	 * every context - the table only ever grew flag-context rules
+	 * for the symbol-on-the-left shapes, and "n = s > buf" sat
+	 * unreduced in value context.  Only for a register right-hand
+	 * side: anything bigger may pass through HL itself on the way.
+	 */
+	if ((e->op == LT || e->op == GE || e->op == LE || e->op == GT ||
+	     e->op == EQ || e->op == NEQ) && e->left && e->right) {
+		char lsym = e->left->op == SYM || e->left->op == SYMREF;
+		char rsym = e->right->op == SYM || e->right->op == SYMREF;
+		char linreg = e->left->op == REGVAR ||
+		    e->left->op == INBC || e->left->op == INDE;
+		char rinreg = e->right->op == REGVAR ||
+		    e->right->op == INBC || e->right->op == INDE;
+
+		if (rsym && linreg) {
+			/* mirror it: a<b is b>a, and equality commutes */
+			Expr *t = e->left;
+			e->left = e->right;
+			e->right = t;
+			if (e->op == LT) e->op = GT;
+			else if (e->op == GT) e->op = LT;
+			else if (e->op == LE) e->op = GE;
+			else if (e->op == GE) e->op = LE;
+			lsym = 1;
+			rinreg = linreg;
+		}
+		if (lsym && (rinreg || rsym)) {
+			/* a bare SYM reduces to SYMREF first, emitting nothing */
+			e->left = rewrite1(e->left);
+			if (e->left && e->left->op == SYMREF)
+				e->left = symtohl(e->left);
+		}
 	}
 
 	/*
@@ -2806,20 +2869,8 @@ rewrite1(Expr *e)
 		 * last statement left in HL - which the other operand is
 		 * then added to, and the sum read as a pointer.
 		 */
-		if (e->left && e->left->op == SYMREF) {
-			out("\tld hl,");
-			out(e->left->u.symref.name);
-			if (e->left->u.symref.off) {
-				if (e->left->u.symref.off > 0)
-					outc('+');
-				outd(e->left->u.symref.off);
-			}
-			outc('\n');
-			lw = e->left->width;
-			freeexpr(e->left);
-			e->left = mkcode(lw, R_HL);
-			e->left->op = INHL;
-		}
+		if (e->left && e->left->op == SYMREF)
+			e->left = symtohl(e->left);
 		/*
 		 * Unless it is a byte, which lands in A whatever target it
 		 * was given.  Pushing HL then would spill the address the

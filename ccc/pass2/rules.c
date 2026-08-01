@@ -616,6 +616,20 @@ struct rule rules[] = {
 		"\tpush ix\n\tpop de\n" F_ORA F_SBCHLDE, F_Z),
 	R("U(H,V)", NEQ, P_L, P_R, P_R, RF_IX,
 		"\tpush ix\n\tpop de\n" F_ORA F_SBCHLDE, F_NZ),
+	/*
+	 * The orderings, which arrive when a register pointer is
+	 * compared against a symbol the rewriter staged into HL.
+	 * Unsigned: IX holds pointers by allocation policy, and
+	 * addresses order by carry, not sign.
+	 */
+	R("T(H,V)", LT, P_L, P_R, P_R, RF_IX,
+		"\tpush ix\n\tpop de\n" F_ORA F_SBCHLDE, F_C),
+	R("Y(H,V)", GE, P_L, P_R, P_R, RF_IX,
+		"\tpush ix\n\tpop de\n" F_ORA F_SBCHLDE, F_NC),
+	R("W(H,V)", LE, P_L, P_R, P_R, RF_IX,
+		"\tpush ix\n\tpop de\n" F_EXDEHL F_ORA F_SBCHLDE, F_NC),
+	R("G(H,V)", GT, P_L, P_R, P_R, RF_IX,
+		"\tpush ix\n\tpop de\n" F_EXDEHL F_ORA F_SBCHLDE, F_C),
 
 	R("=(V,H)", ASSIGN, P_L, P_R, P_L, RF_IX, F_PUSHHL "\tpop ix\n", R_IX),
 	R("=(V,E)", ASSIGN, P_L, P_R, P_L, RF_IX, "\tpush de\n\tpop ix\n", R_IX),
@@ -1858,6 +1872,21 @@ struct rule rules[] = {
 		F_LDHLL F_EXDEHL T_SUB_DE T_SXORV, F_P),
 	R("G(O,E)", GT, P_L, P_R, P_NONE, RF_SIGNL,
 		F_LDHLL F_EXDEHL T_SUB_DE T_SXORV, F_M),
+
+	/*
+	 * The same symbol-on-the-left shapes with the register operand
+	 * living in BC - a register variable compared against a global
+	 * array's address arrives exactly here, and the table stopping
+	 * at (O,E) left "if (s > buf)" unreduced.
+	 */
+	R("T(O,B)", LT, P_L, P_R, P_NONE, RF_SIGNL,
+		F_LDHLL T_SUB_BC T_SXORV, F_M),
+	R("Y(O,B)", GE, P_L, P_R, P_NONE, RF_SIGNL,
+		F_LDHLL T_SUB_BC T_SXORV, F_P),
+	R("W(O,B)", LE, P_L, P_R, P_NONE, RF_SIGNL,
+		F_LDHLL F_LDEC F_LDDB F_EXDEHL T_SUB_DE T_SXORV, F_P),
+	R("G(O,B)", GT, P_L, P_R, P_NONE, RF_SIGNL,
+		F_LDHLL F_LDEC F_LDDB F_EXDEHL T_SUB_DE T_SXORV, F_M),
 
 	/* and with the symbol on the other side, where it becomes DE */
 	R("T(H,O)", LT, P_L, P_R, P_NONE, RF_SIGNL,

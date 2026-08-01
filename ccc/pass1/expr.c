@@ -614,6 +614,26 @@ foldNode(struct expr *e)
     left->op = CONST;
     left->v = lv;
     left->type = rel ? inttype : e->type;
+    /*
+     * Wrap the folded value to the width of its type.  Folding runs
+     * in the host's arithmetic, which is wider than the target's:
+     * without this, 3115*31 kept bits sixteen and up that no Z80
+     * int ever holds, and a later cast or comparison read them as
+     * real.  Wrapping here is also what makes a host-built c0 and
+     * a self-hosted one fold identically.
+     */
+    if (left->type &&
+        !(left->type->flags & (TF_POINTER | TF_ARRAY | TF_FUNC))) {
+        if (left->type->size == 1) {
+            left->v &= 0xff;
+            if (!(left->type->flags & TF_UNSIGNED) && (left->v & 0x80))
+                left->v |= 0xffffff00L;
+        } else if (left->type->size == 2) {
+            left->v &= 0xffff;
+            if (!(left->type->flags & TF_UNSIGNED) && (left->v & 0x8000L))
+                left->v |= 0xffff0000L;
+        }
+    }
     left->flags = E_CONST | (e->flags & E_FUNARG);
     left->next = e->next;
     left->left = NULL;
@@ -852,6 +872,28 @@ pfxCast(void)
                     WIDEN : SEXT, e1);
                 e->type = tp;
             } else {
+                /*
+                 * A constant is relabelled, not wrapped - but a
+                 * narrowing relabel has to truncate the VALUE too,
+                 * here and now, or every later fold happily
+                 * compares the wide value under the narrow name:
+                 * (unsigned short)BIG != BIG&0xffff folded true.
+                 * Signed targets sign-extend from the new width so
+                 * the value still means what the type says.
+                 */
+                if ((e1->flags & E_CONST) && tp &&
+                    !(tp->flags & (TF_POINTER | TF_ARRAY | TF_FUNC |
+                                   TF_AGGREGATE))) {
+                    if (tp->size == 1) {
+                        e1->v &= 0xff;
+                        if (!(tp->flags & TF_UNSIGNED) && (e1->v & 0x80))
+                            e1->v |= 0xffffff00L;
+                    } else if (tp->size == 2) {
+                        e1->v &= 0xffff;
+                        if (!(tp->flags & TF_UNSIGNED) && (e1->v & 0x8000L))
+                            e1->v |= 0xffff0000L;
+                    }
+                }
                 e1->type = tp;
                 e = e1;
             }

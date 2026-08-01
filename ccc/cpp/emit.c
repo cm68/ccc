@@ -52,15 +52,6 @@ emitToken(unsigned char tok)
 }
 
 /*
- * Emit keyword token (single byte, 128-159 range)
- */
-void
-emitKeyword(unsigned char kwtok)
-{
-    outbufWrite(&kwtok, 1);
-}
-
-/*
  * Emit name token: tok + len byte + name bytes
  */
 static void
@@ -328,7 +319,7 @@ emit1tok(struct token *t)
         else if (t->type == CONST || t->type == VOLATILE)
             ;  /* Skip const/volatile - not supported */
         else
-            emitKeyword(t->type);
+            emitToken(t->type);
     } else switch (t->type) {
     case SYM:
 #ifdef DEBUG

@@ -57,7 +57,7 @@ poolstats(void)
     struct ient *e;
     int i, nm=0, nb=0, tb=0, pm=0, pb=0, ni=0, ib=0;
     int etext=0, en=0;
-    extern int ndefstat(void);
+    extern int ndefstat(int *);
 
     for (m = macros; m; m = m->next) {
         nm++;
@@ -72,8 +72,21 @@ poolstats(void)
     }
     for (i = 0; i < INTERN_HASH; i++)
         for (e = ipool[i]; e; e = e->next) { ni++; ib += strlen(e->name)+1; }
-    fdprintf(2, "POOLSTATS macros=%d names=%dB texts=%dB fnlike=%d parmB=%d numeric=%d(%dB) ndefs=%d intern=%d strB=%d\n",
-        nm, nb, tb, pm, pb, en, etext, ndefstat(), ni, ib);
+    {
+        extern int tdefstat(int *), incstat(int *);
+        extern int tbpeak;
+        int ndb, tdb, inb, nd, td, in;
+        nd = ndefstat(&ndb);
+        td = tdefstat(&tdb);
+        in = incstat(&inb);
+        fdprintf(2, "POOLSTATS macros=%d names=%dB texts=%dB fnlike=%d parmB=%d numeric=%d(%dB) ndefs=%d(%dB) intern=%d strB=%d\n",
+            nm, nb, tb, pm, pb, en, etext, nd, ndb, ni, ib);
+        {
+            extern int macpeak;
+            fdprintf(2, "POOLSTATS2 tdefs=%d(%dB) incs=%d(%dB) tbpeak=%d macpeak=%d\n",
+                td, tdb, in, inb, tbpeak, macpeak);
+        }
+    }
 }
 #endif
 
@@ -129,6 +142,19 @@ idOf(char *s)
  * machine where cpp itself has to fit; two walks and a seek per
  * name at exit cost nothing that matters.
  */
+/*
+ * The sidecar fd is private - opened, written, seeked, closed right
+ * here - and nothing ever asks for its tracked position, so the
+ * Z80 build can use the bare seek syscall and leave lseek's _fdpos
+ * machinery (and its 600 bytes) out of the binary entirely.
+ */
+#ifdef CCC
+extern int seekraw();
+#define NSEEK(fd, off) seekraw(fd, (int)(off), 0)
+#else
+#define NSEEK(fd, off) lseek(fd, (long)(off), 0)
+#endif
+
 int
 internWrite(char *fname)
 {
@@ -149,7 +175,7 @@ internWrite(char *fname)
         for (e = ipool[i]; e; e = e->next) {
             if (!e->id)
                 continue;
-            lseek(fd, (long)(2 + 2 * (e->id - 1)), 0);
+            NSEEK(fd, 2 + 2 * (e->id - 1));
             b[0] = off & 0xff;
             b[1] = (off >> 8) & 0xff;
             write(fd, (char *)b, 2);
@@ -157,7 +183,7 @@ internWrite(char *fname)
         }
     }
     /* second walk, same order: the names */
-    lseek(fd, (long)(2 + 2 * n), 0);
+    NSEEK(fd, 2 + 2 * n);
     for (i = 0; i < INTERN_HASH; i++)
         for (e = ipool[i]; e; e = e->next)
             if (e->id)

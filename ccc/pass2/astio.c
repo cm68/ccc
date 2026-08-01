@@ -27,6 +27,18 @@ static int pushback = -1;
  */
 static int nidfd = -1;
 
+/*
+ * Sidecar seeks bypass lseek's _fdpos tracking on the Z80: this fd
+ * is only ever read at seeked positions, nothing asks where it is,
+ * and lseek would drag 600 bytes of position machinery into c1.
+ */
+#ifdef CCC
+extern int seekraw();
+#define NSEEK(fd, off) seekraw(fd, (int)(off), 0)
+#else
+#define NSEEK(fd, off) lseek(fd, (long)(off), 0)
+#endif
+
 void
 nidopen(char *f1)
 {
@@ -49,9 +61,9 @@ nidname(unsigned short id, char *buf, int size)
 	unsigned char two[2];
 	int n, i;
 
-	lseek(nidfd, (long)2 + 2 * (id - 1), 0);
+	NSEEK(nidfd, 2 + 2 * (id - 1));
 	read(nidfd, (char *)two, 2);
-	lseek(nidfd, (long)(two[0] | (two[1] << 8)), 0);
+	NSEEK(nidfd, two[0] | (two[1] << 8));
 	n = read(nidfd, buf, size - 1);
 	for (i = 0; i < n; i++)
 		if (!buf[i])
