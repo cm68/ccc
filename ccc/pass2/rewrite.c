@@ -3265,6 +3265,80 @@ constresult(Expr *e)
 	return n;
 }
 
+/*
+ * Branch-chained conditions.  An if's condition wants a jump taken
+ * when the expression is false; the old path rewrote && and || to
+ * a nought-or-one in A and then tested A - six bytes of join and a
+ * retest per operator, six hundred xor a's across this pass alone.
+ * Here the short-circuit IS the branch: every conjunct jumps
+ * straight to the consumer's label, and nothing materialises.
+ *
+ * condgo(e, lbl, wf): emit code that jumps to lbl when e is false
+ * (wf=1) or true (wf=0), consuming e.  Leaves go through the
+ * ordinary flag-context rewrite and one conditional jump.
+ */
+static void
+condleaf(Expr *e, char *lbl, int wf)
+{
+	char *cc;
+
+	e->dest = DEST_FLAGS;
+	label(e);
+	assign(e, R_HL);
+	e = rewrite1(e);
+	cc = wf ? falsecc(e) : truecc(e);
+	out("\tjp ");
+	out(cc);
+	outc(',');
+	out(lbl);
+	outc('\n');
+	freeexpr(e);
+}
+
+static void
+condgo(Expr *e, char *lbl, int wf)
+{
+	Expr *l, *r;
+	int op;
+	char sc[12];
+
+	op = e->op;
+	if (op == LAND || op == LOR) {
+		l = e->left;
+		r = e->right;
+		e->left = e->right = NULL;
+		freeexpr(e);
+		if ((op == LAND) == (wf != 0)) {
+			/* every operand agrees with the jump: chain them */
+			condgo(l, lbl, wf);
+			condgo(r, lbl, wf);
+		} else {
+			/* the left short-circuits PAST the test instead */
+			fmtstr(sc, "_C%d", labelcnt++);
+			condgo(l, sc, !wf);
+			condgo(r, lbl, wf);
+			out(sc);
+			out(":\n");
+		}
+		return;
+	}
+	if (op == BANG) {
+		l = e->left;
+		e->left = NULL;
+		freeexpr(e);
+		condgo(l, lbl, !wf);
+		return;
+	}
+	condleaf(e, lbl, wf);
+}
+
+void
+condfalse(Expr *e, char *lbl)
+{
+	normtree(e);
+	condgo(e, lbl, 1);
+}
+
 Expr *
 rewrite(Expr *e)
 {

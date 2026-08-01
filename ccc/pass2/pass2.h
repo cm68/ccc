@@ -75,6 +75,10 @@ void copyinit(void);
 /* Parser */
 void parse(void);
 
+struct Expr;
+void condfalse(struct Expr *e, char *lbl);	/* rewrite.c: branch chaining */
+char *fmtstr(char *buf, char *fmt, ...);	/* libccc */
+
 /* debug options */
 #ifdef DEBUG
 #define VERBOSE(x) (verbose & (x))

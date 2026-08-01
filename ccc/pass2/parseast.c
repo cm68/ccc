@@ -349,26 +349,6 @@ emitepilog(void)
 	out("\tret\n");
 }
 
-/*
- * Emit the branch that skips a then-body: jump when the condition is
- * false, which is the inverse of the flag the condition produced.
- * Comparison rules yield Z/NZ/C/NC; anything else came back as a value
- * and has to be tested for zero first.
- */
-static void
-jmpfalse(Expr *e, int lbl)
-{
-	char *cc = falsecc(e);
-
-	out("\tjp ");
-	out(cc);
-	out(",no");
-	outd(lbl);
-	outc('_');
-	outd(fnindex);
-	outc('\n');
-}
-
 static void
 parseStmt(void)
 {
@@ -420,14 +400,16 @@ parseStmt(void)
 #endif
 		e = readexpr();
 		if (e) {
-			setdest(e, DEST_FLAGS);
-			e = rewrite(e);
 #ifdef DEBUG
 			dumpexpr(e);
 #endif
-			/* Emit conditional jump: if false, skip then-body */
-			jmpfalse(e, lbl);
-			freeexpr(e);
+			/*
+			 * The condition branch-chains: && and || become jumps
+			 * straight to the false label, with no nought-or-one
+			 * materialised and retested in between.
+			 */
+			fmtstr(buf, "no%d_%d", lbl, fnindex);
+			condfalse(e, buf);
 		}
 		parseStmt();		/* then-body */
 		hasel = read1();
