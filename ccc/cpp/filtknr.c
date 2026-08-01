@@ -120,9 +120,9 @@ static struct param *
 find_param(char *name)
 {
 	register struct param *pp = params;
-	unsigned char n = param_count;
+	unsigned char n = param_count + 1;
 
-	while (n--) {
+	while (--n) {
 		if (strcmp(pp->name, name) == 0)
 			return pp;
 		pp++;
@@ -189,8 +189,8 @@ emit_ansi(void)
 
 	/* Emit params with types */
 	pp = params;
-	n = param_count;
-	while (n--) {
+	n = param_count + 1;
+	while (--n) {
 		if (pp->type_len > 0) {
 			/* Type tokens */
 			pend_buf(&pb, pp->type, pp->type_len);
@@ -211,7 +211,7 @@ emit_ansi(void)
 		if (pp->post_len > 0)
 			pend_buf(&pb, pp->post, pp->post_len);
 		/* Comma if not last */
-		if (n)
+		if (n > 1)
 			pend_tok_at(&pb, COMMA, &func_name);
 		/* Free buffers */
 		if (pp->type) {
@@ -254,11 +254,11 @@ abort_knr(void)
 	pend_push(&pb, &saved_lpar);  /* Use saved LPAR with correct line info */
 	/* Emit any param names we collected (with commas) */
 	pp = params;
-	n = param_count;
-	while (n--) {
+	n = param_count + 1;
+	while (--n) {
 		toksynthnam(&tmp, SYM, pp->name);
 		pend_push(&pb, &tmp);
-		if (n || state == ST_PARAMS)
+		if (n > 1 || state == ST_PARAMS)
 			pend_tok(&pb, COMMA);
 		pp++;
 	}
@@ -298,9 +298,9 @@ static void
 reset_state(void)
 {
 	register struct param *pp = params;
-	unsigned char n = param_count;
+	unsigned char n = param_count + 1;
 
-	while (n--) {
+	while (--n) {
 		if (pp->type)
 			free(pp->type);
 		pp->type = 0;

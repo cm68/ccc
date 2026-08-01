@@ -118,9 +118,9 @@ static struct dinit *
 init_for(char *name)
 {
 	register struct dinit *ap = assigns;
-	unsigned char n = assign_count;
+	unsigned char n = assign_count + 1;
 
-	while (n--) {
+	while (--n) {
 		if (ap->name == name)
 			return ap;
 		ap++;
@@ -142,8 +142,8 @@ emit_decl(void)
 	pend_buf(&pb, decl_arr.buf, decl_arr.count);
 
 	np = names;
-	n = name_count;
-	while (n--) {
+	n = name_count + 1;
+	while (--n) {
 		for (j = np->star_count; j > 0; j--)
 			pend_tok_at(&pb, STAR, ref);
 		/* Synthesize name token with proper line info */
@@ -156,7 +156,7 @@ emit_decl(void)
 			pend_tok_at(&pb, ASSIGN, ref);
 			pend_buf(&pb, ap->init, ap->init_len);
 		}
-		if (n)
+		if (n > 1)
 			pend_tok_at(&pb, COMMA, ref);
 		np++;
 	}
@@ -172,8 +172,8 @@ emit_assigns(void)
 	struct token *ref;
 
 	ap = assigns;
-	n = assign_count;
-	while (n--) {
+	n = assign_count + 1;
+	while (--n) {
 		/* Use first init token for line info */
 		ref = ap->init_len > 0 ? &ap->init[0] : &decl_arr.buf[0];
 		/* Synthesize name token with proper line info */
@@ -198,9 +198,9 @@ static void
 drop_assigns(void)
 {
 	register struct dinit *ap = assigns;
-	unsigned char n = assign_count;
+	unsigned char n = assign_count + 1;
 
-	while (n--)
+	while (--n)
 		free((ap++)->init);
 	assign_count = 0;
 }

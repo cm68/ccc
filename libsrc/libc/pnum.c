@@ -38,11 +38,11 @@ char	f, w;
 		fw = w;
 	while (w-- > f)
 		putch(' ');
-	if (s) {
+	if (s)
 		putch('-');
-		f--;
-	}
-	while (f--)
+	else
+		++f;
+	while (--f)
 		putch(*cp++);
 	return fw;
 }

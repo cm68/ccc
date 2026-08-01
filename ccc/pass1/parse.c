@@ -39,9 +39,9 @@ static unsigned short ifEmitIdx = 0;        /* phase 2: next if to emit */
 
 void resetSwitch(void) {
     register struct swtab *sw = swList;
-    unsigned char n = swCount;
+    unsigned char n = swCount + 1;
     /* Free all allocated switch case arrays */
-    while (n--) {
+    while (--n) {
         if (sw->cases)
             free(sw->cases);
         sw++;

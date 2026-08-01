@@ -183,11 +183,12 @@ swdispatch(struct swctx *sw)
 
 /* Param staging: move from stack to register */
 #define MAXSTAGE 8
-static struct {
+struct stgent {
 	unsigned char reg;	/* target register */
 	unsigned char off;	/* stack offset from IY */
 	unsigned char width;	/* b/B/s/S = size */
-} stage[MAXSTAGE];
+};
+static struct stgent stage[MAXSTAGE];
 static unsigned char nstage;
 
 /* Register bitmasks for callee-save tracking */
@@ -256,11 +257,20 @@ emitprolog(void)
 			    rest);
 	}
 
-	/* Stage params from stack to registers */
-	while (nstage--) {
-		unsigned char r = stage[nstage].reg;
-		unsigned char off = stage[nstage].off;
-		unsigned char w = stage[nstage].width;
+	/* Stage params from stack to registers.  The walk runs from the
+	 * top down to keep the emitted order what it always was; the
+	 * static count itself stays intact (it is reset per function). */
+	{
+	register struct stgent *sp = stage + nstage;
+	unsigned char ns = nstage + 1;
+
+	while (--ns) {
+		unsigned char r, off, w;
+
+		sp--;
+		r = sp->reg;
+		off = sp->off;
+		w = sp->width;
 
 		if (ISBYTE(w)) {
 			/* Byte: ld r,(iy+off) */
@@ -283,6 +293,7 @@ emitprolog(void)
 				break;
 			}
 		}
+	}
 	}
 }
 
@@ -323,7 +334,7 @@ static void
 parseStmt(void)
 {
 	unsigned char op = read1();
-	unsigned char n, i;
+	unsigned char n;
 	Expr *e;
 
 #ifdef DEBUG
@@ -340,7 +351,8 @@ parseStmt(void)
 			fprintf(stderr, "  BLOCK n=%d\n", n);
 		out("; BLOCK n="); outd(n); outc('\n');
 #endif
-		for (i = 0; i < n; i++)
+		++n;
+		while (--n)
 			parseStmt();
 		return;
 	case IF: {
@@ -519,7 +531,8 @@ parseStmt(void)
 		swlabel('D', sw->id, -1);
 		outc('\n');
 
-		for (i = 0; i < n; i++)
+		++n;
+		while (--n)
 			parseStmt();
 
 		/* the last body must not fall into the comparisons */
@@ -570,7 +583,8 @@ parseStmt(void)
 		}
 		if (e)
 			freeexpr(e);
-		for (i = 0; i < n; i++)
+		++n;
+		while (--n)
 			parseStmt();
 		return;
 	}
@@ -588,7 +602,8 @@ parseStmt(void)
 			swlabel('F', sw->id, -1);
 			out(":\n");
 		}
-		for (i = 0; i < n; i++)
+		++n;
+		while (--n)
 			parseStmt();
 		return;
 	}
@@ -675,7 +690,8 @@ parse(void)
 			out(" frame="); outd(framesize); outc('\n');
 #endif
 			/* Scan params: may need staging to registers */
-			while (n--) {
+			++n;
+			while (--n) {
 				unsigned char reg, off;
 				read1();	/* AST_DECL */
 				t = read1();
@@ -690,15 +706,16 @@ parse(void)
 				out(" r="); outd(reg); out(" o="); outd(off); outc('\n');
 #endif
 				if (reg) {
+					struct stgent *tp = &stage[nstage++];
 					regsused |= REGBIT(reg);
-					stage[nstage].reg = reg;
-					stage[nstage].off = off;
-					stage[nstage].width = t;
-					nstage++;
+					tp->reg = reg;
+					tp->off = off;
+					tp->width = t;
 				}
 			}
 			/* Scan locals: just track register usage */
-			while (i--) {
+			++i;
+			while (--i) {
 				unsigned char reg;
 				read1();	/* AST_DECL */
 				t = read1();

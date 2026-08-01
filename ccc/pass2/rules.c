@@ -1142,6 +1142,26 @@ struct rule rules[] = {
 	  "\tld l,($L)\n\tld h,($L+)\n" F_INCHL T_IDX_S_ST, R_HL),
 	R("k(I):s", PREDEC, P_L, P_NONE, P_NONE, 0,
 	  "\tld l,($L)\n\tld h,($L+)\n" F_DECHL T_IDX_S_ST, R_HL),
+	/*
+	 * A byte step on a frame slot needs no register at all: inc/dec
+	 * (iy+d) is one read-modify-write and it sets Z itself.  Where
+	 * the value is thrown away that is the whole job, and where only
+	 * the flags are wanted the prefix forms answer in NZ directly -
+	 * "while (--n)" on a frame byte is dec (iy+d) / jp z, not the
+	 * eleven-byte load, dec a, store, or a dance the value rules
+	 * make.  A postfix in flag context answers with the value from
+	 * before the step, so the load still happens and or a asks it.
+	 */
+	R("i(I):bS", PREINC, P_L, P_NONE, P_NONE, 0, "\tinc ($L)\n", 0),
+	R("k(I):bS", PREDEC, P_L, P_NONE, P_NONE, 0, "\tdec ($L)\n", 0),
+	R("j(I):bS", POSTINC, P_L, P_NONE, P_NONE, 0, "\tinc ($L)\n", 0),
+	R("m(I):bS", POSTDEC, P_L, P_NONE, P_NONE, 0, "\tdec ($L)\n", 0),
+	R("i(I):bF", PREINC, P_L, P_NONE, P_NONE, 0, "\tinc ($L)\n", F_NZ),
+	R("k(I):bF", PREDEC, P_L, P_NONE, P_NONE, 0, "\tdec ($L)\n", F_NZ),
+	R("j(I):bF", POSTINC, P_L, P_NONE, P_NONE, 0,
+	  F_LDAL1 "\tinc ($L)\n" F_ORA, F_NZ),
+	R("m(I):bF", POSTDEC, P_L, P_NONE, P_NONE, 0,
+	  F_LDAL1 "\tdec ($L)\n" F_ORA, F_NZ),
 	R("i(I):b", PREINC, P_L, P_NONE, P_NONE, 0, F_LDAL1 "\tinc a\n" F_LDLA1, R_A),
 	R("k(I):b", PREDEC, P_L, P_NONE, P_NONE, 0, F_LDAL1 "\tdec a\n" F_LDLA1, R_A),
 	/* a postfix wants the value from before, so the step happens in
@@ -1179,6 +1199,8 @@ struct rule rules[] = {
 	 * difference between prefix and postfix, and a statement wants
 	 * neither: it is only the step.
 	 */
+	R("i(O):bF", PREINC, P_L, P_NONE, P_NONE, 0, F_LDHLL "\tinc (hl)\n", F_NZ),
+	R("k(O):bF", PREDEC, P_L, P_NONE, P_NONE, 0, F_LDHLL "\tdec (hl)\n", F_NZ),
 	R("i(O):bS", PREINC, P_L, P_NONE, P_NONE, 0, F_LDHLL "\tinc (hl)\n", 0),
 	R("k(O):bS", PREDEC, P_L, P_NONE, P_NONE, 0, F_LDHLL "\tdec (hl)\n", 0),
 	R("j(O):bS", POSTINC, P_L, P_NONE, P_NONE, 0, F_LDHLL "\tinc (hl)\n", 0),
