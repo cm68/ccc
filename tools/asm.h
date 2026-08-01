@@ -74,6 +74,9 @@ struct expval {
 /* interface functions */
 
 void appendtmp();
+void list_line();
+void list_take();
+void list_symbols();
 void asm_reset();
 void assemble();
 char peek();

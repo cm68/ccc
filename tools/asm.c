@@ -249,6 +249,7 @@ unsigned short cur_address;
  * instruction started, so that jr $+2 lands on the next one.
  */
 unsigned short insn_address;
+
 /*
  * Set when the statement's operand mentioned $.  Such a jump must not
  * be relaxed from jp to jr: the offset was written against the size
@@ -289,6 +290,89 @@ unsigned short bss_size;
 char pass;
 
 char segment;
+
+/*
+ * -l listing support.  get_line() calls list_line() as each source
+ * line is retired, so the record carries what the line ASSEMBLED
+ * to: the address it began at, the segment, and the bytes emitted
+ * while it was current (first few shown, the rest counted).  Only
+ * the final pass writes; sizes shift while pass 0 is still
+ * guessing, and every earlier pass would list lies.  The symbol
+ * table - statics included, which the object file never shows -
+ * follows at the end.
+ */
+extern char l_flag;
+extern FILE *lstfp;
+extern unsigned char linebuf[];
+extern struct symbol *symbols;
+static unsigned short lst_addr;
+static unsigned char lst_seg;
+static unsigned char lst_bytes[6];
+static int lst_have;		/* bytes captured */
+static int lst_count;		/* bytes emitted */
+static char lst_text[256];
+static char lst_live;		/* a line is being collected */
+
+void
+list_line()
+{
+	int i;
+	char *p;
+
+	if (!l_flag || pass != 1)
+		return;
+	if (lst_live && lstfp &&
+	    lst_text[0] != 0 && lst_text[0] != '\n') {
+		fprintf(lstfp, "%c %04x  ", "?tdb"[lst_seg], lst_addr);
+		for (i = 0; i < lst_have; i++)
+			fprintf(lstfp, "%02x ", lst_bytes[i]);
+		if (lst_count > lst_have)
+			fprintf(lstfp, "+%d", lst_count - lst_have);
+		for (i = 3 * lst_have + (lst_count > lst_have ? 3 : 0);
+		    i < 20; i++)
+			fputc(' ', lstfp);
+		for (p = lst_text; *p && *p != '\n'; p++)
+			fputc(*p, lstfp);
+		fputc('\n', lstfp);
+	}
+	/* start collecting the line about to be read */
+	lst_addr = cur_address;
+	lst_seg = segment;
+	lst_have = lst_count = 0;
+	lst_live = 1;
+	lst_text[0] = 0;
+}
+
+/* the token layer hands over the fresh line once it is stripped */
+void
+list_take()
+{
+	int i;
+
+	if (!l_flag || pass != 1)
+		return;
+	for (i = 0; i < 255 && linebuf[i]; i++)
+		lst_text[i] = linebuf[i];
+	lst_text[i] = 0;
+	/* a label at the line head defines at the CURRENT address */
+	lst_addr = cur_address;
+	lst_seg = segment;
+}
+
+void
+list_symbols()
+{
+	struct symbol *sym;
+
+	if (!l_flag || !lstfp)
+		return;
+	list_line();		/* the final line's record */
+	fprintf(lstfp, "\nsymbols:\n");
+	for (sym = symbols; sym; sym = sym->next)
+		fprintf(lstfp, "%c %04x  %s\n",
+		    "utdbae"[sym->seg], sym->value, sym->name);
+}
+
 
 struct rhead textr = { "text" };
 struct rhead datar = { "data" };
@@ -1100,6 +1184,11 @@ void
 emitbyte(b)
 unsigned char b;
 {
+	if (pass == 1 && l_flag) {
+		if (lst_have < 6)
+			lst_bytes[lst_have++] = b;
+		lst_count++;
+	}
 	if (pass == 1) {
 		switch (segment) {
 		case SEG_TEXT:
@@ -2133,6 +2222,8 @@ assemble()
 
 	reloc_out(textr.head, 0);
 	reloc_out(datar.head, text_top);
+
+	list_symbols();
 }
 
 /* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

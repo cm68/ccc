@@ -102,8 +102,9 @@ timeoutHdlr(int sig)
 void
 usage()
 {
-	fprintf(stderr, "usage: %s [-vmn98] [ -o <objectfile> ] [<sourcefile>]\n", progname);
+	fprintf(stderr, "usage: %s [-vmn98l] [ -o <objectfile> ] [<sourcefile>]\n", progname);
 	fprintf(stderr, "\t-v\tincrease verbosity\n");
+	fprintf(stderr, "\t-l\twrite a listing (<source>.lst): address, bytes, source, symbols\n");
 	fprintf(stderr, "\t-9\t9 character symbol names (default 15)\n");
 	fprintf(stderr, "\t-8\t8080 mode (no jp->jr relaxation)\n");
 	fprintf(stderr, "\t-n\tno timeout\n");
@@ -120,6 +121,8 @@ char tmpbuf[256];
 
 unsigned char *lineptr = (unsigned char *)"";
 unsigned char linebuf[256];
+char l_flag;                    /* -l: write a listing file */
+FILE *lstfp;
 unsigned char filebuf[FILEBUFSIZE+1];
 unsigned char *limit = 0;
 unsigned char *inptr = 0;
@@ -163,6 +166,8 @@ get_line()
     int i;
     unsigned char c;
     unsigned char *p;
+
+    list_line();		/* the line now ending gets its listing record */
 
     lineptr = linebuf;
     for (i = 0; i < sizeof(linebuf) - 2; i++) {
@@ -227,6 +232,7 @@ get_line()
     }
 
     lineptr = linebuf;
+    list_take();		/* hand the stripped line to the listing */
 }
 
 /*
@@ -542,6 +548,10 @@ char **argv;
                 argc--;
                 break;
 
+            case 'l':
+                l_flag++;
+                break;
+
 			default:
 				usage();
 			}
@@ -568,6 +578,19 @@ char **argv;
                 s = &outfile[strlen(outfile)];
             }
             strcpy(s, ".o");
+        }
+        if (l_flag) {
+            char *lst = malloc(strlen(infile) + 5);
+            strcpy(lst, infile);
+            s = strrchr(lst, '.');
+            if (!s)
+                s = &lst[strlen(lst)];
+            strcpy(s, ".lst");
+            lstfp = fopen(lst, "w");
+            if (lstfp == NULL) {
+                printf("cannot open listing file %s\n", lst);
+                exit(1);
+            }
         }
     } else {
         /* no filename specified - use stdin */
