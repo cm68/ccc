@@ -1706,6 +1706,19 @@ struct rule rules[] = {
 	R("&(A,K):b", AND, P_L, P_R, P_NONE, 0, "\tand e\n", R_A),
 	R("|(A,K):b", OR, P_L, P_R, P_NONE, 0, "\tor e\n", R_A),
 	R("^(A,K):b", XOR, P_L, P_R, P_NONE, 0, "\txor e\n", R_A),
+	/*
+	 * The same operators when the right operand arrived as a word in
+	 * DE - a call result moved aside, mostly.  A byte operation only
+	 * reads E, which is the low byte, which is the byte.  Without
+	 * these "cnt += rec(n)" on a byte counter had no rule, and c0's
+	 * cntCondLbls answered 0 under the self-build: every IF in the
+	 * stream was emitted claiming no short-circuit labels.
+	 */
+	R("+(A,E):b", PLUS, P_L, P_R, P_NONE, 0, "\tadd a,e\n", R_A),
+	R("-(A,E):b", MINUS, P_L, P_R, P_NONE, 0, F_SUBE, R_A),
+	R("&(A,E):b", AND, P_L, P_R, P_NONE, 0, "\tand e\n", R_A),
+	R("|(A,E):b", OR, P_L, P_R, P_NONE, 0, "\tor e\n", R_A),
+	R("^(A,E):b", XOR, P_L, P_R, P_NONE, 0, "\txor e\n", R_A),
 	/* the flag form first: and sets Z itself, so a test that only
 	 * wants the flag must not pay for a result register */
 	R("&(A,N):bF", AND, P_L, P_R, P_NONE, 0, "\tand $R\n", F_NZ),
