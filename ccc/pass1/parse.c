@@ -643,21 +643,20 @@ stExpr2(void)
 static void
 stGoto2(void)
 {
-    char lblbuf[16];
+    unsigned short lblid;
 
     gettoken();
     if (cur.type != SYM) {
         recover(ER_S_GL, SEMI);
         return;
     }
-    /* Copy label before gettoken overwrites cur.v.name */
-    strncpy(lblbuf, cur.v.name, 15);
-    lblbuf[15] = 0;
+    /* Copy the label before gettoken overwrites cur.v.id */
+    lblid = cur.v.id;
     gettoken();
     expect(SEMI, ER_S_SN);
     /* Emit: GOTO label */
     emit1(GOTO);
-    emitS(lblbuf);
+    emitS(nameOf(lblid));
 }
 
 void
@@ -736,7 +735,7 @@ statement(void)
             case SYM:
                 /* Check typedef name for declaration */
                 {
-                    struct name *pt = findName(cur.v.name, 0);
+                    struct name *pt = findName(cur.v.id, 0);
                     if (pt && pt->kind == ktdef) {
                         declaration();
                         break;
@@ -904,14 +903,14 @@ statement(void)
         case LABEL:
             /* Label (from cpp) */
             emit1(LABEL);
-            emitS(cur.v.name);
+            emitS(nameOf(cur.v.id));
             gettoken();
             break;
 
         case SYM:
             /* Check if it's a typedef name used in a declaration */
             {
-                struct name *poss_typedef = findName(cur.v.name, 0);
+                struct name *poss_typedef = findName(cur.v.id, 0);
                 if (poss_typedef && poss_typedef->kind == ktdef) {
                     declaration();
                             break;

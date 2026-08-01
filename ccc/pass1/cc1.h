@@ -226,7 +226,7 @@ typedef enum {
  */
 struct name {
 	/* Non-zero in basicnames[] - put first for trailing zero elision */
-	char name[16];          // symbol name (max 15 chars + null)
+	unsigned short id;      // interned identifier (0 = unnamed)
 	struct type *type;
 	struct name *chain;     // symbol table chain (most recent first)
 
@@ -287,11 +287,10 @@ struct name {
 #define REG_BC      3   /* BC register pair (word) */
 #define REG_IX      4   /* IX index register (struct pointer) */
 
-extern struct name *newName(char *name, kind k, struct type *t,
+extern struct name *newName(unsigned short id, kind k, struct type *t,
     unsigned char is_tag);
 extern struct name *addName(struct name *n);
-extern struct name *findName(char *name, unsigned char is_tag);
-extern struct name *findElement(char *name, struct type *t);
+extern struct name *findName(unsigned short id, unsigned char is_tag);
 extern void pushScope(char *name);
 extern void popScope(void);
 
@@ -404,11 +403,26 @@ struct token {
 	token_t type;
 	union {
 		long numeric;
-		char *name;
 		cstring str;
+		unsigned short id;	/* SYM/LABEL: the interned identifier */
 		unsigned char b[4];	/* numeric, a byte at a time - see readLE4 */
 	} v;
 };
+
+/*
+ * Identifiers are 2-byte ids everywhere inside this pass.  Under
+ * cpp -j they arrive that way and the spelling never enters this
+ * address space at all; a plain stream is interned on arrival by
+ * locid(), which keeps the only copy of each string.  nameOf() is
+ * for output alone - the .1/.2 streams and diagnostics - and in id
+ * mode it prints the @id form for c1 and the driver to undress.
+ * Ids from cpp are 1-based; 0 means "no name" (anonymous params,
+ * the basic types); SYNTH and up are pass1's own string literals.
+ */
+#define SYNTH 0x8000		/* + n: the strn literal */
+extern char jmode;			/* the stream is cpp -j output */
+extern unsigned short locid(char *s);
+extern char *nameOf(unsigned short id);
 
 extern struct token cur, next;
 extern char strbuf[];

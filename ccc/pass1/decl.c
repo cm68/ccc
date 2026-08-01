@@ -150,7 +150,7 @@ streamInitVal(struct type *type)
                 if (member->sclass & SC_STATIC)
                     fmtstr(buf, "S%d", member->static_id - 1);
                 else
-                    fmtstr(buf, "_%s", member->name);
+                    fmtstr(buf, "_%s", nameOf(member->id));
                 asmDwSym(buf);
             } else if (e->op == PLUS && e->left && e->left->op == SYM &&
                        e->right && (e->right->flags & E_CONST)) {
@@ -176,7 +176,8 @@ streamInitVal(struct type *type)
                     fmtstr(buf, "S%d+%d", member->static_id - 1,
                         (int)e->right->v);
                 else
-                    fmtstr(buf, "_%s+%d", member->name, (int)e->right->v);
+                    fmtstr(buf, "_%s+%d", nameOf(member->id),
+                        (int)e->right->v);
                 asmDwSym(buf);
             } else {
                 /* Unsupported initializer - emit zero */
@@ -256,7 +257,7 @@ doInitlzr(struct name *v)
     if (v->sclass & SC_STATIC)
         fmtstr(fullname, "S%d:", v->static_id - 1);
     else
-        fmtstr(fullname, "_%s::", v->name);
+        fmtstr(fullname, "_%s::", nameOf(v->id));
     asmLine(fullname);
 
     /* Stream initializer and fix array size if needed */
@@ -314,7 +315,7 @@ parsefunc(struct name *f)
 	if (phase == 2) {
 		struct name *n;
 		for (n = names; n; n = n->chain) {
-			if (n->kind == kfdef && strcmp(n->name, f->name) == 0) {
+			if (n->kind == kfdef && n->id == f->id) {
 				phase1_func = n;
 				break;
 			}
@@ -326,7 +327,7 @@ parsefunc(struct name *f)
 
 #ifdef DEBUG
 	if (phase == 2)
-		fdprintf(2, "func %s: exprs=%d\n", f->name, exprCurCnt);
+		fdprintf(2, "func %s: exprs=%d\n", nameOf(f->id), exprCurCnt);
 #endif
 
 	// Set current function context for static variable name mangling
@@ -339,18 +340,18 @@ parsefunc(struct name *f)
 	gravemark = deadNames;
 
 	// Push a new scope for the function body
-	pushScope(f->name);
+	pushScope(nameOf(f->id));
 
 	// Install function parameters into the scope at level 2
 	// Read parameter info from f->type->elem but create NEW entries at level 2
 	if (f->type->flags & TF_FUNC) {
 		for (param = f->type->elem; param; param = param->next) {
 			// Only add parameters with actual names (skip anonymous ones)
-			if (param->name[0] != '\0') {
+			if (param->id) {
 				// Create a NEW name entry at level 2 (don't reuse type->elem)
 				struct name *pn;
 
-				pn = newName(param->name, kfunarg, param->type, 0);
+				pn = newName(param->id, kfunarg, param->type, 0);
 				/*
 				 * register survives the copy.  The declarator kept it
 				 * on the prototype entry; this is the entry the
@@ -370,11 +371,12 @@ parsefunc(struct name *f)
 		/* Phase 1: Skip statement parsing, but capture locals.
 		 * Locals have ref_count populated during parseExpr. */
 #ifdef DEBUG
-		fdprintf(2, "parsefunc phase1: %s entering statement()\n", f->name);
+		fdprintf(2, "parsefunc phase1: %s entering statement()\n",
+		         nameOf(f->id));
 #endif
 		statement();  /* Skips through function body */
 #ifdef DEBUG
-		fdprintf(2, "parsefunc phase1: %s done\n", f->name);
+		fdprintf(2, "parsefunc phase1: %s done\n", nameOf(f->id));
 #endif
 		f->kind = kfdef;
 		f->u.locals = capLocals();  /* Capture before popScope */
@@ -419,7 +421,7 @@ parsefunc(struct name *f)
 #ifdef DEBUG
 	if (lexlevel != 1) {
 		fdprintf(2, "ASSERTION FAILED: lexlevel=%d after parsing "
-		         "function %s (expected 1)\n", lexlevel, f->name);
+		         "function %s (expected 1)\n", lexlevel, nameOf(f->id));
 		fatal(ER_WTF);
 	}
 	/* Verify no local names remain in symbol table (phase 2 only) */
@@ -431,7 +433,7 @@ parsefunc(struct name *f)
 				fdprintf(2, "ASSERTION FAILED: found local name "
 				         "'%s' at level %d after parsing "
 				         "function %s\n",
-				         n->name, n->level, f->name);
+				         nameOf(n->id), n->level, nameOf(f->id));
 				fatal(ER_WTF);
 			}
 		}
@@ -568,7 +570,8 @@ declaration()
         v = declare(&basetype, 0);
 #ifdef DEBUG
 	if (VERBOSE(V_PHASE1) && phase == 1 && v)
-		fdprintf(2, "P1 decl after declare(%s): cur.type=%d\n", v->name, cur.type);
+		fdprintf(2, "P1 decl after declare(%s): cur.type=%d\n",
+		         nameOf(v->id), cur.type);
 #endif
 
         /* error recovery: if declare failed, skip to next ; or , */
@@ -594,7 +597,7 @@ declaration()
 #ifdef DEBUG
             if (VERBOSE(V_SYM)) {
                 fdprintf(2,"CONVERTING %s from var to tdef "
-                         "(sclass=0x%02x)\n", v->name, sclass);
+                         "(sclass=0x%02x)\n", nameOf(v->id), sclass);
             }
 #endif
             v->kind = ktdef;
@@ -625,7 +628,7 @@ declaration()
 #ifdef DEBUG
             if ((VERBOSE(V_PHASE1) && phase == 1) || (VERBOSE(V_PHASE2) && phase == 2))
                 fdprintf(2, "P%d func %s: cur.type=%d (BEGIN=%d)\n",
-                         phase, v->name, cur.type, BEGIN);
+                         phase, nameOf(v->id), cur.type, BEGIN);
 #endif
             if (cur.type == BEGIN) {
                 /* Assign storage class BEFORE parsing function body
@@ -777,7 +780,7 @@ parse()
 		/* Also check if it's a typedef name (SYM that's a typedef) */
 		poss_typedef = NULL;
 		if (cur.type == SYM) {
-			poss_typedef = findName(cur.v.name, 0);
+			poss_typedef = findName(cur.v.id, 0);
 		}
 
 		if (isTypeToken(cur.type) ||
@@ -823,7 +826,7 @@ parse()
 				fdprintf(2, "WARNING: name '%s' at level %d "
 				         "still in symbol table after "
 				         "file parse\n",
-				         n->name, n->level);
+				         nameOf(n->id), n->level);
 				nonBasicCnt++;
 			}
 		}

@@ -31,10 +31,10 @@ assignFrmOff(struct name *func)
 	for (n = func->type->elem; n; n = n->next) {
 		if (n->type->size == 0)
 			continue;  /* skip void */
-		if (n->name[0]) {
+		if (n->id) {
 			struct name *local;
 			for (local = locals; local; local = local->next)
-				if (strcmp(local->name, n->name) == 0) {
+				if (local->id == n->id) {
 					local->w.r.frm_off = off;
 					break;
 				}

@@ -138,17 +138,80 @@ readLE4(void)
 }
 
 /*
+ * The plain-stream intern table: byname[i] spells id i+1.  Linear
+ * scan - a plain stream means the host, where this does not matter;
+ * the Z80 runs on -j streams and never mints a local id at all.
+ * The table and its strings live forever (permalloc): a name that
+ * has been an id once must spell the same for the whole file.
+ */
+char jmode;
+static char **byname;
+static unsigned short bncap;
+static unsigned short bncnt;
+
+unsigned short
+locid(char *s)
+{
+	unsigned short i;
+	char **nb;
+
+	for (i = 0; i < bncnt; i++)
+		if (strcmp(byname[i], s) == 0)
+			return i + 1;
+	if (bncnt == bncap) {
+		bncap = bncap ? bncap * 2 : 64;
+		nb = (char **)permalloc(bncap * sizeof(char *));
+		for (i = 0; i < bncnt; i++)
+			nb[i] = byname[i];
+		byname = nb;
+	}
+	byname[bncnt] = permalloc(strlen(s) + 1);
+	strcpy(byname[bncnt], s);
+	return ++bncnt;
+}
+
+/*
+ * Spell an id, for the output streams and for gripes.  Two rotating
+ * buffers so one fdprintf can hold a pair of names.
+ */
+char *
+nameOf(unsigned short id)
+{
+	static char nbuf[2][16];
+	static unsigned char flip;
+	char *b;
+
+	if (!jmode && id && id <= bncnt)
+		return byname[id - 1];
+	b = nbuf[flip ^= 1];
+	if (id >= SYNTH)
+		fmtstr(b, "str%d", id - SYNTH);
+	else
+		fmtstr(b, "@%d", id);
+	return b;
+}
+
+/* read a counted name and leave its id in next.v.id */
+static void
+readName(int len)
+{
+	char buf[64];
+	int keep = len < sizeof(buf) - 1 ? len : sizeof(buf) - 1;
+
+	readBytes(buf, keep);
+	buf[keep] = 0;
+	while (keep++ < len)
+		readByte();		/* oversized: eat the rest */
+	next.v.id = locid(buf);
+}
+
+/*
  * Free token resources
  */
 static void
 freeToken(struct token *t)
 {
-	if (t->type == SYM || t->type == LABEL) {
-		if (t->v.name) {
-			free(t->v.name);
-			t->v.name = NULL;
-		}
-	} else if (t->type == ASM) {
+	if (t->type == ASM) {
 		if (t->v.str) {
 			free(t->v.str);
 			t->v.str = NULL;
@@ -171,7 +234,7 @@ readNextToken(void)
 
 again:
 	c = readByte();
-	next.v.name = NULL;
+	next.v.numeric = 0;
 
 	switch (c) {
 	case E_O_F:
@@ -203,33 +266,26 @@ again:
 		break;
 
 	/*
-	 * The id forms, from cpp -j: the identifier travels as a 2-byte
-	 * id and the name lives in the .n sidecar.  For now the id is
-	 * dressed as the name "@%d", so everything downstream runs
-	 * unchanged and c1 (or the driver, for diagnostics) undresses
-	 * it; the real rekeying - struct name holding the id, lookups
-	 * comparing 16 bits - lands once this plumbing is proven.
+	 * The id forms, from cpp -j: the identifier IS the 2-byte id and
+	 * its spelling lives in the .n sidecar, for c1 and the driver.
+	 * Nothing here allocates and nothing later compares strings.
 	 */
 	case CPP_SYMID:
 	case CPP_LABELID:
-		s = galloc(8);
-		fmtstr(s, "@%d", readLE2());
 		next.type = (c == CPP_SYMID) ? SYM : LABEL;
-		next.v.name = s;
+		next.v.id = readLE2();
+		jmode = 1;
 		break;
 
-	/* Symbol - has length + bytes */
+	/* Symbol - has length + bytes; interned to an id on the spot */
 	case SYM:
 		len = readByte();
 		if (len >= STRBUFSIZE) {
 			next.type = E_O_F;
 			return;
 		}
-		s = galloc(len + 1);
-		readBytes(s, len);
-		s[len] = '\0';
+		readName(len);
 		next.type = SYM;
-		next.v.name = s;
 		break;
 
 	/* Numbers - have 4-byte value.  LNUMBER stays LNUMBER: it is the
@@ -266,11 +322,8 @@ again:
 			next.type = E_O_F;
 			return;
 		}
-		s = galloc(len + 1);
-		readBytes(s, len);
-		s[len] = '\0';
+		readName(len);
 		next.type = LABEL;
-		next.v.name = s;
 		break;
 
 	/* Inline assembly - 2-byte length + bytes */

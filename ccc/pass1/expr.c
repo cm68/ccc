@@ -278,7 +278,7 @@ skipExpr(unsigned char pri)
         break;
 
     case SYM:
-        np = findName(cur.v.name, 0);
+        np = findName(cur.v.id, 0);
         if (np && np->level > 1 && np->kind != kelem &&
             !(np->type->flags & (TF_FUNC|TF_ARRAY))) {
             if (np->w.r.ref_count < 255)
@@ -323,7 +323,7 @@ skipExpr(unsigned char pri)
              * honoring the keyword.  "&s.x" stays strict: the dot
              * means the object's own storage.
              */
-            np = findName(cur.v.name, 0);
+            np = findName(cur.v.id, 0);
             if (np && np->level > 1) {
                 if (np->sclass & SC_REGISTER)
                     gripe(ER_E_RA);
@@ -698,14 +698,11 @@ foldTree(struct expr *e)
 static struct expr *
 pfxString(void)
 {
-    char namebuf[32];
     struct name *np;
     struct expr *e;
 
-    fmtstr(namebuf, "str%d", globalStrCtr++);
     np = (struct name *)galloc(sizeof(struct name));
-    strncpy(np->name, namebuf, 15);
-    np->name[15] = 0;
+    np->id = SYNTH + globalStrCtr++;
     np->type = getType(TF_POINTER, chartype, 0);
     np->kind = kvar;
     np->level = 1;
@@ -726,12 +723,12 @@ pfxSym(void)
     struct type *tp;
     struct name *np;
     unsigned int uofs;
-    char *symname;
+    unsigned short symid;
 
-    /* Save symbol name before gettoken() overwrites cur.v.name */
-    symname = strdup(cur.v.name);
+    /* Save the id before gettoken() overwrites cur.v.id */
+    symid = cur.v.id;
 
-    np = findName(symname, 0);
+    np = findName(symid, 0);
 
     /* Peek at next token to enable implicit function declarations */
     gettoken();
@@ -749,8 +746,7 @@ pfxSym(void)
 
             np = (struct name *)galloc(sizeof(struct name));
             /* Initialize in struct field order */
-            strncpy(np->name, symname, 15);
-            np->name[15] = 0;
+            np->id = symid;
             np->type = tp;
             /* chain set by addName */
             np->kind = kvar;
@@ -762,16 +758,16 @@ pfxSym(void)
 
 #ifdef DEBUG
             if (VERBOSE(V_SYM)) {
-                fdprintf(2, "Implicit declaration: int %s()\n", symname);
+                fdprintf(2, "Implicit declaration: int %s()\n", nameOf(symid));
             }
 #endif
         } else {
             /* Not a function call - report error */
 #ifdef DEBUG
-            fdprintf(2, "bad op (not fn): %d sym=%s\n", cur.type, symname);
+            fdprintf(2, "bad op (not fn): %d sym=%s\n", cur.type,
+                     nameOf(symid));
 #endif
             gripe(ER_E_UO);
-            free(symname);
             return mkexprI(CONST, 0, inttype, 0, 0);
         }
     }
@@ -796,7 +792,6 @@ pfxSym(void)
         else
             e = mkexprI(DEREF, e1, np->type, 0, 0);  // Variable: wrap in DEREF
     }
-    free(symname);
     /* Note: gettoken() already called above for lookahead */
     return e;
 }
@@ -1385,14 +1380,14 @@ pfxMember(struct expr *e, unsigned char *stop)
         t = t->sub;
     if (t && (t->flags & TF_AGGREGATE) && t->elem) {
         for (np = t->elem; np; np = np->next) {
-            if (strcmp(np->name, cur.v.name) == 0)
+            if (np->id == cur.v.id)
                 break;
         }
     }
 
     if (!np) {
 #ifdef DEBUG
-        fdprintf(2, "bad op (no member): %s\n", cur.v.name);
+        fdprintf(2, "bad op (no member): %s\n", nameOf(cur.v.id));
 #endif
         gripe(ER_E_UO);
         gettoken();

@@ -33,7 +33,7 @@ findInLocals(struct name *want)
 {
 	struct name *n;
 	for (n = curFuncLocals; n; n = n->next) {
-		if (strcmp(n->name, want->name) == 0 &&
+		if (n->id == want->id &&
 		    n->level == want->level &&
 		    n->w.r.blkid == want->w.r.blkid)
 			return n;
@@ -407,12 +407,12 @@ emitExpr(struct expr *e)
 		/* extern/global get underscore prefix */
 		if ((np->sclass & SC_EXTERN) ||
 		    (np->level == 1 && !(np->sclass & SC_STATIC)))
-			fmtstr(fullname, "_%s", np->name);
+			fmtstr(fullname, "_%s", nameOf(np->id));
 		else if (np->static_id)
 			fmtstr(fullname,
 			    "%c%d", np->sclass & SC_STATIC ? 'S' : 'L', np->static_id - 1);
 		else
-			fmtstr(fullname, "%s", np->name);
+			fmtstr(fullname, "%s", nameOf(np->id));
 		emit1(SYM);
 		emitS(fullname);
 		break;
@@ -421,7 +421,7 @@ emitExpr(struct expr *e)
 		/* String literals - reference by name (already emitted in phase 1) */
 		np = (struct name *)e->var;
 		emit1(SYM);
-		emitS(np->name);
+		emitS(nameOf(np->id));
 		break;
 
 	case CALL:
@@ -659,15 +659,15 @@ emitPrmDecls(struct type *functype, struct name *locals)
 		if (param->type->size == 0)
 			continue;
 		found = NULL;
-		if (param->name[0])
+		if (param->id)
 			for (local = locals; local; local = local->next)
-				if (strcmp(local->name, param->name) == 0) {
+				if (local->id == param->id) {
 					found = local;
 					break;
 				}
 		emit1(AST_DECL);
 		emit1(typeSfx(param->type));
-		emitS(param->name[0] ? param->name : "_");
+		emitS(param->id ? nameOf(param->id) : "_");
 		emit1(found ? found->w.r.reg : 0);
 		emit1(found ? (unsigned char)found->w.r.frm_off : 0);
 	}
@@ -688,7 +688,7 @@ emitLocals(struct name *locals)
 		else if (local->static_id)
 			fmtstr(lbuf, "L%d", local->static_id - 1);
 		else
-			fmtstr(lbuf, "%s", local->name);
+			fmtstr(lbuf, "%s", nameOf(local->id));
 		emit1(AST_DECL);
 		emit1(typeSfx(local->type));
 		emitS(lbuf);
@@ -753,7 +753,7 @@ emitFuncPre(struct name *func)
 		return;
 #ifdef DEBUG
 	if (VERBOSE(V_EMIT))
-		fdprintf(2, "EMIT func %s\n", func->name);
+		fdprintf(2, "EMIT func %s\n", nameOf(func->id));
 #endif
 
 	frm_size = analyzeFunc(func);
@@ -773,7 +773,7 @@ emitFuncPre(struct name *func)
 	if (func->sclass & SC_STATIC)
 		fmtstr(func_name, "S%d", func->static_id - 1);
 	else
-		fmtstr(func_name, "_%s", func->name);
+		fmtstr(func_name, "_%s", nameOf(func->id));
 	emit1(AST_FUNC);
 	emit1(func->type->sub ? typeSfx(func->type->sub) : 'v');
 	emitS(func_name);
@@ -813,7 +813,7 @@ emitGv(struct name *var)
 	if (var->sclass & SC_STATIC)
 		fmtstr(fullname, "S%d:", var->static_id - 1);
 	else
-		fmtstr(fullname, "_%s::", var->name);
+		fmtstr(fullname, "_%s::", nameOf(var->id));
 
 	/* Calculate total size */
 	if (var->type->flags & TF_ARRAY)

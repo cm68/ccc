@@ -63,13 +63,10 @@ parsePtrPfx(struct type *t)
  *   - Allocates memory for name structure and duplicates name string
  */
 static struct name *
-createPrmEnt(char *name, struct type *type)
+createPrmEnt(unsigned short id, struct type *type)
 {
     struct name *arg = (struct name *)galloc(sizeof(*arg));
-    if (name) {
-        strncpy(arg->name, name, 15);
-        arg->name[15] = 0;
-    }
+    arg->id = id;
     arg->type = type;
     arg->level = lexlevel + 1;
     arg->is_tag = 0;
@@ -148,8 +145,7 @@ symDecl(struct type *prefix, unsigned char struct_elem)
          * global names[] array
          */
         nm = (struct name *)galloc(sizeof(*nm));
-        strncpy(nm->name, cur.v.name, 15);
-        nm->name[15] = 0;
+        nm->id = cur.v.id;
         nm->type = prefix;
         nm->level = lexlevel;
         nm->is_tag = 0;
@@ -162,13 +158,13 @@ symDecl(struct type *prefix, unsigned char struct_elem)
 #ifdef DEBUG
         if (VERBOSE(V_SYM)) {
             fdprintf(2, "struct_elem: %s (not added to names[])\n",
-                     nm->name);
+                     nameOf(nm->id));
         }
 #endif
     } else {
         /* normal variable: add to global names[] array */
         /* Check if this name already exists at this scope */
-        struct name *existing = findName(cur.v.name, 0);
+        struct name *existing = findName(cur.v.id, 0);
         if (existing && existing->level == lexlevel) {
             /*
              * Name exists at current scope - check if it's a
@@ -191,7 +187,7 @@ symDecl(struct type *prefix, unsigned char struct_elem)
                 /* But keep the existing name structure */
             } else {
                 /* Not a function prototype - error on redeclaration */
-                nm = newName(cur.v.name, kvar, prefix, 0);
+                nm = newName(cur.v.id, kvar, prefix, 0);
             }
         } else if (existing && existing->level < lexlevel) {
             /*
@@ -199,11 +195,11 @@ symDecl(struct type *prefix, unsigned char struct_elem)
              * Assign static_id so cc2 can distinguish variables.
              * Emitted as L<id> (not S<id> which is for statics).
              */
-            nm = newName(cur.v.name, kvar, prefix, 0);
+            nm = newName(cur.v.id, kvar, prefix, 0);
             nm->static_id = ++shadowCtr;
         } else {
             /* New name - create it */
-            nm = newName(cur.v.name, kvar, prefix, 0);
+            nm = newName(cur.v.id, kvar, prefix, 0);
             /*
              * Anything declared inside a nested block gets a
              * distinct name too, shadowing or not.  All of a
@@ -238,17 +234,17 @@ symDecl(struct type *prefix, unsigned char struct_elem)
 /*
  * A function-pointer parameter, "(*name)(args)", its opening LPAR
  * consumed.  Returns the finished parameter type; the name, if one
- * was given, lands in namebuf.
+ * was given, lands in *namep.
  */
 static struct type *
-prmFnPtr(struct type *param_type, char *namebuf)
+prmFnPtr(struct type *param_type, unsigned short *namep)
 {
     if (cur.type == STAR) {
         // (*) or (*name) - pointer to function
         gettoken();
         // Optional name inside (*)
         if (cur.type == SYM) {
-            strcpy(namebuf, cur.v.name);
+            *namep = cur.v.id;
             gettoken();
         }
         expect(RPAR, ER_D_FA);
@@ -276,7 +272,7 @@ prmFnPtr(struct type *param_type, char *namebuf)
                 // Skip optional inner parameter name
                 if (cur.type == SYM)
                     gettoken();
-                inner_arg = createPrmEnt(NULL, inner_type);
+                inner_arg = createPrmEnt(0, inner_type);
                 inner_arg->next = NULL;
                 if (inner_tail)
                     inner_tail->next = inner_arg;
@@ -315,12 +311,12 @@ prmFnPtr(struct type *param_type, char *namebuf)
 static struct name *
 prmDecl(void)
 {
-    char namebuf[16];
+    unsigned short nameid;
     struct type *basetype, *param_type;
     unsigned char psclass;
     struct name *arg;
 
-    namebuf[0] = '\0';
+    nameid = 0;
 
     // ANSI style: parse full type + declarator
     /*
@@ -342,11 +338,11 @@ prmDecl(void)
     // Handle function pointer: type (*)(args) or type (*name)(args)
     if (cur.type == LPAR) {
         gettoken();
-        param_type = prmFnPtr(param_type, namebuf);
+        param_type = prmFnPtr(param_type, &nameid);
     } else {
         /* get param name */
         if (cur.type == SYM) {
-            strcpy(namebuf, cur.v.name);
+            nameid = cur.v.id;
             gettoken();
         }
     }
@@ -366,7 +362,7 @@ prmDecl(void)
     }
 
     // Create parameter entry for type->elem with actual name
-    arg = createPrmEnt(namebuf, param_type);
+    arg = createPrmEnt(nameid, param_type);
     if (psclass & SC_REGISTER)
         arg->sclass = SC_REGISTER;
     return arg;
@@ -748,7 +744,7 @@ isCastStart(void)
 
     /* Check if it's a typedef name */
     if (cur.type == SYM) {
-        n = findName(cur.v.name, 0);
+        n = findName(cur.v.id, 0);
         if (n && n->kind == ktdef) {
             return 1;
         }

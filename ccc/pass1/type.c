@@ -79,14 +79,21 @@ struct type *voidtype = &basictypes[6];
  * Fields: name, type, chain - remaining fields zero by elision
  */
 static struct name basicnames[] = {
-    { "_char_",   &basictypes[0], 0 },
-    { "_short_",  &basictypes[1], &basicnames[0] },
-    { "_long_",   &basictypes[2], &basicnames[1] },
-    { "_uchar_",  &basictypes[3], &basicnames[2] },
-    { "_ushort_", &basictypes[4], &basicnames[3] },
-    { "_ulong_",  &basictypes[5], &basicnames[4] },
-    { "_void_",   &basictypes[6], &basicnames[5] },
+    { 0, &basictypes[0], 0 },
+    { 0, &basictypes[1], &basicnames[0] },
+    { 0, &basictypes[2], &basicnames[1] },
+    { 0, &basictypes[3], &basicnames[2] },
+    { 0, &basictypes[4], &basicnames[3] },
+    { 0, &basictypes[5], &basicnames[4] },
+    { 0, &basictypes[6], &basicnames[5] },
 };
+
+#ifdef DEBUG
+/* spellings for typeName - the entries themselves have no names */
+static char *basicnm[] = {
+    "char", "short", "long", "uchar", "ushort", "ulong", "void",
+};
+#endif
 
 /*
  * basic types = 0
@@ -153,7 +160,7 @@ popScope()
 #ifdef DEBUG
             if (VERBOSE(V_SYM)) {
                 fdprintf(2,"popScope: remove %s%s from lookup\n",
-                    n->is_tag ? "tag:":"", n->name);
+                    n->is_tag ? "tag:":"", nameOf(n->id));
             }
 #endif
             /*
@@ -258,14 +265,12 @@ clrblklocs(void)
  * Traverses from most recent to oldest, first match wins (shadowing)
  */
 struct name *
-findName(char *name, unsigned char is_tag)
+findName(unsigned short id, unsigned char is_tag)
 {
     struct name *n;
 
     for (n = names; n; n = n->chain) {
-        if ((n->is_tag == is_tag) &&
-            (name[0] == n->name[0]) &&
-            (strcmp(name, n->name) == 0)) {
+        if (n->is_tag == is_tag && n->id == id) {
             return n;
         }
     }
@@ -290,10 +295,10 @@ typeName(struct type *t)
     struct name *n;
 
     if (isBasicType(t))
-        return basicnames[t - basictypes].name;
+        return basicnm[t - basictypes];
     for (n = names; n; n = n->chain)
         if (n->type == t && (n->is_tag || n->kind == ktdef))
-            return n->name;
+            return nameOf(n->id);
     return "unnamed";
 }
 
@@ -302,7 +307,7 @@ dumpName(struct name *n)
 {
 	fdprintf(2,"dumpName: ");
 	if (!n) { printf("null\n"); return; }
-	fdprintf(2,"%s (%s)", n->name, n->is_tag ? "tag" : "decl");
+	fdprintf(2,"%s (%s)", nameOf(n->id), n->is_tag ? "tag" : "decl");
 	if (n->sclass) {
 		fdprintf(2," sclass=");
 		if (n->sclass & SC_EXTERN) printf("extern ");
@@ -360,9 +365,9 @@ dumpType(struct type *t, int lv)
  * Find duplicate name at current scope level
  */
 static struct name *
-findDup(char *name, unsigned char is_tag)
+findDup(unsigned short id, unsigned char is_tag)
 {
-    struct name *n = findName(name, is_tag);
+    struct name *n = findName(id, is_tag);
     return (n && n->level == lexlevel) ? n : 0;
 }
 
@@ -380,7 +385,7 @@ namesAdd(struct name *n)
             lexlevel,
             n->kind < sizeof(kindname)/sizeof(kindname[0]) ?
                 kindname[n->kind] : "unkn",
-            n->is_tag ? "tag:":"", n->name);
+            n->is_tag ? "tag:":"", nameOf(n->id));
     }
 #endif
 }
@@ -389,11 +394,11 @@ namesAdd(struct name *n)
  * Create and add a new name entry to the symbol table
  */
 struct name *
-newName(char *name, kind k, struct type *t, unsigned char is_tag)
+newName(unsigned short id, kind k, struct type *t, unsigned char is_tag)
 {
     struct name *n;
 
-    n = findDup(name, is_tag);
+    n = findDup(id, is_tag);
     if (n) {
         /* Phase 2: Reuse existing names from phase 1 */
         if (phase == 2)
@@ -408,8 +413,7 @@ newName(char *name, kind k, struct type *t, unsigned char is_tag)
 
     n = (struct name *)galloc(sizeof(*n));
     /* Initialize in struct field order */
-    strncpy(n->name, name, 15);
-    n->name[15] = 0;
+    n->id = id;
     n->type = t;
     /* chain set by namesAdd */
     n->kind = k;
@@ -437,7 +441,7 @@ addName(struct name *n)
 {
     struct name *dup;
 
-    dup = findDup(n->name, n->is_tag);
+    dup = findDup(n->id, n->is_tag);
     if (dup) {
         /* Phase 2: Name already exists from phase 1 */
         if (phase == 2) {
@@ -845,8 +849,7 @@ getbasetype()
      * gets clobbered), which broke every member offset and enum value.
      */
     unsigned int off = 0;
-    char s_buf[64];  /* Stack buffer for tag names */
-    char *s;
+    unsigned short s;	/* tag id, 0 = untagged */
     int bitoff_accum;
     struct type *member_type;
     struct name *member;
@@ -854,7 +857,7 @@ getbasetype()
 
     /* a typedef? */
     if (cur.type == SYM) {
-        n = findName(cur.v.name, 0);
+        n = findName(cur.v.id, 0);
         if (n && (n->kind == ktdef)) {
             gettoken();
             return n->type;
@@ -879,10 +882,7 @@ getbasetype()
 
         // optional struct/union tag name
         if (cur.type == SYM) {
-            /* Copy tag name to stack buffer */
-            strncpy(s_buf, cur.v.name, sizeof(s_buf) - 1);
-            s_buf[sizeof(s_buf) - 1] = '\0';
-            s = s_buf;
+            s = cur.v.id;
             n = findName(s, 1);  // look for existing tag
             gettoken();
 
