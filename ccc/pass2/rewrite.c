@@ -949,6 +949,34 @@ tryrule(struct rule *rp, Expr *e)
 		return n;
 	}
 
+	/* INDEX -> CODE: the effective address as a value.  add hl only
+	 * takes bc/de/hl/sp, so the index register goes through the
+	 * stack and the displacement is added the ordinary way.
+	 *
+	 * Only for a node that was HANDED a target: an operand a parent
+	 * will dereference carries none, and converting it would steal
+	 * every (reg+d) form before the addressing rules saw it. */
+	if (newop == CODE && oldop == INDEX) {
+		if (!e->tgt)
+			return NULL;
+		off = e->u.var.off;
+		reg = e->u.var.reg ? e->u.var.reg : R_IY;
+		if (e->tgt == R_DE) {
+			/* sibling value lives in HL - preserve it */
+			outf("\tpush hl\n\tpush %s\n\tpop hl\n\tld de,%d\n\tadd hl,de\n\tex de,hl\n\tpop hl\n",
+			    idxregname(reg), off);
+			n = mkcode(e->width, R_DE);
+		} else {
+			outf("\tpush %s\n\tpop hl\n", idxregname(reg));
+			if (off)
+				outf("\tld de,%d\n\tadd hl,de\n", off);
+			n = mkcode(e->width, R_HL);
+		}
+		n->dest = e->dest;
+		freeexpr(e);
+		return n;
+	}
+
 	/* Far LOCALVAR -> CODE: form the frame address with 16-bit
 	 * arithmetic (big-array bases sit past the (iy+d) window) */
 	if (newop == CODE && oldop == LOCALVAR) {

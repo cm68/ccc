@@ -2150,6 +2150,21 @@ struct rule rules[] = {
 	R("U(_,N)", 0, P_NONE, P_NONE, P_NONE, RF_NOTEQ, NULL, 0),
 	R("U", 0, P_NONE, P_NONE, P_NONE, RF_NOTEQ, NULL, 0),
 
+	/*
+	 * Storing a register-relative address to a global: the INDEX
+	 * form the address-combining rules mint is the value here, not
+	 * a location - "g = a + 2" with a in IX.  Every other context
+	 * (frame store, argument push, comparison) materializes it on
+	 * some other path; this one had no rule at all, fell to the
+	 * incomplete-rewrite marker, and the store was silently
+	 * dropped - which is how cpp's -I list vanished on the Z80.
+	 * add hl takes only bc/de/hl/sp, so the register goes through
+	 * the stack.
+	 */
+	R("=(O,I)", ASSIGN, P_L, P_R, P_NONE, 0,
+		"\tpush $Rr\n\tpop hl\n\tld de,$Ro\n\tadd hl,de\n\tld ($L),hl\n",
+		R_HL),
+
 	/* terminator */
 	{NULL, NULL, 0, 0, 0, 0}
 };
