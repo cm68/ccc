@@ -1785,7 +1785,15 @@ falsecc(Expr *e)
 	case F_M:  return "p";
 	case F_P:  return "m";
 	case R_A:  out("\tor a\n"); return "z";
-	case R_HL: out("\tld a,l\n\tor h\n"); return "z";
+	case R_HL:
+		/* a long answers in HL:DE and all four bytes vote - the
+		 * pair test alone read only the high half, and
+		 * "if (n & 1)" was false for every odd long */
+		if (ISLONG(e->width))
+			out("\tld a,l\n\tor h\n\tor e\n\tor d\n");
+		else
+			out("\tld a,l\n\tor h\n");
+		return "z";
 	case R_DE: out("\tld a,e\n\tor d\n"); return "z";
 	case R_BC: out("\tld a,c\n\tor b\n"); return "z";
 	}
@@ -1811,7 +1819,12 @@ truecc(Expr *e)
 	case F_M:  return "m";
 	case F_P:  return "p";
 	case R_A:  out("\tor a\n"); return "nz";
-	case R_HL: out("\tld a,l\n\tor h\n"); return "nz";
+	case R_HL:
+		if (ISLONG(e->width))
+			out("\tld a,l\n\tor h\n\tor e\n\tor d\n");
+		else
+			out("\tld a,l\n\tor h\n");
+		return "nz";
 	case R_DE: out("\tld a,e\n\tor d\n"); return "nz";
 	case R_BC: out("\tld a,c\n\tor b\n"); return "nz";
 	}
@@ -2173,7 +2186,7 @@ tolong(Expr *e, char w)
 {
 	Expr *n;
 
-	if (!e || e->op == NUMBER || ISLONGINT(e->width))
+	if (!e || e->op == NUMBER || ISLONG(e->width))
 		return e;
 	n = mkunary(ISSIGNED(e->width) ? SEXT : WIDEN, w, e);
 	n->dest = DEST_VALUE;

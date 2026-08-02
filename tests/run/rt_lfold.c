@@ -36,5 +36,23 @@ main()
 	gl = 3L << 20;
 	CHECK(5, (int)(gl >> 16), 48);
 	CHECK(6, (200000L > 100000L) ? 1 : 0, 1);
+
+	/* a long's truth is all four bytes: the flag test read only
+	 * the high pair, and "if (n & 1)" was false for every odd
+	 * long - ispow2(31) came out 4 and hash*31 compiled as *16 */
+	gl = 31;
+	if (gl & 1)
+		gi = 1;
+	else
+		return 7;
+	CHECK(8, gi, 1);
+	gl = 0x10000L;
+	if (gl)
+		gi = 2;
+	else
+		return 9;
+	gl = 1;
+	if (!gl)
+		return 10;
 	return 0;
 }
