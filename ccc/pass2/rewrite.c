@@ -1531,6 +1531,31 @@ no_regconv:
  * Does this node name a location outright, rather than work out an
  * address that a store then has to go through?
  */
+/*
+ * A symbol reference, counting the one that has not been folded yet.
+ *
+ * The compare staging below asks this of an operand before the
+ * children are reduced, and "&tab[0]" is a bare SYM there while
+ * "&tab[9]" is still a PLUS - it only becomes a SYMREF when the rules
+ * fold the offset in, which is after the staging has decided.  So the
+ * first was staged into HL and matched, and the second reduced to a
+ * shape with a symbol on one side and a register home on the other
+ * that the table has no form for: "t <= &basictypes[N_BASIC-1]" in
+ * pass1's isBasicType emitted no comparison at all and jumped on
+ * whatever flags the conjunct before it had left.
+ */
+static int
+issymish(Expr *e)
+{
+	if (!e)
+		return 0;
+	if (e->op == SYM || e->op == SYMREF)
+		return 1;
+	return e->op == PLUS && e->left && e->right &&
+	    (e->left->op == SYM || e->left->op == SYMREF) &&
+	    e->right->op == NUMBER;
+}
+
 static int
 islocdesc(Expr *e)
 {
@@ -2670,7 +2695,7 @@ rewrite1(Expr *e)
 	 */
 	if ((e->op == LT || e->op == GE || e->op == LE || e->op == GT ||
 	     e->op == EQ || e->op == NEQ) && e->left && e->right) {
-		char lsym = e->left->op == SYM || e->left->op == SYMREF;
+		char lsym = issymish(e->left);
 
 		/*
 		 * Both operands living in the byte register homes: no rule
@@ -2700,7 +2725,7 @@ rewrite1(Expr *e)
 			e->right = mkcode(rw, R_E);
 			e->right->op = INE;
 		}
-		char rsym = e->right->op == SYM || e->right->op == SYMREF;
+		char rsym = issymish(e->right);
 		char linreg = e->left->op == REGVAR ||
 		    e->left->op == INBC || e->left->op == INDE;
 		char rinreg = e->right->op == REGVAR ||

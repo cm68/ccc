@@ -574,6 +574,10 @@ struct rule rules[] = {
 	 */
 	R("+(V,E)", PLUS, P_L, P_R, P_L, RF_IX,
 		"\tpush ix\n" F_POPHL F_ADDHLDE, R_HL),
+	/* and the difference, which is how a span is worked out when the
+	 * far end is a local rather than the other register home */
+	R("-(V,E)", MINUS, P_L, P_R, P_L, RF_IX,
+		"\tpush ix\n" F_POPHL F_ORA F_SBCHLDE, R_HL),
 	/*
 	 * And against the other register home: two pointers walking the
 	 * same buffer land one in IX and one in BC, and "p - q" is how a
@@ -634,6 +638,21 @@ struct rule rules[] = {
 		"\tpush ix\n" F_POPHL F_ORA F_SBCHLDE, F_Z),
 	R("U(V,E)", NEQ, P_L, P_R, P_L, RF_IX,
 		"\tpush ix\n" F_POPHL F_ORA F_SBCHLDE, F_NZ),
+	/*
+	 * The orderings against DE, which had only the two equalities.
+	 * "p < def + 32" in cpp's filtenum walks a register pointer
+	 * against a bound worked out into DE; the compare emitted
+	 * nothing and the loop ran on stale flags.  Unsigned, as with
+	 * the (H,V) forms below: IX holds pointers.
+	 */
+	R("T(V,E)", LT, P_L, P_R, P_L, RF_IX,
+		"\tpush ix\n" F_POPHL F_ORA F_SBCHLDE, F_C),
+	R("Y(V,E)", GE, P_L, P_R, P_L, RF_IX,
+		"\tpush ix\n" F_POPHL F_ORA F_SBCHLDE, F_NC),
+	R("W(V,E)", LE, P_L, P_R, P_L, RF_IX,
+		"\tpush ix\n" F_POPHL F_EXDEHL F_ORA F_SBCHLDE, F_NC),
+	R("G(V,E)", GT, P_L, P_R, P_L, RF_IX,
+		"\tpush ix\n" F_POPHL F_EXDEHL F_ORA F_SBCHLDE, F_C),
 	/* the same with the index register on the other side, which
 	 * normalize does not swap because equality is not a relation it
 	 * reorders by operand kind */
