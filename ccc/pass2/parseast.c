@@ -251,16 +251,21 @@ emitprolog(void)
 		 * All but the last of that is one call: eleven bytes of
 		 * prologue become five, and the only thing particular to
 		 * the function - how big the scalar area is - rides in the
-		 * word after the call.  A function with neither a save nor
-		 * a scalar area still writes the bare sequence, which the
-		 * peephole turns into fenter: three beats five.
+		 * word after the call.
+		 *
+		 * A function with neither a save nor a scalar area wants
+		 * plain fenter, and it is CALLED rather than written out.
+		 * The bare sequence is eight bytes - push iy is two, ld
+		 * iy,0 is four, add iy,sp is two - against three for the
+		 * call, and leaving it to the peephole to substitute meant
+		 * paying the eight in every build that does not run it.
 		 */
 		h = (regsused & USES_BC) ?
 		      ((regsused & REGBIT(R_IX)) ? "fentbx" : "fentb") :
 		      ((regsused & REGBIT(R_IX)) ? "fentx" : "fentn");
 
 		if (!(regsused & (USES_BC | REGBIT(R_IX))) && savebase == 0)
-			out("\tpush\tiy\n\tld\tiy,0\n\tadd\tiy,sp\n");
+			out("\tcall\tfenter\n");
 		else
 			outf("\tcall\t%s\n\t.dw\t%d\n", h, -savebase);
 
@@ -369,10 +374,14 @@ emitepilog(void)
 		return;
 	}
 
-	/* Restore frame pointer */
-	out("\tld\tsp,iy\n\tpop\tiy\n");
-
-	out("\tret\n");
+	/*
+	 * Nothing to restore: just the unwind, and jumped to for the
+	 * same reason the entry is called.  Written out it is five bytes
+	 * - ld sp,iy and pop iy are two each - against three, and the
+	 * peephole that used to make the substitution only runs under
+	 * -O.
+	 */
+	out("\tjp\tfexit\n");
 }
 
 static void
