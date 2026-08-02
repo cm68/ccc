@@ -1,5 +1,5 @@
 	psect	text
-	global	rcsv, cret, _strchr
+	global	rcsv, rcret, _strchr
 
 _strchr:
 	call	rcsv
@@ -13,7 +13,7 @@ _strchr:
 	jr	z,2f
 	cp	e
 	jr	nz,1b
-4:	jp	cret
+4:	jp	rcret
 
 2:	ld	hl,0
 	jp	4b

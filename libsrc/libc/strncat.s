@@ -1,5 +1,5 @@
 	psect	text
-	global	_strncat, rcsv, cret
+	global	_strncat, rcsv, rcret
 
 _strncat:
 	call	rcsv
@@ -29,6 +29,6 @@ _strncat:
 	ld	(hl),0
 
 2:	pop	hl
-	jp	cret
+	jp	rcret
 
 ; vim: tabstop=4 shiftwidth=4 noexpandtab:

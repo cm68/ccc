@@ -1,14 +1,25 @@
 	psect	text
 	global	_strcpy
 
-_strcpy:	pop	bc
-	pop	de
-	pop	hl
-	push	hl
-	push	de
-	push	bc
+;	bc holds the destination across the copy so it can be handed
+;	back, and the return-address shuffle used it too.  Both destroy
+;	the caller's register variable, so the save is the first thing
+;	that happens and the arguments are read where they lie.
+
+_strcpy:
+	push	bc		;the caller's register variable
+	ld	hl,4
+	add	hl,sp		;past the save and the return address
+	ld	e,(hl)
+	inc	hl
+	ld	d,(hl)		;de = destination
+	inc	hl
+	ld	a,(hl)
+	inc	hl
+	ld	h,(hl)
+	ld	l,a		;hl = source
 	ld	c,e
-	ld	b,d		;save destination pointer
+	ld	b,d		;remember the destination
 
 1:	ld	a,(hl)
 	ld	(de),a
@@ -17,7 +28,8 @@ _strcpy:	pop	bc
 	or	a
 	jr	nz,1b
 	ld	l,c
-	ld	h,b
+	ld	h,b		;the destination is the return value
+	pop	bc
 	ret
 
 ; vim: tabstop=4 shiftwidth=4 noexpandtab:

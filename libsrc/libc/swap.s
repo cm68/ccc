@@ -3,7 +3,7 @@
 ;	exchange the two byte arrays
 
 	psect	text
-	global	__swap, rcsv, cret
+	global	__swap, rcsv, rcret
 __swap:
 	call	rcsv
 	push	bc
@@ -24,6 +24,6 @@ __swap:
 	ld	a,b
 	or	c
 	jr	nz,2b
-	jp	cret
+	jp	rcret
 
 ; vim: tabstop=4 shiftwidth=4 noexpandtab:

@@ -34,6 +34,8 @@ _wait:
 	add 	hl,de
 	ld 	sp,hl
 
+	push	bc		; the caller's register variable: bc is a
+				; home, and pstat lands in it below
 	push 	de		; save pstat
 	rst 	08h
 	.db 	007h
@@ -42,16 +44,18 @@ _wait:
 	jr 	c,error
 	ld 	a,b
 	or 	c
-	ret 	z		; pstat is NULL
+	jr 	z,9f		; pstat is NULL
 	ld 	a,e
 	ld 	(bc),a
 	inc 	bc
 	ld 	a,d
 	ld 	(bc),a
+9:	pop	bc
 	ret
 error:
 	ld 	(_errno),hl
 	ld 	hl,-1
+	pop	bc
 	ret
 
 ; vim: tabstop=8 shiftwidth=8 noexpandtab:

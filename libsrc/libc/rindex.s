@@ -1,5 +1,5 @@
 	psect	text
-	global	rcsv, cret, _rindex
+	global	rcsv, rcret, _rindex
 
 _rindex:
 	call	rcsv
@@ -22,7 +22,7 @@ _rindex:
 	ld	a,(hl)
 	cp	e
 	jr	nz,1b
-4:	jp	cret
+4:	jp	rcret
 
 2:	ld	hl,0
 	jp	4b

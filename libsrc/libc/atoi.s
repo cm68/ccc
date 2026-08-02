@@ -6,10 +6,11 @@ digit:	sub	'0'
 	ret
 
 	global	_atoi
-_atoi:	pop	bc	;return address
-	pop	de
-	push	de
-	push	bc
+_atoi:	pop	hl	;return address - hl, not bc: bc is the
+	pop	de		;caller's register variable and this uses
+	push	de		;it as a multiply scratch below, so it has
+	push	hl		;to be saved, and it cannot be saved after
+	push	bc		;something has already overwritten it
 	ld	hl,0
 1:
 	ld	a,(de)
@@ -45,10 +46,12 @@ _atoi:	pop	bc	;return address
 
 3:
 	ex	af,af'
-	ret	nz
+	jr	nz,4f
 	ex	de,hl
 	ld	hl,0
 	sbc	hl,de
+4:
+	pop	bc		;the caller's, back
 	ret
 
 ; vim: tabstop=4 shiftwidth=4 noexpandtab:

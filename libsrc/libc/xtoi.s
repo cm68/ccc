@@ -22,16 +22,24 @@ hexdig:	cp	'0'
 	sub	'a'-0ah
 	ret
 
-_xtoi:	pop	bc	;return address
+;	The return address comes back through hl, not bc: bc is the
+;	caller's register variable and this uses it to add the digit in,
+;	so it has to be saved - and it cannot be saved after the shuffle
+;	has already overwritten it.  The save goes on the stack once the
+;	arguments are back the way they came in, so it costs two bytes
+;	and survives recursion and any depth of nesting.
+
+_xtoi:	pop	hl	;return address
 	pop	de
 	push	de
+	push	hl
 	push	bc
 	ld	hl,0
 1:
 	ld	a,(de)
 	inc	de
 	call	hexdig
-	ret	c
+	jr	c,9f
 	add	hl,hl
 	add	hl,hl
 	add	hl,hl
@@ -40,6 +48,8 @@ _xtoi:	pop	bc	;return address
 	ld	b,0
 	add	hl,bc
 	jr	1b
+9:	pop	bc		;the caller's, back
+	ret
 
 _ishex:	pop	hl
 	pop	de

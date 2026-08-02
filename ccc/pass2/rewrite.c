@@ -2495,7 +2495,6 @@ docall(Expr *e)
 	int nbytes = 0;
 	int i;
 	int direct;
-	int savebc, argwrites;
 
 	/*
 	 * A name resolves to a SYMREF and emits nothing, so it can be
@@ -2512,39 +2511,30 @@ docall(Expr *e)
 	}
 
 	/*
-	 * BC does not survive a call.
+	 * BC survives a call now, and the callee is what makes it.
 	 *
-	 * ccc's own prologue saves it, so ccc calling ccc is consistent -
-	 * but the runtime library is built by zc3, which uses BC as
-	 * scratch and never saves it.  csv and ncsv save IX and IY and
-	 * nothing else, zc3's output for a function that uses BC has no
-	 * push of it anywhere, and fputc.s pops its argument straight
-	 * into BC and returns with it still there.  So a register
-	 * variable in BC is gone across any call into the library:
+	 * It did not use to.  The runtime was built by zc3, which uses
+	 * BC as scratch and never saves it, and the hand-written
+	 * routines popped their arguments straight into it - so a
+	 * register variable in BC was gone across any call into the
+	 * library, and
 	 *
 	 *	for (i = 0; i < argc; i++)	i came back holding the
 	 *		printf("%s\n", argv[i]);   last character printed
 	 *
-	 * The helpers had this noticed once and got $[ and $]; ordinary
-	 * calls are the commoner case and never did.
+	 * The answer was two bytes at every call site that had a
+	 * variable in BC: 731 of them in c1 alone, 1462 bytes, to guard
+	 * against a handful of routines.  The knowledge belongs in those
+	 * routines.  Every one of them saves BC on the stack now - not
+	 * in a static, which recursion and any chain of them would tread
+	 * on - and ccc's own prologue has always saved it, so a call is
+	 * a call whatever it lands in.
 	 *
-	 * Saved before the arguments, so that dropping them afterwards
-	 * uncovers it.  But an argument may be what changes the variable
-	 * - "one(i += 4)" - and then the value to keep is the one the
-	 * arguments left, not the one saved before them.  So where any
-	 * argument writes anything, the saved copy is refreshed just
-	 * before the call.  Most calls do not, and pay nothing for it.
+	 * What is left is $[ and $]: the arithmetic helpers really do
+	 * count in B, they are reached by name from the rule templates
+	 * rather than through here, and guarding them is the same two
+	 * bytes at far fewer places.
 	 */
-	savebc = bcinuse();
-	argwrites = 0;
-	if (savebc) {
-		for (a = e->right; a && a->op == ARGNODE; a = a->right)
-			if (sideeffect(a->left)) {
-				argwrites = 1;
-				break;
-			}
-		out("\tpush bc\n");
-	}
 
 	for (a = e->right; a && a->op == ARGNODE; a = next) {
 		Expr *v = a->left;
@@ -2554,13 +2544,6 @@ docall(Expr *e)
 		nbytes += pusharg(v);
 	}
 	e->right = NULL;
-
-	/* the arguments may have moved it - the saved copy sits under
-	 * them, nbytes down */
-	if (savebc && argwrites) {
-		outf("\tld hl,%d\n\tadd hl,sp\n\tld (hl),c\n\tinc hl\n\tld (hl),b\n",
-		    nbytes);
-	}
 
 	if (direct) {
 		outf("\tcall %s\n", fn->u.symref.name);
@@ -2600,9 +2583,6 @@ docall(Expr *e)
 		outf("\tex de,hl\n\tld hl,%d\n\tadd hl,sp\n\tld sp,hl\n\tex de,hl\n",
 		    nbytes);
 	}
-
-	if (savebc)
-		out("\tpop bc\n");
 
 	/* Result is in HL.  Hand back an INHL rather than a bare CODE:
 	 * we return straight to the caller, skipping the step() loop that

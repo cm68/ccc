@@ -1,5 +1,5 @@
 	psect	text
-	global	_strncmp, rcsv, cret
+	global	_strncmp, rcsv, rcret
 ;
 ; strncmp(char *s1, char *s2, int n)
 ;
@@ -20,12 +20,12 @@ _strncmp:
 	jr	nz,1b
 3:
 	ld	hl,0
-	jp	cret
+	jp	rcret
 
 2:	ld	hl,1
-	jp	c,cret
+	jp	c,rcret
 	dec	hl
 	dec	hl
-	jp	cret
+	jp	rcret
 
 ; vim: tabstop=4 shiftwidth=4 noexpandtab:

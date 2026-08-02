@@ -244,21 +244,45 @@ fentn:				;no saves, but a scalar area to allocate
 ;	BC opens with "call bcsv", three bytes once, and its own ret
 ;	comes back through the restore below.
 ;
-;	The saved copy lives in a static, not on the stack: a stacked
-;	copy would shift every argument offset the body was written
-;	against.  Non-reentrant, like lstde's scratch word, and for
-;	the same reason acceptable: nothing here recurses.
+;	The saved copies cannot go on the stack: the bodies read their
+;	arguments by popping them, so a copy parked there would come
+;	back as an argument.  They go in a small stack of their own,
+;	four deep - fputc calls itself to put the carriage return in
+;	front of a newline, so one slot is not enough, and a depth
+;	beyond two would mean a library routine calling a library
+;	routine calling itself.
+;
+;	Nothing here is live on entry to a C function but BC, whose
+;	whole point this is, so hl and de are free scratch.  The
+;	restore has to be more careful: hl is the return value and de
+;	is the rest of it when the value is long, so it saves hl and
+;	touches neither de nor the flags.
 
 	global	bcsv
 
 bcsv:
-	ld	(bcsave),bc
 	pop	hl		;body address (the call pushed it)
-	ld	de,bcret
-	push	de		;body returns through the restore
+	ld	de,(bcsp)
+	ex	de,hl		;hl = the free slot, de = body address
+	ld	(hl),c
+	inc	hl
+	ld	(hl),b
+	inc	hl
+	ld	(bcsp),hl
+	ld	hl,bcret
+	push	hl		;body returns through the restore
+	ex	de,hl		;hl = body address
 	jp	(hl)
+
 bcret:
-	ld	bc,(bcsave)
+	push	hl		;the return value
+	ld	hl,(bcsp)
+	dec	hl
+	ld	b,(hl)
+	dec	hl
+	ld	c,(hl)
+	ld	(bcsp),hl
+	pop	hl
 	ret
 
 ;	New csv: allocates space for stack based on word following
@@ -283,4 +307,5 @@ ncsv:
 ; vim: tabstop=4 shiftwidth=4 noexpandtab:
 
 	.data
-bcsave:	.dw	0
+bcsp:	.dw	bcsave		;next free slot
+bcsave:	.dw	0,0,0,0		;four deep: see bcsv

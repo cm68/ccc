@@ -18,6 +18,8 @@ _time:
 	push 	hl
 	push 	de
 
+	push	bc		; the caller's register variable: tp
+				; lands in bc below and bc is a home
 	push 	hl		; save tp
 	rst 	08h
 	.db 	00dh
@@ -25,7 +27,7 @@ _time:
 	pop 	bc		; bc = tp
 	ld 	a,b
 	or 	c
-	ret 	z		; tp is NULL
+	jr 	z,9f		; tp is NULL
 	; store 32-bit time to *tp (little-endian)
 	ld 	a,l
 	ld 	(bc),a
@@ -38,6 +40,7 @@ _time:
 	inc 	bc
 	ld 	a,d
 	ld 	(bc),a
+9:	pop	bc
 	ret
 
 ; vim: tabstop=8 shiftwidth=8 noexpandtab:
