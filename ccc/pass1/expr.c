@@ -500,14 +500,7 @@ ptrcompat(struct type *lt, struct type *rt)
 static struct expr *
 foldNode(struct expr *e)
 {
-    /*
-     * Long-wide, or the folds themselves change with the host: a
-     * 16-bit unsigned cannot add two long constants, and a long
-     * mask truncated to 16 bits made "& 0xffff0000" fold as
-     * "& 0".  The wrap at the bottom narrows int results back, so
-     * int folds are unchanged at either width.
-     */
-    unsigned long lv, rv;
+    unsigned lv, rv;
     int rel = 0, sgn;
     unsigned char op;
     struct expr *left, *right, *result;
@@ -574,6 +567,18 @@ foldNode(struct expr *e)
 
     /* Both operands must be constants for full folding */
     if (!(left->flags & E_CONST) || !(right->flags & E_CONST))
+        return e;
+
+    /*
+     * Never fold longs.  The arithmetic here runs in int width, so
+     * a long fold silently loses its high half on the Z80 - and
+     * doing it long-wide instead put six hundred bytes of helper
+     * calls into this hot path and three sources back over the
+     * heap line.  The two builds agreeing on doing nothing beats
+     * either doing something different.  Longs are rare, and pass2
+     * places a long constant operand directly.
+     */
+    if (e->type && e->type->size > 2)
         return e;
 
     lv = left->v;
