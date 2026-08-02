@@ -44,6 +44,34 @@ char *p;
 	return take(a + 6);
 }
 
+/*
+ * (appended) The value OF a store through a computed slot.  The
+ * short store form left HL one past the slot, and a chain that
+ * consumed the value - "d = ap->init = p" - filed that address
+ * into d; filtdecl's initializer copy then walked the assigns
+ * table writing tokens over everything after it.
+ */
+struct slot {
+	char *nm;
+	char *init;
+	int len;
+};
+struct slot slots[3];
+int nslot;
+
+char *
+chainstore(p)
+char *p;
+{
+	struct slot *ap;
+	char *d;
+
+	ap = &slots[nslot++];
+	ap->nm = p;
+	d = ap->init = p + 3;
+	return d;
+}
+
 char *tab[4];
 int ntab;
 
@@ -73,6 +101,14 @@ main()
 	CHECK(7, ntab, 2);
 	CHECK(8, tab[0] - buf, 2);
 	CHECK(9, tab[1] - buf, 5);
+
+	nslot = 0;
+	{
+		char *d = chainstore(buf);
+		CHECK(14, d - buf, 3);
+		CHECK(15, slots[0].init - buf, 3);
+		CHECK(16, nslot, 1);
+	}
 
 	/* both register homes occupied: same shape, other register */
 	{

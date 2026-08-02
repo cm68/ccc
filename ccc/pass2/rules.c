@@ -1402,6 +1402,17 @@ struct rule rules[] = {
 
 	/* indirect stores via HL */
 	R("=(D(H),N):b", ASSIGN, P_L, P_R, P_NONE, 0, "\tld (hl),$R\n", 0),
+	/*
+	 * The stored value is the value of the assignment.  Where a
+	 * chain consumes it - "d = ap->init = malloc(n)" - the store
+	 * has to end with the VALUE in HL, not the address it went to:
+	 * the bare form below leaves HL one past the slot, and the
+	 * outer assignment filed that into d, which then walked the
+	 * assigns table writing tokens over everything after it.  Value
+	 * context pays the one-byte ex; the ordinary statement store
+	 * keeps the short form.
+	 */
+	R("=(D(H),E):sV", ASSIGN, P_L, P_R, P_NONE, 0, T_ST_IHL, R_HL),
 	R("=(D(H),E):s", ASSIGN, P_L, P_R, P_NONE, 0, F_LDHLE F_INCHL F_LDHLD, 0),
 	R("=(D(H),E):b", ASSIGN, P_L, P_R, P_NONE, 0, F_LDHLE, 0),
 	/* a byte worked out in A, stored through an address in HL - which
