@@ -37,8 +37,17 @@ char cb512[512];
 short s300[300];
 long l100[100];
 
+/*
+ * A struct past 127 bytes is REJECTED now, not truncated: member
+ * offsets and the type's size field are bytes, so a bigger struct
+ * never worked - pass2's own switch stack was laid out 48 bytes for
+ * 8K because "long val[256]" contributed nothing, and the size
+ * check itself read the wrapped byte, so a 300-byte struct sailed
+ * through while a 200-byte one was refused.  The biggest struct
+ * this compiler supports is what (ix+d) reaches.
+ */
 struct big {
-	unsigned char pad[300];
+	unsigned char pad[120];
 };
 struct big onebig;
 
@@ -83,11 +92,9 @@ main()
 	CHECK(15, sizeof(twod) == 800, 1);
 
 	/*
-	 * A struct bigger than a byte still records a truncated size -
-	 * getType only recomputes arrays, since that is where the count
-	 * is.  Written down here rather than left to be rediscovered.
+ * the struct fits, so its size is exact
 	 */
-	CHECK(17, sizeof(onebig) == 300 || sizeof(onebig) == 44, 1);
+	CHECK(17, sizeof(onebig) == 120, 1);
 
 	return 0;
 }

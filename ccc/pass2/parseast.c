@@ -75,12 +75,29 @@ static short bcoff, ixoff;	/* IY-relative offsets for saved regs */
  * goes anywhere near it.
  */
 #define MAXSWCASE 256
+/*
+ * The case values live OUTSIDE the context struct, on purpose: a
+ * struct type's size is a byte in pass1, so "long val[256]" inside
+ * the struct silently contributed nothing and swstk came out 48
+ * bytes for what should have been 8K - every case value recorded
+ * past the tenth stomped the statics that follow, which is how the
+ * twelfth case of any switch stopped existing in the self-hosted
+ * build.  A bare array is sized on the wide path and survives; the
+ * struct keeps a pointer into it.
+ */
 static struct swctx {
 	int id;			/* label number for this switch */
 	int ncase;
 	int hasdef;
-	long val[MAXSWCASE];
+	unsigned char *val;	/* this nesting level's slice of swvals */
 } swstk[MAXSWNEST];
+/*
+ * Bytes, not longs: case values are bytes in this compiler - the
+ * dispatch masks to eight bits anyway - and the long version of
+ * this pool, once it actually existed, was 8K of bss that left the
+ * self-hosted c1 under a thousand bytes of heap.
+ */
+static unsigned char swvals[MAXSWNEST * MAXSWCASE];
 static int swtop;
 
 /*
@@ -504,6 +521,7 @@ parseStmt(void)
 		sw->id = labelcnt++;
 		sw->ncase = 0;
 		sw->hasdef = 0;
+		sw->val = swvals + (swtop - 1) * MAXSWCASE;
 
 		/* work out the control value, then jump over the bodies to
 		 * the comparisons - which is what keeps it live */

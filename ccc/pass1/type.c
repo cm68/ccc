@@ -1017,7 +1017,13 @@ getbasetype()
                         }
 
                         member->w.m.offset = off;
-                        off += member->type->size;
+                        /* typesize, not the byte-wide size field: a
+                         * member array past 255 bytes has a wrapped
+                         * size and used to contribute nothing - the
+                         * switch stack in pass2 laid out 48 bytes for
+                         * 8K and every case value past the tenth
+                         * stomped the statics behind it */
+                        off += typesize(member->type);
                         t->size = off;
                     }
                 }
@@ -1035,8 +1041,11 @@ getbasetype()
         // mark as complete
         t->flags &= ~TF_INCOMPLETE;
 
-        /* warn if struct exceeds Z80 IX offset limit */
-        if (t->size > 127) {
+        /* the size field is a byte and member offsets are bytes, so
+         * past 255 the layout is silently wrong; past 127 the (ix+d)
+         * window is gone.  Check the WIDE accumulator - the wrapped
+         * field is exactly what cannot be trusted here. */
+        if (off > 127) {
             gripe(ER_T_SB);
         }
 
