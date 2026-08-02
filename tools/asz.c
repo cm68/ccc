@@ -120,7 +120,16 @@ char tmpbuf[256];
 #define FILEBUFSIZE 512
 
 unsigned char *lineptr = (unsigned char *)"";
-unsigned char linebuf[256];
+/*
+ * Long enough for the longest data line the compiler emits: the
+ * string pool writes whole pooled literals as one .db, and rewrite.c
+ * carries text templates that spell past 800 characters.  256 was
+ * the old size, and a longer line was TRUNCATED SILENTLY - the tail
+ * of pass2's long-negate template simply left the binary, and the
+ * self-hosted compiler printed the next literal in the pool where
+ * "ld h,a" should have been.
+ */
+unsigned char linebuf[1024];
 char l_flag;                    /* -l: write a listing file */
 FILE *lstfp;
 unsigned char filebuf[FILEBUFSIZE+1];
@@ -190,8 +199,11 @@ get_line()
         }
     }
     if (i == sizeof(linebuf) - 2) {
-        /* line longer than the buffer (long debug comments from c1):
-         * truncate it and discard the rest of the physical line */
+        /* line longer than the buffer: only a comment may be cut -
+         * anything else is data, and a silent cut puts a corrupt
+         * string in the object with no witness */
+        if (linebuf[0] != ';')
+            gripe("line too long");
         *lineptr++ = '\n';
         while (1) {
             if (inptr >= limit && fillbuf() == 0)

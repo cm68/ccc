@@ -20,7 +20,7 @@
  * orphans the tail of a merged literal, and a rule could match
  * across the seam.
  */
-#define LLEN	512			/* longest line handled */
+#define LLEN	1024			/* longest line handled - see asz linebuf */
 
 /*
  * A window line.  The original text is kept so that lines nothing
