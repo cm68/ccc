@@ -2510,6 +2510,45 @@ idxtohl(Expr *s)
 	return n;
 }
 
+/*
+ * A reduced operand whose VALUE the caller is about to stage through
+ * HL - push it, pass it, keep it while something else runs.  Half a
+ * dozen node kinds reduce to themselves by design so the rules can
+ * read them in place, and every staging path that assumed "reduced
+ * means it is in HL" has been bitten by one of them: SYMREF (an
+ * address), INDEX (a register-relative address), and the register
+ * homes.  This is the one place that knows the whole list.
+ */
+static Expr *
+valtohl(Expr *e)
+{
+	Expr *n;
+	char w;
+
+	if (!e)
+		return e;
+	if (e->op == SYMREF)
+		return symtohl(e);
+	if (e->op == INDEX)
+		return idxtohl(e);
+	if (e->op == INBC || e->op == INDE ||
+	    (e->op == REGVAR &&
+	     (e->u.var.reg == R_BC || e->u.var.reg == R_IX))) {
+		if (e->op == INDE)
+			out("\tld l,e\n\tld h,d\n");
+		else if (e->op == REGVAR && e->u.var.reg == R_IX)
+			out("\tpush ix\n\tpop hl\n");
+		else
+			out("\tld l,c\n\tld h,b\n");
+		w = e->width;
+		freeexpr(e);
+		n = mkcode(w, R_HL);
+		n->op = INHL;
+		return n;
+	}
+	return e;
+}
+
 static Expr *
 rewrite1(Expr *e)
 {
@@ -2648,7 +2687,9 @@ rewrite1(Expr *e)
 
 		val = locvalue(dupexpr(loc), e->width);
 		setdest(val, DEST_VALUE);
-		freeexpr(rewrite(val));
+		/* the value must actually BE in HL before the push - a
+		 * register home or an address form reduces to itself */
+		freeexpr(valtohl(rewrite(val)));
 		out("\tpush hl\n");
 
 		step = mkbinary(nop, e->width, loc, mkconst(e->width, amt));
@@ -2885,35 +2926,17 @@ rewrite1(Expr *e)
 		 * last statement left in HL - which the other operand is
 		 * then added to, and the sum read as a pointer.
 		 */
-		if (e->left && e->left->op == SYMREF)
-			e->left = symtohl(e->left);
-		/* An address-as-value left has the same no-code property */
-		if (e->left && e->left->op == INDEX)
-			e->left = idxtohl(e->left);
 		/*
-		 * A register variable reduces to itself, not to HL - the
-		 * rules read it in place by design.  The spill below pushes
-		 * HL, so its VALUE has to actually be there first: without
-		 * this, "p += 1 + (w ? 2 : 1) + len" with p in BC pushed
-		 * whatever the condition had left in HL and marched p off
-		 * into it - which is how cpp's define store walked garbage
-		 * and wrote six interned names' ids over with it.
+		 * The value has to actually BE in HL before the push: a
+		 * register variable, a SYMREF or an INDEX reduces to
+		 * itself by design - the rules read them in place.
+		 * Without this, "p += 1 + (w ? 2 : 1) + len" with p in BC
+		 * pushed whatever the condition had left in HL and
+		 * marched p off into it - which is how cpp's define store
+		 * walked garbage and wrote six interned names' ids over
+		 * with it.
 		 */
-		if (e->left->op == INBC || e->left->op == INDE ||
-		    (e->left->op == REGVAR &&
-		     (e->left->u.var.reg == R_BC || e->left->u.var.reg == R_IX))) {
-			if (e->left->op == INDE)
-				out("\tld l,e\n\tld h,d\n");
-			else if (e->left->op == REGVAR &&
-			    e->left->u.var.reg == R_IX)
-				out("\tpush ix\n\tpop hl\n");
-			else
-				out("\tld l,c\n\tld h,b\n");
-			lw = e->left->width;
-			freeexpr(e->left);
-			e->left = mkcode(lw, R_HL);
-			e->left->op = INHL;
-		}
+		e->left = valtohl(e->left);
 		/*
 		 * Unless it is a byte, which lands in A whatever target it
 		 * was given.  Pushing HL then would spill the address the
@@ -2926,9 +2949,7 @@ rewrite1(Expr *e)
 		/* Spill left result to stack */
 		out("\tpush hl\n");
 		/* Evaluate right subtree (result in HL) */
-		e->right = rewrite1(e->right);
-		if (e->right && e->right->op == INDEX)
-			e->right = idxtohl(e->right);
+		e->right = valtohl(rewrite1(e->right));
 		/* Pop left result, exchange so left in HL, right in DE */
 		out("\tpop de\n\tex de,hl\n");
 		/*
@@ -3029,13 +3050,13 @@ rewrite1(Expr *e)
 			out("\tpush hl\n");
 			e->right = rewrite1(e->right);
 			/*
-			 * An address-as-value right reduces to INDEX and
-			 * emits nothing; without this the pop below stored
-			 * the slot's own address - "paths[np++] = a + 2"
-			 * filed the slot into itself.
+			 * An address-as-value or register-homed right
+			 * reduces to itself and emits nothing; without
+			 * this the pop below stored the slot's own
+			 * address - "paths[np++] = a + 2" filed the slot
+			 * into itself.
 			 */
-			if (e->right && e->right->op == INDEX)
-				e->right = idxtohl(e->right);
+			e->right = valtohl(e->right);
 			/*
 			 * Where the value came back decides how to get the
 			 * address out from under it.  A byte operation ends in

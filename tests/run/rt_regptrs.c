@@ -90,9 +90,68 @@ char *fmt;
 		sink(q, p - q);
 }
 
+struct tok {
+	int a;
+	long b;
+	char *c;
+};
+struct tok tsrc[3], tdst[3];
+int ncp;
+char corder[4];
+
+void
+cp(d, s)
+struct tok *d;
+struct tok *s;
+{
+	corder[ncp] = 'A' + (s - tsrc);
+	d->a = s->a;
+	d->b = s->b;
+	d->c = s->c;
+	ncp++;
+}
+
+/* the tokcpy walk: both pointers stepped by sizeof IN the argument
+ * list.  The postfix machinery kept the old value by pushing HL -
+ * and a register-homed value reduces to itself, so what got pushed
+ * was whatever HL last held.  filtknr copied its parameter types
+ * from a garbage source and the K&R filter never finished. */
+int
+fill(n)
+int n;
+{
+	register struct tok *d = tdst;
+	struct tok *s = tsrc;
+
+	while (n--)
+		cp(d++, s++);
+	return 0;
+}
+
 int
 main()
 {
+	int i;
+
+	for (i = 0; i < 3; i++) {
+		tsrc[i].a = i + 10;
+		tsrc[i].b = 100000L + i;
+		tsrc[i].c = (char *)(500 + i);
+	}
+	ncp = 0;
+	fill(3);
+	CHECK(20, ncp, 3);
+	corder[3] = 0;
+	CHECK(21, strcmp(corder, "ABC"), 0);
+	for (i = 0; i < 3; i++) {
+		if (tdst[i].a != i + 10)
+			return 30 + i;
+		if (tdst[i].b != 100000L + i)
+			return 40 + i;
+		if (tdst[i].c != (char *)(500 + i))
+			return 50 + i;
+	}
+
 	CHECK(1, cmps(src), 63);
 	CHECK(2, spans(src), 5);
 
