@@ -44,12 +44,35 @@ char *p;
 	return take(a + 6);
 }
 
+char *tab[4];
+int ntab;
+
+int
+fill(p)
+char *p;
+{
+	register char *a = p;
+
+	/* the staged store: address of the slot waits on the stack
+	 * while the value is formed.  An INDEX right emitted nothing
+	 * and the slot was filed into itself. */
+	tab[ntab++] = a + 2;
+	tab[ntab++] = a + 5;
+	return 0;
+}
+
 int
 main()
 {
 	g = 0;
 	CHECK(1, run(buf), 6);
 	CHECK(2, g - buf, 2);
+
+	ntab = 0;
+	fill(buf);
+	CHECK(7, ntab, 2);
+	CHECK(8, tab[0] - buf, 2);
+	CHECK(9, tab[1] - buf, 5);
 
 	/* both register homes occupied: same shape, other register */
 	{

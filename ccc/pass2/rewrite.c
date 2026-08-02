@@ -2462,6 +2462,30 @@ symtohl(Expr *s)
 	return n;
 }
 
+/*
+ * An INDEX being used as a value rather than a location: "a + 2"
+ * with a in a register.  It reduces to itself and emits nothing -
+ * that is what lets the (reg+d) rules read through it - so a path
+ * that stages values through HL has to form the number itself, or
+ * the pop below it stores whatever HL last held.  add hl takes only
+ * bc/de/hl/sp, so the register goes through the stack; DE is free
+ * everywhere this is called, the sibling being on the stack.
+ */
+static Expr *
+idxtohl(Expr *s)
+{
+	Expr *n;
+	char w = s->width;
+
+	outf("\tpush %s\n\tpop hl\n", idxregname(s->u.var.reg));
+	if (s->u.var.off)
+		outf("\tld de,%d\n\tadd hl,de\n", s->u.var.off);
+	freeexpr(s);
+	n = mkcode(w, R_HL);
+	n->op = INHL;
+	return n;
+}
+
 static Expr *
 rewrite1(Expr *e)
 {
@@ -2839,6 +2863,9 @@ rewrite1(Expr *e)
 		 */
 		if (e->left && e->left->op == SYMREF)
 			e->left = symtohl(e->left);
+		/* An address-as-value left has the same no-code property */
+		if (e->left && e->left->op == INDEX)
+			e->left = idxtohl(e->left);
 		/*
 		 * A register variable reduces to itself, not to HL - the
 		 * rules read it in place by design.  The spill below pushes
@@ -2876,6 +2903,8 @@ rewrite1(Expr *e)
 		out("\tpush hl\n");
 		/* Evaluate right subtree (result in HL) */
 		e->right = rewrite1(e->right);
+		if (e->right && e->right->op == INDEX)
+			e->right = idxtohl(e->right);
 		/* Pop left result, exchange so left in HL, right in DE */
 		out("\tpop de\n\tex de,hl\n");
 		/*
@@ -2975,6 +3004,14 @@ rewrite1(Expr *e)
 			}
 			out("\tpush hl\n");
 			e->right = rewrite1(e->right);
+			/*
+			 * An address-as-value right reduces to INDEX and
+			 * emits nothing; without this the pop below stored
+			 * the slot's own address - "paths[np++] = a + 2"
+			 * filed the slot into itself.
+			 */
+			if (e->right && e->right->op == INDEX)
+				e->right = idxtohl(e->right);
 			/*
 			 * Where the value came back decides how to get the
 			 * address out from under it.  A byte operation ends in
