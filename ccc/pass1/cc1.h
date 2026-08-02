@@ -331,7 +331,8 @@ void cleanupParse();
  * Dynamically allocated - no fixed limits on switch count.
  */
 #define MAX_SWDEPTH 8       /* max switch nesting */
-#define SW_INIT_CASES 8     /* initial cases per switch */
+#define SW_INIT_CASES 8     /* initial cases per switch, and the step it grows by */
+#define SW_INIT_SWS   8     /* initial switches per function, likewise */
 
 struct swcase {
     long value;             /* case constant value */

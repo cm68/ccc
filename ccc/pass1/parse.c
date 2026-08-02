@@ -69,7 +69,7 @@ void pushSwitch(void) {
 
     /* Grow swList if needed */
     if (swCount >= swCapacity) {
-        unsigned char newcap = swCapacity ? swCapacity * 2 : 8;
+        int newcap = swCapacity + SW_INIT_SWS;
         struct swtab *newlist = realloc(swList, newcap * sizeof(struct swtab));
         if (!newlist)
             fatal(ER_NOMEM);
@@ -140,17 +140,8 @@ void addCase(long value, unsigned char stmt_cnt) {
         int newcap;
         struct swcase *newcases;
 
-        /*
-         * The doubling happens in an int, not in the byte it is
-         * stored in.  capacity goes 8, 16, 32, 64, 128, and 128*2
-         * is 256 - which is 0 once it lands in an unsigned char.
-         * That realloc'd the array to nothing, set the capacity to
-         * nothing, and let the next case write through it.  The
-         * field is a byte on purpose: count is one too, so 255
-         * cases is the most that can ever be indexed.  What was
-         * wrong was doing the arithmetic somewhere 256 cannot fit.
-         */
-        newcap = sw->capacity * 2;
+    
+        newcap = sw->capacity + SW_INIT_CASES;
         if (newcap > 255)
             newcap = 255;
         if (newcap <= sw->capacity)
@@ -200,17 +191,8 @@ void addDefault(unsigned char stmt_cnt) {
         int newcap;
         struct swcase *newcases;
 
-        /*
-         * The doubling happens in an int, not in the byte it is
-         * stored in.  capacity goes 8, 16, 32, 64, 128, and 128*2
-         * is 256 - which is 0 once it lands in an unsigned char.
-         * That realloc'd the array to nothing, set the capacity to
-         * nothing, and let the next case write through it.  The
-         * field is a byte on purpose: count is one too, so 255
-         * cases is the most that can ever be indexed.  What was
-         * wrong was doing the arithmetic somewhere 256 cannot fit.
-         */
-        newcap = sw->capacity * 2;
+    
+        newcap = sw->capacity + SW_INIT_CASES;
         if (newcap > 255)
             newcap = 255;
         if (newcap <= sw->capacity)
