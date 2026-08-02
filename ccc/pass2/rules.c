@@ -305,7 +305,6 @@ struct rule rules[] = {
 	 * and then branched on what the call had left behind.  cpp's
 	 * filtbrace loops forever on any brace-less if, while or for.
 	 */
-	R("C:F", CODE, P_NONE, P_NONE, P_NONE, RF_IX, T_IX_TEST, F_NZ),
 
 	/* copy IX to HL/BC/DE */
 	R("=(H,V)", ASSIGN, P_L, P_R, P_R, RF_IX, "\tpush ix\n" F_POPHL, R_HL),
@@ -540,12 +539,14 @@ struct rule rules[] = {
 	R("=(V,O)", ASSIGN, P_L, P_R, P_L, RF_IX, "\tld ix,$R\n", R_IX),
 	R("=(O,V)", ASSIGN, P_L, P_R, P_R, RF_IX, "\tld ($L),ix\n", R_IX),
 	/*
-	 * The same once the operand has been reduced.  IX has no register
-	 * node of its own - HL, DE, BC and the byte registers each do -
-	 * so a value in it stays a CODE node, and the rule above, which
-	 * asks for a REGVAR, no longer matches.
+	 * There was a second copy of the rule above matching "C" instead
+	 * of "V", because a value that had been worked out INTO IX
+	 * stayed a bare CODE node - IX had no register node of its own,
+	 * where HL, DE, BC and the byte registers each do.  It has one
+	 * now: a result in IX reduces to the REGVAR naming it, so the
+	 * rule above matches both and the copy is gone.  The "C:F" test
+	 * that stood beside it went the same way.
 	 */
-	R("=(O,C)", ASSIGN, P_L, P_R, P_R, RF_IX, "\tld ($L),ix\n", R_IX),
 	R("=(I,V):s", ASSIGN, P_L, P_R, P_R, RF_IX,
 		"\tpush ix\n" F_POPHL T_IDX_S_ST, R_HL),
 	/*
@@ -1029,23 +1030,20 @@ struct rule rules[] = {
 	 * high word, load the pointer over it, then trade.
 	 */
 	/*
-	 * lstde carries the return address in BC across the stack
-	 * juggling and returns with it still there, so it needs the
-	 * same guard the arithmetic helpers have.  It did not have it:
-	 * a long stored through a pointer left a register variable
-	 * holding the address of the instruction after the call.
-	 *
-	 * The save goes outside the whole sequence rather than around
-	 * the call alone: lstde takes its destination off the stack, so
-	 * a push bc after the pointer was put there is what it stores
-	 * through.
+	 * These called lstde inside a $[ $] pair, because lstde used to
+	 * park its return address in BC - the register-variable home -
+	 * and hand it back as the caller's variable.  That was fixed in
+	 * lstde itself, which keeps the address in a static word now and
+	 * touches BC nowhere, so the guard has been paying two bytes a
+	 * site for a hazard that no longer exists.  The arithmetic
+	 * helpers still need theirs: amul and adiv really do count in B.
 	 */
 	R("=(D(O),H):l", ASSIGN, P_L, P_R, P_NONE, 0,
-		"$[" F_PUSHHL "\tld hl,($LL)\n\tex (sp),hl\n\tcall lstde\n$]",
+		F_PUSHHL "\tld hl,($LL)\n\tex (sp),hl\n\tcall lstde\n",
 		R_HL),
 	R("=(D(I),H):l", ASSIGN, P_L, P_R, P_NONE, 0,
-		"$[" F_PUSHHL "\tld l,($LL)\n\tld h,($LL+)\n\tex (sp),hl\n"
-		"\tcall lstde\n$]", R_HL),
+		F_PUSHHL "\tld l,($LL)\n\tld h,($LL+)\n\tex (sp),hl\n"
+		"\tcall lstde\n", R_HL),
 	R("=(D(I),N):l", ASSIGN, P_L, P_R, P_NONE, 0,
 		F_LDLLL F_LDHLL1 T_ST_IHL_N, 0),
 	/*
@@ -1061,14 +1059,14 @@ struct rule rules[] = {
 	 * is back in HL.
 	 */
 	R("=(D(V),H):l", ASSIGN, P_L, P_R, P_LL, RF_IX,
-		"$[" F_PUSHHL "\tpush ix\n" F_POPHL "\tex (sp),hl\n"
-		"\tcall lstde\n$]", R_HL),
+		F_PUSHHL "\tpush ix\n" F_POPHL "\tex (sp),hl\n"
+		"\tcall lstde\n", R_HL),
 	R("=(D(V),N):l", ASSIGN, P_L, P_R, P_LL, RF_IX,
 		"\tpush ix\n" F_POPHL T_ST_IHL_N, 0),
 	/* and through the other register home - "*tp = t" in libu's time,
 	 * writing the clock through the caller's pointer */
 	R("=(D(B),H):l", ASSIGN, P_L, P_R, P_NONE, 0,
-		"$[" F_PUSHHL T_BC_HL "\tex (sp),hl\n\tcall lstde\n$]", R_HL),
+		F_PUSHHL T_BC_HL "\tex (sp),hl\n\tcall lstde\n", R_HL),
 
 	/* complement of a word; the long form is handled in rewrite.c,
 	 * beside the long negation it shares its shape with */
