@@ -63,6 +63,7 @@ dumphits(void)
 /* Forward declarations */
 static char *pmatch(char *p, Expr *e);
 static Expr *rewrite1(Expr *e);
+static Expr *valtohl(Expr *e);
 static unsigned char baseop(unsigned char op);
 static int islocdesc(Expr *e);
 
@@ -472,11 +473,21 @@ static int
 ispow2(unsigned long n)
 {
 	int i;
+	/*
+	 * Divide down rather than shift up: a constant shifted by the
+	 * loop counter has twice now found untested corners of this
+	 * compiler's own shift lowering, and this predicate must agree
+	 * between the host build and the self-hosted one before either
+	 * can be trusted.  Right shift by constant 1 is the dullest
+	 * long operation there is.
+	 */
 	if (n == 0) return -1;
-	for (i = 0; i < 32; i++)
-		if (n == ((unsigned long)1 << i))
-			return i;
-	return -1;
+	for (i = 0; n != 1; i++) {
+		if (n & 1)
+			return -1;
+		n >>= 1;
+	}
+	return i;
 }
 
 /*
@@ -2237,6 +2248,15 @@ dolongbin(Expr *e)
 			 */
 			assign(r, R_HL);
 			r = rewrite1(r);
+			/*
+			 * "Aimed at HL" is a request, not a guarantee: a
+			 * count living in a register home reduces to itself
+			 * through the empty =(C,x) rules and never moves.
+			 * ispow2's own loop counter sat in BC, the push
+			 * below parked garbage, and the self-hosted c1
+			 * shifted by whatever HL last held.
+			 */
+			r = valtohl(r);
 			out("\tpush hl\n");
 			if (l->op == NUMBER)
 				loadlongc(l->u.val);
