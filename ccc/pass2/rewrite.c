@@ -3503,7 +3503,17 @@ rewrite(Expr *e)
 	if (r && !reduced(r)) {
 		out("; XXXXXX incomplete: ");
 #ifdef DEBUG
+		/* dumpexpr ends the line */
 		dumpexpr(r);
+#else
+		/*
+		 * The newline is not decoration.  Without DEBUG nothing
+		 * ended the comment, the NEXT emission joined it, and the
+		 * assembler never saw that instruction - the self-hosted
+		 * c1 marked drop_assigns incomplete and then commented
+		 * out its own push ix.
+		 */
+		outc('\n');
 #endif
 	}
 
