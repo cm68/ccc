@@ -153,9 +153,20 @@ unsigned short	nbytes;
 	if(ons > ns)
 		ons = ns;
 	bmove((char *)xp, (char *)q, ons * sizeof(struct store));
-	if(q < xp && q+ns > xp)
+	/*
+	 * Both halves are inside the if.  This was one struct assignment
+	 * until the copy was written out by hand - ccc has no structure
+	 * assignment - and the second half was left outside, so it ran
+	 * on every realloc and stored through an index that only means
+	 * anything when the blocks overlap.  It landed in the text of
+	 * whatever was loaded there; in c0 that was a write to 0xa446
+	 * from inside realloc itself, and c0 could not compile any
+	 * source with a switch big enough to grow the case array.
+	 */
+	if(q < xp && q+ns > xp) {
 		q[q+ns-xp].ptr = allocx.ptr;
 		q[q+ns-xp].flag = allocx.flag;
+	}
 	return (char *)q;
 }
 
