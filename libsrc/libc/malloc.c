@@ -106,7 +106,9 @@ found:
 	allocp = (struct store *)((char *)p + nw);
 	ASSERT(allocp<=alloct);
 	if(q>allocp) {
-		allocx = *allocp;
+		/* member copies: ccc has no struct assignment */
+		allocx.ptr = allocp->ptr;
+		allocx.flag = allocp->flag;
 		allocp->ptr = p->ptr;
 		allocp->flag = 0;
 	}
@@ -152,7 +154,8 @@ unsigned short	nbytes;
 		ons = ns;
 	bmove((char *)xp, (char *)q, ons * sizeof(struct store));
 	if(q < xp && q+ns > xp)
-		q[q+ns-xp] = allocx;
+		q[q+ns-xp].ptr = allocx.ptr;
+		q[q+ns-xp].flag = allocx.flag;
 	return (char *)q;
 }
 
