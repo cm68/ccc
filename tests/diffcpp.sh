@@ -35,17 +35,18 @@ for b in $SRCS; do
 		echo "  $b: FAILED TO COMPILE"; cat "$cpp/comccc/$b.log"; exit 1; }
 done
 
-# Link both the same way, so any difference is the code and not the link.
+# Link both with the same recipe; each image takes the runtime built
+# by its own compiler from the matching root/lib area.
 link() {
-	out=$1; dir=$2
+	out=$1; dir=$2; libs=$3
 	objs=""
 	for b in $SRCS; do objs="$objs $dir/$b.o"; done
 	"$root/root/bin/wsld" -s -o "$out" -Ttext=0x100 \
 	    "$root/root/lib/crt0.o" $objs \
-	    -L"$root/root/lib" -lccc -lc -lu -lc
+	    -L"$root/root/lib/$libs" -lccc -lc -lu -lc
 }
-link "$work/cpp-zc3.mx" "$cpp/comzc3"
-link "$work/cpp-ccc.mx" "$cpp/comccc"
+link "$work/cpp-zc3.mx" "$cpp/comzc3" zc3
+link "$work/cpp-ccc.mx" "$cpp/comccc" ccc
 
 echo "running both over $(echo $SRCS | wc -w) sources"
 echo

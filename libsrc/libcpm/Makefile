@@ -2,31 +2,20 @@
 # cp/m system call Library Makefile
 # Builds the cp/m call library
 #
+# Two build areas, one per compiler: zc3/ and ccc/ - see libc/Makefile.
+# CC is deliberately unused: the top level drives everything with
+# CC=gcc on the command line, and these are target runtime sources.
+#
 
 ARCHIVE = libcpm.a
 
 AS = asz
-# zc3, not ccc: the installed archive is runtime code for the .com/.mx
-# builds and pass2 codegen is still WIP (matches libc/libu).  The ccc
-# compile coverage of these sources lives in the ccc-check target.
-# override: the top level drives everything with CC=gcc on the
-# command line, and a command-line variable beats a plain
-# assignment in every sub-make it reaches.  These are runtime
-# sources for the target and gcc cannot build them - a clean
-# tree failed here, and only built at all because the objects
-# from some earlier run were still lying about.
-override CC = zc3
 LIB = wslib
+ROOTDIR = $(realpath ../../root)
 
-DEST = $(realpath ../../root/lib)
+DEST ?= ../../root/lib
 
-.SUFFIXES: .c .s .o
-
-.c.o:
-	$(CC) -I../include -c $<
-
-.s.o:
-	$(AS) $< -o $@
+.SUFFIXES:
 
 # fakecpcl.s was a stub __cpm_clean for when cleanup.c didn't compile
 SRCS = bdos.s bdoshl.s exec.s execl.s exit.s _exit.s \
@@ -37,21 +26,48 @@ CSRCS = abort.c chmod.c cleanup.c close.c creat.c dup.c \
 	open.c read.c rename.c seek.c signal.c stat.c time.c \
 	unlink.c write.c
 
-OBJS = $(SRCS:.s=.o) $(CSRCS:.c=.o)
+all: zc3 ccc
 
-all: $(ARCHIVE)
+zc3 ccc:
+	@$(MAKE) TC=$@ $@/$(ARCHIVE)
 
-$(ARCHIVE): $(OBJS)
-	rm -f $(ARCHIVE)
-	$(LIB) -cr $(ARCHIVE) $(OBJS)
+# ccc-check used to be a throwaway compile-stress pass over CSRCS with
+# the self-hosted pipeline; the ccc build area does that for real now.
+ccc-check: ccc
 
-install: $(ARCHIVE)
-	@mkdir -p $(DEST)
-	cp $(ARCHIVE) $(DEST)
+ifneq ($(TC),)
+
+OBJS = $(addprefix $(TC)/,$(SRCS:.s=.o) $(CSRCS:.c=.o))
+
+ifeq ($(TC),ccc)
+ZCC = $(ROOTDIR)/bin/ccc -O
+else
+ZCC = zc3
+endif
+
+$(TC)/%.o: %.c | $(TC)
+	cd $(TC) && $(ZCC) -I../../include -c ../$<
+
+$(TC)/%.o: %.s | $(TC)
+	$(AS) $< -o $@
+
+$(TC)/$(ARCHIVE): $(OBJS)
+	rm -f $@
+	$(LIB) -cr $@ $(OBJS)
+
+$(TC):
+	mkdir -p $(TC)
+
+endif
+
+install: all
+	@mkdir -p $(DEST)/zc3 $(DEST)/ccc
+	cp zc3/$(ARCHIVE) $(DEST)/zc3/
+	cp ccc/$(ARCHIVE) $(DEST)/ccc/
 
 clean:
-	rm -f $(OBJS) *.1 *.2 *.x *.i *.pp
-	rm -rf ccctest
+	rm -rf zc3 ccc ccctest
+	rm -f *.o *.as *.1 *.2 *.x *.i *.pp
 
 clobber: clean
 	rm -f $(ARCHIVE)
@@ -59,20 +75,6 @@ clobber: clean
 regression:
 	../../tests/regress.sh --filter libsrc/libcpm/ $(REGRESS_FLAGS)
 
-# Compile every C source with the self-hosted ccc pipeline (cpp/c0/c1/
-# asz) as a stress test.  Objects go to ccctest/ and are thrown away -
-# the installed archive is zc3-built.
-ccc-check:
-	@mkdir -p ccctest
-	@set -e; cd ccctest; for f in $(CSRCS); do \
-		printf "ccc %-14s" "$$f"; \
-		../../../root/bin/ccc -I../../include -c ../$$f \
-			> $$f.log 2>&1 && echo ok \
-			|| { echo FAIL; cat $$f.log; exit 1; }; \
-	done
+.PHONY: all zc3 ccc ccc-check install clean clobber regression
 
-.PHONY: regression ccc-check
-
-#
 # vim: tabstop=4 shiftwidth=4 noexpandtab:
-#

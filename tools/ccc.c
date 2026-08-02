@@ -376,9 +376,22 @@ main(int argc, char **argv)
     sprintf(astpp_path, "%s/bin/astpp", rootdir);
     sprintf(peep_path, "%s/bin/peep", rootdir);
 
+    /*
+     * Runtime archives live in per-compiler areas: lib/ccc holds the
+     * ccc-built C runtime, lib/zc3 the HiTech-built one.  ccc links
+     * ccc-built runtime; CCCLIBS=zc3 in the environment overrides for
+     * comparison builds.  crt0 is assembled, so it stays shared.
+     */
+    {
+        char *libset;
+
+        libset = getenv("CCCLIBS");
+        if (!libset)
+            libset = "ccc";
+        sprintf(libc_path, "%s/lib/%s/libc.a", rootdir, libset);
+        sprintf(libu_path, "%s/lib/%s/libu.a", rootdir, libset);
+    }
     sprintf(chdr_path, "%s/lib/crt0.o", rootdir);
-    sprintf(libc_path, "%s/lib/libc.a", rootdir);
-    sprintf(libu_path, "%s/lib/libu.a", rootdir);
     sprintf(sysinc_path, "-i%s/usr/include", rootdir);
 
     /* Initialize base argument arrays with program names */

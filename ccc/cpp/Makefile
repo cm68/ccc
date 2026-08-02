@@ -150,7 +150,7 @@ sizecheck: $(GENERATED)
 		{ echo "ok"; } || { echo "FAIL"; } \
 	done ; \
 	wssize $$o | awk '{t+=$$1;d+=$$2;b+=$$3;a+=$$4} END {print t,d,b,a}' | tee -a sizefile ; \
-	wsld -r -o $(SIZEDIR)/cpp $(ROOTDIR)/lib/crt0.o $$o -L$(ROOTDIR)/lib -lccc -lc -lu ; \
+	wsld -r -o $(SIZEDIR)/cpp $(ROOTDIR)/lib/crt0.o $$o -L$(ROOTDIR)/lib/$(ZCC) -lccc -lc -lu ; \
 	wssize $(SIZEDIR)/cpp | tee -a sizefile
 
 
@@ -199,7 +199,7 @@ com-zc3: $(GENERATED)
 	cd comzc3 && $(ROOTDIR)/bin/wsld -s -o cpp.ws \
 		-Ttext=0x100 -Tdata=0x100 -Tbss=0x100 \
 		$(ROOTDIR)/lib/crtcpm.o $$(ls *.o *.obj 2>/dev/null) \
-		-L$(ROOTDIR)/lib -lccc -lcpm -lc -lu -lc
+		-L$(ROOTDIR)/lib/zc3 -lccc -lcpm -lc -lu -lc
 	cd comzc3 && tail -c +17 cpp.ws > cpp-zc3.com
 	@$(ROOTDIR)/bin/wssize comzc3/cpp.ws | sed 's/cpp.ws/cpp-zc3.com/'
 
@@ -221,7 +221,7 @@ mx-ccc: $(GENERATED)
 	done
 	cd comccc && $(ROOTDIR)/bin/wsld -s -o cpp.mx -Ttext=0x100 \
 		$(ROOTDIR)/lib/crt0.o $$(ls *.o 2>/dev/null) \
-		-L$(ROOTDIR)/lib -lccc -lc -lu -lc
+		-L$(ROOTDIR)/lib/ccc -lccc -lc -lu -lc
 	@$(ROOTDIR)/bin/wssize comccc/cpp.mx
 
 # Individual stage1 file rules

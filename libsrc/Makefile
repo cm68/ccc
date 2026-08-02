@@ -6,9 +6,9 @@ DEST ?= $(CURDIR)/../root
 
 AS = asz
 
-# Each library Makefile sets its own CC (zc3: the archives are runtime
-# code and pass2 codegen is still WIP).  Compile-stress coverage of
-# these sources under ccc is the libcpm ccc-check target.
+# Each library builds two areas, zc3/ and ccc/ - one archive per
+# compiler - and installs them to root/lib/zc3 and root/lib/ccc.
+# Links pick an area with -L; the two runtimes never mix in one image.
 DIRS = libu libc libcpm
 STARTUP = crtcpm.o crt0.o
 

@@ -79,7 +79,7 @@ for t in $tests; do
 		 zc3 -O -c -CPM -DRT_ZC3 -I"$here" "$src" &&
 		 "$root/root/bin/wsld" -o "$bin" -Ttext=0x100 \
 			"$root/root/lib/crt0.o" "$base.o" \
-			-L"$root/root/lib" -lc -lu -lc) >"$log" 2>&1 || built=no
+			-L"$root/root/lib/zc3" -lc -lu -lc) >"$log" 2>&1 || built=no
 		;;
 	ccc)
 		(cd "$work" && "$CCC" $CCCFLAGS -DRT_CCC -o "$bin" -I"$here" "$src") >"$log" 2>&1 ||

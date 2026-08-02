@@ -154,7 +154,7 @@ com: $(GENERATED)
 	cd comzc3 && $(ROOTDIR)/bin/wsld -s -o c1.ws \
 		-Ttext=0x100 -Tdata=0x100 -Tbss=0x100 \
 		$(ROOTDIR)/lib/crtcpm.o $$(ls *.o *.obj 2>/dev/null) \
-		-L$(ROOTDIR)/lib -lccc -lcpm -lc -lu -lc
+		-L$(ROOTDIR)/lib/zc3 -lccc -lcpm -lc -lu -lc
 	cd comzc3 && tail -c +17 c1.ws > c1-zc3.com
 	@echo "--- per object (text data bss) ---"
 	@cd comzc3 && $(ROOTDIR)/bin/wssize $$(ls *.o *.obj 2>/dev/null)
@@ -173,7 +173,7 @@ sizecheck: $(GENERATED)
 		{ echo "ok"; } || { echo "FAIL"; } \
 	done ; \
 	wssize $$o | awk '{t+=$$1;d+=$$2;b+=$$3;a+=$$4} END {print t,d,b,a}' | tee -a sizefile ; \
-	wsld -r -o $(SIZEDIR)/c1 $(ROOTDIR)/lib/crt0.o $$o -L$(ROOTDIR)/lib -lccc -lc -lu ; \
+	wsld -r -o $(SIZEDIR)/c1 $(ROOTDIR)/lib/crt0.o $$o -L$(ROOTDIR)/lib/$(ZCC) -lccc -lc -lu ; \
 	wssize $(SIZEDIR)/c1 | tee -a sizefile
 
 
@@ -232,7 +232,7 @@ mx-ccc: $(GENERATED)
 	done
 	cd mxccc && $(ROOTDIR)/bin/wsld -s -o c1.mx -Ttext=0x100 \
 		$(ROOTDIR)/lib/crt0.o $$(ls *.o 2>/dev/null) \
-		-L$(ROOTDIR)/lib -lccc -lc -lu -lc
+		-L$(ROOTDIR)/lib/ccc -lccc -lc -lu -lc
 	@$(ROOTDIR)/bin/wssize mxccc/c1.mx
 
 .PHONY: all clean regen stage1 install clobber sizefile sizecheck regression coverage mx-ccc

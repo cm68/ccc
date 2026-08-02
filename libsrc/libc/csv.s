@@ -79,6 +79,34 @@ fexit:
 	pop	iy
 	ret
 
+;	bcsv: run the rest of this function with BC preserved.
+;
+;	The register-variable convention keeps a caller's variable in
+;	BC across calls.  A handful of hand-written routines in this
+;	library use BC as scratch - strcmp pops its return address
+;	into it - and until now every ordinary call site in the
+;	compiler paid two bytes of push bc/pop bc on their account.
+;	The knowledge belongs in the callee: a routine that clobbers
+;	BC opens with "call bcsv", three bytes once, and its own ret
+;	comes back through the restore below.
+;
+;	The saved copy lives in a static, not on the stack: a stacked
+;	copy would shift every argument offset the body was written
+;	against.  Non-reentrant, like lstde's scratch word, and for
+;	the same reason acceptable: nothing here recurses.
+
+	global	bcsv
+
+bcsv:
+	ld	(bcsave),bc
+	pop	hl		;body address (the call pushed it)
+	ld	de,bcret
+	push	de		;body returns through the restore
+	jp	(hl)
+bcret:
+	ld	bc,(bcsave)
+	ret
+
 ;	New csv: allocates space for stack based on word following
 ;	call ncsv
 
@@ -99,3 +127,6 @@ ncsv:
 	jp	(hl)
 
 ; vim: tabstop=4 shiftwidth=4 noexpandtab:
+
+	.data
+bcsave:	.dw	0

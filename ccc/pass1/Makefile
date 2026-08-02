@@ -146,7 +146,7 @@ sizecheck: $(GENERATED)
 		{ echo "ok"; } || { echo "FAIL"; } \
 	done ; \
 	wssize $$o | awk '{t+=$$1;d+=$$2;b+=$$3;a+=$$4} END {print t,d,b,a}' | tee -a sizefile ; \
-	wsld -r -o $(SIZEDIR)/c0 -Ttext=0x100 $(ROOTDIR)/lib/crt0.o $$o -L$(ROOTDIR)/lib -lccc -lc -lu ; \
+	wsld -r -o $(SIZEDIR)/c0 -Ttext=0x100 $(ROOTDIR)/lib/crt0.o $$o -L$(ROOTDIR)/lib/$(ZCC) -lccc -lc -lu ; \
 	wssize $(SIZEDIR)/c0 | tee -a sizefile
 
 
@@ -201,7 +201,7 @@ mx-zc3: $(GENERATED)
 	done
 	cd mxzc3 && $(ROOTDIR)/bin/wsld -s -o c0.mx -Ttext=0x100 \
 		$(ROOTDIR)/lib/crt0.o $$(ls *.o *.obj 2>/dev/null) \
-		-L$(ROOTDIR)/lib -lccc -lc -lu -lc
+		-L$(ROOTDIR)/lib/zc3 -lccc -lc -lu -lc
 	@$(ROOTDIR)/bin/wssize mxzc3/c0.mx
 
 # The same build done by ccc itself.  tests/diffpass1.sh runs the two
@@ -223,7 +223,7 @@ mx-ccc: $(GENERATED)
 	done
 	cd mxccc && $(ROOTDIR)/bin/wsld -s -o c0.mx -Ttext=0x100 \
 		$(ROOTDIR)/lib/crt0.o $$(ls *.o 2>/dev/null) \
-		-L$(ROOTDIR)/lib -lccc -lc -lu -lc
+		-L$(ROOTDIR)/lib/ccc -lccc -lc -lu -lc
 	@$(ROOTDIR)/bin/wssize mxccc/c0.mx
 
 .PHONY: all clean regen stage1 install clobber sizefile sizecheck regression mx-zc3 mx-ccc

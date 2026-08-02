@@ -102,7 +102,7 @@ def main():
     r = subprocess.run([R + "/bin/wsld", "-s", "-o", cppmx, "-Ttext=0x100",
                         R + "/lib/crt0.o"]
                        + [f"{C}/comzc3/{b}.o" for b in CPP_SRCS]
-                       + ["-L" + R + "/lib", "-lccc", "-lc", "-lu", "-lc"],
+                       + ["-L" + R + "/lib/zc3", "-lccc", "-lc", "-lu", "-lc"],
                        capture_output=True, text=True)
     if r.returncode != 0:
         print("cpp.mx link failed:", r.stderr, file=sys.stderr)

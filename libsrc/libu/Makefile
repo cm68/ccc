@@ -2,29 +2,20 @@
 # micronix system call Library Makefile
 # Builds the micronix system call library
 #
+# Two build areas, one per compiler: zc3/ and ccc/ - see libc/Makefile.
+# CC is deliberately unused: the top level drives everything with
+# CC=gcc on the command line, and these are target runtime sources.
+#
 
 ARCHIVE = libu.a
 
 AS = asz
-# zc3, not ccc: pass2 codegen is still WIP (matches libc)
-# override: the top level drives everything with CC=gcc on the
-# command line, and a command-line variable beats a plain
-# assignment in every sub-make it reaches.  These are runtime
-# sources for the target and gcc cannot build them - a clean
-# tree failed here, and only built at all because the objects
-# from some earlier run were still lying about.
-override CC = zc3
 LIB = wslib
+ROOTDIR = $(realpath ../../root)
 
 DEST ?= ../../root/lib
 
-.SUFFIXES: .c .s .o
-
-.c.o:
-	$(CC) -I../include -c $<
-
-.s.o:
-	$(AS) $< -o $@
+.SUFFIXES:
 
 SRCS = access.s alarm.s _break.s chdir.s chmod.s chown.s close.s \
 	creat.s dup.s errno.s exec.s execv.s exit.s fdpos.s fork.s fstat.s \
@@ -35,20 +26,44 @@ SRCS = access.s alarm.s _break.s chdir.s chmod.s chown.s close.s \
 
 CSRCS = signal.c lseek.c seek.c
 
-OBJS = $(SRCS:.s=.o) $(CSRCS:.c=.o)
+all: zc3 ccc
 
-all: $(ARCHIVE)
+zc3 ccc:
+	@$(MAKE) TC=$@ $@/$(ARCHIVE)
 
-$(ARCHIVE): $(OBJS)
-	rm -f $(ARCHIVE)
-	$(LIB) -cr $(ARCHIVE) $(OBJS)
+ifneq ($(TC),)
 
-install: $(ARCHIVE)
-	@mkdir -p $(DEST)
-	cp $(ARCHIVE) $(DEST)
+OBJS = $(addprefix $(TC)/,$(SRCS:.s=.o) $(CSRCS:.c=.o))
+
+ifeq ($(TC),ccc)
+ZCC = $(ROOTDIR)/bin/ccc -O
+else
+ZCC = zc3
+endif
+
+$(TC)/%.o: %.c | $(TC)
+	cd $(TC) && $(ZCC) -I../../include -c ../$<
+
+$(TC)/%.o: %.s | $(TC)
+	$(AS) $< -o $@
+
+$(TC)/$(ARCHIVE): $(OBJS)
+	rm -f $@
+	$(LIB) -cr $@ $(OBJS)
+
+$(TC):
+	mkdir -p $(TC)
+
+endif
+
+install: all
+	@mkdir -p $(DEST)/zc3 $(DEST)/ccc
+	cp zc3/$(ARCHIVE) $(DEST)/zc3/
+	cp ccc/$(ARCHIVE) $(DEST)/ccc/
 
 clean:
-	rm -f $(OBJS)
+	rm -rf zc3 ccc
+	rm -f *.o *.as *.1 *.2 *.x *.i *.pp
 
 clobber: clean
 	rm -f $(ARCHIVE)
@@ -56,8 +71,6 @@ clobber: clean
 regression:
 	../../tests/regress.sh --filter libsrc/libu/ $(REGRESS_FLAGS)
 
-.PHONY: regression
+.PHONY: all zc3 ccc install clean clobber regression
 
-#
 # vim: tabstop=4 shiftwidth=4 noexpandtab:
-#
