@@ -151,10 +151,28 @@ int i;
 	return r;
 }
 
+/* the byte register homes compared against each other: label()'s
+ * own Sethi-Ullman max is "l > r ? l : r" on two unsigned chars,
+ * and with l in C and r in B the compare had no rule - ccguard's
+ * stale-flag branch made the self-hosted compiler evaluate every
+ * expression in a different order than its host-built twin. */
+int
+bmax(a, b)
+unsigned char a;
+unsigned char b;
+{
+	return a > b ? a : b;
+}
+
 int
 main()
 {
 	int i;
+
+	CHECK(40, bmax(1, 2), 2);
+	CHECK(41, bmax(2, 1), 2);
+	CHECK(42, bmax(200, 100), 200);
+	CHECK(43, bmax(7, 7), 7);
 
 	for (i = 0; i < 3; i++) {
 		tsrc[i].a = i + 10;
