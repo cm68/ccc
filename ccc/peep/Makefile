@@ -7,7 +7,7 @@ DEST = $(realpath ../../root)
 CC = gcc
 
 ifeq ($(CC),gcc)
-WARNS = -Wall -Werror -std=gnu89
+WARNS = -Wall -Werror -std=gnu89 -Werror=declaration-after-statement
 DEBUG = -ggdb3 -O0
 CFLAGS = -m32 $(DEBUG) $(WARNS) -I.
 LDFLAGS = -m32 $(DEBUG)

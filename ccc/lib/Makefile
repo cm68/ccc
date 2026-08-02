@@ -8,7 +8,7 @@ CC = gcc
 
 ifeq ($(CC),gcc)
 DEFINES = -DDEBUG
-WARNS = -Wall -Werror
+WARNS = -Wall -Werror -Werror=declaration-after-statement
 DEBUG = -g -O0
 CFLAGS = -m32 $(DEBUG) $(DEFINES) $(WARNS)
 LIB = ar
@@ -45,15 +45,14 @@ else
 ZCC = zc3
 endif
 
-$(TC)/libutil.o: libutil.c $(HEADERS) | $(TC)
+$(TC)/libutil.o: libutil.c $(HEADERS)
+	@mkdir -p $(TC)
 	cd $(TC) && $(ZCC) -I.. -I../../../libsrc/include -c ../libutil.c
 
 $(TC)/libccc.a: $(TC)/libutil.o
 	rm -f $@
 	wslib -cr $@ $(TC)/libutil.o
 
-$(TC):
-	mkdir -p $(TC)
 
 endif
 

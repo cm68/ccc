@@ -45,18 +45,18 @@ ZCC = zc3
 CCDEP =
 endif
 
-$(TC)/%.o: %.c $(CCDEP) | $(TC)
+$(TC)/%.o: %.c $(CCDEP)
+	@mkdir -p $(TC)
 	cd $(TC) && $(ZCC) -I../../include -c ../$<
 
-$(TC)/%.o: %.s | $(TC)
+$(TC)/%.o: %.s
+	@mkdir -p $(TC)
 	$(AS) $< -o $@
 
 $(TC)/$(ARCHIVE): $(OBJS)
 	rm -f $@
 	$(LIB) -cr $@ $(OBJS)
 
-$(TC):
-	mkdir -p $(TC)
 
 endif
 

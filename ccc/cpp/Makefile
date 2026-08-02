@@ -13,7 +13,7 @@ LIBCCC = ../lib/libccc.a
 
 ifeq ($(CC),gcc)
 DEFINES = -DDEBUG
-WARNS = -Wall -Werror -Wno-builtin-declaration-mismatch
+WARNS = -Wall -Werror -Wno-builtin-declaration-mismatch -Werror=declaration-after-statement
 DEBUG = -g -O0
 CFLAGS = -m32 -std=c89 $(DEBUG) $(DEFINES) $(WARNS) -I. -I../lib
 LDFLAGS = -m32 $(DEBUG)

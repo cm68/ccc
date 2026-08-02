@@ -10,7 +10,7 @@ LIBCCC = ../lib/libccc.a
 
 ifeq ($(CC),gcc)
 DEFINES = -DDEBUG
-WARNS = -Wall -Werror -std=gnu89
+WARNS = -Wall -Werror -std=gnu89 -Werror=declaration-after-statement
 DEBUG = -ggdb3 -O0
 CFLAGS = -m32 $(DEBUG) $(DEFINES) $(WARNS) -I. -I../lib
 LDFLAGS = -m32 $(DEBUG)

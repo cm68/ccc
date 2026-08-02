@@ -2695,7 +2695,15 @@ rewrite1(Expr *e)
 	 */
 	if ((e->op == LT || e->op == GE || e->op == LE || e->op == GT ||
 	     e->op == EQ || e->op == NEQ) && e->left && e->right) {
-		char lsym = issymish(e->left);
+		/*
+		 * Declared here and worked out below the staging: the
+		 * byte-pair block replaces both operands, so what these
+		 * describe is the tree as it stands after it has run.  The
+		 * declarations cannot follow it - this compiler has to
+		 * build itself, and it takes declarations at the top of a
+		 * block only.
+		 */
+		char lsym, rsym, linreg, rinreg;
 
 		/*
 		 * Both operands living in the byte register homes: no rule
@@ -2725,10 +2733,11 @@ rewrite1(Expr *e)
 			e->right = mkcode(rw, R_E);
 			e->right->op = INE;
 		}
-		char rsym = issymish(e->right);
-		char linreg = e->left->op == REGVAR ||
+		lsym = issymish(e->left);
+		rsym = issymish(e->right);
+		linreg = e->left->op == REGVAR ||
 		    e->left->op == INBC || e->left->op == INDE;
-		char rinreg = e->right->op == REGVAR ||
+		rinreg = e->right->op == REGVAR ||
 		    e->right->op == INBC || e->right->op == INDE;
 
 		if (rsym && linreg) {

@@ -654,6 +654,9 @@ macexpand(char *s)	/* the symbol we are looking up as a macro */
     char *n;
     unsigned char i;
     char stringify = 0;
+    char *lim;			/* set below: macbuffer is malloc'd by
+				 * macbuf_init, so the end of it is not
+				 * known until that has run */
 
     long ndv;
 
@@ -668,7 +671,7 @@ macexpand(char *s)	/* the symbol we are looking up as a macro */
         return 0;
     }
 
-    char *lim = macbuffer + MACBUF - 4;
+    lim = macbuffer + MACBUF - 4;
 
     args = 0;
     d = macbuffer;
