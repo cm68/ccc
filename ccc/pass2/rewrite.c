@@ -3376,6 +3376,76 @@ rewrite1(Expr *e)
 			out("\tex de,hl\n");
 			e->right->width = T_SHORT;
 		}
+
+		/*
+		 * The right operand of a comparison left standing as an
+		 * INDEX.  A local array's name is its address, so "p !=
+		 * local" and "p < def + 32" reduce to a frame descriptor
+		 * that no comparison rule has a form for - the table has
+		 * (x,E), (x,H), (x,B) and nothing against (iy+d), because
+		 * an address is not what a frame slot usually means.
+		 *
+		 * The value wanted is the descriptor's ADDRESS, and it
+		 * belongs in DE beside the left operand in HL, which is
+		 * where every comparison rule expects to find it.  Doing it
+		 * here rather than as a rule is the point: a rule matching a
+		 * bare INDEX is greedy - it steals the (reg+d) addressing
+		 * forms before the load and store rules ever see them, which
+		 * is why the one that used to exist was taken out.
+		 *
+		 * qsort, doscan and cpp's filtenum all compare a walking
+		 * pointer against the end of a local buffer, and all three
+		 * branched on stale flags.
+		 */
+		/*
+		 * The same descriptor as the VALUE being stored: "*pp =
+		 * local" files a local array's address through a pointer.
+		 * The store rules take their value from HL, and the left
+		 * here is a dereferenced register home, so HL is free -
+		 * valtohl knows how to work an (iy+d) into it.
+		 */
+		if (e->op == ASSIGN && e->left && e->right &&
+		    e->right->op == INDEX && !ISLONG(e->width) &&
+		    e->left->op == DEREF && e->left->left &&
+		    (e->left->left->op == INBC ||
+		     (e->left->left->op == REGVAR &&
+		      e->left->left->u.var.reg == R_IX)))
+			e->right = valtohl(e->right);
+
+		if (e->left && e->right && e->right->op == INDEX &&
+		    !ISLONG(e->width) && reduced(e->left) &&
+		    (e->op == EQ || e->op == NEQ || e->op == LT ||
+		     e->op == GT || e->op == LE || e->op == GE ||
+		     /*
+		      * and the difference or sum against one, "p - def",
+		      * which is how the span is read back afterwards.
+		      * Not against a left in HL: "-(H,I)" is a real rule
+		      * that reaches the frame slot without a register,
+		      * and taking the operand away from it would cost
+		      * bytes at every subscript in the tree.
+		      */
+		     ((e->op == PLUS || e->op == MINUS) &&
+		      e->left->op != INHL))) {
+			char rw = e->right->width;
+			unsigned char reg = e->right->u.var.reg;
+			short off = e->right->u.var.off;
+			/* HL only has to be kept if the left operand is in it -
+			 * against a register home it is free to use */
+			char keep = e->left->op == INHL;
+
+			if (keep)
+				out("\tpush hl\n");
+			outf("\tpush %s\n\tpop hl\n",
+			    idxregname(reg ? reg : R_IY));
+			if (off)
+				outf("\tld de,%d\n\tadd hl,de\n", off);
+			out("\tex de,hl\n");
+			if (keep)
+				out("\tpop hl\n");
+			freeexpr(e->right);
+			e->right = mkcode(rw, R_DE);
+			e->right->op = INDE;
+		}
 	}
 
 	/* Fixed-point: keep rewriting until no change */
