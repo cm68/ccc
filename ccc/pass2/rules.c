@@ -575,6 +575,19 @@ struct rule rules[] = {
 	R("+(V,E)", PLUS, P_L, P_R, P_L, RF_IX,
 		"\tpush ix\n" F_POPHL F_ADDHLDE, R_HL),
 	/*
+	 * And against the other register home: two pointers walking the
+	 * same buffer land one in IX and one in BC, and "p - q" is how a
+	 * span length is worked out - outf's literal spans first.
+	 */
+	R("-(V,B)", MINUS, P_L, P_R, P_L, RF_IX,
+		"\tpush ix\n" F_POPHL F_ORA F_SBCHLBC, R_HL),
+	R("+(V,B)", PLUS, P_L, P_R, P_L, RF_IX,
+		"\tpush ix\n" F_POPHL "\tadd hl,bc\n", R_HL),
+	R("-(B,V)", MINUS, P_L, P_R, P_R, RF_IX,
+		T_BC_HL "\tpush ix\n\tpop de\n" F_ORA F_SBCHLDE, R_HL),
+	R("+(B,V)", PLUS, P_L, P_R, P_R, RF_IX,
+		T_BC_HL "\tpush ix\n\tpop de\n" F_ADDHLDE, R_HL),
+	/*
 	 * Against zero, which is what "p == 0" on a pointer register
 	 * variable comes to and had no form: testing the halves is
 	 * shorter than loading nought into DE to subtract it.
@@ -630,6 +643,39 @@ struct rule rules[] = {
 		"\tpush ix\n\tpop de\n" F_EXDEHL F_ORA F_SBCHLDE, F_NC),
 	R("G(H,V)", GT, P_L, P_R, P_R, RF_IX,
 		"\tpush ix\n\tpop de\n" F_EXDEHL F_ORA F_SBCHLDE, F_C),
+
+	/*
+	 * Both operands in register homes: BC against IX, which two
+	 * register pointers walking the same buffer produce - outf's
+	 * literal spans were the first ("p > q" with p in IX, q in BC).
+	 * There was no rule at all, the comparison emitted NOTHING, and
+	 * the branch went on whatever flags were lying around.
+	 */
+	R("Q(B,V)", EQ, P_L, P_R, P_R, RF_IX,
+		T_BC_HL "\tpush ix\n\tpop de\n" F_ORA F_SBCHLDE, F_Z),
+	R("U(B,V)", NEQ, P_L, P_R, P_R, RF_IX,
+		T_BC_HL "\tpush ix\n\tpop de\n" F_ORA F_SBCHLDE, F_NZ),
+	R("T(B,V)", LT, P_L, P_R, P_R, RF_IX,
+		T_BC_HL "\tpush ix\n\tpop de\n" F_ORA F_SBCHLDE, F_C),
+	R("Y(B,V)", GE, P_L, P_R, P_R, RF_IX,
+		T_BC_HL "\tpush ix\n\tpop de\n" F_ORA F_SBCHLDE, F_NC),
+	R("W(B,V)", LE, P_L, P_R, P_R, RF_IX,
+		T_BC_HL "\tpush ix\n\tpop de\n" F_EXDEHL F_ORA F_SBCHLDE, F_NC),
+	R("G(B,V)", GT, P_L, P_R, P_R, RF_IX,
+		T_BC_HL "\tpush ix\n\tpop de\n" F_EXDEHL F_ORA F_SBCHLDE, F_C),
+	/* and mirrored, the IX pointer on the left */
+	R("Q(V,B)", EQ, P_L, P_R, P_L, RF_IX,
+		"\tpush ix\n" F_POPHL F_ORA F_SBCHLBC, F_Z),
+	R("U(V,B)", NEQ, P_L, P_R, P_L, RF_IX,
+		"\tpush ix\n" F_POPHL F_ORA F_SBCHLBC, F_NZ),
+	R("T(V,B)", LT, P_L, P_R, P_L, RF_IX,
+		"\tpush ix\n" F_POPHL F_ORA F_SBCHLBC, F_C),
+	R("Y(V,B)", GE, P_L, P_R, P_L, RF_IX,
+		"\tpush ix\n" F_POPHL F_ORA F_SBCHLBC, F_NC),
+	R("W(V,B)", LE, P_L, P_R, P_L, RF_IX,
+		T_BC_HL "\tpush ix\n\tpop de\n" F_ORA F_SBCHLDE, F_NC),
+	R("G(V,B)", GT, P_L, P_R, P_L, RF_IX,
+		T_BC_HL "\tpush ix\n\tpop de\n" F_ORA F_SBCHLDE, F_C),
 
 	R("=(V,H)", ASSIGN, P_L, P_R, P_L, RF_IX, F_PUSHHL "\tpop ix\n", R_IX),
 	R("=(V,E)", ASSIGN, P_L, P_R, P_L, RF_IX, "\tpush de\n\tpop ix\n", R_IX),

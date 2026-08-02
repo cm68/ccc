@@ -1728,11 +1728,34 @@ constflag(Expr *e)
 	return 1;
 }
 
+/*
+ * A condition that never reduced still reaches the cc functions, and
+ * the union field they read is garbage there - the branch goes on
+ * whatever flags were lying around.  "p > q" between two register
+ * homes did exactly that, silently.  Say so in the output: it is
+ * only a comment, but it is what the differential greps for.
+ */
+static void
+ccguard(Expr *e)
+{
+	unsigned char op;
+
+	if (!e)
+		return;
+	op = e->op;
+	if (op == CODE || op == REGVAR || op == NUMBER ||
+	    op == INA || op == INHL || op == INDE ||
+	    op == INBC || op == INE)
+		return;
+	out("; XXXXXX unreduced condition\n");
+}
+
 char *
 falsecc(Expr *e)
 {
 	if (constflag(e))
 		return "z";
+	ccguard(e);
 	switch (e ? e->u.var.reg : 0) {
 	case F_Z:  return "nz";
 	case F_NZ: return "z";
@@ -1758,6 +1781,7 @@ truecc(Expr *e)
 {
 	if (constflag(e))
 		return "nz";
+	ccguard(e);
 	switch (e ? e->u.var.reg : 0) {
 	case F_Z:  return "z";
 	case F_NZ: return "nz";
