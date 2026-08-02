@@ -1480,6 +1480,25 @@ step(Expr *e)
 		else if (reg == R_BC) e->op = INBC;
 		else if (reg == R_A) e->op = INA;
 		else if (reg == R_E) e->op = INE;
+		/*
+		 * IX has no IN- node: the register is a variable's home,
+		 * so the node that says "the value is in IX" is a REGVAR
+		 * naming it - the same node valtohl and islocdesc already
+		 * understand.  Without this a result left in IX stayed a
+		 * bare CODE, which no operand pattern matches: the walk in
+		 * malloc's coalesce loop
+		 *
+		 *	while (!testbusy(*(q = p->ptr)))
+		 *
+		 * reduced the assignment, then found no rule for (that + 2)
+		 * and emitted neither the flag byte load nor the AND.  The
+		 * jp nz below it tested whatever flags happened to be set,
+		 * so the busy test never re-evaluated and the loop spun.
+		 */
+		else if (reg == R_IX) {
+			e->op = REGVAR;
+			e->u.var.off = 0;
+		}
 		else if (isflag(reg) && e->dest != DEST_FLAGS) {
 			/* the condition was wanted as a number, not a jump */
 			matflag(reg);
@@ -1550,6 +1569,15 @@ reduced(Expr *e)
 	case INA:
 	case INE:
 		return 1;
+	case REGVAR:
+		/*
+		 * A register variable needs no code: the value is in the
+		 * register already.  This is valtohl's set - the homes a
+		 * value can be sitting in - and it is here because a
+		 * result left in IX now reduces to REGVAR rather than to
+		 * a CODE node.
+		 */
+		return e->u.var.reg == R_IX || e->u.var.reg == R_BC;
 	}
 	return 0;
 }

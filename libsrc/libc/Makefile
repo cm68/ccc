@@ -73,13 +73,19 @@ ifneq ($(TC),)
 
 OBJS = $(addprefix $(TC)/,$(SRCS:.s=.o) $(CSRCS:.c=.o))
 
+# The ccc area is rebuilt when the compiler itself changes: these
+# objects exist to be run, and a codegen fix that leaves stale ones
+# behind reads as a fix that did not work.  An afternoon went into
+# one that had.
 ifeq ($(TC),ccc)
 ZCC = $(ROOTDIR)/bin/ccc -O
+CCDEP = $(ROOTDIR)/bin/c1 $(ROOTDIR)/bin/c0 $(ROOTDIR)/bin/cpp $(ROOTDIR)/bin/peep
 else
 ZCC = zc3
+CCDEP =
 endif
 
-$(TC)/%.o: %.c | $(TC)
+$(TC)/%.o: %.c $(CCDEP) | $(TC)
 	cd $(TC) && $(ZCC) -I../../include -c ../$<
 
 $(TC)/%.o: %.s | $(TC)

@@ -588,6 +588,18 @@ struct rule rules[] = {
 	R("+(B,V)", PLUS, P_L, P_R, P_R, RF_IX,
 		T_BC_HL "\tpush ix\n\tpop de\n" F_ADDHLDE, R_HL),
 	/*
+	 * And a value already worked out in HL against that home:
+	 * "((char *)q - (char *)p) / sizeof(struct store)" in realloc,
+	 * where the left side is a difference and only the right is a
+	 * register variable.  Missing for the same reason as the pair
+	 * above - the shape needs a left operand that is not itself a
+	 * home, so nothing in the tree had written one until now.
+	 */
+	R("-(H,V)", MINUS, P_L, P_R, P_R, RF_IX,
+		"\tpush ix\n\tpop de\n" F_ORA F_SBCHLDE, R_HL),
+	R("+(H,V)", PLUS, P_L, P_R, P_R, RF_IX,
+		"\tpush ix\n\tpop de\n" F_ADDHLDE, R_HL),
+	/*
 	 * Against zero, which is what "p == 0" on a pointer register
 	 * variable comes to and had no form: testing the halves is
 	 * shorter than loading nought into DE to subtract it.
