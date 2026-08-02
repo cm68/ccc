@@ -1376,7 +1376,7 @@ step(Expr *e)
 	 */
 	if ((e->op == LSHIFT || e->op == RSHIFT) &&
 	    e->left && (e->left->op == INHL || e->left->op == INBC ||
-	     e->left->op == NUMBER) &&
+	     (e->left->op == NUMBER && !ISBYTE(e->width))) &&
 	    e->right &&
 	    (e->right->op == INA || e->right->op == INE ||
 	     e->right->op == INDE)) {
