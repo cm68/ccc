@@ -176,13 +176,10 @@ label(Expr *e)
 		e->regs = l;
 		return;
 
-	/* Short-circuit: sides evaluated separately */
+	/* Short-circuit: sides evaluated separately.
+	 * Ternary likewise: condition, then and else are all separate */
 	case LAND:
 	case LOR:
-		e->regs = l > r ? l : r;
-		return;
-
-	/* Ternary: condition, then, else all separate */
 	case QUES:
 	case TERNBRANCH:
 		e->regs = l > r ? l : r;
