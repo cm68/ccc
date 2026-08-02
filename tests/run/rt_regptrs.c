@@ -128,6 +128,29 @@ int n;
 	return 0;
 }
 
+/*
+ * (appended) A constant shifted by a runtime count.  The variable
+ * shift lowering wanted its value already in HL, and a constant
+ * never reduces - "1 << i" matched nothing, silently.  ispow2 in
+ * pass2 itself is built from the shape, so the self-hosted c1
+ * called a helper to multiply by two.
+ */
+int
+shifts(i)
+int i;
+{
+	unsigned long n = 2;
+	int r = 0;
+
+	if ((1 << i) == 2)
+		r |= 1;
+	if (n == (1 << i))
+		r |= 2;
+	if ((0x300 >> i) == 0x180)
+		r |= 4;
+	return r;
+}
+
 int
 main()
 {
@@ -154,6 +177,8 @@ main()
 
 	CHECK(1, cmps(src), 63);
 	CHECK(2, spans(src), 5);
+
+	CHECK(30, shifts(1), 7);
 
 	on = 0;
 	emitf("AB%sCD%dEF");

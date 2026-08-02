@@ -474,7 +474,7 @@ ispow2(unsigned long n)
 	int i;
 	if (n == 0) return -1;
 	for (i = 0; i < 32; i++)
-		if (n == (1 << i))
+		if (n == ((unsigned long)1 << i))
 			return i;
 	return -1;
 }
@@ -1375,7 +1375,8 @@ step(Expr *e)
 	 * otherwise run once.
 	 */
 	if ((e->op == LSHIFT || e->op == RSHIFT) &&
-	    e->left && (e->left->op == INHL || e->left->op == INBC) &&
+	    e->left && (e->left->op == INHL || e->left->op == INBC ||
+	     e->left->op == NUMBER) &&
 	    e->right &&
 	    (e->right->op == INA || e->right->op == INE ||
 	     e->right->op == INDE)) {
@@ -1385,9 +1386,18 @@ step(Expr *e)
 		 * T_BC_HL.  Without it "v <<= n" on a variable the allocator
 		 * had put in BC matched nothing here and had no rule either,
 		 * and emitted nothing at all.
+		 *
+		 * A constant left never reduces - it stays a NUMBER for the
+		 * ",N)" rules - so "1 << i" reached this point with nothing
+		 * in HL and matched nothing, silently.  ispow2 in this very
+		 * file is built from that shape, so the self-hosted c1
+		 * answered "not a power of two" to everything and multiplied
+		 * by 2 with a helper call.
 		 */
 		if (e->left->op == INBC)
 			out("\tld l,c\n\tld h,b\n");
+		else if (e->left->op == NUMBER)
+			outf("\tld hl,%d\n", (int)e->left->u.val);
 		if (e->right->op != INA)
 			out("\tld a,e\n");
 		/*

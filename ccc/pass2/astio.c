@@ -165,7 +165,16 @@ outd(int n)
 {
 	char buf[12];
 	register char *p = buf + 11;
-	int neg = n < 0;
+	int neg;
+
+	/*
+	 * Both builds must SPELL a word the same way, or the self-built
+	 * compiler's output text never matches the host's: 0xffff is
+	 * -1 in a 16-bit int and 65535 in a 32-bit one.  The Z80 form
+	 * is the canonical one - the host narrows to match.
+	 */
+	n = (short)n;
+	neg = n < 0;
 	if (!neg) n = -n;
 	*p = 0;
 	do { *--p = '0' - n % 10; n /= 10; } while (n);
