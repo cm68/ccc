@@ -500,7 +500,14 @@ ptrcompat(struct type *lt, struct type *rt)
 static struct expr *
 foldNode(struct expr *e)
 {
-    unsigned lv, rv;
+    /*
+     * Long-wide, or the folds themselves change with the host: a
+     * 16-bit unsigned cannot add two long constants, and a long
+     * mask truncated to 16 bits made "& 0xffff0000" fold as
+     * "& 0".  The wrap at the bottom narrows int results back, so
+     * int folds are unchanged at either width.
+     */
+    unsigned long lv, rv;
     int rel = 0, sgn;
     unsigned char op;
     struct expr *left, *right, *result;
@@ -531,7 +538,11 @@ foldNode(struct expr *e)
             break;
         case AND:
         case AMPER:
-            if (rv == 0xffff) result = left;  /* x & ~0 -> x */
+            /* identity only at word width: a LONG keeps its high
+             * half, and dropping the mask handed it back whole -
+             * "(long)v & 0xffff" simply vanished */
+            if (rv == 0xffff && e->type && e->type->size <= 2)
+                result = left;
             break;
         }
         if (result) {

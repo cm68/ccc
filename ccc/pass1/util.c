@@ -303,9 +303,12 @@ void asmDbStr(unsigned char *data, int len)
 void asmDw(int val)
 {
 	char buf[16];
-	/* mask in long so 16-bit and 32-bit int hosts print the same
-	 * string for negative values (65535, not -1) */
-	fmtstr(buf, "\t.dw %ld", (long)val & 0xffff);
+	/* both builds must SPELL a word the same way; the 16-bit form
+	 * is canonical, exactly as pass2's outd narrows.  The long
+	 * masking this replaces printed 65535 on the host and -1 from
+	 * the self-hosted build anyway - the mask vanished somewhere in
+	 * the long path - and the assembler reads both the same. */
+	fmtstr(buf, "\t.dw %d", (int)(short)val);
 	asmLine(buf);
 }
 
