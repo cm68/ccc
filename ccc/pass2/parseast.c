@@ -239,27 +239,39 @@ emitprolog(void)
 
 	{
 		short off, rest;
-		/* Set up frame pointer */
-		out("\tpush\tiy\n\tld\tiy,0\n\tadd\tiy,sp\n");
+		char *h;
+
 		/*
-		 * Allocate the scalar area, push callee-saves just below it
-		 * (so they stay within the 7-bit (iy+d) window), then
-		 * allocate the rest (big arrays live down there and are
-		 * addressed with 16-bit arithmetic, not (iy+d)).
+		 * Frame pointer, then the scalar area, then the callee
+		 * saves just under it - so they stay inside the 7-bit
+		 * (iy+d) window - and the rest last, where big arrays live
+		 * and are addressed with 16-bit arithmetic rather than
+		 * (iy+d).
+		 *
+		 * All but the last of that is one call: eleven bytes of
+		 * prologue become five, and the only thing particular to
+		 * the function - how big the scalar area is - rides in the
+		 * word after the call.  A function with neither a save nor
+		 * a scalar area still writes the bare sequence, which the
+		 * peephole turns into fenter: three beats five.
 		 */
-		if (savebase > 0)
-			outf("\tld\thl,-%d\n\tadd\thl,sp\n\tld\tsp,hl\n",
-			    savebase);
+		h = (regsused & USES_BC) ?
+		      ((regsused & REGBIT(R_IX)) ? "fentbx" : "fentb") :
+		      ((regsused & REGBIT(R_IX)) ? "fentx" : "fentn");
+
+		if (!(regsused & (USES_BC | REGBIT(R_IX))) && savebase == 0)
+			out("\tpush\tiy\n\tld\tiy,0\n\tadd\tiy,sp\n");
+		else
+			outf("\tcall\t%s\n\t.dw\t%d\n", h, -savebase);
+
 		off = -savebase;
 		if (regsused & USES_BC) {
-			out("\tpush\tbc\n");
 			off -= 2;
 			bcoff = off;
 			if (bcoff < -128)
 				out("\t.error scalar frame too large for BC restore\n");
 		}
 		if (regsused & REGBIT(R_IX)) {
-			out("\tpush\tix\n");
 			off -= 2;
 			ixoff = off;
 			if (ixoff < -128)
@@ -323,24 +335,40 @@ emitepilog(void)
 	out(":\n");
 
 	/*
-	 * Restore callee-saves without touching the return value.  The
-	 * IX restore went through DE - "preserves HL", said the comment,
-	 * which was the whole truth when everything came back in HL.  A
-	 * long comes back in HL:DE, so every long-returning function
-	 * that had saved IX returned its low word as the saved IX's
-	 * address.  parseConst is such a function, and "int a[5]"
-	 * reserved .ds <heap pointer> bytes.  A is the one register with
-	 * nothing in it here, and the half-index loads are why the
-	 * target list says "compatibles that do half register access".
+	 * Restore callee-saves without touching the return value.
+	 *
+	 * This used to be written out here: twelve bytes for IX, which
+	 * has to come back through A because HL is the return value and
+	 * DE is the rest of it when the value is long - a long-returning
+	 * function that restored IX through DE handed back the saved
+	 * IX's address as its low word, and "int a[5]" reserved .ds
+	 * <heap pointer> bytes - and six more for BC.  Two thousand
+	 * bytes of it in c1 alone.
+	 *
+	 * The helpers in csv.s do it once.  The saves sit together just
+	 * under the scalar area, so all the caller has to say is where
+	 * the lower of them is; the helper points the stack there and
+	 * pops.  Five bytes against twenty-one, and the unwind is the
+	 * same code, so there is no jp fexit after it.
 	 */
-	if (regsused & REGBIT(R_IX)) {
-		outf("\tld\ta,(iy%d)\n\tld\tixl,a\n\tld\ta,(iy%d)\n\tld\tixh,a\n",
-		    ixoff, ixoff + 1);
+	if (regsused & (REGBIT(R_IX) | USES_BC)) {
+		char *h;
+		short off;
+
+		if (!(regsused & USES_BC)) {
+			h = "fexx";
+			off = ixoff;
+		} else if (!(regsused & REGBIT(R_IX))) {
+			h = "fexb";
+			off = bcoff;
+		} else {
+			h = "fexbx";
+			off = ixoff;	/* pushed last, so the lower */
+		}
+		outf("\tcall\t%s\n\t.dw\t%d\n", h, off);
+		return;
 	}
-	if (regsused & USES_BC) {
-		outf("\tld\tc,(iy%d)\n\tld\tb,(iy%d)\n",
-		    bcoff, bcoff + 1);
-	}
+
 	/* Restore frame pointer */
 	out("\tld\tsp,iy\n\tpop\tiy\n");
 
