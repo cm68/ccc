@@ -82,3 +82,62 @@ register staging costs more than the body saves (measured +57 over
 five small functions).  The cache pays only when the local gets B or
 C and the function is long enough to amortize the save/restore -
 gettoken, not skipws.
+
+# Invariants
+
+Things the compiler and its runtime hold to.  Breaking one of these
+does not fail to build; it produces a program that is wrong somewhere
+far from the change.
+
+## The callee saves BC.  We never caller-save.
+
+BC and IX are the register-variable homes.  A function that keeps a
+variable in one of them saves it in its prologue and restores it in
+its epilogue - fentbx and fexbx in libc/csv.s do both, and every
+function ccc compiles goes through them.  A caller therefore never
+writes push bc around a call, and no rule, no helper and no future
+optimisation should reintroduce one.
+
+The obligation is on anything a compiled program can call:
+
+  - Hand-written .s routines that use BC as scratch save it
+    THEMSELVES, on the stack, and restore it before every ret.
+    strcpy, strcmp, atoi, xtoi, wait, time, execv, execl and sbrk all
+    do.  rcsv does it for the eight string routines that share it,
+    and they exit through rcret rather than cret so the pop happens.
+
+  - The save goes on the STACK, never in a static.  A static is
+    smaller and was tried; a chain of these routines or any recursion
+    treads on it - fputc calls itself to put a carriage return before
+    a newline - and it is silently wrong when it overflows.
+
+  - Where a routine's own entry shuffle pops into BC before a save
+    could happen, read the arguments where they lie (ld hl,4 / add
+    hl,sp) instead of popping them.
+
+  - A routine that uses the shadow set for its body needs nothing:
+    exx puts the caller's BC out of reach.  bmove is the example.
+
+The exception, and the only one, is the arithmetic and long helpers -
+amul, adiv, ldiv, amod, lmod, aland, lland, arelop, lrelop, alrsh,
+lushr and the rest.  They really do count in B, they are reached by
+name from rule templates rather than through a call node, and the
+rules that name them carry $[ and $] so the save happens at the few
+places that need it.  lld and lstde are NOT among them: lld uses only
+HL, DE and A, and lstde keeps its return address in a scratch word,
+so the twelve rules that call those two are correctly unguarded.
+
+## The exits do not disturb the return value
+
+fexit and the fexbx family touch neither HL nor the flags, and not DE
+either: a long comes back in HL:DE.  This is why the IX restore used
+to go through A, and why the helpers use the shadow registers now.  A
+long-returning function that restored IX through DE handed back the
+saved IX's address as its low word, and "int a[5]" reserved .ds
+<heap pointer> bytes.
+
+## Declarations go at the top of a block
+
+pass1 accepts them nowhere else, and it has to compile itself.  gcc
+accepts them anywhere, so the host Makefiles pass
+-Werror=declaration-after-statement to make the tree tell the truth.
