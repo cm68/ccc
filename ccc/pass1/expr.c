@@ -505,7 +505,56 @@ foldNode(struct expr *e)
     unsigned char op;
     struct expr *left, *right, *result;
 
-    if (!e || !e->left || !e->right)
+    if (!e)
+        return e;
+
+    /*
+     * A unary operator on a constant.  Only the parser folded these,
+     * and it looks at the operand before the operand's own subtree
+     * has been folded - so "~7" became a number where "~(A|B|C)" did
+     * not, the three macros still being an OR tree at that moment.
+     * pass2 has no form for the complement of a constant, so
+     *
+     *	f->_flag &= ~(_IOREAD|_IOWRT|_IONBF);
+     *
+     * in fclose emitted no code at all and every stream kept the
+     * flags it was closed with.  The width discipline is the binary
+     * fold's below: wrap to the result type, and leave longs alone.
+     */
+    if (e->left && !e->right && e->left->op == CONST &&
+        (e->left->flags & E_CONST) &&
+        (e->op == NEG || e->op == NOT || e->op == BANG) &&
+        e->type && e->type->size > 0 && e->type->size <= 2 &&
+        !(e->type->flags & (TF_POINTER | TF_ARRAY | TF_FUNC))) {
+        unsigned long uv;
+
+        left = e->left;
+        uv = left->v;
+        if (e->op == NEG) uv = -uv;
+        else if (e->op == NOT) uv = ~uv;
+        else uv = !uv;
+        left->type = e->type;
+        left->v = uv;
+        if (left->type->size == 1) {
+            left->v &= 0xff;
+            if (!(left->type->flags & TF_UNSIGNED) && (left->v & 0x80))
+                left->v |= 0xffffff00L;
+        } else {
+            left->v &= 0xffff;
+            if (!(left->type->flags & TF_UNSIGNED) && (left->v & 0x8000L))
+                left->v |= 0xffff0000L;
+        }
+        left->flags = E_CONST | (e->flags & E_FUNARG);
+        left->next = e->next;
+        left->left = NULL;
+        left->right = NULL;
+        e->left = NULL;
+        e->next = NULL;
+        freeNode(e);
+        return left;
+    }
+
+    if (!e->left || !e->right)
         return e;
 
     left = e->left;

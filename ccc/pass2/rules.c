@@ -187,6 +187,10 @@ char *fragtab[] = {
  * word load, that is the form to reach for.
  */
 #define T_LD_IHL	F_LDAHL F_INCHL F_LDHHL F_LDLA
+/* the word a register-homed struct pointer points at, read and put
+ * back: the member is at (ix+0) so neither needs an address */
+#define T_IXP_LD	"\tld l,(ix+0)\n\tld h,(ix+1)\n"
+#define T_IXP_ST	"\tld (ix+0),l\n\tld (ix+1),h\n"
 #define T_SUB_DE	F_ORA F_SBCHLDE
 #define T_SUB_BC	F_ORA F_SBCHLBC
 /*
@@ -874,6 +878,9 @@ struct rule rules[] = {
 		"\tld e,($L)\n\tld d,($L+)\n\tld l,($L++)\n\tld h,($L+++)\n", R_HL),
 	/* through a pointer already in HL */
 	R("D(H):l", DEREF, P_L, P_NONE, P_NONE, 0, "\tcall lld\n", R_HL),
+	/* and through the other register home - doprnt reads its long
+	 * argument through the pointer it walks the list with */
+	R("D(B):l", DEREF, P_L, P_NONE, P_NONE, 0, T_BC_HL "\tcall lld\n", R_HL),
 
 	/*
 	 * Stepping a long in memory.  The helper takes the address in HL,
@@ -1058,6 +1065,10 @@ struct rule rules[] = {
 		"\tcall lstde\n$]", R_HL),
 	R("=(D(V),N):l", ASSIGN, P_L, P_R, P_LL, RF_IX,
 		"\tpush ix\n" F_POPHL T_ST_IHL_N, 0),
+	/* and through the other register home - "*tp = t" in libu's time,
+	 * writing the clock through the caller's pointer */
+	R("=(D(B),H):l", ASSIGN, P_L, P_R, P_NONE, 0,
+		"$[" F_PUSHHL T_BC_HL "\tex (sp),hl\n\tcall lstde\n$]", R_HL),
 
 	/* complement of a word; the long form is handled in rewrite.c,
 	 * beside the long negation it shares its shape with */
@@ -1219,6 +1230,28 @@ struct rule rules[] = {
 		"\tpush ix\n" F_POPHL "\tinc ix\n", R_HL),
 	R("m(V)", POSTDEC, P_L, P_NONE, P_L, RF_IX,
 		"\tpush ix\n" F_POPHL "\tdec ix\n", R_HL),
+	/*
+	 * And stepping the pointer that IX POINTS AT, which is the whole
+	 * of stdio's idiom: "*f->_ptr++" and "*--f->_ptr" with the FILE
+	 * homed in IX.  The rewriter leaves the DEREF standing for these
+	 * so a load rule cannot turn the step into a fetch, and the shape
+	 * it leaves is i(D(V)) - the ?(D(B)) forms name the same thing
+	 * for a pointer in BC and were the only ones written.  filbuf,
+	 * ungetc and fclose stepped nothing at all.
+	 *
+	 * At offset zero the member is (ix+0), so this needs no address
+	 * arithmetic and no stack: read the pair, step it, put it back.
+	 * A postfix wants the value from before, and undoing the step in
+	 * HL afterwards is a byte against holding both.
+	 */
+	R("i(D(V)):s", PREINC, P_L, P_NONE, P_LL, RF_IX,
+		T_IXP_LD F_INCHL T_IXP_ST, R_HL),
+	R("k(D(V)):s", PREDEC, P_L, P_NONE, P_LL, RF_IX,
+		T_IXP_LD F_DECHL T_IXP_ST, R_HL),
+	R("j(D(V)):s", POSTINC, P_L, P_NONE, P_LL, RF_IX,
+		T_IXP_LD F_INCHL T_IXP_ST F_DECHL, R_HL),
+	R("m(D(V)):s", POSTDEC, P_L, P_NONE, P_LL, RF_IX,
+		T_IXP_LD F_DECHL T_IXP_ST F_INCHL, R_HL),
 	/*
 	 * Postfix on a word in memory.  The old value is wanted as the
 	 * result and the new one in store, and rather than hold both, the
