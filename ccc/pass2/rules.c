@@ -1022,6 +1022,23 @@ struct rule rules[] = {
 		"\tcall lstde\n$]", R_HL),
 	R("=(D(I),N):l", ASSIGN, P_L, P_R, P_NONE, 0,
 		F_LDLLL F_LDHLL1 T_ST_IHL_N, 0),
+	/*
+	 * And through the index register home.  "cp->value = value" in
+	 * pass1's addCase, with cp a register pointer into the case
+	 * array, is a long stored through IX and had no form at all: the
+	 * store emitted nothing, so a self-hosted c0 gave every case
+	 * label whatever the freshly grown array happened to hold.
+	 *
+	 * The dance is the one above with IX as the source of the
+	 * address: push the high word, bring IX into HL, swap so the
+	 * address is the stacked operand lstde takes and the high word
+	 * is back in HL.
+	 */
+	R("=(D(V),H):l", ASSIGN, P_L, P_R, P_LL, RF_IX,
+		"$[" F_PUSHHL "\tpush ix\n" F_POPHL "\tex (sp),hl\n"
+		"\tcall lstde\n$]", R_HL),
+	R("=(D(V),N):l", ASSIGN, P_L, P_R, P_LL, RF_IX,
+		"\tpush ix\n" F_POPHL T_ST_IHL_N, 0),
 
 	/* complement of a word; the long form is handled in rewrite.c,
 	 * beside the long negation it shares its shape with */
@@ -1537,6 +1554,17 @@ struct rule rules[] = {
 	R("D(V):b", DEREF, P_L, P_NONE, P_L, RF_IX, "\tld a,(ix+0)\n", R_A),
 	R("D(V):s", DEREF, P_L, P_NONE, P_L, RF_IX,
 		"\tld $t,(ix+0)\n\tld $u,(ix+1)\n", 0),
+	/*
+	 * And the long, which was the width nobody had written.  Reading
+	 * one back through a register pointer - "sum += p->value" over an
+	 * array of structs - emitted nothing whatever, and said nothing:
+	 * the compound assignment pushed HL and DE as its right operand
+	 * and called ladd on whatever the loop condition had left there.
+	 * Low word from the lower address, as everywhere else.
+	 */
+	R("D(V):l", DEREF, P_L, P_NONE, P_L, RF_IX,
+		"\tld e,(ix+0)\n\tld d,(ix+1)\n"
+		"\tld a,(ix+2)\n\tld h,(ix+3)\n\tld l,a\n", R_HL),
 	/* honour the target: as the right operand of a compare this has to
 	 * land in DE, or it overwrites the left operand in HL */
 	R("D(O):s", DEREF, P_L, P_NONE, P_NONE, 0, "\tld $T,($L)\n", 0),
