@@ -639,46 +639,13 @@ struct rule rules[] = {
 	 * variable compared with a local pointer emitted no code and the
 	 * branch after it went wherever the flags happened to point.
 	 */
-	R("Q(V,E)", EQ, P_L, P_R, P_L, RF_IX,
-		"\tpush ix\n" F_POPHL F_ORA F_SBCHLDE, F_Z),
-	R("U(V,E)", NEQ, P_L, P_R, P_L, RF_IX,
-		"\tpush ix\n" F_POPHL F_ORA F_SBCHLDE, F_NZ),
-	/*
-	 * The orderings against DE, which had only the two equalities.
-	 * "p < def + 32" in cpp's filtenum walks a register pointer
-	 * against a bound worked out into DE; the compare emitted
-	 * nothing and the loop ran on stale flags.  Unsigned, as with
-	 * the (H,V) forms below: IX holds pointers.
-	 */
-	R("T(V,E)", LT, P_L, P_R, P_L, RF_IX,
-		"\tpush ix\n" F_POPHL F_ORA F_SBCHLDE, F_C),
-	R("Y(V,E)", GE, P_L, P_R, P_L, RF_IX,
-		"\tpush ix\n" F_POPHL F_ORA F_SBCHLDE, F_NC),
-	R("W(V,E)", LE, P_L, P_R, P_L, RF_IX,
-		"\tpush ix\n" F_POPHL F_EXDEHL F_ORA F_SBCHLDE, F_NC),
-	R("G(V,E)", GT, P_L, P_R, P_L, RF_IX,
-		"\tpush ix\n" F_POPHL F_EXDEHL F_ORA F_SBCHLDE, F_C),
+	R("c(V,E)", EQ, P_L, P_R, P_L, RF_IX, "\tpush ix\n" F_POPHL F_ORA F_SBCHLDE, F_CC),
+	R("d(V,E)", LE, P_L, P_R, P_L, RF_IX, "\tpush ix\n" F_POPHL F_EXDEHL F_ORA F_SBCHLDE, F_CC),
 	/* the same with the index register on the other side, which
 	 * normalize does not swap because equality is not a relation it
 	 * reorders by operand kind */
-	R("Q(H,V)", EQ, P_L, P_R, P_R, RF_IX,
-		"\tpush ix\n\tpop de\n" F_ORA F_SBCHLDE, F_Z),
-	R("U(H,V)", NEQ, P_L, P_R, P_R, RF_IX,
-		"\tpush ix\n\tpop de\n" F_ORA F_SBCHLDE, F_NZ),
-	/*
-	 * The orderings, which arrive when a register pointer is
-	 * compared against a symbol the rewriter staged into HL.
-	 * Unsigned: IX holds pointers by allocation policy, and
-	 * addresses order by carry, not sign.
-	 */
-	R("T(H,V)", LT, P_L, P_R, P_R, RF_IX,
-		"\tpush ix\n\tpop de\n" F_ORA F_SBCHLDE, F_C),
-	R("Y(H,V)", GE, P_L, P_R, P_R, RF_IX,
-		"\tpush ix\n\tpop de\n" F_ORA F_SBCHLDE, F_NC),
-	R("W(H,V)", LE, P_L, P_R, P_R, RF_IX,
-		"\tpush ix\n\tpop de\n" F_EXDEHL F_ORA F_SBCHLDE, F_NC),
-	R("G(H,V)", GT, P_L, P_R, P_R, RF_IX,
-		"\tpush ix\n\tpop de\n" F_EXDEHL F_ORA F_SBCHLDE, F_C),
+	R("c(H,V)", EQ, P_L, P_R, P_R, RF_IX, "\tpush ix\n\tpop de\n" F_ORA F_SBCHLDE, F_CC),
+	R("d(H,V)", LE, P_L, P_R, P_R, RF_IX, "\tpush ix\n\tpop de\n" F_EXDEHL F_ORA F_SBCHLDE, F_CC),
 
 	/*
 	 * Both operands in register homes: BC against IX, which two
@@ -687,31 +654,11 @@ struct rule rules[] = {
 	 * There was no rule at all, the comparison emitted NOTHING, and
 	 * the branch went on whatever flags were lying around.
 	 */
-	R("Q(B,V)", EQ, P_L, P_R, P_R, RF_IX,
-		T_BC_HL "\tpush ix\n\tpop de\n" F_ORA F_SBCHLDE, F_Z),
-	R("U(B,V)", NEQ, P_L, P_R, P_R, RF_IX,
-		T_BC_HL "\tpush ix\n\tpop de\n" F_ORA F_SBCHLDE, F_NZ),
-	R("T(B,V)", LT, P_L, P_R, P_R, RF_IX,
-		T_BC_HL "\tpush ix\n\tpop de\n" F_ORA F_SBCHLDE, F_C),
-	R("Y(B,V)", GE, P_L, P_R, P_R, RF_IX,
-		T_BC_HL "\tpush ix\n\tpop de\n" F_ORA F_SBCHLDE, F_NC),
-	R("W(B,V)", LE, P_L, P_R, P_R, RF_IX,
-		T_BC_HL "\tpush ix\n\tpop de\n" F_EXDEHL F_ORA F_SBCHLDE, F_NC),
-	R("G(B,V)", GT, P_L, P_R, P_R, RF_IX,
-		T_BC_HL "\tpush ix\n\tpop de\n" F_EXDEHL F_ORA F_SBCHLDE, F_C),
+	R("c(B,V)", EQ, P_L, P_R, P_R, RF_IX, T_BC_HL "\tpush ix\n\tpop de\n" F_ORA F_SBCHLDE, F_CC),
+	R("d(B,V)", LE, P_L, P_R, P_R, RF_IX, T_BC_HL "\tpush ix\n\tpop de\n" F_EXDEHL F_ORA F_SBCHLDE, F_CC),
 	/* and mirrored, the IX pointer on the left */
-	R("Q(V,B)", EQ, P_L, P_R, P_L, RF_IX,
-		"\tpush ix\n" F_POPHL F_ORA F_SBCHLBC, F_Z),
-	R("U(V,B)", NEQ, P_L, P_R, P_L, RF_IX,
-		"\tpush ix\n" F_POPHL F_ORA F_SBCHLBC, F_NZ),
-	R("T(V,B)", LT, P_L, P_R, P_L, RF_IX,
-		"\tpush ix\n" F_POPHL F_ORA F_SBCHLBC, F_C),
-	R("Y(V,B)", GE, P_L, P_R, P_L, RF_IX,
-		"\tpush ix\n" F_POPHL F_ORA F_SBCHLBC, F_NC),
-	R("W(V,B)", LE, P_L, P_R, P_L, RF_IX,
-		T_BC_HL "\tpush ix\n\tpop de\n" F_ORA F_SBCHLDE, F_NC),
-	R("G(V,B)", GT, P_L, P_R, P_L, RF_IX,
-		T_BC_HL "\tpush ix\n\tpop de\n" F_ORA F_SBCHLDE, F_C),
+	R("c(V,B)", EQ, P_L, P_R, P_L, RF_IX, "\tpush ix\n" F_POPHL F_ORA F_SBCHLBC, F_CC),
+	R("d(V,B)", LE, P_L, P_R, P_L, RF_IX, T_BC_HL "\tpush ix\n\tpop de\n" F_ORA F_SBCHLDE, F_CC),
 
 	R("=(V,H)", ASSIGN, P_L, P_R, P_L, RF_IX, F_PUSHHL "\tpop ix\n", R_IX),
 	R("=(V,E)", ASSIGN, P_L, P_R, P_L, RF_IX, "\tpush de\n\tpop ix\n", R_IX),
@@ -2012,10 +1959,7 @@ struct rule rules[] = {
 	 */
 	R("T(H,E)", LT, P_L, P_R, P_NONE, RF_SIGNL, T_SUB_DE T_SXORV, F_M),
 	R("Y(H,E)", GE, P_L, P_R, P_NONE, RF_SIGNL, T_SUB_DE T_SXORV, F_P),
-	R("W(H,E)", LE, P_L, P_R, P_NONE, RF_SIGNL,
-		F_EXDEHL T_SUB_DE T_SXORV, F_P),
-	R("G(H,E)", GT, P_L, P_R, P_NONE, RF_SIGNL,
-		F_EXDEHL T_SUB_DE T_SXORV, F_M),
+	R("d(H,E)", LE, P_L, P_R, P_NONE, RF_SIGNL, F_EXDEHL T_SUB_DE T_SXORV, F_CC),
 	/*
 	 * A symbol compared against a register.  A SYMREF is left
 	 * unreduced so the store and load rules can use it as an
@@ -2037,10 +1981,7 @@ struct rule rules[] = {
 		F_LDHLL T_SUB_DE T_SXORV, F_M),
 	R("Y(O,E)", GE, P_L, P_R, P_NONE, RF_SIGNL,
 		F_LDHLL T_SUB_DE T_SXORV, F_P),
-	R("W(O,E)", LE, P_L, P_R, P_NONE, RF_SIGNL,
-		F_LDHLL F_EXDEHL T_SUB_DE T_SXORV, F_P),
-	R("G(O,E)", GT, P_L, P_R, P_NONE, RF_SIGNL,
-		F_LDHLL F_EXDEHL T_SUB_DE T_SXORV, F_M),
+	R("d(O,E)", LE, P_L, P_R, P_NONE, RF_SIGNL, F_LDHLL F_EXDEHL T_SUB_DE T_SXORV, F_CC),
 
 	/*
 	 * The same symbol-on-the-left shapes with the register operand
@@ -2052,71 +1993,46 @@ struct rule rules[] = {
 		F_LDHLL T_SUB_BC T_SXORV, F_M),
 	R("Y(O,B)", GE, P_L, P_R, P_NONE, RF_SIGNL,
 		F_LDHLL T_SUB_BC T_SXORV, F_P),
-	R("W(O,B)", LE, P_L, P_R, P_NONE, RF_SIGNL,
-		F_LDHLL F_LDEC F_LDDB F_EXDEHL T_SUB_DE T_SXORV, F_P),
-	R("G(O,B)", GT, P_L, P_R, P_NONE, RF_SIGNL,
-		F_LDHLL F_LDEC F_LDDB F_EXDEHL T_SUB_DE T_SXORV, F_M),
+	R("d(O,B)", LE, P_L, P_R, P_NONE, RF_SIGNL, F_LDHLL F_LDEC F_LDDB F_EXDEHL T_SUB_DE T_SXORV, F_CC),
 
 	/* and with the symbol on the other side, where it becomes DE */
 	R("T(H,O)", LT, P_L, P_R, P_NONE, RF_SIGNL,
 		F_LDDER T_SUB_DE T_SXORV, F_M),
 	R("Y(H,O)", GE, P_L, P_R, P_NONE, RF_SIGNL,
 		F_LDDER T_SUB_DE T_SXORV, F_P),
-	R("W(H,O)", LE, P_L, P_R, P_NONE, RF_SIGNL,
-		F_LDDER F_EXDEHL T_SUB_DE T_SXORV, F_P),
-	R("G(H,O)", GT, P_L, P_R, P_NONE, RF_SIGNL,
-		F_LDDER F_EXDEHL T_SUB_DE T_SXORV, F_M),
+	R("d(H,O)", LE, P_L, P_R, P_NONE, RF_SIGNL, F_LDDER F_EXDEHL T_SUB_DE T_SXORV, F_CC),
 
 	R("T(H,B)", LT, P_L, P_R, P_NONE, RF_SIGNL, T_SUB_BC T_SXORV, F_M),
 	R("Y(H,B)", GE, P_L, P_R, P_NONE, RF_SIGNL, T_SUB_BC T_SXORV, F_P),
-	R("W(H,B)", LE, P_L, P_R, P_NONE, RF_SIGNL,
-		F_LDEC F_LDDB F_EXDEHL T_SUB_DE T_SXORV, F_P),
-	R("G(H,B)", GT, P_L, P_R, P_NONE, RF_SIGNL,
-		F_LDEC F_LDDB F_EXDEHL T_SUB_DE T_SXORV, F_M),
+	R("d(H,B)", LE, P_L, P_R, P_NONE, RF_SIGNL, F_LDEC F_LDDB F_EXDEHL T_SUB_DE T_SXORV, F_CC),
 	R("T(H,N)", LT, P_L, P_R, P_NONE, RF_SIGNL,
 		F_LDDER T_SUB_DE T_SXORV, F_M),
 	R("Y(H,N)", GE, P_L, P_R, P_NONE, RF_SIGNL,
 		F_LDDER T_SUB_DE T_SXORV, F_P),
-	R("W(H,N)", LE, P_L, P_R, P_NONE, RF_SIGNL,
-		F_LDDER F_EXDEHL T_SUB_DE T_SXORV, F_P),
-	R("G(H,N)", GT, P_L, P_R, P_NONE, RF_SIGNL,
-		F_LDDER F_EXDEHL T_SUB_DE T_SXORV, F_M),
+	R("d(H,N)", LE, P_L, P_R, P_NONE, RF_SIGNL, F_LDDER F_EXDEHL T_SUB_DE T_SXORV, F_CC),
 
 	/* comparisons */
 	R("Q(H,E)", EQ, P_L, P_R, P_NONE, 0, F_ORA F_SBCHLDE, F_Z),
 	/* LE/GT have no cheap flag of their own: swap the operands so the
 	 * borrow from sbc answers the reversed question. */
-	R("W(H,E)", LE, P_L, P_R, P_NONE, 0, F_EXDEHL F_ORA F_SBCHLDE, F_NC),
-	R("G(H,E)", GT, P_L, P_R, P_NONE, 0, F_EXDEHL F_ORA F_SBCHLDE, F_C),
+	R("d(H,E)", LE, P_L, P_R, P_NONE, 0, F_EXDEHL F_ORA F_SBCHLDE, F_CC),
 	R("U(H,E)", NEQ, P_L, P_R, P_NONE, 0, F_ORA F_SBCHLDE, F_NZ),
 	R("T(H,E)", LT, P_L, P_R, P_NONE, 0, F_ORA F_SBCHLDE, F_C),
 	R("Y(H,E)", GE, P_L, P_R, P_NONE, 0, F_ORA F_SBCHLDE, F_NC),
 	/* the same four with a symbol on the left - see the signed set */
-	R("W(O,E)", LE, P_L, P_R, P_NONE, 0,
-		F_LDHLL F_EXDEHL F_ORA F_SBCHLDE, F_NC),
-	R("G(O,E)", GT, P_L, P_R, P_NONE, 0,
-		F_LDHLL F_EXDEHL F_ORA F_SBCHLDE, F_C),
+	R("d(O,E)", LE, P_L, P_R, P_NONE, 0, F_LDHLL F_EXDEHL F_ORA F_SBCHLDE, F_CC),
 	R("T(O,E)", LT, P_L, P_R, P_NONE, 0, F_LDHLL F_ORA F_SBCHLDE, F_C),
 	R("Y(O,E)", GE, P_L, P_R, P_NONE, 0, F_LDHLL F_ORA F_SBCHLDE, F_NC),
-	R("W(H,O)", LE, P_L, P_R, P_NONE, 0,
-		F_LDDER F_EXDEHL F_ORA F_SBCHLDE, F_NC),
-	R("G(H,O)", GT, P_L, P_R, P_NONE, 0,
-		F_LDDER F_EXDEHL F_ORA F_SBCHLDE, F_C),
+	R("d(H,O)", LE, P_L, P_R, P_NONE, 0, F_LDDER F_EXDEHL F_ORA F_SBCHLDE, F_CC),
 	R("T(H,O)", LT, P_L, P_R, P_NONE, 0, F_LDDER F_ORA F_SBCHLDE, F_C),
 	R("Y(H,O)", GE, P_L, P_R, P_NONE, 0, F_LDDER F_ORA F_SBCHLDE, F_NC),
 	/* BC operands: the Z80 has add/sbc hl,bc, so no shuffle needed */
-	R("Q(H,B)", EQ, P_L, P_R, P_NONE, 0, F_ORA F_SBCHLBC, F_Z),
-	R("U(H,B)", NEQ, P_L, P_R, P_NONE, 0, F_ORA F_SBCHLBC, F_NZ),
-	R("T(H,B)", LT, P_L, P_R, P_NONE, 0, F_ORA F_SBCHLBC, F_C),
-	R("Y(H,B)", GE, P_L, P_R, P_NONE, 0, F_ORA F_SBCHLBC, F_NC),
+	R("c(H,B)", EQ, P_L, P_R, P_NONE, 0, F_ORA F_SBCHLBC, F_CC),
 	/*
 	 * LE and GT answer the reversed question, and there is no
 	 * ex bc,hl - so copy BC into DE and swap that instead.
 	 */
-	R("W(H,B)", LE, P_L, P_R, P_NONE, 0,
-		F_LDEC F_LDDB F_EXDEHL F_ORA F_SBCHLDE, F_NC),
-	R("G(H,B)", GT, P_L, P_R, P_NONE, 0,
-		F_LDEC F_LDDB F_EXDEHL F_ORA F_SBCHLDE, F_C),
+	R("d(H,B)", LE, P_L, P_R, P_NONE, 0, F_LDEC F_LDDB F_EXDEHL F_ORA F_SBCHLDE, F_CC),
 	R("Q(B,E)", EQ, P_L, P_R, P_NONE, 0, T_BC_HL F_ORA F_SBCHLDE, F_Z),
 	R("U(B,E)", NEQ, P_L, P_R, P_NONE, 0, T_BC_HL F_ORA F_SBCHLDE, F_NZ),
 	/*
@@ -2134,10 +2050,7 @@ struct rule rules[] = {
 		T_BC_HL T_SUB_DE T_SXORV, F_M),
 	R("Y(B,E)", GE, P_L, P_R, P_NONE, RF_SIGNL,
 		T_BC_HL T_SUB_DE T_SXORV, F_P),
-	R("G(B,E)", GT, P_L, P_R, P_NONE, RF_SIGNL,
-		T_BC_HL F_EXDEHL T_SUB_DE T_SXORV, F_M),
-	R("W(B,E)", LE, P_L, P_R, P_NONE, RF_SIGNL,
-		T_BC_HL F_EXDEHL T_SUB_DE T_SXORV, F_P),
+	R("d(B,E)", GT, P_L, P_R, P_NONE, RF_SIGNL, T_BC_HL F_EXDEHL T_SUB_DE T_SXORV, F_CC),
 	R("T(B,E)", LT, P_L, P_R, P_NONE, 0, T_BC_HL F_ORA F_SBCHLDE, F_C),
 	R("Y(B,E)", GE, P_L, P_R, P_NONE, 0, T_BC_HL F_ORA F_SBCHLDE, F_NC),
 	R("Q(B,N)", EQ, P_L, P_R, P_NONE, 0,
@@ -2148,10 +2061,7 @@ struct rule rules[] = {
 		T_BC_HL F_LDDER T_SUB_DE T_SXORV, F_M),
 	R("Y(B,N)", GE, P_L, P_R, P_NONE, RF_SIGNL,
 		T_BC_HL F_LDDER T_SUB_DE T_SXORV, F_P),
-	R("G(B,N)", GT, P_L, P_R, P_NONE, RF_SIGNL,
-		T_BC_HL F_LDDER F_EXDEHL T_SUB_DE T_SXORV, F_M),
-	R("W(B,N)", LE, P_L, P_R, P_NONE, RF_SIGNL,
-		T_BC_HL F_LDDER F_EXDEHL T_SUB_DE T_SXORV, F_P),
+	R("d(B,N)", GT, P_L, P_R, P_NONE, RF_SIGNL, T_BC_HL F_LDDER F_EXDEHL T_SUB_DE T_SXORV, F_CC),
 	R("T(B,N)", LT, P_L, P_R, P_NONE, 0,
 		T_BC_HL F_LDDER F_ORA F_SBCHLDE, F_C),
 	R("Y(B,N)", GE, P_L, P_R, P_NONE, 0,
@@ -2161,10 +2071,7 @@ struct rule rules[] = {
 	 * with "&thing" comes to */
 	R("Q(H,O)", EQ, P_L, P_R, P_NONE, 0, F_LDDER F_ORA F_SBCHLDE, F_Z),
 	R("U(H,O)", NEQ, P_L, P_R, P_NONE, 0, F_LDDER F_ORA F_SBCHLDE, F_NZ),
-	R("Q(H,N)", EQ, P_L, P_R, P_NONE, 0, F_LDDER F_ORA F_SBCHLDE, F_Z),
-	R("U(H,N)", NEQ, P_L, P_R, P_NONE, 0, F_LDDER F_ORA F_SBCHLDE, F_NZ),
-	R("T(H,N)", LT, P_L, P_R, P_NONE, 0, F_LDDER F_ORA F_SBCHLDE, F_C),
-	R("Y(H,N)", GE, P_L, P_R, P_NONE, 0, F_LDDER F_ORA F_SBCHLDE, F_NC),
+	R("c(H,N)", EQ, P_L, P_R, P_NONE, 0, F_LDDER F_ORA F_SBCHLDE, F_CC),
 
 	/*
 	 * Signed byte comparisons.  These have to come before the
@@ -2223,10 +2130,7 @@ struct rule rules[] = {
 
 	/* byte comparisons */
 	/* byte comparison against another byte, in E */
-	R("Q(A,K)", EQ, P_L, P_R, P_NONE, 0, F_CPE, F_Z),
-	R("U(A,K)", NEQ, P_L, P_R, P_NONE, 0, F_CPE, F_NZ),
-	R("T(A,K)", LT, P_L, P_R, P_NONE, 0, F_CPE, F_C),
-	R("Y(A,K)", GE, P_L, P_R, P_NONE, 0, F_CPE, F_NC),
+	R("c(A,K)", EQ, P_L, P_R, P_NONE, 0, F_CPE, F_CC),
 	R("Q(A,N)", EQ, P_L, P_R, P_NONE, 0, F_CPR, F_Z),
 	R("U(A,N)", NEQ, P_L, P_R, P_NONE, 0, F_CPR, F_NZ),
 	/*
@@ -2240,10 +2144,7 @@ struct rule rules[] = {
 	R("U(A,V)", NEQ, P_L, P_R, P_R, RF_C, "\tcp c\n", F_NZ),
 	R("T(A,N)", LT, P_L, P_R, P_NONE, 0, F_CPR, F_C),
 	R("Y(A,N)", GE, P_L, P_R, P_NONE, 0, F_CPR, F_NC),
-	R("Q(D(I),N):b", EQ, P_L, P_R, P_NONE, 0, F_LDALL F_CPR, F_Z),
-	R("U(D(I),N):b", NEQ, P_L, P_R, P_NONE, 0, F_LDALL F_CPR, F_NZ),
-	R("T(D(I),N):b", LT, P_L, P_R, P_NONE, 0, F_LDALL F_CPR, F_C),
-	R("Y(D(I),N):b", GE, P_L, P_R, P_NONE, 0, F_LDALL F_CPR, F_NC),
+	R("c(D(I),N):b", EQ, P_L, P_R, P_NONE, 0, F_LDALL F_CPR, F_CC),
 
 	/*
 	 * Unsigned > and <=.  cp leaves the answer spread over two flags -
@@ -2288,10 +2189,7 @@ struct rule rules[] = {
 		T_BC_HL F_LDDER F_ORA F_SBCHLDE F_JRNZ3 "\tscf\n", F_NC),
 	R("W(B,N)", LE, P_L, P_R, P_NONE, 0,
 		T_BC_HL F_LDDER F_ORA F_SBCHLDE F_JRNZ3 "\tscf\n", F_C),
-	R("G(B,E)", GT, P_L, P_R, P_NONE, 0,
-		T_BC_HL F_EXDEHL F_ORA F_SBCHLDE, F_C),
-	R("W(B,E)", LE, P_L, P_R, P_NONE, 0,
-		T_BC_HL F_EXDEHL F_ORA F_SBCHLDE, F_NC),
+	R("d(B,E)", GT, P_L, P_R, P_NONE, 0, T_BC_HL F_EXDEHL F_ORA F_SBCHLDE, F_CC),
 
 	/* NEQ -> BANG(EQ) */
 	R("U(_,N)", 0, P_NONE, P_NONE, P_NONE, RF_NOTEQ, NULL, 0),

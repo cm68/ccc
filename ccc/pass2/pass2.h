@@ -42,6 +42,13 @@
 #define F_NC    19      /* not carry */
 #define F_M     20      /* sign set: negative */
 #define F_P     21      /* sign clear: non-negative */
+/*
+ * Not a flag: what a rule writes in place of one when it serves a
+ * whole family of comparisons and the answer depends on which.  The
+ * rules that name it match with 'c' or 'd' rather than with a single
+ * comparison letter, and tryrule works the real flag out.
+ */
+#define F_CC    22      /* the flag this comparison answers in */
 
 /* signed widths are lower case, unsigned upper */
 #define ISSIGNED(w) ((w) == 'b' || (w) == 's' || (w) == 'l')

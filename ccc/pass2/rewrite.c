@@ -417,6 +417,23 @@ assign(Expr *e, unsigned char tgt)
 #define P_MUL24  239    /* constant 24 */
 #define P_MUL40  238    /* constant 40 */
 #define P_EIGHT  237    /* constant 8: a shift by a whole byte */
+/*
+ * A comparison, of either family.
+ *
+ * For one pair of operands the six comparisons are two pieces of
+ * code, not six: EQ, NEQ, LT and GE all subtract and then read a
+ * different flag off the same subtraction, and LE and GT are the
+ * same thing again with the operands the other way round.  The table
+ * held a row for each, alike but for the flag it named, and that was
+ * eighty-nine rows saying what the operator already says.
+ *
+ * So one row now, matched by P_CMP for the four that need no swap
+ * and P_CMPX for the two that do, with the result named F_CC - "the
+ * flag this comparison answers in", worked out from e->op and the
+ * signedness by ccflag() below.
+ */
+#define P_CMP    236    /* EQ, NEQ, LT or GE */
+#define P_CMPX   235    /* LE or GT: the same code, operands swapped */
 
 /*
  * Map single char to opcode (or special pattern value)
@@ -441,6 +458,7 @@ static struct opmap {
 	{'Z', P_ZERO}, {'M', P_SMALL}, {'S', SYM}, {'i', PREINC},
 	{'j', POSTINC}, {'k', PREDEC}, {'m', POSTDEC}, {'a', ARGNODE},
 	{'C', CODE}, {'o', OREQ}, {'g', NEG}, {'~', NOT}, {'!', BANG},
+	{'c', P_CMP}, {'d', P_CMPX},
 	{'_', P_ANY}, {'0', P_NULL}, {'3', P_MUL3}, {'5', P_MUL5},
 	{'6', P_MUL6}, {'7', P_MUL7}, {'9', P_MUL9}, {'x', P_MUL10},
 	{'e', P_MUL11}, {'w', P_MUL12}, {'f', P_MUL14}, {'n', P_MUL15},
@@ -505,6 +523,11 @@ opmatch(unsigned char pat, Expr *e)
 	if (pat == P_ZERO) return e && e->op == NUMBER && e->u.val == 0;
 	if (pat == P_SMALL) return e && e->op == NUMBER && e->u.val >= 1 && e->u.val <= 4;
 	if (pat == P_EIGHT) return e && e->op == NUMBER && e->u.val == 8;
+	if (pat == P_CMP)
+		return e && (e->op == EQ || e->op == NEQ ||
+		    e->op == LT || e->op == GE);
+	if (pat == P_CMPX)
+		return e && (e->op == LE || e->op == GT);
 	if (pat >= P_MUL40 && pat <= P_MUL3)
 		return e && e->op == NUMBER && e->u.val == multab[pat-238];
 	return e && e->op == pat;
@@ -856,6 +879,28 @@ static char regwant[8] = {
 };
 
 /*
+ * The flag a comparison answers in, once its operands have been
+ * subtracted.  EQ and NEQ read the zero bit whatever the signedness;
+ * the orderings read carry when unsigned and sign when the template
+ * has folded overflow into it.  LE and GT are not here: a rule that
+ * serves them has already swapped the operands, which turns them into
+ * GE and LT, and it is those the caller asks about.
+ */
+static unsigned char
+ccflag(unsigned char op, int signed_)
+{
+	switch (op) {
+	case EQ:  return F_Z;
+	case NEQ: return F_NZ;
+	case LT:  return signed_ ? F_M : F_C;
+	case GE:  return signed_ ? F_P : F_NC;
+	case LE:  return signed_ ? F_P : F_NC;	/* swapped: reads as GE */
+	case GT:  return signed_ ? F_M : F_C;	/* swapped: reads as LT */
+	}
+	return F_NZ;
+}
+
+/*
  * Try to apply a rule
  */
 static Expr *
@@ -1100,6 +1145,18 @@ tryrule(struct rule *rp, Expr *e)
 		emitasm(rp->asmtpl, e);
 		/* Use rule's destval, or target register if destval is 0 */
 		dest = rp->destval ? rp->destval : e->tgt;
+		/*
+		 * A rule serving a whole family says F_CC and the operator
+		 * says which flag.  The subtraction is the same for all
+		 * four of the unswapped ones - only which bit is read
+		 * differs - and the two swapped ones read the same bits as
+		 * their mirrors, since swapping the operands is what makes
+		 * "a <= b" into "b >= a".  Signed comparisons land in the
+		 * sign flag instead, the overflow having been folded into
+		 * it by the template.
+		 */
+		if (dest == F_CC)
+			dest = ccflag(oldop, (rp->flags & RF_SIGNL) != 0);
 		n = mkcode(e->width, dest);
 		n->dest = e->dest;
 		freeexpr(e);
