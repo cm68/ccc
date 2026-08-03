@@ -120,7 +120,7 @@ void
 fstack_push(struct filter_stack *s, void *data)
 {
 	if (s->sp >= s->alloc) {
-		int newcap = s->alloc * 2;
+		int newcap = s->alloc + GROWSTEP;
 		char *nb = realloc(s->buf, newcap * s->elemsize);
 
 		if (!nb)			/* see xalloc in util.c */
@@ -165,7 +165,13 @@ pend_grow(struct pendbuf *p)
 	struct token *newbuf;
 	int newmax, count, i;
 
-	newmax = p->size * 2;
+	/*
+	 * A step, not a doubling.  These queues are bounded by how deep
+	 * a construct nests and how long one expression is, not by the
+	 * size of the input, so the doubling never amortised anything
+	 * and overshot by up to half a buffer whenever it fired.
+	 */
+	newmax = p->size + GROWSTEP;
 	newbuf = (struct token *)xalloc(newmax * sizeof(struct token));
 
 	/* Copy elements in order from rd to wr */
@@ -312,7 +318,7 @@ tarr_push(struct tokarray *a, struct token *t)
 {
 	if (a->count >= a->alloc) {
 		struct token *newbuf;
-		int newcap = a->alloc * 2;
+		int newcap = a->alloc + GROWSTEP;	/* see pend_grow */
 		int i;
 		newbuf = (struct token *)xalloc(newcap * sizeof(struct token));
 		for (i = 0; i < a->count; i++) {

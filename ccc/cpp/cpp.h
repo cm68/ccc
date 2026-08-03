@@ -121,6 +121,9 @@ extern int is_type_kw(unsigned char type);
 extern int is_type_tok(struct token *t);
 
 /* Generic stack for filters */
+/* how much the token buffers grow by when they fill - see pend_grow */
+#define GROWSTEP 16
+
 struct filter_stack {
 	void *buf;
 	int sp, alloc, elemsize;
