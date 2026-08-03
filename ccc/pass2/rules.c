@@ -1436,6 +1436,23 @@ struct rule rules[] = {
 		F_LDLLL F_LDHLL1 F_LDHLE F_INCHL F_LDHLD, R_DE),
 
 	/* indirect stores via HL */
+	/*
+	 * The value forms first.  Storing a constant through an address
+	 * in HL leaves the address there, not the constant, so a chained
+	 * assignment took the leftover pointer for the value:
+	 *
+	 *	a->left = a->right = NULL;
+	 *
+	 * in docall nulled the right and filled the left with the
+	 * address of the right, one past.  freeexpr then walked into a
+	 * node the loop had just handed to pusharg, and the self-hosted
+	 * c1 died in free() with the stack in the heap.  Only when the
+	 * address has to be worked out: a frame slot or a register home
+	 * has a form of its own further up, which is why the same line
+	 * elsewhere in the tree was fine.
+	 */
+	R("=(D(H),N):bV", ASSIGN, P_L, P_R, P_NONE, 0,
+		"\tld (hl),$R\n\tld a,$R\n", R_A),
 	R("=(D(H),N):b", ASSIGN, P_L, P_R, P_NONE, 0, "\tld (hl),$R\n", 0),
 	/*
 	 * The stored value is the value of the assignment.  Where a
@@ -1495,6 +1512,8 @@ struct rule rules[] = {
 		T_BC_HL F_LDHLRL F_INCHL F_LDHLRH, 0),
 	R("=(D(E),N):s", ASSIGN, P_L, P_R, P_NONE, 0,
 		F_EXDEHL F_LDHLRL F_INCHL F_LDHLRH, 0),
+	R("=(D(H),N):sV", ASSIGN, P_L, P_R, P_NONE, 0,
+		F_LDHLRL F_INCHL F_LDHLRH F_LDHLR, R_HL),
 	R("=(D(H),N):s", ASSIGN, P_L, P_R, P_NONE, 0, F_LDHLRL F_INCHL F_LDHLRH, 0),
 	R("=(D(H),B):s", ASSIGN, P_L, P_R, P_NONE, 0, "\tld (hl),c\n" F_INCHL "\tld (hl),b\n", 0),
 
