@@ -1627,6 +1627,28 @@ islocdesc(Expr *e)
 }
 
 /*
+ * Will working this operand out take HL?
+ *
+ * A value read through an address needs that address in HL to be
+ * read through - unless it names a place the load rules reach where
+ * it stands, which is what islocdesc lists: a frame slot and a
+ * register home have (iy+d) and (ix+d) forms and never touch HL.
+ * Anything else under the DEREF is an address the tree works out,
+ * and working it out is what takes the register.
+ *
+ * Two operands that both answer yes cannot both be reduced in place:
+ * the first is in HL when the second goes to load through it.  The
+ * caller uses this to run the second one first.
+ */
+static int
+needshl(Expr *e)
+{
+	if (!e || e->op != DEREF)
+		return 0;
+	return !islocdesc(e->left);
+}
+
+/*
  * Did this subtree actually reduce?  A tree that did is a single
  * register node with nothing under it; anything else means a rule was
  * missing somewhere below and no code came out for it.  The root
@@ -1982,12 +2004,30 @@ bytepair(Expr *e)
  *
  * Only safe while the other operand has not been evaluated yet - the
  * HL form goes through ex de,hl, which would trample it.
+ *
+ * A long is not one of these.  It occupies HL:DE whole, so there is no
+ * "move it to DE" to be had: ex de,hl only swaps its halves and calling
+ * the result INDE loses the other two bytes.  What a caller asking for
+ * DE actually wants is the low word, and that is already sitting there
+ * - so the narrow is free and the move emits nothing.
+ *
+ * This used to run the 16-bit path on a long: "0123456789ABCDEF"[i %
+ * base] swapped the halves and then indexed by the high word, so _pnum
+ * wrote a zero for every digit and printf("%d") printed nothing at all.
  */
 static Expr *
 movetotgt(Expr *e, unsigned char tgt)
 {
 	if (!e || tgt != R_DE)
 		return e;
+	if (ISLONG(e->width)) {
+		if (e->op != INHL)
+			return e;
+		e->width = ISSIGNED(e->width) ? T_SHORT : T_USHORT;
+		e->op = INDE;
+		e->u.var.reg = R_DE;
+		return e;
+	}
 	if (e->op == INA) {
 		out("\tld e,a\n");
 		e->op = INE;
@@ -3365,7 +3405,10 @@ rewrite1(Expr *e)
 			else
 				e->left = mkunary(DEREF, e->width, addr);
 		} else if (e->op != COMMA && e->left && e->right &&
-			   e->left->regs <= 1 && e->right->regs > e->left->regs &&
+			   e->left->regs <= 1 &&
+			   (e->right->regs > e->left->regs ||
+			    (e->right->regs == e->left->regs &&
+			     needshl(e->left) && needshl(e->right))) &&
 			   !e->left->nored && !e->right->nored) {
 			/*
 			 * Sethi-Ullman: work out the costlier side first, so
@@ -3378,6 +3421,17 @@ rewrite1(Expr *e)
 			 * that is the case that cannot disturb DE while the
 			 * right operand is sitting in it.  And never for the
 			 * comma, whose order is the whole point of it.
+			 *
+			 * At or above, not above.  Two sides that each cost
+			 * one register - "*p - *q" - left the first in HL and
+			 * then reduced the second, which needs HL to load
+			 * through and took it: the left operand was gone
+			 * before the operator ever ran, and no rule spells
+			 * -(H,H) so nothing was emitted at all.  Doing the
+			 * right first parks it in DE, where the operator
+			 * wants it.  A comparison function is written this
+			 * way, so qsort compared nothing and reversed its
+			 * input instead of sorting it.
 			 */
 			unsigned char rtgt = e->right->tgt;
 
@@ -3455,6 +3509,40 @@ rewrite1(Expr *e)
 		      e->left->left->u.var.reg == R_IX)))
 			e->right = valtohl(e->right);
 
+		/*
+		 * The descriptor on the LEFT of a subtraction: "&buf[NDIG]
+		 * - cp", the span of what a routine has filled in so far.
+		 * PLUS has +(I,H), +(I,E) and +(I,B) because a subscript
+		 * reaches the frame slot without a register, but MINUS does
+		 * not commute and there is no -(I,x) at all - so nothing
+		 * matched and nothing was emitted.  Every -(H,x) form does
+		 * exist, so putting the address in HL is all it takes.
+		 *
+		 * Only where HL is free: against a right already in HL the
+		 * existing -(H,I) rule is the better code.
+		 *
+		 * _pnum measures its digit run this way, so printf("%d")
+		 * printed one character of any number and dropped the rest.
+		 *
+		 * Forming the address costs DE when the slot has an offset,
+		 * and the right operand has already been worked out by now -
+		 * "buf + 6 - q" loaded q into DE and then overwrote it with
+		 * the offset, subtracting the offset from itself.
+		 */
+		if (e->op == MINUS && e->left && e->right &&
+		    e->left->op == INDEX && !ISLONG(e->width) &&
+		    reduced(e->right) && e->right->op != INHL) {
+			int keepde = e->right->op == INDE &&
+			    e->left->u.var.off;
+
+			if (keepde)
+				out("\tpush de\n");
+			e->left = valtohl(e->left);
+			if (keepde)
+				out("\tpop de\n");
+		}
+
+
 		if (e->left && e->right && e->right->op == INDEX &&
 		    !ISLONG(e->width) && reduced(e->left) &&
 		    (e->op == EQ || e->op == NEQ || e->op == LT ||
@@ -3462,13 +3550,19 @@ rewrite1(Expr *e)
 		     /*
 		      * and the difference or sum against one, "p - def",
 		      * which is how the span is read back afterwards.
-		      * Not against a left in HL: "-(H,I)" is a real rule
-		      * that reaches the frame slot without a register,
-		      * and taking the operand away from it would cost
-		      * bytes at every subscript in the tree.
+		      *
+		      * A sum is let through to +(I,H), which forms the
+		      * address the way this does and costs less.  A
+		      * difference is not: -(H,I) read the two bytes AT the
+		      * slot instead, and a bare INDEX operand is never a
+		      * value - a scalar's contents arrive as D(I) and
+		      * reduce through the load rules well before here.  So
+		      * "q - buf" subtracted buf[0] and buf[1] from q.  The
+		      * rule is gone and this covers the shape; the push
+		      * below is what makes a left in HL safe.
 		      */
-		     ((e->op == PLUS || e->op == MINUS) &&
-		      e->left->op != INHL))) {
+		     e->op == MINUS ||
+		     (e->op == PLUS && e->left->op != INHL))) {
 			char rw = e->right->width;
 			unsigned char reg = e->right->u.var.reg;
 			short off = e->right->u.var.off;

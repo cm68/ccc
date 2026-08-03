@@ -108,7 +108,16 @@ assignFrmOff(struct name *func)
 			arrays = 1;
 			off += 4;	/* callee-save slots */
 		}
-		off += n->type->size;
+		/*
+		 * typesize, not the byte-wide size field: a type node holds
+		 * "how big is one of me" in a char, and an array keeps its
+		 * real extent as count times the element.  Reading size here
+		 * gave every array its extent modulo 256, so qsort's
+		 * "char xbuf[800]" got 32 bytes of frame and the pivot copy
+		 * wrote 800 bytes through it - over the saved registers, the
+		 * return address and whatever else was below.
+		 */
+		off += typesize(n->type);
 		n->w.r.frm_off = -off;
 	}
 	return off;  /* frame size = total local stack space */
@@ -151,6 +160,9 @@ allocRegs(struct name *locals)
 	for (n = locals; n; n = n->next) {
 		if (!(n->sclass & SC_REGISTER) || !canAlloc(n, no_arg_regs))
 			continue;
+		/* an aggregate is its storage, whatever it was asked for */
+		if (n->type->flags & (TF_ARRAY | TF_AGGREGATE))
+			continue;
 		if ((n->type->flags & TF_POINTER) && !(regs & 1)) {
 			n->w.r.reg = REG_IX;
 			regs |= 1;
@@ -171,6 +183,20 @@ allocRegs(struct name *locals)
 			if (!canAlloc(n, no_arg_regs))
 				continue;
 			if (!(n->type->flags & TF_POINTER))
+				continue;
+			/*
+			 * An array carries TF_POINTER too - it decays - so the
+			 * pointer bit alone does not mean there is a pointer
+			 * here to put in a register.  An array IS its storage;
+			 * giving it IX made "stack[0].l = 11" assign to the
+			 * register and every field reference address the frame
+			 * from wherever that left it.  The two allocators below
+			 * have always excluded aggregates; this one did not,
+			 * and only escaped notice because a declared register
+			 * pointer usually takes IX first - which is exactly
+			 * what was hiding it in qsort.
+			 */
+			if (n->type->flags & (TF_ARRAY | TF_AGGREGATE))
 				continue;
 			/* Only use IX if pointer is used for field access */
 			if (n->w.r.agg_refs > 0) {

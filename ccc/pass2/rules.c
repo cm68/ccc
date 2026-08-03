@@ -1647,8 +1647,15 @@ struct rule rules[] = {
 	R("-(H,N)", MINUS, P_L, P_R, P_NONE, 0, F_LDDER F_ORA F_SBCHLDE, R_HL),
 	/* and against a frame slot, which the other four widths of this
 	 * had and the subtraction did not */
-	R("-(H,I)", MINUS, P_L, P_R, P_NONE, 0,
-		"\tld e,($R)\n\tld d,($R+)\n" F_ORA F_SBCHLDE, R_HL),
+	/*
+	 * No -(H,I).  It read the two bytes at the frame slot, but a bare
+	 * INDEX operand is an address, not a value: a scalar's contents
+	 * come through as D(I) and are loaded by the rules above long
+	 * before a binary operator sees them.  The only thing that reaches
+	 * here as a bare INDEX is a local array's name, whose value IS its
+	 * address - so "q - buf" subtracted buf[0] and buf[1] from q.
+	 * rewrite1 forms the address instead, at children_done.
+	 */
 
 	/* shifts */
 	R("<(H,N)", LSHIFT, P_L, P_R, P_NONE, 0, "%(" T_ADD_HL_HL ")", R_HL),

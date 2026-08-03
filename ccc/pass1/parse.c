@@ -444,6 +444,23 @@ capLocals(void)
 		/* Skip tags, typedefs, and functions */
 		if (n->is_tag || n->kind == ktdef || n->kind == kfdef)
 			continue;
+		/*
+		 * kfdef is only the ones defined here.  A function
+		 * DECLARED in a block - "extern short _pnum(), _fnum();",
+		 * which is how K&R names a routine returning other than
+		 * int - is an ordinary name carrying a function type, and
+		 * it was captured as a local: the frame grew a slot for it
+		 * and the call became "ld hl,(_pnum)", an indirect jump
+		 * through the first two bytes of the routine's own code.
+		 * doprnt declares _pnum that way, so printf("%d") ran off
+		 * into the weeds and took the format loop with it.
+		 *
+		 * An extern names something with static storage wherever
+		 * it is written, so it is never a frame slot either.
+		 */
+		if ((n->type && (n->type->flags & TF_FUNC)) ||
+		    (n->sclass & SC_EXTERN))
+			continue;
 
 		/* Capture this variable (shallow copy) */
 		if (n->kind == kvar || n->kind == klocal || n->kind == kfunarg) {

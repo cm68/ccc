@@ -442,8 +442,33 @@ skipParams(struct name *nm, struct type *prefix)
     struct type *suffix = NULL;
     unsigned char pdepth = 1;
 
-    if (nm && nm->type && (nm->type->flags & TF_POINTER) &&
-        !nm->type->sub) {
+    /*
+     * The same is true of a function DECLARED in a body - "extern
+     * short _pnum(), _fnum();", K&R's way of saying a routine does
+     * not return int.  It is created afresh here too, so there is no
+     * phase 1 type to keep and the bare return type is all it has.  A
+     * short does not decay, so the reference came out as DEREF(SYM):
+     * the call loaded the first two bytes of the routine's own code
+     * and jumped through them.  doprnt declares _pnum this way, which
+     * is what took printf("%d") off into the weeds.
+     *
+     * A pointer counts, and the two pointer shapes are told apart by
+     * what is under it, not here: "(*fp)()" arrives as a pointer to
+     * nothing and declare() turns this suffix into pointer-to-
+     * function, while "char *malloc()" arrives as a pointer to char
+     * and becomes a function returning it.  qsort declares malloc
+     * that way, so it called whatever the first two bytes of malloc
+     * pointed at and sorted nothing.
+     *
+     * Inside a body only.  At file scope the entry a definition
+     * reuses is not always the one that carries the function type,
+     * and building a fresh one here turned "short (*gfp)()" into a
+     * function rather than a pointer to one - so assigning to it was
+     * no longer assigning to an object at all.
+     */
+    if (nm && nm->type &&
+        (((nm->type->flags & TF_POINTER) && !nm->type->sub) ||
+         (lexlevel > 1 && !(nm->type->flags & (TF_FUNC | TF_ARRAY))))) {
         suffix = (struct type *)permalloc(sizeof(*suffix));
         suffix->flags = TF_FUNC;
         suffix->sub = prefix ? prefix : inttype;
@@ -644,7 +669,22 @@ declare(struct type **btp, unsigned char struct_elem)
         ((suffix->flags & TF_ARRAY) &&
          !(nm->type && (nm->type->flags & TF_ARRAY))) ||
         ((suffix->flags & TF_FUNC) && nm && nm->type &&
-         (nm->type->flags & TF_POINTER) && !nm->type->sub))) {
+         (nm->type->flags & TF_POINTER) && !nm->type->sub) ||
+        /*
+         * A function DECLARED inside a body - "extern short _pnum(),
+         * _fnum();", K&R's way of saying a routine does not return
+         * int.  Locals are freed after phase 1 and re-created in
+         * phase 2 from the base type alone, so the "()" was dropped
+         * and the name came back as a plain short.  A short does not
+         * decay, so the reference became DEREF(SYM) and the call
+         * loaded the first two bytes of the routine's own code and
+         * jumped through them.  Same shape as the array case above,
+         * and the same fix; only where the name carries no
+         * function-ness of its own, which is what the phase 2
+         * caution below is about.
+         */
+        ((suffix->flags & TF_FUNC) && nm && nm->type &&
+         !(nm->type->flags & (TF_FUNC | TF_ARRAY))))) {
         /*
          * Function suffixes are only applied in phase 1: in phase 2 a
          * reused nm already has its type correctly set, and re-applying

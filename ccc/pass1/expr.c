@@ -520,10 +520,20 @@ foldNode(struct expr *e)
      * in fclose emitted no code at all and every stream kept the
      * flags it was closed with.  The width discipline is the binary
      * fold's below: wrap to the result type, and leave longs alone.
+     *
+     * A width change is one of these.  The cast code relabels a
+     * constant rather than wrapping it, but it asks the same question
+     * at the same too-early moment: "(char)(799 & 0x7f)" was still an
+     * AND tree when the cast looked, so it got a NARROW - and by the
+     * time the AND folded, the NARROW was around a literal, which no
+     * rule in pass2 names.  Nothing was emitted and the destination
+     * kept whatever it held.  The wrap below IS the conversion, so
+     * these need no arithmetic of their own.
      */
     if (e->left && !e->right && e->left->op == CONST &&
         (e->left->flags & E_CONST) &&
-        (e->op == NEG || e->op == NOT || e->op == BANG) &&
+        (e->op == NEG || e->op == NOT || e->op == BANG ||
+         e->op == NARROW || e->op == WIDEN || e->op == SEXT) &&
         e->type && e->type->size > 0 && e->type->size <= 2 &&
         !(e->type->flags & (TF_POINTER | TF_ARRAY | TF_FUNC))) {
         unsigned long uv;
@@ -532,7 +542,7 @@ foldNode(struct expr *e)
         uv = left->v;
         if (e->op == NEG) uv = -uv;
         else if (e->op == NOT) uv = ~uv;
-        else uv = !uv;
+        else if (e->op == BANG) uv = !uv;
         left->type = e->type;
         left->v = uv;
         if (left->type->size == 1) {
@@ -1801,6 +1811,35 @@ parseExpr(unsigned char pri)
              */
             if (op == PLUS || op == MINUS)
                 e = scaleptr(e);
+            /*
+             * The compound forms count in elements too - "p += n" is
+             * "p = p + n" - but they cannot go through scaleptr: the
+             * left has had its DEREF taken off to leave an address, so
+             * every compound assignment looks like a pointer there and
+             * "arr[2] += 50" would scale the 50.  The type being
+             * assigned is the one to ask, and unwrapDeref saved it.
+             *
+             * Only the plain operators were scaled at all, so doprnt's
+             * varargs walk - "a += len" over an int * - advanced one
+             * byte per conversion, and printf("%d %d") read its second
+             * number a byte into the first.
+             */
+            else if ((op == PLUSEQ || op == SUBEQ) && assign_type &&
+                     (assign_type->flags & (TF_POINTER | TF_ARRAY)) &&
+                     assign_type->sub && assign_type->sub->size > 1 &&
+                     e->right &&
+                     !(e->right->type &&
+                       (e->right->type->flags & (TF_POINTER | TF_ARRAY)))) {
+                int esz = assign_type->sub->size;
+
+                if (e->right->flags & E_CONST) {
+                    e->right->v *= esz;
+                } else {
+                    e->right = mkbin(STAR, e->right,
+                        mkexprI(CONST, 0, inttype,
+                            (unsigned long)esz, E_CONST), inttype);
+                }
+            }
         } else {
             e->type = e->left->type;
         }
