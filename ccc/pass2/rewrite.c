@@ -1265,64 +1265,79 @@ normtree(Expr *e)
 	 * nothing for the outer assignment to copy, and only the value
 	 * context tells it to pay for a register.
 	 */
-	if (e->op == ASSIGN && e->right && e->right->dest == DEST_NONE)
-		e->right->dest = DEST_VALUE;
 	/*
-	 * And the left, when it is not simply a place.  An lvalue that
-	 * has to be worked out is an address, and an address is a value:
-	 * "*p++ = 7" wants the pointer from before the step.  Read as
-	 * discarded, the step took the form that does not bother
-	 * producing one - which for a step of more than one is a
-	 * compound assignment that never undoes itself - and the store
-	 * went through the pointer after the step instead of before.
+	 * What a child is wanted for, decided by what the parent is.
+	 *
+	 * This was five standalone tests walking the same handful of
+	 * operators, the last of them naming everything the other four
+	 * did not - so an operator was compared against as many as nine
+	 * constants to be told that what it operates on is a value.  One
+	 * dispatch says it.  A node's destination starts as DEST_NONE and
+	 * only a statement root is ever told otherwise, so an operand
+	 * nobody had spoken for read as discarded, and a rule asking for
+	 * statement context with :S would match it: "uc++ != 5" took the
+	 * statement form of the step, which increments the byte in memory
+	 * and leaves HL holding its address, then compared the address
+	 * against five.
 	 */
-	if (e->op == ASSIGN && e->left && !islocdesc(e->left) &&
-	    e->left->dest == DEST_NONE)
-		e->left->dest = DEST_VALUE;
+	switch (e->op) {
+	/*
+	 * An assignment's right side is the value.  Its left is a place,
+	 * unless the place has to be worked out - an address is a value
+	 * too: "*p++ = 7" wants the pointer from before the step.  Read
+	 * as discarded, the step took the form that does not bother
+	 * producing one, and the store went through the pointer after the
+	 * step instead of before.
+	 */
+	case ASSIGN:
+		if (e->right && e->right->dest == DEST_NONE)
+			e->right->dest = DEST_VALUE;
+		if (e->left && !islocdesc(e->left) &&
+		    e->left->dest == DEST_NONE)
+			e->left->dest = DEST_VALUE;
+		break;
 	/*
 	 * A conversion is transparent: what it converts is wanted exactly
 	 * as much as the conversion is.  Without this the destination
 	 * stopped at the widening and everything under it read as
 	 * discarded - so "r = g++" took the form of the step that throws
 	 * its value away, and then widened the address it had left in HL.
+	 *
+	 * Where the conversion itself is wanted for nothing, the child is
+	 * still a value: it used to reach that by falling through to the
+	 * general arm below, which is the step this arm now does at once.
 	 */
-	if ((e->op == SEXT || e->op == WIDEN) && e->left &&
-	    e->left->dest == DEST_NONE)
-		e->left->dest = e->dest;
+	case SEXT:
+	case WIDEN:
+		if (e->left && e->left->dest == DEST_NONE)
+			e->left->dest = e->dest == DEST_NONE ?
+			    DEST_VALUE : e->dest;
+		break;
 	/*
 	 * A comma's left really is discarded - that is what it is for -
-	 * but its right is the value, and is wanted exactly as much as the
-	 * comma itself.  Left out of the rule below along with the left,
-	 * it read as discarded: a constant or a frame slot there never
-	 * paid for a register, and the comma rules, which do nothing but
-	 * say where the value ended up, had nothing to name.
+	 * but its right is the value, and is wanted exactly as much as
+	 * the comma itself.
 	 */
-	if (e->op == COMMA && e->right && e->right->dest == DEST_NONE)
-		e->right->dest = e->dest;
-	/*
-	 * The two above are the same rule found twice, one operator at a
-	 * time, so here it is once: what an operator operates on is
-	 * wanted as a value.  A node's destination starts as DEST_NONE
-	 * and only a statement root is ever told otherwise, so an operand
-	 * nobody had spoken for read as discarded - and a rule asking for
-	 * statement context with :S would match it.  "uc++ != 5" took the
-	 * statement form of the step, which increments the byte in memory
-	 * and leaves HL holding its address, and then compared the
-	 * address against five.
-	 *
-	 * Not an assignment, whose left side is a place rather than a
-	 * value and whose right side is handled above.  Not a comma,
-	 * whose left side really is discarded - that is what it is for.
-	 * And not the compound assignments, which are an assignment
-	 * wearing an operator's clothes.
-	 */
-	if (e->op != ASSIGN && e->op != COMMA && !baseop(e->op) &&
-	    e->op != PREINC && e->op != POSTINC &&
-	    e->op != PREDEC && e->op != POSTDEC) {
+	case COMMA:
+		if (e->right && e->right->dest == DEST_NONE)
+			e->right->dest = e->dest;
+		break;
+	/* a step is an assignment wearing an operator's clothes */
+	case PREINC:
+	case POSTINC:
+	case PREDEC:
+	case POSTDEC:
+		break;
+	/* everything else operates on values, the compound assignments
+	 * excepted for the same reason as the steps */
+	default:
+		if (baseop(e->op))
+			break;
 		if (e->left && e->left->dest == DEST_NONE)
 			e->left->dest = DEST_VALUE;
 		if (e->right && e->right->dest == DEST_NONE)
 			e->right->dest = DEST_VALUE;
+		break;
 	}
 	normtree(e->left);
 	normtree(e->right);
@@ -2724,6 +2739,7 @@ rewrite1(Expr *e)
 {
 	Expr *n, *next;
 	char lw, rw;
+	unsigned char narrow, both;
 
 	if (!e) return NULL;
 
@@ -2866,30 +2882,33 @@ rewrite1(Expr *e)
 	 * a postfix yields the old one, which this does not produce, so
 	 * that is only converted where the value is being thrown away.
 	 */
+	/*
+	 * A step by other than one, both fixes.  These were two blocks
+	 * asking the same three questions - is there a child, is the
+	 * amount other than one, is this a step at all - and the second
+	 * only ever ran when the first had not, the first having already
+	 * relabelled the node as a compound assignment.  One guard, and
+	 * the arm below picks which.
+	 */
 	if (e->left && e->u.incdec.amt != 1 &&
 	    (e->op == PREINC || e->op == PREDEC ||
-	     ((e->op == POSTINC || e->op == POSTDEC) &&
-	      e->dest == DEST_NONE))) {
+	     e->op == POSTINC || e->op == POSTDEC)) {
 		long amt = e->u.incdec.amt;
+		unsigned char post = e->op == POSTINC || e->op == POSTDEC;
 		unsigned char nop =
 		    (e->op == PREINC || e->op == POSTINC) ? PLUSEQ : SUBEQ;
 
-		e->op = nop;
-		e->right = mkconst(e->width, amt);
-		label(e);
-		assign(e, e->tgt ? e->tgt : R_HL);
-	}
-
-	/*
-	 * The same step, postfix, where the value is wanted: that is the
-	 * value from before, so it has to be kept while the location is
-	 * updated.  The stack is the only temporary there is.
-	 */
-	if (e->left && e->u.incdec.amt != 1 &&
-	    (e->op == POSTINC || e->op == POSTDEC) &&
-	    dupableloc(e->left)) {
-		long amt = e->u.incdec.amt;
-		unsigned char nop = (e->op == POSTINC) ? PLUSEQ : SUBEQ;
+		if (!post || e->dest == DEST_NONE) {
+			e->op = nop;
+			e->right = mkconst(e->width, amt);
+			label(e);
+			assign(e, e->tgt ? e->tgt : R_HL);
+		} else if (dupableloc(e->left)) {
+		/*
+		 * Postfix where the value is wanted: that is the value from
+		 * before, so it has to be kept while the location is
+		 * updated.  The stack is the only temporary there is.
+		 */
 		Expr *loc = e->left;
 		Expr *val, *step;
 
@@ -2907,6 +2926,7 @@ rewrite1(Expr *e)
 
 		e->left = NULL;
 		return donehl(e, INHL);
+		}
 	}
 
 	/* x OP= y -> x = x OP y, before the children are reduced */
@@ -3452,6 +3472,15 @@ rewrite1(Expr *e)
 		}
 	children_done: ;
 		/*
+		 * The fixups below all ask whether this is a narrow node,
+		 * and most of them whether both children are there.  They
+		 * were four standalone blocks asking it four times over.
+		 * Nothing here nulls a child - the two that replace one
+		 * put a register node in its place - so one answer serves.
+		 */
+		narrow = !ISLONG(e->width);
+		both = e->left && e->right;
+		/*
 		 * A long stored into something narrower.  The value is in
 		 * HL:DE with HL the high word, and every narrowing store
 		 * rule takes the low half of HL - which is the third byte
@@ -3467,7 +3496,7 @@ rewrite1(Expr *e)
 		 * every number this way, so every constant above 255 lost
 		 * its high bytes: 0644 arrived as 164 and 256 as 0.
 		 */
-		if (e->op == ASSIGN && !ISLONG(e->width) &&
+		if (e->op == ASSIGN && narrow &&
 		    e->right && e->right->op == INHL &&
 		    ISLONG(e->right->width)) {
 			out("\tex de,hl\n");
@@ -3501,8 +3530,8 @@ rewrite1(Expr *e)
 		 * here is a dereferenced register home, so HL is free -
 		 * valtohl knows how to work an (iy+d) into it.
 		 */
-		if (e->op == ASSIGN && e->left && e->right &&
-		    e->right->op == INDEX && !ISLONG(e->width) &&
+		if (e->op == ASSIGN && both &&
+		    e->right->op == INDEX && narrow &&
 		    e->left->op == DEREF && e->left->left &&
 		    (e->left->left->op == INBC ||
 		     (e->left->left->op == REGVAR &&
@@ -3529,8 +3558,8 @@ rewrite1(Expr *e)
 		 * "buf + 6 - q" loaded q into DE and then overwrote it with
 		 * the offset, subtracting the offset from itself.
 		 */
-		if (e->op == MINUS && e->left && e->right &&
-		    e->left->op == INDEX && !ISLONG(e->width) &&
+		if (e->op == MINUS && both &&
+		    e->left->op == INDEX && narrow &&
 		    reduced(e->right) && e->right->op != INHL) {
 			int keepde = e->right->op == INDE &&
 			    e->left->u.var.off;
@@ -3543,8 +3572,8 @@ rewrite1(Expr *e)
 		}
 
 
-		if (e->left && e->right && e->right->op == INDEX &&
-		    !ISLONG(e->width) && reduced(e->left) &&
+		if (both && e->right->op == INDEX &&
+		    narrow && reduced(e->left) &&
 		    (e->op == EQ || e->op == NEQ || e->op == LT ||
 		     e->op == GT || e->op == LE || e->op == GE ||
 		     /*
