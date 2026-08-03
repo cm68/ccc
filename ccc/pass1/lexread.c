@@ -57,7 +57,7 @@ static int lexValid = 0;
  * Read a byte from the lexeme stream
  * Returns E_O_F (0) on end of file
  */
-static unsigned char
+unsigned char
 readByte(void)
 {
 	if (lexPos >= lexValid) {
@@ -82,7 +82,7 @@ readByte(void)
  * call.  A byte counted down needs no compare at all: dec sets Z
  * itself, and in B it is the top half of djnz.
  */
-static void
+void
 readBytes(char *buf, unsigned char n)
 {
 	unsigned char i, m;
@@ -95,7 +95,7 @@ readBytes(char *buf, unsigned char n)
 /*
  * Read 2-byte little-endian value
  */
-static int
+int
 readLE2(void)
 {
 	unsigned char lo = readByte();
@@ -128,7 +128,7 @@ readLE2(void)
  * emit4 on cpp's side writes the same four bytes in the same order
  * by hand.
  */
-static void
+void
 readLE4(void)
 {
 	next.v.b[0] = readByte();
@@ -159,7 +159,7 @@ nameOf(unsigned short id)
 /*
  * Free token resources
  */
-static void
+void
 freeToken(struct token *t)
 {
 	if (t->type == ASM) {
@@ -176,7 +176,7 @@ freeToken(struct token *t)
  * Most token values pass through directly since cpp and pass1 now
  * use the same values. Only special tokens need handling.
  */
-static void
+void
 readNextToken(void)
 {
 	unsigned char c;
@@ -296,7 +296,7 @@ again:
  * compile itself.  So the fields go across one at a time, the union
  * through its widest member, which covers every other.
  */
-static void
+void
 shifttok(void)
 {
 	cur.type = next.type;

@@ -93,7 +93,7 @@ filtbrace_init(void (*up)(struct token *))
 
 #ifdef DEBUG
 /* Track output brace balance */
-static void
+void
 track_out(struct token *t)
 {
 	if (t->type == BEGIN)
@@ -104,7 +104,7 @@ track_out(struct token *t)
 #endif
 
 #ifdef DEBUG
-static char *
+char *
 ctrlname(unsigned char c)
 {
 	switch (c) {
@@ -119,7 +119,7 @@ ctrlname(unsigned char c)
 #endif
 
 /* Push a synthetic body entry */
-static void
+void
 push_body(unsigned char ctrl, unsigned char is_else)
 {
 	struct stkent ent;
@@ -135,8 +135,8 @@ push_body(unsigned char ctrl, unsigned char is_else)
 #endif
 }
 
-static void pop_body(void);
-static void queue_end(void);
+void pop_body(void);
+void queue_end(void);
 
 /*
  * A synthetic body's single statement just completed: close every
@@ -144,7 +144,7 @@ static void queue_end(void);
  * stopping at a user-braced block (it continues) or at an IF that
  * still needs its else-check.  Sets state accordingly.
  */
-static void
+void
 cascade(void)
 {
 	struct stkent *top;
@@ -170,7 +170,7 @@ cascade(void)
 }
 
 /* Pop body entry */
-static void
+void
 pop_body(void)
 {
 	fstack_pop(&fs, NULL);
@@ -181,7 +181,7 @@ pop_body(void)
 }
 
 /* Emit synthetic BEGIN and track balance */
-static void
+void
 emit_begin(struct token *out)
 {
 	toksynth(out, BEGIN);
@@ -200,7 +200,7 @@ emit_begin(struct token *out)
  * else-check, a do holds it until the trailing while, and anything else
  * closes here and lets the enclosing bodies close with it.
  */
-static void
+void
 endbody(void)
 {
 	struct stkent *top = fstack_top(&fs);
@@ -230,7 +230,7 @@ endbody(void)
 }
 
 /* Queue synthetic END and track balance */
-static void
+void
 queue_end(void)
 {
 	pend_tok(&pb, END);
@@ -246,7 +246,7 @@ queue_end(void)
  * frame and close the enclosing synthetic bodies (pausing at an IF for
  * its else-check).  Returns 1 with *out filled, 0 if t is not ours.
  */
-static int
+int
 user_end(struct token *t, struct token *out)
 {
 	struct stkent *top = fstack_top(&fs);

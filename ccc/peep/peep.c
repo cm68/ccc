@@ -31,7 +31,7 @@ static int ateof = 0;
  * one space.  "\tld\thl,0" and "    ld hl,0" are the same instruction
  * and pass2 emits both spellings.
  */
-static void
+void
 normalise(char *src, char *dst)
 {
 	int sp = 0, n = 0;
@@ -58,7 +58,7 @@ normalise(char *src, char *dst)
  * anything may jump to it, a directive because it is not an
  * instruction and its operands are not registers.
  */
-static int
+int
 classify(char *key)
 {
 	int i;
@@ -77,7 +77,7 @@ classify(char *key)
 }
 
 /* read one line into window slot i; returns 0 at end of file */
-static int
+int
 readline(int i)
 {
 	char buf[LLEN];
@@ -96,7 +96,7 @@ readline(int i)
 }
 
 /* top up the window */
-static void
+void
 fill(void)
 {
 	while (nwin < WINDOW && readline(nwin))
@@ -154,7 +154,7 @@ setline(int i, char *s)
 	win[i].kind = classify(win[i].key);
 }
 
-static void
+void
 usage(void)
 {
 	fprintf(stderr, "usage: peep [-v] input.s output.s\n");

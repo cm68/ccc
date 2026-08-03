@@ -92,7 +92,7 @@ struct include {
     struct include *next;
 } *includes;
 
-static void
+void
 die(char *fmt, char *arg)
 {
     char buf[140];

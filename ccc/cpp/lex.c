@@ -225,7 +225,6 @@ skiptoeol()
  *   - Leaves curchar at first non-digit
  *   - May report error for empty hex/binary literals
  */
-static
 long
 getint(unsigned char base)
 {
@@ -314,7 +313,7 @@ static unsigned char termin;  /* String terminator (' or ") */
  * values are diagnosed and masked so they can never collide with
  * the out-of-band GL_END marker.
  */
-static int
+int
 escint(unsigned char base)
 {
     int v = (int)getint(base);
@@ -326,7 +325,7 @@ escint(unsigned char base)
     return v;
 }
 
-static int
+int
 getlit()
 {
     unsigned char c;
@@ -669,7 +668,7 @@ issym()
  * Honors parent-false: if any enclosing #if is false, the new scope is
  * also false regardless of its own value.
  */
-static void
+void
 push_cond(unsigned long v)
 {
     struct cond *c = (struct cond *)xalloc(sizeof(*c));

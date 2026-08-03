@@ -21,7 +21,7 @@ int in2fd;
 short verbose;
 #endif
 
-static void
+void
 errout(char *buf)
 {
 	write(2, buf, strlen(buf));
@@ -29,7 +29,7 @@ errout(char *buf)
 
 static char *progname;
 
-static void
+void
 usage(char *complaint)
 {
 	errout(complaint);

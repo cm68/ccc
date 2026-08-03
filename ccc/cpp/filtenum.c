@@ -43,10 +43,10 @@ filtenum_init(void (*upstream)(struct token *))
 	pend_setup(&epend, 8);
 }
 
-static long enum_expr(struct token *t);
+long enum_expr(struct token *t);
 
 /* t holds the current lookahead on entry and exit */
-static long
+long
 enum_prim(struct token *t)
 {
 	long v;
@@ -80,7 +80,7 @@ enum_prim(struct token *t)
 	return 0;
 }
 
-static long
+long
 enum_term(struct token *t)
 {
 	long v = enum_prim(t);
@@ -92,7 +92,7 @@ enum_term(struct token *t)
 	return v;
 }
 
-static long
+long
 enum_expr(struct token *t)
 {
 	long v = enum_term(t);

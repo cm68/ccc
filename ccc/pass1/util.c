@@ -235,7 +235,7 @@ void asmDb(int val)
  * Excludes the double quote that ends an asz string and the
  * backslash that starts an escape inside one.
  */
-static int
+int
 isPrintable(unsigned char c)
 {
 	return c >= 0x20 && c <= 0x7e && c != '"' && c != '\\';

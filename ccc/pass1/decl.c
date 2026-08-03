@@ -10,7 +10,7 @@ static struct name *global = 0;
 /*
  * Find struct member at given offset (members are linked in reverse order)
  */
-static struct name *
+struct name *
 findMemberOff(struct name *members, int offset)
 {
     while (members) {
@@ -26,7 +26,7 @@ findMemberOff(struct name *members, int offset)
  * Used for static/global initializers to avoid building expression trees
  * Returns count of top-level elements (for array size inference)
  */
-static int
+int
 streamInitVal(struct type *type)
 {
     int size = type ? type->size : 2;
@@ -300,7 +300,7 @@ doInitlzr(struct name *v)
  * Parameters:
  *   f - Function name entry with type signature in f->type
  */
-static void freeLocals(struct name *local);
+void freeLocals(struct name *local);
 
 void
 parsefunc(struct name *f)
@@ -472,7 +472,7 @@ parsefunc(struct name *f)
  *   Bitmask of storage class flags (SC_EXTERN, SC_STATIC, etc.)
  */
 /* token -> storage class bit mapping */
-static unsigned char
+unsigned char
 sclassBit(token_t t)
 {
     static unsigned char sc_bit[] = {
@@ -842,7 +842,7 @@ parse()
 /*
  * Free a function's locals list
  */
-static void
+void
 freeLocals(struct name *local)
 {
 	struct name *next;

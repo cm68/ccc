@@ -159,7 +159,7 @@ pend_init(struct pendbuf *p, int initial)
 	p->rd = p->wr = 0;
 }
 
-static void
+void
 pend_grow(struct pendbuf *p)
 {
 	struct token *newbuf;

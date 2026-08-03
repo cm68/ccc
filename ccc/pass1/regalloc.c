@@ -13,7 +13,7 @@ int frameSaveBase;
  * Register-allocated variables get frm_off=0 (not on stack).
  * Returns frame size (bytes needed for locals on stack).
  */
-static int
+int
 assignFrmOff(struct name *func)
 {
 	struct name *n, *locals;
@@ -124,7 +124,7 @@ assignFrmOff(struct name *func)
 }
 
 /* Check if variable can be allocated to a register */
-static int
+int
 canAlloc(struct name *n, int no_arg_regs)
 {
 	if (n->w.r.reg != REG_NONE || n->w.r.addr_taken)
@@ -144,7 +144,7 @@ canAlloc(struct name *n, int no_arg_regs)
 }
 
 /* Register allocation for local variables */
-static void
+void
 allocRegs(struct name *locals)
 {
 	struct name *n, *best;

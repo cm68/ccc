@@ -22,7 +22,7 @@ static int input_len = 0;
 static int input_pos = 0;
 
 /* Get token from input queue - pointer-out style */
-static void
+void
 get_input(struct token *out)
 {
 	if (input_pos < input_len) {
@@ -47,7 +47,7 @@ extern void filtctrl_init(void (*up)(struct token *));
 extern void filtctrl(struct token *out);
 
 /* Token name table */
-static char *
+char *
 tokname(int t)
 {
 	switch (t) {
@@ -93,7 +93,7 @@ tokname(int t)
 	}
 }
 
-static void
+void
 print_token(struct token *t)
 {
 	if (t->type == SYM || t->type == LABEL)
@@ -105,7 +105,7 @@ print_token(struct token *t)
 }
 
 /* Parse simple token description into output token */
-static void
+void
 parse_tok(char *s, struct token *out)
 {
 	out->type = 0;

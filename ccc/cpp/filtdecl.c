@@ -97,7 +97,7 @@ filtdecl_init(void (*up)(struct token *))
  * An aggregate initializer is already left alone here, which is why a
  * static array was right and a static scalar was not.
  */
-static int
+int
 decl_is_static(void)
 {
 	register struct token *tp = decl_arr.buf;
@@ -114,7 +114,7 @@ decl_is_static(void)
 /*
  * The initializer saved for this name, or 0.
  */
-static struct dinit *
+struct dinit *
 init_for(char *name)
 {
 	register struct dinit *ap = assigns;
@@ -128,7 +128,7 @@ init_for(char *name)
 	return 0;
 }
 
-static void
+void
 emit_decl(void)
 {
 	register struct dname *np;
@@ -163,7 +163,7 @@ emit_decl(void)
 	pend_tok_at(&pb, SEMI, ref);
 }
 
-static void
+void
 emit_assigns(void)
 {
 	register struct dinit *ap;
@@ -194,7 +194,7 @@ emit_assigns(void)
 /*
  * Throw away what emit_decl has already emitted inline.
  */
-static void
+void
 drop_assigns(void)
 {
 	register struct dinit *ap = assigns;
@@ -205,7 +205,7 @@ drop_assigns(void)
 	assign_count = 0;
 }
 
-static void
+void
 save_init(char *name)
 {
 	if (assign_count < ASSIGN_MAX && init_arr.count > 0) {
@@ -226,7 +226,7 @@ save_init(char *name)
 	tarr_reset(&init_arr);
 }
 
-static void
+void
 save_name(char *name)
 {
 	if (name_count < NAME_MAX) {
@@ -238,7 +238,7 @@ save_name(char *name)
 	cur_stars = 0;
 }
 
-static void
+void
 finish_decl(void)
 {
 	if (name_count > 0) {

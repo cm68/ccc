@@ -18,13 +18,13 @@ struct macro *macros;
 
 /* C identifier character classes - used by macexpand to scan ident tokens
  * inside macro replacement text without dragging in ctype.h. */
-static int
+int
 is_id_start(unsigned char c)
 {
     return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || c == '_';
 }
 
-static int
+int
 is_id_cont(unsigned char c)
 {
     return is_id_start(c) || (c >= '0' && c <= '9');
@@ -68,7 +68,7 @@ static unsigned char *nend;	/* its end */
  *	1: 2 bytes, unsigned	(128..65535)
  *	2: 2 bytes, signed	(-32768..-129)
  */
-static long
+long
 ndget(unsigned char *p, unsigned char w)
 {
     unsigned v;
@@ -81,7 +81,7 @@ ndget(unsigned char *p, unsigned char w)
     return (short)v;	/* (int) would not sign-extend on the host */
 }
 
-static void
+void
 ndput(unsigned char *p, unsigned char w, int val)
 {
     *p++ = val;
@@ -95,7 +95,7 @@ ndput(unsigned char *p, unsigned char w, int val)
 /*
  * Find a live entry.  Returns the header pointer, or 0.
  */
-static unsigned char *
+unsigned char *
 ndeffind(char *name)
 {
     unsigned char *slab;
@@ -125,7 +125,7 @@ ndeffind(char *name)
  * negative respelling splits one NUMBER token into MINUS NUMBER,
  * which the original spelling of a big hex constant does not).
  */
-static char
+char
 numval(char *s, long *out)
 {
     long v = 0;
@@ -171,7 +171,7 @@ numval(char *s, long *out)
 }
 
 /* found + value out, for expansion and defined-ness */
-static char
+char
 ndefval(char *name, long *out)
 {
     unsigned char *p = ndeffind(name);
@@ -182,7 +182,7 @@ ndefval(char *name, long *out)
     return 1;
 }
 
-static void
+void
 ndefadd(char *name, long lval)
 {
     register unsigned char *p = ndeffind(name);
@@ -218,7 +218,7 @@ ndefadd(char *name, long lval)
 }
 
 /* remove from the numeric store, if present (#undef, redefinition) */
-static void
+void
 ndefundef(char *name)
 {
     unsigned char *p = ndeffind(name);
@@ -262,7 +262,7 @@ int macpeak;	/* macbuffer high-water */
 #endif
 
 /* Lazily allocate the shared expansion buffer (used by macdefine + macexpand). */
-static void
+void
 macbuf_init(void)
 {
     if (!macbuffer)

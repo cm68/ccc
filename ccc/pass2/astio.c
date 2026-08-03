@@ -65,7 +65,7 @@ nidopen(char *f1)
  * Fetch a spelling.  The read overshoots into the following names;
  * the first NUL marks the end.
  */
-static void
+void
 nidname(unsigned short id, char *buf, int size)
 {
 	unsigned char two[2];
@@ -87,7 +87,7 @@ nidname(unsigned short id, char *buf, int size)
  * synthetics (S%d, L%d, str%d) and plain-mode names never contain
  * '@'.
  */
-static void
+void
 nidxp(char *buf, int size)
 {
 	char *p = buf;
@@ -198,7 +198,7 @@ outd(int n)
 static char cxbuf[128];
 static int cxn;
 
-static void
+void
 cxput(char c)
 {
 	cxbuf[cxn++] = c;
@@ -208,7 +208,7 @@ cxput(char c)
 	}
 }
 
-static void
+void
 copyxp(void)
 {
 	char buf[64];

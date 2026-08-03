@@ -18,7 +18,7 @@ static struct tdef {
 	struct tdef *next;
 } *table[HASH_SIZE];
 
-static unsigned
+unsigned
 hash(char *s)
 {
 	unsigned h = 0;

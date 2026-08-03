@@ -147,7 +147,7 @@ mkexprI(unsigned char op, struct expr *left, struct type *type,
  * filled in.  Six places built one by hand, several statements each,
  * every one a store through a frame pointer.  One call is cheaper.
  */
-static struct expr *
+struct expr *
 mkbin(unsigned char op, struct expr *l, struct expr *r, struct type *t)
 {
     struct expr *e = mkexpr(op, l);
@@ -161,7 +161,7 @@ mkbin(unsigned char op, struct expr *l, struct expr *r, struct type *t)
  * Free just an expression node without its children
  * Used when restructuring trees (e.g., unwrapping DEREF)
  */
-static void
+void
 freeNode(struct expr *e)
 {
 	if (!e) return;
@@ -176,7 +176,7 @@ freeNode(struct expr *e)
  * Saves the dereferenced type before unwrapping
  * Returns: the unwrapped type (what was e->type before unwrapping)
  */
-static struct type *
+struct type *
 unwrapDeref(struct expr **ep)
 {
 	struct expr *e = *ep;
@@ -241,14 +241,14 @@ binopPri(unsigned char t)
     return 0;
 }
 
-static struct expr *scaleptr(struct expr *e);
+struct expr *scaleptr(struct expr *e);
 
 /*
  * Skip an expression without building a tree (phase 1)
  * Consumes tokens to stay synchronized with the lexer.
  * Mirrors parseExpr structure but doesn't allocate.
  */
-static void
+void
 skipExpr(unsigned char pri)
 {
     unsigned char p, is_assign;
@@ -416,7 +416,7 @@ skipExpr(unsigned char pri)
 /*
  * Process increment/decrement (prefix or postfix)
  */
-static struct expr *
+struct expr *
 mkIncDec(struct expr *operand, unsigned char inc_op, unsigned char is_postfix)
 {
     struct type *value_type;
@@ -449,7 +449,7 @@ mkIncDec(struct expr *operand, unsigned char inc_op, unsigned char is_postfix)
  * anything of another size fell to the default and copied two bytes,
  * quietly losing the rest.
  */
-static int
+int
 isaggr(struct type *t)
 {
 	return t && (t->flags & TF_AGGREGATE) &&
@@ -464,7 +464,7 @@ isaggr(struct type *t)
  * Only fires when both sides are pointers, so pointer arithmetic like
  * "p += 4" is left alone.
  */
-static int
+int
 ptrcompat(struct type *lt, struct type *rt)
 {
 	struct type *a, *b;
@@ -497,7 +497,7 @@ ptrcompat(struct type *lt, struct type *rt)
  * Fold a single node if both operands are constants.
  * Returns folded CONST expr, or original expr if not foldable.
  */
-static struct expr *
+struct expr *
 foldNode(struct expr *e)
 {
     unsigned lv, rv;
@@ -792,7 +792,7 @@ foldTree(struct expr *e)
  */
 
 /* string literal: refer to the strN emitted in phase 1 */
-static struct expr *
+struct expr *
 pfxString(void)
 {
     struct name *np;
@@ -813,7 +813,7 @@ pfxString(void)
  * For variables: wrap in DEREF to get value
  * For functions: return address (decay to function pointer)
  */
-static struct expr *
+struct expr *
 pfxSym(void)
 {
     struct expr *e, *e1;
@@ -893,7 +893,7 @@ pfxSym(void)
 }
 
 /* parenthesized expression or type cast, the LPAR consumed */
-static struct expr *
+struct expr *
 pfxCast(void)
 {
     struct expr *e, *e1;
@@ -988,7 +988,7 @@ pfxCast(void)
 }
 
 /* unary minus, complement, logical not - the operator still in cur */
-static struct expr *
+struct expr *
 pfxUnary(void)
 {
     struct expr *e, *e1;
@@ -1040,7 +1040,7 @@ pfxUnary(void)
 }
 
 /* unary dereference, the STAR consumed */
-static struct expr *
+struct expr *
 pfxStar(void)
 {
     struct expr *e, *e1;
@@ -1067,7 +1067,7 @@ pfxStar(void)
 }
 
 /* address-of, the AND consumed */
-static struct expr *
+struct expr *
 pfxAddr(void)
 {
     struct expr *e, *e1;
@@ -1106,7 +1106,7 @@ pfxAddr(void)
 }
 
 /* sizeof(type), sizeof(expr), or sizeof expr - the keyword consumed */
-static struct expr *
+struct expr *
 pfxSizeof(void)
 {
     struct expr *e1;
@@ -1145,7 +1145,7 @@ pfxSizeof(void)
     return mkexprI(CONST, 0, inttype, t ? typesize(t) : 0, E_CONST);
 }
 
-static struct expr *
+struct expr *
 parsePrefix(void)
 {
     unsigned char inc_op;
@@ -1258,7 +1258,7 @@ parsePrefix(void)
  * the low byte of one, and the machine is little-endian, so the
  * byte it wants is the byte that is there.
  */
-static struct expr *
+struct expr *
 argcvt(struct expr *a, struct type *pt)
 {
 	struct expr *w;
@@ -1299,7 +1299,7 @@ argcvt(struct expr *a, struct type *pt)
 
 /* Array subscript: arr[idx] = DEREF(ADD(base, idx * sizeof)),
  * the '[' still current on entry. */
-static struct expr *
+struct expr *
 pfxIndex(struct expr *e)
 {
     struct expr *e1, *e2, *e3, *e4;
@@ -1359,7 +1359,7 @@ pfxIndex(struct expr *e)
 }
 
 /* Function call: expr(arg1, arg2, ...), the '(' still current. */
-static struct expr *
+struct expr *
 pfxCall(struct expr *e)
 {
     struct expr *e1, *e2, *e3;
@@ -1443,7 +1443,7 @@ pfxCall(struct expr *e)
 /* Struct member access: s.x or p->x, the operator still current.
  * A malformed access sets *stop: the caller's postfix loop is done
  * with this expression, exactly as its break used to say. */
-static struct expr *
+struct expr *
 pfxMember(struct expr *e, unsigned char *stop)
 {
     struct expr *e1, *e2, *e3;
@@ -1556,7 +1556,7 @@ pfxMember(struct expr *e, unsigned char *stop)
  * Postfix operators on a parsed operand: function calls, array
  * subscripts, struct access, increment/decrement.
  */
-static struct expr *
+struct expr *
 parsePostfix(struct expr *e)
 {
 	unsigned char inc_op, stop;
@@ -1855,7 +1855,7 @@ parseExpr(unsigned char pri)
  * way round: the byte difference is divided.  An element size of one
  * needs neither, which is why char pointers always looked right.
  */
-static struct expr *
+struct expr *
 scaleptr(struct expr *e)
 {
     struct type *lt = e->left->type, *rt = e->right->type;

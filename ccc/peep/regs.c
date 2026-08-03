@@ -39,7 +39,7 @@ static int regmask[] = {
 	0
 };
 
-static int
+int
 isalnum_(char c)
 {
 	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
@@ -50,7 +50,7 @@ isalnum_(char c)
  * The register named at p, or 0.  Only matches when the name is not
  * part of a longer word, so the label _hlthing is not read as hl.
  */
-static int
+int
 regat(char *p)
 {
 	int i, n;
@@ -68,7 +68,7 @@ regat(char *p)
  * inside a memory reference: (hl) reads hl, (ix+4) reads ix.  Used for
  * the read side, where naming a register at all is enough to count.
  */
-static int
+int
 allregs(char *p)
 {
 	int m = 0, r;
@@ -92,7 +92,7 @@ allregs(char *p)
  * it is a memory reference, in which case the registers naming the
  * address are read and nothing is written.
  */
-static int
+int
 dstregs(char *p, int *rd)
 {
 	*rd = 0;
@@ -104,7 +104,7 @@ dstregs(char *p, int *rd)
 }
 
 /* copy the mnemonic of insn into buf */
-static void
+void
 mnemof(char *insn, char *buf, int n)
 {
 	int i = 0;
@@ -117,7 +117,7 @@ mnemof(char *insn, char *buf, int n)
 }
 
 /* the operand text, or "" */
-static char *
+char *
 operof(char *insn)
 {
 	while (*insn && *insn != ' ')
@@ -128,7 +128,7 @@ operof(char *insn)
 }
 
 /* the second operand of a two operand instruction, or "" */
-static char *
+char *
 oper2(char *op)
 {
 	int depth = 0;
@@ -146,7 +146,7 @@ oper2(char *op)
 }
 
 /* is this a call to a C function - underscore, arguments on the stack */
-static int
+int
 iscfn(char *op)
 {
 	return *op == '_';

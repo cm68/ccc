@@ -12,7 +12,7 @@
 #include "debug.h"
 #endif
 
-static Expr *
+Expr *
 alloc(void)
 {
 	Expr *e = malloc(sizeof(Expr));
@@ -281,7 +281,7 @@ freeexpr(Expr *e)
 }
 
 /* check if op is binary */
-static int
+int
 isbinary(int op)
 {
 	switch (op) {
@@ -495,7 +495,7 @@ readexpr(void)
 
 #include "../format.h"
 
-static char *
+char *
 destName(int d)
 {
 	switch (d) {
@@ -506,7 +506,7 @@ destName(int d)
 	}
 }
 
-static void
+void
 dumpnode(Expr *e)
 {
 	char buf[64];

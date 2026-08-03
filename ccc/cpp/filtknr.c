@@ -116,7 +116,7 @@ filtknr_init(void (*up)(struct token *))
 /*
  * Find param by name, 0 if not found
  */
-static struct param *
+struct param *
 find_param(char *name)
 {
 	register struct param *pp = params;
@@ -133,7 +133,7 @@ find_param(char *name)
 /*
  * Save current type to a parameter
  */
-static void
+void
 save_ptype(char *name, int stars)
 {
 	register struct param *pp = find_param(name);
@@ -167,7 +167,7 @@ save_ptype(char *name, int stars)
 /*
  * Emit the merged ANSI-style declaration
  */
-static void
+void
 emit_ansi(void)
 {
 	register struct param *pp;
@@ -236,7 +236,7 @@ emit_ansi(void)
 /*
  * Abort K&R parsing - emit buffered tokens as-is, let rest flow through
  */
-static void
+void
 abort_knr(void)
 {
 	register struct param *pp;
@@ -294,7 +294,7 @@ abort_knr(void)
 /*
  * Reset state for new function
  */
-static void
+void
 reset_state(void)
 {
 	register struct param *pp = params;

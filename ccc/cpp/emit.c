@@ -19,7 +19,7 @@ static int braceCount = 0;
 /* Forward declarations */
 void emitLine(int line, char *file);
 void emitStructTok(struct token *t);
-static void emit1tok(struct token *t);
+void emit1tok(struct token *t);
 
 /*
  * A string literal held back to see whether another one follows it.
@@ -55,7 +55,7 @@ emitToken(unsigned char tok)
  * Emit symbol: SYM(20) + len byte + name bytes - or, under -j,
  * SYMID(26) + 2-byte id, the name having gone to the .n sidecar.
  */
-static void
+void
 emitId(unsigned char tok, char *name)
 {
     unsigned char b[3];
@@ -76,7 +76,7 @@ emitSym(char *name)
 /*
  * Emit 4-byte little-endian value with tag
  */
-static void
+void
 emit4(unsigned char tag, unsigned long val)
 {
     unsigned char buf[5];
@@ -105,7 +105,7 @@ emitLNumber(long val)
  * Emit string with 2-byte length: token + 2-byte len + string bytes
  * Used for both STRING and ASMSTR tokens
  */
-static void
+void
 emitStr2(unsigned char tok, char *str, int len)
 {
     unsigned char hdr[3];
@@ -270,7 +270,7 @@ emitStructTok(struct token *t)
     emit1tok(t);
 }
 
-static void
+void
 emit1tok(struct token *t)
 {
     /* Emit line info to .x when line or file changes (unless -N) */

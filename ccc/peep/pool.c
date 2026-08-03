@@ -39,7 +39,7 @@ long poolsaved;
 long poolmerged;
 
 /* the id when the line is exactly "strN:", else -1 */
-static int
+int
 strlabel(char *line)
 {
 	int id = 0;
@@ -58,7 +58,7 @@ strlabel(char *line)
 }
 
 /* a data line belonging to a literal block: whitespace then .db */
-static int
+int
 isdata(char *line)
 {
 	while (*line == ' ' || *line == '\t')
@@ -71,7 +71,7 @@ isdata(char *line)
  * raw text.  The hash brought us here; this is what makes a merge a
  * fact rather than a probability.
  */
-static int
+int
 sameblock(FILE *f, int a, int b)
 {
 	char la[LLEN], lb[LLEN];

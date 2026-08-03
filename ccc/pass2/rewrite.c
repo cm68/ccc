@@ -61,17 +61,17 @@ dumphits(void)
 #endif
 
 /* Forward declarations */
-static char *pmatch(char *p, Expr *e);
-static Expr *rewrite1(Expr *e);
-static Expr *valtohl(Expr *e);
-static unsigned char baseop(unsigned char op);
-static int islocdesc(Expr *e);
+char *pmatch(char *p, Expr *e);
+Expr *rewrite1(Expr *e);
+Expr *valtohl(Expr *e);
+unsigned char baseop(unsigned char op);
+int islocdesc(Expr *e);
 
 /*
  * Check if expression matches any preserve pattern.
  * Returns 1 if should be preserved (not reduced).
  */
-static int
+int
 shouldpres(Expr *e)
 {
 	char **pp;
@@ -475,7 +475,7 @@ initOpTab(void)
 		op_table[(unsigned char)op_map[i].c] = op_map[i].op;
 }
 
-static unsigned char
+unsigned char
 chartopc(char c)
 {
 	return op_table[(unsigned char)c];
@@ -484,7 +484,7 @@ chartopc(char c)
 /*
  * Check if n is power of 2, return exponent or -1
  */
-static int
+int
 ispow2(unsigned long n)
 {
 	int i;
@@ -508,7 +508,7 @@ ispow2(unsigned long n)
 /*
  * Match pattern byte against expression
  */
-static int
+int
 opmatch(unsigned char pat, Expr *e)
 {
 	/* indexed by pat-238: P_MUL40 (238) up through P_MUL3 (250) */
@@ -539,7 +539,7 @@ opmatch(unsigned char pat, Expr *e)
  * Pattern: op or op(left) or op(left,right)
  * Width suffix: :b :s :l :p :f (or :_ for any)
  */
-static char *
+char *
 pmatch(char *p, Expr *e)
 {
 	unsigned char op;
@@ -608,7 +608,7 @@ pmatch(char *p, Expr *e)
 /*
  * Get node by path string: L=left, R=right, LL=left->left, etc.
  */
-static Expr *
+Expr *
 getpath(Expr *e, unsigned char p)
 {
 	if (p == P_NONE) return e;
@@ -621,7 +621,7 @@ getpath(Expr *e, unsigned char p)
 /*
  * Emit index register name
  */
-static char *
+char *
 idxregname(unsigned char reg)
 {
 	switch (reg) {
@@ -653,7 +653,7 @@ idxregname(unsigned char reg)
  * hand a raw index straight to the output.  Expanding first means
  * nothing else in here has to know fragments exist.
  */
-static void
+void
 expandtpl(char *tpl, char *buf)
 {
 	unsigned char *s = (unsigned char *)tpl;
@@ -674,7 +674,7 @@ expandtpl(char *tpl, char *buf)
 	*d = 0;
 }
 
-static void
+void
 emitasm(char *tpl, Expr *e)
 {
 	char expbuf[TPLMAX];
@@ -858,7 +858,7 @@ emitasm(char *tpl, Expr *e)
  * three statements with them was tried and cost two bytes: passing two
  * pointers to a function is dearer than the stores it saves.
  */
-static Expr *
+Expr *
 donehl(Expr *e, unsigned char op)
 {
 	Expr *n = mkcode(e->width, R_HL);
@@ -886,7 +886,7 @@ static char regwant[8] = {
  * serves them has already swapped the operands, which turns them into
  * GE and LT, and it is those the caller asks about.
  */
-static unsigned char
+unsigned char
 ccflag(unsigned char op, int signed_)
 {
 	switch (op) {
@@ -903,7 +903,7 @@ ccflag(unsigned char op, int signed_)
 /*
  * Try to apply a rule
  */
-static Expr *
+Expr *
 tryrule(struct rule *rp, Expr *e)
 {
 	Expr *n, *src, *num, *lc, *rc;
@@ -1169,7 +1169,7 @@ tryrule(struct rule *rp, Expr *e)
 /*
  * Check if op is commutative
  */
-static int
+int
 iscommut(unsigned char op)
 {
 	switch (op) {
@@ -1184,7 +1184,7 @@ iscommut(unsigned char op)
  * Normalize: put constants on right for commutative ops
  * For relational ops, swap operands AND flip operator
  */
-static void
+void
 normalize(Expr *e)
 {
 	Expr *t;
@@ -1228,7 +1228,7 @@ normalize(Expr *e)
  * been reduced into concrete registers, so an operand swap there
  * leaves the operand sitting in the wrong one.
  */
-static void
+void
 normtree(Expr *e)
 {
 	if (!e) return;
@@ -1331,7 +1331,7 @@ normtree(Expr *e)
 /*
  * Flip flag code: Z<->NZ, C<->NC
  */
-static unsigned char
+unsigned char
 flipflag(unsigned char f)
 {
 	switch (f) {
@@ -1345,7 +1345,7 @@ flipflag(unsigned char f)
 	return f;
 }
 
-static int
+int
 isflag(unsigned char r)
 {
 	return r >= F_Z && r <= F_P;
@@ -1360,7 +1360,7 @@ isflag(unsigned char r)
  * take the inverse.  The others need a branch over an inc, and jr can
  * only test NZ/Z/NC/C, so sign has to go through jp.
  */
-static void
+void
 matflag(unsigned char r)
 {
 	switch (r) {
@@ -1390,7 +1390,7 @@ matflag(unsigned char r)
  * Apply one rewrite step to node (not children)
  * Returns new node if changed, NULL if no change
  */
-static Expr *
+Expr *
 step(Expr *e)
 {
 	struct rule *rp;
@@ -1598,7 +1598,7 @@ no_regconv:
  * pass1's isBasicType emitted no comparison at all and jumped on
  * whatever flags the conjunct before it had left.
  */
-static int
+int
 issymish(Expr *e)
 {
 	if (!e)
@@ -1610,7 +1610,7 @@ issymish(Expr *e)
 	    e->right->op == NUMBER;
 }
 
-static int
+int
 islocdesc(Expr *e)
 {
 	if (!e)
@@ -1640,7 +1640,7 @@ islocdesc(Expr *e)
  * the first is in HL when the second goes to load through it.  The
  * caller uses this to run the second one first.
  */
-static int
+int
 needshl(Expr *e)
 {
 	if (!e || e->op != DEREF)
@@ -1655,7 +1655,7 @@ needshl(Expr *e)
  * check at the end of rewrite() asks the same question - this is that
  * test, named, so the places that have to ask it earlier can.
  */
-static int
+int
 reduced(Expr *e)
 {
 	if (!e)
@@ -1690,7 +1690,7 @@ reduced(Expr *e)
  * register.  Only meaningful before the lvalue is reduced; afterwards
  * the same node means an address that was worked out.
  */
-static int
+int
 isdestreg(Expr *e)
 {
 	if (!e)
@@ -1711,7 +1711,7 @@ isdestreg(Expr *e)
  * Base operator behind a compound assignment: += is +, and so on.
  * Returns 0 for anything that is not a compound assignment.
  */
-static unsigned char
+unsigned char
 baseop(unsigned char op)
 {
 	switch (op) {
@@ -1732,7 +1732,7 @@ baseop(unsigned char op)
 /*
  * Does evaluating this tree do anything besides produce a value?
  */
-static int
+int
 sideeffect(Expr *e)
 {
 	if (!e)
@@ -1763,7 +1763,7 @@ sideeffect(Expr *e)
  * the variable ("i += 5" with i in BC) and DEREF(REGVAR) is the memory
  * it points at ("*p += 10").  Both are fine to name twice.
  */
-static int
+int
 dupableloc(Expr *e)
 {
 	return e && !sideeffect(e);
@@ -1788,7 +1788,7 @@ dupableloc(Expr *e)
  * slot and still owes the load the pointer stands for.  Treating the
  * two alike read the pointer and used it as the value.
  */
-static Expr *
+Expr *
 locvalue(Expr *e, char w)
 {
 	if (e->op == REGVAR)
@@ -1806,7 +1806,7 @@ locvalue(Expr *e, char w)
  * are reduced: once the lvalue has become a register, copying it would
  * re-emit whatever code produced it.
  */
-static Expr *
+Expr *
 lowercompound(Expr *e)
 {
 	unsigned char op = baseop(e->op);
@@ -1833,7 +1833,7 @@ lowercompound(Expr *e)
  * arm emit anything at all, and what puts both arms in one register so
  * the expression has a value wherever the branch went.
  */
-static void
+void
 branchval(Expr *v)
 {
 	Expr *hl, *asn;
@@ -1867,7 +1867,7 @@ branchval(Expr *v)
  * NUMBER: an if() goes through rewrite(), which folds a constant
  * condition at the root.
  */
-static int
+int
 constflag(Expr *e)
 {
 	if (!e || e->op != NUMBER)
@@ -1885,7 +1885,7 @@ constflag(Expr *e)
  * homes did exactly that, silently.  Say so in the output: it is
  * only a comment, but it is what the differential greps for.
  */
-static void
+void
 ccguard(Expr *e)
 {
 	unsigned char op;
@@ -1979,7 +1979,7 @@ truecc(Expr *e)
  * the answer is going.  The flags ride along and come back, which
  * costs nothing - the operator sets its own.
  */
-static void
+void
 bytepair(Expr *e)
 {
 	char w;
@@ -2015,7 +2015,7 @@ bytepair(Expr *e)
  * base] swapped the halves and then indexed by the high word, so _pnum
  * wrote a zero for every digit and printf("%d") printed nothing at all.
  */
-static Expr *
+Expr *
 movetotgt(Expr *e, unsigned char tgt)
 {
 	if (!e || tgt != R_DE)
@@ -2051,7 +2051,7 @@ movetotgt(Expr *e, unsigned char tgt)
  * Returns NULL if the address did not reduce to HL, leaving the node
  * to be flagged rather than guessed at.
  */
-static Expr *
+Expr *
 docompound(Expr *e)
 {
 	unsigned char op = baseop(e->op);
@@ -2145,7 +2145,7 @@ docompound(Expr *e)
  * rule set to land it in HL, the same trick RETURN uses.  Scalars are
  * widened to a word first: C promotes char arguments to int.
  */
-static int
+int
 pusharg(Expr *a)
 {
 	Expr *hl, *asn;
@@ -2180,7 +2180,7 @@ pusharg(Expr *a)
  * back as a register node, or as a CODE that has not been converted
  * yet; either way the high word is in HL.
  */
-static int
+int
 islongreg(Expr *e)
 {
 	if (!e)
@@ -2190,7 +2190,7 @@ islongreg(Expr *e)
 	return e->op == CODE && e->u.var.reg == R_HL;
 }
 
-static char *longhelper(unsigned char op, int sign);
+char *longhelper(unsigned char op, int sign);
 
 /*
  * Is this one of the operators the long path above is responsible for?
@@ -2201,7 +2201,7 @@ static char *longhelper(unsigned char op, int sign);
  * A comparison is a byte wide whatever it compared, so it is the
  * operand that says whether this is 32-bit work.
  */
-static int
+int
 islongop(Expr *e)
 {
 	if (!e || !e->left || !e->right)
@@ -2221,14 +2221,14 @@ islongop(Expr *e)
  * operand never reduces - it stays a NUMBER so the ",N)" rules can see
  * it - so the long path has to place one itself.
  */
-static void
+void
 loadlongc(long v)
 {
 	outf("\tld hl,%d\n\tld de,%d\n",
 	    (int)((v >> 16) & 0xffff), (int)(v & 0xffff));
 }
 
-static void
+void
 pushlongc(long v)
 {
 	outf("\tld hl,%d\n\tpush hl\n\tld hl,%d\n\tpush hl\n",
@@ -2244,7 +2244,7 @@ pushlongc(long v)
  * long rules cover, or something that reduces to one - a nested long
  * operator, or a widening of something narrower.
  */
-static int
+int
 longable(Expr *e)
 {
 	if (!e)
@@ -2282,7 +2282,7 @@ longable(Expr *e)
  * points both names at one routine; divide, remainder, right shift and
  * comparison genuinely differ.
  */
-static char *
+char *
 longhelper(unsigned char op, int sign)
 {
 	switch (op) {
@@ -2309,7 +2309,7 @@ longhelper(unsigned char op, int sign)
  * as one flag, so those are had by swapping the operands, which the
  * caller does by handing them over the other way round.
  */
-static unsigned char
+unsigned char
 longflag(unsigned char op, int sign)
 {
 	switch (op) {
@@ -2328,7 +2328,7 @@ longflag(unsigned char op, int sign)
  * as it is: the callers below load and push one directly, at whatever
  * width it was written.
  */
-static Expr *
+Expr *
 tolong(Expr *e, char w)
 {
 	Expr *n;
@@ -2351,7 +2351,7 @@ tolong(Expr *e, char w)
  * the other way round.  Evaluation order is already unspecified here,
  * and the reorder elsewhere in this file relies on the same thing.
  */
-static Expr *
+Expr *
 dolongbin(Expr *e)
 {
 	unsigned char op = e->op;
@@ -2528,7 +2528,7 @@ dolongbin(Expr *e)
  * caller drops the arguments.  The arg chain is already built
  * last-to-first, which is push order.
  */
-static Expr *
+Expr *
 docall(Expr *e)
 {
 	Expr *a, *next, *fn;
@@ -2636,7 +2636,7 @@ docall(Expr *e)
  * as an address; the two places that need its VALUE staged share
  * this.
  */
-static Expr *
+Expr *
 symtohl(Expr *s)
 {
 	Expr *n;
@@ -2665,7 +2665,7 @@ symtohl(Expr *s)
  * bc/de/hl/sp, so the register goes through the stack; DE is free
  * everywhere this is called, the sibling being on the stack.
  */
-static Expr *
+Expr *
 idxtohl(Expr *s)
 {
 	Expr *n;
@@ -2689,7 +2689,7 @@ idxtohl(Expr *s)
  * address), INDEX (a register-relative address), and the register
  * homes.  This is the one place that knows the whole list.
  */
-static Expr *
+Expr *
 valtohl(Expr *e)
 {
 	Expr *n;
@@ -2719,7 +2719,7 @@ valtohl(Expr *e)
 	return e;
 }
 
-static Expr *
+Expr *
 rewrite1(Expr *e)
 {
 	Expr *n, *next;
@@ -3613,7 +3613,7 @@ rewrite1(Expr *e)
  * value was wanted: nothing at all for a statement, a flag for a
  * condition, HL for a value.
  */
-static Expr *
+Expr *
 constresult(Expr *e)
 {
 	long v = e->u.val;
@@ -3657,7 +3657,7 @@ constresult(Expr *e)
  * (wf=1) or true (wf=0), consuming e.  Leaves go through the
  * ordinary flag-context rewrite and one conditional jump.
  */
-static void
+void
 condleaf(Expr *e, char *lbl, int wf)
 {
 	char *cc;
@@ -3671,7 +3671,7 @@ condleaf(Expr *e, char *lbl, int wf)
 	freeexpr(e);
 }
 
-static void
+void
 condgo(Expr *e, char *lbl, int wf)
 {
 	Expr *l, *r;

@@ -28,7 +28,7 @@ static struct name *curFuncLocals = NULL;
  * The level and the block say which is which: two variables of the
  * same name cannot be declared in the same block.
  */
-static struct name *
+struct name *
 findInLocals(struct name *want)
 {
 	struct name *n;
@@ -44,7 +44,7 @@ findInLocals(struct name *want)
 /*
  * Assignment operators: plain = plus the ten compound forms.
  */
-static int
+int
 isAssignOp(unsigned char op)
 {
 	switch (op) {
@@ -74,7 +74,7 @@ static char inLvalue;
  * Check if expression is a SYM that maps to a REGVAR.
  * Returns the register number if so, 0 otherwise.
  */
-static char
+char
 isRegvar(struct expr *e)
 {
 	struct name *np, *local;
@@ -99,7 +99,7 @@ isRegvar(struct expr *e)
  * from above, and a comparison yields int regardless of what its
  * operands were - none of them belong here.
  */
-static int
+int
 truncok(unsigned char op)
 {
 	switch (op) {
@@ -127,7 +127,7 @@ truncok(unsigned char op)
  * Can this subtree be computed in 'size' bytes without changing the
  * low 'size' bytes of its value?
  */
-static int
+int
 candemote(struct expr *e, int size)
 {
 	if (!e)
@@ -155,7 +155,7 @@ candemote(struct expr *e, int size)
 /*
  * Retype a subtree that candemote() has approved.
  */
-static void
+void
 demote(struct expr *e, struct type *t)
 {
 	if (!e || e->type->size <= t->size)
@@ -176,7 +176,7 @@ demote(struct expr *e, struct type *t)
 		demote(e->right, t);
 }
 
-static int
+int
 iscmpop(unsigned char op)
 {
 	switch (op) {
@@ -203,7 +203,7 @@ iscmpop(unsigned char op)
  * forty-byte array otherwise chose forty as the common width and
  * sign-extended the pointer beside it into a long.
  */
-static unsigned char
+unsigned char
 valwidth(struct type *t)
 {
 	if (!t || (t->flags & (TF_POINTER | TF_ARRAY | TF_FUNC)))
@@ -211,7 +211,7 @@ valwidth(struct type *t)
 	return t->size;
 }
 
-static struct type *
+struct type *
 opwidth(struct expr *e)
 {
 	if (!iscmpop(e->op))
@@ -231,7 +231,7 @@ opwidth(struct expr *e)
  * Uppercase B/S/L for unsigned types
  * Pointers use 's' since they're 16-bit on Z80
  */
-static char
+char
 typeSfx(struct type *t)
 {
 	char c;
@@ -262,7 +262,7 @@ typeSfx(struct type *t)
 /* Helper: build label name from base+suffix */
 static char lblBuf[16];
 
-static char *
+char *
 mkLbl(char *base, char *suffix)
 {
 	fmtstr(lblBuf, "%s%s", base, suffix);
@@ -306,7 +306,7 @@ cntCondLbls(struct expr *e)
 /*
  * Helper: emit child expression (if non-null)
  */
-static void
+void
 emitChild(struct expr *e)
 {
 	if (e)
@@ -691,7 +691,7 @@ emitExpr(struct expr *e)
 }
 
 /* Emit function parameter declarations */
-static void
+void
 emitPrmDecls(struct type *functype, struct name *locals)
 {
 	struct name *param, *local, *found;
@@ -717,7 +717,7 @@ emitPrmDecls(struct type *functype, struct name *locals)
 }
 
 /* Emit local variable declarations */
-static void
+void
 emitLocals(struct name *locals)
 {
 	struct name *local;

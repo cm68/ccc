@@ -289,7 +289,7 @@ void dumpType(struct type *t, int lv);
  * basic types index into basicnames[], and tags/typedefs are found
  * by scanning the symbol chain for an entry that points at t.
  */
-static char *
+char *
 typeName(struct type *t)
 {
     struct name *n;
@@ -364,7 +364,7 @@ dumpType(struct type *t, int lv)
 /*
  * Find duplicate name at current scope level
  */
-static struct name *
+struct name *
 findDup(unsigned short id, unsigned char is_tag)
 {
     struct name *n = findName(id, is_tag);
@@ -374,7 +374,7 @@ findDup(unsigned short id, unsigned char is_tag)
 /*
  * Link name at head of symbol table chain
  */
-static void
+void
 namesAdd(struct name *n)
 {
     n->chain = names;
@@ -509,7 +509,7 @@ fnArgType(struct type *t, unsigned char i)
  * Returns 1 if equal, 0 if different
  * Parameter names are ignored - only types matter
  */
-static int
+int
 cmpParamLists(struct type *t1, struct type *t2)
 {
     unsigned char i;

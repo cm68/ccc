@@ -63,13 +63,13 @@ _cleanup(void)
 /*
  * Error reporting
  */
-static void
+void
 errout(char *buf)
 {
     write(2, buf, strlen(buf));
 }
 
-static int
+int
 opcreat(char *file)
 {
     int fd = creat(file, 0644);
@@ -121,7 +121,7 @@ usage(void)
  * Lexer wrapper for pull-based filter chain
  * Copies current token to output and advances lexer
  */
-static void
+void
 lex_get(struct token *out)
 {
     tokcpy(out, &cur);

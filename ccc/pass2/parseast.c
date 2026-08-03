@@ -11,7 +11,7 @@
 #ifdef DEBUG
 #include "debug.h"
 
-static char *
+char *
 stmtname(int op)
 {
 	switch (op) {
@@ -108,7 +108,7 @@ static int swtop;
  * in every function, so without it the first switch of one function
  * and the first of the next are both _D0.
  */
-static void
+void
 swlabel(char k, int id, int n)
 {
 	outf("_%c%d_%d", k, id, fnindex);
@@ -142,7 +142,7 @@ swlabel(char k, int id, int n)
  * large stays on the chain.  MAXSWCASE bounds it at 256 and a switch
  * that big is theoretical; correctness is worth more than the bytes.
  */
-static void
+void
 swdispatch(struct swctx *sw)
 {
 	int i, j, n, lo, hi, span;
@@ -245,13 +245,13 @@ bcinuse(void)
  * whether the scratch will be used - and since nearly every function
  * uses it, the answer that costs least to be sure of is always.
  */
-static int
+int
 savesbc(void)
 {
 	return 1;
 }
 
-static void
+void
 emitprolog(void)
 {
 	/* Emit function label: S prefix = static (one :), else global (::) */
@@ -357,7 +357,7 @@ emitprolog(void)
 	}
 }
 
-static void
+void
 emitepilog(void)
 {
 	/* Emit return label: Xfuncname (local, same length as func) */
@@ -410,7 +410,7 @@ emitepilog(void)
 	out("\tjp\tfexit\n");
 }
 
-static void
+void
 parseStmt(void)
 {
 	unsigned char op = read1();

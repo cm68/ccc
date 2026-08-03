@@ -30,7 +30,7 @@ char lastfile[256];/* file at last sync point */
 /*
  * Emit indentation spaces
  */
-static void
+void
 doindent(void)
 {
     int i;
@@ -42,7 +42,7 @@ doindent(void)
 /*
  * Emit a sync point if needed (file changed or interval reached)
  */
-static void
+void
 maybesync(int force)
 {
     if (nflag)
@@ -61,7 +61,7 @@ maybesync(int force)
 /*
  * Output a newline and maybe emit sync point
  */
-static void
+void
 outnl(void)
 {
     putchar('\n');
@@ -73,7 +73,7 @@ outnl(void)
 /*
  * Emit indent if at beginning of line
  */
-static void
+void
 needindent(void)
 {
     if (atbol)

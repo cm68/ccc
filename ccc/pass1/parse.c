@@ -394,7 +394,7 @@ resetCountIdx(void)
 }
 
 /* Forward declarations */
-static char *blockname(void);
+char *blockname(void);
 
 /*
  * Parse a braced block body.
@@ -402,7 +402,7 @@ static char *blockname(void);
  * Handles scope push/pop and expects BEGIN...END.
  * If emitHdr is true and phase==2, emit block header.
  */
-static void
+void
 parseBlockEx(int emitHdr)
 {
 	expect(BEGIN, ER_S_SB);
@@ -422,7 +422,7 @@ parseBlockEx(int emitHdr)
 	expect(END, ER_S_CC);
 }
 
-static void
+void
 parseBlock(void)
 {
 	parseBlockEx(1);  /* emit header by default */
@@ -558,7 +558,7 @@ getAsmText(void)
  */
 
 /* the case the current switch is up to, shared by CASE and DEFAULT */
-static struct swcase *
+struct swcase *
 nextCase(void)
 {
     register struct swtab *sw;
@@ -568,7 +568,7 @@ nextCase(void)
 }
 
 /* if <condition> <statement> [else ...], cur on the IF */
-static void
+void
 stIf2(void)
 {
     unsigned char hasElse;
@@ -601,7 +601,7 @@ stIf2(void)
     }
 }
 
-static void
+void
 stRet2(void)
 {
     struct expr *e1;
@@ -633,7 +633,7 @@ stRet2(void)
     }
 }
 
-static void
+void
 stSwitch2(void)
 {
     struct expr *e1;
@@ -662,7 +662,7 @@ stSwitch2(void)
     expect(END, ER_S_CC);
 }
 
-static void
+void
 stExpr2(void)
 {
     struct expr *e;
@@ -678,7 +678,7 @@ stExpr2(void)
     FreeExpr(e);
 }
 
-static void
+void
 stGoto2(void)
 {
     unsigned short lblid;
@@ -1028,7 +1028,7 @@ statement(void)
 /*
  * Generate a unique name for a block scope (dummy for debugging)
  */
-static char*
+char*
 blockname()
 {
 	return "blk";

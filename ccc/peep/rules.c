@@ -33,7 +33,7 @@ long n_outi = 0;
 long saved = 0;
 
 /* does the key at window line i match s exactly */
-static int
+int
 is(int i, char *s)
 {
 	if (i >= nwin || win[i].kind != L_INSN)
@@ -42,7 +42,7 @@ is(int i, char *s)
 }
 
 /* does the key at window line i start with s */
-static int
+int
 starts(int i, char *s)
 {
 	if (i >= nwin || win[i].kind != L_INSN)
@@ -60,7 +60,7 @@ starts(int i, char *s)
  * is dead by inspection - the very next instruction writes it - and
  * the stack moves by the same amount either way.
  */
-static int
+int
 r_incsp(void)
 {
 	int n = 0, k, i;
@@ -96,7 +96,7 @@ r_incsp(void)
  * pushing it, without knowing that the rule that produced the operand
  * had already left it somewhere pushable.
  */
-static int
+int
 r_pushpop(void)
 {
 	char x[LLEN], y[LLEN];
@@ -125,7 +125,7 @@ r_pushpop(void)
  * into r, and going through a costs the extra ld.  Absolute addresses
  * are the exception: only a can be loaded from (nn), so those stay.
  */
-static int
+int
 r_bounce(void)
 {
 	char src[LLEN], dst;
@@ -166,7 +166,7 @@ r_bounce(void)
  * too, but the sequence is cheap to spot here and the table is not the
  * only thing that can produce it.
  */
-static int
+int
 r_and0(void)
 {
 	if (!starts(0, "ld a,") || !is(1, "and 0"))
@@ -195,7 +195,7 @@ r_and0(void)
  * and the frame allocation stay where they are: they are conditional,
  * and they have to happen after iy is pointing at the frame.
  */
-static int
+int
 r_fenter(void)
 {
 	if (!is(0, "push iy") || !is(1, "ld iy,0") || !is(2, "add iy,sp"))
@@ -216,7 +216,7 @@ r_fenter(void)
 	return 1;
 }
 
-static int
+int
 r_fexit(void)
 {
 	if (!is(0, "ld sp,iy") || !is(1, "pop iy") || !is(2, "ret"))
@@ -250,7 +250,7 @@ static char *ccinv[] = {
 /* the next line that is code or a label, skipping comments and
  * blanks - they sit between every statement and must not blind a
  * rule that spans one */
-static int
+int
 nextsig(int i)
 {
 	for (i++; i < nwin; i++)
@@ -259,7 +259,7 @@ nextsig(int i)
 	return -1;
 }
 
-static int
+int
 r_invjp(void)
 {
 	char cc[4];
@@ -325,7 +325,7 @@ r_invjp(void)
  * operand qualifies: "ld hl,(sym)" is a load, and its value cannot
  * be spelled in a .dw.
  */
-static int
+int
 r_outi(void)
 {
 	char buf[LLEN + 16];

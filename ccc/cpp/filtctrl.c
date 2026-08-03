@@ -100,7 +100,7 @@ filtctrl_init(void (*up)(struct token *))
 }
 
 #ifdef DEBUG
-static void
+void
 track_ctrl(struct token *t)
 {
 	if (t->type == BEGIN) {
@@ -116,7 +116,7 @@ track_ctrl(struct token *t)
 #endif
 
 /* Wrapper: pop from pending and track output */
-static void
+void
 pop_out(struct token *out)
 {
 	pend_pop(&pb, out);

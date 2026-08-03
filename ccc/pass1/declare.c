@@ -24,7 +24,7 @@
  * Side effects:
  *   - Consumes '*' and qualifier tokens from input stream
  */
-static struct type *
+struct type *
 parsePtrPfx(struct type *t)
 {
     while (cur.type == STAR) {
@@ -62,7 +62,7 @@ parsePtrPfx(struct type *t)
  * Side effects:
  *   - Allocates memory for name structure and duplicates name string
  */
-static struct name *
+struct name *
 createPrmEnt(unsigned short id, struct type *type)
 {
     struct name *arg = (struct name *)galloc(sizeof(*arg));
@@ -134,7 +134,7 @@ slimFnArgs(struct type *t)
  * new entry, plus the bitfield width if one follows.  cur is on the
  * SYM coming in and past the bitfield (if any) going out.
  */
-static struct name *
+struct name *
 symDecl(struct type *prefix, unsigned char struct_elem)
 {
     struct name *nm;
@@ -236,7 +236,7 @@ symDecl(struct type *prefix, unsigned char struct_elem)
  * consumed.  Returns the finished parameter type; the name, if one
  * was given, lands in *namep.
  */
-static struct type *
+struct type *
 prmFnPtr(struct type *param_type, unsigned short *namep)
 {
     if (cur.type == STAR) {
@@ -308,7 +308,7 @@ prmFnPtr(struct type *param_type, unsigned short *namep)
  * One parameter declaration.  Returns the entry, or NULL when the
  * list is malformed and the caller should stop.
  */
-static struct name *
+struct name *
 prmDecl(void)
 {
     unsigned short nameid;
@@ -372,7 +372,7 @@ prmDecl(void)
  * The parameter list of a fresh declaration, cur just past the
  * opening LPAR.  Builds and returns the function type.
  */
-static struct type *
+struct type *
 fnParams(struct type *prefix)
 {
     struct type *suffix;
@@ -436,7 +436,7 @@ fnParams(struct type *prefix)
  * parameters are not wanted either way, which is the leak the skip
  * exists to avoid; only the type of the thing pointed at is.
  */
-static struct type *
+struct type *
 skipParams(struct name *nm, struct type *prefix)
 {
     struct type *suffix = NULL;
