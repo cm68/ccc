@@ -808,6 +808,11 @@ struct rule rules[] = {
 		"\tld ($L),e\n\tld ($L+),d\n\tld ($L++),l\n\tld ($L+++),h\n", 0),
 	R("=(O,C):l", ASSIGN, P_L, P_R, P_NONE, 0,
 		"\tld ($L),de\n\tld ($L++),hl\n", 0),
+	/* the value form: store, then put the constant back in HL:DE */
+	R("=(I,N):lV", ASSIGN, P_L, P_R, P_NONE, 0,
+		"\tld ($L),$Rl\n\tld ($L+),$Rh\n"
+		"\tld ($L++),$R2\n\tld ($L+++),$R3\n"
+		"\tld e,$Rl\n\tld d,$Rh\n\tld l,$R2\n\tld h,$R3\n", R_HL),
 	R("=(I,N):l", ASSIGN, P_L, P_R, P_NONE, 0,
 		"\tld ($L),$Rl\n\tld ($L+),$Rh\n"
 		"\tld ($L++),$R2\n\tld ($L+++),$R3\n", 0),
@@ -975,6 +980,10 @@ struct rule rules[] = {
 
 	R("=(D(O),N):l", ASSIGN, P_L, P_R, P_NONE, 0,
 		"\tld hl,($LL)\n" T_ST_IHL_N, 0),
+	/* the value form: store, then put the constant back in HL:DE */
+	R("=(D(H),N):lV", ASSIGN, P_L, P_R, P_NONE, 0,
+		T_ST_IHL_N "\tld e,$Rl\n\tld d,$Rh\n\tld l,$R2\n\tld h,$R3\n",
+		R_HL),
 	R("=(D(H),N):l", ASSIGN, P_L, P_R, P_NONE, 0, T_ST_IHL_N, 0),
 	/*
 	 * A long value stored through a pointer.  The value fills HL:DE,
