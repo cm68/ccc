@@ -174,14 +174,14 @@ pushfile(char *name)
 {
     struct textbuf *t;
 
-    t = malloc(sizeof(*t));
+    t = (struct textbuf *)xalloc(sizeof(*t));
     t->fd = open(name, 0);
     if (t->fd < 0)
         die("cannot open: %s\n", name);
     t->name = intern(name);
     t->offset = t->valid = 0;
     t->lineno = 1;
-    t->storage = malloc(TBSIZE);
+    t->storage = xalloc(TBSIZE);
     t->saved_column = column;
     t->prev = tbtop;
     tbtop = t;
@@ -241,7 +241,7 @@ insertfile(char *name, int sys)
     }
 #endif
 
-	t = malloc(sizeof(*t));
+	t = (struct textbuf *)xalloc(sizeof(*t));
     t->fd = -1;  /* Initialize to indicate "not opened yet" */
 
     /*
@@ -276,7 +276,7 @@ found:
 	t->name = intern(namebuf);
 	t->offset = 0;
 	t->lineno = 1;  /* New file starts at line 1 */
-	t->storage = malloc(TBSIZE);
+	t->storage = xalloc(TBSIZE);
 	t->saved_column = column;  /* Save parent's column */
 	t->prev = tbtop;
 	tbtop = t;
@@ -361,7 +361,7 @@ insertmacro(char *name, char *macbuf)
     }
  
     /* if it does not */
-	t = malloc(sizeof(*t));
+	t = (struct textbuf *)xalloc(sizeof(*t));
 	t->fd = -1;
 	/*
 	 * The buffer keeps the PARENT's name: macro text has no file of

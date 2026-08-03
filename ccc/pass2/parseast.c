@@ -213,16 +213,42 @@ static unsigned char nstage;
 #define USES_BC (REGBIT(R_B) | REGBIT(R_C) | REGBIT(R_BC))
 
 /*
- * Does this function keep a variable in BC?  Every 32-bit runtime
+ * Does this function keep a VARIABLE in BC?  Every 32-bit runtime
  * helper takes its second operand off the stack with a pop bc, so a
- * call to one destroys whatever was there.  Ordinary calls do not:
- * the prologue saves BC for any function that uses it, but the
- * helpers are hand-written and save nothing.
+ * call to one destroys whatever was there, and the $[ $] guards in
+ * the rule table save it across those.  Only a variable needs that:
+ * scratch does not care what a helper leaves behind.
  */
 int
 bcinuse(void)
 {
 	return (regsused & USES_BC) != 0;
+}
+
+/*
+ * Must this function hand the caller's BC back?  Always.
+ *
+ * The register-variable homes are callee-saved, so a function that
+ * keeps a variable in BC saves it - and that used to be the whole
+ * test.  It is not enough, because the code generator also uses BC
+ * as SCRATCH in functions that have no variable there at all: "ld
+ * bc,4" for an offset, "ld c,l / ld b,h" to move a pair.  366 of the
+ * tree's functions do it, and none of them were saving anything.
+ *
+ * While callers saved BC around every call that did not matter.  Now
+ * that they do not, it is the difference between a caller's variable
+ * surviving a call and not: cpp lost the "out" parameter of filtbrace
+ * that way, wrote a token through the null, and landed on the syscall
+ * trap in page zero.
+ *
+ * The prologue is emitted before the body, so pass2 cannot know
+ * whether the scratch will be used - and since nearly every function
+ * uses it, the answer that costs least to be sure of is always.
+ */
+static int
+savesbc(void)
+{
+	return 1;
 }
 
 static void
@@ -260,17 +286,17 @@ emitprolog(void)
 		 * call, and leaving it to the peephole to substitute meant
 		 * paying the eight in every build that does not run it.
 		 */
-		h = (regsused & USES_BC) ?
+		h = savesbc() ?
 		      ((regsused & REGBIT(R_IX)) ? "fentbx" : "fentb") :
 		      ((regsused & REGBIT(R_IX)) ? "fentx" : "fentn");
 
-		if (!(regsused & (USES_BC | REGBIT(R_IX))) && savebase == 0)
+		if (!savesbc() && !(regsused & REGBIT(R_IX)) && savebase == 0)
 			out("\tcall\tfenter\n");
 		else
 			outf("\tcall\t%s\n\t.dw\t%d\n", h, -savebase);
 
 		off = -savebase;
-		if (regsused & USES_BC) {
+		if (savesbc()) {
 			off -= 2;
 			bcoff = off;
 			if (bcoff < -128)
@@ -356,11 +382,11 @@ emitepilog(void)
 	 * pops.  Five bytes against twenty-one, and the unwind is the
 	 * same code, so there is no jp fexit after it.
 	 */
-	if (regsused & (REGBIT(R_IX) | USES_BC)) {
+	if (savesbc() || (regsused & REGBIT(R_IX))) {
 		char *h;
 		short off;
 
-		if (!(regsused & USES_BC)) {
+		if (!savesbc()) {
 			h = "fexx";
 			off = ixoff;
 		} else if (!(regsused & REGBIT(R_IX))) {

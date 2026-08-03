@@ -1,6 +1,8 @@
 /*
  * filtutil.c - Shared filter utilities
  */
+#include <unistd.h>
+#include <stdlib.h>
 #include "cpp.h"
 #include "lexeme.h"
 
@@ -108,7 +110,7 @@ void
 fstack_init(struct filter_stack *s, int initial, int elemsize)
 {
 	if (initial < 4) initial = 4;
-	s->buf = malloc(initial * elemsize);
+	s->buf = xalloc(initial * elemsize);
 	s->sp = 0;
 	s->alloc = initial;
 	s->elemsize = elemsize;
@@ -119,7 +121,11 @@ fstack_push(struct filter_stack *s, void *data)
 {
 	if (s->sp >= s->alloc) {
 		int newcap = s->alloc * 2;
-		s->buf = realloc(s->buf, newcap * s->elemsize);
+		char *nb = realloc(s->buf, newcap * s->elemsize);
+
+		if (!nb)			/* see xalloc in util.c */
+			xnomem();
+		s->buf = nb;
 		s->alloc = newcap;
 	}
 	memcpy((char *)s->buf + (s->sp++ * s->elemsize), data, s->elemsize);
@@ -148,7 +154,7 @@ void
 pend_init(struct pendbuf *p, int initial)
 {
 	if (initial < 8) initial = 8;
-	p->buf = malloc(initial * sizeof(struct token));
+	p->buf = (struct token *)xalloc(initial * sizeof(struct token));
 	p->size = initial;
 	p->rd = p->wr = 0;
 }
@@ -160,7 +166,7 @@ pend_grow(struct pendbuf *p)
 	int newmax, count, i;
 
 	newmax = p->size * 2;
-	newbuf = malloc(newmax * sizeof(struct token));
+	newbuf = (struct token *)xalloc(newmax * sizeof(struct token));
 
 	/* Copy elements in order from rd to wr */
 	count = 0;
@@ -296,7 +302,7 @@ void
 tarr_init(struct tokarray *a, int initial)
 {
 	if (initial < 8) initial = 8;
-	a->buf = malloc(initial * sizeof(struct token));
+	a->buf = (struct token *)xalloc(initial * sizeof(struct token));
 	a->count = 0;
 	a->alloc = initial;
 }
@@ -308,9 +314,10 @@ tarr_push(struct tokarray *a, struct token *t)
 		struct token *newbuf;
 		int newcap = a->alloc * 2;
 		int i;
-		newbuf = malloc(newcap * sizeof(struct token));
-		for (i = 0; i < a->count; i++)
+		newbuf = (struct token *)xalloc(newcap * sizeof(struct token));
+		for (i = 0; i < a->count; i++) {
 			tokcpy(&newbuf[i], &a->buf[i]);
+		}
 		free(a->buf);
 		a->buf = newbuf;
 		a->alloc = newcap;

@@ -26,6 +26,8 @@
  * filtctrl -> emit
  */
 
+#include <unistd.h>
+#include <stdlib.h>
 #include "cpp.h"
 #include "lexeme.h"
 

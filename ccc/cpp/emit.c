@@ -252,7 +252,7 @@ emitStructTok(struct token *t)
         } else {
             oldlen = (unsigned char)pendstr[0] |
                      ((unsigned char)pendstr[1] << 8);
-            joined = malloc(oldlen + addlen + 3);
+            joined = xalloc(oldlen + addlen + 3);
             joined[0] = (oldlen + addlen) & 0xff;
             joined[1] = ((oldlen + addlen) >> 8) & 0xff;
             memcpy(joined + 2, pendstr + 2, oldlen);

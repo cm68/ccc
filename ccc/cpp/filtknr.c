@@ -143,7 +143,7 @@ save_ptype(char *name, int stars)
 		int n;
 
 		n = ptype_arr.count;
-		d = pp->type = malloc(n * sizeof(struct token));
+		d = pp->type = (struct token *)xalloc(n * sizeof(struct token));
 		s = ptype_arr.buf;
 		while (n--)
 			tokcpy(d++, s++);
@@ -152,7 +152,7 @@ save_ptype(char *name, int stars)
 		n = ptail_arr.count;
 		if (n > 0) {
 			/* fn-ptr declarator: tokens after the name */
-			d = pp->post = malloc(n * sizeof(struct token));
+			d = pp->post = (struct token *)xalloc(n * sizeof(struct token));
 			s = ptail_arr.buf;
 			while (n--)
 				tokcpy(d++, s++);

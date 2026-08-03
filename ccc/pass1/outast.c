@@ -541,7 +541,26 @@ emitExpr(struct expr *e)
 		 * way to tell "*p = x" from "p = x".
 		 */
 		if (isRegvar(left) && !lval) {
+			/*
+			 * Carry this node's type down.  The name underneath
+			 * is emitted in place of the DEREF, and it is
+			 * emitted with its OWN type - so anything the DEREF
+			 * had been relabelled with was thrown away.
+			 *
+			 * A cast is exactly that relabelling: "(unsigned
+			 * int)p" on a register variable rewrites the DEREF
+			 * and leaves the name alone, so the cast vanished
+			 * and the comparison that followed ran signed.
+			 * cpp's own null-pointer guard read a stack address
+			 * as negative and took itself out that way.  The
+			 * two types are the same whenever nothing was cast,
+			 * which is nearly always, so this costs nothing.
+			 */
+			struct type *save = left->type;
+
+			left->type = type;
 			emitExpr(left);
+			left->type = save;
 			break;
 		}
 		/* Optimize: *++p -> (++p, *p) using comma operator */

@@ -262,6 +262,43 @@ extern int exitCode;
 char printbuf[128];
 
 /*
+ * Allocation that cannot come back empty.
+ *
+ * There were thirteen malloc call sites in this program and not one
+ * of them looked at what came back.  Every one dereferenced it
+ * immediately, so when the heap ran out the null was used as a
+ * buffer - and on this machine the first thing written through a
+ * null lands in page zero, where the rst 08 syscall trap lives.
+ *
+ * Destroying that trap is not a crash.  The next write() simply does
+ * not trap: execution runs forward through page zero, which is now
+ * zeros, until it reaches 0x0100 - the entry point - which calls
+ * main again.  main runs out of memory again, and again, each pass
+ * eating another frame, until the stack has walked down through the
+ * heap and into the text.  cpp looping and consuming itself, with no
+ * diagnostic anywhere and every symptom a long way from the cause.
+ *
+ * There is nothing useful to do with a failed allocation here, so
+ * say so and stop.
+ */
+void
+xnomem(void)
+{
+    write(2, "cpp: out of memory\n", 19);
+    exit(1);
+}
+
+char *
+xalloc(unsigned int n)
+{
+    char *p = malloc(n);
+
+    if (!p)
+        xnomem();
+    return p;
+}
+
+/*
  * Report an error by code
  */
 void

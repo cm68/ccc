@@ -617,15 +617,24 @@ struct rule rules[] = {
 		"\tpush ix\n" F_POPHL T_HL_TEST, F_Z),
 	R("U(V,Z)", NEQ, P_L, P_R, P_L, RF_IX,
 		"\tpush ix\n" F_POPHL T_HL_TEST, F_NZ),
-	/* and against any other constant, the same as against a symbol */
-	R("Q(V,N)", EQ, P_L, P_R, P_L, RF_IX,
-		"\tpush ix\n" F_POPHL "\tld de,$R\n" F_ORA F_SBCHLDE, F_Z),
-	R("U(V,N)", NEQ, P_L, P_R, P_L, RF_IX,
-		"\tpush ix\n" F_POPHL "\tld de,$R\n" F_ORA F_SBCHLDE, F_NZ),
-	R("Q(V,O)", EQ, P_L, P_R, P_L, RF_IX,
-		"\tpush ix\n" F_POPHL "\tld de,$R\n" F_ORA F_SBCHLDE, F_Z),
-	R("U(V,O)", NEQ, P_L, P_R, P_L, RF_IX,
-		"\tpush ix\n" F_POPHL "\tld de,$R\n" F_ORA F_SBCHLDE, F_NZ),
+	/*
+	 * And against any other constant, or a symbol, which come to the
+	 * same thing.  The whole comparison family, not just equality:
+	 * "(unsigned)p < 0x100" asks an ordering question of a pointer
+	 * and had no form, so it fell to the marker and branched on
+	 * whatever flags were standing.  Unsigned, because IX holds
+	 * pointers by allocation policy.
+	 */
+	R("c(V,N)", EQ, P_L, P_R, P_L, RF_IX,
+		"\tpush ix\n" F_POPHL "\tld de,$R\n" F_ORA F_SBCHLDE, F_CC),
+	R("d(V,N)", LE, P_L, P_R, P_L, RF_IX,
+		"\tpush ix\n" F_POPHL "\tld de,$R\n" F_EXDEHL F_ORA F_SBCHLDE,
+		F_CC),
+	R("c(V,O)", EQ, P_L, P_R, P_L, RF_IX,
+		"\tpush ix\n" F_POPHL "\tld de,$R\n" F_ORA F_SBCHLDE, F_CC),
+	R("d(V,O)", LE, P_L, P_R, P_L, RF_IX,
+		"\tpush ix\n" F_POPHL "\tld de,$R\n" F_EXDEHL F_ORA F_SBCHLDE,
+		F_CC),
 	R("Q(V,B)", EQ, P_L, P_R, P_L, RF_IX,
 		"\tpush ix\n" F_POPHL F_ORA "\tsbc hl,bc\n", F_Z),
 	R("U(V,B)", NEQ, P_L, P_R, P_L, RF_IX,

@@ -266,7 +266,7 @@ static void
 macbuf_init(void)
 {
     if (!macbuffer)
-        macbuffer = malloc(MACBUF);
+        macbuffer = xalloc(MACBUF);
 }
 
 /*

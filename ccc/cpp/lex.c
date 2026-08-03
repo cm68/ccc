@@ -672,7 +672,7 @@ issym()
 static void
 push_cond(unsigned long v)
 {
-    struct cond *c = malloc(sizeof(*c));
+    struct cond *c = (struct cond *)xalloc(sizeof(*c));
     c->next = cond;
     cond = c;
     if (c->next && !(c->next->flags & C_TRUE))
@@ -1377,7 +1377,7 @@ gettoken()
                 goto concat;
             }
             /* Copy result with 2-byte length prefix */
-            next.v.str = malloc(bigbuflen + 3);
+            next.v.str = xalloc(bigbuflen + 3);
             next.v.str[0] = bigbuflen & 0xff;
             next.v.str[1] = (bigbuflen >> 8) & 0xff;
             memcpy(next.v.str + 2, bigbuf, bigbuflen + 1);
@@ -1590,7 +1590,7 @@ readcppconst()
     if (cur.type == STRING && cur.v.str) {
         int len = (unsigned char)cur.v.str[0] |
                   ((unsigned char)cur.v.str[1] << 8);
-        saved_cur.v.str = malloc(len + 3);
+        saved_cur.v.str = xalloc(len + 3);
         memcpy(saved_cur.v.str, cur.v.str, len + 3);
     }
 

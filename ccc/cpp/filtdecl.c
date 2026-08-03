@@ -217,7 +217,7 @@ save_init(char *name)
 		n = init_arr.count;
 		ap = &assigns[assign_count++];
 		ap->name = name;
-		d = ap->init = malloc(n * sizeof(struct token));
+		d = ap->init = (struct token *)xalloc(n * sizeof(struct token));
 		s = init_arr.buf;
 		while (n--)
 			tokcpy(d++, s++);

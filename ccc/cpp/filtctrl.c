@@ -150,7 +150,7 @@ static void push_ctx(unsigned char type, unsigned char saved) {
 	ent.body_depth = body_depth;
 	/* Save FOR increment buffer (overwritten by nested loops) */
 	if (cur_ctx == CTX_FOR && incr_arr.count > 0) {
-		ent.saved_incr = malloc(incr_arr.count * sizeof(struct token));
+		ent.saved_incr = (struct token *)xalloc(incr_arr.count * sizeof(struct token));
 		for (i = 0; i < incr_arr.count; i++)
 			tokcpy(&ent.saved_incr[i], &incr_arr.buf[i]);
 		ent.saved_incr_len = incr_arr.count;

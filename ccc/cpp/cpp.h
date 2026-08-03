@@ -283,6 +283,8 @@ extern void emitChkBraces(void);
 /* error handling */
 extern void error(char *msg);
 extern void gripe(error_t err);
+extern char *xalloc(unsigned int n);
+extern void xnomem(void);
 
 /* lex.c additional exports */
 extern unsigned char tflags;
