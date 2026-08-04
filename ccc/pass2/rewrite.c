@@ -3286,13 +3286,37 @@ rewrite1(Expr *e)
 			 * INBC and has a working family of its own.
 			 */
 			;
-		} else if (e->op == ASSIGN && e->left && e->left->op == DEREF) {
+		} else if (e->op == ASSIGN && e->left &&
+			   e->left->op == DEREF &&
+			   (islocdesc(e->left->left) ||
+			    isdestreg(e->left->left) ||
+			    e->left->left->op == DEREF)) {
 			/*
 			 * An assignment's lvalue is a location, not a value.
 			 * Reduce the address underneath but leave the DEREF
 			 * standing, so the =(D(..),..) store rules can still
 			 * see it - reducing it here would apply a load rule
 			 * and quietly turn the store into a fetch.
+			 *
+			 * Only where the child's VALUE is the target,
+			 * though: an operand - =(D(V)) stores at the
+			 * register, =(D(I)) loads the slot and stores
+			 * through - or another DEREF, whose reduction loads
+			 * the pointer and leaves the address wanted in HL.
+			 *
+			 * A DEREF over address ARITHMETIC is different: the
+			 * sum is where a pointer LIVES, and this DEREF is
+			 * the load that fetches it.  "*f->_base = c"
+			 * reaches here as D(+(D(I),4)), and keeping the
+			 * DEREF while reducing only the sum left the
+			 * ADDRESS of _base in HL for a rule that stores at
+			 * HL - the character went into the pointer member,
+			 * not through it, and every 513th byte of a
+			 * buffered stream overwrote the buffer pointer's
+			 * low byte.  Those fall through to the branch
+			 * below, which reduces the whole load - the
+			 * pointer's VALUE lands in HL - and wraps it in
+			 * the DEREF the store rules expect.
 			 */
 			e->left->left = rewrite1(e->left->left);
 		} else if ((e->op == PREINC || e->op == PREDEC ||

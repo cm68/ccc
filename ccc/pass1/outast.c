@@ -564,6 +564,22 @@ emitExpr(struct expr *e)
 			left->type = save;
 			break;
 		}
+		/*
+		 * A store through a pointer that is itself a member load:
+		 * "*q->p = c" with p the first member.  The address here
+		 * is DEREF(REGVAR) - load the word the register points at
+		 * - and the child's DEREF has to survive, because bare
+		 * "=(D(V))" is already taken: it is how "*q = c" spells
+		 * "the register holds the address".  Without this the
+		 * child collapsed to the same REGVAR a plain "*q" emits,
+		 * and pass2 stored the character into the pointer member
+		 * itself.  stdio's _flsbuf does exactly this - *f->_base
+		 * = c - and every 513th byte through a buffered stream
+		 * overwrote the buffer pointer's low byte instead of
+		 * landing in the buffer.
+		 */
+		if (lval && left->op == DEREF && isRegvar(left->left))
+			inLvalue = 1;	/* the child DEREF keeps itself */
 		/* Optimize: *++p -> (++p, *p) using comma operator */
 		if ((left->op == INCR || left->op == DECR) &&
 		    !(left->flags & E_POSTFIX)) {
