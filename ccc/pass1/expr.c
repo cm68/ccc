@@ -1142,6 +1142,20 @@ pfxSizeof(void)
     if (!t) fdprintf(2, "bad op (sizeof): no type\n");
 #endif
     if (!t) gripe(ER_E_UO);
+    /*
+     * An array whose extent nothing has settled has no size to ask
+     * for.  It is indeterminate until a later declaration says how
+     * big it is, and until then sizeof cannot be answered - it used
+     * to come back 2, the size of the pointer an array decays to,
+     * which is a wrong answer rather than a refused one.
+     *
+     * So the declaration has to precede the use.  That is what C
+     * requires in any case, and it is what lets the two phases run a
+     * function at a time: nothing may depend on a declaration further
+     * down the file.
+     */
+    if (t && (t->flags & TF_ARRAY) && t->count <= 0)
+        gripe(ER_D_IA);
     return mkexprI(CONST, 0, inttype, t ? typesize(t) : 0, E_CONST);
 }
 
