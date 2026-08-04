@@ -91,6 +91,24 @@ isRegvar(struct expr *e)
 }
 
 /*
+ * Does this chain of DEREFs stand on a register variable?
+ *
+ * The lvalue flag has to ride down the WHOLE spine, not one level:
+ * "*(*h)->p = c" with h in a register is three fetches deep, and
+ * keeping only the first left its spelling identical to the
+ * two-deep "*q->p = c" - pass2 stored one indirection short, at the
+ * struct base.  Every DEREF on a register-rooted spine keeps itself,
+ * so depth is depth.
+ */
+static char
+dchainreg(struct expr *e)
+{
+	while (e && e->op == DEREF)
+		e = e->left;
+	return isRegvar(e);
+}
+
+/*
  * Truncation-transparent operators: the low n bits of the result
  * depend only on the low n bits of the operands, whatever the signs.
  * So if the value is about to be narrowed anyway, the whole
@@ -576,9 +594,11 @@ emitExpr(struct expr *e)
 		 * itself.  stdio's _flsbuf does exactly this - *f->_base
 		 * = c - and every 513th byte through a buffered stream
 		 * overwrote the buffer pointer's low byte instead of
-		 * landing in the buffer.
+		 * landing in the buffer.  dchainreg, not isRegvar: the
+		 * flag rides the whole spine, so each level's DEREF makes
+		 * the same choice and depth survives intact.
 		 */
-		if (lval && left->op == DEREF && isRegvar(left->left))
+		if (lval && left->op == DEREF && dchainreg(left->left))
 			inLvalue = 1;	/* the child DEREF keeps itself */
 		/* Optimize: *++p -> (++p, *p) using comma operator */
 		if ((left->op == INCR || left->op == DECR) &&

@@ -1555,6 +1555,29 @@ islocdesc(Expr *e)
 }
 
 /*
+ * The lvalue-DEREF keep test for a pure chain of loads: does this
+ * DEREF chain stand on an operand that carries its variable's value
+ * in itself?  A register variable and a frame slot do - REGVAR is
+ * the content, INDEX is loaded by the rule that touches it - so for
+ * a chain over one of those, the child's value IS the store target
+ * and the top DEREF can stay as the store.  A SYMREF is only an
+ * ADDRESS: the load of the global's cell is spelled as its own
+ * DEREF in the tree, so the same chain over a global carries one
+ * more DEREF than it does over a slot, and the top one is not the
+ * store but the member fetch.  Those chains have to be reduced
+ * whole - value of the chain = the target - and rewrapped.
+ */
+static char
+keepchain(Expr *e)
+{
+	while (e && e->op == DEREF)
+		e = e->left;
+	if (!e)
+		return 0;
+	return e->op == REGVAR || e->op == LOCALVAR || e->op == INDEX;
+}
+
+/*
  * Will working this operand out take HL?
  *
  * A value read through an address needs that address in HL to be
@@ -3290,7 +3313,8 @@ rewrite1(Expr *e)
 			   e->left->op == DEREF &&
 			   (islocdesc(e->left->left) ||
 			    isdestreg(e->left->left) ||
-			    e->left->left->op == DEREF)) {
+			    (e->left->left->op == DEREF &&
+			     keepchain(e->left->left)))) {
 			/*
 			 * An assignment's lvalue is a location, not a value.
 			 * Reduce the address underneath but leave the DEREF

@@ -69,12 +69,58 @@ int v;
  * buffered stream, which crosses _flsbuf exactly where the collapse
  * used to overwrite the buffer pointer.
  *
- * Two neighbouring shapes are KNOWN STILL BROKEN and not tested
- * here: a store through a member of a GLOBAL struct pointer
- * ("*gq->p = c"), and the double-indirect "*(*h)->p = c".  Both
- * predate the fixes this file pins; they fail on ccc only, and they
- * are the next hunt.
+ * The global variants are a shape of their own.  A global's value is
+ * an explicit load in the tree - a frame slot's is implicit in the
+ * operand that names it - so the same source arrives in pass2 one
+ * DEREF deeper through a global, and the rewrite used to take the
+ * member fetch for the store: "*g->p = c" stored the character at
+ * the struct's first byte.  The double-indirect "**h = c" is the
+ * same chain without the member dressing.
  */
+struct at0 *gq0;
+struct at2 *gq2;
+char **gh;
+
+short
+glbbyte(c)
+char c;
+{
+	*gq0->p = c;
+	return *gq0->p == c ? 0 : 1;
+}
+
+short
+glboff2(c)
+char c;
+{
+	*gq2->p = c;
+	return *gq2->p == c ? 0 : 1;
+}
+
+short
+glbdbl(c)
+char c;
+{
+	**gh = c;
+	return **gh == c ? 0 : 1;
+}
+
+/*
+ * Double-indirect through a register-resident pointer-to-pointer:
+ * three fetches deep.  The lvalue flag used to ride only one level
+ * of the spine, so this spelled itself identically to the two-deep
+ * "*q->p" and stored one indirection short, at the struct base.
+ */
+short
+dblind(q, c)
+struct at0 *q;
+char c;
+{
+	struct at0 **h = &q;
+
+	*(*h)->p = c;
+	return (*q->p == c) ? 0 : 1;
+}
 
 main()
 {
@@ -101,6 +147,26 @@ main()
 	CHECK(8, regword(&w0, 0x1234), 0);
 	CHECK(9, wcell, 0x1234);
 	CHECK(10, w0.w, &wcell);
+
+	gq0 = &s0;
+	gq2 = &s2;
+	CHECK(11, glbbyte('Z'), 0);
+	CHECK(12, cells[1], 'Z');
+	CHECK(13, s0.p, &cells[1]);
+
+	CHECK(14, glboff2('Q'), 0);
+	CHECK(15, cells[3], 'Q');
+	CHECK(16, s2.p, &cells[3]);
+
+	gh = &s0.p;
+	CHECK(17, glbdbl('W'), 0);
+	CHECK(18, cells[1], 'W');
+	CHECK(19, s0.p, &cells[1]);
+
+	CHECK(20, dblind(&s0, 'V'), 0);
+	CHECK(21, cells[1], 'V');
+	CHECK(22, s0.p, &cells[1]);
+	CHECK(23, s0.n, 0x5aa5);
 
 	return 0;
 }
