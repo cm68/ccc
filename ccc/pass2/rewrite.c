@@ -62,7 +62,7 @@ dumphits(void)
 
 /* Forward declarations */
 int pmatch(struct rule *rp, Expr *e);
-int pnode(unsigned char letter, unsigned char w, Expr *e);
+int pnode(unsigned char pat, unsigned char w, Expr *e);
 Expr *rewrite1(Expr *e);
 Expr *valtohl(Expr *e);
 unsigned char baseop(unsigned char op);
@@ -75,10 +75,10 @@ int islocdesc(Expr *e);
 int
 shouldpres(Expr *e)
 {
-	char *pp;
+	unsigned char *pp;
 	if (!e) return 0;
 	for (pp = preserve; *pp; pp++) {
-		if (pnode((unsigned char)*pp, 0, e))
+		if (pnode(*pp, 0, e))
 			return 1;
 	}
 	return 0;
@@ -397,90 +397,10 @@ assign(Expr *e, unsigned char tgt)
 #include <stdio.h>
 #endif
 
-/* Special pattern values */
-#define P_ANY    0
-#define P_NULL   255
-#define P_NUM    254
-#define P_POW2   253
-#define P_ZERO   252
-#define P_SMALL  251    /* 1-4: can use inc/dec */
-#define P_MUL3   250    /* constant 3 */
-#define P_MUL5   249    /* constant 5 */
-#define P_MUL6   248    /* constant 6 */
-#define P_MUL7   247    /* constant 7 */
-#define P_MUL9   246    /* constant 9 */
-#define P_MUL10  245    /* constant 10 */
-#define P_MUL11  244    /* constant 11 */
-#define P_MUL12  243    /* constant 12 */
-#define P_MUL14  242    /* constant 14 */
-#define P_MUL15  241    /* constant 15 */
-#define P_MUL20  240    /* constant 20 */
-#define P_MUL24  239    /* constant 24 */
-#define P_MUL40  238    /* constant 40 */
-#define P_EIGHT  237    /* constant 8: a shift by a whole byte */
-/*
- * A comparison, of either family.
- *
- * For one pair of operands the six comparisons are two pieces of
- * code, not six: EQ, NEQ, LT and GE all subtract and then read a
- * different flag off the same subtraction, and LE and GT are the
- * same thing again with the operands the other way round.  The table
- * held a row for each, alike but for the flag it named, and that was
- * eighty-nine rows saying what the operator already says.
- *
- * So one row now, matched by P_CMP for the four that need no swap
- * and P_CMPX for the two that do, with the result named F_CC - "the
- * flag this comparison answers in", worked out from e->op and the
- * signedness by ccflag() below.
- */
-#define P_CMP    236    /* EQ, NEQ, LT or GE */
-#define P_CMPX   235    /* LE or GT: the same code, operands swapped */
 
 /*
  * Map single char to opcode (or special pattern value)
  */
-/*
- * op_table is filled from op_map by initOpTab() at startup: designated
- * initializers are C99 and zc3/ccc can't parse them.
- */
-static unsigned char op_table[256];
-
-static struct opmap {
-	char c;
-	unsigned char op;
-} op_map[] = {
-	{'+', PLUS}, {'*', STAR}, {'-', MINUS}, {'/', DIV}, {'%', MOD},
-	{'&', AND}, {'|', OR}, {'^', XOR}, {'<', LSHIFT}, {'>', RSHIFT},
-	{'=', ASSIGN}, {'D', DEREF}, {'V', REGVAR}, {'L', LOCALVAR},
-	{'I', INDEX}, {'H', INHL}, {'E', INDE}, {'A', INA}, {'K', INE},
-	{'B', INBC}, {'O', SYMREF}, {'Q', EQ}, {'U', NEQ}, {'T', LT},
-	{'G', GT}, {'W', LE}, {'Y', GE}, {'N', P_NUM}, {'P', P_POW2},
-	{'X', SEXT}, {'J', WIDEN}, {'R', NARROW}, {';', COMMA},
-	{'Z', P_ZERO}, {'M', P_SMALL}, {'S', SYM}, {'i', PREINC},
-	{'j', POSTINC}, {'k', PREDEC}, {'m', POSTDEC}, {'a', ARGNODE},
-	{'C', CODE}, {'o', OREQ}, {'g', NEG}, {'~', NOT}, {'!', BANG},
-	{'c', P_CMP}, {'d', P_CMPX},
-	{'_', P_ANY}, {'0', P_NULL}, {'3', P_MUL3}, {'5', P_MUL5},
-	{'6', P_MUL6}, {'7', P_MUL7}, {'9', P_MUL9}, {'x', P_MUL10},
-	{'e', P_MUL11}, {'w', P_MUL12}, {'f', P_MUL14}, {'n', P_MUL15},
-	{'y', P_MUL20}, {'q', P_MUL24}, {'z', P_MUL40},
-	{'8', P_EIGHT}
-};
-
-void
-initOpTab(void)
-{
-	int i;
-
-	for (i = 0; i < sizeof(op_map) / sizeof(op_map[0]); i++)
-		op_table[(unsigned char)op_map[i].c] = op_map[i].op;
-}
-
-unsigned char
-chartopc(char c)
-{
-	return op_table[(unsigned char)c];
-}
 
 /*
  * Check if n is power of 2, return exponent or -1
@@ -543,11 +463,11 @@ opmatch(unsigned char pat, Expr *e)
  * comparisons were not.  Kept exactly, because rules rely on both.
  */
 int
-pnode(unsigned char letter, unsigned char w, Expr *e)
+pnode(unsigned char pat, unsigned char w, Expr *e)
 {
 	static char wchar[5] = { 0, 'b', 's', 'l', 'p' };
 
-	if (!opmatch(chartopc(letter), e))
+	if (!opmatch(pat, e))
 		return 0;
 	if (w && e && (e->width | 0x20) != (wchar[w] | 0x20))
 		return 0;

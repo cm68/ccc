@@ -68,6 +68,45 @@ struct rule {
 	unsigned char destval; /* result location: R_HL, R_A, etc (0=none) */
 };
 
+/* Special pattern values */
+#define P_ANY    234
+#define P_NULL   255
+#define P_NUM    254
+#define P_POW2   253
+#define P_ZERO   252
+#define P_SMALL  251    /* 1-4: can use inc/dec */
+#define P_MUL3   250    /* constant 3 */
+#define P_MUL5   249    /* constant 5 */
+#define P_MUL6   248    /* constant 6 */
+#define P_MUL7   247    /* constant 7 */
+#define P_MUL9   246    /* constant 9 */
+#define P_MUL10  245    /* constant 10 */
+#define P_MUL11  244    /* constant 11 */
+#define P_MUL12  243    /* constant 12 */
+#define P_MUL14  242    /* constant 14 */
+#define P_MUL15  241    /* constant 15 */
+#define P_MUL20  240    /* constant 20 */
+#define P_MUL24  239    /* constant 24 */
+#define P_MUL40  238    /* constant 40 */
+#define P_EIGHT  237    /* constant 8: a shift by a whole byte */
+/*
+ * A comparison, of either family.
+ *
+ * For one pair of operands the six comparisons are two pieces of
+ * code, not six: EQ, NEQ, LT and GE all subtract and then read a
+ * different flag off the same subtraction, and LE and GT are the
+ * same thing again with the operands the other way round.  The table
+ * held a row for each, alike but for the flag it named, and that was
+ * eighty-nine rows saying what the operator already says.
+ *
+ * So one row now, matched by P_CMP for the four that need no swap
+ * and P_CMPX for the two that do, with the result named F_CC - "the
+ * flag this comparison answers in", worked out from e->op and the
+ * signedness by ccflag() below.
+ */
+#define P_CMP    236    /* EQ, NEQ, LT or GE */
+#define P_CMPX   235    /* LE or GT: the same code, operands swapped */
+
 /* the suffix byte */
 #define SFX_W(s)   ((s) & 7)		/* width: 0 none, b s l p */
 #define SFX_D(s)   (((s) >> 3) & 3)	/* dest: 0 none, F V S */
@@ -91,7 +130,7 @@ extern char *rulepat[];	/* the patterns as written, for the trace */
 #endif
 
 /* Preserve patterns - subtrees matching these are not reduced */
-extern char preserve[];
+extern unsigned char preserve[];
 
 /*
  * The instruction sequences that templates share.  A template names one
