@@ -190,8 +190,27 @@ symDecl(struct type *prefix, unsigned char struct_elem)
                  * full param list)
                  */
                 /* But keep the existing name structure */
+            } else if (lexlevel == 1 && existing->type &&
+                       !existing->is_tag && existing->kind == kvar) {
+                /*
+                 * A file-scope variable declared again.  C allows it:
+                 * one of them may say how big it is and the other need
+                 * not, which is how an array is declared ahead of the
+                 * definition that sizes it -
+                 *
+                 *	char foo[];
+                 *	char foo[20];
+                 *
+                 * Reuse the entry as the function case above does and
+                 * let the declarator finish; the two types are weighed
+                 * against each other at the end, where both are known.
+                 * Before this the second declaration made a second
+                 * name and the tree said "dup name".
+                 */
+                nm = existing;
+                redeclOld = existing->type;
             } else {
-                /* Not a function prototype - error on redeclaration */
+                /* Not a redeclaration we know how to merge */
                 nm = newName(cur.v.id, kvar, prefix, 0);
             }
         } else if (existing && existing->level < lexlevel) {
@@ -765,10 +784,29 @@ declare(struct type **btp, unsigned char struct_elem)
      * a call site reads the answer, and the return type that was being
      * silently replaced.
      */
-    if (redeclOld && nm && nm->type &&
-        (nm->type->flags & TF_FUNC) && (redeclOld->flags & TF_FUNC) &&
-        redeclOld->sub != nm->type->sub)
-        gripe(ER_D_RD);
+    if (redeclOld && nm && nm->type) {
+        if ((nm->type->flags & TF_FUNC) && (redeclOld->flags & TF_FUNC)) {
+            if (redeclOld->sub != nm->type->sub)
+                gripe(ER_D_RD);
+        } else if ((nm->type->flags & TF_ARRAY) &&
+                   (redeclOld->flags & TF_ARRAY)) {
+            /*
+             * Two spellings of the same array.  They have to agree
+             * about the element; about the extent, either may be
+             * silent, and a stated one wins.  Two different stated
+             * ones do not agree at all.
+             */
+            if (redeclOld->sub != nm->type->sub)
+                gripe(ER_D_RD);
+            else if (nm->type->count <= 0 && redeclOld->count > 0)
+                nm->type = redeclOld;
+            else if (nm->type->count > 0 && redeclOld->count > 0 &&
+                     nm->type->count != redeclOld->count)
+                gripe(ER_D_RD);
+        } else if (redeclOld != nm->type) {
+            gripe(ER_D_RD);
+        }
+    }
 
     return nm;
 }
