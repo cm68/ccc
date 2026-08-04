@@ -50,6 +50,15 @@ static int lexFd = -1;
 static unsigned char lexBuf[512];
 static int lexPos = 0;
 static int lexValid = 0;
+/*
+ * Where lexBuf[0] sits in the file, so a position can be named.  The
+ * stream is read a block at a time and two tokens ahead, so "where we
+ * are" and "where the token in hand began" are different places -
+ * curStart and nextStart carry the second, which is the one anything
+ * wanting to come back here needs.
+ */
+static long lexBase = 0;
+long curStart = 0, nextStart = 0;
 
 /* Keyword tokens (128-160) now pass through directly from cpp */
 
@@ -61,6 +70,7 @@ unsigned char
 readByte(void)
 {
 	if (lexPos >= lexValid) {
+		lexBase += lexValid;
 		lexValid = read(lexFd, lexBuf, sizeof(lexBuf));
 		lexPos = 0;
 		if (lexValid <= 0)
@@ -183,6 +193,7 @@ readNextToken(void)
 	int len;
 	char *s;
 
+	nextStart = lexBase + lexPos;
 again:
 	c = readByte();
 	next.v.numeric = 0;
@@ -301,6 +312,32 @@ shifttok(void)
 {
 	cur.type = next.type;
 	cur.v.numeric = next.v.numeric;
+	curStart = nextStart;
+}
+
+/*
+ * The offset the token in hand began at, and a seek back to one.
+ * lexSeek re-primes, so on return cur is the token that started there
+ * and next is the one after it, exactly as when the mark was taken.
+ */
+long
+lexTell(void)
+{
+	return curStart;
+}
+
+void
+lexSeek(long off)
+{
+	freeToken(&cur);
+	freeToken(&next);
+	lseek(lexFd, off, SEEK_SET);
+	lexBase = off;
+	lexPos = 0;
+	lexValid = 0;
+	readNextToken();
+	shifttok();
+	readNextToken();
 }
 
 /*
@@ -345,25 +382,12 @@ lexClose(void)
 void
 lexRewind(void)
 {
-	/* Free any allocated token memory */
-	freeToken(&cur);
-	freeToken(&next);
-
-	/* Seek to start of file */
-	lseek(lexFd, 0, SEEK_SET);
-
-	/* Reset buffer state */
-	lexPos = 0;
-	lexValid = 0;
-
 	/* Reset line tracking */
 	filename = "(unknown)";
 	lineno = 0;
 
-	/* Re-prime the token stream */
-	readNextToken();
-	shifttok();
-	readNextToken();
+	/* the start of the file is just a position like any other */
+	lexSeek(0);
 }
 
 /*

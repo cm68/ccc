@@ -465,6 +465,8 @@ extern void gettoken(void);
 extern void lexOpen(char *filename);
 extern void lexClose(void);
 extern void lexRewind(void);
+long lexTell(void);
+void lexSeek(long off);
 
 /* Error reporting */
 extern int lineno;
