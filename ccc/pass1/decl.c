@@ -143,7 +143,19 @@ streamInitVal(struct type *type)
                 val = (long)e->v;  /* e->v IS the value, not a pointer */
                 if (size == 1)
                     asmDb((int)val);
-                else
+                else if (size == 4) {
+                    /*
+                     * Four bytes, low word first, which is how everything
+                     * that reads one expects to find it: "ld de,(x)" then
+                     * "ld hl,(x+2)".  A word was emitted for anything that
+                     * was not a byte, so an initialised long global was
+                     * half a long - the next variable sat where its high
+                     * word belonged, and reading it back gave that
+                     * variable in the top half.
+                     */
+                    asmDw((int)(val & 0xffffL));
+                    asmDw((int)((val >> 16) & 0xffffL));
+                } else
                     asmDw((int)val);
             } else if (e->op == SYM) {
                 member = (struct name *)e->var;
