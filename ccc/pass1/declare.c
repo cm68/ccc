@@ -1,5 +1,7 @@
 #include "cc1.h"
 
+struct type *redeclOld;	/* the type a reused entry already had */
+
 /*
  * Parse pointer prefix and build pointer type chain
  *
@@ -139,6 +141,8 @@ symDecl(struct type *prefix, unsigned char struct_elem)
 {
     struct name *nm;
 
+    redeclOld = NULL;
+
     if (struct_elem) {
         /*
          * struct members: create name but DON'T add to
@@ -180,6 +184,7 @@ symDecl(struct type *prefix, unsigned char struct_elem)
                 (existing->type->flags & TF_FUNC) && !existing->u.locals) {
                 /* Reuse existing function declaration (prototype) */
                 nm = existing;
+                redeclOld = existing->type;
                 /*
                  * Update type to the new one (definition may have
                  * full param list)
@@ -738,6 +743,32 @@ declare(struct type **btp, unsigned char struct_elem)
             nm->type = suffix;
         }
     }
+
+    /*
+     * A function redeclared as returning something else.
+     *
+     * An unknown name called as a function is an int-returning one -
+     * that is the language, and pfxSym says so.  What is not allowed
+     * is for a later declaration to disagree, and nothing checked:
+     * the entry was reused and its type quietly overwritten, so
+     *
+     *	caller() { return f() + 1; }	implies int f()
+     *	long f() { ... }
+     *
+     * compiled without a word, the caller reading a long return as an
+     * int and taking HL for the whole of it.
+     *
+     * Return type only.  compatFnTyp compares parameter lists too and
+     * is too strict to use here: a K&R declaration names no parameters
+     * - "extern short adds();" ahead of "short adds(a, b)" - and the
+     * two are meant to agree.  It is the return type that decides how
+     * a call site reads the answer, and the return type that was being
+     * silently replaced.
+     */
+    if (redeclOld && nm && nm->type &&
+        (nm->type->flags & TF_FUNC) && (redeclOld->flags & TF_FUNC) &&
+        redeclOld->sub != nm->type->sub)
+        gripe(ER_D_RD);
 
     return nm;
 }

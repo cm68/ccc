@@ -129,6 +129,7 @@ extern unsigned short globalStrCtr;  /* string literal counter ("str") */
 extern void statement(void);
 extern void declaration(void);
 struct name;
+extern struct type *redeclOld;	/* type a reused entry already had */
 extern struct local *capLocals(void);
 extern struct local *mklocal(struct name *n);
 extern void emitFuncPre(struct name *func);

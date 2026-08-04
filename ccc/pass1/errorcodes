@@ -29,6 +29,7 @@ ER_D_OF		too many names
 ER_D_DN		dup name
 ER_D_IN		bad init
 ER_D_AI		auto aggr init
+ER_D_RD		redecl returns other
 
 # parse errors
 ER_P_SC		bad sclass
