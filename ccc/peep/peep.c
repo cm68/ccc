@@ -38,7 +38,7 @@ normalise(char *src, char *dst)
 
 	while (*src == ' ' || *src == '\t')
 		src++;
-	while (*src && *src != ';' && *src != '\n' && n < LLEN - 2) {
+	while (*src && *src != ';' && *src != '\n' && n < KLEN - 2) {
 		if (*src == ' ' || *src == '\t') {
 			sp = 1;
 			src++;
@@ -76,21 +76,109 @@ classify(char *key)
 	return L_INSN;
 }
 
+/*
+ * Storage for a slot.  A slot owns its two strings and nothing else
+ * points at them, so putting a line in one frees what was there and
+ * the window shuffles move the pointers rather than the bytes.
+ */
+static void
+freeline(int i)
+{
+	if (win[i].text)
+		free(win[i].text);
+	if (win[i].key)
+		free(win[i].key);
+	win[i].text = 0;
+	win[i].key = 0;
+}
+
+static char *
+dup(char *s)
+{
+	char *p = malloc(strlen(s) + 1);
+
+	if (!p) {
+		fprintf(stderr, "peep: out of memory\n");
+		exit(1);
+	}
+	return strcpy(p, s);
+}
+
+/*
+ * Put text in slot i, deriving the key and the kind.  The slot's
+ * previous contents go.  Text is taken as given - the caller either
+ * read it or built it - and is not bounded; the key is, by
+ * normalise().
+ */
+static void
+putline(int i, char *s)
+{
+	char kbuf[KLEN];
+
+	freeline(i);
+	normalise(s, kbuf);
+	win[i].text = dup(s);
+	win[i].key = dup(kbuf);
+	win[i].kind = classify(win[i].key);
+}
+
+/*
+ * Read one whole line, however long, into a buffer that grows to fit.
+ *
+ * fgets with a fixed buffer would split the long ones, and a split is
+ * poison twice over: the pool's skip loop orphans the tail of a
+ * merged literal, and the tail of a split comment no longer begins
+ * with a semicolon, so the rules would read it as an instruction and
+ * could rewrite it.  c1's expression dumps run past a kilobyte, so
+ * this is not hypothetical - the 1024-byte buffer this replaces was
+ * already too small for five lines of the compiler's own output.
+ */
+static char *
+readtext(void)
+{
+	char chunk[128];
+	char *p = 0, *q;
+	int len = 0, n;
+
+	for (;;) {
+		if (!fgets(chunk, sizeof(chunk), in))
+			break;
+		n = strlen(chunk);
+		q = p ? realloc(p, len + n + 1) : malloc(n + 1);
+		if (!q) {
+			fprintf(stderr, "peep: out of memory\n");
+			exit(1);
+		}
+		p = q;
+		strcpy(p + len, chunk);
+		len += n;
+		if (n && chunk[n - 1] == '\n')
+			break;
+	}
+	return p;			/* 0 at end of file with nothing read */
+}
+
 /* read one line into window slot i; returns 0 at end of file */
 int
 readline(int i)
 {
-	char buf[LLEN];
+	char *s;
 
 	if (ateof)
 		return 0;
-	if (!fgets(buf, sizeof(buf), in)) {
+	s = readtext();
+	if (!s) {
 		ateof = 1;
 		return 0;
 	}
-	strncpy(win[i].text, buf, LLEN - 1);
-	win[i].text[LLEN - 1] = '\0';
-	normalise(buf, win[i].key);
+	freeline(i);
+	win[i].text = s;			/* readtext already allocated it */
+	{
+		char kbuf[KLEN];
+
+		normalise(s, kbuf);
+		win[i].key = dup(kbuf);
+	}
 	win[i].kind = classify(win[i].key);
 	return 1;
 }
@@ -109,12 +197,19 @@ delline(int i, int n)
 {
 	int j;
 
+	for (j = i; j < i + n && j < nwin; j++)
+		freeline(j);
 	for (j = i; j + n < nwin; j++) {
-		strcpy(win[j].text, win[j + n].text);
-		strcpy(win[j].key, win[j + n].key);
+		win[j].text = win[j + n].text;
+		win[j].key = win[j + n].key;
 		win[j].kind = win[j + n].kind;
 	}
 	nwin -= n;
+	/* the slots that fell off the end no longer own anything */
+	for (j = nwin; j < nwin + n && j < WINDOW; j++) {
+		win[j].text = 0;
+		win[j].key = 0;
+	}
 }
 
 /*
@@ -134,24 +229,20 @@ insline(int i, char *s)
 		exit(1);
 	}
 	for (j = nwin; j > i; j--) {
-		strcpy(win[j].text, win[j - 1].text);
-		strcpy(win[j].key, win[j - 1].key);
+		win[j].text = win[j - 1].text;
+		win[j].key = win[j - 1].key;
 		win[j].kind = win[j - 1].kind;
 	}
-	strncpy(win[i].text, s, LLEN - 1);
-	win[i].text[LLEN - 1] = '\0';
-	normalise(s, win[i].key);
-	win[i].kind = classify(win[i].key);
+	win[i].text = 0;			/* the slot's old strings moved up */
+	win[i].key = 0;
+	putline(i, s);
 	nwin++;
 }
 
 void
 setline(int i, char *s)
 {
-	strncpy(win[i].text, s, LLEN - 1);
-	win[i].text[LLEN - 1] = '\0';
-	normalise(s, win[i].key);
-	win[i].kind = classify(win[i].key);
+	putline(i, s);
 }
 
 void
@@ -211,10 +302,21 @@ main(int argc, char **argv)
 			continue;
 		}
 		if (!applyrules()) {
-			char mapped[LLEN + 32];
+			/*
+			 * Sized to the line in hand: poolmap can only grow it
+			 * by the digits a remapped strN gains, and it stops
+			 * short of the end it is given.
+			 */
+			int sz = strlen(win[0].text) + 64;
+			char *mapped = malloc(sz);
 
-			poolmap(win[0].text, mapped, sizeof(mapped));
+			if (!mapped) {
+				fprintf(stderr, "peep: out of memory\n");
+				exit(1);
+			}
+			poolmap(win[0].text, mapped, sz);
 			fputs(mapped, out);
+			free(mapped);
 			delline(0, 1);
 		}
 		fill();

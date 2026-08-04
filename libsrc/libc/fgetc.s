@@ -44,7 +44,7 @@ base	equ	4
 flag	equ	6
 file	equ	7
 
-IOREAD_BIT	equ	1
+IOREAD_BIT	equ	0	; _IOREAD is 01 - bit 0, not bit 1 (that is _IOWRT)
 IOEOF_BIT	equ	4
 IOBINARY_BIT	equ	7
 IOSTRG_BIT	equ	6
@@ -109,7 +109,8 @@ retch:
 	ld	(iy+ptr+1),h
 reteof:
 	set	IOEOF_BIT,(iy+flag)	;note EOF
-	ld	hl,CPMEOF
+	ld	hl,-1			;EOF, which is -1 - not the ctrl-Z
+					;that marks it in a CP/M text file
 	ex	(sp),iy			;restore iy
 	push	de
 	ret				;return with EOF in hl

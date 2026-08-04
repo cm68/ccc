@@ -74,7 +74,12 @@ isdata(char *line)
 int
 sameblock(FILE *f, int a, int b)
 {
-	char la[LLEN], lb[LLEN];
+	/*
+	 * Data lines, not any line: a .db is under KLEN and a comment
+	 * that splits here splits the same way on both sides, so the
+	 * comparison still answers the question it was asked.
+	 */
+	char la[KLEN], lb[KLEN];
 	long save = ftell(f);
 	long pa = spos[a], pb = spos[b];
 	int i, same = 1;
@@ -101,7 +106,13 @@ sameblock(FILE *f, int a, int b)
 void
 poolscan(FILE *f)
 {
-	char line[LLEN];
+	/*
+	 * Only labels and .db lines are looked for, and both are well
+	 * under KLEN.  A long comment split across two reads is two
+	 * lines that match neither test, which is what one line that
+	 * matched neither would have done.
+	 */
+	char line[KLEN];
 	int id, i, j, n;
 	long at;
 	unsigned short h;

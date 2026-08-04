@@ -64,7 +64,7 @@ int
 r_incsp(void)
 {
 	int n = 0, k, i;
-	char buf[LLEN + 8];
+	char buf[KLEN + 8];
 
 	while (is(n, "inc sp"))
 		n++;
@@ -99,7 +99,7 @@ r_incsp(void)
 int
 r_pushpop(void)
 {
-	char x[LLEN], y[LLEN];
+	char x[KLEN], y[KLEN];
 
 	if (!starts(0, "push ") || !starts(1, "pop ") || !starts(2, "push "))
 		return 0;
@@ -128,8 +128,8 @@ r_pushpop(void)
 int
 r_bounce(void)
 {
-	char src[LLEN], dst;
-	char buf[LLEN + 8];
+	char src[KLEN], dst;
+	char buf[KLEN + 8];
 
 	if (!starts(0, "ld a,") || !starts(1, "ld "))
 		return 0;
@@ -263,7 +263,7 @@ int
 r_invjp(void)
 {
 	char cc[4];
-	char buf[LLEN + 8];
+	char buf[KLEN + 8];
 	char *comma;
 	int i, n, j1, j2;
 
@@ -328,7 +328,7 @@ r_invjp(void)
 int
 r_outi(void)
 {
-	char buf[LLEN + 16];
+	char buf[KLEN + 16];
 	int j1, j2, j3, j4;
 
 	if (win[0].kind != L_INSN ||

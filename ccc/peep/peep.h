@@ -13,14 +13,22 @@
  */
 
 #define WINDOW	16			/* lines held for matching */
+
 /*
- * Long enough for the longest line c1 emits, which is a .db carrying
- * a whole rule template - 274 bytes in today's rules.s.  A line
- * fgets splits in two is poison twice over: the pool's skip loop
- * orphans the tail of a merged literal, and a rule could match
- * across the seam.
+ * How long a KEY can be - not a line.  The rules match against keys,
+ * and normalise() truncates to this, so any scratch buffer built from
+ * a key is safe at KLEN plus room for what the rule adds.  The
+ * longest key the compiler's own output produces is a .db carrying a
+ * whole rule template, 273 bytes in today's rules.s; the rules
+ * themselves only ever match instructions, whose keys are a couple of
+ * dozen bytes.
+ *
+ * A line is a different matter and has no bound here.  Comments are
+ * not in a key - normalise drops them - and c1 writes expression
+ * dumps over a kilobyte long, so the text a window slot holds is
+ * allocated to fit what arrived.
  */
-#define LLEN	1024			/* longest line handled - see asz linebuf */
+#define KLEN	320
 
 /*
  * A window line.  The original text is kept so that lines nothing
@@ -29,10 +37,16 @@
  * gratuitous reformatting would bury the real changes.  The key is the
  * same line with tabs and runs of blanks squeezed to one space and the
  * comment removed, which is what the rules match against.
+ *
+ * Both are pointers, not arrays.  Sixteen slots of two kilobyte
+ * buffers is 32K of bss - half the address space on the machine this
+ * has to run on, and more than four times what a struct may be when
+ * its members are addressed at (ix+d).  Pointers also make the window
+ * shuffle a pointer move rather than two strcpys of a kilobyte each.
  */
 struct line {
-	char text[LLEN];		/* as read, less the newline */
-	char key[LLEN];			/* normalised for matching */
+	char *text;				/* as read, newline and all */
+	char *key;				/* normalised for matching, at most KLEN */
 	unsigned char kind;		/* L_* below */
 };
 

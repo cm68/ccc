@@ -28,7 +28,7 @@ base    equ     4
 flag    equ     6
 file    equ     7
 
-IOWRT_BIT       equ     2
+IOWRT_BIT       equ     1       ; _IOWRT is 02 - bit 1, not bit 2 (that is _IONBF)
 IOBINARY_BIT    equ     7
 IOSTRG_BIT      equ     6
 
