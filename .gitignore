@@ -38,6 +38,7 @@ __pycache__/
 *.sym
 *.map
 *.mem
+*.n
 *.noi
 *.lk
 *.cdb
