@@ -531,6 +531,41 @@ cmpParamLists(struct type *t1, struct type *t2)
  * Returns 1 if compatible, 0 if different
  * Checks return type and parameter types, ignoring parameter names
  */
+/*
+ * Do two declarations agree about what a function hands back?
+ *
+ * What a caller needs from a return type is how wide the answer is:
+ * an int read out of HL where a long was returned takes half of it,
+ * which is the whole reason this is checked at all.  Anything the two
+ * spellings disagree about that does not change the width, the call
+ * site cannot tell apart.
+ *
+ * Identity is not that test.  Types are interned, so usually the same
+ * type is the same pointer - but a function type is built fresh from
+ * its parameter list, and a return type can have one inside it.
+ * signal() is the one everybody has:
+ *
+ *	void (*signal(int, void (*)(int)))(int);	// the header
+ *	void (*signal(sig, action))()		// the definition
+ *
+ * Both hand back a pointer, two bytes, and agree about everything a
+ * caller can observe.  They differ in whether the parameters of the
+ * function pointed at are spelled out - the same K&R silence the
+ * outer list is already allowed - so the interned pointers differ and
+ * identity alone calls it a conflict.
+ *
+ * A null side is that silence too: declarators are assembled
+ * outwards, so in phase 1 a pointer may not yet have been told what
+ * it points to.
+ */
+char
+sameRet(struct type *t1, struct type *t2)
+{
+	if (t1 == t2 || !t1 || !t2)
+		return 1;
+	return typesize(t1) == typesize(t2);
+}
+
 char
 compatFnTyp(struct type *t1, struct type *t2)
 {

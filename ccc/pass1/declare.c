@@ -786,7 +786,7 @@ declare(struct type **btp, unsigned char struct_elem)
      */
     if (redeclOld && nm && nm->type) {
         if ((nm->type->flags & TF_FUNC) && (redeclOld->flags & TF_FUNC)) {
-            if (redeclOld->sub != nm->type->sub)
+            if (!sameRet(redeclOld->sub, nm->type->sub))
                 gripe(ER_D_RD);
         } else if ((nm->type->flags & TF_ARRAY) &&
                    (redeclOld->flags & TF_ARRAY)) {
