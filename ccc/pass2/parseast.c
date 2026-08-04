@@ -656,7 +656,31 @@ parseStmt(void)
 				outf("\t.error more than %d cases in one switch\n",
 				    MAXSWCASE);
 			} else {
-				sw->val[sw->ncase] = e->u.val;
+				/*
+				 * Two cases the dispatch cannot tell apart.
+				 * pass1 used to carry a long per case for this
+				 * and never looked at it; the values are
+				 * already here, in the array the jump table is
+				 * built from, so the check costs a walk and no
+				 * memory at all.
+				 *
+				 * A byte, because that is what the dispatch
+				 * compares - see the masks in swdispatch.  So
+				 * this also catches the pair that differ only
+				 * above the low byte, which would silently
+				 * share an arm rather than being diagnosed.
+				 */
+				unsigned char v = (unsigned char)e->u.val;
+				int i;
+
+				for (i = 0; i < sw->ncase; i++) {
+					if (sw->val[i] == v) {
+						outf("\t.error duplicate case %d\n",
+						    (int)v);
+						break;
+					}
+				}
+				sw->val[sw->ncase] = v;
 				swlabel('K', sw->id, sw->ncase);
 				out(":\n");
 				sw->ncase++;

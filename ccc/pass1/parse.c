@@ -37,6 +37,10 @@ static unsigned char ifHasElse[MAX_IFS / 8]; /* bit N set: if #N has else */
 static unsigned short ifCount = 0;          /* phase 1: count of if statements */
 static unsigned short ifEmitIdx = 0;        /* phase 2: next if to emit */
 
+#ifdef DEBUG
+long swbytes, swpeak, capbytes, cappeak;
+#endif
+
 void resetSwitch(void) {
     register struct swtab *sw = swList;
     unsigned char n = swCount + 1;
@@ -81,6 +85,10 @@ void pushSwitch(void) {
     sw = &swList[idx];
     /* Allocate case array for this switch */
     sw->cases = (struct swcase *)galloc(SW_INIT_CASES * sizeof(struct swcase));
+#ifdef DEBUG
+    swbytes += SW_INIT_CASES * sizeof(struct swcase);
+    if (swbytes > swpeak) swpeak = swbytes;
+#endif
     sw->count = 0;
     sw->capacity = SW_INIT_CASES;
     sw->num = idx;
@@ -124,7 +132,7 @@ void finishCase(unsigned char stmt_cnt) {
     }
 }
 
-void addCase(long value, unsigned char stmt_cnt) {
+void addCase(unsigned char stmt_cnt) {
     unsigned char idx;
     struct swtab *sw;
     register struct swcase *cp;
@@ -165,12 +173,11 @@ void addCase(long value, unsigned char stmt_cnt) {
     }
     sw->base_stmts = stmt_cnt;
     /* Add new case */
-    cp->value = value;
     cp->is_default = 0;
     cp->stmts = 0;  /* will be set by next case or popSwitch */
 #ifdef DEBUG
-    fdprintf(2, "addCase: add sw[%d].cases[%d] val=%ld base=%d\n",
-             idx, sw->count, value, sw->base_stmts);
+    fdprintf(2, "addCase: add sw[%d].cases[%d] base=%d\n",
+             idx, sw->count, sw->base_stmts);
 #endif
     sw->count++;
 }
@@ -216,7 +223,6 @@ void addDefault(unsigned char stmt_cnt) {
     }
     sw->base_stmts = stmt_cnt;
     /* Add default */
-    cp->value = 0;
     cp->is_default = 1;
     cp->stmts = 0;  /* will be set by next case or popSwitch */
 #ifdef DEBUG
@@ -466,6 +472,10 @@ capLocals(void)
 		if (n->kind == kvar || n->kind == klocal || n->kind == kfunarg) {
 			copy = (struct name *)galloc(sizeof(struct name));
 			memcpy(copy, n, sizeof(struct name));
+#ifdef DEBUG
+			capbytes += sizeof(struct name);
+			if (capbytes > cappeak) cappeak = capbytes;
+#endif
 			copy->next = NULL;
 
 			/* Add to linked list */
@@ -836,11 +846,9 @@ statement(void)
                 break;
             }
             case CASE: {
-                long val;
                 gettoken();
                 parseConst(COLON);
-                val = constVal;
-                addCase(val, stmt_count);  /* add to current switch table */
+                addCase(stmt_count);  /* add to current switch table */
                 expect(COLON, ER_S_NL);
                 break;
             }

@@ -334,8 +334,14 @@ void cleanupParse();
 #define SW_INIT_CASES 8     /* initial cases per switch, and the step it grows by */
 #define SW_INIT_SWS   8     /* initial switches per function, likewise */
 
+/*
+ * A case, as phase 1 records it.  Not its value: phase 2 re-parses
+ * that from the token stream as an expression, so the four bytes this
+ * used to carry were written twice and read never.  A big switch runs
+ * to a couple of hundred cases and the array is live for the whole
+ * function.
+ */
 struct swcase {
-    long value;             /* case constant value */
     unsigned char is_default; /* 1 if default, 0 if case */
     unsigned char stmts;    /* statement count for this case section */
 };
@@ -363,7 +369,7 @@ extern unsigned char swEmitDepth;   /* phase 2: emit stack depth */
 void resetSwitch(void);             /* reset for new function */
 void pushSwitch(void);              /* enter switch statement */
 void popSwitch(void);               /* exit switch statement */
-void addCase(long value, unsigned char stmt_cnt);  /* add case to current switch */
+void addCase(unsigned char stmt_cnt);  /* add case to current switch */
 void addDefault(unsigned char stmt_cnt);           /* add default to current switch */
 void finishCase(unsigned char stmt_cnt);           /* finalize current case stmt count */
 

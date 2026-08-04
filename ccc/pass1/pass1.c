@@ -345,6 +345,11 @@ main(int argc, char **argv)
 
     /* Report allocation counts */
 #ifdef DEBUG
+    {
+	extern long swpeak, cappeak;
+	fdprintf(2, "MEM swcase-peak %ld caplocals-peak %ld sizeof(name)=%d sizeof(swcase)=%d\n",
+	    swpeak, cappeak, (int)sizeof(struct name), (int)sizeof(struct swcase));
+    }
     fdprintf(2, "names: %d/%d exprs: %d/%d\n",
         nameAllocCnt, nameHighWater, exprAllocCnt, exprHighWater);
 #endif
