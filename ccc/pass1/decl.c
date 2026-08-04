@@ -234,14 +234,31 @@ doInitlzr(struct name *v)
             }
             gettoken();  /* consume final } */
         } else if (cur.type == STRING) {
-            /* Simple string init for pointer - emit data in phase 1 */
+            /*
+             * A string initialising a POINTER needs a literal to point
+             * at.  One initialising a char array does not: phase 2
+             * streams the bytes into the array itself and burns a
+             * counter value where this label would have been.  Emitting
+             * it anyway put a second copy of every such string in the
+             * text segment with nothing referring to it - six bytes for
+             * "hello", and rather more for a table of them.
+             *
+             * The test is streamInitVal's, spelled the same way, because
+             * the two have to agree about which strings get a label.
+             */
             cstring str = cur.v.str;
             if (str) {
                 unsigned char slen = str[0];
+                struct type *t = v ? v->type : (struct type *)0;
+                int inarray = t && (t->flags & TF_ARRAY) &&
+                    t->sub && t->sub->size == 1;
+
                 fmtstr(strname, "str%d", globalStrCtr++);
-                setSeg(SEG_TEXT);
-                asmLabel(strname);
-                asmDbStr((unsigned char *)str + 1, slen);
+                if (!inarray) {
+                    setSeg(SEG_TEXT);
+                    asmLabel(strname);
+                    asmDbStr((unsigned char *)str + 1, slen);
+                }
             }
             gettoken();
         } else {
