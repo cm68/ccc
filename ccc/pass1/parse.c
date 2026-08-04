@@ -38,7 +38,6 @@ static unsigned short ifCount = 0;          /* phase 1: count of if statements *
 static unsigned short ifEmitIdx = 0;        /* phase 2: next if to emit */
 
 #ifdef DEBUG
-long swbytes, swpeak, capbytes, cappeak;
 #endif
 
 void resetSwitch(void) {
@@ -86,8 +85,6 @@ void pushSwitch(void) {
     /* Allocate case array for this switch */
     sw->cases = (struct swcase *)galloc(SW_INIT_CASES * sizeof(struct swcase));
 #ifdef DEBUG
-    swbytes += SW_INIT_CASES * sizeof(struct swcase);
-    if (swbytes > swpeak) swpeak = swbytes;
 #endif
     sw->count = 0;
     sw->capacity = SW_INIT_CASES;
