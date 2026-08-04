@@ -155,6 +155,24 @@ numval(char *s, long *out)
                 return 0;
             v = (v << 4) | c;
         }
+    } else if (s[0] == '0' && s[1]) {
+        /*
+         * A leading zero is octal, and it matters that it is: this
+         * body is respelled in decimal at expansion, so the base
+         * has to be honoured here or it is lost for good.  "0200"
+         * read as two hundred is how every stdio flag past 010
+         * came out wrong - _IOBINARY as 200 is _IOSTRG|_IOMYBUF
+         * with the real bit, and fgetc took every binary stream
+         * for a string it had run off the end of.
+         */
+        s++;
+        while ((c = *s++)) {
+            if (c < '0' || c > '7')
+                return 0;
+            if (v > 8191L)
+                return 0;
+            v = (v << 3) | (c - '0');
+        }
     } else {
         while ((c = *s++)) {
             if (c < '0' || c > '9')
