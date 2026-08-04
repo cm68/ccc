@@ -233,57 +233,23 @@ fentn:				;no saves, but a scalar area to allocate
 	ex	de,hl
 	jp	(hl)
 
-;	bcsv: run the rest of this function with BC preserved.
+;	There is no helper for saving BC in a hand-written routine,
+;	and there deliberately is not.  One was tried: it parked the
+;	saved BC (and, once that bug was found, the caller's return
+;	address) in a static side stack, because the bodies here read
+;	their arguments by popping and a save pushed at entry would
+;	come back as an argument.  But a static side stack is state
+;	the real stack does not know about: a longjmp past a frame
+;	that is midway through such a routine leaves the side stack
+;	pointing at dead slots, and the next restore hands back
+;	garbage.  A signal handler that touches stdio has the same
+;	problem.
 ;
-;	The register-variable convention keeps a caller's variable in
-;	BC across calls.  A handful of hand-written routines in this
-;	library use BC as scratch - strcmp pops its return address
-;	into it - and until now every ordinary call site in the
-;	compiler paid two bytes of push bc/pop bc on their account.
-;	The knowledge belongs in the callee: a routine that clobbers
-;	BC opens with "call bcsv", three bytes once, and its own ret
-;	comes back through the restore below.
-;
-;	The saved copies cannot go on the stack: the bodies read their
-;	arguments by popping them, so a copy parked there would come
-;	back as an argument.  They go in a small stack of their own,
-;	four deep - fputc calls itself to put the carriage return in
-;	front of a newline, so one slot is not enough, and a depth
-;	beyond two would mean a library routine calling a library
-;	routine calling itself.
-;
-;	Nothing here is live on entry to a C function but BC, whose
-;	whole point this is, so hl and de are free scratch.  The
-;	restore has to be more careful: hl is the return value and de
-;	is the rest of it when the value is long, so it saves hl and
-;	touches neither de nor the flags.
-
-	global	bcsv
-
-bcsv:
-	pop	hl		;body address (the call pushed it)
-	ld	de,(bcsp)
-	ex	de,hl		;hl = the free slot, de = body address
-	ld	(hl),c
-	inc	hl
-	ld	(hl),b
-	inc	hl
-	ld	(bcsp),hl
-	ld	hl,bcret
-	push	hl		;body returns through the restore
-	ex	de,hl		;hl = body address
-	jp	(hl)
-
-bcret:
-	push	hl		;the return value
-	ld	hl,(bcsp)
-	dec	hl
-	ld	b,(hl)
-	dec	hl
-	ld	c,(hl)
-	ld	(bcsp),hl
-	pop	hl
-	ret
+;	The rule instead: a hand-written routine that needs BC saves
+;	it on the real stack and reads its arguments where they sit,
+;	indexed past the saves and the return address.  strcmp,
+;	strcpy, fgetc and fputc are the pattern.  Everything lives on
+;	the one stack, so setjmp owes nothing to anybody.
 
 ;	New csv: allocates space for stack based on word following
 ;	call ncsv
@@ -306,6 +272,3 @@ ncsv:
 
 ; vim: tabstop=4 shiftwidth=4 noexpandtab:
 
-	.data
-bcsp:	.dw	bcsave		;next free slot
-bcsave:	.dw	0,0,0,0		;four deep: see bcsv

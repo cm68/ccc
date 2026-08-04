@@ -3,9 +3,9 @@
 ;	/*
 ;	 *	fputc for Zios stdio
 ;	 */
-;	
+;
 ;	#include	<stdio.h>
-;	
+;
 ;	fputc(c, f)
 ;	register FILE *	f;
 ;	uchar	c;
@@ -21,6 +21,18 @@
 ;			return _flsbuf(c, f);
 ;		return c;
 ;	}
+
+;	BC is the caller's register-variable home and IY the caller's
+;	frame pointer; both are callee-saved.  The old body popped the
+;	character straight into BC, so every call destroyed the
+;	caller's register variable - fputs walks its string in BC and
+;	wrote one character per call.  This one saves both on the real
+;	stack and reads its arguments where they sit, the way strcmp
+;	does, so setjmp and longjmp owe it nothing.  The \r recursion
+;	below needs no care at all now: fputc preserves BC, and fputc
+;	is its own caller.
+;
+;	Returns an int: the character written, or EOF, which is -1.
 
 ptr     equ     0
 cnt     equ     2
@@ -39,34 +51,42 @@ CPMEOF  equ     0x1a
 
 	global	_fputc, __flsbuf
 	psect	text
+
 _fputc:
-	pop	de			;return address
-	pop	bc			;character argument
-	ld	b,0			;so zero the top byte
-	ex	(sp),iy			;save iy and get file pointer
-	bit	IOWRT_BIT,(iy+flag)	;are we reading
-	jr	z,reteof
-	bit	IOBINARY_BIT,(iy+flag)	;binary mode?
-	jr	nz,2f			;yes, just return
-	ld	a,c			;is it a newline?
-	cp	NEWLINE
-	jr	nz,2f			;no
-	push	bc			;save thingos
+	push	bc			;the caller's register variable
+	push	iy			;and frame pointer; f rides here
+	ld	hl,6
+	add	hl,sp			;past the saves and the return
+	ld	c,(hl)			;c = the character
+	ld	b,0			;with the top byte clear
+	inc	hl
+	inc	hl
+	ld	e,(hl)
+	inc	hl
+	ld	d,(hl)
 	push	de
-	push	iy			;file argument
+	pop	iy			;iy = f
+
+	bit	IOWRT_BIT,(iy+flag)	;open for write?
+	jr	z,reteof
+	bit	IOBINARY_BIT,(iy+flag)	;binary mode writes it as it is
+	jr	nz,put
+	ld	a,c			;text mode: a \r goes out ahead
+	cp	NEWLINE			;of every \n
+	jr	nz,put
+	push	iy			;the file argument
 	ld	hl,RETURN
-	push	hl
-	call	_fputc
-	pop	hl			;unjunk stack
-	pop	bc
-	pop	de
-	pop	bc
-2:
+	push	hl			;the character argument
+	call	_fputc			;preserves BC, so c survives this
+	pop	hl			;the arguments off again
+	pop	hl
+
+put:
 	ld	l,(iy+cnt)
 	ld	h,(iy+cnt+1)
 	ld	a,l			;check count
 	or	h
-	jr	z,1f			;no room at the inn
+	jr	z,flush			;no room at the inn
 	dec	hl			;update count
 	ld	(iy+cnt),l
 	ld	(iy+cnt+1),h
@@ -76,22 +96,24 @@ _fputc:
 	inc	hl			;bump pointer
 	ld	(iy+ptr),l
 	ld	(iy+ptr+1),h
-3:
-	ex	(sp),iy			;restore iy
-	push	bc			;fix stack up
-	push	de
-	ld	l,c
-	ld	h,b			;return the character
+	ld	l,c			;return the character
+	ld	h,b
+
+done:
+	pop	iy
+	pop	bc
 	ret
 
-1:
-	ex	(sp),iy			;restore the stack to what it was
-	push	bc
-	push	de			;return address and all
-	jp	__flsbuf		;let flsbuf handle it
+flush:
+	push	iy			;the file argument
+	push	bc			;the character argument
+	call	__flsbuf		;returns the character or EOF
+	pop	de			;the arguments off again
+	pop	de
+	jr	done
 
 reteof:
-	ld	bc,-1
-	jr	3b
+	ld	hl,-1
+	jr	done
 
-; vim: tabstop=4 shiftwidth=4 noexpandtab:
+; vim: tabstop=8 shiftwidth=8 noexpandtab:
