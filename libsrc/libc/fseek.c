@@ -24,7 +24,14 @@ fseek(FILE *fp, long off, int whence)
 	fp->_cnt = 0;
 	fp->_ptr = fp->_base;
 
-	if (fp->_flag & _IORW)
+	/*
+	 * Both bits, not either.  _IORW is _IOREAD|_IOWRT, so the bare
+	 * "& _IORW" is true of every open stream - and stripping
+	 * _IOREAD from a read-only stream made every read after a
+	 * seek come back EOF.  Only a genuinely read-write stream
+	 * goes back to undecided here.
+	 */
+	if ((fp->_flag & _IORW) == _IORW)
 		fp->_flag &= ~(_IOREAD | _IOWRT);
 	fp->_flag &= ~_IOEOF;
 

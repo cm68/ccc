@@ -58,8 +58,15 @@ long		ftell();
 char *		fgets();
 char *		_bufallo();
 int _flsbuf();
-char fgetc();
-char fputc();
+/*
+ * int, not char: both return the character read or written, or EOF,
+ * which is -1 - a value a char cannot hold apart from a data byte of
+ * 0xff.  The bodies have always returned the full word in HL; the
+ * char spelling made every "!= EOF" test depend on the sign-extension
+ * of a truncated return.
+ */
+int fgetc();
+int fputc();
 int printf(char *, ...);
 int fprintf(FILE *, char *, ...);
 int sprintf(char *, char *, ...);
