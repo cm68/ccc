@@ -207,6 +207,16 @@ main(int argc, char **argv)
     int ppOnly = 0;
     int ppOutput = 0;
 
+    /*
+     * The target's name, predefined the way zc3 predefines it.  The
+     * headers guard machine-specific shapes with "#if z80" - jmp_buf's
+     * size, cpm.h wholesale - and under a cpp that says nothing about
+     * its machine every one of those guards failed shut: setjmp.h
+     * compiled to no typedef at all and the first jmp_buf was a
+     * syntax error.  Costs one numeric-macro slot (two bytes).
+     */
+    addDefine("z80=1");
+
     /* Parse arguments */
     ap = argv + 1;
     n = argc - 1;

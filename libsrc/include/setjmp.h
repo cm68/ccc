@@ -1,5 +1,11 @@
 #if	z80
-typedef	int	jmp_buf[4];
+/*
+ * Five words: IY, IX, BC, the return address, and SP - everything
+ * the calling convention makes a callee keep for its caller, which
+ * is exactly what has to come back to life when setjmp returns the
+ * second time.  See libc/longjmp.s for the layout.
+ */
+typedef	int	jmp_buf[5];
 #endif
 
 #if	i8086
