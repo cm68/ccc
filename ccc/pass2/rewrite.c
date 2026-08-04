@@ -54,14 +54,15 @@ dumphits(void)
 
 	if (!path || !(f = fopen(path, "a")))
 		return;
-	for (i = 0; rules[i].pat && i < MAXRULES; i++)
-		fprintf(f, "%d\t%lu\t%s\n", i, rulehits[i], rules[i].pat);
+	for (i = 0; rules[i].op && i < MAXRULES; i++)
+		fprintf(f, "%d\t%lu\t%s\n", i, rulehits[i], rulepat[i]);
 	fclose(f);
 }
 #endif
 
 /* Forward declarations */
-char *pmatch(char *p, Expr *e);
+int pmatch(struct rule *rp, Expr *e);
+int pnode(unsigned char letter, unsigned char w, Expr *e);
 Expr *rewrite1(Expr *e);
 Expr *valtohl(Expr *e);
 unsigned char baseop(unsigned char op);
@@ -74,10 +75,10 @@ int islocdesc(Expr *e);
 int
 shouldpres(Expr *e)
 {
-	char **pp;
+	char *pp;
 	if (!e) return 0;
 	for (pp = preserve; *pp; pp++) {
-		if (pmatch(*pp, e))
+		if (pnode((unsigned char)*pp, 0, e))
 			return 1;
 	}
 	return 0;
@@ -532,77 +533,69 @@ opmatch(unsigned char pat, Expr *e)
 		return e && e->op == NUMBER && e->u.val == multab[pat-238];
 	return e && e->op == pat;
 }
+/*
+ * Does one node answer to a pattern letter, and to a width if the
+ * pattern named one?
+ *
+ * A missing node passes the width test and fails a dest test, which is
+ * what the string form did when it walked off the end of a tree: the
+ * width comparison was guarded by the node existing and the dest
+ * comparisons were not.  Kept exactly, because rules rely on both.
+ */
+int
+pnode(unsigned char letter, unsigned char w, Expr *e)
+{
+	static char wchar[5] = { 0, 'b', 's', 'l', 'p' };
+
+	if (!opmatch(chartopc(letter), e))
+		return 0;
+	if (w && e && (e->width | 0x20) != (wchar[w] | 0x20))
+		return 0;
+	return 1;
+}
 
 /*
- * Parse and match pattern string against expression
- * Returns pointer past matched pattern, or NULL if no match
- * Pattern: op or op(left) or op(left,right)
- * Width suffix: :b :s :l :p :f (or :_ for any)
+ * Match a rule's pattern against a tree.
+ *
+ * This was a recursive walk over the pattern as it is written -
+ * "=(D(H),N):s" - re-reading the punctuation on every attempt against
+ * every node, six hundred times a step.  The shape is in the rule now:
+ * an operator, up to two operands, at most one level under either.
  */
-char *
-pmatch(char *p, Expr *e)
+int
+pmatch(struct rule *rp, Expr *e)
 {
-	unsigned char op;
+	unsigned char d;
+	Expr *k;
 
-	if (!p || !*p) return NULL;
-
-	op = chartopc(*p++);
-	if (!opmatch(op, e))
-		return NULL;
-
-	/* Check for children */
-	if (*p == '(') {
-		p++;
-		/* Match left child */
-		p = pmatch(p, e ? e->left : NULL);
-		if (!p) return NULL;
-
-		if (*p == ',') {
-			p++;
-			/* Match right child */
-			p = pmatch(p, e ? e->right : NULL);
-			if (!p) return NULL;
-		}
-		if (*p != ')') return NULL;
-		p++;
+	if (!pnode(rp->op, SFX_W(rp->sfx), e))
+		return 0;
+	d = SFX_D(rp->sfx);
+	if (d) {
+		if (!e)
+			return 0;
+		if (d == PD_F && e->dest != DEST_FLAGS)
+			return 0;
+		if (d == PD_V && e->dest != DEST_VALUE)
+			return 0;
+		if (d == PD_S && e->dest != DEST_NONE)
+			return 0;
 	}
-
-	/* Check width/dest suffix: :w or :F or :V or :wF (width + dest) */
-	if (*p == ':') {
-		p++;
-		/* check width first (b/B/s/S/l/L/p/f or _ for any) */
-		/* case-insensitive: b matches B, s matches S, etc. */
-		if (*p != 'F' && *p != 'V' && *p != 'S' &&
-		    *p != '\0' && *p != ')' && *p != ',') {
-			if (*p != '_' && e && (e->width | 0x20) != (*p | 0x20))
-				return NULL;
-			p++;
-		}
-		/* check flag context (F) */
-		if (*p == 'F') {
-			if (!e || e->dest != DEST_FLAGS)
-				return NULL;
-			p++;
-		}
-		/* check value context (V) */
-		if (*p == 'V') {
-			if (!e || e->dest != DEST_VALUE)
-				return NULL;
-			p++;
-		}
-		/*
-		 * Statement context (S): the result is thrown away.  Worth
-		 * distinguishing where producing it costs something - a long
-		 * step returns the value from before the step, so wanting the
-		 * one after means reading it back.
-		 */
-		if (*p == 'S') {
-			if (!e || e->dest != DEST_NONE)
-				return NULL;
-			p++;
-		}
-	}
-	return p;
+	if (!rp->lop)
+		return 1;
+	k = e ? e->left : (Expr *)0;
+	if (!pnode(rp->lop, SFX_LW(rp->sfx), k))
+		return 0;
+	if (rp->llop && !pnode(rp->llop, 0, k ? k->left : (Expr *)0))
+		return 0;
+	if (!rp->rop)
+		return 1;
+	k = e ? e->right : (Expr *)0;
+	if (!pnode(rp->rop, 0, k))
+		return 0;
+	if (rp->rlop && !pnode(rp->rlop, 0, k ? k->left : (Expr *)0))
+		return 0;
+	return 1;
 }
 
 /*
@@ -913,7 +906,7 @@ tryrule(struct rule *rp, Expr *e)
 	unsigned char newop, oldop;
 
 	/* Match pattern */
-	if (!pmatch(rp->pat, e))
+	if (!pmatch(rp, e))
 		return NULL;
 
 	/*
@@ -953,7 +946,7 @@ tryrule(struct rule *rp, Expr *e)
 
 #ifdef DEBUG
 	if (VERBOSE(V_RULES))
-		fprintf(stderr, "rewrite: %s -> %c\n", rp->pat, rp->rep);
+		fprintf(stderr, "rewrite: %s -> %c\n", rulepat[rp - rules], rp->rep);
 #endif
 
 	oldop = e->op;
@@ -1580,7 +1573,7 @@ step(Expr *e)
 	}
 no_regconv:
 
-	for (rp = rules; rp->pat; rp++) {
+	for (rp = rules; rp->op; rp++) {
 		n = tryrule(rp, e);
 		if (n) {
 #ifdef DEBUG

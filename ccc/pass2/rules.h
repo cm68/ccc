@@ -44,14 +44,41 @@
  * a byte apiece spent five bits saying nothing.  R() packs them, so
  * the rules themselves are written the same way they always were.
  */
+/*
+ * A rule's pattern, decoded.  It used to be the string it is written
+ * as - "=(D(H),N):s" - parsed afresh on every attempt, and the strings
+ * with their pointers were the largest single thing in the table.  The
+ * shape is small and fixed: an operator, up to two operands, and at
+ * most one level under either of those, so six bytes hold all of it.
+ * Nothing deeper occurs, and of the operands only a left child ever
+ * carries a width of its own.  DEBUG keeps the spellings in rulepat[]
+ * for the trace to print.
+ */
 struct rule {
-	char *pat;      /* pattern string */
 	char *asmtpl;   /* asm template: $L/$R/$LL/etc for interpolation */
+	unsigned char op;    /* pattern letter of the root */
+	unsigned char lop;   /* left operand, 0 if the root has no children */
+	unsigned char rop;   /* right operand, 0 if unary */
+	unsigned char llop;  /* under the left operand, 0 if it is a leaf */
+	unsigned char rlop;  /* under the right operand */
+	unsigned char sfx;   /* width | dest << 3 | left child's width << 5 */
 	unsigned char rep;   /* replacement op char */
 	unsigned char paths; /* lsrc | rsrc<<2 | dsrc<<4 */
 	unsigned char flags;
 	unsigned char destval; /* result location: R_HL, R_A, etc (0=none) */
 };
+
+/* the suffix byte */
+#define SFX_W(s)   ((s) & 7)		/* width: 0 none, b s l p */
+#define SFX_D(s)   (((s) >> 3) & 3)	/* dest: 0 none, F V S */
+#define SFX_LW(s)  (((s) >> 5) & 3)	/* left child's width: 0 none, b s l */
+#define PW_B 1
+#define PW_S 2
+#define PW_L 3
+#define PW_P 4
+#define PD_F 1
+#define PD_V 2
+#define PD_S 3
 
 #define RP_L(rp)  ((rp)->paths & 3)		/* left child source path */
 #define RP_R(rp)  (((rp)->paths >> 2) & 3)	/* right child source path */
@@ -59,9 +86,12 @@ struct rule {
 
 /* Rule table (defined in rules.c) */
 extern struct rule rules[];
+#ifdef DEBUG
+extern char *rulepat[];	/* the patterns as written, for the trace */
+#endif
 
 /* Preserve patterns - subtrees matching these are not reduced */
-extern char *preserve[];
+extern char preserve[];
 
 /*
  * The instruction sequences that templates share.  A template names one

@@ -45,7 +45,7 @@ typedef unsigned long dword;
 /*
  * Limits
  */
-#define MAXPARMS 10         /* macro parameters */
+#define MAXPARMS 16         /* macro parameters */
 /*
  * Text buffer size.  512 matched the Micronix disk block, but with
  * three files open at the peak of a header closure the difference

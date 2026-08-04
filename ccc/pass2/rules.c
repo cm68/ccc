@@ -232,8 +232,9 @@ char *fragtab[] = {
 #define T_ST_IHL	F_LDHLE F_INCHL F_LDHLD F_EXDEHL
 #define T_DE_TEST	"\tld a,e\n\tor d\n"
 
-#define R(pat, rep, l, r, d, f, tpl, dest) \
-	{pat, tpl, rep, (l) | ((r) << 2) | ((d) << 4), f, dest}
+#define R(o, lo, ro, llo, rlo, sfx, rep, l, r, d, f, tpl, dest) \
+	{tpl, o, lo, ro, llo, rlo, sfx, rep, (l) | ((r) << 2) | ((d) << 4), \
+	 f, dest}
 
 
 /*
@@ -418,49 +419,699 @@ static char RT71[] = "\tld $t,($L)\n" F_LDUL;
 static char RT85[] = "\tld ($L),de\n\tld ($L++),hl\n";
 static char RT87[] = "\tld ($L),e\n\tld ($L+),d\n\tld ($L++),l\n\tld ($L+++),h\n";
 
+#ifdef DEBUG
+/* the patterns as written, for the rule trace */
+char *rulepat[] = {
+	RP326,
+	RP326,
+	"S",
+	RP370,
+	RP370,
+	RP370,
+	"V:F",
+	"B:F",
+	RP373,
+	RP373,
+	RP271,
+	RP271,
+	RP264,
+	RP264,
+	RP268,
+	RP268,
+	RP228,
+	RP228,
+	RP372,
+	RP372,
+	"H:lF",
+	"H:F",
+	"E:F",
+	"A:F",
+	"=(H,V)",
+	"=(B,V)",
+	"=(E,V)",
+	"+(V,N)",
+	"+(D(V),N)",
+	"+(I,N)",
+	"+(I,H)",
+	"+(I,E)",
+	"+(I,B)",
+	"+(O,N)",
+	"+(O,H)",
+	"+(O,E)",
+	"+(O,B)",
+	"*(_,P)",
+	"*(H,3)",
+	"*(H,5)",
+	"*(H,6)",
+	"*(H,7)",
+	"*(H,9)",
+	"*(H,x)",
+	"*(H,e)",
+	"*(H,w)",
+	"*(H,f)",
+	"*(H,n)",
+	"*(H,y)",
+	"*(H,q)",
+	"*(H,z)",
+	"*(H,E)",
+	"*(H,B)",
+	"*(H,N)",
+	"*(B,E)",
+	RP109,
+	RP109,
+	RP107,
+	RP107,
+	RP9,
+	RP9,
+	RP110,
+	RP110,
+	RP12,
+	RP12,
+	RP11,
+	RP11,
+	"=(I,N):bV",
+	"=(I,N):b",
+	"=(I,N):sV",
+	"=(I,N):s",
+	"=(I,H):b",
+	"=(I,H):s",
+	"=(I,I):s",
+	"=(I,E):s",
+	"=(I,B):s",
+	"=(O,A):b",
+	"=(O,N):b",
+	"=(O,H):s",
+	"=(O,H):b",
+	"=(O,B):b",
+	"=(O,B):s",
+	"=(I,B):bV",
+	"=(I,B):b",
+	"=(O,N):s",
+	"=(O,A):s",
+	"=(I,A):s",
+	RP270,
+	RP270,
+	RP270,
+	RP270,
+	"=(H,N):l",
+	"=(B,N)",
+	"=(E,N)",
+	RP224,
+	"=(V,O)",
+	"=(O,V)",
+	"=(I,V):s",
+	"=(V,I)",
+	"-(V,N)",
+	"-(V,O)",
+	"+(V,O)",
+	"+(V,E)",
+	"-(V,E)",
+	"-(V,B)",
+	"+(V,B)",
+	"-(B,V)",
+	"+(B,V)",
+	"-(H,V)",
+	"+(H,V)",
+	"Q(V,Z)",
+	"U(V,Z)",
+	"c(V,N)",
+	"d(V,N)",
+	"c(V,O)",
+	"d(V,O)",
+	"Q(V,B)",
+	"U(V,B)",
+	"Q(V,H)",
+	"U(V,H)",
+	"c(V,E)",
+	"d(V,E)",
+	"c(H,V)",
+	"d(H,V)",
+	"c(B,V)",
+	"d(B,V)",
+	"c(V,B)",
+	"d(V,B)",
+	"=(V,H)",
+	"=(V,E)",
+	"=(V,B)",
+	"=(B,H)",
+	"=(E,H)",
+	"=(H,E)",
+	"=(H,B)",
+	"=(B,E)",
+	"=(E,B)",
+	"=(B,B)",
+	"=(E,E)",
+	"=(H,H)",
+	";(_,H)",
+	";(_,E)",
+	";(_,B)",
+	";(_,A)",
+	"=(C,H)",
+	"=(C,E)",
+	"=(C,B)",
+	"=(C,A)",
+	"J(A):s",
+	"J(H:b):s",
+	"X(V):s",
+	"J(V):s",
+	"X(H:s):s",
+	"X(B:s):s",
+	"J(B:s):s",
+	"X(I:s):s",
+	"J(I:s):s",
+	"X(O):s",
+	"J(O):s",
+	"J(H:s):s",
+	"X(H:b):s",
+	"X(A):s",
+	"R(H:l):s",
+	"R(H:l):b",
+	"R(H):b",
+	"R(B):b",
+	"R(E):b",
+	"R(A)",
+	"R(K)",
+	"R(H)",
+	"X(H):l",
+	"X(B):l",
+	"X(A):l",
+	"J(H):l",
+	"J(B):l",
+	"J(A):l",
+	"=(O,H):l",
+	"=(I,H):l",
+	"=(I,C):l",
+	"=(O,C):l",
+	"=(I,N):lV",
+	"=(I,N):l",
+	"=(O,N):l",
+	"=(H,C):l",
+	"D(O):lF",
+	"D(O):l",
+	"D(I):l",
+	"D(H):l",
+	"D(B):l",
+	"j(O):l",
+	"m(O):l",
+	"i(O):lS",
+	"k(O):lS",
+	"i(O):l",
+	"k(O):l",
+	"j(I):l",
+	"m(I):l",
+	"i(I):lS",
+	"k(I):lS",
+	"i(I):l",
+	"k(I):l",
+	"j(H):l",
+	"m(H):l",
+	"i(H):lS",
+	"k(H):lS",
+	"i(H):l",
+	"k(H):l",
+	"j(D(B)):l",
+	"m(D(B)):l",
+	"i(D(B)):lS",
+	"k(D(B)):lS",
+	"i(D(B)):l",
+	"k(D(B)):l",
+	"=(D(O),N):b",
+	"=(D(O),N):s",
+	"=(D(O),A):b",
+	"=(D(O),H):b",
+	"=(D(O),E):s",
+	"=(D(O),H):s",
+	"=(D(O),O):s",
+	"=(D(H),O):s",
+	"=(D(I),O):s",
+	"=(D(O),N):l",
+	"=(D(H),N):lV",
+	"=(D(H),N):l",
+	"=(D(O),H):l",
+	"=(D(I),H):l",
+	"=(D(I),N):l",
+	"=(D(V),H):l",
+	"=(D(V),N):l",
+	"=(D(B),H):l",
+	"~(H):s",
+	"~(A):b",
+	"!(H:l)",
+	"!(H:s)",
+	"!(H:b)",
+	"!(A)",
+	"!(B:s)",
+	"!(B:b)",
+	"!(E:s)",
+	"!(K)",
+	"!(V)",
+	"=(B,A)",
+	"=(H,A)",
+	"=(E,A)",
+	"+(B,N)",
+	"+(B,M)",
+	"+(E,N)",
+	"+(E,M)",
+	"g(B)",
+	"g(H)",
+	"g(E)",
+	"i(B):S",
+	"k(B):S",
+	"j(B):S",
+	"m(B):S",
+	RP475,
+	RP475,
+	RP532,
+	RP532,
+	RP500,
+	RP500,
+	RP557,
+	RP557,
+	"i(B)",
+	"k(B)",
+	"i(O):s",
+	"k(O):s",
+	"j(O):s",
+	"m(O):s",
+	"i(H):s",
+	"k(H):s",
+	"j(H):s",
+	"m(H):s",
+	"i(D(B)):b",
+	"k(D(B)):b",
+	"j(D(B)):b",
+	"m(D(B)):b",
+	"i(D(H)):b",
+	"k(D(H)):b",
+	"j(D(H)):b",
+	"m(D(H)):b",
+	"i(D(B)):s",
+	"k(D(B)):s",
+	"j(D(B)):s",
+	"m(D(B)):s",
+	"j(B)",
+	"m(B)",
+	"i(V):S",
+	"k(V):S",
+	"j(V):S",
+	"m(V):S",
+	"i(V)",
+	"k(V)",
+	"j(V)",
+	"m(V)",
+	"i(D(V)):s",
+	"k(D(V)):s",
+	"j(D(V)):s",
+	"m(D(V)):s",
+	"j(I):s",
+	"m(I):s",
+	"i(I):s",
+	"k(I):s",
+	"i(I):bS",
+	"k(I):bS",
+	"j(I):bS",
+	"m(I):bS",
+	"i(I):bF",
+	"k(I):bF",
+	"j(I):bF",
+	"m(I):bF",
+	"i(I):b",
+	"k(I):b",
+	"j(I):b",
+	"m(I):b",
+	"j(D(V)):b",
+	"m(D(V)):b",
+	"i(D(V)):b",
+	"k(D(V)):b",
+	"i(O):bF",
+	"k(O):bF",
+	"i(O):bS",
+	"k(O):bS",
+	"j(O):bS",
+	"m(O):bS",
+	"j(O):b",
+	"m(O):b",
+	"i(O):b",
+	"k(O):b",
+	"=(I,A)",
+	RP224,
+	"=(H,A):b",
+	RP228,
+	"D(H):b",
+	RP292,
+	RP292,
+	"D(B):b",
+	RP286,
+	RP286,
+	"D(E):b",
+	"D(E):s",
+	"=(D(B),A):b",
+	"=(D(E),A):b",
+	"=(D(B),H):s",
+	"=(D(E),H):s",
+	"=(D(V),N):s",
+	"=(D(V),H):s",
+	"=(D(V),B):s",
+	"=(D(V),N):b",
+	"=(D(V),A):b",
+	"=(D(V),H):b",
+	"=(D(V),B):b",
+	"=(D(V),E):b",
+	"=(D(H),V):s",
+	"=(D(H),V):b",
+	"=(D(B),V):s",
+	"=(D(I),V):s",
+	"=(D(O),V):s",
+	"=(D(I),N):s",
+	"=(D(I),H):s",
+	"=(D(I),N):b",
+	"=(D(I),A):b",
+	"=(D(I),H):b",
+	"=(D(I),B):b",
+	"=(D(I),B):s",
+	"=(D(I),E):b",
+	"=(D(I),E):s",
+	"=(D(H),N):bV",
+	"=(D(H),N):b",
+	"=(D(H),E):sV",
+	"=(D(H),E):s",
+	"=(D(H),E):b",
+	"=(D(H),A):b",
+	"=(D(H),B):b",
+	"=(D(H),H):b",
+	"j(H):b",
+	"m(H):b",
+	"i(H):b",
+	"k(H):b",
+	"i(H):sS",
+	"k(H):sS",
+	"j(H):sS",
+	"m(H):sS",
+	"=(D(B),N):b",
+	"=(D(B),H):b",
+	"=(D(B),N):s",
+	"=(D(E),N):s",
+	"=(D(H),N):sV",
+	"=(D(H),N):s",
+	"=(D(H),B):s",
+	"D(H):pF",
+	"=(B,D(H)):s",
+	"=(B,I)",
+	"=(H,I)",
+	"=(E,I)",
+	"=(I,O)",
+	"=(O,O)",
+	"=(B,O)",
+	"=(H,O)",
+	"=(E,O)",
+	"=(B,D(O)):s",
+	"=(E,D(O)):s",
+	"=(H,D(O)):s",
+	"=(E,D(H)):s",
+	"=(H,D(H)):s",
+	"=(I,D(H)):s",
+	"o(H,N):b",
+	"o(I,K):b",
+	"D(I):bF",
+	"D(I):sF",
+	"D(I):s",
+	RP298,
+	RP298,
+	RP293,
+	RP293,
+	"D(V):b",
+	"D(V):s",
+	"D(V):l",
+	"D(O):s",
+	"+(H,E)",
+	"+(H,B)",
+	"-(H,B)",
+	"-(N,B)",
+	"-(N,E)",
+	"-(N,H)",
+	"-(N,K):b",
+	"-(N,A):b",
+	"+(B,E)",
+	"-(B,E)",
+	"-(B,O)",
+	"-(B,N)",
+	"<(B,N)",
+	RP108,
+	RP108,
+	RP10,
+	RP10,
+	"*(B,N)",
+	"+(H,M)",
+	"-(H,M)",
+	"+(A,M)",
+	"-(A,M)",
+	"+(H,N)",
+	"+(A,N):b",
+	"+(D(I),N):b",
+	"-(A,N):b",
+	"-(D(I),N):b",
+	"-(H,E)",
+	"-(H,O)",
+	"+(H,O)",
+	"-(H,N)",
+	"<(H,N)",
+	"<(A,N):b",
+	"<(N,K):b",
+	"<(N,E):b",
+	"<(N,H):b",
+	"<(A,K):b",
+	"<(A,E):b",
+	"<(A,H):b",
+	RP275,
+	RP273,
+	RP274,
+	RP275,
+	RP273,
+	RP274,
+	RP276,
+	RP276,
+	RP279,
+	RP279,
+	"<(H,8)",
+	RP280,
+	RP280,
+	RP277,
+	RP277,
+	RP281,
+	RP281,
+	RP278,
+	RP278,
+	"=(A,D(I)):b",
+	"=(A,D(O)):b",
+	"=(A,A)",
+	"=(A,N):b",
+	"=(A,H):b",
+	"=(A,B):b",
+	"=(A,E):b",
+	RP474,
+	RP474,
+	RP531,
+	RP531,
+	RP473,
+	RP473,
+	RP530,
+	RP530,
+	RP499,
+	RP499,
+	RP556,
+	RP556,
+	"i(A):b",
+	"k(A):b",
+	"=(O,E):s",
+	"&(D(I),P):bF",
+	"&(D(V),P):bF",
+	"&(D(H),P):bF",
+	"&(A,P):bF",
+	"&(D(I),N):b",
+	"|(D(I),N):b",
+	"^(D(I),N):b",
+	"+(A,D(O)):b",
+	"-(A,D(O)):b",
+	"&(A,D(O)):b",
+	"|(A,D(O)):b",
+	"^(A,D(O)):b",
+	"+(A,D(I)):b",
+	"-(A,D(I)):b",
+	"&(A,D(I)):b",
+	"|(A,D(I)):b",
+	"^(A,D(I)):b",
+	"+(A,K):b",
+	"-(A,K):b",
+	"&(A,K):b",
+	"|(A,K):b",
+	"^(A,K):b",
+	"+(A,E):b",
+	"-(A,E):b",
+	"&(A,E):b",
+	"|(A,E):b",
+	"^(A,E):b",
+	"&(A,N):bF",
+	"&(A,N):b",
+	"&(A,K):bF",
+	"|(A,N):b",
+	"^(A,N):b",
+	"&(H,N)",
+	"|(H,N)",
+	"^(H,N)",
+	"&(B,N)",
+	"|(B,N)",
+	"^(B,N)",
+	"&(H,E)",
+	"|(H,E)",
+	"^(H,E)",
+	"&(H,B)",
+	"|(H,B)",
+	"^(H,B)",
+	"&(B,E)",
+	"|(B,E)",
+	"^(B,E)",
+	"T(H,Z)",
+	"Y(H,Z)",
+	"T(B,Z)",
+	"Y(B,Z)",
+	"G(H,Z)",
+	"W(H,Z)",
+	"G(B,Z)",
+	"W(B,Z)",
+	RP353,
+	RP400,
+	RP431,
+	RP358,
+	RP405,
+	RP436,
+	"T(O,B)",
+	"Y(O,B)",
+	"d(O,B)",
+	RP355,
+	RP402,
+	RP433,
+	"T(H,B)",
+	"Y(H,B)",
+	RP430,
+	"T(H,N)",
+	"Y(H,N)",
+	"d(H,N)",
+	"Q(H,E)",
+	RP431,
+	"U(H,E)",
+	RP353,
+	RP400,
+	RP436,
+	RP358,
+	RP405,
+	RP433,
+	RP355,
+	RP402,
+	"c(H,B)",
+	RP430,
+	"Q(B,E)",
+	"U(B,E)",
+	RP348,
+	RP395,
+	RP427,
+	RP348,
+	RP395,
+	"Q(B,N)",
+	"U(B,N)",
+	RP349,
+	RP396,
+	"d(B,N)",
+	RP349,
+	RP396,
+	"Q(H,O)",
+	"U(H,O)",
+	"c(H,N)",
+	"T(A,Z)",
+	"Y(A,Z)",
+	"G(A,Z)",
+	"W(A,Z)",
+	"T(A,K)",
+	"Y(A,K)",
+	RP306,
+	RP374,
+	RP346,
+	RP393,
+	RP307,
+	RP375,
+	"T(D(I),N):b",
+	"Y(D(I),N):b",
+	RP311,
+	RP379,
+	"c(A,K)",
+	"Q(A,N)",
+	"U(A,N)",
+	RP328,
+	RP361,
+	RP328,
+	RP361,
+	RP346,
+	RP393,
+	"c(D(I),N):b",
+	RP306,
+	RP374,
+	RP307,
+	RP375,
+	RP311,
+	RP379,
+	"G(H,N)",
+	"W(H,N)",
+	"G(B,N)",
+	"W(B,N)",
+	RP427,
+	"U(_,N)",
+	"U",
+	"=(O,I)",
+	0
+};
+#endif
+
 struct rule rules[] = {
 	/* LOCALVAR -> INDEX */
-	R( RP326, INDEX, P_NONE, P_NONE, P_NONE, 0, NULL, 0),
+	R( 'L',0,0,0,0,0, INDEX, P_NONE, P_NONE, P_NONE, 0, NULL, 0),
 
 	/* LOCALVAR past the 7-bit (iy+d) window (big-array bases live
 	 * below the callee-save slots): form the address with 16-bit
 	 * arithmetic (special-cased in tryrule).  Only reached when the
 	 * INDEX rule above refuses. */
-	R( RP326, CODE, P_NONE, P_NONE, P_NONE, 0, NULL, 0),
+	R( 'L',0,0,0,0,0, CODE, P_NONE, P_NONE, P_NONE, 0, NULL, 0),
 
 	/* bare SYM -> SYMREF+0, so the address rules below can see it */
-	R("S", SYMREF, P_NONE, P_NONE, P_NONE, 0, NULL, 0),
+	R( 'S',0,0,0,0,0, SYMREF, P_NONE, P_NONE, P_NONE, 0, NULL, 0),
 
 	/* REGVAR -> IN* (value is in register) */
-	R( RP370, INBC, P_NONE, P_NONE, P_NONE, RF_BC, NULL, 0),
-	R( RP370, INDE, P_NONE, P_NONE, P_NONE, RF_DE, NULL, 0),
-	R( RP370, INHL, P_NONE, P_NONE, P_NONE, RF_HL, NULL, 0),
+	R( 'V',0,0,0,0,0, INBC, P_NONE, P_NONE, P_NONE, RF_BC, NULL, 0),
+	R( 'V',0,0,0,0,0, INDE, P_NONE, P_NONE, P_NONE, RF_DE, NULL, 0),
+	R( 'V',0,0,0,0,0, INHL, P_NONE, P_NONE, P_NONE, RF_HL, NULL, 0),
 
 	/* REGVAR IX in flag context: test for zero */
-	R("V:F", REGVAR, P_NONE, P_NONE, P_NONE, RF_IX, RT443, F_NZ),
+	R( 'V',0,0,0,0,8, REGVAR, P_NONE, P_NONE, P_NONE, RF_IX, RT443, F_NZ),
 
 	/* INBC in flag context: test for zero */
-	R("B:F", INBC, P_NONE, P_NONE, P_NONE, 0, RT426, F_NZ),
+	R( 'B',0,0,0,0,8, INBC, P_NONE, P_NONE, P_NONE, 0, RT426, F_NZ),
 
 	/* REGVAR byte C/B in flag context */
-	R( RP373, REGVAR, P_NONE, P_NONE, P_NONE, RF_C, RT226, F_NZ),
-	R( RP373, REGVAR, P_NONE, P_NONE, P_NONE, RF_B, RT219, F_NZ),
+	R( 'V',0,0,0,0,9, REGVAR, P_NONE, P_NONE, P_NONE, RF_C, RT226, F_NZ),
+	R( 'V',0,0,0,0,9, REGVAR, P_NONE, P_NONE, P_NONE, RF_B, RT219, F_NZ),
 
 	/* assign constant/A/HL to REGVAR C/B */
-	R( RP271, ASSIGN, P_L, P_R, P_L, RF_C, "\tld c,$R\n", R_A),
-	R( RP271, ASSIGN, P_L, P_R, P_L, RF_B, "\tld b,$R\n", R_A),
-	R( RP264, ASSIGN, P_L, P_R, P_L, RF_C, "\tld c,a\n", R_A),
-	R( RP264, ASSIGN, P_L, P_R, P_L, RF_B, "\tld b,a\n", R_A),
-	R( RP268, ASSIGN, P_L, P_R, P_L, RF_C, "\tld c,l\n", R_HL),
-	R( RP268, ASSIGN, P_L, P_R, P_L, RF_B, "\tld b,l\n", R_HL),
+	R( '=','V','N',0,0,1, ASSIGN, P_L, P_R, P_L, RF_C, "\tld c,$R\n", R_A),
+	R( '=','V','N',0,0,1, ASSIGN, P_L, P_R, P_L, RF_B, "\tld b,$R\n", R_A),
+	R( '=','V','A',0,0,1, ASSIGN, P_L, P_R, P_L, RF_C, "\tld c,a\n", R_A),
+	R( '=','V','A',0,0,1, ASSIGN, P_L, P_R, P_L, RF_B, "\tld b,a\n", R_A),
+	R( '=','V','H',0,0,1, ASSIGN, P_L, P_R, P_L, RF_C, "\tld c,l\n", R_HL),
+	R( '=','V','H',0,0,1, ASSIGN, P_L, P_R, P_L, RF_B, "\tld b,l\n", R_HL),
 
 	/* load REGVAR C/B to HL (zero-extended) */
-	R( RP228, ASSIGN, P_L, P_R, P_R, RF_C, F_LDLC F_LDH0, R_HL),
-	R( RP228, ASSIGN, P_L, P_R, P_R, RF_B, "\tld l,b\n" F_LDH0, R_HL),
+	R( '=','H','V',0,0,1, ASSIGN, P_L, P_R, P_R, RF_C, F_LDLC F_LDH0, R_HL),
+	R( '=','H','V',0,0,1, ASSIGN, P_L, P_R, P_R, RF_B, "\tld l,b\n" F_LDH0, R_HL),
 
 	/* REGVAR C/B -> INA (value in C/B, byte context) */
-	R( RP372, INA, P_NONE, P_NONE, P_NONE, RF_C, RT221, R_A),
-	R( RP372, INA, P_NONE, P_NONE, P_NONE, RF_B, F_LDAB, R_A),
+	R( 'V',0,0,0,0,1, INA, P_NONE, P_NONE, P_NONE, RF_C, RT221, R_A),
+	R( 'V',0,0,0,0,1, INA, P_NONE, P_NONE, P_NONE, RF_B, F_LDAB, R_A),
 
 	/*
 	 * INHL/INDE/INA in flag context: test for zero.
@@ -470,10 +1121,10 @@ struct rule rules[] = {
 	 * which is zero for every long that fits in an int.  "if (v)"
 	 * on a long was false for 1 and true for 65536.
 	 */
-	R("H:lF", INHL, P_NONE, P_NONE, P_NONE, 0, T_HLDE_TEST, F_NZ),
-	R("H:F", INHL, P_NONE, P_NONE, P_NONE, 0, RT429, F_NZ),
-	R("E:F", INDE, P_NONE, P_NONE, P_NONE, 0, RT427, F_NZ),
-	R("A:F", INA, P_NONE, P_NONE, P_NONE, 0, RT358, F_NZ),
+	R( 'H',0,0,0,0,11, INHL, P_NONE, P_NONE, P_NONE, 0, T_HLDE_TEST, F_NZ),
+	R( 'H',0,0,0,0,8, INHL, P_NONE, P_NONE, P_NONE, 0, RT429, F_NZ),
+	R( 'E',0,0,0,0,8, INDE, P_NONE, P_NONE, P_NONE, 0, RT427, F_NZ),
+	R( 'A',0,0,0,0,8, INA, P_NONE, P_NONE, P_NONE, 0, RT358, F_NZ),
 	/*
 	 * The same for a value that ended up in IX.  HL, DE, BC, A and E
 	 * each become a typed node before the table is reached; IX does
@@ -490,77 +1141,77 @@ struct rule rules[] = {
 	 */
 
 	/* copy IX to HL/BC/DE */
-	R("=(H,V)", ASSIGN, P_L, P_R, P_R, RF_IX, RT174, R_HL),
-	R("=(B,V)", ASSIGN, P_L, P_R, P_R, RF_IX, "\tld c,ixl\n\tld b,ixh\n", R_BC),
-	R("=(E,V)", ASSIGN, P_L, P_R, P_R, RF_IX, "\tld e,ixl\n\tld d,ixh\n", R_DE),
+	R( '=','H','V',0,0,0, ASSIGN, P_L, P_R, P_R, RF_IX, RT174, R_HL),
+	R( '=','B','V',0,0,0, ASSIGN, P_L, P_R, P_R, RF_IX, "\tld c,ixl\n\tld b,ixh\n", R_BC),
+	R( '=','E','V',0,0,0, ASSIGN, P_L, P_R, P_R, RF_IX, "\tld e,ixl\n\tld d,ixh\n", R_DE),
 
 	/* Address rules: IX+offset -> INDEX */
-	R("+(V,N)", INDEX, P_NONE, P_NONE, P_L, RF_IX, NULL, 0),
-	R("+(D(V),N)", INDEX, P_NONE, P_NONE, P_LL, RF_IXIY, NULL, 0),
-	R("+(I,N)", INDEX, P_NONE, P_NONE, P_L, 0, NULL, 0),
+	R( '+','V','N',0,0,0, INDEX, P_NONE, P_NONE, P_L, RF_IX, NULL, 0),
+	R( '+','D','N','V',0,0, INDEX, P_NONE, P_NONE, P_LL, RF_IXIY, NULL, 0),
+	R( '+','I','N',0,0,0, INDEX, P_NONE, P_NONE, P_L, 0, NULL, 0),
 	/*
 	 * Array element with a variable subscript: the base is a frame
 	 * slot and the scaled index is already in HL, so form the address
 	 * rather than let (ix+d) do it.  A constant subscript never gets
 	 * here - +(I,N) above folds it straight into the offset.
 	 */
-	R("+(I,H)", PLUS, P_L, P_R, P_NONE, 0,
+	R( '+','I','H',0,0,0, PLUS, P_L, P_R, P_NONE, 0,
 		F_PUSHLR F_POPDE F_ADDHLDE F_LDDELO F_ADDHLDE, R_HL),
 	/* the same with the subscript already in DE, which is where the
 	 * reorder leaves it when the index is the costlier side */
-	R("+(I,E)", PLUS, P_L, P_R, P_NONE, 0,
+	R( '+','I','E',0,0,0, PLUS, P_L, P_R, P_NONE, 0,
 		F_PUSHLR F_POPHL F_ADDHLDE F_LDDELO F_ADDHLDE, R_HL),
 	/* and in BC, which is where a register variable subscript sits */
-	R("+(I,B)", PLUS, P_L, P_R, P_NONE, 0,
+	R( '+','I','B',0,0,0, PLUS, P_L, P_R, P_NONE, 0,
 		F_PUSHLR F_POPHL "\tadd hl,bc\n" F_LDDELO F_ADDHLDE, R_HL),
 
 	/* symbol + constant offset folds into the SYMREF */
-	R("+(O,N)", SYMREF, P_NONE, P_NONE, P_NONE, 0, NULL, 0),
+	R( '+','O','N',0,0,0, SYMREF, P_NONE, P_NONE, P_NONE, 0, NULL, 0),
 	/*
 	 * The same for a global array, where the base is a link-time
 	 * constant and the scaled subscript is in a register - one add,
 	 * with the base loaded into whichever half is free.  A constant
 	 * subscript never reaches here: +(O,N) above folds it away.
 	 */
-	R("+(O,H)", PLUS, P_L, P_R, P_NONE, 0, "\tld de,$L\n" F_ADDHLDE, R_HL),
-	R("+(O,E)", PLUS, P_L, P_R, P_NONE, 0, F_LDHLL F_ADDHLDE, R_HL),
+	R( '+','O','H',0,0,0, PLUS, P_L, P_R, P_NONE, 0, "\tld de,$L\n" F_ADDHLDE, R_HL),
+	R( '+','O','E',0,0,0, PLUS, P_L, P_R, P_NONE, 0, F_LDHLL F_ADDHLDE, R_HL),
 	/*
 	 * The same with the subscript in BC, which a register variable
 	 * puts it in - "buf[i]" over a global array with i in a register.
 	 * There were forms for HL and DE and not for BC, so the address
 	 * was never worked out and nothing was emitted for it.
 	 */
-	R("+(O,B)", PLUS, P_L, P_R, P_NONE, 0, F_LDHLL "\tadd hl,bc\n", R_HL),
+	R( '+','O','B',0,0,0, PLUS, P_L, P_R, P_NONE, 0, F_LDHLL "\tadd hl,bc\n", R_HL),
 
 	/* strength reduction */
-	R("*(_,P)", LSHIFT, P_L, P_R, P_NONE, RF_POW2, NULL, 0),
+	R( '*','_','P',0,0,0, LSHIFT, P_L, P_R, P_NONE, RF_POW2, NULL, 0),
 
 	/* STAR by small constants */
-	R("*(H,3)", STAR, P_L, P_NONE, P_NONE, 0,
+	R( '*','H','3',0,0,0, STAR, P_L, P_NONE, P_NONE, 0,
 		T_SAVE_HL T_ADD_HL_HL T_ADD_HL_DE, R_HL),
-	R("*(H,5)", STAR, P_L, P_NONE, P_NONE, 0,
+	R( '*','H','5',0,0,0, STAR, P_L, P_NONE, P_NONE, 0,
 		T_SAVE_HL T_ADD_HL_HL T_ADD_HL_HL T_ADD_HL_DE, R_HL),
-	R("*(H,6)", STAR, P_L, P_NONE, P_NONE, 0,
+	R( '*','H','6',0,0,0, STAR, P_L, P_NONE, P_NONE, 0,
 		T_SAVE_HL T_ADD_HL_HL T_ADD_HL_DE T_ADD_HL_HL, R_HL),
-	R("*(H,7)", STAR, P_L, P_NONE, P_NONE, 0,
+	R( '*','H','7',0,0,0, STAR, P_L, P_NONE, P_NONE, 0,
 		T_SAVE_HL T_ADD_HL_HL T_ADD_HL_DE T_ADD_HL_HL T_ADD_HL_DE, R_HL),
-	R("*(H,9)", STAR, P_L, P_NONE, P_NONE, 0,
+	R( '*','H','9',0,0,0, STAR, P_L, P_NONE, P_NONE, 0,
 		T_SAVE_HL T_ADD_HL_HL T_ADD_HL_HL T_ADD_HL_HL T_ADD_HL_DE, R_HL),
-	R("*(H,x)", STAR, P_L, P_NONE, P_NONE, 0,
+	R( '*','H','x',0,0,0, STAR, P_L, P_NONE, P_NONE, 0,
 		T_SAVE_HL T_ADD_HL_HL T_ADD_HL_HL T_ADD_HL_DE T_ADD_HL_HL, R_HL),
-	R("*(H,e)", STAR, P_L, P_NONE, P_NONE, 0,
+	R( '*','H','e',0,0,0, STAR, P_L, P_NONE, P_NONE, 0,
 		T_SAVE_HL T_ADD_HL_HL T_ADD_HL_HL T_ADD_HL_DE T_ADD_HL_HL T_ADD_HL_DE, R_HL),
-	R("*(H,w)", STAR, P_L, P_NONE, P_NONE, 0,
+	R( '*','H','w',0,0,0, STAR, P_L, P_NONE, P_NONE, 0,
 		T_SAVE_HL T_ADD_HL_HL T_ADD_HL_DE T_ADD_HL_HL T_ADD_HL_HL, R_HL),
-	R("*(H,f)", STAR, P_L, P_NONE, P_NONE, 0,
+	R( '*','H','f',0,0,0, STAR, P_L, P_NONE, P_NONE, 0,
 		T_SAVE_HL T_ADD_HL_HL T_ADD_HL_DE T_ADD_HL_HL T_ADD_HL_DE T_ADD_HL_HL, R_HL),
-	R("*(H,n)", STAR, P_L, P_NONE, P_NONE, 0,
+	R( '*','H','n',0,0,0, STAR, P_L, P_NONE, P_NONE, 0,
 		T_SAVE_HL T_ADD_HL_HL T_ADD_HL_DE T_ADD_HL_HL T_ADD_HL_DE T_ADD_HL_HL T_ADD_HL_DE, R_HL),
-	R("*(H,y)", STAR, P_L, P_NONE, P_NONE, 0,
+	R( '*','H','y',0,0,0, STAR, P_L, P_NONE, P_NONE, 0,
 		T_SAVE_HL T_ADD_HL_HL T_ADD_HL_HL T_ADD_HL_DE T_ADD_HL_HL T_ADD_HL_HL, R_HL),
-	R("*(H,q)", STAR, P_L, P_NONE, P_NONE, 0,
+	R( '*','H','q',0,0,0, STAR, P_L, P_NONE, P_NONE, 0,
 		T_SAVE_HL T_ADD_HL_HL T_ADD_HL_DE T_ADD_HL_HL T_ADD_HL_HL T_ADD_HL_HL, R_HL),
-	R("*(H,z)", STAR, P_L, P_NONE, P_NONE, 0,
+	R( '*','H','z',0,0,0, STAR, P_L, P_NONE, P_NONE, 0,
 		T_SAVE_HL T_ADD_HL_HL T_ADD_HL_HL T_ADD_HL_DE T_ADD_HL_HL T_ADD_HL_HL T_ADD_HL_HL, R_HL),
 
 	/* runtime calls */
@@ -574,11 +1225,11 @@ struct rule rules[] = {
 	 * linked and run, because a call to a symbol that does not exist
 	 * assembles perfectly well.
 	 */
-	R("*(H,E)", STAR, P_L, P_R, P_NONE, 0, "$[\tcall amul\n$]", R_HL),
+	R( '*','H','E',0,0,0, STAR, P_L, P_R, P_NONE, 0, "$[\tcall amul\n$]", R_HL),
 	/* the multiplier in BC: amul wants it in DE, and clobbers BC on
 	 * the way, so the save the $[ $] pair makes is what puts a
 	 * register variable back */
-	R("*(H,B)", STAR, P_L, P_R, P_NONE, 0,
+	R( '*','H','B',0,0,0, STAR, P_L, P_R, P_NONE, 0,
 		"\tld e,c\n\tld d,b\n$[\tcall amul\n$]", R_HL),
 	/*
 	 * Any other constant, which has to go through the helper like a
@@ -588,7 +1239,7 @@ struct rule rules[] = {
 	 * - and said so only after the marker learned to look below the
 	 * root of a statement.
 	 */
-	R("*(H,N)", STAR, P_L, P_R, P_NONE, 0,
+	R( '*','H','N',0,0,0, STAR, P_L, P_R, P_NONE, 0,
 		F_LDDER "$[\tcall amul\n$]", R_HL),
 	/*
 	 * The same with the left operand in BC, which a register variable
@@ -603,31 +1254,31 @@ struct rule rules[] = {
 	 * afterwards, and when it was the subscript of the loop doing the
 	 * multiplying the loop did not end.
 	 */
-	R("*(B,E)", STAR, P_L, P_R, P_NONE, 0,
+	R( '*','B','E',0,0,0, STAR, P_L, P_R, P_NONE, 0,
 		"$[" T_BC_HL "\tcall amul\n$]", R_HL),
-	R( RP109, DIV, P_L, P_R, P_NONE, RF_SIGNL, "$[\tcall adiv\n$]", R_HL),
-	R( RP109, DIV, P_L, P_R, P_NONE, 0, "$[\tcall ldiv\n$]", R_HL),
+	R( '/','H','E',0,0,0, DIV, P_L, P_R, P_NONE, RF_SIGNL, "$[\tcall adiv\n$]", R_HL),
+	R( '/','H','E',0,0,0, DIV, P_L, P_R, P_NONE, 0, "$[\tcall ldiv\n$]", R_HL),
 	/* and with the left operand in BC, as a register variable puts it */
-	R( RP107, DIV, P_L, P_R, P_NONE, RF_SIGNL,
+	R( '/','B','E',0,0,0, DIV, P_L, P_R, P_NONE, RF_SIGNL,
 		"$[" T_BC_HL "\tcall adiv\n$]", R_HL),
-	R( RP107, DIV, P_L, P_R, P_NONE, 0,
+	R( '/','B','E',0,0,0, DIV, P_L, P_R, P_NONE, 0,
 		"$[" T_BC_HL "\tcall ldiv\n$]", R_HL),
-	R( RP9, MOD, P_L, P_R, P_NONE, RF_SIGNL,
+	R( '%','B','E',0,0,0, MOD, P_L, P_R, P_NONE, RF_SIGNL,
 		"$[" T_BC_HL "\tcall amod\n$]", R_HL),
-	R( RP9, MOD, P_L, P_R, P_NONE, 0,
+	R( '%','B','E',0,0,0, MOD, P_L, P_R, P_NONE, 0,
 		"$[" T_BC_HL "\tcall lmod\n$]", R_HL),
 	/* by a constant, which is what dividing a pointer difference by
 	 * the element size looks like */
-	R( RP110, DIV, P_L, P_R, P_NONE, RF_SIGNL,
+	R( '/','H','N',0,0,0, DIV, P_L, P_R, P_NONE, RF_SIGNL,
 		F_LDDER "$[\tcall adiv\n$]", R_HL),
-	R( RP110, DIV, P_L, P_R, P_NONE, 0,
+	R( '/','H','N',0,0,0, DIV, P_L, P_R, P_NONE, 0,
 		F_LDDER "$[\tcall ldiv\n$]", R_HL),
-	R( RP12, MOD, P_L, P_R, P_NONE, RF_SIGNL,
+	R( '%','H','N',0,0,0, MOD, P_L, P_R, P_NONE, RF_SIGNL,
 		F_LDDER "$[\tcall amod\n$]", R_HL),
-	R( RP12, MOD, P_L, P_R, P_NONE, 0,
+	R( '%','H','N',0,0,0, MOD, P_L, P_R, P_NONE, 0,
 		F_LDDER "$[\tcall lmod\n$]", R_HL),
-	R( RP11, MOD, P_L, P_R, P_NONE, RF_SIGNL, "$[\tcall amod\n$]", R_HL),
-	R( RP11, MOD, P_L, P_R, P_NONE, 0, "$[\tcall lmod\n$]", R_HL),
+	R( '%','H','E',0,0,0, MOD, P_L, P_R, P_NONE, RF_SIGNL, "$[\tcall amod\n$]", R_HL),
+	R( '%','H','E',0,0,0, MOD, P_L, P_R, P_NONE, 0, "$[\tcall lmod\n$]", R_HL),
 
 	/*
 	 * Store to a frame slot.  A constant goes straight into the slot
@@ -637,17 +1288,17 @@ struct rule rules[] = {
 	 * assignment to copy.  The :V forms pay for a register because
 	 * something is going to read it.
 	 */
-	R("=(I,N):bV", ASSIGN, P_L, P_R, P_NONE, 0, RT100, R_A),
-	R("=(I,N):b", ASSIGN, P_L, P_R, P_NONE, 0, "\tld ($L),$R\n", 0),
-	R("=(I,N):sV", ASSIGN, P_L, P_R, P_NONE, 0, RT325, R_HL),
-	R("=(I,N):s", ASSIGN, P_L, P_R, P_NONE, 0, "\tld ($L),$Rl\n\tld ($L+),$Rh\n", 0),
-	R("=(I,H):b", ASSIGN, P_L, P_R, P_NONE, 0, F_LDLL, R_HL),
+	R( '=','I','N',0,0,17, ASSIGN, P_L, P_R, P_NONE, 0, RT100, R_A),
+	R( '=','I','N',0,0,1, ASSIGN, P_L, P_R, P_NONE, 0, "\tld ($L),$R\n", 0),
+	R( '=','I','N',0,0,18, ASSIGN, P_L, P_R, P_NONE, 0, RT325, R_HL),
+	R( '=','I','N',0,0,2, ASSIGN, P_L, P_R, P_NONE, 0, "\tld ($L),$Rl\n\tld ($L+),$Rh\n", 0),
+	R( '=','I','H',0,0,1, ASSIGN, P_L, P_R, P_NONE, 0, F_LDLL, R_HL),
 	/*
 	 * These stored from a register and left the value in it, so they
 	 * name it.  Claiming whatever register the node was aimed at
 	 * would hand the parent one that was never written.
 	 */
-	R("=(I,H):s", ASSIGN, P_L, P_R, P_NONE, 0, T_IDX_S_ST, R_HL),
+	R( '=','I','H',0,0,2, ASSIGN, P_L, P_R, P_NONE, 0, T_IDX_S_ST, R_HL),
 	/*
 	 * A frame slot assigned a frame slot's address - "p = &v".  A
 	 * bare index is a place, not a value; reading one is a DEREF
@@ -656,27 +1307,27 @@ struct rule rules[] = {
 	 * arises from address-of, and loading through the right operand
 	 * made "p = &v" mean "p = v".
 	 */
-	R("=(I,I):s", ASSIGN, P_L, P_R, P_NONE, 0,
+	R( '=','I','I',0,0,2, ASSIGN, P_L, P_R, P_NONE, 0,
 		T_IDX_R_ADDR T_IDX_S_ST, R_HL),
-	R("=(I,E):s", ASSIGN, P_L, P_R, P_NONE, 0, "\tld ($L),e\n\tld ($L+),d\n", R_DE),
-	R("=(I,B):s", ASSIGN, P_L, P_R, P_NONE, 0, "\tld ($L),c\n\tld ($L+),b\n", R_BC),
+	R( '=','I','E',0,0,2, ASSIGN, P_L, P_R, P_NONE, 0, "\tld ($L),e\n\tld ($L+),d\n", R_DE),
+	R( '=','I','B',0,0,2, ASSIGN, P_L, P_R, P_NONE, 0, "\tld ($L),c\n\tld ($L+),b\n", R_BC),
 
 	/* store to symref */
-	R("=(O,A):b", ASSIGN, P_L, P_R, P_NONE, 0, RT337, R_A),
-	R("=(O,N):b", ASSIGN, P_L, P_R, P_NONE, 0, RT100, R_A),
-	R("=(O,H):s", ASSIGN, P_L, P_R, P_NONE, 0, F_LDLHL, R_HL),
+	R( '=','O','A',0,0,1, ASSIGN, P_L, P_R, P_NONE, 0, RT337, R_A),
+	R( '=','O','N',0,0,1, ASSIGN, P_L, P_R, P_NONE, 0, RT100, R_A),
+	R( '=','O','H',0,0,2, ASSIGN, P_L, P_R, P_NONE, 0, F_LDLHL, R_HL),
 	/* narrowing store: a word result keeps only its low byte */
-	R("=(O,H):b", ASSIGN, P_L, P_R, P_NONE, 0, F_LDAL F_LDLA1, R_A),
-	R("=(O,B):b", ASSIGN, P_L, P_R, P_NONE, 0, RT224, R_A),
+	R( '=','O','H',0,0,1, ASSIGN, P_L, P_R, P_NONE, 0, F_LDAL F_LDLA1, R_A),
+	R( '=','O','B',0,0,1, ASSIGN, P_L, P_R, P_NONE, 0, RT224, R_A),
 	/*
 	 * A register variable stored to a global.  ld (nn),bc is four
 	 * bytes and there was no rule for it at all, so "g = r" emitted
 	 * nothing and said so in a marker nobody had run into.
 	 */
-	R("=(O,B):s", ASSIGN, P_L, P_R, P_NONE, 0, "\tld ($L),bc\n", R_BC),
-	R("=(I,B):bV", ASSIGN, P_L, P_R, P_NONE, 0, RT224, R_A),
-	R("=(I,B):b", ASSIGN, P_L, P_R, P_NONE, 0, "\tld ($L),c\n", 0),
-	R("=(O,N):s", ASSIGN, P_L, P_R, P_NONE, 0, RT324, R_HL),
+	R( '=','O','B',0,0,2, ASSIGN, P_L, P_R, P_NONE, 0, "\tld ($L),bc\n", R_BC),
+	R( '=','I','B',0,0,17, ASSIGN, P_L, P_R, P_NONE, 0, RT224, R_A),
+	R( '=','I','B',0,0,1, ASSIGN, P_L, P_R, P_NONE, 0, "\tld ($L),c\n", 0),
+	R( '=','O','N',0,0,2, ASSIGN, P_L, P_R, P_NONE, 0, RT324, R_HL),
 	/*
 	 * A byte in A stored to a word.  This is what a truth test or a
 	 * comparison used for its value comes to: the flag becomes a
@@ -684,16 +1335,16 @@ struct rule rules[] = {
 	 * that.  Unsigned by construction, so the top half is zero;
 	 * anything genuinely signed arrives wrapped in a SEXT.
 	 */
-	R("=(O,A):s", ASSIGN, P_L, P_R, P_NONE, 0,
+	R( '=','O','A',0,0,2, ASSIGN, P_L, P_R, P_NONE, 0,
 		F_LDLA F_LDH0 F_LDLHL, R_HL),
-	R("=(I,A):s", ASSIGN, P_L, P_R, P_NONE, 0,
+	R( '=','I','A',0,0,2, ASSIGN, P_L, P_R, P_NONE, 0,
 		F_LDLA F_LDH0 T_IDX_S_ST, R_HL),
 
 	/* load constant to register variable */
-	R( RP270, ASSIGN, P_L, P_R, P_L, RF_IX, RT162, R_IX),
-	R( RP270, ASSIGN, P_L, P_R, P_L, RF_BC, RT128, R_BC),
-	R( RP270, ASSIGN, P_L, P_R, P_L, RF_DE, RT275, R_DE),
-	R( RP270, ASSIGN, P_L, P_R, P_L, RF_HL, RT323, R_HL),
+	R( '=','V','N',0,0,0, ASSIGN, P_L, P_R, P_L, RF_IX, RT162, R_IX),
+	R( '=','V','N',0,0,0, ASSIGN, P_L, P_R, P_L, RF_BC, RT128, R_BC),
+	R( '=','V','N',0,0,0, ASSIGN, P_L, P_R, P_L, RF_DE, RT275, R_DE),
+	R( '=','V','N',0,0,0, ASSIGN, P_L, P_R, P_L, RF_HL, RT323, R_HL),
 
 	/* load constant to register (already converted) */
 	/*
@@ -702,11 +1353,11 @@ struct rule rules[] = {
 	 * a long constant passed as an argument arrived as its bottom two
 	 * bytes with DE left holding whatever was there before.
 	 */
-	R("=(H,N):l", ASSIGN, P_L, P_R, P_NONE, 0,
+	R( '=','H','N',0,0,3, ASSIGN, P_L, P_R, P_NONE, 0,
 		"\tld e,$Rl\n\tld d,$Rh\n\tld l,$R2\n\tld h,$R3\n", R_HL),
-	R("=(B,N)", ASSIGN, P_L, P_R, P_NONE, 0, RT128, R_BC),
-	R("=(E,N)", ASSIGN, P_L, P_R, P_NONE, 0, RT275, R_DE),
-	R( RP224, ASSIGN, P_L, P_R, P_NONE, 0, RT323, R_HL),
+	R( '=','B','N',0,0,0, ASSIGN, P_L, P_R, P_NONE, 0, RT128, R_BC),
+	R( '=','E','N',0,0,0, ASSIGN, P_L, P_R, P_NONE, 0, RT275, R_DE),
+	R( '=','H','N',0,0,0, ASSIGN, P_L, P_R, P_NONE, 0, RT323, R_HL),
 
 	/* assign to IX register variable */
 	/*
@@ -719,8 +1370,8 @@ struct rule rules[] = {
 	 * anything except through HL, so those go via the stack.  Loading
 	 * and storing them whole does not: ld ix,nn and ld (nn),ix exist.
 	 */
-	R("=(V,O)", ASSIGN, P_L, P_R, P_L, RF_IX, RT162, R_IX),
-	R("=(O,V)", ASSIGN, P_L, P_R, P_R, RF_IX, "\tld ($L),ix\n", R_IX),
+	R( '=','V','O',0,0,0, ASSIGN, P_L, P_R, P_L, RF_IX, RT162, R_IX),
+	R( '=','O','V',0,0,0, ASSIGN, P_L, P_R, P_R, RF_IX, "\tld ($L),ix\n", R_IX),
 	/*
 	 * There was a second copy of the rule above matching "C" instead
 	 * of "V", because a value that had been worked out INTO IX
@@ -730,7 +1381,7 @@ struct rule rules[] = {
 	 * rule above matches both and the copy is gone.  The "C:F" test
 	 * that stood beside it went the same way.
 	 */
-	R("=(I,V):s", ASSIGN, P_L, P_R, P_R, RF_IX,
+	R( '=','I','V',0,0,2, ASSIGN, P_L, P_R, P_R, RF_IX,
 		"\tpush ix\n" F_POPHL T_IDX_S_ST, R_HL),
 	/*
 	 * "p + n" folds into an indexed location, so assigning one back
@@ -738,7 +1389,7 @@ struct rule rules[] = {
 	 * location need not be the one being assigned to, so the address
 	 * is worked out rather than added in place.
 	 */
-	R("=(V,I)", ASSIGN, P_L, P_R, P_L, RF_IX,
+	R( '=','V','I',0,0,0, ASSIGN, P_L, P_R, P_L, RF_IX,
 		"\tpush $Rr\n" F_POPHL "\tld de,$Ro\n" F_ADDHLDE
 		F_PUSHHL "\tpop ix\n", R_IX),
 	/*
@@ -746,9 +1397,9 @@ struct rule rules[] = {
 	 * back.  Only addition of a constant folds into an indexed
 	 * location; subtraction has to be done.
 	 */
-	R("-(V,N)", MINUS, P_L, P_R, P_L, RF_IX, RT183, R_HL),
-	R("-(V,O)", MINUS, P_L, P_R, P_L, RF_IX, RT183, R_HL),
-	R("+(V,O)", PLUS, P_L, P_R, P_L, RF_IX,
+	R( '-','V','N',0,0,0, MINUS, P_L, P_R, P_L, RF_IX, RT183, R_HL),
+	R( '-','V','O',0,0,0, MINUS, P_L, P_R, P_L, RF_IX, RT183, R_HL),
+	R( '+','V','O',0,0,0, PLUS, P_L, P_R, P_L, RF_IX,
 		"\tpush ix\n" F_POPHL F_LDDER F_ADDHLDE, R_HL),
 	/*
 	 * The index register plus a value rather than a constant or a
@@ -758,21 +1409,21 @@ struct rule rules[] = {
 	 * turns up when the subscript is not known.  Eleven places in the
 	 * tools, counting the ones that then sign-extend the result.
 	 */
-	R("+(V,E)", PLUS, P_L, P_R, P_L, RF_IX,
+	R( '+','V','E',0,0,0, PLUS, P_L, P_R, P_L, RF_IX,
 		"\tpush ix\n" F_POPHL F_ADDHLDE, R_HL),
 	/* and the difference, which is how a span is worked out when the
 	 * far end is a local rather than the other register home */
-	R("-(V,E)", MINUS, P_L, P_R, P_L, RF_IX, RT186, R_HL),
+	R( '-','V','E',0,0,0, MINUS, P_L, P_R, P_L, RF_IX, RT186, R_HL),
 	/*
 	 * And against the other register home: two pointers walking the
 	 * same buffer land one in IX and one in BC, and "p - q" is how a
 	 * span length is worked out - outf's literal spans first.
 	 */
-	R("-(V,B)", MINUS, P_L, P_R, P_L, RF_IX, RT185, R_HL),
-	R("+(V,B)", PLUS, P_L, P_R, P_L, RF_IX,
+	R( '-','V','B',0,0,0, MINUS, P_L, P_R, P_L, RF_IX, RT185, R_HL),
+	R( '+','V','B',0,0,0, PLUS, P_L, P_R, P_L, RF_IX,
 		"\tpush ix\n" F_POPHL "\tadd hl,bc\n", R_HL),
-	R("-(B,V)", MINUS, P_L, P_R, P_R, RF_IX, RT396, R_HL),
-	R("+(B,V)", PLUS, P_L, P_R, P_R, RF_IX,
+	R( '-','B','V',0,0,0, MINUS, P_L, P_R, P_R, RF_IX, RT396, R_HL),
+	R( '+','B','V',0,0,0, PLUS, P_L, P_R, P_R, RF_IX,
 		T_BC_HL "\tpush ix\n\tpop de\n" F_ADDHLDE, R_HL),
 	/*
 	 * And a value already worked out in HL against that home:
@@ -782,16 +1433,16 @@ struct rule rules[] = {
 	 * above - the shape needs a left operand that is not itself a
 	 * home, so nothing in the tree had written one until now.
 	 */
-	R("-(H,V)", MINUS, P_L, P_R, P_R, RF_IX, RT193, R_HL),
-	R("+(H,V)", PLUS, P_L, P_R, P_R, RF_IX,
+	R( '-','H','V',0,0,0, MINUS, P_L, P_R, P_R, RF_IX, RT193, R_HL),
+	R( '+','H','V',0,0,0, PLUS, P_L, P_R, P_R, RF_IX,
 		"\tpush ix\n\tpop de\n" F_ADDHLDE, R_HL),
 	/*
 	 * Against zero, which is what "p == 0" on a pointer register
 	 * variable comes to and had no form: testing the halves is
 	 * shorter than loading nought into DE to subtract it.
 	 */
-	R("Q(V,Z)", EQ, P_L, P_R, P_L, RF_IX, RT187, F_Z),
-	R("U(V,Z)", NEQ, P_L, P_R, P_L, RF_IX, RT187, F_NZ),
+	R( 'Q','V','Z',0,0,0, EQ, P_L, P_R, P_L, RF_IX, RT187, F_Z),
+	R( 'U','V','Z',0,0,0, NEQ, P_L, P_R, P_L, RF_IX, RT187, F_NZ),
 	/*
 	 * And against any other constant, or a symbol, which come to the
 	 * same thing.  The whole comparison family, not just equality:
@@ -800,28 +1451,28 @@ struct rule rules[] = {
 	 * whatever flags were standing.  Unsigned, because IX holds
 	 * pointers by allocation policy.
 	 */
-	R("c(V,N)", EQ, P_L, P_R, P_L, RF_IX, RT179, F_CC),
-	R("d(V,N)", LE, P_L, P_R, P_L, RF_IX, RT178,
+	R( 'c','V','N',0,0,0, EQ, P_L, P_R, P_L, RF_IX, RT179, F_CC),
+	R( 'd','V','N',0,0,0, LE, P_L, P_R, P_L, RF_IX, RT178,
 		F_CC),
-	R("c(V,O)", EQ, P_L, P_R, P_L, RF_IX, RT179, F_CC),
-	R("d(V,O)", LE, P_L, P_R, P_L, RF_IX, RT178,
+	R( 'c','V','O',0,0,0, EQ, P_L, P_R, P_L, RF_IX, RT179, F_CC),
+	R( 'd','V','O',0,0,0, LE, P_L, P_R, P_L, RF_IX, RT178,
 		F_CC),
-	R("Q(V,B)", EQ, P_L, P_R, P_L, RF_IX, RT184, F_Z),
-	R("U(V,B)", NEQ, P_L, P_R, P_L, RF_IX, RT184, F_NZ),
-	R("Q(V,H)", EQ, P_L, P_R, P_L, RF_IX, RT193, F_Z),
-	R("U(V,H)", NEQ, P_L, P_R, P_L, RF_IX, RT193, F_NZ),
+	R( 'Q','V','B',0,0,0, EQ, P_L, P_R, P_L, RF_IX, RT184, F_Z),
+	R( 'U','V','B',0,0,0, NEQ, P_L, P_R, P_L, RF_IX, RT184, F_NZ),
+	R( 'Q','V','H',0,0,0, EQ, P_L, P_R, P_L, RF_IX, RT193, F_Z),
+	R( 'U','V','H',0,0,0, NEQ, P_L, P_R, P_L, RF_IX, RT193, F_NZ),
 	/*
 	 * And against DE, which had no form at all.  A pointer register
 	 * variable compared with a local pointer emitted no code and the
 	 * branch after it went wherever the flags happened to point.
 	 */
-	R("c(V,E)", EQ, P_L, P_R, P_L, RF_IX, RT186, F_CC),
-	R("d(V,E)", LE, P_L, P_R, P_L, RF_IX, "\tpush ix\n" F_POPHL F_EXDEHL F_ORA F_SBCHLDE, F_CC),
+	R( 'c','V','E',0,0,0, EQ, P_L, P_R, P_L, RF_IX, RT186, F_CC),
+	R( 'd','V','E',0,0,0, LE, P_L, P_R, P_L, RF_IX, "\tpush ix\n" F_POPHL F_EXDEHL F_ORA F_SBCHLDE, F_CC),
 	/* the same with the index register on the other side, which
 	 * normalize does not swap because equality is not a relation it
 	 * reorders by operand kind */
-	R("c(H,V)", EQ, P_L, P_R, P_R, RF_IX, RT193, F_CC),
-	R("d(H,V)", LE, P_L, P_R, P_R, RF_IX, "\tpush ix\n\tpop de\n" F_EXDEHL F_ORA F_SBCHLDE, F_CC),
+	R( 'c','H','V',0,0,0, EQ, P_L, P_R, P_R, RF_IX, RT193, F_CC),
+	R( 'd','H','V',0,0,0, LE, P_L, P_R, P_R, RF_IX, "\tpush ix\n\tpop de\n" F_EXDEHL F_ORA F_SBCHLDE, F_CC),
 
 	/*
 	 * Both operands in register homes: BC against IX, which two
@@ -830,26 +1481,26 @@ struct rule rules[] = {
 	 * There was no rule at all, the comparison emitted NOTHING, and
 	 * the branch went on whatever flags were lying around.
 	 */
-	R("c(B,V)", EQ, P_L, P_R, P_R, RF_IX, RT396, F_CC),
-	R("d(B,V)", LE, P_L, P_R, P_R, RF_IX, T_BC_HL "\tpush ix\n\tpop de\n" F_EXDEHL F_ORA F_SBCHLDE, F_CC),
+	R( 'c','B','V',0,0,0, EQ, P_L, P_R, P_R, RF_IX, RT396, F_CC),
+	R( 'd','B','V',0,0,0, LE, P_L, P_R, P_R, RF_IX, T_BC_HL "\tpush ix\n\tpop de\n" F_EXDEHL F_ORA F_SBCHLDE, F_CC),
 	/* and mirrored, the IX pointer on the left */
-	R("c(V,B)", EQ, P_L, P_R, P_L, RF_IX, RT185, F_CC),
-	R("d(V,B)", LE, P_L, P_R, P_L, RF_IX, RT396, F_CC),
+	R( 'c','V','B',0,0,0, EQ, P_L, P_R, P_L, RF_IX, RT185, F_CC),
+	R( 'd','V','B',0,0,0, LE, P_L, P_R, P_L, RF_IX, RT396, F_CC),
 
-	R("=(V,H)", ASSIGN, P_L, P_R, P_L, RF_IX, F_PUSHHL "\tpop ix\n", R_IX),
-	R("=(V,E)", ASSIGN, P_L, P_R, P_L, RF_IX, "\tpush de\n\tpop ix\n", R_IX),
-	R("=(V,B)", ASSIGN, P_L, P_R, P_L, RF_IX, F_PUSHBC "\tpop ix\n", R_IX),
+	R( '=','V','H',0,0,0, ASSIGN, P_L, P_R, P_L, RF_IX, F_PUSHHL "\tpop ix\n", R_IX),
+	R( '=','V','E',0,0,0, ASSIGN, P_L, P_R, P_L, RF_IX, "\tpush de\n\tpop ix\n", R_IX),
+	R( '=','V','B',0,0,0, ASSIGN, P_L, P_R, P_L, RF_IX, F_PUSHBC "\tpop ix\n", R_IX),
 
 	/* register-to-register moves */
-	R("=(B,H)", ASSIGN, P_L, P_R, P_NONE, 0, "\tld c,l\n\tld b,h\n", R_BC),
-	R("=(E,H)", ASSIGN, P_L, P_R, P_NONE, 0, RT202, R_DE),
-	R("=(H,E)", ASSIGN, P_L, P_R, P_NONE, 0, RT202, R_HL),
-	R("=(H,B)", ASSIGN, P_L, P_R, P_NONE, 0, F_LDLC F_LDHB, R_HL),
-	R("=(B,E)", ASSIGN, P_L, P_R, P_NONE, 0, "\tld c,e\n\tld b,d\n", R_BC),
-	R("=(E,B)", ASSIGN, P_L, P_R, P_NONE, 0, F_LDEC F_LDDB, R_DE),
-	R("=(B,B)", ASSIGN, P_L, P_R, P_NONE, 0, RT0, R_BC),
-	R("=(E,E)", ASSIGN, P_L, P_R, P_NONE, 0, RT0, R_DE),
-	R("=(H,H)", ASSIGN, P_L, P_R, P_NONE, 0, RT0, R_HL),
+	R( '=','B','H',0,0,0, ASSIGN, P_L, P_R, P_NONE, 0, "\tld c,l\n\tld b,h\n", R_BC),
+	R( '=','E','H',0,0,0, ASSIGN, P_L, P_R, P_NONE, 0, RT202, R_DE),
+	R( '=','H','E',0,0,0, ASSIGN, P_L, P_R, P_NONE, 0, RT202, R_HL),
+	R( '=','H','B',0,0,0, ASSIGN, P_L, P_R, P_NONE, 0, F_LDLC F_LDHB, R_HL),
+	R( '=','B','E',0,0,0, ASSIGN, P_L, P_R, P_NONE, 0, "\tld c,e\n\tld b,d\n", R_BC),
+	R( '=','E','B',0,0,0, ASSIGN, P_L, P_R, P_NONE, 0, F_LDEC F_LDDB, R_DE),
+	R( '=','B','B',0,0,0, ASSIGN, P_L, P_R, P_NONE, 0, RT0, R_BC),
+	R( '=','E','E',0,0,0, ASSIGN, P_L, P_R, P_NONE, 0, RT0, R_DE),
+	R( '=','H','H',0,0,0, ASSIGN, P_L, P_R, P_NONE, 0, RT0, R_HL),
 
 	/*
 	 * Comma: both sides have already emitted their code, in order,
@@ -857,16 +1508,16 @@ struct rule rules[] = {
 	 * but say where it ended up.  ';' rather than ',' because the
 	 * pattern parser uses the comma to separate children.
 	 */
-	R(";(_,H)", COMMA, P_L, P_R, P_NONE, 0, RT0, R_HL),
-	R(";(_,E)", COMMA, P_L, P_R, P_NONE, 0, RT0, R_DE),
-	R(";(_,B)", COMMA, P_L, P_R, P_NONE, 0, RT0, R_BC),
-	R(";(_,A)", COMMA, P_L, P_R, P_NONE, 0, RT0, R_A),
+	R( ';','_','H',0,0,0, COMMA, P_L, P_R, P_NONE, 0, RT0, R_HL),
+	R( ';','_','E',0,0,0, COMMA, P_L, P_R, P_NONE, 0, RT0, R_DE),
+	R( ';','_','B',0,0,0, COMMA, P_L, P_R, P_NONE, 0, RT0, R_BC),
+	R( ';','_','A',0,0,0, COMMA, P_L, P_R, P_NONE, 0, RT0, R_A),
 
 	/* assign to CODE result */
-	R("=(C,H)", ASSIGN, P_L, P_R, P_NONE, 0, RT0, R_HL),
-	R("=(C,E)", ASSIGN, P_L, P_R, P_NONE, 0, RT0, R_DE),
-	R("=(C,B)", ASSIGN, P_L, P_R, P_NONE, 0, RT0, R_BC),
-	R("=(C,A)", ASSIGN, P_L, P_R, P_NONE, 0, RT0, R_A),
+	R( '=','C','H',0,0,0, ASSIGN, P_L, P_R, P_NONE, 0, RT0, R_HL),
+	R( '=','C','E',0,0,0, ASSIGN, P_L, P_R, P_NONE, 0, RT0, R_DE),
+	R( '=','C','B',0,0,0, ASSIGN, P_L, P_R, P_NONE, 0, RT0, R_BC),
+	R( '=','C','A',0,0,0, ASSIGN, P_L, P_R, P_NONE, 0, RT0, R_A),
 
 	/*
 	 * Widening a byte to a word.  Unsigned zero-extends; signed puts
@@ -874,7 +1525,7 @@ struct rule rules[] = {
 	 * ff.  Both honour the target, since the widened value is as
 	 * often the right operand (DE) as the left (HL).
 	 */
-	R("J(A):s", WIDEN, P_L, P_NONE, P_NONE, 0, "\tld $t,a\n\tld $u,0\n", 0),
+	R( 'J','A',0,0,0,2, WIDEN, P_L, P_NONE, P_NONE, 0, "\tld $t,a\n\tld $u,0\n", 0),
 	/*
 	 * A byte that is already in HL rather than in A - which is where
 	 * a ternary leaves its value, both arms having been landed in the
@@ -886,13 +1537,13 @@ struct rule rules[] = {
 	 * a SEXT to short whose operand is already a short is a widening
 	 * of a pointer, and filling H with the sign of L destroys it.
 	 */
-	R("J(H:b):s", WIDEN, P_L, P_NONE, P_NONE, 0, F_LDH0, R_HL),
+	R( 'J','H',0,0,0,34, WIDEN, P_L, P_NONE, P_NONE, 0, F_LDH0, R_HL),
 	/* widening a word to a word, which the usual conversions ask for
 	 * between two pointers of the same size: nothing to do, except
 	 * where the word is in the index register and has to come out */
-	R("X(V):s", SEXT, P_L, P_NONE, P_L, RF_IX, RT174, R_HL),
-	R("J(V):s", WIDEN, P_L, P_NONE, P_L, RF_IX, RT174, R_HL),
-	R("X(H:s):s", SEXT, P_L, P_NONE, P_NONE, 0, RT0, R_HL),
+	R( 'X','V',0,0,0,2, SEXT, P_L, P_NONE, P_L, RF_IX, RT174, R_HL),
+	R( 'J','V',0,0,0,2, WIDEN, P_L, P_NONE, P_L, RF_IX, RT174, R_HL),
+	R( 'X','H',0,0,0,66, SEXT, P_L, P_NONE, P_NONE, 0, RT0, R_HL),
 	/*
 	 * The same for a word already in BC, where there is still nothing
 	 * to extend but it does have to come over.  Without these, a
@@ -900,19 +1551,19 @@ struct rule rules[] = {
 	 * into a sign extension from short to short that no rule named,
 	 * and stopped there.
 	 */
-	R("X(B:s):s", SEXT, P_L, P_NONE, P_NONE, 0, RT388, R_HL),
-	R("J(B:s):s", WIDEN, P_L, P_NONE, P_NONE, 0, RT388, R_HL),
+	R( 'X','B',0,0,0,66, SEXT, P_L, P_NONE, P_NONE, 0, RT388, R_HL),
+	R( 'J','B',0,0,0,66, WIDEN, P_L, P_NONE, P_NONE, 0, RT388, R_HL),
 	/* and from a frame slot, where it is the same load D(I):s makes */
-	R("X(I:s):s", SEXT, P_L, P_NONE, P_NONE, 0, RT71, 0),
-	R("J(I:s):s", WIDEN, P_L, P_NONE, P_NONE, 0, RT71, 0),
+	R( 'X','I',0,0,0,66, SEXT, P_L, P_NONE, P_NONE, 0, RT71, 0),
+	R( 'J','I',0,0,0,66, WIDEN, P_L, P_NONE, P_NONE, 0, RT71, 0),
 	/* a symbol's address widened to a word, which is what taking a
 	 * function's address for a function pointer comes to */
-	R("X(O):s", SEXT, P_L, P_NONE, P_NONE, 0, RT69, 0),
-	R("J(O):s", WIDEN, P_L, P_NONE, P_NONE, 0, RT69, 0),
-	R("J(H:s):s", WIDEN, P_L, P_NONE, P_NONE, 0, RT0, R_HL),
-	R("X(H:b):s", SEXT, P_L, P_NONE, P_NONE, 0,
+	R( 'X','O',0,0,0,2, SEXT, P_L, P_NONE, P_NONE, 0, RT69, 0),
+	R( 'J','O',0,0,0,2, WIDEN, P_L, P_NONE, P_NONE, 0, RT69, 0),
+	R( 'J','H',0,0,0,66, WIDEN, P_L, P_NONE, P_NONE, 0, RT0, R_HL),
+	R( 'X','H',0,0,0,34, SEXT, P_L, P_NONE, P_NONE, 0,
 		F_LDAL F_RLA F_SBCAA F_LDHA, R_HL),
-	R("X(A):s", SEXT, P_L, P_NONE, P_NONE, 0,
+	R( 'X','A',0,0,0,2, SEXT, P_L, P_NONE, P_NONE, 0,
 		"\tld $t,a\n" F_RLA F_SBCAA "\tld $u,a\n", 0),
 
 	/*
@@ -931,14 +1582,14 @@ struct rule rules[] = {
 	 * word.  Every numeric escape in cpp came back zero, because
 	 * escint() is "(int)getint(base)".
 	 */
-	R("R(H:l):s", NARROW, P_L, P_NONE, P_NONE, 0, RT202, R_HL),
-	R("R(H:l):b", NARROW, P_L, P_NONE, P_NONE, 0, F_EXDEHL F_LDAL, R_A),
-	R("R(H):b", NARROW, P_L, P_NONE, P_NONE, 0, RT235, R_A),
-	R("R(B):b", NARROW, P_L, P_NONE, P_NONE, 0, RT221, R_A),
-	R("R(E):b", NARROW, P_L, P_NONE, P_NONE, 0, RT121, R_A),
-	R("R(A)", NARROW, P_L, P_NONE, P_NONE, 0, RT0, R_A),
-	R("R(K)", NARROW, P_L, P_NONE, P_NONE, 0, RT0, R_E),
-	R("R(H)", NARROW, P_L, P_NONE, P_NONE, 0, RT0, R_HL),
+	R( 'R','H',0,0,0,98, NARROW, P_L, P_NONE, P_NONE, 0, RT202, R_HL),
+	R( 'R','H',0,0,0,97, NARROW, P_L, P_NONE, P_NONE, 0, F_EXDEHL F_LDAL, R_A),
+	R( 'R','H',0,0,0,1, NARROW, P_L, P_NONE, P_NONE, 0, RT235, R_A),
+	R( 'R','B',0,0,0,1, NARROW, P_L, P_NONE, P_NONE, 0, RT221, R_A),
+	R( 'R','E',0,0,0,1, NARROW, P_L, P_NONE, P_NONE, 0, RT121, R_A),
+	R( 'R','A',0,0,0,0, NARROW, P_L, P_NONE, P_NONE, 0, RT0, R_A),
+	R( 'R','K',0,0,0,0, NARROW, P_L, P_NONE, P_NONE, 0, RT0, R_E),
+	R( 'R','H',0,0,0,0, NARROW, P_L, P_NONE, P_NONE, 0, RT0, R_HL),
 
 	/*
 	 * 32-bit values live in HL:DE, high word in HL.
@@ -947,47 +1598,47 @@ struct rule rules[] = {
 	 * and the high word becomes all sign bits - rla puts bit 15 (or
 	 * bit 7 for a byte) into carry and sbc a,a spreads it.
 	 */
-	R("X(H):l", SEXT, P_L, P_NONE, P_NONE, 0,
+	R( 'X','H',0,0,0,3, SEXT, P_L, P_NONE, P_NONE, 0,
 		F_EXDEHL "\tld a,d\n" F_RLA F_SBCAA F_LDHA F_LDLA, R_HL),
-	R("X(B):l", SEXT, P_L, P_NONE, P_NONE, 0,
+	R( 'X','B',0,0,0,3, SEXT, P_L, P_NONE, P_NONE, 0,
 		F_LDEC F_LDDB F_LDAB F_RLA F_SBCAA
 		F_LDHA F_LDLA, R_HL),
-	R("X(A):l", SEXT, P_L, P_NONE, P_NONE, 0,
+	R( 'X','A',0,0,0,3, SEXT, P_L, P_NONE, P_NONE, 0,
 		"\tld e,a\n" F_RLA F_SBCAA "\tld d,a\n" F_LDHA F_LDLA, R_HL),
 	/* an unsigned word widened: it becomes the low half and the high
 	 * half is nothing, which is the whole difference from X(H) */
-	R("J(H):l", WIDEN, P_L, P_NONE, P_NONE, 0,
+	R( 'J','H',0,0,0,3, WIDEN, P_L, P_NONE, P_NONE, 0,
 		F_EXDEHL "\tld hl,0\n", R_HL),
-	R("J(B):l", WIDEN, P_L, P_NONE, P_NONE, 0,
+	R( 'J','B',0,0,0,3, WIDEN, P_L, P_NONE, P_NONE, 0,
 		"\tld e,c\n\tld d,b\n\tld hl,0\n", R_HL),
-	R("J(A):l", WIDEN, P_L, P_NONE, P_NONE, 0,
+	R( 'J','A',0,0,0,3, WIDEN, P_L, P_NONE, P_NONE, 0,
 		"\tld e,a\n\tld d,0\n\tld h,d\n\tld l,d\n", R_HL),
 
 	/* storing one: a pair at a time to a global, a byte at a time to
 	 * a local, since only (hl) takes an immediate */
-	R("=(O,H):l", ASSIGN, P_L, P_R, P_NONE, 0, RT85, 0),
-	R("=(I,H):l", ASSIGN, P_L, P_R, P_NONE, 0, RT87, 0),
+	R( '=','O','H',0,0,3, ASSIGN, P_L, P_R, P_NONE, 0, RT85, 0),
+	R( '=','I','H',0,0,3, ASSIGN, P_L, P_R, P_NONE, 0, RT87, 0),
 	/* the long helpers hand back a CODE that never passed through the
 	 * step() loop that would have made it an INHL */
-	R("=(I,C):l", ASSIGN, P_L, P_R, P_NONE, 0, RT87, 0),
-	R("=(O,C):l", ASSIGN, P_L, P_R, P_NONE, 0, RT85, 0),
+	R( '=','I','C',0,0,3, ASSIGN, P_L, P_R, P_NONE, 0, RT87, 0),
+	R( '=','O','C',0,0,3, ASSIGN, P_L, P_R, P_NONE, 0, RT85, 0),
 	/* the value form: store, then put the constant back in HL:DE */
-	R("=(I,N):lV", ASSIGN, P_L, P_R, P_NONE, 0,
+	R( '=','I','N',0,0,19, ASSIGN, P_L, P_R, P_NONE, 0,
 		"\tld ($L),$Rl\n\tld ($L+),$Rh\n"
 		"\tld ($L++),$R2\n\tld ($L+++),$R3\n"
 		"\tld e,$Rl\n\tld d,$Rh\n\tld l,$R2\n\tld h,$R3\n", R_HL),
-	R("=(I,N):l", ASSIGN, P_L, P_R, P_NONE, 0,
+	R( '=','I','N',0,0,3, ASSIGN, P_L, P_R, P_NONE, 0,
 		"\tld ($L),$Rl\n\tld ($L+),$Rh\n"
 		"\tld ($L++),$R2\n\tld ($L+++),$R3\n", 0),
 	/* no ld (nn),n, so point HL at the global and walk it */
-	R("=(O,N):l", ASSIGN, P_L, P_R, P_NONE, 0,
+	R( '=','O','N',0,0,3, ASSIGN, P_L, P_R, P_NONE, 0,
 		F_LDHLL F_LDHLRL F_INCHL F_LDHLRH
 		F_INCHL F_LDHLR2 F_INCHL F_LDHLR3, 0),
 	/* a long already in HL:DE is the return value as it stands */
-	R("=(H,C):l", ASSIGN, P_L, P_R, P_NONE, 0, RT0, R_HL),
+	R( '=','H','C',0,0,3, ASSIGN, P_L, P_R, P_NONE, 0, RT0, R_HL),
 
 	/* test a long in memory for zero */
-	R("D(O):lF", DEREF, P_L, P_NONE, P_NONE, 0,
+	R( 'D','O',0,0,0,11, DEREF, P_L, P_NONE, P_NONE, 0,
 		F_LDHLL F_LDAHL F_INCHL F_ORHL F_INCHL
 		F_ORHL F_INCHL F_ORHL, F_NZ),
 
@@ -997,15 +1648,15 @@ struct rule rules[] = {
 	 * in HL.  A global can move a pair at a time; a frame slot goes a
 	 * byte at a time, since (iy+d) is all that reaches it.
 	 */
-	R("D(O):l", DEREF, P_L, P_NONE, P_NONE, 0,
+	R( 'D','O',0,0,0,3, DEREF, P_L, P_NONE, P_NONE, 0,
 		F_LDDEL F_LDHLL3, R_HL),
-	R("D(I):l", DEREF, P_L, P_NONE, P_NONE, 0,
+	R( 'D','I',0,0,0,3, DEREF, P_L, P_NONE, P_NONE, 0,
 		"\tld e,($L)\n\tld d,($L+)\n\tld l,($L++)\n\tld h,($L+++)\n", R_HL),
 	/* through a pointer already in HL */
-	R("D(H):l", DEREF, P_L, P_NONE, P_NONE, 0, "\tcall lld\n", R_HL),
+	R( 'D','H',0,0,0,3, DEREF, P_L, P_NONE, P_NONE, 0, "\tcall lld\n", R_HL),
 	/* and through the other register home - doprnt reads its long
 	 * argument through the pointer it walks the list with */
-	R("D(B):l", DEREF, P_L, P_NONE, P_NONE, 0, T_BC_HL "\tcall lld\n", R_HL),
+	R( 'D','B',0,0,0,3, DEREF, P_L, P_NONE, P_NONE, 0, T_BC_HL "\tcall lld\n", R_HL),
 
 	/*
 	 * Stepping a long in memory.  The helper takes the address in HL,
@@ -1014,26 +1665,26 @@ struct rule rules[] = {
 	 * prefix that is used for its value reads the new one back.  As a
 	 * statement, which is nearly always, there is nothing to read.
 	 */
-	R("j(O):l", POSTINC, P_L, P_NONE, P_NONE, 0, RT315, R_HL),
-	R("m(O):l", POSTDEC, P_L, P_NONE, P_NONE, 0, RT313, R_HL),
-	R("i(O):lS", PREINC, P_L, P_NONE, P_NONE, 0, RT315, R_HL),
-	R("k(O):lS", PREDEC, P_L, P_NONE, P_NONE, 0, RT313, R_HL),
-	R("i(O):l", PREINC, P_L, P_NONE, P_NONE, 0,
+	R( 'j','O',0,0,0,3, POSTINC, P_L, P_NONE, P_NONE, 0, RT315, R_HL),
+	R( 'm','O',0,0,0,3, POSTDEC, P_L, P_NONE, P_NONE, 0, RT313, R_HL),
+	R( 'i','O',0,0,0,27, PREINC, P_L, P_NONE, P_NONE, 0, RT315, R_HL),
+	R( 'k','O',0,0,0,27, PREDEC, P_L, P_NONE, P_NONE, 0, RT313, R_HL),
+	R( 'i','O',0,0,0,3, PREINC, P_L, P_NONE, P_NONE, 0,
 		F_LDHLL F_PUSHBC F_CALLLAINC F_POPBC F_LDDEL F_LDHLL3, R_HL),
-	R("k(O):l", PREDEC, P_L, P_NONE, P_NONE, 0,
+	R( 'k','O',0,0,0,3, PREDEC, P_L, P_NONE, P_NONE, 0,
 		F_LDHLL F_PUSHBC F_CALLLADEC F_POPBC F_LDDEL F_LDHLL3, R_HL),
 	/*
 	 * The same for a frame slot, where the address has to be worked
 	 * out: (iy+d) reaches a byte at a time, and the helper wants the
 	 * whole address in HL.
 	 */
-	R("j(I):l", POSTINC, P_L, P_NONE, P_NONE, 0, RT432, R_HL),
-	R("m(I):l", POSTDEC, P_L, P_NONE, P_NONE, 0, RT430, R_HL),
-	R("i(I):lS", PREINC, P_L, P_NONE, P_NONE, 0, RT432, R_HL),
-	R("k(I):lS", PREDEC, P_L, P_NONE, P_NONE, 0, RT430, R_HL),
-	R("i(I):l", PREINC, P_L, P_NONE, P_NONE, 0,
+	R( 'j','I',0,0,0,3, POSTINC, P_L, P_NONE, P_NONE, 0, RT432, R_HL),
+	R( 'm','I',0,0,0,3, POSTDEC, P_L, P_NONE, P_NONE, 0, RT430, R_HL),
+	R( 'i','I',0,0,0,27, PREINC, P_L, P_NONE, P_NONE, 0, RT432, R_HL),
+	R( 'k','I',0,0,0,27, PREDEC, P_L, P_NONE, P_NONE, 0, RT430, R_HL),
+	R( 'i','I',0,0,0,3, PREINC, P_L, P_NONE, P_NONE, 0,
 		T_IDX_ADDR F_PUSHBC F_CALLLAINC F_POPBC T_IDX_ADDR "\tcall lld\n", R_HL),
-	R("k(I):l", PREDEC, P_L, P_NONE, P_NONE, 0,
+	R( 'k','I',0,0,0,3, PREDEC, P_L, P_NONE, P_NONE, 0,
 		T_IDX_ADDR F_PUSHBC F_CALLLADEC F_POPBC T_IDX_ADDR "\tcall lld\n", R_HL),
 	/*
 	 * And through a pointer, where the address is in HL already and
@@ -1046,14 +1697,14 @@ struct rule rules[] = {
 	 * address is kept on the stack under the saved BC.  lld preserves
 	 * BC, which is why it can come after the pop.
 	 */
-	R("j(H):l", POSTINC, P_L, P_NONE, P_NONE, 0, RT364, R_HL),
-	R("m(H):l", POSTDEC, P_L, P_NONE, P_NONE, 0, RT363, R_HL),
-	R("i(H):lS", PREINC, P_L, P_NONE, P_NONE, 0, RT364, R_HL),
-	R("k(H):lS", PREDEC, P_L, P_NONE, P_NONE, 0, RT363, R_HL),
-	R("i(H):l", PREINC, P_L, P_NONE, P_NONE, 0,
+	R( 'j','H',0,0,0,3, POSTINC, P_L, P_NONE, P_NONE, 0, RT364, R_HL),
+	R( 'm','H',0,0,0,3, POSTDEC, P_L, P_NONE, P_NONE, 0, RT363, R_HL),
+	R( 'i','H',0,0,0,27, PREINC, P_L, P_NONE, P_NONE, 0, RT364, R_HL),
+	R( 'k','H',0,0,0,27, PREDEC, P_L, P_NONE, P_NONE, 0, RT363, R_HL),
+	R( 'i','H',0,0,0,3, PREINC, P_L, P_NONE, P_NONE, 0,
 		F_PUSHBC F_PUSHHL F_CALLLAINC F_POPHL F_POPBC
 		"\tcall lld\n", R_HL),
-	R("k(H):l", PREDEC, P_L, P_NONE, P_NONE, 0,
+	R( 'k','H',0,0,0,3, PREDEC, P_L, P_NONE, P_NONE, 0,
 		F_PUSHBC F_PUSHHL F_CALLLADEC F_POPHL F_POPBC
 		"\tcall lld\n", R_HL),
 	/*
@@ -1063,14 +1714,14 @@ struct rule rules[] = {
 	 * wants it in HL, which is the only difference from the forms
 	 * above.
 	 */
-	R("j(D(B)):l", POSTINC, P_L, P_NONE, P_NONE, 0, RT418, R_HL),
-	R("m(D(B)):l", POSTDEC, P_L, P_NONE, P_NONE, 0, RT416, R_HL),
-	R("i(D(B)):lS", PREINC, P_L, P_NONE, P_NONE, 0, RT418, R_HL),
-	R("k(D(B)):lS", PREDEC, P_L, P_NONE, P_NONE, 0, RT416, R_HL),
-	R("i(D(B)):l", PREINC, P_L, P_NONE, P_NONE, 0,
+	R( 'j','D',0,'B',0,3, POSTINC, P_L, P_NONE, P_NONE, 0, RT418, R_HL),
+	R( 'm','D',0,'B',0,3, POSTDEC, P_L, P_NONE, P_NONE, 0, RT416, R_HL),
+	R( 'i','D',0,'B',0,27, PREINC, P_L, P_NONE, P_NONE, 0, RT418, R_HL),
+	R( 'k','D',0,'B',0,27, PREDEC, P_L, P_NONE, P_NONE, 0, RT416, R_HL),
+	R( 'i','D',0,'B',0,3, PREINC, P_L, P_NONE, P_NONE, 0,
 		T_BC_HL F_PUSHBC F_CALLLAINC F_POPBC T_BC_HL
 		"\tcall lld\n", R_HL),
-	R("k(D(B)):l", PREDEC, P_L, P_NONE, P_NONE, 0,
+	R( 'k','D',0,'B',0,3, PREDEC, P_L, P_NONE, P_NONE, 0,
 		T_BC_HL F_PUSHBC F_CALLLADEC F_POPBC T_BC_HL
 		"\tcall lld\n", R_HL),
 
@@ -1089,17 +1740,17 @@ struct rule rules[] = {
 	 * The word form has to get the value out of HL first, since that
 	 * is where the address has to end up.
 	 */
-	R("=(D(O),N):b", ASSIGN, P_L, P_R, P_NONE, 0,
+	R( '=','D','N','O',0,1, ASSIGN, P_L, P_R, P_NONE, 0,
 		"\tld hl,($LL)\n\tld (hl),$R\n", 0),
-	R("=(D(O),N):s", ASSIGN, P_L, P_R, P_NONE, 0,
+	R( '=','D','N','O',0,2, ASSIGN, P_L, P_R, P_NONE, 0,
 		"\tld hl,($LL)\n\tld (hl),$Rl\n" F_INCHL "\tld (hl),$Rh\n", 0),
-	R("=(D(O),A):b", ASSIGN, P_L, P_R, P_NONE, 0,
+	R( '=','D','A','O',0,1, ASSIGN, P_L, P_R, P_NONE, 0,
 		"\tld hl,($LL)\n\tld (hl),a\n", R_A),
-	R("=(D(O),H):b", ASSIGN, P_L, P_R, P_NONE, 0,
+	R( '=','D','H','O',0,1, ASSIGN, P_L, P_R, P_NONE, 0,
 		F_LDAL "\tld hl,($LL)\n\tld (hl),a\n", R_A),
-	R("=(D(O),E):s", ASSIGN, P_L, P_R, P_NONE, 0,
+	R( '=','D','E','O',0,2, ASSIGN, P_L, P_R, P_NONE, 0,
 		"\tld hl,($LL)\n" F_LDHLE F_INCHL F_LDHLD, R_DE),
-	R("=(D(O),H):s", ASSIGN, P_L, P_R, P_NONE, 0,
+	R( '=','D','H','O',0,2, ASSIGN, P_L, P_R, P_NONE, 0,
 		F_EXDEHL "\tld hl,($LL)\n" F_LDHLE F_INCHL F_LDHLD F_EXDEHL, R_HL),
 	/*
 	 * Storing a symbol's own address - which is what a string
@@ -1117,21 +1768,21 @@ struct rule rules[] = {
 	 * already, so this only ever showed with a literal and a
 	 * subscript that had to be worked out.
 	 */
-	R("=(D(O),O):s", ASSIGN, P_L, P_R, P_NONE, 0,
+	R( '=','D','O','O',0,2, ASSIGN, P_L, P_R, P_NONE, 0,
 		F_LDDER "\tld hl,($LL)\n" F_LDHLE F_INCHL F_LDHLD, R_DE),
-	R("=(D(H),O):s", ASSIGN, P_L, P_R, P_NONE, 0,
+	R( '=','D','O','H',0,2, ASSIGN, P_L, P_R, P_NONE, 0,
 		F_LDDER F_LDHLE F_INCHL F_LDHLD, R_DE),
-	R("=(D(I),O):s", ASSIGN, P_L, P_R, P_NONE, 0,
+	R( '=','D','O','I',0,2, ASSIGN, P_L, P_R, P_NONE, 0,
 		F_LDDER "\tld l,($LL)\n\tld h,($LL+)\n"
 		F_LDHLE F_INCHL F_LDHLD, R_DE),
 
-	R("=(D(O),N):l", ASSIGN, P_L, P_R, P_NONE, 0,
+	R( '=','D','N','O',0,3, ASSIGN, P_L, P_R, P_NONE, 0,
 		"\tld hl,($LL)\n" T_ST_IHL_N, 0),
 	/* the value form: store, then put the constant back in HL:DE */
-	R("=(D(H),N):lV", ASSIGN, P_L, P_R, P_NONE, 0,
+	R( '=','D','N','H',0,19, ASSIGN, P_L, P_R, P_NONE, 0,
 		T_ST_IHL_N "\tld e,$Rl\n\tld d,$Rh\n\tld l,$R2\n\tld h,$R3\n",
 		R_HL),
-	R("=(D(H),N):l", ASSIGN, P_L, P_R, P_NONE, 0, T_ST_IHL_N, 0),
+	R( '=','D','N','H',0,3, ASSIGN, P_L, P_R, P_NONE, 0, T_ST_IHL_N, 0),
 	/*
 	 * A long value stored through a pointer.  The value fills HL:DE,
 	 * so there is nowhere to put the address except the stack - and
@@ -1150,13 +1801,13 @@ struct rule rules[] = {
 	 * site for a hazard that no longer exists.  The arithmetic
 	 * helpers still need theirs: amul and adiv really do count in B.
 	 */
-	R("=(D(O),H):l", ASSIGN, P_L, P_R, P_NONE, 0,
+	R( '=','D','H','O',0,3, ASSIGN, P_L, P_R, P_NONE, 0,
 		F_PUSHHL "\tld hl,($LL)\n\tex (sp),hl\n\tcall lstde\n",
 		R_HL),
-	R("=(D(I),H):l", ASSIGN, P_L, P_R, P_NONE, 0,
+	R( '=','D','H','I',0,3, ASSIGN, P_L, P_R, P_NONE, 0,
 		F_PUSHHL "\tld l,($LL)\n\tld h,($LL+)\n\tex (sp),hl\n"
 		"\tcall lstde\n", R_HL),
-	R("=(D(I),N):l", ASSIGN, P_L, P_R, P_NONE, 0,
+	R( '=','D','N','I',0,3, ASSIGN, P_L, P_R, P_NONE, 0,
 		F_LDLLL F_LDHLL1 T_ST_IHL_N, 0),
 	/*
 	 * And through the index register home.  "cp->value = value" in
@@ -1170,21 +1821,21 @@ struct rule rules[] = {
 	 * address is the stacked operand lstde takes and the high word
 	 * is back in HL.
 	 */
-	R("=(D(V),H):l", ASSIGN, P_L, P_R, P_LL, RF_IX,
+	R( '=','D','H','V',0,3, ASSIGN, P_L, P_R, P_LL, RF_IX,
 		F_PUSHHL "\tpush ix\n" F_POPHL "\tex (sp),hl\n"
 		"\tcall lstde\n", R_HL),
-	R("=(D(V),N):l", ASSIGN, P_L, P_R, P_LL, RF_IX,
+	R( '=','D','N','V',0,3, ASSIGN, P_L, P_R, P_LL, RF_IX,
 		"\tpush ix\n" F_POPHL T_ST_IHL_N, 0),
 	/* and through the other register home - "*tp = t" in libu's time,
 	 * writing the clock through the caller's pointer */
-	R("=(D(B),H):l", ASSIGN, P_L, P_R, P_NONE, 0,
+	R( '=','D','H','B',0,3, ASSIGN, P_L, P_R, P_NONE, 0,
 		F_PUSHHL T_BC_HL "\tex (sp),hl\n\tcall lstde\n", R_HL),
 
 	/* complement of a word; the long form is handled in rewrite.c,
 	 * beside the long negation it shares its shape with */
-	R("~(H):s", NOT, P_L, P_NONE, P_NONE, 0,
+	R( '~','H',0,0,0,2, NOT, P_L, P_NONE, P_NONE, 0,
 		F_LDAL "\tcpl\n" F_LDLA F_LDAH "\tcpl\n" F_LDHA, R_HL),
-	R("~(A):b", NOT, P_L, P_NONE, P_NONE, 0, "\tcpl\n", R_A),
+	R( '~','A',0,0,0,1, NOT, P_L, P_NONE, P_NONE, 0, "\tcpl\n", R_A),
 	/*
 	 * The truth test.  "!x" is true when x is zero, so the answer is
 	 * the zero flag once the value has been tested - and testing is
@@ -1199,32 +1850,32 @@ struct rule rules[] = {
 	 * The width that matters is the operand's: "!" yields an int
 	 * whatever it was applied to.
 	 */
-	R("!(H:l)", BANG, P_L, P_NONE, P_NONE, 0,
+	R( '!','H',0,0,0,96, BANG, P_L, P_NONE, P_NONE, 0,
 		F_LDAH "\tor l\n\tor d\n\tor e\n", F_Z),
-	R("!(H:s)", BANG, P_L, P_NONE, P_NONE, 0, RT429, F_Z),
-	R("!(H:b)", BANG, P_L, P_NONE, P_NONE, 0, F_LDAL F_ORA, F_Z),
-	R("!(A)", BANG, P_L, P_NONE, P_NONE, 0, RT358, F_Z),
-	R("!(B:s)", BANG, P_L, P_NONE, P_NONE, 0, RT426, F_Z),
-	R("!(B:b)", BANG, P_L, P_NONE, P_NONE, 0, RT226, F_Z),
-	R("!(E:s)", BANG, P_L, P_NONE, P_NONE, 0, RT427, F_Z),
-	R("!(K)", BANG, P_L, P_NONE, P_NONE, 0, "\tld a,e\n" F_ORA, F_Z),
-	R("!(V)", BANG, P_L, P_NONE, P_L, RF_IX, RT443, F_Z),
+	R( '!','H',0,0,0,64, BANG, P_L, P_NONE, P_NONE, 0, RT429, F_Z),
+	R( '!','H',0,0,0,32, BANG, P_L, P_NONE, P_NONE, 0, F_LDAL F_ORA, F_Z),
+	R( '!','A',0,0,0,0, BANG, P_L, P_NONE, P_NONE, 0, RT358, F_Z),
+	R( '!','B',0,0,0,64, BANG, P_L, P_NONE, P_NONE, 0, RT426, F_Z),
+	R( '!','B',0,0,0,32, BANG, P_L, P_NONE, P_NONE, 0, RT226, F_Z),
+	R( '!','E',0,0,0,64, BANG, P_L, P_NONE, P_NONE, 0, RT427, F_Z),
+	R( '!','K',0,0,0,0, BANG, P_L, P_NONE, P_NONE, 0, "\tld a,e\n" F_ORA, F_Z),
+	R( '!','V',0,0,0,0, BANG, P_L, P_NONE, P_L, RF_IX, RT443, F_Z),
 
 	/* zero-extended loads */
-	R("=(B,A)", ASSIGN, P_L, P_R, P_NONE, 0, "\tld c,a\n\tld b,0\n", R_BC),
-	R("=(H,A)", ASSIGN, P_L, P_R, P_NONE, 0, F_LDLA F_LDH0, R_HL),
-	R("=(E,A)", ASSIGN, P_L, P_R, P_NONE, 0, "\tld e,a\n\tld d,0\n", R_DE),
+	R( '=','B','A',0,0,0, ASSIGN, P_L, P_R, P_NONE, 0, "\tld c,a\n\tld b,0\n", R_BC),
+	R( '=','H','A',0,0,0, ASSIGN, P_L, P_R, P_NONE, 0, F_LDLA F_LDH0, R_HL),
+	R( '=','E','A',0,0,0, ASSIGN, P_L, P_R, P_NONE, 0, "\tld e,a\n\tld d,0\n", R_DE),
 
 	/* register base address calculations */
-	R("+(B,N)", PLUS, P_L, P_R, P_NONE, 0, F_LDLC F_LDHB F_LDDER F_ADDHLDE, R_HL),
-	R("+(B,M)", PLUS, P_L, P_R, P_NONE, 0, F_LDLC F_LDHB "%(\tinc hl\n)", R_HL),
-	R("+(E,N)", PLUS, P_L, P_R, P_NONE, 0, F_EXDEHL F_LDDER F_ADDHLDE, R_HL),
-	R("+(E,M)", PLUS, P_L, P_R, P_NONE, 0, F_EXDEHL "%(\tinc hl\n)", R_HL),
+	R( '+','B','N',0,0,0, PLUS, P_L, P_R, P_NONE, 0, F_LDLC F_LDHB F_LDDER F_ADDHLDE, R_HL),
+	R( '+','B','M',0,0,0, PLUS, P_L, P_R, P_NONE, 0, F_LDLC F_LDHB "%(\tinc hl\n)", R_HL),
+	R( '+','E','N',0,0,0, PLUS, P_L, P_R, P_NONE, 0, F_EXDEHL F_LDDER F_ADDHLDE, R_HL),
+	R( '+','E','M',0,0,0, PLUS, P_L, P_R, P_NONE, 0, F_EXDEHL "%(\tinc hl\n)", R_HL),
 
 	/* negation */
-	R("g(B)", NEG, P_L, P_NONE, P_NONE, 0, F_LDA0 "\tsub c\n" F_LDLA F_LDA0 "\tsbc a,b\n" F_LDHA, R_HL),
-	R("g(H)", NEG, P_L, P_NONE, P_NONE, 0, F_XORA "\tsub l\n" F_LDLA F_LDA0 "\tsbc a,h\n" F_LDHA, R_HL),
-	R("g(E)", NEG, P_L, P_NONE, P_NONE, 0, F_LDA0 F_SUBE F_LDLA F_LDA0 "\tsbc a,d\n" F_LDHA, R_HL),
+	R( 'g','B',0,0,0,0, NEG, P_L, P_NONE, P_NONE, 0, F_LDA0 "\tsub c\n" F_LDLA F_LDA0 "\tsbc a,b\n" F_LDHA, R_HL),
+	R( 'g','H',0,0,0,0, NEG, P_L, P_NONE, P_NONE, 0, F_XORA "\tsub l\n" F_LDLA F_LDA0 "\tsbc a,h\n" F_LDHA, R_HL),
+	R( 'g','E',0,0,0,0, NEG, P_L, P_NONE, P_NONE, 0, F_LDA0 F_SUBE F_LDLA F_LDA0 "\tsbc a,d\n" F_LDHA, R_HL),
 
 	/*
 	 * Steps whose value nobody reads, for everything register-homed.
@@ -1233,30 +1884,30 @@ struct rule rules[] = {
 	 * must sit above the context-less forms: first match wins, and a
 	 * pattern with no context suffix matches statement context too.
 	 */
-	R("i(B):S", PREINC, P_L, P_NONE, P_NONE, 0, RT63, 0),
-	R("k(B):S", PREDEC, P_L, P_NONE, P_NONE, 0, RT50, 0),
-	R("j(B):S", POSTINC, P_L, P_NONE, P_NONE, 0, RT63, 0),
-	R("m(B):S", POSTDEC, P_L, P_NONE, P_NONE, 0, RT50, 0),
-	R( RP475, PREINC, P_L, P_NONE, P_L, RF_B, RT61, 0),
-	R( RP475, PREINC, P_L, P_NONE, P_L, RF_C, RT65, 0),
-	R( RP532, PREDEC, P_L, P_NONE, P_L, RF_B, RT48, 0),
-	R( RP532, PREDEC, P_L, P_NONE, P_L, RF_C, RT52, 0),
-	R( RP500, POSTINC, P_L, P_NONE, P_L, RF_B, RT61, 0),
-	R( RP500, POSTINC, P_L, P_NONE, P_L, RF_C, RT65, 0),
-	R( RP557, POSTDEC, P_L, P_NONE, P_L, RF_B, RT48, 0),
-	R( RP557, POSTDEC, P_L, P_NONE, P_L, RF_C, RT52, 0),
+	R( 'i','B',0,0,0,24, PREINC, P_L, P_NONE, P_NONE, 0, RT63, 0),
+	R( 'k','B',0,0,0,24, PREDEC, P_L, P_NONE, P_NONE, 0, RT50, 0),
+	R( 'j','B',0,0,0,24, POSTINC, P_L, P_NONE, P_NONE, 0, RT63, 0),
+	R( 'm','B',0,0,0,24, POSTDEC, P_L, P_NONE, P_NONE, 0, RT50, 0),
+	R( 'i','V',0,0,0,25, PREINC, P_L, P_NONE, P_L, RF_B, RT61, 0),
+	R( 'i','V',0,0,0,25, PREINC, P_L, P_NONE, P_L, RF_C, RT65, 0),
+	R( 'k','V',0,0,0,25, PREDEC, P_L, P_NONE, P_L, RF_B, RT48, 0),
+	R( 'k','V',0,0,0,25, PREDEC, P_L, P_NONE, P_L, RF_C, RT52, 0),
+	R( 'j','V',0,0,0,25, POSTINC, P_L, P_NONE, P_L, RF_B, RT61, 0),
+	R( 'j','V',0,0,0,25, POSTINC, P_L, P_NONE, P_L, RF_C, RT65, 0),
+	R( 'm','V',0,0,0,25, POSTDEC, P_L, P_NONE, P_L, RF_B, RT48, 0),
+	R( 'm','V',0,0,0,25, POSTDEC, P_L, P_NONE, P_L, RF_C, RT52, 0),
 
 	/* pre-inc/dec */
-	R("i(B)", PREINC, P_L, P_NONE, P_NONE, 0, "\tinc bc\n" F_LDLC F_LDHB, R_HL),
-	R("k(B)", PREDEC, P_L, P_NONE, P_NONE, 0, "\tdec bc\n" F_LDLC F_LDHB, R_HL),
+	R( 'i','B',0,0,0,0, PREINC, P_L, P_NONE, P_NONE, 0, "\tinc bc\n" F_LDLC F_LDHB, R_HL),
+	R( 'k','B',0,0,0,0, PREDEC, P_L, P_NONE, P_NONE, 0, "\tdec bc\n" F_LDLC F_LDHB, R_HL),
 	/* inc/dec a word global in place */
-	R("i(O):s", PREINC, P_L, P_NONE, P_NONE, 0,
+	R( 'i','O',0,0,0,2, PREINC, P_L, P_NONE, P_NONE, 0,
 		F_LDHLL2 F_INCHL F_LDLHL, R_HL),
-	R("k(O):s", PREDEC, P_L, P_NONE, P_NONE, 0,
+	R( 'k','O',0,0,0,2, PREDEC, P_L, P_NONE, P_NONE, 0,
 		F_LDHLL2 F_DECHL F_LDLHL, R_HL),
-	R("j(O):s", POSTINC, P_L, P_NONE, P_NONE, 0,
+	R( 'j','O',0,0,0,2, POSTINC, P_L, P_NONE, P_NONE, 0,
 		F_LDHLL2 F_INCHL F_LDLHL F_DECHL, R_HL),
-	R("m(O):s", POSTDEC, P_L, P_NONE, P_NONE, 0,
+	R( 'm','O',0,0,0,2, POSTDEC, P_L, P_NONE, P_NONE, 0,
 		F_LDHLL2 F_DECHL F_LDLHL F_INCHL, R_HL),
 
 	/*
@@ -1265,14 +1916,14 @@ struct rule rules[] = {
 	 * store.  Postfix then undoes the update to get its old value,
 	 * the same trick the memory forms use.
 	 */
-	R("i(H):s", PREINC, P_L, P_NONE, P_NONE, 0,
+	R( 'i','H',0,0,0,2, PREINC, P_L, P_NONE, P_NONE, 0,
 		F_PUSHHL T_LD_IHL F_INCHL T_SWAP_ADDR T_ST_IHL, R_HL),
-	R("k(H):s", PREDEC, P_L, P_NONE, P_NONE, 0,
+	R( 'k','H',0,0,0,2, PREDEC, P_L, P_NONE, P_NONE, 0,
 		F_PUSHHL T_LD_IHL F_DECHL T_SWAP_ADDR T_ST_IHL, R_HL),
-	R("j(H):s", POSTINC, P_L, P_NONE, P_NONE, 0,
+	R( 'j','H',0,0,0,2, POSTINC, P_L, P_NONE, P_NONE, 0,
 		F_PUSHHL T_LD_IHL F_INCHL T_SWAP_ADDR T_ST_IHL
 		F_DECHL, R_HL),
-	R("m(H):s", POSTDEC, P_L, P_NONE, P_NONE, 0,
+	R( 'm','H',0,0,0,2, POSTDEC, P_L, P_NONE, P_NONE, 0,
 		F_PUSHHL T_LD_IHL F_DECHL T_SWAP_ADDR T_ST_IHL
 		F_INCHL, R_HL),
 	/*
@@ -1289,34 +1940,34 @@ struct rule rules[] = {
 	 * the HL forms read and write through (hl) directly.  Postfix
 	 * parks the old value in E, which nothing owns here.
 	 */
-	R("i(D(B)):b", PREINC, P_L, P_NONE, P_NONE, 0,
+	R( 'i','D',0,'B',0,1, PREINC, P_L, P_NONE, P_NONE, 0,
 		"\tld a,(bc)\n\tinc a\n\tld (bc),a\n", R_A),
-	R("k(D(B)):b", PREDEC, P_L, P_NONE, P_NONE, 0,
+	R( 'k','D',0,'B',0,1, PREDEC, P_L, P_NONE, P_NONE, 0,
 		"\tld a,(bc)\n\tdec a\n\tld (bc),a\n", R_A),
-	R("j(D(B)):b", POSTINC, P_L, P_NONE, P_NONE, 0,
+	R( 'j','D',0,'B',0,1, POSTINC, P_L, P_NONE, P_NONE, 0,
 		"\tld a,(bc)\n\tld e,a\n\tinc a\n\tld (bc),a\n\tld a,e\n", R_A),
-	R("m(D(B)):b", POSTDEC, P_L, P_NONE, P_NONE, 0,
+	R( 'm','D',0,'B',0,1, POSTDEC, P_L, P_NONE, P_NONE, 0,
 		"\tld a,(bc)\n\tld e,a\n\tdec a\n\tld (bc),a\n\tld a,e\n", R_A),
-	R("i(D(H)):b", PREINC, P_L, P_NONE, P_NONE, 0,
+	R( 'i','D',0,'H',0,1, PREINC, P_L, P_NONE, P_NONE, 0,
 		"\tinc (hl)\n\tld a,(hl)\n", R_A),
-	R("k(D(H)):b", PREDEC, P_L, P_NONE, P_NONE, 0,
+	R( 'k','D',0,'H',0,1, PREDEC, P_L, P_NONE, P_NONE, 0,
 		"\tdec (hl)\n\tld a,(hl)\n", R_A),
-	R("j(D(H)):b", POSTINC, P_L, P_NONE, P_NONE, 0, RT111, R_A),
-	R("m(D(H)):b", POSTDEC, P_L, P_NONE, P_NONE, 0, RT109, R_A),
-	R("i(D(B)):s", PREINC, P_L, P_NONE, P_NONE, 0,
+	R( 'j','D',0,'H',0,1, POSTINC, P_L, P_NONE, P_NONE, 0, RT111, R_A),
+	R( 'm','D',0,'H',0,1, POSTDEC, P_L, P_NONE, P_NONE, 0, RT109, R_A),
+	R( 'i','D',0,'B',0,2, PREINC, P_L, P_NONE, P_NONE, 0,
 		T_BC_HL F_PUSHHL T_LD_IHL F_INCHL T_SWAP_ADDR T_ST_IHL, R_HL),
-	R("k(D(B)):s", PREDEC, P_L, P_NONE, P_NONE, 0,
+	R( 'k','D',0,'B',0,2, PREDEC, P_L, P_NONE, P_NONE, 0,
 		T_BC_HL F_PUSHHL T_LD_IHL F_DECHL T_SWAP_ADDR T_ST_IHL, R_HL),
-	R("j(D(B)):s", POSTINC, P_L, P_NONE, P_NONE, 0,
+	R( 'j','D',0,'B',0,2, POSTINC, P_L, P_NONE, P_NONE, 0,
 		T_BC_HL F_PUSHHL T_LD_IHL F_INCHL T_SWAP_ADDR T_ST_IHL
 		F_DECHL, R_HL),
-	R("m(D(B)):s", POSTDEC, P_L, P_NONE, P_NONE, 0,
+	R( 'm','D',0,'B',0,2, POSTDEC, P_L, P_NONE, P_NONE, 0,
 		T_BC_HL F_PUSHHL T_LD_IHL F_DECHL T_SWAP_ADDR T_ST_IHL
 		F_INCHL, R_HL),
 
 	/* postfix yields the old value, so read before updating */
-	R("j(B)", POSTINC, P_L, P_NONE, P_NONE, 0, F_LDLC F_LDHB "\tinc bc\n", R_HL),
-	R("m(B)", POSTDEC, P_L, P_NONE, P_NONE, 0, F_LDLC F_LDHB "\tdec bc\n", R_HL),
+	R( 'j','B',0,0,0,0, POSTINC, P_L, P_NONE, P_NONE, 0, F_LDLC F_LDHB "\tinc bc\n", R_HL),
+	R( 'm','B',0,0,0,0, POSTDEC, P_L, P_NONE, P_NONE, 0, F_LDLC F_LDHB "\tdec bc\n", R_HL),
 	/*
 	 * Stepping a pointer the allocator homed in IX.  The BC pointer
 	 * has had these all along; through-IX steps existed only fused
@@ -1326,17 +1977,17 @@ struct rule rules[] = {
 	 * statement forms come first: a step nobody wants the value of
 	 * is inc ix and not a byte more.
 	 */
-	R("i(V):S", PREINC, P_L, P_NONE, P_L, RF_IX, RT67, 0),
-	R("k(V):S", PREDEC, P_L, P_NONE, P_L, RF_IX, RT54, 0),
-	R("j(V):S", POSTINC, P_L, P_NONE, P_L, RF_IX, RT67, 0),
-	R("m(V):S", POSTDEC, P_L, P_NONE, P_L, RF_IX, RT54, 0),
-	R("i(V)", PREINC, P_L, P_NONE, P_L, RF_IX,
+	R( 'i','V',0,0,0,24, PREINC, P_L, P_NONE, P_L, RF_IX, RT67, 0),
+	R( 'k','V',0,0,0,24, PREDEC, P_L, P_NONE, P_L, RF_IX, RT54, 0),
+	R( 'j','V',0,0,0,24, POSTINC, P_L, P_NONE, P_L, RF_IX, RT67, 0),
+	R( 'm','V',0,0,0,24, POSTDEC, P_L, P_NONE, P_L, RF_IX, RT54, 0),
+	R( 'i','V',0,0,0,0, PREINC, P_L, P_NONE, P_L, RF_IX,
 		"\tinc ix\n\tpush ix\n" F_POPHL, R_HL),
-	R("k(V)", PREDEC, P_L, P_NONE, P_L, RF_IX,
+	R( 'k','V',0,0,0,0, PREDEC, P_L, P_NONE, P_L, RF_IX,
 		"\tdec ix\n\tpush ix\n" F_POPHL, R_HL),
-	R("j(V)", POSTINC, P_L, P_NONE, P_L, RF_IX,
+	R( 'j','V',0,0,0,0, POSTINC, P_L, P_NONE, P_L, RF_IX,
 		"\tpush ix\n" F_POPHL "\tinc ix\n", R_HL),
-	R("m(V)", POSTDEC, P_L, P_NONE, P_L, RF_IX,
+	R( 'm','V',0,0,0,0, POSTDEC, P_L, P_NONE, P_L, RF_IX,
 		"\tpush ix\n" F_POPHL "\tdec ix\n", R_HL),
 	/*
 	 * And stepping the pointer that IX POINTS AT, which is the whole
@@ -1352,13 +2003,13 @@ struct rule rules[] = {
 	 * A postfix wants the value from before, and undoing the step in
 	 * HL afterwards is a byte against holding both.
 	 */
-	R("i(D(V)):s", PREINC, P_L, P_NONE, P_LL, RF_IX,
+	R( 'i','D',0,'V',0,2, PREINC, P_L, P_NONE, P_LL, RF_IX,
 		T_IXP_LD F_INCHL T_IXP_ST, R_HL),
-	R("k(D(V)):s", PREDEC, P_L, P_NONE, P_LL, RF_IX,
+	R( 'k','D',0,'V',0,2, PREDEC, P_L, P_NONE, P_LL, RF_IX,
 		T_IXP_LD F_DECHL T_IXP_ST, R_HL),
-	R("j(D(V)):s", POSTINC, P_L, P_NONE, P_LL, RF_IX,
+	R( 'j','D',0,'V',0,2, POSTINC, P_L, P_NONE, P_LL, RF_IX,
 		T_IXP_LD F_INCHL T_IXP_ST F_DECHL, R_HL),
-	R("m(D(V)):s", POSTDEC, P_L, P_NONE, P_LL, RF_IX,
+	R( 'm','D',0,'V',0,2, POSTDEC, P_L, P_NONE, P_LL, RF_IX,
 		T_IXP_LD F_DECHL T_IXP_ST F_INCHL, R_HL),
 	/*
 	 * Postfix on a word in memory.  The old value is wanted as the
@@ -1366,16 +2017,16 @@ struct rule rules[] = {
 	 * update is undone afterwards - one byte, against a push/pop pair
 	 * or a shuffle through DE.
 	 */
-	R("j(I):s", POSTINC, P_L, P_NONE, P_NONE, 0,
+	R( 'j','I',0,0,0,2, POSTINC, P_L, P_NONE, P_NONE, 0,
 	  "\tld $t,($L)\n" F_LDUL "\tinc $T\n"
 	  "\tld ($L),$t\n\tld ($L+),$u\n\tdec $T\n", 0),
-	R("m(I):s", POSTDEC, P_L, P_NONE, P_NONE, 0,
+	R( 'm','I',0,0,0,2, POSTDEC, P_L, P_NONE, P_NONE, 0,
 	  "\tld $t,($L)\n" F_LDUL "\tdec $T\n"
 	  "\tld ($L),$t\n\tld ($L+),$u\n\tinc $T\n", 0),
 	/* unary: operand is the LEFT child (T_IDX_S_LD reads $R) */
-	R("i(I):s", PREINC, P_L, P_NONE, P_NONE, 0,
+	R( 'i','I',0,0,0,2, PREINC, P_L, P_NONE, P_NONE, 0,
 	  "\tld l,($L)\n\tld h,($L+)\n" F_INCHL T_IDX_S_ST, R_HL),
-	R("k(I):s", PREDEC, P_L, P_NONE, P_NONE, 0,
+	R( 'k','I',0,0,0,2, PREDEC, P_L, P_NONE, P_NONE, 0,
 	  "\tld l,($L)\n\tld h,($L+)\n" F_DECHL T_IDX_S_ST, R_HL),
 	/*
 	 * A byte step on a frame slot needs no register at all: inc/dec
@@ -1387,22 +2038,22 @@ struct rule rules[] = {
 	 * make.  A postfix in flag context answers with the value from
 	 * before the step, so the load still happens and or a asks it.
 	 */
-	R("i(I):bS", PREINC, P_L, P_NONE, P_NONE, 0, RT57, 0),
-	R("k(I):bS", PREDEC, P_L, P_NONE, P_NONE, 0, RT44, 0),
-	R("j(I):bS", POSTINC, P_L, P_NONE, P_NONE, 0, RT57, 0),
-	R("m(I):bS", POSTDEC, P_L, P_NONE, P_NONE, 0, RT44, 0),
-	R("i(I):bF", PREINC, P_L, P_NONE, P_NONE, 0, RT57, F_NZ),
-	R("k(I):bF", PREDEC, P_L, P_NONE, P_NONE, 0, RT44, F_NZ),
-	R("j(I):bF", POSTINC, P_L, P_NONE, P_NONE, 0,
+	R( 'i','I',0,0,0,25, PREINC, P_L, P_NONE, P_NONE, 0, RT57, 0),
+	R( 'k','I',0,0,0,25, PREDEC, P_L, P_NONE, P_NONE, 0, RT44, 0),
+	R( 'j','I',0,0,0,25, POSTINC, P_L, P_NONE, P_NONE, 0, RT57, 0),
+	R( 'm','I',0,0,0,25, POSTDEC, P_L, P_NONE, P_NONE, 0, RT44, 0),
+	R( 'i','I',0,0,0,9, PREINC, P_L, P_NONE, P_NONE, 0, RT57, F_NZ),
+	R( 'k','I',0,0,0,9, PREDEC, P_L, P_NONE, P_NONE, 0, RT44, F_NZ),
+	R( 'j','I',0,0,0,9, POSTINC, P_L, P_NONE, P_NONE, 0,
 	  F_LDAL1 "\tinc ($L)\n" F_ORA, F_NZ),
-	R("m(I):bF", POSTDEC, P_L, P_NONE, P_NONE, 0,
+	R( 'm','I',0,0,0,9, POSTDEC, P_L, P_NONE, P_NONE, 0,
 	  F_LDAL1 "\tdec ($L)\n" F_ORA, F_NZ),
-	R("i(I):b", PREINC, P_L, P_NONE, P_NONE, 0, F_LDAL1 "\tinc a\n" F_LDLA1, R_A),
-	R("k(I):b", PREDEC, P_L, P_NONE, P_NONE, 0, F_LDAL1 "\tdec a\n" F_LDLA1, R_A),
+	R( 'i','I',0,0,0,1, PREINC, P_L, P_NONE, P_NONE, 0, F_LDAL1 "\tinc a\n" F_LDLA1, R_A),
+	R( 'k','I',0,0,0,1, PREDEC, P_L, P_NONE, P_NONE, 0, F_LDAL1 "\tdec a\n" F_LDLA1, R_A),
 	/* a postfix wants the value from before, so the step happens in
 	 * memory and the load beats it there */
-	R("j(I):b", POSTINC, P_L, P_NONE, P_NONE, 0, F_LDAL1 "\tinc ($L)\n", R_A),
-	R("m(I):b", POSTDEC, P_L, P_NONE, P_NONE, 0, F_LDAL1 "\tdec ($L)\n", R_A),
+	R( 'j','I',0,0,0,1, POSTINC, P_L, P_NONE, P_NONE, 0, F_LDAL1 "\tinc ($L)\n", R_A),
+	R( 'm','I',0,0,0,1, POSTDEC, P_L, P_NONE, P_NONE, 0, F_LDAL1 "\tdec ($L)\n", R_A),
 
 	/*
 	 * The same through a pointer held in IX, where the member is the
@@ -1415,13 +2066,13 @@ struct rule rules[] = {
 	 * matched anyway - which is how cpp's macdefine came to write a
 	 * macro parameter through a stale HL.
 	 */
-	R("j(D(V)):b", POSTINC, P_L, P_NONE, P_LL, RF_IX,
+	R( 'j','D',0,'V',0,1, POSTINC, P_L, P_NONE, P_LL, RF_IX,
 		"\tld a,(ix+0)\n\tinc (ix+0)\n", R_A),
-	R("m(D(V)):b", POSTDEC, P_L, P_NONE, P_LL, RF_IX,
+	R( 'm','D',0,'V',0,1, POSTDEC, P_L, P_NONE, P_LL, RF_IX,
 		"\tld a,(ix+0)\n\tdec (ix+0)\n", R_A),
-	R("i(D(V)):b", PREINC, P_L, P_NONE, P_LL, RF_IX,
+	R( 'i','D',0,'V',0,1, PREINC, P_L, P_NONE, P_LL, RF_IX,
 		"\tinc (ix+0)\n\tld a,(ix+0)\n", R_A),
-	R("k(D(V)):b", PREDEC, P_L, P_NONE, P_LL, RF_IX,
+	R( 'k','D',0,'V',0,1, PREDEC, P_L, P_NONE, P_LL, RF_IX,
 		"\tdec (ix+0)\n\tld a,(ix+0)\n", R_A),
 
 	/*
@@ -1434,29 +2085,29 @@ struct rule rules[] = {
 	 * difference between prefix and postfix, and a statement wants
 	 * neither: it is only the step.
 	 */
-	R("i(O):bF", PREINC, P_L, P_NONE, P_NONE, 0, RT302, F_NZ),
-	R("k(O):bF", PREDEC, P_L, P_NONE, P_NONE, 0, RT300, F_NZ),
-	R("i(O):bS", PREINC, P_L, P_NONE, P_NONE, 0, RT302, 0),
-	R("k(O):bS", PREDEC, P_L, P_NONE, P_NONE, 0, RT300, 0),
-	R("j(O):bS", POSTINC, P_L, P_NONE, P_NONE, 0, RT302, 0),
-	R("m(O):bS", POSTDEC, P_L, P_NONE, P_NONE, 0, RT300, 0),
-	R("j(O):b", POSTINC, P_L, P_NONE, P_NONE, 0,
+	R( 'i','O',0,0,0,9, PREINC, P_L, P_NONE, P_NONE, 0, RT302, F_NZ),
+	R( 'k','O',0,0,0,9, PREDEC, P_L, P_NONE, P_NONE, 0, RT300, F_NZ),
+	R( 'i','O',0,0,0,25, PREINC, P_L, P_NONE, P_NONE, 0, RT302, 0),
+	R( 'k','O',0,0,0,25, PREDEC, P_L, P_NONE, P_NONE, 0, RT300, 0),
+	R( 'j','O',0,0,0,25, POSTINC, P_L, P_NONE, P_NONE, 0, RT302, 0),
+	R( 'm','O',0,0,0,25, POSTDEC, P_L, P_NONE, P_NONE, 0, RT300, 0),
+	R( 'j','O',0,0,0,1, POSTINC, P_L, P_NONE, P_NONE, 0,
 		F_LDHLL F_LDAHL "\tinc (hl)\n", R_A),
-	R("m(O):b", POSTDEC, P_L, P_NONE, P_NONE, 0,
+	R( 'm','O',0,0,0,1, POSTDEC, P_L, P_NONE, P_NONE, 0,
 		F_LDHLL F_LDAHL "\tdec (hl)\n", R_A),
-	R("i(O):b", PREINC, P_L, P_NONE, P_NONE, 0,
+	R( 'i','O',0,0,0,1, PREINC, P_L, P_NONE, P_NONE, 0,
 		F_LDHLL "\tinc (hl)\n" F_LDAHL, R_A),
-	R("k(O):b", PREDEC, P_L, P_NONE, P_NONE, 0,
+	R( 'k','O',0,0,0,1, PREDEC, P_L, P_NONE, P_NONE, 0,
 		F_LDHLL "\tdec (hl)\n" F_LDAHL, R_A),
 
 	/* byte stores */
-	R("=(I,A)", ASSIGN, P_L, P_R, P_NONE, 0, RT337, R_A),
-	R( RP224, ASSIGN, P_L, P_R, P_NONE, 0, NULL, 0),
-	R("=(H,A):b", ASSIGN, P_L, P_R, P_NONE, 0, F_LDLA, R_HL),
-	R( RP228, ASSIGN, P_L, P_R, P_R, RF_BC, "\tld (hl),c\n", 0),
+	R( '=','I','A',0,0,0, ASSIGN, P_L, P_R, P_NONE, 0, RT337, R_A),
+	R( '=','H','N',0,0,0, ASSIGN, P_L, P_R, P_NONE, 0, NULL, 0),
+	R( '=','H','A',0,0,1, ASSIGN, P_L, P_R, P_NONE, 0, F_LDLA, R_HL),
+	R( '=','H','V',0,0,1, ASSIGN, P_L, P_R, P_R, RF_BC, "\tld (hl),c\n", 0),
 
 	/* loads from register addresses */
-	R("D(H):b", DEREF, P_L, P_NONE, P_NONE, 0, F_LDAHL, R_A),
+	R( 'D','H',0,0,0,1, DEREF, P_L, P_NONE, P_NONE, 0, F_LDAHL, R_A),
 	/*
 	 * Load a word through HL.  Where the result is wanted in DE it
 	 * can go straight there - three bytes instead of four, no
@@ -1464,9 +2115,9 @@ struct rule rules[] = {
 	 * in HL does A get used as the carrier, because then the pointer
 	 * and the result are the same register.
 	 */
-	R( RP292, DEREF, P_L, P_NONE, P_NONE, RF_TDE, RT143, R_DE),
-	R( RP292, DEREF, P_L, P_NONE, P_NONE, 0, T_LD_IHL, R_HL),
-	R("D(B):b", DEREF, P_L, P_NONE, P_NONE, 0, F_LDLC F_LDHB F_LDAHL, R_A),
+	R( 'D','H',0,0,0,2, DEREF, P_L, P_NONE, P_NONE, RF_TDE, RT143, R_DE),
+	R( 'D','H',0,0,0,2, DEREF, P_L, P_NONE, P_NONE, 0, T_LD_IHL, R_HL),
+	R( 'D','B',0,0,0,1, DEREF, P_L, P_NONE, P_NONE, 0, F_LDLC F_LDHB F_LDAHL, R_A),
 	/*
 	 * Reading through BC when the answer is wanted in DE, which is
 	 * where the right operand of a binary node is asked to go.  The
@@ -1479,34 +2130,34 @@ struct rule rules[] = {
 	 * ld a,(bc) reads without HL at all.  BC steps forward for the
 	 * high byte and back again, so the pointer is as it was.
 	 */
-	R( RP286, DEREF, P_L, P_NONE, P_NONE, RF_TDE,
+	R( 'D','B',0,0,0,2, DEREF, P_L, P_NONE, P_NONE, RF_TDE,
 		"\tld a,(bc)\n\tld e,a\n\tinc bc\n"
 		"\tld a,(bc)\n\tld d,a\n\tdec bc\n", R_DE),
-	R( RP286, DEREF, P_L, P_NONE, P_NONE, 0, F_LDLC F_LDHB F_LDAHL F_INCHL F_LDHHL F_LDLA, R_HL),
-	R("D(E):b", DEREF, P_L, P_NONE, P_NONE, 0, F_EXDEHL F_LDAHL, R_A),
-	R("D(E):s", DEREF, P_L, P_NONE, P_NONE, 0, F_EXDEHL "\tld e,(hl)\n" F_INCHL "\tld d,(hl)\n" F_EXDEHL, R_HL),
+	R( 'D','B',0,0,0,2, DEREF, P_L, P_NONE, P_NONE, 0, F_LDLC F_LDHB F_LDAHL F_INCHL F_LDHHL F_LDLA, R_HL),
+	R( 'D','E',0,0,0,1, DEREF, P_L, P_NONE, P_NONE, 0, F_EXDEHL F_LDAHL, R_A),
+	R( 'D','E',0,0,0,2, DEREF, P_L, P_NONE, P_NONE, 0, F_EXDEHL "\tld e,(hl)\n" F_INCHL "\tld d,(hl)\n" F_EXDEHL, R_HL),
 
 	/* indirect stores via registers */
-	R("=(D(B),A):b", ASSIGN, P_L, P_R, P_NONE, 0, F_LDLC F_LDHB F_LDHLA, 0),
-	R("=(D(E),A):b", ASSIGN, P_L, P_R, P_NONE, 0, F_EXDEHL F_LDHLA F_EXDEHL, 0),
-	R("=(D(B),H):s", ASSIGN, P_L, P_R, P_NONE, 0, F_PUSHHL F_LDLC F_LDHB F_POPDE F_LDHLE F_INCHL F_LDHLD, 0),
-	R("=(D(E),H):s", ASSIGN, P_L, P_R, P_NONE, 0, F_EXDEHL "\tpush de\n" F_LDHLE F_INCHL F_LDHLD F_POPHL, 0),
+	R( '=','D','A','B',0,1, ASSIGN, P_L, P_R, P_NONE, 0, F_LDLC F_LDHB F_LDHLA, 0),
+	R( '=','D','A','E',0,1, ASSIGN, P_L, P_R, P_NONE, 0, F_EXDEHL F_LDHLA F_EXDEHL, 0),
+	R( '=','D','H','B',0,2, ASSIGN, P_L, P_R, P_NONE, 0, F_PUSHHL F_LDLC F_LDHB F_POPDE F_LDHLE F_INCHL F_LDHLD, 0),
+	R( '=','D','H','E',0,2, ASSIGN, P_L, P_R, P_NONE, 0, F_EXDEHL "\tpush de\n" F_LDHLE F_INCHL F_LDHLD F_POPHL, 0),
 
 	/*
 	 * Store through a struct pointer in IX.  Only offset zero lands
 	 * here - a non-zero member offset folds into an INDEX first via
 	 * +(V,N), which is why these are the forms that were missing.
 	 */
-	R("=(D(V),N):s", ASSIGN, P_L, P_R, P_LL, RF_IX,
+	R( '=','D','N','V',0,2, ASSIGN, P_L, P_R, P_LL, RF_IX,
 		"\tld (ix+0),$Rl\n\tld (ix+1),$Rh\n", 0),
-	R("=(D(V),H):s", ASSIGN, P_L, P_R, P_LL, RF_IX,
+	R( '=','D','H','V',0,2, ASSIGN, P_L, P_R, P_LL, RF_IX,
 		"\tld (ix+0),l\n\tld (ix+1),h\n", 0),
-	R("=(D(V),B):s", ASSIGN, P_L, P_R, P_LL, RF_IX,
+	R( '=','D','B','V',0,2, ASSIGN, P_L, P_R, P_LL, RF_IX,
 		"\tld (ix+0),c\n\tld (ix+1),b\n", 0),
-	R("=(D(V),N):b", ASSIGN, P_L, P_R, P_LL, RF_IX, "\tld (ix+0),$R\n", 0),
-	R("=(D(V),A):b", ASSIGN, P_L, P_R, P_LL, RF_IX, "\tld (ix+0),a\n", 0),
+	R( '=','D','N','V',0,1, ASSIGN, P_L, P_R, P_LL, RF_IX, "\tld (ix+0),$R\n", 0),
+	R( '=','D','A','V',0,1, ASSIGN, P_L, P_R, P_LL, RF_IX, "\tld (ix+0),a\n", 0),
 	/* a word in HL narrowed on its way through the index register */
-	R("=(D(V),H):b", ASSIGN, P_L, P_R, P_LL, RF_IX,
+	R( '=','D','H','V',0,1, ASSIGN, P_L, P_R, P_LL, RF_IX,
 		F_LDAL "\tld (ix+0),a\n", R_A),
 	/*
 	 * And the same from BC, which is where a register variable
@@ -1518,9 +2169,9 @@ struct rule rules[] = {
 	 * and stored nothing, so type.c's member offsets stayed zero
 	 * and every struct came out either empty or "too big".
 	 */
-	R("=(D(V),B):b", ASSIGN, P_L, P_R, P_LL, RF_IX,
+	R( '=','D','B','V',0,1, ASSIGN, P_L, P_R, P_LL, RF_IX,
 		F_LDAC "\tld (ix+0),a\n", R_A),
-	R("=(D(V),E):b", ASSIGN, P_L, P_R, P_LL, RF_IX,
+	R( '=','D','E','V',0,1, ASSIGN, P_L, P_R, P_LL, RF_IX,
 		"\tld a,e\n\tld (ix+0),a\n", R_A),
 
 	/*
@@ -1540,16 +2191,16 @@ struct rule rules[] = {
 	 * ld d,ixh, each half costing two for its prefix.  Going through
 	 * A a byte at a time is seven as well.
 	 */
-	R("=(D(H),V):s", ASSIGN, P_L, P_R, P_R, RF_IX,
+	R( '=','D','V','H',0,2, ASSIGN, P_L, P_R, P_R, RF_IX,
 		"\tpush ix\n\tpop de\n" F_LDHLE F_INCHL F_LDHLD, 0),
-	R("=(D(H),V):b", ASSIGN, P_L, P_R, P_R, RF_IX,
+	R( '=','D','V','H',0,1, ASSIGN, P_L, P_R, P_R, RF_IX,
 		"\tld a,ixl\n" F_LDHLA, R_A),
-	R("=(D(B),V):s", ASSIGN, P_L, P_R, P_R, RF_IX,
+	R( '=','D','V','B',0,2, ASSIGN, P_L, P_R, P_R, RF_IX,
 		T_BC_HL "\tpush ix\n\tpop de\n" F_LDHLE F_INCHL F_LDHLD, 0),
-	R("=(D(I),V):s", ASSIGN, P_L, P_R, P_R, RF_IX,
+	R( '=','D','V','I',0,2, ASSIGN, P_L, P_R, P_R, RF_IX,
 		F_LDLLL F_LDHLL1 "\tpush ix\n\tpop de\n"
 		F_LDHLE F_INCHL F_LDHLD, 0),
-	R("=(D(O),V):s", ASSIGN, P_L, P_R, P_R, RF_IX,
+	R( '=','D','V','O',0,2, ASSIGN, P_L, P_R, P_R, RF_IX,
 		"\tld hl,($LL)\n\tpush ix\n\tpop de\n"
 		F_LDHLE F_INCHL F_LDHLD, 0),
 
@@ -1558,13 +2209,13 @@ struct rule rules[] = {
 	 * parameter, say.  Load it first; the HL form has to shuffle
 	 * through DE because HL is holding the value.
 	 */
-	R("=(D(I),N):s", ASSIGN, P_L, P_R, P_NONE, 0,
+	R( '=','D','N','I',0,2, ASSIGN, P_L, P_R, P_NONE, 0,
 		F_LDLLL F_LDHLL1 F_LDHLRL F_INCHL F_LDHLRH, 0),
-	R("=(D(I),H):s", ASSIGN, P_L, P_R, P_NONE, 0,
+	R( '=','D','H','I',0,2, ASSIGN, P_L, P_R, P_NONE, 0,
 		"\tld e,($LL)\n\tld d,($LL+)\n" F_EXDEHL F_LDHLE F_INCHL F_LDHLD, 0),
-	R("=(D(I),N):b", ASSIGN, P_L, P_R, P_NONE, 0,
+	R( '=','D','N','I',0,1, ASSIGN, P_L, P_R, P_NONE, 0,
 		F_LDLLL F_LDHLL1 "\tld (hl),$R\n", 0),
-	R("=(D(I),A):b", ASSIGN, P_L, P_R, P_NONE, 0,
+	R( '=','D','A','I',0,1, ASSIGN, P_L, P_R, P_NONE, 0,
 		F_LDLLL F_LDHLL1 F_LDHLA, 0),
 	/*
 	 * The same with the value in HL, narrowing to its low byte.  The
@@ -1572,20 +2223,20 @@ struct rule rules[] = {
 	 * byte through a pointer in a frame slot emitted nothing.  Take
 	 * the byte out of L before loading the pointer, which wants HL.
 	 */
-	R("=(D(I),H):b", ASSIGN, P_L, P_R, P_NONE, 0,
+	R( '=','D','H','I',0,1, ASSIGN, P_L, P_R, P_NONE, 0,
 		F_LDAL F_LDLLL F_LDHLL1 F_LDHLA, R_A),
 	/*
 	 * A register variable stored through a pointer in a frame slot,
 	 * narrowing on the way - "where[0] = v" with v in BC.  Load the
 	 * value out of BC before the pointer, since the pointer wants HL.
 	 */
-	R("=(D(I),B):b", ASSIGN, P_L, P_R, P_NONE, 0,
+	R( '=','D','B','I',0,1, ASSIGN, P_L, P_R, P_NONE, 0,
 		F_LDAC F_LDLLL F_LDHLL1 F_LDHLA, R_A),
-	R("=(D(I),B):s", ASSIGN, P_L, P_R, P_NONE, 0,
+	R( '=','D','B','I',0,2, ASSIGN, P_L, P_R, P_NONE, 0,
 		F_LDLLL F_LDHLL1 "\tld (hl),c\n" F_INCHL "\tld (hl),b\n", R_BC),
-	R("=(D(I),E):b", ASSIGN, P_L, P_R, P_NONE, 0,
+	R( '=','D','E','I',0,1, ASSIGN, P_L, P_R, P_NONE, 0,
 		F_LDLLL F_LDHLL1 F_LDHLE, R_DE),
-	R("=(D(I),E):s", ASSIGN, P_L, P_R, P_NONE, 0,
+	R( '=','D','E','I',0,2, ASSIGN, P_L, P_R, P_NONE, 0,
 		F_LDLLL F_LDHLL1 F_LDHLE F_INCHL F_LDHLD, R_DE),
 
 	/* indirect stores via HL */
@@ -1604,9 +2255,9 @@ struct rule rules[] = {
 	 * has a form of its own further up, which is why the same line
 	 * elsewhere in the tree was fine.
 	 */
-	R("=(D(H),N):bV", ASSIGN, P_L, P_R, P_NONE, 0,
+	R( '=','D','N','H',0,17, ASSIGN, P_L, P_R, P_NONE, 0,
 		"\tld (hl),$R\n\tld a,$R\n", R_A),
-	R("=(D(H),N):b", ASSIGN, P_L, P_R, P_NONE, 0, "\tld (hl),$R\n", 0),
+	R( '=','D','N','H',0,1, ASSIGN, P_L, P_R, P_NONE, 0, "\tld (hl),$R\n", 0),
 	/*
 	 * The stored value is the value of the assignment.  Where a
 	 * chain consumes it - "d = ap->init = malloc(n)" - the store
@@ -1617,82 +2268,82 @@ struct rule rules[] = {
 	 * context pays the one-byte ex; the ordinary statement store
 	 * keeps the short form.
 	 */
-	R("=(D(H),E):sV", ASSIGN, P_L, P_R, P_NONE, 0, T_ST_IHL, R_HL),
-	R("=(D(H),E):s", ASSIGN, P_L, P_R, P_NONE, 0, F_LDHLE F_INCHL F_LDHLD, 0),
-	R("=(D(H),E):b", ASSIGN, P_L, P_R, P_NONE, 0, F_LDHLE, 0),
+	R( '=','D','E','H',0,18, ASSIGN, P_L, P_R, P_NONE, 0, T_ST_IHL, R_HL),
+	R( '=','D','E','H',0,2, ASSIGN, P_L, P_R, P_NONE, 0, F_LDHLE F_INCHL F_LDHLD, 0),
+	R( '=','D','E','H',0,1, ASSIGN, P_L, P_R, P_NONE, 0, F_LDHLE, 0),
 	/* a byte worked out in A, stored through an address in HL - which
 	 * is where a compound assignment through a computed address ends
 	 * up, the value in A and the address recovered from the stack */
-	R("=(D(H),A):b", ASSIGN, P_L, P_R, P_NONE, 0, F_LDHLA, R_A),
+	R( '=','D','A','H',0,1, ASSIGN, P_L, P_R, P_NONE, 0, F_LDHLA, R_A),
 	/* a word narrowed to a byte on its way through an address */
-	R("=(D(H),B):b", ASSIGN, P_L, P_R, P_NONE, 0, F_LDAC F_LDHLA, R_A),
-	R("=(D(H),H):b", ASSIGN, P_L, P_R, P_NONE, 0, F_LDAL F_LDHLA, R_A),
+	R( '=','D','B','H',0,1, ASSIGN, P_L, P_R, P_NONE, 0, F_LDAC F_LDHLA, R_A),
+	R( '=','D','H','H',0,1, ASSIGN, P_L, P_R, P_NONE, 0, F_LDAL F_LDHLA, R_A),
 	/*
 	 * Stepping what an address in HL points at - "p[i]++" once the
 	 * subscript has been worked out.  A postfix wants the value from
 	 * before, which is what is already in A after the load, so it can
 	 * step memory directly and is a byte shorter.
 	 */
-	R("j(H):b", POSTINC, P_L, P_NONE, P_NONE, 0, RT111, R_A),
-	R("m(H):b", POSTDEC, P_L, P_NONE, P_NONE, 0, RT109, R_A),
-	R("i(H):b", PREINC, P_L, P_NONE, P_NONE, 0,
+	R( 'j','H',0,0,0,1, POSTINC, P_L, P_NONE, P_NONE, 0, RT111, R_A),
+	R( 'm','H',0,0,0,1, POSTDEC, P_L, P_NONE, P_NONE, 0, RT109, R_A),
+	R( 'i','H',0,0,0,1, PREINC, P_L, P_NONE, P_NONE, 0,
 		"\tld a,(hl)\n\tinc a\n" F_LDHLA, R_A),
-	R("k(H):b", PREDEC, P_L, P_NONE, P_NONE, 0,
+	R( 'k','H',0,0,0,1, PREDEC, P_L, P_NONE, P_NONE, 0,
 		"\tld a,(hl)\n\tdec a\n" F_LDHLA, R_A),
 	/*
 	 * The word forms carry between the halves, so they go through A
 	 * rather than inc (hl) and a branch.  They leave HL on the high
 	 * byte and so say nothing about the value: statements only.
 	 */
-	R("i(H):sS", PREINC, P_L, P_NONE, P_NONE, 0, RT108, 0),
-	R("k(H):sS", PREDEC, P_L, P_NONE, P_NONE, 0, RT113, 0),
-	R("j(H):sS", POSTINC, P_L, P_NONE, P_NONE, 0, RT108, 0),
-	R("m(H):sS", POSTDEC, P_L, P_NONE, P_NONE, 0, RT113, 0),
-	R("=(D(B),N):b", ASSIGN, P_L, P_R, P_NONE, 0, F_LDLC F_LDHB "\tld (hl),$R\n", 0),
+	R( 'i','H',0,0,0,26, PREINC, P_L, P_NONE, P_NONE, 0, RT108, 0),
+	R( 'k','H',0,0,0,26, PREDEC, P_L, P_NONE, P_NONE, 0, RT113, 0),
+	R( 'j','H',0,0,0,26, POSTINC, P_L, P_NONE, P_NONE, 0, RT108, 0),
+	R( 'm','H',0,0,0,26, POSTDEC, P_L, P_NONE, P_NONE, 0, RT113, 0),
+	R( '=','D','N','B',0,1, ASSIGN, P_L, P_R, P_NONE, 0, F_LDLC F_LDHB "\tld (hl),$R\n", 0),
 	/* the value in HL, which has to be taken out of the way before the
 	 * pointer comes over on top of it */
-	R("=(D(B),H):b", ASSIGN, P_L, P_R, P_NONE, 0,
+	R( '=','D','H','B',0,1, ASSIGN, P_L, P_R, P_NONE, 0,
 		F_LDAL F_LDLC F_LDHB F_LDHLA, R_A),
-	R("=(D(B),N):s", ASSIGN, P_L, P_R, P_NONE, 0,
+	R( '=','D','N','B',0,2, ASSIGN, P_L, P_R, P_NONE, 0,
 		T_BC_HL F_LDHLRL F_INCHL F_LDHLRH, 0),
-	R("=(D(E),N):s", ASSIGN, P_L, P_R, P_NONE, 0,
+	R( '=','D','N','E',0,2, ASSIGN, P_L, P_R, P_NONE, 0,
 		F_EXDEHL F_LDHLRL F_INCHL F_LDHLRH, 0),
-	R("=(D(H),N):sV", ASSIGN, P_L, P_R, P_NONE, 0,
+	R( '=','D','N','H',0,18, ASSIGN, P_L, P_R, P_NONE, 0,
 		F_LDHLRL F_INCHL F_LDHLRH F_LDHLR, R_HL),
-	R("=(D(H),N):s", ASSIGN, P_L, P_R, P_NONE, 0, F_LDHLRL F_INCHL F_LDHLRH, 0),
-	R("=(D(H),B):s", ASSIGN, P_L, P_R, P_NONE, 0, "\tld (hl),c\n" F_INCHL "\tld (hl),b\n", 0),
+	R( '=','D','N','H',0,2, ASSIGN, P_L, P_R, P_NONE, 0, F_LDHLRL F_INCHL F_LDHLRH, 0),
+	R( '=','D','B','H',0,2, ASSIGN, P_L, P_R, P_NONE, 0, "\tld (hl),c\n" F_INCHL "\tld (hl),b\n", 0),
 
 	/* pointer testing */
-	R("D(H):pF", DEREF, P_L, P_NONE, P_NONE, 0, F_LDAHL "\tor (hl)\n", F_NZ),
+	R( 'D','H',0,0,0,12, DEREF, P_L, P_NONE, P_NONE, 0, F_LDAHL "\tor (hl)\n", F_NZ),
 
 	/* structured loads to BC/DE/HL */
-	R("=(B,D(H)):s", ASSIGN, P_L, P_R, P_NONE, 0, "\tld c,(hl)\n" F_INCHL "\tld b,(hl)\n", R_BC),
+	R( '=','B','D',0,'H',2, ASSIGN, P_L, P_R, P_NONE, 0, "\tld c,(hl)\n" F_INCHL "\tld b,(hl)\n", R_BC),
 	/*
 	 * A register given a frame slot's address - the other half of
 	 * "p = &v", where p happens to live in a register.  As above, a
 	 * bare index is a place: these loaded through it and turned every
 	 * address-of into a read of what was there.
 	 */
-	R("=(B,I)", ASSIGN, P_L, P_R, P_NONE, 0,
+	R( '=','B','I',0,0,0, ASSIGN, P_L, P_R, P_NONE, 0,
 		T_IDX_R_ADDR "\tld c,l\n\tld b,h\n", R_BC),
-	R("=(H,I)", ASSIGN, P_L, P_R, P_NONE, 0, T_IDX_R_ADDR, R_HL),
-	R("=(E,I)", ASSIGN, P_L, P_R, P_NONE, 0, T_IDX_R_ADDR F_EXDEHL, R_DE),
-	R("=(I,O)", ASSIGN, P_L, P_R, P_NONE, 0, RT325, R_HL),
+	R( '=','H','I',0,0,0, ASSIGN, P_L, P_R, P_NONE, 0, T_IDX_R_ADDR, R_HL),
+	R( '=','E','I',0,0,0, ASSIGN, P_L, P_R, P_NONE, 0, T_IDX_R_ADDR F_EXDEHL, R_DE),
+	R( '=','I','O',0,0,0, ASSIGN, P_L, P_R, P_NONE, 0, RT325, R_HL),
 	/* one symbol's address into another symbol's storage - "lp = &g" */
-	R("=(O,O)", ASSIGN, P_L, P_R, P_NONE, 0, RT324, R_HL),
-	R("=(B,O)", ASSIGN, P_L, P_R, P_NONE, 0, RT128, R_BC),
-	R("=(H,O)", ASSIGN, P_L, P_R, P_NONE, 0, RT323, R_HL),
-	R("=(E,O)", ASSIGN, P_L, P_R, P_NONE, 0, RT275, R_DE),
-	R("=(B,D(O)):s", ASSIGN, P_L, P_R, P_NONE, 0, "\tld a,($RL)\n\tld c,a\n\tld a,($RL+)\n\tld b,a\n", R_BC),
-	R("=(E,D(O)):s", ASSIGN, P_L, P_R, P_NONE, 0, "\tld de,($RL)\n", R_DE),
-	R("=(H,D(O)):s", ASSIGN, P_L, P_R, P_NONE, 0, "\tld hl,($RL)\n", R_HL),
-	R("=(E,D(H)):s", ASSIGN, P_L, P_R, P_NONE, 0, RT143, R_DE),
-	R("=(H,D(H)):s", ASSIGN, P_L, P_R, P_NONE, 0, F_LDAHL F_INCHL F_LDHHL F_LDLA, R_HL),
-	R("=(I,D(H)):s", ASSIGN, P_L, P_R, P_NONE, 0, F_LDAHL F_LDLA1 F_INCHL F_LDAHL "\tld ($L+),a\n", 0),
+	R( '=','O','O',0,0,0, ASSIGN, P_L, P_R, P_NONE, 0, RT324, R_HL),
+	R( '=','B','O',0,0,0, ASSIGN, P_L, P_R, P_NONE, 0, RT128, R_BC),
+	R( '=','H','O',0,0,0, ASSIGN, P_L, P_R, P_NONE, 0, RT323, R_HL),
+	R( '=','E','O',0,0,0, ASSIGN, P_L, P_R, P_NONE, 0, RT275, R_DE),
+	R( '=','B','D',0,'O',2, ASSIGN, P_L, P_R, P_NONE, 0, "\tld a,($RL)\n\tld c,a\n\tld a,($RL+)\n\tld b,a\n", R_BC),
+	R( '=','E','D',0,'O',2, ASSIGN, P_L, P_R, P_NONE, 0, "\tld de,($RL)\n", R_DE),
+	R( '=','H','D',0,'O',2, ASSIGN, P_L, P_R, P_NONE, 0, "\tld hl,($RL)\n", R_HL),
+	R( '=','E','D',0,'H',2, ASSIGN, P_L, P_R, P_NONE, 0, RT143, R_DE),
+	R( '=','H','D',0,'H',2, ASSIGN, P_L, P_R, P_NONE, 0, F_LDAHL F_INCHL F_LDHHL F_LDLA, R_HL),
+	R( '=','I','D',0,'H',2, ASSIGN, P_L, P_R, P_NONE, 0, F_LDAHL F_LDLA1 F_INCHL F_LDAHL "\tld ($L+),a\n", 0),
 
 	/* arithmetic/logical on indexed */
-	R("o(H,N):b", OREQ, P_L, P_R, P_NONE, 0, F_LDAHL "\tor $R\n" F_LDHLA, R_A),
-	R("o(I,K):b", OREQ, P_L, P_R, P_NONE, 0, F_LDAL1 "\tor e\n" F_LDLA1, R_A),
+	R( 'o','H','N',0,0,1, OREQ, P_L, P_R, P_NONE, 0, F_LDAHL "\tor $R\n" F_LDHLA, R_A),
+	R( 'o','I','K',0,0,1, OREQ, P_L, P_R, P_NONE, 0, F_LDAL1 "\tor e\n" F_LDLA1, R_A),
 	/*
 	 * A frame variable as a truth value.  The flag named here is the
 	 * one that means true, and true is "not zero" - these said Z, so
@@ -1700,9 +2351,9 @@ struct rule rules[] = {
 	 * The register-variable rule above has always said NZ, which is
 	 * what made the disagreement visible.
 	 */
-	R("D(I):bF", DEREF, P_L, P_NONE, P_NONE, 0, F_LDAL1 F_ORA, F_NZ),
-	R("D(I):sF", DEREF, P_L, P_NONE, P_NONE, 0, F_LDAL1 "\tor ($L+)\n", F_NZ),
-	R("D(I):s", DEREF, P_L, P_NONE, P_NONE, 0, RT71, 0),
+	R( 'D','I',0,0,0,9, DEREF, P_L, P_NONE, P_NONE, 0, F_LDAL1 F_ORA, F_NZ),
+	R( 'D','I',0,0,0,10, DEREF, P_L, P_NONE, P_NONE, 0, F_LDAL1 "\tor ($L+)\n", F_NZ),
+	R( 'D','I',0,0,0,2, DEREF, P_L, P_NONE, P_NONE, 0, RT71, 0),
 	/*
 	 * Of the 8-bit registers only A can load from an absolute address,
 	 * but the pairs all can, so ld de,(nn) reaches E without touching
@@ -1710,17 +2361,17 @@ struct rule rules[] = {
 	 * the following byte into D as well; D is dead here, and one byte
 	 * of over-read is harmless in a flat memory model.
 	 */
-	R( RP298, DEREF, P_L, P_NONE, P_NONE, RF_TDE, F_LDDEL, R_E),
-	R( RP298, DEREF, P_L, P_NONE, P_NONE, 0, RT254, R_A),
-	R( RP293, DEREF, P_L, P_NONE, P_NONE, RF_TDE, "\tld e,($L)\n", R_E),
+	R( 'D','O',0,0,0,1, DEREF, P_L, P_NONE, P_NONE, RF_TDE, F_LDDEL, R_E),
+	R( 'D','O',0,0,0,1, DEREF, P_L, P_NONE, P_NONE, 0, RT254, R_A),
+	R( 'D','I',0,0,0,1, DEREF, P_L, P_NONE, P_NONE, RF_TDE, "\tld e,($L)\n", R_E),
 	/* the plain load: a byte local reaching A, as D(O):b does for a
 	 * global.  Without it a byte local could only be read by the rules
 	 * that match its parent too, so SEXT of one had nothing to widen */
-	R( RP293, DEREF, P_L, P_NONE, P_NONE, 0, RT254, R_A),
+	R( 'D','I',0,0,0,1, DEREF, P_L, P_NONE, P_NONE, 0, RT254, R_A),
 	/* a byte through a struct pointer in IX at offset zero - a
 	 * non-zero member offset folds into an INDEX first */
-	R("D(V):b", DEREF, P_L, P_NONE, P_L, RF_IX, "\tld a,(ix+0)\n", R_A),
-	R("D(V):s", DEREF, P_L, P_NONE, P_L, RF_IX,
+	R( 'D','V',0,0,0,1, DEREF, P_L, P_NONE, P_L, RF_IX, "\tld a,(ix+0)\n", R_A),
+	R( 'D','V',0,0,0,2, DEREF, P_L, P_NONE, P_L, RF_IX,
 		"\tld $t,(ix+0)\n\tld $u,(ix+1)\n", 0),
 	/*
 	 * And the long, which was the width nobody had written.  Reading
@@ -1730,21 +2381,21 @@ struct rule rules[] = {
 	 * and called ladd on whatever the loop condition had left there.
 	 * Low word from the lower address, as everywhere else.
 	 */
-	R("D(V):l", DEREF, P_L, P_NONE, P_L, RF_IX,
+	R( 'D','V',0,0,0,3, DEREF, P_L, P_NONE, P_L, RF_IX,
 		"\tld e,(ix+0)\n\tld d,(ix+1)\n"
 		"\tld a,(ix+2)\n\tld h,(ix+3)\n\tld l,a\n", R_HL),
 	/* honour the target: as the right operand of a compare this has to
 	 * land in DE, or it overwrites the left operand in HL */
-	R("D(O):s", DEREF, P_L, P_NONE, P_NONE, 0, "\tld $T,($L)\n", 0),
+	R( 'D','O',0,0,0,2, DEREF, P_L, P_NONE, P_NONE, 0, "\tld $T,($L)\n", 0),
 
 	/* 16-bit binary arithmetic */
-	R("+(H,E)", PLUS, P_L, P_R, P_NONE, 0, T_ADD_HL_DE, R_HL),
-	R("+(H,B)", PLUS, P_L, P_R, P_NONE, 0, "\tadd hl,bc\n", R_HL),
-	R("-(H,B)", MINUS, P_L, P_R, P_NONE, 0, RT359, R_HL),
+	R( '+','H','E',0,0,0, PLUS, P_L, P_R, P_NONE, 0, T_ADD_HL_DE, R_HL),
+	R( '+','H','B',0,0,0, PLUS, P_L, P_R, P_NONE, 0, "\tadd hl,bc\n", R_HL),
+	R( '-','H','B',0,0,0, MINUS, P_L, P_R, P_NONE, 0, RT359, R_HL),
 	/* a constant less a register variable - "5 - n".  The subtraction
 	 * is not commutative, so normalize leaves the constant on the
 	 * left and there was no form with it there. */
-	R("-(N,B)", MINUS, P_L, P_R, P_NONE, 0,
+	R( '-','N','B',0,0,0, MINUS, P_L, P_R, P_NONE, 0,
 		"\tld hl,$L\n" F_ORA F_SBCHLBC, R_HL),
 	/*
 	 * And with the value in DE or HL, which is what "0 - (n % 10)"
@@ -1753,16 +2404,16 @@ struct rule rules[] = {
 	 * exactly that way, so the self-built c1 printed every operand
 	 * of every instruction as an empty string.
 	 */
-	R("-(N,E)", MINUS, P_L, P_R, P_NONE, 0,
+	R( '-','N','E',0,0,0, MINUS, P_L, P_R, P_NONE, 0,
 		"\tld hl,$L\n" F_ORA F_SBCHLDE, R_HL),
-	R("-(N,H)", MINUS, P_L, P_R, P_NONE, 0,
+	R( '-','N','H',0,0,0, MINUS, P_L, P_R, P_NONE, 0,
 		"\tex de,hl\n\tld hl,$L\n" F_ORA F_SBCHLDE, R_HL),
-	R("-(N,K):b", MINUS, P_L, P_R, P_NONE, 0,
+	R( '-','N','K',0,0,1, MINUS, P_L, P_R, P_NONE, 0,
 		"\tld a,$L\n" F_SUBE, R_A),
-	R("-(N,A):b", MINUS, P_L, P_R, P_NONE, 0,
+	R( '-','N','A',0,0,1, MINUS, P_L, P_R, P_NONE, 0,
 		"\tld e,a\n\tld a,$L\n" F_SUBE, R_A),
-	R("+(B,E)", PLUS, P_L, P_R, P_NONE, 0, T_BC_HL T_ADD_HL_DE, R_HL),
-	R("-(B,E)", MINUS, P_L, P_R, P_NONE, 0, RT415, R_HL),
+	R( '+','B','E',0,0,0, PLUS, P_L, P_R, P_NONE, 0, T_BC_HL T_ADD_HL_DE, R_HL),
+	R( '-','B','E',0,0,0, MINUS, P_L, P_R, P_NONE, 0, RT415, R_HL),
 	/*
 	 * A pointer in BC less the address of an array - "s - buf", the
 	 * ordinary pointer difference, when the array is declared with no
@@ -1771,39 +2422,39 @@ struct rule rules[] = {
 	 * size zero, the conversion is not inserted because nothing looks
 	 * wider than nothing, and the symbol reaches here bare.
 	 */
-	R("-(B,O)", MINUS, P_L, P_R, P_NONE, 0, RT411, R_HL),
-	R("-(B,N)", MINUS, P_L, P_R, P_NONE, 0, RT411, R_HL),
-	R("<(B,N)", LSHIFT, P_L, P_R, P_NONE, 0, T_BC_HL "%(" T_ADD_HL_HL ")", R_HL),
-	R( RP108, DIV, P_L, P_R, P_NONE, RF_SIGNL,
+	R( '-','B','O',0,0,0, MINUS, P_L, P_R, P_NONE, 0, RT411, R_HL),
+	R( '-','B','N',0,0,0, MINUS, P_L, P_R, P_NONE, 0, RT411, R_HL),
+	R( '<','B','N',0,0,0, LSHIFT, P_L, P_R, P_NONE, 0, T_BC_HL "%(" T_ADD_HL_HL ")", R_HL),
+	R( '/','B','N',0,0,0, DIV, P_L, P_R, P_NONE, RF_SIGNL,
 		T_BC_HL F_LDDER "$[\tcall adiv\n$]", R_HL),
-	R( RP108, DIV, P_L, P_R, P_NONE, 0,
+	R( '/','B','N',0,0,0, DIV, P_L, P_R, P_NONE, 0,
 		T_BC_HL F_LDDER "$[\tcall ldiv\n$]", R_HL),
-	R( RP10, MOD, P_L, P_R, P_NONE, RF_SIGNL,
+	R( '%','B','N',0,0,0, MOD, P_L, P_R, P_NONE, RF_SIGNL,
 		T_BC_HL F_LDDER "$[\tcall amod\n$]", R_HL),
-	R( RP10, MOD, P_L, P_R, P_NONE, 0,
+	R( '%','B','N',0,0,0, MOD, P_L, P_R, P_NONE, 0,
 		T_BC_HL F_LDDER "$[\tcall lmod\n$]", R_HL),
-	R("*(B,N)", STAR, P_L, P_R, P_NONE, 0,
+	R( '*','B','N',0,0,0, STAR, P_L, P_R, P_NONE, 0,
 		T_BC_HL F_LDDER "$[\tcall amul\n$]", R_HL),
-	R("+(H,M)", PLUS, P_L, P_R, P_NONE, 0, "%(\tinc hl\n)", R_HL),
-	R("-(H,M)", MINUS, P_L, P_R, P_NONE, 0, "%(\tdec hl\n)", R_HL),
-	R("+(A,M)", PLUS, P_L, P_R, P_NONE, 0, "%(\tinc a\n)", R_A),
-	R("-(A,M)", MINUS, P_L, P_R, P_NONE, 0, "%(\tdec a\n)", R_A),
-	R("+(H,N)", PLUS, P_L, P_R, P_NONE, 0, F_LDDER T_ADD_HL_DE, R_HL),
+	R( '+','H','M',0,0,0, PLUS, P_L, P_R, P_NONE, 0, "%(\tinc hl\n)", R_HL),
+	R( '-','H','M',0,0,0, MINUS, P_L, P_R, P_NONE, 0, "%(\tdec hl\n)", R_HL),
+	R( '+','A','M',0,0,0, PLUS, P_L, P_R, P_NONE, 0, "%(\tinc a\n)", R_A),
+	R( '-','A','M',0,0,0, MINUS, P_L, P_R, P_NONE, 0, "%(\tdec a\n)", R_A),
+	R( '+','H','N',0,0,0, PLUS, P_L, P_R, P_NONE, 0, F_LDDER T_ADD_HL_DE, R_HL),
 	/*
 	 * A byte in A against a constant, once it is too big for the inc
 	 * and dec runs above.  Only at byte width: at word width A holds
 	 * the low half and the carry would have nowhere to go.
 	 */
-	R("+(A,N):b", PLUS, P_L, P_R, P_NONE, 0, "\tadd a,$R\n", R_A),
-	R("+(D(I),N):b", PLUS, P_L, P_R, P_NONE, 0, F_LDALL "\tadd a,$R\n", R_A),
-	R("-(A,N):b", MINUS, P_L, P_R, P_NONE, 0, F_SUBR, R_A),
-	R("-(D(I),N):b", MINUS, P_L, P_R, P_NONE, 0, F_LDALL F_SUBR, R_A),
-	R("-(H,E)", MINUS, P_L, P_R, P_NONE, 0, RT360, R_HL),
+	R( '+','A','N',0,0,1, PLUS, P_L, P_R, P_NONE, 0, "\tadd a,$R\n", R_A),
+	R( '+','D','N','I',0,1, PLUS, P_L, P_R, P_NONE, 0, F_LDALL "\tadd a,$R\n", R_A),
+	R( '-','A','N',0,0,1, MINUS, P_L, P_R, P_NONE, 0, F_SUBR, R_A),
+	R( '-','D','N','I',0,1, MINUS, P_L, P_R, P_NONE, 0, F_LDALL F_SUBR, R_A),
+	R( '-','H','E',0,0,0, MINUS, P_L, P_R, P_NONE, 0, RT360, R_HL),
 	/* less a symbol's address, which is one half of a pointer
 	 * difference once the other half is in HL */
-	R("-(H,O)", MINUS, P_L, P_R, P_NONE, 0, RT287, R_HL),
-	R("+(H,O)", PLUS, P_L, P_R, P_NONE, 0, F_LDDER F_ADDHLDE, R_HL),
-	R("-(H,N)", MINUS, P_L, P_R, P_NONE, 0, RT287, R_HL),
+	R( '-','H','O',0,0,0, MINUS, P_L, P_R, P_NONE, 0, RT287, R_HL),
+	R( '+','H','O',0,0,0, PLUS, P_L, P_R, P_NONE, 0, F_LDDER F_ADDHLDE, R_HL),
+	R( '-','H','N',0,0,0, MINUS, P_L, P_R, P_NONE, 0, RT287, R_HL),
 	/* and against a frame slot, which the other four widths of this
 	 * had and the subtraction did not */
 	/*
@@ -1817,8 +2468,8 @@ struct rule rules[] = {
 	 */
 
 	/* shifts */
-	R("<(H,N)", LSHIFT, P_L, P_R, P_NONE, 0, "%(" T_ADD_HL_HL ")", R_HL),
-	R("<(A,N):b", LSHIFT, P_L, P_R, P_NONE, 0, "%(\tsla a\n)", R_A),
+	R( '<','H','N',0,0,0, LSHIFT, P_L, P_R, P_NONE, 0, "%(" T_ADD_HL_HL ")", R_HL),
+	R( '<','A','N',0,0,1, LSHIFT, P_L, P_R, P_NONE, 0, "%(\tsla a\n)", R_A),
 	/*
 	 * A byte shifted by a count only known at runtime - "1 << n",
 	 * the ordinary way to make a mask.  Every other shift here
@@ -1831,7 +2482,7 @@ struct rule rules[] = {
 	 * itself - sla a is two bytes, so the entry jump clears it and
 	 * the djnz reaches back over it.
 	 */
-	R("<(N,K):b", LSHIFT, P_L, P_R, P_NONE, 0, RT14, R_A),
+	R( '<','N','K',0,0,1, LSHIFT, P_L, P_R, P_NONE, 0, RT14, R_A),
 	/*
 	 * The same count arriving as a word, which is what an expression
 	 * count reduces to: "1 << (idx & 7)" works the AND out in HL and
@@ -1843,8 +2494,8 @@ struct rule rules[] = {
 	 * address, so "map[i] |= 1 << (n & 7)" wrote n's low byte into
 	 * the bitmap and pass1's else-if bookkeeping read garbage.
 	 */
-	R("<(N,E):b", LSHIFT, P_L, P_R, P_NONE, 0, RT14, R_A),
-	R("<(N,H):b", LSHIFT, P_L, P_R, P_NONE, 0,
+	R( '<','N','E',0,0,1, LSHIFT, P_L, P_R, P_NONE, 0, RT14, R_A),
+	R( '<','N','H',0,0,1, LSHIFT, P_L, P_R, P_NONE, 0,
 		"$[\tld b,l\n\tld a,$L\n\tinc b\n"
 		"\tjr $$+4\n\tsla a\n\tdjnz $$-2\n$]", R_A),
 	/*
@@ -1856,19 +2507,19 @@ struct rule rules[] = {
 	 * first, RF_SIGNL deciding: sra copies the sign bit back in
 	 * where srl feeds zero.
 	 */
-	R("<(A,K):b", LSHIFT, P_L, P_R, P_NONE, 0, RT11, R_A),
-	R("<(A,E):b", LSHIFT, P_L, P_R, P_NONE, 0, RT11, R_A),
-	R("<(A,H):b", LSHIFT, P_L, P_R, P_NONE, 0,
+	R( '<','A','K',0,0,1, LSHIFT, P_L, P_R, P_NONE, 0, RT11, R_A),
+	R( '<','A','E',0,0,1, LSHIFT, P_L, P_R, P_NONE, 0, RT11, R_A),
+	R( '<','A','H',0,0,1, LSHIFT, P_L, P_R, P_NONE, 0,
 		"$[\tld b,l\n\tinc b\n"
 		"\tjr $$+4\n\tsla a\n\tdjnz $$-2\n$]", R_A),
-	R( RP275, RSHIFT, P_L, P_R, P_NONE, RF_SIGNL, RT12, R_A),
-	R( RP273, RSHIFT, P_L, P_R, P_NONE, RF_SIGNL, RT12, R_A),
-	R( RP274, RSHIFT, P_L, P_R, P_NONE, RF_SIGNL,
+	R( '>','A','K',0,0,1, RSHIFT, P_L, P_R, P_NONE, RF_SIGNL, RT12, R_A),
+	R( '>','A','E',0,0,1, RSHIFT, P_L, P_R, P_NONE, RF_SIGNL, RT12, R_A),
+	R( '>','A','H',0,0,1, RSHIFT, P_L, P_R, P_NONE, RF_SIGNL,
 		"$[\tld b,l\n\tinc b\n"
 		"\tjr $$+4\n\tsra a\n\tdjnz $$-2\n$]", R_A),
-	R( RP275, RSHIFT, P_L, P_R, P_NONE, 0, RT13, R_A),
-	R( RP273, RSHIFT, P_L, P_R, P_NONE, 0, RT13, R_A),
-	R( RP274, RSHIFT, P_L, P_R, P_NONE, 0,
+	R( '>','A','K',0,0,1, RSHIFT, P_L, P_R, P_NONE, 0, RT13, R_A),
+	R( '>','A','E',0,0,1, RSHIFT, P_L, P_R, P_NONE, 0, RT13, R_A),
+	R( '>','A','H',0,0,1, RSHIFT, P_L, P_R, P_NONE, 0,
 		"$[\tld b,l\n\tinc b\n"
 		"\tjr $$+4\n\tsrl a\n\tdjnz $$-2\n$]", R_A),
 	/*
@@ -1876,47 +2527,47 @@ struct rule rules[] = {
 	 * itself where srl feeds in a zero.  The signed rule has to come
 	 * first, since the unsigned pattern matches either width.
 	 */
-	R( RP276, RSHIFT, P_L, P_R, P_NONE, RF_SIGNL, "%(\tsra a\n)", R_A),
-	R( RP276, RSHIFT, P_L, P_R, P_NONE, 0, "%(\tsrl a\n)", R_A),
+	R( '>','A','N',0,0,1, RSHIFT, P_L, P_R, P_NONE, RF_SIGNL, "%(\tsra a\n)", R_A),
+	R( '>','A','N',0,0,1, RSHIFT, P_L, P_R, P_NONE, 0, "%(\tsrl a\n)", R_A),
 	/*
 	 * A shift by a whole byte is a register move, not a loop - two
 	 * bytes against the thirty-two the repeated form would emit.  The
 	 * signed right shift has to put the sign back, since the byte
 	 * that moved down carries it.
 	 */
-	R( RP279, RSHIFT, P_L, P_R, P_NONE, RF_SIGNL,
+	R( '>','H','8',0,0,0, RSHIFT, P_L, P_R, P_NONE, RF_SIGNL,
 		"\tld l,h\n" F_LDAH F_RLA F_SBCAA F_LDHA, R_HL),
-	R( RP279, RSHIFT, P_L, P_R, P_NONE, 0, "\tld l,h\n" F_LDH0, R_HL),
-	R("<(H,8)", LSHIFT, P_L, P_R, P_NONE, 0, "\tld h,l\n\tld l,0\n", R_HL),
-	R( RP280, RSHIFT, P_L, P_R, P_NONE, RF_SIGNL, RT26, R_HL),
-	R( RP280, RSHIFT, P_L, P_R, P_NONE, 0, RT28, R_HL),
-	R( RP277, RSHIFT, P_L, P_R, P_NONE, RF_SIGNL, RT390, R_HL),
-	R( RP277, RSHIFT, P_L, P_R, P_NONE, 0, RT391, R_HL),
+	R( '>','H','8',0,0,0, RSHIFT, P_L, P_R, P_NONE, 0, "\tld l,h\n" F_LDH0, R_HL),
+	R( '<','H','8',0,0,0, LSHIFT, P_L, P_R, P_NONE, 0, "\tld h,l\n\tld l,0\n", R_HL),
+	R( '>','H','M',0,0,0, RSHIFT, P_L, P_R, P_NONE, RF_SIGNL, RT26, R_HL),
+	R( '>','H','M',0,0,0, RSHIFT, P_L, P_R, P_NONE, 0, RT28, R_HL),
+	R( '>','B','M',0,0,0, RSHIFT, P_L, P_R, P_NONE, RF_SIGNL, RT390, R_HL),
+	R( '>','B','M',0,0,0, RSHIFT, P_L, P_R, P_NONE, 0, RT391, R_HL),
 	/*
 	 * By any other count.  M is one to four and 8 has a form of its
 	 * own, so a shift by five, six, seven or more than eight matched
 	 * nothing at all - the left shifts have taken any count all
 	 * along, and these stopped at four.
 	 */
-	R( RP281, RSHIFT, P_L, P_R, P_NONE, RF_SIGNL, RT26, R_HL),
-	R( RP281, RSHIFT, P_L, P_R, P_NONE, 0, RT28, R_HL),
-	R( RP278, RSHIFT, P_L, P_R, P_NONE, RF_SIGNL, RT390, R_HL),
-	R( RP278, RSHIFT, P_L, P_R, P_NONE, 0, RT391, R_HL),
+	R( '>','H','N',0,0,0, RSHIFT, P_L, P_R, P_NONE, RF_SIGNL, RT26, R_HL),
+	R( '>','H','N',0,0,0, RSHIFT, P_L, P_R, P_NONE, 0, RT28, R_HL),
+	R( '>','B','N',0,0,0, RSHIFT, P_L, P_R, P_NONE, RF_SIGNL, RT390, R_HL),
+	R( '>','B','N',0,0,0, RSHIFT, P_L, P_R, P_NONE, 0, RT391, R_HL),
 
 	/* stores/loads with indexed/symref */
-	R("=(A,D(I)):b", ASSIGN, P_L, P_R, P_NONE, 0, RT101, R_A),
-	R("=(A,D(O)):b", ASSIGN, P_L, P_R, P_NONE, 0, RT101, R_A),
-	R("=(A,A)", ASSIGN, P_L, P_R, P_NONE, 0, RT0, R_A),
-	R("=(A,N):b", ASSIGN, P_L, P_R, P_NONE, 0, "\tld a,$R\n", R_A),
+	R( '=','A','D',0,'I',1, ASSIGN, P_L, P_R, P_NONE, 0, RT101, R_A),
+	R( '=','A','D',0,'O',1, ASSIGN, P_L, P_R, P_NONE, 0, RT101, R_A),
+	R( '=','A','A',0,0,0, ASSIGN, P_L, P_R, P_NONE, 0, RT0, R_A),
+	R( '=','A','N',0,0,1, ASSIGN, P_L, P_R, P_NONE, 0, "\tld a,$R\n", R_A),
 	/*
 	 * A byte wanted in A that came back in HL, which is where the
 	 * wrapper that lands a value puts it.  Only the low half is
 	 * meaningful at this width, so it is one instruction - and it
 	 * was the single most repeated thing the compiler could not do.
 	 */
-	R("=(A,H):b", ASSIGN, P_L, P_R, P_NONE, 0, RT235, R_A),
-	R("=(A,B):b", ASSIGN, P_L, P_R, P_NONE, 0, RT221, R_A),
-	R("=(A,E):b", ASSIGN, P_L, P_R, P_NONE, 0, RT121, R_A),
+	R( '=','A','H',0,0,1, ASSIGN, P_L, P_R, P_NONE, 0, RT235, R_A),
+	R( '=','A','B',0,0,1, ASSIGN, P_L, P_R, P_NONE, 0, RT221, R_A),
+	R( '=','A','E',0,0,1, ASSIGN, P_L, P_R, P_NONE, 0, RT121, R_A),
 	/* a byte in A stepped in place */
 	/*
 	 * Stepping a byte that lives in B or C, in place.
@@ -1931,24 +2582,24 @@ struct rule rules[] = {
 	 * nothing after them.  That is also what djnz is: dec b and a
 	 * relative jump, in one instruction and one byte less.
 	 */
-	R( RP474, PREINC, P_L, P_NONE, P_L, RF_B, RT61, F_NZ),
-	R( RP474, PREINC, P_L, P_NONE, P_L, RF_C, RT65, F_NZ),
-	R( RP531, PREDEC, P_L, P_NONE, P_L, RF_B, RT48, F_NZ),
-	R( RP531, PREDEC, P_L, P_NONE, P_L, RF_C, RT52, F_NZ),
-	R( RP473, PREINC, P_L, P_NONE, P_L, RF_B, "\tinc b\n\tld a,b\n", R_A),
-	R( RP473, PREINC, P_L, P_NONE, P_L, RF_C, "\tinc c\n\tld a,c\n", R_A),
-	R( RP530, PREDEC, P_L, P_NONE, P_L, RF_B, "\tdec b\n\tld a,b\n", R_A),
-	R( RP530, PREDEC, P_L, P_NONE, P_L, RF_C, "\tdec c\n\tld a,c\n", R_A),
+	R( 'i','V',0,0,0,9, PREINC, P_L, P_NONE, P_L, RF_B, RT61, F_NZ),
+	R( 'i','V',0,0,0,9, PREINC, P_L, P_NONE, P_L, RF_C, RT65, F_NZ),
+	R( 'k','V',0,0,0,9, PREDEC, P_L, P_NONE, P_L, RF_B, RT48, F_NZ),
+	R( 'k','V',0,0,0,9, PREDEC, P_L, P_NONE, P_L, RF_C, RT52, F_NZ),
+	R( 'i','V',0,0,0,1, PREINC, P_L, P_NONE, P_L, RF_B, "\tinc b\n\tld a,b\n", R_A),
+	R( 'i','V',0,0,0,1, PREINC, P_L, P_NONE, P_L, RF_C, "\tinc c\n\tld a,c\n", R_A),
+	R( 'k','V',0,0,0,1, PREDEC, P_L, P_NONE, P_L, RF_B, "\tdec b\n\tld a,b\n", R_A),
+	R( 'k','V',0,0,0,1, PREDEC, P_L, P_NONE, P_L, RF_C, "\tdec c\n\tld a,c\n", R_A),
 	/* postfix wants the old value, so take a copy before stepping */
-	R( RP499, POSTINC, P_L, P_NONE, P_L, RF_B, "\tld a,b\n\tinc b\n", R_A),
-	R( RP499, POSTINC, P_L, P_NONE, P_L, RF_C, "\tld a,c\n\tinc c\n", R_A),
-	R( RP556, POSTDEC, P_L, P_NONE, P_L, RF_B, "\tld a,b\n\tdec b\n", R_A),
-	R( RP556, POSTDEC, P_L, P_NONE, P_L, RF_C, "\tld a,c\n\tdec c\n", R_A),
-	R("i(A):b", PREINC, P_L, P_NONE, P_NONE, 0, "\tinc a\n", R_A),
-	R("k(A):b", PREDEC, P_L, P_NONE, P_NONE, 0, "\tdec a\n", R_A),
+	R( 'j','V',0,0,0,1, POSTINC, P_L, P_NONE, P_L, RF_B, "\tld a,b\n\tinc b\n", R_A),
+	R( 'j','V',0,0,0,1, POSTINC, P_L, P_NONE, P_L, RF_C, "\tld a,c\n\tinc c\n", R_A),
+	R( 'm','V',0,0,0,1, POSTDEC, P_L, P_NONE, P_L, RF_B, "\tld a,b\n\tdec b\n", R_A),
+	R( 'm','V',0,0,0,1, POSTDEC, P_L, P_NONE, P_L, RF_C, "\tld a,c\n\tdec c\n", R_A),
+	R( 'i','A',0,0,0,1, PREINC, P_L, P_NONE, P_NONE, 0, "\tinc a\n", R_A),
+	R( 'k','A',0,0,0,1, PREDEC, P_L, P_NONE, P_NONE, 0, "\tdec a\n", R_A),
 	/* storing a word already in DE to a global, so a nested
 	 * assignment can be used for its value */
-	R("=(O,E):s", ASSIGN, P_L, P_R, P_NONE, 0, "\tld ($L),de\n", R_DE),
+	R( '=','O','E',0,0,2, ASSIGN, P_L, P_R, P_NONE, 0, "\tld ($L),de\n", R_DE),
 
 	/*
 	 * Bit testing.  A single bit out of a byte is what bit does, in
@@ -1975,14 +2626,14 @@ struct rule rules[] = {
 	 * absolute load the Z80 has and bit has no absolute form, so
 	 * pointing HL at it first would cost what it saved.
 	 */
-	R("&(D(I),P):bF", AND, P_L, P_R, P_NONE, RF_POW2, "\tbit $R,($LL)\n", F_NZ),
-	R("&(D(V),P):bF", AND, P_L, P_R, P_LL, RF_POW2 | RF_IX,
+	R( '&','D','P','I',0,9, AND, P_L, P_R, P_NONE, RF_POW2, "\tbit $R,($LL)\n", F_NZ),
+	R( '&','D','P','V',0,9, AND, P_L, P_R, P_LL, RF_POW2 | RF_IX,
 		"\tbit $R,(ix+0)\n", F_NZ),
-	R("&(D(H),P):bF", AND, P_L, P_R, P_NONE, RF_POW2, "\tbit $R,(hl)\n", F_NZ),
-	R("&(A,P):bF", AND, P_L, P_R, P_NONE, RF_POW2, "\tbit $R,a\n", F_NZ),
-	R("&(D(I),N):b", AND, P_L, P_R, P_NONE, 0, F_LDALL "\tand $R\n", R_A),
-	R("|(D(I),N):b", OR, P_L, P_R, P_NONE, 0, F_LDALL "\tor $R\n", R_A),
-	R("^(D(I),N):b", XOR, P_L, P_R, P_NONE, 0, F_LDALL "\txor $R\n", R_A),
+	R( '&','D','P','H',0,9, AND, P_L, P_R, P_NONE, RF_POW2, "\tbit $R,(hl)\n", F_NZ),
+	R( '&','A','P',0,0,9, AND, P_L, P_R, P_NONE, RF_POW2, "\tbit $R,a\n", F_NZ),
+	R( '&','D','N','I',0,1, AND, P_L, P_R, P_NONE, 0, F_LDALL "\tand $R\n", R_A),
+	R( '|','D','N','I',0,1, OR, P_L, P_R, P_NONE, 0, F_LDALL "\tor $R\n", R_A),
+	R( '^','D','N','I',0,1, XOR, P_L, P_R, P_NONE, 0, F_LDALL "\txor $R\n", R_A),
 	/*
 	 * Byte arithmetic against a memory operand.  These match on the
 	 * parent so that A is known to hold the left operand, which makes
@@ -1991,23 +2642,23 @@ struct rule rules[] = {
 	 * The Z80 operates directly on (hl) and (iy+d), so no temporary
 	 * register is needed at all.
 	 */
-	R("+(A,D(O)):b", PLUS, P_L, P_R, P_NONE, 0, F_LDHLRL1 "\tadd a,(hl)\n", R_A),
-	R("-(A,D(O)):b", MINUS, P_L, P_R, P_NONE, 0, F_LDHLRL1 "\tsub (hl)\n", R_A),
-	R("&(A,D(O)):b", AND, P_L, P_R, P_NONE, 0, F_LDHLRL1 "\tand (hl)\n", R_A),
-	R("|(A,D(O)):b", OR, P_L, P_R, P_NONE, 0, F_LDHLRL1 F_ORHL, R_A),
-	R("^(A,D(O)):b", XOR, P_L, P_R, P_NONE, 0, F_LDHLRL1 "\txor (hl)\n", R_A),
-	R("+(A,D(I)):b", PLUS, P_L, P_R, P_NONE, 0, "\tadd a,($RL)\n", R_A),
-	R("-(A,D(I)):b", MINUS, P_L, P_R, P_NONE, 0, "\tsub ($RL)\n", R_A),
-	R("&(A,D(I)):b", AND, P_L, P_R, P_NONE, 0, "\tand ($RL)\n", R_A),
-	R("|(A,D(I)):b", OR, P_L, P_R, P_NONE, 0, "\tor ($RL)\n", R_A),
-	R("^(A,D(I)):b", XOR, P_L, P_R, P_NONE, 0, "\txor ($RL)\n", R_A),
+	R( '+','A','D',0,'O',1, PLUS, P_L, P_R, P_NONE, 0, F_LDHLRL1 "\tadd a,(hl)\n", R_A),
+	R( '-','A','D',0,'O',1, MINUS, P_L, P_R, P_NONE, 0, F_LDHLRL1 "\tsub (hl)\n", R_A),
+	R( '&','A','D',0,'O',1, AND, P_L, P_R, P_NONE, 0, F_LDHLRL1 "\tand (hl)\n", R_A),
+	R( '|','A','D',0,'O',1, OR, P_L, P_R, P_NONE, 0, F_LDHLRL1 F_ORHL, R_A),
+	R( '^','A','D',0,'O',1, XOR, P_L, P_R, P_NONE, 0, F_LDHLRL1 "\txor (hl)\n", R_A),
+	R( '+','A','D',0,'I',1, PLUS, P_L, P_R, P_NONE, 0, "\tadd a,($RL)\n", R_A),
+	R( '-','A','D',0,'I',1, MINUS, P_L, P_R, P_NONE, 0, "\tsub ($RL)\n", R_A),
+	R( '&','A','D',0,'I',1, AND, P_L, P_R, P_NONE, 0, "\tand ($RL)\n", R_A),
+	R( '|','A','D',0,'I',1, OR, P_L, P_R, P_NONE, 0, "\tor ($RL)\n", R_A),
+	R( '^','A','D',0,'I',1, XOR, P_L, P_R, P_NONE, 0, "\txor ($RL)\n", R_A),
 
 	/* byte arithmetic with both operands live: left in A, right in E */
-	R("+(A,K):b", PLUS, P_L, P_R, P_NONE, 0, RT31, R_A),
-	R("-(A,K):b", MINUS, P_L, P_R, P_NONE, 0, RT380, R_A),
-	R("&(A,K):b", AND, P_L, P_R, P_NONE, 0, RT35, R_A),
-	R("|(A,K):b", OR, P_L, P_R, P_NONE, 0, RT170, R_A),
-	R("^(A,K):b", XOR, P_L, P_R, P_NONE, 0, RT197, R_A),
+	R( '+','A','K',0,0,1, PLUS, P_L, P_R, P_NONE, 0, RT31, R_A),
+	R( '-','A','K',0,0,1, MINUS, P_L, P_R, P_NONE, 0, RT380, R_A),
+	R( '&','A','K',0,0,1, AND, P_L, P_R, P_NONE, 0, RT35, R_A),
+	R( '|','A','K',0,0,1, OR, P_L, P_R, P_NONE, 0, RT170, R_A),
+	R( '^','A','K',0,0,1, XOR, P_L, P_R, P_NONE, 0, RT197, R_A),
 	/*
 	 * The same operators when the right operand arrived as a word in
 	 * DE - a call result moved aside, mostly.  A byte operation only
@@ -2016,34 +2667,34 @@ struct rule rules[] = {
 	 * cntCondLbls answered 0 under the self-build: every IF in the
 	 * stream was emitted claiming no short-circuit labels.
 	 */
-	R("+(A,E):b", PLUS, P_L, P_R, P_NONE, 0, RT31, R_A),
-	R("-(A,E):b", MINUS, P_L, P_R, P_NONE, 0, RT380, R_A),
-	R("&(A,E):b", AND, P_L, P_R, P_NONE, 0, RT35, R_A),
-	R("|(A,E):b", OR, P_L, P_R, P_NONE, 0, RT170, R_A),
-	R("^(A,E):b", XOR, P_L, P_R, P_NONE, 0, RT197, R_A),
+	R( '+','A','E',0,0,1, PLUS, P_L, P_R, P_NONE, 0, RT31, R_A),
+	R( '-','A','E',0,0,1, MINUS, P_L, P_R, P_NONE, 0, RT380, R_A),
+	R( '&','A','E',0,0,1, AND, P_L, P_R, P_NONE, 0, RT35, R_A),
+	R( '|','A','E',0,0,1, OR, P_L, P_R, P_NONE, 0, RT170, R_A),
+	R( '^','A','E',0,0,1, XOR, P_L, P_R, P_NONE, 0, RT197, R_A),
 	/* the flag form first: and sets Z itself, so a test that only
 	 * wants the flag must not pay for a result register */
-	R("&(A,N):bF", AND, P_L, P_R, P_NONE, 0, RT33, F_NZ),
-	R("&(A,N):b", AND, P_L, P_R, P_NONE, 0, RT33, R_A),
-	R("&(A,K):bF", AND, P_L, P_R, P_NONE, 0, RT35, F_NZ),
-	R("|(A,N):b", OR, P_L, P_R, P_NONE, 0, "\tor $R\n", R_A),
-	R("^(A,N):b", XOR, P_L, P_R, P_NONE, 0, "\txor $R\n", R_A),
+	R( '&','A','N',0,0,9, AND, P_L, P_R, P_NONE, 0, RT33, F_NZ),
+	R( '&','A','N',0,0,1, AND, P_L, P_R, P_NONE, 0, RT33, R_A),
+	R( '&','A','K',0,0,9, AND, P_L, P_R, P_NONE, 0, RT35, F_NZ),
+	R( '|','A','N',0,0,1, OR, P_L, P_R, P_NONE, 0, "\tor $R\n", R_A),
+	R( '^','A','N',0,0,1, XOR, P_L, P_R, P_NONE, 0, "\txor $R\n", R_A),
 	/* no 16-bit and/or/xor on the Z80 - do it a byte at a time */
-	R("&(H,N)", AND, P_L, P_R, P_NONE, 0,
+	R( '&','H','N',0,0,0, AND, P_L, P_R, P_NONE, 0,
 		F_LDAL "\tand $Rl\n" F_LDLA F_LDAH "\tand $Rh\n" F_LDHA, R_HL),
-	R("|(H,N)", OR, P_L, P_R, P_NONE, 0,
+	R( '|','H','N',0,0,0, OR, P_L, P_R, P_NONE, 0,
 		F_LDAL "\tor $Rl\n" F_LDLA F_LDAH "\tor $Rh\n" F_LDHA, R_HL),
-	R("^(H,N)", XOR, P_L, P_R, P_NONE, 0,
+	R( '^','H','N',0,0,0, XOR, P_L, P_R, P_NONE, 0,
 		F_LDAL "\txor $Rl\n" F_LDLA F_LDAH "\txor $Rh\n" F_LDHA, R_HL),
-	R("&(B,N)", AND, P_L, P_R, P_NONE, 0,
+	R( '&','B','N',0,0,0, AND, P_L, P_R, P_NONE, 0,
 		T_BC_HL F_LDAL "\tand $Rl\n" F_LDLA F_LDAH "\tand $Rh\n" F_LDHA, R_HL),
-	R("|(B,N)", OR, P_L, P_R, P_NONE, 0,
+	R( '|','B','N',0,0,0, OR, P_L, P_R, P_NONE, 0,
 		T_BC_HL F_LDAL "\tor $Rl\n" F_LDLA F_LDAH "\tor $Rh\n" F_LDHA, R_HL),
-	R("^(B,N)", XOR, P_L, P_R, P_NONE, 0,
+	R( '^','B','N',0,0,0, XOR, P_L, P_R, P_NONE, 0,
 		T_BC_HL F_LDAL "\txor $Rl\n" F_LDLA F_LDAH "\txor $Rh\n" F_LDHA, R_HL),
-	R("&(H,E)", AND, P_L, P_R, P_NONE, 0, F_LDAL "\tand e\n" F_LDLA F_LDAH "\tand d\n" F_LDHA, R_HL),
-	R("|(H,E)", OR, P_L, P_R, P_NONE, 0, F_LDAL "\tor e\n" F_LDLA F_LDAH "\tor d\n" F_LDHA, R_HL),
-	R("^(H,E)", XOR, P_L, P_R, P_NONE, 0, F_LDAL "\txor e\n" F_LDLA F_LDAH "\txor d\n" F_LDHA, R_HL),
+	R( '&','H','E',0,0,0, AND, P_L, P_R, P_NONE, 0, F_LDAL "\tand e\n" F_LDLA F_LDAH "\tand d\n" F_LDHA, R_HL),
+	R( '|','H','E',0,0,0, OR, P_L, P_R, P_NONE, 0, F_LDAL "\tor e\n" F_LDLA F_LDAH "\tor d\n" F_LDHA, R_HL),
+	R( '^','H','E',0,0,0, XOR, P_L, P_R, P_NONE, 0, F_LDAL "\txor e\n" F_LDLA F_LDAH "\txor d\n" F_LDHA, R_HL),
 	/*
 	 * The same with BC on one side or the other.  A word bitwise
 	 * operator had a form for HL against DE and no other, so one of
@@ -2052,12 +2703,12 @@ struct rule rules[] = {
 	 * comes over to HL first, which is what the constant-count shifts
 	 * do a few rules down.
 	 */
-	R("&(H,B)", AND, P_L, P_R, P_NONE, 0, F_LDAL "\tand c\n" F_LDLA F_LDAH "\tand b\n" F_LDHA, R_HL),
-	R("|(H,B)", OR, P_L, P_R, P_NONE, 0, F_LDAL "\tor c\n" F_LDLA F_LDAH "\tor b\n" F_LDHA, R_HL),
-	R("^(H,B)", XOR, P_L, P_R, P_NONE, 0, F_LDAL "\txor c\n" F_LDLA F_LDAH "\txor b\n" F_LDHA, R_HL),
-	R("&(B,E)", AND, P_L, P_R, P_NONE, 0, T_BC_HL F_LDAL "\tand e\n" F_LDLA F_LDAH "\tand d\n" F_LDHA, R_HL),
-	R("|(B,E)", OR, P_L, P_R, P_NONE, 0, T_BC_HL F_LDAL "\tor e\n" F_LDLA F_LDAH "\tor d\n" F_LDHA, R_HL),
-	R("^(B,E)", XOR, P_L, P_R, P_NONE, 0, T_BC_HL F_LDAL "\txor e\n" F_LDLA F_LDAH "\txor d\n" F_LDHA, R_HL),
+	R( '&','H','B',0,0,0, AND, P_L, P_R, P_NONE, 0, F_LDAL "\tand c\n" F_LDLA F_LDAH "\tand b\n" F_LDHA, R_HL),
+	R( '|','H','B',0,0,0, OR, P_L, P_R, P_NONE, 0, F_LDAL "\tor c\n" F_LDLA F_LDAH "\tor b\n" F_LDHA, R_HL),
+	R( '^','H','B',0,0,0, XOR, P_L, P_R, P_NONE, 0, F_LDAL "\txor c\n" F_LDLA F_LDAH "\txor b\n" F_LDHA, R_HL),
+	R( '&','B','E',0,0,0, AND, P_L, P_R, P_NONE, 0, T_BC_HL F_LDAL "\tand e\n" F_LDLA F_LDAH "\tand d\n" F_LDHA, R_HL),
+	R( '|','B','E',0,0,0, OR, P_L, P_R, P_NONE, 0, T_BC_HL F_LDAL "\tor e\n" F_LDLA F_LDAH "\tor d\n" F_LDHA, R_HL),
+	R( '^','B','E',0,0,0, XOR, P_L, P_R, P_NONE, 0, T_BC_HL F_LDAL "\txor e\n" F_LDLA F_LDAH "\txor d\n" F_LDHA, R_HL),
 
 	/*
 	 * Signed compare against zero is just the sign bit, and it has to
@@ -2065,10 +2716,10 @@ struct rule rules[] = {
 	 * form below says "x < 0" is false for every x.  Must precede the
 	 * T/Y(H,N) rules - zero is a subset of NUMBER and first match wins.
 	 */
-	R("T(H,Z)", LT, P_L, P_R, P_NONE, RF_SIGNL, RT228, F_M),
-	R("Y(H,Z)", GE, P_L, P_R, P_NONE, RF_SIGNL, RT228, F_P),
-	R("T(B,Z)", LT, P_L, P_R, P_NONE, RF_SIGNL, RT219, F_M),
-	R("Y(B,Z)", GE, P_L, P_R, P_NONE, RF_SIGNL, RT219, F_P),
+	R( 'T','H','Z',0,0,0, LT, P_L, P_R, P_NONE, RF_SIGNL, RT228, F_M),
+	R( 'Y','H','Z',0,0,0, GE, P_L, P_R, P_NONE, RF_SIGNL, RT228, F_P),
+	R( 'T','B','Z',0,0,0, LT, P_L, P_R, P_NONE, RF_SIGNL, RT219, F_M),
+	R( 'Y','B','Z',0,0,0, GE, P_L, P_R, P_NONE, RF_SIGNL, RT219, F_P),
 	/*
 	 * "> 0" and "<= 0" are not a single flag the way "< 0" is - they
 	 * need the value to be non-negative AND non-zero.  Test the sign,
@@ -2084,10 +2735,10 @@ struct rule rules[] = {
 	 *   J+9  xor a    1
 	 *   J+10
 	 */
-	R("G(H,Z)", GT, P_L, P_R, P_NONE, RF_SIGNL, RT229, F_NZ),
-	R("W(H,Z)", LE, P_L, P_R, P_NONE, RF_SIGNL, RT229, F_Z),
-	R("G(B,Z)", GT, P_L, P_R, P_NONE, RF_SIGNL, RT220, F_NZ),
-	R("W(B,Z)", LE, P_L, P_R, P_NONE, RF_SIGNL, RT220, F_Z),
+	R( 'G','H','Z',0,0,0, GT, P_L, P_R, P_NONE, RF_SIGNL, RT229, F_NZ),
+	R( 'W','H','Z',0,0,0, LE, P_L, P_R, P_NONE, RF_SIGNL, RT229, F_Z),
+	R( 'G','B','Z',0,0,0, GT, P_L, P_R, P_NONE, RF_SIGNL, RT220, F_NZ),
+	R( 'W','B','Z',0,0,0, LE, P_L, P_R, P_NONE, RF_SIGNL, RT220, F_Z),
 
 	/*
 	 * Signed relational comparison.  Carry answers the unsigned
@@ -2106,9 +2757,9 @@ struct rule rules[] = {
 	 * zero stays on the sign-bit rules above - those are exact and
 	 * cheaper.
 	 */
-	R( RP353, LT, P_L, P_R, P_NONE, RF_SIGNL, RT462, F_M),
-	R( RP400, GE, P_L, P_R, P_NONE, RF_SIGNL, RT462, F_P),
-	R( RP431, LE, P_L, P_R, P_NONE, RF_SIGNL, F_EXDEHL T_SUB_DE T_SXORV, F_CC),
+	R( 'T','H','E',0,0,0, LT, P_L, P_R, P_NONE, RF_SIGNL, RT462, F_M),
+	R( 'Y','H','E',0,0,0, GE, P_L, P_R, P_NONE, RF_SIGNL, RT462, F_P),
+	R( 'd','H','E',0,0,0, LE, P_L, P_R, P_NONE, RF_SIGNL, F_EXDEHL T_SUB_DE T_SXORV, F_CC),
 	/*
 	 * A symbol compared against a register.  A SYMREF is left
 	 * unreduced so the store and load rules can use it as an
@@ -2126,9 +2777,9 @@ struct rule rules[] = {
 	 * kept its trailing blanks - and an empty one walked off the end
 	 * of the definition and ate the next line.
 	 */
-	R( RP358, LT, P_L, P_R, P_NONE, RF_SIGNL, RT318, F_M),
-	R( RP405, GE, P_L, P_R, P_NONE, RF_SIGNL, RT318, F_P),
-	R( RP436, LE, P_L, P_R, P_NONE, RF_SIGNL, F_LDHLL F_EXDEHL T_SUB_DE T_SXORV, F_CC),
+	R( 'T','O','E',0,0,0, LT, P_L, P_R, P_NONE, RF_SIGNL, RT318, F_M),
+	R( 'Y','O','E',0,0,0, GE, P_L, P_R, P_NONE, RF_SIGNL, RT318, F_P),
+	R( 'd','O','E',0,0,0, LE, P_L, P_R, P_NONE, RF_SIGNL, F_LDHLL F_EXDEHL T_SUB_DE T_SXORV, F_CC),
 
 	/*
 	 * The same symbol-on-the-left shapes with the register operand
@@ -2136,46 +2787,46 @@ struct rule rules[] = {
 	 * array's address arrives exactly here, and the table stopping
 	 * at (O,E) left "if (s > buf)" unreduced.
 	 */
-	R("T(O,B)", LT, P_L, P_R, P_NONE, RF_SIGNL, RT317, F_M),
-	R("Y(O,B)", GE, P_L, P_R, P_NONE, RF_SIGNL, RT317, F_P),
-	R("d(O,B)", LE, P_L, P_R, P_NONE, RF_SIGNL, F_LDHLL F_LDEC F_LDDB F_EXDEHL T_SUB_DE T_SXORV, F_CC),
+	R( 'T','O','B',0,0,0, LT, P_L, P_R, P_NONE, RF_SIGNL, RT317, F_M),
+	R( 'Y','O','B',0,0,0, GE, P_L, P_R, P_NONE, RF_SIGNL, RT317, F_P),
+	R( 'd','O','B',0,0,0, LE, P_L, P_R, P_NONE, RF_SIGNL, F_LDHLL F_LDEC F_LDDB F_EXDEHL T_SUB_DE T_SXORV, F_CC),
 
 	/* and with the symbol on the other side, where it becomes DE */
-	R( RP355, LT, P_L, P_R, P_NONE, RF_SIGNL, RT290, F_M),
-	R( RP402, GE, P_L, P_R, P_NONE, RF_SIGNL, RT290, F_P),
-	R( RP433, LE, P_L, P_R, P_NONE, RF_SIGNL, RT285, F_CC),
+	R( 'T','H','O',0,0,0, LT, P_L, P_R, P_NONE, RF_SIGNL, RT290, F_M),
+	R( 'Y','H','O',0,0,0, GE, P_L, P_R, P_NONE, RF_SIGNL, RT290, F_P),
+	R( 'd','H','O',0,0,0, LE, P_L, P_R, P_NONE, RF_SIGNL, RT285, F_CC),
 
-	R("T(H,B)", LT, P_L, P_R, P_NONE, RF_SIGNL, RT461, F_M),
-	R("Y(H,B)", GE, P_L, P_R, P_NONE, RF_SIGNL, RT461, F_P),
-	R( RP430, LE, P_L, P_R, P_NONE, RF_SIGNL, F_LDEC F_LDDB F_EXDEHL T_SUB_DE T_SXORV, F_CC),
-	R("T(H,N)", LT, P_L, P_R, P_NONE, RF_SIGNL, RT290, F_M),
-	R("Y(H,N)", GE, P_L, P_R, P_NONE, RF_SIGNL, RT290, F_P),
-	R("d(H,N)", LE, P_L, P_R, P_NONE, RF_SIGNL, RT285, F_CC),
+	R( 'T','H','B',0,0,0, LT, P_L, P_R, P_NONE, RF_SIGNL, RT461, F_M),
+	R( 'Y','H','B',0,0,0, GE, P_L, P_R, P_NONE, RF_SIGNL, RT461, F_P),
+	R( 'd','H','B',0,0,0, LE, P_L, P_R, P_NONE, RF_SIGNL, F_LDEC F_LDDB F_EXDEHL T_SUB_DE T_SXORV, F_CC),
+	R( 'T','H','N',0,0,0, LT, P_L, P_R, P_NONE, RF_SIGNL, RT290, F_M),
+	R( 'Y','H','N',0,0,0, GE, P_L, P_R, P_NONE, RF_SIGNL, RT290, F_P),
+	R( 'd','H','N',0,0,0, LE, P_L, P_R, P_NONE, RF_SIGNL, RT285, F_CC),
 
 	/* comparisons */
-	R("Q(H,E)", EQ, P_L, P_R, P_NONE, 0, RT360, F_Z),
+	R( 'Q','H','E',0,0,0, EQ, P_L, P_R, P_NONE, 0, RT360, F_Z),
 	/* LE/GT have no cheap flag of their own: swap the operands so the
 	 * borrow from sbc answers the reversed question. */
-	R( RP431, LE, P_L, P_R, P_NONE, 0, F_EXDEHL F_ORA F_SBCHLDE, F_CC),
-	R("U(H,E)", NEQ, P_L, P_R, P_NONE, 0, RT360, F_NZ),
-	R( RP353, LT, P_L, P_R, P_NONE, 0, RT360, F_C),
-	R( RP400, GE, P_L, P_R, P_NONE, 0, RT360, F_NC),
+	R( 'd','H','E',0,0,0, LE, P_L, P_R, P_NONE, 0, F_EXDEHL F_ORA F_SBCHLDE, F_CC),
+	R( 'U','H','E',0,0,0, NEQ, P_L, P_R, P_NONE, 0, RT360, F_NZ),
+	R( 'T','H','E',0,0,0, LT, P_L, P_R, P_NONE, 0, RT360, F_C),
+	R( 'Y','H','E',0,0,0, GE, P_L, P_R, P_NONE, 0, RT360, F_NC),
 	/* the same four with a symbol on the left - see the signed set */
-	R( RP436, LE, P_L, P_R, P_NONE, 0, F_LDHLL F_EXDEHL F_ORA F_SBCHLDE, F_CC),
-	R( RP358, LT, P_L, P_R, P_NONE, 0, RT312, F_C),
-	R( RP405, GE, P_L, P_R, P_NONE, 0, RT312, F_NC),
-	R( RP433, LE, P_L, P_R, P_NONE, 0, F_LDDER F_EXDEHL F_ORA F_SBCHLDE, F_CC),
-	R( RP355, LT, P_L, P_R, P_NONE, 0, RT287, F_C),
-	R( RP402, GE, P_L, P_R, P_NONE, 0, RT287, F_NC),
+	R( 'd','O','E',0,0,0, LE, P_L, P_R, P_NONE, 0, F_LDHLL F_EXDEHL F_ORA F_SBCHLDE, F_CC),
+	R( 'T','O','E',0,0,0, LT, P_L, P_R, P_NONE, 0, RT312, F_C),
+	R( 'Y','O','E',0,0,0, GE, P_L, P_R, P_NONE, 0, RT312, F_NC),
+	R( 'd','H','O',0,0,0, LE, P_L, P_R, P_NONE, 0, F_LDDER F_EXDEHL F_ORA F_SBCHLDE, F_CC),
+	R( 'T','H','O',0,0,0, LT, P_L, P_R, P_NONE, 0, RT287, F_C),
+	R( 'Y','H','O',0,0,0, GE, P_L, P_R, P_NONE, 0, RT287, F_NC),
 	/* BC operands: the Z80 has add/sbc hl,bc, so no shuffle needed */
-	R("c(H,B)", EQ, P_L, P_R, P_NONE, 0, RT359, F_CC),
+	R( 'c','H','B',0,0,0, EQ, P_L, P_R, P_NONE, 0, RT359, F_CC),
 	/*
 	 * LE and GT answer the reversed question, and there is no
 	 * ex bc,hl - so copy BC into DE and swap that instead.
 	 */
-	R( RP430, LE, P_L, P_R, P_NONE, 0, F_LDEC F_LDDB F_EXDEHL F_ORA F_SBCHLDE, F_CC),
-	R("Q(B,E)", EQ, P_L, P_R, P_NONE, 0, RT415, F_Z),
-	R("U(B,E)", NEQ, P_L, P_R, P_NONE, 0, RT415, F_NZ),
+	R( 'd','H','B',0,0,0, LE, P_L, P_R, P_NONE, 0, F_LDEC F_LDDB F_EXDEHL F_ORA F_SBCHLDE, F_CC),
+	R( 'Q','B','E',0,0,0, EQ, P_L, P_R, P_NONE, 0, RT415, F_Z),
+	R( 'U','B','E',0,0,0, NEQ, P_L, P_R, P_NONE, 0, RT415, F_NZ),
 	/*
 	 * A register variable compared, signed.  The rules below answer
 	 * with carry, which is the unsigned question - the same fault the
@@ -2187,24 +2838,24 @@ struct rule rules[] = {
 	 * operands are handed over the other way round, which is what the
 	 * ex de,hl is doing.
 	 */
-	R( RP348, LT, P_L, P_R, P_NONE, RF_SIGNL, RT425, F_M),
-	R( RP395, GE, P_L, P_R, P_NONE, RF_SIGNL, RT425, F_P),
-	R( RP427, GT, P_L, P_R, P_NONE, RF_SIGNL, T_BC_HL F_EXDEHL T_SUB_DE T_SXORV, F_CC),
-	R( RP348, LT, P_L, P_R, P_NONE, 0, RT415, F_C),
-	R( RP395, GE, P_L, P_R, P_NONE, 0, RT415, F_NC),
-	R("Q(B,N)", EQ, P_L, P_R, P_NONE, 0, RT411, F_Z),
-	R("U(B,N)", NEQ, P_L, P_R, P_NONE, 0, RT411, F_NZ),
-	R( RP349, LT, P_L, P_R, P_NONE, RF_SIGNL, RT413, F_M),
-	R( RP396, GE, P_L, P_R, P_NONE, RF_SIGNL, RT413, F_P),
-	R("d(B,N)", GT, P_L, P_R, P_NONE, RF_SIGNL, T_BC_HL F_LDDER F_EXDEHL T_SUB_DE T_SXORV, F_CC),
-	R( RP349, LT, P_L, P_R, P_NONE, 0, RT411, F_C),
-	R( RP396, GE, P_L, P_R, P_NONE, 0, RT411, F_NC),
+	R( 'T','B','E',0,0,0, LT, P_L, P_R, P_NONE, RF_SIGNL, RT425, F_M),
+	R( 'Y','B','E',0,0,0, GE, P_L, P_R, P_NONE, RF_SIGNL, RT425, F_P),
+	R( 'd','B','E',0,0,0, GT, P_L, P_R, P_NONE, RF_SIGNL, T_BC_HL F_EXDEHL T_SUB_DE T_SXORV, F_CC),
+	R( 'T','B','E',0,0,0, LT, P_L, P_R, P_NONE, 0, RT415, F_C),
+	R( 'Y','B','E',0,0,0, GE, P_L, P_R, P_NONE, 0, RT415, F_NC),
+	R( 'Q','B','N',0,0,0, EQ, P_L, P_R, P_NONE, 0, RT411, F_Z),
+	R( 'U','B','N',0,0,0, NEQ, P_L, P_R, P_NONE, 0, RT411, F_NZ),
+	R( 'T','B','N',0,0,0, LT, P_L, P_R, P_NONE, RF_SIGNL, RT413, F_M),
+	R( 'Y','B','N',0,0,0, GE, P_L, P_R, P_NONE, RF_SIGNL, RT413, F_P),
+	R( 'd','B','N',0,0,0, GT, P_L, P_R, P_NONE, RF_SIGNL, T_BC_HL F_LDDER F_EXDEHL T_SUB_DE T_SXORV, F_CC),
+	R( 'T','B','N',0,0,0, LT, P_L, P_R, P_NONE, 0, RT411, F_C),
+	R( 'Y','B','N',0,0,0, GE, P_L, P_R, P_NONE, 0, RT411, F_NC),
 
 	/* against a symbol's address, which is what comparing a pointer
 	 * with "&thing" comes to */
-	R("Q(H,O)", EQ, P_L, P_R, P_NONE, 0, RT287, F_Z),
-	R("U(H,O)", NEQ, P_L, P_R, P_NONE, 0, RT287, F_NZ),
-	R("c(H,N)", EQ, P_L, P_R, P_NONE, 0, RT287, F_CC),
+	R( 'Q','H','O',0,0,0, EQ, P_L, P_R, P_NONE, 0, RT287, F_Z),
+	R( 'U','H','O',0,0,0, NEQ, P_L, P_R, P_NONE, 0, RT287, F_NZ),
+	R( 'c','H','N',0,0,0, EQ, P_L, P_R, P_NONE, 0, RT287, F_CC),
 
 	/*
 	 * Signed byte comparisons.  These have to come before the
@@ -2223,11 +2874,11 @@ struct rule rules[] = {
 	 * fall through to no rule at all.  A flag becomes a number by the
 	 * same path a word comparison uses.
 	 */
-	R("T(A,Z)", LT, P_L, P_R, P_NONE, RF_SIGNL, RT358, F_M),
-	R("Y(A,Z)", GE, P_L, P_R, P_NONE, RF_SIGNL, RT358, F_P),
+	R( 'T','A','Z',0,0,0, LT, P_L, P_R, P_NONE, RF_SIGNL, RT358, F_M),
+	R( 'Y','A','Z',0,0,0, GE, P_L, P_R, P_NONE, RF_SIGNL, RT358, F_P),
 	/* or a sets S and Z together, which is what > 0 and <= 0 need */
-	R("G(A,Z)", GT, P_L, P_R, P_NONE, RF_SIGNL, RT361, F_NZ),
-	R("W(A,Z)", LE, P_L, P_R, P_NONE, RF_SIGNL, RT361, F_Z),
+	R( 'G','A','Z',0,0,0, GT, P_L, P_R, P_NONE, RF_SIGNL, RT361, F_NZ),
+	R( 'W','A','Z',0,0,0, LE, P_L, P_R, P_NONE, RF_SIGNL, RT361, F_Z),
 	/*
 	 * Against anything else, the same sign-exclusive-or-overflow the
 	 * word rules use.  Seven bytes against cp's two, which is why the
@@ -2240,36 +2891,36 @@ struct rule rules[] = {
 	 * to -128 and turns a test that is always false into one that is
 	 * always true.
 	 */
-	R("T(A,K)", LT, P_L, P_R, P_NONE, RF_SIGNL, RT381, F_M),
-	R("Y(A,K)", GE, P_L, P_R, P_NONE, RF_SIGNL, RT381, F_P),
-	R( RP306, GT, P_L, P_R, P_NONE, RF_SIGNL, RT382, F_NZ),
-	R( RP374, LE, P_L, P_R, P_NONE, RF_SIGNL, RT382, F_Z),
-	R( RP346, LT, P_L, P_R, P_NONE, RF_SIGNL, RT384, F_M),
-	R( RP393, GE, P_L, P_R, P_NONE, RF_SIGNL, RT384, F_P),
-	R( RP307, GT, P_L, P_R, P_NONE, RF_SIGNL, RT385, F_NZ),
-	R( RP375, LE, P_L, P_R, P_NONE, RF_SIGNL, RT385, F_Z),
-	R("T(D(I),N):b", LT, P_L, P_R, P_NONE, RF_SIGNL, RT271, F_M),
-	R("Y(D(I),N):b", GE, P_L, P_R, P_NONE, RF_SIGNL, RT271, F_P),
-	R( RP311, GT, P_L, P_R, P_NONE, RF_SIGNL, RT272, F_NZ),
-	R( RP379, LE, P_L, P_R, P_NONE, RF_SIGNL, RT272, F_Z),
+	R( 'T','A','K',0,0,0, LT, P_L, P_R, P_NONE, RF_SIGNL, RT381, F_M),
+	R( 'Y','A','K',0,0,0, GE, P_L, P_R, P_NONE, RF_SIGNL, RT381, F_P),
+	R( 'G','A','K',0,0,0, GT, P_L, P_R, P_NONE, RF_SIGNL, RT382, F_NZ),
+	R( 'W','A','K',0,0,0, LE, P_L, P_R, P_NONE, RF_SIGNL, RT382, F_Z),
+	R( 'T','A','N',0,0,0, LT, P_L, P_R, P_NONE, RF_SIGNL, RT384, F_M),
+	R( 'Y','A','N',0,0,0, GE, P_L, P_R, P_NONE, RF_SIGNL, RT384, F_P),
+	R( 'G','A','N',0,0,0, GT, P_L, P_R, P_NONE, RF_SIGNL, RT385, F_NZ),
+	R( 'W','A','N',0,0,0, LE, P_L, P_R, P_NONE, RF_SIGNL, RT385, F_Z),
+	R( 'T','D','N','I',0,1, LT, P_L, P_R, P_NONE, RF_SIGNL, RT271, F_M),
+	R( 'Y','D','N','I',0,1, GE, P_L, P_R, P_NONE, RF_SIGNL, RT271, F_P),
+	R( 'G','D','N','I',0,1, GT, P_L, P_R, P_NONE, RF_SIGNL, RT272, F_NZ),
+	R( 'W','D','N','I',0,1, LE, P_L, P_R, P_NONE, RF_SIGNL, RT272, F_Z),
 
 	/* byte comparisons */
 	/* byte comparison against another byte, in E */
-	R("c(A,K)", EQ, P_L, P_R, P_NONE, 0, F_CPE, F_CC),
-	R("Q(A,N)", EQ, P_L, P_R, P_NONE, 0, RT200, F_Z),
-	R("U(A,N)", NEQ, P_L, P_R, P_NONE, 0, RT200, F_NZ),
+	R( 'c','A','K',0,0,0, EQ, P_L, P_R, P_NONE, 0, F_CPE, F_CC),
+	R( 'Q','A','N',0,0,0, EQ, P_L, P_R, P_NONE, 0, RT200, F_Z),
+	R( 'U','A','N',0,0,0, NEQ, P_L, P_R, P_NONE, 0, RT200, F_NZ),
 	/*
 	 * Against a byte register variable, which lives in B or C.  cp
 	 * takes either directly; there were forms for E and for a
 	 * constant and none for these.
 	 */
-	R( RP328, EQ, P_L, P_R, P_R, RF_B, RT41, F_Z),
-	R( RP361, NEQ, P_L, P_R, P_R, RF_B, RT41, F_NZ),
-	R( RP328, EQ, P_L, P_R, P_R, RF_C, RT42, F_Z),
-	R( RP361, NEQ, P_L, P_R, P_R, RF_C, RT42, F_NZ),
-	R( RP346, LT, P_L, P_R, P_NONE, 0, RT200, F_C),
-	R( RP393, GE, P_L, P_R, P_NONE, 0, RT200, F_NC),
-	R("c(D(I),N):b", EQ, P_L, P_R, P_NONE, 0, F_LDALL F_CPR, F_CC),
+	R( 'Q','A','V',0,0,0, EQ, P_L, P_R, P_R, RF_B, RT41, F_Z),
+	R( 'U','A','V',0,0,0, NEQ, P_L, P_R, P_R, RF_B, RT41, F_NZ),
+	R( 'Q','A','V',0,0,0, EQ, P_L, P_R, P_R, RF_C, RT42, F_Z),
+	R( 'U','A','V',0,0,0, NEQ, P_L, P_R, P_R, RF_C, RT42, F_NZ),
+	R( 'T','A','N',0,0,0, LT, P_L, P_R, P_NONE, 0, RT200, F_C),
+	R( 'Y','A','N',0,0,0, GE, P_L, P_R, P_NONE, 0, RT200, F_NC),
+	R( 'c','D','N','I',0,1, EQ, P_L, P_R, P_NONE, 0, F_LDALL F_CPR, F_CC),
 
 	/*
 	 * Unsigned > and <=.  cp leaves the answer spread over two flags -
@@ -2288,12 +2939,12 @@ struct rule rules[] = {
 	 * true becomes one that always is.  Two bytes more, and right at
 	 * both ends of the range.
 	 */
-	R( RP306, GT, P_L, P_R, P_NONE, 0, RT199, F_NC),
-	R( RP374, LE, P_L, P_R, P_NONE, 0, RT199, F_C),
-	R( RP307, GT, P_L, P_R, P_NONE, 0, RT201, F_NC),
-	R( RP375, LE, P_L, P_R, P_NONE, 0, RT201, F_C),
-	R( RP311, GT, P_L, P_R, P_NONE, 0, RT269, F_NC),
-	R( RP379, LE, P_L, P_R, P_NONE, 0, RT269, F_C),
+	R( 'G','A','K',0,0,0, GT, P_L, P_R, P_NONE, 0, RT199, F_NC),
+	R( 'W','A','K',0,0,0, LE, P_L, P_R, P_NONE, 0, RT199, F_C),
+	R( 'G','A','N',0,0,0, GT, P_L, P_R, P_NONE, 0, RT201, F_NC),
+	R( 'W','A','N',0,0,0, LE, P_L, P_R, P_NONE, 0, RT201, F_C),
+	R( 'G','D','N','I',0,1, GT, P_L, P_R, P_NONE, 0, RT269, F_NC),
+	R( 'W','D','N','I',0,1, LE, P_L, P_R, P_NONE, 0, RT269, F_C),
 
 	/*
 	 * The same fold at word width.  These turned "> n" into ">= n+1"
@@ -2303,16 +2954,16 @@ struct rule rules[] = {
 	 * true of every unsigned short and came out false for all of
 	 * them.
 	 */
-	R("G(H,N)", GT, P_L, P_R, P_NONE, 0, RT288, F_NC),
-	R("W(H,N)", LE, P_L, P_R, P_NONE, 0, RT288, F_C),
+	R( 'G','H','N',0,0,0, GT, P_L, P_R, P_NONE, 0, RT288, F_NC),
+	R( 'W','H','N',0,0,0, LE, P_L, P_R, P_NONE, 0, RT288, F_C),
 	/* the same for a register variable, which had neither */
-	R("G(B,N)", GT, P_L, P_R, P_NONE, 0, RT412, F_NC),
-	R("W(B,N)", LE, P_L, P_R, P_NONE, 0, RT412, F_C),
-	R( RP427, GT, P_L, P_R, P_NONE, 0, T_BC_HL F_EXDEHL F_ORA F_SBCHLDE, F_CC),
+	R( 'G','B','N',0,0,0, GT, P_L, P_R, P_NONE, 0, RT412, F_NC),
+	R( 'W','B','N',0,0,0, LE, P_L, P_R, P_NONE, 0, RT412, F_C),
+	R( 'd','B','E',0,0,0, GT, P_L, P_R, P_NONE, 0, T_BC_HL F_EXDEHL F_ORA F_SBCHLDE, F_CC),
 
 	/* NEQ -> BANG(EQ) */
-	R("U(_,N)", 0, P_NONE, P_NONE, P_NONE, RF_NOTEQ, NULL, 0),
-	R("U", 0, P_NONE, P_NONE, P_NONE, RF_NOTEQ, NULL, 0),
+	R( 'U','_','N',0,0,0, 0, P_NONE, P_NONE, P_NONE, RF_NOTEQ, NULL, 0),
+	R( 'U',0,0,0,0,0, 0, P_NONE, P_NONE, P_NONE, RF_NOTEQ, NULL, 0),
 
 	/*
 	 * Storing a register-relative address to a global: the INDEX
@@ -2325,15 +2976,17 @@ struct rule rules[] = {
 	 * add hl takes only bc/de/hl/sp, so the register goes through
 	 * the stack.
 	 */
-	R("=(O,I)", ASSIGN, P_L, P_R, P_NONE, 0,
+	R( '=','O','I',0,0,0, ASSIGN, P_L, P_R, P_NONE, 0,
 		"\tpush $Rr\n\tpop hl\n\tld de,$Ro\n\tadd hl,de\n\tld ($L),hl\n",
 		R_HL),
 
 	/* terminator */
-	{NULL, NULL, 0, 0, 0, 0}
+	{NULL, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
 };
 
-/* Patterns that should not be reduced */
-char *preserve[] = {
-	"V", "L", "I", "N", "S", "O", "H", "E", "A", "K", "B", "C", NULL
-};
+/*
+ * Operands that are left alone: they reduce to themselves and the
+ * rules read them where they stand.  One letter apiece, so a string
+ * rather than a dozen strings and a dozen pointers to them.
+ */
+char preserve[] = "VLINSOHEAKBC";
