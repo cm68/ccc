@@ -281,6 +281,18 @@ main(int argc, char **argv)
 		fprintf(stderr, "peep: cannot create %s\n", outf);
 		exit(1);
 	}
+#ifdef CCC
+	/*
+	 * The target's stdio has CP/M text mode in it: a \r slipped in
+	 * ahead of every \n on the way out, \r eaten and ctrl-Z taken
+	 * for the end on the way in.  This is a byte-for-byte rewrite
+	 * of an LF-only file - what comes out must be what went in,
+	 * less what the rules removed - so both streams run binary.
+	 * The host's stdio has no such mode and no such flag.
+	 */
+	in->_flag |= _IOBINARY;
+	out->_flag |= _IOBINARY;
+#endif
 
 	/*
 	 * Before the window starts: find the literal blocks that spell

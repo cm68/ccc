@@ -200,9 +200,9 @@ reads(char *insn)
 	o2 = oper2(op);
 
 	if (strcmp(m, "ld") == 0) {
-		int rd, w;
-		w = dstregs(op, &rd);
-		(void)w;
+		int rd;
+
+		dstregs(op, &rd);
 		return rd | allregs(o2);
 	}
 	if (strcmp(m, "push") == 0)
@@ -306,7 +306,6 @@ writes(char *insn)
 		strcmp(m, "rrca") == 0)
 		return R_A | R_F;
 
-	(void)o2;
 	return 0;					/* unknown: nothing is proved overwritten */
 }
 
@@ -329,7 +328,15 @@ isdead(int reg, int from)
 			return 0;			/* a jump target: no idea what reaches it */
 		if (win[i].kind != L_INSN)
 			continue;
-		if (reads(win[i].key) & reg & ~got)
+		/*
+		 * Spelled without the complement: pass2 has no rule yet
+		 * for ~ inside a condition, and what it does with a shape
+		 * it cannot reduce is leave a marker and a wrong branch.
+		 * "some bit of reg is read that got has not yet covered"
+		 * says the same thing with an OR: adding the read bits to
+		 * got changes it exactly when such a bit exists.
+		 */
+		if (((reads(win[i].key) & reg) | got) != got)
 			return 0;
 		got |= writes(win[i].key);
 		if ((got & reg) == reg)

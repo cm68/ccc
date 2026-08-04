@@ -94,9 +94,13 @@ mx-ccc:
 	for f in $(SOURCES); do \
 		b=$${f%.c}; \
 		printf "%-12s" "$$b: " ; \
-		if $(ROOTDIR)/bin/ccc $(CCCOPT) -c -DCCC -i$(LIBSRCINC) \
+		if $(ROOTDIR)/bin/ccc $(CCCOPT) -k -c -DCCC -i$(LIBSRCINC) \
 			-I$(PEEPDIR) -I$(LIBDIR) $(PEEPDIR)/$$f > $$b.log 2>&1 \
 			&& [ -f $$b.o ]; then \
+			if grep -q XXXXXX $$b.s; then \
+				echo "FAIL: XXXXXX marker - pass2 punted on a shape"; \
+				grep XXXXXX $$b.s; exit 1; \
+			fi; \
 			echo ok; \
 		else echo FAIL; cat $$b.log; exit 1; fi \
 	done
