@@ -11,7 +11,8 @@ unsigned char swCapacity = 0;       /* allocated size of swList */
 unsigned char swStack[MAX_SWDEPTH]; /* nesting stack (indices into swList) */
 unsigned char swStmtDepth[MAX_SWDEPTH]; /* statement() depth at which each switch started */
 unsigned char swDepth = 0;          /* nesting depth */
-static unsigned char stmtNest = 0;  /* current statement() nesting depth */
+static unsigned char stmtNest = 0;
+int spanStop;			/* set when a function definition ends */  /* current statement() nesting depth */
 
 /* Phase 2 switch emission tracking */
 unsigned char swEmitIdx = 0;                /* next switch to emit */
@@ -387,6 +388,26 @@ resetCounts(void)
 {
 	countTop = 0;
 	countIdx = 0;
+}
+
+/*
+ * Everything the two phases hand between them, emptied.
+ *
+ * Phase 1 fills these and phase 2 reads them back by entry order, so
+ * the read pointers restart while the write pointers stay - which is
+ * right when the phases run over the whole file once each.  Run a
+ * span at a time and the write pointers have to go back too, or the
+ * next span's phase 2 reads the last span's counts: a block that held
+ * sixteen statements was emitted as nine, the rest of it dropped.
+ */
+void
+resetSpanCnts(void)
+{
+	funcCntTop = 0;
+	funcCntIdx = 0;
+	resetBlkCnts();
+	resetCounts();
+	resetSwitch();
 }
 
 /* Reset read pointer for phase 2 (preserves pushed values) */

@@ -422,6 +422,12 @@ parsefunc(struct name *f)
 
 	// Pop the function scope
 	popScope();
+	/*
+	 * The end of a span.  process() runs the two phases over a
+	 * function at a time, so that phase 2 can free its locals before
+	 * phase 1 discovers the next function's.
+	 */
+	spanStop = 1;
 
 	/* Free this function's scope names now instead of at exit: the
 	 * graveyard is LIFO, so entries above gravemark are all ours.
@@ -791,12 +797,18 @@ next_decl:
  *   - Unrecognized tokens are skipped to prevent infinite loops
  *   - TOK_NONE tokens (from lexer errors) are consumed and ignored
  */
+/*
+ * One span: declarations until the end of a function definition, or
+ * the end of the file.  The scope belongs to the caller - a span is
+ * part of a file, not a file, and the globals it declares have to
+ * still be there for the next one.
+ */
 void
-parse()
+parseSpan()
 {
 	struct name *poss_typedef;
 
-	pushScope("global");
+	spanStop = 0;
 	while (cur.type != E_O_F) {
 		while (cur.type == TOK_NONE) {
 			gettoken();
@@ -831,8 +843,20 @@ parse()
 #endif
 			gettoken();
 		}
+		if (spanStop)
+			return;
 	}
+}
 
+/*
+ * The whole file, as one span after another.
+ */
+void
+parse()
+{
+	pushScope("global");
+	while (cur.type != E_O_F)
+		parseSpan();
 	popScope();
 
 	/*
@@ -883,6 +907,37 @@ freeLocals(struct local *local)
 }
 
 /*
+ * Free the graveyard.
+ *
+ * popScope cannot free a name on the spot because pending AST may
+ * still point at it, so it parks it here instead.  At the end of a
+ * span that is no longer true: the function has been emitted and its
+ * exprs freed, and nothing outside it ever held a name below file
+ * scope - capLocals keeps copies, by value, of everything a later
+ * pass needs.  So the graveyard only has to hold one function's
+ * worth, not the file's.
+ *
+ * fdef entries own their u.locals copies; initializer exprs were
+ * freed when they were emitted.
+ */
+void
+drainGraves()
+{
+	struct name *n;
+
+	while (deadNames) {
+		n = deadNames;
+		deadNames = n->chain;
+		if (n->kind == kfdef && n->u.locals)
+			freeLocals(n->u.locals);
+		free(n);
+#ifdef DEBUG
+		nameCurCnt--;
+#endif
+	}
+}
+
+/*
  * Clean up allocated memory after parsing, preserving basic types
  * Traverse chain and free non-basic (level > 0) names
  */
@@ -912,19 +967,8 @@ cleanupParse()
 	}
 	/* names now points to first basic type (level 0) */
 
-	/* Free the graveyard: names unlinked by popScope over the whole
-	 * run.  Nothing references them at exit.  fdef entries own their
-	 * u.locals copies; initializer exprs were freed when emitted. */
-	while (deadNames) {
-		n = deadNames;
-		deadNames = n->chain;
-		if (n->kind == kfdef && n->u.locals)
-			freeLocals(n->u.locals);
-		free(n);
-#ifdef DEBUG
-		nameCurCnt--;
-#endif
-	}
+	/* Whatever the last span left behind. */
+	drainGraves();
 
 	/* Types live in the permalloc arena and are never freed. */
 }

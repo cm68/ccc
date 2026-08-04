@@ -209,6 +209,7 @@ struct type *getType(char flags, struct type *sub, int count);
 int typesize(struct type *t);
 struct type *fnArgType(struct type *t, unsigned char i);
 extern char compatFnTyp(struct type *t1, struct type *t2);
+extern char sameRet(struct type *t1, struct type *t2);
 
 /*
  * enum constants are lowered to #defines by cpp, so their names are
@@ -325,7 +326,10 @@ extern struct type *ulongtype;
 extern struct type *voidtype;
 
 void parse();
+void parseSpan();
+extern int spanStop;	/* a function definition just ended */
 void cleanupParse();
+void drainGraves();
 
 /*
  * Switch statement table tracking (phase 1)
@@ -425,7 +429,8 @@ extern unsigned char phase;         // 1 = build symbol table, 2 = emit AST
 void pushCount(char c);
 char popCount(void);
 void resetCounts(void);
-void resetCountIdx(void);  /* Reset read pointer for phase 2 */
+void resetCountIdx(void);
+void resetSpanCnts(void);  /* Reset read pointer for phase 2 */
 
 /* Block statement counts (phase 1 -> phase 2) */
 void enterBlkCnt(void);  /* call when entering block in phase 1 */

@@ -114,47 +114,59 @@ process(char *f, char *o1, char *o2)
     /* Reset string counter for this file */
     globalStrCtr = 0;
 
-    /* Phase 1: Build symbol table, validate types, accumulate counts */
-    phase = 1;
-#ifdef DEBUG
-    if (VERBOSE(V_PHASE1))
-        fdprintf(2, "=== Starting phase 1 ===\n");
-#endif
-    parse();
-#ifdef DEBUG
-    if (VERBOSE(V_PHASE1)) {
-        extern unsigned long lexTokenCount;
-        fdprintf(2, "=== Phase 1 done, tokens=%lu ===\n", lexTokenCount);
-    }
-#endif
+    /*
+     * The two phases, a function at a time.
+     *
+     * They used to run over the whole file: phase 1 discovered every
+     * function's locals and phase 2 freed them one at a time, so the
+     * whole file's worth was live at the turn between the passes.  A
+     * span ends at the end of a function, and phase 2 frees that
+     * function's locals before phase 1 goes looking for the next
+     * one's, so what is live is one function's.
+     *
+     * A span starts after the previous function rather than at this
+     * one's brace, because the globals between them need both phases:
+     * phase 1 emits the string a pointer initialiser refers to and
+     * phase 2 is where an array's extent is finally known.
+     *
+     * The string counter goes back to where the span began, so the
+     * strN phase 1 emitted are the ones phase 2 refers to - the same
+     * lockstep the file-wide code kept by resetting it to zero.
+     */
+    pushScope("global");
+    for (;;) {
+        long spanBase = lexTell();
+        unsigned short spanStr = globalStrCtr;
+        int hitEof;
 
-    /* Rewind lexeme stream for phase 2 */
-    lexRewind();
-#ifdef DEBUG
-    {
-        extern unsigned long lexTokenCount;
-        lexTokenCount = 0;  /* Reset for phase 2 */
-    }
-#endif
-    lexlevel = 0;  /* Reset scope level for phase 2 */
-    resetFuncIdx();  /* Reset function stmt count read pointer for phase 2 */
-    flipBlkCnts();   /* Reverse block counts for phase 2 (inner-first -> outer-first) */
-    resetCountIdx(); /* Reset switch case count read pointer for phase 2 */
-    globalStrCtr = 0;  /* Reset string counter so phase 2 matches phase 1 */
+        resetSpanCnts();
+        phase = 1;
+        parseSpan();
+        hitEof = cur.type == E_O_F;
 
-    /* Phase 2: Emit AST (uses counts pushed by phase 1 in LIFO order) */
-    phase = 2;
-#ifdef DEBUG
-    if (VERBOSE(V_PHASE2))
-        fdprintf(2, "=== Starting phase 2 ===\n");
-#endif
-    parse();
-#ifdef DEBUG
-    if (VERBOSE(V_PHASE2)) {
-        extern unsigned long lexTokenCount;
-        fdprintf(2, "=== Phase 2 done, tokens=%lu ===\n", lexTokenCount);
+        lexSeek(spanBase);
+        globalStrCtr = spanStr;
+        lexlevel = 1;
+        resetFuncIdx();
+        flipBlkCnts();
+        resetCountIdx();
+
+        phase = 2;
+        parseSpan();
+
+        /*
+         * The span is emitted and its exprs are gone, so the names
+         * popScope parked on the way out have nothing pointing at
+         * them any more.  Freeing here is what keeps the live set to
+         * one function: without it both phases' locals pile up on the
+         * graveyard until exit, which is the whole file's worth.
+         */
+        drainGraves();
+
+        if (hitEof)
+            break;
     }
-#endif
+    popScope();
 
     lexClose();
     close(astFd);
