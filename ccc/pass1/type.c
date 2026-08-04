@@ -207,6 +207,32 @@ popScope()
 }
 
 /*
+ * Take a name back off the lookup chain and free it.
+ *
+ * Unlike popScope's graveyard this frees on the spot, because the
+ * only caller drops a declaration that nothing refers to - cpp scored
+ * the name as appearing once in the whole stream, and that once is
+ * the declaration being dropped.  There is no AST pointing at it
+ * because there is no mention of it anywhere to have built one.
+ */
+void
+dropName(struct name *n)
+{
+    struct name **pp;
+
+    for (pp = &names; *pp; pp = &(*pp)->chain) {
+        if (*pp == n) {
+            *pp = n->chain;
+            free(n);
+#ifdef DEBUG
+            nameCurCnt--;
+#endif
+            return;
+        }
+    }
+}
+
+/*
  * Push a new lexical scope
  *
  * Increments the lexical level counter to begin a new scope. Names added

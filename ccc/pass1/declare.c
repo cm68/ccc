@@ -490,9 +490,22 @@ skipParams(struct name *nm, struct type *prefix)
      * function rather than a pointer to one - so assigning to it was
      * no longer assigning to an object at all.
      */
+    /*
+     * The exception to the file-scope rule above is a name phase 1
+     * threw away.  A declaration nothing refers to is not kept (see
+     * declaration()), so there is no phase 1 entry for phase 2 to
+     * reuse and the worry that stops us building one here - that the
+     * entry a definition reuses may not be the one carrying the
+     * function type - cannot arise: nothing refers to this name, so
+     * nothing reuses it either.  Without this the fresh entry keeps
+     * the bare return type, and "char *fopen();" in a file that never
+     * calls fopen was emitted as two bytes of bss, defining in every
+     * object what it was only declaring.
+     */
     if (nm && nm->type &&
         (((nm->type->flags & TF_POINTER) && !nm->type->sub) ||
-         (lexlevel > 1 && !(nm->type->flags & (TF_FUNC | TF_ARRAY))))) {
+         ((lexlevel > 1 || idOnce(nm->id)) &&
+          !(nm->type->flags & (TF_FUNC | TF_ARRAY))))) {
         suffix = (struct type *)permalloc(sizeof(*suffix));
         suffix->flags = TF_FUNC;
         suffix->sub = prefix ? prefix : inttype;

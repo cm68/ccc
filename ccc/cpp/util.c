@@ -45,7 +45,26 @@ static struct ient {
  * and in the .n sidecar internWrite() dumps.  Ids are minted at
  * first EMISSION, not first sight, so the sidecar holds only names
  * the stream actually uses.  0 is reserved for "no name".
+ *
+ * The id is the low 14 bits.  The top two are a score of how often
+ * the name has been emitted, saturating at "more than once" - and a
+ * name the stream mentions exactly once is mentioned only where it is
+ * declared, so nothing in the file refers to it and c0 need not
+ * remember it at all.  That is most of what c0 holds: on pass1's
+ * outast.c, 222 of its 258 file-scope names are never referred to,
+ * and at 37 bytes each they are the bulk of the heap it runs out of.
+ *
+ * The score lives in the id rather than in a field of its own because
+ * cpp has the largest peak of the three passes and the least room to
+ * spare at it - the entries are already the biggest thing in its
+ * arena, and a byte apiece is a few hundred it does not have.  Ids
+ * run to a few hundred, so fourteen bits is room to spare, and going
+ * past it is a fatal rather than a wrapped id.
  */
+#define IDMASK  0x3fff      /* the id proper */
+#define IDONCE  0x4000      /* emitted exactly once */
+#define IDMANY  0x8000      /* emitted more than once */
+
 static unsigned short nextid = 1;
 
 #ifdef DEBUG
@@ -122,9 +141,19 @@ idOf(char *s)
     struct ient *e;
 
     e = IENTOF(intern(s));
-    if (e->id == 0)
+    if ((e->id & IDMASK) == 0) {
+        if (nextid > IDMASK) {
+            write(2, "cpp: too many identifiers\n", 26);
+            exit(1);
+        }
         e->id = nextid++;
-    return e->id;
+    }
+    /* none -> once -> many, and many stays many */
+    if (e->id & IDONCE)
+        e->id = (e->id & ~IDONCE) | IDMANY;
+    else if (!(e->id & IDMANY))
+        e->id |= IDONCE;
+    return e->id & IDMASK;
 }
 
 /*
@@ -132,6 +161,7 @@ idOf(char *s)
  *
  *	2 bytes		count N, little-endian
  *	N * 2 bytes	offset of name i+1 from file start
+ *	(N+7)/8 bytes	score bitmap: bit i-1 set = id i emitted once
  *	names		NUL-terminated
  *
  * Two seeks fetch any name; nothing is obliged to hold the file.
@@ -158,35 +188,50 @@ extern int seekraw();
 int
 internWrite(char *fname)
 {
-    int fd, i;
+    int fd, i, id;
     unsigned int off;
     unsigned char b[2];
     int n = nextid - 1;
+    int nb = (n + 7) / 8;
+    char *once;
     struct ient *e;
 
     fd = creat(fname, 0644);
     if (fd < 0)
         return -1;
+    once = permalloc(nb);       /* zeroed */
     b[0] = n & 0xff;
     b[1] = (n >> 8) & 0xff;
     write(fd, (char *)b, 2);
-    off = 2 + 2 * n;
+    off = 2 + 2 * n + nb;       /* names sit behind the scores */
     for (i = 0; i < INTERN_HASH; i++) {
         for (e = ipool[i]; e; e = e->next) {
-            if (!e->id)
+            id = e->id & IDMASK;
+            if (!id)
                 continue;
-            NSEEK(fd, 2 + 2 * (e->id - 1));
+            if (e->id & IDONCE)
+                once[(id - 1) >> 3] |= 1 << ((id - 1) & 7);
+            NSEEK(fd, 2 + 2 * (id - 1));
             b[0] = off & 0xff;
             b[1] = (off >> 8) & 0xff;
             write(fd, (char *)b, 2);
             off += strlen(e->name) + 1;
         }
     }
-    /* second walk, same order: the names */
+    /*
+     * The scores, then the names behind them.  A reader that wants
+     * only spellings is unaffected: it indexes the offset table and
+     * seeks to what it finds there, never assuming where the names
+     * begin.  Putting the scores at a spot the header alone gives -
+     * 2 + 2N - is what lets c0 reach them without seeking to the end
+     * of the file, which the Z80 lseek is no good at.
+     */
     NSEEK(fd, 2 + 2 * n);
+    write(fd, once, nb);
+    /* second walk, same order: the names */
     for (i = 0; i < INTERN_HASH; i++)
         for (e = ipool[i]; e; e = e->next)
-            if (e->id)
+            if (e->id & IDMASK)
                 write(fd, e->name, strlen(e->name) + 1);
     close(fd);
     return 0;

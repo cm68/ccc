@@ -330,6 +330,8 @@ void parseSpan();
 extern int spanStop;	/* a function definition just ended */
 void cleanupParse();
 void drainGraves();
+void dropName(struct name *n);
+extern int idOnce(unsigned short id);
 
 /*
  * Switch statement table tracking (phase 1)

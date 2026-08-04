@@ -341,11 +341,73 @@ lexSeek(long off)
 }
 
 /*
+ * The scores cpp put in the .n sidecar: one bit per id, set when the
+ * stream mentions that name exactly once.  A name mentioned once is
+ * mentioned only where it is declared, so nothing refers to it and a
+ * declaration of it need not be remembered - see declaration(), which
+ * is where the entry is dropped instead of kept.
+ *
+ * Nothing here is required.  If the sidecar is missing or short (cpp
+ * run without -j, a hand-made .x), the map stays empty, idOnce says
+ * no to everything, and c0 keeps every name as it always did.
+ */
+static unsigned char *scoreMap;
+static unsigned short scoreN;
+
+static void
+loadScores(char *fn)
+{
+	char nf[64];
+	unsigned char b[2];
+	int fd, nb, n;
+
+	n = strlen(fn);
+	if (n < 3 || n >= (int)sizeof(nf))
+		return;
+	strcpy(nf, fn);
+	if (nf[n - 2] != '.')		/* base.x -> base.n */
+		return;
+	nf[n - 1] = 'n';
+
+	fd = open(nf, O_RDONLY);
+	if (fd < 0)
+		return;
+	if (read(fd, (char *)b, 2) != 2) {
+		close(fd);
+		return;
+	}
+	n = b[0] | (b[1] << 8);
+	nb = (n + 7) / 8;
+	if (n > 0) {
+		scoreMap = (unsigned char *)galloc(nb);
+		lseek(fd, (long)(2 + 2 * n), SEEK_SET);
+		if (read(fd, (char *)scoreMap, nb) == nb)
+			scoreN = n;
+		else
+			scoreMap = 0;	/* short file: trust nothing */
+	}
+	close(fd);
+}
+
+/*
+ * Is this name mentioned exactly once in the whole stream?
+ */
+int
+idOnce(unsigned short id)
+{
+	if (!scoreMap || id == 0 || id > scoreN)
+		return 0;
+	id--;
+	return (scoreMap[id >> 3] >> (id & 7)) & 1;
+}
+
+/*
  * Open lexeme file and prime the token stream
  */
 void
 lexOpen(char *fn)
 {
+	loadScores(fn);
 	lexFd = open(fn, O_RDONLY);
 	if (lexFd < 0) {
 		char buf[80], *p;

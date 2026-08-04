@@ -752,6 +752,34 @@ declaration()
 			}
 		}
 
+		/*
+		 * A declaration nothing refers to.
+		 *
+		 * cpp scores every name by how often the stream mentions
+		 * it, and one mention means the only one is this
+		 * declaration: nothing in the file can refer to it, now or
+		 * later, so remembering it buys nothing.  Headers are
+		 * almost entirely this - pass1's outast.c reaches here
+		 * with 258 file-scope names and refers to 36 - and at 37
+		 * bytes each they were the bulk of what c0 ran out of.
+		 *
+		 * Only for declarations that put nothing in the object: a
+		 * prototype, or an extern that names storage defined
+		 * elsewhere.  A definition is reached by another path (a
+		 * function body breaks out of this loop above) or has
+		 * already emitted by the time we are here, and its name
+		 * has to stay to be emitted against.  Statics stay too,
+		 * whatever their score: their S<n> numbering is minted as
+		 * they are seen, and a name dropped in one phase and
+		 * re-minted in the other would number them differently.
+		 */
+		if (lexlevel == 1 && !(sclass & SC_STATIC) && !v->static_id &&
+		    !v->emitted && v->kind != kfdef && idOnce(v->id) &&
+		    ((v->type->flags & TF_FUNC) || (sclass & SC_EXTERN))) {
+			dropName(v);
+			v = 0;
+		}
+
 next_decl:
 		if (cur.type == COMMA) {
 			gettoken();
