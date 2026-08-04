@@ -112,7 +112,7 @@ static unsigned char blkIdTop;
  * function that encloses them.  popScope collects them on the way out,
  * because by the time capLocals runs they are off the lookup chain.
  */
-struct name *blockLocals;
+struct local *blockLocals;
 
 /*
  * names unlinked by popScope may still be referenced by pending AST
@@ -130,7 +130,8 @@ struct name *deadNames;
 void
 popScope()
 {
-    struct name **pp, *n, *grabbed, *grabtail;
+    struct name **pp, *n;
+    struct local *grabbed, *grabtail;
 
 #ifdef DEBUG
     if (VERBOSE(V_SCOPE)) {
@@ -176,11 +177,8 @@ popScope()
              */
             if (phase == 1 && lexlevel >= 2 && !n->is_tag &&
                 (n->kind == kvar || n->kind == klocal)) {
-                struct name *copy =
-                    (struct name *)galloc(sizeof(struct name));
+                struct local *copy = mklocal(n);
 
-                memcpy(copy, n, sizeof(struct name));
-                copy->next = NULL;
                 if (grabtail)
                     grabtail->next = copy;
                 else

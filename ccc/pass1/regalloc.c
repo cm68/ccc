@@ -16,7 +16,8 @@ int frameSaveBase;
 int
 assignFrmOff(struct name *func)
 {
-	struct name *n, *locals;
+	struct name *p;
+	struct local *n, *locals;
 	int off, maxoff, i;
 	int mark[MAXBLKLVL];
 	unsigned char arrays, prevlvl, prevblk;
@@ -28,18 +29,18 @@ assignFrmOff(struct name *func)
 
 	/* Parameters: positive offsets starting at +4 (skip saved FP + ret addr) */
 	off = 4;
-	for (n = func->type->elem; n; n = n->next) {
-		if (n->type->size == 0)
+	for (p = func->type->elem; p; p = p->next) {
+		if (p->type->size == 0)
 			continue;  /* skip void */
-		if (n->id) {
-			struct name *local;
+		if (p->id) {
+			struct local *local;
 			for (local = locals; local; local = local->next)
-				if (local->id == n->id) {
-					local->w.r.frm_off = off;
+				if (local->id == p->id) {
+					local->frm_off = off;
 					break;
 				}
 		}
-		off += n->type->size > 2 ? n->type->size : 2;
+		off += p->type->size > 2 ? p->type->size : 2;
 	}
 
 	/*
@@ -74,23 +75,23 @@ assignFrmOff(struct name *func)
 	for (n = locals; n; n = n->next) {
 		if (n->kind == kfunarg)
 			continue;
-		if (n->w.r.reg) {
-			n->w.r.frm_off = 0;
+		if (n->reg) {
+			n->frm_off = 0;
 			continue;
 		}
 		if (n->type->flags & TF_ARRAY)
 			continue;
 		if (n->level < MAXBLKLVL &&
-		    (n->level != prevlvl || n->w.r.blkid != prevblk)) {
+		    (n->level != prevlvl || n->blkid != prevblk)) {
 			if (n->level > prevlvl)
 				mark[n->level] = off;
 			else
 				off = mark[n->level];
 			prevlvl = n->level;
-			prevblk = n->w.r.blkid;
+			prevblk = n->blkid;
 		}
 		off += n->type->size;
-		n->w.r.frm_off = -off;
+		n->frm_off = -off;
 		if (off > maxoff)
 			maxoff = off;
 	}
@@ -100,7 +101,7 @@ assignFrmOff(struct name *func)
 		gripe(ER_D_FL);
 	arrays = 0;
 	for (n = locals; n; n = n->next) {
-		if (n->kind == kfunarg || n->w.r.reg)
+		if (n->kind == kfunarg || n->reg)
 			continue;
 		if (!(n->type->flags & TF_ARRAY))
 			continue;
@@ -118,16 +119,16 @@ assignFrmOff(struct name *func)
 		 * return address and whatever else was below.
 		 */
 		off += typesize(n->type);
-		n->w.r.frm_off = -off;
+		n->frm_off = -off;
 	}
 	return off;  /* frame size = total local stack space */
 }
 
 /* Check if variable can be allocated to a register */
 int
-canAlloc(struct name *n, int no_arg_regs)
+canAlloc(struct local *n, int no_arg_regs)
 {
-	if (n->w.r.reg != REG_NONE || n->w.r.addr_taken)
+	if (n->reg != REG_NONE || n->addr_taken)
 		return 0;
 	/*
 	 * A static local lives at a label, not in the frame and not in
@@ -145,15 +146,15 @@ canAlloc(struct name *n, int no_arg_regs)
 
 /* Register allocation for local variables */
 void
-allocRegs(struct name *locals)
+allocRegs(struct local *locals)
 {
-	struct name *n, *best;
+	struct local *n, *best;
 	char regs = 0;  /* bits: 1=IX, 2=BC, 4=B, 8=C */
 	unsigned char no_arg_regs = 0;
 
 	/* If any funarg has address taken, no funargs can use registers */
 	for (n = locals; n; n = n->next)
-		if (n->kind == kfunarg && n->w.r.addr_taken)
+		if (n->kind == kfunarg && n->addr_taken)
 			no_arg_regs = 1;
 
 	/* Allocate register-marked variables first */
@@ -164,15 +165,15 @@ allocRegs(struct name *locals)
 		if (n->type->flags & (TF_ARRAY | TF_AGGREGATE))
 			continue;
 		if ((n->type->flags & TF_POINTER) && !(regs & 1)) {
-			n->w.r.reg = REG_IX;
+			n->reg = REG_IX;
 			regs |= 1;
 		} else if (n->type->size == 2 && !(regs & 14)) {
 			/* the pair is free only if neither half is taken */
-			n->w.r.reg = REG_BC;
+			n->reg = REG_BC;
 			regs |= 2;
 		} else if (n->type->size == 1 && !(regs & 2)) {
-			if (!(regs & 4)) { n->w.r.reg = REG_B; regs |= 4; }
-			else if (!(regs & 8)) { n->w.r.reg = REG_C; regs |= 8; }
+			if (!(regs & 4)) { n->reg = REG_B; regs |= 4; }
+			else if (!(regs & 8)) { n->reg = REG_C; regs |= 8; }
 		}
 	}
 
@@ -199,12 +200,12 @@ allocRegs(struct name *locals)
 			if (n->type->flags & (TF_ARRAY | TF_AGGREGATE))
 				continue;
 			/* Only use IX if pointer is used for field access */
-			if (n->w.r.agg_refs > 0) {
-				if (!best || n->w.r.agg_refs > best->w.r.agg_refs)
+			if (n->agg_refs > 0) {
+				if (!best || n->agg_refs > best->agg_refs)
 					best = n;
 			}
 		}
-		if (best) { best->w.r.reg = REG_IX; regs |= 1; }
+		if (best) { best->reg = REG_IX; regs |= 1; }
 	}
 
 	/*
@@ -237,11 +238,11 @@ allocRegs(struct name *locals)
 				continue;
 			if (n->type->flags & (TF_ARRAY | TF_AGGREGATE))
 				continue;
-			if (n->type->size == 2 && n->w.r.ref_count > 1)
-				if (!best || n->w.r.ref_count > best->w.r.ref_count)
+			if (n->type->size == 2 && n->ref_count > 1)
+				if (!best || n->ref_count > best->ref_count)
 					best = n;
 		}
-		if (best) { best->w.r.reg = REG_BC; regs |= 2; }
+		if (best) { best->reg = REG_BC; regs |= 2; }
 	}
 
 	/* B and C to byte variables */
@@ -251,9 +252,9 @@ allocRegs(struct name *locals)
 				continue;
 			if (n->type->flags & (TF_ARRAY | TF_AGGREGATE))
 				continue;
-			if (n->type->size == 1 && n->w.r.ref_count > 1) {
-				if (!(regs & 4)) { n->w.r.reg = REG_B; regs |= 4; }
-				else if (!(regs & 8)) { n->w.r.reg = REG_C; regs |= 8; }
+			if (n->type->size == 1 && n->ref_count > 1) {
+				if (!(regs & 4)) { n->reg = REG_B; regs |= 4; }
+				else if (!(regs & 8)) { n->reg = REG_C; regs |= 8; }
 				if ((regs & 12) == 12) break;
 			}
 		}
@@ -264,7 +265,7 @@ allocRegs(struct name *locals)
 int
 analyzeFunc(struct name *func)
 {
-	struct name *n;
+	struct local *n;
 
 	if (!func)
 		return 0;
@@ -272,7 +273,7 @@ analyzeFunc(struct name *func)
 	/* Locals are already captured (from phase 1) and ref_count is
 	 * already populated during phase 1 parseExpr. Just reset reg. */
 	for (n = func->u.locals; n; n = n->next) {
-		n->w.r.reg = REG_NONE;
+		n->reg = REG_NONE;
 	}
 
 	/* Allocate registers based on usage (ref_count from phase 1) */

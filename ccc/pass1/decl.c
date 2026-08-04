@@ -317,7 +317,7 @@ doInitlzr(struct name *v)
  * Parameters:
  *   f - Function name entry with type signature in f->type
  */
-void freeLocals(struct name *local);
+void freeLocals(struct local *local);
 
 void
 parsefunc(struct name *f)
@@ -860,9 +860,9 @@ parse()
  * Free a function's locals list
  */
 void
-freeLocals(struct name *local)
+freeLocals(struct local *local)
 {
-	struct name *next;
+	struct local *next;
 	while (local) {
 		next = local->next;
 		free(local);

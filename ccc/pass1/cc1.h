@@ -128,7 +128,9 @@ extern unsigned short globalStrCtr;  /* string literal counter ("str") */
 
 extern void statement(void);
 extern void declaration(void);
-extern struct name *capLocals(void);
+struct name;
+extern struct local *capLocals(void);
+extern struct local *mklocal(struct name *n);
 extern void emitFuncPre(struct name *func);
 extern void emitGlobalAsm(char *text);
 extern void emitAsmStmt(char *text);
@@ -240,7 +242,7 @@ struct name {
 	struct name *next;		// all names in same container
 	union {
 		struct expr *init;  // value of constant or initializer (for var)
-		struct name *locals; // local variables (for fdef)
+		struct local *locals; // local variables (for fdef)
 	} u;
 	/*
 	 * struct members and bitfields (kind elem/bitfield) never reach
@@ -302,7 +304,7 @@ extern void popScope(void);
 #define MAXBLKLVL 24
 
 extern unsigned char lexlevel;
-extern struct name *blockLocals;	/* nested-block locals awaiting hoist */
+extern struct local *blockLocals;	/* nested-block locals awaiting hoist */
 extern unsigned char curblk(void);
 extern void clrblklocs(void);
 extern struct name *names;
@@ -341,6 +343,35 @@ void cleanupParse();
  * to a couple of hundred cases and the array is live for the whole
  * function.
  */
+/*
+ * A local as register allocation and emission need it.
+ *
+ * Phase 1 used to hand phase 2 a whole struct name per local - forty
+ * bytes on the host, twenty-three on the Z80 - of which thirteen
+ * fields are ever read.  The symbol-table chain, the tag and emitted
+ * flags and the initialiser union are all dead the moment the copy is
+ * taken.
+ *
+ * And these do not come and go with each function: phase 1 captures
+ * every function's before phase 2 frees any, so the whole file's worth
+ * is live at the turn between them.  Six bytes apiece is worth having.
+ */
+struct local {
+	unsigned short id;
+	struct type *type;
+	struct local *next;
+	kind kind;
+	unsigned char level;
+	unsigned char sclass;
+	unsigned char static_id;
+	unsigned char ref_count;  /* reference count (capped at 255) */
+	unsigned char agg_refs;   /* struct member accesses, for IX */
+	unsigned char reg;        /* 0=none, 1=B, 2=C, 3=BC, 4=IX */
+	unsigned char addr_taken;
+	unsigned char blkid;      /* declaring block, with level walks scopes */
+	short frm_off;            /* params positive, locals negative */
+};
+
 struct swcase {
     unsigned char is_default; /* 1 if default, 0 if case */
     unsigned char stmts;    /* statement count for this case section */

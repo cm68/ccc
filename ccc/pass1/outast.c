@@ -9,7 +9,7 @@ extern int analyzeFunc(struct name *func);  /* regalloc.c */
 extern int frameSaveBase;                   /* regalloc.c */
 
 /* Current function's locals from phase 1 - for frm_off/reg lookup */
-static struct name *curFuncLocals = NULL;
+static struct local *curFuncLocals = NULL;
 
 /*
  * Look up a local variable in phase 1's captured locals, to get the
@@ -28,14 +28,14 @@ static struct name *curFuncLocals = NULL;
  * The level and the block say which is which: two variables of the
  * same name cannot be declared in the same block.
  */
-struct name *
+struct local *
 findInLocals(struct name *want)
 {
-	struct name *n;
+	struct local *n;
 	for (n = curFuncLocals; n; n = n->next) {
 		if (n->id == want->id &&
 		    n->level == want->level &&
-		    n->w.r.blkid == want->w.r.blkid)
+		    n->blkid == want->w.r.blkid)
 			return n;
 	}
 	return NULL;
@@ -77,14 +77,15 @@ static char inLvalue;
 char
 isRegvar(struct expr *e)
 {
-	struct name *np, *local;
+	struct name *np;
+	struct local *local;
 	if (!e || e->op != SYM)
 		return 0;
 	np = (struct name *)e->var;
 	/* a static is never in a register - see canAlloc */
 	if (np->level > 1 && !(np->sclass & (SC_EXTERN | SC_STATIC))) {
 		local = findInLocals(np);
-		return local ? local->w.r.reg : np->w.r.reg;
+		return local ? local->reg : np->w.r.reg;
 	}
 	return 0;
 }
@@ -414,9 +415,9 @@ emitExpr(struct expr *e)
 		 */
 		if (np->level > 1 && !(np->sclass & (SC_EXTERN | SC_STATIC))) {
 			/* Look up frm_off/reg from phase 1 captured locals */
-			struct name *local = findInLocals(np);
-			char reg = local ? local->w.r.reg : np->w.r.reg;
-			short off = local ? local->w.r.frm_off : np->w.r.frm_off;
+			struct local *local = findInLocals(np);
+			char reg = local ? local->reg : np->w.r.reg;
+			short off = local ? local->frm_off : np->w.r.frm_off;
 			if (reg) {
 				emit1(REGVAR);
 				emit1(typeSfx(type));
@@ -692,9 +693,10 @@ emitExpr(struct expr *e)
 
 /* Emit function parameter declarations */
 void
-emitPrmDecls(struct type *functype, struct name *locals)
+emitPrmDecls(struct type *functype, struct local *locals)
 {
-	struct name *param, *local, *found;
+	struct name *param;
+	struct local *local, *found;
 
 	if (!functype || !(functype->flags & TF_FUNC))
 		return;
@@ -711,16 +713,16 @@ emitPrmDecls(struct type *functype, struct name *locals)
 		emit1(AST_DECL);
 		emit1(typeSfx(param->type));
 		emitS(param->id ? nameOf(param->id) : "_");
-		emit1(found ? found->w.r.reg : 0);
-		emit1(found ? (unsigned char)found->w.r.frm_off : 0);
+		emit1(found ? found->reg : 0);
+		emit1(found ? (unsigned char)found->frm_off : 0);
 	}
 }
 
 /* Emit local variable declarations */
 void
-emitLocals(struct name *locals)
+emitLocals(struct local *locals)
 {
-	struct name *local;
+	struct local *local;
 	char lbuf[32];
 
 	for (local = locals; local; local = local->next) {
@@ -735,8 +737,8 @@ emitLocals(struct name *locals)
 		emit1(AST_DECL);
 		emit1(typeSfx(local->type));
 		emitS(lbuf);
-		emit1(local->w.r.reg);
-		emit2((unsigned short)local->w.r.frm_off);
+		emit1(local->reg);
+		emit2((unsigned short)local->frm_off);
 	}
 }
 
@@ -791,6 +793,7 @@ emitFuncPre(struct name *func)
 	int frm_size;
 	char param_count, local_count;
 	struct name *n;
+	struct local *l;
 
 	if (!func)
 		return;
@@ -808,8 +811,8 @@ emitFuncPre(struct name *func)
 		for (n = func->type->elem; n; n = n->next)
 			if (n->type->size > 0)
 				param_count++;
-	for (n = func->u.locals; n; n = n->next)
-		if (n->kind != kfunarg)
+	for (l = func->u.locals; l; l = l->next)
+		if (l->kind != kfunarg)
 			local_count++;
 
 	/* Emit function header */

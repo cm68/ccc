@@ -438,12 +438,39 @@ parseBlock(void)
  * Capture local variables from the current scope level
  * Returns a linked list of name structures (shallow copies)
  */
-struct name *
+/*
+ * One captured local, from the name that declared it.  Both the walk
+ * at the end of a function and popScope's grab of a nested block's
+ * locals make these, and they must agree about which fields survive.
+ */
+struct local *
+mklocal(struct name *n)
+{
+	struct local *c = (struct local *)galloc(sizeof(struct local));
+
+	c->id = n->id;
+	c->type = n->type;
+	c->kind = n->kind;
+	c->level = n->level;
+	c->sclass = n->sclass;
+	c->static_id = n->static_id;
+	c->ref_count = n->w.r.ref_count;
+	c->agg_refs = n->w.r.agg_refs;
+	c->reg = n->w.r.reg;
+	c->addr_taken = n->w.r.addr_taken;
+	c->blkid = n->w.r.blkid;
+	c->frm_off = n->w.r.frm_off;
+	c->next = NULL;
+	return c;
+}
+
+struct local *
 capLocals(void)
 {
-	struct name *locals_list = NULL;
-	struct name *tail = NULL;
-	struct name *n, *copy;
+	struct local *locals_list = NULL;
+	struct local *tail = NULL;
+	struct name *n;
+	struct local *copy;
 
 	/* Traverse chain - current level names are at head */
 	for (n = names; n && n->level == lexlevel; n = n->chain) {
@@ -468,17 +495,10 @@ capLocals(void)
 		    (n->sclass & SC_EXTERN))
 			continue;
 
-		/* Capture this variable (shallow copy) */
+		/* Capture this variable */
 		if (n->kind == kvar || n->kind == klocal || n->kind == kfunarg) {
-			copy = (struct name *)galloc(sizeof(struct name));
-			memcpy(copy, n, sizeof(struct name));
-#ifdef DEBUG
-			capbytes += sizeof(struct name);
-			if (capbytes > cappeak) cappeak = capbytes;
-#endif
-			copy->next = NULL;
+			copy = mklocal(n);
 
-			/* Add to linked list */
 			if (!locals_list) {
 				locals_list = copy;
 				tail = copy;
