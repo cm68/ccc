@@ -78,6 +78,33 @@ stage1: peep
 		else echo "FAIL"; cat $(OUTDIR)/$$b.err; fi \
 	done
 
+# The peephole built by ccc itself, for the simulator - the same
+# differential the other passes have.  It runs on the Z80 too, over
+# the assembly c1 emits, so its own footprint is as much a part of
+# self-hosting as theirs.  CCCOPT=-O by default: peep optimises its
+# own build like everything else.
+CCCOPT = -O
+PEEPDIR = $(realpath .)
+LIBDIR = $(realpath ../lib)
+LIBSRCINC = $(realpath ../../libsrc/include)
+
+mx-ccc:
+	@mkdir -p mxccc
+	@set -e; cd mxccc ; export PATH=$(ROOTDIR)/bin:$$PATH ; \
+	for f in $(SOURCES); do \
+		b=$${f%.c}; \
+		printf "%-12s" "$$b: " ; \
+		if $(ROOTDIR)/bin/ccc $(CCCOPT) -c -DCCC -i$(LIBSRCINC) \
+			-I$(PEEPDIR) -I$(LIBDIR) $(PEEPDIR)/$$f > $$b.log 2>&1 \
+			&& [ -f $$b.o ]; then \
+			echo ok; \
+		else echo FAIL; cat $$b.log; exit 1; fi \
+	done
+	cd mxccc && $(ROOTDIR)/bin/wsld -s -o peep.mx -Ttext=0x100 \
+		$(ROOTDIR)/lib/crt0.o $$(ls *.o 2>/dev/null) \
+		-L$(ROOTDIR)/lib/ccc -lccc -lc -lu -lc
+	@$(ROOTDIR)/bin/wssize mxccc/peep.mx
+
 sizecheck:
 	mkdir -p $(SIZEDIR)
 	@export ROOTDIR=$(ROOTDIR) ; o="" ; for f in $(SOURCES); do \
@@ -93,6 +120,6 @@ sizecheck:
 regression:
 	../../tests/regress.sh --filter ccc/peep/ $(REGRESS_FLAGS)
 
-.PHONY: all clean clobber install stage1 sizecheck regression
+.PHONY: mx-ccc all clean clobber install stage1 sizecheck regression
 
 # vim: tabstop=4 shiftwidth=4 noexpandtab:

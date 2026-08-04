@@ -203,6 +203,14 @@ mx-zc3: $(GENERATED)
 		$(ROOTDIR)/lib/crt0.o $$(ls *.o *.obj 2>/dev/null) \
 		-L$(ROOTDIR)/lib/zc3 -lccc -lc -lu -lc
 	@$(ROOTDIR)/bin/wssize mxzc3/c0.mx
+# The peephole is not optional.  It is a few percent of text on
+# ccc-generated code - 610 bytes off cpp, 1109 off c0, 1665 off c1 -
+# and the passes are close enough to the ceiling that a few percent is
+# the difference between a source compiling on the Z80 and not.  Build
+# it the way it is meant to run; CCCOPT=  turns it off for a
+# differential.
+CCCOPT = -O
+
 
 # The same build done by ccc itself.  tests/diffpass1.sh runs the two
 # c0.mx binaries against each other on identical lexeme streams, so
