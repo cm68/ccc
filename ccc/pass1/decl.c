@@ -98,6 +98,26 @@ streamInitVal(struct type *type)
                 asmDb(0);
                 member_offset++;
             }
+        } else if (type && (type->flags & TF_ARRAY) && type->count > 0 &&
+                   count < type->count) {
+            /*
+             * And the rest of an array, for the same reason one
+             * level up.  An initializer that names fewer elements
+             * than the array has still occupies all of it, and what
+             * is declared after it begins at the end of the array,
+             * not where the initializers stopped.
+             *
+             * Without this, libc's "FILE _iob[_NFILE]" - three
+             * entries initialised out of six - emitted 24 bytes of a
+             * 48 byte array, and stdin/stdout/stderr, declared next,
+             * were laid down on top of _iob[3..5].  Their pointer
+             * values read back as those entries' flags, so fopen
+             * found no free slot and every fopen in the system
+             * returned null while freopen on a named entry worked.
+             */
+            b = typesize(type->sub) * (type->count - count);
+            while (b-- > 0)
+                asmDb(0);
         }
     } else if (cur.type == STRING) {
         /* String literal - check if initializing char array inline */
