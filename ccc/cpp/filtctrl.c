@@ -90,10 +90,10 @@ filtctrl_init(void (*up)(struct token *))
 	}
 	fstack_setup(&fs, 8, sizeof(struct stkent));
 
-	tarr_setup(&cond_arr, 16);
+	tarr_setup(&cond_arr, 48);
 	tarr_setup(&init_arr, 16);
 	tarr_setup(&incr_arr, 16);
-	pend_setup(&pb, 32);
+	pend_setup(&pb, 64);
 #ifdef DEBUG
 	ctrl_balance = 0;
 #endif
