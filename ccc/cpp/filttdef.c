@@ -436,14 +436,32 @@ expand(struct tdent *e, struct token *t, struct tokarray *sink)
  * Nothing goes downstream except a struct body, which has to exist
  * exactly once whether the typedef is ever used or not.
  */
+/*
+ * A typedef'd struct body streams: the main loop moves one member
+ * token per call instead of pending the whole body, which kept the
+ * pending buffer at the size of the largest struct in the closure -
+ * a kilobyte of the 64K machine on the compiler's own headers.
+ */
+static unsigned char tdbody;	/* mid-body: tdcur is live */
+static unsigned char tdfin;	/* body closed: resume the specs */
+static unsigned char tddepth;
+static struct token tdcur;
+
+static void capture2(struct token *t);
+
 static void
 capture(struct token *t)
 {
-	struct tdent *e;
-	struct token name;
-
 	tarr_reset(&spec_a);
 	pull(t);
+	capture2(t);
+}
+
+static void
+capture2(struct token *t)
+{
+	struct tdent *e;
+	struct token name;
 
 	/*
 	 * specs: a struct/union head, keywords, or an earlier
@@ -464,30 +482,16 @@ capture(struct token *t)
 			if (t->type == BEGIN) {
 				/*
 				 * The body is a real declaration of
-				 * the tag and goes downstream once,
-				 * here.  Member declarations through
-				 * earlier typedefs expand on the way.
+				 * the tag, streamed downstream once by
+				 * the main loop from here.
 				 */
-				unsigned char d = 1;
-				struct tdent *m;
-
 				pend_buf(&pb, spec_a.buf, spec_a.count);
 				pend_push(&pb, t);
 				pull(t);
-				while (d) {
-					if (t->type == BEGIN)
-						d++;
-					else if (t->type == END)
-						d--;
-					else if (t->type == SYM &&
-					    (m = tdfind(t->v.name)) != 0) {
-						expand(m, t, 0);
-						continue;
-					}
-					pend_push(&pb, t);
-					pull(t);
-				}
-				pend_tok(&pb, SEMI);
+				tokcpy(&tdcur, t);
+				tddepth = 1;
+				tdbody = 1;
+				return;
 			}
 			continue;
 		}
@@ -562,6 +566,43 @@ filttdef(struct token *out)
 	static unsigned char aftertag;
 
 	for (;;) {
+		if (tdbody && !pend_has(&pb)) {
+			/* one member token per call, expansions in
+			 * small bursts; same walk the buffered loop
+			 * did, a step at a time */
+			struct tdent *m;
+
+			for (;;) {
+				if (tdcur.type == BEGIN)
+					tddepth++;
+				else if (tdcur.type == END) {
+					if (--tddepth == 0) {
+						pend_push(&pb, &tdcur);
+						pull(&tdcur);
+						pend_tok(&pb, SEMI);
+						tdbody = 0;
+						tdfin = 1;
+						break;
+					}
+				} else if (tdcur.type == SYM &&
+				    (m = tdfind(tdcur.v.name)) != 0) {
+					expand(m, &tdcur, 0);
+					continue;
+				}
+				pend_push(&pb, &tdcur);
+				pull(&tdcur);
+				break;
+			}
+		}
+		if (tdfin && !pend_has(&pb)) {
+			/* the body has drained; the declarators (and
+			 * any further specs) follow, starting with the
+			 * post-body token already in hand */
+			tdfin = 0;
+			tokcpy(&t, &tdcur);
+			capture2(&t);
+			continue;
+		}
 		if (filt_entry(&pb, out, up, &t))
 			return;
 
