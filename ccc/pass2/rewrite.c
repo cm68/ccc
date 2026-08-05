@@ -67,6 +67,7 @@ Expr *rewrite1(Expr *e);
 Expr *valtohl(Expr *e);
 unsigned char baseop(unsigned char op);
 int islocdesc(Expr *e);
+int isdestreg(Expr *e);
 
 /*
  * Check if expression matches any preserve pattern.
@@ -83,6 +84,7 @@ shouldpres(Expr *e)
 	}
 	return 0;
 }
+
 
 /*
  * Sethi-Ullman labeling: compute registers needed for each node
@@ -153,6 +155,22 @@ label(Expr *e)
 	/* DEREF: depends on address complexity */
 	case DEREF:
 		e->regs = l > 1 ? l : 1;
+		/*
+		 * A load through anything the tree has to work out goes
+		 * through HL: the machine has no ld de,(de), so the walk
+		 * is HL's whatever register the value was aimed at.  Cost
+		 * it like a call, which is bound the same way - the number
+		 * is what decides that it goes first, before an operand is
+		 * sitting in HL to be clobbered.  "g + *p" reduced g and
+		 * then walked p through the register g was in.
+		 *
+		 * A location descriptor is exempt - the fused load rules
+		 * read those in place - and so are the pre-reduced nodes
+		 * a driver expansion leaves, and a constant address.
+		 */
+		if (e->left && !islocdesc(e->left) && !isdestreg(e->left) &&
+		    e->left->op != NUMBER && e->regs < 2)
+			e->regs = 2;
 		return;
 
 	/* ASSIGN: lvalue doesn't consume reg, only rvalue */
@@ -501,6 +519,21 @@ pmatch(struct rule *rp, Expr *e)
 		if (d == PD_S && e->dest != DEST_NONE)
 			return 0;
 	}
+	/*
+	 * A store whose value is wanted must not match a store that
+	 * produces none.  The plain forms say nothing about dest, which
+	 * made them match value-context assigns ahead of their V twins -
+	 * or in place of twins that did not exist - and the consumer
+	 * then read a register the rule never loaded: "gs = *pb = 5"
+	 * stored 5 and handed gs the POINTER, sign extended.  Refusing
+	 * here either finds the V form further down or leaves the tree
+	 * unreduced, and unreduced is a marker instead of a wrong
+	 * number.  Transforms (a null template) still match: they
+	 * rebuild the tree and the result is matched again.
+	 */
+	if (rp->op == ASSIGN && e && e->dest == DEST_VALUE &&
+	    rp->destval == 0 && rp->asmtpl != NULL)
+		return 0;
 	if (!rp->lop)
 		return 1;
 	k = e ? e->left : (Expr *)0;
@@ -1747,6 +1780,15 @@ locvalue(Expr *e, char w)
 	if (e->op == DEREF) {
 		/* what it points through is an address: word sized */
 		e->left = locvalue(e->left, 's');
+		/*
+		 * But what comes BACK through it is the operand, at the
+		 * operand's width.  The lvalue spelling this was copied
+		 * from carries the address's width, and a long compound
+		 * through a pointer inherited it: the value read read
+		 * as a short, longable() said no, and "*p <<= n" on a
+		 * long emitted nothing.
+		 */
+		e->width = w;
 		return e;
 	}
 	return mkunary(DEREF, w, e);
@@ -1774,6 +1816,27 @@ lowercompound(Expr *e)
 	freeexpr(e);
 
 	val = locvalue(dupexpr(loc), w);
+
+	/*
+	 * A byte multiply, divide or remainder has no helper of its own -
+	 * candemote knows this and never demotes them, but a compound
+	 * assignment BUILDS its operation at the lvalue's width, which
+	 * put "*=" on a byte in front of the rules with nothing to say.
+	 * Compute at word width, exactly as the promotion would have, and
+	 * let the byte store take the low byte back.
+	 */
+	if (ISBYTE(w) && (op == STAR || op == DIV || op == MOD)) {
+		unsigned char ww = ISSIGNED(w) ? T_SHORT : T_USHORT;
+
+		val = mkunary(ISSIGNED(w) ? SEXT : WIDEN, ww, val);
+		if (rhs->op == NUMBER)
+			rhs->width = ww;
+		else
+			rhs = mkunary(ISSIGNED(rhs->width) ? SEXT : WIDEN,
+			    ww, rhs);
+		return mkbinary(ASSIGN, w, loc,
+		    mkbinary(op, ww, val, rhs));
+	}
 
 	return mkbinary(ASSIGN, w, loc, mkbinary(op, w, val, rhs));
 }
@@ -2210,6 +2273,16 @@ longable(Expr *e)
 	case WIDEN:
 	case CALL:
 		return 1;
+	case ASSIGN:
+		/*
+		 * A long assignment used as a value: the store rules'
+		 * value forms leave HL:DE holding what was stored, so
+		 * the operand is as good as any other long.  Without
+		 * this, "if ((pos = off - ftell(f)) == 0)" was declined
+		 * here and nothing else could compare a long - the
+		 * condition never reduced.
+		 */
+		return 1;
 	case NOT:
 		/* complement has a rule of its own */
 		return 1;
@@ -2368,12 +2441,20 @@ dolongbin(Expr *e)
 			 * shifted by whatever HL last held.
 			 */
 			r = valtohl(r);
-			out("\tpush hl\n");
+			/*
+			 * A LONG count fills HL:DE with its low word in DE -
+			 * pushing HL parked the HIGH word, and the byte the
+			 * helper shifted by was byte two of the count: any
+			 * count under 65536 shifted by nought.
+			 */
+			out(ISLONGINT(r->width) ?
+			    "\tpush de\n" : "\tpush hl\n");
 			if (l->op == NUMBER)
 				loadlongc(l->u.val);
 			else
 				l = rewrite1(l);
-			/* the count came back in HL, so its low byte is in C */
+			/* the count's low word is on the stack; its low
+			 * byte lands in C */
 			out("\tpop bc\n\tld b,c\n");
 		}
 		freeexpr(l);
@@ -2668,6 +2749,63 @@ valtohl(Expr *e)
 		return n;
 	}
 	return e;
+}
+
+/*
+ * Finish a store whose address AND value both need registers.  The
+ * address is in HL and has already been pushed; compute the value
+ * over it and bring the address back out from underneath, leaving
+ * the shapes the store rules name.  A byte value ends in A, which
+ * the address does not disturb, so the address comes straight back
+ * to HL; a word is in HL itself and has to move aside; a long fills
+ * HL:DE, so the address stays where it is - on the stack, which is
+ * where lstde wants it.
+ *
+ * Returns the finished node for the long case, null when the caller
+ * should fall through to the matcher with the rebuilt children.
+ */
+static Expr *
+spiltstore(Expr *e, Expr *oldleft)
+{
+	Expr *a;
+
+	e->right = valtohl(rewrite1(e->right));
+	if (ISLONGINT(e->width)) {
+		out("\tcall lstde\n");
+		freeexpr(oldleft);
+		freeexpr(e->right);
+		e->left = e->right = NULL;
+		return donehl(e, INHL);
+	}
+	if (e->right && e->right->op == INA) {
+		out("\tpop hl\n");
+		freeexpr(oldleft);
+		freeexpr(e->right);
+		e->right = mkcode(e->width, R_A);
+		e->right->op = INA;
+	} else if (ISBYTE(e->width)) {
+		/*
+		 * A byte store whose value came back as a word - a masked
+		 * call result, say.  The byte is the low one; bring it to
+		 * A so the store meets the =(D(H),A):b family instead of
+		 * a word shape no byte rule names.
+		 */
+		out("\tld a,l\n\tpop hl\n");
+		freeexpr(oldleft);
+		freeexpr(e->right);
+		e->right = mkcode(e->width, R_A);
+		e->right->op = INA;
+	} else {
+		out("\tpop de\n\tex de,hl\n");
+		freeexpr(oldleft);
+		freeexpr(e->right);
+		e->right = mkcode(e->width, R_DE);
+		e->right->op = INDE;
+	}
+	a = mkcode(e->width, R_HL);
+	a->op = INHL;
+	e->left = mkunary(DEREF, e->width, a);
+	return NULL;
 }
 
 Expr *
@@ -3114,6 +3252,30 @@ rewrite1(Expr *e)
 		out("\tpush hl\n");
 		/* Evaluate right subtree (result in HL) */
 		e->right = valtohl(rewrite1(e->right));
+		/*
+		 * A byte right operand lands in A and valtohl leaves it
+		 * there on purpose - the assignment path wants exactly
+		 * that.  Here it met "pop de, relabel as INDE", which
+		 * moved nothing: the operator then read whatever DE
+		 * held, and "g >> *p" shifted by the spilled pointer.
+		 * Widen it into DE for real, at its own signedness.
+		 */
+		if (e->right && e->right->op == INA) {
+			if (ISSIGNED(e->right->width))
+				out("\tld e,a\n\trla\n\tsbc a,a\n\tld d,a\n");
+			else
+				out("\tld e,a\n\tld d,0\n");
+			out("\tpop hl\n");
+			lw = e->left->width;
+			rw = e->right->width;
+			freeexpr(e->left);
+			freeexpr(e->right);
+			e->left = mkcode(lw, R_HL);
+			e->left->op = INHL;
+			e->right = mkcode(rw, R_DE);
+			e->right->op = INDE;
+			goto spilled;
+		}
 		/* Pop left result, exchange so left in HL, right in DE */
 		out("\tpop de\n\tex de,hl\n");
 		/*
@@ -3133,6 +3295,7 @@ rewrite1(Expr *e)
 		e->left->op = INHL;
 		e->right = mkcode(rw, R_DE);
 		e->right->op = INDE;
+spilled:	;
 		}
 		/* Fall through to step() to apply operation */
 	} else {
@@ -3142,6 +3305,8 @@ rewrite1(Expr *e)
 		    !islocdesc(e->left) && !isdestreg(e->left) &&
 		    e->left->op != DEREF &&
 		    !islocdesc(e->right) && e->right->op != NUMBER) {
+			Expr *addr;
+
 			/*
 			 * Storing through an address the tree has to work out,
 			 * to a value it also has to work out - "arr[i] += n".
@@ -3163,7 +3328,7 @@ rewrite1(Expr *e)
 			 * that address.  A descriptor needs no register and
 			 * no temporary, so it is simply used where it is.
 			 */
-			Expr *addr = rewrite1(e->left);
+			addr = rewrite1(e->left);
 			if (islocdesc(addr)) {
 				e->left = addr;
 				e->right = rewrite1(e->right);
@@ -3212,52 +3377,18 @@ rewrite1(Expr *e)
 				return donehl(e, INHL);
 			}
 			out("\tpush hl\n");
-			e->right = rewrite1(e->right);
 			/*
 			 * An address-as-value or register-homed right
-			 * reduces to itself and emits nothing; without
-			 * this the pop below stored the slot's own
-			 * address - "paths[np++] = a + 2" filed the slot
-			 * into itself.
+			 * reduces to itself and emits nothing - spiltstore
+			 * sends it through valtohl so the pop below cannot
+			 * store the slot's own address; "paths[np++] =
+			 * a + 2" filed the slot into itself that way.
 			 */
-			e->right = valtohl(e->right);
-			/*
-			 * Where the value came back decides how to get the
-			 * address out from under it.  A byte operation ends in
-			 * A, which the address does not disturb, so the address
-			 * comes straight back to HL.  A word is in HL itself and
-			 * has to move aside.  Assuming the second made "p[i] +=
-			 * n" store the low half of the address.
-			 */
-			if (ISLONGINT(e->width)) {
-				/*
-				 * A 32-bit value fills HL:DE, so there is no
-				 * register left for the address and no room to
-				 * shuffle it into one.  It is already on the
-				 * stack, which is where lstde wants it.
-				 */
-				out("\tcall lstde\n");
-				freeexpr(addr);
-				freeexpr(e->right);
-				e->left = e->right = NULL;
-				return donehl(e, INHL);
+			{
+				Expr *w = spiltstore(e, addr);
+				if (w)
+					return w;
 			}
-			if (e->right && e->right->op == INA) {
-				out("\tpop hl\n");
-				freeexpr(addr);
-				freeexpr(e->right);
-				e->right = mkcode(e->width, R_A);
-				e->right->op = INA;
-			} else {
-				out("\tpop de\n\tex de,hl\n");
-				freeexpr(addr);
-				freeexpr(e->right);
-				e->right = mkcode(e->width, R_DE);
-				e->right->op = INDE;
-			}
-			addr = mkcode(e->width, R_HL);
-			addr->op = INHL;
-			e->left = mkunary(DEREF, e->width, addr);
 			goto children_done;
 		} else if (e->op == AND && e->dest == DEST_FLAGS &&
 			   e->left && e->left->op == DEREF &&
@@ -3343,6 +3474,34 @@ rewrite1(Expr *e)
 			 * the DEREF the store rules expect.
 			 */
 			e->left->left = rewrite1(e->left->left);
+			/*
+			 * The address may now be LIVE in a register the
+			 * value is about to need.  A location descriptor is
+			 * safe - the store rule reads it after the value is
+			 * computed - and so is a value that needs no code:
+			 * a constant, a descriptor, something already in a
+			 * register.  Anything else clobbers HL on its way,
+			 * and the address has to wait on the stack -
+			 * "**args++ = v" computes the target through the
+			 * stepped pointer, and the value's own load then
+			 * wrote over it: doscan stored nothing into two of
+			 * scanf's conversions, and no rule could have
+			 * matched the wreck - =(D(H),H) names one register
+			 * holding two values.
+			 */
+			if (!islocdesc(e->left->left) && e->right &&
+			    !islocdesc(e->right) && !isdestreg(e->right) &&
+			    e->right->op != NUMBER) {
+				Expr *w;
+
+
+				e->left->left = valtohl(e->left->left);
+				out("\tpush hl\n");
+				w = spiltstore(e, e->left);
+				if (w)
+					return w;
+				goto children_done;
+			}
 		} else if ((e->op == PREINC || e->op == PREDEC ||
 			    e->op == POSTINC || e->op == POSTDEC) &&
 			   e->left && e->left->op == DEREF &&
@@ -3381,10 +3540,34 @@ rewrite1(Expr *e)
 			 * of its own.
 			 */
 			Expr *addr = rewrite1(e->left);
-			if (islocdesc(addr))
+			if (islocdesc(addr)) {
 				e->left = addr;
-			else
+			} else if (e->right && !islocdesc(e->right) &&
+				   !isdestreg(e->right) &&
+				   e->right->op != NUMBER) {
+				/*
+				 * The address is live in HL and the value
+				 * is about to be computed over it.  Same
+				 * collision, same answer as the sibling
+				 * branch above: the address waits on the
+				 * stack.  This is the shape doscan's
+				 * "**args++ = v" arrives in - the target
+				 * address worked out through the stepped
+				 * pointer, then the value's own load - and
+				 * without the spill the value load wrote
+				 * over the address and no rule could match
+				 * =(D(H),H): one register, two values.
+				 */
+				Expr *w;
+
+				addr = valtohl(addr);
+				out("\tpush hl\n");
+				w = spiltstore(e, addr);
+				if (w)
+					return w;
+			} else {
 				e->left = mkunary(DEREF, e->width, addr);
+			}
 		} else if (e->op != COMMA && e->left && e->right &&
 			   e->left->regs <= 1 &&
 			   (e->right->regs > e->left->regs ||

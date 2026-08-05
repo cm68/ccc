@@ -1681,8 +1681,22 @@ parseExpr(unsigned char pri)
 
             // Build tree: QUES(condition, COLON(true_expr, false_expr))
             e4 = mkbin(COLON, e2, e3, NULL);
-            /* Type is the type of the result expressions */
-            e = mkbin(QUES, e1, e4, e2 ? e2->type : NULL);
+            /*
+             * The type is the arms' COMMON type, not the true arm's.
+             * A small constant is typed by its value, so
+             * "g ? 225 : 11104" wore ubyte - the true arm's coat -
+             * and the conversion to the destination then threw away
+             * the high byte of whichever arm had one: the false arm
+             * came back as 96.
+             */
+            {
+                struct type *tt = e2 ? e2->type : NULL;
+
+                if (e3 && e3->type &&
+                    (!tt || e3->type->size > tt->size))
+                    tt = e3->type;
+                e = mkbin(QUES, e1, e4, tt);
+            }
 
             /* Skip the rest of the loop and continue with next operator */
             continue;
