@@ -80,7 +80,8 @@ regression:
 # with heap/stack high-water for both Z80 programs.
 # the production-coverage suite: generate the operator x width x
 # residence corpus, prove no shape lacks a rule, run it native and
-# under the simulator, and hold the rule-coverage baseline
+# under the simulator, hold the rule-coverage baseline, and compile
+# the corpus with the SIMULATED c0/c1, byte-compared against the host
 prodtest: install
 	$(SUBMAKE) -C tests/gen
 

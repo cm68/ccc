@@ -28,9 +28,19 @@
 #   sim       the completeness leg again, but with the compiler itself
 #             running under the simulator: c0.mx/c1.mx compile the
 #             corpus and every output must be byte-identical to the
-#             host compiler's.  Slow; not part of "all".
+#             host compiler's.
 #
-# "all" is the fast regression: corpus + complete + correct.
+#   footprint the tipping-point guard: the three simulated passes
+#             compile the compiler's OWN sources and every run's gap
+#             is read from the simulator.  Fails on out-of-memory, on
+#             any gap under FLOOR (default 256), or on divergence
+#             from the host - so a bug fix that grows a pass past
+#             what Micronix can hold fails here, with the margin
+#             table in hand, not in the field.
+#
+# "all" runs every leg, the simulated compiler included - one
+# command, the whole claim.  The sim leg is the slow one; skip it
+# with "make complete correct cover" when iterating.
 #
 ROOT = $(realpath ../..)
 RUN = $(realpath ../run)
@@ -38,7 +48,7 @@ GEN = python3 genprod.py
 
 GPSRC = $(wildcard $(RUN)/gp_*.c)
 
-all: corpus complete correct cover
+all: corpus complete correct cover sim footprint
 
 corpus:
 	@$(GEN) | tail -1
@@ -95,7 +105,10 @@ sim:
 		else echo "$$b: DIVERGES"; fail=1; fi; \
 	done; rm -f h.* s.* gp_*.x gp_*.n c0.mx c1.mx; exit $$fail
 
+footprint:
+	@sh footprint.sh
+
 clean:
 	rm -f $(RUN)/gp_*.c unfired.now cover.out
 
-.PHONY: all corpus complete correct cover bless sim clean
+.PHONY: all corpus complete correct cover bless sim footprint clean
