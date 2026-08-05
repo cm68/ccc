@@ -18,12 +18,8 @@
 #include "debugtags.c"
 #endif
 
-/* Filter chain functions */
-extern void filtenum_init(void (*up)(struct token *));
-extern void filtenum(struct token *out);
-extern void filttdef_init(void (*up)(struct token *));
-extern void filttdef(struct token *out);
-extern void norm_init(void (*up)(struct token *));
+/* The normalizer: lexer in, pass1-ready lexeme stream out */
+extern void norm_init(void);
 extern void norm_run(void);
 
 /* Global state */
@@ -131,9 +127,7 @@ lex_get(struct token *out)
 void
 filterInit(void)
 {
-    filtenum_init(lex_get);
-    filttdef_init(filtenum);
-    norm_init(filttdef);
+    norm_init();
 }
 
 /*
