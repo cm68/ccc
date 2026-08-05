@@ -86,10 +86,22 @@ static unsigned char assign_cnt;
 static void stmt(struct token *t);
 static void exprstmt(struct token *t);
 static int decl(struct token *t);
+static void aggprime(void);
+static void mpush(char *tag, unsigned char isu);
+static void mtok(struct token *t);
+static void arrstart(char *name, unsigned char stars);
+static void arrtok(struct token *t);
+static void arrdone(void);
+static void dosizeof(struct token *t);
+static void kscan(struct token *t);
 
 /*
  * Token I/O
  */
+static struct token szq[12];
+static unsigned char szqr, szqw;
+static unsigned char insz;
+
 static void
 pull(struct token *t)
 {
@@ -98,7 +110,16 @@ pull(struct token *t)
 		tokcpy(t, &backtok);
 		return;
 	}
+	if (szqr < szqw) {
+		/* an unfoldable sizeof replaying: no re-interception */
+		tokcpy(t, &szq[szqr++]);
+		if (szqr == szqw)
+			szqr = szqw = 0;
+		return;
+	}
 	srcget(t);
+	if (t->type == SIZEOF_KW && !insz)
+		dosizeof(t);
 }
 
 static void
@@ -311,9 +332,705 @@ save_name(char *name)
 	cur_stars = 0;
 }
 
+
+/*
+ * Sizes (stage 2 of the c0 migration): registries fed by the walks
+ * this file already does, and sizeof answered on the spot.
+ *
+ * Aggregate layouts are packed and byte-aligned, arrays multiply,
+ * unions take the max - pass1's typesize arithmetic, computed here
+ * so a sizeof folds to a number before pass1 exists.  Anything the
+ * registries cannot price goes downstream unfolded, where pass1
+ * still answers it; the tree's .s output is byte-identical either
+ * way, which is the gate this rides.
+ *
+ * By the time the walker sees a token, typedefs are dissolved: a
+ * type is its keywords, a struct tag, or a name in the registry.
+ */
+struct streg {
+	char *tag;			/* interned */
+	unsigned short size;
+	struct streg *next;
+};
+static struct streg *stags;
+
+struct vreg {
+	char *name;			/* interned */
+	unsigned short total, elem, deref;
+	unsigned char depth;
+	struct vreg *next;
+};
+static struct vreg *vregs, *vfree;
+static unsigned char scopedep;
+
+static unsigned short
+stfind(char *tag)
+{
+	struct streg *s;
+
+	for (s = stags; s; s = s->next)
+		if (s->tag == tag)
+			return s->size;
+	return 0;
+}
+
+static void
+stadd(char *tag, unsigned short size)
+{
+	struct streg *s;
+
+	if (!tag || !size)
+		return;
+	s = (struct streg *)permalloc(sizeof(*s));
+	s->tag = tag;
+	s->size = size;
+	s->next = stags;
+	stags = s;
+}
+
+static void
+vadd(char *name, unsigned short total, unsigned short elem,
+    unsigned short deref)
+{
+	struct vreg *v;
+
+	if (!name || !total)
+		return;
+	if (vfree) {
+		v = vfree;
+		vfree = v->next;
+	} else
+		v = (struct vreg *)permalloc(sizeof(*v));
+	v->name = name;
+	v->total = total;
+	v->elem = elem;
+	v->deref = deref;
+	v->depth = scopedep;
+	v->next = vregs;
+	vregs = v;
+}
+
+static struct vreg *
+vfind(char *name)
+{
+	struct vreg *v;
+
+	for (v = vregs; v; v = v->next)
+		if (v->name == name)
+			return v;
+	return 0;
+}
+
+static void
+vpop(void)
+{
+	struct vreg *v;
+
+	while (vregs && vregs->depth > scopedep) {
+		v = vregs;
+		vregs = v->next;
+		v->next = vfree;
+		vfree = v;
+	}
+}
+
+/* one keyword's contribution to a basic type's size */
+static unsigned short
+kwsz(unsigned char c, unsigned short base)
+{
+	switch (c) {
+	case CHAR:	return 1;
+	case SHORT:	return 2;
+	case INT:	return (base == 1 || base == 4) ? base : 2;
+	case LONG:	return 4;
+	case UNSIGNED:	return base ? base : 2;
+	}
+	return base;
+}
+
+static int
+szkw(unsigned char c)
+{
+	return c == CHAR || c == SHORT || c == INT || c == LONG ||
+	    c == UNSIGNED;
+}
+
+/*
+ * The base size the current spec_a describes: keywords, or a
+ * struct/union tag in the registry.  Zero = not priceable (an enum,
+ * an unknown tag, void).
+ */
+static unsigned short
+specbase(void)
+{
+	unsigned short base = 0;
+	int i;
+
+	for (i = 0; i < spec_a.count; i++) {
+		unsigned char c = spec_a.buf[i].type;
+
+		if (c == STRUCT || c == UNION) {
+			if (i + 1 < spec_a.count &&
+			    spec_a.buf[i+1].type == SYM)
+				return stfind(spec_a.buf[i+1].v.name);
+			return 0;
+		}
+		if (c == ENUM)
+			return 0;
+		if (szkw(c))
+			base = kwsz(c, base);
+	}
+	return base;
+}
+
+/* the scalar/pointer declarators finish_decl is about to emit */
+static void
+sizedecl(void)
+{
+	unsigned short base = specbase();
+	unsigned char i;
+
+	for (i = 0; i < name_cnt; i++) {
+		unsigned char st = names[i].star_count;
+
+		if (st)
+			vadd(names[i].name, 2, 0,
+			    st > 1 ? 2 : base);
+		else if (base)
+			vadd(names[i].name, base, 0, 0);
+	}
+}
+
+/*
+ * An array declarator: decl() streams the brackets, this collects
+ * the verdict.  Multiplied counts, one bracket group for an
+ * indexable element size, anything unpriceable drops the entry.
+ */
+static char *arr_name;
+static unsigned char arr_stars;
+static unsigned short arr_base;
+static unsigned short arr_cnt;
+static unsigned char arr_nbrk;
+static unsigned char arr_bad;
+
+static void
+arrstart(char *name, unsigned char stars)
+{
+	arr_name = name;
+	arr_stars = stars;
+	arr_base = specbase();
+	arr_cnt = 0;
+	arr_nbrk = 0;
+	arr_bad = 0;
+}
+
+static void
+arrtok(struct token *t)
+{
+	if (!arr_name)
+		return;
+	if (t->type == NUMBER || t->type == INUMBER) {
+		unsigned short v = (unsigned short)t->v.numeric;
+
+		arr_cnt = arr_cnt ? arr_cnt * v : v;
+	} else if (t->type == RBRACK)
+		arr_nbrk++;
+	else if (t->type != LBRACK)
+		arr_bad = 1;	/* an expression: not priced */
+}
+
+static void
+arrdone(void)
+{
+	unsigned short el;
+
+	if (arr_name && !arr_bad && arr_cnt) {
+		el = arr_stars ? 2 : arr_base;
+		if (el)
+			vadd(arr_name, el * arr_cnt,
+			    arr_nbrk == 1 ? el : 0, 0);
+	}
+	arr_name = 0;
+}
+
+/*
+ * Member pricing, fed a token at a time from aggrpass.  A small
+ * frame per nested body; the same declarator walk as everywhere,
+ * shrunk to what members can be.
+ */
+struct mframe {
+	char *tag;
+	unsigned short off;
+	unsigned short base;
+	unsigned short arr;
+	unsigned char isunion;
+	unsigned char ptr;
+	unsigned char nbrk;
+	unsigned char pd;
+	unsigned char inbrk;
+	unsigned char bad;
+};
+#define MAXMFR 4
+static struct mframe mfr[MAXMFR];
+static unsigned char mfeed;	/* aggrpass feeds the pricer */
+static char mtop = -1;
+static unsigned char msawtag;
+static char *mtag;
+static unsigned char mkind;
+
+static void
+mmember(struct mframe *m)
+{
+	unsigned short sz;
+
+	sz = m->ptr ? 2 : m->base;
+	if (m->arr)
+		sz *= m->arr;
+	if (!sz)
+		m->bad = 1;
+	else if (m->isunion) {
+		if (sz > m->off)
+			m->off = sz;
+	} else
+		m->off += sz;
+	m->ptr = 0;
+	m->arr = 0;
+	m->nbrk = 0;
+}
+
+static void
+mpush(char *tag, unsigned char isu)
+{
+	struct mframe *m;
+
+	if (mtop + 1 >= MAXMFR) {
+		mfr[MAXMFR - 1].bad = 1;
+		return;
+	}
+	m = &mfr[(int)++mtop];
+	m->tag = tag;
+	m->off = 0;
+	m->base = 0;
+	m->arr = 0;
+	m->isunion = isu;
+	m->ptr = 0;
+	m->nbrk = 0;
+	m->pd = 0;
+	m->inbrk = 0;
+	m->bad = 0;
+}
+
+static void
+mpop(void)
+{
+	struct mframe *m = &mfr[(int)mtop];
+
+	if (!m->bad)
+		stadd(m->tag, m->off);
+	mtop--;
+	if (mtop >= 0) {
+		/* "} name;" continues as the enclosing member */
+		if (m->bad)
+			mfr[(int)mtop].bad = 1;
+		mfr[(int)mtop].base = m->off;
+	}
+}
+
+static void
+mtok(struct token *t)
+{
+	struct mframe *m;
+
+	if (t->type == NEWLINE || t->type == LINENO)
+		return;
+	if (msawtag) {
+		msawtag = 0;
+		if (t->type == SYM) {
+			mtag = t->v.name;
+			return;
+		}
+		mtag = 0;
+		/* anonymous body: the kind survives to the BEGIN */
+	}
+	if (t->type == STRUCT || t->type == UNION) {
+		msawtag = 1;
+		mkind = (t->type == UNION) ? 2 : 1;
+		return;
+	}
+	if (mtop < 0)
+		return;
+	m = &mfr[(int)mtop];
+	if (mkind && t->type == BEGIN) {
+		mpush(mtag, mkind == 2);
+		mtag = 0;
+		mkind = 0;
+		return;
+	}
+	if (mtag) {
+		/* "struct x" by reference; a pointer member never
+		 * needs the base, mmember flags the ones that do */
+		m->base = stfind(mtag);
+		mtag = 0;
+		mkind = 0;
+	}
+	if (m->inbrk) {
+		if (t->type == NUMBER || t->type == INUMBER)
+			m->arr = m->arr ? m->arr *
+			    (unsigned short)t->v.numeric
+			    : (unsigned short)t->v.numeric;
+		else if (t->type == RBRACK) {
+			if (!m->arr)
+				m->bad = 1;
+			m->nbrk++;
+			m->inbrk = 0;
+		} else
+			m->bad = 1;
+		return;
+	}
+	switch (t->type) {
+	case STAR:	if (!m->pd) m->ptr++; break;
+	case LPAR:	m->pd++; break;
+	case RPAR:	if (m->pd) m->pd--; break;
+	case LBRACK:	if (!m->pd) m->inbrk = 1; break;
+	case COMMA:	if (!m->pd) mmember(m); break;
+	case SEMI:	mmember(m);
+			m->base = 0;
+			break;
+	case BEGIN:	mpush(0, 0); break;	/* anonymous body */
+	case END:	mpop(); break;
+	default:
+		if (szkw(t->type))
+			m->base = kwsz(t->type, m->base);
+		break;
+	}
+}
+
+/*
+ * sizeof, answered from the registries.  On entry the SIZEOF_KW has
+ * been pulled; the walk consumes the operand.  What folds becomes
+ * an INUMBER - typed int like the construct it replaces, not by
+ * magnitude - and what does not is replayed for pass1 through a
+ * small queue ahead of the source.
+ */
+static struct token szsv[10];
+static char szn;
+static struct token szcur;
+
+static int
+szstep(void)
+{
+	if (szn >= 10)
+		return 1;
+	tokcpy(&szsv[(int)szn], &szcur);
+	szn++;
+	pull(&szcur);
+	return 0;
+}
+
+static void
+dosizeof(struct token *t)
+{
+	unsigned short base = 0;
+	unsigned char parens = 0, stars = 0, kind = 0;
+	unsigned long ans = 0;
+	struct vreg *v;
+	int i;
+
+	szn = 0;
+	insz = 1;
+	pull(&szcur);
+	if (szcur.type != LPAR && szcur.type != SYM)
+		goto unfold;
+	if (szcur.type == LPAR) {
+		parens = 1;
+		if (szstep())
+			goto unfold;
+	}
+	while (szcur.type == STAR) {
+		stars++;
+		if (szstep())
+			goto unfold;
+	}
+	if (szkw(szcur.type)) {
+		kind = 1;
+		while (szkw(szcur.type)) {
+			base = kwsz(szcur.type, base);
+			if (szstep())
+				goto unfold;
+		}
+	} else if (szcur.type == STRUCT || szcur.type == UNION) {
+		kind = 1;
+		if (szstep())
+			goto unfold;
+		if (szcur.type != SYM)
+			goto unfold;
+		base = stfind(szcur.v.name);
+		if (szstep())
+			goto unfold;
+	} else if (szcur.type == SYM && !stars) {
+		if ((v = vfind(szcur.v.name)) == 0)
+			goto unfold;
+		ans = v->total;
+		if (szstep())
+			goto unfold;
+		if (szcur.type == LBRACK) {
+			ans = v->elem;	/* any constant index */
+			if (szstep())
+				goto unfold;
+			if (szcur.type != NUMBER &&
+			    szcur.type != INUMBER)
+				goto unfold;
+			if (szstep())
+				goto unfold;
+			if (szcur.type != RBRACK)
+				goto unfold;
+			if (szstep())
+				goto unfold;
+		}
+	} else if (szcur.type == SYM && stars == 1) {
+		if ((v = vfind(szcur.v.name)) == 0 || !v->deref)
+			goto unfold;
+		ans = v->deref;
+		if (szstep())
+			goto unfold;
+	} else
+		goto unfold;
+
+	if (kind) {
+		while (szcur.type == STAR) {
+			stars++;
+			if (szstep())
+				goto unfold;
+		}
+		ans = stars ? 2 : base;
+		/*
+		 * An abstract array - sizeof(int [5]) - is what a
+		 * typedef'd array dissolves to, and pass1's type
+		 * parser never could read one: this is the only
+		 * place with an answer.
+		 */
+		while (szcur.type == LBRACK) {
+			unsigned short cnt;
+
+			if (szstep())
+				goto unfold;
+			if (szcur.type != NUMBER &&
+			    szcur.type != INUMBER)
+				goto unfold;
+			cnt = (unsigned short)szcur.v.numeric;
+			if (szstep())
+				goto unfold;
+			if (szcur.type != RBRACK)
+				goto unfold;
+			ans *= cnt;
+			if (szstep())
+				goto unfold;
+		}
+	}
+	if (parens) {
+		if (szcur.type != RPAR)
+			goto unfold;
+	}
+	if (!ans)
+		goto unfold;
+	toksynth(t, INUMBER);
+	t->v.numeric = (long)ans;
+	if (!parens) {
+		/* the bare form's follower re-enters ahead of the
+		 * source */
+		if (szqw < 12)
+			tokcpy(&szq[szqw++], &szcur);
+	}
+	insz = 0;
+	return;
+
+unfold:
+	/* not ours to answer: replay for pass1 */
+	toksynth(t, SIZEOF_KW);
+	for (i = 0; i < szn; i++)
+		if (szqw < 12)
+			tokcpy(&szq[szqw++], &szsv[i]);
+	if (szqw < 12)
+		tokcpy(&szq[szqw++], &szcur);
+	insz = 0;
+}
+
+/*
+ * File-scope declarations, watched off kout's stream.  One flat
+ * walk: specs, stars, a name, brackets, an initializer to skip.
+ * Function declarators drop the name (nothing may sizeof one);
+ * a struct body does not pass this way at all - norm_run routes
+ * it through aggrpass - so a tag reference resolves through the
+ * registry by the time the following declarators arrive.
+ */
+#define KS_SPECS	0
+#define KS_DECL		1
+#define KS_BRK		2
+#define KS_INIT		3
+static unsigned char ks_st;
+static unsigned short ks_base;
+static unsigned char ks_stars;
+static char *ks_name;
+static unsigned short ks_cnt;
+static unsigned char ks_nbrk;
+static unsigned char ks_bad;
+static unsigned char ks_pd;
+static unsigned char ks_id;
+static unsigned char ks_awtag;
+static char *ks_tag;		/* aggregate head, for norm_run */
+static unsigned char ks_kind;
+
+static void
+ksdone(void)
+{
+	unsigned short el;
+
+	if (ks_name && !ks_bad) {
+		if (ks_cnt) {
+			el = ks_stars ? 2 : ks_base;
+			if (el)
+				vadd(ks_name, el * ks_cnt,
+				    ks_nbrk == 1 ? el : 0, 0);
+		} else if (ks_stars)
+			vadd(ks_name, 2, 0,
+			    ks_stars > 1 ? 2 : ks_base);
+		else if (ks_base)
+			vadd(ks_name, ks_base, 0, 0);
+	}
+	ks_name = 0;
+	ks_stars = 0;
+	ks_cnt = 0;
+	ks_nbrk = 0;
+	ks_bad = 0;
+}
+
+static void
+kscan(struct token *t)
+{
+	if (t->type == NEWLINE || t->type == LINENO)
+		return;
+	if (ks_awtag) {
+		ks_awtag = 0;
+		if (t->type == SYM) {
+			ks_tag = t->v.name;
+			ks_base = stfind(ks_tag);
+			return;
+		}
+	}
+	if (t->type == STRUCT || t->type == UNION) {
+		ks_awtag = 1;
+		ks_kind = (t->type == UNION) ? 2 : 1;
+		ks_base = 0;
+		if (ks_st == KS_INIT)
+			return;
+		ks_st = KS_SPECS;
+		return;
+	}
+	if (t->type == ENUM) {
+		ks_kind = 0;
+		ks_base = 0;
+		ks_bad = 1;
+		return;
+	}
+	switch (ks_st) {
+	case KS_SPECS:
+		if (szkw(t->type)) {
+			ks_base = kwsz(t->type, ks_base);
+			return;
+		}
+		if (t->type == STAR) {
+			ks_stars++;
+			ks_st = KS_DECL;
+			return;
+		}
+		if (t->type == SYM) {
+			ks_name = t->v.name;
+			ks_st = KS_DECL;
+			return;
+		}
+		if (t->type == SEMI) {
+			ks_base = 0;
+			ks_bad = 0;
+		}
+		return;
+	case KS_DECL:
+		switch (t->type) {
+		case STAR:	if (!ks_pd && !ks_name) ks_stars++;
+				break;
+		case SYM:	if (!ks_pd && !ks_name)
+					ks_name = t->v.name;
+				break;
+		case LPAR:	if (!ks_pd && ks_name)
+					ks_name = 0;  /* a function */
+				ks_pd++;
+				break;
+		case RPAR:	if (ks_pd) ks_pd--; break;
+		case LBRACK:	if (!ks_pd) ks_st = KS_BRK; break;
+		case ASSIGN:	if (ks_pd) break;
+				ksdone();
+				ks_st = KS_INIT;
+				ks_id = 0;
+				break;
+		case COMMA:	if (!ks_pd) ksdone(); break;
+		case SEMI:	ksdone();
+				ks_base = 0;
+				ks_st = KS_SPECS;
+				break;
+		}
+		return;
+	case KS_BRK:
+		if (t->type == NUMBER || t->type == INUMBER)
+			ks_cnt = ks_cnt ? ks_cnt *
+			    (unsigned short)t->v.numeric
+			    : (unsigned short)t->v.numeric;
+		else if (t->type == RBRACK) {
+			if (!ks_cnt)
+				ks_bad = 1;
+			ks_nbrk++;
+			ks_st = KS_DECL;
+		} else
+			ks_bad = 1;
+		return;
+	case KS_INIT:
+		switch (t->type) {
+		case BEGIN:
+		case LPAR:
+		case LBRACK:	ks_id++; break;
+		case END:
+		case RPAR:
+		case RBRACK:	if (ks_id) ks_id--; break;
+		case COMMA:	if (!ks_id) ks_st = KS_DECL; break;
+		case SEMI:	if (!ks_id) {
+					ks_base = 0;
+					ks_st = KS_SPECS;
+				}
+				break;
+		}
+		return;
+	}
+}
+
+#ifdef DEBUG
+void
+sizedump(void)
+{
+	struct streg *sp;
+	struct vreg *v;
+
+	for (sp = stags; sp; sp = sp->next)
+		fdprintf(2, "  struct %s = %d\n", sp->tag, sp->size);
+	for (v = vregs; v; v = v->next)
+		fdprintf(2, "  var %s = %d elem %d deref %d @%d\n",
+		    v->name, v->total, v->elem, v->deref, v->depth);
+}
+#endif
+
+static void sizedecl(void);
+
 static void
 finish_decl(void)
 {
+	sizedecl();
 	if (name_cnt > 0) {
 		int keep = specs_static();
 
@@ -347,11 +1064,44 @@ aggrpass(void)
 		if (t.type == BEGIN)
 			d++;
 		else if (t.type == END && --d == 0) {
+			if (mfeed) {
+				mtok(&t);
+				mfeed = 0;
+			}
 			out(&t);
 			return;
 		}
+		if (mfeed)
+			mtok(&t);
 		out(&t);
 	}
+}
+
+/*
+ * Prime the member pricer from spec_a: the body about to stream is
+ * the definition of this tag.  Enums have no members to price.
+ */
+static void
+aggprime(void)
+{
+	char *tag = 0;
+	unsigned char isu = 0;
+	int i;
+
+	for (i = 0; i < spec_a.count; i++) {
+		unsigned char c = spec_a.buf[i].type;
+
+		if (c == ENUM)
+			return;
+		if (c == UNION)
+			isu = 1;
+		if ((c == STRUCT || c == UNION) &&
+		    i + 1 < spec_a.count &&
+		    spec_a.buf[i+1].type == SYM)
+			tag = spec_a.buf[i+1].v.name;
+	}
+	mpush(tag, isu);
+	mfeed = 1;
 }
 
 /* decl() states */
@@ -421,6 +1171,8 @@ decl(struct token *t)
 					}
 					tp++;
 				}
+				if (isagg)
+					aggprime();
 				outarr(&spec_a);
 				out(&cur);
 				tarr_reset(&spec_a);
@@ -528,6 +1280,7 @@ decl(struct token *t)
 				}
 				/* the type is kept: declarators after
 				 * the array still split */
+				arrstart(np->name, np->star_count);
 				arrd = 1;
 				st = D_ARR;
 				continue;
@@ -538,6 +1291,7 @@ decl(struct token *t)
 
 		case D_ARR:
 			out(&cur);
+			arrtok(&cur);
 			if (cur.type == LBRACK)
 				arrd++;
 			else if (cur.type == RBRACK && --arrd == 0)
@@ -558,6 +1312,7 @@ decl(struct token *t)
 				 * and its only legal homes want it
 				 * inline anyway.
 				 */
+				arrdone();
 				out(&cur);
 				pdepth = 0;
 				idepth = 0;
@@ -567,16 +1322,19 @@ decl(struct token *t)
 			if (cur.type == COMMA) {
 				/* close this declaration, keep the type:
 				 * char buf[12], *p  ->  two declarations */
+				arrdone();
 				outt(SEMI);
 				st = D_DECL;
 				continue;
 			}
 			if (cur.type == SEMI) {
+				arrdone();
 				outt(SEMI);
 				finish_decl();
 				return 1;
 			}
 			/* not a shape this splits: flush and step aside */
+			arr_name = 0;
 			out(&cur);
 			tarr_reset(&spec_a);
 			name_cnt = 0;
@@ -707,13 +1465,16 @@ body(void)
 	pull(&t);
 	if (t.type == E_O_F)
 		return;
+	scopedep++;
 	if (t.type == BEGIN) {
 		stmt(&t);
-		return;
+	} else {
+		outt(BEGIN);
+		stmt(&t);
+		outt(END);
 	}
-	outt(BEGIN);
-	stmt(&t);
-	outt(END);
+	scopedep--;
+	vpop();
 }
 
 static void do_else(void);
@@ -1041,12 +1802,15 @@ stmt(struct token *t)
 	case BEGIN:
 		out(t);
 		bdepth++;
+		scopedep++;
 		for (;;) {
 			pull(&u);
 			if (u.type == E_O_F)
 				return;
 			if (u.type == END) {
 				bdepth--;
+				scopedep--;
+				vpop();
 				out(&u);
 				return;
 			}
@@ -1165,6 +1929,7 @@ kout(struct token *t)
 		inagg = 1;
 	else if (t->type != SYM && t->type != BEGIN)
 		inagg = 0;
+	kscan(t);
 	out(t);
 }
 
@@ -2416,6 +3181,28 @@ norm_init(void)
 	tdbody = 0;
 	tdfin = 0;
 	aftertag = 0;
+	stags = 0;
+	vregs = 0;
+	vfree = 0;
+	scopedep = 0;
+	mtop = -1;
+	mfeed = 0;
+	msawtag = 0;
+	mtag = 0;
+	arr_name = 0;
+	szqr = szqw = 0;
+	insz = 0;
+	ks_st = 0;
+	ks_base = 0;
+	ks_stars = 0;
+	ks_name = 0;
+	ks_cnt = 0;
+	ks_nbrk = 0;
+	ks_bad = 0;
+	ks_pd = 0;
+	ks_awtag = 0;
+	ks_tag = 0;
+	ks_kind = 0;
 }
 
 /*
@@ -2437,6 +3224,11 @@ norm_run(void)
 		if (t.type == BEGIN) {
 			if (inagg) {
 				inagg = 0;
+				if (ks_kind) {
+					mpush(ks_tag, ks_kind == 2);
+					mfeed = 1;
+					ks_kind = 0;
+				}
 				out(&t);
 				aggrpass();
 				continue;
