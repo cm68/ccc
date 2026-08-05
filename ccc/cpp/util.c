@@ -92,19 +92,27 @@ poolstats(void)
     for (i = 0; i < INTERN_HASH; i++)
         for (e = ipool[i]; e; e = e->next) { ni++; ib += strlen(e->name)+1; }
     {
-        extern int tdefstat(int *), incstat(int *);
+        extern int incstat(int *);
         extern int tbpeak;
-        int ndb, tdb, inb, nd, td, in;
+        int ndb, inb, nd, in;
         nd = ndefstat(&ndb);
-        td = tdefstat(&tdb);
         in = incstat(&inb);
         fdprintf(2, "POOLSTATS macros=%d names=%dB texts=%dB fnlike=%d parmB=%d numeric=%d(%dB) ndefs=%d(%dB) intern=%d strB=%d\n",
             nm, nb, tb, pm, pb, en, etext, nd, ndb, ni, ib);
         {
             extern int macpeak;
-            fdprintf(2, "POOLSTATS2 tdefs=%d(%dB) incs=%d(%dB) tbpeak=%d macpeak=%d\n",
-                td, tdb, in, inb, tbpeak, macpeak);
+            fdprintf(2, "POOLSTATS2 incs=%d(%dB) tbpeak=%d macpeak=%d\n",
+                in, inb, tbpeak, macpeak);
         }
+    }
+    {
+        extern long fbufPk;
+        extern long tdkeepB;
+        extern int tdkeepN;
+
+        fdprintf(2, "POOLSTATS3 fbufpeak=%ld tdkept=%d(%ldB)\n",
+            fbufPk, tdkeepN, tdkeepB);
+        { extern void bufdump(void); bufdump(); }
     }
 }
 #endif

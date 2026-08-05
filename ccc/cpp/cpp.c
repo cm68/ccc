@@ -21,6 +21,8 @@
 /* Filter chain functions */
 extern void filtenum_init(void (*up)(struct token *));
 extern void filtenum(struct token *out);
+extern void filttdef_init(void (*up)(struct token *));
+extern void filttdef(struct token *out);
 extern void filtknr_init(void (*up)(struct token *));
 extern void filtknr(struct token *out);
 extern void filtdecl_init(void (*up)(struct token *));
@@ -31,7 +33,6 @@ extern void filtbraceChk(void);
 extern void filtctrl_init(void (*up)(struct token *));
 extern void filtctrl(struct token *out);
 extern void filtctrl_check(void);
-extern void typedefReset(void);
 
 /* Global state */
 char *curFile;
@@ -138,9 +139,9 @@ lex_get(struct token *out)
 void
 filterInit(void)
 {
-    typedefReset();
     filtenum_init(lex_get);
-    filtknr_init(filtenum);
+    filttdef_init(filtenum);
+    filtknr_init(filttdef);
     filtdecl_init(filtknr);
     filtbrace_init(filtdecl);
     filtctrl_init(filtbrace);

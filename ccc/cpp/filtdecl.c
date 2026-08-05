@@ -14,7 +14,6 @@
 #include <string.h>
 
 /* External typedef table */
-extern void addTypedef(char *name);
 
 /* States */
 #define ST_NORMAL   0
@@ -31,10 +30,8 @@ static int aggr_depth = 0;	/* Struct/union/enum brace depth */
 static int paren_depth = 0;
 static int init_depth = 0;
 static int arr_depth = 0;	/* bracket nesting in ST_ARR */
-static int in_typedef = 0;
 static int expect_tag = 0;	/* Expecting struct/union/enum tag name */
 static int in_aggr_def = 0;	/* In struct/union/enum definition */
-static char *typedef_name = 0;
 
 /* Declaration buffer - dynamically allocated */
 static struct tokarray decl_arr;
@@ -75,12 +72,11 @@ filtdecl_init(void (*up)(struct token *))
 	name_count = 0;
 	assign_count = 0;
 	cur_stars = 0;
-	in_typedef = 0;
 	expect_tag = 0;
 	in_aggr_def = 0;
 	tarr_setup(&decl_arr, 16);
 	tarr_setup(&init_arr, 32);
-	pend_setup(&pb, 16);
+	pend_setup(&pb, 64);
 }
 
 /*
@@ -339,17 +335,6 @@ restart:
 	}
 
 	if (brace_depth == 0) {
-		if (t.type == TYPEDEF) {
-			in_typedef = 1;
-			typedef_name = 0;
-		} else if (in_typedef && t.type == SYM) {
-			typedef_name = t.v.name;
-		} else if (in_typedef && t.type == SEMI) {
-			if (typedef_name)
-				addTypedef(typedef_name);
-			in_typedef = 0;
-			typedef_name = 0;
-		}
 		/* Track start of struct/union/enum definition */
 		if (t.type == STRUCT || t.type == UNION || t.type == ENUM)
 			in_aggr_def = 1;
@@ -363,7 +348,6 @@ restart:
 	switch (state) {
 	case ST_NORMAL:
 		if (is_type_tok(&t)) {
-			in_typedef = (t.type == TYPEDEF);
 			expect_tag = (t.type == STRUCT || t.type == UNION ||
 			              t.type == ENUM);
 			tarr_push(&decl_arr, &t);

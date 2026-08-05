@@ -6,8 +6,62 @@
 #include "cpp.h"
 #include "lexeme.h"
 
-/* External typedef table */
-extern int isTypedef(char *name);
+#ifdef DEBUG
+/*
+ * Live bytes across every filter buffer, and the high-water mark.
+ * poolstats prints the peak: this is the number that has to fit in
+ * the Z80's gap, and the one to watch when a filter's buffers are
+ * resized.
+ */
+long fbufB, fbufPk;
+
+/* every buffer ever inited, so poolstats can dump each one's
+ * capacity; capacities never shrink, so alloc IS the high water.
+ * (NB: the first wording of this comment tripped a latent cpp bug:
+ * inside a false #ifdef, an odd count of hyphens made the lexer
+ * hit EOF early - repro preserved in the session scratchpad) */
+#define NREG 40
+static void *bufreg[NREG];
+static char bufkind[NREG];
+static int nbufreg;
+
+void
+bufdump(void)
+{
+	int i;
+
+	for (i = 0; i < nbufreg; i++) {
+		if (bufkind[i] == 't') {
+			struct tokarray *a = (struct tokarray *)bufreg[i];
+			fdprintf(2, "  tarr %d alloc=%d\n", i, a->alloc);
+		} else {
+			struct pendbuf *p = (struct pendbuf *)bufreg[i];
+			fdprintf(2, "  pend %d size=%d\n", i, p->size);
+		}
+	}
+}
+
+static void
+bufregister(void *p, char kind)
+{
+	if (nbufreg < NREG) {
+		bufreg[nbufreg] = p;
+		bufkind[nbufreg] = kind;
+		nbufreg++;
+	}
+}
+
+static void
+bufacct(long d)
+{
+	fbufB += d;
+	if (fbufB > fbufPk)
+		fbufPk = fbufB;
+}
+#define BUFACCT(d) bufacct(d)
+#else
+#define BUFACCT(d)
+#endif
 
 /*
  * Check if token type is a type keyword
@@ -24,11 +78,9 @@ is_type_kw(unsigned char type)
 int
 is_type_tok(struct token *t)
 {
-	if (token_props[t->type] & TF_TYPE)
-		return 1;
-	if (t->type == SYM && t->v.name && isTypedef(t->v.name))
-		return 1;
-	return 0;
+	/* filttdef dissolved every typedef name upstream, so a type
+	 * is recognisable from its leading keyword alone */
+	return (token_props[t->type] & TF_TYPE) != 0;
 }
 
 /*
@@ -111,6 +163,7 @@ fstack_init(struct filter_stack *s, int initial, int elemsize)
 {
 	if (initial < 4) initial = 4;
 	s->buf = xalloc(initial * elemsize);
+	BUFACCT(initial * elemsize);
 	s->sp = 0;
 	s->alloc = initial;
 	s->elemsize = elemsize;
@@ -122,6 +175,7 @@ fstack_push(struct filter_stack *s, void *data)
 	if (s->sp >= s->alloc) {
 		int newcap = s->alloc + GROWSTEP;
 		char *nb = realloc(s->buf, newcap * s->elemsize);
+		BUFACCT(GROWSTEP * s->elemsize);
 
 		if (!nb)			/* see xalloc in util.c */
 			xnomem();
@@ -155,34 +209,61 @@ pend_init(struct pendbuf *p, int initial)
 {
 	if (initial < 8) initial = 8;
 	p->buf = (struct token *)xalloc(initial * sizeof(struct token));
+	BUFACCT(initial * sizeof(struct token));
+#ifdef DEBUG
+	bufregister(p, 'p');
+#endif
 	p->size = initial;
 	p->rd = p->wr = 0;
+}
+
+/* reverse buf[lo..hi] - the rotation helper */
+static void
+tokrev(struct token *buf, int lo, int hi)
+{
+	struct token tmp;
+
+	while (lo < hi) {
+		tokcpy(&tmp, &buf[lo]);
+		tokcpy(&buf[lo], &buf[hi]);
+		tokcpy(&buf[hi], &tmp);
+		lo++;
+		hi--;
+	}
 }
 
 void
 pend_grow(struct pendbuf *p)
 {
 	struct token *newbuf;
-	int newmax, count, i;
+	int newmax, count;
 
 	/*
 	 * A step, not a doubling.  These queues are bounded by how deep
 	 * a construct nests and how long one expression is, not by the
 	 * size of the input, so the doubling never amortised anything
 	 * and overshot by up to half a buffer whenever it fired.
+	 *
+	 * Rotate the ring flat first, then realloc.  The old
+	 * alloc-copy-free left the previous buffer dead in the free
+	 * list at every step - too small for the next grow, never
+	 * reusable - and briefly held both buffers live.  On the 64K
+	 * machine that stair of fragments was the difference between
+	 * a big header closure fitting and not.  A grow only fires
+	 * full, so every cell but the write slot is live; rotating
+	 * left by rd is three reversals in place.
 	 */
-	newmax = p->size + GROWSTEP;
-	newbuf = (struct token *)xalloc(newmax * sizeof(struct token));
-
-	/* Copy elements in order from rd to wr */
-	count = 0;
-	i = p->rd;
-	while (i != p->wr) {
-		tokcpy(&newbuf[count++], &p->buf[i]);
-		i = (i + 1) % p->size;
+	count = p->size - 1;
+	if (p->rd != 0) {
+		tokrev(p->buf, 0, p->rd - 1);
+		tokrev(p->buf, p->rd, p->size - 1);
+		tokrev(p->buf, 0, p->size - 1);
 	}
-
-	free(p->buf);
+	newmax = p->size + GROWSTEP;
+	BUFACCT(GROWSTEP * sizeof(struct token));
+	newbuf = (struct token *)realloc(p->buf, newmax * sizeof(struct token));
+	if (!newbuf)
+		xnomem();
 	p->buf = newbuf;
 	p->size = newmax;
 	p->rd = 0;
@@ -309,6 +390,10 @@ tarr_init(struct tokarray *a, int initial)
 {
 	if (initial < 8) initial = 8;
 	a->buf = (struct token *)xalloc(initial * sizeof(struct token));
+	BUFACCT(initial * sizeof(struct token));
+#ifdef DEBUG
+	bufregister(a, 't');
+#endif
 	a->count = 0;
 	a->alloc = initial;
 }
@@ -319,12 +404,12 @@ tarr_push(struct tokarray *a, struct token *t)
 	if (a->count >= a->alloc) {
 		struct token *newbuf;
 		int newcap = a->alloc + GROWSTEP;	/* see pend_grow */
-		int i;
-		newbuf = (struct token *)xalloc(newcap * sizeof(struct token));
-		for (i = 0; i < a->count; i++) {
-			tokcpy(&newbuf[i], &a->buf[i]);
-		}
-		free(a->buf);
+
+		BUFACCT(GROWSTEP * sizeof(struct token));
+		newbuf = (struct token *)realloc(a->buf,
+		    newcap * sizeof(struct token));
+		if (!newbuf)
+			xnomem();
 		a->buf = newbuf;
 		a->alloc = newcap;
 	}
