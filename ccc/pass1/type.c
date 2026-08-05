@@ -321,7 +321,7 @@ typeName(struct type *t)
     if (isBasicType(t))
         return basicnm[t - basictypes];
     for (n = names; n; n = n->chain)
-        if (n->type == t && (n->is_tag || n->kind == ktdef))
+        if (n->type == t && n->is_tag)
             return nameOf(n->id);
     return "unnamed";
 }
@@ -428,8 +428,6 @@ newName(unsigned short id, kind k, struct type *t, unsigned char is_tag)
         if (phase == 2)
             return n;
         if (n->sclass & SC_EXTERN)
-            return n;
-        if (n->kind == ktdef && t == n->type)
             return n;
         gripe(ER_D_DN);
         return 0;
@@ -914,14 +912,6 @@ getbasetype()
     struct name *member;
     unsigned char is_union;
 
-    /* a typedef? */
-    if (cur.type == SYM) {
-        n = findName(cur.v.id, 0);
-        if (n && (n->kind == ktdef)) {
-            gettoken();
-            return n->type;
-        }
-    }
     t = parsebasic();
     if (t) {
         return t;

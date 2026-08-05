@@ -559,8 +559,6 @@ parseSclass()
 		gripe(ER_P_SC);
 	if ((ret & SC_STATIC) && (ret & SC_AUTO))
 		gripe(ER_P_SC);
-	if ((ret & SC_TYPEDEF) && (ret & (SC_EXTERN|SC_STATIC|SC_AUTO|SC_REGISTER)))
-		gripe(ER_P_SC);
 	return ret;
 }
 
@@ -646,38 +644,13 @@ declaration()
             break;
         }
 
-        /* handle typedef declarations */
-        if (sclass & SC_TYPEDEF) {
-            /* change the name kind from var to tdef */
-#ifdef DEBUG
-            if (VERBOSE(V_SYM)) {
-                fdprintf(2,"CONVERTING %s from var to tdef "
-                         "(sclass=0x%02x)\n", nameOf(v->id), sclass);
-            }
-#endif
-            v->kind = ktdef;
-            slimFnArgs(v->type);
-            /* typedefs cannot have initializers or function bodies */
-            if (cur.type == ASSIGN) {
-                gripe(ER_T_TD);
-                /* skip the initializer */
-                while (cur.type != SEMI && cur.type != COMMA &&
-                       cur.type != E_O_F) {
-                    gettoken();
-                }
-            }
-            /* continue to next declarator or end of statement */
-            if (cur.type == COMMA) {
-                gettoken();
-                continue;
-            }
-            if (cur.type == SEMI) {
-                gettoken();
-                break;
-            }
-            /* unexpected token */
-            break;
-        }
+        /*
+         * A typedef reaching this pass is a pipeline fault: cpp
+         * dissolves every one.  Loud, and the declarator carries
+         * on as a variable so the error does not cascade.
+         */
+        if (sclass & SC_TYPEDEF)
+            gripe(ER_T_TD);
 
         if (v->type->flags & TF_FUNC) {
 #ifdef DEBUG
@@ -759,7 +732,7 @@ declaration()
 		 * Skip if already emitted via streaming (v->emitted).
 		 */
 		if ((lexlevel == 1 || (sclass & SC_STATIC)) &&
-		    v->kind != ktdef && v->kind != kfdef &&
+		    v->kind != kfdef &&
 		    !(sclass & SC_EXTERN) && !v->emitted) {
 			/* Skip function declarations - only emit actual variables */
 			if (!(v->type->flags & TF_FUNC)) {
@@ -854,7 +827,6 @@ next_decl:
 void
 parseSpan()
 {
-	struct name *poss_typedef;
 
 	spanStop = 0;
 	while (cur.type != E_O_F) {
@@ -867,16 +839,9 @@ parseSpan()
 #endif
 		/* Check if current token looks like start of a declaration */
 		/* Also check if it's a typedef name (SYM that's a typedef) */
-		poss_typedef = NULL;
-		if (cur.type == SYM) {
-			poss_typedef = findName(cur.v.id, 0);
-		}
-
 		if (isTypeToken(cur.type) ||
 			cur.type == STATIC || cur.type == REGISTER ||
-			cur.type == AUTO || cur.type == EXTERN ||
-			cur.type == TYPEDEF ||
-			(poss_typedef && poss_typedef->kind == ktdef)) {
+			cur.type == AUTO || cur.type == EXTERN) {
 			declaration();
 		} else if (cur.type == ASM) {
 			/* Global asm block - get text and emit directly */

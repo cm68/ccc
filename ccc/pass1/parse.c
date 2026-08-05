@@ -493,7 +493,7 @@ capLocals(void)
 	/* Traverse chain - current level names are at head */
 	for (n = names; n && n->level == lexlevel; n = n->chain) {
 		/* Skip tags, typedefs, and functions */
-		if (n->is_tag || n->kind == ktdef || n->kind == kfdef)
+		if (n->is_tag || n->kind == kfdef)
 			continue;
 		/*
 		 * kfdef is only the ones defined here.  A function
@@ -815,18 +815,10 @@ statement(void)
             case STRUCT: case UNION:
             case UNSIGNED:
             case STATIC: case REGISTER: case AUTO:
-            case EXTERN: case TYPEDEF:
+            case EXTERN:
                 declaration();
                 break;
             case SYM:
-                /* Check typedef name for declaration */
-                {
-                    struct name *pt = findName(cur.v.id, 0);
-                    if (pt && pt->kind == ktdef) {
-                        declaration();
-                        break;
-                    }
-                }
                 /* Fall through to expression statement */
             case NUMBER: case INUMBER: case LNUMBER:
             case STRING: case LPAR:
@@ -980,11 +972,6 @@ statement(void)
             declaration();
             break;
 
-        case TYPEDEF:
-            /* typedef inside function body - scoped to current block */
-            declaration();
-            break;
-
         case LABEL:
             /* Label (from cpp) */
             emit1(LABEL);
@@ -993,14 +980,6 @@ statement(void)
             break;
 
         case SYM:
-            /* Check if it's a typedef name used in a declaration */
-            {
-                struct name *poss_typedef = findName(cur.v.id, 0);
-                if (poss_typedef && poss_typedef->kind == ktdef) {
-                    declaration();
-                            break;
-                }
-            }
             /* fall through to expression */
         case NUMBER: case INUMBER:    // numeric literals can start expression statements
         case LNUMBER:

@@ -857,21 +857,12 @@ declare(struct type **btp, unsigned char struct_elem)
 char
 isCastStart(void)
 {
-    struct name *n;
-
     /* Check for type keywords */
     if (isTypeToken(cur.type)) {
         return 1;
     }
 
-    /* Check if it's a typedef name */
-    if (cur.type == SYM) {
-        n = findName(cur.v.id, 0);
-        if (n && n->kind == ktdef) {
-            return 1;
-        }
-    }
-
+    /* typedef names cannot reach here: cpp dissolves them */
     return 0;
 }
 
