@@ -1,0 +1,7 @@
+# 1 "ifprec.c"
+short right_precedence = 1 ;
+short parens = 1 ;
+short ternary = 1 ;
+short unary = 1 ;
+short divzero = 1 ;
+short shiftor_c0_gramm = 1 ;

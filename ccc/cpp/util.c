@@ -431,88 +431,156 @@ hexdump(char *tag, char *h, int l)
 #endif
 
 /*
- * Parse constant expression for #if/#elif
- * This is a simplified version - just evaluate basic expressions
+ * Constant expression evaluation.
+ *
+ * One grammar, two users: #if/#elif lines here, and the stream
+ * folder in norm.c.  The precedence table is pass1's oppri, ported
+ * verbatim so anything folded early means exactly what pass1 would
+ * have computed late.  Arithmetic is long throughout - for the
+ * wrapping operators the low sixteen bits match pass1's int
+ * arithmetic bit for bit, and a preprocessor line has always been
+ * long anyway.  Division and modulus by zero yield zero, as they
+ * always have here.
  */
+static unsigned char cfpri[96] = {
+/*0x20*/ 0,0,0,0,3,0,0,0,
+/*0x28  PLUS MINUS .  DIV MOD RSH LSH AND */
+         4,4,0,3,3,5,5,8,
+/*0x30  OR XOR .  .  .  LAND LOR . */
+         10,9,0,0,0,11,12,0,
+/*0x38  .  .  .  .  EQ NEQ LE LT */
+         0,0,0,0,6,7,6,6,
+/*0x40  GE GT */
+         6,6,0,0,0,0,0,0,
+/*0x48*/ 0,0,0,0,0,0,0,0,
+/*0x50*/ 0,0,0,0,0,0,0,0,
+/*0x58  .  .  QUES */
+         0,0,13,0,0,0,0,0,
+/*0x60*/ 0,0,0,0,0,0,0,0,
+/*0x68*/ 0,0,0,0,0,0,0,0,
+/*0x70*/ 0,0,0,0,0,0,0,0,
+/*0x78*/ 0,0,0,0,0,0,0,0
+};
+
+int
+cfprio(unsigned char t)
+{
+    if (t >= 0x20 && t < 0x80)
+        return cfpri[t - 0x20];
+    return 0;
+}
+
+long
+capply(unsigned char op, long a, long b)
+{
+    switch (op) {
+    case PLUS:   return a + b;
+    case MINUS:  return a - b;
+    case STAR:   return a * b;
+    case DIV:    return b ? a / b : 0;
+    case MOD:    return b ? a % b : 0;
+    case LSHIFT: return a << b;
+    case RSHIFT: return a >> b;
+    case AND:    return a & b;
+    case OR:     return a | b;
+    case XOR:    return a ^ b;
+    case EQ:     return a == b;
+    case NEQ:    return a != b;
+    case LT:     return a < b;
+    case GT:     return a > b;
+    case LE:     return a <= b;
+    case GE:     return a >= b;
+    case LAND:   return a && b;
+    case LOR:    return a || b;
+    }
+    return a;
+}
+
+long
+cunary(unsigned char op, long a)
+{
+    switch (op) {
+    case MINUS:   return -a;
+    case TWIDDLE: return ~a;
+    case BANG:    return !a;
+    }
+    return a;                   /* unary plus */
+}
+
+/*
+ * Directive-mode parsing over cur/gettoken.  An undefined name is
+ * zero, which is what #if has always meant by it.
+ */
+static long cfexpr(int limit);
+
+static long
+cfprim(void)
+{
+    long v;
+    unsigned char op;
+
+    switch (cur.type) {
+    case NUMBER:
+    case INUMBER:
+    case LNUMBER:
+        v = cur.v.numeric;
+        gettoken();
+        return v;
+    case SYM:
+        gettoken();
+        return 0;
+    case LPAR:
+        gettoken();
+        v = cfexpr(13);
+        if (cur.type == RPAR)
+            gettoken();
+        return v;
+    case MINUS:
+    case PLUS:
+    case BANG:
+    case TWIDDLE:
+        op = cur.type;
+        gettoken();
+        return cunary(op, cfprim());
+    }
+    return 0;
+}
+
+static long
+cfexpr(int limit)
+{
+    long v, m;
+    int p;
+    unsigned char op;
+
+    v = cfprim();
+    for (;;) {
+        p = cfprio(cur.type);
+        if (!p || p > limit)
+            return v;
+        if (cur.type == QUES) {
+            gettoken();
+            m = cfexpr(13);
+            if (cur.type == COLON)
+                gettoken();
+            /* the arms bind to the ?: pair, not past it */
+            v = v ? m : cfexpr(12);
+            continue;
+        }
+        op = cur.type;
+        gettoken();
+        v = capply(op, v, cfexpr(p - 1));
+    }
+}
+
 long
 parseConst(token_t stop)
 {
-    long val = 0;
-    long term;
-    char op = 0;
+    long v = cfexpr(13);
 
-    while (cur.type != stop && cur.type != E_O_F) {
-        /* Get term value */
-        if (cur.type == NUMBER || cur.type == LNUMBER) {
-            /* the suffix says nothing here - a preprocessor
-             * expression is arithmetic on whatever it is handed */
-            term = cur.v.numeric;
-        } else if (cur.type == SYM) {
-            /* Undefined macro evaluates to 0 */
-            term = 0;
-        } else if (cur.type == LPAR) {
-            gettoken();
-            term = parseConst(RPAR);
-            if (cur.type == RPAR)
-                gettoken();
-        } else if (cur.type == BANG) {
-            gettoken();
-            term = !parseConst(stop);
-            continue;
-        } else if (cur.type == TWIDDLE) {
-            gettoken();
-            term = ~parseConst(stop);
-            continue;
-        } else if (cur.type == MINUS) {
-            gettoken();
-            term = -parseConst(stop);
-            continue;
-        } else {
-            break;
-        }
-
-        /* Apply pending operator */
-        switch (op) {
-        case 0:   val = term; break;
-        case '+': val = val + term; break;
-        case '-': val = val - term; break;
-        case '*': val = val * term; break;
-        case '/': val = term ? val / term : 0; break;
-        case '%': val = term ? val % term : 0; break;
-        case '&': val = val & term; break;
-        case '|': val = val | term; break;
-        case '^': val = val ^ term; break;
-        case '<': val = val < term; break;
-        case '>': val = val > term; break;
-        case 'Q': val = val == term; break;  /* EQ */
-        case 'n': val = val != term; break;  /* NEQ */
-        case 'L': val = val <= term; break;  /* LE */
-        case 'g': val = val >= term; break;  /* GE */
-        case 'j': val = val && term; break;  /* LAND */
-        case 'h': val = val || term; break;  /* LOR */
-        case 'y': val = val << term; break;  /* LSHIFT */
-        case 'w': val = val >> term; break;  /* RSHIFT */
-        }
-
+    while (cur.type != stop && cur.type != E_O_F)
         gettoken();
-
-        /* Get operator */
-        if (cur.type == PLUS || cur.type == MINUS ||
-            cur.type == STAR || cur.type == DIV || cur.type == MOD ||
-            cur.type == AND || cur.type == OR || cur.type == XOR ||
-            cur.type == LT || cur.type == GT ||
-            cur.type == EQ || cur.type == NEQ ||
-            cur.type == LE || cur.type == GE ||
-            cur.type == LAND || cur.type == LOR ||
-            cur.type == LSHIFT || cur.type == RSHIFT) {
-            op = cur.type;
-            gettoken();
-        } else {
-            break;
-        }
-    }
-
-    return val;
+    return v;
 }
 
 /* vim: set tabstop=4 shiftwidth=4 noexpandtab: */
