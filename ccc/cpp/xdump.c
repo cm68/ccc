@@ -28,6 +28,62 @@ char srcfile[256]; /* current source file from LINENO */
 char lastfile[256];/* file at last sync point */
 
 /*
+ * The .n sidecar, slurped whole.  Identifiers in the stream are
+ * SYMID/LABELID plus a 2-byte id; the spelling lives here, at the
+ * offset the table at the front of the sidecar gives.  Without it
+ * every name prints as ?id?, which is still readable enough to
+ * dump a stream whose sidecar has gone missing.
+ */
+char *ntab;        /* the whole sidecar */
+long ntablen;
+int nnames;        /* ids run 1..nnames */
+
+void
+loadnames(char *xname)
+{
+    FILE *nf;
+    long len;
+    char nname[256];
+    char *dot;
+
+    if (strlen(xname) >= sizeof(nname))
+        return;
+    strcpy(nname, xname);
+    dot = strrchr(nname, '.');
+    if (dot)
+        strcpy(dot, ".n");
+    else
+        strcat(nname, ".n");
+    nf = fopen(nname, "rb");
+    if (!nf)
+        return;
+    fseek(nf, 0L, 2);
+    len = ftell(nf);
+    fseek(nf, 0L, 0);
+    ntab = malloc(len);
+    if (ntab && fread(ntab, 1, len, nf) == len) {
+        ntablen = len;
+        nnames = (ntab[0] & 0xff) | ((ntab[1] & 0xff) << 8);
+    }
+    fclose(nf);
+}
+
+char *
+nameOf(int id)
+{
+    long off;
+    static char unk[8];
+
+    if (id >= 1 && id <= nnames) {
+        off = (ntab[2 * id] & 0xff) | ((ntab[2 * id + 1] & 0xff) << 8);
+        if (off > 0 && off < ntablen)
+            return ntab + off;
+    }
+    sprintf(unk, "?%d?", id);
+    return unk;
+}
+
+/*
  * Emit indentation spaces
  */
 void
@@ -127,6 +183,7 @@ usage:
         perror(fname);
         return 1;
     }
+    loadnames(fname);
 
     /* Redirect stdout to outfile if specified */
     if (outfile && !freopen(outfile, "w", stdout)) {
@@ -190,6 +247,27 @@ usage:
             buf[len] = 0;
             needindent();
             printf("%s ", buf);
+            break;
+
+        case SYMID:
+            /* 2-byte id, spelling in the sidecar */
+            i = fgetc(f) & 0xff;
+            i |= (fgetc(f) & 0xff) << 8;
+            needindent();
+            printf("%s ", nameOf(i));
+            break;
+
+        case LABELID:
+            /* LABEL's id form, outdented like LABEL */
+            i = fgetc(f) & 0xff;
+            i |= (fgetc(f) & 0xff) << 8;
+            if (atbol) {
+                int j;
+                for (j = 0; j < (depth - 1) * 4; j++)
+                    putchar(' ');
+                atbol = 0;
+            }
+            printf("%s: ", nameOf(i));
             break;
 
         case NUMBER:
