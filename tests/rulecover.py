@@ -25,7 +25,8 @@ VERBOSE = '-v' in sys.argv
 CORPUS = sorted(set(
     glob.glob(ROOT + '/ccc/cpp/*.c') + glob.glob(ROOT + '/ccc/pass1/*.c') +
     glob.glob(ROOT + '/ccc/pass2/*.c') + glob.glob(ROOT + '/tools/*.c') +
-    glob.glob(ROOT + '/tests/run/rt_*.c') + glob.glob(ROOT + '/libsrc/libc/*.c') +
+    glob.glob(ROOT + '/tests/run/rt_*.c') +
+    glob.glob(ROOT + '/tests/run/gp_*.c') + glob.glob(ROOT + '/libsrc/libc/*.c') +
     glob.glob(ROOT + '/libsrc/libu/*.c') + glob.glob(ROOT + '/libsrc/libcpm/*.c')))
 
 env = dict(os.environ, CCC_RULEHITS=HITS)

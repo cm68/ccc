@@ -78,6 +78,12 @@ regression:
 # Native-vs-Z80 equivalence + memory footprint matrix: every cpp and
 # pass1 source through host cpp/c0 and sim cpp.mx/c0.mx, byte-compared,
 # with heap/stack high-water for both Z80 programs.
+# the production-coverage suite: generate the operator x width x
+# residence corpus, prove no shape lacks a rule, run it native and
+# under the simulator, and hold the rule-coverage baseline
+prodtest: install
+	$(SUBMAKE) -C tests/gen
+
 footprint:
 	$(MAKE) -C ccc/cpp cpp xdump com-zc3
 	$(MAKE) -C ccc/pass1 c0 mx-zc3
