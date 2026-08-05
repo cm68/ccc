@@ -1177,6 +1177,30 @@ koutarr(struct tokarray *a)
 		kout(&a->buf[i]);
 }
 
+/* synthesized header tokens go through the same tracking - a TIMES
+ * or RPAR must clear a struct head just like a real one, or the
+ * body { of a struct-param function reads as a struct body */
+static void
+kouta(unsigned char type, struct token *ref)
+{
+	struct token t;
+
+	t.type = type;
+	t.v.numeric = 0;
+	t.lineno = ref->lineno;
+	t.filename = ref->filename;
+	kout(&t);
+}
+
+static void
+koutt(unsigned char type)
+{
+	struct token t;
+
+	toksynth(&t, type);
+	kout(&t);
+}
+
 static struct kparm *
 find_kparm(char *name)
 {
@@ -1232,11 +1256,11 @@ emit_ansi(void)
 
 	/* synthesize the implicit int: c0 requires a return type */
 	if (rtype_a.count == 0 && !dlist)
-		outat(INT, &fname);
+		kouta(INT, &fname);
 	else
 		koutarr(&rtype_a);
 	kout(&fname);
-	outat(LPAR, &fname);
+	kouta(LPAR, &fname);
 
 	pp = kparms;
 	n = kp_cnt + 1;
@@ -1250,10 +1274,10 @@ emit_ansi(void)
 			}
 		} else {
 			/* K&R default: untyped params are int */
-			outat(INT, &fname);
+			kouta(INT, &fname);
 		}
 		for (j = pp->stars; j > 0; j--)
-			outat(TIMES, &fname);
+			kouta(TIMES, &fname);
 		tmp.type = SYM;
 		tmp.v.name = pp->name;
 		tmp.lineno = fname.lineno;
@@ -1262,7 +1286,7 @@ emit_ansi(void)
 		for (j = 0; j < pp->post_len; j++)
 			kout(&pp->post[j]);
 		if (n > 1)
-			outat(COMMA, &fname);
+			kouta(COMMA, &fname);
 		if (pp->type) {
 			free(pp->type);
 			pp->type = 0;
@@ -1275,7 +1299,7 @@ emit_ansi(void)
 		pp++;
 	}
 
-	outat(RPAR, &fname);
+	kouta(RPAR, &fname);
 	/* declarator tail: `)) (args)` of void (*signal(...))(args) */
 	koutarr(&tail_a);
 }
@@ -1328,7 +1352,7 @@ abort_knr(int st)
 	struct token tmp;
 
 	if (rtype_a.count == 0 && !dlist)
-		outat(INT, &fname);
+		kouta(INT, &fname);
 	else
 		koutarr(&rtype_a);
 	kout(&fname);
@@ -1339,17 +1363,17 @@ abort_knr(int st)
 		toksynthnam(&tmp, SYM, pp->name);
 		kout(&tmp);
 		if (n > 1 || st == K_PARAMS)
-			outt(COMMA);
+			koutt(COMMA);
 		pp++;
 	}
 	if (st == K_PDECL || st == K_PTYPE || st == K_TAIL) {
 		/* the ) was consumed on leaving K_PARAMS - put it back,
 		 * then flush the tail and any partial K&R param decl */
-		outt(RPAR);
+		koutt(RPAR);
 		koutarr(&tail_a);
 		koutarr(&ptype_a);
 		for (i = 0; i < kp_stars; i++)
-			outt(TIMES);
+			koutt(TIMES);
 		if (cur_pname) {
 			toksynthnam(&tmp, SYM, cur_pname);
 			kout(&tmp);
