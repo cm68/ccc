@@ -597,6 +597,19 @@ parseStmt(void)
 			dumpexpr(e);
 #endif
 			isbyte = e && e->op == INA;
+			/*
+			 * The value rules leave a live register variable
+			 * where it sits - being in a register IS being a
+			 * value - but the dispatch below reads HL.  A
+			 * word regvar is the one shape that comes back
+			 * unmoved; anything else unreduced is a fault
+			 * worth hearing about, not guessing around.
+			 */
+			if (e && e->op == INBC) {
+				out("\tld l,c\n\tld h,b\n");
+			} else if (e && !isbyte && e->op != INHL) {
+				out("\t.error switch control unreduced\n");
+			}
 			freeexpr(e);
 		}
 		if (isbyte) {

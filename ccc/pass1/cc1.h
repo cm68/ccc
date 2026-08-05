@@ -392,6 +392,7 @@ struct swtab {
     unsigned char base_stmts; /* stmt_count at start of current case */
     unsigned char final_cnt;  /* stmt_count when switch body ends */
     unsigned char emitIdx;  /* phase 2: current case being emitted */
+    unsigned char cslot;    /* reserved count-queue slot (phase 1) */
 };
 
 /* Dynamic switch list */

@@ -367,6 +367,31 @@ pushCount(char c)
 	}
 }
 
+/*
+ * Reserve a slot now, fill it later.  Phase 2 reads the queue at
+ * switch ENTRY - pre-order - but a switch's case count is only
+ * known at its END.  Pushing at the end wrote nested functions'
+ * counts in post-order and every nested switch read its
+ * neighbour's: the outer table was built with the inner's count,
+ * and the inner's leftover cases spilled into the outer, which is
+ * where "duplicate case" came from - or a silent misdispatch when
+ * the values happened not to collide.  Blocks solved this with
+ * enterBlkCnt/storeBlkCnt; switches now do the same.
+ */
+int
+reserveCount(void)
+{
+	if (countTop < MAX_COUNTS)
+		return countTop++;
+	return MAX_COUNTS - 1;
+}
+
+void
+patchCount(int slot, char c)
+{
+	countBuf[slot] = (unsigned char)c;
+}
+
 char
 popCount(void)
 {
@@ -865,12 +890,15 @@ statement(void)
                 expect(RPAR, ER_S_NP);
                 expect(BEGIN, ER_S_SB);
                 pushSwitch();  /* start new switch table */
+                /* the slot is claimed at ENTRY, matching phase 2's
+                 * read order; the count is patched in at the end */
+                swList[swStack[swDepth - 1]].cslot =
+                    (unsigned char)reserveCount();
                 statement();  /* switch body - adds cases to table */
                 /* Finalize last case using stmt_count stored by END handler */
                 sw = &swList[swStack[swDepth - 1]];
                 finishCase(sw->final_cnt);
-                /* Push case count for phase 2 before popping */
-                pushCount(sw->count);
+                patchCount(sw->cslot, sw->count);
                 popSwitch();
                 expect(END, ER_S_CC);
                 stmt_count++;
