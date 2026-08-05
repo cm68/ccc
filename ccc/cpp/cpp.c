@@ -25,14 +25,8 @@ extern void filttdef_init(void (*up)(struct token *));
 extern void filttdef(struct token *out);
 extern void filtknr_init(void (*up)(struct token *));
 extern void filtknr(struct token *out);
-extern void filtdecl_init(void (*up)(struct token *));
-extern void filtdecl(struct token *out);
-extern void filtbrace_init(void (*up)(struct token *));
-extern void filtbrace(struct token *out);
-extern void filtbraceChk(void);
-extern void filtctrl_init(void (*up)(struct token *));
-extern void filtctrl(struct token *out);
-extern void filtctrl_check(void);
+extern void norm_init(void (*up)(struct token *));
+extern void norm_run(void);
 
 /* Global state */
 char *curFile;
@@ -142,9 +136,7 @@ filterInit(void)
     filtenum_init(lex_get);
     filttdef_init(filtenum);
     filtknr_init(filttdef);
-    filtdecl_init(filtknr);
-    filtbrace_init(filtdecl);
-    filtctrl_init(filtbrace);
+    norm_init(filtknr);
 }
 
 /*
@@ -153,8 +145,6 @@ filterInit(void)
 void
 process(char *sourcefile)
 {
-    struct token t;
-
     curFile = sourcefile;
 
     /* Push source file then initialize I/O (advance() needs tbtop) */
@@ -168,27 +158,13 @@ process(char *sourcefile)
     gettoken();
     gettoken();
 
-    /* Pull tokens through filter chain and emit */
-    filtctrl(&t);
-#ifdef DEBUG
-    if (VERBOSE(V_FILTER))
-        fdprintf(2, "process: first=%d\n", t.type);
-#endif
-    while (t.type != E_O_F) {
-#ifdef DEBUG
-        if (VERBOSE(V_FILTER))
-            fdprintf(2, "process: emit=%d\n", t.type);
-#endif
-        emitStructTok(&t);
-        filtctrl(&t);
-    }
+    /* The normalizer pulls the filter chain and pushes to emit */
+    norm_run();
 
     /* A string literal at the very end is still being held */
     emitflstr();
 
     /* Check brace balance and emit EOF token */
-    filtbraceChk();
-    filtctrl_check();
     emitChkBraces();
     emitToken(E_O_F);
 }
