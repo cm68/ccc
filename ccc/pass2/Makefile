@@ -63,7 +63,7 @@ endif
 #
 SIZEDIR = sizecheck-$(ZCC)
 
-SOURCES = pass2.c astio.c parseast.c expr.c rewrite.c rules.c
+SOURCES = pass2.c astio.c parseast.c expr.c rewrite.c lower.c rules.c
 OBJECTS = $(SOURCES:.c=.o)
 
 HEADERS = pass2.h expr.h opcodes.h rules.h
