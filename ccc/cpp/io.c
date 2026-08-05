@@ -347,6 +347,21 @@ insertmacro(char *name, char *macbuf)
         fdprintf(2,"insert macro %s %d $%s$\n", name, l, macbuf);
     }
 #endif
+    /*
+     * An empty expansion is exactly one advance: the name vanishes
+     * and the stream continues.  The rewind path below did this by
+     * hand - curchar = storage[offset++]; nextchar = storage[offset]
+     * - without the refill guard, so an empty macro whose position
+     * sat at the end of a 256-byte read block took nextchar from
+     * storage[256]: a byte that was never part of the file.  What
+     * that phantom byte broke depended on what happened to sit
+     * there, which made the symptom move with every unrelated edit.
+     */
+    if (l == 0) {
+        advance();
+        return;
+    }
+
     t = tbtop;
 
     /* does it fit */
@@ -362,6 +377,7 @@ insertmacro(char *name, char *macbuf)
  
     /* if it does not */
 	t = (struct textbuf *)xalloc(sizeof(*t));
+	t->storage = xalloc(l + 1);	/* loud, not a NULL strlen later */
 	t->fd = -1;
 	/*
 	 * The buffer keeps the PARENT's name: macro text has no file of
@@ -372,8 +388,8 @@ insertmacro(char *name, char *macbuf)
 	t->name = tbtop ? tbtop->name : filename;
 	t->lineno = lineno;
 	t->offset = 0;
-	t->storage = strdup(macbuf);
-	t->valid = strlen(t->storage);
+	strcpy(t->storage, macbuf);
+	t->valid = l;
 	t->saved_column = column;  /* Save parent's column */
 	t->prev = tbtop;
 	tbtop = t;
