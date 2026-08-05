@@ -16,12 +16,13 @@
 #include <unistd.h>
 
 /*
- * 512, not 1024: the grab size is also the granularity of the last
- * allocation before the sbrk guard says no, and on the 64K machine
- * that final kilobyte was the difference between cpp fitting a big
- * header closure and dying a hundred bytes short.
+ * 256, halved twice from 1024: the grab size is also the granularity
+ * of the last allocation before the sbrk guard says no, and on the
+ * 64K machine each halving has bought back a source file that died
+ * within a chunk of fitting - first cpp on a big header closure,
+ * then cpp on pass1/expr.c once the typedef filter moved in.
  */
-#define PCHUNK 512
+#define PCHUNK 256
 
 static char *pnext;			/* cursor into current chunk */
 static unsigned int pleft;	/* bytes left in current chunk */
