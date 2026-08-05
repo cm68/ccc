@@ -23,8 +23,6 @@ extern void filtenum_init(void (*up)(struct token *));
 extern void filtenum(struct token *out);
 extern void filttdef_init(void (*up)(struct token *));
 extern void filttdef(struct token *out);
-extern void filtknr_init(void (*up)(struct token *));
-extern void filtknr(struct token *out);
 extern void norm_init(void (*up)(struct token *));
 extern void norm_run(void);
 
@@ -135,8 +133,7 @@ filterInit(void)
 {
     filtenum_init(lex_get);
     filttdef_init(filtenum);
-    filtknr_init(filttdef);
-    norm_init(filtknr);
+    norm_init(filttdef);
 }
 
 /*
