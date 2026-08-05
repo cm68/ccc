@@ -1,17 +1,21 @@
 /*
- * filtutil.c - Shared filter utilities
+ * filtutil.c - token buffer utilities for the normalizer
+ *
+ * What is left of the filter pipeline's shared machinery: the
+ * growable token array, the one pending queue (the typedef layer's
+ * expansion output), and the token classifiers.
  */
-#include <unistd.h>
-#include <stdlib.h>
+/* cpp.h brings stdlib/stdio; a second direct include would
+ * redeclare the prototypes - stdlib.h's guard covers only its
+ * typedefs, and zc3 -CPM makes the redeclaration fatal */
 #include "cpp.h"
 #include "lexeme.h"
 
 #ifdef DEBUG
 /*
- * Live bytes across every filter buffer, and the high-water mark.
+ * Live bytes across every buffer, and the high-water mark.
  * poolstats prints the peak: this is the number that has to fit in
- * the Z80's gap, and the one to watch when a filter's buffers are
- * resized.
+ * the Z80's gap, and the one to watch when a buffer is resized.
  */
 long fbufB, fbufPk;
 
@@ -78,25 +82,13 @@ is_type_kw(unsigned char type)
 int
 is_type_tok(struct token *t)
 {
-	/* filttdef dissolved every typedef name upstream, so a type
+	/* the source layer dissolved every typedef name, so a type
 	 * is recognisable from its leading keyword alone */
 	return (token_props[t->type] & TF_TYPE) != 0;
 }
 
 /*
- * Queue t and emit the oldest pending token - the standard way for a
- * filter to pass the current token through its output queue.
- */
-void
-pend_thru(struct pendbuf *p, struct token *t, struct token *out)
-{
-	pend_push(p, t);
-	pend_pop(p, out);
-}
-
-/*
- * First-call init / later-call reset for the static buffers every
- * filter keeps.
+ * First-call init / later-call reset for static buffers.
  */
 void
 tarr_setup(struct tokarray *a, int initial)
@@ -117,18 +109,6 @@ pend_setup(struct pendbuf *p, int initial)
 }
 
 /*
- * First-call init / later-call reset for a filter stack.
- */
-void
-fstack_setup(struct filter_stack *s, int initial, int elemsize)
-{
-	if (!s->buf)
-		fstack_init(s, initial, elemsize);
-	else
-		s->sp = 0;
-}
-
-/*
  * Is the last buffered token a struct/union keyword?  (The SYM that
  * follows is then a tag, part of the type, not a name.)
  */
@@ -141,64 +121,6 @@ tag_pending(struct tokarray *a)
 		return 0;
 	last = a->buf[a->count - 1].type;
 	return last == STRUCT || last == UNION;
-}
-
-/*
- * Track BEGIN/END nesting depth.
- */
-void
-tok_depth(struct token *t, unsigned char *depth)
-{
-	if (t->type == BEGIN)
-		(*depth)++;
-	else if (t->type == END)
-		(*depth)--;
-}
-
-/*
- * Generic filter stack operations
- */
-void
-fstack_init(struct filter_stack *s, int initial, int elemsize)
-{
-	if (initial < 4) initial = 4;
-	s->buf = xalloc(initial * elemsize);
-	BUFACCT(initial * elemsize);
-	s->sp = 0;
-	s->alloc = initial;
-	s->elemsize = elemsize;
-}
-
-void
-fstack_push(struct filter_stack *s, void *data)
-{
-	if (s->sp >= s->alloc) {
-		int newcap = s->alloc + GROWSTEP;
-		char *nb = realloc(s->buf, newcap * s->elemsize);
-		BUFACCT(GROWSTEP * s->elemsize);
-
-		if (!nb)			/* see xalloc in util.c */
-			xnomem();
-		s->buf = nb;
-		s->alloc = newcap;
-	}
-	memcpy((char *)s->buf + (s->sp++ * s->elemsize), data, s->elemsize);
-}
-
-void
-fstack_pop(struct filter_stack *s, void *out)
-{
-	if (s->sp > 0) {
-		s->sp--;
-		if (out)
-			memcpy(out, (char *)s->buf + (s->sp * s->elemsize), s->elemsize);
-	}
-}
-
-void *
-fstack_top(struct filter_stack *s)
-{
-	return s->sp > 0 ? (char *)s->buf + ((s->sp - 1) * s->elemsize) : NULL;
 }
 
 /*
@@ -301,17 +223,6 @@ pend_tok(struct pendbuf *p, unsigned char type)
 	pend_push(p, &tmp);
 }
 
-void
-pend_tok_at(struct pendbuf *p, unsigned char type, struct token *ref)
-{
-	struct token tmp;
-	tmp.type = type;
-	tmp.v.numeric = 0;
-	tmp.lineno = ref->lineno;
-	tmp.filename = ref->filename;  /* Already interned */
-	pend_push(p, &tmp);
-}
-
 /*
  * Push array of tokens to pending buffer
  */
@@ -321,65 +232,6 @@ pend_buf(struct pendbuf *p, struct token *buf, int len)
 	int i;
 	for (i = 0; i < len; i++)
 		pend_push(p, &buf[i]);
-}
-
-/*
- * Push a 0-terminated sequence of synthetic token types.
- * (E_O_F is 0 and never appears in a sequence, so it doubles as terminator.)
- */
-void
-pend_seq(struct pendbuf *p, unsigned char *seq)
-{
-	while (*seq)
-		pend_tok(p, *seq++);
-}
-
-/*
- * Filter entry: check pending, get upstream, handle EOF
- * Returns 1 if caller should return (out is set), 0 to continue
- */
-int
-filt_entry(struct pendbuf *pb, struct token *out,
-           void (*up)(), struct token *t)
-{
-	if (pend_has(pb)) {
-		pend_pop(pb, out);
-		return 1;
-	}
-	up(t);
-	if (t->type == 0) {
-		tokcpy(out, t);
-		return 1;
-	}
-	return 0;
-}
-
-/*
- * Emit synthetic label: __XnS:
- */
-void
-emit_label(struct pendbuf *p, char pfx, int num, char sfx)
-{
-	struct token tmp;
-	char buf[16];
-	fmtstr(buf, "__%c%d%c", pfx, num, sfx);
-	toksynthnam(&tmp, LABEL, intern(buf));
-	pend_push(p, &tmp);
-	pend_tok(p, SEMI);
-}
-
-/*
- * Emit goto synthetic label: goto __XnS
- */
-void
-emit_goto(struct pendbuf *p, char pfx, int num, char sfx)
-{
-	struct token tmp;
-	char buf[16];
-	pend_tok(p, GOTO);
-	fmtstr(buf, "__%c%d%c", pfx, num, sfx);
-	toksynthnam(&tmp, SYM, intern(buf));
-	pend_push(p, &tmp);
 }
 
 /*

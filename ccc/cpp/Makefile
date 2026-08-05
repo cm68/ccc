@@ -66,7 +66,7 @@ endif
 SIZEDIR = sizecheck-$(ZCC)
 
 SOURCES = cpp.c lex.c io.c macro.c kw.c emit.c util.c kwtab.c lexdata.c \
-	filtenum.c filttdef.c filtknr.c filtdecl.c filtbrace.c filtctrl.c filtutil.c
+	norm.c filtutil.c
 OBJECTS = $(SOURCES:.c=.o)
 
 HEADERS = cpp.h debug.h
