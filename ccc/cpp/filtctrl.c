@@ -170,9 +170,13 @@ static void pop_ctx(void) {
 		body_depth = ent.body_depth;
 		cur_ctx = ent.saved_ctx;
 		state = ent.saved_state;
-		/* Restore FOR increment buffer if saved */
+		/* Restore FOR increment buffer.  The count comes back even
+		 * when nothing was saved: an outer for(;;) has an empty
+		 * increment, push_ctx allocated no buffer for it, and
+		 * without clearing the count here the inner loop's
+		 * increment leaked into the outer loop's trailer. */
+		incr_arr.count = ent.saved_incr_len;
 		if (ent.saved_incr) {
-			incr_arr.count = ent.saved_incr_len;
 			for (i = 0; i < incr_arr.count; i++)
 				tokcpy(&incr_arr.buf[i], &ent.saved_incr[i]);
 			free(ent.saved_incr);

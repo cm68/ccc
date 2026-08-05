@@ -11,7 +11,7 @@ CPP=../cpp
 XDUMP=../xdump
 
 # Loop lowering tests (compare xdump output)
-TESTS="while for do nested break continue switch_in_loop dowhile_nested mixed_loops multiline_for spill_while spill_for spill_nested spill_do funcptr"
+TESTS="while for do nested for_empty_incr break continue switch_in_loop dowhile_nested mixed_loops multiline_for spill_while spill_for spill_nested spill_do funcptr"
 
 # Filter stress tests (just check cpp succeeds + validate patterns)
 FILTER_TESTS="test_filtknr test_filtdecl test_filtbrace test_filtctrl"

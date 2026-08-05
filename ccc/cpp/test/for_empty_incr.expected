@@ -1,0 +1,28 @@
+# 1 "for_empty_incr.c"
+int main ( ) {
+    int i ;
+    int total ;
+    total = 0 ;
+__F1T: ;
+    {
+        i = 0 ;
+    __F2T: ;
+        if ( ! ( i < 3 ) ) {
+            goto __F2B ;
+# 11 "for_empty_incr.c"
+        }
+        {
+            total = total + 1 ;
+        }
+    __F2C: ;
+        i = i + 1 ;
+        goto __F2T ;
+    __F2B: ;
+        goto __F1B ;
+    }
+# 14 "for_empty_incr.c"
+__F1C: ;
+    goto __F1T ;
+__F1B: ;
+    return total ;
+}
