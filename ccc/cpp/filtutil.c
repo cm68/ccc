@@ -5,8 +5,9 @@
  * growable token array, the one pending queue (the typedef layer's
  * expansion output), and the token classifiers.
  */
-#include <unistd.h>
-#include <stdlib.h>
+/* cpp.h brings stdlib/stdio; a second direct include would
+ * redeclare the prototypes - stdlib.h's guard covers only its
+ * typedefs, and zc3 -CPM makes the redeclaration fatal */
 #include "cpp.h"
 #include "lexeme.h"
 
