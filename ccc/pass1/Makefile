@@ -62,7 +62,7 @@ endif
 #
 SIZEDIR = sizecheck-$(ZCC)
 
-SOURCES = pass1.c error.c lexread.c \
+SOURCES = pass1.c error.c lexread.c fold.c pfx.c \
 	expr.c parse.c decl.c type.c declare.c outast.c regalloc.c util.c
 OBJECTS = $(SOURCES:.c=.o)
 
