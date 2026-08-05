@@ -246,8 +246,9 @@ again:
 	/* Numbers - have 4-byte value.  LNUMBER stays LNUMBER: it is the
 	 * only record that the source said L, and without it a constant
 	 * is sized by how big it happens to be. */
+	case INUMBER:
 	case NUMBER:
-		next.type = NUMBER;
+		next.type = c;
 		readLE4();
 		break;
 

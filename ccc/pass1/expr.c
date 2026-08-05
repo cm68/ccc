@@ -254,6 +254,7 @@ struct expr *scaleptr(struct expr *e);
 void
 skipExpr(unsigned char pri)
 {
+    static unsigned char szskip;
     unsigned char p, is_assign;
     struct name *np = NULL;
     char namebuf[32];
@@ -263,6 +264,7 @@ skipExpr(unsigned char pri)
     /* Handle prefix/primary */
     switch (cur.type) {
     case NUMBER:
+    case INUMBER:
     case LNUMBER:
         gettoken();
         break;
@@ -282,7 +284,7 @@ skipExpr(unsigned char pri)
 
     case SYM:
         np = findName(cur.v.id, 0);
-        if (np && np->level > 1 && np->kind != kelem &&
+        if (np && np->level > 1 && np->kind != kelem && !szskip &&
             !(np->type->flags & (TF_FUNC|TF_ARRAY))) {
             if (np->w.r.ref_count < 255)
                 np->w.r.ref_count++;
@@ -348,7 +350,15 @@ skipExpr(unsigned char pri)
         break;
 
     case SIZEOF:
+        /*
+         * The operand is never evaluated, so a name inside it is
+         * not a reference the register allocator should weigh.
+         * The preprocessor folds most of these away entirely, and
+         * an allocation that depends on whether a sizeof survived
+         * to this pass would flap.
+         */
         gettoken();
+        szskip++;
         if (cur.type == LPAR) {
             gettoken();
             if (isCastStart()) {
@@ -361,6 +371,7 @@ skipExpr(unsigned char pri)
         } else {
             skipExpr(OP_PRI_MULT - 1);
         }
+        szskip--;
         break;
 
     default:

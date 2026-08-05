@@ -23,6 +23,12 @@
 #define SYM     20
 #define NUMBER  21
 #define STRING  22
+/*
+ * A NUMBER the preprocessor folded from a construct that C types as
+ * int - sizeof, today - so pass1 must type it int too, not by
+ * magnitude the way a spelled literal is.  Same 4-byte record.
+ */
+#define INUMBER 23
 #define LNUMBER 25
 /*
  * An interned identifier: 26 + 2-byte little-endian id.  Emitted in
@@ -93,7 +99,8 @@
 #define INT         128
 #define CHAR        129
 /*
- * 23, 130 and 131 held FNUMBER, FLOAT and DOUBLE.  ccc has no floating
+ * 130 and 131 held FLOAT and DOUBLE (23, once FNUMBER, is INUMBER
+ * now).  ccc has no floating
  * point, and float and double are deliberately not reserved words so a
  * program can typedef them.  The numbers stay vacant rather than being
  * reused: token_props is a positional table and .x streams carry these

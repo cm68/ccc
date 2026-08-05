@@ -310,6 +310,9 @@ emit1tok(struct token *t)
     case NUMBER:
         emitNumber(t->v.numeric);
         break;
+    case INUMBER:
+        emit4(INUMBER, (unsigned long)t->v.numeric);
+        break;
     case LNUMBER:
         emitLNumber(t->v.numeric);
         break;

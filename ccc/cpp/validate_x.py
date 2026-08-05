@@ -34,7 +34,7 @@ RPAR    = 7
 SYM     = 20
 NUMBER  = 21
 STRING  = 22
-FNUMBER = 23
+INUMBER = 23     # int-typed folded number (was FNUMBER, floats are gone)
 LNUMBER = 25
 SYMID   = 26        # 2-byte interned id; spelling in the .n sidecar
 LABELID = 27
@@ -150,7 +150,7 @@ def decode(data, filename, errors):
                 err("truncated %s payload" % tokname(code))
                 return toks
             pos += namelen
-        elif code in (NUMBER, FNUMBER, LNUMBER):
+        elif code in (NUMBER, INUMBER, LNUMBER):
             if pos + 4 > n:
                 err("truncated %s payload" % tokname(code))
                 return toks

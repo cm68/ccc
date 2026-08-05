@@ -271,6 +271,7 @@ usage:
             break;
 
         case NUMBER:
+        case INUMBER:
         case LNUMBER:
             val = fgetc(f) & 0xff;
             val |= (fgetc(f) & 0xff) << 8;

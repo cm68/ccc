@@ -402,6 +402,13 @@ parsePrefix(void)
         gettoken();
         break;
 
+    case INUMBER:
+        /* folded upstream from an int-typed construct */
+        e = mkexprI(CONST, 0, inttype, (unsigned long)cur.v.numeric,
+                    E_CONST);
+        gettoken();
+        break;
+
     case NUMBER:
         sval = cur.v.numeric;
         /* Inline: determine smallest type for constant */
