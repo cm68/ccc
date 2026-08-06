@@ -7,6 +7,77 @@
 
 	psect	text
 	global	qld, qldde, qst
+	global	qldiy, qldix, qstiy, qstix
+
+;	A long in a frame slot or through a struct pointer, which is
+;	where nearly all of them are: 166 sites on IY and 31 on IX
+;	across cpp, pass1 and pass2.
+;
+;	Written out, that is four byte-moves and an exx pair - fourteen
+;	bytes, because (index+d) reaches one byte at a time and the two
+;	halves are in different banks.  Building the address for the
+;	plain qld instead costs seven before the call.
+;
+;	So the displacement rides inline, after the call, the way the
+;	frame helpers in csv.s take theirs:
+;
+;		call	qldiy
+;		.db	-4
+;
+;	Four bytes against fourteen.  The helper pops the return
+;	address, reads the byte, sign-extends it, adds the index
+;	register and falls into the ordinary qld or qst.
+;
+;	A signed byte is enough: pass1 caps the scalar area at 120 and
+;	arrays live below the callee-save gap, reached by arithmetic
+;	rather than as an INDEX, so an index offset is always inside the
+;	7-bit window the (index+d) forms need anyway.
+;
+;	Both index registers, because structs contain longs - the AST
+;	node and the symbol table entry both do - and a register-homed
+;	pointer walking them is exactly what IX is for.
+
+qldiy:
+	push	iy
+	jr	1f
+qldix:
+	push	ix
+1:
+	pop	hl		;the index register
+	pop	de		;-> the displacement byte
+	ld	a,(de)
+	inc	de
+	push	de		;the return address, past it
+	ld	e,a
+	rla			;bit 7 of the displacement into carry
+	sbc	a,a		;00 or ff
+	ld	d,a		;de = the displacement, sign extended
+	add	hl,de
+	jp	qld
+
+;	The store cannot take the address in HL - HL is the low word of
+;	the value - so it builds qst's stack frame instead and jumps in.
+;	ex (sp),hl does the swapping without a spare pair.
+qstiy:
+	push	iy
+	jr	2f
+qstix:
+	push	ix
+2:
+	pop	de		;the index register
+	ex	(sp),hl		;hl -> the displacement byte, low word parked
+	ld	a,(hl)
+	inc	hl		;the real return address
+	push	hl
+	ld	l,a
+	rla
+	sbc	a,a
+	ld	h,a		;hl = the displacement, sign extended
+	add	hl,de		;hl = the address
+	pop	de		;the return address back
+	ex	(sp),hl		;hl = the low word again, address on the stack
+	push	de		;and qst's frame is complete
+	jp	qst
 
 ; Load 32-bit from (HL) into HL':HL
 ; Entry: HL = pointer to the long

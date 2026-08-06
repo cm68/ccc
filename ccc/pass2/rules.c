@@ -369,8 +369,14 @@ static char RT71[] = "\tld $t,($L)\n" F_LDUL;
  * share them.
  */
 static char RT85[] = "\tld ($L),hl\n" F_EXX "\tld ($L++),hl\n" F_EXX;
-static char RT87[] = "\tld ($L),l\n\tld ($L+),h\n" F_EXX
-		     "\tld ($L++),l\n\tld ($L+++),h\n" F_EXX;
+/*
+ * A long stored to a frame slot or through a struct pointer.  The
+ * displacement rides inline after the call - see libsrc/libc/qldst.s -
+ * which is four bytes against the fourteen the four byte-moves and the
+ * exx pair used to take.  $Lr names the index register, so one
+ * template serves IY and IX and the rule takes RF_IXIY.
+ */
+static char RT87[] = "\tcall qst$Lr\n\t.db $Lo\n";
 
 #ifdef DEBUG
 /* the patterns as written, for the rule trace */
@@ -1644,14 +1650,14 @@ struct rule rules[] = {
 	 * libcpm's fseek left its condition unreduced.
 	 */
 	R(ASSIGN,SYMREF,INHL,0,0,19, ASSIGN, P_L, P_R, P_NONE, 0, RT85, R_HL),
-	R(ASSIGN,INDEX,INHL,0,0,19, ASSIGN, P_L, P_R, P_NONE, 0, RT87, R_HL),
+	R(ASSIGN,INDEX,INHL,0,0,19, ASSIGN, P_L, P_R, P_L, RF_IXIY, RT87, R_HL),
 	R(ASSIGN,SYMREF,CODE,0,0,19, ASSIGN, P_L, P_R, P_NONE, 0, RT85, R_HL),
-	R(ASSIGN,INDEX,CODE,0,0,19, ASSIGN, P_L, P_R, P_NONE, 0, RT87, R_HL),
+	R(ASSIGN,INDEX,CODE,0,0,19, ASSIGN, P_L, P_R, P_L, RF_IXIY, RT87, R_HL),
 	R(ASSIGN,SYMREF,INHL,0,0,3, ASSIGN, P_L, P_R, P_NONE, 0, RT85, 0),
-	R(ASSIGN,INDEX,INHL,0,0,3, ASSIGN, P_L, P_R, P_NONE, 0, RT87, 0),
+	R(ASSIGN,INDEX,INHL,0,0,3, ASSIGN, P_L, P_R, P_L, RF_IXIY, RT87, 0),
 	/* the long helpers hand back a CODE that never passed through the
 	 * step() loop that would have made it an INHL */
-	R(ASSIGN,INDEX,CODE,0,0,3, ASSIGN, P_L, P_R, P_NONE, 0, RT87, 0),
+	R(ASSIGN,INDEX,CODE,0,0,3, ASSIGN, P_L, P_R, P_L, RF_IXIY, RT87, 0),
 	R(ASSIGN,SYMREF,CODE,0,0,3, ASSIGN, P_L, P_R, P_NONE, 0, RT85, 0),
 	/* the value form: store, then put the constant back in HL:DE */
 	R(ASSIGN,INDEX,P_NUM,0,0,19, ASSIGN, P_L, P_R, P_NONE, 0,
@@ -1702,9 +1708,8 @@ struct rule rules[] = {
 	 */
 	R(DEREF,SYMREF,0,0,0,3, DEREF, P_L, P_NONE, P_NONE, 0,
 		F_LDHLL2 F_EXX F_LDHLL3 F_EXX, R_HL),
-	R(DEREF,INDEX,0,0,0,3, DEREF, P_L, P_NONE, P_NONE, 0,
-		"\tld l,($L)\n\tld h,($L+)\n" F_EXX
-		"\tld l,($L++)\n\tld h,($L+++)\n" F_EXX, R_HL),
+	R(DEREF,INDEX,0,0,0,3, DEREF, P_L, P_NONE, P_L, RF_IXIY,
+		"\tcall qld$Lr\n\t.db $Lo\n", R_HL),
 	/* through a pointer already in HL */
 	R(DEREF,INHL,0,0,0,3, DEREF, P_L, P_NONE, P_NONE, 0, "\tcall qld\n", R_HL),
 	/* and through the other register home - doprnt reads its long
