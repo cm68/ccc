@@ -113,6 +113,16 @@ extern struct expr *mkexprI(unsigned char op, struct expr *left,
     struct type *type, unsigned long v, int flags);
 extern struct expr *parseExpr(unsigned char priority);
 extern int isTypeToken(unsigned char t);
+extern struct expr *mkbin(unsigned char op, struct expr *l,
+    struct expr *r, struct type *t);
+extern void freeNode(struct expr *e);
+extern struct type *unwrapDeref(struct expr **ep);
+extern void skipExpr(unsigned char pri);
+extern struct expr *mkIncDec(struct expr *operand,
+    unsigned char inc_op, unsigned char is_postfix);
+extern int isaggr(struct type *t);
+extern int ptrcompat(struct type *lt, struct type *rt);
+extern unsigned char binopPri(unsigned char t);
 /*
  * parseConst leaves its answer here rather than returning it.  A long
  * return travels in HL:DE and costs every call site the unpacking;
@@ -331,6 +341,28 @@ extern int spanStop;	/* a function definition just ended */
 void cleanupParse();
 void drainGraves();
 void dropName(struct name *n);
+int isasgn(unsigned char t);
+/* swcnt.c - switch bookkeeping and statement counters */
+int atSwBodyStmt(void);
+int reserveCount(void);
+void patchCount(int slot, char c);
+/* outh.c - AST-writer helpers */
+struct local *findInLocals(struct name *want);
+int isAssignOp(unsigned char op);
+char isRegvar(struct expr *e);
+char dchainreg(struct expr *e);
+int truncok(unsigned char op);
+int candemote(struct expr *e, int size);
+void demote(struct expr *e, struct type *t);
+int iscmpop(unsigned char op);
+unsigned char valwidth(struct type *t);
+struct type *opwidth(struct expr *e);
+char typeSfx(struct type *t);
+char *mkLbl(char *base, char *suffix);
+void emitLabel(char *base, char *suffix);
+void emitGoto(char *base, char *suffix);
+int cntCondLbls(struct expr *e);
+void doInitlzr(struct name *n);
 extern int idOnce(unsigned short id);
 
 /*

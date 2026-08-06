@@ -17,8 +17,19 @@
  *   ASMSTR (118):  118 + 2-byte LE length + bytes
  */
 #include "cc1.h"
+/*
+ * two constants are all fcntl.h and unistd.h were bought for, and
+ * on the 64K machine a header's macro and intern load is charged
+ * to every file that names it - see the footprint gate.
+ */
+#ifdef CCC
+#define O_RDONLY 0
+#define SEEK_SET 0
+extern int open();
+#else
 #include <fcntl.h>
 #include <unistd.h>
+#endif
 
 #ifdef DEBUG
 unsigned long lexTokenCount = 0;  /* Token counter for debugging */

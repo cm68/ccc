@@ -5,9 +5,18 @@
  * expression parsing, and symbol table management.
  */
 #include "cc1.h"
+/* see lexread.c: system headers are charged per file that names
+ * them, and an alarm and a creat are all these three provided */
+#ifdef CCC
+#define SIGALRM 14
+extern int creat();
+extern int alarm();
+extern int (*signal())();
+#else
 #include <fcntl.h>
 #include <signal.h>
 #include <unistd.h>
+#endif
 
 #ifdef DEBUG
 #include "debugtags.c"
