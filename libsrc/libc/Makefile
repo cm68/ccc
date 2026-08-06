@@ -7,6 +7,14 @@
 # pick an area with -L root/lib/zc3 or -L root/lib/ccc, so a zc3-built
 # program never mixes with ccc-built runtime C and vice versa.
 #
+# That the .s files are shared is why the 32-bit runtime comes in two
+# sets.  ladd, arelop, almul, aldiv, allsh and the rest are Hi-Tech's,
+# take their operands in HL:DE and on the stack, and are named by
+# zc3's code generator; the q* set is ccc's, takes them in HL':HL and
+# DE':DE, and is named by pass2.  See QLONG.md.  Both are archived
+# into both areas and neither program links the other's - the linker
+# pulls an object only when something references it.
+#
 # CC is deliberately unused: the top level drives everything with
 # CC=gcc on the command line, and a command-line variable beats any
 # assignment in every sub-make it reaches.  These are runtime sources
@@ -31,6 +39,8 @@ SRCS = abs.s allsh.s alrsh.s asallsh.s asalrsh.s asar.s strdup.s exit.s \
 	iregset.s isalpha.s isdigit.s islower.s isspace.s isupper.s \
 	ladd.s land.s lcom.s ldiv.s linc.s lldst.s llrsh.s lmul.s \
 	longjmp.s lor.s lrelop.s lsub.s lushr.s lxor.s max.s swap.s  \
+	qadd.s qsub.s qand.s qor.s qxor.s qcom.s qcmp.s \
+	qshl.s qsar.s qshr.s qinc.s qldst.s qmul.s qdiv.s \
 	op16.s tramp.s rcsv.s rindex.s sbrk.s shar.s shl16.s \
 	shll.s shlr.s strcat.s strchr.s strcmp.s strcpy.s swdisp.s oarg.s \
 	strlen.s strncat.s strncmp.s strncpy.s strrchr.s \
