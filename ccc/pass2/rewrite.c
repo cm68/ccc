@@ -539,14 +539,14 @@ pmatch(struct rule *rp, Expr *e)
 	k = e ? e->left : (Expr *)0;
 	if (!pnode(rp->lop, SFX_LW(rp->sfx), k))
 		return 0;
-	if (rp->llop && !pnode(rp->llop, 0, k ? k->left : (Expr *)0))
+	if (RP_LLOP(rp) && !pnode(RP_LLOP(rp), 0, k ? k->left : (Expr *)0))
 		return 0;
 	if (!rp->rop)
 		return 1;
 	k = e ? e->right : (Expr *)0;
 	if (!pnode(rp->rop, 0, k))
 		return 0;
-	if (rp->rlop && !pnode(rp->rlop, 0, k ? k->left : (Expr *)0))
+	if (RP_RLOP(rp) && !pnode(RP_RLOP(rp), 0, k ? k->left : (Expr *)0))
 		return 0;
 	return 1;
 }
