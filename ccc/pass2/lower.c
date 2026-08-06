@@ -1139,24 +1139,26 @@ docall(Expr *e)
 	}
 
 	/*
-	 * Drop the arguments.  inc sp costs a byte apiece and touches no
-	 * register; past a few words the HL form is smaller, but it has
-	 * to shuffle the result through DE - which a LONG result also
-	 * lives in, so the shuffle mangled it: the first call in the
-	 * ecosystem with ten arg bytes and a long result came back with
-	 * one half swapped and the other replaced by the byte count.
-	 * A long-returning call drops words with pop af instead: one
-	 * byte per word, and nothing live is touched.
+	 * Drop the arguments.  A word at a time with pop af: one byte of
+	 * code per two of stack, where inc sp costs a byte apiece - and
+	 * the pop touches nothing that is live, because a result comes
+	 * back in HL (or HL:DE) and never in A.  That halving is worth
+	 * about a kilobyte in each of the three passes, which is the
+	 * kind of money this machine deals in.
+	 *
+	 * Past six words the HL form is smaller still, but it has to
+	 * shuffle the result through DE - which a LONG result also lives
+	 * in, so the shuffle mangled it: the first call in the ecosystem
+	 * with ten arg bytes and a long result came back with one half
+	 * swapped and the other replaced by the byte count.  Long results
+	 * keep popping however many words it takes.
 	 */
-	if (nbytes > 0 && nbytes <= 8) {
-		for (i = 0; i < nbytes; i++)
-			out("\tinc sp\n");
-	} else if (nbytes > 8 && ISLONG(e->width)) {
+	if (nbytes > 0 && (nbytes <= 12 || ISLONG(e->width))) {
 		for (i = 0; i + 1 < nbytes; i += 2)
 			out("\tpop af\n");
 		if (nbytes & 1)
 			out("\tinc sp\n");
-	} else if (nbytes > 8) {
+	} else if (nbytes > 0) {
 		outf("\tex de,hl\n\tld hl,%d\n\tadd hl,sp\n\tld sp,hl\n\tex de,hl\n",
 		    nbytes);
 	}
@@ -1895,6 +1897,37 @@ spilled:	;
 					return w;
 			}
 			goto children_done;
+		} else if ((e->op == AND || e->op == OR || e->op == XOR) &&
+			   e->dest == DEST_FLAGS && e->left &&
+			   (e->left->op == WIDEN || e->left->op == SEXT) &&
+			   e->left->left && ISBYTE(e->left->left->width) &&
+			   e->right && e->right->op == NUMBER &&
+			   (e->right->u.val & 0xffL) == e->right->u.val) {
+			/*
+			 * A byte masked with a constant and asked for as a
+			 * condition.  The integer promotions make it int
+			 * arithmetic, so the byte was widened, masked
+			 * sixteen bits wide, had its high half zeroed
+			 * again because the constant has none, and was
+			 * then tested with ld a,l / or h - nine
+			 * instructions where "and n" already sets Z on the
+			 * answer.  Nothing downstream can tell: only the
+			 * flags are wanted, and the bits the mask keeps
+			 * all live in the low byte.  Worth a kilobyte
+			 * across the three passes, which are written in
+			 * flag tests over storage classes and type bits.
+			 */
+			Expr *w = e->left;
+
+			e->left = w->left;
+			w->left = NULL;
+			freeexpr(w);
+			e->width = e->left->width;
+			e->right->width = e->width;
+			label(e);
+			assign(e, e->tgt ? e->tgt : R_HL);
+			e->dest = DEST_FLAGS;
+			return rewrite1(e);
 		} else if (e->op == AND && e->dest == DEST_FLAGS &&
 			   e->left && e->left->op == DEREF &&
 			   ISBYTE(e->left->width) &&
