@@ -1728,9 +1728,9 @@ struct rule rules[] = {
 	R(PREINC,SYMREF,0,0,0,27, PREINC, P_L, P_NONE, P_NONE, 0, RT315, R_HL),
 	R(PREDEC,SYMREF,0,0,0,27, PREDEC, P_L, P_NONE, P_NONE, 0, RT313, R_HL),
 	R(PREINC,SYMREF,0,0,0,3, PREINC, P_L, P_NONE, P_NONE, 0,
-		F_LDHLL F_CALLLAINC F_LDDEL F_LDHLL3, R_HL),
+		F_LDHLL F_CALLLAINC F_LDHLL2 F_EXX F_LDHLL3 F_EXX, R_HL),
 	R(PREDEC,SYMREF,0,0,0,3, PREDEC, P_L, P_NONE, P_NONE, 0,
-		F_LDHLL F_CALLLADEC F_LDDEL F_LDHLL3, R_HL),
+		F_LDHLL F_CALLLADEC F_LDHLL2 F_EXX F_LDHLL3 F_EXX, R_HL),
 	/*
 	 * The same for a frame slot, where the address has to be worked
 	 * out: (iy+d) reaches a byte at a time, and the helper wants the

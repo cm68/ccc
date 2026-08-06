@@ -195,26 +195,43 @@ Built, on this branch, in four commits.  All 88 of `tests/run` pass
 under ccc, `make test` is clean, and a fresh sizecheck of all four
 passes builds with no `XXXXXX` marker anywhere.
 
-**The size estimate above was wrong, and wrong in a way worth naming.**
-Measured by sizecheck (which does not pass `-O`, so this is before the
-peephole):
+**The size estimate above was roughly right in the end, but not for
+the reasons it gave, and it took a wrong turn on the way.**  Measured
+by sizecheck, against the tree before any of this:
 
 | | before | after | |
 |---|---|---|---|
-| c1 | 47429 | 47074 | **-355** |
-| c0 | 47290 | 47412 | +122 |
-| cpp | 45850 | 46239 | +389 |
+| cpp | 45850 | 44938 | **-912** |
+| c1 | 47429 | 46467 | **-962** |
+| c0 | 47290 | 46666 | **-624** |
+| | | **total** | **-2498** |
 
-Roughly neutral, not the ~3.2K the estimate implied.  The estimate
-counted the marshalling that disappears and not the `exx` pair that
-every long load, store, widen and argument push now has to pay.  cpp
-emits 578 of them against 55 helper calls: the per-site tax dominates
-the per-call saving, and cpp is the pass that does most of its 32-bit
-work in loads and stores rather than in arithmetic.
+The intermediate state is the interesting part.  With the marshalling
+gone and the helpers converted, but the long loads and stores still
+written out inline, the same table read c1 -355, c0 +122, cpp +389 -
+roughly neutral, and cpp had gone far enough the wrong way to fail the
+footprint check outright with `cpp OUT OF MEMORY` on `pass1/error.c`,
+which instantiates 93 message strings and was already the tightest
+input in the tree.
 
-The runtime did shrink as predicted - `qdiv` 336 bytes against
-`ldiv`'s 494, `qmul` 85 against 125, `qldst` 106 against 158 - and so
-did c1, which is the pass that holds the marshalling code.
+What the estimate had missed was the `exx` pair that every long load,
+store and widen pays.  cpp emitted 578 of them against 55 helper
+calls: on the pass that does most of its 32-bit work in loads rather
+than arithmetic, the per-site tax swamped the per-call saving.
+
+What got it back was putting the displacement inline after a call, so
+that a long in a frame slot or through a struct pointer is
+
+	call	qldiy
+	.db	-4
+
+four bytes rather than fourteen, at 197 sites.  See `qldst.s`.  That
+is worth more than everything else in this change put together, and
+nothing in the original analysis anticipated it: the analysis was
+looking at arithmetic, and the code is mostly moving longs about.
+
+The runtime shrank as predicted too - `qdiv` 336 bytes against
+`ldiv`'s 494, `qmul` 85 against 125.
 
 **Keeping the calls was right.** With both operands in registers,
 `call qadd` is three bytes and the inline `add hl,de / exx / adc hl,de
