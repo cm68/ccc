@@ -2036,9 +2036,25 @@ knr(struct token *t)
 			}
 			if (cur.type != COMMA) {
 				if (is_type_tok(&cur)) {
-					/* types in the list = ANSI */
+					/* types in the list = ANSI: stream
+					 * the rest through its ) verbatim,
+					 * or the parameter names re-engage
+					 * at file scope and a list comma
+					 * leaves dlist set - which cost the
+					 * next bare-SYM definition its
+					 * implicit int */
 					abort_knr(st);
 					kout(&cur);
+					while (kp_pdepth > 0) {
+						pull(&cur);
+						if (cur.type == E_O_F)
+							return;
+						if (cur.type == LPAR)
+							kp_pdepth++;
+						else if (cur.type == RPAR)
+							kp_pdepth--;
+						kout(&cur);
+					}
 					return;
 				}
 				if (cur.type == SYM) {
