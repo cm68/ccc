@@ -30,6 +30,7 @@ long n_and0 = 0;
 long n_frame = 0;
 long n_invjp = 0;
 long n_outi = 0;
+long n_exx = 0;
 long saved = 0;
 
 /* does the key at window line i match s exactly */
@@ -365,9 +366,35 @@ r_outi(void)
 	return 1;
 }
 
+/*
+ * exx is its own inverse, so two of them in a row are two bytes that
+ * do nothing.  They arise constantly now that a long lives in HL':HL:
+ * every load, store and widen brackets its high word in a pair, and
+ * where two long operations abut - which is most of them, one operand
+ * being loaded straight after the one before - the closing exx of the
+ * first meets the opening exx of the second.
+ *
+ * No liveness question has to be asked of this one.  Nothing can
+ * observe the state between the two instructions, because there is
+ * nothing between them.
+ */
+int
+r_exx(void)
+{
+	if (!is(0, "exx") || !is(1, "exx"))
+		return 0;
+
+	delline(0, 2);
+	n_exx++;
+	saved += 2;
+	return 1;
+}
+
 int
 applyrules(void)
 {
+	if (r_exx())
+		return 1;
 	if (r_fenter())
 		return 1;
 	if (r_fexit())
@@ -391,9 +418,9 @@ void
 report(void)
 {
 	fprintf(stderr, "peep: frame %ld  incsp %ld  pushpop %ld  bounce %ld"
-		"  and0 %ld  invjp %ld  oarg %ld  pool %ld = %ld bytes\n",
+		"  and0 %ld  invjp %ld  oarg %ld  exx %ld  pool %ld = %ld bytes\n",
 		n_frame, n_incsp, n_pushpop, n_bounce, n_and0, n_invjp,
-		n_outi, poolmerged, saved);
+		n_outi, n_exx, poolmerged, saved);
 }
 
 /* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

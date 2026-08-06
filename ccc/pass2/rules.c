@@ -59,8 +59,8 @@
 #define F_SBCHLBC      "\247"	/*  sbc hl,bc */
 #define F_LDAB         "\250"	/*  ld a,b */
 #define F_POPHL        "\251"	/*  pop hl */
-#define F_CALLLADEC    "\252"	/*  call ladec */
-#define F_CALLLAINC    "\253"	/*  call lainc */
+#define F_CALLLADEC    "\252"	/*  call qdec */
+#define F_CALLLAINC    "\253"	/*  call qinc */
 #define F_JRNZ3        "\254"	/*  jr nz,$$+3 */
 #define F_LDLH         "\255"	/*  ld ($L+),h */
 #define F_LDHLR        "\256"	/*  ld hl,$R */
@@ -88,6 +88,13 @@
 #define F_ORHL         "\304"	/*  or (hl) */
 #define F_LDUL         "\305"	/*  ld $u,($L+) */
 #define F_RLA          "\306"	/*  rla */
+/*
+ * The other half of a long.  A 32-bit value lives in HL':HL, so every
+ * template that touches the high word brackets it in these - see
+ * libsrc/libc/QLONG.md.  One byte, and it is the most repeated
+ * fragment in the long rules, which is exactly what this table is for.
+ */
+#define F_EXX          "\307"	/*  exx */
 
 char *fragtab[] = {
 	0,
@@ -132,8 +139,8 @@ char *fragtab[] = {
 	"\tsbc hl,bc\n",	/* F_SBCHLBC */
 	"\tld a,b\n",	/* F_LDAB */
 	"\tpop hl\n",	/* F_POPHL */
-	"\tcall ladec\n",	/* F_CALLLADEC */
-	"\tcall lainc\n",	/* F_CALLLAINC */
+	"\tcall qdec\n",	/* F_CALLLADEC */
+	"\tcall qinc\n",	/* F_CALLLAINC */
 	"\tjr nz,$$+3\n",	/* F_JRNZ3 */
 	"\tld ($L+),h\n",	/* F_LDLH */
 	"\tld hl,$R\n",	/* F_LDHLR */
@@ -161,6 +168,7 @@ char *fragtab[] = {
 	"\tor (hl)\n",	/* F_ORHL */
 	"\tld $u,($L+)\n",	/* F_LDUL */
 	"\trla\n",	/* F_RLA */
+	"\texx\n",	/* F_EXX */
 };
 
 #define T_SAVE_HL	F_LDDH F_LDEL
@@ -171,8 +179,12 @@ char *fragtab[] = {
 #define T_IX_TEST	"\tld a,ixl\n\tor ixh\n"
 #define T_BC_TEST	F_LDAC "\tor b\n"
 #define T_HL_TEST	F_LDAL "\tor h\n"
-/* a long lives in HL:DE, so all four bytes have to be in the test */
-#define T_HLDE_TEST	F_LDAH "\tor l\n\tor d\n\tor e\n"
+/*
+ * A long lives in HL':HL, so all four bytes have to be in the test.
+ * A survives exx - only the three pairs are banked - so the fold just
+ * carries on across it.
+ */
+#define T_HLDE_TEST	F_LDAH "\tor l\n" F_EXX "\tor h\n\tor l\n" F_EXX
 #define T_BC_HL	F_LDLC F_LDHB
 /*
  * Load a word through HL into HL.  A carries the low byte while HL is
@@ -296,8 +308,8 @@ static char RT300[] = F_LDHLL "\tdec (hl)\n";
 static char RT302[] = F_LDHLL "\tinc (hl)\n";
 static char RT31[] = "\tadd a,e\n";
 static char RT312[] = F_LDHLL F_ORA F_SBCHLDE;
-static char RT313[] = F_LDHLL F_PUSHBC F_CALLLADEC F_POPBC;
-static char RT315[] = F_LDHLL F_PUSHBC F_CALLLAINC F_POPBC;
+static char RT313[] = F_LDHLL F_CALLLADEC;
+static char RT315[] = F_LDHLL F_CALLLAINC;
 static char RT317[] = F_LDHLL T_SUB_BC T_SXORV;
 static char RT318[] = F_LDHLL T_SUB_DE T_SXORV;
 static char RT323[] = F_LDHLR;
@@ -310,8 +322,8 @@ static char RT358[] = F_ORA;
 static char RT359[] = F_ORA F_SBCHLBC;
 static char RT360[] = F_ORA F_SBCHLDE;
 static char RT361[] = F_ORA T_SZTAIL;
-static char RT363[] = F_PUSHBC F_CALLLADEC F_POPBC;
-static char RT364[] = F_PUSHBC F_CALLLAINC F_POPBC;
+static char RT363[] = F_CALLLADEC;
+static char RT364[] = F_CALLLAINC;
 static char RT380[] = F_SUBE;
 static char RT381[] = F_SUBE T_SXORA;
 static char RT382[] = F_SUBE T_SXORA T_SZTAIL;
@@ -326,15 +338,15 @@ static char RT411[] = T_BC_HL F_LDDER F_ORA F_SBCHLDE;
 static char RT412[] = T_BC_HL F_LDDER F_ORA F_SBCHLDE F_JRNZ3 "\tscf\n";
 static char RT413[] = T_BC_HL F_LDDER T_SUB_DE T_SXORV;
 static char RT415[] = T_BC_HL F_ORA F_SBCHLDE;
-static char RT416[] = T_BC_HL F_PUSHBC F_CALLLADEC F_POPBC;
-static char RT418[] = T_BC_HL F_PUSHBC F_CALLLAINC F_POPBC;
+static char RT416[] = T_BC_HL F_CALLLADEC;
+static char RT418[] = T_BC_HL F_CALLLAINC;
 static char RT42[] = "\tcp c\n";
 static char RT425[] = T_BC_HL T_SUB_DE T_SXORV;
 static char RT426[] = T_BC_TEST;
 static char RT427[] = T_DE_TEST;
 static char RT429[] = T_HL_TEST;
-static char RT430[] = T_IDX_ADDR F_PUSHBC F_CALLLADEC F_POPBC;
-static char RT432[] = T_IDX_ADDR F_PUSHBC F_CALLLAINC F_POPBC;
+static char RT430[] = T_IDX_ADDR F_CALLLADEC;
+static char RT432[] = T_IDX_ADDR F_CALLLAINC;
 static char RT44[] = "\tdec ($L)\n";
 static char RT443[] = T_IX_TEST;
 static char RT461[] = T_SUB_BC T_SXORV;
@@ -350,8 +362,15 @@ static char RT65[] = "\tinc c\n";
 static char RT67[] = "\tinc ix\n";
 static char RT69[] = "\tld $T,$L\n";
 static char RT71[] = "\tld $t,($L)\n" F_LDUL;
-static char RT85[] = "\tld ($L),de\n\tld ($L++),hl\n";
-static char RT87[] = "\tld ($L),e\n\tld ($L+),d\n\tld ($L++),l\n\tld ($L+++),h\n";
+/*
+ * Storing a long, which lives in HL':HL with the low word in HL and
+ * the low word at the lower address.  The value is still in the
+ * registers when these finish, which is what lets the value forms
+ * share them.
+ */
+static char RT85[] = "\tld ($L),hl\n" F_EXX "\tld ($L++),hl\n" F_EXX;
+static char RT87[] = "\tld ($L),l\n\tld ($L+),h\n" F_EXX
+		     "\tld ($L++),l\n\tld ($L+++),h\n" F_EXX;
 
 #ifdef DEBUG
 /* the patterns as written, for the rule trace */
@@ -1348,7 +1367,7 @@ struct rule rules[] = {
 	 * bytes with DE left holding whatever was there before.
 	 */
 	R(ASSIGN,INHL,P_NUM,0,0,3, ASSIGN, P_L, P_R, P_NONE, 0,
-		"\tld e,$Rl\n\tld d,$Rh\n\tld l,$R2\n\tld h,$R3\n", R_HL),
+		"\tld l,$Rl\n\tld h,$Rh\n" F_EXX "\tld l,$R2\n\tld h,$R3\n" F_EXX, R_HL),
 	R(ASSIGN,INBC,P_NUM,0,0,0, ASSIGN, P_L, P_R, P_NONE, 0, RT128, R_BC),
 	R(ASSIGN,INDE,P_NUM,0,0,0, ASSIGN, P_L, P_R, P_NONE, 0, RT275, R_DE),
 	R(ASSIGN,INHL,P_NUM,0,0,0, ASSIGN, P_L, P_R, P_NONE, 0, RT323, R_HL),
@@ -1564,20 +1583,20 @@ struct rule rules[] = {
 	 * Narrowing, which is the other direction and is only ever a
 	 * question of where the low half already is.
 	 *
-	 * From a long it is in DE, so the exchange is the whole of the
-	 * work; the byte rules that follow take L, which is then the
-	 * lowest byte of the value.  From anything else the low half is
-	 * already where a narrower reader would look for it, and the
-	 * rule is there so that the cast emits nothing rather than
-	 * matching nothing.
+	 * Under HL':HL it is in HL, which is where a narrower reader
+	 * looks anyway, so narrowing a long emits nothing at all - the
+	 * high word is simply abandoned in HL'.  It used to be an
+	 * ex de,hl, the low word having been in DE.  Same for everything
+	 * else: the rule is here so that the cast emits nothing rather
+	 * than matching nothing.
 	 *
 	 * pass1 used to write the cast's type over the node and leave no
-	 * trace, so "(int)f()" on a long-returning f read HL - the high
-	 * word.  Every numeric escape in cpp came back zero, because
-	 * escint() is "(int)getint(base)".
+	 * trace, so "(int)f()" on a long-returning f read HL - which was
+	 * then the high word.  Every numeric escape in cpp came back
+	 * zero, because escint() is "(int)getint(base)".
 	 */
-	R(NARROW,INHL,0,0,0,98, NARROW, P_L, P_NONE, P_NONE, 0, RT202, R_HL),
-	R(NARROW,INHL,0,0,0,97, NARROW, P_L, P_NONE, P_NONE, 0, F_EXDEHL F_LDAL, R_A),
+	R(NARROW,INHL,0,0,0,98, NARROW, P_L, P_NONE, P_NONE, 0, RT0, R_HL),
+	R(NARROW,INHL,0,0,0,97, NARROW, P_L, P_NONE, P_NONE, 0, F_LDAL, R_A),
 	R(NARROW,INHL,0,0,0,1, NARROW, P_L, P_NONE, P_NONE, 0, RT235, R_A),
 	R(NARROW,INBC,0,0,0,1, NARROW, P_L, P_NONE, P_NONE, 0, RT221, R_A),
 	R(NARROW,INDE,0,0,0,1, NARROW, P_L, P_NONE, P_NONE, 0, RT121, R_A),
@@ -1586,27 +1605,31 @@ struct rule rules[] = {
 	R(NARROW,INHL,0,0,0,0, NARROW, P_L, P_NONE, P_NONE, 0, RT0, R_HL),
 
 	/*
-	 * 32-bit values live in HL:DE, high word in HL.
+	 * 32-bit values live in HL':HL, high word in HL'.
 	 *
-	 * Sign-extending into that means the value becomes the low word
-	 * and the high word becomes all sign bits - rla puts bit 15 (or
-	 * bit 7 for a byte) into carry and sbc a,a spreads it.
+	 * Widening is where the layout earns its keep.  A word that is
+	 * already in HL is already the low half of the long, so nothing
+	 * has to move: the whole of the work is filling HL' in.  Under
+	 * HL:DE the value had to be shifted into DE first, which is the
+	 * ex de,hl these used to open with.
+	 *
+	 * Sign-extending fills the high word with sign bits - rla puts
+	 * bit 15 (or bit 7 for a byte) into carry and sbc a,a spreads it.
 	 */
 	R(SEXT,INHL,0,0,0,3, SEXT, P_L, P_NONE, P_NONE, 0,
-		F_EXDEHL "\tld a,d\n" F_RLA F_SBCAA F_LDHA F_LDLA, R_HL),
+		F_LDAH F_RLA F_SBCAA F_EXX F_LDHA F_LDLA F_EXX, R_HL),
 	R(SEXT,INBC,0,0,0,3, SEXT, P_L, P_NONE, P_NONE, 0,
-		F_LDEC F_LDDB F_LDAB F_RLA F_SBCAA
-		F_LDHA F_LDLA, R_HL),
+		T_BC_HL F_LDAB F_RLA F_SBCAA F_EXX F_LDHA F_LDLA F_EXX, R_HL),
 	R(SEXT,INA,0,0,0,3, SEXT, P_L, P_NONE, P_NONE, 0,
-		"\tld e,a\n" F_RLA F_SBCAA "\tld d,a\n" F_LDHA F_LDLA, R_HL),
-	/* an unsigned word widened: it becomes the low half and the high
-	 * half is nothing, which is the whole difference from X(H) */
+		F_LDLA F_RLA F_SBCAA F_LDHA F_EXX F_LDHA F_LDLA F_EXX, R_HL),
+	/* an unsigned word widened: the high half is nothing, which is
+	 * the whole difference from X(H) */
 	R(WIDEN,INHL,0,0,0,3, WIDEN, P_L, P_NONE, P_NONE, 0,
-		F_EXDEHL "\tld hl,0\n", R_HL),
+		F_EXX "\tld hl,0\n" F_EXX, R_HL),
 	R(WIDEN,INBC,0,0,0,3, WIDEN, P_L, P_NONE, P_NONE, 0,
-		"\tld e,c\n\tld d,b\n\tld hl,0\n", R_HL),
+		T_BC_HL F_EXX "\tld hl,0\n" F_EXX, R_HL),
 	R(WIDEN,INA,0,0,0,3, WIDEN, P_L, P_NONE, P_NONE, 0,
-		"\tld e,a\n\tld d,0\n\tld h,d\n\tld l,d\n", R_HL),
+		F_LDLA F_LDH0 F_EXX "\tld hl,0\n" F_EXX, R_HL),
 
 	/* storing one: a pair at a time to a global, a byte at a time to
 	 * a local, since only (hl) takes an immediate */
@@ -1634,7 +1657,7 @@ struct rule rules[] = {
 	R(ASSIGN,INDEX,P_NUM,0,0,19, ASSIGN, P_L, P_R, P_NONE, 0,
 		"\tld ($L),$Rl\n\tld ($L+),$Rh\n"
 		"\tld ($L++),$R2\n\tld ($L+++),$R3\n"
-		"\tld e,$Rl\n\tld d,$Rh\n\tld l,$R2\n\tld h,$R3\n", R_HL),
+		"\tld l,$Rl\n\tld h,$Rh\n" F_EXX "\tld l,$R2\n\tld h,$R3\n" F_EXX, R_HL),
 	R(ASSIGN,INDEX,P_NUM,0,0,3, ASSIGN, P_L, P_R, P_NONE, 0,
 		"\tld ($L),$Rl\n\tld ($L+),$Rh\n"
 		"\tld ($L++),$R2\n\tld ($L+++),$R3\n", 0),
@@ -1643,7 +1666,7 @@ struct rule rules[] = {
 	R(ASSIGN,SYMREF,P_NUM,0,0,19, ASSIGN, P_L, P_R, P_NONE, 0,
 		F_LDHLL F_LDHLRL F_INCHL F_LDHLRH
 		F_INCHL F_LDHLR2 F_INCHL F_LDHLR3
-		"\tld e,$Rl\n\tld d,$Rh\n\tld l,$R2\n\tld h,$R3\n", R_HL),
+		"\tld l,$Rl\n\tld h,$Rh\n" F_EXX "\tld l,$R2\n\tld h,$R3\n" F_EXX, R_HL),
 	R(ASSIGN,SYMREF,P_NUM,0,0,3, ASSIGN, P_L, P_R, P_NONE, 0,
 		F_LDHLL F_LDHLRL F_INCHL F_LDHLRH
 		F_INCHL F_LDHLR2 F_INCHL F_LDHLR3, 0),
@@ -1661,7 +1684,7 @@ struct rule rules[] = {
 	R(ASSIGN,DEREF,P_NUM,SYMREF,0,19, ASSIGN, P_L, P_R, P_NONE, 0,
 		"\tld hl,($LL)\n\tld (hl),$Rl\n" F_INCHL "\tld (hl),$Rh\n"
 		F_INCHL "\tld (hl),$R2\n" F_INCHL "\tld (hl),$R3\n"
-		"\tld e,$Rl\n\tld d,$Rh\n\tld l,$R2\n\tld h,$R3\n", R_HL),
+		"\tld l,$Rl\n\tld h,$Rh\n" F_EXX "\tld l,$R2\n\tld h,$R3\n" F_EXX, R_HL),
 	/* a long already in HL:DE is the return value as it stands */
 	R(ASSIGN,INHL,CODE,0,0,3, ASSIGN, P_L, P_R, P_NONE, 0, RT0, R_HL),
 
@@ -1672,19 +1695,21 @@ struct rule rules[] = {
 
 	/*
 	 * Loading one, the mirror of the stores above: the low word lives
-	 * at the lower address, so it comes back in DE and the high word
-	 * in HL.  A global can move a pair at a time; a frame slot goes a
-	 * byte at a time, since (iy+d) is all that reaches it.
+	 * at the lower address, so it comes back in HL and the high word
+	 * in HL'.  A global can move a pair at a time; a frame slot goes a
+	 * byte at a time, since (iy+d) is all that reaches it - and (iy+d)
+	 * reads the same in either bank, IY not being one of the three.
 	 */
 	R(DEREF,SYMREF,0,0,0,3, DEREF, P_L, P_NONE, P_NONE, 0,
-		F_LDDEL F_LDHLL3, R_HL),
+		F_LDHLL2 F_EXX F_LDHLL3 F_EXX, R_HL),
 	R(DEREF,INDEX,0,0,0,3, DEREF, P_L, P_NONE, P_NONE, 0,
-		"\tld e,($L)\n\tld d,($L+)\n\tld l,($L++)\n\tld h,($L+++)\n", R_HL),
+		"\tld l,($L)\n\tld h,($L+)\n" F_EXX
+		"\tld l,($L++)\n\tld h,($L+++)\n" F_EXX, R_HL),
 	/* through a pointer already in HL */
-	R(DEREF,INHL,0,0,0,3, DEREF, P_L, P_NONE, P_NONE, 0, "\tcall lld\n", R_HL),
+	R(DEREF,INHL,0,0,0,3, DEREF, P_L, P_NONE, P_NONE, 0, "\tcall qld\n", R_HL),
 	/* and through the other register home - doprnt reads its long
 	 * argument through the pointer it walks the list with */
-	R(DEREF,INBC,0,0,0,3, DEREF, P_L, P_NONE, P_NONE, 0, T_BC_HL "\tcall lld\n", R_HL),
+	R(DEREF,INBC,0,0,0,3, DEREF, P_L, P_NONE, P_NONE, 0, T_BC_HL "\tcall qld\n", R_HL),
 
 	/*
 	 * Stepping a long in memory.  The helper takes the address in HL,
@@ -1698,9 +1723,9 @@ struct rule rules[] = {
 	R(PREINC,SYMREF,0,0,0,27, PREINC, P_L, P_NONE, P_NONE, 0, RT315, R_HL),
 	R(PREDEC,SYMREF,0,0,0,27, PREDEC, P_L, P_NONE, P_NONE, 0, RT313, R_HL),
 	R(PREINC,SYMREF,0,0,0,3, PREINC, P_L, P_NONE, P_NONE, 0,
-		F_LDHLL F_PUSHBC F_CALLLAINC F_POPBC F_LDDEL F_LDHLL3, R_HL),
+		F_LDHLL F_CALLLAINC F_LDDEL F_LDHLL3, R_HL),
 	R(PREDEC,SYMREF,0,0,0,3, PREDEC, P_L, P_NONE, P_NONE, 0,
-		F_LDHLL F_PUSHBC F_CALLLADEC F_POPBC F_LDDEL F_LDHLL3, R_HL),
+		F_LDHLL F_CALLLADEC F_LDDEL F_LDHLL3, R_HL),
 	/*
 	 * The same for a frame slot, where the address has to be worked
 	 * out: (iy+d) reaches a byte at a time, and the helper wants the
@@ -1711,9 +1736,9 @@ struct rule rules[] = {
 	R(PREINC,INDEX,0,0,0,27, PREINC, P_L, P_NONE, P_NONE, 0, RT432, R_HL),
 	R(PREDEC,INDEX,0,0,0,27, PREDEC, P_L, P_NONE, P_NONE, 0, RT430, R_HL),
 	R(PREINC,INDEX,0,0,0,3, PREINC, P_L, P_NONE, P_NONE, 0,
-		T_IDX_ADDR F_PUSHBC F_CALLLAINC F_POPBC T_IDX_ADDR "\tcall lld\n", R_HL),
+		T_IDX_ADDR F_CALLLAINC T_IDX_ADDR "\tcall qld\n", R_HL),
 	R(PREDEC,INDEX,0,0,0,3, PREDEC, P_L, P_NONE, P_NONE, 0,
-		T_IDX_ADDR F_PUSHBC F_CALLLADEC F_POPBC T_IDX_ADDR "\tcall lld\n", R_HL),
+		T_IDX_ADDR F_CALLLADEC T_IDX_ADDR "\tcall qld\n", R_HL),
 	/*
 	 * And through a pointer, where the address is in HL already and
 	 * there is nothing to work out - "(*lp)++", which the short forms
@@ -1730,11 +1755,11 @@ struct rule rules[] = {
 	R(PREINC,INHL,0,0,0,27, PREINC, P_L, P_NONE, P_NONE, 0, RT364, R_HL),
 	R(PREDEC,INHL,0,0,0,27, PREDEC, P_L, P_NONE, P_NONE, 0, RT363, R_HL),
 	R(PREINC,INHL,0,0,0,3, PREINC, P_L, P_NONE, P_NONE, 0,
-		F_PUSHBC F_PUSHHL F_CALLLAINC F_POPHL F_POPBC
-		"\tcall lld\n", R_HL),
+		F_PUSHHL F_CALLLAINC F_POPHL
+		"\tcall qld\n", R_HL),
 	R(PREDEC,INHL,0,0,0,3, PREDEC, P_L, P_NONE, P_NONE, 0,
-		F_PUSHBC F_PUSHHL F_CALLLADEC F_POPHL F_POPBC
-		"\tcall lld\n", R_HL),
+		F_PUSHHL F_CALLLADEC F_POPHL
+		"\tcall qld\n", R_HL),
 	/*
 	 * And through a pointer kept in a register, where the DEREF is
 	 * still standing because rewrite1 left it there - see the step
@@ -1747,11 +1772,11 @@ struct rule rules[] = {
 	R(PREINC,DEREF,0,INBC,0,27, PREINC, P_L, P_NONE, P_NONE, 0, RT418, R_HL),
 	R(PREDEC,DEREF,0,INBC,0,27, PREDEC, P_L, P_NONE, P_NONE, 0, RT416, R_HL),
 	R(PREINC,DEREF,0,INBC,0,3, PREINC, P_L, P_NONE, P_NONE, 0,
-		T_BC_HL F_PUSHBC F_CALLLAINC F_POPBC T_BC_HL
-		"\tcall lld\n", R_HL),
+		T_BC_HL F_CALLLAINC T_BC_HL
+		"\tcall qld\n", R_HL),
 	R(PREDEC,DEREF,0,INBC,0,3, PREDEC, P_L, P_NONE, P_NONE, 0,
-		T_BC_HL F_PUSHBC F_CALLLADEC F_POPBC T_BC_HL
-		"\tcall lld\n", R_HL),
+		T_BC_HL F_CALLLADEC T_BC_HL
+		"\tcall qld\n", R_HL),
 
 	/*
 	 * Storing a long constant through an address, which the four
@@ -1815,7 +1840,7 @@ struct rule rules[] = {
 		"\tld hl,($LL)\n" T_ST_IHL_N, 0),
 	/* the value form: store, then put the constant back in HL:DE */
 	R(ASSIGN,DEREF,P_NUM,INHL,0,19, ASSIGN, P_L, P_R, P_NONE, 0,
-		T_ST_IHL_N "\tld e,$Rl\n\tld d,$Rh\n\tld l,$R2\n\tld h,$R3\n",
+		T_ST_IHL_N "\tld l,$Rl\n\tld h,$Rh\n" F_EXX "\tld l,$R2\n\tld h,$R3\n" F_EXX,
 		R_HL),
 	R(ASSIGN,DEREF,P_NUM,INHL,0,3, ASSIGN, P_L, P_R, P_NONE, 0, T_ST_IHL_N, 0),
 	/*
@@ -1837,11 +1862,11 @@ struct rule rules[] = {
 	 * helpers still need theirs: amul and adiv really do count in B.
 	 */
 	R(ASSIGN,DEREF,INHL,SYMREF,0,3, ASSIGN, P_L, P_R, P_NONE, 0,
-		F_PUSHHL "\tld hl,($LL)\n\tex (sp),hl\n\tcall lstde\n",
+		F_PUSHHL "\tld hl,($LL)\n\tex (sp),hl\n\tcall qst\n",
 		R_HL),
 	R(ASSIGN,DEREF,INHL,INDEX,0,3, ASSIGN, P_L, P_R, P_NONE, 0,
 		F_PUSHHL "\tld l,($LL)\n\tld h,($LL+)\n\tex (sp),hl\n"
-		"\tcall lstde\n", R_HL),
+		"\tcall qst\n", R_HL),
 	R(ASSIGN,DEREF,P_NUM,INDEX,0,3, ASSIGN, P_L, P_R, P_NONE, 0,
 		F_LDLLL F_LDHLL1 T_ST_IHL_N, 0),
 	/*
@@ -1858,13 +1883,13 @@ struct rule rules[] = {
 	 */
 	R(ASSIGN,DEREF,INHL,REGVAR,0,3, ASSIGN, P_L, P_R, P_LL, RF_IX,
 		F_PUSHHL "\tpush ix\n" F_POPHL "\tex (sp),hl\n"
-		"\tcall lstde\n", R_HL),
+		"\tcall qst\n", R_HL),
 	R(ASSIGN,DEREF,P_NUM,REGVAR,0,3, ASSIGN, P_L, P_R, P_LL, RF_IX,
 		"\tpush ix\n" F_POPHL T_ST_IHL_N, 0),
 	/* and through the other register home - "*tp = t" in libu's time,
 	 * writing the clock through the caller's pointer */
 	R(ASSIGN,DEREF,INHL,INBC,0,3, ASSIGN, P_L, P_R, P_NONE, 0,
-		F_PUSHHL T_BC_HL "\tex (sp),hl\n\tcall lstde\n", R_HL),
+		F_PUSHHL T_BC_HL "\tex (sp),hl\n\tcall qst\n", R_HL),
 
 	/* complement of a word; the long form is handled in rewrite.c,
 	 * beside the long negation it shares its shape with */
@@ -1889,7 +1914,7 @@ struct rule rules[] = {
 	 * whatever it was applied to.
 	 */
 	R(BANG,INHL,0,0,0,96, BANG, P_L, P_NONE, P_NONE, 0,
-		F_LDAH "\tor l\n\tor d\n\tor e\n", F_Z),
+		F_LDAH "\tor l\n" F_EXX "\tor h\n\tor l\n" F_EXX, F_Z),
 	R(BANG,INHL,0,0,0,64, BANG, P_L, P_NONE, P_NONE, 0, RT429, F_Z),
 	R(BANG,INHL,0,0,0,32, BANG, P_L, P_NONE, P_NONE, 0, F_LDAL F_ORA, F_Z),
 	R(BANG,INA,0,0,0,0, BANG, P_L, P_NONE, P_NONE, 0, RT358, F_Z),
@@ -2422,10 +2447,15 @@ struct rule rules[] = {
 	 * the compound assignment pushed HL and DE as its right operand
 	 * and called ladd on whatever the loop condition had left there.
 	 * Low word from the lower address, as everywhere else.
+	 *
+	 * IX is not banked, so both halves are reached the same way from
+	 * either side of the exx - which is what makes this four plain
+	 * loads where the old layout needed A to shuffle the high word
+	 * into HL past the pointer.
 	 */
 	R(DEREF,REGVAR,0,0,0,3, DEREF, P_L, P_NONE, P_L, RF_IX,
-		"\tld e,(ix+0)\n\tld d,(ix+1)\n"
-		"\tld a,(ix+2)\n\tld h,(ix+3)\n\tld l,a\n", R_HL),
+		"\tld l,(ix+0)\n\tld h,(ix+1)\n" F_EXX
+		"\tld l,(ix+2)\n\tld h,(ix+3)\n" F_EXX, R_HL),
 	/* honour the target: as the right operand of a compare this has to
 	 * land in DE, or it overwrites the left operand in HL */
 	R(DEREF,SYMREF,0,0,0,2, DEREF, P_L, P_NONE, P_NONE, 0, "\tld $T,($L)\n", 0),

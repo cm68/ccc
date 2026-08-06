@@ -39,13 +39,24 @@ zc3 ccc:
 
 ifneq ($(TC),)
 
+#
+# The ccc area is rebuilt when the compiler itself changes, for the
+# same reason libsrc/libc is: these objects exist to be run, and a
+# codegen change that leaves a stale one behind reads as a change that
+# did not work.  This rule was missing it, and the 32-bit convention
+# change is how that showed - libutil.o went on calling lld, arelop,
+# aldiv and almod, so every image linked BOTH runtimes and c0 grew
+# five hundred bytes that looked like they came from the new one.
+#
 ifeq ($(TC),ccc)
 ZCC = $(DEST)/bin/ccc -O
+CCDEP = $(DEST)/bin/c1 $(DEST)/bin/c0 $(DEST)/bin/cpp $(DEST)/bin/peep
 else
 ZCC = zc3
+CCDEP =
 endif
 
-$(TC)/libutil.o: libutil.c $(HEADERS)
+$(TC)/libutil.o: libutil.c $(HEADERS) $(CCDEP)
 	@mkdir -p $(TC)
 	cd $(TC) && $(ZCC) -I.. -I../../../libsrc/include -c ../libutil.c
 

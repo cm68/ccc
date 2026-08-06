@@ -413,11 +413,15 @@ falsecc(Expr *e)
 	case F_P:  return "m";
 	case R_A:  out("\tor a\n"); return "z";
 	case R_HL:
-		/* a long answers in HL:DE and all four bytes vote - the
-		 * pair test alone read only the high half, and
-		 * "if (n & 1)" was false for every odd long */
+		/*
+		 * A long answers in HL':HL and all four bytes vote - the
+		 * pair test alone read only half of it, and "if (n & 1)"
+		 * was false for every odd long.  A is not banked, so the
+		 * fold just carries on across the exx.
+		 */
 		if (ISLONG(e->width))
-			out("\tld a,l\n\tor h\n\tor e\n\tor d\n");
+			out("\tld a,l\n\tor h\n\texx\n"
+			    "\tor l\n\tor h\n\texx\n");
 		else
 			out("\tld a,l\n\tor h\n");
 		return "z";
@@ -448,7 +452,8 @@ truecc(Expr *e)
 	case R_A:  out("\tor a\n"); return "nz";
 	case R_HL:
 		if (ISLONG(e->width))
-			out("\tld a,l\n\tor h\n\tor e\n\tor d\n");
+			out("\tld a,l\n\tor h\n\texx\n"
+			    "\tor l\n\tor h\n\texx\n");
 		else
 			out("\tld a,l\n\tor h\n");
 		return "nz";
@@ -503,15 +508,18 @@ bytepair(Expr *e)
  * Only safe while the other operand has not been evaluated yet - the
  * HL form goes through ex de,hl, which would trample it.
  *
- * A long is not one of these.  It occupies HL:DE whole, so there is no
- * "move it to DE" to be had: ex de,hl only swaps its halves and calling
- * the result INDE loses the other two bytes.  What a caller asking for
- * DE actually wants is the low word, and that is already sitting there
- * - so the narrow is free and the move emits nothing.
+ * What a caller asking for DE wants from a long is its low word, and
+ * under HL':HL that is in HL - so the narrowing is free, and the move
+ * itself is then the ordinary exchange the 16-bit path already does.
+ * Saying the width is short first is the whole of the difference; skip
+ * that and the store rules go on reading four bytes.
  *
- * This used to run the 16-bit path on a long: "0123456789ABCDEF"[i %
- * base] swapped the halves and then indexed by the high word, so _pnum
- * wrote a zero for every digit and printf("%d") printed nothing at all.
+ * Under the old HL:DE layout the low word was already in DE and this
+ * emitted nothing at all, which is a difference worth naming, because
+ * the version before THAT ran the 16-bit path on a long without
+ * narrowing it: "0123456789ABCDEF"[i % base] swapped the halves and
+ * then indexed by the high word, so _pnum wrote a zero for every digit
+ * and printf("%d") printed nothing at all.
  */
 Expr *
 movetotgt(Expr *e, unsigned char tgt)
@@ -522,9 +530,6 @@ movetotgt(Expr *e, unsigned char tgt)
 		if (e->op != INHL)
 			return e;
 		e->width = ISSIGNED(e->width) ? T_SHORT : T_USHORT;
-		e->op = INDE;
-		e->u.var.reg = R_DE;
-		return e;
 	}
 	if (e->op == INA) {
 		out("\tld e,a\n");
@@ -665,8 +670,13 @@ pusharg(Expr *a)
 		out("\tpush hl\n");
 		return 2;
 	}
-	/* longs live in HL:DE, high word first */
-	out("\tpush hl\n\tpush de\n");
+	/*
+	 * A long lives in HL':HL, and an argument goes on the stack the
+	 * way it sits in memory: high word first, so the low word ends up
+	 * at the lower address.  Two pushes rather than one pair, because
+	 * the halves are in different banks.
+	 */
+	out("\texx\n\tpush hl\n\texx\n\tpush hl\n");
 	return 4;
 }
 
@@ -715,22 +725,62 @@ islongop(Expr *e)
 }
 
 /*
- * The two halves of a 32-bit constant, high word first.  A constant
- * operand never reduces - it stays a NUMBER so the ",N)" rules can see
- * it - so the long path has to place one itself.
+ * The two halves of a 32-bit constant.  A constant operand never
+ * reduces - it stays a NUMBER so the ",N)" rules can see it - so the
+ * long path has to place one itself.
+ *
+ * Into the first accumulator, HL':HL.  The exx pair costs two bytes
+ * that the old HL:DE layout did not, and gets them straight back at
+ * the call site: this used to be followed by pushlongc for the other
+ * operand, four instructions and eight bytes of stack traffic that
+ * loadlongd replaces with a pair of loads.
  */
 void
 loadlongc(long v)
 {
-	outf("\tld hl,%d\n\tld de,%d\n",
-	    (int)((v >> 16) & 0xffff), (int)(v & 0xffff));
+	outf("\tld hl,%d\n\texx\n\tld hl,%d\n\texx\n",
+	    (int)(v & 0xffff), (int)((v >> 16) & 0xffff));
+}
+
+/* and into the second, DE':DE */
+void
+loadlongd(long v)
+{
+	outf("\tld de,%d\n\texx\n\tld de,%d\n\texx\n",
+	    (int)(v & 0xffff), (int)((v >> 16) & 0xffff));
+}
+
+/*
+ * Move the value in HL':HL to DE':DE, freeing the first accumulator
+ * for the other operand.  Four bytes, and the exx pair is what makes
+ * it possible at all - ex de,hl reaches only the half of each pair
+ * that is currently selected.
+ */
+void
+longtode(void)
+{
+	out("\tex de,hl\n\texx\n\tex de,hl\n\texx\n");
+}
+
+/*
+ * Park a long on the stack, high word first so it sits the way a long
+ * does in memory, and get it back into DE':DE.
+ *
+ * This is the expensive path and it is meant to be the rare one: the
+ * two halves are in different banks, so each needs its own push, where
+ * the old HL:DE layout could push both from one.  It is only reached
+ * when the right operand is too complicated for longsimple().
+ */
+void
+pushlong(void)
+{
+	out("\texx\n\tpush hl\n\texx\n\tpush hl\n");
 }
 
 void
-pushlongc(long v)
+poplongd(void)
 {
-	outf("\tld hl,%d\n\tpush hl\n\tld hl,%d\n\tpush hl\n",
-	    (int)((v >> 16) & 0xffff), (int)(v & 0xffff));
+	out("\tpop de\n\texx\n\tpop de\n\texx\n");
 }
 
 /*
@@ -794,27 +844,29 @@ longable(Expr *e)
 /*
  * The runtime helper for a 32-bit operator, or NULL if there is none.
  *
- * The library names these by what the operation means rather than what
- * it is: the "a" forms are arithmetic and treat the top bit as a sign,
- * the "ll" forms are logical and treat it as a value.  Add, subtract
- * and the bitwise operators are the same either way and the library
- * points both names at one routine; divide, remainder, right shift and
- * comparison genuinely differ.
+ * These are ccc's own 32-bit runtime, the q set - see
+ * libsrc/libc/QLONG.md.  Both operands are in registers, HL':HL and
+ * DE':DE, so the caller pushes nothing and none of them touches BC.
+ *
+ * Only the operations that genuinely differ have two names.  Add,
+ * subtract, multiply and the bitwise three give the same bits whether
+ * the top one is a sign or a value; divide, remainder and comparison
+ * do not.
  */
 char *
 longhelper(unsigned char op, int sign)
 {
 	switch (op) {
-	case PLUS:   return "ladd";
-	case MINUS:  return sign ? "alsub" : "llsub";
-	case STAR:   return sign ? "almul" : "llmul";
-	case DIV:    return sign ? "aldiv" : "lldiv";
-	case MOD:    return sign ? "almod" : "llmod";
-	case AND:    return sign ? "aland" : "lland";
-	case OR:     return sign ? "alor"  : "llor";
-	case XOR:    return sign ? "alxor" : "llxor";
+	case PLUS:   return "qadd";
+	case MINUS:  return "qsub";
+	case STAR:   return "qmul";
+	case DIV:    return sign ? "qdiv" : "qudiv";
+	case MOD:    return sign ? "qmod" : "qumod";
+	case AND:    return "qand";
+	case OR:     return "qor";
+	case XOR:    return "qxor";
 	case EQ: case NEQ: case LT: case GT: case LE: case GE:
-		return sign ? "arelop" : "lrelop";
+		return sign ? "qcmp" : "qucmp";
 	}
 	return NULL;
 }
@@ -860,10 +912,30 @@ tolong(Expr *e, char w)
 }
 
 /*
- * A binary operator on 32-bit values.  Both operands want HL:DE and
- * there is only one of those, so the right one is worked out first and
- * pushed - which is also what the helpers expect: left in HL:DE, right
- * on the stack with its high word pushed first.
+ * A binary operator on 32-bit values.  There are two 32-bit
+ * accumulators now, HL':HL and DE':DE, so this is mostly a matter of
+ * getting one operand into each and calling the helper - and what it
+ * used to be instead is worth recording, because nearly everything
+ * awkward about the long path came from there being only one.
+ *
+ * The right operand was worked out first and pushed, because HL:DE was
+ * also where the left one had to be.  BC was saved around the call,
+ * because the helper took the pushed operand back with a pop bc and
+ * would otherwise destroy a register variable living there.  And
+ * longable() had to be asked, in advance, whether both operands were
+ * shapes that could reach HL:DE at all: "settled before anything is
+ * emitted - once the right operand has been pushed there is no way
+ * back".  That gate is why a long-valued ternary emitted no code at
+ * all until QUES was added to its list, and why comparing against an
+ * assignment did not reduce until ASSIGN was.  Guessing wrong was
+ * silent.
+ *
+ * None of it is needed.  Register operands are reversible, the q
+ * helpers pop nothing and touch no BC, and both sides go through
+ * rewrite1 like any other value.
+ *
+ * The right operand still has to get to DE':DE without disturbing the
+ * left, which is what longsimple() is about below.
  *
  * "Greater than" and "at or below" have no flag of their own, so they
  * are passed over as "less than" and "at or above" with the operands
@@ -877,7 +949,6 @@ dolongbin(Expr *e)
 	int iscmp = (longflag(op, 1) != 0);
 	Expr *opnd = iscmp ? e->left : e;
 	int swap = (op == GT || op == LE);
-	int savebc = bcinuse();
 	int sign;
 	char *fn;
 	Expr *l, *r, *n;
@@ -907,23 +978,20 @@ dolongbin(Expr *e)
 	 * those use BC.
 	 */
 	if (op == LSHIFT || op == RSHIFT) {
-		if (!longable(l))
-			return NULL;
 		e->left = e->right = NULL;
-		if (savebc)
-			out("\tpush bc\n");
 		if (r->op == NUMBER) {
 			if (l->op == NUMBER)
 				loadlongc(l->u.val);
 			else
 				l = rewrite1(l);
-			outf("\tld b,%d\n", (int)(r->u.val & 0xff));
+			outf("\tld a,%d\n", (int)(r->u.val & 0xff));
 		} else {
 			/*
 			 * The count is an ordinary int and would have been aimed
 			 * at DE, being the right operand of a binary node.  It
 			 * has to come back in HL: that is where this parks it,
-			 * and DE belongs to the value.
+			 * and DE':DE belongs to nothing here, a shift having
+			 * only the one operand.
 			 */
 			assign(r, R_HL);
 			r = rewrite1(r);
@@ -937,27 +1005,28 @@ dolongbin(Expr *e)
 			 */
 			r = valtohl(r);
 			/*
-			 * A LONG count fills HL:DE with its low word in DE -
-			 * pushing HL parked the HIGH word, and the byte the
-			 * helper shifted by was byte two of the count: any
-			 * count under 65536 shifted by nought.
+			 * Only the low byte of the count can matter, and a
+			 * long count keeps its low word in HL now like any
+			 * other - under the old layout it was in DE, so
+			 * pushing HL parked the HIGH word and every count
+			 * below 65536 shifted by nought.
 			 */
-			out(ISLONGINT(r->width) ?
-			    "\tpush de\n" : "\tpush hl\n");
+			out("\tpush hl\n");
 			if (l->op == NUMBER)
 				loadlongc(l->u.val);
 			else
 				l = rewrite1(l);
-			/* the count's low word is on the stack; its low
-			 * byte lands in C */
-			out("\tpop bc\n\tld b,c\n");
+			/* the count is on the stack; its low byte to A */
+			out("\tpop de\n\tld a,e\n");
 		}
 		freeexpr(l);
 		freeexpr(r);
+		/*
+		 * The count goes in A and the helper counts in B', so there
+		 * is no longer a BC to save around this.
+		 */
 		outf("\tcall %s\n",
-		    op == LSHIFT ? "allsh" : sign ? "alrsh" : "lushr");
-		if (savebc)
-			out("\tpop bc\n");
+		    op == LSHIFT ? "qshl" : sign ? "qsar" : "qshr");
 		return donehl(e, INHL);
 	}
 
@@ -968,60 +1037,60 @@ dolongbin(Expr *e)
 	/*
 	 * A long against something narrower.  C converts the narrow side,
 	 * and the rules for that conversion are already in the table - what
-	 * was missing is that nobody put the conversion in the tree, so the
-	 * gate below saw an operand that could not be made to land in HL:DE
-	 * and declined.  A constant is left alone: pushlongc and loadlongc
-	 * below take one at whatever width it is written.
+	 * was missing is that nobody put the conversion in the tree.  A
+	 * constant is left alone: the loaders take one at whatever width
+	 * it is written.
 	 */
 	l = tolong(l, opnd->width);
 	r = tolong(r, opnd->width);
 
-	/*
-	 * Both operands have to be shapes that end up in HL:DE, and that
-	 * has to be settled before anything is emitted - once the right
-	 * operand has been pushed there is no way back.
-	 */
-	if (!longable(l) || !longable(r))
-		return NULL;
-
 	e->left = e->right = NULL;
 
 	/*
-	 * The helper takes its right operand off the stack with a pop bc,
-	 * so it destroys a register variable living there.  Save it
-	 * underneath the operand: the helper consumes exactly the two
-	 * words it was passed, so the copy is on top again when it
-	 * returns.  Only worth it where BC actually holds something.
-	 */
-	if (savebc)
-		out("\tpush bc\n");
-
-	/*
-	 * Both want HL:DE, so neither can keep the target it was given as
-	 * one side of a binary node - the right operand would have been
-	 * aimed at DE, which is half of where it has to land.
+	 * A constant right operand goes straight into the second
+	 * accumulator once the left is out of the way, and costs nothing:
+	 * every comparison against a literal, every "+ 1L".
+	 *
+	 * Loading a global or a frame slot straight into DE':DE was tried
+	 * here too and taken out again.  It is six bytes better per site
+	 * in principle, and it fired - but on this tree it fired nowhere
+	 * that mattered: cpp and c0 came out byte-identical with and
+	 * without it, and the two functions it took to decide and emit
+	 * cost c1 five hundred bytes.  The stack path below is what the
+	 * measurement preferred.
+	 *
+	 * Anything else has to be worked out in HL':HL, because that is
+	 * where rewrite1 puts a long, and then moved aside.  Moving it to
+	 * DE':DE is four bytes and would be the whole story if working out
+	 * the LEFT afterwards could be trusted not to touch DE - but DE is
+	 * the ordinary 16-bit scratch pair and almost anything uses it.
+	 * So the stack, one push per half because the halves are in
+	 * different banks.
 	 */
 	if (r->op == NUMBER) {
-		pushlongc(r->u.val);
+		if (l->op == NUMBER)
+			loadlongc(l->u.val);
+		else
+			l = rewrite1(l);
+		freeexpr(l);
+		loadlongd(r->u.val);
+		freeexpr(r);
 	} else {
 		assign(r, R_HL);
 		r = rewrite1(r);
-		out("\tpush hl\n\tpush de\n");
+		freeexpr(r);
+		pushlong();
+		if (l->op == NUMBER)
+			loadlongc(l->u.val);
+		else {
+			assign(l, R_HL);
+			l = rewrite1(l);
+		}
+		freeexpr(l);
+		poplongd();
 	}
-	freeexpr(r);
-
-	/* then the left, which the helper wants where it lands */
-	if (l->op == NUMBER) {
-		loadlongc(l->u.val);
-	} else {
-		assign(l, R_HL);
-		l = rewrite1(l);
-	}
-	freeexpr(l);
 
 	outf("\tcall %s\n", fn);
-	if (savebc)
-		out("\tpop bc\n");
 
 	if (iscmp) {
 		/*
@@ -1263,8 +1332,8 @@ valtohl(Expr *e)
  * the shapes the store rules name.  A byte value ends in A, which
  * the address does not disturb, so the address comes straight back
  * to HL; a word is in HL itself and has to move aside; a long fills
- * HL:DE, so the address stays where it is - on the stack, which is
- * where lstde wants it.
+ * HL':HL, so the address stays where it is - on the stack, which
+ * is where qst wants it.
  *
  * Returns the finished node for the long case, null when the caller
  * should fall through to the matcher with the rebuilt children.
@@ -1276,7 +1345,7 @@ spiltstore(Expr *e, Expr *oldleft)
 
 	e->right = valtohl(rewrite1(e->right));
 	if (ISLONGINT(e->width)) {
-		out("\tcall lstde\n");
+		out("\tcall qst\n");
 		freeexpr(oldleft);
 		freeexpr(e->right);
 		e->left = e->right = NULL;
@@ -1654,8 +1723,11 @@ rewrite1(Expr *e)
 		return movetotgt(n, tgt);
 	}
 
-	/* Handle long (32-bit) binary operations */
-	/* Long values use HLDE (HL=high, DE=low), helpers take 2nd arg on stack */
+	/*
+	 * Handle long (32-bit) binary operations - the path for the ones
+	 * dolongbin did not take.  Values are in HL':HL and DE':DE; see
+	 * libsrc/libc/QLONG.md.
+	 */
 	if ((e->width == 'l' || e->width == 'L') && e->left && e->right) {
 		char *helper = NULL;
 		int iscompare = 0;
@@ -1669,45 +1741,43 @@ rewrite1(Expr *e)
 		}
 
 		switch (e->op) {
-		case PLUS:   helper = "ladd"; break;
-		case MINUS:  helper = "alsub"; break;
-		case STAR:   helper = "almul"; break;
-		case DIV:    helper = (e->width == 'l') ? "aldiv" : "lldiv"; break;
-		case MOD:    helper = (e->width == 'l') ? "almod" : "llmod"; break;
-		case AND:    helper = "lland"; break;
-		case OR:     helper = "llor"; break;
-		case XOR:    helper = "llxor"; break;
+		case PLUS:   helper = "qadd"; break;
+		case MINUS:  helper = "qsub"; break;
+		case STAR:   helper = "qmul"; break;
+		case DIV:    helper = (e->width == 'l') ? "qdiv" : "qudiv"; break;
+		case MOD:    helper = (e->width == 'l') ? "qmod" : "qumod"; break;
+		case AND:    helper = "qand"; break;
+		case OR:     helper = "qor"; break;
+		case XOR:    helper = "qxor"; break;
 		case EQ: case NEQ: case LT: case GT: case LE: case GE:
-			helper = "lrelop";
+			helper = (e->width == 'l') ? "qcmp" : "qucmp";
 			iscompare = 1;
 			break;
 		}
 
 		if (helper) {
-			/* Evaluate right operand first (result in HLDE) */
+			/* the right operand first, then out of the way */
 			e->right = rewrite1(e->right);
-			/* Push right operand: low word first, then high */
-			out("\tpush de\n\tpush hl\n");
-			/* Evaluate left operand (result in HLDE) */
+			pushlong();
 			e->left = rewrite1(e->left);
-			/* Call helper */
+			poplongd();
 			outf("\tcall %s\n", helper);
-			/* For comparisons, result is in flags */
+			/*
+			 * A comparison answers in a flag, and which one
+			 * depends on the signedness: qcmp reports in the
+			 * sign flag and qucmp in carry.  This used to call
+			 * lrelop for both and read carry for both, so every
+			 * signed long comparison down this path was answered
+			 * as an unsigned one.  longflag knows the rule; the
+			 * operands were swapped above for GT and LE, so it is
+			 * asked about the operator as written.
+			 */
 			if (iscompare) {
-				unsigned char flag;
-				switch (e->op) {
-				case EQ:  flag = F_Z; break;
-				case NEQ: flag = F_NZ; break;
-				case LT:  flag = F_C; break;   /* swapped GT uses this */
-				case GE:  flag = F_NC; break;  /* swapped LE uses this */
-				case GT:  flag = F_C; break;   /* after swap, use LT flag */
-				case LE:  flag = F_NC; break;  /* after swap, use GE flag */
-				default:  flag = F_NZ; break;
-				}
-				n = mkcode('b', flag);
+				n = mkcode('b',
+				    longflag(e->op, e->width == 'l'));
 				n->dest = DEST_FLAGS;
 			} else {
-				/* Result in HLDE, report as HL (high word) */
+				/* the value is in HL':HL, named by HL */
 				n = mkcode(e->width, R_HL);
 				n->dest = e->dest;
 			}
@@ -2130,25 +2200,24 @@ spilled:	;
 		narrow = !ISLONG(e->width);
 		both = e->left && e->right;
 		/*
-		 * A long stored into something narrower.  The value is in
-		 * HL:DE with HL the high word, and every narrowing store
-		 * rule takes the low half of HL - which is the third byte
-		 * of the long, not the first.  There are ten of those rules
-		 * at byte width alone, so the conversion belongs here once
-		 * rather than in each of them: bring the low word into HL
-		 * and they are all correct as written.
+		 * A long stored into something narrower.  Under HL':HL the
+		 * low word is already in HL, which is where every narrowing
+		 * store rule looks, so all that is left to do is say so -
+		 * the width has to change or the store rules go on treating
+		 * it as four bytes.
 		 *
-		 * "buf[1] = val & 0xff" was right and "buf[2] = (val >> 8)
-		 * & 0xff" was not, which is what made it look like a shift
-		 * bug - the first reads the low byte straight out of memory
-		 * and never goes through a register pair at all.  cpp emits
-		 * every number this way, so every constant above 255 lost
-		 * its high bytes: 0644 arrived as 164 and 256 as 0.
+		 * This used to be an ex de,hl as well, the low word having
+		 * been in DE.  Getting it wrong is quiet: "buf[1] = val &
+		 * 0xff" was right and "buf[2] = (val >> 8) & 0xff" was not,
+		 * which made it look like a shift bug - the first reads the
+		 * low byte straight out of memory and never goes through a
+		 * register pair at all.  cpp emits every number this way,
+		 * so every constant above 255 lost its high bytes: 0644
+		 * arrived as 164 and 256 as 0.
 		 */
 		if (e->op == ASSIGN && narrow &&
 		    e->right && e->right->op == INHL &&
 		    ISLONG(e->right->width)) {
-			out("\tex de,hl\n");
 			e->right->width = T_SHORT;
 		}
 

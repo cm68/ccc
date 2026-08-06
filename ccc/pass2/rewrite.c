@@ -1456,18 +1456,18 @@ step(Expr *e)
 
 	/* Long unary operations */
 	if ((e->width == 'l' || e->width == 'L') && e->left) {
-		/* Long complement: ~HLDE */
+		/* Long complement: ~HL':HL */
 		if (e->op == NOT && e->left->op == INHL) {
-			out("\tcall lcom\n");
+			out("\tcall qcom\n");
 			return donehl(e, CODE);
 		}
-		/* Long negation: -HLDE (two's complement) */
+		/*
+		 * Long negation.  Twelve bytes inline against three for a
+		 * call, so it is a call now: qneg is in the divide, which
+		 * needs it anyway to put the sign back on a quotient.
+		 */
 		if (e->op == NEG && e->left->op == INHL) {
-			/* Negate DE, then HL with borrow */
-			out("\txor a\n\tsub e\n\tld e,a\n"
-			    "\tld a,0\n\tsbc a,d\n\tld d,a\n"
-			    "\tld a,0\n\tsbc a,l\n\tld l,a\n"
-			    "\tld a,0\n\tsbc a,h\n\tld h,a\n");
+			out("\tcall qneg\n");
 			return donehl(e, CODE);
 		}
 		/*
@@ -1476,13 +1476,13 @@ step(Expr *e)
 		 * question of the tree and differ only in which helper they
 		 * call.  The enclosing test has already established that the
 		 * width is long, so 'l' against 'L' is the sign.  The count
-		 * arrives in A and the helpers want it in B.
+		 * arrives in A, which is where the helpers want it - they
+		 * count in B', so there is no ld b,a and no BC to protect.
 		 */
 		if ((e->op == LSHIFT || e->op == RSHIFT) &&
 		    e->left->op == INHL && e->right && e->right->op == INA) {
-			out("\tld b,a\n");
-			out(e->op == LSHIFT ? "\tcall lllsh\n" :
-			    e->width == 'l' ? "\tcall alrsh\n" : "\tcall llrsh\n");
+			out(e->op == LSHIFT ? "\tcall qshl\n" :
+			    e->width == 'l' ? "\tcall qsar\n" : "\tcall qshr\n");
 			return donehl(e, CODE);
 		}
 	}
