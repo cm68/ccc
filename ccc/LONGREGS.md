@@ -189,6 +189,94 @@ exclusion is one that already exists for other reasons - a function
 doing long arithmetic was never going to get a shadow register
 variable, because the long helpers destroy BC'.
 
+## What actually happened
+
+Built, on this branch, in four commits.  All 88 of `tests/run` pass
+under ccc, `make test` is clean, and a fresh sizecheck of all four
+passes builds with no `XXXXXX` marker anywhere.
+
+**The size estimate above was wrong, and wrong in a way worth naming.**
+Measured by sizecheck (which does not pass `-O`, so this is before the
+peephole):
+
+| | before | after | |
+|---|---|---|---|
+| c1 | 47429 | 47074 | **-355** |
+| c0 | 47290 | 47412 | +122 |
+| cpp | 45850 | 46239 | +389 |
+
+Roughly neutral, not the ~3.2K the estimate implied.  The estimate
+counted the marshalling that disappears and not the `exx` pair that
+every long load, store, widen and argument push now has to pay.  cpp
+emits 578 of them against 55 helper calls: the per-site tax dominates
+the per-call saving, and cpp is the pass that does most of its 32-bit
+work in loads and stores rather than in arithmetic.
+
+The runtime did shrink as predicted - `qdiv` 336 bytes against
+`ldiv`'s 494, `qmul` 85 against 125, `qldst` 106 against 158 - and so
+did c1, which is the pass that holds the marshalling code.
+
+**Keeping the calls was right.** With both operands in registers,
+`call qadd` is three bytes and the inline `add hl,de / exx / adc hl,de
+/ exx` is five.  The helper wins on size, which is the constraint here.
+
+**The Hi-Tech helpers had to stay put.**  `libsrc/libc/*.s` is
+assembled once into both `zc3/` and `ccc/` archives, and zc3 emits
+`aladd`, `arelop`, `almul`, `aldiv`, `allsh` and the `as*` family from
+its own code generator.  So ccc's runtime is a parallel `q*` set under
+`libsrc/libc/QLONG.md` rather than a conversion.  The linker pulls an
+object only when something references it, so neither program carries
+the other's.
+
+**Two optimisations were tried and taken out**, and both failed the
+same way: real in principle, absent in practice, and paid for in c1 -
+which is the pass with no room.
+
+Loading a global or a frame slot straight into DE':DE, instead of
+going round by the stack, is six bytes better per site.  It fired, but
+nowhere that mattered: cpp and c0 came out byte-identical with and
+without it, and the two functions needed to decide and emit it cost c1
+five hundred bytes.  The comment in `dolongbin` records this.
+
+Testing a long against zero by its sign byte rather than by calling
+`qcmp` - `bit 7,(iy+d+3)` where the value is in a frame slot, four
+bytes against twenty-five - is the bigger saving of the two per site,
+and turns out never to happen.  A grep suggested eighteen sites in the
+compiler and the grep was wrong: it counted `ld de,0` before a `call
+qcmp` and `jp m`/`jp p` after one, and assumed they were the same
+eighteen.  They were not.  With the rule in, the tree emitted **zero**
+long sign tests, `qcmp` went from 36 sites to 35, c0 shrank seven
+bytes and c1 grew six hundred and twenty-four.
+
+Sign-testing a long is a syscall-return shape - `lseek`, `ftell` - and
+this tree does not do it.  Worth revisiting only alongside code that
+does.
+
+The lesson both times: measure the site count in the emitted assembly
+before writing the rule, not the plausibility of the pattern.
+
+**Three things fell out that were not part of the plan:**
+
+- The second long-binary path in `rewrite1` called `lrelop` for every
+  comparison and read the answer out of carry, so every *signed* long
+  comparison down that path was answered as an unsigned one.
+- `ccc/lib/Makefile` rebuilt `libutil.o` without depending on the
+  compiler, so after the convention changed it went on calling `lld`,
+  `arelop`, `aldiv` and `almod` and every image linked **both**
+  runtimes.  c0 grew five hundred bytes that looked like they came
+  from the new scheme.  `libsrc/libc` had already learned this lesson;
+  that rule now has the same dependency.
+- peep gained a rule: `exx` is its own inverse, so an adjacent pair is
+  two bytes doing nothing, and they abut constantly - the closing
+  `exx` of one long operation meets the opening one of the next.  On a
+  long-heavy function it removes about a fifth of them.
+
+**What was right:** the `longable()` gate is gone, and with it the
+class of bug where a long expression shape nobody had listed emitted
+no code at all.  Narrowing a long is now free.  No long helper call
+saves BC any more.  And `exx` not touching the flags held up
+everywhere it was relied on.
+
 ## Order
 
 1. `peep/regs.c` knows `exx`.  Independent, small.
