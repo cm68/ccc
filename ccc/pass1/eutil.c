@@ -125,6 +125,28 @@ freeNode(struct expr *e)
 }
 
 /*
+ * An address is sixteen bits, so a long index into one is not long
+ * arithmetic: it is narrowed and added.  Nothing put that conversion
+ * in the tree, so pass2 met an address add with one long operand,
+ * had no rule spelling it at two widths, and emitted nothing at all -
+ * "flags = buf[off++]" with a long off read address zero and stored
+ * nowhere.  A constant index needs no special case: foldNode's
+ * unary arm folds the NARROW around it away.
+ */
+struct expr *
+narrowidx(struct expr *e)
+{
+    struct expr *n;
+
+    if (!e || !e->type || e->type->size <= inttype->size ||
+        (e->type->flags & TF_AGGREGATE))
+        return e;
+    n = mkexpr(NARROW, e);
+    n->type = inttype;
+    return n;
+}
+
+/*
  * Unwrap a DEREF node, returning the child and freeing the DEREF
  * Saves the dereferenced type before unwrapping
  * Returns: the unwrapped type (what was e->type before unwrapping)

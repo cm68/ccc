@@ -387,6 +387,22 @@ scaleptr(struct expr *e)
 
     if (!lp && !rp)
         return e;                       /* ordinary arithmetic */
+
+    /*
+     * An address is sixteen bits, so a long index into one is not
+     * long arithmetic: it is narrowed and added.  The sum was typed
+     * as the pointer above, but nobody put the conversion in the
+     * tree, so pass2 met an address add with one long operand, had
+     * no rule spelling +(H,H) at two widths, and emitted nothing at
+     * all - "flags = buf[off++]" with a long off read address zero
+     * and the store went nowhere.  Before the byte-pointer return
+     * below, which is the case that showed it.
+     */
+    if (lp != rp) {
+        side = lp ? &e->right : &e->left;
+        *side = narrowidx(*side);
+    }
+
     if (!pt->sub || (size = pt->sub->size) == 1)
         return e;                       /* a byte needs no scaling */
 

@@ -84,6 +84,7 @@ pfxIndex(struct expr *e)
     gettoken();  // consume '['
     e1 = parseExpr(0);  /* index */
     expect(RBRACK, ER_E_SP);
+    e1 = narrowidx(e1);         /* a subscript is address-wide */
 
     /*
      * An array's name is its address, so the load comes off

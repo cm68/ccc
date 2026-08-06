@@ -121,6 +121,7 @@ extern int isTypeToken(unsigned char t);
 extern struct expr *mkbin(unsigned char op, struct expr *l,
     struct expr *r, struct type *t);
 extern void freeNode(struct expr *e);
+extern struct expr *narrowidx(struct expr *e);
 extern struct type *unwrapDeref(struct expr **ep);
 extern void skipExpr(unsigned char pri);
 extern struct expr *mkIncDec(struct expr *operand,
