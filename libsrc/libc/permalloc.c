@@ -16,13 +16,14 @@
 #include <unistd.h>
 
 /*
- * 256, halved twice from 1024: the grab size is also the granularity
- * of the last allocation before the sbrk guard says no, and on the
- * 64K machine each halving has bought back a source file that died
- * within a chunk of fitting - first cpp on a big header closure,
- * then cpp on pass1/expr.c once the typedef filter moved in.
+ * 128, halved three times from 1024: the grab size is also the
+ * granularity of the last allocation before the sbrk guard says no,
+ * and on the 64K machine each halving has bought back a source file
+ * that died within a chunk of fitting - first cpp on a big header
+ * closure, then cpp on pass1/expr.c once the typedef filter moved
+ * in, then cpp again when constant folding moved in.
  */
-#define PCHUNK 256
+#define PCHUNK 128
 
 static char *pnext;			/* cursor into current chunk */
 static unsigned int pleft;	/* bytes left in current chunk */

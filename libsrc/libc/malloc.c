@@ -27,7 +27,9 @@ char *s;
  *	idle blocks are coalesced during space search
  *
 */
-#define	BLOCK	(85*sizeof(struct store))	/* 255 bytes */
+#define	BLOCK	(43*sizeof(struct store))	/* 129 bytes: the granule
+						 * is also the last grab before
+						 * the sbrk guard says no */
 #define BUSY 1
 #define NULL 0
 #define	testbusy(p)	((p).flag & BUSY)

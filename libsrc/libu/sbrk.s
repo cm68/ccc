@@ -15,7 +15,7 @@
 ; stack pointer.  malloc sees -1 and returns NULL instead of the
 ; heap silently growing up through the stack.
 ;
-; 768: the deepest stack the self-build has been seen to use is 546
+; 576: the deepest stack the self-build has been seen to use is 546
 ; bytes (sim -S, c0 over its own sources), and the old 1024 was
 ; refusing allocations while nineteen hundred bytes still lay
 ; between the break and the stack's low-water mark.  The compiler
@@ -61,7 +61,7 @@ _sbrk:
 	ex	de,hl		; de = new break
 	ld	hl,0
 	add	hl,sp
-	ld	bc,-768
+	ld	bc,-576
 	add	hl,bc		; hl = sp - GUARD
 	or	a
 	sbc	hl,de		; carry if new break above guard line
