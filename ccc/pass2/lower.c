@@ -1130,10 +1130,20 @@ docall(Expr *e)
 	/*
 	 * Drop the arguments.  inc sp costs a byte apiece and touches no
 	 * register; past a few words the HL form is smaller, but it has
-	 * to shuffle the result through DE.
+	 * to shuffle the result through DE - which a LONG result also
+	 * lives in, so the shuffle mangled it: the first call in the
+	 * ecosystem with ten arg bytes and a long result came back with
+	 * one half swapped and the other replaced by the byte count.
+	 * A long-returning call drops words with pop af instead: one
+	 * byte per word, and nothing live is touched.
 	 */
 	if (nbytes > 0 && nbytes <= 8) {
 		for (i = 0; i < nbytes; i++)
+			out("\tinc sp\n");
+	} else if (nbytes > 8 && ISLONG(e->width)) {
+		for (i = 0; i + 1 < nbytes; i += 2)
+			out("\tpop af\n");
+		if (nbytes & 1)
 			out("\tinc sp\n");
 	} else if (nbytes > 8) {
 		outf("\tex de,hl\n\tld hl,%d\n\tadd hl,sp\n\tld sp,hl\n\tex de,hl\n",
