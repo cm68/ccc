@@ -304,6 +304,18 @@ extern unsigned char scopedep;
 extern unsigned char cflimit;
 extern unsigned char incf;
 void srcget(struct token *out);
+void knr(struct token *t);
+void kout(struct token *t);
+void knrinit(void);
+void kscan(struct token *t);
+extern int dlist;
+extern unsigned char inagg;
+void out(struct token *t);
+void outt(unsigned char type);
+void outarr(struct tokarray *a);
+void pushb(struct token *t);
+void pull(struct token *t);
+int decl(struct token *t);
 void tdinit(void);
 
 /* debug options */

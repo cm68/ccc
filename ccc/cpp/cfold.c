@@ -13,8 +13,7 @@
 			 * a little to grow; 16 silently unfolded all 455
 			 * of them and handed c0 back 2728 folds */
 
-/* norm.c: the walker's token source and the replay queue it drains */
-extern void pull(struct token *);
+/* norm.c: the walker's replay queue, drained at the chokepoint */
 extern struct token szq[];
 extern unsigned char szqr, szqw;
 
