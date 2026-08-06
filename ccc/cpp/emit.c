@@ -201,15 +201,6 @@ emitLine(int line, char *file)
 }
 
 
-/*
- * Emit current token to .x stream
- * Just calls emitStructTok with &cur
- */
-void
-emitCurToken(void)
-{
-    emitStructTok(&cur);
-}
 
 /*
  * Send out the string literal being held, if there is one.

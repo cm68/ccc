@@ -97,35 +97,8 @@ mkindex(char width, char reg, int off)
 	return e;
 }
 
-Expr *
-mkinhl(char width, Expr *child)
-{
-	Expr *e = alloc();
-	e->op = INHL;
-	e->width = width;
-	e->left = child;
-	return e;
-}
 
-Expr *
-mkinde(char width, Expr *child)
-{
-	Expr *e = alloc();
-	e->op = INDE;
-	e->width = width;
-	e->left = child;
-	return e;
-}
 
-Expr *
-mkina(char width, Expr *child)
-{
-	Expr *e = alloc();
-	e->op = INA;
-	e->width = width;
-	e->left = child;
-	return e;
-}
 
 Expr *
 mkunary(int op, char width, Expr *child)

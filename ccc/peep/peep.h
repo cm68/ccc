@@ -84,7 +84,6 @@ extern struct line win[WINDOW];
 extern int nwin;					/* lines currently in the window */
 extern int verbose;
 extern void delline(int i, int n);
-extern void setline(int i, char *s);
 extern void insline(int i, char *s);
 
 /* regs.c */

@@ -239,11 +239,6 @@ insline(int i, char *s)
 	nwin++;
 }
 
-void
-setline(int i, char *s)
-{
-	putline(i, s);
-}
 
 void
 usage(void)
