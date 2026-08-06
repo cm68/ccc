@@ -2251,6 +2251,106 @@ int nsyms;
 }
 
 /*
+ * The tail of processHitech: the relocation and symbol-table
+ * listings.  Split out because the whole of processHitech was one
+ * four-hundred-line function whose frame - two 64-byte name
+ * buffers and three 16-byte decode buffers in the innermost block
+ * among them - was more than c0 could hold on the 64K machine.  It
+ * reads what the record walk collected and nothing else.
+ */
+static void
+ht_report(relocs, nrelocs, symbol_off, symbol_len)
+struct ht_reloc *relocs;
+int nrelocs;
+long symbol_off;
+int symbol_len;
+{
+    int i;
+
+    /* print collected relocations */
+    if (rflag && nrelocs > 0) {
+        printf("\nRelocations:\n");
+        printf("  Offset  Size  Segment  Target\n");
+        printf("  ------  ----  -------  ------\n");
+
+        for (i = 0; i < nrelocs; i++) {
+            char *seg;
+            char *size;
+
+            size = (relocs[i].type & HT_RSIZE_MASK) == 1 ? "byte" : "word";
+
+            if ((relocs[i].type & 0xf0) == HT_RPSECT) {
+                seg = relocs[i].target;
+                printf("  0x%04lx  %-4s  %s\n", relocs[i].offset, size, seg);
+            } else {
+                seg = "-";
+                printf("  0x%04lx  %-4s  %-7s  %s\n", relocs[i].offset, size, seg, relocs[i].target);
+            }
+        }
+    }
+
+    /* print symbol table */
+    if (symbol_len > 0) {
+        long soff = symbol_off;
+        long send = symbol_off + symbol_len;
+        int nsym = 0;
+
+        /* count symbols */
+        while (soff < send) {
+            int nlen;
+            if (soff + 7 > send) break;
+            soff += 6;
+            while (soff < send && filebuf[soff]) soff++;
+            soff++;
+            for (nlen = 0; soff + nlen < send && filebuf[soff + nlen]; nlen++);
+            soff += nlen + 1;
+            nsym++;
+        }
+
+        printf("\nSymbol table: %d symbols\n", nsym);
+        printf("  Value     Segment  Scope   Type    Name\n");
+        printf("  --------  -------  ------  ------  ----\n");
+
+        soff = symbol_off;
+        while (soff < send) {
+            unsigned long val;
+            unsigned short flags;
+            char psect[64], symname[64];
+            char scope[16], stype[16], seg[16];
+            int plen, nlen;
+
+            if (soff + 7 > send) break;
+
+            val = filebuf[soff] | (filebuf[soff+1] << 8) |
+                  ((unsigned long)filebuf[soff+2] << 16) |
+                  ((unsigned long)filebuf[soff+3] << 24);
+            flags = filebuf[soff+4] | (filebuf[soff+5] << 8);
+            soff += 6;
+
+            for (plen = 0; plen < 63 && soff + plen < send; plen++) {
+                psect[plen] = filebuf[soff + plen];
+                if (psect[plen] == '\0') break;
+            }
+            psect[plen] = '\0';
+            soff += plen + 1;
+
+            for (nlen = 0; nlen < 63 && soff + nlen < send; nlen++) {
+                symname[nlen] = filebuf[soff + nlen];
+                if (symname[nlen] == '\0') break;
+            }
+            symname[nlen] = '\0';
+            soff += nlen + 1;
+
+            ht_decode_sym(flags, psect, scope, stype, seg);
+
+            printf("  0x%06lx  %-7s  %-6s  %-6s  %s\n",
+                   val, seg, scope, stype, symname);
+        }
+    }
+
+}
+
+/*
  * process HiTech object file
  */
 void
@@ -2565,86 +2665,7 @@ char *name;
         off += reclen;
     }
 
-    /* print collected relocations */
-    if (rflag && nrelocs > 0) {
-        printf("\nRelocations:\n");
-        printf("  Offset  Size  Segment  Target\n");
-        printf("  ------  ----  -------  ------\n");
-
-        for (i = 0; i < nrelocs; i++) {
-            char *seg;
-            char *size;
-
-            size = (relocs[i].type & HT_RSIZE_MASK) == 1 ? "byte" : "word";
-
-            if ((relocs[i].type & 0xf0) == HT_RPSECT) {
-                seg = relocs[i].target;
-                printf("  0x%04lx  %-4s  %s\n", relocs[i].offset, size, seg);
-            } else {
-                seg = "-";
-                printf("  0x%04lx  %-4s  %-7s  %s\n", relocs[i].offset, size, seg, relocs[i].target);
-            }
-        }
-    }
-
-    /* print symbol table */
-    if (symbol_len > 0) {
-        long soff = symbol_off;
-        long send = symbol_off + symbol_len;
-        int nsym = 0;
-
-        /* count symbols */
-        while (soff < send) {
-            int nlen;
-            if (soff + 7 > send) break;
-            soff += 6;
-            while (soff < send && filebuf[soff]) soff++;
-            soff++;
-            for (nlen = 0; soff + nlen < send && filebuf[soff + nlen]; nlen++);
-            soff += nlen + 1;
-            nsym++;
-        }
-
-        printf("\nSymbol table: %d symbols\n", nsym);
-        printf("  Value     Segment  Scope   Type    Name\n");
-        printf("  --------  -------  ------  ------  ----\n");
-
-        soff = symbol_off;
-        while (soff < send) {
-            unsigned long val;
-            unsigned short flags;
-            char psect[64], symname[64];
-            char scope[16], stype[16], seg[16];
-            int plen, nlen;
-
-            if (soff + 7 > send) break;
-
-            val = filebuf[soff] | (filebuf[soff+1] << 8) |
-                  ((unsigned long)filebuf[soff+2] << 16) |
-                  ((unsigned long)filebuf[soff+3] << 24);
-            flags = filebuf[soff+4] | (filebuf[soff+5] << 8);
-            soff += 6;
-
-            for (plen = 0; plen < 63 && soff + plen < send; plen++) {
-                psect[plen] = filebuf[soff + plen];
-                if (psect[plen] == '\0') break;
-            }
-            psect[plen] = '\0';
-            soff += plen + 1;
-
-            for (nlen = 0; nlen < 63 && soff + nlen < send; nlen++) {
-                symname[nlen] = filebuf[soff + nlen];
-                if (symname[nlen] == '\0') break;
-            }
-            symname[nlen] = '\0';
-            soff += nlen + 1;
-
-            ht_decode_sym(flags, psect, scope, stype, seg);
-
-            printf("  0x%06lx  %-7s  %-6s  %-6s  %s\n",
-                   val, seg, scope, stype, symname);
-        }
-    }
+    ht_report(relocs, nrelocs, symbol_off, symbol_len);
 
     if (relocs)
         free(relocs);
