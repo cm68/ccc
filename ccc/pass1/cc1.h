@@ -369,6 +369,7 @@ int isAssignOp(unsigned char op);
 char isRegvar(struct expr *e);
 char dchainreg(struct expr *e);
 int truncok(unsigned char op);
+int bytevalued(struct expr *e);
 int candemote(struct expr *e, int size);
 void demote(struct expr *e, struct type *t);
 int iscmpop(unsigned char op);
