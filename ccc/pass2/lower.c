@@ -770,6 +770,17 @@ longable(Expr *e)
 	case NOT:
 		/* complement has a rule of its own */
 		return 1;
+	case QUES:
+		/*
+		 * A long-valued ternary lands each arm in HL:DE through
+		 * ASSIGN(INHL, arm) and answers as INHL like any other
+		 * long.  It was missing from this list, so any long
+		 * arithmetic with a conditional operand - "(c ? a : b)
+		 * + 10" - was declined here, refused by the width guard
+		 * above the rules, and the whole statement left as an
+		 * XXXXXX marker: no code at all.
+		 */
+		return e->right && e->right->op == TERNBRANCH;
 	case LSHIFT:
 	case RSHIFT:
 		/* handled here too, but by their own path - the count is not
