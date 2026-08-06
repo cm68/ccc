@@ -7,7 +7,11 @@
 #include "cpp.h"
 #include "lexeme.h"
 
-#define CFSV_MAX 16	/* SZQ_MAX >= CFSV_MAX + 1: a bail replays all */
+#define CFSV_MAX 21	/* SZQ_MAX >= CFSV_MAX + 1: a bail replays all.
+			 * 21 holds the three-field pack expression the
+			 * rules table is made of - nineteen tokens - with
+			 * a little to grow; 16 silently unfolded all 455
+			 * of them and handed c0 back 2728 folds */
 
 /* norm.c: the walker's token source and the replay queue it drains */
 extern void pull(struct token *);

@@ -290,7 +290,7 @@ extern void hexdump(char *tag, char *h, int l);
 #endif
 extern long parseConst(token_t stop);
 /* norm.c/cfold.c: the fold replay queue's shared bound */
-#define SZQ_MAX 17	/* >= CFSV_MAX + 1: a bail replays all */
+#define SZQ_MAX 22	/* >= CFSV_MAX + 1: a bail replays all */
 void dofold(struct token *t);
 void reginit(void);
 unsigned short stfind(char *tag);
