@@ -32,7 +32,7 @@
 extern void lex_get(struct token *);
 
 /* the cooked-token source: lexer + enum lowering + typedef expansion */
-static void srcget(struct token *);
+void srcget(struct token *);
 
 /* one-token pushback: the else-check and statement-end lookaheads */
 static struct token backtok;
@@ -92,34 +92,83 @@ static void mtok(struct token *t);
 static void arrstart(char *name, unsigned char stars);
 static void arrtok(struct token *t);
 static void arrdone(void);
-static void dosizeof(struct token *t);
 static void kscan(struct token *t);
+
+extern int cfprio(unsigned char t);
 
 /*
  * Token I/O
  */
-static struct token szq[12];
-static unsigned char szqr, szqw;
-static unsigned char insz;
+struct token szq[SZQ_MAX];
+unsigned char szqr, szqw;
+static unsigned char cfprev;	/* last token type delivered by pull */
+unsigned char cflimit;	/* how much may fold here: after a
+				 * binary op only tighter operators
+				 * may - folding "3 + 2" inside
+				 * "x - 3 + 2" would reassociate */
+unsigned char incf;
 
-static void
+static int
+cfoldable(unsigned char t)
+{
+	return t == NUMBER || t == INUMBER || t == LNUMBER ||
+	    t == LPAR || t == MINUS || t == PLUS || t == TWIDDLE ||
+	    t == BANG || t == SIZEOF_KW;
+}
+
+/* is a token type one after which an operand may begin? */
+static int
+atoperand(unsigned char p)
+{
+	if (p == SYM || p == RPAR || p == RBRACK || p == NUMBER ||
+	    p == INUMBER || p == LNUMBER || p == STRING ||
+	    p == INCR || p == DECR)
+		return 0;
+	return 1;
+}
+
+
+void
 pull(struct token *t)
 {
 	if (haveback) {
 		haveback = 0;
 		tokcpy(t, &backtok);
-		return;
+		goto track;
 	}
 	if (szqr < szqw) {
-		/* an unfoldable sizeof replaying: no re-interception */
+		/* replaying: no re-interception, but the context
+		 * still advances - a stale one once turned a binary
+		 * plus into a unary one */
 		tokcpy(t, &szq[szqr++]);
 		if (szqr == szqw)
 			szqr = szqw = 0;
-		return;
+		goto track;
 	}
 	srcget(t);
-	if (t->type == SIZEOF_KW && !insz)
-		dosizeof(t);
+	if (!incf && t->type != NEWLINE && t->type != LINENO) {
+		/*
+		 * The paren after if/while/for/switch is structure the
+		 * walker parses, not an expression's - folding
+		 * "while (1)" to "while 1" dismantled the loop.
+		 */
+		if (cfoldable(t->type) && atoperand(cfprev) &&
+		    !(t->type == LPAR && (cfprev == IF ||
+		    cfprev == WHILE || cfprev == FOR ||
+		    cfprev == SWITCH)))
+			dofold(t);
+	}
+track:
+	if (!incf && t->type != NEWLINE && t->type != LINENO) {
+		cfprev = t->type;
+		if (t->type == QUES || t->type == COLON)
+			cflimit = 12;
+		else {
+			int p = cfprio(t->type);
+
+			cflimit = p ? p - 1 : 13;
+		}
+	}
 }
 
 static void
@@ -333,143 +382,20 @@ save_name(char *name)
 }
 
 
-/*
- * Sizes (stage 2 of the c0 migration): registries fed by the walks
- * this file already does, and sizeof answered on the spot.
- *
- * Aggregate layouts are packed and byte-aligned, arrays multiply,
- * unions take the max - pass1's typesize arithmetic, computed here
- * so a sizeof folds to a number before pass1 exists.  Anything the
- * registries cannot price goes downstream unfolded, where pass1
- * still answers it; the tree's .s output is byte-identical either
- * way, which is the gate this rides.
- *
- * By the time the walker sees a token, typedefs are dissolved: a
- * type is its keywords, a struct tag, or a name in the registry.
- */
-struct streg {
-	char *tag;			/* interned */
-	unsigned short size;
-	struct streg *next;
-};
-static struct streg *stags;
+static unsigned char spec_isagg;
 
-struct vreg {
-	char *name;			/* interned */
-	unsigned short total, elem, deref;
-	unsigned char depth;
-	struct vreg *next;
-};
-static struct vreg *vregs, *vfree;
-static unsigned char scopedep;
-
-static unsigned short
-stfind(char *tag)
-{
-	struct streg *s;
-
-	for (s = stags; s; s = s->next)
-		if (s->tag == tag)
-			return s->size;
-	return 0;
-}
-
-static void
-stadd(char *tag, unsigned short size)
-{
-	struct streg *s;
-
-	if (!tag || !size)
-		return;
-	s = (struct streg *)permalloc(sizeof(*s));
-	s->tag = tag;
-	s->size = size;
-	s->next = stags;
-	stags = s;
-}
-
-static void
-vadd(char *name, unsigned short total, unsigned short elem,
-    unsigned short deref)
-{
-	struct vreg *v;
-
-	if (!name || !total)
-		return;
-	if (vfree) {
-		v = vfree;
-		vfree = v->next;
-	} else
-		v = (struct vreg *)permalloc(sizeof(*v));
-	v->name = name;
-	v->total = total;
-	v->elem = elem;
-	v->deref = deref;
-	v->depth = scopedep;
-	v->next = vregs;
-	vregs = v;
-}
-
-static struct vreg *
-vfind(char *name)
-{
-	struct vreg *v;
-
-	for (v = vregs; v; v = v->next)
-		if (v->name == name)
-			return v;
-	return 0;
-}
-
-static void
-vpop(void)
-{
-	struct vreg *v;
-
-	while (vregs && vregs->depth > scopedep) {
-		v = vregs;
-		vregs = v->next;
-		v->next = vfree;
-		vfree = v;
-	}
-}
-
-/* one keyword's contribution to a basic type's size */
-static unsigned short
-kwsz(unsigned char c, unsigned short base)
-{
-	switch (c) {
-	case CHAR:	return 1;
-	case SHORT:	return 2;
-	case INT:	return (base == 1 || base == 4) ? base : 2;
-	case LONG:	return 4;
-	case UNSIGNED:	return base ? base : 2;
-	}
-	return base;
-}
-
-static int
-szkw(unsigned char c)
-{
-	return c == CHAR || c == SHORT || c == INT || c == LONG ||
-	    c == UNSIGNED;
-}
-
-/*
- * The base size the current spec_a describes: keywords, or a
- * struct/union tag in the registry.  Zero = not priceable (an enum,
- * an unknown tag, void).
- */
 static unsigned short
 specbase(void)
 {
 	unsigned short base = 0;
 	int i;
 
+	spec_isagg = 0;
 	for (i = 0; i < spec_a.count; i++) {
 		unsigned char c = spec_a.buf[i].type;
 
 		if (c == STRUCT || c == UNION) {
+			spec_isagg = 1;
 			if (i + 1 < spec_a.count &&
 			    spec_a.buf[i+1].type == SYM)
 				return stfind(spec_a.buf[i+1].v.name);
@@ -496,7 +422,7 @@ sizedecl(void)
 		if (st)
 			vadd(names[i].name, 2, 0,
 			    st > 1 ? 2 : base);
-		else if (base)
+		else if (base && spec_isagg)
 			vadd(names[i].name, base, 0, 0);
 	}
 }
@@ -712,149 +638,6 @@ mtok(struct token *t)
  * magnitude - and what does not is replayed for pass1 through a
  * small queue ahead of the source.
  */
-static struct token szsv[10];
-static char szn;
-static struct token szcur;
-
-static int
-szstep(void)
-{
-	if (szn >= 10)
-		return 1;
-	tokcpy(&szsv[(int)szn], &szcur);
-	szn++;
-	pull(&szcur);
-	return 0;
-}
-
-static void
-dosizeof(struct token *t)
-{
-	unsigned short base = 0;
-	unsigned char parens = 0, stars = 0, kind = 0;
-	unsigned long ans = 0;
-	struct vreg *v;
-	int i;
-
-	szn = 0;
-	insz = 1;
-	pull(&szcur);
-	if (szcur.type != LPAR && szcur.type != SYM)
-		goto unfold;
-	if (szcur.type == LPAR) {
-		parens = 1;
-		if (szstep())
-			goto unfold;
-	}
-	while (szcur.type == STAR) {
-		stars++;
-		if (szstep())
-			goto unfold;
-	}
-	if (szkw(szcur.type)) {
-		kind = 1;
-		while (szkw(szcur.type)) {
-			base = kwsz(szcur.type, base);
-			if (szstep())
-				goto unfold;
-		}
-	} else if (szcur.type == STRUCT || szcur.type == UNION) {
-		kind = 1;
-		if (szstep())
-			goto unfold;
-		if (szcur.type != SYM)
-			goto unfold;
-		base = stfind(szcur.v.name);
-		if (szstep())
-			goto unfold;
-	} else if (szcur.type == SYM && !stars) {
-		if ((v = vfind(szcur.v.name)) == 0)
-			goto unfold;
-		ans = v->total;
-		if (szstep())
-			goto unfold;
-		if (szcur.type == LBRACK) {
-			ans = v->elem;	/* any constant index */
-			if (szstep())
-				goto unfold;
-			if (szcur.type != NUMBER &&
-			    szcur.type != INUMBER)
-				goto unfold;
-			if (szstep())
-				goto unfold;
-			if (szcur.type != RBRACK)
-				goto unfold;
-			if (szstep())
-				goto unfold;
-		}
-	} else if (szcur.type == SYM && stars == 1) {
-		if ((v = vfind(szcur.v.name)) == 0 || !v->deref)
-			goto unfold;
-		ans = v->deref;
-		if (szstep())
-			goto unfold;
-	} else
-		goto unfold;
-
-	if (kind) {
-		while (szcur.type == STAR) {
-			stars++;
-			if (szstep())
-				goto unfold;
-		}
-		ans = stars ? 2 : base;
-		/*
-		 * An abstract array - sizeof(int [5]) - is what a
-		 * typedef'd array dissolves to, and pass1's type
-		 * parser never could read one: this is the only
-		 * place with an answer.
-		 */
-		while (szcur.type == LBRACK) {
-			unsigned short cnt;
-
-			if (szstep())
-				goto unfold;
-			if (szcur.type != NUMBER &&
-			    szcur.type != INUMBER)
-				goto unfold;
-			cnt = (unsigned short)szcur.v.numeric;
-			if (szstep())
-				goto unfold;
-			if (szcur.type != RBRACK)
-				goto unfold;
-			ans *= cnt;
-			if (szstep())
-				goto unfold;
-		}
-	}
-	if (parens) {
-		if (szcur.type != RPAR)
-			goto unfold;
-	}
-	if (!ans)
-		goto unfold;
-	toksynth(t, INUMBER);
-	t->v.numeric = (long)ans;
-	if (!parens) {
-		/* the bare form's follower re-enters ahead of the
-		 * source */
-		if (szqw < 12)
-			tokcpy(&szq[szqw++], &szcur);
-	}
-	insz = 0;
-	return;
-
-unfold:
-	/* not ours to answer: replay for pass1 */
-	toksynth(t, SIZEOF_KW);
-	for (i = 0; i < szn; i++)
-		if (szqw < 12)
-			tokcpy(&szq[szqw++], &szsv[i]);
-	if (szqw < 12)
-		tokcpy(&szq[szqw++], &szcur);
-	insz = 0;
-}
-
 /*
  * File-scope declarations, watched off kout's stream.  One flat
  * walk: specs, stars, a name, brackets, an initializer to skip.
@@ -877,6 +660,7 @@ static unsigned char ks_bad;
 static unsigned char ks_pd;
 static unsigned char ks_id;
 static unsigned char ks_awtag;
+static unsigned char ks_isagg;
 static char *ks_tag;		/* aggregate head, for norm_run */
 static unsigned char ks_kind;
 
@@ -894,7 +678,7 @@ ksdone(void)
 		} else if (ks_stars)
 			vadd(ks_name, 2, 0,
 			    ks_stars > 1 ? 2 : ks_base);
-		else if (ks_base)
+		else if (ks_base && ks_isagg)
 			vadd(ks_name, ks_base, 0, 0);
 	}
 	ks_name = 0;
@@ -902,6 +686,7 @@ ksdone(void)
 	ks_cnt = 0;
 	ks_nbrk = 0;
 	ks_bad = 0;
+	ks_isagg = 0;
 }
 
 static void
@@ -914,6 +699,7 @@ kscan(struct token *t)
 		if (t->type == SYM) {
 			ks_tag = t->v.name;
 			ks_base = stfind(ks_tag);
+			ks_isagg = 1;
 			return;
 		}
 	}
@@ -921,6 +707,7 @@ kscan(struct token *t)
 		ks_awtag = 1;
 		ks_kind = (t->type == UNION) ? 2 : 1;
 		ks_base = 0;
+		ks_isagg = 0;
 		if (ks_st == KS_INIT)
 			return;
 		ks_st = KS_SPECS;
@@ -929,6 +716,7 @@ kscan(struct token *t)
 	if (t->type == ENUM) {
 		ks_kind = 0;
 		ks_base = 0;
+		ks_isagg = 0;
 		ks_bad = 1;
 		return;
 	}
@@ -1009,21 +797,6 @@ kscan(struct token *t)
 		return;
 	}
 }
-
-#ifdef DEBUG
-void
-sizedump(void)
-{
-	struct streg *sp;
-	struct vreg *v;
-
-	for (sp = stags; sp; sp = sp->next)
-		fdprintf(2, "  struct %s = %d\n", sp->tag, sp->size);
-	for (v = vregs; v; v = v->next)
-		fdprintf(2, "  var %s = %d elem %d deref %d @%d\n",
-		    v->name, v->total, v->elem, v->deref, v->depth);
-}
-#endif
 
 static void sizedecl(void);
 
@@ -1893,7 +1666,7 @@ stmt(struct token *t)
  * ANSI form.  Anything that stops looking like a K&R definition
  * flushes what was buffered and steps aside.
  */
-#define PARAM_MAX 24
+#define PARAM_MAX 16
 struct kparm {
 	char *name;
 	struct token *type;
@@ -2453,697 +2226,9 @@ knr(struct token *t)
 	}
 }
 
-/*
- * The source layer: lexer -> enum lowering -> typedef dissolution.
- * What the walker pulls is already free of ENUM, TYPEDEF, and every
- * typedef name.
- */
-
-/*
- * Enum lowering (from filtenum).  Enum constants are glorified
- * #defines: each goes into the macro table as its value, the type
- * itself is rewritten to unsigned char, and a bare declaration
- * vanishes.  Constant names are global for the rest of the file,
- * exactly like #define.
- */
-static struct token eqbuf[2];	/* CHAR + the lookahead, at most */
-static unsigned char eqn, eqr;
-
-static long enum_expr(struct token *t);
-
-/* t holds the current lookahead on entry and exit */
-static long
-enum_prim(struct token *t)
-{
-	long v;
-
-	if (t->type == MINUS) {
-		lex_get(t);
-		return -enum_prim(t);
-	}
-	if (t->type == TWIDDLE) {
-		lex_get(t);
-		return ~enum_prim(t);
-	}
-	if (t->type == LPAR) {
-		lex_get(t);
-		v = enum_expr(t);
-		if (t->type == RPAR)
-			lex_get(t);
-		else
-			gripe(ER_C_EV);
-		return v;
-	}
-	/* an enum constant is an int however the value was spelled */
-	if (t->type == NUMBER || t->type == LNUMBER) {
-		v = t->v.numeric;
-		lex_get(t);
-		return v;
-	}
-	gripe(ER_C_EV);
-	if (t->type != END && t->type != E_O_F)
-		lex_get(t);
-	return 0;
-}
-
-static long
-enum_term(struct token *t)
-{
-	long v = enum_prim(t);
-
-	while (t->type == STAR || t->type == TIMES) {
-		lex_get(t);
-		v *= enum_prim(t);
-	}
-	return v;
-}
-
-static long
-enum_expr(struct token *t)
-{
-	long v = enum_term(t);
-	unsigned char op;
-
-	while (t->type == PLUS || t->type == MINUS) {
-		op = t->type;
-		lex_get(t);
-		if (op == PLUS)
-			v += enum_term(t);
-		else
-			v -= enum_term(t);
-	}
-	return v;
-}
-
-static void
-epull(struct token *out)
-{
-	struct token t;
-	struct token syn;
-	char def[48];
-	char *p;
-	long val;
-
-	if (eqr < eqn) {
-		tokcpy(out, &eqbuf[eqr++]);
-		if (eqr == eqn)
-			eqr = eqn = 0;
-		return;
-	}
-
-	lex_get(&t);
-	while (t.type == ENUM) {
-		lex_get(&t);			/* consume 'enum' */
-		if (t.type == SYM)
-			lex_get(&t);		/* tag: documentation only */
-
-		if (t.type == BEGIN) {
-			val = 0;
-			lex_get(&t);
-			while (t.type != END && t.type != E_O_F) {
-				if (t.type != SYM) {
-					gripe(ER_C_EV);
-					lex_get(&t);
-					continue;
-				}
-				/* build "NAME=" while the name is live */
-				p = def;
-				{
-					char *n = t.v.name;
-					while (*n && p < def + 32)
-						*p++ = *n++;
-				}
-				*p++ = '=';
-				lex_get(&t);
-				if (t.type == ASSIGN) {
-					lex_get(&t);
-					val = enum_expr(&t);
-				}
-				fmtstr(p, "%ld", val);
-				addDefine(def);
-				val++;
-				if (t.type == COMMA)
-					lex_get(&t);
-			}
-			if (t.type == END)
-				lex_get(&t);	/* consume '}' */
-			else
-				gripe(ER_C_EV);
-		}
-
-		/* t is now the token after the enum construct */
-		if (t.type == SEMI) {
-			/* bare "enum [tag] { ... };" - swallow entirely */
-			lex_get(&t);
-			continue;
-		}
-		/* type reference: replace with 'unsigned char' */
-		toksynth(out, UNSIGNED);
-		toksynth(&syn, CHAR);
-		tokcpy(&eqbuf[eqn++], &syn);
-		tokcpy(&eqbuf[eqn++], &t);
-		return;
-	}
-	tokcpy(out, &t);
-}
-
-/*
- * Typedef dissolution (from filttdef).  A typedef is a declarator
- * with a hole where the name sits; using the name composes the
- * use-site declarator into the hole.  See the phase-1a commit for
- * the full rules - the engine is unchanged, its output queue is now
- * the walker's token source.
- */
-struct tdent {
-	char *name;			/* interned */
-	struct token *spec, *pre, *post;
-	unsigned char nspec, npre, npost;
-	struct tdent *next;
-};
-static struct tdent *tdefs;
-
-/*
- * One set of split arrays per live expansion.  Depth grows only
- * through a typedef inside a declarator of another typedef's use,
- * and one more for the K&R parameter line a terminator can begin.
- */
-#define MAXDEPTH 3
-static struct tokarray pres[MAXDEPTH], posts[MAXDEPTH];
-static unsigned char xdepth;
-static struct tokarray tdspec;
-
-/* the expansion output queue - the one buffer between the source
- * layer and the walker */
-static struct pendbuf tdq;
-
-static struct tdent *
-tdfind(char *name)
-{
-	struct tdent *t;
-
-	for (t = tdefs; t; t = t->next)
-		if (t->name == name)	/* interned: pointer compare */
-			return t;
-	return 0;
-}
-
-/* a sink is the queue (null) or a collection in progress */
-static void
-sink1(struct tokarray *sink, struct token *t)
-{
-	if (sink)
-		tarr_push(sink, t);
-	else
-		pend_push(&tdq, t);
-}
-
-static void
-sinkn(struct tokarray *sink, struct token *buf, int n)
-{
-	int i;
-
-	for (i = 0; i < n; i++)
-		sink1(sink, &buf[i]);
-}
-
-static void
-sinkt(struct tokarray *sink, unsigned char type)
-{
-	struct token t;
-
-	toksynth(&t, type);
-	sink1(sink, &t);
-}
-
-/*
- * Pull the next token, letting line housekeeping flow straight out.
- */
-static struct token tdbktok;
-static unsigned char tdbkhv;
-
-static void
-tdpull(struct token *t)
-{
-	if (tdbkhv) {
-		tdbkhv = 0;
-		tokcpy(t, &tdbktok);
-		return;
-	}
-	for (;;) {
-		epull(t);
-		if (t->type != NEWLINE && t->type != LINENO)
-			return;
-		pend_push(&tdq, t);
-	}
-}
-
-static void expand(struct tdent *e, struct token *t,
-    struct tokarray *sink);
-
-/*
- * Collect one balanced ( ) or [ ] group into the sink, expanding
- * typedef names inside.  On entry t holds the opener; on exit the
- * first token past the closer.
- */
-static void
-group(struct token *t, struct tokarray *sink)
-{
-	unsigned char d = 0;
-	struct tdent *e;
-
-	for (;;) {
-		if (t->type == LBRACK || t->type == LPAR) {
-			d++;
-		} else if (t->type == RBRACK || t->type == RPAR) {
-			d--;
-			sink1(sink, t);
-			tdpull(t);
-			if (!d)
-				return;
-			continue;
-		} else if (t->type == SYM &&
-		    (e = tdfind(t->v.name)) != 0) {
-			expand(e, t, sink);
-			/* the nested expansion sank its own terminator;
-			 * account for it if it closed a level */
-			if (t->type == RBRACK || t->type == RPAR) {
-				d--;
-				if (!d) {
-					tdpull(t);
-					return;
-				}
-			}
-			tdpull(t);
-			continue;
-		}
-		sink1(sink, t);
-		tdpull(t);
-	}
-}
-
-/*
- * Split one (possibly abstract) declarator into pre / name / post,
- * expanding typedef names inside its groups.  The caller hands in
- * the first token; the terminator comes back in t.
- */
-static void
-splitdecl(struct token *t, struct tokarray *pre, struct token *name,
-    struct tokarray *post)
-{
-	unsigned char pdepth = 0;
-
-	tarr_reset(pre);
-	tarr_reset(post);
-	name->type = 0;
-
-	while (t->type == STAR || t->type == TIMES || t->type == LPAR) {
-		if (t->type == LPAR)
-			pdepth++;
-		tarr_push(pre, t);
-		tdpull(t);
-	}
-	if (t->type == SYM) {
-		if (!tdfind(t->v.name)) {
-			tokcpy(name, t);
-			tdpull(t);
-		} else {
-			/*
-			 * A typedef name in the name position: the
-			 * declarator's NAME shadowing the typedef, or a
-			 * fresh K&R type line.  What follows tells them
-			 * apart: a star or another name means type line.
-			 */
-			struct token peek;
-
-			tdpull(&peek);
-			if (peek.type == STAR || peek.type == TIMES ||
-			    peek.type == SYM) {
-				tokcpy(&tdbktok, &peek);
-				tdbkhv = 1;
-			} else {
-				tokcpy(name, t);
-				tokcpy(t, &peek);
-			}
-		}
-	}
-	for (;;) {
-		if (t->type == RPAR && pdepth) {
-			pdepth--;
-			tarr_push(post, t);
-			tdpull(t);
-			continue;
-		}
-		if (t->type == LBRACK || t->type == LPAR) {
-			group(t, post);
-			continue;
-		}
-		return;
-	}
-}
-
-/*
- * Emit one wrapped declarator: pre_t [(] pre_u name post_u [)]
- * post_t.  Parens exactly when the use-site starts prefix-ish and
- * the hole continues with a postfix.
- */
-static void
-wrap(struct tdent *e, struct tokarray *pre, struct token *name,
-    struct tokarray *post, struct tokarray *sink)
-{
-	int parens = pre->count && e->npost;
-
-	sinkn(sink, e->pre, e->npre);
-	if (parens)
-		sinkt(sink, LPAR);
-	sinkn(sink, pre->buf, pre->count);
-	if (name->type)
-		sink1(sink, name);
-	sinkn(sink, post->buf, post->count);
-	if (parens)
-		sinkt(sink, RPAR);
-	sinkn(sink, e->post, e->npost);
-}
-
-/*
- * Save a token array into the permanent arena.
- */
-#ifdef DEBUG
-long tdkeepB;		/* poolstats: bytes kept for entries */
-int tdkeepN;
-#endif
-
-static struct token *
-keep(struct tokarray *a, unsigned char *n)
-{
-	struct token *p;
-	int i;
-
-	*n = a->count;
-	if (!a->count)
-		return 0;
-	p = (struct token *)permalloc(a->count * sizeof(struct token));
-#ifdef DEBUG
-	tdkeepB += a->count * sizeof(struct token);
-	tdkeepN++;
-#endif
-	for (i = 0; i < a->count; i++)
-		tokcpy(&p[i], &a->buf[i]);
-	return p;
-}
-
-/*
- * Pass tokens through until a depth-0 comma or semicolon, expanding
- * typedef names met on the way - an initialiser can hold a cast or
- * a sizeof.  The terminator comes back in t, already sunk.
- */
-static void
-drain(struct token *t, struct tokarray *sink)
-{
-	unsigned char d = 0;
-	struct tdent *e;
-
-	for (;;) {
-		tdpull(t);
-		if (t->type == SYM && (e = tdfind(t->v.name)) != 0) {
-			expand(e, t, sink);
-			if (t->type == SEMI ||
-			    (t->type == COMMA && !d))
-				return;
-			if (t->type == RPAR || t->type == RBRACK) {
-				if (!d)
-					return;
-				d--;
-			}
-			continue;
-		}
-		if (t->type == LPAR || t->type == LBRACK) {
-			d++;
-		} else if (t->type == RPAR || t->type == RBRACK) {
-			if (!d) {
-				sink1(sink, t);
-				return;
-			}
-			d--;
-		} else if (t->type == SEMI ||
-		    (t->type == COMMA && !d)) {
-			sink1(sink, t);
-			return;
-		}
-		sink1(sink, t);
-	}
-}
-
-/*
- * A typedef name met in the stream: emit the specs once, then wrap
- * declarators until the list ends.  On return the terminator has
- * been sunk and t holds it.
- */
-static void
-expand(struct tdent *e, struct token *t, struct tokarray *sink)
-{
-	struct token name;
-	struct tokarray *pre, *post;
-	int have = 0;
-
-	if (xdepth >= MAXDEPTH) {
-		error("typedefs nested too deep");
-		return;
-	}
-	pre = &pres[xdepth];
-	post = &posts[xdepth];
-	xdepth++;
-
-	sinkn(sink, e->spec, e->nspec);
-	for (;;) {
-		if (!have)
-			tdpull(t);
-		have = 0;
-		splitdecl(t, pre, &name, post);
-		wrap(e, pre, &name, post, sink);
-		if (t->type == ASSIGN) {
-			sink1(sink, t);
-			drain(t, sink);
-			if (t->type != COMMA)
-				break;
-		}
-		if (t->type != COMMA) {
-			/* the terminator can itself be a typedef name:
-			 * a K&R parameter line begins with one */
-			if (t->type == SYM) {
-				struct tdent *e3 = tdfind(t->v.name);
-
-				if (e3) {
-					expand(e3, t, sink);
-					break;
-				}
-			}
-			sink1(sink, t);
-			break;
-		}
-		/* past the comma: ours, or somebody else's? */
-		sink1(sink, t);
-		tdpull(t);
-		if (t->type == STAR || t->type == TIMES ||
-		    t->type == LPAR) {
-			have = 1;
-			continue;
-		}
-		if (t->type == SYM) {
-			struct tdent *e2 = tdfind(t->v.name);
-
-			if (!e2) {
-				have = 1;
-				continue;
-			}
-			expand(e2, t, sink);
-			break;
-		}
-		/* a type keyword or anything else: not our list */
-		sink1(sink, t);
-		break;
-	}
-	xdepth--;
-}
-
-/*
- * The whole typedef declaration, "typedef" already consumed.
- * Nothing goes downstream except a struct body, which is streamed
- * one member token per srcget call to keep the queue small.
- */
-static unsigned char tdbody;	/* mid-body: tdcur is live */
-static unsigned char tdfin;	/* body closed: resume the specs */
-static unsigned char tddepth;
-static struct token tdcur;
-static unsigned char aftertag;
-
-static void capture2(struct token *t);
-
-static void
-capture(struct token *t)
-{
-	tarr_reset(&tdspec);
-	tdpull(t);
-	capture2(t);
-}
-
-static void
-capture2(struct token *t)
-{
-	struct tdent *e;
-	struct token name;
-
-	/*
-	 * specs: a struct/union head, keywords, or an earlier typedef.
-	 * struct/union first - the generic arm would eat the keyword
-	 * and leave the tag looking like a name.
-	 */
-	for (;;) {
-		if (t->type == STRUCT || t->type == UNION) {
-			tarr_push(&tdspec, t);
-			tdpull(t);
-			if (t->type != SYM) {
-				error("typedef of unnamed struct needs a tag");
-				return;
-			}
-			tarr_push(&tdspec, t);
-			tdpull(t);
-			if (t->type == BEGIN) {
-				/* the body is a real declaration of the
-				 * tag, streamed downstream once */
-				pend_buf(&tdq, tdspec.buf, tdspec.count);
-				pend_push(&tdq, t);
-				tdpull(t);
-				tokcpy(&tdcur, t);
-				tddepth = 1;
-				tdbody = 1;
-				return;
-			}
-			continue;
-		}
-		if (is_type_kw(t->type)) {
-			tarr_push(&tdspec, t);
-			tdpull(t);
-			continue;
-		}
-		if (t->type == SYM && tdfind(t->v.name) != 0) {
-			/* a typedef of a typedef: loud, not silent */
-			error("typedef of a typedef");
-			while (t->type != SEMI && t->type != E_O_F)
-				tdpull(t);
-			return;
-		}
-		break;
-	}
-
-	/* declarators: each one becomes an entry */
-	for (;;) {
-		splitdecl(t, &pres[0], &name, &posts[0]);
-		if (!name.type) {
-			error("typedef with no name");
-			return;
-		}
-		e = (struct tdent *)permalloc(sizeof(*e));
-		e->name = name.v.name;
-		e->spec = keep(&tdspec, &e->nspec);
-		e->pre = keep(&pres[0], &e->npre);
-		e->post = keep(&posts[0], &e->npost);
-		e->next = tdefs;
-		tdefs = e;
-
-		if (t->type == COMMA) {
-			tdpull(t);
-			continue;
-		}
-		if (t->type != SEMI)
-			error("junk in typedef");
-		return;
-	}
-}
-
-static void
-srcget(struct token *out)
-{
-	struct token t;
-	struct tdent *e;
-
-	for (;;) {
-		if (tdbody && !pend_has(&tdq)) {
-			/* one member token per call, expansions in
-			 * small bursts */
-			struct tdent *m;
-
-			for (;;) {
-				if (tdcur.type == BEGIN)
-					tddepth++;
-				else if (tdcur.type == END) {
-					if (--tddepth == 0) {
-						pend_push(&tdq, &tdcur);
-						tdpull(&tdcur);
-						pend_tok(&tdq, SEMI);
-						tdbody = 0;
-						tdfin = 1;
-						break;
-					}
-				} else if (tdcur.type == SYM &&
-				    (m = tdfind(tdcur.v.name)) != 0) {
-					expand(m, &tdcur, 0);
-					continue;
-				}
-				pend_push(&tdq, &tdcur);
-				tdpull(&tdcur);
-				break;
-			}
-		}
-		if (tdfin && !pend_has(&tdq)) {
-			/* the body has drained; the declarators follow,
-			 * starting with the token already in hand */
-			tdfin = 0;
-			tokcpy(&t, &tdcur);
-			capture2(&t);
-			continue;
-		}
-		if (pend_has(&tdq)) {
-			pend_pop(&tdq, out);
-			return;
-		}
-		epull(&t);
-		if (t.type == E_O_F) {
-			tokcpy(out, &t);
-			return;
-		}
-
-		if (t.type == TYPEDEF) {
-			capture(&t);
-			continue;	/* nothing but the queue */
-		}
-
-		if (t.type == SYM && !aftertag &&
-		    (e = tdfind(t.v.name)) != 0) {
-			expand(e, &t, 0);
-			continue;
-		}
-
-		/*
-		 * A tag position is a different namespace: "struct
-		 * Expr" must not have its tag expanded even though
-		 * Expr is also a typedef name.  Member access likewise.
-		 */
-		aftertag = (t.type == STRUCT || t.type == UNION ||
-		    t.type == DOT || t.type == ARROW);
-
-		tokcpy(out, &t);
-		return;
-	}
-}
-
-/*
- * Entry points
- */
 void
 norm_init(void)
 {
-	int i;
-
 	haveback = 0;
 	next_label = 1;
 	brkpfx = 0;
@@ -3167,31 +2252,16 @@ norm_init(void)
 	kp_preopen = 0;
 	cur_pname = 0;
 	dlist = 0;
-	/* source layer */
-	eqn = eqr = 0;
-	pend_setup(&tdq, 16);
-	tarr_setup(&tdspec, 8);
-	for (i = 0; i < MAXDEPTH; i++) {
-		tarr_setup(&pres[i], 8);
-		tarr_setup(&posts[i], 8);
-	}
-	tdefs = 0;
-	xdepth = 0;
-	tdbkhv = 0;
-	tdbody = 0;
-	tdfin = 0;
-	aftertag = 0;
-	stags = 0;
-	vregs = 0;
-	vfree = 0;
-	scopedep = 0;
+	tdinit();
+	reginit();
 	mtop = -1;
 	mfeed = 0;
 	msawtag = 0;
 	mtag = 0;
 	arr_name = 0;
 	szqr = szqw = 0;
-	insz = 0;
+	cfprev = 0;
+	incf = 0;
 	ks_st = 0;
 	ks_base = 0;
 	ks_stars = 0;

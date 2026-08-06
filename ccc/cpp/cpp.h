@@ -289,6 +289,22 @@ extern int fdprintf(int fd, char *fmt, ...);
 extern void hexdump(char *tag, char *h, int l);
 #endif
 extern long parseConst(token_t stop);
+/* norm.c/cfold.c: the fold replay queue's shared bound */
+#define SZQ_MAX 17	/* >= CFSV_MAX + 1: a bail replays all */
+void dofold(struct token *t);
+void reginit(void);
+unsigned short stfind(char *tag);
+void stadd(char *tag, unsigned short size);
+void vadd(char *name, unsigned short total, unsigned short elem,
+    unsigned short deref);
+void vpop(void);
+unsigned short kwsz(unsigned char c, unsigned short base);
+int szkw(unsigned char c);
+extern unsigned char scopedep;
+extern unsigned char cflimit;
+extern unsigned char incf;
+void srcget(struct token *out);
+void tdinit(void);
 
 /* debug options */
 #ifdef DEBUG

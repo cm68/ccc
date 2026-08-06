@@ -225,6 +225,7 @@ rules.c:2986  p(D(I),num):b
 rules.c:2987  >(D(I),num):b
 rules.c:2988  q(D(I),num):b
 rules.c:3002  e(A,V)
+rules.c:3003  n(A,V)
 rules.c:3010  <(A,V)
 rules.c:3012  q(A,V)
 rules.c:3014  <(A,V)

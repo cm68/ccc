@@ -24,7 +24,7 @@
  * The pool is bounded by source vocabulary, not stream length, and
  * is intentionally never freed (cpp is a single-shot tool).
  */
-#define INTERN_HASH 127
+#define INTERN_HASH 63
 static struct ient {
     unsigned short id;      /* -j: 2-byte identity, minted on first emit */
     struct ient *next;
@@ -505,82 +505,6 @@ cunary(unsigned char op, long a)
     case BANG:    return !a;
     }
     return a;                   /* unary plus */
-}
-
-/*
- * Directive-mode parsing over cur/gettoken.  An undefined name is
- * zero, which is what #if has always meant by it.
- */
-static long cfexpr(int limit);
-
-static long
-cfprim(void)
-{
-    long v;
-    unsigned char op;
-
-    switch (cur.type) {
-    case NUMBER:
-    case INUMBER:
-    case LNUMBER:
-        v = cur.v.numeric;
-        gettoken();
-        return v;
-    case SYM:
-        gettoken();
-        return 0;
-    case LPAR:
-        gettoken();
-        v = cfexpr(13);
-        if (cur.type == RPAR)
-            gettoken();
-        return v;
-    case MINUS:
-    case PLUS:
-    case BANG:
-    case TWIDDLE:
-        op = cur.type;
-        gettoken();
-        return cunary(op, cfprim());
-    }
-    return 0;
-}
-
-static long
-cfexpr(int limit)
-{
-    long v, m;
-    int p;
-    unsigned char op;
-
-    v = cfprim();
-    for (;;) {
-        p = cfprio(cur.type);
-        if (!p || p > limit)
-            return v;
-        if (cur.type == QUES) {
-            gettoken();
-            m = cfexpr(13);
-            if (cur.type == COLON)
-                gettoken();
-            /* the arms bind to the ?: pair, not past it */
-            v = v ? m : cfexpr(12);
-            continue;
-        }
-        op = cur.type;
-        gettoken();
-        v = capply(op, v, cfexpr(p - 1));
-    }
-}
-
-long
-parseConst(token_t stop)
-{
-    long v = cfexpr(13);
-
-    while (cur.type != stop && cur.type != E_O_F)
-        gettoken();
-    return v;
 }
 
 /* vim: set tabstop=4 shiftwidth=4 noexpandtab: */
