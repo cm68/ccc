@@ -63,7 +63,7 @@ endif
 SIZEDIR = sizecheck-$(ZCC)
 
 SOURCES = pass1.c error.c lexread.c fold.c pfx.c post.c name.c init.c eutil.c \
-	expr.c parse.c swcnt.c decl.c type.c declare.c outast.c outh.c outfn.c regalloc.c util.c
+	expr.c parse.c swcnt.c decl.c type.c tparse.c declare.c outast.c outh.c outfn.c regalloc.c util.c
 OBJECTS = $(SOURCES:.c=.o)
 
 HEADERS = cc1.h token.h enumlist.h error.h debug.h
