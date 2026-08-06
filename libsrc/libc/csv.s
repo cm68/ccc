@@ -88,71 +88,88 @@ fexit:
 ;	Here instead, once.  The saved pair sits just under the scalar
 ;	area, so where it is depends on the frame - the caller says so
 ;	with a word after the call, the offset of the LOWER save from
-;	the frame pointer, and the helper points the stack at it and
-;	pops.  Five bytes at the call site against twenty-one.
+;	the frame pointer, and the helper reads them from there.  Five
+;	bytes at the call site against twenty-one.
 ;
-;	The shadow registers are what make it free: the offset has to be
-;	read and added somewhere, and every ordinary register is either
-;	the return value (HL, and DE with it for a long) or one of the
-;	pair being restored.  exx and ex af,af' cost a byte each and
-;	touch nothing the caller can see.  _signal saves the shadow set
-;	around a handler, so a signal arriving inside here is
-;	transparent.
+;	These used to do their arithmetic in the shadow set, on the
+;	grounds that every ordinary register was either the return value
+;	or one of the pair being restored.  Two of the three premises
+;	were wrong.
+;
+;	The first: A and the flags are NOT live here.  Every return goes
+;	through an assignment to HL - pass2's RETURN case widens even a
+;	byte and hands it back in HL - so there is nothing in A to
+;	protect and no condition to preserve, and the ex af,af' that
+;	bracketed all three was guarding a value that does not exist.
+;
+;	The second: the saves do not have to be popped.  Pointing SP at
+;	them is what forced a spare pair to hold the address; reading
+;	them through (hl) does not, because ex (sp),hl parks the return
+;	value on the stack and hands over the pointer in the same byte.
+;	BC is then free - in two of the three it is about to be
+;	restored anyway, and fexx borrows the caller's and gives it
+;	back.
+;
+;	So nothing here touches BC', DE' or HL' any more, which is what
+;	lets a long live in HL':HL.  DE is untouched too, so this is
+;	correct under either convention.  Seven bytes more across the
+;	three of them, once.  _signal still saves the shadow set around
+;	a handler; it no longer has to on account of this file.
 
 	global	fexbx, fexx, fexb
 
 fexbx:				;restore IX and BC
-	ex	af,af'
-	exx
-	pop	hl		;the word after the call
+	ex	(sp),hl		;hl -> the word after the call,
+				; and the return value is on the stack
 	ld	c,(hl)
 	inc	hl
 	ld	b,(hl)		;bc = offset of the lower save from iy
 	push	iy
 	pop	hl
-	add	hl,bc
-	ld	sp,hl		;stack now points at the saves
-	exx
-	ex	af,af'
+	add	hl,bc		;-> the saves
+	ld	c,(hl)
+	inc	hl
+	ld	b,(hl)
+	push	bc
 	pop	ix		;pushed last, so it is underneath
-	pop	bc
-	jr	fxdone
+	inc	hl
+	ld	c,(hl)
+	inc	hl
+	ld	b,(hl)
+	pop	hl		;the return value back
+	jr	fexit
 
 fexx:				;restore IX alone
-	ex	af,af'
-	exx
-	pop	hl
+	ex	(sp),hl
+	push	bc		;the caller's, borrowed and given back
 	ld	c,(hl)
 	inc	hl
 	ld	b,(hl)
 	push	iy
 	pop	hl
 	add	hl,bc
-	ld	sp,hl
-	exx
-	ex	af,af'
+	ld	c,(hl)
+	inc	hl
+	ld	b,(hl)
+	push	bc
 	pop	ix
-	jr	fxdone
+	pop	bc
+	pop	hl
+	jr	fexit
 
 fexb:				;restore BC alone
-	ex	af,af'
-	exx
-	pop	hl
+	ex	(sp),hl
 	ld	c,(hl)
 	inc	hl
 	ld	b,(hl)
 	push	iy
 	pop	hl
 	add	hl,bc
-	ld	sp,hl
-	exx
-	ex	af,af'
-	pop	bc
-
-fxdone:
-	ld	sp,iy
-	pop	iy
-	ret
+	ld	c,(hl)
+	inc	hl
+	ld	b,(hl)
+	pop	hl
+	jr	fexit
 
 ;	And the entries that match them.  A prologue was the frame
 ;	pointer (three, through fenter), the scalar area (five, and it

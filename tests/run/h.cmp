@@ -1,0 +1,384 @@
+	.bss
+_@1::
+	.ds 1
+_@2::
+	.ds 1
+_@3::
+	.ds 2
+_@4::
+	.ds 1
+_@5::
+	.ds 1
+_@6::
+	.ds 2
+_@7::
+	.ds 1
+_@8::
+	.ds 1
+_@9::
+	.ds 2
+_@10::
+	.ds 7
+_@11::
+	.ds 1
+_@12::
+	.ds 1
+_@13::
+	.ds 1
+_@14::
+	.ds 2
+_@15::
+	.ds 1
+_@16::
+	.ds 1
+_@17::
+	.ds 2
+_@18::
+	.ds 1
+_@19::
+	.ds 1
+_@20::
+	.ds 2
+_@21::
+	.ds 7
+_@22::
+	.ds 1
+_@23::
+	.ds 2
+_@24::
+	.ds 2
+_@25::
+	.ds 2
+_@26::
+	.ds 2
+_@27::
+	.ds 2
+_@28::
+	.ds 2
+_@29::
+	.ds 2
+_@30::
+	.ds 2
+_@31::
+	.ds 2
+_@32::
+	.ds 14
+_@33::
+	.ds 2
+_@34::
+	.ds 2
+_@35::
+	.ds 2
+_@36::
+	.ds 2
+_@37::
+	.ds 2
+_@38::
+	.ds 2
+_@39::
+	.ds 2
+_@40::
+	.ds 2
+_@41::
+	.ds 2
+_@42::
+	.ds 2
+_@43::
+	.ds 14
+_@44::
+	.ds 2
+_@45::
+	.ds 4
+_@46::
+	.ds 4
+_@47::
+	.ds 2
+_@48::
+	.ds 4
+_@49::
+	.ds 4
+_@50::
+	.ds 2
+_@51::
+	.ds 4
+_@52::
+	.ds 4
+_@53::
+	.ds 2
+_@54::
+	.ds 28
+_@55::
+	.ds 4
+_@56::
+	.ds 4
+_@57::
+	.ds 4
+_@58::
+	.ds 2
+_@59::
+	.ds 4
+_@60::
+	.ds 4
+_@61::
+	.ds 2
+_@62::
+	.ds 4
+_@63::
+	.ds 4
+_@64::
+	.ds 2
+_@65::
+	.ds 28
+_@66::
+	.ds 4
+_@67::
+	.ds 2
+_@68::
+	.ds 2
+_@69::
+	.ds 2
+	.text
+_@70::
+	call	fentb
+	.dw	0
+	ld hl,10
+	ld (_@32),hl
+	ld hl,11
+	ld (_@32+2),hl
+	ld hl,12
+	ld (_@32+4),hl
+	ld hl,13
+	ld (_@32+6),hl
+	ld hl,_@32+2
+	ld (_@28),hl
+	ld hl,(_@28)
+	ld a,(hl)
+	inc hl
+	ld h,(hl)
+	ld l,a
+	ld de,11
+	or a
+	sbc hl,de
+	jp z,no0_1
+	ld hl,1
+	jp	X@70
+no0_1:
+	ld hl,(_@28)
+	inc hl
+	inc hl
+	ld a,(hl)
+	inc hl
+	ld h,(hl)
+	ld l,a
+	ld de,12
+	or a
+	sbc hl,de
+	jp z,no2_1
+	ld hl,2
+	jp	X@70
+no2_1:
+	ld hl,(_@28)
+	inc hl
+	inc hl
+	inc hl
+	inc hl
+	ld a,(hl)
+	inc hl
+	ld h,(hl)
+	ld l,a
+	ld de,13
+	or a
+	sbc hl,de
+	jp z,no4_1
+	ld hl,3
+	jp	X@70
+no4_1:
+	ld hl,(_@28)
+	dec hl
+	dec hl
+	ld a,(hl)
+	inc hl
+	ld h,(hl)
+	ld l,a
+	ld de,10
+	or a
+	sbc hl,de
+	jp z,no6_1
+	ld hl,4
+	jp	X@70
+no6_1:
+	ld hl,(_@28)
+	ld de,_@32
+	or a
+	sbc hl,de
+	ld de,2
+	call adiv
+	ld de,1
+	or a
+	sbc hl,de
+	jp z,no8_1
+	ld hl,5
+	jp	X@70
+no8_1:
+	ld de,(_@28)
+	ld hl,_@32+6
+	or a
+	sbc hl,de
+	ld de,2
+	call adiv
+	ld de,2
+	or a
+	sbc hl,de
+	jp z,no10_1
+	ld hl,6
+	jp	X@70
+no10_1:
+	ld hl,(_@28)
+	inc hl
+	inc hl
+	ld (_@28),hl
+	ld hl,(_@28)
+	ld a,(hl)
+	inc hl
+	ld h,(hl)
+	ld l,a
+	ld de,12
+	or a
+	sbc hl,de
+	jp z,no12_1
+	ld hl,7
+	jp	X@70
+no12_1:
+	ld hl,(_@28)
+	dec hl
+	dec hl
+	ld (_@28),hl
+	ld hl,(_@28)
+	dec hl
+	dec hl
+	ld (_@28),hl
+	ld hl,(_@28)
+	ld a,(hl)
+	inc hl
+	ld h,(hl)
+	ld l,a
+	ld de,10
+	or a
+	sbc hl,de
+	jp z,no14_1
+	ld hl,8
+	jp	X@70
+no14_1:
+	ld hl,_@49
+	ld (hl),112
+	inc hl
+	ld (hl),17
+	inc hl
+	ld (hl),1
+	inc hl
+	ld (hl),0
+	ld hl,_@49
+	ld (_@50),hl
+	ld hl,1
+	push hl
+	ld hl,4464
+	push hl
+	ld hl,(_@50)
+	call lld
+	call arelop
+	jp z,no16_1
+	ld hl,9
+	jp	X@70
+no16_1:
+	ld hl,0
+	push hl
+	ld hl,1
+	push hl
+	ld hl,(_@50)
+	call lld
+	call ladd
+	push hl
+	ld hl,(_@50)
+	ex (sp),hl
+	call lstde
+	ld hl,1
+	push hl
+	ld hl,4465
+	push hl
+	ld de,(_@49)
+	ld hl,(_@49+2)
+	call arelop
+	jp z,no18_1
+	ld hl,10
+	jp	X@70
+no18_1:
+	ld hl,_@54+8
+	ld (hl),5
+	inc hl
+	ld (hl),0
+	inc hl
+	ld (hl),0
+	inc hl
+	ld (hl),0
+	ld hl,_@54
+	ld (_@50),hl
+	ld hl,0
+	push hl
+	ld hl,5
+	push hl
+	ld hl,(_@50)
+	ld de,8
+	add hl,de
+	call lld
+	call arelop
+	jp z,no20_1
+	ld hl,11
+	jp	X@70
+no20_1:
+	ld hl,_@5
+	ld (_@6),hl
+	ld a,7
+	ld (_@5),a
+	ld hl,(_@6)
+	ld a,(hl)
+	cp 7
+	jp z,no22_1
+	ld hl,12
+	jp	X@70
+no22_1:
+	ld hl,(_@6)
+	ld a,(hl)
+	inc a
+	ld (hl),a
+	ld a,(_@5)
+	cp 8
+	jp z,no24_1
+	ld hl,13
+	jp	X@70
+no24_1:
+	ld hl,0
+	jp	X@70
+X@70:
+	call	fexb
+	.dw	-2
+_@71::
+	call	fentb
+	.dw	0
+	call _@70
+	ld c,l
+	ld b,h
+	ld l,c
+	ld h,b
+	ld de,0
+	or a
+	sbc hl,de
+	jp z,no0_2
+	ld l,c
+	ld h,b
+	jp	X@71
+no0_2:
+	ld hl,0
+	jp	X@71
+X@71:
+	call	fexb
+	.dw	-2

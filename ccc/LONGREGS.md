@@ -159,6 +159,13 @@ returns a long except the long helpers themselves.
 their working registers, which is exactly the space the new convention
 claims.  Everything else on the list is small or is a deletion.
 
+What they get back is BC'.  Nothing else in the new scheme uses it -
+the two accumulators are HL':HL and DE':DE, and BC is the caller's
+register variable - so inside a helper the whole shadow pair is free
+scratch.  `djnz` counts in B of whichever bank is current, so a
+shift-and-add loop running in the shadow half gets its counter without
+spending a main-bank register; `mult8b`'s `ld b,8` becomes B'.
+
 ## Why this one is worth doing and the other is not
 
 The shadow-register-variable idea buys about 3.2K of emitted code and

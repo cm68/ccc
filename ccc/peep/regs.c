@@ -215,6 +215,19 @@ reads(char *insn)
 		return R_HL | R_F;		/* the return value, and the condition */
 	if (strcmp(m, "ex") == 0)
 		return allregs(op) | allregs(o2);
+	/*
+	 * exx reads all three pairs, because their values are not lost -
+	 * they go to the primes and the matching exx brings them back.
+	 * Saying so is what stops a rule deleting the instruction that
+	 * set up the half of a long living in HL' across the swap.
+	 *
+	 * It reads nothing else, and that is the point of naming it at
+	 * all: unrecognised, it read everything, and A, the flags and
+	 * both index registers became invisible past the first exx of a
+	 * 32-bit sequence.  None of the four is banked.
+	 */
+	if (strcmp(m, "exx") == 0)
+		return R_BC | R_DE | R_HL;
 	if (strcmp(m, "add") == 0 || strcmp(m, "adc") == 0 ||
 		strcmp(m, "sbc") == 0) {
 		int r = allregs(op) | allregs(o2);
@@ -276,6 +289,9 @@ writes(char *insn)
 	}
 	if (strcmp(m, "ex") == 0)
 		return allregs(op) | allregs(o2);
+	/* and it writes all three: what comes back is not what went in */
+	if (strcmp(m, "exx") == 0)
+		return R_BC | R_DE | R_HL;
 	if (strcmp(m, "add") == 0 || strcmp(m, "adc") == 0 ||
 		strcmp(m, "sbc") == 0) {
 		int w = 0;
