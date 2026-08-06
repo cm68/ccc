@@ -353,7 +353,9 @@ main(int argc, char **argv)
 #endif
 #endif
 #ifdef __UNIX__
+#ifndef CCC
     setvbuf(stdout, 0, _IONBF, 0);
+#endif
 #endif
 
     if (argc != 3) {

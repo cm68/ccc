@@ -8,7 +8,12 @@
  */
 
 #include <stdlib.h>
+/* stdio is DEBUG furniture: one setvbuf in pass1.c is the only
+ * non-DEBUG use, and a header's macro and intern load is charged
+ * to every file that includes it - see the footprint gate */
+#ifndef CCC
 #include <stdio.h>
+#endif
 #include <string.h>
 #ifdef CCC
 #include <unixio.h>
@@ -344,6 +349,17 @@ void dropName(struct name *n);
 int isasgn(unsigned char t);
 /* swcnt.c - switch bookkeeping and statement counters */
 int atSwBodyStmt(void);
+void parseBlockEx(int emitHdr);
+void parseBlock(void);
+struct local *mklocal(struct name *n);
+struct local *capLocals(void);
+char *getAsmText(void);
+struct swcase *nextCase(void);
+void stIf2(void);
+void stRet2(void);
+void stSwitch2(void);
+void stExpr2(void);
+void stGoto2(void);
 int reserveCount(void);
 void patchCount(int slot, char c);
 /* outh.c - AST-writer helpers */
@@ -363,6 +379,8 @@ void emitLabel(char *base, char *suffix);
 void emitGoto(char *base, char *suffix);
 int cntCondLbls(struct expr *e);
 void doInitlzr(struct name *n);
+int streamInitVal(struct type *type);
+struct name *findMemberOff(struct name *members, int offset);
 extern int idOnce(unsigned short id);
 
 /*
