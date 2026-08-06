@@ -240,20 +240,39 @@ five hundred bytes.  The comment in `dolongbin` records this.
 
 Testing a long against zero by its sign byte rather than by calling
 `qcmp` - `bit 7,(iy+d+3)` where the value is in a frame slot, four
-bytes against twenty-five - is the bigger saving of the two per site,
-and turns out never to happen.  A grep suggested eighteen sites in the
-compiler and the grep was wrong: it counted `ld de,0` before a `call
-qcmp` and `jp m`/`jp p` after one, and assumed they were the same
-eighteen.  They were not.  With the rule in, the tree emitted **zero**
-long sign tests, `qcmp` went from 36 sites to 35, c0 shrank seven
-bytes and c1 grew six hundred and twenty-four.
+bytes against twenty-five - is the bigger saving of the two per site.
+It went in, cost c1 six hundred and twenty-four bytes, and saved c0
+seven.
 
-Sign-testing a long is a syscall-return shape - `lseek`, `ftell` - and
-this tree does not do it.  Worth revisiting only alongside code that
-does.
+Two counting mistakes are buried in that, and both are worth keeping
+because each one on its own would have given the wrong answer.
 
-The lesson both times: measure the site count in the emitted assembly
-before writing the rule, not the plausibility of the pattern.
+A grep suggested eighteen sites in the compiler.  It counted `ld de,0`
+before a `call qcmp` and `jp m`/`jp p` after one, and assumed they
+were the same eighteen.  They were not: the zero compares are the
+equality ones and the sign ones are against other values.
+
+Then, having measured "zero sign tests emitted", the conclusion drawn
+was that the tree never does it.  Also wrong, and wrong because
+sizecheck covers cpp, pass1, pass2 and peep - the compiler - and the
+shape does not live there.  It lives in the runtime.  `libsrc` has
+**five**: `libc/fseek.c`'s `if (lseek(...) < 0)`, `libu/lseek.c`'s
+`if (pos < 0)`, `libu/seek.c`, and two more, against four equality
+compares in the same files.  Sign-testing a long is a syscall-return
+shape and the syscall wrappers are exactly where it is.
+
+So the honest figure is about a hundred bytes saved in libc - which is
+linked into every program - against several hundred spent in c1, which
+is the pass with no room.  Still not worth it here, but for a reason
+with a number behind it rather than a bad grep.  A version handling
+only `DEREF(INDEX)`, which is the shape all five actually have, would
+cost a good deal less than the full dispatch did; that is where to
+start if it is picked up again.
+
+The lesson from both dead ends: count the sites in the emitted
+assembly before writing the rule - and make sure the assembly you are
+counting is the corpus the shape lives in.  `make sizecheck` is the
+compiler only.
 
 **Three things fell out that were not part of the plan:**
 
