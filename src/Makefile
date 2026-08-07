@@ -22,7 +22,7 @@ SUBMAKE = $(MAKE) CC=$(CC) TOP=$(TOP)
 
 # Host: what runs on the build machine, installed into unix/.  ccclib
 # comes first because the four passes link against its host archive.
-HOSTDIRS = ccclib cpp pass1 pass2 peep tools
+HOSTDIRS = ccclib cpp pass1 pass2 peep tools cpm3
 
 # Target: the Z80 runtime, compiled by the compiler the host phase
 # just installed, into micronix/ and cpm/.
@@ -61,7 +61,11 @@ micronix: all
 cpm: all
 	@for d in $(MXPASSES); do $(SUBMAKE) -C $$d com-install || exit 1; done
 
-ALLDIRS = ccclib cpp pass1 pass2 peep tools libc libcpm libu include
+# The compiler running on the CP/M machine, checked against the host.
+selfcheck: cpm
+	$(SUBMAKE) -C cpm3 selfcheck
+
+ALLDIRS = ccclib cpp pass1 pass2 peep tools cpm3 libc libcpm libu include
 
 clean:
 	@for d in $(ALLDIRS); do $(SUBMAKE) -C $$d clean; done
@@ -81,7 +85,7 @@ sizecheck:
 regression:
 	../tests/regress.sh --filter src/ $(REGRESS_FLAGS)
 
-.PHONY: all host target install micronix cpm clean clobber stage1 sizecheck regression
+.PHONY: all host target install micronix cpm selfcheck clean clobber stage1 sizecheck regression
 
 #
 # vim: tabstop=4 shiftwidth=4 noexpandtab:

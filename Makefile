@@ -82,6 +82,11 @@ micronix: all
 cpm: all
 	$(SUBMAKE) -C src cpm
 
+# Run the compiler's own passes under the CP/M 3 machine in
+# src/cpm3 and check they agree with the host.
+selfcheck:
+	$(SUBMAKE) -C src selfcheck
+
 # Run the cpp regression harness over the full corpus.
 # Pass REGRESS_FLAGS=--bless to regenerate the baseline.
 regression:
@@ -95,7 +100,7 @@ prodtest: all
 	$(SUBMAKE) -C tests/gen
 
 .PHONY: all host target install clean clobber stage1 test tests valgrind \
-	tags sizecheck micronix cpm regression prodtest
+	tags sizecheck micronix cpm selfcheck regression prodtest
 
 #
 # vim: tabstop=4 shiftwidth=4 noexpandtab:

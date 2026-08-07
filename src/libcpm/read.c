@@ -1,5 +1,7 @@
 #include	"cpm.h"
 
+extern long	_fsize();
+
 read(fd, buf, nbytes)
 uchar	fd;
 ushort	nbytes;
@@ -8,6 +10,7 @@ char *	buf;
 	register struct fcb *	fc;
 	uchar	size, offs, luid;
 	ushort	cnt;
+	long	fsz;
 	char	buffer[SECSIZE+2];
 
 	cnt = 0;
@@ -43,12 +46,23 @@ char *	buf;
 	case U_RDWR:
 		luid = getuid();
 		cnt = nbytes;
+		/*
+		 * How long the file actually is.  Records alone are not
+		 * enough: the last one is usually part full, and reading
+		 * all 128 bytes of it hands the caller whatever followed
+		 * the data.  _fsize is exact under CP/M 3 - see seek.c.
+		 */
+		fsz = _fsize(fd);
 		while(nbytes) {
 			_sigchk();
+			if(fc->rwp >= fsz)
+				break;
 			setuid(fc->uid);
 			offs = fc->rwp%SECSIZE;
 			if((size = SECSIZE - offs) > nbytes)
 				size = nbytes;
+			if(fc->rwp + size > fsz)
+				size = (uchar)(fsz - fc->rwp);
 			_putrno(fc->ranrec, fc->rwp/SECSIZE);
 			if(size == SECSIZE) {
 				bdos(CPMSDMA, buf);

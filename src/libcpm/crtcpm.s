@@ -56,7 +56,16 @@ iscpm3:
 	ldir
 
 nobss:
-	ld		a,(80)			; allocate stack space for argv
+;
+;	The command tail length, at 0080h.  This read (80), which this
+;	assembler takes for decimal - address 0050h, in the middle of
+;	page zero, which is zero.  So the length came back zero, no
+;	room was made for the strings and the loop below copied
+;	nothing: every program under CP/M saw argc 1 and an empty
+;	argv[0].  The very next instruction to name the same buffer
+;	spells it 80h.
+;
+	ld		a,(80h)			; command tail length
 	inc		a
 	neg
 	ld		l,a
