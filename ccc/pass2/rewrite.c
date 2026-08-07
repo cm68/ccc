@@ -1534,6 +1534,21 @@ step(Expr *e)
 no_regconv:
 
 	for (rp = rules; rp->op; rp++) {
+		/*
+		 * A rule rooted at a plain opcode can only ever match a
+		 * node carrying that opcode - opmatch's last line is the
+		 * whole story - so ask here, where it costs a compare,
+		 * rather than in a call that sets up a frame to answer
+		 * the same question.  Every pattern that means something
+		 * looser is P_ANY or above, and the largest opcode any
+		 * rule is rooted at is well below it.
+		 *
+		 * Four and a half million of the four and three quarter
+		 * million calls this loop used to make were answered no
+		 * on their first line.
+		 */
+		if (rp->op < P_ANY && rp->op != e->op)
+			continue;
 		n = tryrule(rp, e);
 		if (n) {
 #ifdef DEBUG
