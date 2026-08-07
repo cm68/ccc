@@ -23,13 +23,13 @@ one() {
 	rm -rf "$jd"; mkdir -p "$jd"
 	cp "$run/c0.mx" "$run/c1.mx" "$jd/"
 	(cd "$jd" &&
-	 "$root"/ccc/cpp/cpp -DRT_CCC -i"$root"/libsrc/include -I"$run" \
+	 "$root"/src/cpp/cpp -DRT_CCC -i"$root"/src/include -I"$run" \
 		-o $b "$run/$b.c" >/dev/null 2>&1
-	 "$root"/ccc/pass1/c0 $b.x h.1 h.2 >/dev/null 2>&1
-	 "$root"/ccc/pass2/c1 h.1 h.2 h.s >/dev/null 2>&1
-	 timeout 300 "$root"/root/sim -d "$jd" /c0.mx /$b.x /s.1 /s.2 \
+	 "$root"/src/pass1/c0 $b.x h.1 h.2 >/dev/null 2>&1
+	 "$root"/src/pass2/c1 h.1 h.2 h.s >/dev/null 2>&1
+	 timeout 300 "$root"/tests/sim -d "$jd" /c0.mx /$b.x /s.1 /s.2 \
 		</dev/null >/dev/null 2>&1
-	 timeout 600 "$root"/root/sim -d "$jd" /c1.mx /s.1 /s.2 /s.s \
+	 timeout 600 "$root"/tests/sim -d "$jd" /c1.mx /s.1 /s.2 /s.s \
 		</dev/null >/dev/null 2>&1
 	 grep -v '^;' h.s > h.cmp 2>/dev/null || true
 	 grep -v '^;' s.s > s.cmp 2>/dev/null || true

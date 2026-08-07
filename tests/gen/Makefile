@@ -58,7 +58,7 @@ corpus:
 complete: corpus
 	@fail=0; cd $(RUN) && for f in gp_*.c; do \
 		b=$${f%.c}; rm -f $$b.s; \
-		$(ROOT)/root/bin/ccc -O -s -I. $$f >/dev/null 2>&1; \
+		$(ROOT)/unix/bin/ccc -O -s -I. $$f >/dev/null 2>&1; \
 		if [ ! -f $$b.s ]; then echo "$$b: DID NOT COMPILE"; fail=1; \
 		elif grep -q XXXXXX $$b.s; then \
 			echo "$$b: missing production:"; \
@@ -92,9 +92,9 @@ bless: unfired.now
 
 sim:
 	@echo "sim: host c0/c1 vs the .mx pair over the corpus"
-	@$(MAKE) -C $(ROOT)/ccc/pass1 mx-ccc >/dev/null
-	@$(MAKE) -C $(ROOT)/ccc/pass2 mx-ccc >/dev/null
-	@cp $(ROOT)/ccc/pass1/mxccc/c0.mx $(ROOT)/ccc/pass2/mxccc/c1.mx $(RUN)/
+	@$(MAKE) -C $(ROOT)/src/pass1 mx-ccc >/dev/null
+	@$(MAKE) -C $(ROOT)/src/pass2 mx-ccc >/dev/null
+	@cp $(ROOT)/src/pass1/mxccc/c0.mx $(ROOT)/src/pass2/mxccc/c1.mx $(RUN)/
 	@sh simcheck.sh $(ROOT) $(RUN)
 
 footprint:

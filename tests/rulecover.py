@@ -23,11 +23,11 @@ HITS = '/tmp/ccc-rulehits.%d' % os.getpid()
 VERBOSE = '-v' in sys.argv
 
 CORPUS = sorted(set(
-    glob.glob(ROOT + '/ccc/cpp/*.c') + glob.glob(ROOT + '/ccc/pass1/*.c') +
-    glob.glob(ROOT + '/ccc/pass2/*.c') + glob.glob(ROOT + '/tools/*.c') +
+    glob.glob(ROOT + '/src/cpp/*.c') + glob.glob(ROOT + '/src/pass1/*.c') +
+    glob.glob(ROOT + '/src/pass2/*.c') + glob.glob(ROOT + '/tools/*.c') +
     glob.glob(ROOT + '/tests/run/rt_*.c') +
-    glob.glob(ROOT + '/tests/run/gp_*.c') + glob.glob(ROOT + '/libsrc/libc/*.c') +
-    glob.glob(ROOT + '/libsrc/libu/*.c') + glob.glob(ROOT + '/libsrc/libcpm/*.c')))
+    glob.glob(ROOT + '/tests/run/gp_*.c') + glob.glob(ROOT + '/src/libc/*.c') +
+    glob.glob(ROOT + '/src/libu/*.c') + glob.glob(ROOT + '/src/libcpm/*.c')))
 
 env = dict(os.environ, CCC_RULEHITS=HITS)
 fails = []
@@ -42,8 +42,8 @@ for f in CORPUS:
     #
     saved = open(s, 'rb').read() if os.path.exists(s) else None
     r = subprocess.run(
-        [ROOT + '/root/bin/ccc', '-DCCC', '-s', '-I' + d, '-I' + ROOT + '/ccc/lib',
-         '-I' + ROOT + '/tests/run', '-I' + ROOT + '/libsrc/include',
+        [ROOT + '/unix/bin/ccc', '-DCCC', '-s', '-I' + d, '-I' + ROOT + '/src/ccclib',
+         '-I' + ROOT + '/tests/run', '-I' + ROOT + '/src/include',
          os.path.basename(f)], cwd=d, capture_output=True, env=env, timeout=300)
     if r.returncode:
         fails.append(f.replace(ROOT + '/', ''))
@@ -63,7 +63,7 @@ for line in open(HITS):
 os.remove(HITS)
 
 # index -> line number in rules.c, for a reference that can be followed
-src = open(ROOT + '/ccc/pass2/rules.c').read().split('\n')
+src = open(ROOT + '/src/pass2/rules.c').read().split('\n')
 start = next(i for i, l in enumerate(src) if 'struct rule rules[]' in l)
 lines, idx, i = {}, 0, start
 while i < len(src):

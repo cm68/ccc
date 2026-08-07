@@ -1,0 +1,82 @@
+#
+# Everything the tree builds.
+#
+# The compiler is four passes and a shared support library:
+#
+#   cpp     preprocessor and token normalizer   -> unix/bin/cpp
+#   pass1   parser, emits the AST               -> unix/bin/c0
+#   pass2   code generator                      -> unix/bin/c1
+#   peep    peephole optimizer                  -> unix/bin/peep
+#   ccclib  support code the passes share       -> libccc.a
+#
+# tools is the Whitesmith's object toolchain plus the ccc driver and
+# astpp; libc, libcpm, libu and include are the target runtime.
+#
+
+include ../tree.mk
+include ../cruft.mk
+
+CC = gcc
+
+SUBMAKE = $(MAKE) CC=$(CC) TOP=$(TOP)
+
+# Host: what runs on the build machine, installed into unix/.  ccclib
+# comes first because the four passes link against its host archive.
+HOSTDIRS = ccclib cpp pass1 pass2 peep tools
+
+# Target: the Z80 runtime, compiled by the compiler the host phase
+# just installed, into micronix/ and cpm/.
+TARGETDIRS = include ccclib libc libcpm libu
+
+#
+# The order is forced.  The runtime is compiled BY this compiler -
+# unix/bin/ccc driving cpp, c0, c1 and peep, with asz assembling and
+# wslib archiving - so the host side has to be built AND installed
+# before the target side starts.  ccclib appears in both lists: its
+# host archive is linked into the passes, and its z80 archive is
+# built later by those same passes.
+#
+all: host target
+
+host:
+	@mkdir -p $(UNIXDIR)/bin $(UNIXDIR)/lib
+	@for d in $(HOSTDIRS); do $(SUBMAKE) -C $$d install || exit 1; done
+
+target: host
+	@mkdir -p $(MXDIR)/bin $(MXDIR)/lib $(MXDIR)/include
+	@mkdir -p $(CPMDIR)/bin $(CPMDIR)/lib $(CPMDIR)/include
+	@for d in $(TARGETDIRS); do $(SUBMAKE) -C $$d target-install || exit 1; done
+
+install: all
+
+# The self-hosted passes: ccc compiling its own sources into Micronix
+# binaries for the simulator, installed into micronix/bin.
+MXPASSES = cpp pass1 pass2 peep
+micronix: all
+	@for d in $(MXPASSES); do $(SUBMAKE) -C $$d mx-install || exit 1; done
+
+ALLDIRS = ccclib cpp pass1 pass2 peep tools libc libcpm libu include
+
+clean:
+	@for d in $(ALLDIRS); do $(SUBMAKE) -C $$d clean; done
+	rm -f $(CRUFT) $(CRUFTASM)
+
+clobber:
+	@for d in $(ALLDIRS); do $(SUBMAKE) -C $$d clobber; done
+	rm -f $(CRUFT) $(CRUFTASM) $(CRUFTLOG)
+	rm -rf $(CRUFTDIRS)
+
+stage1:
+	@for d in cpp pass1 pass2 peep tools; do $(SUBMAKE) -C $$d stage1; done
+
+sizecheck:
+	@for d in cpp pass1 pass2 peep; do $(SUBMAKE) -C $$d sizecheck; done
+
+regression:
+	../tests/regress.sh --filter src/ $(REGRESS_FLAGS)
+
+.PHONY: all host target install micronix clean clobber stage1 sizecheck regression
+
+#
+# vim: tabstop=4 shiftwidth=4 noexpandtab:
+#

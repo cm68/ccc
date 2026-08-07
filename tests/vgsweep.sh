@@ -31,7 +31,7 @@ log=$(mktemp)
 bad=0
 n=0
 
-for d in ccc/cpp ccc/pass1 ccc/pass2 tools; do
+for d in src/cpp src/pass1 src/pass2 tools; do
 	[ -d "$root/$d/stage1" ] || continue
 	for x in "$root/$d"/stage1/*.x; do
 		[ -f "$x" ] || continue
@@ -39,7 +39,7 @@ for d in ccc/cpp ccc/pass1 ccc/pass2 tools; do
 		n=$((n + 1))
 
 		# c0: .x -> .1 .2
-		if ! $VG --log-file="$log" "$root/ccc/pass1/c0" \
+		if ! $VG --log-file="$log" "$root/src/pass1/c0" \
 		    "$x" /tmp/vg$$.1 /tmp/vg$$.2 >/dev/null 2>&1; then
 			if grep -q 'uninitialised\|Invalid read\|Invalid write' "$log"; then
 				echo "c0 $(basename "$b"):"
@@ -51,7 +51,7 @@ for d in ccc/cpp ccc/pass1 ccc/pass2 tools; do
 
 		# c1: .1 .2 -> .s
 		if [ -f "$b.1" ] && [ -f "$b.2" ]; then
-			if ! $VG --log-file="$log" "$root/ccc/pass2/c1" \
+			if ! $VG --log-file="$log" "$root/src/pass2/c1" \
 			    "$b.1" "$b.2" /tmp/vg$$.s >/dev/null 2>&1; then
 				if grep -q 'uninitialised\|Invalid read\|Invalid write' "$log"; then
 					echo "c1 $(basename "$b"):"

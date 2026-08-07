@@ -1,106 +1,82 @@
 #
-# Top-level Makefile for ccc compiler
+# Top-level Makefile for ccc
 #
-# Orchestrates builds across subdirectories
+# Orchestrates src/ and holds the install trees.  See tree.mk for the
+# layout and README.md for what lives where.
 #
 
 CC = gcc
 
+include tree.mk
 include cruft.mk
 
-# Installation destination - propagated to all submakes
-DEST = $(abspath $(CURDIR)/root)
+# Directories cleaned from here.  src does its own orchestration;
+# tests is not built by "all" but is where most of the tree's
+# droppings land, so clean and clobber have to reach it.
+CLEANDIRS = src tests
 
-# Compiler implementation subdirectory.  ritchie and hitech were the
-# two earlier front ends; both are in attic/ now.
-COMPILER = ccc
-
-# Subdirectories to build
-DIRS = $(COMPILER) tools libsrc
-
-# Subdirectories to clean.  tests is not built by "all" but it is
-# where most of the tree's droppings land - a corpus compiled three
-# ways leaves a .x, a .1, a .2, a .s, a .o and a binary per source -
-# so clean and clobber have to reach it.
-CLEANDIRS = $(DIRS) tests
-
-# libsrc has no stage1: it is the runtime, built for the target by
-# whichever compiler is driving, not compiled by ccc to be inspected.
-# Looping over DIRS for stage1 meant the target always ended in an
-# error after doing all of its work.
-STAGE1DIRS = $(COMPILER) tools
-
-SUBMAKE = $(MAKE) CC=$(CC) DEST=$(DEST)
+SUBMAKE = $(MAKE) CC=$(CC) TOP=$(TOP)
 
 #
 # The build has two phases and the order is forced by what the thing
-# is.  The target runtime - libsrc and the z80 halves of ccc/lib - is
-# compiled BY this compiler: root/bin/ccc driving root/bin/{cpp,c0,
-# c1,peep}, with root/bin/asz assembling and root/bin/wslib archiving
-# the result.  So the host side has to be built AND installed before
-# the target side can begin.
+# is.  The target runtime is compiled BY this compiler, so the host
+# side has to be built and installed into unix/ before the target
+# side can begin.  src/Makefile runs them in that order.
 #
-# Running the two in one pass, as this did, only ever worked on a
-# machine that already had an earlier install of root/bin on its PATH.
-# On a fresh checkout it died at the first asz, which is why every
-# push has failed CI since December.
-#
-all: host target
+all:
+	$(SUBMAKE) -C src all
 
-# Phase one: the host tools, then the host compiler passes.  Both are
-# installed as they are built, because phase two runs them.
 host:
-	@mkdir -p $(DEST)/bin $(DEST)/lib
-	$(SUBMAKE) -C tools install
-	$(SUBMAKE) -C $(COMPILER) install
+	$(SUBMAKE) -C src host
 
-# Phase two: the z80 runtime, compiled by what phase one installed.
-target: host
-	$(SUBMAKE) -C $(COMPILER) runtime
-	$(SUBMAKE) -C libsrc install
+target:
+	$(SUBMAKE) -C src target
 
-# install is what all already did; kept because everything calls it.
 install: all
 
 clean:
 	@for d in $(CLEANDIRS); do $(SUBMAKE) -C $$d clean; done
 	rm -f $(CRUFT) $(CRUFTASM)
 
-# root/ is deliberately left alone: it is the install destination, not
-# a side effect, and root/sim is a hand-made symlink to the simulator
-# outside this tree that no rule here knows how to put back.
+# The install trees go too: unlike the old root/, they hold nothing
+# but what a build put there.  root/ used to carry a hand-made symlink
+# to the simulator, which is why it was spared; that now lives in
+# tests/ where the harness that uses it can find it.
 clobber:
 	@for d in $(CLEANDIRS); do $(SUBMAKE) -C $$d clobber; done
 	rm -f $(CRUFT) $(CRUFTASM) $(CRUFTLOG) doc.pdf
-	rm -rf $(CRUFTDIRS)
+	rm -rf $(CRUFTDIRS) $(UNIXDIR) $(MXDIR) $(CPMDIR)
 
-stage1: install
+stage1: all
 	@echo "Building stage1 with cross ccc"
-	@for d in $(STAGE1DIRS); do $(MAKE) CC=ccc DEST=$(DEST) -C $$d stage1; done
+	$(MAKE) CC=ccc TOP=$(TOP) -C src stage1
 	@echo "Stage1 build complete"
 
-test: install
-	$(SUBMAKE) -C tools test
-	$(SUBMAKE) -C libsrc/libcpm ccc-check
+test: all
+	$(SUBMAKE) -C src/tools test
 	$(SUBMAKE) -C tests test
 
-tests: install
+tests: all
 	$(SUBMAKE) -C tests tests
 
 # Leaks are not what this is for: these programs read a file, write a
 # file and exit.  A field read before it is written is the thing that
 # matters, because it changes what the compiler emits and does it
-# differently depending on what was compiled before.  Needs stage1.
-valgrind: stage1
+# differently depending on what was compiled before.
+valgrind: all
 	sh tests/vgsweep.sh
 
 tags:
-	ctags ccc/cpp/*.c ccc/pass1/*.c ccc/pass2/*.c tools/*.c
+	ctags src/cpp/*.c src/pass1/*.c src/pass2/*.c src/peep/*.c src/tools/*.c
 
-# Native (Z80) compile of cpp/c0/c1.
-ZCC = ccc
+# Native (Z80) compile of cpp/c0/c1, for the size report.
 sizecheck:
-	$(MAKE) ZCC=$(ZCC) -C $(COMPILER) sizecheck
+	$(MAKE) TOP=$(TOP) -C src sizecheck
+
+# The self-hosted passes, built by ccc for the simulator and
+# installed into micronix/bin.
+micronix: all
+	$(SUBMAKE) -C src micronix
 
 # Run the cpp regression harness over the full corpus.
 # Pass REGRESS_FLAGS=--bless to regenerate the baseline.
@@ -111,17 +87,12 @@ regression:
 # residence corpus, prove no shape lacks a rule, run it native and
 # under the simulator, hold the rule-coverage baseline, and compile
 # the corpus with the SIMULATED c0/c1, byte-compared against the host.
-# Its footprint leg is the one that matters now - see tests/gen.
-prodtest: install
+prodtest: all
 	$(SUBMAKE) -C tests/gen
 
-# The old top-level footprint target built cpp and c0 with Hi-Tech C
-# and weighed them against ccc's, which is what tests/footprint.py
-# reported on.  With zc3 gone there is no second column to print;
-# tests/gen's footprint leg measures the passes under the simulator
-# and is the live one.  The script is in attic/.
+.PHONY: all host target install clean clobber stage1 test tests valgrind \
+	tags sizecheck micronix regression prodtest
 
-.PHONY: all host target install clean clobber stage1 test tests valgrind tags sizecheck regression prodtest
 #
 # vim: tabstop=4 shiftwidth=4 noexpandtab:
 #

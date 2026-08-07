@@ -16,7 +16,7 @@
 - All symbol names (functions, globals, statics) must be 14 characters or less
 - The object file format limits symbols to 15 characters, and C's leading underscore uses one
 
-## Code Restrictions (see ccc/RESTRICTIONS.md)
+## Code Restrictions (see src/RESTRICTIONS.md)
 
 The compiler must self-host on Z80. Do NOT use:
 - Structure assignment or structure return
@@ -27,7 +27,7 @@ The compiler must self-host on Z80. Do NOT use:
 
 **IMPORTANT:** Do NOT run compiler passes (c0, c1, cpp, etc.) directly from the command line. Compiler passes are ONLY to be run:
 - From the Makefile using target rules (e.g., `make stage1`)
-- Using the `root/bin/ccc` compiler driver
+- Using the `unix/bin/ccc` compiler driver
 
 The compiler driver (`ccc`) has options to:
 - Stop before assembly, before link, after cpp, etc.

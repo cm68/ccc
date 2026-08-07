@@ -1,0 +1,159 @@
+# Host tools.
+#
+# The Whitesmith's object toolchain:
+#   asz    - Z80 assembler
+#   wsld   - linker
+#   wsnm   - object/archive dump
+#   wslib  - archive librarian
+#   wssize - display object sizes
+#
+# plus the two that belong to the compiler:
+#   ccc    - the driver: runs cpp, c0, c1, peep, asz and wsld
+#   astpp  - AST pretty-printer, for reading what pass1 emitted
+#
+# All of them run on the build host and install into unix/bin.
+
+OUTDIR = stage1
+
+include ../../tree.mk
+include ../../cruft.mk
+
+CC = gcc
+
+ifeq ($(CC),gcc)
+WARNS = -Wall -Werror -pedantic \
+-Wdeclaration-after-statement -Werror=declaration-after-statement \
+-Werror=implicit-function-declaration
+CFLAGS = -m32 -std=c99 -g -O0 $(WARNS) -Dlinux
+
+.SUFFIXES: .c .o
+.c.o:
+	$(CC) $(CFLAGS) -c $<
+endif
+
+ifeq ($(CC),zxc)
+
+.SUFFIXES: .c .o
+CFLAGS =
+.c.o:
+	zxc $(CFLAGS) -s $<
+	asz $(basename $<).as
+
+endif
+
+ALL = asz wsld wsnm wslib wssize ccc astpp
+
+all: $(ALL)
+
+# Header dependencies
+asz.o: asm.h
+asm.o: asm.h wsobj.h
+asmz80.o: asm.h
+wsobj.o: wsobj.h
+wsld.o: wsobj.h
+wsnm.o: wsobj.h
+wslib.o: wsobj.h
+wssize.o: wsobj.h
+
+# Link targets
+asz: asz.o asm.o asmz80.o wsobj.o
+	$(CC) $(CFLAGS) -o $@ asz.o asm.o asmz80.o wsobj.o
+
+wsld: wsld.o wsobj.o
+	$(CC) $(CFLAGS) -o $@ wsld.o wsobj.o
+
+wsnm: wsnm.o wsobj.o
+	$(CC) $(CFLAGS) -o $@ wsnm.o wsobj.o
+
+wslib: wslib.o
+	$(CC) $(CFLAGS) -o $@ wslib.o
+
+wssize: wssize.o
+	$(CC) $(CFLAGS) -o $@ wssize.o
+
+# ROOTDIR is the prefix holding unix/, micronix/ and cpm/ - the
+# driver picks host tools out of unix/bin and the target runtime out
+# of whichever tree -m names.  The ROOTDIR environment variable
+# overrides it, which is how a build tests an uninstalled compiler.
+ccc: ccc.c
+	$(CC) $(CFLAGS) -DROOTDIR=$(TOP) -o $@ $<
+
+# astpp walks the AST pass1 writes; format.h is the shape of it and
+# lives in ccclib because pass2 reads it too.
+#
+# It gets its own flags.  Everything else here is held to c99 with
+# declarations first, because it has to stay compilable by this
+# compiler; astpp is a host-only debugging aid that never has to
+# survive that, and it was written mixing declarations and code.
+ASTPPFLAGS = -m32 -g -O0 -Wall -Werror
+
+astpp: astpp.c ../ccclib/format.h
+	$(CC) $(ASTPPFLAGS) -I../ccclib -o $@ $<
+
+test: asz
+	@sh tests/check-dollar.sh
+
+# tests/ holds hand-written .s assembler cases, so its cleanup names
+# what the check script produces rather than sweeping the suffix.
+clean:
+	rm -f $(CRUFT) $(CRUFTASM)
+	rm -f tests/*.out tests/*.a tests/*.o tests/*.n tests/*.lst tests/core
+
+clobber: clean
+	rm -f $(ALL) $(CRUFTLOG)
+	rm -rf $(CRUFTDIRS)
+
+install: all
+	@mkdir -p $(UNIXDIR)/bin
+	cp $(ALL) $(UNIXDIR)/bin
+
+CCCFLAGS = -DCCC -i../include
+
+SRCS = asm.c asmz80.c asz.c wsld.c wslib.c wsnm.c wsobj.c wssize.c
+
+stage1: 
+	mkdir -p stage1
+	@for f in $(SRCS); do \
+		b=$${f%.c}; \
+		printf "%-20s" "$$f: "; \
+		$(CCC) -DCCC -k -c $$f 2> stage1/$$b.err 1>&2 && { echo "ok"; rm -f stage1/$$b.err; } || echo "FAIL"; \
+        mv $$b.i $$b.x $$b.1 $$b.2 $$b.pp $$b.s $$b.o $(OUTDIR) 2>/dev/null ; true ;\
+	done
+	@echo "Stage1 complete"
+
+sizecheck: stage1
+	@echo "=== tools stage1 sizes ==="
+	@./wssize $(STAGE1_OBJS) | \
+	awk '($$1 != "text") {printf "%-12s %5d %5d %5d = %5d\n", substr($$6, 8), $$1, $$2, $$3, $$1+$$2+$$3}'
+
+# Link stage1 tools with libccc.a
+WSLD = ./wsld
+LIBCCC = ../ccclib/libccc.a
+
+stage1/asz: stage1/asz.o stage1/asm.o stage1/asmz80.o stage1/wsobj.o $(LIBCCC)
+	$(WSLD) -r -o $@ stage1/asz.o stage1/asm.o stage1/asmz80.o stage1/wsobj.o $(LIBCCC)
+
+stage1/wsld: stage1/wsld.o stage1/wsobj.o $(LIBCCC)
+	$(WSLD) -r -o $@ stage1/wsld.o stage1/wsobj.o $(LIBCCC)
+
+stage1/wsnm: stage1/wsnm.o stage1/wsobj.o $(LIBCCC)
+	$(WSLD) -r -o $@ stage1/wsnm.o stage1/wsobj.o $(LIBCCC)
+
+stage1/wslib: stage1/wslib.o $(LIBCCC)
+	$(WSLD) -r -o $@ stage1/wslib.o $(LIBCCC)
+
+stage1/wssize: stage1/wssize.o $(LIBCCC)
+	$(WSLD) -r -o $@ stage1/wssize.o $(LIBCCC)
+
+link: stage1/asz stage1/wsld stage1/wsnm stage1/wslib stage1/wssize
+	@echo "=== Linked stage1 tools ==="
+	@ls -la stage1/asz stage1/wsld stage1/wsnm stage1/wslib stage1/wssize
+
+regression:
+	../../tests/regress.sh --filter src/tools/ $(REGRESS_FLAGS)
+
+.PHONY: all clean clobber test install stage1 sizecheck link regression
+
+#
+# vim: tabstop=4 shiftwidth=4 noexpandtab:
+#

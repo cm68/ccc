@@ -43,18 +43,18 @@ mkdir -p "$work/cpp" "$work/pass1" "$work/pass2" "$work/inc" "$work/lib"
 for d in cpp pass1 pass2; do
 	cp "$root"/ccc/$d/*.c "$root"/ccc/$d/*.h "$work/$d/" 2>/dev/null || true
 done
-cp "$root"/libsrc/include/*.h "$work/inc/"
-cp -r "$root"/libsrc/include/sys "$work/inc/" 2>/dev/null || true
-cp "$root"/ccc/lib/*.h "$work/lib/" 2>/dev/null || true
+cp "$root"/src/include/*.h "$work/inc/"
+cp -r "$root"/src/include/sys "$work/inc/" 2>/dev/null || true
+cp "$root"/src/ccclib/*.h "$work/lib/" 2>/dev/null || true
 
-make -C "$root/ccc/cpp" mx-ccc >/dev/null
-make -C "$root/ccc/pass1" mx-ccc >/dev/null
-make -C "$root/ccc/pass2" mx-ccc >/dev/null
-cp "$root/ccc/cpp/comccc/cpp.mx" "$root/ccc/pass1/mxccc/c0.mx" \
-   "$root/ccc/pass2/mxccc/c1.mx" "$work/"
+make -C "$root/src/cpp" mx-ccc >/dev/null
+make -C "$root/src/pass1" mx-ccc >/dev/null
+make -C "$root/src/pass2" mx-ccc >/dev/null
+cp "$root/src/cpp/comsrc/cpp.mx" "$root/src/pass1/mxccc/c0.mx" \
+   "$root/src/pass2/mxccc/c1.mx" "$work/"
 
 export root work base out FLOOR SIMBIN
-SIMBIN="$root/root/sim"
+SIMBIN="$root/tests/sim"
 
 
 # One source: the host chain and the simulated one, compared.  Writes
@@ -81,9 +81,9 @@ measure() {
 	SIM="$SIMBIN -S -d $jd"
 
 	(cd "$jd" &&
-	 "$root"/ccc/cpp/cpp -DCCC -iinc -I$d -Ilib -o $h $d/$b.c &&
-	 "$root"/ccc/pass1/c0 $h.x $h.1 $h.2 &&
-	 "$root"/ccc/pass2/c1 $h.1 $h.2 $h.s) >/dev/null 2>&1 || true
+	 "$root"/src/cpp/cpp -DCCC -iinc -I$d -Ilib -o $h $d/$b.c &&
+	 "$root"/src/pass1/c0 $h.x $h.1 $h.2 &&
+	 "$root"/src/pass2/c1 $h.1 $h.2 $h.s) >/dev/null 2>&1 || true
 
 	(cd "$jd" && timeout 300 $SIM cpp.mx -DCCC -iinc -I$d -Ilib \
 		-o $s $d/$b.c </dev/null) >"$o.cpp" 2>&1 || true

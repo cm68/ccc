@@ -6,7 +6,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 # Path to compiler driver
-CCC="$PROJECT_ROOT/root/bin/ccc"
+CCC="$PROJECT_ROOT/unix/bin/ccc"
 
 VERBOSE=""
 not_k=true
@@ -94,7 +94,7 @@ for t in "${TESTS[@]}" ; do
 					echo "link ok"
 					if $do_run ; then
 						echo "======== run ========"
-						"$PROJECT_ROOT/root/sim" "./$base"
+						"$PROJECT_ROOT/tests/sim" "./$base"
 						echo "exit code: $?"
 					fi
 				else

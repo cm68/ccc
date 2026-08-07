@@ -24,7 +24,7 @@ set -u
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(cd "$SCRIPT_DIR/.." && pwd)"
-DEFAULT_CPP="$REPO/ccc/cpp/cpp"
+DEFAULT_CPP="$REPO/src/cpp/cpp"
 BASELINE="$SCRIPT_DIR/baseline"
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/ccc-regress.XXXXXX")"
 
@@ -68,7 +68,7 @@ done
 
 if [ "$just_list" -eq 0 ] && [ ! -x "$cpp_bin" ]; then
     echo "ERROR: cpp not executable: $cpp_bin" >&2
-    echo "Build it first (make -C ccc/cpp cpp) or pass --cpp PATH." >&2
+    echo "Build it first (make -C src/cpp cpp) or pass --cpp PATH." >&2
     exit 2
 fi
 # Resolve to absolute path - the harness cd's into source dirs, so a
@@ -86,18 +86,17 @@ fi
 # have, etc.) are still baselined - their failure mode is part of the contract.
 #
 CORPUS='
-ccc/cpp/test       | *.c | -DCCC -I.. -I../../../libsrc/include
-ccc/cpp            | cpp.c lex.c io.c macro.c kw.c emit.c util.c filtknr.c filtdecl.c filtbrace.c filtctrl.c filtutil.c typetab.c lexdata.c xdump.c | -DCCC -I. -I../lib -I../../libsrc/include
-ccc/pass1          | *.c | -DCCC -I. -I../lib -I../../libsrc/include
-ccc/pass2          | *.c | -DCCC -I. -I../lib -I../../libsrc/include
-ccc/peep           | *.c | -DCCC -I. -I../lib -I../../libsrc/include
-ccc/lib            | *.c | -DCCC -I../../libsrc/include
-ccc                | astpp.c | -DCCC -I. -I./lib -I./cpp -I../libsrc/include
-tools              | *.c | -I../libsrc/include
-libsrc/libc        | *.c | -DCCC -I../include
-libsrc/libcpm      | *.c | -DCCC -I../include
-libsrc/libu        | *.c | -DCCC -I../include
-tests              | *.c | -DCCC -I../libsrc/include
+src/cpp/test       | *.c | -DCCC -I.. -I../../include
+src/cpp            | cpp.c lex.c io.c macro.c kw.c emit.c util.c norm.c filtutil.c knr.c cfold.c tdsrc.c lexdata.c xdump.c | -DCCC -I. -I../ccclib -I../include
+src/pass1          | *.c | -DCCC -I. -I../ccclib -I../include
+src/pass2          | *.c | -DCCC -I. -I../ccclib -I../include
+src/peep           | *.c | -DCCC -I. -I../ccclib -I../include
+src/ccclib         | *.c | -DCCC -I../include
+src/tools          | *.c | -DCCC -I. -I../ccclib -I../include
+src/libc           | *.c | -DCCC -I../include
+src/libcpm         | *.c | -DCCC -I../include
+src/libu           | *.c | -DCCC -I../include
+tests              | *.c | -DCCC -I../src/include
 '
 
 #
@@ -322,7 +321,7 @@ if [ "$fail" -gt 0 ]; then
     echo
     echo "To inspect a diff:"
     echo "  cmp tests/baseline/<rel>.x $WORK/<rel>.x"
-    echo "  diff <(./ccc/cpp/xdump tests/baseline/<rel>.x) <(./ccc/cpp/xdump $WORK/<rel>.x)"
+    echo "  diff <(./src/cpp/xdump tests/baseline/<rel>.x) <(./src/cpp/xdump $WORK/<rel>.x)"
     keep=1   # auto-keep work dir on failure
     exit 1
 fi
