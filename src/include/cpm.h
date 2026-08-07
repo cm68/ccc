@@ -14,6 +14,12 @@ typedef	unsigned	size_t;		/* type yielded by sizeof */
 extern int	errno;			/* system error number */
 #endif	_STDDEF
 
+/*
+ * errno values index sys_err[] in sys_err.c, so a new one goes on
+ * the end of that table as well.  They are the disk errors CP/M
+ * reports.
+ */
+
 /*	hitech.h has definitions for uchar, ushort etc */
 
 #include	<hitech.h>

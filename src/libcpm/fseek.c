@@ -41,7 +41,14 @@ int		ptr;
 {
 	long	roffs;
 
-	clreof(f);
+	/*
+	 * Clear the end-of-file flag: after a seek the stream is
+	 * positioned somewhere new and whatever was true before is
+	 * not any more.  This called clreof(), which does not exist
+	 * anywhere in this tree - libc's fseek does the same job with
+	 * the flag directly, so do that.
+	 */
+	f->_flag &= ~_IOEOF;
 	if(!f->_base)
 		if(lseek(fileno(f), offs, ptr) == -1L)
 			return -1;

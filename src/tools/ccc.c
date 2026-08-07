@@ -142,6 +142,60 @@ getBaseNoExt(char *filename)
 }
 
 /*
+ * Drop the 16-byte object header from a linked image, in place, so
+ * what is left is what CP/M loads at 0x100.  Reads the whole file:
+ * a .com is 64KB at the very most and usually a great deal less.
+ */
+#define WSHDRLEN 16
+
+int
+stripHeader(char *path)
+{
+    FILE *f;
+    char *buf;
+    long len;
+    size_t got;
+
+    f = fopen(path, "rb");
+    if (!f) {
+        perror(path);
+        return -1;
+    }
+    fseek(f, 0L, SEEK_END);
+    len = ftell(f);
+    if (len <= WSHDRLEN) {
+        fprintf(stderr, "%s: too short to be an image\n", path);
+        fclose(f);
+        return -1;
+    }
+    buf = malloc(len - WSHDRLEN);
+    if (!buf) {
+        fprintf(stderr, "%s: out of memory\n", path);
+        fclose(f);
+        return -1;
+    }
+    fseek(f, (long)WSHDRLEN, SEEK_SET);
+    got = fread(buf, 1, len - WSHDRLEN, f);
+    fclose(f);
+    if (got != (size_t)(len - WSHDRLEN)) {
+        fprintf(stderr, "%s: short read\n", path);
+        free(buf);
+        return -1;
+    }
+
+    f = fopen(path, "wb");
+    if (!f) {
+        perror(path);
+        free(buf);
+        return -1;
+    }
+    fwrite(buf, 1, got, f);
+    fclose(f);
+    free(buf);
+    return 0;
+}
+
+/*
  * Print a command line
  */
 void
@@ -324,6 +378,7 @@ main(int argc, char **argv)
      * that is what the simulator runs and what every test here links.
      */
     char *target = "micronix";
+    int cpm_target = 0;      /* target is CP/M: image layout differs */
 
     /* Input files by type */
     char *c_files[MAX_ARGS];
@@ -597,6 +652,7 @@ main(int argc, char **argv)
      * system-independent and are in both trees; the system-call layer
      * and the startup object are not, so they are named per target.
      */
+    cpm_target = (strcmp(target, "cpm") == 0);
     sprintf(libc_path, "%s/%s/lib/libc.a", rootdir, target);
     sprintf(sysinc_path, "-i%s/%s/include", rootdir, target);
     if (strcmp(target, "cpm") == 0) {
@@ -863,7 +919,19 @@ main(int argc, char **argv)
         ld_args[ld_argc++] = "-o";
         ld_args[ld_argc++] = output_file;
 
+	/*
+	 * Both systems load at 0x100.  Micronix reads the segment
+	 * table out of the header and places data and bss itself; CP/M
+	 * has no loader worth the name - it reads the file to 0x100
+	 * and jumps - so text, data and bss have to come out as one
+	 * contiguous image, which is what naming the same origin for
+	 * all three gets.
+	 */
 	ld_args[ld_argc++] = "-Ttext=0x100";
+	if (cpm_target) {
+	    ld_args[ld_argc++] = "-Tdata=0x100";
+	    ld_args[ld_argc++] = "-Tbss=0x100";
+	}
 
 	/* Add library search paths (-L options) */
 	for (i = 0; i < ld_path_count; i++)
@@ -900,6 +968,16 @@ main(int argc, char **argv)
                 fprintf(stderr, "Error: linker failed\n");
                 exit(status);
             }
+
+            /*
+             * A .com file is the bytes CP/M loads at 0x100 and
+             * nothing else.  wsld writes a 16-byte Whitesmith's
+             * header in front of them, so cut it off; the Makefiles
+             * that built these images by hand all ended in a
+             * "tail -c +17" for the same reason.
+             */
+            if (cpm_target && stripHeader(output_file) != 0)
+                exit(1);
 
             /* Clean up generated .o files unless -k */
             if (!keep_all) {

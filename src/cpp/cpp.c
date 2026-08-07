@@ -294,43 +294,46 @@ main(int argc, char **argv)
 
     close(lexFd);
 
-    /* -p mode: fork xdump to generate .i file */
+    /*
+     * -p mode: write the readable .i beside the .x.
+     *
+     * The rendering lives in xdump rather than here, so that its
+     * tables stay out of this image, and the host gets at it by
+     * forking.  That is a host-only convenience: -p is for reading
+     * what cpp did, it is not part of the compile the driver runs,
+     * and a second process is not something to ask of the target.
+     * CP/M has no fork at all, and on Micronix it would be spending
+     * a process on a debugging aid.  Run xdump over the .x by hand
+     * there - it is the same program with the same arguments.
+     */
+#ifndef CCC
     if (ppOutput) {
         int pid = fork();
         if (pid == 0) {
             /* Child: exec xdump */
-#ifdef CCC
-            if (noLineMarkers)
-                execl("/bin/xdump", "xdump", "-N", "-o", ppFile, lexFile, (char *)0);
-            else
-                execl("/bin/xdump", "xdump", "-o", ppFile, lexFile, (char *)0);
-            perror("xdump");
-            exit(1);
-#else
             if (noLineMarkers)
                 execlp("xdump", "xdump", "-N", "-o", ppFile, lexFile, (char *)0);
             else
                 execlp("xdump", "xdump", "-o", ppFile, lexFile, (char *)0);
             perror("xdump");
             _exit(1);
-#endif
         } else if (pid > 0) {
             /* Parent: wait for xdump */
             int status;
-#ifdef CCC
-            wait(&status);
-            if (status != 0)
-                exitCode = 1;
-#else
             waitpid(pid, &status, 0);
             if (!WIFEXITED(status) || WEXITSTATUS(status) != 0)
                 exitCode = 1;
-#endif
         } else {
             perror("fork");
             exitCode = 1;
         }
     }
+#else
+    if (ppOutput) {
+        errout("cpp: -p needs xdump run separately on this target\n");
+        exitCode = 1;
+    }
+#endif
 
     /* -E mode: exec xdump to dump preprocessed output to stdout */
     if (ppOnly) {

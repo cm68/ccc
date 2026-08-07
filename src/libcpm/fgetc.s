@@ -52,6 +52,13 @@ IOSTRG_BIT	equ	6
 RETURN	equ	0x0d
 CPMEOF	equ	0x1a
 
+;	The value fgetc returns at end of file.  stdio.h spells it
+;	(-1) for C; this file needs it as an assembler constant and
+;	never had one, so "ld hl,EOF" below assembled to a reference
+;	the linker could not resolve.  Nothing had linked this object
+;	until CP/M did.
+EOF	equ	-1
+
 	global	_fgetc, __filbuf
 	psect	text
 

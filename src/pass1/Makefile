@@ -213,6 +213,30 @@ mx-install: mx-ccc
 	@mkdir -p $(MXDIR)/bin
 	cp mxccc/c0.mx $(MXDIR)/bin
 
-.PHONY: all clean regen stage1 install clobber sizefile sizecheck regression mx-ccc mx-install
+# The CP/M image.  Same sources, same driver, -m cpm: the runtime
+# comes out of cpm/ instead of micronix/, crtcpm starts it, libcpm
+# turns the calls into BDOS calls, and the driver strips the object
+# header so what is left is what CP/M loads at 0x100.
+com-ccc: $(GENERATED)
+	@mkdir -p comccc
+	@set -e; cd comccc ; \
+	for f in $(SOURCES); do \
+		b=$${f%.c}; \
+		printf "%-12s" "$$b: " ; \
+		if $(CCC) $(CCCOPT) -m cpm -c -DCCC -i$(CPMDIR)/include \
+			-I$(P1DIR) -I$(LIBDIR) $(P1DIR)/$$f > $$b.log 2>&1 \
+			&& [ -f $$b.o ]; then \
+			echo ok; \
+		else echo FAIL; cat $$b.log; exit 1; fi \
+	done
+	cd comccc && $(CCC) -m cpm -S -o c0.com $$(ls *.o 2>/dev/null) \
+		-L$(CPMDIR)/lib -lccc > /dev/null
+	@echo "c0.com: `wc -c < comccc/c0.com` bytes"
+
+com-install: com-ccc
+	@mkdir -p $(CPMDIR)/bin
+	cp comccc/c0.com $(CPMDIR)/bin
+
+.PHONY: all clean regen stage1 install clobber sizefile sizecheck regression mx-ccc mx-install com-ccc com-install
 
 # vim: tabstop=4 shiftwidth=4 noexpandtab:

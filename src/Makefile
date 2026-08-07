@@ -55,6 +55,12 @@ MXPASSES = cpp pass1 pass2 peep
 micronix: all
 	@for d in $(MXPASSES); do $(SUBMAKE) -C $$d mx-install || exit 1; done
 
+# The same four as CP/M .com images, into cpm/bin.  c1 does not fit
+# in the TPA - see RUNTIME.md - so this builds what it can and says
+# what it could not.
+cpm: all
+	@for d in $(MXPASSES); do $(SUBMAKE) -C $$d com-install || exit 1; done
+
 ALLDIRS = ccclib cpp pass1 pass2 peep tools libc libcpm libu include
 
 clean:
@@ -75,7 +81,7 @@ sizecheck:
 regression:
 	../tests/regress.sh --filter src/ $(REGRESS_FLAGS)
 
-.PHONY: all host target install micronix clean clobber stage1 sizecheck regression
+.PHONY: all host target install micronix cpm clean clobber stage1 sizecheck regression
 
 #
 # vim: tabstop=4 shiftwidth=4 noexpandtab:

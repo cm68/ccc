@@ -121,6 +121,30 @@ mx-install: mx-ccc
 	@mkdir -p $(MXDIR)/bin
 	cp mxccc/peep.mx $(MXDIR)/bin
 
-.PHONY: mx-ccc all clean clobber install stage1 sizecheck regression mx-install
+# The CP/M image.  Same sources, same driver, -m cpm: the runtime
+# comes out of cpm/ instead of micronix/, crtcpm starts it, libcpm
+# turns the calls into BDOS calls, and the driver strips the object
+# header so what is left is what CP/M loads at 0x100.
+com-ccc: 
+	@mkdir -p comccc
+	@set -e; cd comccc ; \
+	for f in $(SOURCES); do \
+		b=$${f%.c}; \
+		printf "%-12s" "$$b: " ; \
+		if $(CCC) $(CCCOPT) -m cpm -c -DCCC -i$(CPMDIR)/include \
+			-I$(PEEPDIR) -I$(LIBDIR) $(PEEPDIR)/$$f > $$b.log 2>&1 \
+			&& [ -f $$b.o ]; then \
+			echo ok; \
+		else echo FAIL; cat $$b.log; exit 1; fi \
+	done
+	cd comccc && $(CCC) -m cpm -S -o peep.com $$(ls *.o 2>/dev/null) \
+		-L$(CPMDIR)/lib -lccc > /dev/null
+	@echo "peep.com: `wc -c < comccc/peep.com` bytes"
+
+com-install: com-ccc
+	@mkdir -p $(CPMDIR)/bin
+	cp comccc/peep.com $(CPMDIR)/bin
+
+.PHONY: mx-ccc all clean clobber install stage1 sizecheck regression mx-install com-ccc com-install
 
 # vim: tabstop=4 shiftwidth=4 noexpandtab:

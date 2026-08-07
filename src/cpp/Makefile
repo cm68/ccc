@@ -282,6 +282,30 @@ mx-install: mx-ccc
 	@mkdir -p $(MXDIR)/bin
 	cp mxccc/cpp.mx $(MXDIR)/bin
 
-.PHONY: all clean regen stage1 install clobber sizefile sizecheck regression langtest test mx-ccc valgrind mx-install
+# The CP/M image.  Same sources, same driver, -m cpm: the runtime
+# comes out of cpm/ instead of micronix/, crtcpm starts it, libcpm
+# turns the calls into BDOS calls, and the driver strips the object
+# header so what is left is what CP/M loads at 0x100.
+com-ccc: $(GENERATED)
+	@mkdir -p comccc
+	@set -e; cd comccc ; \
+	for f in $(SOURCES); do \
+		b=$${f%.c}; \
+		printf "%-12s" "$$b: " ; \
+		if $(CCC) $(CCCOPT) -m cpm -c -DCCC -i$(CPMDIR)/include \
+			-I$(CPPDIR) -I$(LIBDIR) $(CPPDIR)/$$f > $$b.log 2>&1 \
+			&& [ -f $$b.o ]; then \
+			echo ok; \
+		else echo FAIL; cat $$b.log; exit 1; fi \
+	done
+	cd comccc && $(CCC) -m cpm -S -o cpp.com $$(ls *.o 2>/dev/null) \
+		-L$(CPMDIR)/lib -lccc > /dev/null
+	@echo "cpp.com: `wc -c < comccc/cpp.com` bytes"
+
+com-install: com-ccc
+	@mkdir -p $(CPMDIR)/bin
+	cp comccc/cpp.com $(CPMDIR)/bin
+
+.PHONY: all clean regen stage1 install clobber sizefile sizecheck regression langtest test mx-ccc valgrind mx-install com-ccc com-install
 
 # vim: tabstop=4 shiftwidth=4 noexpandtab:

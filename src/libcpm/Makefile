@@ -18,12 +18,19 @@ include ../../cruft.mk
 
 # fakecpcl.s was a stub __cpm_clean for when cleanup.c didn't compile
 SRCS = bdos.s bdoshl.s exec.s execl.s exit.s _exit.s \
-	fgetc.s getargs.s # zrrtcpm.s fakecpcl.s
+	fgetc.s getargs.s getuid.s # zrrtcpm.s fakecpcl.s
 
 CSRCS = abort.c chmod.c cleanup.c close.c creat.c dup.c \
 	fcbname.c fseek.c getargs.c getfcb.c getch.c isatty.c \
-	open.c read.c rename.c seek.c signal.c stat.c time.c \
-	unlink.c write.c
+	open.c read.c rename.c seek.c seekraw.c signal.c stat.c time.c \
+	unlink.c write.c \
+	perror.c sys_err.c
+#
+# perror.c and sys_err.c were sitting here unbuilt; sys_err.c carries
+# errno and the message table perror prints from, which is libu's
+# errno.s on the other side.  seekraw.c is the 16-bit seek the
+# compiler passes use, wrapping the lseek that maintains the fcb's
+# read/write pointer - CP/M has no seek call of its own.
 
 # One build area, ccc/, holding the runtime this compiler built.
 # There was a zc3/ area beside it once, the same sources built by

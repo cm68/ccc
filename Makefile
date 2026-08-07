@@ -78,6 +78,10 @@ sizecheck:
 micronix: all
 	$(SUBMAKE) -C src micronix
 
+# The same, as CP/M .com images into cpm/bin.
+cpm: all
+	$(SUBMAKE) -C src cpm
+
 # Run the cpp regression harness over the full corpus.
 # Pass REGRESS_FLAGS=--bless to regenerate the baseline.
 regression:
@@ -91,7 +95,7 @@ prodtest: all
 	$(SUBMAKE) -C tests/gen
 
 .PHONY: all host target install clean clobber stage1 test tests valgrind \
-	tags sizecheck micronix regression prodtest
+	tags sizecheck micronix cpm regression prodtest
 
 #
 # vim: tabstop=4 shiftwidth=4 noexpandtab:
