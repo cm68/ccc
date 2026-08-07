@@ -186,15 +186,11 @@ emit_ansi(void)
 			kout(&pp->post[j]);
 		if (n > 1)
 			kouta(COMMA, &fname);
-		if (pp->type) {
-			free(pp->type);
-			pp->type = 0;
-		}
-		if (pp->post) {
-			free(pp->post);
-			pp->post = 0;
-			pp->post_len = 0;
-		}
+		free(pp->type);
+		pp->type = 0;
+		free(pp->post);
+		pp->post = 0;
+		pp->post_len = 0;
 		pp++;
 	}
 
@@ -210,11 +206,9 @@ kreset(void)
 	unsigned char n = kp_cnt + 1;
 
 	while (--n) {
-		if (pp->type)
-			free(pp->type);
+		free(pp->type);
 		pp->type = 0;
-		if (pp->post)
-			free(pp->post);
+		free(pp->post);
 		pp->post = 0;
 		pp->post_len = 0;
 		pp++;

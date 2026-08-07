@@ -126,6 +126,17 @@ char *ap;
 {
 	register struct store *p;
 
+	/*
+	 * free(0) is a no-op, and C has said so since it was
+	 * standardised.  This one stepped back over the header of the
+	 * pointer it was not given and parked the allocation cursor
+	 * there, so the next malloc handed out a block inside the
+	 * previous one - the heap came apart quietly, a call or two
+	 * later.  One test here is worth a guard at every call site,
+	 * and there are forty-three of them.
+	 */
+	if (ap == 0)
+		return;
 	p = ((struct store *)ap)-1;
 	ASSERT(p>allocs[1].ptr&&p<=alloct);
 	ASSERT(allock());

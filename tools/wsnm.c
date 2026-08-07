@@ -2562,10 +2562,10 @@ char *name;
         if (textbase == 0xffffffff) textbase = 0;
         if (database == 0xffffffff) database = 0;
         gen_ht_sfile(name, textbuf, textbase, textsize, databuf, database, datasize, bsssize, relocs, nrelocs, htsyms, nhtsyms);
-        if (relocs) free(relocs);
-        if (textbuf) free(textbuf);
-        if (databuf) free(databuf);
-        if (htsyms) free(htsyms);
+        free(relocs);
+        free(textbuf);
+        free(databuf);
+        free(htsyms);
         return;
     }
 
@@ -2667,14 +2667,10 @@ char *name;
 
     ht_report(relocs, nrelocs, symbol_off, symbol_len);
 
-    if (relocs)
-        free(relocs);
-    if (textbuf)
-        free(textbuf);
-    if (databuf)
-        free(databuf);
-    if (htsyms)
-        free(htsyms);
+    free(relocs);
+    free(textbuf);
+    free(databuf);
+    free(htsyms);
 
     printf("\n");
 }
