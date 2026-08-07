@@ -23,7 +23,7 @@ SRCS = access.s alarm.s _break.s chdir.s chmod.s chown.s close.s \
 	stime.s sbrk.s stty.s sync.s time.s umount.s unlink.s wait.s \
 	write.s
 
-CSRCS = signal.c lseek.c seek.c uname.c
+CSRCS = signal.c lseek.c seek.c
 
 # One build area, ccc/, holding the runtime this compiler built.
 # There was a zc3/ area beside it once, the same sources built by

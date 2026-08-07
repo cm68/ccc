@@ -135,8 +135,17 @@ two conventions in separate source trees rather than conditional assembly. See
 - `*.s` - Assembly source for system call wrappers
 - `errno.s` - Global errno variable
 - `fdpos.s` - Userland file-position tracking (above)
-- Files using `c.ent`/`c.ret` are compiled C code requiring the
-  Whitesmith's runtime library
+- `sbrk.s` - `brk`/`sbrk` over the `_break` call, with the stack guard
+
+Nothing here needs the Whitesmith's runtime any more. Two files did -
+`uname.s` and `sbreak.s`, both disassembled Whitesmith's objects calling
+`c.ent`/`c.ret`, neither assembled by this Makefile and neither linkable,
+since `c.ent`, `c.ret` and `__memory` are defined nowhere in the tree.
+`sbreak.s` was superseded by `sbrk.s`; `uname.s` was not a system call at
+all but the Whitesmith's toolchain's temp-file-name generator, and now
+lives as C beside its callers in micronix `cmd/whitesmith/util/uname.c`.
+If a file here ever mentions `c.ent` again, it arrived from the same
+place and wants the same treatment.
 
 ## Building
 

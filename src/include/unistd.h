@@ -61,7 +61,6 @@ extern int stty(unsigned char fd, char *buf);
 extern void sync(void);
 extern int time(long *tp);
 extern int umount(char *target);
-extern char *uname(void);
 extern int unlink(char *pathname);
 extern int wait(int *status);
 extern int write(unsigned char fd, char *buf, int count);
