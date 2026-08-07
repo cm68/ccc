@@ -4,7 +4,7 @@
 # Builds cpp, pass1 (c0), pass2 (c1), and astpp
 #
 
-DEST = $(realpath ../root)
+DEST = $(abspath ../root)
 
 include ../cruft.mk
 
@@ -22,14 +22,21 @@ all:
 astpp: astpp.c
 	$(CC) $(CFLAGS) -o $@ $<
 
+# The host passes only.  lib's install is NOT here: it builds the z80
+# archives with the compiler this target is in the middle of putting
+# in place, so it would need c0, c1, cpp and peep before any of them
+# had been copied.  That knot is what "runtime" below untangles.
 install: astpp
-	$(MAKE) -C lib DEST=$(DEST) install
 	$(MAKE) -C cpp DEST=$(DEST) install
 	$(MAKE) -C pass1 DEST=$(DEST) install
 	$(MAKE) -C pass2 DEST=$(DEST) install
 	$(MAKE) -C peep DEST=$(DEST) install
-	cp astpp ../root/bin
-	
+	cp astpp $(DEST)/bin
+
+# The z80 support archive, built by the compiler install just placed.
+runtime:
+	$(MAKE) -C lib DEST=$(DEST) install
+
 clean:
 	$(MAKE) -C lib clean
 	$(MAKE) -C cpp clean

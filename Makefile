@@ -9,7 +9,7 @@ CC = gcc
 include cruft.mk
 
 # Installation destination - propagated to all submakes
-DEST = $(realpath $(CURDIR)/root)
+DEST = $(abspath $(CURDIR)/root)
 
 # Compiler implementation subdirectory.  ritchie and hitech were the
 # two earlier front ends; both are in attic/ now.
@@ -32,12 +32,35 @@ STAGE1DIRS = $(COMPILER) tools
 
 SUBMAKE = $(MAKE) CC=$(CC) DEST=$(DEST)
 
-all:
-	@for d in $(DIRS); do $(SUBMAKE) -C $$d all; done
+#
+# The build has two phases and the order is forced by what the thing
+# is.  The target runtime - libsrc and the z80 halves of ccc/lib - is
+# compiled BY this compiler: root/bin/ccc driving root/bin/{cpp,c0,
+# c1,peep}, with root/bin/asz assembling and root/bin/wslib archiving
+# the result.  So the host side has to be built AND installed before
+# the target side can begin.
+#
+# Running the two in one pass, as this did, only ever worked on a
+# machine that already had an earlier install of root/bin on its PATH.
+# On a fresh checkout it died at the first asz, which is why every
+# push has failed CI since December.
+#
+all: host target
 
-install:
+# Phase one: the host tools, then the host compiler passes.  Both are
+# installed as they are built, because phase two runs them.
+host:
 	@mkdir -p $(DEST)/bin $(DEST)/lib
-	@for d in $(DIRS); do $(SUBMAKE) -C $$d install; done
+	$(SUBMAKE) -C tools install
+	$(SUBMAKE) -C $(COMPILER) install
+
+# Phase two: the z80 runtime, compiled by what phase one installed.
+target: host
+	$(SUBMAKE) -C $(COMPILER) runtime
+	$(SUBMAKE) -C libsrc install
+
+# install is what all already did; kept because everything calls it.
+install: all
 
 clean:
 	@for d in $(CLEANDIRS); do $(SUBMAKE) -C $$d clean; done
@@ -75,7 +98,6 @@ tags:
 	ctags ccc/cpp/*.c ccc/pass1/*.c ccc/pass2/*.c tools/*.c
 
 # Native (Z80) compile of cpp/c0/c1.
-# Override Z80 compiler with: make sizecheck ZCC=zc3   (HiTech) or ZCC=ccc (default).
 ZCC = ccc
 sizecheck:
 	$(MAKE) ZCC=$(ZCC) -C $(COMPILER) sizecheck
@@ -85,22 +107,21 @@ sizecheck:
 regression:
 	./tests/regress.sh $(REGRESS_FLAGS)
 
-# Native-vs-Z80 equivalence + memory footprint matrix: every cpp and
-# pass1 source through host cpp/c0 and sim cpp.mx/c0.mx, byte-compared,
-# with heap/stack high-water for both Z80 programs.
-# the production-coverage suite: generate the operator x width x
+# The production-coverage suite: generate the operator x width x
 # residence corpus, prove no shape lacks a rule, run it native and
 # under the simulator, hold the rule-coverage baseline, and compile
-# the corpus with the SIMULATED c0/c1, byte-compared against the host
+# the corpus with the SIMULATED c0/c1, byte-compared against the host.
+# Its footprint leg is the one that matters now - see tests/gen.
 prodtest: install
 	$(SUBMAKE) -C tests/gen
 
-footprint:
-	$(MAKE) -C ccc/cpp cpp xdump com-zc3
-	$(MAKE) -C ccc/pass1 c0 mx-zc3
-	python3 tests/footprint.py
+# The old top-level footprint target built cpp and c0 with Hi-Tech C
+# and weighed them against ccc's, which is what tests/footprint.py
+# reported on.  With zc3 gone there is no second column to print;
+# tests/gen's footprint leg measures the passes under the simulator
+# and is the live one.  The script is in attic/.
 
-.PHONY: all install clean clobber stage1 test tests valgrind tags sizecheck regression footprint
+.PHONY: all host target install clean clobber stage1 test tests valgrind tags sizecheck regression prodtest
 #
 # vim: tabstop=4 shiftwidth=4 noexpandtab:
 #

@@ -2,7 +2,7 @@
 # Makefile for ccc compiler pass 1 
 #
 
-DEST = $(realpath ../../root)
+DEST = $(abspath ../../root)
 
 include ../../cruft.mk
 
@@ -17,12 +17,6 @@ DEBUG = -ggdb3 -O0
 CFLAGS = -m32 $(DEBUG) $(DEFINES) $(WARNS) -I. -I../lib
 LDFLAGS = -m32 $(DEBUG)
 endif
-
-ifeq ($(CC),zc3)
-CFLAGS = -I../../libsrc/include -I../lib
-LDFLAGS =
-endif
-
 
 INC = -I../../libsrc/include -I../lib
 CCC = $(DEST)/bin/ccc
@@ -43,24 +37,18 @@ ifeq ($(CC),ccc)
 CFLAGS = -I. -I../lib
 endif
 
-# Z80 compiler used by `sizecheck` (ccc | zc3)
+# Z80 compiler used by `sizecheck`.  ccc is the only one now; zc3
+# was the Hi-Tech bootstrap.
 ZCC = ccc
 ZCFLAGS = -DCCC $(INC)
-ROOTDIR = $(realpath ../../root)
-ifeq ($(ZCC),zc3)
-ZCC_ASM = -S
-ZCC_ASMEXT = as
-endif
-ifeq ($(ZCC),ccc)
+ROOTDIR = $(abspath ../../root)
 ZCC_ASM = -s
 ZCC_ASMEXT = s
-endif
 
 #
-# Where a size build lands.  Keyed to the compiler that produced it:
-# these directories hold objects, and one directory shared between two
-# compilers means whatever ran last wins.  Reading zc3's objects and
-# calling them ccc's is an easy mistake to make and a hard one to see.
+# Where a size build lands.  Still keyed to $(ZCC): when there were
+# two compilers, one shared directory meant whatever ran last won,
+# and reading zc3's objects as ccc's was easy to do and hard to see.
 #
 SIZEDIR = sizecheck-$(ZCC)
 
@@ -181,31 +169,14 @@ $(OUTDIR)/%.s: $(OUTDIR)/%.1 $(OUTDIR)/%.2 $(C1)
 regression:
 	../../tests/regress.sh --filter ccc/pass1/ $(REGRESS_FLAGS)
 
-# Native Z80 build for simulator testing - same pattern as cpp's com-zc3.
-# Micronix flavor: crt0.o + libu syscalls; run with root/sim -d / mxzc3/c0.mx.
-# -O: zc3 peephole optimizer (parseExpr was split so optim3 can cope).
-ZC3 = zc3
-ZC3FLAGS = -O
-P1DIR = $(realpath .)
-LIBDIR = $(realpath ../lib)
-LIBSRCINC = $(realpath ../../libsrc/include)
+# The self-build: ccc's own chain compiles c0 and links it as a
+# Micronix binary for the simulator.  mx-zc3 built the same thing
+# with Hi-Tech C so the two could be run against each other; that
+# was the bootstrap and it is over.
+P1DIR = $(abspath .)
+LIBDIR = $(abspath ../lib)
+LIBSRCINC = $(abspath ../../libsrc/include)
 
-mx-zc3: $(GENERATED)
-	@mkdir -p mxzc3
-	@set -e; cd mxzc3 ; export PATH=$(ROOTDIR)/bin:$$PATH ; \
-	for f in $(SOURCES); do \
-		b=$${f%.c}; \
-		printf "%-12s" "$$b: " ; \
-		if $(ZC3) -c $(ZC3FLAGS) -CPM -DCCC -I$(P1DIR) -I$(LIBDIR) -I$(LIBSRCINC) \
-			$(P1DIR)/$$f > $$b.log 2>&1 \
-			&& { [ -f $$b.o ] || [ -f $$b.obj ]; }; then \
-			echo ok; \
-		else echo FAIL; cat $$b.log; exit 1; fi \
-	done
-	cd mxzc3 && $(ROOTDIR)/bin/wsld -s -o c0.mx -Ttext=0x100 \
-		$(ROOTDIR)/lib/crt0.o $$(ls *.o *.obj 2>/dev/null) \
-		-L$(ROOTDIR)/lib/zc3 -lccc -lc -lu -lc
-	@$(ROOTDIR)/bin/wssize mxzc3/c0.mx
 # The peephole is not optional.  It is a few percent of text on
 # ccc-generated code - 610 bytes off cpp, 1109 off c0, 1665 off c1 -
 # and the passes are close enough to the ceiling that a few percent is
@@ -237,6 +208,6 @@ mx-ccc: $(GENERATED)
 		-L$(ROOTDIR)/lib/ccc -lccc -lc -lu -lc
 	@$(ROOTDIR)/bin/wssize mxccc/c0.mx
 
-.PHONY: all clean regen stage1 install clobber sizefile sizecheck regression mx-zc3 mx-ccc
+.PHONY: all clean regen stage1 install clobber sizefile sizecheck regression mx-ccc
 
 # vim: tabstop=4 shiftwidth=4 noexpandtab:

@@ -16,43 +16,70 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
+    # Baseline for the clobber check at the end of the run.  Taken
+    # before anything is built, so the comparison is against a tree
+    # as checked out rather than against an assumption about what a
+    # checkout contains.
+    - name: Record clean tree
+      run: |
+        git status --porcelain --ignored=matching \
+          | grep -v '^!! root/' > /tmp/tree-before.txt || true
+
+    # gcc-multilib for -m32: the host passes are built 32-bit so that
+    # long is 32 bits here as it is on the Z80.  Nothing else is
+    # needed - the compiler, the assembler, the linker and the
+    # librarian are all in this tree.
     - name: Install dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y gcc gcc-multilib make gawk pandoc enscript ghostscript
+        sudo apt-get install -y gcc gcc-multilib make gawk
 
-    - name: Build project
-      run: make clean && make && make install
+    # make builds the host side, installs it to root/, then builds the
+    # z80 runtime with it.  Both phases in one target - see the
+    # top-level Makefile for why the order is forced.
+    - name: Build
+      run: make
 
     - name: Run tests
-      run: make test || true
-
-    - name: Generate documentation PDF
-      run: make doc.pdf
-
-    - name: Upload documentation PDF
-      uses: actions/upload-artifact@v4
-      with:
-        name: documentation
-        path: doc.pdf
-        retention-days: 90
+      run: make test
 
     - name: Show build artifacts
       run: |
-        ls -lh pass1/cc1 pass2/cc2 doc.pdf
-        file pass1/cc1 pass2/cc2 doc.pdf
+        ls -lh root/bin root/lib/ccc
+        file root/bin/cpp root/bin/c0 root/bin/c1 root/bin/peep
 
-    - name: Create Release and Upload Documentation
+    # The invariant that clobber removes what a build makes: after it,
+    # the tree must look the way it did on checkout.  root/ is the
+    # install destination rather than a side effect and is deliberately
+    # left alone, so it is the one thing expected to survive.
+    - name: Check that clobber leaves nothing behind
+      run: |
+        make clobber
+        git status --porcelain --ignored=matching \
+          | grep -v '^!! root/' > /tmp/tree-after.txt || true
+        if ! diff -u /tmp/tree-before.txt /tmp/tree-after.txt; then
+          echo "clobber left the files marked + above"
+          exit 1
+        fi
+        echo "clobber is clean"
+
+    - name: Package the toolchain
+      if: startsWith(github.ref, 'refs/tags/')
+      run: |
+        make
+        tar czf ccc-${{ github.ref_name }}.tar.gz -C root bin lib usr
+
+    - name: Create Release
       if: startsWith(github.ref, 'refs/tags/')
       uses: softprops/action-gh-release@v1
       with:
-        files: doc.pdf
+        files: ccc-${{ github.ref_name }}.tar.gz
         body: |
-          Compiler documentation for ${{ github.ref_name }}
+          ccc toolchain for ${{ github.ref_name }}
 
-          This release includes:
-          - Complete source code documentation (doc.pdf)
-          - All source files and tests
+          The built compiler (cpp, c0, c1, peep), the Whitesmith's
+          tools (asz, wsld, wslib, wsnm, wssize), the ccc driver and
+          the Z80 runtime archives.
         fail_on_unmatched_files: true
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

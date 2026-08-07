@@ -8,11 +8,15 @@ DEST ?= $(CURDIR)/../root
 # every .s in the three libraries are sources.
 include ../cruft.mk
 
-AS = asz
+# The assembler is named by path, not found on PATH.  It is built by
+# tools/ in this same tree and installed a phase earlier; relying on
+# PATH meant the build only worked on a machine that already had an
+# older install of it sitting there.
+AS = $(DEST)/bin/asz
 
-# Each library builds two areas, zc3/ and ccc/ - one archive per
-# compiler - and installs them to root/lib/zc3 and root/lib/ccc.
-# Links pick an area with -L; the two runtimes never mix in one image.
+# Each library builds one area, ccc/, and installs it to
+# root/lib/ccc.  There was a zc3/ area beside it while Hi-Tech C was
+# bootstrapping this compiler's runtime; that is finished.
 DIRS = libu libc libcpm
 STARTUP = crtcpm.o crt0.o
 

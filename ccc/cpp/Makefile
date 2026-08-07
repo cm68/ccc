@@ -5,7 +5,7 @@
 # Disable built-in lex rule (.x -> .c) to avoid conflicts with lexeme output files
 %.c: %.x
 
-DEST = $(realpath ../../root)
+DEST = $(abspath ../../root)
 
 include ../../cruft.mk
 
@@ -20,12 +20,6 @@ DEBUG = -g -O0
 CFLAGS = -m32 -std=c89 $(DEBUG) $(DEFINES) $(WARNS) -I. -I../lib
 LDFLAGS = -m32 $(DEBUG)
 endif
-
-ifeq ($(CC),zc3)
-CFLAGS = -I../../libsrc/include -I../lib
-LDFLAGS =
-endif
-
 
 INC = -I../../libsrc/include -I. -I../lib
 CCC = $(DEST)/bin/ccc
@@ -46,24 +40,18 @@ ifeq ($(CC),ccc)
 CFLAGS = -I../../libsrc/include -I. -I../lib
 endif
 
-# Z80 compiler used by `sizecheck` (ccc | zc3)
+# Z80 compiler used by `sizecheck`.  ccc is the only one now; zc3
+# was the Hi-Tech bootstrap.
 ZCC = ccc
 ZCFLAGS = -DCCC $(INC)
-ROOTDIR = $(realpath ../../root)
-ifeq ($(ZCC),zc3)
-ZCC_ASM = -S
-ZCC_ASMEXT = as
-endif
-ifeq ($(ZCC),ccc)
+ROOTDIR = $(abspath ../../root)
 ZCC_ASM = -s
 ZCC_ASMEXT = s
-endif
 
 #
-# Where a size build lands.  Keyed to the compiler that produced it:
-# these directories hold objects, and one directory shared between two
-# compilers means whatever ran last wins.  Reading zc3's objects and
-# calling them ccc's is an easy mistake to make and a hard one to see.
+# Where a size build lands.  Still keyed to $(ZCC): when there were
+# two compilers, one shared directory meant whatever ran last won,
+# and reading zc3's objects as ccc's was easy to do and hard to see.
 #
 SIZEDIR = sizecheck-$(ZCC)
 
@@ -159,54 +147,21 @@ sizecheck: $(GENERATED)
 	wssize $(SIZEDIR)/cpp | tee -a sizefile
 
 
-# ---- CP/M .com builds (native memory footprint) -----------------------
-#
-# Each com-<cc> target builds cpp as a full CP/M .com image with a
-# different Z80 compiler and reports text/data/bss, so the native
-# footprint can be tracked against the 64KB budget.
-#
-#   com-zc3   Hi-Tech C v3.09 objects, wsld link against the ccc
-#             runtime (crtcpm + libccc/libcpm/libc/libu). Runnable
-#             in principle; fork/exec of xdump (-p/-E) will not work
-#             under CP/M.
-#
-# com-sdcc is gone: self-build is in reach, and a third compiler's
-# numbers stopped earning their upkeep.
+# ---- native memory footprint ------------------------------------
 #
 #   mx-ccc    the self-build: ccc's own chain compiles cpp, linked
 #             as a Micronix binary for the simulator.  This is the
 #             cpp the self-build differential runs.
+#
+# com-zc3 built the same image with Hi-Tech C, and com-sdcc with
+# sdcc, back when a second and third compiler's numbers were worth
+# their upkeep as a check on ccc's.  Both are gone with the
+# bootstrap.
 
-CPPDIR   = $(realpath .)
-LIBDIR   = $(realpath ../lib)
-LIBSRCINC = $(realpath ../../libsrc/include)
+CPPDIR   = $(abspath .)
+LIBDIR   = $(abspath ../lib)
+LIBSRCINC = $(abspath ../../libsrc/include)
 
-com: com-zc3
-
-# zc3 built MICRONIX-flavored emits .o (via asz); older builds emit .obj.
-# wsld links either.  PATH picks up asz/wsld for the driver's back end.
-# -O: peephole optimizer, ~23% smaller text (verified byte-identical).
-ZC3 = zc3
-ZC3FLAGS = -O
-
-com-zc3: $(GENERATED)
-	@mkdir -p comzc3
-	@set -e; cd comzc3 ; export PATH=$(ROOTDIR)/bin:$$PATH ; \
-	for f in $(SOURCES); do \
-		b=$${f%.c}; \
-		printf "%-12s" "$$b: " ; \
-		if $(ZC3) -c $(ZC3FLAGS) -CPM -DCCC -I$(CPPDIR) -I$(LIBDIR) -I$(LIBSRCINC) \
-			$(CPPDIR)/$$f > $$b.log 2>&1 \
-			&& { [ -f $$b.o ] || [ -f $$b.obj ]; }; then \
-			echo ok; \
-		else echo FAIL; cat $$b.log; exit 1; fi \
-	done
-	cd comzc3 && $(ROOTDIR)/bin/wsld -s -o cpp.ws \
-		-Ttext=0x100 -Tdata=0x100 -Tbss=0x100 \
-		$(ROOTDIR)/lib/crtcpm.o $$(ls *.o *.obj 2>/dev/null) \
-		-L$(ROOTDIR)/lib/zc3 -lccc -lcpm -lc -lu -lc
-	cd comzc3 && tail -c +17 cpp.ws > cpp-zc3.com
-	@$(ROOTDIR)/bin/wssize comzc3/cpp.ws | sed 's/cpp.ws/cpp-zc3.com/'
 # The peephole is not optional.  It is a few percent of text on
 # ccc-generated code - 610 bytes off cpp, 1109 off c0, 1665 off c1 -
 # and the passes are close enough to the ceiling that a few percent is
@@ -322,6 +277,6 @@ test: langtest
 	cd test && ./runtest.sh
 	cd test && ./sweep.sh
 
-.PHONY: all clean regen stage1 install clobber sizefile sizecheck regression langtest test com com-zc3 mx-ccc valgrind
+.PHONY: all clean regen stage1 install clobber sizefile sizecheck regression langtest test mx-ccc valgrind
 
 # vim: tabstop=4 shiftwidth=4 noexpandtab:

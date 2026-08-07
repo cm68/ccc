@@ -7,27 +7,25 @@
 # comparison standing in for a signed one - both of which generated
 # perfectly clean code.
 #
-# Three paths over the same sources:
+# Two paths over the same sources:
 #   native  host compiler, run directly - the reference
-#   zc3     Hi-Tech, run under the simulator
 #   ccc     this compiler, run under the simulator
 #
-# A disagreement between ccc and either of the other two is a bug in
-# ccc.  A disagreement between native and zc3 means the test is
-# assuming something about widths it should not.
+# A disagreement between the two is a bug in ccc.  There was a third
+# path once, Hi-Tech's zc3 under the simulator, to tell a ccc bug
+# apart from a test making an assumption about widths it should not.
+# It stopped being worth its upkeep - zc3 failed this suite on its
+# own unsigned-char arithmetic - and went with the bootstrap.
 #
 
 include ../../cruft.mk
 
-.PHONY: all native zc3 ccc one clean clobber
+.PHONY: all native ccc one clean clobber
 
-all: native zc3 ccc
+all: native ccc
 
 native:
 	@sh runtests.sh native
-
-zc3:
-	@sh runtests.sh zc3
 
 ccc:
 	@sh runtests.sh ccc

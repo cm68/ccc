@@ -31,8 +31,9 @@ CRUFT = *.i *.x *.1 *.2 *.pp *.ast *.o *.obj *.rel *.a \
 	core core.[0-9]* vgcore.* tmp[0-9]*
 
 #
-# Assembly, for the directories that only ever generate it.  .as is
-# zc3's suffix, .s is ccc's and .asm is sdcc's.
+# Assembly, for the directories that only ever generate it.  .s is
+# ccc's suffix; .as and .asm were zc3's and sdcc's and are swept so
+# that a tree built before the bootstrap ended comes out clean.
 #
 CRUFTASM = *.s *.as *.asm
 
@@ -44,7 +45,9 @@ CRUFTASMGEN = *.as *.asm
 #
 # Build areas.  Each is made by a rule - one per compiler for the
 # size and native builds, one per stage for the bootstrap - and none
-# is ever checked in, so clobber takes the whole directory.
+# is ever checked in, so clobber takes the whole directory.  comzc3,
+# comsdcc and mxzc3 have no rule left to make them; they stay on the
+# list so a tree that still has one loses it.
 #
 CRUFTDIRS = stage1 stage2 sizecheck sizecheck-* sizecheck1 \
 	langtest valgrind comzc3 comsdcc comccc mxzc3 mxccc \

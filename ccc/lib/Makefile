@@ -2,7 +2,7 @@
 # Makefile for libccc.a - shared utilities for ccc compiler
 #
 
-DEST = $(realpath ../../root)
+DEST = $(abspath ../../root)
 
 include ../../cruft.mk
 
@@ -28,15 +28,19 @@ endif
 
 HEADERS = libutil.h
 
-# The z80 archive is built twice, once per compiler, into zc3/ and
-# ccc/ build areas that install to root/lib/zc3 and root/lib/ccc -
-# the same split as libsrc.  A zc3-linked image takes everything from
-# lib/zc3, a ccc-linked one from lib/ccc.
-all: libccc.a z80
+# The z80 archive is built into a ccc/ build area that installs to
+# root/lib/ccc - the same shape as libsrc.  There was a zc3/ area
+# beside it built by Hi-Tech C while this compiler's runtime was
+# still being proven; that bootstrap is over.
+#
+# all is the HOST archive only.  The z80 area is compiled by the
+# installed compiler and so cannot be built until it is in root/bin -
+# the top-level Makefile runs it as a second phase.
+all: libccc.a
 
-z80: zc3 ccc
+z80: ccc
 
-zc3 ccc:
+ccc:
 	@$(MAKE) TC=$@ $@/libccc.a
 
 ifneq ($(TC),)
@@ -50,13 +54,8 @@ ifneq ($(TC),)
 # aldiv and almod, so every image linked BOTH runtimes and c0 grew
 # five hundred bytes that looked like they came from the new one.
 #
-ifeq ($(TC),ccc)
 ZCC = $(DEST)/bin/ccc -O
 CCDEP = $(DEST)/bin/c1 $(DEST)/bin/c0 $(DEST)/bin/cpp $(DEST)/bin/peep
-else
-ZCC = zc3
-CCDEP =
-endif
 
 $(TC)/libutil.o: libutil.c $(HEADERS) $(CCDEP)
 	@mkdir -p $(TC)
@@ -64,7 +63,7 @@ $(TC)/libutil.o: libutil.c $(HEADERS) $(CCDEP)
 
 $(TC)/libccc.a: $(TC)/libutil.o
 	rm -f $@
-	wslib -cr $@ $(TC)/libutil.o
+	$(DEST)/bin/wslib -cr $@ $(TC)/libutil.o
 
 
 endif
@@ -88,14 +87,13 @@ clobber: clean
 	rm -f $(CRUFTLOG)
 	rm -rf $(CRUFTDIRS)
 
-install: all
-	@mkdir -p $(DEST)/lib/zc3 $(DEST)/lib/ccc
-	cp zc3/libccc.a $(DEST)/lib/zc3/
+install: z80
+	@mkdir -p $(DEST)/lib/ccc
 	cp ccc/libccc.a $(DEST)/lib/ccc/
 
 regression:
 	../../tests/regress.sh --filter ccc/lib/ $(REGRESS_FLAGS)
 
-.PHONY: all z80 zc3 ccc clean clobber install regression
+.PHONY: all z80 ccc clean clobber install regression
 
 # vim: tabstop=4 shiftwidth=4 noexpandtab:

@@ -2,7 +2,7 @@
 # Makefile for ccc peephole optimizer
 #
 
-DEST = $(realpath ../../root)
+DEST = $(abspath ../../root)
 
 include ../../cruft.mk
 
@@ -15,31 +15,21 @@ CFLAGS = -m32 $(DEBUG) $(WARNS) -I.
 LDFLAGS = -m32 $(DEBUG)
 endif
 
-ifeq ($(CC),zc3)
-CFLAGS = -I../../libsrc/include -I../lib
-LDFLAGS =
-endif
-
 ifeq ($(CC),ccc)
 CFLAGS = -I. -I../lib
 endif
 
 INC = -I../../libsrc/include -I../lib
-ROOTDIR = $(realpath ../../root)
+ROOTDIR = $(abspath ../../root)
 
 OUTDIR = stage1
 
-# Z80 compiler used by `sizecheck` (ccc | zc3)
+# Z80 compiler used by `sizecheck`.  ccc is the only one now; zc3
+# was the Hi-Tech bootstrap.
 ZCC = ccc
 ZCFLAGS = -DCCC $(INC)
-ifeq ($(ZCC),zc3)
-ZCC_ASM = -S
-ZCC_ASMEXT = as
-endif
-ifeq ($(ZCC),ccc)
 ZCC_ASM = -s
 ZCC_ASMEXT = s
-endif
 SIZEDIR = sizecheck-$(ZCC)
 
 SOURCES = peep.c regs.c rules.c pool.c

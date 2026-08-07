@@ -2,16 +2,17 @@
 # cp/m system call Library Makefile
 # Builds the cp/m call library
 #
-# Two build areas, one per compiler: zc3/ and ccc/ - see libc/Makefile.
+# One build area, ccc/ - see libc/Makefile.  The zc3/ area beside
+# it was the Hi-Tech bootstrap and is gone.
 # CC is deliberately unused: the top level drives everything with
 # CC=gcc on the command line, and these are target runtime sources.
 #
 
 ARCHIVE = libcpm.a
 
-AS = asz
-LIB = wslib
-ROOTDIR = $(realpath ../../root)
+AS = $(ROOTDIR)/bin/asz
+LIB = $(ROOTDIR)/bin/wslib
+ROOTDIR = $(abspath ../../root)
 
 # The .s files here are sources, so CRUFTASM is deliberately absent.
 include ../../cruft.mk
@@ -29,9 +30,14 @@ CSRCS = abort.c chmod.c cleanup.c close.c creat.c dup.c \
 	open.c read.c rename.c seek.c signal.c stat.c time.c \
 	unlink.c write.c
 
-all: zc3 ccc
+# One build area, ccc/, holding the runtime this compiler built.
+# There was a zc3/ area beside it once, the same sources built by
+# Hi-Tech C so a ccc-built program could link a runtime known to
+# work.  That was the bootstrap and the bootstrap is finished: ccc
+# builds its own runtime and nothing here needs another compiler.
+all: ccc
 
-zc3 ccc:
+ccc:
 	@$(MAKE) TC=$@ $@/$(ARCHIVE)
 
 # ccc-check used to be a throwaway compile-stress pass over CSRCS with
@@ -44,13 +50,8 @@ OBJS = $(addprefix $(TC)/,$(SRCS:.s=.o) $(CSRCS:.c=.o))
 
 # The ccc area is rebuilt when the compiler itself changes - see
 # libc/Makefile.
-ifeq ($(TC),ccc)
 ZCC = $(ROOTDIR)/bin/ccc -O
 CCDEP = $(ROOTDIR)/bin/c1 $(ROOTDIR)/bin/c0 $(ROOTDIR)/bin/cpp $(ROOTDIR)/bin/peep
-else
-ZCC = zc3
-CCDEP =
-endif
 
 $(TC)/%.o: %.c $(CCDEP)
 	@mkdir -p $(TC)
@@ -68,8 +69,7 @@ $(TC)/$(ARCHIVE): $(OBJS)
 endif
 
 install: all
-	@mkdir -p $(DEST)/zc3 $(DEST)/ccc
-	cp zc3/$(ARCHIVE) $(DEST)/zc3/
+	@mkdir -p $(DEST)/ccc
 	cp ccc/$(ARCHIVE) $(DEST)/ccc/
 
 clean:
@@ -83,6 +83,6 @@ clobber: clean
 regression:
 	../../tests/regress.sh --filter libsrc/libcpm/ $(REGRESS_FLAGS)
 
-.PHONY: all zc3 ccc ccc-check install clean clobber regression
+.PHONY: all ccc ccc-check install clean clobber regression
 
 # vim: tabstop=4 shiftwidth=4 noexpandtab:

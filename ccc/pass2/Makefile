@@ -2,7 +2,7 @@
 # Makefile for ccc compiler pass 2
 #
 
-DEST = $(realpath ../../root)
+DEST = $(abspath ../../root)
 
 include ../../cruft.mk
 
@@ -17,12 +17,6 @@ DEBUG = -ggdb3 -O0
 CFLAGS = -m32 $(DEBUG) $(DEFINES) $(WARNS) -I. -I../lib
 LDFLAGS = -m32 $(DEBUG)
 endif
-
-ifeq ($(CC),zc3)
-CFLAGS = -I../../libsrc/include -I../lib
-LDFLAGS =
-endif
-
 
 INC = -I../../libsrc/include -I../lib
 CCC = $(DEST)/bin/ccc
@@ -44,24 +38,18 @@ ifeq ($(CC),ccc)
 CFLAGS = -I. -I../lib
 endif
 
-# Z80 compiler used by `sizecheck` (ccc | zc3)
+# Z80 compiler used by `sizecheck`.  ccc is the only one now; zc3
+# was the Hi-Tech bootstrap.
 ZCC = ccc
 ZCFLAGS = -DCCC $(INC)
-ROOTDIR = $(realpath ../../root)
-ifeq ($(ZCC),zc3)
-ZCC_ASM = -S
-ZCC_ASMEXT = as
-endif
-ifeq ($(ZCC),ccc)
+ROOTDIR = $(abspath ../../root)
 ZCC_ASM = -s
 ZCC_ASMEXT = s
-endif
 
 #
-# Where a size build lands.  Keyed to the compiler that produced it:
-# these directories hold objects, and one directory shared between two
-# compilers means whatever ran last wins.  Reading zc3's objects and
-# calling them ccc's is an easy mistake to make and a hard one to see.
+# Where a size build lands.  Still keyed to $(ZCC): when there were
+# two compilers, one shared directory meant whatever ran last won,
+# and reading zc3's objects as ccc's was easy to do and hard to see.
 #
 SIZEDIR = sizecheck-$(ZCC)
 
@@ -134,35 +122,6 @@ stage1: c1
 		fi \
 	done
 
-# CP/M .com footprint, built the way the shipped binary is: -O peephole
-# (~23% smaller text than sizecheck's unoptimised build).  This is the
-# number to weigh against the TPA, not sizecheck's.
-ZC3 = zc3
-ZC3FLAGS = -O
-LIBSRCINC = $(realpath ../../libsrc/include)
-
-com: $(GENERATED)
-	@mkdir -p comzc3
-	@set -e; cd comzc3 ; export PATH=$(ROOTDIR)/bin:$$PATH ; \
-	for f in $(SOURCES); do \
-		b=$${f%.c}; \
-		printf "%-12s" "$$b: " ; \
-		if $(ZC3) -c $(ZC3FLAGS) -CPM -DCCC -I.. -I../../lib -I$(LIBSRCINC) \
-			../$$f > $$b.log 2>&1 \
-			&& { [ -f $$b.o ] || [ -f $$b.obj ]; }; then \
-			echo ok; \
-		else echo FAIL; cat $$b.log; exit 1; fi \
-	done
-	cd comzc3 && $(ROOTDIR)/bin/wsld -s -o c1.ws \
-		-Ttext=0x100 -Tdata=0x100 -Tbss=0x100 \
-		$(ROOTDIR)/lib/crtcpm.o $$(ls *.o *.obj 2>/dev/null) \
-		-L$(ROOTDIR)/lib/zc3 -lccc -lcpm -lc -lu -lc
-	cd comzc3 && tail -c +17 c1.ws > c1-zc3.com
-	@echo "--- per object (text data bss) ---"
-	@cd comzc3 && $(ROOTDIR)/bin/wssize $$(ls *.o *.obj 2>/dev/null)
-	@echo "--- linked image ---"
-	@$(ROOTDIR)/bin/wssize comzc3/c1.ws | sed 's/c1.ws/c1-zc3.com/'
-
 sizecheck: $(GENERATED)
 	mkdir -p $(SIZEDIR)
 	$(SETX) ; export ROOTDIR=$(ROOTDIR) ; o="" ; for f in $(SOURCES); do \
@@ -216,9 +175,9 @@ coverage: c1
 # Native Z80 c1 built by ccc itself, for the self-build run: the
 # other two passes have had differential builds for a while, and c1
 # was the one still only proven to compile, never to run.
-P2DIR = $(realpath .)
-LIBDIR = $(realpath ../lib)
-LIBSRCINC = $(realpath ../../libsrc/include)
+P2DIR = $(abspath .)
+LIBDIR = $(abspath ../lib)
+LIBSRCINC = $(abspath ../../libsrc/include)
 # The peephole is not optional.  It is a few percent of text on
 # ccc-generated code - 610 bytes off cpp, 1109 off c0, 1665 off c1 -
 # and the passes are close enough to the ceiling that a few percent is

@@ -2,16 +2,17 @@
 #
 # Run the runtime correctness tests through one toolchain.
 #
-#   runtests.sh <native|zc3|ccc> [test.c ...]
+#   runtests.sh <native|ccc> [test.c ...]
 #
 # Each test returns the number of the first check that failed, or zero
 # if all passed, so the exit status alone says what went wrong and no
-# output has to be parsed or kept in step across the three paths.
+# output has to be parsed or kept in step across the two paths.
 #
-# native builds with the host compiler and runs directly; zc3 and ccc
-# build Z80 binaries and run them under the simulator.  The native run
-# is the reference: the tests use short throughout so that it computes
-# the same answers a 16-bit target does.
+# native builds with the host compiler and runs directly; ccc builds a
+# Z80 binary and runs it under the simulator.  The native run is the
+# reference: the tests use short throughout so that it computes the
+# same answers a 16-bit target does.  A third path built with Hi-Tech
+# C went with the bootstrap.
 
 set -e
 
@@ -31,8 +32,8 @@ mode=$1
 shift || true
 
 case "$mode" in
-native|zc3|ccc) ;;
-*) echo "usage: $0 <native|zc3|ccc> [test.c ...]" >&2; exit 2 ;;
+native|ccc) ;;
+*) echo "usage: $0 <native|ccc> [test.c ...]" >&2; exit 2 ;;
 esac
 
 tests="$*"
@@ -65,21 +66,6 @@ for t in $tests; do
 		# different answers in the two places and the reference would
 		# be worth nothing.  short and char are unaffected.
 		gcc -w -m32 -std=gnu89 -DRT_NATIVE -o "$bin" "$src" >"$log" 2>&1 || built=no
-		;;
-	zc3)
-		# The same recipe as ccc/pass1's mx-zc3 target: compile only,
-		# then link by hand against this tree's runtime.  What makes
-		# the result Micronix rather than CP/M is the link - crt0 and
-		# libu - not -CPM, which is about the compiler's own
-		# assumptions and is what mx-zc3 passes too.  -Ttext=0x100
-		# matters: the simulator loads there, and without it the
-		# binary is laid out at zero and runs off into the header.
-		(cd "$work" &&
-		 PATH="$root/root/bin:$PATH" \
-		 zc3 -O -c -CPM -DRT_ZC3 -I"$here" "$src" &&
-		 "$root/root/bin/wsld" -o "$bin" -Ttext=0x100 \
-			"$root/root/lib/crt0.o" "$base.o" \
-			-L"$root/root/lib/zc3" -lc -lu -lc) >"$log" 2>&1 || built=no
 		;;
 	ccc)
 		(cd "$work" && "$CCC" $CCCFLAGS -DRT_CCC -o "$bin" -I"$here" "$src") >"$log" 2>&1 ||

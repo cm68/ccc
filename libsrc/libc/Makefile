@@ -1,19 +1,20 @@
 #
 # compiler support and standard c library without system call dependencies
 #
-# Two build areas, one per compiler: zc3/ holds HiTech-built objects
-# and archive, ccc/ holds the same sources built by ccc itself.  The
-# .s files assemble identically in both; only the C differs.  Linkers
-# pick an area with -L root/lib/zc3 or -L root/lib/ccc, so a zc3-built
-# program never mixes with ccc-built runtime C and vice versa.
+# One build area, ccc/, installed to root/lib/ccc.  There were two
+# for as long as the bootstrap needed them - a zc3/ area of the same
+# sources built by Hi-Tech C, so a program could link a runtime that
+# was known to work while ccc's was still being proven.  ccc builds
+# its own now and Hi-Tech is gone from the tree.
 #
-# That the .s files are shared is why the 32-bit runtime comes in two
-# sets.  ladd, arelop, almul, aldiv, allsh and the rest are Hi-Tech's,
-# take their operands in HL:DE and on the stack, and are named by
-# zc3's code generator; the q* set is ccc's, takes them in HL':HL and
-# DE':DE, and is named by pass2.  See QLONG.md.  Both are archived
-# into both areas and neither program links the other's - the linker
-# pulls an object only when something references it.
+# One leftover of that: the 32-bit runtime is still here in two sets.
+# ladd, arelop, almul, aldiv, allsh and the rest are Hi-Tech's, take
+# their operands in HL:DE and on the stack, and were named by zc3's
+# code generator; the q* set is ccc's, takes them in HL':HL and
+# DE':DE, and is named by pass2.  See QLONG.md.  Nothing emits calls
+# to the first set any more, and the linker pulls an object only when
+# something references it, so they cost nothing in an image - but
+# they are dead weight in the archive and could go.
 #
 # CC is deliberately unused: the top level drives everything with
 # CC=gcc on the command line, and a command-line variable beats any
@@ -23,9 +24,9 @@
 
 ARCHIVE = libc.a
 
-AS = asz
-LIB = wslib
-ROOTDIR = $(realpath ../../root)
+AS = $(ROOTDIR)/bin/asz
+LIB = $(ROOTDIR)/bin/wslib
+ROOTDIR = $(abspath ../../root)
 
 # The .s files here are sources, so CRUFTASM is deliberately absent.
 include ../../cruft.mk
@@ -75,9 +76,14 @@ CSRCS = \
 # stubs that a program can override by linking its own.
 #
 
-all: zc3 ccc
+# One build area, ccc/, holding the runtime this compiler built.
+# There was a zc3/ area beside it once, the same sources built by
+# Hi-Tech C so a ccc-built program could link a runtime known to
+# work.  That was the bootstrap and the bootstrap is finished: ccc
+# builds its own runtime and nothing here needs another compiler.
+all: ccc
 
-zc3 ccc:
+ccc:
 	@$(MAKE) TC=$@ $@/$(ARCHIVE)
 
 # The per-area rules only exist inside a TC= sub-make; without the
@@ -90,13 +96,8 @@ OBJS = $(addprefix $(TC)/,$(SRCS:.s=.o) $(CSRCS:.c=.o))
 # objects exist to be run, and a codegen fix that leaves stale ones
 # behind reads as a fix that did not work.  An afternoon went into
 # one that had.
-ifeq ($(TC),ccc)
 ZCC = $(ROOTDIR)/bin/ccc -O
 CCDEP = $(ROOTDIR)/bin/c1 $(ROOTDIR)/bin/c0 $(ROOTDIR)/bin/cpp $(ROOTDIR)/bin/peep
-else
-ZCC = zc3
-CCDEP =
-endif
 
 $(TC)/%.o: %.c $(CCDEP)
 	@mkdir -p $(TC)
@@ -114,8 +115,7 @@ $(TC)/$(ARCHIVE): $(OBJS)
 endif
 
 install: all
-	@mkdir -p $(DEST)/zc3 $(DEST)/ccc
-	cp zc3/$(ARCHIVE) $(DEST)/zc3/
+	@mkdir -p $(DEST)/ccc
 	cp ccc/$(ARCHIVE) $(DEST)/ccc/
 
 clean:
@@ -129,6 +129,6 @@ clobber: clean
 regression:
 	../../tests/regress.sh --filter libsrc/libc/ $(REGRESS_FLAGS)
 
-.PHONY: all zc3 ccc install clean clobber regression
+.PHONY: all ccc install clean clobber regression
 
 # vim: tabstop=4 shiftwidth=4 noexpandtab:
