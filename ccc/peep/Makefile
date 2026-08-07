@@ -4,6 +4,8 @@
 
 DEST = $(realpath ../../root)
 
+include ../../cruft.mk
+
 CC = gcc
 
 ifeq ($(CC),gcc)
@@ -57,11 +59,11 @@ else
 endif
 
 clean:
-	rm -f $(OBJECTS) peep *.o *.s *.1 *.2 *.x *.i core vgcore.*
+	rm -f $(OBJECTS) peep $(CRUFT) $(CRUFTASM)
 
 clobber: clean
-	rm -f ./peep
-	rm -rf sizecheck-* stage1
+	rm -f ./peep $(CRUFTLOG)
+	rm -rf $(CRUFTDIRS)
 
 install: peep
 	cp peep $(DEST)/bin

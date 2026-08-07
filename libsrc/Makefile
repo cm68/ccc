@@ -4,6 +4,10 @@
 
 DEST ?= $(CURDIR)/../root
 
+# CRUFTASM is not used anywhere under libsrc: crt0.s, crtcpm.s and
+# every .s in the three libraries are sources.
+include ../cruft.mk
+
 AS = asz
 
 # Each library builds two areas, zc3/ and ccc/ - one archive per
@@ -34,12 +38,19 @@ install: all
 	cp -r include/sys $(DEST)/usr/include
 
 clobber: clean
-	rm -f $(STARTUP)
+	rm -f $(STARTUP) $(CRUFTLOG)
+	rm -rf $(CRUFTDIRS)
 	for i in $(DIRS); do \
 		$(MAKE) -C $$i clobber ; \
 	done
 
+# old/ is superseded runtime kept for reference and has no place in
+# DIRS, but a build ran there once and left its objects behind.  The
+# .s files beside them are the reference and stay.
 clean:
+	rm -f $(CRUFT) $(CRUFTASMGEN)
+	rm -f include/*.i include/*.x
+	rm -f old/*/*.o old/*/*.a
 	for i in $(DIRS); do \
 		$(MAKE) -C $$i clean ; \
 	done

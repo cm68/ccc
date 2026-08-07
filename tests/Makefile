@@ -2,6 +2,11 @@
 # This file defines all tests organized by category
 VERBOSE = -s
 
+include ../cruft.mk
+
+# Subdirectories with test machinery of their own.
+TESTDIRS = gen run
+
 # Cancel built-in lex rule - .x files are lexeme dumps, not lex sources
 %.c: %.x
 
@@ -361,13 +366,23 @@ regression:
 %.o: %.s
 	../root/bin/wsas -o $@ $<
 
-# Clean test artifacts
+# Clean test artifacts.  The globs stop at this directory, so the
+# baseline/ tree - whose .x, .err and .rc files are checked in and
+# would otherwise match - is never touched.
 .PHONY: clean clobber
 clean:
-	rm -f *.i *.x *.o *.s *.ast *.1 *.2 *.pp
+	rm -f $(CRUFT) $(CRUFTASM)
+	@for d in $(TESTDIRS); do $(MAKE) -C $$d clean; done
 
+# Every test compiles to a binary named after its source with the
+# suffix dropped.  There are more of those than ALL_TESTS lists -
+# runtest.sh with no arguments builds whatever .c files are here -
+# so the sweep goes by what is on disk, not by the lists above.
 clobber: clean
-	rm -f $(ALL_TESTS:.c=)
+	@for d in $(TESTDIRS); do $(MAKE) -C $$d clobber; done
+	@for f in *.c; do b=$${f%.c}; [ -f "$$b" ] && rm -f "$$b"; done; true
+	rm -f simcheck $(CRUFTLOG)
+	rm -rf $(CRUFTDIRS)
 
 #
 # vim: tabstop=4 shiftwidth=4 noexpandtab:

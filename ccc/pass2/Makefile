@@ -4,6 +4,8 @@
 
 DEST = $(realpath ../../root)
 
+include ../../cruft.mk
+
 CC = gcc
 
 LIBCCC = ../lib/libccc.a
@@ -103,11 +105,11 @@ regen:
 	$(MAKE) $(GENERATED)
 
 clean:
-	rm -f $(OBJECTS) c1 $(GENERATED) *.o *.rel *.sym *.lst *.asm *.ihx *.lk *.map *.mem *.noi *.1 *.2 *.x *.i *.pp core vgcore.*
+	rm -f $(OBJECTS) c1 $(GENERATED) $(CRUFT) $(CRUFTASM)
 
 clobber: clean
-	rm -f ./c1
-	rm -rf sizecheck sizecheck-* stage1 stage2
+	rm -f ./c1 $(CRUFTLOG)
+	rm -rf $(CRUFTDIRS)
 
 install: c1
 	cp c1 $(DEST)/bin

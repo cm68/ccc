@@ -9,6 +9,8 @@ DEST ?= $(CURDIR)/../root
 CCC = $(DEST)/bin/ccc
 OUTDIR = stage1
 
+include ../cruft.mk
+
 CC = gcc
 
 ifeq ($(CC),gcc)
@@ -68,12 +70,15 @@ ccc: ccc.c
 test: asz
 	@sh tests/check-dollar.sh
 
+# tests/ holds hand-written .s assembler cases, so its cleanup names
+# what the check script produces rather than sweeping the suffix.
 clean:
-	rm -f *.a *.o *.1 *.2 *.x *.i *.pp tests/*.out tests/*.a tests/*.o
-	rm -f stage1/* core
+	rm -f $(CRUFT) $(CRUFTASM)
+	rm -f tests/*.out tests/*.a tests/*.o tests/*.n tests/*.lst tests/core
 
 clobber: clean
-	rm -f $(ALL)
+	rm -f $(ALL) $(CRUFTLOG)
+	rm -rf $(CRUFTDIRS)
 
 install: all
 	mkdir -p $(DEST)/bin

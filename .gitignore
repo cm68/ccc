@@ -86,10 +86,10 @@ root/
 old/
 
 # Sources that share an extension with the intermediates above.
-# Assembly sources live in libsrc plus the one CP/M startup file.
+# Assembly sources live in libsrc - the two startup files at its top
+# level and the runtime under it - plus the assembler's own test cases.
 !libsrc/*.s
 !libsrc/*/*.s
-!ccc/cpp/crt0cpm.s
 !tools/tests/*.s
 
 # regress.sh baselines are checked in: .x lexeme dumps, .rc exit codes

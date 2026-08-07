@@ -7,6 +7,8 @@
 
 DEST = $(realpath ../../root)
 
+include ../../cruft.mk
+
 CC = gcc
 
 LIBCCC = ../lib/libccc.a
@@ -108,12 +110,15 @@ regen:
 	rm -f $(GENERATED)
 	$(MAKE) $(GENERATED)
 
+# test/ has no Makefile of its own; runtest.sh and sweep.sh drop
+# their .x/.i/.n/.out there and it is cleaned from here.
 clean:
-	rm -f $(OBJECTS) cpp $(GENERATED) *.o *.rel *.sym *.lst *.asm *.ihx *.lk *.map *.mem *.noi *.1 *.2 *.x *.i *.pp
+	rm -f $(OBJECTS) cpp $(GENERATED) $(CRUFT) $(CRUFTASM)
+	rm -f test/*.x test/*.i test/*.n test/*.out test/*.err
 
 clobber: clean
-	rm -f ./cpp mkkw xdump
-	rm -rf sizecheck sizecheck-* stage1 stage2 langtest comzc3 comsdcc valgrind
+	rm -f ./cpp mkkw xdump $(CRUFTLOG)
+	rm -rf $(CRUFTDIRS)
 
 install: cpp xdump
 	cp cpp xdump $(DEST)/bin

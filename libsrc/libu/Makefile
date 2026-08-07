@@ -13,6 +13,9 @@ AS = asz
 LIB = wslib
 ROOTDIR = $(realpath ../../root)
 
+# The .s files here are sources, so CRUFTASM is deliberately absent.
+include ../../cruft.mk
+
 DEST ?= ../../root/lib
 
 .SUFFIXES:
@@ -67,10 +70,11 @@ install: all
 
 clean:
 	rm -rf zc3 ccc
-	rm -f *.o *.as *.1 *.2 *.x *.i *.pp
+	rm -f $(CRUFT) $(CRUFTASMGEN)
 
 clobber: clean
-	rm -f $(ARCHIVE)
+	rm -f $(ARCHIVE) $(CRUFTLOG)
+	rm -rf $(CRUFTDIRS)
 
 regression:
 	../../tests/regress.sh --filter libsrc/libu/ $(REGRESS_FLAGS)

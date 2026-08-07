@@ -4,6 +4,8 @@
 
 DEST = $(realpath ../../root)
 
+include ../../cruft.mk
+
 CC = gcc
 
 ifeq ($(CC),gcc)
@@ -76,9 +78,15 @@ permalloc.o: ../../libsrc/libc/permalloc.c
 libccc.a: $(OBJECTS)
 	$(LIB) $(LIBFLAGS) $@ $(OBJECTS)
 
+# zc3/ and ccc/ are this directory's build areas, not CRUFTDIRS
+# entries: the names are shared with the phony targets that fill them.
 clean:
-	rm -f $(OBJECTS) libccc.a
+	rm -f $(OBJECTS) libccc.a $(CRUFT) $(CRUFTASM)
 	rm -rf zc3 ccc
+
+clobber: clean
+	rm -f $(CRUFTLOG)
+	rm -rf $(CRUFTDIRS)
 
 install: all
 	@mkdir -p $(DEST)/lib/zc3 $(DEST)/lib/ccc
@@ -88,6 +96,6 @@ install: all
 regression:
 	../../tests/regress.sh --filter ccc/lib/ $(REGRESS_FLAGS)
 
-.PHONY: all z80 zc3 ccc clean install regression
+.PHONY: all z80 zc3 ccc clean clobber install regression
 
 # vim: tabstop=4 shiftwidth=4 noexpandtab:

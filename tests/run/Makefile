@@ -17,7 +17,9 @@
 # assuming something about widths it should not.
 #
 
-.PHONY: all native zc3 ccc one clean
+include ../../cruft.mk
+
+.PHONY: all native zc3 ccc one clean clobber
 
 all: native zc3 ccc
 
@@ -59,7 +61,14 @@ asmsnap:
 		[ -f $$b.s ] && mv $$b.s $(DIR)/$$b.s; \
 	done; ls $(DIR) | wc -l
 
+# gp_*.c is the generated production corpus - tests/gen writes it
+# here - so it goes with the rest of the droppings.  rt_*.c are the
+# hand-written cases and stay.
 clean:
-	rm -rf out
+	rm -f $(CRUFT) $(CRUFTASM) gp_*.c
+	rm -rf $(CRUFTDIRS)
+
+clobber: clean
+	rm -f $(CRUFTLOG)
 
 # vim: tabstop=4 shiftwidth=4 noexpandtab:

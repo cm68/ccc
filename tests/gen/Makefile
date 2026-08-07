@@ -44,6 +44,8 @@
 #
 ROOT = $(realpath ../..)
 RUN = $(realpath ../run)
+
+include ../../cruft.mk
 GEN = python3 genprod.py
 
 GPSRC = $(wildcard $(RUN)/gp_*.c)
@@ -98,7 +100,14 @@ sim:
 footprint:
 	@sh footprint.sh
 
+# unfired.ok is the blessed baseline and stays; unfired.now is this
+# run's answer.  The generated corpus lives in ../run and is removed
+# from here because this is what puts it there.
 clean:
-	rm -f $(RUN)/gp_*.c unfired.now cover.out
+	rm -f $(RUN)/gp_*.c unfired.now $(CRUFT) $(CRUFTASM)
+	rm -rf $(CRUFTDIRS)
 
-.PHONY: all corpus complete correct cover bless sim footprint clean
+clobber: clean
+	rm -f $(CRUFTLOG)
+
+.PHONY: all corpus complete correct cover bless sim footprint clean clobber

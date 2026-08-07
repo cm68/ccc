@@ -6,6 +6,8 @@
 
 DEST = $(realpath ../root)
 
+include ../cruft.mk
+
 CC = gcc
 CFLAGS = -m32 -g -O0 -Wall -Werror
 
@@ -34,14 +36,16 @@ clean:
 	$(MAKE) -C pass1 clean
 	$(MAKE) -C pass2 clean
 	$(MAKE) -C peep clean
+	rm -f $(CRUFT) $(CRUFTASM)
 
 clobber:
-	$(MAKE) -C lib clean
+	$(MAKE) -C lib clobber
 	$(MAKE) -C cpp clobber
 	$(MAKE) -C pass1 clobber
 	$(MAKE) -C pass2 clobber
 	$(MAKE) -C peep clobber
-	rm -f astpp
+	rm -f $(CRUFT) $(CRUFTASM) $(CRUFTLOG) astpp
+	rm -rf $(CRUFTDIRS)
 
 stage1:
 	$(MAKE) -C cpp DEST=$(DEST) stage1

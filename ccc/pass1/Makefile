@@ -4,6 +4,8 @@
 
 DEST = $(realpath ../../root)
 
+include ../../cruft.mk
+
 CC = gcc
 
 LIBCCC = ../lib/libccc.a
@@ -104,12 +106,13 @@ regen:
 	rm -f $(GENERATED)
 	$(MAKE) $(GENERATED)
 
+# pass1.[0-9]* is what -v dumps land in when the trace flags are on.
 clean:
-	rm -f $(OBJECTS) c0 $(GENERATED) *.o *.rel *.sym *.lst *.asm *.ihx *.lk *.map *.mem *.noi *.1 *.2 *.x *.i *.pp
+	rm -f $(OBJECTS) c0 $(GENERATED) $(CRUFT) $(CRUFTASM) pass1.[0-9]*
 
 clobber: clean
-	rm -f ./c0
-	rm -rf sizecheck sizecheck-* stage1 stage2
+	rm -f ./c0 $(CRUFTLOG)
+	rm -rf $(CRUFTDIRS)
 
 install: c0
 	cp c0 $(DEST)/bin

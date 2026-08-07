@@ -6,16 +6,23 @@
 
 CC = gcc
 
+include cruft.mk
+
 # Installation destination - propagated to all submakes
 DEST = $(realpath $(CURDIR)/root)
 
-# Compiler implementation subdirectory
-# COMPILER = ritchie 
-# COMPILER = hitech 
-COMPILER = ccc 
+# Compiler implementation subdirectory.  ritchie and hitech were the
+# two earlier front ends; both are in attic/ now.
+COMPILER = ccc
 
 # Subdirectories to build
 DIRS = $(COMPILER) tools libsrc
+
+# Subdirectories to clean.  tests is not built by "all" but it is
+# where most of the tree's droppings land - a corpus compiled three
+# ways leaves a .x, a .1, a .2, a .s, a .o and a binary per source -
+# so clean and clobber have to reach it.
+CLEANDIRS = $(DIRS) tests
 
 # libsrc has no stage1: it is the runtime, built for the target by
 # whichever compiler is driving, not compiled by ccc to be inspected.
@@ -33,13 +40,16 @@ install:
 	@for d in $(DIRS); do $(SUBMAKE) -C $$d install; done
 
 clean:
-	@for d in $(DIRS); do $(SUBMAKE) -C $$d clean; done
-	rm -f *.ast *.s *.pp *.i *.x
-	rm -rf stage1
+	@for d in $(CLEANDIRS); do $(SUBMAKE) -C $$d clean; done
+	rm -f $(CRUFT) $(CRUFTASM)
 
+# root/ is deliberately left alone: it is the install destination, not
+# a side effect, and root/sim is a hand-made symlink to the simulator
+# outside this tree that no rule here knows how to put back.
 clobber:
-	@for d in $(DIRS); do $(SUBMAKE) -C $$d clobber; done
-	rm -f tags doc.pdf prev.size cur.size
+	@for d in $(CLEANDIRS); do $(SUBMAKE) -C $$d clobber; done
+	rm -f $(CRUFT) $(CRUFTASM) $(CRUFTLOG) doc.pdf
+	rm -rf $(CRUFTDIRS)
 
 stage1: install
 	@echo "Building stage1 with cross ccc"
