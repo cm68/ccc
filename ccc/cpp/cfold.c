@@ -63,8 +63,6 @@ stadd(char *tag, unsigned short size)
 {
 	struct streg *s;
 
-	if (!tag || !size)
-		return;
 	s = (struct streg *)permalloc(sizeof(*s));
 	s->tag = tag;
 	s->size = size;
@@ -78,8 +76,6 @@ vadd(char *name, unsigned short total, unsigned short elem,
 {
 	struct vreg *v;
 
-	if (!name || !total)
-		return;
 	if (vfree) {
 		v = vfree;
 		vfree = v->next;

@@ -549,7 +549,10 @@ mpop(void)
 {
 	struct mframe *m = &mfr[(int)mtop];
 
-	if (!m->bad)
+	/* an anonymous body has no tag to register under, which is why
+	 * mpush takes a null one; the size is still the enclosing
+	 * member's, and mpop below hands it up */
+	if (!m->bad && m->tag)
 		stadd(m->tag, m->off);
 	mtop--;
 	if (mtop >= 0) {
