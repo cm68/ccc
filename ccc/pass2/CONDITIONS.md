@@ -1,260 +1,219 @@
-# Condition and Control Flow Labels
+# Conditions and Control Flow Labels
 
-This document describes label generation for control flow in pass2.
+This document describes how pass2 lowers conditions and names the labels it
+generates.
 
-## Overview
+## Label Naming
 
-Pass2 generates numeric labels for conditions and control flow. All labels
-follow the pattern `<prefix><num>_<fnIndex>` where:
-- `prefix` identifies the label type
-- `num` is a local counter within the function
-- `fnIndex` is the function index for global uniqueness
+Two schemes, both ending in the **function index** — `labelcnt` starts again at
+zero in every function, so without it the first label of one function and the
+first of the next collide.
 
-## Label Types
+| Form | Purpose |
+|------|---------|
+| `no<n>_<fn>` | An `if`'s false target, and (as `no<n+1>_<fn>`) its end target |
+| `_C<n>` | A short-circuit join inside a condition |
+| `_D<id>_<fn>` | A switch's dispatch |
+| `_K<id>_<fn>_<m>` | Case *m* of switch *id* |
+| `_N<id>_<fn>` | A switch's "nothing matched" |
+| `_F<id>_<fn>` | A switch's default |
+| `_X<id>_<fn>` | Past the whole switch |
+| `X<name>` | A function's exit (see [STACK.md](STACK.md)) |
 
-| Prefix | Purpose | Example |
-|--------|---------|---------|
-| `no` | False/skip target (if condition false) | `no3_2` |
-| `ht` | True target for OR short-circuit | `ht4_2` |
-| `el` | Else branch start | `el3_2` |
-| `te` | Ternary else branch | `te5_2` |
-| `tn` | Ternary end | `tn5_2` |
-| `ja` | AND short-circuit merge | `ja6_2` |
-| `jz` | AND result zero test | `jz7_2` |
-| `hz` | OR result zero test | `hz8_2` |
-| `ln` | Logical not result | `ln9_2` |
-| `eq` | Equality result | `eq10_2` |
-| `sg` | Sign test result | `sg11_2` |
-| `ni` | Long increment overflow | `ni12_2` |
-| `swc` | Switch case | `swc13_2` |
-| `swd` | Switch default | `swd14_2` |
-| `swe` | Switch end | `swe15_2` |
-| `sw` | Switch table | `sw16_2` |
+Loop labels (`__W<n>T`, `__F<n>B`, …) are **not** pass2's — cpp generated them
+and they arrive as ordinary `LABEL` statements.
 
-## If Statement Processing
+`labelcnt` is per function, reset in the `AST_FUNC` case; `fnindex` increments
+there and never resets.
 
-AST format: `I <nlabels> <condition> <then-body> <has_else> [<else-body>]`
+## If Statement
 
-The `nlabels` field tells pass2 how many intermediate labels the condition
-needs for short-circuit evaluation.
+AST format: `IF <nlabels> <condition> <then-body> <has_else> [<else-body>]`
 
 ```c
-// In dumpStmt() case 'I':
-nlabels = read1();
-lbl = labelCnt++;
-labelCnt += nlabels;  // reserve intermediate labels
+lbl = labelcnt;
+labelcnt += 2 + n;      /* lbl, lbl+1, and the short-circuits */
 ```
 
-### Simple If
+**Two numbers, not one.** An `if` with an else emits `no<lbl>` for the false
+branch and `no<lbl+1>` to jump over the else — but only one used to be
+reserved, and whether there *is* an else is not known until the then-body has
+been read, by which time any `if` inside it has already taken the next number.
+So `no<lbl+1>` was defined twice and every jump to it went to whichever the
+assembler kept. In an else-if chain the body of a branch was simply skipped:
+cpp built this way read its own `-o` and did nothing with the name after it.
+One number wasted per `if` without an else costs nothing.
 
-```c
-if (x) { body }
-```
+`nlabels` is pass1's count of the intermediate labels the condition needs for
+short-circuiting.
 
-Generated:
+### Simple if
+
 ```asm
-    ; evaluate x
-    ld a,h
-    or l
-    jp z,no0_1        ; skip if false
-    ; body
+	; evaluate x, leaving a condition
+	jp z,no0_1
+	; body
 no0_1:
 ```
 
-### If-Else
+### If-else
 
-```c
-if (x) { then } else { else }
-```
-
-Generated:
 ```asm
-    ; evaluate x
-    jp z,no0_1        ; skip to else if false
-    ; then body
-    jp no1_1          ; skip else
+	; evaluate x
+	jp z,no0_1
+	; then body
+	jp no1_1
 no0_1:
-el0_1:
-    ; else body
+	; else body
 no1_1:
 ```
 
-## Condition Flag Propagation
+## Branch-Chained Conditions
 
-The `cond` field marks expressions used as conditions. When `cond=1`, the
-expression emits conditional jumps instead of computing a value.
+The condition of an `if` is not evaluated to a value and then tested. It is
+lowered by `condfalse()` → `condgo()` in `lower.c`, which emits code that jumps
+to a label when the expression is false — **the short-circuit *is* the branch**,
+and nothing is materialised in between.
 
-The `aux2` field encodes the jump target:
-- Positive: FALSE jump to `no{aux2}_{fnIndex}`
-- Negative: TRUE jump to `ht{-aux2}_{fnIndex}`
-
-```c
-// setCondLbl2() propagates through condition tree
-if (inOr)
-    e->aux2 = -(lbl + 1);  // TRUE jump to ht{lbl+1}
-else
-    e->aux2 = lbl;         // FALSE jump to no{lbl}
-```
-
-## Short-Circuit AND (&&)
-
-Both sides must be true. FALSE jumps out early.
+The old path rewrote `&&` and `||` to a nought-or-one in A and then tested A:
+six bytes of join and a retest per operator, six hundred `xor a`s across this
+pass alone.
 
 ```c
-if (a && b) { then }
+condgo(e, lbl, wf)   /* jump to lbl when e is false (wf=1) or true (wf=0) */
 ```
 
+- **`&&` / `||` where every operand agrees with the jump** — chain them: emit
+  each operand's test straight to the same label.
+- **Otherwise** — the left operand short-circuits *past* the test instead, to a
+  fresh `_C<n>` join emitted after the right:
+
+  ```c
+  fmtstr(sc, "_C%d", labelcnt++);
+  condgo(l, sc, !wf);
+  condgo(r, lbl, wf);
+  outf("%s:\n", sc);
+  ```
+
+- **`!`** — drop the node and flip `wf`. No code at all.
+- **A leaf** — `condleaf()`: mark it `DEST_FLAGS`, label, assign, rewrite, then
+  one conditional jump.
+
+### `a && b` (jump when false)
+
+Both operands agree with the jump, so both go straight to the false label:
+
 ```asm
-    ; evaluate a
-    jp z,no0_1        ; a false -> skip
-    ; evaluate b
-    jp z,no0_1        ; b false -> skip
-    ; then body
+	; evaluate a
+	jp z,no0_1
+	; evaluate b
+	jp z,no0_1
+	; then body
 no0_1:
 ```
 
-When AND is nested inside OR, it uses a local merge label:
-```asm
-    ; evaluate a
-    jp z,ja5_1        ; a false -> local merge
-    ; evaluate b
-    jp z,ja5_1        ; b false -> local merge
-ja5_1:                ; merge point, Z flag set if either false
-```
+### `a || b` (jump when false)
 
-## Short-Circuit OR (||)
-
-Either side true is enough. TRUE jumps to merge, then falls into body.
-
-```c
-if (a || b) { then }
-```
+The operands disagree with the jump, so the left one short-circuits past:
 
 ```asm
-    ; evaluate a
-    jp nz,ht1_1       ; a true -> take then
-    ; evaluate b
-    jp z,no0_1        ; b false -> skip
-ht1_1:                ; merge for true path
-    ; then body
+	; evaluate a
+	jp nz,_C5
+	; evaluate b
+	jp z,no0_1
+_C5:
+	; then body
 no0_1:
 ```
 
-## Nested Conditions
+## Condition Codes
 
-### `(a || b) && c`
+`falsecc(e)` and `truecc(e)` in `lower.c` turn a reduced condition into a Z80
+condition code, **emitting a zero test first if the answer came back as a value
+rather than a flag**:
+
+| Reduced to | `falsecc` | `truecc` | Test emitted first |
+|------------|-----------|----------|--------------------|
+| `F_Z` | `nz` | `z` | — |
+| `F_NZ` | `z` | `nz` | — |
+| `F_C` | `nc` | `c` | — |
+| `F_NC` | `c` | `nc` | — |
+| `F_M` | `p` | `m` | — |
+| `F_P` | `m` | `p` | — |
+| `R_A` | `z` | `nz` | `or a` |
+| `R_HL` | `z` | `nz` | `ld a,l` / `or h` |
+| `R_DE` | `z` | `nz` | `ld a,e` / `or d` |
+| `R_BC` | `z` | `nz` | `ld a,c` / `or b` |
+
+**A long in HL answers with all four bytes voting.** The pair test alone read
+only half of it, and `if (n & 1)` was false for every odd long. A is not banked,
+so the fold carries on across the `exx`:
 
 ```asm
-    ; evaluate a
-    jp nz,ht2_1       ; a true -> skip b
-    ; evaluate b
-    jp z,no0_1        ; b false -> skip all
-ht2_1:
-    ; evaluate c
-    jp z,no0_1        ; c false -> skip
-    ; then body
-no0_1:
+	ld a,l
+	or h
+	exx
+	or l
+	or h
+	exx
 ```
 
-### `(a && b) || c`
-
-```asm
-    ; evaluate a
-    jp z,ja3_1        ; a false -> try c
-    ; evaluate b
-    jp nz,ht2_1       ; b true -> take then
-ja3_1:
-    ; evaluate c
-    jp z,no0_1        ; c false -> skip
-ht2_1:
-    ; then body
-no0_1:
-```
+`ccguard()` runs first and emits `; XXXXXX unreduced condition` if the
+condition did not reduce to a flag or a register — a missing rule, made loud.
 
 ## Comparison Operators
 
-Comparisons with `cond=1` emit conditional jumps via `emitCondJmp()`:
+Pass1 normalizes `>` and `>=` to `<` and `<=` by swapping operands, so only
+`EQ`, `NEQ`, `LT`, and `LE` arrive. The rewriter re-creates `GT`/`GE`
+internally when it flips a comparison against a constant (`a > 5` → `a >= 6`,
+via `RF_INC1`).
 
-| Operator | FALSE jump (aux2 > 0) | TRUE jump (aux2 < 0) |
-|----------|----------------------|---------------------|
-| EQ (==)  | `jp nz,no{n}` | `jp z,ht{n}` |
-| NEQ (!=) | `jp z,no{n}` | `jp nz,ht{n}` |
-| LT (<)   | `jp nc,no{n}` | `jp c,ht{n}` |
-
-Pass1 normalizes `>`, `<=`, `>=` to `<`, `==`, `!=` by rearranging operands.
-
-## Ternary Operator
-
-```c
-x ? then : else
-```
-
-```asm
-    ; evaluate x
-    ld a,h
-    or l
-    jp z,te0_1        ; if false, go to else
-    ; evaluate then
-    jp tn0_1          ; skip else
-te0_1:
-    ; evaluate else
-tn0_1:
-```
-
-## Logical Not (!)
-
-When used as condition (`cond=1`), just emits child and IF handler flips sense.
-
-When used for value (`cond=0`):
-```asm
-    ; evaluate child
-    ld a,h
-    or l
-    ld hl,0
-    jp nz,ln0_1       ; if non-zero, result is 0
-    inc l             ; if zero, result is 1
-ln0_1:
-```
+In the rule table all six are **two** rows, not six: `P_CMP` matches EQ, NEQ,
+LT and GE — all of which subtract and read a different flag off the same
+subtraction — and `P_CMPX` matches LE and GT, the same code with the operands
+swapped. The result is named `F_CC`, and `ccflag()` works out the real flag
+from the operator and its signedness. See [REWRITE.md](REWRITE.md).
 
 ## Switch Statements
 
-Switch uses a runtime helper with inline jump table:
+Switch is emitted **bodies first, dispatch after**. The stream is sequential —
+`SWITCH`, then each `CASE` with its value and body — so the values are not all
+known before the first body has to be emitted. The control value is worked out,
+the bodies are jumped over, and the comparison or table goes after them where
+every case label is known. Nothing falls into that block: the last body jumps
+past it, and the bodies were jumped over rather than run, so the control value
+is still live when the dispatch is reached.
 
-```asm
-    ; evaluate expr (result in HL)
-    ld a,l            ; get low byte
-    ld hl,sw0_1       ; table address
-    jp switch         ; runtime dispatch
-    ; case bodies...
-swe0_1:               ; switch end
-foo_break:            ; break alias (if labeled switch)
-sw0_1:                ; jump table
-    .db 3             ; case count
-    .db 10            ; case value 0
-    .dw swc1_1        ; case label 0
-    .db 20            ; case value 1
-    .dw swc2_1        ; case label 1
-    .db 30            ; case value 2
-    .dw swc3_1        ; case label 2
-    .dw swd4_1        ; default (or swe0_1 if no default)
-```
+`swdispatch()` picks one of **three** shapes by counting, not by taste. With
+*n* cases spanning *span* values:
 
-Cases are recorded in `swstack[swdepth]` during parsing, then emitted after
-all case bodies are processed.
+| Shape | Size | Form |
+|-------|------|------|
+| chain | 5n | `cp v` / `jp z,L` per case |
+| `swtab` | 4 + 3n | call, count byte, then a value and a label per case |
+| `swidx` | 5 + 2·span | call, low bound, span, then a label per slot |
 
-## Label Counter Management
+The chain wins to n=2. Above that it is `swidx` when the values are dense
+enough to beat the pair table — `2*span < 3n-1`, a little over two thirds — and
+`swtab` when they are not. Over the tree's own 85 switches that is 4175 bytes
+of dispatch down to 2705.
 
-```c
-int labelCnt;    // per-function counter, reset at function start
-int fnIndex;     // global function counter, incremented each function
+Both are needed and they live at opposite ends: every switch here with more
+than about twenty cases is sparse (the largest, 125 cases in `wsnm.c`, spans
+the whole byte at 48%) and would want a 517-byte index against a 379-byte pair
+table, while the dense ones are nearly all small — and for those `swidx` is not
+just smaller but constant time instead of a scan.
 
-// In parseFunc():
-labelCnt = 0;
-fnIndex++;
+In the sparse form the values are emitted together so the scan is one `cpir`,
+with the labels after them **and backwards**, which is what lets the helper find
+the slot from what `cpir` leaves in HL and BC.
 
-// In if statement:
-lbl = labelCnt++;
-labelCnt += nlabels;  // reserve for short-circuit
-```
+A count or span of 256 would store as a zero byte, so anything that large stays
+on the chain. `MAXSWCASE` bounds it at 256; `MAXSWNEST` (8) bounds nesting.
 
-This ensures unique labels across the entire compilation unit.
+Case values are **bytes**. A control expression need not be one — a state
+machine over an `int` is the usual shape — so a word control tests its high byte
+once before comparing the low one, and any value that does not fit a byte cannot
+match and goes to the default.
+
+`break` never appears: cpp lowered it to `goto __S<n>B` and appended the label.

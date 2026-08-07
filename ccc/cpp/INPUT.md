@@ -2,8 +2,9 @@
 
 This document defines the language accepted by `cpp`, the ccc preprocessor.
 The input is C source text; `cpp` tokenizes it, runs the C preprocessor, and
-feeds the result through the normalization filter pipeline. For the language
-`cpp` *produces*, see [OUTPUT.md](OUTPUT.md).
+feeds the result through the normalizer (`tdsrc.c` → `norm.c`, see
+[NORM.md](NORM.md)). For the language `cpp` *produces*, see
+[OUTPUT.md](OUTPUT.md).
 
 The accepted dialect is the ccc subset of C. It deliberately omits several
 standard-C features and preprocessor behaviours in exchange for a small
@@ -38,24 +39,28 @@ Stripped before tokenization:
   leading `_` added by the compiler consumes one.)
 - A trailing `:` after an identifier at statement position makes it a **label**
   rather than a symbol.
-- Recognized keywords (via the compressed tables in `kw.c`):
+- Recognized keywords — the complete list, from the table in `mkkw.c` that
+  generates `kwtab.c`:
 
   ```
-  int char float double struct signed long unsigned union short void enum
-
-Enums are accepted but lowered by cpp (see FILTERS.md): the constants
-become macro definitions - global, textual, `#define` semantics - so an
-enum constant's name must not be reused as any other identifier later in
-the file, and enum value expressions are limited to numbers, previously
-defined enum constants, unary `-`/`~`, parens, and `+ - *`.
+  int char struct signed long unsigned union short void enum
   typedef auto extern static register
   goto return if while else switch case break continue do default for
   asm const volatile sizeof
   ```
 
+  **`float` and `double` are not keywords.** ccc has no floating point, and
+  they are deliberately left unreserved so a program can typedef them.
+
   `signed`, `const`, and `volatile` are accepted lexically (so existing headers
   parse) but see the restrictions below — `const`/`volatile` are dropped from
   the output, and `signed` must not appear in project code.
+
+  Enums are accepted but lowered by cpp (see [NORM.md](NORM.md)): the constants
+  become macro definitions — global, textual, `#define` semantics — so an enum
+  constant's name must not be reused as any other identifier later in the file,
+  and enum value expressions are limited to numbers, previously defined enum
+  constants, unary `-`/`~`, parens, and `+ - *`.
 
 ## 4. Numeric constants
 
@@ -66,14 +71,22 @@ Handled by `isnumber()` / `getint()` in `lex.c`:
 | Decimal | `123` | 10 |
 | Hexadecimal | `0x1a`, `0XFF` | 16 |
 | Octal | `0755` | 8 (leading `0`) |
+| Explicit decimal | `0d99` | 10 (extension; a leading `0` otherwise means octal) |
 | Binary | `0b1010`, `0B1010` | 2 (extension) |
 | Character | `'a'`, `'\n'` | value of the char |
-| Float | `3.14`, `1.0e10` | IEEE-754 single |
 
 - A digit outside the base range is an error (`ER_C_BD` / `ER_C_CD`).
-- An `L`/`l` suffix is accepted and **consumed but ignored**.
-- Integers become `NUMBER` tokens; anything with a `.` or exponent becomes a
-  `FNUMBER` token.
+- Integers become `NUMBER` tokens. An `L`/`l` suffix makes the token
+  `LNUMBER` instead — that suffix is the **only** thing that can make a
+  constant long, because everything downstream sizes a constant by how big it
+  is. (`5L` was a byte until `LNUMBER` was wired up, so passing one to a
+  function put two bytes on the stack where the callee read four.)
+- **Float literals are rejected.** `3.14`, `1.0e10`, `.5` and their `f`/`l`
+  suffixes are all *scanned* — so the lexer stays in step with the source —
+  and then raise `ER_C_CD` and yield 0. ccc has no floating point.
+- A `.` is only treated as the start of a float when what follows is a digit,
+  `e`/`E`, or a non-identifier character. That is what keeps `1.foo` a member
+  access rather than a malformed number.
 
 ## 5. Character and string literals
 
@@ -81,6 +94,10 @@ Handled by `isnumber()` / `getint()` in `lex.c`:
   0–255.
 - String literal: `"..."` — stored as a **counted string** (a 2-byte length
   prefix followed by the bytes) so embedded NULs are preserved.
+- **Adjacent string literals are concatenated**, and the join happens *after*
+  macro expansion (in `emit.c`), so two literals that only became adjacent
+  when a macro expanded are joined too. That is most of them in this tree —
+  pass2's rule table is built out of named fragments written side by side.
 - Escape sequences (`getlit()` in `lex.c`), valid in both forms:
 
   | Escape | Value | Escape | Value |
@@ -130,7 +147,8 @@ ordinary token.
 - **Function-like vs object-like** is decided by whether `(` *immediately*
   follows the name with no intervening whitespace. `#define BAR (x)` is
   object-like with value `(x)`.
-- Up to `MAXPARMS` (10) parameters.
+- Up to `MAXPARMS` (16) parameters; more raises `ER_C_PC`. A call whose
+  argument count does not match raises `ER_C_MA`.
 - Body operators:
   - `#param` — stringify the argument.
   - `a##b` — token paste (the `##` is removed, tokens are joined).
@@ -211,8 +229,8 @@ cpp [options] <source.c>
 
 | Option | Meaning |
 |--------|---------|
-| `-o <base>` | Output base name (writes `<base>.x`; `<base>.i` with `-p`) |
-| `-I<dir>` | Add a user include directory |
+| `-o <base>` | Output base name (writes `<base>.x` and `<base>.n`; `<base>.i` with `-p`) |
+| `-I<dir>` | Add a user include directory (up to `MAX_INCLUDES`, 32) |
 | `-i<dir>` | Set the system include directory |
 | `-D<name>[=val]` | Define a macro (value `1` if no `=val`) |
 | `-p` | Also emit a human-readable `<base>.i` (forks `xdump`) |
@@ -223,5 +241,10 @@ cpp [options] <source.c>
 
 If `-o` is omitted, the output base is the source name with its extension
 stripped.
+
+`z80=1` is predefined, the way `zc3` predefines it. The headers guard
+machine-specific shapes with `#if z80` — `jmp_buf`'s size, `cpm.h` wholesale —
+and under a cpp that said nothing about its machine every one of those guards
+failed shut.
 
 <!-- vim: set tabstop=4 shiftwidth=4 noexpandtab: -->

@@ -1,259 +1,238 @@
 # pass2 Architecture
 
-The pass2 code generator translates binary AST input from pass1 into Z80 assembly.
+The pass2 code generator (`c1`) translates the binary AST from pass1 into Z80
+assembly.
+
+```
+c1 <base>.1 <base>.2 <base>.s
+```
+
+- **`<base>.1`** — input, the AST (see [../AST_FORMAT.md](../AST_FORMAT.md))
+- **`<base>.2`** — input, the assembly pass1 already wrote for globals, string
+  data, and static initializers; copied through
+- **`<base>.s`** — output, the assembly for the functions
+- **`<base>.n`** — read alongside `.1`: cpp's id-to-name sidecar. Identifiers
+  travel through the front of the compiler as 2-byte ids, and **c1 is where
+  ids become symbols again** — expansion happens as names are read.
 
 ## Streaming Model
 
-The AST is **not** ingested into a complete tree. Instead, processing is
-streaming: each expression is parsed, annotated, emitted, and freed before
-the next. This keeps memory footprint minimal for the 64KB target.
+The AST is **not** ingested into a complete tree. Processing is streaming: each
+expression is parsed, labeled, rewritten with code emitted along the way, and
+freed before the next. This keeps the memory footprint small enough for the
+64KB target.
 
 ```
-AST stream ──┬── globals (Z) ──→ emit .db/.dw/.ds
+AST stream ──┬── functions (AST_FUNC) ──→ prolog, then for each statement:
+             │                               readexpr()  → build tree
+             │                               setdest()   → flags/value/none
+             │                               label()     → Sethi-Ullman counts
+             │                               assign()    → target registers
+             │                               rewrite()   → match rules, emit
+             │                               freeexpr()  → release memory
              │
-             ├── strings (U) ──→ emit .db with quoted/hex data
-             │
-             ├── inline asm (A) ──→ pass through verbatim
-             │
-             └── functions (F) ──→ for each statement:
-                                      parseExpr() → build tree
-                                      annotate() → detect patterns
-                                      emitExpr() → generate assembly
-                                      freeExpr() → release memory
+             └── in-body asm (ASM) ──→ pass through verbatim
 ```
 
-**Parse-time work:**
-- Symbol resolution: `SYM` nodes become `REGVAR` (register variable),
-  `LOCALVAR` (stack variable via IY/IX+offset), or stay `SYM` (global)
-- Type/size computation: `e->size` set from type suffix via `TSIZE()`
-- Argument list reversal: `CALL` args built in reverse order via `ARGNODE` chain
-- Pattern collapsing: `DEREF[LOCALVAR]` and `+p[REGVAR #ofs]` collapse to `LOCALVAR`
+Globals, strings, and static initializers never reach pass2's AST reader — they
+arrive already assembled in `.2`, and `copyinit()` copies that file through.
 
-**No intermediate representation** - the expression tree exists only
-briefly between parseExpr() and freeExpr().
+**Parse-time work** (`parseast.c`, `expr.c`):
+- Symbol resolution: an AST `SYM` becomes `SYMREF` (symbol + link-time offset);
+  `LOCALVAR`/`REGVAR` arrive already resolved by pass1
+- Type/size computation: `width` from the AST type suffix, sized via `TSIZE()`
+- Argument lists: `CALL` args are chained through `ARGNODE` nodes
+- Name expansion: `@<id>` markers are resolved from the `.n` sidecar as read
+
+**No intermediate representation** — the expression tree exists only between
+`readexpr()` and `freeexpr()`.
 
 ## Expression Tree
 
-The core data structure is `struct expr`:
+The core data structure is `Expr` (`expr.h`). It is deliberately small — six
+bytes of scalars, two pointers, and a union:
 
 ```c
-struct expr {
-    unsigned char op;   /* operator: lexeme.h tokens */
-    char size;          /* result size in bytes (1, 2, 4) */
-    char type;          /* type suffix from AST ('b' 's' 'l' 'B' 'S' 'L') */
-    struct expr *left, *right;
-    union { long l; short s; char c; } v;  /* constant value */
-    char *sym;          /* symbol name (malloc'd) */
-    unsigned char aux;  /* nargs for call, width for bitfield, register */
-    short aux2;         /* offset for bitfield, incr amount, label */
-    unsigned char demand;   /* (unused - for future scheduling) */
-    unsigned char dest;     /* destination register for specials */
-    unsigned char spill;    /* (unused - for future scheduling) */
-    unsigned char unused;   /* result is unused (expr stmt, void call) */
-    unsigned char cond;     /* used as condition (emit flags, not value) */
-    unsigned char special;  /* optimization pattern type */
-    char offset;            /* IY/IX-relative offset */
-    short incr;             /* increment amount for inc/dec specials */
-};
+typedef struct Expr {
+    unsigned char op;      /* operator: lexeme.h token or opcodes.h synthetic */
+    unsigned char width;   /* type suffix: b/B/s/S/l/L/v */
+    unsigned char dest;    /* DEST_NONE / FLAGS / VALUE / STACK */
+    unsigned char regs;    /* Sethi-Ullman label: registers needed */
+    unsigned char tgt;     /* target register (R_HL, R_DE, 0 = any) */
+    unsigned char nored;   /* don't reduce: preserve for the parent's rule */
+    struct Expr *left, *right;
+    union {
+        long val;                                  /* NUMBER */
+        char *name;                                /* SYM */
+        struct { unsigned char argc; } call;       /* CALL */
+        struct { unsigned char reg; short off; } var;   /* LOCALVAR/REGVAR/INDEX */
+        struct { unsigned short amt; } incdec;     /* PREINC/POSTINC/... */
+        struct { unsigned char off, wid; } bf;     /* BFEXTRACT/BFASSIGN */
+        struct { char *name; short off; } symref;  /* SYMREF */
+    } u;
+} Expr;
 ```
 
-### Operator Codes (from lexeme.h)
+### Destination Context
 
-**Primary:**
-- `NUMBER` - constant (value in `v`)
-- `SYM` - global symbol (name in `sym`)
-- `REGVAR` - register variable (register in `aux`: R_B, R_C, R_BC, R_IX)
-- `LOCALVAR` - local/stack variable (IY/IX offset in `offset`, register in `aux`)
+`dest` says what the result is *for*, and rules can match on it:
 
-**Unary:**
-- `DEREF` - memory dereference
-- `WIDEN` - zero-extend byte to word
-- `NARROW` - truncate word to byte
-- `SEXT` - sign-extend byte to word
-- `TWIDDLE` - bitwise complement (~)
-- `BANG` - logical not (!)
-- `NEG` - unary minus (negation)
+| Value | Name | Meaning |
+|------:|------|---------|
+| 0 | `DEST_NONE` | Expression statement — discard the result |
+| 1 | `DEST_FLAGS` | Condition — leave the answer in the CPU flags |
+| 2 | `DEST_VALUE` | Value needed in a register |
+| 3 | `DEST_STACK` | Push it: a call argument |
 
-**Inc/Dec:**
-- `PREINC` - pre-increment (++x)
-- `POSTINC` - post-increment (x++)
-- `PREDEC` - pre-decrement (--x)
-- `POSTDEC` - post-decrement (x--)
+### Operator Codes
 
-**Binary Arithmetic:**
-- `PLUS MINUS STAR DIV MOD` - arithmetic (+, -, *, /, %)
+Expression opcodes are the AST's (see [../AST_FORMAT.md](../AST_FORMAT.md)),
+plus pass2's own **synthetic opcodes** from `opcodes.h`, which only exist
+during rewriting:
 
-**Binary Bitwise:**
-- `AND OR XOR` - bitwise (&, |, ^)
-- `LSHIFT RSHIFT` - shifts (<<, >>)
+| Value | Name | Meaning |
+|------:|------|---------|
+| 226 | `INDEX` | register+offset addressing: `(ix+d)`, `(iy+d)` |
+| 227 | `INHL` | the value is in HL |
+| 228 | `INDE` | the value is in DE |
+| 229 | `INA` | the value is in A |
+| 230 | `INBC` | the value is in BC |
+| 231 | `SYMREF` | symbol + offset, resolved at link time |
+| 232 | `CODE` | emitted assembly; carries the result's location |
+| 233 | `INE` | the value is in E (low byte of DE) |
+| 234 | `INL` | the value is in L (low byte of HL) |
 
-**Comparisons:**
-- `LT EQ NEQ` - (<, ==, !=) - pass1 normalizes >, <=, >= to these
+Note pass1 normalizes `GT`/`GE` away, so only `LT`, `LE`, `EQ`, and `NEQ`
+arrive — but the rewriter re-creates `GT`/`GE` internally when it flips a
+comparison (`GT(a,n)` → `GE(a,n+1)`).
 
-**Logical:**
-- `LAND LOR` - logical and/or (&&, ||)
+## Rewriting
 
-**Assignment:**
-- `ASSIGN` - simple assignment (=)
+Code generation is **table-driven tree rewriting**, not a tree walk with a
+`switch` per operator. A rule matches a pattern in the tree, emits an assembly
+template, and replaces the matched subtree with a `CODE` node naming where the
+result now lives. This repeats to a fixed point, depth first.
 
-**Compound Assignment:**
-- `PLUSEQ SUBEQ` - (+=, -=)
-- `OREQ ANDEQ XOREQ MODEQ` - (|=, &=, ^=, %=)
-- `MULTEQ DIVEQ` - (*=, /=)
-- `LSHIFTEQ RSHIFTEQ` - (<<=, >>=)
-
-**Other:**
-- `CALL` - function call (nargs in `aux`, args in ARGNODE chain via `right`)
-- `QUES` - ternary (TERNBRANCH node holds then/else branches)
-- `COMMA` - comma operator
-- `BFEXTRACT BFASSIGN` - bitfield access
-
-## Pattern Detection
-
-The `annotate()` function walks the tree detecting optimization patterns,
-setting `e->special`:
-
-| Pattern | Code | Description |
-|---------|------|-------------|
-| SP_SYMOFS | `+p $sym #const` | `ld hl,sym+ofs` |
-| SP_SYMOFD | `M[+p $sym #const]` | `ld hl,(sym+ofs)` |
-| SP_MSYM | `M $sym` | `ld hl,(sym)` |
-| SP_MUL2 | `* expr #pow2` | `add hl,hl` repeated |
-| SP_STCONST | `= [target] #const` | `ld (hl),n` or direct store |
-| SP_INCR/DECR | `++/-- regvar` | `inc/dec reg` (incr <= 4) |
-| SP_INCGLOB | `++/-- $sym` | load/inc/store global word |
-| SP_BITTEST | `& M[(ix+ofs)] #pow2` | `bit n,(ix+ofs)` |
-| SP_CMPEQ | `== expr #0/1/-1` | inc/dec then test HL |
-| SP_CMPV | `cmp Vb #const` | `ld a,const; cp (iy+off)` |
-| SP_CMPR | `cmp Rb #const` | `ld a,const; cp reg` |
-| SP_CMPHL | `cmp Mb[addr] simple` | `ld a,(hl); cp operand` |
-| SP_ADDBC | `+p M[Rp bc] #const` | `ld hl,const; add hl,bc` |
-| SP_SIGN | `>= M$sym #0` | `bit 7,(sym+n)` |
-| SP_SIGNREG | `>= M[Rs bc] #0` | `bit 7,b` |
-
-## Symbol Table
-
-Locals discovered during function parsing are stored in `locals[]` array:
-
-```c
-struct sym {
-    char name[14];
-    char type;      /* type suffix */
-    char reg;       /* 0=stack, R_B/R_C/R_BC/R_IX for regvar */
-    char off;       /* IY offset for stack vars */
-};
-```
-
-During expression parsing, `SYM` references are resolved:
-- If local with reg!=0 → `REGVAR` node (register variable)
-- If local with reg=0 → `LOCALVAR` node (stack variable via IY+offset)
-- Otherwise → `SYM` node (global symbol)
+Fully described in [REWRITE.md](REWRITE.md); [CONDITIONS.md](CONDITIONS.md)
+covers the flag-context half, [STACK.md](STACK.md) the frame layout, and
+[HELPERS.md](HELPERS.md) the runtime routines the templates call.
 
 ## Register Model
 
-- `R_HL` (6) - primary accumulator for word results
-- `R_DE` (5) - secondary (left operand saved here before right)
-- `R_A` (7) - byte accumulator
-- `R_BC` (3) - register variable (word)
-- `R_B/R_C` (1/2) - register variable (byte)
-- `R_IX` (4) - struct pointer register variable
-- `R_IY` (8) - frame pointer (IY+offset for locals)
-- `R_IYO/R_IXO` (11/12) - indexed addressing mode (iy+d)/(ix+d)
-- `R_TOS` (13) - push to stack (function arguments)
+| Code | Register | Role |
+|-----:|----------|------|
+| 1 | `R_B` | register variable (byte) |
+| 2 | `R_C` | register variable (byte) |
+| 3 | `R_BC` | register variable (word) |
+| 4 | `R_IX` | struct pointer register variable |
+| 5 | `R_DE` | secondary temp |
+| 6 | `R_HL` | primary accumulator for word results |
+| 7 | `R_A` | byte accumulator |
+| 8 | `R_IY` | frame pointer |
+| 9–12 | `R_E R_D R_L R_H` | individual halves of DE and HL |
+
+Only HL and DE are free as temporaries: BC and IX belong to register variables
+when a function has them, and IY is the frame pointer.
+
+Comparison results are named as flags rather than registers:
+
+| Code | Name | Meaning |
+|-----:|------|---------|
+| 16 | `F_Z` | zero |
+| 17 | `F_NZ` | not zero |
+| 18 | `F_C` | carry |
+| 19 | `F_NC` | not carry |
+| 20 | `F_M` | sign set: negative |
+| 21 | `F_P` | sign clear: non-negative |
+| 22 | `F_CC` | *not a flag* — "the flag this comparison answers in" |
+
+`F_CC` is what a rule writes when it serves a whole family of comparisons and
+the answer depends on which one; `ccflag()` works out the real flag from the
+operator and its signedness. That unification removed 89 near-identical rows
+from the rule table.
 
 ## Calling Convention
 
-- Arguments pushed right-to-left (parser builds arg list in reverse)
-- Word results in HL
-- Byte results in A
-- Long results in lR (memory location, with HL:HL' for some ops)
-- Caller cleans stack after call returns
-- Frame allocation via `framealloc` helper, cleanup via `framefree`
+- Arguments pushed right-to-left
+- Word results in HL, byte results in A
+- Long results via the `lL`/`lR` memory temporaries
+- The frame is set up by a `fent*` helper and torn down by a `fex*` helper
+  (see [HELPERS.md](HELPERS.md) and [STACK.md](STACK.md)); a function's exit
+  is a `jp` to its own `X<name>` label
 
 ## Statement Processing
 
-Statements are processed by `dumpStmt()`:
+`parseStmt()` in `parseast.c` dispatches on the AST statement opcodes:
 
-| Code | Statement | Handling |
-|------|-----------|----------|
-| B | block | Parse decls (add to locals), process stmts |
-| I | if | Parse cond, emit conditional jump, then/else bodies |
-| E | expression | Parse expr, emit, mark `unused=1` |
-| R | return | Parse value, emit, jump to `framefree` or `ret` |
-| L | label | Emit label |
-| G | goto | Emit `jp label` |
-| S | switch | Emit expr to A, jump to table, process cases |
-| C | case | Record value/label in switch context |
-| O | default | Record default label in switch context |
-| ; | empty | Nothing |
-| A | inline asm | Skip (length-prefixed) |
-| U | string | Parse inline string literal |
+| Opcode | Statement | Handling |
+|-------:|-----------|----------|
+| 222 `AST_BLOCK` | block | Read the statement count, recurse that many times |
+| 147 `IF` | if | Read `nlabels`, lower the condition to flags, branch, then/else |
+| 146 `RETURN` | return | Evaluate the value, `jp` to the function's exit label |
+| 112 `LABEL` | label | Emit the label |
+| 145 `GOTO` | goto | `jp label` |
+| 150 `SWITCH` | switch | Evaluate the control value, jump over the bodies, emit the comparison chain after them |
+| 151 `CASE` | case | Record the value and label, emit the body |
+| 155 `DEFAULT` | default | Record the default label, emit the body |
+| 157 `ASM` | inline asm | Copy the length-prefixed text through |
+| 1 `SEMI` | empty | Nothing |
+| *(other)* | expression | Not an opcode — the byte begins an expression |
 
-## Condition Code Generation
+## Switch Implementation
 
-For `if` statements, conditions use short-circuit evaluation:
+The stream is sequential — `SWITCH`, then each `CASE` with its value and its
+body — so **the values are not all known before the first body has to be
+emitted**. So: the control value is worked out, the bodies are jumped over, and
+the comparison chain goes *after* them, where every case label is known.
+Nothing falls into that block — the last body jumps past it, and the bodies
+were jumped over rather than run, so the control value is still live when the
+comparisons are reached.
 
-- `cond` flag propagates through LAND/LOR trees
-- `aux2` encodes jump target: positive = FALSE jump to `no{n}`, negative = TRUE jump to `ht{n}`
-- Comparisons emit conditional jumps directly when `cond=1`
-- LAND: both sides must be true, FALSE jumps to `no{label}`
-- LOR: either side true, TRUE jumps to `ht{label}`, FALSE falls through
+Case values are bytes in this compiler, so the chain is a `cp` against A. A
+control expression need not be a byte — a state machine over an `int` is the
+usual shape — so a word control tests its high byte once before comparing the
+low one, and any value that does not fit a byte cannot match and goes to the
+default. `MAXSWNEST` (8) bounds switch nesting.
 
-## File Organization
+`break` never appears: cpp lowered it to `goto __S<n>B` and appended the label.
 
-| File | Purpose |
-|------|---------|
-| cc2.h | Shared definitions, struct expr, struct sym |
-| cc2.c | Main, symbol table management |
-| astio.c | Binary AST reading (read1, read2, read4, readName) |
-| parseast.c | Expression/statement parsing, global/function handling |
-| codegen.c | annotate() pattern detection, helper functions |
-| emit.c | emit(), emitLabel(), comment() output formatting |
-| emitexpr.c | emitExpr() main expression emission |
-| emitcmp.c | emitCompare(), emitCondJmp() comparison emission |
-| emitincdec.c | emitPreIncDec(), emitPostInc() inc/dec emission |
-| emitops.c | emitCmpArith(), emitCmpShift(), emitCmpMulDiv() compound ops |
-| emitpat.c | Table-driven helpers: emitBOp(), emitWBit(), emitLLoad(), etc. |
-| pattern.c | Pattern string builder for -p debug mode |
+## Output
 
-## Output Format
-
-Assembly output uses custom format specifiers in `emit()`:
-- `%o` - signed offset with explicit sign: `+5` or `-3`
-- `%r` - register name with optional offset: `bc` or `(iy+5)`
-- `%d` - decimal integer
-- `%s` - string
-- `%c` - character
-
-Comments include expression structure:
-```asm
-; +s [                ; operator, type
-;   $foo              ; symbol foo
-;   #s 10             ; const 10
-; ]
-```
+`out()`, `outc()`, `outd()`, and `outf()` in `astio.c` write the assembly.
+DEBUG builds interleave `;`-comments naming each statement and expression as it
+is read, which is the practical way to inspect what pass2 made of an AST — see
+the note in [../ASTPP.md](../ASTPP.md).
 
 ## Long (32-bit) Support
 
-Long values use memory temporaries `lL` and `lR`:
-- `emitLLoad()` - load 4 bytes from (HL) to lL or lR
-- `emitLStore()` - store 4 bytes from lL to (HL)
-- `emitLImm()` - load immediate to lL or lR
-- Runtime helpers: `ladd`, `lsub`, `land`, `lor`, `lxor`, `lneg`, `lcom`, `lcmp`
-- Shift helpers: `lshl`, `lashr`, `lshr`
+Long values use the memory temporaries `lL` and `lR`, with runtime helpers for
+the arithmetic. See [HELPERS.md](HELPERS.md) and
+[../../libsrc/libc/QLONG.md](../../libsrc/libc/QLONG.md).
 
-## Switch Statement Implementation
+## File Organization
 
-Switch uses a runtime `switch` helper with inline jump table:
-```asm
-    ld a,l              ; expression value to A
-    ld hl,sw{n}_{fn}    ; table address
-    jp switch           ; runtime dispatch
-...
-sw{n}_{fn}:
-    .db {ncases}        ; case count
-    .db {val0}          ; case value
-    .dw swc{lbl}_{fn}   ; case label
-    ...
-    .dw {default/end}   ; default or end label
-```
+| File | Lines | Purpose |
+|------|------:|---------|
+| `pass2.h` | 100 | Shared definitions: type suffixes, register and flag codes |
+| `expr.h` | 88 | `Expr`, the tree builders, and the tree operations |
+| `opcodes.h` | 21 | pass2's synthetic opcodes (226+) |
+| `rules.h` | 155 | `struct rule`, the pattern specials, and the packing macros |
+| `pass2.c` | 156 | Main: argument handling, file setup |
+| `astio.c` | 371 | AST reading, the `.n` sidecar, output primitives |
+| `parseast.c` | 866 | Statement dispatch, function prolog/epilog, switch |
+| `expr.c` | 689 | Tree builders, Sethi-Ullman labeling, target assignment |
+| `rewrite.c` | 1570 | The rule matcher and the template interpolator |
+| `lower.c` | 2570 | What matched rules call: compounds, longs, calls, spills |
+| `rules.c` | 3138 | The rule table, the shared templates, and `preserve[]` |
+
+`lower.c` was split out of `rewrite.c`, and for the usual reason: the biggest
+pass2 source has to fit through the preprocessor *on the target*, and cpp's
+per-unit tables are paid per translation unit.
+
+`mkrulepat.py` regenerates `rulepat[]` — the DEBUG spellings of the rules —
+from `rules[]` itself, and the Makefile runs it before every build of
+`rules.c`. The two used to be maintained by hand in parallel and drifted the
+first time rules were added without names, so every trace line after the
+insertion point named the wrong rule.
+
+Generated: `debug.h` and `debugtags.c`, from `makedebug.sh`.

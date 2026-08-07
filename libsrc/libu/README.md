@@ -93,21 +93,48 @@ argblock:
 | 0x2a   | pipe    | returns fds in HL, DE                  |
 | 0x30   | signal  | indirect: signum, handler              |
 
+## File Position Tracking (`fdpos.s`)
+
+Micronix `seek()` **does not return the old file position**, so `lseek()` has
+to track the position of every open file in user space. `_fdpos` is a table of
+16 32-bit positions, one per fd — Micronix allows 16 open files per process.
+
+| Entry point | Called by | Effect |
+|-------------|-----------|--------|
+| `fdadd` | `read`, `write` | advance `_fdpos[fd]` by the byte count |
+| `fdclr` | `open`, `creat` | zero `_fdpos[fd]` |
+| `fdcpy` | `dup` | copy `_fdpos[old]` to `_fdpos[new]` |
+
+Limits: positions of fds inherited across `fork` or `exec` are not known, and
+offsets shared through `dup` diverge once either fd moves. `seek()` is a
+wrapper over `lseek()` (`seek.c`), so both calls keep the tracking current;
+only the internal `seekraw` stub bypasses it — deliberately, so a caller that
+never asks for a tracked position (cpp's `.n` sidecar writer, for one) can
+leave `lseek`'s machinery and its 600 bytes out of the binary.
+
 ## Calling Convention
 
-The ccc compiler uses the following calling convention:
+- Arguments pushed right-to-left onto the stack
+- Return value in HL (16-bit), or **HL':HL for a long** — high word in HL',
+  low in HL. See `../libc/QLONG.md`.
+- Caller cleans up the stack after the call
 
-- Arguments pushed right-to-left onto stack
-- Return value in HL (16-bit) or HL:DE (32-bit)
-- Caller cleans up stack after call
+This differs from the original Whitesmith's C compiler, which returned values
+in BC.
 
-This differs from the original Whitesmith's C compiler which returned
-values in BC.
+**Byte arguments follow the zc3 convention here**, not ccc's: a prototyped byte
+argument sits in the **low** byte of the stack word with a junk high byte,
+because the running native toolchain is zc3-compiled. When ccc becomes the
+system compiler, the byte-argument wrappers (`close`, `dup`, `read`, `write`,
+`seek`, `gtty`, `fstat`, `stty`) need a ccc-convention variant tree. Keep the
+two conventions in separate source trees rather than conditional assembly. See
+`../../ccc/pass2/STACK.md`.
 
 ## Files
 
 - `*.s` - Assembly source for system call wrappers
 - `errno.s` - Global errno variable
+- `fdpos.s` - Userland file-position tracking (above)
 - Files using `c.ent`/`c.ret` are compiled C code requiring the
   Whitesmith's runtime library
 

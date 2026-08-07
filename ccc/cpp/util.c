@@ -26,7 +26,7 @@
  */
 #define INTERN_HASH 63
 static struct ient {
-    unsigned short id;      /* -j: 2-byte identity, minted on first emit */
+    unsigned short id;      /* 2-byte identity, minted on first emit */
     struct ient *next;
     char name[1];           /* the entry is cut to fit */
 } *ipool[INTERN_HASH];
@@ -40,7 +40,7 @@ static struct ient {
     ((char *)&((struct ient *)0)->name - (char *)0)))
 
 /*
- * The id side of the pool, for the -j format: identifiers travel
+ * The id side of the pool: identifiers travel
  * through the passes as 2-byte ids, and the names live only here
  * and in the .n sidecar internWrite() dumps.  Ids are minted at
  * first EMISSION, not first sight, so the sidecar holds only names

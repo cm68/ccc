@@ -31,12 +31,12 @@
 #define INUMBER 23
 #define LNUMBER 25
 /*
- * An interned identifier: 26 + 2-byte little-endian id.  Emitted in
- * place of SYM (and of LABEL's name) when cpp runs with -j, in which
- * case the id-to-name table travels beside the .x in a .n sidecar -
- * cpp/INTERN.md has the format.  c0 never needs the names; c1 reads
- * the sidecar to spell symbols in assembly, and the driver uses it
- * to translate @{id} markers in the passes' stderr.
+ * An interned identifier: 26 + 2-byte little-endian id.  Always
+ * emitted in place of SYM (and of LABEL's name); the id-to-name
+ * table travels beside the .x in a .n sidecar - cpp/OUTPUT.md §4.2
+ * has the format.  c0 never needs the names; c1 reads the sidecar
+ * to spell symbols in assembly, and the driver uses it to translate
+ * @{id} markers in the passes' stderr.
  */
 #define SYMID   26
 #define LABELID 27	/* LABEL's id form: 27 + 2-byte id */

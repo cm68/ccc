@@ -50,6 +50,9 @@ Common configurations:
 
 ## Segments
 
+**Two numberings, and they are not the same.** These are the *internal*
+numbers the assembler and linker use (`SEG_*` in `wsobj.h`):
+
 | ID | Name | Description |
 |----|------|-------------|
 | 0 | UNDEF | Undefined (extern reference) |
@@ -58,6 +61,9 @@ Common configurations:
 | 3 | BSS | Uninitialized data |
 | 4 | ABS | Absolute (not relocatable) |
 | 5 | EXT | External reference |
+
+The *object file's* symbol type byte uses a different set — 4=abs, 5=text,
+6=data, 7=bss — see below.
 
 ## Symbol Table Entry
 
@@ -117,9 +123,14 @@ Add 1 for lo-byte, 2 for hi-byte. Examples:
 
 **Inline encoding (0x50-0xfb):** Symbol index 0-42
 ```
-byte = ((index + 16) << 2) | hilo
+byte = ((index + 20) << 2) | hilo
 ```
 Decoding: `index = (b - 0x50) >> 2`, `hilo = b & 3`
+
+(`wsEncReloc` writes this as `((symidx + REL_SYM_OFS + REL_SYM_SHIFT) << 2)`
+with `REL_SYM_OFS` = 4 and `REL_SYM_SHIFT` = 16, and the extended thresholds
+`REL_EXT_THR1`/`REL_EXT_THR2` are 47 and 175 — those are compared against
+`symidx + 4`, which is why they are 4 more than the 43 and 171 below.)
 
 **Extended encoding (0xfc-0xff):** Symbol index 43+
 

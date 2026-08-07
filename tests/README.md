@@ -1,206 +1,187 @@
 # ccc Compiler Tests
 
-This directory contains 134 test files for the ccc C compiler (pass 1: preprocessor and parser).
+There are five test suites in this tree, and they answer different questions.
+Only the first is what this directory's `.c` files are for; the others are the
+ones that have caught real bugs.
 
-All test files have descriptive header comments explaining what they test. Each test validates a specific aspect of the compiler's functionality.
+| Suite | Where | Question |
+|-------|-------|----------|
+| Parser smoke tests | `tests/*.c` | Does the front end survive this construct? |
+| Runtime correctness | `tests/run/` | Does the compiled program compute the right answer? |
+| Production coverage | `tests/gen/` | Is there a rule for every shape, and a shape for every rule? |
+| cpp regression | `tests/baseline/`, `regress.sh` | Did cpp's output change, byte for byte? |
+| cpp conformance | `ccc/cpp/` (`make test`, `make langtest`) | Is the input legal and the output to spec? |
 
-**Current Status**: All 134 tests pass with exit code 0. ✅
-
-## Test Organization
-
-Tests are organized in `tests/Makefile` by category and run via:
-- `make test` - Run all tests (from project root)
-- `make -C tests test` - Run all tests (from project root, explicit)
-- `make valgrind` - Run all tests with memory leak detection
-- `./runtest.sh filename.c` - Run a single test (from tests/ directory)
-- `./runtest.sh -v 3 filename.c` - Run with verbosity level 3
-
-### Category-Specific Test Targets
-
-You can run specific test categories using these make targets:
-- `make -C tests test-expr` - Expression and constant folding tests
-- `make -C tests test-decl` - Declaration and type tests
-- `make -C tests test-cpp` - Preprocessor tests
-- `make -C tests test-kr` - K&R style function tests
-- `make -C tests test-func` - Modern function tests
-- `make -C tests test-stmt` - Statement tests
-- `make -C tests test-sizeof` - sizeof operator tests
-- `make -C tests test-typedef` - Typedef tests
-- `make -C tests test-cast` - Type cast operator tests
-- `make -C tests test-string` - String literal tests
-- `make -C tests test-incr-decr` - Increment/decrement operator tests
-- `make -C tests test-ptr-compat` - Pointer compatibility tests
-- `make -C tests test-lvalue` - Lvalue validation tests
-
-## Test Categories
-
-### Preprocessor Tests (9 tests)
-- **macro.c** - Macro definition and expansion with stringify operator
-- **include.c** - #include directive handling
-- **stringify.c** - Stringify operator (#)
-- **multistr.c** - Multiple string literals
-- **t2.c** - Preprocessor macros including stringify and token pasting
-- **conditional.c** - Comprehensive conditional compilation (23 test cases: #if, #elif, #else, #endif, nested)
-- **conditional_false.c** - False conditional blocks
-- **conditional_simple.c** - Simple conditional compilation
-- **test_conditionals.c** - Additional conditional directive tests
-- **defined_test.c** - defined() pseudofunction in #if expressions
-- **ifdef_test.c** - #ifdef directive
-- **ifndef_test.c** - #ifndef directive
-- **undef_test.c** - #undef directive and interaction with #ifdef/#ifndef
-
-### Type System Tests (15 tests)
-- **decl.c** - Basic variable declarations (int, char, pointers, arrays)
-- **complex_types.c** - Complex type declarations (multi-level pointers, arrays)
-- **up_to_struct.c** - Declarations up to and including struct definitions with macros
-- **no_collision.c** - Namespace separation (struct members don't collide with globals)
-- **ptest.c** - Struct declarations with bitfields and arrays
-- **struct.c** - Basic struct declaration
-- **typedef.c**, **typedefs.c** - Typedef declarations for various types
-- **sizeof_basic.c**, **sizeof_bitfield.c**, **sizeof_const.c**, **sizeof_one.c**, **sizeof_struct.c**, **sizeof_test.c** - sizeof operator tests
-
-### Expression Parsing Tests (6 tests)
-- **simpleexpr.c** - Simple arithmetic expression in variable initializer
-- **cfold.c** - Constant folding for arithmetic, bitwise, and logical operators with proper precedence
-- **with_add.c** - Macro expansion with add macro and struct declaration
-- **compound_ops.c** - Compound operators (+=, -=, etc.)
-- **compound_precedence.c** - Compound operator precedence
-
-### Function Declaration Tests (10 tests)
-- **kr_funcs.c** - K&R style function declarations with various parameter configurations
-- **kr_locals.c** - K&R style function with local variable declarations
-- **kr_minimal.c** - Minimal K&R style function with simple if statement
-- **kr_multi.c** - Multiple K&R style functions with minimal implementations
-- **kr_noparams.c** - K&R style functions with no parameters
-- **kr_oneparam.c** - K&R style function with one parameter and local variables
-- **kr_progressive.c** - K&R style functions with progressive complexity
-- **empty_func.c** - Empty function
-- **minimal.c** - Minimal function with void parameter and local variable
-- **modern_func.c** - Modern ANSI-style function declarations
-- **simple_func.c** - Simple function declarations
-
-### Statement Parsing Tests (19 tests)
-- **statements_kr.c** - K&R functions with all control flow constructs (comprehensive)
-- **statements.c** - Comprehensive statement parsing with all control flow
-- **simple_statements.c** - K&R style functions with forward declarations and basic statements
-- **100.c** - Comprehensive statement parsing including control flow and jump statements
-- **cont.c** - Continue statement in while loop
-- **do.c** - Do-while loop statement
-- **hang.c** - K&R style function with if-else statement
-- **local.c**, **local2.c**, **local3.c**, **local4.c**, **local5.c** - Functions with local variables
-- **more.c** - Extended statement parsing
-- **no_switch.c** - Statement parsing without switch (all other control flow)
-- **partial.c** - Partial statement parsing
-- **stat.c** - Static storage class specifier
-- **simple_switch.c** - Simple switch statement with single case
-- **sw2.c** - Empty switch statement with no cases
-- **switch.c** - Switch statement with multiple cases and default
-- **two_locals.c** - Function with two local variable declarations with initializers
-
-### String Handling Tests (2 tests)
-- **string.c** - String literal declarations
-- **multistr.c** - Multiple string literal declarations
-
-### Scope Tests (2 tests)
-- **scopes.c** - Lexical scope handling
-- **local_vars.c** - Local variable scoping
-
-### Development/Debug Tests (2 tests)
-- **simple_int.c** - Simple integer declarations
-- **hang.c** - Test for parser hanging issues
-
-## Current Status
-
-Pass 1 (cc1) complete: Full preprocessor, type system, expression/statement parsing, AST emission. All 134 tests passing. See ../CLAUDE.md for detailed status.
-
-## Running Tests
+Top-level entry points, from the repository root:
 
 ```bash
-# Build compiler (from project root)
-make cc1
-
-# Run all tests (from project root)
-make test
-
-# Run memory leak tests (from project root)
-make valgrind
-
-# Run category-specific tests (from project root)
-make -C tests test-expr      # Expression tests
-make -C tests test-cpp       # Preprocessor tests
-make -C tests test-sizeof    # sizeof operator tests
-make -C tests test-typedef   # Typedef tests
-
-# Run single test (from tests/ directory)
-cd tests
-./runtest.sh decl.c
-
-# Run single test with path prefix (works from anywhere)
-tests/runtest.sh tests/decl.c
-
-# Run with verbosity (hex bitmask for debug flags)
-./runtest.sh -v 3 macro.c
-./runtest.sh -v 0x3f decl.c  # Maximum verbosity
-
-# Run valgrind on specific tests (from tests/ directory)
-./runvalgrind.sh sizeof_basic.c typedef.c
+make test        # tools tests, libcpm check, and the parser smoke tests
+make prodtest    # the production-coverage suite (tests/gen)
+make regression  # the cpp byte-exact baseline harness
+make valgrind    # uninitialised-read sweep over the passes (needs stage1)
 ```
 
-### Test Result Interpretation
+---
 
-Tests pass if:
-- cc1 completes without crashing
-- Exit code is 0
+## Runtime correctness — `tests/run/`
 
-Tests may produce parse errors but still pass - this is expected for incomplete features.
+**The suite that runs what it compiles.** Everything else here checks that code
+compiles and that the assembly looks right; these check that it computes the
+right answer, which is the only thing that catches a wrong branch or an
+unsigned comparison standing in for a signed one — both of which generate
+perfectly clean code.
 
-### Valgrind Testing
+90 hand-written `rt_*.c` cases, each built and run two ways over the same
+source:
 
-The `make valgrind` target runs all tests with memory leak detection:
-- Reports: PASS (no leaks), LEAK (memory leaks detected), FAIL (crash/error)
-- Uses `--leak-check=full` for detailed leak information
-- Only reports definite leaks (not reachable blocks)
+- **native** — the host compiler, run directly. The reference.
+- **ccc** — this compiler, run under the simulator.
 
-## Test File Naming
+A disagreement between the two is a bug in ccc.
 
-Test files follow these naming conventions:
-- Descriptive names (e.g., `cfold.c`, `kr_funcs.c`, `statements.c`)
-- All test files have header comments describing their purpose
-- Tests are organized by functionality, not by implementation order
+```bash
+make -C tests/run              # both paths
+make -C tests/run native
+make -C tests/run ccc
+make -C tests/run one MODE=ccc T=rt_cmp.c      # one file, one path
+```
 
-## Adding New Tests
+`one` takes any filename, not just an `rt_` one, so a throwaway probe dropped
+next to these gets the same build and run without being picked up by the suite.
+That is the fastest way to narrow a failure down.
 
-To add a new test:
-1. Create test file in `tests/` directory
-2. Add descriptive header comment explaining what it tests
-3. Add filename to appropriate category in `tests/Makefile`:
-   - Add to `EXPR_TESTS` for expression/constant folding tests
-   - Add to `DECL_TESTS` for declaration/type tests
-   - Add to `CPP_TESTS` for preprocessor tests
-   - Add to `KR_FUNC_TESTS` for K&R style function tests
-   - Add to `FUNC_TESTS` for modern function tests
-   - Add to `STMT_TESTS` for statement parsing tests
-   - Add to `SIZEOF_TESTS` for sizeof operator tests
-   - Add to `TYPEDEF_TESTS` for typedef tests
-   - Add to `LOCAL_TESTS` for local variable tests
-   - Add to `SCOPE_TESTS` for scope tests
-   - Add to `STRUCT_TESTS` for struct tests
-   - Add to `CAST_TESTS` for type cast operator tests
-   - Add to `STRING_TESTS` for string literal tests
-   - Add to `INCR_DECR_TESTS` for increment/decrement operator tests
-   - Add to `PTR_COMPAT_TESTS` for pointer compatibility tests
-   - Add to `LVALUE_TESTS` for lvalue validation tests
-   - Add to `MINIMAL_TESTS` for minimal/smoke tests
-   - Add to `MISC_TESTS` for miscellaneous/regression tests
-4. Run `make test` to verify
-5. Run `make valgrind` to check for memory leaks
+There was a third path once — Hi-Tech's `zc3` under the simulator, to tell a ccc
+bug apart from a test making an assumption about widths it should not. It
+stopped being worth its upkeep: zc3 failed this suite on its own unsigned-char
+arithmetic.
 
-## Test Infrastructure
+### Assembly snapshots
 
-The test infrastructure consists of:
-- **tests/Makefile** - Organizes tests by category, defines test targets
-- **tests/runtest.sh** - Executes individual tests, displays source and output
-- **tests/runvalgrind.sh** - Runs tests with valgrind memory leak detection
-- **Makefile** (root) - Top-level targets that invoke tests/Makefile recursively
+```bash
+make -C tests/run asmsnap DIR=before
+# ...change something...
+make -C tests/run asmsnap DIR=after && diff -r before after
+```
 
-All test scripts automatically handle path prefixes and work from any directory.
+Byte-identical output is a stronger statement than a passing test, because it
+covers the paths the tests do not reach. Use it when a change is meant to leave
+code generation alone.
+
+---
+
+## Production coverage — `tests/gen/`
+
+Every shape the language can put in front of the compiler, and every rule the
+compiler carries, each checking the other. `make prodtest` from the root, or
+`make -C tests/gen`. Six legs:
+
+| Leg | What it proves |
+|-----|----------------|
+| `corpus` | Regenerates the `gp_*.c` programs into `../run`. Deterministic — same seed, same bytes, so a failing check number means the same thing everywhere. |
+| `complete` | Compiles the corpus with `-O` and fails on any `XXXXXX` marker — the comment pass2 leaves where **no rule named a shape** and code was silently not emitted. The "no missing productions" direction. |
+| `correct` | Runs the corpus native (the oracle) and under ccc, and compares. |
+| `cover` | Which rewrite rules never fire, over the corpus **plus the whole tree**. The blessed list is `unfired.ok` and the regression is that it must not *grow*: a new rule ships with something that fires it, or its name lands in the report. |
+| `sim` | The completeness leg again, with the compiler itself running under the simulator — `c0.mx`/`c1.mx` compile the corpus and every output must be byte-identical to the host compiler's. |
+| `footprint` | The tipping-point guard: the three simulated passes compile the compiler's **own** sources, and every run's heap gap is read from the simulator. Fails on out-of-memory, on any gap under `FLOOR` (default 256), or on divergence from the host. |
+
+`sim` is the slow leg; skip it with `make -C tests/gen complete correct cover`
+when iterating. `make -C tests/gen bless` re-blesses the never-fired list.
+
+The footprint leg is the one that matters most now: it is what turns "this bug
+fix grew a pass past what Micronix can hold" into a build failure with the
+margin table in hand, rather than a discovery in the field.
+
+---
+
+## cpp regression — `regress.sh` and `tests/baseline/`
+
+Runs cpp over a comprehensive corpus and compares each file's output against a
+checked-in baseline tree. A regression is any change in any of three files.
+
+```
+tests/baseline/<reldir>/<base>.x     cpp output (binary lexeme stream);
+                                     missing means cpp failed
+tests/baseline/<reldir>/<base>.rc    exit code (always present)
+tests/baseline/<reldir>/<base>.err   stderr (only if non-empty after
+                                     noise filtering)
+```
+
+```bash
+./regress.sh                  # compare current output to the baseline
+./regress.sh --bless          # regenerate the baseline from the current cpp
+./regress.sh --keep           # leave temp outputs in place even on pass
+./regress.sh --filter ccc/    # only files matching a shell pattern
+./regress.sh --cpp PATH       # use a specific cpp binary
+./regress.sh --list           # just list the corpus
+```
+
+Each compiler directory has a `make regression` that scopes this to its own
+sources.
+
+---
+
+## Parser smoke tests — `tests/*.c`
+
+The oldest suite: single-file constructs fed through the front end. A test
+passes if the compiler completes without crashing and exits 0 — **a test may
+produce parse errors and still pass**, which is why this suite proves much less
+than the three above. It is a crash net, not a correctness check.
+
+```bash
+make -C tests test              # the curated list in tests/Makefile
+make -C tests tests             # every .c file in the directory
+make -C tests test-fail         # the cases expected to fail (error detection)
+make -C tests test-all          # both
+./runtest.sh decl.c             # a single test
+./runtest.sh -v 0x3f decl.c     # with a debug verbosity bitmask
+```
+
+Category targets: `test-expr`, `test-decl`, `test-cpp`, `test-kr`, `test-func`,
+`test-stmt`, `test-sizeof`, `test-typedef`, `test-cast`, `test-string`,
+`test-incr-decr`, `test-ptr-compat`, `test-lvalue`, `test-struct`. Each runs the
+corresponding `*_TESTS` list from `tests/Makefile`.
+
+The categories cover: preprocessor directives and macros; declarations, structs,
+bitfields, and `sizeof`; expression parsing and constant folding; K&R and ANSI
+function definitions; statements and control flow; scopes; string literals;
+casts; increment/decrement; pointer compatibility; and lvalue validation.
+
+To add a test: write the file with a header comment saying what it tests, add
+it to the right `*_TESTS` list in `tests/Makefile`, and run `make -C tests test`.
+
+---
+
+## Memory hygiene
+
+```bash
+make valgrind                  # from the root; needs stage1 first
+```
+
+This runs `tests/vgsweep.sh`. Leaks are **not** what it is for — these programs
+read a file, write a file, and exit. A field read before it is written is the
+thing that matters, because it changes what the compiler emits and does it
+differently depending on what was compiled before.
+
+cpp has its own leak-checking target, `make -C ccc/cpp valgrind`, which does
+fail on definite and indirect leaks.
+
+---
+
+## Supporting scripts
+
+| Script | Purpose |
+|--------|---------|
+| `runtest.sh` | Runs one or more parser smoke tests |
+| `regress.sh` | The cpp byte-exact baseline harness |
+| `vgsweep.sh` | The uninitialised-read sweep behind `make valgrind` |
+| `rulecover.py` | Reports which rewrite rules fired; drives `tests/gen`'s `cover` leg |
+| `footprint.py` | Per-source footprint measurement |
+| `simcheck.c` / `simcheck` | Simulator harness helper |
+| `diffcpp.sh`, `diffpass1.sh` | Differential helpers for a single pass |
+| `gen/genprod.py` | Generates the `gp_*.c` production corpus |
+| `gen/simcheck.sh`, `gen/footprint.sh` | The `sim` and `footprint` legs |
+| `run/runtests.sh` | Builds and runs the runtime corpus, native or ccc |
+
+**The simulator reads stdin as its console** and rewinds inherited descriptors,
+so anything driving it needs `< /dev/null` — a `while read` loop around it will
+otherwise spin forever.

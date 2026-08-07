@@ -1,96 +1,94 @@
-# Code Restriction Audit Report
+# Code Restriction Audit
 
-Audit of ~/src/ccc/ccc for violations of Z80 self-hosting restrictions.
+Audit of the tree against the Z80 self-hosting restrictions in
+[RESTRICTIONS.md](RESTRICTIONS.md).
 
-## Summary
+## Current state: clean
 
-| Restriction | Status | Notes |
-|-------------|--------|-------|
-| No structure copies | **FIXED** | pass2/expr.c - replaced with memcpy |
-| No functions returning struct | **FIXED** | cpp/filttest.c - rewrote to use pointer-out |
-| No struct arguments | **FIXED** | cpp/filttest.c - rewrote to use pointers |
-| No `signed` keyword | OK | only in keyword tables/comments |
-| No `const` storage class | **FIXED** | cpp/filttest.c, cpp/filtbrace.c, astpp.c |
-| No UL suffixes | OK | none found |
-| No LL suffixes | OK | none found |
-| No C99 for-loop declarations | **FIXED** | cpp/filttest.c, cpp/mkkw.c |
-| No auto aggregate initializers | **FIXED** | cpp/mkkw.c (made static) |
+Re-checked against the tree as it stands. No violations outside the documented
+exemption.
+
+| Restriction | Status |
+|-------------|--------|
+| No structure assignment | clean |
+| No functions returning a struct | clean |
+| No struct arguments by value | clean |
+| No `const` | clean — only as the `CONST` keyword token in `cpp/xdump.c` |
+| No `signed` | clean — only in comments and the `SIGNED` keyword token |
+| No auto aggregate initializers | clean outside `cpp/test/` |
+| No `UL` / `LL` suffixes | clean |
+| No C99 for-loop declarations | clean; enforced by `-Werror=declaration-after-statement` |
+| Declarations at the top of a block | enforced by the same flag |
+
+The exemption is `ccc/cpp/test/*.c`, which is fed to cpp alone and never
+compiled. Those files exist to exercise the declaration/initializer handling and
+must keep using the constructs it has to survive. `test_filtdecl.c` is where the
+auto aggregate initializers live.
+
+## Re-running the audit
+
+```bash
+cd /vault/src/ccc
+
+# const and signed outside comments and keyword tables
+grep -rn '\bconst\b'  --include=*.c --include=*.h ccc/ tools/ libsrc/ | grep -v attic
+grep -rn '\bsigned\b' --include=*.c --include=*.h ccc/ tools/ | grep -v unsigned
+
+# structure assignment
+grep -rnE '^\s*\*[a-zA-Z_][a-zA-Z_0-9]* = \*[a-zA-Z_]' --include=*.c ccc/ tools/ libsrc/
+
+# auto aggregate initializers
+grep -rnE '^\s+(char|int|short|long|unsigned char|struct [a-z]+) +[a-zA-Z_0-9]+\[[0-9]*\] *= *[{"]' \
+    --include=*.c ccc/ tools/ libsrc/ | grep -v static
+```
+
+The C99-declaration and declaration-after-statement rules are enforced at build
+time rather than by grep: the host Makefiles pass
+`-Werror=declaration-after-statement`, because gcc accepts declarations anywhere
+and pass1 does not.
 
 ---
 
-## Fixes Applied
+## History
 
-### 1. pass2/expr.c:249 - Structure Copy
+The fixes below were applied in the original audit pass. **Several of the files
+named no longer exist** — `cpp/filttest.c`, `cpp/filtbrace.c`, and the rest of
+the filter pipeline were folded into `norm.c` (see [cpp/NORM.md](cpp/NORM.md)).
+The entries are kept because they record what the restrictions cost in practice.
+
+### pass2/expr.c — structure copy
+
 ```c
-// Before:
-*n = *e;
-
-// After:
-memcpy(n, e, sizeof(Expr));
+*n = *e;                    /* before */
+memcpy(n, e, sizeof(Expr)); /* after  */
 ```
 
-### 2. cpp/filttest.c - Complete Rewrite
-- Changed filter function prototypes from `struct token func(void)` to `void func(struct token *out)`
-- Changed `get_input()` from struct-returning to pointer-out style
-- Changed `parse_tok()` from struct-returning to pointer-out style
-- Changed `print_token()` from struct-by-value to pointer parameter
-- Removed all `const` qualifiers
-- Fixed C99 for-loop: moved `int i` declaration to function scope
+### cpp/filttest.c — complete rewrite *(file since removed)*
 
-### 3. cpp/filtbrace.c - Removed const (DEBUG only)
-```c
-// Before:
-static const char *stname[] = {...}
-static const char *ctrlname(...)
+- Filter prototypes changed from `struct token func(void)` to
+  `void func(struct token *out)`
+- `get_input()` and `parse_tok()` changed from struct-returning to pointer-out
+- `print_token()` changed from struct-by-value to a pointer parameter
+- All `const` qualifiers removed
+- C99 for-loop declaration hoisted to function scope
 
-// After:
-static char *stname[] = {...}
-static char *ctrlname(...)
-```
+### cpp/filtbrace.c — removed const *(file since removed)*
 
-### 4. astpp.c - Removed const
-```c
-// Before:
-static void prln(const char *s)
-static void exprApp(const char *s)
-const char *opn = ...
-static void initApp(const char *s)
+`static const char *stname[]` → `static char *stname[]`, and likewise
+`ctrlname()`. DEBUG-only code.
 
-// After:
-static void prln(char *s)
-static void exprApp(char *s)
-char *opn = ...
-static void initApp(char *s)
-```
+### astpp.c — removed const
 
-### 5. cpp/mkkw.c - C89 Compliance
-- Moved all for-loop variable declarations to function scope
-- Changed auto aggregate initializer to static:
-```c
-// Before:
-char *nonkw[] = { "foo", ... };  // auto aggregate - VIOLATION
+`prln()`, `exprApp()`, `initApp()` and a local `opn` all dropped `const`.
 
-// After:
-static char *nonkw[] = { "foo", ... };  // static - OK
-```
-- Fixed mid-block declarations in emit(), printtable(), dumptrie(), main(), testtable()
+### cpp/mkkw.c — C89 compliance
 
----
+- For-loop variable declarations hoisted to function scope
+- `char *nonkw[] = {...}` made `static` — an auto aggregate initializer
+- Mid-block declarations fixed in `emit()`, `printtable()`, `dumptrie()`,
+  `main()`, `testtable()`
 
-## Files Verified Clean
+### Not violations
 
-- **~/src/ccc/tools/*** - All files clean (no violations)
-- **cpp/filtutil.c** - Uses `tokcpy()` and `memcpy()` properly
-- **All other production code** - No violations found
-
----
-
-## Notes
-
-### Keyword Tables (Not Violations)
-The following files contain `signed` and `const` as keywords in lexer tables - this is required to recognize C keywords, not actual usage:
-- cpp/mkkw.c - keyword generator
-- cpp/xdump.c - debug token printer (DEBUG only)
-
-### Build Tools
-- cpp/mkkw.c is now C89 compliant and can be built natively on Z80
+`cpp/mkkw.c` and `cpp/xdump.c` contain `signed` and `const` as **keyword table
+entries** — required to recognize the C keywords, not uses of them.

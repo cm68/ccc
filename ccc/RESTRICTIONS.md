@@ -91,12 +91,16 @@ far from the change.
 
 ## The callee saves BC.  We never caller-save.
 
-BC and IX are the register-variable homes.  A function that keeps a
-variable in one of them saves it in its prologue and restores it in
-its epilogue - fentbx and fexbx in libc/csv.s do both, and every
-function ccc compiles goes through them.  A caller therefore never
-writes push bc around a call, and no rule, no helper and no future
-optimisation should reintroduce one.
+BC and IX are the register-variable homes.  A function saves them in
+its prologue and restores them in its epilogue - the fent* and fex*
+families in libc/csv.s do both, and every function ccc compiles goes
+through them.  A caller therefore never writes push bc around a call,
+and no rule, no helper and no future optimisation should reintroduce
+one.
+
+BC is saved unconditionally, not only when a variable lives there:
+the code generator also uses BC as SCRATCH, in 366 of the tree's
+functions, and none of them were saving anything.  See pass2/STACK.md.
 
 The obligation is on anything a compiled program can call:
 
@@ -118,23 +122,39 @@ The obligation is on anything a compiled program can call:
   - A routine that uses the shadow set for its body needs nothing:
     exx puts the caller's BC out of reach.  bmove is the example.
 
-The exception, and the only one, is the arithmetic and long helpers -
-amul, adiv, ldiv, amod, lmod, aland, lland, arelop, lrelop, alrsh,
-lushr and the rest.  They really do count in B, they are reached by
-name from rule templates rather than through a call node, and the
-rules that name them carry $[ and $] so the save happens at the few
-places that need it.  lld and lstde are NOT among them: lld uses only
-HL, DE and A, and lstde keeps its return address in a scratch word,
-so the twelve rules that call those two are correctly unguarded.
+The exception, and the only one, is the arithmetic helpers - amul,
+adiv, ldiv, amod, lmod.  They take their second operand in DE and
+clobber BC, they are reached by name from rule templates rather than
+through a call node, and the rules that name them carry $[ and $] so
+the save happens at the few places that need it.
+
+The long helpers are ccc's own q* set (qadd, qsub, qmul, qdiv, qcmp,
+qld, qst and the rest - see libsrc/libc/QLONG.md), and BC is not free
+to them either: a q* routine that wants BC saves it on the stack, as
+everything else in libc does.  BC' IS free - nothing in the long
+convention uses it.
+
+The Hi-Tech names - ladd, arelop, lrelop, almul, aldiv, allsh, lld,
+lstde - are still in libsrc/libc because zc3 emits calls to them and
+the same sources are archived into root/lib/zc3/.  ccc never calls
+them.  Nothing links both sets.
 
 ## The exits do not disturb the return value
 
-fexit and the fexbx family touch neither HL nor the flags, and not DE
-either: a long comes back in HL:DE.  This is why the IX restore used
-to go through A, and why the helpers use the shadow registers now.  A
-long-returning function that restored IX through DE handed back the
-saved IX's address as its low word, and "int a[5]" reserved .ds
-<heap pointer> bytes.
+fexit and the fex* family touch neither HL nor the flags, nor DE, nor
+the shadow set - a long comes back in HL':HL, so all four of HL, HL',
+DE and DE' have to survive.  This is why the IX restore used to go
+through A.  A long-returning function that restored IX through DE
+handed back the saved IX's address as its low word, and "int a[5]"
+reserved .ds <heap pointer> bytes.
+
+The helpers briefly did their arithmetic in the shadow set, on the
+grounds that every ordinary register was live.  Two of the three
+premises were wrong - A and the flags are NOT live (every return goes
+through an assignment to HL), and the saves need not be popped
+(ex (sp),hl parks the return value and hands over the pointer in one
+byte).  Nothing there touches BC', DE' or HL' any more, which is
+exactly what lets a long live in HL':HL.
 
 ## Declarations go at the top of a block
 

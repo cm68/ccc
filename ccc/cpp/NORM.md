@@ -10,10 +10,15 @@ continuations (context stacks, saved tokens, redispatch states).
 ## Structure
 
 ```
-lex_get -> [ source layer: enum lowering -> typedef dissolution ]
-        -> [ walker: file scope | statements ]
-        -> emitStructTok
+lex_get -> [ source layer: enum lowering -> typedef dissolution ]  tdsrc.c
+        -> [ walker: file scope | statements ]                     norm.c
+        -> emitStructTok                                           emit.c
 ```
+
+Two pieces split out of `norm.c` but belong to it: `knr.c`, the file-scope
+K&R engagement and the one place file-scope tokens leave the walker, and
+`cfold.c`, the size registries and the constant folder — the walker's
+chokepoint (`pull`) decides when a fold may start and calls `dofold`.
 
 ### Source layer (srcget)
 
@@ -58,6 +63,8 @@ typedef name:
 
   Label naming: `__<W|F|D|S><n><T|B|C>` - top, bottom/break,
   continue.  `__DnC` precedes the do test so continue re-tests it.
+  An empty clause emits nothing: `for(;;)` gets no entry test at
+  all, and a missing init or increment simply is not there.
 
 After the source layer, a declaration is recognisable from its
 leading token: pass1 parses without a symbol table.

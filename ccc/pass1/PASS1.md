@@ -2,111 +2,120 @@
 
 ## Overview
 
-Pass1 is the C compiler frontend that parses C source code and emits an intermediate AST representation for pass2 (code generation).
+Pass1 (`c0`) is the C compiler frontend. It reads the binary lexeme stream cpp
+produced and emits an intermediate AST for pass2 (code generation).
 
-**Input preprocessing by cpp:** Before pass1 sees any code, the cpp preprocessor
-has already performed:
+```
+c0 <base>.x <base>.1 <base>.2
+```
+
+- **`<base>.x`** — input, cpp's lexeme stream (see [cpp/OUTPUT.md](../cpp/OUTPUT.md))
+- **`<base>.1`** — output, the binary AST (see [AST_FORMAT.md](../AST_FORMAT.md))
+- **`<base>.2`** — output, **assembly text**: global and static storage, string
+  literal data, and static initializers, streamed directly rather than built
+  as tree nodes
+
+Pass1 does the semantic work: type resolution, operator precedence, expression
+parsing, symbol table management, and register allocation.
+
+**Input preprocessing by cpp.** Before pass1 sees any code, cpp has already
+performed:
 - Macro expansion and conditional compilation
+- Typedef dissolution and enum lowering (so a declaration is recognisable from
+  its leading token — pass1 parses without a symbol table)
 - K&R to ANSI function definition conversion
-- Brace insertion around single-statement if/else bodies
+- Brace insertion around single-statement control bodies
 - Loop lowering: while/for/do converted to if/goto/label sequences
 - Break/continue resolution to goto statements
 - Local declaration initializer splitting (`int x = 5;` → `int x; x = 5;`)
+- `sizeof` folding where cpp's size registries can price it
 
-This means pass1 only handles `if` and `goto` for control flow (no loops),
-all if/else bodies have explicit braces, and all declarations are separate
+This means pass1 only handles `if` and `goto` for control flow (no loops), all
+control bodies have explicit braces, and all local declarations are separate
 from their initializers.
+
+**Identifiers arrive as 2-byte ids**, not names. Pass1 never learns the
+spellings — its lookups are 16-bit compares — and emits `@<id>` markers into
+the AST for pass2 to resolve from cpp's `.n` sidecar.
 
 ## Architecture
 
-### Two-Phase Parsing
+### Two phases, run per span
 
-Each function is parsed twice. The lexeme stream is rewound between phases via `lexRewind()`.
-
-**Phase 1 (Discovery)**
-- Uses `skipExpr()` - no expression tree allocation
-- Builds symbol table with automatic variables
-- Collects switch statement definitions (cases with stmt counts)
-- Tracks if/else relationships in `ifHasElse[]`
-- Counts reference usage for register allocation
-- Counts statements for streaming emission in phase 2
-- Emits function-local string literals immediately (with "fs" prefix)
-
-**Phase 2 (Emission)**
-- Streaming: emits AST immediately as parsed
-- Builds expression trees per-statement
-- Frees expressions immediately after emission
-- Control structures (IF/WHILE/FOR/DO/SWITCH) emit directly inline
-- No statement tree building for most constructs
-
-### Phase 1 Statement Processing
-
-The `statement()` function (parse.c) processes statements differently based on `phase`:
+Each function is parsed **twice**. But the two phases do not run over the whole
+file: they run over one **span** at a time, where a span is everything from the
+end of the previous function through the end of the next one.
 
 ```c
-if (phase == 1) {
-    switch (cur.type) {
-    case END: case E_O_F:
-        // Finalize last case if in switch
-        if (swDepth > 0)
-            finishCase(stmt_count);
-        // Push statement count for function bodies
-        if (lexlevel == 2 && swDepth == 0)
-            pushFuncCnt(stmt_count);
-        // Push statement count for nested blocks
-        else if (lexlevel > 2 && swDepth == 0)
-            pushBlkCnt(stmt_count);
-        block = 0;
-        break;
+pushScope("global");
+for (;;) {
+    long spanBase = lexTell();
+    unsigned short spanStr = globalStrCtr;
 
-    case BEGIN:
-        gettoken();
-        pushScope(blockname());
-        statement(0);   // Recurse for nested block
-        popScope();
-        expect(END);
-        stmt_count++;
-        break;
+    resetSpanCnts();
+    phase = 1;  parseSpan();          /* discover */
 
-    case IF:
-        thisIf = ifCount++;  // Track this if's index
-        gettoken();
-        expect(LPAR);
-        parseExpr(PRI_ALL, parent);
-        expect(RPAR);
-        parseBlock();  // Requires braces
-        if (cur.type == ELSE) {
-            ifHasElse[thisIf] = 1;
-            gettoken();
-            if (cur.type == IF)
-                goto handle_if;  // else if
-            parseBlock();
-        } else {
-            ifHasElse[thisIf] = 0;
-        }
-        stmt_count++;
-        break;
+    lexSeek(spanBase);                /* rewind to the span's start */
+    globalStrCtr = spanStr;
+    lexlevel = 1;
+    resetFuncIdx(); flipBlkCnts(); resetCountIdx();
 
-    // Similar for WHILE, FOR, DO - all require braces via parseBlock()
+    phase = 2;  parseSpan();          /* emit */
 
-    case SWITCH:
-        pushSwitch();
-        statement(0);  // Switch body - adds cases
-        pushCount(swList[idx].count);
-        popSwitch();
-        break;
-
-    case CASE:
-        addCase(value, stmt_count);  // Tracks case value and stmt count
-        break;
-    }
-    continue;  // Don't build statement tree
+    drainGraves();                    /* free this span's names */
+    if (hitEof) break;
 }
+popScope();
 ```
 
-### Phase 1 Expression Processing
+`parseSpan()` returns when `spanStop` is set, which `parsefunc()` does at the
+end of a function body.
 
-When `parseExpr(priority, parent)` is called in phase 1:
+**Why spans rather than the whole file.** The phases used to run file-wide:
+phase 1 discovered every function's locals and phase 2 freed them one at a
+time, so the entire file's worth was live at the turn between passes. Per-span,
+phase 2 frees a function's locals before phase 1 goes looking for the next
+one's, and the live set is one function.
+
+A span **starts after the previous function rather than at this one's brace**,
+because the globals between two functions need both phases: phase 1 emits the
+string a pointer initializer refers to, and phase 2 is where an array's extent
+is finally known. The string counter is rewound to where the span began so the
+`strN` labels phase 1 emitted are the ones phase 2 refers to.
+
+**Phase 1 (Discovery)**
+- Uses `skipExpr()` — consumes expression tokens, allocates nothing
+- Builds the symbol table, including function-scope locals
+- Collects switch definitions (cases with per-case statement counts)
+- Records if/else relationships in the `ifHasElse[]` bitmap
+- Counts reference usage (`ref_count`, `agg_refs`) for register allocation
+- Counts statements for streaming emission in phase 2
+- Emits string literal data to `.2` immediately, under `strN` labels
+
+**Phase 2 (Emission)**
+- Streams: emits AST immediately as each construct is parsed
+- Builds expression trees per statement, frees them right after emission
+- Control structures emit inline using phase 1's counts
+- **No statement trees are built in either phase** — there is no `struct stmt`
+
+### Phase 1 statement processing
+
+`statement()` in `parse.c` has a phase 1 path that counts rather than emits:
+
+- `END`/`E_O_F` — finalize the last case if in a switch; push the statement
+  count with `pushFuncCnt()` at function level or `pushBlkCnt()` for a nested
+  block
+- `BEGIN` — push scope, recurse, pop scope
+- `IF` — take `thisIf = ifCount++`, skip the condition, parse the braced body,
+  then set or clear bit `thisIf` of `ifHasElse[]`
+- `SWITCH` — `pushSwitch()`, parse the body (which adds cases), reserve a count
+  slot and patch it with the case count, `popSwitch()`
+- `CASE`/`DEFAULT` — `addCase()`/`addDefault()`, tracking statements since the
+  previous case
+
+### Phase 1 expression processing
+
+`parseExpr()` in `expr.c` diverts immediately:
 
 ```c
 if (phase == 1) {
@@ -115,201 +124,214 @@ if (phase == 1) {
 }
 ```
 
-**No data structures are built.** The `skipExpr()` function consumes tokens to keep the lexer synchronized but allocates nothing.
+**No data structures are built.** `skipExpr()` (in `eutil.c`) mirrors the shape
+of `parseExpr()` — prefix/primary, postfix, then binary operators by precedence
+— consuming tokens to keep the lexer synchronized while allocating nothing. It
+is also where `ref_count` and `agg_refs` are incremented, which is why register
+allocation can run at the *start* of phase 2.
 
-`skipExpr()` mirrors the structure of `parseExpr()`:
-1. Handle prefix/primary tokens (NUMBER, SYM, LPAR, unary ops)
-2. Handle postfix operators (function calls, array access, ++/--)
-3. Handle binary operators based on precedence via `binopPri()`
-4. For STRING tokens: creates and emits string literal immediately
+The one exception is `STRING`: a string literal's data is emitted to `.2`
+during phase 1, under a `strN` label that phase 2 references.
 
-### Data Structures Built in Phase 1
+### Data structures built in phase 1
 
 | Structure | Purpose | Lifetime |
 |-----------|---------|----------|
-| `struct name` chain | Symbol table entries | Until scope exit |
+| `struct name` chain | Symbol table entries | Until scope exit, then the graveyard |
 | `struct type` chain | Type definitions | Entire compilation |
-| `funcCnts[]` | Statement counts per function | Read in phase 2 |
-| `blkCnts[]` | Statement counts per block | Read in phase 2 (flipped) |
-| `countBuf[]` | Misc counts (switch cases) | Read in phase 2 |
-| `swList[]` | Switch tables with case info | Reset per function |
-| `casePool[]` | Case values/stmt counts | Reset per function |
-| `ifHasElse[]` | Has-else flag per if | Read in phase 2 |
+| `struct local` list | Per-function locals, by value | `f->u.locals`, freed after phase 2 |
+| `funcCnts[]` | Statement counts per function | Read in phase 2 (FIFO) |
+| `blkCnts[]` | Statement counts per block | Read in phase 2 (flipped to FIFO) |
+| `countBuf[]` | Misc counts (switch case counts) | Read in phase 2 (FIFO) |
+| `swList[]` | Switch tables, dynamically grown | Reset per function |
+| `ifHasElse[]` | Has-else bit per if | Read in phase 2 |
 
-### Statement Counting
+### Statement counting
 
-**Function bodies**: When END is reached at lexlevel==2 (and not in switch), push count via `pushFuncCnt()`.
+**Function bodies**: at `END` with `lexlevel == 2` and not inside a switch,
+push via `pushFuncCnt()`.
 
-**Nested blocks**: When END is reached at lexlevel>2 (and not in switch body), push count via `pushBlkCnt()`. After phase 1, `flipBlkCnts()` reverses the order for LIFO access.
+**Nested blocks**: at `END` with `lexlevel > 2`, push via `pushBlkCnt()`. Block
+counts are pushed LIFO; `flipBlkCnts()` reverses the array between phases so
+phase 2 reads them in parse order.
 
-**Switch cases**: Each CASE/DEFAULT calls `addCase()`/`addDefault()` which tracks `stmts` (statement count since previous case). `finishCase()` is called before each new case and at switch END.
+**Switch cases**: each `CASE`/`DEFAULT` calls `addCase()`/`addDefault()`, which
+finalizes the previous case's `stmts` from the difference between the current
+`stmt_count` and `base_stmts`. `finishCase()` runs before each new case and at
+the switch's `END`.
 
-### Control Structure Requirements
+**Switch case counts** use `reserveCount()`/`patchCount()` rather than a plain
+push: the count is not known until the body has been walked, so a slot is
+reserved in `countBuf[]` at the header and filled in afterwards.
 
-After cpp preprocessing:
-- `if (cond) { ... }` - braces guaranteed by cpp
-- `if (cond) { ... } else { ... }` - both branches have braces
-- Loops (while/for/do) are eliminated - converted to if/goto/label sequences
-- break/continue statements are converted to goto
+### The name graveyard
 
-The cpp preprocessor's token filter (`knr.c`) handles all loop lowering and
-brace insertion. Pass1 only needs to handle `if`, `goto`, and labels for
-control flow.
+`popScope()` cannot free a name on the spot, because pending AST may still
+point at it — so it parks the name on the `deadNames` list instead.
 
-### Declaration Initializer Handling
+Two things drain that list. `parsefunc()` snapshots `deadNames` on entry and
+frees everything parked above the mark on exit: the graveyard is LIFO, so those
+entries are all the function's. Then `drainGraves()` at the end of the span
+frees the rest. Without this, both phases' names pile up until exit — the whole
+file's worth, on the machine with the least room for it.
+
+`capLocals()` keeps copies **by value** of everything a later pass needs, which
+is what makes the freeing safe.
+
+### Declaration initializer handling
 
 Local variable initializers are split by cpp:
+
 ```c
-// cpp transforms:
-int x = 5;          // → int x; x = 5;
-char *p = "hello";  // → char *p; p = "hello";
+int x = 5;          /* → int x; x = 5; */
+char *p = "hello";  /* → char *p; p = "hello"; */
 ```
 
-This allows pass1 to handle all declarations uniformly without tracking
-initializer expressions during declaration parsing.
+Statics and arrays keep theirs inline, and those are handled by `init.c` /
+`istream.c`, which stream the initializer straight to `.2` as assembly rather
+than building tree nodes.
 
-### Expression Lifetime
+### Expression lifetime
 
 Expressions are allocated, emitted, and freed within a single statement.
 
-### Constant Folding
+### Constant folding
 
-Pass1 performs limited compile-time constant folding for common C idioms:
+Pass1 performs compile-time constant folding for common C idioms — in
+`fold.c`, split out of `expr.c`:
 
-**Binary operations** - When both operands are constants (E_CONST flag set):
-- Arithmetic: `+`, `-`, `*`, `/`, `%`
-- Bitwise: `&`, `|`, `^`
-- Shifts: `<<`, `>>`
+**Binary operations** — when both operands are constants (`E_CONST` set):
+arithmetic (`+ - * / %`), bitwise (`& | ^`), shifts (`<< >>`), and relationals.
 
-**Unary operations** - When operand is constant:
-- Negation: `-x`
-- Bitwise NOT: `~x`
-- Logical NOT: `!x`
+**Unary operations** — negation `-x`, bitwise NOT `~x`, logical NOT `!x`.
 
-**Type casts** - E_CONST flag preserved through NARROW/WIDEN operations.
+**Type casts** — `E_CONST` is preserved through `NARROW`/`WIDEN`.
 
-**Member access** - Struct member offset added to base is folded when base is constant.
+**Member access** — a struct member offset added to a constant base is folded.
 
-This enables two important C idioms to resolve at compile time:
+Together these resolve two important idioms at compile time:
 
 ```c
-/* Array element count */
-int count = sizeof(arr) / sizeof(arr[0]);
-
-/* Struct member offset (offsetof pattern) */
-int off = (int)&((struct foo *)0)->member;
+int count = sizeof(arr) / sizeof(arr[0]);   /* array element count */
+int off   = (int)&((struct foo *)0)->member; /* offsetof pattern */
 ```
 
-The `foldConst()` function in expr.c handles binary folding. Unary folding
-is inline in the NEG/TWIDDLE/BANG case. Cast folding preserves E_CONST
-through type conversions. Member access folding occurs after creating
-the PLUS node for base + offset.
+`foldNode()` folds a single node; `foldTree()` folds bottom-up and is called at
+the root of every statement's expression before emission. Note that cpp now
+folds `sizeof` itself wherever its size registries can price the type, so many
+of these arrive already reduced to an `INUMBER`.
 
 ## Key Data Structures
 
-### Switch Statement Tracking
+### Switch statement tracking
+
+The switch list is **dynamically allocated and grown**, not a fixed pool:
 
 ```c
 struct swcase {
-    long value;              /* case constant value */
     unsigned char is_default; /* 1 if default, 0 if case */
-    unsigned char stmts;     /* statement count for this case section */
+    unsigned char stmts;      /* statement count for this case section */
 };
 
 struct swtab {
-    struct swcase *cases;    /* pointer into global casePool */
-    unsigned char count;     /* number of cases */
-    unsigned char num;       /* switch number (for labels) */
+    struct swcase *cases;     /* this switch's own case array */
+    unsigned char count;      /* number of cases */
+    unsigned char capacity;   /* allocated size of cases */
+    unsigned char num;        /* switch number */
     unsigned char base_stmts; /* stmt_count at start of current case */
+    unsigned char final_cnt;  /* stmt_count when the body ended */
+    unsigned char emitIdx;    /* phase 2: current case being emitted */
+    unsigned char cslot;      /* reserved count-queue slot (phase 1) */
 };
 
-/* Global arrays */
-struct swcase casePool[MAX_ALLCASES];  /* shared case pool */
-struct swtab swList[MAX_SWITCHES];     /* switch tables */
-unsigned char swStack[MAX_SWDEPTH];    /* nesting stack */
+struct swtab *swList;                   /* grown as needed */
+unsigned char swCount, swCapacity;
+unsigned char swStack[MAX_SWDEPTH];     /* nesting stack */
+unsigned char swStmtDepth[MAX_SWDEPTH]; /* statement() depth per switch */
+unsigned char swEmitStack[MAX_SWDEPTH]; /* phase 2 nesting stack */
 ```
 
-### If/Else Tracking
+A case's **value is not stored**. It is re-parsed in phase 2 as an ordinary
+expression and emitted into the AST after the case's statement count, so the
+table only has to carry what phase 2 cannot recompute.
+
+### If/else tracking
 
 ```c
-static unsigned char ifHasElse[MAX_IFS];  /* 1 if if #N has else */
-static unsigned char ifCount = 0;         /* phase 1: count of ifs */
-static unsigned char ifEmitIdx = 0;       /* phase 2: next if to emit */
+#define MAX_IFS 4096
+unsigned char ifHasElse[MAX_IFS / 8];  /* bit N set: if #N has an else */
+unsigned short ifCount;                /* phase 1: count of ifs */
+unsigned short ifEmitIdx;              /* phase 2: next if to emit */
 ```
 
-### Phase 2 Stacks
+A bitmap, not a byte array: 4096 ifs in 512 bytes.
 
-**Label Stack** - for switch break resolution:
-```c
-struct lblfrm {
-    int num;                 /* label number */
-    unsigned char type;      /* SWITCH only (loops lowered by cpp) */
-};
-struct lblfrm lblStack[MAX_LBLDEPTH];
-unsigned char lblDepth;
-```
+### There is no label stack
 
-Labels are: `S<n>` for SWITCH. Break uses `_break` suffix.
-
-Note: Loop labels (`__W<n>`, `__F<n>`, `__D<n>`) and break/continue resolution
-are handled by cpp during loop lowering. Pass1 only tracks switch contexts.
+Pass1 keeps **no** loop or break label stack. cpp lowers loops, resolves
+break/continue to gotos, and appends the switch's own `__S<n>B` label — so
+pass1 emits `has_label = 0` on every `SWITCH` and tracks only which switch and
+which case it is currently emitting (`swEmitStack`, `swtab.emitIdx`).
 
 ## Statement Types
 
-| Token | Char | Description |
-|-------|------|-------------|
-| BEGIN | `{`  | Block statement |
-| IF    | `I`  | Conditional |
-| SWITCH| `S`  | Switch statement |
-| CASE  | `C`  | Case label |
-| DEFAULT| `O` | Default label |
-| RETURN| `R`  | Return |
-| GOTO  | `G`  | Goto (includes lowered break/continue) |
-| LABEL | `L`  | Label (includes cpp-generated loop labels) |
-| ASM   | `A`  | Inline assembly |
+| Token | Value | Description |
+|-------|------:|-------------|
+| BEGIN | 2 | Block statement (emitted as `AST_BLOCK`) |
+| IF | 147 | Conditional |
+| SWITCH | 150 | Switch statement |
+| CASE | 151 | Case label |
+| DEFAULT | 155 | Default label |
+| RETURN | 146 | Return |
+| GOTO | 145 | Goto (includes lowered break/continue) |
+| LABEL | 112 | Label (includes cpp-generated loop labels) |
+| ASM | 157 | Inline assembly |
+| SEMI | 1 | Empty statement |
 
-Note: WHILE, FOR, DO, CONTINUE are never seen by pass1 - they are
-lowered to if/goto/label sequences by cpp. BREAK is still seen inside
-switch statements (cpp only transforms loop breaks).
+An expression statement has **no opcode of its own** — the expression is
+emitted directly.
+
+WHILE, FOR, DO, BREAK, and CONTINUE are never seen by pass1: cpp lowers all of
+them, including `break` inside a switch.
 
 ## Control Flow
 
 Loops are lowered by cpp before pass1 sees the code. Pass1 receives:
-- Labels (`__W<n>T`, `__F<n>B`, etc.) as regular LABEL tokens
+- Labels (`__W<n>T`, `__F<n>B`, …) as regular LABEL tokens
 - Gotos as regular GOTO tokens
 - If statements with negated conditions for loop exit tests
 
 Pass1 emits these constructs directly to the AST without special loop handling.
 
-**SWITCH** (handled by pass1):
+**SWITCH** (still handled by pass1):
 ```
-S has_label label case_count expr
-  C stmt_count value_expr   ; Each CASE
-  O stmt_count              ; DEFAULT
+SWITCH 0 <case_count> <expr>
+  CASE    <stmt_count> <value_expr>   ; each case
+  DEFAULT <stmt_count>                ; the default
 ```
 
-See `cpp/CPP.md` for details on the loop lowering transformations.
+See [cpp/NORM.md](../cpp/NORM.md) for the lowering transformations.
 
 ## Short-Circuit Evaluation
 
-For `&&` and `||` operators, `cntCondLbls()` counts how many labels are needed and passes this to pass2 for proper branching.
+For `&&` and `||`, `cntCondLbls()` counts how many intermediate labels pass2
+will need for branching, and that count is emitted as the `IF` node's
+`nlabels` field.
 
 ## Memory Model
 
 ```
-Per-function (reset at function start):
-  - swList[8]           ~128 bytes
-  - casePool[128]       ~384 bytes
-  - ifHasElse[128]      128 bytes
-
-Phase 2 stacks (static, reused):
-  - lblStack[16]        ~48 bytes
-  - forStack[8]         ~16 bytes
+Per-span (reset by resetSpanCnts):
+  - swList[]            grown on demand, one case array per switch
+  - ifHasElse[512]      512 bytes (4096 ifs, one bit each)
 
 Count buffers (static):
-  - funcCnts[32]        32 bytes
-  - blkCnts[256]        256 bytes
+  - funcCnts[128]       128 bytes   (the largest source here has 46)
+  - blkCnts[1024]      1024 bytes
   - countBuf[256]       256 bytes
+
+Per-function:
+  - struct local list   captured by value in phase 1, freed after phase 2
 
 Per-statement:
   - Expression tree     built, emitted, freed immediately
@@ -317,15 +339,40 @@ Per-statement:
 
 ## Files
 
-- `cc1.h` - Data structure definitions
-- `pass1.c` - Main driver
-- `lexread.c` - Lexical analysis
-- `expr.c` - Expression parsing
-- `parse.c` - Statement parsing and streaming emission
-- `decl.c` - Declaration handling and top-level parse driver
-- `declare.c` - Declarator parsing
-- `type.c` - Type management
-- `outast.c` - AST emission helpers
-- `regalloc.c` - Register allocation analysis
-- `error.c` - Error reporting
-- `util.c` - Utilities
+Pass1 is split into many small translation units on purpose: the compiler has
+to compile *itself* on a 64K machine, and cpp's tables for one translation unit
+are paid per unit — so the biggest source in the tree is the one that stops
+fitting first.
+
+| File | Purpose |
+|------|---------|
+| `cc1.h` | Data structure definitions |
+| `token.h` | Token numbering (generates `enumlist.h`) |
+| `pass1.c` | Main driver, span loop, phase control |
+| `error.c` | Error reporting |
+| `lexread.c` | Lexeme stream reader (`.x` decoding, `lexTell`/`lexSeek`) |
+| `expr.c` | Expression parsing, precedence table |
+| `eutil.c` | Expression node constructors, `skipExpr` |
+| `pfx.c` | Prefix and primary expression parsing |
+| `post.c` | Postfix arms: subscripts, calls, member selection, `x++` |
+| `fold.c` | Constant folding |
+| `parse.c` | Statement parsing and streaming emission |
+| `pblock.c` | Block scaffolding: scope, locals, asm text, `stIf2`/`stRet2`/… |
+| `swcnt.c` | Switch bookkeeping and the phase-1/phase-2 statement counters |
+| `decl.c` | Declaration parsing, `parsefunc`, `parseSpan`, the graveyard |
+| `declare.c` | Declarator parsing |
+| `init.c` | Static/global initializer parsing |
+| `istream.c` | Initializer value streaming to `.2` |
+| `type.c` | Type tables |
+| `tparse.c` | Type construction and parsing |
+| `name.c` | Name and scope management |
+| `outast.c` | Expression emission (`emitExpr`) |
+| `outh.c` | AST-writer helpers (`typeSfx`, local lookup, demotion tests) |
+| `outfn.c` | Function- and file-level emitters (`emitFuncPre`, `emitGv`) |
+| `regalloc.c` | Register allocation and frame offset assignment |
+| `util.c` | Utilities |
+
+Generated: `enumlist.h` (from `token.h`), `error.h` (from `errorcodes` via
+`makeerror.awk`), `debug.h` and `debugtags.c` (from `makedebug.sh`).
+
+`io.c` is an empty file, not in `SOURCES`, and can be removed.

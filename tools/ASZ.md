@@ -38,12 +38,14 @@ Multiple symbols can be listed, comma-separated:
 |-----------|-------|-------------|
 | `.db val,...` | `.defb` | Define bytes |
 | `.dw val,...` | `.defw` | Define words (16-bit) |
+| `.dl val,...` | `.defl` | Define longs (32-bit) |
 | `.ds count` | | Define space (reserve bytes) |
 
 Examples:
 ```
 .db 0x12, 0x34, 'A', "hello", 0
 .dw label, label+2, 0x1234
+.dl 0x12345678
 .ds 100
 ```
 
@@ -281,7 +283,7 @@ allows unlimited reuse without fixed array limits.
 **Algorithm:**
 
 When `Nf` is encountered:
-1. If `pending[N]` is null, create new synthetic symbol `__LN_seq++`
+1. If `pending[N]` is null, create new synthetic symbol `__L<N>_<seq>`, four digits of sequence
 2. Return `pending[N]` (may be shared by multiple forward refs)
 
 When `N:` is encountered:
@@ -296,12 +298,12 @@ When `Nb` is encountered:
 ```
 Source:                     Synthetic:
 ------                      ----------
-    jr 1f                   jr __L1_001     ; create pending[1]=__L1_001
-    jr 1f                   jr __L1_001     ; reuse pending[1]
-1:                          __L1_001:       ; define pending[1], clear it
-    jr 1b                   jr __L1_001     ; use last[1]
-    jr 1f                   jr __L1_002     ; create pending[1]=__L1_002
-1:                          __L1_002:       ; define pending[1], clear it
+    jr 1f                   jr __L1_0001     ; create pending[1]=__L1_0001
+    jr 1f                   jr __L1_0001     ; reuse pending[1]
+1:                          __L1_0001:       ; define pending[1], clear it
+    jr 1b                   jr __L1_0001     ; use last[1]
+    jr 1f                   jr __L1_0002     ; create pending[1]=__L1_0002
+1:                          __L1_0002:       ; define pending[1], clear it
 ```
 
 **Two-pass consistency:**

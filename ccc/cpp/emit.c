@@ -52,8 +52,8 @@ emitToken(unsigned char tok)
 }
 
 /*
- * Emit symbol: SYM(20) + len byte + name bytes - or, under -j,
- * SYMID(26) + 2-byte id, the name having gone to the .n sidecar.
+ * Emit symbol: SYMID(26) + 2-byte id, the name having gone to the
+ * .n sidecar.  The SYM(20) name form is never emitted.
  */
 void
 emitId(unsigned char tok, char *name)

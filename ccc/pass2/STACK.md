@@ -1,283 +1,228 @@
 # Stack Frame and Calling Convention
 
-This document describes the stack layout and calling convention used by pass2.
+This document describes the stack layout and calling convention pass2 emits.
+
+**IY is the frame pointer.** IX is left free for the code generator to use as a
+pointer register variable. This is the difference from Hi-Tech's convention,
+where IX is the frame pointer and both index registers are saved — which is why
+ccc cannot share Hi-Tech's `csv`/`cret` and has its own `fent*`/`fex*` pair.
 
 ## Stack Frame Layout
 
-For functions with local variables (frame size > 0):
-
 ```
 High addresses
-    +----------------+
-    | arg N          |  IY + 4 + (N-1)*2
-    | ...            |
-    | arg 1          |  IY + 4
-    +----------------+
-    | return address |  IY + 2
-    +----------------+
-    | saved IY       |  IY + 0  <- IY points here after framealloc
-    +----------------+
-    | local N        |  IY - 2
-    | ...            |
-    | local 1        |  IY - framesize
-    +----------------+  <- SP after framealloc
+    +--------------------+
+    | arg N              |  IY + 4 + ...
+    | ...                |
+    | arg 1              |  IY + 4
+    +--------------------+
+    | return address     |  IY + 2
+    +--------------------+
+    | saved IY           |  IY + 0   <- IY points here
+    +--------------------+
+    | scalar area        |  IY - 1 .. IY - savebase
+    |  (locals reached   |
+    |   by (iy+d))       |
+    +--------------------+
+    | saved BC           |  IY - savebase - 2   (if used)
+    | saved IX           |  IY - savebase - 4   (if used)
+    +--------------------+
+    | arrays and the     |  reached by 16-bit arithmetic,
+    | rest of the frame  |  not by (iy+d)
+    +--------------------+  <- SP
 Low addresses
 ```
 
-## Frame Allocation
+**The order is deliberate.** Frame pointer, then the scalar area, then the
+callee saves just under it — so the saves stay inside the **7-bit `(iy+d)`
+window** — and the bulk last, where big arrays live and are addressed with
+16-bit arithmetic anyway. Pass1 computes `savebase`, the scalar area size, and
+puts it in the `AST_FUNC` header; pass2 emits it as the word after the prologue
+call.
 
-Functions with locals call `framealloc` with frame size in A:
+## Prologue
 
-```asm
-foo:
-    ld a,12           ; frame size (bytes for locals)
-    call framealloc
-    ; function body, locals at (iy-1), (iy-2), etc.
-    jp framefree      ; or just 'ret' for void functions
-```
-
-The `framealloc` helper:
-1. Pushes IY (saves caller's frame pointer)
-2. Copies SP to IY (establishes new frame)
-3. Subtracts A from SP (allocates local space)
+The whole prologue is one call plus a word:
 
 ```asm
-framealloc:
-    push iy
-    ld iy,0
-    add iy,sp         ; IY = SP (at saved IY)
-    ld l,a
-    ld h,0
-    ex de,hl
-    ld hl,0
-    add hl,sp
-    or a
-    sbc hl,de         ; HL = SP - framesize
-    ld sp,hl          ; allocate locals
-    ret
+_foo::
+	call	fentb
+	.dw	-4          ; -savebase
+	ld	hl,-200     ; only if there is more frame below the saves
+	add	hl,sp
+	ld	sp,hl
 ```
 
-## Frame Deallocation
+The helper is chosen by what has to be saved:
 
-The `framefree` helper restores SP and IY, then returns:
+| Saves | Helper |
+|-------|--------|
+| BC and IX | `fentbx` |
+| IX only | `fentx` |
+| BC only | `fentb` |
+| neither, but a scalar area | `fentn` |
+| neither, and no scalar area | `fenter` (takes no word) |
+
+Even the bare frame-pointer case is **called** rather than written out: the
+inline sequence is eight bytes (`push iy` 2, `ld iy,0` 4, `add iy,sp` 2) against
+three for a call, and leaving it to the peephole meant paying the eight in every
+build that does not run `-O`.
+
+### BC is always saved
+
+`savesbc()` returns 1 unconditionally, and that is not laziness. The
+register-variable homes are callee-saved, so a function keeping a variable in BC
+must save it — and that used to be the whole test. It is not enough, because the
+code generator also uses **BC as scratch** in functions that have no variable
+there at all: `ld bc,4` for an offset, `ld c,l / ld b,h` to move a pair. 366 of
+the tree's functions do it, and none of them were saving anything.
+
+While callers saved BC around every call, that did not matter. Now that they do
+not, it is the difference between a caller's variable surviving a call and not.
+The prologue is emitted before the body, so pass2 cannot know whether the
+scratch will be used — and since nearly every function uses it, the answer that
+costs least to be sure of is *always*.
+
+## Epilogue
+
+Every `return` is a `jp` to the function's own exit label, `X<name>`:
 
 ```asm
-framefree:
-    ld sp,iy          ; discard locals
-    pop iy            ; restore caller's IY
-    ret
+	jp	Xfoo
+Xfoo:
+	call	fexb
+	.dw	-4          ; offset of the LOWER save from IY
 ```
 
-Return statements in framed functions use `jp framefree` instead of `ret`.
+| Restores | Helper |
+|----------|--------|
+| IX and BC | `fexbx` |
+| IX only | `fexx` |
+| BC only | `fexb` |
+| neither | `jp fexit` |
 
-## Leaf Functions
-
-Functions without locals (frame size = 0) skip frame setup:
-
-```asm
-bar:
-    ; no framealloc call
-    ; function body
-    ret               ; direct return
-```
+The `fex*` helpers end with the unwind themselves, so there is no `jp fexit`
+after them. None of them touch HL, the flags, DE, or the shadow set — so they
+are correct with a return value already in HL':HL and with a condition already
+set up.
 
 ## Argument Passing
 
-Arguments are pushed right-to-left before the call:
+Arguments are pushed right-to-left before the call. A long is pushed **high word
+first**, so it lands on the stack the same way round as in memory.
 
-| Type | Size | Push Method |
-|------|------|-------------|
-| byte | 1 | `push af` (value in A, F is garbage) |
-| word | 2 | `push hl` |
-| long | 4 | `push hl` twice (high word first) |
+Register-variable parameters are **staged** in the prologue: pass1 assigns them
+a register, and pass2 emits the loads from their stack slots right after the
+frame is set up.
 
 ```asm
-    ; call foo(a, b, c) where a=byte, b=word, c=word
-    ; push right to left: c, b, a
-    ld hl,(c)
-    push hl           ; arg 3 (word)
-    ld hl,(b)
-    push hl           ; arg 2 (word)
-    ld a,(a)
-    push af           ; arg 1 (byte, in high byte of stack word)
-    call foo
-```
-
-### Byte Parameter Stack Position
-
-Byte parameters pushed via `push af` have the value in the high byte of the
-stack word (A is pushed, F occupies low byte). Pass2 adjusts the IY offset:
-
-```c
-// In parseFunc():
-if (ISBYTE(ptype) && preg == 0 && poff > 0)
-    poff++;  // access byte at IY+offset+1 (high byte of word)
+	ld	c,(iy+4)      ; a byte parameter into C
+	ld	c,(iy+6)      ; a word parameter into BC
+	ld	b,(iy+7)
+	ld	l,(iy+8)      ; a pointer parameter into IX
+	ld	h,(iy+9)
+	push	hl
+	pop	ix
 ```
 
 ### Interop warning: zc3/hitech uses the opposite byte convention
 
-The hitech compiler (zc3) puts a prototyped byte argument in the LOW
-byte of the stack word, with a junk high byte (it emits `ld l,(hl)` /
-`push hl`); unprototyped calls widen to a full 16-bit value.  The
-push-af convention above puts the value in the HIGH byte.  The two
-cannot share hand-written callees that take byte arguments.
+The Hi-Tech compiler (`zc3`) puts a prototyped byte argument in the **low** byte
+of the stack word, with a junk high byte (it emits `ld l,(hl)` / `push hl`);
+unprototyped calls widen to a full 16-bit value. A `push af` convention would
+put the value in the high byte. The two cannot share hand-written callees that
+take byte arguments.
 
-The libsrc/libu syscall wrappers currently implement the ZC3
-convention (low byte), because the running native toolchain is
-zc3-compiled - a `pop af` wrapper under zc3 reads the junk byte (this
-was a real bug: close() closed garbage descriptors and leaked fds).
-When ccc becomes the system compiler, the byte-argument wrappers
-(close, dup, read, write, seek, gtty, fstat, stty) need a
-ccc-convention variant tree built to this document.  Keep the two
-conventions in separate source trees rather than conditional
-assembly - asz stays a minimal back-end assembler.
+The `libsrc/libu` syscall wrappers implement the **ZC3** convention (low byte),
+because the running native toolchain is zc3-compiled — a `pop af` wrapper under
+zc3 reads the junk byte. This was a real bug: `close()` closed garbage
+descriptors and leaked fds. When ccc becomes the system compiler, the
+byte-argument wrappers (`close`, `dup`, `read`, `write`, `seek`, `gtty`,
+`fstat`, `stty`) need a ccc-convention variant tree. Keep the two conventions in
+separate source trees rather than conditional assembly — `asz` stays a minimal
+back-end assembler.
 
 ## Return Values
 
 | Type | Location |
 |------|----------|
-| byte | A register |
-| word | HL register |
-| long | lR memory (4 bytes at fixed address) |
+| byte | HL — pass2's RETURN widens even a byte |
+| word | HL |
+| long | HL':HL (high word in HL', low in HL) |
 
-## Argument Access
-
-Within a function, arguments are accessed via positive IY offsets:
-
-```asm
-    ld a,(iy+5)       ; first byte arg (at IY+4, +1 for high byte)
-    ld l,(iy+6)       ; second word arg low byte
-    ld h,(iy+7)       ; second word arg high byte
-```
+Every return goes through an assignment to HL, which is why the `fex*` helpers
+need not preserve A or the flags.
 
 ## Local Variable Access
 
-Locals are accessed via negative IY offsets:
+Scalars in the scalar area are reached with `(iy-d)`:
 
 ```asm
-    ld a,(iy-1)       ; first local byte
-    ld l,(iy-2)       ; second local word low byte
-    ld h,(iy-1)       ; second local word high byte (overlaps!)
+	ld	a,(iy-1)      ; a byte local
+	ld	l,(iy-4)      ; a word local, low byte
+	ld	h,(iy-3)      ; high byte
 ```
 
-Note: Pass1 assigns offsets to avoid overlap; the example above is illustrative.
+Arrays sit below the callee saves and are reached by arithmetic:
+
+```asm
+	push	iy
+	pop	hl
+	ld	de,-200
+	add	hl,de         ; -> the array
+```
+
+Pass1 assigns the offsets — scalars first so they stay inside the `(iy+d)`
+window, arrays after the saves. `assignFrmOff()` gripes with `ER_D_FL` if the
+scalar area passes 120 bytes, and pass2 emits a `.error` if the frame grows
+large enough to push a callee-save slot past −128.
 
 ## Register Variables
 
-Some locals are allocated to registers instead of the stack:
+| Register | Type | Assigned to |
+|----------|------|-------------|
+| B | byte | a byte local |
+| C | byte | a byte local |
+| BC | word | the word local with the highest reference count |
+| IX | pointer | the pointer with the most field accesses |
 
-| Register | Type | Usage |
-|----------|------|-------|
-| B | byte | First eligible byte local |
-| C | byte | Second eligible byte local |
-| BC | word | First eligible word local |
-| IX | pointer | Struct pointer parameter |
-
-Register variables don't consume stack space. Pass1 decides allocation based
-on usage patterns and loop nesting.
-
-## IX Register Usage
-
-IX is reserved for struct pointer parameters. When a function has a struct
-pointer parameter in IX:
-
-```c
-void foo(struct bar *p) {
-    p->field = 5;  // access via IX+offset
-}
-```
-
-```asm
-foo:
-    ; p is in IX (not on stack)
-    ld (ix+4),5       ; p->field at offset 4
-    ret
-```
-
-Fields are accessed via `(ix+offset)` addressing mode, which pass2 optimizes
-by collapsing `DEREF[+p DEREF[REGVAR(ix)] #ofs]` patterns to LOCALVAR nodes.
+Register variables consume no frame space. Pass1 decides; see
+[../pass1/PHASE2.md](../pass1/PHASE2.md) for the policy and the exclusions.
 
 ## Stack Cleanup
 
-The caller is responsible for cleaning up pushed arguments. However, pass2
-does not emit explicit cleanup code after calls. Instead:
-
-1. **Framed functions**: `framefree` resets SP to IY, discarding both locals
-   and any accumulated argument pushes
-2. **Leaf functions**: Typically don't make calls, so no cleanup needed
-
-This means argument space accumulates on the stack during nested calls within
-a function, but is reclaimed when the function returns.
-
-## Long (32-bit) Operations
-
-Long values use memory temporaries since Z80 lacks 32-bit registers:
-
-- `lL` - left operand (4 bytes)
-- `lR` - right operand / result (4 bytes)
-
-Long arguments are pushed as two words (high first):
-```asm
-    ld hl,(longval+2) ; high word
-    push hl
-    ld hl,(longval)   ; low word
-    push hl
-    call func_taking_long
-```
-
-Long locals are accessed by computing address, then using helper:
-```asm
-    push iy
-    pop hl
-    ld de,-8          ; offset to long local
-    add hl,de
-    call lldHLR       ; load 4 bytes from (HL) to lR
-```
-
-## Helper Functions
-
-| Helper | Purpose |
-|--------|---------|
-| `framealloc` | Allocate stack frame (A = size) |
-| `framefree` | Deallocate frame and return |
-| `callhl` | Call function pointer in HL |
-| `switch` | Dispatch switch via table at HL |
-| `lldHL` | Load long from (HL) to lL |
-| `lldHLR` | Load long from (HL) to lR |
-| `lstHL` | Store long from lL to (HL) |
-| `lstHLR` | Store long from lR to (HL) |
-| `ladd/lsub` | Long add/subtract (lR = lL op lR) |
-| `land/lor/lxor` | Long bitwise ops |
-| `lneg/lcom` | Long negate/complement |
-| `lcmp` | Long compare (sets flags) |
-| `lshl/lashr/lshr` | Long shifts (A = count) |
-| `imul/idiv/imod` | Word multiply/divide/modulo |
-| `imulb/idivb/imodb` | Byte multiply/divide/modulo |
-| `imula` | Multiply HL by A |
+Pass2 does not emit explicit cleanup after a call. The frame teardown resets SP
+from IY, discarding the frame and any accumulated argument pushes at once, so
+argument space accumulates during nested calls within a function and is
+reclaimed when the function returns.
 
 ## Example: Complete Function
 
 ```c
-int add(int a, int b) {
-    int sum;
-    sum = a + b;
-    return sum;
+short main(int a, char *b)
+{
+	short c;
+	c = a + 42;
+	return c;
 }
 ```
 
+`c` is allocated to BC, so there is no scalar area at all:
+
 ```asm
-    .globl add
-add:
-    ld a,2            ; frame size for 'sum'
-    call framealloc
-    ; sum at (iy-2), a at (iy+4), b at (iy+6)
-    ld l,(iy+4)
-    ld h,(iy+5)       ; load a
-    ld e,(iy+6)
-    ld d,(iy+7)       ; load b
-    add hl,de         ; a + b
-    ld (iy-2),l
-    ld (iy-1),h       ; store to sum
-    ; return sum (already in HL)
-    jp framefree
+_main::
+	call	fentb
+	.dw	0             ; no scalar area
+	ld	l,(iy+4)      ; a
+	ld	h,(iy+5)
+	ld	de,42
+	add	hl,de
+	ld	c,l           ; -> c, which lives in BC
+	ld	b,h
+	ld	l,c           ; return c
+	ld	h,b
+	jp	Xmain
+Xmain:
+	call	fexb
+	.dw	-2            ; the saved BC, just under an empty scalar area
 ```

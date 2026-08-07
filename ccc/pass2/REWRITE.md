@@ -10,55 +10,114 @@ The rewriter transforms expression trees into Z80 assembly through:
 2. **Assignment** - top-down pass assigns target registers (HL/DE)
 3. **Rewriting** - depth-first fixed-point rule application with code emission
 
-## Pattern Language
+## Rule Table
 
-### Operator Codes
+```c
+struct rule {
+    char *asmtpl;          /* asm template ($L/$R/... interpolation) */
+    unsigned char op;      /* pattern letter of the root */
+    unsigned char lop;     /* left operand, 0 if the root has no children */
+    unsigned char rop;     /* right operand, 0 if unary */
+    unsigned char subop;   /* the one grandchild pattern */
+    unsigned char sfx;     /* width | dest<<3 | left child's width<<5 */
+    unsigned char rep;     /* replacement op */
+    unsigned char paths;   /* lsrc | rsrc<<2 | dsrc<<4 | RP_SUBR */
+    unsigned char flags;
+    unsigned char destval; /* result location: R_HL, R_A, F_Z, ... (0 = none) */
+};
+```
 
-Single-character codes for matching expression nodes:
+**Patterns are pre-decoded, not strings.** A rule used to carry the spelling it
+is written as — `"=(D(H),N):s"` — and parse it afresh on every attempt; the
+strings and their pointers were the largest single thing in the table. The
+shape is small and fixed (an operator, up to two operands, at most one level
+under either) so six bytes hold all of it. Rules are written through the `R()`
+macro, which packs the fields:
 
-| Char | Operator   | Char | Operator   | Char | Special      |
-|------|------------|------|------------|------|--------------|
-| `+`  | PLUS       | `D`  | DEREF      | `N`  | NUMBER       |
-| `*`  | STAR (mul) | `V`  | REGVAR     | `P`  | POW2 (2^n)   |
-| `-`  | MINUS      | `L`  | LOCALVAR   | `Z`  | ZERO (0)     |
-| `/`  | DIV        | `I`  | INDEX      | `M`  | SMALL (1-4)  |
-| `%`  | MOD        | `H`  | INHL       | `_`  | any          |
-| `&`  | AND        | `E`  | INDE       | `0`  | null         |
-| `\|` | OR         | `A`  | INA        |      |              |
-| `^`  | XOR        | `B`  | INBC       |      |              |
-| `<`  | LSHIFT     | `C`  | CODE       |      |              |
-| `>`  | RSHIFT     | `S`  | SYM        |      |              |
-| `=`  | ASSIGN     | `O`  | SYMREF     |      |              |
-| `Q`  | EQ         | `T`  | LT         |      |              |
-| `U`  | NEQ        | `G`  | GT         |      |              |
-| `W`  | LE         | `Y`  | GE         |      |              |
-| `!`  | BANG       | `i`  | PREINC     |      |              |
-| `o`  | OREQ       | `j`  | POSTINC    |      |              |
-| `a`  | ARGNODE    | `k`  | PREDEC     |      |              |
-|      |            | `m`  | POSTDEC    |      |              |
+```c
+R(op, lop, rop, llop, rlop, sfx, rep, lsrc, rsrc, dsrc, flags, tpl, dest)
+```
 
-### Multiply Constants
+`llop` and `rlop` are the grandchild patterns, and **no rule has ever named
+both** — a shape that deep on both sides has never been worth a rule — so they
+share `subop`, with the `RP_SUBR` bit of `paths` saying which side it belongs
+to. That one bit is 682 bytes of table.
 
-Lowercase letters match specific constant values for strength-reduced multiply:
+DEBUG builds keep the spellings in `rulepat[]` for the trace to print;
+`mkrulepat.py` regenerates that array from `rules[]` before every build.
 
-| Char | Value | Char | Value | Char | Value |
-|------|-------|------|-------|------|-------|
-| `3`  | 3     | `x`  | 10    | `n`  | 15    |
-| `5`  | 5     | `e`  | 11    | `y`  | 20    |
-| `6`  | 6     | `w`  | 12    | `q`  | 24    |
-| `7`  | 7     | `f`  | 14    | `z`  | 40    |
-| `9`  | 9     |      |       |      |       |
+### Pattern letters
 
-### Pattern Syntax
+These are the spellings `mkrulepat.py` produces and the trace prints; the table
+itself stores opcode values.
+
+| Char | Node | Char | Node | Char | Node |
+|------|------|------|------|------|------|
+| `=`  | ASSIGN    | `D` | DEREF     | `V` | REGVAR |
+| `+`  | PLUS      | `W` | WIDEN     | `L` | LOCALVAR |
+| `-`  | MINUS     | `X` | SEXT      | `I` | INDEX |
+| `*`  | STAR      | `Z` | NARROW    | `S` | SYM |
+| `/`  | DIV       | `!` | BANG      | `O` | SYMREF |
+| `%`  | MOD       | `m` | NEG       | `G` | NUMBER |
+| `&`  | AND       | `~` | NOT       | `H` | INHL |
+| `\|` | OR        | `c` | CALL      | `E` | INDE |
+| `^`  | XOR       | `;` | COMMA     | `A` | INA |
+| `y`  | LSHIFT    | `Q` | QUES      | `B` | INBC |
+| `w`  | RSHIFT    | `T` | TERNBRANCH| `K` | INE |
+| `<`  | LT        | `i` | PREINC    | `C` | CODE |
+| `>`  | GT        | `j` | POSTINC   | `R` | ARGNODE |
+| `e`  | EQ        | `d` | PREDEC    | `F` | BFEXTRACT |
+| `n`  | NEQ       | `k` | POSTDEC   | `f` | BFASSIGN |
+| `q`  | LE        | `a` | LAND      | `U` | PLUSEQ |
+| `p`  | GE        | `o` | LOR       | `l` | LABEL |
+
+Note `<`/`>` are **LT/GT**, and the shifts are `y`/`w`. (An earlier revision of
+this table had `<`/`>` as the shifts; they are not.)
+
+### Pattern specials
+
+Wildcards and constant classes, spelled as the lowercased tail of their `P_`
+name:
+
+| Spelling | Constant | Matches |
+|----------|----------|---------|
+| `any` | `P_ANY` (234) | any node |
+| `0` | `P_NULL` (255) | no child |
+| `num` | `P_NUM` (254) | any NUMBER |
+| `pow2` | `P_POW2` (253) | a power of two |
+| `zero` | `P_ZERO` (252) | the constant 0 |
+| `smal` | `P_SMALL` (251) | 1–4: can use inc/dec |
+| `eigh` | `P_EIGHT` (237) | the constant 8: a shift by a whole byte |
+| `mul3` … `mul40` | `P_MUL3`…`P_MUL40` | 3, 5, 6, 7, 9, 10, 11, 12, 14, 15, 20, 24, 40 |
+| `cmp` | `P_CMP` (236) | EQ, NEQ, LT or GE |
+| `cmpx` | `P_CMPX` (235) | LE or GT — the same code, operands swapped |
+
+Anything at or above `P_ANY` (234) is a looser match than a plain opcode, which
+is how `tryrule` tells the two apart.
+
+**`P_CMP`/`P_CMPX` are the comparison unification.** For one pair of operands
+the six comparisons are two pieces of code, not six: EQ, NEQ, LT, and GE all
+subtract and then read a different flag off the same subtraction, and LE and GT
+are the same thing with the operands swapped. The table used to hold a row for
+each, alike but for the flag it named — 89 rows saying what the operator
+already says. Now one row each, with the result named `F_CC` and the real flag
+worked out by `ccflag()`.
+
+### Pattern syntax
 
 ```
 op              match leaf node
 op(child)       match unary with child pattern
 op(left,right)  match binary with child patterns
-:w              width suffix (b/s/l/p/f or _ for any)
-:F              flag context (DEST_FLAGS)
-:V              value context (DEST_VALUE)
+:w              width suffix — b, s, or l
+F               flag context (DEST_FLAGS)
+V               value context (DEST_VALUE)
+S               stack context (DEST_STACK)
 ```
+
+The suffix byte packs three things: `SFX_W` the node's width, `SFX_D` the
+destination context, and `SFX_LW` the **left child's** width — the one operand
+that can carry a width of its own. Widths are `PW_B`, `PW_S`, `PW_L`, `PW_P`.
 
 Width matching is case-insensitive: `b` matches both `byte` and `ubyte`.
 
@@ -67,67 +126,102 @@ Width matching is case-insensitive: `b` matches both `byte` and `ubyte`.
 ```
 L               matches LOCALVAR
 D(V)            matches DEREF(REGVAR)
-+(D(V),N)       matches PLUS(DEREF(REGVAR), NUMBER)
-*(_,P)          matches STAR(any, POW2)
-=(I,N):b        matches byte ASSIGN(INDEX, NUMBER)
-+(H,M)          matches PLUS(INHL, SMALL) where SMALL is 1-4
-Q(A,N):F        matches EQ(INA, NUMBER) in flag context
++(D(V),num)     matches PLUS(DEREF(REGVAR), NUMBER)
+*(any,pow2)     matches STAR(any, power of two)
+=(I,num):b      matches byte ASSIGN(INDEX, NUMBER)
++(H,smal)       matches PLUS(INHL, 1..4)
+e(A,num):bF     matches byte EQ(INA, NUMBER) in flag context
 D(O):b          matches byte DEREF(SYMREF)
-```
-
-## Rule Table
-
-```c
-struct rule {
-    char *pat;      /* pattern string */
-    char *rep;      /* replacement op char */
-    char *lsrc;     /* left child source path */
-    char *rsrc;     /* right child source path */
-    char *dsrc;     /* data source path (for reg/off) */
-    unsigned char flags;
-    char *asmtpl;   /* assembly template (NULL = rewrite only) */
-    unsigned char destval; /* result register (R_HL, R_A, F_Z, etc.) */
-};
 ```
 
 ### Source Paths
 
-Navigate the expression tree using L (left) and R (right):
-- `""` - null/none
-- `"L"` - left child
-- `"R"` - right child
-- `"LL"` - left->left
-- `"LR"` - left->right
+Where a rule's replacement gets its children and its data. Only four values
+exist, and the three paths share one byte (two bits each):
+
+| Constant | Meaning |
+|----------|---------|
+| `P_NONE` | null/none |
+| `P_L` | left child |
+| `P_R` | right child |
+| `P_LL` | left->left |
 
 ### Flags
 
-| Flag       | Effect                                          |
-|------------|-------------------------------------------------|
-| `RF_POW2`  | Transform NUMBER value through log2             |
-| `RF_IXIY`  | Require dsrc reg is IX or IY                    |
-| `RF_BC`    | Require dsrc reg is BC                          |
-| `RF_DE`    | Require dsrc reg is DE                          |
-| `RF_HL`    | Require dsrc reg is HL                          |
-| `RF_IX`    | Require dsrc reg is IX                          |
-| `RF_NOTEQ` | NEQ→BANG(EQ): wrap children in EQ node          |
-| `RF_INC1`  | Increment right constant by 1 (GT→GE, LE→LT)    |
+The five modifiers are bits. The register requirements are **not** — a rule
+cannot want two registers, so they are a 3-bit value in `RF_REG` (0xe0) rather
+than a bit apiece. As bits they needed twelve, which meant a `short`, which
+cost the table 474 bytes to say nothing more.
+
+| Flag | Value | Effect |
+|------|------:|--------|
+| `RF_POW2`  | 0x01 | Transform the constant through log2 |
+| `RF_NOTEQ` | 0x02 | NEQ→BANG(EQ): wrap children in an EQ node |
+| `RF_INC1`  | 0x04 | Increment the right constant by 1 (GT→GE, LE→LT) |
+| `RF_TDE`   | 0x08 | Require TARGET is DE (for the RHS of a binary op) |
+| `RF_SIGNL` | 0x10 | Require the left operand has a signed width |
+| `RF_IXIY`  | 0x20 | Require dsrc reg is IX or IY |
+| `RF_BC`    | 0x40 | Require dsrc reg is BC |
+| `RF_DE`    | 0x60 | Require dsrc reg is DE |
+| `RF_HL`    | 0x80 | Require dsrc reg is HL |
+| `RF_IX`    | 0xa0 | Require dsrc reg is IX |
+| `RF_C`     | 0xc0 | Require dsrc reg is C (low byte of BC) |
+| `RF_B`     | 0xe0 | Require dsrc reg is B (high byte of BC) |
+
+### Preserved nodes
+
+`preserve[]` in `rules.c` lists the node types a subtree is **not** reduced
+past, so a parent rule can still match on their shape:
+
+```
+REGVAR LOCALVAR INDEX P_NUM SYM SYMREF INHL INDE INA INE INBC CODE
+```
 
 ## Assembly Templates
 
-Templates use `$` for interpolation:
+Templates use `$` for interpolation. A path is any run of `L`/`R` naming a node
+to reach, optionally followed by one modifier and any number of `+`s:
 
 | Syntax   | Meaning                                    |
 |----------|--------------------------------------------|
-| `$L`     | Left child value                           |
-| `$R`     | Right child value                          |
-| `$LL`    | Left->left value                           |
-| `$Rl`    | Low byte of right NUMBER                   |
-| `$Rh`    | High byte of right NUMBER                  |
-| `$L+`    | Left INDEX with offset+1                   |
-| `$t`     | Target low register (l or e)               |
-| `$u`     | Target high register (h or d)              |
-| `$T`     | Target register pair (hl or de)            |
+| `$L` `$R` `$LL` | Value of the node at that path      |
+| `$RL`    | Right child's left child (special-cased)   |
+| `$Rl` `$Rh` `$R2` `$R3` | The four bytes of a NUMBER, low to high |
+| `$Lo`    | An INDEX's offset alone                    |
+| `$Lr`    | An INDEX's register alone                  |
+| `$L+`    | The same node with its offset + 1 (repeatable: `$L++`) |
+| `$t`     | Target low register (`l` or `e`)           |
+| `$u`     | Target high register (`h` or `d`)          |
+| `$T`     | Target register pair (`hl` or `de`)        |
+| `$$`     | A literal `$` — the assembler's "here"     |
+| `$[` `$]`| Bracket a 16-bit helper call (see below)   |
 | `%(text)`| Repeat text N times (N = right operand)    |
+
+A path that reaches a node the emitter cannot print produces `?op<n>?`, and a
+path that runs off the tree produces `?null?` — both of which the assembler
+will reject loudly rather than emitting something plausible.
+
+### `$[` and `$]` — saving BC across a helper
+
+The 16-bit helpers take their second operand off the stack with a `pop bc` and
+do not put it back. A register variable living in BC has to be saved across
+that, and **only the emitter knows whether there is one** — the table cannot
+say. `$[` emits `push bc` if `bcinuse()`, `$]` emits the matching `pop bc`.
+
+Without it, `t = a * a` in a function with a register variable quietly
+destroyed the variable — and when the variable was the loop subscript doing the
+multiplying, the loop did not end.
+
+### Shared template fragments
+
+Templates are the largest single thing in the compiler and they repeat heavily
+— `or a` alone appeared a hundred times, and nothing pools identical literals.
+So common sequences live once in `fragtab[]` and a template names one with a
+**single byte with the high bit set**, the low seven being the index.
+`expandtpl()` expands them before anything is interpolated, so nothing
+downstream has to know. This is worth about eight kilobytes.
+
+`TPLMAX` (160) bounds a template once its fragments are put back.
 
 ### Repeat Syntax
 
@@ -135,8 +229,8 @@ The `%(text)` syntax repeats the enclosed text based on the right operand's
 constant value. Used for small increments and shifts:
 
 ```c
-{"+(H,M)", "+", "L", "R", "", 0, "%(\tinc hl\n)", R_HL}
-{"-(A,M)", "-", "L", "R", "", 0, "%(\tdec a\n)", R_A}
+R(PLUS,  INHL, P_SMALL, 0,0, 0, PLUS,  P_L, P_R, P_NONE, 0, "%(\tinc hl\n)", R_HL)
+R(MINUS, INA,  P_SMALL, 0,0, 0, MINUS, P_L, P_R, P_NONE, 0, "%(\tdec a\n)",  R_A)
 ```
 
 For `x + 3`, this emits `inc hl` three times.
@@ -197,12 +291,14 @@ GT and LE rewritten to use cheap ops:
 
 ## Destination Context
 
-Expressions marked with destination before rewriting:
-- IF/WHILE condition: DEST_FLAGS (result in CPU flags)
-- RETURN value: DEST_VALUE (result in register)
-- Expression statement: DEST_NONE (discard result)
+`setdest()` marks an expression before rewriting:
+- IF condition: `DEST_FLAGS` (result in the CPU flags)
+- RETURN value: `DEST_VALUE` (result in a register)
+- Expression statement: `DEST_NONE` (discard the result)
+- Call argument: `DEST_STACK` (push it)
 
-Pattern suffix `:F` matches DEST_FLAGS, `:V` matches DEST_VALUE.
+Pattern suffix `F` matches `DEST_FLAGS`, `V` matches `DEST_VALUE`, and `S`
+matches `DEST_STACK`. There is no WHILE — cpp lowered it.
 
 ## Special Node Types
 
