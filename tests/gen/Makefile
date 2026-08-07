@@ -93,17 +93,7 @@ sim:
 	@$(MAKE) -C $(ROOT)/ccc/pass1 mx-ccc >/dev/null
 	@$(MAKE) -C $(ROOT)/ccc/pass2 mx-ccc >/dev/null
 	@cp $(ROOT)/ccc/pass1/mxccc/c0.mx $(ROOT)/ccc/pass2/mxccc/c1.mx $(RUN)/
-	@cd $(RUN) && fail=0; for f in gp_*.c; do \
-		b=$${f%.c}; \
-		$(ROOT)/ccc/cpp/cpp -DRT_CCC -i$(ROOT)/libsrc/include -I. -o $$b $$f >/dev/null 2>&1; \
-		$(ROOT)/ccc/pass1/c0 $$b.x h.1 h.2 >/dev/null 2>&1; \
-		$(ROOT)/ccc/pass2/c1 h.1 h.2 h.s >/dev/null 2>&1; \
-		timeout 300 $(ROOT)/root/sim -d $(RUN) /c0.mx /$$b.x /s.1 /s.2 </dev/null >/dev/null 2>&1; \
-		timeout 600 $(ROOT)/root/sim -d $(RUN) /c1.mx /s.1 /s.2 /s.s </dev/null >/dev/null 2>&1; \
-		grep -v '^;' h.s > h.cmp 2>/dev/null; grep -v '^;' s.s > s.cmp 2>/dev/null; \
-		if cmp -s h.cmp s.cmp; then echo "$$b: identical"; \
-		else echo "$$b: DIVERGES"; fail=1; fi; \
-	done; rm -f h.* s.* gp_*.x gp_*.n c0.mx c1.mx; exit $$fail
+	@sh simcheck.sh $(ROOT) $(RUN)
 
 footprint:
 	@sh footprint.sh
