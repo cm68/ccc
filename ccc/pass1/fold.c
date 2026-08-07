@@ -89,6 +89,46 @@ foldNode(struct expr *e)
     right = e->right;
     op = e->op;
 
+    /*
+     * A conditional whose test is constant is one of its arms.  This
+     * was missing entirely, and nothing said so: a static initializer
+     * is required to be constant, so an unfolded ?: left the whole
+     * expression non-constant and the initializer quietly emitted
+     * zero.  The preprocessor's folder hides it for short spellings -
+     * it answers them before pass1 ever sees them - so it only showed
+     * when an expression grew past the folder's save buffer and came
+     * back here to be folded:
+     *
+     *	(l) | ((r) << 2) | ((d) << 4) | ((rlo) ? RP_SUBR : 0)
+     *
+     * in pass2's rule table, where every packed path byte came out
+     * nought and the self-built compiler matched rules that were not
+     * there.  The arms are already folded - foldTree works upwards -
+     * so the answer is whichever one the test picks.
+     */
+    if (op == QUES && (left->flags & E_CONST) && right->op == COLON &&
+        right->left && right->right) {
+        struct expr *dead;
+
+        if (left->v) {
+            result = right->left;
+            dead = right->right;
+        } else {
+            result = right->right;
+            dead = right->left;
+        }
+        right->left = right->right = NULL;
+        result->next = e->next;
+        result->flags |= (e->flags & E_FUNARG);
+        e->left = e->right = NULL;
+        e->next = NULL;
+        FreeExpr(left);
+        FreeExpr(dead);
+        freeNode(right);
+        freeNode(e);
+        return result;
+    }
+
     /* Identity folding: x + 0 -> x, x * 1 -> x, etc. */
     if (right->flags & E_CONST) {
         rv = right->v;

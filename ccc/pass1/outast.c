@@ -390,6 +390,30 @@ emitExpr(struct expr *e)
 		} else {
 			struct type *w = opwidth(e);
 			/*
+			 * An equality test between two byte-valued
+			 * operands is a byte test.  The integer
+			 * promotions make it int arithmetic - a byte is
+			 * widened, masked sixteen bits wide against a
+			 * constant with no high half, and compared with
+			 * sbc hl,de - where "and n / cp m" says the same
+			 * thing in a third of the bytes.  Equality is the
+			 * safe half of this: it does not care which way
+			 * either operand would have been signed, so long
+			 * as both really fit in the byte.
+			 *
+			 * bytevalued() asks whether a value provably fits
+			 * in an unsigned byte, which is not what
+			 * candemote() asks - that one says only that the
+			 * low bytes may be taken, and a long against zero
+			 * passes it while comparing false as a byte.  The
+			 * passes are written in flag tests over storage
+			 * classes, type bits and rule flags, so this is
+			 * worth better than a kilobyte.
+			 */
+			if ((op == EQ || op == NEQ) && w->size > 1 &&
+			    bytevalued(left) && bytevalued(right))
+				w = uchartype;
+			/*
 			 * emitOperand widens a narrow operand and leaves a wide
 			 * one alone, which is right for everything except an
 			 * operand wider than the operator itself works at.

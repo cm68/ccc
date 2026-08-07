@@ -59,8 +59,15 @@ struct rule {
 	unsigned char op;    /* pattern letter of the root */
 	unsigned char lop;   /* left operand, 0 if the root has no children */
 	unsigned char rop;   /* right operand, 0 if unary */
-	unsigned char llop;  /* under the left operand, 0 if it is a leaf */
-	unsigned char rlop;  /* under the right operand */
+	/*
+	 * The grandchild pattern: what sits under one of the two
+	 * operands.  No rule in the table has ever named both - a
+	 * shape that deep on both sides has never been worth a rule -
+	 * so the two share a byte and a spare bit of paths says which
+	 * side it belongs to.  That bit is 682 bytes of table, which
+	 * on the machine this has to fit is a real number.
+	 */
+	unsigned char subop;
 	unsigned char sfx;   /* width | dest << 3 | left child's width << 5 */
 	unsigned char rep;   /* replacement op char */
 	unsigned char paths; /* lsrc | rsrc<<2 | dsrc<<4 */
@@ -122,6 +129,9 @@ struct rule {
 #define RP_L(rp)  ((rp)->paths & 3)		/* left child source path */
 #define RP_R(rp)  (((rp)->paths >> 2) & 3)	/* right child source path */
 #define RP_D(rp)  (((rp)->paths >> 4) & 3)	/* data source path */
+#define RP_SUBR	0x40		/* subop belongs to the right operand */
+#define RP_LLOP(rp) (((rp)->paths & RP_SUBR) ? 0 : (rp)->subop)
+#define RP_RLOP(rp) (((rp)->paths & RP_SUBR) ? (rp)->subop : 0)
 
 /* Rule table (defined in rules.c) */
 extern struct rule rules[];

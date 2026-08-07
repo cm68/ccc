@@ -244,8 +244,13 @@ char *fragtab[] = {
 #define T_ST_IHL	F_LDHLE F_INCHL F_LDHLD F_EXDEHL
 #define T_DE_TEST	"\tld a,e\n\tor d\n"
 
+/*
+ * llo and rlo are never both given - see struct rule - so they pack
+ * into one byte, with RP_SUBR marking a right-hand one.
+ */
 #define R(o, lo, ro, llo, rlo, sfx, rep, l, r, d, f, tpl, dest) \
-	{tpl, o, lo, ro, llo, rlo, sfx, rep, (l) | ((r) << 2) | ((d) << 4), \
+	{tpl, o, lo, ro, (llo) | (rlo), sfx, rep, \
+	 (l) | ((r) << 2) | ((d) << 4) | ((rlo) ? RP_SUBR : 0), \
 	 f, dest}
 
 
@@ -3119,7 +3124,7 @@ struct rule rules[] = {
 		R_HL),
 
 	/* terminator */
-	{NULL, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
+	{NULL, 0, 0, 0, 0, 0, 0, 0, 0, 0}
 };
 
 /*

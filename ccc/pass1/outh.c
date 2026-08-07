@@ -128,6 +128,15 @@ truncok(unsigned char op)
 	case LSHIFT:
 	case NEG:
 	case NOT:
+	/*
+	 * A widening is the identity on the bytes it keeps, so
+	 * narrowing back through one lands on what it widened.  This
+	 * is what lets an equality test between byte-valued operands
+	 * be a byte test - the integer promotions put the WIDEN there
+	 * in the first place.
+	 */
+	case WIDEN:
+	case SEXT:
 		return 1;
 	}
 	return 0;
@@ -160,6 +169,34 @@ candemote(struct expr *e, int size)
 	if (e->op == LSHIFT)
 		return candemote(e->left, size);
 	return candemote(e->left, size) && candemote(e->right, size);
+}
+
+/*
+ * Does this expression provably fit in an unsigned byte?  Not the
+ * same question as candemote(), which only asks whether the low
+ * bytes may be taken: a long compared against zero passes that and
+ * compares false one byte wide.  Everything here is exact - an
+ * unsigned byte value, a constant that fits one, or a mask or
+ * merge of those - so an equality test between two of them means
+ * the same thing at either width, whatever the promotions did.
+ */
+int
+bytevalued(struct expr *e)
+{
+	if (!e)
+		return 0;
+	if (e->op == CONST)
+		return e->v <= 0xffL;
+	if (e->op == WIDEN)
+		return e->left && e->left->type &&
+		    e->left->type->size == 1 &&
+		    (e->left->type->flags & TF_UNSIGNED);
+	if (e->op == AND)
+		return bytevalued(e->left) || bytevalued(e->right);
+	if (e->op == OR || e->op == XOR)
+		return bytevalued(e->left) && bytevalued(e->right);
+	return e->type && e->type->size == 1 &&
+	    (e->type->flags & TF_UNSIGNED);
 }
 
 /*
