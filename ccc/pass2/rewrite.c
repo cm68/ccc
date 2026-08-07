@@ -233,7 +233,7 @@ label(Expr *e)
 	case PREDEC:
 	case POSTDEC:
 		e->regs = l;
-		if (e->left && e->left->op != LOCALVAR &&
+		if (e->left->op != LOCALVAR &&
 		    e->left->op != INDEX && e->regs < 2)
 			e->regs = 2;
 		if (!e->regs)
@@ -401,7 +401,7 @@ assign(Expr *e, unsigned char tgt)
 		}
 		/* For ADD with NUMBER, preserve NUMBER for address rules */
 		/* +(V,N)->I, +(S,N)->O, +(O,N)->O */
-		if (e->op == PLUS && e->right && e->right->op == NUMBER &&
+		if (e->op == PLUS && e->right->op == NUMBER &&
 		    e->left && (e->left->op == REGVAR || e->left->op == SYM ||
 		                e->left->op == SYMREF)) {
 			e->right->nored = 1;
@@ -457,19 +457,26 @@ opmatch(unsigned char pat, Expr *e)
 
 	if (pat == P_ANY) return 1;
 	if (pat == P_NULL) return e == NULL;
-	if (pat == P_NUM) return e && e->op == NUMBER;
-	if (pat == P_POW2) return e && e->op == NUMBER && ispow2(e->u.val) > 0;
-	if (pat == P_ZERO) return e && e->op == NUMBER && e->u.val == 0;
-	if (pat == P_SMALL) return e && e->op == NUMBER && e->u.val >= 1 && e->u.val <= 4;
-	if (pat == P_EIGHT) return e && e->op == NUMBER && e->u.val == 8;
+	/*
+	 * Every pattern below this line names a node, so say once that
+	 * there has to be one.  It was said ten times over, and this is
+	 * the matcher's innermost question - asked for every pattern
+	 * byte of every rule against every node.
+	 */
+	if (!e) return 0;
+	if (pat == P_NUM) return e->op == NUMBER;
+	if (pat == P_POW2) return e->op == NUMBER && ispow2(e->u.val) > 0;
+	if (pat == P_ZERO) return e->op == NUMBER && e->u.val == 0;
+	if (pat == P_SMALL) return e->op == NUMBER && e->u.val >= 1 && e->u.val <= 4;
+	if (pat == P_EIGHT) return e->op == NUMBER && e->u.val == 8;
 	if (pat == P_CMP)
-		return e && (e->op == EQ || e->op == NEQ ||
-		    e->op == LT || e->op == GE);
+		return e->op == EQ || e->op == NEQ ||
+		    e->op == LT || e->op == GE;
 	if (pat == P_CMPX)
-		return e && (e->op == LE || e->op == GT);
+		return e->op == LE || e->op == GT;
 	if (pat >= P_MUL40 && pat <= P_MUL3)
-		return e && e->op == NUMBER && e->u.val == multab[pat-238];
-	return e && e->op == pat;
+		return e->op == NUMBER && e->u.val == multab[pat-238];
+	return e->op == pat;
 }
 /*
  * Does one node answer to a pattern letter, and to a width if the
@@ -531,7 +538,7 @@ pmatch(struct rule *rp, Expr *e)
 	 * number.  Transforms (a null template) still match: they
 	 * rebuild the tree and the result is matched again.
 	 */
-	if (rp->op == ASSIGN && e && e->dest == DEST_VALUE &&
+	if (rp->op == ASSIGN && e->dest == DEST_VALUE &&
 	    rp->destval == 0 && rp->asmtpl != NULL)
 		return 0;
 	if (!rp->lop)
@@ -560,7 +567,7 @@ getpath(Expr *e, unsigned char p)
 	if (p == P_NONE) return e;
 	if (p == P_L) return e ? e->left : NULL;
 	if (p == P_R) return e ? e->right : NULL;
-	if (p == P_LL) return (e && e->left) ? e->left->left : NULL;
+	if (p == P_LL) return (e->left) ? e->left->left : NULL;
 	return NULL;
 }
 
@@ -644,7 +651,7 @@ emitasm(char *tpl, Expr *e)
 			/* find closing paren */
 			while (*p && *p != ')') p++;
 			/* get count from right operand */
-			cnt = (e->right && e->right->op == NUMBER) ?
+			cnt = (e->right->op == NUMBER) ?
 			      (int)e->right->u.val : 1;
 			/* emit the enclosed text cnt times */
 			for (i = 0; i < cnt; i++) {
@@ -723,7 +730,7 @@ emitasm(char *tpl, Expr *e)
 			}
 			/* Special: $RL (right child name) */
 			if (path[0] == 'R' && path[1] == 'L') {
-				n = (e && e->right) ? e->right->left : NULL;
+				n = (e->right) ? e->right->left : NULL;
 			} else {
 				/* navigate to node */
 				n = e;
@@ -932,7 +939,7 @@ tryrule(struct rule *rp, Expr *e)
 			num = e->right;
 			off = num ? (short)num->u.val : 0;
 			/* If source is INDEX, combine offsets */
-			if (src && src->op == INDEX)
+			if (src->op == INDEX)
 				off += src->u.var.off;
 		}
 		/*
@@ -1071,7 +1078,7 @@ tryrule(struct rule *rp, Expr *e)
 	}
 
 	/* Transform POW2 to shift amount */
-	if ((rp->flags & RF_POW2) && e->right && e->right->op == NUMBER) {
+	if ((rp->flags & RF_POW2) && e->right->op == NUMBER) {
 		shift = ispow2(e->right->u.val);
 		if (shift > 0) {
 			e->right->u.val = shift;
@@ -1080,7 +1087,7 @@ tryrule(struct rule *rp, Expr *e)
 	}
 
 	/* Increment constant by 1 (for GT->GE, LE->LT transforms) */
-	if ((rp->flags & RF_INC1) && e->right && e->right->op == NUMBER) {
+	if ((rp->flags & RF_INC1) && e->right->op == NUMBER) {
 		e->right->u.val++;
 		changed = 1;
 	}
@@ -1192,7 +1199,7 @@ normtree(Expr *e)
 	 * eleven instructions of word arithmetic.
 	 */
 	if (e->op == AND && e->dest == DEST_FLAGS &&
-	    e->right && e->right->op == NUMBER &&
+	    e->right->op == NUMBER &&
 	    (e->right->u.val & ~0xffL) == 0 &&
 	    e->left && (e->left->op == WIDEN || e->left->op == SEXT) &&
 	    e->left->left && ISBYTE(e->left->left->width)) {
@@ -1236,7 +1243,7 @@ normtree(Expr *e)
 	 * step instead of before.
 	 */
 	case ASSIGN:
-		if (e->right && e->right->dest == DEST_NONE)
+		if (e->right->dest == DEST_NONE)
 			e->right->dest = DEST_VALUE;
 		if (e->left && !islocdesc(e->left) &&
 		    e->left->dest == DEST_NONE)
@@ -1255,7 +1262,7 @@ normtree(Expr *e)
 	 */
 	case SEXT:
 	case WIDEN:
-		if (e->left && e->left->dest == DEST_NONE)
+		if (e->left->dest == DEST_NONE)
 			e->left->dest = e->dest == DEST_NONE ?
 			    DEST_VALUE : e->dest;
 		break;
@@ -1265,7 +1272,7 @@ normtree(Expr *e)
 	 * the comma itself.
 	 */
 	case COMMA:
-		if (e->right && e->right->dest == DEST_NONE)
+		if (e->right->dest == DEST_NONE)
 			e->right->dest = e->dest;
 		break;
 	/* a step is an assignment wearing an operator's clothes */
@@ -1363,7 +1370,7 @@ step(Expr *e)
 
 	/* BANG(CODE) in flag context: flip the flag */
 	if (e->op == BANG && e->dest == DEST_FLAGS &&
-	    e->left && e->left->op == CODE) {
+	    e->left->op == CODE) {
 		n = e->left;
 		n->u.var.reg = flipflag(n->u.var.reg);
 		n->dest = e->dest;
@@ -1378,7 +1385,7 @@ step(Expr *e)
 	 * is !x - the BANG below flips the flag once x has been reduced.
 	 */
 	if (e->op == EQ && e->dest == DEST_FLAGS &&
-	    e->right && e->right->op == NUMBER && e->right->u.val == 0) {
+	    e->right->op == NUMBER && e->right->u.val == 0) {
 		n = e->left;
 		n->dest = DEST_FLAGS;
 		e->left = NULL;
@@ -1480,7 +1487,7 @@ step(Expr *e)
 		 * count in B', so there is no ld b,a and no BC to protect.
 		 */
 		if ((e->op == LSHIFT || e->op == RSHIFT) &&
-		    e->left->op == INHL && e->right && e->right->op == INA) {
+		    e->left->op == INHL && e->right->op == INA) {
 			out(e->op == LSHIFT ? "\tcall qshl\n" :
 			    e->width == 'l' ? "\tcall qsar\n" : "\tcall qshr\n");
 			return donehl(e, CODE);

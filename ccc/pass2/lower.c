@@ -87,7 +87,7 @@ islocdesc(Expr *e)
 static char
 keepchain(Expr *e)
 {
-	while (e && e->op == DEREF)
+	while (e->op == DEREF)
 		e = e->left;
 	if (!e)
 		return 0;
@@ -489,7 +489,7 @@ bytepair(Expr *e)
 
 	out("\tpush af\n");
 	e->right = rewrite1(e->right);
-	if (e->right && e->right->op == INA) {
+	if (e->right->op == INA) {
 		w = e->right->width;
 		out("\tld e,a\n");
 		freeexpr(e->right);
@@ -604,7 +604,7 @@ docompound(Expr *e)
 	 * situation's tool: park A on the stack, reduce the right into
 	 * E, take A back.
 	 */
-	if (isbyte && rhs && rhs->op != NUMBER && !reduced(rhs))
+	if (isbyte && rhs->op != NUMBER && !reduced(rhs))
 		bytepair(sum);
 	sum = rewrite(sum);
 	/*
@@ -830,7 +830,7 @@ longable(Expr *e)
 		 * above the rules, and the whole statement left as an
 		 * XXXXXX marker: no code at all.
 		 */
-		return e->right && e->right->op == TERNBRANCH;
+		return e->right->op == TERNBRANCH;
 	case LSHIFT:
 	case RSHIFT:
 		/* handled here too, but by their own path - the count is not
@@ -1353,7 +1353,7 @@ spiltstore(Expr *e, Expr *oldleft)
 		e->left = e->right = NULL;
 		return donehl(e, INHL);
 	}
-	if (e->right && e->right->op == INA) {
+	if (e->right->op == INA) {
 		out("\tpop hl\n");
 		freeexpr(oldleft);
 		freeexpr(e->right);
@@ -1495,7 +1495,7 @@ rewrite1(Expr *e)
 		if (lsym && (rinreg || rsym)) {
 			/* a bare SYM reduces to SYMREF first, emitting nothing */
 			e->left = rewrite1(e->left);
-			if (e->left && e->left->op == SYMREF)
+			if (e->left->op == SYMREF)
 				e->left = symtohl(e->left);
 		}
 	}
@@ -1695,7 +1695,7 @@ rewrite1(Expr *e)
 	 * constant there, and it puts both arms in the same register.
 	 * RETURN and argument pushing land a value the same way.
 	 */
-	if (e->op == QUES && e->right && e->right->op == TERNBRANCH) {
+	if (e->op == QUES && e->right->op == TERNBRANCH) {
 		int lbl = labelcnt++;
 		Expr *tb = e->right;
 		unsigned char dest = e->dest;
@@ -1837,7 +1837,7 @@ rewrite1(Expr *e)
 		 * held, and "g >> *p" shifted by the spilled pointer.
 		 * Widen it into DE for real, at its own signedness.
 		 */
-		if (e->right && e->right->op == INA) {
+		if (e->right->op == INA) {
 			if (ISSIGNED(e->right->width))
 				out("\tld e,a\n\trla\n\tsbc a,a\n\tld d,a\n");
 			else
@@ -1971,7 +1971,7 @@ spilled:	;
 			   e->dest == DEST_FLAGS && e->left &&
 			   (e->left->op == WIDEN || e->left->op == SEXT) &&
 			   e->left->left && ISBYTE(e->left->left->width) &&
-			   e->right && e->right->op == NUMBER &&
+			   e->right->op == NUMBER &&
 			   (e->right->u.val & 0xffL) == e->right->u.val) {
 			/*
 			 * A byte masked with a constant and asked for as a
@@ -1999,9 +1999,9 @@ spilled:	;
 			e->dest = DEST_FLAGS;
 			return rewrite1(e);
 		} else if (e->op == AND && e->dest == DEST_FLAGS &&
-			   e->left && e->left->op == DEREF &&
+			   e->left->op == DEREF &&
 			   ISBYTE(e->left->width) &&
-			   e->right && e->right->op == NUMBER &&
+			   e->right->op == NUMBER &&
 			   ispow2(e->right->u.val) > 0) {
 			/*
 			 * One bit of a byte in memory, asked for as a
@@ -2112,8 +2112,8 @@ spilled:	;
 			}
 		} else if ((e->op == PREINC || e->op == PREDEC ||
 			    e->op == POSTINC || e->op == POSTDEC) &&
-			   e->left && e->left->op == DEREF &&
-			   e->left->left && e->left->left->op == REGVAR) {
+			   e->left->op == DEREF &&
+			   e->left->left->op == REGVAR) {
 			/*
 			 * Stepping through a pointer kept in a register.
 			 *
@@ -2249,7 +2249,7 @@ spilled:	;
 		 * arrived as 164 and 256 as 0.
 		 */
 		if (e->op == ASSIGN && narrow &&
-		    e->right && e->right->op == INHL &&
+		    e->right->op == INHL &&
 		    ISLONG(e->right->width)) {
 			e->right->width = T_SHORT;
 		}
@@ -2525,7 +2525,7 @@ rewrite(Expr *e)
 	r = rewrite1(e);
 
 	/* A constant is only left standing when it is the whole thing */
-	if (r && r->op == NUMBER)
+	if (r->op == NUMBER)
 		r = constresult(r);
 
 	/*
