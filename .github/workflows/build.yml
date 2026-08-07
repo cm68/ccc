@@ -14,7 +14,7 @@ jobs:
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
 
     # Baseline for the clobber check at the end of the run.  Taken
     # before anything is built, so the comparison is against a tree
