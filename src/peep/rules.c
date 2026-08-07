@@ -18,6 +18,17 @@
  * instructions, no jump chains.  The one branch shape worth having
  * turned out to be the loop bottom: a conditional hop over the jump
  * back, which inverting removes.
+ *
+ * Jump threading has been looked at twice now and is still not worth a
+ * rule.  The shape it would collapse - a conditional jump landing on
+ * another with the same condition - is all over the Whitesmith's
+ * objects in attic/ (libu/sbreak.s tests a pair against -1 that way
+ * twice), but this compiler does not emit it: the count above is zero.
+ *
+ * A later count, over the asmsnap corpus rather than rewrite.c - 118
+ * files, 43014 instructions:
+ *
+ *	ld de,-1 / or a / sbc hl,de	 38 sites	  76 bytes
  */
 #include <string.h>
 #include <stdio.h>
@@ -31,6 +42,7 @@ long n_frame = 0;
 long n_invjp = 0;
 long n_outi = 0;
 long n_exx = 0;
+long n_m1cmp = 0;
 long saved = 0;
 
 /* does the key at window line i match s exactly */
@@ -367,6 +379,101 @@ r_outi(void)
 }
 
 /*
+ * A 16-bit equality test against -1, which is how every failed system
+ * call is checked:
+ *
+ *	ld de,-1		3
+ *	or a			1	clear the carry for the sbc
+ *	sbc hl,de		2
+ *	jp z|nz,L
+ *
+ * hl - 0ffffh is hl + 1, and hl + 1 carries out of bit 15 exactly when
+ * hl was 0ffffh.  The add says the same thing in four bytes:
+ *
+ *	ld de,1			3
+ *	add hl,de		1
+ *	jp c|nc,L
+ *
+ * HL is left holding hl+1 either way, bit for bit, so nothing that
+ * reads it afterwards can tell the two apart.  Neither form disturbs A:
+ * the "or a" is a carry clear, not a use of it.  What moves is which
+ * flag carries the answer, so the branch condition goes from z/nz to
+ * c/nc, and S, P/V and the old carry stop meaning anything.
+ *
+ * That is this rule's one assumption - that nothing downstream reads
+ * the flags except the branch on the end - and it cannot be proved
+ * here.  isdead() stops at a branch (regs.c) because what happens after
+ * one depends on where it goes, and the taken path is somewhere else in
+ * the file.  So it was measured instead.  Over the asmsnap corpus, 118
+ * files and 43014 instructions, the sequence occurs 38 times, and at
+ * every one of them the first instruction on BOTH the fall through and
+ * the branch target writes the flags rather than reading them - a load,
+ * a push, a call, or an scf.  pass2 emits a compare and its branch as
+ * one unit and never carries a condition into a join.
+ *
+ * The tempting rewrite is "ld a,h / and l / inc a", which is three
+ * bytes rather than four.  It cannot be had: it clobbers A, so it needs
+ * isdead(R_A) across the branch, which always answers no - and rightly,
+ * because A really does arrive live at 21 labels in that same corpus.
+ *
+ * 38 sites, two bytes each.
+ */
+static char *ccm1[] = { "z", "c", "nz", "nc", 0 };
+
+int
+r_m1cmp(void)
+{
+	char cc[4];
+	char buf[KLEN + 8];
+	char *comma;
+	int i, n, j1, j2, j3;
+
+	if (!is(0, "ld de,-1"))
+		return 0;
+	j1 = nextsig(0);
+	if (j1 < 0 || !is(j1, "or a"))
+		return 0;
+	j2 = nextsig(j1);
+	if (j2 < 0 || !is(j2, "sbc hl,de"))
+		return 0;
+	j3 = nextsig(j2);
+	if (j3 < 0 || win[j3].kind != L_INSN)
+		return 0;
+	if (strncmp(win[j3].key, "jp ", 3) != 0 &&
+	    strncmp(win[j3].key, "jr ", 3) != 0)
+		return 0;
+
+	/* the branch has to be the one consuming the answer */
+	comma = strchr(win[j3].key + 3, ',');
+	if (!comma)
+		return 0;			/* unconditional: nothing to translate */
+	n = comma - (win[j3].key + 3);
+	if (n < 1 || n > 2)
+		return 0;
+	memcpy(cc, win[j3].key + 3, n);
+	cc[n] = 0;
+	for (i = 0; ccm1[i]; i += 2)
+		if (strcmp(cc, ccm1[i]) == 0)
+			break;
+	if (!ccm1[i])
+		return 0;			/* branches on a flag the add does not set */
+
+	/* %.2s keeps the mnemonic: jr c and jr nc are both encodable */
+	sprintf(buf, "\t%.2s %s,%s\n", win[j3].key, ccm1[i + 1], comma + 1);
+	/* back to front, so the indices stay true */
+	delline(j3, 1);
+	delline(j2, 1);
+	delline(j1, 1);
+	delline(0, 1);
+	insline(0, "\tld de,1\n");
+	insline(1, "\tadd hl,de\n");
+	insline(2, buf);
+	n_m1cmp++;
+	saved += 2;
+	return 1;
+}
+
+/*
  * exx is its own inverse, so two of them in a row are two bytes that
  * do nothing.  They arise constantly now that a long lives in HL':HL:
  * every load, store and widen brackets its high word in a pair, and
@@ -401,6 +508,8 @@ applyrules(void)
 		return 1;
 	if (r_outi())
 		return 1;
+	if (r_m1cmp())
+		return 1;
 	if (r_invjp())
 		return 1;
 	if (r_incsp())
@@ -418,9 +527,10 @@ void
 report(void)
 {
 	fprintf(stderr, "peep: frame %ld  incsp %ld  pushpop %ld  bounce %ld"
-		"  and0 %ld  invjp %ld  oarg %ld  exx %ld  pool %ld = %ld bytes\n",
+		"  and0 %ld  invjp %ld  oarg %ld  exx %ld  m1cmp %ld"
+		"  pool %ld = %ld bytes\n",
 		n_frame, n_incsp, n_pushpop, n_bounce, n_and0, n_invjp,
-		n_outi, n_exx, poolmerged, saved);
+		n_outi, n_exx, n_m1cmp, poolmerged, saved);
 }
 
 /* vim: set tabstop=4 shiftwidth=4 noexpandtab: */
