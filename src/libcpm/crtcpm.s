@@ -9,6 +9,38 @@ start:
 	ld		hl,(0006h)		; get the bdos address
 	ld		sp,hl			; and put the stack right below it
 
+;
+; This targets CP/M 3.  The passes are large enough that they need the
+; TPA a banked CP/M 3 gives - c1 runs past where a 2.2 BDOS sits - so
+; check the version before doing anything else and say so plainly.
+; Loading over the resident system and finding out later is not a
+; failure anyone can read.
+;
+; Neither of the calls below touches the DMA buffer at 0080h, so the
+; command tail is still there for the argv code further down.  A disk
+; call here would have eaten it.
+;
+	ld		c,12			; get version: l = 30h or better
+	call	0005h			; for CP/M 3
+	ld		a,l
+	cp		030h
+	jr		nc,iscpm3
+	ld		c,9				; print string, '$' terminated
+	ld		de,badver
+	call	0005h
+	jp		0000h			; warm boot
+
+iscpm3:
+;
+; Hand disk errors back to the program.  The default mode prints the
+; BDOS's own message over whatever we were saying and terminates us
+; where we stand - no diagnostic of ours, no cleanup, no status.  A
+; compiler that cannot open its input should be able to name the file.
+;
+	ld		c,45			; set error mode
+	ld		e,0ffh			; return, do not display or terminate
+	call	0005h
+
 	ld		de,__Lbss		; clear bss
 	or		a
 	ld		hl,__Hbss
@@ -50,7 +82,7 @@ nobss:
 	jr		3f				; enter loop
 
 2:	ld		a,(de)			; get end character
-	cp		a,' '			; is it space?
+	cp		' '			; is it space?
 	dec		de				; bump source
 	jr		nz,1f			; not space
 
@@ -58,7 +90,7 @@ nobss:
 	inc		c				; argc++
 
 4:	ld		a,(de)			; remove extra spaces
-	cp		a,' '
+	cp		' '
 	jr		nz,5f
 	dec		de
 	djnz	4b
@@ -85,10 +117,12 @@ nobss:
 	call	_exit
 	jp		0000h
 
+	.data
+badver:	.db		"needs CP/M 3",13,10,"$"
+
 ;
 ; these symbols are filled out by the linker
 ;
-	.data
 __Htext::	.dw	0
 __Ltext::	.dw	0
 __Hdata::	.dw	0

@@ -113,4 +113,30 @@ extern uchar		setfcb(struct fcb *, char *);
 #define	CPMCFS	35		/* compute file size */
 #define	CPMDSEG	51		/* set DMA segment */
 
+/*
+ * CP/M 3 (CP/M Plus).  This is what the compiler targets: a banked
+ * CP/M 3 keeps the BDOS out of the way, and the passes need the TPA
+ * that buys.  Under 2.2 they do not fit, so crtcpm checks the version
+ * and refuses rather than loading over the resident system.
+ */
+#define	CPMVER3	0x30		/* what call 12 returns from 3.0 */
+
+#define	CPMMSEC	44		/* set multi-sector count (1..128) */
+#define	CPMERRM	45		/* set BDOS error mode */
+#define	CPMBIOS	50		/* direct BIOS call */
+#define	CPMTRUNC 99		/* truncate file */
+#define	CPMGDT	105		/* get date and time */
+#define	CPMPARSE 152		/* parse filename */
+
+/*
+ * Error mode.  The default is the one that prints "BDOS Err On A:"
+ * over whatever the program was saying and then terminates it - no
+ * message of our own, no cleanup, no exit status.  Return mode hands
+ * the error back instead, which is the only version of this a
+ * compiler can do anything with.
+ */
+#define	ERRM_RET	0xff	/* return errors to the program */
+#define	ERRM_RETDISP	0xfe	/* return them and display as well */
+#define	ERRM_DEFAULT	0x00	/* display and terminate */
+
 /* vim: set tabstop=4 shiftwidth=4 noexpandtab: */

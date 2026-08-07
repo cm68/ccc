@@ -1068,7 +1068,22 @@ relax_jmp()
                     continue;
                 target = j->sym->value + j->offset;
             } else {
-                target = j->offset;
+                /*
+                 * No symbol means the target is a plain constant, and
+                 * a constant is an absolute address - it is not
+                 * relative to this text segment, so the distance to
+                 * it is not known until the linker places us.  This
+                 * measured it from the segment start anyway, which is
+                 * right only when text links at zero.  "jp 0", the
+                 * CP/M warm boot, sat close enough to the top of
+                 * crtcpm to be relaxed, and the jr it turned into
+                 * landed on the program's own entry point instead of
+                 * on the reboot vector.
+                 *
+                 * Leaving it as a jp costs a byte and is always
+                 * right.
+                 */
+                continue;
             }
 
             /* jr offset is from PC after the 2-byte jr instruction */

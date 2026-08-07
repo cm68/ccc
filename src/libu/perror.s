@@ -10,11 +10,24 @@ _perror::
 	push	de
 	push	hl
 
+;
+;	Range-check errno against etab, which has 33 entries: eunk at
+;	index 0 and errnos 1 through 32.  Anything else prints eunk.
+;
+;	This read "cp a,32 / jr nc,ercalc", which was wrong twice over.
+;	asz assembles "cp a,32" as "cp a" - it takes the a for the whole
+;	operand and drops the 32 without a word - and "cp a" always
+;	clears carry, so the jump was always taken and there was no
+;	upper bound at all: an errno past the end of the table indexed
+;	off it and perror printed whatever was there.  The condition was
+;	also backwards; carry means BELOW the limit, which is the case
+;	that is in range.
+;
 	ld	a,(_errno)
 	bit	7,a
 	jr	nz,unkerr	
-	cp	a,32
-	jr	nc,ercalc
+	cp	33
+	jr	c,ercalc
 unkerr:	xor	a
 ercalc:	add	a,a
 	ld	hl,etab

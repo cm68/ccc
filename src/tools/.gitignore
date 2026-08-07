@@ -5,6 +5,7 @@ wsnm
 wslib
 wssize
 ccc
+astpp
 *.o
 *.a
 stage1/

@@ -210,6 +210,7 @@ extern char no_relax;
 extern void add_jump();
 extern struct jump *find_jump();
 extern unsigned char peekchar();
+extern unsigned char skipwhite();
 
 #define T_NUM   (T_BIAS + 43)
 #define T_C_I   (T_BIAS + 36)
@@ -496,6 +497,19 @@ struct instruct *isr;
 
 		if (prim == 3 && arg == reg)
 			arg = T_HL;
+	} else if (skipwhite() == ',') {
+		/*
+		 * sub, and, xor, or and cp take one operand - the
+		 * accumulator is implicit in Z80 syntax.  "cp a,32" is
+		 * the 8080-ish spelling and is not accepted, but it used
+		 * to be read as "cp a" with the 32 dropped in silence,
+		 * which assembles cleanly and compares the accumulator
+		 * with itself.  Two of those were sitting in this tree:
+		 * one made every character look like a space to the CP/M
+		 * argv parser, the other took the bound off perror's
+		 * error-table lookup.  Say so instead.
+		 */
+		return 1;
 	}
 
 	if (prim == 0) {
