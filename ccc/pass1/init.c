@@ -63,7 +63,7 @@ doInitlzr(struct name *v)
                 unsigned char slen = str[0];
                 struct type *t = v ? v->type : (struct type *)0;
                 int inarray = t && (t->flags & TF_ARRAY) &&
-                    t->sub && t->sub->size == 1;
+                    t->sub->size == 1;
 
                 fmtstr(strname, "str%d", globalStrCtr++);
                 if (!inarray) {

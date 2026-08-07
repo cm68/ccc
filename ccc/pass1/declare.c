@@ -502,7 +502,7 @@ skipParams(struct name *nm, struct type *prefix)
      * calls fopen was emitted as two bytes of bss, defining in every
      * object what it was only declaring.
      */
-    if (nm && nm->type &&
+    if (nm->type &&
         (((nm->type->flags & TF_POINTER) && !nm->type->sub) ||
          ((lexlevel > 1 || idOnce(nm->id)) &&
           !(nm->type->flags & (TF_FUNC | TF_ARRAY))))) {
@@ -631,7 +631,7 @@ declare(struct type **btp, unsigned char struct_elem)
 
     if (cur.type == RPAR) {
         if (!nm) {
-            for (t = prefix; t && t->sub; t = t->sub) {
+            for (t = prefix; t->sub; t = t->sub) {
                 t->sub = *btp;
                 *btp = prefix;
             }
@@ -705,7 +705,7 @@ declare(struct type **btp, unsigned char struct_elem)
     if (suffix && (phase == 1 ||
         ((suffix->flags & TF_ARRAY) &&
          !(nm->type && (nm->type->flags & TF_ARRAY))) ||
-        ((suffix->flags & TF_FUNC) && nm && nm->type &&
+        ((suffix->flags & TF_FUNC) && nm->type &&
          (nm->type->flags & TF_POINTER) && !nm->type->sub) ||
         /*
          * A function DECLARED inside a body - "extern short _pnum(),
@@ -720,7 +720,7 @@ declare(struct type **btp, unsigned char struct_elem)
          * function-ness of its own, which is what the phase 2
          * caution below is about.
          */
-        ((suffix->flags & TF_FUNC) && nm && nm->type &&
+        ((suffix->flags & TF_FUNC) && nm->type &&
          !(nm->type->flags & (TF_FUNC | TF_ARRAY))))) {
         /*
          * Function suffixes are only applied in phase 1: in phase 2 a
@@ -797,7 +797,7 @@ declare(struct type **btp, unsigned char struct_elem)
      * a call site reads the answer, and the return type that was being
      * silently replaced.
      */
-    if (redeclOld && nm && nm->type) {
+    if (redeclOld && nm->type) {
         if ((nm->type->flags & TF_FUNC) && (redeclOld->flags & TF_FUNC)) {
             if (!sameRet(redeclOld->sub, nm->type->sub))
                 gripe(ER_D_RD);

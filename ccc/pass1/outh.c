@@ -94,7 +94,7 @@ isRegvar(struct expr *e)
 char
 dchainreg(struct expr *e)
 {
-	while (e && e->op == DEREF)
+	while (e->op == DEREF)
 		e = e->left;
 	return isRegvar(e);
 }
@@ -161,7 +161,7 @@ candemote(struct expr *e, int size)
 		 * Not for a register variable though - it is emitted as the
 		 * whole register, with no addressable low part.
 		 */
-		return !(e->left && e->left->op == SYM && isRegvar(e->left));
+		return !(e->left->op == SYM && isRegvar(e->left));
 	}
 	if (!truncok(e->op))
 		return 0;
@@ -188,14 +188,14 @@ bytevalued(struct expr *e)
 	if (e->op == CONST)
 		return e->v <= 0xffL;
 	if (e->op == WIDEN)
-		return e->left && e->left->type &&
+		return e->left->type &&
 		    e->left->type->size == 1 &&
 		    (e->left->type->flags & TF_UNSIGNED);
 	if (e->op == AND)
 		return bytevalued(e->left) || bytevalued(e->right);
 	if (e->op == OR || e->op == XOR)
 		return bytevalued(e->left) && bytevalued(e->right);
-	return e->type && e->type->size == 1 &&
+	return e->type->size == 1 &&
 	    (e->type->flags & TF_UNSIGNED);
 }
 

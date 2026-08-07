@@ -48,7 +48,7 @@ emitOperand(struct expr *e, struct type *t)
 	 * how cpp's intern() returned the spelling's first characters as
 	 * the canonical pointer.
 	 */
-	if (t && e->type && e->type->size < t->size &&
+	if (t && e->type->size < t->size &&
 	    !(e->type->flags & (TF_POINTER | TF_ARRAY | TF_FUNC))) {
 		if (e->op == CONST) {
 			/*
@@ -427,7 +427,7 @@ emitExpr(struct expr *e)
 			 * cannot carry anything down from the bytes being
 			 * dropped.
 			 */
-			if (left && left->type->size > w->size &&
+			if (left->type->size > w->size &&
 			    candemote(left, w->size))
 				demote(left, w);
 			if (right && op != LSHIFT && op != RSHIFT &&

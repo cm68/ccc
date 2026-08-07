@@ -83,7 +83,7 @@ capLocals(void)
 	struct local *copy;
 
 	/* Traverse chain - current level names are at head */
-	for (n = names; n && n->level == lexlevel; n = n->chain) {
+	for (n = names; n->level == lexlevel; n = n->chain) {
 		/* Skip tags, typedefs, and functions */
 		if (n->is_tag || n->kind == kfdef)
 			continue;

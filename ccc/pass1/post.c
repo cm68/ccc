@@ -97,7 +97,7 @@ pfxIndex(struct expr *e)
      * pointer itself.  "*p" was right all along, because that
      * path never unwrapped anything.
      */
-    if (e && e->op == DEREF && e->type &&
+    if (e->op == DEREF && e->type &&
         (e->type->flags & TF_ARRAY))
         tp = unwrapDeref(&e);
     else
@@ -245,9 +245,9 @@ pfxMember(struct expr *e, unsigned char *stop)
     if (is_arrow) {
         e1 = e;  /* base - pointer value */
         /* Track aggregate ref for register allocation */
-        if (e1->op == DEREF && e1->left && e1->left->op == SYM) {
+        if (e1->op == DEREF && e1->left->op == SYM) {
             struct name *vn = (struct name *)e1->left->var;
-            if (vn && vn->level > 1 && vn->w.r.agg_refs < 255)
+            if (vn->level > 1 && vn->w.r.agg_refs < 255)
                 vn->w.r.agg_refs++;
         }
     } else {
@@ -257,7 +257,7 @@ pfxMember(struct expr *e, unsigned char *stop)
         /* Track aggregate ref for register allocation */
         if (e1->op == SYM) {
             struct name *vn = (struct name *)e1->var;
-            if (vn && vn->level > 1 && vn->w.r.agg_refs < 255)
+            if (vn->level > 1 && vn->w.r.agg_refs < 255)
                 vn->w.r.agg_refs++;
         }
     }

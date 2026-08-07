@@ -650,7 +650,7 @@ cleanupParse()
 	struct name *n;
 
 	/* Free non-basic names by traversing until we hit level 0 */
-	while (names && names->level > 0) {
+	while (names->level > 0) {
 		n = names;
 		names = n->chain;
 		/* u.locals (for fdef) and u.init (for var) share a union */

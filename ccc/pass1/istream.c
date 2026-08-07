@@ -182,7 +182,7 @@ streamInitVal(struct type *type)
                 else
                     fmtstr(buf, "_%s", nameOf(member->id));
                 asmDwSym(buf);
-            } else if (e->op == PLUS && e->left && e->left->op == SYM &&
+            } else if (e->op == PLUS && e->left->op == SYM &&
                        e->right && (e->right->flags & E_CONST)) {
                 /*
                  * The address of an element other than the first.

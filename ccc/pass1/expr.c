@@ -184,7 +184,7 @@ parseExpr(unsigned char pri)
             {
                 struct type *tt = e2 ? e2->type : NULL;
 
-                if (e3 && e3->type &&
+                if (e3->type &&
                     (!tt || e3->type->size > tt->size))
                     tt = e3->type;
                 e = mkbin(QUES, e1, e4, tt);
@@ -315,7 +315,7 @@ parseExpr(unsigned char pri)
              * in for these promotions.
              */
             if (!is_assignment && !IS_CMPLOG(op) &&
-                e->type && e->type->size > 0 &&
+                e->type->size > 0 &&
                 e->type->size < inttype->size &&
                 !(e->type->flags & (TF_POINTER | TF_ARRAY)))
                 e->type = inttype;
@@ -346,7 +346,7 @@ parseExpr(unsigned char pri)
              */
             else if ((op == PLUSEQ || op == SUBEQ) && assign_type &&
                      (assign_type->flags & (TF_POINTER | TF_ARRAY)) &&
-                     assign_type->sub && assign_type->sub->size > 1 &&
+                     assign_type->sub->size > 1 &&
                      e->right &&
                      !(e->right->type &&
                        (e->right->type->flags & (TF_POINTER | TF_ARRAY)))) {

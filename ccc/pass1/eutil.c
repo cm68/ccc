@@ -282,7 +282,7 @@ skipExpr(unsigned char pri)
              * means the object's own storage.
              */
             np = findName(cur.v.id, 0);
-            if (np && np->level > 1) {
+            if (np->level > 1) {
                 if (np->sclass & SC_REGISTER)
                     gripe(ER_E_RA);
                 else

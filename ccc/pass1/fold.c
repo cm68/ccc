@@ -52,7 +52,7 @@ foldNode(struct expr *e)
         (e->left->flags & E_CONST) &&
         (e->op == NEG || e->op == NOT || e->op == BANG ||
          e->op == NARROW || e->op == WIDEN || e->op == SEXT) &&
-        e->type && e->type->size > 0 && e->type->size <= 2 &&
+        e->type->size > 0 && e->type->size <= 2 &&
         !(e->type->flags & (TF_POINTER | TF_ARRAY | TF_FUNC))) {
         unsigned long uv;
 
@@ -151,7 +151,7 @@ foldNode(struct expr *e)
             /* identity only at word width: a LONG keeps its high
              * half, and dropping the mask handed it back whole -
              * "(long)v & 0xffff" simply vanished */
-            if (rv == 0xffff && e->type && e->type->size <= 2)
+            if (rv == 0xffff && e->type->size <= 2)
                 result = left;
             break;
         }
