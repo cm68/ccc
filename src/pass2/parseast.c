@@ -69,23 +69,45 @@ static short bcoff, ixoff;	/* IY-relative offsets for saved regs */
  * cannot match and goes to the default.
  */
 /*
- * Nested switches.  Each level holds a fixed slice of swvals, so this
- * multiplies by MAXSWCASE: eight levels was two kilobytes of bss, and
- * bss is where the heap starts - on a 64K machine that is two
- * kilobytes c1 does not have to work in.
- *
- * The deepest nesting anywhere in this tree is four.  Five leaves a
- * level of margin and going past it is not silent: the case above
- * emits ".error switches nested deeper than 5" and the assembly
- * fails where anyone can see it.
+ * Nested switches.  A level costs a context struct and nothing else
+ * now that the values are pooled, so this can be generous: the
+ * deepest nesting in this tree is two.
  */
-#define MAXSWNEST 5		/* nested switches */
+#define MAXSWNEST 8		/* nested switches */
 /*
- * Case values are bytes, so a switch cannot have more than 256 of
- * them and this cannot overflow.  wsnm's disassembler is the one that
- * goes anywhere near it.
+ * Case values for every open switch, in one shared pool.
+ *
+ * This was MAXSWNEST fixed slices of 256 - every level provisioned for
+ * the widest switch a byte can express, whether or not any level was
+ * open.  Two kilobytes of bss, and bss is where the heap starts, so it
+ * was two kilobytes c1 did not have to work in.  Nothing came near it:
+ * the widest switch in the tree has 125 cases and nothing nests deeper
+ * than two.
+ *
+ * The levels take from one bump pointer instead.  A switch records at
+ * its own base plus its own ncase, so its values are contiguous no
+ * matter what happens in between; a nested switch is handed the
+ * enclosing switch's next free slot, so the two regions overlap.
+ *
+ * That overlap is the part worth understanding.  It is safe because a
+ * switch's values are read at its own pop - swdispatch runs above,
+ * before swtop comes down - and the enclosing switch does not record
+ * another case until after that.  The enclosing switch's earlier
+ * values sit below the inner base and are never written at all.  So
+ * the inner switch is done with its slice before anything overwrites
+ * it, and what overwrites it is the enclosing switch continuing its
+ * own run.
+ *
+ * Giving the space back on pop is what keeps the base from climbing
+ * with every switch in a function rather than with the nesting: it is
+ * a space property, not a correctness one, which is why no test here
+ * can catch its absence.  The peak is about the widest single switch
+ * plus whatever arms its enclosing switches had already recorded, so
+ * 384 holds a full 256-arm dispatch nested inside a switch with 128
+ * arms ahead of it.  Running out is not silent - see the case below,
+ * which emits a .error the assembler then refuses.
  */
-#define MAXSWCASE 256
+#define SWPOOL 384
 /*
  * The case values live OUTSIDE the context struct, on purpose: a
  * struct type's size is a byte in pass1, so "long val[256]" inside
@@ -108,8 +130,9 @@ static struct swctx {
  * this pool, once it actually existed, was 8K of bss that left the
  * self-hosted c1 under a thousand bytes of heap.
  */
-static unsigned char swvals[MAXSWNEST * MAXSWCASE];
+static unsigned char swvals[SWPOOL];
 static int swtop;
+static int swused;		/* bump pointer into swvals */
 
 /*
  * _Kn_f_m: case m of switch n in function f.  _Dn_f: the dispatch,
@@ -595,7 +618,7 @@ parseStmt(void)
 		sw->id = labelcnt++;
 		sw->ncase = 0;
 		sw->hasdef = 0;
-		sw->val = swvals + (swtop - 1) * MAXSWCASE;
+		sw->val = swvals + swused;
 
 		/* work out the control value, then jump over the bodies to
 		 * the comparisons - which is what keeps it live */
@@ -660,6 +683,9 @@ parseStmt(void)
 		}
 		swlabel('X', sw->id, -1);
 		out(":\n");
+		/* give this switch's values back to the pool; an
+		 * enclosing switch resumes where they started */
+		swused = (int)(sw->val - swvals);
 		swtop--;
 		return;
 	}
@@ -676,9 +702,9 @@ parseStmt(void)
 		 * rather than emitting code for it */
 		e = readexpr();
 		if (sw && e) {
-			if (sw->ncase >= MAXSWCASE) {
-				outf("\t.error more than %d cases in one switch\n",
-				    MAXSWCASE);
+			if (swused >= SWPOOL) {
+				outf("\t.error more than %d case values in switches open at once\n",
+				    SWPOOL);
 			} else {
 				/*
 				 * Two cases the dispatch cannot tell apart.
@@ -708,6 +734,7 @@ parseStmt(void)
 				swlabel('K', sw->id, sw->ncase);
 				out(":\n");
 				sw->ncase++;
+				swused++;
 			}
 		}
 		if (e)
