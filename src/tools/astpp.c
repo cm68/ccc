@@ -4,7 +4,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "../cpp/lexeme.h"
+#include "lexeme.h"
 
 static unsigned char *data;
 static int pos, len;

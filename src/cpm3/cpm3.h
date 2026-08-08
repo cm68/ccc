@@ -111,6 +111,7 @@ extern void	trace(char *fmt, ...);
 /* bdos */
 extern void	bdos(void);
 extern void	diskinit(char *dir);
+extern void	diskmap(char *spec);
 extern void	diskdone(void);
 
 #endif

@@ -77,6 +77,7 @@ stage1: peep
 CCCOPT = -O
 PEEPDIR = $(abspath .)
 LIBDIR = $(abspath ../ccclib)
+CPPSRC = $(abspath ../cpp)
 LIBSRCINC = $(abspath ../include)
 
 mx-ccc:
@@ -86,7 +87,7 @@ mx-ccc:
 		b=$${f%.c}; \
 		printf "%-12s" "$$b: " ; \
 		if $(CCC) $(CCCOPT) -k -c -DCCC -i$(LIBSRCINC) \
-			-I$(PEEPDIR) -I$(LIBDIR) $(PEEPDIR)/$$f > $$b.log 2>&1 \
+			-I$(PEEPDIR) -I$(LIBDIR) -I$(CPPSRC) $(PEEPDIR)/$$f > $$b.log 2>&1 \
 			&& [ -f $$b.o ]; then \
 			if grep -q XXXXXX $$b.s; then \
 				echo "FAIL: XXXXXX marker - pass2 punted on a shape"; \
@@ -132,7 +133,7 @@ com-ccc:
 		b=$${f%.c}; \
 		printf "%-12s" "$$b: " ; \
 		if $(CCC) $(CCCOPT) -m cpm -c -DCCC -i$(CPMDIR)/include \
-			-I$(PEEPDIR) -I$(LIBDIR) $(PEEPDIR)/$$f > $$b.log 2>&1 \
+			-I$(PEEPDIR) -I$(LIBDIR) -I$(CPPSRC) $(PEEPDIR)/$$f > $$b.log 2>&1 \
 			&& [ -f $$b.o ]; then \
 			echo ok; \
 		else echo FAIL; cat $$b.log; exit 1; fi \

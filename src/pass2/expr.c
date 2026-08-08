@@ -482,7 +482,7 @@ readexpr(void)
 
 #ifdef DEBUG
 
-#include "../ccclib/format.h"
+#include "format.h"
 
 char *
 destName(int d)

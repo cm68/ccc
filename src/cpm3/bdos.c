@@ -30,7 +30,20 @@ extern void	halt(void);
 #define OK	0x00		/* what a bdos file call returns on success */
 #define ERR	0xff		/* and on failure */
 
-static char	dirpath[1024];
+/*
+ * The drives.  CP/M has sixteen, A through P, and each is a directory
+ * here - which is the whole of the impedance mismatch between the two
+ * systems, once it is said out loud.  A CP/M program cannot say
+ * "../cpp/lexeme.h", but it can say "D:lexeme.h", and that is the same
+ * statement if D is where cpp's headers are.
+ *
+ * A drive nobody mapped has no directory and everything on it fails to
+ * open, which is what an empty drive does.
+ */
+#define NDRIVE	16
+
+static char	*drivedir[NDRIVE];
+static int	curdrive;		/* 0 = A */
 
 /*
  * The open file cache.  Small: the compiler has a source, a couple of
@@ -39,17 +52,52 @@ static char	dirpath[1024];
 #define NOPEN	8
 
 static struct open {
+	int	dr;		/* drive code as it stood in the fcb */
 	char	name[16];	/* as CP/M spells it, 8.3 upper case */
 	FILE	*f;
 	int	used;
 } opens[NOPEN];
 
+/*
+ * "dir" maps drive A; "X=dir" or "X:dir" maps drive X.
+ */
+void
+diskmap(char *spec)
+{
+	int d = 0;
+	char *dir = spec;
+
+	if (spec[0] && (spec[1] == '=' || spec[1] == ':') &&
+	    isalpha((unsigned char)spec[0])) {
+		d = toupper((unsigned char)spec[0]) - 'A';
+		dir = spec + 2;
+		if (d < 0 || d >= NDRIVE)
+			fatal("no drive %c: CP/M has A through P", spec[0]);
+	}
+	if (strlen(dir) >= 1024)
+		fatal("directory name too long");
+	drivedir[d] = dir;
+}
+
 void
 diskinit(char *dir)
 {
-	if (strlen(dir) >= sizeof(dirpath) - 16)
-		fatal("directory name too long");
-	strcpy(dirpath, dir);
+	if (!drivedir[0])
+		drivedir[0] = dir;
+}
+
+/*
+ * Which host directory a drive code means.  In an fcb, 0 is "the
+ * current drive" and 1 is A - the off-by-one is CP/M's, not ours.
+ */
+static char *
+dirfor(int dr)
+{
+	int d = dr ? dr - 1 : curdrive;
+
+	if (d < 0 || d >= NDRIVE)
+		return NULL;
+	return drivedir[d];
 }
 
 void
@@ -97,11 +145,15 @@ fcbname(uint16_t fcb, char *out)
  * full of shouting filenames helps nobody.
  */
 static int
-hostpath(char *cpmname, char *out, int outlen, int forcreate)
+hostpath(int dr, char *cpmname, char *out, int outlen, int forcreate)
 {
 	char lower[16], upper[16];
 	struct stat st;
+	char *dir = dirfor(dr);
 	int i;
+
+	if (!dir)
+		return 0;		/* no such drive: an empty one */
 
 	for (i = 0; cpmname[i]; i++) {
 		lower[i] = tolower((unsigned char)cpmname[i]);
@@ -110,16 +162,16 @@ hostpath(char *cpmname, char *out, int outlen, int forcreate)
 	lower[i] = upper[i] = 0;
 
 	if (forcreate) {
-		snprintf(out, outlen, "%s/%s", dirpath, lower);
+		snprintf(out, outlen, "%s/%s", dir, lower);
 		return 1;
 	}
-	snprintf(out, outlen, "%s/%s", dirpath, cpmname);
+	snprintf(out, outlen, "%s/%s", dir, cpmname);
 	if (stat(out, &st) == 0)
 		return 1;
-	snprintf(out, outlen, "%s/%s", dirpath, lower);
+	snprintf(out, outlen, "%s/%s", dir, lower);
 	if (stat(out, &st) == 0)
 		return 1;
-	snprintf(out, outlen, "%s/%s", dirpath, upper);
+	snprintf(out, outlen, "%s/%s", dir, upper);
 	if (stat(out, &st) == 0)
 		return 1;
 	return 0;
@@ -131,13 +183,14 @@ hostpath(char *cpmname, char *out, int outlen, int forcreate)
  * if it is, which is what F_MAKE means.
  */
 static FILE *
-getfile(char *name, int create)
+getfile(int dr, char *name, int create)
 {
 	char path[1200];
 	int i, slot = -1;
 
 	for (i = 0; i < NOPEN; i++) {
-		if (opens[i].used && strcmp(opens[i].name, name) == 0) {
+		if (opens[i].used && opens[i].dr == dr &&
+		    strcmp(opens[i].name, name) == 0) {
 			if (!create)
 				return opens[i].f;
 			/* F_MAKE on an open file: start it over */
@@ -158,7 +211,7 @@ getfile(char *name, int create)
 		slot = 0;
 	}
 
-	if (!hostpath(name, path, sizeof(path), create))
+	if (!hostpath(dr, name, path, sizeof(path), create))
 		return NULL;
 
 	/*
@@ -177,6 +230,7 @@ getfile(char *name, int create)
 		return NULL;
 	strncpy(opens[slot].name, name, sizeof(opens[slot].name) - 1);
 	opens[slot].name[sizeof(opens[slot].name) - 1] = 0;
+	opens[slot].dr = dr;
 	opens[slot].used = 1;
 	return opens[slot].f;
 }
@@ -185,12 +239,12 @@ getfile(char *name, int create)
  * The size of a file in bytes, or -1 if it is not there.
  */
 static long
-hostsize(char *name)
+hostsize(int dr, char *name)
 {
 	char path[1200];
 	struct stat st;
 
-	if (!hostpath(name, path, sizeof(path), 0) || stat(path, &st) != 0)
+	if (!hostpath(dr, name, path, sizeof(path), 0) || stat(path, &st) != 0)
 		return -1;
 	return (long)st.st_size;
 }
@@ -213,12 +267,13 @@ setbytecount(uint16_t fcb, long size)
 }
 
 static void
-dropfile(char *name)
+dropfile(int dr, char *name)
 {
 	int i;
 
 	for (i = 0; i < NOPEN; i++)
-		if (opens[i].used && strcmp(opens[i].name, name) == 0) {
+		if (opens[i].used && opens[i].dr == dr &&
+		    strcmp(opens[i].name, name) == 0) {
 			fclose(opens[i].f);
 			opens[i].used = 0;
 		}
@@ -274,7 +329,7 @@ readrec(uint16_t fcb, long rec)
 	uint8_t buf[RECLEN];
 
 	fcbname(fcb, name);
-	f = getfile(name, 0);
+	f = getfile(mem[fcb + FCB_DR], name, 0);
 	if (!f)
 		return ERR;
 	if (fseek(f, rec * RECLEN, SEEK_SET) != 0)
@@ -294,7 +349,7 @@ writerec(uint16_t fcb, long rec)
 	FILE *f;
 
 	fcbname(fcb, name);
-	f = getfile(name, 0);
+	f = getfile(mem[fcb + FCB_DR], name, 0);
 	if (!f)
 		return ERR;
 	if (fseek(f, rec * RECLEN, SEEK_SET) != 0)
@@ -333,6 +388,7 @@ bdos(void)
 	uint8_t fn = reg_c();
 	uint16_t de = reg_de();
 	uint16_t fcb = de;
+	int dr = mem[de + FCB_DR];	/* only meaningful for fcb calls */
 	char name[16], name2[16];
 	long rec;
 	int rc;
@@ -355,7 +411,11 @@ bdos(void)
 
 			for (k = 0; k < 12; k++)
 				sprintf(hex + k * 3, "%02x ", mem[de + k]);
-			trace("bdos %3d fcb=%04x %s", fn, de, hex);
+			trace("bdos %3d fcb=%04x rec=%ld cr=%d ex=%d %s",
+			      fn, de,
+			      (long)(mem[de+FCB_R0] | (mem[de+FCB_R1]<<8) |
+				     ((long)mem[de+FCB_R2]<<16)),
+			      mem[de+FCB_CR], mem[de+FCB_EX], hex);
 		} else {
 			trace("bdos %3d de=%04x", fn, de);
 		}
@@ -406,18 +466,26 @@ bdos(void)
 		break;
 
 	case B_RESET:
+		curdrive = 0;
+		retval(0);
+		break;
+
 	case B_SELDSK:
+		/* e holds the drive, 0 = A.  Selecting one nobody
+		 * mapped is allowed; opening on it is what fails. */
+		if (reg_e() < NDRIVE)
+			curdrive = reg_e();
 		retval(0);
 		break;
 
 	case B_OPEN:
 		fcbname(fcb, name);
-		if (getfile(name, 0)) {
+		if (getfile(dr, name, 0)) {
 			mem[fcb + FCB_CR] = 0;
 			mem[fcb + FCB_EX] = 0;
 			mem[fcb + FCB_S2] = 0;
-			setbytecount(fcb, hostsize(name));
-			trace("open %s (%ld bytes)", name, hostsize(name));
+			setbytecount(fcb, hostsize(dr, name));
+			trace("open %s (%ld bytes)", name, hostsize(dr, name));
 			retval(OK);
 		} else {
 			trace("open %s - not found", name);
@@ -435,17 +503,17 @@ bdos(void)
 		 * CP/M 3 recording a byte count amounts to here.
 		 */
 		if (mem[fcb + FCB_S1]) {
-			long sz = hostsize(name);
+			long sz = hostsize(dr, name);
 
 			if (sz > 0 && sz % RECLEN == 0) {
 				char path[1200];
 
 				sz = sz - RECLEN + mem[fcb + FCB_S1];
-				if (hostpath(name, path, sizeof(path), 0)) {
-					FILE *f = getfile(name, 0);
+				if (hostpath(dr, name, path, sizeof(path), 0)) {
+					FILE *f = getfile(dr, name, 0);
 					if (f)
 						fflush(f);
-					dropfile(name);
+					dropfile(dr, name);
 					if (truncate(path, sz) != 0)
 						trace("close %s: truncate failed",
 						      name);
@@ -463,7 +531,7 @@ bdos(void)
 
 	case B_MAKE:
 		fcbname(fcb, name);
-		if (getfile(name, 1)) {
+		if (getfile(dr, name, 1)) {
 			mem[fcb + FCB_CR] = 0;
 			mem[fcb + FCB_EX] = 0;
 			mem[fcb + FCB_S2] = 0;
@@ -479,10 +547,10 @@ bdos(void)
 
 	case B_DELETE:
 		fcbname(fcb, name);
-		dropfile(name);
+		dropfile(dr, name);
 		{
 			char path[1200];
-			if (hostpath(name, path, sizeof(path), 0) &&
+			if (hostpath(dr, name, path, sizeof(path), 0) &&
 			    remove(path) == 0) {
 				trace("delete %s", name);
 				retval(OK);
@@ -500,11 +568,11 @@ bdos(void)
 		 */
 		fcbname(fcb, name);
 		fcbname(fcb + 16, name2);
-		dropfile(name);
+		dropfile(dr, name);
 		{
 			char from[1200], to[1200];
-			if (hostpath(name, from, sizeof(from), 0)) {
-				hostpath(name2, to, sizeof(to), 1);
+			if (hostpath(dr, name, from, sizeof(from), 0)) {
+				hostpath(dr, name2, to, sizeof(to), 1);
 				if (rename(from, to) == 0) {
 					trace("rename %s %s", name, name2);
 					retval(OK);
@@ -562,13 +630,13 @@ bdos(void)
 			struct stat st;
 			long recs = 0;
 
-			if (hostpath(name, path, sizeof(path), 0) &&
+			if (hostpath(dr, name, path, sizeof(path), 0) &&
 			    stat(path, &st) == 0)
 				recs = (st.st_size + RECLEN - 1) / RECLEN;
 			mem[fcb + FCB_R0] = recs & 0xff;
 			mem[fcb + FCB_R1] = (recs >> 8) & 0xff;
 			mem[fcb + FCB_R2] = (recs >> 16) & 0xff;
-			setbytecount(fcb, hostsize(name));
+			setbytecount(fcb, hostsize(dr, name));
 			trace("filesize %s = %ld records", name, recs);
 			retval(OK);
 		}
@@ -592,11 +660,18 @@ bdos(void)
 		break;
 
 	case B_LOGVEC:
-		retval16(1);		/* drive A only */
+		{
+			int i, v = 0;
+
+			for (i = 0; i < NDRIVE; i++)
+				if (drivedir[i])
+					v |= 1 << i;
+			retval16(v);
+		}
 		break;
 
 	case B_GETDSK:
-		retval(0);
+		retval(curdrive);
 		break;
 
 	case B_SETDMA:

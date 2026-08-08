@@ -32,6 +32,30 @@ char namebuf[128];
  * advance() places this character into curchar.
  * if we do a macro insertion, it is after curchar
  */
+/*
+ * Join an include directory to a filename.
+ *
+ * A directory is usually a path and wants a '/' between the two.  On
+ * CP/M it is a drive - "D:" - and a drive letter is already the
+ * separator: "D:/lexeme.h" names nothing.  A path that ends in either
+ * is left to speak for itself, so -ID: works there and -I/usr/include
+ * works here, and a source can say plain "lexeme.h" on both.
+ *
+ * This is the whole of the difference between a system with
+ * directories and one without, as far as an include path is
+ * concerned.
+ */
+static void
+joinpath(char *out, char *dir, char *name)
+{
+    int n = strlen(dir);
+
+    if (n && (dir[n - 1] == '/' || dir[n - 1] == ':'))
+        fmtstr(out, "%s%s", dir, name);
+    else
+        fmtstr(out, "%s/%s", dir, name);
+}
+
 struct textbuf *tbtop;
 
 #ifdef DEBUG
@@ -248,7 +272,7 @@ insertfile(char *name, int sys)
      * For system includes (<foo.h>), try system include path first
      */
     if (sys && sysIncPath) {
-        fmtstr(namebuf, "%s/%s", sysIncPath, name);
+        joinpath(namebuf, sysIncPath, name);
         t->fd = open(namebuf, 0);
         if (t->fd > 0)
             goto found;
@@ -259,7 +283,7 @@ insertfile(char *name, int sys)
      */
     for (i = includes; i; i = i->next) {
         if (i->path[0])
-            fmtstr(namebuf, "%s/%s", i->path, name);
+            joinpath(namebuf, i->path, name);
         else
             strcpy(namebuf, name);
         t->fd = open(namebuf, 0);

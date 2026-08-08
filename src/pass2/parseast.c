@@ -4,7 +4,7 @@
 #include "pass2.h"
 #include "expr.h"
 #include "opcodes.h"
-#include "../cpp/lexeme.h"
+#include "lexeme.h"
 #include <stdio.h>
 #include <string.h>
 

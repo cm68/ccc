@@ -2,7 +2,7 @@
  * pass2.c - Code generator main
  */
 #include "pass2.h"
-#include "../ccclib/libutil.h"
+#include "libutil.h"
 #include <fcntl.h>
 #include <unistd.h>
 #include <string.h>

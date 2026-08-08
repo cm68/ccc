@@ -4,7 +4,7 @@
 #ifndef EXPR_H
 #define EXPR_H
 
-#include "../cpp/lexeme.h"
+#include "lexeme.h"
 
 /* destination values */
 #define DEST_NONE	0	/* statement expression, discard result */

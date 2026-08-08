@@ -6,7 +6,7 @@
 #ifndef FORMAT_H
 #define FORMAT_H
 
-#include "../cpp/lexeme.h"
+#include "lexeme.h"
 
 static char *
 widthName(int c)

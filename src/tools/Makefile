@@ -88,7 +88,7 @@ ccc: ccc.c
 ASTPPFLAGS = -m32 -g -O0 -Wall -Werror
 
 astpp: astpp.c ../ccclib/format.h
-	$(CC) $(ASTPPFLAGS) -I../ccclib -o $@ $<
+	$(CC) $(ASTPPFLAGS) -I../ccclib -I../cpp -o $@ $<
 
 test: asz
 	@sh tests/check-dollar.sh

@@ -12,7 +12,7 @@
 #include "expr.h"
 #include "opcodes.h"
 #include "rules.h"
-#include "../cpp/lexeme.h"
+#include "lexeme.h"
 #include <stdlib.h>
 
 /* Label counter for short-circuit jumps */

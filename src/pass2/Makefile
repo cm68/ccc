@@ -14,11 +14,17 @@ ifeq ($(CC),gcc)
 DEFINES = -DDEBUG
 WARNS = -Wall -Werror -std=gnu89 -Werror=declaration-after-statement
 DEBUG = -ggdb3 -O0
-CFLAGS = -m32 $(DEBUG) $(DEFINES) $(WARNS) -I. -I../ccclib
+# -I../cpp for lexeme.h, which pass1, pass2 and astpp all read: the
+# token numbers cpp emits are the ones they consume.  It used to be
+# reached by spelling the directory in the #include, which is a thing
+# a compiler that has to build on CP/M cannot do - there are no
+# directories there, and the sources have to be able to say just
+# "lexeme.h" and be told where to look.
+CFLAGS = -m32 $(DEBUG) $(DEFINES) $(WARNS) -I. -I../ccclib -I../cpp
 LDFLAGS = -m32 $(DEBUG)
 endif
 
-INC = -I../include -I../ccclib
+INC = -I../include -I../ccclib -I../cpp
 CCC = $(UNIXDIR)/bin/ccc
 
 ASTPP = ../astpp
@@ -35,7 +41,7 @@ SETX = @ true
 endif
 
 ifeq ($(CC),ccc)
-CFLAGS = -I. -I../ccclib
+CFLAGS = -I. -I../ccclib -I../cpp
 endif
 
 # Z80 compiler used by `sizecheck`.  ccc is the only one now; zc3
@@ -176,6 +182,7 @@ coverage: c1
 # was the one still only proven to compile, never to run.
 P2DIR = $(abspath .)
 LIBDIR = $(abspath ../ccclib)
+CPPSRC = $(abspath ../cpp)
 LIBSRCINC = $(abspath ../include)
 # The peephole is not optional.  It is a few percent of text on
 # ccc-generated code - 610 bytes off cpp, 1109 off c0, 1665 off c1 -
@@ -193,7 +200,7 @@ mx-ccc: $(GENERATED)
 		b=$${f%.c}; \
 		printf "%-12s" "$$b: " ; \
 		if $(CCC) $(CCCOPT) -c -DCCC -i$(LIBSRCINC) \
-			-I$(P2DIR) -I$(LIBDIR) $(P2DIR)/$$f > $$b.log 2>&1 \
+			-I$(P2DIR) -I$(LIBDIR) -I$(CPPSRC) $(P2DIR)/$$f > $$b.log 2>&1 \
 			&& [ -f $$b.o ]; then \
 			echo ok; \
 		else echo FAIL; cat $$b.log; exit 1; fi \
@@ -220,7 +227,7 @@ com-ccc: $(GENERATED)
 		b=$${f%.c}; \
 		printf "%-12s" "$$b: " ; \
 		if $(CCC) $(CCCOPT) -m cpm -c -DCCC -i$(CPMDIR)/include \
-			-I$(P2DIR) -I$(LIBDIR) $(P2DIR)/$$f > $$b.log 2>&1 \
+			-I$(P2DIR) -I$(LIBDIR) -I$(CPPSRC) $(P2DIR)/$$f > $$b.log 2>&1 \
 			&& [ -f $$b.o ]; then \
 			echo ok; \
 		else echo FAIL; cat $$b.log; exit 1; fi \

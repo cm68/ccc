@@ -248,9 +248,10 @@ loadcom(char *path)
 static void
 usage(void)
 {
-	fprintf(stderr, "usage: cpm3 [-v] [-d dir] program.com [args...]\n");
+	fprintf(stderr, "usage: cpm3 [-v] [-u] [-d [X=]dir]... program.com [args...]\n");
 	fprintf(stderr, "  -v       trace bdos calls on stderr\n");
-	fprintf(stderr, "  -d dir   directory the drive maps to (default .)\n");
+	fprintf(stderr, "  -d dir       directory drive A maps to (default .)\n");
+	fprintf(stderr, "  -d X=dir     directory drive X maps to\n");
 	fprintf(stderr, "  -u       fold the command tail to upper case, as a CCP does\n");
 	exit(2);
 }
@@ -258,7 +259,7 @@ usage(void)
 int
 main(int argc, char **argv)
 {
-	char *dir = ".";
+	int mapped = 0;
 	int i;
 
 	for (i = 1; i < argc && argv[i][0] == '-'; i++) {
@@ -269,7 +270,8 @@ main(int argc, char **argv)
 		} else if (strcmp(argv[i], "-d") == 0) {
 			if (++i >= argc)
 				usage();
-			dir = argv[i];
+			diskmap(argv[i]);
+			mapped++;
 		} else {
 			usage();
 		}
@@ -278,7 +280,8 @@ main(int argc, char **argv)
 		usage();
 
 	setup();
-	diskinit(dir);
+	diskinit(".");		/* an unmapped drive A is here */
+	(void)mapped;
 	loadcom(argv[i]);
 	i++;
 	/*
@@ -331,12 +334,25 @@ main(int argc, char **argv)
 	fflush(stdout);
 
 	/*
-	 * CP/M has no exit status: a program that wants to report one
-	 * has to print it.  The runtime's exit() ends up at the warm
-	 * boot either way, so the only thing to say here is that the
-	 * machine stopped when it was asked to.
+	 * CP/M has no exit status - the BDOS takes none and the CCP
+	 * would have nowhere to put it - so a C runtime that wants one
+	 * has to leave it somewhere by agreement.  This one stores it
+	 * at 0080h on the way out (see exit.s), which is free by then:
+	 * the command tail that lived there was read into argv before
+	 * main was called.
+	 *
+	 * Carrying it out to the host is the whole reason a run of
+	 * these can be scripted at all.  Without it cpp reporting
+	 * "out of memory" and stopping looked exactly like cpp
+	 * succeeding, and a survey of what does and does not compile
+	 * counted the failures as passes.
+	 *
+	 * A program that never calls exit leaves whatever was there,
+	 * which is the tail length - so this trusts the convention,
+	 * and a program that does not follow it gets a status that
+	 * means nothing.  Every program in this tree follows it.
 	 */
-	return 0;
+	return mem[DMABUF] & 0xff;
 }
 
 /*
