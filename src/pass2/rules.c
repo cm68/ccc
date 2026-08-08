@@ -8,6 +8,7 @@
  * source that needed the most of it in the whole tree.
  */
 #include "pass2.h"
+#include "lexops.h"
 #include "expr.h"
 #include "opcodes.h"
 #include "rules.h"

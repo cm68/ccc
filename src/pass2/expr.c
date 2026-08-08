@@ -2,6 +2,7 @@
  * expr.c - expression tree builder and dumper
  */
 #include "pass2.h"
+#include "lexeme.h"
 #include "expr.h"
 #include "opcodes.h"
 #include <stdlib.h>

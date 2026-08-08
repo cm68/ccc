@@ -2,6 +2,7 @@
  * astio.c - AST file I/O
  */
 #include "pass2.h"
+#include "lexeme.h"
 #include <stdarg.h>
 #include <string.h>
 #include <unistd.h>

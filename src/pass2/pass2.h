@@ -4,7 +4,6 @@
 #ifndef PASS2_H
 #define PASS2_H
 
-#include "lexeme.h"
 
 /* Type suffixes from AST */
 #define T_BYTE    'b'
