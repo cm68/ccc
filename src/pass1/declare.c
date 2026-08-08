@@ -598,6 +598,8 @@ declare(struct type **btp, unsigned char struct_elem)
     struct name *nm;
     struct type *t, *prefix, *suffix, *rt;
     unsigned long i;
+    unsigned long dims[MAXDIM];
+    unsigned char ndim;
 
     suffix = 0;
 
@@ -650,6 +652,19 @@ declare(struct type **btp, unsigned char struct_elem)
         nm = symDecl(prefix, struct_elem);
     }
 
+    /*
+     * Dimensions are read left to right and the type has to be built
+     * from the right: "char a[3][4]" is 3 arrays of 4 chars, so the
+     * LAST bracket is the innermost type and the first is the
+     * outermost.
+     *
+     * Wrapping each new dimension around the one before built it the
+     * other way up - 4 arrays of 3.  The total is the same, which is
+     * why sizeof(a) was right and nothing complained, but sizeof(a[0])
+     * came back as the outer dimension and every row address was
+     * scaled by it.  a[1] was three bytes along a four-byte row.
+     */
+    ndim = 0;
     while (cur.type == LBRACK) {        // array
         gettoken();
         if (cur.type == RBRACK) {
@@ -658,12 +673,18 @@ declare(struct type **btp, unsigned char struct_elem)
             parseConst(RBRACK);
             i = constVal;
         }
+        if (ndim < MAXDIM)
+            dims[ndim++] = i;
+        else
+            gripe(ER_D_AD);
+        expect(RBRACK, ER_D_AD);
+    }
+    while (ndim) {
         /*
          * Arrays have both TF_ARRAY and TF_POINTER flags for array decay
          * semantics
          */
-        prefix = getType(TF_ARRAY|TF_POINTER, prefix, i);
-        expect(RBRACK, ER_D_AD);
+        prefix = getType(TF_ARRAY|TF_POINTER, prefix, dims[--ndim]);
         /* Store array type in suffix so it gets assigned to nm->type */
         suffix = prefix;
     }

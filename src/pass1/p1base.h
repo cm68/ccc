@@ -26,5 +26,6 @@ typedef unsigned long dword;
 #define PSIZE 80               // max string containing bitdefs
 #define MAXBITS 32             // maximum size of bitfield
 #define MAX_COUNTS 256         // pre-computed counts for streaming AST
+#define MAXDIM 6               // dimensions in one array declarator
 
 #endif

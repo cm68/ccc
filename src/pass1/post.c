@@ -129,9 +129,30 @@ pfxIndex(struct expr *e)
         ((tf & TF_ARRAY) && sub) ?
             getType(TF_POINTER, sub, 0) : tp);  /* addr */
 
+    /*
+     * Whether there is a load at all depends on what the element is.
+     *
+     * Subscripting a two-dimensional array once yields a row, and a
+     * row is an array: its value IS its address, so the DEREF that
+     * would read it must not be emitted.  Emitting it made "t[1]" the
+     * first two bytes stored in row 1 rather than a pointer to it,
+     * which is a null whenever the row is zeroed - and a store
+     * through that null lands in page zero, where it takes the
+     * system's own vectors with it.
+     *
+     * The member-access path below has always got this right: an
+     * array member returns its address without a DEREF.  Same rule,
+     * same reason.
+     */
+    tp = e3->type;
+    if ((tp->flags & (TF_POINTER | TF_ARRAY)) && tp->sub &&
+        (tp->sub->flags & TF_ARRAY)) {
+        e3->type = tp->sub;
+        return e3;
+    }
+
     // Dereference to get element value
     e = mkexpr(DEREF, e3);
-    tp = e3->type;
     if ((tp->flags & (TF_POINTER | TF_ARRAY)) && tp->sub)
         e->type = tp->sub;
     return e;
