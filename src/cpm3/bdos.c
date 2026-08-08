@@ -411,11 +411,20 @@ bdos(void)
 
 			for (k = 0; k < 12; k++)
 				sprintf(hex + k * 3, "%02x ", mem[de + k]);
-			trace("bdos %3d fcb=%04x rec=%ld cr=%d ex=%d %s",
+			/*
+			 * rwp is libcpm's own field, four bytes past the
+			 * 36-byte fcb the BDOS knows about.  It is the
+			 * position the runtime thinks it is at, which is
+			 * the thing to watch when a write will not move.
+			 */
+			trace("bdos %3d fcb=%04x rec=%ld cr=%d ex=%d rwp=%ld %s",
 			      fn, de,
 			      (long)(mem[de+FCB_R0] | (mem[de+FCB_R1]<<8) |
 				     ((long)mem[de+FCB_R2]<<16)),
-			      mem[de+FCB_CR], mem[de+FCB_EX], hex);
+			      mem[de+FCB_CR], mem[de+FCB_EX],
+			      (long)(mem[de+36] | (mem[de+37]<<8) |
+				     ((long)mem[de+38]<<16) |
+				     ((long)mem[de+39]<<24)), hex);
 		} else {
 			trace("bdos %3d de=%04x", fn, de);
 		}

@@ -32,6 +32,45 @@ int		usernum;
 static z80_t	cpu;
 static z80_desc_t desc;
 static int	stopped;
+
+/*
+ * -p: where the program spends its time.
+ *
+ * A program that stops making system calls has stopped telling the
+ * outside anything, and the only question left is which instruction
+ * it is executing.  Sampling the PC every so often and printing the
+ * busiest addresses answers that without a debugger; the link map
+ * says which object each address is in.
+ */
+static int	profile;
+static unsigned long limit;		/* -l: stop after this many instructions */
+static unsigned long icount;
+
+/*
+ * -w: catch whoever writes over page zero.
+ *
+ * The bottom of memory holds the warm-boot jump and the BDOS entry.
+ * A program that stores through a null pointer lands here, and the
+ * damage does not show as a crash: the trap is simply gone, the next
+ * call runs forward through what are now zeros into 0100 and starts
+ * the program again.  Watching for the store is the only way to see
+ * which one it was.  The DMA buffer at 0080 is fair game and is not
+ * watched.
+ */
+static int	watch0;
+static int	hit0;
+static uint16_t	hit0addr;
+
+/*
+ * How far down the stack got.  The heap grows up from the end of bss
+ * and sbrk refuses to cross within a kilobyte of the stack, but
+ * nothing guards the stack itself: a deep enough recursion walks it
+ * straight down through the heap and out the bottom of memory.  The
+ * low-water mark is what says whether that happened.
+ */
+static uint16_t	splow = 0xffff;
+#define PROFSHIFT 4			/* one bucket per 16 bytes */
+static unsigned long profbuf[MEMSIZE >> PROFSHIFT];
 static int	foldcase;	/* -u: fold the command tail, as a CCP does */
 
 void
@@ -131,6 +170,12 @@ tick(int num_ticks, uint64_t pins, void *user_data)
 		if (pins & Z80_RD) {
 			Z80_SET_DATA(pins, mem[addr]);
 		} else if (pins & Z80_WR) {
+			if (watch0 && addr < 0x40 && hit0 < 8) {
+				hit0++;
+				fprintf(stderr,
+				    "cpm3: write %02x to %04x\n",
+				    Z80_GET_DATA(pins), addr);
+			}
 			mem[addr] = Z80_GET_DATA(pins);
 		}
 	} else if (pins & Z80_IORQ) {
@@ -253,6 +298,9 @@ usage(void)
 	fprintf(stderr, "  -d dir       directory drive A maps to (default .)\n");
 	fprintf(stderr, "  -d X=dir     directory drive X maps to\n");
 	fprintf(stderr, "  -u       fold the command tail to upper case, as a CCP does\n");
+	fprintf(stderr, "  -p       on exit, report the busiest addresses\n");
+	fprintf(stderr, "  -l n     stop after n instructions\n");
+	fprintf(stderr, "  -w       report writes to page zero; twice to stop\n");
 	exit(2);
 }
 
@@ -265,6 +313,14 @@ main(int argc, char **argv)
 	for (i = 1; i < argc && argv[i][0] == '-'; i++) {
 		if (strcmp(argv[i], "-v") == 0) {
 			verbose++;
+		} else if (strcmp(argv[i], "-w") == 0) {
+			watch0++;
+		} else if (strcmp(argv[i], "-l") == 0) {
+			if (++i >= argc)
+				usage();
+			limit = strtoul(argv[i], (char **)0, 0);
+		} else if (strcmp(argv[i], "-p") == 0) {
+			profile = 1;
 		} else if (strcmp(argv[i], "-u") == 0) {
 			foldcase = 1;
 		} else if (strcmp(argv[i], "-d") == 0) {
@@ -325,9 +381,47 @@ main(int argc, char **argv)
 		if (pc == BDOS_TRAP)
 			bdos();		/* the ret below returns for us */
 
+		{
+			uint16_t sp = z80_sp(&cpu);
+			if (sp < splow)
+				splow = sp;
+		}
+		if (profile)
+			profbuf[pc >> PROFSHIFT]++;
+		if (watch0 > 1 && hit0 == 1) {
+			fprintf(stderr, "cpm3: pc %04x sp %04x\n",
+				pc, z80_sp(&cpu));
+			hit0 = 2;
+		}
+		if (limit && ++icount >= limit) {
+			trace("instruction limit at pc %04x", pc);
+			break;
+		}
+
 		do {
 			z80_exec(&cpu, 1);
 		} while (!z80_opdone(&cpu));
+	}
+
+	trace("stack low-water %04x", splow);
+	if (profile) {
+		int k, top;
+		unsigned long best;
+
+		fprintf(stderr, "cpm3: busiest addresses\n");
+		for (k = 0; k < 12; k++) {
+			best = 0; top = -1;
+			for (i = 0; i < (MEMSIZE >> PROFSHIFT); i++)
+				if (profbuf[i] > best) {
+					best = profbuf[i];
+					top = i;
+				}
+			if (top < 0 || best == 0)
+				break;
+			fprintf(stderr, "  %04x  %lu\n",
+				top << PROFSHIFT, best);
+			profbuf[top] = 0;
+		}
 	}
 
 	diskdone();

@@ -99,11 +99,22 @@ for p in $passes; do
 	# directory is drive A, so that is what it is called.
 	inc="-iB: -IA: -IC: -ID:"
 
-	for src in "$top/src/$p"/*.c; do
-		b=$(basename "$src" .c)
-		# mkkw and test are build-time helpers; dbgtags is a
-		# fragment the pass #includes, not a source of its own.
-		case "$b" in mkkw|test|dbgtags) continue ;; esac
+	# What the pass is actually built from.  Globbing *.c swept up
+	# mkkw and test (build-time helpers), xdump (its own program),
+	# dbgtags (a fragment #included under DEBUG) and pass1's empty
+	# io.c - none of which any build compiles, and every one of
+	# which was being counted as a source that failed.
+	srcs=$(cd "$top/src/$p" && make -s -p 2>/dev/null |
+		grep -m1 '^SOURCES = ' | sed 's/SOURCES = //')
+	if [ -z "$srcs" ]; then
+		echo "$p: cannot read SOURCES" >&2
+		continue
+	fi
+
+	for name in $srcs; do
+		src="$top/src/$p/$name"
+		b=$(basename "$name" .c)
+		[ -f "$src" ] || continue
 
 		sz=$(wc -c < "$src")
 		start=$(date +%s)
