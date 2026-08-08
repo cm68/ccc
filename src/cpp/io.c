@@ -8,6 +8,8 @@
  * not our job; except nulls.  those are dirty; the first null is eof.
  */
 #define _XOPEN_SOURCE 500   /* for mkstemp */
+#include <stdlib.h>
+#include <string.h>
 #include "cpp.h"
 
 #include <fcntl.h>

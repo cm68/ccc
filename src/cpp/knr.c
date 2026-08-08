@@ -11,6 +11,8 @@
  * walker.  norm.c calls knr() and knrinit(); everything the header
  * buffering needs lives here.
  */
+#include <stdlib.h>
+#include <string.h>
 #include "cpp.h"
 #include "lexeme.h"
 

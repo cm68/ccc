@@ -4,6 +4,7 @@
  * calls dofold; everything the fold needs to parse, price, and
  * replay lives here.  parseConst rides the same climber for #if.
  */
+#include <string.h>
 #include "cpp.h"
 #include "lexeme.h"
 

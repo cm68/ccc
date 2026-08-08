@@ -5,6 +5,8 @@
  *
  * XXX - maybe use character type bitmask
  */
+#include <stdlib.h>
+#include <string.h>
 #include "cpp.h"
 
 static unsigned char incomment = 0;

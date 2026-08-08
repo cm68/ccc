@@ -8,15 +8,26 @@
 #ifndef CPP_H
 #define CPP_H
 
-#include <stdlib.h>
-#include <stdio.h>
-#include <string.h>
 #include "lexeme.h"
 
 /*
- * generated files
+ * The system headers are NOT here.  They cost names, c0 keeps every
+ * name it has ever seen for the whole translation unit, and that is
+ * what runs it out of memory on the big sources - <stdio.h> alone is
+ * 36 names, <string.h> 47, <stdlib.h> 35, against the 217 this header
+ * declares itself.
+ *
+ * Paid for by everyone and used by almost nobody: of the fourteen
+ * sources built here, one uses stdio outside DEBUG (cpp.c, for
+ * perror and one fclose), eight use string.h, ten use stdlib.h.
+ * norm.c - the source that needs the most room - uses no string.h at
+ * all.  So each source includes what it uses, and this header only
+ * declares cpp's own.
+ *
+ * DEBUG builds print, so debug.h brings stdio with it.
  */
 #ifdef DEBUG
+#include <stdio.h>
 #include "debug.h"
 #endif
 

@@ -8,6 +8,7 @@
 /* cpp.h brings stdlib/stdio; a second direct include would
  * redeclare the prototypes - stdlib.h's guard covers only its
  * typedefs, and zc3 -CPM makes the redeclaration fatal */
+#include <stdlib.h>
 #include "cpp.h"
 #include "lexeme.h"
 

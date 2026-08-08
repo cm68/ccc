@@ -7,6 +7,9 @@
  * Uses lex.c for tokenization, io.c for file handling,
  * and macro.c for macro processing.
  */
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #include "cpp.h"
 #include <fcntl.h>
 #include <unistd.h>

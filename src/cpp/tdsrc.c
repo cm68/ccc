@@ -5,6 +5,7 @@
  * walker above it lives in norm.c; srcget and tdinit are the whole
  * interface.
  */
+#include <stdlib.h>
 #include "cpp.h"
 #include "lexeme.h"
 

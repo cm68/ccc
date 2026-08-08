@@ -1,6 +1,8 @@
 /*
  * util.c - Utility functions for cpp
  */
+#include <stdlib.h>
+#include <string.h>
 #include "cpp.h"
 #include "libutil.h"
 #include <stdarg.h>

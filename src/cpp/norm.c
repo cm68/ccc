@@ -25,6 +25,7 @@
  * clauses are collected fully and emitted at the final paren, exactly
  * as filtctrl did.
  */
+#include <stdlib.h>
 #include "cpp.h"
 #include "lexeme.h"
 

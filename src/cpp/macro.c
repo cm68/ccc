@@ -11,6 +11,8 @@
  * #define k(a,b) if (a) b=0
  * #define k(a,b) if (a) s=#b
  */
+#include <stdlib.h>
+#include <string.h>
 #include "cpp.h"
 
 char *macbuffer;

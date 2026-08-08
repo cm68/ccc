@@ -3,6 +3,8 @@
  *
  * Binary .x format - all data as raw bytes (no hex encoding)
  */
+#include <stdlib.h>
+#include <string.h>
 #include "cpp.h"
 #include <unistd.h>
 
