@@ -3,7 +3,11 @@
  * prices and emits one initializer value at a time.
  */
 
-#include "cc1.h"
+#include "p1core.h"
+#include "p1expr.h"
+#include "p1type.h"
+#include "p1name.h"
+#include "p1lex.h"
 
 /*
  * Find struct member at given offset (members are linked in reverse order)

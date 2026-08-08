@@ -7,7 +7,10 @@
  * wholesale once sizeof lives there, and then this file simply
  * goes away.
  */
-#include "cc1.h"
+#include "p1core.h"
+#include "p1expr.h"
+#include "p1type.h"
+#include "p1name.h"
 
 extern void freeNode(struct expr *e);
 

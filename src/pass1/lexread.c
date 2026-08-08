@@ -16,7 +16,8 @@
  *   NEWLINE (117): 117 (line increment by 1)
  *   ASMSTR (118):  118 + 2-byte LE length + bytes
  */
-#include "cc1.h"
+#include "p1core.h"
+#include "p1lex.h"
 /*
  * two constants are all fcntl.h and unistd.h were bought for, and
  * on the 64K machine a header's macro and intern load is charged

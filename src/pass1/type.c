@@ -36,7 +36,10 @@
  */
 
 
-#include "cc1.h"
+#include "p1core.h"
+#include "p1type.h"
+#include "p1name.h"
+#include "p1lex.h"
 
 /*
  * Static basic types - chained together, never freed

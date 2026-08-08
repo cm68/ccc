@@ -1,7 +1,11 @@
 /*
  * Register allocation and frame offset assignment for locals
  */
-#include "cc1.h"
+#include "p1core.h"
+#include "p1type.h"
+#include "p1name.h"
+#include "p1stmt.h"
+#include "p1lex.h"
 
 /* scalar area size of the current function: the callee-save slots sit
  * just below it (outast emits this as the FUNC header savebase) */

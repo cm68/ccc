@@ -4,7 +4,10 @@
  * statement parser and its ledgers.
  */
 
-#include "cc1.h"
+#include "p1core.h"
+#include "p1name.h"
+#include "p1stmt.h"
+#include "p1lex.h"
 
 extern unsigned char stmtNest;
 extern unsigned char swStmtDepth[];

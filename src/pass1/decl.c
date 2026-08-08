@@ -2,7 +2,12 @@
  * declaration parsing and top-level parse driver
  */
 
-#include "cc1.h"
+#include "p1core.h"
+#include "p1expr.h"
+#include "p1type.h"
+#include "p1name.h"
+#include "p1stmt.h"
+#include "p1lex.h"
 
 /* List of global declarations built during parsing */
 static struct name *global = 0;

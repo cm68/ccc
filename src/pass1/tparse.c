@@ -4,7 +4,10 @@
  * builds on them.
  */
 
-#include "cc1.h"
+#include "p1core.h"
+#include "p1type.h"
+#include "p1name.h"
+#include "p1lex.h"
 
 extern struct type basictypes[];
 extern struct name basicnames[];

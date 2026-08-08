@@ -6,7 +6,10 @@
  * and popping for close.  very simple and fast
  */
 
-#include "cc1.h"
+#include "p1core.h"
+#include "p1name.h"
+#include "p1stmt.h"
+#include "p1lex.h"
 
 #ifndef CCC
 char *kindname[] = {

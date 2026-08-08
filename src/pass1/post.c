@@ -4,7 +4,11 @@
  * same frame-per-arm argument that split parsePrefix.
  */
 
-#include "cc1.h"
+#include "p1core.h"
+#include "p1expr.h"
+#include "p1type.h"
+#include "p1name.h"
+#include "p1lex.h"
 
 /*
  * Convert an argument to the type the prototype declares for it.

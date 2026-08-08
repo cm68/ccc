@@ -5,7 +5,11 @@
  * source in the tree has to fit through the compiler ON the target,
  * and cpp's tables for one translation unit are paid per unit.
  */
-#include "cc1.h"
+#include "p1core.h"
+#include "p1expr.h"
+#include "p1type.h"
+#include "p1name.h"
+#include "p1lex.h"
 
 /* string literal: refer to the strN emitted in phase 1 */
 struct expr *

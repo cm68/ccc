@@ -4,7 +4,11 @@
  * it does all semantic processing: type resolution, operator precedence,
  * expression parsing, and symbol table management.
  */
-#include "cc1.h"
+#include "p1core.h"
+#include "p1expr.h"
+#include "p1name.h"
+#include "p1stmt.h"
+#include "p1lex.h"
 /* see lexread.c: system headers are charged per file that names
  * them, and an alarm and a creat are all these three provided */
 #ifdef CCC

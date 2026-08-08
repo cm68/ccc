@@ -1,4 +1,9 @@
-#include "cc1.h"
+#include "p1core.h"
+#include "p1expr.h"
+#include "p1type.h"
+#include "p1name.h"
+#include "p1stmt.h"
+#include "p1lex.h"
 
 struct type *redeclOld;	/* the type a reused entry already had */
 

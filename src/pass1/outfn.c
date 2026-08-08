@@ -4,7 +4,11 @@
  * emitter.
  */
 
-#include "cc1.h"
+#include "p1core.h"
+#include "p1type.h"
+#include "p1name.h"
+#include "p1stmt.h"
+#include "p1lex.h"
 
 extern struct local *curFuncLocals;
 extern int analyzeFunc(struct name *func);  /* regalloc.c */

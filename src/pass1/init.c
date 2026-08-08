@@ -3,7 +3,12 @@
  * single translation unit carries both halves of declaration handling.
  */
 
-#include "cc1.h"
+#include "p1core.h"
+#include "p1expr.h"
+#include "p1type.h"
+#include "p1name.h"
+#include "p1stmt.h"
+#include "p1lex.h"
 
 /*
  * Parse a variable initializer for static/global variables
