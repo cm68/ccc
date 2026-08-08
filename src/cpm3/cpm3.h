@@ -34,10 +34,18 @@
  * the processor fetches from them - but a program reads 0006 to size
  * the TPA, so this is the number that decides how much room it has.
  */
-#define WBOOT_TRAP	0xfe00
-#define BDOS_TRAP	0xfe03
+#define WBOOT_TRAP	(bdosbase)
+#define BDOS_TRAP	(bdosbase + 3)
 
 #define TPATOP		BDOS_TRAP
+
+/*
+ * Where the system sits, and so how much room a program has.  A real
+ * machine's is fixed by how much of the BDOS is resident; -t moves
+ * it here, which is how to ask what a program would need rather than
+ * only whether it fits.
+ */
+extern uint16_t	bdosbase;
 
 #define FCB1		0x005c
 #define FCB2		0x006c

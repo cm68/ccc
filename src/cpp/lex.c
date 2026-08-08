@@ -30,7 +30,16 @@ char strbuf[STRBUFSIZE];
  * Large buffer for asm blocks and long concatenated strings
  * BSS - uninitialized, doesn't bloat binary
  */
-#define BIGBUFSIZE 1024
+/*
+ * String literals land here, adjacent ones concatenated.  It was a
+ * kilobyte; the longest run of literals anywhere in this tree is 126
+ * characters, in peep/rules.c, so this is four times the observed
+ * worst case and still gives back five hundred bytes of heap on the
+ * 64K machine - which is what decides whether a source compiles
+ * there at all.  Overflow is diagnosed, not silently truncated: see
+ * "string too long" below.
+ */
+#define BIGBUFSIZE 512
 
 /* getlit(): out-of-band "terminator after backslash-newline" marker */
 #define GL_END 0x100

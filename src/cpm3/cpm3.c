@@ -28,6 +28,7 @@ int		errmode = 0xff;	/* CP/M 3 programs set this; default is
 				 * terminates a program on our behalf */
 uint16_t	dma = DMABUF;
 int		usernum;
+uint16_t	bdosbase = 0xfe00;
 
 static z80_t	cpu;
 static z80_desc_t desc;
@@ -301,6 +302,7 @@ usage(void)
 	fprintf(stderr, "  -p       on exit, report the busiest addresses\n");
 	fprintf(stderr, "  -l n     stop after n instructions\n");
 	fprintf(stderr, "  -w       report writes to page zero; twice to stop\n");
+	fprintf(stderr, "  -t addr  put the bdos here (default fe00)\n");
 	exit(2);
 }
 
@@ -313,6 +315,10 @@ main(int argc, char **argv)
 	for (i = 1; i < argc && argv[i][0] == '-'; i++) {
 		if (strcmp(argv[i], "-v") == 0) {
 			verbose++;
+		} else if (strcmp(argv[i], "-t") == 0) {
+			if (++i >= argc)
+				usage();
+			bdosbase = (uint16_t)strtoul(argv[i], (char **)0, 0);
 		} else if (strcmp(argv[i], "-w") == 0) {
 			watch0++;
 		} else if (strcmp(argv[i], "-l") == 0) {

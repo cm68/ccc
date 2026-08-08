@@ -161,7 +161,16 @@ process(char *sourcefile)
 }
 
 char lexFile[128];
+#ifndef CPM
+/*
+ * The .i name.  Only -p and -E use it, and both of those hand over to
+ * xdump, which cannot be reached on CP/M - there is no path to name it
+ * by.  A hundred and twenty-eight bytes of bss for a filename nothing
+ * reads is a hundred and twenty-eight bytes off the heap, and the heap
+ * is what decides whether a source compiles on the 64K machine.
+ */
 char ppFile[128];
+#endif
 
 int
 main(int argc, char **argv)
@@ -244,7 +253,9 @@ main(int argc, char **argv)
 
     /* Create output file names */
     fmtstr(lexFile, "%s.x", outbase);
+#ifndef CPM
     fmtstr(ppFile, "%s.i", outbase);
+#endif
     fmtstr(idFile, "%s.n", outbase);
 
 #ifdef DEBUG
