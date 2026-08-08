@@ -112,4 +112,12 @@ extern int cntCondLbls(struct expr *e);
 extern void emitLabel(char *base, char *suffix);
 extern void emitGoto(char *base, char *suffix);
 
+/*
+ * Moved out of p1stmt.h, where they sat beside the switch
+ * tables for no reason but history: each of these is about the
+ * thing this header declares, and leaving them there made every
+ * caller take the statement machinery too.
+ */
+char isRegvar(struct expr *e);	/* takes a struct expr */
+
 #endif

@@ -138,4 +138,13 @@ void drainGraves();
 void dropName(struct name *n);
 int isasgn(unsigned char t);
 
+/*
+ * Moved out of p1stmt.h, where they sat beside the switch
+ * tables for no reason but history: each of these is about the
+ * thing this header declares, and leaving them there made every
+ * caller take the statement machinery too.
+ */
+extern int idOnce(unsigned short id);	/* an id, and nothing else */
+void doInitlzr(struct name *n);	/* takes a struct name */
+
 #endif

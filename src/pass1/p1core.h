@@ -15,10 +15,56 @@
  * to every file that includes it - see the footprint gate */
 #ifndef CCC
 #include <stdio.h>
+/*
+ * Compiler-wide control.
+ *
+ * These were in p1stmt.h, beside the switch tables, and every source
+ * that wanted to know which parsing phase it was in had to take the
+ * statement machinery with it - which is most of them, and is what
+ * made p1stmt.h the expensive include.  They are not statements;
+ * they are the state the whole pass runs under.
+ */
+struct name;			/* a pointer to one is all this needs */
+
+/* Global context for static variable name mangling */
+extern struct name *curFunc;
+extern unsigned char staticCtr;  // file-global counter for static variable names
+extern unsigned char shadowCtr;  // counter for shadowed locals
+
+/* AST output control */
+extern unsigned char astFd;         // where to write AST output
+extern unsigned char asmFd;         // where to write global data assembly
+
+/* Two-phase parsing control */
+extern unsigned char phase;         // 1 = build symbol table, 2 = emit AST
+
 #endif
 #include <string.h>
 #ifdef CCC
 #include <unixio.h>
+/*
+ * Compiler-wide control.
+ *
+ * These were in p1stmt.h, beside the switch tables, and every source
+ * that wanted to know which parsing phase it was in had to take the
+ * statement machinery with it - which is most of them, and is what
+ * made p1stmt.h the expensive include.  They are not statements;
+ * they are the state the whole pass runs under.
+ */
+struct name;			/* a pointer to one is all this needs */
+
+/* Global context for static variable name mangling */
+extern struct name *curFunc;
+extern unsigned char staticCtr;  // file-global counter for static variable names
+extern unsigned char shadowCtr;  // counter for shadowed locals
+
+/* AST output control */
+extern unsigned char astFd;         // where to write AST output
+extern unsigned char asmFd;         // where to write global data assembly
+
+/* Two-phase parsing control */
+extern unsigned char phase;         // 1 = build symbol table, 2 = emit AST
+
 #endif
 
 /*
@@ -46,6 +92,52 @@ extern int nameHighWater;
 extern int exprAllocCnt;
 extern int exprCurCnt;
 extern int exprHighWater;
+/*
+ * Compiler-wide control.
+ *
+ * These were in p1stmt.h, beside the switch tables, and every source
+ * that wanted to know which parsing phase it was in had to take the
+ * statement machinery with it - which is most of them, and is what
+ * made p1stmt.h the expensive include.  They are not statements;
+ * they are the state the whole pass runs under.
+ */
+struct name;			/* a pointer to one is all this needs */
+
+/* Global context for static variable name mangling */
+extern struct name *curFunc;
+extern unsigned char staticCtr;  // file-global counter for static variable names
+extern unsigned char shadowCtr;  // counter for shadowed locals
+
+/* AST output control */
+extern unsigned char astFd;         // where to write AST output
+extern unsigned char asmFd;         // where to write global data assembly
+
+/* Two-phase parsing control */
+extern unsigned char phase;         // 1 = build symbol table, 2 = emit AST
+
 #endif
+
+/*
+ * Compiler-wide control.
+ *
+ * These were in p1stmt.h, beside the switch tables, and every source
+ * that wanted to know which parsing phase it was in had to take the
+ * statement machinery with it - which is most of them, and is what
+ * made p1stmt.h the expensive include.  They are not statements;
+ * they are the state the whole pass runs under.
+ */
+struct name;			/* a pointer to one is all this needs */
+
+/* Global context for static variable name mangling */
+extern struct name *curFunc;
+extern unsigned char staticCtr;  // file-global counter for static variable names
+extern unsigned char shadowCtr;  // counter for shadowed locals
+
+/* AST output control */
+extern unsigned char astFd;         // where to write AST output
+extern unsigned char asmFd;         // where to write global data assembly
+
+/* Two-phase parsing control */
+extern unsigned char phase;         // 1 = build symbol table, 2 = emit AST
 
 #endif

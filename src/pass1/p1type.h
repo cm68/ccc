@@ -84,4 +84,12 @@ struct type *fnArgType(struct type *t, unsigned char i);
 extern char compatFnTyp(struct type *t1, struct type *t2);
 extern char sameRet(struct type *t1, struct type *t2);
 
+/*
+ * Moved out of p1stmt.h, where they sat beside the switch
+ * tables for no reason but history: each of these is about the
+ * thing this header declares, and leaving them there made every
+ * caller take the statement machinery too.
+ */
+int streamInitVal(struct type *type);	/* takes a struct type */
+
 #endif

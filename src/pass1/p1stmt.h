@@ -34,7 +34,6 @@ void patchCount(int slot, char c);
 /* outh.c - AST-writer helpers */
 struct local *findInLocals(struct name *want);
 int isAssignOp(unsigned char op);
-char isRegvar(struct expr *e);
 char dchainreg(struct expr *e);
 int truncok(unsigned char op);
 int bytevalued(struct expr *e);
@@ -48,10 +47,7 @@ char *mkLbl(char *base, char *suffix);
 void emitLabel(char *base, char *suffix);
 void emitGoto(char *base, char *suffix);
 int cntCondLbls(struct expr *e);
-void doInitlzr(struct name *n);
-int streamInitVal(struct type *type);
 struct name *findMemberOff(struct name *members, int offset);
-extern int idOnce(unsigned short id);
 
 /*
  * Switch statement table tracking (phase 1)
@@ -132,17 +128,6 @@ void addCase(unsigned char stmt_cnt);  /* add case to current switch */
 void addDefault(unsigned char stmt_cnt);           /* add default to current switch */
 void finishCase(unsigned char stmt_cnt);           /* finalize current case stmt count */
 
-/* Global context for static variable name mangling */
-extern struct name *curFunc;
-extern unsigned char staticCtr;  // file-global counter for static variable names
-extern unsigned char shadowCtr;  // counter for shadowed locals
-
-/* AST output control */
-extern unsigned char astFd;         // where to write AST output
-extern unsigned char asmFd;         // where to write global data assembly
-
-/* Two-phase parsing control */
-extern unsigned char phase;         // 1 = build symbol table, 2 = emit AST
 
 /*
  * Count storage for streaming AST emission
