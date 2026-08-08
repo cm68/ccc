@@ -23,7 +23,7 @@ extern int (*signal())();
 #endif
 
 #ifdef DEBUG
-#include "debugtags.c"
+#include "dbgtags.c"
 #endif
 
 #ifndef CCC
@@ -195,7 +195,7 @@ process(char *f, char *o1, char *o2)
  * Options displayed:
  *   -v <mask>      Set debug verbosity (hex bitmask)
  *
- * Debug verbosity flags (from debugtags.c):
+ * Debug verbosity flags (from dbgtags.c):
  *   - Listed with hex values and descriptions
  *   - Can be OR'd together for multiple categories
  *   - Examples: V_TRACE, V_LEX, V_PARSE, V_TYPE, etc.

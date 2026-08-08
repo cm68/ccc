@@ -15,7 +15,7 @@
 #endif
 
 #ifdef DEBUG
-#include "debugtags.c"
+#include "dbgtags.c"
 #endif
 
 /* The normalizer: lexer in, pass1-ready lexeme stream out */

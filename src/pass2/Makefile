@@ -64,17 +64,17 @@ OBJECTS = $(SOURCES:.c=.o)
 HEADERS = pass2.h expr.h opcodes.h rules.h
 
 ifeq ($(DEFINES),-DDEBUG)
-DBGFILES = debugtags.c debug.h
+DBGFILES = dbgtags.c debug.h
 else
 DBGFILES =
 endif
 
-GENERATED = debugtags.c debug.h
+GENERATED = dbgtags.c debug.h
 
 all: c1
 
 # Generated file rules
-debugtags.c debug.h: ./makedebug.sh $(SOURCES)
+dbgtags.c debug.h: ./makedebug.sh $(SOURCES)
 	./makedebug.sh
 
 %.o: %.c $(HEADERS)

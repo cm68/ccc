@@ -46,7 +46,7 @@ all: $(ARCHIVE)
 %.o: %.c $(HEADERS)
 	$(CC) $(CFLAGS) -c $< -o $@
 
-permalloc.o: ../libc/permalloc.c
+permalloc.o: ../libc/permaloc.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
 $(ARCHIVE): $(OBJECTS)

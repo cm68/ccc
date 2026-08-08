@@ -60,7 +60,7 @@ OBJECTS = $(SOURCES:.c=.o)
 
 HEADERS = cpp.h debug.h
 
-GENERATED = kwtab.c debug.h debugtags.c
+GENERATED = kwtab.c debug.h dbgtags.c
 
 all: cpp xdump
 
@@ -74,7 +74,7 @@ kwtab.c: mkkw
 	@echo '#define HI 0x80' >> kwtab.c
 	./mkkw >> kwtab.c
 
-debugtags.c debug.h: ./makedebug.sh
+dbgtags.c debug.h: ./makedebug.sh
 	./makedebug.sh
 
 %.o: %.c $(HEADERS)

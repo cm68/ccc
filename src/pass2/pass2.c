@@ -12,7 +12,7 @@
 #endif
 
 #ifdef DEBUG
-#include "debugtags.c"
+#include "dbgtags.c"
 #endif
 
 int in2fd;

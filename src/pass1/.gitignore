@@ -4,7 +4,7 @@ c0
 enumlist.h
 error.h
 debug.h
-debugtags.c
+dbgtags.c
 stage1/
 sizecheck/
 sizecheck-*/

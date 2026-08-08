@@ -101,8 +101,9 @@ for p in $passes; do
 
 	for src in "$top/src/$p"/*.c; do
 		b=$(basename "$src" .c)
-		# mkkw and test are build-time helpers, not part of a pass
-		case "$b" in mkkw|test) continue ;; esac
+		# mkkw and test are build-time helpers; dbgtags is a
+		# fragment the pass #includes, not a source of its own.
+		case "$b" in mkkw|test|dbgtags) continue ;; esac
 
 		sz=$(wc -c < "$src")
 		start=$(date +%s)
