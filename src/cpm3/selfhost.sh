@@ -150,6 +150,9 @@ for p in $passes; do
 		cmp -s "$work/g.x" "$work/h.x" || why="$why .x"
 		cmp -s "$work/g.1" "$work/h.1" || why="$why .1"
 		cmp -s "$work/g.2" "$work/h.2" || why="$why .2"
+		# .n by meaning, not by bytes - see nchk.py
+		python3 "$here/nchk.py" "$work/h.n" "$work/g.n" >/dev/null 2>&1 ||
+			why="$why .n"
 		grep -v '^;' "$work/h.s" > "$work/h.stripped" 2>/dev/null
 		cmp -s "$work/g.s" "$work/h.stripped" || why="$why .s"
 

@@ -512,21 +512,39 @@ bdos(void)
 		 * CP/M 3 recording a byte count amounts to here.
 		 */
 		if (mem[fcb + FCB_S1]) {
-			long sz = hostsize(dr, name);
+			char path[1200];
+			FILE *f;
+			long sz;
 
-			if (sz > 0 && sz % RECLEN == 0) {
-				char path[1200];
+			/*
+			 * Flush before asking how big the file is.
+			 *
+			 * The size comes from stat, and the record the
+			 * program just wrote is still sitting in this
+			 * side's buffer until it is pushed out - so the
+			 * answer was one record short, and cutting the
+			 * file back from a length that was already short
+			 * took a second record with it.  cpp's .n came
+			 * out 128 bytes light, which left the last
+			 * eighteen names in its offset table pointing
+			 * past the end of the file: c1 read them as empty
+			 * and emitted "jp " with no label.
+			 */
+			f = getfile(dr, name, 0);
+			if (f)
+				fflush(f);
 
+			sz = hostsize(dr, name);
+			trace("close %s: s1=%d hostsize=%ld", name,
+			      mem[fcb + FCB_S1], sz);
+
+			if (sz > 0 && sz % RECLEN == 0 &&
+			    hostpath(dr, name, path, sizeof(path), 0)) {
 				sz = sz - RECLEN + mem[fcb + FCB_S1];
-				if (hostpath(dr, name, path, sizeof(path), 0)) {
-					FILE *f = getfile(dr, name, 0);
-					if (f)
-						fflush(f);
-					dropfile(dr, name);
-					if (truncate(path, sz) != 0)
-						trace("close %s: truncate failed",
-						      name);
-				}
+				dropfile(dr, name);
+				if (truncate(path, sz) != 0)
+					trace("close %s: truncate failed",
+					      name);
 			}
 		}
 		trace("close %s", name);
