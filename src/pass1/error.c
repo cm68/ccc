@@ -1,7 +1,28 @@
 /*
  * errors, messages, and recovery
  */
-#include "cc1.h"
+/*
+ * Not cc1.h: this file needs the error codes and three globals, and
+ * including the whole of pass1's world costs cpp the room it needs to
+ * hold the source.  See p1expr.h for what the split is for.
+ */
+#include <stdlib.h>
+#include <string.h>
+#ifdef CCC
+#include <unixio.h>
+#else
+#include <stdio.h>
+#endif
+#include "debug.h"
+#include "token.h"		/* token_t */
+#undef DEF_ERRMSG
+#include "error.h"		/* error_t, ER_* */
+
+#include "libutil.h"		/* fmtstr */
+#include "p1lex.h"		/* struct token, cur, gettoken */
+
+extern void fatal(error_t e);
+extern char *filename;
 #include <unistd.h>
 
 #define DEF_ERRMSG
