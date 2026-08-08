@@ -728,6 +728,27 @@ bdos(void)
 		trace("error mode %02x", errmode);
 		break;
 
+	case B_RETCODE:
+		/*
+		 * CP/M 3 keeps a program return code for the CCP to test,
+		 * and 0xffff in DE asks for it rather than setting it.
+		 * 0xff00 and up mean the program died; anything below is
+		 * a value it chose.
+		 *
+		 * This is the only way a program here can say it failed.
+		 * Without it every run looks successful from outside, and
+		 * a pass that gripes and stops is indistinguishable from
+		 * one that worked - which is how a truncated object gets
+		 * linked and how a survey scores a broken source as green.
+		 */
+		if (de == 0xffff) {
+			retval16(retcode);
+		} else {
+			retcode = de;
+			trace("return code %04x", retcode);
+		}
+		break;
+
 	case B_GETDT:
 		/* zero date, zero time - nothing here reads it */
 		memset(&mem[de], 0, 4);

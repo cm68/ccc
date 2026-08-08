@@ -87,6 +87,12 @@ static uint16_t	splow = 0xffff;
  * explains: z80.h keeps the registers in locals for the length of a
  * z80_exec.  splow is ours and is updated between instructions.
  */
+/*
+ * What bdos 108 last set.  The run exits with it, so a failing pass
+ * fails the script that ran it.
+ */
+uint16_t	retcode;
+
 static uint16_t	heaphigh;
 #define SPMARGIN 64
 static int	memrep;		/* -M: report the two marks on exit */
@@ -474,12 +480,8 @@ main(int argc, char **argv)
 	fflush(stdout);
 
 	/*
-	 * CP/M has no exit status - the BDOS takes none and the CCP
-	 * would have nowhere to put it - so a C runtime that wants one
-	 * has to leave it somewhere by agreement.  This one stores it
-	 * at 0080h on the way out (see exit.s), which is free by then:
-	 * the command tail that lived there was read into argv before
-	 * main was called.
+	 * How the run went, from bdos function 108 - the return code
+	 * CP/M 3 keeps for whoever started the program.
 	 *
 	 * Carrying it out to the host is the whole reason a run of
 	 * these can be scripted at all.  Without it cpp reporting
@@ -487,12 +489,21 @@ main(int argc, char **argv)
 	 * succeeding, and a survey of what does and does not compile
 	 * counted the failures as passes.
 	 *
-	 * A program that never calls exit leaves whatever was there,
-	 * which is the tail length - so this trusts the convention,
-	 * and a program that does not follow it gets a status that
-	 * means nothing.  Every program in this tree follows it.
+	 * This used to read 80H, where exit() wrote the status.  That
+	 * is the default DMA address and the command tail arrives
+	 * there, so the status shared a buffer with the arguments and
+	 * with every sector read through the default DMA, and a
+	 * program that never called exit returned the tail length as
+	 * its status.  A program that never sets a return code now
+	 * gets zero, which is what CP/M 3 says it should get.
+	 *
+	 * The low byte only: a Unix wait status has nowhere to put
+	 * the rest.  0xff00 and up mean the program died rather than
+	 * chose a value, so those come out as a plain failure.
 	 */
-	return mem[DMABUF] & 0xff;
+	if (retcode >= 0xff00)
+		return 1;
+	return retcode & 0xff;
 }
 
 /*

@@ -102,6 +102,7 @@ extern uint16_t	bdosbase;
 #define B_MULTISEC	44
 #define B_ERRMODE	45
 #define B_GETDT		105
+#define B_RETCODE	108		/* get/set program return code */
 
 /* the version 12 reports: CP/M 3.1, system type plain CP/M */
 #define CPM3VERSION	0x0031
@@ -111,6 +112,7 @@ extern int	verbose;
 extern int	errmode;	/* what 45 last set */
 extern uint16_t	dma;
 extern int	usernum;
+extern uint16_t	retcode;	/* what 108 last set - the run's exit status */
 
 /* machine */
 extern void	fatal(char *fmt, ...);
