@@ -68,7 +68,18 @@ static short bcoff, ixoff;	/* IY-relative offsets for saved regs */
  * before comparing the low one, and any value that does not fit a byte
  * cannot match and goes to the default.
  */
-#define MAXSWNEST 8		/* nested switches */
+/*
+ * Nested switches.  Each level holds a fixed slice of swvals, so this
+ * multiplies by MAXSWCASE: eight levels was two kilobytes of bss, and
+ * bss is where the heap starts - on a 64K machine that is two
+ * kilobytes c1 does not have to work in.
+ *
+ * The deepest nesting anywhere in this tree is four.  Five leaves a
+ * level of margin and going past it is not silent: the case above
+ * emits ".error switches nested deeper than 5" and the assembly
+ * fails where anyone can see it.
+ */
+#define MAXSWNEST 5		/* nested switches */
 /*
  * Case values are bytes, so a switch cannot have more than 256 of
  * them and this cannot overflow.  wsnm's disassembler is the one that

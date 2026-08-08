@@ -38,6 +38,13 @@
 # second of Z80, so a source that takes minutes is saying something.
 TMO=${TMO:-180}
 
+# Where to put the bdos, and so how big the TPA is.  The default is
+# the machine's own, which is generous; set it to what a real banked
+# CP/M 3 gives - 0xf900, a 62K TPA - to check the passes fit a
+# machine that exists rather than one that is convenient.
+TPA=${TPA:-}
+[ -n "$TPA" ] && sim="$sim -t $TPA"
+
 here=$(cd "$(dirname "$0")" && pwd)
 top=$(cd "$here/../.." && pwd)
 sim=$here/cpm3
