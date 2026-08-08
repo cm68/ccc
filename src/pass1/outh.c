@@ -355,3 +355,20 @@ cntCondLbls(struct expr *e)
 	return cnt;
 }
 
+/*
+ * Where a local ended up.  outast.c wants the register and the frame
+ * offset and nothing else about a local, and reaching into the struct
+ * for two fields cost it the whole of p1stmt.h.  Asking is cheaper
+ * than knowing.
+ */
+char
+localReg(struct local *l)
+{
+	return l->reg;
+}
+
+short
+localOff(struct local *l)
+{
+	return l->frm_off;
+}

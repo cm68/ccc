@@ -32,4 +32,7 @@ void emitLabel(char *base, char *suffix);
 void emitGoto(char *base, char *suffix);
 int cntCondLbls(struct expr *e);
 
+char localReg(struct local *l);
+short localOff(struct local *l);
+
 #endif

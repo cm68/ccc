@@ -8,12 +8,8 @@
 #include "p1name.h"
 #include "p1stmt.h"
 #include "p1lex.h"
+#include "p1parse.h"
 
-extern unsigned char stmtNest;
-extern unsigned char swStmtDepth[];
-extern unsigned char ifHasElse[];
-extern unsigned short ifCount;
-extern unsigned short ifEmitIdx;
 
 void resetSwitch(void) {
     register struct swtab *sw = swList;

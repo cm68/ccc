@@ -5,7 +5,6 @@
 #include "p1expr.h"
 #include "p1type.h"
 #include "p1name.h"
-#include "p1stmt.h"
 #include "p1lex.h"
 #include "p1outh.h"
 
@@ -135,8 +134,8 @@ emitExpr(struct expr *e)
 		if (np->level > 1 && !(np->sclass & (SC_EXTERN | SC_STATIC))) {
 			/* Look up frm_off/reg from phase 1 captured locals */
 			struct local *local = findInLocals(np);
-			char reg = local ? local->reg : np->w.r.reg;
-			short off = local ? local->frm_off : np->w.r.frm_off;
+			char reg = local ? localReg(local) : np->w.r.reg;
+			short off = local ? localOff(local) : np->w.r.frm_off;
 			if (reg) {
 				emit1(REGVAR);
 				emit1(typeSfx(type));

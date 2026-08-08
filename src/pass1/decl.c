@@ -6,8 +6,8 @@
 #include "p1expr.h"
 #include "p1type.h"
 #include "p1name.h"
-#include "p1stmt.h"
 #include "p1lex.h"
+#include "p1pblk.h"
 
 /* List of global declarations built during parsing */
 static struct name *global = 0;
@@ -44,7 +44,6 @@ static struct name *global = 0;
  * Parameters:
  *   f - Function name entry with type signature in f->type
  */
-void freeLocals(struct local *local);
 
 void
 parsefunc(struct name *f)
@@ -600,19 +599,6 @@ parse()
 #endif
 }
 
-/*
- * Free a function's locals list
- */
-void
-freeLocals(struct local *local)
-{
-	struct local *next;
-	while (local) {
-		next = local->next;
-		free(local);
-		local = next;
-	}
-}
 
 /*
  * Free the graveyard.

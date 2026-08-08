@@ -17,11 +17,6 @@
 #include "p1base.h"
 
 /* swcnt.c - switch bookkeeping and statement counters */
-void parseBlockEx(int emitHdr);
-void parseBlock(void);
-struct local *mklocal(struct name *n);
-struct local *capLocals(void);
-char *getAsmText(void);
 struct swcase *nextCase(void);
 void stIf2(void);
 void stRet2(void);
