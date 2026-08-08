@@ -94,7 +94,13 @@ for p in $passes; do
 	for h in "$top"/src/ccclib/*.h; do
 		ln -sf "$h" "$work/C:$(basename "$h")"
 	done
-	ln -sf "$top/src/cpp/lexeme.h" "$work/D:lexeme.h"
+	# every header cpp exports, not just lexeme.h: the token codes
+	# were split into lexops.h and linking one by name meant the host
+	# leg could not open the other, so those sources came out "skip
+	# (host)" and the run reported 21 of 50 with nothing wrong.
+	for h in "$top"/src/cpp/*.h; do
+		ln -sf "$h" "$work/D:$(basename "$h")"
+	done
 	for h in "$work"/*.h; do
 		case "$h" in *:*) continue ;; esac
 		ln -sf "$h" "$work/A:$(basename "$h")"

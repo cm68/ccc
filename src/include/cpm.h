@@ -24,7 +24,16 @@ extern int	errno;			/* system error number */
 
 #include	<hitech.h>
 #if	z80
-#define	MAXFILE		8	/* max number of files open */
+/*
+ * cpp holds every nested include open - it has to resume the outer
+ * file when the inner one ends - and wants its two outputs at the
+ * same time.  At eight this ran out at the FOURTH level of nesting,
+ * which is an ordinary depth for C: pass1's type.c reaches lexops.h
+ * through p1core.h, token.h and lexeme.h.  The failure was a clean
+ * "cannot find include file", which reads like a missing header
+ * rather than a full table.
+ */
+#define	MAXFILE		12	/* max number of files open */
 #else	z80
 #define	MAXFILE		15	/* max number of files open */
 #endif	z80
