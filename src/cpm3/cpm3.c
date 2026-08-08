@@ -70,6 +70,26 @@ static uint16_t	hit0addr;
  * low-water mark is what says whether that happened.
  */
 static uint16_t	splow = 0xffff;
+
+/*
+ * How far up the heap got, which with the low-water above is what a
+ * program actually needs: everything between the two is memory it
+ * never touched, and lowering the bdos by that much is the same run
+ * in a smaller machine.
+ *
+ * A write counts as heap if it lands well below the deepest the stack
+ * has ever been.  "Well below" is the whole trick - the stack sets a
+ * new low-water by writing there, so a plain "below splow" test calls
+ * every push a heap write and the mark climbs to meet the stack.  No
+ * instruction moves the stack 64 bytes in one step.
+ *
+ * Reading the real SP here would be wrong for the reason the run loop
+ * explains: z80.h keeps the registers in locals for the length of a
+ * z80_exec.  splow is ours and is updated between instructions.
+ */
+static uint16_t	heaphigh;
+#define SPMARGIN 64
+static int	memrep;		/* -M: report the two marks on exit */
 #define PROFSHIFT 4			/* one bucket per 16 bytes */
 static unsigned long profbuf[MEMSIZE >> PROFSHIFT];
 static int	foldcase;	/* -u: fold the command tail, as a CCP does */
@@ -177,6 +197,9 @@ tick(int num_ticks, uint64_t pins, void *user_data)
 				    "cpm3: write %02x to %04x\n",
 				    Z80_GET_DATA(pins), addr);
 			}
+			if (addr >= 0x100 && addr + SPMARGIN < splow &&
+			    addr > heaphigh)
+				heaphigh = addr;
 			mem[addr] = Z80_GET_DATA(pins);
 		}
 	} else if (pins & Z80_IORQ) {
@@ -300,6 +323,7 @@ usage(void)
 	fprintf(stderr, "  -d X=dir     directory drive X maps to\n");
 	fprintf(stderr, "  -u       fold the command tail to upper case, as a CCP does\n");
 	fprintf(stderr, "  -p       on exit, report the busiest addresses\n");
+	fprintf(stderr, "  -M       on exit, report heap and stack high-water\n");
 	fprintf(stderr, "  -l n     stop after n instructions\n");
 	fprintf(stderr, "  -w       report writes to page zero; twice to stop\n");
 	fprintf(stderr, "  -t addr  put the bdos here (default fe00)\n");
@@ -325,6 +349,8 @@ main(int argc, char **argv)
 			if (++i >= argc)
 				usage();
 			limit = strtoul(argv[i], (char **)0, 0);
+		} else if (strcmp(argv[i], "-M") == 0) {
+			memrep = 1;
 		} else if (strcmp(argv[i], "-p") == 0) {
 			profile = 1;
 		} else if (strcmp(argv[i], "-u") == 0) {
@@ -410,6 +436,20 @@ main(int argc, char **argv)
 	}
 
 	trace("stack low-water %04x", splow);
+	if (memrep) {
+		/*
+		 * What the run needed, and so the smallest bdos it would
+		 * have fitted under: the heap top, plus the stack depth
+		 * carried down with it, plus whatever sbrk insists on
+		 * keeping between them.
+		 */
+		fprintf(stderr,
+		    "cpm3: heap high %04x  stack low %04x  gap %d  "
+		    "depth %d  fits under %04x\n",
+		    heaphigh, splow, (int)(splow - heaphigh),
+		    (int)(bdosbase - splow),
+		    (unsigned)(heaphigh + (bdosbase - splow)));
+	}
 	if (profile) {
 		int k, top;
 		unsigned long best;

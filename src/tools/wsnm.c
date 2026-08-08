@@ -57,6 +57,7 @@ char *stype;
     }
 }
 
+#ifdef DO_HITECH
 /*
  * Decode HiTech symbol flags to text
  * flags: bit 4 = global, bits 0-3 = type (0=def, 2=common, 6=undef)
@@ -92,6 +93,7 @@ char *seg;
         strcpy(seg, "-");
     }
 }
+#endif
 
 /*
  * Micronix syscall table - argbytes is bytes after rst 08h (including syscall number)
@@ -2127,6 +2129,7 @@ char *buf;
     }
 }
 
+#ifdef DO_HITECH
 /*
  * Load HiTech object data into unified object structure
  */
@@ -2220,6 +2223,7 @@ int nsyms;
         uobj.nrelocs = nrelocs;
     }
 }
+#endif
 
 /*
  * generate .s file from HiTech object - uses unified path
@@ -2250,6 +2254,7 @@ int nsyms;
     freeSynthRef();
 }
 
+#ifdef DO_HITECH
 /*
  * The tail of processHitech: the relocation and symbol-table
  * listings.  Split out because the whole of processHitech was one
@@ -2349,7 +2354,9 @@ int symbol_len;
     }
 
 }
+#endif
 
+#ifdef DO_HITECH
 /*
  * process HiTech object file
  */
@@ -2674,7 +2681,9 @@ char *name;
 
     printf("\n");
 }
+#endif
 
+#ifdef DO_HITECH
 /*
  * process HiTech library file (.LIB)
  */
@@ -2771,6 +2780,7 @@ char *name;
 
     printf("\n");
 }
+#endif
 
 /*
  * process archive file
@@ -2837,10 +2847,13 @@ char *filename;
     magic16 = get_word(0);
     if (magic16 == AR_MAGIC) {
         processAr(filename);
+#ifdef DO_HITECH
     } else if (filesize >= 13 && HT_IS_HITECH(filebuf)) {
         processHitech(filename);
+#endif
     } else if (get_byte(0) == MAGIC) {
         processObj(filename, 0, filesize);
+#ifdef DO_HITECH
     } else {
         /* check for HiTech library format */
         /* library header: 2-byte sym_size, 2-byte num_modules */
@@ -2857,6 +2870,11 @@ char *filename;
             error2("bad magic", filename);
         }
     }
+#else
+    } else {
+        error2("bad magic", filename);
+    }
+#endif
 
     free(filebuf);
 }

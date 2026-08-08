@@ -8,6 +8,25 @@
 #define HITECHOBJ_H
 
 /*
+ * Whether the tools can read this format at all.
+ *
+ * The host build wants it: there are Hi-Tech objects and libraries
+ * lying around and nothing else will open them.  The self-hosted build
+ * must not carry it.  It is a fifth of wsnm.c, and c0 runs out of
+ * memory inside processHitech long before the end of the file - the
+ * one source in the tree that will not compile under CP/M at any TPA.
+ * Hi-Tech itself went to attic/ when it stopped being the bootstrap;
+ * this is the reader outliving the thing that wrote the files.
+ *
+ * Keyed off CCC, which the driver defines when this compiler is
+ * building the tree, so the host keeps the reader without anyone
+ * having to remember a flag.  Define DO_HITECH by hand to force it in.
+ */
+#ifndef CCC
+#define DO_HITECH
+#endif
+
+/*
  * Record types
  */
 #define HT_TEXT     1       /* code/data bytes */
