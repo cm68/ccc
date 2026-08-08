@@ -4,6 +4,7 @@
  * same frame-per-arm argument that split parsePrefix.
  */
 
+#include <string.h>
 #include "p1core.h"
 #include "p1expr.h"
 #include "p1type.h"

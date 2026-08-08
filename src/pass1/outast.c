@@ -1,6 +1,7 @@
 /*
  * AST serialization for second pass - binary format
  */
+#include <stdlib.h>
 #include "p1core.h"
 #include "p1expr.h"
 #include "p1type.h"

@@ -16,6 +16,8 @@
  *   NEWLINE (117): 117 (line increment by 1)
  *   ASMSTR (118):  118 + 2-byte LE length + bytes
  */
+#include <stdlib.h>
+#include <string.h>
 #include "p1core.h"
 #include "p1name.h"
 #include "p1lex.h"

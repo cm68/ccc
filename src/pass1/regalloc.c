@@ -1,6 +1,7 @@
 /*
  * Register allocation and frame offset assignment for locals
  */
+#include <stdlib.h>
 #include "p1core.h"
 #include "p1type.h"
 #include "p1name.h"

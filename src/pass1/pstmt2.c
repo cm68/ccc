@@ -6,6 +6,7 @@
  * switch tables and the emitters; the block half wants the locals.
  * Neither wants the other's.
  */
+#include <string.h>
 #include "p1core.h"
 #include "p1expr.h"
 #include "p1type.h"

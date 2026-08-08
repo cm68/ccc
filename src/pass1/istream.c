@@ -3,6 +3,7 @@
  * prices and emits one initializer value at a time.
  */
 
+#include <stdlib.h>
 #include "p1core.h"
 #include "p1expr.h"
 #include "p1type.h"

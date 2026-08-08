@@ -2,6 +2,7 @@
  * declaration parsing and top-level parse driver
  */
 
+#include <stdlib.h>
 #include "p1core.h"
 #include "p1expr.h"
 #include "p1type.h"

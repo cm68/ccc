@@ -1,6 +1,7 @@
 /*
  * generate expression trees
  */
+#include <string.h>
 #include "p1core.h"
 #include "p1expr.h"
 #include "p1type.h"

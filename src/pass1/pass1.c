@@ -4,6 +4,8 @@
  * it does all semantic processing: type resolution, operator precedence,
  * expression parsing, and symbol table management.
  */
+#include <stdlib.h>
+#include <string.h>
 #include "p1core.h"
 #include "p1expr.h"
 #include "p1name.h"

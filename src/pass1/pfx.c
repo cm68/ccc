@@ -5,6 +5,7 @@
  * source in the tree has to fit through the compiler ON the target,
  * and cpp's tables for one translation unit are paid per unit.
  */
+#include <stdlib.h>
 #include "p1core.h"
 #include "p1expr.h"
 #include "p1type.h"

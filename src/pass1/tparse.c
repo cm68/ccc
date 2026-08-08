@@ -4,6 +4,7 @@
  * builds on them.
  */
 
+#include <string.h>
 #include "p1core.h"
 #include "p1type.h"
 #include "p1name.h"

@@ -7,6 +7,8 @@
  * wholesale once sizeof lives there, and then this file simply
  * goes away.
  */
+#include <stdlib.h>
+#include <string.h>
 #include "p1core.h"
 #include "p1expr.h"
 #include "p1type.h"
