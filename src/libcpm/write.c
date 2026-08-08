@@ -41,10 +41,18 @@ char *	buf;
 		while(nbytes) {
 			_sigchk();
 			setuid(fc->uid);
-			offs = fc->rwp%SECSIZE;
+			/*
+			 * SECSIZE is 128, so the record is a shift and
+			 * the offset within it a mask.  Written as / and
+			 * %% on a long these called qdiv, two hundred
+			 * bytes of general division to do what an and
+			 * and a shift do, in a runtime whose whole
+			 * problem is size.
+			 */
+			offs = (int)fc->rwp & (SECSIZE - 1);
 			if((size = SECSIZE - offs) > nbytes)
 				size = nbytes;
-			_putrno(fc->ranrec, fc->rwp/SECSIZE);
+			_putrno(fc->ranrec, fc->rwp >> 7);
 			if(size == SECSIZE) {
 				bdos(CPMSDMA, buf);
 #ifdef	LARGE_MODEL
