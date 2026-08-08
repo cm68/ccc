@@ -230,7 +230,7 @@ com-ccc: $(GENERATED)
 	for f in $(SOURCES); do \
 		b=$${f%.c}; \
 		printf "%-12s" "$$b: " ; \
-		if $(CCC) $(CCCOPT) -m cpm -c -DCCC -i$(CPMDIR)/include \
+		if $(CCC) $(CCCOPT) -m cpm -c -DCCC -DCPM -i$(CPMDIR)/include \
 			-I$(P1DIR) -I$(LIBDIR) -I$(CPPSRC) $(P1DIR)/$$f > $$b.log 2>&1 \
 			&& [ -f $$b.o ]; then \
 			echo ok; \

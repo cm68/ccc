@@ -674,8 +674,33 @@ push_cond(unsigned long v)
     struct cond *c = (struct cond *)xalloc(sizeof(*c));
     c->next = cond;
     cond = c;
-    if (c->next && !(c->next->flags & C_TRUE))
-        v = 0;
+
+    /*
+     * Inside a dead block, nothing this conditional says can bring
+     * the text back.  Marking it merely false is not enough: #else
+     * asks whether a branch has been taken yet, sees that none has,
+     * and takes itself - so
+     *
+     *		#ifdef A
+     *		...
+     *		#else
+     *		#ifdef B
+     *		...
+     *		#else
+     *		   this came out		<- with A and B both defined
+     *		#endif
+     *		#endif
+     *
+     * emitted the innermost arm of a block that was skipped.  It is
+     * the shape every three-way host/target guard has.  C_TRUESEEN
+     * says "a branch has already been taken", which is what makes
+     * #else and #elif both no-ops, and is the truth here: the arm
+     * that was taken was in an enclosing conditional.
+     */
+    if (c->next && !(c->next->flags & C_TRUE)) {
+        cond->flags = C_TRUESEEN;
+        return;
+    }
     cond->flags = (v ? (C_TRUE | C_TRUESEEN) : 0);
 }
 

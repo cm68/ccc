@@ -335,8 +335,21 @@ main(int argc, char **argv)
     }
 #endif
 
-    /* -E mode: exec xdump to dump preprocessed output to stdout */
+    /*
+     * -E mode: hand over to xdump, which renders the .x as text.
+     *
+     * This is an exec and not a fork, so it costs no second process
+     * and Micronix is happy to do it.  CP/M is not: chaining exists
+     * there but "/bin/xdump" is not a name it can hold - there are no
+     * directories - and pulling execl in for a path that cannot
+     * resolve costs six hundred bytes of a TPA that has none to
+     * spare.  Run xdump over the .x by hand there.
+     */
     if (ppOnly) {
+#ifdef CPM
+        errout("cpp: -E needs xdump run separately on this target\n");
+        return 1;
+#else
 #ifdef CCC
         if (noLineMarkers)
             execl("/bin/xdump", "xdump", "-N", lexFile, (char *)0);
@@ -350,6 +363,7 @@ main(int argc, char **argv)
 #endif
         perror("xdump");
         return 1;
+#endif
     }
 
 #ifdef DEBUG
