@@ -7,9 +7,13 @@
  * header costs 449 bytes of cpp heap for that one macro, in the
  * source that needed the most of it in the whole tree.
  */
+/*
+ * No expr.h: this file is a table of patterns, not a walker of
+ * trees - it names the codes and the rule struct and nothing that
+ * takes an expression apart.
+ */
 #include "pass2.h"
 #include "lexops.h"
-#include "expr.h"
 #include "opcodes.h"
 #include "rules.h"
 

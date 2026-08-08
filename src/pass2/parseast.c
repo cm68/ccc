@@ -6,7 +6,6 @@
 #include "opcodes.h"
 #include "lexeme.h"
 #include <stdio.h>
-#include <string.h>
 
 #ifdef DEBUG
 #include "debug.h"

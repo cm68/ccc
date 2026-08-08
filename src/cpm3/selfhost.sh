@@ -43,11 +43,11 @@ TMO=${TMO:-180}
 # CP/M 3 gives - 0xf900, a 62K TPA - to check the passes fit a
 # machine that exists rather than one that is convenient.
 TPA=${TPA:-}
-[ -n "$TPA" ] && sim="$sim -t $TPA"
 
 here=$(cd "$(dirname "$0")" && pwd)
 top=$(cd "$here/../.." && pwd)
 sim=$here/cpm3
+
 keep=0
 
 if [ "$1" = "-k" ]; then keep=1; shift; fi
@@ -56,6 +56,14 @@ for f in "$sim" "$top/cpm/bin/cpp.com" "$top/cpm/bin/c0.com" \
 	 "$top/cpm/bin/c1.com"; do
 	[ -f "$f" ] || { echo "missing $f - make && make cpm first" >&2; exit 2; }
 done
+
+# The bdos flag goes on AFTER the file check, and stays out of $sim
+# until then: the first version of this appended it before the
+# assignment that sets $sim overwrote it, so TPA= was accepted and
+# silently ignored - every run measured the machine's default bdos
+# while the summary said otherwise.  Putting it in $sim before the
+# check instead made the check test a string with a flag in it.
+[ -n "$TPA" ] && sim="$sim -t $TPA"
 
 passes="$*"
 [ -z "$passes" ] && passes="ccclib cpp pass1 pass2 peep"

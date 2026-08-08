@@ -5,7 +5,6 @@
  */
 
 #include <stdlib.h>
-#include <string.h>
 #include "p1core.h"
 #include "p1name.h"
 #include "p1stmt.h"

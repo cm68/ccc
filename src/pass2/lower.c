@@ -7,12 +7,16 @@
  * matcher; this file keeps what the matched rules call to lower
  * compounds, longs, calls and spills.
  */
+/*
+ * No <stdlib.h>: this file calls nothing from it.  NULL was the only
+ * thing it wanted, and a plain 0 is a null pointer constant wherever
+ * one is expected - the header is 34 names, and c0 keeps every name
+ * for the whole translation unit.
+ */
 #include "pass2.h"
 #include "expr.h"
 #include "opcodes.h"
-#include "rules.h"
 #include "lexeme.h"
-#include <stdlib.h>
 
 extern int labelcnt;
 Expr *rewrite1(Expr *e);
@@ -291,12 +295,12 @@ lowercompound(Expr *e)
 	Expr *loc, *val, *rhs;
 
 	if (!op || !dupableloc(e->left))
-		return NULL;
+		return 0;
 
 	w = e->width;
 	loc = e->left;
 	rhs = e->right;
-	e->left = e->right = NULL;
+	e->left = e->right = 0;
 	freeexpr(e);
 
 	val = locvalue(dupexpr(loc), w);
@@ -551,7 +555,7 @@ movetotgt(Expr *e, unsigned char tgt)
  * standing in for the temporary the expression tree has no way to
  * spell.
  *
- * Returns NULL if the address did not reduce to HL, leaving the node
+ * Returns 0 if the address did not reduce to HL, leaving the node
  * to be flagged rather than guessed at.
  */
 Expr *
@@ -563,7 +567,7 @@ docompound(Expr *e)
 	Expr *addr, *val, *rhs, *sum, *n;
 
 	if (!op || !e->left || !e->right)
-		return NULL;
+		return 0;
 
 	/*
 	 * The address, once - the side effects happen here and only here.
@@ -574,11 +578,11 @@ docompound(Expr *e)
 	 */
 	setdest(e->left, DEST_VALUE);
 	addr = rewrite1(e->left);
-	e->left = NULL;
+	e->left = 0;
 	if (!addr || (addr->op != INHL &&
 	    !(addr->op == CODE && addr->u.var.reg == R_HL))) {
 		e->left = addr;
-		return NULL;
+		return 0;
 	}
 	freeexpr(addr);
 	out("\tpush hl\n");
@@ -593,7 +597,7 @@ docompound(Expr *e)
 	val = mkcode(w, isbyte ? R_A : R_HL);
 	val->op = isbyte ? INA : INHL;
 	rhs = e->right;
-	e->right = NULL;
+	e->right = 0;
 	sum = mkbinary(op, w, val, rhs);
 	setdest(sum, DEST_VALUE);
 	/*
@@ -838,11 +842,11 @@ longable(Expr *e)
 		return e->left && e->right;
 	}
 	/* a nested long operator, which recurses through this same path */
-	return longhelper(e->op, 1) != NULL && e->left && e->right;
+	return longhelper(e->op, 1) != 0 && e->left && e->right;
 }
 
 /*
- * The runtime helper for a 32-bit operator, or NULL if there is none.
+ * The runtime helper for a 32-bit operator, or 0 if there is none.
  *
  * These are ccc's own 32-bit runtime, the q set - see
  * libsrc/libc/QLONG.md.  Both operands are in registers, HL':HL and
@@ -868,7 +872,7 @@ longhelper(unsigned char op, int sign)
 	case EQ: case NEQ: case LT: case GT: case LE: case GE:
 		return sign ? "qcmp" : "qucmp";
 	}
-	return NULL;
+	return 0;
 }
 
 /*
@@ -954,7 +958,7 @@ dolongbin(Expr *e)
 	Expr *l, *r, *n;
 
 	if (!e->left || !e->right)
-		return NULL;
+		return 0;
 	/*
 	 * A comparison carries the width of what it answers, not of what
 	 * it compares, so the operands are where to look - and either one
@@ -965,7 +969,7 @@ dolongbin(Expr *e)
 	if (iscmp && !ISLONGINT(opnd->width) && ISLONGINT(e->right->width))
 		opnd = e->right;
 	if (!opnd || !ISLONGINT(opnd->width))
-		return NULL;
+		return 0;
 	sign = ISSIGNED(opnd->width);
 
 	l = swap ? e->right : e->left;
@@ -978,7 +982,7 @@ dolongbin(Expr *e)
 	 * those use BC.
 	 */
 	if (op == LSHIFT || op == RSHIFT) {
-		e->left = e->right = NULL;
+		e->left = e->right = 0;
 		if (r->op == NUMBER) {
 			if (l->op == NUMBER)
 				loadlongc(l->u.val);
@@ -1032,7 +1036,7 @@ dolongbin(Expr *e)
 
 	fn = longhelper(op, sign);
 	if (!fn)
-		return NULL;
+		return 0;
 
 	/*
 	 * A long against something narrower.  C converts the narrow side,
@@ -1044,7 +1048,7 @@ dolongbin(Expr *e)
 	l = tolong(l, opnd->width);
 	r = tolong(r, opnd->width);
 
-	e->left = e->right = NULL;
+	e->left = e->right = 0;
 
 	/*
 	 * A constant right operand goes straight into the second
@@ -1143,7 +1147,7 @@ docall(Expr *e)
 	if (direct) {
 		e->left = fn = rewrite1(fn);
 		if (!fn || fn->op != SYMREF)
-			return NULL;
+			return 0;
 	}
 
 	/*
@@ -1175,11 +1179,11 @@ docall(Expr *e)
 	for (a = e->right; a && a->op == ARGNODE; a = next) {
 		Expr *v = a->left;
 		next = a->right;
-		a->left = a->right = NULL;
+		a->left = a->right = 0;
 		freeexpr(a);
 		nbytes += pusharg(v);
 	}
-	e->right = NULL;
+	e->right = 0;
 
 	if (direct) {
 		outf("\tcall %s\n", fn->u.symref.name);
@@ -1195,7 +1199,7 @@ docall(Expr *e)
 		 */
 		Expr *hl, *asn;
 
-		e->left = NULL;
+		e->left = 0;
 		/* land the address in HL the way everything else does -
 		 * wrapping it in an assignment to HL reuses the whole
 		 * =(H,...) rule set, which knows every place it might be */
@@ -1350,7 +1354,7 @@ spiltstore(Expr *e, Expr *oldleft)
 		out("\tcall qst\n");
 		freeexpr(oldleft);
 		freeexpr(e->right);
-		e->left = e->right = NULL;
+		e->left = e->right = 0;
 		return donehl(e, INHL);
 	}
 	if (e->right->op == INA) {
@@ -1381,7 +1385,7 @@ spiltstore(Expr *e, Expr *oldleft)
 	a = mkcode(e->width, R_HL);
 	a->op = INHL;
 	e->left = mkunary(DEREF, e->width, a);
-	return NULL;
+	return 0;
 }
 
 Expr *
@@ -1391,7 +1395,7 @@ rewrite1(Expr *e)
 	char lw, rw;
 	unsigned char narrow, both;
 
-	if (!e) return NULL;
+	if (!e) return 0;
 
 	/*
 	 * A comma is its right operand, once the left has been emitted for
@@ -1412,7 +1416,7 @@ rewrite1(Expr *e)
 		val = e->right;
 		val->dest = e->dest;
 		val->tgt = e->tgt;
-		e->left = e->right = NULL;
+		e->left = e->right = 0;
 		freeexpr(e);
 		return rewrite1(val);
 	}
@@ -1574,7 +1578,7 @@ rewrite1(Expr *e)
 		freeexpr(rewrite(step));
 		out("\tpop hl\n");
 
-		e->left = NULL;
+		e->left = 0;
 		return donehl(e, INHL);
 		}
 	}
@@ -1607,7 +1611,7 @@ rewrite1(Expr *e)
 	if (e->op == ARGNODE) {
 		e->left = rewrite1(e->left);
 		next = e->right;
-		e->right = NULL;  /* detach chain before step */
+		e->right = 0;  /* detach chain before step */
 		/* Fixed-point on this ARGNODE */
 		for (;;) {
 			n = step(e);
@@ -1715,9 +1719,9 @@ rewrite1(Expr *e)
 		branchval(tb->right);
 		outf("_E%d:\n", lbl);
 
-		e->left = NULL;
-		tb->left = NULL;
-		tb->right = NULL;
+		e->left = 0;
+		tb->left = 0;
+		tb->right = 0;
 		n = mkcode(e->width, R_HL);
 		n->op = INHL;
 		n->dest = dest;
@@ -1731,7 +1735,7 @@ rewrite1(Expr *e)
 	 * libsrc/libc/QLONG.md.
 	 */
 	if ((e->width == 'l' || e->width == 'L') && e->left && e->right) {
-		char *helper = NULL;
+		char *helper = 0;
 		int iscompare = 0;
 		Expr *tmp;
 
@@ -1950,7 +1954,7 @@ spilled:	;
 				outc('\n');
 				freeexpr(addr);
 				freeexpr(e->right);
-				e->left = e->right = NULL;
+				e->left = e->right = 0;
 				return donehl(e, INHL);
 			}
 			out("\tpush hl\n");
@@ -1990,7 +1994,7 @@ spilled:	;
 			Expr *w = e->left;
 
 			e->left = w->left;
-			w->left = NULL;
+			w->left = 0;
 			freeexpr(w);
 			e->width = e->left->width;
 			e->right->width = e->width;
@@ -2462,7 +2466,7 @@ condgo(Expr *e, char *lbl, int wf)
 	if (op == LAND || op == LOR) {
 		l = e->left;
 		r = e->right;
-		e->left = e->right = NULL;
+		e->left = e->right = 0;
 		freeexpr(e);
 		if ((op == LAND) == (wf != 0)) {
 			/* every operand agrees with the jump: chain them */
@@ -2479,7 +2483,7 @@ condgo(Expr *e, char *lbl, int wf)
 	}
 	if (op == BANG) {
 		l = e->left;
-		e->left = NULL;
+		e->left = 0;
 		freeexpr(e);
 		condgo(l, lbl, !wf);
 		return;

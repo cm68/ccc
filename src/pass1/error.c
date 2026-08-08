@@ -7,11 +7,9 @@
  * hold the source.  See p1expr.h for what the split is for.
  */
 #include <stdlib.h>
-#include <string.h>
 #ifdef CCC
 #include <unixio.h>
 #else
-#include <stdio.h>
 #endif
 #include "debug.h"
 #include "token.h"		/* token_t */

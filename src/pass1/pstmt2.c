@@ -6,7 +6,12 @@
  * switch tables and the emitters; the block half wants the locals.
  * Neither wants the other's.
  */
-#include <string.h>
+/*
+ * No <string.h>: nothing here calls it.  NULL was the only thing
+ * wanted and a plain 0 is a null pointer constant - cpp holds every
+ * macro and identifier a header brings, and this was the last source
+ * in the tree that would not fit a 62K TPA.
+ */
 #include "p1core.h"
 #include "p1expr.h"
 #include "p1type.h"
@@ -75,7 +80,7 @@ stRet2(void)
 {
     struct expr *e1;
 
-    e1 = NULL;
+    e1 = 0;
     gettoken();
     if (cur.type != SEMI)
         e1 = parseExpr(PRI_ALL);
@@ -97,7 +102,7 @@ stRet2(void)
          * the high half of a long, so it returned 458752 and
          * whatever DE happened to hold.
          */
-        emitOperand(e1, curFunc ? curFunc->type->sub : NULL);
+        emitOperand(e1, curFunc ? curFunc->type->sub : 0);
         FreeExpr(e1);
     }
 }
