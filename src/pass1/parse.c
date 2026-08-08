@@ -7,6 +7,7 @@
 #include "p1name.h"
 #include "p1stmt.h"
 #include "p1lex.h"
+#include "p1swcnt.h"
 
 char *blockname();
 

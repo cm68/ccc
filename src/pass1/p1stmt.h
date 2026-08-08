@@ -17,7 +17,6 @@
 #include "p1base.h"
 
 /* swcnt.c - switch bookkeeping and statement counters */
-int atSwBodyStmt(void);
 void parseBlockEx(int emitHdr);
 void parseBlock(void);
 struct local *mklocal(struct name *n);
@@ -29,24 +28,7 @@ void stRet2(void);
 void stSwitch2(void);
 void stExpr2(void);
 void stGoto2(void);
-int reserveCount(void);
-void patchCount(int slot, char c);
 /* outh.c - AST-writer helpers */
-struct local *findInLocals(struct name *want);
-int isAssignOp(unsigned char op);
-char dchainreg(struct expr *e);
-int truncok(unsigned char op);
-int bytevalued(struct expr *e);
-int candemote(struct expr *e, int size);
-void demote(struct expr *e, struct type *t);
-int iscmpop(unsigned char op);
-unsigned char valwidth(struct type *t);
-struct type *opwidth(struct expr *e);
-char typeSfx(struct type *t);
-char *mkLbl(char *base, char *suffix);
-void emitLabel(char *base, char *suffix);
-void emitGoto(char *base, char *suffix);
-int cntCondLbls(struct expr *e);
 struct name *findMemberOff(struct name *members, int offset);
 
 /*
@@ -121,12 +103,6 @@ extern unsigned char swEmitIdx;     /* phase 2: next switch to emit */
 extern unsigned char swEmitStack[]; /* phase 2: stack of switch indices */
 extern unsigned char swEmitDepth;   /* phase 2: emit stack depth */
 
-void resetSwitch(void);             /* reset for new function */
-void pushSwitch(void);              /* enter switch statement */
-void popSwitch(void);               /* exit switch statement */
-void addCase(unsigned char stmt_cnt);  /* add case to current switch */
-void addDefault(unsigned char stmt_cnt);           /* add default to current switch */
-void finishCase(unsigned char stmt_cnt);           /* finalize current case stmt count */
 
 
 /*
@@ -134,20 +110,7 @@ void finishCase(unsigned char stmt_cnt);           /* finalize current case stmt
  * Phase 1 computes counts (args, cases, stmts), phase 2 retrieves them.
  * Reset between functions, flip after phase 1 for LIFO retrieval.
  */
-void pushCount(char c);
-char popCount(void);
-void resetCounts(void);
-void resetCountIdx(void);
-void resetSpanCnts(void);  /* Reset read pointer for phase 2 */
 
 /* Block statement counts (phase 1 -> phase 2) */
-void enterBlkCnt(void);  /* call when entering block in phase 1 */
-void pushBlkCnt(unsigned char n);
-unsigned char popBlkCnt(void);
-void flipBlkCnts(void);  /* prepare for phase 2 */
-void resetBlkCnts(void);
-void pushFuncCnt(unsigned char n);
-unsigned char popFuncCnt(void);
-void resetFuncIdx(void);
 
 #endif

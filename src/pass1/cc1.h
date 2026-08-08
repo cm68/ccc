@@ -16,6 +16,8 @@
 #include "p1type.h"
 #include "p1name.h"
 #include "p1stmt.h"
+#include "p1swcnt.h"
+#include "p1outh.h"
 #include "p1lex.h"
 
 #endif
