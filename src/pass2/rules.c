@@ -1,7 +1,12 @@
 /*
  * rules.c - Code generation pattern rules
  */
-#include <stddef.h>
+/*
+ * No <stddef.h>.  NULL was the only thing wanted from it, and a
+ * plain 0 is a null pointer constant wherever one is expected - the
+ * header costs 449 bytes of cpp heap for that one macro, in the
+ * source that needed the most of it in the whole tree.
+ */
 #include "pass2.h"
 #include "expr.h"
 #include "opcodes.h"
@@ -1073,21 +1078,21 @@ char *rulepat[] = {
 
 struct rule rules[] = {
 	/* LOCALVAR -> INDEX */
-	R(LOCALVAR,0,0,0,0,0, INDEX, P_NONE, P_NONE, P_NONE, 0, NULL, 0),
+	R(LOCALVAR,0,0,0,0,0, INDEX, P_NONE, P_NONE, P_NONE, 0, 0, 0),
 
 	/* LOCALVAR past the 7-bit (iy+d) window (big-array bases live
 	 * below the callee-save slots): form the address with 16-bit
 	 * arithmetic (special-cased in tryrule).  Only reached when the
 	 * INDEX rule above refuses. */
-	R(LOCALVAR,0,0,0,0,0, CODE, P_NONE, P_NONE, P_NONE, 0, NULL, 0),
+	R(LOCALVAR,0,0,0,0,0, CODE, P_NONE, P_NONE, P_NONE, 0, 0, 0),
 
 	/* bare SYM -> SYMREF+0, so the address rules below can see it */
-	R(SYM,0,0,0,0,0, SYMREF, P_NONE, P_NONE, P_NONE, 0, NULL, 0),
+	R(SYM,0,0,0,0,0, SYMREF, P_NONE, P_NONE, P_NONE, 0, 0, 0),
 
 	/* REGVAR -> IN* (value is in register) */
-	R(REGVAR,0,0,0,0,0, INBC, P_NONE, P_NONE, P_NONE, RF_BC, NULL, 0),
-	R(REGVAR,0,0,0,0,0, INDE, P_NONE, P_NONE, P_NONE, RF_DE, NULL, 0),
-	R(REGVAR,0,0,0,0,0, INHL, P_NONE, P_NONE, P_NONE, RF_HL, NULL, 0),
+	R(REGVAR,0,0,0,0,0, INBC, P_NONE, P_NONE, P_NONE, RF_BC, 0, 0),
+	R(REGVAR,0,0,0,0,0, INDE, P_NONE, P_NONE, P_NONE, RF_DE, 0, 0),
+	R(REGVAR,0,0,0,0,0, INHL, P_NONE, P_NONE, P_NONE, RF_HL, 0, 0),
 
 	/* REGVAR IX in flag context: test for zero */
 	R(REGVAR,0,0,0,0,8, REGVAR, P_NONE, P_NONE, P_NONE, RF_IX, RT443, F_NZ),
@@ -1148,9 +1153,9 @@ struct rule rules[] = {
 	R(ASSIGN,INDE,REGVAR,0,0,0, ASSIGN, P_L, P_R, P_R, RF_IX, "\tld e,ixl\n\tld d,ixh\n", R_DE),
 
 	/* Address rules: IX+offset -> INDEX */
-	R(PLUS,REGVAR,P_NUM,0,0,0, INDEX, P_NONE, P_NONE, P_L, RF_IX, NULL, 0),
-	R(PLUS,DEREF,P_NUM,REGVAR,0,0, INDEX, P_NONE, P_NONE, P_LL, RF_IXIY, NULL, 0),
-	R(PLUS,INDEX,P_NUM,0,0,0, INDEX, P_NONE, P_NONE, P_L, 0, NULL, 0),
+	R(PLUS,REGVAR,P_NUM,0,0,0, INDEX, P_NONE, P_NONE, P_L, RF_IX, 0, 0),
+	R(PLUS,DEREF,P_NUM,REGVAR,0,0, INDEX, P_NONE, P_NONE, P_LL, RF_IXIY, 0, 0),
+	R(PLUS,INDEX,P_NUM,0,0,0, INDEX, P_NONE, P_NONE, P_L, 0, 0, 0),
 	/*
 	 * Array element with a variable subscript: the base is a frame
 	 * slot and the scaled index is already in HL, so form the address
@@ -1168,7 +1173,7 @@ struct rule rules[] = {
 		F_PUSHLR F_POPHL "\tadd hl,bc\n" F_LDDELO F_ADDHLDE, R_HL),
 
 	/* symbol + constant offset folds into the SYMREF */
-	R(PLUS,SYMREF,P_NUM,0,0,0, SYMREF, P_NONE, P_NONE, P_NONE, 0, NULL, 0),
+	R(PLUS,SYMREF,P_NUM,0,0,0, SYMREF, P_NONE, P_NONE, P_NONE, 0, 0, 0),
 	/*
 	 * The same for a global array, where the base is a link-time
 	 * constant and the scaled subscript is in a register - one add,
@@ -1186,7 +1191,7 @@ struct rule rules[] = {
 	R(PLUS,SYMREF,INBC,0,0,0, PLUS, P_L, P_R, P_NONE, 0, F_LDHLL "\tadd hl,bc\n", R_HL),
 
 	/* strength reduction */
-	R(STAR,P_ANY,P_POW2,0,0,0, LSHIFT, P_L, P_R, P_NONE, RF_POW2, NULL, 0),
+	R(STAR,P_ANY,P_POW2,0,0,0, LSHIFT, P_L, P_R, P_NONE, RF_POW2, 0, 0),
 
 	/* STAR by small constants */
 	R(STAR,INHL,P_MUL3,0,0,0, STAR, P_L, P_NONE, P_NONE, 0,
@@ -2177,7 +2182,7 @@ struct rule rules[] = {
 
 	/* byte stores */
 	R(ASSIGN,INDEX,INA,0,0,0, ASSIGN, P_L, P_R, P_NONE, 0, RT337, R_A),
-	R(ASSIGN,INHL,P_NUM,0,0,0, ASSIGN, P_L, P_R, P_NONE, 0, NULL, 0),
+	R(ASSIGN,INHL,P_NUM,0,0,0, ASSIGN, P_L, P_R, P_NONE, 0, 0, 0),
 	R(ASSIGN,INHL,INA,0,0,1, ASSIGN, P_L, P_R, P_NONE, 0, F_LDLA, R_HL),
 	R(ASSIGN,INHL,REGVAR,0,0,1, ASSIGN, P_L, P_R, P_R, RF_BC, "\tld (hl),c\n", 0),
 
@@ -3105,8 +3110,8 @@ struct rule rules[] = {
 	R(P_CMPX,INBC,INDE,0,0,0, GT, P_L, P_R, P_NONE, 0, T_BC_HL F_EXDEHL F_ORA F_SBCHLDE, F_CC),
 
 	/* NEQ -> BANG(EQ) */
-	R(NEQ,P_ANY,P_NUM,0,0,0, 0, P_NONE, P_NONE, P_NONE, RF_NOTEQ, NULL, 0),
-	R(NEQ,0,0,0,0,0, 0, P_NONE, P_NONE, P_NONE, RF_NOTEQ, NULL, 0),
+	R(NEQ,P_ANY,P_NUM,0,0,0, 0, P_NONE, P_NONE, P_NONE, RF_NOTEQ, 0, 0),
+	R(NEQ,0,0,0,0,0, 0, P_NONE, P_NONE, P_NONE, RF_NOTEQ, 0, 0),
 
 	/*
 	 * Storing a register-relative address to a global: the INDEX
@@ -3124,7 +3129,7 @@ struct rule rules[] = {
 		R_HL),
 
 	/* terminator */
-	{NULL, 0, 0, 0, 0, 0, 0, 0, 0, 0}
+	{0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
 };
 
 /*
