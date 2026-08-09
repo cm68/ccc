@@ -44,7 +44,11 @@
  * this is a handle for types.
  */
 struct type {
-	unsigned char size;		// how big is one of me (0-255)
+	unsigned short size;	// how big is one of me.  A short because
+							// a struct can be bigger than a register:
+							// v6's filsys is 480 bytes.  Arrays still
+							// go through typesize(), which works the
+							// extent out from the count - see there.
 	int count;		    	// array: how many; function: 1 if elem is
 							// a slim farg list (see below), else 0
 	struct name *elem;		// element list (struct members, function parameters)

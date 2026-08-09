@@ -608,11 +608,21 @@ getbasetype()
         // mark as complete
         t->flags &= ~TF_INCOMPLETE;
 
-        /* the size field is a byte and member offsets are bytes, so
-         * past 255 the layout is silently wrong; past 127 the (ix+d)
-         * window is gone.  Check the WIDE accumulator - the wrapped
-         * field is exactly what cannot be trusted here. */
-        if (off > 127) {
+        /*
+         * size and member offsets are shorts now, so the layout is
+         * good to 65535 and this only has to catch what would wrap
+         * one.  It was 127, which is the (ix+d) window - but that
+         * window was never what bounded a struct.  pass2 already
+         * forms the address with 16-bit arithmetic when a member
+         * sits past the displacement, the same way it does for a
+         * local array too big for (iy+d), so "p->member" at offset
+         * 202 comes out as "ld hl,(_p) / ld de,202" and is correct.
+         *
+         * The check reads the WIDE accumulator, which is the point:
+         * the field it is protecting is exactly the one that cannot
+         * be trusted to have kept the value.
+         */
+        if (off > 65535L) {
             gripe(ER_T_SB);
         }
 

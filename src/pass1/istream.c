@@ -42,7 +42,7 @@ streamInitVal(struct type *type)
      * value.  Byte locals cost one load where an int costs two,
      * and this function tests both in loops.
      */
-    unsigned char member_offset;
+    unsigned short member_offset;
     unsigned char is_struct;
     cstring str;
     int slen, arrlen, i, b;
