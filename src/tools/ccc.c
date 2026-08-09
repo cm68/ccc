@@ -89,6 +89,21 @@ strdup_(char *s)
 
 #define strdup strdup_
 
+/*
+ * Rename a file over another one.  link-then-unlink rather than
+ * rename(), which v6 does not have - and the two have the same
+ * restriction anyway, that both names are on one filesystem.
+ */
+int
+moveover(char *from, char *to)
+{
+    unlink(to);
+    if (link(from, to) != 0)
+        return -1;
+    unlink(from);
+    return 0;
+}
+
 void
 usage(void)
 {
@@ -237,9 +252,12 @@ execCommand(char *cmd, char **args)
         exit(1);
     }
 
-    /* Parent process - wait for child */
-    if (waitpid(pid, &status, 0) < 0) {
-        perror("waitpid");
+    /*
+     * wait, not waitpid: there is only ever one child in flight here,
+     * and v6 has no waitpid.
+     */
+    if (wait(&status) < 0) {
+        perror("wait");
         exit(1);
     }
 
@@ -306,7 +324,14 @@ execFiltered(char *cmd, char **args, char *nfile)
 
     if (pid == 0) {
         close(pfd[0]);
-        dup2(pfd[1], 2);
+        /*
+         * close-then-dup, not dup2: dup returns the lowest free
+         * descriptor, so closing 2 first puts the pipe there.  That
+         * is how it was done before dup2 existed, and Micronix is
+         * from before dup2 existed.
+         */
+        close(2);
+        dup(pfd[1]);
         close(pfd[1]);
         execv(cmd, args);
         perror(cmd);
@@ -349,8 +374,8 @@ execFiltered(char *cmd, char **args, char *nfile)
     close(nfd);
     nfd = -1;
 
-    if (waitpid(pid, &status, 0) < 0) {
-        perror("waitpid");
+    if (wait(&status) < 0) {
+        perror("wait");
         exit(1);
     }
 
@@ -859,7 +884,7 @@ main(int argc, char **argv)
                     fprintf(stderr, "Error: peep failed on %s\n", asm_file);
                     exit(status);
                 }
-                if (rename(peep_file, asm_file) != 0) {
+                if (moveover(peep_file, asm_file) != 0) {
                     fprintf(stderr, "Error: cannot replace %s\n", asm_file);
                     exit(1);
                 }
