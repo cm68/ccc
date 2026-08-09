@@ -87,6 +87,19 @@ cpm: all
 selfcheck:
 	$(SUBMAKE) -C src selfcheck
 
+# THE CROSS-TARGET GATE.  Compile every source of every pass three
+# ways - host, Micronix under the usersim, CP/M 3 on the cpm3 machine -
+# and assert the two simulated legs emit exactly what the host does.
+#
+# This is what makes a self-hosted build worth having.  A compiler that
+# runs on the target but emits something subtly different is worse than
+# one that will not run at all, because its output looks right.
+#
+# Needs all three builds present, so it depends on them.  LEGS=mx or
+# LEGS=cpm runs one target; TPA= sizes the CP/M machine.
+selfhost: all micronix cpm
+	@sh src/cpm3/selfhost.sh
+
 # Run the cpp regression harness over the full corpus.
 # Pass REGRESS_FLAGS=--bless to regenerate the baseline.
 regression:
@@ -100,7 +113,7 @@ prodtest: all
 	$(SUBMAKE) -C tests/gen
 
 .PHONY: all host target install clean clobber stage1 test tests valgrind \
-	tags sizecheck micronix cpm selfcheck regression prodtest
+	tags sizecheck micronix cpm selfcheck selfhost regression prodtest
 
 #
 # vim: tabstop=4 shiftwidth=4 noexpandtab:

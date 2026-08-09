@@ -1,11 +1,17 @@
 #!/bin/sh
 #
-# Compile the compiler with itself, on CP/M.
+# Compile the compiler with itself, on every target it has.
 #
 # Every source of cpp, pass1, pass2, peep and ccclib goes through the
-# three passes twice: once with the host compiler, and once with the
-# CP/M .com images running on the cpm3 machine.  The outputs are
-# compared.
+# three passes three times: with the host compiler, with the Micronix
+# .mx images under the usersim, and with the CP/M .com images on the
+# cpm3 machine.  Both simulated legs are compared against the host.
+#
+# The assertion is that the target the compiler runs on does not
+# change what it emits.  Nothing downstream can be trusted without it:
+# a self-hosted compiler that is subtly a different compiler is worse
+# than one that does not run at all, because it produces plausible
+# output.
 #
 # Nothing is copied.  The tree's directories are handed to the machine
 # as drives and the compiler reads them where they sit:
@@ -31,6 +37,9 @@
 # usage: selfhost.sh [-k] [pass ...]        (pass: cpp pass1 pass2 peep ccclib)
 #	-k	keep the work directories
 #
+# LEGS= picks which simulated targets to run: "mx", "cpm", or both
+# (the default).  TPA= moves the CP/M bdos - see below.
+#
 
 # A pass that has not finished in this many seconds is reported as a
 # timeout rather than left to hold the run up.  The machine is a
@@ -44,17 +53,30 @@ TMO=${TMO:-180}
 # machine that exists rather than one that is convenient.
 TPA=${TPA:-}
 
+# Which simulated targets to compare against the host.
+LEGS=${LEGS:-mx cpm}
+
 here=$(cd "$(dirname "$0")" && pwd)
 top=$(cd "$here/../.." && pwd)
 sim=$here/cpm3
+mxsim=$top/tests/sim
 
 keep=0
 
 if [ "$1" = "-k" ]; then keep=1; shift; fi
 
-for f in "$sim" "$top/cpm/bin/cpp.com" "$top/cpm/bin/c0.com" \
-	 "$top/cpm/bin/c1.com"; do
-	[ -f "$f" ] || { echo "missing $f - make && make cpm first" >&2; exit 2; }
+need=""
+case " $LEGS " in *" cpm "*)
+	need="$need $sim $top/cpm/bin/cpp.com $top/cpm/bin/c0.com \
+	      $top/cpm/bin/c1.com" ;;
+esac
+case " $LEGS " in *" mx "*)
+	need="$need $mxsim $top/micronix/bin/cpp.mx $top/micronix/bin/c0.mx \
+	      $top/micronix/bin/c1.mx" ;;
+esac
+for f in $need; do
+	[ -f "$f" ] || { echo "missing $f - make, make cpm, make micronix" >&2
+			 exit 2; }
 done
 
 # The bdos flag goes on AFTER the file check, and stays out of $sim
@@ -118,6 +140,10 @@ for p in $passes; do
 	# not a drive gets a '/' put after it, which the runtime then
 	# tries to read as part of the filename.  The pass's own
 	# directory is drive A, so that is what it is called.
+	# the usersim's filesystem root is the work directory, so the
+	# images it runs have to be inside it
+	case " $LEGS " in *" mx "*) cp "$top"/micronix/bin/*.mx "$work"/ ;; esac
+
 	inc="-iB: -IA: -IC: -ID:"
 
 	# What the pass is actually built from.  Globbing *.c swept up
@@ -152,12 +178,38 @@ for p in $passes; do
 		fi
 
 		why=""
-		timeout $TMO $sim $drives "$top/cpm/bin/cpp.com" -DCCC $inc \
-			-o g "$b.c" >/dev/null 2>&1 || why="cpp"
-		[ -z "$why" ] && { timeout $TMO $sim $drives \
-			"$top/cpm/bin/c0.com" g.x g.1 g.2 >/dev/null 2>&1 || why="c0"; }
-		[ -z "$why" ] && { timeout $TMO $sim $drives \
-			"$top/cpm/bin/c1.com" g.1 g.2 g.s >/dev/null 2>&1 || why="c1"; }
+
+		# Micronix.  Bare names, exactly as the host got them:
+		# cpp records the name it opened, so "/expr.c" here and
+		# "expr.c" there differ in the .x for that reason alone
+		# and nothing else.
+		case " $LEGS " in *" mx "*)
+			( cd "$work" && rm -f m.x m.n m.1 m.2 m.s )
+			timeout $TMO $mxsim -d "$work" /cpp.mx -DCCC $inc \
+				-o m "$b.c" >/dev/null 2>&1 </dev/null ||
+				why="mx:cpp"
+			[ -z "$why" ] && { timeout $TMO $mxsim -d "$work" \
+				/c0.mx m.x m.1 m.2 >/dev/null 2>&1 </dev/null ||
+				why="mx:c0"; }
+			[ -z "$why" ] && { timeout $TMO $mxsim -d "$work" \
+				/c1.mx m.1 m.2 m.s >/dev/null 2>&1 </dev/null ||
+				why="mx:c1"; }
+			;;
+		esac
+
+		# CP/M 3
+		case " $LEGS " in *" cpm "*)
+			[ -z "$why" ] && { timeout $TMO $sim $drives \
+				"$top/cpm/bin/cpp.com" -DCCC $inc -o g "$b.c" \
+				>/dev/null 2>&1 || why="cpm:cpp"; }
+			[ -z "$why" ] && { timeout $TMO $sim $drives \
+				"$top/cpm/bin/c0.com" g.x g.1 g.2 >/dev/null 2>&1 ||
+				why="cpm:c0"; }
+			[ -z "$why" ] && { timeout $TMO $sim $drives \
+				"$top/cpm/bin/c1.com" g.1 g.2 g.s >/dev/null 2>&1 ||
+				why="cpm:c1"; }
+			;;
+		esac
 
 		secs=$(( $(date +%s) - start ))
 
@@ -168,14 +220,28 @@ for p in $passes; do
 			continue
 		fi
 
-		cmp -s "$work/g.x" "$work/h.x" || why="$why .x"
-		cmp -s "$work/g.1" "$work/h.1" || why="$why .1"
-		cmp -s "$work/g.2" "$work/h.2" || why="$why .2"
-		# .n by meaning, not by bytes - see nchk.py
-		python3 "$here/nchk.py" "$work/h.n" "$work/g.n" >/dev/null 2>&1 ||
-			why="$why .n"
+		# The host's assembly carries "; stmt" commentary that the
+		# target builds do not - the host is a DEBUG build.
 		grep -v '^;' "$work/h.s" > "$work/h.stripped" 2>/dev/null
-		cmp -s "$work/g.s" "$work/h.stripped" || why="$why .s"
+
+		# Both legs against the host, naming the leg that differs.
+		# An empty .1 is not a failure: a source that is all table
+		# and no function has no AST, and rules.c is exactly that.
+		for leg in $LEGS; do
+			case $leg in
+			mx)  o=m ;;
+			cpm) o=g ;;
+			*)   continue ;;
+			esac
+			cmp -s "$work/$o.x" "$work/h.x" || why="$why $leg:.x"
+			cmp -s "$work/$o.1" "$work/h.1" || why="$why $leg:.1"
+			cmp -s "$work/$o.2" "$work/h.2" || why="$why $leg:.2"
+			# .n by meaning, not by bytes - see nchk.py
+			python3 "$here/nchk.py" "$work/h.n" "$work/$o.n" \
+				>/dev/null 2>&1 || why="$why $leg:.n"
+			cmp -s "$work/$o.s" "$work/h.stripped" ||
+				why="$why $leg:.s"
+		done
 
 		if [ -n "$why" ]; then
 			printf '%-8s %-12s %7s %6s  %s\n' \
@@ -191,7 +257,7 @@ for p in $passes; do
 done
 
 echo "-------------------------------------------------------"
-echo "$ok agree with the host, $bad do not"
+echo "$ok agree with the host on [$LEGS], $bad do not"
 [ $bad = 0 ]
 
 # vim: tabstop=8 shiftwidth=8 noexpandtab:
