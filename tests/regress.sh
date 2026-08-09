@@ -147,10 +147,19 @@ run_one() {
     # DEBUG-build statistics (a non-DEBUG cpp prints none, and the baseline
     # must not care which build ran), and absolute paths so the baseline is
     # portable across users/machines.
+    #
+    # The statistics are two things, not one: POOLSTATS, and the buffer
+    # dump util.c prints straight after it.  Only the first was filtered,
+    # so a DEBUG cpp - which is what src/cpp/cpp is - failed 388 of 391
+    # on stderr that says nothing about the test.  The dump's lines are
+    # indented and do not start with POOLSTATS, which is how they got
+    # past a filter anchored at the start of the line.
     if [ -s "$out_err" ]; then
         sed -i \
             -e '/^ERROR: ld\.so: /d' \
             -e '/^POOLSTATS/d' \
+            -e '/^  tarr [0-9]* alloc=/d' \
+            -e '/^  pend [0-9]* size=/d' \
             -e "s|$REPO/||g" \
             -e "s|$WORK/||g" \
             "$out_err"

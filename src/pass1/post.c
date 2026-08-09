@@ -296,7 +296,14 @@ pfxMember(struct expr *e, unsigned char *stop)
      * get the pointed-to type (DOT after array subscript
      * produces pointer type)
      */
-    if (t->flags & TF_POINTER)
+    /*
+     * t before t->flags: a name pass1 never saw declared has no type
+     * at all, and "zzz.qqq" walked the null.  The check below is
+     * written "t && ..." for the same reason and this one was not,
+     * so the crash needed an undeclared base and nothing else -
+     * c0 died where it was about to say "no member".
+     */
+    if (t && (t->flags & TF_POINTER))
         t = t->sub;
     if (t && (t->flags & TF_AGGREGATE) && t->elem) {
         for (np = t->elem; np; np = np->next) {
@@ -312,7 +319,16 @@ pfxMember(struct expr *e, unsigned char *stop)
         gripe(ER_E_UO);
         gettoken();
         *stop = 1;
-        return mkexprI(CONST, 0, NULL, 0, 0);
+        /*
+         * inttype, not NULL: this is error recovery, but the node it
+         * returns is a real one and phase 2 emits it like any other.
+         * emitOperand reads e->type->size, so a typeless CONST here
+         * crashed c0 outright - "zzz.qqq", or a member named on an
+         * int, died in outast a moment after gripe() had correctly
+         * said "no member".  Every other CONST built in this tree
+         * carries inttype; this was the one that did not.
+         */
+        return mkexprI(CONST, 0, inttype, 0, 0);
     }
 
     /*
